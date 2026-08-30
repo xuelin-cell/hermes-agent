@@ -852,6 +852,57 @@ function openRunLog(logRoot) {
   return { path: logPath, stream }
 }
 
+function seedBundledBootstrapTools({ bundledToolsRoot, hermesHome, emit }) {
+  if (process.platform !== 'win32' || !bundledToolsRoot || !hermesHome) return []
+  const source = path.join(bundledToolsRoot, 'uv.exe')
+  if (!fs.existsSync(source)) return []
+  const destination = path.join(hermesHome, 'bin', 'uv.exe')
+  fs.mkdirSync(path.dirname(destination), { recursive: true })
+  fs.copyFileSync(source, destination)
+  emit?.({ type: 'log', line: `[bootstrap] seeded packaged uv.exe -> ${destination}` })
+  return [destination]
+}
+
+function seedBundledRepository({ activeRoot, sourceRoot, emit }) {
+  if (process.platform !== 'win32' || !activeRoot || !sourceRoot || !fs.existsSync(sourceRoot)) return false
+  if (hasExistingGitCheckout(activeRoot)) return false
+  if (fs.existsSync(activeRoot)) fs.rmSync(activeRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+  fs.mkdirSync(path.dirname(activeRoot), { recursive: true })
+  fs.cpSync(sourceRoot, activeRoot, { recursive: true })
+  emit?.({ type: 'log', line: `[bootstrap] seeded packaged Hermes source -> ${activeRoot}` })
+  return true
+}
+
+function seedBundledPythonRuntime({ activeRoot, runtimeRoot, hermesHome, emit }) {
+  if (process.platform !== 'win32' || !activeRoot || !runtimeRoot || !hermesHome) return false
+  const sourceBase = path.join(runtimeRoot, 'base')
+  const sourceVenv = path.join(runtimeRoot, 'venv')
+  if (!fs.existsSync(path.join(sourceBase, 'python.exe')) || !fs.existsSync(path.join(sourceVenv, 'Scripts', 'python.exe'))) return false
+  const destinationBase = path.join(hermesHome, 'runtime', 'python')
+  const destinationVenv = path.join(activeRoot, 'venv')
+  fs.rmSync(destinationBase, { recursive: true, force: true })
+  fs.rmSync(destinationVenv, { recursive: true, force: true })
+  fs.mkdirSync(path.dirname(destinationBase), { recursive: true })
+  fs.cpSync(sourceBase, destinationBase, { recursive: true })
+  fs.cpSync(sourceVenv, destinationVenv, { recursive: true })
+  const cfgPath = path.join(destinationVenv, 'pyvenv.cfg')
+  let cfg = fs.readFileSync(cfgPath, 'utf8').replace(/^home\s*=.*$/m, `home = ${destinationBase}`)
+  fs.writeFileSync(cfgPath, cfg)
+  const marker = path.join(runtimeRoot, 'build-source-root.txt')
+  const sitePackages = path.join(destinationVenv, 'Lib', 'site-packages')
+  if (fs.existsSync(marker) && fs.existsSync(sitePackages)) {
+    const from = fs.readFileSync(marker, 'utf8').trim().replaceAll('\\', '\\\\')
+    const to = activeRoot.replaceAll('\\', '\\\\')
+    for (const name of fs.readdirSync(sitePackages)) {
+      if (!name.startsWith('__editable___hermes_agent_') || !name.endsWith('_finder.py')) continue
+      const finderPath = path.join(sitePackages, name)
+      fs.writeFileSync(finderPath, fs.readFileSync(finderPath, 'utf8').replaceAll(from, to))
+    }
+  }
+  emit?.({ type: 'log', line: `[bootstrap] seeded packaged Python runtime and dependencies -> ${destinationVenv}` })
+  return true
+}
+
 // ---------------------------------------------------------------------------
 // Public entrypoint
 // ---------------------------------------------------------------------------
@@ -914,6 +965,7 @@ async function runBootstrap(opts) {
   })
 
   try {
+    seedBundledBootstrapTools({ bundledToolsRoot: opts.bundledToolsRoot, hermesHome, emit })
     const existingCheckout = hasExistingGitCheckout(activeRoot)
     const pinCommit = !existingCheckout
 
@@ -947,6 +999,21 @@ async function runBootstrap(opts) {
       protocolVersion: manifest.protocol_version || manifest.protocolVersion || null
     })
 
+    let packagedRepositoryReady = false
+    let packagedRuntimeReady = false
+    try {
+      const managedRelative = path.relative(path.resolve(hermesHome), path.resolve(activeRoot))
+      if (!managedRelative || managedRelative.startsWith('..') || path.isAbsolute(managedRelative)) {
+        throw new Error(`refusing to seed packaged runtime outside HERMES_HOME: ${activeRoot}`)
+      }
+      packagedRepositoryReady = seedBundledRepository({ activeRoot, sourceRoot: opts.bundledRepositoryRoot, emit })
+      if (packagedRepositoryReady) {
+        packagedRuntimeReady = seedBundledPythonRuntime({ activeRoot, runtimeRoot: opts.bundledPythonRuntimeRoot, hermesHome, emit })
+      }
+    } catch (err) {
+      emit({ type: 'log', stream: 'stderr', line: `[bootstrap] packaged runtime seed failed: ${err.message}` })
+    }
+
     // 3. Iterate stages in order. Stages flagged needs_user_input are still
     //    invoked -- install.ps1's own -NonInteractive handler in those stages
     //    emits skipped=true. We trust the protocol rather than filtering
@@ -956,6 +1023,18 @@ async function runBootstrap(opts) {
         emit({ type: 'failed', error: 'bootstrap cancelled by user' })
 
         return { ok: false, cancelled: true }
+      }
+
+      if (stage.name === 'repository' && packagedRepositoryReady) {
+        emit({ type: 'stage', name: stage.name, state: 'succeeded', durationMs: 0,
+          json: { ok: true, skipped: false, stage: stage.name, source: 'packaged-source' } })
+        continue
+      }
+
+      if (packagedRuntimeReady && ['uv', 'python', 'git', 'node', 'system-packages', 'venv', 'dependencies', 'node-deps'].includes(stage.name)) {
+        emit({ type: 'stage', name: stage.name, state: 'succeeded', durationMs: 0,
+          json: { ok: true, skipped: true, stage: stage.name, reason: 'provided by self-contained desktop runtime' } })
+        continue
       }
 
       const ev = await runStage({
@@ -1033,5 +1112,8 @@ export {
   resolveInstallScript,
   resolveLocalInstallScript,
   resolveMarkerPinnedCommit,
+  seedBundledBootstrapTools,
+  seedBundledPythonRuntime,
+  seedBundledRepository,
   runBootstrap
 }

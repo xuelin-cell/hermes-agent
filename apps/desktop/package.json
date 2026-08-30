@@ -298,6 +298,11 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "perMachine": false,
+      "installerLanguages": [
+        "zh_CN"
+      ],
+      "language": "2052",
+      "multiLanguageInstaller": false,
       "shortcutName": "Hermes",
       "uninstallDisplayName": "Hermes",
       "warningsAsErrors": false

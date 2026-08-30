@@ -1989,6 +1989,7 @@ function hideFirstRunSetupChoice() {
 function getFirstRunSetupGate() {
   if (!firstRunSetupGate) {
     firstRunSetupGate = createFirstRunSetupGate({
+      autoContinueLocal: IS_PACKAGED,
       hideChoice: hideFirstRunSetupChoice,
       log: rememberLog,
       onStuck: (_backend, stuckAfterMs) => {
@@ -2415,6 +2416,11 @@ function findPythonForRoot(root) {
 
   if (override && fileExists(override)) {
     return override
+  }
+
+  const packagedRuntimePython = path.join(HERMES_HOME, 'runtime', 'python', IS_WINDOWS ? 'python.exe' : 'bin/python')
+  if (path.resolve(root) === path.resolve(ACTIVE_HERMES_ROOT) && fileExists(packagedRuntimePython)) {
+    return packagedRuntimePython
   }
 
   const relativePaths = IS_WINDOWS
@@ -4591,7 +4597,10 @@ function createPythonBackend(root, label, backendArgs, options: any = {}) {
   // system python, where the historical layout is the best guess.
   const venvRoot = venvRootForPython(python, root) ?? path.join(root, 'venv')
   const venvPython = getVenvPython(venvRoot)
-  const command = IS_WINDOWS && fileExists(venvPython) ? venvPython : python
+  const packagedRuntimePython = path.join(HERMES_HOME, 'runtime', 'python', 'python.exe')
+  const command = IS_WINDOWS && path.resolve(python) === path.resolve(packagedRuntimePython)
+    ? python
+    : IS_WINDOWS && fileExists(venvPython) ? venvPython : python
 
   return {
     kind: 'python',
@@ -4615,7 +4624,8 @@ function createPythonBackend(root, label, backendArgs, options: any = {}) {
 // ensureRuntime() to create / refresh it before launch.
 function createActiveBackend(backendArgs) {
   const venvPython = getVenvPython(VENV_ROOT)
-  const command = fileExists(venvPython) ? venvPython : findSystemPython()
+  const packagedRuntimePython = path.join(HERMES_HOME, 'runtime', 'python', IS_WINDOWS ? 'python.exe' : 'bin/python')
+  const command = fileExists(packagedRuntimePython) ? packagedRuntimePython : fileExists(venvPython) ? venvPython : findSystemPython()
 
   return {
     kind: 'python',
@@ -4866,8 +4876,11 @@ async function ensureRuntime(backend) {
     const bootstrapResult = await runBootstrap({
       installStamp: backend.installStamp,
       activeRoot: backend.activeRoot,
-      sourceRepoRoot: SOURCE_REPO_ROOT,
+      sourceRepoRoot: IS_PACKAGED ? path.join(process.resourcesPath, 'bootstrap-source') : SOURCE_REPO_ROOT,
       hermesHome: HERMES_HOME,
+      bundledToolsRoot: path.join(process.resourcesPath, 'bootstrap-tools'),
+      bundledRepositoryRoot: path.join(process.resourcesPath, 'bootstrap-source', 'hermes-agent'),
+      bundledPythonRuntimeRoot: path.join(process.resourcesPath, 'python-runtime'),
       logRoot: path.join(HERMES_HOME, 'logs'),
       abortSignal: bootstrapAbortController.signal,
       onEvent: ev => {
@@ -4966,7 +4979,8 @@ async function ensureRuntime(backend) {
     )
   }
 
-  backend.command = getVenvPython(VENV_ROOT)
+  const packagedRuntimePython = path.join(HERMES_HOME, 'runtime', 'python', IS_WINDOWS ? 'python.exe' : 'bin/python')
+  backend.command = fileExists(packagedRuntimePython) ? packagedRuntimePython : getVenvPython(VENV_ROOT)
   backend.label = `Hermes at ${ACTIVE_HERMES_ROOT} (venv: ${VENV_ROOT})`
   updateBootProgress({
     phase: 'runtime.ready',

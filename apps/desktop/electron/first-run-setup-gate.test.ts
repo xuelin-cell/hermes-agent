@@ -29,6 +29,22 @@ test('first-run setup gate skips non-bootstrap backends', async () => {
   assert.equal(gate.hasWaiter(), false)
 })
 
+test('packaged first run can default directly to local without showing the chooser', async () => {
+  const prompts = []
+  const logs = []
+  const gate = createFirstRunSetupGate({
+    autoContinueLocal: true,
+    promptChoice: backend => prompts.push(backend),
+    log: line => logs.push(line),
+    stuckAfterMs: 0
+  })
+
+  assert.equal(await gate.wait(bootstrapBackend), 'continue-local')
+  assert.equal(gate.isLocalBootstrapConfirmed(), true)
+  assert.deepEqual(prompts, [])
+  assert.match(logs[0], /defaults to local/)
+})
+
 test('first-run setup gate prompts once for concurrent waits', async () => {
   const prompts = []
   const gate = createFirstRunSetupGate({ promptChoice: backend => prompts.push(backend), stuckAfterMs: 0 })
