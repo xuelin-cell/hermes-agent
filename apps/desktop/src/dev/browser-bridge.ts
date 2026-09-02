@@ -121,6 +121,7 @@ export function installBrowserDevelopmentBridge(): boolean {
     getGatewayWsUrlFor: async () => ({ ok: true, wsUrl: conn.wsUrl }),
     getOnBattery: async () => false,
     getProfileRoutes: async () => [],
+    getRecentLogs: async () => ({ path: '', lines: [] }),
     notify: async () => false,
     onBackendExit: noopOff,
     onBatteryChanged: noopOff,
@@ -152,6 +153,10 @@ export function installBrowserDevelopmentBridge(): boolean {
       set: async () => ({ profile: 'default' })
     },
     revalidateConnection: async () => ({ ok: true, rebuilt: false }),
+    reportRendererError: (report: { boundary: string; message: string }) => {
+      console.error(`[browser-renderer:${report.boundary}]`, report.message)
+    },
+    revealLogs: async () => ({ ok: false, path: '', error: 'Native log folders are unavailable in a browser.' }),
     setActiveConnectionRoute: () => undefined,
     setActiveWork: () => undefined,
     setKeepAwake: asyncOk,
