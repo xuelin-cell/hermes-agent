@@ -215,6 +215,15 @@ export default defineConfig(({ command }) => ({
     host: '127.0.0.1',
     port: 5174,
     strictPort: true,
+    proxy: process.env.VITE_HERMES_BROWSER_BACKEND
+      ? {
+          '/__hermes_backend': {
+            target: process.env.VITE_HERMES_BROWSER_BACKEND,
+            changeOrigin: true,
+            rewrite: requestPath => requestPath.replace(/^\/__hermes_backend/, '')
+          }
+        }
+      : undefined,
     fs: {
       allow: fsAllow
     }

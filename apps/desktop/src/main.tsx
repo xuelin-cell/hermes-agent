@@ -1,4 +1,7 @@
 import './styles.css'
+// Browser-only development bridge. In Electron the preload has already
+// installed the real bridge, so this is a strict no-op.
+import './dev/browser-bridge'
 // Side-effect: reports in-flight turns to the main process for the quit guard.
 import './store/active-work'
 // Side-effect: mirrors the machine's AC/battery state for poll demotion.
