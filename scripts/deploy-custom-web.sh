@@ -79,6 +79,8 @@ docker run --rm \
     '
 
 [[ -f "${REPO}/apps/desktop/dist-browser/index.html" ]] || die "frontend build did not produce index.html"
+git diff --quiet || die "frontend build modified tracked files; deployment stopped"
+git diff --cached --quiet || die "frontend build staged tracked files; deployment stopped"
 
 log "Staging frontend release ${FRONTEND_RELEASE}"
 mkdir -p "${FRONTEND_RELEASE}"
@@ -139,6 +141,9 @@ fi
 NEXT_LINK="${RUNTIME_DIR}/.hermes-next-${STAMP}"
 ln -s "${FRONTEND_RELEASE}" "${NEXT_LINK}"
 mv -Tf "${NEXT_LINK}" "${WEB_PATH}"
+
+git diff --quiet || die "deployment modified tracked working-tree files"
+git diff --cached --quiet || die "deployment modified staged files"
 
 log "Deployment complete"
 printf 'Revision: %s\n' "${REVISION}"

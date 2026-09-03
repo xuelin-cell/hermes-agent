@@ -11,6 +11,8 @@ act/
 .act-sandbox-agent.*
 .venv/
 .venv
+*.swp
+*.swo
 .vscode/
 .env
 .op.env
