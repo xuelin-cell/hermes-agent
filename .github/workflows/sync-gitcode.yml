@@ -1,0 +1,36 @@
+name: Sync develop-uni to GitCode
+
+on:
+  push:
+    branches:
+      - develop-uni
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-gitcode-develop-uni
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out complete history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push develop-uni to GitCode
+        env:
+          GITCODE_USERNAME: ${{ secrets.GITCODE_USERNAME }}
+          GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "${GITCODE_USERNAME}"
+          test -n "${GITCODE_TOKEN}"
+          git remote add gitcode "https://${GITCODE_USERNAME}:${GITCODE_TOKEN}@gitcode.com/uni-ai/hermes-agent.git"
+          git push gitcode HEAD:refs/heads/develop-uni
