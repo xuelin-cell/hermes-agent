@@ -69,10 +69,11 @@ docker run --rm \
     -v "${REPO}:/workspace" \
     -v hermes-custom-root-node-modules:/workspace/node_modules \
     -v hermes-custom-desktop-node-modules:/workspace/apps/desktop/node_modules \
-    -w /workspace/apps/desktop \
+    -w /workspace \
     node:22-bookworm \
     sh -lc '
-        npm install --no-audit --no-fund --package-lock=false &&
+        npm ci --workspace apps/desktop --include-workspace-root --no-audit --no-fund &&
+        cd /workspace/apps/desktop &&
         VITE_HERMES_BROWSER_BUILD=1 \
         node /workspace/node_modules/vite/bin/vite.js \
             build --base=/hermes/ --outDir=dist-browser
