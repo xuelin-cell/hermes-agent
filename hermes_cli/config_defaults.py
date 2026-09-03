@@ -1502,8 +1502,11 @@ DEFAULT_CONFIG = {
         # UI language for static user-facing messages (approval prompts, a
         # handful of gateway slash-command replies).  Does NOT affect agent
         # responses, log lines, tool outputs, or slash-command descriptions.
-        # Supported: en, zh, ja, de, es, fr, tr, uk.  Unknown values fall back to en.
-        "language": "en",
+        # Supported: en, zh, ja, de, es, fr, tr, uk. The customized Web and
+        # Desktop surfaces read this merged value at startup, so keep their
+        # first-run default aligned with Simplified Chinese. An explicit user
+        # selection in config.yaml still takes precedence.
+        "language": "zh",
         # TUI busy indicator style: kaomoji (default), emoji, unicode (braille
         # spinner), or ascii.  Live-swappable via `/indicator <style>`.
         "tui_status_indicator": "kaomoji",

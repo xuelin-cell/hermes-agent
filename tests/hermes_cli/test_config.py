@@ -1145,6 +1145,13 @@ class TestInterimAssistantMessageConfig:
         assert "Added display.interim_assistant_messages" not in capsys.readouterr().out
 
 
+class TestDisplayLanguageConfig:
+    """Test the shared Web/Desktop first-run language default."""
+
+    def test_default_display_language_is_simplified_chinese(self):
+        assert DEFAULT_CONFIG["display"]["language"] == "zh"
+
+
 class TestCliRefreshIntervalConfig:
     """Test the CLI refresh_interval config default (#45592 / #48309)."""
 
