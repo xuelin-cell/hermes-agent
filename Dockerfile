@@ -106,6 +106,7 @@ db.close()"
 # and every tarball is still checksum-verified below before extraction.
 ARG TARGETARCH
 ARG S6_OVERLAY_VERSION=3.2.3.0
+ARG S6_OVERLAY_BASE_URL=https://github.com/just-containers/s6-overlay/releases/download
 ARG S6_OVERLAY_NOARCH_SHA256=b720f9d9340efc8bb07528b9743813c836e4b02f8693d90241f047998b4c53cf
 ARG S6_OVERLAY_X86_64_SHA256=a93f02882c6ed46b21e7adb5c0add86154f01236c93cd82c7d682722e8840563
 ARG S6_OVERLAY_AARCH64_SHA256=0952056ff913482163cc30e35b2e944b507ba1025d78f5becbb89367bf344581
@@ -116,7 +117,7 @@ RUN set -eu; \
         arm64) s6_arch="aarch64"; s6_arch_sha="${S6_OVERLAY_AARCH64_SHA256}" ;; \
         *) echo "Unsupported TARGETARCH=${TARGETARCH} for s6-overlay" >&2; exit 1 ;; \
     esac; \
-    base="https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}"; \
+    base="${S6_OVERLAY_BASE_URL}/v${S6_OVERLAY_VERSION}"; \
     curl -fsSL --retry 3 -o /tmp/s6-overlay-noarch.tar.xz \
         "${base}/s6-overlay-noarch.tar.xz"; \
     curl -fsSL --retry 3 -o /tmp/s6-overlay-symlinks-noarch.tar.xz \
