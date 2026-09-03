@@ -40,7 +40,8 @@
 ├── releases/                              # 按 Git 版本和时间保存的前端发布
 │   └── <revision>-<timestamp>/
 ├── hermes -> releases/<revision>-<timestamp>  # Nginx 使用的当前前端软链
-└── deploy.lock                            # 防止并发部署的锁文件
+├── deploy.lock                            # 防止并发部署的锁文件
+└── deploy-state                           # 上次成功部署的完整 Git revision
 
 /etc/nginx/conf.d/hermes-custom.conf       # Nginx 配置
 /var/log/nginx/hermes-custom-access.log    # 访问日志
@@ -207,17 +208,27 @@ systemctl is-active nginx
 
 ## 6. 部署脚本的行为
 
-`scripts/deploy-custom-web.sh` 会依次执行：
+`scripts/deploy-custom-web.sh` 会读取 `deploy-state`，比较上次成功部署版本与当前 `HEAD`，然后选择无需构建、仅前端、仅后端或完整构建。首次运行或无法确认历史版本时采用完整构建。
+
+智能增量规则：
+
+- `apps/desktop/` 变化：仅构建并发布自定义前端；
+- `apps/shared/`、`package.json` 或 `package-lock.json` 变化：构建前端和后端；
+- 后端及其他运行时代码变化：构建后端；
+- 只有文档、GitHub 工作流或部署脚本变化：跳过前后端构建，只验证健康状态；
+- `--full`：忽略差异，强制构建前端和后端。
+
+脚本会依次执行：
 
 1. 检查 Compose、环境文件和 Git 工作区；
 2. 获取当前 Git revision；
-3. 在 Node 容器中从仓库根目录执行 `npm ci`；
+3. 前端依赖锁发生变化或缓存缺失时，在 Node 容器中从仓库根目录执行 `npm ci`；否则复用项目专用依赖卷；
 4. 在 `apps/desktop` 中以 `/hermes/` 为基础路径构建自定义前端；
 5. 将前端复制到版本化 release 目录；
 6. 构建 `hermes-custom:<revision>` 和 `hermes-custom:dev` 后端镜像；
 7. 只重建 Compose 中的 `backend` 服务；
 8. 等待 `http://127.0.0.1:9120/api/health` 健康检查；
-9. 健康后原子切换前端软链；失败时尝试回滚后端镜像。
+9. 健康后原子切换前端软链并记录成功版本；失败时尝试回滚后端镜像。
 
 脚本不会：
 
@@ -228,7 +239,11 @@ systemctl is-active nginx
 - 执行 `docker system prune` 或删除共享镜像、卷；
 - 自动删除旧 release 和回滚镜像。
 
-首次构建会下载较多 Node、Python 和浏览器依赖，耗时较长。后续依赖清单未变化时会复用 Docker/BuildKit 缓存。
+首次构建会下载较多 Node、Python 和浏览器依赖，耗时较长。后续依赖清单未变化时会复用 Node 依赖卷和 Docker/BuildKit 缓存。需要排除缓存或变更检测问题时执行：
+
+```bash
+bash scripts/deploy-custom-web.sh --full
+```
 
 ## 7. 首次部署
 
@@ -394,4 +409,3 @@ git checkout -- <明确的文件路径>
 - 不要执行 Docker 全局 prune；它可能删除其他业务依赖的缓存或资源。
 - 镜像构建受 CPU 和内存参数限制，但仍会与其他业务竞争磁盘和网络 IO，建议在低峰期部署。
 - 1Panel 安装的 Hermes 由 1Panel 独立管理，不要复用其容器名、端口、卷或 Compose 项目名。
-
