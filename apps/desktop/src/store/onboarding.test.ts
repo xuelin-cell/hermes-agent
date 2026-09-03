@@ -90,6 +90,18 @@ describe('refreshOnboarding', () => {
     vi.restoreAllMocks()
   })
 
+  it('lets an explicit setup request override the default first-run skip', () => {
+    $desktopOnboarding.set(baseState({ firstRunSkipped: true }))
+
+    requestDesktopOnboarding('Need provider setup')
+
+    expect($desktopOnboarding.get()).toMatchObject({
+      firstRunSkipped: false,
+      reason: 'Need provider setup',
+      requested: true
+    })
+  })
+
   it('refreshes OAuth providers again when onboarding was explicitly requested', async () => {
     const api = vi.fn(async ({ path }: { path: string }) => {
       if (path === '/api/providers/oauth') {

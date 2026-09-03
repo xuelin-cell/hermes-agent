@@ -118,13 +118,19 @@ function writeCachedConfigured(value: boolean) {
 
 function readCachedSkipped(): boolean {
   if (typeof window === 'undefined') {
-    return false
+    return true
   }
 
   try {
-    return window.localStorage.getItem(SKIP_CACHE_KEY) === '1'
+    const cached = window.localStorage.getItem(SKIP_CACHE_KEY)
+
+    // First-run provider setup is opt-in. A fresh browser profile or desktop
+    // install lands directly in the app, exactly as if the former "choose
+    // later" action had been selected. Preserve an explicit legacy `0` as an
+    // escape hatch for managed installs that still want the blocking picker.
+    return cached === null ? true : cached === '1'
   } catch {
-    return false
+    return true
   }
 }
 
@@ -393,7 +399,10 @@ async function refreshProviders() {
 }
 
 export function requestDesktopOnboarding(reason = DEFAULT_ONBOARDING_REASON) {
-  patch({ reason: reason.trim() || DEFAULT_ONBOARDING_REASON, requested: true })
+  // An explicit request (for example, submitting a prompt without usable
+  // credentials) must still open setup even though fresh installs skip the
+  // unsolicited first-run picker by default.
+  patch({ firstRunSkipped: false, reason: reason.trim() || DEFAULT_ONBOARDING_REASON, requested: true })
 }
 
 /** Credential warning delivered passively (session create/activate/resume
