@@ -1,0 +1,45 @@
+# Hermes 多租户（一用户一容器）——常驻的只有 nginx 和入口；租户容器由入口按需起。
+#   cp entry.env.example entry.env && 按需改
+#   把前端产物放到 nginx/dist-browser/ 后：docker compose -p hermes-mt up -d --build
+services:
+  entry:
+    build:
+      context: .
+      dockerfile: entry/Dockerfile
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+    image: hermes-mt-entry:dev
+    container_name: hermes-mt-entry
+    restart: unless-stopped
+    env_file:
+      - path: ./entry.env
+        required: false
+    environment:
+      MT_SELF_CONTAINER: hermes-mt-entry
+      MT_STATE_DB: /state/entry.db
+      MT_DOCKER_SOCK: /var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - hermes-mt-state:/state
+    networks:
+      - hermes-mt
+
+  nginx:
+    build:
+      context: ./nginx
+    image: hermes-mt-nginx:dev
+    container_name: hermes-mt-nginx
+    restart: unless-stopped
+    ports:
+      - "${MT_HTTP_PORT:-18081}:8081"
+    depends_on:
+      - entry
+    networks:
+      - hermes-mt
+
+volumes:
+  hermes-mt-state: {}
+
+networks:
+  hermes-mt:
+    name: hermes-mt

@@ -1,0 +1,28 @@
+# 每个租户首次建卷时由入口服务写入 /opt/data/config.yaml（{{...}} 由入口替换）。
+# 之后属于用户自己，入口不再覆盖。模型 key 在同目录 .env 的 {{KEY_ENV_NAME}} 里。
+_config_version: 39
+
+model:
+  default: "{{MODEL_NAME}}"
+  provider: "{{PROVIDER_KEY}}"
+  base_url: "{{MODEL_BASE_URL}}"
+  key_env: "{{KEY_ENV_NAME}}"
+
+providers:
+  {{PROVIDER_KEY}}:
+    api: "{{MODEL_BASE_URL}}"
+    key_env: "{{KEY_ENV_NAME}}"
+    transport: chat_completions
+    default_model: "{{MODEL_NAME}}"
+    # 套餐里全部可选模型；由入口按 my-plan 下发的清单渲染/同步。
+    # 只写 default_model 的话，界面的模型下拉只会看到一个。
+    models:
+{{MODELS_BLOCK}}
+
+terminal:
+  backend: "local"
+  cwd: "{{FILES_ROOT}}"
+  timeout: 180
+
+dashboard:
+  public_url: ""

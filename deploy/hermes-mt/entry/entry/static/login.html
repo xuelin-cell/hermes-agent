@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hermes 登录</title>
+<style>
+  :root { color-scheme: light dark; --bg:#f6f7f9; --card:#fff; --fg:#1a1a1a; --muted:#666; --line:#d9dce1; --accent:#2563eb; --err:#b91c1c; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#111214; --card:#1b1d21; --fg:#e8e8e8; --muted:#9a9a9a; --line:#33363c; --accent:#60a5fa; --err:#f87171; } }
+  * { box-sizing: border-box; }
+  body { margin:0; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; background:var(--bg); color:var(--fg); }
+  main { max-width: 380px; margin: 12vh auto; padding: 0 16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius: 12px; padding: 24px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.sub { margin: 0 0 20px; color: var(--muted); font-size: 13px; }
+  label { display:block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+  input { width:100%; padding: 10px 12px; border:1px solid var(--line); border-radius: 8px; background: transparent; color: var(--fg); font-size: 15px; }
+  .row { display:flex; gap: 8px; align-items: stretch; }
+  .row input { flex: 1; }
+  button { padding: 10px 14px; border: 0; border-radius: 8px; background: var(--accent); color:#fff; font-size: 14px; cursor: pointer; white-space: nowrap; }
+  button.secondary { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+  button[disabled] { opacity: .5; cursor: default; }
+  button.full { width: 100%; margin-top: 20px; }
+  img.captcha { height: 42px; border:1px solid var(--line); border-radius: 8px; cursor: pointer; background:#fff; }
+  .msg { min-height: 20px; margin-top: 12px; font-size: 13px; color: var(--muted); }
+  .msg.err { color: var(--err); }
+  details { margin-top: 20px; font-size: 13px; color: var(--muted); }
+  details .card { margin-top: 8px; padding: 16px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="card">
+    <h1>登录 Hermes</h1>
+    <p class="sub">使用元景 MaaS 手机号短信登录，每个账号一个独立的工作空间。</p>
+    <form id="sms" autocomplete="off">
+      <label>手机号</label>
+      <input id="phone" inputmode="tel" maxlength="11" placeholder="11 位手机号" required>
+      <label>图形验证码</label>
+      <div class="row">
+        <input id="captchaCode" maxlength="6" placeholder="看图输入" required>
+        <img id="captchaImg" class="captcha" alt="点击刷新" title="点击刷新">
+      </div>
+      <label>短信验证码</label>
+      <div class="row">
+        <input id="smsCode" inputmode="numeric" maxlength="6" placeholder="6 位数字" required>
+        <button type="button" class="secondary" id="sendBtn">发送验证码</button>
+      </div>
+      <button type="submit" class="full" id="loginBtn">登录</button>
+      <div class="msg" id="msg"></div>
+    </form>
+    <details id="devBox" hidden>
+      <summary>开发模式登录（生产环境不会出现）</summary>
+      <div class="card">
+        <label>任意用户名</label>
+        <input id="devUser" placeholder="例如 alice">
+        <button type="button" class="full" id="devBtn">直接进入</button>
+      </div>
+    </details>
+  </div>
+</main>
+<script>
+(function () {
+  var base = location.pathname.replace(/\/login\/?$/, '');
+  var api = function (p) { return base + '/__entry' + p; };
+  var $ = function (id) { return document.getElementById(id); };
+  var captchaId = '';
+  var msg = function (text, err) { var m = $('msg'); m.textContent = text || ''; m.className = 'msg' + (err ? ' err' : ''); };
+
+  async function postJSON(url, body) {
+    var r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), credentials: 'same-origin' });
+    var data = null; try { data = await r.json(); } catch (e) {}
+    if (!r.ok) throw new Error((data && (data.error || data.msg)) || ('HTTP ' + r.status));
+    if (data && data.code !== undefined && data.code !== 0 && data.code !== '0') throw new Error(data.msg || ('上游错误 ' + data.code));
+    return data;
+  }
+
+  async function refreshCaptcha() {
+    try {
+      var r = await fetch(api('/captcha'), { credentials: 'same-origin' });
+      var data = await r.json();
+      var d = data.data || data;
+      captchaId = d.captchaId || '';
+      var img = d.b64s || '';
+      $('captchaImg').src = img.indexOf('data:') === 0 ? img : 'data:image/png;base64,' + img;
+    } catch (e) { msg('获取图形验证码失败：' + e.message, true); }
+  }
+
+  $('captchaImg').addEventListener('click', refreshCaptcha);
+
+  $('sendBtn').addEventListener('click', async function () {
+    var btn = $('sendBtn');
+    try {
+      btn.disabled = true; msg('');
+      await postJSON(api('/send-code'), { phone: $('phone').value.trim(), captchaCode: $('captchaCode').value.trim(), captchaId: captchaId });
+      var left = 60; btn.textContent = left + 's';
+      var t = setInterval(function () { left--; btn.textContent = left + 's'; if (left <= 0) { clearInterval(t); btn.textContent = '发送验证码'; btn.disabled = false; } }, 1000);
+      msg('验证码已发送');
+    } catch (e) { btn.disabled = false; msg('发送失败：' + e.message, true); refreshCaptcha(); }
+  });
+
+  $('sms').addEventListener('submit', async function (ev) {
+    ev.preventDefault();
+    var btn = $('loginBtn');
+    try {
+      btn.disabled = true; msg('登录中…');
+      var data = await postJSON(api('/login'), { phone: $('phone').value.trim(), smsCode: $('smsCode').value.trim() });
+      msg(data.has_key ? '登录成功，正在准备你的工作空间…' : '登录成功（该账号没有可用套餐 key，模型将不可用）');
+      location.href = data.redirect || (base + '/');
+    } catch (e) { btn.disabled = false; msg('登录失败：' + e.message, true); }
+  });
+
+  $('devBtn').addEventListener('click', async function () {
+    try {
+      msg('开发模式登录中…');
+      var data = await postJSON(api('/dev-login'), { user: $('devUser').value.trim() });
+      location.href = data.redirect || (base + '/');
+    } catch (e) { msg('失败：' + e.message, true); }
+  });
+
+  fetch(api('/config'), { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (c) {
+    if (c && c.dev) { $('devBox').hidden = false; $('devBox').open = true; }
+  }).catch(function () {});
+  refreshCaptcha();
+})();
+</script>
+</body>
+</html>
