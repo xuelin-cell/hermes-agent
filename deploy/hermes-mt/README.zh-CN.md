@@ -14,13 +14,15 @@
                                                   ▼
                                     容器 hermes-t-<uid>：卷里的 forward.py 0.0.0.0:9121 → 127.0.0.1:9120 hermes serve
                                     卷 hermes-data-<uid> → /opt/data（state.db / memories / skills / .env / config.yaml）
+
+入口服务 ──▶ PostgreSQL：用户、浏览器登录、租户运行态、套餐配置、加密凭据和审计
 ```
 
 ## 目录
 
 | 路径 | 作用 |
 |---|---|
-| `compose.yaml` | 常驻两个服务：`nginx`、`entry`。租户容器**不在 compose 里**，由入口按需起 |
+| `compose.yaml` | 常驻三个服务：`postgres`、`entry`、`nginx`。租户容器**不在 compose 里**，由入口按需起 |
 | `entry/` | 入口服务（Python 3.13 + aiohttp，单进程）。`entry/entry/*.py` 见文件头注释 |
 | `seed/forward.py` | 放进每个租户卷 `/opt/data/.mt/` 的 TCP 转发器（标准库，30 行） |
 | `seed/config.yaml.tmpl` | 每个租户首次建卷时写入的 `config.yaml` 模板 |
@@ -44,10 +46,17 @@
 ```bash
 cd deploy/hermes-mt
 cp entry.env.example entry.env          # 生产：MT_DEV_LOGIN=0；其余按需
+# 生成 MT_CREDENTIAL_KEY 后写回 entry.env：
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 bash scripts/build-frontend.sh          # 或复制现网 release，见上
 docker compose -p hermes-mt up -d --build
-curl -s http://127.0.0.1:18081/hermes/__entry/health   # {"ok": true, "tenants": []}
+curl -s http://127.0.0.1:18081/hermes/__entry/health   # database=ok 才算健康
+python scripts/verify_postgres.py
 ```
+
+PostgreSQL 只发布到 `127.0.0.1:${MT_POSTGRES_PORT:-15432}`，数据保存在独立命名卷
+`hermes-mt-postgres`。Entry 启动时自动执行有序 SQL 迁移；数据库未就绪或迁移失败时
+Entry 不进入健康状态，Nginx 也不会提前接流量。
 
 浏览器打开 `http://<host>:18081/hermes/` → 被带到登录页 → 手机号 + 图形验证码 + 短信验证码 → 登录成功后入口
 后台拉起该用户的容器（首次十几秒），页面进入聊天界面。
@@ -74,7 +83,8 @@ HERMES_DASHBOARD_SESSION_TOKEN>`，REST 加 `X-Hermes-Session-Token` ④ `Host` 
 `Cookie` ⑤ 其余字节原样透传。**不解析、不改写任何 hermes 协议**；拿掉入口、Nginx 直连任一容器，前端应完全正常。
 
 登录：图形验证码、短信发码、短信登录都由入口代理到 MaaS（`MT_MAAS_APP`）；登录成功后用返回的 JWT 调 `my-plan`
-拿这个用户自己的模型 key，写进他的卷（`.env` 的 `HERMES_CUSTOM_YUANJING_API_KEY`），
+拿这个用户自己的模型 key，以 Fernet 密文保存进 PostgreSQL，再通过 Hermes 现有 `/api/env`
+写进他的卷（`.env` 的 `HERMES_CUSTOM_YUANJING_API_KEY`），
 **并用 my-plan 同时下发的 `base_url` / 模型名写他的 `config.yaml`**。
 ★★ 套餐 key **只在 my-plan 给的那个「TokenPlan 专用路径」上有效**：打手写的通用网关地址会被回
 `{"code":1004,"msg":"当前请求路径错误，请使用 TokenPlan 专用路径发起请求"}`。`MT_MODEL_BASE_URL`
@@ -85,6 +95,10 @@ HERMES_DASHBOARD_SESSION_TOKEN>`，REST 加 `X-Hermes-Session-Token` ④ `Host` 
 端点或模型清单任一变化都会触发同步（`.mt/endpoint.stamp` 记的是两者）。JWT 不验签、不解码，只信
 登录那一跳；入口自己签不透明的 cookie，有效期不超过上游给的 `expiresAt`。**没套餐 = 没 key**，不会拿平台的 key 兜底。
 
+重新登录会重新读取 MaaS 当前返回的 Key，但不假设 MaaS 每次都会生成新 Key。若 Key 发生变化，
+Entry 不重启租户容器，而是原子更新卷内 `.env`；该用户所有已有会话在各自的**下一轮对话开始时**
+复用 Hermes 现有刷新逻辑重建模型客户端。已经执行中的一轮不会中途换 Key。
+
 ## 运行与维护
 
 | 事 | 怎么做 |
@@ -92,13 +106,16 @@ HERMES_DASHBOARD_SESSION_TOKEN>`，REST 加 `X-Hermes-Session-Token` ④ `Host` 
 | 看有哪些租户在跑 | `docker ps --filter label=hermes.mt=tenant`；或 `curl :18081/hermes/__entry/health` |
 | 某用户的 hermes 日志 | `docker logs hermes-t-<uid>`；卷内 `logs/`：`docker run --rm -v hermes-data-<uid>:/d alpine ls /d/logs` |
 | 入口日志 | `docker logs hermes-mt-entry`（每条带 userid） |
+| PostgreSQL 状态 | `docker logs hermes-mt-postgres`；表：`docker exec hermes-mt-postgres psql -U hermes_entry -d hermes_entry -c '\dt'` |
+| PostgreSQL 持久卷 | `docker volume inspect hermes-mt-postgres`；不要直接修改卷内文件 |
 | 空闲回收 | 入口每分钟扫一次：**只要还挂着 ws 连接就绝不回收**；没有连接且 `MT_IDLE_MINUTES`（默认 30）内无活动才 `docker stop`，**卷不动**，下次请求再起 |
-| 入口重启 / 机器重启 | 入口**先开始监听，再在后台**把所有租户容器 stop、状态清零，之后按需再起（租户容器 `restart=no`）。实测重启后 1.5s 内可服务 |
+| 入口重启 / 机器重启 | Entry 先确认 PostgreSQL 并完成迁移，再开始监听；租户 reconcile 仍在后台执行，之后按需再起（租户容器 `restart=no`） |
 | 停/删某个用户 | `docker rm -f hermes-t-<uid>`（数据仍在卷里）；彻底删除再 `docker volume rm hermes-data-<uid>`、`docker network rm hermes-net-<uid>` |
 | 备份某个用户 | `docker run --rm -v hermes-data-<uid>:/d -v $PWD:/out alpine tar -C /d -czf /out/<uid>.tgz .`（在线备份 state.db 用 `sqlite3 .backup` 更稳） |
 | 升级 hermes 镜像 | 构建新镜像 → 改 `entry.env` 的 `MT_IMAGE` → `docker compose -p hermes-mt up -d entry`。入口发现容器镜像不同会**删容器重建，卷不动** |
 | 升级前端 | 重新 `build-frontend.sh` → `docker compose -p hermes-mt up -d --build nginx` |
-| 换模型/网关 | `entry.env` 的 `MT_MODEL*`，只影响**之后新建**的卷；老用户的 `config.yaml` 属于他自己 |
+| 换模型 Key | 用户重新登录后保存新密文并调用 `/api/env`；所有已有会话从各自下一轮开始使用新 Key |
+| 停止服务 | `docker compose ... down` 不加 `-v`，会保留 PostgreSQL 和用户数据卷 |
 
 ## 与单用户版的差异，以及为什么
 
@@ -128,12 +145,11 @@ HERMES_DASHBOARD_SESSION_TOKEN>`，REST 加 `X-Hermes-Session-Token` ④ `Host` 
   这段时间 nginx 全是 `502 connection refused`，租户越多窗口越长。现在先 listen 再后台 reconcile，
   并且 reconcile 与拉起容器共用同一把 per-租户锁，避免刚起来的容器被 reconcile 停掉。
 
-## 已知限制（V1 待办）
+## 已知限制
 
-1. 模型 key 只在**首次建卷**时写入 `.env`；用户续费换了 key 要手动改卷里的 `.env` 并重启容器（hermes 启动时读一次）。
-2. `hermes serve` 模式**不跑定时任务**（cron ticker 只在 `HERMES_DESKTOP=1` 时启动）。
-3. 入口的服务面状态目前是 SQLite（卷 `hermes-mt-state`），表结构按 users / sessions / tenant_runtime / audit 设计，
-   后续换 PostgreSQL 只改 `entry/entry/store.py`。**不存对话**，对话永远在各用户卷上。
+1. `hermes serve` 模式**不跑定时任务**（cron ticker 只在 `HERMES_DESKTOP=1` 时启动）。
+2. PostgreSQL 只保存 Entry 平台数据，**不存对话**；对话、记忆、技能和用户文件仍在各用户卷中。
+3. 当前只配置一把凭据主密钥，不提供在线主密钥轮换；更换 `MT_CREDENTIAL_KEY` 前必须另行迁移密文。
 4. 镜像里没有 LibreOffice / 中文字体 / socat；agent 做 office 转换要加进 Dockerfile（构建层）。
 5. 联网搜索、消息渠道未接。
 6. 一台机器能跑多少用户要实测：`.7` 上单容器空闲约 780 MiB。
@@ -150,4 +166,6 @@ HERMES_DASHBOARD_SESSION_TOKEN>`，REST 加 `X-Hermes-Session-Token` ④ `Host` 
 
 - `MT_DEV_LOGIN=1` 只能在验收时用，它允许任意用户名免密登录。
 - 走 HTTPS 时把 `MT_COOKIE_SECURE=1`。
-- `entry.env` 不进 git；模型 key 只在内存和用户卷里，入口不落库、不打日志。
+- `entry.env` 不进 git；数据库密码和 `MT_CREDENTIAL_KEY` 只能放在环境变量中。
+- 模型 Key 和租户容器令牌在 PostgreSQL 中只保存认证密文，日志、健康接口和审计不得输出明文或密文。
+- PostgreSQL 本地端口只绑定 `127.0.0.1`；云端部署时应改为私有网络并配置独立备份与访问控制。

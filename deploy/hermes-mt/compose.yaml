@@ -1,7 +1,28 @@
-# Hermes 多租户（一用户一容器）——常驻的只有 nginx 和入口；租户容器由入口按需起。
+# Hermes 多租户（一用户一容器）——PostgreSQL、入口和 Nginx 常驻；租户容器按需启动。
 #   cp entry.env.example entry.env && 按需改
 #   把前端产物放到 nginx/dist-browser/ 后：docker compose -p hermes-mt up -d --build
 services:
+  postgres:
+    image: postgres:18.6-bookworm
+    container_name: hermes-mt-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${MT_POSTGRES_DB:-hermes_entry}
+      POSTGRES_USER: ${MT_POSTGRES_USER:-hermes_entry}
+      POSTGRES_PASSWORD: ${MT_POSTGRES_PASSWORD:-hermes-local-dev}
+    ports:
+      - "127.0.0.1:${MT_POSTGRES_PORT:-15432}:5432"
+    volumes:
+      - hermes-mt-postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    networks:
+      - hermes-mt
+
   entry:
     build:
       context: .
@@ -16,11 +37,18 @@ services:
         required: false
     environment:
       MT_SELF_CONTAINER: hermes-mt-entry
-      MT_STATE_DB: /state/entry.db
       MT_DOCKER_SOCK: /var/run/docker.sock
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - hermes-mt-state:/state
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9400/hermes/__entry/health', timeout=3).read()"]
+      interval: 5s
+      timeout: 4s
+      retries: 20
+      start_period: 10s
     networks:
       - hermes-mt
 
@@ -33,12 +61,14 @@ services:
     ports:
       - "${MT_HTTP_PORT:-18081}:8081"
     depends_on:
-      - entry
+      entry:
+        condition: service_healthy
     networks:
       - hermes-mt
 
 volumes:
-  hermes-mt-state: {}
+  hermes-mt-postgres:
+    name: hermes-mt-postgres
 
 networks:
   hermes-mt:

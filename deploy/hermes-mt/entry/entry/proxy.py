@@ -10,8 +10,9 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
-from typing import Callable, Optional
+from collections.abc import Awaitable, Callable
 
 import aiohttp
 from aiohttp import web
@@ -75,7 +76,7 @@ async def proxy_ws(
     settings: Settings,
     http: aiohttp.ClientSession,
     tenant: Tenant,
-    on_activity: Optional[Callable[[], None]] = None,
+    on_activity: Callable[[], Awaitable[None] | None] | None = None,
 ) -> web.WebSocketResponse:
     """``on_activity`` 在每一帧上调用（调用方自己节流）。
 
@@ -114,7 +115,13 @@ async def proxy_ws(
         try:
             async for msg in src:
                 if on_activity is not None:
-                    on_activity()
+                    try:
+                        result = on_activity()
+                        if inspect.isawaitable(result):
+                            await result
+                    except Exception as exc:  # noqa: BLE001
+                        # 活动时间只是回收依据，数据库短暂故障不能主动打断已有聊天连接。
+                        log.warning("ws activity update failed for %s: %s", tenant.slug, type(exc).__name__)
                 if msg.type == aiohttp.WSMsgType.TEXT:
                     await dst.send_str(msg.data)
                 elif msg.type == aiohttp.WSMsgType.BINARY:

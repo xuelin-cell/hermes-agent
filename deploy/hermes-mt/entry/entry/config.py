@@ -46,7 +46,14 @@ class Settings:
     cookie_name: str = _env("MT_COOKIE", "hermes_mt_session")
     cookie_secure: bool = _env("MT_COOKIE_SECURE", "0") == "1"
     session_ttl_s: int = int(_env("MT_SESSION_TTL_S", str(7 * 24 * 3600)))
-    state_db: str = _env("MT_STATE_DB", "/state/entry.db")
+
+    # Entry 平台数据库与凭据加密
+    database_url: str = _env("MT_DATABASE_URL")
+    db_pool_min_size: int = int(_env("MT_DB_POOL_MIN_SIZE", "1"))
+    db_pool_max_size: int = int(_env("MT_DB_POOL_MAX_SIZE", "10"))
+    db_command_timeout_s: int = int(_env("MT_DB_COMMAND_TIMEOUT_S", "30"))
+    credential_key: str = _env("MT_CREDENTIAL_KEY")
+    credential_key_id: str = _env("MT_CREDENTIAL_KEY_ID", "local-v1")
 
     # MaaS 登录 / 套餐
     maas_app: str = _env("MT_MAAS_APP", "https://maas.ai-yuanjing.com/app").rstrip("/")

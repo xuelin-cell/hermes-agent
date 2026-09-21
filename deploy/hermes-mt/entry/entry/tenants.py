@@ -52,6 +52,10 @@ class Tenant:
     token: str
 
 
+class CredentialSyncError(RuntimeError):
+    """平台模型凭据未能同步到用户 Hermes 容器。"""
+
+
 def _stamp_bytes(endpoint: tuple[str, str], models: list[str] | None = None) -> bytes:
     """记录「这个卷当前用的是哪个端点、哪些模型」，下次比对用。
 
@@ -79,6 +83,7 @@ class TenantManager:
         self.store = store
         self.http = http
         self._locks: dict[str, asyncio.Lock] = {}
+        self._synced_key_digests: dict[str, bytes] = {}
         self._self_container = settings.self_container or socket.gethostname()
 
     # ---- naming ------------------------------------------------------------------
@@ -284,13 +289,14 @@ class TenantManager:
     async def ensure_running(
         self,
         user_id: str,
-        api_key: str = "",
-        endpoint: tuple[str, str] | None = None,
-        catalog: list[tuple[str, str]] | None = None,
     ) -> Tenant:
         slug = tenant_slug(user_id)
         async with self._lock(slug):
-            token = self.store.ensure_tenant_token(user_id)
+            token = await self.store.ensure_tenant_token(user_id)
+            context = await self.store.get_tenant_context(user_id)
+            api_key = context.api_key
+            endpoint = context.endpoint
+            catalog = context.catalog
             cname, nname, vname = self.container_name(slug), self.network_name(slug), self.volume_name(slug)
             labels = {"hermes.mt": "tenant", "hermes.mt.user": user_id, "hermes.mt.slug": slug}
 
@@ -325,17 +331,47 @@ class TenantManager:
 
             state = (info or {}).get("State", {})
             if not state.get("Running"):
-                self.store.set_tenant_state(user_id, "starting")
-                self.store.audit(user_id, "tenant.start", cname)
+                await self.store.set_tenant_state(user_id, "starting")
+                await self.store.write_audit(user_id, "tenant.start", {"container": cname})
                 await self.docker.start_container(cname)
 
             ip = await self.docker.container_ip(cname, nname)
             if not ip:
                 raise RuntimeError(f"容器 {cname} 没有拿到 {nname} 网络的 IP")
             await self._wait_ready(ip)
-            self.store.set_tenant_state(user_id, "running")
-            self.store.touch_tenant(user_id)
-            return Tenant(user_id=user_id, slug=slug, ip=ip, token=token)
+            tenant = Tenant(user_id=user_id, slug=slug, ip=ip, token=token)
+            await self.store.set_tenant_state(user_id, "running")
+            await self.store.touch_tenant(user_id)
+            await self._sync_api_key(tenant, api_key)
+            return tenant
+
+    async def _sync_api_key(self, tenant: Tenant, api_key: str) -> None:
+        """通过 Hermes 既有接口更新 Key；只有成功后才记录内存摘要。"""
+        if not api_key:
+            return
+        digest = hashlib.sha256(api_key.encode("utf-8")).digest()
+        if self._synced_key_digests.get(tenant.user_id) == digest:
+            return
+        url = f"http://{tenant.ip}:{self.s.forward_port}/api/env"
+        headers = {
+            "Host": f"127.0.0.1:{self.s.hermes_port}",
+            "X-Hermes-Session-Token": tenant.token,
+        }
+        try:
+            async with self.http.put(
+                url,
+                headers=headers,
+                json={"key": self.s.key_env_name, "value": api_key},
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as response:
+                if response.status < 200 or response.status >= 300:
+                    await response.text()
+                    raise CredentialSyncError(f"Hermes 凭据接口返回 HTTP {response.status}")
+        except CredentialSyncError:
+            raise
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+            raise CredentialSyncError(f"Hermes 凭据接口不可达: {type(exc).__name__}") from exc
+        self._synced_key_digests[tenant.user_id] = digest
 
     async def _create(self, cname: str, nname: str, vname: str, labels: dict, token: str) -> None:
         cmd = (
@@ -395,8 +431,8 @@ class TenantManager:
             info = await self.docker.inspect_container(cname)
             if info and info.get("State", {}).get("Running"):
                 await self.docker.stop_container(cname)
-            self.store.set_tenant_state(user_id, "stopped")
-            self.store.audit(user_id, "tenant.stop", reason)
+            await self.store.set_tenant_state(user_id, "stopped")
+            await self.store.write_audit(user_id, "tenant.stop", {"reason": reason})
 
     async def reconcile(self) -> None:
         """入口启动时：把所有租户容器停掉，运行态清成 stopped，之后按需再起。
@@ -418,12 +454,12 @@ class TenantManager:
                     except DockerError as exc:
                         log.warning("reconcile stop %s failed: %s", name, exc)
                 if user_id:
-                    self.store.set_tenant_state(user_id, "stopped")
+                    await self.store.set_tenant_state(user_id, "stopped")
         log.info("reconcile: %d tenant container(s) reset", len(containers))
 
     async def reap_idle(self, keep: set[str] | None = None) -> None:
         """``keep`` = 此刻还挂着 ws 连接的用户，一律不回收。"""
-        for user_id in self.store.idle_tenants(self.s.idle_minutes * 60, exclude=keep):
+        for user_id in await self.store.idle_tenants(self.s.idle_minutes * 60, exclude=keep):
             try:
                 log.info("idle reap: stopping tenant of %s", user_id)
                 await self.stop(user_id, reason=f"idle>{self.s.idle_minutes}m")

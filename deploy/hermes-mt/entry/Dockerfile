@@ -7,7 +7,7 @@ WORKDIR /app
 COPY entry/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir --retries 5 -r requirements.txt
 COPY entry/entry ./entry
+COPY entry/migrations ./migrations
 COPY seed ./seed
-VOLUME ["/state"]
 EXPOSE 9400
 CMD ["python", "-m", "entry.app"]
