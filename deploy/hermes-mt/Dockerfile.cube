@@ -1,0 +1,81 @@
+# 沙箱（CubeSandbox）用的薄封装镜像。
+#
+# 设计原则：**上游那 466 行 Dockerfile 一个字不改**，只在它之上叠一层。
+# 这一层把「对所有用户都一样」的东西全部固化进镜像，好让平台那边需要按用户
+# 支持的口子尽可能少。
+#
+# 固化了什么：
+#   - 8 个所有用户相同的环境变量（第 9 个 HERMES_DASHBOARD_SESSION_TOKEN 每人不同，
+#     由入口在创建后通过 /__mt/bootstrap 送进来，不能进镜像 —— 镜像是共享且要分发的）
+#   - 启动命令
+#   - 转发器本体（放在 /opt/mt，**不在数据卷里**。原先它放在用户可写的 /opt/data/.mt/，
+#     意味着租户能替换掉它；挪进镜像层一并解决）
+#   - 对外端口：只有一个
+#   - envd —— 平台创建沙箱时若带了环境变量，镜像里没有 envd 会导致**创建直接失败**，
+#     所以必须打进来，即使我们并不使用它的命令/文件/终端能力
+#
+# 为什么 CMD 只起转发器、不起 hermes：
+#   平台下发创建时环境变量是在容器进程已经起来之后（起容器 → 探针 → 创建后处理 → 下发变量），
+#   hermes 缺了会话令牌会直接退出，进程一死探针永远不通，沙箱根本建不起来。
+#   所以让秒级启动的转发器先顶上让探针过，hermes 由引导接口拉起。细节见 seed/forward.py。
+#
+# 构建（在 deploy/hermes-mt/ 下）：
+#   docker build -f Dockerfile.cube -t hermes-mt-cube:dev .
+#
+# 注册成模板：
+#   cubemastercli tpl create-from-image \
+#     --image <推到集群能拉到的仓库>/hermes-mt-cube:dev \
+#     --writable-layer-size 2G \
+#     --expose-port 9121 --expose-port 49983 \
+#     --probe 9121 --probe-path /__mt/health
+#
+#   探针指向转发器而不是 hermes：转发器不依赖任何用户数据，秒级就绪，
+#   模板快照因此能早做、冷启动更快。
+
+ARG BASE_IMAGE=hermes-custom:dev
+ARG CUBE_BASE=ghcr.io/tencentcloud/cubesandbox-base:2026.16
+
+FROM ${CUBE_BASE} AS cubebase
+
+FROM ${BASE_IMAGE}
+
+USER root
+
+# ---- envd 与 Cube 的通用入口脚本 ------------------------------------------
+# 入口脚本的契约：后台拉起 envd（让平台的 SDK 数据面和默认探针可用），
+# 然后前台 exec 我们给的命令。我们把上游镜像自己的 dispatcher 作为那条命令，
+# 于是 s6 的 stage2 引导和降权到 hermes 用户这两件事一件都不少。
+COPY --from=cubebase /usr/bin/envd /usr/bin/envd
+COPY --from=cubebase /usr/local/bin/cube-entrypoint.sh /usr/local/bin/cube-entrypoint.sh
+RUN chmod 0755 /usr/bin/envd /usr/local/bin/cube-entrypoint.sh
+
+# ---- 转发器 ---------------------------------------------------------------
+# 放在镜像层而不是数据卷：卷是租户可写的，脚本放里面等于让租户能改自己的转发器。
+RUN mkdir -p /opt/mt
+COPY seed/forward.py /opt/mt/forward.py
+RUN chmod 0644 /opt/mt/forward.py
+
+# ---- 所有用户相同的环境变量 -------------------------------------------------
+# 与 entry/entry/tenants.py::_create 里那份清单保持一致。缺的那个
+# HERMES_DASHBOARD_SESSION_TOKEN 每人不同，走引导接口。
+ENV HERMES_HOME=/opt/data \
+    HERMES_UID=10000 \
+    HERMES_GID=10000 \
+    TZ=Asia/Shanghai \
+    TERMINAL_ENV=local \
+    HERMES_DASHBOARD_FILES_ROOT=/opt/data/workspace \
+    MT_FWD_PORT=9121 \
+    MT_HERMES_PORT=9120
+
+# 引导窗口：容器启动后多少秒内允许调 /__mt/bootstrap。
+ENV MT_BOOTSTRAP_WINDOW_S=600
+
+# ---- 端口 -----------------------------------------------------------------
+# 对外只有转发器这一个。hermes 自己绑 127.0.0.1:9120，故意不暴露 ——
+# 它一旦发现自己绑在非回环地址就会强制开鉴权门，而浏览器版前端不说那套协议。
+# 49983 是 envd，由平台自己用。
+EXPOSE 9121
+EXPOSE 49983
+
+ENTRYPOINT [ "/usr/local/bin/cube-entrypoint.sh", "/opt/hermes/docker/entrypoint-dispatch.sh" ]
+CMD [ "python3", "/opt/mt/forward.py" ]

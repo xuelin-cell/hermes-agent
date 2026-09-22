@@ -33,7 +33,9 @@ _MAX_WS_MSG = 64 * 1024 * 1024
 
 def _upstream_headers(request: web.Request, settings: Settings, tenant: Tenant) -> dict[str, str]:
     headers = {k: v for k, v in request.headers.items() if k.lower() not in _HOP_BY_HOP}
-    headers["Host"] = f"127.0.0.1:{settings.hermes_port}"
+    # Host 由租户自己带：Docker 后端是伪造的回环地址，沙箱后端是平台的路由格式。
+    # 两种情况下 hermes 最终看到的都是回环形式，鉴权门都关着。见 Tenant 的说明。
+    headers["Host"] = tenant.host_header or f"127.0.0.1:{settings.hermes_port}"
     headers["X-Hermes-Session-Token"] = tenant.token
     peer = request.remote or ""
     prior = request.headers.get("X-Forwarded-For", "")
@@ -44,7 +46,8 @@ def _upstream_headers(request: web.Request, settings: Settings, tenant: Tenant) 
 
 async def proxy_http(request: web.Request, settings: Settings, http: aiohttp.ClientSession, tenant: Tenant, tail: str) -> web.StreamResponse:
     qs = request.rel_url.query_string
-    url = f"http://{tenant.ip}:{settings.forward_port}/{tail}" + (f"?{qs}" if qs else "")
+    origin = tenant.origin or f"{tenant.ip}:{settings.forward_port}"
+    url = f"http://{origin}/{tail}" + (f"?{qs}" if qs else "")
     body = await request.read()
     headers = _upstream_headers(request, settings, tenant)
     try:
@@ -86,8 +89,9 @@ async def proxy_ws(
     """
     requested = [p.strip() for p in request.headers.get("Sec-WebSocket-Protocol", "").split(",") if p.strip()]
     qs = request.rel_url.query_string
-    url = f"ws://{tenant.ip}:{settings.forward_port}/api/ws?token={tenant.token}" + (f"&{qs}" if qs else "")
-    headers = {"Host": f"127.0.0.1:{settings.hermes_port}"}
+    origin = tenant.origin or f"{tenant.ip}:{settings.forward_port}"
+    url = f"ws://{origin}/api/ws?token={tenant.token}" + (f"&{qs}" if qs else "")
+    headers = {"Host": tenant.host_header or f"127.0.0.1:{settings.hermes_port}"}
     try:
         upstream = await http.ws_connect(
             url,

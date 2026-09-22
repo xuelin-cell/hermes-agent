@@ -27,6 +27,7 @@ from pathlib import Path
 import aiohttp
 
 from .config import Settings
+from .cube_api import Cube, CubeError
 from .docker_api import Docker, DockerError
 from .store import Store
 
@@ -46,10 +47,27 @@ def tenant_slug(user_id: str) -> str:
 
 @dataclass
 class Tenant:
+    """一个已经就绪、可以转发的租户实例。
+
+    ``origin`` 和 ``host_header`` 是两种后端唯一的分歧点，也是转发层唯一需要知道的差异：
+
+    - **Docker 后端**：直连容器 IP，Host 由我们伪造成回环形式，
+      这样容器里的 hermes 认为请求来自本机、鉴权门关着。
+    - **沙箱后端**：连平台代理，Host 用平台的路由格式；
+      平台再按每个实例配置的模板把它改写成回环形式，效果一样。
+
+    转发层照着这两个字段发就行，不需要知道背后是哪种后端。
+    """
+
+    # ★ 前四个字段的顺序不能动：有调用方是按位置构造的，
+    #   把 token 和 ip 换个位置会让它们静默地互相顶替。新字段一律往后加。
     user_id: str
     slug: str
-    ip: str
+    ip: str                 # 仅 Docker 后端有值，沙箱后端传空串
     token: str
+    origin: str = ""        # "host:port"，转发目标
+    host_header: str = ""   # 发给上游的 Host 头
+    sandbox_id: str = ""    # 仅沙箱后端有值
 
 
 class CredentialSyncError(RuntimeError):
@@ -77,14 +95,46 @@ def _tar_bytes(files: dict[str, bytes], mode: int = 0o644) -> bytes:
 
 
 class TenantManager:
-    def __init__(self, settings: Settings, docker: Docker, store: Store, http: aiohttp.ClientSession):
+    """两种执行后端共用的门面。
+
+    ``settings.backend`` 决定走哪条路：``docker`` 是我们自己建容器，
+    ``cube`` 是让沙箱平台建实例。两条路的差异全部收敛在 ``_*_docker`` /
+    ``_*_cube`` 这几对方法里，对 app.py 和 proxy.py 完全透明。
+
+    ★ Docker 那条路的代码一个字没动 —— 沙箱后端是加出来的，不是改出来的。
+    """
+
+    def __init__(
+        self,
+        settings: Settings,
+        docker: Docker | None,
+        store: Store,
+        http: aiohttp.ClientSession,
+        cube: "Cube | None" = None,
+    ):
         self.s = settings
         self.docker = docker
+        self.cube = cube
         self.store = store
         self.http = http
         self._locks: dict[str, asyncio.Lock] = {}
         self._synced_key_digests: dict[str, bytes] = {}
         self._self_container = settings.self_container or socket.gethostname()
+
+    @property
+    def use_cube(self) -> bool:
+        return self.s.backend == "cube"
+
+    def _backend_client(self):
+        """取当前后端的客户端，没接上就当场报错。
+
+        ★ 检查放在用到的时候，不放在构造函数里：有调用方只为了用其中一两个
+          与后端无关的方法（比如凭据同步）而构造它，此时另一个客户端本来就该是空的。
+        """
+        client = self.cube if self.use_cube else self.docker
+        if client is None:
+            raise RuntimeError(f"MT_BACKEND={self.s.backend} 但对应的客户端没有接上")
+        return client
 
     # ---- naming ------------------------------------------------------------------
     def container_name(self, slug: str) -> str:
@@ -109,13 +159,19 @@ class TenantManager:
         names = [n for n, _ in catalog] or [fallback]
         return "\n".join(f"      {n}: {{}}" for n in names)
 
-    def _render_seed(
+    def _render_user_files(
         self,
         api_key: str,
         endpoint: tuple[str, str] | None = None,
         catalog: list[tuple[str, str]] | None = None,
     ) -> dict[str, bytes]:
-        """endpoint = my-plan 给这个用户的 (base_url, model)；没有就退回环境变量里的默认值。
+        """只渲染「属于这个用户」的两份文件：``config.yaml`` 和 ``.env``。
+
+        与 ``_render_seed`` 分开，是因为两种后端要的东西不一样：
+        Docker 后端还要把转发器一并塞进卷，沙箱后端不要 —— 转发器已经烘进镜像了。
+        混在一起会让沙箱路径凭空依赖 seed 目录里的一个它根本用不到的文件。
+
+        endpoint = my-plan 给这个用户的 (base_url, model)；没有就退回环境变量里的默认值。
 
         ★ 优先用 my-plan 的值：套餐 key 只在它自己的 TokenPlan 专用路径上有效，
         用手写的通用网关地址会被回 1004「请使用 TokenPlan 专用路径」。
@@ -124,8 +180,6 @@ class TenantManager:
         base_url = base_url or self.s.model_base_url
         model_name = model_name or self.s.model_name
         files: dict[str, bytes] = {}
-        forward = (SEED_DIR / "forward.py").read_bytes()
-        files[".mt/forward.py"] = forward
         config_tmpl = (SEED_DIR / "config.yaml.tmpl").read_text(encoding="utf-8")
         config = (
             config_tmpl.replace("{{MODEL_NAME}}", model_name)
@@ -140,6 +194,20 @@ class TenantManager:
         if api_key:
             env_lines.append(f"{self.s.key_env_name}={api_key}")
         files[".env"] = ("\n".join(env_lines) + "\n").encode("utf-8")
+        return files
+
+    def _render_seed(
+        self,
+        api_key: str,
+        endpoint: tuple[str, str] | None = None,
+        catalog: list[tuple[str, str]] | None = None,
+    ) -> dict[str, bytes]:
+        """Docker 后端要塞进卷的全部文件：用户那两份，外加转发器。
+
+        沙箱后端不走这里 —— 它的转发器在镜像里，见 ``_cube_seed_files``。
+        """
+        files = self._render_user_files(api_key, endpoint, catalog)
+        files[".mt/forward.py"] = (SEED_DIR / "forward.py").read_bytes()
         return files
 
     # ---- 平台下发的模型配置：变了要同步到已有的卷 ------------------------------------
@@ -286,7 +354,14 @@ class TenantManager:
             return False
 
     # ---- lifecycle -----------------------------------------------------------------
-    async def ensure_running(
+    async def ensure_running(self, user_id: str) -> Tenant:
+        """保证这个用户有一个能用的实例，返回可直接转发的 ``Tenant``。"""
+        self._backend_client()
+        if self.use_cube:
+            return await self._ensure_running_cube(user_id)
+        return await self._ensure_running_docker(user_id)
+
+    async def _ensure_running_docker(
         self,
         user_id: str,
     ) -> Tenant:
@@ -352,11 +427,168 @@ class TenantManager:
                         type(state_exc).__name__,
                     )
                 raise
-            tenant = Tenant(user_id=user_id, slug=slug, ip=ip, token=token)
+            tenant = Tenant(
+                user_id=user_id,
+                slug=slug,
+                token=token,
+                ip=ip,
+                origin=f"{ip}:{self.s.forward_port}",
+                host_header=f"127.0.0.1:{self.s.hermes_port}",
+            )
             await self.store.set_tenant_state(user_id, "running")
             await self.store.touch_tenant(user_id)
             await self._sync_api_key(tenant, api_key)
             return tenant
+
+    # ---- 沙箱后端 ---------------------------------------------------------------
+
+    def cube_volume_name(self, user_id: str) -> str:
+        """用户的持久卷名。平台的 volumeID 与 name 相同，所以这就是卷 ID。
+
+        ★ 不能复用 ``tenant_slug``：它做了小写归一化，是**多对一**的 ——
+          ``Alice`` 和 ``alice`` 会算出同一个名字，等于两个用户共用一份数据。
+          容器名多对一只是撞名，卷名多对一是数据串台，性质完全不同。
+          这里一律走摘要，保证单射。
+        """
+        digest = hashlib.sha256(user_id.encode("utf-8")).hexdigest()[:32]
+        return f"{self.s.prefix}-u-{digest}"
+
+    def _cube_seed_files(
+        self,
+        api_key: str,
+        endpoint: tuple[str, str] | None,
+        catalog: list[tuple[str, str]] | None,
+    ) -> list[dict]:
+        """渲染引导接口要的种子文件。
+
+        与 Docker 那边 ``_render_seed`` 的两点差异：
+
+        1. **不含转发器**。它已经烘进镜像了，不再放在用户可写的数据目录里 ——
+           放那儿意味着租户能替换掉自己的转发器。
+        2. **``config.yaml`` 用 ``if-pristine``**。沙箱路径下镜像的首启引导比我们的
+           引导先跑，会先种一份默认示例；直接 ``overwrite=False`` 会让我们的配置
+           永远写不进去，直接 ``True`` 又会毁掉老用户自己改过的内容。
+           ``if-pristine`` 的判据是与镜像里的示例逐字节比对，见 seed/forward.py。
+        """
+        rendered = self._render_user_files(api_key, endpoint, catalog)
+        return [
+            {
+                "path": "config.yaml",
+                "content": rendered["config.yaml"].decode("utf-8"),
+                "overwrite": "if-pristine",
+            },
+            {
+                "path": ".env",
+                "content": rendered[".env"].decode("utf-8"),
+                "overwrite": True,
+            },
+        ]
+
+    async def _ensure_running_cube(self, user_id: str) -> Tenant:
+        assert self.cube is not None
+        slug = tenant_slug(user_id)
+        port = self.s.forward_port
+        async with self._lock(slug):
+            token = await self.store.ensure_tenant_token(user_id)
+            context = await self.store.get_tenant_context(user_id)
+            volume = self.cube_volume_name(user_id)
+
+            # 卷先于实例存在，而且不随实例销毁。建过了就是幂等的一次查询。
+            await self.cube.ensure_volume(volume, self.s.cube_volume_driver)
+
+            sandbox_id = await self.store.get_sandbox_id(user_id)
+            if sandbox_id:
+                state = await self.cube.sandbox_state(sandbox_id)
+                if state == "gone":
+                    # 平台侧已经没了（节点维护、被手工删掉…）。数据在卷上，重建即可。
+                    log.info("tenant %s: 实例 %s 已不存在，重建", slug, sandbox_id[:12])
+                    await self.store.set_sandbox_id(user_id, None)
+                    sandbox_id = ""
+
+            # 与 Docker 那条路同一条不变式：中途失败不能把状态留在 starting，
+            # 否则这个用户会一直被当成"正在启动"，既不会被回收也不会被重试。
+            try:
+                if not sandbox_id:
+                    await self.store.set_tenant_state(user_id, "starting")
+                    sandbox_id = await self.cube.create_sandbox(
+                        volume_name=volume,
+                        workspace_path=self.s.cube_workspace_path,
+                        metadata={"hermes.mt": "tenant", "hermes.mt.slug": slug},
+                    )
+                    # ★ 先落库再引导：引导可能超时，但实例已经真实存在了。
+                    #   不先记下来的话，下一次请求会再建一个，旧的成为没人管的孤儿。
+                    await self.store.set_sandbox_id(user_id, sandbox_id)
+                    await self.store.write_audit(user_id, "tenant.start", {"sandbox": sandbox_id})
+
+                    await self.cube.wait_forwarder(sandbox_id, port)
+                    await self.cube.bootstrap(
+                        sandbox_id,
+                        port,
+                        token=token,
+                        files=self._cube_seed_files(
+                            context.api_key, context.endpoint, context.catalog
+                        ),
+                        ready_timeout_s=self.s.ready_timeout_s,
+                    )
+
+                # 实例可能是 paused —— 这个请求会把它自动唤醒，等就绪即可。
+                await self.cube.wait_hermes(sandbox_id, port, timeout_s=self.s.ready_timeout_s)
+            except Exception:  # noqa: BLE001
+                try:
+                    await self.store.set_tenant_state(user_id, "stopped")
+                except Exception as state_exc:  # noqa: BLE001
+                    log.warning(
+                        "tenant %s: 启动失败后回写 stopped 失败: %s",
+                        slug,
+                        type(state_exc).__name__,
+                    )
+                raise
+
+            tenant = Tenant(
+                user_id=user_id,
+                slug=slug,
+                ip="",  # 沙箱后端不直连实例 IP，走平台代理
+                token=token,
+                sandbox_id=sandbox_id,
+                origin=self.cube.proxy_base.split("://", 1)[-1],
+                host_header=self.cube.host_for(sandbox_id, port),
+            )
+            await self.store.set_tenant_state(user_id, "running")
+            await self.store.touch_tenant(user_id)
+            await self._sync_api_key(tenant, context.api_key)
+            return tenant
+
+    async def _stop_cube(self, user_id: str, reason: str) -> None:
+        """空闲回收 = 暂停，不是销毁。
+
+        ★ 销毁会连同实例可写层一起删掉，而对话库就在可写层上 —— 用户的历史会没。
+          暂停则把整机状态冻结存盘，下次请求 0.4 秒左右唤醒，数据完好。
+        """
+        assert self.cube is not None
+        slug = tenant_slug(user_id)
+        async with self._lock(slug):
+            sandbox_id = await self.store.get_sandbox_id(user_id)
+            if sandbox_id:
+                try:
+                    await self.cube.pause_sandbox(sandbox_id)
+                except CubeError as exc:
+                    log.warning("暂停 %s 的实例失败: %s", slug, exc)
+            await self.store.set_tenant_state(user_id, "stopped")
+            await self.store.write_audit(user_id, "tenant.stop", {"reason": reason})
+
+    async def _reconcile_cube(self) -> None:
+        """入口启动时把运行态清成 stopped，但**不动平台上的实例**。
+
+        与 Docker 那条路的区别：那边入口重启后容器状态未知，一律停掉重来；
+        这边实例是平台在管的，暂停/恢复都很便宜，而且实例里可能还挂着别人的
+        长连接（多个入口副本共用一个集群）。所以这里只修正我们自己的库，
+        实例交给空闲回收按活跃时间处理。
+        """
+        rows = await self.store.all_tenant_states()
+        for user_id, state, _ in rows:
+            if state in ("running", "starting"):
+                await self.store.set_tenant_state(user_id, "stopped")
+        log.info("reconcile(cube): %d 条运行态已重置，平台实例未动", len(rows))
 
     async def _sync_api_key(self, tenant: Tenant, api_key: str) -> None:
         """通过 Hermes 既有接口更新 Key；只有成功后才记录内存摘要。"""
@@ -365,9 +597,10 @@ class TenantManager:
         digest = hashlib.sha256(api_key.encode("utf-8")).digest()
         if self._synced_key_digests.get(tenant.user_id) == digest:
             return
-        url = f"http://{tenant.ip}:{self.s.forward_port}/api/env"
+        origin = tenant.origin or f"{tenant.ip}:{self.s.forward_port}"
+        url = f"http://{origin}/api/env"
         headers = {
-            "Host": f"127.0.0.1:{self.s.hermes_port}",
+            "Host": tenant.host_header or f"127.0.0.1:{self.s.hermes_port}",
             "X-Hermes-Session-Token": tenant.token,
         }
         try:
@@ -438,6 +671,9 @@ class TenantManager:
         raise TimeoutError(f"租户容器 {self.s.ready_timeout_s}s 内没就绪: {last_err}")
 
     async def stop(self, user_id: str, reason: str = "") -> None:
+        if self.use_cube:
+            await self._stop_cube(user_id, reason)
+            return
         slug = tenant_slug(user_id)
         async with self._lock(slug):
             cname = self.container_name(slug)
@@ -455,6 +691,9 @@ class TenantManager:
         ★ 每个租户都走 ``ensure_running`` 用的同一把锁，否则后台停容器会和这段时间里
         进来的用户请求打架——刚拉起来的容器被 reconcile 一巴掌停掉。
         """
+        if self.use_cube:
+            await self._reconcile_cube()
+            return
         containers = await self.docker.list_containers("hermes.mt=tenant")
         for c in containers:
             name = (c.get("Names") or ["?"])[0].lstrip("/")

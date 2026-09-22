@@ -12,6 +12,7 @@ from aiohttp import web
 
 from .config import SETTINGS, Settings
 from .crypto import CredentialCipher
+from .cube_api import Cube
 from .db import Database, DatabaseUnavailable
 from .docker_api import Docker
 from .maas import Maas, MaasError
@@ -51,6 +52,7 @@ class Entry:
         # aiohttp 客户端必须在事件循环中创建，因此在 on_startup 里赋值。
         self.http: aiohttp.ClientSession | None = None
         self.docker: Docker | None = None
+        self.cube: Cube | None = None
         self.maas: Maas | None = None
         self.tenants: TenantManager | None = None
         self._last_touch: dict[str, float] = {}
@@ -330,9 +332,20 @@ class Entry:
         await self.database.connect()
         try:
             self.http = aiohttp.ClientSession()
-            self.docker = Docker(self.s.docker_sock)
             self.maas = Maas(self.s, self.http)
-            self.tenants = TenantManager(self.s, self.docker, self.store, self.http)
+            # 按后端只建需要的那个客户端：跑沙箱后端时不该去碰 docker.sock
+            # （入口容器很可能根本没挂它），反之亦然。
+            if self.s.backend == "cube":
+                self.cube = Cube(
+                    api_base=self.s.cube_api,
+                    proxy_base=self.s.cube_proxy,
+                    domain=self.s.cube_domain,
+                    api_key=self.s.cube_api_key,
+                    template=self.s.cube_template,
+                )
+            else:
+                self.docker = Docker(self.s.docker_sock)
+            self.tenants = TenantManager(self.s, self.docker, self.store, self.http, self.cube)
         except Exception:
             if self.http is not None:
                 await self.http.close()
@@ -357,6 +370,8 @@ class Entry:
             await self.http.close()
         if self.docker is not None:
             await self.docker.close()
+        if self.cube is not None:
+            await self.cube.close()
         await self.database.close()
 
     async def _reaper(self) -> None:

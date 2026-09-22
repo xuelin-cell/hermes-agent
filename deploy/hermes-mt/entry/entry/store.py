@@ -351,6 +351,29 @@ class Store:
                 user_id,
             )
 
+    # ---- 沙箱后端：实例 ID ------------------------------------------------------
+    #
+    # 只有沙箱后端用得上。实例 ID 由平台下发、我们算不出来，所以必须存。
+    # ★ 它是易变的：实例被回收或重建后会换一个新值，而用户数据在按用户 ID 命名的
+    #   持久卷上，不随实例走。所以这一列丢了只会导致多建一个实例，不会丢数据。
+
+    async def get_sandbox_id(self, user_id: str) -> str:
+        async with self.database.acquire() as connection:
+            row = await connection.fetchrow(
+                "SELECT sandbox_id FROM tenant_runtime WHERE user_id = $1",
+                user_id,
+            )
+        return (row and row["sandbox_id"]) or ""
+
+    async def set_sandbox_id(self, user_id: str, sandbox_id: str | None) -> None:
+        """记下或清掉这个用户当前的实例 ID。传 None 表示他现在没有实例。"""
+        async with self.database.acquire() as connection:
+            await connection.execute(
+                "UPDATE tenant_runtime SET sandbox_id = $2 WHERE user_id = $1",
+                user_id,
+                sandbox_id or None,
+            )
+
     async def idle_tenants(self, older_than_s: int, exclude: set[str] | None = None) -> list[str]:
         """返回可回收租户；数据库查询失败时异常上抛，调用方必须跳过本轮回收。"""
         cutoff = _utc_now() - timedelta(seconds=older_than_s)

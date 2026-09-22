@@ -27,6 +27,22 @@ class Settings:
     base_path: str = _env("MT_BASE_PATH", "/hermes").rstrip("/")
     listen_port: int = int(_env("MT_PORT", "9400"))
 
+    # 执行后端：docker = 我们自己用 Docker 建容器；cube = 让沙箱平台建实例。
+    # 两条路并存，切换只改这一个变量。默认 docker，保持既有部署不受影响。
+    backend: str = _env("MT_BACKEND", "docker").lower()
+
+    # 沙箱后端（backend=cube 时才用）
+    cube_api: str = _env("MT_CUBE_API", "").rstrip("/")          # 控制面，形如 http://host:3000
+    cube_proxy: str = _env("MT_CUBE_PROXY", "").rstrip("/")      # 数据面（平台代理），转发和引导都走它
+    cube_domain: str = _env("MT_CUBE_DOMAIN", "cube.app")        # 沙箱域名，拼路由 Host 用
+    cube_api_key: str = _env("MT_CUBE_API_KEY", "")              # 控制面鉴权；集群没开就留空
+    cube_template: str = _env("MT_CUBE_TEMPLATE", "")            # 模板 ID 或别名
+    cube_volume_driver: str = _env("MT_CUBE_VOLUME_DRIVER", "")  # 空 = 用平台默认后端
+    # 卷挂进沙箱的位置，必须与镜像里 HERMES_DASHBOARD_FILES_ROOT 一致。
+    # ★ 只有工作区挂卷，对话库留在实例可写层 —— 卷由对象存储支撑，放不了 SQLite。
+    #   原因见 docs/Hermes多租户-Cube架构说明.html §5。
+    cube_workspace_path: str = _env("MT_CUBE_WORKSPACE", "/opt/data/workspace")
+
     # 租户容器
     image: str = _env("MT_IMAGE", "hermes-custom:dev")
     prefix: str = _env("MT_PREFIX", "hermes")  # hermes-t-<uid> / hermes-net-<uid> / hermes-data-<uid>
