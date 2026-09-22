@@ -1,0 +1,379 @@
+# =============================================================================
+# Hermes Agent — CubeSandbox Template (backend on :8000)
+# =============================================================================
+# Builds a CubeSandbox image that, on `cube up`, starts the Hermes backend
+# (the dashboard / JSON-RPC+WebSocket gateway) on :8000 — the port
+# CubeSandbox exposes externally and probes for readiness.
+#
+# Strategy: extend the proven Dockerfile-cube-skill base (ubuntu:22.04,
+# Python 3.10, tini, cube-entrypoint.sh → envd:49983 → CMD), then install
+# a uv-managed Python 3.13 + hermes venv INSIDE cube-base.
+#
+# Why not copy /opt/hermes from the hermes-agent image?
+#   The hermes venv is built with Python 3.13 + glibc 2.41 (debian:13.4).
+#   cube-base is ubuntu:22.04 + glibc 2.35. A glibc-2.41 venv cannot run on
+#   glibc 2.35 (forward-incompatible: newer libc symbols missing). So we
+#   build the venv against cube-base's own glibc by installing Python 3.13
+#   via uv (python-build-standalone requires only glibc ≥ 2.17 ✓).
+#
+# Auth gate (June 2026 hardening):
+#   Binding 0.0.0.0 engages the dashboard auth gate; --insecure is a no-op.
+#   The bundled basic-auth provider (plugins/dashboard_auth/basic) satisfies
+#   it zero-infrastructure when HERMES_DASHBOARD_BASIC_AUTH_USERNAME +
+#   _PASSWORD are set. Defaults admin/hermes are baked below; overridable at
+#   runtime via env. /api/health is in the public allowlist (no auth) so the
+#   cube probe can hit it directly.
+#
+# Build:
+#   docker build --platform=linux/amd64 -t openagent-sandbox-hermes \
+#     -f Dockerfile-cube-hermes .
+#
+# Register as a Cube template (probe :8000 → /api/health):
+#   cubemastercli tpl create-from-image \
+#     --image openagent-sandbox-hermes:latest \
+#     --writable-layer-size 4G \
+#     --expose-port 8000 \
+#     --expose-port 49983 \
+#     --probe 8000 \
+#     --probe-path /api/health
+# =============================================================================
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Stage 1: uv (we only borrow the uv + uvx binaries)
+# ─────────────────────────────────────────────────────────────────────────────
+FROM ghcr.io/astral-sh/uv:0.11.6-python3.13-trixie@sha256:b3c543b6c4f23a5f2df22866bd7857e5d304b67a564f4feab6ac22044dde719b AS uv_source
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Stage 2: Node.js 26 (for building the web SPA + ui-tui TUI bundle)
+# ─────────────────────────────────────────────────────────────────────────────
+FROM node:26-bookworm-slim@sha256:9e6f9357d371591e32ab6f2d8a26d63bdd0d17c29eee3f4f3e7e454d9634bf73 AS node_source
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Stage 3: the cube-hermes image, layered on Dockerfile-cube-skill's base
+# ─────────────────────────────────────────────────────────────────────────────
+FROM ghcr.io/tencentcloud/cubesandbox-base:2026.16
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG HERMES_GIT_SHA=
+
+# ── Environment: hermes data home + auth defaults ─────────────────────────
+# /opt/data is the durable hermes user-data volume (config.yaml, .env,
+# auth.json, sessions, cron, logs, skills, memories, …). It is the mount
+# point for S3-backed persistent storage so data survives sandbox destroy.
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    IS_SANDBOX=yes \
+    PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers \
+    CODE_INTERPRETER_HOST=0.0.0.0 \
+    CODE_INTERPRETER_PORT=49999 \
+    CODE_INTERPRETER_WORKDIR=/workspace \
+    JUPYTER_HOST=127.0.0.1 \
+    JUPYTER_PORT=8888 \
+    PATH=/opt/hermes/bin:/opt/hermes/.venv/bin:/home/openagent/.npm-global/bin:/home/openagent/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+USER root
+
+# =============================================================================
+# System Packages — full toolchain (mirrors Dockerfile-cube-skill exactly,
+# so the proven base is preserved verbatim and the cube writable layer,
+# envd:49983, and tini entrypoint are all unchanged).
+# =============================================================================
+RUN sed -i 's@//.*archive.ubuntu.com@//mirrors.tuna.tsinghua.edu.cn@g; s@//.*security.ubuntu.com@//mirrors.tuna.tsinghua.edu.cn@g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || \
+    sed -i 's@//.*archive.ubuntu.com@//mirrors.tuna.tsinghua.edu.cn@g; s@//.*security.ubuntu.com@//mirrors.tuna.tsinghua.edu.cn@g' /etc/apt/sources.list 2>/dev/null || true && \
+    apt-get update && apt-get install -y --no-install-recommends \
+    bash coreutils wget curl git jq tree ripgrep \
+    zip unzip file findutils patch sqlite3 \
+    python3 python3-dev python3-pip python3-venv \
+    build-essential pkg-config \
+    libffi-dev zlib1g-dev libpng-dev libfreetype-dev libbz2-dev \
+    libssl-dev libreadline-dev libsqlite3-dev \
+    libjpeg-dev libtiff-dev libwebp-dev libopenjp2-7-dev \
+    libcairo2-dev libpango1.0-dev libglib2.0-dev \
+    libxml2-dev libxslt1-dev libhdf5-dev \
+    libffi8 zlib1g libpng16-16 libfreetype6 libbz2-1.0 \
+    libglib2.0-0 libcairo2 libpango-1.0-0 \
+    libjpeg-turbo8 libtiff5 libwebp7 libopenjp2-7 \
+    poppler-utils \
+    qpdf \
+    tesseract-ocr \
+    tesseract-ocr-eng \
+    tesseract-ocr-chi-sim \
+    tesseract-ocr-chi-tra \
+    pandoc \
+    imagemagick \
+    graphviz \
+    ffmpeg \
+    texlive-base \
+    texlive-latex-base \
+    texlive-latex-recommended \
+    texlive-latex-extra \
+    texlive-fonts-recommended \
+    texlive-xetex \
+    fonts-liberation2 fonts-dejavu \
+    fonts-noto-cjk \
+    fonts-noto-color-emoji \
+    fonts-wqy-zenhei \
+    fonts-wqy-microhei \
+    fonts-freefont-ttf \
+    fonts-lmodern \
+    xvfb x11-xkb-utils xfonts-base xfonts-scalable \
+    xfonts-cyrillic xfonts-utils \
+    libnss3 libnss3-tools \
+    libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
+    libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 \
+    libxrandr2 libgbm1 libasound2 \
+    libpango-1.0-0 libcairo2 libatspi2.0-0 \
+    libgtk-3-0 libgtk-4-1 \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# =============================================================================
+# LibreOffice (docx/pdf/xlsx/pptx conversion rendering)
+# =============================================================================
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libreoffice-writer \
+    libreoffice-calc \
+    libreoffice-impress \
+    libreoffice-draw \
+    libreoffice-common \
+    libreoffice-java-common \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# =============================================================================
+# Node.js 22.x (for skill npm tooling + Playwright)
+# =============================================================================
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+# =============================================================================
+# Python — Code-interpreter stack (required for the sandbox API)
+# =============================================================================
+RUN pip3 install --no-cache-dir \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple \
+    jupyter_server ipykernel \
+    fastapi uvicorn httpx websockets pydantic
+
+# =============================================================================
+# Python — Data science + core utilities
+# =============================================================================
+RUN pip3 install --no-cache-dir \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple \
+    numpy pandas matplotlib pillow \
+    requests beautifulsoup4 lxml \
+    uv click pyyaml python-dotenv tabulate \
+    playwright
+
+# =============================================================================
+# Python — Document processing (all document-oriented skills)
+# =============================================================================
+RUN pip3 install --no-cache-dir \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple \
+    python-docx \
+    pymupdf \
+    pdf2image \
+    pypdf \
+    pdfplumber \
+    reportlab \
+    pytesseract \
+    pypdfium2 \
+    openpyxl \
+    python-pptx \
+    markitdown \
+    Wand
+
+# =============================================================================
+# Python — Data visualization & analysis (data-insight-viz)
+# =============================================================================
+RUN pip3 install --no-cache-dir \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple \
+    scipy \
+    seaborn \
+    xlsxwriter
+
+# =============================================================================
+# NPM Global Packages — All skill-related npm modules
+# =============================================================================
+RUN npm config set registry https://registry.npmmirror.com && \
+    npm config set prefix /home/openagent/.npm-global && \
+    npm install -g \
+    pptxgenjs@4.0.1 \
+    sharp \
+    pdf-lib@1.17.1 \
+    echarts \
+    docx@9.5.1 \
+    marked \
+    react \
+    react-dom \
+    react-icons \
+    typescript \
+    tsx \
+    playwright \
+    && echo "PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers" >> /home/openagent/.npmrc \
+    && rm -rf /root/.npm/_cacache
+
+# =============================================================================
+# Install Playwright Chromium browser (shared between Node.js and Python)
+# =============================================================================
+RUN PLAYWRIGHT_DOWNLOAD_HOST=https://npmmirror.com/mirrors/playwright \
+    npx playwright install chromium && \
+    npx playwright install-deps chromium
+
+# =============================================================================
+# Code-interpreter FastAPI app + launcher
+# =============================================================================
+COPY lightweight-code-interpreter-server.py /opt/lightweight-code-interpreter/server.py
+COPY start-code-interpreter.sh /usr/local/bin/start-code-interpreter.sh
+RUN chmod +x /usr/local/bin/start-code-interpreter.sh
+
+# =============================================================================
+# Register Python kernel + finalize
+# =============================================================================
+RUN python3 -m ipykernel install --user --name python3
+
+# Strip debug symbols from compiled extensions (saves ~30-50MB)
+RUN find /usr/lib/python3 -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true
+
+# =============================================================================
+# ImageMagick policy + python symlink + mount points + sessions
+# =============================================================================
+RUN if [ -f /etc/ImageMagick-6/policy.xml ]; then \
+        sed -i 's/rights="none" pattern="PDF"/rights="read|write" pattern="PDF"/' /etc/ImageMagick-6/policy.xml; \
+    fi && \
+    ln -sf /usr/bin/python3 /usr/bin/python && \
+    mkdir -p /workspace /mnt/uploads /mnt/outputs /mnt/skills /sessions && \
+    chmod 755 /sessions && \
+    rm -f /sbin/init /lib/systemd/systemd && \
+    rm -rf /tmp/* /var/tmp/* /root/.cache /root/.npm
+
+# =============================================================================
+# Hermes Agent install (Python 3.13 via uv, built against cube-base glibc)
+# =============================================================================
+# Copy the uv binary from the uv source stage.
+COPY --chmod=0755 --from=uv_source /usr/local/bin/uv /usr/local/bin/uv
+COPY --chmod=0755 --from=uv_source /usr/local/bin/uvx /usr/local/bin/uvx
+
+# Node.js 26 (for the web SPA build + the ui-tui TUI bundle build).
+# Cube-base only ships Python 3.10; the web/ui-tui build needs Node 26
+# which we copy from the node source stage (matching the main Dockerfile).
+COPY --chmod=0755 --from=node_source /usr/local/bin/node /usr/local/bin/node
+COPY --from=node_source /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm
+RUN ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm && \
+    ln -sf /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
+
+# Create the hermes user (UID 10000) with home at /opt/data so hermes-managed
+# state lands on the durable data volume.
+RUN useradd -u 10000 -m -d /opt/data hermes || true
+
+WORKDIR /opt/hermes
+
+# ── npm deps (web + ui-tui workspaces) ────────────────────────────────────
+# Copy only the manifests so the npm-install layer is cached on source changes.
+COPY package.json package-lock.json ./
+COPY web/package.json web/
+COPY ui-tui/package.json ui-tui/
+COPY ui-tui/packages/hermes-ink/ ui-tui/packages/hermes-ink/
+COPY apps/shared/ apps/shared/
+
+ENV npm_config_install_links=false
+ENV npm_config_registry=https://registry.npmmirror.com
+
+RUN npm install --prefer-offline --no-audit --fetch-retries=5 && \
+    npm cache clean --force
+
+# ── Python deps (cached independently from source) ────────────────────────
+COPY pyproject.toml uv.lock ./
+RUN touch ./README.md
+
+# uv installs a standalone Python 3.13 (glibc ≥ 2.17 ✓ for cube-base's 2.35)
+# and resolves the hermes-agent deps against it. The resulting venv runs
+# natively inside the sandbox because it was linked against cube-base's glibc.
+# --frozen: use uv.lock verbatim (no resolver drift).
+# --no-install-project: install deps only; the editable project link is
+#   created after the source copy below (fast, no re-resolve).
+# Extras mirror the published hermes-agent image so all backends/providers
+# work without runtime lazy-installs into the sealed venv.
+RUN uv sync --frozen --no-install-project \
+    --extra all --extra messaging --extra otlp \
+    --extra anthropic --extra bedrock --extra azure-identity \
+    --extra hindsight --extra matrix
+
+# ── Frontend build (cached independently from Python source) ──────────────
+COPY web/ web/
+COPY ui-tui/ ui-tui/
+COPY apps/shared/ apps/shared/
+
+RUN cd web && npm run build && \
+    cd ../ui-tui && npm run build
+
+# ── Source code ───────────────────────────────────────────────────────────
+# .dockerignore excludes node_modules, so the installs above survive.
+# --link decouples this layer from parents for cache purposes; --chmod bakes
+# the final read-only permissions at copy time so we skip the separate
+# `chmod -R` pass that previously walked ~30k files across the venv +
+# node_modules + source (21s amd64 / 222s arm64 — #49113).  `a+rX,go-w`
+# gives the non-root hermes user read + traverse but no write; root retains
+# write so the build steps below don't need chmod u+w dances.
+COPY --link --chmod=a+rX,go-w . .
+
+# ── Editable install of hermes-agent itself ───────────────────────────────
+# Deps are already installed in the cached layer above; `--no-deps` makes
+# this a fast egg-link creation with no resolution or downloads.
+RUN uv pip install --no-cache-dir --no-deps -e "."
+
+# ── Bake image provenance + build-time git revision ───────────────────────
+# The versioned, non-secret provenance marker is the authoritative runtime
+# signal that this filesystem came from an immutable image.
+ARG HERMES_GIT_SHA=
+RUN set -eu; \
+    if [ -n "${HERMES_GIT_SHA}" ]; then \
+        printf '%s\n' "${HERMES_GIT_SHA}" > /opt/hermes/.hermes_build_sha; \
+    fi; \
+    mkdir -p /etc/hermes; \
+    HERMES_GIT_SHA="${HERMES_GIT_SHA}" python3 -c 'import json, os, pathlib, tomllib; project = tomllib.loads(pathlib.Path("/opt/hermes/pyproject.toml").read_text(encoding="utf-8"))["project"]; marker = pathlib.Path("/etc/hermes/image-provenance.json"); marker.write_text(json.dumps({"schema": 1, "deployment_kind": "image", "manager": "docker", "image": "nousresearch/hermes-agent", "version": project["version"], "revision": os.environ.get("HERMES_GIT_SHA") or None}, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8"); marker.chmod(0o444)'
+
+# ── hermes runtime env ────────────────────────────────────────────────────
+# Point the dashboard at the prebuilt web dist (Layer 8: `web && npm run build`).
+ENV HERMES_WEB_DIST=/opt/hermes/hermes_cli/web_dist
+# Point the TUI launcher at the prebuilt ui-tui bundle (self-contained, no
+# runtime node_modules needed).
+ENV HERMES_TUI_DIR=/opt/hermes/ui-tui
+ENV HERMES_HOME=/opt/data
+ENV HERMES_WRITE_SAFE_ROOT=/opt/data
+ENV HERMES_DISABLE_LAZY_INSTALLS=1
+# The published image seals /opt/hermes (root-owned, read-only) so a runtime
+# lazy install can't mutate the agent's own venv and brick it. But opt-in
+# backends (Firecrawl web search, Exa, Feishu, …) keep their SDKs in
+# tools/lazy_deps.py — deliberately NOT baked into [all] (see pyproject.toml
+# policy 2026-05-12: one quarantined release must not break every install).
+# Redirect those lazy installs to a writable dir on the durable data volume.
+ENV HERMES_LAZY_INSTALL_TARGET=/opt/data/lazy-packages
+
+# ── /opt/hermes/bin/hermes: hermes CLI entrypoint ─────────────────────────
+# The main Dockerfile uses a privilege-drop shim (docker/hermes-exec-shim.sh)
+# that requires /command/s6-setuidgid. Cube-base uses tini (not s6-overlay),
+# so the shim would fail. Instead we symlink to the venv's console script.
+RUN mkdir -p /opt/hermes/bin && \
+    ln -sf /opt/hermes/.venv/bin/hermes /opt/hermes/bin/hermes && \
+    chmod 0755 /opt/hermes/bin/hermes && \
+    printf 'docker\n' > /opt/hermes/.install_method
+
+# ── Data volume + hermes user home ────────────────────────────────────────
+RUN mkdir -p /opt/data && \
+    chown -R hermes:hermes /opt/data
+VOLUME [ "/opt/data" ]
+
+# =============================================================================
+# Hermes launcher — starts the backend (dashboard / JSON-RPC+WS gateway) on
+# :8000, the port CubeSandbox exposes externally and probes for readiness.
+# =============================================================================
+COPY start-hermes.sh /usr/local/bin/start-hermes.sh
+RUN chmod +x /usr/local/bin/start-hermes.sh
+
+WORKDIR /workspace
+
+EXPOSE 49983 49999 8000
+
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/cube-entrypoint.sh"]
+CMD ["/usr/local/bin/start-hermes.sh"]
