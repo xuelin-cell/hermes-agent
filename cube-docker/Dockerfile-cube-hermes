@@ -223,8 +223,8 @@ RUN PLAYWRIGHT_DOWNLOAD_HOST=https://npmmirror.com/mirrors/playwright \
 # =============================================================================
 # Code-interpreter FastAPI app + launcher
 # =============================================================================
-COPY lightweight-code-interpreter-server.py /opt/lightweight-code-interpreter/server.py
-COPY start-code-interpreter.sh /usr/local/bin/start-code-interpreter.sh
+COPY cube-docker/lightweight-code-interpreter-server.py /opt/lightweight-code-interpreter/server.py
+COPY cube-docker/start-code-interpreter.sh /usr/local/bin/start-code-interpreter.sh
 RUN chmod +x /usr/local/bin/start-code-interpreter.sh
 
 # =============================================================================
@@ -368,7 +368,7 @@ VOLUME [ "/opt/data" ]
 # Hermes launcher — starts the backend (dashboard / JSON-RPC+WS gateway) on
 # :8000, the port CubeSandbox exposes externally and probes for readiness.
 # =============================================================================
-COPY start-hermes.sh /usr/local/bin/start-hermes.sh
+COPY cube-docker/start-hermes.sh /usr/local/bin/start-hermes.sh
 RUN chmod +x /usr/local/bin/start-hermes.sh
 
 WORKDIR /workspace
