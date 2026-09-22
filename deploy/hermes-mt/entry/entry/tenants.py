@@ -330,15 +330,28 @@ class TenantManager:
                 info = await self.docker.inspect_container(cname)
 
             state = (info or {}).get("State", {})
-            if not state.get("Running"):
+            needs_start = not state.get("Running")
+            if needs_start:
                 await self.store.set_tenant_state(user_id, "starting")
-                await self.store.write_audit(user_id, "tenant.start", {"container": cname})
-                await self.docker.start_container(cname)
+            try:
+                if needs_start:
+                    await self.store.write_audit(user_id, "tenant.start", {"container": cname})
+                    await self.docker.start_container(cname)
 
-            ip = await self.docker.container_ip(cname, nname)
-            if not ip:
-                raise RuntimeError(f"容器 {cname} 没有拿到 {nname} 网络的 IP")
-            await self._wait_ready(ip)
+                ip = await self.docker.container_ip(cname, nname)
+                if not ip:
+                    raise RuntimeError(f"容器 {cname} 没有拿到 {nname} 网络的 IP")
+                await self._wait_ready(ip)
+            except Exception:  # noqa: BLE001
+                try:
+                    await self.store.set_tenant_state(user_id, "stopped")
+                except Exception as state_exc:  # noqa: BLE001
+                    log.warning(
+                        "tenant %s: 启动失败后回写 stopped 失败: %s",
+                        cname,
+                        type(state_exc).__name__,
+                    )
+                raise
             tenant = Tenant(user_id=user_id, slug=slug, ip=ip, token=token)
             await self.store.set_tenant_state(user_id, "running")
             await self.store.touch_tenant(user_id)

@@ -126,20 +126,19 @@ class Store:
             raise ValueError("上游登录凭据剩余有效期不足")
 
         sid = secrets.token_urlsafe(32)
-        display_name = self._mask_phone(phone) or None
+        masked_phone = self._mask_phone(phone) or None
         async with self.database.acquire() as connection:
             async with connection.transaction():
                 await connection.execute(
                     """
-                    INSERT INTO users(user_id, display_name, last_login_at)
+                    INSERT INTO users(user_id, masked_phone, last_login_at)
                     VALUES($1, $2, $3)
                     ON CONFLICT(user_id) DO UPDATE SET
-                        display_name = COALESCE(EXCLUDED.display_name, users.display_name),
-                        last_login_at = EXCLUDED.last_login_at,
-                        updated_at = now()
+                        masked_phone = COALESCE(EXCLUDED.masked_phone, users.masked_phone),
+                        last_login_at = EXCLUDED.last_login_at
                     """,
                     user_id,
-                    display_name,
+                    masked_phone,
                     now,
                 )
                 if (endpoint and endpoint[0]) or catalog:
@@ -174,16 +173,14 @@ class Store:
                     await connection.execute(
                         """
                         INSERT INTO tenant_credentials(
-                            user_id, api_key_ciphertext, encryption_key_id
-                        ) VALUES($1, $2, $3)
+                            user_id, api_key_ciphertext
+                        ) VALUES($1, $2)
                         ON CONFLICT(user_id) DO UPDATE SET
                             api_key_ciphertext = EXCLUDED.api_key_ciphertext,
-                            encryption_key_id = EXCLUDED.encryption_key_id,
                             updated_at = now()
                         """,
                         user_id,
                         self.cipher.encrypt(api_key),
-                        self.cipher.key_id,
                     )
                 await connection.execute(
                     """
@@ -249,10 +246,11 @@ class Store:
             result = await connection.execute("DELETE FROM auth_sessions WHERE expires_at <= now()")
         return _affected_rows(result)
 
-    async def display_name(self, user_id: str) -> str:
+    async def masked_phone(self, user_id: str) -> str:
+        """返回平台登录手机号的脱敏显示值。"""
         async with self.database.acquire() as connection:
             value = await connection.fetchval(
-                "SELECT display_name FROM users WHERE user_id = $1",
+                "SELECT masked_phone FROM users WHERE user_id = $1",
                 user_id,
             )
         return str(value or "")
@@ -266,38 +264,32 @@ class Store:
                 row = await connection.fetchrow(
                     """
                     INSERT INTO tenant_credentials(
-                        user_id, container_token_ciphertext, encryption_key_id
-                    ) VALUES($1, $2, $3)
+                        user_id, container_token_ciphertext
+                    ) VALUES($1, $2)
                     ON CONFLICT(user_id) DO UPDATE SET
                         container_token_ciphertext = COALESCE(
                             tenant_credentials.container_token_ciphertext,
                             EXCLUDED.container_token_ciphertext
                         ),
-                        encryption_key_id = CASE
-                            WHEN tenant_credentials.container_token_ciphertext IS NULL
-                            THEN EXCLUDED.encryption_key_id
-                            ELSE tenant_credentials.encryption_key_id
-                        END,
                         updated_at = CASE
                             WHEN tenant_credentials.container_token_ciphertext IS NULL
                             THEN now()
                             ELSE tenant_credentials.updated_at
                         END
-                    RETURNING container_token_ciphertext, encryption_key_id
+                    RETURNING container_token_ciphertext
                     """,
                     user_id,
                     encrypted,
-                    self.cipher.key_id,
                 )
                 await connection.execute(
                     """
-                    INSERT INTO tenant_runtime(user_id)
-                    VALUES($1)
+                    INSERT INTO tenant_runtime(user_id, state)
+                    VALUES($1, 'stopped')
                     ON CONFLICT(user_id) DO NOTHING
                     """,
                     user_id,
                 )
-        return self.cipher.decrypt(row["container_token_ciphertext"], row["encryption_key_id"])
+        return self.cipher.decrypt(row["container_token_ciphertext"])
 
     async def get_tenant_context(self, user_id: str) -> TenantContext:
         async with self.database.acquire() as connection:
@@ -309,8 +301,7 @@ class Store:
                     m.default_model,
                     m.model_catalog,
                     c.api_key_ciphertext,
-                    c.container_token_ciphertext,
-                    c.encryption_key_id
+                    c.container_token_ciphertext
                 FROM users AS u
                 LEFT JOIN tenant_model_config AS m ON m.user_id = u.user_id
                 LEFT JOIN tenant_credentials AS c ON c.user_id = u.user_id
@@ -320,14 +311,13 @@ class Store:
             )
         if row is None:
             raise KeyError(f"未知平台用户: {user_id}")
-        key_id = row["encryption_key_id"]
         api_key = (
-            self.cipher.decrypt(row["api_key_ciphertext"], key_id)
+            self.cipher.decrypt(row["api_key_ciphertext"])
             if row["api_key_ciphertext"] is not None
             else ""
         )
         container_token = (
-            self.cipher.decrypt(row["container_token_ciphertext"], key_id)
+            self.cipher.decrypt(row["container_token_ciphertext"])
             if row["container_token_ciphertext"] is not None
             else ""
         )

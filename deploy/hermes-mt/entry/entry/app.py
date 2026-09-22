@@ -46,7 +46,7 @@ class Entry:
         )
         self.store = Store(
             self.database,
-            CredentialCipher(settings.credential_key, settings.credential_key_id),
+            CredentialCipher(settings.credential_key),
         )
         # aiohttp 客户端必须在事件循环中创建，因此在 on_startup 里赋值。
         self.http: aiohttp.ClientSession | None = None
@@ -158,11 +158,11 @@ class Entry:
     async def me(self, request: web.Request) -> web.Response:
         session = await self._require(request)
         states = {user: (state, timestamp) for user, state, timestamp in await self.store.all_tenant_states()}
-        state = states.get(session.user_id, ("none", 0))
+        state = states.get(session.user_id, ("stopped", 0))
         return web.json_response(
             {
                 "user_id": session.user_id,
-                "display": await self.store.display_name(session.user_id) or session.user_id,
+                "display": await self.store.masked_phone(session.user_id) or session.user_id,
                 "tenant_state": state[0],
                 "last_seen_at": state[1],
             }

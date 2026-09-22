@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 
+import asyncpg
 import pytest
 from cryptography.fernet import Fernet
 
@@ -16,7 +17,7 @@ from entry.store import Store
 async def _store(url: str) -> tuple[Database, Store]:
     database = Database(url, min_size=1, max_size=3)
     await database.connect()
-    cipher = CredentialCipher(Fernet.generate_key().decode(), "test-v1")
+    cipher = CredentialCipher(Fernet.generate_key().decode())
     return database, Store(database, cipher)
 
 
@@ -37,7 +38,7 @@ async def test_login_persists_hashed_session_model_config_and_encrypted_key(
     )
 
     assert login.has_api_key is True
-    assert await store.display_name("user-a") == "138****5678"
+    assert await store.masked_phone("user-a") == "138****5678"
     assert (await store.get_session(login.session.sid)).user_id == "user-a"  # type: ignore[union-attr]
 
     async with database.acquire() as connection:
@@ -111,6 +112,64 @@ async def test_concurrent_container_token_creation_returns_one_token(
     assert len(set(tokens)) == 1
     context = await store.get_tenant_context("user-a")
     assert context.container_token == tokens[0]
+    await database.close()
+
+
+@pytest.mark.asyncio
+async def test_runtime_state_accepts_only_starting_running_and_stopped(
+    postgres_database_url: str,
+) -> None:
+    """租户运行态只允许已经确认的三个状态。"""
+    database, store = await _store(postgres_database_url)
+    await store.finish_login(
+        user_id="user-a",
+        phone="",
+        api_key="",
+        endpoint=None,
+        catalog=None,
+        ttl_s=3600,
+        upstream_expires_at_ms=None,
+        login_method="dev",
+    )
+    await store.ensure_tenant_token("user-a")
+
+    async with database.acquire() as connection:
+        assert await connection.fetchval(
+            "SELECT state FROM tenant_runtime WHERE user_id = 'user-a'"
+        ) == "stopped"
+
+    for state in ("starting", "running", "stopped"):
+        await store.set_tenant_state("user-a", state)
+        async with database.acquire() as connection:
+            assert await connection.fetchval(
+                "SELECT state FROM tenant_runtime WHERE user_id = 'user-a'"
+            ) == state
+
+    with pytest.raises(asyncpg.CheckViolationError):
+        await store.set_tenant_state("user-a", "none")
+    await database.close()
+
+
+@pytest.mark.asyncio
+async def test_optimized_schema_omits_retired_columns(
+    postgres_database_url: str,
+) -> None:
+    """全新数据库不再创建已经删除的旧字段。"""
+    database, _ = await _store(postgres_database_url)
+    async with database.acquire() as connection:
+        rows = await connection.fetch(
+            """
+            SELECT table_name, column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name IN ('users', 'tenant_credentials')
+            """
+        )
+    columns = {(row["table_name"], row["column_name"]) for row in rows}
+    assert ("users", "masked_phone") in columns
+    assert ("users", "display_name") not in columns
+    assert ("users", "updated_at") not in columns
+    assert ("tenant_credentials", "encryption_key_id") not in columns
     await database.close()
 
 

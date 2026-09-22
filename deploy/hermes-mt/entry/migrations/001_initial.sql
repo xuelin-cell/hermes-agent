@@ -2,10 +2,9 @@
 
 CREATE TABLE IF NOT EXISTS users (
     user_id TEXT PRIMARY KEY,
-    display_name TEXT,
+    masked_phone TEXT,
     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     last_login_at TIMESTAMPTZ NOT NULL
 );
 
@@ -23,7 +22,7 @@ CREATE INDEX IF NOT EXISTS auth_sessions_expires_idx ON auth_sessions(expires_at
 
 CREATE TABLE IF NOT EXISTS tenant_runtime (
     user_id TEXT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
-    state TEXT NOT NULL DEFAULT 'none' CHECK (state IN ('none', 'starting', 'running', 'stopped')),
+    state TEXT NOT NULL CHECK (state IN ('starting', 'running', 'stopped')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     state_changed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     last_activity_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -46,7 +45,6 @@ CREATE TABLE IF NOT EXISTS tenant_credentials (
     user_id TEXT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
     api_key_ciphertext BYTEA,
     container_token_ciphertext BYTEA,
-    encryption_key_id TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     CHECK (api_key_ciphertext IS NOT NULL OR container_token_ciphertext IS NOT NULL)

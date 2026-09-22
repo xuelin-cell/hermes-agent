@@ -99,6 +99,10 @@ HERMES_DASHBOARD_SESSION_TOKEN>`，REST 加 `X-Hermes-Session-Token` ④ `Host` 
 Entry 不重启租户容器，而是原子更新卷内 `.env`；该用户所有已有会话在各自的**下一轮对话开始时**
 复用 Hermes 现有刷新逻辑重建模型客户端。已经执行中的一轮不会中途换 Key。
 
+Entry 平台表只采用以下约定：`users.masked_phone` 保存脱敏手机号；`tenant_runtime.state`
+只使用 `starting`、`running`、`stopped`；`tenant_credentials` 使用固定的
+`MT_CREDENTIAL_KEY` 加密模型 Key 和容器令牌，不保存密钥版本。
+
 ## 运行与维护
 
 | 事 | 怎么做 |
@@ -149,7 +153,7 @@ Entry 不重启租户容器，而是原子更新卷内 `.env`；该用户所有�
 
 1. `hermes serve` 模式**不跑定时任务**（cron ticker 只在 `HERMES_DESKTOP=1` 时启动）。
 2. PostgreSQL 只保存 Entry 平台数据，**不存对话**；对话、记忆、技能和用户文件仍在各用户卷中。
-3. 当前只配置一把凭据主密钥，不提供在线主密钥轮换；更换 `MT_CREDENTIAL_KEY` 前必须另行迁移密文。
+3. 凭据只使用固定的 `MT_CREDENTIAL_KEY`，不提供主密钥轮换。已有加密数据后直接换 Key 会导致旧凭据无法解密；本地测试确需换 Key 时应清理 Entry 凭据、重建租户容器并让用户重新登录，用户卷不删除。
 4. 镜像里没有 LibreOffice / 中文字体 / socat；agent 做 office 转换要加进 Dockerfile（构建层）。
 5. 联网搜索、消息渠道未接。
 6. 一台机器能跑多少用户要实测：`.7` 上单容器空闲约 780 MiB。

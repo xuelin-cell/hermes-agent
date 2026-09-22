@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, call
 
 import pytest
 from aiohttp import web
@@ -82,6 +84,38 @@ async def test_api_key_sync_failure_is_not_marked_and_retries() -> None:
     await manager._sync_api_key(tenant, "key-one")
 
     assert len(http.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_tenant_start_failure_restores_stopped_state() -> None:
+    """容器启动失败后回写 stopped，并保留原始异常。"""
+    settings = Settings()
+    docker = SimpleNamespace(
+        ensure_network=AsyncMock(),
+        connect_network=AsyncMock(),
+        ensure_volume=AsyncMock(return_value=False),
+        inspect_container=AsyncMock(
+            return_value={"Config": {"Image": settings.image}, "State": {"Running": False}}
+        ),
+        start_container=AsyncMock(side_effect=RuntimeError("start failed")),
+    )
+    store = SimpleNamespace(
+        ensure_tenant_token=AsyncMock(return_value="container-token"),
+        get_tenant_context=AsyncMock(
+            return_value=SimpleNamespace(api_key="", endpoint=None, catalog=[])
+        ),
+        set_tenant_state=AsyncMock(),
+        write_audit=AsyncMock(),
+    )
+    manager = TenantManager(settings, docker, store, None)  # type: ignore[arg-type]
+
+    with pytest.raises(RuntimeError, match="start failed"):
+        await manager.ensure_running("user-a")
+
+    assert store.set_tenant_state.await_args_list == [
+        call("user-a", "starting"),
+        call("user-a", "stopped"),
+    ]
 
 
 @pytest.mark.asyncio
