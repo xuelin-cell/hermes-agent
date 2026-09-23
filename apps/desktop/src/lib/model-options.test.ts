@@ -45,7 +45,7 @@ describe('requestModelOptions', () => {
     const restPayload = {
       model: 'profile-default',
       provider: 'openai-codex',
-      providers: [{ models: ['hermes-local'], name: 'Hermes Local vLLM', slug: 'hermes-local' }]
+      providers: [{ models: ['hermes-local'], name: 'UniWork Local vLLM', slug: 'hermes-local' }]
     }
 
     const gateway = {
@@ -67,7 +67,7 @@ describe('requestModelOptions', () => {
     const restPayload = {
       model: 'hermes-local',
       provider: 'hermes-local',
-      providers: [{ models: ['hermes-local'], name: 'Hermes Local vLLM', slug: 'hermes-local' }]
+      providers: [{ models: ['hermes-local'], name: 'UniWork Local vLLM', slug: 'hermes-local' }]
     }
 
     const gateway = {
@@ -159,7 +159,7 @@ describe('requestModelOptions', () => {
     const restPayload = {
       model: 'berry-local',
       provider: 'hermes-local',
-      providers: [{ models: ['berry-local'], name: 'Hermes Local', slug: 'hermes-local' }]
+      providers: [{ models: ['berry-local'], name: 'UniWork Local', slug: 'hermes-local' }]
     }
 
     const request = vi.fn(() => Promise.reject(new Error('gateway request unavailable')))

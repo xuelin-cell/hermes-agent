@@ -80,7 +80,7 @@ function Harness({ messages }: { messages: ThreadMessage[] }) {
   )
 }
 
-const DELIVERY = 'Message from 🤖 Hermes (@hermes): please check the build'
+const DELIVERY = 'Message from 🤖 UniWork (@hermes): please check the build'
 
 describe('inter-agent collapse gate', () => {
   it('collapses a settled reply to an inter-agent delivery', async () => {

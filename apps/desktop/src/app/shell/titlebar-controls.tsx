@@ -11,8 +11,10 @@ import { Tip, TipKeybindLabel } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
 import { compactNumber } from '@/lib/format'
 import { triggerHaptic } from '@/lib/haptics'
+import { Bug } from '@/lib/icons'
 import { formatModifierToken } from '@/lib/keybinds/combo'
 import { cn } from '@/lib/utils'
+import { $developerMode } from '@/store/developer-mode'
 import { $hapticsMuted, toggleHapticsMuted } from '@/store/haptics'
 import { toggleHud } from '@/store/hud'
 import {
@@ -134,6 +136,7 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
   const navigate = useNavigate()
   const location = useLocation()
   const modHeld = useModifierHeld()
+  const developerMode = useStore($developerMode)
   const hapticsMuted = useStore($hapticsMuted)
   const fileBrowserOpen = useStore($fileBrowserOpen)
   const panesFlipped = useStore($panesFlipped)
@@ -204,6 +207,16 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
 
   // Static system tools — always pinned to the screen's right edge.
   const systemTools: TitlebarTool[] = [
+    ...(developerMode
+      ? [
+          {
+            className: 'pointer-events-none text-red-500',
+            icon: <Bug className="size-4 text-red-500" />,
+            id: 'developer-mode-indicator',
+            label: t.titlebar.developerModeEnabled
+          }
+        ]
+      : []),
     {
       className: 'group/tool',
       // Hover + held ⌘/Ctrl morphs the glyph into its reset form (see

@@ -215,8 +215,8 @@ test('sandbox marker round-trips through the userData file', () => {
 })
 
 test('buildIcaclsGrantArgs targets ALL APPLICATION PACKAGES with inherited RX', () => {
-  assert.deepEqual(buildIcaclsGrantArgs('C:\\Hermes\\win-unpacked'), [
-    'C:\\Hermes\\win-unpacked',
+  assert.deepEqual(buildIcaclsGrantArgs('C:\\UniWork\\win-unpacked'), [
+    'C:\\UniWork\\win-unpacked',
     '/grant',
     `*${ALL_APPLICATION_PACKAGES_SID}:(OI)(CI)(RX)`,
     '/T',
@@ -230,7 +230,7 @@ test('grantAllApplicationPackagesAcl is a no-op off Windows and reports exec fai
 
   const calls: Array<{ file: string; args: readonly string[] }> = []
 
-  const ok = grantAllApplicationPackagesAcl('C:\\Hermes', {
+  const ok = grantAllApplicationPackagesAcl('C:\\UniWork', {
     platform: 'win32',
     execFileSync(file, args) {
       calls.push({ file, args })
@@ -242,9 +242,9 @@ test('grantAllApplicationPackagesAcl is a no-op off Windows and reports exec fai
   assert.deepEqual(ok, { ok: true })
   assert.equal(calls.length, 1)
   assert.equal(calls[0]?.file, 'icacls')
-  assert.deepEqual(calls[0]?.args, buildIcaclsGrantArgs('C:\\Hermes'))
+  assert.deepEqual(calls[0]?.args, buildIcaclsGrantArgs('C:\\UniWork'))
 
-  const failed = grantAllApplicationPackagesAcl('C:\\Hermes', {
+  const failed = grantAllApplicationPackagesAcl('C:\\UniWork', {
     platform: 'win32',
     execFileSync() {
       throw new Error('access denied')

@@ -45,7 +45,7 @@ function stageWindowsBootstrapRepository(appOutDir, desktopRoot) {
   } finally {
     fs.rmSync(archive, { force: true })
   }
-  console.log(`[after-pack] staged self-contained Hermes source: ${destination}`)
+  console.log(`[after-pack] staged self-contained UniWork source: ${destination}`)
   return destination
 }
 
@@ -110,7 +110,7 @@ function stageWindowsPythonRuntime(appOutDir, desktopRoot) {
 
 export default async function afterPack(context) {
   if (context.electronPlatformName !== 'win32') return
-  const productName = context.packager?.appInfo?.productFilename || 'Hermes'
+  const productName = context.packager?.appInfo?.productFilename || 'UniWork'
   const desktopRoot = path.resolve(import.meta.dirname, '..')
   stageWindowsBootstrapTools(context.appOutDir)
   stageWindowsBootstrapInstaller(context.appOutDir, desktopRoot)
@@ -119,7 +119,7 @@ export default async function afterPack(context) {
   try {
     await stampExeIdentity(path.join(context.appOutDir, `${productName}.exe`), desktopRoot)
   } catch (err) {
-    console.warn(`[after-pack] exe identity stamp failed (${err.message}); Hermes.exe keeps the stock Electron icon`)
+    console.warn(`[after-pack] exe identity stamp failed (${err.message}); UniWork.exe keeps the stock Electron icon`)
   }
 }
 

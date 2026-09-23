@@ -77,7 +77,7 @@ export function enumerationFailureNote(platform: string, env: NodeJS.ProcessEnv,
   if (env.HYPRLAND_INSTANCE_SIGNATURE) {
     return (
       'Could not enumerate windows: Hyprland did not answer on its IPC socket. ' +
-      'Check that `hyprctl clients` works from the same session Hermes is ' +
+      'Check that `hyprctl clients` works from the same session UniWork is ' +
       'running in.'
     )
   }
@@ -88,7 +88,7 @@ export function enumerationFailureNote(platform: string, env: NodeJS.ProcessEnv,
     return (
       'Could not enumerate windows: this is a Wayland session, and Wayland does ' +
       'not let an application see other applications\u2019 windows. Log in to an ' +
-      'X11/Xorg session, or run Hermes under XWayland with DISPLAY set.'
+      'X11/Xorg session, or run UniWork under XWayland with DISPLAY set.'
     )
   }
 
@@ -291,7 +291,7 @@ export async function readWindowBelow(
   if (process.platform === 'darwin' && !titlesAvailable) {
     result.note =
       'Window titles are hidden: macOS reveals other apps\u2019 titles only with the ' +
-      'Screen Recording permission, which Hermes does not request for this.'
+      'Screen Recording permission, which UniWork does not request for this.'
   }
 
   return result

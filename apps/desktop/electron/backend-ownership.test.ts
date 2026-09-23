@@ -254,7 +254,7 @@ test('backend identity check matches only serve and dashboard invocation shapes'
   assert.equal(backendCommandMatches('/venv/bin/hermes serve --port 0'), true)
   assert.equal(backendCommandMatches('python -m hermes_cli.main dashboard --no-open'), true)
   assert.equal(backendCommandMatches('/venv/bin/hermes --profile work serve --port 0'), true)
-  assert.equal(backendCommandMatches('"C:\\Hermes Runtime\\hermes.exe" dashboard --no-open'), true)
+  assert.equal(backendCommandMatches('"C:\\UniWork Runtime\\hermes.exe" dashboard --no-open'), true)
   assert.equal(backendCommandMatches('hermes chat --query serve'), false)
   assert.equal(backendCommandMatches('unrelated dashboard'), false)
 })

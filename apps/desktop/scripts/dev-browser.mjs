@@ -30,7 +30,7 @@ function pythonCandidates() {
 const python = pythonCandidates().find(candidate => fs.existsSync(candidate))
 
 if (!python) {
-  throw new Error('No Hermes Python environment found. Build the desktop runtime once or set HERMES_BROWSER_DEV_PYTHON.')
+  throw new Error('No UniWork Python environment found. Build the desktop runtime once or set HERMES_BROWSER_DEV_PYTHON.')
 }
 
 const children = new Set()
@@ -55,7 +55,7 @@ function shutdown(code = 0) {
 process.on('SIGINT', () => shutdown())
 process.on('SIGTERM', () => shutdown())
 
-console.log(`Hermes browser backend: http://127.0.0.1:${PORT}`)
+console.log(`UniWork browser backend: http://127.0.0.1:${PORT}`)
 launch(python, ['-m', 'hermes_cli.main', 'serve', '--host', '127.0.0.1', '--port', PORT, '--skip-build'], {
   cwd: REPO_ROOT,
   env: {

@@ -108,7 +108,7 @@ describe('parseVenvBlockerScanOutput', () => {
           {
             pid: 47484,
             name: 'python.exe',
-            cmdline: 'C:\\Hermes\\venv\\Scripts\\python.exe -m http.server 8766 --directory C',
+            cmdline: 'C:\\UniWork\\venv\\Scripts\\python.exe -m http.server 8766 --directory C',
             kind: 'local-preview',
             safeToStop: true,
             label: 'Example Preview',
@@ -128,7 +128,7 @@ describe('parseVenvBlockerScanOutput', () => {
     assert.deepEqual(o.result.processes[0], {
       pid: 47484,
       name: 'python.exe',
-      cmdline: 'C:\\Hermes\\venv\\Scripts\\python.exe -m http.server 8766 --directory C',
+      cmdline: 'C:\\UniWork\\venv\\Scripts\\python.exe -m http.server 8766 --directory C',
       kind: 'local-preview',
       safeToStop: true,
       label: 'Example Preview',
@@ -332,12 +332,12 @@ describe('stopSafeVenvBlockers', () => {
         ]
       },
       exec,
-      () => 'C:\\Hermes\\venv\\Scripts\\python.exe'
+      () => 'C:\\UniWork\\venv\\Scripts\\python.exe'
     )
 
     assert.deepEqual(calls, [
       {
-        command: 'C:\\Hermes\\venv\\Scripts\\python.exe',
+        command: 'C:\\UniWork\\venv\\Scripts\\python.exe',
         args: ['-m', 'hermes_cli._scan_venv_blockers', '--terminate-safe', '47484', '1722798000.25']
       }
     ])

@@ -260,7 +260,7 @@ describe('toChatMessages', () => {
     // How a turn sent to a natively-vision-capable model comes back out of the
     // session store: a backtick-quoted ref (the path has spaces) and the
     // `[screenshot]` stand-in left by flattening the parts list.
-    const ref = '@image:`/Users/me/Library/Application Support/Hermes/composer-images/a.png`'
+    const ref = '@image:`/Users/me/Library/Application Support/UniWork/composer-images/a.png`'
 
     const [message] = toChatMessages([
       {

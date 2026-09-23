@@ -22,7 +22,7 @@ function createTempGitRepo() {
     git('init', '--quiet')
     git('config', 'commit.gpgSign', 'false')
     git('config', 'core.hooksPath', '.git/no-hooks')
-    git('config', 'user.name', 'Hermes Test')
+    git('config', 'user.name', 'UniWork Test')
     git('config', 'user.email', 'hermes@example.invalid')
 
     return { cwd, git }

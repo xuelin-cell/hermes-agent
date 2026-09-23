@@ -72,7 +72,7 @@ chmod 0640 "$HTPASSWD_FILE"
 
 cat >"$SERVICE_FILE" <<EOF
 [Unit]
-Description=Hermes Desktop Web backend
+Description=UniWork Desktop Web backend
 After=network-online.target
 Wants=network-online.target
 
@@ -101,7 +101,7 @@ location = /hermes {
 }
 
 location = /hermes/api/ws {
-    auth_basic "Hermes Desktop";
+    auth_basic "UniWork";
     auth_basic_user_file $HTPASSWD_FILE;
     proxy_http_version 1.1;
     proxy_set_header Upgrade \$http_upgrade;
@@ -117,7 +117,7 @@ location = /hermes/api/ws {
 }
 
 location ^~ /hermes/__hermes_backend/ {
-    auth_basic "Hermes Desktop";
+    auth_basic "UniWork";
     auth_basic_user_file $HTPASSWD_FILE;
     proxy_set_header X-Hermes-Session-Token $backend_token;
     proxy_set_header Host 127.0.0.1:9120;
@@ -133,7 +133,7 @@ location ^~ /hermes/__hermes_backend/ {
 }
 
 location ^~ /hermes/ {
-    auth_basic "Hermes Desktop";
+    auth_basic "UniWork";
     auth_basic_user_file $HTPASSWD_FILE;
     alias $FRONTEND_ROOT/current/;
     try_files \$uri \$uri/ /hermes/index.html;
