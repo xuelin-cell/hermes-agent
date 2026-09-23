@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type * as HermesApi from '@/hermes'
 import { queryClient } from '@/lib/query-client'
+import { setDeveloperMode } from '@/store/developer-mode'
 
 const getSkills = vi.fn()
 const getToolsets = vi.fn()
@@ -82,6 +83,7 @@ async function renderSkills() {
 }
 
 beforeEach(() => {
+  setDeveloperMode(true)
   getSkills.mockResolvedValue([])
   getToolsets.mockResolvedValue([toolset()])
   setToolsetEnabled.mockResolvedValue({ ok: true, name: 'web', enabled: false })
@@ -110,6 +112,16 @@ afterEach(() => {
 // (2× in a row on PR #93612, plus a main run the same hour). Give this file
 // headroom; the tests are not slow individually.
 describe('SkillsView toolset management', { timeout: 60_000 }, () => {
+  it('hides the Tools tab and redirects its deep link when developer mode is off', async () => {
+    setDeveloperMode(false)
+
+    await renderSkills()
+
+    expect(screen.queryByRole('button', { name: /Tools/ })).toBeNull()
+    expect((await screen.findAllByRole('button', { name: /Skills/ })).length).toBeGreaterThan(0)
+    expect(screen.queryByRole('switch', { name: 'Turn Web Search toolset off' })).toBeNull()
+  })
+
   it('renders a switch for each toolset and toggles it off', async () => {
     await renderSkills()
 
@@ -297,16 +309,12 @@ describe('SkillsView toolset management', { timeout: 60_000 }, () => {
     )
   })
 
-  it('mounts the hub iframe lazily and keeps it (hidden) across tab switches', async () => {
-    // On a non-Skills tab the docs-site iframe must not exist at all — an
-    // eagerly mounted hub is exactly the Capabilities lag bug.
+  it('renders the native market only on the Skills tab', async () => {
     await renderSkills() // ?tab=toolsets
     await screen.findByRole('switch', { name: 'Turn Web Search toolset off' })
-    expect(document.querySelector('iframe')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Skill Market' })).toBeNull()
     cleanup()
 
-    // Embedded mode drives tabs through local state (the route hooks are
-    // mocked here), starting on Skills: the picker mounts with the tab.
     const { SkillsView } = await import('./index')
     await act(async () => {
       render(
@@ -318,19 +326,14 @@ describe('SkillsView toolset management', { timeout: 60_000 }, () => {
       )
     })
 
-    const iframe = document.querySelector('iframe')
-    expect(iframe).toBeTruthy()
-    expect(iframe!.closest('section')!.classList.contains('hidden')).toBe(false)
+    expect(screen.getByRole('button', { name: 'Recommended' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Skill Market' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Installed/ })).toBeTruthy()
 
-    // Switch to Tools → the iframe STAYS mounted (no docs-site reload on the
-    // next visit) but its section is fully hidden, so nothing from the hub
-    // can paint over the toolsets UI.
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /Tools/ }))
     })
-    const kept = document.querySelector('iframe')
-    expect(kept).toBeTruthy()
-    expect(kept!.closest('section')!.classList.contains('hidden')).toBe(true)
+    expect(screen.queryByRole('button', { name: 'Skill Market' })).toBeNull()
   })
 
   it('shows a vision explainer that deep-links to Settings → Models', async () => {

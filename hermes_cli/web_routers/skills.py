@@ -14,9 +14,12 @@ working.
 
 import asyncio  # noqa: F401 — used by handlers
 import logging
+import os
 from typing import Optional  # noqa: F401
 
+import httpx
 from fastapi import APIRouter, HTTPException  # noqa: F401
+from pydantic import BaseModel
 
 from hermes_cli.web_deps import late, LateState
 from hermes_cli.web_models import (
@@ -53,6 +56,94 @@ _SKILL_HUB_SOURCE_LABELS = LateState("_SKILL_HUB_SOURCE_LABELS")
 # definition in web_server.py). LateState supports ``with``-blocks, so this
 # is the live lock object, not a frozen import-time copy.
 _CONFIG_MUTATION_LOCK = LateState("_CONFIG_MUTATION_LOCK")
+
+_UNIWORK_MARKET_BASE = "https://maas.ai-yuanjing.com/app/gateway/wanwu"
+_UNIWORK_RECOMMENDED_BASE = "https://maas.ai-yuanjing.com/app/gateway"
+
+
+def _uniwork_base(env_name: str, fallback: str) -> str:
+    return (os.environ.get(env_name) or fallback).rstrip("/")
+
+
+async def _uniwork_get(base: str, path: str, params: Optional[dict] = None):
+    """Proxy the public UniWork skill catalog without exposing credentials."""
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=20.0) as client:
+            response = await client.get(f"{base}{path}", params=params)
+            response.raise_for_status()
+            payload = response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        raise HTTPException(status_code=502, detail=f"UniWork skill service unavailable: {exc}") from exc
+
+    if isinstance(payload, dict) and ("code" in payload or ("msg" in payload and "data" in payload)):
+        if payload.get("code") not in (0, None):
+            raise HTTPException(status_code=502, detail=str(payload.get("msg") or "UniWork skill service error"))
+        return payload.get("data")
+    return payload
+
+
+class UniWorkSkillInstall(BaseModel):
+    id: str
+    name: Optional[str] = None
+    download_url: str
+
+
+@hub_router.get("/api/skills/market/categories")
+async def uniwork_market_categories():
+    return await _uniwork_get(
+        _uniwork_base("UNIWORK_SKILL_MARKET_BASE_URL", _UNIWORK_MARKET_BASE),
+        "/api/skills/categories",
+    )
+
+
+@hub_router.get("/api/skills/market/list")
+async def uniwork_market_list(category: str = "all", page: int = 1, page_size: int = 100):
+    return await _uniwork_get(
+        _uniwork_base("UNIWORK_SKILL_MARKET_BASE_URL", _UNIWORK_MARKET_BASE),
+        "/api/skills/list",
+        {"category": category, "page": page, "page_size": min(max(page_size, 1), 100)},
+    )
+
+
+@hub_router.get("/api/skills/recommended/categories")
+async def uniwork_recommended_categories():
+    return await _uniwork_get(
+        _uniwork_base("UNIWORK_RECOMMENDED_SKILLS_BASE_URL", _UNIWORK_RECOMMENDED_BASE),
+        "/uniwork/skill-categories",
+    )
+
+
+@hub_router.get("/api/skills/recommended/list")
+async def uniwork_recommended_skills():
+    return await _uniwork_get(
+        _uniwork_base("UNIWORK_RECOMMENDED_SKILLS_BASE_URL", _UNIWORK_RECOMMENDED_BASE),
+        "/uniwork/recommended-skills",
+    )
+
+
+@hub_router.post("/api/skills/market/install")
+async def install_uniwork_market_skill(body: UniWorkSkillInstall, profile: Optional[str] = None):
+    """Install through Hermes' normal URL installer, including quarantine and scan."""
+    url = body.download_url.strip()
+    if url.startswith("/uniwork/skills/"):
+        url = f'{_uniwork_base("UNIWORK_RECOMMENDED_SKILLS_BASE_URL", _UNIWORK_RECOMMENDED_BASE)}{url}'
+    if not url.startswith("https://"):
+        raise HTTPException(status_code=400, detail="A secure skill download URL is required")
+    label = (body.name or body.id).strip()
+    if not label:
+        raise HTTPException(status_code=400, detail="skill name is required")
+    action = _hub_action_name("install", label)
+    try:
+        proc = _spawn_hermes_action(
+            _profile_cli_args(profile) + ["skills", "install", url, "--yes"],
+            action,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        _log.exception("Failed to spawn UniWork skill install")
+        raise HTTPException(status_code=500, detail=f"Failed to install skill: {exc}") from exc
+    return {"ok": True, "pid": proc.pid, "name": action}
 
 
 @hub_router.post("/api/skills/hub/install")
@@ -441,7 +532,9 @@ async def get_skills(profile: Optional[str] = None):
         with _profile_scope(profile):
             config = load_config()
             disabled = get_disabled_skills(config)
-            skills = _find_all_skills(skip_disabled=True)
+            # The Installed tab manages disabled skills too; omitting them
+            # makes a toggle-off row disappear and leaves no way to re-enable it.
+            skills = _find_all_skills(skip_disabled=False)
             usage = load_usage()
             # Set-based provenance (same classification as skill_usage.provenance,
             # without a per-skill manifest read): hub > bundled > agent, where

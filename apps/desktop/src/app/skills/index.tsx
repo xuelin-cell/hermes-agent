@@ -32,6 +32,7 @@ import { queryClient } from '@/lib/query-client'
 import { invalidateSlashCompletions } from '@/lib/slash-completion-cache'
 import { normalize } from '@/lib/text'
 import { useStoreSelector } from '@/lib/use-session-slice'
+import { $developerMode } from '@/store/developer-mode'
 import { $gateway, activeGatewayConnectionId } from '@/store/gateway'
 import { notify, notifyError } from '@/store/notifications'
 import { $activeGatewayProfile, normalizeProfileKey } from '@/store/profile'
@@ -61,8 +62,8 @@ import { TerminalBackendPanel } from '../settings/terminal-backend-panel'
 import { ToolsetConfigPanel } from '../settings/toolset-config-panel'
 import type { SetStatusbarItemGroup } from '../shell/statusbar-controls'
 
-import { EmbeddedHubPicker } from './embedded-hub-picker'
 import { McpTab } from './mcp-tab'
+import { SkillMarket } from './skill-market'
 import { $skillsSortDesc, $toolsetsSortDesc } from './store'
 
 // 'hub' is gone as a top-level tab — the Skills Hub browser lives inside the
@@ -210,27 +211,27 @@ export function SkillsView({
   ...props
 }: SkillsViewProps) {
   const { t } = useI18n()
+  const developerMode = useStore($developerMode)
   // Both hooks run unconditionally (rules of hooks); embedded picks the local
   // one so tab clicks inside a dialog don't rewrite the page URL.
   const routeTab = useRouteEnumParam('tab', SKILLS_MODES, 'skills')
   const localTab = useState<(typeof SKILLS_MODES)[number]>('skills')
-  const [mode, setMode] = embedded ? localTab : routeTab
+  const [requestedMode, setMode] = embedded ? localTab : routeTab
+  const mode = !developerMode && requestedMode === 'toolsets' ? 'skills' : requestedMode
+
+  // A bookmarked Tools route must not leave hidden content mounted after
+  // developer mode is turned off. Render Skills immediately, then normalize
+  // the route/local tab state so the URL and visible tab agree.
+  useEffect(() => {
+    if (!developerMode && requestedMode === 'toolsets') {
+      setMode('skills')
+    }
+  }, [developerMode, requestedMode, setMode])
   // $gateway only feeds the MCP tab — gate the subscription so Skills/Toolsets
   // tabs don't re-render on connect/disconnect/reconnect.
   const gateway = useStoreSelector($gateway, g => (mode === 'mcp' ? g : null))
 
   const [query, setQuery] = useState('')
-
-  // The hub picker hosts a full docs-site iframe — the single most expensive
-  // thing on this page. It mounts lazily (first time the Skills tab is shown)
-  // and then STAYS mounted but hidden across tab switches, so bouncing to
-  // Tools/MCP and back never reloads the site. Derived-state pattern: flips
-  // once, during render, never back.
-  const [hubMounted, setHubMounted] = useState(mode === 'skills')
-
-  if (mode === 'skills' && !hubMounted) {
-    setHubMounted(true)
-  }
 
   // Capabilities scope selector: which profile's Skills/Tools/MCP config we're
   // editing — and on WHICH gateway. A profile belongs to one gateway, so on a
@@ -720,7 +721,7 @@ export function SkillsView({
 
     return (profilesData?.profiles ?? []).map(p => ({
       key: p.name,
-      label: p.is_default ? 'Hermes (default)' : p.name,
+      label: p.is_default ? 'UniWork (default)' : p.name,
       value: p.name
     }))
   }, [multiConnection, profilesData, rosterData])
@@ -777,7 +778,9 @@ export function SkillsView({
       searchValue={query}
       tabs={[
         { id: 'skills', label: t.skills.tabSkills, meta: skills?.length ?? null },
-        { id: 'toolsets', label: t.skills.tabToolsets, meta: toolsets ? visibleToolsetCount(toolsets) : null },
+        ...(developerMode
+          ? [{ id: 'toolsets', label: t.skills.tabToolsets, meta: toolsets ? visibleToolsetCount(toolsets) : null }]
+          : []),
         { id: 'mcp', label: t.skills.tabMcp }
       ]}
     >
@@ -809,15 +812,8 @@ export function SkillsView({
             ) : !skills || !toolsets ? (
               <PageLoader label={t.skills.loading} />
             ) : mode === 'skills' ? (
-              // Installed skills on top, the Skills Hub browser underneath —
-              // discovery sits with management. The list region keeps a floor
-              // (min-h-40, on the wrapper above) so a tall hub viewport or a
-              // short window shrinks the HUB, never the list: the sort strip
-              // and "changes apply" footer can no longer be starved to 0px
-              // and painted over by the hub header.
-              visibleSkills.length === 0 ? (
-                capabilityEmpty('skills')
-              ) : (
+              <SkillMarket
+                installed={visibleSkills.length === 0 ? capabilityEmpty('skills') : (
                 <MasterDetail pane={skillEditorPane} resizeId="capabilities-split" split="wide">
                   <ListColumn
                     header={
@@ -865,7 +861,11 @@ export function SkillsView({
                     )}
                   </DetailColumn>
                 </MasterDetail>
-              )
+                )}
+                installedCount={skills.length}
+                installedNames={installedSkillNames}
+                profile={scopeProfile}
+              />
             ) : visibleToolsets.length === 0 ? (
               capabilityEmpty('tools')
             ) : (
@@ -919,15 +919,6 @@ export function SkillsView({
               </MasterDetail>
             )}
           </div>
-          {/* Hub picker OUTSIDE the tab ternary: it lazy-mounts the first time
-              Skills is shown, then stays mounted (hidden) across Tools/MCP so
-              the docs-site iframe never reloads on a tab bounce. No scope key
-              on purpose — the picker fetches nothing; scope rides the
-              `profile` prop into each install call, and remounting on scope
-              change would reload the whole site for no data benefit. */}
-          {hubMounted && (
-            <EmbeddedHubPicker hidden={mode !== 'skills'} installedNames={installedSkillNames} profile={scopeProfile} />
-          )}
         </div>
       </div>
       {archiveTarget && (
