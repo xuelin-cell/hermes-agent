@@ -21,7 +21,7 @@ import {
   revokePairing,
   updateMessagingPlatform
 } from '@/hermes'
-import { type Translations, useI18n } from '@/i18n'
+import { type Locale, type Translations, useI18n } from '@/i18n'
 import { openExternalLink } from '@/lib/external-link'
 import { ExternalLink, Save, Trash2 } from '@/lib/icons'
 import { normalize } from '@/lib/text'
@@ -47,6 +47,33 @@ interface MessagingViewProps extends React.ComponentProps<'section'> {
 }
 
 type EditMap = Record<string, Record<string, string>>
+
+// Keep every gateway adapter available underneath, but focus UniWork's
+// configuration page on messaging platforms commonly available in mainland
+// China. Existing hidden-platform configurations and sessions still work.
+const MAINLAND_MESSAGING_PLATFORM_IDS = new Set([
+  'dingtalk',
+  'feishu',
+  'qqbot',
+  'wecom',
+  'wecom_callback',
+  'weixin',
+  'yuanbao'
+])
+
+const CHINESE_PLATFORM_NAMES: Record<string, string> = {
+  dingtalk: '钉钉',
+  feishu: '飞书',
+  qqbot: 'QQ Bot',
+  wecom: '企业微信群机器人',
+  wecom_callback: '企业微信应用',
+  weixin: '微信',
+  yuanbao: '腾讯元宝'
+}
+
+export function localizedPlatformName(platform: MessagingPlatformInfo, locale: Locale): string {
+  return locale === 'zh' || locale === 'zh-hant' ? CHINESE_PLATFORM_NAMES[platform.id] || platform.name : platform.name
+}
 
 const PILL_TONE: Record<StatusTone, string> = {
   good: 'bg-primary/10 text-primary',
@@ -126,7 +153,7 @@ function fieldCopy(field: MessagingEnvVarInfo, m: Translations['messaging']) {
 }
 
 export function MessagingView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...props }: MessagingViewProps) {
-  const { t } = useI18n()
+  const { locale, t } = useI18n()
   const m = t.messaging
   // Shared settings "Applies to" scope, request-shaped (undefined → follow
   // the active profile; the API helpers treat null as "target primary").
@@ -157,7 +184,11 @@ export function MessagingView({ setStatusbarItemGroup: _setStatusbarItemGroup, .
 
       try {
         const result = await getMessagingPlatforms(scopeProfile)
-        setPlatforms(result.platforms)
+        setPlatforms(
+          result.platforms
+            .filter(platform => MAINLAND_MESSAGING_PLATFORM_IDS.has(platform.id))
+            .map(platform => ({ ...platform, name: localizedPlatformName(platform, locale) }))
+        )
       } catch (err) {
         if (!silent) {
           notifyError(err, m.loadFailed)
@@ -168,7 +199,7 @@ export function MessagingView({ setStatusbarItemGroup: _setStatusbarItemGroup, .
         }
       }
     },
-    [m, scopeProfile]
+    [locale, m, scopeProfile]
   )
 
   // Pairing has its own signal. platforms.changed tracks connect/disconnect
@@ -820,11 +851,11 @@ const PLATFORM_INTRO: Record<string, string> = {
     'On your Mattermost server, create a bot account or personal access token, then paste the server URL and token here.',
   matrix: 'Sign in to your homeserver with the bot account, then copy the access token, user ID, and homeserver URL.',
   signal:
-    'Run a signal-cli REST bridge somewhere reachable, then point Hermes at the URL and the registered phone number.',
+    'Run a signal-cli REST bridge somewhere reachable, then point UniWork at the URL and the registered phone number.',
   whatsapp:
-    'Start the WhatsApp bridge that ships with Hermes, scan the QR code on first run, then enable the platform.',
+    'Start the WhatsApp bridge that ships with UniWork, scan the QR code on first run, then enable the platform.',
   bluebubbles:
-    'Run BlueBubbles Server on a Mac with iMessage, expose its API, then point Hermes at the URL with the server password.',
+    'Run BlueBubbles Server on a Mac with iMessage, expose its API, then point UniWork at the URL with the server password.',
   homeassistant:
     'In Home Assistant, open your profile and create a long-lived access token. Paste it here along with your HA URL.',
   email:
@@ -838,10 +869,10 @@ const PLATFORM_INTRO: Record<string, string> = {
   wecom_callback:
     'Set up a WeCom self-built app, expose its callback URL, and provide the corp ID, secret, agent ID, and AES key.',
   weixin:
-    "Run `hermes gateway setup`, select Weixin, then scan and confirm the QR code with a personal WeChat account. Hermes connects through Tencent's iLink Bot API and saves the credentials.",
+    "Run `hermes gateway setup`, select Weixin, then scan and confirm the QR code with a personal WeChat account. UniWork connects through Tencent's iLink Bot API and saves the credentials.",
   qqbot: 'Register an app on the QQ Open Platform (q.qq.com) and copy the App ID and Client Secret.',
   api_server:
-    'Expose Hermes as an OpenAI-compatible API. Set an auth key, then point Open WebUI / LobeChat / etc. at the host:port.',
+    'Expose UniWork as an OpenAI-compatible API. Set an auth key, then point Open WebUI / LobeChat / etc. at the host:port.',
   webhook:
     'Run an HTTP server that other tools (GitHub, GitLab, custom apps) can POST to. Use the secret to verify signatures.'
 }
