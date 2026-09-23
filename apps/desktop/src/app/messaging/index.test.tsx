@@ -57,15 +57,15 @@ function platform(patch: Partial<MessagingPlatformInfo> = {}): MessagingPlatform
     enabled: false,
     env_vars: [],
     gateway_running: true,
-    id: 'teams',
-    name: 'Microsoft Teams',
+    id: 'dingtalk',
+    name: 'DingTalk',
     state: 'disabled',
     ...patch
   }
 }
 
 beforeEach(() => {
-  updateMessagingPlatform.mockResolvedValue({ ok: true, platform: 'teams' })
+  updateMessagingPlatform.mockResolvedValue({ ok: true, platform: 'dingtalk' })
   getPairing.mockResolvedValue({ approved: [], pending: [] })
 })
 
@@ -100,6 +100,30 @@ describe('MessagingView profile scope', () => {
     await waitFor(() => expect(getMessagingPlatforms).toHaveBeenCalledWith(undefined))
     expect(getPairing).toHaveBeenCalledWith(undefined)
   })
+
+  it('shows only mainland-China platforms while retaining the backend catalog', async () => {
+    getMessagingPlatforms.mockResolvedValue({
+      platforms: [platform(), platform({ id: 'discord', name: 'Discord' })]
+    })
+
+    await renderMessaging()
+
+    expect((await screen.findAllByText('DingTalk')).length).toBeGreaterThan(0)
+    expect(screen.queryByText('Discord')).toBeNull()
+  })
+})
+
+describe('localizedPlatformName', () => {
+  it('uses Chinese names only for Chinese UI locales', async () => {
+    const { localizedPlatformName } = await import('./index')
+    const dingtalk = platform()
+    const wecom = platform({ id: 'wecom', name: 'WeCom (group bot)' })
+
+    expect(localizedPlatformName(dingtalk, 'zh')).toBe('钉钉')
+    expect(localizedPlatformName(wecom, 'zh-hant')).toBe('企业微信群机器人')
+    expect(localizedPlatformName(dingtalk, 'en')).toBe('DingTalk')
+    expect(localizedPlatformName(wecom, 'en')).toBe('WeCom (group bot)')
+  })
 })
 
 describe('MessagingView setup-guide link', () => {
@@ -112,12 +136,12 @@ describe('MessagingView setup-guide link', () => {
 
     await renderMessaging()
 
-    expect((await screen.findAllByText('Microsoft Teams')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('DingTalk')).length).toBeGreaterThan(0)
     expect(screen.queryByText('Open setup guide')).toBeNull()
   })
 
   it('opens a real docs URL through the validated external opener', async () => {
-    const docsUrl = 'https://hermes-agent.nousresearch.com/docs/user-guide/messaging/teams'
+    const docsUrl = 'https://open.dingtalk.com/document/orgapp/the-robot-development-process'
     getMessagingPlatforms.mockResolvedValue({ platforms: [platform({ docs_url: docsUrl })] })
 
     await renderMessaging()
@@ -134,7 +158,7 @@ describe('MessagingView setup-guide link', () => {
 describe('MessagingView pairing', () => {
   const pendingUser = {
     age_minutes: 3,
-    platform: 'teams',
+    platform: 'dingtalk',
     request_id: 'a1b2c3d4e5f60718',
     user_id: '7712345',
     user_name: 'Bee'
@@ -155,7 +179,7 @@ describe('MessagingView pairing', () => {
       fireEvent.click(approve)
     })
 
-    await waitFor(() => expect(approvePairing).toHaveBeenCalledWith('teams', 'a1b2c3d4e5f60718', undefined))
+    await waitFor(() => expect(approvePairing).toHaveBeenCalledWith('dingtalk', 'a1b2c3d4e5f60718', undefined))
   })
 
   it('restores the pending row when approval fails', async () => {
@@ -183,7 +207,7 @@ describe('MessagingView pairing', () => {
 
     await renderMessaging()
 
-    expect((await screen.findAllByText('Microsoft Teams')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('DingTalk')).length).toBeGreaterThan(0)
     expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
     expect(screen.queryByText(/Pending requests/)).toBeNull()
   })
@@ -195,7 +219,7 @@ describe('MessagingView pairing', () => {
 
     await renderMessaging()
 
-    expect((await screen.findAllByText('Microsoft Teams')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('DingTalk')).length).toBeGreaterThan(0)
     expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
   })
 
