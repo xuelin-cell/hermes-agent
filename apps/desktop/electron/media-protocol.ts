@@ -94,7 +94,7 @@ export function remoteMediaEndpoint(baseUrl: string, filePath: string, profile?:
   const url = new URL(`${normalizedBase}/api/files/stream`)
 
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    throw new Error(`Unsupported Hermes backend URL protocol: ${url.protocol}`)
+    throw new Error(`Unsupported UniWork backend URL protocol: ${url.protocol}`)
   }
 
   url.searchParams.set('path', filePath)

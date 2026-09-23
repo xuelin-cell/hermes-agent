@@ -124,7 +124,7 @@ test('adoptServedDashboardToken refuses a foreign token when our child is dead',
       adoptServedDashboardToken('http://127.0.0.1:9120', 'spawn-token', {
         childAlive: () => false,
         fetchText: async () => '<script>window.__HERMES_SESSION_TOKEN__="squatter-token";</script>',
-        label: 'Hermes backend for profile "work"'
+        label: 'UniWork backend for profile "work"'
       }),
     /profile "work".*process we did not spawn/
   )

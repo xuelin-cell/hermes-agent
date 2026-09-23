@@ -341,7 +341,7 @@ describe('startWorkInRepo remote capability gate (#81724)', () => {
     desktopGit.mockReturnValue({
       worktreeAdd: vi.fn(async () => {
         throw new Error(
-          'Expected JSON from https://vps/api/git/worktree/add but got HTML (status 404). The endpoint is likely missing on the Hermes backend.'
+          'Expected JSON from https://vps/api/git/worktree/add but got HTML (status 404). The endpoint is likely missing on the UniWork backend.'
         )
       })
     } as never)

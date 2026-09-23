@@ -187,7 +187,7 @@ describe('ProviderConfigPanel', () => {
   })
 
   it('shows an inline error with retry when the load fails, then recovers', async () => {
-    getMemoryProviderConfig.mockRejectedValueOnce(new Error('Timed out connecting to Hermes backend'))
+    getMemoryProviderConfig.mockRejectedValueOnce(new Error('Timed out connecting to UniWork backend'))
 
     await renderPanel()
 

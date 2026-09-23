@@ -42,7 +42,7 @@ function createGitRepo(root: string): string {
   fs.mkdirSync(repo, { recursive: true })
   execFileSync('git', ['init', '--initial-branch=main'], { cwd: repo })
   execFileSync('git', ['config', 'user.email', 'e2e@example.com'], { cwd: repo })
-  execFileSync('git', ['config', 'user.name', 'Hermes E2E'], { cwd: repo })
+  execFileSync('git', ['config', 'user.name', 'UniWork E2E'], { cwd: repo })
   fs.writeFileSync(path.join(repo, 'README.md'), '# E2E repo\n', 'utf8')
   execFileSync('git', ['add', 'README.md'], { cwd: repo })
   execFileSync('git', ['commit', '-m', 'initial'], { cwd: repo })

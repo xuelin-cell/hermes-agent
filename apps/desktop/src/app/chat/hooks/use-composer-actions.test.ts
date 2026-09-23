@@ -259,7 +259,7 @@ describe('useComposerActions native image drops', () => {
     const transientPath =
       '/var/folders/x7/example/T/TemporaryItems/NSIRD_screencaptureui_4roSuW/Screen Shot 2026-08-11.png'
 
-    const durablePath = '/Users/test/Library/Application Support/Hermes/composer-images/composer_saved.png'
+    const durablePath = '/Users/test/Library/Application Support/UniWork/composer-images/composer_saved.png'
     const previewUrl = 'data:image/png;base64,c2NyZWVuc2hvdA=='
 
     const screenshot = new File([new Uint8Array([1, 2, 3])], 'Screen Shot 2026-08-11.png', {

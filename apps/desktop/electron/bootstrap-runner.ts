@@ -869,7 +869,7 @@ function seedBundledRepository({ activeRoot, sourceRoot, emit }) {
   if (fs.existsSync(activeRoot)) fs.rmSync(activeRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   fs.mkdirSync(path.dirname(activeRoot), { recursive: true })
   fs.cpSync(sourceRoot, activeRoot, { recursive: true })
-  emit?.({ type: 'log', line: `[bootstrap] seeded packaged Hermes source -> ${activeRoot}` })
+  emit?.({ type: 'log', line: `[bootstrap] seeded packaged UniWork source -> ${activeRoot}` })
   return true
 }
 

@@ -1,9 +1,9 @@
 {
   "name": "hermes",
-  "productName": "Hermes",
+  "productName": "UniWork",
   "private": true,
   "version": "0.17.0",
-  "description": "Native desktop shell for Hermes Agent.",
+  "description": "Native desktop shell for UniWork Agent.",
   "author": "Nous Research",
   "repository": {
     "type": "git",
@@ -190,17 +190,17 @@
   "build": {
     "electronVersion": "40.10.2",
     "appId": "com.nousresearch.hermes",
-    "productName": "Hermes",
-    "executableName": "Hermes",
+    "productName": "UniWork",
+    "executableName": "UniWork",
     "protocols": [
       {
-        "name": "Hermes Protocol",
+        "name": "UniWork Protocol",
         "schemes": [
           "hermes"
         ]
       }
     ],
-    "artifactName": "Hermes-${version}-${os}-${arch}.${ext}",
+    "artifactName": "UniWork-${version}-${os}-${arch}.${ext}",
     "icon": "assets/icon",
     "directories": {
       "output": "release"
@@ -236,19 +236,19 @@
       "entitlements": "electron/entitlements.mac.plist",
       "entitlementsInherit": "electron/entitlements.mac.inherit.plist",
       "extendInfo": {
-        "CFBundleDisplayName": "Hermes",
-        "CFBundleExecutable": "Hermes",
-        "CFBundleName": "Hermes",
-        "NSAudioCaptureUsageDescription": "Hermes uses audio capture for voice conversations.",
-        "NSCameraUsageDescription": "Hermes uses the camera when a plugin or feature you enable requests it.",
-        "NSMicrophoneUsageDescription": "Hermes uses the microphone for voice input and voice conversations.",
-        "NSCalendarsUsageDescription": "Hermes needs access to Calendar to provide requested meeting and scheduling support.",
-        "NSCalendarsFullAccessUsageDescription": "Hermes needs full access to Calendar to read and manage events when explicitly requested.",
-        "NSRemindersUsageDescription": "Hermes needs access to Reminders to provide requested personal-assistant and scheduling support.",
-        "NSRemindersFullAccessUsageDescription": "Hermes needs full access to Reminders to read and manage reminders when explicitly requested.",
-        "NSScreenCaptureUsageDescription": "Hermes captures the screen when you ask the agent to screenshot or record it.",
-        "NSLocalNetworkUsageDescription": "Hermes connects to devices on your local network when a plugin or feature you enable requests it.",
-        "NSAppleMusicUsageDescription": "Hermes accesses your music library when a plugin or feature you enable requests it."
+        "CFBundleDisplayName": "UniWork",
+        "CFBundleExecutable": "UniWork",
+        "CFBundleName": "UniWork",
+        "NSAudioCaptureUsageDescription": "UniWork uses audio capture for voice conversations.",
+        "NSCameraUsageDescription": "UniWork uses the camera when a plugin or feature you enable requests it.",
+        "NSMicrophoneUsageDescription": "UniWork uses the microphone for voice input and voice conversations.",
+        "NSCalendarsUsageDescription": "UniWork needs access to Calendar to provide requested meeting and scheduling support.",
+        "NSCalendarsFullAccessUsageDescription": "UniWork needs full access to Calendar to read and manage events when explicitly requested.",
+        "NSRemindersUsageDescription": "UniWork needs access to Reminders to provide requested personal-assistant and scheduling support.",
+        "NSRemindersFullAccessUsageDescription": "UniWork needs full access to Reminders to read and manage reminders when explicitly requested.",
+        "NSScreenCaptureUsageDescription": "UniWork captures the screen when you ask the agent to screenshot or record it.",
+        "NSLocalNetworkUsageDescription": "UniWork connects to devices on your local network when a plugin or feature you enable requests it.",
+        "NSAppleMusicUsageDescription": "UniWork accesses your music library when a plugin or feature you enable requests it."
       },
       "gatekeeperAssess": false,
       "hardenedRuntime": true,
@@ -258,7 +258,7 @@
       ]
     },
     "dmg": {
-      "title": "Install Hermes",
+      "title": "Install UniWork",
       "backgroundColor": "#f5f5f7",
       "iconSize": 96,
       "window": {
@@ -280,7 +280,7 @@
       ]
     },
     "win": {
-      "legalTrademarks": "Hermes",
+      "legalTrademarks": "UniWork",
       "target": [
         "nsis",
         "msi"
@@ -290,7 +290,7 @@
     "linux": {
       "category": "Development",
       "maintainer": "Nous Research <support@nousresearch.com>",
-      "synopsis": "Native desktop shell for Hermes Agent.",
+      "synopsis": "Native desktop shell for UniWork Agent.",
       "target": [
         "AppImage",
         "deb",
@@ -306,8 +306,8 @@
       ],
       "language": "2052",
       "multiLanguageInstaller": false,
-      "shortcutName": "Hermes",
-      "uninstallDisplayName": "Hermes",
+      "shortcutName": "UniWork",
+      "uninstallDisplayName": "UniWork",
       "warningsAsErrors": false
     }
   }

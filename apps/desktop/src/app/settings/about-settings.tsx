@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { BrandMark } from '@/components/brand-mark'
 import { Button } from '@/components/ui/button'
@@ -7,6 +7,7 @@ import { Codicon } from '@/components/ui/codicon'
 import { type Translations, useI18n } from '@/i18n'
 import { AlertTriangle, CheckCircle2, ExternalLink, Loader2, RefreshCw } from '@/lib/icons'
 import { cn } from '@/lib/utils'
+import { toggleDeveloperMode } from '@/store/developer-mode'
 import {
   $desktopVersion,
   $updateApply,
@@ -54,6 +55,38 @@ export function AboutSettings() {
   const apply = useStore($updateApply)
   const checking = useStore($updateChecking)
   const [justChecked, setJustChecked] = useState(false)
+  const brandClickCountRef = useRef(0)
+  const brandClickResetRef = useRef<number | null>(null)
+
+  const handleBrandClick = () => {
+    brandClickCountRef.current += 1
+
+    if (brandClickResetRef.current !== null) {
+      window.clearTimeout(brandClickResetRef.current)
+    }
+
+    if (brandClickCountRef.current >= 5) {
+      brandClickCountRef.current = 0
+      brandClickResetRef.current = null
+      toggleDeveloperMode()
+
+      return
+    }
+
+    brandClickResetRef.current = window.setTimeout(() => {
+      brandClickCountRef.current = 0
+      brandClickResetRef.current = null
+    }, 1_500)
+  }
+
+  useEffect(
+    () => () => {
+      if (brandClickResetRef.current !== null) {
+        window.clearTimeout(brandClickResetRef.current)
+      }
+    },
+    []
+  )
 
   // The version atom is loaded once at app boot, which makes About show a
   // stale number after a self-update (the running binary is current, the
@@ -100,7 +133,9 @@ export function AboutSettings() {
   return (
     <SettingsContent>
       <div className="flex flex-col items-center gap-3 pt-6 pb-2 text-center">
-        <BrandMark className="size-16" />
+        <button aria-label={a.heading} className="cursor-default rounded-md" onClick={handleBrandClick} type="button">
+          <BrandMark className="size-16" />
+        </button>
         <div>
           <h2 className="text-lg font-semibold tracking-tight">{a.heading}</h2>
           <p className="mt-1 text-xs text-muted-foreground">

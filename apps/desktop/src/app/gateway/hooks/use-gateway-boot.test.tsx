@@ -387,7 +387,7 @@ describe('useGatewayBoot remote reconnect loop (real hook, fake socket)', () => 
     // After ~45s waitForHermes gives up and getConnection rejects → boot()
     // catch → failDesktopBoot → the BootFailureOverlay recovery surface.
     await act(async () => {
-      rejectConn(new Error('Hermes backend did not become ready: timeout'))
+      rejectConn(new Error('UniWork backend did not become ready: timeout'))
       await vi.advanceTimersByTimeAsync(0)
     })
 
@@ -1402,7 +1402,7 @@ describe('useGatewayBoot remote reconnect loop (real hook, fake socket)', () => 
     // That used to promote into BootFailureOverlay and lock reading/drafting.
     act(() => {
       desktop.emitBootProgress({
-        error: 'Could not reach the remote Hermes gateway while refreshing its WebSocket ticket. Try reconnecting.',
+        error: 'Could not reach the remote UniWork gateway while refreshing its WebSocket ticket. Try reconnecting.',
         message: 'Desktop boot failed',
         phase: 'backend.error',
         progress: 94,
@@ -1449,8 +1449,8 @@ describe('useGatewayBoot remote reconnect loop (real hook, fake socket)', () => 
     desktop.settings = {
       getDefaultProjectDir: vi.fn(async () => ({
         defaultLabel: 'C:\\Users\\sonny',
-        dir: 'C:\\Hermes',
-        resolvedCwd: 'C:\\Hermes'
+        dir: 'C:\\UniWork',
+        resolvedCwd: 'C:\\UniWork'
       })),
       pickDefaultProjectDir: vi.fn(async () => undefined),
       setDefaultProjectDir: vi.fn(async () => undefined)
@@ -1476,8 +1476,8 @@ describe('useGatewayBoot remote reconnect loop (real hook, fake socket)', () => 
     render(<Harness />)
     await flushAsync()
 
-    expect(cwdAtConnect).toBe('C:\\Hermes')
-    expect($currentCwd.get()).toBe('C:\\Hermes')
+    expect(cwdAtConnect).toBe('C:\\UniWork')
+    expect($currentCwd.get()).toBe('C:\\UniWork')
   })
 
   it('FIX: primary sleep/wake reconnect dials the window backend, not the active secondary profile', async () => {

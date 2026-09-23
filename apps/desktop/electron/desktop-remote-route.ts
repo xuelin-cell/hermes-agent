@@ -110,7 +110,7 @@ export function resolveDesktopRemoteRoute({
     if (!envToken) {
       throw new Error(
         'HERMES_DESKTOP_REMOTE_URL is set but HERMES_DESKTOP_REMOTE_TOKEN is not. ' +
-          'Both must be provided to connect to a remote Hermes backend.'
+          'Both must be provided to connect to a remote UniWork backend.'
       )
     }
 

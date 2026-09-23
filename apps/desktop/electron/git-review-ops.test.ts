@@ -22,7 +22,7 @@ function makeRepo() {
   tempDirs.push(dir)
   execFileSync('git', ['init', '-q'], { cwd: dir })
   execFileSync('git', ['config', 'user.email', 'hermes-test@example.com'], { cwd: dir })
-  execFileSync('git', ['config', 'user.name', 'Hermes Test'], { cwd: dir })
+  execFileSync('git', ['config', 'user.name', 'UniWork Test'], { cwd: dir })
   fs.writeFileSync(path.join(dir, 'tracked.txt'), 'tracked\n')
   execFileSync('git', ['add', 'tracked.txt'], { cwd: dir })
   execFileSync('git', ['commit', '-qm', 'initial'], { cwd: dir })

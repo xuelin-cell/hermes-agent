@@ -154,7 +154,7 @@ describe('performScopedFind', () => {
     // fast-path check fails on the first differently-cased match and every
     // Enter re-wraps, losing `data-find-active` and pinning the ordinal to
     // 1 forever. Case-insensitive comparison keeps stepping.
-    const surface = plantSurface('surface', '<p>Hermes Hermes</p>')
+    const surface = plantSurface('surface', '<p>UniWork UniWork</p>')
     performScopedFind(surface, 'hermes', { forward: true, findNext: false })
 
     const before = [...surface.querySelectorAll('mark.find-hit')]
@@ -180,7 +180,7 @@ describe('performScopedFind', () => {
     surface.querySelector('p')!.innerHTML = 'beta'
     // …but a stale mark survives the edit (external write / raced cleanup),
     // and the live content that matches the current query arrives unwrapped.
-    surface.insertAdjacentHTML('beforeend', '<mark class="find-hit">Hermes</mark>')
+    surface.insertAdjacentHTML('beforeend', '<mark class="find-hit">UniWork</mark>')
     surface.insertAdjacentHTML('beforeend', '<p>hermes</p>')
 
     const result = performScopedFind(surface, 'hermes', { forward: true, findNext: true })

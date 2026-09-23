@@ -131,7 +131,7 @@ function fakeSsh(rules: any[] = []) {
   }
 }
 
-test('POSIX relaunch gate refuses live and uncertain install markers without executing Hermes', async () => {
+test('POSIX relaunch gate refuses live and uncertain install markers without executing UniWork', async () => {
   for (const observation of ['LIVE:4242', 'UNCERTAIN']) {
     const calls: string[] = []
 
@@ -1084,7 +1084,7 @@ test('connect() respawns when the requested remote profile differs from the lock
     [/print\("OWNED"/, 'OWNED\n'],
     [cmd => /pidfd_open/.test(cmd), 'TERMINATED\n'],
     [/kill 333/, ''],
-    [/--version/, 'Hermes Agent v0.18.2\n'],
+    [/--version/, 'UniWork Agent v0.18.2\n'],
     [/grep -q ssh-session-token-file/, 'YES\n'],
     [/python3 -c/, ''],
     [/setsid/, '890\n'],
@@ -1113,7 +1113,7 @@ test('connect() respawns when the lockfile hermesPath differs from the resolved 
     [/cat .*lock\.json/, JSON.stringify(lock)],
     [/kill -0/, 'ALIVE'],
     [/print\("OWNED"/, 'FOREIGN\n'],
-    [/--version/, 'Hermes Agent v0.18.2\n'],
+    [/--version/, 'UniWork Agent v0.18.2\n'],
     [/grep -q ssh-session-token-file/, 'YES\n'],
     [/python3 -c/, ''],
     [/setsid/, '890\n'],
@@ -1461,7 +1461,7 @@ test('buildSpawnCommand always uses serve, never dashboard', () => {
   assert.doesNotMatch(cmd, /--no-open/)
 })
 
-test('buildSpawnCommand raises the SSH child file limit before execing Hermes', () => {
+test('buildSpawnCommand raises the SSH child file limit before execing UniWork', () => {
   const cmd = buildSpawnCommand('/x/hermes', '', { logPath: spawnLogPath(OWNERSHIP_ID, SPAWN_NONCE) })
   assert.match(cmd, /ulimit -n 65536 2>\/dev\/null \|\| true; exec env HERMES_DESKTOP=1/)
   assert.ok(cmd.indexOf('ulimit -n 65536') < cmd.indexOf('serve --isolated'))

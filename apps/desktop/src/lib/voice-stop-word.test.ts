@@ -29,7 +29,7 @@ describe('isVoiceStopCommand', () => {
     }
   })
 
-  it('matches stop commands addressed to Hermes', () => {
+  it('matches stop commands addressed to UniWork', () => {
     for (const phrase of ['hermes stop', 'hey hermes stop', 'hey hermes, stop', 'ok stop', 'okay stop']) {
       expect(isVoiceStopCommand(phrase)).toBe(true)
     }
