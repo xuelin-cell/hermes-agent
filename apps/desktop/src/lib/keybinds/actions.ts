@@ -8,7 +8,10 @@
 import { registry } from '@/contrib/registry'
 import type { Contribution } from '@/contrib/types'
 
-import { IS_MAC } from './combo'
+import { isMacPlatform } from '@/lib/platform'
+
+// 平台判断不依赖快捷键解析，避免与 combo 形成循环导入。
+const IS_MAC = isMacPlatform()
 
 export type KeybindCategory = 'composer' | 'profiles' | 'session' | 'navigation' | 'view'
 

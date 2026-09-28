@@ -1,3 +1,5 @@
+import { isMacPlatform } from '@/lib/platform'
+
 import { keybindActionAllowedInEditableTarget } from './actions'
 
 // Keybind combo normalization + display.
@@ -14,7 +16,7 @@ import { keybindActionAllowedInEditableTarget } from './actions'
 // Control+Tab. Off macOS, Control already *is* `mod`, so `canonicalizeCombo`
 // folds `ctrl` → `mod`.
 
-export const IS_MAC = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform || navigator.userAgent || '')
+export const IS_MAC = isMacPlatform()
 
 // event.code → canonical base token. Letters/digits map to their lowercase
 // character; everything else uses an explicit name so combos read cleanly.
