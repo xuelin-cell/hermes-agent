@@ -1,5 +1,13 @@
 # Hermes Agent - Development Guide
 
+## desktop-mt 项目协作规范
+
+- 每完成一次小而完整的修改，并做完与修改风险相称的验证，就在本地创建一次 Git commit。提交只包含本次修改，不夹带用户已有的无关改动。
+- 本地提交后等待用户明确同意，才可推送到云端仓库分支。一次推送授权只适用于当次已说明的改动，不代表后续提交可以自动推送。
+- 提交标题采用 `类型(范围): 简洁中文说明`，例如 `fix(desktop): 修复源码开发模式下的快捷键循环依赖`。根据实际改动选择 fix、feat、perf、docs 等类型。
+- 提交描述用通俗中文分段说明：原来存在什么问题、现在如何处理、关键行为和边界、实际验证结果，以及尚未验证的部分。详细程度与改动规模相称，不堆砌术语，不把未执行的检查写成已通过。
+- 每一个新增函数或方法，都必须附带简洁中文注释，说明用途；必要时解释关键约束或设计原因。注释放在定义附近，避免逐行复述代码。
+
 Instructions for AI coding assistants and developers working on the hermes-agent codebase.
 This root file holds only what applies everywhere. Each area has its own `AGENTS.md` (aim for
 ~8k chars; `agent/subdirectory_hints.py` delivers up to 32k and truncates head/tail with a warning
