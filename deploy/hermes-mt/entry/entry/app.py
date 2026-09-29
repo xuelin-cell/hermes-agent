@@ -303,8 +303,16 @@ class Entry:
             except Exception as exc:  # noqa: BLE001
                 log.warning("ws disconnect activity update failed for %s: %s", user_id, type(exc).__name__)
 
+    # 用户经代理打不到的路径：转发器的管理接口（能让自己的实例排空），
+    # 以及 hermes 的「导入备份」（它会在库打开时替换 state.db，归档和真实库会分叉）。
+    _BLOCKED_TAILS = ("__mt/", "api/ops/import")
+
     async def backend(self, request: web.Request) -> web.StreamResponse:
         session = await self._require(request)
+        tail = request.match_info.get("tail", "").lstrip("/")
+        normalized = tail.replace("//", "/")
+        if normalized.startswith(self._BLOCKED_TAILS) or normalized in self._BLOCKED_TAILS:
+            raise web.HTTPNotFound()
         try:
             tenant = await self._tenant_for(session)
         except DatabaseUnavailable:

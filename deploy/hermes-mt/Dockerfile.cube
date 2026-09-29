@@ -49,11 +49,14 @@ COPY --from=cubebase /usr/bin/envd /usr/bin/envd
 COPY --from=cubebase /usr/local/bin/cube-entrypoint.sh /usr/local/bin/cube-entrypoint.sh
 RUN chmod 0755 /usr/bin/envd /usr/local/bin/cube-entrypoint.sh
 
-# ---- 转发器 ---------------------------------------------------------------
+# ---- 转发器与状态管家 -------------------------------------------------------
 # 放在镜像层而不是数据卷：卷是租户可写的，脚本放里面等于让租户能改自己的转发器。
-RUN mkdir -p /opt/mt
+# /mnt/u 是用户的 S3 卷的挂载点：挂在 hermes 数据目录之外，hermes 的仪表盘备份才不会
+# 把整个卷打进可写层。工作区、附件、图片由状态管家做成指向卷内的目录链接。
+RUN mkdir -p /opt/mt /mnt/u
 COPY seed/forward.py /opt/mt/forward.py
-RUN chmod 0644 /opt/mt/forward.py
+COPY seed/mtstate.py /opt/mt/mtstate.py
+RUN chmod 0644 /opt/mt/forward.py /opt/mt/mtstate.py
 
 # ---- 所有用户相同的环境变量 -------------------------------------------------
 # 与 entry/entry/tenants.py::_create 里那份清单保持一致。缺的那个
@@ -69,6 +72,12 @@ ENV HERMES_HOME=/opt/data \
 
 # 引导窗口：容器启动后多少秒内允许调 /__mt/bootstrap。
 ENV MT_BOOTSTRAP_WINDOW_S=600
+# 状态管家默认多久归档一次（入口可在引导时覆盖）。
+ENV MT_ARCHIVE_INTERVAL_S=300
+
+# 给 agent 的环境说明，进它的系统提示（hermes 专门留给宿主平台的口子，不占用户的 SOUL.md）。
+# 工作区在对象存储上，小文件慢、没有硬链接；重活放本地盘的 scratch，成品再写回工作区。
+ENV HERMES_ENVIRONMENT_HINT="Environment notes: /opt/data/workspace is the user's persistent workspace. It lives on network object storage: many small files are slow there and hard links are not supported. Do heavy or temporary work (git clone, package installs, builds, scratch files) under /opt/data/scratch on the fast local disk, then copy finished results into the workspace. /opt/data/scratch is not preserved when the sandbox is recreated."
 
 # ---- 端口 -----------------------------------------------------------------
 # 对外只有转发器这一个。hermes 自己绑 127.0.0.1:9120，故意不暴露 ——

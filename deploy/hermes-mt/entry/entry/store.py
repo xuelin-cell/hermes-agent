@@ -40,6 +40,19 @@ class TenantContext:
     catalog: list[tuple[str, str]]
 
 
+@dataclass(frozen=True)
+class Runtime:
+    """沙箱后端：这个用户的实例与状态归档记录（谁说了算）。"""
+
+    state: str
+    sandbox_id: str
+    template_id: str
+    state_epoch: int
+    state_owner: str
+    state_archive: str
+    lifecycle: str
+
+
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -373,6 +386,145 @@ class Store:
                 user_id,
                 sandbox_id or None,
             )
+
+    # ---- 沙箱后端：谁说了算 -----------------------------------------------------
+    #
+    # 归档在用户自己的卷上按实例分目录；这里记当前主人、只增不减的编号、最近确认的归档。
+    # 新实例从 state_owner 那一代恢复；卷上的 OWNER 编号不小于新编号就说明这里丢过记录。
+
+    async def get_runtime(self, user_id: str) -> Runtime:
+        async with self.database.acquire() as connection:
+            row = await connection.fetchrow(
+                """
+                SELECT state, sandbox_id, template_id, state_epoch, state_owner, state_archive, lifecycle
+                FROM tenant_runtime WHERE user_id = $1
+                """,
+                user_id,
+            )
+        if row is None:
+            return Runtime("stopped", "", "", 0, "", "", "")
+        return Runtime(
+            state=str(row["state"] or "stopped"),
+            sandbox_id=str(row["sandbox_id"] or ""),
+            template_id=str(row["template_id"] or ""),
+            state_epoch=int(row["state_epoch"] or 0),
+            state_owner=str(row["state_owner"] or ""),
+            state_archive=str(row["state_archive"] or ""),
+            lifecycle=str(row["lifecycle"] or ""),
+        )
+
+    async def next_epoch(self, user_id: str) -> int:
+        """给下一台实例发编号：只增不减。"""
+        async with self.database.acquire() as connection:
+            value = await connection.fetchval(
+                """
+                UPDATE tenant_runtime SET state_epoch = state_epoch + 1
+                WHERE user_id = $1 RETURNING state_epoch
+                """,
+                user_id,
+            )
+        return int(value or 0)
+
+    async def record_sandbox(self, user_id: str, sandbox_id: str, template_id: str, epoch: int) -> None:
+        """建了一台实例：记到运行态，也记进历史表。"""
+        async with self.database.acquire() as connection:
+            async with connection.transaction():
+                await connection.execute(
+                    """
+                    UPDATE tenant_runtime SET sandbox_id = $2, template_id = $3, lifecycle = ''
+                    WHERE user_id = $1
+                    """,
+                    user_id,
+                    sandbox_id,
+                    template_id or None,
+                )
+                await connection.execute(
+                    """
+                    INSERT INTO sandbox_history(sandbox_id, user_id, template_id, state_epoch)
+                    VALUES($1, $2, $3, $4)
+                    ON CONFLICT(sandbox_id) DO NOTHING
+                    """,
+                    sandbox_id,
+                    user_id,
+                    template_id or None,
+                    epoch,
+                )
+
+    async def set_state_owner(self, user_id: str, owner: str, archive: str, manifest: dict | None) -> None:
+        """新实例恢复完成：它成为当前主人；顺手记下它恢复时用的那份归档。"""
+        async with self.database.acquire() as connection:
+            await connection.execute(
+                """
+                UPDATE tenant_runtime
+                SET state_owner = $2,
+                    state_archive = COALESCE($3, state_archive),
+                    state_manifest = COALESCE($4::jsonb, state_manifest),
+                    state_synced_at = now()
+                WHERE user_id = $1
+                """,
+                user_id,
+                owner,
+                archive or None,
+                json.dumps(manifest, ensure_ascii=False, separators=(",", ":")) if manifest else None,
+            )
+
+    async def set_state_archive(self, user_id: str, archive: str, manifest: dict | None) -> None:
+        """sync / drain 成功：记下最近确认过的归档。"""
+        if not archive:
+            return
+        async with self.database.acquire() as connection:
+            await connection.execute(
+                """
+                UPDATE tenant_runtime
+                SET state_archive = $2, state_manifest = $3::jsonb, state_synced_at = now()
+                WHERE user_id = $1
+                """,
+                user_id,
+                archive,
+                json.dumps(manifest or {}, ensure_ascii=False, separators=(",", ":")),
+            )
+
+    async def set_lifecycle(self, user_id: str, phase: str) -> None:
+        async with self.database.acquire() as connection:
+            await connection.execute(
+                "UPDATE tenant_runtime SET lifecycle = $2 WHERE user_id = $1",
+                user_id,
+                phase,
+            )
+
+    async def mark_sandbox_deleted(self, sandbox_id: str, reason: str) -> None:
+        async with self.database.acquire() as connection:
+            await connection.execute(
+                """
+                UPDATE sandbox_history SET deleted_at = now(), delete_reason = $2
+                WHERE sandbox_id = $1 AND deleted_at IS NULL
+                """,
+                sandbox_id,
+                reason,
+            )
+
+    async def tenants_with_sandbox(self) -> list[tuple[str, str, str]]:
+        """(user_id, sandbox_id, state)，只含有实例记录的用户。"""
+        async with self.database.acquire() as connection:
+            rows = await connection.fetch(
+                "SELECT user_id, sandbox_id, state FROM tenant_runtime WHERE sandbox_id IS NOT NULL ORDER BY user_id"
+            )
+        return [(row["user_id"], row["sandbox_id"], row["state"]) for row in rows]
+
+    async def long_idle_tenants(self, older_than_s: int) -> list[str]:
+        """已暂停（stopped）且很久没活动、还占着一台实例的用户。"""
+        cutoff = _utc_now() - timedelta(seconds=older_than_s)
+        async with self.database.acquire() as connection:
+            rows = await connection.fetch(
+                """
+                SELECT user_id FROM tenant_runtime
+                WHERE state = 'stopped' AND sandbox_id IS NOT NULL AND lifecycle = ''
+                  AND last_activity_at < $1
+                ORDER BY last_activity_at
+                """,
+                cutoff,
+            )
+        return [row["user_id"] for row in rows]
 
     async def idle_tenants(self, older_than_s: int, exclude: set[str] | None = None) -> list[str]:
         """返回可回收租户；数据库查询失败时异常上抛，调用方必须跳过本轮回收。"""

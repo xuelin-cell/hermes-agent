@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import io
+import json
 import logging
 import re
 import socket
@@ -471,6 +472,13 @@ class TenantManager:
            ``if-pristine`` 的判据是与镜像里的示例逐字节比对，见 seed/forward.py。
         """
         rendered = self._render_user_files(api_key, endpoint, catalog)
+        base_url, model_name = endpoint or ("", "")
+        patch = {
+            "base_url": base_url or self.s.model_base_url,
+            "model": model_name or self.s.model_name,
+            "provider_key": self.s.provider_key,
+            "models": [n for n, _ in (catalog or [])],
+        }
         return [
             {
                 "path": "config.yaml",
@@ -478,11 +486,24 @@ class TenantManager:
                 "overwrite": "if-pristine",
             },
             {
+                # 老用户恢复回来的 config.yaml 不是 pristine，上面那条写不进去；
+                # 平台下发的端点和模型清单靠这条逐行改写，其余保持用户自己的。
+                "path": "config.yaml",
+                "content": json.dumps(patch, ensure_ascii=False),
+                "overwrite": "patch-model",
+            },
+            {
+                # 只改我们负责的两行；用户在界面里存的别的 key 不能被抹掉。
                 "path": ".env",
                 "content": rendered[".env"].decode("utf-8"),
-                "overwrite": True,
+                "overwrite": "upsert-lines",
             },
         ]
+
+    def _template_id(self) -> str:
+        """配置里的模板值只在它是 ID（tpl-…）时参与「模板不一致就重建」的比对；别名比不了。"""
+        value = self.s.cube_template.strip()
+        return value if value.startswith("tpl-") else ""
 
     async def _ensure_running_cube(self, user_id: str) -> Tenant:
         assert self.cube is not None
@@ -496,47 +517,44 @@ class TenantManager:
             # 卷先于实例存在，而且不随实例销毁。建过了就是幂等的一次查询。
             await self.cube.ensure_volume(volume, self.s.cube_volume_driver)
 
-            sandbox_id = await self.store.get_sandbox_id(user_id)
+            rt = await self.store.get_runtime(user_id)
+            sandbox_id = rt.sandbox_id
             if sandbox_id:
-                state = await self.cube.sandbox_state(sandbox_id)
-                if state == "gone":
+                sb = await self.cube.get_sandbox(sandbox_id)
+                if sb is None:
                     # 平台侧已经没了（节点维护、被手工删掉…）。数据在卷上，重建即可。
                     log.info("tenant %s: 实例 %s 已不存在，重建", slug, sandbox_id[:12])
+                    await self.store.mark_sandbox_deleted(sandbox_id, "gone")
                     await self.store.set_sandbox_id(user_id, None)
                     sandbox_id = ""
+                else:
+                    want = self._template_id()
+                    have = str(sb.get("templateID") or rt.template_id or "")
+                    if want and have and have != want:
+                        # 模板换了（升级镜像）：先排空再删，再往下走新建；排空失败就这次不升级。
+                        if await self._drain_and_delete(user_id, sandbox_id, token, f"template {have[:12]} -> {want[:12]}"):
+                            sandbox_id = ""
+                        else:
+                            log.warning("tenant %s: 排空失败，本次不升级，继续用旧实例", slug)
+                    elif rt.state_owner != sandbox_id:
+                        # 实例建了、ID 也落库了，但引导从没完成（上次种子文件出错、超时…）。
+                        # 不能每个请求都重新引导（多两次往返，还重发 key），只在这种情况下问一句转发器。
+                        sandbox_id, _ = await self._repair_bootstrap(user_id, slug, sandbox_id, token, context)
 
             # 与 Docker 那条路同一条不变式：中途失败不能把状态留在 starting，
             # 否则这个用户会一直被当成"正在启动"，既不会被回收也不会被重试。
             try:
                 if not sandbox_id:
-                    await self.store.set_tenant_state(user_id, "starting")
-                    sandbox_id = await self.cube.create_sandbox(
-                        volume_name=volume,
-                        workspace_path=self.s.cube_workspace_path,
-                        metadata={"hermes.mt": "tenant", "hermes.mt.slug": slug},
-                    )
-                    # ★ 先落库再引导：引导可能超时，但实例已经真实存在了。
-                    #   不先记下来的话，下一次请求会再建一个，旧的成为没人管的孤儿。
-                    await self.store.set_sandbox_id(user_id, sandbox_id)
-                    await self.store.write_audit(user_id, "tenant.start", {"sandbox": sandbox_id})
-
-                # 等转发进程就绪，然后引导。bootstrap 幂等——已引导返回 409 当成功。
-                # 这两步必须放在 if not sandbox_id 之外：沙箱可能上次 create 之后
-                # bootstrap 失败（种子文件读失败、超时…），已落库的 sandbox_id 会让
-                # 代码跳过新建分支，若 bootstrap 也被跳过，hermes 就永远等不到引导。
-                await self.cube.wait_forwarder(sandbox_id, port)
-                await self.cube.bootstrap(
-                    sandbox_id,
-                    port,
-                    token=token,
-                    files=self._cube_seed_files(
-                        context.api_key, context.endpoint, context.catalog
-                    ),
-                    ready_timeout_s=self.s.ready_timeout_s,
-                )
+                    sandbox_id = await self._create_cube(user_id, slug, volume, token, context)
 
                 # 实例可能是 paused —— 这个请求会把它自动唤醒，等就绪即可。
-                await self.cube.wait_hermes(sandbox_id, port, timeout_s=self.s.ready_timeout_s)
+                try:
+                    await self.cube.wait_hermes(sandbox_id, port, timeout_s=self.s.ready_timeout_s)
+                except CubeError:
+                    # 等不到 hermes：没引导过就补一次，窗口已关就删了重建；引导过的照常报错。
+                    sandbox_id, repaired = await self._repair_bootstrap(user_id, slug, sandbox_id, token, context)
+                    if not repaired:
+                        raise
             except Exception:  # noqa: BLE001
                 try:
                     await self.store.set_tenant_state(user_id, "stopped")
@@ -562,11 +580,133 @@ class TenantManager:
             await self._sync_api_key(tenant, context.api_key)
             return tenant
 
-    async def _stop_cube(self, user_id: str, reason: str) -> None:
-        """空闲回收 = 暂停，不是销毁。
+    def _state_block(self, sandbox_id: str, epoch: int, restore_from: str) -> dict:
+        return {
+            "vol": self.s.cube_volume_mount,
+            "owner": sandbox_id,
+            "epoch": epoch,
+            "restore_from": restore_from,
+            "force": self.s.state_force,
+            "archive_interval_s": self.s.archive_interval_s,
+        }
 
-        ★ 销毁会连同实例可写层一起删掉，而对话库就在可写层上 —— 用户的历史会没。
-          暂停则把整机状态冻结存盘，下次请求 0.4 秒左右唤醒，数据完好。
+    async def _create_cube(self, user_id: str, slug: str, volume: str, token: str, context) -> str:
+        """建一台实例并引导：先落库，再让状态管家从上一代恢复，再拉 hermes。返回 sandbox_id。"""
+        assert self.cube is not None
+        port = self.s.forward_port
+        rt = await self.store.get_runtime(user_id)
+        await self.store.set_tenant_state(user_id, "starting")
+        epoch = await self.store.next_epoch(user_id)
+        sandbox_id = await self.cube.create_sandbox(
+            volume_name=volume,
+            workspace_path=self.s.cube_volume_mount,
+            metadata={"hermes.mt": "tenant", "hermes.mt.slug": slug},
+        )
+        # ★ 先落库再引导：引导可能超时，但实例已经真实存在了。
+        #   不先记下来的话，下一次请求会再建一个，旧的成为没人管的孤儿。
+        await self.store.record_sandbox(user_id, sandbox_id, self._template_id(), epoch)
+        await self.store.write_audit(
+            user_id, "tenant.start",
+            {"sandbox": sandbox_id, "epoch": epoch, "restore_from": rt.state_owner},
+        )
+        await self.cube.wait_forwarder(sandbox_id, port)
+        await self._bootstrap_cube(user_id, slug, sandbox_id, token, context, epoch, rt.state_owner)
+        return sandbox_id
+
+    async def _bootstrap_cube(self, user_id: str, slug: str, sandbox_id: str, token: str, context,
+                              epoch: int, restore_from: str) -> None:
+        assert self.cube is not None
+        body = await self.cube.bootstrap(
+            sandbox_id,
+            self.s.forward_port,
+            token=token,
+            files=self._cube_seed_files(context.api_key, context.endpoint, context.catalog),
+            ready_timeout_s=self.s.ready_timeout_s,
+            state=self._state_block(sandbox_id, epoch, restore_from),
+        )
+        if body.get("already"):
+            return
+        report = body.get("state") or {}
+        # 恢复完成：这台实例成为当前主人。它用了哪份归档、行数多少，一并记下。
+        await self.store.set_state_owner(
+            user_id, sandbox_id, str(report.get("archive") or ""),
+            {"restored_from": report.get("restored_from", ""), "counts": report.get("counts") or {}},
+        )
+        await self.store.write_audit(user_id, "tenant.restore", {
+            "sandbox": sandbox_id,
+            "restored_from": report.get("restored_from", ""),
+            "archive": report.get("archive", ""),
+            "notes": report.get("notes", []),
+            "migration": report.get("migration", ""),
+        })
+        log.info("tenant %s: 实例 %s 引导完成，恢复自 %s / %s", slug, sandbox_id[:12],
+                 (report.get("restored_from") or "-")[:12], report.get("archive") or "-")
+
+    async def _repair_bootstrap(self, user_id: str, slug: str, sandbox_id: str, token: str, context) -> tuple[str, bool]:
+        """问转发器这台实例引导过没有：没引导过就补引导；窗口已关就删掉让调用方重建。
+
+        返回 ``(还能用的 sandbox_id 或空串, 这次有没有补引导成功)``。
+        引导过、或问不到转发器时原样返回，由调用方按正常路径继续或报错。
+        """
+        assert self.cube is not None
+        port = self.s.forward_port
+        try:
+            st = await self.cube.status(sandbox_id, port)
+        except CubeError:
+            return sandbox_id, False
+        if st.get("bootstrapped"):
+            return sandbox_id, False
+        rt = await self.store.get_runtime(user_id)
+        if st.get("boot_window_left_s", 0) > 30:
+            log.warning("tenant %s: 实例 %s 未引导（上次引导没成），补引导", slug, sandbox_id[:12])
+            await self._bootstrap_cube(user_id, slug, sandbox_id, token, context, rt.state_epoch, rt.state_owner)
+            await self.cube.wait_hermes(sandbox_id, port, timeout_s=self.s.ready_timeout_s)
+            return sandbox_id, True
+        log.warning("tenant %s: 实例 %s 未引导且窗口已关，删掉重建", slug, sandbox_id[:12])
+        await self.cube.remove_sandbox(sandbox_id)
+        await self.store.mark_sandbox_deleted(sandbox_id, "unbootstrapped")
+        await self.store.set_sandbox_id(user_id, None)
+        return "", False
+
+    async def _drain_and_delete(self, user_id: str, sandbox_id: str, token: str, reason: str) -> bool:
+        """停 hermes → 最终归档 → 记进 PG → 删实例 → 确认已消失。任何一步失败都不删。
+
+        调用方必须持有这个用户的锁。返回 True 表示实例已删、sandbox_id 已清。
+        """
+        assert self.cube is not None
+        port = self.s.forward_port
+        slug = tenant_slug(user_id)
+        await self.store.set_lifecycle(user_id, "draining")
+        try:
+            summary = await self.cube.drain(sandbox_id, port, token)
+        except CubeError as exc:
+            log.warning("tenant %s: 排空实例 %s 失败: %s", slug, sandbox_id[:12], exc)
+            await self.store.set_lifecycle(user_id, "")
+            return False
+        await self.store.set_state_archive(user_id, str(summary.get("archive") or ""), summary)
+        await self.store.set_lifecycle(user_id, "drained")
+        await self.store.write_audit(user_id, "tenant.drain", {"sandbox": sandbox_id, "archive": summary.get("archive", ""), "reason": reason})
+        await self.store.set_lifecycle(user_id, "deleting")
+        try:
+            await self.cube.remove_sandbox(sandbox_id)
+            gone = await self.cube.wait_gone(sandbox_id)
+        except CubeError as exc:
+            log.warning("tenant %s: 删实例 %s 失败: %s", slug, sandbox_id[:12], exc)
+            gone = False
+        if not gone:
+            # 删不干净不能建新的：两台实例会同写一个卷。留在 deleting，下次再试。
+            return False
+        await self.store.mark_sandbox_deleted(sandbox_id, reason)
+        await self.store.set_sandbox_id(user_id, None)
+        await self.store.set_lifecycle(user_id, "")
+        await self.store.write_audit(user_id, "tenant.delete", {"sandbox": sandbox_id, "reason": reason})
+        return True
+
+    async def _stop_cube(self, user_id: str, reason: str) -> None:
+        """空闲回收 = 暂停，不是销毁；暂停前先让状态管家归档一次。
+
+        ★ 销毁会连同实例可写层一起删掉，而对话库就在可写层上。暂停把整机状态冻结存盘，
+          下次请求 0.4 秒左右唤醒，数据完好；先归档是为了节点在暂停期间坏掉时也有得恢复。
         """
         assert self.cube is not None
         slug = tenant_slug(user_id)
@@ -574,25 +714,74 @@ class TenantManager:
             sandbox_id = await self.store.get_sandbox_id(user_id)
             if sandbox_id:
                 try:
+                    token = await self.store.ensure_tenant_token(user_id)
+                    summary = await self.cube.sync_state(sandbox_id, self.s.forward_port, token)
+                    await self.store.set_state_archive(user_id, str(summary.get("archive") or ""), summary)
+                except CubeError as exc:
+                    log.warning("tenant %s: 暂停前归档失败（照样暂停）: %s", slug, exc)
+                try:
                     await self.cube.pause_sandbox(sandbox_id)
                 except CubeError as exc:
                     log.warning("暂停 %s 的实例失败: %s", slug, exc)
             await self.store.set_tenant_state(user_id, "stopped")
             await self.store.write_audit(user_id, "tenant.stop", {"reason": reason})
 
+    async def reap_long_idle(self) -> None:
+        """暂停很久的实例：排空后删掉。下次登录从卷上的归档恢复。
+
+        为什么要删：平台默认让暂停的实例继续占调度配额，暂停快照还占节点磁盘；
+        几百上千个用户时不可能人人留一台暂停实例。
+        """
+        if not self.use_cube or self.s.idle_delete_hours <= 0:
+            return
+        for user_id in await self.store.long_idle_tenants(self.s.idle_delete_hours * 3600):
+            slug = tenant_slug(user_id)
+            async with self._lock(slug):
+                rt = await self.store.get_runtime(user_id)
+                if not rt.sandbox_id or rt.state != "stopped":
+                    continue
+                token = await self.store.ensure_tenant_token(user_id)
+                log.info("long idle: 排空并删除 %s 的实例 %s", slug, rt.sandbox_id[:12])
+                try:
+                    await self._drain_and_delete(user_id, rt.sandbox_id, token, f"idle>{self.s.idle_delete_hours}h")
+                except Exception:  # noqa: BLE001
+                    log.exception("long idle delete failed for %s", slug)
+
     async def _reconcile_cube(self) -> None:
-        """入口启动时把运行态清成 stopped，但**不动平台上的实例**。
+        """入口启动时按平台上的实际状态校正运行态，**不动平台上的实例**。
 
         与 Docker 那条路的区别：那边入口重启后容器状态未知，一律停掉重来；
         这边实例是平台在管的，暂停/恢复都很便宜，而且实例里可能还挂着别人的
-        长连接（多个入口副本共用一个集群）。所以这里只修正我们自己的库，
-        实例交给空闲回收按活跃时间处理。
+        长连接（多个入口副本共用一个集群）。
+        ★ 不能一律改成 stopped：还在跑的实例会被记成已停，而空闲回收只挑 running，
+          这些实例就永远不会被暂停、也不会被升级。
         """
-        rows = await self.store.all_tenant_states()
-        for user_id, state, _ in rows:
-            if state in ("running", "starting"):
+        assert self.cube is not None
+        rows = await self.store.tenants_with_sandbox()
+        fixed = 0
+        for user_id, sandbox_id, state in rows:
+            try:
+                sb = await self.cube.get_sandbox(sandbox_id)
+            except CubeError as exc:
+                log.warning("reconcile(cube): 查实例 %s 失败: %s", sandbox_id[:12], exc)
+                continue
+            if sb is None:
+                await self.store.mark_sandbox_deleted(sandbox_id, "gone")
+                await self.store.set_sandbox_id(user_id, None)
+                want = "stopped"
+            elif str(sb.get("state")) == "running":
+                want = "running"
+            else:
+                want = "stopped"
+            if want != state:
+                await self.store.set_tenant_state(user_id, want)
+                fixed += 1
+        # 没有实例记录的用户不可能在跑
+        for user_id, state, _ in await self.store.all_tenant_states():
+            if state in ("running", "starting") and not (await self.store.get_runtime(user_id)).sandbox_id:
                 await self.store.set_tenant_state(user_id, "stopped")
-        log.info("reconcile(cube): %d 条运行态已重置，平台实例未动", len(rows))
+                fixed += 1
+        log.info("reconcile(cube): %d 个有实例的用户，校正 %d 条，平台实例未动", len(rows), fixed)
 
     async def _sync_api_key(self, tenant: Tenant, api_key: str) -> None:
         """通过 Hermes 既有接口更新 Key；只有成功后才记录内存摘要。"""
@@ -721,3 +910,4 @@ class TenantManager:
                 await self.stop(user_id, reason=f"idle>{self.s.idle_minutes}m")
             except Exception:  # noqa: BLE001
                 log.exception("idle reap failed for %s", user_id)
+        await self.reap_long_idle()

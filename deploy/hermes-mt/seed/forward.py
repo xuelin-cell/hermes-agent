@@ -1,4 +1,4 @@
-"""租户容器内的转发器（Docker 路径）＋ 引导器（沙箱路径）：0.0.0.0:9121 -> 127.0.0.1:9120。
+"""租户容器内的转发器（Docker 路径）＋ 引导器与状态管家宿主（沙箱路径）：0.0.0.0:9121 -> 127.0.0.1:9120。
 
 为什么存在：hermes 的 dashboard 绑非 loopback 地址就会强制开鉴权门（``--insecure`` 已失效），
 门开后 ws 只认 30 秒单次票据，而浏览器版前端不会去要票据。所以 hermes 继续绑 127.0.0.1，
@@ -15,9 +15,13 @@
    所以 CMD 只起本文件：它秒级就绪让探针过，再由入口调一次 ``POST /__mt/bootstrap``
    把令牌和种子文件送进来，然后本文件才把 hermes 拉起来。
 
+   引导载荷若带 ``state`` 段，就先由状态管家（mtstate.py）把上一代实例留在卷上的归档恢复到
+   本地盘、校验、写主人标记、建目录链接，再拉起 hermes；之后定时把本地状态归档回卷。
+   入口在暂停前调 ``/__mt/sync``、删实例前调 ``/__mt/drain``。这些接口要带实例令牌。
+
 除 ``/__mt/*`` 外的所有请求原样转发，读完请求头就退化成裸字节对拷，因此 WebSocket 不受影响。
 
-只用标准库；由容器 CMD 以 hermes 用户启动；出错不重启（容器整体由入口管）。
+只用标准库；由容器 CMD 以 hermes 用户启动。hermes 意外退出时由本文件带退避拉起。
 """
 
 from __future__ import annotations
@@ -25,8 +29,13 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import signal
+import sys
 import time
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import mtstate  # noqa: E402
 
 LISTEN_PORT = int(os.environ.get("MT_FWD_PORT", "9121"))
 TARGET_PORT = int(os.environ.get("MT_HERMES_PORT", "9120"))
@@ -36,14 +45,25 @@ CHUNK = 64 * 1024
 # 引导窗口：容器启动后多少秒内允许 bootstrap。入口在创建沙箱后立刻调用，
 # 留这个窗口是为了缩小「别人抢先引导」的时间面（见下方 _bootstrap 的说明）。
 BOOTSTRAP_WINDOW_S = int(os.environ.get("MT_BOOTSTRAP_WINDOW_S", "600"))
+# 定时归档间隔（秒）；入口可在 state 段里覆盖。
+ARCHIVE_INTERVAL_S = int(os.environ.get("MT_ARCHIVE_INTERVAL_S", "300"))
 
 MAX_HEAD = 64 * 1024  # 请求头上限，超过就当坏请求
 MAX_BODY = 4 * 1024 * 1024  # 引导载荷上限
 
 _START_TS = time.monotonic()
 _hermes_proc: asyncio.subprocess.Process | None = None
+_hermes_token: str = ""
+_hermes_env: dict[str, str] = {}
 _bootstrapped = False
 _boot_lock: asyncio.Lock | None = None
+_state: mtstate.StateManager | None = None
+_state_lock: asyncio.Lock | None = None
+_archiver_task: asyncio.Task | None = None
+_supervisor_task: asyncio.Task | None = None
+_draining = False
+_drained: dict | None = None
+_hermes_restarts = 0
 
 
 # ---------------------------------------------------------------- 工具
@@ -81,6 +101,10 @@ def _reply(writer: asyncio.StreamWriter, status: int, payload: dict) -> None:
         pass
 
 
+def _log(msg: str) -> None:
+    print(f"[forward] {msg}", flush=True)
+
+
 # ---------------------------------------------------------------- 引导
 
 # 镜像的 stage2 引导（docker/stage2-hook.sh 的 seed_one）在首次启动时会把这些示例
@@ -116,13 +140,17 @@ def _is_pristine(rel: str, dest: Path) -> bool:
 def _write_seed(files: list[dict]) -> list[str]:
     """把入口送来的种子文件落到 HERMES_HOME 下。返回实际写了哪些。
 
-    每项的 ``overwrite`` 有三种取值：
+    每项的 ``overwrite`` 有四种取值：
 
-    - ``True`` —— 总是写。入口每次都要刷新的东西（比如 ``.env`` 里的模型 key）用这个。
+    - ``True`` —— 总是写。
     - ``False`` —— 文件已存在就跳过。老用户卷里属于他自己的东西用这个。
     - ``"if-pristine"`` —— 文件不存在就写；已存在则仅当它与镜像里的示例逐字节相同
       时才写。这是 ``config.yaml`` 该用的：既能盖掉 stage2 种的默认示例，
       又不会碰用户或 hermes 自己写过的内容。
+    - ``"upsert-lines"`` —— 只改 content 里那几行 ``KEY=VALUE``，其余保持用户自己的。
+      这是 ``.env`` 该用的：用户在界面里存的别的 key 不能被抹掉。
+    - ``"patch-model"`` —— content 是 JSON ``{base_url, model, provider_key, models}``，
+      只改 config.yaml 里的平台行（模型端点、模型清单），其余一字不动。
     """
     written: list[str] = []
     for item in files:
@@ -131,6 +159,20 @@ def _write_seed(files: list[dict]) -> list[str]:
             raise ValueError(f"非法路径: {rel!r}")
         dest = HERMES_HOME / rel
         mode = item.get("overwrite", False)
+        content = item.get("content", "")
+        if mode == "upsert-lines":
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            mtstate.env_upsert(dest, str(content).splitlines())
+            written.append(rel)
+            continue
+        if mode == "patch-model":
+            try:
+                spec = json.loads(content) if isinstance(content, str) else dict(content)
+            except (ValueError, TypeError) as exc:
+                raise ValueError(f"patch-model 的内容不是合法 JSON: {exc}") from exc
+            if mtstate.patch_config_file(dest, spec):
+                written.append(rel)
+            continue
         if dest.exists():
             if mode == "if-pristine":
                 if not _is_pristine(rel, dest):
@@ -138,7 +180,7 @@ def _write_seed(files: list[dict]) -> list[str]:
             elif not mode:
                 continue
         dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_text(item.get("content", ""), encoding="utf-8")
+        dest.write_text(str(content), encoding="utf-8")
         try:
             dest.chmod(0o600 if rel.endswith(".env") else 0o644)
         except OSError:
@@ -150,6 +192,7 @@ def _write_seed(files: list[dict]) -> list[str]:
 async def _spawn_hermes(token: str) -> None:
     global _hermes_proc
     env = dict(os.environ)
+    env.update(_hermes_env)
     env["HERMES_DASHBOARD_SESSION_TOKEN"] = token
     _hermes_proc = await asyncio.create_subprocess_exec(
         "hermes", "serve",
@@ -160,17 +203,106 @@ async def _spawn_hermes(token: str) -> None:
     )
 
 
+async def _stop_hermes(grace_s: float = 30.0) -> None:
+    """先 SIGTERM 等它自己退，超时再 SIGKILL。"""
+    proc = _hermes_proc
+    if proc is None or proc.returncode is not None:
+        return
+    try:
+        proc.send_signal(signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    try:
+        await asyncio.wait_for(proc.wait(), timeout=grace_s)
+    except asyncio.TimeoutError:
+        try:
+            proc.kill()
+        except ProcessLookupError:
+            return
+        await proc.wait()
+
+
+async def _supervise() -> None:
+    """hermes 意外退出就带退避拉起来；drain 期间不管。"""
+    global _hermes_restarts
+    backoff = 1.0
+    while True:
+        proc = _hermes_proc
+        if proc is None:
+            await asyncio.sleep(1.0)
+            continue
+        started = time.monotonic()
+        await proc.wait()
+        if _draining:
+            return
+        if time.monotonic() - started > 60:
+            backoff = 1.0  # 稳定跑过一分钟，退避从头算
+        _hermes_restarts += 1
+        _log(f"hermes 退出（码 {proc.returncode}），{backoff:.0f}s 后第 {_hermes_restarts} 次拉起")
+        await asyncio.sleep(backoff)
+        backoff = min(backoff * 2, 60.0)
+        if _draining:
+            return
+        try:
+            await _spawn_hermes(_hermes_token)
+        except Exception as exc:  # noqa: BLE001
+            _log(f"拉起 hermes 失败: {type(exc).__name__}: {exc}")
+            await asyncio.sleep(backoff)
+
+
+async def _archiver(interval_s: int) -> None:
+    """定时归档循环。真正的打包在线程里跑，不占转发流量的事件循环。"""
+    await asyncio.sleep(min(60, interval_s))  # 等 hermes 把技能同步、首次建库做完
+    while True:
+        try:
+            await _do_archive(force=False)
+        except mtstate.OwnerLost as exc:
+            _log(f"{exc}；本实例已被接管，停止归档并停掉 hermes")
+            await _fence()
+            return
+        except Exception as exc:  # noqa: BLE001
+            _log(f"定时归档失败: {type(exc).__name__}: {exc}")
+        await asyncio.sleep(interval_s)
+
+
+async def _do_archive(force: bool) -> dict | None:
+    assert _state is not None and _state_lock is not None
+    async with _state_lock:
+        manifest = await asyncio.to_thread(_state.archive, force)
+    return manifest.summary() if manifest else None
+
+
+async def _fence() -> None:
+    """卷上的主人不是自己了：停 hermes、停归档，只留转发器应答状态。"""
+    global _draining
+    _draining = True
+    await _stop_hermes()
+
+
+def _check_token(headers: dict[str, str]) -> bool:
+    return bool(_hermes_token) and headers.get("x-mt-token", "") == _hermes_token
+
+
 async def _bootstrap(writer: asyncio.StreamWriter, body: bytes) -> None:
-    """``POST /__mt/bootstrap`` —— 收令牌和种子文件，落盘，拉起 hermes。
+    """``POST /__mt/bootstrap`` —— 收令牌、种子文件和状态段，恢复、落盘、拉起 hermes。
 
     只认第一次，且只在启动后的窗口期内。沙箱只能经平台代理按 sandboxId 访问，
     而 sandboxId 只有入口知道（存在入口自己的库里），再加上这两道限制，
     「别人抢先引导」需要同时猜中 ID 并在几秒内赢得竞争。
     TODO: 平台若支持创建时注入一次性密钥，改成校验密钥，去掉这个时间窗。
+
+    ``state`` 段（沙箱路径才有）::
+
+        {"vol": "/mnt/u", "owner": "<本实例ID>", "epoch": 7, "restore_from": "<上一代实例ID或空>",
+         "force": false, "archive_interval_s": 300}
+
+    恢复失败**不算引导成功**：hermes 不会被拉起，``_bootstrapped`` 保持 False，入口可以
+    带 force 重试，或者判定这台实例不可用。
     """
-    global _bootstrapped, _boot_lock
+    global _bootstrapped, _boot_lock, _state, _state_lock, _archiver_task, _supervisor_task, _hermes_token
     if _boot_lock is None:
         _boot_lock = asyncio.Lock()
+        _state_lock = asyncio.Lock()
 
     async with _boot_lock:
         if _bootstrapped:
@@ -190,12 +322,45 @@ async def _bootstrap(writer: asyncio.StreamWriter, body: bytes) -> None:
             _reply(writer, 400, {"ok": False, "error": "缺少 token"})
             return
 
+        report: dict = {}
+        state = payload.get("state") or None
+        if state:
+            try:
+                vol = Path(str(state.get("vol", "/mnt/u")))
+                owner = str(state.get("owner", "")).strip()
+                epoch = int(state.get("epoch", 0))
+                if not owner or epoch <= 0:
+                    raise ValueError("state 段缺 owner 或 epoch")
+                mgr = mtstate.StateManager(HERMES_HOME, vol, owner, epoch)
+                # 顺序：恢复上一代的归档 → 配置迁移 → 目录链接 → 主人标记；
+                # 种子文件在这之后由 _write_seed 按顺序落：config.yaml(if-pristine) →
+                # 平台行 patch → .env 逐行 upsert。恢复回来的用户配置因此不会被整份覆盖。
+                rep = await asyncio.to_thread(
+                    mgr.prepare,
+                    str(state.get("restore_from", "") or ""),
+                    bool(state.get("force", False)),
+                    None,
+                    None,
+                    None,
+                    bool(state.get("migrate", True)),
+                )
+                report = rep.as_dict()
+                _state = mgr
+                _hermes_env["HERMES_WRITE_SAFE_ROOT"] = f"{HERMES_HOME}{os.pathsep}{vol / 'workspace'}"
+            except mtstate.RefuseStart as exc:
+                _reply(writer, 409, {"ok": False, "error": str(exc), "refused": True})
+                return
+            except Exception as exc:  # noqa: BLE001
+                _reply(writer, 500, {"ok": False, "error": f"恢复失败: {type(exc).__name__}: {exc}"})
+                return
+
         try:
             written = _write_seed(list(payload.get("files") or []))
         except Exception as exc:  # noqa: BLE001
             _reply(writer, 400, {"ok": False, "error": f"写种子文件失败: {exc}"})
             return
 
+        _hermes_token = token
         try:
             await _spawn_hermes(token)
         except Exception as exc:  # noqa: BLE001
@@ -204,22 +369,102 @@ async def _bootstrap(writer: asyncio.StreamWriter, body: bytes) -> None:
             return
 
         _bootstrapped = True
+        _supervisor_task = asyncio.create_task(_supervise())
+        if _state is not None:
+            interval = int((state or {}).get("archive_interval_s") or ARCHIVE_INTERVAL_S)
+            _archiver_task = asyncio.create_task(_archiver(max(30, interval)))
 
     # 等 hermes 真正开始监听，好让入口一收到 200 就能直接转发。
     deadline = time.monotonic() + float(payload.get("ready_timeout_s", 180))
     while time.monotonic() < deadline:
         if await _hermes_alive():
-            _reply(writer, 200, {"ok": True, "hermes": True, "written": written})
+            _reply(writer, 200, {"ok": True, "hermes": True, "written": written, "state": report})
             return
         if _hermes_proc is not None and _hermes_proc.returncode is not None:
             _reply(writer, 500, {
                 "ok": False,
                 "error": f"hermes 启动后立刻退出，退出码 {_hermes_proc.returncode}",
                 "written": written,
+                "state": report,
             })
             return
         await asyncio.sleep(0.5)
-    _reply(writer, 503, {"ok": False, "error": "hermes 未在超时内就绪", "written": written})
+    _reply(writer, 503, {"ok": False, "error": "hermes 未在超时内就绪", "written": written, "state": report})
+
+
+async def _sync(writer: asyncio.StreamWriter) -> None:
+    """``POST /__mt/sync`` —— 立即归档一次。入口在暂停前调。"""
+    if _state is None:
+        _reply(writer, 400, {"ok": False, "error": "这台实例没有状态管家（没有 state 段引导）"})
+        return
+    try:
+        summary = await _do_archive(force=True)
+    except mtstate.OwnerLost as exc:
+        await _fence()
+        _reply(writer, 409, {"ok": False, "error": str(exc), "fenced": True})
+        return
+    except Exception as exc:  # noqa: BLE001
+        _reply(writer, 500, {"ok": False, "error": f"归档失败: {type(exc).__name__}: {exc}"})
+        return
+    _reply(writer, 200, {"ok": True, "archive": summary})
+
+
+async def _drain(writer: asyncio.StreamWriter) -> None:
+    """``POST /__mt/drain`` —— 停 hermes → 最终归档 → 停后台任务。之后这台实例可以删。
+
+    可以重复调：已经排空就把上次的结果再返回一遍。
+    """
+    global _draining, _drained
+    if _state is None:
+        _reply(writer, 400, {"ok": False, "error": "这台实例没有状态管家（没有 state 段引导）"})
+        return
+    if _drained is not None:
+        _reply(writer, 200, dict(_drained, already=True))
+        return
+    _draining = True
+    _state.phase = "draining"
+    if _archiver_task is not None:
+        _archiver_task.cancel()
+    await _stop_hermes()
+    try:
+        summary = await _do_archive(force=True)
+    except mtstate.OwnerLost as exc:
+        _state.phase = "fenced"
+        _reply(writer, 409, {"ok": False, "error": str(exc), "fenced": True})
+        return
+    except Exception as exc:  # noqa: BLE001
+        _state.phase = "drain_failed"
+        _reply(writer, 500, {"ok": False, "error": f"最终归档失败: {type(exc).__name__}: {exc}",
+                             "hermes_stopped": True})
+        return
+    _state.phase = "drained"
+    _drained = {"ok": True, "archive": summary}
+    _reply(writer, 200, _drained)
+
+
+async def _resume(writer: asyncio.StreamWriter) -> None:
+    """``POST /__mt/resume`` —— 撤回 drain：重新拉起 hermes 和归档循环。"""
+    global _draining, _drained, _archiver_task, _supervisor_task
+    if _state is None or not _bootstrapped:
+        _reply(writer, 400, {"ok": False, "error": "没有可撤回的 drain"})
+        return
+    if _state.phase == "fenced":
+        _reply(writer, 409, {"ok": False, "error": "本实例已被新实例接管，不能重新启动"})
+        return
+    _draining = False
+    _drained = None
+    if _hermes_proc is None or _hermes_proc.returncode is not None:
+        try:
+            await _spawn_hermes(_hermes_token)
+        except Exception as exc:  # noqa: BLE001
+            _reply(writer, 500, {"ok": False, "error": f"拉起 hermes 失败: {type(exc).__name__}: {exc}"})
+            return
+    if _supervisor_task is None or _supervisor_task.done():
+        _supervisor_task = asyncio.create_task(_supervise())
+    if _archiver_task is None or _archiver_task.done():
+        _archiver_task = asyncio.create_task(_archiver(ARCHIVE_INTERVAL_S))
+    _state.phase = "ready"
+    _reply(writer, 200, {"ok": True})
 
 
 # ---------------------------------------------------------------- 请求分发
@@ -254,6 +499,22 @@ def _parse(head: bytes) -> tuple[str, str, dict[str, str], bytes]:
     return method, path, headers, rest
 
 
+async def _read_body(headers: dict[str, str], rest: bytes, reader: asyncio.StreamReader) -> bytes | None:
+    try:
+        length = int(headers.get("content-length", "0"))
+    except ValueError:
+        return None
+    if length > MAX_BODY:
+        return None
+    body = bytearray(rest)
+    while len(body) < length:
+        chunk = await reader.read(min(CHUNK, length - len(body)))
+        if not chunk:
+            break
+        body.extend(chunk)
+    return bytes(body)
+
+
 async def _handle_mt(
     method: str, path: str, headers: dict[str, str],
     rest: bytes, reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
@@ -273,8 +534,11 @@ async def _handle_mt(
             "ok": True,
             "hermes": await _hermes_alive(),
             "bootstrapped": _bootstrapped,
+            "draining": _draining,
+            "hermes_restarts": _hermes_restarts,
             "uptime_s": round(time.monotonic() - _START_TS, 1),
             "boot_window_left_s": max(0, round(left)),
+            "state": _state.status() if _state is not None else None,
         })
         return
 
@@ -282,21 +546,27 @@ async def _handle_mt(
         if method != "POST":
             _reply(writer, 400, {"ok": False, "error": "只接受 POST"})
             return
-        try:
-            length = int(headers.get("content-length", "0"))
-        except ValueError:
-            _reply(writer, 400, {"ok": False, "error": "Content-Length 不是数字"})
+        body = await _read_body(headers, rest, reader)
+        if body is None:
+            _reply(writer, 400, {"ok": False, "error": "Content-Length 非法或载荷过大"})
             return
-        if length > MAX_BODY:
-            _reply(writer, 400, {"ok": False, "error": "载荷过大"})
+        await _bootstrap(writer, body)
+        return
+
+    if route in ("/__mt/sync", "/__mt/drain", "/__mt/resume"):
+        if method != "POST":
+            _reply(writer, 400, {"ok": False, "error": "只接受 POST"})
             return
-        body = bytearray(rest)
-        while len(body) < length:
-            chunk = await reader.read(min(CHUNK, length - len(body)))
-            if not chunk:
-                break
-            body.extend(chunk)
-        await _bootstrap(writer, bytes(body))
+        if not _check_token(headers):
+            _reply(writer, 403, {"ok": False, "error": "缺少或错误的实例令牌"})
+            return
+        await _read_body(headers, rest, reader)
+        if route == "/__mt/sync":
+            await _sync(writer)
+        elif route == "/__mt/drain":
+            await _drain(writer)
+        else:
+            await _resume(writer)
         return
 
     _reply(writer, 400, {"ok": False, "error": f"未知接口 {route}"})
@@ -336,6 +606,15 @@ async def _handle(client_r: asyncio.StreamReader, client_w: asyncio.StreamWriter
                 except Exception:  # noqa: BLE001
                     pass
                 client_w.close()
+            return
+
+        if _draining:
+            _reply(client_w, 503, {"ok": False, "error": "实例正在排空", "draining": True})
+            try:
+                await client_w.drain()
+            except Exception:  # noqa: BLE001
+                pass
+            client_w.close()
             return
 
         try:

@@ -197,19 +197,37 @@ class Cube:
         return sandbox_id
 
     async def list_sandboxes(self) -> list[dict]:
+        """★ 平台的列表接口写死最多返回 200 条、不能翻页。只能用来巡检，不能用来判断某台实例在不在。"""
         _, body = await self._req("GET", "/sandboxes")
         return body or []
 
     async def get_sandbox(self, sandbox_id: str) -> dict | None:
-        for sb in await self.list_sandboxes():
-            if sb.get("sandboxID") == sandbox_id:
-                return sb
-        return None
+        """按 ID 查一台实例；平台说没有（404）才返回 None。
+
+        ★ 不能用列表接口找：它最多返回 200 条，集群实例总数超过之后，排在后面的用户
+          会被判成「实例没了」，入口给他新建一台，历史就悄悄没了。
+        """
+        try:
+            _, body = await self._req("GET", f"/sandboxes/{sandbox_id}")
+        except CubeError as exc:
+            if exc.status == 404:
+                return None
+            raise
+        return body if isinstance(body, dict) else None
 
     async def sandbox_state(self, sandbox_id: str) -> str:
         """``running`` / ``paused`` / ``gone``（已不存在）。"""
         sb = await self.get_sandbox(sandbox_id)
         return "gone" if sb is None else str(sb.get("state") or "unknown")
+
+    async def wait_gone(self, sandbox_id: str, timeout_s: float = 60) -> bool:
+        """删实例之后确认平台上真的没有了。删不干净就不能建新的：两台实例会同写一个卷。"""
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            if await self.get_sandbox(sandbox_id) is None:
+                return True
+            await asyncio.sleep(1.0)
+        return False
 
     async def pause_sandbox(self, sandbox_id: str) -> None:
         try:
@@ -290,6 +308,7 @@ class Cube:
         token: str,
         files: list[dict],
         ready_timeout_s: int = 240,
+        state: dict | None = None,
     ) -> dict:
         """把会话令牌和种子文件送进容器，并让它把 hermes 拉起来。
 
@@ -302,24 +321,55 @@ class Cube:
         用户配置该用 ``"if-pristine"``：既能盖掉镜像首启种下的默认示例，
         又不会动用户或 hermes 自己写过的内容。
 
-        只认第一次。实例已经引导过时平台返回 409，这里当作成功 —— 调用方重试
-        或多个请求撞上时不该因此失败。
+        ``state`` 是给状态管家的：``{"vol", "owner", "epoch", "restore_from", "force"}``，
+        转发器先按它把上一代的归档恢复到本地盘再拉 hermes；见 seed/mtstate.py。
+
+        只认第一次。实例已经引导过时转发器返回 409「已经引导过了」，这里当作成功 ——
+        调用方重试或多个请求撞上时不该因此失败。★ 同样是 409 的「拒绝启动」（卷上的
+        记录比入口新）**不是**成功，原样抛出，由调用方决定是停下还是带 force 重试。
         """
+        payload: dict[str, Any] = {"token": token, "files": files, "ready_timeout_s": ready_timeout_s}
+        if state:
+            payload["state"] = state
         try:
             _, body = await self._tenant_req(
                 "POST",
                 sandbox_id,
                 port,
                 "/__mt/bootstrap",
-                json_body={"token": token, "files": files, "ready_timeout_s": ready_timeout_s},
+                json_body=payload,
                 timeout_s=ready_timeout_s + 30,
             )
             return body if isinstance(body, dict) else {}
         except CubeError as exc:
-            if exc.status == 409:
+            if exc.status == 409 and "引导过" in (exc.message or ""):
                 log.info("sandbox %s 已经引导过，跳过", sandbox_id[:12])
                 return {"ok": True, "already": True}
             raise
+
+    async def sync_state(self, sandbox_id: str, port: int, token: str) -> dict:
+        """让状态管家立即归档一次（暂停前调）。返回归档摘要。"""
+        _, body = await self._req(
+            "POST",
+            "/__mt/sync",
+            base=self.proxy_base,
+            headers={"Host": self.host_for(sandbox_id, port), "X-MT-Token": token},
+            json_body={},
+            timeout_s=180,
+        )
+        return (body or {}).get("archive") or {}
+
+    async def drain(self, sandbox_id: str, port: int, token: str) -> dict:
+        """停 hermes、做最终归档（删实例前调）。返回归档摘要。可重复调。"""
+        _, body = await self._req(
+            "POST",
+            "/__mt/drain",
+            base=self.proxy_base,
+            headers={"Host": self.host_for(sandbox_id, port), "X-MT-Token": token},
+            json_body={},
+            timeout_s=300,
+        )
+        return (body or {}).get("archive") or {}
 
     async def wait_hermes(self, sandbox_id: str, port: int, timeout_s: float = 240) -> None:
         """等 hermes 真的能应答业务请求。

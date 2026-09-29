@@ -38,10 +38,16 @@ class Settings:
     cube_api_key: str = _env("MT_CUBE_API_KEY", "")              # 控制面鉴权；集群没开就留空
     cube_template: str = _env("MT_CUBE_TEMPLATE", "")            # 模板 ID 或别名
     cube_volume_driver: str = _env("MT_CUBE_VOLUME_DRIVER", "")  # 空 = 用平台默认后端
-    # 卷挂进沙箱的位置，必须与镜像里 HERMES_DASHBOARD_FILES_ROOT 一致。
-    # ★ 只有工作区挂卷，对话库留在实例可写层 —— 卷由对象存储支撑，放不了 SQLite。
-    #   原因见 docs/Hermes多租户-Cube架构说明.html §5。
-    cube_workspace_path: str = _env("MT_CUBE_WORKSPACE", "/opt/data/workspace")
+    # 卷挂进沙箱的位置。挂在 hermes 数据目录之外：hermes 的仪表盘备份会遍历整个数据目录，
+    # 卷挂在里面会被整个打进可写层。工作区、附件、图片由转发器做成指向卷内的目录链接。
+    # ★ 卷由对象存储支撑，放不了 SQLite；对话库在实例可写层上跑，由状态管家定时归档到卷。
+    #   见 docs/Hermes-MT-05-持久化存储方案。
+    cube_volume_mount: str = _env("MT_CUBE_VOLUME_MOUNT", "/mnt/u")
+    # 状态管家：定时归档间隔；长期空闲（暂停后又过了这么久）就排空并删实例，0 = 不删。
+    archive_interval_s: int = int(_env("MT_ARCHIVE_INTERVAL_S", "300"))
+    idle_delete_hours: int = int(_env("MT_IDLE_DELETE_HOURS", "0"))
+    # 新实例拒绝启动（卷上的记录比 PG 新）时是否强行按 PG 的来源恢复。只在人工确认后临时打开。
+    state_force: bool = _env("MT_STATE_FORCE", "0") == "1"
 
     # 租户容器
     image: str = _env("MT_IMAGE", "hermes-custom:dev")
