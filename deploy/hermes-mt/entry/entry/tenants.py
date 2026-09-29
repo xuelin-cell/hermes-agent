@@ -520,16 +520,20 @@ class TenantManager:
                     await self.store.set_sandbox_id(user_id, sandbox_id)
                     await self.store.write_audit(user_id, "tenant.start", {"sandbox": sandbox_id})
 
-                    await self.cube.wait_forwarder(sandbox_id, port)
-                    await self.cube.bootstrap(
-                        sandbox_id,
-                        port,
-                        token=token,
-                        files=self._cube_seed_files(
-                            context.api_key, context.endpoint, context.catalog
-                        ),
-                        ready_timeout_s=self.s.ready_timeout_s,
-                    )
+                # 等转发进程就绪，然后引导。bootstrap 幂等——已引导返回 409 当成功。
+                # 这两步必须放在 if not sandbox_id 之外：沙箱可能上次 create 之后
+                # bootstrap 失败（种子文件读失败、超时…），已落库的 sandbox_id 会让
+                # 代码跳过新建分支，若 bootstrap 也被跳过，hermes 就永远等不到引导。
+                await self.cube.wait_forwarder(sandbox_id, port)
+                await self.cube.bootstrap(
+                    sandbox_id,
+                    port,
+                    token=token,
+                    files=self._cube_seed_files(
+                        context.api_key, context.endpoint, context.catalog
+                    ),
+                    ready_timeout_s=self.s.ready_timeout_s,
+                )
 
                 # 实例可能是 paused —— 这个请求会把它自动唤醒，等就绪即可。
                 await self.cube.wait_hermes(sandbox_id, port, timeout_s=self.s.ready_timeout_s)
