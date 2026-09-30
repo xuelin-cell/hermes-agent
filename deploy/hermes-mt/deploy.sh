@@ -114,7 +114,7 @@ load_cfg() {
     TPL_DISK="$(cfg MT_DEPLOY_TPL_DISK 8G)"
     FWD_PORT="$(cfg MT_DEPLOY_FWD_PORT 15000)"
     FRONTEND_SRC="$(cfg MT_DEPLOY_FRONTEND_SRC)"
-    BRANCH="${BRANCH_OPT:-$(cfg MT_DEPLOY_BRANCH "$(git -C "$REPO" rev-parse --abbrev-ref HEAD)")}"
+    BRANCH="${BRANCH_OPT:-$(cfg MT_DEPLOY_BRANCH "$(g rev-parse --abbrev-ref HEAD)")}"
 }
 
 compose() {
@@ -126,6 +126,10 @@ api() {  # api GET /templates
 }
 
 py() { python3 -c "$@"; }
+
+# 部署机的 git 是 1.8（没有 -C、没有 --is-shallow-repository），只用老版本也有的用法。
+g() { (cd "$REPO" && git "$@"); }
+head_short() { g rev-parse --short=7 HEAD; }
 
 # ---------------------------------------------------------------- 指纹
 
@@ -256,7 +260,7 @@ cmd_pull() {
         git status --short --untracked-files=no | head -10
         die "工作区有未提交的改动，不敢 reset。先处理掉再来。"
     fi
-    if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
+    if [ -f "$REPO/.git/shallow" ]; then
         git fetch --depth 1 origin "$BRANCH"
     else
         git fetch origin "$BRANCH"
@@ -316,7 +320,7 @@ cmd_check() {
     free_g="$(df -BG --output=avail / | tail -1 | tr -dc 0-9)"
     [ "${free_g:-0}" -ge 5 ] && ok "根分区剩余 ${free_g}G" || warn "根分区只剩 ${free_g}G"
     ok "别人的容器 $(foreign_containers) 个（部署后要一样）"
-    ok "代码 $(git -C "$REPO" rev-parse --short=7 HEAD)  $(git -C "$REPO" log -1 --format=%s | cut -c1-50)"
+    ok "代码 $(head_short)  $(g log -1 --format=%s | cut -c1-50)"
     ok "当前模板 ${TEMPLATE:-（未设置）}"
 }
 
@@ -463,14 +467,14 @@ cmd_up() {
     [ "$(docker logs --since 3m "$PROJECT-entry" 2>&1 | grep -cE 'Traceback|ERROR')" = 0 ] && ok "入口日志没有报错" || warn "入口日志有报错：docker logs $PROJECT-entry"
     [ "$(docker inspect -f '{{json .Mounts}}' "$PROJECT-entry")" = "[]" ] && ok "入口没有挂载 docker.sock" || warn "入口有挂载：$(docker inspect -f '{{json .Mounts}}' "$PROJECT-entry")"
     [ "$(foreign_containers)" = "$foreign_before" ] && ok "别人的容器仍是 $foreign_before 个" || die "别人的容器数变了（$foreign_before -> $(foreign_containers)），马上查"
-    printf '%s  commit=%s  image=%s  template=%s\n' "$(date '+%F %T')" "$(git -C "$REPO" rev-parse --short=7 HEAD)" "$(cat "$HERE/.image-fingerprint" 2>/dev/null || echo -)" "$TEMPLATE" >> "$HISTORY"
+    printf '%s  commit=%s  image=%s  template=%s\n' "$(date '+%F %T')" "$(head_short)" "$(cat "$HERE/.image-fingerprint" 2>/dev/null || echo -)" "$TEMPLATE" >> "$HISTORY"
 }
 
 # ---------------------------------------------------------------- status / purge
 
 cmd_status() {
     say "现状"
-    printf '  代码 %s  模板 %s  镜像指纹 %s\n' "$(git -C "$REPO" rev-parse --short=7 HEAD)" "${TEMPLATE:-（空）}" "$(cat "$HERE/.image-fingerprint" 2>/dev/null || echo -)"
+    printf '  代码 %s  模板 %s  镜像指纹 %s\n' "$(head_short)" "${TEMPLATE:-（空）}" "$(cat "$HERE/.image-fingerprint" 2>/dev/null || echo -)"
     docker ps -a --format '  {{.Names}}  {{.Status}}' | grep "$PROJECT-" || true
     echo "  租户（PG）："
     docker exec "$PROJECT-postgres" sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -F "  " -c "SELECT left(user_id,10), state, left(sandbox_id,12), template_id, state_epoch, state_archive FROM tenant_runtime ORDER BY last_activity_at DESC"' 2>/dev/null | sed 's/^/    /' || echo "    （PG 没起来）"
@@ -520,7 +524,7 @@ cmd_all() {
     cmd_up
     say "摘要"
     printf '  代码 %s  镜像 %s:%s  模板 %s  页面 http://%s/hermes/\n' \
-        "$(git -C "$REPO" rev-parse --short=7 HEAD)" "$IMAGE_NAME" "$(cat "$HERE/.image-fingerprint")" "$TEMPLATE" "$HTTP_PORT"
+        "$(head_short)" "$IMAGE_NAME" "$(cat "$HERE/.image-fingerprint")" "$TEMPLATE" "$HTTP_PORT"
     local stale
     stale="$(our_sandboxes | awk -v t="$TEMPLATE" '$3 != t' | wc -l)"
     if [ "$stale" != 0 ]; then
