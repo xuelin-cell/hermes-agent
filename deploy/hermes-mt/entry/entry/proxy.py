@@ -113,7 +113,17 @@ async def proxy_ws(
         max_msg_size=_MAX_WS_MSG,
         heartbeat=None,
     )
-    await downstream.prepare(request)
+    try:
+        await downstream.prepare(request)
+    except (ConnectionError, aiohttp.ClientConnectionError) as exc:
+        # 走到这里之前 ensure_running 可能花了好几秒（实例换代、唤醒），浏览器等不及先断了、
+        # 又重连了一条。对着一个已经关掉的连接握手没有意义，也不该记成 ERROR。
+        log.info("ws client of %s gone before tenant ready: %s", tenant.slug, type(exc).__name__)
+        try:
+            await upstream.close()
+        except Exception:  # noqa: BLE001
+            pass
+        raise web.HTTPServiceUnavailable(text="client disconnected before tenant ready") from exc
 
     async def pump(src: aiohttp.ClientWebSocketResponse | web.WebSocketResponse, dst, label: str) -> None:
         try:

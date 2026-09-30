@@ -445,7 +445,14 @@ cmd_up() {
     foreign_before="$(foreign_containers)"
     entry_before="$(docker inspect -f '{{.Id}}' "$PROJECT-entry" 2>/dev/null || true)"
     cd "$HERE"
-    compose up -d --build --quiet-pull 2>&1 | sed 's/^/  /' | tail -n 12
+    # 数据库只在没起来时才碰：compose 判断项目配置变了会把它一起重建，升级入口不该重启 PG。
+    if [ "$(docker inspect -f '{{.State.Running}}' "$PROJECT-postgres" 2>/dev/null || true)" != true ]; then
+        compose up -d --quiet-pull postgres 2>&1 | sed 's/^/  /' | tail -n 4
+        ok "postgres 已启动"
+    else
+        ok "postgres 在跑，不动它"
+    fi
+    compose up -d --build --quiet-pull --no-deps entry nginx 2>&1 | sed 's/^/  /' | tail -n 12
     local entry_after
     entry_after="$(docker inspect -f '{{.Id}}' "$PROJECT-entry" 2>/dev/null || true)"
     if [ "$entry_after" != "$entry_before" ]; then
