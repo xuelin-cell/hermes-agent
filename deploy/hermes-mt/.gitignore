@@ -1,3 +1,6 @@
 entry.env
 nginx/dist-browser/
 entry.env.*
+.deploy-history
+.image-fingerprint
+compose.override.yaml

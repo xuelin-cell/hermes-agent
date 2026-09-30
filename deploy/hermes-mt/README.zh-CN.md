@@ -32,6 +32,22 @@
 | `scripts/verify_isolation.sh` | 验收 27 项：登录门禁 / 两个用户各自的世界 / 网络围栏 / 文件链路与文件隔离 |
 | `scripts/verify_ws_keepalive.py` | 回归：ws 静默挂着时容器不被空闲回收停掉 |
 | `entry.env.example` | 入口的环境变量样例；复制成 `entry.env`（已 gitignore） |
+| `deploy.sh` | 沙箱后端的一键部署 / 升级脚本（见下「一键部署」）；`seed/mtstate.py` 是实例里的状态管家，负责把用户状态归档到卷、重建时恢复 |
+
+## 一键部署（沙箱后端，推荐）
+
+部署机上以 root 运行，所有手册里的检查都在脚本里：
+
+```bash
+cd deploy/hermes-mt
+# 首次：生成 entry.env（密钥现场随机、600）和 compose.override.yaml
+./deploy.sh init --http-port 192.168.x.x:18081 --cube-api http://<控制面>:3000 --cube-proxy http://<数据面>
+# 之后每次升级都是这一条：拉代码 → 检查 → 沙箱镜像(按需) → 模板(按需) → 写配置 → 起容器 → 验收
+./deploy.sh all
+./deploy.sh status      # 看现状；./deploy.sh check 只读检查；./deploy.sh purge-old 删旧模板上的实例
+```
+
+要点：沙箱镜像按内容指纹命名（`Dockerfile.cube` + `seed/*` + 基础镜像 + 模板参数），只改入口代码不会重做镜像和模板；改了转发器就一定重做，并把新模板 ID 写进 `entry.env`。**入口和沙箱模板必须一起升级**——新入口配旧转发器会把用户的 `config.yaml` 写坏，脚本保证这一点。入口发现实例的模板和配置不一致，会在用户下次请求时自动排空、删除、重建、从卷上的归档恢复。部署机的规矩（不重启 Docker、不 prune、不切换构建器、页面只绑内网 IP、不打印密钥）也都在脚本里。
 
 ## 前置条件
 
