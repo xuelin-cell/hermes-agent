@@ -5,6 +5,9 @@ import { introFr } from './intro-fr'
 
 export const frOverrides = {
   desktopLogin: {
+    phonePlaceholder: 'Numéro de téléphone à 11 chiffres',
+    captchaPlaceholder: 'Code de l’image',
+    smsPlaceholder: '6 chiffres',
     captchaLoadError: 'Impossible de charger le captcha. Actualisez l’image pour réessayer.',
     title: 'Connexion à Hermes',
     subtitle: 'Utilisez votre compte MaaS pour accéder à votre espace de travail local.',
@@ -14,8 +17,7 @@ export const frOverrides = {
     refresh: 'Actualiser',
     send: 'Envoyer le code',
     submit: 'Se connecter',
-    unavailable:
-      'Les services de connexion ne sont pas encore connectés. Aucun SMS ne sera envoyé et Hermes ne démarrera pas.',
+    unavailable: 'La connexion par SMS est en cours d’intégration.',
     phoneError: 'Saisissez un numéro à 11 chiffres commençant par 1.',
     captchaError: 'Saisissez le code de l’image (6 caractères maximum).',
     smsError: 'Saisissez le code SMS à 6 chiffres.',

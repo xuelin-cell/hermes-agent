@@ -5,6 +5,9 @@ import { introJa } from './intro-ja'
 
 export const ja = defineLocale({
   desktopLogin: {
+    phonePlaceholder: '11 桁の電話番号',
+    captchaPlaceholder: '画像の文字を入力',
+    smsPlaceholder: '6 桁の数字',
     captchaLoadError: '画像認証を取得できませんでした。画像を更新して再試行してください。',
     title: 'Hermes にログイン',
     subtitle: 'MaaS アカウントで自分のローカル作業領域にアクセスします。',
@@ -14,7 +17,7 @@ export const ja = defineLocale({
     refresh: '画像を更新',
     send: 'コードを送信',
     submit: 'ログイン',
-    unavailable: 'ログインサービスは未接続です。SMS の送信や Hermes の起動は行いません。',
+    unavailable: 'SMS ログイン機能を接続中です。',
     phoneError: '1 で始まる 11 桁の電話番号を入力してください。',
     captchaError: '画像認証コードを入力してください（最大 6 文字）。',
     smsError: '6 桁の SMS 認証コードを入力してください。',

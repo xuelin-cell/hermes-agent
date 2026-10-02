@@ -72,6 +72,9 @@ export interface Translations {
     phoneError: string
     captchaError: string
     captchaLoadError: string
+    phonePlaceholder: string
+    captchaPlaceholder: string
+    smsPlaceholder: string
     smsError: string
     requestError: string
   }

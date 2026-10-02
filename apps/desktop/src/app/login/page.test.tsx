@@ -1,9 +1,13 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { I18nProvider } from '@/i18n/context'
 
 import { LoginPage, type LoginPageProps } from './page'
+
+afterEach(() => {
+  delete window.hermesLogin
+})
 
 /** 以无配置读取能力的中文环境挂载真实登录组件。 */
 function renderLogin(props: LoginPageProps = {}) {
@@ -31,7 +35,7 @@ describe('桌面登录表单', () => {
     }
 
     fireEvent.submit(screen.getByRole('button', { name: '登录' }).closest('form')!)
-    expect(screen.getByRole('status').textContent).toContain('登录服务尚未接通')
+    expect(screen.getByRole('status').textContent).toContain('短信登录功能正在接入')
     expect((screen.getByLabelText('手机号') as HTMLInputElement).value).toBe('13800000000')
   })
 
@@ -76,5 +80,22 @@ describe('桌面登录表单', () => {
     expect((button as HTMLButtonElement).disabled).toBe(false)
     fireEvent.change(screen.getByLabelText('短信验证码'), { target: { value: '654321' } })
     expect(screen.getByRole('alert').textContent).toBe('')
+  })
+
+  it('点击验证码图片刷新并清空旧输入，失败后原位置可以重试', async () => {
+    const imageDataUrl = 'data:image/png;base64,aGVsbG8='
+    const captcha = vi.fn().mockResolvedValue({ ok: true, captcha: { captchaId: 'first', imageDataUrl } })
+    window.hermesLogin = { captcha }
+    renderLogin()
+    const image = await screen.findByRole('img', { name: '图形验证码' })
+    fill()
+    captcha.mockResolvedValueOnce({ ok: false })
+    fireEvent.click(image)
+    await waitFor(() => expect(captcha).toHaveBeenCalledTimes(2))
+    expect((screen.getByLabelText('图形验证码') as HTMLInputElement).value).toBe('')
+    await screen.findByText('图形验证码获取失败，请点击刷新图片重试。')
+    fireEvent.click(screen.getByRole('button', { name: '刷新图片' }))
+    await screen.findByRole('img', { name: '图形验证码' })
+    expect(captcha).toHaveBeenCalledTimes(3)
   })
 })

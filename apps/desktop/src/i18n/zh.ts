@@ -5,6 +5,9 @@ import { introZh } from './intro-zh'
 
 export const zh = defineLocale({
   desktopLogin: {
+    phonePlaceholder: '11 位手机号',
+    captchaPlaceholder: '看图输入',
+    smsPlaceholder: '6 位数字',
     title: '登录 Hermes',
     subtitle: '使用 MaaS 账号，进入自己的本地工作空间。',
     phone: '手机号',
@@ -13,7 +16,7 @@ export const zh = defineLocale({
     refresh: '刷新图片',
     send: '发送验证码',
     submit: '登录',
-    unavailable: '登录服务尚未接通，不会发送短信，也不会启动 Hermes。',
+    unavailable: '短信登录功能正在接入。',
     phoneError: '请输入以 1 开头的 11 位手机号。',
     captchaError: '请输入图形验证码（最多 6 位）。',
     captchaLoadError: '图形验证码获取失败，请点击刷新图片重试。',

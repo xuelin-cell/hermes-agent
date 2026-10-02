@@ -4,6 +4,9 @@ import type { Translations } from './types'
 
 export const en: Translations = {
   desktopLogin: {
+    phonePlaceholder: '11-digit phone number',
+    captchaPlaceholder: 'Enter the image code',
+    smsPlaceholder: '6-digit code',
     captchaLoadError: 'Could not load the captcha. Refresh the image to retry.',
     title: 'Sign in to Hermes',
     subtitle: 'Use your MaaS account to access your own local workspace.',
@@ -13,7 +16,7 @@ export const en: Translations = {
     refresh: 'Refresh image',
     send: 'Send code',
     submit: 'Sign in',
-    unavailable: 'Login services are not connected yet. No messages will be sent and Hermes will not start.',
+    unavailable: 'SMS sign-in is being connected.',
     phoneError: 'Enter an 11-digit phone number starting with 1.',
     captchaError: 'Enter the image code (up to 6 characters).',
     smsError: 'Enter the 6-digit SMS code.',

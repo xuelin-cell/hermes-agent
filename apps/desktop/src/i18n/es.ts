@@ -5,6 +5,9 @@ import { introEs } from './intro-es'
 
 export const esOverrides = {
   desktopLogin: {
+    phonePlaceholder: 'Número de teléfono de 11 dígitos',
+    captchaPlaceholder: 'Código de la imagen',
+    smsPlaceholder: '6 dígitos',
     captchaLoadError: 'No se pudo cargar el captcha. Actualiza la imagen para intentarlo de nuevo.',
     title: 'Iniciar sesión en Hermes',
     subtitle: 'Usa tu cuenta MaaS para acceder a tu espacio de trabajo local.',
@@ -14,7 +17,7 @@ export const esOverrides = {
     refresh: 'Actualizar',
     send: 'Enviar código',
     submit: 'Iniciar sesión',
-    unavailable: 'Los servicios de inicio de sesión aún no están conectados. No se enviarán SMS ni se iniciará Hermes.',
+    unavailable: 'El inicio de sesión por SMS se está integrando.',
     phoneError: 'Introduce un número de 11 dígitos que empiece por 1.',
     captchaError: 'Introduce el código de imagen (máximo 6 caracteres).',
     smsError: 'Introduce el código SMS de 6 dígitos.',

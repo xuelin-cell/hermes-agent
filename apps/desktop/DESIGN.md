@@ -574,6 +574,8 @@ The detailed state contract lives in the scoped
 
 ## Before you add something — checklist
 
+登录表单复用 `Input`、`Button` 的 `size="auth"`：44px 最小高度、10px 圆角及 14px 正文，用于独立登录卡片。`Button size="captcha"` 提供 96×44px 的无内边距图片操作位。普通桌面控件的默认尺寸保持原有约定。验证码以同一行中的图片按钮呈现，点击、Enter 或 Space 均可刷新；图片加载和失败仍保留该位置。
+
 - [ ] Reuse a primitive (`Button`, `SearchField`, `SegmentedControl`,
       `ListRow`, `Loader`, `ErrorState`, `LogView`, `ConfirmDialog`) instead of
       forking one?

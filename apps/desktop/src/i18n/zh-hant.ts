@@ -5,6 +5,9 @@ import { introZhHant } from './intro-zh-hant'
 
 export const zhHant = defineLocale({
   desktopLogin: {
+    phonePlaceholder: '11 位手機號碼',
+    captchaPlaceholder: '輸入圖片文字',
+    smsPlaceholder: '6 位數字',
     captchaLoadError: '圖形驗證碼取得失敗，請點擊重新整理圖片重試。',
     title: '登入 Hermes',
     subtitle: '使用 MaaS 帳號，進入自己的本機工作空間。',
@@ -14,7 +17,7 @@ export const zhHant = defineLocale({
     refresh: '重新整理圖片',
     send: '傳送驗證碼',
     submit: '登入',
-    unavailable: '登入服務尚未接通，不會傳送簡訊，也不會啟動 Hermes。',
+    unavailable: '簡訊登入功能正在接入。',
     phoneError: '請輸入以 1 開頭的 11 位手機號碼。',
     captchaError: '請輸入圖片驗證碼（最多 6 位）。',
     smsError: '請輸入 6 位數字簡訊驗證碼。',

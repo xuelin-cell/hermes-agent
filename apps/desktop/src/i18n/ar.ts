@@ -2,6 +2,9 @@ import { defineLocale } from './define-locale'
 
 export const ar = defineLocale({
   desktopLogin: {
+    phonePlaceholder: 'رقم هاتف من 11 رقمًا',
+    captchaPlaceholder: 'أدخل رمز الصورة',
+    smsPlaceholder: 'رمز من 6 أرقام',
     captchaLoadError: 'تعذر تحميل صورة التحقق. حدّث الصورة للمحاولة مجددًا.',
     title: 'تسجيل الدخول إلى Hermes',
     subtitle: 'استخدم حساب MaaS للوصول إلى مساحة عملك المحلية.',
@@ -11,7 +14,7 @@ export const ar = defineLocale({
     refresh: 'تحديث الصورة',
     send: 'إرسال الرمز',
     submit: 'تسجيل الدخول',
-    unavailable: 'خدمات تسجيل الدخول غير متصلة بعد. لن تُرسل رسائل ولن يتم تشغيل Hermes.',
+    unavailable: 'جارٍ ربط تسجيل الدخول عبر الرسائل النصية.',
     phoneError: 'أدخل رقم هاتف من 11 رقمًا يبدأ بالرقم 1.',
     captchaError: 'أدخل رمز الصورة (6 أحرف كحد أقصى).',
     smsError: 'أدخل رمز الرسالة النصية المكوّن من 6 أرقام.',

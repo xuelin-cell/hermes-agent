@@ -77,16 +77,19 @@ export function LoginPage({ onSubmit }: LoginPageProps) {
 
   return (
     <main className={`flex h-full overflow-y-auto py-8 ${PAGE_INSET_X}`}>
-      <section aria-labelledby="login-heading" className="m-auto w-full max-w-sm space-y-6">
+      <section
+        aria-labelledby="login-heading"
+        className="m-auto w-full max-w-sm space-y-6 rounded-[1rem] border border-(--ui-stroke-tertiary) bg-card p-6 shadow-nous"
+      >
         <header className="space-y-2">
-          <h1 className="text-xl font-semibold" id="login-heading">
+          <h1 className="text-2xl font-bold tracking-tight" id="login-heading">
             {copy.title}
           </h1>
-          <p className="text-sm text-muted-foreground">{copy.subtitle}</p>
+          <p className="text-sm leading-relaxed text-muted-foreground">{copy.subtitle}</p>
         </header>
         <form aria-busy={pending} className="space-y-4" noValidate onSubmit={event => void submit(event)}>
           <div className="space-y-2">
-            <label className="text-sm" htmlFor="login-phone">
+            <label className="text-sm text-muted-foreground" htmlFor="login-phone">
               {copy.phone}
             </label>
             <Input
@@ -98,12 +101,13 @@ export function LoginPage({ onSubmit }: LoginPageProps) {
               inputMode="tel"
               maxLength={11}
               onChange={event => updateField('phone', event.target.value)}
-              size="lg"
+              placeholder={copy.phonePlaceholder}
+              size="auth"
               value={fields.phone}
             />
           </div>
           <div className="space-y-2">
-            <label className="text-sm" htmlFor="login-captcha">
+            <label className="text-sm text-muted-foreground" htmlFor="login-captcha">
               {copy.captcha}
             </label>
             <div className="flex gap-2">
@@ -114,24 +118,33 @@ export function LoginPage({ onSubmit }: LoginPageProps) {
                 id="login-captcha"
                 maxLength={6}
                 onChange={event => updateField('captchaCode', event.target.value)}
-                size="lg"
+                placeholder={copy.captchaPlaceholder}
+                size="auth"
                 value={fields.captchaCode}
               />
               <Button
+                aria-label={copy.refresh}
                 disabled={!window.hermesLogin || pending}
                 loading={image.loading}
                 onClick={() => {
                   updateField('captchaCode', '')
                   void image.refresh()
                 }}
-                size="lg"
+                size="captcha"
                 type="button"
-                variant="secondary"
+                variant="grip"
               >
-                {copy.refresh}
+                {image.captcha ? (
+                  <img
+                    alt={copy.captcha}
+                    className="h-11 w-auto max-w-full rounded-[0.625rem]"
+                    src={image.captcha.imageDataUrl}
+                  />
+                ) : (
+                  copy.refresh
+                )}
               </Button>
             </div>
-            {image.captcha && <img alt={copy.captcha} className="h-10" src={image.captcha.imageDataUrl} />}
             {image.failed && (
               <p className="text-sm text-destructive" role="alert">
                 {copy.captchaLoadError}
@@ -139,7 +152,7 @@ export function LoginPage({ onSubmit }: LoginPageProps) {
             )}
           </div>
           <div className="space-y-2">
-            <label className="text-sm" htmlFor="login-sms">
+            <label className="text-sm text-muted-foreground" htmlFor="login-sms">
               {copy.sms}
             </label>
             <div className="flex gap-2">
@@ -152,23 +165,24 @@ export function LoginPage({ onSubmit }: LoginPageProps) {
                 inputMode="numeric"
                 maxLength={6}
                 onChange={event => updateField('smsCode', event.target.value)}
-                size="lg"
+                placeholder={copy.smsPlaceholder}
+                size="auth"
                 value={fields.smsCode}
               />
-              <Button disabled size="lg" type="button" variant="secondary">
+              <Button disabled size="auth" type="button" variant="outline">
                 {copy.send}
               </Button>
             </div>
           </div>
-          <Button className="w-full" disabled={!onSubmit} loading={pending} size="lg" type="submit">
+          <Button className="mt-2 w-full" disabled={!onSubmit} loading={pending} size="auth" type="submit">
             {copy.submit}
           </Button>
-          <p className="min-h-5 text-sm text-destructive" id="login-error" role="alert">
+          <p className="text-sm text-destructive empty:hidden" id="login-error" role="alert">
             {error ? copy[error] : ''}
           </p>
         </form>
         {!onSubmit && (
-          <p className="text-sm text-muted-foreground" role="status">
+          <p className="text-center text-xs text-muted-foreground" role="status">
             {copy.unavailable}
           </p>
         )}

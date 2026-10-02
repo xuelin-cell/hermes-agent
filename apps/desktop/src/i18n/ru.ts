@@ -25,6 +25,9 @@ const RU_NOUN = (count: number | string, one: string, few: string, many: string)
 
 export const ru = defineLocale({
   desktopLogin: {
+    phonePlaceholder: 'Номер телефона из 11 цифр',
+    captchaPlaceholder: 'Код с изображения',
+    smsPlaceholder: '6 цифр',
     captchaLoadError: 'Не удалось загрузить капчу. Обновите изображение и повторите попытку.',
     title: 'Войти в Hermes',
     subtitle: 'Используйте аккаунт MaaS для доступа к своему локальному рабочему пространству.',
@@ -34,7 +37,7 @@ export const ru = defineLocale({
     refresh: 'Обновить',
     send: 'Отправить код',
     submit: 'Войти',
-    unavailable: 'Сервисы входа ещё не подключены. SMS не отправляются, Hermes не запускается.',
+    unavailable: 'Вход по SMS подключается.',
     phoneError: 'Введите номер из 11 цифр, начинающийся с 1.',
     captchaError: 'Введите код с картинки (до 6 символов).',
     smsError: 'Введите 6-значный код из SMS.',

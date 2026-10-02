@@ -5,6 +5,9 @@ import { introDe } from './intro-de'
 
 export const deOverrides = {
   desktopLogin: {
+    phonePlaceholder: '11-stellige Telefonnummer',
+    captchaPlaceholder: 'Code aus dem Bild',
+    smsPlaceholder: '6 Ziffern',
     captchaLoadError: 'Das Captcha konnte nicht geladen werden. Aktualisiere das Bild, um es erneut zu versuchen.',
     title: 'Bei Hermes anmelden',
     subtitle: 'Mit Ihrem MaaS-Konto auf Ihren lokalen Arbeitsbereich zugreifen.',
@@ -14,8 +17,7 @@ export const deOverrides = {
     refresh: 'Bild erneuern',
     send: 'Code senden',
     submit: 'Anmelden',
-    unavailable:
-      'Die Anmeldedienste sind noch nicht verbunden. Es werden keine SMS gesendet und Hermes wird nicht gestartet.',
+    unavailable: 'Die SMS-Anmeldung wird gerade eingebunden.',
     phoneError: 'Geben Sie eine elfstellige Nummer ein, die mit 1 beginnt.',
     captchaError: 'Geben Sie den Bildcode ein (maximal 6 Zeichen).',
     smsError: 'Geben Sie den sechsstelligen SMS-Code ein.',
