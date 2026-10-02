@@ -37,7 +37,7 @@ if (args) {
   // Keep the launcher alive until the child exits: npm's concurrently must not
   // tear down Vite during this handoff. No backend, windows or single-instance
   // lock are created in this parent. The child has an explicit platform flag,
-  // so it goes straight into main on its first pass.
+  // so it goes straight into the login shell on its first pass.
   const child = spawnWslgLaunch(args)
 
   child.once('error', error => {
@@ -50,5 +50,8 @@ if (args) {
     process.once(signal, () => child.kill(signal))
   }
 } else {
-  await import('./main')
+  // 登录前不加载会初始化账号路径、连接和后端的原版主进程。
+  const { startDesktopLogin } = await import('./login/bootstrap')
+  // Electron 必须先完成 ESM 入口求值，才能触发 ready，不能在顶层等待窗口就绪。
+  void startDesktopLogin()
 }
