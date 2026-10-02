@@ -5,6 +5,7 @@ import { introZhHant } from './intro-zh-hant'
 
 export const zhHant = defineLocale({
   desktopLogin: {
+    captchaLoadError: '圖形驗證碼取得失敗，請點擊重新整理圖片重試。',
     title: '登入 Hermes',
     subtitle: '使用 MaaS 帳號，進入自己的本機工作空間。',
     phone: '手機號碼',

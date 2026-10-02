@@ -25,6 +25,7 @@ const RU_NOUN = (count: number | string, one: string, few: string, many: string)
 
 export const ru = defineLocale({
   desktopLogin: {
+    captchaLoadError: 'Не удалось загрузить капчу. Обновите изображение и повторите попытку.',
     title: 'Войти в Hermes',
     subtitle: 'Используйте аккаунт MaaS для доступа к своему локальному рабочему пространству.',
     phone: 'Номер телефона',

@@ -2,6 +2,7 @@ import { defineLocale } from './define-locale'
 
 export const ar = defineLocale({
   desktopLogin: {
+    captchaLoadError: 'تعذر تحميل صورة التحقق. حدّث الصورة للمحاولة مجددًا.',
     title: 'تسجيل الدخول إلى Hermes',
     subtitle: 'استخدم حساب MaaS للوصول إلى مساحة عملك المحلية.',
     phone: 'رقم الهاتف',

@@ -69,6 +69,13 @@ export async function bundleElectronMain({ source, out, stamp, dev = false }) {
     format: 'cjs',
     outfile: join(out, 'electron-preload.js'),
   })
+  // 登录壳使用独立的沙箱 preload，仅包含已批准的登录动作。
+  await build({
+    ...common,
+    entryPoints: [join(source, 'apps/desktop/electron/login/preload.ts')],
+    format: 'cjs',
+    outfile: join(out, 'login-preload.js'),
+  })
   // Preview-pane <webview> guest preload; main.ts hands this path to the
   // preview webview via will-attach-webview.
   await build({

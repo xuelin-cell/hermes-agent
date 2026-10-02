@@ -29,7 +29,9 @@ async function runFixture(mode, signal) {
         import assert from 'node:assert/strict'
         import { readFileSync, appendFileSync, existsSync } from 'node:fs'
         import { setTimeout as delay } from 'node:timers/promises'
-        import { app, BrowserWindow } from 'electron'
+        import { app, BrowserWindow, net } from 'electron'
+        // 重启回归不向上游请求验证码。
+        net.fetch = async () => Response.json({code:1})
         app.setAppPath(${JSON.stringify(rendererRoot)})
         import { relaunchDesktop } from './electron/desktop-relaunch.ts'
         await import('./electron/entry.ts')

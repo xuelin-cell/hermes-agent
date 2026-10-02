@@ -6,6 +6,8 @@ import { useI18n } from '@/i18n/context'
 
 import { PAGE_INSET_X } from '../layout-constants'
 
+import { useCaptcha } from './use-captcha'
+
 export interface LoginFields {
   phone: string
   captchaCode: string
@@ -20,6 +22,7 @@ export interface LoginPageProps {
 export function LoginPage({ onSubmit }: LoginPageProps) {
   const { t } = useI18n()
   const copy = t.desktopLogin
+  const image = useCaptcha(window.hermesLogin)
   const [fields, setFields] = useState<LoginFields>({ phone: '', captchaCode: '', smsCode: '' })
   const [error, setError] = useState<'phoneError' | 'captchaError' | 'smsError' | 'requestError' | null>(null)
   const [pending, setPending] = useState(false)
@@ -114,10 +117,26 @@ export function LoginPage({ onSubmit }: LoginPageProps) {
                 size="lg"
                 value={fields.captchaCode}
               />
-              <Button disabled size="lg" type="button" variant="secondary">
+              <Button
+                disabled={!window.hermesLogin || pending}
+                loading={image.loading}
+                onClick={() => {
+                  updateField('captchaCode', '')
+                  void image.refresh()
+                }}
+                size="lg"
+                type="button"
+                variant="secondary"
+              >
                 {copy.refresh}
               </Button>
             </div>
+            {image.captcha && <img alt={copy.captcha} className="h-10" src={image.captcha.imageDataUrl} />}
+            {image.failed && (
+              <p className="text-sm text-destructive" role="alert">
+                {copy.captchaLoadError}
+              </p>
+            )}
           </div>
           <div className="space-y-2">
             <label className="text-sm" htmlFor="login-sms">

@@ -5,6 +5,7 @@ import { introEs } from './intro-es'
 
 export const esOverrides = {
   desktopLogin: {
+    captchaLoadError: 'No se pudo cargar el captcha. Actualiza la imagen para intentarlo de nuevo.',
     title: 'Iniciar sesión en Hermes',
     subtitle: 'Usa tu cuenta MaaS para acceder a tu espacio de trabajo local.',
     phone: 'Teléfono',

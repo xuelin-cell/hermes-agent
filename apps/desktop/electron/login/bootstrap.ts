@@ -1,10 +1,13 @@
 import { mkdirSync } from 'node:fs'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 import { app, BrowserWindow, dialog } from 'electron'
 
 import { resolveDesktopUserData } from '../data-paths'
 import { createWindowOpenHandler } from '../window-open-policy'
+
+import { installCaptchaIpc } from './ipc'
 
 let loginWindow: BrowserWindow | null = null
 let starting: Promise<BrowserWindow | null> | null = null
@@ -52,6 +55,12 @@ async function openLoginWindow(): Promise<BrowserWindow | null> {
     return null
   }
 
+  const devServer = process.env.HERMES_DESKTOP_DEV_SERVER
+
+  const expectedUrl = devServer
+    ? new URL('/login.html', devServer).href
+    : pathToFileURL(path.join(app.getAppPath(), 'dist', 'login.html')).href
+
   const window = new BrowserWindow({
     width: 640,
     height: 640,
@@ -64,6 +73,7 @@ async function openLoginWindow(): Promise<BrowserWindow | null> {
       contextIsolation: true,
       sandbox: true,
       webviewTag: false,
+      preload: path.join(app.getAppPath(), 'dist', 'login-preload.js'),
       partition: 'desktop-mt-login'
     }
   })
@@ -79,7 +89,7 @@ async function openLoginWindow(): Promise<BrowserWindow | null> {
     stopping = true
     app.quit()
   })
-  const devServer = process.env.HERMES_DESKTOP_DEV_SERVER
+  installCaptchaIpc(window, expectedUrl)
 
   if (devServer) {
     await window.loadURL(new URL('/login.html', devServer).href)

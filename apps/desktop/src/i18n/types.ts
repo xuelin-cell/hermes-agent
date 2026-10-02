@@ -71,6 +71,7 @@ export interface Translations {
     unavailable: string
     phoneError: string
     captchaError: string
+    captchaLoadError: string
     smsError: string
     requestError: string
   }

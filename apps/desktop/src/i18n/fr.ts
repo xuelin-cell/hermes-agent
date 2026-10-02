@@ -5,6 +5,7 @@ import { introFr } from './intro-fr'
 
 export const frOverrides = {
   desktopLogin: {
+    captchaLoadError: 'Impossible de charger le captcha. Actualisez l’image pour réessayer.',
     title: 'Connexion à Hermes',
     subtitle: 'Utilisez votre compte MaaS pour accéder à votre espace de travail local.',
     phone: 'Téléphone',

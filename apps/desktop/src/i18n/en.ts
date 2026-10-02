@@ -4,6 +4,7 @@ import type { Translations } from './types'
 
 export const en: Translations = {
   desktopLogin: {
+    captchaLoadError: 'Could not load the captcha. Refresh the image to retry.',
     title: 'Sign in to Hermes',
     subtitle: 'Use your MaaS account to access your own local workspace.',
     phone: 'Phone number',

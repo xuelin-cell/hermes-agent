@@ -5,6 +5,7 @@ import { introDe } from './intro-de'
 
 export const deOverrides = {
   desktopLogin: {
+    captchaLoadError: 'Das Captcha konnte nicht geladen werden. Aktualisiere das Bild, um es erneut zu versuchen.',
     title: 'Bei Hermes anmelden',
     subtitle: 'Mit Ihrem MaaS-Konto auf Ihren lokalen Arbeitsbereich zugreifen.',
     phone: 'Telefonnummer',

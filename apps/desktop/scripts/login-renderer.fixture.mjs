@@ -2,6 +2,7 @@ import { mkdtemp } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { build, createServer } from 'vite'
+import { build as bundle } from 'esbuild'
 
 const desktop = path.resolve(import.meta.dirname, '..')
 let prepared
@@ -20,6 +21,8 @@ export function prepareLoginRenderer() {
       if (nodeEnv === undefined) delete process.env.NODE_ENV
       else process.env.NODE_ENV = nodeEnv
     }
+    await bundle({ entryPoints: [path.join(desktop, 'electron/login/preload.ts')], bundle: true,
+      platform: 'node', format: 'cjs', external: ['electron'], outfile: path.join(root, 'dist/login-preload.js') })
     return root
   })()
   return prepared

@@ -12,7 +12,7 @@ import { prepareLoginRenderer, startLoginDevServer } from './login-renderer.fixt
 const desktop = path.resolve(import.meta.dirname, '..')
 
 /** 构建真实入口和只供测试使用的观察层，所有数据写入独立临时目录。 */
-async function launchFixture(cancel = false, devServer) {
+async function launchFixture(cancel = false, devServer, liveCaptcha = false) {
   const rendererRoot = await prepareLoginRenderer()
   const root = await mkdtemp(path.join(os.tmpdir(), 'hermes-mt-login-'))
   const userData = path.join(root, 'desktop-state')
@@ -28,9 +28,15 @@ async function launchFixture(cancel = false, devServer) {
       contents: `
         import childProcess from 'node:child_process'
         import { syncBuiltinESMExports } from 'node:module'
-        import { app } from 'electron'
+        import { app, net } from 'electron'
         app.setAppPath(${JSON.stringify(rendererRoot)})
-        globalThis.loginProbe = { processCalls: [], cancelled: false }
+        globalThis.loginProbe = { processCalls: [], captchaRequests: [], cancelled: false }
+        // 回归测试使用固定响应；只有显式启用的真实验收请求 MaaS。
+        const originalFetch = net.fetch
+        net.fetch = (...args) => {
+          globalThis.loginProbe.captchaRequests.push(args[0])
+          return ${liveCaptcha} ? originalFetch(...args) : Promise.resolve(Response.json({code:0, data:{captchaId:'fixture-id', b64s:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN1cAAAAASUVORK5CYII='}}))
+        }
         // 记录真实主进程的启动动作，不替换返回结果或伪造后端状态。
         for (const name of ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFileSync', 'fork']) {
           const original = childProcess[name]
@@ -66,7 +72,7 @@ async function launchFixture(cancel = false, devServer) {
   if (devServer) env.HERMES_DESKTOP_DEV_SERVER = devServer
   delete env.ELECTRON_RUN_AS_NODE
   const instance = await electron.launch({ executablePath: electronPath, args: [output], env, timeout: 30_000 })
-  return { instance, root, home, userData, oldConnection }
+  return { instance, root, home, userData, oldConnection, rendererRoot }
 }
 
 test('真实未登录入口不启动后端、不暴露原版桥接，重复启动只有一个窗口', { timeout: 60_000 }, async () => {
@@ -76,11 +82,13 @@ test('真实未登录入口不启动后端、不暴露原版桥接，重复启�
     const page = await instance.firstWindow()
     await page.getByRole('status').waitFor()
     assert.equal(await page.locator('form input').count(), 3)
-    assert.equal(await page.locator('button:disabled').count(), 3)
+    await page.getByRole('img').waitFor()
+    assert.equal(await page.locator('button:disabled').count(), 2)
     assert.deepEqual(await page.evaluate(() => ({
       node: typeof globalThis.require,
-      bridge: typeof globalThis.hermesDesktop
-    })), { node: 'undefined', bridge: 'undefined' })
+      bridge: typeof globalThis.hermesDesktop,
+      login: Object.keys(globalThis.hermesLogin)
+    })), { node: 'undefined', bridge: 'undefined', login: ['captcha'] })
     const state = await instance.evaluate(({ BrowserWindow, ipcMain }) => {
       const window = BrowserWindow.getAllWindows()[0]
       return {
@@ -98,7 +106,6 @@ test('真实未登录入口不启动后端、不暴露原版桥接，重复启�
     assert.equal(state.prefs.contextIsolation, true)
     assert.equal(state.prefs.nodeIntegration, false)
     assert.equal(state.prefs.webviewTag, false)
-    assert.equal(Boolean(state.prefs.preload), false)
     await assert.rejects(access(fixture.home), { code: 'ENOENT' })
     assert.equal(await readFile(path.join(fixture.userData, 'connection.json'), 'utf8'), fixture.oldConnection)
     const child = instance.process()
@@ -124,13 +131,15 @@ test('开发登录页固定浅色，窄窗无横向溢出，Tab 与 Enter 不绕
     page.on('pageerror', error => errors.push(error.message))
     page.on('console', message => { if (message.type() === 'error') console.error('[login-renderer]', message.text()) })
     await page.getByRole('status').waitFor({ timeout: 30_000 })
+    await page.getByRole('img').waitFor()
     await page.locator('#login-phone').focus()
     await page.keyboard.press('Tab')
     assert.equal(await page.locator('#login-captcha').evaluate(node => node === document.activeElement), true)
     await page.keyboard.press('Tab')
+    await page.keyboard.press('Tab')
     assert.equal(await page.locator('#login-sms').evaluate(node => node === document.activeElement), true)
     await page.keyboard.press('Enter')
-    assert.equal(await page.locator('button:disabled').count(), 3)
+    assert.equal(await page.locator('button:disabled').count(), 2)
     await instance.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(400, 520))
     await page.emulateMedia({ colorScheme: 'dark' })
     assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme), 'light')
@@ -144,6 +153,45 @@ test('开发登录页固定浅色，窄窗无横向溢出，Tab 与 Enter 不绕
     await instance?.close()
     await server.close()
   }
+})
+
+test('真实 MaaS 图片在登录窗口展示并可刷新，其他窗口与子框架无权请求', {
+  timeout: 60_000, skip: process.env.HERMES_LOGIN_LIVE_CAPTCHA !== '1'
+}, async () => {
+  const { instance, root, home, rendererRoot } = await launchFixture(false, undefined, true)
+  try {
+    const page = await instance.firstWindow()
+    const image = page.getByRole('img', { name: '图形验证码' })
+    await image.waitFor({ timeout: 20_000 })
+    await page.waitForFunction(() => document.querySelector('img')?.naturalWidth > 0)
+    await page.getByRole('button', { name: '刷新图片' }).click()
+    await image.waitFor({ timeout: 20_000 })
+    await page.waitForFunction(() => document.querySelector('img')?.naturalWidth > 0)
+    await page.screenshot({ path: path.join(root, 'login-live-captcha.png') })
+    const probe = await instance.evaluate(() => globalThis.loginProbe)
+    assert.deepEqual(probe.captchaRequests, Array(2).fill('https://maas.ai-yuanjing.com/app/login/captcha'))
+    assert.deepEqual(probe.processCalls, [])
+    assert.equal(await page.evaluate(() => performance.getEntriesByType('resource').some(entry => entry.name.startsWith('https://maas.'))), false)
+    const frame = await page.evaluate(async () => {
+      const iframe = document.createElement('iframe')
+      document.body.append(iframe)
+      return typeof iframe.contentWindow.hermesLogin
+    })
+    assert.equal(frame, 'undefined')
+    const unauthorized = await instance.evaluate(async ({ BrowserWindow }, preload) => {
+      const other = new BrowserWindow({ show: false, webPreferences: {
+        sandbox: true, contextIsolation: true, preload
+      } })
+      try {
+        await other.loadURL('about:blank')
+        return await other.webContents.executeJavaScript('window.hermesLogin.captcha()')
+      } finally { other.destroy() }
+    }, path.join(rendererRoot, 'dist/login-preload.js'))
+    assert.deepEqual(unauthorized, { ok: false })
+    assert.equal((await instance.evaluate(() => globalThis.loginProbe.captchaRequests.length)), 2)
+    await assert.rejects(access(home), { code: 'ENOENT' })
+    console.log(`真实 MaaS 验证码验收截图：${root}`)
+  } finally { await instance.close() }
 })
 
 test('窗口尚未创建时取消启动，不再打开窗口或启动账号运行时', { timeout: 60_000 }, async () => {

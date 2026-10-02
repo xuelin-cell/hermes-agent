@@ -16,6 +16,7 @@ export const zh = defineLocale({
     unavailable: '登录服务尚未接通，不会发送短信，也不会启动 Hermes。',
     phoneError: '请输入以 1 开头的 11 位手机号。',
     captchaError: '请输入图形验证码（最多 6 位）。',
+    captchaLoadError: '图形验证码获取失败，请点击刷新图片重试。',
     smsError: '请输入 6 位数字短信验证码。',
     requestError: '登录失败，请重试。'
   },

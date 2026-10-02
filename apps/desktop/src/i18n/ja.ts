@@ -5,6 +5,7 @@ import { introJa } from './intro-ja'
 
 export const ja = defineLocale({
   desktopLogin: {
+    captchaLoadError: '画像認証を取得できませんでした。画像を更新して再試行してください。',
     title: 'Hermes にログイン',
     subtitle: 'MaaS アカウントで自分のローカル作業領域にアクセスします。',
     phone: '電話番号',
