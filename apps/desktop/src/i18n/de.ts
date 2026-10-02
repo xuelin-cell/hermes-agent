@@ -4,6 +4,22 @@ import { defineLocale, type TranslationOverrides } from './define-locale'
 import { introDe } from './intro-de'
 
 export const deOverrides = {
+  desktopLogin: {
+    title: 'Bei Hermes anmelden',
+    subtitle: 'Mit Ihrem MaaS-Konto auf Ihren lokalen Arbeitsbereich zugreifen.',
+    phone: 'Telefonnummer',
+    captcha: 'Bildcode',
+    sms: 'SMS-Code',
+    refresh: 'Bild erneuern',
+    send: 'Code senden',
+    submit: 'Anmelden',
+    unavailable:
+      'Die Anmeldedienste sind noch nicht verbunden. Es werden keine SMS gesendet und Hermes wird nicht gestartet.',
+    phoneError: 'Geben Sie eine elfstellige Nummer ein, die mit 1 beginnt.',
+    captchaError: 'Geben Sie den Bildcode ein (maximal 6 Zeichen).',
+    smsError: 'Geben Sie den sechsstelligen SMS-Code ein.',
+    requestError: 'Anmeldung fehlgeschlagen. Bitte erneut versuchen.'
+  },
   intro: introDe,
   connectors: {
     title: 'Verbinden Sie Ihre Apps',

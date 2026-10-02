@@ -4,6 +4,21 @@ import { defineLocale } from './define-locale'
 import { introZhHant } from './intro-zh-hant'
 
 export const zhHant = defineLocale({
+  desktopLogin: {
+    title: '登入 Hermes',
+    subtitle: '使用 MaaS 帳號，進入自己的本機工作空間。',
+    phone: '手機號碼',
+    captcha: '圖片驗證碼',
+    sms: '簡訊驗證碼',
+    refresh: '重新整理圖片',
+    send: '傳送驗證碼',
+    submit: '登入',
+    unavailable: '登入服務尚未接通，不會傳送簡訊，也不會啟動 Hermes。',
+    phoneError: '請輸入以 1 開頭的 11 位手機號碼。',
+    captchaError: '請輸入圖片驗證碼（最多 6 位）。',
+    smsError: '請輸入 6 位數字簡訊驗證碼。',
+    requestError: '登入失敗，請重試。'
+  },
   externalOpenFailed: {
     title: '無法開啟此連結',
     message: '沒有註冊用於開啟此位址的瀏覽器。請複製連結並手動開啟。',

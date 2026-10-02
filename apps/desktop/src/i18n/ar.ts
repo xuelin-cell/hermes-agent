@@ -1,6 +1,21 @@
 import { defineLocale } from './define-locale'
 
 export const ar = defineLocale({
+  desktopLogin: {
+    title: 'تسجيل الدخول إلى Hermes',
+    subtitle: 'استخدم حساب MaaS للوصول إلى مساحة عملك المحلية.',
+    phone: 'رقم الهاتف',
+    captcha: 'رمز الصورة',
+    sms: 'رمز الرسالة النصية',
+    refresh: 'تحديث الصورة',
+    send: 'إرسال الرمز',
+    submit: 'تسجيل الدخول',
+    unavailable: 'خدمات تسجيل الدخول غير متصلة بعد. لن تُرسل رسائل ولن يتم تشغيل Hermes.',
+    phoneError: 'أدخل رقم هاتف من 11 رقمًا يبدأ بالرقم 1.',
+    captchaError: 'أدخل رمز الصورة (6 أحرف كحد أقصى).',
+    smsError: 'أدخل رمز الرسالة النصية المكوّن من 6 أرقام.',
+    requestError: 'فشل تسجيل الدخول. حاول مجددًا.'
+  },
   externalOpenFailed: {
     title: 'تعذّر فتح هذا الرابط',
     message: 'لا يوجد متصفح مسجل لفتح هذا العنوان. انسخ الرابط وافتحه يدويًا.',

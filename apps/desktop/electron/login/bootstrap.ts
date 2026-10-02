@@ -11,17 +11,6 @@ let starting: Promise<BrowserWindow | null> | null = null
 let stopping = false
 let initialized = false
 
-// P04 将此阶段说明替换为登录 Renderer；此处没有聊天入口或原版 preload。
-const preparationPage = `<!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'">
-<meta name="color-scheme" content="light dark">
-<title>Hermes Desktop MT</title></head>
-<body><main><h1>Hermes Desktop MT</h1>
-<p role="status">账号登录功能正在接入，本地 Hermes 尚未启动。</p>
-<p>当前为分阶段开发版本，暂不能登录或进入聊天。可以直接关闭窗口退出。</p>
-</main></body></html>`
-
 /** 初始化应用级目录与退出事件，不读取任何账号 Home 或旧连接。 */
 function initializeLoginShell(): void {
   if (initialized) {
@@ -65,7 +54,7 @@ async function openLoginWindow(): Promise<BrowserWindow | null> {
 
   const window = new BrowserWindow({
     width: 640,
-    height: 480,
+    height: 640,
     minWidth: 400,
     minHeight: 300,
     show: false,
@@ -90,7 +79,13 @@ async function openLoginWindow(): Promise<BrowserWindow | null> {
     stopping = true
     app.quit()
   })
-  await window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(preparationPage)}`)
+  const devServer = process.env.HERMES_DESKTOP_DEV_SERVER
+
+  if (devServer) {
+    await window.loadURL(new URL('/login.html', devServer).href)
+  } else {
+    await window.loadFile(path.join(app.getAppPath(), 'dist', 'login.html'))
+  }
 
   if (stopping || window.isDestroyed()) {
     return null

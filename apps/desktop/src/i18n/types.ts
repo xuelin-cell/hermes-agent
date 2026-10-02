@@ -59,6 +59,21 @@ interface AuxTaskCopy {
 }
 
 export interface Translations {
+  desktopLogin: {
+    title: string
+    subtitle: string
+    phone: string
+    captcha: string
+    sms: string
+    refresh: string
+    send: string
+    submit: string
+    unavailable: string
+    phoneError: string
+    captchaError: string
+    smsError: string
+    requestError: string
+  }
   externalOpenFailed: {
     title: string
     message: string

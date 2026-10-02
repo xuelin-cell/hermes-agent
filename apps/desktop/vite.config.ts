@@ -1,3 +1,5 @@
+import { randomBytes } from 'node:crypto'
+
 import babel from '@rolldown/plugin-babel'
 import react, { reactCompilerPreset } from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
@@ -91,10 +93,12 @@ const emojibaseAssets = () => ({
       if (!emojibaseDir || !EMOJIBASE_PATH.test(rel)) {
         return next()
       }
+
       fs.readFile(path.join(emojibaseDir, rel), (err: unknown, buf: Buffer) => {
         if (err) {
           return next()
         }
+
         res.setHeader('Content-Type', 'application/json')
         res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
         res.end(buf)
@@ -118,7 +122,31 @@ const emojibaseAssets = () => ({
 
 export default defineConfig(({ command }) => ({
   base: './',
-  plugins: [react(), babel({ presets: [compilerPreset()] }), tailwindcss(), emojibaseAssets()],
+  plugins: [
+    react(),
+    babel({ presets: [compilerPreset()] }),
+    tailwindcss(),
+    emojibaseAssets(),
+    {
+      name: 'hermes:login-dev-csp',
+      apply: 'serve',
+      transformIndexHtml: {
+        order: 'post',
+        /** 仅为登录开发页的 Vite 内联启动脚本添加一次性 nonce，不放宽生产脚本策略。 */
+        handler(html, context) {
+          if (context.path !== '/login.html') {
+            return html
+          }
+
+          const nonce = randomBytes(18).toString('base64')
+
+          return html
+            .replace("script-src 'self'", `script-src 'self' 'nonce-${nonce}'`)
+            .replace(/<script\b/g, `<script nonce="${nonce}"`)
+        }
+      }
+    }
+  ],
   css: {
     // Pin an explicit (empty) PostCSS config. Tailwind is handled entirely by
     // `@tailwindcss/vite`, so the renderer needs no PostCSS plugins — and
@@ -149,6 +177,7 @@ export default defineConfig(({ command }) => ({
     // imports stay lazy, and the file count stays in the tens.
     chunkSizeWarningLimit: 25000,
     rolldownOptions: {
+      input: { main: path.resolve(__dirname, 'index.html'), login: path.resolve(__dirname, 'login.html') },
       output: {
         advancedChunks: {
           groups: [

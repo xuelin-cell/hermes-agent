@@ -4,6 +4,22 @@ import { defineLocale, type TranslationOverrides } from './define-locale'
 import { introFr } from './intro-fr'
 
 export const frOverrides = {
+  desktopLogin: {
+    title: 'Connexion à Hermes',
+    subtitle: 'Utilisez votre compte MaaS pour accéder à votre espace de travail local.',
+    phone: 'Téléphone',
+    captcha: 'Code de l’image',
+    sms: 'Code SMS',
+    refresh: 'Actualiser',
+    send: 'Envoyer le code',
+    submit: 'Se connecter',
+    unavailable:
+      'Les services de connexion ne sont pas encore connectés. Aucun SMS ne sera envoyé et Hermes ne démarrera pas.',
+    phoneError: 'Saisissez un numéro à 11 chiffres commençant par 1.',
+    captchaError: 'Saisissez le code de l’image (6 caractères maximum).',
+    smsError: 'Saisissez le code SMS à 6 chiffres.',
+    requestError: 'Échec de la connexion. Réessayez.'
+  },
   intro: introFr,
   connectors: {
     title: 'Connectez vos applications',

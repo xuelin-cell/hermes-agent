@@ -4,6 +4,21 @@ import { defineLocale } from './define-locale'
 import { introZh } from './intro-zh'
 
 export const zh = defineLocale({
+  desktopLogin: {
+    title: '登录 Hermes',
+    subtitle: '使用 MaaS 账号，进入自己的本地工作空间。',
+    phone: '手机号',
+    captcha: '图形验证码',
+    sms: '短信验证码',
+    refresh: '刷新图片',
+    send: '发送验证码',
+    submit: '登录',
+    unavailable: '登录服务尚未接通，不会发送短信，也不会启动 Hermes。',
+    phoneError: '请输入以 1 开头的 11 位手机号。',
+    captchaError: '请输入图形验证码（最多 6 位）。',
+    smsError: '请输入 6 位数字短信验证码。',
+    requestError: '登录失败，请重试。'
+  },
   externalOpenFailed: {
     title: '无法打开此链接',
     message: '没有注册用于打开此地址的浏览器。请复制链接并手动打开。',

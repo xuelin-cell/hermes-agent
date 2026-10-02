@@ -3,6 +3,21 @@ import { FIELD_DESCRIPTIONS, FIELD_LABELS } from '@/app/settings/constants'
 import type { Translations } from './types'
 
 export const en: Translations = {
+  desktopLogin: {
+    title: 'Sign in to Hermes',
+    subtitle: 'Use your MaaS account to access your own local workspace.',
+    phone: 'Phone number',
+    captcha: 'Image code',
+    sms: 'SMS code',
+    refresh: 'Refresh image',
+    send: 'Send code',
+    submit: 'Sign in',
+    unavailable: 'Login services are not connected yet. No messages will be sent and Hermes will not start.',
+    phoneError: 'Enter an 11-digit phone number starting with 1.',
+    captchaError: 'Enter the image code (up to 6 characters).',
+    smsError: 'Enter the 6-digit SMS code.',
+    requestError: 'Sign-in failed. Please try again.'
+  },
   externalOpenFailed: {
     title: 'Couldn’t open this link',
     message: 'No browser is registered to open this address. Copy the link and open it manually.',

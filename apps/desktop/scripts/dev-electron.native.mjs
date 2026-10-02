@@ -7,12 +7,14 @@ import { pathToFileURL } from 'node:url'
 import { createRequire } from 'node:module'
 import { build } from 'esbuild'
 import concurrently from 'concurrently'
+import { prepareLoginRenderer } from './login-renderer.fixture.mjs'
 
 const desktop = path.resolve(import.meta.dirname, '..')
 const require = createRequire(import.meta.url)
 
 /** 在同一 concurrently 启动链中运行真实 Vite、开发监督进程和隔离 Electron。 */
 async function runFixture(mode, signal) {
+  const rendererRoot = await prepareLoginRenderer()
   const root = await mkdtemp(path.join(os.tmpdir(), 'hermes-mt-relaunch-'))
   const trace = path.join(root, 'trace.jsonl')
   const serverInfo = path.join(root, 'vite.json')
@@ -28,6 +30,7 @@ async function runFixture(mode, signal) {
         import { readFileSync, appendFileSync, existsSync } from 'node:fs'
         import { setTimeout as delay } from 'node:timers/promises'
         import { app, BrowserWindow } from 'electron'
+        app.setAppPath(${JSON.stringify(rendererRoot)})
         import { relaunchDesktop } from './electron/desktop-relaunch.ts'
         await import('./electron/entry.ts')
         // 等待窗口和 Vite 就绪后再触发重启，不添加生产调试入口。

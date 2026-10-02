@@ -1,7 +1,9 @@
 import { applyDocumentLocale, isRecord } from '@hermes/shared/i18n'
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
-import { getHermesConfigRecord, type HermesConfigRecord, retainConfigReadOrigin, saveHermesConfig } from '@/hermes'
+// 登录页也使用语言上下文；只导入配置接口，避免聚合入口顺带加载会话状态。
+import { getHermesConfigRecord, retainConfigReadOrigin, saveHermesConfig } from '@/api/config'
+import type { HermesConfigRecord } from '@/types/hermes'
 
 import { TRANSLATIONS } from './catalog'
 import {

@@ -4,6 +4,21 @@ import { defineLocale, type TranslationOverrides } from './define-locale'
 import { introEs } from './intro-es'
 
 export const esOverrides = {
+  desktopLogin: {
+    title: 'Iniciar sesión en Hermes',
+    subtitle: 'Usa tu cuenta MaaS para acceder a tu espacio de trabajo local.',
+    phone: 'Teléfono',
+    captcha: 'Código de imagen',
+    sms: 'Código SMS',
+    refresh: 'Actualizar',
+    send: 'Enviar código',
+    submit: 'Iniciar sesión',
+    unavailable: 'Los servicios de inicio de sesión aún no están conectados. No se enviarán SMS ni se iniciará Hermes.',
+    phoneError: 'Introduce un número de 11 dígitos que empiece por 1.',
+    captchaError: 'Introduce el código de imagen (máximo 6 caracteres).',
+    smsError: 'Introduce el código SMS de 6 dígitos.',
+    requestError: 'Error al iniciar sesión. Inténtalo de nuevo.'
+  },
   intro: introEs,
   connectors: {
     title: 'Conecta tus apps',

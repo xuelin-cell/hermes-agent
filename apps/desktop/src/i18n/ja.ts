@@ -4,6 +4,21 @@ import { defineLocale } from './define-locale'
 import { introJa } from './intro-ja'
 
 export const ja = defineLocale({
+  desktopLogin: {
+    title: 'Hermes にログイン',
+    subtitle: 'MaaS アカウントで自分のローカル作業領域にアクセスします。',
+    phone: '電話番号',
+    captcha: '画像認証コード',
+    sms: 'SMS 認証コード',
+    refresh: '画像を更新',
+    send: 'コードを送信',
+    submit: 'ログイン',
+    unavailable: 'ログインサービスは未接続です。SMS の送信や Hermes の起動は行いません。',
+    phoneError: '1 で始まる 11 桁の電話番号を入力してください。',
+    captchaError: '画像認証コードを入力してください（最大 6 文字）。',
+    smsError: '6 桁の SMS 認証コードを入力してください。',
+    requestError: 'ログインに失敗しました。再試行してください。'
+  },
   externalOpenFailed: {
     title: 'このリンクを開けませんでした',
     message: 'このアドレスを開くブラウザが登録されていません。リンクをコピーして手動で開いてください。',
