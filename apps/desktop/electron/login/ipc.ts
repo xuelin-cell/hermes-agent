@@ -1,4 +1,4 @@
-import { app, type BrowserWindow, ipcMain, type IpcMainInvokeEvent, net } from 'electron'
+import { type BrowserWindow, ipcMain, type IpcMainInvokeEvent, net } from 'electron'
 
 import { fetchCaptcha } from './captcha'
 import {
@@ -12,18 +12,23 @@ import {
   SEND_SMS_CHANNEL,
   type SmsResult
 } from './contract'
-import { CredentialStore } from './credential-store'
-import { LoginSession } from './session'
+import type { LoginSession } from './session'
 import { createSmsSender } from './sms'
 
-/** 绑定登录窗口的验证码和短信能力，关闭窗口时移除处理器。 */
-export function installLoginIpc(window: BrowserWindow, expectedUrl: string): void {
+/** 绑定受限能力；身份归主进程启动流程，窗口关闭只移除 IPC。 */
+export function installLoginIpc(
+  window: BrowserWindow,
+  expectedUrl: string,
+  session: LoginSession,
+  prepareAccount: () => void
+): void {
   const sendSms = createSmsSender(net.fetch)
-  const session = new LoginSession(net.fetch, new CredentialStore(app.getPath('userData')))
+  let closed = false
 
   /** 请求必须来自绑定窗口的主框架和准确登录页地址。 */
   function isTrusted(event: IpcMainInvokeEvent): boolean {
     return (
+      !closed &&
       !window.isDestroyed() &&
       event.sender === window.webContents &&
       event.senderFrame === window.webContents.mainFrame &&
@@ -64,10 +69,17 @@ export function installLoginIpc(window: BrowserWindow, expectedUrl: string): voi
       return { status: 'failed' }
     }
 
-    return session.queryPlan()
+    return session.queryPlan().then(result => {
+      // 窗口已关闭或身份已失效时，迟到的套餐响应不能触发环境准备。
+      if (isTrusted(event) && session.currentIdentity()) {
+        prepareAccount()
+      }
+
+      return result
+    })
   })
   window.once('closed', () => {
-    session.dispose()
+    closed = true
     ipcMain.removeHandler(CAPTCHA_CHANNEL)
     ipcMain.removeHandler(SEND_SMS_CHANNEL)
     ipcMain.removeHandler(LOGIN_CHANNEL)

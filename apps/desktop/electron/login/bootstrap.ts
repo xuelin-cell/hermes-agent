@@ -2,17 +2,21 @@ import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-import { app, BrowserWindow, dialog } from 'electron'
+import { app, BrowserWindow, dialog, net } from 'electron'
 
-import { resolveDesktopUserData } from '../data-paths'
+import { platformDefaultHermesHome, resolveDesktopUserData } from '../data-paths'
+import { LocalRuntimeContext, type PreparedLocalContext } from '../entry_local/runtime-context'
 import { createWindowOpenHandler } from '../window-open-policy'
 
+import { CredentialStore } from './credential-store'
 import { installLoginIpc } from './ipc'
+import { LoginSession } from './session'
 
 let loginWindow: BrowserWindow | null = null
 let starting: Promise<BrowserWindow | null> | null = null
 let stopping = false
 let initialized = false
+let accountRuntime: LocalRuntimeContext | null = null
 
 /** 初始化应用级目录与退出事件，不读取任何账号 Home 或旧连接。 */
 function initializeLoginShell(): void {
@@ -25,8 +29,18 @@ function initializeLoginShell(): void {
   const userData = resolveDesktopUserData(path.join(app.getPath('appData'), 'HermesDesktopMT'))
   mkdirSync(userData, { recursive: true })
   app.setPath('userData', userData)
+  accountRuntime = new LocalRuntimeContext(
+    new LoginSession(net.fetch, new CredentialStore(userData)),
+    {
+      data: platformDefaultHermesHome(app.getPath('home'), { ...process.env, HERMES_DATA_DIR_SUFFIX: '-desktop-mt' }),
+      userData
+    },
+    process.env.HERMES_DESKTOP_HERMES_ROOT || path.resolve(app.getAppPath(), '../..'),
+    process.env.HERMES_DESKTOP_PYTHON
+  )
   app.on('before-quit', () => {
     stopping = true
+    accountRuntime?.dispose()
   })
   app.on('window-all-closed', () => app.quit())
   app.on('second-instance', () => {
@@ -43,6 +57,7 @@ function initializeLoginShell(): void {
 
   if (!app.requestSingleInstanceLock()) {
     stopping = true
+    accountRuntime.dispose()
     app.quit()
   }
 }
@@ -89,7 +104,22 @@ async function openLoginWindow(): Promise<BrowserWindow | null> {
     stopping = true
     app.quit()
   })
-  installLoginIpc(window, expectedUrl)
+  installLoginIpc(window, expectedUrl, accountRuntime!.login, () => {
+    if (stopping) {
+      return
+    }
+
+    try {
+      accountRuntime!.prepare()
+    } catch {
+      // 不把文件系统路径、账号标识或原始异常交给页面。
+      void dialog.showMessageBox(window, {
+        type: 'error',
+        title: 'Hermes Desktop MT',
+        message: '账号环境准备失败，请检查账号配置和开发运行时，重新打开登录页后重试。'
+      })
+    }
+  })
 
   if (devServer) {
     await window.loadURL(new URL('/login.html', devServer).href)
@@ -104,6 +134,11 @@ async function openLoginWindow(): Promise<BrowserWindow | null> {
   window.show()
 
   return window
+}
+
+/** 向后续启动流程交接固定上下文；不新增页面 IPC 或提前加载原版主进程。 */
+export function currentDesktopLocalContext(): PreparedLocalContext | null {
+  return stopping ? null : (accountRuntime?.current() ?? null)
 }
 
 /** 合并重复启动请求；未获可信身份前只启动登录壳，不导入账号运行时。 */

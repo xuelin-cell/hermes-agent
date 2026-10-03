@@ -233,7 +233,7 @@ export class LoginSession {
     }
   }
 
-  /** 关闭窗口后撤销请求并清除凭据，迟到的响应不能重新建立身份。 */
+  /** 应用退出或取消启动时撤销请求并清除凭据，迟到响应不能重新建立身份。 */
   dispose(): void {
     this.closed = true
     this.identity = null

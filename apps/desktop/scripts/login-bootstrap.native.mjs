@@ -30,12 +30,20 @@ async function launchFixture(cancel = false, devServer, liveCaptcha = false, pla
       contents: `
         import childProcess from 'node:child_process'
         import { syncBuiltinESMExports } from 'node:module'
-        import { app, net } from 'electron'
+        import { app, dialog, net } from 'electron'
         import { CredentialStore } from './electron/login/credential-store.ts'
         import { LoginSession } from './electron/login/session.ts'
         import { prepareLocalAccount, prepareLocalEnvironment } from './electron/entry_local/prepare-account.ts'
+        import { createSourcePythonBackend } from './electron/source-backend.ts'
         app.setAppPath(${JSON.stringify(rendererRoot)})
         globalThis.loginProbe = { processCalls: [], captchaRequests: [], planAuthorizations: [], cancelled: false }
+        // 用事件确认请求已经进入主进程，避免用固定等待猜测异步顺序。
+        globalThis.waitForFixturePlan = () => new Promise(resolve => { globalThis.nextFixturePlan = resolve })
+        // 测试只观察受控错误，避免模态框阻塞隔离应用；正式入口仍显示错误提示。
+        dialog.showMessageBox = async (_window, options) => {
+          globalThis.loginProbe.environmentError = options.message
+          return {response:0, checkboxChecked:false}
+        }
         // 只向测试主进程提供读取探针，不暴露给 Renderer 或 preload。
         globalThis.readLoginRecord = () => new CredentialStore(app.getPath('userData')).load()
         // 测试过期恢复时，仍用真实系统加密写入完整记录。
@@ -68,6 +76,8 @@ async function launchFixture(cancel = false, devServer, liveCaptcha = false, pla
           // 套餐只用当前测试账号；失败、有套餐和空套餐均不调用真实上游。
           if (String(args[0]).endsWith('/my-plan')) {
             globalThis.loginProbe.planAuthorizations.push(args[1]?.headers?.Authorization)
+            globalThis.nextFixturePlan?.()
+            globalThis.nextFixturePlan = null
             const attempt = ++planAttempts
             const response = globalThis.loginProbe.planMode === 'failed' || (${planScenario} && attempt === 1) ? new Response('fixture-private-plan-error', {status:503}) :
               globalThis.loginProbe.planMode === 'empty' || (${planScenario} && attempt >= 3) ? Response.json({apiKey:null, models:null}) :
@@ -111,6 +121,14 @@ async function launchFixture(cancel = false, devServer, liveCaptcha = false, pla
           const { startDesktopLogin } = await import('./electron/login/bootstrap.ts')
           globalThis.loginProbe.repeat = startDesktopLogin() === startDesktopLogin()
         `}
+        const { currentDesktopLocalContext } = await import('./electron/login/bootstrap.ts')
+        // P14 观察真实入口的固定上下文，不向页面提供账号路径或启动能力。
+        globalThis.currentFixtureRuntime = () => {
+          const context = currentDesktopLocalContext()
+          if (!context) return null
+          const backend = createSourcePythonBackend(context.installationRoot, context.python, ['serve'], {env:{HERMES_HOME:context.home}})
+          return {context, frozen:Object.isFrozen(context), source:backend.root, python:backend.command, pythonPath:backend.env.PYTHONPATH, parentHome:process.env.HERMES_HOME}
+        }
       `
     },
     bundle: true,
@@ -122,8 +140,16 @@ async function launchFixture(cancel = false, devServer, liveCaptcha = false, pla
     banner: {js:"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);"},
     outfile: output
   })
-  const env = { ...process.env, HERMES_HOME: home, HERMES_DESKTOP_USER_DATA_DIR: userData }
+  const env = {
+    ...process.env,
+    HERMES_HOME: home,
+    HERMES_DESKTOP_USER_DATA_DIR: userData,
+    // 账号默认根与开发安装均明确定位；测试绝不写真实 LOCALAPPDATA。
+    LOCALAPPDATA: path.join(root, 'local-app-data'),
+    HERMES_DESKTOP_HERMES_ROOT: path.resolve(desktop, '../..')
+  }
   delete env.HERMES_DESKTOP_DEV_SERVER
+  delete env.HERMES_DESKTOP_PYTHON
   if (devServer) env.HERMES_DESKTOP_DEV_SERVER = devServer
   delete env.ELECTRON_RUN_AS_NODE
   const instance = await electron.launch({ executablePath: electronPath, args: [output], env, timeout: 30_000 })
@@ -500,6 +526,88 @@ test('P12/P13 真实 Electron 组件：A→B→A 配置与 Key 隔离，轮换�
     assert.equal(await readFile(path.join(fixture.userData, 'connection.json'), 'utf8'), fixture.oldConnection)
     await assert.rejects(access(fixture.home), {code:'ENOENT'})
     console.log(`P12/P13 加密身份、套餐与 YAML/.env 组件验收：${fixture.root}`)
+  } finally { await instance.close() }
+})
+
+test('P14 真实登录入口：跨进程 A→B→A 自动准备固定上下文，失败重试和退出阻止迟到写入', {timeout:120_000}, async () => {
+  const fixture = await launchFixture()
+  let instance = fixture.instance
+  let firstA
+  try {
+    const initialPage = await instance.firstWindow()
+    await initialPage.getByRole('img').waitFor()
+    assert.equal(await instance.evaluate(() => globalThis.currentFixtureRuntime()), null)
+    await assert.rejects(access(path.join(fixture.env.LOCALAPPDATA, 'hermes-desktop-mt')), {code:'ENOENT'})
+    // 无账号的旧 UI 提示不能为运行时授权，也不能改变新账号的默认工作目录。
+    await writeFile(path.join(fixture.userData, 'active-profile.json'), JSON.stringify({profile:'forged-profile'}))
+    await writeFile(path.join(fixture.userData, 'project-dir.json'), JSON.stringify({dir:fixture.home}))
+    for (const uid of ['fixture-runtime-A', 'fixture-runtime-B', 'fixture-runtime-A']) {
+      await instance.evaluate((_, saved) => globalThis.saveLoginRecord(saved), {
+        uid, token:'fixture-runtime-token', maskedPhone:'138****0000', expiresAt:Date.now()+240_000
+      })
+      await instance.close()
+      instance = await electron.launch({executablePath:electronPath, args:[fixture.output], env:fixture.env, timeout:30_000})
+      const page = await instance.firstWindow()
+      await page.getByText('fixture-plan-model', {exact:true}).waitFor()
+      const state = await instance.evaluate(() => globalThis.currentFixtureRuntime())
+      assert.ok(state)
+      assert.equal(state.frozen, true)
+      assert.equal(state.context.installationRoot, fixture.env.HERMES_DESKTOP_HERMES_ROOT)
+      assert.equal(state.pythonPath, fixture.env.HERMES_DESKTOP_HERMES_ROOT)
+      assert.equal(state.source, state.context.installationRoot)
+      assert.equal(state.context.python, state.python)
+      assert.equal(state.parentHome, fixture.home)
+      assert.equal(state.context.home.startsWith(path.join(fixture.env.LOCALAPPDATA, 'hermes-desktop-mt', 'accounts')), true)
+      assert.equal(state.context.desktopState.startsWith(path.join(fixture.userData, 'accounts')), true)
+      assert.notEqual(state.context.workspace, fixture.home)
+      for (const directory of [state.context.home, state.context.workspace, state.context.desktopState]) {
+        const marker = path.join(directory, 'runtime-marker')
+        if (uid.endsWith('-A') && firstA) assert.equal(await readFile(marker, 'utf8'), 'A-data-kept')
+        else {
+          await assert.rejects(access(marker), {code:'ENOENT'})
+          await writeFile(marker, uid.endsWith('-A') ? 'A-data-kept' : 'B-data-kept')
+        }
+      }
+      if (!firstA) firstA = state
+      else if (uid.endsWith('-A')) assert.deepEqual(state, firstA)
+      else {
+        assert.notEqual(state.context.id, firstA.context.id)
+        assert.equal(state.python, firstA.python)
+      }
+      const returned = await page.evaluate(() => window.hermesLogin.plan({uid:'forged', home:'forged-path'}))
+      assert.deepEqual(Object.keys(returned), ['status', 'models'])
+      assert.deepEqual(await instance.evaluate(() => globalThis.currentFixtureRuntime()), state)
+      const visible = await page.evaluate(() => document.body.textContent + JSON.stringify({...localStorage}))
+      for (const secret of [uid, 'fixture-runtime-token', 'fixture-private-model-key', state.context.id, state.context.home]) assert.equal(visible.includes(secret), false)
+      assert.equal(await page.evaluate(() => typeof globalThis.currentFixtureRuntime), 'undefined')
+      assert.deepEqual(await instance.evaluate(() => globalThis.loginProbe.processCalls), [])
+      assert.equal(await readFile(path.join(fixture.userData, 'connection.json'), 'utf8'), fixture.oldConnection)
+      await assert.rejects(access(fixture.home), {code:'ENOENT'})
+    }
+    const page = await instance.firstWindow()
+    const envFile = path.join(firstA.context.home, '.env')
+    const oldEnv = await readFile(envFile, 'utf8')
+    await mkdir(`${envFile}.tmp`)
+    await instance.evaluate(() => {globalThis.loginProbe.planKey='fixture-runtime-updated-key'})
+    assert.equal((await page.evaluate(() => window.hermesLogin.plan())).status, 'available')
+    assert.equal(await instance.evaluate(() => globalThis.currentFixtureRuntime()), null)
+    assert.equal(await readFile(envFile, 'utf8'), oldEnv)
+    assert.equal(await instance.evaluate(() => globalThis.loginProbe.environmentError), '账号环境准备失败，请检查账号配置和开发运行时，重新打开登录页后重试。')
+    await rmdir(`${envFile}.tmp`)
+    await page.evaluate(() => window.hermesLogin.plan())
+    assert.deepEqual(await instance.evaluate(() => globalThis.currentFixtureRuntime()), firstA)
+    const beforeQuit = await readFile(envFile, 'utf8')
+    await instance.evaluate(() => {globalThis.loginProbe.planKey='fixture-must-not-write-key'})
+    const started = instance.evaluate(() => globalThis.waitForFixturePlan())
+    const pending = page.evaluate(() => window.hermesLogin.plan())
+    await started
+    await instance.evaluate(({app}) => app.emit('before-quit', {preventDefault(){}}))
+    await pending
+    assert.equal(await instance.evaluate(() => globalThis.currentFixtureRuntime()), null)
+    assert.equal(await readFile(envFile, 'utf8'), beforeQuit)
+    assert.deepEqual(await page.evaluate(() => window.hermesLogin.restore()), {ok:false})
+    assert.deepEqual(await instance.evaluate(() => globalThis.loginProbe.processCalls), [])
+    console.log(`P14 真实登录入口与固定运行上下文验收：${fixture.root}`)
   } finally { await instance.close() }
 })
 

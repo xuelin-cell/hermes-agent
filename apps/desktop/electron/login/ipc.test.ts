@@ -15,20 +15,18 @@ vi.mock('electron', () => ({
   net: { fetch },
   app: { getPath: () => 'fixture-only' }
 }))
-vi.mock('./credential-store', () => ({
-  CredentialStore: vi.fn(function () {
-    return { save, load }
-  })
-}))
-
 import { CAPTCHA_CHANNEL, LOGIN_CHANNEL, PLAN_CHANNEL, RESTORE_CHANNEL, SEND_SMS_CHANNEL } from './contract'
+import { MAAS_IDENTITY_NAMESPACE } from './credential-store'
 import { installLoginIpc } from './ipc'
+import { LoginSession } from './session'
 
 it('只接受绑定窗口主框架的固定登录页与约定参数，关闭后注销', async () => {
   const frame = { url: 'file:///test/login.html' }
   const contents = { mainFrame: frame }
   const window = Object.assign(new EventEmitter(), { isDestroyed: (): boolean => false, webContents: contents })
-  installLoginIpc(window as never, frame.url)
+  const session = new LoginSession(fetch, { save, load })
+  const prepare = vi.fn()
+  installLoginIpc(window as never, frame.url, session, prepare)
   const handler = handle.mock.calls[0][1]
   const send = handle.mock.calls[1][1]
   const login = handle.mock.calls[2][1]
@@ -63,6 +61,7 @@ it('只接受绑定窗口主框架的固定登录页与约定参数，关闭后�
   expect(await restore(event)).toEqual({ ok: false })
   expect(await plan(event)).toEqual({ status: 'failed' })
   expect(fetch).not.toHaveBeenCalled()
+  expect(prepare).not.toHaveBeenCalled()
   frame.url = 'file:///test/login.html'
   expect(await plan(event)).toEqual({ status: 'failed' })
   expect(fetch).not.toHaveBeenCalled()
@@ -86,9 +85,11 @@ it('只接受绑定窗口主框架的固定登录页与约定参数，关闭后�
     })
   )
   expect(await plan(event)).toEqual({ status: 'available', models: [{ name: 'name', isDefault: true }] })
+  expect(prepare).toHaveBeenCalledTimes(1)
   expect(fetch.mock.calls[3][1].headers.Authorization).toBe('Bearer private-token')
   fetch.mockResolvedValueOnce(new Response('private-error', { status: 500 }))
   expect(await plan(event)).toEqual({ status: 'failed' })
+  expect(prepare).toHaveBeenCalledTimes(2)
   expect(await restore(event)).toEqual(logged)
   window.isDestroyed = () => true
   expect(await handler(event)).toEqual({ ok: false })
@@ -103,4 +104,45 @@ it('只接受绑定窗口主框架的固定登录页与约定参数，关闭后�
   expect(removeHandler).toHaveBeenCalledWith(LOGIN_CHANNEL)
   expect(removeHandler).toHaveBeenCalledWith(RESTORE_CHANNEL)
   expect(removeHandler).toHaveBeenCalledWith(PLAN_CHANNEL)
+  expect(session.currentIdentity()?.uid).toBe('id')
+  session.dispose()
+})
+
+it('绑定窗口关闭只解绑能力，迟到响应不准备目录；主进程仍可交接身份，退出才撤销', async () => {
+  handle.mockClear()
+  const frame = { url: 'file:///test/login.html' }
+  const contents = { mainFrame: frame }
+  const window = Object.assign(new EventEmitter(), { isDestroyed: (): boolean => false, webContents: contents })
+  let complete!: (response: Response) => void
+
+  const request = vi.fn<typeof globalThis.fetch>().mockImplementation(
+    () =>
+      new Promise(resolve => {
+        complete = resolve
+      })
+  )
+
+  const session = new LoginSession(request, {
+    save: vi.fn(),
+    load: () => ({
+      namespace: MAAS_IDENTITY_NAMESPACE,
+      uid: 'id',
+      token: 'private-token',
+      maskedPhone: '138****0000',
+      expiresAt: Date.now() + 60_000
+    })
+  })
+
+  session.restore()
+  const prepare = vi.fn()
+  installLoginIpc(window as never, frame.url, session, prepare)
+  const plan = handle.mock.calls[4][1]
+  const pending = plan({ sender: contents, senderFrame: frame })
+  window.emit('closed')
+  complete(Response.json({ apiKey: null, models: null }))
+  expect(await pending).toEqual({ status: 'empty' })
+  expect(prepare).not.toHaveBeenCalled()
+  expect(session.currentIdentity()?.uid).toBe('id')
+  session.dispose()
+  expect(session.currentIdentity()).toBeNull()
 })
