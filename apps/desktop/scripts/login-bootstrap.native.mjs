@@ -30,12 +30,22 @@ async function launchFixture(cancel = false, devServer, liveCaptcha = false, pla
         import { syncBuiltinESMExports } from 'node:module'
         import { app, net } from 'electron'
         import { CredentialStore } from './electron/login/credential-store.ts'
+        import { LoginSession } from './electron/login/session.ts'
+        import { prepareLocalAccount } from './electron/entry_local/prepare-account.ts'
         app.setAppPath(${JSON.stringify(rendererRoot)})
         globalThis.loginProbe = { processCalls: [], captchaRequests: [], planAuthorizations: [], cancelled: false }
         // 只向测试主进程提供读取探针，不暴露给 Renderer 或 preload。
         globalThis.readLoginRecord = () => new CredentialStore(app.getPath('userData')).load()
         // 测试过期恢复时，仍用真实系统加密写入完整记录。
         globalThis.saveLoginRecord = identity => new CredentialStore(app.getPath('userData')).save(identity)
+        // P11 组件验收：身份只在主进程解密恢复，目录不经过页面或 IPC 参数。
+        globalThis.prepareFixtureAccount = () => {
+          const session = new LoginSession(net.fetch, new CredentialStore(app.getPath('userData')))
+          try {
+            session.restore()
+            return prepareLocalAccount(session, {data:${JSON.stringify(path.join(root, 'account-data'))}, userData:app.getPath('userData')})
+          } finally { session.dispose() }
+        }
         // 回归测试使用固定响应；只有显式启用的真实验收请求 MaaS。
         const originalFetch = net.fetch
         let smsAttempts = 0
@@ -315,6 +325,48 @@ test('真实 Electron 登录与恢复：有效记录跨进程复用，过期或�
     await reopened?.close()
     await instance.close()
   }
+})
+
+test('P11 真实 Electron 组件：加密身份跨进程准备 A→B→A 目录，凭据更新不换目录', {timeout:120_000}, async () => {
+  const fixture = await launchFixture()
+  let instance = fixture.instance
+  let originalA
+  try {
+    await (await instance.firstWindow()).getByRole('img').waitFor()
+    await assert.rejects(instance.evaluate(() => globalThis.prepareFixtureAccount()), /请先登录/)
+    await assert.rejects(access(path.join(fixture.root, 'account-data')), {code:'ENOENT'})
+    for (const uid of ['fixture-account-A', 'fixture-account-B', 'fixture-account-A']) {
+      const identity = {uid, token:`fixture-refreshed-token-${Date.now()}`, maskedPhone:'138****0000', expiresAt:Date.now()+240_000}
+      await instance.evaluate((_, saved) => globalThis.saveLoginRecord(saved), identity)
+      await instance.close()
+      instance = await electron.launch({executablePath:electronPath, args:[fixture.output], env:fixture.env, timeout:30_000})
+      const page = await instance.firstWindow()
+      await page.getByText('已登录：138****0000').waitFor()
+      const account = await instance.evaluate(() => globalThis.prepareFixtureAccount())
+      assert.deepEqual(await instance.evaluate(() => globalThis.prepareFixtureAccount()), account)
+      assert.match(account.id, /^account-[a-f0-9]{64}$/)
+      for (const directory of [account.home, account.workspace, account.desktopState]) {
+        const marker = path.join(directory, 'account-marker')
+        if (uid.endsWith('-A') && originalA) assert.equal(await readFile(marker, 'utf8'), 'fixture-account-A')
+        else {
+          await assert.rejects(access(marker), {code:'ENOENT'})
+          await writeFile(marker, uid)
+        }
+      }
+      if (!originalA) originalA = account
+      else if (uid.endsWith('-A')) assert.deepEqual(account, originalA)
+      else assert.notEqual(account.id, originalA.id)
+      const returned = await page.evaluate(() => window.hermesLogin.restore())
+      assert.deepEqual(Object.keys(returned.account), ['maskedPhone', 'expiresAt'])
+      // preload 不转发额外参数，页面不能改变已恢复的主进程身份或目录。
+      assert.deepEqual(await page.evaluate(() => window.hermesLogin.restore({uid:'forged', home:'forged-path'})), returned)
+      assert.deepEqual(await instance.evaluate(() => globalThis.prepareFixtureAccount()), account)
+      assert.deepEqual(await instance.evaluate(() => globalThis.loginProbe.processCalls), [])
+      assert.equal(await readFile(path.join(fixture.userData, 'connection.json'), 'utf8'), fixture.oldConnection)
+      await assert.rejects(access(fixture.home), {code:'ENOENT'})
+    }
+    console.log(`P11 加密身份与账号目录组件验收：${fixture.root}`)
+  } finally { await instance.close() }
 })
 
 test('真实 Electron 套餐链路：登录后查询失败可重试，刷新遇到空套餐仍保留身份与数据', {timeout:60_000}, async () => {

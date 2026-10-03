@@ -1,10 +1,18 @@
 # 阶段二：entry_local 与账号环境
 
-状态：计划，尚未实施。对应原步骤 9～12，前置边界见 [总计划](README.md)。
+状态：P11 账号目录组件与隔离夹具验证已完成；P12～P17 待实施。对应原步骤 9～12，前置边界见 [总计划](README.md)。当前未接入登录壳的自动环境准备，也未启动账号 Hermes。
 
 本阶段在独立验收目录中启动原版 Hermes。P17 完成前只做固定账号或完整退出进程后的测试，不提供尚无完整隔离的日常换账号入口。
 
 ## P11 · 稳定账号目录与默认工作目录
+
+2026-10-03 已新增 `electron/entry_local/account-paths.ts` 与 `prepare-account.ts`。目录标识固定为 `account-` 加完整 SHA-256 十六进制摘要；摘要输入是 UTF-8 编码的 `JSON.stringify([平台身份域, UID])`。不对 UID 做大小写转换、字符替换或 Unicode 归一化，避免不同身份因清洗规则混用目录。UID 原文不直接用作路径，因此穿越字符串、Windows 保留名和特殊字符也只能映射成根目录内的普通安全标识。
+
+主进程入口 `prepareLocalAccount(session, roots)` 只从有效的 `LoginSession` 获取 UID，使用与加密登录记录相同的固定 MaaS 身份域；token、手机号、有效期及模型 Key 不参与目录标识。主进程传入两个绝对受管根目录，组件逐层创建或复用 `accounts/<标识>/hermes-home`、`workspace` 与 `desktop-state`。既有受管根、accounts、账号目录或叶目录是链接、Windows junction 或普通文件时拒绝准备；失败不删除已有内容，也不切到旧 Home。错误仅报告受控中文阶段信息，不回显完整账号路径。
+
+验证：5 个定向测试文件、13 项通过，覆盖 A→B→A 三类目录文件保持、不同平台身份域、特殊 UID、链接／文件占位、未登录／关闭／到期拒绝、凭据更新复用以及失败后修复重试。真实 Windows Electron 定向检查 2 项通过，实际经过系统加密记录、新进程身份恢复与目录准备组件；A/B 为模拟身份，MaaS 网络响应受控。检查过程中未启动 Hermes，旧连接与无账号 Home 保留。完整 TypeScript、相关 ESLint（零警告）和差异检查通过。
+
+本步只完成主进程目录组件与真实运行夹具，不等于登录后自动创建账号环境或完整多账号隔离。登录壳仍展示原有卡片，目录组件未接线到 `bootstrap.ts`／登录 IPC；正式根目录选择与启动上下文由 P14 接入。`LoginSession` 仍由 `installLoginIpc()` 持有，关闭窗口会释放身份及套餐；后续必须在关闭前完成主进程交接，不能从 Renderer 回传秘密或在关闭后继续使用失效 session。`workspace` 已确定并创建，尚未设为实际 Hermes 默认工作目录；`desktop-state` 已分目录，尚未承载 UI 持久状态。真实账号 UID 跨登录稳定性、聊天、Profiles、Chromium 草稿及界面隔离分别仍待人工或 P14～P17 验收。
 
 - 提交主题：`feat(entry-local): 按可信账号选择独立本地目录`。
 - 预计位置：`electron/entry_local/account-paths.ts` 和账号环境准备入口。
