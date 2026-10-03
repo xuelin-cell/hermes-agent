@@ -191,6 +191,10 @@ button) reach the OS browser through one explicit bridge instead:
 Widening any of those three (partition key, trusted-click gate, scheme set)
 reopens the gesture-less forced-navigation class the advisory closed.
 
+`desktop-mt` 的窗口先绑定可信账号分区。`persist:hermes-preview` 是 Renderer 声明的用途，
+不是最终磁盘分区名；主进程在 guest 首次创建前按账号和用途映射分区，且只给该用途安装
+原有 preload。账号分区由 `entry_local/browser-partition.ts` 定位，不改全局 `userData` 或认领旧缓存。
+
 ## Compatibility without carrying the past forever
 
 Desktop and its runtime update on separate clocks, so a change can meet an older

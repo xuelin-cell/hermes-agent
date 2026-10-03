@@ -1,6 +1,4 @@
 import { session } from 'electron'
-
-const EMBED_SESSION_PARTITION = 'persist:hermes-embed'
 const EMBED_REFERER = 'https://www.youtube.com/'
 
 const YOUTUBE_REFERER_HOST_RE =
@@ -37,9 +35,9 @@ function installEmbedRefererForSession(embedSession) {
 }
 
 /** Stamp Referer on YouTube requests in the embed webview partition only. */
-function installEmbedReferer() {
+function installEmbedReferer(partition: string) {
   try {
-    installEmbedRefererForSession(session.fromPartition(EMBED_SESSION_PARTITION))
+    installEmbedRefererForSession(session.fromPartition(partition))
   } catch {
     // Non-fatal: embeds still render; YouTube may show referer errors.
   }

@@ -28,6 +28,7 @@ interface IntroRevealWindowOptions {
   log: (message: string) => void
   mainWindow: () => BrowserWindow | null
   preloadPath: string
+  partition: string
   rendererIndex: () => string
   showMain: () => void
   wireWindow: (window: BrowserWindow) => void
@@ -41,6 +42,7 @@ export function createIntroRevealWindowController({
   log,
   mainWindow,
   preloadPath,
+  partition,
   rendererIndex,
   showMain,
   wireWindow
@@ -138,7 +140,7 @@ export function createIntroRevealWindowController({
       transparent: true,
       type: isMac ? 'panel' : undefined,
       visualEffectState: isMac ? 'active' : undefined,
-      webPreferences: { ...chatWindowWebPreferences(preloadPath), backgroundThrottling: false }
+      webPreferences: { ...chatWindowWebPreferences(preloadPath, partition), backgroundThrottling: false }
     })
 
     win.setAlwaysOnTop(true, 'screen-saver')

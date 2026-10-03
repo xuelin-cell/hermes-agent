@@ -46,8 +46,9 @@ const SESSION_WINDOW_MIN_HEIGHT = 620
 // window while its transcript is streaming. Explicit user actions still call
 // the main-process window focus paths (session re-open, notification/deep-link,
 // app activation), preserving intentional raises without background focus theft.
-function chatWindowWebPreferences(preloadPath: string) {
+function chatWindowWebPreferences(preloadPath: string, partition: string) {
   return {
+    partition,
     preload: preloadPath,
     contextIsolation: true,
     webviewTag: true,

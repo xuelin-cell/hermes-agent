@@ -18,6 +18,7 @@ interface WakeIndicatorWindowOptions {
   loadWindowUrl: (window: BrowserWindow, url: string, label: string) => void
   log: (message: string) => void
   preloadPath: string
+  partition: string
   rendererIndex: () => string
   wireWindow: (window: BrowserWindow) => void
 }
@@ -28,6 +29,7 @@ export function createWakeIndicatorWindowController({
   loadWindowUrl,
   log,
   preloadPath,
+  partition,
   rendererIndex,
   wireWindow
 }: WakeIndicatorWindowOptions) {
@@ -80,6 +82,7 @@ export function createWakeIndicatorWindowController({
       transparent: true,
       type: 'panel',
       webPreferences: {
+        partition,
         backgroundThrottling: false,
         contextIsolation: true,
         devTools: true,

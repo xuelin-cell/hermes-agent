@@ -242,13 +242,13 @@ test('chatWindowWebPreferences leaves background throttling to the runtime strea
   // minimized). Streaming's "paint while blurred" need is served by
   // stream-throttle.ts flipping setBackgroundThrottling at turn boundaries —
   // so the static flag must stay absent.
-  const prefs = chatWindowWebPreferences('/tmp/preload.cjs')
+  const prefs = chatWindowWebPreferences('/tmp/preload.cjs', 'persist:fixture-account')
 
   assert.equal('backgroundThrottling' in prefs, false)
 })
 
 test('chat renderer navigation stays passive while explicit window actions may focus', () => {
-  const prefs = chatWindowWebPreferences('/tmp/preload.cjs')
+  const prefs = chatWindowWebPreferences('/tmp/preload.cjs', 'persist:fixture-account')
 
   // In-page/SPA navigation can happen while a transcript keeps streaming. It
   // must not use Electron's default navigation focus path to activate Hermes.
@@ -264,9 +264,10 @@ test('chat renderer navigation stays passive while explicit window actions may f
 })
 
 test('chatWindowWebPreferences passes the preload path through and keeps the hardened defaults', () => {
-  const prefs = chatWindowWebPreferences('/some/preload.cjs')
+  const prefs = chatWindowWebPreferences('/some/preload.cjs', 'persist:fixture-account')
 
   assert.equal(prefs.preload, '/some/preload.cjs')
+  assert.equal(prefs.partition, 'persist:fixture-account')
   assert.equal(prefs.contextIsolation, true)
   assert.equal(prefs.sandbox, true)
   assert.equal(prefs.nodeIntegration, false)
@@ -277,7 +278,7 @@ test('chatWindowWebPreferences allows autoplay so wake-started voice speaks its 
   // gesture. A wake-word-started voice conversation has no preceding click, so
   // the first reply's playback was rejected and only turn 2+ spoke. A native
   // app the user launched should not gate audio on a gesture.
-  const prefs = chatWindowWebPreferences('/tmp/preload.cjs')
+  const prefs = chatWindowWebPreferences('/tmp/preload.cjs', 'persist:fixture-account')
 
   assert.equal(prefs.autoplayPolicy, 'no-user-gesture-required')
 })

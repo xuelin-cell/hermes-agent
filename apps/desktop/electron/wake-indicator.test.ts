@@ -122,6 +122,7 @@ describe('wake indicator window controller', () => {
       loadWindowUrl: vi.fn(),
       log: () => {},
       preloadPath: '/tmp/preload.cjs',
+      partition: 'persist:fixture-account',
       rendererIndex: () => '/tmp/index.html',
       wireWindow: vi.fn()
     })
@@ -132,6 +133,7 @@ describe('wake indicator window controller', () => {
     expect(controller.getState()).toBe('detected')
 
     const [window] = electronMock.windows
+    expect(window.options).toMatchObject({ webPreferences: { partition: 'persist:fixture-account' } })
     controller.close()
 
     expect(window.close).toHaveBeenCalledOnce()

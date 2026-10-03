@@ -25,7 +25,6 @@ import {
   nativeTheme,
   powerMonitor,
   powerSaveBlocker,
-  protocol,
   safeStorage,
   screen,
   session,
@@ -218,6 +217,7 @@ import {
 } from './desktop-uninstall'
 import { preReadyDockLaunchSteps } from './dock-launch-order'
 import { installEmbedReferer } from './embed-referer'
+import { accountBrowserPartition } from './entry_local/browser-partition'
 import { accountSourceBackend } from './entry_local/desktop-environment'
 import { accountDesktopStatePaths } from './entry_local/desktop-state'
 import { createAmbientClaimArbiter } from './event-dedupe'
@@ -619,6 +619,8 @@ if (!ACCOUNT_RUNTIME) {
 }
 
 const ACCOUNT_DESKTOP_STATE = accountDesktopStatePaths(ACCOUNT_RUNTIME)
+const ACCOUNT_RENDERER_PARTITION = accountBrowserPartition(ACCOUNT_RUNTIME, 'persist:desktop')
+const ACCOUNT_SESSION = session.fromPartition(ACCOUNT_RENDERER_PARTITION)
 
 const DEV_SERVER = process.env.HERMES_DESKTOP_DEV_SERVER
 const IS_PACKAGED = app.isPackaged || Boolean(process.env.HERMES_DESKTOP_IS_PACKAGED)
@@ -1326,7 +1328,7 @@ function registerMediaProtocol(): void {
       )
   })
 
-  protocol.handle(MEDIA_PROTOCOL, handler)
+  ACCOUNT_SESSION.protocol.handle(MEDIA_PROTOCOL, handler)
 }
 
 let mainWindow = null
@@ -5107,7 +5109,7 @@ function getLinkTitleSession() {
     return linkTitleSession
   }
 
-  linkTitleSession = session.fromPartition('hermes:link-titles', { cache: false })
+  linkTitleSession = session.fromPartition(accountBrowserPartition(ACCOUNT_RUNTIME, 'hermes:link-titles'), { cache: false })
   linkTitleSession.webRequest.onBeforeRequest((details, callback) => {
     callback({ cancel: RENDER_TITLE_BLOCKED_RESOURCES.has(details.resourceType) })
   })
@@ -6748,7 +6750,7 @@ function isMediaCapturePermission(permission, details) {
 // extensionless name the anchor carried. Route every download to the user's
 // Downloads directory and guarantee a MIME-derived extension.
 function installDownloadHandling() {
-  session.defaultSession.on('will-download', (_event, item) => {
+  ACCOUNT_SESSION.on('will-download', (_event, item) => {
     const suggested = item.getFilename() || 'download'
     const hasExtension = Boolean(path.extname(suggested))
     const extension = hasExtension ? '' : extensionForMimeType(item.getMimeType())
@@ -6774,7 +6776,7 @@ function installDownloadHandling() {
 
 function installMediaPermissions() {
   // Async request handler: the prompt-style path (most platforms).
-  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback, details) => {
+  ACCOUNT_SESSION.setPermissionRequestHandler((_webContents, permission, callback, details) => {
     callback(isMediaCapturePermission(permission, details))
   })
 
@@ -6782,7 +6784,7 @@ function installMediaPermissions() {
   // Windows in addition to (or instead of) the request handler. Without it,
   // the check defaults to false and capture is denied before the request
   // handler ever runs.
-  session.defaultSession.setPermissionCheckHandler((_webContents, permission) => {
+  ACCOUNT_SESSION.setPermissionCheckHandler((_webContents, permission) => {
     return (
       permission === 'media' ||
       (permission as string) === 'automatic-fullscreen' ||
@@ -6828,7 +6830,7 @@ function getOauthSession() {
     return oauthSession
   }
 
-  oauthSession = session.fromPartition(OAUTH_SESSION_PARTITION)
+  oauthSession = session.fromPartition(accountBrowserPartition(ACCOUNT_RUNTIME, OAUTH_SESSION_PARTITION))
   installRemoteHeaderRulesOnSession(oauthSession)
 
   return oauthSession
@@ -6871,7 +6873,7 @@ function getOauthSessionForUrl(url, { connectionId = '', pendingAuthMode = '', p
   let sess = oauthSessionsByPartition.get(partition)
 
   if (!sess) {
-    sess = session.fromPartition(partition)
+    sess = session.fromPartition(accountBrowserPartition(ACCOUNT_RUNTIME, partition))
     oauthSessionsByPartition.set(partition, sess)
     installRemoteHeaderRulesOnSession(sess)
   }
@@ -8218,7 +8220,7 @@ function rememberRemoteWsHeaders(wsUrl, headers = {}) {
 
 // Decrypted header sources, memoized against the two config caches this
 // process already keys off mtime. onBeforeSendHeaders now runs on every OAuth
-// partition as well as defaultSession, so without this every subresource
+// partition as well as the account renderer Session, so without this every subresource
 // request would decrypt EVERY registry connection's headers — and a
 // safeStorage-encoded value costs a keychain round-trip per read.
 // Both readers refresh their cache object whenever the file mtime moves, so
@@ -8275,7 +8277,7 @@ function installRemoteHeaderRulesOnSession(sess) {
 }
 
 function installRemoteHeaderRules() {
-  installRemoteHeaderRulesOnSession(session.defaultSession)
+  installRemoteHeaderRulesOnSession(ACCOUNT_SESSION)
 }
 
 // Validate + normalize the per-profile remote overrides map read from disk.
@@ -12979,9 +12981,9 @@ function wireCommonWindowHandlers(win, { zoom = true }: { zoom?: boolean } = {})
 /**
  * Give the preview pane's `<webview>` guests a preload — and ONLY those
  * guests. The pane's webview is the one `webview` tag in the app and it
- * always carries the `persist:hermes-preview` partition, so the partition is
- * the ownership key: any future webview that does not opt into that partition
- * inherits nothing from this mechanism.
+ * declares the `persist:hermes-preview` purpose. The account window's guests
+ * receive account-bound partitions before creation; only that declared
+ * preview purpose inherits this preload.
  *
  * The preload (preview-guest-preload-entry.ts) never opens anything itself.
  * It forwards a clicked `_blank` anchor to the host renderer via
@@ -12993,11 +12995,14 @@ function wireCommonWindowHandlers(win, { zoom = true }: { zoom?: boolean } = {})
  */
 function installPreviewGuestPreload() {
   app.on('web-contents-created', (_event, contents) => {
-    if (contents.getType() !== 'window') {
+    if (contents.getType() !== 'window' || contents.session !== ACCOUNT_SESSION) {
       return
     }
 
     contents.on('will-attach-webview', (_attachEvent, webPreferences, params) => {
+      // 页面只选择原版用途；真正分区由主进程账号确定，不能指定别的账号或默认 Session。
+      webPreferences.partition = accountBrowserPartition(ACCOUNT_RUNTIME, params.partition || '')
+
       if (params.partition !== 'persist:hermes-preview') {
         return
       }
@@ -13073,7 +13078,7 @@ function spawnSecondaryWindow({
     // covers it. ready-to-show fires after the boot-time paint in
     // themes/context.tsx, so the window appears already themed.
     show: false,
-    webPreferences: chatWindowWebPreferences(PRELOAD_PATH)
+    webPreferences: chatWindowWebPreferences(PRELOAD_PATH, ACCOUNT_RENDERER_PARTITION)
   })
 
   // Chat-surface registration: applyWindowTranslucency swaps this window's
@@ -13169,7 +13174,7 @@ function spawnBrowserWindow(tabId) {
     ...chatWindowSurfaceOptions(),
     icon,
     show: false,
-    webPreferences: chatWindowWebPreferences(PRELOAD_PATH)
+    webPreferences: chatWindowWebPreferences(PRELOAD_PATH, ACCOUNT_RENDERER_PARTITION)
   })
 
   translucencyBackedWindows.add(win)
@@ -13271,7 +13276,7 @@ function createInstanceWindow(
     ...chatWindowSurfaceOptions(),
     icon,
     show: false,
-    webPreferences: chatWindowWebPreferences(PRELOAD_PATH)
+    webPreferences: chatWindowWebPreferences(PRELOAD_PATH, ACCOUNT_RENDERER_PARTITION)
   })
 
   instanceWindows.add(win)
@@ -13335,6 +13340,7 @@ const wakeIndicatorController = createWakeIndicatorWindowController({
   loadWindowUrl,
   log: rememberLog,
   preloadPath: PRELOAD_PATH,
+  partition: ACCOUNT_RENDERER_PARTITION,
   rendererIndex: resolveRendererIndex,
   wireWindow: window => wireCommonWindowHandlers(window, zoomWiringForWindowKind('wakeIndicator'))
 })
@@ -13347,6 +13353,7 @@ const introRevealController: ReturnType<typeof createIntroRevealWindowController
   log: rememberLog,
   mainWindow: (): BrowserWindow | null => mainWindow,
   preloadPath: PRELOAD_PATH,
+  partition: ACCOUNT_RENDERER_PARTITION,
   rendererIndex: resolveRendererIndex,
   showMain: (): void => {
     mainWindow.show()
@@ -13417,6 +13424,7 @@ function spawnPetOverlayWindow(bounds) {
     backgroundColor: '#00000000',
     webPreferences: {
       preload: PRELOAD_PATH,
+      partition: ACCOUNT_RENDERER_PARTITION,
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
@@ -13941,7 +13949,7 @@ function spawnHudWindow(sessionId, profile) {
     // The full chat webPreferences — this window streams a real transcript, so
     // it needs everything a chat window needs (preload bridge, autoplay for
     // voice, the shared throttling contract).
-    webPreferences: chatWindowWebPreferences(PRELOAD_PATH)
+    webPreferences: chatWindowWebPreferences(PRELOAD_PATH, ACCOUNT_RENDERER_PARTITION)
   })
 
   applyHudElectronOverlay(win, process.platform)
@@ -14199,6 +14207,7 @@ function spawnQuickEntryWindow() {
     backgroundColor: '#00000000',
     webPreferences: {
       preload: PRELOAD_PATH,
+      partition: ACCOUNT_RENDERER_PARTITION,
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
@@ -14369,7 +14378,7 @@ function createWindow() {
     // live answer keeps painting while the window is blurred or minimized,
     // without pinning visibilityState to 'visible' at idle. See
     // session-windows.ts and stream-throttle.ts.
-    webPreferences: chatWindowWebPreferences(PRELOAD_PATH)
+    webPreferences: chatWindowWebPreferences(PRELOAD_PATH, ACCOUNT_RENDERER_PARTITION)
   })
 
   const createdMainWindow = mainWindow
@@ -18324,7 +18333,7 @@ const desktopStartup = app.whenReady().then(() => {
   installMediaPermissions()
   installDownloadHandling()
   registerMediaProtocol()
-  installEmbedReferer()
+  installEmbedReferer(accountBrowserPartition(ACCOUNT_RUNTIME, 'persist:hermes-embed'))
   installRemoteHeaderRules()
 
   if (!preReadyDockSteps.includes('register-deep-link')) {
@@ -18432,7 +18441,7 @@ export async function openAccountDesktop(): Promise<BrowserWindow> {
 // won't enable any without an explicit language.
 function configureSpellChecker() {
   try {
-    const defaultSession = session.defaultSession
+    const defaultSession = ACCOUNT_SESSION
 
     if (!defaultSession || typeof defaultSession.setSpellCheckerLanguages !== 'function') {
       return
