@@ -1,6 +1,6 @@
 import type { LoginAccount, LoginResult, PlanResult } from './contract'
 import type { CredentialStore } from './credential-store'
-import { fetchPlan, type MaasPlan } from './plan'
+import { type FetchedPlan, fetchPlan, type MaasPlan } from './plan'
 
 export interface LoginIdentity {
   uid: string
@@ -69,6 +69,7 @@ function accountFor(identity: LoginIdentity): LoginAccount {
 export class LoginSession {
   private identity: LoginIdentity | null = null
   private plan: MaasPlan | null = null
+  private planStatus: FetchedPlan['status'] = 'failed'
   private planQuery: Promise<PlanResult> | null = null
   private pending = false
   private closed = false
@@ -85,9 +86,23 @@ export class LoginSession {
     if (this.closed || !this.identity || this.identity.expiresAt <= Date.now()) {
       this.identity = null
       this.plan = null
+      this.planStatus = 'failed'
     }
 
     return this.identity ? { ...this.identity } : null
+  }
+
+  /** 仅向主进程交接最新套餐结果副本；失败不把缓存当作刷新成功。 */
+  currentPlan(): FetchedPlan {
+    if (!this.currentIdentity()) {
+      return { status: 'failed' }
+    }
+
+    if (this.planStatus === 'available' && this.plan) {
+      return { status: 'available', plan: { ...this.plan, models: this.plan.models.map(model => ({ ...model })) } }
+    }
+
+    return { status: this.planStatus === 'empty' ? 'empty' : 'failed' }
   }
 
   /** 恢复经过存储模块校验且未到期的原账号；读取失败不改写记录。 */
@@ -136,6 +151,8 @@ export class LoginSession {
         if (!current || current.uid !== identity.uid || current.token !== identity.token) {
           return { status: 'failed' }
         }
+
+        this.planStatus = result.status
 
         if (result.status !== 'available') {
           if (result.status === 'empty') {
@@ -221,6 +238,7 @@ export class LoginSession {
     this.closed = true
     this.identity = null
     this.plan = null
+    this.planStatus = 'failed'
     this.cancellation.abort()
   }
 }

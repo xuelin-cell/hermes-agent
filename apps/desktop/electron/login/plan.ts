@@ -10,7 +10,7 @@ export interface MaasPlan {
   mainModelIndex: number
 }
 
-type FetchedPlan = { status: 'available'; plan: MaasPlan } | { status: 'empty' | 'failed' }
+export type FetchedPlan = { status: 'available'; plan: MaasPlan } | { status: 'empty' | 'failed' }
 
 /** 只接受 JSON 字段对象，不从数组或空值读取套餐信息。 */
 function isRecord(value: unknown): value is Record<string, unknown> {
