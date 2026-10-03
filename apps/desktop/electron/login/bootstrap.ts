@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url'
 import { app, BrowserWindow, dialog, net } from 'electron'
 
 import { platformDefaultHermesHome, resolveDesktopUserData } from '../data-paths'
+import { markDesktopLaunchSuccessful, prepareDesktopLaunch } from '../desktop-launch'
 import { LocalRuntimeContext, type PreparedLocalContext } from '../entry_local/runtime-context'
 import { createWindowOpenHandler } from '../window-open-policy'
 
@@ -29,6 +30,7 @@ function initializeLoginShell(): void {
   const userData = resolveDesktopUserData(path.join(app.getPath('appData'), 'HermesDesktopMT'))
   mkdirSync(userData, { recursive: true })
   app.setPath('userData', userData)
+  prepareDesktopLaunch()
   accountRuntime = new LocalRuntimeContext(
     new LoginSession(net.fetch, new CredentialStore(userData)),
     {
@@ -40,6 +42,7 @@ function initializeLoginShell(): void {
   )
   app.on('before-quit', () => {
     stopping = true
+    markDesktopLaunchSuccessful()
     accountRuntime?.dispose()
   })
   app.on('window-all-closed', () => app.quit())
@@ -132,6 +135,7 @@ async function openLoginWindow(): Promise<BrowserWindow | null> {
   }
 
   window.show()
+  markDesktopLaunchSuccessful()
 
   return window
 }

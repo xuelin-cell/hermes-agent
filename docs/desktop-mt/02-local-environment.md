@@ -96,6 +96,14 @@ P14 的实际完成范围是准备链和可供后续消费的固定上下文。�
 
 ## P15 · 启动并连接当前账号的原版 Hermes
 
+2026-10-03 将 P15 拆为可独立验证的小提交。第一步已抽取原版平台级启动前设置到 `electron/desktop-launch.ts`：GPU／远程显示、Windows 沙箱标记、Linux 密钥库与 NVIDIA／WSL 设置、回环调试端口和 Renderer 后台进程优先级。在固定应用目录确定后、Electron ready 前执行一次；后续原版主进程复用同一状态，不重复调用启动前 API。原版运行中的崩溃恢复、重启和清理处理仍在主进程中，本步未改 Hermes Python。
+
+登录窗成功显示以及正常退出时，按原版规则记下正常启动结果，防止正常关掉登录页被下次启动当作崩溃；已启用的原版降级标记仍保留。平台设置不读取任何账号 Home、模型配置或旧连接。单测先验证新入口不存在时失败，再验证重复初始化、ready 后首次初始化拒绝及正常窗口标记；相关六个文件 69 项通过。真实 Windows Electron 登录整组 9 项通过、1 项真实验证码默认跳过，确认实际 Chromium 设置都发生在 ready 前、登录页仍保持受限桥接且没有 Hermes 子进程。完整 TypeScript 与新增模块、登录壳 ESLint 零警告通过。
+
+这是必要的启动入口抽取，不是 P15 已完成；聊天窗口交接、严格源码后端选择、真实 REST／WS 启动与运行时依赖检查仍待后续接线。账号级 Chromium 启动配置也尚未接入。当前产品仍停留在登录及套餐卡片，不能据此验收聊天或多账号完整隔离。
+
+额外直接使用开发仓库现有 `.venv/Scripts/python.exe`，在临时 `hermes-mt-p15-runtime-WBI0Jd` 下以独立 Home 和工作区启动未修改的原版 `hermes serve --host 127.0.0.1 --port 0`。实际 READY 和健康接口 HTTP 200 通过，未继承模型凭据、调用付费模型或安装依赖。测试结束后已确认账本记录的实际后端 PID 不再存活。这只能证明原版后端基础启动可用，不是 Electron 到聊天界面的接线、WebSocket 鉴权或模型调用验证；此前 PyYAML 缺失不能单独作为整个后端无法启动的结论。
+
 - 提交主题：`feat(entry-local): 启动并连接账号本地 Hermes`。
 - 预计位置：`entry_local`、`main.ts`、`local-backend-lifecycle.ts`、`source-backend.ts` 的现有调用接线。
 - 行为：准备好账号配置后启动后端，只监听回环地址，使用原版独立本地连接凭据；页面按原版方式使用 REST／WebSocket。

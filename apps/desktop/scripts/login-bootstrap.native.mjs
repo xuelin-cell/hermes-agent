@@ -37,6 +37,13 @@ async function launchFixture(cancel = false, devServer, liveCaptcha = false, pla
         import { createSourcePythonBackend } from './electron/source-backend.ts'
         app.setAppPath(${JSON.stringify(rendererRoot)})
         globalThis.loginProbe = { processCalls: [], captchaRequests: [], planAuthorizations: [], cancelled: false }
+        // 观察原版 Chromium 设置的真实时序，不替代 Electron 的执行。
+        globalThis.loginProbe.launchCalls = []
+        const originalSwitch = app.commandLine.appendSwitch.bind(app.commandLine)
+        app.commandLine.appendSwitch = (...args) => {
+          globalThis.loginProbe.launchCalls.push({args, ready:app.isReady()})
+          return originalSwitch(...args)
+        }
         // 用事件确认请求已经进入主进程，避免用固定等待猜测异步顺序。
         globalThis.waitForFixturePlan = () => new Promise(resolve => { globalThis.nextFixturePlan = resolve })
         // 测试只观察受控错误，避免模态框阻塞隔离应用；正式入口仍显示错误提示。
@@ -144,6 +151,8 @@ async function launchFixture(cancel = false, devServer, liveCaptcha = false, pla
     ...process.env,
     HERMES_HOME: home,
     HERMES_DESKTOP_USER_DATA_DIR: userData,
+    // 独立夹具不争抢用户开发窗口的调试端口。
+    HERMES_DESKTOP_CDP_PORT: 'off',
     // 账号默认根与开发安装均明确定位；测试绝不写真实 LOCALAPPDATA。
     LOCALAPPDATA: path.join(root, 'local-app-data'),
     HERMES_DESKTOP_HERMES_ROOT: path.resolve(desktop, '../..')
@@ -181,6 +190,12 @@ test('真实未登录入口不启动后端、不暴露原版桥接，重复启�
     })
     assert.equal(state.windows, 1)
     assert.equal(state.probe.repeat, true)
+    assert.equal(state.probe.launchCalls.some(call => call.args[0] === 'disable-renderer-backgrounding'), true)
+    assert.equal(state.probe.launchCalls.every(call => call.ready === false), true)
+    if (process.platform === 'win32') {
+      const sandboxMarker = JSON.parse(await readFile(path.join(fixture.userData, 'windows-sandbox-fallback.json'), 'utf8'))
+      assert.equal(sandboxMarker.state, 'ok')
+    }
     assert.deepEqual(state.probe.processCalls, [])
     assert.deepEqual(state.backendIpcListeners, [])
     assert.equal(state.prefs.sandbox, true)
