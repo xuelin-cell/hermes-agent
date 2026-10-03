@@ -8,7 +8,7 @@ export const esOverrides = {
     logout: 'Cerrar sesión',
     logoutTitle: '¿Cerrar la sesión de esta cuenta?',
     logoutDescription:
-      'Detiene los backends del escritorio y vuelve al inicio de sesión. Se conservan el historial y los archivos. Las tareas independientes, como las pasarelas, aún no están incluidas.',
+      'Detiene los backends del escritorio y las pasarelas de mensajes, y vuelve al inicio de sesión. Se conservan el historial y los archivos. Las demás tareas independientes aún no están totalmente incluidas.',
     logoutBusy: 'Cerrando sesión…',
     planTitle: 'Plan de MaaS',
     planEmpty: 'No hay un plan de MaaS disponible actualmente.',

@@ -29,7 +29,7 @@ function fixture() {
     seal: vi.fn(() => {
       expect(fs.existsSync(logoutIntentPath(userData))).toBe(true)
     }),
-    snapshot: vi.fn(() => processes),
+    snapshot: vi.fn<() => typeof processes | Promise<typeof processes>>(() => processes),
     stop: vi.fn(async () => {}),
     release: vi.fn(),
     relaunch: vi.fn(async () => {})
@@ -52,6 +52,7 @@ it('先持久化失效意图，合并重复退出，验证停止后才清除凭�
   expect(logout.started()).toBe(true)
   expect(fs.readFileSync(credential, 'utf8')).toBe('cipher-sentinel')
   expect(deps.release).not.toHaveBeenCalled()
+  await Promise.resolve()
   finish()
   await first
   expect(deps.seal).toHaveBeenCalledTimes(1)
@@ -90,4 +91,22 @@ it('标记无法落盘时不开始清理；快照失败时不删除登录或释�
   expect(deps.release).not.toHaveBeenCalled()
   await logout.run()
   expect(deps.relaunch).toHaveBeenCalledTimes(1)
+})
+
+it('异步网关快照未完成时不停止或清除登录；拒绝后保留退出意图', async () => {
+  const { logout, deps, credential, userData } = fixture()
+  let fail!: (error: Error) => void
+  deps.snapshot.mockImplementationOnce(
+    () =>
+      new Promise((_resolve, reject) => {
+        fail = reject
+      })
+  )
+  const running = logout.run()
+  expect(deps.stop).not.toHaveBeenCalled()
+  expect(fs.existsSync(credential)).toBe(true)
+  fail(new Error('gateway ownership unknown'))
+  await expect(running).rejects.toThrow('ownership unknown')
+  expect(fs.existsSync(logoutIntentPath(userData))).toBe(true)
+  expect(deps.relaunch).not.toHaveBeenCalled()
 })

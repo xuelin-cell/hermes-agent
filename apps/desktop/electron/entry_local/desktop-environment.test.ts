@@ -24,6 +24,7 @@ it('账号启动只使用固定源码与数据位置，不继承旧连接、Prof
 
   const inherited = {
     HERMES_HOME: oldHome,
+    HERMES_GATEWAY_LOCK_DIR: path.join(oldHome, 'gateway-locks'),
     OLD_MODEL_KEY: 'fixture-old',
     DESKTOP_MT_MAAS_API_KEY: 'fixture-other-account',
     HERMES_PROFILE: 'other',
@@ -36,6 +37,7 @@ it('账号启动只使用固定源码与数据位置，不继承旧连接、Prof
 
   const env = accountDesktopEnvironment(context, inherited)
   expect(env.HERMES_HOME).toBe(context.home)
+  expect(env.HERMES_GATEWAY_LOCK_DIR).toBe(path.join(context.home, 'gateway-locks'))
   expect(env.TERMINAL_CWD).toBe(context.workspace)
   expect(env.OLD_MODEL_KEY).toBeUndefined()
   expect(env.DESKTOP_MT_MAAS_API_KEY).toBeUndefined()

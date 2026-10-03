@@ -15,10 +15,11 @@ import { build } from 'esbuild'
 
 import { prepareLoginRenderer, startLoginDevServer } from './login-renderer.fixture.mjs'
 import { superviseElectron } from './dev-electron.mjs'
+import { gatewayOperation } from './gateway-logout.fixture.mjs'
 
 const desktop = path.resolve(import.meta.dirname, '..')
 
-test('P19 真实开发监督进程：退出停止后端与受控子树，重启到登录页', {timeout:240_000}, async () => {
+test('P19/P20 真实开发监督进程：退出停止后端、消息网关与子树，重启到登录页', {timeout:240_000}, async () => {
   const {server,url} = await startLoginDevServer()
   const fixture = await prepareFixture(url)
   const unrelated = spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',windowsHide:true})
@@ -38,6 +39,9 @@ test('P19 真实开发监督进程：退出停止后端与受控子树，重启�
     for (const pid of [before.electron,before.backend,before.controlled,before.leaf]) {
       assert.throws(() => process.kill(pid,0),{code:'ESRCH'})
     }
+    assert.ok(before.gateways.length>0)
+    await gatewayOperation(before.context,'check')
+    for (const gateway of before.gateways) assert.throws(() => process.kill(gateway.pid,0),{code:'ESRCH'})
     assert.equal(await readFile(path.join(before.context.workspace,'logout-history-sentinel.txt'),'utf8'),'preserve account files')
     await access(path.join(before.context.home,'state.db'))
     await assert.rejects(access(path.join(fixture.userData,'maas-login.enc')),{code:'ENOENT'})
@@ -49,6 +53,11 @@ test('P19 真实开发监督进程：退出停止后端与受控子树，重启�
       assert.equal((await instance.evaluate(() => globalThis.fixtureContext())).id,before.context.id)
     } finally { await instance.close() }
   } finally {
+    const snapshot=await readFile(path.join(fixture.root,'logout-gateway.json'),'utf8').catch(() => '')
+    if (snapshot) {
+      const {context,gateways}=JSON.parse(snapshot)
+      await gatewayOperation(context,'stop',gateways)
+    }
     if (unrelated.exitCode === null && unrelated.signalCode === null) { unrelated.kill(); await once(unrelated,'exit') }
     await server.close()
   }
@@ -98,6 +107,7 @@ async function prepareFixture(url) {
     })
     dialog.showMessageBox = async (_window, options) => {
       globalThis.fixtureErrors.push(options.message)
+      if (globalThis.fixtureLogoutError) writeFileSync(${JSON.stringify(path.join(root, 'logout-stage-error.txt'))},globalThis.fixtureLogoutError)
       return {response:1, checkboxChecked:false}
     }
     app.setAsDefaultProtocolClient = scheme => {globalThis.fixtureProtocols.push(scheme); return false}
@@ -138,7 +148,8 @@ async function prepareFixture(url) {
       resolveDir:path.dirname(args.path)}))
     // 只观察正式存储函数，不替换路径、读写、系统加密或后端。
     builder.onLoad({filter:/electron[\\/]main\.ts$/}, async args => ({loader:'ts',
-      contents:(await readFile(args.path,'utf8')) + `
+      contents:(await readFile(args.path,'utf8')).replace('await accountLogout.run()',
+        'await accountLogout.run().catch(error => {globalThis.fixtureLogoutError=error.stack; throw error})') + `
         export const fixtureNativeState = {paths:ACCOUNT_DESKTOP_STATE,
           spawnFixtureBackend:spawnOwnedBackend,
           browserSession:ACCOUNT_SESSION, rendererPartition:ACCOUNT_RENDERER_PARTITION,

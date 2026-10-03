@@ -1,3 +1,5 @@
+import path from 'node:path'
+
 import { profileBackendParentEnv } from '../backend-env'
 import { createSourcePythonBackend, type SourceBackend } from '../source-backend'
 
@@ -27,6 +29,7 @@ export function accountDesktopEnvironment(
   return {
     ...env,
     HERMES_HOME: context.home,
+    HERMES_GATEWAY_LOCK_DIR: path.join(context.home, 'gateway-locks'),
     TERMINAL_CWD: context.workspace,
     HERMES_DESKTOP_HERMES_ROOT: context.installationRoot,
     HERMES_DESKTOP_PYTHON: context.python

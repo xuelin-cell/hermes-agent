@@ -16,7 +16,7 @@ export function createAccountLogout(deps: {
   userData: string
   account: string
   seal: () => void
-  snapshot: () => LogoutProcess[]
+  snapshot: () => LogoutProcess[] | Promise<LogoutProcess[]>
   stop: (processes: LogoutProcess[]) => Promise<void>
   release: () => void
   relaunch: () => Promise<void>
@@ -35,7 +35,7 @@ export function createAccountLogout(deps: {
       deps.seal()
     }
 
-    owned ??= deps.snapshot()
+    owned ??= await deps.snapshot()
     writeSecretFileAtomic(marker, JSON.stringify({ account: deps.account, processes: owned }))
     await deps.stop(owned)
     deps.release()

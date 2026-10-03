@@ -8,7 +8,7 @@ export const frOverrides = {
     logout: 'Se déconnecter',
     logoutTitle: 'Déconnecter ce compte ?',
     logoutDescription:
-      'Arrête les backends du bureau et revient à la connexion. Historique et fichiers conservés. Les tâches indépendantes, telles que les passerelles, ne sont pas encore prises en charge.',
+      'Arrête les backends du bureau et les passerelles de messagerie, puis revient à la connexion. Historique et fichiers conservés. Les autres tâches indépendantes ne sont pas encore toutes prises en charge.',
     logoutBusy: 'Déconnexion…',
     planTitle: 'Forfait MaaS',
     planEmpty: 'Aucun forfait MaaS disponible actuellement.',

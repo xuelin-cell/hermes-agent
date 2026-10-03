@@ -7,7 +7,7 @@ export const zhHant = defineLocale({
   desktopLogin: {
     logout: '登出',
     logoutTitle: '登出目前帳號？',
-    logoutDescription: '將停止目前帳號的桌面後端並返回登入頁，保留歷史與檔案。訊息閘道等獨立工作的停止尚未接入。',
+    logoutDescription: '將停止目前帳號的桌面後端與訊息閘道並返回登入頁，保留歷史與檔案。其餘獨立工作尚未全部接入退出流程。',
     logoutBusy: '正在登出…',
     planTitle: 'MaaS 套餐',
     planEmpty: '目前沒有 MaaS 套餐。',

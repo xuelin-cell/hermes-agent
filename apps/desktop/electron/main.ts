@@ -221,6 +221,7 @@ import { installEmbedReferer } from './embed-referer'
 import { accountBrowserPartition } from './entry_local/browser-partition'
 import { accountSourceBackend } from './entry_local/desktop-environment'
 import { accountDesktopStatePaths } from './entry_local/desktop-state'
+import { type AccountGateway, accountGatewayLogout, gatewayLogoutRoots } from './entry_local/gateway-logout'
 import { createAccountLogout } from './entry_local/logout'
 import {
   confirmLogoutChildExit,
@@ -11976,6 +11977,7 @@ function reapInstallRootedStragglers(excludePids: number[]): void {
 let logoutWindow: BrowserWindow | null = null
 let logoutComplete = false
 let logoutChildren: ChildProcess[] = []
+let logoutGateways: AccountGateway[] = []
 
 const accountLogout = createAccountLogout({
   userData: app.getPath('userData'),
@@ -11987,21 +11989,31 @@ const accountLogout = createAccountLogout({
     localBackendLifecycle.seal()
     logoutWindow = openLogoutWindow()
   },
-  snapshot: () =>
-    logoutProcessTree(
+  snapshot: async () => {
+    // 先同步保存普通后端子树，避免异步检查期间窗口收尾已结束父进程。
+    const ordinary = logoutProcessTree(
       listLogoutProcesses(),
       logoutChildren
         .filter(child => child.exitCode === null && child.signalCode === null && child.pid)
         .map(child => child.pid!)
-    ),
+    )
+
+    logoutGateways = await accountGatewayLogout(ACCOUNT_RUNTIME, 'snapshot')
+    const processes = listLogoutProcesses()
+    const gateways = logoutProcessTree(processes, gatewayLogoutRoots(logoutGateways, processes))
+
+    return [...new Map([...ordinary, ...gateways].map(row => [`${row.pid}:${row.started}`, row])).values()]
+  },
   stop: async owned => {
-    // 先验证整棵普通后端子树，再回收原版路由；不依赖有界 allSettled 证明退出。
+    await accountGatewayLogout(ACCOUNT_RUNTIME, 'stop', logoutGateways)
+    // 网关独立退出后仍验证原始整棵子树，覆盖提前脱离父进程的工具。
     stopLogoutProcesses(owned)
     await Promise.all(logoutChildren.map(confirmLogoutChildExit))
     await localBackendLifecycle.settleStarts()
     await localBackendLifecycle.shutdown()
     await teardownPrimaryBackendAndWait(backendTeardownOptions('quit'))
     await stopAllPoolBackends()
+    await accountGatewayLogout(ACCOUNT_RUNTIME, 'check')
 
     if (poolIdleReaper) {
       clearInterval(poolIdleReaper)

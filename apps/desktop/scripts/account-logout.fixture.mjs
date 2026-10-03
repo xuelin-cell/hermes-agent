@@ -3,6 +3,7 @@ import {existsSync, readFileSync, writeFileSync} from 'node:fs'
 import path from 'node:path'
 import {setTimeout as delay} from 'node:timers/promises'
 import {app, BrowserWindow} from 'electron'
+import {startFixtureGateway, gatewayOperation} from './gateway-logout.fixture.mjs'
 
 /** 等待隔离窗口中的真实条件，失败不无限挂住开发监督进程。 */
 async function until(read, label) {
@@ -31,6 +32,10 @@ export async function exerciseLogout(root, userData) {
   const window = await until(() => BrowserWindow.getAllWindows().find(w => w.webContents.getURL().startsWith('http') && !w.webContents.getURL().includes('login.html')),'桌面窗')
   await until(() => window.webContents.executeJavaScript("Boolean(window.hermesDesktop && Array.from(document.querySelectorAll('[data-slot=statusbar] button')).some(b=>b.textContent==='退出'))"),'退出按钮')
   const context = globalThis.fixtureContext()
+  const gateway = await startFixtureGateway(context,path.join(context.home,'profiles','gateway-check'))
+  const gateways = await gatewayOperation(context,'snapshot')
+  assert.ok(gateways.some(row => row.home===gateway.home))
+  writeFileSync(path.join(root,'logout-gateway.json'),JSON.stringify({context,gateways}))
   const connection = await window.webContents.executeJavaScript('window.hermesDesktop.getConnection()')
   const ledger = JSON.parse(readFileSync(path.join(context.home,'spawn-ledger.json'),'utf8'))
     .find(item => item.port===Number(new URL(connection.baseUrl).port) && item.purpose==='serve')
@@ -42,7 +47,7 @@ export async function exerciseLogout(root, userData) {
   const controlled = runtime.spawnFixtureBackend(process.env.FIXTURE_NODE,['-e',script],{stdio:'ignore',windowsHide:true})
   await until(() => existsSync(leafFile),'受控孙进程')
   const leaf = JSON.parse(readFileSync(leafFile,'utf8')).pid
-  writeFileSync(path.join(root,'logout-before.json'),JSON.stringify({electron:process.pid,backend:ledger.pid,controlled:controlled.pid,leaf,context}))
+  writeFileSync(path.join(root,'logout-before.json'),JSON.stringify({electron:process.pid,backend:ledger.pid,controlled:controlled.pid,leaf,context,gateways}))
   await window.webContents.executeJavaScript("Array.from(document.querySelectorAll('[data-slot=statusbar] button')).find(b=>b.textContent==='退出').click()")
   await until(() => window.webContents.executeJavaScript("Boolean(document.querySelector('[role=dialog]'))"),'退出确认')
   window.show()
