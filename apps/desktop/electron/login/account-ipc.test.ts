@@ -66,3 +66,23 @@ it('拒绝额外参数、非桌面窗口、子框架、其他账号分区和其�
   expect(read(event)).toBeNull()
   expect(readAccount).not.toHaveBeenCalled()
 })
+
+it('退出 IPC 同样验证主框架与账号，不接受页面指定身份或目录', async () => {
+  const partition = {}
+  const frame = { url: 'file:///desktop/index.html' }
+  const sender = { mainFrame: frame, session: partition }
+  fromWebContents.mockReturnValue({ isDestroyed: () => false, webContents: sender })
+  const account = vi.fn(() => ({ maskedPhone: '138****0000', expiresAt: Date.now() + 60_000 }))
+  const logout = vi.fn(async () => {})
+  installAccountIpc(partition as never, () => frame.url, account, logout)
+  const invoke = handle.mock.calls.findLast(call => call[0] === 'hermes:maas-account:logout')![1]
+  const event = { sender, senderFrame: frame }
+  await expect(invoke(event, { uid: 'other' })).rejects.toThrow()
+  await expect(invoke({ ...event, senderFrame: {} })).rejects.toThrow()
+  expect(logout).not.toHaveBeenCalled()
+  await invoke(event)
+  expect(logout).toHaveBeenCalledWith()
+  account.mockReturnValueOnce(null as never)
+  await expect(invoke(event)).rejects.toThrow()
+  expect(logout).toHaveBeenCalledTimes(1)
+})

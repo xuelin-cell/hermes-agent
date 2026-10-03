@@ -5,6 +5,11 @@ import { introEs } from './intro-es'
 
 export const esOverrides = {
   desktopLogin: {
+    logout: 'Cerrar sesión',
+    logoutTitle: '¿Cerrar la sesión de esta cuenta?',
+    logoutDescription:
+      'Detiene los backends del escritorio y vuelve al inicio de sesión. Se conservan el historial y los archivos. Las tareas independientes, como las pasarelas, aún no están incluidas.',
+    logoutBusy: 'Cerrando sesión…',
     planTitle: 'Plan de MaaS',
     planEmpty: 'No hay un plan de MaaS disponible actualmente.',
     planError: 'No se pudo cargar el plan. Vuelve a intentarlo.',

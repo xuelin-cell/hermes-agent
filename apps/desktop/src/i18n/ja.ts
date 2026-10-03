@@ -5,6 +5,11 @@ import { introJa } from './intro-ja'
 
 export const ja = defineLocale({
   desktopLogin: {
+    logout: 'ログアウト',
+    logoutTitle: 'このアカウントからログアウトしますか？',
+    logoutDescription:
+      'デスクトップのバックエンドを停止し、ログイン画面に戻ります。履歴とファイルは保持されます。ゲートウェイなどの独立タスクはまだ対象外です。',
+    logoutBusy: 'ログアウト中…',
     planTitle: 'MaaS プラン',
     planEmpty: '現在、MaaS プランはありません。',
     planError: 'プランを取得できませんでした。再試行してください。',

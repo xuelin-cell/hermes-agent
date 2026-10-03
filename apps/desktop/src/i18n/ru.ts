@@ -25,6 +25,11 @@ const RU_NOUN = (count: number | string, one: string, few: string, many: string)
 
 export const ru = defineLocale({
   desktopLogin: {
+    logout: 'Выйти',
+    logoutTitle: 'Выйти из этого аккаунта?',
+    logoutDescription:
+      'Локальные серверы приложения будут остановлены. История и файлы сохранятся. Независимые задачи, например шлюзы, пока не останавливаются.',
+    logoutBusy: 'Выход…',
     planTitle: 'Тариф MaaS',
     planEmpty: 'Сейчас тариф MaaS недоступен.',
     planError: 'Не удалось загрузить тариф. Повторите попытку.',

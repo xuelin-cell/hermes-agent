@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain, type Session } from 'electron'
+import { BrowserWindow, ipcMain, type IpcMainInvokeEvent, type Session } from 'electron'
 
 import type { LoginAccount } from './contract'
 
@@ -6,9 +6,11 @@ import type { LoginAccount } from './contract'
 export function installAccountIpc(
   session: Session,
   rendererUrl: () => string,
-  readAccount: () => LoginAccount | null
+  readAccount: () => LoginAccount | null,
+  logout?: () => Promise<void>
 ): void {
-  ipcMain.handle('hermes:maas-account:get', (event, ...args): LoginAccount | null => {
+  /** 展示与退出共用来源校验，不接收 UID、路径或进程号。 */
+  function trusted(event: IpcMainInvokeEvent, args: unknown[]): boolean {
     const window = BrowserWindow.fromWebContents(event.sender)
 
     if (
@@ -20,7 +22,7 @@ export function installAccountIpc(
       event.senderFrame !== event.sender.mainFrame ||
       !event.senderFrame
     ) {
-      return null
+      return false
     }
 
     try {
@@ -32,9 +34,26 @@ export function installAccountIpc(
       actual.hash = expected.hash = ''
 
       if (actual.href !== expected.href) {
-        return null
+        return false
       }
 
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  if (logout) {
+    ipcMain.handle('hermes:maas-account:logout', async (event, ...args): Promise<void> => {
+      if (!trusted(event, args) || !readAccount()) {throw new Error('退出请求无效。')}
+      await logout()
+    })
+  }
+
+  ipcMain.handle('hermes:maas-account:get', (event, ...args): LoginAccount | null => {
+    if (!trusted(event, args)) {return null}
+
+    try {
       const account = readAccount()
 
       return account && account.expiresAt > Date.now()

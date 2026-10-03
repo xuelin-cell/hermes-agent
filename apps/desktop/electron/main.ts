@@ -202,6 +202,7 @@ import {
   resolveDesktopConnectionRequest,
   resolveDesktopWindowLaunch
 } from './desktop-profile'
+import { relaunchDesktop } from './desktop-relaunch'
 import { registryPrimaryBootRoute, resolveDesktopRemoteRoute, v1SshTerminalPoolKey } from './desktop-remote-route'
 import {
   buildPosixCleanupScript,
@@ -220,6 +221,14 @@ import { installEmbedReferer } from './embed-referer'
 import { accountBrowserPartition } from './entry_local/browser-partition'
 import { accountSourceBackend } from './entry_local/desktop-environment'
 import { accountDesktopStatePaths } from './entry_local/desktop-state'
+import { createAccountLogout } from './entry_local/logout'
+import {
+  confirmLogoutChildExit,
+  listLogoutProcesses,
+  logoutProcessTree,
+  stopLogoutProcesses
+} from './entry_local/logout-processes'
+import { openLogoutWindow, retryLogout } from './entry_local/logout-window'
 import { createAmbientClaimArbiter } from './event-dedupe'
 import { openExternalUrl as externalOpen, type ExternalOpenDeps, reportPreOpenStatFailure } from './external-open'
 import {
@@ -316,7 +325,7 @@ import { resolveIpcFileReadPath, resolveMediaStreamFile, resolvePreviewTargetPat
 import { localSkinProfileKey, readLocalSkinPayload } from './local-skin'
 import { ACTIVE_LOG_POLL_MS, planLogRotation, reclaimActiveLogIfOversized } from './log-rotation'
 import { installAccountIpc } from './login/account-ipc'
-import { currentDesktopAccount, currentDesktopLocalContext } from './login/bootstrap'
+import { currentDesktopAccount, currentDesktopLocalContext, sealDesktopAccount } from './login/bootstrap'
 import { registerMachineProfile } from './machine-profile'
 import { createMainProcessLagWatchdog } from './main-process-lag-watchdog'
 import { ensureMainWindow } from './main-window-lifecycle'
@@ -642,7 +651,8 @@ const APP_ROOT = app.getAppPath()
 installAccountIpc(
   ACCOUNT_SESSION,
   () => DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString(),
-  currentDesktopAccount
+  currentDesktopAccount,
+  () => logoutDesktopAccount()
 )
 
 // Device-local preference: block F12 from opening DevTools.
@@ -4027,6 +4037,10 @@ async function claimBackendChild(
 }
 
 function releaseBackendChild(child) {
+  if (accountLogout.started()) {
+    return
+  }
+
   const identity = child?.hermesBackendIdentity
 
   if (!identity) {
@@ -11959,6 +11973,71 @@ function reapInstallRootedStragglers(excludePids: number[]): void {
   }
 }
 
+let logoutWindow: BrowserWindow | null = null
+let logoutComplete = false
+let logoutChildren: ChildProcess[] = []
+
+const accountLogout = createAccountLogout({
+  userData: app.getPath('userData'),
+  account: ACCOUNT_RUNTIME.id,
+  seal: () => {
+    sealDesktopAccount()
+    primaryRecoverySuppressed = true
+    logoutChildren = localBackendLifecycle.ownedChildren()
+    localBackendLifecycle.seal()
+    logoutWindow = openLogoutWindow()
+  },
+  snapshot: () =>
+    logoutProcessTree(
+      listLogoutProcesses(),
+      logoutChildren
+        .filter(child => child.exitCode === null && child.signalCode === null && child.pid)
+        .map(child => child.pid!)
+    ),
+  stop: async owned => {
+    // 先验证整棵普通后端子树，再回收原版路由；不依赖有界 allSettled 证明退出。
+    stopLogoutProcesses(owned)
+    await Promise.all(logoutChildren.map(confirmLogoutChildExit))
+    await localBackendLifecycle.settleStarts()
+    await localBackendLifecycle.shutdown()
+    await teardownPrimaryBackendAndWait(backendTeardownOptions('quit'))
+    await stopAllPoolBackends()
+
+    if (poolIdleReaper) {
+      clearInterval(poolIdleReaper)
+      poolIdleReaper = null
+    }
+  },
+  release: () => {
+    for (const child of logoutChildren) {
+      const identity = (child as ChildProcess & { hermesBackendIdentity?: BackendOwnershipEntry }).hermesBackendIdentity
+
+      if (identity) {
+        backendOwnership.release(identity)
+      }
+    }
+  },
+  relaunch: async () => {
+    logoutComplete = true
+    quitConfirmedWithActiveWork = true
+    logoutWindow?.removeAllListeners('close')
+    await relaunchDesktop()
+  }
+})
+
+/** 退出失败只重试同一账号的停止事务，不恢复原页面或允许换账号。 */
+async function logoutDesktopAccount(): Promise<void> {
+  try {
+    await accountLogout.run()
+  } catch {
+    if (!logoutWindow) {
+      throw new Error('无法开始安全退出，请重试。')
+    }
+
+    await retryLogout(logoutWindow, () => accountLogout.run())
+  }
+}
+
 const backendShutdown = createBackendShutdownCoordinator(async (): Promise<void> => {
   const ownedChildren = IS_WINDOWS ? collectOwnedBackendChildren() : []
   const localShutdown = localBackendLifecycle.shutdown()
@@ -12248,7 +12327,7 @@ function startHermes({ supervisorRecovery = false }: { supervisorRecovery?: bool
 // A quit or update handoff kills renderers while their windows can still report
 // live; the renderer lifecycle must treat that as teardown, not a crash to reload.
 function rendererTeardownInProgress(): boolean {
-  return isQuittingForHandoff || backendShutdown.hasStarted()
+  return accountLogout.started() || isQuittingForHandoff || backendShutdown.hasStarted()
 }
 
 function primaryRecoveryState() {
@@ -18560,6 +18639,12 @@ function heldQuitForActiveWork(event: Electron.Event): boolean {
 }
 
 app.on('before-quit', event => {
+  if (accountLogout.started() && !logoutComplete) {
+    event.preventDefault()
+
+    return
+  }
+
   // Runs ahead of every teardown below, so "Keep Running" leaves the app
   // exactly as it was.
   if (heldQuitForActiveWork(event)) {

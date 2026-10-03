@@ -2,6 +2,11 @@ import { defineLocale } from './define-locale'
 
 export const ar = defineLocale({
   desktopLogin: {
+    logout: 'تسجيل الخروج',
+    logoutTitle: 'تسجيل الخروج من هذا الحساب؟',
+    logoutDescription:
+      'ستتوقف خوادم سطح المكتب لهذا الحساب مع الاحتفاظ بالسجل والملفات. إيقاف المهام المستقلة مثل البوابات غير مشمول بعد.',
+    logoutBusy: 'جارٍ تسجيل الخروج…',
     planTitle: 'خطة MaaS',
     planEmpty: 'لا تتوفر خطة MaaS حاليًا.',
     planError: 'تعذر تحميل الخطة. حاول مجددًا.',

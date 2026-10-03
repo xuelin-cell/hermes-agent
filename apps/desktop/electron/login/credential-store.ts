@@ -67,6 +67,11 @@ export class CredentialStore {
     this.file = path.join(userData, 'maas-login.enc')
   }
 
+  /** 仅在账号停止得到确认后移除恢复凭据，不删除历史或账号配置。 */
+  clear(): void {
+    fs.rmSync(this.file, { force: true })
+  }
+
   /** 先加密再原子替换；失败向调用方报告，不启用明文回退。 */
   save(identity: LoginIdentity): void {
     try {

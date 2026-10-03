@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -7,6 +7,7 @@ import { app, BrowserWindow, dialog, net } from 'electron'
 import { platformDefaultHermesHome, resolveDesktopUserData } from '../data-paths'
 import { markDesktopLaunchSuccessful, prepareDesktopLaunch } from '../desktop-launch'
 import { startAccountDesktop } from '../entry_local/desktop-runtime'
+import { logoutIntentPath } from '../entry_local/logout'
 import { LocalRuntimeContext, type PreparedLocalContext } from '../entry_local/runtime-context'
 import { createWindowOpenHandler } from '../window-open-policy'
 
@@ -35,6 +36,20 @@ function initializeLoginShell(): void {
   mkdirSync(userData, { recursive: true })
   app.setPath('userData', userData)
   prepareDesktopLaunch()
+
+  if (existsSync(logoutIntentPath(userData))) {
+    stopping = true
+    void app.whenReady().then(() => {
+      dialog.showErrorBox(
+        'Hermes Desktop MT',
+        '上次退出账号尚未完成，已阻止恢复登录。请先确认并清理遗留账号进程；不会删除历史。'
+      )
+      app.quit()
+    })
+
+    return
+  }
+
   accountRuntime = new LocalRuntimeContext(
     new LoginSession(net.fetch, new CredentialStore(userData)),
     {
@@ -187,6 +202,12 @@ export function currentDesktopAccount(): LoginAccount | null {
   const identity = stopping ? null : accountRuntime?.login.currentIdentity()
 
   return identity ? { maskedPhone: identity.maskedPhone, expiresAt: identity.expiresAt } : null
+}
+
+/** 退出确认后立即撤销主进程身份，不再允许读取或准备旧账号。 */
+export function sealDesktopAccount(): void {
+  stopping = true
+  accountRuntime?.dispose()
 }
 
 /** 合并重复启动请求；未获可信身份前只启动登录壳，不导入账号运行时。 */

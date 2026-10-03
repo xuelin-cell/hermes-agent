@@ -5,6 +5,10 @@ import { introZh } from './intro-zh'
 
 export const zh = defineLocale({
   desktopLogin: {
+    logout: '退出',
+    logoutTitle: '退出当前账号？',
+    logoutDescription: '将停止当前账号的桌面后端并返回登录页，历史和文件保留。消息网关等独立任务的退出处理尚未接入。',
+    logoutBusy: '正在退出…',
     planTitle: 'MaaS 套餐',
     planEmpty: '当前没有 MaaS 套餐。',
     planError: '套餐查询失败，请重试。',

@@ -28,6 +28,7 @@ declare global {
     hermesDesktop: {
       /** 只读当前有效账号的脱敏信息，不接收身份参数。 */
       getMaasAccount: () => Promise<LoginAccount | null>
+      logoutMaasAccount: () => Promise<void>
       // Resolve a backend connection. Omit `profile` (or pass the primary) for
       // the window's backend; pass a named profile to lazily spawn/reuse that
       // profile's backend from the pool.

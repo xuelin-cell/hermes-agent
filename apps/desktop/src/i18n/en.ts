@@ -4,6 +4,11 @@ import type { Translations } from './types'
 
 export const en: Translations = {
   desktopLogin: {
+    logout: 'Sign out',
+    logoutTitle: 'Sign out of this account?',
+    logoutDescription:
+      'Stop this account’s desktop backends and return to sign-in. History and files are kept. Independent tasks such as gateways are not yet covered.',
+    logoutBusy: 'Signing out…',
     planTitle: 'MaaS plan',
     planEmpty: 'No MaaS plan is currently available.',
     planError: 'Could not load your plan. Please retry.',

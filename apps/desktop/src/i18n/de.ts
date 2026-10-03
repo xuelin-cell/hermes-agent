@@ -5,6 +5,11 @@ import { introDe } from './intro-de'
 
 export const deOverrides = {
   desktopLogin: {
+    logout: 'Abmelden',
+    logoutTitle: 'Dieses Konto abmelden?',
+    logoutDescription:
+      'Die Desktop-Backends dieses Kontos werden gestoppt. Verlauf und Dateien bleiben erhalten. Unabhängige Aufgaben wie Gateways werden noch nicht beendet.',
+    logoutBusy: 'Abmeldung läuft…',
     planTitle: 'MaaS-Tarif',
     planEmpty: 'Derzeit ist kein MaaS-Tarif verfügbar.',
     planError: 'Der Tarif konnte nicht geladen werden. Bitte erneut versuchen.',

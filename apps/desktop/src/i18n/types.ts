@@ -60,6 +60,10 @@ interface AuxTaskCopy {
 
 export interface Translations {
   desktopLogin: {
+    logout: string
+    logoutTitle: string
+    logoutDescription: string
+    logoutBusy: string
     planTitle: string
     planEmpty: string
     planError: string

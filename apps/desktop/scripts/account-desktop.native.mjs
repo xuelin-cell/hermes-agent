@@ -3,16 +3,56 @@ import { access, mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { createRequire } from 'node:module'
+import { pathToFileURL } from 'node:url'
 import { test } from 'node:test'
 import { createServer } from 'node:http'
+import {spawn} from 'node:child_process'
+import {once} from 'node:events'
 
 import { _electron as electron } from '@playwright/test'
 import electronPath from 'electron'
 import { build } from 'esbuild'
 
 import { prepareLoginRenderer, startLoginDevServer } from './login-renderer.fixture.mjs'
+import { superviseElectron } from './dev-electron.mjs'
 
 const desktop = path.resolve(import.meta.dirname, '..')
+
+test('P19 真实开发监督进程：退出停止后端与受控子树，重启到登录页', {timeout:240_000}, async () => {
+  const {server,url} = await startLoginDevServer()
+  const fixture = await prepareFixture(url)
+  const unrelated = spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',windowsHide:true})
+  console.log(`P19 隔离退出夹具：${fixture.root}`)
+  try {
+    const code = await superviseElectron({args:[fixture.output], cwd:desktop,
+      env:{...fixture.env,FIXTURE_LOGOUT_TEST:'1',FIXTURE_NODE:process.execPath,FIXTURE_PLAN:'available'}})
+    const error = await readFile(path.join(fixture.root,'logout-error.txt'),'utf8').catch(() => '')
+    assert.equal(error,'')
+    assert.equal(code,0)
+    const before = JSON.parse(await readFile(path.join(fixture.root,'logout-before.json'),'utf8'))
+    const after = JSON.parse(await readFile(path.join(fixture.root,'logout-after.json'),'utf8'))
+    assert.notEqual(before.electron,after.electron)
+    assert.equal(after.login,true)
+    assert.equal(unrelated.exitCode,null)
+    assert.equal(unrelated.signalCode,null)
+    for (const pid of [before.electron,before.backend,before.controlled,before.leaf]) {
+      assert.throws(() => process.kill(pid,0),{code:'ESRCH'})
+    }
+    assert.equal(await readFile(path.join(before.context.workspace,'logout-history-sentinel.txt'),'utf8'),'preserve account files')
+    await access(path.join(before.context.home,'state.db'))
+    await assert.rejects(access(path.join(fixture.userData,'maas-login.enc')),{code:'ENOENT'})
+    await assert.rejects(access(path.join(fixture.userData,'maas-logout-pending.json')),{code:'ENOENT'})
+    // 再次恢复同一测试身份，确认复用原账号；不是一次真实 MaaS 短信登录。
+    const instance = await electron.launch({executablePath:electronPath,args:[fixture.output],env:fixture.env,timeout:45_000})
+    try {
+      await chatWindow(instance,[])
+      assert.equal((await instance.evaluate(() => globalThis.fixtureContext())).id,before.context.id)
+    } finally { await instance.close() }
+  } finally {
+    if (unrelated.exitCode === null && unrelated.signalCode === null) { unrelated.kill(); await once(unrelated,'exit') }
+    await server.close()
+  }
+})
 
 /** 使用正式入口和原版主进程；只有 MaaS 响应受控，账号文件和 Hermes 子进程均真实。 */
 async function prepareFixture(url) {
@@ -44,6 +84,7 @@ async function prepareFixture(url) {
   }
   await build({stdin:{resolveDir:desktop, contents:`
     import {app, dialog, net} from 'electron'
+    import {existsSync, writeFileSync} from 'node:fs'
     import {CredentialStore} from './electron/login/credential-store'
     import {accountBrowserPartition} from './electron/entry_local/browser-partition'
     globalThis.fixtureBrowserPartition = accountBrowserPartition
@@ -69,6 +110,7 @@ async function prepareFixture(url) {
     // 真实系统加密，完整可信身份只在主进程，页面不传 UID 或 token。
     app.whenReady().then(() => {
       if (process.env.FIXTURE_LOGIN_DISABLE === '1') return
+      if (process.env.FIXTURE_LOGOUT_TEST === '1' && existsSync(${JSON.stringify(path.join(root, 'logout-started'))})) return
       const store = new CredentialStore(app.getPath('userData'))
       const uid = process.env.FIXTURE_UID || 'fixture-desktop-account'
       if (store.load()?.uid !== uid) store.save({
@@ -81,6 +123,11 @@ async function prepareFixture(url) {
     globalThis.fixtureContext = () => currentDesktopLocalContext()
     globalThis.fixtureOpenDesktop = () => import('./electron/main').then(module => module.openAccountDesktop())
     globalThis.fixtureMain = () => import('./electron/main').then(module => module.fixtureNativeState)
+    if (process.env.FIXTURE_LOGOUT_TEST === '1') {
+      void import(${JSON.stringify(pathToFileURL(path.join(desktop, 'scripts', 'account-logout.fixture.mjs')).href)})
+        .then(module => module.exerciseLogout(${JSON.stringify(root)}, ${JSON.stringify(userData)}))
+        .catch(error => { writeFileSync(${JSON.stringify(path.join(root, 'logout-error.txt'))}, error.stack); app.exit(1) })
+    }
   `}, bundle:true, format:'esm', platform:'node', target:'node20',
   external:['electron','node-pty','get-windows'], outfile:output,
   define:{__HERMES_PRODUCT_IDENTITY__:JSON.stringify(createRequire(import.meta.url)(path.join(desktop,'product-identity.cjs')))},
@@ -93,6 +140,7 @@ async function prepareFixture(url) {
     builder.onLoad({filter:/electron[\\/]main\.ts$/}, async args => ({loader:'ts',
       contents:(await readFile(args.path,'utf8')) + `
         export const fixtureNativeState = {paths:ACCOUNT_DESKTOP_STATE,
+          spawnFixtureBackend:spawnOwnedBackend,
           browserSession:ACCOUNT_SESSION, rendererPartition:ACCOUNT_RENDERER_PARTITION,
           oauthSession:getOauthSessionForUrl, warmCookies:warmOauthCookieStore,
           windows:{peer:createInstanceWindow,secondary:spawnSecondaryWindow,browser:spawnBrowserWindow,
