@@ -81,11 +81,10 @@ import {
   createBackendOwnership,
   createBackendShutdownCoordinator
 } from './backend-ownership'
-import { canImportHermesCli, PROBE_TIMEOUT_MS, shouldTrustHermesOverride, verifyHermesCli } from './backend-probes'
+import { canImportHermesCli, PROBE_TIMEOUT_MS } from './backend-probes'
 import { waitForDashboardPortAnnouncement } from './backend-ready'
 import { recycleOwnedBackend } from './backend-recycle'
 import { isPidAliveWindows, waitForBackendRelease } from './backend-release-gate'
-import { createInstalledRuntimeGate } from './backend-resolution'
 import { createBackendServeSupportResolver } from './backend-serve-support'
 import {
   isHostKeyChangedBootFailure,
@@ -97,10 +96,8 @@ import {
   shouldLatchRemoteReauthFailure,
   shouldLatchSshAuthFailure
 } from './backend-start-failure'
-import { describeBootstrapFailure } from './bootstrap-failure-copy'
 import { isWindowsBinaryPathInWsl, isWslEnvironment } from './bootstrap-platform'
 import { decideBootstrapRepair } from './bootstrap-repair-guard'
-import { runBootstrap } from './bootstrap-runner'
 import { bootstrapSnapshot } from './bootstrap-state'
 import {
   BROWSER_WINDOW_HEIGHT,
@@ -112,7 +109,6 @@ import {
 import { detectBundleSkew } from './bundle-skew'
 import { detectBundleSwap, readBundleSwapStamp } from './bundle-swap'
 import { registerChatOnboardingWindow } from './chat-onboarding-window'
-import { provisionCliLinks } from './cli-provision'
 import { closeStopFailureMessage, finishWindowsCloseStop, type RuntimeLock } from './close-stop-kill'
 import { shouldAttemptCloudBootCascade } from './cloud-boot-cascade'
 import { discoverWithTeamFallback } from './cloud-discovery'
@@ -197,7 +193,6 @@ import type { RosterProfileMetadata } from './connection-registry'
 import { liveWindowState, overlayWindowState } from './connection-window-state'
 import { describeCrashReason, installCrashForensics } from './crash-forensics'
 import { adoptServedDashboardToken, resolveServedDashboardToken } from './dashboard-token'
-import { resolveDesktopHermesHome, resolveDesktopUserData } from './data-paths'
 import { loadOrCreateInstallationId, sshOwnershipId } from './desktop-installation'
 import { prepareDesktopLaunch } from './desktop-launch'
 import { formatDesktopLogLine } from './desktop-log-line'
@@ -223,6 +218,7 @@ import {
 } from './desktop-uninstall'
 import { preReadyDockLaunchSteps } from './dock-launch-order'
 import { installEmbedReferer } from './embed-referer'
+import { accountSourceBackend } from './entry_local/desktop-environment'
 import { createAmbientClaimArbiter } from './event-dedupe'
 import { openExternalUrl as externalOpen, type ExternalOpenDeps, reportPreOpenStatFailure } from './external-open'
 import {
@@ -318,6 +314,7 @@ import { createLocalBackendLifecycle, waitForTeardown } from './local-backend-li
 import { resolveIpcFileReadPath, resolveMediaStreamFile, resolvePreviewTargetPath } from './local-read-path'
 import { localSkinProfileKey, readLocalSkinPayload } from './local-skin'
 import { ACTIVE_LOG_POLL_MS, planLogRotation, reclaimActiveLogIfOversized } from './log-rotation'
+import { currentDesktopLocalContext } from './login/bootstrap'
 import { registerMachineProfile } from './machine-profile'
 import { createMainProcessLagWatchdog } from './main-process-lag-watchdog'
 import { ensureMainWindow } from './main-window-lifecycle'
@@ -415,7 +412,7 @@ import {
 } from './primary-backend-startup'
 import { rehomePrimaryConnection } from './primary-connection-rehome'
 import { PrimaryProfilePin, resolveLaunchProfile } from './primary-profile-pin'
-import { applyDesktopIdentity, PRODUCT_IDENTITY } from './product-identity'
+import { PRODUCT_IDENTITY } from './product-identity'
 import {
   assertLocalProfileCanStart,
   decideProfileDeleteAction,
@@ -497,7 +494,7 @@ import {
   SESSION_WINDOW_MIN_WIDTH
 } from './session-windows'
 import { ensureLoginShellPath } from './shell-path'
-import { createSourcePythonBackend, resolveSourceInstallationBackend, type SourceBackend } from './source-backend'
+import { resolveSourceInstallationBackend, type SourceBackend } from './source-backend'
 import { resolveSourcePython } from './source-python'
 import { createBootstrapCoordinator, sshConfigFingerprint } from './ssh-bootstrap-coordinator'
 import { collectSshConfigHosts, parseSshGOutput } from './ssh-config'
@@ -611,18 +608,14 @@ import {
   shouldSurfaceErrorForRendererStackCookieCrashLoop,
   writeGpuStackCookieMarker
 } from './windows-stack-cookie-fallback'
-import { readWindowsUserEnvVar } from './windows-user-env'
 import { isPackagedInstallPath as isPackagedInstallPathUnderRoots } from './workspace-cwd'
 import { readWslWindowsClipboardImage } from './wsl-clipboard-image'
 import { resolvePickerDefaultPath, setActiveGatewayProfile, setWslBridgeProfileState } from './wsl-path-bridge'
 
-const IDENTITY_APP_NAME: string | null = applyDesktopIdentity(app)
-const USER_DATA_OVERRIDE: string | undefined = process.env.HERMES_DESKTOP_USER_DATA_DIR
+const ACCOUNT_RUNTIME = currentDesktopLocalContext()
 
-if (USER_DATA_OVERRIDE || process.env.HERMES_DATA_DIR_SUFFIX) {
-  const resolvedUserData: string = resolveDesktopUserData(app.getPath('userData'))
-  fs.mkdirSync(resolvedUserData, { recursive: true })
-  app.setPath('userData', resolvedUserData)
+if (!ACCOUNT_RUNTIME) {
+  throw new Error('请先完成可信登录与账号环境准备。')
 }
 
 const DEV_SERVER = process.env.HERMES_DESKTOP_DEV_SERVER
@@ -695,7 +688,7 @@ if (IS_WINDOWS) {
 
 ipcMain.handle('hermes:get-remote-display-reason', () => desktopLaunch.remoteDisplayReason)
 
-const SOURCE_REPO_ROOT = path.resolve(APP_ROOT, '../..')
+const SOURCE_REPO_ROOT = ACCOUNT_RUNTIME.installationRoot
 
 // Runtime identity comes only from the baked artifact stamp. Dev runs have none.
 if (INSTALL_STAMP) {
@@ -710,9 +703,9 @@ if (INSTALL_STAMP) {
   )
 }
 
-const DESKTOP_PROFILE_CONFIG_PATH: string = path.join(app.getPath('userData'), 'active-profile.json')
+const DESKTOP_PROFILE_CONFIG_PATH: string = path.join(ACCOUNT_RUNTIME.desktopState, 'active-profile.json')
 // Only the lock-owning destination may adopt a workspace or start a backend.
-const isPrimaryInstance: boolean = app.requestSingleInstanceLock()
+const isPrimaryInstance: boolean = app.hasSingleInstanceLock()
 
 if (!isPrimaryInstance) {
   app.exit(0)
@@ -725,18 +718,10 @@ if (process.env.HERMES_DESKTOP_TMPDIR) {
   delete process.env.HERMES_DESKTOP_TMPDIR
 }
 
-const HERMES_HOME: string = resolveDesktopHermesHome({
-  home: app.getPath('home'),
-  directoryExists,
-  readWindowsHome: (): string | null => readWindowsUserEnvVar('HERMES_HOME')
-})
+const HERMES_HOME: string = ACCOUNT_RUNTIME.home
 
-// #77311: `desktop.electron_flags` and the renderer heap ceiling
-// (`desktop.renderer_max_old_space_mb`) used to reach Chromium only through
-// the `hermes desktop` launcher's argv, so a packaged app opened from its
-// Start-menu / .desktop entry ran with no `--js-flags` at all. Apply them here
-// from config.yaml, before `ready` — Chromium copies `js-flags` to renderer
-// processes only from the browser's pre-launch command line.
+// 登录后读取账号辅助功能设置。账号自定义 Chromium 启动参数尚未接线；
+// 保留原配置并明确提示，不在 ready 后执行看似成功但无效的 appendSwitch。
 {
   let desktopLaunchYaml: string = ''
 
@@ -758,15 +743,8 @@ const HERMES_HOME: string = resolveDesktopHermesHome({
   }
 
   for (const planned of planLaunchSwitches(desktopLaunchConfig, process.argv.slice(1))) {
-    if (planned.value === undefined) {
-      app.commandLine.appendSwitch(planned.name)
-    } else {
-      app.commandLine.appendSwitch(planned.name, planned.value)
-    }
-
-    console.log(
-      `[hermes] desktop launch switch from config.yaml: --${planned.name}${planned.value === undefined ? '' : `=${planned.value}`}`
-    )
+    // 登录后才知道账号；不能在 ready 后伪装成已应用 Chromium 启动参数。
+    console.warn(`[desktop-mt] account config launch switch requires a separate pre-ready launch: --${planned.name}`)
   }
 }
 
@@ -791,16 +769,16 @@ const VENV_ROOT = path.join(ACTIVE_HERMES_ROOT, 'venv')
 const BOOTSTRAP_COMPLETE_MARKER = path.join(ACTIVE_HERMES_ROOT, '.hermes-bootstrap-complete')
 const BOOTSTRAP_MARKER_SCHEMA_VERSION = 1
 
-const DESKTOP_CONNECTION_CONFIG_PATH = path.join(app.getPath('userData'), 'connection.json')
+const DESKTOP_CONNECTION_CONFIG_PATH = path.join(ACCOUNT_RUNTIME.desktopState, 'connection.json')
 // v2 multi-connection registry (named agent sources). Lives BESIDE
 // connection.json — v1 stays on disk untouched so older builds sharing the
 // profile keep working; the registry imports from it once and then owns its
 // own file. Same secret posture as connection.json (encrypted tokens, 0600).
-const DESKTOP_CONNECTIONS_REGISTRY_PATH = path.join(app.getPath('userData'), 'connections.json')
+const DESKTOP_CONNECTIONS_REGISTRY_PATH = path.join(ACCOUNT_RUNTIME.desktopState, 'connections.json')
 const DESKTOP_INSTALLATION_PATH = path.join(app.getPath('userData'), 'desktop-installation.json')
 const DESKTOP_UPDATE_CONFIG_PATH = path.join(app.getPath('userData'), 'updates.json')
 const DESKTOP_WINDOW_STATE_PATH = path.join(app.getPath('userData'), 'window-state.json')
-const DESKTOP_BACKEND_OWNERSHIP_PATH = path.join(app.getPath('userData'), 'backend-ownership.json')
+const DESKTOP_BACKEND_OWNERSHIP_PATH = path.join(ACCOUNT_RUNTIME.desktopState, 'backend-ownership.json')
 const DESKTOP_MANAGED_SSH_RECOVERY_PATH = path.join(app.getPath('userData'), 'managed-ssh-update-recovery.json')
 // active-profile.json records which Hermes profile the desktop launches its
 // local backend as. When set, startHermes() passes `hermes --profile <name>
@@ -868,7 +846,7 @@ const BOOT_FAKE_STEP_MS = (() => {
   return Math.max(120, raw)
 })()
 
-const APP_NAME: string = IDENTITY_APP_NAME || process.env.HERMES_DESKTOP_APP_NAME || 'Hermes'
+const APP_NAME: string = process.env.HERMES_DESKTOP_APP_NAME || 'Hermes Desktop MT'
 const HUD_WINDOW_TITLE = `${APP_NAME} HUD`
 const TITLEBAR_HEIGHT = 34
 const MACOS_TRAFFIC_LIGHTS_HEIGHT = 14
@@ -1268,7 +1246,7 @@ app.setName(APP_NAME)
 // segfaults the macOS shell — the updater relaunch races the user's keystroke
 // (#115332). Must run at module scope: on macOS a later `null` never removes
 // an installed menu. The real menu lands in installApplicationMenuAfterFirstWindow.
-Menu.setApplicationMenu(null)
+// 默认菜单抑制已在登录壳的启动前阶段完成。
 
 // Windows toast notifications silently no-op unless an AppUserModelID is set:
 // `new Notification().show()` returns without error and nothing appears. The
@@ -1278,7 +1256,7 @@ Menu.setApplicationMenu(null)
 // need this, so gate it on Windows. (Fixes: desktop approval/turn notifications
 // never firing on Windows.)
 if (IS_WINDOWS) {
-  app.setAppUserModelId(IDENTITY_APP_NAME ? PRODUCT_IDENTITY.appId : 'com.nousresearch.hermes')
+  app.setAppUserModelId('com.xuelin.hermes.desktop.mt')
 }
 
 // Seed the native About panel with the best-known Hermes version. This is
@@ -1297,17 +1275,7 @@ app.setAboutPanelOptions({
 // from this machine; remote paths are proxied through the configured gateway
 // with main-process authentication. This avoids whole-file data URLs and keeps
 // playback seekable and Range-aware. Must be registered before app readiness.
-protocol.registerSchemesAsPrivileged([
-  {
-    scheme: MEDIA_PROTOCOL,
-    privileges: {
-      secure: true,
-      standard: true,
-      stream: true,
-      supportFetchAPI: true
-    }
-  }
-])
+// 媒体 scheme 权限已由公共启动前阶段注册；这里只安装运行时 handler。
 
 function registerMediaProtocol(): void {
   const handler: ReturnType<typeof createMediaProtocolHandler> = createMediaProtocolHandler({
@@ -1360,6 +1328,7 @@ function registerMediaProtocol(): void {
 }
 
 let mainWindow = null
+let firstDesktopWindowReady: Promise<BrowserWindow> | null = null
 const backendConnectionState = createBackendConnectionState<ReturnType<typeof spawn>, any>()
 
 const localBackendLifecycle = createLocalBackendLifecycle<ChildProcess>({
@@ -2837,7 +2806,7 @@ function getVenvPython(venvRoot) {
 // needed.
 
 function makeDashboardReadyFile() {
-  const dir = path.join(app.getPath('userData'), 'backend-ready')
+  const dir = path.join(ACCOUNT_RUNTIME.desktopState, 'backend-ready')
   fs.mkdirSync(dir, { recursive: true })
 
   return path.join(dir, `dashboard-${process.pid}-${Date.now()}-${crypto.randomBytes(6).toString('hex')}.json`)
@@ -4582,21 +4551,8 @@ function isPackagedInstallPath(dir) {
 }
 
 function resolveHermesCwd() {
-  // In a packaged build, `process.cwd()` resolves to the install root (e.g.
-  // `…/win-unpacked` on Windows or `/Applications/Hermes.app/Contents/...`
-  // on macOS). Sessions spawned there leave files inside the app bundle
-  // and bewilder users when "where did my files go?" is the install dir.
-  // The user-configurable default project directory wins over everything,
-  // followed by env hints (only honored when packaged if they point at a
-  // real directory), then the home dir.
-  const candidates = [
-    readDefaultProjectDir(),
-    process.env.HERMES_DESKTOP_CWD,
-    IS_PACKAGED ? null : process.env.INIT_CWD,
-    IS_PACKAGED ? null : process.cwd(),
-    !IS_PACKAGED ? SOURCE_REPO_ROOT : null,
-    app.getPath('home')
-  ]
+  // 当前账号的项目偏好优先，否则使用账号工作区；不认领旧 Home 或仓库 cwd。
+  const candidates = [readDefaultProjectDir(), ACCOUNT_RUNTIME.workspace]
 
   for (const candidate of candidates) {
     if (!candidate) {
@@ -4614,7 +4570,7 @@ function resolveHermesCwd() {
     }
   }
 
-  return app.getPath('home')
+  throw new Error('账号默认工作目录不存在，请完整退出后重试。')
 }
 
 function sanitizeWorkspaceCwd(cwd) {
@@ -4644,7 +4600,7 @@ function sanitizeWorkspaceCwd(cwd) {
 const DEFAULT_PROJECT_DIR_CONFIG_FILENAME = 'project-dir.json'
 
 function defaultProjectDirConfigPath() {
-  return path.join(app.getPath('userData'), DEFAULT_PROJECT_DIR_CONFIG_FILENAME)
+  return path.join(ACCOUNT_RUNTIME.desktopState, DEFAULT_PROJECT_DIR_CONFIG_FILENAME)
 }
 
 function readDefaultProjectDir() {
@@ -4679,171 +4635,13 @@ function writeDefaultProjectDir(dir) {
   }
 }
 
-const installedRuntimeGate = createInstalledRuntimeGate(process.env, rememberLog)
-
+/** 启动只使用本次可信账号绑定的开发解释器，不发现其他安装或执行 bootstrap。 */
 async function resolveHermesBackend(backendArgs: string[]): Promise<ResolvedHermesBackend> {
-  const payload = bundledPayload(process.resourcesPath)
-
-  if (payload) {
-    if (!IS_WINDOWS) {
-      provisionCliLinks(payload.commands, path.join(os.homedir(), '.local', 'bin'), rememberLog)
-    }
-
-    return {
-      kind: 'python',
-      label: `bundled payload at ${payload.root}`,
-      command: payload.shim,
-      args: [...backendArgs],
-      env: { ...buildDesktopBackendEnv(), HERMES_RUNTIME_DIR: payload.toolsDir },
-      root: payload.repoDir,
-      bootstrap: false,
-      shell: false,
-      local: 'bundled'
-    }
+  if (currentDesktopLocalContext() !== ACCOUNT_RUNTIME) {
+    throw new Error('当前账号授权已失效，请重新登录。')
   }
 
-  // 1. Explicit override -- HERMES_DESKTOP_HERMES_ROOT points at a developer
-  //    checkout. Honour it as-is (no bootstrap; the user is driving).
-  const overrideRoot: string | undefined =
-    process.env.HERMES_DESKTOP_HERMES_ROOT && path.resolve(process.env.HERMES_DESKTOP_HERMES_ROOT)
-
-  if (overrideRoot && isHermesSourceRoot(overrideRoot)) {
-    const backend: SourceBackend | null = createSourcePythonBackend(
-      overrideRoot,
-      await findPythonForRoot(overrideRoot),
-      backendArgs
-    )
-
-    if (backend) {
-      return backend
-    }
-  }
-
-  // 2. Development source -- when running `npm run dev` from a checkout, the
-  //    cloned repo at SOURCE_REPO_ROOT takes precedence over ACTIVE and any
-  //    installed `hermes` on PATH so local Python edits are actually exercised.
-  //    (In dev with no checkout, SOURCE_REPO_ROOT won't pass isHermesSourceRoot.)
-  if (!IS_PACKAGED && isHermesSourceRoot(SOURCE_REPO_ROOT)) {
-    const backend: SourceBackend | null = createSourcePythonBackend(
-      SOURCE_REPO_ROOT,
-      await findPythonForRoot(SOURCE_REPO_ROOT),
-      backendArgs
-    )
-
-    if (backend) {
-      return backend
-    }
-  }
-
-  // 3. HERMES_DESKTOP_HERMES — an explicit deployment override (used by the
-  //    Nix wrapper), not a discovered PATH candidate. The pinned backend is
-  //    the only valid runtime there. Resolve it before any mutable install,
-  //    which may belong to an older release or a different Python environment.
-  const hermesOverride: string | undefined = process.env.HERMES_DESKTOP_HERMES
-  let hermesCommand: string | null = null
-
-  if (hermesOverride) {
-    const resolvedOverride: string | null = findOnPath(hermesOverride)
-
-    if (resolvedOverride) {
-      hermesCommand = resolvedOverride
-    } else if (!isWindowsBinaryPathInWsl(hermesOverride, { isWsl: IS_WSL })) {
-      hermesCommand = hermesOverride
-    } else {
-      rememberLog(`Ignoring Windows Hermes override under WSL: ${hermesOverride}`)
-    }
-
-    if (hermesCommand) {
-      if (looksLikeDesktopAppBinary(hermesCommand)) {
-        rememberLog(`Ignoring desktop app executable on PATH while resolving Hermes CLI: ${hermesCommand}`)
-        hermesCommand = null
-      } else {
-        const unwrapped: Awaited<ReturnType<typeof unwrapWindowsVenvHermesCommand>> =
-          await unwrapWindowsVenvHermesCommand(hermesCommand, backendArgs)
-
-        if (unwrapped) {
-          return unwrapped
-        }
-
-        const shellForProbe: boolean = isCommandScript(hermesCommand)
-
-        if (
-          shouldTrustHermesOverride(hermesOverride) ||
-          (await verifyHermesCli(hermesCommand, { shell: shellForProbe }))
-        ) {
-          return {
-            label: `existing Hermes CLI at ${hermesCommand}`,
-            command: hermesCommand,
-            args: backendArgs,
-            bootstrap: false,
-            env: {},
-            kind: 'command',
-            shell: shellForProbe,
-            local: 'installed'
-          }
-        }
-
-        rememberLog(
-          `Ignoring existing Hermes CLI at ${hermesCommand}: --version probe failed; falling through to bootstrap.`
-        )
-      }
-    }
-  }
-
-  // 4. ACTIVE_HERMES_ROOT — the canonical install at
-  //    %LOCALAPPDATA%\\hermes\\hermes-agent (Windows) or ~/.hermes/hermes-agent.
-  //    A valid bootstrap marker proves Desktop finished the first-run install
-  //    flow, but marker provenance is NOT the same thing as runtime usability:
-  //    the CLI can publish the same installation launcher, and older desktop
-  //    builds could leave a healthy install behind without the marker. If the
-  //    active runtime is usable, launch it directly; only fall through to
-  //    bootstrap when the runtime itself is unusable.
-  //    HERMES_DESKTOP_IGNORE_EXISTING=1 skips this rung (see backend-resolution).
-  const activeBackend: SourceBackend | null = await installedRuntimeGate.resolve(ACTIVE_HERMES_ROOT, () =>
-    resolveSourceInstallationBackend(ACTIVE_HERMES_ROOT, backendArgs, { hermesHome: HERMES_HOME })
-  )
-
-  const activeRuntime: ActiveRuntimeState = activeRuntimeState(activeBackend)
-
-  if (activeBackend && !bootstrapRepairRequested) {
-    if (!activeRuntime.hasValidMarker) {
-      rememberLog(
-        `[bootstrap] Active Hermes runtime at ${ACTIVE_HERMES_ROOT} is usable but the bootstrap marker is missing or stale; skipping first-run bootstrap.`
-      )
-    }
-
-    return activeBackend
-  }
-
-  if (bootstrapRepairRequested) {
-    rememberLog('[bootstrap] repair requested; bypassing the usable active runtime to re-run the installer')
-  }
-
-  // 5. Nothing usable yet -- signal the bootstrap runner that we need to
-  //    clone+install. Phase 1D's bootstrap-runner consumes this sentinel
-  //    and drives install.ps1 stages with a progress UI. Until 1D lands,
-  //    callers see the sentinel and surface it as a user-facing error
-  //    explaining what's missing.
-  //
-  //    We deliberately do NOT throw here -- throwing inside
-  //    resolveHermesBackend was the old "no payload" path and forced the
-  //    user into a dead end. With the bootstrap protocol, "no install yet"
-  //    is a recoverable state the GUI can drive through.
-  return {
-    kind: 'bootstrap-needed',
-    label: 'Hermes Agent not installed yet; bootstrap required',
-    command: null,
-    args: backendArgs,
-    bootstrap: true,
-    env: {},
-    shell: false,
-    // Hints for the bootstrap runner / UI layer:
-    activeRoot: ACTIVE_HERMES_ROOT,
-    installStamp: INSTALL_STAMP, // may be null in dev
-    isPackaged: IS_PACKAGED,
-    platform: process.platform,
-    local: 'none'
-  }
+  return accountSourceBackend(ACCOUNT_RUNTIME, backendArgs)
 }
 
 interface ResolvedHermesBackend {
@@ -4863,6 +4661,7 @@ interface ResolvedHermesBackend {
   readyFile?: boolean
 }
 
+/** 本地源码运行不走安装回退；沿用原版启动进度和归属检查。 */
 async function ensureRuntime(
   backend: ResolvedHermesBackend,
   assertStillOwned: () => void
@@ -4870,137 +4669,13 @@ async function ensureRuntime(
   localBackendLifecycle.assertCanStart()
   assertStillOwned()
 
-  if (!backend.bootstrap) {
-    await advanceBootProgress('runtime.external', `Using ${backend.label}`, 32)
-
-    return backend
+  if (backend.bootstrap || !backend.command) {
+    throw new Error('开发运行时不可用，请检查源码和 Python。')
   }
 
-  // backend.kind === 'bootstrap-needed' means resolveHermesBackend couldn't
-  // find anything to spawn. Hand off to the bootstrap runner which drives the
-  // platform installer, writes the bootstrap-complete marker on success, then
-  // we re-resolve to get the now-installed backend.
-  //
-  // Phase 1D status: bootstrap runs but events go to desktop.log only
-  // (renderer window isn't created until later in startBackend). Phase 1E
-  // will rewire startup to spawn the window first and route bootstrap events
-  // to a renderer-side install overlay.
-  //
-  // The artifact kind forbids bootstrap even when a caller requests repair.
-  if (backend.kind === 'bootstrap-needed' && installShape() === 'bundled') {
-    rememberLog('[bootstrap] REFUSING installer on a bundled install; payload missing or damaged — reinstall the app')
+  await advanceBootProgress('runtime.external', `Using ${backend.label}`, 32)
 
-    const bundledError: Error & { isBootstrapFailure?: boolean } = new Error(
-      'This app bundles its own Hermes runtime, but the runtime files are missing or damaged. Reinstall Hermes Desktop to restore it.'
-    )
-
-    bundledError.isBootstrapFailure = true
-    bootstrapFailure = bundledError
-    throw bundledError
-  }
-
-  if (backend.kind === 'bootstrap-needed') {
-    rememberLog('[bootstrap] no Hermes install found; starting first-launch bootstrap')
-
-    if (await handOffWindowsBootstrapRecovery('bootstrap-needed')) {
-      const handoffError: Error & { isBootstrapFailure?: boolean; bootstrapHandedOff?: boolean } = new Error(
-        'Hermes recovery was handed off to Hermes Setup. The desktop will restart when recovery completes.'
-      )
-
-      handoffError.isBootstrapFailure = true
-      handoffError.bootstrapHandedOff = true
-      bootstrapFailure = handoffError
-      throw handoffError
-    }
-
-    // Eagerly flip the bootstrap UI state to 'active' so the renderer
-    // shows the install overlay BEFORE the runner finishes fetching the
-    // manifest (which on slow networks can take tens of seconds and would
-    // otherwise leave the user staring at the generic 'Preparing' splash).
-    // We emit a synthetic manifest with an empty stages list -- the real
-    // manifest event will overwrite it once install.ps1 -Manifest returns.
-    try {
-      broadcastBootstrapEvent({
-        type: 'manifest',
-        stages: [],
-        protocolVersion: null
-      })
-    } catch {
-      void 0
-    }
-
-    localBackendLifecycle.assertCanStart()
-    bootstrapAbortController = new AbortController()
-
-    // The repair request has been honoured by reaching the installer; clear it
-    // so a later boot isn't forced through bootstrap again.
-    bootstrapRepairRequested = false
-    bootstrapRepairAttempt = 0
-
-    const bootstrapResult = await runBootstrap({
-      installStamp: backend.installStamp,
-      activeRoot: backend.activeRoot,
-      sourceRepoRoot: SOURCE_REPO_ROOT,
-      hermesHome: HERMES_HOME,
-      logRoot: path.join(HERMES_HOME, 'logs'),
-      abortSignal: bootstrapAbortController.signal,
-      onEvent: ev => {
-        // Tee every bootstrap event to (a) the desktop log for forensics
-        // and (b) the renderer for live progress UI. Either may be absent;
-        // tolerate both gracefully so a renderer crash doesn't stall the
-        // bootstrap and a log-write failure doesn't suppress the UI signal.
-        try {
-          rememberLog(`[bootstrap] ${JSON.stringify(ev)}`)
-        } catch {
-          void 0
-        }
-
-        try {
-          broadcastBootstrapEvent(ev)
-        } catch {
-          void 0
-        }
-      },
-      writeMarker: writeBootstrapMarker,
-      gitBinary: resolveGitBinary()
-    })
-
-    bootstrapAbortController = null
-
-    if (bootstrapResult.cancelled) {
-      const cancelledError = new Error('Hermes install was cancelled.') as any
-      cancelledError.isBootstrapFailure = true
-      cancelledError.bootstrapCancelled = true
-      bootstrapFailure = cancelledError
-      throw cancelledError
-    }
-
-    if (!bootstrapResult.ok) {
-      // Plain lead sentence + trailing "Details:" line; the install overlay
-      // shows this verbatim and offers Reload and retry / Open logs itself.
-      const bootstrapError = new Error(
-        describeBootstrapFailure(bootstrapResult.failedStage, bootstrapResult.error)
-      ) as any
-
-      bootstrapError.isBootstrapFailure = true
-      bootstrapError.failedStage = bootstrapResult.failedStage || null
-      // Latch the failure so subsequent startHermes() calls return this
-      // same error without re-running install.ps1.  Cleared by the
-      // hermes:bootstrap:reset IPC (renderer's "Reload and retry").
-      bootstrapFailure = bootstrapError
-      throw bootstrapError
-    }
-
-    rememberLog('[bootstrap] bootstrap complete; marker written. Re-resolving backend.')
-
-    // Resolve the newly published launcher after the installer completes.
-    return ensureRuntime(
-      await installedRuntimeGate.afterInstall(() => resolveHermesBackend(backend.args)),
-      assertStillOwned
-    )
-  }
-
-  throw new Error(`Unexpected bootstrap backend: ${backend.kind}`)
+  return backend
 }
 
 // Assemble a single-file multipart/form-data body (FastAPI `UploadFile`
@@ -12386,7 +12061,7 @@ async function prepareProfileRenameRequest(request) {
 
 // ── Attach-first: one backend per HOST (multiplex-only) ───────────────────
 // Escape hatch: a dedicated, private backend for this app instead of the host's.
-const ISOLATED_BACKEND = process.env.HERMES_DESKTOP_ISOLATED_BACKEND === '1'
+const ISOLATED_BACKEND = true
 const ATTACHED_LIVENESS_POLL_MS = 15_000
 let attachedBackendMonitor: NodeJS.Timeout | null = null
 let hostSpawnReservation: SpawnReservation | null = null
@@ -14697,6 +14372,18 @@ function createWindow() {
   })
 
   const createdMainWindow = mainWindow
+
+  // 在开始导航前监听文档就绪；不等待图片等次要资源，避免卡在登录卡片。
+  firstDesktopWindowReady ??= new Promise<BrowserWindow>((resolve, reject) => {
+    createdMainWindow.webContents.once('dom-ready', () => resolve(createdMainWindow))
+    createdMainWindow.webContents.once('did-fail-load', (_event, _code, _description, _url, isMainFrame) => {
+      if (isMainFrame) {
+        reject(new Error('原版桌面页面加载失败。'))
+      }
+    })
+    createdMainWindow.once('closed', () => reject(new Error('原版桌面窗口已关闭。')))
+  })
+
   minimizeToTray.registerWindow(createdMainWindow, { closeToTray: true })
   const defaultRoute = desktopProfilePreferences.getDefault()
 
@@ -18402,9 +18089,9 @@ ipcMain.handle('hermes:vscode-theme:search', async (_event, query) => searchMark
 // running app. Three delivery paths: macOS 'open-url',
 // Win/Linux running-app 'second-instance' (argv), Win/Linux cold-start argv.
 // ---------------------------------------------------------------------------
-const HERMES_PROTOCOL = DEV_SERVER ? 'hermes-dev' : 'hermes'
-/** Schemes accepted when parsing inbound URLs (dev accepts both). */
-const DEEPLINK_SCHEMES = DEV_SERVER ? ['hermes-dev', 'hermes'] : ['hermes']
+const HERMES_PROTOCOL = 'hermes-desktop-mt'
+/** 只接受开发版的独立 scheme，不抢占或消费官方版链接。 */
+const DEEPLINK_SCHEMES = [HERMES_PROTOCOL]
 let _pendingDeepLink = null
 let _rendererReadyForDeepLink = false
 // Set by sendOpenUpdatesRequested() when the renderer cannot hear it yet.
@@ -18580,7 +18267,7 @@ app.on('open-url', (event, url) => {
   handleDeepLink(url)
 })
 
-app.whenReady().then(() => {
+const desktopStartup = app.whenReady().then(() => {
   // Post-update relaunch detection (App Installer arm): when the previous
   // version wrote the one-shot pending-relaunch marker before quitting into
   // an OS package swap, consume it here — the renderer toasts "Hermes
@@ -18723,7 +18410,20 @@ app.whenReady().then(() => {
       focusWindow(mainWindow)
     }
   })
+
+  return mainWindow as BrowserWindow
 })
+
+/** 原版首窗文档就绪后交接登录窗；启动失败不采用旧连接或旧环境。 */
+export async function openAccountDesktop(): Promise<BrowserWindow> {
+  await desktopStartup
+
+  if (!firstDesktopWindowReady) {
+    throw new Error('原版桌面首窗未创建。')
+  }
+
+  return firstDesktopWindowReady
+}
 
 // Seed Chromium's spellchecker with the system locale (falling back to en-US).
 // On macOS Electron uses the native spellchecker which ignores this list, but

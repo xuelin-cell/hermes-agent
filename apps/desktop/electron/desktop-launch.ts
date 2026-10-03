@@ -2,11 +2,12 @@ import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { app } from 'electron'
+import { app, Menu, protocol } from 'electron'
 
 import { detectRemoteDisplay, isWslEnvironment, resolveLinuxPasswordStore } from './bootstrap-platform'
 import { describeDevCdpDecision, resolveDevCdpPort } from './dev-cdp'
 import { decideNvidiaEglFallback, parseNvidiaDriverMajor } from './linux-nvidia-egl-fallback'
+import { MEDIA_PROTOCOL } from './media-protocol'
 import {
   decideWindowsSandboxLaunch,
   grantAllApplicationPackagesAcl,
@@ -48,6 +49,15 @@ export function prepareDesktopLaunch(): DesktopLaunchState {
   const IS_WSL = isWslEnvironment()
   const IS_PACKAGED = app.isPackaged || Boolean(process.env.HERMES_DESKTOP_IS_PACKAGED)
   const DEV_SERVER = process.env.HERMES_DESKTOP_DEV_SERVER
+
+  // 原版媒体协议必须先登记，登录后加载聊天运行时不能再次注册特权。
+  protocol.registerSchemesAsPrivileged([
+    {
+      scheme: MEDIA_PROTOCOL,
+      privileges: { secure: true, standard: true, stream: true, supportFetchAPI: true }
+    }
+  ])
+  Menu.setApplicationMenu(null)
 
   // Remote displays (SSH X11 forwarding, VNC, RDP) make Chromium's GPU
   // compositor flicker — accelerated layers can't be presented cleanly over the

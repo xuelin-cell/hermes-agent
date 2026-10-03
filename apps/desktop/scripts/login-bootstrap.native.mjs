@@ -119,7 +119,7 @@ async function launchFixture(cancel = false, devServer, liveCaptcha = false, pla
         ${cancel ? `
           const { startDesktopLogin } = await import('./electron/login/bootstrap.ts')
           const pending = startDesktopLogin()
-          app.emit('before-quit', { preventDefault() {} })
+          app.emit('will-quit', { preventDefault() {} })
           void Promise.all([pending, startDesktopLogin()]).then(results => {
             globalThis.loginProbe.cancelled = results.every(result => result === null)
           })
@@ -143,6 +143,16 @@ async function launchFixture(cancel = false, devServer, liveCaptcha = false, pla
     format: 'esm',
     target: 'node20',
     external: ['electron'],
+    // 此组验证登录组件和准备链，原版桌面交接另由 P15 全入口夹具验证。
+    plugins: [{name:'observe-login-handoff', setup(builder) {
+      builder.onLoad({filter:/entry_local[\\/]desktop-runtime\.ts$/}, () => ({loader:'ts', contents:`
+        /** 此组只观察主进程交接请求，完整原版桌面另有真实夹具。 */
+        export async function startAccountDesktop(context) {
+          globalThis.loginProbe.handoffs = (globalThis.loginProbe.handoffs ?? 0) + 1
+          return new Promise(() => {})
+        }
+      `}))
+    }}],
     // 与正式主进程打包一致，供 yaml 的 Node 内置模块引用使用。
     banner: {js:"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);"},
     outfile: output
@@ -306,6 +316,7 @@ test('真实 Electron 登录与恢复：有效记录跨进程复用，过期或�
     await page.getByRole('button', { name: '登录', exact: true }).click()
     await page.getByText('已登录：138****0000').waitFor()
     await page.getByText('fixture-plan-model', {exact:true}).waitFor()
+    assert.equal(await instance.evaluate(() => globalThis.loginProbe.handoffs), 1)
     assert.equal(await page.locator('form input').count(), 0)
     const visible = await page.evaluate(() => document.body.textContent + JSON.stringify({...localStorage}))
     for (const secret of ['fixture-private-token', 'fixture-private-model-key', 'fixture-private-uid', '13800000000', '123456']) assert.equal(visible.includes(secret), false)
@@ -616,7 +627,7 @@ test('P14 真实登录入口：跨进程 A→B→A 自动准备固定上下文�
     const started = instance.evaluate(() => globalThis.waitForFixturePlan())
     const pending = page.evaluate(() => window.hermesLogin.plan())
     await started
-    await instance.evaluate(({app}) => app.emit('before-quit', {preventDefault(){}}))
+    await instance.evaluate(({app}) => app.emit('will-quit', {preventDefault(){}}))
     await pending
     assert.equal(await instance.evaluate(() => globalThis.currentFixtureRuntime()), null)
     assert.equal(await readFile(envFile, 'utf8'), beforeQuit)

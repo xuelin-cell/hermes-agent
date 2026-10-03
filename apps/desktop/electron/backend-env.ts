@@ -159,7 +159,11 @@ function profileBackendParentEnv({
 
   const fold = platform === 'win32' ? (value: string) => value.toUpperCase() : (value: string) => value
   const inheritedHome = currentEnv?.HERMES_HOME ? resolveHermesHomePath(currentEnv.HERMES_HOME, { pathModule }) : null
-  const launchHome = inheritedHome && isProfileHome(inheritedHome, pathModule) ? inheritedHome : hermesHome
+  const launchHome =
+    inheritedHome &&
+    (isProfileHome(inheritedHome, pathModule) || fold(pathModule.resolve(inheritedHome)) !== fold(pathModule.resolve(hermesHome)))
+      ? inheritedHome
+      : hermesHome
   const name = profile || readTextOrEmpty(fsModule, pathModule.join(hermesHome, 'active_profile')).trim()
   const targetHome = !name || name === 'default' ? hermesHome : pathModule.join(hermesHome, 'profiles', name)
 

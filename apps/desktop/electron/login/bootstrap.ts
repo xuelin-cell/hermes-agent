@@ -6,6 +6,7 @@ import { app, BrowserWindow, dialog, net } from 'electron'
 
 import { platformDefaultHermesHome, resolveDesktopUserData } from '../data-paths'
 import { markDesktopLaunchSuccessful, prepareDesktopLaunch } from '../desktop-launch'
+import { startAccountDesktop } from '../entry_local/desktop-runtime'
 import { LocalRuntimeContext, type PreparedLocalContext } from '../entry_local/runtime-context'
 import { createWindowOpenHandler } from '../window-open-policy'
 
@@ -18,6 +19,8 @@ let starting: Promise<BrowserWindow | null> | null = null
 let stopping = false
 let initialized = false
 let accountRuntime: LocalRuntimeContext | null = null
+let desktopStarting: Promise<void> | null = null
+let handedOff = false
 
 /** 初始化应用级目录与退出事件，不读取任何账号 Home 或旧连接。 */
 function initializeLoginShell(): void {
@@ -41,11 +44,22 @@ function initializeLoginShell(): void {
     process.env.HERMES_DESKTOP_PYTHON
   )
   app.on('before-quit', () => {
+    if (!handedOff) {
+      stopping = true
+    }
+
+    markDesktopLaunchSuccessful()
+  })
+  app.on('will-quit', () => {
     stopping = true
     markDesktopLaunchSuccessful()
     accountRuntime?.dispose()
   })
-  app.on('window-all-closed', () => app.quit())
+  app.on('window-all-closed', () => {
+    if (!handedOff) {
+      app.quit()
+    }
+  })
   app.on('second-instance', () => {
     if (!loginWindow || stopping) {
       return
@@ -104,8 +118,11 @@ async function openLoginWindow(): Promise<BrowserWindow | null> {
   window.webContents.session.setPermissionCheckHandler(() => false)
   window.on('closed', () => {
     loginWindow = null
-    stopping = true
-    app.quit()
+
+    if (!handedOff) {
+      stopping = true
+      app.quit()
+    }
   })
   installLoginIpc(window, expectedUrl, accountRuntime!.login, () => {
     if (stopping) {
@@ -113,7 +130,26 @@ async function openLoginWindow(): Promise<BrowserWindow | null> {
     }
 
     try {
-      accountRuntime!.prepare()
+      const context = accountRuntime!.prepare()
+      desktopStarting ??= startAccountDesktop(context)
+        .then(() => {
+          if (stopping || window.isDestroyed()) {
+            return
+          }
+
+          handedOff = true
+          window.destroy()
+        })
+        .catch(() => {
+          // 不回退旧环境，不在半初始化的主进程中重复安装原版事件和 IPC。
+          if (!stopping && !window.isDestroyed()) {
+            void dialog.showMessageBox(window, {
+              type: 'error',
+              title: 'Hermes Desktop MT',
+              message: '本地 Hermes 桌面无法启动，请完整退出后重试。账号数据不会被删除。'
+            })
+          }
+        })
     } catch {
       // 不把文件系统路径、账号标识或原始异常交给页面。
       void dialog.showMessageBox(window, {
