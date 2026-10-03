@@ -5,6 +5,10 @@ import { introEs } from './intro-es'
 
 export const esOverrides = {
   desktopLogin: {
+    resendAfter: 'Reenviar en {seconds}s',
+    smsSent: 'Código enviado. Revisa tus mensajes.',
+    smsSendError: 'No se pudo enviar el código. Revisa los datos o actualiza la imagen e inténtalo de nuevo.',
+    smsLimited: 'Demasiadas solicitudes. Espera antes de volver a intentarlo.',
     phonePlaceholder: 'Número de teléfono de 11 dígitos',
     captchaPlaceholder: 'Código de la imagen',
     smsPlaceholder: '6 dígitos',

@@ -25,6 +25,10 @@ const RU_NOUN = (count: number | string, one: string, few: string, many: string)
 
 export const ru = defineLocale({
   desktopLogin: {
+    resendAfter: 'Повтор через {seconds}с',
+    smsSent: 'Код отправлен. Проверьте SMS.',
+    smsSendError: 'Не удалось отправить код. Проверьте ввод или обновите изображение и повторите попытку.',
+    smsLimited: 'Слишком много запросов. Подождите перед повторной попыткой.',
     phonePlaceholder: 'Номер телефона из 11 цифр',
     captchaPlaceholder: 'Код с изображения',
     smsPlaceholder: '6 цифр',

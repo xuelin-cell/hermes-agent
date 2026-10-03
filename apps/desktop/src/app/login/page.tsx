@@ -7,6 +7,7 @@ import { useI18n } from '@/i18n/context'
 import { PAGE_INSET_X } from '../layout-constants'
 
 import { useCaptcha } from './use-captcha'
+import { useSms } from './use-sms'
 
 export interface LoginFields {
   phone: string
@@ -23,6 +24,7 @@ export function LoginPage({ onSubmit }: LoginPageProps) {
   const { t } = useI18n()
   const copy = t.desktopLogin
   const image = useCaptcha(window.hermesLogin)
+  const sms = useSms(window.hermesLogin)
   const [fields, setFields] = useState<LoginFields>({ phone: '', captchaCode: '', smsCode: '' })
   const [error, setError] = useState<'phoneError' | 'captchaError' | 'smsError' | 'requestError' | null>(null)
   const [pending, setPending] = useState(false)
@@ -34,11 +36,28 @@ export function LoginPage({ onSubmit }: LoginPageProps) {
     setError(null)
   }
 
+  /** 先校验手机号和当前图片输入，通过后才调用主进程发送短信。 */
+  async function sendSms(): Promise<void> {
+    const phone = fields.phone.trim()
+    const captchaCode = fields.captchaCode.trim()
+
+    if (!/^1\d{10}$/.test(phone)) {
+      return setError('phoneError')
+    }
+
+    if (!captchaCode || !image.captcha) {
+      return setError('captchaError')
+    }
+
+    setError(null)
+    await sms.send({ phone, captchaCode, captchaId: image.captcha.captchaId })
+  }
+
   /** 本地校验和重复提交保护；真正的身份判断仍由后续主进程 Login 完成。 */
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
 
-    if (!onSubmit || submitting.current) {
+    if (!onSubmit || submitting.current || sms.pending) {
       return
     }
 
@@ -87,7 +106,12 @@ export function LoginPage({ onSubmit }: LoginPageProps) {
           </h1>
           <p className="text-sm leading-relaxed text-muted-foreground">{copy.subtitle}</p>
         </header>
-        <form aria-busy={pending} className="space-y-4" noValidate onSubmit={event => void submit(event)}>
+        <form
+          aria-busy={pending || sms.pending}
+          className="space-y-4"
+          noValidate
+          onSubmit={event => void submit(event)}
+        >
           <div className="space-y-2">
             <label className="text-sm text-muted-foreground" htmlFor="login-phone">
               {copy.phone}
@@ -96,7 +120,7 @@ export function LoginPage({ onSubmit }: LoginPageProps) {
               aria-describedby="login-error"
               aria-invalid={error === 'phoneError'}
               autoComplete="off"
-              disabled={pending}
+              disabled={pending || sms.pending}
               id="login-phone"
               inputMode="tel"
               maxLength={11}
@@ -114,7 +138,7 @@ export function LoginPage({ onSubmit }: LoginPageProps) {
               <Input
                 aria-describedby="login-error"
                 aria-invalid={error === 'captchaError'}
-                disabled={pending}
+                disabled={pending || sms.pending}
                 id="login-captcha"
                 maxLength={6}
                 onChange={event => updateField('captchaCode', event.target.value)}
@@ -124,7 +148,7 @@ export function LoginPage({ onSubmit }: LoginPageProps) {
               />
               <Button
                 aria-label={copy.refresh}
-                disabled={!window.hermesLogin || pending}
+                disabled={!window.hermesLogin || pending || sms.pending}
                 loading={image.loading}
                 onClick={() => {
                   updateField('captchaCode', '')
@@ -169,12 +193,33 @@ export function LoginPage({ onSubmit }: LoginPageProps) {
                 size="auth"
                 value={fields.smsCode}
               />
-              <Button disabled size="auth" type="button" variant="outline">
-                {copy.send}
+              <Button
+                disabled={!window.hermesLogin || !image.captcha || pending || sms.seconds > 0}
+                loading={sms.pending}
+                onClick={() => void sendSms()}
+                size="auth"
+                type="button"
+                variant="outline"
+              >
+                {sms.seconds > 0 ? copy.resendAfter.replace('{seconds}', String(sms.seconds)) : copy.send}
               </Button>
             </div>
+            {sms.result && (
+              <p
+                className={sms.result.ok ? 'text-sm text-muted-foreground' : 'text-sm text-destructive'}
+                role={sms.result.ok ? 'status' : 'alert'}
+              >
+                {sms.result.ok ? copy.smsSent : sms.result.error === 'limited' ? copy.smsLimited : copy.smsSendError}
+              </p>
+            )}
           </div>
-          <Button className="mt-2 w-full" disabled={!onSubmit} loading={pending} size="auth" type="submit">
+          <Button
+            className="mt-2 w-full"
+            disabled={!onSubmit || sms.pending}
+            loading={pending}
+            size="auth"
+            type="submit"
+          >
             {copy.submit}
           </Button>
           <p className="text-sm text-destructive empty:hidden" id="login-error" role="alert">

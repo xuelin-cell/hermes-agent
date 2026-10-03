@@ -26,6 +26,37 @@ function fill(fields = { phone: '13800000000', captcha: 'abcd', sms: '123456' })
 }
 
 describe('桌面登录表单', () => {
+  it('发送短信先校验输入，失败可修正刷新，成功显示倒计时并禁止重复发送', async () => {
+    const captcha = vi.fn().mockResolvedValue({
+      ok: true,
+      captcha: { captchaId: 'test-id', imageDataUrl: 'data:image/png;base64,aGVsbG8=' }
+    })
+
+    const sendSms = vi.fn().mockResolvedValueOnce({ ok: false, error: 'failed' })
+    window.hermesLogin = { captcha, sendSms }
+    renderLogin()
+    await screen.findByRole('img')
+    fireEvent.click(screen.getByRole('button', { name: '发送验证码' }))
+    expect(sendSms).not.toHaveBeenCalled()
+    fill()
+    fireEvent.click(screen.getByRole('button', { name: '发送验证码' }))
+    await screen.findByText('发送失败，请检查输入或刷新图片后重试。')
+    expect(sendSms).toHaveBeenCalledWith({ phone: '13800000000', captchaCode: 'abcd', captchaId: 'test-id' })
+    expect((screen.getByRole('button', { name: '发送验证码' }) as HTMLButtonElement).disabled).toBe(false)
+    fireEvent.click(screen.getByRole('img'))
+    await screen.findByRole('img')
+    expect((screen.getByLabelText('图形验证码') as HTMLInputElement).value).toBe('')
+    fill()
+    sendSms.mockResolvedValueOnce({ ok: true, retryAt: Date.now() + 60_000 })
+    fireEvent.click(screen.getByRole('button', { name: '发送验证码' }))
+    await screen.findByText('验证码已发送，请查看手机短信。')
+    const resend = screen.getByRole('button', { name: /秒后重发/ })
+    expect((resend as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(resend)
+    expect(sendSms).toHaveBeenCalledTimes(2)
+    expect((screen.getByRole('button', { name: '登录' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
   it('未接入服务时按钮不可用，填写或提交不能进入账号环境', () => {
     renderLogin()
     fill()
@@ -85,7 +116,7 @@ describe('桌面登录表单', () => {
   it('点击验证码图片刷新并清空旧输入，失败后原位置可以重试', async () => {
     const imageDataUrl = 'data:image/png;base64,aGVsbG8='
     const captcha = vi.fn().mockResolvedValue({ ok: true, captcha: { captchaId: 'first', imageDataUrl } })
-    window.hermesLogin = { captcha }
+    window.hermesLogin = { captcha, sendSms: vi.fn() }
     renderLogin()
     const image = await screen.findByRole('img', { name: '图形验证码' })
     fill()

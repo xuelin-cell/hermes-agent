@@ -33,8 +33,14 @@ async function launchFixture(cancel = false, devServer, liveCaptcha = false) {
         globalThis.loginProbe = { processCalls: [], captchaRequests: [], cancelled: false }
         // 回归测试使用固定响应；只有显式启用的真实验收请求 MaaS。
         const originalFetch = net.fetch
+        let smsAttempts = 0
         net.fetch = (...args) => {
           globalThis.loginProbe.captchaRequests.push(args[0])
+          // 短信始终使用受控响应，测试不能给真实手机发码。
+          if (String(args[0]).endsWith('/sendCode')) {
+            const code = ++smsAttempts === 1 ? 9 : 0
+            return new Promise(resolve => setTimeout(() => resolve(Response.json({code})), 200))
+          }
           return ${liveCaptcha} ? originalFetch(...args) : Promise.resolve(Response.json({code:0, data:{captchaId:'fixture-id', b64s:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN1cAAAAASUVORK5CYII='}}))
         }
         // 记录真实主进程的启动动作，不替换返回结果或伪造后端状态。
@@ -83,12 +89,12 @@ test('真实未登录入口不启动后端、不暴露原版桥接，重复启�
     await page.getByRole('status').waitFor()
     assert.equal(await page.locator('form input').count(), 3)
     await page.getByRole('img').waitFor()
-    assert.equal(await page.locator('button:disabled').count(), 2)
+    assert.equal(await page.locator('button:disabled').count(), 1)
     assert.deepEqual(await page.evaluate(() => ({
       node: typeof globalThis.require,
       bridge: typeof globalThis.hermesDesktop,
       login: Object.keys(globalThis.hermesLogin)
-    })), { node: 'undefined', bridge: 'undefined', login: ['captcha'] })
+    })), { node: 'undefined', bridge: 'undefined', login: ['captcha', 'sendSms'] })
     const state = await instance.evaluate(({ BrowserWindow, ipcMain }) => {
       const window = BrowserWindow.getAllWindows()[0]
       return {
@@ -139,7 +145,7 @@ test('开发登录页固定浅色，窄窗无横向溢出，Tab 与 Enter 不绕
     await page.keyboard.press('Tab')
     assert.equal(await page.locator('#login-sms').evaluate(node => node === document.activeElement), true)
     await page.keyboard.press('Enter')
-    assert.equal(await page.locator('button:disabled').count(), 2)
+    assert.equal(await page.locator('button:disabled').count(), 1)
     await instance.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(400, 520))
     await page.emulateMedia({ colorScheme: 'dark' })
     assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme), 'light')
@@ -152,6 +158,36 @@ test('开发登录页固定浅色，窄窗无横向溢出，Tab 与 Enter 不绕
   } finally {
     await instance?.close()
     await server.close()
+  }
+})
+
+test('真实 Electron 短信受控链路：错误可重试，成功冷却在刷新页面后仍生效', { timeout: 60_000 }, async () => {
+  const { instance, home } = await launchFixture()
+  try {
+    const page = await instance.firstWindow()
+    await page.getByRole('img').waitFor()
+    await page.locator('#login-phone').fill('13800000000')
+    await page.locator('#login-captcha').fill('abcd')
+    await page.getByRole('button', { name: '发送验证码' }).click()
+    await page.getByText('发送失败，请检查输入或刷新图片后重试。').waitFor()
+    await page.getByRole('img').click()
+    await page.getByRole('img').waitFor()
+    assert.equal(await page.locator('#login-captcha').inputValue(), '')
+    await page.locator('#login-captcha').fill('abcd')
+    await page.getByRole('button', { name: '发送验证码' }).click()
+    await page.getByText('验证码已发送，请查看手机短信。').waitFor()
+    assert.equal(await page.getByRole('button', { name: /秒后重发/ }).isDisabled(), true)
+    await page.reload()
+    await page.getByRole('img').waitFor()
+    const result = await page.evaluate(() => window.hermesLogin.sendSms({phone:'13800000000', captchaCode:'abcd', captchaId:'fixture-id'}))
+    assert.equal(result.ok, false)
+    assert.equal(result.error, 'limited')
+    const probe = await instance.evaluate(() => globalThis.loginProbe)
+    assert.equal(probe.captchaRequests.filter(url => url.endsWith('/sendCode')).length, 2)
+    assert.deepEqual(probe.processCalls, [])
+    await assert.rejects(access(home), { code: 'ENOENT' })
+  } finally {
+    await instance.close()
   }
 })
 

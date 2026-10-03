@@ -5,6 +5,10 @@ import { introDe } from './intro-de'
 
 export const deOverrides = {
   desktopLogin: {
+    resendAfter: 'Erneut in {seconds}s',
+    smsSent: 'Bestätigungscode gesendet. Bitte prüfe deine SMS.',
+    smsSendError: 'Code konnte nicht gesendet werden. Prüfe die Eingabe oder aktualisiere das Bild und versuche es erneut.',
+    smsLimited: 'Zu viele Anfragen. Bitte warte und versuche es später erneut.',
     phonePlaceholder: '11-stellige Telefonnummer',
     captchaPlaceholder: 'Code aus dem Bild',
     smsPlaceholder: '6 Ziffern',

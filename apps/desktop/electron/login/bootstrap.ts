@@ -7,7 +7,7 @@ import { app, BrowserWindow, dialog } from 'electron'
 import { resolveDesktopUserData } from '../data-paths'
 import { createWindowOpenHandler } from '../window-open-policy'
 
-import { installCaptchaIpc } from './ipc'
+import { installLoginIpc } from './ipc'
 
 let loginWindow: BrowserWindow | null = null
 let starting: Promise<BrowserWindow | null> | null = null
@@ -89,7 +89,7 @@ async function openLoginWindow(): Promise<BrowserWindow | null> {
     stopping = true
     app.quit()
   })
-  installCaptchaIpc(window, expectedUrl)
+  installLoginIpc(window, expectedUrl)
 
   if (devServer) {
     await window.loadURL(new URL('/login.html', devServer).href)

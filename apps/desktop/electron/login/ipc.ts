@@ -1,22 +1,39 @@
-import { type BrowserWindow, ipcMain, net } from 'electron'
+import { type BrowserWindow, ipcMain, type IpcMainInvokeEvent, net } from 'electron'
 
 import { fetchCaptcha } from './captcha'
-import { CAPTCHA_CHANNEL, type CaptchaResult } from './contract'
+import { CAPTCHA_CHANNEL, type CaptchaResult, SEND_SMS_CHANNEL, type SmsResult } from './contract'
+import { createSmsSender } from './sms'
 
-/** 只接收当前登录窗口主框架的无参数请求，窗口关闭时移除能力。 */
-export function installCaptchaIpc(window: BrowserWindow, expectedUrl: string): void {
+/** 绑定登录窗口的验证码和短信能力，关闭窗口时移除处理器。 */
+export function installLoginIpc(window: BrowserWindow, expectedUrl: string): void {
+  const sendSms = createSmsSender(net.fetch)
+
+  /** 请求必须来自绑定窗口的主框架和准确登录页地址。 */
+  function isTrusted(event: IpcMainInvokeEvent): boolean {
+    return (
+      !window.isDestroyed() &&
+      event.sender === window.webContents &&
+      event.senderFrame === window.webContents.mainFrame &&
+      event.senderFrame.url === expectedUrl
+    )
+  }
+
   ipcMain.handle(CAPTCHA_CHANNEL, async (event, ...args): Promise<CaptchaResult> => {
-    if (
-      window.isDestroyed() ||
-      event.sender !== window.webContents ||
-      event.senderFrame !== window.webContents.mainFrame ||
-      event.senderFrame.url !== expectedUrl ||
-      args.length > 0
-    ) {
+    if (!isTrusted(event) || args.length > 0) {
       return { ok: false }
     }
 
     return fetchCaptcha(net.fetch)
   })
-  window.once('closed', () => ipcMain.removeHandler(CAPTCHA_CHANNEL))
+  ipcMain.handle(SEND_SMS_CHANNEL, (event, ...args): Promise<SmsResult> | SmsResult => {
+    if (!isTrusted(event) || args.length !== 1) {
+      return { ok: false, error: 'invalid' }
+    }
+
+    return sendSms(args[0])
+  })
+  window.once('closed', () => {
+    ipcMain.removeHandler(CAPTCHA_CHANNEL)
+    ipcMain.removeHandler(SEND_SMS_CHANNEL)
+  })
 }

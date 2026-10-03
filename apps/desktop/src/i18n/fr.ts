@@ -5,6 +5,10 @@ import { introFr } from './intro-fr'
 
 export const frOverrides = {
   desktopLogin: {
+    resendAfter: 'Renvoyer dans {seconds}s',
+    smsSent: 'Code envoyé. Consultez vos SMS.',
+    smsSendError: 'Envoi impossible. Vérifiez la saisie ou actualisez l’image, puis réessayez.',
+    smsLimited: 'Trop de demandes. Veuillez patienter avant de réessayer.',
     phonePlaceholder: 'Numéro de téléphone à 11 chiffres',
     captchaPlaceholder: 'Code de l’image',
     smsPlaceholder: '6 chiffres',

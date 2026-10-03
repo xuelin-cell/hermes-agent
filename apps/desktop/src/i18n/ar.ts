@@ -2,6 +2,10 @@ import { defineLocale } from './define-locale'
 
 export const ar = defineLocale({
   desktopLogin: {
+    resendAfter: 'إعادة الإرسال بعد {seconds}ث',
+    smsSent: 'تم إرسال رمز التحقق. تحقق من الرسائل النصية.',
+    smsSendError: 'تعذر إرسال الرمز. تحقق من الإدخال أو حدّث الصورة وحاول مجددًا.',
+    smsLimited: 'طلبات كثيرة جدًا. انتظر قبل المحاولة مجددًا.',
     phonePlaceholder: 'رقم هاتف من 11 رقمًا',
     captchaPlaceholder: 'أدخل رمز الصورة',
     smsPlaceholder: 'رمز من 6 أرقام',

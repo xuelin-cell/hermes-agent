@@ -60,6 +60,10 @@ interface AuxTaskCopy {
 
 export interface Translations {
   desktopLogin: {
+    resendAfter: string
+    smsSent: string
+    smsSendError: string
+    smsLimited: string
     title: string
     subtitle: string
     phone: string

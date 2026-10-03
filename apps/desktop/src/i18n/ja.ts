@@ -5,6 +5,10 @@ import { introJa } from './intro-ja'
 
 export const ja = defineLocale({
   desktopLogin: {
+    resendAfter: '{seconds}秒後に再送',
+    smsSent: '認証コードを送信しました。SMSを確認してください。',
+    smsSendError: '送信できませんでした。入力を確認するか画像を更新して再試行してください。',
+    smsLimited: '送信回数が多すぎます。しばらく待ってから再試行してください。',
     phonePlaceholder: '11 桁の電話番号',
     captchaPlaceholder: '画像の文字を入力',
     smsPlaceholder: '6 桁の数字',

@@ -4,6 +4,10 @@ import type { Translations } from './types'
 
 export const en: Translations = {
   desktopLogin: {
+    resendAfter: 'Resend in {seconds}s',
+    smsSent: 'Verification code sent. Please check your messages.',
+    smsSendError: 'Could not send the code. Check your input or refresh the image and try again.',
+    smsLimited: 'Too many requests. Please wait before trying again.',
     phonePlaceholder: '11-digit phone number',
     captchaPlaceholder: 'Enter the image code',
     smsPlaceholder: '6-digit code',

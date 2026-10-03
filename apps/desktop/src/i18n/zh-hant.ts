@@ -5,6 +5,10 @@ import { introZhHant } from './intro-zh-hant'
 
 export const zhHant = defineLocale({
   desktopLogin: {
+    resendAfter: '{seconds} 秒後重發',
+    smsSent: '驗證碼已傳送，請查看手機簡訊。',
+    smsSendError: '傳送失敗，請檢查輸入或重新整理圖片後重試。',
+    smsLimited: '傳送過於頻繁，請稍後重試。',
     phonePlaceholder: '11 位手機號碼',
     captchaPlaceholder: '輸入圖片文字',
     smsPlaceholder: '6 位數字',

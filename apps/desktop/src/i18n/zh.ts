@@ -5,6 +5,10 @@ import { introZh } from './intro-zh'
 
 export const zh = defineLocale({
   desktopLogin: {
+    resendAfter: '{seconds} 秒后重发',
+    smsSent: '验证码已发送，请查看手机短信。',
+    smsSendError: '发送失败，请检查输入或刷新图片后重试。',
+    smsLimited: '发送过于频繁，请稍后重试。',
     phonePlaceholder: '11 位手机号',
     captchaPlaceholder: '看图输入',
     smsPlaceholder: '6 位数字',
