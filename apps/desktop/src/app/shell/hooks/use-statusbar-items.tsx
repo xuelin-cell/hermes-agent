@@ -10,6 +10,7 @@ import { useApprovalModeStatusbarItem } from '@/app/shell/approval-mode-menu'
 import { ContextUsagePanel } from '@/app/shell/context-usage-panel'
 import { GatewayMenuPanel } from '@/app/shell/gateway-menu-panel'
 import { useContextBreakdown } from '@/app/shell/hooks/use-context-breakdown'
+import { useMaasAccountStatusbarItem } from '@/app/shell/maas-account-status'
 import { useSystemResourcesStatusbarItem } from '@/app/shell/system-resources-statusbar'
 import { $paneVisible } from '@/components/pane-shell/tree/store'
 import { Badge } from '@/components/ui/badge'
@@ -747,14 +748,16 @@ export function useStatusbarItems({
     ]
   )
 
+  const accountItem = useMaasAccountStatusbarItem()
+
   const leftStatusbarItems = useMemo(
     () => [...coreLeftStatusbarItems, ...extraLeftItems],
     [coreLeftStatusbarItems, extraLeftItems]
   )
 
   const statusbarItems = useMemo(
-    () => [...extraRightItems, ...coreRightStatusbarItems],
-    [coreRightStatusbarItems, extraRightItems]
+    () => [...extraRightItems, ...coreRightStatusbarItems, ...(accountItem ? [accountItem] : [])],
+    [accountItem, coreRightStatusbarItems, extraRightItems]
   )
 
   return { leftStatusbarItems, statusbarItems }

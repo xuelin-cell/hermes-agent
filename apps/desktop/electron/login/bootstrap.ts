@@ -10,6 +10,7 @@ import { startAccountDesktop } from '../entry_local/desktop-runtime'
 import { LocalRuntimeContext, type PreparedLocalContext } from '../entry_local/runtime-context'
 import { createWindowOpenHandler } from '../window-open-policy'
 
+import type { LoginAccount } from './contract'
 import { CredentialStore } from './credential-store'
 import { installLoginIpc } from './ipc'
 import { LoginSession } from './session'
@@ -179,6 +180,13 @@ async function openLoginWindow(): Promise<BrowserWindow | null> {
 /** 向后续启动流程交接固定上下文；不新增页面 IPC 或提前加载原版主进程。 */
 export function currentDesktopLocalContext(): PreparedLocalContext | null {
   return stopping ? null : (accountRuntime?.current() ?? null)
+}
+
+/** 从主进程的有效身份挑选展示字段；不读取磁盘或恢复失效登录。 */
+export function currentDesktopAccount(): LoginAccount | null {
+  const identity = stopping ? null : accountRuntime?.login.currentIdentity()
+
+  return identity ? { maskedPhone: identity.maskedPhone, expiresAt: identity.expiresAt } : null
 }
 
 /** 合并重复启动请求；未获可信身份前只启动登录壳，不导入账号运行时。 */

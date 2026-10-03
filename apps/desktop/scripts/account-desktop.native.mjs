@@ -73,7 +73,7 @@ async function prepareFixture(url) {
       const uid = process.env.FIXTURE_UID || 'fixture-desktop-account'
       if (store.load()?.uid !== uid) store.save({
         namespace:'maas.ai-yuanjing.com/uniwork', uid,
-        token:'fixture-login-token', maskedPhone:'138****0000', expiresAt:Date.now()+600_000
+        token:'fixture-login-token', maskedPhone:uid === 'fixture-desktop-account-b' ? '139****0000' : '138****0000', expiresAt:Date.now()+600_000
       })
     })
     await import('./electron/entry')
@@ -310,6 +310,9 @@ async function verifyAccountWindows(instance,page,id) {
   assert.ok(peer)
   await peer.waitForLoadState('domcontentloaded')
   assert.equal(await peer.evaluate(() => localStorage.getItem('fixture-account-owner')),id)
+  assert.deepEqual(await peer.evaluate(() => window.hermesDesktop.getMaasAccount()),
+    await page.evaluate(() => window.hermesDesktop.getMaasAccount()))
+  await verifyAccountBadge(peer, '138****0000')
   await page.evaluate(async () => {
     const store = await import('/src/store/composer.ts')
     store.stashSessionDraft('fixture-same-session','fixture-same-account-draft',[])
@@ -317,6 +320,21 @@ async function verifyAccountWindows(instance,page,id) {
   await peer.waitForFunction(() => localStorage.getItem('hermes:composer-drafts:v3')
     ?.includes('fixture-same-account-draft'),null,{polling:100})
   await instance.evaluate(({webContents},id) => webContents.fromId(id).close(),peers[0].id)
+}
+
+/** 检查账号在右下角完整可见，只有脱敏文本，没有菜单或退出动作。 */
+async function verifyAccountBadge(page, phone) {
+  const badge = page.locator('[data-slot="statusbar"]').getByText(phone, {exact:true})
+  await badge.waitFor({timeout:60_000})
+  const geometry = await badge.evaluate(element => {
+    const box = element.getBoundingClientRect()
+    return {right:box.right, left:box.left, bottom:box.bottom, width:innerWidth, height:innerHeight,
+      interactive:!!element.closest('button,a'), clipped:element.scrollWidth > element.clientWidth}
+  })
+  assert.equal(geometry.interactive,false)
+  assert.equal(geometry.clipped,false)
+  assert.ok(geometry.left > geometry.width / 2 && geometry.right <= geometry.width)
+  assert.ok(geometry.bottom > geometry.height - 40)
 }
 
 /** 让真实 HTTP 响应晚于旧窗销毁，确认新的独立分区不会收到旧页面写入。 */
@@ -558,6 +576,23 @@ test('P15～P17 原生 Electron：自动进入账号桌面，REST/WS 与 A→B�
           if (scenario === 'available') {
             await verifyAccountWindows(instance,page,context.id)
             await verifyLateWindowIsolation(instance)
+          }
+          const account = await page.evaluate(() => window.hermesDesktop.getMaasAccount())
+          assert.deepEqual(Object.keys(account).sort(), ['expiresAt','maskedPhone'])
+          assert.equal(account.maskedPhone, scenario === 'account-b' ? '139****0000' : '138****0000')
+          await verifyAccountBadge(page, account.maskedPhone)
+          if (scenario === 'available') {
+            const original = await instance.evaluate(({BrowserWindow}) => {
+              const window = BrowserWindow.getAllWindows().find(w => w.webContents.getURL().startsWith('http'))
+              const size = window.getSize()
+              window.setSize(640,600)
+              return size
+            })
+            await verifyAccountBadge(page, account.maskedPhone)
+            await page.screenshot({path:path.join(fixture.root,'account-badge-narrow.png')})
+            await instance.evaluate(({BrowserWindow},size) => {
+              BrowserWindow.getAllWindows().find(w => w.webContents.getURL().startsWith('http')).setSize(...size)
+            }, original)
           }
         }
         if (scenario === 'account-b') {

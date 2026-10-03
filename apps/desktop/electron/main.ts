@@ -315,7 +315,8 @@ import { createLocalBackendLifecycle, waitForTeardown } from './local-backend-li
 import { resolveIpcFileReadPath, resolveMediaStreamFile, resolvePreviewTargetPath } from './local-read-path'
 import { localSkinProfileKey, readLocalSkinPayload } from './local-skin'
 import { ACTIVE_LOG_POLL_MS, planLogRotation, reclaimActiveLogIfOversized } from './log-rotation'
-import { currentDesktopLocalContext } from './login/bootstrap'
+import { installAccountIpc } from './login/account-ipc'
+import { currentDesktopAccount, currentDesktopLocalContext } from './login/bootstrap'
 import { registerMachineProfile } from './machine-profile'
 import { createMainProcessLagWatchdog } from './main-process-lag-watchdog'
 import { ensureMainWindow } from './main-window-lifecycle'
@@ -637,6 +638,12 @@ const GLASS_SUPPORTED = glassSupportedOn(process.platform, os.release())
 // there and Settings drops the row entirely.
 const TRANSLUCENCY_SUPPORTED = translucencySupportedOn(process.platform)
 const APP_ROOT = app.getAppPath()
+
+installAccountIpc(
+  ACCOUNT_SESSION,
+  () => DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString(),
+  currentDesktopAccount
+)
 
 // Device-local preference: block F12 from opening DevTools.
 // Set dynamically via IPC from the renderer Settings → Advanced.
