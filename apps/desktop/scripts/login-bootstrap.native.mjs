@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, readFile, writeFile, access, rmdir } from 'node:fs/prom
 import os from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
+import { parseEnv } from 'node:util'
 import { build } from 'esbuild'
 import electronPath from 'electron'
 import { _electron as electron } from '@playwright/test'
@@ -32,7 +33,7 @@ async function launchFixture(cancel = false, devServer, liveCaptcha = false, pla
         import { app, net } from 'electron'
         import { CredentialStore } from './electron/login/credential-store.ts'
         import { LoginSession } from './electron/login/session.ts'
-        import { prepareLocalAccount, prepareLocalModelConfig } from './electron/entry_local/prepare-account.ts'
+        import { prepareLocalAccount, prepareLocalEnvironment } from './electron/entry_local/prepare-account.ts'
         app.setAppPath(${JSON.stringify(rendererRoot)})
         globalThis.loginProbe = { processCalls: [], captchaRequests: [], planAuthorizations: [], cancelled: false }
         // 只向测试主进程提供读取探针，不暴露给 Renderer 或 preload。
@@ -47,13 +48,13 @@ async function launchFixture(cancel = false, devServer, liveCaptcha = false, pla
             return prepareLocalAccount(session, {data:${JSON.stringify(path.join(root, 'account-data'))}, userData:app.getPath('userData')})
           } finally { session.dispose() }
         }
-        // P12 组件验收：主进程恢复并查询套餐，写入真实账号文件，不经过 Renderer。
-        globalThis.prepareFixtureModelConfig = async () => {
+        // P12/P13 组件验收：主进程恢复并查询套餐，准备真实账号文件，不经过 Renderer。
+        globalThis.prepareFixtureEnvironment = async () => {
           const session = new LoginSession(net.fetch, new CredentialStore(app.getPath('userData')))
           try {
             session.restore()
             const result = await session.queryPlan()
-            const account = prepareLocalModelConfig(session, {data:${JSON.stringify(path.join(root, 'account-data'))}, userData:app.getPath('userData')})
+            const account = prepareLocalEnvironment(session, {data:${JSON.stringify(path.join(root, 'account-data'))}, userData:app.getPath('userData')})
             return {account, status:result.status}
           } finally { session.dispose() }
         }
@@ -70,7 +71,7 @@ async function launchFixture(cancel = false, devServer, liveCaptcha = false, pla
             const attempt = ++planAttempts
             const response = globalThis.loginProbe.planMode === 'failed' || (${planScenario} && attempt === 1) ? new Response('fixture-private-plan-error', {status:503}) :
               globalThis.loginProbe.planMode === 'empty' || (${planScenario} && attempt >= 3) ? Response.json({apiKey:null, models:null}) :
-              Response.json({apiKey:'fixture-private-model-key', models:JSON.stringify({main_model_id:'b', models:[
+              Response.json({apiKey:globalThis.loginProbe.planKey ?? 'fixture-private-model-key', models:JSON.stringify({main_model_id:'b', models:[
                 {id:'a', model:'fixture-plan-model', base_url:'https://models.invalid/TokenPlan/a'},
                 {id:'b', model:'fixture-plan-default', base_url:'https://models.invalid/TokenPlan/b/v1'}
               ]})})
@@ -423,21 +424,29 @@ test('真实 Electron 套餐链路：登录后查询失败可重试，刷新遇�
   } finally { await instance.close() }
 })
 
-test('P12 真实 Electron 组件：A→B→A 合并独立模型文件，保留个人配置，失败和空套餐不重写', {timeout:60_000}, async () => {
+test('P12/P13 真实 Electron 组件：A→B→A 配置与 Key 隔离，轮换保留个人变量，空套餐只撤销专用 Key', {timeout:60_000}, async () => {
   const fixture = await launchFixture()
   const {instance} = fixture
   let firstA
+  let accountB
   let personalYaml
   try {
     const page = await instance.firstWindow()
     await page.getByRole('img').waitFor()
     for (const uid of ['fixture-model-A', 'fixture-model-B', 'fixture-model-A']) {
       await instance.evaluate((_, saved) => globalThis.saveLoginRecord(saved), {uid, token:'fixture-only-token', maskedPhone:'138****0000', expiresAt:Date.now()+240_000})
-      const result = await instance.evaluate(() => globalThis.prepareFixtureModelConfig())
+      const key = uid.endsWith('-B') ? 'fixture-B-model-key' : firstA ? 'fixture-A-refreshed-key' : 'fixture-A-model-key'
+      await instance.evaluate((_, value) => {globalThis.loginProbe.planKey=value}, key)
+      const result = await instance.evaluate(() => globalThis.prepareFixtureEnvironment())
       assert.equal(result.status, 'available')
       const file = path.join(result.account.home, 'config.yaml')
       const yaml = await readFile(file, 'utf8')
       const config = parse(yaml)
+      const envFile = path.join(result.account.home, '.env')
+      const env = await readFile(envFile, 'utf8')
+      assert.equal(parseEnv(env).DESKTOP_MT_MAAS_API_KEY, key)
+      assert.equal(env.includes('fixture-only-token'), false)
+      assert.equal(yaml.includes(key), false)
       for (const secret of ['fixture-only-token', 'fixture-private-model-key']) assert.equal(yaml.includes(secret), false)
       const providers = Object.values(config.providers).filter(value => value.key_env === 'DESKTOP_MT_MAAS_API_KEY')
       assert.equal(providers.length, 2)
@@ -450,31 +459,47 @@ test('P12 真实 Electron 组件：A→B→A 合并独立模型文件，保留�
         config.skills = {enabled:['keep-skill']}
         personalYaml = '# 保留个人说明\n'+stringify(config)
         await writeFile(file, personalYaml)
+        await writeFile(envFile, env+'# 个人 Key 保留\nPERSONAL_KEY=fixture-personal-key\nMCP_KEY=fixture-mcp-key\nMCP_DATA="first\nDESKTOP_MT_MAAS_API_KEY=fixture-nested-key\nlast"\n')
       } else if (uid.endsWith('-A')) {
         assert.deepEqual(result.account, firstA)
         assert.equal(yaml, personalYaml)
         assert.deepEqual(config.model, {provider:'custom:personal', default:'my-model'})
         assert.deepEqual(config.mcp_servers, {personal:{command:'keep-tool'}})
         assert.deepEqual(config.skills, {enabled:['keep-skill']})
+        assert.equal(env.includes('# 个人 Key 保留'), true)
+        assert.equal(parseEnv(env).PERSONAL_KEY, 'fixture-personal-key')
+        assert.equal(parseEnv(env).MCP_KEY, 'fixture-mcp-key')
+        assert.equal(env.includes('fixture-A-model-key'), false)
+        assert.equal(parseEnv(await readFile(path.join(accountB.home, '.env'), 'utf8')).DESKTOP_MT_MAAS_API_KEY, 'fixture-B-model-key')
       } else {
         assert.notEqual(result.account.id, firstA.id)
         assert.equal(config.providers.personal, undefined)
         assert.equal(config.model.default, 'fixture-plan-default')
+        assert.equal(parseEnv(env).PERSONAL_KEY, undefined)
+        accountB = result.account
       }
-      await assert.rejects(access(path.join(result.account.home, '.env')), {code:'ENOENT'})
     }
+    const currentEnv = await readFile(path.join(firstA.home, '.env'), 'utf8')
     for (const status of ['failed', 'empty']) {
       await instance.evaluate((_, value) => {globalThis.loginProbe.planMode=value}, status)
-      const result = await instance.evaluate(() => globalThis.prepareFixtureModelConfig())
+      const result = await instance.evaluate(() => globalThis.prepareFixtureEnvironment())
       assert.equal(result.status, status)
       assert.equal(await readFile(path.join(firstA.home, 'config.yaml'), 'utf8'), personalYaml)
+      const env = await readFile(path.join(firstA.home, '.env'), 'utf8')
+      if (status === 'failed') assert.equal(env, currentEnv)
+      else {
+        assert.equal(parseEnv(env).DESKTOP_MT_MAAS_API_KEY, '')
+        assert.equal(parseEnv(env).PERSONAL_KEY, 'fixture-personal-key')
+        assert.equal(parseEnv(env).MCP_KEY, 'fixture-mcp-key')
+        assert.equal(env.includes('fixture-A-refreshed-key'), false)
+      }
     }
     assert.equal(await page.locator('form input').count(), 3)
-    assert.equal(await page.evaluate(() => typeof globalThis.prepareFixtureModelConfig), 'undefined')
+    assert.equal(await page.evaluate(() => typeof globalThis.prepareFixtureEnvironment), 'undefined')
     assert.deepEqual(await instance.evaluate(() => globalThis.loginProbe.processCalls), [])
     assert.equal(await readFile(path.join(fixture.userData, 'connection.json'), 'utf8'), fixture.oldConnection)
     await assert.rejects(access(fixture.home), {code:'ENOENT'})
-    console.log(`P12 加密身份、套餐与实际 YAML 组件验收：${fixture.root}`)
+    console.log(`P12/P13 加密身份、套餐与 YAML/.env 组件验收：${fixture.root}`)
   } finally { await instance.close() }
 })
 

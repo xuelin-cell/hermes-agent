@@ -3,6 +3,7 @@ import type { LoginSession } from '../login/session'
 
 import { type AccountPaths, type AccountRoots, prepareAccountPaths } from './account-paths'
 import { mergeMaasModelConfig } from './model-config'
+import { writeAccountMaasKey } from './model-key'
 
 /** 只从主进程 LoginSession 取得有效 UID，不接受页面指定账号或目录。 */
 export function prepareLocalAccount(session: LoginSession, roots: AccountRoots): AccountPaths {
@@ -20,13 +21,16 @@ export function prepareLocalAccount(session: LoginSession, roots: AccountRoots):
   }
 }
 
-/** 有效身份按最新成功套餐合并配置；无套餐或查询失败不修改配置。 */
-export function prepareLocalModelConfig(session: LoginSession, roots: AccountRoots): AccountPaths {
+/** 准备账号配置和专用 Key；明确无套餐清空 Key，查询失败保留文件，不冒充刷新成功。 */
+export function prepareLocalEnvironment(session: LoginSession, roots: AccountRoots): AccountPaths {
   const account = prepareLocalAccount(session, roots)
   const result = session.currentPlan()
 
   if (result.status === 'available') {
     mergeMaasModelConfig(account.home, result.plan)
+    writeAccountMaasKey(account.home, result.plan.apiKey)
+  } else if (result.status === 'empty') {
+    writeAccountMaasKey(account.home, null)
   }
 
   return account
