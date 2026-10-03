@@ -2,8 +2,23 @@ import { EventEmitter } from 'node:events'
 
 import { expect, it, vi } from 'vitest'
 
-const { handle, removeHandler, fetch } = vi.hoisted(() => ({ handle: vi.fn(), removeHandler: vi.fn(), fetch: vi.fn() }))
-vi.mock('electron', () => ({ ipcMain: { handle, removeHandler }, net: { fetch } }))
+const { handle, removeHandler, fetch, save } = vi.hoisted(() => ({
+  handle: vi.fn(),
+  removeHandler: vi.fn(),
+  fetch: vi.fn(),
+  save: vi.fn()
+}))
+
+vi.mock('electron', () => ({
+  ipcMain: { handle, removeHandler },
+  net: { fetch },
+  app: { getPath: () => 'fixture-only' }
+}))
+vi.mock('./credential-store', () => ({
+  CredentialStore: vi.fn(function () {
+    return { save }
+  })
+}))
 
 import { CAPTCHA_CHANNEL, LOGIN_CHANNEL, SEND_SMS_CHANNEL } from './contract'
 import { installLoginIpc } from './ipc'
@@ -47,6 +62,7 @@ it('只接受绑定窗口主框架的固定登录页与约定参数，关闭后�
   const logged = await login(event, { phone: input.phone, smsCode: '123456' })
   expect(logged.ok).toBe(true)
   expect(Object.keys(logged.account)).toEqual(['maskedPhone', 'expiresAt'])
+  expect(save).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ uid: 'id', token: 'private-token' }))
   window.isDestroyed = () => true
   expect(await handler(event)).toEqual({ ok: false })
   expect(await send(event, input)).toEqual({ ok: false, error: 'invalid' })

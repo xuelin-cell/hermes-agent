@@ -1,4 +1,5 @@
 import type { LoginAccount, LoginResult } from './contract'
+import type { CredentialStore } from './credential-store'
 
 export interface LoginIdentity {
   uid: string
@@ -70,8 +71,11 @@ export class LoginSession {
   private closed = false
   private readonly cancellation = new AbortController()
 
-  /** 注入主进程网络能力，页面不能替换登录地址或请求选项。 */
-  constructor(private readonly request: typeof fetch) {}
+  /** 注入主进程网络与必要的安全存储，页面不能替换请求或跳过持久化。 */
+  constructor(
+    private readonly request: typeof fetch,
+    private readonly credentials: Pick<CredentialStore, 'save'>
+  ) {}
 
   /** 仅供主进程读取有效身份，返回副本以避免外部改写已校验记录。 */
   currentIdentity(): LoginIdentity | null {
@@ -125,6 +129,7 @@ export class LoginSession {
         return { ok: false }
       }
 
+      this.credentials.save(identity)
       this.identity = identity
 
       return { ok: true, account: accountFor(identity) }

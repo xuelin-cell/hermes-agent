@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
-import { mkdtemp, mkdir, readFile, writeFile, access } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, writeFile, access, rmdir } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
@@ -29,8 +29,11 @@ async function launchFixture(cancel = false, devServer, liveCaptcha = false) {
         import childProcess from 'node:child_process'
         import { syncBuiltinESMExports } from 'node:module'
         import { app, net } from 'electron'
+        import { CredentialStore } from './electron/login/credential-store.ts'
         app.setAppPath(${JSON.stringify(rendererRoot)})
         globalThis.loginProbe = { processCalls: [], captchaRequests: [], cancelled: false }
+        // 只向测试主进程提供读取探针，不暴露给 Renderer 或 preload。
+        globalThis.readLoginRecord = () => new CredentialStore(app.getPath('userData')).load()
         // 回归测试使用固定响应；只有显式启用的真实验收请求 MaaS。
         const originalFetch = net.fetch
         let smsAttempts = 0
@@ -85,7 +88,7 @@ async function launchFixture(cancel = false, devServer, liveCaptcha = false) {
   if (devServer) env.HERMES_DESKTOP_DEV_SERVER = devServer
   delete env.ELECTRON_RUN_AS_NODE
   const instance = await electron.launch({ executablePath: electronPath, args: [output], env, timeout: 30_000 })
-  return { instance, root, home, userData, oldConnection, rendererRoot }
+  return { instance, root, home, userData, oldConnection, rendererRoot, output, env }
 }
 
 test('真实未登录入口不启动后端、不暴露原版桥接，重复启动只有一个窗口', { timeout: 60_000 }, async () => {
@@ -200,8 +203,10 @@ test('真实 Electron 短信受控链路：错误可重试，成功冷却在刷�
   }
 })
 
-test('真实 Electron 登录受控链路：失败可重试，成功只显示脱敏账号且不启动后端', { timeout: 60_000 }, async () => {
-  const { instance, home, rendererRoot, root } = await launchFixture()
+test('真实 Electron 登录与系统加密：保存失败不登录，退出重开可解密但不自动恢复', { timeout: 60_000 }, async () => {
+  const { instance, home, rendererRoot, root, userData, output, env } = await launchFixture()
+  const file = path.join(userData, 'maas-login.enc')
+  let reopened
   try {
     const page = await instance.firstWindow()
     await page.getByRole('img').waitFor()
@@ -210,6 +215,14 @@ test('真实 Electron 登录受控链路：失败可重试，成功只显示脱�
     await page.getByRole('button', { name: '登录', exact: true }).click()
     await page.getByText('登录失败，请重试。').waitFor()
     assert.equal(await page.getByText('fixture-private-error').count(), 0)
+    await assert.rejects(access(file), {code:'ENOENT'})
+    // 临时文件位置不可写时，真实上游成功响应也不能完成本地登录。
+    await mkdir(`${file}.tmp`)
+    await page.getByRole('button', { name: '登录', exact: true }).click()
+    await page.getByText('登录失败，请重试。').waitFor()
+    assert.equal(await page.locator('form input').count(), 3)
+    await assert.rejects(access(file), {code:'ENOENT'})
+    await rmdir(`${file}.tmp`)
     await page.getByRole('button', { name: '登录', exact: true }).click()
     await page.getByText('已登录：138****0000').waitFor()
     assert.equal(await page.locator('form input').count(), 0)
@@ -227,12 +240,46 @@ test('真实 Electron 登录受控链路：失败可重试，成功只显示脱�
     }, path.join(rendererRoot, 'dist', 'login-preload.js'))
     assert.deepEqual(denied, {ok:false})
     const probe = await instance.evaluate(() => globalThis.loginProbe)
-    assert.equal(probe.captchaRequests.filter(url => url.endsWith('/smsLogin')).length, 2)
+    assert.equal(probe.captchaRequests.filter(url => url.endsWith('/smsLogin')).length, 3)
     assert.deepEqual(probe.processCalls, [])
     await assert.rejects(access(home), {code:'ENOENT'})
+    const encrypted = await readFile(file)
+    for (const secret of ['fixture-private-token', 'fixture-private-uid', '13800000000', '123456']) {
+      assert.equal(encrypted.includes(Buffer.from(secret)), false)
+    }
+    await assert.rejects(access(`${file}.tmp`), {code:'ENOENT'})
+    const record = await instance.evaluate(() => globalThis.readLoginRecord())
+    assert.equal(record.namespace, 'maas.ai-yuanjing.com/uniwork')
+    assert.equal(record.uid, 'fixture-private-uid')
+    assert.equal(record.token, 'fixture-private-token')
+    assert.equal(record.maskedPhone, '138****0000')
+    assert.equal(record.expiresAt, result.account.expiresAt)
     await page.screenshot({path:path.join(root, 'login-account.png')})
-    console.log(`登录账号受控验收截图：${root}`)
-  } finally { await instance.close() }
+    await instance.close()
+    // 同一目录、同一 Windows 用户、新 Electron 进程：使用真实系统密钥解密。
+    reopened = await electron.launch({executablePath:electronPath, args:[output], env, timeout:30_000})
+    const reopenedPage = await reopened.firstWindow()
+    await reopenedPage.getByRole('heading', {name:'登录 Hermes'}).waitFor()
+    assert.equal(await reopenedPage.locator('form input').count(), 3)
+    assert.deepEqual(await reopened.evaluate(() => globalThis.readLoginRecord()), record)
+    assert.equal((await reopened.evaluate(() => globalThis.loginProbe.captchaRequests)).some(url => url.endsWith('/smsLogin')), false)
+    assert.deepEqual(await readFile(file), encrypted)
+    // 坏密文和明文冒充记录都不能读取，读取失败不删除原文件。
+    for (const invalid of [Buffer.from('damaged-ciphertext'), Buffer.from(JSON.stringify(record))]) {
+      await writeFile(file, invalid)
+      const rejected = await reopened.evaluate(() => {
+        try { globalThis.readLoginRecord(); return false } catch { return true }
+      })
+      assert.equal(rejected, true)
+      assert.deepEqual(await readFile(file), invalid)
+    }
+    assert.deepEqual(await reopened.evaluate(() => globalThis.loginProbe.processCalls), [])
+    await assert.rejects(access(home), {code:'ENOENT'})
+    console.log(`登录账号与跨进程加密验收目录：${root}`)
+  } finally {
+    await reopened?.close()
+    await instance.close()
+  }
 })
 
 test('真实 MaaS 图片在登录窗口展示并可刷新，其他窗口与子框架无权请求', {
