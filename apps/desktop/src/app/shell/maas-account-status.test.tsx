@@ -80,3 +80,17 @@ it('只有账号和退出入口，取消不注销，确认合并重复点击并�
   expect(await screen.findByText('无法开始安全退出，请重试。')).toBeTruthy()
   expect(screen.getByText('138****0000')).toBeTruthy()
 })
+
+it('重新聚焦获得同一展示身份时，退出确认不被组件重挂打断', async () => {
+  const expiresAt = Date.now() + 60_000
+  const getMaasAccount = vi.fn(async () => ({ maskedPhone: '138****0000', expiresAt }))
+  window.hermesDesktop = { getMaasAccount, logoutMaasAccount: vi.fn() } as never
+  render(<AccountFixture />)
+  fireEvent.click(await screen.findByRole('button', { name: '退出' }))
+  const dialog = screen.getByRole('dialog')
+  await act(async () => window.dispatchEvent(new Event('focus')))
+  expect(getMaasAccount).toHaveBeenCalledTimes(2)
+  expect(screen.getByRole('dialog')).toBe(dialog)
+  fireEvent.click(within(dialog).getByRole('button', { name: '退出' }))
+  expect(window.hermesDesktop.logoutMaasAccount).toHaveBeenCalledTimes(1)
+})

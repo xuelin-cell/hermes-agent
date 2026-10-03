@@ -56,7 +56,10 @@ export function useMaasAccountStatusbarItem(): StatusbarItem | null {
       }
 
       const valid = next && next.expiresAt > Date.now() ? next : null
-      setAccount(valid)
+      // 相同展示身份保持引用，避免焦点／定时刷新重挂账号组件并关闭退出确认。
+      setAccount(previous =>
+        previous?.maskedPhone === valid?.maskedPhone && previous?.expiresAt === valid?.expiresAt ? previous : valid
+      )
 
       if (valid) {
         timer = setTimeout(() => void refresh(), Math.min(60_000, valid.expiresAt - Date.now()))
