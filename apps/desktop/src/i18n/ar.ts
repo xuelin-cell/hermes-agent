@@ -2,6 +2,9 @@ import { defineLocale } from './define-locale'
 
 export const ar = defineLocale({
   desktopLogin: {
+    signedIn: 'تم تسجيل الدخول: {account}',
+    localPending: 'يجري إعداد مساحة العمل المحلية.',
+    expired: 'انتهت صلاحية تسجيل الدخول. سجّل الدخول مجددًا.',
     resendAfter: 'إعادة الإرسال بعد {seconds}ث',
     smsSent: 'تم إرسال رمز التحقق. تحقق من الرسائل النصية.',
     smsSendError: 'تعذر إرسال الرمز. تحقق من الإدخال أو حدّث الصورة وحاول مجددًا.',

@@ -25,6 +25,9 @@ const RU_NOUN = (count: number | string, one: string, few: string, many: string)
 
 export const ru = defineLocale({
   desktopLogin: {
+    signedIn: 'Вход выполнен: {account}',
+    localPending: 'Подключение локального рабочего пространства пока недоступно.',
+    expired: 'Срок входа истёк. Войдите снова.',
     resendAfter: 'Повтор через {seconds}с',
     smsSent: 'Код отправлен. Проверьте SMS.',
     smsSendError: 'Не удалось отправить код. Проверьте ввод или обновите изображение и повторите попытку.',

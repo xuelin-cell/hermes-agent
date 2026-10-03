@@ -5,6 +5,9 @@ import { introJa } from './intro-ja'
 
 export const ja = defineLocale({
   desktopLogin: {
+    signedIn: 'ログイン済み：{account}',
+    localPending: 'ローカルワークスペースを接続する機能を準備中です。',
+    expired: 'ログインの有効期限が切れました。再度ログインしてください。',
     resendAfter: '{seconds}秒後に再送',
     smsSent: '認証コードを送信しました。SMSを確認してください。',
     smsSendError: '送信できませんでした。入力を確認するか画像を更新して再試行してください。',

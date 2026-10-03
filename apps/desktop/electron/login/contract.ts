@@ -1,5 +1,18 @@
 export const CAPTCHA_CHANNEL = 'hermes-login:captcha'
 export const SEND_SMS_CHANNEL = 'hermes-login:send-sms'
+export const LOGIN_CHANNEL = 'hermes-login:login'
+
+export interface LoginRequest {
+  phone: string
+  smsCode: string
+}
+
+export interface LoginAccount {
+  maskedPhone: string
+  expiresAt: number
+}
+
+export type LoginResult = { ok: true; account: LoginAccount } | { ok: false }
 
 export interface SmsRequest {
   phone: string
@@ -24,6 +37,8 @@ export interface DesktopLoginBridge {
   captcha(): Promise<CaptchaResult>
   /** 提交短信所需字段，主进程负责校验、发送与频率限制。 */
   sendSms(input: SmsRequest): Promise<SmsResult>
+  /** 短信登录只返回脱敏账号；UID 和 token 始终由主进程保管。 */
+  login(input: LoginRequest): Promise<LoginResult>
 }
 
 declare global {

@@ -1,34 +1,63 @@
-import { type FormEvent, useRef, useState } from 'react'
+import { type FormEvent, useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useI18n } from '@/i18n/context'
 
+import type { LoginAccount } from '../../../electron/login/contract'
 import { PAGE_INSET_X } from '../layout-constants'
 
 import { useCaptcha } from './use-captcha'
 import { useSms } from './use-sms'
 
-export interface LoginFields {
+interface LoginFields {
   phone: string
   captchaCode: string
   smsCode: string
 }
 
-export interface LoginPageProps {
-  onSubmit?: (fields: LoginFields) => Promise<void>
-}
-
 /** 展示短信登录表单；未接入主进程能力时禁用动作，不提供免登录入口。 */
-export function LoginPage({ onSubmit }: LoginPageProps) {
+export function LoginPage() {
   const { t } = useI18n()
   const copy = t.desktopLogin
   const image = useCaptcha(window.hermesLogin)
   const sms = useSms(window.hermesLogin)
   const [fields, setFields] = useState<LoginFields>({ phone: '', captchaCode: '', smsCode: '' })
-  const [error, setError] = useState<'phoneError' | 'captchaError' | 'smsError' | 'requestError' | null>(null)
+
+  const [error, setError] = useState<'phoneError' | 'captchaError' | 'smsError' | 'requestError' | 'expired' | null>(
+    null
+  )
+
+  const [account, setAccount] = useState<LoginAccount | null>(null)
   const [pending, setPending] = useState(false)
   const submitting = useRef(false)
+
+  useEffect(() => {
+    if (!account) {
+      return
+    }
+
+    let timer: ReturnType<typeof setTimeout>
+
+    /** 到期回到空表单；长有效期分段等待，避免浏览器定时器上限。 */
+    function checkExpiry(): void {
+      const remaining = account!.expiresAt - Date.now()
+
+      if (remaining > 0) {
+        timer = setTimeout(checkExpiry, Math.min(remaining, 2_147_483_647))
+
+        return
+      }
+
+      setAccount(null)
+      setFields({ phone: '', captchaCode: '', smsCode: '' })
+      setError('expired')
+    }
+
+    checkExpiry()
+
+    return () => clearTimeout(timer)
+  }, [account])
 
   /** 修改输入时清除旧错误，验证码和手机号仅保留在当前页面内存中。 */
   function updateField(field: keyof LoginFields, value: string): void {
@@ -53,27 +82,20 @@ export function LoginPage({ onSubmit }: LoginPageProps) {
     await sms.send({ phone, captchaCode, captchaId: image.captcha.captchaId })
   }
 
-  /** 本地校验和重复提交保护；真正的身份判断仍由后续主进程 Login 完成。 */
+  /** 只提交手机号与短信码，主进程确认登录后清空页面输入。 */
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
 
-    if (!onSubmit || submitting.current || sms.pending) {
+    if (!window.hermesLogin || account || submitting.current || sms.pending) {
       return
     }
 
     const values = {
       phone: fields.phone.trim(),
-      captchaCode: fields.captchaCode.trim(),
       smsCode: fields.smsCode.trim()
     }
 
-    const invalid = !/^1\d{10}$/.test(values.phone)
-      ? 'phoneError'
-      : !values.captchaCode || values.captchaCode.length > 6
-        ? 'captchaError'
-        : !/^\d{6}$/.test(values.smsCode)
-          ? 'smsError'
-          : null
+    const invalid = !/^1\d{10}$/.test(values.phone) ? 'phoneError' : !/^\d{6}$/.test(values.smsCode) ? 'smsError' : null
 
     setError(invalid)
 
@@ -85,7 +107,16 @@ export function LoginPage({ onSubmit }: LoginPageProps) {
     setPending(true)
 
     try {
-      await onSubmit(values)
+      const result = await window.hermesLogin.login({ phone: values.phone, smsCode: values.smsCode })
+
+      if (!result.ok) {
+        setError('requestError')
+
+        return
+      }
+
+      setAccount(result.account)
+      setFields({ phone: '', captchaCode: '', smsCode: '' })
     } catch {
       setError('requestError')
     } finally {
@@ -106,127 +137,134 @@ export function LoginPage({ onSubmit }: LoginPageProps) {
           </h1>
           <p className="text-sm leading-relaxed text-muted-foreground">{copy.subtitle}</p>
         </header>
-        <form
-          aria-busy={pending || sms.pending}
-          className="space-y-4"
-          noValidate
-          onSubmit={event => void submit(event)}
-        >
-          <div className="space-y-2">
-            <label className="text-sm text-muted-foreground" htmlFor="login-phone">
-              {copy.phone}
-            </label>
-            <Input
-              aria-describedby="login-error"
-              aria-invalid={error === 'phoneError'}
-              autoComplete="off"
-              disabled={pending || sms.pending}
-              id="login-phone"
-              inputMode="tel"
-              maxLength={11}
-              onChange={event => updateField('phone', event.target.value)}
-              placeholder={copy.phonePlaceholder}
-              size="auth"
-              value={fields.phone}
-            />
+        {account ? (
+          <div className="space-y-2 text-sm" role="status">
+            <p>{copy.signedIn.replace('{account}', account.maskedPhone)}</p>
+            <p className="text-muted-foreground">{copy.localPending}</p>
           </div>
-          <div className="space-y-2">
-            <label className="text-sm text-muted-foreground" htmlFor="login-captcha">
-              {copy.captcha}
-            </label>
-            <div className="flex gap-2">
-              <Input
-                aria-describedby="login-error"
-                aria-invalid={error === 'captchaError'}
-                disabled={pending || sms.pending}
-                id="login-captcha"
-                maxLength={6}
-                onChange={event => updateField('captchaCode', event.target.value)}
-                placeholder={copy.captchaPlaceholder}
-                size="auth"
-                value={fields.captchaCode}
-              />
-              <Button
-                aria-label={copy.refresh}
-                disabled={!window.hermesLogin || pending || sms.pending}
-                loading={image.loading}
-                onClick={() => {
-                  updateField('captchaCode', '')
-                  void image.refresh()
-                }}
-                size="captcha"
-                type="button"
-                variant="grip"
-              >
-                {image.captcha ? (
-                  <img
-                    alt={copy.captcha}
-                    className="h-11 w-auto max-w-full rounded-[0.625rem]"
-                    src={image.captcha.imageDataUrl}
-                  />
-                ) : (
-                  copy.refresh
-                )}
-              </Button>
-            </div>
-            {image.failed && (
-              <p className="text-sm text-destructive" role="alert">
-                {copy.captchaLoadError}
-              </p>
-            )}
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm text-muted-foreground" htmlFor="login-sms">
-              {copy.sms}
-            </label>
-            <div className="flex gap-2">
-              <Input
-                aria-describedby="login-error"
-                aria-invalid={error === 'smsError'}
-                autoComplete="one-time-code"
-                disabled={pending}
-                id="login-sms"
-                inputMode="numeric"
-                maxLength={6}
-                onChange={event => updateField('smsCode', event.target.value)}
-                placeholder={copy.smsPlaceholder}
-                size="auth"
-                value={fields.smsCode}
-              />
-              <Button
-                disabled={!window.hermesLogin || !image.captcha || pending || sms.seconds > 0}
-                loading={sms.pending}
-                onClick={() => void sendSms()}
-                size="auth"
-                type="button"
-                variant="outline"
-              >
-                {sms.seconds > 0 ? copy.resendAfter.replace('{seconds}', String(sms.seconds)) : copy.send}
-              </Button>
-            </div>
-            {sms.result && (
-              <p
-                className={sms.result.ok ? 'text-sm text-muted-foreground' : 'text-sm text-destructive'}
-                role={sms.result.ok ? 'status' : 'alert'}
-              >
-                {sms.result.ok ? copy.smsSent : sms.result.error === 'limited' ? copy.smsLimited : copy.smsSendError}
-              </p>
-            )}
-          </div>
-          <Button
-            className="mt-2 w-full"
-            disabled={!onSubmit || sms.pending}
-            loading={pending}
-            size="auth"
-            type="submit"
+        ) : (
+          <form
+            aria-busy={pending || sms.pending}
+            className="space-y-4"
+            noValidate
+            onSubmit={event => void submit(event)}
           >
-            {copy.submit}
-          </Button>
-          <p className="text-sm text-destructive empty:hidden" id="login-error" role="alert">
-            {error ? copy[error] : ''}
-          </p>
-        </form>
-        {!onSubmit && (
+            <div className="space-y-2">
+              <label className="text-sm text-muted-foreground" htmlFor="login-phone">
+                {copy.phone}
+              </label>
+              <Input
+                aria-describedby="login-error"
+                aria-invalid={error === 'phoneError'}
+                autoComplete="off"
+                disabled={pending || sms.pending}
+                id="login-phone"
+                inputMode="tel"
+                maxLength={11}
+                onChange={event => updateField('phone', event.target.value)}
+                placeholder={copy.phonePlaceholder}
+                size="auth"
+                value={fields.phone}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm text-muted-foreground" htmlFor="login-captcha">
+                {copy.captcha}
+              </label>
+              <div className="flex gap-2">
+                <Input
+                  aria-describedby="login-error"
+                  aria-invalid={error === 'captchaError'}
+                  disabled={pending || sms.pending}
+                  id="login-captcha"
+                  maxLength={6}
+                  onChange={event => updateField('captchaCode', event.target.value)}
+                  placeholder={copy.captchaPlaceholder}
+                  size="auth"
+                  value={fields.captchaCode}
+                />
+                <Button
+                  aria-label={copy.refresh}
+                  disabled={!window.hermesLogin || pending || sms.pending}
+                  loading={image.loading}
+                  onClick={() => {
+                    updateField('captchaCode', '')
+                    void image.refresh()
+                  }}
+                  size="captcha"
+                  type="button"
+                  variant="grip"
+                >
+                  {image.captcha ? (
+                    <img
+                      alt={copy.captcha}
+                      className="h-11 w-auto max-w-full rounded-[0.625rem]"
+                      src={image.captcha.imageDataUrl}
+                    />
+                  ) : (
+                    copy.refresh
+                  )}
+                </Button>
+              </div>
+              {image.failed && (
+                <p className="text-sm text-destructive" role="alert">
+                  {copy.captchaLoadError}
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm text-muted-foreground" htmlFor="login-sms">
+                {copy.sms}
+              </label>
+              <div className="flex gap-2">
+                <Input
+                  aria-describedby="login-error"
+                  aria-invalid={error === 'smsError'}
+                  autoComplete="one-time-code"
+                  disabled={pending}
+                  id="login-sms"
+                  inputMode="numeric"
+                  maxLength={6}
+                  onChange={event => updateField('smsCode', event.target.value)}
+                  placeholder={copy.smsPlaceholder}
+                  size="auth"
+                  value={fields.smsCode}
+                />
+                <Button
+                  disabled={!window.hermesLogin || !image.captcha || pending || sms.seconds > 0}
+                  loading={sms.pending}
+                  onClick={() => void sendSms()}
+                  size="auth"
+                  type="button"
+                  variant="outline"
+                >
+                  {sms.seconds > 0 ? copy.resendAfter.replace('{seconds}', String(sms.seconds)) : copy.send}
+                </Button>
+              </div>
+              {sms.result && (
+                <p
+                  className={sms.result.ok ? 'text-sm text-muted-foreground' : 'text-sm text-destructive'}
+                  role={sms.result.ok ? 'status' : 'alert'}
+                >
+                  {sms.result.ok ? copy.smsSent : sms.result.error === 'limited' ? copy.smsLimited : copy.smsSendError}
+                </p>
+              )}
+            </div>
+            <Button
+              className="mt-2 w-full"
+              disabled={!window.hermesLogin || sms.pending}
+              loading={pending}
+              size="auth"
+              type="submit"
+            >
+              {copy.submit}
+            </Button>
+            <p className="text-sm text-destructive empty:hidden" id="login-error" role="alert">
+              {error ? copy[error] : ''}
+            </p>
+          </form>
+        )}
+        {!window.hermesLogin && (
           <p className="text-center text-xs text-muted-foreground" role="status">
             {copy.unavailable}
           </p>

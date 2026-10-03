@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { DesktopLoginBridge, SmsRequest, SmsResult } from '../../../electron/login/contract'
 
 /** 管理短信提交和主进程给出的重发期限，切到后台也不延长倒计时。 */
-export function useSms(bridge?: DesktopLoginBridge) {
+export function useSms(bridge?: Pick<DesktopLoginBridge, 'sendSms'>) {
   const [pending, setPending] = useState(false)
   const [result, setResult] = useState<SmsResult | null>(null)
   const [seconds, setSeconds] = useState(0)

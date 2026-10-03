@@ -19,7 +19,7 @@ it('发送失败可重试，同帧重复动作被拦截，成功后按期限倒�
       })
   )
 
-  const hook = renderHook(() => useSms({ captcha: vi.fn(), sendSms }))
+  const hook = renderHook(() => useSms({ sendSms }))
   act(() => {
     void hook.result.current.send(input)
     void hook.result.current.send(input)

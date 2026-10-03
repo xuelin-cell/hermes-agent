@@ -5,6 +5,9 @@ import { introZh } from './intro-zh'
 
 export const zh = defineLocale({
   desktopLogin: {
+    signedIn: '已登录：{account}',
+    localPending: '本地工作空间正在接入。',
+    expired: '登录已到期，请重新登录。',
     resendAfter: '{seconds} 秒后重发',
     smsSent: '验证码已发送，请查看手机短信。',
     smsSendError: '发送失败，请检查输入或刷新图片后重试。',

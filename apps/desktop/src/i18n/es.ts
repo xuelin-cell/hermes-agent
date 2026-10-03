@@ -5,6 +5,9 @@ import { introEs } from './intro-es'
 
 export const esOverrides = {
   desktopLogin: {
+    signedIn: 'Sesión iniciada: {account}',
+    localPending: 'Tu espacio de trabajo local se está conectando.',
+    expired: 'Tu sesión ha caducado. Vuelve a iniciar sesión.',
     resendAfter: 'Reenviar en {seconds}s',
     smsSent: 'Código enviado. Revisa tus mensajes.',
     smsSendError: 'No se pudo enviar el código. Revisa los datos o actualiza la imagen e inténtalo de nuevo.',

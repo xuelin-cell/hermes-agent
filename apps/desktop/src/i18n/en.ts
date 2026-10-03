@@ -4,6 +4,9 @@ import type { Translations } from './types'
 
 export const en: Translations = {
   desktopLogin: {
+    signedIn: 'Signed in: {account}',
+    localPending: 'Your local workspace is being connected.',
+    expired: 'Your sign-in has expired. Please sign in again.',
     resendAfter: 'Resend in {seconds}s',
     smsSent: 'Verification code sent. Please check your messages.',
     smsSendError: 'Could not send the code. Check your input or refresh the image and try again.',

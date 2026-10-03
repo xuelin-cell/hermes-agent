@@ -5,6 +5,9 @@ import { introFr } from './intro-fr'
 
 export const frOverrides = {
   desktopLogin: {
+    signedIn: 'Connecté : {account}',
+    localPending: 'Votre espace de travail local est en cours de connexion.',
+    expired: 'Votre session a expiré. Veuillez vous reconnecter.',
     resendAfter: 'Renvoyer dans {seconds}s',
     smsSent: 'Code envoyé. Consultez vos SMS.',
     smsSendError: 'Envoi impossible. Vérifiez la saisie ou actualisez l’image, puis réessayez.',

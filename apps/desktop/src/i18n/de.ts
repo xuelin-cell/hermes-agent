@@ -5,6 +5,9 @@ import { introDe } from './intro-de'
 
 export const deOverrides = {
   desktopLogin: {
+    signedIn: 'Angemeldet: {account}',
+    localPending: 'Dein lokaler Arbeitsbereich wird angebunden.',
+    expired: 'Deine Anmeldung ist abgelaufen. Bitte melde dich erneut an.',
     resendAfter: 'Erneut in {seconds}s',
     smsSent: 'Bestätigungscode gesendet. Bitte prüfe deine SMS.',
     smsSendError: 'Code konnte nicht gesendet werden. Prüfe die Eingabe oder aktualisiere das Bild und versuche es erneut.',

@@ -5,6 +5,9 @@ import { introZhHant } from './intro-zh-hant'
 
 export const zhHant = defineLocale({
   desktopLogin: {
+    signedIn: '已登入：{account}',
+    localPending: '本機工作空間正在接入。',
+    expired: '登入已到期，請重新登入。',
     resendAfter: '{seconds} 秒後重發',
     smsSent: '驗證碼已傳送，請查看手機簡訊。',
     smsSendError: '傳送失敗，請檢查輸入或重新整理圖片後重試。',

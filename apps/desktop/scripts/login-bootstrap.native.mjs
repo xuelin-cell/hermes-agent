@@ -34,12 +34,19 @@ async function launchFixture(cancel = false, devServer, liveCaptcha = false) {
         // 回归测试使用固定响应；只有显式启用的真实验收请求 MaaS。
         const originalFetch = net.fetch
         let smsAttempts = 0
+        let loginAttempts = 0
         net.fetch = (...args) => {
           globalThis.loginProbe.captchaRequests.push(args[0])
           // 短信始终使用受控响应，测试不能给真实手机发码。
           if (String(args[0]).endsWith('/sendCode')) {
             const code = ++smsAttempts === 1 ? 9 : 0
             return new Promise(resolve => setTimeout(() => resolve(Response.json({code})), 200))
+          }
+          // 登录也始终使用替身，不消费真实短信码，不获取真实凭据。
+          if (String(args[0]).endsWith('/smsLogin')) {
+            const result = ++loginAttempts === 1 ? {code:9, msg:'fixture-private-error'} :
+              {code:0, data:{uid:'fixture-private-uid', token:'fixture-private-token', expireIn:60}}
+            return new Promise(resolve => setTimeout(() => resolve(Response.json(result)), 200))
           }
           return ${liveCaptcha} ? originalFetch(...args) : Promise.resolve(Response.json({code:0, data:{captchaId:'fixture-id', b64s:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN1cAAAAASUVORK5CYII='}}))
         }
@@ -86,15 +93,15 @@ test('真实未登录入口不启动后端、不暴露原版桥接，重复启�
   const { instance } = fixture
   try {
     const page = await instance.firstWindow()
-    await page.getByRole('status').waitFor()
+    await page.getByRole('heading', { name: '登录 Hermes' }).waitFor()
     assert.equal(await page.locator('form input').count(), 3)
     await page.getByRole('img').waitFor()
-    assert.equal(await page.locator('button:disabled').count(), 1)
+    assert.equal(await page.locator('button:disabled').count(), 0)
     assert.deepEqual(await page.evaluate(() => ({
       node: typeof globalThis.require,
       bridge: typeof globalThis.hermesDesktop,
       login: Object.keys(globalThis.hermesLogin)
-    })), { node: 'undefined', bridge: 'undefined', login: ['captcha', 'sendSms'] })
+    })), { node: 'undefined', bridge: 'undefined', login: ['captcha', 'sendSms', 'login'] })
     const state = await instance.evaluate(({ BrowserWindow, ipcMain }) => {
       const window = BrowserWindow.getAllWindows()[0]
       return {
@@ -126,7 +133,7 @@ test('真实未登录入口不启动后端、不暴露原版桥接，重复启�
   }
 })
 
-test('开发登录页固定浅色，窄窗无横向溢出，Tab 与 Enter 不绕过禁用状态', { timeout: 120_000 }, async () => {
+test('开发登录页固定浅色，窄窗无横向溢出，Tab 与 Enter 不绕过字段校验', { timeout: 120_000 }, async () => {
   const { server, url } = await startLoginDevServer()
   let instance
   try {
@@ -136,7 +143,8 @@ test('开发登录页固定浅色，窄窗无横向溢出，Tab 与 Enter 不绕
     const errors = []
     page.on('pageerror', error => errors.push(error.message))
     page.on('console', message => { if (message.type() === 'error') console.error('[login-renderer]', message.text()) })
-    await page.getByRole('status').waitFor({ timeout: 30_000 })
+    // 独立缓存的 Vite 冷启动约需 27 秒，给并行编译留出有界余量。
+    await page.getByRole('heading', { name: '登录 Hermes' }).waitFor({ timeout: 60_000 })
     await page.getByRole('img').waitFor()
     await page.locator('#login-phone').focus()
     await page.keyboard.press('Tab')
@@ -145,7 +153,8 @@ test('开发登录页固定浅色，窄窗无横向溢出，Tab 与 Enter 不绕
     await page.keyboard.press('Tab')
     assert.equal(await page.locator('#login-sms').evaluate(node => node === document.activeElement), true)
     await page.keyboard.press('Enter')
-    assert.equal(await page.locator('button:disabled').count(), 1)
+    await page.getByText('请输入以 1 开头的 11 位手机号。').waitFor()
+    assert.equal((await instance.evaluate(() => globalThis.loginProbe.captchaRequests)).some(url => url.endsWith('/smsLogin')), false)
     await instance.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(400, 520))
     await page.emulateMedia({ colorScheme: 'dark' })
     assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme), 'light')
@@ -189,6 +198,41 @@ test('真实 Electron 短信受控链路：错误可重试，成功冷却在刷�
   } finally {
     await instance.close()
   }
+})
+
+test('真实 Electron 登录受控链路：失败可重试，成功只显示脱敏账号且不启动后端', { timeout: 60_000 }, async () => {
+  const { instance, home, rendererRoot, root } = await launchFixture()
+  try {
+    const page = await instance.firstWindow()
+    await page.getByRole('img').waitFor()
+    await page.locator('#login-phone').fill('13800000000')
+    await page.locator('#login-sms').fill('123456')
+    await page.getByRole('button', { name: '登录', exact: true }).click()
+    await page.getByText('登录失败，请重试。').waitFor()
+    assert.equal(await page.getByText('fixture-private-error').count(), 0)
+    await page.getByRole('button', { name: '登录', exact: true }).click()
+    await page.getByText('已登录：138****0000').waitFor()
+    assert.equal(await page.locator('form input').count(), 0)
+    const visible = await page.evaluate(() => document.body.textContent + JSON.stringify({...localStorage}))
+    for (const secret of ['fixture-private-token', 'fixture-private-uid', '13800000000', '123456']) assert.equal(visible.includes(secret), false)
+    const result = await page.evaluate(() => window.hermesLogin.login({phone:'13800000000', smsCode:'123456'}))
+    assert.equal(result.ok, true)
+    assert.deepEqual(Object.keys(result.account), ['maskedPhone', 'expiresAt'])
+    const denied = await instance.evaluate(async ({ BrowserWindow }, preload) => {
+      const extra = new BrowserWindow({show:false, webPreferences:{preload, sandbox:true, contextIsolation:true, nodeIntegration:false}})
+      try {
+        await extra.loadURL('about:blank')
+        return await extra.webContents.executeJavaScript('window.hermesLogin.login({phone:"13800000000",smsCode:"123456"})')
+      } finally { extra.destroy() }
+    }, path.join(rendererRoot, 'dist', 'login-preload.js'))
+    assert.deepEqual(denied, {ok:false})
+    const probe = await instance.evaluate(() => globalThis.loginProbe)
+    assert.equal(probe.captchaRequests.filter(url => url.endsWith('/smsLogin')).length, 2)
+    assert.deepEqual(probe.processCalls, [])
+    await assert.rejects(access(home), {code:'ENOENT'})
+    await page.screenshot({path:path.join(root, 'login-account.png')})
+    console.log(`登录账号受控验收截图：${root}`)
+  } finally { await instance.close() }
 })
 
 test('真实 MaaS 图片在登录窗口展示并可刷新，其他窗口与子框架无权请求', {
