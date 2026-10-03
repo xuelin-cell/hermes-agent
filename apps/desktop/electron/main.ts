@@ -219,6 +219,7 @@ import {
 import { preReadyDockLaunchSteps } from './dock-launch-order'
 import { installEmbedReferer } from './embed-referer'
 import { accountSourceBackend } from './entry_local/desktop-environment'
+import { accountDesktopStatePaths } from './entry_local/desktop-state'
 import { createAmbientClaimArbiter } from './event-dedupe'
 import { openExternalUrl as externalOpen, type ExternalOpenDeps, reportPreOpenStatFailure } from './external-open'
 import {
@@ -478,7 +479,6 @@ import { rosterSourceStatus } from './roster-source-status'
 import {
   classifyStoredSecret,
   readSecretStoragePolicy,
-  SECRET_STORAGE_POLICY_FILE,
   type SecretStoragePolicy,
   writeSecretStoragePolicy
 } from './secret-storage-policy'
@@ -618,6 +618,8 @@ if (!ACCOUNT_RUNTIME) {
   throw new Error('请先完成可信登录与账号环境准备。')
 }
 
+const ACCOUNT_DESKTOP_STATE = accountDesktopStatePaths(ACCOUNT_RUNTIME)
+
 const DEV_SERVER = process.env.HERMES_DESKTOP_DEV_SERVER
 const IS_PACKAGED = app.isPackaged || Boolean(process.env.HERMES_DESKTOP_IS_PACKAGED)
 const IS_MAC = process.platform === 'darwin'
@@ -703,7 +705,7 @@ if (INSTALL_STAMP) {
   )
 }
 
-const DESKTOP_PROFILE_CONFIG_PATH: string = path.join(ACCOUNT_RUNTIME.desktopState, 'active-profile.json')
+const DESKTOP_PROFILE_CONFIG_PATH: string = ACCOUNT_DESKTOP_STATE.profileConfig
 // Only the lock-owning destination may adopt a workspace or start a backend.
 const isPrimaryInstance: boolean = app.hasSingleInstanceLock()
 
@@ -769,17 +771,17 @@ const VENV_ROOT = path.join(ACTIVE_HERMES_ROOT, 'venv')
 const BOOTSTRAP_COMPLETE_MARKER = path.join(ACTIVE_HERMES_ROOT, '.hermes-bootstrap-complete')
 const BOOTSTRAP_MARKER_SCHEMA_VERSION = 1
 
-const DESKTOP_CONNECTION_CONFIG_PATH = path.join(ACCOUNT_RUNTIME.desktopState, 'connection.json')
+const DESKTOP_CONNECTION_CONFIG_PATH = ACCOUNT_DESKTOP_STATE.connectionConfig
 // v2 multi-connection registry (named agent sources). Lives BESIDE
 // connection.json — v1 stays on disk untouched so older builds sharing the
 // profile keep working; the registry imports from it once and then owns its
 // own file. Same secret posture as connection.json (encrypted tokens, 0600).
-const DESKTOP_CONNECTIONS_REGISTRY_PATH = path.join(ACCOUNT_RUNTIME.desktopState, 'connections.json')
+const DESKTOP_CONNECTIONS_REGISTRY_PATH = ACCOUNT_DESKTOP_STATE.connectionsRegistry
 const DESKTOP_INSTALLATION_PATH = path.join(app.getPath('userData'), 'desktop-installation.json')
 const DESKTOP_UPDATE_CONFIG_PATH = path.join(app.getPath('userData'), 'updates.json')
 const DESKTOP_WINDOW_STATE_PATH = path.join(app.getPath('userData'), 'window-state.json')
-const DESKTOP_BACKEND_OWNERSHIP_PATH = path.join(ACCOUNT_RUNTIME.desktopState, 'backend-ownership.json')
-const DESKTOP_MANAGED_SSH_RECOVERY_PATH = path.join(app.getPath('userData'), 'managed-ssh-update-recovery.json')
+const DESKTOP_BACKEND_OWNERSHIP_PATH = ACCOUNT_DESKTOP_STATE.backendOwnership
+const DESKTOP_MANAGED_SSH_RECOVERY_PATH = ACCOUNT_DESKTOP_STATE.managedSshRecovery
 // active-profile.json records which Hermes profile the desktop launches its
 // local backend as. When set, startHermes() passes `hermes --profile <name>
 // dashboard …`, which deterministically pins HERMES_HOME (see
@@ -2806,7 +2808,7 @@ function getVenvPython(venvRoot) {
 // needed.
 
 function makeDashboardReadyFile() {
-  const dir = path.join(ACCOUNT_RUNTIME.desktopState, 'backend-ready')
+  const dir = ACCOUNT_DESKTOP_STATE.backendReady
   fs.mkdirSync(dir, { recursive: true })
 
   return path.join(dir, `dashboard-${process.pid}-${Date.now()}-${crypto.randomBytes(6).toString('hex')}.json`)
@@ -4595,12 +4597,11 @@ function sanitizeWorkspaceCwd(cwd) {
 
 // Persisted "Default project directory" — surfaced as a setting in the
 // renderer (see app/settings/sessions-settings.tsx). Stored as JSON in
-// userData so it survives self-updates without bleeding into the new
-// install. `null` means "no preference, fall back to the usual chain".
-const DEFAULT_PROJECT_DIR_CONFIG_FILENAME = 'project-dir.json'
+// the account's desktop-state, independent of the shared source installation.
+// `null` means "no preference, use this account's workspace".
 
 function defaultProjectDirConfigPath() {
-  return path.join(ACCOUNT_RUNTIME.desktopState, DEFAULT_PROJECT_DIR_CONFIG_FILENAME)
+  return ACCOUNT_DESKTOP_STATE.defaultProject
 }
 
 function readDefaultProjectDir() {
@@ -5268,7 +5269,7 @@ function fetchLinkTitle(rawUrl) {
 // the host key means Linear's docs page and Linear's MCP endpoint cost one
 // lookup between them.
 
-const FAVICON_CACHE_PATH = path.join(app.getPath('userData'), 'favicon-cache.json')
+const FAVICON_CACHE_PATH = ACCOUNT_DESKTOP_STATE.faviconCache
 const FAVICON_CACHE_LIMIT = 400
 const FAVICON_TTL_MS = 30 * 24 * 60 * 60 * 1000
 // A miss is cheap to re-check and expensive to be wrong about (a site that
@@ -5516,7 +5517,7 @@ async function writeComposerImage(buffer, ext = '.png', name = '') {
 
   const normalizedExt = rawExt.startsWith('.') ? rawExt : `.${rawExt}`
   const safeExt = /^\.[a-z0-9]{1,5}$/.test(normalizedExt) ? normalizedExt : '.png'
-  const dir = path.join(app.getPath('userData'), 'composer-images')
+  const dir = ACCOUNT_DESKTOP_STATE.composerImages
   await fs.promises.mkdir(dir, { recursive: true })
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').replace('Z', '')
   const random = crypto.randomBytes(3).toString('hex')
@@ -6183,7 +6184,7 @@ function getAppIconPath() {
 // One-time modal for plugins importing pre-decomposition module paths (see
 // electron/plugin-compat-notice.ts). The backend writes the report during plugin
 // discovery; we show each distinct report exactly once and remember the dismissal
-// in userData so the user is never nagged twice about the same set of plugins.
+// in account desktop-state; another account still receives its own notice.
 let pluginCompatNoticeShown = false
 
 async function showPluginCompatNoticeOnce() {
@@ -6198,7 +6199,7 @@ async function showPluginCompatNoticeOnce() {
   let notice
 
   try {
-    notice = pendingPluginCompatNotice(HERMES_HOME, app.getPath('userData'))
+    notice = pendingPluginCompatNotice(HERMES_HOME, ACCOUNT_RUNTIME.desktopState)
   } catch (err) {
     rememberLog(`[plugins] compat notice check failed: ${err.message}`)
 
@@ -6232,7 +6233,7 @@ async function showPluginCompatNoticeOnce() {
     }
   } finally {
     try {
-      recordPluginCompatDismissed(app.getPath('userData'), notice.key)
+      recordPluginCompatDismissed(ACCOUNT_RUNTIME.desktopState, notice.key)
     } catch (err) {
       rememberLog(`[plugins] could not persist compat notice dismissal: ${err.message}`)
     }
@@ -7394,9 +7395,9 @@ function fetchJsonViaOauthSession(url, options: any = {}) {
 const _nativeTokens = new Map<string, NativeTokenSet>()
 
 function _nativeTokenStorePath() {
-  // Co-located with the connection config under userData; one JSON file mapping
+  // Co-located with the account connection config; one JSON file mapping
   // baseUrl → { encoding, value } safeStorage payloads.
-  return path.join(app.getPath('userData'), 'native-oauth-tokens.json')
+  return ACCOUNT_DESKTOP_STATE.nativeTokens
 }
 
 // The electron-coupled half of the token store: safeStorage encryption plus the
@@ -7871,7 +7872,7 @@ async function cloudAgentSilentSignIn(dashboardUrl) {
 // Gateway exposes the toggle; flipping it re-encrypts (or decrypts) the
 // stored secrets in place.
 // ---------------------------------------------------------------------------
-const SECRET_STORAGE_POLICY_PATH = path.join(app.getPath('userData'), SECRET_STORAGE_POLICY_FILE)
+const SECRET_STORAGE_POLICY_PATH = ACCOUNT_DESKTOP_STATE.secretStoragePolicy
 
 const _secretStoragePolicyIo = {
   readText: () => fs.readFileSync(SECRET_STORAGE_POLICY_PATH, 'utf8'),
@@ -14991,7 +14992,7 @@ ipcMain.handle('hermes:window:openInTerminal', async (_event, sessionId, opts) =
     }
 
     const { cwd } = sanitizeWorkspaceCwd(opts?.cwd)
-    const scriptDir = path.join(app.getPath('userData'), 'open-in-terminal')
+    const scriptDir = ACCOUNT_DESKTOP_STATE.terminalScripts
     fs.mkdirSync(scriptDir, { recursive: true })
 
     const scriptPath = path.join(
