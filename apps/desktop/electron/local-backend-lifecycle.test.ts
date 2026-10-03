@@ -194,3 +194,31 @@ test('the quit abort sentinel is marked as an expected shutdown transition', asy
   assert.equal(isExpectedTransition(lifecycle.signal.reason), true)
   assert.equal((lifecycle.signal.reason as Error).message, 'Hermes Desktop is quitting.')
 })
+
+test('账号退出先封闭启动，等待迟到归属；超时失败后允许再次等待', async () => {
+  const lifecycle = createLocalBackendLifecycle({
+    stopChild: () => {},
+    waitForExit: async () => {},
+    cancelSetup: () => {},
+    timeoutMs: 10
+  })
+
+  let finish!: () => void
+
+  const starting = lifecycle.start(
+    () =>
+      new Promise<void>(resolve => {
+        finish = resolve
+      })
+  )
+
+  await Promise.resolve()
+  const child = lifecycle.spawn(() => ({ pid: 123 }))
+  lifecycle.seal()
+  assert.deepEqual(lifecycle.ownedChildren(), [child])
+  assert.throws(() => lifecycle.spawn(() => ({ pid: 456 })))
+  await assert.rejects(lifecycle.settleStarts(), /尚未结束/)
+  finish()
+  await starting
+  await lifecycle.settleStarts()
+})
