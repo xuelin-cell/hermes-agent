@@ -2,11 +2,12 @@ import { EventEmitter } from 'node:events'
 
 import { expect, it, vi } from 'vitest'
 
-const { handle, removeHandler, fetch, save } = vi.hoisted(() => ({
+const { handle, removeHandler, fetch, save, load } = vi.hoisted(() => ({
   handle: vi.fn(),
   removeHandler: vi.fn(),
   fetch: vi.fn(),
-  save: vi.fn()
+  save: vi.fn(),
+  load: vi.fn().mockReturnValue(null)
 }))
 
 vi.mock('electron', () => ({
@@ -16,11 +17,11 @@ vi.mock('electron', () => ({
 }))
 vi.mock('./credential-store', () => ({
   CredentialStore: vi.fn(function () {
-    return { save }
+    return { save, load }
   })
 }))
 
-import { CAPTCHA_CHANNEL, LOGIN_CHANNEL, SEND_SMS_CHANNEL } from './contract'
+import { CAPTCHA_CHANNEL, LOGIN_CHANNEL, RESTORE_CHANNEL, SEND_SMS_CHANNEL } from './contract'
 import { installLoginIpc } from './ipc'
 
 it('只接受绑定窗口主框架的固定登录页与约定参数，关闭后注销', async () => {
@@ -31,6 +32,7 @@ it('只接受绑定窗口主框架的固定登录页与约定参数，关闭后�
   const handler = handle.mock.calls[0][1]
   const send = handle.mock.calls[1][1]
   const login = handle.mock.calls[2][1]
+  const restore = handle.mock.calls[3][1]
   const input = { phone: '13800000000', captchaCode: 'abcd', captchaId: 'id' }
   const event = { sender: contents, senderFrame: frame }
 
@@ -41,6 +43,7 @@ it('只接受绑定窗口主框架的固定登录页与约定参数，关闭后�
     expect(await handler(invalid)).toEqual({ ok: false })
     expect(await send(invalid, input)).toEqual({ ok: false, error: 'invalid' })
     expect(await login(invalid, { phone: input.phone, smsCode: '123456' })).toEqual({ ok: false })
+    expect(await restore(invalid)).toEqual({ ok: false })
   }
 
   expect(await handler(event, 'https://attacker.invalid')).toEqual({ ok: false })
@@ -48,12 +51,17 @@ it('只接受绑定窗口主框架的固定登录页与约定参数，关闭后�
   expect(await send(event)).toEqual({ ok: false, error: 'invalid' })
   expect(await login(event)).toEqual({ ok: false })
   expect(await login(event, {}, 'extra')).toEqual({ ok: false })
+  expect(await restore(event, { uid: 'forged', token: 'forged' })).toEqual({ ok: false })
+  expect(load).not.toHaveBeenCalled()
   frame.url = 'file:///test/other.html'
   expect(await handler(event)).toEqual({ ok: false })
   expect(await send(event, input)).toEqual({ ok: false, error: 'invalid' })
   expect(await login(event, { phone: input.phone, smsCode: '123456' })).toEqual({ ok: false })
+  expect(await restore(event)).toEqual({ ok: false })
   expect(fetch).not.toHaveBeenCalled()
   frame.url = 'file:///test/login.html'
+  expect(await restore(event)).toEqual({ ok: false })
+  expect(load).toHaveBeenCalledTimes(1)
   fetch.mockResolvedValue(Response.json({ code: 0, data: { captchaId: 'id', b64s: 'data:image/png;base64,aGVsbG8=' } }))
   expect((await handler(event)).ok).toBe(true)
   fetch.mockResolvedValueOnce(Response.json({ code: 0 }))
@@ -62,14 +70,18 @@ it('只接受绑定窗口主框架的固定登录页与约定参数，关闭后�
   const logged = await login(event, { phone: input.phone, smsCode: '123456' })
   expect(logged.ok).toBe(true)
   expect(Object.keys(logged.account)).toEqual(['maskedPhone', 'expiresAt'])
+  expect(await restore(event)).toEqual(logged)
+  expect(load).toHaveBeenCalledTimes(1)
   expect(save).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ uid: 'id', token: 'private-token' }))
   window.isDestroyed = () => true
   expect(await handler(event)).toEqual({ ok: false })
   expect(await send(event, input)).toEqual({ ok: false, error: 'invalid' })
   expect(await login(event, {})).toEqual({ ok: false })
+  expect(await restore(event)).toEqual({ ok: false })
   expect(fetch).toHaveBeenCalledTimes(3)
   window.emit('closed')
   expect(removeHandler).toHaveBeenCalledWith(CAPTCHA_CHANNEL)
   expect(removeHandler).toHaveBeenCalledWith(SEND_SMS_CHANNEL)
   expect(removeHandler).toHaveBeenCalledWith(LOGIN_CHANNEL)
+  expect(removeHandler).toHaveBeenCalledWith(RESTORE_CHANNEL)
 })

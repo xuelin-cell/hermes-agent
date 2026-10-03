@@ -64,7 +64,7 @@ function accountFor(identity: LoginIdentity): LoginAccount {
   return { maskedPhone: identity.maskedPhone, expiresAt: identity.expiresAt }
 }
 
-/** 保存当前登录窗口的可信身份，关闭和过期后清除，重启后的恢复由后续步骤接入。 */
+/** 管理短信登录和本地记录恢复的身份，关闭和过期后清除进程内凭据。 */
 export class LoginSession {
   private identity: LoginIdentity | null = null
   private pending = false
@@ -74,7 +74,7 @@ export class LoginSession {
   /** 注入主进程网络与必要的安全存储，页面不能替换请求或跳过持久化。 */
   constructor(
     private readonly request: typeof fetch,
-    private readonly credentials: Pick<CredentialStore, 'save'>
+    private readonly credentials: Pick<CredentialStore, 'save' | 'load'>
   ) {}
 
   /** 仅供主进程读取有效身份，返回副本以避免外部改写已校验记录。 */
@@ -84,6 +84,33 @@ export class LoginSession {
     }
 
     return this.identity ? { ...this.identity } : null
+  }
+
+  /** 恢复经过存储模块校验且未到期的原账号；读取失败不改写记录。 */
+  restore(): LoginResult {
+    if (this.closed || this.pending) {
+      return { ok: false }
+    }
+
+    const current = this.currentIdentity()
+
+    if (current) {
+      return { ok: true, account: accountFor(current) }
+    }
+
+    try {
+      const saved = this.credentials.load()
+
+      if (!saved || saved.expiresAt <= Date.now()) {
+        return { ok: false }
+      }
+
+      this.identity = { uid: saved.uid, token: saved.token, expiresAt: saved.expiresAt, maskedPhone: saved.maskedPhone }
+
+      return { ok: true, account: accountFor(this.identity) }
+    } catch {
+      return { ok: false }
+    }
   }
 
   /** 阻止并发登录；全部字段合格后一次性保存身份，不保留半登录状态。 */

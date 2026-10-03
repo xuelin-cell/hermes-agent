@@ -36,7 +36,7 @@ describe('桌面登录表单', () => {
     })
 
     const sendSms = vi.fn().mockResolvedValueOnce({ ok: false, error: 'failed' })
-    window.hermesLogin = { captcha, sendSms, login: vi.fn() }
+    window.hermesLogin = { restore: vi.fn().mockResolvedValue({ ok: false }), captcha, sendSms, login: vi.fn() }
     renderLogin()
     await screen.findByRole('img')
     fireEvent.click(screen.getByRole('button', { name: '发送验证码' }))
@@ -73,9 +73,10 @@ describe('桌面登录表单', () => {
     expect((screen.getByLabelText('手机号') as HTMLInputElement).value).toBe('13800000000')
   })
 
-  it('依次显示字段错误，不把不合格输入传给登录动作', () => {
+  it('依次显示字段错误，不把不合格输入传给登录动作', async () => {
     const submit = vi.fn()
     window.hermesLogin = {
+      restore: vi.fn().mockResolvedValue({ ok: false }),
       captcha: vi
         .fn()
         .mockResolvedValue({ ok: true, captcha: { captchaId: 'id', imageDataUrl: 'data:image/png;base64,aGVsbG8=' } }),
@@ -83,6 +84,7 @@ describe('桌面登录表单', () => {
       login: submit
     }
     renderLogin()
+    await screen.findByLabelText('手机号')
     const form = screen.getByRole('button', { name: '登录' }).closest('form')!
     fireEvent.submit(form)
     expect(screen.getByRole('alert').textContent).toContain('11 位手机号')
@@ -106,6 +108,7 @@ describe('桌面登录表单', () => {
     )
 
     window.hermesLogin = {
+      restore: vi.fn().mockResolvedValue({ ok: false }),
       captcha: vi
         .fn()
         .mockResolvedValue({ ok: true, captcha: { captchaId: 'id', imageDataUrl: 'data:image/png;base64,aGVsbG8=' } }),
@@ -113,6 +116,7 @@ describe('桌面登录表单', () => {
       login: submit
     }
     renderLogin()
+    await screen.findByLabelText('手机号')
     fill()
     const button = screen.getByRole('button', { name: '登录' })
     const form = button.closest('form')!
@@ -133,7 +137,12 @@ describe('桌面登录表单', () => {
   it('点击验证码图片刷新并清空旧输入，失败后原位置可以重试', async () => {
     const imageDataUrl = 'data:image/png;base64,aGVsbG8='
     const captcha = vi.fn().mockResolvedValue({ ok: true, captcha: { captchaId: 'first', imageDataUrl } })
-    window.hermesLogin = { captcha, sendSms: vi.fn(), login: vi.fn() }
+    window.hermesLogin = {
+      restore: vi.fn().mockResolvedValue({ ok: false }),
+      captcha,
+      sendSms: vi.fn(),
+      login: vi.fn()
+    }
     renderLogin()
     const image = await screen.findByRole('img', { name: '图形验证码' })
     fill()
@@ -154,8 +163,14 @@ describe('桌面登录表单', () => {
       .fn()
       .mockResolvedValue({ ok: true, account: { maskedPhone: '138****0000', expiresAt: Date.now() + 60_000 } })
 
-    window.hermesLogin = { captcha: vi.fn().mockResolvedValue({ ok: false }), sendSms: vi.fn(), login }
+    window.hermesLogin = {
+      restore: vi.fn().mockResolvedValue({ ok: false }),
+      captcha: vi.fn().mockResolvedValue({ ok: false }),
+      sendSms: vi.fn(),
+      login
+    }
     renderLogin()
+    await act(async () => {})
     fill({ phone: '13800000000', captcha: '', sms: '123456' })
     await act(async () => fireEvent.submit(screen.getByRole('button', { name: '登录' }).closest('form')!))
     expect(screen.getByText('已登录：138****0000')).toBeTruthy()
@@ -165,5 +180,49 @@ describe('桌面登录表单', () => {
     expect((screen.getByLabelText('短信验证码') as HTMLInputElement).value).toBe('')
     expect(screen.getByText('登录已到期，请重新登录。')).toBeTruthy()
     vi.useRealTimers()
+  })
+
+  it('先等待主进程恢复，有效账号直接展示且不取图或登录；到期再显示空表单', async () => {
+    let resolve!: (result: LoginResult) => void
+
+    const restore = vi.fn(
+      () =>
+        new Promise<LoginResult>(done => {
+          resolve = done
+        })
+    )
+
+    const captcha = vi.fn().mockResolvedValue({ ok: false })
+    const login = vi.fn()
+    window.hermesLogin = { restore, captcha, sendSms: vi.fn(), login }
+    renderLogin()
+    expect(screen.queryByLabelText('手机号')).toBeNull()
+    expect(captcha).not.toHaveBeenCalled()
+    vi.useFakeTimers()
+    await act(async () =>
+      resolve({ ok: true, account: { maskedPhone: '138****0000', expiresAt: Date.now() + 60_000 } })
+    )
+    expect(screen.getByText('已登录：138****0000')).toBeTruthy()
+    expect(screen.queryByLabelText('手机号')).toBeNull()
+    expect(captcha).not.toHaveBeenCalled()
+    expect(login).not.toHaveBeenCalled()
+    act(() => vi.advanceTimersByTime(60_000))
+    expect((screen.getByLabelText('手机号') as HTMLInputElement).value).toBe('')
+    expect(screen.getByText('登录已到期，请重新登录。')).toBeTruthy()
+    expect(captcha).toHaveBeenCalledTimes(1)
+  })
+
+  it('恢复通信失败回到可用登录表单，不回显错误细节', async () => {
+    const captcha = vi.fn().mockResolvedValue({ ok: false })
+    window.hermesLogin = {
+      restore: vi.fn().mockRejectedValue(new Error('private-restore-detail')),
+      captcha,
+      sendSms: vi.fn(),
+      login: vi.fn()
+    }
+    renderLogin()
+    await screen.findByLabelText('手机号')
+    expect(screen.queryByText('private-restore-detail')).toBeNull()
+    expect(captcha).toHaveBeenCalledTimes(1)
   })
 })

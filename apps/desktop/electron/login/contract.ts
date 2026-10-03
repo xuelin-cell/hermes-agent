@@ -1,6 +1,7 @@
 export const CAPTCHA_CHANNEL = 'hermes-login:captcha'
 export const SEND_SMS_CHANNEL = 'hermes-login:send-sms'
 export const LOGIN_CHANNEL = 'hermes-login:login'
+export const RESTORE_CHANNEL = 'hermes-login:restore'
 
 export interface LoginRequest {
   phone: string
@@ -33,6 +34,8 @@ export interface LoginCaptcha {
 export type CaptchaResult = { ok: true; captcha: LoginCaptcha } | { ok: false }
 
 export interface DesktopLoginBridge {
+  /** 读取主进程保管的完整记录，仅返回未到期账号的脱敏展示信息。 */
+  restore(): Promise<LoginResult>
   /** 请求固定 MaaS 接口，不接受页面提供的地址或请求参数。 */
   captcha(): Promise<CaptchaResult>
   /** 提交短信所需字段，主进程负责校验、发送与频率限制。 */

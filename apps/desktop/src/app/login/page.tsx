@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Loader } from '@/components/ui/loader'
 import { useI18n } from '@/i18n/context'
 
 import type { LoginAccount } from '../../../electron/login/contract'
@@ -20,17 +21,52 @@ interface LoginFields {
 export function LoginPage() {
   const { t } = useI18n()
   const copy = t.desktopLogin
-  const image = useCaptcha(window.hermesLogin)
-  const sms = useSms(window.hermesLogin)
+  const bridge = window.hermesLogin
+  const [account, setAccount] = useState<LoginAccount | null>(null)
+  const [restoring, setRestoring] = useState(!!bridge)
+  const image = useCaptcha(!restoring && !account ? bridge : undefined)
+  const sms = useSms(bridge)
   const [fields, setFields] = useState<LoginFields>({ phone: '', captchaCode: '', smsCode: '' })
 
   const [error, setError] = useState<'phoneError' | 'captchaError' | 'smsError' | 'requestError' | 'expired' | null>(
     null
   )
 
-  const [account, setAccount] = useState<LoginAccount | null>(null)
   const [pending, setPending] = useState(false)
   const submitting = useRef(false)
+
+  useEffect(() => {
+    if (!bridge) {
+      return
+    }
+
+    let active = true
+
+    /** 等主进程恢复结果后再展示账号或表单，卸载后的响应不再更新页面。 */
+    async function restoreAccount(): Promise<void> {
+      try {
+        const result = await bridge!.restore()
+
+        if (active) {
+          setAccount(result.ok ? result.account : null)
+        }
+      } catch {
+        if (active) {
+          setAccount(null)
+        }
+      } finally {
+        if (active) {
+          setRestoring(false)
+        }
+      }
+    }
+
+    void restoreAccount()
+
+    return () => {
+      active = false
+    }
+  }, [bridge])
 
   useEffect(() => {
     if (!account) {
@@ -137,7 +173,9 @@ export function LoginPage() {
           </h1>
           <p className="text-sm leading-relaxed text-muted-foreground">{copy.subtitle}</p>
         </header>
-        {account ? (
+        {restoring ? (
+          <Loader className="mx-auto size-8" label={copy.title} />
+        ) : account ? (
           <div className="space-y-2 text-sm" role="status">
             <p>{copy.signedIn.replace('{account}', account.maskedPhone)}</p>
             <p className="text-muted-foreground">{copy.localPending}</p>

@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 
+import { MAAS_IDENTITY_NAMESPACE } from './credential-store'
 import { LoginSession } from './session'
 
 const input = { phone: '13800000000', smsCode: '123456' }
@@ -12,7 +13,7 @@ it('只接受完整可信字段与未来期限，UID 不丢精度，失败始终
   const payload = { uid: 'fixture-uid', token: 'private-token', expiresAt: Date.now() + 60_000 }
   const request = vi.fn<typeof fetch>()
   const save = vi.fn()
-  const session = new LoginSession(request, { save })
+  const session = new LoginSession(request, { save, load: vi.fn() })
 
   for (const invalid of [null, {}, { ...input, phone: '123' }, { ...input, smsCode: '123' }]) {
     expect(await session.login(invalid)).toEqual({ ok: false })
@@ -73,8 +74,9 @@ it('并发只消费一次验证码；有效身份复用、过期清除，关闭�
   )
 
   const save = vi.fn()
-  const session = new LoginSession(request, { save })
+  const session = new LoginSession(request, { save, load: vi.fn() })
   const pending = session.login(input)
+  expect(session.restore()).toEqual({ ok: false })
   expect(await session.login(input)).toEqual({ ok: false })
   expect(request).toHaveBeenCalledTimes(1)
   resolve(Response.json({ code: '0', data: { uid: 123, token: 'private-token', expireIn: 60 } }))
@@ -113,10 +115,74 @@ it('持久化失败不完成登录，不暴露存储错误；再次提交成功�
     throw new Error('private-storage-detail')
   })
 
-  const session = new LoginSession(request, { save })
+  const session = new LoginSession(request, { save, load: vi.fn() })
   expect(await session.login(input)).toEqual({ ok: false })
   expect(session.currentIdentity()).toBeNull()
   expect((await session.login(input)).ok).toBe(true)
   expect(save).toHaveBeenCalledTimes(2)
   expect(session.currentIdentity()?.uid).toBe(payload.uid)
+})
+
+it('恢复原 UID、token 和原期限，不发网络请求；重复读取不续期，关闭后不再恢复', () => {
+  vi.useFakeTimers()
+
+  const record = {
+    namespace: MAAS_IDENTITY_NAMESPACE,
+    uid: 'saved-uid',
+    token: 'saved-token',
+    expiresAt: Date.now() + 60_000,
+    maskedPhone: '138****0000'
+  }
+
+  const credentials = { save: vi.fn(), load: vi.fn().mockReturnValue(record) }
+  const request = vi.fn<typeof fetch>()
+  const session = new LoginSession(request, credentials)
+  expect(session.restore()).toEqual({
+    ok: true,
+    account: { maskedPhone: record.maskedPhone, expiresAt: record.expiresAt }
+  })
+  expect(session.currentIdentity()).toEqual({
+    uid: record.uid,
+    token: record.token,
+    expiresAt: record.expiresAt,
+    maskedPhone: record.maskedPhone
+  })
+  vi.advanceTimersByTime(30_000)
+  expect(session.restore()).toEqual({
+    ok: true,
+    account: { maskedPhone: record.maskedPhone, expiresAt: record.expiresAt }
+  })
+  expect(credentials.load).toHaveBeenCalledTimes(1)
+  vi.advanceTimersByTime(30_000)
+  expect(session.restore()).toEqual({ ok: false })
+  expect(session.currentIdentity()).toBeNull()
+  const calls = credentials.load.mock.calls.length
+  session.dispose()
+  expect(session.restore()).toEqual({ ok: false })
+  expect(credentials.load).toHaveBeenCalledTimes(calls)
+  expect(request).not.toHaveBeenCalled()
+  expect(credentials.save).not.toHaveBeenCalled()
+})
+
+it('无记录、解密失败和到期记录均要求重新登录，不改写存储或调用上游', () => {
+  const credentials = { save: vi.fn(), load: vi.fn() }
+  const request = vi.fn<typeof fetch>()
+  const session = new LoginSession(request, credentials)
+  credentials.load.mockReturnValueOnce(null)
+  expect(session.restore()).toEqual({ ok: false })
+  credentials.load.mockImplementationOnce(() => {
+    throw new Error('private-decryption-detail')
+  })
+  expect(session.restore()).toEqual({ ok: false })
+  credentials.load.mockReturnValueOnce({
+    namespace: MAAS_IDENTITY_NAMESPACE,
+    uid: 'uid',
+    token: 'token',
+    expiresAt: Date.now() - 1,
+    maskedPhone: '138****0000'
+  })
+  expect(session.restore()).toEqual({ ok: false })
+  expect(session.currentIdentity()).toBeNull()
+  expect(credentials.save).not.toHaveBeenCalled()
+  expect(request).not.toHaveBeenCalled()
 })

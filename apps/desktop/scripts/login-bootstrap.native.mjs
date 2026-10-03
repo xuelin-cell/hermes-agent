@@ -34,6 +34,8 @@ async function launchFixture(cancel = false, devServer, liveCaptcha = false) {
         globalThis.loginProbe = { processCalls: [], captchaRequests: [], cancelled: false }
         // 只向测试主进程提供读取探针，不暴露给 Renderer 或 preload。
         globalThis.readLoginRecord = () => new CredentialStore(app.getPath('userData')).load()
+        // 测试过期恢复时，仍用真实系统加密写入完整记录。
+        globalThis.saveLoginRecord = identity => new CredentialStore(app.getPath('userData')).save(identity)
         // 回归测试使用固定响应；只有显式启用的真实验收请求 MaaS。
         const originalFetch = net.fetch
         let smsAttempts = 0
@@ -97,14 +99,14 @@ test('真实未登录入口不启动后端、不暴露原版桥接，重复启�
   try {
     const page = await instance.firstWindow()
     await page.getByRole('heading', { name: '登录 Hermes' }).waitFor()
-    assert.equal(await page.locator('form input').count(), 3)
     await page.getByRole('img').waitFor()
+    assert.equal(await page.locator('form input').count(), 3)
     assert.equal(await page.locator('button:disabled').count(), 0)
     assert.deepEqual(await page.evaluate(() => ({
       node: typeof globalThis.require,
       bridge: typeof globalThis.hermesDesktop,
       login: Object.keys(globalThis.hermesLogin)
-    })), { node: 'undefined', bridge: 'undefined', login: ['captcha', 'sendSms', 'login'] })
+    })), { node: 'undefined', bridge: 'undefined', login: ['restore', 'captcha', 'sendSms', 'login'] })
     const state = await instance.evaluate(({ BrowserWindow, ipcMain }) => {
       const window = BrowserWindow.getAllWindows()[0]
       return {
@@ -203,8 +205,8 @@ test('真实 Electron 短信受控链路：错误可重试，成功冷却在刷�
   }
 })
 
-test('真实 Electron 登录与系统加密：保存失败不登录，退出重开可解密但不自动恢复', { timeout: 60_000 }, async () => {
-  const { instance, home, rendererRoot, root, userData, output, env } = await launchFixture()
+test('真实 Electron 登录与恢复：有效记录跨进程复用，过期或损坏保留数据并要求登录', { timeout: 60_000 }, async () => {
+  const { instance, home, rendererRoot, root, userData, oldConnection, output, env } = await launchFixture()
   const file = path.join(userData, 'maas-login.enc')
   let reopened
   try {
@@ -235,10 +237,10 @@ test('真实 Electron 登录与系统加密：保存失败不登录，退出重�
       const extra = new BrowserWindow({show:false, webPreferences:{preload, sandbox:true, contextIsolation:true, nodeIntegration:false}})
       try {
         await extra.loadURL('about:blank')
-        return await extra.webContents.executeJavaScript('window.hermesLogin.login({phone:"13800000000",smsCode:"123456"})')
+        return await extra.webContents.executeJavaScript('(async () => ({restore:await window.hermesLogin.restore(),login:await window.hermesLogin.login({phone:"13800000000",smsCode:"123456"})}))()')
       } finally { extra.destroy() }
     }, path.join(rendererRoot, 'dist', 'login-preload.js'))
-    assert.deepEqual(denied, {ok:false})
+    assert.deepEqual(denied, {restore:{ok:false},login:{ok:false}})
     const probe = await instance.evaluate(() => globalThis.loginProbe)
     assert.equal(probe.captchaRequests.filter(url => url.endsWith('/smsLogin')).length, 3)
     assert.deepEqual(probe.processCalls, [])
@@ -259,23 +261,40 @@ test('真实 Electron 登录与系统加密：保存失败不登录，退出重�
     // 同一目录、同一 Windows 用户、新 Electron 进程：使用真实系统密钥解密。
     reopened = await electron.launch({executablePath:electronPath, args:[output], env, timeout:30_000})
     const reopenedPage = await reopened.firstWindow()
-    await reopenedPage.getByRole('heading', {name:'登录 Hermes'}).waitFor()
-    assert.equal(await reopenedPage.locator('form input').count(), 3)
+    await reopenedPage.getByText('已登录：138****0000').waitFor()
+    assert.equal(await reopenedPage.locator('form input').count(), 0)
+    assert.deepEqual(await reopenedPage.evaluate(() => window.hermesLogin.restore()), result)
     assert.deepEqual(await reopened.evaluate(() => globalThis.readLoginRecord()), record)
-    assert.equal((await reopened.evaluate(() => globalThis.loginProbe.captchaRequests)).some(url => url.endsWith('/smsLogin')), false)
+    assert.deepEqual(await reopened.evaluate(() => globalThis.loginProbe.captchaRequests), [])
     assert.deepEqual(await readFile(file), encrypted)
-    // 坏密文和明文冒充记录都不能读取，读取失败不删除原文件。
+    await reopenedPage.screenshot({path:path.join(root, 'login-restored.png')})
+    // 保留原 UID 和 token，仅把记录设为过期；新进程必须显示登录表单。
+    await reopened.evaluate((_, saved) => globalThis.saveLoginRecord({...saved, expiresAt:1}), record)
+    const expired = await readFile(file)
+    await reopened.close()
+    reopened = await electron.launch({executablePath:electronPath, args:[output], env, timeout:30_000})
+    const expiredPage = await reopened.firstWindow()
+    await expiredPage.getByRole('img').waitFor()
+    assert.equal(await expiredPage.locator('form input').count(), 3)
+    assert.deepEqual(await expiredPage.evaluate(() => window.hermesLogin.restore()), {ok:false})
+    assert.deepEqual(await readFile(file), expired)
+    // 坏密文和明文冒充记录都要在全新进程中拒绝恢复，不删除原文件。
     for (const invalid of [Buffer.from('damaged-ciphertext'), Buffer.from(JSON.stringify(record))]) {
+      await reopened.close()
       await writeFile(file, invalid)
-      const rejected = await reopened.evaluate(() => {
-        try { globalThis.readLoginRecord(); return false } catch { return true }
-      })
-      assert.equal(rejected, true)
+      reopened = await electron.launch({executablePath:electronPath, args:[output], env, timeout:30_000})
+      const invalidPage = await reopened.firstWindow()
+      await invalidPage.getByRole('img').waitFor()
+      assert.equal(await invalidPage.locator('form input').count(), 3)
+      assert.deepEqual(await invalidPage.evaluate(() => window.hermesLogin.restore()), {ok:false})
       assert.deepEqual(await readFile(file), invalid)
+      assert.equal((await reopened.evaluate(() => globalThis.loginProbe.captchaRequests)).some(url => url.endsWith('/smsLogin')), false)
+      assert.deepEqual(await reopened.evaluate(() => globalThis.loginProbe.processCalls), [])
+      assert.equal(await readFile(path.join(userData, 'connection.json'), 'utf8'), oldConnection)
     }
     assert.deepEqual(await reopened.evaluate(() => globalThis.loginProbe.processCalls), [])
     await assert.rejects(access(home), {code:'ENOENT'})
-    console.log(`登录账号与跨进程加密验收目录：${root}`)
+    console.log(`登录恢复与跨进程加密验收目录：${root}`)
   } finally {
     await reopened?.close()
     await instance.close()
