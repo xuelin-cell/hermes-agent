@@ -5,6 +5,12 @@ import { introEs } from './intro-es'
 
 export const esOverrides = {
   desktopLogin: {
+    planTitle: 'Plan de MaaS',
+    planEmpty: 'No hay un plan de MaaS disponible actualmente.',
+    planError: 'No se pudo cargar el plan. Vuelve a intentarlo.',
+    planRetry: 'Reintentar',
+    planDefault: 'Predeterminado',
+    planCustom: 'Puedes seguir usando modelos personalizados.',
     signedIn: 'Sesión iniciada: {account}',
     localPending: 'Tu espacio de trabajo local se está conectando.',
     expired: 'Tu sesión ha caducado. Vuelve a iniciar sesión.',

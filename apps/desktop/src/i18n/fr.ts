@@ -5,6 +5,12 @@ import { introFr } from './intro-fr'
 
 export const frOverrides = {
   desktopLogin: {
+    planTitle: 'Forfait MaaS',
+    planEmpty: 'Aucun forfait MaaS disponible actuellement.',
+    planError: 'Impossible de charger le forfait. Réessayez.',
+    planRetry: 'Réessayer',
+    planDefault: 'Par défaut',
+    planCustom: 'Vous pouvez toujours utiliser des modèles personnalisés.',
     signedIn: 'Connecté : {account}',
     localPending: 'Votre espace de travail local est en cours de connexion.',
     expired: 'Votre session a expiré. Veuillez vous reconnecter.',

@@ -6,6 +6,8 @@ import {
   type CaptchaResult,
   LOGIN_CHANNEL,
   type LoginResult,
+  PLAN_CHANNEL,
+  type PlanResult,
   RESTORE_CHANNEL,
   SEND_SMS_CHANNEL,
   type SmsResult
@@ -57,11 +59,19 @@ export function installLoginIpc(window: BrowserWindow, expectedUrl: string): voi
 
     return session.restore()
   })
+  ipcMain.handle(PLAN_CHANNEL, (event, ...args): Promise<PlanResult> | PlanResult => {
+    if (!isTrusted(event) || args.length > 0) {
+      return { status: 'failed' }
+    }
+
+    return session.queryPlan()
+  })
   window.once('closed', () => {
     session.dispose()
     ipcMain.removeHandler(CAPTCHA_CHANNEL)
     ipcMain.removeHandler(SEND_SMS_CHANNEL)
     ipcMain.removeHandler(LOGIN_CHANNEL)
     ipcMain.removeHandler(RESTORE_CHANNEL)
+    ipcMain.removeHandler(PLAN_CHANNEL)
   })
 }

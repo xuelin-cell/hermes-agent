@@ -36,7 +36,13 @@ describe('桌面登录表单', () => {
     })
 
     const sendSms = vi.fn().mockResolvedValueOnce({ ok: false, error: 'failed' })
-    window.hermesLogin = { restore: vi.fn().mockResolvedValue({ ok: false }), captcha, sendSms, login: vi.fn() }
+    window.hermesLogin = {
+      restore: vi.fn().mockResolvedValue({ ok: false }),
+      plan: vi.fn().mockResolvedValue({ status: 'empty' }),
+      captcha,
+      sendSms,
+      login: vi.fn()
+    }
     renderLogin()
     await screen.findByRole('img')
     fireEvent.click(screen.getByRole('button', { name: '发送验证码' }))
@@ -77,6 +83,7 @@ describe('桌面登录表单', () => {
     const submit = vi.fn()
     window.hermesLogin = {
       restore: vi.fn().mockResolvedValue({ ok: false }),
+      plan: vi.fn().mockResolvedValue({ status: 'empty' }),
       captcha: vi
         .fn()
         .mockResolvedValue({ ok: true, captcha: { captchaId: 'id', imageDataUrl: 'data:image/png;base64,aGVsbG8=' } }),
@@ -109,6 +116,7 @@ describe('桌面登录表单', () => {
 
     window.hermesLogin = {
       restore: vi.fn().mockResolvedValue({ ok: false }),
+      plan: vi.fn().mockResolvedValue({ status: 'empty' }),
       captcha: vi
         .fn()
         .mockResolvedValue({ ok: true, captcha: { captchaId: 'id', imageDataUrl: 'data:image/png;base64,aGVsbG8=' } }),
@@ -139,6 +147,7 @@ describe('桌面登录表单', () => {
     const captcha = vi.fn().mockResolvedValue({ ok: true, captcha: { captchaId: 'first', imageDataUrl } })
     window.hermesLogin = {
       restore: vi.fn().mockResolvedValue({ ok: false }),
+      plan: vi.fn().mockResolvedValue({ status: 'empty' }),
       captcha,
       sendSms: vi.fn(),
       login: vi.fn()
@@ -165,6 +174,7 @@ describe('桌面登录表单', () => {
 
     window.hermesLogin = {
       restore: vi.fn().mockResolvedValue({ ok: false }),
+      plan: vi.fn().mockResolvedValue({ status: 'empty' }),
       captcha: vi.fn().mockResolvedValue({ ok: false }),
       sendSms: vi.fn(),
       login
@@ -194,7 +204,13 @@ describe('桌面登录表单', () => {
 
     const captcha = vi.fn().mockResolvedValue({ ok: false })
     const login = vi.fn()
-    window.hermesLogin = { restore, captcha, sendSms: vi.fn(), login }
+    window.hermesLogin = {
+      restore,
+      plan: vi.fn().mockResolvedValue({ status: 'empty' }),
+      captcha,
+      sendSms: vi.fn(),
+      login
+    }
     renderLogin()
     expect(screen.queryByLabelText('手机号')).toBeNull()
     expect(captcha).not.toHaveBeenCalled()
@@ -216,6 +232,7 @@ describe('桌面登录表单', () => {
     const captcha = vi.fn().mockResolvedValue({ ok: false })
     window.hermesLogin = {
       restore: vi.fn().mockRejectedValue(new Error('private-restore-detail')),
+      plan: vi.fn().mockResolvedValue({ status: 'empty' }),
       captcha,
       sendSms: vi.fn(),
       login: vi.fn()

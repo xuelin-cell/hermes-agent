@@ -5,6 +5,12 @@ import { introZh } from './intro-zh'
 
 export const zh = defineLocale({
   desktopLogin: {
+    planTitle: 'MaaS 套餐',
+    planEmpty: '当前没有 MaaS 套餐。',
+    planError: '套餐查询失败，请重试。',
+    planRetry: '重试',
+    planDefault: '默认',
+    planCustom: '仍可使用自定义模型。',
     signedIn: '已登录：{account}',
     localPending: '本地工作空间正在接入。',
     expired: '登录已到期，请重新登录。',

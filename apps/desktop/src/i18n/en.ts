@@ -4,6 +4,12 @@ import type { Translations } from './types'
 
 export const en: Translations = {
   desktopLogin: {
+    planTitle: 'MaaS plan',
+    planEmpty: 'No MaaS plan is currently available.',
+    planError: 'Could not load your plan. Please retry.',
+    planRetry: 'Retry',
+    planDefault: 'Default',
+    planCustom: 'You can still use custom models.',
     signedIn: 'Signed in: {account}',
     localPending: 'Your local workspace is being connected.',
     expired: 'Your sign-in has expired. Please sign in again.',

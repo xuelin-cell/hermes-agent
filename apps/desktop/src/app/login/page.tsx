@@ -8,6 +8,7 @@ import { useI18n } from '@/i18n/context'
 import type { LoginAccount } from '../../../electron/login/contract'
 import { PAGE_INSET_X } from '../layout-constants'
 
+import { PlanStatus } from './plan-status'
 import { useCaptcha } from './use-captcha'
 import { useSms } from './use-sms'
 
@@ -179,6 +180,7 @@ export function LoginPage() {
           <div className="space-y-2 text-sm" role="status">
             <p>{copy.signedIn.replace('{account}', account.maskedPhone)}</p>
             <p className="text-muted-foreground">{copy.localPending}</p>
+            <PlanStatus bridge={bridge!} />
           </div>
         ) : (
           <form

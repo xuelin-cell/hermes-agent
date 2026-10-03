@@ -12,7 +12,7 @@ import { prepareLoginRenderer, startLoginDevServer } from './login-renderer.fixt
 const desktop = path.resolve(import.meta.dirname, '..')
 
 /** 构建真实入口和只供测试使用的观察层，所有数据写入独立临时目录。 */
-async function launchFixture(cancel = false, devServer, liveCaptcha = false) {
+async function launchFixture(cancel = false, devServer, liveCaptcha = false, planScenario = false) {
   const rendererRoot = await prepareLoginRenderer()
   const root = await mkdtemp(path.join(os.tmpdir(), 'hermes-mt-login-'))
   const userData = path.join(root, 'desktop-state')
@@ -31,7 +31,7 @@ async function launchFixture(cancel = false, devServer, liveCaptcha = false) {
         import { app, net } from 'electron'
         import { CredentialStore } from './electron/login/credential-store.ts'
         app.setAppPath(${JSON.stringify(rendererRoot)})
-        globalThis.loginProbe = { processCalls: [], captchaRequests: [], cancelled: false }
+        globalThis.loginProbe = { processCalls: [], captchaRequests: [], planAuthorizations: [], cancelled: false }
         // 只向测试主进程提供读取探针，不暴露给 Renderer 或 preload。
         globalThis.readLoginRecord = () => new CredentialStore(app.getPath('userData')).load()
         // 测试过期恢复时，仍用真实系统加密写入完整记录。
@@ -40,8 +40,21 @@ async function launchFixture(cancel = false, devServer, liveCaptcha = false) {
         const originalFetch = net.fetch
         let smsAttempts = 0
         let loginAttempts = 0
+        let planAttempts = 0
         net.fetch = (...args) => {
           globalThis.loginProbe.captchaRequests.push(args[0])
+          // 套餐只用当前测试账号；失败、有套餐和空套餐均不调用真实上游。
+          if (String(args[0]).endsWith('/my-plan')) {
+            globalThis.loginProbe.planAuthorizations.push(args[1]?.headers?.Authorization)
+            const attempt = ++planAttempts
+            const response = ${planScenario} && attempt === 1 ? new Response('fixture-private-plan-error', {status:503}) :
+              ${planScenario} && attempt >= 3 ? Response.json({apiKey:null, models:null}) :
+              Response.json({apiKey:'fixture-private-model-key', models:JSON.stringify({main_model_id:'b', models:[
+                {id:'a', model:'fixture-plan-model', base_url:'https://models.invalid/TokenPlan/a'},
+                {id:'b', model:'fixture-plan-default', base_url:'https://models.invalid/TokenPlan/b/v1'}
+              ]})})
+            return new Promise(resolve => setTimeout(() => resolve(response), 200))
+          }
           // 短信始终使用受控响应，测试不能给真实手机发码。
           if (String(args[0]).endsWith('/sendCode')) {
             const code = ++smsAttempts === 1 ? 9 : 0
@@ -106,7 +119,7 @@ test('真实未登录入口不启动后端、不暴露原版桥接，重复启�
       node: typeof globalThis.require,
       bridge: typeof globalThis.hermesDesktop,
       login: Object.keys(globalThis.hermesLogin)
-    })), { node: 'undefined', bridge: 'undefined', login: ['restore', 'captcha', 'sendSms', 'login'] })
+    })), { node: 'undefined', bridge: 'undefined', login: ['restore', 'plan', 'captcha', 'sendSms', 'login'] })
     const state = await instance.evaluate(({ BrowserWindow, ipcMain }) => {
       const window = BrowserWindow.getAllWindows()[0]
       return {
@@ -227,9 +240,10 @@ test('真实 Electron 登录与恢复：有效记录跨进程复用，过期或�
     await rmdir(`${file}.tmp`)
     await page.getByRole('button', { name: '登录', exact: true }).click()
     await page.getByText('已登录：138****0000').waitFor()
+    await page.getByText('fixture-plan-model', {exact:true}).waitFor()
     assert.equal(await page.locator('form input').count(), 0)
     const visible = await page.evaluate(() => document.body.textContent + JSON.stringify({...localStorage}))
-    for (const secret of ['fixture-private-token', 'fixture-private-uid', '13800000000', '123456']) assert.equal(visible.includes(secret), false)
+    for (const secret of ['fixture-private-token', 'fixture-private-model-key', 'fixture-private-uid', '13800000000', '123456']) assert.equal(visible.includes(secret), false)
     const result = await page.evaluate(() => window.hermesLogin.login({phone:'13800000000', smsCode:'123456'}))
     assert.equal(result.ok, true)
     assert.deepEqual(Object.keys(result.account), ['maskedPhone', 'expiresAt'])
@@ -237,10 +251,10 @@ test('真实 Electron 登录与恢复：有效记录跨进程复用，过期或�
       const extra = new BrowserWindow({show:false, webPreferences:{preload, sandbox:true, contextIsolation:true, nodeIntegration:false}})
       try {
         await extra.loadURL('about:blank')
-        return await extra.webContents.executeJavaScript('(async () => ({restore:await window.hermesLogin.restore(),login:await window.hermesLogin.login({phone:"13800000000",smsCode:"123456"})}))()')
+        return await extra.webContents.executeJavaScript('(async () => ({restore:await window.hermesLogin.restore(),plan:await window.hermesLogin.plan(),login:await window.hermesLogin.login({phone:"13800000000",smsCode:"123456"})}))()')
       } finally { extra.destroy() }
     }, path.join(rendererRoot, 'dist', 'login-preload.js'))
-    assert.deepEqual(denied, {restore:{ok:false},login:{ok:false}})
+    assert.deepEqual(denied, {restore:{ok:false},plan:{status:'failed'},login:{ok:false}})
     const probe = await instance.evaluate(() => globalThis.loginProbe)
     assert.equal(probe.captchaRequests.filter(url => url.endsWith('/smsLogin')).length, 3)
     assert.deepEqual(probe.processCalls, [])
@@ -262,10 +276,12 @@ test('真实 Electron 登录与恢复：有效记录跨进程复用，过期或�
     reopened = await electron.launch({executablePath:electronPath, args:[output], env, timeout:30_000})
     const reopenedPage = await reopened.firstWindow()
     await reopenedPage.getByText('已登录：138****0000').waitFor()
+    await reopenedPage.getByText('fixture-plan-model', {exact:true}).waitFor()
     assert.equal(await reopenedPage.locator('form input').count(), 0)
     assert.deepEqual(await reopenedPage.evaluate(() => window.hermesLogin.restore()), result)
     assert.deepEqual(await reopened.evaluate(() => globalThis.readLoginRecord()), record)
-    assert.deepEqual(await reopened.evaluate(() => globalThis.loginProbe.captchaRequests), [])
+    // 身份恢复本身不联网；P10 在恢复成功后独立查询一次套餐。
+    assert.deepEqual(await reopened.evaluate(() => globalThis.loginProbe.captchaRequests), ['https://maas.ai-yuanjing.com/app/gateway/uniwork/my-plan'])
     assert.deepEqual(await readFile(file), encrypted)
     await reopenedPage.screenshot({path:path.join(root, 'login-restored.png')})
     // 保留原 UID 和 token，仅把记录设为过期；新进程必须显示登录表单。
@@ -299,6 +315,47 @@ test('真实 Electron 登录与恢复：有效记录跨进程复用，过期或�
     await reopened?.close()
     await instance.close()
   }
+})
+
+test('真实 Electron 套餐链路：登录后查询失败可重试，刷新遇到空套餐仍保留身份与数据', {timeout:60_000}, async () => {
+  const { instance, root, userData, home, oldConnection } = await launchFixture(false, undefined, false, true)
+  try {
+    const page = await instance.firstWindow()
+    await page.getByRole('img').waitFor()
+    assert.deepEqual(await page.evaluate(() => window.hermesLogin.plan()), {status:'failed'})
+    assert.deepEqual(await instance.evaluate(() => globalThis.loginProbe.planAuthorizations), [])
+    await page.locator('#login-phone').fill('13800000000')
+    await page.locator('#login-sms').fill('123456')
+    await page.getByRole('button', {name:'登录', exact:true}).click()
+    await page.getByText('登录失败，请重试。').waitFor()
+    await page.getByRole('button', {name:'登录', exact:true}).click()
+    await page.getByText('套餐查询失败，请重试。').waitFor()
+    await page.getByText('已登录：138****0000').waitFor()
+    const record = await readFile(path.join(userData, 'maas-login.enc'))
+    await page.getByRole('button', {name:'重试', exact:true}).click()
+    await page.getByText('fixture-plan-model', {exact:true}).waitFor()
+    await page.getByText('fixture-plan-default (默认)', {exact:true}).waitFor()
+    await instance.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(400, 520))
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true)
+    const visible = await page.evaluate(() => document.body.textContent + JSON.stringify({...localStorage}))
+    for (const secret of ['fixture-private-model-key', 'fixture-private-token', 'fixture-private-plan-error', 'https://models.invalid']) assert.equal(visible.includes(secret), false)
+    await page.screenshot({path:path.join(root, 'plan-available.png')})
+    await page.reload()
+    await page.getByText('当前没有 MaaS 套餐。').waitFor()
+    await page.getByText('仍可使用自定义模型。').waitFor()
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true)
+    assert.deepEqual(await page.evaluate(() => window.hermesLogin.restore()), {
+      ok:true, account:{maskedPhone:'138****0000', expiresAt:(await instance.evaluate(() => globalThis.readLoginRecord())).expiresAt}
+    })
+    assert.equal(await page.locator('form input').count(), 0)
+    assert.deepEqual(await instance.evaluate(() => globalThis.loginProbe.planAuthorizations), Array(3).fill('Bearer fixture-private-token'))
+    assert.deepEqual(await readFile(path.join(userData, 'maas-login.enc')), record)
+    assert.equal(await readFile(path.join(userData, 'connection.json'), 'utf8'), oldConnection)
+    assert.deepEqual(await instance.evaluate(() => globalThis.loginProbe.processCalls), [])
+    await assert.rejects(access(home), {code:'ENOENT'})
+    await page.screenshot({path:path.join(root, 'plan-empty.png')})
+    console.log(`套餐查询真实链路验收目录：${root}`)
+  } finally { await instance.close() }
 })
 
 test('真实 MaaS 图片在登录窗口展示并可刷新，其他窗口与子框架无权请求', {

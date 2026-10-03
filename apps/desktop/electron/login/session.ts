@@ -1,5 +1,6 @@
-import type { LoginAccount, LoginResult } from './contract'
+import type { LoginAccount, LoginResult, PlanResult } from './contract'
 import type { CredentialStore } from './credential-store'
+import { fetchPlan, type MaasPlan } from './plan'
 
 export interface LoginIdentity {
   uid: string
@@ -67,6 +68,8 @@ function accountFor(identity: LoginIdentity): LoginAccount {
 /** 管理短信登录和本地记录恢复的身份，关闭和过期后清除进程内凭据。 */
 export class LoginSession {
   private identity: LoginIdentity | null = null
+  private plan: MaasPlan | null = null
+  private planQuery: Promise<PlanResult> | null = null
   private pending = false
   private closed = false
   private readonly cancellation = new AbortController()
@@ -81,6 +84,7 @@ export class LoginSession {
   currentIdentity(): LoginIdentity | null {
     if (this.closed || !this.identity || this.identity.expiresAt <= Date.now()) {
       this.identity = null
+      this.plan = null
     }
 
     return this.identity ? { ...this.identity } : null
@@ -111,6 +115,51 @@ export class LoginSession {
     } catch {
       return { ok: false }
     }
+  }
+
+  /** 套餐与身份分开；合并并发请求，关闭或到期后的结果不能保留凭据。 */
+  queryPlan(): Promise<PlanResult> {
+    const identity = this.currentIdentity()
+
+    if (!identity) {
+      return Promise.resolve({ status: 'failed' })
+    }
+
+    if (this.planQuery) {
+      return this.planQuery
+    }
+
+    this.planQuery = fetchPlan(this.request, identity.token, this.cancellation.signal)
+      .then((result): PlanResult => {
+        const current = this.currentIdentity()
+
+        if (!current || current.uid !== identity.uid || current.token !== identity.token) {
+          return { status: 'failed' }
+        }
+
+        if (result.status !== 'available') {
+          if (result.status === 'empty') {
+            this.plan = null
+          }
+
+          return { status: result.status }
+        }
+
+        this.plan = result.plan
+
+        return {
+          status: 'available',
+          models: this.plan.models.map((model, index) => ({
+            name: model.name,
+            isDefault: index === this.plan!.mainModelIndex
+          }))
+        }
+      })
+      .finally(() => {
+        this.planQuery = null
+      })
+
+    return this.planQuery
   }
 
   /** 阻止并发登录；全部字段合格后一次性保存身份，不保留半登录状态。 */
@@ -171,6 +220,7 @@ export class LoginSession {
   dispose(): void {
     this.closed = true
     this.identity = null
+    this.plan = null
     this.cancellation.abort()
   }
 }

@@ -25,6 +25,12 @@ const RU_NOUN = (count: number | string, one: string, few: string, many: string)
 
 export const ru = defineLocale({
   desktopLogin: {
+    planTitle: 'Тариф MaaS',
+    planEmpty: 'Сейчас тариф MaaS недоступен.',
+    planError: 'Не удалось загрузить тариф. Повторите попытку.',
+    planRetry: 'Повторить',
+    planDefault: 'По умолчанию',
+    planCustom: 'Можно по-прежнему использовать собственные модели.',
     signedIn: 'Вход выполнен: {account}',
     localPending: 'Подключение локального рабочего пространства пока недоступно.',
     expired: 'Срок входа истёк. Войдите снова.',

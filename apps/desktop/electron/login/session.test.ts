@@ -186,3 +186,85 @@ it('无记录、解密失败和到期记录均要求重新登录，不改写存�
   expect(credentials.save).not.toHaveBeenCalled()
   expect(request).not.toHaveBeenCalled()
 })
+
+it('套餐查询必须先有身份；有套餐、失败和空套餐不改变原身份，返回值不带模型 Key', async () => {
+  const record = {
+    namespace: MAAS_IDENTITY_NAMESPACE,
+    uid: 'uid',
+    token: 'login-token',
+    expiresAt: Date.now() + 60_000,
+    maskedPhone: '138****0000'
+  }
+
+  const credentials = { save: vi.fn(), load: vi.fn().mockReturnValue(record) }
+  const request = vi.fn<typeof fetch>()
+  const session = new LoginSession(request, credentials)
+  expect(await session.queryPlan()).toEqual({ status: 'failed' })
+  expect(request).not.toHaveBeenCalled()
+  expect(credentials.load).not.toHaveBeenCalled()
+  session.restore()
+  const identity = session.currentIdentity()
+  request.mockResolvedValueOnce(
+    Response.json({
+      apiKey: 'private-key',
+      models: { models: [{ id: 'm', model: 'model', base_url: 'https://models.invalid/TokenPlan' }] }
+    })
+  )
+  expect(await session.queryPlan()).toEqual({ status: 'available', models: [{ name: 'model', isDefault: true }] })
+  request.mockResolvedValueOnce(new Response('private-error', { status: 401 }))
+  expect(await session.queryPlan()).toEqual({ status: 'failed' })
+  expect(session.currentIdentity()).toEqual(identity)
+  request.mockResolvedValueOnce(Response.json({ apiKey: null, models: null }))
+  expect(await session.queryPlan()).toEqual({ status: 'empty' })
+  expect(session.currentIdentity()).toEqual(identity)
+  expect(credentials.save).not.toHaveBeenCalled()
+})
+
+it('并发套餐合并请求；到期或关闭后的迟到响应不能恢复身份或泄露套餐', async () => {
+  vi.useFakeTimers()
+
+  const record = {
+    namespace: MAAS_IDENTITY_NAMESPACE,
+    uid: 'uid',
+    token: 'token',
+    expiresAt: Date.now() + 60_000,
+    maskedPhone: '138****0000'
+  }
+
+  let resolve!: (response: Response) => void
+
+  const request = vi.fn<typeof fetch>().mockImplementation(
+    () =>
+      new Promise(done => {
+        resolve = done
+      })
+  )
+
+  const credentials = { save: vi.fn(), load: vi.fn().mockReturnValue(record) }
+  const session = new LoginSession(request, credentials)
+  session.restore()
+  const pending = session.queryPlan()
+  expect(session.queryPlan()).toBe(pending)
+  expect(request).toHaveBeenCalledTimes(1)
+  vi.advanceTimersByTime(60_000)
+  resolve(
+    Response.json({ apiKey: 'key', models: { models: [{ model: 'late-model', base_url: 'https://models.invalid' }] } })
+  )
+  expect(await pending).toEqual({ status: 'failed' })
+  expect(session.currentIdentity()).toBeNull()
+  expect(await session.queryPlan()).toEqual({ status: 'failed' })
+  expect(request).toHaveBeenCalledTimes(1)
+
+  const second = new LoginSession(request, {
+    save: vi.fn(),
+    load: vi.fn().mockReturnValue({ ...record, expiresAt: Date.now() + 60_000 })
+  })
+
+  second.restore()
+  const closing = second.queryPlan()
+  second.dispose()
+  expect(request.mock.calls[1][1]!.signal!.aborted).toBe(true)
+  resolve(Response.json({ apiKey: null, models: null }))
+  expect(await closing).toEqual({ status: 'failed' })
+  expect(second.currentIdentity()).toBeNull()
+})

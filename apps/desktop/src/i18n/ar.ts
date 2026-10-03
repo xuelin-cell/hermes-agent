@@ -2,6 +2,12 @@ import { defineLocale } from './define-locale'
 
 export const ar = defineLocale({
   desktopLogin: {
+    planTitle: 'خطة MaaS',
+    planEmpty: 'لا تتوفر خطة MaaS حاليًا.',
+    planError: 'تعذر تحميل الخطة. حاول مجددًا.',
+    planRetry: 'إعادة المحاولة',
+    planDefault: 'الافتراضي',
+    planCustom: 'لا يزال بإمكانك استخدام نماذج مخصصة.',
     signedIn: 'تم تسجيل الدخول: {account}',
     localPending: 'يجري إعداد مساحة العمل المحلية.',
     expired: 'انتهت صلاحية تسجيل الدخول. سجّل الدخول مجددًا.',

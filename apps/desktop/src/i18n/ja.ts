@@ -5,6 +5,12 @@ import { introJa } from './intro-ja'
 
 export const ja = defineLocale({
   desktopLogin: {
+    planTitle: 'MaaS プラン',
+    planEmpty: '現在、MaaS プランはありません。',
+    planError: 'プランを取得できませんでした。再試行してください。',
+    planRetry: '再試行',
+    planDefault: '既定',
+    planCustom: 'カスタムモデルは引き続き使用できます。',
     signedIn: 'ログイン済み：{account}',
     localPending: 'ローカルワークスペースを接続する機能を準備中です。',
     expired: 'ログインの有効期限が切れました。再度ログインしてください。',

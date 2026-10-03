@@ -60,6 +60,12 @@ interface AuxTaskCopy {
 
 export interface Translations {
   desktopLogin: {
+    planTitle: string
+    planEmpty: string
+    planError: string
+    planRetry: string
+    planDefault: string
+    planCustom: string
     signedIn: string
     localPending: string
     expired: string

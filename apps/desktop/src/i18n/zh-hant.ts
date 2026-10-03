@@ -5,6 +5,12 @@ import { introZhHant } from './intro-zh-hant'
 
 export const zhHant = defineLocale({
   desktopLogin: {
+    planTitle: 'MaaS 套餐',
+    planEmpty: '目前沒有 MaaS 套餐。',
+    planError: '套餐查詢失敗，請重試。',
+    planRetry: '重試',
+    planDefault: '預設',
+    planCustom: '仍可使用自訂模型。',
     signedIn: '已登入：{account}',
     localPending: '本機工作空間正在接入。',
     expired: '登入已到期，請重新登入。',
