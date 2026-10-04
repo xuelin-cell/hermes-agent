@@ -7,7 +7,7 @@ export const zh = defineLocale({
   desktopLogin: {
     logout: '退出',
     logoutTitle: '退出当前账号？',
-    logoutDescription: '将停止当前账号的桌面后端和消息网关并返回登录页，历史和文件保留。其余独立任务尚未全部接入退出流程。',
+    logoutDescription: '将停止当前账号的本地后端、消息网关及其托管工作，并返回登录页。历史、文件和定时任务定义保留。',
     logoutBusy: '正在退出…',
     planTitle: 'MaaS 套餐',
     planEmpty: '当前没有 MaaS 套餐。',

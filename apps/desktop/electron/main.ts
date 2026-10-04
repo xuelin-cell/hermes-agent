@@ -226,6 +226,7 @@ import { createAccountLogout } from './entry_local/logout'
 import {
   confirmLogoutChildExit,
   listLogoutProcesses,
+  type LogoutProcess,
   logoutProcessTree,
   stopLogoutProcesses
 } from './entry_local/logout-processes'
@@ -453,7 +454,7 @@ import {
 } from './profile-session-routing'
 import { createQuickEntryShortcut, quickEntryWindowBounds, sanitizeQuickEntrySettings } from './quick-entry'
 import { createQuitFinalization } from './quit-finalization'
-import { type ActiveWork, backendOwnedByApp, mergeActiveWork, normalizeActiveWork, quitPromptFor } from './quit-guard'
+import { type ActiveWork, mergeActiveWork, normalizeActiveWork } from './quit-guard'
 import {
   backendQuitNeedsWait,
   backendTeardownOptions,
@@ -11978,6 +11979,8 @@ let logoutWindow: BrowserWindow | null = null
 let logoutComplete = false
 let logoutChildren: ChildProcess[] = []
 let logoutGateways: AccountGateway[] = []
+let logoutTerminals: number[] = []
+let logoutOrdinary: LogoutProcess[] | null = null
 
 const accountLogout = createAccountLogout({
   userData: app.getPath('userData'),
@@ -11987,27 +11990,31 @@ const accountLogout = createAccountLogout({
     primaryRecoverySuppressed = true
     logoutChildren = localBackendLifecycle.ownedChildren()
     localBackendLifecycle.seal()
-    logoutWindow = openLogoutWindow()
+    logoutTerminals = terminalIpc.seal()
   },
   snapshot: async () => {
     // 先同步保存普通后端子树，避免异步检查期间窗口收尾已结束父进程。
-    const ordinary = logoutProcessTree(
-      listLogoutProcesses(),
-      logoutChildren
+    logoutOrdinary ??= logoutProcessTree(listLogoutProcesses(), [
+      ...logoutTerminals,
+      ...logoutChildren
         .filter(child => child.exitCode === null && child.signalCode === null && child.pid)
         .map(child => child.pid!)
-    )
+    ])
+
+    // 必须先取证：销毁页面会关闭 PTY，随后再找子树会漏掉已脱离的工具。
+    logoutWindow ??= openLogoutWindow()
 
     logoutGateways = await accountGatewayLogout(ACCOUNT_RUNTIME, 'snapshot')
     const processes = listLogoutProcesses()
     const gateways = logoutProcessTree(processes, gatewayLogoutRoots(logoutGateways, processes))
 
-    return [...new Map([...ordinary, ...gateways].map(row => [`${row.pid}:${row.started}`, row])).values()]
+    return [...new Map([...logoutOrdinary, ...gateways].map(row => [`${row.pid}:${row.started}`, row])).values()]
   },
   stop: async owned => {
     await accountGatewayLogout(ACCOUNT_RUNTIME, 'stop', logoutGateways)
     // 网关独立退出后仍验证原始整棵子树，覆盖提前脱离父进程的工具。
     stopLogoutProcesses(owned)
+    terminalIpc.disposeAllTerminalSessions()
     await Promise.all(logoutChildren.map(confirmLogoutChildExit))
     await localBackendLifecycle.settleStarts()
     await localBackendLifecycle.shutdown()
@@ -12029,23 +12036,29 @@ const accountLogout = createAccountLogout({
       }
     }
   },
-  relaunch: async () => {
+  finish: async mode => {
     logoutComplete = true
     quitConfirmedWithActiveWork = true
     logoutWindow?.removeAllListeners('close')
-    await relaunchDesktop()
+
+    if (mode === 'logout') {
+      await relaunchDesktop()
+    } else {
+      app.quit()
+    }
   }
 })
 
 /** 退出失败只重试同一账号的停止事务，不恢复原页面或允许换账号。 */
-async function logoutDesktopAccount(): Promise<void> {
+async function logoutDesktopAccount(mode: 'logout' | 'quit' = 'logout'): Promise<void> {
   try {
-    await accountLogout.run()
+    await accountLogout.run(mode)
   } catch {
-    if (!logoutWindow) {
+    if (!accountLogout.started()) {
       throw new Error('无法开始安全退出，请重试。')
     }
 
+    logoutWindow ??= openLogoutWindow()
     await retryLogout(logoutWindow, () => accountLogout.run())
   }
 }
@@ -14493,6 +14506,13 @@ function createWindow() {
   })
 
   minimizeToTray.registerWindow(createdMainWindow, { closeToTray: true })
+  // 托盘已接管则继续运行；普通关窗先确认并取证，不能先销毁终端页面。
+  createdMainWindow.on('close', event => {
+    if (!event.defaultPrevented && !logoutComplete && !isQuittingForHandoff) {
+      event.preventDefault()
+      app.quit()
+    }
+  })
   const defaultRoute = desktopProfilePreferences.getDefault()
 
   if (defaultRoute) {
@@ -18556,40 +18576,7 @@ function configureSpellChecker() {
   }
 }
 
-// Does quitting take the agent down with the app? Reads the primary profile's
-// route through the same resolver resolveRemoteBackend uses, plus every backend
-// the quit teardown below will stop (spawned children, SSH-managed servers).
-// A route we can't resolve counts as owned: the lost-work warning is the safe
-// side to be wrong on.
-function quitStopsBackendWork(): boolean {
-  let primaryRouteKind: 'cloud' | 'remote' | 'ssh' | null
-
-  try {
-    primaryRouteKind =
-      resolveDesktopRemoteRoute({
-        config: readDesktopConnectionConfig(),
-        env: {
-          token: process.env.HERMES_DESKTOP_REMOTE_TOKEN,
-          url: process.env.HERMES_DESKTOP_REMOTE_URL
-        },
-        profile: primaryProfileKey(),
-        registry: readDesktopConnectionsRegistry()
-      })?.kind ?? null
-  } catch {
-    return true
-  }
-
-  const ownedBackendCount =
-    (backendConnectionState.getProcess() ? 1 : 0) +
-    [...backendPool.values()].filter(entry => entry?.process).length +
-    sshConnections.size
-
-  return backendOwnedByApp({ ownedBackendCount, primaryRouteKind })
-}
-
-// Ask before a quit kills a turn in flight. True when the quit was intercepted
-// and the confirmation is on screen; the confirm button re-enters before-quit with
-// the latch set and falls straight through to the teardown below.
+/** 退出应用统一确认，不因界面是否报告运行中任务而改变提示。 */
 function heldQuitForActiveWork(event: Electron.Event): boolean {
   if (SKIP_QUIT_CONFIRM || quitConfirmedWithActiveWork || isQuittingForHandoff) {
     return false
@@ -18601,14 +18588,14 @@ function heldQuitForActiveWork(event: Electron.Event): boolean {
     return true
   }
 
-  const prompt = quitPromptFor(
-    mergeActiveWork(activeWorkByWebContents.values()),
-    isQuittingForHandoff,
-    quitStopsBackendWork()
-  )
+  const prompt = {
+    buttons: ['取消', '退出应用'],
+    message: '退出 Hermes Desktop MT？',
+    detail: '将停止当前账号的托管工作，保留登录、历史和文件。再次打开时恢复未到期的登录。'
+  }
 
-  // A tray quit with live work still needs the ordinary visible confirmation.
-  if (prompt && minimizeToTray.status().available) {
+  // 托盘退出也显示同一确认；取消后仍能使用原账号。
+  if (minimizeToTray.status().available) {
     minimizeToTray.restore()
   }
 
@@ -18616,22 +18603,19 @@ function heldQuitForActiveWork(event: Electron.Event): boolean {
   // be invisible and the held quit unanswerable (#116376 §E).
   const parent = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows().find(window => window.isVisible())
 
-  if (!prompt || !parent || parent.isDestroyed()) {
-    return false
-  }
-
   event.preventDefault()
   quitPromptOpen = true
 
-  void dialog
-    .showMessageBox(parent, {
-      buttons: [...prompt.buttons],
-      cancelId: 0,
-      defaultId: 0,
-      detail: prompt.detail,
-      message: prompt.message,
-      type: 'question'
-    })
+  const options: Electron.MessageBoxOptions = {
+    buttons: [...prompt.buttons],
+    cancelId: 0,
+    defaultId: 0,
+    detail: prompt.detail,
+    message: prompt.message,
+    type: 'question'
+  }
+
+  void (parent && !parent.isDestroyed() ? dialog.showMessageBox(parent, options) : dialog.showMessageBox(options))
     .then(({ response }) => {
       quitPromptOpen = false
 
@@ -18641,10 +18625,8 @@ function heldQuitForActiveWork(event: Electron.Event): boolean {
       }
     })
     .catch(() => {
-      // A dialog we can't show must not become a quit we can't perform.
+      // 未取得确认时保持运行，不把对话框错误当作用户同意。
       quitPromptOpen = false
-      quitConfirmedWithActiveWork = true
-      app.quit()
     })
 
   return true
@@ -18660,6 +18642,16 @@ app.on('before-quit', event => {
   // Runs ahead of every teardown below, so "Keep Running" leaves the app
   // exactly as it was.
   if (heldQuitForActiveWork(event)) {
+    return
+  }
+
+  if (!logoutComplete && !isQuittingForHandoff) {
+    event.preventDefault()
+    void logoutDesktopAccount('quit').catch(() => {
+      quitConfirmedWithActiveWork = false
+      dialog.showErrorBox('Hermes Desktop MT', '无法开始安全退出，请重试。历史和登录记录未删除。')
+    })
+
     return
   }
 

@@ -26,6 +26,7 @@ export interface TerminalIpcDeps {
 }
 
 export interface TerminalIpcApi {
+  seal: () => number[]
   disposeTerminalSession: (id: string) => boolean
   disposeTerminalSessionsForSshScope: (scope: string) => void
   disposeAllTerminalSessions: () => void
@@ -55,6 +56,14 @@ export function registerTerminalIpc({
   getSshConnectionState
 }: TerminalIpcDeps): TerminalIpcApi {
   const terminalSessions = new Map()
+  let sealed = false
+
+  /** 封闭新终端入口，并在窗口销毁前交出本进程持有的 PTY 根 PID。 */
+  function seal(): number[] {
+    sealed = true
+
+    return [...terminalSessions.values()].filter(info => !info.exited).map(info => info.pty.pid)
+  }
 
   function isExecutableFile(filePath) {
     if (!filePath || !path.isAbsolute(filePath)) {
@@ -300,6 +309,10 @@ export function registerTerminalIpc({
   }
 
   ipcMain.handle('hermes:terminal:start', async (event, payload = {}) => {
+    if (sealed) {
+      throw new Error('账号正在退出。')
+    }
+
     ensureNodePtySpawnHelper()
 
     const id = crypto.randomUUID()
@@ -309,6 +322,10 @@ export function registerTerminalIpc({
     const rows = Math.max(2, Number.parseInt(String(payload?.rows || 24), 10) || 24)
 
     const sshTarget = await resolveTerminalConnectionForSender(event.sender.id, activeSshTerminalTarget, ensureBackend)
+
+    if (sealed || event.sender.isDestroyed()) {
+      throw new Error('账号正在退出。')
+    }
 
     const remote = Boolean(sshTarget)
     const remoteState = remote ? getSshConnectionState(sshTarget.scope) : null
@@ -343,6 +360,7 @@ export function registerTerminalIpc({
     })
 
     terminalSessions.set(id, {
+      exited: false,
       outputGate,
       pty: ptyProcess,
       webContentsId: event.sender.id,
@@ -351,6 +369,12 @@ export function registerTerminalIpc({
 
     ptyProcess.onData(data => outputGate.data(data))
     ptyProcess.onExit(({ exitCode, signal }) => {
+      const info = terminalSessions.get(id)
+
+      if (info) {
+        info.exited = true
+      }
+
       outputGate.exit({ code: exitCode, signal: signal == null ? null : String(signal) })
     })
     event.sender.once('destroyed', () => disposeTerminalSession(id))
@@ -408,5 +432,5 @@ export function registerTerminalIpc({
 
   ipcMain.handle('hermes:terminal:dispose', (_event, id) => disposeTerminalSession(String(id || '')))
 
-  return { disposeTerminalSession, disposeTerminalSessionsForSshScope, disposeAllTerminalSessions }
+  return { seal, disposeTerminalSession, disposeTerminalSessionsForSshScope, disposeAllTerminalSessions }
 }

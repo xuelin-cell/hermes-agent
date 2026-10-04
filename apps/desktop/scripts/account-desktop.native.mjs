@@ -6,7 +6,8 @@ import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
 import { test } from 'node:test'
 import { createServer } from 'node:http'
-import {spawn} from 'node:child_process'
+import {spawn, execFile} from 'node:child_process'
+import {promisify} from 'node:util'
 import {once} from 'node:events'
 
 import { _electron as electron } from '@playwright/test'
@@ -18,6 +19,45 @@ import { superviseElectron } from './dev-electron.mjs'
 import { gatewayOperation } from './gateway-logout.fixture.mjs'
 
 const desktop = path.resolve(import.meta.dirname, '..')
+
+test('P21 原版 Cron：停机后周期补跑一次、关闭补跑和过期一次性跳过', {timeout:30_000}, async () => {
+  const root=await mkdtemp(path.join(os.tmpdir(),'hermes-p21-cron-'))
+  await promisify(execFile)(process.env.FIXTURE_PYTHON || path.resolve(desktop,'../../.venv/Scripts/python.exe'),
+    [path.join(desktop,'scripts/account-work.fixture.py'),'cron-policy',root],{
+      cwd:path.resolve(desktop,'../..'),windowsHide:true,timeout:25_000,
+      env:{...process.env,HERMES_HOME:root,PYTHONPATH:path.resolve(desktop,'../..')}})
+  assert.deepEqual(JSON.parse(await readFile(path.join(root,'cron-policy.json'),'utf8')),
+    {defaultCatchUpOnce:true,disabledCatchUpSkipped:true,expiredOneShotSkipped:true})
+})
+
+for (const mode of ['window','tray']) {
+  test(`P21 真实 ${mode} 退出：托盘工作继续，退出停止四类进程并保留登录`, {timeout:240_000}, async () => {
+    const {server,url}=await startLoginDevServer()
+    const fixture=await prepareFixture(url)
+    console.log(`P21 ${mode} 隔离夹具：${fixture.root}`)
+    try {
+      const code=await superviseElectron({args:[fixture.output],cwd:desktop,
+        env:{...fixture.env,HERMES_DESKTOP_SKIP_QUIT_CONFIRM:'0',FIXTURE_QUIT_TEST:mode}})
+      const error=await readFile(path.join(fixture.root,'quit-error.txt'),'utf8').catch(()=>'')
+      assert.equal(error,'')
+      assert.equal(code,0)
+      const saved=JSON.parse(await readFile(path.join(fixture.root,'quit-before.json'),'utf8'))
+      assert.equal(saved.hiddenContinued,true)
+      for (const pid of [saved.electron,saved.backend,saved.worker,...saved.work.map(row=>row.pid)]) {
+        assert.throws(()=>process.kill(pid,0),{code:'ESRCH'})
+      }
+      await access(path.join(fixture.userData,'maas-login.enc'))
+      await access(path.join(saved.home,'cron','jobs.json'))
+      await access(path.join(saved.context.home,'state.db'))
+      await assert.rejects(access(path.join(fixture.userData,'maas-logout-pending.json')),{code:'ENOENT'})
+    } finally {
+      await promisify(execFile)(process.env.FIXTURE_PYTHON || path.resolve(desktop,'../../.venv/Scripts/python.exe'),
+        [path.join(desktop,'scripts/account-work.fixture.py'),'cleanup',fixture.root],
+        {cwd:path.resolve(desktop,'../..'),windowsHide:true,timeout:20_000})
+      await server.close()
+    }
+  })
+}
 
 test('P19/P20 真实开发监督进程：退出停止后端、消息网关与子树，重启到登录页', {timeout:240_000}, async () => {
   const {server,url} = await startLoginDevServer()
@@ -92,7 +132,7 @@ async function prepareFixture(url) {
         {js:"require('electron').ipcRenderer.sendToHost('fixture-preview-preload-ready')"} : undefined})
   }
   await build({stdin:{resolveDir:desktop, contents:`
-    import {app, dialog, net} from 'electron'
+    import {app, dialog, net, Tray} from 'electron'
     import {existsSync, writeFileSync} from 'node:fs'
     import {CredentialStore} from './electron/login/credential-store'
     import {accountBrowserPartition} from './electron/entry_local/browser-partition'
@@ -102,13 +142,16 @@ async function prepareFixture(url) {
     globalThis.fixtureProtocols = []
     globalThis.fixtureErrors = []
     globalThis.fixturePreloadErrors = []
+    const setContextMenu=Tray.prototype.setContextMenu
+    Tray.prototype.setContextMenu=function(menu) {globalThis.fixtureTrayMenu=menu; return setContextMenu.call(this,menu)}
     app.on('web-contents-created', (_event, contents) => {
       contents.on('preload-error', (_event, filename, error) => globalThis.fixturePreloadErrors.push(error.stack))
     })
     dialog.showMessageBox = async (_window, options) => {
+      options ??= _window
       globalThis.fixtureErrors.push(options.message)
       if (globalThis.fixtureLogoutError) writeFileSync(${JSON.stringify(path.join(root, 'logout-stage-error.txt'))},globalThis.fixtureLogoutError)
-      return {response:1, checkboxChecked:false}
+      return {response:globalThis.fixtureDialogResponse ?? 1, checkboxChecked:false}
     }
     app.setAsDefaultProtocolClient = scheme => {globalThis.fixtureProtocols.push(scheme); return false}
     const originalFetch = net.fetch
@@ -138,6 +181,11 @@ async function prepareFixture(url) {
         .then(module => module.exerciseLogout(${JSON.stringify(root)}, ${JSON.stringify(userData)}))
         .catch(error => { writeFileSync(${JSON.stringify(path.join(root, 'logout-error.txt'))}, error.stack); app.exit(1) })
     }
+    if (process.env.FIXTURE_QUIT_TEST) {
+      void import(${JSON.stringify(pathToFileURL(path.join(desktop, 'scripts', 'account-quit.fixture.mjs')).href)})
+        .then(module => module.exerciseQuit(${JSON.stringify(root)}, ${JSON.stringify(userData)}))
+        .catch(error => {writeFileSync(${JSON.stringify(path.join(root,'quit-error.txt'))},error.stack); app.exit(1)})
+    }
   `}, bundle:true, format:'esm', platform:'node', target:'node20',
   external:['electron','node-pty','get-windows'], outfile:output,
   define:{__HERMES_PRODUCT_IDENTITY__:JSON.stringify(createRequire(import.meta.url)(path.join(desktop,'product-identity.cjs')))},
@@ -148,9 +196,10 @@ async function prepareFixture(url) {
       resolveDir:path.dirname(args.path)}))
     // 只观察正式存储函数，不替换路径、读写、系统加密或后端。
     builder.onLoad({filter:/electron[\\/]main\.ts$/}, async args => ({loader:'ts',
-      contents:(await readFile(args.path,'utf8')).replace('await accountLogout.run()',
-        'await accountLogout.run().catch(error => {globalThis.fixtureLogoutError=error.stack; throw error})') + `
+      contents:(await readFile(args.path,'utf8')).replace('await accountLogout.run(mode)',
+        'await accountLogout.run(mode).catch(error => {globalThis.fixtureLogoutError=error.stack; throw error})') + `
         export const fixtureNativeState = {paths:ACCOUNT_DESKTOP_STATE,
+          tray:minimizeToTray,
           spawnFixtureBackend:spawnOwnedBackend,
           browserSession:ACCOUNT_SESSION, rendererPartition:ACCOUNT_RENDERER_PARTITION,
           oauthSession:getOauthSessionForUrl, warmCookies:warmOauthCookieStore,
@@ -170,6 +219,7 @@ async function prepareFixture(url) {
     HERMES_GUEST_ONBOARDING:'0', HERMES_DESKTOP_APP_NAME:'Hermes Desktop MT Test'}
   delete env.ELECTRON_RUN_AS_NODE
   delete env.HERMES_DESKTOP_PYTHON
+  if (process.env.FIXTURE_PYTHON) env.HERMES_DESKTOP_PYTHON=process.env.FIXTURE_PYTHON
   return {root, userData, output, env, globalSentinels}
 }
 

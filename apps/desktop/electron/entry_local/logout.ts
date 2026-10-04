@@ -6,6 +6,8 @@ import { CredentialStore } from '../login/credential-store'
 
 import type { LogoutProcess } from './logout-processes'
 
+export type AccountExitMode = 'logout' | 'quit'
+
 /** 固定应用级退出标记；存在时禁止恢复登录或开始另一个账号。 */
 export function logoutIntentPath(userData: string): string {
   return path.join(userData, 'maas-logout-pending.json')
@@ -19,37 +21,48 @@ export function createAccountLogout(deps: {
   snapshot: () => LogoutProcess[] | Promise<LogoutProcess[]>
   stop: (processes: LogoutProcess[]) => Promise<void>
   release: () => void
-  relaunch: () => Promise<void>
+  finish: (mode: AccountExitMode) => Promise<void>
 }) {
   let pending: Promise<void> | null = null
   let started = false
   let owned: LogoutProcess[] | null = null
+  let mode: AccountExitMode | null = null
+  let sealed = false
 
   /** 先写失效意图，再封闭运行时；只有停止验证成功才删除登录记录。 */
-  async function run(): Promise<void> {
+  async function run(requested: AccountExitMode): Promise<void> {
     const marker = logoutIntentPath(deps.userData)
 
     if (!started) {
-      writeSecretFileAtomic(marker, JSON.stringify({ account: deps.account }))
+      writeSecretFileAtomic(marker, JSON.stringify({ account: deps.account, mode: requested }))
+      mode = requested
       started = true
+    }
+
+    if (!sealed) {
       deps.seal()
+      sealed = true
     }
 
     owned ??= await deps.snapshot()
-    writeSecretFileAtomic(marker, JSON.stringify({ account: deps.account, processes: owned }))
+    writeSecretFileAtomic(marker, JSON.stringify({ account: deps.account, mode, processes: owned }))
     await deps.stop(owned)
     deps.release()
-    new CredentialStore(deps.userData).clear()
-    // 此后即使重启失败，也不再存在可恢复的旧登录。
+
+    if (mode === 'logout') {
+      new CredentialStore(deps.userData).clear()
+    }
+
+    // 退出应用保留原期限的密文；只有已确认停止才允许下次恢复。
     fs.unlinkSync(marker)
-    await deps.relaunch()
+    await deps.finish(mode!)
   }
 
   return {
     started: (): boolean => started,
     /** 同时发生的多窗口退出只执行一次，失败后允许重试停止。 */
-    run(): Promise<void> {
-      pending ??= run().finally(() => {
+    run(requested: AccountExitMode = 'logout'): Promise<void> {
+      pending ??= run(requested).finally(() => {
         pending = null
       })
 

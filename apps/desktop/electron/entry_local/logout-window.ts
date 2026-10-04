@@ -17,7 +17,7 @@ export function openLogoutWindow(): BrowserWindow {
   void window.loadURL(
     'data:text/html;charset=utf-8,' +
       encodeURIComponent(
-        '<!doctype html><meta charset="utf-8"><title>Hermes Desktop MT</title><p>正在退出账号，请稍候… / Signing out…</p>'
+        '<!doctype html><meta charset="utf-8"><title>Hermes Desktop MT</title><p>正在停止当前账号的工作，请稍候… / Stopping account work…</p>'
       )
   )
   window.on('close', event => event.preventDefault())

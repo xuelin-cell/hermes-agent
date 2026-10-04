@@ -32,7 +32,7 @@ function fixture() {
     snapshot: vi.fn<() => typeof processes | Promise<typeof processes>>(() => processes),
     stop: vi.fn(async () => {}),
     release: vi.fn(),
-    relaunch: vi.fn(async () => {})
+    finish: vi.fn(async (_mode: 'logout' | 'quit') => {})
   }
 
   return { userData, credential, deps, processes, logout: createAccountLogout(deps) }
@@ -57,7 +57,7 @@ it('先持久化失效意图，合并重复退出，验证停止后才清除凭�
   await first
   expect(deps.seal).toHaveBeenCalledTimes(1)
   expect(deps.release).toHaveBeenCalledTimes(1)
-  expect(deps.relaunch).toHaveBeenCalledTimes(1)
+  expect(deps.finish).toHaveBeenCalledWith('logout')
   expect(fs.existsSync(credential)).toBe(false)
   expect(fs.existsSync(logoutIntentPath(userData))).toBe(false)
 })
@@ -67,7 +67,7 @@ it('停止失败保留登录密文、失效标记及归属，显式重试使用�
   deps.stop.mockRejectedValueOnce(new Error('still running'))
   await expect(logout.run()).rejects.toThrow('still running')
   expect(deps.release).not.toHaveBeenCalled()
-  expect(deps.relaunch).not.toHaveBeenCalled()
+  expect(deps.finish).not.toHaveBeenCalled()
   expect(fs.existsSync(credential)).toBe(true)
   expect(JSON.parse(fs.readFileSync(logoutIntentPath(userData), 'utf8')).processes).toEqual(processes)
   await logout.run()
@@ -90,7 +90,7 @@ it('标记无法落盘时不开始清理；快照失败时不删除登录或释�
   expect(fs.existsSync(credential)).toBe(true)
   expect(deps.release).not.toHaveBeenCalled()
   await logout.run()
-  expect(deps.relaunch).toHaveBeenCalledTimes(1)
+  expect(deps.finish).toHaveBeenCalledWith('logout')
 })
 
 it('异步网关快照未完成时不停止或清除登录；拒绝后保留退出意图', async () => {
@@ -108,5 +108,28 @@ it('异步网关快照未完成时不停止或清除登录；拒绝后保留退�
   fail(new Error('gateway ownership unknown'))
   await expect(running).rejects.toThrow('ownership unknown')
   expect(fs.existsSync(logoutIntentPath(userData))).toBe(true)
-  expect(deps.relaunch).not.toHaveBeenCalled()
+  expect(deps.finish).not.toHaveBeenCalled()
+})
+
+it('退出应用保留原登录密文；停止失败后的重试不能改成注销', async () => {
+  const { logout, deps, credential, userData } = fixture()
+  deps.stop.mockRejectedValueOnce(new Error('still running'))
+  await expect(logout.run('quit')).rejects.toThrow('still running')
+  expect(JSON.parse(fs.readFileSync(logoutIntentPath(userData), 'utf8')).mode).toBe('quit')
+  await logout.run('logout')
+  expect(deps.finish).toHaveBeenCalledWith('quit')
+  expect(fs.readFileSync(credential, 'utf8')).toBe('cipher-sentinel')
+  expect(fs.existsSync(logoutIntentPath(userData))).toBe(false)
+})
+
+it('封闭入口失败后重试该步骤，不跳过封闭直接清理', async () => {
+  const { logout, deps } = fixture()
+  deps.seal.mockImplementationOnce(() => {
+    throw new Error('seal failed')
+  })
+  await expect(logout.run()).rejects.toThrow('seal failed')
+  expect(deps.snapshot).not.toHaveBeenCalled()
+  await logout.run('quit')
+  expect(deps.seal).toHaveBeenCalledTimes(2)
+  expect(deps.finish).toHaveBeenCalledWith('logout')
 })

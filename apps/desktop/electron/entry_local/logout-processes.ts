@@ -88,7 +88,8 @@ export function stopLogoutProcesses(owned: LogoutProcess[]): void {
         '-NoProfile',
         '-NonInteractive',
         '-Command',
-        `$ErrorActionPreference='Stop'; $p=Get-CimInstance Win32_Process -Filter 'ProcessId=${row.pid}'; if ($p -and $p.CreationDate.ToUniversalTime().Ticks.ToString() -eq '${row.started}') { & taskkill.exe /PID ${row.pid} /T /F | Out-Null }`
+        // Job Object 可能先收掉后代；taskkill 的退出码不能代替最后的存活验证。
+        `$ErrorActionPreference='Stop'; $p=Get-CimInstance Win32_Process -Filter 'ProcessId=${row.pid}'; if ($p -and $p.CreationDate.ToUniversalTime().Ticks.ToString() -eq '${row.started}') { $ErrorActionPreference='Continue'; & taskkill.exe /PID ${row.pid} /T /F 2>$null | Out-Null }; exit 0`
       ],
       { windowsHide: true, timeout: 15_000 }
     )

@@ -128,10 +128,12 @@ Reduced motion settles immediately without retaining empty clearance.
 ## Window background behavior
 
 Settings → Appearance → Window layout offers **Minimize to tray**, off by default and
-local to this desktop installation. When enabled, minimizing ordinary windows
-hides them without stopping their work. Close, Alt+F4, and Cmd+Q keep their
-normal behavior. The tray's **Show Hermes** restores hidden windows;
-**Quit Hermes** keeps the ordinary active-work confirmation and teardown.
+scoped to the current account on this device. When enabled, minimizing ordinary
+windows or closing the main window hides them without stopping their work.
+The tray's **Show Hermes** restores hidden windows. **Quit Hermes** and ordinary
+main-window close (when tray mode is off) use the same unconditional confirmation
+and verified account shutdown as app quit. App quit preserves the login record;
+account sign-out clears it and relaunches to sign-in. Both retain account files.
 On macOS the tray lives in the menu bar; the Dock icon hides only when no normal
 window remains visible and returns on restore. If the tray is unavailable,
 ordinary minimize/close behavior is retained rather than hiding an unreachable app.

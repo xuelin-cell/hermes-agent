@@ -8,7 +8,7 @@ export const deOverrides = {
     logout: 'Abmelden',
     logoutTitle: 'Dieses Konto abmelden?',
     logoutDescription:
-      'Die Desktop-Backends und Nachrichten-Gateways dieses Kontos werden gestoppt. Verlauf und Dateien bleiben erhalten. Andere unabhängige Aufgaben sind noch nicht vollständig abgedeckt.',
+      'Die lokalen Backends, Nachrichten-Gateways und ihre verwalteten Aufgaben werden gestoppt. Danach erscheint die Anmeldung. Verlauf, Dateien und Zeitpläne bleiben erhalten.',
     logoutBusy: 'Abmeldung läuft…',
     planTitle: 'MaaS-Tarif',
     planEmpty: 'Derzeit ist kein MaaS-Tarif verfügbar.',

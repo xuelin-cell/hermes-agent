@@ -7,7 +7,7 @@ export const en: Translations = {
     logout: 'Sign out',
     logoutTitle: 'Sign out of this account?',
     logoutDescription:
-      'Stop this account’s desktop backends and messaging gateways, then return to sign-in. History and files are kept. Other independent tasks are not yet fully covered.',
+      'Stop this account’s local backends, messaging gateways and their managed work, then return to sign-in. History, files and scheduled job definitions are kept.',
     logoutBusy: 'Signing out…',
     planTitle: 'MaaS plan',
     planEmpty: 'No MaaS plan is currently available.',
