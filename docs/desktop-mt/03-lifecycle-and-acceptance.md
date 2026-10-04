@@ -210,6 +210,44 @@ Renderer 复用现有通知与状态栏：到期时只弹一次右下角非阻�
 - 对没有条件实测的场景单独列出“未验收”，最终不能写成全链路完成。用户决定是否接受这些限制，不能用全绿单测替代。
 - 交付包含源码运行方式、本地数据位置、退出规则、排障入口、完成的 commit 列表及未推送状态。
 
+### P26 实施与验证记录（2026-10-05）
+
+本轮已整理[使用说明、双账号操作流程与提交索引](USAGE.md)，并在 P25 基线上复测既有流程。**结论是部分通过，不是完整产品验收完成。**首次账号桌面的套餐 HTTP 401 提示未通过，真实平台账号与官方版并行等项目也未验收。用户已明确选择“先记录问题，不修改产品”；本轮不实施提示修复，不将这个选择当作完整产品验收通过。
+
+本轮实际检查如下，工作目录为 `apps/desktop`：
+
+- `npx --no-install vitest run --project electron electron/login electron/entry_local electron/backend-ownership.test.ts electron/backend-exit-recovery.test.ts electron/local-backend-lifecycle.test.ts electron/pool-stop.test.ts electron/parent-process-identity.test.ts electron/quit-teardown.test.ts electron/quit-guard.test.ts electron/quit-finalization.test.ts electron/bootstrap-quit.test.ts`：32 个文件，116 项通过、2 项原有 Windows shell 夹具跳过。
+- `npx --no-install vitest run --project ui src/app/login src/app/shell/maas-account-status.test.tsx src/i18n/catalog-completeness.test.ts`：6 个文件，40 项通过；另运行 `src/lib/error-surface-copy.test.ts`，5 项通过。完整 `npm run typecheck` 通过。合计 161 项组件测试通过，不将组件结果当作真实平台验收。
+- `node --test scripts/login-bootstrap.native.mjs`：最终 9 项通过、1 项真实 MaaS 验证码检查默认跳过，约 62 秒。最初运行 P14 旧夹具失败，因为它仍期待原窗口内重试，正式行为已在 P23 改为完整退出后重开。现只调整夹具：失败时保留文件且不放行，同进程不能重试；确认完整退出后实际启动新 Electron，恢复原账号，再检查退出阻止迟到写入。完整组复跑通过；没有为通过旧测试恢复已废弃的产品行为。
+- `node --test --test-name-pattern='P21 原版 Cron|P21 真实|P22 真实短期限|P19/P20 真实|P15～P17 原生' scripts/account-desktop.native.mjs`：6 项通过，约 1103 秒。包括原版 Cron 策略、普通关窗／托盘退出、账号退出后开发监督重启、三分钟期限跨到期继续执行并手动退出，以及受控身份 A→B→A 的真实后端 REST／WS、主进程文件、草稿和 Chromium／预览存储隔离。普通运行恢复记录存在、完整停止后才消失，与 P25 一致。
+- `node --test --test-name-pattern='P22 真实套餐' scripts/account-desktop.native.mjs`：未通过，独立复测重复出现同一可见性失败。首次无可用模型时跳过原版提供方引导，聊天页未出现“退出账号后重新登录”警告；主进程只读展示结果仍有 `planAuthRejected: true`，脱敏账号及退出入口存在。测试仍要求真实页面提示，不用只读字段或全绿单测替代。失败截图已保留；运行记录断言随 P25 对齐为当前账号的 `quit` 记录，但该断言尚未在通过的此用例中执行。根因和产品修复尚未确认，不能仅凭现象断言是通知被清空。
+
+环境为 Windows、Node 24.19.0、Electron 40.10.2、Python 3.14.7。沿用独立测试解释器 `X:/HermesP22-Python-20261004/Scripts/python.exe`，`TEMP`／`TMP=X:/HermesP21-Test-848048a7ffea4ca689d7c3d6fb488cba`；未修改开发 `.venv`、依赖或锁文件。登录组的最终 P14 目录为 `hermes-mt-login-kaBXU8`，真实桌面组分别为 `hermes-mt-desktop-gmm5rk`（普通退出）、`hermes-mt-desktop-DdeJ6L`（托盘退出）、`hermes-mt-desktop-SaeWcP`（账号退出）、`hermes-mt-desktop-UzkFIW`（到期）、`hermes-mt-desktop-APBeIK`（A→B→A）；套餐拒绝复现目录为 `hermes-mt-desktop-F69Q6e` 和 `hermes-mt-desktop-d06oiR`。这些目录都在上述独立测试根内，不是用户账号目录。
+
+保留真实边界：MaaS 短信、登录、套餐与原生提示回答受控，未给真实手机发码或调用付费模型。四类工作是原版后台终端、脚本 Cron、受控 stdio MCP 和桌面 PTY；消息网关真实运行，但未连接实际第三方消息平台。`state.db` 检查为文件保留，不是旧会话正文恢复。源码启动命令经只读核查，未运行用户实际开发账号；测试在独立窗口和端口执行。原版 `node-pty` 的 `AttachConsole failed` 和退出封闭期间的 IPC 拒绝仍可出现在日志中，最终停止结论依据真实存活检查，不宣称日志完全无警告。
+
+以下矩阵给出每项当前结论；“历史通过”引用前文对应阶段，不计入本轮新增通过数量。
+
+| 场景 | 当前结论与证据 | 仍缺少的验收 |
+| --- | --- | --- |
+| 未登录打开 | 本轮真实 Electron 通过：无后端、无原版通用桥接，旧连接不消费 | 无新的已知缺口 |
+| 正常短信登录 | 本轮受控响应链通过；历史真实验证码证据见 P05 | 真实收信、登录响应、跨登录 UID 稳定性 |
+| 启动恢复／到期记录／网络故障 | 本轮系统加密、跨进程恢复、受控套餐失败与到期冷启动通过 | 真实网络与平台 token 拒绝样本 |
+| 运行中到期 | 本轮真实短期限组通过：任务继续、只提示一次、手动退出有效 | 真实平台 token／Key 的期限关系；实际电脑唤醒 |
+| 套餐明确拒绝 | **未通过**：主进程标志保留，首次桌面提示未显示 | 根因、局部产品修复及真实界面复测 |
+| 有套餐／无套餐 | 本轮受控套餐、真实 YAML／Key 准备通过 | 真实套餐模型调用、有效但无套餐的可信账号 |
+| A→B→A | 本轮模拟身份配真实后端与 Chromium，通过文件、草稿、连接和分区复用 | 真实短信换账号、实际对话正文与全部 Profile 使用 |
+| 个人默认模型保留 | 本轮真实配置／Key 组件通过，个人字段未覆盖 | 实际设置界面选择、重登后模型调用 |
+| 关闭到托盘 | 本轮真实四类任务隐藏期间继续执行，通过 | 用户实际使用环境确认 |
+| 退出账号／应用 | 本轮真实停止、最终存活检查、登录凭据语义与监督重启通过 | 模型驱动工具／Cron、实际第三方 MCP 与消息平台 |
+| 启动失败 | 历史 P23 真实故障通过；本轮 P14 凭据准备失败与重开通过 | 用户真实故障反馈，不在个人数据上注入故障 |
+| 停止失败 | 历史 P24 真实隔离进程组通过 | 真实 Windows 权限拒绝，不以故障注入冒充 |
+| 退出失败后重开 | 历史 P25 三种崩溃与失败保留组通过，本轮未重复强制结束 | 无持久归属且已经脱离父进程的任意程序不作保障 |
+| 重启／崩溃／电脑唤醒 | 历史 P25 Electron 崩溃、重开通过；时钟／聚焦组件通过 | 实际系统重启、休眠与唤醒未验收 |
+| 官方版并行 | **未验收**；本轮未启动或操作官方安装版 | 人工同时运行并观察开发版退出不干扰官方版 |
+
+本轮不修改产品代码或 Hermes Python 核心，不引入云端、不认领旧数据、不操作用户已有窗口。测试夹具对齐与使用文档按用户要求合并为一个提交，并已明确授权重新推送到 `origin/desktop-mt`，结果以本轮交付和实际 Git 状态为准。用户选择暂不修复的套餐提示问题保留，真实双账号等人工项也保持待验收，后续另行决定是否接受这些限制。
+
 ## 每个小提交的检查方法
 
 在 `apps/desktop` 中按实际改动选择检查；文件名以该提交已经存在的文件为准，不执行空的占位测试命令。

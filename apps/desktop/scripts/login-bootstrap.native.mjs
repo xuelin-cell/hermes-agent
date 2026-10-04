@@ -48,7 +48,11 @@ async function launchFixture(cancel = false, devServer, liveCaptcha = false, pla
         globalThis.waitForFixturePlan = () => new Promise(resolve => { globalThis.nextFixturePlan = resolve })
         // 测试只观察受控错误，避免模态框阻塞隔离应用；正式入口仍显示错误提示。
         dialog.showMessageBox = async (_window, options) => {
+          options ??= _window
           globalThis.loginProbe.environmentError = options.message
+          if (globalThis.loginProbe.holdEnvironmentError) {
+            return new Promise(resolve => { globalThis.loginProbe.environmentAnswer = resolve })
+          }
           return {response:0, checkboxChecked:false}
         }
         // 只向测试主进程提供读取探针，不暴露给 Renderer 或 preload。
@@ -555,7 +559,7 @@ test('P12/P13 真实 Electron 组件：A→B→A 配置与 Key 隔离，轮换�
   } finally { await instance.close() }
 })
 
-test('P14 真实登录入口：跨进程 A→B→A 自动准备固定上下文，失败重试和退出阻止迟到写入', {timeout:120_000}, async () => {
+test('P14 真实登录入口：跨进程 A→B→A 自动准备固定上下文，失败重开和退出阻止迟到写入', {timeout:120_000}, async () => {
   const fixture = await launchFixture()
   let instance = fixture.instance
   let firstA
@@ -610,17 +614,31 @@ test('P14 真实登录入口：跨进程 A→B→A 自动准备固定上下文�
       assert.equal(await readFile(path.join(fixture.userData, 'connection.json'), 'utf8'), fixture.oldConnection)
       await assert.rejects(access(fixture.home), {code:'ENOENT'})
     }
-    const page = await instance.firstWindow()
+    let page = await instance.firstWindow()
     const envFile = path.join(firstA.context.home, '.env')
     const oldEnv = await readFile(envFile, 'utf8')
     await mkdir(`${envFile}.tmp`)
-    await instance.evaluate(() => {globalThis.loginProbe.planKey='fixture-runtime-updated-key'})
+    await instance.evaluate(() => {
+      globalThis.loginProbe.planKey='fixture-runtime-updated-key'
+      globalThis.loginProbe.holdEnvironmentError=true
+    })
     assert.equal((await page.evaluate(() => window.hermesLogin.plan())).status, 'available')
     assert.equal(await instance.evaluate(() => globalThis.currentFixtureRuntime()), null)
     assert.equal(await readFile(envFile, 'utf8'), oldEnv)
-    assert.equal(await instance.evaluate(() => globalThis.loginProbe.environmentError), '账号环境准备失败，请检查账号配置和开发运行时，重新打开登录页后重试。')
+    const message = await instance.evaluate(() => globalThis.loginProbe.environmentError)
+    assert.ok(message.includes('无法安全保存账号凭据。') && message.includes('完整退出应用后重新打开'))
     await rmdir(`${envFile}.tmp`)
+    // P23 已封闭失败准备；移除测试故障也不能在同一进程直接重试。
     await page.evaluate(() => window.hermesLogin.plan())
+    assert.equal(await instance.evaluate(() => globalThis.currentFixtureRuntime()), null)
+    assert.equal(await readFile(envFile, 'utf8'), oldEnv)
+    const exited = once(instance.process(), 'exit')
+    await instance.evaluate(() => globalThis.loginProbe.environmentAnswer({response:0, checkboxChecked:false}))
+    assert.equal((await exited)[0], 0)
+    instance = null
+    instance = await electron.launch({executablePath:electronPath, args:[fixture.output], env:fixture.env, timeout:30_000})
+    page = await instance.firstWindow()
+    await page.getByText('fixture-plan-model', {exact:true}).waitFor()
     assert.deepEqual(await instance.evaluate(() => globalThis.currentFixtureRuntime()), firstA)
     const beforeQuit = await readFile(envFile, 'utf8')
     await instance.evaluate(() => {globalThis.loginProbe.planKey='fixture-must-not-write-key'})
@@ -634,7 +652,7 @@ test('P14 真实登录入口：跨进程 A→B→A 自动准备固定上下文�
     assert.deepEqual(await page.evaluate(() => window.hermesLogin.restore()), {ok:false})
     assert.deepEqual(await instance.evaluate(() => globalThis.loginProbe.processCalls), [])
     console.log(`P14 真实登录入口与固定运行上下文验收：${fixture.root}`)
-  } finally { await instance.close() }
+  } finally { await instance?.close() }
 })
 
 test('真实 MaaS 图片在登录窗口展示并可刷新，其他窗口与子框架无权请求', {

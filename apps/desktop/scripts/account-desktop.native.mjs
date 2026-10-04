@@ -139,7 +139,12 @@ test('P22 真实套餐鉴权拒绝：进入桌面后仍提示重登，不清身�
       w.webContents.getURL().startsWith('http') && !w.webContents.getURL().includes('login.html')).show())
     // 无套餐的新账号沿用原版模型引导；先明确跳过，再验收桌面提示与可点击的退出。
     await page.getByText('稍后再选择提供方',{exact:true}).click({timeout:60_000})
-    await page.getByText('MaaS 拒绝了当前登录凭据，请退出账号后重新登录。',{exact:true}).waitFor({timeout:60_000})
+    try {
+      await page.getByText('MaaS 拒绝了当前登录凭据，请退出账号后重新登录。',{exact:true}).waitFor({timeout:60_000})
+    } catch (error) {
+      await page.screenshot({path:path.join(fixture.root,'plan-rejected-failed.png')})
+      throw error
+    }
     await page.locator('[data-slot=statusbar]').getByRole('button',{name:'退出',exact:true}).waitFor()
     await page.locator('[data-slot=statusbar]').getByRole('button',{name:'退出',exact:true}).click({trial:true,timeout:45_000})
     const account=await page.evaluate(()=>window.hermesDesktop.getMaasAccount())
@@ -148,7 +153,9 @@ test('P22 真实套餐鉴权拒绝：进入桌面后仍提示重登，不清身�
     assert.ok(await instance.evaluate(()=>globalThis.fixtureContext()))
     await page.evaluate(()=>window.hermesDesktop.getConnection())
     await access(path.join(fixture.userData,'maas-login.enc'))
-    await assert.rejects(access(path.join(fixture.userData,'maas-logout-pending.json')),{code:'ENOENT'})
+    const record = JSON.parse(await readFile(path.join(fixture.userData,'maas-logout-pending.json'),'utf8'))
+    assert.equal(record.mode,'quit')
+    assert.equal(record.account,(await instance.evaluate(()=>globalThis.fixtureContext())).id)
     await page.screenshot({path:path.join(fixture.root,'plan-rejected.png')})
   } finally {
     await instance?.close()
