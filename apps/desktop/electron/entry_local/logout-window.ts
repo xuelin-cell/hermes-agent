@@ -22,7 +22,12 @@ export function openLogoutWindow(): BrowserWindow {
   )
   window.on('close', event => event.preventDefault())
   app.on('browser-window-created', (_event, other) => {
-    other.destroy()
+    // 构造期间同步销毁窗口会使 Electron 崩溃；构造返回后立即关闭，不放行账号界面。
+    queueMicrotask(() => {
+      if (!other.isDestroyed()) {
+        other.destroy()
+      }
+    })
   })
 
   for (const old of previous) {
