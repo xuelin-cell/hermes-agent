@@ -1,8 +1,12 @@
+import { app } from 'electron'
+
 import { accountDesktopEnvironment } from './desktop-environment'
+import { recordAccountRun } from './logout'
 import type { PreparedLocalContext } from './runtime-context'
 
 /** 绑定可信账号后才加载原版桌面；不接受页面传入的账号、路径或连接。 */
 export async function startAccountDesktop(context: PreparedLocalContext): Promise<void> {
+  recordAccountRun(app.getPath('userData'), context.id)
   const env = accountDesktopEnvironment(context)
 
   for (const name of Object.keys(process.env)) {

@@ -28,6 +28,15 @@ export function resolveAccountPaths(roots: AccountRoots, namespace: string, uid:
     .update(JSON.stringify([namespace, uid]), 'utf8')
     .digest('hex')}`
 
+  return accountPathsById(roots, id)
+}
+
+/** 用已落盘的安全标识定位原账号；恢复清理不依赖仍然有效的登录凭据。 */
+export function accountPathsById(roots: AccountRoots, id: string): AccountPaths {
+  if (!/^account-[a-f0-9]{64}$/.test(id) || !path.isAbsolute(roots.data) || !path.isAbsolute(roots.userData)) {
+    throw new Error('账号恢复标识无效。')
+  }
+
   return {
     id,
     home: path.join(roots.data, 'accounts', id, 'hermes-home'),

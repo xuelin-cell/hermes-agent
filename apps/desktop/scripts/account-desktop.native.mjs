@@ -18,8 +18,19 @@ import { prepareLoginRenderer, startLoginDevServer } from './login-renderer.fixt
 import { superviseElectron } from './dev-electron.mjs'
 import { gatewayOperation } from './gateway-logout.fixture.mjs'
 import { exerciseExitFailure } from './account-exit-failure.fixture.mjs'
+import { exerciseAccountRecovery } from './account-recovery.fixture.mjs'
 
 const desktop = path.resolve(import.meta.dirname, '..')
+
+for (const mode of ['running','logout','expired']) {
+test(`P25 真实 Electron：${mode} 崩溃后先清理旧工作，再按原身份规则打开`, {timeout:420_000}, async () => {
+  const {server,url}=await startLoginDevServer()
+  const fixture=await prepareFixture(url)
+  console.log(`P25 恢复夹具：${fixture.root}`)
+  try {await exerciseAccountRecovery(fixture,mode)}
+  finally {await server.close()}
+})
+}
 
 for (const closeFailure of [false,true]) {
 test(closeFailure ? 'P24 真实 Electron：关闭失败应用保留记录，重开不放行账号' :
@@ -294,6 +305,12 @@ async function prepareFixture(url) {
     globalThis.fixtureErrors = []
     globalThis.fixturePreloadErrors = []
     globalThis.fixtureFailedPids = []
+    globalThis.fixtureStopFault = process.env.FIXTURE_STOP_FAULT
+    // 仅夹具模拟平台原期限已过；仍使用真实系统加密并保留原账号字段。
+    globalThis.fixtureExpireLogin = () => {
+      const store=new CredentialStore(app.getPath('userData'))
+      store.save({...store.load(),expiresAt:Date.now()-1000})
+    }
     const setContextMenu=Tray.prototype.setContextMenu
     Tray.prototype.setContextMenu=function(menu) {globalThis.fixtureTrayMenu=menu; return setContextMenu.call(this,menu)}
     app.on('web-contents-created', (_event, contents) => {
@@ -400,6 +417,8 @@ async function prepareFixture(url) {
           startBackend:startHermes,
           tray:minimizeToTray,
           spawnFixtureBackend:spawnOwnedBackend,
+          claimFixtureBackend:claimBackendChild,
+          logoutAccount:logoutDesktopAccount,
           browserSession:ACCOUNT_SESSION, rendererPartition:ACCOUNT_RENDERER_PARTITION,
           oauthSession:getOauthSessionForUrl, warmCookies:warmOauthCookieStore,
           windows:{peer:createInstanceWindow,secondary:spawnSecondaryWindow,browser:spawnBrowserWindow,

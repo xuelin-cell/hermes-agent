@@ -64,12 +64,13 @@ export async function exerciseQuit(root, userData) {
   writeFileSync(path.join(root,'quit-before.json'),JSON.stringify({context,home,electron:process.pid,
     backend:ledger.pid,worker:child.pid,work:before,userData,hiddenContinued:true}))
   // 先取消一次，确认密文、窗口和工具都没进入停止；再真正确认。
+  const runningRecord=readFileSync(path.join(userData,'maas-logout-pending.json'))
   globalThis.fixtureDialogResponse=0
   app.quit()
   await until(()=>globalThis.fixtureErrors.some(text=>text==='退出 Hermes Desktop MT？'),'统一退出提示')
   await delay(100)
   assert.equal(child.exitCode,null)
-  assert.equal(existsSync(path.join(userData,'maas-logout-pending.json')),false)
+  assert.deepEqual(readFileSync(path.join(userData,'maas-logout-pending.json')),runningRecord)
   globalThis.fixtureDialogResponse=1
   if (process.env.FIXTURE_QUIT_TEST==='tray') {
     const item=globalThis.fixtureTrayMenu.items.find(item=>item.label==='Quit Hermes')

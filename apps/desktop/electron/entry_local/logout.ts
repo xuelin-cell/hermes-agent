@@ -8,9 +8,23 @@ import type { LogoutProcess } from './logout-processes'
 
 export type AccountExitMode = 'logout' | 'quit'
 
-/** 固定应用级退出标记；存在时禁止恢复登录或开始另一个账号。 */
+/** 固定应用级运行记录；上次未完成收尾时，必须先清理再放行登录。 */
 export function logoutIntentPath(userData: string): string {
   return path.join(userData, 'maas-logout-pending.json')
+}
+
+/** 正常运行默认保留登录；开始托管工作前落盘，覆盖尚未点击退出就崩溃的情况。 */
+export function recordAccountRun(userData: string, account: string): void {
+  writeSecretFileAtomic(logoutIntentPath(userData), JSON.stringify({ account, mode: 'quit' }))
+}
+
+/** 停止与归属释放均成功后才完成原退出意图；普通退出保留原登录期限。 */
+export function completeAccountExit(userData: string, mode: AccountExitMode): void {
+  if (mode === 'logout') {
+    new CredentialStore(userData).clear()
+  }
+
+  fs.unlinkSync(logoutIntentPath(userData))
 }
 
 /** 退出事务只合并正在执行的请求；失败保留标记和归属，下一次显式重试。 */
@@ -49,12 +63,7 @@ export function createAccountLogout(deps: {
     await deps.stop(owned)
     deps.release()
 
-    if (mode === 'logout') {
-      new CredentialStore(deps.userData).clear()
-    }
-
-    // 退出应用保留原期限的密文；只有已确认停止才允许下次恢复。
-    fs.unlinkSync(marker)
+    completeAccountExit(deps.userData, mode!)
     await deps.finish(mode!)
   }
 

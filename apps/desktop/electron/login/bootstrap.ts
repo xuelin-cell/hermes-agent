@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from 'node:fs'
+import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -7,7 +7,7 @@ import { app, BrowserWindow, dialog, net } from 'electron'
 import { platformDefaultHermesHome, resolveDesktopUserData } from '../data-paths'
 import { markDesktopLaunchSuccessful, prepareDesktopLaunch } from '../desktop-launch'
 import { startAccountDesktop } from '../entry_local/desktop-runtime'
-import { logoutIntentPath } from '../entry_local/logout'
+import { recoverAccountRun } from '../entry_local/recover-account'
 import { LocalRuntimeContext, type PreparedLocalContext } from '../entry_local/runtime-context'
 import { LocalStartupError, showLocalStartupFailure } from '../entry_local/startup-failure'
 import { createWindowOpenHandler } from '../window-open-policy'
@@ -25,8 +25,9 @@ let accountRuntime: LocalRuntimeContext | null = null
 let desktopStarting: Promise<void> | null = null
 let handedOff = false
 let startupFailed = false
+let recovery: Promise<void> | null = null
 
-/** 初始化应用级目录与退出事件，不读取任何账号 Home 或旧连接。 */
+/** 先取得单实例锁，再安排上次账号清理；完成前不开放登录或桌面。 */
 function initializeLoginShell(): void {
   if (initialized) {
     return
@@ -39,26 +40,34 @@ function initializeLoginShell(): void {
   app.setPath('userData', userData)
   prepareDesktopLaunch()
 
-  if (existsSync(logoutIntentPath(userData))) {
+  if (!app.requestSingleInstanceLock()) {
     stopping = true
-    void app.whenReady().then(() => {
-      dialog.showErrorBox(
-        'Hermes Desktop MT',
-        '上次退出账号尚未完成，已阻止恢复登录。请先确认并清理遗留账号进程；不会删除历史。'
-      )
-      app.quit()
-    })
+    app.quit()
 
     return
   }
 
+  const roots = {
+    data: platformDefaultHermesHome(app.getPath('home'), { ...process.env, HERMES_DATA_DIR_SUFFIX: '-desktop-mt' }),
+    userData
+  }
+
+  const installationRoot = process.env.HERMES_DESKTOP_HERMES_ROOT || path.resolve(app.getAppPath(), '../..')
+  recovery = app
+    .whenReady()
+    .then(() => recoverAccountRun(roots, installationRoot, process.env.HERMES_DESKTOP_PYTHON))
+    .catch(() => {
+      stopping = true
+      dialog.showErrorBox(
+        'Hermes Desktop MT',
+        '上次账号工作未能安全收尾，已阻止恢复登录。记录和历史已保留，请寻求支持。'
+      )
+      app.quit()
+    })
   accountRuntime = new LocalRuntimeContext(
     new LoginSession(net.fetch, new CredentialStore(userData)),
-    {
-      data: platformDefaultHermesHome(app.getPath('home'), { ...process.env, HERMES_DATA_DIR_SUFFIX: '-desktop-mt' }),
-      userData
-    },
-    process.env.HERMES_DESKTOP_HERMES_ROOT || path.resolve(app.getAppPath(), '../..'),
+    roots,
+    installationRoot,
     process.env.HERMES_DESKTOP_PYTHON
   )
   app.on('before-quit', () => {
@@ -89,17 +98,12 @@ function initializeLoginShell(): void {
 
     loginWindow.focus()
   })
-
-  if (!app.requestSingleInstanceLock()) {
-    stopping = true
-    accountRuntime.dispose()
-    app.quit()
-  }
 }
 
 /** 创建无文件／进程桥接能力的登录窗口，关闭即取消本次启动。 */
 async function openLoginWindow(): Promise<BrowserWindow | null> {
   await app.whenReady()
+  await recovery
 
   if (stopping) {
     return null

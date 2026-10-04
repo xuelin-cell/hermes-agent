@@ -124,7 +124,7 @@ export async function exerciseExitFailure(fixture,closeFailure) {
     if(closeFailure) {
       assert.ok(alive(leaf))
       const pending=await readFile(intentFile)
-      const cold=spawn(electronPath,[fixture.output],{env:{...fixture.env,FIXTURE_BLOCKED_START:'1',FIXTURE_LOGIN_DISABLE:'1'},stdio:'ignore',windowsHide:false})
+      const cold=spawn(electronPath,[fixture.output],{env:{...fixture.env,FIXTURE_BLOCKED_START:'1',FIXTURE_LOGIN_DISABLE:'1',FIXTURE_STOP_FAULT:'refused'},stdio:'ignore',windowsHide:false})
       assert.equal((await once(cold,'exit'))[0],0)
       const report=JSON.parse(await readFile(path.join(fixture.root,'blocked-start.json'),'utf8'))
       assert.ok(report.message.includes('阻止恢复登录'))
