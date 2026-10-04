@@ -17,8 +17,20 @@ import { build } from 'esbuild'
 import { prepareLoginRenderer, startLoginDevServer } from './login-renderer.fixture.mjs'
 import { superviseElectron } from './dev-electron.mjs'
 import { gatewayOperation } from './gateway-logout.fixture.mjs'
+import { exerciseExitFailure } from './account-exit-failure.fixture.mjs'
 
 const desktop = path.resolve(import.meta.dirname, '..')
+
+for (const closeFailure of [false,true]) {
+test(closeFailure ? 'P24 真实 Electron：关闭失败应用保留记录，重开不放行账号' :
+  'P24 真实 Electron：归属不明、停止超时、拒绝与残留阻止退出，显式重试收尾', {timeout:420_000}, async () => {
+  const {server,url}=await startLoginDevServer()
+  const fixture=await prepareFixture(url)
+  console.log(`P24 退出故障夹具：${fixture.root}`)
+  try {await exerciseExitFailure(fixture,closeFailure)}
+  finally {await server.close()}
+})
+}
 
 test('P23 真实 Electron：配置、启动与健康失败安全退出，修复后重开复用数据且无重复后端', {timeout:420_000}, async () => {
   const {server,url}=await startLoginDevServer()
@@ -290,12 +302,22 @@ async function prepareFixture(url) {
     dialog.showMessageBox = async (_window, options) => {
       options ??= _window
       globalThis.fixtureErrors.push(options.message)
+      if(process.env.FIXTURE_EXIT_FAILURE==='1' && options.buttons?.[0]==='重试') {
+        globalThis.fixtureLogoutDialogs ??= []
+        globalThis.fixtureLogoutDialogs.push({message:options.message,detail:options.detail,buttons:options.buttons})
+        writeFileSync(${JSON.stringify(path.join(root,'p24-prompts.json'))},JSON.stringify(globalThis.fixtureLogoutDialogs))
+        return new Promise(resolve=>{globalThis.fixtureLogoutAnswer=resolve})
+      }
       if(process.env.FIXTURE_HOLD_STARTUP_FAILURE==='1' && options.buttons?.length===1 && options.buttons[0]==='退出应用') {
         globalThis.fixtureStartupDialog={message:options.message,buttons:options.buttons}
         return new Promise(resolve=>{globalThis.fixtureStartupAnswer=resolve})
       }
       if (globalThis.fixtureLogoutError) writeFileSync(${JSON.stringify(path.join(root, 'logout-stage-error.txt'))},globalThis.fixtureLogoutError)
       return {response:globalThis.fixtureDialogResponse ?? 1, checkboxChecked:false}
+    }
+    if(process.env.FIXTURE_BLOCKED_START==='1') dialog.showErrorBox=(_title,message)=>{
+      writeFileSync(${JSON.stringify(path.join(root,'blocked-start.json'))},JSON.stringify({message,
+        windows:app.isReady() ? require('electron').BrowserWindow.getAllWindows().length : 0}))
     }
     app.setAsDefaultProtocolClient = scheme => {globalThis.fixtureProtocols.push(scheme); return false}
     const originalFetch = net.fetch
@@ -338,6 +360,28 @@ async function prepareFixture(url) {
   external:['electron','node-pty','get-windows'], outfile:output,
   define:{__HERMES_PRODUCT_IDENTITY__:JSON.stringify(createRequire(import.meta.url)(path.join(desktop,'product-identity.cjs')))},
   plugins:[{name:'observe-runtime-error', setup(builder) {
+    // 故障只注入测试 bundle 的进程操作；归属表、最终存活检查与退出事务保持正式代码。
+    builder.onLoad({filter:/entry_local[\\/]logout-processes\.ts$/}, async args => ({loader:'ts',
+      contents:(await readFile(args.path,'utf8')).replace('execFileSync }','execFileSync as realExecFileSync }') + `
+        /** 为真实隔离进程制造故障，不替换最终存活检查。 */
+        function execFileSync(file,args,options) {
+          const fault=globalThis.fixtureStopFault
+          let command=args.at(-1)
+          if(fault && command.includes('taskkill.exe')) {
+            globalThis.fixtureFaultCalls=(globalThis.fixtureFaultCalls || 0)+1
+            if(fault==='timeout') return realExecFileSync(file,['-NoProfile','-NonInteractive','-Command','Start-Sleep -Seconds 5'],{...options,timeout:250})
+            if(fault==='refused' || (fault==='residual' && Number(command.match(/ProcessId=(\\d+)/)?.[1])===globalThis.fixtureLeaf)) return ''
+            if(fault==='residual') args=[...args.slice(0,-1),command.replace('/T /F','/F')]
+          }
+          const result=realExecFileSync(file,args,options)
+          if(fault==='unknown' && command.includes('Select-Object')) {
+            const rows=JSON.parse(result)
+            for(const row of rows) if(row.pid===globalThis.fixtureRoot) row.started=''
+            return JSON.stringify(rows)
+          }
+          return result
+        }
+      `,resolveDir:path.dirname(args.path)}))
     builder.onLoad({filter:/entry_local[\\/]desktop-runtime\.ts$/}, async args => ({loader:'ts',
       contents:(await readFile(args.path,'utf8')).replace("await import('../main')",
         "await import('../main').catch(error => {globalThis.fixtureImportError=error.stack; throw error})"),
