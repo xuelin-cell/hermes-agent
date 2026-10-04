@@ -33,7 +33,7 @@
 
 已将 `dev:electron` 的直接 Electron 启动替换为 `scripts/dev-electron.mjs`，外层 `concurrently -k` 和本机 PowerShell 启动脚本保持不变。启动器只接受所持有 Electron 子进程的明确重启消息；旧进程正常关闭后再启动同一可执行文件、参数、工作目录和环境。普通关闭／异常退出结束启动链，不自动重试。
 
-`electron/desktop-relaunch.ts` 提供停止工作后的重启动作，合并重复请求；托管开发模式通过进程 IPC 通知启动器，其他启动方式使用原生 `app.relaunch()`。这是后续 P19/P22 的调用入口，本步仅由真实测试夹具消费，不添加生产调试按钮，也未改写原版更新／GPU 等重启路径。
+`electron/desktop-relaunch.ts` 提供停止工作后的重启动作，合并重复请求；托管开发模式通过进程 IPC 通知启动器，其他启动方式使用原生 `app.relaunch()`。这是后续 P19 主动退出账号的调用入口；P22 按 2026-10-04 新规则只提示到期，不调用自动重启。本步仅由真实测试夹具消费，不添加生产调试按钮，也未改写原版更新／GPU 等重启路径。
 
 验证命令：`node --test scripts/dev-electron.native.mjs scripts/login-bootstrap.native.mjs`。真实 Vite、concurrently 与 Electron 夹具完成连续两次重启、旧进程先退出、Vite PID 与 HTTP 可用性保持、普通退出收尾、异常退出不重试；并回归 P02。Vite 使用独立临时根目录和缓存，不代表完整聊天 Renderer 已验收。尚未通过用户 PowerShell 入口手工点击重启，也未验证打包安装版原生重启；P19 接入退出账号后补人工验收。
 
