@@ -4,6 +4,7 @@ import type { LoginSession } from '../login/session'
 import { type AccountPaths, type AccountRoots, prepareAccountPaths } from './account-paths'
 import { mergeMaasModelConfig } from './model-config'
 import { writeAccountMaasKey } from './model-key'
+import { LocalStartupError } from './startup-failure'
 
 /** 只从主进程 LoginSession 取得有效 UID，不接受页面指定账号或目录。 */
 export function prepareLocalAccount(session: LoginSession, roots: AccountRoots): AccountPaths {
@@ -15,9 +16,9 @@ export function prepareLocalAccount(session: LoginSession, roots: AccountRoots):
 
   try {
     return prepareAccountPaths(roots, MAAS_IDENTITY_NAMESPACE, identity.uid)
-  } catch {
+  } catch (error) {
     // 原始文件系统错误可能含账号路径，不能直接交给页面或日志。
-    throw new Error('账号目录准备失败，请检查本地目录后重试。')
+    throw new LocalStartupError('directory', error)
   }
 }
 
@@ -27,10 +28,19 @@ export function prepareLocalEnvironment(session: LoginSession, roots: AccountRoo
   const result = session.currentPlan()
 
   if (result.status === 'available') {
-    mergeMaasModelConfig(account.home, result.plan)
-    writeAccountMaasKey(account.home, result.plan.apiKey)
-  } else if (result.status === 'empty') {
-    writeAccountMaasKey(account.home, null)
+    try {
+      mergeMaasModelConfig(account.home, result.plan)
+    } catch (error) {
+      throw new LocalStartupError('config', error)
+    }
+  }
+
+  if (result.status === 'available' || result.status === 'empty') {
+    try {
+      writeAccountMaasKey(account.home, result.status === 'available' ? result.plan.apiKey : null)
+    } catch (error) {
+      throw new LocalStartupError('credentials', error)
+    }
   }
 
   return account

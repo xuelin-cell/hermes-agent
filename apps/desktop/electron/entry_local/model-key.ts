@@ -70,8 +70,8 @@ export function writeAccountMaasKey(home: string, apiKey: string | null): void {
     }
 
     original = existing ? new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(fs.readFileSync(file)) : ''
-  } catch {
-    throw new Error('无法读取账号凭据文件，请确认 .env 是 UTF-8 编码的可读普通文件。')
+  } catch (error) {
+    throw new Error('无法读取账号凭据文件，请确认 .env 是 UTF-8 编码的可读普通文件。', { cause: error })
   }
 
   const next = mergeKey(original, assignment)
@@ -82,7 +82,7 @@ export function writeAccountMaasKey(home: string, apiKey: string | null): void {
 
   try {
     writeSecretFileAtomic(file, next, { encoding: 'utf8' })
-  } catch {
-    throw new Error('无法保存账号模型凭据，本次环境准备未完成。')
+  } catch (error) {
+    throw new Error('无法保存账号模型凭据，本次环境准备未完成。', { cause: error })
   }
 }

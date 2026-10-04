@@ -20,6 +20,89 @@ import { gatewayOperation } from './gateway-logout.fixture.mjs'
 
 const desktop = path.resolve(import.meta.dirname, '..')
 
+test('P23 真实 Electron：配置、启动与健康失败安全退出，修复后重开复用数据且无重复后端', {timeout:420_000}, async () => {
+  const {server,url}=await startLoginDevServer()
+  const fixture=await prepareFixture(url)
+  console.log(`P23 启动故障夹具：${fixture.root}`)
+  let instance
+  let probes=0
+  const unhealthy=createServer((_request,response)=>{probes++;response.writeHead(503);response.end('{}')})
+  await new Promise(resolve=>unhealthy.listen(0,'127.0.0.1',resolve))
+  try {
+    instance=await electron.launch({executablePath:electronPath,args:[fixture.output],
+      env:{...fixture.env,FIXTURE_PLAN:'available'},timeout:45_000})
+    let page=await chatWindow(instance,[])
+    await page.evaluate(()=>window.hermesDesktop.getConnection())
+    const context=await instance.evaluate(()=>globalThis.fixtureContext())
+    const config=path.join(context.home,'config.yaml')
+    const original=await readFile(config,'utf8')
+    const encrypted=await readFile(path.join(fixture.userData,'maas-login.enc'))
+    const marker=path.join(context.workspace,'p23-history-sentinel.txt')
+    await writeFile(marker,'preserve fixture account files')
+    await instance.close(); instance=null
+    const history=await readFile(path.join(context.home,'state.db'))
+    for (const kind of ['config','exit','health']) {
+      console.log(`P23 验证：${kind}`)
+      if (kind==='config') await writeFile(config,'personal: [unclosed\n# private-key\n')
+      instance=await electron.launch({executablePath:electronPath,args:[fixture.output],
+        env:{...fixture.env,FIXTURE_PLAN:'available',FIXTURE_HOLD_STARTUP_FAILURE:'1',
+          FIXTURE_FAIL_BACKEND:kind,FIXTURE_HEALTH_PORT:String(unhealthy.address().port)},timeout:45_000})
+      const deadline=Date.now()+90_000
+      let prompt
+      while(Date.now()<deadline) {
+        prompt=await instance.evaluate(()=>globalThis.fixtureStartupDialog)
+        if(prompt) break
+        await new Promise(resolve=>setTimeout(resolve,100))
+      }
+      assert.ok(prompt,'必须清楚显示启动失败')
+      assert.ok(prompt.message.includes('完整退出应用后重新打开'))
+      assert.ok(prompt.message.includes(kind==='config'?'账号配置':'本地服务'))
+      assert.equal(/private-key|fixture-only-model-key|fixture-login-token|Traceback|config.yaml/.test(prompt.message),false)
+      assert.deepEqual(prompt.buttons,['退出应用'])
+      assert.deepEqual(await readFile(path.join(fixture.userData,'maas-login.enc')),encrypted)
+      assert.equal(await readFile(marker,'utf8'),'preserve fixture account files')
+      if(kind==='config') {
+        assert.equal(await instance.evaluate(()=>globalThis.fixtureContext()),null)
+        assert.deepEqual(await readFile(path.join(context.home,'state.db')),history)
+        assert.equal(await readFile(config,'utf8'),'personal: [unclosed\n# private-key\n')
+      }
+      const pids=await instance.evaluate(()=>globalThis.fixtureFailedPids)
+      if(kind!=='config') {
+        const failures=await instance.evaluate(async()=>{
+          const state=await globalThis.fixtureMain()
+          return Promise.all(Array.from({length:3},()=>state.startBackend().then(()=>null,error=>error.message)))
+        })
+        assert.ok(failures.every(message=>message===prompt.message),'重复请求必须保持同一失败')
+        assert.equal(pids.length,1)
+        assert.deepEqual(await instance.evaluate(()=>globalThis.fixtureFailedPids),pids)
+      }
+      const childProcess=instance.process()
+      const exited=once(childProcess,'exit')
+      await instance.evaluate(()=>globalThis.fixtureStartupAnswer({response:0,checkboxChecked:false}))
+      const [code]=await exited
+      assert.equal(code,0)
+      instance=null
+      for(const pid of pids) assert.throws(()=>globalThis.process.kill(pid,0),{code:'ESRCH'})
+      await assert.rejects(access(path.join(fixture.userData,'maas-logout-pending.json')),{code:'ENOENT'})
+      if(kind==='config') await writeFile(config,original)
+    }
+    assert.ok(probes>0,'健康失败必须经过真实 HTTP 探测')
+    instance=await electron.launch({executablePath:electronPath,args:[fixture.output],env:fixture.env,timeout:45_000})
+    page=await chatWindow(instance,[])
+    const connections=await page.evaluate(()=>Promise.all(Array.from({length:3},()=>window.hermesDesktop.getConnection())))
+    assert.equal(new Set(connections.map(row=>row.baseUrl)).size,1)
+    assert.equal((await instance.evaluate(()=>globalThis.fixtureContext())).id,context.id)
+    assert.equal(await readFile(marker,'utf8'),'preserve fixture account files')
+    assert.deepEqual(await readFile(path.join(fixture.userData,'maas-login.enc')),encrypted)
+    await page.evaluate(()=>window.hermesDesktop.api({method:'GET',path:'/api/status'}))
+    await page.screenshot({path:path.join(fixture.root,'p23-reopened.png')})
+  } finally {
+    await instance?.close()
+    await new Promise(resolve=>unhealthy.close(resolve))
+    await server.close()
+  }
+})
+
 test('P22 真实套餐鉴权拒绝：进入桌面后仍提示重登，不清身份或停止后端', {timeout:240_000}, async () => {
   const {server,url}=await startLoginDevServer()
   const fixture=await prepareFixture(url)
@@ -198,6 +281,7 @@ async function prepareFixture(url) {
     globalThis.fixtureProtocols = []
     globalThis.fixtureErrors = []
     globalThis.fixturePreloadErrors = []
+    globalThis.fixtureFailedPids = []
     const setContextMenu=Tray.prototype.setContextMenu
     Tray.prototype.setContextMenu=function(menu) {globalThis.fixtureTrayMenu=menu; return setContextMenu.call(this,menu)}
     app.on('web-contents-created', (_event, contents) => {
@@ -206,6 +290,10 @@ async function prepareFixture(url) {
     dialog.showMessageBox = async (_window, options) => {
       options ??= _window
       globalThis.fixtureErrors.push(options.message)
+      if(process.env.FIXTURE_HOLD_STARTUP_FAILURE==='1' && options.buttons?.length===1 && options.buttons[0]==='退出应用') {
+        globalThis.fixtureStartupDialog={message:options.message,buttons:options.buttons}
+        return new Promise(resolve=>{globalThis.fixtureStartupAnswer=resolve})
+      }
       if (globalThis.fixtureLogoutError) writeFileSync(${JSON.stringify(path.join(root, 'logout-stage-error.txt'))},globalThis.fixtureLogoutError)
       return {response:globalThis.fixtureDialogResponse ?? 1, checkboxChecked:false}
     }
@@ -254,11 +342,18 @@ async function prepareFixture(url) {
       contents:(await readFile(args.path,'utf8')).replace("await import('../main')",
         "await import('../main').catch(error => {globalThis.fixtureImportError=error.stack; throw error})"),
       resolveDir:path.dirname(args.path)}))
-    // 只观察正式存储函数，不替换路径、读写、系统加密或后端。
+    // 存储与归属使用正式代码；P23 仅在测试 bundle 注入失败进程参数和较短健康时限。
     builder.onLoad({filter:/electron[\\/]main\.ts$/}, async args => ({loader:'ts',
       contents:(await readFile(args.path,'utf8')).replace('await accountLogout.run(mode)',
-        'await accountLogout.run(mode).catch(error => {globalThis.fixtureLogoutError=error.stack; throw error})') + `
+        'await accountLogout.run(mode).catch(error => {globalThis.fixtureLogoutError=error.stack; throw error})')
+        .replace('function spawnOwnedBackend(...args: Parameters<typeof spawn>): ChildProcess {',
+          "function spawnOwnedBackend(...args: Parameters<typeof spawn>): ChildProcess { if(['exit','health'].includes(process.env.FIXTURE_FAIL_BACKEND) && args[1]?.includes('serve')) {args[1]=['-c',process.env.FIXTURE_FAIL_BACKEND==='exit'?'import sys; sys.exit(9)':\"import os,time; print('HERMES_BACKEND_READY port='+os.environ['FIXTURE_HEALTH_PORT'],flush=True); time.sleep(600)\"]}")
+        .replace('const child = localBackendLifecycle.spawn((): ChildProcess => spawn(...args))',
+          'const child = localBackendLifecycle.spawn((): ChildProcess => spawn(...args)); if(process.env.FIXTURE_FAIL_BACKEND) globalThis.fixtureFailedPids.push(child.pid)')
+        .replace('return waitForHermesReady(baseUrl, {',
+          "return waitForHermesReady(baseUrl, { timeoutMs: process.env.FIXTURE_FAIL_BACKEND==='health'?1500:undefined,") + `
         export const fixtureNativeState = {paths:ACCOUNT_DESKTOP_STATE,
+          startBackend:startHermes,
           tray:minimizeToTray,
           spawnFixtureBackend:spawnOwnedBackend,
           browserSession:ACCOUNT_SESSION, rendererPartition:ACCOUNT_RENDERER_PARTITION,

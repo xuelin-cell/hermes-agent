@@ -8,6 +8,7 @@ import { resolveSourcePython } from '../source-python'
 
 import { type AccountPaths, type AccountRoots, resolveAccountPaths } from './account-paths'
 import { prepareLocalEnvironment } from './prepare-account'
+import { LocalStartupError } from './startup-failure'
 
 export interface PreparedLocalContext extends Readonly<AccountPaths> {
   readonly installationRoot: string
@@ -54,16 +55,16 @@ export class LocalRuntimeContext {
       if (!fs.statSync(path.join(this.installationRoot, 'hermes_cli', 'main.py')).isFile()) {
         throw new Error()
       }
-    } catch {
-      throw new Error('开发仓库不完整，请检查源码安装位置。')
+    } catch (error) {
+      throw new LocalStartupError('runtime', error)
     }
 
     try {
       if (!python || !fs.statSync(python).isFile()) {
         throw new Error()
       }
-    } catch {
-      throw new Error('开发仓库的 Python 不存在，请先准备开发运行时。')
+    } catch (error) {
+      throw new LocalStartupError('runtime', error)
     }
 
     const paths = prepareLocalEnvironment(this.login, this.roots)

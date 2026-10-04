@@ -7,6 +7,7 @@ import { expect, it, vi } from 'vitest'
 import { LoginSession } from '../login/session'
 
 import { prepareLocalAccount, prepareLocalEnvironment } from './prepare-account'
+import { LocalStartupError } from './startup-failure'
 
 it('目录只取 LoginSession 的有效身份，凭据变更仍复用目录，未登录、到期或关闭不能准备', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-prepare-account-'))
@@ -32,7 +33,7 @@ it('目录只取 LoginSession 的有效身份，凭据变更仍复用目录，�
     fs.writeFileSync(path.join(a.workspace, 'marker'), 'keep-file')
     fs.renameSync(a.desktopState, `${a.desktopState}-kept`)
     fs.writeFileSync(a.desktopState, 'blocked-directory')
-    expect(() => prepareLocalAccount(next, roots)).toThrow('账号目录准备失败，请检查本地目录后重试。')
+    expect(() => prepareLocalAccount(next, roots)).toThrow(LocalStartupError)
     expect(fs.readFileSync(path.join(a.workspace, 'marker'), 'utf8')).toBe('keep-file')
     fs.unlinkSync(a.desktopState)
     fs.renameSync(`${a.desktopState}-kept`, a.desktopState)
@@ -117,7 +118,7 @@ it('真实账号准备只消费最新成功套餐；失败保留 Key，空套餐
     await session.queryPlan()
     const cleared = fs.readFileSync(envFile, 'utf8')
     fs.mkdirSync(`${envFile}.tmp`)
-    expect(() => prepareLocalEnvironment(session, roots)).toThrow('本次环境准备未完成')
+    expect(() => prepareLocalEnvironment(session, roots)).toThrow(LocalStartupError)
     expect(fs.readFileSync(envFile, 'utf8')).toBe(cleared)
     fs.rmdirSync(`${envFile}.tmp`)
     prepareLocalEnvironment(session, roots)

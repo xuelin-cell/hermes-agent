@@ -9,6 +9,7 @@ import { LoginSession } from '../login/session'
 import { createSourcePythonBackend } from '../source-backend'
 
 import { LocalRuntimeContext } from './runtime-context'
+import { LocalStartupError } from './startup-failure'
 
 /** 创建独立的源码安装与账号根目录，不运行替身解释器。 */
 function fixture() {
@@ -143,7 +144,7 @@ it('准备失败可重试，已准备环境跨到期保留；到期不能重新�
   try {
     session.restore()
     fs.unlinkSync(f.python)
-    expect(() => runtime.prepare()).toThrow('开发仓库的 Python')
+    expect(() => runtime.prepare()).toThrow(LocalStartupError)
     expect(fs.existsSync(f.roots.data)).toBe(false)
     fs.writeFileSync(f.python, '')
     const context = runtime.prepare()
@@ -152,7 +153,7 @@ it('准备失败可重试，已准备环境跨到期保留；到期不能重新�
     fs.mkdirSync(`${file}.tmp`)
     request.mockResolvedValueOnce(Response.json({ apiKey: null, models: null }))
     await session.queryPlan()
-    expect(() => runtime.prepare()).toThrow('本次环境准备未完成')
+    expect(() => runtime.prepare()).toThrow(LocalStartupError)
     expect(runtime.current()).toBeNull()
     expect(fs.readFileSync(file, 'utf8')).toBe('PERSONAL_KEY=keep\n')
     fs.rmdirSync(`${file}.tmp`)

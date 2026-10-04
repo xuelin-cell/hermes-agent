@@ -231,6 +231,7 @@ import {
   stopLogoutProcesses
 } from './entry_local/logout-processes'
 import { openLogoutWindow, retryLogout } from './entry_local/logout-window'
+import { LocalStartupError, showLocalStartupFailure } from './entry_local/startup-failure'
 import { createAmbientClaimArbiter } from './event-dedupe'
 import { openExternalUrl as externalOpen, type ExternalOpenDeps, reportPreOpenStatFailure } from './external-open'
 import {
@@ -12606,6 +12607,11 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
         return resolveRemoteBackend(primaryProfile, { primary: true })
       },
       selectRegistryPrimary: async () => {
+        // 账号本地环境不选远程主连接，不能把后续本地失败误判为可重试远程故障。
+        if (ACCOUNT_RUNTIME) {
+          return null
+        }
+
         // The pre-update resolve can miss a registry primary (stale cache, v1
         // mode=local winning the first read). Re-read after the update gate
         // and select launchMode=primary before any local attach or spawn.
@@ -12795,16 +12801,18 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
       primaryProfilePin.clear()
 
       rememberLog(`Hermes backend failed to start: ${error.message}`)
+      const message = ACCOUNT_RUNTIME && !backendReady ? new LocalStartupError('backend', error).message : error.message
+
       updateBootProgress(
         {
-          error: error.message,
-          message: `Hermes backend failed to start: ${error.message}`,
+          error: message,
+          message: `Hermes backend failed to start: ${message}`,
           phase: 'backend.error',
           running: false
         },
         { allowDecrease: true }
       )
-      sendBackendExit({ code: null, signal: null, error: error.message })
+      sendBackendExit({ code: null, signal: null, error: message })
       rejectBackendStart?.(error)
     })
     hermesProcess.once('exit', (code, signal) => {
@@ -12836,7 +12844,11 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
       }
 
       if (!backendReady) {
-        const message = `Hermes backend exited before it became ready (${signal || code}).${primaryOutputTail.describe()}`
+        // 子进程提前退出时也不先向界面发送原始输出或账号路径。
+        const message = ACCOUNT_RUNTIME
+          ? new LocalStartupError('backend', new Error(primaryOutputTail.describe())).message
+          : `Hermes backend exited before it became ready (${signal || code}).${primaryOutputTail.describe()}`
+
         updateBootProgress(
           {
             error: message,
@@ -12952,7 +12964,12 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
       throw error
     }
 
-    const message = error instanceof Error ? error.message : String(error)
+    // 本地账号启动失败只提供安全提示；后续退出沿用现有归属与停止事务。
+    const failure =
+      ACCOUNT_RUNTIME && !attemptedRemote && !supervisorRecovery ? new LocalStartupError('backend', error) : error
+
+    const message = failure instanceof Error ? failure.message : String(failure)
+
     const hostKeyChanged = isHostKeyChangedBootFailure(error)
     const sshAuthFailed = isSshAuthFailedBootFailure(error)
 
@@ -12975,7 +12992,7 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
     // "Sign out & sign in" reload, and the wake-recovery revalidate path.
     // A supervisor-owned respawn never latches (see the predicate).
     if (shouldLatchBackendStartFailure({ attemptedRemote, supervisorRecovery })) {
-      backendStartFailure = error instanceof Error ? error : new Error(message)
+      backendStartFailure = failure instanceof Error ? failure : new Error(message)
     }
 
     // A host-key CHANGE is the terminal exception among remote failures: SSH
@@ -13025,7 +13042,12 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
       },
       { allowDecrease: true }
     )
-    throw error
+
+    if (failure instanceof LocalStartupError) {
+      showLocalStartupFailure(failure, mainWindow)
+    }
+
+    throw failure
   })
 
   backendConnectionState.setPromise(connectionAttempt, connectionPromise)

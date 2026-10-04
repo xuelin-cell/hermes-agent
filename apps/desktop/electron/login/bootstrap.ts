@@ -9,6 +9,7 @@ import { markDesktopLaunchSuccessful, prepareDesktopLaunch } from '../desktop-la
 import { startAccountDesktop } from '../entry_local/desktop-runtime'
 import { logoutIntentPath } from '../entry_local/logout'
 import { LocalRuntimeContext, type PreparedLocalContext } from '../entry_local/runtime-context'
+import { LocalStartupError, showLocalStartupFailure } from '../entry_local/startup-failure'
 import { createWindowOpenHandler } from '../window-open-policy'
 
 import type { LoginAccount } from './contract'
@@ -23,6 +24,7 @@ let initialized = false
 let accountRuntime: LocalRuntimeContext | null = null
 let desktopStarting: Promise<void> | null = null
 let handedOff = false
+let startupFailed = false
 
 /** 初始化应用级目录与退出事件，不读取任何账号 Home 或旧连接。 */
 function initializeLoginShell(): void {
@@ -141,7 +143,7 @@ async function openLoginWindow(): Promise<BrowserWindow | null> {
     }
   })
   installLoginIpc(window, expectedUrl, accountRuntime!.login, () => {
-    if (stopping) {
+    if (stopping || startupFailed) {
       return
     }
 
@@ -156,23 +158,20 @@ async function openLoginWindow(): Promise<BrowserWindow | null> {
           handedOff = true
           window.destroy()
         })
-        .catch(() => {
+        .catch(error => {
           // 不回退旧环境，不在半初始化的主进程中重复安装原版事件和 IPC。
           if (!stopping && !window.isDestroyed()) {
-            void dialog.showMessageBox(window, {
-              type: 'error',
-              title: 'Hermes Desktop MT',
-              message: '本地 Hermes 桌面无法启动，请完整退出后重试。账号数据不会被删除。'
-            })
+            startupFailed = true
+            showLocalStartupFailure(new LocalStartupError('runtime', error), window)
           }
         })
-    } catch {
+    } catch (error) {
       // 不把文件系统路径、账号标识或原始异常交给页面。
-      void dialog.showMessageBox(window, {
-        type: 'error',
-        title: 'Hermes Desktop MT',
-        message: '账号环境准备失败，请检查账号配置和开发运行时，重新打开登录页后重试。'
-      })
+      startupFailed = true
+      showLocalStartupFailure(
+        error instanceof LocalStartupError ? error : new LocalStartupError('runtime', error),
+        window
+      )
     }
   })
 
@@ -210,7 +209,14 @@ export function sealDesktopAccount(): void {
 
 /** 合并重复启动请求；未获可信身份前只启动登录壳，不导入账号运行时。 */
 export function startDesktopLogin(): Promise<BrowserWindow | null> {
-  initializeLoginShell()
+  try {
+    initializeLoginShell()
+  } catch (error) {
+    stopping = true
+    void app.whenReady().then(() => showLocalStartupFailure(new LocalStartupError('directory', error)))
+
+    return Promise.resolve(null)
+  }
 
   if (stopping) {
     return Promise.resolve(null)

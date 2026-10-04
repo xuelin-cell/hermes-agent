@@ -72,8 +72,8 @@ export function mergeMaasModelConfig(home: string, catalog: Pick<MaasPlan, 'mode
     }
 
     original = existing ? fs.readFileSync(file, 'utf8') : ''
-  } catch {
-    throw new Error('无法读取账号模型配置，请确认 config.yaml 是可读的普通文件。')
+  } catch (error) {
+    throw new Error('无法读取账号模型配置，请确认 config.yaml 是可读的普通文件。', { cause: error })
   }
 
   const options = { version: '1.1' as const, intAsBigInt: true, prettyErrors: false, logLevel: 'silent' as const }
@@ -199,8 +199,8 @@ export function mergeMaasModelConfig(home: string, catalog: Pick<MaasPlan, 'mode
   if (next !== original) {
     try {
       writeSecretFileAtomic(file, next, { encoding: 'utf8' })
-    } catch {
-      throw new Error('无法保存账号模型配置，原配置保持不变。')
+    } catch (error) {
+      throw new Error('无法保存账号模型配置，原配置保持不变。', { cause: error })
     }
   }
 }
