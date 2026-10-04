@@ -26,7 +26,7 @@ export type DesktopMachineProfile = MachineProfile
 declare global {
   interface Window {
     hermesDesktop: {
-      /** 只读当前有效账号的脱敏信息，不接收身份参数。 */
+      /** 只读本次已准备账号的脱敏信息，运行中到期仍返回原期限。 */
       getMaasAccount: () => Promise<LoginAccount | null>
       logoutMaasAccount: () => Promise<void>
       // Resolve a backend connection. Omit `profile` (or pass the primary) for

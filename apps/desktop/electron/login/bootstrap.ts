@@ -197,11 +197,9 @@ export function currentDesktopLocalContext(): PreparedLocalContext | null {
   return stopping ? null : (accountRuntime?.current() ?? null)
 }
 
-/** 从主进程的有效身份挑选展示字段；不读取磁盘或恢复失效登录。 */
+/** 展示本次已准备账号，即使登录到期也保留手动退出入口；不恢复身份。 */
 export function currentDesktopAccount(): LoginAccount | null {
-  const identity = stopping ? null : accountRuntime?.login.currentIdentity()
-
-  return identity ? { maskedPhone: identity.maskedPhone, expiresAt: identity.expiresAt } : null
+  return stopping ? null : (accountRuntime?.currentAccount() ?? null)
 }
 
 /** 退出确认后立即撤销主进程身份，不再允许读取或准备旧账号。 */

@@ -3,14 +3,33 @@ import { afterEach, expect, it, vi } from 'vitest'
 
 import { ContribRender } from '@/contrib/react/boundary'
 import { I18nProvider } from '@/i18n/context'
+import { notify } from '@/store/notifications'
 
 import { useMaasAccountStatusbarItem } from './maas-account-status'
+
+vi.mock('@/store/notifications', () => ({ notify: vi.fn() }))
 
 const originalBridge = window.hermesDesktop
 
 afterEach(() => {
   window.hermesDesktop = originalBridge
   vi.useRealTimers()
+  vi.mocked(notify).mockClear()
+})
+
+it('登录页套餐拒绝提示随账号进入桌面，重复聚焦不再次打断，退出入口仍可用', async () => {
+  const expiresAt = Date.now() + 60_000
+  const logoutMaasAccount = vi.fn(async () => {})
+  window.hermesDesktop = {
+    getMaasAccount: vi.fn(async () => ({ maskedPhone: '138****0000', expiresAt, planAuthRejected: true })),
+    logoutMaasAccount
+  } as never
+  render(<AccountFixture />)
+  await screen.findByRole('button', { name: '退出' })
+  expect(notify).toHaveBeenCalledWith(expect.objectContaining({ id: 'maas-plan-rejected' }))
+  await act(async () => window.dispatchEvent(new Event('focus')))
+  expect(notify).toHaveBeenCalledTimes(1)
+  expect(logoutMaasAccount).not.toHaveBeenCalled()
 })
 
 it('从主进程读取脱敏账号，重新聚焦读取失败后隐藏旧信息', async () => {
@@ -27,19 +46,19 @@ it('从主进程读取脱敏账号，重新聚焦读取失败后隐藏旧信息'
   await waitFor(() => expect(result.current).toBeNull())
 })
 
-it('未登录不显示账号，登录期限结束后重新读取且不执行注销', async () => {
+it('未登录不显示账号，主进程保留到期账号时展示与退出入口仍保留', async () => {
   vi.useFakeTimers()
   const getMaasAccount = vi.fn().mockResolvedValue(null)
   window.hermesDesktop = { getMaasAccount } as never
   const { result } = renderHook(useMaasAccountStatusbarItem)
   await act(async () => {})
   expect(result.current).toBeNull()
-  getMaasAccount.mockResolvedValueOnce({ maskedPhone: '139****0000', expiresAt: Date.now() + 1000 })
+  getMaasAccount.mockResolvedValue({ maskedPhone: '139****0000', expiresAt: Date.now() + 1000 })
   await act(async () => window.dispatchEvent(new Event('focus')))
   expect(result.current?.label).toBe('139****0000')
   await act(async () => vi.advanceTimersByTimeAsync(1000))
-  expect(result.current).toBeNull()
-  expect(getMaasAccount).toHaveBeenCalledTimes(3)
+  expect(result.current?.label).toBe('139****0000')
+  expect(getMaasAccount).toHaveBeenCalledTimes(2)
 })
 
 /** 真实渲染状态栏贡献与统一确认弹窗，不用替身模拟退出按钮。 */
@@ -93,4 +112,36 @@ it('重新聚焦获得同一展示身份时，退出确认不被组件重挂打�
   expect(screen.getByRole('dialog')).toBe(dialog)
   fireEvent.click(within(dialog).getByRole('button', { name: '退出' }))
   expect(window.hermesDesktop.logoutMaasAccount).toHaveBeenCalledTimes(1)
+})
+
+it.each(['timer', 'wake'])('到期 %s 只提示一次，保留已打开确认和手动退出，不自动注销', async mode => {
+  vi.useFakeTimers()
+  const expiresAt = Date.now() + 1000
+  const logoutMaasAccount = vi.fn(async () => {})
+  window.hermesDesktop = {
+    getMaasAccount: vi.fn(async () => ({ maskedPhone: '138****0000', expiresAt })),
+    logoutMaasAccount
+  } as never
+  render(<AccountFixture />)
+  await act(async () => {})
+  fireEvent.click(screen.getByRole('button', { name: '退出' }))
+  const dialog = screen.getByRole('dialog')
+
+  if (mode === 'timer') {
+    await act(async () => vi.advanceTimersByTimeAsync(1000))
+  } else {
+    vi.setSystemTime(expiresAt + 1000)
+    await act(async () => window.dispatchEvent(new Event('focus')))
+  }
+
+  expect(screen.getByText('登录已到期')).toBeTruthy()
+  expect(screen.getByRole('dialog')).toBe(dialog)
+  expect(notify).toHaveBeenCalledTimes(1)
+  expect(logoutMaasAccount).not.toHaveBeenCalled()
+  await act(async () => window.dispatchEvent(new Event('focus')))
+  await act(async () => vi.advanceTimersByTimeAsync(120_000))
+  expect(notify).toHaveBeenCalledTimes(1)
+  expect(screen.getByRole('dialog')).toBe(dialog)
+  fireEvent.click(within(dialog).getByRole('button', { name: '退出' }))
+  expect(logoutMaasAccount).toHaveBeenCalledTimes(1)
 })

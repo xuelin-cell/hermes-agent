@@ -68,3 +68,28 @@ it('does not blame a slow reply when the provider could not be reached', () => {
   expect(copy.title).toBe('Could not reach the AI service')
   expect(copy.body).toContain('OpenCode Go could not be reached')
 })
+
+it('仅出错回合的 MaaS 模型鉴权拒绝建议重登；网络、自定义提供方和不完整身份保留原版说明', () => {
+  const thread = TRANSLATIONS.zh.assistant.thread
+  const maas = `custom:desktop-mt-maas-${'a'.repeat(64)}`
+
+  const surface = parseErrorSurface({
+    layer: 'auth',
+    code: 'auth',
+    provider: maas,
+    provider_label: 'MaaS',
+    auth_kind: 'api_key'
+  })!
+
+  expect(errorCardText(thread, surface).body).toBe(thread.errorMaasRejected)
+  expect(errorCardText(thread, surface).body).not.toContain('已到期')
+
+  for (const changed of [
+    { ...surface, layer: 'provider' as const, code: 'timeout' },
+    { ...surface, provider: 'custom:personal' },
+    { ...surface, provider: 'custom:desktop-mt-maas-bad' },
+    { ...surface, provider: undefined }
+  ]) {
+    expect(errorCardText(thread, changed).body).not.toBe(thread.errorMaasRejected)
+  }
+})

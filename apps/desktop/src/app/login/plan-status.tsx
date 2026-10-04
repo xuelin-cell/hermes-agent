@@ -68,7 +68,7 @@ export function PlanStatus({ bridge }: PlanStatusProps) {
         <p>{copy.planEmpty}</p>
       ) : (
         <div className="flex items-center gap-2">
-          <p>{copy.planError}</p>
+          <p>{result?.status === 'failed' && result.reason === 'auth' ? copy.planAuthRejected : copy.planError}</p>
           <Button onClick={() => void query()} size="inline" type="button" variant="textStrong">
             {copy.planRetry}
           </Button>

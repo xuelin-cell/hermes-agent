@@ -19,6 +19,10 @@ export const esOverrides = {
     signedIn: 'Sesión iniciada: {account}',
     localPending: 'Tu espacio de trabajo local se está conectando.',
     expired: 'Tu sesión ha caducado. Vuelve a iniciar sesión.',
+    expiredLabel: 'Sesión caducada',
+    expiredRunning:
+      'Tu sesión ha caducado. Las tareas actuales continúan. Puedes cerrar sesión e iniciar sesión de nuevo.',
+    planAuthRejected: 'MaaS rechazó las credenciales de inicio de sesión. Cierra sesión e inicia sesión de nuevo.',
     resendAfter: 'Reenviar en {seconds}s',
     smsSent: 'Código enviado. Revisa tus mensajes.',
     smsSendError: 'No se pudo enviar el código. Revisa los datos o actualiza la imagen e inténtalo de nuevo.',
@@ -5623,6 +5627,8 @@ export const esOverrides = {
       errorUpdateApiKey: 'Actualizar clave API',
       errorSignInAgain: (provider: string) => `Volver a iniciar sesión en ${provider}`,
       errorSignInFreeTier: 'Iniciar sesión con una cuenta de Nous',
+      errorMaasRejected:
+        'MaaS rechazó las credenciales del modelo. Cierra sesión e inicia sesión de nuevo para recargar tu plan. Si sigue fallando, comprueba las credenciales y el plan en MaaS.',
       errorOauthExpired: (provider: string) =>
         `Tu sesión de ${provider} caducó o se revocó. Vuelve a iniciar sesión para seguir chateando.`,
       errorOpenLogs: 'Abrir registros',

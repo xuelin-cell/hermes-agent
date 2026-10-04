@@ -64,3 +64,16 @@ it('异常不泄露内部错误；组件卸载后，旧响应不会污染下一�
   expect(screen.queryByText('old-account-model')).toBeNull()
   expect(screen.queryByText('private-error-detail')).toBeNull()
 })
+
+it('套餐鉴权拒绝提示重新登录，普通请求失败仅显示可重试错误', async () => {
+  const plan = vi
+    .fn()
+    .mockResolvedValueOnce({ status: 'failed', reason: 'auth' })
+    .mockResolvedValueOnce({ status: 'failed' })
+
+  fixture(plan)
+  await screen.findByText('MaaS 拒绝了当前登录凭据，请退出账号后重新登录。')
+  fireEvent.click(screen.getByRole('button', { name: '重试' }))
+  await screen.findByText('套餐查询失败，请重试。')
+  expect(screen.queryByText(/拒绝了当前登录凭据/)).toBeNull()
+})

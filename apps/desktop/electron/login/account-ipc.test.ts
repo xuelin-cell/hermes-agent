@@ -4,9 +4,8 @@ const { handle, fromWebContents } = vi.hoisted(() => ({ handle: vi.fn(), fromWeb
 vi.mock('electron', () => ({ ipcMain: { handle }, BrowserWindow: { fromWebContents } }))
 
 import { installAccountIpc } from './account-ipc'
-import { LoginSession } from './session'
 
-it('主窗和副窗只读取同一有效身份的展示字段，未登录或到期不返回旧账号', () => {
+it('主副窗只读取已准备账号的展示字段，到期保留退出入口，撤销后不显示旧账号', async () => {
   const identity = {
     uid: 'private-uid',
     token: 'private-token',
@@ -14,27 +13,27 @@ it('主窗和副窗只读取同一有效身份的展示字段，未登录或到�
     expiresAt: Date.now() + 60_000
   }
 
-  const session = new LoginSession(vi.fn(), { save: vi.fn(), load: () => identity as never })
+  const readAccount = vi.fn().mockReturnValue(null)
+  const logout = vi.fn(async () => {})
   const partition = {}
   const frame = { url: 'http://127.0.0.1:5174/?peer=1#/chat' }
   const sender = { mainFrame: frame, session: partition }
   fromWebContents.mockReturnValue({ isDestroyed: () => false, webContents: sender })
-  installAccountIpc(
-    partition as never,
-    () => 'http://127.0.0.1:5174',
-    () => session.currentIdentity()
-  )
+  installAccountIpc(partition as never, () => 'http://127.0.0.1:5174', readAccount, logout)
   const read = handle.mock.calls.at(-1)![1]
   const event = { sender, senderFrame: frame }
   expect(read(event)).toBeNull()
-  session.restore()
+  readAccount.mockReturnValue(identity)
   expect(read(event)).toEqual({ maskedPhone: identity.maskedPhone, expiresAt: identity.expiresAt })
   frame.url = 'http://127.0.0.1:5174/#/'
   expect(read(event)).toEqual({ maskedPhone: identity.maskedPhone, expiresAt: identity.expiresAt })
   vi.spyOn(Date, 'now').mockReturnValue(identity.expiresAt)
-  expect(read(event)).toBeNull()
+  expect(read(event)).toEqual({ maskedPhone: identity.maskedPhone, expiresAt: identity.expiresAt })
+  const invoke = handle.mock.calls.findLast(call => call[0] === 'hermes:maas-account:logout')![1]
+  await invoke(event)
+  expect(logout).toHaveBeenCalledTimes(1)
   vi.restoreAllMocks()
-  session.dispose()
+  readAccount.mockReturnValue(null)
   expect(read(event)).toBeNull()
 })
 

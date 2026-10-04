@@ -42,6 +42,10 @@ export async function exerciseLogout(root, userData) {
   assert.ok(ledger?.pid)
   writeFileSync(path.join(context.workspace,'logout-history-sentinel.txt'),'preserve account files')
   const runtime = await globalThis.fixtureMain()
+  if (process.env.FIXTURE_EXPIRY_TEST === '1') {
+    const {exerciseExpiry} = await import('./account-expiry.fixture.mjs')
+    await exerciseExpiry(window,context,runtime,root,userData)
+  }
   const leafFile = path.join(root,'logout-leaf.json')
   const script = `const {spawn}=require('node:child_process'); const fs=require('node:fs'); const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',windowsHide:true}); fs.writeFileSync(${JSON.stringify(leafFile)},JSON.stringify({pid:child.pid})); setInterval(()=>{},1000)`
   const controlled = runtime.spawnFixtureBackend(process.env.FIXTURE_NODE,['-e',script],{stdio:'ignore',windowsHide:true})

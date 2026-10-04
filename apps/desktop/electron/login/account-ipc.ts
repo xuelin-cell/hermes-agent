@@ -45,19 +45,28 @@ export function installAccountIpc(
 
   if (logout) {
     ipcMain.handle('hermes:maas-account:logout', async (event, ...args): Promise<void> => {
-      if (!trusted(event, args) || !readAccount()) {throw new Error('退出请求无效。')}
+      if (!trusted(event, args) || !readAccount()) {
+        throw new Error('退出请求无效。')
+      }
+
       await logout()
     })
   }
 
   ipcMain.handle('hermes:maas-account:get', (event, ...args): LoginAccount | null => {
-    if (!trusted(event, args)) {return null}
+    if (!trusted(event, args)) {
+      return null
+    }
 
     try {
       const account = readAccount()
 
-      return account && account.expiresAt > Date.now()
-        ? { maskedPhone: account.maskedPhone, expiresAt: account.expiresAt }
+      return account
+        ? {
+            maskedPhone: account.maskedPhone,
+            expiresAt: account.expiresAt,
+            ...(account.planAuthRejected ? { planAuthRejected: true } : {})
+          }
         : null
     } catch {
       return null

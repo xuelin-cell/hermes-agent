@@ -19,9 +19,14 @@ export const deOverrides = {
     signedIn: 'Angemeldet: {account}',
     localPending: 'Dein lokaler Arbeitsbereich wird angebunden.',
     expired: 'Deine Anmeldung ist abgelaufen. Bitte melde dich erneut an.',
+    expiredLabel: 'Anmeldung abgelaufen',
+    expiredRunning:
+      'Deine Anmeldung ist abgelaufen. Laufende Aufgaben werden fortgesetzt. Du kannst dich abmelden und erneut anmelden.',
+    planAuthRejected: 'MaaS hat die Anmeldedaten abgelehnt. Melde dich ab und erneut an.',
     resendAfter: 'Erneut in {seconds}s',
     smsSent: 'Bestätigungscode gesendet. Bitte prüfe deine SMS.',
-    smsSendError: 'Code konnte nicht gesendet werden. Prüfe die Eingabe oder aktualisiere das Bild und versuche es erneut.',
+    smsSendError:
+      'Code konnte nicht gesendet werden. Prüfe die Eingabe oder aktualisiere das Bild und versuche es erneut.',
     smsLimited: 'Zu viele Anfragen. Bitte warte und versuche es später erneut.',
     phonePlaceholder: '11-stellige Telefonnummer',
     captchaPlaceholder: 'Code aus dem Bild',
@@ -5634,6 +5639,8 @@ export const deOverrides = {
       errorUpdateApiKey: 'API-Key aktualisieren',
       errorSignInAgain: provider => `Erneut bei ${provider} anmelden`,
       errorSignInFreeTier: 'Mit einem Nous-Konto anmelden',
+      errorMaasRejected:
+        'MaaS hat die Modell-Zugangsdaten abgelehnt. Melde dich ab und erneut an, um den Tarif neu zu laden. Prüfe bei weiteren Fehlern die Zugangsdaten und den Tarif bei MaaS.',
       errorOauthExpired: provider =>
         `Ihre Anmeldung bei ${provider} ist abgelaufen oder wurde widerrufen. Melden Sie sich erneut an, um weiterzuchatten.`,
       errorOpenLogs: 'Logs öffnen',

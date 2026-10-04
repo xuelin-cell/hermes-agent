@@ -20,6 +20,36 @@ import { gatewayOperation } from './gateway-logout.fixture.mjs'
 
 const desktop = path.resolve(import.meta.dirname, '..')
 
+test('P22 真实套餐鉴权拒绝：进入桌面后仍提示重登，不清身份或停止后端', {timeout:240_000}, async () => {
+  const {server,url}=await startLoginDevServer()
+  const fixture=await prepareFixture(url)
+  console.log(`P22 拒绝提示夹具：${fixture.root}`)
+  let instance
+  try {
+    instance=await electron.launch({executablePath:electronPath,args:[fixture.output],
+      env:{...fixture.env,FIXTURE_PLAN:'rejected'},timeout:45_000})
+    const page=await chatWindow(instance,[])
+    await instance.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(w=>
+      w.webContents.getURL().startsWith('http') && !w.webContents.getURL().includes('login.html')).show())
+    // 无套餐的新账号沿用原版模型引导；先明确跳过，再验收桌面提示与可点击的退出。
+    await page.getByText('稍后再选择提供方',{exact:true}).click({timeout:60_000})
+    await page.getByText('MaaS 拒绝了当前登录凭据，请退出账号后重新登录。',{exact:true}).waitFor({timeout:60_000})
+    await page.locator('[data-slot=statusbar]').getByRole('button',{name:'退出',exact:true}).waitFor()
+    await page.locator('[data-slot=statusbar]').getByRole('button',{name:'退出',exact:true}).click({trial:true,timeout:45_000})
+    const account=await page.evaluate(()=>window.hermesDesktop.getMaasAccount())
+    assert.equal(account.planAuthRejected,true)
+    assert.deepEqual(Object.keys(account).sort(),['expiresAt','maskedPhone','planAuthRejected'])
+    assert.ok(await instance.evaluate(()=>globalThis.fixtureContext()))
+    await page.evaluate(()=>window.hermesDesktop.getConnection())
+    await access(path.join(fixture.userData,'maas-login.enc'))
+    await assert.rejects(access(path.join(fixture.userData,'maas-logout-pending.json')),{code:'ENOENT'})
+    await page.screenshot({path:path.join(fixture.root,'plan-rejected.png')})
+  } finally {
+    await instance?.close()
+    await server.close()
+  }
+})
+
 test('P21 原版 Cron：停机后周期补跑一次、关闭补跑和过期一次性跳过', {timeout:30_000}, async () => {
   const root=await mkdtemp(path.join(os.tmpdir(),'hermes-p21-cron-'))
   await promisify(execFile)(process.env.FIXTURE_PYTHON || path.resolve(desktop,'../../.venv/Scripts/python.exe'),
@@ -59,14 +89,17 @@ for (const mode of ['window','tray']) {
   })
 }
 
-test('P19/P20 真实开发监督进程：退出停止后端、消息网关与子树，重启到登录页', {timeout:240_000}, async () => {
+for (const expiry of [false,true]) {
+test(expiry ? 'P22 真实短期限：任务跨到期继续，手动退出有效，冷启动拒绝过期身份' :
+  'P19/P20 真实开发监督进程：退出停止后端、消息网关与子树，重启到登录页', {timeout:420_000}, async () => {
   const {server,url} = await startLoginDevServer()
   const fixture = await prepareFixture(url)
   const unrelated = spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',windowsHide:true})
   console.log(`P19 隔离退出夹具：${fixture.root}`)
   try {
     const code = await superviseElectron({args:[fixture.output], cwd:desktop,
-      env:{...fixture.env,FIXTURE_LOGOUT_TEST:'1',FIXTURE_NODE:process.execPath,FIXTURE_PLAN:'available'}})
+      env:{...fixture.env,FIXTURE_LOGOUT_TEST:'1',FIXTURE_NODE:process.execPath,FIXTURE_PLAN:'available',
+        ...(expiry ? {FIXTURE_EXPIRY_TEST:'1',FIXTURE_EXPIRY_MS:'180000'} : {})}})
     const error = await readFile(path.join(fixture.root,'logout-error.txt'),'utf8').catch(() => '')
     assert.equal(error,'')
     assert.equal(code,0)
@@ -86,8 +119,27 @@ test('P19/P20 真实开发监督进程：退出停止后端、消息网关与子
     await access(path.join(before.context.home,'state.db'))
     await assert.rejects(access(path.join(fixture.userData,'maas-login.enc')),{code:'ENOENT'})
     await assert.rejects(access(path.join(fixture.userData,'maas-logout-pending.json')),{code:'ENOENT'})
+    if (expiry) {
+      const continued=JSON.parse(await readFile(path.join(fixture.root,'expiry.json'),'utf8'))
+      assert.equal(continued.continued,true)
+      assert.equal(continued.originalExpiryKept,true)
+      assert.equal(continued.notices,1)
+      for (const pid of continued.pids) assert.throws(()=>process.kill(pid,0),{code:'ESRCH'})
+      const encrypted=await readFile(path.join(fixture.root,'expiry-login.enc'))
+      await writeFile(path.join(fixture.userData,'maas-login.enc'),encrypted)
+      const cold=await electron.launch({executablePath:electronPath,args:[fixture.output],
+        env:{...fixture.env,FIXTURE_LOGIN_DISABLE:'1'},timeout:45_000})
+      try {
+        const login=await cold.firstWindow()
+        await login.getByRole('heading',{name:'登录 Hermes'}).waitFor({timeout:45_000})
+        assert.equal(await cold.evaluate(()=>globalThis.fixtureContext()),null)
+        assert.equal(await cold.evaluate(()=>globalThis.fixturePlanQueries),0)
+        assert.deepEqual(await readFile(path.join(fixture.userData,'maas-login.enc')),encrypted)
+      } finally {await cold.close()}
+    }
     // 再次恢复同一测试身份，确认复用原账号；不是一次真实 MaaS 短信登录。
-    const instance = await electron.launch({executablePath:electronPath,args:[fixture.output],env:fixture.env,timeout:45_000})
+    const instance = await electron.launch({executablePath:electronPath,args:[fixture.output],
+      env:{...fixture.env,...(expiry ? {FIXTURE_RELOGIN:'1'} : {})},timeout:45_000})
     try {
       await chatWindow(instance,[])
       assert.equal((await instance.evaluate(() => globalThis.fixtureContext())).id,before.context.id)
@@ -99,9 +151,13 @@ test('P19/P20 真实开发监督进程：退出停止后端、消息网关与子
       await gatewayOperation(context,'stop',gateways)
     }
     if (unrelated.exitCode === null && unrelated.signalCode === null) { unrelated.kill(); await once(unrelated,'exit') }
+    if (expiry) await promisify(execFile)(process.env.FIXTURE_PYTHON || path.resolve(desktop,'../../.venv/Scripts/python.exe'),
+      [path.join(desktop,'scripts/account-work.fixture.py'),'cleanup',fixture.root],
+      {cwd:path.resolve(desktop,'../..'),windowsHide:true,timeout:20_000})
     await server.close()
   }
 })
+}
 
 /** 使用正式入口和原版主进程；只有 MaaS 响应受控，账号文件和 Hermes 子进程均真实。 */
 async function prepareFixture(url) {
@@ -155,20 +211,24 @@ async function prepareFixture(url) {
     }
     app.setAsDefaultProtocolClient = scheme => {globalThis.fixtureProtocols.push(scheme); return false}
     const originalFetch = net.fetch
+    globalThis.fixturePlanQueries = 0
     net.fetch = (...args) => String(args[0]).startsWith('https://maas.ai-yuanjing.com/') ?
+      (String(args[0]).endsWith('/my-plan') && globalThis.fixturePlanQueries++,
       Promise.resolve(process.env.FIXTURE_PLAN === 'failed' ? new Response('',{status:503}) :
+        process.env.FIXTURE_PLAN === 'rejected' ? new Response('',{status:401}) :
         process.env.FIXTURE_PLAN === 'available' ? Response.json({apiKey:'fixture-only-model-key',
           models:{models:[{id:'fixture',model:'fixture-desktop-model',base_url:'https://models.invalid/v1'}]}}) :
-        Response.json({apiKey:null, models:null})) : originalFetch(...args)
+        Response.json({apiKey:null, models:null}))) : originalFetch(...args)
     // 真实系统加密，完整可信身份只在主进程，页面不传 UID 或 token。
     app.whenReady().then(() => {
       if (process.env.FIXTURE_LOGIN_DISABLE === '1') return
       if (process.env.FIXTURE_LOGOUT_TEST === '1' && existsSync(${JSON.stringify(path.join(root, 'logout-started'))})) return
       const store = new CredentialStore(app.getPath('userData'))
       const uid = process.env.FIXTURE_UID || 'fixture-desktop-account'
-      if (store.load()?.uid !== uid) store.save({
+      if (store.load()?.uid !== uid || process.env.FIXTURE_RELOGIN === '1') store.save({
         namespace:'maas.ai-yuanjing.com/uniwork', uid,
-        token:'fixture-login-token', maskedPhone:uid === 'fixture-desktop-account-b' ? '139****0000' : '138****0000', expiresAt:Date.now()+600_000
+        token:'fixture-login-token', maskedPhone:uid === 'fixture-desktop-account-b' ? '139****0000' : '138****0000',
+        expiresAt:Date.now()+Number(process.env.FIXTURE_EXPIRY_MS || 600_000)
       })
     })
     await import('./electron/entry')

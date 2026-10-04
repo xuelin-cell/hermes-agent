@@ -578,6 +578,8 @@ The detailed state contract lives in the scoped
 
 登录表单复用 `Input`、`Button` 的 `size="auth"`：44px 最小高度、10px 圆角及 14px 正文，用于独立登录卡片。`Button size="captcha"` 提供 96×44px 的无内边距图片操作位。普通桌面控件的默认尺寸保持原有约定。验证码以同一行中的图片按钮呈现，点击、Enter 或 Space 均可刷新；图片加载和失败仍保留该位置。
 
+账号运行中到期复用右下角状态栏和通知：保留脱敏账号、简短到期文字与退出入口，完整说明通过已有 Tip 与一次非阻塞通知提供。提示不抢焦点、不打开确认框、不关闭已有确认、不改变任务生命周期。登录阶段尚未准备环境时，到期仍恢复登录表单。
+
 - [ ] Reuse a primitive (`Button`, `SearchField`, `SegmentedControl`,
       `ListRow`, `Loader`, `ErrorState`, `LogView`, `ConfirmDialog`) instead of
       forking one?

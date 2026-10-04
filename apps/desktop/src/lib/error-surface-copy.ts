@@ -28,6 +28,11 @@ export function errorCardText(
 ): ErrorCardText {
   const provider = errorProviderName(thread, surface)
 
+  // 只依据出错回合的 MaaS 提供方和鉴权分类提示重登，不推断登录或模型 Key 到期。
+  if (surface?.layer === 'auth' && /^custom:desktop-mt-maas-[a-f0-9]{64}$/.test(surface.provider ?? '')) {
+    return { title: render(thread.errorAuthKinds.api_key.title, provider), body: thread.errorMaasRejected }
+  }
+
   // A credential rejection is worded by HOW the provider is credentialed
   // (key vs sign-in), which the code alone (`auth`) cannot tell.
   if (surface?.layer === 'auth' && surface.authKind === 'oauth') {

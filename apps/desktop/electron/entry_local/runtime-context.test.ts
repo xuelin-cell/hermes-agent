@@ -90,7 +90,38 @@ it('可信身份固定 A/B 数据路径，安装与 Python 不变；重复准备
   }
 })
 
-it('无运行时、配置写入失败、过期和同进程换身份不能留下可用上下文；修复可重试', async () => {
+it('套餐鉴权拒绝仍可准备本地环境，将无凭据的失败提示交接到桌面', async () => {
+  const f = fixture()
+
+  const login = new LoginSession(vi.fn().mockResolvedValue(new Response('', { status: 401 })), {
+    save: vi.fn(),
+    load: () => ({
+      namespace: MAAS_IDENTITY_NAMESPACE,
+      uid: 'account-A',
+      token: 'private-token',
+      maskedPhone: '138****0000',
+      expiresAt: Date.now() + 60_000
+    })
+  })
+
+  const runtime = new LocalRuntimeContext(login, f.roots, f.source)
+
+  try {
+    login.restore()
+    await login.queryPlan()
+    const context = runtime.prepare()
+    expect(runtime.current()).toBe(context)
+    expect(runtime.currentAccount()).toMatchObject({ maskedPhone: '138****0000', planAuthRejected: true })
+    expect(JSON.stringify(runtime.currentAccount())).not.toContain('private-token')
+    runtime.dispose()
+    expect(runtime.currentAccount()).toBeNull()
+  } finally {
+    runtime.dispose()
+    fs.rmSync(f.root, { recursive: true, force: true })
+  }
+})
+
+it('准备失败可重试，已准备环境跨到期保留；到期不能重新准备或同进程换账号', async () => {
   const f = fixture()
   let uid = 'account-A'
   const expiresAt = Date.now() + 60_000
@@ -127,7 +158,11 @@ it('无运行时、配置写入失败、过期和同进程换身份不能留下�
     fs.rmdirSync(`${file}.tmp`)
     expect(runtime.prepare()).toBe(context)
     vi.spyOn(Date, 'now').mockReturnValue(expiresAt)
-    expect(runtime.current()).toBeNull()
+    expect(runtime.current()).toBe(context)
+    expect(runtime.currentAccount()).toEqual({ maskedPhone: '138****0000', expiresAt })
+    expect(session.currentIdentity()).toBeNull()
+    expect(runtime.current()).toBe(context)
+    expect(runtime.currentAccount()).toEqual({ maskedPhone: '138****0000', expiresAt })
     expect(() => runtime.prepare()).toThrow('请先登录')
     vi.restoreAllMocks()
     uid = 'account-B'

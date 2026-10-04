@@ -18,6 +18,9 @@ export const zh = defineLocale({
     signedIn: '已登录：{account}',
     localPending: '本地工作空间正在接入。',
     expired: '登录已到期，请重新登录。',
+    expiredLabel: '登录已到期',
+    expiredRunning: '登录已到期，当前任务继续运行。您可以退出账号后重新登录。',
+    planAuthRejected: 'MaaS 拒绝了当前登录凭据，请退出账号后重新登录。',
     resendAfter: '{seconds} 秒后重发',
     smsSent: '验证码已发送，请查看手机短信。',
     smsSendError: '发送失败，请检查输入或刷新图片后重试。',
@@ -4814,6 +4817,8 @@ export const zh = defineLocale({
       errorStartNewSession: '开始新会话',
       errorSwitchProvider: '切换服务商',
       errorSignInAgain: provider => `重新登录 ${provider}`,
+      errorMaasRejected:
+        'MaaS 拒绝了模型凭据。可退出账号后重新登录以重新获取套餐；若仍失败，请在 MaaS 检查凭据和套餐。',
       errorOauthExpired: provider => `您的 ${provider} 登录已过期或被撤销。请重新登录以继续对话。`,
       errorOpenLogs: '打开日志',
       errorOpenLogsFailed: '无法打开日志文件夹',

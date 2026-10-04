@@ -19,6 +19,10 @@ export const frOverrides = {
     signedIn: 'Connecté : {account}',
     localPending: 'Votre espace de travail local est en cours de connexion.',
     expired: 'Votre session a expiré. Veuillez vous reconnecter.',
+    expiredLabel: 'Connexion expirée',
+    expiredRunning:
+      'Votre connexion a expiré. Les tâches en cours continuent. Vous pouvez vous déconnecter puis vous reconnecter.',
+    planAuthRejected: 'MaaS a refusé vos identifiants de connexion. Déconnectez-vous puis reconnectez-vous.',
     resendAfter: 'Renvoyer dans {seconds}s',
     smsSent: 'Code envoyé. Consultez vos SMS.',
     smsSendError: 'Envoi impossible. Vérifiez la saisie ou actualisez l’image, puis réessayez.',
@@ -5645,6 +5649,8 @@ export const frOverrides = {
       errorUpdateApiKey: 'Mettre à jour la clé API',
       errorSignInAgain: provider => `Se reconnecter à ${provider}`,
       errorSignInFreeTier: 'Se connecter avec un compte Nous',
+      errorMaasRejected:
+        'MaaS a refusé les identifiants du modèle. Déconnectez-vous puis reconnectez-vous pour recharger votre forfait. Si le problème persiste, vérifiez les identifiants et le forfait auprès de MaaS.',
       errorOauthExpired: provider =>
         `Votre connexion à ${provider} a expiré ou a été révoquée. Reconnectez-vous pour continuer la conversation.`,
       errorOpenLogs: 'Ouvrir les journaux',

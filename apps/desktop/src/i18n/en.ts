@@ -18,6 +18,9 @@ export const en: Translations = {
     signedIn: 'Signed in: {account}',
     localPending: 'Your local workspace is being connected.',
     expired: 'Your sign-in has expired. Please sign in again.',
+    expiredLabel: 'Sign-in expired',
+    expiredRunning: 'Your sign-in has expired. Current tasks will continue. You can sign out and sign in again.',
+    planAuthRejected: 'MaaS rejected this sign-in credential. Sign out and sign in again.',
     resendAfter: 'Resend in {seconds}s',
     smsSent: 'Verification code sent. Please check your messages.',
     smsSendError: 'Could not send the code. Check your input or refresh the image and try again.',
@@ -5231,6 +5234,8 @@ export const en: Translations = {
       errorUpdateApiKey: 'Update API key',
       errorSignInAgain: provider => `Sign in to ${provider} again`,
       errorSignInFreeTier: 'Sign in with a Nous account',
+      errorMaasRejected:
+        'MaaS rejected the model credential. You can sign out and sign in again to reload your plan; if it still fails, check the credential and plan with MaaS.',
       errorOauthExpired: provider =>
         `Your ${provider} sign-in has expired or was revoked. Sign in again to keep chatting.`,
       errorOpenLogs: 'Open logs',

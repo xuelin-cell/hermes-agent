@@ -12,6 +12,8 @@ export interface LoginRequest {
 export interface LoginAccount {
   maskedPhone: string
   expiresAt: number
+  /** 仅展示已确认的套餐鉴权拒绝，不将其当作身份到期。 */
+  planAuthRejected?: true
 }
 
 export type LoginResult = { ok: true; account: LoginAccount } | { ok: false }
@@ -21,7 +23,8 @@ export interface PlanModel {
   isDefault: boolean
 }
 
-export type PlanResult = { status: 'available'; models: PlanModel[] } | { status: 'empty' | 'failed' }
+export type PlanResult =
+  { status: 'available'; models: PlanModel[] } | { status: 'empty' } | { status: 'failed'; reason?: 'auth' }
 
 export interface SmsRequest {
   phone: string

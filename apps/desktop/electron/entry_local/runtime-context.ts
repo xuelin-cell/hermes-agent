@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
+import type { LoginAccount } from '../login/contract'
 import { MAAS_IDENTITY_NAMESPACE } from '../login/credential-store'
 import type { LoginSession } from '../login/session'
 import { resolveSourcePython } from '../source-python'
@@ -17,6 +18,7 @@ export interface PreparedLocalContext extends Readonly<AccountPaths> {
 export class LocalRuntimeContext {
   private context: PreparedLocalContext | null = null
   private prepared = false
+  private account: LoginAccount | null = null
   private readonly roots: Readonly<AccountRoots>
   private readonly installationRoot: string
 
@@ -66,35 +68,31 @@ export class LocalRuntimeContext {
 
     const paths = prepareLocalEnvironment(this.login, this.roots)
     this.context ??= Object.freeze({ ...paths, installationRoot: this.installationRoot, python })
+    const plan = this.login.currentPlan()
+    this.account = {
+      maskedPhone: identity.maskedPhone,
+      expiresAt: identity.expiresAt,
+      ...(plan.status === 'failed' && plan.reason === 'auth' ? { planAuthRejected: true as const } : {})
+    }
     this.prepared = true
 
     return this.context
   }
 
-  /** 仅主进程读取已准备且仍获授权的上下文，不返回 UID、token 或模型 Key。 */
+  /** 保留本次已准备的固定环境；运行中登录到期不停止任务或改变账号。 */
   current(): PreparedLocalContext | null {
-    const identity = this.login.currentIdentity()
+    return this.prepared ? this.context : null
+  }
 
-    if (!identity) {
-      this.prepared = false
-
-      return null
-    }
-
-    if (
-      !this.prepared ||
-      !this.context ||
-      resolveAccountPaths(this.roots, MAAS_IDENTITY_NAMESPACE, identity.uid).id !== this.context.id
-    ) {
-      return null
-    }
-
-    return this.context
+  /** 展示已准备账号的原期限；副本不含凭据，也不用于登录恢复或授权请求。 */
+  currentAccount(): LoginAccount | null {
+    return this.prepared && this.account ? { ...this.account } : null
   }
 
   /** 应用退出或取消启动时释放身份；只清内存，不删除账号文件。 */
   dispose(): void {
     this.prepared = false
+    this.account = null
     this.login.dispose()
   }
 }

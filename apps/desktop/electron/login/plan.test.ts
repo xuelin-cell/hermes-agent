@@ -91,7 +91,6 @@ it('显式空套餐与查询失败分开；缺 Key、坏目录、错误地址、
 
   for (const response of [
     new Response('private-response'),
-    new Response('private', { status: 401 }),
     new Response('private', { status: 429 }),
     new Response('private', { status: 503 })
   ]) {
@@ -115,4 +114,18 @@ it('显式空套餐与查询失败分开；缺 Key、坏目录、错误地址、
   timeoutController.abort()
   expect(await pending).toEqual({ status: 'failed' })
   timeout.mockRestore()
+})
+
+it('仅明确 HTTP 鉴权拒绝提示重登；服务器和网络失败不推断过期', async () => {
+  const request = vi.fn<typeof fetch>()
+
+  for (const status of [401, 403, 429, 500]) {
+    request.mockResolvedValueOnce(new Response('private-error', { status }))
+    expect(await fetchPlan(request, 'token', new AbortController().signal)).toEqual(
+      status === 401 || status === 403 ? { status: 'failed', reason: 'auth' } : { status: 'failed' }
+    )
+  }
+
+  request.mockRejectedValueOnce(new Error('network'))
+  expect(await fetchPlan(request, 'token', new AbortController().signal)).toEqual({ status: 'failed' })
 })

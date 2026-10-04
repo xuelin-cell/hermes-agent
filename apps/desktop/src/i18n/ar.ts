@@ -16,6 +16,9 @@ export const ar = defineLocale({
     signedIn: 'تم تسجيل الدخول: {account}',
     localPending: 'يجري إعداد مساحة العمل المحلية.',
     expired: 'انتهت صلاحية تسجيل الدخول. سجّل الدخول مجددًا.',
+    expiredLabel: 'انتهت صلاحية الدخول',
+    expiredRunning: 'انتهت صلاحية الدخول. ستستمر المهام الحالية. يمكنك تسجيل الخروج ثم الدخول مجددًا.',
+    planAuthRejected: 'رفض MaaS بيانات تسجيل الدخول. سجّل الخروج ثم ادخل مجددًا.',
     resendAfter: 'إعادة الإرسال بعد {seconds}ث',
     smsSent: 'تم إرسال رمز التحقق. تحقق من الرسائل النصية.',
     smsSendError: 'تعذر إرسال الرمز. تحقق من الإدخال أو حدّث الصورة وحاول مجددًا.',
@@ -3289,6 +3292,8 @@ export const ar = defineLocale({
       errorStartNewSession: 'بدء جلسة جديدة',
       errorSwitchProvider: 'تبديل المزوّد',
       errorSignInAgain: provider => `تسجيل الدخول إلى ${provider} مجدداً`,
+      errorMaasRejected:
+        'رفض MaaS بيانات اعتماد النموذج. يمكنك تسجيل الخروج ثم الدخول مجددًا لتحميل الخطة. إذا استمر الفشل، فتحقق من بيانات الاعتماد والخطة لدى MaaS.',
       errorOauthExpired: provider =>
         `انتهت صلاحية تسجيل دخولك إلى ${provider} أو تم إلغاؤه. سجّل الدخول مجدداً لمتابعة المحادثة.`,
       errorOpenLogs: 'فتح السجلات',

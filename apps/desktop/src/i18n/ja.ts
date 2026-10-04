@@ -19,6 +19,9 @@ export const ja = defineLocale({
     signedIn: 'ログイン済み：{account}',
     localPending: 'ローカルワークスペースを接続する機能を準備中です。',
     expired: 'ログインの有効期限が切れました。再度ログインしてください。',
+    expiredLabel: 'ログイン期限切れ',
+    expiredRunning: 'ログインの有効期限が切れました。現在のタスクは続行します。ログアウトして再ログインできます。',
+    planAuthRejected: 'MaaS がログイン認証情報を拒否しました。ログアウトして再ログインしてください。',
     resendAfter: '{seconds}秒後に再送',
     smsSent: '認証コードを送信しました。SMSを確認してください。',
     smsSendError: '送信できませんでした。入力を確認するか画像を更新して再試行してください。',
@@ -3858,6 +3861,8 @@ export const ja = defineLocale({
       errorStartNewSession: '新しいセッションを開始',
       errorSwitchProvider: 'プロバイダーを切り替え',
       errorSignInAgain: provider => `${provider} に再度サインイン`,
+      errorMaasRejected:
+        'MaaS がモデル認証情報を拒否しました。ログアウトして再ログインするとプランを再取得できます。解決しない場合は MaaS で認証情報とプランを確認してください。',
       errorOauthExpired: provider =>
         `${provider} のサインインが期限切れか取り消されました。続けるには再度サインインしてください。`,
       errorOpenLogs: 'ログを開く',

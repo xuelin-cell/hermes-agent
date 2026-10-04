@@ -10,7 +10,8 @@ export interface MaasPlan {
   mainModelIndex: number
 }
 
-export type FetchedPlan = { status: 'available'; plan: MaasPlan } | { status: 'empty' | 'failed' }
+export type FetchedPlan =
+  { status: 'available'; plan: MaasPlan } | { status: 'empty' } | { status: 'failed'; reason?: 'auth' }
 
 /** 只接受 JSON 字段对象，不从数组或空值读取套餐信息。 */
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -103,6 +104,10 @@ export async function fetchPlan(request: typeof fetch, token: string, cancellati
       credentials: 'omit',
       cache: 'no-store'
     })
+
+    if (response.status === 401 || response.status === 403) {
+      return { status: 'failed', reason: 'auth' }
+    }
 
     return response.ok ? parsePlan(await response.json()) : { status: 'failed' }
   } catch {

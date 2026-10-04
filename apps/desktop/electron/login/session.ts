@@ -70,6 +70,7 @@ export class LoginSession {
   private identity: LoginIdentity | null = null
   private plan: MaasPlan | null = null
   private planStatus: FetchedPlan['status'] = 'failed'
+  private planFailureReason: 'auth' | undefined
   private planQuery: Promise<PlanResult> | null = null
   private pending = false
   private closed = false
@@ -87,6 +88,7 @@ export class LoginSession {
       this.identity = null
       this.plan = null
       this.planStatus = 'failed'
+      this.planFailureReason = undefined
     }
 
     return this.identity ? { ...this.identity } : null
@@ -102,7 +104,9 @@ export class LoginSession {
       return { status: 'available', plan: { ...this.plan, models: this.plan.models.map(model => ({ ...model })) } }
     }
 
-    return { status: this.planStatus === 'empty' ? 'empty' : 'failed' }
+    return this.planStatus === 'empty'
+      ? { status: 'empty' }
+      : { status: 'failed', ...(this.planFailureReason ? { reason: this.planFailureReason } : {}) }
   }
 
   /** 恢复经过存储模块校验且未到期的原账号；读取失败不改写记录。 */
@@ -153,13 +157,14 @@ export class LoginSession {
         }
 
         this.planStatus = result.status
+        this.planFailureReason = result.status === 'failed' ? result.reason : undefined
 
         if (result.status !== 'available') {
           if (result.status === 'empty') {
             this.plan = null
           }
 
-          return { status: result.status }
+          return { ...result }
         }
 
         this.plan = result.plan
@@ -239,6 +244,7 @@ export class LoginSession {
     this.identity = null
     this.plan = null
     this.planStatus = 'failed'
+    this.planFailureReason = undefined
     this.cancellation.abort()
   }
 }

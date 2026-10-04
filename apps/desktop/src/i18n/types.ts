@@ -73,6 +73,9 @@ export interface Translations {
     signedIn: string
     localPending: string
     expired: string
+    expiredLabel: string
+    expiredRunning: string
+    planAuthRejected: string
     resendAfter: string
     smsSent: string
     smsSendError: string
@@ -4319,6 +4322,8 @@ export interface Translations {
       /** Auth layer, keyed on how the provider is credentialed. The OAuth
        *  body is `errorOauthExpired` (already translated per locale). */
       errorAuthKinds: { api_key: ErrorCardCopy; oauth: Pick<ErrorCardCopy, 'title'> }
+      /** MaaS 仅在真实模型鉴权拒绝时建议重登，不依据登录期限推断 Key 失效。 */
+      errorMaasRejected: string
       /** Collapsed "Details" line holding the raw provider/gateway text. */
       errorDetails: string
       /** Stands in for the provider name when the descriptor carries none. */
