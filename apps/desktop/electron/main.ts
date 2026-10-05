@@ -228,7 +228,7 @@ import {
   logoutProcessTree,
   stopLogoutProcesses
 } from './entry_local/logout-processes'
-import { openLogoutWindow, retryLogout } from './entry_local/logout-window'
+import { createAccountExitWindows, retryLogout } from './entry_local/logout-window'
 import { LocalStartupError, showLocalStartupFailure } from './entry_local/startup-failure'
 import { createAmbientClaimArbiter } from './event-dedupe'
 import { openExternalUrl as externalOpen, type ExternalOpenDeps, reportPreOpenStatFailure } from './external-open'
@@ -11974,7 +11974,12 @@ function reapInstallRootedStragglers(excludePids: number[]): void {
   }
 }
 
-let logoutWindow: BrowserWindow | null = null
+const accountExitWindows = createAccountExitWindows({
+  background: getWindowBackgroundColor,
+  dark: () => nativeTheme.shouldUseDarkColors,
+  bounds: () => mainWindow && !mainWindow.isDestroyed() ? mainWindow.getBounds() : undefined
+})
+
 let logoutComplete = false
 let logoutChildren: ChildProcess[] = []
 let logoutGateways: AccountGateway[] = []
@@ -11985,12 +11990,14 @@ let logoutGateway: ReturnType<typeof createAccountGatewayLogout> | null = null
 const accountLogout = createAccountLogout({
   userData: app.getPath('userData'),
   account: ACCOUNT_RUNTIME.id,
-  seal: () => {
+  seal: mode => {
     sealDesktopAccount()
     primaryRecoverySuppressed = true
     logoutChildren = localBackendLifecycle.ownedChildren()
     localBackendLifecycle.seal()
     logoutTerminals = terminalIpc.seal()
+    minimizeToTray.beginQuit()
+    accountExitWindows.seal(mode)
   },
   snapshot: async () => {
     const roots = [
@@ -12007,7 +12014,7 @@ const accountLogout = createAccountLogout({
       logoutOrdinary ??= logoutProcessTree(processes, roots)
       logoutGateways = gateways
       const gatewayProcesses = logoutProcessTree(processes, gatewayLogoutRoots(gateways, processes))
-      logoutWindow ??= openLogoutWindow()
+      accountExitWindows.afterSnapshot()
 
       return [...new Map([...logoutOrdinary, ...gatewayProcesses].map(row => [`${row.pid}:${row.started}`, row])).values()]
     } catch (error) {
@@ -12053,7 +12060,7 @@ const accountLogout = createAccountLogout({
   finish: async mode => {
     logoutComplete = true
     quitConfirmedWithActiveWork = true
-    logoutWindow?.removeAllListeners('close')
+    accountExitWindows.finish()
 
     if (mode === 'logout') {
       await relaunchDesktop()
@@ -12072,8 +12079,7 @@ async function logoutDesktopAccount(mode: 'logout' | 'quit' = 'logout'): Promise
       throw new Error('无法开始安全退出，请重试。')
     }
 
-    logoutWindow ??= openLogoutWindow()
-    await retryLogout(logoutWindow, () => accountLogout.run())
+    await retryLogout(accountExitWindows.failure(), () => accountLogout.run())
   }
 }
 
@@ -13184,7 +13190,7 @@ const minimizeToTray = createMinimizeToTray({
 })
 
 function focusWindow(win) {
-  if (!win || win.isDestroyed()) {
+  if (accountLogout.started() || !win || win.isDestroyed()) {
     return
   }
 
@@ -14497,6 +14503,10 @@ function closeQuickEntryWindow() {
 }
 
 function createWindow() {
+  if (accountLogout.started()) {
+    return
+  }
+
   const icon = getAppIconPath()
   const savedWindowState = readWindowState()
   mainWindow = new BrowserWindow({
@@ -18407,6 +18417,10 @@ if (!isPrimaryInstance) {
   }
 
   app.on('second-instance', (_event, argv) => {
+    if (accountLogout.started()) {
+      return
+    }
+
     const url = _extractDeepLink(argv)
 
     if (url) {

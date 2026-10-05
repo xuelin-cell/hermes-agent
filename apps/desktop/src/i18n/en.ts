@@ -8,7 +8,7 @@ export const en: Translations = {
     logoutTitle: 'Sign out of this account?',
     logoutDescription:
       'Stop this account’s local backends, messaging gateways and their managed work, then return to sign-in. History, files and scheduled job definitions are kept.',
-    logoutBusy: 'Signing out…',
+    logoutBusy: 'Signing out of account…',
     expired: 'Your sign-in has expired. Please sign in again.',
     expiredLabel: 'Sign-in expired',
     expiredRunning: 'Your sign-in has expired. Current tasks will continue. You can sign out and sign in again.',

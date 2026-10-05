@@ -74,7 +74,10 @@ export async function exerciseExitFailure(fixture,closeFailure) {
         const prompts=JSON.parse(text)
         return prompts.length===index+1 ? prompts.at(-1) : null
       }).catch(error=>{if(error.code==='ENOENT') return null;throw error}),`失败提示 ${fault}`)
-      await until(()=>instance.windows().find(window=>window.url().startsWith('data:')),'等待窗加载完成')
+      const waiting=await until(()=>instance.windows().find(window=>new URL(window.url()).searchParams.get('exit')==='1'),'等待窗加载完成')
+      await waiting.getByRole('status').waitFor()
+      await until(()=>instance.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().some(w=>
+        w.webContents.getURL().includes('exit=1') && w.isVisible())),'等待页首帧后原生窗口显示')
       assert.deepEqual(prompt.buttons,['重试','关闭应用'])
       assert.ok(prompt.message.includes('禁止切换账号'))
       assert.equal(/fixture-login-token|fixture-only-model-key|Traceback|powershell|ProcessId/.test(prompt.message+prompt.detail),false)
@@ -94,12 +97,12 @@ export async function exerciseExitFailure(fixture,closeFailure) {
       assert.deepEqual(await readFile(path.join(fixture.userData,'maas-login.enc')),encrypted)
       const fenced=await instance.evaluate(async({app,BrowserWindow})=>{
         const state=await globalThis.fixtureMain()
-        const window=BrowserWindow.getAllWindows()[0]
+        const window=BrowserWindow.getAllWindows().find(w=>new URL(w.webContents.getURL()).searchParams.get('exit')==='1')
         const extra=new BrowserWindow({show:false})
         await Promise.resolve()
         app.quit()
         return {account:globalThis.fixtureContext(),extraDestroyed:extra.isDestroyed(),
-          windows:BrowserWindow.getAllWindows().map(w=>w.webContents.getURL()),
+          windows:BrowserWindow.getAllWindows().filter(w=>w.isVisible()).map(w=>w.webContents.getURL()),
           bridge:await window.webContents.executeJavaScript('typeof window.hermesDesktop'),
           blocked:await state.startBackend().then(()=>false,()=>true)}
       })
@@ -108,10 +111,11 @@ export async function exerciseExitFailure(fixture,closeFailure) {
       assert.equal(fenced.bridge,'undefined')
       assert.equal(fenced.blocked,true)
       assert.equal(fenced.windows.length,1)
-      assert.ok(fenced.windows[0].startsWith('data:'))
+      assert.equal(new URL(fenced.windows[0]).searchParams.get('exit'),'1')
       assert.equal(await instance.evaluate(()=>globalThis.fixtureLogoutDialogs.length),index+1)
     }
-    await instance.windows()[0].screenshot({path:path.join(fixture.root,'p24-exit-wait.png')})
+    const waiting=instance.windows().find(window=>new URL(window.url()).searchParams.get('exit')==='1')
+    await waiting.screenshot({path:path.join(fixture.root,'p24-exit-wait.png')})
     const exited=once(instance.process(),'exit')
     await instance.evaluate((_electron,closeFailure)=>{
       if(!closeFailure) globalThis.fixtureStopFault=null

@@ -8,7 +8,7 @@ export const zhHant = defineLocale({
     logout: '登出',
     logoutTitle: '登出目前帳號？',
     logoutDescription: '將停止目前帳號的本機後端、訊息閘道及其託管工作，並返回登入頁。保留歷史、檔案與排程工作定義。',
-    logoutBusy: '正在登出…',
+    logoutBusy: '正在登出帳號…',
     expired: '登入已到期，請重新登入。',
     expiredLabel: '登入已到期',
     expiredRunning: '登入已到期，目前工作繼續執行。您可以登出帳號後重新登入。',

@@ -263,6 +263,19 @@ test('opt-in minimize and primary Close preserve windows while explicit Quit sti
   expect(native.trays[0].destroyed).toBe(true)
 })
 
+test('接受退出后销毁托盘并禁止恢复，不改写原托盘偏好', async () => {
+  const { controller, main } = setup()
+  await controller.start()
+  await controller.setEnabled(true)
+  const before = fs.readFileSync(path.join(home, 'minimize-to-tray.json'), 'utf8')
+  main.hide()
+  controller.beginQuit()
+  controller.restore()
+  expect(main.visible).toBe(false)
+  expect(native.trays[0].destroyed).toBe(true)
+  expect(fs.readFileSync(path.join(home, 'minimize-to-tray.json'), 'utf8')).toBe(before)
+})
+
 test('persistence, disabling, failed tray creation, and handoff never strand hidden windows', async () => {
   const first = setup()
   await first.controller.start()

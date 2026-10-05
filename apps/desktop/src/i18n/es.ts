@@ -9,7 +9,7 @@ export const esOverrides = {
     logoutTitle: '¿Cerrar la sesión de esta cuenta?',
     logoutDescription:
       'Detiene los servidores locales, las pasarelas de mensajes y sus tareas administradas, y vuelve al inicio de sesión. Se conservan el historial, los archivos y las definiciones de tareas programadas.',
-    logoutBusy: 'Cerrando sesión…',
+    logoutBusy: 'Cerrando sesión de la cuenta…',
     expired: 'Tu sesión ha caducado. Vuelve a iniciar sesión.',
     expiredLabel: 'Sesión caducada',
     expiredRunning:

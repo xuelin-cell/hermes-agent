@@ -117,6 +117,7 @@ it('退出应用保留原登录密文；停止失败后的重试不能改成注�
   await expect(logout.run('quit')).rejects.toThrow('still running')
   expect(JSON.parse(fs.readFileSync(logoutIntentPath(userData), 'utf8')).mode).toBe('quit')
   await logout.run('logout')
+  expect(deps.seal).toHaveBeenCalledWith('quit')
   expect(deps.finish).toHaveBeenCalledWith('quit')
   expect(fs.readFileSync(credential, 'utf8')).toBe('cipher-sentinel')
   expect(fs.existsSync(logoutIntentPath(userData))).toBe(false)

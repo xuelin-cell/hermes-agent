@@ -8,7 +8,7 @@ export const zh = defineLocale({
     logout: '退出',
     logoutTitle: '退出当前账号？',
     logoutDescription: '将停止当前账号的本地后端、消息网关及其托管工作，并返回登录页。历史、文件和定时任务定义保留。',
-    logoutBusy: '正在退出…',
+    logoutBusy: '正在退出账号…',
     expired: '登录已到期，请重新登录。',
     expiredLabel: '登录已到期',
     expiredRunning: '登录已到期，当前任务继续运行。您可以退出账号后重新登录。',

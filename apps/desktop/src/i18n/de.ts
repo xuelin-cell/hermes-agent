@@ -9,7 +9,7 @@ export const deOverrides = {
     logoutTitle: 'Dieses Konto abmelden?',
     logoutDescription:
       'Die lokalen Backends, Nachrichten-Gateways und ihre verwalteten Aufgaben werden gestoppt. Danach erscheint die Anmeldung. Verlauf, Dateien und Zeitpläne bleiben erhalten.',
-    logoutBusy: 'Abmeldung läuft…',
+    logoutBusy: 'Konto wird abgemeldet…',
     expired: 'Deine Anmeldung ist abgelaufen. Bitte melde dich erneut an.',
     expiredLabel: 'Anmeldung abgelaufen',
     expiredRunning:

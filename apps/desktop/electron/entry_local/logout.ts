@@ -31,7 +31,7 @@ export function completeAccountExit(userData: string, mode: AccountExitMode): vo
 export function createAccountLogout(deps: {
   userData: string
   account: string
-  seal: () => void
+  seal: (mode: AccountExitMode) => void
   snapshot: () => LogoutProcess[] | Promise<LogoutProcess[]>
   stop: (processes: LogoutProcess[]) => Promise<void>
   release: () => void
@@ -54,7 +54,7 @@ export function createAccountLogout(deps: {
     }
 
     if (!sealed) {
-      deps.seal()
+      deps.seal(mode!)
       sealed = true
     }
 

@@ -72,6 +72,19 @@ export async function exerciseQuit(root, userData) {
   assert.equal(child.exitCode,null)
   assert.deepEqual(readFileSync(path.join(userData,'maas-logout-pending.json')),runningRecord)
   globalThis.fixtureDialogResponse=1
+  let sawWaitPage=false
+  let hiddenBeforeSnapshot=false
+  window.once('hide',()=>{
+    assert.equal(window.isVisible(),false)
+    assert.equal(window.isDestroyed(),false,'共享进程快照前不销毁 PTY 所属窗')
+    hiddenBeforeSnapshot=true
+  })
+  // 正常退出不新开等待页；隐藏发生在进程快照查询完成之前。
+  app.on('browser-window-created',(_event,created)=>{
+    created.webContents.on('did-finish-load',()=>{
+      if(new URL(created.webContents.getURL()).searchParams.get('exit')==='1') sawWaitPage=true
+    })
+  })
   if (process.env.FIXTURE_QUIT_TEST==='tray') {
     const item=globalThis.fixtureTrayMenu.items.find(item=>item.label==='Quit Hermes')
     assert.ok(item)
@@ -80,4 +93,9 @@ export async function exerciseQuit(root, userData) {
     await runtime.tray.setEnabled(false)
     window.close()
   }
+  app.on('will-quit',()=>{
+    assert.equal(sawWaitPage,false,'正常退出不显示等待页')
+    assert.equal(hiddenBeforeSnapshot,true)
+    writeFileSync(path.join(root,'quit-presentation.json'),JSON.stringify({hiddenBeforeSnapshot,noWaitPage:!sawWaitPage}))
+  })
 }

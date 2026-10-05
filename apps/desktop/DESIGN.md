@@ -582,6 +582,10 @@ The detailed state contract lives in the scoped
 
 账号运行中到期复用右下角状态栏和通知：保留脱敏账号、简短到期文字与退出入口，完整说明通过已有 Tip 与一次非阻塞通知提供。提示不抢焦点、不打开确认框、不关闭已有确认、不改变任务生命周期。登录阶段尚未准备环境时，到期仍恢复登录表单。
 
+退出账号的等待页复用同一个 `ConnectingScreen`：沿用当前窗口背景和明暗模式，仅显示本地化“正在退出账号…”与官方闪烁光标，不添加卡片、进度条或解释文字。该页面由独立的非持久 Chromium 分区加载，不带 preload 或账号操作能力；成功后仍重启 Electron 到登录页。
+
+完整退出应用经原有确认后，立即隐藏旧窗口并移除托盘；主进程继续完成停止与验证，不显示正常等待页。取得进程快照后才销毁旧页面，避免提前断开 PTY 丢失归属。停止失败才打开纯展示页和既有重试对话框，不能跳过检查直接切换账号。普通关闭到托盘继续运行的规则不变。
+
 - [ ] Reuse a primitive (`Button`, `SearchField`, `SegmentedControl`,
       `ListRow`, `Loader`, `ErrorState`, `LogView`, `ConfirmDialog`) instead of
       forking one?

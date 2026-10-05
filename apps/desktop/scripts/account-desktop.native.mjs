@@ -186,6 +186,8 @@ for (const mode of ['window','tray']) {
       assert.equal(code,0)
       const saved=JSON.parse(await readFile(path.join(fixture.root,'quit-before.json'),'utf8'))
       assert.equal(saved.hiddenContinued,true)
+      assert.deepEqual(JSON.parse(await readFile(path.join(fixture.root,'quit-presentation.json'),'utf8')),
+        {hiddenBeforeSnapshot:true,noWaitPage:true})
       for (const pid of [saved.electron,saved.backend,saved.worker,...saved.work.map(row=>row.pid)]) {
         assert.throws(()=>process.kill(pid,0),{code:'ESRCH'})
       }

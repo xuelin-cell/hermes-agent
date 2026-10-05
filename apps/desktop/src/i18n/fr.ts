@@ -9,7 +9,7 @@ export const frOverrides = {
     logoutTitle: 'Déconnecter ce compte ?',
     logoutDescription:
       'Arrête les serveurs locaux, les passerelles de messagerie et leurs tâches gérées, puis revient à la connexion. L’historique, les fichiers et les définitions des tâches planifiées sont conservés.',
-    logoutBusy: 'Déconnexion…',
+    logoutBusy: 'Déconnexion du compte…',
     expired: 'Votre session a expiré. Veuillez vous reconnecter.',
     expiredLabel: 'Connexion expirée',
     expiredRunning:

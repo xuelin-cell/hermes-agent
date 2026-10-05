@@ -74,6 +74,10 @@ export function createMinimizeToTray(options: Options) {
   }
 
   const restoreHidden = () => {
+    if (quitting) {
+      return
+    }
+
     showDock()
 
     for (const win of [...hidden]) {
@@ -102,6 +106,10 @@ export function createMinimizeToTray(options: Options) {
   }
 
   const restore = () => {
+    if (quitting) {
+      return
+    }
+
     restoreHidden()
     options.restoreMainWindow()
   }
@@ -114,6 +122,10 @@ export function createMinimizeToTray(options: Options) {
   }
 
   const hostLost = () => {
+    if (quitting) {
+      return
+    }
+
     // Losing the shell/tray must never strand an invisible app.
     hostGeneration += 1
     restoreHidden()
@@ -305,6 +317,8 @@ export function createMinimizeToTray(options: Options) {
     // prompt must leave hiding and its recovery affordance intact.
     beginQuit: () => {
       quitting = true
+      // 已确认退出后移除托盘入口，不改写用户的托盘偏好。
+      destroyTray()
     }
   }
 }
