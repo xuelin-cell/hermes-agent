@@ -9,7 +9,7 @@ import { resolveSourcePython } from '../source-python'
 
 import { accountPathsById, type AccountRoots } from './account-paths'
 import { accountDesktopStatePaths } from './desktop-state'
-import { accountGatewayLogout, gatewayLogoutRoots } from './gateway-logout'
+import { createAccountGatewayLogout, gatewayLogoutRoots } from './gateway-logout'
 import { type AccountExitMode, completeAccountExit, logoutIntentPath } from './logout'
 import { listLogoutProcesses, type LogoutProcess, logoutProcessTree, stopLogoutProcesses } from './logout-processes'
 
@@ -179,18 +179,24 @@ export async function recoverAccountRun(
   // 先保存普通子树，随后网关查询或停止失败也不会丢掉已经取得的归属。
   pending.processes = [...owned.values()]
   writeSecretFileAtomic(marker, JSON.stringify(pending))
-  const gateways = await accountGatewayLogout(context, 'snapshot')
-  const gatewayProcesses = listLogoutProcesses()
+  const gateway = createAccountGatewayLogout(context)
 
-  for (const row of logoutProcessTree(gatewayProcesses, gatewayLogoutRoots(gateways, gatewayProcesses))) {
-    owned.set(`${row.pid}:${row.started}`, row)
+  try {
+    const { processes, gateways } = await gateway.run('snapshot')
+
+    for (const row of logoutProcessTree(processes, gatewayLogoutRoots(gateways, processes))) {
+      owned.set(`${row.pid}:${row.started}`, row)
+    }
+
+    pending.processes = [...owned.values()]
+    writeSecretFileAtomic(marker, JSON.stringify(pending))
+    await gateway.run('stop', gateways)
+    stopLogoutProcesses(pending.processes)
+    await gateway.run('check')
+  } finally {
+    await gateway.dispose()
   }
 
-  pending.processes = [...owned.values()]
-  writeSecretFileAtomic(marker, JSON.stringify(pending))
-  await accountGatewayLogout(context, 'stop', gateways)
-  stopLogoutProcesses(pending.processes)
-  await accountGatewayLogout(context, 'check')
   writeSecretFileAtomic(ownershipFile, serializeBackendOwnership([]))
   completeAccountExit(roots.userData, pending.mode)
 }

@@ -1,4 +1,4 @@
-import { type ChildProcess, execFileSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 
 export interface LogoutProcess {
   pid: number
@@ -75,55 +75,73 @@ export function logoutProcessTree(rows: LogoutProcess[], roots: number[]): Logou
   return rows.filter(row => selected.has(row.pid))
 }
 
-/** 每次停止前复核创建时间；PID 被复用时不触碰新进程。 */
+/** 先直接探测已保存的 PID；权限不足仍算存活，未知错误不能放行。 */
+function logoutProcessPresent(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+
+    return true
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+
+    if (code === 'ESRCH') {return false}
+
+    if (code === 'EPERM') {return true}
+
+    throw new Error('无法确认账号进程状态。')
+  }
+}
+
+/** 原版收尾后只补清理存活 PID；无残留时不启动 PowerShell。 */
 export function stopLogoutProcesses(owned: LogoutProcess[]): void {
   for (const row of owned) {
     if (!Number.isSafeInteger(row.pid) || row.pid <= 0 || !/^\d+$/.test(row.started)) {
       throw new Error('无效进程归属。')
     }
-
-    execFileSync(
-      'powershell.exe',
-      [
-        '-NoProfile',
-        '-NonInteractive',
-        '-Command',
-        // Job Object 可能先收掉后代；taskkill 的退出码不能代替最后的存活验证。
-        `$ErrorActionPreference='Stop'; $p=Get-CimInstance Win32_Process -Filter 'ProcessId=${row.pid}'; if ($p -and $p.CreationDate.ToUniversalTime().Ticks.ToString() -eq '${row.started}') { $ErrorActionPreference='Continue'; & taskkill.exe /PID ${row.pid} /T /F 2>$null | Out-Null }; exit 0`
-      ],
-      { windowsHide: true, timeout: 15_000 }
-    )
   }
 
-  const remaining = listLogoutProcesses()
+  const pending = owned.filter(row => logoutProcessPresent(row.pid))
+
+  if (!pending.length) {return}
+
+  const output = execFileSync(
+    'powershell.exe',
+    [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      `$ErrorActionPreference='Stop'
+$owned=ConvertFrom-Json ([Console]::In.ReadToEnd())
+foreach ($row in $owned) {
+  $p=Get-CimInstance Win32_Process -Filter ('ProcessId='+$row.pid)
+  if ($p -and -not $p.CreationDate) {throw '无法确认进程创建时间'}
+  if ($p -and $p.CreationDate.ToUniversalTime().Ticks.ToString() -eq $row.started) {
+    $ErrorActionPreference='Continue'
+    & taskkill.exe /PID $row.pid /T /F 2>$null | Out-Null
+    $ErrorActionPreference='Stop'
+  }
+}
+# Job Object 可能提前收掉后代；taskkill 退出码不能代替最后的存活验证。
+$filter=($owned | ForEach-Object {'ProcessId='+$_.pid}) -join ' OR '
+ConvertTo-Json -Compress -InputObject @(Get-CimInstance Win32_Process -Filter $filter | Select-Object @{n='pid';e={[int]$_.ProcessId}},@{n='started';e={if ($_.CreationDate) {$_.CreationDate.ToUniversalTime().Ticks.ToString()} else {''}}})`
+    ],
+    {
+      encoding: 'utf8', windowsHide: true, timeout: 15_000,
+      // 身份作为数据从标准输入传入，避免拼接命令或超出 Windows 命令行长度。
+      input: JSON.stringify(pending.map(({ pid, started }) => ({ pid, started })))
+    }
+  )
+
+  const remaining: LogoutProcess[] = JSON.parse(output)
 
   if (
-    owned.some(row => remaining.some(item => item.pid === row.pid && (!item.started || item.started === row.started)))
+    !Array.isArray(remaining) ||
+    remaining.some(row => !row || !Number.isInteger(row.pid) || typeof row.started !== 'string' || !/^\d*$/.test(row.started))
+  ) {throw new Error('无法确认账号进程状态。')}
+
+  if (
+    pending.some(row => remaining.some(item => item.pid === row.pid && (!item.started || item.started === row.started)))
   ) {
     throw new Error('账号后端或工具子进程尚未停止。')
   }
-}
-
-/** 等待原始子进程句柄报告退出，不对可能已复用的 PID 再次发信号。 */
-export function confirmLogoutChildExit(child: ChildProcess): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null || !child.pid) {
-    return Promise.resolve()
-  }
-
-  return new Promise<void>((resolve, reject) => {
-    /** 退出事件或超时都清理监听器；超时保留整个退出事务。 */
-    function finish(): void {
-      clearTimeout(timer)
-      child.removeListener('exit', finish)
-
-      if (child.exitCode !== null || child.signalCode !== null) {
-        resolve()
-      } else {
-        reject(new Error('后端退出事件尚未确认。'))
-      }
-    }
-
-    const timer = setTimeout(finish, 5000)
-    child.once('exit', finish)
-  })
 }

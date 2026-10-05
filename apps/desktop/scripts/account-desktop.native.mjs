@@ -394,8 +394,10 @@ async function prepareFixture(url) {
           if(fault && command.includes('taskkill.exe')) {
             globalThis.fixtureFaultCalls=(globalThis.fixtureFaultCalls || 0)+1
             if(fault==='timeout') return realExecFileSync(file,['-NoProfile','-NonInteractive','-Command','Start-Sleep -Seconds 5'],{...options,timeout:250})
-            if(fault==='refused' || (fault==='residual' && Number(command.match(/ProcessId=(\\d+)/)?.[1])===globalThis.fixtureLeaf)) return ''
-            if(fault==='residual') args=[...args.slice(0,-1),command.replace('/T /F','/F')]
+            if(fault==='refused') command=command.replace('& taskkill.exe /PID $row.pid /T /F 2>$null | Out-Null','')
+            if(fault==='residual') command=command.replace('foreach ($row in $owned) {',
+              'foreach ($row in $owned) { if ($row.pid -eq '+globalThis.fixtureLeaf+') {continue}').replace('/T /F','/F')
+            args=[...args.slice(0,-1),command]
           }
           const result=realExecFileSync(file,args,options)
           if(fault==='unknown' && command.includes('Select-Object')) {
@@ -406,6 +408,22 @@ async function prepareFixture(url) {
           return result
         }
       `,resolveDir:path.dirname(args.path)}))
+    builder.onLoad({filter:/entry_local[\\/]gateway-logout\.ts$/}, async args => ({loader:'ts',
+      contents:(await readFile(args.path,'utf8')).replace('export function createAccountGatewayLogout(',
+        'function originalCreateAccountGatewayLogout(') + `
+        /** 在共享快照中注入未知指纹，保留正式 IPC 校验和停止事务。 */
+        export function createAccountGatewayLogout(context) {
+          const adapter=originalCreateAccountGatewayLogout(context), run=adapter.run
+          adapter.run=async (operation,...args) => {
+            const result=await run(operation,...args)
+            if(operation==='snapshot' && globalThis.fixtureStopFault==='unknown') {
+              for(const row of result.processes) if(row.pid===globalThis.fixtureRoot) row.started=''
+            }
+            return result
+          }
+          return adapter
+        }
+      `,resolveDir:path.dirname(args.path)}))
     builder.onLoad({filter:/entry_local[\\/]desktop-runtime\.ts$/}, async args => ({loader:'ts',
       contents:(await readFile(args.path,'utf8')).replace("await import('../main')",
         "await import('../main').catch(error => {globalThis.fixtureImportError=error.stack; throw error})"),
@@ -414,6 +432,15 @@ async function prepareFixture(url) {
     builder.onLoad({filter:/electron[\\/]main\.ts$/}, async args => ({loader:'ts',
       contents:(await readFile(args.path,'utf8')).replace('await accountLogout.run(mode)',
         'await accountLogout.run(mode).catch(error => {globalThis.fixtureLogoutError=error.stack; throw error})')
+        .replace('function forceKillProcessTree(pid) {', `function forceKillProcessTree(pid) {
+          // 原版先停止受控后端；故障需覆盖原版入口，不能等到残留补清理才注入。
+          if(globalThis.fixtureStopFault && pid===globalThis.fixtureRoot) {
+            if(globalThis.fixtureStopFault==='residual') {
+              execFileSync('taskkill',['/PID',String(pid),'/F'],hiddenWindowsChildOptions({stdio:'ignore'}))
+            }
+            return
+          }
+        `)
         .replace('function spawnOwnedBackend(...args: Parameters<typeof spawn>): ChildProcess {',
           "function spawnOwnedBackend(...args: Parameters<typeof spawn>): ChildProcess { if(['exit','health'].includes(process.env.FIXTURE_FAIL_BACKEND) && args[1]?.includes('serve')) {args[1]=['-c',process.env.FIXTURE_FAIL_BACKEND==='exit'?'import sys; sys.exit(9)':\"import os,time; print('HERMES_BACKEND_READY port='+os.environ['FIXTURE_HEALTH_PORT'],flush=True); time.sleep(600)\"]}")
         .replace('const child = localBackendLifecycle.spawn((): ChildProcess => spawn(...args))',

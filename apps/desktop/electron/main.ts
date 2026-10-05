@@ -221,11 +221,9 @@ import { installEmbedReferer } from './embed-referer'
 import { accountBrowserPartition } from './entry_local/browser-partition'
 import { accountSourceBackend } from './entry_local/desktop-environment'
 import { accountDesktopStatePaths } from './entry_local/desktop-state'
-import { type AccountGateway, accountGatewayLogout, gatewayLogoutRoots } from './entry_local/gateway-logout'
+import { type AccountGateway, createAccountGatewayLogout, gatewayLogoutRoots } from './entry_local/gateway-logout'
 import { createAccountLogout } from './entry_local/logout'
 import {
-  confirmLogoutChildExit,
-  listLogoutProcesses,
   type LogoutProcess,
   logoutProcessTree,
   stopLogoutProcesses
@@ -11982,6 +11980,7 @@ let logoutChildren: ChildProcess[] = []
 let logoutGateways: AccountGateway[] = []
 let logoutTerminals: number[] = []
 let logoutOrdinary: LogoutProcess[] | null = null
+let logoutGateway: ReturnType<typeof createAccountGatewayLogout> | null = null
 
 const accountLogout = createAccountLogout({
   userData: app.getPath('userData'),
@@ -11994,34 +11993,48 @@ const accountLogout = createAccountLogout({
     logoutTerminals = terminalIpc.seal()
   },
   snapshot: async () => {
-    // 先同步保存普通后端子树，避免异步检查期间窗口收尾已结束父进程。
-    logoutOrdinary ??= logoutProcessTree(listLogoutProcesses(), [
+    const roots = [
       ...logoutTerminals,
       ...logoutChildren
         .filter(child => child.exitCode === null && child.signalCode === null && child.pid)
         .map(child => child.pid!)
-    ])
+    ]
 
-    // 必须先取证：销毁页面会关闭 PTY，随后再找子树会漏掉已脱离的工具。
-    logoutWindow ??= openLogoutWindow()
+    try {
+      logoutGateway ??= createAccountGatewayLogout(ACCOUNT_RUNTIME)
+      const { processes, gateways } = await logoutGateway.run('snapshot')
+      // 同一进程表同时收集普通后端和网关，仍先保存子树再销毁旧页面与 PTY。
+      logoutOrdinary ??= logoutProcessTree(processes, roots)
+      logoutGateways = gateways
+      const gatewayProcesses = logoutProcessTree(processes, gatewayLogoutRoots(gateways, processes))
+      logoutWindow ??= openLogoutWindow()
 
-    logoutGateways = await accountGatewayLogout(ACCOUNT_RUNTIME, 'snapshot')
-    const processes = listLogoutProcesses()
-    const gateways = logoutProcessTree(processes, gatewayLogoutRoots(logoutGateways, processes))
-
-    return [...new Map([...logoutOrdinary, ...gateways].map(row => [`${row.pid}:${row.started}`, row])).values()]
+      return [...new Map([...logoutOrdinary, ...gatewayProcesses].map(row => [`${row.pid}:${row.started}`, row])).values()]
+    } catch (error) {
+      await logoutGateway?.dispose()
+      logoutGateway = null
+      throw error
+    }
   },
   stop: async owned => {
-    await accountGatewayLogout(ACCOUNT_RUNTIME, 'stop', logoutGateways)
-    // 网关独立退出后仍验证原始整棵子树，覆盖提前脱离父进程的工具。
-    stopLogoutProcesses(owned)
-    terminalIpc.disposeAllTerminalSessions()
-    await Promise.all(logoutChildren.map(confirmLogoutChildExit))
-    await localBackendLifecycle.settleStarts()
-    await localBackendLifecycle.shutdown()
-    await teardownPrimaryBackendAndWait(backendTeardownOptions('quit'))
-    await stopAllPoolBackends()
-    await accountGatewayLogout(ACCOUNT_RUNTIME, 'check')
+    logoutGateway ??= createAccountGatewayLogout(ACCOUNT_RUNTIME)
+
+    try {
+      await logoutGateway.run('stop', logoutGateways)
+      terminalIpc.disposeAllTerminalSessions()
+      await localBackendLifecycle.settleStarts()
+      await Promise.all([
+        localBackendLifecycle.shutdown(),
+        teardownPrimaryBackendAndWait(backendTeardownOptions('quit')),
+        stopAllPoolBackends()
+      ])
+      // 原版完成后端与句柄收尾后，只处理仍存活的已保存子树。
+      stopLogoutProcesses(owned)
+      await logoutGateway.run('check')
+    } finally {
+      await logoutGateway.dispose()
+      logoutGateway = null
+    }
 
     if (poolIdleReaper) {
       clearInterval(poolIdleReaper)

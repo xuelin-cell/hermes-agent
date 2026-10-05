@@ -66,7 +66,8 @@ export async function exerciseExitFailure(fixture,closeFailure) {
     for(const [index,fault] of faults.entries()) {
       console.log(`P24 验证：${fault}${closeFailure ? ' 后关闭' : ''}`)
       await instance.evaluate((_electron,fault)=>{globalThis.fixtureStopFault=fault},fault)
-      if(index===0) await instance.evaluate(({app})=>{app.quit()})
+      // 先让测试请求返回，再触发可能销毁窗口的退出流程。
+      if(index===0) await instance.evaluate(({app})=>{setImmediate(()=>app.quit())})
       else await instance.evaluate(()=>globalThis.fixtureLogoutAnswer({response:0,checkboxChecked:false}))
       // 主进程同步查询进程时会阻塞调试通道，观察原生对话框捕获文件而不改变停止流程。
       const prompt=await until(()=>readFile(path.join(fixture.root,'p24-prompts.json'),'utf8').then(text=>{

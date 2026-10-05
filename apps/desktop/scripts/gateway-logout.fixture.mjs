@@ -61,21 +61,21 @@ export async function startFixtureGateway(context, home) {
 /** 调用正式桌面适配脚本，不用模拟停止结果替代进程验证。 */
 export async function gatewayOperation(context, operation, saved = []) {
   const script = path.join(context.installationRoot,'apps/desktop/electron/entry_local/gateway-logout.py')
-  // 夹具直接调用同一入口，保留异常栈用于诊断；生产入口仍只返回固定安全错误。
-  const adapter="import importlib.util,sys; s=importlib.util.spec_from_file_location('adapter',sys.argv[2]); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); m.main()"
-  const child = spawn(context.python,['-c',adapter,operation,script], {cwd:context.installationRoot,
+  const child = spawn(context.python,[script], {cwd:context.installationRoot,
     env:{...process.env,HERMES_HOME:context.home,PYTHONPATH:context.installationRoot,PYTHONIOENCODING:'utf-8',
       ...(context.fixtureAppData ? {APPDATA:context.fixtureAppData} : {})},
     windowsHide:true,stdio:['pipe','pipe','pipe']})
   let output='',error=''
   child.stdout.on('data',data => {output+=data})
   child.stderr.on('data',data => {error+=data})
-  child.stdin.end(JSON.stringify(saved))
+  child.stdin.end(JSON.stringify({operation,saved})+'\n')
   const timer=setTimeout(() => child.kill(),95_000)
   try {
-    const code=await new Promise((resolve,reject) => {child.once('exit',resolve);child.once('error',reject)})
+    const code=await new Promise((resolve,reject) => {child.once('close',resolve);child.once('error',reject)})
     assert.equal(code,0,error)
-    return JSON.parse(output)
+    const response=JSON.parse(output)
+    assert.equal(response.error,undefined,'网关停止验证失败')
+    return response.gateways
   } finally {clearTimeout(timer)}
 }
 

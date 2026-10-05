@@ -10,7 +10,10 @@ const fake = vi.hoisted(() => ({ list: vi.fn(), stop: vi.fn(), probe: vi.fn(), g
 vi.mock('electron', () => ({ safeStorage: {} }))
 vi.mock('../backend-claim', () => ({ processStartMarker: fake.probe, REAP_PROBE_TIMEOUT_MS: 5000 }))
 vi.mock('../source-python', () => ({ resolveSourcePython: () => process.execPath }))
-vi.mock('./gateway-logout', () => ({ accountGatewayLogout: fake.gateway, gatewayLogoutRoots: () => [] }))
+vi.mock('./gateway-logout', () => ({
+  createAccountGatewayLogout: () => ({ run: fake.gateway, dispose: vi.fn() }),
+  gatewayLogoutRoots: () => []
+}))
 vi.mock('./logout-processes', async importOriginal => ({
   ...(await importOriginal<typeof logoutProcesses>()),
   listLogoutProcesses: fake.list,
@@ -55,7 +58,7 @@ function fixture() {
     { pid: 12, parent: 1, started: '1500' }
   ])
   fake.probe.mockImplementation(async pid => (pid === 10 ? 'win:1000' : 'win:1500'))
-  fake.gateway.mockResolvedValue([])
+  fake.gateway.mockResolvedValue({ processes: [], gateways: [] })
   const run = () => recoverAccountRun(roots, root)
 
   return { root, roots, account, marker, credential, history, ownershipFile, backends, run }

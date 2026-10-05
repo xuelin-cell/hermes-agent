@@ -58,11 +58,13 @@ export async function exerciseAccountRecovery(fixture,mode) {
       const state=await globalThis.fixtureMain()
       const child=state.spawnFixtureBackend(node,['-e',script],{detached:true,stdio:'ignore',windowsHide:true})
       await state.claimFixtureBackend(child,node,'default','fixture-recovery-root')
+      globalThis.fixtureRoot=child.pid
       return child.pid
     },{node:process.execPath,script})
     const leaf=await until(()=>readFile(leafFile,'utf8').then(text=>JSON.parse(text).pid).catch(error=>{
       if(error.code==='ENOENT') return null;throw error
     }),'持有的子进程')
+    await instance.evaluate((_electron,pid)=>{globalThis.fixtureLeaf=pid},leaf)
     const ownership=JSON.parse(await readFile(ownershipFile,'utf8'))
     owned=tools.logoutProcessTree(tools.listLogoutProcesses(),ownership.backends.map(row=>row.pid).filter(alive))
     const mainPid=await instance.evaluate(()=>process.pid)

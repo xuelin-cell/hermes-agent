@@ -51,7 +51,7 @@ test('P20 原版真实网关：账号与同名 Profile 停止，另一 Home 保�
       assert.ok(watcher.exitCode !== null || watcher.signalCode !== null)
       startFixtureRestartWatcher(context,true)
       await delay(500)
-      await assert.rejects(gatewayOperation(context,'stop'),/未识别的外部监督器/)
+      await assert.rejects(gatewayOperation(context,'stop'),/网关停止验证失败/)
       assert.equal((await fetch(`http://127.0.0.1:${foreign.port}/health`)).ok,true)
     } finally {
       await cleanupFixtureGateways()
