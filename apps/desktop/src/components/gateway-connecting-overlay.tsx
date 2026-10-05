@@ -1,17 +1,12 @@
 import { useStore } from '@nanostores/react'
 import { useEffect, useRef, useState } from 'react'
 
-import { DecodeText } from '@/components/ui/decode-text'
+import { type ConnectingPhase, ConnectingScreen } from '@/components/ui/connecting-screen'
 import { prefersReducedMotion } from '@/hooks/use-media-query'
-import { cn } from '@/lib/utils'
 import { $desktopBoot } from '@/store/boot'
 import { $gatewaySwitching } from '@/store/gateway-switch'
 import { guidedOnboardingActive } from '@/store/onboarding-gate'
 import { $gatewayState } from '@/store/session'
-
-// Decode mechanics live in the shared <DecodeText> primitive
-// (components/ui/decode-text.tsx). "CONN" stays legible via prefix={4}.
-const TEXT = 'CONNECTING'
 
 // Exit choreography (ms): text fades down + out, hold, then the overlay fades.
 const TEXT_OUT_MS = 360
@@ -20,8 +15,6 @@ const OVERLAY_OUT_MS = 520
 // Preview-only: how long to "connect" for, and the pause before replaying.
 const PREVIEW_CONNECT_MS = 2600
 const PREVIEW_REPLAY_MS = 1100
-
-type Phase = 'live' | 'text-out' | 'overlay-out' | 'gone'
 
 // Dev affordance: a warm Cmd+R reconnects almost instantly, so the overlay
 // only flashes. Load with `?connecting=1` to force a looping preview.
@@ -47,7 +40,7 @@ export function GatewayConnectingOverlay() {
   // hold → overlay fade) and jump straight to gone so the overlay unmounts
   // the instant the gateway opens. E2E screenshots rely on this to avoid
   // catching the overlay mid-fade.
-  const [phase, setPhase] = useState<Phase>('live')
+  const [phase, setPhase] = useState<ConnectingPhase>('live')
   // Once cold boot has completed once, never resurrect the fullscreen overlay
   // — soft gateway switches keep the shell and reskeleton the sidebar instead.
   const coldBootDoneRef = useRef(false)
@@ -142,31 +135,5 @@ export function GatewayConnectingOverlay() {
     return null
   }
 
-  const leaving = phase !== 'live'
-  const overlayHidden = phase === 'overlay-out' || phase === 'gone'
-
-  return (
-    <div
-      className={cn(
-        'fixed inset-0 z-(--z-connecting) grid place-items-center bg-(--ui-chat-surface-background) transition-opacity duration-500 ease-out',
-        overlayHidden ? 'pointer-events-none opacity-0' : 'opacity-100'
-      )}
-      // Masks the whole app while booting — must stay filled under window
-      // glass or the shell shows through. Contract: `[data-glass-opaque]`
-      // in styles.css.
-      data-glass-opaque=""
-    >
-      <DecodeText
-        active={phase === 'live' && (previewing || connecting)}
-        className={cn(
-          'pl-[0.4em] text-(--theme-primary) transition duration-300 ease-out',
-          leaving ? 'translate-y-2 opacity-0 saturate-0' : 'translate-y-0 opacity-100 saturate-100'
-        )}
-        cursor
-        loop
-        prefix={4}
-        text={TEXT}
-      />
-    </div>
-  )
+  return <ConnectingScreen active={phase === 'live' && (previewing || connecting)} phase={phase} />
 }

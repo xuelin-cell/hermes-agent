@@ -64,14 +64,6 @@ export interface Translations {
     logoutTitle: string
     logoutDescription: string
     logoutBusy: string
-    planTitle: string
-    planEmpty: string
-    planError: string
-    planRetry: string
-    planDefault: string
-    planCustom: string
-    signedIn: string
-    localPending: string
     expired: string
     expiredLabel: string
     expiredRunning: string

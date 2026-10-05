@@ -10,14 +10,6 @@ export const frOverrides = {
     logoutDescription:
       'Arrête les serveurs locaux, les passerelles de messagerie et leurs tâches gérées, puis revient à la connexion. L’historique, les fichiers et les définitions des tâches planifiées sont conservés.',
     logoutBusy: 'Déconnexion…',
-    planTitle: 'Forfait MaaS',
-    planEmpty: 'Aucun forfait MaaS disponible actuellement.',
-    planError: 'Impossible de charger le forfait. Réessayez.',
-    planRetry: 'Réessayer',
-    planDefault: 'Par défaut',
-    planCustom: 'Vous pouvez toujours utiliser des modèles personnalisés.',
-    signedIn: 'Connecté : {account}',
-    localPending: 'Votre espace de travail local est en cours de connexion.',
     expired: 'Votre session a expiré. Veuillez vous reconnecter.',
     expiredLabel: 'Connexion expirée',
     expiredRunning:

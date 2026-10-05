@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { I18nProvider } from '@/i18n/context'
 
-import type { LoginResult } from '../../../electron/login/contract'
+import type { LoginResult, PlanResult } from '../../../electron/login/contract'
 
 import { LoginPage } from './page'
 
@@ -165,7 +165,7 @@ describe('桌面登录表单', () => {
     expect(captcha).toHaveBeenCalledTimes(3)
   })
 
-  it('登录成功只展示脱敏账号，清空表单；到期后要求重新登录', async () => {
+  it('登录成功立即显示官方启动画面并后台查套餐；到期后要求重新登录', async () => {
     vi.useFakeTimers()
 
     const login = vi
@@ -183,7 +183,9 @@ describe('桌面登录表单', () => {
     await act(async () => {})
     fill({ phone: '13800000000', captcha: '', sms: '123456' })
     await act(async () => fireEvent.submit(screen.getByRole('button', { name: '登录' }).closest('form')!))
-    expect(screen.getByText('已登录：138****0000')).toBeTruthy()
+    expect(screen.getByRole('status', { name: 'CONNECTING' })).toBeTruthy()
+    expect(screen.queryByText(/138\*\*\*\*0000|MaaS 套餐/)).toBeNull()
+    expect(window.hermesLogin.plan).toHaveBeenCalledTimes(1)
     expect(screen.queryByLabelText('手机号')).toBeNull()
     act(() => vi.advanceTimersByTime(60_000))
     expect((screen.getByLabelText('手机号') as HTMLInputElement).value).toBe('')
@@ -192,7 +194,7 @@ describe('桌面登录表单', () => {
     vi.useRealTimers()
   })
 
-  it('先等待主进程恢复，有效账号直接展示且不取图或登录；到期再显示空表单', async () => {
+  it('恢复账号后进入同款启动画面且不取图或登录；到期再显示空表单', async () => {
     let resolve!: (result: LoginResult) => void
 
     const restore = vi.fn(
@@ -218,7 +220,8 @@ describe('桌面登录表单', () => {
     await act(async () =>
       resolve({ ok: true, account: { maskedPhone: '138****0000', expiresAt: Date.now() + 60_000 } })
     )
-    expect(screen.getByText('已登录：138****0000')).toBeTruthy()
+    expect(screen.getByRole('status', { name: 'CONNECTING' })).toBeTruthy()
+    expect(window.hermesLogin.plan).toHaveBeenCalledTimes(1)
     expect(screen.queryByLabelText('手机号')).toBeNull()
     expect(captcha).not.toHaveBeenCalled()
     expect(login).not.toHaveBeenCalled()
@@ -241,5 +244,40 @@ describe('桌面登录表单', () => {
     await screen.findByLabelText('手机号')
     expect(screen.queryByText('private-restore-detail')).toBeNull()
     expect(captcha).toHaveBeenCalledTimes(1)
+  })
+
+  it.each<PlanResult>([
+    { status: 'available', models: [{ name: 'private-model-name', isDefault: true }] },
+    { status: 'empty' },
+    { status: 'failed' },
+    { status: 'failed', reason: 'auth' }
+  ])('套餐等待及 $status 结果都保留同一个启动画面，不展示卡片或追加请求', async result => {
+    let finish!: (value: PlanResult) => void
+
+    const plan = vi.fn(
+      () =>
+        new Promise<PlanResult>(resolve => {
+          finish = resolve
+        })
+    )
+
+    window.hermesLogin = {
+      restore: vi.fn().mockResolvedValue({
+        ok: true,
+        account: { maskedPhone: '138****0000', expiresAt: Date.now() + 60_000 }
+      }),
+      plan,
+      captcha: vi.fn(),
+      sendSms: vi.fn(),
+      login: vi.fn()
+    }
+    renderLogin()
+    const screenBeforePlan = await screen.findByRole('status', { name: 'CONNECTING' })
+    expect(screen.queryByRole('heading')).toBeNull()
+    expect(screen.queryByRole('button')).toBeNull()
+    await act(async () => finish(result))
+    expect(screen.getByRole('status', { name: 'CONNECTING' })).toBe(screenBeforePlan)
+    expect(screen.queryByText(/MaaS|private-model-name|138\*\*\*\*0000/)).toBeNull()
+    expect(plan).toHaveBeenCalledTimes(1)
   })
 })

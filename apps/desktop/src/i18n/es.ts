@@ -10,14 +10,6 @@ export const esOverrides = {
     logoutDescription:
       'Detiene los servidores locales, las pasarelas de mensajes y sus tareas administradas, y vuelve al inicio de sesión. Se conservan el historial, los archivos y las definiciones de tareas programadas.',
     logoutBusy: 'Cerrando sesión…',
-    planTitle: 'Plan de MaaS',
-    planEmpty: 'No hay un plan de MaaS disponible actualmente.',
-    planError: 'No se pudo cargar el plan. Vuelve a intentarlo.',
-    planRetry: 'Reintentar',
-    planDefault: 'Predeterminado',
-    planCustom: 'Puedes seguir usando modelos personalizados.',
-    signedIn: 'Sesión iniciada: {account}',
-    localPending: 'Tu espacio de trabajo local se está conectando.',
     expired: 'Tu sesión ha caducado. Vuelve a iniciar sesión.',
     expiredLabel: 'Sesión caducada',
     expiredRunning:

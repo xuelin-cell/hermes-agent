@@ -7,7 +7,7 @@ import { test } from 'node:test'
 import { parseEnv } from 'node:util'
 import { build } from 'esbuild'
 import electronPath from 'electron'
-import { _electron as electron } from '@playwright/test'
+import { _electron as electron, expect } from '@playwright/test'
 import { parse, stringify } from 'yaml'
 import { prepareLoginRenderer, startLoginDevServer } from './login-renderer.fixture.mjs'
 
@@ -96,7 +96,10 @@ async function launchFixture(cancel = false, devServer, liveCaptcha = false, pla
                 {id:'a', model:'fixture-plan-model', base_url:'https://models.invalid/TokenPlan/a'},
                 {id:'b', model:'fixture-plan-default', base_url:'https://models.invalid/TokenPlan/b/v1'}
               ]})})
-            return new Promise(resolve => setTimeout(() => resolve(response), 200))
+            return new Promise(resolve => setTimeout(() => {
+              globalThis.loginProbe.planCompleted = attempt
+              resolve(response)
+            }, 200))
           }
           // 短信始终使用受控响应，测试不能给真实手机发码。
           if (String(args[0]).endsWith('/sendCode')) {
@@ -177,6 +180,12 @@ async function launchFixture(cancel = false, devServer, liveCaptcha = false, pla
   delete env.ELECTRON_RUN_AS_NODE
   const instance = await electron.launch({ executablePath: electronPath, args: [output], env, timeout: 30_000 })
   return { instance, root, home, userData, oldConnection, rendererRoot, output, env }
+}
+
+/** 等待主进程完成交接准备，不再依赖已删除的套餐展示内容。 */
+async function waitForLoginHandoff(instance, page) {
+  await page.getByRole('status', {name:'CONNECTING', exact:true}).waitFor()
+  await expect.poll(() => instance.evaluate(() => globalThis.loginProbe.handoffs ?? 0)).toBe(1)
 }
 
 test('真实未登录入口不启动后端、不暴露原版桥接，重复启动只有一个窗口', { timeout: 60_000 }, async () => {
@@ -318,8 +327,7 @@ test('真实 Electron 登录与恢复：有效记录跨进程复用，过期或�
     await assert.rejects(access(file), {code:'ENOENT'})
     await rmdir(`${file}.tmp`)
     await page.getByRole('button', { name: '登录', exact: true }).click()
-    await page.getByText('已登录：138****0000').waitFor()
-    await page.getByText('fixture-plan-model', {exact:true}).waitFor()
+    await waitForLoginHandoff(instance, page)
     assert.equal(await instance.evaluate(() => globalThis.loginProbe.handoffs), 1)
     assert.equal(await page.locator('form input').count(), 0)
     const visible = await page.evaluate(() => document.body.textContent + JSON.stringify({...localStorage}))
@@ -355,8 +363,7 @@ test('真实 Electron 登录与恢复：有效记录跨进程复用，过期或�
     // 同一目录、同一 Windows 用户、新 Electron 进程：使用真实系统密钥解密。
     reopened = await electron.launch({executablePath:electronPath, args:[output], env, timeout:30_000})
     const reopenedPage = await reopened.firstWindow()
-    await reopenedPage.getByText('已登录：138****0000').waitFor()
-    await reopenedPage.getByText('fixture-plan-model', {exact:true}).waitFor()
+    await waitForLoginHandoff(reopened, reopenedPage)
     assert.equal(await reopenedPage.locator('form input').count(), 0)
     assert.deepEqual(await reopenedPage.evaluate(() => window.hermesLogin.restore()), result)
     assert.deepEqual(await reopened.evaluate(() => globalThis.readLoginRecord()), record)
@@ -411,7 +418,7 @@ test('P11 真实 Electron 组件：加密身份跨进程准备 A→B→A 目录�
       await instance.close()
       instance = await electron.launch({executablePath:electronPath, args:[fixture.output], env:fixture.env, timeout:30_000})
       const page = await instance.firstWindow()
-      await page.getByText('已登录：138****0000').waitFor()
+      await waitForLoginHandoff(instance, page)
       const account = await instance.evaluate(() => globalThis.prepareFixtureAccount())
       assert.deepEqual(await instance.evaluate(() => globalThis.prepareFixtureAccount()), account)
       assert.match(account.id, /^account-[a-f0-9]{64}$/)
@@ -439,7 +446,7 @@ test('P11 真实 Electron 组件：加密身份跨进程准备 A→B→A 目录�
   } finally { await instance.close() }
 })
 
-test('真实 Electron 套餐链路：登录后查询失败可重试，刷新遇到空套餐仍保留身份与数据', {timeout:60_000}, async () => {
+test('真实 Electron 启动画面：套餐失败、有套餐和空套餐均后台交接，页面不显示账号或套餐卡片', {timeout:60_000}, async () => {
   const { instance, root, userData, home, oldConnection } = await launchFixture(false, undefined, false, true)
   try {
     const page = await instance.firstWindow()
@@ -451,21 +458,20 @@ test('真实 Electron 套餐链路：登录后查询失败可重试，刷新遇�
     await page.getByRole('button', {name:'登录', exact:true}).click()
     await page.getByText('登录失败，请重试。').waitFor()
     await page.getByRole('button', {name:'登录', exact:true}).click()
-    await page.getByText('套餐查询失败，请重试。').waitFor()
-    await page.getByText('已登录：138****0000').waitFor()
+    await waitForLoginHandoff(instance, page)
     const record = await readFile(path.join(userData, 'maas-login.enc'))
-    await page.getByRole('button', {name:'重试', exact:true}).click()
-    await page.getByText('fixture-plan-model', {exact:true}).waitFor()
-    await page.getByText('fixture-plan-default (默认)', {exact:true}).waitFor()
-    await instance.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(400, 520))
-    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true)
-    const visible = await page.evaluate(() => document.body.textContent + JSON.stringify({...localStorage}))
-    for (const secret of ['fixture-private-model-key', 'fixture-private-token', 'fixture-private-plan-error', 'https://models.invalid']) assert.equal(visible.includes(secret), false)
-    await page.screenshot({path:path.join(root, 'plan-available.png')})
-    await page.reload()
-    await page.getByText('当前没有 MaaS 套餐。').waitFor()
-    await page.getByText('仍可使用自定义模型。').waitFor()
-    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true)
+    for (const [index, scenario] of ['failed', 'available', 'empty'].entries()) {
+      if (index > 0) await page.reload()
+      await waitForLoginHandoff(instance, page)
+      await expect.poll(() => instance.evaluate(() => globalThis.loginProbe.planCompleted)).toBe(index + 1)
+      if (index === 1) await instance.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(400, 520))
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true)
+      assert.equal(await page.locator('button, input, h1, section').count(), 0)
+      const visible = await page.evaluate(() => document.body.textContent + JSON.stringify({...localStorage}))
+      for (const hidden of ['fixture-private-model-key', 'fixture-private-token', 'fixture-private-plan-error',
+        'https://models.invalid', 'fixture-plan-model', '138****0000', 'MaaS']) assert.equal(visible.includes(hidden), false)
+      await page.screenshot({path:path.join(root, `connecting-${scenario}.png`)})
+    }
     assert.deepEqual(await page.evaluate(() => window.hermesLogin.restore()), {
       ok:true, account:{maskedPhone:'138****0000', expiresAt:(await instance.evaluate(() => globalThis.readLoginRecord())).expiresAt}
     })
@@ -475,8 +481,7 @@ test('真实 Electron 套餐链路：登录后查询失败可重试，刷新遇�
     assert.equal(await readFile(path.join(userData, 'connection.json'), 'utf8'), oldConnection)
     assert.deepEqual(await instance.evaluate(() => globalThis.loginProbe.processCalls), [])
     await assert.rejects(access(home), {code:'ENOENT'})
-    await page.screenshot({path:path.join(root, 'plan-empty.png')})
-    console.log(`套餐查询真实链路验收目录：${root}`)
+    console.log(`官方同款启动画面与后台套餐链路验收目录：${root}`)
   } finally { await instance.close() }
 })
 
@@ -578,7 +583,7 @@ test('P14 真实登录入口：跨进程 A→B→A 自动准备固定上下文�
       await instance.close()
       instance = await electron.launch({executablePath:electronPath, args:[fixture.output], env:fixture.env, timeout:30_000})
       const page = await instance.firstWindow()
-      await page.getByText('fixture-plan-model', {exact:true}).waitFor()
+      await waitForLoginHandoff(instance, page)
       const state = await instance.evaluate(() => globalThis.currentFixtureRuntime())
       assert.ok(state)
       assert.equal(state.frozen, true)
@@ -638,7 +643,7 @@ test('P14 真实登录入口：跨进程 A→B→A 自动准备固定上下文�
     instance = null
     instance = await electron.launch({executablePath:electronPath, args:[fixture.output], env:fixture.env, timeout:30_000})
     page = await instance.firstWindow()
-    await page.getByText('fixture-plan-model', {exact:true}).waitFor()
+    await waitForLoginHandoff(instance, page)
     assert.deepEqual(await instance.evaluate(() => globalThis.currentFixtureRuntime()), firstA)
     const beforeQuit = await readFile(envFile, 'utf8')
     await instance.evaluate(() => {globalThis.loginProbe.planKey='fixture-must-not-write-key'})

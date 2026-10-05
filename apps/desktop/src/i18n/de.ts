@@ -10,14 +10,6 @@ export const deOverrides = {
     logoutDescription:
       'Die lokalen Backends, Nachrichten-Gateways und ihre verwalteten Aufgaben werden gestoppt. Danach erscheint die Anmeldung. Verlauf, Dateien und Zeitpläne bleiben erhalten.',
     logoutBusy: 'Abmeldung läuft…',
-    planTitle: 'MaaS-Tarif',
-    planEmpty: 'Derzeit ist kein MaaS-Tarif verfügbar.',
-    planError: 'Der Tarif konnte nicht geladen werden. Bitte erneut versuchen.',
-    planRetry: 'Erneut versuchen',
-    planDefault: 'Standard',
-    planCustom: 'Eigene Modelle können weiterhin verwendet werden.',
-    signedIn: 'Angemeldet: {account}',
-    localPending: 'Dein lokaler Arbeitsbereich wird angebunden.',
     expired: 'Deine Anmeldung ist abgelaufen. Bitte melde dich erneut an.',
     expiredLabel: 'Anmeldung abgelaufen',
     expiredRunning:

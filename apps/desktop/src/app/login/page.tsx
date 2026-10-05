@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { ConnectingScreen } from '@/components/ui/connecting-screen'
 import { Input } from '@/components/ui/input'
 import { Loader } from '@/components/ui/loader'
 import { useI18n } from '@/i18n/context'
@@ -8,7 +9,6 @@ import { useI18n } from '@/i18n/context'
 import type { LoginAccount } from '../../../electron/login/contract'
 import { PAGE_INSET_X } from '../layout-constants'
 
-import { PlanStatus } from './plan-status'
 import { useCaptcha } from './use-captcha'
 import { useSms } from './use-sms'
 
@@ -68,6 +68,25 @@ export function LoginPage() {
       active = false
     }
   }, [bridge])
+
+  useEffect(() => {
+    if (!account || !bridge) {
+      return
+    }
+
+    let active = true
+    // 套餐仍由主进程查询并交接账号；等待期间只保留官方启动画面。
+    void bridge.plan().catch(() => {
+      if (active) {
+        setAccount(null)
+        setError('requestError')
+      }
+    })
+
+    return () => {
+      active = false
+    }
+  }, [account, bridge])
 
   useEffect(() => {
     if (!account) {
@@ -162,6 +181,10 @@ export function LoginPage() {
     }
   }
 
+  if (account) {
+    return <ConnectingScreen />
+  }
+
   return (
     <main className={`flex h-full overflow-y-auto py-8 ${PAGE_INSET_X}`}>
       <section
@@ -176,12 +199,6 @@ export function LoginPage() {
         </header>
         {restoring ? (
           <Loader className="mx-auto size-8" label={copy.title} />
-        ) : account ? (
-          <div className="space-y-2 text-sm" role="status">
-            <p>{copy.signedIn.replace('{account}', account.maskedPhone)}</p>
-            <p className="text-muted-foreground">{copy.localPending}</p>
-            <PlanStatus bridge={bridge!} />
-          </div>
         ) : (
           <form
             aria-busy={pending || sms.pending}
