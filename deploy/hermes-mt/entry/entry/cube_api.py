@@ -51,6 +51,10 @@ class CubeError(Exception):
         self.message = message
 
 
+class SandboxGone(CubeError):
+    """等就绪时控制面确认这台实例已经不存在。调用方该立即重建，而不是等满就绪超时。"""
+
+
 class Cube:
     """CubeAPI 客户端。
 
@@ -420,6 +424,7 @@ class Cube:
         """
         deadline = time.monotonic() + timeout_s
         last = ""
+        next_probe = 0.0
         while time.monotonic() < deadline:
             try:
                 st, body = await self._tenant_req(
@@ -430,6 +435,14 @@ class Cube:
                 last = str(body)[:120]
             except CubeError as exc:
                 last = exc.message or str(exc.status)
+                unknown = exc.status == 404 or "not found" in last.lower()
+                if unknown and time.monotonic() >= next_probe:
+                    # 数据面说不认识这台实例：可能是刚起来路由还没登记，也可能是实例已经被删了。
+                    # 10-08 真机：外部删实例是异步的，刚删完控制面还说"在"，这里一直等到 180 秒超时。
+                    # 现在每 5 秒问一次控制面，它说没了就立刻报，由调用方当场重建。
+                    next_probe = time.monotonic() + 5.0
+                    if await self.get_sandbox(sandbox_id) is None:
+                        raise SandboxGone(404, f"实例 {sandbox_id[:12]} 已不存在（控制面 404）") from exc
             await asyncio.sleep(1.0)
         raise CubeError(0, f"hermes {timeout_s}s 内没就绪：{last}")
 

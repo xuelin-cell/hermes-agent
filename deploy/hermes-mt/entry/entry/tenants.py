@@ -21,6 +21,7 @@ import json
 import logging
 import re
 import socket
+import sys
 import tarfile
 import time
 from dataclasses import dataclass
@@ -29,13 +30,29 @@ from pathlib import Path
 import aiohttp
 
 from .config import Settings
-from .cube_api import Cube, CubeError
+from .cube_api import Cube, CubeError, SandboxGone
 from .docker_api import Docker, DockerError
 from .store import Store
 
 log = logging.getLogger("entry.tenants")
 
 SEED_DIR = Path(__file__).resolve().parent.parent / "seed"
+
+# 平台正在删的实例：控制面还列得出来，但不能再当"在"用。
+GONE_STATES = frozenset({"deleting", "terminating", "deleted"})
+
+
+def _mtstate():
+    """seed/mtstate.py 里 config.yaml 平台块的写法。入口的 Docker 路径复用同一份，不再维护第二套按行改的代码。"""
+    import importlib.util
+    mod = sys.modules.get("mt_seed_mtstate")
+    if mod is None:
+        spec = importlib.util.spec_from_file_location("mt_seed_mtstate", SEED_DIR / "mtstate.py")
+        assert spec is not None and spec.loader is not None
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["mt_seed_mtstate"] = mod
+        spec.loader.exec_module(mod)
+    return mod
 _SAFE_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,40}$")
 
 
@@ -232,35 +249,6 @@ class TenantManager:
 
     # ---- 平台下发的模型配置：变了要同步到已有的卷 ------------------------------------
     @staticmethod
-    def _patch_config(text: str, base_url: str, model_name: str, provider_key: str) -> str:
-        """只改 ``model:`` 段和 ``providers.<key>:`` 段里的端点/模型四行，其余一字不动。
-
-        不能整份重写：hermes 自己会往 config.yaml 里写运行时状态，用户也可能在界面上
-        改过别的设置。
-        """
-        out: list[str] = []
-        section: str | None = None
-        sub: str | None = None
-        for line in text.splitlines(keepends=True):
-            body = line.rstrip("\n")
-            if body and not body[0].isspace() and body.rstrip().endswith(":"):
-                section = body.rstrip()[:-1]
-                sub = None
-            elif section == "providers" and body.startswith("  ") and not body.startswith("    ") and body.rstrip().endswith(":"):
-                sub = body.strip()[:-1]
-            stripped = body.strip()
-            if section == "model" and stripped.startswith("base_url:"):
-                line = f'  base_url: "{base_url}"\n'
-            elif section == "model" and stripped.startswith("default:"):
-                line = f'  default: "{model_name}"\n'
-            elif section == "providers" and sub == provider_key and stripped.startswith("api:"):
-                line = f'    api: "{base_url}"\n'
-            elif section == "providers" and sub == provider_key and stripped.startswith("default_model:"):
-                line = f'    default_model: "{model_name}"\n'
-            out.append(line)
-        return "".join(out)
-
-    @staticmethod
     def _from_tar(blob: bytes, name: str) -> bytes | None:
         with tarfile.open(fileobj=io.BytesIO(blob)) as tar:
             for m in tar.getmembers():
@@ -268,68 +256,6 @@ class TenantManager:
                     f = tar.extractfile(m)
                     return f.read() if f else None
         return None
-
-    @staticmethod
-    def _patch_models(text: str, provider_key: str, names: list[str]) -> str:
-        """把 ``providers.<key>.models`` 整段换成 *names*。段不存在就补在该 provider 末尾。
-
-        ★ 界面的模型下拉读的是这个映射，不是 default_model。套餐里有三个模型而这里只写
-        一个，用户就只看得到一个。
-        """
-        if not names:
-            return text
-        lines = text.splitlines(keepends=True)
-        out: list[str] = []
-        section: str | None = None
-        sub: str | None = None
-        in_models = False          # 正在跳过旧的 models 子树
-        wrote = False
-        block = [f"      {n}: {{}}\n" for n in names]
-
-        def flush_provider_end() -> None:
-            """在离开该 provider 之前补上 models 段。
-
-            先把已经攒下的尾部空行摘掉，补完再放回去——否则新段会落在空行之后，
-            看起来像脱离了这个 provider（YAML 仍然合法，纯粹是给人看的）。
-            """
-            nonlocal wrote
-            if wrote:
-                return
-            trailing: list[str] = []
-            while out and not out[-1].strip():
-                trailing.append(out.pop())
-            out.append("    models:\n")
-            out.extend(block)
-            out.extend(reversed(trailing))
-            wrote = True
-
-        for line in lines:
-            body = line.rstrip("\n")
-            top = bool(body) and not body[0].isspace() and body.rstrip().endswith(":")
-            prov = section == "providers" and body.startswith("  ") and not body.startswith("    ") and body.rstrip().endswith(":")
-            if in_models:
-                # models 的子项缩进比 "    models:" 更深；遇到同级/更浅的行**或空行**就结束。
-                # 空行必须算结束并保留：我们生成的条目里没有空行，把它吞掉会让重复执行
-                # 一次比一次少一行（不幂等）。
-                if not body.strip() or not body.startswith("      "):
-                    in_models = False
-                else:
-                    continue
-            if top or prov:
-                if sub == provider_key and (top or prov):
-                    flush_provider_end()
-                section = body.rstrip()[:-1] if top else section
-                sub = body.strip()[:-1] if prov else (None if top else sub)
-            if section == "providers" and sub == provider_key and body.strip().startswith("models:"):
-                out.append("    models:\n")
-                out.extend(block)
-                wrote = True
-                in_models = True
-                continue
-            out.append(line)
-        if sub == provider_key:
-            flush_provider_end()
-        return "".join(out)
 
     async def _sync_endpoint(
         self,
@@ -358,10 +284,9 @@ class TenantManager:
             raw = self._from_tar(cfg_tar, "config.yaml")
             if raw is None:
                 return False
-            patched = self._patch_config(raw.decode("utf-8"), base_url, model_name, self.s.provider_key)
-            patched = self._patch_models(patched, self.s.provider_key, names)
+            patched, notes = _mtstate().patch_config_text(raw.decode("utf-8"), self._config_patch_spec(endpoint, catalog))
             files = {".mt/endpoint.stamp": want}
-            if patched.encode("utf-8") != raw:
+            if notes:
                 files["config.yaml"] = patched.encode("utf-8")
                 log.info(
                     "tenant %s: 套餐配置变了，已更新 config.yaml -> %s / %s / models=%s",
@@ -473,6 +398,22 @@ class TenantManager:
         digest = hashlib.sha256(user_id.encode("utf-8")).hexdigest()[:32]
         return f"{self.s.prefix}-u-{digest}"
 
+    def _config_patch_spec(
+        self,
+        endpoint: tuple[str, str] | None,
+        catalog: list[tuple[str, str]] | None,
+    ) -> dict:
+        """patch-model 的内容：平台块四项 + 套餐清单 + 一份渲染好的模板（文件坏到救不回来时按它重建）。"""
+        base_url, model_name = endpoint or ("", "")
+        return {
+            "base_url": base_url or self.s.model_base_url,
+            "model": model_name or self.s.model_name,
+            "provider_key": self.s.provider_key,
+            "key_env": self.s.key_env_name,
+            "models": [n for n, _ in (catalog or [])],
+            "template": self._render_user_files("", endpoint, catalog)["config.yaml"].decode("utf-8"),
+        }
+
     def _cube_seed_files(
         self,
         api_key: str,
@@ -491,13 +432,7 @@ class TenantManager:
            ``if-pristine`` 的判据是与镜像里的示例逐字节比对，见 seed/forward.py。
         """
         rendered = self._render_user_files(api_key, endpoint, catalog)
-        base_url, model_name = endpoint or ("", "")
-        patch = {
-            "base_url": base_url or self.s.model_base_url,
-            "model": model_name or self.s.model_name,
-            "provider_key": self.s.provider_key,
-            "models": [n for n, _ in (catalog or [])],
-        }
+        patch = self._config_patch_spec(endpoint, catalog)
         return [
             {
                 "path": "config.yaml",
@@ -562,6 +497,18 @@ class TenantManager:
                 # 实例可能是 paused —— 这个请求会把它自动唤醒，等就绪即可。
                 try:
                     await self.cube.wait_hermes(sandbox_id, port, timeout_s=self.s.ready_timeout_s)
+                except SandboxGone:
+                    # 等就绪期间控制面确认实例没了（节点丢失、被手工删）。10-08 真机：删除是异步的，
+                    # 刚删完控制面还说"在"，旧版等满 180 秒就绪超时才发现。现在当场重建，同一个请求里完成。
+                    log.warning("tenant %s: 实例 %s 在等就绪时消失，立即重建", slug, sandbox_id[:12])
+                    async with self._pg_lock(user_id):
+                        rt = await self.store.get_runtime(user_id)
+                        sb = await self.cube.get_sandbox(rt.sandbox_id) if rt.sandbox_id else None
+                        sandbox_id = await self._settle_cube(user_id, slug, rt, sb, token, context)
+                        if not sandbox_id:
+                            sandbox_id = await self._create_cube(user_id, slug, volume, token, context)
+                    was_paused = False
+                    await self.cube.wait_hermes(sandbox_id, port, timeout_s=self.s.ready_timeout_s)
                 except CubeError:
                     # 等不到 hermes：没引导过就补一次，窗口已关就删了重建；引导过的照常报错。
                     async with self._pg_lock(user_id):
@@ -600,7 +547,7 @@ class TenantManager:
 
     def _needs_change(self, rt, sb: dict | None) -> bool:
         """这次请求要不要动实例（没实例 / 实例没了 / 模板变了 / 引导没完成）。"""
-        if not rt.sandbox_id or sb is None:
+        if not rt.sandbox_id or sb is None or str(sb.get("state")) in GONE_STATES:
             return True
         want = self._template_id()
         have = str(sb.get("templateID") or rt.template_id or "")
@@ -614,6 +561,11 @@ class TenantManager:
         sandbox_id = rt.sandbox_id
         if not sandbox_id:
             return ""
+        if sb is not None and str(sb.get("state")) in GONE_STATES:
+            # 平台正在删它（异步删除的收尾）：等它真没了再按"没了"处理，免得新实例和它抢卷。
+            log.info("tenant %s: 实例 %s 正在被平台删除（%s），等它消失", slug, sandbox_id[:12], sb.get("state"))
+            await self.cube.wait_gone(sandbox_id)
+            sb = None
         if sb is None:
             # 平台侧已经没了（节点维护、被手工删掉…）。数据在卷上，重建即可。
             log.info("tenant %s: 实例 %s 已不存在，重建", slug, sandbox_id[:12])

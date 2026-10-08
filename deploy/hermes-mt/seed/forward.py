@@ -149,8 +149,9 @@ def _write_seed(files: list[dict]) -> list[str]:
       又不会碰用户或 hermes 自己写过的内容。
     - ``"upsert-lines"`` —— 只改 content 里那几行 ``KEY=VALUE``，其余保持用户自己的。
       这是 ``.env`` 该用的：用户在界面里存的别的 key 不能被抹掉。
-    - ``"patch-model"`` —— content 是 JSON ``{base_url, model, provider_key, models}``，
-      只改 config.yaml 里的平台行（模型端点、模型清单），其余一字不动。
+    - ``"patch-model"`` —— content 是 JSON ``{base_url, model, provider_key, key_env, models, template}``：
+      整份解析 config.yaml，只改平台块（端点、provider、key 来源、模型清单），用户自己的设置不碰；
+      解析不了的先剔残行，再不行就按 template 重建。见 mtstate.patch_config_text。
     """
     written: list[str] = []
     for item in files:

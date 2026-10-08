@@ -20,6 +20,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -670,92 +671,208 @@ def env_upsert(path: Path, lines: list[str]) -> None:
         pass
 
 
-def patch_config(text: str, base_url: str, model_name: str, provider_key: str) -> str:
-    """只改 model: 段和 providers.<key>: 段里的端点/模型四行，其余一字不动。（与入口 Docker 路径同一份逻辑）"""
+# ---------------------------------------------------------------- config.yaml 的平台块
+#
+# 10-08 真机事故：hermes 自己保存过的 config.yaml 里 base_url 被折成两行（值里混进了第二个 URL，
+# PyYAML 遇到带空格的长值就折行）。旧版「按行改平台四行」只换了第一行、留下残行，整份文件不再合法，
+# hermes 按默认配置启动，用户看到首次设置向导、"No inference provider configured"。
+# 现在：整份解析 → 改平台块 → 回写 → 自检能解析。解析不了的先剔残行；还不行就按入口给的模板重建。
+# 默认模型保留用户自己选的（只要它在套餐清单里），其余平台行以入口下发的为准。
+
+NOTE_REBUILT = "config.yaml 无法解析，已按平台模板重建（用户自己的设置丢失）"
+
+_KEY_LINE_RE = re.compile(r"^[^\s#\-][^:]*:(\s|$)")
+_QUOTED_VALUE_LINE_RE = re.compile(r"""^(\s*)[^\s#\-][^:]*:\s*("(?:[^"\\]|\\.)*"|'[^']*')\s*$""")
+
+
+def strip_orphan_continuations(text: str) -> tuple[str, int]:
+    """剔除「闭合的引号标量之后、缩进更深、既不像键也不像列表项或注释」的行。返回 (新文本, 剔了几行)。"""
     out: list[str] = []
-    section: str | None = None
-    sub: str | None = None
-    for line in text.splitlines(keepends=True):
-        body = line.rstrip("\n")
-        if body and not body[0].isspace() and body.rstrip().endswith(":"):
-            section = body.rstrip()[:-1]
-            sub = None
-        elif section == "providers" and body.startswith("  ") and not body.startswith("    ") and body.rstrip().endswith(":"):
-            sub = body.strip()[:-1]
+    dropped = 0
+    quoted_indent: int | None = None
+    for ln in text.splitlines(keepends=True):
+        body = ln.rstrip("\r\n")
         stripped = body.strip()
-        if section == "model" and stripped.startswith("base_url:"):
-            line = f'  base_url: "{base_url}"\n'
-        elif section == "model" and stripped.startswith("default:"):
-            line = f'  default: "{model_name}"\n'
-        elif section == "providers" and sub == provider_key and stripped.startswith("api:"):
-            line = f'    api: "{base_url}"\n'
-        elif section == "providers" and sub == provider_key and stripped.startswith("default_model:"):
-            line = f'    default_model: "{model_name}"\n'
-        out.append(line)
-    return "".join(out)
-
-
-def patch_models(text: str, provider_key: str, names: list[str]) -> str:
-    """把 providers.<key>.models 整段换成 names；段不存在就补在该 provider 末尾。"""
-    if not names:
-        return text
-    lines = text.splitlines(keepends=True)
-    out: list[str] = []
-    section: str | None = None
-    sub: str | None = None
-    in_models = False
-    wrote = False
-    block = [f"      {n}: {{}}\n" for n in names]
-
-    def flush_provider_end() -> None:
-        nonlocal wrote
-        if wrote:
-            return
-        trailing: list[str] = []
-        while out and not out[-1].strip():
-            trailing.append(out.pop())
-        out.append("    models:\n")
-        out.extend(block)
-        out.extend(reversed(trailing))
-        wrote = True
-
-    for line in lines:
-        body = line.rstrip("\n")
-        top = bool(body) and not body[0].isspace() and body.rstrip().endswith(":")
-        prov = section == "providers" and body.startswith("  ") and not body.startswith("    ") and body.rstrip().endswith(":")
-        if in_models:
-            if not body.strip() or not body.startswith("      "):
-                in_models = False
-            else:
-                continue
-        if top or prov:
-            if sub == provider_key and (top or prov):
-                flush_provider_end()
-            section = body.rstrip()[:-1] if top else section
-            sub = body.strip()[:-1] if prov else (None if top else sub)
-        if section == "providers" and sub == provider_key and body.strip().startswith("models:"):
-            out.append("    models:\n")
-            out.extend(block)
-            wrote = True
-            in_models = True
+        indent = len(body) - len(body.lstrip(" "))
+        if (quoted_indent is not None and stripped and indent > quoted_indent
+                and not stripped.startswith("#") and not stripped.startswith("- ")
+                and not _KEY_LINE_RE.match(stripped)):
+            dropped += 1
             continue
-        out.append(line)
-    if sub == provider_key:
-        flush_provider_end()
-    return "".join(out)
+        m = _QUOTED_VALUE_LINE_RE.match(body)
+        quoted_indent = len(m.group(1)) if m else None
+        out.append(ln)
+    return "".join(out), dropped
 
 
-def patch_config_file(path: Path, spec: dict) -> bool:
-    """按入口给的 {base_url, model, provider_key, models} 改写 config.yaml 的平台行。返回是否改了。"""
-    if not path.is_file():
-        return False
-    raw = path.read_text(encoding="utf-8")
-    patched = patch_config(raw, str(spec.get("base_url", "")), str(spec.get("model", "")), str(spec.get("provider_key", "")))
-    patched = patch_models(patched, str(spec.get("provider_key", "")), [str(n) for n in (spec.get("models") or [])])
-    if patched == raw:
-        return False
-    _write_atomic(path, patched.encode("utf-8"))
-    return True
+def _yaml_io():
+    """返回 (load, dump)。优先 ruamel 往返模式：保留注释与引号，和 hermes 自己 save_config_value 的写法一致；
+    没有 ruamel（本地测试）就用 PyYAML。两种都把折行宽度放大，长值永远在一行上。"""
+    try:
+        from ruamel.yaml import YAML
+    except ImportError:
+        import yaml
+
+        def load(text: str):
+            return yaml.safe_load(text)
+
+        def dump(obj) -> str:
+            return yaml.safe_dump(obj, default_flow_style=False, allow_unicode=True, sort_keys=False, width=4096)
+
+        return load, dump
+
+    rt = YAML(typ="rt")
+    rt.preserve_quotes = True
+    rt.width = 4096
+
+    def load_rt(text: str):
+        import io
+        return rt.load(io.StringIO(text))
+
+    def dump_rt(obj) -> str:
+        import io
+        buf = io.StringIO()
+        rt.dump(obj, buf)
+        return buf.getvalue()
+
+    return load_rt, dump_rt
+
+
+def _check_parses(text: str) -> None:
+    """自检：PyYAML（hermes 读配置用的库）必须能把它解析成映射。"""
+    import yaml
+    doc = yaml.safe_load(text) if text.strip() else {}
+    if not isinstance(doc, dict):
+        raise ValueError("config.yaml 顶层不是映射")
+
+
+def _set_top(cfg, key: str, value) -> None:
+    """顶层新增一段；ruamel 的映射放到 _config_version 后面，别甩在文件末尾。"""
+    insert = getattr(cfg, "insert", None)
+    if callable(insert):
+        insert(1 if "_config_version" in cfg else 0, key, value)
+    else:
+        cfg[key] = value
+
+
+def _platform_snapshot(cfg, key: str) -> tuple:
+    model = cfg.get("model") if isinstance(cfg.get("model"), dict) else {}
+    providers = cfg.get("providers") if isinstance(cfg.get("providers"), dict) else {}
+    entry = providers.get(key) if isinstance(providers.get(key), dict) else {}
+    models = entry.get("models")
+    return (
+        str(model.get("default", "")), str(model.get("provider", "")), str(model.get("base_url", "")),
+        str(model.get("key_env", "")),
+        str(entry.get("api", "")), str(entry.get("key_env", "")), str(entry.get("transport", "")),
+        str(entry.get("default_model", "")),
+        tuple(str(k) for k in models) if isinstance(models, dict) else (),
+    )
+
+
+def apply_platform_block(cfg, spec: dict) -> bool:
+    """把入口下发的平台块写进解析后的配置。返回有没有改动。
+
+    平台归平台：model 段的 provider / base_url / key_env，providers.<key> 整块（端点、key 来源、模型清单）。
+    用户归用户：model.default 保留他自己选的，只要在套餐清单里；别的段一概不碰。
+    """
+    key = str(spec.get("provider_key", "")).strip()
+    base_url = str(spec.get("base_url", "")).strip()
+    plan_model = str(spec.get("model", "")).strip()
+    key_env = str(spec.get("key_env", "")).strip()
+    names = [str(n).strip() for n in (spec.get("models") or []) if str(n).strip()]
+    before = _platform_snapshot(cfg, key)
+
+    model = cfg.get("model")
+    if not isinstance(model, dict):
+        prev = model.strip() if isinstance(model, str) else ""
+        model = {}
+        if prev:
+            model["default"] = prev
+        _set_top(cfg, "model", model)
+    current = str(model.get("default") or "").strip()
+    allowed = names or ([plan_model] if plan_model else [])
+    chosen = current if (current and current in allowed) else (plan_model or current)
+    if chosen:
+        model["default"] = chosen
+    if key:
+        model["provider"] = key
+    if base_url:
+        model["base_url"] = base_url
+    if key_env:
+        model["key_env"] = key_env
+
+    if key:
+        providers = cfg.get("providers")
+        if not isinstance(providers, dict):
+            providers = {}
+            _set_top(cfg, "providers", providers)
+        entry = providers.get(key)
+        if not isinstance(entry, dict):
+            entry = {}
+            providers[key] = entry
+        if base_url:
+            entry["api"] = base_url
+        if key_env:
+            entry["key_env"] = key_env
+        entry.setdefault("transport", "chat_completions")
+        if plan_model:
+            entry["default_model"] = plan_model
+        if names:
+            entry["models"] = {n: {} for n in names}
+        elif not isinstance(entry.get("models"), dict) or not entry["models"]:
+            entry["models"] = {chosen: {}} if chosen else {}
+    return _platform_snapshot(cfg, key) != before
+
+
+def patch_config_text(text: str, spec: dict) -> tuple[str, list[str]]:
+    """返回 (新文本, 说明列表)。说明为空 = 没有改动，新文本就是原文。"""
+    notes: list[str] = []
+    load, dump = _yaml_io()
+    cfg = None
+    try:
+        cfg = load(text) if text.strip() else {}
+    except Exception:  # noqa: BLE001 —— 解析错误；库不同异常类型不同，统一按"解析不了"处理
+        repaired, dropped = strip_orphan_continuations(text)
+        if dropped:
+            try:
+                cfg = load(repaired)
+                text = repaired
+                notes.append(f"config.yaml 解析失败，剔除 {dropped} 行残行后恢复")
+            except Exception:  # noqa: BLE001
+                cfg = None
+    if not isinstance(cfg, dict):
+        template = str(spec.get("template") or "")
+        if not template.strip():
+            raise ValueError("config.yaml 无法解析，且入口没有给模板，不能重建")
+        cfg = load(template)
+        text = template
+        notes = [NOTE_REBUILT]
+    changed = apply_platform_block(cfg, spec)
+    if not changed and not notes:
+        return text, []
+    if changed and not notes:
+        notes.append("config.yaml 的平台行已更新")
+    new_text = dump(cfg)
+    _check_parses(new_text)
+    return new_text, notes
+
+
+def patch_config_file(path: Path, spec: dict) -> list[str]:
+    """按入口给的 {base_url, model, provider_key, key_env, models, template} 改 config.yaml。返回说明（空 = 没改）。"""
+    if path.is_file():
+        text = path.read_text(encoding="utf-8")
+        prefix: list[str] = []
+    else:
+        template = str(spec.get("template") or "")
+        if not template.strip():
+            return []
+        text = template
+        prefix = ["config.yaml 不存在，已按平台模板新建"]
+    new_text, notes = patch_config_text(text, spec)
+    if not notes and not prefix:
+        return []
+    _write_atomic(path, new_text.encode("utf-8"))
+    return prefix + notes
 
 
 def run_config_migration(home: Path, hermes_root: Path = Path("/opt/hermes")) -> str:
@@ -908,8 +1025,7 @@ class StateManager:
         if env_lines:
             env_upsert(self.home / ".env", env_lines)
         if config_patch:
-            if patch_config_file(self.home / "config.yaml", config_patch):
-                rep.notes.append("config.yaml 的平台行已更新")
+            rep.notes.extend(patch_config_file(self.home / "config.yaml", config_patch))
 
     # ---- 归档 ------------------------------------------------------------
     def owner_ok(self) -> bool:

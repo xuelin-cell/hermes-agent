@@ -353,21 +353,120 @@ def test_env_upsert_keeps_user_lines(tmp_path: Path) -> None:
     assert (tmp_path / "fresh.env").read_text(encoding="utf-8") == "A=1\n"
 
 
-def test_patch_config_file_only_touches_platform_lines(tmp_path: Path) -> None:
+_URL = "https://maas-api.ai-yuanjing.com/openapi/compatible-mode/token-plan/v1"
+_SPEC = {"base_url": _URL, "model": "deepseek-v4-flash", "provider_key": "yuanjing",
+         "key_env": "HERMES_CUSTOM_YUANJING_API_KEY", "models": ["deepseek-v4-flash", "deepseek-v4.1-flash", "glm-5.2"]}
+_TEMPLATE = (
+    "_config_version: 39\nmodel:\n  default: \"deepseek-v4-flash\"\n  provider: \"yuanjing\"\n"
+    f"  base_url: \"{_URL}\"\n  key_env: \"HERMES_CUSTOM_YUANJING_API_KEY\"\n\nproviders:\n  yuanjing:\n"
+    f"    api: \"{_URL}\"\n    key_env: \"HERMES_CUSTOM_YUANJING_API_KEY\"\n    transport: chat_completions\n"
+    "    default_model: \"deepseek-v4-flash\"\n    models:\n      deepseek-v4-flash: {}\n\nterminal:\n  cwd: \"/opt/data/workspace\"\n"
+)
+# 10-08 .7 真机上恢复出来的坏文件：引号标量后面跟着一行残行（旧版按行改留下的）
+_PROD_BROKEN = (
+    "_config_version: 39\nmodel:\n  default: \"deepseek-v4-flash\"\n  provider: yuanjing\n"
+    f"  base_url: \"{_URL}\"\n    {_URL}\n  key_env: HERMES_CUSTOM_YUANJING_API_KEY\n"
+    f"providers:\n  yuanjing:\n    api: \"{_URL}\"\n    key_env: HERMES_CUSTOM_YUANJING_API_KEY\n    transport: chat_completions\n"
+    "    default_model: \"deepseek-v4-flash\"\n    models:\n      deepseek-v4-flash: {}\n      glm-5.2: {}\n"
+    "terminal:\n  backend: local\n  cwd: /opt/data/workspace\ntimezone: Asia/Tokyo\n"
+)
+# 归档里的样子：hermes 把带空格的长值折成两行（合法 YAML，值是"URL URL"）
+_PROD_FOLDED = _PROD_BROKEN.replace(f"  base_url: \"{_URL}\"\n    {_URL}\n", f"  base_url: {_URL}\n    {_URL}\n")
+
+
+def _load(path: Path) -> dict:
+    import yaml
+    return yaml.safe_load(path.read_text(encoding="utf-8"))
+
+
+def test_strip_orphan_continuations_only_drops_the_stray_line() -> None:
+    fixed, dropped = mtstate.strip_orphan_continuations(_PROD_BROKEN)
+    assert dropped == 1 and f"    {_URL}\n" not in fixed and "timezone: Asia/Tokyo" in fixed
+    assert mtstate.strip_orphan_continuations(_TEMPLATE) == (_TEMPLATE, 0)
+
+
+def test_patch_config_repairs_the_production_broken_file(tmp_path: Path) -> None:
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(_PROD_BROKEN, encoding="utf-8")
+    notes = mtstate.patch_config_file(cfg, _SPEC)
+    assert notes and "残行" in notes[0]
+    doc = _load(cfg)
+    assert doc["model"]["base_url"] == _URL and doc["model"]["provider"] == "yuanjing"
+    assert doc["model"]["key_env"] == "HERMES_CUSTOM_YUANJING_API_KEY"
+    assert doc["timezone"] == "Asia/Tokyo" and doc["terminal"]["cwd"] == "/opt/data/workspace"
+    assert list(doc["providers"]["yuanjing"]["models"]) == _SPEC["models"]
+    assert mtstate.patch_config_file(cfg, _SPEC) == []
+
+
+def test_patch_config_normalizes_folded_doubled_base_url(tmp_path: Path) -> None:
+    """归档里 base_url 是"URL URL"折成两行：解析后整体换掉，不再按行改，文件回到一行。"""
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(_PROD_FOLDED, encoding="utf-8")
+    assert _load(cfg)["model"]["base_url"] == f"{_URL} {_URL}"
+    notes = mtstate.patch_config_file(cfg, _SPEC)
+    assert notes == ["config.yaml 的平台行已更新"]
+    text = cfg.read_text(encoding="utf-8")
+    assert _load(cfg)["model"]["base_url"] == _URL and text.count(_URL) == 2  # model.base_url + providers.api
+    assert "\n    http" not in text
+
+
+def test_patch_config_keeps_user_default_model_when_in_plan(tmp_path: Path) -> None:
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(_TEMPLATE.replace('default: "deepseek-v4-flash"', 'default: "glm-5.2"', 1), encoding="utf-8")
+    assert mtstate.patch_config_file(cfg, _SPEC)
+    doc = _load(cfg)
+    assert doc["model"]["default"] == "glm-5.2"                       # 用户选的，在套餐里 ⇒ 保留
+    assert doc["providers"]["yuanjing"]["default_model"] == "deepseek-v4-flash"   # 平台默认
+    assert mtstate.patch_config_file(cfg, _SPEC) == []
+    cfg.write_text(_TEMPLATE.replace('default: "deepseek-v4-flash"', 'default: "z-ai/glm-5.2"', 1), encoding="utf-8")
+    mtstate.patch_config_file(cfg, _SPEC)
+    assert _load(cfg)["model"]["default"] == "deepseek-v4-flash"       # 不在套餐里 ⇒ 回到平台默认
+
+
+def test_patch_config_keeps_everything_else(tmp_path: Path) -> None:
     cfg = tmp_path / "config.yaml"
     cfg.write_text(
         "_config_version: 39\nmodel:\n  default: \"old\"\n  provider: \"yuanjing\"\n  base_url: \"http://old\"\n"
         "providers:\n  yuanjing:\n    api: \"http://old\"\n    default_model: \"old\"\n    models:\n      old: {}\n\n"
-        "terminal:\n  cwd: \"/opt/data/workspace\"\n  user_setting: 1\n",
+        "terminal:\n  cwd: \"/opt/data/workspace\"\n  user_setting: 1\nagent:\n  reasoning_overrides:\n    x: low\n",
         encoding="utf-8",
     )
-    changed = mtstate.patch_config_file(cfg, {"base_url": "http://new/v1", "model": "m1", "provider_key": "yuanjing", "models": ["m1", "m2"]})
-    assert changed
-    text = cfg.read_text(encoding="utf-8")
-    assert '  default: "m1"' in text and '  base_url: "http://new/v1"' in text
-    assert "      m1: {}\n      m2: {}\n" in text and "old: {}" not in text
-    assert "user_setting: 1" in text
-    assert not mtstate.patch_config_file(cfg, {"base_url": "http://new/v1", "model": "m1", "provider_key": "yuanjing", "models": ["m1", "m2"]})
+    spec = {"base_url": "http://new/v1", "model": "m1", "provider_key": "yuanjing", "key_env": "K", "models": ["m1", "m2"]}
+    assert mtstate.patch_config_file(cfg, spec)
+    doc = _load(cfg)
+    assert doc["model"] == {"default": "m1", "provider": "yuanjing", "base_url": "http://new/v1", "key_env": "K"}
+    assert doc["providers"]["yuanjing"]["api"] == "http://new/v1" and list(doc["providers"]["yuanjing"]["models"]) == ["m1", "m2"]
+    assert doc["terminal"]["user_setting"] == 1 and doc["agent"]["reasoning_overrides"] == {"x": "low"}
+    assert mtstate.patch_config_file(cfg, spec) == []
+
+
+def test_patch_config_upgrades_bare_string_model_and_missing_providers(tmp_path: Path) -> None:
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("_config_version: 39\nmodel: glm-5.2\ntimezone: Asia/Tokyo\n", encoding="utf-8")
+    assert mtstate.patch_config_file(cfg, _SPEC)
+    doc = _load(cfg)
+    assert doc["model"]["default"] == "glm-5.2" and doc["model"]["provider"] == "yuanjing" and doc["model"]["base_url"] == _URL
+    assert doc["providers"]["yuanjing"]["api"] == _URL and doc["providers"]["yuanjing"]["transport"] == "chat_completions"
+    assert doc["timezone"] == "Asia/Tokyo"
+    assert list(doc)[:3] == ["_config_version", "model", "providers"] or "model" in doc
+
+
+def test_patch_config_rebuilds_from_template_when_hopeless(tmp_path: Path) -> None:
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("model: [\n  :::\n", encoding="utf-8")
+    with pytest.raises(ValueError):
+        mtstate.patch_config_file(cfg, _SPEC)             # 没模板不敢重建
+    notes = mtstate.patch_config_file(cfg, {**_SPEC, "template": _TEMPLATE})
+    assert notes[0] == mtstate.NOTE_REBUILT
+    doc = _load(cfg)
+    assert doc["model"]["provider"] == "yuanjing" and list(doc["providers"]["yuanjing"]["models"]) == _SPEC["models"]
+
+
+def test_patch_config_creates_file_from_template_when_missing(tmp_path: Path) -> None:
+    cfg = tmp_path / "config.yaml"
+    assert mtstate.patch_config_file(cfg, _SPEC) == [] and not cfg.exists()
+    notes = mtstate.patch_config_file(cfg, {**_SPEC, "template": _TEMPLATE})
+    assert notes[0].startswith("config.yaml 不存在") and _load(cfg)["model"]["base_url"] == _URL
 
 
 def test_manifest_json_round_trip() -> None:

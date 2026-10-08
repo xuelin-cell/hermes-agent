@@ -39,7 +39,10 @@ def test_write_seed_modes(forward, tmp_path: Path) -> None:
     assert written == ["config.yaml", ".env", "SOUL.md"]
     cfg = (tmp_path / "config.yaml").read_text(encoding="utf-8")
     assert cfg.startswith("model:")  # 用户的配置没被模板整份覆盖
-    assert '  default: "m"' in cfg and "      m: {}" in cfg
+    import yaml
+    doc = yaml.safe_load(cfg)
+    assert doc["model"]["default"] == "m" and doc["model"]["base_url"] == "http://new"
+    assert list(doc["providers"]["yuanjing"]["models"]) == ["m"]
     assert (tmp_path / ".env").read_text(encoding="utf-8") == "USER_KEY=mine\nTERMINAL_ENV=local\nPLATFORM_KEY=k\n"
     assert (tmp_path / "SOUL.md").read_text(encoding="utf-8") == "soul"
     # 第二次：SOUL.md 已存在不覆盖，patch 无变化不算写入

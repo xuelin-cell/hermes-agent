@@ -13,7 +13,7 @@ import pytest
 
 from entry import tenants as tenants_module
 from entry.config import Settings
-from entry.cube_api import CubeError
+from entry.cube_api import CubeError, SandboxGone
 from entry.store import Runtime, TenantContext
 from entry.tenants import TenantManager
 
@@ -112,6 +112,7 @@ class FakeCube:
         self.hermes_ready: set[str] = set(self.sandboxes)
         self.tokens: dict[str, str] = {}
         self.boot_failures: list[CubeError] = []   # 每次 bootstrap 先弹一个出来抛，空了就正常
+        self.gone_during_wait: set[str] = set()     # 等就绪时被外部删掉的实例
 
     def host_for(self, sandbox_id, port):
         return f"{port}-{sandbox_id}.cube.app"
@@ -154,6 +155,10 @@ class FakeCube:
                                       "counts": {"state.db": {"messages": 3}}, "notes": []}}
 
     async def wait_hermes(self, sandbox_id, port, timeout_s=240):
+        if sandbox_id in self.gone_during_wait:
+            self.gone_during_wait.discard(sandbox_id)
+            self.sandboxes.pop(sandbox_id, None)
+            raise SandboxGone(404, "gone")
         if sandbox_id not in self.hermes_ready:
             raise CubeError(0, "not ready")
         self.calls.append(("wait_hermes", sandbox_id))
@@ -433,3 +438,37 @@ async def test_repair_bootstrap_discards_volume_not_ready_instance(monkeypatch) 
     assert tenant.sandbox_id == "sb1"
     boot = [c for c in cube.calls if c[0] == "bootstrap"][-1]
     assert boot[2]["restore_from"] == "sbPrev"
+
+
+@pytest.mark.asyncio
+async def test_instance_deleted_while_waiting_is_rebuilt_in_the_same_request(monkeypatch) -> None:
+    """外部删实例后控制面短暂还说"在"：等就绪时发现它没了 ⇒ 同一个请求里当场重建，不等 180 秒。"""
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    store = FakeStore(runtime=Runtime("running", "sbOld", "tpl-new", 3, "sbOld", "x.tar.gz", ""))
+    cube = FakeCube({"sbOld": {"sandboxID": "sbOld", "templateID": "tpl-new", "state": "running"}})
+    cube.gone_during_wait = {"sbOld"}
+    tenant = await _manager(store, cube).ensure_running("u")
+    assert tenant.sandbox_id == "sb1"
+    assert ("deleted", "sbOld", "gone") in store.calls
+    kinds = [c[:2] for c in cube.calls if c[0] in ("create", "bootstrap", "wait_hermes")]
+    assert kinds == [("create", "sb1"), ("bootstrap", "sb1"), ("wait_hermes", "sb1")]
+    assert ("audit", "tenant.resume") not in store.calls
+    boot = [c for c in cube.calls if c[0] == "bootstrap"][-1]
+    assert boot[2]["restore_from"] == "sbOld"
+
+
+@pytest.mark.asyncio
+async def test_instance_being_deleted_by_platform_is_treated_as_gone(monkeypatch) -> None:
+    """控制面列出的实例状态是 deleting：等它消失，再按"没了"重建。"""
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    store = FakeStore(runtime=Runtime("running", "sbOld", "tpl-new", 3, "sbOld", "x.tar.gz", ""))
+    cube = FakeCube({"sbOld": {"sandboxID": "sbOld", "templateID": "tpl-new", "state": "deleting"}})
+
+    async def wait_gone(sandbox_id, timeout_s=60):
+        cube.sandboxes.pop(sandbox_id, None)
+        cube.calls.append(("wait_gone", sandbox_id))
+        return True
+
+    cube.wait_gone = wait_gone
+    tenant = await _manager(store, cube).ensure_running("u")
+    assert tenant.sandbox_id == "sb1" and ("wait_gone", "sbOld") in cube.calls and ("deleted", "sbOld", "gone") in store.calls

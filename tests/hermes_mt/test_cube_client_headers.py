@@ -9,7 +9,8 @@ import json
 
 import pytest
 
-from entry.cube_api import TRAFFIC_TOKEN_HEADER, Cube, CubeError
+from entry import cube_api
+from entry.cube_api import TRAFFIC_TOKEN_HEADER, Cube, CubeError, SandboxGone
 
 
 class _Resp:
@@ -113,3 +114,34 @@ async def test_remove_sandbox_forgets_token() -> None:
     http.responses["sb1"] = (204, "")
     await cube.remove_sandbox("sb1")
     assert cube.traffic_token("sb1") == ""
+
+
+async def _no_sleep(_s):
+    return None
+
+
+@pytest.mark.asyncio
+async def test_wait_hermes_stops_at_once_when_control_plane_says_gone(monkeypatch) -> None:
+    """数据面答"不认识这台实例"且控制面 404 ⇒ 立刻 SandboxGone，不等满超时（10-08 真机等了 180 秒）。"""
+    monkeypatch.setattr(cube_api.asyncio, "sleep", _no_sleep)
+    cube, fake = _cube()
+    fake.responses["health"] = (404, {"error": "not found"})
+    fake.responses["sbGone"] = (404, {"error": "not found"})
+    with pytest.raises(SandboxGone):
+        await cube.wait_hermes("sbGone", 9121, timeout_s=60)
+    control = [c for c in fake.calls if c[1] == "http://api:3000/sandboxes/sbGone"]
+    assert len(control) == 1
+
+
+@pytest.mark.asyncio
+async def test_wait_hermes_keeps_waiting_while_control_plane_still_lists_it(monkeypatch) -> None:
+    """控制面还说"在"（刚建好路由没登记 / 异步删除还没落地）⇒ 照常等到超时，控制面最多 5 秒问一次。"""
+    monkeypatch.setattr(cube_api.asyncio, "sleep", _no_sleep)
+    cube, fake = _cube()
+    fake.responses["health"] = (404, {"error": "not found"})
+    fake.responses["sbAlive"] = (200, {"sandboxID": "sbAlive", "state": "running"})
+    with pytest.raises(CubeError) as exc:
+        await cube.wait_hermes("sbAlive", 9121, timeout_s=0.2)
+    assert not isinstance(exc.value, SandboxGone)
+    control = [c for c in fake.calls if c[1] == "http://api:3000/sandboxes/sbAlive"]
+    assert len(control) == 1
