@@ -74,6 +74,10 @@ ENV HERMES_HOME=/opt/data \
 ENV MT_BOOTSTRAP_WINDOW_S=600
 # 状态管家默认多久归档一次（入口可在引导时覆盖）。
 ENV MT_ARCHIVE_INTERVAL_S=300
+# hermes 的终端工具在第一条命令前会从 GitHub 下载 tirith（命令安全扫描器）到数据目录；
+# 集群里的实例连不上 GitHub，下载挂住会让第一条命令卡几分钟（10-08 真机撞过）。
+# 每人一台隔离的虚机，扫描的意义本来就不大，关掉。
+ENV TIRITH_ENABLED=0
 
 # 给 agent 的环境说明，进它的系统提示（hermes 专门留给宿主平台的口子，不占用户的 SOUL.md）。
 # 工作区在对象存储上，小文件慢、没有硬链接；重活放本地盘的 scratch，成品再写回工作区。
