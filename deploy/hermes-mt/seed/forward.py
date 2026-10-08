@@ -331,7 +331,8 @@ async def _bootstrap(writer: asyncio.StreamWriter, body: bytes) -> None:
                 epoch = int(state.get("epoch", 0))
                 if not owner or epoch <= 0:
                     raise ValueError("state 段缺 owner 或 epoch")
-                mgr = mtstate.StateManager(HERMES_HOME, vol, owner, epoch)
+                mgr = mtstate.StateManager(HERMES_HOME, vol, owner, epoch,
+                                           vol_wait_s=float(os.environ.get("MT_VOL_WAIT_S", "90")))
                 # 顺序：恢复上一代的归档 → 配置迁移 → 目录链接 → 主人标记；
                 # 种子文件在这之后由 _write_seed 按顺序落：config.yaml(if-pristine) →
                 # 平台行 patch → .env 逐行 upsert。恢复回来的用户配置因此不会被整份覆盖。

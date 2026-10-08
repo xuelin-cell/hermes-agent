@@ -578,6 +578,22 @@ def restore_archive(home: Path, gen_dir: Path, manifest: Manifest) -> dict:
 
 # ---------------------------------------------------------------- 目录链接与布局
 
+def wait_volume_writable(vol: Path, timeout_s: float, poll_s: float = 1.0) -> bool:
+    """等卷对本用户可写。
+
+    删旧实例和建新实例之间，节点上旧的卷挂载可能还没卸干净；新实例这时看到的 /mnt/u
+    是一个 root 的空挂载点，不是 s3fs。它过一会儿可能会好，也可能这台实例一直就是坏的。
+    这里只负责等；等不到由调用方报错，入口会把这台实例删掉换一台。
+    """
+    deadline = time.monotonic() + max(0.0, timeout_s)
+    while True:
+        if os.access(vol, os.W_OK):
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(poll_s)
+
+
 def ensure_layout(vol: Path) -> Path:
     try:
         for _, rel in LINKS:
@@ -783,12 +799,13 @@ class StateManager:
     """一台实例一个。``prepare`` 在拉起 hermes 之前调；``archive`` 由定时循环和接口调。"""
 
     def __init__(self, home: Path, vol: Path, owner: str, epoch: int, work: Path | None = None,
-                 require_mount: bool = True):
+                 require_mount: bool = True, vol_wait_s: float = 90.0):
         self.home = Path(home)
         self.vol = Path(vol)
         self.owner = owner
         self.epoch = int(epoch)
         self.require_mount = require_mount  # 测试里卷只是个普通目录
+        self.vol_wait_s = vol_wait_s        # 卷不可写时最多等这么久（新实例挂卷有延迟）
         self.work = Path(work) if work else self.home / ".mt" / "work"
         self.state_dir = self.vol / STATE_DIRNAME
         self.gen_dir = self.state_dir / gen_dirname(self.epoch, self.owner)
@@ -829,6 +846,8 @@ class StateManager:
         rep = Report(owner=self.owner, epoch=self.epoch)
         if self.require_mount and not os.path.ismount(self.vol):
             raise StateError(f"卷没有挂在 {self.vol}（不是挂载点），拒绝启动：否则归档会写进本地空目录")
+        if not wait_volume_writable(self.vol, self.vol_wait_s):
+            raise StateError(f"卷 {self.vol} 等了 {self.vol_wait_s:.0f}s 仍对本用户不可写（挂载还没就绪或属主不对），拒绝启动")
         state_dir = ensure_layout(self.vol)
         current = read_owner(state_dir)
 

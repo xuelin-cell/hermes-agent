@@ -46,6 +46,8 @@ class Settings:
     # 状态管家：定时归档间隔；长期空闲（暂停后又过了这么久）就排空并删实例，0 = 不删。
     archive_interval_s: int = int(_env("MT_ARCHIVE_INTERVAL_S", "300"))
     idle_delete_hours: int = int(_env("MT_IDLE_DELETE_HOURS", "0"))
+    # 删掉旧实例后等这么久再建新的：节点上旧的卷挂载要卸干净，否则新实例看到的是 root 的空挂载点。
+    volume_detach_grace_s: float = float(_env("MT_VOLUME_DETACH_GRACE_S", "3"))
     # 新实例拒绝启动（卷上的记录比 PG 新）时是否强行按 PG 的来源恢复。只在人工确认后临时打开。
     state_force: bool = _env("MT_STATE_FORCE", "0") == "1"
     # 建实例时关闭数据面的公开访问：平台给每台实例发一个流量令牌，数据面上每个请求都要带，

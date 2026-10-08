@@ -73,6 +73,12 @@ class Tenant:
     traffic_token: str = ""  # 仅沙箱后端、且实例限制了公开访问时有值：数据面请求头要带
 
 
+def volume_not_ready(exc: CubeError) -> bool:
+    """转发器报「卷不可写 / 卷没挂上」：这台实例的卷挂载没好。换一台实例就好，等它没用。"""
+    message = exc.message or ""
+    return exc.status == 500 and "卷" in message and ("不可写" in message or "没有挂在" in message)
+
+
 class CredentialSyncError(RuntimeError):
     """平台模型凭据未能同步到用户 Hermes 容器。"""
 
@@ -640,30 +646,55 @@ class TenantManager:
         }
 
     async def _create_cube(self, user_id: str, slug: str, volume: str, token: str, context) -> str:
-        """建一台实例并引导：先落库，再让状态管家从上一代恢复，再拉 hermes。返回 sandbox_id。"""
+        """建一台实例并引导：先落库，再让状态管家从上一代恢复，再拉 hermes。返回 sandbox_id。
+
+        引导时转发器报「卷不可写」= 这台实例挂到了还没卸干净的旧挂载点，等多久都没用：
+        删掉它、歇一下、再建一台，最多换一次。
+        """
         assert self.cube is not None
         port = self.s.forward_port
         rt = await self.store.get_runtime(user_id)
         await self.store.set_tenant_state(user_id, "starting")
-        epoch = await self.store.next_epoch(user_id)
-        sandbox_id = await self.cube.create_sandbox(
-            volume_name=volume,
-            workspace_path=self.s.cube_volume_mount,
-            metadata={"hermes.mt": "tenant", "hermes.mt.slug": slug},
-            private_traffic=self.s.cube_private_traffic,
-        )
-        # ★ 先落库再引导：引导可能超时，但实例已经真实存在了。
-        #   不先记下来的话，下一次请求会再建一个，旧的成为没人管的孤儿。
-        #   流量令牌一起落库：平台只在创建时给一次，入口重启后只能从 PG 拿回来。
-        await self.store.record_sandbox(user_id, sandbox_id, self._template_id(), epoch,
-                                        traffic_token=self.cube.traffic_token(sandbox_id))
-        await self.store.write_audit(
-            user_id, "tenant.start",
-            {"sandbox": sandbox_id, "epoch": epoch, "restore_from": rt.state_owner},
-        )
-        await self.cube.wait_forwarder(sandbox_id, port)
-        await self._bootstrap_cube(user_id, slug, sandbox_id, token, context, epoch, rt.state_owner)
-        return sandbox_id
+        for attempt in (1, 2):
+            epoch = await self.store.next_epoch(user_id)
+            sandbox_id = await self.cube.create_sandbox(
+                volume_name=volume,
+                workspace_path=self.s.cube_volume_mount,
+                metadata={"hermes.mt": "tenant", "hermes.mt.slug": slug},
+                private_traffic=self.s.cube_private_traffic,
+            )
+            # ★ 先落库再引导：引导可能超时，但实例已经真实存在了。
+            #   不先记下来的话，下一次请求会再建一个，旧的成为没人管的孤儿。
+            #   流量令牌一起落库：平台只在创建时给一次，入口重启后只能从 PG 拿回来。
+            await self.store.record_sandbox(user_id, sandbox_id, self._template_id(), epoch,
+                                            traffic_token=self.cube.traffic_token(sandbox_id))
+            await self.store.write_audit(
+                user_id, "tenant.start",
+                {"sandbox": sandbox_id, "epoch": epoch, "restore_from": rt.state_owner},
+            )
+            await self.cube.wait_forwarder(sandbox_id, port)
+            try:
+                await self._bootstrap_cube(user_id, slug, sandbox_id, token, context, epoch, rt.state_owner)
+                return sandbox_id
+            except CubeError as exc:
+                if attempt == 2 or not volume_not_ready(exc):
+                    raise
+                log.warning("tenant %s: 实例 %s 的卷没挂好（%s），删掉换一台", slug, sandbox_id[:12], exc.message[:80])
+                await self._discard_unbootstrapped(user_id, sandbox_id, "volume_not_ready")
+        raise AssertionError("unreachable")
+
+    async def _discard_unbootstrapped(self, user_id: str, sandbox_id: str, reason: str) -> None:
+        """引导没成的实例：删掉、记进历史、清掉绑定，再给节点一点卸载卷的时间。"""
+        assert self.cube is not None
+        try:
+            await self.cube.remove_sandbox(sandbox_id)
+            await self.cube.wait_gone(sandbox_id)
+        except CubeError as exc:
+            log.warning("删引导失败的实例 %s 失败: %s", sandbox_id[:12], exc)
+        await self.store.mark_sandbox_deleted(sandbox_id, reason)
+        await self.store.set_sandbox_id(user_id, None)
+        if self.s.volume_detach_grace_s > 0:
+            await asyncio.sleep(self.s.volume_detach_grace_s)
 
     async def _bootstrap_cube(self, user_id: str, slug: str, sandbox_id: str, token: str, context,
                               epoch: int, restore_from: str) -> None:
@@ -711,7 +742,15 @@ class TenantManager:
         rt = await self.store.get_runtime(user_id)
         if st.get("boot_window_left_s", 0) > 30:
             log.warning("tenant %s: 实例 %s 未引导（上次引导没成），补引导", slug, sandbox_id[:12])
-            await self._bootstrap_cube(user_id, slug, sandbox_id, token, context, rt.state_epoch, rt.state_owner)
+            try:
+                await self._bootstrap_cube(user_id, slug, sandbox_id, token, context, rt.state_epoch, rt.state_owner)
+            except CubeError as exc:
+                if not volume_not_ready(exc):
+                    raise
+                # 卷没挂好的实例补多少次引导都一样，不等窗口关：删掉让调用方重建
+                log.warning("tenant %s: 实例 %s 的卷没挂好（%s），删掉重建", slug, sandbox_id[:12], exc.message[:80])
+                await self._discard_unbootstrapped(user_id, sandbox_id, "volume_not_ready")
+                return "", False
             await self.cube.wait_hermes(sandbox_id, port, timeout_s=self.s.ready_timeout_s)
             return sandbox_id, True
         log.warning("tenant %s: 实例 %s 未引导且窗口已关，删掉重建", slug, sandbox_id[:12])
@@ -752,6 +791,9 @@ class TenantManager:
         await self.store.set_sandbox_id(user_id, None)
         await self.store.set_lifecycle(user_id, "")
         await self.store.write_audit(user_id, "tenant.delete", {"sandbox": sandbox_id, "reason": reason})
+        # 控制面说实例没了，节点上卷的卸载可能还在收尾；立刻建新实例会挂到空的挂载点（10-08 真机撞过）。
+        if self.s.volume_detach_grace_s > 0:
+            await asyncio.sleep(self.s.volume_detach_grace_s)
         return True
 
     async def _stop_cube(self, user_id: str, reason: str) -> None:

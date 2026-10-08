@@ -111,6 +111,7 @@ class FakeCube:
         self.counter = 0
         self.hermes_ready: set[str] = set(self.sandboxes)
         self.tokens: dict[str, str] = {}
+        self.boot_failures: list[CubeError] = []   # 每次 bootstrap 先弹一个出来抛，空了就正常
 
     def host_for(self, sandbox_id, port):
         return f"{port}-{sandbox_id}.cube.app"
@@ -146,6 +147,8 @@ class FakeCube:
 
     async def bootstrap(self, sandbox_id, port, *, token, files, ready_timeout_s=240, state=None):
         self.calls.append(("bootstrap", sandbox_id, state))
+        if self.boot_failures:
+            raise self.boot_failures.pop(0)
         self.hermes_ready.add(sandbox_id)
         return {"ok": True, "state": {"restored_from": (state or {}).get("restore_from", ""), "archive": "a.tar.gz",
                                       "counts": {"state.db": {"messages": 3}}, "notes": []}}
@@ -181,7 +184,8 @@ class FakeCube:
 
 
 def _manager(store, cube, **overrides) -> TenantManager:
-    kwargs = {"backend": "cube", "cube_template": "tpl-new", "cube_volume_mount": "/mnt/u", **overrides}
+    kwargs = {"backend": "cube", "cube_template": "tpl-new", "cube_volume_mount": "/mnt/u",
+              "volume_detach_grace_s": 0, **overrides}
     return TenantManager(Settings(**kwargs), None, store, None, cube)  # type: ignore[arg-type]
 
 
@@ -380,3 +384,52 @@ async def test_public_instances_have_no_traffic_token(monkeypatch) -> None:
     tenant = await _manager(store, cube).ensure_running("u")
     assert next(c for c in cube.calls if c[0] == "create")[3] is False
     assert tenant.traffic_token == "" and not any(c[0] == "traffic_token" for c in store.calls)
+
+
+_VOL_NOT_READY = "恢复失败: StateError: 卷 /mnt/u 等了 90s 仍对本用户不可写（挂载还没就绪或属主不对），拒绝启动"
+
+
+@pytest.mark.asyncio
+async def test_volume_not_ready_on_create_discards_instance_and_builds_another(monkeypatch) -> None:
+    """新实例挂到了没卸干净的旧挂载点：删掉它、换一台，同一次请求里完成，不等 10 分钟窗口。"""
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    store, cube = FakeStore(), FakeCube()
+    cube.boot_failures = [CubeError(500, _VOL_NOT_READY)]
+    tenant = await _manager(store, cube).ensure_running("u")
+    assert tenant.sandbox_id == "sb2"
+    kinds = [c for c in cube.calls if c[0] in ("create", "bootstrap", "remove")]
+    assert [k[:2] for k in kinds] == [("create", "sb1"), ("bootstrap", "sb1"), ("remove", "sb1"), ("create", "sb2"), ("bootstrap", "sb2")]
+    assert ("deleted", "sb1", "volume_not_ready") in store.calls
+    assert store.runtime.sandbox_id == "sb2" and store.runtime.state == "running"
+    # 第二台也不行就报错，不无限换
+    store2, cube2 = FakeStore(), FakeCube()
+    cube2.boot_failures = [CubeError(500, _VOL_NOT_READY), CubeError(500, _VOL_NOT_READY)]
+    with pytest.raises(CubeError):
+        await _manager(store2, cube2).ensure_running("u")
+    assert store2.runtime.state == "stopped"
+
+
+@pytest.mark.asyncio
+async def test_other_bootstrap_errors_are_not_retried(monkeypatch) -> None:
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    store, cube = FakeStore(), FakeCube()
+    cube.boot_failures = [CubeError(500, "恢复失败: StateError: state.db 不是 SQLite 文件")]
+    with pytest.raises(CubeError):
+        await _manager(store, cube).ensure_running("u")
+    assert not any(c[0] == "remove" for c in cube.calls)
+    assert store.runtime.sandbox_id == "sb1"  # 留着，窗口内补引导
+
+
+@pytest.mark.asyncio
+async def test_repair_bootstrap_discards_volume_not_ready_instance(monkeypatch) -> None:
+    """上次引导没成、本次补引导仍报卷不可写：删掉让调用方重建，而不是等窗口关闭。"""
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    store = FakeStore(runtime=Runtime("stopped", "sbBad", "tpl-new", 3, "sbPrev", "x.tar.gz", ""))
+    cube = FakeCube({"sbBad": {"sandboxID": "sbBad", "templateID": "tpl-new", "state": "running"}})
+    cube.hermes_ready.discard("sbBad")   # 上次引导没成：转发器说没引导过、窗口还开着
+    cube.boot_failures = [CubeError(500, _VOL_NOT_READY)]
+    tenant = await _manager(store, cube).ensure_running("u")
+    assert ("remove", "sbBad") in cube.calls and ("deleted", "sbBad", "volume_not_ready") in store.calls
+    assert tenant.sandbox_id == "sb1"
+    boot = [c for c in cube.calls if c[0] == "bootstrap"][-1]
+    assert boot[2]["restore_from"] == "sbPrev"

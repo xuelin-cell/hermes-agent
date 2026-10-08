@@ -422,3 +422,33 @@ def test_archive_skips_cache_even_with_links(tmp_path: Path) -> None:
     files_s = {str(f).replace("\\", "/") for f in files}
     assert not any(f.startswith("cache/") for f in files_s)
     assert not any("generated" in f for f in files_s)
+
+
+def test_prepare_waits_for_volume_to_become_writable(tmp_path: Path, monkeypatch) -> None:
+    """卷一开始不可写（新实例挂卷有延迟）：等到可写再继续；一直不可写就报错，不碰卷。"""
+    home = tmp_path / "home"
+    vol = tmp_path / "vol"
+    home.mkdir()
+    vol.mkdir()
+    verdicts = [False, False, True]
+    real_access = os.access
+
+    def fake_access(path, mode):
+        if Path(path) == vol and mode == os.W_OK:
+            return verdicts.pop(0) if verdicts else True
+        return real_access(path, mode)
+
+    monkeypatch.setattr(mtstate.os, "access", fake_access)
+    monkeypatch.setattr(mtstate.time, "sleep", lambda s: None)
+    mgr = mtstate.StateManager(home, vol, "sbA", 1, require_mount=False, vol_wait_s=5)
+    rep = mgr.prepare(restore_from="", migrate=False)
+    assert rep.owner == "sbA" and (vol / ".state" / "OWNER").is_file()
+
+    home2 = tmp_path / "home2"
+    home2.mkdir()
+    vol2 = tmp_path / "vol2"
+    vol2.mkdir()
+    monkeypatch.setattr(mtstate.os, "access", lambda p, m: False if (Path(p) == vol2 and m == os.W_OK) else real_access(p, m))
+    with pytest.raises(mtstate.StateError, match="不可写"):
+        mtstate.StateManager(home2, vol2, "sbB", 1, require_mount=False, vol_wait_s=0.01).prepare(restore_from="", migrate=False)
+    assert not (vol2 / ".state").exists()
