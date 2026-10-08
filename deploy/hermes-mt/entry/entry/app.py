@@ -17,6 +17,8 @@ from .db import Database, DatabaseUnavailable
 from .docker_api import Docker
 from .maas import Maas, MaasError
 from .proxy import proxy_http, proxy_ws
+from .backup import BackupJob
+from .s3lite import S3Lite
 from .store import Session, Store
 from .tenants import CredentialSyncError, TenantManager
 
@@ -361,6 +363,27 @@ class Entry:
             raise
         self._bg.append(asyncio.create_task(self._reconcile()))
         self._bg.append(asyncio.create_task(self._reaper()))
+        # 卷外第二份副本：四项桶配置齐了才跑；只对沙箱后端有意义（归档在卷上）。
+        if self.s.backend == "cube" and self.s.backup_enabled and self.tenants is not None:
+            self.backup = BackupJob(
+                self.s,
+                self.store,
+                S3Lite(
+                    self.http,
+                    self.s.backup_s3_endpoint,
+                    self.s.backup_s3_bucket,
+                    self.s.backup_s3_access_key,
+                    self.s.backup_s3_secret_key,
+                    region=self.s.backup_s3_region,
+                    path_style=self.s.backup_s3_path_style,
+                ),
+                self.tenants.cube_volume_name,
+                self.store.backup_candidates,
+            )
+            self._bg.append(asyncio.create_task(self.backup.loop(self.s.backup_initial_delay_s)))
+            log.info("backup: 卷外副本已启用，每 %d 小时一轮，首轮 %d 秒后", self.s.backup_interval_h, self.s.backup_initial_delay_s)
+        else:
+            self.backup = None
 
     async def _reconcile(self) -> None:
         try:
