@@ -43,11 +43,19 @@ MAX_MEMBER_BYTES = 512 * 1024 * 1024
 MAX_TOTAL_BYTES = 4 * 1024 * 1024 * 1024
 
 # 卷内布局：hermes 看到的路径不变，用目录链接指进卷里。
-# ★ 历史会话里记的是 /opt/data/images/... 这样的原始路径，这几条链接定了就不能再改。
+# ★ 历史会话里记的是 /opt/data/images/... 这样的原始路径，已有的链接定了就不能再改，只能往后加。
+# 后三条是 agent 用工具生成的图片 / 音频 / 视频：hermes 写在 cache/ 下（image_gen_provider、
+# video_gen_provider、tts_tool），放进 workspace/uploads/media/ 之下是因为仪表盘 /api/media
+# 只肯读 images/、screenshots/、cache/ 这几个根（都按 resolve 后的真实路径比），
+# 链到 images 根的下面它才认。hermes 网关进程每小时清理 cache/* 里超过 24 小时的文件，
+# 我们的实例只跑 hermes serve、没有网关进程，所以这里不会被清。
 LINKS: tuple[tuple[str, str], ...] = (
     ("workspace", "workspace"),
     ("attachments", "workspace/uploads/attachments"),
     ("images", "workspace/uploads/media"),
+    ("cache/images", "workspace/uploads/media/generated/images"),
+    ("cache/audio", "workspace/uploads/media/generated/audio"),
+    ("cache/videos", "workspace/uploads/media/generated/videos"),
 )
 
 # 归档排除（相对 HERMES_HOME 的顶层名）：卷本身、三条链接、日志缓存临时物、运行态文件。
@@ -581,6 +589,16 @@ def ensure_layout(vol: Path) -> Path:
     return state_dir
 
 
+def _link_points_to(link: Path, target: Path) -> bool:
+    try:
+        current = os.readlink(link)
+    except OSError:
+        return False
+    if current.startswith("\\\\?\\"):  # Windows 的 readlink 会带 \\?\ 前缀（只影响本机跑测试）
+        current = current[4:]
+    return os.path.normcase(os.path.normpath(current)) == os.path.normcase(os.path.normpath(str(target)))
+
+
 def ensure_links(home: Path, vol: Path) -> list[str]:
     """把 home 下的 workspace / attachments / images 做成指向卷内目录的链接。返回动过的项。"""
     changed: list[str] = []
@@ -588,7 +606,7 @@ def ensure_links(home: Path, vol: Path) -> list[str]:
         target = vol / rel
         link = home / name
         if link.is_symlink():
-            if os.readlink(link) == str(target):
+            if _link_points_to(link, target):
                 continue
             link.unlink()
         elif link.is_dir():
@@ -601,6 +619,7 @@ def ensure_links(home: Path, vol: Path) -> list[str]:
             link.rmdir()
         elif link.exists():
             raise StateError(f"{link} 不是目录也不是链接，不敢动")
+        link.parent.mkdir(parents=True, exist_ok=True)  # cache/ 这种上级目录可能还不存在
         os.symlink(str(target), str(link))
         changed.append(name)
     return changed

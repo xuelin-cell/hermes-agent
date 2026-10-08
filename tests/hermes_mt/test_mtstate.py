@@ -375,3 +375,50 @@ def test_manifest_json_round_trip() -> None:
                          size=1, sha256="ff", files=2, dbs={"state.db": {"messages": 4}})
     assert mtstate.Manifest.from_json(m.to_json()) == m
     assert json.loads(m.to_json())["version"] == mtstate.MANIFEST_VERSION
+
+
+def test_links_include_generated_media_under_images_root(tmp_path: Path) -> None:
+    """生成媒体的三条链接落在 images 根之下，且上级目录 cache/ 不存在时也能建；重复调用幂等。"""
+    if not _can_symlink(tmp_path):
+        pytest.skip("本机没有建符号链接的权限")
+    home = tmp_path / "home"
+    vol = tmp_path / "vol"
+    home.mkdir()
+    vol.mkdir()
+    mtstate.ensure_layout(vol)
+    changed = mtstate.ensure_links(home, vol)
+    assert set(changed) == {name for name, _ in mtstate.LINKS}
+    for name, rel in mtstate.LINKS:
+        link = home / name
+        assert link.is_symlink(), name
+        assert link.resolve() == (vol / rel).resolve()
+        assert (vol / rel).is_dir(), rel
+    # 生成媒体必须在 images 根（仪表盘 /api/media 认的根）之下
+    images_root = (home / "images").resolve()
+    for name in ("cache/images", "cache/audio", "cache/videos"):
+        assert images_root in (home / name).resolve().parents, name
+    # 已有的旧内容会被搬进卷，再换成链接
+    assert mtstate.ensure_links(home, vol) == []
+    (home / "cache" / "images").unlink()
+    (home / "cache" / "images").mkdir()
+    (home / "cache" / "images" / "old.png").write_bytes(b"x")
+    assert mtstate.ensure_links(home, vol) == ["cache/images"]
+    assert (vol / "workspace/uploads/media/generated/images/old.png").read_bytes() == b"x"
+    assert (home / "cache" / "images").is_symlink()
+
+
+def test_archive_skips_cache_even_with_links(tmp_path: Path) -> None:
+    """cache/ 整个在归档排除清单里：生成媒体在卷上，不该再被打进归档。"""
+    if not _can_symlink(tmp_path):
+        pytest.skip("本机没有建符号链接的权限")
+    home = tmp_path / "home"
+    vol = tmp_path / "vol"
+    vol.mkdir()
+    _make_home(home)
+    mtstate.ensure_layout(vol)
+    mtstate.ensure_links(home, vol)
+    (vol / "workspace/uploads/media/generated/images/gen.png").write_bytes(b"png")
+    files, dbs = mtstate.collect(home)
+    files_s = {str(f).replace("\\", "/") for f in files}
+    assert not any(f.startswith("cache/") for f in files_s)
+    assert not any("generated" in f for f in files_s)
