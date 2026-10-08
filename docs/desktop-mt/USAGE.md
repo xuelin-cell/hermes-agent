@@ -55,6 +55,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\stan\Documents\Cha
 
 账号目录由身份域和 UID 的完整摘要决定；浏览器分区摘要还包含用途。窗口位置、外观、托盘等设备偏好保持应用级。
 
+Windows 的 Python 依赖安装树位于 `%LOCALAPPDATA%\hermes-desktop-mt\deps\<摘要>`，原 `hermes-home/installs` 是指向本账号依赖的目录联接；用于缩短原生扩展加载路径。准备时保留已有依赖，历史、配置和工作文件不搬动。备份账号时也应保留对应依赖目录，或之后通过原版 PM 重新准备依赖；不要把该联接改到其它账号。
+
 登录密文受系统加密保护，模型 Key 在账号 `.env` 中按原版机制明文保存。不要上传登录密文、`.env`、原生 OAuth 文件或浏览器数据库。
 
 账号目录是应用层隔离，不是 Windows 沙箱。同一 Windows 用户的工具可能访问其它目录；主动选择同一外部项目会共享文件。官方对照版固定目录为 `X:\HermesOfficial`，不在开发版认领或清理范围。

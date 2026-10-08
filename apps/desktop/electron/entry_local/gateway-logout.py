@@ -227,7 +227,15 @@ def stop_gateways(homes, saved):
             raise RuntimeError("网关 PID 记录归属不符")
         target = status._live_pid_from_record(record)
         row = next((item for item in runtime if item["pid"] == target), None)
-        if row is None or record.get("start_time") != int(round(row["created"] * 100)):
+        if row is None:
+            raise RuntimeError("网关尚未发布可信运行身份")
+        if record.get("start_time") is None:
+            # 原版依赖异常可能写入 null；只用本轮重新核实的 Home、命令和创建时间收尾。
+            if row not in current:
+                raise RuntimeError("无法重新确认账号网关归属")
+            force_stop(row)
+            continue
+        if record["start_time"] != int(round(row["created"] * 100)):
             raise RuntimeError("网关尚未发布可信运行身份")
         marker = home / status._PLANNED_STOP_MARKER_FILENAME
         if not status._write_marker(marker, {"target_pid": row["pid"],

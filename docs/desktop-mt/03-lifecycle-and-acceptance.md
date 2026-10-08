@@ -90,6 +90,8 @@
 
 ## 回归入口
 
+网关身份异常回归：`node --test --test-isolation=none scripts/gateway-incomplete-identity.native.mjs`。原版网关可能因依赖加载失败把 PID 创建时间写成 null；退出适配器仅在本轮重新核实命令、账号 Home 和创建时间后强制停止该进程，仍拒绝非空但冲突的记录，并保留最终存活检查。此路径不向原 PID 文件补写或伪造时间。
+
 在 `apps/desktop` 运行与改动相关的已有测试：
 
 ```powershell

@@ -18,6 +18,8 @@
 
 UID 原文不成为路径组件。主进程只接受有效 `LoginSession` 的身份和绝对受管根；逐层拒绝符号链接、Windows junction 或文件占位，重复初始化保留内容。失败不回退其它 Home、不删除数据。
 
+Windows 的 PM 依赖安装树单独放在 `%LOCALAPPDATA%\hermes-desktop-mt\deps\<64 位摘要>`，`hermes-home/installs` 使用主进程建立的固定目标 junction。原版 PM 解析真实路径后加载依赖，避免深层路径导致 `.pyd` 无法加载；不依赖修改系统长路径开关。账号 Home、配置、会话和工作区保持原位。已有依赖树在启动后端前同盘重命名，联接失败则回移；中断后可补全联接。拒绝目标被链接替代、跨账号联接及两处目录冲突，不覆盖已有内容。这个特定依赖入口不放宽账号根目录的链接检查。
+
 ## P12 · MaaS 模型配置
 
 `model-config.ts` 使用现有 `yaml` 的 YAML 1.1 文档节点更新账号 `config.yaml`。
