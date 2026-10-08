@@ -8,6 +8,7 @@
 #   ./deploy.sh up             启动 / 更新三个容器（入口重建后自动重启 nginx）
 #   ./deploy.sh status         看现状：容器、PG 里的租户、集群上的实例和模板
 #   ./deploy.sh purge-old      删掉不在当前模板上的实例（会问确认；只有旧转发器的实例才需要）
+#   ./deploy.sh set KEY=VALUE… 改 entry.env 里的一项或几项（只认 MT_ 开头），然后提示你跑 up 生效
 #   ./deploy.sh init --http-port IP:端口 --cube-api URL --cube-proxy URL [--registry HOST:PORT]
 #                              首次部署：生成 entry.env（密钥现场随机、600）和 compose.override.yaml
 #   选项：--no-pull（all 时不拉代码）  --branch 名字  --yes（不问确认）
@@ -479,9 +480,31 @@ cmd_up() {
 
 # ---------------------------------------------------------------- status / purge
 
+cmd_set() {
+    [ $# -gt 0 ] || die "用法：./deploy.sh set KEY=VALUE [KEY=VALUE…]（只认 MT_ 开头的键）"
+    local item key value
+    for item in "$@"; do
+        case "$item" in
+            MT_[A-Z0-9_]*=*) ;;
+            *) die "不认识的写法：$item（要 MT_XXX=值）" ;;
+        esac
+        key="${item%%=*}"; value="${item#*=}"
+        set_cfg "$key" "$value"
+        case "$key" in
+            *KEY*|*SECRET*|*PASSWORD*|*TOKEN*) ok "$key 已写入（值不显示）" ;;
+            *) ok "$key=$value 已写入" ;;
+        esac
+    done
+    say "入口要重新加载才生效：./deploy.sh up"
+}
+
 cmd_status() {
     say "现状"
     printf '  代码 %s  模板 %s  镜像指纹 %s\n' "$(head_short)" "${TEMPLATE:-（空）}" "$(cat "$HERE/.image-fingerprint" 2>/dev/null || echo -)"
+    local backup_state="未配置"
+    [ -n "$(cfg MT_BACKUP_S3_ENDPOINT)" ] && [ -n "$(cfg MT_BACKUP_S3_ACCESS_KEY)" ] && backup_state="已配置"
+    printf '  开关：空闲删实例 %sh  限制公开访问 %s  PG锁 %s  卷外副本 %s\n' \
+        "$(cfg MT_IDLE_DELETE_HOURS 0)" "$(cfg MT_CUBE_PRIVATE_TRAFFIC 0)" "$(cfg MT_PG_LOCK 1)" "$backup_state"
     docker ps -a --format '  {{.Names}}  {{.Status}}' | grep "$PROJECT-" || true
     echo "  租户（PG）："
     docker exec "$PROJECT-postgres" sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -F "  " -c "SELECT left(user_id,10), state, left(sandbox_id,12), template_id, state_epoch, state_archive FROM tenant_runtime ORDER BY last_activity_at DESC"' 2>/dev/null | sed 's/^/    /' || echo "    （PG 没起来）"
@@ -557,7 +580,7 @@ main() {
     # shellcheck disable=SC2086
     case "$cmd" in
         init) cmd_init $rest ;;
-        all|check|image|template|up|status|purge-old|pull)
+        all|check|image|template|up|status|purge-old|pull|set)
             load_cfg
             case "$cmd" in
                 all) cmd_all ;;
@@ -568,8 +591,9 @@ main() {
                 status) cmd_status ;;
                 purge-old) cmd_purge_old ;;
                 pull) cmd_pull ;;
+                set) cmd_set $rest ;;
             esac ;;
-        *) sed -n '2,12p' "$SCRIPT"; exit 1 ;;
+        *) sed -n '2,13p' "$SCRIPT"; exit 1 ;;
     esac
 }
 

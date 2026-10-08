@@ -36,6 +36,8 @@
 
 ## 一键部署（沙箱后端，推荐）
 
+改一项配置（例如打开长期空闲删实例）：`./deploy.sh set MT_IDLE_DELETE_HOURS=24 && ./deploy.sh up`。
+
 部署机上以 root 运行，所有手册里的检查都在脚本里：
 
 ```bash
