@@ -37,6 +37,9 @@ def _upstream_headers(request: web.Request, settings: Settings, tenant: Tenant) 
     # 两种情况下 hermes 最终看到的都是回环形式，鉴权门都关着。见 Tenant 的说明。
     headers["Host"] = tenant.host_header or f"127.0.0.1:{settings.hermes_port}"
     headers["X-Hermes-Session-Token"] = tenant.token
+    if tenant.traffic_token:
+        # 实例限制了公开访问：平台代理要先验这个令牌才放行到实例
+        headers["cube-traffic-access-token"] = tenant.traffic_token
     peer = request.remote or ""
     prior = request.headers.get("X-Forwarded-For", "")
     headers["X-Forwarded-For"] = f"{prior}, {peer}" if prior else peer
@@ -92,6 +95,8 @@ async def proxy_ws(
     origin = tenant.origin or f"{tenant.ip}:{settings.forward_port}"
     url = f"ws://{origin}/api/ws?token={tenant.token}" + (f"&{qs}" if qs else "")
     headers = {"Host": tenant.host_header or f"127.0.0.1:{settings.hermes_port}"}
+    if tenant.traffic_token:
+        headers["cube-traffic-access-token"] = tenant.traffic_token
     try:
         upstream = await http.ws_connect(
             url,

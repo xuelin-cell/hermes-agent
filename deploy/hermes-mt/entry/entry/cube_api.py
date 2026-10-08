@@ -40,6 +40,9 @@ _HOST_TMPL = "{port}-{sandbox_id}.{domain}"
 # hermes 只认回环形式的 Host，见架构说明 §4.1。
 _MASK_REQUEST_HOST = "localhost:${PORT}"
 
+# 数据面流量令牌的请求头（CubeProxy 也认 e2b-traffic-access-token）。
+TRAFFIC_TOKEN_HEADER = "cube-traffic-access-token"
+
 
 class CubeError(Exception):
     def __init__(self, status: int, message: str):
@@ -71,6 +74,20 @@ class Cube:
         self.template = template
         headers = {"X-API-Key": api_key} if api_key else {}
         self._http = aiohttp.ClientSession(headers=headers)
+        # 限制了公开访问的实例，数据面每个请求都要带它的流量令牌。令牌只在创建响应里
+        # 给一次（查询接口不返回），入口把它存进 PG；这里是进程内的登记表，
+        # 建实例时自动登记，入口从 PG 读到运行态时也登记一次，数据面请求按 sandbox_id 取。
+        self._traffic_tokens: dict[str, str] = {}
+
+    def register_traffic_token(self, sandbox_id: str, token: str) -> None:
+        if sandbox_id and token:
+            self._traffic_tokens[sandbox_id] = token
+
+    def forget_traffic_token(self, sandbox_id: str) -> None:
+        self._traffic_tokens.pop(sandbox_id, None)
+
+    def traffic_token(self, sandbox_id: str) -> str:
+        return self._traffic_tokens.get(sandbox_id, "")
 
     async def close(self) -> None:
         await self._http.close()
@@ -168,6 +185,7 @@ class Cube:
         metadata: dict | None = None,
         template: str = "",
         allow_internet: bool = True,
+        private_traffic: bool = False,
     ) -> str:
         """建一个实例，返回平台下发的 sandbox_id。
 
@@ -175,6 +193,11 @@ class Cube:
         ``timeout=-1`` 永不超时、``onTimeout=pause`` 超时改成暂停而非销毁。
         少任何一项，暂停的实例都会被平台连同可写层一起回收 —— 对话库就在可写层上，
         而且这个过程不报错，表现为用户的历史无声无息消失。
+
+        ``private_traffic=True`` 关闭数据面的公开访问（``allowPublicTraffic=false``）：
+        平台返回一个流量令牌，之后数据面上每个请求都要带它，否则 403。令牌登记在
+        本客户端里（``traffic_token(sandbox_id)``），调用方要把它存进 PG，
+        因为查询接口不会再返回它。出网策略不在这里设：平台默认已挡内网。
         """
         payload: dict[str, Any] = {
             "templateID": template or self.template,
@@ -188,12 +211,23 @@ class Cube:
                 {"name": volume_name, "path": workspace_path, "readOnly": False}
             ],
         }
+        if private_traffic:
+            payload["network"]["allowPublicTraffic"] = False
         if metadata:
             payload["metadata"] = metadata
         _, body = await self._req("POST", "/sandboxes", json_body=payload, timeout_s=180)
         sandbox_id = (body or {}).get("sandboxID")
         if not sandbox_id:
             raise CubeError(0, f"创建实例的响应里没有 sandboxID: {str(body)[:200]}")
+        token = str((body or {}).get("trafficAccessToken") or "")
+        if private_traffic and not token:
+            # 平台没给令牌却关了公开访问 ⇒ 这台实例谁都连不上。立刻删掉，别留下一台废实例。
+            try:
+                await self.remove_sandbox(sandbox_id)
+            except CubeError:
+                pass
+            raise CubeError(0, "要求限制公开访问，但创建响应里没有 trafficAccessToken（平台版本不支持？）")
+        self.register_traffic_token(sandbox_id, token)
         return sandbox_id
 
     async def list_sandboxes(self) -> list[dict]:
@@ -250,6 +284,7 @@ class Cube:
         ★ 不可逆，而且会连同可写层一起删掉 —— 对话库就在上面。
         空闲回收请用 ``pause_sandbox``，只有注销用户时才该调这个。
         """
+        self.forget_traffic_token(sandbox_id)
         try:
             await self._req("DELETE", f"/sandboxes/{sandbox_id}", timeout_s=180)
         except CubeError as exc:
@@ -268,16 +303,30 @@ class Cube:
         json_body: Any = None,
         timeout_s: float = 30,
         ok: tuple[int, ...] = (200,),
+        extra_headers: dict[str, str] | None = None,
     ) -> tuple[int, Any]:
-        return await self._req(
-            method,
-            path,
-            base=self.proxy_base,
-            headers={"Host": self.host_for(sandbox_id, port)},
-            json_body=json_body,
-            timeout_s=timeout_s,
-            ok=ok,
-        )
+        """数据面请求的唯一出口：Host 路由头、流量令牌（登记过就带）都在这里加。"""
+        headers = {"Host": self.host_for(sandbox_id, port), **(extra_headers or {})}
+        token = self._traffic_tokens.get(sandbox_id)
+        if token:
+            headers[TRAFFIC_TOKEN_HEADER] = token
+        try:
+            return await self._req(
+                method,
+                path,
+                base=self.proxy_base,
+                headers=headers,
+                json_body=json_body,
+                timeout_s=timeout_s,
+                ok=ok,
+            )
+        except CubeError as exc:
+            if exc.status == 403:
+                # 限制了公开访问的实例回 403 只有两种可能：我们没带令牌（PG 里没有、登记表没登记），
+                # 或平台那边的令牌记录和创建时给的不一致。两种都要人看，日志里说清楚但不打印令牌。
+                log.warning("sandbox %s 数据面 403（%s %s）：%s", sandbox_id[:12], method, path,
+                            "带了令牌仍被拒" if token else "本实例没有登记流量令牌")
+            raise
 
     async def wait_forwarder(self, sandbox_id: str, port: int, timeout_s: float = 120) -> None:
         """等容器里的转发进程能应答。
@@ -349,25 +398,17 @@ class Cube:
 
     async def sync_state(self, sandbox_id: str, port: int, token: str) -> dict:
         """让状态管家立即归档一次（暂停前调）。返回归档摘要。"""
-        _, body = await self._req(
-            "POST",
-            "/__mt/sync",
-            base=self.proxy_base,
-            headers={"Host": self.host_for(sandbox_id, port), "X-MT-Token": token},
-            json_body={},
-            timeout_s=180,
+        _, body = await self._tenant_req(
+            "POST", sandbox_id, port, "/__mt/sync",
+            json_body={}, timeout_s=180, extra_headers={"X-MT-Token": token},
         )
         return (body or {}).get("archive") or {}
 
     async def drain(self, sandbox_id: str, port: int, token: str) -> dict:
         """停 hermes、做最终归档（删实例前调）。返回归档摘要。可重复调。"""
-        _, body = await self._req(
-            "POST",
-            "/__mt/drain",
-            base=self.proxy_base,
-            headers={"Host": self.host_for(sandbox_id, port), "X-MT-Token": token},
-            json_body={},
-            timeout_s=300,
+        _, body = await self._tenant_req(
+            "POST", sandbox_id, port, "/__mt/drain",
+            json_body={}, timeout_s=300, extra_headers={"X-MT-Token": token},
         )
         return (body or {}).get("archive") or {}
 

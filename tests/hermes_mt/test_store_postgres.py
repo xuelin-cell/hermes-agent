@@ -216,3 +216,75 @@ async def test_idle_query_excludes_live_websocket_user(postgres_database_url: st
 
     assert await store.idle_tenants(3600, exclude={"user-a"}) == ["user-b"]
     await database.close()
+
+
+async def _user_with_runtime(store: Store, user_id: str) -> None:
+    await store.finish_login(
+        user_id=user_id, phone="13800000000", api_key="k", endpoint=("https://m/v1", "m"),
+        catalog=[("m", "https://m/v1")], ttl_s=3600, upstream_expires_at_ms=None, login_method="sms",
+    )
+    await store.ensure_tenant_token(user_id)
+
+
+@pytest.mark.asyncio
+async def test_record_sandbox_round_trips_traffic_token_and_clears_with_sandbox(
+    postgres_database_url: str,
+) -> None:
+    database, store = await _store(postgres_database_url)
+    await _user_with_runtime(store, "user-t")
+    epoch = await store.next_epoch("user-t")
+    await store.record_sandbox("user-t", "sb-private", "tpl-x", epoch, traffic_token="tok-" + "x" * 60)
+
+    rt = await store.get_runtime("user-t")
+    assert rt.sandbox_id == "sb-private" and rt.traffic_token == "tok-" + "x" * 60
+    async with database.acquire() as connection:
+        raw = await connection.fetchval("SELECT traffic_token_ciphertext FROM tenant_runtime WHERE user_id = 'user-t'")
+    assert raw is not None and b"tok-" not in raw  # 落库的是密文
+
+    await store.set_sandbox_id("user-t", None)
+    rt = await store.get_runtime("user-t")
+    assert rt.sandbox_id == "" and rt.traffic_token == ""
+    async with database.acquire() as connection:
+        assert await connection.fetchval("SELECT traffic_token_ciphertext FROM tenant_runtime WHERE user_id = 'user-t'") is None
+
+    # 公开访问的实例：没有令牌，列是 NULL
+    await store.record_sandbox("user-t", "sb-public", "tpl-x", epoch + 1)
+    assert (await store.get_runtime("user-t")).traffic_token == ""
+    assert await store.backup_candidates() == ["user-t"]
+    await database.close()
+
+
+@pytest.mark.asyncio
+async def test_advisory_lock_is_exclusive_across_connections(postgres_database_url: str) -> None:
+    database, store = await _store(postgres_database_url)
+    order: list[str] = []
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def holder() -> None:
+        async with store.advisory_lock("user-l"):
+            order.append("a-in")
+            entered.set()
+            await release.wait()
+            order.append("a-out")
+
+    async def waiter() -> None:
+        await entered.wait()
+        async with store.advisory_lock("user-l"):
+            order.append("b-in")
+            order.append("b-out")
+
+    task_a = asyncio.create_task(holder())
+    task_b = asyncio.create_task(waiter())
+    await entered.wait()
+    await asyncio.sleep(0.3)
+    assert order == ["a-in"]  # b 在等锁
+    release.set()
+    await asyncio.gather(task_a, task_b)
+    assert order == ["a-in", "a-out", "b-in", "b-out"]
+
+    # 不同用户互不影响：同时拿得到
+    async with store.advisory_lock("user-x"):
+        async with store.advisory_lock("user-y"):
+            pass
+    await database.close()

@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -44,15 +45,26 @@ class FakeStore:
                                self.epoch, self.runtime.state_owner, self.runtime.state_archive, self.runtime.lifecycle)
         return self.epoch
 
-    async def record_sandbox(self, user_id, sandbox_id, template_id, epoch):
+    async def record_sandbox(self, user_id, sandbox_id, template_id, epoch, traffic_token=""):
         self.calls.append(("record_sandbox", sandbox_id, template_id, epoch))
+        if traffic_token:
+            self.calls.append(("traffic_token", sandbox_id, traffic_token))
         self.runtime = Runtime(self.runtime.state, sandbox_id, template_id, epoch,
-                               self.runtime.state_owner, self.runtime.state_archive, "")
+                               self.runtime.state_owner, self.runtime.state_archive, "", traffic_token)
+
+    @asynccontextmanager
+    async def advisory_lock(self, user_id):
+        self.calls.append(("pg_lock", "in"))
+        try:
+            yield
+        finally:
+            self.calls.append(("pg_lock", "out"))
 
     async def set_sandbox_id(self, user_id, sandbox_id):
         self.calls.append(("set_sandbox_id", sandbox_id))
         self.runtime = Runtime(self.runtime.state, sandbox_id or "", self.runtime.template_id, self.runtime.state_epoch,
-                               self.runtime.state_owner, self.runtime.state_archive, self.runtime.lifecycle)
+                               self.runtime.state_owner, self.runtime.state_archive, self.runtime.lifecycle,
+                               self.runtime.traffic_token if sandbox_id else "")
 
     async def set_state_owner(self, user_id, owner, archive, manifest):
         self.calls.append(("set_state_owner", owner, archive))
@@ -98,9 +110,19 @@ class FakeCube:
         self.template = "tpl-new"
         self.counter = 0
         self.hermes_ready: set[str] = set(self.sandboxes)
+        self.tokens: dict[str, str] = {}
 
     def host_for(self, sandbox_id, port):
         return f"{port}-{sandbox_id}.cube.app"
+
+    def register_traffic_token(self, sandbox_id, token):
+        self.tokens[sandbox_id] = token
+
+    def forget_traffic_token(self, sandbox_id):
+        self.tokens.pop(sandbox_id, None)
+
+    def traffic_token(self, sandbox_id):
+        return self.tokens.get(sandbox_id, "")
 
     async def ensure_volume(self, name, driver=""):
         self.calls.append(("ensure_volume", name))
@@ -109,11 +131,14 @@ class FakeCube:
     async def get_sandbox(self, sandbox_id):
         return self.sandboxes.get(sandbox_id)
 
-    async def create_sandbox(self, *, volume_name, workspace_path, metadata=None, template="", allow_internet=True):
+    async def create_sandbox(self, *, volume_name, workspace_path, metadata=None, template="", allow_internet=True,
+                             private_traffic=False):
         self.counter += 1
         sid = f"sb{self.counter}"
         self.sandboxes[sid] = {"sandboxID": sid, "templateID": self.template, "state": "running"}
-        self.calls.append(("create", sid, workspace_path))
+        self.calls.append(("create", sid, workspace_path, private_traffic))
+        if private_traffic:
+            self.tokens[sid] = f"tt-{sid}"
         return sid
 
     async def wait_forwarder(self, sandbox_id, port, timeout_s=120):
@@ -293,3 +318,65 @@ def test_seed_files_use_patch_and_upsert_modes() -> None:
     assert modes == [("config.yaml", "if-pristine"), ("config.yaml", "patch-model"), (".env", "upsert-lines")]
     assert '"models": ["m1", "m2"]' in files[1]["content"]
     assert files[2]["content"].splitlines() == ["TERMINAL_ENV=local", "HERMES_CUSTOM_YUANJING_API_KEY=key"]
+
+
+@pytest.mark.asyncio
+async def test_waking_paused_instance_writes_resume_audit(monkeypatch) -> None:
+    """平台不通知唤醒，入口在把暂停的实例叫醒后自己记一笔 tenant.resume。"""
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    store = FakeStore(runtime=Runtime("stopped", "sbA", "tpl-new", 2, "sbA", "x.tar.gz", ""))
+    cube = FakeCube({"sbA": {"sandboxID": "sbA", "templateID": "tpl-new", "state": "paused"}})
+    await _manager(store, cube).ensure_running("u")
+    assert ("audit", "tenant.resume") in store.calls
+    # 快路径：实例在、模板对、引导过 ⇒ 不拿跨副本的锁
+    assert ("pg_lock", "in") not in store.calls
+
+
+@pytest.mark.asyncio
+async def test_running_instance_does_not_write_resume_audit(monkeypatch) -> None:
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    store = FakeStore(runtime=Runtime("running", "sbA", "tpl-new", 2, "sbA", "x.tar.gz", ""))
+    cube = FakeCube({"sbA": {"sandboxID": "sbA", "templateID": "tpl-new", "state": "running"}})
+    await _manager(store, cube).ensure_running("u")
+    assert ("audit", "tenant.resume") not in store.calls
+
+
+@pytest.mark.asyncio
+async def test_mutations_take_pg_lock_and_reread_runtime(monkeypatch) -> None:
+    """要动实例（新建 / 没了 / 换模板）时先拿 PG 咨询锁，锁里重读运行态；快路径不拿。"""
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    store, cube = FakeStore(), FakeCube()
+    await _manager(store, cube).ensure_running("u")
+    kinds = [c[0] for c in store.calls]
+    assert kinds.index("pg_lock") < kinds.index("record_sandbox") < kinds.index("pg_lock", kinds.index("pg_lock") + 1)
+    assert store.calls.count(("pg_lock", "in")) == 1 and store.calls.count(("pg_lock", "out")) == 1
+    # 关掉开关：一次都不拿
+    store2, cube2 = FakeStore(), FakeCube()
+    await _manager(store2, cube2, pg_lock=False).ensure_running("u")
+    assert ("pg_lock", "in") not in store2.calls
+
+
+@pytest.mark.asyncio
+async def test_private_traffic_token_is_stored_and_sent(monkeypatch) -> None:
+    """限制公开访问：建实例带 allowPublicTraffic=false，令牌落库，并出现在转发用的 Tenant 上。"""
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    store, cube = FakeStore(), FakeCube()
+    tenant = await _manager(store, cube, cube_private_traffic=True).ensure_running("u")
+    create = next(c for c in cube.calls if c[0] == "create")
+    assert create[3] is True
+    assert ("traffic_token", "sb1", "tt-sb1") in store.calls
+    assert tenant.traffic_token == "tt-sb1"
+    # 入口重启后：Cube 客户端登记表是空的，令牌从 PG 的运行态登记回去
+    cube2 = FakeCube({"sb1": {"sandboxID": "sb1", "templateID": "tpl-new", "state": "running"}})
+    store2 = FakeStore(runtime=Runtime("running", "sb1", "tpl-new", 1, "sb1", "a.tar.gz", "", "tt-sb1"))
+    tenant2 = await _manager(store2, cube2, cube_private_traffic=True).ensure_running("u")
+    assert cube2.tokens == {"sb1": "tt-sb1"} and tenant2.traffic_token == "tt-sb1"
+
+
+@pytest.mark.asyncio
+async def test_public_instances_have_no_traffic_token(monkeypatch) -> None:
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    store, cube = FakeStore(), FakeCube()
+    tenant = await _manager(store, cube).ensure_running("u")
+    assert next(c for c in cube.calls if c[0] == "create")[3] is False
+    assert tenant.traffic_token == "" and not any(c[0] == "traffic_token" for c in store.calls)

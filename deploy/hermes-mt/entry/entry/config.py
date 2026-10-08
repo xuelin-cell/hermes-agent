@@ -48,6 +48,27 @@ class Settings:
     idle_delete_hours: int = int(_env("MT_IDLE_DELETE_HOURS", "0"))
     # 新实例拒绝启动（卷上的记录比 PG 新）时是否强行按 PG 的来源恢复。只在人工确认后临时打开。
     state_force: bool = _env("MT_STATE_FORCE", "0") == "1"
+    # 建实例时关闭数据面的公开访问：平台给每台实例发一个流量令牌，数据面上每个请求都要带，
+    # 否则 403。令牌只在创建响应里给一次，入口加密存 PG。只对新建的实例生效，老实例不变。
+    cube_private_traffic: bool = _env("MT_CUBE_PRIVATE_TRAFFIC", "0") == "1"
+    # 对同一用户的实例做变更（建 / 删 / 补引导 / 暂停）时，除进程内的锁外再加一把 PG 咨询锁，
+    # 入口跑多副本时也不会两个副本同时给一个用户建实例。单副本可关。
+    pg_lock: bool = _env("MT_PG_LOCK", "1") == "1"
+
+    # 卷外第二份副本：入口定期把每个用户卷上最新的归档拷到实例碰不到的桶前缀下。
+    # 四项都填了才启用。凭据只能访问这两个前缀（由桶的管理员发）。
+    backup_s3_endpoint: str = _env("MT_BACKUP_S3_ENDPOINT", "").rstrip("/")
+    backup_s3_bucket: str = _env("MT_BACKUP_S3_BUCKET", "")
+    backup_s3_access_key: str = _env("MT_BACKUP_S3_ACCESS_KEY", "")
+    backup_s3_secret_key: str = _env("MT_BACKUP_S3_SECRET_KEY", "")
+    backup_s3_region: str = _env("MT_BACKUP_S3_REGION", "us-east-1")
+    backup_s3_path_style: bool = _env("MT_BACKUP_S3_PATH_STYLE", "1") == "1"
+    backup_volume_prefix: str = _env("MT_BACKUP_VOLUME_PREFIX", "volumes/")   # 卷在桶里的前缀，卷插件决定
+    backup_prefix: str = _env("MT_BACKUP_PREFIX", "backups/hermes-mt/")      # 副本放哪，实例碰不到
+    backup_interval_h: int = int(_env("MT_BACKUP_INTERVAL_H", "24"))
+    backup_initial_delay_s: int = int(_env("MT_BACKUP_INITIAL_DELAY_S", "300"))
+    backup_keep_days: int = int(_env("MT_BACKUP_KEEP_DAYS", "7"))
+    backup_keep_weeks: int = int(_env("MT_BACKUP_KEEP_WEEKS", "4"))
 
     # 租户容器
     image: str = _env("MT_IMAGE", "hermes-custom:dev")
@@ -94,6 +115,11 @@ class Settings:
 
     def path(self, suffix: str) -> str:
         return f"{self.base_path}{suffix}"
+
+    @property
+    def backup_enabled(self) -> bool:
+        return bool(self.backup_s3_endpoint and self.backup_s3_bucket
+                    and self.backup_s3_access_key and self.backup_s3_secret_key)
 
 
 SETTINGS = Settings()

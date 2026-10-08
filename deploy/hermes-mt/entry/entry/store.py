@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import secrets
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -51,6 +52,13 @@ class Runtime:
     state_owner: str
     state_archive: str
     lifecycle: str
+    traffic_token: str = ""   # 数据面流量令牌（已解密）；实例是公开访问的就是空串
+
+
+def advisory_key(user_id: str) -> int:
+    """把用户 ID 变成 PG 咨询锁要的 64 位整数键（稳定、与 PG 版本无关）。"""
+    digest = hashlib.blake2b(user_id.encode("utf-8"), digest_size=8).digest()
+    return int.from_bytes(digest, "big", signed=True)
 
 
 def _utc_now() -> datetime:
@@ -379,13 +387,37 @@ class Store:
         return (row and row["sandbox_id"]) or ""
 
     async def set_sandbox_id(self, user_id: str, sandbox_id: str | None) -> None:
-        """记下或清掉这个用户当前的实例 ID。传 None 表示他现在没有实例。"""
+        """记下或清掉这个用户当前的实例 ID。传 None 表示他现在没有实例（流量令牌一起清掉）。"""
         async with self.database.acquire() as connection:
-            await connection.execute(
-                "UPDATE tenant_runtime SET sandbox_id = $2 WHERE user_id = $1",
-                user_id,
-                sandbox_id or None,
-            )
+            if sandbox_id:
+                await connection.execute(
+                    "UPDATE tenant_runtime SET sandbox_id = $2 WHERE user_id = $1",
+                    user_id,
+                    sandbox_id,
+                )
+            else:
+                await connection.execute(
+                    "UPDATE tenant_runtime SET sandbox_id = NULL, traffic_token_ciphertext = NULL WHERE user_id = $1",
+                    user_id,
+                )
+
+    @asynccontextmanager
+    async def advisory_lock(self, user_id: str):
+        """跨入口副本的用户级互斥：同一用户的实例变更在整个集群里一次只做一件。
+
+        会话级咨询锁，持有期间独占一条连接（所以只包住真正要变更的那一段，
+        不包每个请求都走的快路径）。退出时在同一条连接上解锁。
+        """
+        key = advisory_key(user_id)
+        async with self.database.acquire() as connection:
+            await connection.execute("SELECT pg_advisory_lock($1)", key)
+            try:
+                yield
+            finally:
+                try:
+                    await connection.execute("SELECT pg_advisory_unlock($1)", key)
+                except Exception:  # noqa: BLE001 — 连接已坏时锁随会话释放
+                    pass
 
     # ---- 沙箱后端：谁说了算 -----------------------------------------------------
     #
@@ -396,7 +428,8 @@ class Store:
         async with self.database.acquire() as connection:
             row = await connection.fetchrow(
                 """
-                SELECT state, sandbox_id, template_id, state_epoch, state_owner, state_archive, lifecycle
+                SELECT state, sandbox_id, template_id, state_epoch, state_owner, state_archive, lifecycle,
+                       traffic_token_ciphertext
                 FROM tenant_runtime WHERE user_id = $1
                 """,
                 user_id,
@@ -411,6 +444,11 @@ class Store:
             state_owner=str(row["state_owner"] or ""),
             state_archive=str(row["state_archive"] or ""),
             lifecycle=str(row["lifecycle"] or ""),
+            traffic_token=(
+                self.cipher.decrypt(row["traffic_token_ciphertext"])
+                if row["traffic_token_ciphertext"] is not None
+                else ""
+            ),
         )
 
     async def next_epoch(self, user_id: str) -> int:
@@ -425,18 +463,21 @@ class Store:
             )
         return int(value or 0)
 
-    async def record_sandbox(self, user_id: str, sandbox_id: str, template_id: str, epoch: int) -> None:
-        """建了一台实例：记到运行态，也记进历史表。"""
+    async def record_sandbox(self, user_id: str, sandbox_id: str, template_id: str, epoch: int,
+                             traffic_token: str = "") -> None:
+        """建了一台实例：记到运行态（含流量令牌，加密），也记进历史表。"""
         async with self.database.acquire() as connection:
             async with connection.transaction():
                 await connection.execute(
                     """
-                    UPDATE tenant_runtime SET sandbox_id = $2, template_id = $3, lifecycle = ''
+                    UPDATE tenant_runtime
+                    SET sandbox_id = $2, template_id = $3, lifecycle = '', traffic_token_ciphertext = $4
                     WHERE user_id = $1
                     """,
                     user_id,
                     sandbox_id,
                     template_id or None,
+                    self.cipher.encrypt(traffic_token) if traffic_token else None,
                 )
                 await connection.execute(
                     """
@@ -510,6 +551,14 @@ class Store:
                 "SELECT user_id, sandbox_id, state FROM tenant_runtime WHERE sandbox_id IS NOT NULL ORDER BY user_id"
             )
         return [(row["user_id"], row["sandbox_id"], row["state"]) for row in rows]
+
+    async def backup_candidates(self) -> list[str]:
+        """建过实例（编号 > 0）的用户，卷上可能有归档；按用户 ID 排序，跑卷外副本用。"""
+        async with self.database.acquire() as connection:
+            rows = await connection.fetch(
+                "SELECT user_id FROM tenant_runtime WHERE state_epoch > 0 ORDER BY user_id"
+            )
+        return [row["user_id"] for row in rows]
 
     async def long_idle_tenants(self, older_than_s: int) -> list[str]:
         """已暂停（stopped）且很久没活动、还占着一台实例的用户。"""
