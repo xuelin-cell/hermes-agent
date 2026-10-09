@@ -12,16 +12,21 @@ import { getRuntimeI18nLocale } from '@/i18n/runtime'
  * merge, `grep -rn "browser-shell'" src` must still find every entry.
  *
  *   app/chat/sidebar/filter-menu.tsx       no profile submenu (filter / new / import)
+ *   app/chat/sidebar/index.tsx             no messaging platforms entry
  *   app/chat/sidebar/profile-switcher.tsx  no add / import profile, no "connect gateway"
- *   app/command-palette/index.tsx          no in-app browser, Hermes update, theme marketplace
+ *   app/command-palette/index.tsx          no in-app browser, Hermes update, theme marketplace, gateway restart
  *   app/profiles/index.tsx                 no "new profile"
- *   app/right-sidebar/file-actions.tsx     delete is permanent (gateway); no rename
- *   app/right-sidebar/files/tree.tsx       F2 / Enter don't start a rename
+ *   app/right-sidebar/file-actions.tsx     rename + delete (to the instance's recycle bin) in the menu
  *   app/settings/appearance-settings.tsx   no theme marketplace results
  *   app/settings/index.tsx                 no Gateway or About page
  *   app/settings/plugins-settings.tsx      no desktop (local) plugins section
+ *   app/shell/gateway-menu-panel.tsx       no gateway restart
  *   store/preview.ts                       no in-app browser: links and URL previews open in a new tab
  *   store/profile.ts                       only the default profile
+ *
+ * The terminal panel, rename and the recycle bin need no page changes: the
+ * bridge implements them against the instance (`/__mt_user/…` behind the
+ * entry), see `browser-bridge.ts`.
  */
 export function isBrowserShell(): boolean {
   return typeof document !== 'undefined' && Boolean(document.documentElement?.dataset?.hermesBrowser)
@@ -50,11 +55,12 @@ export function isSettingsViewHidden(view: string): boolean {
   return isBrowserShell() && SETTINGS_VIEWS_HIDDEN.has(view)
 }
 
-const PALETTE_ITEMS_HIDDEN = new Set(['cc-open-browser', 'cc-update-hermes', 'theme-install'])
+const PALETTE_ITEMS_HIDDEN = new Set(['cc-open-browser', 'cc-restart-gateway', 'cc-update-hermes', 'theme-install'])
 
 /** Command-palette rows for desktop-only features: the in-app browser, updating
  * Hermes from the app (the cloud upgrades instances itself), the theme
- * marketplace. Empty groups go too. */
+ * marketplace, restarting the messaging gateway (an instance runs none). Empty
+ * groups go too. */
 export function withoutHiddenPaletteItems<G extends { items: readonly { id: string }[] }>(groups: G[]): G[] {
   if (!isBrowserShell()) {
     return groups
@@ -65,39 +71,87 @@ export function withoutHiddenPaletteItems<G extends { items: readonly { id: stri
     .filter(group => group.items.length > 0)
 }
 
+const SIDEBAR_NAV_HIDDEN = new Set(['messaging'])
+
+/** Sidebar entries for desktop-only features: messaging platforms need an
+ * always-on gateway with a public address, which a cloud instance (paused when
+ * idle) does not have. */
+export function withoutHiddenNavItems<T extends { id: string }>(items: T[]): T[] {
+  return isBrowserShell() ? items.filter(item => !SIDEBAR_NAV_HIDDEN.has(item.id)) : items
+}
+
+/** Codes the instance's file endpoints answer with (`deploy/hermes-mt/seed/mtuser.py`). */
+export type InstanceFileErrorCode = 'exists' | 'invalid_name' | 'not_found' | 'outside' | 'protected'
+
 interface BrowserShellCopy {
+  agentOpenedLink: (host: string) => string
   deleteBody: (isDirectory: boolean) => string
   deleteConfirm: string
-  deleteOutsideWorkspace: string
+  fileErrors: Record<InstanceFileErrorCode, string>
   instanceLocalUrl: (host: string) => string
+  instanceOutdated: string
+  movedToTrash: (name: string) => string
+  open: string
   popupBlocked: string
   previewTitle: string
   previewTooLarge: string
+  restoreFailed: string
+  terminalDisconnected: string
+  terminalUnavailable: string
+  undo: string
 }
 
 const COPY: Record<'en' | 'zh', BrowserShellCopy> = {
   en: {
+    agentOpenedLink: (host: string) => `The agent wants to open ${host}.`,
     deleteBody: (isDirectory: boolean) =>
       isDirectory
-        ? 'This permanently deletes the folder and everything in it. It cannot be restored.'
-        : 'This permanently deletes the file. It cannot be restored.',
-    deleteConfirm: 'Delete permanently',
-    deleteOutsideWorkspace: 'Only files in the workspace can be deleted.',
+        ? 'The folder and everything in it move to the recycle bin. You can undo this for 7 days.'
+        : 'The file moves to the recycle bin. You can undo this for 7 days.',
+    deleteConfirm: 'Delete',
+    fileErrors: {
+      exists: 'A file or folder with that name already exists.',
+      invalid_name: 'That name is not allowed.',
+      not_found: 'The file is no longer there.',
+      outside: 'Only files in the workspace can be changed.',
+      protected: 'This folder holds chat attachments and generated images. It cannot be deleted or renamed.'
+    },
     instanceLocalUrl: (host: string) =>
       `${host} is a web service inside your cloud instance. The browser version cannot open it yet.`,
+    instanceOutdated: 'Your instance is being upgraded. Reload the page and try again.',
+    movedToTrash: (name: string) => `Moved “${name}” to the recycle bin.`,
+    open: 'Open',
     popupBlocked: 'The browser blocked the new tab. Allow pop-ups for this site and try again.',
     previewTitle: 'Preview',
-    previewTooLarge: 'This file is too large to open in a tab. Download it instead.'
+    previewTooLarge: 'This file is too large to open in a tab. Download it instead.',
+    restoreFailed: 'Could not restore the file',
+    terminalDisconnected: 'Disconnected from the instance. Close this tab and open a new terminal.',
+    terminalUnavailable: 'Could not reach the shell in your instance. Try again shortly (at most 8 terminals at once).',
+    undo: 'Undo'
   },
   zh: {
+    agentOpenedLink: (host: string) => `agent 想打开 ${host}。`,
     deleteBody: (isDirectory: boolean) =>
-      isDirectory ? '将永久删除这个文件夹及其中所有文件，无法恢复。' : '将永久删除，无法恢复。',
-    deleteConfirm: '永久删除',
-    deleteOutsideWorkspace: '只能删除工作区里的文件。',
+      isDirectory ? '这个文件夹及其中所有文件将移到回收站，7 天内可以撤销。' : '将移到回收站，7 天内可以撤销。',
+    deleteConfirm: '删除',
+    fileErrors: {
+      exists: '已经有同名的文件或文件夹。',
+      invalid_name: '这个名字不能用。',
+      not_found: '文件已经不在了。',
+      outside: '只能操作工作区里的文件。',
+      protected: '这个文件夹存放聊天附件和生成的图片，不能删除或改名。'
+    },
     instanceLocalUrl: (host: string) => `这是实例里的网页服务（${host}），浏览器版暂时打不开。`,
+    instanceOutdated: '实例正在升级，请刷新页面后再试。',
+    movedToTrash: (name: string) => `已把「${name}」移到回收站。`,
+    open: '打开',
     popupBlocked: '浏览器拦截了新标签页，请允许本站弹出窗口后再试。',
     previewTitle: '预览',
-    previewTooLarge: '文件太大，不能在标签页中打开，请下载后查看。'
+    previewTooLarge: '文件太大，不能在标签页中打开，请下载后查看。',
+    restoreFailed: '恢复失败',
+    terminalDisconnected: '和实例的连接断了。关掉这个标签页，再开一个终端。',
+    terminalUnavailable: '连不上实例里的命令行，请稍后再试（每台实例最多同时开 8 个终端）。',
+    undo: '撤销'
   }
 }
 

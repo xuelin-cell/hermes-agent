@@ -90,10 +90,28 @@ class Plan:
             out.append((name, base))
         return out
 
+    def limits(self) -> dict[str, int]:
+        """套餐里每个模型的上下文长度：{模型名: context_window}，只收正整数（数字字符串也认）。
+
+        hermes 不知道这些模型的真实窗口（会按内置的 100 万算），压缩来得太晚、上游报超长。
+        """
+        out: dict[str, int] = {}
+        for m in self.models:
+            name = str(m.get("model") or m.get("id") or "").strip()
+            raw = m.get("context_window")
+            try:
+                value = int(raw) if raw is not None and not isinstance(raw, bool) else 0
+            except (TypeError, ValueError):
+                value = 0
+            if name and value > 0 and name not in out:
+                out[name] = value
+        return out
+
     def summary(self) -> str:
         """能安全写进日志的一行（绝不含 key）。"""
         base, model = self.endpoint()
-        listed = ", ".join(f"{n}@{b or '?'}" for n, b in self.catalog())
+        limits = self.limits()
+        listed = ", ".join(f"{n}@{b or '?'}/{limits.get(n, '?')}" for n, b in self.catalog())
         return f"models={len(self.models)} main={model or '?'} base_url={base or '?'} catalog=[{listed}]"
 
 

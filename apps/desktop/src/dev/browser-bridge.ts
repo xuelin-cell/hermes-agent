@@ -3,9 +3,11 @@ import type {
   HermesConnection,
   HermesReadDirResult,
   HermesReadFileTextResult,
-  HermesSelectPathsOptions
+  HermesSelectPathsOptions,
+  HermesTerminalExit,
+  HermesTerminalSession
 } from '@/global'
-import { browserShellCopy, isInstanceLocalUrl } from '@/lib/browser-shell'
+import { browserShellCopy, type InstanceFileErrorCode, isInstanceLocalUrl } from '@/lib/browser-shell'
 
 const noopOff = () => () => undefined
 const productionBrowserBuild = import.meta.env.VITE_HERMES_BROWSER_BUILD === '1'
@@ -391,6 +393,23 @@ async function saveImageFromUrl(src: string): Promise<boolean> {
 
 /** A web page in a new tab — except an address on the agent's own machine
  * (see `isInstanceLocalUrl`), which is reported instead of opened. */
+/** A new browser tab for `url` with no handle back to this page. Opened blank
+ * first so the handle can be dropped before the page loads, and so a blocked
+ * pop-up shows up as `null` (`noopener` would make every open look blocked).
+ * Returns false when the browser blocks it. */
+function openTab(url: string): boolean {
+  const tab = window.open('', '_blank')
+
+  if (!tab) {
+    return false
+  }
+
+  tab.opener = null
+  tab.location.href = url
+
+  return true
+}
+
 function openWebPage(url: string): boolean {
   if (isInstanceLocalUrl(url)) {
     const host = new URL(url).host
@@ -402,9 +421,31 @@ function openWebPage(url: string): boolean {
     return false
   }
 
-  window.open(url, '_blank', 'noopener,noreferrer')
+  if (openTab(url)) {
+    return true
+  }
 
-  return true
+  // Blocked as a pop-up: the open didn't come from a click (the agent's
+  // `open_preview`). A button the user clicks is allowed to open it.
+  const copy = browserShellCopy()
+  let host = url
+
+  try {
+    host = new URL(url).host || url
+  } catch {
+    // Keep the raw address.
+  }
+
+  void import('@/store/notifications').then(({ notify }) =>
+    notify({
+      action: { label: copy.open, onClick: () => void openTab(url) },
+      durationMs: 30_000,
+      kind: 'info',
+      message: copy.agentOpenedLink(host)
+    })
+  )
+
+  return false
 }
 
 const PREVIEW_TAB_MAX_BYTES = 64 * 1024 * 1024
@@ -542,29 +583,375 @@ async function openPreviewInBrowser(url: string): Promise<void> {
   }
 }
 
-/** Delete on the gateway — permanently: the desktop shell moves local files to
- * the OS trash, but the instance has no trash yet. The instance confines this
- * to the workspace: the sandbox image sets `HERMES_DASHBOARD_FILES_ROOT` to it
- * (tests/hermes_mt/test_hermes_contract.py pins that behaviour). */
-async function trashPath(path: string): Promise<boolean> {
-  try {
-    await api({ body: { path: plainPath(path), recursive: true }, method: 'DELETE', path: '/api/files' })
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
+// ---------------------------------------------------------------------------
+// Rename and the recycle bin.
+//
+// The instance's own endpoints (`/__mt_user/files/*`, deploy/hermes-mt/seed/
+// mtuser.py, behind the entry): hermes has no rename, and its delete is
+// permanent. Both are confined to the workspace; the recycle bin is a hidden
+// folder next to it on the user's volume and keeps entries for 7 days.
+// ---------------------------------------------------------------------------
 
-    if (message.startsWith('404:')) {
-      // Already gone: the same end state.
-      return true
+interface InstanceFileMove {
+  /** Every spelling of the old location (the workspace link and the volume path). */
+  old_paths?: string[]
+}
+
+type InstanceFileError = Error & { code?: InstanceFileErrorCode }
+
+function isInstanceFileErrorCode(code: string): code is InstanceFileErrorCode {
+  return code in browserShellCopy().fileErrors
+}
+
+/** The instance answers `{code, error}`; show it in this page's language. */
+function instanceFileError(error: unknown): InstanceFileError {
+  const message = error instanceof Error ? error.message : String(error)
+  const match = /^(\d{3}): ([\s\S]*)$/.exec(message)
+
+  if (match) {
+    let code = ''
+
+    try {
+      code = String((JSON.parse(match[2]) as { code?: unknown }).code ?? '')
+    } catch {
+      // Not the instance's JSON.
     }
 
-    if (message.startsWith('403:')) {
-      throw new Error(browserShellCopy().deleteOutsideWorkspace)
+    if (isInstanceFileErrorCode(code)) {
+      return Object.assign(new Error(browserShellCopy().fileErrors[code]), { code })
+    }
+
+    if (!code && match[1] === '404') {
+      // An instance from before this release: the forwarder passes the path to hermes.
+      return new Error(browserShellCopy().instanceOutdated)
+    }
+  }
+
+  return error instanceof Error ? error : new Error(message)
+}
+
+async function instanceFiles<T>(op: 'rename' | 'restore' | 'trash', body: Record<string, unknown>): Promise<T> {
+  try {
+    return await api<T>({ body, method: 'POST', path: `/__mt_user/files/${op}` })
+  } catch (error) {
+    throw instanceFileError(error)
+  }
+}
+
+/** Close preview tabs that still show something at one of `paths` (or below a
+ * folder there) — otherwise they turn into a 404 on the next read. Never throws:
+ * the move itself already happened. */
+async function closePreviewsFor(paths: readonly string[]): Promise<void> {
+  const roots = paths.map(path => plainPath(path).replace(/\/+$/, '')).filter(Boolean)
+
+  if (roots.length === 0) {
+    return
+  }
+
+  try {
+    const { $previewTabs, closeRightRailTab } = await import('@/store/preview')
+
+    for (const tab of $previewTabs.get()) {
+      const shown = tab.target.kind === 'file' ? plainPath(tab.target.path || tab.target.source || '') : ''
+
+      if (shown && roots.some(root => shown === root || shown.startsWith(`${root}/`))) {
+        closeRightRailTab(tab.id)
+      }
+    }
+  } catch {
+    // A stale tab is only cosmetic.
+  }
+}
+
+async function restoreFromTrash(id: string): Promise<void> {
+  try {
+    await instanceFiles('restore', { id })
+    const { notifyWorkspaceChanged } = await import('@/store/workspace-events')
+
+    notifyWorkspaceChanged()
+  } catch (error) {
+    const { notifyError } = await import('@/store/notifications')
+
+    notifyError(error, browserShellCopy().restoreFailed)
+  }
+}
+
+/** "Delete" in the file menu: into the instance's recycle bin, with an undo. */
+async function trashPath(path: string): Promise<boolean> {
+  let entry: InstanceFileMove & { id: string; name: string }
+
+  try {
+    entry = await instanceFiles('trash', { path: plainPath(path) })
+  } catch (error) {
+    if ((error as InstanceFileError).code === 'not_found') {
+      // Already gone: the same end state.
+      await closePreviewsFor([path])
+
+      return true
     }
 
     throw error
   }
 
+  await closePreviewsFor([path, ...(entry.old_paths ?? [])])
+  const copy = browserShellCopy()
+
+  void import('@/store/notifications').then(({ notify }) =>
+    notify({
+      action: { label: copy.undo, onClick: () => void restoreFromTrash(entry.id) },
+      durationMs: 10_000,
+      kind: 'success',
+      message: copy.movedToTrash(entry.name)
+    })
+  )
+
   return true
+}
+
+async function renamePath(path: string, newName: string): Promise<{ path: string }> {
+  const moved = await instanceFiles<InstanceFileMove & { path: string }>('rename', {
+    new_name: newName,
+    path: plainPath(path)
+  })
+
+  await closePreviewsFor(moved.old_paths ?? [])
+
+  return { path: moved.path }
+}
+
+// ---------------------------------------------------------------------------
+// Terminal: a shell inside the instance over a WebSocket (`/__mt_user/terminal`
+// on the forwarder, behind the entry). One socket per terminal tab. Closing the
+// socket ends the shell — as reloading or closing the desktop window does — and
+// the panel restores the scrollback into a fresh shell, as it does on desktop.
+// ---------------------------------------------------------------------------
+
+interface TerminalChannel {
+  cwdWaiters: Map<number, (cwd: null | string) => void>
+  dataListeners: Set<(data: string) => void>
+  disposed: boolean
+  exit: HermesTerminalExit | null
+  exitListeners: Set<(exit: HermesTerminalExit) => void>
+  /** Output that arrived before the panel subscribed (the first prompt). */
+  pending: string[]
+  socket: WebSocket
+}
+
+interface TerminalStartOptions {
+  cols?: number
+  cwd?: string
+  rows?: number
+}
+
+const terminalChannels = new Map<string, TerminalChannel>()
+let terminalSeq = 0
+
+function terminalUrl(options?: TerminalStartOptions): string {
+  const params = new URLSearchParams()
+
+  for (const [key, value] of Object.entries(options ?? {})) {
+    if (value !== undefined && value !== null && value !== '') {
+      params.set(key, String(value))
+    }
+  }
+
+  const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const query = params.toString()
+
+  return `${scheme}//${window.location.host}${apiPrefix()}/__mt_user/terminal${query ? `?${query}` : ''}`
+}
+
+function emitTerminalData(channel: TerminalChannel, data: string): void {
+  if (channel.dataListeners.size === 0) {
+    channel.pending.push(data)
+
+    return
+  }
+
+  for (const listener of channel.dataListeners) {
+    listener(data)
+  }
+}
+
+function sendTerminal(channel: TerminalChannel, message: Record<string, unknown>): boolean {
+  if (channel.socket.readyState !== WebSocket.OPEN) {
+    return false
+  }
+
+  channel.socket.send(JSON.stringify(message))
+
+  return true
+}
+
+function startTerminal(options?: TerminalStartOptions): Promise<HermesTerminalSession> {
+  const id = `instance-terminal-${++terminalSeq}`
+  const socket = new WebSocket(terminalUrl(options))
+
+  const channel: TerminalChannel = {
+    cwdWaiters: new Map(),
+    dataListeners: new Set(),
+    disposed: false,
+    exit: null,
+    exitListeners: new Set(),
+    pending: [],
+    socket
+  }
+
+  terminalChannels.set(id, channel)
+
+  return new Promise((resolve, reject) => {
+    let ready = false
+
+    socket.onmessage = event => {
+      let message: Record<string, unknown>
+
+      try {
+        message = JSON.parse(String(event.data)) as Record<string, unknown>
+      } catch {
+        return
+      }
+
+      if (message.type === 'ready') {
+        ready = true
+        resolve({ cwd: String(message.cwd ?? options?.cwd ?? ''), id, shell: String(message.shell || 'bash') })
+      } else if (message.type === 'output') {
+        emitTerminalData(channel, String(message.data ?? ''))
+      } else if (message.type === 'cwd') {
+        const seq = Number(message.seq)
+        const waiter = channel.cwdWaiters.get(seq)
+
+        channel.cwdWaiters.delete(seq)
+        waiter?.(typeof message.cwd === 'string' ? message.cwd : null)
+      } else if (message.type === 'exit') {
+        const exit: HermesTerminalExit = {
+          code: typeof message.code === 'number' ? message.code : null,
+          signal: typeof message.signal === 'string' ? message.signal : null
+        }
+
+        channel.exit = exit
+
+        for (const listener of channel.exitListeners) {
+          listener(exit)
+        }
+      } else if (message.type === 'error') {
+        if (ready) {
+          emitTerminalData(channel, `\r\n${String(message.message)}\r\n`)
+        } else {
+          reject(new Error(String(message.message)))
+        }
+      }
+    }
+
+    socket.onclose = () => {
+      for (const waiter of channel.cwdWaiters.values()) {
+        waiter(null)
+      }
+
+      channel.cwdWaiters.clear()
+
+      if (!ready) {
+        terminalChannels.delete(id)
+        reject(new Error(browserShellCopy().terminalUnavailable))
+
+        return
+      }
+
+      // Lost the instance (network, entry restart): say so and keep the tab, as
+      // a dropped SSH session does. A shell that exited sent `exit` first.
+      if (!channel.exit && !channel.disposed) {
+        emitTerminalData(channel, `\r\n\x1b[33m${browserShellCopy().terminalDisconnected}\x1b[0m\r\n`)
+      }
+    }
+  })
+}
+
+const instanceTerminal = {
+  cwd: (id: string): Promise<null | string> => {
+    const channel = terminalChannels.get(id)
+
+    if (!channel) {
+      return Promise.resolve(null)
+    }
+
+    const seq = ++terminalSeq
+
+    return new Promise(resolve => {
+      const timer = window.setTimeout(() => {
+        channel.cwdWaiters.delete(seq)
+        resolve(null)
+      }, 3000)
+
+      channel.cwdWaiters.set(seq, cwd => {
+        window.clearTimeout(timer)
+        resolve(cwd)
+      })
+
+      if (!sendTerminal(channel, { seq, type: 'cwd' })) {
+        channel.cwdWaiters.delete(seq)
+        window.clearTimeout(timer)
+        resolve(null)
+      }
+    })
+  },
+  dispose: async (id: string): Promise<boolean> => {
+    const channel = terminalChannels.get(id)
+
+    if (!channel) {
+      return false
+    }
+
+    channel.disposed = true
+    terminalChannels.delete(id)
+    channel.socket.close(1000)
+
+    return true
+  },
+  onData: (id: string, callback: (payload: string) => void): (() => void) => {
+    const channel = terminalChannels.get(id)
+
+    if (!channel) {
+      return () => undefined
+    }
+
+    channel.dataListeners.add(callback)
+
+    for (const data of channel.pending.splice(0)) {
+      callback(data)
+    }
+
+    return () => {
+      channel.dataListeners.delete(callback)
+    }
+  },
+  onExit: (id: string, callback: (payload: HermesTerminalExit) => void): (() => void) => {
+    const channel = terminalChannels.get(id)
+
+    if (!channel) {
+      return () => undefined
+    }
+
+    channel.exitListeners.add(callback)
+    const exited = channel.exit
+
+    if (exited) {
+      queueMicrotask(() => callback(exited))
+    }
+
+    return () => {
+      channel.exitListeners.delete(callback)
+    }
+  },
+  resize: async (id: string, size: { cols: number; rows: number }): Promise<boolean> => {
+    const channel = terminalChannels.get(id)
+
+    return channel ? sendTerminal(channel, { cols: size.cols, rows: size.rows, type: 'resize' }) : false
+  },
+  start: startTerminal,
+  write: async (id: string, data: string): Promise<boolean> => {
+    const channel = terminalChannels.get(id)
+
+    return channel ? sendTerminal(channel, { data, type: 'input' }) : false
+  }
 }
 
 async function writeClipboard(text: string): Promise<boolean> {
@@ -724,6 +1111,7 @@ export function installBrowserDevelopmentBridge(): boolean {
     readFileDataUrl,
     readFileDataUrlForAttach: readFileDataUrl,
     readFileText,
+    renamePath,
     revalidateConnection: async () => ({ ok: true, rebuilt: false }),
     reportRendererError: (report: { boundary: string; message: string }) => {
       console.error(`[browser-renderer:${report.boundary}]`, report.message)
@@ -749,7 +1137,9 @@ export function installBrowserDevelopmentBridge(): boolean {
     trashPath,
     translucencySupported: false,
     glassSupported: false,
-    writeClipboard
+    writeClipboard,
+    // The instance's shell lives behind the entry; a dev server has no forwarder to give one.
+    ...(productionBrowserBuild ? { terminal: instanceTerminal } : {})
   }
 
   Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: bridge })

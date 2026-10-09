@@ -56,7 +56,8 @@ RUN chmod 0755 /usr/bin/envd /usr/local/bin/cube-entrypoint.sh
 RUN mkdir -p /opt/mt /mnt/u
 COPY seed/forward.py /opt/mt/forward.py
 COPY seed/mtstate.py /opt/mt/mtstate.py
-RUN chmod 0644 /opt/mt/forward.py /opt/mt/mtstate.py
+COPY seed/mtuser.py /opt/mt/mtuser.py
+RUN chmod 0644 /opt/mt/forward.py /opt/mt/mtstate.py /opt/mt/mtuser.py
 
 # ---- 所有用户相同的环境变量 -------------------------------------------------
 # 与 entry/entry/tenants.py::_create 里那份清单保持一致。缺的那个
@@ -81,7 +82,13 @@ ENV TIRITH_ENABLED=0
 
 # 给 agent 的环境说明，进它的系统提示（hermes 专门留给宿主平台的口子，不占用户的 SOUL.md）。
 # 工作区在对象存储上，小文件慢、没有硬链接；重活放本地盘的 scratch，成品再写回工作区。
-ENV HERMES_ENVIRONMENT_HINT="Environment notes: /opt/data/workspace is the user's persistent workspace. It lives on network object storage: many small files are slow there and hard links are not supported. Do heavy or temporary work (git clone, package installs, builds, scratch files) under /opt/data/scratch on the fast local disk, then copy finished results into the workspace. /opt/data/scratch is not preserved when the sandbox is recreated."
+# 用户在网页里用：写出的文件从输入框上方的预览条或文件面板打开，别建议 file://；实例里起的 localhost
+# 服务用户的浏览器打不开；文件面板删的东西在卷上的回收站里留 7 天（见 seed/mtuser.py），用户要可以找回。
+ENV HERMES_ENVIRONMENT_HINT="Environment notes: /opt/data/workspace is the user's persistent workspace. It lives on network object storage: many small files are slow there and hard links are not supported. Do heavy or temporary work (git clone, package installs, builds, scratch files) under /opt/data/scratch on the fast local disk, then copy finished results into the workspace. /opt/data/scratch is not preserved when the sandbox is recreated. The user talks to you through a web page in their browser, not a desktop app or a terminal on their own computer: files you write are opened from the preview bar above the chat input or from the Files panel, so never suggest file:// URLs or opening files with a local program. Web servers you start here (localhost ports) cannot be reached from the user's browser; deliver results as files instead. Files the user deletes in the Files panel go to /mnt/u/.trash and are kept for 7 days: each entry is a folder holding the item and a meta.json with its original path, so you can restore one on request by moving it back."
+
+# 浏览器断开后，hermes 等多久才回收那条会话（还在跑的回合到时会被打断）。上游默认 20 秒：关掉浏览器
+# 长任务就断。10-09 本机实测每条遗留会话约 4MB、不多出进程；定 1 小时。
+ENV HERMES_TUI_WS_ORPHAN_REAP_GRACE_S=3600
 
 # ---- 端口 -----------------------------------------------------------------
 # 对外只有转发器这一个。hermes 自己绑 127.0.0.1:9120，故意不暴露 ——

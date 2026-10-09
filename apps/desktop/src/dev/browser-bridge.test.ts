@@ -254,14 +254,21 @@ describe('browser bridge: opening in a tab and deleting', () => {
 
     vi.doMock('@/store/notifications', () => ({ notify }))
     await installFresh()
-    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    const tabs = [fakeTab(), fakeTab()]
+    const open = vi.spyOn(window, 'open').mockImplementation(() => tabs.shift() as unknown as Window)
 
-    await window.hermesDesktop.openExternal('https://example.com/a')
+    await expect(window.hermesDesktop.openExternal('https://example.com/a')).resolves.toBe(true)
     await window.hermesDesktop.openPreviewInBrowser?.('https://example.com/b')
+    // Blank first, handle dropped, then navigated: no window.opener for the page.
     expect(open.mock.calls).toEqual([
-      ['https://example.com/a', '_blank', 'noopener,noreferrer'],
-      ['https://example.com/b', '_blank', 'noopener,noreferrer']
+      ['', '_blank'],
+      ['', '_blank']
     ])
+    expect(open.mock.results.map(result => (result.value as FakeTab).location.href)).toEqual([
+      'https://example.com/a',
+      'https://example.com/b'
+    ])
+    expect(open.mock.results.every(result => (result.value as FakeTab).opener === null)).toBe(true)
 
     await window.hermesDesktop.openExternal('http://localhost:3000/')
     await vi.waitFor(() => expect(notify).toHaveBeenCalledTimes(1))
@@ -271,6 +278,29 @@ describe('browser bridge: opening in a tab and deleting', () => {
     expect(notify.mock.calls[0]?.[0]).toMatchObject({ kind: 'warning' })
     expect(String(notify.mock.calls[0]?.[0]?.message)).toContain('localhost:3000')
     expect(String(notify.mock.calls[1]?.[0]?.message)).toContain('127.0.0.1:5173')
+  })
+
+  it('offers a button when the browser blocks a page the agent opened', async () => {
+    const notify = vi.fn()
+
+    vi.doMock('@/store/notifications', () => ({ notify }))
+    await installFresh()
+    const tab = fakeTab()
+    const open = vi.spyOn(window, 'open').mockImplementationOnce(() => null)
+
+    // No user gesture behind it (the agent's open_preview): the pop-up blocker says no.
+    await expect(window.hermesDesktop.openExternal('https://example.com/report')).resolves.toBe(false)
+    await vi.waitFor(() => expect(notify).toHaveBeenCalledTimes(1))
+    const offer = notify.mock.calls[0]?.[0]
+
+    expect(offer).toMatchObject({ kind: 'info' })
+    expect(String(offer.message)).toContain('example.com')
+
+    // The user's click on the button is allowed to open it.
+    open.mockImplementation(() => tab as unknown as Window)
+    offer.action.onClick()
+    expect(tab.location.href).toBe('https://example.com/report')
+    expect(tab.opener).toBeNull()
   })
 
   it('opens staged HTML in a new tab inside a sandboxed frame without the app’s origin', async () => {
@@ -335,34 +365,290 @@ describe('browser bridge: opening in a tab and deleting', () => {
       /pop-ups|弹出窗口/
     )
   })
+})
 
-  it('deletes through the gateway, permanently and recursively', async () => {
-    await installFresh()
-    const requests: { body: string; method: string; url: string }[] = []
+describe('browser bridge: rename and the recycle bin', () => {
+  interface Sent {
+    body: Record<string, unknown>
+    url: string
+  }
+
+  function instance(reply: (url: string, body: Record<string, unknown>) => Response): Sent[] {
+    const sent: Sent[] = []
 
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      requests.push({ body: String(init?.body), method: String(init?.method), url: String(input) })
+      const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>
 
-      if (String(init?.body).includes('gone')) {
-        return jsonResponse({ detail: 'Path not found' }, 404)
-      }
+      sent.push({ body, url: String(input) })
 
-      if (String(init?.body).includes('config.yaml')) {
-        return jsonResponse({ detail: 'Path outside managed files root' }, 403)
-      }
-
-      return jsonResponse({ ok: true })
+      return reply(String(input), body)
     }) as typeof fetch
 
-    await expect(window.hermesDesktop.trashPath?.('file:///mnt/u/workspace/old%20dir')).resolves.toBe(true)
-    expect(requests[0]).toEqual({
-      body: JSON.stringify({ path: '/mnt/u/workspace/old dir', recursive: true }),
-      method: 'DELETE',
-      url: '/__hermes_backend/api/files'
-    })
+    return sent
+  }
 
-    // Already gone is the same end state; outside the workspace gets a plain explanation.
+  function previewStore(paths: string[]) {
+    const closeRightRailTab = vi.fn()
+
+    const $previewTabs = {
+      get: () => [
+        ...paths.map((path, i) => ({
+          id: `file:${i}`,
+          target: { kind: 'file', label: path, path, source: path, url: '' }
+        })),
+        { id: 'url:0', target: { kind: 'url', label: 'x', source: 'https://x', url: 'https://x' } }
+      ]
+    }
+
+    vi.doMock('@/store/preview', () => ({ $previewTabs, closeRightRailTab }))
+
+    return closeRightRailTab
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.doUnmock('@/store/notifications')
+    vi.doUnmock('@/store/preview')
+    vi.doUnmock('@/store/workspace-events')
+  })
+
+  it('moves a deleted file into the instance’s recycle bin and offers an undo', async () => {
+    const notify = vi.fn()
+    const notifyError = vi.fn()
+    const notifyWorkspaceChanged = vi.fn()
+
+    vi.doMock('@/store/notifications', () => ({ notify, notifyError }))
+    vi.doMock('@/store/workspace-events', () => ({ notifyWorkspaceChanged }))
+
+    // The tree uses the volume path; a tab opened from a tool result uses the workspace link.
+    const closeRightRailTab = previewStore([
+      '/opt/data/workspace/report/a.md',
+      '/mnt/u/workspace/report',
+      '/mnt/u/workspace/report-2/b.md'
+    ])
+
+    await installFresh()
+
+    const sent = instance(url =>
+      url.endsWith('/trash')
+        ? jsonResponse({
+            id: '1760000000000-0123abcd',
+            name: 'report',
+            ok: true,
+            old_paths: ['/mnt/u/workspace/report', '/opt/data/workspace/report', '/mnt/u/workspace/report']
+          })
+        : jsonResponse({ ok: true, path: '/mnt/u/workspace/report' })
+    )
+
+    await expect(window.hermesDesktop.trashPath?.('file:///mnt/u/workspace/report')).resolves.toBe(true)
+    expect(sent[0]).toEqual({
+      body: { path: '/mnt/u/workspace/report' },
+      url: '/__hermes_backend/__mt_user/files/trash'
+    })
+    // Both spellings of the folder close; a sibling that only shares the prefix stays.
+    expect(closeRightRailTab.mock.calls).toEqual([['file:0'], ['file:1']])
+
+    await vi.waitFor(() => expect(notify).toHaveBeenCalledTimes(1))
+    const toast = notify.mock.calls[0]?.[0]
+
+    expect(toast).toMatchObject({ kind: 'success' })
+    expect(String(toast.message)).toContain('report')
+
+    toast.action.onClick()
+    await vi.waitFor(() => expect(notifyWorkspaceChanged).toHaveBeenCalledTimes(1))
+    expect(sent[1]).toEqual({
+      body: { id: '1760000000000-0123abcd' },
+      url: '/__hermes_backend/__mt_user/files/restore'
+    })
+    expect(notifyError).not.toHaveBeenCalled()
+  })
+
+  it('treats a file that is already gone as deleted', async () => {
+    previewStore([])
+    await installFresh()
+    instance(() => jsonResponse({ code: 'not_found', error: '文件不存在', ok: false }, 404))
+
     await expect(window.hermesDesktop.trashPath?.('/mnt/u/workspace/gone.txt')).resolves.toBe(true)
-    await expect(window.hermesDesktop.trashPath?.('/opt/data/config.yaml')).rejects.toThrow(/workspace|工作区/)
+  })
+
+  it('explains the instance’s refusals in the interface language', async () => {
+    await installFresh()
+    instance((url, body) =>
+      String(body.path).includes('uploads')
+        ? jsonResponse({ code: 'protected', error: '…', ok: false }, 403)
+        : jsonResponse({ code: 'exists', error: '…', ok: false }, 409)
+    )
+
+    await expect(window.hermesDesktop.trashPath?.('/mnt/u/workspace/uploads')).rejects.toThrow(/attachments|附件/)
+    await expect(window.hermesDesktop.renamePath?.('/mnt/u/workspace/a.md', 'b.md')).rejects.toThrow(
+      /already exists|同名/
+    )
+  })
+
+  it('asks for a reload when the instance predates the recycle bin', async () => {
+    await installFresh()
+    // An old forwarder hands the path to hermes, which has no such route.
+    instance(() => jsonResponse({ detail: 'Not Found' }, 404))
+
+    await expect(window.hermesDesktop.renamePath?.('/mnt/u/workspace/a.md', 'b.md')).rejects.toThrow(/Reload|刷新/)
+  })
+
+  it('renames through the instance and closes previews of the old path', async () => {
+    const closeRightRailTab = previewStore(['/opt/data/workspace/a.md', '/opt/data/workspace/ab.md'])
+
+    await installFresh()
+
+    const sent = instance(() =>
+      jsonResponse({
+        ok: true,
+        old_paths: ['/mnt/u/workspace/a.md', '/opt/data/workspace/a.md'],
+        path: '/mnt/u/workspace/b.md'
+      })
+    )
+
+    await expect(window.hermesDesktop.renamePath?.('/mnt/u/workspace/a.md', 'b.md')).resolves.toEqual({
+      path: '/mnt/u/workspace/b.md'
+    })
+    expect(sent[0]).toEqual({
+      body: { new_name: 'b.md', path: '/mnt/u/workspace/a.md' },
+      url: '/__hermes_backend/__mt_user/files/rename'
+    })
+    expect(closeRightRailTab.mock.calls).toEqual([['file:0']])
+  })
+})
+
+describe('browser bridge: the instance’s terminal', () => {
+  class FakeSocket {
+    static OPEN = 1
+    static sockets: FakeSocket[] = []
+    onclose: ((event: { code: number }) => void) | null = null
+    onmessage: ((event: { data: string }) => void) | null = null
+    readyState = 1
+    sent: Record<string, unknown>[] = []
+
+    constructor(public url: string) {
+      FakeSocket.sockets.push(this)
+    }
+
+    send(data: string) {
+      this.sent.push(JSON.parse(data) as Record<string, unknown>)
+    }
+
+    close(code = 1000) {
+      this.readyState = 3
+      this.onclose?.({ code })
+    }
+
+    receive(message: Record<string, unknown>) {
+      this.onmessage?.({ data: JSON.stringify(message) })
+    }
+  }
+
+  async function installProduction() {
+    FakeSocket.sockets = []
+    vi.stubGlobal('WebSocket', FakeSocket)
+    vi.stubEnv('VITE_HERMES_BROWSER_BUILD', '1')
+    await installFresh()
+
+    return window.hermesDesktop.terminal!
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
+    delete document.documentElement.dataset.hermesBrowser
+  })
+
+  it('is only offered by the production build, which has an instance behind it', async () => {
+    await installFresh()
+    expect(window.hermesDesktop.terminal).toBeUndefined()
+  })
+
+  it('runs a shell over one socket per tab', async () => {
+    const terminal = await installProduction()
+    const starting = terminal.start({ cols: 100, cwd: '/opt/data/workspace', rows: 30 })
+    const socket = FakeSocket.sockets[0]!
+
+    expect(socket.url).toBe(
+      `ws://${window.location.host}/__hermes_backend/__mt_user/terminal?cols=100&cwd=%2Fopt%2Fdata%2Fworkspace&rows=30`
+    )
+
+    // The first prompt can arrive before the panel subscribes; it must not be lost.
+    socket.receive({ cwd: '/opt/data/workspace', pid: 7, shell: 'bash', type: 'ready' })
+    socket.receive({ data: '$ ', type: 'output' })
+    const session = await starting
+
+    expect(session).toMatchObject({ cwd: '/opt/data/workspace', shell: 'bash' })
+
+    const output: string[] = []
+    const exits: unknown[] = []
+
+    terminal.onData(session.id, data => output.push(data))
+    terminal.onExit(session.id, exit => exits.push(exit))
+    expect(output).toEqual(['$ '])
+
+    await expect(terminal.write(session.id, 'ls\r')).resolves.toBe(true)
+    await expect(terminal.resize(session.id, { cols: 120, rows: 40 })).resolves.toBe(true)
+    expect(socket.sent).toEqual([
+      { data: 'ls\r', type: 'input' },
+      { cols: 120, rows: 40, type: 'resize' }
+    ])
+
+    const cwd = terminal.cwd(session.id)
+    const ask = socket.sent.at(-1)!
+
+    expect(ask).toMatchObject({ type: 'cwd' })
+    socket.receive({ cwd: '/tmp', seq: ask.seq, type: 'cwd' })
+    await expect(cwd).resolves.toBe('/tmp')
+
+    socket.receive({ data: 'a.txt\r\n', type: 'output' })
+    socket.receive({ code: 0, signal: null, type: 'exit' })
+    socket.close()
+    expect(output).toEqual(['$ ', 'a.txt\r\n'])
+    expect(exits).toEqual([{ code: 0, signal: null }])
+
+    await expect(terminal.dispose(session.id)).resolves.toBe(true)
+    await expect(terminal.write(session.id, 'x')).resolves.toBe(false)
+  })
+
+  it('keeps the tab and says so when the connection drops', async () => {
+    const terminal = await installProduction()
+    const starting = terminal.start()
+    const socket = FakeSocket.sockets[0]!
+
+    socket.receive({ cwd: '/opt/data/workspace', shell: 'bash', type: 'ready' })
+    const session = await starting
+    const output: string[] = []
+    const exits: unknown[] = []
+
+    terminal.onData(session.id, data => output.push(data))
+    terminal.onExit(session.id, exit => exits.push(exit))
+    socket.close(1006)
+
+    expect(exits).toEqual([])
+    expect(output.join('')).toMatch(/Disconnected|连接断了/)
+  })
+
+  it('fails the start when the instance cannot be reached', async () => {
+    const terminal = await installProduction()
+    const starting = terminal.start()
+
+    FakeSocket.sockets[0]!.close(1006)
+    await expect(starting).rejects.toThrow(/Could not reach|连不上/)
+  })
+
+  it('closes the socket when the panel disposes the tab', async () => {
+    const terminal = await installProduction()
+    const starting = terminal.start()
+    const socket = FakeSocket.sockets[0]!
+
+    socket.receive({ cwd: '/', shell: 'bash', type: 'ready' })
+    const session = await starting
+    const output: string[] = []
+
+    terminal.onData(session.id, data => output.push(data))
+    await terminal.dispose(session.id)
+    expect(socket.readyState).toBe(3)
+    expect(output).toEqual([]) // no "disconnected" notice for a tab the user closed
   })
 })

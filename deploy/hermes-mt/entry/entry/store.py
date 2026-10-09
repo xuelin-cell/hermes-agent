@@ -6,7 +6,7 @@ import hashlib
 import json
 import secrets
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -39,6 +39,8 @@ class TenantContext:
     container_token: str
     endpoint: tuple[str, str] | None
     catalog: list[tuple[str, str]]
+    # 套餐给的每个模型的上下文长度 {模型名: context_window}；10-09 之前登录的用户没有，重新登录后才有。
+    limits: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -92,15 +94,35 @@ class Store:
         return hashlib.sha256(sid.encode("utf-8")).digest()
 
     @staticmethod
-    def _catalog_json(catalog: list[tuple[str, str]]) -> str:
+    def _catalog_json(catalog: list[tuple[str, str]], limits: dict[str, int] | None = None) -> str:
+        limits = limits or {}
         return json.dumps(
             [
-                {"model_name": model_name, "base_url": base_url}
+                {"model_name": model_name, "base_url": base_url,
+                 **({"context_window": limits[model_name]} if model_name in limits else {})}
                 for model_name, base_url in catalog
             ],
             ensure_ascii=False,
             separators=(",", ":"),
         )
+
+    @staticmethod
+    def _decode_limits(raw: Any) -> dict[str, int]:
+        """模型清单里各模型的上下文长度；老数据没有这一项就是空的。"""
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except json.JSONDecodeError:
+                return {}
+        limits: dict[str, int] = {}
+        for item in raw if isinstance(raw, list) else []:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("model_name") or "").strip()
+            value = item.get("context_window")
+            if name and isinstance(value, int) and not isinstance(value, bool) and value > 0:
+                limits[name] = value
+        return limits
 
     @staticmethod
     def _decode_catalog(raw: Any) -> list[tuple[str, str]]:
@@ -132,6 +154,7 @@ class Store:
         ttl_s: int,
         upstream_expires_at_ms: int | None,
         login_method: str,
+        limits: dict[str, int] | None = None,
     ) -> LoginState:
         """原子保存登录相关平台状态，空套餐值不会清除已有有效值。"""
         now = _utc_now()
@@ -187,7 +210,7 @@ class Store:
                         user_id,
                         base_url or None,
                         model_name or None,
-                        self._catalog_json(catalog) if catalog else None,
+                        self._catalog_json(catalog, limits) if catalog else None,
                         bool(catalog),
                     )
                 if api_key:
@@ -350,6 +373,7 @@ class Store:
             container_token=container_token,
             endpoint=endpoint,
             catalog=self._decode_catalog(row["model_catalog"]),
+            limits=self._decode_limits(row["model_catalog"]),
         )
 
     async def set_tenant_state(self, user_id: str, state: str) -> None:

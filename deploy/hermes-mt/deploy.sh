@@ -336,9 +336,9 @@ cmd_image() {
     ok "已构建 $IMAGE_NAME:$fp"
     # 镜像里的转发器必须和仓库里的逐字节相同——这是「入口和模板一起升级」能成立的前提。
     local in_img in_repo
-    in_img="$(docker run --rm --network none --entrypoint sha256sum "$IMAGE_NAME:$fp" /opt/mt/forward.py /opt/mt/mtstate.py | awk '{print $1}' | tr '\n' ' ')"
-    in_repo="$(sha256sum seed/forward.py seed/mtstate.py | awk '{print $1}' | tr '\n' ' ')"
-    [ "$in_img" = "$in_repo" ] && ok "镜像里的转发器与仓库一致" || die "镜像里的 forward.py/mtstate.py 与仓库不一致"
+    in_img="$(docker run --rm --network none --entrypoint sha256sum "$IMAGE_NAME:$fp" /opt/mt/forward.py /opt/mt/mtstate.py /opt/mt/mtuser.py | awk '{print $1}' | tr '\n' ' ')"
+    in_repo="$(sha256sum seed/forward.py seed/mtstate.py seed/mtuser.py | awk '{print $1}' | tr '\n' ' ')"
+    [ "$in_img" = "$in_repo" ] && ok "镜像里的转发器与仓库一致" || die "镜像里的 forward.py/mtstate.py/mtuser.py 与仓库不一致"
 
     if registry_has_tag "$fp"; then
         ok "仓库 $REGISTRY 已有 $REPO_PATH:$fp，跳过推送"
@@ -498,6 +498,28 @@ cmd_set() {
     say "入口要重新加载才生效：./deploy.sh up"
 }
 
+# 实例里每 5 分钟一次的定时归档：PG 里的「最近归档」只记入口经手的那几次（暂停、删实例前），
+# 这里经数据面问每台实例的 /__mt/status。只问运行中的实例：数据面请求会把暂停的实例叫醒。
+# 限制了公开访问的实例要流量令牌（PG 里加密存着），这里问不到，显示「问不到」。
+instance_archives() {
+    local domain sid state slug
+    domain="$(cfg MT_CUBE_DOMAIN cube.app)"
+    echo "  实例里的定时归档（只问运行中的；用户 实例 阶段 最近归档时间 归档 可写层）："
+    our_sandboxes | while read -r sid state _ _ slug; do
+        [ "$state" = running ] || continue
+        curl -sS -m 8 -H "Host: 9121-${sid}.${domain}" "$CUBE_PROXY/__mt/status" 2>/dev/null | py '
+import json, sys, time
+try:
+    s = json.load(sys.stdin).get("state") or {}
+except Exception:
+    print("问不到"); sys.exit()
+at = s.get("last_archive_at")
+when = time.strftime("%m-%d %H:%M:%S", time.localtime(at)) if isinstance(at, (int, float)) and at else "-"
+used = (s.get("writable_layer") or {}).get("used_pct", "?")
+print(s.get("phase") or "-", when, s.get("last_archive") or "-", "已用%s%%" % used)' | sed "s/^/    ${slug:-?} ${sid:0:12} /"
+    done
+}
+
 cmd_status() {
     say "现状"
     printf '  代码 %s  模板 %s  镜像指纹 %s\n' "$(head_short)" "${TEMPLATE:-（空）}" "$(cat "$HERE/.image-fingerprint" 2>/dev/null || echo -)"
@@ -511,6 +533,7 @@ cmd_status() {
     docker exec "$PROJECT-postgres" sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -F "  " -c "SELECT left(user_id,10), state, left(sandbox_id,12), template_id, state_epoch, state_archive, COALESCE(to_jsonb(r)->>\$\$next_cron_at\$\$, \$\$-\$\$) FROM tenant_runtime r ORDER BY last_activity_at DESC"' 2>/dev/null | sed 's/^/    /' || echo "    （PG 没起来）"
     echo "  集群上我们的实例（ID 状态 模板 节点 用户）："
     our_sandboxes | sed 's/^/    /' || echo "    （控制面不可达）"
+    instance_archives
     echo "  集群上我们的模板："
     api GET /templates 2>/dev/null | py 'import json,sys
 try: items = json.load(sys.stdin)

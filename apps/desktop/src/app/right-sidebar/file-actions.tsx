@@ -100,10 +100,11 @@ export function FileEntryContextMenu({ children, isDirectory, name, path, relati
             </ContextMenuItem>
           </>
         )}
-        {/* Browser build: the gateway deletes (permanently); rename isn't there yet. */}
+        {/* Browser build: rename and delete (into the recycle bin) go through the instance. */}
         {isBrowserShell() && (
           <>
             <ContextMenuSeparator />
+            <ContextMenuItem onSelect={() => beginInlineRename(path)}>{m.rename}</ContextMenuItem>
             <ContextMenuItem onSelect={() => requestFileDelete(target)} variant="destructive">
               {m.delete}
             </ContextMenuItem>

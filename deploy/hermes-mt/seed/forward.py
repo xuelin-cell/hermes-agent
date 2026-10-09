@@ -21,7 +21,15 @@
    这两个接口和 ``/__mt/status`` 都附带「忙不忙」（定时任务、对话回合，见 mtstate.activity）：
    入口据此决定这轮回收要不要暂停，并在实例停着时按下一个定时任务的时间把它叫起来。
 
-除 ``/__mt/*`` 外的所有请求原样转发，读完请求头就退化成裸字节对拷，因此 WebSocket 不受影响。
+``/__mt_user/*`` 是给用户用的（命令行通道、回收站、重命名，见 mtuser.py）：浏览器经入口的
+``/__hermes_backend/__mt_user/…`` 转进来，带的是和 hermes 一样的会话令牌。入口照常校验登录后放行；
+``/__mt/*`` 这组管理接口入口不放行，用户碰不到。
+
+其余请求原样转发，读完请求头就退化成裸字节对拷，因此 WebSocket 不受影响。转发器只看每条连接的
+第一个请求，所以转给 hermes 的普通请求一律改成 ``Connection: close``：hermes 回完就关，客户端的下一个
+请求只能新开连接、重新经过这里分流。平台代理本来就不复用到实例的连接（CubeProxy 关了 upstream keepalive），
+但入口直接连到容器的 Docker 路径、本机的复现台都会复用——不改的话，同一条连接上后面的 ``/__mt_user/…``
+会被当成普通请求整段转给 hermes（10-09 本机实测撞过）。
 
 只用标准库；由容器 CMD 以 hermes 用户启动。hermes 意外退出时由本文件带退避拉起。
 """
@@ -29,19 +37,26 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import json
 import os
 import signal
 import sys
 import time
 from pathlib import Path
+from urllib.parse import parse_qs
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import mtstate  # noqa: E402
+import mtuser  # noqa: E402
 
 LISTEN_PORT = int(os.environ.get("MT_FWD_PORT", "9121"))
 TARGET_PORT = int(os.environ.get("MT_HERMES_PORT", "9120"))
 HERMES_HOME = Path(os.environ.get("HERMES_HOME", "/opt/data"))
+# 文件面板的根（沙箱镜像里是 /opt/data/workspace，指向卷上的工作区）。回收站和重命名只动这里面的东西。
+WORKSPACE = Path(os.environ.get("HERMES_DASHBOARD_FILES_ROOT") or HERMES_HOME / "workspace")
+USER_PREFIX = "/__mt_user/"
+TRASH_PURGE_INTERVAL_S = 3600
 CHUNK = 64 * 1024
 
 # 引导窗口：容器启动后多少秒内允许 bootstrap。入口在创建沙箱后立刻调用，
@@ -88,8 +103,9 @@ async def _hermes_alive() -> bool:
 
 def _reply(writer: asyncio.StreamWriter, status: int, payload: dict) -> None:
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    reason = {200: "OK", 400: "Bad Request", 403: "Forbidden",
-              409: "Conflict", 500: "Internal Server Error",
+    reason = {200: "OK", 400: "Bad Request", 403: "Forbidden", 404: "Not Found",
+              405: "Method Not Allowed", 409: "Conflict", 413: "Payload Too Large",
+              415: "Unsupported Media Type", 500: "Internal Server Error",
               503: "Service Unavailable"}.get(status, "Error")
     head = (
         f"HTTP/1.1 {status} {reason}\r\n"
@@ -284,11 +300,24 @@ async def _fence() -> None:
     """卷上的主人不是自己了：停 hermes、停归档，只留转发器应答状态。"""
     global _draining
     _draining = True
+    await mtuser.close_all_terminals()
     await _stop_hermes()
 
 
 def _check_token(headers: dict[str, str]) -> bool:
     return bool(_hermes_token) and headers.get("x-mt-token", "") == _hermes_token
+
+
+def _session_token() -> str:
+    """给用户接口核对的令牌：沙箱路径是引导时送进来的；Docker 路径没有引导，容器环境变量里就有。"""
+    return _hermes_token or os.environ.get("HERMES_DASHBOARD_SESSION_TOKEN", "")
+
+
+def _user_authorized(headers: dict[str, str], query: dict[str, list[str]]) -> bool:
+    """入口转发时带上的会话令牌：REST 在请求头里，WebSocket 在 ?token= 里（和 hermes 一样）。"""
+    expected = _session_token()
+    given = headers.get("x-hermes-session-token") or (query.get("token") or [""])[0]
+    return bool(expected) and hmac.compare_digest(given.encode("utf-8"), expected.encode("utf-8"))
 
 
 async def _activity() -> dict:
@@ -445,6 +474,7 @@ async def _drain(writer: asyncio.StreamWriter) -> None:
     _state.phase = "draining"
     if _archiver_task is not None:
         _archiver_task.cancel()
+    await mtuser.close_all_terminals()
     await _stop_hermes()
     try:
         summary = await _do_archive(force=True)
@@ -504,6 +534,18 @@ async def _read_head(reader: asyncio.StreamReader) -> bytes | None:
             return None
         buf.extend(chunk)
     return bytes(buf)
+
+
+def _close_after(head: bytes) -> bytes:
+    """把请求头里的 Connection / Keep-Alive 换成 ``Connection: close``，已经读进来的请求体原样接在后面。"""
+    raw_head, _, rest = head.partition(b"\r\n\r\n")
+    lines = raw_head.split(b"\r\n")
+    kept = [lines[0]] + [
+        line for line in lines[1:]
+        if line.split(b":", 1)[0].strip().lower() not in (b"connection", b"keep-alive")
+    ]
+    kept.append(b"Connection: close")
+    return b"\r\n".join(kept) + b"\r\n\r\n" + rest
 
 
 def _parse(head: bytes) -> tuple[str, str, dict[str, str], bytes]:
@@ -594,6 +636,85 @@ async def _handle_mt(
     _reply(writer, 400, {"ok": False, "error": f"未知接口 {route}"})
 
 
+# ---------------------------------------------------------------- 给用户用的接口（/__mt_user/*）
+
+_FILE_OPS = {
+    "/__mt_user/files/rename": lambda files, body: files.rename(body.get("path"), body.get("new_name")),
+    "/__mt_user/files/trash": lambda files, body: files.move_to_trash(body.get("path")),
+    "/__mt_user/files/restore": lambda files, body: files.restore(body.get("id")),
+}
+
+
+async def _handle_user(
+    method: str, path: str, headers: dict[str, str],
+    rest: bytes, reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
+) -> None:
+    """命令行通道（WebSocket）、回收站、重命名。都要会话令牌；实例在排空时一律 503。"""
+    route, _, raw_query = path.partition("?")
+    query = parse_qs(raw_query)
+    if _draining:
+        _reply(writer, 503, {"ok": False, "code": "draining", "error": "实例正在排空"})
+        return
+    if not _user_authorized(headers, query):
+        _reply(writer, 403, {"ok": False, "code": "forbidden", "error": "缺少或错误的会话令牌"})
+        return
+
+    if route == "/__mt_user/terminal":
+        await mtuser.serve_terminal(reader, writer, headers, query, WORKSPACE)
+        return
+
+    files = mtuser.Files(WORKSPACE)
+    try:
+        if route == "/__mt_user/trash":
+            if method != "GET":
+                _reply(writer, 405, {"ok": False, "code": "method", "error": "只接受 GET"})
+                return
+            _reply(writer, 200, {"ok": True, "items": await asyncio.to_thread(files.list_trash)})
+            return
+        op = _FILE_OPS.get(route)
+        if op is None:
+            _reply(writer, 404, {"ok": False, "code": "unknown", "error": f"未知接口 {route}"})
+            return
+        if method != "POST":
+            _reply(writer, 405, {"ok": False, "code": "method", "error": "只接受 POST"})
+            return
+        # 只收 JSON：表单这类「简单请求」不经预检就能跨源发出来，挡掉它们就挡掉了借登录态的跨站提交。
+        if not headers.get("content-type", "").lower().startswith("application/json"):
+            _reply(writer, 415, {"ok": False, "code": "content_type", "error": "请求体要是 JSON"})
+            return
+        body = await _read_body(headers, rest, reader)
+        if body is None:
+            _reply(writer, 413, {"ok": False, "code": "too_large", "error": "请求体过大"})
+            return
+        try:
+            payload = json.loads(body.decode("utf-8") or "{}")
+        except ValueError:
+            payload = None
+        if not isinstance(payload, dict):
+            _reply(writer, 400, {"ok": False, "code": "invalid", "error": "请求体不是 JSON 对象"})
+            return
+        result = await asyncio.to_thread(op, files, payload)
+        _reply(writer, 200, {"ok": True, **result})
+    except mtuser.FileError as exc:
+        _reply(writer, exc.status, {"ok": False, "code": exc.code, "error": exc.message})
+    except OSError as exc:
+        _log(f"{route} 失败: {type(exc).__name__}: {exc}")
+        _reply(writer, 500, {"ok": False, "code": "io", "error": f"{type(exc).__name__}: {exc.strerror or exc}"})
+
+
+async def _trash_janitor() -> None:
+    """回收站里放了超过保留期（默认 7 天）的东西，每小时清一次。卷还没挂好、没有回收站目录都不算错。"""
+    await asyncio.sleep(600)
+    while True:
+        try:
+            removed = await asyncio.to_thread(mtuser.Files(WORKSPACE).purge)
+            if removed:
+                _log(f"回收站清掉 {removed} 项过期内容")
+        except Exception as exc:  # noqa: BLE001
+            _log(f"清理回收站失败: {type(exc).__name__}: {exc}")
+        await asyncio.sleep(TRASH_PURGE_INTERVAL_S)
+
+
 async def _pipe(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
     try:
         while True:
@@ -619,9 +740,10 @@ async def _handle(client_r: asyncio.StreamReader, client_w: asyncio.StreamWriter
             return
 
         method, path, headers, rest = _parse(head)
-        if path.startswith("/__mt/"):
+        if path.startswith("/__mt/") or path.startswith(USER_PREFIX):
+            handler = _handle_mt if path.startswith("/__mt/") else _handle_user
             try:
-                await _handle_mt(method, path, headers, rest, client_r, client_w)
+                await handler(method, path, headers, rest, client_r, client_w)
             finally:
                 try:
                     await client_w.drain()
@@ -651,7 +773,10 @@ async def _handle(client_r: asyncio.StreamReader, client_w: asyncio.StreamWriter
             client_w.close()
             return
 
-        # 把已经读掉的请求头原样补发，之后纯字节对拷（WebSocket 升级因此不受影响）。
+        # 把已经读掉的请求头补发，之后纯字节对拷（WebSocket 升级因此不受影响）。普通请求改成回完就关，
+        # 好让同一客户端的下一个请求重新经过这里分流（见文件头）。
+        if headers.get("upgrade", "").lower() != "websocket":
+            head = _close_after(head)
         target_w.write(head)
         await target_w.drain()
         await asyncio.gather(_pipe(client_r, target_w), _pipe(target_r, client_w))
@@ -664,8 +789,12 @@ async def _handle(client_r: asyncio.StreamReader, client_w: asyncio.StreamWriter
 
 async def main() -> None:
     server = await asyncio.start_server(_handle, "0.0.0.0", LISTEN_PORT)
+    janitor = asyncio.create_task(_trash_janitor())
     async with server:
-        await server.serve_forever()
+        try:
+            await server.serve_forever()
+        finally:
+            janitor.cancel()
 
 
 if __name__ == "__main__":

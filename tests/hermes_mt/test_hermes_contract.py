@@ -69,3 +69,56 @@ async def test_delete_is_confined_to_the_workspace_on_the_volume(instance_layout
     with pytest.raises(HTTPException) as missing:
         await web.delete_managed_file(ManagedFileDelete(path=str(workspace / "gone.txt")), None)
     assert missing.value.status_code == 404
+
+
+# ---- 第 2 批（10-09）新依赖的 hermes 行为 ----------------------------------------------------
+
+
+def test_per_model_context_length_is_read_from_the_providers_block() -> None:
+    """E5：入口把套餐的 context_window 写成 providers.<key>.models.<模型>.context_length；
+    hermes 启动和切模型时都靠 get_custom_provider_context_length 读它，决定什么时候压缩上下文。"""
+    from hermes_cli.config import get_compatible_custom_providers, get_custom_provider_context_length
+
+    cfg = {
+        "model": {"default": "m1", "provider": "yuanjing", "base_url": "http://plan/v1"},
+        "providers": {"yuanjing": {"api": "http://plan/v1", "key_env": "K", "transport": "chat_completions",
+                                   "models": {"m1": {"context_length": 300000}, "m2": {}}}},
+    }
+    providers = get_compatible_custom_providers(cfg)
+    assert get_custom_provider_context_length("m1", "http://plan/v1", providers) == 300000
+    assert get_custom_provider_context_length("m2", "http://plan/v1", providers) is None
+
+
+def test_reasoning_override_per_model_and_spelling_tolerance() -> None:
+    """E4：agent.reasoning_overrides 按模型盖过全局默认；转发器判断「用户自己设过」时把点和横线当一样，
+    依据是 hermes 匹配时也这么宽。"""
+    from hermes_constants import parse_reasoning_effort, resolve_reasoning_config
+
+    cfg = {"agent": {"reasoning_overrides": {"deepseek-v4.1-flash": "high"}}}
+    assert resolve_reasoning_config(cfg, "deepseek-v4.1-flash") == parse_reasoning_effort("high")
+    assert resolve_reasoning_config(cfg, "deepseek-v4-1-flash") == parse_reasoning_effort("high")
+    assert resolve_reasoning_config(cfg, "glm-5.2") == parse_reasoning_effort("")
+
+
+def test_platform_policy_keys_exist_in_hermes_defaults() -> None:
+    """E5：平台策略写的两个开关是 hermes 真认的键（改名了这里会红）。"""
+    from hermes_cli.config_defaults import DEFAULT_CONFIG
+
+    assert DEFAULT_CONFIG["model_catalog"]["enabled"] is True
+    assert DEFAULT_CONFIG["security"]["allow_lazy_installs"] is True
+
+
+def test_orphan_reap_grace_env_var_wins(monkeypatch: pytest.MonkeyPatch) -> None:
+    """F9：断线后会话保留多久，沙箱镜像用环境变量统一设，不改每个用户的 config.yaml。"""
+    server = pytest.importorskip("tui_gateway.server")  # Windows 上缺 concurrent_log_handler，到 Linux 里验
+
+    monkeypatch.setenv("HERMES_TUI_WS_ORPHAN_REAP_GRACE_S", "3600")
+    assert server._resolve_ws_orphan_reap_grace() == 3600.0
+
+
+def test_environment_hint_env_var_reaches_the_system_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
+    """E8：镜像里的 HERMES_ENVIRONMENT_HINT 原样进 agent 的系统提示。"""
+    from agent.prompt_builder import build_environment_hints
+
+    monkeypatch.setenv("HERMES_ENVIRONMENT_HINT", "The user works in a web page; never suggest file:// URLs.")
+    assert "never suggest file:// URLs" in build_environment_hints()

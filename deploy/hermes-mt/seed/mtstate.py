@@ -770,31 +770,82 @@ def _set_top(cfg, key: str, value) -> None:
         cfg[key] = value
 
 
-def _platform_snapshot(cfg, key: str) -> tuple:
+def _platform_snapshot(cfg, key: str) -> str:
+    """平台管的那几段，序列化成字符串好比较改没改。"""
     model = cfg.get("model") if isinstance(cfg.get("model"), dict) else {}
     providers = cfg.get("providers") if isinstance(cfg.get("providers"), dict) else {}
-    entry = providers.get(key) if isinstance(providers.get(key), dict) else {}
-    models = entry.get("models")
-    return (
-        str(model.get("default", "")), str(model.get("provider", "")), str(model.get("base_url", "")),
-        str(model.get("key_env", "")),
-        str(entry.get("api", "")), str(entry.get("key_env", "")), str(entry.get("transport", "")),
-        str(entry.get("default_model", "")),
-        tuple(str(k) for k in models) if isinstance(models, dict) else (),
-    )
+    agent = cfg.get("agent") if isinstance(cfg.get("agent"), dict) else {}
+    return json.dumps({
+        "model": {k: model.get(k) for k in ("default", "provider", "base_url", "key_env")},
+        "provider": providers.get(key),
+        "model_catalog": cfg.get("model_catalog"),
+        "security": cfg.get("security"),
+        "reasoning_overrides": agent.get("reasoning_overrides"),
+    }, sort_keys=True, default=str)
+
+
+def _section(cfg, key: str):
+    """顶层的一段映射；没有（或不是映射）就新建。"""
+    node = cfg.get(key)
+    if not isinstance(node, dict):
+        node = {}
+        if key in cfg:
+            cfg[key] = node
+        else:
+            _set_top(cfg, key, node)
+    return node
+
+
+def _norm_model(name: object) -> str:
+    """模型名的宽松写法归一：大小写、点 / 横线、提供方前缀都不算区别（hermes 自己匹配时也这么宽）。"""
+    return str(name).strip().lower().rsplit("/", 1)[-1].replace(".", "-")
+
+
+def _apply_policy(cfg, policy: dict) -> None:
+    """平台策略，两层：{段: {键: 值}}。每次引导都按平台的写，比如关在线模型目录、关临时装包。"""
+    for top, leaves in policy.items():
+        if isinstance(leaves, dict) and leaves:
+            section = _section(cfg, str(top))
+            for leaf, value in leaves.items():
+                section[str(leaf)] = value
+
+
+def _apply_reasoning_defaults(cfg, defaults: dict) -> None:
+    """按模型预设推理强度：只补用户没设过的模型，用户自己写过的（任何写法）不动。"""
+    defaults = {str(m).strip(): str(e).strip() for m, e in defaults.items() if str(m).strip() and str(e).strip()}
+    if not defaults:
+        return
+    agent = _section(cfg, "agent")
+    overrides = agent.get("reasoning_overrides")
+    if not isinstance(overrides, dict):
+        overrides = {}
+        agent["reasoning_overrides"] = overrides
+    have = {_norm_model(k) for k in overrides}
+    for model, effort in defaults.items():
+        if _norm_model(model) not in have:
+            overrides[model] = effort
+
+
+def _model_entry(name: str, limits: dict) -> dict:
+    """providers.<key>.models 里每个模型的元数据：套餐给了上下文长度就写上，hermes 按它决定什么时候压缩。"""
+    value = limits.get(name)
+    return {"context_length": int(value)} if isinstance(value, int) and not isinstance(value, bool) and value > 0 else {}
 
 
 def apply_platform_block(cfg, spec: dict) -> bool:
     """把入口下发的平台块写进解析后的配置。返回有没有改动。
 
-    平台归平台：model 段的 provider / base_url / key_env，providers.<key> 整块（端点、key 来源、模型清单）。
-    用户归用户：model.default 保留他自己选的，只要在套餐清单里；别的段一概不碰。
+    平台归平台：model 段的 provider / base_url / key_env，providers.<key> 整块（端点、key 来源、模型清单
+    和每个模型的上下文长度），以及平台策略（policy，如关在线模型目录、关临时装包）。
+    用户归用户：model.default 保留他自己选的，只要在套餐清单里；推理强度预设只补他没设过的模型；
+    别的段一概不碰。
     """
     key = str(spec.get("provider_key", "")).strip()
     base_url = str(spec.get("base_url", "")).strip()
     plan_model = str(spec.get("model", "")).strip()
     key_env = str(spec.get("key_env", "")).strip()
     names = [str(n).strip() for n in (spec.get("models") or []) if str(n).strip()]
+    limits = spec.get("limits") if isinstance(spec.get("limits"), dict) else {}
     before = _platform_snapshot(cfg, key)
 
     model = cfg.get("model")
@@ -833,9 +884,13 @@ def apply_platform_block(cfg, spec: dict) -> bool:
         if plan_model:
             entry["default_model"] = plan_model
         if names:
-            entry["models"] = {n: {} for n in names}
+            entry["models"] = {n: _model_entry(n, limits) for n in names}
         elif not isinstance(entry.get("models"), dict) or not entry["models"]:
-            entry["models"] = {chosen: {}} if chosen else {}
+            entry["models"] = {chosen: _model_entry(chosen, limits)} if chosen else {}
+    if isinstance(spec.get("policy"), dict):
+        _apply_policy(cfg, spec["policy"])
+    if isinstance(spec.get("reasoning_defaults"), dict):
+        _apply_reasoning_defaults(cfg, spec["reasoning_defaults"])
     return _platform_snapshot(cfg, key) != before
 
 

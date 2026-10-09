@@ -42,6 +42,25 @@ SEED_DIR = Path(__file__).resolve().parent.parent / "seed"
 # 平台正在删的实例：控制面还列得出来，但不能再当"在"用。
 GONE_STATES = frozenset({"deleting", "terminating", "deleted"})
 
+# 平台策略：每次引导都按这里写进用户的 config.yaml（seed/mtstate.py 的 apply_platform_block）。
+PLATFORM_POLICY = {
+    # 在线模型目录（OpenRouter / Nous 的推荐清单）：集群里访问慢，超时会把模型下拉卡住；
+    # 我们的模型清单来自套餐，用不上它。
+    "model_catalog": {"enabled": False},
+    # 用到时才从 PyPI 装的依赖：页面一打开就会往每台实例的可写层下 392MB 语音依赖。
+    "security": {"allow_lazy_installs": False},
+}
+
+
+def parse_reasoning_defaults(text: str) -> dict[str, str]:
+    """「模型=强度,模型=强度」→ {模型: 强度}；写错的项跳过。"""
+    out: dict[str, str] = {}
+    for item in (text or "").split(","):
+        model, sep, effort = item.partition("=")
+        if sep and model.strip() and effort.strip():
+            out[model.strip()] = effort.strip()
+    return out
+
 
 def _mtstate():
     """seed/mtstate.py 里 config.yaml 平台块的写法。入口的 Docker 路径复用同一份，不再维护第二套按行改的代码。"""
@@ -214,17 +233,41 @@ class TenantManager:
             self.cube.register_traffic_token(rt.sandbox_id, rt.traffic_token)
 
     # ---- seed files ------------------------------------------------------------
-    @staticmethod
-    def _models_block(catalog: list[tuple[str, str]], fallback: str) -> str:
+    def _model_limits(self, names: list[str], limits: dict[str, int] | None) -> dict[str, int]:
+        """每个模型的上下文长度：套餐给的优先，没给的按 MT_DEFAULT_CONTEXT_WINDOW；兜底值设成 0 就不写。"""
+        limits = limits or {}
+        out: dict[str, int] = {}
+        for name in names:
+            value = limits.get(name) or self.s.default_context_window
+            if value > 0:
+                out[name] = value
+        return out
+
+    def _models_block(
+        self,
+        catalog: list[tuple[str, str]],
+        fallback: str,
+        limits: dict[str, int] | None = None,
+    ) -> str:
         """渲染 providers.<key>.models 映射。空清单时至少放主模型，别产出空 mapping。"""
         names = [n for n, _ in catalog] or [fallback]
-        return "\n".join(f"      {n}: {{}}" for n in names)
+        known = self._model_limits(names, limits)
+        return "\n".join(
+            f"      {n}: {{context_length: {known[n]}}}" if n in known else f"      {n}: {{}}" for n in names
+        )
+
+    def _reasoning_block(self) -> str:
+        defaults = parse_reasoning_defaults(self.s.reasoning_defaults)
+        if not defaults:
+            return ""
+        return "agent:\n  reasoning_overrides:\n" + "\n".join(f"    {m}: {e}" for m, e in defaults.items())
 
     def _render_user_files(
         self,
         api_key: str,
         endpoint: tuple[str, str] | None = None,
         catalog: list[tuple[str, str]] | None = None,
+        limits: dict[str, int] | None = None,
     ) -> dict[str, bytes]:
         """只渲染「属于这个用户」的两份文件：``config.yaml`` 和 ``.env``。
 
@@ -248,7 +291,8 @@ class TenantManager:
             .replace("{{PROVIDER_KEY}}", self.s.provider_key)
             .replace("{{KEY_ENV_NAME}}", self.s.key_env_name)
             .replace("{{FILES_ROOT}}", self.s.files_root)
-            .replace("{{MODELS_BLOCK}}", self._models_block(catalog or [], model_name))
+            .replace("{{MODELS_BLOCK}}", self._models_block(catalog or [], model_name, limits))
+            .replace("{{REASONING_BLOCK}}", self._reasoning_block())
         )
         files["config.yaml"] = config.encode("utf-8")
         env_lines = [f"TERMINAL_ENV=local"]
@@ -262,13 +306,16 @@ class TenantManager:
         api_key: str,
         endpoint: tuple[str, str] | None = None,
         catalog: list[tuple[str, str]] | None = None,
+        limits: dict[str, int] | None = None,
     ) -> dict[str, bytes]:
         """Docker 后端要塞进卷的全部文件：用户那两份，外加转发器。
 
         沙箱后端不走这里 —— 它的转发器在镜像里，见 ``_cube_seed_files``。
         """
-        files = self._render_user_files(api_key, endpoint, catalog)
-        files[".mt/forward.py"] = (SEED_DIR / "forward.py").read_bytes()
+        files = self._render_user_files(api_key, endpoint, catalog, limits)
+        # 转发器要从自己所在目录导入状态管家和用户接口，三个文件一起放。
+        for name in ("forward.py", "mtstate.py", "mtuser.py"):
+            files[f".mt/{name}"] = (SEED_DIR / name).read_bytes()
         return files
 
     # ---- 平台下发的模型配置：变了要同步到已有的卷 ------------------------------------
@@ -286,6 +333,7 @@ class TenantManager:
         cname: str,
         endpoint: tuple[str, str] | None,
         catalog: list[tuple[str, str]] | None = None,
+        limits: dict[str, int] | None = None,
     ) -> bool:
         """套餐给的端点变了就改写这个卷里的 config.yaml。返回 True 表示改过（需要重启容器）。
 
@@ -308,7 +356,8 @@ class TenantManager:
             raw = self._from_tar(cfg_tar, "config.yaml")
             if raw is None:
                 return False
-            patched, notes = _mtstate().patch_config_text(raw.decode("utf-8"), self._config_patch_spec(endpoint, catalog))
+            patched, notes = _mtstate().patch_config_text(
+                raw.decode("utf-8"), self._config_patch_spec(endpoint, catalog, limits))
             files = {".mt/endpoint.stamp": want}
             if notes:
                 files["config.yaml"] = patched.encode("utf-8")
@@ -360,7 +409,7 @@ class TenantManager:
                     info = None
             if info is None:
                 await self._create(cname, nname, vname, labels, token)
-                seed = self._render_seed(api_key, endpoint, catalog)
+                seed = self._render_seed(api_key, endpoint, catalog, getattr(context, "limits", None))
                 if not fresh_volume:
                     # 卷已有数据：只刷新转发器，不碰用户的 .env / config.yaml
                     seed = {k: v for k, v in seed.items() if k.startswith(".mt/")}
@@ -370,7 +419,7 @@ class TenantManager:
                 info = await self.docker.inspect_container(cname)
 
             # 平台下发的端点若有变化，先改卷里的 config.yaml（hermes 只在启动时读一次）
-            changed = await self._sync_endpoint(cname, endpoint, catalog)
+            changed = await self._sync_endpoint(cname, endpoint, catalog, getattr(context, "limits", None))
             if changed and (info or {}).get("State", {}).get("Running"):
                 log.info("tenant %s: 端点已更新，重启容器让 hermes 重新读配置", slug)
                 await self.docker.stop_container(cname)
@@ -429,16 +478,23 @@ class TenantManager:
         self,
         endpoint: tuple[str, str] | None,
         catalog: list[tuple[str, str]] | None,
+        limits: dict[str, int] | None = None,
     ) -> dict:
-        """patch-model 的内容：平台块四项 + 套餐清单 + 一份渲染好的模板（文件坏到救不回来时按它重建）。"""
+        """patch-model 的内容：平台块四项 + 套餐清单 + 每个模型的上下文长度 + 平台策略 + 推理强度预设，
+        外加一份渲染好的模板（文件坏到救不回来时按它重建）。见 seed/mtstate.py 的 apply_platform_block。"""
         base_url, model_name = endpoint or ("", "")
+        model = model_name or self.s.model_name
+        names = [n for n, _ in (catalog or [])]
         return {
             "base_url": base_url or self.s.model_base_url,
-            "model": model_name or self.s.model_name,
+            "model": model,
             "provider_key": self.s.provider_key,
             "key_env": self.s.key_env_name,
-            "models": [n for n, _ in (catalog or [])],
-            "template": self._render_user_files("", endpoint, catalog)["config.yaml"].decode("utf-8"),
+            "models": names,
+            "limits": self._model_limits(names or [model], limits),
+            "policy": PLATFORM_POLICY,
+            "reasoning_defaults": parse_reasoning_defaults(self.s.reasoning_defaults),
+            "template": self._render_user_files("", endpoint, catalog, limits)["config.yaml"].decode("utf-8"),
         }
 
     def _cube_seed_files(
@@ -446,6 +502,7 @@ class TenantManager:
         api_key: str,
         endpoint: tuple[str, str] | None,
         catalog: list[tuple[str, str]] | None,
+        limits: dict[str, int] | None = None,
     ) -> list[dict]:
         """渲染引导接口要的种子文件。
 
@@ -458,8 +515,8 @@ class TenantManager:
            永远写不进去，直接 ``True`` 又会毁掉老用户自己改过的内容。
            ``if-pristine`` 的判据是与镜像里的示例逐字节比对，见 seed/forward.py。
         """
-        rendered = self._render_user_files(api_key, endpoint, catalog)
-        patch = self._config_patch_spec(endpoint, catalog)
+        rendered = self._render_user_files(api_key, endpoint, catalog, limits)
+        patch = self._config_patch_spec(endpoint, catalog, limits)
         return [
             {
                 "path": "config.yaml",
@@ -683,7 +740,8 @@ class TenantManager:
             sandbox_id,
             self.s.forward_port,
             token=token,
-            files=self._cube_seed_files(context.api_key, context.endpoint, context.catalog),
+            files=self._cube_seed_files(
+                context.api_key, context.endpoint, context.catalog, getattr(context, "limits", None)),
             ready_timeout_s=self.s.ready_timeout_s,
             state=self._state_block(sandbox_id, epoch, restore_from),
         )

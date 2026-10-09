@@ -6,6 +6,7 @@ import asyncio
 import logging
 import time
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import aiohttp
 from aiohttp import web
@@ -34,6 +35,50 @@ async def database_error_middleware(request: web.Request, handler):
     except DatabaseUnavailable as exc:
         log.warning("database request failed: %s", type(exc).__name__)
         return web.json_response({"error": "database_unavailable"}, status=503)
+
+
+_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+def origin_allowed(request: web.Request) -> bool:
+    """这个请求是不是本站页面发起的。没有 Origin 的（非浏览器客户端）放行：浏览器发写请求和 WebSocket 一定带。
+
+    比对的是浏览器地址栏里的「主机:端口」：nginx 用 X-Forwarded-Host 传过来（$http_host 带端口）。
+    没有这个头（nginx 还没升级）就只比主机名——同主机别的端口挡不住，但不至于把正常请求全拒了。
+    沙箱里的预览页（iframe sandbox、没有 allow-same-origin）发的 Origin 是 "null"，一律不放。
+    """
+    origin = request.headers.get("Origin")
+    if origin is None:
+        return True
+    try:
+        got = urlsplit(origin)
+    except ValueError:
+        return False
+    if not got.netloc:
+        return False
+    forwarded = request.headers.get("X-Forwarded-Host", "").strip()
+    if forwarded:
+        return got.netloc.lower() == forwarded.lower()
+    return (got.hostname or "").lower() == (urlsplit(f"//{request.host}").hostname or "").lower()
+
+
+def origin_middleware(enabled: bool):
+    """写请求（非 GET/HEAD/OPTIONS）和 WebSocket 握手：不是本站页面发起的一律 403。
+
+    挡的是「借用户登录态的跨站请求」：cookie 是 SameSite=Lax，跨站页面带不上，但浏览器把同一主机
+    不同端口的页面算同站（.7 上 18080 的单用户版就是这种），它们能带着我们的登录态连聊天、调上传、开终端。
+    """
+
+    @web.middleware
+    async def middleware(request: web.Request, handler):
+        upgrade = request.headers.get("Upgrade", "").lower() == "websocket"
+        if enabled and (upgrade or request.method not in _SAFE_METHODS) and not origin_allowed(request):
+            log.warning("refused cross-origin %s %s from origin %r", request.method, request.path,
+                        request.headers.get("Origin", "")[:80])
+            return web.json_response({"error": "cross_origin"}, status=403)
+        return await handler(request)
+
+    return middleware
 
 
 class Entry:
@@ -103,6 +148,7 @@ class Entry:
         phone: str = "",
         endpoint: tuple[str, str] | None = None,
         catalog: list[tuple[str, str]] | None = None,
+        limits: dict[str, int] | None = None,
     ) -> web.Response:
         login = await self.store.finish_login(
             user_id=user_id,
@@ -113,6 +159,7 @@ class Entry:
             ttl_s=self.s.session_ttl_s,
             upstream_expires_at_ms=upstream_expires_ms,
             login_method="sms" if phone else "dev",
+            limits=limits,
         )
         # 登录事务提交后后台预热；预热失败不撤销已经建立的平台登录。
         self._bg.append(asyncio.create_task(self._warm(user_id)))
@@ -223,6 +270,7 @@ class Entry:
         api_key = plan.api_key if plan else ""
         endpoint = plan.endpoint() if plan else None
         catalog = plan.catalog() if plan else None
+        limits = plan.limits() if plan else None
         if not api_key:
             log.warning("user %s has no new plan key; keeping any stored credential", result.uid)
         else:
@@ -236,6 +284,7 @@ class Entry:
             phone=phone,
             endpoint=endpoint,
             catalog=catalog,
+            limits=limits,
         )
 
     async def dev_login(self, request: web.Request) -> web.Response:
@@ -271,6 +320,15 @@ class Entry:
         return response
 
     async def ws(self, request: web.Request) -> web.StreamResponse:
+        """聊天：hermes 自己的 /api/ws。"""
+        return await self._proxy_tenant_ws(request, "/api/ws", heartbeat=None)
+
+    async def terminal(self, request: web.Request) -> web.StreamResponse:
+        """右侧终端面板：实例里转发器的命令行通道。终端可能长时间没有输出，两头每 25 秒发一次心跳。"""
+        return await self._proxy_tenant_ws(request, "/__mt_user/terminal", heartbeat=25.0)
+
+    async def _proxy_tenant_ws(self, request: web.Request, path: str, heartbeat: float | None) -> web.StreamResponse:
+        """把一条 WebSocket 接到这个用户的实例上。连着的时候算在线：空闲回收不会暂停这台实例。"""
         session = await self._require(request)
         try:
             tenant = await self._tenant_for(session)
@@ -283,9 +341,9 @@ class Entry:
             log.exception("tenant for %s not ready", session.user_id)
             raise web.HTTPBadGateway(text=f"tenant not ready: {type(exc).__name__}") from exc
         user_id = session.user_id
-        self._live_ws[user_id] = self._live_ws.get(user_id, 0) + 1
         if self.http is None:
             raise web.HTTPServiceUnavailable(text="entry not ready")
+        self._live_ws[user_id] = self._live_ws.get(user_id, 0) + 1
         try:
             return await proxy_ws(
                 request,
@@ -293,6 +351,8 @@ class Entry:
                 self.http,
                 tenant,
                 on_activity=lambda: self._touch(user_id),
+                path=path,
+                heartbeat=heartbeat,
             )
         finally:
             remaining = self._live_ws.get(user_id, 1) - 1
@@ -307,6 +367,7 @@ class Entry:
 
     # 用户经代理打不到的路径：转发器的管理接口（能让自己的实例排空），
     # 以及 hermes 的「导入备份」（它会在库打开时替换 state.db，归档和真实库会分叉）。
+    # 注意 ``__mt_user/``（回收站、重命名、命令行）不在其中：那是给用户用的，转发器自己核对会话令牌。
     _BLOCKED_TAILS = ("__mt/", "api/ops/import")
 
     async def backend(self, request: web.Request) -> web.StreamResponse:
@@ -433,7 +494,7 @@ def build_app(settings: Settings = SETTINGS) -> web.Application:
     entry = Entry(settings)
     app = web.Application(
         client_max_size=64 * 1024 * 1024,
-        middlewares=[database_error_middleware],
+        middlewares=[origin_middleware(settings.origin_check), database_error_middleware],
     )
     path = settings.path
     app.router.add_get(path("/login"), entry.login_page)
@@ -449,6 +510,8 @@ def build_app(settings: Settings = SETTINGS) -> web.Application:
     app.router.add_post(path("/__entry/logout"), entry.logout)
     app.router.add_get(path("/logout"), entry.logout_page)
     app.router.add_get(path("/api/ws"), entry.ws)
+    # 要在下面那条「其余全部转给实例」之前注册：路由按注册顺序匹配。
+    app.router.add_get(path("/__hermes_backend/__mt_user/terminal"), entry.terminal)
     app.router.add_route("*", path("/__hermes_backend/{tail:.*}"), entry.backend)
     app.on_startup.append(entry.on_startup)
     app.on_cleanup.append(entry.on_cleanup)

@@ -7,6 +7,7 @@ import {
   isBrowserShell,
   isInstanceLocalUrl,
   isSettingsViewHidden,
+  withoutHiddenNavItems,
   withoutHiddenPaletteItems
 } from './browser-shell'
 
@@ -51,7 +52,10 @@ describe('browser shell', () => {
   it('drops desktop-only palette rows and the groups they leave empty', () => {
     const groups = [
       { heading: 'theme', items: [{ id: 'theme-install' }] },
-      { heading: 'command center', items: [{ id: 'cc-update-hermes' }, { id: 'cc-reload-window' }] }
+      {
+        heading: 'command center',
+        items: [{ id: 'cc-update-hermes' }, { id: 'cc-restart-gateway' }, { id: 'cc-reload-window' }]
+      }
     ]
 
     expect(withoutHiddenPaletteItems(groups)).toBe(groups)
@@ -63,12 +67,24 @@ describe('browser shell', () => {
     ])
   })
 
+  it('drops the messaging platforms entry from the sidebar', () => {
+    const nav = [{ id: 'new-session' }, { id: 'skills' }, { id: 'messaging' }, { id: 'artifacts' }]
+
+    expect(withoutHiddenNavItems(nav)).toBe(nav)
+
+    document.documentElement.dataset.hermesBrowser = 'production'
+
+    expect(withoutHiddenNavItems(nav).map(item => item.id)).toEqual(['new-session', 'skills', 'artifacts'])
+  })
+
   it('speaks the interface language', () => {
-    expect(browserShellCopy().deleteConfirm).toBe('Delete permanently')
+    expect(browserShellCopy().deleteConfirm).toBe('Delete')
+    expect(browserShellCopy().fileErrors.exists).toMatch(/already exists/)
 
     setRuntimeI18nLocale('zh')
 
-    expect(browserShellCopy().deleteBody(false)).toBe('将永久删除，无法恢复。')
+    expect(browserShellCopy().deleteBody(false)).toBe('将移到回收站，7 天内可以撤销。')
     expect(browserShellCopy().deleteBody(true)).toContain('文件夹')
+    expect(browserShellCopy().movedToTrash('a.md')).toContain('a.md')
   })
 })

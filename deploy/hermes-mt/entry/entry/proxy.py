@@ -13,6 +13,7 @@ import asyncio
 import inspect
 import logging
 from collections.abc import Awaitable, Callable
+from urllib.parse import urlencode
 
 import aiohttp
 from aiohttp import web
@@ -83,17 +84,24 @@ async def proxy_ws(
     http: aiohttp.ClientSession,
     tenant: Tenant,
     on_activity: Callable[[], Awaitable[None] | None] | None = None,
+    *,
+    path: str = "/api/ws",
+    heartbeat: float | None = None,
 ) -> web.WebSocketResponse:
     """``on_activity`` 在每一帧上调用（调用方自己节流）。
 
     ★ 空闲回收看的是「最后一次活动时间」。ws 是长连接，一次握手之后可能几十分钟
     只有帧、没有新的 HTTP 请求——一次长回复的流式输出就是这样。不在这里打点的话，
     正在聊天的容器会被回收线程当成闲置停掉，对话当场断掉（实测 idle=1min 时必现）。
+
+    ``path`` 是实例里的目标：聊天是 hermes 的 ``/api/ws``，命令行是转发器的 ``/__mt_user/terminal``。
+    ``heartbeat`` 非空时两头都按这个间隔发 ping：命令行可能半小时没有一个字节，nginx 会当它断了。
+    用户自己在查询串里带的 ``token`` 不往下转，令牌只由入口注入。
     """
     requested = [p.strip() for p in request.headers.get("Sec-WebSocket-Protocol", "").split(",") if p.strip()]
-    qs = request.rel_url.query_string
+    qs = urlencode([(k, v) for k, v in request.rel_url.query.items() if k != "token"])
     origin = tenant.origin or f"{tenant.ip}:{settings.forward_port}"
-    url = f"ws://{origin}/api/ws?token={tenant.token}" + (f"&{qs}" if qs else "")
+    url = f"ws://{origin}{path}?token={tenant.token}" + (f"&{qs}" if qs else "")
     headers = {"Host": tenant.host_header or f"127.0.0.1:{settings.hermes_port}"}
     if tenant.traffic_token:
         headers["cube-traffic-access-token"] = tenant.traffic_token
@@ -103,7 +111,7 @@ async def proxy_ws(
             headers=headers,
             protocols=requested,
             max_msg_size=_MAX_WS_MSG,
-            heartbeat=None,
+            heartbeat=heartbeat,
             timeout=aiohttp.ClientWSTimeout(ws_close=10),
         )
     except aiohttp.WSServerHandshakeError as exc:
@@ -116,7 +124,7 @@ async def proxy_ws(
     downstream = web.WebSocketResponse(
         protocols=(upstream.protocol,) if upstream.protocol else (),
         max_msg_size=_MAX_WS_MSG,
-        heartbeat=None,
+        heartbeat=heartbeat,
     )
     try:
         await downstream.prepare(request)

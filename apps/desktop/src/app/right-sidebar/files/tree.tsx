@@ -7,7 +7,6 @@ import { TreeSkeleton } from '@/components/chat/skeletons'
 import { Codicon } from '@/components/ui/codicon'
 import { markRightPanePerf } from '@/debug/right-pane-events'
 import { useResizeObserver } from '@/hooks/use-resize-observer'
-import { isBrowserShell } from '@/lib/browser-shell'
 import { cn } from '@/lib/utils'
 import { type RepoChangeKind, repoChangeKindForPath } from '@/store/coding-status'
 import { $renamingPath, beginInlineRename } from '@/store/file-actions'
@@ -163,8 +162,7 @@ export function ProjectTree({
   // beats arborist's own Enter-to-activate; skipped while an edit is in progress
   // (the editor input owns Enter/Esc then) and for placeholder rows.
   const handleRenameShortcut = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
-    // Browser build: no rename on the gateway yet, so Enter keeps arborist's open.
-    if (!isRenameShortcut(event) || $renamingPath.get() || isBrowserShell()) {
+    if (!isRenameShortcut(event) || $renamingPath.get()) {
       return
     }
 

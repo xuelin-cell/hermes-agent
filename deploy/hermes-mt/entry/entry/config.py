@@ -96,6 +96,9 @@ class Settings:
     cookie_name: str = _env("MT_COOKIE", "hermes_mt_session")
     cookie_secure: bool = _env("MT_COOKIE_SECURE", "0") == "1"
     session_ttl_s: int = int(_env("MT_SESSION_TTL_S", str(7 * 24 * 3600)))
+    # 写请求和 WebSocket 只接受本站页面发起的（看 Origin）。cookie 的 SameSite=Lax 挡不住同一主机别的端口上的页面
+    # （浏览器把同 IP 不同端口算同站）。出了误伤可临时设 0 关掉。
+    origin_check: bool = _env("MT_ORIGIN_CHECK", "1") == "1"
 
     # Entry 平台数据库与凭据加密
     database_url: str = _env("MT_DATABASE_URL")
@@ -115,6 +118,11 @@ class Settings:
     model_name: str = _env("MT_MODEL", "deepseek-v4-flash")
     provider_key: str = _env("MT_PROVIDER_KEY", "yuanjing")
     key_env_name: str = _env("MT_KEY_ENV_NAME", "HERMES_CUSTOM_YUANJING_API_KEY")
+    # 套餐没给上下文长度（context_window）的模型按这个写：报小了只是早一点压缩，报大了上游会报超长。
+    default_context_window: int = int(_env("MT_DEFAULT_CONTEXT_WINDOW", "128000"))
+    # 按模型预设推理强度（写进 agent.reasoning_overrides，用户自己设过的不动），格式「模型=强度,模型=强度」。
+    # DeepSeek V4.1 Flash 只接受 low/high/xhigh/max，hermes 默认发 medium，不预设就每条都 400。
+    reasoning_defaults: str = _env("MT_REASONING_DEFAULTS", "deepseek-v4.1-flash=high")
 
     # 开发模式：不走短信登录，任意用户名直接进；模型 key 用 MT_DEV_API_KEY。生产必须关。
     dev_login: bool = _env("MT_DEV_LOGIN", "0") == "1"

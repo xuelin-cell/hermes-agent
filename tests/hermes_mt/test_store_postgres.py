@@ -54,6 +54,28 @@ async def test_login_persists_hashed_session_model_config_and_encrypted_key(
     assert context.api_key == "key-one"
     assert context.endpoint == ("https://models.example/v1", "model-a")
     assert context.catalog == [("model-a", "https://models.example/v1")]
+    assert context.limits == {}
+    await database.close()
+
+
+@pytest.mark.asyncio
+async def test_login_keeps_the_plans_context_windows(postgres_database_url: str) -> None:
+    """套餐给的每个模型的上下文长度随模型清单进 PG，引导实例时写进 config.yaml。"""
+    database, store = await _store(postgres_database_url)
+    await store.finish_login(
+        user_id="user-a",
+        phone="",
+        api_key="key-one",
+        endpoint=("https://models.example/v1", "model-a"),
+        catalog=[("model-a", "https://models.example/v1"), ("model-b", "https://models.example/v1")],
+        ttl_s=3600,
+        upstream_expires_at_ms=None,
+        login_method="dev",
+        limits={"model-a": 300000},
+    )
+    context = await store.get_tenant_context("user-a")
+    assert context.catalog == [("model-a", "https://models.example/v1"), ("model-b", "https://models.example/v1")]
+    assert context.limits == {"model-a": 300000}
     await database.close()
 
 
