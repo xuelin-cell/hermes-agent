@@ -3,17 +3,22 @@
 # 与 scripts/deploy-custom-web.sh 的前端步骤一致（同一条 vite 命令、同一个 --base=/hermes/），
 # 只是不动 Nginx、不做 release 目录。Linux 宿主上直接跑；需要 docker。
 #   bash deploy/hermes-mt/scripts/build-frontend.sh
+# 产物不进 git：改了 apps/desktop 之后要在部署机上重跑这一步，再 ./deploy.sh up 让 nginx 带上新产物。
+# npm 仓库默认走 npmmirror（内网到官方仓库慢或不通），要换用 NPM_REGISTRY=... 覆盖。
 set -Eeuo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 OUT="$REPO/deploy/hermes-mt/nginx/dist-browser"
 BUILD_CPUS="${BUILD_CPUS:-4}"
 BUILD_MEMORY="${BUILD_MEMORY:-8g}"
+NPM_REGISTRY="${NPM_REGISTRY:-https://registry.npmmirror.com}"
 
 docker run --rm \
     --name hermes-mt-frontend-builder \
     --cpus "$BUILD_CPUS" --memory "$BUILD_MEMORY" \
     -e ELECTRON_SKIP_BINARY_DOWNLOAD=1 \
     -e PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+    -e PUPPETEER_SKIP_DOWNLOAD=1 \
+    -e npm_config_registry="$NPM_REGISTRY" \
     -v "$REPO:/workspace" \
     -v hermes-custom-root-node-modules:/workspace/node_modules \
     -v hermes-custom-desktop-node-modules:/workspace/apps/desktop/node_modules \
