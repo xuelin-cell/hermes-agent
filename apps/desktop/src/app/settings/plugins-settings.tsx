@@ -12,6 +12,7 @@ import { $pluginRecords, type PluginRecord, setPluginEnabled } from '@/contrib/p
 import { discoverRuntimePlugins } from '@/contrib/runtime-loader'
 import { getProfiles } from '@/hermes'
 import { useI18n } from '@/i18n'
+import { isBrowserShell } from '@/lib/browser-shell'
 import { triggerHaptic } from '@/lib/haptics'
 import { FolderOpen, Monitor, Package, RefreshCw } from '@/lib/icons'
 import { normalize } from '@/lib/text'
@@ -371,6 +372,15 @@ export function PluginsSettings() {
   const rows = Object.values(records).sort(
     (a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || a.name.localeCompare(b.name)
   )
+
+  // Browser build: desktop plugins live in the app's local plugins folder.
+  if (isBrowserShell()) {
+    return (
+      <SettingsContent>
+        <AgentPluginsSection />
+      </SettingsContent>
+    )
+  }
 
   return (
     <SettingsContent>

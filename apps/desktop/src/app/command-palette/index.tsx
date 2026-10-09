@@ -20,6 +20,7 @@ import { KbdCombo } from '@/components/ui/kbd'
 import { getHermesConfigRecord, listAllProfileSessions } from '@/hermes'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { useI18n } from '@/i18n'
+import { withoutHiddenPaletteItems } from '@/lib/browser-shell'
 import { sessionTitle } from '@/lib/chat-runtime'
 import {
   Activity,
@@ -1438,7 +1439,12 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
 
   const activePage = page ? subPages[page] : null
   const unrankedGroups = activePage ? activePage.groups : groups
-  const visibleGroups = useMemo(() => rankGroups(unrankedGroups, search), [unrankedGroups, search])
+
+  const visibleGroups = useMemo(
+    () => rankGroups(withoutHiddenPaletteItems(unrankedGroups), search),
+    [unrankedGroups, search]
+  )
+
   const placeholder = activePage ? activePage.placeholder : t.commandCenter.searchPlaceholder
 
   // The HighlightWatcher inside <Command> reports the highlighted row (arrows

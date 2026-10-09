@@ -180,6 +180,19 @@ describe('refreshProfiles shared rail list (#49289)', () => {
     expect($profiles.get().map(profile => profile.name)).toEqual(['default'])
   })
 
+  it('keeps only the default profile in the browser build, which serves no other', async () => {
+    document.documentElement.dataset.hermesBrowser = 'production'
+
+    try {
+      vi.mocked(getProfiles).mockResolvedValueOnce({ profiles: [profile('default', true), profile('work')] })
+
+      await expect(refreshProfiles()).resolves.toEqual([profile('default', true)])
+      expect($profiles.get().map(profile => profile.name)).toEqual(['default'])
+    } finally {
+      delete document.documentElement.dataset.hermesBrowser
+    }
+  })
+
   it('recovers from transient failures and writes the returned profile list (#70679)', async () => {
     // Global remote mode: the refresh fires while the remote HTTP proxy is still
     // routing, so the first attempts fail and a later one succeeds. The retry

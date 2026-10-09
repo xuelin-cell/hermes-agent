@@ -120,7 +120,9 @@ describe('browser development bridge', () => {
     await installFresh()
     const names: string[] = []
 
-    globalThis.fetch = vi.fn(async () => new Response(new Blob(['x'], { type: 'image/png' }), { status: 200 })) as typeof fetch
+    globalThis.fetch = vi.fn(
+      async () => new Response(new Blob(['x'], { type: 'image/png' }), { status: 200 })
+    ) as typeof fetch
     URL.createObjectURL = vi.fn(() => 'blob:fake')
     URL.revokeObjectURL = vi.fn()
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
@@ -146,7 +148,9 @@ describe('browser development bridge', () => {
       }
 
       if (url.includes('/api/fs/list') && !url.includes('nope')) {
-        return jsonResponse({ entries: [{ name: 'chart.png', path: '/opt/data/workspace/chart.png', isDirectory: false }] })
+        return jsonResponse({
+          entries: [{ name: 'chart.png', path: '/opt/data/workspace/chart.png', isDirectory: false }]
+        })
       }
 
       return jsonResponse({ detail: 'not found' }, 404)
@@ -190,7 +194,9 @@ describe('browser development bridge', () => {
   it('picks files with a hidden file input and registers them as virtual paths', async () => {
     const { VIRTUAL_FILE_ROOT } = await installFresh()
 
-    const clickSpy = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(function (this: HTMLInputElement) {
+    const clickSpy = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(function (
+      this: HTMLInputElement
+    ) {
       const picked = new File(['x'], 'pick.txt', { type: 'text/plain' })
 
       Object.defineProperty(this, 'files', { configurable: true, value: [picked] })
@@ -203,5 +209,160 @@ describe('browser development bridge', () => {
     expect(paths[0].startsWith(VIRTUAL_FILE_ROOT) && paths[0].endsWith('/pick.txt')).toBe(true)
     await expect(window.hermesDesktop.selectPaths({ directories: true })).resolves.toEqual([])
     clickSpy.mockRestore()
+  })
+})
+
+describe('browser bridge: opening in a tab and deleting', () => {
+  interface FakeTab {
+    close: ReturnType<typeof vi.fn>
+    location: { href: string }
+    opener: unknown
+  }
+
+  function fakeTab(): FakeTab {
+    return { close: vi.fn(), location: { href: '' }, opener: window }
+  }
+
+  function captureBlobs(): Blob[] {
+    const blobs: Blob[] = []
+
+    URL.createObjectURL = vi.fn((blob: Blob) => {
+      blobs.push(blob)
+
+      return `blob:${blobs.length}`
+    })
+    URL.revokeObjectURL = vi.fn()
+
+    return blobs
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.doUnmock('@/store/notifications')
+  })
+
+  it('marks the document so the renderer knows it runs in a browser', async () => {
+    await installFresh()
+    const { isBrowserShell } = await import('@/lib/browser-shell')
+
+    expect(document.documentElement.dataset.hermesBrowser).toBe('development')
+    expect(isBrowserShell()).toBe(true)
+  })
+
+  it('opens web pages in a new tab but reports the instance’s own addresses instead', async () => {
+    const notify = vi.fn()
+
+    vi.doMock('@/store/notifications', () => ({ notify }))
+    await installFresh()
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+
+    await window.hermesDesktop.openExternal('https://example.com/a')
+    await window.hermesDesktop.openPreviewInBrowser?.('https://example.com/b')
+    expect(open.mock.calls).toEqual([
+      ['https://example.com/a', '_blank', 'noopener,noreferrer'],
+      ['https://example.com/b', '_blank', 'noopener,noreferrer']
+    ])
+
+    await window.hermesDesktop.openExternal('http://localhost:3000/')
+    await vi.waitFor(() => expect(notify).toHaveBeenCalledTimes(1))
+    await window.hermesDesktop.openPreviewInBrowser?.('http://127.0.0.1:5173/app')
+    await vi.waitFor(() => expect(notify).toHaveBeenCalledTimes(2))
+    expect(open).toHaveBeenCalledTimes(2)
+    expect(notify.mock.calls[0]?.[0]).toMatchObject({ kind: 'warning' })
+    expect(String(notify.mock.calls[0]?.[0]?.message)).toContain('localhost:3000')
+    expect(String(notify.mock.calls[1]?.[0]?.message)).toContain('127.0.0.1:5173')
+  })
+
+  it('opens staged HTML in a new tab inside a sandboxed frame without the app’s origin', async () => {
+    await installFresh()
+    const tab = fakeTab()
+    const open = vi.spyOn(window, 'open').mockImplementation(() => tab as unknown as Window)
+    const blobs = captureBlobs()
+
+    const staged = await window.hermesDesktop.saveImageBuffer(new TextEncoder().encode('<script>1</script>'), '.html')
+
+    await window.hermesDesktop.openPreviewInBrowser?.(`file://${staged}`)
+
+    expect(open).toHaveBeenCalledWith('', '_blank')
+    expect(tab.opener).toBeNull()
+    expect(tab.location.href).toBe('blob:2')
+    expect(blobs[0]?.type).toBe('text/html')
+    await expect(blobs[0]!.text()).resolves.toBe('<script>1</script>')
+
+    const page = await blobs[1]!.text()
+
+    expect(blobs[1]?.type).toBe('text/html')
+    expect(page).toContain('<iframe sandbox="allow-scripts')
+    expect(page).toContain('src="blob:1"')
+    expect(page).not.toContain('allow-same-origin')
+  })
+
+  it('opens gateway files by extension: images as they are, other text as plain text', async () => {
+    await installFresh()
+    const tab = fakeTab()
+
+    vi.spyOn(window, 'open').mockImplementation(() => tab as unknown as Window)
+    const blobs = captureBlobs()
+
+    globalThis.fetch = vi.fn(async () => new Response('<b>not html</b>', { status: 200 })) as typeof fetch
+
+    await window.hermesDesktop.openPreviewInBrowser?.('file:///mnt/u/workspace/chart.png')
+    await window.hermesDesktop.openPreviewInBrowser?.('file:///mnt/u/workspace/notes.md')
+
+    expect(vi.mocked(globalThis.fetch).mock.calls[0]?.[0]).toBe(
+      '/__hermes_backend/api/fs/download?path=%2Fmnt%2Fu%2Fworkspace%2Fchart.png'
+    )
+    expect(blobs.map(blob => blob.type)).toEqual(['image/png', 'text/plain;charset=utf-8'])
+    expect(tab.location.href).toBe('blob:2')
+  })
+
+  it('closes the tab and reports the error when the gateway refuses', async () => {
+    await installFresh()
+    const tab = fakeTab()
+
+    vi.spyOn(window, 'open').mockImplementation(() => tab as unknown as Window)
+    globalThis.fetch = vi.fn(async () => jsonResponse({ detail: 'Access denied' }, 403)) as typeof fetch
+
+    await expect(window.hermesDesktop.openPreviewInBrowser?.('file:///opt/data/.env')).rejects.toThrow('403')
+    expect(tab.close).toHaveBeenCalled()
+  })
+
+  it('says so when the browser blocks the new tab', async () => {
+    await installFresh()
+    vi.spyOn(window, 'open').mockImplementation(() => null)
+
+    await expect(window.hermesDesktop.openPreviewInBrowser?.('file:///mnt/u/workspace/a.png')).rejects.toThrow(
+      /pop-ups|弹出窗口/
+    )
+  })
+
+  it('deletes through the gateway, permanently and recursively', async () => {
+    await installFresh()
+    const requests: { body: string; method: string; url: string }[] = []
+
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({ body: String(init?.body), method: String(init?.method), url: String(input) })
+
+      if (String(init?.body).includes('gone')) {
+        return jsonResponse({ detail: 'Path not found' }, 404)
+      }
+
+      if (String(init?.body).includes('config.yaml')) {
+        return jsonResponse({ detail: 'Path outside managed files root' }, 403)
+      }
+
+      return jsonResponse({ ok: true })
+    }) as typeof fetch
+
+    await expect(window.hermesDesktop.trashPath?.('file:///mnt/u/workspace/old%20dir')).resolves.toBe(true)
+    expect(requests[0]).toEqual({
+      body: JSON.stringify({ path: '/mnt/u/workspace/old dir', recursive: true }),
+      method: 'DELETE',
+      url: '/__hermes_backend/api/files'
+    })
+
+    // Already gone is the same end state; outside the workspace gets a plain explanation.
+    await expect(window.hermesDesktop.trashPath?.('/mnt/u/workspace/gone.txt')).resolves.toBe(true)
+    await expect(window.hermesDesktop.trashPath?.('/opt/data/config.yaml')).rejects.toThrow(/workspace|工作区/)
   })
 })

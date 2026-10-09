@@ -3,6 +3,7 @@ import { atom, batch, computed } from 'nanostores'
 
 import type { HermesConnection } from '@/global'
 import { getProfiles, hermesApi, setApiRequestProfile, STARTUP_REQUEST_TIMEOUT_MS } from '@/hermes'
+import { isBrowserShell } from '@/lib/browser-shell'
 import { invalidateProfileScopedQueries } from '@/lib/query-client'
 import {
   arraysEqual,
@@ -96,7 +97,13 @@ export function refreshProfiles(): Promise<ProfileInfo[]> {
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
-        const { profiles } = await getProfiles()
+        const { profiles: listed } = await getProfiles()
+
+        // Browser build: one backend serves the default profile only, so the
+        // others could be listed but never switched to.
+        const profiles = isBrowserShell()
+          ? listed.filter(profile => profile.is_default || profile.name === 'default')
+          : listed
 
         if (epoch === profileListEpoch) {
           $profiles.set(profiles)

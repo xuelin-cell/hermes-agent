@@ -1,5 +1,6 @@
 import { atom, computed } from 'nanostores'
 
+import { isBrowserShell } from '@/lib/browser-shell'
 import { persistentAtom } from '@/lib/persisted'
 import { readKey } from '@/lib/storage'
 import { normalize } from '@/lib/text'
@@ -128,7 +129,8 @@ export function decodePreviewTabs(raw: string): PreviewTab[] {
 }
 
 export const $previewTabs = persistentAtom<PreviewTab[]>(TABS_STORAGE_KEY, [], {
-  decode: decodePreviewTabs,
+  // Browser build: no in-app browser, so a saved URL tab could not render.
+  decode: raw => decodePreviewTabs(raw).filter(tab => !(isBrowserShell() && tab.target.kind === 'url')),
   // Inline bytes are not restorable. Strip them from images, and skip remote
   // HTML and artifact tabs that cannot render without their in-memory payload.
   encode: tabs =>
@@ -383,6 +385,16 @@ function previewTargetForSource(target: PreviewTarget, source: PreviewRecordSour
  *  its target so a stale label/path can't outlive the thing it points at. The
  *  only way anything reaches a preview. */
 export function openPreview(target: PreviewTarget, source: PreviewRecordSource = 'manual') {
+  // Browser build: the in-app browser is an Electron <webview>, which a browser
+  // can't render — web pages open in a tab of the browser itself instead.
+  if (isBrowserShell() && target.kind === 'url') {
+    if (!/^about:/i.test(target.url)) {
+      void window.hermesDesktop?.openExternal?.(target.url)
+    }
+
+    return
+  }
+
   const resolved = previewTargetForSource(target, source)
   const current = $previewTabs.get()
   const id = resolved.kind === 'url' ? browserTabId(current) : previewTabId(resolved)

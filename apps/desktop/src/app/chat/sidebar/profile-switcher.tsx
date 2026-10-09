@@ -46,6 +46,7 @@ import { Tip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@
 import type { DesktopRegistryConnection } from '@/global'
 import { getProfileSoul, updateProfileSoul } from '@/hermes'
 import { useI18n } from '@/i18n'
+import { isBrowserShell } from '@/lib/browser-shell'
 import { sortConnectionsForDisplay } from '@/lib/connection-display'
 import { triggerHaptic } from '@/lib/haptics'
 import { Loader2 } from '@/lib/icons'
@@ -513,8 +514,8 @@ export function ProfileRail() {
               )
             : activeStrip}
 
-          <AddProfileButton label={p.newProfile} onClick={() => setCreateOpen(true)} />
-          <ImportProfileButton label={p.importProfile} />
+          {!isBrowserShell() && <AddProfileButton label={p.newProfile} onClick={() => setCreateOpen(true)} />}
+          {!isBrowserShell() && <ImportProfileButton label={p.importProfile} />}
         </div>
       )}
 
@@ -527,7 +528,7 @@ export function ProfileRail() {
       {/* Multi-gateway discoverability: before a second source exists, a plug
           pinned beside Manage deep-links to the unified Gateways page. Once
           there are several sources, the same action lives in their selector. */}
-      {!multipleConnections && (
+      {!multipleConnections && !isBrowserShell() && (
         <ProfilePill
           active={false}
           glyph="plug"

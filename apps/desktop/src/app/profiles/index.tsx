@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { ProfileGlyph } from '@/components/ui/profile-glyph'
 import { getProfileSoul, type ProfileInfo, updateProfileSoul } from '@/hermes'
 import { useI18n } from '@/i18n'
+import { isBrowserShell } from '@/lib/browser-shell'
 import { displayPath } from '@/lib/display-path'
 import { AlertTriangle, Save } from '@/lib/icons'
 import { resolveProfileColor } from '@/lib/profile-color'
@@ -150,7 +151,7 @@ export function ProfilesView({ onClose }: ProfilesViewProps) {
                   profile={profile}
                 />
               ))}
-              <PanelAddButton label={p.newProfile} onClick={() => setCreateOpen(true)} />
+              {!isBrowserShell() && <PanelAddButton label={p.newProfile} onClick={() => setCreateOpen(true)} />}
             </PanelList>
 
             {selected ? (

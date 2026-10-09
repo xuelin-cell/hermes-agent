@@ -19,6 +19,7 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { useI18n } from '@/i18n'
+import { isBrowserShell } from '@/lib/browser-shell'
 import { desktopGit } from '@/lib/desktop-git'
 import { cn } from '@/lib/utils'
 import {
@@ -320,7 +321,10 @@ export function SidebarFilterMenu({ className }: { className?: string }) {
           )}
 
           <DropdownMenuSub>
-            <DropdownMenuSubTrigger>Profile</DropdownMenuSubTrigger>
+            {/* Browser build: one profile, nothing to filter, create or import. */}
+            <DropdownMenuSubTrigger disabled={isBrowserShell()} hidden={isBrowserShell()}>
+              Profile
+            </DropdownMenuSubTrigger>
             <DropdownMenuSubContent className="max-h-80 overflow-y-auto">
               {/* Scoped to one profile the rail is already the filter, so the
                   per-profile boxes only appear where they can narrow something.

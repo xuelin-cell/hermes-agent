@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { $previewTabs, closeRightRail, openBrowserTab, openPreview } from './preview'
 
@@ -47,5 +47,35 @@ describe('openBrowserTab', () => {
 
     expect(tabs).toHaveLength(2)
     expect(tabs.map(tab => tab.target.url)).toContain('file:///work/notes.md')
+  })
+})
+
+// The in-app browser is an Electron <webview>; a browser can't render one.
+describe('browser build', () => {
+  const originalBridge = window.hermesDesktop
+
+  afterEach(() => {
+    delete document.documentElement.dataset.hermesBrowser
+    Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: originalBridge })
+  })
+
+  it('opens web pages in a tab of the browser itself, never in the in-app browser', () => {
+    const openExternal = vi.fn(async () => true)
+
+    document.documentElement.dataset.hermesBrowser = 'production'
+    Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: { openExternal } })
+
+    openPreview({ kind: 'url', label: 'Example', source: 'https://example.com', url: 'https://example.com' })
+    openBrowserTab()
+    openPreview({
+      kind: 'file',
+      label: 'notes.md',
+      path: '/work/notes.md',
+      source: 'notes.md',
+      url: 'file:///work/notes.md'
+    })
+
+    expect(openExternal.mock.calls).toEqual([['https://example.com']])
+    expect($previewTabs.get().map(tab => tab.target.kind)).toEqual(['file'])
   })
 })
