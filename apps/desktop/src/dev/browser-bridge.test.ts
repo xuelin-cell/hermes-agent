@@ -24,6 +24,39 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 describe('browser development bridge', () => {
+  it('supplies crypto.randomUUID on plain-http pages where browsers withhold it', async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis.crypto, 'randomUUID')
+    const protoDescriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(globalThis.crypto), 'randomUUID')
+
+    // Simulate a non-secure context: no randomUUID anywhere on the crypto object.
+    Object.defineProperty(globalThis.crypto, 'randomUUID', { configurable: true, value: undefined, writable: true })
+
+    try {
+      const { ensureRandomUUID, randomUUIDFallback } = await installFresh()
+
+      expect(typeof globalThis.crypto.randomUUID).toBe('function')
+      const id = globalThis.crypto.randomUUID()
+
+      expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+      expect(new Set(Array.from({ length: 50 }, () => randomUUIDFallback())).size).toBe(50)
+
+      // Native implementations are left alone.
+      const native = () => '00000000-0000-4000-8000-000000000000' as const
+
+      Object.defineProperty(globalThis.crypto, 'randomUUID', { configurable: true, value: native, writable: true })
+      ensureRandomUUID()
+      expect(globalThis.crypto.randomUUID).toBe(native)
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(globalThis.crypto, 'randomUUID', descriptor)
+      } else {
+        delete (globalThis.crypto as { randomUUID?: unknown }).randomUUID
+      }
+
+      expect(typeof (protoDescriptor?.value ?? globalThis.crypto.randomUUID)).toBe('function')
+    }
+  })
+
   it('provides safe browser fallbacks for renderer error logging', async () => {
     await installFresh()
 
@@ -59,8 +92,44 @@ describe('browser development bridge', () => {
 
     expect(pastedPath.startsWith(VIRTUAL_FILE_ROOT)).toBe(true)
     expect(pastedPath.endsWith('.png')).toBe(true)
-    await expect(bridge.readFileDataUrl(pastedPath)).resolves.toMatch(/^data:.*;base64,iVBORw==$/)
-    expect(await bridge.readFileDataUrlForAttach?.(pastedPath)).toMatch(/^data:/)
+    // Pasted bytes carry no MIME; it is derived from the extension so the
+    // renderer treats the data URL as an image (thumbnail + inline bubble).
+    await expect(bridge.readFileDataUrl(pastedPath)).resolves.toBe('data:image/png;base64,iVBORw==')
+    expect(await bridge.readFileDataUrlForAttach?.(pastedPath)).toMatch(/^data:image\/png;/)
+  })
+
+  it('maps image extensions to MIME types and falls back to octet-stream', async () => {
+    const { mimeForExtension } = await installFresh()
+
+    expect(mimeForExtension('.PNG')).toBe('image/png')
+    expect(mimeForExtension('jpg')).toBe('image/jpeg')
+    expect(mimeForExtension('.html')).toBe('text/html')
+    expect(mimeForExtension('.xyz')).toBe('application/octet-stream')
+  })
+
+  it('names saved images sensibly, never after a data: URL payload', async () => {
+    const { imageDownloadName } = await installFresh()
+
+    expect(imageDownloadName('data:image/png;base64,iVBORw0KGgo=', 'image/png')).toMatch(/^image-\d{8}-\d{6}\.png$/)
+    expect(imageDownloadName('data:image/jpeg;base64,/9j/', 'image/jpeg')).toMatch(/\.jpg$/)
+    expect(imageDownloadName('https://cdn.example/out/chart.png?x=1', 'image/png')).toBe('chart.png')
+    expect(imageDownloadName('https://cdn.example/out/a1b2c3', 'image/webp')).toBe('a1b2c3.webp')
+  })
+
+  it('saves images through a browser download and does not claim a saved path', async () => {
+    await installFresh()
+    const names: string[] = []
+
+    globalThis.fetch = vi.fn(async () => new Response(new Blob(['x'], { type: 'image/png' }), { status: 200 })) as typeof fetch
+    URL.createObjectURL = vi.fn(() => 'blob:fake')
+    URL.revokeObjectURL = vi.fn()
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      names.push(this.download)
+    })
+
+    await expect(window.hermesDesktop.saveImageFromUrl('data:image/png;base64,eA==')).resolves.toBe(false)
+    expect(names).toHaveLength(1)
+    expect(names[0]).toMatch(/^image-\d{8}-\d{6}\.png$/)
   })
 
   it('reads gateway-side files and directories through /api/fs', async () => {

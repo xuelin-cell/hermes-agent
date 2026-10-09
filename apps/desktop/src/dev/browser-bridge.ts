@@ -135,6 +135,31 @@ function safeFileName(name: string): string {
   return cleaned || 'file'
 }
 
+const MIME_BY_EXTENSION: Record<string, string> = {
+  '.avif': 'image/avif',
+  '.bmp': 'image/bmp',
+  '.gif': 'image/gif',
+  '.heic': 'image/heic',
+  '.htm': 'text/html',
+  '.html': 'text/html',
+  '.jpeg': 'image/jpeg',
+  '.jpg': 'image/jpeg',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.tif': 'image/tiff',
+  '.tiff': 'image/tiff',
+  '.webp': 'image/webp'
+}
+
+/** Raw bytes (pasted images, generated previews) arrive without a MIME type;
+ * derive it from the extension so data URLs read back as `data:image/...` —
+ * the renderer only thumbnails and inlines images with an image MIME. */
+export function mimeForExtension(ext: string): string {
+  const key = (ext.startsWith('.') ? ext : `.${ext}`).toLowerCase()
+
+  return MIME_BY_EXTENSION[key] || 'application/octet-stream'
+}
+
 function registerVirtualFile(blob: Blob, name: string): string {
   virtualSeq += 1
   const path = `${VIRTUAL_FILE_ROOT}${virtualSeq.toString(36)}/${safeFileName(name)}`
@@ -278,8 +303,14 @@ async function saveGatewayFile(payload: {
     throw new Error(`${response.status}: ${(await response.text()) || response.statusText}`)
   }
 
-  const blob = await response.blob()
   const name = payload.suggestedName || target.split('/').pop() || 'download'
+
+  triggerBrowserDownload(await response.blob(), name)
+
+  return { path: name, saved: true }
+}
+
+function triggerBrowserDownload(blob: Blob, name: string): void {
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
 
@@ -290,8 +321,54 @@ async function saveGatewayFile(payload: {
   anchor.click()
   anchor.remove()
   window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+}
 
-  return { path: name, saved: true }
+const EXTENSION_BY_IMAGE_MIME: Record<string, string> = {
+  'image/bmp': '.bmp',
+  'image/gif': '.gif',
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/svg+xml': '.svg',
+  'image/webp': '.webp'
+}
+
+/** Name for a saved image. Gateway images reach the renderer as `data:` URLs,
+ * whose "path" is the base64 payload — never use that as a filename. */
+export function imageDownloadName(src: string, mime: string): string {
+  const ext = EXTENSION_BY_IMAGE_MIME[mime.split(';')[0].trim().toLowerCase()] || '.png'
+
+  if (!/^data:/i.test(src)) {
+    try {
+      const last = new URL(src, window.location.href).pathname.split('/').filter(Boolean).pop()
+
+      if (last) {
+        return /\.[a-z0-9]{2,5}$/i.test(last) ? decodeURIComponent(last) : `${decodeURIComponent(last)}${ext}`
+      }
+    } catch {
+      // fall through to the timestamped name
+    }
+  }
+
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..*$/, '').replace('T', '-')
+
+  return `image-${stamp}${ext}`
+}
+
+/** Image "Save" (hover button, lightbox): a browser download. Resolves false so
+ * the caller does not toast the raw source string as the "saved file" name;
+ * the browser's own download bar is the confirmation. */
+async function saveImageFromUrl(src: string): Promise<boolean> {
+  const response = await fetch(src, { credentials: credentials() })
+
+  if (!response.ok) {
+    throw new Error(`Could not fetch image: ${response.status}`)
+  }
+
+  const blob = await response.blob()
+
+  triggerBrowserDownload(blob, imageDownloadName(src, blob.type))
+
+  return false
 }
 
 async function writeClipboard(text: string): Promise<boolean> {
@@ -334,6 +411,32 @@ async function readClipboard(): Promise<string> {
   }
 }
 
+/** RFC 4122 v4 UUID from `crypto.getRandomValues`, which (unlike `randomUUID`)
+ * is available on plain-http pages. */
+export function randomUUIDFallback(): `${string}-${string}-${string}-${string}-${string}` {
+  const bytes = crypto.getRandomValues(new Uint8Array(16))
+
+  bytes[6] = (bytes[6] & 0x0f) | 0x40
+  bytes[8] = (bytes[8] & 0x3f) | 0x80
+  const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')
+
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+}
+
+/** Browsers expose `crypto.randomUUID` only in secure contexts (https or
+ * localhost). The browser build is served over plain http inside the intranet,
+ * where the renderer's `crypto.randomUUID()` calls (composer attachment ids,
+ * among others) would throw and silently drop pasted or picked images. */
+export function ensureRandomUUID(): void {
+  const cryptoObj = globalThis.crypto as (Crypto & { randomUUID?: unknown }) | undefined
+
+  if (!cryptoObj || typeof cryptoObj.randomUUID === 'function' || typeof cryptoObj.getRandomValues !== 'function') {
+    return
+  }
+
+  Object.defineProperty(cryptoObj, 'randomUUID', { configurable: true, value: randomUUIDFallback, writable: true })
+}
+
 /** Install enough of Electron's typed bridge for the real renderer to run in a
  * normal browser. Window/OS integrations degrade to no-ops; filesystem calls
  * are served from an in-memory store (files the user dropped, pasted or picked)
@@ -343,6 +446,8 @@ export function installBrowserDevelopmentBridge(): boolean {
   if ((!import.meta.env.DEV && !productionBrowserBuild) || typeof window === 'undefined' || window.hermesDesktop) {
     return false
   }
+
+  ensureRandomUUID()
 
   const conn = connection()
   const asyncOk = async () => ({ ok: true })
@@ -433,10 +538,14 @@ export function installBrowserDevelopmentBridge(): boolean {
     revealLogs: async () => ({ ok: false, path: '', error: 'Native log folders are unavailable in a browser.' }),
     saveClipboardImage,
     saveGatewayFile,
+    saveImageFromUrl,
     saveImageBuffer: async (data: ArrayBuffer | Uint8Array, ext: string) => {
       const suffix = ext ? (ext.startsWith('.') ? ext : `.${ext}`) : '.png'
 
-      return registerVirtualFile(new Blob([data as BlobPart]), `pasted-${Date.now()}${suffix}`)
+      return registerVirtualFile(
+        new Blob([data as BlobPart], { type: mimeForExtension(suffix) }),
+        `pasted-${Date.now()}${suffix}`
+      )
     },
     selectPaths,
     setActiveConnectionRoute: () => undefined,

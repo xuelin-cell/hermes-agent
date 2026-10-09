@@ -16,7 +16,12 @@ import {
 import type { ChatMessage, ChatMessagePart } from './types'
 
 const ATTACHED_CONTEXT_MARKER_RE = /(?:^|\n)--- Attached Context ---\s*\n/
-const CONTEXT_WARNINGS_MARKER_RE = /(?:^|\n)--- Context Warnings ---[\s\S]*$/
+// The warnings block runs to the end of the prompt text, but when the gateway
+// persists an image turn it appends the `@image:` directive lines AFTER it
+// (`_build_persist_message_with_image_refs`). Stop at the first such line so a
+// turn that carried both a context warning and a pasted image keeps its image
+// on resume instead of losing it with the warnings.
+const CONTEXT_WARNINGS_MARKER_RE = /(?:^|\n)--- Context Warnings ---[\s\S]*?(?=\n@image:|$)/
 const CONTEXT_REF_RE = /@(file|folder|url|image|tool|terminal):(?:"[^"\n]+"|'[^'\n]+'|`[^`\n]+`|\S+)/g
 
 function displayContentForMessage(role: SessionMessage['role'], content: unknown): string {
