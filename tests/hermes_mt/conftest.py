@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 import uuid
 from pathlib import Path
@@ -17,7 +18,8 @@ if str(ENTRY_ROOT) not in sys.path:
     sys.path.insert(0, str(ENTRY_ROOT))
 
 
-_LOCAL_ADMIN_DSN = "postgresql://hermes_entry:hermes-local-dev@127.0.0.1:15432/postgres"
+# 本机 15432 被开发栈的库占着时，可另起一个测试库并用 MT_TEST_PG_DSN 指过去。
+_LOCAL_ADMIN_DSN = os.environ.get("MT_TEST_PG_DSN", "postgresql://hermes_entry:hermes-local-dev@127.0.0.1:15432/postgres")
 
 
 def _database_url(dsn: str, database: str) -> str:

@@ -288,3 +288,35 @@ async def test_advisory_lock_is_exclusive_across_connections(postgres_database_u
         async with store.advisory_lock("user-y"):
             pass
     await database.close()
+
+
+@pytest.mark.asyncio
+async def test_cron_due_query_wakes_each_time_point_once(postgres_database_url: str) -> None:
+    """停着的实例、任务快到点 ⇒ 叫；同一个时间点叫过就不再叫；在跑的、在删的、停用的用户不叫。"""
+    from datetime import datetime, timedelta, timezone
+
+    database, store = await _store(postgres_database_url)
+    for user_id in ("u-due", "u-later", "u-running", "u-draining", "u-disabled", "u-none"):
+        await _user_with_runtime(store, user_id)
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    soon, later = now + timedelta(seconds=60), now + timedelta(hours=3)
+    await store.set_next_cron("u-due", soon)
+    await store.set_next_cron("u-later", later)
+    await store.set_next_cron("u-running", soon)
+    await store.set_tenant_state("u-running", "running")
+    await store.set_next_cron("u-draining", soon)
+    await store.set_lifecycle("u-draining", "deleting")
+    await store.set_next_cron("u-disabled", now - timedelta(minutes=5))
+    async with database.acquire() as connection:
+        await connection.execute("UPDATE users SET status = 'disabled' WHERE user_id = 'u-disabled'")
+
+    assert await store.cron_due_tenants(90) == [("u-due", soon)]
+    await store.mark_cron_woken("u-due", soon)
+    assert await store.cron_due_tenants(90) == []
+    # 实例下次停下时报了新的时间点：又可以叫了；报 None（没任务了）就不叫
+    nxt = soon + timedelta(days=1)
+    await store.set_next_cron("u-due", nxt)
+    assert await store.cron_due_tenants(24 * 3600 + 120) == [("u-later", later), ("u-due", nxt)]
+    await store.set_next_cron("u-due", None)
+    assert [u for u, _ in await store.cron_due_tenants(24 * 3600 + 120)] == ["u-later"]
+    await database.close()

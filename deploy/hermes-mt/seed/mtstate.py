@@ -12,6 +12,9 @@
 3. **主人标记** ``OWNER``：每台实例只写自己那一代的目录，写之前核对卷上的 OWNER 是不是
    自己 —— 不是就说明入口已经把这个用户交给了新实例，本实例必须停止写卷。
 
+另有一个只读的 ``activity``：定时任务和对话回合忙不忙、下一个定时任务几点到，
+入口据此决定回收与定时叫醒。
+
 只用标准库；以 hermes 用户（UID 10000）运行；归档当作不可信输入解压。
 """
 
@@ -75,8 +78,13 @@ EXCLUDE_TOP = frozenset({
 EXCLUDE_DIR_NAMES = frozenset({"__pycache__", "node_modules", ".venv", "venv", ".git", ".tox", "site-packages"})
 # home/ 是终端子进程的 HOME，只收白名单里的小配置（相对 home/）。
 HOME_KEEP = (".gitconfig", ".ssh", ".npmrc", ".pypirc", ".netrc", ".config/git")
-# 变化检测忽略（相对 HERMES_HOME）：每用一次技能就改写，不代表用户状态变了。
-NOISE_FILES = frozenset({"skills/.usage.json"})
+# 变化检测忽略（相对 HERMES_HOME；profiles/<名字>/ 下同样的路径也算）：每用一次技能就改写的使用记录，
+# 定时任务调度线程每分钟写一次的心跳 —— 都不代表用户状态变了。不忽略心跳的话，开着的实例什么都没做
+# 也会每个归档周期打一份包（10-09 本机实测：空闲 75 秒内只有这两个心跳文件在变）。
+NOISE_FILES = frozenset({
+    "skills/.usage.json",
+    "cron/ticker_heartbeat", "cron/ticker_last_success", "cron/ticker_last_error",
+})
 # 库里不算变化的表：hermes 每分钟写一次心跳；FTS 影子表随主表变。
 NOISE_TABLES = frozenset({"gateway_heartbeats"})
 
@@ -293,12 +301,19 @@ def collect(home: Path) -> tuple[list[Path], list[Path]]:
     return files, dbs
 
 
+def _is_noise_file(rel: str) -> bool:
+    if rel in NOISE_FILES:
+        return True
+    parts = rel.split("/", 2)
+    return len(parts) == 3 and parts[0] == "profiles" and parts[2] in NOISE_FILES
+
+
 def signature(home: Path) -> str:
     """状态签名：普通文件的 (路径, 大小, mtime) + 每个库的内容摘要。两次相同就说明没在变。"""
     files, dbs = collect(home)
     h = hashlib.sha256()
     for rel in files:
-        if str(rel).replace(os.sep, "/") in NOISE_FILES:
+        if _is_noise_file(str(rel).replace(os.sep, "/")):
             continue
         try:
             st = (home / rel).stat()
@@ -893,6 +908,150 @@ def run_config_migration(home: Path, hermes_root: Path = Path("/opt/hermes")) ->
     if proc.returncode != 0:
         return "failed: " + (proc.stderr or proc.stdout).strip()[-300:]
     return "ok"
+
+
+# ---------------------------------------------------------------- 忙不忙：定时任务与对话回合
+#
+# 入口回收空闲实例前、暂停和删实例时要知道：现在有没有活在干，下一个定时任务几点到。
+# 只读 hermes 自己写的文件，不改它：
+#   定时任务 <home>/cron/jobs.json —— 下次执行时间 next_run_at（带时区的 ISO 串）；正在跑的任务
+#            带 fire_claim，hermes 每 60 秒续一次、租约 300 秒，跑完清掉。调度线程每转一轮写一次
+#            cron/ticker_heartbeat（epoch 秒）。
+#   对话回合 <home>/state.db 的 sessions —— 回合进行中 hermes 每 30~60 秒写一次 last_activity_at，
+#            同时带 last_activity_description；回合结束把描述清空。
+# profiles/ 下每个没删的 profile 各有一套，hermes 的调度线程也是逐个转的。
+
+CRON_CLAIM_TTL_S = 300.0   # 与 hermes claim_job_for_fire 的租约一致
+TURN_ACTIVE_S = 300.0      # 回合心跳最慢 60 秒一次；5 分钟没动静就不算在跑
+_PROFILE_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+
+
+def hermes_homes(home: Path) -> list[Path]:
+    """默认 profile 加 profiles/ 下每个没删的 profile（删掉的在 profiles/.deleted/ 下留墓碑）。"""
+    homes = [home]
+    root = home / "profiles"
+    try:
+        entries = sorted(root.iterdir())
+    except OSError:
+        return homes
+    for entry in entries:
+        if (entry.is_dir() and not entry.is_symlink() and entry.name != "default"
+                and _PROFILE_NAME_RE.match(entry.name) and not (root / ".deleted" / entry.name).exists()):
+            homes.append(entry)
+    return homes
+
+
+def _epoch(value) -> float | None:
+    """hermes 写的时间 → epoch 秒。数字原样；ISO 串不带时区的按本机时区算（与 hermes 的 _ensure_aware 一致）。"""
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        return datetime.fromisoformat(str(value).strip()).timestamp()
+    except ValueError:
+        return None
+
+
+def _read_jobs(path: Path) -> list[dict]:
+    """与 hermes load_jobs 同样宽容：BOM、裸控制字符、按 ID 当键的写法都认。"""
+    raw = path.read_text(encoding="utf-8-sig")
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        data = json.loads(raw, strict=False)
+    jobs = data.get("jobs", []) if isinstance(data, dict) else data
+    if isinstance(jobs, dict):
+        jobs = list(jobs.values())
+    if not isinstance(jobs, list):
+        raise ValueError("jobs 不是列表")
+    return [job for job in jobs if isinstance(job, dict)]
+
+
+def _job_will_run(job: dict) -> bool:
+    """没启用、暂停了、已完成的任务不会再跑（与 hermes is_job_runnable 加终态判断一致）。"""
+    if not job.get("enabled", True) or job.get("paused_at"):
+        return False
+    return str(job.get("state") or "").strip() not in ("paused", "completed")
+
+
+def cron_activity(home: Path, now: float | None = None) -> dict:
+    """``{"next_at": 最早的下次执行时间（epoch 秒）或 None, "running": 正在跑的任务数, "jobs": 还会再跑的任务数, "errors": [...]}``
+
+    已经过点、而调度线程在那之后又转过一轮还没挪走它的任务（hermes 不肯跑它）不算进 next_at，
+    免得入口为一个永远不会跑的任务反复叫醒实例。实例暂停期间调度线程不转，恢复后过点的任务照常算待跑。
+    """
+    now = time.time() if now is None else now
+    next_at: float | None = None
+    running = will_run = 0
+    errors: list[str] = []
+    for store in hermes_homes(home):
+        cron_dir = store / "cron"
+        jobs_file = cron_dir / "jobs.json"
+        if not jobs_file.is_file():
+            continue
+        try:
+            jobs = _read_jobs(jobs_file)
+        except (OSError, ValueError) as exc:
+            errors.append(f"{jobs_file.relative_to(home)}: {type(exc).__name__}")
+            continue
+        try:
+            ticked_at: float | None = float((cron_dir / "ticker_heartbeat").read_text(encoding="utf-8").strip())
+        except (OSError, ValueError):
+            ticked_at = None
+        for job in jobs:
+            claim = job.get("fire_claim")
+            claimed_at = _epoch(claim.get("at")) if isinstance(claim, dict) else None
+            if claimed_at is not None and 0 <= now - claimed_at < CRON_CLAIM_TTL_S:
+                running += 1
+            if not _job_will_run(job):
+                continue
+            will_run += 1
+            due = _epoch(job.get("next_run_at"))
+            if due is None or (ticked_at is not None and due < ticked_at - 5):
+                continue
+            next_at = due if next_at is None else min(next_at, due)
+    return {"next_at": next_at, "running": running, "jobs": will_run, "errors": errors}
+
+
+def turn_activity(home: Path, now: float | None = None) -> dict:
+    """``{"running": 进行中的对话回合数, "errors": [...]}``。只读打开各 profile 的 state.db。"""
+    now = time.time() if now is None else now
+    running = 0
+    errors: list[str] = []
+    for store in hermes_homes(home):
+        db = store / "state.db"
+        if not db.is_file():
+            continue
+        try:
+            conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=2.0)
+            try:
+                row = conn.execute(
+                    "SELECT COUNT(*) FROM sessions WHERE COALESCE(last_activity_description, '') <> '' "
+                    "AND last_activity_at >= ?",
+                    (now - TURN_ACTIVE_S,),
+                ).fetchone()
+            finally:
+                conn.close()
+            running += int(row[0] or 0)
+        except sqlite3.Error as exc:
+            errors.append(f"{db.relative_to(home)}: {type(exc).__name__}")
+    return {"running": running, "errors": errors}
+
+
+def activity(home: Path, now: float | None = None) -> dict:
+    """转发器随 /__mt/status、sync、drain 回报给入口的「忙不忙」。读不了的部分记进 errors，不抛。"""
+    now = time.time() if now is None else now
+    cron = cron_activity(home, now)
+    turns = turn_activity(home, now)
+    return {
+        "checked_at": now,
+        "cron_next_at": cron["next_at"],
+        "cron_running": cron["running"],
+        "cron_jobs": cron["jobs"],
+        "turns": turns["running"],
+        "errors": cron["errors"] + turns["errors"],
+    }
 
 
 # ---------------------------------------------------------------- 管家本体

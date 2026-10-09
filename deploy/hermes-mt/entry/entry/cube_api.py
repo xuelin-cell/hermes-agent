@@ -349,7 +349,7 @@ class Cube:
         raise CubeError(0, f"转发进程 {timeout_s}s 内没就绪：{last}")
 
     async def status(self, sandbox_id: str, port: int) -> dict:
-        """问容器：hermes 起了没、引导过没、引导窗口还剩多久。"""
+        """问容器：hermes 起了没、引导过没、引导窗口还剩多久，以及忙不忙（``activity``）。"""
         _, body = await self._tenant_req("GET", sandbox_id, port, "/__mt/status", timeout_s=15)
         return body if isinstance(body, dict) else {}
 
@@ -401,20 +401,24 @@ class Cube:
             raise
 
     async def sync_state(self, sandbox_id: str, port: int, token: str) -> dict:
-        """让状态管家立即归档一次（暂停前调）。返回归档摘要。"""
+        """让状态管家立即归档一次（暂停前调）。
+
+        返回转发器的整个回包：``archive`` 是归档摘要，``activity`` 是忙不忙和下一个定时任务的时间
+        （老转发器没有这一项）。
+        """
         _, body = await self._tenant_req(
             "POST", sandbox_id, port, "/__mt/sync",
             json_body={}, timeout_s=180, extra_headers={"X-MT-Token": token},
         )
-        return (body or {}).get("archive") or {}
+        return body if isinstance(body, dict) else {}
 
     async def drain(self, sandbox_id: str, port: int, token: str) -> dict:
-        """停 hermes、做最终归档（删实例前调）。返回归档摘要。可重复调。"""
+        """停 hermes、做最终归档（删实例前调）。可重复调。回包同 ``sync_state``。"""
         _, body = await self._tenant_req(
             "POST", sandbox_id, port, "/__mt/drain",
             json_body={}, timeout_s=300, extra_headers={"X-MT-Token": token},
         )
-        return (body or {}).get("archive") or {}
+        return body if isinstance(body, dict) else {}
 
     async def wait_hermes(self, sandbox_id: str, port: int, timeout_s: float = 240) -> None:
         """等 hermes 真的能应答业务请求。

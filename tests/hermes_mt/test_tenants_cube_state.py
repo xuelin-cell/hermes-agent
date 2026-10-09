@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -26,6 +27,7 @@ class FakeStore:
     runtime: Runtime = field(default_factory=lambda: Runtime("stopped", "", "", 0, "", "", ""))
     calls: list = field(default_factory=list)
     epoch: int = 0
+    cron_due: list = field(default_factory=list)   # cron_due_tenants 返回的 (user_id, 到点时间)
 
     async def ensure_tenant_token(self, user_id):
         return "tok"
@@ -86,7 +88,20 @@ class FakeStore:
                                self.runtime.state_owner, self.runtime.state_archive, self.runtime.lifecycle)
 
     async def touch_tenant(self, user_id):
-        pass
+        self.calls.append(("touch",))
+
+    async def set_next_cron(self, user_id, at):
+        self.calls.append(("next_cron", at))
+
+    async def cron_due_tenants(self, within_s):
+        return list(self.cron_due)
+
+    async def mark_cron_woken(self, user_id, at):
+        self.calls.append(("cron_woken", at))
+        self.cron_due = [(u, d) for u, d in self.cron_due if (u, d) != (user_id, at)]
+
+    async def idle_tenants(self, older_than_s, exclude=None):
+        return ["u"] if self.runtime.state == "running" and "u" not in (exclude or set()) else []
 
     async def write_audit(self, user_id, event_type, details=None):
         self.calls.append(("audit", event_type))
@@ -113,6 +128,9 @@ class FakeCube:
         self.tokens: dict[str, str] = {}
         self.boot_failures: list[CubeError] = []   # 每次 bootstrap 先弹一个出来抛，空了就正常
         self.gone_during_wait: set[str] = set()     # 等就绪时被外部删掉的实例
+        self.activity: dict | None = None            # 转发器报的忙不忙；None = 老转发器，不报
+        self.sync_error: CubeError | None = None
+        self.status_error: CubeError | None = None
 
     def host_for(self, sandbox_id, port):
         return f"{port}-{sandbox_id}.cube.app"
@@ -163,18 +181,32 @@ class FakeCube:
             raise CubeError(0, "not ready")
         self.calls.append(("wait_hermes", sandbox_id))
 
+    def _reply(self, archive: str) -> dict:
+        body: dict = {"ok": True, "archive": {"archive": archive}}
+        if self.activity is not None:
+            body["activity"] = dict(self.activity)
+        return body
+
     async def status(self, sandbox_id, port):
-        return {"bootstrapped": sandbox_id in self.hermes_ready, "boot_window_left_s": 500}
+        self.calls.append(("status", sandbox_id))
+        if self.status_error is not None:
+            raise self.status_error
+        body = {"bootstrapped": sandbox_id in self.hermes_ready, "boot_window_left_s": 500}
+        if self.activity is not None:
+            body["activity"] = dict(self.activity)
+        return body
 
     async def sync_state(self, sandbox_id, port, token):
         self.calls.append(("sync", sandbox_id))
-        return {"archive": "sync.tar.gz"}
+        if self.sync_error is not None:
+            raise self.sync_error
+        return self._reply("sync.tar.gz")
 
     async def drain(self, sandbox_id, port, token):
         self.calls.append(("drain", sandbox_id))
         if not self.drain_ok:
             raise CubeError(500, "drain failed")
-        return {"archive": "final.tar.gz"}
+        return self._reply("final.tar.gz")
 
     async def remove_sandbox(self, sandbox_id):
         self.calls.append(("remove", sandbox_id))
@@ -472,3 +504,165 @@ async def test_instance_being_deleted_by_platform_is_treated_as_gone(monkeypatch
     cube.wait_gone = wait_gone
     tenant = await _manager(store, cube).ensure_running("u")
     assert tenant.sandbox_id == "sb1" and ("wait_gone", "sbOld") in cube.calls and ("deleted", "sbOld", "gone") in store.calls
+
+
+# ---- 定时任务：停着的实例按时叫醒，忙着的实例不回收 ---------------------------------
+
+_DUE = 1_791_600_000.0   # 一个固定的「下次执行时间」（epoch 秒）
+
+
+def _running_store() -> FakeStore:
+    return FakeStore(runtime=Runtime("running", "sb1", "tpl-new", 1, "sb1", "", ""))
+
+
+def _running_cube() -> FakeCube:
+    return FakeCube({"sb1": {"sandboxID": "sb1", "templateID": "tpl-new", "state": "running"}})
+
+
+def test_busy_reason_rules() -> None:
+    from entry.tenants import busy_reason
+
+    now = 1_000_000.0
+    assert busy_reason(None, now, 300) == ""                                   # 老转发器：照旧回收
+    assert busy_reason({"cron_running": 1, "turns": 0, "cron_next_at": None}, now, 300) == "cron_running"
+    assert busy_reason({"cron_running": 0, "turns": 2, "cron_next_at": None}, now, 300) == "turn_running"
+    assert busy_reason({"cron_running": 0, "turns": 0, "cron_next_at": now + 200}, now, 300) == "cron_due"
+    assert busy_reason({"cron_running": 0, "turns": 0, "cron_next_at": now - 200}, now, 300) == "cron_due"   # 刚过点，等调度线程
+    assert busy_reason({"cron_running": 0, "turns": 0, "cron_next_at": now + 3600}, now, 300) == ""          # 一小时后才到：先暂停，到点叫醒
+    assert busy_reason({"cron_running": 0, "turns": 0, "cron_next_at": now - 3600}, now, 300) == ""          # 过点一小时还没跑：不再挂着
+    assert busy_reason({"errors": ["state.db: OperationalError"]}, now, 300) == ""
+
+
+@pytest.mark.asyncio
+async def test_idle_stop_records_next_cron_from_sync() -> None:
+    store, cube = _running_store(), _running_cube()
+    cube.activity = {"cron_next_at": _DUE, "cron_running": 0, "turns": 0}
+    await _manager(store, cube).stop("u", reason="idle")
+    nxt = [c[1] for c in store.calls if c[0] == "next_cron"]
+    assert nxt == [datetime.fromtimestamp(_DUE, tz=timezone.utc)]
+    # 没有待执行的任务：清掉原来记的
+    store2, cube2 = _running_store(), _running_cube()
+    cube2.activity = {"cron_next_at": None, "cron_running": 0, "turns": 0}
+    await _manager(store2, cube2).stop("u", reason="idle")
+    assert [c[1] for c in store2.calls if c[0] == "next_cron"] == [None]
+
+
+@pytest.mark.asyncio
+async def test_old_forwarder_without_activity_leaves_next_cron_alone() -> None:
+    store, cube = _running_store(), _running_cube()
+    await _manager(store, cube).stop("u", reason="idle")
+    assert not any(c[0] == "next_cron" for c in store.calls)
+    assert ("set_state_archive", "sync.tar.gz") in store.calls
+
+
+@pytest.mark.asyncio
+async def test_sync_failure_still_records_next_cron_via_status() -> None:
+    """暂停前归档失败照样暂停；下一个定时任务的时间改从状态接口拿，不然停着就叫不醒了。"""
+    store, cube = _running_store(), _running_cube()
+    cube.sync_error = CubeError(500, "归档失败")
+    cube.activity = {"cron_next_at": _DUE, "cron_running": 0, "turns": 0}
+    await _manager(store, cube).stop("u", reason="idle")
+    assert ("pause", "sb1") in cube.calls
+    assert [c[1] for c in store.calls if c[0] == "next_cron"] == [datetime.fromtimestamp(_DUE, tz=timezone.utc)]
+
+
+@pytest.mark.asyncio
+async def test_long_idle_delete_records_next_cron_from_drain() -> None:
+    store = FakeStore(runtime=Runtime("stopped", "sb1", "tpl-new", 1, "sb1", "", ""))
+    cube = FakeCube({"sb1": {"sandboxID": "sb1", "templateID": "tpl-new", "state": "paused"}})
+    cube.activity = {"cron_next_at": _DUE, "cron_running": 0, "turns": 0}
+    await _manager(store, cube, idle_delete_hours=24).reap_long_idle()
+    assert ("set_state_archive", "final.tar.gz") in store.calls
+    assert [c[1] for c in store.calls if c[0] == "next_cron"] == [datetime.fromtimestamp(_DUE, tz=timezone.utc)]
+
+
+@pytest.mark.asyncio
+async def test_reap_idle_skips_busy_instance_and_pauses_idle_one() -> None:
+    store, cube = _running_store(), _running_cube()
+    manager = _manager(store, cube)
+    cube.activity = {"cron_next_at": None, "cron_running": 1, "turns": 0}
+    await manager.reap_idle()
+    assert ("pause", "sb1") not in cube.calls and store.runtime.state == "running"
+    cube.activity = {"cron_next_at": None, "cron_running": 0, "turns": 1}
+    await manager.reap_idle()
+    assert ("pause", "sb1") not in cube.calls
+    cube.activity = {"cron_next_at": None, "cron_running": 0, "turns": 0}
+    await manager.reap_idle()
+    assert ("pause", "sb1") in cube.calls and store.runtime.state == "stopped"
+
+
+@pytest.mark.asyncio
+async def test_reap_idle_pauses_when_forwarder_cannot_answer() -> None:
+    """问不到转发器（老实例、数据面抖动）照旧回收，不能让实例因此一直挂着。"""
+    store, cube = _running_store(), _running_cube()
+    cube.status_error = CubeError(0, "timeout")
+    await _manager(store, cube).reap_idle()
+    assert ("pause", "sb1") in cube.calls
+
+
+@pytest.mark.asyncio
+async def test_reap_idle_keeps_instances_with_live_ws() -> None:
+    store, cube = _running_store(), _running_cube()
+    await _manager(store, cube).reap_idle(keep={"u"})
+    assert cube.calls == []
+
+
+@pytest.mark.asyncio
+async def test_wake_due_cron_resumes_paused_instance_without_counting_as_activity(monkeypatch) -> None:
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    due = datetime.fromtimestamp(_DUE, tz=timezone.utc)
+    store = FakeStore(runtime=Runtime("stopped", "sbA", "tpl-new", 2, "sbA", "x.tar.gz", ""), cron_due=[("u", due)])
+    cube = FakeCube({"sbA": {"sandboxID": "sbA", "templateID": "tpl-new", "state": "paused"}})
+    manager = _manager(store, cube)
+    await manager.wake_due_cron()
+    assert store.runtime.state == "running"
+    assert ("touch",) not in store.calls                       # 不算用户活动
+    assert ("cron_woken", due) in store.calls and ("audit", "tenant.wake_cron") in store.calls
+    # 同一个时间点不再叫
+    cube.calls.clear()
+    await manager.wake_due_cron()
+    assert cube.calls == []
+    # 刚叫醒的实例：回收时先留着，等 hermes 的调度线程转到它（不用问转发器）
+    await manager.reap_idle()
+    assert ("pause", "sbA") not in cube.calls and ("status", "sbA") not in cube.calls
+
+
+@pytest.mark.asyncio
+async def test_wake_due_cron_rebuilds_deleted_instance_from_archive(monkeypatch) -> None:
+    """长期空闲被删了的实例：到点从归档重建，hermes 起来后自己补跑过点的任务。"""
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    due = datetime.fromtimestamp(_DUE, tz=timezone.utc)
+    store = FakeStore(runtime=Runtime("stopped", "", "tpl-new", 4, "sbOld", "old.tar.gz", ""), cron_due=[("u", due)])
+    cube = FakeCube()
+    await _manager(store, cube).wake_due_cron()
+    boot = next(c for c in cube.calls if c[0] == "bootstrap")
+    assert boot[2]["restore_from"] == "sbOld"
+    assert ("touch",) not in store.calls and ("audit", "tenant.wake_cron") in store.calls
+
+
+@pytest.mark.asyncio
+async def test_wake_failure_retries_then_gives_up(monkeypatch) -> None:
+    due = datetime.fromtimestamp(_DUE, tz=timezone.utc)
+    store = FakeStore(cron_due=[("u", due)])
+    manager = _manager(store, FakeCube())
+
+    async def boom(self, user_id, *, touch=True):
+        raise CubeError(0, "集群不可达")
+
+    monkeypatch.setattr(TenantManager, "ensure_running", boom)
+    await manager.wake_due_cron()
+    await manager.wake_due_cron()
+    assert not any(c[0] == "cron_woken" for c in store.calls)      # 前两次失败：下一轮还叫
+    await manager.wake_due_cron()
+    assert ("cron_woken", due) in store.calls and ("audit", "tenant.wake_cron_failed") in store.calls
+    calls = len(store.calls)
+    await manager.wake_due_cron()
+    assert len(store.calls) == calls                                # 放弃了就不再叫
+
+
+@pytest.mark.asyncio
+async def test_wake_disabled_when_lead_is_zero() -> None:
+    store = FakeStore(cron_due=[("u", datetime.fromtimestamp(_DUE, tz=timezone.utc))])
+    cube = FakeCube()
+    await _manager(store, cube, cron_wake_lead_s=0).wake_due_cron()
+    assert cube.calls == [] and store.calls == []

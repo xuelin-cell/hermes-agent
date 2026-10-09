@@ -591,6 +591,44 @@ class Store:
         blocked = exclude or set()
         return [row["user_id"] for row in rows if row["user_id"] not in blocked]
 
+    # ---- 沙箱后端：定时任务叫醒 -------------------------------------------------
+
+    async def set_next_cron(self, user_id: str, at: datetime | None) -> None:
+        """实例停下时转发器报的最早下次执行时间；None = 没有待执行的定时任务。"""
+        async with self.database.acquire() as connection:
+            await connection.execute(
+                "UPDATE tenant_runtime SET next_cron_at = $2 WHERE user_id = $1",
+                user_id,
+                at,
+            )
+
+    async def cron_due_tenants(self, within_s: int) -> list[tuple[str, datetime]]:
+        """实例停着、定时任务快到点（或已过点）、还没为这个时间点叫醒过的有效用户，按到点先后排。"""
+        cutoff = _utc_now() + timedelta(seconds=within_s)
+        async with self.database.acquire() as connection:
+            rows = await connection.fetch(
+                """
+                SELECT r.user_id, r.next_cron_at
+                FROM tenant_runtime AS r
+                JOIN users AS u ON u.user_id = r.user_id
+                WHERE u.status = 'active' AND r.state = 'stopped' AND r.lifecycle = ''
+                  AND r.next_cron_at IS NOT NULL AND r.next_cron_at <= $1
+                  AND r.cron_woken_for IS DISTINCT FROM r.next_cron_at
+                ORDER BY r.next_cron_at
+                """,
+                cutoff,
+            )
+        return [(row["user_id"], row["next_cron_at"]) for row in rows]
+
+    async def mark_cron_woken(self, user_id: str, at: datetime) -> None:
+        """这个时间点已经叫醒过（或叫不醒、放弃了），不再为它叫。"""
+        async with self.database.acquire() as connection:
+            await connection.execute(
+                "UPDATE tenant_runtime SET cron_woken_for = $2 WHERE user_id = $1",
+                user_id,
+                at,
+            )
+
     async def all_tenant_states(self) -> list[tuple[str, str, int]]:
         async with self.database.acquire() as connection:
             rows = await connection.fetch(

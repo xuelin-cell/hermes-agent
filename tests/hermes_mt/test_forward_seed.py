@@ -57,3 +57,52 @@ def test_write_seed_modes(forward, tmp_path: Path) -> None:
 def test_write_seed_rejects_traversal(forward) -> None:
     with pytest.raises(ValueError):
         forward._write_seed([{"path": "../etc/passwd", "content": "x", "overwrite": True}])
+
+
+@pytest.mark.asyncio
+async def test_spawn_hermes_turns_on_the_cron_ticker(forward, monkeypatch: pytest.MonkeyPatch) -> None:
+    """hermes serve 只在 HERMES_DESKTOP=1 时自己起定时任务的调度线程。"""
+    seen: dict = {}
+
+    async def fake_exec(*args, env=None, **kwargs):
+        seen["args"], seen["env"] = args, env
+        return object()
+
+    monkeypatch.setattr(forward.asyncio, "create_subprocess_exec", fake_exec)
+    await forward._spawn_hermes("tok")
+    assert seen["args"][:2] == ("hermes", "serve")
+    assert seen["env"]["HERMES_DESKTOP"] == "1"
+    assert seen["env"]["HERMES_DASHBOARD_SESSION_TOKEN"] == "tok"
+
+
+class _Writer:
+    def __init__(self) -> None:
+        self.data = b""
+
+    def write(self, chunk: bytes) -> None:
+        self.data += chunk
+
+    def body(self) -> dict:
+        return json.loads(self.data.split(b"\r\n\r\n", 1)[1].decode("utf-8"))
+
+
+@pytest.mark.asyncio
+async def test_status_reports_cron_and_turn_activity(forward, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    (tmp_path / "cron").mkdir()
+    (tmp_path / "cron" / "jobs.json").write_text(json.dumps({"jobs": [
+        {"id": "a", "enabled": True, "state": "scheduled", "next_run_at": "2026-10-10T01:00:00+00:00"},
+    ]}), encoding="utf-8")
+
+    async def not_alive() -> bool:
+        return False
+
+    monkeypatch.setattr(forward, "_hermes_alive", not_alive)
+    writer = _Writer()
+    await forward._handle_mt("GET", "/__mt/status", {}, b"", None, writer)
+    assert writer.body()["activity"] is None          # 没引导过：不读
+    monkeypatch.setattr(forward, "_bootstrapped", True)
+    writer = _Writer()
+    await forward._handle_mt("GET", "/__mt/status", {}, b"", None, writer)
+    act = writer.body()["activity"]
+    assert act["cron_next_at"] == 1791594000.0 and act["cron_jobs"] == 1
+    assert act["cron_running"] == 0 and act["turns"] == 0 and act["errors"] == []

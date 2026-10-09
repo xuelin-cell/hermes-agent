@@ -164,6 +164,22 @@ def test_signature_ignores_heartbeat_and_usage_but_sees_messages(tmp_path: Path)
     assert mtstate.signature(home) != s0
 
 
+def test_signature_ignores_cron_ticker_heartbeats_but_sees_jobs(tmp_path: Path) -> None:
+    """调度线程每分钟写心跳：不算改动，否则开着的实例每个归档周期都打一份包。任务本身变了要算。"""
+    home = tmp_path / "home"
+    _make_home(home)
+    for store in (home, home / "profiles" / "coder"):
+        (store / "cron").mkdir(parents=True)
+        (store / "cron" / "jobs.json").write_text('{"jobs": []}', encoding="utf-8")
+    s0 = mtstate.signature(home)
+    for store in (home, home / "profiles" / "coder"):
+        for name in ("ticker_heartbeat", "ticker_last_success", "ticker_last_error"):
+            (store / "cron" / name).write_text("1791600000.5", encoding="utf-8")
+    assert mtstate.signature(home) == s0
+    (home / "cron" / "jobs.json").write_text('{"jobs": [{"id": "a"}]}', encoding="utf-8")
+    assert mtstate.signature(home) != s0
+
+
 def test_archive_skips_when_unchanged_and_when_skills_upgrading(tmp_path: Path) -> None:
     home = tmp_path / "home"
     vol = tmp_path / "vol"
@@ -551,3 +567,118 @@ def test_prepare_waits_for_volume_to_become_writable(tmp_path: Path, monkeypatch
     with pytest.raises(mtstate.StateError, match="不可写"):
         mtstate.StateManager(home2, vol2, "sbB", 1, require_mount=False, vol_wait_s=0.01).prepare(restore_from="", migrate=False)
     assert not (vol2 / ".state").exists()
+
+
+# ---- 忙不忙：定时任务与对话回合（mtstate.activity） ----------------------------------
+
+_NOW = 1_791_600_000.0
+
+
+def _iso(ts: float) -> str:
+    return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+
+
+def _write_jobs(store: Path, jobs, heartbeat: float | None = None) -> None:
+    (store / "cron").mkdir(parents=True, exist_ok=True)
+    (store / "cron" / "jobs.json").write_text(json.dumps({"jobs": jobs, "updated_at": _iso(_NOW)}), encoding="utf-8")
+    if heartbeat is not None:
+        (store / "cron" / "ticker_heartbeat").write_text(repr(heartbeat), encoding="utf-8")
+
+
+def _job(job_id: str, next_run: float | None, **extra) -> dict:
+    job = {"id": job_id, "enabled": True, "state": "scheduled", "paused_at": None,
+           "next_run_at": _iso(next_run) if next_run is not None else None, "fire_claim": None}
+    job.update(extra)
+    return job
+
+
+def test_cron_activity_reports_earliest_runnable_job(tmp_path: Path) -> None:
+    _write_jobs(tmp_path, [
+        _job("later", _NOW + 7200),
+        _job("soon", _NOW + 600),
+        _job("off", _NOW + 60, enabled=False),
+        _job("paused", _NOW + 60, state="paused", paused_at=_iso(_NOW - 10)),
+        _job("done", None, enabled=False, state="completed"),
+    ], heartbeat=_NOW - 30)
+    act = mtstate.cron_activity(tmp_path, now=_NOW)
+    assert act == {"next_at": _NOW + 600, "running": 0, "jobs": 2, "errors": []}
+
+
+def test_cron_activity_counts_live_fire_claims_only(tmp_path: Path) -> None:
+    _write_jobs(tmp_path, [
+        _job("live", _NOW + 3600, fire_claim={"at": _iso(_NOW - 90), "by": "m:1"}),
+        _job("stale", _NOW + 3600, fire_claim={"at": _iso(_NOW - 900), "by": "m:2"}),   # 进程死了没续租
+    ])
+    assert mtstate.cron_activity(tmp_path, now=_NOW)["running"] == 1
+
+
+def test_cron_activity_past_due_depends_on_whether_the_ticker_saw_it(tmp_path: Path) -> None:
+    """过点的任务：调度线程之后没转过（实例刚恢复）⇒ 待跑；转过还没挪走 ⇒ hermes 不会跑，不算。"""
+    _write_jobs(tmp_path, [_job("missed", _NOW - 3600)], heartbeat=_NOW - 7200)
+    assert mtstate.cron_activity(tmp_path, now=_NOW)["next_at"] == _NOW - 3600
+    _write_jobs(tmp_path, [_job("stuck", _NOW - 3600)], heartbeat=_NOW - 20)
+    assert mtstate.cron_activity(tmp_path, now=_NOW)["next_at"] is None
+    (tmp_path / "cron" / "ticker_heartbeat").unlink()
+    _write_jobs(tmp_path, [_job("fresh", _NOW - 3600)])   # 没有心跳文件（调度线程从没转过）
+    assert mtstate.cron_activity(tmp_path, now=_NOW)["next_at"] == _NOW - 3600
+
+
+def test_cron_activity_walks_profiles_and_skips_deleted_ones(tmp_path: Path) -> None:
+    _write_jobs(tmp_path, [_job("main", _NOW + 7200)])
+    _write_jobs(tmp_path / "profiles" / "coder", [_job("coder", _NOW + 300)])
+    _write_jobs(tmp_path / "profiles" / "gone", [_job("gone", _NOW + 60)])
+    (tmp_path / "profiles" / ".deleted").mkdir()
+    (tmp_path / "profiles" / ".deleted" / "gone").write_text("deleted\n", encoding="utf-8")
+    _write_jobs(tmp_path / "profiles" / "Bad Name", [_job("bad", _NOW + 30)])
+    act = mtstate.cron_activity(tmp_path, now=_NOW)
+    assert act["next_at"] == _NOW + 300 and act["jobs"] == 2
+
+
+def test_cron_activity_tolerates_odd_and_broken_files(tmp_path: Path) -> None:
+    # 按 ID 当键的写法、不带时区的时间（按本机时区）、BOM
+    naive = datetime.fromtimestamp(_NOW + 900).replace(microsecond=0)
+    payload = {"jobs": {"a1": {"enabled": True, "state": "scheduled", "next_run_at": naive.isoformat()}}}
+    (tmp_path / "cron").mkdir()
+    (tmp_path / "cron" / "jobs.json").write_bytes(b"\xef\xbb\xbf" + json.dumps(payload).encode("utf-8"))
+    assert mtstate.cron_activity(tmp_path, now=_NOW)["next_at"] == naive.timestamp()
+    # 坏文件：记错误，不抛；没有 cron 目录：什么都没有
+    (tmp_path / "cron" / "jobs.json").write_text("{not json", encoding="utf-8")
+    act = mtstate.cron_activity(tmp_path, now=_NOW)
+    assert act["next_at"] is None and act["errors"] and "jobs.json" in act["errors"][0]
+    assert mtstate.cron_activity(tmp_path / "empty", now=_NOW) == {"next_at": None, "running": 0, "jobs": 0, "errors": []}
+
+
+def _make_sessions_db(path: Path, rows: list[tuple[str, float | None, str | None]]) -> None:
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE sessions(id TEXT PRIMARY KEY, source TEXT, last_activity_at REAL, "
+                 "last_activity_description TEXT)")
+    conn.executemany("INSERT INTO sessions VALUES(?, 'desktop', ?, ?)", rows)
+    conn.commit()
+    conn.close()
+
+
+def test_turn_activity_counts_sessions_mid_turn(tmp_path: Path) -> None:
+    _make_sessions_db(tmp_path / "state.db", [
+        ("running", _NOW - 40, "executing tool: terminal"),
+        ("finished", _NOW - 40, ""),                         # 回合结束描述清空
+        ("crashed", _NOW - 3600, "receiving stream response"),  # 描述没清但心跳早停了
+        ("never", None, None),
+    ])
+    assert mtstate.turn_activity(tmp_path, now=_NOW) == {"running": 1, "errors": []}
+
+
+def test_turn_activity_reports_unreadable_db_without_raising(tmp_path: Path) -> None:
+    conn = sqlite3.connect(tmp_path / "state.db")
+    conn.execute("CREATE TABLE sessions(id TEXT PRIMARY KEY)")   # 老版本库：没有活动心跳列
+    conn.commit()
+    conn.close()
+    act = mtstate.turn_activity(tmp_path, now=_NOW)
+    assert act["running"] == 0 and act["errors"] and "OperationalError" in act["errors"][0]
+
+
+def test_activity_combines_both(tmp_path: Path) -> None:
+    _write_jobs(tmp_path, [_job("soon", _NOW + 600, fire_claim={"at": _iso(_NOW - 5), "by": "m:1"})])
+    _make_sessions_db(tmp_path / "state.db", [("s", _NOW - 10, "starting API call #1")])
+    act = mtstate.activity(tmp_path, now=_NOW)
+    assert act == {"checked_at": _NOW, "cron_next_at": _NOW + 600, "cron_running": 1, "cron_jobs": 1,
+                   "turns": 1, "errors": []}

@@ -363,6 +363,8 @@ class Entry:
             raise
         self._bg.append(asyncio.create_task(self._reconcile()))
         self._bg.append(asyncio.create_task(self._reaper()))
+        if self.s.backend == "cube" and self.s.cron_wake_lead_s > 0:
+            self._bg.append(asyncio.create_task(self._cron_waker()))
         # 卷外第二份副本：四项桶配置齐了才跑；只对沙箱后端有意义（归档在卷上）。
         if self.s.backend == "cube" and self.s.backup_enabled and self.tenants is not None:
             self.backup = BackupJob(
@@ -415,6 +417,16 @@ class Entry:
             except Exception as exc:  # noqa: BLE001
                 # idle_tenants 失败发生在任何 stop 前，因此数据库故障只会跳过本轮回收。
                 log.warning("reaper tick skipped: %s", type(exc).__name__)
+
+    async def _cron_waker(self) -> None:
+        """每 30 秒看一次：实例停着、定时任务快到点的用户，把实例叫起来（见 TenantManager.wake_due_cron）。"""
+        while True:
+            await asyncio.sleep(30)
+            try:
+                if self.tenants is not None:
+                    await self.tenants.wake_due_cron()
+            except Exception as exc:  # noqa: BLE001
+                log.warning("cron wake tick skipped: %s", type(exc).__name__)
 
 
 def build_app(settings: Settings = SETTINGS) -> web.Application:

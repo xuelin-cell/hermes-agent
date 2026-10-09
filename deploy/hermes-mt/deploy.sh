@@ -506,8 +506,9 @@ cmd_status() {
     printf '  开关：空闲删实例 %sh  限制公开访问 %s  PG锁 %s  卷外副本 %s\n' \
         "$(cfg MT_IDLE_DELETE_HOURS 0)" "$(cfg MT_CUBE_PRIVATE_TRAFFIC 0)" "$(cfg MT_PG_LOCK 1)" "$backup_state"
     docker ps -a --format '  {{.Names}}  {{.Status}}' | grep "$PROJECT-" || true
-    echo "  租户（PG）："
-    docker exec "$PROJECT-postgres" sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -F "  " -c "SELECT left(user_id,10), state, left(sandbox_id,12), template_id, state_epoch, state_archive FROM tenant_runtime ORDER BY last_activity_at DESC"' 2>/dev/null | sed 's/^/    /' || echo "    （PG 没起来）"
+    echo "  租户（PG：用户 状态 实例 模板 编号 最近归档 下次定时任务）："
+    # 下次定时任务经 to_jsonb 取：入口还没跑过迁移 006 时这一列不存在，直接写列名整条查询会失败。
+    docker exec "$PROJECT-postgres" sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -F "  " -c "SELECT left(user_id,10), state, left(sandbox_id,12), template_id, state_epoch, state_archive, COALESCE(to_jsonb(r)->>\$\$next_cron_at\$\$, \$\$-\$\$) FROM tenant_runtime r ORDER BY last_activity_at DESC"' 2>/dev/null | sed 's/^/    /' || echo "    （PG 没起来）"
     echo "  集群上我们的实例（ID 状态 模板 节点 用户）："
     our_sandboxes | sed 's/^/    /' || echo "    （控制面不可达）"
     echo "  集群上我们的模板："

@@ -18,6 +18,8 @@
    引导载荷若带 ``state`` 段，就先由状态管家（mtstate.py）把上一代实例留在卷上的归档恢复到
    本地盘、校验、写主人标记、建目录链接，再拉起 hermes；之后定时把本地状态归档回卷。
    入口在暂停前调 ``/__mt/sync``、删实例前调 ``/__mt/drain``。这些接口要带实例令牌。
+   这两个接口和 ``/__mt/status`` 都附带「忙不忙」（定时任务、对话回合，见 mtstate.activity）：
+   入口据此决定这轮回收要不要暂停，并在实例停着时按下一个定时任务的时间把它叫起来。
 
 除 ``/__mt/*`` 外的所有请求原样转发，读完请求头就退化成裸字节对拷，因此 WebSocket 不受影响。
 
@@ -195,6 +197,11 @@ async def _spawn_hermes(token: str) -> None:
     env = dict(os.environ)
     env.update(_hermes_env)
     env["HERMES_DASHBOARD_SESSION_TOKEN"] = token
+    # hermes serve 只在桌面模式下自己起定时任务的调度线程（web_server.py 的
+    # _start_desktop_cron_ticker）；实例里没有单独的 gateway 进程，不设它，用户建的定时任务
+    # 永远停在「已排期」。它的其余作用逐个核过：清理桌面遗留的随机端口 serve（我们是固定端口，
+    # 碰不到）、父进程看门狗（要 HERMES_PARENT_PID，我们不设）、新会话的来源记为 desktop。
+    env["HERMES_DESKTOP"] = "1"
     _hermes_proc = await asyncio.create_subprocess_exec(
         "hermes", "serve",
         "--host", "127.0.0.1",
@@ -282,6 +289,17 @@ async def _fence() -> None:
 
 def _check_token(headers: dict[str, str]) -> bool:
     return bool(_hermes_token) and headers.get("x-mt-token", "") == _hermes_token
+
+
+async def _activity() -> dict:
+    """定时任务与对话回合忙不忙（见 mtstate.activity）。读文件和库放线程里；读不了不影响应答。
+
+    读失败时没有 ``cron_next_at`` 这个键，入口就不改它记着的下次执行时间。
+    """
+    try:
+        return await asyncio.to_thread(mtstate.activity, HERMES_HOME)
+    except Exception as exc:  # noqa: BLE001
+        return {"errors": [f"{type(exc).__name__}: {exc}"]}
 
 
 async def _bootstrap(writer: asyncio.StreamWriter, body: bytes) -> None:
@@ -408,7 +426,7 @@ async def _sync(writer: asyncio.StreamWriter) -> None:
     except Exception as exc:  # noqa: BLE001
         _reply(writer, 500, {"ok": False, "error": f"归档失败: {type(exc).__name__}: {exc}"})
         return
-    _reply(writer, 200, {"ok": True, "archive": summary})
+    _reply(writer, 200, {"ok": True, "archive": summary, "activity": await _activity()})
 
 
 async def _drain(writer: asyncio.StreamWriter) -> None:
@@ -440,7 +458,8 @@ async def _drain(writer: asyncio.StreamWriter) -> None:
                              "hermes_stopped": True})
         return
     _state.phase = "drained"
-    _drained = {"ok": True, "archive": summary}
+    # hermes 已停，jobs.json 不会再变：这里报的下次执行时间就是入口叫醒下一台实例的依据。
+    _drained = {"ok": True, "archive": summary, "activity": await _activity()}
     _reply(writer, 200, _drained)
 
 
@@ -541,6 +560,7 @@ async def _handle_mt(
             "uptime_s": round(time.monotonic() - _START_TS, 1),
             "boot_window_left_s": max(0, round(left)),
             "state": _state.status() if _state is not None else None,
+            "activity": await _activity() if _bootstrapped else None,
         })
         return
 

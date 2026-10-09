@@ -25,6 +25,7 @@ import sys
 import tarfile
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 import aiohttp
@@ -96,6 +97,24 @@ def volume_not_ready(exc: CubeError) -> bool:
     return exc.status == 500 and "卷" in message and ("不可写" in message or "没有挂在" in message)
 
 
+def busy_reason(activity: dict | None, now: float, keepalive_s: float) -> str:
+    """转发器回报的忙不忙 → 这轮回收为什么不暂停它；空串 = 不忙。
+
+    过点超过 ``keepalive_s`` 还没跑的任务不再算：hermes 的调度线程一分钟转一轮，
+    这么久没动它说明不会跑了，不能让它把实例一直挂着。
+    """
+    if not isinstance(activity, dict):
+        return ""
+    if activity.get("cron_running"):
+        return "cron_running"
+    if activity.get("turns"):
+        return "turn_running"
+    due = activity.get("cron_next_at")
+    if isinstance(due, (int, float)) and now - keepalive_s <= due <= now + keepalive_s:
+        return "cron_due"
+    return ""
+
+
 class CredentialSyncError(RuntimeError):
     """平台模型凭据未能同步到用户 Hermes 容器。"""
 
@@ -146,6 +165,11 @@ class TenantManager:
         self._locks: dict[str, asyncio.Lock] = {}
         self._synced_key_digests: dict[str, bytes] = {}
         self._self_container = settings.self_container or socket.gethostname()
+        # 定时任务叫醒：谁刚被叫醒（单调时间，回收时留出等调度线程的时间）、叫不醒的重试次数、
+        # 上一轮因为什么没回收（原因变了才打日志，免得每分钟一行）。
+        self._cron_woken: dict[str, float] = {}
+        self._wake_failures: dict[tuple[str, datetime], int] = {}
+        self._busy_seen: dict[str, str] = {}
 
     @property
     def use_cube(self) -> bool:
@@ -299,11 +323,14 @@ class TenantManager:
             return False
 
     # ---- lifecycle -----------------------------------------------------------------
-    async def ensure_running(self, user_id: str) -> Tenant:
-        """保证这个用户有一个能用的实例，返回可直接转发的 ``Tenant``。"""
+    async def ensure_running(self, user_id: str, *, touch: bool = True) -> Tenant:
+        """保证这个用户有一个能用的实例，返回可直接转发的 ``Tenant``。
+
+        ``touch=False`` 只给定时任务叫醒用：实例起来了但不算用户活动，跑完照常按空闲规则回收。
+        """
         self._backend_client()
         if self.use_cube:
-            return await self._ensure_running_cube(user_id)
+            return await self._ensure_running_cube(user_id, touch=touch)
         return await self._ensure_running_docker(user_id)
 
     async def _ensure_running_docker(
@@ -459,7 +486,7 @@ class TenantManager:
         value = self.s.cube_template.strip()
         return value if value.startswith("tpl-") else ""
 
-    async def _ensure_running_cube(self, user_id: str) -> Tenant:
+    async def _ensure_running_cube(self, user_id: str, touch: bool = True) -> Tenant:
         assert self.cube is not None
         slug = tenant_slug(user_id)
         port = self.s.forward_port
@@ -541,7 +568,8 @@ class TenantManager:
                 traffic_token=self.cube.traffic_token(sandbox_id),
             )
             await self.store.set_tenant_state(user_id, "running")
-            await self.store.touch_tenant(user_id)
+            if touch:
+                await self.store.touch_tenant(user_id)
             await self._sync_api_key(tenant, context.api_key)
             return tenant
 
@@ -721,12 +749,14 @@ class TenantManager:
         slug = tenant_slug(user_id)
         await self.store.set_lifecycle(user_id, "draining")
         try:
-            summary = await self.cube.drain(sandbox_id, port, token)
+            body = await self.cube.drain(sandbox_id, port, token)
         except CubeError as exc:
             log.warning("tenant %s: 排空实例 %s 失败: %s", slug, sandbox_id[:12], exc)
             await self.store.set_lifecycle(user_id, "")
             return False
+        summary = body.get("archive") or {}
         await self.store.set_state_archive(user_id, str(summary.get("archive") or ""), summary)
+        await self._note_cron(user_id, body.get("activity"))
         await self.store.set_lifecycle(user_id, "drained")
         await self.store.write_audit(user_id, "tenant.drain", {"sandbox": sandbox_id, "archive": summary.get("archive", ""), "reason": reason})
         await self.store.set_lifecycle(user_id, "deleting")
@@ -764,16 +794,98 @@ class TenantManager:
                 if sandbox_id:
                     try:
                         token = await self.store.ensure_tenant_token(user_id)
-                        summary = await self.cube.sync_state(sandbox_id, self.s.forward_port, token)
+                        body = await self.cube.sync_state(sandbox_id, self.s.forward_port, token)
+                        summary = body.get("archive") or {}
                         await self.store.set_state_archive(user_id, str(summary.get("archive") or ""), summary)
+                        await self._note_cron(user_id, body.get("activity"))
                     except CubeError as exc:
                         log.warning("tenant %s: 暂停前归档失败（照样暂停）: %s", slug, exc)
+                        # 归档失败不等于问不到：下一个定时任务的时间照样要记，否则停着就叫不醒了。
+                        await self._note_cron(user_id, await self._status_activity(sandbox_id))
                     try:
                         await self.cube.pause_sandbox(sandbox_id)
                     except CubeError as exc:
                         log.warning("暂停 %s 的实例失败: %s", slug, exc)
                 await self.store.set_tenant_state(user_id, "stopped")
                 await self.store.write_audit(user_id, "tenant.stop", {"reason": reason})
+
+    # ---- 定时任务：停着的实例按时叫醒，忙着的实例不回收 ------------------------------
+    #
+    # hermes 的定时任务由它自己的调度线程跑（转发器给 hermes 设了 HERMES_DESKTOP=1），
+    # 实例在跑就不用入口管。入口只管实例停着的时候：
+    #   暂停 / 删实例时，转发器在 sync / drain 的回包里报最早的下次执行时间 → 记进 PG；
+    #   到点前 cron_wake_lead_s 秒，走用户访问的同一条路把实例叫起来（暂停的唤醒、删了的从归档重建），
+    #   但不算用户活动；回收前再问一次转发器忙不忙，跑完照常按空闲规则回收。
+
+    async def _status_activity(self, sandbox_id: str) -> dict | None:
+        """问转发器忙不忙；问不到返回 None（调用方照旧处理）。"""
+        assert self.cube is not None
+        try:
+            st = await self.cube.status(sandbox_id, self.s.forward_port)
+        except CubeError as exc:
+            log.warning("问实例 %s 忙不忙失败: %s", sandbox_id[:12], exc)
+            return None
+        activity = st.get("activity")
+        return activity if isinstance(activity, dict) else None
+
+    async def _note_cron(self, user_id: str, activity: dict | None) -> None:
+        """把转发器报的最早下次执行时间记进 PG。老转发器不报、或这次没读出来，就不动原来记的。"""
+        if not isinstance(activity, dict) or "cron_next_at" not in activity:
+            return
+        due = activity.get("cron_next_at")
+        when = datetime.fromtimestamp(float(due), tz=timezone.utc) if isinstance(due, (int, float)) else None
+        await self.store.set_next_cron(user_id, when)
+
+    async def _busy_reason(self, user_id: str) -> str:
+        """回收前问一句：这台实例为什么现在不能暂停。空串 = 可以暂停（问不到也按可以，照旧回收）。"""
+        if not self.use_cube or self.cube is None:
+            return ""
+        woke = self._cron_woken.get(user_id)
+        if woke is not None and time.monotonic() - woke < self.s.cron_keepalive_s:
+            return "cron_wake"
+        rt = await self.store.get_runtime(user_id)
+        if not rt.sandbox_id:
+            return ""
+        self._register_token(rt)
+        activity = await self._status_activity(rt.sandbox_id)
+        return busy_reason(activity, time.time(), self.s.cron_keepalive_s)
+
+    async def wake_due_cron(self) -> None:
+        """实例停着而定时任务快到点：把它叫起来。同一个时间点只叫一次；叫不醒重试两次后放弃。"""
+        if not self.use_cube or self.s.cron_wake_lead_s <= 0:
+            return
+        due = await self.store.cron_due_tenants(self.s.cron_wake_lead_s)
+        if not due:
+            return
+        gate = asyncio.Semaphore(8)  # 很多人同一时刻到点（比如每天九点）时别一个个排着叫
+
+        async def wake(user_id: str, due_at: datetime) -> None:
+            async with gate:
+                await self._wake_for_cron(user_id, due_at)
+
+        await asyncio.gather(*(wake(user_id, due_at) for user_id, due_at in due))
+
+    async def _wake_for_cron(self, user_id: str, due_at: datetime) -> None:
+        slug = tenant_slug(user_id)
+        key = (user_id, due_at)
+        try:
+            tenant = await self.ensure_running(user_id, touch=False)
+        except Exception as exc:  # noqa: BLE001
+            tries = self._wake_failures[key] = self._wake_failures.get(key, 0) + 1
+            log.warning("cron wake: 叫醒 %s 失败（第 %d 次）: %s", slug, tries, exc)
+            if tries < 3:
+                return
+            self._wake_failures.pop(key, None)
+            await self.store.mark_cron_woken(user_id, due_at)
+            await self.store.write_audit(user_id, "tenant.wake_cron_failed",
+                                         {"due_at": due_at.isoformat(), "error": f"{type(exc).__name__}: {exc}"[:300]})
+            return
+        self._wake_failures.pop(key, None)
+        self._cron_woken[user_id] = time.monotonic()
+        await self.store.mark_cron_woken(user_id, due_at)
+        await self.store.write_audit(user_id, "tenant.wake_cron",
+                                     {"due_at": due_at.isoformat(), "sandbox": tenant.sandbox_id})
+        log.info("cron wake: %s 的定时任务 %s 到点，已叫起实例 %s", slug, due_at.isoformat(), tenant.sandbox_id[:12])
 
     async def reap_long_idle(self) -> None:
         """暂停很久的实例：排空后删掉。下次登录从卷上的归档恢复。
@@ -954,9 +1066,21 @@ class TenantManager:
         log.info("reconcile: %d tenant container(s) reset", len(containers))
 
     async def reap_idle(self, keep: set[str] | None = None) -> None:
-        """``keep`` = 此刻还挂着 ws 连接的用户，一律不回收。"""
+        """``keep`` = 此刻还挂着 ws 连接的用户，一律不回收。
+
+        沙箱后端暂停前再问转发器一句忙不忙（定时任务在跑 / 快到点、对话回合在跑）：忙就这轮不动，
+        下一轮再问。原因变了才打日志。
+        """
         for user_id in await self.store.idle_tenants(self.s.idle_minutes * 60, exclude=keep):
             try:
+                reason = await self._busy_reason(user_id)
+                if reason:
+                    if self._busy_seen.get(user_id) != reason:
+                        log.info("idle reap: %s 空闲但在忙（%s），这轮不暂停", user_id, reason)
+                    self._busy_seen[user_id] = reason
+                    continue
+                self._busy_seen.pop(user_id, None)
+                self._cron_woken.pop(user_id, None)
                 log.info("idle reap: stopping tenant of %s", user_id)
                 await self.stop(user_id, reason=f"idle>{self.s.idle_minutes}m")
             except Exception:  # noqa: BLE001
