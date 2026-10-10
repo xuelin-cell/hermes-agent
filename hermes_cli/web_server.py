@@ -1023,9 +1023,6 @@ app.include_router(_skills_routes.hub_router)
 app.include_router(_profiles_routes.router)
 app.include_router(_skills_routes.router)
 app.include_router(_tools_routes.router)
-from hermes_cli.web_routers import uniwork_drive as _uniwork_drive_routes  # noqa: E402
-
-app.include_router(_uniwork_drive_routes.router)
 app.include_router(_analytics_routes.router)
 app.include_router(_chat_ws_routes.router)
 app.include_router(_chat_workspaces_routes.router)

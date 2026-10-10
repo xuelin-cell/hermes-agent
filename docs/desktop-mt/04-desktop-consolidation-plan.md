@@ -2,7 +2,7 @@
 
 日期：2026-10-10。基线：同步协作者最新提交后的 `desktop-mt @ fe4a80ba5`。
 
-状态：R01～R08 与构建夹具修复已完成并推送；R09 已完成，等待用户核验、未推送；R10 及后续步骤未开始。每步完成验证与本地提交后暂停，等待用户核验，再继续下一步；具体结果见“实施进度”。
+状态：R01～R09 与构建夹具修复已完成并推送；R10 已完成，等待用户核验、未推送；R11 未开始。每步完成验证与本地提交后暂停，等待用户核验，再继续下一步；具体结果见“实施进度”。
 
 路径约定：`src/`、`electron/`、`entry_local/` 指桌面工程中的对应目录；R01 的两个脚本位于 `apps/desktop/scripts/`，R03 的部署脚本位于仓库根 `scripts/`。
 
@@ -187,8 +187,8 @@ R06 不承担云盘对接或旧鉴权模块删除，避免视觉修改与身份�
 | B · 原生登录新样式 | R06 | 已完成并推送，提交 `3822c9335` |
 | C · 云盘仅保留 UI | R07 | 已完成并推送，提交 `8e8de000a`；接口接入另行排期 |
 | D · 删除旧登录与云盘请求链 | R08 | 已完成并推送，提交 `3cb98c39d` |
-| D · 删除旧登录与云盘请求链 | R09 | 已完成，等待用户核验；未推送 |
-| D · 删除旧登录与云盘请求链 | R10 | 未开始 |
+| D · 删除旧登录与云盘请求链 | R09 | 已完成并推送，提交 `897f480d4` |
+| D · 删除旧登录与云盘请求链 | R10 | 已完成，等待用户核验；未推送 |
 | E · 完整回归与文档 | R11 | 未开始 |
 
 ### R01 实施记录（2026-10-10）
@@ -348,7 +348,22 @@ MaaS 验证码、短信登录、套餐响应受控，没有发送真实短信、
 - 已检查返回 A 的云盘截图，位于 `C:\Users\stan\AppData\Local\Temp\hermes-single-login-uXy89G\account-3.png`；测试结束没有遗留该夹具 Electron。构建仍有既有 `advancedChunks` 弃用和插件耗时提示。
 - 完整 `npm run typecheck`、新增 Python 测试 Ruff、`web_server.py` 与新增测试编译、删除引用检查和 `git diff --check` 通过。原云盘代理与专用测试无差异，既有五个本地计时文件 SHA-256 保持不变。
 
-MaaS、OAuth 身份提供方及云盘上游响应受控，没有发送真实短信、查询或改写真实云盘、调用付费模型或制作安装包；没有操作用户已有窗口、官方版和数据，也未修改 Hermes Python Agent 核心。文件与草稿保留不等于旧会话正文恢复已验收；套餐 401 首次提示问题仍未处理。R09 独立本地提交，完成后停下等待核验，不推送，也不开始 R10。
+MaaS、OAuth 身份提供方及云盘上游响应受控，没有发送真实短信、查询或改写真实云盘、调用付费模型或制作安装包；没有操作用户已有窗口、官方版和数据，也未修改 Hermes Python Agent 核心。文件与草稿保留不等于旧会话正文恢复已验收；套餐 401 首次提示问题仍未处理。R09 以 `897f480d4` 独立提交，后续已按用户当次授权推送。
+
+### R10 实施记录（2026-10-10）
+
+引用检查确认 `uniwork_drive.py` 只有 `web_server.py` 注册与专用测试两个消费者；桌面和其它跟踪代码没有调用。删除整个旧云盘代理、导入／注册及 `tests/test_uniwork_drive_routes.py`，不保留兼容入口或空实现。旧请求转发、云盘令牌缓存／刷新与云文件落盘预览随模块删除；未来接口接入另行确定，不复用旧 Web 身份。没有删除云盘 UI、用户已有预览缓存、历史或远端文件，也没有修改协作者 Web 分支。
+
+实际验证（Python／Git 命令在仓库根执行，桌面命令在 `apps/desktop` 执行）：
+
+- 新增两项真实 ASGI 行为测试，给出有效本机令牌和受控上游响应。删除前两项均因旧入口返回 200 而按预期失败，旧预览确实在独立临时目录生成文件；删除后严格要求两条 POST 入口返回原版 headless 通配路由的 405、无上游请求，已有预览文件内容和目录条目不变。没有改变通用路由或降低断言。
+- 沿用 R09 的独立 PM 测试环境，设置 `HERMES_PYTHON` 后用本机 Git Bash 执行 `./scripts/run_tests.sh tests/hermes_cli/test_desktop_drive_routes.py tests/hermes_cli/test_desktop_login_routes.py tests/hermes_cli/test_dashboard_auth_native_flow.py tests/hermes_cli/test_dashboard_auth_middleware.py tests/hermes_cli/test_dashboard_auth_ws_auth.py tests/hermes_cli/test_dashboard_auth_ws_tickets.py tests/hermes_cli/test_web_server_boot_handshake.py tests/hermes_cli/test_web_server_files.py tests/hermes_cli/test_web_server_fs.py -j 2 --file-retries 0 -q --tb=short`：9 个文件、98 项通过，无失败、无跳过、无失败自动重试。覆盖旧代理拒绝、本机令牌、OAuth／Cookie、WS 鉴权／ticket、启动握手、文件上传／下载、来源会话定位与敏感文件限制。
+- `npx vitest run --maxWorkers 1 --testTimeout 30000 --project ui src/app/artifacts/cloud-library.test.tsx src/app/artifacts/remote-open.test.tsx src/app/artifacts/index.test.ts`：3 个文件、32 项通过，无失败、无跳过。覆盖待接入提示、禁用操作、无云盘请求／旧凭据读取，以及本地产物索引和远程打开。
+- 设置既有独立 `FIXTURE_PYTHON` 后执行 `node --test scripts/single-login.native.mjs`：1 项通过，无失败、无跳过。实际执行 Electron、系统加密、原版后端、REST／WS、首次登录、恢复、退出重登及 A→B→A；返回 A 后完整草稿和默认工作区文件保留，B 不消费 A 内容。云盘待接入页面保留，无旧登录／云盘请求。重开由夹具记录请求后显式启动下一进程，不作为自动监督重启的新增验收。
+- 已检查首次登录的云盘截图，位于 `C:\Users\stan\AppData\Local\Temp\hermes-single-login-CyCflf\account-0.png`；四次账号截图均保留，测试结束未发现该夹具 Electron 遗留进程。构建仍有原有 `advancedChunks` 弃用和插件耗时提示。
+- 完整 `npm run typecheck`、新增测试 Ruff、`web_server.py` 与新增测试编译、废弃引用检查和 `git diff --check` 通过。既有五个本地计时文件 SHA-256 保持不变，没有修改 Renderer、Electron 或 Hermes Python Agent 核心。
+
+MaaS、OAuth 身份提供方与删除前的云盘上游响应受控，没有发送真实短信、查询或改写真实云盘、调用付费模型或制作安装包；没有操作用户已有窗口、官方版或用户数据。临时文件／草稿保留不等于旧会话正文恢复验收；套餐 401 首次提示问题仍未处理。R10 独立本地提交后停下等待核验，不推送，也不开始 R11。
 
 本轮开始前已存在且必须保留、不纳入这些提交的文件：
 
