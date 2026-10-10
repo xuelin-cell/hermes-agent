@@ -103,6 +103,10 @@ function ThemePreview({ name, mode }: { name: string; mode: 'light' | 'dark' }) 
 // presets highlights nothing, and the row description keeps showing the
 // exact current percent.
 const UI_SCALE_PRESETS = ['90', '100', '110', '125', '150', '175'] as const
+// UniWork exposes only the platform appearance modes. Keep the richer theme
+// engine available for compatibility with existing profiles and commands, but
+// do not surface built-in or Marketplace theme choices in Settings.
+const SHOW_THEME_CATALOG = false
 const APPEARANCE_SEARCH_TARGETS = new Set<string>(Object.values(APPEARANCE_SETTING_IDS))
 const appearanceSettingElementId = (id: string) => `setting-field-${id}`
 
@@ -466,7 +470,7 @@ export function AppearanceSettings() {
 
           <ListRow
             below={
-              <>
+              SHOW_THEME_CATALOG ? <>
                 {/* One search box: filters your installed themes (the grid)
                     and live-searches the VS Code Marketplace below. */}
                 <div className="mt-3">
@@ -545,13 +549,13 @@ export function AppearanceSettings() {
                     {a.themeProfileNote(activeProfileName)}
                   </p>
                 )}
-              </>
+              </> : null
             }
-            description={a.themeDesc}
+            description={a.colorModeDesc}
             id={appearanceSettingElementId(APPEARANCE_SETTING_IDS.theme)}
             title={
               <div className="flex items-center justify-between gap-3">
-                <span>{a.themeTitle}</span>
+                <span>{a.colorMode}</span>
                 <SegmentedControl
                   onChange={id => {
                     triggerHaptic('crisp')

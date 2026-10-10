@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react'
-import { type ComponentProps, type MouseEvent, type ReactNode, useEffect, useState } from 'react'
+import { type ComponentProps, type MouseEvent, type ReactNode, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
 import { hudTargetSessionId } from '@/app/hud/handoff'
@@ -14,7 +14,7 @@ import { triggerHaptic } from '@/lib/haptics'
 import { Bug } from '@/lib/icons'
 import { formatModifierToken } from '@/lib/keybinds/combo'
 import { cn } from '@/lib/utils'
-import { $developerMode } from '@/store/developer-mode'
+import { $developerMode, toggleDeveloperMode } from '@/store/developer-mode'
 import { $hapticsMuted, toggleHapticsMuted } from '@/store/haptics'
 import { toggleHud } from '@/store/hud'
 import {
@@ -144,6 +144,39 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
   const unreadCount = useStore($unreadSessionCount)
   const unreadBadge = unreadCount > 0 ? unreadCount : undefined
   const unreadHint = unreadBadge ? ` · ${t.titlebar.unreadSessions(unreadBadge)}` : ''
+  const brandClickCountRef = useRef(0)
+  const brandClickResetRef = useRef<number | null>(null)
+
+  const handleBrandClick = () => {
+    brandClickCountRef.current += 1
+
+    if (brandClickResetRef.current !== null) {
+      window.clearTimeout(brandClickResetRef.current)
+    }
+
+    if (brandClickCountRef.current >= 5) {
+      brandClickCountRef.current = 0
+      brandClickResetRef.current = null
+      const enabled = toggleDeveloperMode()
+      triggerHaptic(enabled ? 'success' : 'warning')
+
+      return
+    }
+
+    brandClickResetRef.current = window.setTimeout(() => {
+      brandClickCountRef.current = 0
+      brandClickResetRef.current = null
+    }, 1_500)
+  }
+
+  useEffect(
+    () => () => {
+      if (brandClickResetRef.current !== null) {
+        window.clearTimeout(brandClickResetRef.current)
+      }
+    },
+    []
+  )
 
   const toggleHaptics = () => {
     if (!hapticsMuted) {
@@ -290,6 +323,16 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
           'left-(--titlebar-controls-left) top-(--titlebar-controls-top) translate-y-(--titlebar-controls-y-nudge)'
         )}
       >
+        {sidebarOpen && (
+          <button
+            aria-label="元景数字员工"
+            className="mr-1 flex h-(--titlebar-control-height) cursor-default items-center rounded px-1.5 text-xs font-medium whitespace-nowrap text-foreground/85 select-none"
+            onClick={handleBrandClick}
+            type="button"
+          >
+            元景数字员工
+          </button>
+        )}
         {leftToolbarTools
           .filter(tool => !tool.hidden)
           .map(tool => (

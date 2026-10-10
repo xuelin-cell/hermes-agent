@@ -275,7 +275,7 @@ export const zh: Translations = {
       'nav.profiles': '打开配置',
       'nav.skills': '打开技能',
       'nav.messaging': '打开消息',
-      'nav.artifacts': '打开制品',
+      'nav.artifacts': '打开资料库',
       'nav.cron': '打开定时任务',
       'nav.agents': '打开智能体',
       'session.new': '新建会话',
@@ -1700,7 +1700,7 @@ export const zh: Translations = {
       settings: { title: '设置', detail: '配置 UniWork 桌面端' },
       skills: { title: '技能与工具', detail: '启用技能、工具集与提供方' },
       messaging: { title: '消息平台', detail: '配置 Telegram、Slack、Discord 等' },
-      artifacts: { title: '产物', detail: '浏览生成的输出' }
+      artifacts: { title: '资料库', detail: '浏览个人云盘和本地产物' }
     },
     sectionEntries: {
       sessions: { title: '会话面板', detail: '搜索、置顶与管理会话' },
@@ -2348,7 +2348,7 @@ export const zh: Translations = {
       'new-session': '新建会话',
       skills: '技能与工具',
       messaging: '消息平台',
-      artifacts: '产物',
+      artifacts: '资料库',
       cron: '定时任务'
     },
     searchAria: '搜索会话',

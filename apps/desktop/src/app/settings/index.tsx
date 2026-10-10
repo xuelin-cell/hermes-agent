@@ -2,7 +2,6 @@ import { useStore } from '@nanostores/react'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
-import { codiconIcon } from '@/components/ui/codicon'
 import { KbdCombo } from '@/components/ui/kbd'
 import { Tip } from '@/components/ui/tooltip'
 import { getHermesConfigDefaults, getHermesConfigRecord, saveHermesConfig } from '@/hermes'
@@ -97,9 +96,24 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
       setActiveView('gateway')
     }
   }, [activeView, setActiveView])
-  // Providers subnav (Accounts vs API keys) lives in its own param so each
-  // sub-view is deep-linkable and survives a refresh.
-  const [providerView, setProviderView] = useRouteEnumParam<ProviderView>('pview', PROVIDER_VIEWS, 'accounts')
+
+  // UniWork exposes only custom endpoints in Providers. Keep accepting the
+  // historical values long enough to normalize old bookmarks, but never
+  // render the hidden account/API-key surfaces.
+  const [requestedProviderView, setProviderView] = useRouteEnumParam<ProviderView>(
+    'pview',
+    PROVIDER_VIEWS,
+    'custom-endpoints'
+  )
+
+  const providerView: ProviderView = 'custom-endpoints'
+
+  useEffect(() => {
+    if (requestedProviderView !== 'custom-endpoints') {
+      setProviderView('custom-endpoints')
+    }
+  }, [requestedProviderView, setProviderView])
+
   const [keysView] = useRouteEnumParam<KeysView>('kview', KEYS_VIEWS, 'tools')
 
   // Jump to a section + its sub-view in one navigate. Two sequential setters
@@ -123,7 +137,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
   )
 
   const openProviderView = useCallback(
-    (view: ProviderView) => openSubView('providers', 'pview', view, 'accounts'),
+    (view: ProviderView) => openSubView('providers', 'pview', view, 'custom-endpoints'),
     [openSubView]
   )
 
@@ -198,20 +212,6 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
         active: activeView === 'providers',
         children: [
           {
-            active: activeView === 'providers' && providerView === 'accounts',
-            icon: codiconIcon('account'),
-            id: 'pview:accounts',
-            label: t.settings.nav.providerAccounts,
-            onSelect: () => openProviderView('accounts')
-          },
-          {
-            active: activeView === 'providers' && providerView === 'keys',
-            icon: KeyRound,
-            id: 'pview:keys',
-            label: t.settings.nav.providerApiKeys,
-            onSelect: () => openProviderView('keys')
-          },
-          {
             active: activeView === 'providers' && providerView === 'custom-endpoints',
             icon: Globe,
             id: 'pview:custom-endpoints',
@@ -223,7 +223,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
         icon: Zap,
         id: 'providers',
         label: t.settings.nav.providers,
-        onSelect: () => setActiveView('providers')
+        onSelect: () => openProviderView('custom-endpoints')
       },
       {
         active: activeView === 'gateway',
