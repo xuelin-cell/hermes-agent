@@ -12,6 +12,8 @@ MaaS 请求由 Electron 主进程发出，固定使用 `https://maas.ai-yuanjing
 
 登录前不加载原版 `main.ts`，不启动 Hermes、安装引导、Profile 预热或旧连接。登录窗口关闭会取消启动；账号交接成功后才由主进程销毁登录窗。身份归 `LocalRuntimeContext` 持有，窗口关闭只解绑登录 IPC。
 
+账号准备完成后，主页面直接进入原版桌面，不再通过 Renderer 的第二套 Web 登录。旧 `auth_token`、`user_info` 等缓存不用于恢复、选择或退出账号，也不自动清除；原生登录及加密记录是本地账号的唯一来源。官方远程连接的 OAuth 和 Cookie 机制仍保留，与已删除的 MaaS Web 登录链不同。
+
 ## P03 · 开发监督重启
 
 `scripts/dev-electron.mjs` 只接受自己持有的 Electron 子进程发出的明确重启消息，且旧进程正常退出后才启动新 Electron。账号退出重启期间 Vite 保持运行；普通退出、崩溃和异常退出不自动重启。
