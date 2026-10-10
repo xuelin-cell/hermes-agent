@@ -5,6 +5,10 @@ import { introZh } from './intro-zh'
 
 export const zh = defineLocale({
   desktopLogin: {
+    brand: 'UNIWORK',
+    welcome: '欢迎使用 UniWork',
+    headline: '让工作流动起来，',
+    headlineAccent: '让智能触手可及。',
     logout: '退出',
     logoutTitle: '退出当前账号？',
     logoutDescription: '将停止当前账号的本地后端、消息网关及其托管工作，并返回登录页。历史、文件和定时任务定义保留。',
@@ -20,7 +24,7 @@ export const zh = defineLocale({
     phonePlaceholder: '11 位手机号',
     captchaPlaceholder: '看图输入',
     smsPlaceholder: '6 位数字',
-    title: '登录 Hermes',
+    title: '登录你的工作空间',
     subtitle: '使用 MaaS 账号，进入自己的本地工作空间。',
     phone: '手机号',
     captcha: '图形验证码',

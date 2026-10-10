@@ -5,6 +5,10 @@ import { introJa } from './intro-ja'
 
 export const ja = defineLocale({
   desktopLogin: {
+    brand: 'UNIWORK',
+    welcome: 'UniWork へようこそ',
+    headline: '仕事をもっとスムーズに。',
+    headlineAccent: '知性をもっと身近に。',
     logout: 'ログアウト',
     logoutTitle: 'このアカウントからログアウトしますか？',
     logoutDescription:
@@ -22,7 +26,7 @@ export const ja = defineLocale({
     captchaPlaceholder: '画像の文字を入力',
     smsPlaceholder: '6 桁の数字',
     captchaLoadError: '画像認証を取得できませんでした。画像を更新して再試行してください。',
-    title: 'Hermes にログイン',
+    title: 'ワークスペースにログイン',
     subtitle: 'MaaS アカウントで自分のローカル作業領域にアクセスします。',
     phone: '電話番号',
     captcha: '画像認証コード',

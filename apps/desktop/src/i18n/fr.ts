@@ -5,6 +5,10 @@ import { introFr } from './intro-fr'
 
 export const frOverrides = {
   desktopLogin: {
+    brand: 'UNIWORK',
+    welcome: 'Bienvenue sur UniWork',
+    headline: 'Laissez le travail avancer.',
+    headlineAccent: 'L’intelligence à portée de main.',
     logout: 'Se déconnecter',
     logoutTitle: 'Déconnecter ce compte ?',
     logoutDescription:
@@ -23,7 +27,7 @@ export const frOverrides = {
     captchaPlaceholder: 'Code de l’image',
     smsPlaceholder: '6 chiffres',
     captchaLoadError: 'Impossible de charger le captcha. Actualisez l’image pour réessayer.',
-    title: 'Connexion à Hermes',
+    title: 'Connectez-vous à votre espace de travail',
     subtitle: 'Utilisez votre compte MaaS pour accéder à votre espace de travail local.',
     phone: 'Téléphone',
     captcha: 'Code de l’image',

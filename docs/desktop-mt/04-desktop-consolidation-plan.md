@@ -2,7 +2,7 @@
 
 日期：2026-10-10。基线：同步协作者最新提交后的 `desktop-mt @ fe4a80ba5`。
 
-状态：R01～R04 与构建夹具修复已完成并推送；R05 已恢复并完成，等待用户核验、未推送；R06 及后续步骤未开始。每步完成验证与本地提交后暂停，等待用户核验，再继续下一步；具体结果见“实施进度”。
+状态：R01～R05 与构建夹具修复已完成并推送；R06 已完成，等待用户核验、未推送；R07 及后续步骤未开始。每步完成验证与本地提交后暂停，等待用户核验，再继续下一步；具体结果见“实施进度”。
 
 路径约定：`src/`、`electron/`、`entry_local/` 指桌面工程中的对应目录；R01 的两个脚本位于 `apps/desktop/scripts/`，R03 的部署脚本位于仓库根 `scripts/`。
 
@@ -183,8 +183,8 @@ R06 不承担云盘对接或旧鉴权模块删除，避免视觉修改与身份�
 | A · 浏览器缩放路径 | R02 | 已完成并推送，提交 `0bca94a96` |
 | A · Web 部署资料 | R03 | 已完成并推送，提交 `4922df562` |
 | A · Cube 部署文件 | R04 | 已完成并推送，提交 `2d7c67d7b`；构建夹具修复 `4b7117310` 已单独推送 |
-| A · 来源分支同步清理 | R05 | 已完成，等待用户核验；未推送 |
-| B · 原生登录新样式 | R06 | 未开始 |
+| A · 来源分支同步清理 | R05 | 已完成并推送，提交 `70eedec74` |
+| B · 原生登录新样式 | R06 | 已完成，等待用户核验；未推送 |
 | C · 云盘仅保留 UI | R07 | 未开始，接口接入另行排期 |
 | D · 删除旧登录与云盘请求链 | R08～R10 | 未开始，依赖阶段 B／C |
 | E · 完整回归与文档 | R11 | 未开始 |
@@ -276,7 +276,24 @@ R06 不承担云盘对接或旧鉴权模块删除，避免视觉修改与身份�
 - 在 `tests-js` 执行 `npx vitest run desktop-builder.test.mjs`：1 个文件、7 项通过，0 项失败、0 项跳过；保留原有负向编译检查，没有修改测试或降低断言。
 - `git diff --check`：通过；本步差异仅涉及该同步工作流删除及本计划、目录 README 的实施状态说明。
 
-没有运行 GitCode 同步、访问或修改 GitHub Secrets、远端分支和 GitCode 历史。删除只针对当前 `desktop-mt` 分支，不代表其它分支中的工作流已经移除。桌面运行代码、云盘 UI 和 Hermes 后端保持不变；未启动完整桌面、制作安装包或验收完整聊天。R05 独立本地提交、不推送，完成后等待用户核验；R06 尚未开始。
+没有运行 GitCode 同步、访问或修改 GitHub Secrets、远端分支和 GitCode 历史。删除只针对当前 `desktop-mt` 分支，不代表其它分支中的工作流已经移除。桌面运行代码、云盘 UI 和 Hermes 后端保持不变；未启动完整桌面、制作安装包或验收完整聊天。R05 以 `70eedec74` 独立提交，后续已按用户当次授权推送。
+
+### R06 实施记录（2026-10-10）
+
+原生登录表单采用新页面的深色、蓝青渐变和品牌双栏设计。默认登录窗口调整为 1080×760；窄窗收起左侧展示，最小 400×300 窗口可滚动访问完整表单。继续使用现有 `BrandMark`、`Input`、`Button`，新增文案补齐九种语言。样式只作用于登录表单，不写入用户主题，也不改变登录后的 `ConnectingScreen` 和退出等待画面。
+
+身份和请求仍走原生五项受限 IPC，未搬运 Web 请求、浏览器凭据或第二套登录状态。表单校验、验证码刷新、短信冷却、重复提交保护、加密恢复、套餐查询和账号交接逻辑没有改动。云盘保持原状，旧 Renderer 登录链与第二次登录尚待 R08 删除，本步不宣称已消除双重登录。
+
+实际验证（命令在 `apps/desktop` 执行，Git 检查在仓库根执行）：
+
+- `npx vitest run --project ui src/app/login/page.test.tsx src/app/login/use-captcha.test.tsx src/app/login/use-sms.test.tsx src/app/login/exit-page.test.tsx src/i18n/catalog-completeness.test.ts --project electron electron/login/ipc.test.ts electron/login/session.test.ts electron/login/sms.test.ts electron/login/captcha.test.ts`：9 个文件、48 项通过。
+- `npm run typecheck`：完整 TypeScript 检查通过。登录页面、窗口和全部修改的国际化文件 ESLint 检查通过，零警告。
+- 设置 `HERMES_LOGIN_LIVE_CAPTCHA=0` 后执行 `node --test scripts/login-bootstrap.native.mjs`：最终 9 项通过、0 项失败，1 项原有真实 MaaS 验证码检查默认跳过。覆盖宽窗双栏、窄窗、400×300 滚动、键盘校验、受限桥接、短信冷却、跨进程加密恢复、A→B→A 账号准备、套餐与启动画面交接。
+- 首轮新增的矮窗边界检查失败：贴边自动滚动在 Windows 缩放下留下约 0.69 像素的边界误差。测试改为将控件居中滚动后继续检查完整边界，未放宽边界条件，整组复测通过。新增品牌图片后，真实验证码用例改为明确检查验证码图片加载，避免误检查品牌图片；该真实网络用例本轮没有运行。
+- `node --check scripts/login-bootstrap.native.mjs` 通过。原生脚本 ESLint 默认不识别页面回调中的浏览器全局；显式声明 `document`、`window`、`getComputedStyle`、`innerWidth`、`innerHeight` 后检查通过，没有关闭规则或修改产品配置。
+- 已检查宽窗、窄窗截图，保存在 `C:\Users\stan\AppData\Local\Temp\hermes-mt-login-ZyJXlM`；截图中的验证码为受控图片，不是实际 MaaS 图片。`git diff --check` 通过。
+
+测试使用独立窗口和目录，Electron、系统加密、文件与 IPC 实际执行；MaaS 短信／登录／套餐响应受控，桌面运行时交接使用观察夹具。没有真实短信登录、付费模型调用、完整聊天、安装包或用户已有窗口操作；未修改 Hermes Python 后端核心。R06 独立本地提交、不推送，完成后等待用户核验，R07 尚未开始。
 
 本轮开始前已存在且必须保留、不纳入这些提交的文件：
 

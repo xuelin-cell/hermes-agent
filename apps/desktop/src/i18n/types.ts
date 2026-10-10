@@ -60,6 +60,10 @@ interface AuxTaskCopy {
 
 export interface Translations {
   desktopLogin: {
+    brand: string
+    welcome: string
+    headline: string
+    headlineAccent: string
     logout: string
     logoutTitle: string
     logoutDescription: string

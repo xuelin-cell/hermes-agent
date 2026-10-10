@@ -116,8 +116,8 @@ async function openLoginWindow(): Promise<BrowserWindow | null> {
     : pathToFileURL(path.join(app.getAppPath(), 'dist', 'login.html')).href
 
   const window = new BrowserWindow({
-    width: 640,
-    height: 640,
+    width: 1080,
+    height: 760,
     minWidth: 400,
     minHeight: 300,
     show: false,

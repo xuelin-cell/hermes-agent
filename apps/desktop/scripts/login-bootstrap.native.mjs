@@ -185,6 +185,8 @@ async function launchFixture(cancel = false, devServer, liveCaptcha = false, pla
 /** 等待主进程完成交接准备，不再依赖已删除的套餐展示内容。 */
 async function waitForLoginHandoff(instance, page) {
   await page.getByRole('status', {name:'CONNECTING', exact:true}).waitFor()
+  assert.equal(await page.locator('.desktop-login').count(), 0)
+  assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme), 'light')
   await expect.poll(() => instance.evaluate(() => globalThis.loginProbe.handoffs ?? 0)).toBe(1)
 }
 
@@ -193,7 +195,7 @@ test('真实未登录入口不启动后端、不暴露原版桥接，重复启�
   const { instance } = fixture
   try {
     const page = await instance.firstWindow()
-    await page.getByRole('heading', { name: '登录 Hermes' }).waitFor()
+    await page.getByRole('heading', { name: '登录你的工作空间' }).waitFor()
     await page.getByRole('img').waitFor()
     assert.equal(await page.locator('form input').count(), 3)
     assert.equal(await page.locator('button:disabled').count(), 0)
@@ -239,7 +241,7 @@ test('真实未登录入口不启动后端、不暴露原版桥接，重复启�
   }
 })
 
-test('开发登录页固定浅色，窄窗无横向溢出，Tab 与 Enter 不绕过字段校验', { timeout: 120_000 }, async () => {
+test('开发登录页深色双栏与窄窗可用，Tab 与 Enter 不绕过字段校验', { timeout: 120_000 }, async () => {
   const { server, url } = await startLoginDevServer()
   let instance
   try {
@@ -250,8 +252,13 @@ test('开发登录页固定浅色，窄窗无横向溢出，Tab 与 Enter 不绕
     page.on('pageerror', error => errors.push(error.message))
     page.on('console', message => { if (message.type() === 'error') console.error('[login-renderer]', message.text()) })
     // 独立缓存的 Vite 冷启动约需 27 秒，给并行编译留出有界余量。
-    await page.getByRole('heading', { name: '登录 Hermes' }).waitFor({ timeout: 60_000 })
+    await page.getByRole('heading', { name: '登录你的工作空间' }).waitFor({ timeout: 60_000 })
     await page.getByRole('img').waitFor()
+    await expect(page.getByRole('complementary')).toBeVisible()
+    await page.emulateMedia({ colorScheme: 'light' })
+    assert.equal(await page.locator('main').evaluate(node => getComputedStyle(node).colorScheme), 'dark')
+    assert.equal(await page.locator('main').evaluate(node => node.scrollWidth <= node.clientWidth), true)
+    await page.screenshot({ path: path.join(fixture.root, 'login-wide.png') })
     await page.locator('#login-phone').focus()
     await page.keyboard.press('Tab')
     assert.equal(await page.locator('#login-captcha').evaluate(node => node === document.activeElement), true)
@@ -261,15 +268,28 @@ test('开发登录页固定浅色，窄窗无横向溢出，Tab 与 Enter 不绕
     await page.keyboard.press('Enter')
     await page.getByText('请输入以 1 开头的 11 位手机号。').waitFor()
     assert.equal((await instance.evaluate(() => globalThis.loginProbe.captchaRequests)).some(url => url.endsWith('/smsLogin')), false)
-    await instance.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(400, 520))
+    await instance.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(400, 760))
     await page.emulateMedia({ colorScheme: 'dark' })
+    await expect(page.getByRole('complementary')).toBeHidden()
+    assert.equal(await page.locator('main').evaluate(node => getComputedStyle(node).colorScheme), 'dark')
     assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme), 'light')
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true)
-    await page.screenshot({ path: path.join(fixture.root, 'login-light.png') })
+    assert.equal(await page.locator('main').evaluate(node => node.scrollWidth <= node.clientWidth), true)
+    await page.screenshot({ path: path.join(fixture.root, 'login-narrow.png') })
+    await instance.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(400, 300))
+    for (const control of await page.locator('form input, form button').all()) {
+      // 居中滚动后检查完整边界，避免 Windows 缩放下贴边滚动的亚像素舍入。
+      await control.evaluate(node => node.scrollIntoView({ block: 'center', inline: 'nearest' }))
+      const bounds = await control.boundingBox()
+      const viewport = await page.evaluate(() => ({width:innerWidth, height:innerHeight}))
+      assert.equal(bounds.x >= 0 && bounds.y >= 0, true)
+      assert.equal(bounds.x + bounds.width <= viewport.width, true, JSON.stringify({bounds, viewport}))
+      assert.equal(bounds.y + bounds.height <= viewport.height, true, JSON.stringify({bounds, viewport}))
+    }
     const modules = await page.evaluate(() => performance.getEntriesByType('resource').map(entry => entry.name))
     assert.equal(modules.some(url => /\/src\/(store\/|themes\/context|main\.tsx)/.test(url)), false)
     assert.deepEqual(errors, [])
-    console.log(`登录页浅色窄窗截图：${fixture.root}`)
+    console.log(`登录页深色双栏与窄窗截图：${fixture.root}`)
   } finally {
     await instance?.close()
     await server.close()
@@ -668,10 +688,10 @@ test('真实 MaaS 图片在登录窗口展示并可刷新，其他窗口与子�
     const page = await instance.firstWindow()
     const image = page.getByRole('img', { name: '图形验证码' })
     await image.waitFor({ timeout: 20_000 })
-    await page.waitForFunction(() => document.querySelector('img')?.naturalWidth > 0)
+    await expect.poll(() => image.evaluate(node => node.naturalWidth)).toBeGreaterThan(0)
     await image.click()
     await image.waitFor({ timeout: 20_000 })
-    await page.waitForFunction(() => document.querySelector('img')?.naturalWidth > 0)
+    await expect.poll(() => image.evaluate(node => node.naturalWidth)).toBeGreaterThan(0)
     const inputBounds = await page.locator('#login-captcha').boundingBox()
     const imageBounds = await image.boundingBox()
     assert.equal(imageBounds.x > inputBounds.x, true)

@@ -4,6 +4,10 @@ import type { Translations } from './types'
 
 export const en: Translations = {
   desktopLogin: {
+    brand: 'UNIWORK',
+    welcome: 'Welcome to UniWork',
+    headline: 'Let your work flow.',
+    headlineAccent: 'Intelligence within reach.',
     logout: 'Sign out',
     logoutTitle: 'Sign out of this account?',
     logoutDescription:
@@ -21,7 +25,7 @@ export const en: Translations = {
     captchaPlaceholder: 'Enter the image code',
     smsPlaceholder: '6-digit code',
     captchaLoadError: 'Could not load the captcha. Refresh the image to retry.',
-    title: 'Sign in to Hermes',
+    title: 'Sign in to your workspace',
     subtitle: 'Use your MaaS account to access your own local workspace.',
     phone: 'Phone number',
     captcha: 'Image code',

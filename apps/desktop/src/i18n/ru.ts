@@ -25,6 +25,10 @@ const RU_NOUN = (count: number | string, one: string, few: string, many: string)
 
 export const ru = defineLocale({
   desktopLogin: {
+    brand: 'UNIWORK',
+    welcome: 'Добро пожаловать в UniWork',
+    headline: 'Пусть работа идёт легко.',
+    headlineAccent: 'Интеллект всегда рядом.',
     logout: 'Выйти',
     logoutTitle: 'Выйти из этого аккаунта?',
     logoutDescription:
@@ -42,7 +46,7 @@ export const ru = defineLocale({
     captchaPlaceholder: 'Код с изображения',
     smsPlaceholder: '6 цифр',
     captchaLoadError: 'Не удалось загрузить капчу. Обновите изображение и повторите попытку.',
-    title: 'Войти в Hermes',
+    title: 'Вход в ваше рабочее пространство',
     subtitle: 'Используйте аккаунт MaaS для доступа к своему локальному рабочему пространству.',
     phone: 'Номер телефона',
     captcha: 'Код с картинки',
