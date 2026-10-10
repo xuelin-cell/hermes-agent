@@ -41,6 +41,47 @@ FROM ${BASE_IMAGE}
 
 USER root
 
+# ---- LibreOffice + Chromium + Playwright -----------------------------------
+# 在薄封装基础上补齐「办公文档 + 浏览器自动化」三件套，让初始模板就能：
+#   1. 跑 LibreOffice headless —— skills/productivity/{xlsx,docx,pptx}/scripts
+#      里的 recalc / convert-to-pdf / 渲染幻灯片全靠 `soffice`。
+#   2. 跑 Chromium —— 浏览器自动化（agent-browser / cua-driver 截图）需要
+#      一个 headless Chromium。
+#   3. 跑 Python Playwright —— optional-skills/web-development/.../har_capture.py
+#      直接 `from playwright.sync_api import sync_playwright`，需要 venv 里有这个包。
+#
+# 分层策略：系统包一层（apt），Python 包一层（pip 进 hermes venv），
+# Playwright 浏览器二进制复用 base 已经装好的 /opt/hermes/.playwright
+# （base 的根 Dockerfile 跑过 `npx playwright install --with-deps chromium
+# --only-shell`，把 Chromium 和它要的系统依赖一并装好了）。
+
+# ---- 系统层：LibreOffice + Chromium + poppler ------------------------------
+# libreoffice-{calc,writer,impress} 拆分安装，比整套 libreoffice 元包小很多，
+# 且覆盖 xlsx_recalc / docx_create / pptx_render 三个脚本的 `soffice` 调用。
+# poppler-utils 提供 pdftoppm / pdftocairo，pptx_render.py 把 soffice 转出的
+# PDF 再拆成 PNG 幻灯片靠它。
+# chromium：系统级浏览器，装到 /usr/bin/chromium，任何用户/工具都能直接拉起，
+# 不依赖某个 venv —— 这就是「全局可用」。agent-browser / cua-driver 截图、
+# har_capture.py 的 headless Chromium 全走它。
+# fonts-noto-cjk / fonts-noto-color-emoji：CJK + emoji 字体，LibreOffice 渲染
+# 和 Chromium 截图里中文/emoji 不再是方块。
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libreoffice-calc \
+        libreoffice-writer \
+        libreoffice-impress \
+        libreoffice-core \
+        poppler-utils \
+        chromium \
+        fonts-noto-cjk \
+        fonts-noto-color-emoji \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---- Python 层：Playwright 库装进 hermes venv ------------------------------
+# har_capture.py 这类脚本 `from playwright.sync_api import sync_playwright`，
+# 需要 venv 里有 playwright 包。浏览器走系统 /usr/bin/chromium（见上），
+# 这里只补 Python 库本身。
+RUN /opt/hermes/.venv/bin/pip install --no-cache-dir playwright
+
 # ---- envd 与 Cube 的通用入口脚本 ------------------------------------------
 # 入口脚本的契约：后台拉起 envd（让平台的 SDK 数据面和默认探针可用），
 # 然后前台 exec 我们给的命令。我们把上游镜像自己的 dispatcher 作为那条命令，
