@@ -6,6 +6,8 @@
 
 MaaS 请求由 Electron 主进程发出，固定使用 `https://maas.ai-yuanjing.com/app` 和 `application=uniwork`。身份来自短信登录响应，或经过完整校验且未到期的本地加密记录。套餐结果不作为恢复身份的依据。
 
+废弃的 `/api/uniwork/auth/*` Python Web 登录代理已移除。原生登录不经过本机 Hermes 的登录代理；官方远程 OAuth、Cookie 和本机连接令牌仍保留，不属于该删除范围。
+
 ## P02 · 登录壳与账号运行时
 
 `bootstrap.ts` 先设置固定应用级 `userData`、执行启动前平台设置、取得单实例锁并完成遗留清理，再打开登录窗口。
