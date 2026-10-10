@@ -351,6 +351,8 @@ so glass and message-bubble transparency do not reveal scrolling text.
 
 ## Feedback & empty/error/loading states
 
+资料库的个人云盘在接口接入前保留入口、搜索和操作区域，显示本地化待接入状态；搜索、新建、刷新和文件操作禁用，并关联同一状态说明。工具栏在窄窗换行，不使用假文件、空盘提示或持续加载掩盖未接入状态。本地产物仍按原有会话与文件链路工作。
+
 - **Loading:** `Loader` (`src/components/ui/loader.tsx`) — animated math/ascii
   curves (`lemniscate-bloom` for long ops). Never ship the literal text
   "Loading…".

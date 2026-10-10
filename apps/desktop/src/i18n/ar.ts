@@ -1,6 +1,19 @@
 import { defineLocale } from './define-locale'
 
 export const ar = defineLocale({
+  cloudLibrary: {
+    personal: 'القرص السحابي الشخصي',
+    local: 'الملفات المحلية',
+    search: 'البحث في المجلد الحالي',
+    createFolder: 'مجلد جديد',
+    refresh: 'تحديث',
+    rename: 'إعادة تسمية',
+    trash: 'نقل إلى سلة المهملات',
+    preview: 'معاينة',
+    download: 'تنزيل',
+    unavailable: 'تكامل القرص السحابي قيد الانتظار',
+    unavailableDescription: 'الملفات السحابية غير متاحة بعد. سيتاح البحث وإدارة الملفات بعد اكتمال التكامل.'
+  },
   desktopLogin: {
     brand: 'UNIWORK',
     welcome: 'مرحبًا بك في UniWork',

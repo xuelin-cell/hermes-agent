@@ -4,6 +4,20 @@ import { defineLocale, type TranslationOverrides } from './define-locale'
 import { introEs } from './intro-es'
 
 export const esOverrides = {
+  cloudLibrary: {
+    personal: 'Almacenamiento personal',
+    local: 'Archivos locales',
+    search: 'Buscar en la carpeta actual',
+    createFolder: 'Nueva carpeta',
+    refresh: 'Actualizar',
+    rename: 'Renombrar',
+    trash: 'Mover a la papelera',
+    preview: 'Vista previa',
+    download: 'Descargar',
+    unavailable: 'Almacenamiento en la nube pendiente de integración',
+    unavailableDescription:
+      'Los archivos en la nube aún no están disponibles. La búsqueda y las operaciones se habilitarán tras la integración.'
+  },
   desktopLogin: {
     brand: 'UNIWORK',
     welcome: 'Te damos la bienvenida a UniWork',

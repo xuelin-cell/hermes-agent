@@ -4,6 +4,19 @@ import { defineLocale } from './define-locale'
 import { introZhHant } from './intro-zh-hant'
 
 export const zhHant = defineLocale({
+  cloudLibrary: {
+    personal: '個人雲端硬碟',
+    local: '本機產物',
+    search: '搜尋目前資料夾',
+    createFolder: '新增資料夾',
+    refresh: '重新整理',
+    rename: '重新命名',
+    trash: '移至垃圾桶',
+    preview: '預覽',
+    download: '下載',
+    unavailable: '雲端硬碟介面待接入',
+    unavailableDescription: '暫時無法查看雲端檔案，搜尋與檔案操作將在接入後開放。'
+  },
   desktopLogin: {
     brand: 'UNIWORK',
     welcome: '歡迎使用 UniWork',

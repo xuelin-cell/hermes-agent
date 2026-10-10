@@ -4,6 +4,20 @@ import { defineLocale, type TranslationOverrides } from './define-locale'
 import { introDe } from './intro-de'
 
 export const deOverrides = {
+  cloudLibrary: {
+    personal: 'Persönlicher Cloud-Speicher',
+    local: 'Lokale Ergebnisse',
+    search: 'Aktuellen Ordner durchsuchen',
+    createFolder: 'Neuer Ordner',
+    refresh: 'Aktualisieren',
+    rename: 'Umbenennen',
+    trash: 'In den Papierkorb',
+    preview: 'Vorschau',
+    download: 'Herunterladen',
+    unavailable: 'Cloud-Speicher noch nicht angebunden',
+    unavailableDescription:
+      'Cloud-Dateien sind noch nicht verfügbar. Suche und Dateiaktionen werden nach der Anbindung freigeschaltet.'
+  },
   desktopLogin: {
     brand: 'UNIWORK',
     welcome: 'Willkommen bei UniWork',

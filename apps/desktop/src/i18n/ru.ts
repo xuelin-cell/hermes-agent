@@ -24,6 +24,20 @@ const RU_NOUN = (count: number | string, one: string, few: string, many: string)
 }
 
 export const ru = defineLocale({
+  cloudLibrary: {
+    personal: 'Личное облачное хранилище',
+    local: 'Локальные результаты',
+    search: 'Поиск в текущей папке',
+    createFolder: 'Новая папка',
+    refresh: 'Обновить',
+    rename: 'Переименовать',
+    trash: 'В корзину',
+    preview: 'Предпросмотр',
+    download: 'Скачать',
+    unavailable: 'Облачное хранилище ещё не подключено',
+    unavailableDescription:
+      'Облачные файлы пока недоступны. Поиск и операции с файлами станут доступны после подключения.'
+  },
   desktopLogin: {
     brand: 'UNIWORK',
     welcome: 'Добро пожаловать в UniWork',

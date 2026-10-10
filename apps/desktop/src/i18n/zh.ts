@@ -4,6 +4,19 @@ import { defineLocale } from './define-locale'
 import { introZh } from './intro-zh'
 
 export const zh = defineLocale({
+  cloudLibrary: {
+    personal: '个人云盘',
+    local: '本地产物',
+    search: '搜索当前文件夹',
+    createFolder: '新建文件夹',
+    refresh: '刷新',
+    rename: '重命名',
+    trash: '移入回收站',
+    preview: '预览',
+    download: '下载',
+    unavailable: '云盘接口待接入',
+    unavailableDescription: '暂时无法查看云端文件，搜索与文件操作将在接入后开放。'
+  },
   desktopLogin: {
     brand: 'UNIWORK',
     welcome: '欢迎使用 UniWork',

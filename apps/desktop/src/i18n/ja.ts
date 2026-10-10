@@ -4,6 +4,19 @@ import { defineLocale } from './define-locale'
 import { introJa } from './intro-ja'
 
 export const ja = defineLocale({
+  cloudLibrary: {
+    personal: '個人クラウドドライブ',
+    local: 'ローカル成果物',
+    search: '現在のフォルダーを検索',
+    createFolder: '新規フォルダー',
+    refresh: '更新',
+    rename: '名前を変更',
+    trash: 'ゴミ箱に移動',
+    preview: 'プレビュー',
+    download: 'ダウンロード',
+    unavailable: 'クラウドドライブは接続準備中',
+    unavailableDescription: 'クラウドファイルはまだ表示できません。接続後に検索とファイル操作が利用可能になります。'
+  },
   desktopLogin: {
     brand: 'UNIWORK',
     welcome: 'UniWork へようこそ',

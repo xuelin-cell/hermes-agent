@@ -3,6 +3,20 @@ import { FIELD_DESCRIPTIONS, FIELD_LABELS } from '@/app/settings/constants'
 import type { Translations } from './types'
 
 export const en: Translations = {
+  cloudLibrary: {
+    personal: 'Personal drive',
+    local: 'Local artifacts',
+    search: 'Search current folder',
+    createFolder: 'New folder',
+    refresh: 'Refresh',
+    rename: 'Rename',
+    trash: 'Move to trash',
+    preview: 'Preview',
+    download: 'Download',
+    unavailable: 'Cloud drive integration pending',
+    unavailableDescription:
+      'Cloud files are not available yet. Search and file operations will be enabled after integration.'
+  },
   desktopLogin: {
     brand: 'UNIWORK',
     welcome: 'Welcome to UniWork',
