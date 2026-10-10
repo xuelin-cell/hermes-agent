@@ -1,0 +1,136 @@
+# 全功能沙箱镜像 —— 浏览器操控 + 屏幕可视化
+#
+# 在 Dockerfile.cube（薄封装：envd + cube-entrypoint + forward.py）之上，
+# 叠加完整的「屏幕四件套」(Xvfb + fluxbox + x11vnc + websockify/noVNC)
+# 和浏览器自动化环境，让初始模版就具备：
+#   1. 浏览器操控（Chromium + Playwright，base 已装；这里补 Python 端）
+#   2. 查看沙箱屏幕（noVNC :6080，浏览器直连）
+#
+# 屏幕方案参照 /mnt/hostmnt/d/ai-code/unicomAI_git/wsl_use/CubeSandbox/sandbox-screen-access-guide.html
+# 关键约束（guide）：
+#   - noVNC 端口默认绑 0.0.0.0:6080，但 CubeVS eBPF 端口映射只在 cubelet
+#     host 上可达；外部浏览器访问需要 nginx 反代或 SSH 隧道（见 guide）
+#   - 快照恢复不会重跑 entrypoint —— 屏幕栈在 entrypoint 启动，每次冷启动
+#     都会重新拉起，符合预期
+#
+# 构建（在 deploy/hermes-mt/ 下）：
+#   docker build -f Dockerfile.cube-new -t hermes-mt-cube-new:dev .
+#
+# 注册成模板（多暴露一个 6080 给 noVNC）：
+#   cubemastercli tpl create-from-image \
+#     --image <推到集群能拉到的仓库>/hermes-mt-cube-new:dev \
+#     --writable-layer-size 2G \
+#     --expose-port 9121 --expose-port 49983 --expose-port 6080 \
+#     --probe 9121 --probe-path /__mt/health
+#
+# 验证清单（guide）：
+#   - docker build 成功
+#   - 模板构建成功：cubeops 日志 "template image job succeeded ... ready"
+#   - 沙箱内 noVNC 起来了：curl -sI localhost:6080 返回 200，
+#     ss -lntp | grep 6080 显示 websockify 在监听
+#   - cubelet host 端口映射通：curl cubelet_host:mapped_port
+#   - 浏览器经反代/隧道打开 noVNC，看到桌面（不是黑屏）
+
+ARG BASE_IMAGE=hermes-custom:dev
+ARG CUBE_BASE=ghcr.io/tencentcloud/cubesandbox-base:2026.16
+
+FROM ${CUBE_BASE} AS cubebase
+
+FROM ${BASE_IMAGE}
+
+USER root
+
+# ---- envd 与 Cube 的通用入口脚本（同 Dockerfile.cube）----------------------
+COPY --from=cubebase /usr/bin/envd /usr/bin/envd
+COPY --from=cubebase /usr/local/bin/cube-entrypoint.sh /usr/local/bin/cube-entrypoint.sh
+RUN chmod 0755 /usr/bin/envd /usr/local/bin/cube-entrypoint.sh
+
+# ---- 屏幕四件套：Xvfb + x11vnc + fluxbox + noVNC/websockify -----------------
+# computer_use 还需要 xprop（_NET_ACTIVE_WINDOW）、xdotool/xclip（剪贴板/动作）
+# fonts-noto-cjk：中文字体，否则浏览器/截图里中文是方块
+# fonts-noto-color-emoji：emoji，网页渲染常用
+# x11-utils：xdpyinfo（guide 验证用，确认 :99 的分辨率）
+# 注意：base 是 debian:13.4，novnc/websockify 在 trixie 仓库里有
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        xvfb \
+        x11vnc \
+        fluxbox \
+        novnc \
+        websockify \
+        x11-utils \
+        x11-xserver-utils \
+        xdotool \
+        xclip \
+        xauth \
+        fonts-noto-cjk \
+        fonts-noto-color-emoji \
+        dbus-x11 \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---- VNC 密码（guide 方案）-------------------------------------------------
+# 构建时生成 /root/.vnc/passwd（权限 600），x11vnc 用 -rfbauth 鉴权。
+# cube123 是 guide 里的示例密码；生产环境应在 entrypoint 里用环境变量覆盖。
+RUN mkdir -p /root/.vnc \
+    && x11vnc -storepasswd cube123 /root/.vnc/passwd \
+    && chmod 600 /root/.vnc/passwd
+
+# ---- 屏幕环境变量 ----------------------------------------------------------
+# DISPLAY=:99：与 screen-entrypoint.sh 里 Xvfb :99 一致；
+#   forward.py._spawn_hermes 用 dict(os.environ) 透传，hermes/computer_use 据此连 X。
+# RES：Xvfb 虚拟屏分辨率（宽x高x色深），screen-entrypoint.sh 读。
+# NOVNC_PORT：websockify 监听端口，guide 用 6080。
+ENV DISPLAY=:99
+ENV RES=1280x720x24
+ENV NOVNC_PORT=6080
+
+# ---- 浏览器自动化：Python Playwright + Chromium ----------------------------
+# base 镜像已装 Node Playwright + Chromium（npx playwright install --with-deps
+# chromium --only-shell，PLAYWRIGHT_BROWSERS_PATH=/opt/hermes/.playwright）。
+# computer_use/cua_backend 走 cua-driver 子进程（需 DISPLAY），
+# 但 Python 端若要直接用 Playwright，需 pip install + 浏览器。
+# 这里装进 hermes venv，复用 base 已装的 Chromium 二进制。
+RUN /opt/hermes/.venv/bin/pip install --no-cache-dir playwright \
+    && /opt/hermes/.venv/bin/playwright install chromium
+
+# ---- 屏幕入口脚本 ----------------------------------------------------------
+# 在 cube-entrypoint.sh 之前 exec：先拉起 Xvfb/fluxbox/x11vnc/websockify，
+# 再把控制权交给 cube-entrypoint（后台 envd → 前台 dispatcher → forward.py）。
+# 放镜像层（/opt/mt）而不是数据卷，避免租户改写。
+RUN mkdir -p /opt/mt /mnt/u
+COPY seed/forward.py /opt/mt/forward.py
+COPY seed/mtstate.py /opt/mt/mtstate.py
+COPY seed/screen-entrypoint.sh /opt/mt/screen-entrypoint.sh
+RUN chmod 0644 /opt/mt/forward.py /opt/mt/mtstate.py \
+    && chmod 0755 /opt/mt/screen-entrypoint.sh
+
+# ---- 所有用户相同的环境变量（同 Dockerfile.cube）---------------------------
+ENV HERMES_HOME=/opt/data \
+    HERMES_UID=10000 \
+    HERMES_GID=10000 \
+    TZ=Asia/Shanghai \
+    TERMINAL_ENV=local \
+    HERMES_DASHBOARD_FILES_ROOT=/opt/data/workspace \
+    MT_FWD_PORT=9121 \
+    MT_HERMES_PORT=9120
+ENV MT_BOOTSTRAP_WINDOW_S=600
+ENV MT_ARCHIVE_INTERVAL_S=300
+ENV TIRITH_ENABLED=0
+ENV HERMES_ENVIRONMENT_HINT="Environment notes: /opt/data/workspace is the user's persistent workspace. It lives on network object storage: many small files are slow there and hard links are not supported. Do heavy or temporary work (git clone, package installs, builds, scratch files) under /opt/data/scratch on the fast local disk, then copy finished results into the workspace. /opt/data/scratch is not preserved when the sandbox is recreated."
+
+# ---- 端口 -----------------------------------------------------------------
+# 9121  转发器（对外唯一入口，探针指向它）
+# 49983 envd（平台自用）
+# 6080  noVNC（屏幕可视化，浏览器直连）
+EXPOSE 9121
+EXPOSE 49983
+EXPOSE 6080
+
+# ---- 入口链 ---------------------------------------------------------------
+# ENTRYPOINT = screen-entrypoint.sh + cube-entrypoint.sh + dispatcher
+# CMD        = python3 /opt/mt/forward.py
+#
+# screen-entrypoint.sh 接收的第一个参数是 cube-entrypoint.sh 的路径，
+# 它先拉起屏幕四件套，最后 exec "$@" —— 即 exec cube-entrypoint.sh
+# /opt/hermes/docker/entrypoint-dispatch.sh python3 /opt/mt/forward.py。
+ENTRYPOINT [ "/opt/mt/screen-entrypoint.sh", "/usr/local/bin/cube-entrypoint.sh", "/opt/hermes/docker/entrypoint-dispatch.sh" ]
+CMD [ "python3", "/opt/mt/forward.py" ]
