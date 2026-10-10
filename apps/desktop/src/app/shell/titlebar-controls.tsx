@@ -361,7 +361,7 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
         {sidebarOpen && (
           <button
             aria-label="元景数字员工"
-            className="mr-1 flex h-(--titlebar-control-height) cursor-default items-center rounded px-1.5 text-xs font-medium whitespace-nowrap text-foreground/85 select-none"
+            className="mr-1 flex h-(--titlebar-control-height) cursor-default items-center rounded px-1.5 text-[0.8125rem] font-bold whitespace-nowrap text-foreground/85 select-none"
             onClick={handleBrandClick}
             type="button"
           >

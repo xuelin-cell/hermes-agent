@@ -27,6 +27,7 @@ describe('the Sessions pane tab label', () => {
       )
 
     expect(inLocale('ru')).not.toBe(inLocale('en'))
+    expect(inLocale('zh')).toContain('text-[0.8125rem]')
   })
 
   it('is joined by every other string-titled chrome pane, with a string twin for the zone menu / drag ghost', () => {
@@ -47,7 +48,7 @@ describe('the Sessions pane tab label', () => {
       expect(inLocale(id, 'ru')).not.toBe(inLocale(id, 'en'))
     }
 
-    const ruSessions = inLocale('sessions', 'ru')
+    const ruSessions = inLocale('sessions', 'ru').replace(/<[^>]+>/g, '')
     const ruFiles = inLocale('files', 'ru')
 
     // The non-React readers (zone menu Show/Hide rows, drag ghost chip) call

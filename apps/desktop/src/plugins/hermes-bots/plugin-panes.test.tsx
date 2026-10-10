@@ -189,6 +189,7 @@ describe('the Bots pane dock', () => {
 
     expect(inLocale('en')).toBeTruthy()
     expect(inLocale('ru')).not.toBe(inLocale('en'))
+    expect(inLocale('zh')).toContain('text-[0.8125rem]')
 
     harness.dispose()
   })

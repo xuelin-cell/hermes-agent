@@ -207,7 +207,12 @@ registry.registerMany([
       // Standing chrome: no close gestures at all — the tab is shown/hidden
       // (zone menu Show/Hide rows + the auto-registered ⌘K toggle below).
       hideOnly: true,
-      tabTitle: () => <LocalizedTabTitle select={t => t.sidebar.sessions} />,
+      tabTitle: () => (
+        <LocalizedTabTitle
+          className="text-[0.8125rem] font-medium normal-case tracking-normal"
+          select={t => t.sidebar.sessions}
+        />
+      ),
       tabTitleText: () => translateNow('sidebar.sessions'),
       width: `${SIDEBAR_DEFAULT_WIDTH}px`,
       minWidth: `${SIDEBAR_DEFAULT_WIDTH}px`,

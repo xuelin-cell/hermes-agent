@@ -472,7 +472,12 @@ export default {
         width: '260px',
         collapsible: true,
         hideOnly: true,
-        tabTitle: () => <LocalizedTabTitle select={t => t.common.bots} />,
+        tabTitle: () => (
+          <LocalizedTabTitle
+            className="text-[0.8125rem] font-medium normal-case tracking-normal"
+            select={t => t.common.bots}
+          />
+        ),
         tabTitleText: () => translateNow('common.bots'),
         dock: {
           pane: 'sessions',

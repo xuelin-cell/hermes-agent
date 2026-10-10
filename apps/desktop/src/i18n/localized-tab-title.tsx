@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
 
+import { cn } from '@/lib/utils'
+
 import { useI18n } from './context'
 import type { Translations } from './types'
 
@@ -13,8 +15,14 @@ import type { Translations } from './types'
  *  `data.tabTitle` instead: it subscribes to the live locale like any component
  *  and re-renders the tab when the language loads or the user switches it.
  *  `title` stays as the string fallback for the non-React readers. */
-export function LocalizedTabTitle({ select }: { select: (t: Translations) => ReactNode }) {
+export function LocalizedTabTitle({
+  className,
+  select
+}: {
+  className?: string
+  select: (t: Translations) => ReactNode
+}) {
   const { t } = useI18n()
 
-  return <>{select(t)}</>
+  return className ? <span className={cn(className)}>{select(t)}</span> : <>{select(t)}</>
 }
