@@ -36,6 +36,7 @@ function fixture() {
   put(join(app, 'electron/entry.ts'), "await import('./main')")
   put(join(app, 'electron/main.ts'), 'console.log(JSON.stringify({ stamp: __HERMES_INSTALL_STAMP__, identity: __HERMES_PRODUCT_IDENTITY__ }))')
   put(join(app, 'electron/preload.ts'), 'globalThis.fixturePreload = "compiled preload"')
+  put(join(app, 'electron/login/preload.ts'), 'globalThis.fixtureLoginPreload = "compiled login preload"')
   put(join(app, 'electron/preview-guest-preload-entry.ts'), 'globalThis.fixtureGuestPreload = "compiled guest preload"')
   cpSync(join(repo, 'apps/desktop/product-identity.cjs'), join(app, 'product-identity.cjs'))
   cpSync(join(repo, 'apps/desktop/electron/native'), join(app, 'electron/native'), { recursive: true })
@@ -88,6 +89,9 @@ test('desktop compiler consumes explicit immutable inputs, replaces variants, an
   expect(readFileSync(join(input.out, 'apple-touch-icon.png'), 'utf8')).toBe('fresh icon')
   expect(existsSync(join(input.out, 'assets'))).toBe(true)
   expect(existsSync(join(input.out, 'electron-preload.js'))).toBe(true)
+  expect(existsSync(join(input.out, 'login-preload.js'))).toBe(true)
+  expect(execFileSync(process.execPath, ['-e', 'require(process.argv[1]); process.stdout.write(globalThis.fixtureLoginPreload)',
+    join(input.out, 'login-preload.js')], { cwd: tmpdir(), encoding: 'utf8' })).toBe('compiled login preload')
   expect(readFileSync(join(input.out, 'native/helper-fixture'), 'utf8')).toBe('prepared executable resource')
   expect(existsSync(join(input.out, 'node_modules/native'))).toBe(false)
   put(join(input.out, 'native/helper-fixture'), 'signed resource')
