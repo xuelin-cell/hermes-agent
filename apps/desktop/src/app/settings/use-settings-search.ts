@@ -8,6 +8,7 @@ import { getEnvVars, getHermesConfigSchema } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { type IconComponent, Monitor, Package, Settings2, Wrench } from '@/lib/icons'
 import { $agentPlugins, isDesktopRelevantPlugin, loadAgentPlugins } from '@/store/agent-plugins'
+import { $developerMode } from '@/store/developer-mode'
 import { $gatewayState } from '@/store/session'
 
 import { useHermesConfigRecord } from '../hooks/use-config-record'
@@ -15,7 +16,7 @@ import { useOnProfileSwitch } from '../hooks/use-on-profile-switch'
 
 import { SECTIONS } from './constants'
 import { OTHER_SUBPAGES } from './other-subpages'
-import { settingSearchTargets } from './settings-manifest'
+import { SETTING_IDS, settingSearchTargets } from './settings-manifest'
 import { buildConfigSearchEntries, buildCredentialSearchEntries, type SettingsSearchEntry } from './settings-search'
 import { settingsSubpages } from './subpages'
 import type { SettingsView } from './types'
@@ -40,6 +41,7 @@ export interface PluginSearchEntry {
 export function useSettingsSearchCatalog(enabled: boolean) {
   const { t } = useI18n()
   const configQuery = useHermesConfigRecord()
+  const developerMode = useStore($developerMode)
 
   const schemaQuery = useQuery({
     queryKey: ['hermes-config-schema'],
@@ -145,17 +147,19 @@ export function useSettingsSearchCatalog(enabled: boolean) {
 
   // Every hand-built settings row, straight from the manifest that also
   // routes and ids them — the palette cannot drift from the pages.
-  const settingEntries: SettingsSearchEntry[] = settingSearchTargets(t).map(({ id, view, ...entry }) => {
-    const parent = parentOf(view)
+  const settingEntries: SettingsSearchEntry[] = settingSearchTargets(t)
+    .filter(({ id }) => developerMode || id !== SETTING_IDS.appearance.pet)
+    .map(({ id, view, ...entry }) => {
+      const parent = parentOf(view)
 
-    return {
-      ...entry,
-      context: parent?.label ?? view,
-      icon: parent?.icon ?? Settings2,
-      id: `setting:${id}`,
-      target: { setting: id, view }
-    }
-  })
+      return {
+        ...entry,
+        context: parent?.label ?? view,
+        icon: parent?.icon ?? Settings2,
+        id: `setting:${id}`,
+        target: { setting: id, view }
+      }
+    })
 
   // A page named after its one setting (Appearance › Theme) would show up as
   // two identical rows; the setting wins because it lands on the row itself.
@@ -163,7 +167,7 @@ export function useSettingsSearchCatalog(enabled: boolean) {
 
   const subpageEntries: SettingsSearchEntry[] = parents
     .flatMap(parent =>
-      settingsSubpages(parent.view).map(page => ({
+      settingsSubpages(parent.view, developerMode).map(page => ({
         context: parent.label,
         icon: parent.icon,
         id: `settings-page:${parent.view}:${page.id}`,

@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils'
 import { $commandPaletteOpen, openCommandPalettePage } from '@/store/command-palette'
 import { confirm } from '@/store/confirm'
 import { $activeConnectionId } from '@/store/connections'
+import { $developerMode } from '@/store/developer-mode'
 import { bindingsFor } from '@/store/keybinds'
 import { notifyError } from '@/store/notifications'
 import { $settingsScopeProfile } from '@/store/settings-scope'
@@ -76,6 +77,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
   const activeConnectionId = useStore($activeConnectionId)
   const { t } = useI18n()
   const navigate = useNavigate()
+  const developerMode = useStore($developerMode)
   const { hash, pathname, search } = useLocation()
 
   // MCP and Plugins moved out of Settings into Capabilities. Keep old
@@ -92,7 +94,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
   const [activeView] = useRouteEnumParam('tab', SETTINGS_VIEWS, 'config:model' as SettingsViewId)
   const params = new URLSearchParams(search)
   const requestedSubpage = params.get('page')
-  const subpage = resolveSettingsSubpage(activeView, params)
+  const subpage = resolveSettingsSubpage(activeView, params, developerMode)
   const needsSubpageRedirect = Boolean(subpage && subpage !== requestedSubpage)
   const subpageSearch = new URLSearchParams(search)
 
@@ -122,7 +124,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
       }
 
       next.set('tab', view)
-      const destination = page ?? settingsSubpages(view)[0]?.id
+      const destination = page ?? settingsSubpages(view, developerMode)[0]?.id
 
       if (destination) {
         next.set('page', destination)
@@ -130,7 +132,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
 
       navigate({ hash, pathname, search: `?${next}` }, { replace: true })
     },
-    [hash, navigate, pathname, search]
+    [developerMode, hash, navigate, pathname, search]
   )
 
   const setActiveView = useCallback((view: SettingsViewId) => openSettingsPage(view), [openSettingsPage])
@@ -348,7 +350,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
         ] as OverlayNavGroup[]
       ).map(group => {
         const view = group.id as SettingsViewId
-        const children = settingsSubpages(view)
+        const children = settingsSubpages(view, developerMode)
 
         return children.length
           ? {
@@ -367,6 +369,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
       activeView,
       billingView,
       canViewPlans,
+      developerMode,
       providerView,
       subpage,
       t,

@@ -23,6 +23,12 @@ const views: SettingsView[] = [
 ]
 
 describe('settings subpage routing', () => {
+  it('只在开发者模式下暴露宠物外观入口', () => {
+    expect(settingsSubpages('config:appearance', false).map(page => page.id)).not.toContain('pet')
+    expect(settingsSubpages('config:appearance', true).map(page => page.id)).toContain('pet')
+    expect(resolveSettingsSubpage('config:appearance', new URLSearchParams({ page: 'pet' }), false)).toBe('general')
+  })
+
   it('opens the first ordered child for parents and keeps explicit child destinations', () => {
     for (const view of views) {
       const pages = settingsSubpages(view)

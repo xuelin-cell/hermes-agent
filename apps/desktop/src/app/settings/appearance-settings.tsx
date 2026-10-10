@@ -17,6 +17,7 @@ import { normalize } from '@/lib/text'
 import { cn } from '@/lib/utils'
 import { $backdrop, setBackdrop } from '@/store/backdrop'
 import { $composerPopoutGesturesEnabled, setComposerPopoutGesturesEnabled } from '@/store/composer-popout'
+import { $developerMode } from '@/store/developer-mode'
 import { $embedAllowed, $embedMode, clearEmbedAllowed, type EmbedMode, setEmbedMode } from '@/store/embed-consent'
 import {
   $interfaceMode,
@@ -432,6 +433,7 @@ export function AppearanceSettings({ subpage }: AppearanceSettingsProps = {}) {
   const embedMode = useStore($embedMode)
   const embedAllowed = useStore($embedAllowed)
   const composerPopoutGesturesEnabled = useStore($composerPopoutGesturesEnabled)
+  const developerMode = useStore($developerMode)
   const fileBrowserOpen = useStore($fileBrowserOpen)
   const fileBrowserShadowed = useStore($modeShadowed('fileBrowserOpen'))
   const translucency = useStore($translucency)
@@ -1063,7 +1065,7 @@ export function AppearanceSettings({ subpage }: AppearanceSettingsProps = {}) {
         </div>
       </div>
 
-      {show('pet') && (
+      {developerMode && show('pet') && (
         <div className={subpage === undefined ? 'mt-6' : undefined} id={settingElementId(ids.pet)}>
           <PetSettings />
         </div>

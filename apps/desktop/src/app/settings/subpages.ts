@@ -92,9 +92,9 @@ export function settingsSubpageIcon(page: SettingsSubpage, fallback: IconCompone
   return SUBPAGE_ICONS[page.labelKey] ?? fallback
 }
 
-export function settingsSubpages(view: SettingsView): readonly SettingsSubpage[] {
+export function settingsSubpages(view: SettingsView, developerMode = true): readonly SettingsSubpage[] {
   if (view === 'config:appearance') {
-    return APPEARANCE_SUBPAGES
+    return developerMode ? APPEARANCE_SUBPAGES : APPEARANCE_SUBPAGES.filter(page => page.id !== 'pet')
   }
 
   if (view.startsWith('config:')) {
@@ -131,8 +131,12 @@ export function settingsSubpageForLegacyLink(view: SettingsView, params: URLSear
     : settingsSubpageForTarget(view, params.get('field') ?? undefined, params.get('setting') ?? undefined)
 }
 
-export function resolveSettingsSubpage(view: SettingsView, params: URLSearchParams): string | undefined {
-  const pages = settingsSubpages(view)
+export function resolveSettingsSubpage(
+  view: SettingsView,
+  params: URLSearchParams,
+  developerMode = true
+): string | undefined {
+  const pages = settingsSubpages(view, developerMode)
   const requested = settingsSubpageForLegacyLink(view, params) ?? params.get('page')
 
   return pages.find(page => page.id === requested)?.id ?? pages[0]?.id
