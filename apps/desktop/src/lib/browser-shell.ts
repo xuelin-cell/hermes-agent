@@ -11,18 +11,26 @@ import { getRuntimeI18nLocale } from '@/i18n/runtime'
  * each call site to a single condition so upstream merges stay trivial; after a
  * merge, `grep -rn "browser-shell'" src` must still find every entry.
  *
- *   app/chat/sidebar/filter-menu.tsx       no profile submenu (filter / new / import)
- *   app/chat/sidebar/index.tsx             no messaging platforms entry
- *   app/chat/sidebar/profile-switcher.tsx  no add / import profile, no "connect gateway"
- *   app/command-palette/index.tsx          no in-app browser, Hermes update, theme marketplace, gateway restart
- *   app/profiles/index.tsx                 no "new profile"
- *   app/right-sidebar/file-actions.tsx     rename + delete (to the instance's recycle bin) in the menu
- *   app/settings/appearance-settings.tsx   no theme marketplace results
- *   app/settings/index.tsx                 no Gateway or About page
- *   app/settings/plugins-settings.tsx      no desktop (local) plugins section
- *   app/shell/gateway-menu-panel.tsx       no gateway restart
- *   store/preview.ts                       no in-app browser: links and URL previews open in a new tab
- *   store/profile.ts                       only the default profile
+ * Two kinds of difference. Places marked * only hide what regular users have no
+ * use for and go through `hideForUsers()`, so developer mode shows them again,
+ * working or not. The rest are what the browser build has to do differently,
+ * developer mode or not.
+ *
+ *   api/models.ts                                      * model pickers: the platform's providers only
+ *   app/chat/sidebar/filter-menu.tsx                   * no profile submenu (filter / new / import)
+ *   app/chat/sidebar/index.tsx                         * no messaging platforms entry
+ *   app/chat/sidebar/profile-switcher.tsx              * no add / import profile, no "connect gateway"
+ *   app/command-palette/index.tsx                      * no in-app browser, Hermes update, theme marketplace, gateway restart
+ *   app/profiles/index.tsx                             * no "new profile"
+ *   app/right-sidebar/file-actions.tsx                 rename + delete (to the instance's recycle bin) in the menu
+ *   app/right-sidebar/terminal/use-terminal-session.ts Ctrl+V / Ctrl+Shift+V paste through the browser
+ *   app/settings/appearance-settings.tsx               * no theme marketplace results
+ *   app/settings/index.tsx                             * no Gateway or About page
+ *   app/settings/plugins-settings.tsx                  * no desktop (local) plugins section
+ *   app/shell/gateway-menu-panel.tsx                   * no gateway restart
+ *   lib/model-options.ts                               * model pickers: the platform's providers only
+ *   store/preview.ts                                   no in-app browser: links and URL previews open in a new tab
+ *   store/profile.ts                                   only the default profile
  *
  * The terminal panel, rename and the recycle bin need no page changes: the
  * bridge implements them against the instance (`/__mt_user/…` behind the
@@ -30,6 +38,58 @@ import { getRuntimeI18nLocale } from '@/i18n/runtime'
  */
 export function isBrowserShell(): boolean {
   return typeof document !== 'undefined' && Boolean(document.documentElement?.dataset?.hermesBrowser)
+}
+
+const DEVELOPER_MODE_KEY = 'hermes.mt.developer'
+
+/** Developer mode, per browser: tapping the account badge in the bottom-right
+ * corner 7 times toggles it and reloads the page (the badge is the entry's,
+ * `deploy/hermes-mt/entry/entry/static/badge.js`). */
+export function isDeveloperMode(): boolean {
+  try {
+    return globalThis.localStorage?.getItem(DEVELOPER_MODE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+/** Hide something regular users of the browser build have no use for: desktop-only
+ * features, providers outside the platform's plan. Developer mode shows it again. */
+export function hideForUsers(): boolean {
+  return isBrowserShell() && !isDeveloperMode()
+}
+
+interface PickerProvider {
+  is_current?: boolean
+  is_user_defined?: boolean
+}
+
+/** Model pickers list the providers the platform configures (the `providers:`
+ * block of the instance's config, `is_user_defined`) and whichever one is in use.
+ * Hermes' built-in providers — keyless free ones, or one the user pasted a key
+ * for — show up in developer mode. */
+export function visibleModelOptions<T extends { providers?: PickerProvider[] }>(options: T): T {
+  if (!hideForUsers() || !Array.isArray(options?.providers)) {
+    return options
+  }
+
+  return { ...options, providers: options.providers.filter(p => p.is_user_defined || p.is_current) }
+}
+
+/** Paste chords in the terminal: Ctrl+V and Ctrl+Shift+V (⌘V on macOS). The
+ * desktop app takes Ctrl+Shift+V and reads the clipboard itself, and plain
+ * Ctrl+V goes to the shell as ^V. A page can't read the clipboard (no clipboard
+ * API on plain http, a permission prompt on https), and Ctrl+V is what browser
+ * users press, so both chords are left to the browser's own paste, which xterm
+ * picks up. */
+export function isBrowserTerminalPaste(event: KeyboardEvent): boolean {
+  if (!isBrowserShell() || event.type !== 'keydown' || event.altKey || event.key.toLowerCase() !== 'v') {
+    return false
+  }
+
+  const mac = /mac/i.test(globalThis.navigator?.platform ?? '')
+
+  return mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey
 }
 
 const INSTANCE_LOCAL_HOST_RE = /^(?:localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|\[::1\])$/i
@@ -52,7 +112,7 @@ const SETTINGS_VIEWS_HIDDEN = new Set(['about', 'connections', 'gateway'])
 /** Settings pages that only make sense for the desktop app: gateway / SSH
  * connections, and About (app version, self-update, uninstall). */
 export function isSettingsViewHidden(view: string): boolean {
-  return isBrowserShell() && SETTINGS_VIEWS_HIDDEN.has(view)
+  return hideForUsers() && SETTINGS_VIEWS_HIDDEN.has(view)
 }
 
 const PALETTE_ITEMS_HIDDEN = new Set(['cc-open-browser', 'cc-restart-gateway', 'cc-update-hermes', 'theme-install'])
@@ -62,7 +122,7 @@ const PALETTE_ITEMS_HIDDEN = new Set(['cc-open-browser', 'cc-restart-gateway', '
  * marketplace, restarting the messaging gateway (an instance runs none). Empty
  * groups go too. */
 export function withoutHiddenPaletteItems<G extends { items: readonly { id: string }[] }>(groups: G[]): G[] {
-  if (!isBrowserShell()) {
+  if (!hideForUsers()) {
     return groups
   }
 
@@ -77,7 +137,7 @@ const SIDEBAR_NAV_HIDDEN = new Set(['messaging'])
  * always-on gateway with a public address, which a cloud instance (paused when
  * idle) does not have. */
 export function withoutHiddenNavItems<T extends { id: string }>(items: T[]): T[] {
-  return isBrowserShell() ? items.filter(item => !SIDEBAR_NAV_HIDDEN.has(item.id)) : items
+  return hideForUsers() ? items.filter(item => !SIDEBAR_NAV_HIDDEN.has(item.id)) : items
 }
 
 /** Codes the instance's file endpoints answer with (`deploy/hermes-mt/seed/mtuser.py`). */

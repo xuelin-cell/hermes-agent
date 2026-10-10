@@ -107,6 +107,13 @@ def test_platform_policy_keys_exist_in_hermes_defaults() -> None:
     assert DEFAULT_CONFIG["model_catalog"]["enabled"] is True
     assert DEFAULT_CONFIG["security"]["allow_lazy_installs"] is True
 
+    # 默认推理强度：没有按模型设置的模型，用 agent.reasoning_effort（它不在 DEFAULT_CONFIG 里，hermes 读时缺省为空）。
+    from hermes_constants import parse_reasoning_effort, resolve_reasoning_config
+
+    cfg = {"agent": {"reasoning_effort": "high", "reasoning_overrides": {"glm-5.2": "max"}}}
+    assert resolve_reasoning_config(cfg, "glm-5.3-flash") == parse_reasoning_effort("high")
+    assert resolve_reasoning_config(cfg, "glm-5.2") == parse_reasoning_effort("max")
+
 
 def test_orphan_reap_grace_env_var_wins(monkeypatch: pytest.MonkeyPatch) -> None:
     """F9：断线后会话保留多久，沙箱镜像用环境变量统一设，不改每个用户的 config.yaml。"""

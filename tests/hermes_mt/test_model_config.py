@@ -67,11 +67,12 @@ def test_patch_spec_has_limits_policy_and_reasoning(monkeypatch: pytest.MonkeyPa
     mgr = _manager(monkeypatch)
     spec = mgr._config_patch_spec(("http://plan/v1", "m1"), [("m1", ""), ("m2", "")], {"m1": 300000})
     assert spec["limits"] == {"m1": 300000, "m2": 128000}  # 套餐没给的按兜底值
-    assert spec["policy"] == PLATFORM_POLICY
+    assert spec["policy"] == {**PLATFORM_POLICY, "agent": {"reasoning_effort": "high"}}
     assert spec["reasoning_defaults"] == {"deepseek-v4.1-flash": "high"}
-    off = _manager(monkeypatch, default_context_window=0, reasoning_defaults="")
+    off = _manager(monkeypatch, default_context_window=0, reasoning_defaults="", default_reasoning_effort="")
     spec = off._config_patch_spec(("http://plan/v1", "m1"), [("m1", ""), ("m2", "")], {"m1": 300000})
     assert spec["limits"] == {"m1": 300000} and spec["reasoning_defaults"] == {}
+    assert spec["policy"] == PLATFORM_POLICY
 
 
 def test_rendered_template_is_valid_yaml_with_the_new_sections(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -127,6 +128,31 @@ def test_policy_wins_over_the_users_value(mtstate) -> None:
     new_text, notes = mtstate.patch_config_text(user_cfg, _spec(policy=PLATFORM_POLICY))
     cfg = yaml.safe_load(new_text)
     assert notes and cfg["model_catalog"] == {"enabled": False, "ttl_hours": 3}
+
+
+def test_default_effort_is_platform_managed_and_per_model_ones_stay(mtstate, monkeypatch: pytest.MonkeyPatch) -> None:
+    """前端「没选过强度」时用的默认值来自 agent.reasoning_effort：平台每次引导写成 high；按模型的设置不动。"""
+    user_cfg = (
+        "model: {}\n"
+        "agent:\n  reasoning_effort: medium\n  reasoning_overrides:\n    glm-5.2: max\n  max_turns: 30\n"
+    )
+    spec = _manager(monkeypatch)._config_patch_spec(("http://plan/v1", "m1"), [("m1", "")])
+    new_text, notes = mtstate.patch_config_text(user_cfg, _spec(policy=spec["policy"]))
+    agent = yaml.safe_load(new_text)["agent"]
+    assert notes and agent == {"reasoning_effort": "high", "reasoning_overrides": {"glm-5.2": "max"}, "max_turns": 30}
+
+
+def test_a_policy_only_change_is_still_written(mtstate, monkeypatch: pytest.MonkeyPatch) -> None:
+    """10-10 本机实测撞出来的：新用户的配置和平台块完全一致、只差默认推理强度时，旧的变化检测看不见
+    agent 段，判成「没改」不写回，这一项永远落不了地。"""
+    mgr = _manager(monkeypatch)
+    endpoint, catalog = ("http://plan/v1", "m1"), [("m1", ""), ("deepseek-v4.1-flash", "")]
+    fresh = mgr._render_user_files("", endpoint, catalog)["config.yaml"].decode("utf-8")
+    spec = mgr._config_patch_spec(endpoint, catalog)
+    new_text, notes = mtstate.patch_config_text(fresh, spec)
+    assert notes and yaml.safe_load(new_text)["agent"]["reasoning_effort"] == "high"
+    again, notes = mtstate.patch_config_text(new_text, spec)
+    assert notes == [] and again == new_text
 
 
 def test_old_entry_spec_still_patches_like_before(mtstate) -> None:

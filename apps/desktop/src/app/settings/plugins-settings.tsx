@@ -12,7 +12,7 @@ import { $pluginRecords, type PluginRecord, setPluginEnabled } from '@/contrib/p
 import { discoverRuntimePlugins } from '@/contrib/runtime-loader'
 import { getProfiles } from '@/hermes'
 import { useI18n } from '@/i18n'
-import { isBrowserShell } from '@/lib/browser-shell'
+import { hideForUsers } from '@/lib/browser-shell'
 import { triggerHaptic } from '@/lib/haptics'
 import { FolderOpen, Monitor, Package, RefreshCw } from '@/lib/icons'
 import { normalize } from '@/lib/text'
@@ -374,7 +374,7 @@ export function PluginsSettings() {
   )
 
   // Browser build: desktop plugins live in the app's local plugins folder.
-  if (isBrowserShell()) {
+  if (hideForUsers()) {
     return (
       <SettingsContent>
         <AgentPluginsSection />

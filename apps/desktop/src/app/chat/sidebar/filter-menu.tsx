@@ -19,7 +19,7 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { useI18n } from '@/i18n'
-import { isBrowserShell } from '@/lib/browser-shell'
+import { hideForUsers } from '@/lib/browser-shell'
 import { desktopGit } from '@/lib/desktop-git'
 import { cn } from '@/lib/utils'
 import {
@@ -322,7 +322,7 @@ export function SidebarFilterMenu({ className }: { className?: string }) {
 
           <DropdownMenuSub>
             {/* Browser build: one profile, nothing to filter, create or import. */}
-            <DropdownMenuSubTrigger disabled={isBrowserShell()} hidden={isBrowserShell()}>
+            <DropdownMenuSubTrigger disabled={hideForUsers()} hidden={hideForUsers()}>
               Profile
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent className="max-h-80 overflow-y-auto">

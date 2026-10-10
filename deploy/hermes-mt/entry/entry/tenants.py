@@ -474,6 +474,14 @@ class TenantManager:
         digest = hashlib.sha256(user_id.encode("utf-8")).hexdigest()[:32]
         return f"{self.s.prefix}-u-{digest}"
 
+    def _platform_policy(self) -> dict:
+        """平台策略，加上默认推理强度（MT_DEFAULT_REASONING_EFFORT，空就不写）。
+        转发器按「段 → 键」逐项写，用户在同一段里的其他设置不动（seed/mtstate.py 的 _apply_policy）。"""
+        effort = self.s.default_reasoning_effort
+        if not effort:
+            return PLATFORM_POLICY
+        return {**PLATFORM_POLICY, "agent": {"reasoning_effort": effort}}
+
     def _config_patch_spec(
         self,
         endpoint: tuple[str, str] | None,
@@ -492,7 +500,7 @@ class TenantManager:
             "key_env": self.s.key_env_name,
             "models": names,
             "limits": self._model_limits(names or [model], limits),
-            "policy": PLATFORM_POLICY,
+            "policy": self._platform_policy(),
             "reasoning_defaults": parse_reasoning_defaults(self.s.reasoning_defaults),
             "template": self._render_user_files("", endpoint, catalog, limits)["config.yaml"].decode("utf-8"),
         }

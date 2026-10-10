@@ -770,16 +770,20 @@ def _set_top(cfg, key: str, value) -> None:
         cfg[key] = value
 
 
-def _platform_snapshot(cfg, key: str) -> str:
-    """平台管的那几段，序列化成字符串好比较改没改。"""
+def _platform_snapshot(cfg, key: str, policy: dict | None = None) -> str:
+    """平台管的那几段，序列化成字符串好比较改没改。
+
+    策略写到的段（policy 的每个顶层键）整段都算：10-10 只加了一项 agent.reasoning_effort 时，
+    旧写法看不见这一段的变化，判成「没改」就不写回文件，新策略永远落不了地。
+    """
     model = cfg.get("model") if isinstance(cfg.get("model"), dict) else {}
     providers = cfg.get("providers") if isinstance(cfg.get("providers"), dict) else {}
     agent = cfg.get("agent") if isinstance(cfg.get("agent"), dict) else {}
+    sections = {"model_catalog", "security", *(str(k) for k in (policy or {}))}
     return json.dumps({
         "model": {k: model.get(k) for k in ("default", "provider", "base_url", "key_env")},
         "provider": providers.get(key),
-        "model_catalog": cfg.get("model_catalog"),
-        "security": cfg.get("security"),
+        "sections": {name: cfg.get(name) for name in sorted(sections)},
         "reasoning_overrides": agent.get("reasoning_overrides"),
     }, sort_keys=True, default=str)
 
@@ -846,7 +850,8 @@ def apply_platform_block(cfg, spec: dict) -> bool:
     key_env = str(spec.get("key_env", "")).strip()
     names = [str(n).strip() for n in (spec.get("models") or []) if str(n).strip()]
     limits = spec.get("limits") if isinstance(spec.get("limits"), dict) else {}
-    before = _platform_snapshot(cfg, key)
+    policy = spec.get("policy") if isinstance(spec.get("policy"), dict) else {}
+    before = _platform_snapshot(cfg, key, policy)
 
     model = cfg.get("model")
     if not isinstance(model, dict):
@@ -887,11 +892,11 @@ def apply_platform_block(cfg, spec: dict) -> bool:
             entry["models"] = {n: _model_entry(n, limits) for n in names}
         elif not isinstance(entry.get("models"), dict) or not entry["models"]:
             entry["models"] = {chosen: _model_entry(chosen, limits)} if chosen else {}
-    if isinstance(spec.get("policy"), dict):
-        _apply_policy(cfg, spec["policy"])
+    if policy:
+        _apply_policy(cfg, policy)
     if isinstance(spec.get("reasoning_defaults"), dict):
         _apply_reasoning_defaults(cfg, spec["reasoning_defaults"])
-    return _platform_snapshot(cfg, key) != before
+    return _platform_snapshot(cfg, key, policy) != before
 
 
 def patch_config_text(text: str, spec: dict) -> tuple[str, list[str]]:

@@ -1,4 +1,5 @@
 import { getGlobalModelOptions, type HermesGateway, type ModelOptionsResponse } from '@/hermes'
+import { visibleModelOptions } from '@/lib/browser-shell'
 import type { ModelOptionProvider } from '@/types/hermes'
 
 /**
@@ -159,7 +160,7 @@ export async function requestModelOptions({
     let gatewayOptions: ModelOptionsResponse | undefined
 
     try {
-      gatewayOptions = await dispatch<ModelOptionsResponse>('model.options', params)
+      gatewayOptions = visibleModelOptions(await dispatch<ModelOptionsResponse>('model.options', params))
     } catch (error) {
       gatewayError = error
     }

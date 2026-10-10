@@ -1,3 +1,4 @@
+import { visibleModelOptions } from '@/lib/browser-shell'
 import type {
   AnalyticsResponse,
   AuxiliaryModelsResponse,
@@ -51,7 +52,7 @@ export function getGlobalModelOptions(
     ...profileScoped(profile),
     path: params.size > 0 ? `/api/model/options?${params.toString()}` : '/api/model/options',
     timeoutMs: STARTUP_REQUEST_TIMEOUT_MS
-  })
+  }).then(visibleModelOptions)
 }
 
 export interface RecommendedDefaultModel {

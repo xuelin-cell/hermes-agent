@@ -123,6 +123,10 @@ class Settings:
     # 按模型预设推理强度（写进 agent.reasoning_overrides，用户自己设过的不动），格式「模型=强度,模型=强度」。
     # DeepSeek V4.1 Flash 只接受 low/high/xhigh/max，hermes 默认发 medium，不预设就每条都 400。
     reasoning_defaults: str = _env("MT_REASONING_DEFAULTS", "deepseek-v4.1-flash=high")
+    # 默认推理强度：作为平台策略写进 agent.reasoning_effort（每次引导按平台的写）。前端没手动选过强度时，
+    # 显示和发出去的都是它（前端从配置读默认值）。hermes 和前端自带的默认是 medium，DeepSeek V4.1 Flash、
+    # 智谱 GLM 5.3 Flash 都不收（10-10 实测），high 几家都收。空 = 不写，用 hermes 自己的默认。
+    default_reasoning_effort: str = _env("MT_DEFAULT_REASONING_EFFORT", "high").strip()
 
     # 开发模式：不走短信登录，任意用户名直接进；模型 key 用 MT_DEV_API_KEY。生产必须关。
     dev_login: bool = _env("MT_DEV_LOGIN", "0") == "1"

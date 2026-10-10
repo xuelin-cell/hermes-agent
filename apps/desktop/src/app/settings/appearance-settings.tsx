@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import type { DesktopMarketplaceSearchItem } from '@/global'
 import { useI18n } from '@/i18n'
-import { isBrowserShell } from '@/lib/browser-shell'
+import { hideForUsers } from '@/lib/browser-shell'
 import { triggerHaptic } from '@/lib/haptics'
 import { Check, Download, Loader2, Palette, Trash2 } from '@/lib/icons'
 import { selectableCardClass } from '@/lib/selectable-card'
@@ -178,7 +178,7 @@ function MarketplaceThemeResults({
   }
 
   // Browser build: no marketplace (it is fetched by the desktop main process).
-  if (!debounced || isBrowserShell()) {
+  if (!debounced || hideForUsers()) {
     return null
   }
 
