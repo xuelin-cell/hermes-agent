@@ -55,6 +55,7 @@ import { SettingsSubpageHeader } from './subpage-navigation'
 import { resolveSettingsSubpage, settingsSubpageIcon, settingsSubpages } from './subpages'
 import type { SettingsPageProps, SettingsView as SettingsViewId } from './types'
 import { vaultOwnerKey, VaultSettings } from './vault-settings'
+import { settingsViewVisible } from './visibility'
 
 const SETTINGS_VIEWS: readonly SettingsViewId[] = [
   ...SECTIONS.map(s => `config:${s.id}` as SettingsViewId),
@@ -91,7 +92,8 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
     }
   }, [navigate, search])
 
-  const [activeView] = useRouteEnumParam('tab', SETTINGS_VIEWS, 'config:model' as SettingsViewId)
+  const [requestedView] = useRouteEnumParam('tab', SETTINGS_VIEWS, 'config:appearance' as SettingsViewId)
+  const activeView = settingsViewVisible(requestedView, developerMode) ? requestedView : 'config:appearance'
   const params = new URLSearchParams(search)
   const requestedSubpage = params.get('page')
   const subpage = resolveSettingsSubpage(activeView, params, developerMode)
@@ -348,7 +350,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
             onSelect: () => setActiveView('about')
           }
         ] as OverlayNavGroup[]
-      ).map(group => {
+      ).filter(group => settingsViewVisible(group.id, developerMode)).map(group => {
         const view = group.id as SettingsViewId
         const children = settingsSubpages(view, developerMode)
 

@@ -70,6 +70,7 @@ import {
   closeCommandPalette,
   setCommandPaletteOpen
 } from '@/store/command-palette'
+import { $developerMode } from '@/store/developer-mode'
 import { $bindings, bindingsFor } from '@/store/keybinds'
 import { $dismissedAutoProjectIds, $pinnedSessionIds, filterVisibleProjects } from '@/store/layout'
 import { openPetGenerate } from '@/store/pet-generate'
@@ -110,6 +111,7 @@ import {
 import { SECTIONS } from '../settings/constants'
 import { type SettingsSearchEntry, settingsSearchTargetQuery } from '../settings/settings-search'
 import { useSettingsSearchCatalog } from '../settings/use-settings-search'
+import { settingsViewVisible } from '../settings/visibility'
 
 import { usePaletteContributions } from './contrib'
 import { HighlightWatcher } from './highlight-watcher'
@@ -539,6 +541,7 @@ export function CommandPalette() {
 }
 
 function CommandPaletteBody({ onExited }: { onExited: () => void }) {
+  const developerMode = useStore($developerMode)
   const { t } = useI18n()
   const pendingPage = useStore($commandPalettePage)
   const pendingSeed = useStore($commandPaletteSeed)
@@ -1024,14 +1027,14 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
       {
         heading: cc.settings,
         items: [
-          ...SECTIONS.map(section => ({
+          ...SECTIONS.filter(section => settingsViewVisible(`config:${section.id}`, developerMode)).map(section => ({
             icon: section.icon,
             id: `set-config-${section.id}`,
             keywords: ['settings', section.label, settingsSectionLabel(section)],
             label: settingsSectionLabel(section),
             run: go(settingsTab(`config:${section.id}`))
           })),
-          ...NON_CONFIG_SETTINGS.map(entry => ({
+          ...NON_CONFIG_SETTINGS.filter(entry => settingsViewVisible(entry.tab, developerMode)).map(entry => ({
             icon: entry.icon,
             id: `set-${entry.tab}`,
             keywords: ['settings', ...(entry.keywords ?? [])],
@@ -1047,6 +1050,7 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     contributedItems,
+    developerMode,
     dismissedAutoProjects,
     go,
     projectTree,
@@ -1337,14 +1341,14 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
       {
         heading: cc.settings,
         items: [
-          ...SECTIONS.map(section => ({
+          ...SECTIONS.filter(section => settingsViewVisible(`config:${section.id}`, developerMode)).map(section => ({
             icon: section.icon,
             id: `sp-config-${section.id}`,
             keywords: ['settings', section.label, settingsSectionLabel(section)],
             label: settingsSectionLabel(section),
             run: go(settingsTab(`config:${section.id}`))
           })),
-          ...NON_CONFIG_SETTINGS.map(entry => ({
+          ...NON_CONFIG_SETTINGS.filter(entry => settingsViewVisible(entry.tab, developerMode)).map(entry => ({
             icon: entry.icon,
             id: `sp-${entry.tab}`,
             keywords: ['settings', ...(entry.keywords ?? [])],
@@ -1374,7 +1378,7 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
     }
 
     return result
-  }, [go, search, settingsCatalog, settingsEntryItem, settingsSectionLabel, t])
+  }, [developerMode, go, search, settingsCatalog, settingsEntryItem, settingsSectionLabel, t])
 
   // Nested palette pages (VS Code-style submenus). Reusable: add an entry here
   // and point a root item at it via `to`.
