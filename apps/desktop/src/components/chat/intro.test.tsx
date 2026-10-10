@@ -1,4 +1,4 @@
-import { act, cleanup, render } from '@testing-library/react'
+import { act, cleanup, render, screen } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 
 import { I18nProvider, useI18n } from '@/i18n'
@@ -29,6 +29,13 @@ function Fixture({ personality, seed = 0 }: { personality?: string; seed?: numbe
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
+})
+it('shows the two-line 元景数字员工 task message instead of the UniWork wordmark', () => {
+  render(<Fixture />)
+
+  const heading = screen.getByRole('heading', { level: 1 })
+  expect(heading.textContent).toBe('元景数字员工助你高效完成任务')
+  expect(screen.queryByText('UniWork')).toBeNull()
 })
 it('translates every shipped stock body at the same personality and rotation position', async () => {
   vi.spyOn(Math, 'random').mockReturnValue(0)

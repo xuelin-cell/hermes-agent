@@ -4,7 +4,6 @@ import { useI18n } from '@/i18n'
 import { capitalize, normalize } from '@/lib/text'
 
 import introCopyJsonl from './intro-copy.jsonl?raw'
-import { Wordmark } from './wordmark'
 
 type IntroCopy = {
   headline: string
@@ -146,7 +145,7 @@ function pickCopy(copies: IntroCopy[], seed = 0): IntroCopy {
   return copies[Math.abs(seed) % copies.length] || FALLBACK_COPY[0]
 }
 
-const WORDMARK = 'UniWork'
+const HERO_TITLE = ['元景数字员工', '助你高效完成任务'] as const
 
 function resolveCopy(personality?: string, seed?: number): IntroCopy {
   const personalityKey = normalizeKey(personality)
@@ -176,7 +175,11 @@ export function Intro({ personality, seed }: IntroProps) {
       data-slot="aui_intro"
     >
       <div className="w-full min-w-0">
-        <Wordmark className="mb-3" fitMin="2rem" text={WORDMARK} width="min(24rem, calc(100% - 2rem))" />
+        <h1 className="mx-auto mb-3 flex max-w-xl flex-col items-center font-sans text-[clamp(2rem,4vw,3.75rem)] font-semibold leading-[1.12] tracking-tight text-foreground">
+          {HERO_TITLE.map(line => (
+            <span key={line}>{line}</span>
+          ))}
+        </h1>
 
         <p className="m-0 text-center leading-normal tracking-tight">{body}</p>
       </div>
