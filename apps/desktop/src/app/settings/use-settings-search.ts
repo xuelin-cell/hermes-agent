@@ -8,6 +8,7 @@ import { getEnvVars, getHermesConfigSchema } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { Package, Palette, Settings2, Wrench } from '@/lib/icons'
 import { $agentPlugins, isDesktopRelevantPlugin, loadAgentPlugins } from '@/store/agent-plugins'
+import { $developerMode } from '@/store/developer-mode'
 import { $gatewayState } from '@/store/session'
 import { TRANSLUCENCY_SUPPORTED } from '@/store/translucency'
 
@@ -20,6 +21,7 @@ import {
   buildCredentialSearchEntries,
   type SettingsSearchEntry
 } from './settings-search'
+import { settingsViewVisible } from './visibility'
 
 /**
  * The granular settings-search catalog (appearance controls, config fields,
@@ -30,6 +32,7 @@ import {
 export function useSettingsSearchCatalog(enabled: boolean) {
   const { t } = useI18n()
   const configQuery = useHermesConfigRecord()
+  const developerMode = useStore($developerMode)
 
   const schemaQuery = useQuery({
     queryKey: ['hermes-config-schema'],
@@ -200,7 +203,7 @@ export function useSettingsSearchCatalog(enabled: boolean) {
 
   return {
     appearanceEntries,
-    configEntries,
+    configEntries: configEntries.filter(entry => settingsViewVisible(entry.target.view, developerMode)),
     credentialEntries,
     pluginEntries
   }

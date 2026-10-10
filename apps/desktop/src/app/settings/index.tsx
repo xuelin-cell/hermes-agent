@@ -30,6 +30,7 @@ import { typeToFocusChar } from '@/lib/keybinds/composer-focus-keys'
 import { cn } from '@/lib/utils'
 import { $commandPaletteOpen, openCommandPalettePage } from '@/store/command-palette'
 import { confirm } from '@/store/confirm'
+import { $developerMode } from '@/store/developer-mode'
 import { bindingsFor } from '@/store/keybinds'
 import { notifyError } from '@/store/notifications'
 
@@ -52,6 +53,7 @@ import { PluginsSettings } from './plugins-settings'
 import { PROVIDER_VIEWS, ProvidersSettings, type ProviderView } from './providers-settings'
 import { SessionsSettings } from './sessions-settings'
 import type { SettingsPageProps, SettingsView as SettingsViewId } from './types'
+import { settingsViewVisible } from './visibility'
 
 const SETTINGS_VIEWS: readonly SettingsViewId[] = [
   ...SECTIONS.map(s => `config:${s.id}` as SettingsViewId),
@@ -72,6 +74,7 @@ const SETTINGS_VIEWS: readonly SettingsViewId[] = [
 export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: SettingsPageProps) {
   const { t } = useI18n()
   const navigate = useNavigate()
+  const developerMode = useStore($developerMode)
   const { hash, pathname, search } = useLocation()
 
   // MCP moved out of Settings into Capabilities (/skills?tab=mcp). Keep old
@@ -88,12 +91,13 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
     }
   }, [navigate, search])
 
-  const [activeView, setActiveView] = useRouteEnumParam('tab', SETTINGS_VIEWS, 'config:model' as SettingsViewId)
+  const [requestedView, setActiveView] = useRouteEnumParam('tab', SETTINGS_VIEWS, 'config:appearance' as SettingsViewId)
+  const activeView = settingsViewVisible(requestedView, developerMode) ? requestedView : 'config:appearance'
 
   // Browser build: desktop-only pages are not offered (see lib/browser-shell).
   useEffect(() => {
     if (isSettingsViewHidden(activeView)) {
-      setActiveView('config:model' as SettingsViewId)
+      setActiveView('config:appearance' as SettingsViewId)
     }
   }, [activeView, setActiveView])
 
@@ -189,7 +193,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
     }
   }
 
-  const navGroups: OverlayNavGroup[] = useMemo(
+  const allNavGroups: OverlayNavGroup[] = useMemo(
     () => [
       ...SECTIONS.map(s => {
         const view = `config:${s.id}` as SettingsViewId
@@ -295,6 +299,9 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
     ],
     [activeView, keysView, providerView, t, setActiveView, openProviderView, openKeysView]
   )
+
+  // Developer-only pages (./visibility) leave the nav unless developer mode is on.
+  const navGroups = allNavGroups.filter(group => settingsViewVisible(group.id, developerMode))
 
   // Type-to-search: printable keystrokes on the Settings surface (outside any
   // field) open the settings-scoped palette, seeded with the character — same
