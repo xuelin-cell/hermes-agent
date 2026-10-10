@@ -39,7 +39,7 @@
 
 ## 文档
 
-- [桌面本地版整理与原生登录改造计划](04-desktop-consolidation-plan.md)（2026-10-10，仅计划，产品步骤未实施；云盘仅保留 UI，接口接入另行排期）
+- [桌面本地版整理与原生登录改造计划](04-desktop-consolidation-plan.md)（2026-10-10，R01 已完成，等待核验；云盘仅保留 UI 的调整及其它步骤待实施，接口接入另行排期）
 - [使用与双账号人工验收](USAGE.md)
 - [公共 Login 与登录界面](01-login.md)
 - [账号环境与存储隔离](02-local-environment.md)
