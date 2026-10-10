@@ -20,6 +20,7 @@ import { prefetchCatalogWhenIdle } from './catalog/catalog-data'
 import { ConnectorsTab } from './connectors/connectors-tab'
 import { PluginsTab } from './plugins/plugins-tab'
 import { CapabilityScopeSelector, useCapabilityScope } from './scope-selector'
+import { SkillMarket } from './skill-market'
 import { SKILLS_QUERY_KEY, skillSearchTerms, useSkillsQuery } from './skills/skills-data'
 import { SkillsTab } from './skills/skills-tab'
 import { refreshToolCalls } from './toolsets/tool-calls'
@@ -78,6 +79,7 @@ export function CapabilitiesView({
   // pair, because the counts stay live for the tab the user is NOT on.
   const { data: skills, isError: skillsFailed, error: skillsError } = useSkillsQuery(scope.profile)
   const { data: toolsets, isError: toolsetsFailed } = useToolsetsQuery(scope.profile)
+  const installedSkillNames = useMemo(() => new Set((skills ?? []).map(skill => skill.name)), [skills])
 
   const refreshCapabilities = useCallback(async () => {
     await Promise.all([
@@ -153,15 +155,22 @@ export function CapabilitiesView({
       />
     ),
     skills: () => (
-      <SkillsTab
-        installedError={skillsError}
-        installedPending={!skills || skillsFailed}
-        key={`skills-${scope.key}`}
-        onQueryChange={setQuery}
-        onRefresh={() => void refreshCapabilities()}
+      <SkillMarket
+        installed={
+          <SkillsTab
+            installedError={skillsError}
+            installedPending={!skills || skillsFailed}
+            key={`skills-${scope.key}`}
+            onQueryChange={setQuery}
+            onRefresh={() => void refreshCapabilities()}
+            profile={scope.profile}
+            query={query}
+            skills={skills ?? []}
+          />
+        }
+        installedCount={skills?.length ?? 0}
+        installedNames={installedSkillNames}
         profile={scope.profile}
-        query={query}
-        skills={skills ?? []}
       />
     ),
     toolsets: () => (

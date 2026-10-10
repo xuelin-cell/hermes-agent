@@ -1,4 +1,7 @@
 import './styles.css'
+// Browser-only development bridge. In Electron the preload has already
+// installed the real bridge, so this is a strict no-op.
+import './dev/browser-bridge'
 // Side-effect: reports in-flight turns to the main process for the quit guard.
 import './store/active-work'
 // Side-effect: mirrors the machine's AC/battery state for poll demotion.
@@ -21,6 +24,7 @@ import { createRoot } from 'react-dom/client'
 import { HashRouter } from 'react-router'
 
 import App from './app'
+import { AuthGate } from './app/auth/auth-gate'
 import { RootErrorBoundary } from './components/error-boundary'
 import { HapticsProvider } from './components/haptics-provider'
 import { RootTooltipProvider } from './components/ui/tooltip'
@@ -48,7 +52,7 @@ if (import.meta.env.MODE !== 'production' || import.meta.env.VITE_PERF_PROBE ===
 const winParam = new URLSearchParams(window.location.search).get('win')
 
 if (winParam === 'hud') {
-  document.title = 'Hermes HUD'
+  document.title = 'UniWork HUD'
 }
 
 // The `?win=` kinds whose Electron window is `transparent: true` and so paints
@@ -109,7 +113,9 @@ if (winParam === 'overlay') {
                     both freeze for seconds despite the main thread being free.
                     Disabling transitions makes navigate() commit at default priority. */}
                   <HashRouter useTransitions={false}>
-                    <App />
+                    <AuthGate>
+                      <App />
+                    </AuthGate>
                   </HashRouter>
                 </RootTooltipProvider>
               </HapticsProvider>

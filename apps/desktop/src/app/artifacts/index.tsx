@@ -49,6 +49,7 @@ import {
   type ArtifactRecord,
   loadArtifactsForSessions
 } from './artifact-utils'
+import { CloudLibrary } from './cloud-library'
 
 function formatArtifactTime(timestamp: number): string {
   return fmtDayTime.format(new Date(timestamp))
@@ -111,7 +112,7 @@ interface ArtifactsViewProps extends React.ComponentProps<'section'> {
   setStatusbarItemGroup?: SetStatusbarItemGroup
 }
 
-export function ArtifactsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...props }: ArtifactsViewProps) {
+function LocalArtifactsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...props }: ArtifactsViewProps) {
   const { t } = useI18n()
   const a = t.artifacts
   const navigate = useNavigate()
@@ -405,6 +406,44 @@ export function ArtifactsView({ setStatusbarItemGroup: _setStatusbarItemGroup, .
         </div>
       )}
     </PageSearchShell>
+  )
+}
+
+export function ArtifactsView(props: ArtifactsViewProps) {
+  const [libraryTab, setLibraryTab] = useState<'cloud' | 'local'>('cloud')
+
+  return (
+    <section className="flex h-full min-h-0 flex-col bg-background">
+      <div className="flex h-11 shrink-0 items-end gap-5 border-b border-border/70 px-4">
+        <button
+          className={cn(
+            'h-10 border-b-2 px-1 text-sm font-medium',
+            libraryTab === 'cloud'
+              ? 'border-primary text-foreground'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          )}
+          onClick={() => setLibraryTab('cloud')}
+          type="button"
+        >
+          个人云盘
+        </button>
+        <button
+          className={cn(
+            'h-10 border-b-2 px-1 text-sm font-medium',
+            libraryTab === 'local'
+              ? 'border-primary text-foreground'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          )}
+          onClick={() => setLibraryTab('local')}
+          type="button"
+        >
+          本地产物
+        </button>
+      </div>
+      <div className="min-h-0 flex-1">
+        {libraryTab === 'cloud' ? <CloudLibrary /> : <LocalArtifactsView {...props} />}
+      </div>
+    </section>
   )
 }
 

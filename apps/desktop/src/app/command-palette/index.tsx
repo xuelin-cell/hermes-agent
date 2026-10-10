@@ -403,7 +403,7 @@ const sessionKeywords = (session: SessionEntry, ...tags: string[]): string[] =>
   [...tags, 'chat', 'session', session.preview, session.git_branch].filter((word): word is string => !!word)
 
 type NonConfigSettingsLabel =
-  'about' | 'archivedChats' | 'gateway' | 'keysSettings' | 'keysTools' | 'mcp' | 'providerAccounts' | 'providerApiKeys'
+  'about' | 'archivedChats' | 'gateway' | 'keysSettings' | 'keysTools' | 'mcp' | 'providerCustomEndpoints'
 
 const NON_CONFIG_SETTINGS: ReadonlyArray<{
   icon: IconComponent
@@ -413,15 +413,9 @@ const NON_CONFIG_SETTINGS: ReadonlyArray<{
 }> = [
   {
     icon: Zap,
-    keywords: ['accounts', 'sign in', 'oauth', 'login', 'subscription', 'models', 'anthropic', 'openai'],
-    labelKey: 'providerAccounts',
-    tab: 'providers&pview=accounts'
-  },
-  {
-    icon: KeyRound,
-    keywords: ['providers', 'api key', 'keys', 'secrets', 'tokens', 'egress', 'iron proxy', 'sandbox proxy'],
-    labelKey: 'providerApiKeys',
-    tab: 'providers&pview=keys'
+    keywords: ['providers', 'custom endpoint', 'local model', 'openai compatible'],
+    labelKey: 'providerCustomEndpoints',
+    tab: 'providers&pview=custom-endpoints'
   },
   {
     icon: Globe,

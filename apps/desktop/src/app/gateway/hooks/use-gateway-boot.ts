@@ -459,7 +459,7 @@ export function useGatewayBoot({
         const conn = await withTimeout(
           desktop.getConnection(),
           RECONNECT_ATTEMPT_TIMEOUT_MS,
-          'Timed out reconnecting to Hermes backend'
+          'Timed out reconnecting to UniWork backend'
         )
 
         setPrimaryGatewayConnection(conn)
@@ -795,7 +795,7 @@ export function useGatewayBoot({
         const conn = await withTimeout(
           getWindowBackend(),
           BACKEND_BOOT_WAIT_TIMEOUT_MS,
-          'Timed out reconnecting to Hermes backend'
+          'Timed out reconnecting to UniWork backend'
         )
 
         if (!ownsSwitch()) {
@@ -1364,7 +1364,7 @@ export function useGatewayBoot({
         const conn = await withTimeout(
           getWindowBackend(true),
           BACKEND_BOOT_WAIT_TIMEOUT_MS,
-          'Timed out connecting to Hermes backend'
+          'Timed out connecting to UniWork backend'
         )
 
         if (cancelled) {

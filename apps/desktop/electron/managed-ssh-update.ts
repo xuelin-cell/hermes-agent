@@ -210,7 +210,7 @@ function windowsChildPath(home: string, name: string): string {
  */
 function buildPosixManagedUpdateLaunch(target: RemoteUpdateTarget, correlationId: string): string {
   const correlation = validateCorrelationId(correlationId)
-  const home = validateRemoteValue(target.hermesHome, 'Hermes home')
+  const home = validateRemoteValue(target.hermesHome, 'UniWork home')
   const hermesPath = validateRemoteValue(target.hermesPath, 'launcher path')
   const statusPath = posixChildPath(home, `.update_exit_code.${correlation}`)
   const intentPath = posixChildPath(home, `.update_launch_intent.${correlation}`)
@@ -255,7 +255,7 @@ function buildPosixManagedUpdateLaunch(target: RemoteUpdateTarget, correlationId
 /** Windows equivalent of buildPosixManagedUpdateLaunch. */
 function buildWindowsManagedUpdateLaunch(target: RemoteUpdateTarget, correlationId: string): string {
   const correlation = validateCorrelationId(correlationId)
-  const home = validateRemoteValue(target.hermesHome, 'Hermes home')
+  const home = validateRemoteValue(target.hermesHome, 'UniWork home')
   const hermesPath = validateRemoteValue(target.hermesPath, 'launcher path')
   const statusPath = windowsChildPath(home, `.update_exit_code.${correlation}`)
   const readyPath = windowsChildPath(home, `.update_coordinator_ready.${correlation}`)
@@ -455,7 +455,7 @@ print(json.dumps({'marker':state['state'],'markerPid':state.get('pid'),'launchIn
 
 function buildRemoteUpdateObservationCommand(target: RemoteUpdateTarget, correlationId: string): string {
   const correlation = validateCorrelationId(correlationId)
-  const home = validateRemoteValue(target.hermesHome, 'Hermes home')
+  const home = validateRemoteValue(target.hermesHome, 'UniWork home')
 
   if (target.platform === 'Windows') {
     const python = validateRemoteValue(target.pythonPath || '', 'Python path')
@@ -888,7 +888,7 @@ async function runManagedSshUpdate<TScope extends ManagedSshScope>(
     ...(error ? { error } : {}),
     message:
       outcome === 'updated'
-        ? 'Remote Hermes updated and every managed SSH profile is ready.'
+        ? 'Remote UniWork updated and every managed SSH profile is ready.'
         : restoreOk
           ? 'The remote update failed, but every managed SSH profile was restored.'
           : 'The remote update transaction could not restore every managed SSH profile.'

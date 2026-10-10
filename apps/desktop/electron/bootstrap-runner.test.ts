@@ -15,8 +15,33 @@ import {
   isPinnedCommit,
   resolveInstallScript,
   resolveMarkerPinnedCommit,
+  seedBundledPythonRuntime,
   runBootstrap
 } from './bootstrap-runner'
+
+test('packaged Python runtime is copied into a fresh managed home', () => {
+  const home = mkTmpHome()
+  try {
+    const runtimeRoot = path.join(home, 'resources', 'python-runtime')
+    fs.mkdirSync(path.join(runtimeRoot, 'base'), { recursive: true })
+    fs.mkdirSync(path.join(runtimeRoot, 'venv', 'Scripts'), { recursive: true })
+    fs.writeFileSync(path.join(runtimeRoot, 'base', 'python.exe'), 'python')
+    fs.writeFileSync(path.join(runtimeRoot, 'venv', 'Scripts', 'python.exe'), 'python')
+    fs.writeFileSync(path.join(runtimeRoot, 'venv', 'pyvenv.cfg'), 'home = C:\\build\\python\n')
+    const activeRoot = path.join(home, 'hermes-agent')
+    fs.mkdirSync(activeRoot, { recursive: true })
+    const seeded = seedBundledPythonRuntime({ activeRoot, runtimeRoot, hermesHome: home, emit: () => {} })
+    if (process.platform === 'win32') {
+      assert.equal(seeded, true)
+      assert.equal(fs.existsSync(path.join(home, 'runtime', 'python', 'python.exe')), true)
+      assert.match(fs.readFileSync(path.join(activeRoot, 'venv', 'pyvenv.cfg'), 'utf8'), /runtime\\python/)
+    } else {
+      assert.equal(seeded, false)
+    }
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
 
 const SCRIPT_NAME = process.platform === 'win32' ? 'install.ps1' : 'install.sh'
 const ZERO_COMMIT = '0000000000000000000000000000000000000000'

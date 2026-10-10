@@ -734,6 +734,7 @@ export interface Translations {
     enterHud: string
     exitHud: string
     resetHudLayout: string
+    developerModeEnabled: string
     layoutEditor: string
     layoutEditorTitle: (modifier: string) => string
   }

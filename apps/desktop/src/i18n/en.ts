@@ -719,6 +719,7 @@ export const en: Translations = {
     enterHud: 'HUD mode',
     exitHud: 'Exit HUD mode',
     resetHudLayout: 'Reset HUD size and position',
+    developerModeEnabled: 'Developer mode enabled',
     layoutEditor: 'Layout editor',
     layoutEditorTitle: mod => `Layout editor — ${mod}-click resets the layout`
   },

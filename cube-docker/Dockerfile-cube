@@ -1,0 +1,144 @@
+# =============================================================================
+# Agent CLI-based Computer Image (CubeSandbox)
+# =============================================================================
+# Built on cubesandbox-base which provides:
+#   - envd binary at /usr/bin/envd          (port 49983, Cube control-plane RPCs)
+#   - cube-entrypoint.sh at /usr/local/bin/ (starts envd, then execs CMD)
+#   - tini as PID 1
+#
+# This image adds the Cube code-interpreter stack on top of the base:
+#   - jupyter_server + ipykernel  (internal :8888, IPython kernel via WebSocket)
+#   - lightweight-code-interpreter FastAPI app (port 49999, /execute /health
+#     /contexts) — this is the service Cube clients POST to.
+#   - HexAgent toolchain (Node.js, Python packages, system tools)
+#
+# Build:
+#   docker build --platform=linux/amd64 -t openagent-sandbox -f Dockerfile-cube .
+#
+# Register as Cube template (note: writable-layer-size must be large enough;
+# 128M is too small for this image — use 2G):
+#   cubemastercli tpl create-from-image \
+#     --image openagent-sandbox:latest \
+#     --writable-layer-size 2G \
+#     --expose-port 49999 \
+#     --expose-port 49983 \
+#     --probe 49999 \
+#     --probe-path /health
+# =============================================================================
+
+# Single-stage build on cubesandbox-base to avoid Python version mismatch
+# (cubesandbox-base is ubuntu:22.04 with Python 3.10; using ubuntu:24.04 as
+# builder would compile C extensions against Python 3.12, which are incompatible)
+FROM ghcr.io/tencentcloud/cubesandbox-base:2026.16
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    IS_SANDBOX=yes \
+    CODE_INTERPRETER_HOST=0.0.0.0 \
+    CODE_INTERPRETER_PORT=49999 \
+    CODE_INTERPRETER_WORKDIR=/workspace \
+    JUPYTER_HOST=127.0.0.1 \
+    JUPYTER_PORT=8888 \
+    PATH=/home/openagent/.npm-global/bin:/home/openagent/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+USER root
+
+# =============================================================================
+# System Packages (runtime + build deps for Python C extensions)
+# =============================================================================
+RUN sed -i 's@//.*archive.ubuntu.com@//mirrors.tuna.tsinghua.edu.cn@g; s@//.*security.ubuntu.com@//mirrors.tuna.tsinghua.edu.cn@g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || \
+    sed -i 's@//.*archive.ubuntu.com@//mirrors.tuna.tsinghua.edu.cn@g; s@//.*security.ubuntu.com@//mirrors.tuna.tsinghua.edu.cn@g' /etc/apt/sources.list 2>/dev/null || true && \
+    apt-get update && apt-get install -y --no-install-recommends \
+    # Core utilities
+    bash coreutils wget curl git jq tree ripgrep \
+    zip unzip file findutils patch sqlite3 \
+    # Python runtime + build deps (needed to compile numpy/pandas/pillow)
+    python3 python3-dev python3-pip python3-venv \
+    build-essential pkg-config \
+    libffi-dev zlib1g-dev libpng-dev libfreetype-dev libbz2-dev \
+    # Media / diagrams
+    imagemagick graphviz \
+    # Fonts (minimal)
+    fonts-liberation2 fonts-dejavu \
+    # Runtime libs needed by numpy/pillow/matplotlib
+    libffi8 zlib1g libpng16-16 libfreetype6 libbz2-1.0 \
+    libglib2.0-0 libcairo2 libpango-1.0-0 \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# =============================================================================
+# Node.js 22.x
+# =============================================================================
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+# =============================================================================
+# Python Packages
+# =============================================================================
+# Code-interpreter stack (mirrors the official sandbox-code image):
+#   - jupyter_server + ipykernel: IPython kernel on internal :8888
+#   - fastapi + uvicorn + httpx + websockets + pydantic: the FastAPI app on
+#     :49999 that exposes /execute, /health, /contexts — this is the Cube
+#     code-interpreter API. Without this, POST /execute returns 404.
+# Note: no --break-system-packages — cubesandbox-base is ubuntu:22.04
+# (Python 3.10) which doesn't have PEP 668 externally-managed protection.
+RUN pip3 install --no-cache-dir \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple \
+    jupyter_server ipykernel \
+    fastapi uvicorn httpx websockets pydantic
+
+# Data science + utilities
+RUN pip3 install --no-cache-dir \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple \
+    numpy pandas matplotlib pillow \
+    requests beautifulsoup4 lxml \
+    uv click pyyaml python-dotenv tabulate
+
+# =============================================================================
+# NPM Global Packages (npmmirror)
+# =============================================================================
+RUN npm config set registry https://registry.npmmirror.com && \
+    npm config set prefix /home/openagent/.npm-global && \
+    npm install -g typescript tsx && \
+    rm -rf /root/.npm/_cacache
+
+# =============================================================================
+# Code-interpreter FastAPI app + launcher
+# =============================================================================
+# server.py is extracted from the official cube-sandbox/sandbox-code image.
+# It listens on :49999 and exposes /execute, /health, /contexts — the routes
+# Cube clients and the readiness probe expect.
+COPY lightweight-code-interpreter-server.py /opt/lightweight-code-interpreter/server.py
+COPY start-code-interpreter.sh /usr/local/bin/start-code-interpreter.sh
+RUN chmod +x /usr/local/bin/start-code-interpreter.sh
+
+# =============================================================================
+# Register Python kernel + finalize
+# =============================================================================
+RUN python3 -m ipykernel install --user --name python3
+
+# Strip debug symbols from compiled extensions (saves ~30-50MB)
+RUN find /usr/lib/python3 -name "*.so" -type f -exec strip --strip-unneeded {} \; 2>/dev/null || true
+
+# ImageMagick PDF policy + python symlink + mount points + sessions
+RUN if [ -f /etc/ImageMagick-6/policy.xml ]; then \
+        sed -i 's/rights="none" pattern="PDF"/rights="read|write" pattern="PDF"/' /etc/ImageMagick-6/policy.xml; \
+    fi && \
+    ln -sf /usr/bin/python3 /usr/bin/python && \
+    mkdir -p /workspace /mnt/uploads /mnt/outputs /mnt/skills /sessions && \
+    chmod 755 /sessions && \
+    rm -rf /tmp/* /var/tmp/* /root/.cache /root/.npm
+
+WORKDIR /workspace
+
+# Ports: 49983 = envd (inherited from base), 49999 = code-interpreter FastAPI
+EXPOSE 49983 49999
+
+# cube-entrypoint.sh (inherited) starts envd (49983) in the background,
+# then execs CMD. CMD launches jupyter_server (:8888, internal) and the
+# FastAPI code-interpreter app (:49999, exposed) in the foreground.
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/cube-entrypoint.sh"]
+CMD ["/usr/local/bin/start-code-interpreter.sh"]

@@ -2,7 +2,6 @@ import { useStore } from '@nanostores/react'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router'
 
-import { codiconIcon } from '@/components/ui/codicon'
 import { KbdCombo } from '@/components/ui/kbd'
 import { Tip } from '@/components/ui/tooltip'
 import { getHermesConfigDefaults, getHermesConfigRecord, saveHermesConfig } from '@/hermes'
@@ -12,18 +11,14 @@ import {
   Archive,
   BarChart3,
   Bell,
-  Cpu,
   Download,
   Globe,
   Info,
   Keyboard,
-  KeyRound,
   RefreshCw,
   Search,
-  Settings2,
   ShieldLock,
   Upload,
-  Wrench,
   Zap
 } from '@/lib/icons'
 import { isEditableTarget } from '@/lib/keybinds/combo'
@@ -33,7 +28,6 @@ import { $commandPaletteOpen, openCommandPalettePage } from '@/store/command-pal
 import { confirm } from '@/store/confirm'
 import { $activeConnectionId } from '@/store/connections'
 import { bindingsFor } from '@/store/keybinds'
-import { $localModelsEnabled } from '@/store/local-models-flag'
 import { notifyError } from '@/store/notifications'
 import { $settingsScopeProfile } from '@/store/settings-scope'
 
@@ -148,9 +142,20 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
       setActiveView('gateway')
     }
   }, [activeView, setActiveView])
-  // Providers subnav (Accounts vs API keys) lives in its own param so each
-  // sub-view is deep-linkable and survives a refresh.
-  const [providerView, setProviderView] = useRouteEnumParam<ProviderView>('pview', PROVIDER_VIEWS, 'accounts')
+
+  // UniWork exposes only custom endpoints in Providers. Historical deep links
+  // are accepted, then normalized so hidden account/key pages cannot reopen.
+  const [requestedProviderView, setProviderView] = useRouteEnumParam<ProviderView>(
+    'pview',
+    PROVIDER_VIEWS,
+    'custom-endpoints'
+  )
+
+  const providerView: ProviderView = 'custom-endpoints'
+
+  useEffect(() => {
+    if (requestedProviderView !== 'custom-endpoints') {setProviderView('custom-endpoints')}
+  }, [requestedProviderView, setProviderView])
   const [keysView] = useRouteEnumParam<KeysView>('kview', KEYS_VIEWS, 'tools')
   const [billingView] = useRouteEnumParam<BillingSubView>('bview', BILLING_VIEWS, 'overview')
   const billingState = useBillingState()
@@ -184,7 +189,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
   )
 
   const openProviderView = useCallback(
-    (view: ProviderView) => openSubView('providers', 'pview', view, 'accounts'),
+    (view: ProviderView) => openSubView('providers', 'pview', view, 'custom-endpoints'),
     [openSubView]
   )
 
@@ -298,47 +303,18 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
             active: activeView === 'providers',
             children: [
               {
-                active: activeView === 'providers' && providerView === 'accounts',
-                icon: codiconIcon('account'),
-                id: 'pview:accounts',
-                label: t.settings.nav.providerAccounts,
-                onSelect: () => openProviderView('accounts')
-              },
-              {
-                active: activeView === 'providers' && providerView === 'keys',
-                icon: KeyRound,
-                id: 'pview:keys',
-                label: t.settings.nav.providerApiKeys,
-                onSelect: () => openProviderView('keys')
-              },
-              {
                 active: activeView === 'providers' && providerView === 'custom-endpoints',
                 icon: Globe,
                 id: 'pview:custom-endpoints',
                 label: t.settings.nav.providerCustomEndpoints,
                 onSelect: () => openProviderView('custom-endpoints')
-              },
-              // Local models ships behind the --local launch flag: no flag, no
-              // nav entry (the pane itself also refuses to render, so a stale
-              // ?pview=local deep link falls back to accounts-shaped emptiness
-              // rather than a hidden feature).
-              ...($localModelsEnabled.get()
-                ? [
-                    {
-                      active: activeView === 'providers' && providerView === 'local',
-                      icon: Cpu,
-                      id: 'pview:local',
-                      label: t.settings.nav.providerLocalModels,
-                      onSelect: () => openProviderView('local')
-                    }
-                  ]
-                : [])
+              }
             ],
             gapBefore: true,
             icon: Zap,
             id: 'providers',
             label: t.settings.nav.providers,
-            onSelect: () => setActiveView('providers')
+            onSelect: () => openProviderView('custom-endpoints')
           },
           {
             active: activeView === 'gateway',
@@ -353,29 +329,6 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
             id: 'keybinds',
             label: t.settings.nav.keybinds,
             onSelect: () => setActiveView('keybinds')
-          },
-          {
-            active: activeView === 'keys',
-            children: [
-              {
-                active: activeView === 'keys' && keysView === 'tools',
-                icon: Wrench,
-                id: 'kview:tools',
-                label: t.settings.nav.keysTools,
-                onSelect: () => openKeysView('tools')
-              },
-              {
-                active: activeView === 'keys' && keysView === 'settings',
-                icon: Settings2,
-                id: 'kview:settings',
-                label: t.settings.nav.keysSettings,
-                onSelect: () => openKeysView('settings')
-              }
-            ],
-            icon: KeyRound,
-            id: 'keys',
-            label: t.settings.nav.apiKeys,
-            onSelect: () => setActiveView('keys')
           },
           {
             active: activeView === 'sessions',
@@ -414,13 +367,11 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
       activeView,
       billingView,
       canViewPlans,
-      keysView,
       providerView,
       subpage,
       t,
       setActiveView,
       openProviderView,
-      openKeysView,
       openSettingsPage,
       openSubView
     ]

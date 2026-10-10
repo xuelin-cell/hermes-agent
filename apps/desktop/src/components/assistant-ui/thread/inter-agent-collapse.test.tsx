@@ -80,7 +80,7 @@ function Harness({ messages }: { messages: ThreadMessage[] }) {
   )
 }
 
-const DELIVERY = 'Message from 🤖 Hermes (@hermes): please check the build'
+const DELIVERY = 'Message from 🤖 UniWork (@hermes): please check the build'
 
 /** This bot's own `message_agent` dispatch to a teammate (a Bot Chat turn). */
 function dispatch(id: string, target: string): ThreadMessage {

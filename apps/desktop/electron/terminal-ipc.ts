@@ -182,7 +182,7 @@ export function registerTerminalIpc({
     env.COLORTERM = 'truecolor'
     env.LC_CTYPE = terminalLcCtype(env)
     env.TERM = 'xterm-256color'
-    env.TERM_PROGRAM = 'Hermes'
+    env.TERM_PROGRAM = 'UniWork'
     env.TERM_PROGRAM_VERSION = app.getVersion()
 
     // Let a hermes/--tui launched in this pane know it's embedded in the desktop

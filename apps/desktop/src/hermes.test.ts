@@ -39,7 +39,7 @@ const emptySessionsResponse = {
   total: 0
 }
 
-describe('Hermes REST helpers', () => {
+describe('UniWork REST helpers', () => {
   let api: ReturnType<typeof vi.fn>
 
   beforeEach(() => {

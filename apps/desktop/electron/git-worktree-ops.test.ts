@@ -287,7 +287,7 @@ test('addWorktree: base origin/main does not set up upstream tracking', async ()
       '-c',
       'user.email=hermes@localhost',
       '-c',
-      'user.name=Hermes',
+      'user.name=UniWork',
       'commit',
       '--allow-empty',
       '-m',
@@ -335,7 +335,7 @@ function seedRemoteAndClone(label, branches) {
       .trim()
 
   execFileSync('git', ['init', '-b', 'main', remoteDir])
-  remoteGit('-c', 'user.email=hermes@localhost', '-c', 'user.name=Hermes', 'commit', '--allow-empty', '-m', 'root')
+  remoteGit('-c', 'user.email=hermes@localhost', '-c', 'user.name=UniWork', 'commit', '--allow-empty', '-m', 'root')
 
   for (const branch of branches) {
     remoteGit('branch', branch)

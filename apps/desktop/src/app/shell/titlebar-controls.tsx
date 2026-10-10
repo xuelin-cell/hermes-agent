@@ -1,6 +1,6 @@
 import { compactNumber } from '@hermes/shared'
 import { useStore } from '@nanostores/react'
-import { type ComponentProps, type MouseEvent, type ReactNode, useEffect, useState } from 'react'
+import { type ComponentProps, type MouseEvent, type ReactNode, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
 import { hudTargetSessionId } from '@/app/hud/handoff'
@@ -13,8 +13,10 @@ import { Slot } from '@/contrib/react/slot'
 import { useContributions } from '@/contrib/react/use-contributions'
 import { useI18n } from '@/i18n'
 import { triggerHaptic } from '@/lib/haptics'
+import { Bug } from '@/lib/icons'
 import { formatModifierToken } from '@/lib/keybinds/combo'
 import { cn } from '@/lib/utils'
+import { $developerMode, toggleDeveloperMode } from '@/store/developer-mode'
 import { toggleHud } from '@/store/hud'
 import { $interfaceMode, shownInMode, type Tiered } from '@/store/interface-mode'
 import {
@@ -138,6 +140,7 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
   const navigate = useNavigate()
   const location = useLocation()
   const modHeld = useModifierHeld()
+  const developerMode = useStore($developerMode)
   const fileBrowserOpen = useStore($fileBrowserOpen)
   const panesFlipped = useStore($panesFlipped)
   const sidebarOpen = useStore($sidebarOpen)
@@ -146,6 +149,35 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
   const interfaceMode = useStore($interfaceMode)
   const unreadBadge = unreadCount > 0 ? unreadCount : undefined
   const unreadHint = unreadBadge ? ` · ${t.titlebar.unreadSessions(unreadBadge)}` : ''
+  const brandClickCountRef = useRef(0)
+  const brandClickResetRef = useRef<number | null>(null)
+
+  const handleBrandClick = () => {
+    brandClickCountRef.current += 1
+
+    if (brandClickResetRef.current !== null) {window.clearTimeout(brandClickResetRef.current)}
+
+    if (brandClickCountRef.current >= 5) {
+      brandClickCountRef.current = 0
+      brandClickResetRef.current = null
+      const enabled = toggleDeveloperMode()
+      triggerHaptic(enabled ? 'success' : 'warning')
+
+      return
+    }
+
+    brandClickResetRef.current = window.setTimeout(() => {
+      brandClickCountRef.current = 0
+      brandClickResetRef.current = null
+    }, 1_500)
+  }
+
+  useEffect(
+    () => () => {
+      if (brandClickResetRef.current !== null) {window.clearTimeout(brandClickResetRef.current)}
+    },
+    []
+  )
   // One filter for every cluster: a tool's own `hidden`, then the mode's tier.
   const shown = shownInMode(interfaceMode)
   const visibleTool = (tool: TitlebarTool) => !tool.hidden && shown(tool)
@@ -220,6 +252,16 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
         onOpenSettings()
       }
     },
+    ...(developerMode
+      ? [
+          {
+            className: 'pointer-events-none text-red-500',
+            icon: <Bug className="size-4 text-red-500" />,
+            id: 'developer-mode-indicator',
+            label: t.titlebar.developerModeEnabled
+          }
+        ]
+      : []),
     {
       ...TITLEBAR_FIXED_TOOLS.layout,
       className: 'group/tool',
@@ -316,6 +358,16 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
   return (
     <>
       <div aria-label={t.shell.windowControls} className={leftClusterClass} data-titlebar-cluster="left">
+        {sidebarOpen && (
+          <button
+            aria-label="元景数字员工"
+            className="mr-1 flex h-(--titlebar-control-height) cursor-default items-center rounded px-1.5 text-xs font-medium whitespace-nowrap text-foreground/85 select-none"
+            onClick={handleBrandClick}
+            type="button"
+          >
+            元景数字员工
+          </button>
+        )}
         {visibleLeftTools.map(tool => (
           <TitlebarToolButton key={tool.id} navigate={navigate} tool={tool} />
         ))}

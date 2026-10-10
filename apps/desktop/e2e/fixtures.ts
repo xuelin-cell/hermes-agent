@@ -433,7 +433,7 @@ export async function setupDeadBackend(options: DeadBackendOptions = {}): Promis
   writeMockProviderConfig(sandbox.hermesHome, deadUrl)
   writeEnvFile(sandbox.hermesHome, 'e2e-mock-key', deadUrl)
 
-  const env = buildAppEnv(sandbox, options.fakeError ? { HERMES_DESKTOP_BOOT_FAKE_ERROR: 'Failed to connect to Hermes backend: connection refused' } : {})
+  const env = buildAppEnv(sandbox, options.fakeError ? { HERMES_DESKTOP_BOOT_FAKE_ERROR: 'Failed to connect to UniWork backend: connection refused' } : {})
   const { app, page } = await launchDesktop(env)
 
   return {
@@ -455,13 +455,13 @@ export async function setupDeadBackend(options: DeadBackendOptions = {}): Promis
  */
 function resolvePackagedBinaryPath(): string {
   if (process.platform === 'win32') {
-    return path.join(RELEASE_ROOT, 'win-unpacked', 'Hermes.exe')
+    return path.join(RELEASE_ROOT, 'win-unpacked', 'UniWork.exe')
   }
 
   if (process.platform === 'darwin') {
     const arch = process.arch === 'arm64' ? 'arm64' : 'x64'
 
-    return path.join(RELEASE_ROOT, `mac-${arch}`, 'Hermes.app', 'Contents', 'MacOS', 'Hermes')
+    return path.join(RELEASE_ROOT, `mac-${arch}`, 'UniWork.app', 'Contents', 'MacOS', 'UniWork')
   }
 
   return path.join(RELEASE_ROOT, 'linux-unpacked', 'hermes')

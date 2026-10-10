@@ -174,6 +174,7 @@ function ThemePreview({ name, mode }: { name: string; mode: 'light' | 'dark' }) 
 // presets highlights nothing, and the row description keeps showing the
 // exact current percent.
 const UI_SCALE_PRESETS = ['90', '100', '110', '125', '150', '175'] as const
+const SHOW_THEME_CATALOG = false
 const ids = SETTING_IDS.appearance
 type UiScalePreset = (typeof UI_SCALE_PRESETS)[number]
 
@@ -583,7 +584,7 @@ export function AppearanceSettings({ subpage }: AppearanceSettingsProps = {}) {
                   value={mode}
                 />
               }
-              below={
+              below={SHOW_THEME_CATALOG ? (
                 <>
                   {/* One search box: filters your installed themes (the grid)
                       and live-searches the VS Code Marketplace below. */}
@@ -661,7 +662,7 @@ export function AppearanceSettings({ subpage }: AppearanceSettingsProps = {}) {
                     </p>
                   )}
                 </>
-              }
+              ) : undefined}
               description={a.themeDesc}
               id={settingElementId(ids.theme)}
               title={a.themeTitle}

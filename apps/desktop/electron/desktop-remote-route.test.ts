@@ -378,7 +378,7 @@ test('falls back to a CLOUD registry primary when the v1 mode is local', () => {
       {
         id: 'cloud-1',
         kind: 'cloud',
-        label: 'Hermes Cloud',
+        label: 'UniWork Cloud',
         url: 'https://agent.hermes.cloud',
         authMode: 'oauth',
         org: 'nous'

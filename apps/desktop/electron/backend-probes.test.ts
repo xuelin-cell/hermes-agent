@@ -96,11 +96,11 @@ test('canImportHermesCli returns false when binary does not exist', async () => 
   assert.equal(await canImportHermesCli(ghost), false)
 })
 
-test('explicit Hermes override is authoritative', () => {
+test('explicit UniWork override is authoritative', () => {
   assert.equal(shouldTrustHermesOverride('/nix/store/abc/bin/hermes'), true)
 })
 
-test('empty Hermes override is not authoritative', () => {
+test('empty UniWork override is not authoritative', () => {
   assert.equal(shouldTrustHermesOverride(''), false)
   assert.equal(shouldTrustHermesOverride(undefined), false)
 })
