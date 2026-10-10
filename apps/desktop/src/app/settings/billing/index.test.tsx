@@ -596,16 +596,18 @@ describe('BillingSettings', () => {
     )
   })
 
-  it('renders logged-out as a connect card whose sign-in opens the shared dialog', async () => {
+  it('hides the Nous account connection card when logged out', async () => {
     apiMocks.fetchBillingState.mockResolvedValue(okBilling(loggedOutBillingState))
     apiMocks.fetchSubscriptionState.mockResolvedValue(okSubscription(loggedOutSubscriptionState))
     $freeTierSignIn.set({ status: 'closed' })
 
-    renderBilling()
+    const client = renderBilling()
 
-    expect(await screen.findByText('Connect your Nous account')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
-    expect($freeTierSignIn.get()).toEqual({ status: 'requested' })
+    await waitFor(() => expect(apiMocks.fetchBillingState).toHaveBeenCalled())
+    await waitFor(() => expect(client.isFetching()).toBe(0))
+    expect(screen.queryByText('Connect your Nous account')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull()
+    expect($freeTierSignIn.get()).toEqual({ status: 'closed' })
     expect(apiMocks.openExternal).not.toHaveBeenCalled()
     $freeTierSignIn.set({ status: 'closed' })
     expect(screen.queryByText('Payment method')).toBeNull()

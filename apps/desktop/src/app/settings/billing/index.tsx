@@ -527,7 +527,7 @@ function BillingSettingsContent({
     <SettingsContent>
       <BillingHeader fixtureName={fixtureName} onFixtureChange={onFixtureChange} />
 
-      {view.notice && <NoticeCard notice={view.notice} />}
+      {view.notice && view.status !== 'logged_out' && <NoticeCard notice={view.notice} />}
 
       <div className="@container mb-6">
         <div className="grid gap-3 @2xl:grid-cols-3">
