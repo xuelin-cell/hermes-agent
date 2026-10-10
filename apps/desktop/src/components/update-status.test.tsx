@@ -138,6 +138,20 @@ describe('VersionHero bundle banners', () => {
     return relaunchApp
   }
 
+  it.each(Object.entries(TRANSLATIONS) as [Locale, Translations][])(
+    'shows the UniWork product name in %s',
+    (locale: Locale): void => {
+      const { unmount }: { unmount: () => void } = render(
+        <I18nProvider configClient={null} initialLocale={locale}>
+          <VersionHero version={version({})} />
+        </I18nProvider>
+      )
+
+      expect(screen.getByRole('heading', { name: 'UniWork' })).toBeTruthy()
+      unmount()
+    }
+  )
+
   it('shows an R2 channel name that is not a built-in translated label', (): void => {
     render(<VersionHero version={version({ channel: 'pm-preview' })} />)
 
