@@ -30,11 +30,13 @@ import {
   useLinkTitle
 } from '@/lib/external-link'
 import { FileImage, FileText, FolderOpen, Link2 } from '@/lib/icons'
-import { downloadGatewayMediaFile, isRemoteGateway } from '@/lib/media'
+import { normalizeOrLocalPreviewTarget } from '@/lib/local-preview'
 import { normalize } from '@/lib/text'
 import { fmtDayTime } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { notify, notifyError } from '@/store/notifications'
+import { openPreview } from '@/store/preview'
+import { $currentCwd } from '@/store/session'
 
 import { useRefreshHotkey } from '../hooks/use-refresh-hotkey'
 import { useRouteEnumParam } from '../hooks/use-route-enum-param'
@@ -49,6 +51,7 @@ import {
   type ArtifactRecord,
   loadArtifactsForSessions
 } from './artifact-utils'
+import { CloudLibrary } from './cloud-library'
 
 function formatArtifactTime(timestamp: number): string {
   return fmtDayTime.format(new Date(timestamp))
@@ -111,7 +114,7 @@ interface ArtifactsViewProps extends React.ComponentProps<'section'> {
   setStatusbarItemGroup?: SetStatusbarItemGroup
 }
 
-export function ArtifactsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...props }: ArtifactsViewProps) {
+function LocalArtifactsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...props }: ArtifactsViewProps) {
   const { t } = useI18n()
   const a = t.artifacts
   const navigate = useNavigate()
@@ -272,21 +275,10 @@ export function ArtifactsView({ setStatusbarItemGroup: _setStatusbarItemGroup, .
   const openArtifact = useCallback(
     async (href: string) => {
       try {
-        // A gateway-local file resolves to file:// in remote mode (the file
-        // lives on the gateway, not this disk). Opening that locally fails —
-        // and an OAuth remote connection has no query token to build a download
-        // URL. Fetch the bytes over the authenticated fs bridge instead.
-        if (isRemoteGateway() && /^file:/i.test(href)) {
-          await downloadGatewayMediaFile(href)
+        const target = await normalizeOrLocalPreviewTarget(href, $currentCwd.get() || undefined)
 
-          return
-        }
-
-        if (window.hermesDesktop?.openExternal) {
-          await window.hermesDesktop.openExternal(href)
-        } else {
-          window.open(href, '_blank', 'noopener,noreferrer')
-        }
+        if (!target) {throw new Error('无法识别该产物的预览格式')}
+        openPreview(target, 'file-browser')
       } catch (err) {
         notifyError(err, a.openFailed)
       }
@@ -343,7 +335,7 @@ export function ArtifactsView({ setStatusbarItemGroup: _setStatusbarItemGroup, .
       ]}
     >
       {!artifacts ? (
-        <PageLoader label={a.indexing} />
+        <PageLoader className="h-48" label={a.indexing} />
       ) : visibleArtifacts.length === 0 ? (
         <div className="grid h-full place-items-center px-6 text-center">
           <div>
@@ -401,6 +393,22 @@ export function ArtifactsView({ setStatusbarItemGroup: _setStatusbarItemGroup, .
         </div>
       )}
     </PageSearchShell>
+  )
+}
+
+export function ArtifactsView(props: ArtifactsViewProps) {
+  const [libraryTab, setLibraryTab] = useState<'cloud' | 'local'>('cloud')
+
+  return (
+    <section className="flex h-full min-h-0 flex-col bg-background">
+      <div className="flex h-11 shrink-0 items-end gap-5 border-b border-border/70 px-4">
+        <button className={cn('h-10 border-b-2 px-1 text-sm font-medium', libraryTab === 'cloud' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground')} onClick={() => setLibraryTab('cloud')} type="button">个人云盘</button>
+        <button className={cn('h-10 border-b-2 px-1 text-sm font-medium', libraryTab === 'local' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground')} onClick={() => setLibraryTab('local')} type="button">本地产物</button>
+      </div>
+      <div className="min-h-0 flex-1">
+        {libraryTab === 'cloud' ? <CloudLibrary /> : <LocalArtifactsView {...props} />}
+      </div>
+    </section>
   )
 }
 

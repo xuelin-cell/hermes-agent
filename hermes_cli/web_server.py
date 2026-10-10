@@ -15227,6 +15227,14 @@ def _clear_skills_prompt_cache() -> None:
 from hermes_cli.web_routers import tools as _tools_routes  # noqa: E402
 
 app.include_router(_tools_routes.router)
+
+from hermes_cli.web_routers import uniwork_auth as _uniwork_auth_routes  # noqa: E402
+
+app.include_router(_uniwork_auth_routes.router)
+
+from hermes_cli.web_routers import uniwork_drive as _uniwork_drive_routes  # noqa: E402
+
+app.include_router(_uniwork_drive_routes.router)
 from hermes_cli.web_routers.tools import (  # noqa: E402,F401 — legacy re-exports; tests call these via web_server.<name>
     get_toolsets,
     toggle_toolset,
