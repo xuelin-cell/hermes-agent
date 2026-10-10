@@ -80,7 +80,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # har_capture.py 这类脚本 `from playwright.sync_api import sync_playwright`，
 # 需要 venv 里有 playwright 包。浏览器走系统 /usr/bin/chromium（见上），
 # 这里只补 Python 库本身。
-RUN /opt/hermes/.venv/bin/pip install --no-cache-dir playwright
+#
+# 注意：hermes venv 是 uv sync 创建的，**不带 pip**（uv 自己当 installer）。
+# 所以不能用 /opt/hermes/.venv/bin/pip（不存在 → 报 not found）。
+# 用 `uv pip install`，uv 在 base 的 /usr/local/bin/uv，
+# WORKDIR=/opt/hermes 下 uv 会自动找到 .venv。
+# --no-cache-dir: 别在镜像层留 uv 缓存。
+RUN uv pip install --no-cache-dir playwright
+# 装完 playwright，把它的 chromium 浏览器二进制也装上（含系统依赖）。
+# base 的根 Dockerfile 里 npx playwright install --with-deps chromium --only-shell
+# 已经装过 Node 端的 Chromium shell，但 Python playwright 需要自己的浏览器缓存。
+# PLAYWRIGHT_BROWSERS_PATH=/opt/hermes/.playwright 在 base 里已设。
+RUN /opt/hermes/.venv/bin/playwright install --with-deps chromium
 
 # ---- envd 与 Cube 的通用入口脚本 ------------------------------------------
 # 入口脚本的契约：后台拉起 envd（让平台的 SDK 数据面和默认探针可用），

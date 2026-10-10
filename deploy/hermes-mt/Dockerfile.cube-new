@@ -89,8 +89,13 @@ ENV NOVNC_PORT=6080
 # computer_use/cua_backend 走 cua-driver 子进程（需 DISPLAY），
 # 但 Python 端若要直接用 Playwright，需 pip install + 浏览器。
 # 这里装进 hermes venv，复用 base 已装的 Chromium 二进制。
-RUN /opt/hermes/.venv/bin/pip install --no-cache-dir playwright \
-    && /opt/hermes/.venv/bin/playwright install chromium
+#
+# 注意：base 的 venv 是 `uv venv` 创建的，默认不含 pip
+# （/opt/hermes/.venv/bin/pip 不存在）。必须用 `uv pip install`
+# 才能装进该 venv —— 与根 Dockerfile 第 293 行的写法一致。
+# uv 在 WORKDIR=/opt/hermes 下自动发现 /opt/hermes/.venv。
+RUN uv pip install --no-cache-dir playwright \
+    && /opt/hermes/.venv/bin/playwright install --with-deps chromium
 
 # ---- 屏幕入口脚本 ----------------------------------------------------------
 # 在 cube-entrypoint.sh 之前 exec：先拉起 Xvfb/fluxbox/x11vnc/websockify，
