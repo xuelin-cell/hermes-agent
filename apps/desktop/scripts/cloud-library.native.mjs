@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { mkdtemp, writeFile } from 'node:fs/promises'
+import { createServer as createHttpServer } from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -13,7 +14,7 @@ const desktop = path.resolve(import.meta.dirname, '..')
 const legacyKeys = ['auth_token', 'user_info', 'api_token_info', 'auth_application']
 
 /** 加载正式产物页与 preload，用受控本地响应验证展示和 IPC，避免启动用户后端。 */
-async function prepareFixture() {
+async function prepareFixture(port = 5173) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'hermes-cloud-library-'))
   const entry = path.join(root, 'fixture.jsx')
   // 将正式模块的绝对路径转为夹具中的安全 JavaScript 字符串。
@@ -33,7 +34,7 @@ async function prepareFixture() {
     root: desktop,
     cacheDir: path.join(root, 'vite-cache'),
     logLevel: 'warn',
-    server: { host: '127.0.0.1', port: 0, open: false, fs: { allow: [path.dirname(desktop), path.resolve(desktop, '../..'), root] } },
+    server: { host: '127.0.0.1', port, strictPort: false, open: false, fs: { allow: [path.dirname(desktop), path.resolve(desktop, '../..'), root] } },
     plugins: [{
       name: 'cloud-library-fixture',
       /** 仅为独立测试入口提供 HTML，源码和样式由正式 Vite 配置处理。 */
@@ -47,8 +48,8 @@ async function prepareFixture() {
       }
     }]
   })
-  await server.listen()
   try {
+    await server.listen()
     await bundle({ entryPoints: [path.join(desktop, 'electron/preload.ts')], bundle: true,
       platform: 'node', format: 'cjs', external: ['electron'], outfile: path.join(root, 'preload.cjs') })
     await writeFile(path.join(root, 'main.cjs'), `
@@ -159,5 +160,23 @@ test('隔离 Electron 云盘无请求及旧凭据读取，窄窗可见，本地�
   } finally {
     await instance?.close()
     await fixture.server.close()
+  }
+})
+
+test('云盘夹具避开已占用端口，原服务继续可用，关闭后无开发服务残留', {timeout:60_000}, async () => {
+  const occupied = createHttpServer((_request, response) => response.end('fixture-port-owner'))
+  await new Promise(resolve => occupied.listen(0, '127.0.0.1', resolve))
+  const port = occupied.address().port
+  let fixture
+  try {
+    fixture = await prepareFixture(port)
+    assert.notEqual(new URL(fixture.url).port, String(port))
+    assert.equal((await fetch(fixture.url)).status, 200)
+    assert.equal(await (await fetch(`http://127.0.0.1:${port}`)).text(), 'fixture-port-owner')
+    await fixture.server.close()
+    await assert.rejects(fetch(fixture.url, {signal:AbortSignal.timeout(2000)}))
+  } finally {
+    await fixture?.server.close()
+    await new Promise(resolve => occupied.close(resolve))
   }
 })

@@ -2,7 +2,7 @@
 
 日期：2026-10-10。基线：同步协作者最新提交后的 `desktop-mt @ fe4a80ba5`。
 
-状态：R01～R09 与构建夹具修复已完成并推送；R10 已完成，等待用户核验、未推送；R11 未开始。每步完成验证与本地提交后暂停，等待用户核验，再继续下一步；具体结果见“实施进度”。
+状态：R01～R10 与构建夹具修复已完成并推送；R11 回归记录与夹具修复已完成，等待用户核验、未推送。已知失败与人工待验收项保留，不代表完整产品验收通过。每步完成验证与本地提交后暂停，等待用户核验，再继续下一步；具体结果见“实施进度”。
 
 路径约定：`src/`、`electron/`、`entry_local/` 指桌面工程中的对应目录；R01 的两个脚本位于 `apps/desktop/scripts/`，R03 的部署脚本位于仓库根 `scripts/`。
 
@@ -173,7 +173,7 @@ R06 不承担云盘对接或旧鉴权模块删除，避免视觉修改与身份�
 - 人工验收另列：真实双账号短信登录、模型聊天、官方版并行。真实短信、付费模型和外部写操作须有明确授权；云盘业务验收留待后续接口接入，不计入本轮完成标准。
 - 保留此前套餐 401 首次提示不可见等已知问题，不因本轮收尾将其标为修复；不将文件保留等同于会话正文恢复通过。
 - 更新 `README.md`、`01-login.md`、`USAGE.md` 及确受影响的阶段文档。实际命令、通过／失败／跳过和人工待验收项写在提交正文与阶段文档，不创建 `ACCEPTANCE.md`。
-- 提交方向：`docs(desktop): 记录桌面清理与原生登录验收结果`。若发现产品缺陷，先单独修复并验证，不夹在文档提交里。
+- 提交方向：`test(desktop): 修复原生夹具并记录桌面清理验收`。用户本轮确认夹具修复纳入 R11，不单独提交；若发现产品缺陷，先单独修复并验证，不夹在本次提交里。
 
 ## 9. 实施进度
 
@@ -188,8 +188,8 @@ R06 不承担云盘对接或旧鉴权模块删除，避免视觉修改与身份�
 | C · 云盘仅保留 UI | R07 | 已完成并推送，提交 `8e8de000a`；接口接入另行排期 |
 | D · 删除旧登录与云盘请求链 | R08 | 已完成并推送，提交 `3cb98c39d` |
 | D · 删除旧登录与云盘请求链 | R09 | 已完成并推送，提交 `897f480d4` |
-| D · 删除旧登录与云盘请求链 | R10 | 已完成，等待用户核验；未推送 |
-| E · 完整回归与文档 | R11 | 未开始 |
+| D · 删除旧登录与云盘请求链 | R10 | 已完成并推送，提交 `1e2d07214` |
+| E · 完整回归与文档 | R11 | 回归记录与夹具修复已完成、本地待核验，未推送；401 失败与人工待验收保留 |
 
 ### R01 实施记录（2026-10-10）
 
@@ -363,7 +363,65 @@ MaaS、OAuth 身份提供方及云盘上游响应受控，没有发送真实短�
 - 已检查首次登录的云盘截图，位于 `C:\Users\stan\AppData\Local\Temp\hermes-single-login-CyCflf\account-0.png`；四次账号截图均保留，测试结束未发现该夹具 Electron 遗留进程。构建仍有原有 `advancedChunks` 弃用和插件耗时提示。
 - 完整 `npm run typecheck`、新增测试 Ruff、`web_server.py` 与新增测试编译、废弃引用检查和 `git diff --check` 通过。既有五个本地计时文件 SHA-256 保持不变，没有修改 Renderer、Electron 或 Hermes Python Agent 核心。
 
-MaaS、OAuth 身份提供方与删除前的云盘上游响应受控，没有发送真实短信、查询或改写真实云盘、调用付费模型或制作安装包；没有操作用户已有窗口、官方版或用户数据。临时文件／草稿保留不等于旧会话正文恢复验收；套餐 401 首次提示问题仍未处理。R10 独立本地提交后停下等待核验，不推送，也不开始 R11。
+MaaS、OAuth 身份提供方与删除前的云盘上游响应受控，没有发送真实短信、查询或改写真实云盘、调用付费模型或制作安装包；没有操作用户已有窗口、官方版或用户数据。临时文件／草稿保留不等于旧会话正文恢复验收；套餐 401 首次提示问题仍未处理。R10 以 `1e2d07214` 独立提交，后续已按用户当次授权推送。
+
+### R11 实施记录（2026-10-10）
+
+于 2026-10-10～10-11 在 `1e2d07214` 上执行桌面清理后的回归。按用户本轮要求，修复发现的旧夹具问题并与验收文档放入同一 R11 提交，不另开修复提交；没有修改产品代码、Hermes Agent 核心、官方对照版或用户数据。
+
+夹具修复：
+
+- `account-desktop.native.mjs` 与 `account-logout.fixture.mjs` 的三处登录页观察仍使用“登录 Hermes”，未适配 R06。改为当前标题；Playwright 使用精确标题匹配，退出监督夹具检查真实 `h1`，不删账号、期限、存储和停止断言。
+- `dev-electron.native.mjs` 的 ESM bundle 缺少正式构建已有的 `createRequire` 引导，YAML 内部的 CommonJS 引用报错，两个用例超时。补齐同一引导，保留连续重启、普通退出和异常退出检查。
+- `cloud-library.native.mjs` 的 `port: 0` 在当前 Vite 回落为 5173，并继承严格端口配置；并行夹具占用时启动失败，监听步骤又不在收尾保护内。改用现有夹具的空闲端口选择机制，将监听纳入失败收尾；新增真实占用端口的行为测试，验证原服务不受影响、夹具关闭后不可访问。
+- 清除账号夹具无用的捕获变量、未使用的 URL 参数，拆开有歧义的跨行属性读取。没有删除仍有价值的原生用例，也未清空失败记录；已废弃浏览器／Web 专用测试在先前步骤随代码删除，没有剩余消费者。
+
+本轮实际结果（同一用例重测不重复累计）：
+
+| 检查 | 结果与边界 |
+| --- | --- |
+| Electron／UI 组件定向组 | 47 个文件、230 项通过，无失败、无跳过；含登录、账号生命周期、IPC、附件、预览、云盘和翻译 |
+| Python 后端定向组 | 9 个文件、98 项通过，无失败、无跳过；含废弃代理拒绝、令牌、OAuth／Cookie、WS、上传／下载和文件限制 |
+| 桌面构建夹具 | 7 项通过，无失败、无跳过；检查真实 `login-preload.js` 构建与执行，保留负向编译用例 |
+| 原生登录 | 9 项通过；1 项原有真实 MaaS 验证码检查默认跳过，未发送真实短信 |
+| 原生退出等待窗 | 4 项通过；浅／深色账号退出、完整退出隐藏和失败窗口 |
+| 原生单登录 | 1 项通过；正式表单、加密、后端 REST／WS、A→B→A、完整草稿和文件、旧 Web 缓存无消费 |
+| 云盘／开发监督重启 | 修复后合组 4 项通过，无失败、无跳过；其中云盘 2 项、重启 2 项 |
+| 原生账号整组与对应重测 | 按最终用例状态去重，12 项通过、401 提示 1 项失败；其中 4 项来自对应场景的后续定向重测，不宣称一次整组全绿 |
+| 原版网关停止与缺失身份恢复 | 两条独立原生命令各 1 项通过；冲突拒绝、其它 Home 健康、重复停止、创建时间缺失恢复 |
+| 类型／Lint／构建／静态检查 | 完整 TypeScript、21 个本轮产品 TS／TSX 文件及 4 个修改脚本 ESLint 零警告、脚本语法、主页面与登录页 Renderer 构建、废弃引用和 Git 差异检查通过 |
+
+首轮失败与重测没有隐去：账号完整命令最初为 8 项通过、5 项失败，其中 3 项因旧独立 Python 缺少 `aiohttp` 无法启动夹具网关，1 项因旧登录标题阻断完整隔离，1 项是已知套餐 401。通过原版 PM 在新临时目录准备 `dev / test / web / messaging` 环境，实际导入 `aiohttp`、MCP 和 psutil 后，运行中崩溃恢复用例通过；标题修复后，真实退出监督和完整 A→B→A 用例通过。补依赖后的中间轮仍暴露退出辅助夹具的旧标题与到期焦点失败，均单列，不把环境准备等同于产品修复。
+
+最终短期限用例在没有其它原生夹具并行运行时，原断言全部通过：四类工具在原期限前启动，到期后心跳继续、账号与凭据期限不变、页面焦点不被到期提示移动、通知只出现一次、手动退出停止工作、冷启动拒绝过期记录。没有修改系统时间或到期产品实现。此前并行轮次的焦点失败保留，只记录串行复测结果，不据此推断已经查明产品根因。
+
+按最终用例状态去重，原生检查共 32 项通过、1 项已知 401 失败、1 项原有真实网络检查跳过；由上述多条实际命令取得，不是一次全绿整组结果，也不重复计算首次失败后的重测。
+
+五文件原生合组首轮为 14 项通过、1 项失败、2 项超时取消、1 项原有网络检查跳过；云盘占用冲突发生在页面检查之前，开发重启超时源于夹具 bundle。清理的仅是两条已核对 PID、父进程和创建时间的失败云盘测试子进程。新增端口占用用例在修复前按预期报占用错误；修复后不使用强制退出，云盘与重启全部通过。单登录与其它登录／退出通过项保留各自真实结果，不将首轮合组写成全通过。
+
+复现入口（除注明外在 `apps/desktop` 执行；使用完整路径指定本轮独立 `FIXTURE_PYTHON`，`HERMES_LOGIN_LIVE_CAPTCHA=0`）：
+
+```powershell
+node --test --test-concurrency=1 scripts/account-desktop.native.mjs
+node --test --test-concurrency=1 scripts/login-bootstrap.native.mjs scripts/account-exit-window.native.mjs scripts/dev-electron.native.mjs scripts/cloud-library.native.mjs scripts/single-login.native.mjs
+node --test --test-concurrency=1 scripts/cloud-library.native.mjs scripts/dev-electron.native.mjs
+node --test --test-concurrency=1 --test-name-pattern='P25 真实 Electron：running' scripts/account-desktop.native.mjs
+node --test --test-concurrency=1 --test-name-pattern='P19/P20 真实开发监督进程|P15～P17 原生 Electron' scripts/account-desktop.native.mjs
+node --test --test-concurrency=1 --test-name-pattern='P22 真实短期限' scripts/account-desktop.native.mjs
+node --test --test-isolation=none scripts/gateway-incomplete-identity.native.mjs
+node --test scripts/gateway-logout.native.mjs
+npm run typecheck
+```
+
+组件组使用 `npx --no-install vitest run --maxWorkers 1 --testTimeout 30000`，Electron 目标为 `electron/login`、`electron/entry_local`、三个 preload 用例、三个 `gateway-file-download` 用例、`preview-guest-preload.test.ts` 与 `scripts/dev-electron.test.mjs`；UI 目标为 `src/main.test.tsx`、`src/app/login`、账号角标、错误文案、翻译、缩放、三个产物用例及附件／文件预览／预览窗／会话附件用例。构建组在 `tests-js` 执行 `npx --no-install vitest run desktop-builder.test.mjs`。
+
+Python 通过本机 Git Bash 的原版 `scripts/run_tests.sh` 运行，设置独立 `HERMES_PYTHON`，目标为 `tests/hermes_cli/` 下的 `test_desktop_drive_routes.py`、`test_desktop_login_routes.py`、四个 `test_dashboard_auth_*`、`test_web_server_boot_handshake.py`、`test_web_server_files.py`、`test_web_server_fs.py`；参数 `-j 2 --file-retries 0 -q --tb=short`，没有失败自动重试。
+
+检查了新登录页宽／窄窗、云盘窄窗与返回 A 的桌面截图。代表性证据位于临时目录 `hermes-mt-login-FJsvWT`、`hermes-cloud-library-pgPgX5`、`hermes-mt-desktop-OMldNL`、`hermes-single-login-AYfbRY`；登录图片与响应受控。正式双入口 Renderer 产物位于 `hermes-r11-renderer-Rn8XUu`，不是独立安装包。
+
+保留既有 `advancedChunks` 弃用、插件耗时、Vite 依赖动态导入／大文件警告；部分原生退出日志出现 PTY `AttachConsole failed` 或 GPU 警告，相应进程及退出断言仍通过，未据此宣称运行日志无异常。
+
+套餐 401 首次聊天页重登提示仍未通过，主进程拒绝标志和退出入口保留。本轮未修复该产品问题，也没有跳过或降低其可见性断言。真实短信双账号、UID 稳定性、实际套餐／有效无套餐、付费模型、旧对话正文、真实 MCP／消息平台、官方版并行、系统重启／休眠和安装包仍待人工验收；云盘业务尚未接入。测试不操作用户现有窗口，不删除历史、缓存或远端文件。本轮只做本地 R11 提交，完成后停下等待用户核验，不推送。
 
 本轮开始前已存在且必须保留、不纳入这些提交的文件：
 

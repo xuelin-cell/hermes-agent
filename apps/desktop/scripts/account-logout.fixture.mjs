@@ -22,7 +22,7 @@ export async function exerciseLogout(root, userData) {
   const flag = path.join(root,'logout-started')
   if (existsSync(flag)) {
     const login = await until(() => BrowserWindow.getAllWindows().find(w => w.webContents.getURL().includes('login.html')),'登录窗')
-    await until(() => login.webContents.executeJavaScript("Boolean(window.hermesLogin && document.body.textContent.includes('登录 Hermes'))"),'登录页')
+    await until(() => login.webContents.executeJavaScript("Boolean(window.hermesLogin && document.querySelector('h1')?.textContent === '登录你的工作空间')"),'登录页')
     assert.equal(globalThis.fixtureContext(),null)
     assert.equal(existsSync(path.join(userData,'maas-login.enc')),false)
     writeFileSync(path.join(root,'logout-after.json'),JSON.stringify({electron:process.pid,login:true}))
