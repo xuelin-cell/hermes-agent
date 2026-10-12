@@ -20,9 +20,12 @@ import {
   withoutHiddenPaletteItems
 } from './browser-shell'
 
+// UniWork's developer mode (store/developer-mode.ts), which the browser build follows.
+const DEVELOPER_MODE_KEY = 'uniwork.desktop.developerMode.v1'
+
 afterEach(() => {
   delete document.documentElement.dataset.hermesBrowser
-  localStorage.removeItem('hermes.mt.developer')
+  localStorage.removeItem(DEVELOPER_MODE_KEY)
   setRuntimeI18nLocale('en')
 })
 
@@ -109,7 +112,7 @@ describe('browser shell', () => {
     expect(isBundledPluginHidden('hermes-bots')).toBe(true)
     expect(isBundledPluginHidden('kanban')).toBe(false)
 
-    localStorage.setItem('hermes.mt.developer', '1')
+    localStorage.setItem(DEVELOPER_MODE_KEY, 'true')
 
     expect(isBundledPluginHidden('hermes-bots')).toBe(false)
   })
@@ -135,7 +138,7 @@ describe('browser shell', () => {
     expect(isDeveloperMode()).toBe(false)
     expect(hideForUsers()).toBe(true)
 
-    localStorage.setItem('hermes.mt.developer', '1')
+    localStorage.setItem(DEVELOPER_MODE_KEY, 'true')
 
     expect(isDeveloperMode()).toBe(true)
     expect(hideForUsers()).toBe(false)
@@ -143,6 +146,11 @@ describe('browser shell', () => {
     expect(withoutHiddenNavItems([{ id: 'messaging' }]).map(item => item.id)).toEqual(['messaging'])
     expect(withoutHiddenPaletteItems([{ items: [{ id: 'cc-restart-gateway' }] }])).toHaveLength(1)
     expect(isBrowserShell()).toBe(true)
+
+    // Switched off again, UniWork's store keeps the key as 'false'.
+    localStorage.setItem(DEVELOPER_MODE_KEY, 'false')
+
+    expect(hideForUsers()).toBe(true)
   })
 
   it('leaves Ctrl+V and Ctrl+Shift+V in the terminal to the browser’s own paste', () => {
@@ -207,7 +215,7 @@ describe('browser shell', () => {
 
     expect(visibleModelOptions(bare)).toBe(bare)
 
-    localStorage.setItem('hermes.mt.developer', '1')
+    localStorage.setItem(DEVELOPER_MODE_KEY, 'true')
 
     expect(visibleModelOptions(options)).toBe(options)
   })

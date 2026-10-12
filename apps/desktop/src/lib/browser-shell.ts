@@ -1,4 +1,5 @@
 import { getRuntimeI18nLocale } from '@/i18n/runtime'
+import { storedBoolean } from '@/lib/storage'
 
 /**
  * The browser build: the renderer runs in an ordinary browser tab (the cloud,
@@ -36,7 +37,7 @@ import { getRuntimeI18nLocale } from '@/i18n/runtime'
  *   app/shell/gateway-menu-panel.tsx                   * no gateway restart
  *   contrib/plugins.ts                                 * no Bot Mode (the BOTS tab): its plugin is not started
  *   lib/model-options.ts                               * model pickers: the platform's providers only
- *   store/developer-mode.ts                            UniWork's developer mode is `isDeveloperMode()` below
+ *   store/developer-mode.ts                            flipping UniWork's developer mode reloads the page
  *   store/preview.ts                                   no in-app browser: links and URL previews open in a new tab
  *   store/profile.ts                                   only the default profile
  *   store/zoom.ts                                      no app zoom: the page keeps the browser's own
@@ -47,24 +48,29 @@ import { getRuntimeI18nLocale } from '@/i18n/runtime'
  */
 export function isBrowserShell(): boolean {
   // The production browser build is known at build time. The bridge's mark
-  // alone is not enough there: a module in a chunk the bundle evaluates before
-  // the bridge (store/developer-mode.ts, read at load) would not see it yet.
+  // alone is not enough there: a module that asks while loading, in a chunk the
+  // bundle evaluates before the bridge, would not see it yet.
   return (
     import.meta.env.VITE_HERMES_BROWSER_BUILD === '1' ||
     (typeof document !== 'undefined' && Boolean(document.documentElement?.dataset?.hermesBrowser))
   )
 }
 
-const DEVELOPER_MODE_KEY = 'hermes.mt.developer'
+// UniWork's own developer mode, the key of store/developer-mode.ts.
+const DEVELOPER_MODE_KEY = 'uniwork.desktop.developerMode.v1'
 
-/** Developer mode, per browser: tapping the account badge in the bottom-right
- * corner 7 times toggles it and reloads the page (the badge is the entry's,
- * `deploy/hermes-mt/entry/entry/static/badge.js`). */
+/** Developer mode, per browser: UniWork's switch, tapping the title (元景数字员工)
+ * 5 times (app/shell/titlebar-controls.tsx). */
 export function isDeveloperMode(): boolean {
-  try {
-    return globalThis.localStorage?.getItem(DEVELOPER_MODE_KEY) === '1'
-  } catch {
-    return false
+  return storedBoolean(DEVELOPER_MODE_KEY, false)
+}
+
+/** Developer mode was just flipped. What regular users see is decided while
+ * rendering and at startup (Bot Mode is not even started), so the browser build
+ * starts over rather than show a mix of both. */
+export function reloadAfterDeveloperModeToggle(): void {
+  if (isBrowserShell()) {
+    window.location.reload()
   }
 }
 

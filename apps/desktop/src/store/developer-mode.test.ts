@@ -1,13 +1,21 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import type * as BrowserShell from '@/lib/browser-shell'
+import { isDeveloperMode, reloadAfterDeveloperModeToggle } from '@/lib/browser-shell'
 
 import { $developerMode, setDeveloperMode, toggleDeveloperMode } from './developer-mode'
 
+vi.mock('@/lib/browser-shell', async importOriginal => ({
+  ...(await importOriginal<typeof BrowserShell>()),
+  reloadAfterDeveloperModeToggle: vi.fn()
+}))
+
 const KEY = 'uniwork.desktop.developerMode.v1'
-const BROWSER_KEY = 'hermes.mt.developer'
 
 describe('developer mode store', () => {
   beforeEach(() => {
     setDeveloperMode(false)
+    vi.mocked(reloadAfterDeveloperModeToggle).mockClear()
   })
 
   it('toggles on and persists the state', () => {
@@ -23,42 +31,20 @@ describe('developer mode store', () => {
     expect($developerMode.get()).toBe(false)
     expect(window.localStorage.getItem(KEY)).toBe('false')
   })
-})
 
-describe('developer mode in the browser build', () => {
-  async function loadInBrowserBuild() {
-    document.documentElement.dataset.hermesBrowser = 'production'
-    vi.resetModules()
+  // Browser build (lib/browser-shell): what it hides from regular users follows
+  // this same switch, and the page starts over whenever it flips.
+  it('is the switch the browser build hides things by, and each flip asks for a fresh page', () => {
+    expect(isDeveloperMode()).toBe(false)
 
-    return import('./developer-mode')
-  }
+    toggleDeveloperMode()
 
-  afterEach(() => {
-    delete document.documentElement.dataset.hermesBrowser
-    window.localStorage.removeItem(KEY)
-    window.localStorage.removeItem(BROWSER_KEY)
-  })
+    expect(isDeveloperMode()).toBe(true)
+    expect(reloadAfterDeveloperModeToggle).toHaveBeenCalledTimes(1)
 
-  it('follows the entry badge’s developer mode, which only the badge toggles', async () => {
-    window.localStorage.setItem(KEY, 'false')
-    window.localStorage.setItem(BROWSER_KEY, '1')
+    toggleDeveloperMode()
 
-    const store = await loadInBrowserBuild()
-
-    expect(store.$developerMode.get()).toBe(true)
-    expect(store.toggleDeveloperMode()).toBe(true)
-    expect(store.$developerMode.get()).toBe(true)
-    expect(window.localStorage.getItem(BROWSER_KEY)).toBe('1')
-  })
-
-  it('stays off for regular users, whatever the desktop switch says', async () => {
-    window.localStorage.setItem(KEY, 'true')
-
-    const store = await loadInBrowserBuild()
-
-    expect(store.$developerMode.get()).toBe(false)
-    expect(store.toggleDeveloperMode()).toBe(false)
-    expect(store.$developerMode.get()).toBe(false)
-    expect(window.localStorage.getItem(BROWSER_KEY)).toBeNull()
+    expect(isDeveloperMode()).toBe(false)
+    expect(reloadAfterDeveloperModeToggle).toHaveBeenCalledTimes(2)
   })
 })
