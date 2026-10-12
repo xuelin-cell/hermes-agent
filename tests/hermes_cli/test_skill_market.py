@@ -74,10 +74,24 @@ def test_zip_bundle_strips_wrapper_and_uses_frontmatter_name():
     bundle = bundle_from_zip(_skill_zip({
         "download/SKILL.md": "---\nname: office-writer\ndescription: fixture\n---\n# Writer\n",
         "download/references/guide.md": "guide",
+        "download/examples/sub-skill/SKILL.md": "---\nname: example-only\n---\n# Example\n",
     }), "market-id", "https://maas.ai-yuanjing.com/package")
 
     assert bundle.name == "office-writer"
-    assert set(bundle.files) == {"SKILL.md", "references/guide.md"}
+    assert set(bundle.files) == {"SKILL.md", "references/guide.md", "examples/sub-skill/SKILL.md"}
+
+
+def test_zip_bundle_rejects_multiple_peer_skill_roots():
+    """没有唯一上层主入口的多技能合集不能被误装成其中任意一个技能。"""
+    import pytest
+    from hermes_cli.skill_market_install import MarketSkillInstallError, bundle_from_zip
+
+    package = _skill_zip({
+        "first/SKILL.md": "---\nname: first\n---\n",
+        "second/SKILL.md": "---\nname: second\n---\n",
+    })
+    with pytest.raises(MarketSkillInstallError, match="多个并列"):
+        bundle_from_zip(package, "market-id", "https://maas.ai-yuanjing.com/package")
 
 
 def test_zip_bundle_rejects_path_traversal():

@@ -89,10 +89,18 @@ def bundle_from_zip(package: bytes, identifier: str, source_url: str) -> SkillBu
                 raise MarketSkillInstallError("技能包不能包含符号链接")
             normalized.append((item, tuple(part for part in path.parts if part not in {"", "."})))
 
-        skill_files = [parts for _, parts in normalized if parts and parts[-1].lower() == "skill.md"]
-        if len(skill_files) != 1:
-            raise MarketSkillInstallError("技能包必须且只能包含一个 SKILL.md")
-        skill_root = skill_files[0][:-1]
+        skill_files = [
+            parts for _, parts in normalized
+            if parts and parts[0] != "__MACOSX" and parts[-1].lower() == "skill.md"
+        ]
+        if not skill_files:
+            raise MarketSkillInstallError("技能包缺少 SKILL.md")
+        shallowest_depth = min(len(parts) for parts in skill_files)
+        main_skill_files = [parts for parts in skill_files if len(parts) == shallowest_depth]
+        if len(main_skill_files) != 1:
+            raise MarketSkillInstallError("技能包包含多个并列的主 SKILL.md")
+        main_skill_file = main_skill_files[0]
+        skill_root = main_skill_file[:-1]
         files = {}
         for item, parts in normalized:
             if parts and parts[0] == "__MACOSX":
@@ -100,6 +108,8 @@ def bundle_from_zip(package: bytes, identifier: str, source_url: str) -> SkillBu
             if parts[: len(skill_root)] != skill_root or len(parts) <= len(skill_root):
                 raise MarketSkillInstallError("技能包中存在技能目录之外的文件")
             relative = "/".join(parts[len(skill_root) :])
+            if parts == main_skill_file:
+                relative = "SKILL.md"
             files[relative] = archive.read(item)
 
     try:
