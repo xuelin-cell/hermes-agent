@@ -813,55 +813,59 @@ export function SkillsView({
               <PageLoader label={t.skills.loading} />
             ) : mode === 'skills' ? (
               <SkillMarket
-                installed={visibleSkills.length === 0 ? capabilityEmpty('skills') : (
-                <MasterDetail pane={skillEditorPane} resizeId="capabilities-split" split="wide">
-                  <ListColumn
-                    header={
-                      <ListStrip
-                        left={sortButton(skillsSortDesc, () => $skillsSortDesc.set(!$skillsSortDesc.get()))}
-                        right={
-                          <ListStripMenu
-                            items={[
-                              {
-                                disabled: bulkBusy,
-                                label: t.skills.disableUnused,
-                                onSelect: () => void disableUnused()
-                              }
-                            ]}
-                            label={t.skills.tabSkills}
-                            toggle={bulkSwitch(allSkillsEnabled)}
+                installed={
+                  visibleSkills.length === 0 ? (
+                    capabilityEmpty('skills')
+                  ) : (
+                    <MasterDetail pane={skillEditorPane} resizeId="capabilities-split" split="wide">
+                      <ListColumn
+                        header={
+                          <ListStrip
+                            left={sortButton(skillsSortDesc, () => $skillsSortDesc.set(!$skillsSortDesc.get()))}
+                            right={
+                              <ListStripMenu
+                                items={[
+                                  {
+                                    disabled: bulkBusy,
+                                    label: t.skills.disableUnused,
+                                    onSelect: () => void disableUnused()
+                                  }
+                                ]}
+                                label={t.skills.tabSkills}
+                                toggle={bulkSwitch(allSkillsEnabled)}
+                              />
+                            }
                           />
                         }
-                      />
-                    }
-                  >
-                    {visibleSkills.map(skill => (
-                      <CapRow
-                        active={activeSkill?.name === skill.name}
-                        busy={bulkBusy}
-                        enabled={skill.enabled}
-                        key={skill.name}
-                        meta={usageOf(skill) > 0 ? `×${compactNumber(usageOf(skill))}` : undefined}
-                        onSelect={() => setSelectedSkill(skill.name)}
-                        onToggle={enabled => void handleToggleSkill(skill, enabled)}
-                        subtitle={skillSubtitle(skill)}
-                        title={skill.name}
-                        toggleLabel={skill.name}
-                      />
-                    ))}
-                  </ListColumn>
-                  <DetailColumn footer={t.skills.changesApplyNewSessions}>
-                    {activeSkill && (
-                      <SkillDetail
-                        onArchive={() => setArchiveTarget(activeSkill.name)}
-                        onEdit={() => void openSkillEditor(activeSkill.name)}
-                        profile={scopeProfile}
-                        skill={activeSkill}
-                      />
-                    )}
-                  </DetailColumn>
-                </MasterDetail>
-                )}
+                      >
+                        {visibleSkills.map(skill => (
+                          <CapRow
+                            active={activeSkill?.name === skill.name}
+                            busy={bulkBusy}
+                            enabled={skill.enabled}
+                            key={skill.name}
+                            meta={usageOf(skill) > 0 ? `×${compactNumber(usageOf(skill))}` : undefined}
+                            onSelect={() => setSelectedSkill(skill.name)}
+                            onToggle={enabled => void handleToggleSkill(skill, enabled)}
+                            subtitle={skillSubtitle(skill)}
+                            title={skill.name}
+                            toggleLabel={skill.name}
+                          />
+                        ))}
+                      </ListColumn>
+                      <DetailColumn footer={t.skills.changesApplyNewSessions}>
+                        {activeSkill && (
+                          <SkillDetail
+                            onArchive={() => setArchiveTarget(activeSkill.name)}
+                            onEdit={() => void openSkillEditor(activeSkill.name)}
+                            profile={scopeProfile}
+                            skill={activeSkill}
+                          />
+                        )}
+                      </DetailColumn>
+                    </MasterDetail>
+                  )
+                }
                 installedCount={skills.length}
                 installedNames={installedSkillNames}
                 profile={scopeProfile}

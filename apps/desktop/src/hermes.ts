@@ -1,3 +1,4 @@
+export * from './api/auth'
 // The desktop REST/WS client, split by domain under src/api/. This module is
 // the compatibility barrel: every helper keeps its historical `@/hermes`
 // import path while the implementations live in focused files.
@@ -17,7 +18,6 @@ export {
 } from './api/client'
 export type { ProfileScope } from './api/client'
 export * from './api/config'
-export * from './api/auth'
 export * from './api/cron'
 export * from './api/drive'
 export * from './api/mcp'

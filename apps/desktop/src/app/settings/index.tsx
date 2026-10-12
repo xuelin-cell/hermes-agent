@@ -96,10 +96,10 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
 
   // Browser build: desktop-only pages are not offered (see lib/browser-shell).
   useEffect(() => {
-    if (isSettingsViewHidden(activeView)) {
+    if (isSettingsViewHidden(requestedView)) {
       setActiveView('config:appearance' as SettingsViewId)
     }
-  }, [activeView, setActiveView])
+  }, [requestedView, setActiveView])
 
   // Connections merged into the unified Gateways page: land old
   // `?tab=connections` routes/bookmarks there instead of a dead entry.

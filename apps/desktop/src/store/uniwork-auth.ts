@@ -49,11 +49,17 @@ function expired(user: UniWorkLoginUser, tokenInfo?: Record<string, unknown>): b
 
 export function loadUniWorkAuth(): UniWorkAuthState {
   try {
-    if (localStorage.getItem(APP_KEY) !== 'uniwork') {return { authenticated: false, user: null }}
+    if (localStorage.getItem(APP_KEY) !== 'uniwork') {
+      return { authenticated: false, user: null }
+    }
+
     const token = localStorage.getItem(TOKEN_KEY)
     const stored = localStorage.getItem(USER_KEY)
 
-    if (!token || !stored) {return { authenticated: false, user: null }}
+    if (!token || !stored) {
+      return { authenticated: false, user: null }
+    }
+
     const user = { ...JSON.parse(stored), token } as UniWorkLoginUser
     const tokenInfo = JSON.parse(localStorage.getItem(TOKEN_INFO_KEY) || '{}') as Record<string, unknown>
 
@@ -87,7 +93,10 @@ export function completeUniWorkLogin(response: UniWorkLoginResponse, phone: stri
 
   const source = response.data ?? response
 
-  if (!source.token) {throw new Error(response.message || response.msg || '登录响应中缺少访问令牌')}
+  if (!source.token) {
+    throw new Error(response.message || response.msg || '登录响应中缺少访问令牌')
+  }
+
   const user: UniWorkLoginUser = { ...source, phone: source.phone || phone, token: source.token }
   localStorage.setItem(TOKEN_KEY, user.token)
   localStorage.setItem(USER_KEY, JSON.stringify(user))

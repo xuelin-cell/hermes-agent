@@ -90,7 +90,7 @@ test('resolveServedDashboardToken propagates fetch errors so callers can fall ba
 })
 
 test('fetchPublicText rejects unsupported protocols', async () => {
-  await assert.rejects(() => fetchPublicText('file:///tmp/index.html'), /Unsupported Hermes backend URL protocol/)
+  await assert.rejects(() => fetchPublicText('file:///tmp/index.html'), /Unsupported UniWork backend URL protocol/)
 })
 
 test('isForeignBackendToken only flags a mismatched token from a dead child', () => {
@@ -143,5 +143,5 @@ test('adoptServedDashboardToken falls back to the spawn token when the fetch fai
 
   assert.equal(token, 'spawn-token')
   assert.equal(logs.length, 1)
-  assert.match(logs[0], /could not read served dashboard token \(Hermes backend\): boom/)
+  assert.match(logs[0], /could not read served dashboard token \(UniWork backend\): boom/)
 })

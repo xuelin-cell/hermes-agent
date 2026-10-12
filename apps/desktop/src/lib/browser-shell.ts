@@ -18,7 +18,8 @@ import { getRuntimeI18nLocale } from '@/i18n/runtime'
  * this module are listed too.
  *
  *   api/models.ts                                      * model pickers: the platform's providers only
- *   app/artifacts/index.tsx                            local artifacts only, no personal cloud drive tab
+ *   app/artifacts/cloud-drive-tab.tsx                  the personal cloud drive tab says it is in development
+ *   app/artifacts/index.tsx                            the library opens on local artifacts
  *   app/auth/auth-gate.tsx                             no UniWork sign-in page: the entry has signed the user in
  *   app/chat/right-rail/preview-pane.tsx               HTML files from the instance run their scripts, sandboxed
  *   app/chat/sidebar/filter-menu.tsx                   * no profile submenu (filter / new / import)

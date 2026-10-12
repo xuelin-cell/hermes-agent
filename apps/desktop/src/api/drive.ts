@@ -33,7 +33,9 @@ interface DriveEnvelope<T> {
 async function driveRequest<T>(route: string, method: 'GET' | 'PATCH' | 'POST' = 'GET', body?: unknown) {
   const user = $uniWorkAuth.get().user
 
-  if (!user?.token || !user.phone) {throw new Error('请先登录 UniWork 账户')}
+  if (!user?.token || !user.phone) {
+    throw new Error('请先登录 UniWork 账户')
+  }
 
   try {
     const result = await hermesApi<DriveEnvelope<T>>({
@@ -56,29 +58,46 @@ async function driveRequest<T>(route: string, method: 'GET' | 'PATCH' | 'POST' =
 }
 
 export const driveApi = {
-  spaces: () => driveRequest<{ items: Array<{ kind: string; name: string; root_asset_id: string; space_id: string }> }>('/asset-spaces'),
+  spaces: () =>
+    driveRequest<{ items: Array<{ kind: string; name: string; root_asset_id: string; space_id: string }> }>(
+      '/asset-spaces'
+    ),
   list: (spaceId: string, parentId: string, query = '') => {
-    const params = new URLSearchParams({ space_id: spaceId, parent_asset_id: parentId, page_no: '1', page_size: '100', sort: 'name_asc' })
+    const params = new URLSearchParams({
+      space_id: spaceId,
+      parent_asset_id: parentId,
+      page_no: '1',
+      page_size: '100',
+      sort: 'name_asc'
+    })
 
-    if (query) {params.set('query', query)}
+    if (query) {
+      params.set('query', query)
+    }
 
     return driveRequest<DrivePage>(`/assets?${params}`)
   },
-  createFolder: (parentId: string, name: string) => driveRequest('/folders', 'POST', { parent_asset_id: parentId, name }),
-  rename: (asset: DriveAsset, name: string) => driveRequest(`/assets/${encodeURIComponent(asset.asset_id)}`, 'PATCH', { new_name: name, kind: asset.kind }),
-  trash: (assets: DriveAsset[]) => driveRequest('/assets/trash', 'POST', {
-    file_ids: assets.filter(asset => asset.kind === 'file').map(asset => asset.asset_id),
-    directory_ids: assets.filter(asset => asset.kind === 'directory').map(asset => asset.asset_id)
-  }),
+  createFolder: (parentId: string, name: string) =>
+    driveRequest('/folders', 'POST', { parent_asset_id: parentId, name }),
+  rename: (asset: DriveAsset, name: string) =>
+    driveRequest(`/assets/${encodeURIComponent(asset.asset_id)}`, 'PATCH', { new_name: name, kind: asset.kind }),
+  trash: (assets: DriveAsset[]) =>
+    driveRequest('/assets/trash', 'POST', {
+      file_ids: assets.filter(asset => asset.kind === 'file').map(asset => asset.asset_id),
+      directory_ids: assets.filter(asset => asset.kind === 'directory').map(asset => asset.asset_id)
+    }),
   download: async (asset: DriveAsset) => {
-    const fid = asset.fid || (await driveRequest<{ fid: string }>('/unicom/FileDetails', 'POST', { fileId: asset.asset_id })).fid
+    const fid =
+      asset.fid || (await driveRequest<{ fid: string }>('/unicom/FileDetails', 'POST', { fileId: asset.asset_id })).fid
 
     return driveRequest<{ download_url?: string }>('/assets/download', 'POST', { fid })
   },
   preview: async (asset: DriveAsset) => {
     const user = $uniWorkAuth.get().user
 
-    if (!user?.token || !user.phone) {throw new Error('请先登录 UniWork 账户')}
+    if (!user?.token || !user.phone) {
+      throw new Error('请先登录 UniWork 账户')
+    }
 
     return hermesApi<{ name: string; ok: boolean; path: string; size_bytes: number }>({
       method: 'POST',

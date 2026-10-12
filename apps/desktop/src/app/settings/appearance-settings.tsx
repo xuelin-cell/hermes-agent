@@ -474,86 +474,88 @@ export function AppearanceSettings() {
 
           <ListRow
             below={
-              SHOW_THEME_CATALOG ? <>
-                {/* One search box: filters your installed themes (the grid)
+              SHOW_THEME_CATALOG ? (
+                <>
+                  {/* One search box: filters your installed themes (the grid)
                     and live-searches the VS Code Marketplace below. */}
-                <div className="mt-3">
-                  <input
-                    className="w-full rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-quinary) px-3 py-1.5 text-[length:var(--conversation-caption-font-size)] outline-none placeholder:text-(--ui-text-tertiary) focus:border-(--ui-stroke-secondary)"
-                    onChange={event => setQuery(event.target.value)}
-                    placeholder="Search your themes or the VS Code Marketplace…"
-                    spellCheck={false}
-                    value={query}
-                  />
-                </div>
+                  <div className="mt-3">
+                    <input
+                      className="w-full rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-quinary) px-3 py-1.5 text-[length:var(--conversation-caption-font-size)] outline-none placeholder:text-(--ui-text-tertiary) focus:border-(--ui-stroke-secondary)"
+                      onChange={event => setQuery(event.target.value)}
+                      placeholder="Search your themes or the VS Code Marketplace…"
+                      spellCheck={false}
+                      value={query}
+                    />
+                  </div>
 
-                {/* Fixed-height scroll area so the (growing) theme list never
+                  {/* Fixed-height scroll area so the (growing) theme list never
                     runs the page long; the grid scrolls inside it. */}
-                <div className="mt-3 max-h-96 overflow-y-auto pr-1">
-                  {filteredThemes.length === 0 ? (
-                    needle ? (
-                      <p className="text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)">
-                        No installed themes match "{query.trim()}".
-                      </p>
-                    ) : null
-                  ) : (
-                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                      {filteredThemes.map(theme => {
-                        const active = themeName === theme.name
-                        const removable = isUserTheme(theme.name)
+                  <div className="mt-3 max-h-96 overflow-y-auto pr-1">
+                    {filteredThemes.length === 0 ? (
+                      needle ? (
+                        <p className="text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)">
+                          No installed themes match "{query.trim()}".
+                        </p>
+                      ) : null
+                    ) : (
+                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                        {filteredThemes.map(theme => {
+                          const active = themeName === theme.name
+                          const removable = isUserTheme(theme.name)
 
-                        return (
-                          <div className="group relative" key={theme.name}>
-                            <button
-                              className={cn('w-full p-2 text-left', selectableCardClass({ active, prominent: true }))}
-                              onClick={() => {
-                                triggerHaptic('crisp')
-                                setTheme(theme.name)
-                              }}
-                              type="button"
-                            >
-                              <ThemePreview mode={resolvedMode} name={theme.name} />
-                              <div className="mt-3 px-1">
-                                <div className="truncate text-[length:var(--conversation-text-font-size)] font-medium">
-                                  {theme.label}
-                                </div>
-                                <div className="mt-0.5 line-clamp-2 text-[length:var(--conversation-caption-font-size)] leading-(--conversation-caption-line-height) text-(--ui-text-tertiary)">
-                                  {theme.description}
-                                </div>
-                              </div>
-                            </button>
-                            {removable && (
+                          return (
+                            <div className="group relative" key={theme.name}>
                               <button
-                                aria-label={a.removeTheme}
-                                className="absolute right-1.5 top-1.5 grid size-6 place-items-center rounded-md bg-(--ui-bg-elevated)/80 text-(--ui-text-tertiary) opacity-0 backdrop-blur-sm transition hover:text-(--ui-red) focus-visible:opacity-100 group-hover:opacity-100"
+                                className={cn('w-full p-2 text-left', selectableCardClass({ active, prominent: true }))}
                                 onClick={() => {
                                   triggerHaptic('crisp')
-                                  removeUserTheme(theme.name)
-
-                                  // Re-normalize off the now-missing skin → default.
-                                  if (active) {
-                                    setTheme(theme.name)
-                                  }
+                                  setTheme(theme.name)
                                 }}
-                                title={a.removeTheme}
                                 type="button"
                               >
-                                <Trash2 className="size-3.5" />
+                                <ThemePreview mode={resolvedMode} name={theme.name} />
+                                <div className="mt-3 px-1">
+                                  <div className="truncate text-[length:var(--conversation-text-font-size)] font-medium">
+                                    {theme.label}
+                                  </div>
+                                  <div className="mt-0.5 line-clamp-2 text-[length:var(--conversation-caption-font-size)] leading-(--conversation-caption-line-height) text-(--ui-text-tertiary)">
+                                    {theme.description}
+                                  </div>
+                                </div>
                               </button>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
+                              {removable && (
+                                <button
+                                  aria-label={a.removeTheme}
+                                  className="absolute right-1.5 top-1.5 grid size-6 place-items-center rounded-md bg-(--ui-bg-elevated)/80 text-(--ui-text-tertiary) opacity-0 backdrop-blur-sm transition hover:text-(--ui-red) focus-visible:opacity-100 group-hover:opacity-100"
+                                  onClick={() => {
+                                    triggerHaptic('crisp')
+                                    removeUserTheme(theme.name)
+
+                                    // Re-normalize off the now-missing skin → default.
+                                    if (active) {
+                                      setTheme(theme.name)
+                                    }
+                                  }}
+                                  title={a.removeTheme}
+                                  type="button"
+                                >
+                                  <Trash2 className="size-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                    <MarketplaceThemeResults installs={installs} onInstalled={name => setTheme(name)} query={query} />
+                  </div>
+                  {showProfileNote && (
+                    <p className="mt-3 text-[length:var(--conversation-caption-font-size)] leading-(--conversation-caption-line-height) text-(--ui-text-tertiary)">
+                      {a.themeProfileNote(activeProfileName)}
+                    </p>
                   )}
-                  <MarketplaceThemeResults installs={installs} onInstalled={name => setTheme(name)} query={query} />
-                </div>
-                {showProfileNote && (
-                  <p className="mt-3 text-[length:var(--conversation-caption-font-size)] leading-(--conversation-caption-line-height) text-(--ui-text-tertiary)">
-                    {a.themeProfileNote(activeProfileName)}
-                  </p>
-                )}
-              </> : null
+                </>
+              ) : null
             }
             description={a.colorModeDesc}
             id={appearanceSettingElementId(APPEARANCE_SETTING_IDS.theme)}

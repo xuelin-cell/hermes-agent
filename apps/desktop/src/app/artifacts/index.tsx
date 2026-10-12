@@ -52,7 +52,7 @@ import {
   type ArtifactRecord,
   loadArtifactsForSessions
 } from './artifact-utils'
-import { CloudLibrary } from './cloud-library'
+import { CloudDriveTab } from './cloud-drive-tab'
 
 function formatArtifactTime(timestamp: number): string {
   return fmtDayTime.format(new Date(timestamp))
@@ -278,7 +278,10 @@ function LocalArtifactsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...
       try {
         const target = await normalizeOrLocalPreviewTarget(href, $currentCwd.get() || undefined)
 
-        if (!target) {throw new Error('无法识别该产物的预览格式')}
+        if (!target) {
+          throw new Error('无法识别该产物的预览格式')
+        }
+
         openPreview(target, 'file-browser')
       } catch (err) {
         notifyError(err, a.openFailed)
@@ -398,21 +401,39 @@ function LocalArtifactsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...
 }
 
 export function ArtifactsView(props: ArtifactsViewProps) {
-  const [libraryTab, setLibraryTab] = useState<'cloud' | 'local'>('cloud')
-
-  // Browser build: no personal cloud drive yet, only the instance's artifacts.
-  if (isBrowserShell()) {
-    return <LocalArtifactsView {...props} />
-  }
+  // Browser build: opens on the instance's artifacts, the cloud drive is not connected yet.
+  const [libraryTab, setLibraryTab] = useState<'cloud' | 'local'>(isBrowserShell() ? 'local' : 'cloud')
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-background">
       <div className="flex h-11 shrink-0 items-end gap-5 border-b border-border/70 px-4">
-        <button className={cn('h-10 border-b-2 px-1 text-sm font-medium', libraryTab === 'cloud' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground')} onClick={() => setLibraryTab('cloud')} type="button">个人云盘</button>
-        <button className={cn('h-10 border-b-2 px-1 text-sm font-medium', libraryTab === 'local' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground')} onClick={() => setLibraryTab('local')} type="button">本地产物</button>
+        <button
+          className={cn(
+            'h-10 border-b-2 px-1 text-sm font-medium',
+            libraryTab === 'cloud'
+              ? 'border-primary text-foreground'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          )}
+          onClick={() => setLibraryTab('cloud')}
+          type="button"
+        >
+          个人云盘
+        </button>
+        <button
+          className={cn(
+            'h-10 border-b-2 px-1 text-sm font-medium',
+            libraryTab === 'local'
+              ? 'border-primary text-foreground'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          )}
+          onClick={() => setLibraryTab('local')}
+          type="button"
+        >
+          本地产物
+        </button>
       </div>
       <div className="min-h-0 flex-1">
-        {libraryTab === 'cloud' ? <CloudLibrary /> : <LocalArtifactsView {...props} />}
+        {libraryTab === 'cloud' ? <CloudDriveTab /> : <LocalArtifactsView {...props} />}
       </div>
     </section>
   )

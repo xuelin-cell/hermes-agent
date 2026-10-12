@@ -183,40 +183,55 @@ export interface UniWorkSkillCategory {
 }
 
 function arrayFromEnvelope<T>(value: unknown): T[] {
-  if (Array.isArray(value)) return value as T[]
+  if (Array.isArray(value)) {
+    return value as T[]
+  }
+
   if (value && typeof value === 'object') {
     const record = value as Record<string, unknown>
+
     for (const key of ['list', 'records', 'items']) {
-      if (Array.isArray(record[key])) return record[key] as T[]
+      if (Array.isArray(record[key])) {
+        return record[key] as T[]
+      }
     }
   }
+
   return []
 }
 
 export async function getUniWorkMarketCategories(): Promise<UniWorkSkillCategory[]> {
   const value = await hermesApi<unknown>({ path: '/api/skills/market/categories' })
+
   return arrayFromEnvelope<UniWorkSkillCategory>(value)
 }
 
 export async function getUniWorkMarketSkills(category = 'all'): Promise<UniWorkSkill[]> {
   const params = new URLSearchParams({ category, page: '1', page_size: '100' })
   const value = await hermesApi<unknown>({ path: `/api/skills/market/list?${params}` })
+
   return arrayFromEnvelope<UniWorkSkill>(value)
 }
 
 export async function getUniWorkRecommendedCategories(): Promise<UniWorkSkillCategory[]> {
   const value = await hermesApi<unknown>({ path: '/api/skills/recommended/categories' })
+
   return arrayFromEnvelope<UniWorkSkillCategory>(value)
 }
 
 export async function getUniWorkRecommendedSkills(): Promise<UniWorkSkill[]> {
   const value = await hermesApi<unknown>({ path: '/api/skills/recommended/list' })
+
   return arrayFromEnvelope<UniWorkSkill>(value)
 }
 
 export function installUniWorkSkill(skill: UniWorkSkill, profile?: ProfileScope): Promise<ActionResponse> {
   const downloadUrl = skill.download_url || skill.package_download_path
-  if (!downloadUrl) return Promise.reject(new Error('This skill has no installable package.'))
+
+  if (!downloadUrl) {
+    return Promise.reject(new Error('This skill has no installable package.'))
+  }
+
   return window.hermesDesktop.api<ActionResponse>({
     ...capabilityScoped(profile),
     path: '/api/skills/market/install',
