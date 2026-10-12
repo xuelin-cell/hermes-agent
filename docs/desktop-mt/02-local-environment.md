@@ -26,9 +26,12 @@ Windows 的 PM 依赖安装树单独放在 `%LOCALAPPDATA%\hermes-desktop-mt\dep
 
 - 按端点分组，提供方标识为 `desktop-mt-maas-<端点完整摘要>`。
 - 只维护标识、端点和 `key_env: DESKTOP_MT_MAAS_API_KEY` 均匹配的托管记录；归属或凭据覆盖冲突时拒绝写入。
+- 接受原版自定义端点保存的等价 `base_url` 和 `api_mode: chat_completions`；地址允许仅有末尾斜杠差异。刷新时统一回 `api`、`transport`，保留用户默认选择；地址、凭据或新增协议字段发生真实冲突仍拒绝，不直接删除配置绕过检查。
 - 成功套餐更新托管模型目录，删除退出套餐的托管端点和模型，保留仍有效模型的选项、个人提供方及其它设置。
 - 仅当配置文件不存在时设置套餐主模型为初始默认。已有默认选择不改；所选模型退出套餐后需用户自行重新选择。
 - 损坏 YAML、重复键、无效引用、目标共享结构、链接或写入失败停止准备，保留原文件。无变化不写入。
+
+2026-10-12 修复验证：新增等价格式回归在修复前复现启动拒绝，修复后模型配置、账号准备、固定上下文与 Key 共 12 项通过。`scripts/maas-model-roundtrip.native.mjs` 使用原版 REST 路由、真实配置读写和独立 Node 进程完成受控账号 A→B→A 的保存／恢复／合并，验证默认模型、个人提供方、MCP、Skills、模型选项及文件隔离，真实地址冲突保留原字节。完整 TypeScript、相关 ESLint、脚本语法及 Git 差异检查通过。运行方式：在 `apps/desktop` 设置 `FIXTURE_PYTHON` 为含 `web` 依赖的独立测试解释器，然后运行 `node --test scripts/maas-model-roundtrip.native.mjs`。身份和套餐响应受控，不包含真实短信、付费模型或 Electron 页面点击验收。
 
 ## P13 · 专用模型 Key
 
