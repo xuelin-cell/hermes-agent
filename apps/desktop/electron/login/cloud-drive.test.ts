@@ -1,6 +1,29 @@
 import { expect, it, vi } from 'vitest'
 
 import { CloudDriveClient } from './cloud-drive'
+import { LoginSession } from './session'
+import { MAAS_IDENTITY_NAMESPACE } from './credential-store'
+
+// 恢复已保存登录后直接认证云盘，重复进入仍复用云盘令牌；页面只获得脱敏账号。
+it('uses the saved phone for cloud drive after restoring login', async () => {
+  const saved = {
+    namespace: MAAS_IDENTITY_NAMESPACE,
+    uid: 'saved-user', token: 'saved-token', phone: '13800000000',
+    maskedPhone: '138****0000', expiresAt: Date.now() + 60_000
+  }
+  const request = vi.fn<typeof fetch>()
+    .mockResolvedValueOnce(Response.json({ meta: { code: '' }, result: { accessToken: 'drive-token' } }))
+    .mockImplementation(async () => Response.json({ ok: true, data: { items: [] } }))
+  const session = new LoginSession(request, { save: vi.fn(), load: vi.fn().mockReturnValue(saved) })
+  expect(session.restore()).toEqual({
+    ok: true, account: { maskedPhone: saved.maskedPhone, expiresAt: saved.expiresAt }
+  })
+  const drive = new CloudDriveClient(() => session.currentIdentity(), request)
+  expect(await drive.execute({ route: '/asset-spaces' })).toEqual({ items: [] })
+  expect(await drive.execute({ route: '/asset-spaces' })).toEqual({ items: [] })
+  expect(JSON.parse(String(request.mock.calls[0][1]?.body)).phone).toBe(saved.phone)
+  expect(request).toHaveBeenCalledTimes(3)
+})
 
 // 验证明确的云盘过期信号只刷新一次，且重复进入不复用已失效令牌。
 it('refreshes expired drive credentials and keeps the current login private', async () => {

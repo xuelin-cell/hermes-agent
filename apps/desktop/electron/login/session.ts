@@ -129,7 +129,14 @@ export class LoginSession {
         return { ok: false }
       }
 
-      this.identity = { uid: saved.uid, token: saved.token, expiresAt: saved.expiresAt, maskedPhone: saved.maskedPhone }
+      // 完整手机号仅保留在主进程身份中，供恢复登录后的云盘认证使用。
+      this.identity = {
+        uid: saved.uid,
+        token: saved.token,
+        expiresAt: saved.expiresAt,
+        maskedPhone: saved.maskedPhone,
+        ...(saved.phone ? { phone: saved.phone } : {})
+      }
 
       return { ok: true, account: accountFor(this.identity) }
     } catch {
