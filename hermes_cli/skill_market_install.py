@@ -7,6 +7,7 @@ import shutil
 import zipfile
 from pathlib import PurePosixPath
 from typing import Optional
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
@@ -18,29 +19,49 @@ from tools.skills_hub_models import SkillBundle, _parse_frontmatter, _validate_s
 MAX_ARCHIVE_BYTES = 20 * 1024 * 1024
 MAX_EXTRACTED_BYTES = 80 * 1024 * 1024
 MAX_ARCHIVE_FILES = 500
+MAX_DOWNLOAD_REDIRECTS = 3
+PACKAGE_HOSTS = frozenset({"maas.ai-yuanjing.com", "wry-manatee-359.convex.site", "clawhub.ai"})
 
 
 class MarketSkillInstallError(ValueError):
     """表示可直接反馈给用户的技能市场安装失败。"""
 
 
+def validate_package_url(url: str) -> str:
+    """校验技能市场下载地址，阻止重定向链访问未授权主机。"""
+    normalized = url.strip()
+    parsed = urlparse(normalized)
+    if (parsed.scheme != "https" or parsed.hostname not in PACKAGE_HOSTS
+            or parsed.username or parsed.password):
+        raise MarketSkillInstallError("技能下载地址必须来自技能市场的 HTTPS 服务")
+    return normalized
+
+
 def download_skill_package(url: str) -> bytes:
-    """下载固定来源的技能包，并限制网络响应体大小。"""
+    """逐跳校验市场重定向并下载技能包，同时限制响应体大小。"""
     try:
         with httpx.Client(timeout=45, follow_redirects=False) as client:
-            with client.stream("GET", url) as response:
-                response.raise_for_status()
-                declared = int(response.headers.get("content-length", "0") or 0)
-                if declared > MAX_ARCHIVE_BYTES:
-                    raise MarketSkillInstallError("技能包超过 20 MB，无法安装")
-                chunks = []
-                size = 0
-                for chunk in response.iter_bytes():
-                    size += len(chunk)
-                    if size > MAX_ARCHIVE_BYTES:
+            current_url = validate_package_url(url)
+            for redirect_count in range(MAX_DOWNLOAD_REDIRECTS + 1):
+                with client.stream("GET", current_url) as response:
+                    if response.status_code in {301, 302, 303, 307, 308}:
+                        location = response.headers.get("location")
+                        if not location or redirect_count == MAX_DOWNLOAD_REDIRECTS:
+                            raise MarketSkillInstallError("技能包下载重定向次数过多")
+                        current_url = validate_package_url(urljoin(current_url, location))
+                        continue
+                    response.raise_for_status()
+                    declared = int(response.headers.get("content-length", "0") or 0)
+                    if declared > MAX_ARCHIVE_BYTES:
                         raise MarketSkillInstallError("技能包超过 20 MB，无法安装")
-                    chunks.append(chunk)
-                return b"".join(chunks)
+                    chunks = []
+                    size = 0
+                    for chunk in response.iter_bytes():
+                        size += len(chunk)
+                        if size > MAX_ARCHIVE_BYTES:
+                            raise MarketSkillInstallError("技能包超过 20 MB，无法安装")
+                        chunks.append(chunk)
+                    return b"".join(chunks)
     except httpx.HTTPError as exc:
         raise MarketSkillInstallError("技能包下载失败，请稍后重试") from exc
 
@@ -114,7 +135,8 @@ def install_market_skill(url: str, identifier: str, profile: Optional[str] = Non
                 source_url=url,
                 cache_dir=HUB_DIR / "scan-cache",
             )
-            allowed, reason = should_allow_install(result)
+            # 点击安装即是用户对“需注意”级市场包的明确确认；危险级社区包仍由策略硬阻止。
+            allowed, reason = should_allow_install(result, force=True)
             if allowed is not True:
                 raise MarketSkillInstallError(f"技能未通过安全安装策略：{reason}")
             install_dir = install_from_quarantine(

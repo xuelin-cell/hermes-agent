@@ -1,18 +1,21 @@
 """UniWork 公共技能目录与标准技能安装入口。"""
 
 from typing import Optional
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 
 import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from hermes_cli.skill_market_install import MarketSkillInstallError, install_market_skill
+from hermes_cli.skill_market_install import (
+    MarketSkillInstallError,
+    install_market_skill,
+    validate_package_url,
+)
 
 router = APIRouter()
 MARKET_BASE = "https://maas.ai-yuanjing.com/app/gateway/wanwu"
 RECOMMENDED_BASE = "https://maas.ai-yuanjing.com/app/gateway"
-PACKAGE_HOSTS = frozenset({"maas.ai-yuanjing.com", "wry-manatee-359.convex.site"})
 
 
 async def catalog_get(base: str, route: str, params: Optional[dict] = None):
@@ -69,10 +72,10 @@ async def install_skill(body: SkillInstall, profile: Optional[str] = None):
     url = body.download_url.strip()
     if url.startswith("/uniwork/skills/"):
         url = urljoin(RECOMMENDED_BASE + "/", "uniwork/skills/" + url[len("/uniwork/skills/"):])
-    parsed = urlparse(url)
-    if (parsed.scheme != "https" or parsed.hostname not in PACKAGE_HOSTS
-            or parsed.username or parsed.password):
-        raise HTTPException(400, "技能下载地址必须来自技能市场的 HTTPS 服务")
+    try:
+        url = validate_package_url(url)
+    except MarketSkillInstallError as exc:
+        raise HTTPException(400, str(exc)) from exc
     label = (body.name or body.id).strip()
     if not label:
         raise HTTPException(400, "技能名称不能为空")

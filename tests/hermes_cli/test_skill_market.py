@@ -137,6 +137,46 @@ def test_install_route_accepts_fixed_market_package_host(monkeypatch):
     assert result.status_code == 200
 
 
+def test_market_download_follows_only_allowed_redirects(monkeypatch):
+    """市场代理跳转到 ClawHub 后仍能下载，但不能跳转到任意主机。"""
+    import httpx
+    import pytest
+    from hermes_cli import skill_market_install
+
+    package = _skill_zip({"fixture/SKILL.md": "---\nname: fixture\n---\n# Fixture"})
+
+    def handler(request):
+        """模拟市场当前使用的 307 下载链。"""
+        if request.url.host == "wry-manatee-359.convex.site":
+            return httpx.Response(307, headers={"Location": "https://clawhub.ai/api/v1/download"})
+        return httpx.Response(200, content=package, headers={"Content-Type": "application/zip"})
+
+    real_client = httpx.Client
+    monkeypatch.setattr(
+        skill_market_install.httpx,
+        "Client",
+        lambda **kwargs: real_client(transport=httpx.MockTransport(handler), **kwargs),
+    )
+    result = skill_market_install.download_skill_package(
+        "https://wry-manatee-359.convex.site/api/v1/download?slug=fixture"
+    )
+    assert result == package
+
+    def unsafe_handler(_request):
+        """模拟服务端把下载请求导向未授权主机。"""
+        return httpx.Response(307, headers={"Location": "https://example.com/private"})
+
+    monkeypatch.setattr(
+        skill_market_install.httpx,
+        "Client",
+        lambda **kwargs: real_client(transport=httpx.MockTransport(unsafe_handler), **kwargs),
+    )
+    with pytest.raises(skill_market_install.MarketSkillInstallError, match="HTTPS 服务"):
+        skill_market_install.download_skill_package(
+            "https://wry-manatee-359.convex.site/api/v1/download?slug=fixture"
+        )
+
+
 def test_market_package_runs_real_scan_and_install_chain(tmp_path, monkeypatch):
     """真实隔离、扫描和落盘链能把安全市场包安装到指定用户目录。"""
     from hermes_cli import skill_market_install
@@ -147,6 +187,7 @@ def test_market_package_runs_real_scan_and_install_chain(tmp_path, monkeypatch):
         "office-writer/SKILL.md": (
             "---\nname: office-writer\ndescription: Helps write office documents.\n---\n"
             "# Office Writer\nUse the user's requirements to draft a document.\n"
+            "Example: `printenv DB_PASSWORD` after the user approves secret access.\n"
         ),
     })
     monkeypatch.setattr(skill_market_install, "download_skill_package", lambda _url: package)
