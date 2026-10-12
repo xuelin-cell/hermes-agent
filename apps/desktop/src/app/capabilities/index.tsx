@@ -72,14 +72,15 @@ export function CapabilitiesView({
   const routeTab = useRouteEnumParam('tab', CAPABILITY_MODES, 'skills')
   const localTab = useState<CapabilityMode>('skills')
   const [requestedMode, setMode] = embedded ? localTab : routeTab
-  const mode = !developerMode && requestedMode === 'toolsets' ? 'skills' : requestedMode
+  const developerTab = requestedMode === 'toolsets' || requestedMode === 'connectors'
+  const mode = !developerMode && developerTab ? 'skills' : requestedMode
 
   // 立即阻止隐藏页挂载，同时清理旧链接和嵌入视图的选中状态。
   useEffect(() => {
-    if (!developerMode && requestedMode === 'toolsets') {
+    if (!developerMode && developerTab) {
       setMode('skills')
     }
-  }, [developerMode, requestedMode, setMode])
+  }, [developerMode, developerTab, setMode])
   const gateway = useStoreSelector($gateway, g => (mode === 'connectors' ? g : null))
 
   const [query, setQuery] = useState('')
@@ -211,7 +212,7 @@ export function CapabilitiesView({
         ...(developerMode
           ? [{ id: 'toolsets', label: t.skills.tabToolsets, meta: toolsets ? visibleToolsetCount(toolsets) : null }]
           : []),
-        { id: 'connectors', label: t.connectorsPage.title },
+        ...(developerMode ? [{ id: 'connectors', label: t.connectorsPage.title }] : []),
         { id: 'plugins', label: t.skills.tabPlugins }
       ]}
     >
