@@ -4,10 +4,12 @@ import { setRuntimeI18nLocale } from '@/i18n/runtime'
 
 import {
   browserShellCopy,
+  browserShellZoom,
   hideForUsers,
   HTML_PREVIEW_SANDBOX,
   isBrowserShell,
   isBrowserTerminalPaste,
+  isBundledPluginHidden,
   isDeveloperMode,
   isInstanceLocalUrl,
   isSettingsViewHidden,
@@ -34,6 +36,20 @@ describe('browser shell', () => {
     expect(isBrowserShell()).toBe(true)
     expect(['gateway', 'connections', 'about'].map(isSettingsViewHidden)).toEqual([true, true, true])
     expect(isSettingsViewHidden('config:model')).toBe(false)
+  })
+
+  // A bundle chunk can evaluate a store before the bridge has marked the document.
+  it('is on from the start in the production browser build, before the bridge has run', () => {
+    vi.stubEnv('VITE_HERMES_BROWSER_BUILD', '1')
+
+    try {
+      expect(document.documentElement.dataset.hermesBrowser).toBeUndefined()
+      expect(isBrowserShell()).toBe(true)
+    } finally {
+      vi.unstubAllEnvs()
+    }
+
+    expect(isBrowserShell()).toBe(false)
   })
 
   it('recognises addresses on the agent’s own machine', () => {
@@ -83,6 +99,34 @@ describe('browser shell', () => {
     document.documentElement.dataset.hermesBrowser = 'production'
 
     expect(withoutHiddenNavItems(nav).map(item => item.id)).toEqual(['new-session', 'skills', 'artifacts'])
+  })
+
+  it('does not start Bot Mode for regular users', () => {
+    expect(isBundledPluginHidden('hermes-bots')).toBe(false)
+
+    document.documentElement.dataset.hermesBrowser = 'production'
+
+    expect(isBundledPluginHidden('hermes-bots')).toBe(true)
+    expect(isBundledPluginHidden('kanban')).toBe(false)
+
+    localStorage.setItem('hermes.mt.developer', '1')
+
+    expect(isBundledPluginHidden('hermes-bots')).toBe(false)
+  })
+
+  it('gives the page no app zoom: a fixed 90% and a setter that does nothing', async () => {
+    expect(browserShellZoom()).toBeUndefined()
+
+    document.documentElement.dataset.hermesBrowser = 'production'
+
+    const zoom = browserShellZoom()!
+    const listener = vi.fn()
+
+    expect((await zoom.get()).percent).toBe(90)
+    zoom.onChanged(listener)()
+    zoom.setPercent(150)
+    expect((await zoom.get()).percent).toBe(90)
+    expect(listener).not.toHaveBeenCalled()
   })
 
   it('shows everything again in developer mode, but keeps what the browser build needs', () => {

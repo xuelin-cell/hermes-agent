@@ -14,9 +14,12 @@ import { getRuntimeI18nLocale } from '@/i18n/runtime'
  * Two kinds of difference. Places marked * only hide what regular users have no
  * use for and go through `hideForUsers()`, so developer mode shows them again,
  * working or not. The rest are what the browser build has to do differently,
- * developer mode or not.
+ * developer mode or not. Files of the UniWork rebrand (not upstream) that ask
+ * this module are listed too.
  *
  *   api/models.ts                                      * model pickers: the platform's providers only
+ *   app/artifacts/index.tsx                            local artifacts only, no personal cloud drive tab
+ *   app/auth/auth-gate.tsx                             no UniWork sign-in page: the entry has signed the user in
  *   app/chat/right-rail/preview-pane.tsx               HTML files from the instance run their scripts, sandboxed
  *   app/chat/sidebar/filter-menu.tsx                   * no profile submenu (filter / new / import)
  *   app/chat/sidebar/index.tsx                         * no messaging platforms entry
@@ -25,20 +28,30 @@ import { getRuntimeI18nLocale } from '@/i18n/runtime'
  *   app/profiles/index.tsx                             * no "new profile"
  *   app/right-sidebar/file-actions.tsx                 rename + delete (to the instance's recycle bin) in the menu
  *   app/right-sidebar/terminal/use-terminal-session.ts Ctrl+V / Ctrl+Shift+V paste through the browser
- *   app/settings/appearance-settings.tsx               * no theme marketplace results
+ *   app/settings/about-settings.tsx                    no UniWork account row (signing out is the entry's)
+ *   app/settings/appearance-settings.tsx               * no theme marketplace results, no UI scale row
  *   app/settings/index.tsx                             * no Gateway or About page
  *   app/settings/plugins-settings.tsx                  * no desktop (local) plugins section
  *   app/shell/gateway-menu-panel.tsx                   * no gateway restart
+ *   contrib/plugins.ts                                 * no Bot Mode (the BOTS tab): its plugin is not started
  *   lib/model-options.ts                               * model pickers: the platform's providers only
+ *   store/developer-mode.ts                            UniWork's developer mode is `isDeveloperMode()` below
  *   store/preview.ts                                   no in-app browser: links and URL previews open in a new tab
  *   store/profile.ts                                   only the default profile
+ *   store/zoom.ts                                      no app zoom: the page keeps the browser's own
  *
  * The terminal panel, rename and the recycle bin need no page changes: the
  * bridge implements them against the instance (`/__mt_user/…` behind the
  * entry), see `browser-bridge.ts`.
  */
 export function isBrowserShell(): boolean {
-  return typeof document !== 'undefined' && Boolean(document.documentElement?.dataset?.hermesBrowser)
+  // The production browser build is known at build time. The bridge's mark
+  // alone is not enough there: a module in a chunk the bundle evaluates before
+  // the bridge (store/developer-mode.ts, read at load) would not see it yet.
+  return (
+    import.meta.env.VITE_HERMES_BROWSER_BUILD === '1' ||
+    (typeof document !== 'undefined' && Boolean(document.documentElement?.dataset?.hermesBrowser))
+  )
 }
 
 const DEVELOPER_MODE_KEY = 'hermes.mt.developer'
@@ -179,6 +192,31 @@ const SIDEBAR_NAV_HIDDEN = new Set(['messaging'])
  * idle) does not have. */
 export function withoutHiddenNavItems<T extends { id: string }>(items: T[]): T[] {
   return hideForUsers() ? items.filter(item => !SIDEBAR_NAV_HIDDEN.has(item.id)) : items
+}
+
+const BUNDLED_PLUGINS_HIDDEN = new Set(['hermes-bots'])
+
+/** Bundled plugins that are not started for regular users. Bot Mode (the
+ * SESSIONS | BOTS tabs, Routines, @bot mentions) is one agent per profile, and
+ * the browser build has only the default profile. */
+export function isBundledPluginHidden(id: string): boolean {
+  return hideForUsers() && BUNDLED_PLUGINS_HIDDEN.has(id)
+}
+
+type AppZoom = Window['hermesDesktop']['zoom']
+
+const NO_APP_ZOOM: NonNullable<AppZoom> = {
+  get: async () => ({ level: Math.log(0.9) / Math.log(1.2), percent: 90 }),
+  onChanged: () => () => undefined,
+  setPercent: () => undefined
+}
+
+/** App zoom in the browser build: none. The desktop app zooms its window over
+ * IPC; a page keeps the browser's own zoom (Ctrl +/-), as upstream does without
+ * that IPC. `store/zoom.ts` gets a fixed 90% (its default) and a setter that does
+ * nothing, so it never puts a CSS zoom on the page. */
+export function browserShellZoom(): AppZoom {
+  return isBrowserShell() ? NO_APP_ZOOM : undefined
 }
 
 /** Codes the instance's file endpoints answer with (`deploy/hermes-mt/seed/mtuser.py`). */

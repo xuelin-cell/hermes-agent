@@ -21,6 +21,7 @@ import { Tip } from '@/components/ui/tooltip'
 import { getAllSessionMessages, listAllProfileSessions } from '@/hermes'
 import { type Translations, useI18n } from '@/i18n'
 import { resolveBrandIcon } from '@/lib/brand-icon'
+import { isBrowserShell } from '@/lib/browser-shell'
 import {
   ExternalLink,
   ExternalLinkIcon,
@@ -398,6 +399,11 @@ function LocalArtifactsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...
 
 export function ArtifactsView(props: ArtifactsViewProps) {
   const [libraryTab, setLibraryTab] = useState<'cloud' | 'local'>('cloud')
+
+  // Browser build: no personal cloud drive yet, only the instance's artifacts.
+  if (isBrowserShell()) {
+    return <LocalArtifactsView {...props} />
+  }
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-background">

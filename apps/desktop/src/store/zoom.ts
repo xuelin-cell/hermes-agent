@@ -10,6 +10,8 @@
 
 import { atom } from 'nanostores'
 
+import { browserShellZoom } from '@/lib/browser-shell'
+
 // Mirror DEFAULT_ZOOM_LEVEL (90%) so Appearance doesn't flash 100% before
 // the main-process zoom.get() resolves. Keep in sync with electron/zoom.ts.
 const DEFAULT_ZOOM_PERCENT = 90
@@ -45,7 +47,7 @@ function applyBrowserZoom(percent: number): void {
   document.documentElement.style.zoom = `${percent}%`
 }
 
-const desktopZoom = typeof window === 'undefined' ? undefined : window.hermesDesktop?.zoom
+const desktopZoom = typeof window === 'undefined' ? undefined : (window.hermesDesktop?.zoom ?? browserShellZoom())
 const initialZoomPercent = desktopZoom ? DEFAULT_ZOOM_PERCENT : storedBrowserZoomPercent()
 
 export const $zoomPercent = atom<number>(initialZoomPercent)

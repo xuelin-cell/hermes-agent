@@ -5,6 +5,7 @@ import { BrandMark } from '@/components/brand-mark'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { type Translations, useI18n } from '@/i18n'
+import { isBrowserShell } from '@/lib/browser-shell'
 import { AlertTriangle, CheckCircle2, ExternalLink, Loader2, LogIn, RefreshCw } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { $uniWorkAuth, logoutUniWork } from '@/store/uniwork-auth'
@@ -139,14 +140,21 @@ export function AboutSettings() {
       </div>
 
       <div className="mx-auto mt-4 w-full max-w-2xl">
-        <SectionHeading icon={LogIn} title="UniWork 账户" />
-        <div className="mb-6 flex items-center justify-between rounded-xl border border-border/70 bg-muted/20 px-4 py-3">
-          <div>
-            <p className="text-sm font-medium">{auth.user?.nickname || auth.user?.username || '已登录'}</p>
-            <p className="mt-1 text-xs text-muted-foreground">{auth.user?.phone || 'UniWork 账户'}</p>
-          </div>
-          <Button onClick={logoutUniWork} size="sm" variant="outline">退出登录</Button>
-        </div>
+        {/* Browser build: the account and signing out are the entry's. */}
+        {!isBrowserShell() && (
+          <>
+            <SectionHeading icon={LogIn} title="UniWork 账户" />
+            <div className="mb-6 flex items-center justify-between rounded-xl border border-border/70 bg-muted/20 px-4 py-3">
+              <div>
+                <p className="text-sm font-medium">{auth.user?.nickname || auth.user?.username || '已登录'}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{auth.user?.phone || 'UniWork 账户'}</p>
+              </div>
+              <Button onClick={logoutUniWork} size="sm" variant="outline">
+                退出登录
+              </Button>
+            </div>
+          </>
+        )}
 
         <SectionHeading icon={RefreshCw} title={a.updates} />
 

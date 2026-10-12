@@ -13,6 +13,8 @@
  *    — the agent's/user's doors, watched + hot-reloaded by the runtime loader.
  */
 
+import { isBundledPluginHidden } from '@/lib/browser-shell'
+
 import { createPluginContext, type HermesPlugin } from './plugin'
 import { pluginActive, publishPlugin } from './plugins-store'
 import { watchRuntimePlugins } from './runtime-loader'
@@ -73,7 +75,8 @@ export function discoverBundledPlugins(): void {
 
     publishPlugin({ ...record, status: 'disabled' }, { activate, deactivate })
 
-    if (pluginActive(plugin.id, plugin.defaultEnabled ?? true)) {
+    // Browser build: Bot Mode is not started for regular users (see lib/browser-shell).
+    if (pluginActive(plugin.id, plugin.defaultEnabled ?? true) && !isBundledPluginHidden(plugin.id)) {
       activate()
     }
   }

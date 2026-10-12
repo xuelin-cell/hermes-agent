@@ -12,8 +12,25 @@ describe('browser zoom store', () => {
 
   afterEach(() => {
     delete desktopWindow.hermesDesktop
+    delete document.documentElement.dataset.hermesBrowser
     window.localStorage.clear()
     document.documentElement.style.zoom = ''
+  })
+
+  it('leaves the page at the browser’s own zoom in the browser build', async () => {
+    document.documentElement.dataset.hermesBrowser = 'production'
+    window.localStorage.setItem('uniwork.browser.zoomPercent.v1', '150')
+
+    const { $zoomPercent, setZoomPercent } = await import('./zoom')
+
+    expect($zoomPercent.get()).toBe(90)
+    expect(document.documentElement.style.zoom).toBe('')
+
+    setZoomPercent(125)
+
+    expect($zoomPercent.get()).toBe(90)
+    expect(document.documentElement.style.zoom).toBe('')
+    expect(window.localStorage.getItem('uniwork.browser.zoomPercent.v1')).toBe('150')
   })
 
   it('applies, reflects, and persists a selected zoom without the Electron bridge', async () => {

@@ -16,6 +16,7 @@ import { normalize } from '@/lib/text'
 import { cn } from '@/lib/utils'
 import { $backdrop, setBackdrop } from '@/store/backdrop'
 import { $composerPopoutGesturesEnabled, setComposerPopoutGesturesEnabled } from '@/store/composer-popout'
+import { $developerMode } from '@/store/developer-mode'
 import { $embedAllowed, $embedMode, clearEmbedAllowed, type EmbedMode, setEmbedMode } from '@/store/embed-consent'
 import { $introSplash, setIntroSplash } from '@/store/intro-splash'
 import { $activeGatewayProfile, $profiles, normalizeProfileKey } from '@/store/profile'
@@ -360,6 +361,7 @@ export function AppearanceSettings() {
   const embedMode = useStore($embedMode)
   const embedAllowed = useStore($embedAllowed)
   const composerPopoutGesturesEnabled = useStore($composerPopoutGesturesEnabled)
+  const developerMode = useStore($developerMode)
   const translucency = useStore($translucency)
   const glassMode = translucency.mode === 'glass' && GLASS_SUPPORTED
   const reactionsEnabled = useStore($reactionsEnabled)
@@ -582,6 +584,8 @@ export function AppearanceSettings() {
                 value={matchedScalePreset ?? ('' as UiScalePreset)}
               />
             }
+            // Browser build: no app zoom, the page keeps the browser's own.
+            className={hideForUsers() ? 'hidden' : undefined}
             description={a.uiScaleDesc(zoomPercent)}
             id={appearanceSettingElementId(APPEARANCE_SETTING_IDS.uiScale)}
             title={a.uiScaleTitle}
@@ -902,9 +906,11 @@ export function AppearanceSettings() {
         </div>
       </div>
 
-      <div className="mt-6">
-        <PetSettings />
-      </div>
+      {developerMode && (
+        <div className="mt-6">
+          <PetSettings />
+        </div>
+      )}
     </SettingsContent>
   )
 }
