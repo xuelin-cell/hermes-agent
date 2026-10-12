@@ -1,0 +1,48 @@
+/* 登录表单独享的配色；不修改根主题，交接和退出仍使用原版启动画面。 */
+.desktop-login {
+  --login-background: #06090f;
+  --login-blue: #277fff;
+  --login-cyan: #18d0b5;
+  --login-action-start: #79adff;
+  --login-action-end: #78ecde;
+  --login-grid: color-mix(in srgb, var(--dt-foreground) 3%, transparent);
+  --dt-foreground: #f5f7fa;
+  --dt-muted-foreground: #a0aab9;
+  --dt-primary: #75d7fa;
+  --dt-primary-foreground: #061019;
+  --dt-card: #111924;
+  --dt-ring: var(--dt-primary);
+  --dt-composer-ring: var(--dt-primary);
+  --dt-input-bg: 75%;
+  --dt-input-border: 22%;
+  --dt-input-inset: none;
+  --dt-destructive: #ff9eaa;
+  --ui-text-primary: var(--dt-foreground);
+  --ui-text-secondary: var(--dt-muted-foreground);
+  --ui-text-tertiary: var(--dt-muted-foreground);
+  --ui-stroke-secondary: var(--dt-muted-foreground);
+  --ui-stroke-tertiary: color-mix(in srgb, var(--dt-foreground) 12%, transparent);
+  --chrome-action-hover: color-mix(in srgb, var(--dt-foreground) 8%, transparent);
+
+  color-scheme: dark;
+  color: var(--dt-foreground);
+  background-color: var(--login-background);
+  background-image:
+    radial-gradient(circle at 18% 22%, color-mix(in srgb, var(--login-blue) 18%, transparent), transparent 40%),
+    radial-gradient(circle at 78% 72%, color-mix(in srgb, var(--login-cyan) 10%, transparent), transparent 36%),
+    linear-gradient(var(--login-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--login-grid) 1px, transparent 1px);
+  background-size:
+    auto,
+    auto,
+    48px 48px,
+    48px 48px;
+}
+
+.desktop-login .desktop-login-panel {
+  background: color-mix(in srgb, var(--dt-card) 88%, transparent);
+}
+
+.desktop-login button[type='submit'] {
+  background-image: linear-gradient(to right, var(--login-action-start), var(--login-action-end));
+}

@@ -410,6 +410,7 @@ function LocalArtifactsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...
 }
 
 export function ArtifactsView(props: ArtifactsViewProps) {
+  const { t } = useI18n()
   const [libraryTab, setLibraryTab] = useState<'cloud' | 'local'>('cloud')
 
   return (
@@ -425,7 +426,7 @@ export function ArtifactsView(props: ArtifactsViewProps) {
           onClick={() => setLibraryTab('cloud')}
           type="button"
         >
-          个人云盘
+          {t.cloudLibrary.personal}
         </button>
         <button
           className={cn(
@@ -437,7 +438,7 @@ export function ArtifactsView(props: ArtifactsViewProps) {
           onClick={() => setLibraryTab('local')}
           type="button"
         >
-          本地产物
+          {t.cloudLibrary.local}
         </button>
       </div>
       <div className="min-h-0 flex-1">

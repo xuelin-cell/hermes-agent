@@ -61,6 +61,8 @@ it('keeps discovered file paths and originating session scope intact through rem
     </MemoryRouter>
   )
 
+  fireEvent.click(screen.getByRole('button', { name: 'Local artifacts' }))
+
   for (const name of [
     'USER.md',
     'report.md',

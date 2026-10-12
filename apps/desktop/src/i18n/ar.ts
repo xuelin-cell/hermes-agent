@@ -1,7 +1,24 @@
 import { defineLocale } from './define-locale'
 
 export const ar = defineLocale({
+  cloudLibrary: {
+    personal: 'القرص السحابي الشخصي',
+    local: 'الملفات المحلية',
+    search: 'البحث في المجلد الحالي',
+    createFolder: 'مجلد جديد',
+    refresh: 'تحديث',
+    rename: 'إعادة تسمية',
+    trash: 'نقل إلى سلة المهملات',
+    preview: 'معاينة',
+    download: 'تنزيل',
+    unavailable: 'تكامل القرص السحابي قيد الانتظار',
+    unavailableDescription: 'الملفات السحابية غير متاحة بعد. سيتاح البحث وإدارة الملفات بعد اكتمال التكامل.'
+  },
   desktopLogin: {
+    brand: 'UNIWORK',
+    welcome: 'مرحبًا بك في UniWork',
+    headline: 'دع عملك ينساب.',
+    headlineAccent: 'الذكاء في متناول يديك.',
     logout: 'تسجيل الخروج',
     logoutTitle: 'تسجيل الخروج من هذا الحساب؟',
     logoutDescription:
@@ -19,7 +36,7 @@ export const ar = defineLocale({
     captchaPlaceholder: 'أدخل رمز الصورة',
     smsPlaceholder: 'رمز من 6 أرقام',
     captchaLoadError: 'تعذر تحميل صورة التحقق. حدّث الصورة للمحاولة مجددًا.',
-    title: 'تسجيل الدخول إلى Hermes',
+    title: 'سجّل الدخول إلى مساحة عملك',
     subtitle: 'استخدم حساب MaaS للوصول إلى مساحة عملك المحلية.',
     phone: 'رقم الهاتف',
     captcha: 'رمز الصورة',

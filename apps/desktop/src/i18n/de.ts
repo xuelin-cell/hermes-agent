@@ -4,7 +4,25 @@ import { defineLocale, type TranslationOverrides } from './define-locale'
 import { introDe } from './intro-de'
 
 export const deOverrides = {
+  cloudLibrary: {
+    personal: 'Persönlicher Cloud-Speicher',
+    local: 'Lokale Ergebnisse',
+    search: 'Aktuellen Ordner durchsuchen',
+    createFolder: 'Neuer Ordner',
+    refresh: 'Aktualisieren',
+    rename: 'Umbenennen',
+    trash: 'In den Papierkorb',
+    preview: 'Vorschau',
+    download: 'Herunterladen',
+    unavailable: 'Cloud-Speicher noch nicht angebunden',
+    unavailableDescription:
+      'Cloud-Dateien sind noch nicht verfügbar. Suche und Dateiaktionen werden nach der Anbindung freigeschaltet.'
+  },
   desktopLogin: {
+    brand: 'UNIWORK',
+    welcome: 'Willkommen bei UniWork',
+    headline: 'Arbeit im Fluss.',
+    headlineAccent: 'Intelligenz zum Greifen nah.',
     logout: 'Abmelden',
     logoutTitle: 'Dieses Konto abmelden?',
     logoutDescription:
@@ -24,7 +42,7 @@ export const deOverrides = {
     captchaPlaceholder: 'Code aus dem Bild',
     smsPlaceholder: '6 Ziffern',
     captchaLoadError: 'Das Captcha konnte nicht geladen werden. Aktualisiere das Bild, um es erneut zu versuchen.',
-    title: 'Bei Hermes anmelden',
+    title: 'Bei deinem Arbeitsbereich anmelden',
     subtitle: 'Mit Ihrem MaaS-Konto auf Ihren lokalen Arbeitsbereich zugreifen.',
     phone: 'Telefonnummer',
     captcha: 'Bildcode',

@@ -13,32 +13,14 @@ import { atom } from 'nanostores'
 // Mirror DEFAULT_ZOOM_LEVEL (90%) so Appearance doesn't flash 100% before
 // the main-process zoom.get() resolves. Keep in sync with electron/zoom.ts.
 const DEFAULT_ZOOM_PERCENT = 90
-const BROWSER_ZOOM_STORAGE_KEY = 'uniwork.browser.zoomPercent.v1'
 
 const desktopZoom = typeof window === 'undefined' ? undefined : window.hermesDesktop?.zoom
 
-function storedBrowserZoomPercent(): number {
-  if (typeof window === 'undefined') {return DEFAULT_ZOOM_PERCENT}
+export const $zoomPercent = atom<number>(DEFAULT_ZOOM_PERCENT)
 
-  const stored = Number(window.localStorage.getItem(BROWSER_ZOOM_STORAGE_KEY))
-
-  return Number.isFinite(stored) && stored >= 50 && stored <= 200 ? stored : DEFAULT_ZOOM_PERCENT
-}
-
-const initialZoomPercent = desktopZoom ? DEFAULT_ZOOM_PERCENT : storedBrowserZoomPercent()
-
-export const $zoomPercent = atom<number>(initialZoomPercent)
-
+/** 缩放设置只交给原生主进程应用，页面等待变更事件同步数值。 */
 export function setZoomPercent(percent: number): void {
-  if (desktopZoom) {
-    desktopZoom.setPercent(percent)
-
-    return
-  }
-
-  document.documentElement.style.zoom = `${percent}%`
-  window.localStorage.setItem(BROWSER_ZOOM_STORAGE_KEY, String(percent))
-  $zoomPercent.set(percent)
+  desktopZoom?.setPercent(percent)
 }
 
 if (desktopZoom) {
@@ -54,6 +36,4 @@ if (desktopZoom) {
       $zoomPercent.set(percent)
     }
   })
-} else if (typeof document !== 'undefined') {
-  document.documentElement.style.zoom = `${initialZoomPercent}%`
 }

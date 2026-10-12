@@ -246,7 +246,7 @@ test(expiry ? 'P22 真实短期限：任务跨到期继续，手动退出有效�
         env:{...fixture.env,FIXTURE_LOGIN_DISABLE:'1'},timeout:45_000})
       try {
         const login=await cold.firstWindow()
-        await login.getByRole('heading',{name:'登录 Hermes'}).waitFor({timeout:45_000})
+        await login.getByRole('heading',{name:'登录你的工作空间',exact:true}).waitFor({timeout:45_000})
         assert.equal(await cold.evaluate(()=>globalThis.fixtureContext()),null)
         assert.equal(await cold.evaluate(()=>globalThis.fixturePlanQueries),0)
         assert.deepEqual(await readFile(path.join(fixture.userData,'maas-login.enc')),encrypted)
@@ -497,7 +497,7 @@ async function chatWindow(instance, diagnostics) {
         await page.waitForFunction(() => typeof window.hermesDesktop?.getConnection === 'function', null,
           {polling:100, timeout:120_000})
         await page.waitForLoadState('domcontentloaded', {timeout:120_000})
-      } catch (error) {
+      } catch {
         const state = await instance.evaluate(({app,BrowserWindow}) => ({
           appPath:app.getAppPath(),
           errors:globalThis.fixturePreloadErrors,
@@ -556,7 +556,7 @@ function assertBrowserStore(result,id,first) {
 
 /** 验证原生分区、实际 webview 附着、原版远程 Cookie 和媒体协议仍在账号内。 */
 async function verifyBrowserIsolation(instance,page,context,first) {
-  const browser = await instance.evaluate(async (_electron,{first,id,url}) => {
+  const browser = await instance.evaluate(async (_electron,{first,id}) => {
     const main = await globalThis.fixtureMain()
     const jar = main.oauthSession('https://fixture.invalid')
     await main.warmCookies('https://fixture.invalid')
@@ -569,7 +569,7 @@ async function verifyBrowserIsolation(instance,page,context,first) {
       oauthStorage:jar.storagePath,cookie: cookies[0]?.value ?? null,
       expectedPartition:globalThis.fixtureBrowserPartition({id},'persist:desktop'),
       media:await main.browserSession.protocol.isProtocolHandled('hermes-media')}
-  },{first,id:context.id,url:page.url()})
+  },{first,id:context.id})
   assert.equal(browser.cookie,first ? null : context.id)
   assert.equal(browser.media,true)
   assert.equal(browser.partition,browser.expectedPartition)
@@ -765,7 +765,7 @@ test('P15～P17 原生 Electron：自动进入账号桌面，REST/WS 与 A→B�
       instance = await electron.launch({executablePath:electronPath,args:[fixture.output],
         env:{...fixture.env,FIXTURE_LOGIN_DISABLE:'1'},timeout:45_000})
       const login = await instance.firstWindow()
-      await login.getByRole('heading',{name:'登录 Hermes'}).waitFor()
+      await login.getByRole('heading',{name:'登录你的工作空间',exact:true}).waitFor()
       assert.equal(await login.evaluate(() => typeof window.hermesDesktop),'undefined')
       assert.equal(await instance.evaluate(() => globalThis.fixtureContext()),null)
       await assert.rejects(access(path.join(fixture.root,'local-app-data','hermes-desktop-mt','accounts')),{code:'ENOENT'})
@@ -959,8 +959,8 @@ test('P15～P17 原生 Electron：自动进入账号桌面，REST/WS 与 A→B�
           }
         }
         if (scenario === 'account-b') {
-          assert.equal(JSON.parse(await readFile(path.join(accountA.desktopState,'native-oauth-tokens.json'),'utf8'))
-            ['https://fixture.invalid'].encoding,'safeStorage')
+          const accountATokens = JSON.parse(await readFile(path.join(accountA.desktopState,'native-oauth-tokens.json'),'utf8'))
+          assert.equal(accountATokens['https://fixture.invalid'].encoding,'safeStorage')
           assert.equal(JSON.parse(await readFile(path.join(accountA.desktopState,'project-dir.json'),'utf8')).dir,
             path.join(accountA.workspace,'fixture-project'))
         }

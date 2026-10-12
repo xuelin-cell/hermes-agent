@@ -65,7 +65,9 @@ async function runFixture(mode, signal) {
         }).catch(error => { console.error(error); app.exit(1) })
       `
     },
-    bundle: true, platform: 'node', format: 'esm', target: 'node20', external: ['electron'], outfile: electronFixture
+    bundle: true, platform: 'node', format: 'esm', target: 'node20', external: ['electron'], outfile: electronFixture,
+    // 与正式主进程 bundle 一样，为内置模块和 CommonJS 依赖提供原生 require。
+    banner: { js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" }
   })
   await writeFile(supervisorFixture, `
     import { superviseElectron } from ${JSON.stringify(pathToFileURL(path.join(desktop, 'scripts/dev-electron.mjs')).href)}

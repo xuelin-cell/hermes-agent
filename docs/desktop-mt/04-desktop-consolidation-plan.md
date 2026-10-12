@@ -1,0 +1,436 @@
+# 桌面本地版整理与原生登录改造实施计划
+
+日期：2026-10-10。基线：同步协作者最新提交后的 `desktop-mt @ fe4a80ba5`。
+
+状态：R01～R10 与构建夹具修复已完成并推送；R11 回归记录与夹具修复已完成，等待用户核验、未推送。已知失败与人工待验收项保留，不代表完整产品验收通过。每步完成验证与本地提交后暂停，等待用户核验，再继续下一步；具体结果见“实施进度”。
+
+路径约定：`src/`、`electron/`、`entry_local/` 指桌面工程中的对应目录；R01 的两个脚本位于 `apps/desktop/scripts/`，R03 的部署脚本位于仓库根 `scripts/`。
+
+## 1. 本轮目标与边界
+
+`desktop-mt` 当前专注 Windows 桌面本地多账号；Web 由协作者在 `feat/hermes-ch` 开发。两分支的公共界面可以按功能同步，但不能假定修改会自动同步，也不再整批引入 Web 的启动、鉴权和部署流程。
+
+本轮完成四件事：
+
+1. 移除此次合入、且不服务于当前桌面目标的浏览器及部署专用内容。
+2. 原生登录窗口采用新登录页样式，继续使用原有登录与账号生命周期。
+3. **仅保留个人云盘前端 UI**，解除现有接口与旧登录状态依赖；云盘需求和对应接口明确后再单独接入。
+4. 在依赖解除后移除独立 Renderer 登录链及对应 Python Web 登录代理。
+
+必须保留：
+
+- 原生短信登录、系统加密、恢复登录、套餐查询、账号目录与 Chromium 分区隔离。
+- 原生后端启动、关窗到托盘、应用退出、账号退出、网关停止与崩溃恢复。
+- 云盘页面、个人云盘／本地产物入口，以及新登录页的视觉设计。
+- 官方 REST／WebSocket、远程连接、远程文件与 Git 能力；它们也属于桌面功能。
+- 用户历史、配置、文件、官方对照版以及本机未提交的计时代码。
+
+本轮不包含：
+
+- 桌面云端接入、Web 多租户、Entry、PostgreSQL、Cube 部署或会话同步。
+- 技能市场补后端、模型设置入口恢复、IM 平台筛选调整、品牌全面更名。
+- 安装包独立分发和更新渠道适配。
+- 云盘身份接入、接口契约设计、凭据扩展，以及真实云盘查询、写入、预览和下载。
+- 修改 Hermes Python Agent 核心；本地不引入容器、虚拟机或 PostgreSQL。
+
+Python Web 登录代理的删除是已确认的清理范围，不等于允许改 Agent 核心。云盘只保留展示，不为未明确的接口预建 IPC、网络适配或凭据模型；现有云盘请求与代理在确认无剩余消费者后分步清理。
+
+## 2. 整理前基线事实与风险
+
+| 项目 | 整理前代码事实 | 本轮处理 |
+| --- | --- | --- |
+| 原生登录 | `electron/login/` 管理身份；`electron/entry_local/` 准备账号环境 | 保留权威身份与生命周期 |
+| 第二次登录 | `src/main.tsx` 无条件用 `AuthGate` 包裹主应用 | 云盘解除旧登录依赖后移除，继续使用原有原生登录，不增加免登录回退 |
+| 新登录页面 | `src/app/auth/login-page.tsx` 同时包含样式和 Web 登录请求 | 只采用视觉设计，不搬运请求与凭据存储 |
+| 云盘 | `src/api/drive.ts` 读取 `$uniWorkAuth` 的 token 和手机号 | 仅保留 UI，停止请求，不再读取旧 Web 凭据 |
+| 旧凭据存储 | `src/store/uniwork-auth.ts` 使用 Renderer `localStorage` | 云盘不再依赖后删除代码；不擅自清空用户整个分区 |
+| 手机号 | 原生加密记录仅保存脱敏手机号，当前云盘协议要求完整手机号 | 本轮不对接云盘，不增加保存字段，不改变恢复登录规则 |
+| 浏览器能力 | `browser-bridge.ts` 模拟部分桌面接口 | 移除该分支的专用浏览器支持，不删真实 preload |
+| 云盘已有缺口 | 当前列表固定首批 100 条；预览下载存在重定向与大小限制检查问题 | 停用并清理旧请求链，不把旧实现搬到主进程，也不宣称云盘业务已修复或验收 |
+
+当前审查是静态代码证据，不等于 Web 服务器部署检查。仓库包含 Cube 文件不代表 Web 已按账号连接 Cube。
+
+## 3. 小步修改与提交规则
+
+- 下列每个 R 步骤以一个单一职责的本地 commit 为目标，不合成一个大清理提交。
+- 若单步同时涉及多个独立行为，继续拆分；不为凑提交数量留下编译失败、悬空引用或绕过身份检查的中间态。
+- 功能与其必要测试、当前说明可以在同一步提交，不夹带无关格式化或重命名。
+- 每步开始重新检查 Git 状态、适用 `AGENTS.md` 和依赖；结束检查暂存差异，只暂存明确文件，不执行 `git add .`。
+- 新增命名函数／方法均附简洁中文注释；优先复用已有网络、IPC、配置和文件能力，不设计没有实际消费者的通用框架。
+- 废弃路径在消费者解除依赖或替代流程接通后直接删除，不新增兼容登录、旧 token 回退或双身份并行机制。
+- 本地提交标题为 `类型(范围): 简洁中文说明`；正文用通俗中文写清问题、处理、行为边界、实际验证与未验证部分。
+- 完整提交描述继续分段写清行为与验证；只有“代码变化情况”用一句话列出产品代码、测试及夹具、文档和总计的新增／删除行数，零改动写 0，不再列文件数或本地未提交内容。
+- **每次推送都需要用户当次明确授权。** 生成本文不授权推送，也不授权修改协作者分支。
+- 产品实施按用户最新要求逐步进行：每步验证并本地提交后停止，用户核验确认后才进入下一步，不连续执行后续 R 步骤。
+- 不使用子 agent，不操作用户正在使用的窗口；测试只用独立目录、端口和窗口。
+- 用户只要求生成本文时，完成文档提交后停止，不自动开始 R01。
+
+## 4. 阶段 A：先清理低耦合的 Web 专用内容
+
+### R01 · 移除浏览器运行入口
+
+- 范围：`src/dev/browser-bridge.ts` 及其测试、`src/main.tsx` 的桥接导入；`dev:browser`、`build:browser`、`preview:browser`；`scripts/dev-browser.mjs`、`scripts/verify-browser-deployment.mjs`；新增 Vite 浏览器代理。
+- 这些入口直接互相引用，因此作为一个完整删除单元。此步不动 `AuthGate`、云盘、原生 preload、桌面 Vite 配置和原生构建命令。
+- 删除前核查直接引用、脚本调用和配置变量。部署文档中因删除浏览器命令产生的失效说明，在此步标记为待移除的非桌面资料，不让它继续被当成可用命令。
+- 验证：引用检查、相关 TypeScript 检查、桌面 Renderer 构建；隔离启动检查真实 preload 仍可用。不能因既有第二次登录拦截尚在就宣称聊天已验收。
+- 提交方向：`refactor(desktop): 移除浏览器专用运行入口`。
+
+### R02 · 移除浏览器缩放路径
+
+- 范围：仅 `src/store/zoom.ts` 中新增的 CSS 缩放和浏览器存储分支，以及必要测试。
+- 保留原生缩放设置、主进程事件和原有默认值，不修改用户已保存的缩放偏好。
+- 验证：原生初始读取、设置、变更事件；不因迟到的初始读取覆盖新值。隔离 Electron 检查不同时叠加 CSS zoom。
+- 提交方向：`refactor(desktop): 移除浏览器缩放分支`。
+
+### R03 · 移除 Web 部署资料
+
+- 范围：`scripts/deploy-custom-web.sh`、`scripts/deploy-hermes-desktop-web.sh`、`docs/custom-web-docker-deployment.zh-CN.md` 及直接指向这些已删文件的说明。
+- 不删除官方根 Dockerfile、桌面打包脚本，不操作真实服务器、容器、数据库或数据卷。
+- 验证：引用与差异检查，确认没有桌面构建调用被删除脚本。只说明当前分支移除，不能声称另一分支已有完全相同副本。
+- 提交方向：`chore(desktop): 移除独立 Web 部署资料`。
+
+### R04 · 移除此次新增的 Cube 文件
+
+- 范围：`cube-docker/` 下的 `Dockerfile-cube`、`Dockerfile-cube-skill`、`Dockerfile-cube-hermes`、`lightweight-code-interpreter-server.py`、`start-code-interpreter.sh`、`start-hermes.sh`。
+- 先检查桌面打包和 CI 引用，仅删除这六个已确认目标及对应失效引用，不扩大到其它工具执行环境。
+- 验证：引用、打包资源清单与差异检查；不启动、停止或删除实际沙箱。
+- 提交方向：`chore(desktop): 移除分支新增的 Cube 部署文件`。
+
+### R05 · 移除来源分支同步工作流
+
+- 范围：`.github/workflows/sync-gitcode.yml`。
+- 不修改 Git remotes、远端分支、GitHub Secrets 或其它 CI。
+- 验证：确认无其它工作流调用它；检查本次差异只影响该同步职责。
+- 提交方向：`ci(desktop): 移除 develop-uni 的 GitCode 同步流程`。
+
+阶段 A 完成只代表专用浏览器／部署内容已清理，不代表双重登录已解决；云盘接口接入不属于本轮目标。
+
+## 5. 阶段 B：原生登录采用新样式
+
+### R06 · 只替换原生登录展示
+
+- 范围：`src/app/login/`，以及确有需要的登录窗口尺寸、局部样式、国际化和展示测试。
+- 使用新页面的深色、蓝青渐变、品牌与宽屏双栏设计；窄窗保持完整可操作的表单。
+- 继续复用原生 `restore / plan / captcha / sendSms / login` 五项受限能力。
+- 不改变手机号／验证码校验、图片刷新清空、短信冷却、重复提交保护、系统加密、恢复期限或套餐行为。
+- 登录成功后仍进入既有 `ConnectingScreen`，由主进程准备账号并启动 Hermes；不新增账号卡片中间页。
+- 不搬运 Web 登录请求、`localStorage` 凭据或第二套身份；不复制“跨设备延续”等未实现承诺，也不添加没有有效链接的条款同意说明。
+- 新增文案走现有国际化；样式复用组件和局部 token，不影响聊天、退出等待页及用户主题。
+- 验证：表单、刷新、限流、重复提交、恢复及错误状态测试；真实隔离 Electron 的宽窗／窄窗截图、键盘操作、受限 IPC 和启动画面。受控短信响应不写成真实登录通过。
+- 提交方向：`refactor(login): 原生登录采用新的页面样式`。
+
+R06 不承担云盘对接或旧鉴权模块删除，避免视觉修改与身份变更混在一个提交中。
+
+## 6. 阶段 C：云盘仅保留 UI，接口另行排期
+
+### R07 · 保留云盘展示并解除旧请求依赖
+
+- 保留 `cloud-library.tsx` 的页面布局、个人云盘／本地产物入口、搜索与操作区域，不把整页删除、隐藏或改成另一个产品页面。
+- 页面明确显示“云盘接口待接入”，不把未接入显示成“云盘为空”、登录失败或持续加载。
+- 移除自动取空间、文件列表和刷新请求；新建文件夹、重命名、回收站、预览、下载等依赖接口的动作禁用并说明原因。保留其展示设计，不保留可误触发的旧请求处理器。
+- 不填充假文件、不模拟操作成功、不读取旧账号文件列表或旧 Web token，也不弹出第二次登录要求。
+- 清理 `src/api/drive.ts` 的废弃传输逻辑及引用；只保留 UI 仍实际使用的数据类型，不预建新 API、IPC、通用适配层或空实现。
+- “本地产物”继续使用原有功能，不因云盘未接入而禁用。原生登录记录、手机号保存、套餐和生命周期规则均不改变。
+- 验证：组件与隔离 Electron 中页面和入口仍可见、提示清楚、无自动或点击触发的云盘请求、不读取旧 Web 凭据；本地产物切换正常，窄窗布局可用。只验收展示及无副作用，不宣称云盘业务可用。
+- 提交方向：`refactor(drive): 保留云盘界面并解除旧接口依赖`。
+
+后续在需求明确后另行确认数据来源、身份授权、操作范围、接口契约和验收方式，再制定云盘接入步骤。本轮不决定完整手机号来源、凭据持久化、新 IPC 或云盘服务部署方案；这些问题不再阻塞桌面登录和清理。
+
+## 7. 阶段 D：移除第二套登录与废弃云盘代理
+
+### R08 · 移除 Renderer Web 登录链
+
+- 依赖 R06 与阶段 C 完成，确认云盘不再依赖 `$uniWorkAuth`。
+- 本步解除 `main.tsx` 的 `AuthGate` 拦截，删除不再使用的 `src/app/auth/` 旧页面和拦截、`src/api/auth.ts`、`src/store/uniwork-auth.ts` 及仅覆盖旧路径的测试；保留仍有实际消费者的公共类型。
+- 删除旧类型时同步消费者，不增加无用途的重导出或兼容模块。
+- 页面直接承接已准备的原生账号桌面，不再读取 Web 登录键，不因旧 `auth_token` 等缓存存在而改变身份。
+- 此步不自动清空用户 localStorage 或历史分区，不借清理名义删除草稿、会话或配置。
+- 验证：首次登录、恢复登录、退出重登、A→B→A 均只走原生身份；空或冲突的旧 Web 存储不造成第二次登录，也不激活云盘请求；真实后端 REST／WS 连接可进入聊天。
+- 提交方向：`refactor(login): 移除桌面的第二套 Web 登录链`。
+
+### R09 · 删除废弃 Python 登录代理
+
+- 范围：`hermes_cli/web_routers/uniwork_auth.py`、`web_server.py` 对它的导入与注册、对应专用测试和失效说明。
+- 此步只清理登录代理；云盘代理单独在 R10 核查并处理。
+- 不改会话、工具、模型执行或原版通用 HTTP／WebSocket 实现。
+- 验证：导入／路由检查、相关后端测试、桌面启动与云盘待接入页面检查。Python 测试遵循仓库规定的隔离运行入口。
+- 提交方向：`refactor(auth): 删除废弃的 Python Web 登录代理`。
+
+### R10 · 清理无消费者的旧云盘代理
+
+- 依赖 R07，核查 `hermes_cli/web_routers/uniwork_drive.py` 的消费者；确认只服务于已停用的旧云盘链路后，删除该代理、路由注册及专用测试。
+- 若发现其它实际消费者，明确报告并重新确认范围，不连带破坏其它功能；也不为了保留旧代理重新接回已停用的 UI 请求。
+- 不删除云盘 UI，不删除用户已有预览缓存或远端云盘文件，不修改协作者 Web 分支；未来对接不以保留这套旧代理为前提。
+- 验证：引用、导入及路由检查，确认其它后端接口正常，云盘页面保持无网络请求的待接入状态。
+- 提交方向：`refactor(drive): 清理无消费者的旧云盘代理`。
+
+## 8. 阶段 E：交付回归与文档
+
+### R11 · 验证完整桌面链路并对齐说明
+
+- 自动化：相关组件、类型、Lint、Renderer 构建、登录 IPC、系统加密、账号环境交接与生命周期回归；云盘仅验证 UI 保留、待接入提示、动作禁用及无请求／无旧身份依赖。
+- 隔离真实运行：原版后端 REST／WS、附件／预览、托盘、退出账号、完整退出、网关停止及恢复；不操作用户现有窗口和工作进程。
+- 人工验收另列：真实双账号短信登录、模型聊天、官方版并行。真实短信、付费模型和外部写操作须有明确授权；云盘业务验收留待后续接口接入，不计入本轮完成标准。
+- 保留此前套餐 401 首次提示不可见等已知问题，不因本轮收尾将其标为修复；不将文件保留等同于会话正文恢复通过。
+- 更新 `README.md`、`01-login.md`、`USAGE.md` 及确受影响的阶段文档。实际命令、通过／失败／跳过和人工待验收项写在提交正文与阶段文档，不创建 `ACCEPTANCE.md`。
+- 提交方向：`test(desktop): 修复原生夹具并记录桌面清理验收`。用户本轮确认夹具修复纳入 R11，不单独提交；若发现产品缺陷，先单独修复并验证，不夹在本次提交里。
+
+## 9. 实施进度
+
+| 阶段 | 步骤 | 当前状态 |
+| --- | --- | --- |
+| A · 浏览器运行入口 | R01 | 已完成并推送，提交 `4e5158dc9` |
+| A · 浏览器缩放路径 | R02 | 已完成并推送，提交 `0bca94a96` |
+| A · Web 部署资料 | R03 | 已完成并推送，提交 `4922df562` |
+| A · Cube 部署文件 | R04 | 已完成并推送，提交 `2d7c67d7b`；构建夹具修复 `4b7117310` 已单独推送 |
+| A · 来源分支同步清理 | R05 | 已完成并推送，提交 `70eedec74` |
+| B · 原生登录新样式 | R06 | 已完成并推送，提交 `3822c9335` |
+| C · 云盘仅保留 UI | R07 | 已完成并推送，提交 `8e8de000a`；接口接入另行排期 |
+| D · 删除旧登录与云盘请求链 | R08 | 已完成并推送，提交 `3cb98c39d` |
+| D · 删除旧登录与云盘请求链 | R09 | 已完成并推送，提交 `897f480d4` |
+| D · 删除旧登录与云盘请求链 | R10 | 已完成并推送，提交 `1e2d07214` |
+| E · 完整回归与文档 | R11 | 回归记录与夹具修复已完成、本地待核验，未推送；401 失败与人工待验收保留 |
+
+### R01 实施记录（2026-10-10）
+
+已删除浏览器桥接及专用测试、桥接导入、三条浏览器 npm 命令、两个浏览器脚本和 Vite 的专用后端代理。桌面开发／构建／预览命令及真实 preload 保留；尚待 R03 删除的部署脚本和手册仍在，手册已明确标记当前桌面分支不再支持这套部署链路。
+
+本日已实际执行的验证：
+
+- `npm run typecheck`：完整 TypeScript 检查通过；同步协作者界面调整后再次检查通过。
+- `npx vitest run --project electron electron/preload-flags.test.ts electron/preload-local-skin.test.ts electron/preload-external-open.test.ts`：3 个文件、4 项通过。
+- `npx eslint src/main.tsx vite.config.ts --max-warnings 0`：通过。
+- 使用正式 Vite 配置将主页面和原生登录页面构建到独立临时目录：通过；构建仍有原有 `advancedChunks` 弃用及插件耗时警告。
+- 隔离 Electron 实际加载构建后的主页面与正式 `electron/preload.ts` 的 bundle：原生 API 与日志 IPC 往返通过，未安装浏览器桥接，sandbox／contextIsolation 开启、Node 未暴露。临时夹具修正启动顺序后通过，未因此修改产品启动代码。
+- 同步协作者界面调整后，相关 6 个 UI 回归测试文件共 62 项通过，仅有既有 jsdom Canvas 未实现提示。
+- 删除目标的引用检查和 `git diff --check`：通过。剩余浏览器环境变量／代理路径只在本计划与待 R03 清理的部署资料中，不再有桌面运行入口消费。
+
+本次按“同步基线 → 最终版计划 → R01”整理提交历史，代码与本日先前验证的合并版本一致，仅调整计划基线和验证记录。重整时检查逐文件差异和暂存内容，未重复执行上述产品测试，不把已有结果记成新增验证。
+
+隔离运行阻断外部 HTTP／HTTPS，主进程 API 响应受控，没有发送短信、查询真实套餐、启动 Hermes 后端或调用模型。当前 `AuthGate` 第二次登录仍在，云盘 UI 与请求链尚未调整，因此本步不代表完整聊天或云盘验收。用户原有计时代码、官方版及用户数据均保留。
+
+用户核验可继续使用现有 `Launch-HermesDesktopMT.ps1` 启动入口；本步不改变原生页面样式，也不消除第二次登录。核验本步差异与原生桥接保留情况后，再继续 R02。
+
+### R02 实施记录（2026-10-10）
+
+删除 Renderer 缩放模块中的浏览器偏好读取、写入和 CSS zoom 分支。保留 90% 初始值、原生设置调用、主进程变更事件及迟到读取保护。没有原生缩放桥接时不再尝试浏览器替代，也不删除已有浏览器存储键。官方主进程、preload、原生缩放持久化、菜单与快捷键实现保持原样。
+
+实际验证：
+
+- 新增 2 项行为测试，覆盖设置等待主进程事件和桥接缺失时无浏览器副作用。新测试在旧实现上先出现 1 项预期失败；删除浏览器分支后，`npx vitest run --project ui src/store/zoom.test.ts --project electron electron/zoom.test.ts` 共 2 个文件、24 项通过（Renderer 4 项、原生缩放辅助函数 20 项）。
+- `npm run typecheck` 和 `npx eslint src/store/zoom.ts src/store/zoom.test.ts --max-warnings 0`：通过。
+- 隔离隐藏 Electron 窗口加载正式缩放模块与 preload 的 bundle，并使用官方缩放应用、导航恢复辅助函数：125% 初始状态、设置为 150%、主进程通知为 175% 均通过；原生 zoom factor 为 1.75，根节点未写 CSS zoom，旧浏览器值 160 保留且不影响结果，Node 未暴露。
+- 临时夹具补接正式导航恢复机制后通过；未修改产品主进程或缩减检查。验证不启动 Hermes 后端、不访问外网，也不操作用户已有窗口；没有将此检查描述为完整聊天或物理键盘快捷键验收。
+- 差异检查及既有 5 份计时文件的 SHA-256 比较通过。本步只涉及缩放模块、必要测试和文档；R03 尚未开始。
+
+提交统计规则已写入根 `AGENTS.md`，以最新要求为准：用一句话分别列出产品代码、测试及夹具、文档和总计的新增／删除行数。
+
+### R03 实施记录（2026-10-10）
+
+删除两份独立 Web 部署脚本及部署手册：`scripts/deploy-custom-web.sh`、`scripts/deploy-hermes-desktop-web.sh`、`docs/custom-web-docker-deployment.zh-CN.md`。脚本用于 Linux 服务器上的 Docker／Nginx／systemd 部署，不服务于当前桌面本地多账号目标；此前 R01 已移除它们依赖的专用浏览器构建链路。本步没有添加替代部署入口，旧文件可从 Git 历史恢复。
+
+实际验证：
+
+- 删除前检查全仓引用及桌面开发、构建、打包配置：没有调用这两份脚本的桌面流程。删除后检查所有跟踪文件，仅本计划的范围说明和实施记录保留文件名，没有剩余执行调用或部署说明链接。
+- `npm run typecheck`：完整 TypeScript 检查通过。
+- `npx vitest run --project electron electron/preload-flags.test.ts electron/preload-local-skin.test.ts electron/preload-external-open.test.ts`：3 个文件、4 项通过。
+- `git diff --check` 通过；根 Dockerfile、桌面构建／打包配置与脚本、Electron、Renderer、Python 后端、CI 和 Cube 文件没有本步改动。
+
+本步未运行部署脚本，没有访问服务器或操作容器、数据库、数据卷；未启动完整桌面或制作安装包，也不据此宣称聊天或安装包已经验收。原生登录、云盘 UI 及既有第二次登录行为保持不变，R04 尚未开始。提交描述继续保留完整说明，只将代码变化统计合为一句话。
+
+### R04 实施记录（2026-10-10）
+
+删除 `cube-docker/` 的六个指定文件：三份镜像定义、轻量代码解释服务、代码解释启动脚本和 Hermes 沙箱启动脚本。它们服务于 Cube 镜像构建与沙箱内运行，不是当前桌面本地账号进程的启动依赖；不增加替代镜像或兼容入口，旧文件可从 Git 历史恢复。
+
+实际验证：
+
+- 删除前后检查全仓跟踪文件、桌面构建／打包资源清单与 CI 引用：引用只存在于这六个文件内部及本计划；删除后没有剩余构建、导入或启动调用。根 Dockerfile、原版工具执行环境、桌面打包资源及 CI 保留。
+- `npm run typecheck`：完整 TypeScript 检查通过。
+- `npx vitest run --project electron electron/preload-flags.test.ts electron/preload-local-skin.test.ts electron/preload-external-open.test.ts`：3 个文件、4 项通过。
+- 在 `tests-js` 执行 `npx vitest run desktop-builder.test.mjs`：7 项中 3 项通过、4 项失败。失败原因是该测试的临时源码夹具缺少 `apps/desktop/electron/login/preload.ts`，而正式 bundler 已需要编译它；产品中的该文件实际存在。
+- 恢复本轮前的六个 Cube 文件，确认 `git diff --exit-code -- cube-docker` 无差异后执行同一构建测试，仍为同样的 3 项通过、4 项失败；随后重新删除六个目标。确认是既有夹具问题，不是 Cube 删除引入的回归。本步未修改夹具或降低断言，也不将构建测试记录为全部通过。
+- `git diff --check` 通过；本步没有修改 Electron、Renderer、Hermes Python 后端核心、桌面编译器、测试实现或其它工具环境。
+
+没有构建 Cube 镜像，没有启动、停止或删除真实沙箱、服务器资源和数据卷；没有制作安装包或进行完整聊天验收。既有构建夹具问题单独记录，修复不夹在 R04 中；云盘 UI 保留，R05 尚未开始。
+
+### 构建夹具修复记录（2026-10-10）
+
+按用户要求暂停 R05，单独修复 `tests-js/desktop-builder.test.mjs`。临时桌面项目此前缺少正式 bundler 所需的 `electron/login/preload.ts`，本次补齐该入口，并在既有编译用例中检查 `login-preload.js` 存在、实际执行后得到夹具预期结果。保留全部七个用例和原有断言，没有跳过、降低断言或修改产品代码。
+
+实际验证（以下命令在 `tests-js` 执行，Git 检查在仓库根执行）：
+
+- `npx vitest run desktop-builder.test.mjs`：1 个文件、7 项通过，0 项失败、0 项跳过。实际调用正式构建流程，使用独立临时项目与真实 Vite／esbuild，不打开用户窗口。
+- 测试日志中故意写入非法 TypeScript 的两处编译错误，分别验证编译失败与类型检查失败时保留已有产物，属于原有负向用例的预期输出，不是测试失败。
+- `node --check desktop-builder.test.mjs`：语法检查通过。
+- `npx eslint desktop-builder.test.mjs --max-warnings 0`：通过，零警告。
+- `git diff --check`：通过；差异只包含构建测试夹具、产物断言及本计划和目录 README 的验证状态说明。
+
+本次未修改正式编译器、Electron 或 Hermes 后端，也未启动完整桌面、调用 MaaS／模型或制作安装包；构建夹具通过不等于安装包与完整聊天验收通过。修复以 `4b7117310` 独立本地提交，完成时 R05 暂停；后续已按用户授权推送，R05 恢复后的实施结果见下文。
+
+### R05 实施记录（2026-10-10）
+
+按用户“继续”恢复 R05，删除 `.github/workflows/sync-gitcode.yml`。该工作流在 `develop-uni` 推送或手动触发时，使用 GitHub Secrets 向 GitCode 的 `develop-uni` 分支推送代码，不是桌面构建或发布流程。本步不增加替代同步机制；旧文件可从 Git 历史恢复。
+
+实际验证：
+
+- 删除前后检查全部跟踪文件：没有其它工作流或桌面构建调用该文件；删除后只有本计划保留文件名说明，未发现剩余 GitCode 同步调用或凭据变量引用。
+- 其余 52 个跟踪工作流文件的 SHA-256 与删除前完全一致；Git remotes 也与删除前一致。
+- 在 `tests-js` 执行 `npx vitest run desktop-builder.test.mjs`：1 个文件、7 项通过，0 项失败、0 项跳过；保留原有负向编译检查，没有修改测试或降低断言。
+- `git diff --check`：通过；本步差异仅涉及该同步工作流删除及本计划、目录 README 的实施状态说明。
+
+没有运行 GitCode 同步、访问或修改 GitHub Secrets、远端分支和 GitCode 历史。删除只针对当前 `desktop-mt` 分支，不代表其它分支中的工作流已经移除。桌面运行代码、云盘 UI 和 Hermes 后端保持不变；未启动完整桌面、制作安装包或验收完整聊天。R05 以 `70eedec74` 独立提交，后续已按用户当次授权推送。
+
+### R06 实施记录（2026-10-10）
+
+原生登录表单采用新页面的深色、蓝青渐变和品牌双栏设计。默认登录窗口调整为 1080×760；窄窗收起左侧展示，最小 400×300 窗口可滚动访问完整表单。继续使用现有 `BrandMark`、`Input`、`Button`，新增文案补齐九种语言。样式只作用于登录表单，不写入用户主题，也不改变登录后的 `ConnectingScreen` 和退出等待画面。
+
+身份和请求仍走原生五项受限 IPC，未搬运 Web 请求、浏览器凭据或第二套登录状态。表单校验、验证码刷新、短信冷却、重复提交保护、加密恢复、套餐查询和账号交接逻辑没有改动。云盘保持原状，旧 Renderer 登录链与第二次登录尚待 R08 删除，本步不宣称已消除双重登录。
+
+实际验证（命令在 `apps/desktop` 执行，Git 检查在仓库根执行）：
+
+- `npx vitest run --project ui src/app/login/page.test.tsx src/app/login/use-captcha.test.tsx src/app/login/use-sms.test.tsx src/app/login/exit-page.test.tsx src/i18n/catalog-completeness.test.ts --project electron electron/login/ipc.test.ts electron/login/session.test.ts electron/login/sms.test.ts electron/login/captcha.test.ts`：9 个文件、48 项通过。
+- `npm run typecheck`：完整 TypeScript 检查通过。登录页面、窗口和全部修改的国际化文件 ESLint 检查通过，零警告。
+- 设置 `HERMES_LOGIN_LIVE_CAPTCHA=0` 后执行 `node --test scripts/login-bootstrap.native.mjs`：最终 9 项通过、0 项失败，1 项原有真实 MaaS 验证码检查默认跳过。覆盖宽窗双栏、窄窗、400×300 滚动、键盘校验、受限桥接、短信冷却、跨进程加密恢复、A→B→A 账号准备、套餐与启动画面交接。
+- 首轮新增的矮窗边界检查失败：贴边自动滚动在 Windows 缩放下留下约 0.69 像素的边界误差。测试改为将控件居中滚动后继续检查完整边界，未放宽边界条件，整组复测通过。新增品牌图片后，真实验证码用例改为明确检查验证码图片加载，避免误检查品牌图片；该真实网络用例本轮没有运行。
+- `node --check scripts/login-bootstrap.native.mjs` 通过。原生脚本 ESLint 默认不识别页面回调中的浏览器全局；显式声明 `document`、`window`、`getComputedStyle`、`innerWidth`、`innerHeight` 后检查通过，没有关闭规则或修改产品配置。
+- 已检查宽窗、窄窗截图，保存在 `C:\Users\stan\AppData\Local\Temp\hermes-mt-login-ZyJXlM`；截图中的验证码为受控图片，不是实际 MaaS 图片。`git diff --check` 通过。
+
+测试使用独立窗口和目录，Electron、系统加密、文件与 IPC 实际执行；MaaS 短信／登录／套餐响应受控，桌面运行时交接使用观察夹具。没有真实短信登录、付费模型调用、完整聊天、安装包或用户已有窗口操作；未修改 Hermes Python 后端核心。R06 以 `3822c9335` 独立提交，后续已按用户当次授权推送。
+
+### R07 实施记录（2026-10-10）
+
+个人云盘保留原有页面位置、个人云盘／本地产物入口、搜索和操作区域，明确显示“云盘接口待接入”。搜索、新建、刷新、重命名、回收站、预览和下载均禁用，并关联状态说明；窄窗工具栏换行。未填充假文件或显示空盘、登录失败和持续加载，不保留可执行的旧操作处理器。本地产物的索引、打开、预览及远程文件能力继续沿用原实现。
+
+删除无其它消费者的 `src/api/drive.ts`，包括空间／文件请求、预览、下载和读取旧 Web 身份的逻辑。原有数据类型没有剩余消费者，一并删除；没有增加替代 API、IPC、空实现或新身份。云盘及两个入口的文案补齐九种语言。Python 云盘代理和旧 `AuthGate` 仍分别留待 R10／R08 清理，本步不修改后端，也不代表已消除第二次登录。
+
+实际验证（命令在 `apps/desktop` 执行，Git 检查在仓库根执行）：
+
+- 新增两项行为测试在旧实现上因缺少待接入状态失败；实施后执行 `npx vitest run --project ui src/app/artifacts/cloud-library.test.tsx src/app/artifacts/index.test.ts src/app/artifacts/remote-open.test.tsx src/i18n/catalog-completeness.test.ts`：4 个文件、52 项通过，无失败、无跳过。覆盖旧 Web 键无读取／清除、操作禁用和无请求、本地产物往返切换、既有文件索引、远程文件打开与翻译完整性。
+- 原有远程文件打开用例补上“本地产物”入口点击，保留全部路径与来源归属断言，没有降低断言。
+- `npm run typecheck`：完整 TypeScript 检查通过。修改的页面、测试和国际化文件 ESLint 检查通过，零警告。
+- `node --test scripts/cloud-library.native.mjs`：独立 Electron 1 项通过，无失败、无跳过。实际加载正式产物页面、样式和 preload；种下旧 Web 登录记录后，页面未读取这些键，自动进入和分派禁用按钮点击均无云盘 API 请求。本地产物走真实 IPC 获取受控会话／消息，打开文件仍走原生打开 IPC；夹具记录目标，不实际打开用户文件。
+- 新夹具初次初始化超时，随后临时入口的 React 绝对导入又绕过 Vite 预编译；已补上初始空白导航并改用正式依赖解析。一次 GPU 截图超时后，夹具沿用既有 E2E 的软件渲染，并保持后台绘制；最终整项复测通过，检查项均保留，未为夹具修改产品代码。
+- 已检查宽窗和 400×520 窄窗截图，所有控件横向边界检查通过。截图位于 `C:\Users\stan\AppData\Local\Temp\hermes-cloud-library-rUYpBr`。独立开发服务有依赖预编译的 Babel 大文件和 React Router 动态导入分析警告，页面没有运行错误。
+- 原生脚本语法与 ESLint 检查通过；后者显式声明页面回调使用的浏览器全局。废弃 API、类型和导入引用检查及 `git diff --check` 通过。
+
+本轮仅验收展示、禁用状态和无副作用，以及本地产物的受控 IPC 链路。没有查询或修改真实云盘，没有短信／付费模型调用，没有启动完整 Hermes 后端或制作安装包，也没有操作用户已有窗口、官方对照版或历史数据。R07 以 `8e8de000a` 独立提交，后续已按用户当次授权推送。
+
+### R08 实施记录（2026-10-10）
+
+解除 `src/main.tsx` 的 `AuthGate` 包裹，删除旧 `src/app/auth/` 两个模块、`src/api/auth.ts`、`src/store/uniwork-auth.ts` 和仅覆盖旧存储路径的测试。没有剩余消费者的旧登录类型随模块删除，不增加兼容导出、旧 token 回退或免登录入口。桌面继续由原生登录、加密恢复和账号环境准备授权，Renderer 不再读取或删除旧 Web 登录键。
+
+本步没有修改原生登录、账号生命周期、官方远程 OAuth、云盘 UI 或 Python 后端；没有清空 localStorage、分区、草稿和历史。Python 登录与云盘代理分别留待 R09／R10，不能把本步写成后端代理已删除。
+
+实际验证（命令在 `apps/desktop` 执行，Git 检查在仓库根执行）：
+
+- 新增两个主页面行为测试在旧实现上均因旧登录页拦截而失败；删除后先执行定向 6 文件回归，28 项通过。
+- 最终执行 `npx vitest run --maxWorkers 1 --testTimeout 30000 --project ui src/main.test.tsx src/app/artifacts/cloud-library.test.tsx src/app/artifacts/remote-open.test.tsx src/app/login/page.test.tsx src/app/shell/maas-account-status.test.tsx --project electron electron/login/ipc.test.ts electron/login/account-ipc.test.ts electron/login/session.test.ts electron/entry_local/runtime-context.test.ts`：9 个文件、39 项通过，无失败、无跳过。覆盖空／冲突旧缓存、主页面交接、原生 IPC、恢复、退出入口、账号上下文和云盘／本地产物。
+- 扩大回归的两轮运行中，云盘文件的首次动态导入超过原有 15 秒时限，超时后的迟到挂载又影响下一用例。最终使用单 worker 和 30 秒执行时限复测通过，没有修改原有测试、跳过用例或降低行为断言。主页面新测试首轮也遇到冷加载超时及 act 提示，补齐测试环境并在旧实现上重新确认两项预期失败后才实施删除。
+- `npm run typecheck` 通过；入口和新增测试 ESLint 零警告。新原生脚本语法检查及显式声明页面全局后的 ESLint 零警告。
+- 使用正式 Vite 配置构建主页面及 `login.html` 到独立临时目录，通过。仍有原有 `advancedChunks` 弃用和插件耗时警告，未修改构建配置。
+- 设置 `FIXTURE_PYTHON=C:\Users\stan\AppData\Local\Temp\hermes-p21-python-23865860e88446f487d9cf09aaf2aaf6\Scripts\python.exe` 后执行 `node --test scripts/single-login.native.mjs`：最终 1 项通过，无失败、无跳过。实际执行原生表单、受限 IPC、系统加密、原版后端、真实 REST／WS、首次登录、原期限恢复、两次退出清除凭据及 A→B→A 重登。聊天输入区实际可见，返回 A 后完整草稿正文和工作区文件保留，B 不读到 A 的内容。
+- 隔离页面在正式入口执行前观察 Chromium 存储；过期／损坏和有效但冲突的旧 Web 记录均不被读取或清除，重载后仍可进入聊天，原生 UID 不变。云盘待接入页保持可见，没有旧登录／云盘请求。重启请求由夹具记录，随后由夹具启动下一进程，不将本测试描述为开发监督进程自动重启的新增验收。
+- 新夹具前两轮误把恢复到云盘页当成聊天页，第三轮误对 `contenteditable` 使用 input 专用断言；已明确返回聊天并等待正式路由持久化，按元素实际类型读取完整正文。最终保留原身份、缓存、草稿和连接检查，未为夹具修改产品行为。
+- 已检查 B 与返回 A 的截图，位于 `C:\Users\stan\AppData\Local\Temp\hermes-single-login-d3IlUf`。删除目标与类型引用检查、既有计时文件 SHA-256 比较及 `git diff --check` 通过。
+
+MaaS 验证码、短信登录、套餐响应受控，没有发送真实短信、查询真实云盘、调用付费模型或制作安装包；未操作用户已有窗口、官方版或用户数据。工作区测试文件和草稿恢复不等于旧会话正文已验收；套餐 401 首次重登提示的已知问题仍未处理。R08 以 `3cb98c39d` 独立提交，后续已按用户当次授权推送。
+
+### R09 实施记录（2026-10-10）
+
+删除 `hermes_cli/web_routers/uniwork_auth.py`、`web_server.py` 的两处导入／注册及 `tests/test_uniwork_auth_routes.py`。引用检查确认只有该注册与专用测试仍使用旧代理，桌面已无消费者；没有其它失效使用说明需要保留。原生登录仍由 Electron 主进程请求 MaaS，不增加替代 Python 入口、兼容路由或第二套身份。官方本机令牌、OAuth、Cookie、REST／WS、会话与执行逻辑保留；云盘 UI 和 Python 云盘代理没有修改，后者留待 R10。
+
+实际验证（Python／Git 命令在仓库根执行，桌面命令在 `apps/desktop` 执行）：
+
+- 既有原生夹具 Python 没有 pytest；按 `CONTRIBUTING.md` 使用其 Python 3.14.7，通过 `pm.build_env --source . --out <独立临时目录>/venv --group dev --group test --extra web` 构建隔离测试环境，没有改变开发账号或官方版环境。
+- 新增两项真实 ASGI 行为测试。删除前旧验证码路由返回受控上游的 200，移除断言按预期失败；本机令牌鉴权用例通过。删除后首轮整组为 74 项通过、1 项失败，原因是新测试误要求未注册 POST 返回 404。核对原版 headless GET 通配路由后，将 POST 预期改为准确的 405，GET 仍严格要求 404，并保留三条入口和无上游请求检查；没有为测试修改通用路由。
+- 设置 `HERMES_PYTHON=C:/Users/stan/AppData/Local/Temp/hermes-r09-tests-fcdcb6217c694e3d88e898793d1edc12/venv/Scripts/python.exe`，通过本机 Git Bash 执行 `./scripts/run_tests.sh tests/hermes_cli/test_desktop_login_routes.py tests/hermes_cli/test_dashboard_auth_native_flow.py tests/hermes_cli/test_dashboard_auth_middleware.py tests/hermes_cli/test_dashboard_auth_ws_auth.py tests/hermes_cli/test_dashboard_auth_ws_tickets.py tests/hermes_cli/test_web_server_boot_handshake.py tests/test_uniwork_drive_routes.py -j 2 --file-retries 0 -q --tb=short`：最终 7 个文件、75 项通过，无失败、无跳过、无失败自动重试。实际加载正式后端和中间件，覆盖废弃接口拒绝、未授权 Profiles 的 401、有效令牌读取、官方 native OAuth／密码与 Cookie、WS 鉴权／ticket、启动握手及保留的云盘代理受控测试。
+- 设置既有独立 `FIXTURE_PYTHON` 后复测 `node --test scripts/single-login.native.mjs`：1 项通过，无失败、无跳过。实际执行 Electron、系统加密、原版后端、REST／WS、首次登录、恢复、退出重登和 A→B→A；返回 A 后完整草稿与默认工作区文件保留，B 不消费 A 的内容。旧 Web 缓存不被读取或删除，无旧登录／云盘请求，云盘待接入页面保留。重开请求仍由夹具记录后显式开下一进程，不新增自动监督重启的验收结论。
+- 已检查返回 A 的云盘截图，位于 `C:\Users\stan\AppData\Local\Temp\hermes-single-login-uXy89G\account-3.png`；测试结束没有遗留该夹具 Electron。构建仍有既有 `advancedChunks` 弃用和插件耗时提示。
+- 完整 `npm run typecheck`、新增 Python 测试 Ruff、`web_server.py` 与新增测试编译、删除引用检查和 `git diff --check` 通过。原云盘代理与专用测试无差异，既有五个本地计时文件 SHA-256 保持不变。
+
+MaaS、OAuth 身份提供方及云盘上游响应受控，没有发送真实短信、查询或改写真实云盘、调用付费模型或制作安装包；没有操作用户已有窗口、官方版和数据，也未修改 Hermes Python Agent 核心。文件与草稿保留不等于旧会话正文恢复已验收；套餐 401 首次提示问题仍未处理。R09 以 `897f480d4` 独立提交，后续已按用户当次授权推送。
+
+### R10 实施记录（2026-10-10）
+
+引用检查确认 `uniwork_drive.py` 只有 `web_server.py` 注册与专用测试两个消费者；桌面和其它跟踪代码没有调用。删除整个旧云盘代理、导入／注册及 `tests/test_uniwork_drive_routes.py`，不保留兼容入口或空实现。旧请求转发、云盘令牌缓存／刷新与云文件落盘预览随模块删除；未来接口接入另行确定，不复用旧 Web 身份。没有删除云盘 UI、用户已有预览缓存、历史或远端文件，也没有修改协作者 Web 分支。
+
+实际验证（Python／Git 命令在仓库根执行，桌面命令在 `apps/desktop` 执行）：
+
+- 新增两项真实 ASGI 行为测试，给出有效本机令牌和受控上游响应。删除前两项均因旧入口返回 200 而按预期失败，旧预览确实在独立临时目录生成文件；删除后严格要求两条 POST 入口返回原版 headless 通配路由的 405、无上游请求，已有预览文件内容和目录条目不变。没有改变通用路由或降低断言。
+- 沿用 R09 的独立 PM 测试环境，设置 `HERMES_PYTHON` 后用本机 Git Bash 执行 `./scripts/run_tests.sh tests/hermes_cli/test_desktop_drive_routes.py tests/hermes_cli/test_desktop_login_routes.py tests/hermes_cli/test_dashboard_auth_native_flow.py tests/hermes_cli/test_dashboard_auth_middleware.py tests/hermes_cli/test_dashboard_auth_ws_auth.py tests/hermes_cli/test_dashboard_auth_ws_tickets.py tests/hermes_cli/test_web_server_boot_handshake.py tests/hermes_cli/test_web_server_files.py tests/hermes_cli/test_web_server_fs.py -j 2 --file-retries 0 -q --tb=short`：9 个文件、98 项通过，无失败、无跳过、无失败自动重试。覆盖旧代理拒绝、本机令牌、OAuth／Cookie、WS 鉴权／ticket、启动握手、文件上传／下载、来源会话定位与敏感文件限制。
+- `npx vitest run --maxWorkers 1 --testTimeout 30000 --project ui src/app/artifacts/cloud-library.test.tsx src/app/artifacts/remote-open.test.tsx src/app/artifacts/index.test.ts`：3 个文件、32 项通过，无失败、无跳过。覆盖待接入提示、禁用操作、无云盘请求／旧凭据读取，以及本地产物索引和远程打开。
+- 设置既有独立 `FIXTURE_PYTHON` 后执行 `node --test scripts/single-login.native.mjs`：1 项通过，无失败、无跳过。实际执行 Electron、系统加密、原版后端、REST／WS、首次登录、恢复、退出重登及 A→B→A；返回 A 后完整草稿和默认工作区文件保留，B 不消费 A 内容。云盘待接入页面保留，无旧登录／云盘请求。重开由夹具记录请求后显式启动下一进程，不作为自动监督重启的新增验收。
+- 已检查首次登录的云盘截图，位于 `C:\Users\stan\AppData\Local\Temp\hermes-single-login-CyCflf\account-0.png`；四次账号截图均保留，测试结束未发现该夹具 Electron 遗留进程。构建仍有原有 `advancedChunks` 弃用和插件耗时提示。
+- 完整 `npm run typecheck`、新增测试 Ruff、`web_server.py` 与新增测试编译、废弃引用检查和 `git diff --check` 通过。既有五个本地计时文件 SHA-256 保持不变，没有修改 Renderer、Electron 或 Hermes Python Agent 核心。
+
+MaaS、OAuth 身份提供方与删除前的云盘上游响应受控，没有发送真实短信、查询或改写真实云盘、调用付费模型或制作安装包；没有操作用户已有窗口、官方版或用户数据。临时文件／草稿保留不等于旧会话正文恢复验收；套餐 401 首次提示问题仍未处理。R10 以 `1e2d07214` 独立提交，后续已按用户当次授权推送。
+
+### R11 实施记录（2026-10-10）
+
+于 2026-10-10～10-11 在 `1e2d07214` 上执行桌面清理后的回归。按用户本轮要求，修复发现的旧夹具问题并与验收文档放入同一 R11 提交，不另开修复提交；没有修改产品代码、Hermes Agent 核心、官方对照版或用户数据。
+
+夹具修复：
+
+- `account-desktop.native.mjs` 与 `account-logout.fixture.mjs` 的三处登录页观察仍使用“登录 Hermes”，未适配 R06。改为当前标题；Playwright 使用精确标题匹配，退出监督夹具检查真实 `h1`，不删账号、期限、存储和停止断言。
+- `dev-electron.native.mjs` 的 ESM bundle 缺少正式构建已有的 `createRequire` 引导，YAML 内部的 CommonJS 引用报错，两个用例超时。补齐同一引导，保留连续重启、普通退出和异常退出检查。
+- `cloud-library.native.mjs` 的 `port: 0` 在当前 Vite 回落为 5173，并继承严格端口配置；并行夹具占用时启动失败，监听步骤又不在收尾保护内。改用现有夹具的空闲端口选择机制，将监听纳入失败收尾；新增真实占用端口的行为测试，验证原服务不受影响、夹具关闭后不可访问。
+- 清除账号夹具无用的捕获变量、未使用的 URL 参数，拆开有歧义的跨行属性读取。没有删除仍有价值的原生用例，也未清空失败记录；已废弃浏览器／Web 专用测试在先前步骤随代码删除，没有剩余消费者。
+
+本轮实际结果（同一用例重测不重复累计）：
+
+| 检查 | 结果与边界 |
+| --- | --- |
+| Electron／UI 组件定向组 | 47 个文件、230 项通过，无失败、无跳过；含登录、账号生命周期、IPC、附件、预览、云盘和翻译 |
+| Python 后端定向组 | 9 个文件、98 项通过，无失败、无跳过；含废弃代理拒绝、令牌、OAuth／Cookie、WS、上传／下载和文件限制 |
+| 桌面构建夹具 | 7 项通过，无失败、无跳过；检查真实 `login-preload.js` 构建与执行，保留负向编译用例 |
+| 原生登录 | 9 项通过；1 项原有真实 MaaS 验证码检查默认跳过，未发送真实短信 |
+| 原生退出等待窗 | 4 项通过；浅／深色账号退出、完整退出隐藏和失败窗口 |
+| 原生单登录 | 1 项通过；正式表单、加密、后端 REST／WS、A→B→A、完整草稿和文件、旧 Web 缓存无消费 |
+| 云盘／开发监督重启 | 修复后合组 4 项通过，无失败、无跳过；其中云盘 2 项、重启 2 项 |
+| 原生账号整组与对应重测 | 按最终用例状态去重，12 项通过、401 提示 1 项失败；其中 4 项来自对应场景的后续定向重测，不宣称一次整组全绿 |
+| 原版网关停止与缺失身份恢复 | 两条独立原生命令各 1 项通过；冲突拒绝、其它 Home 健康、重复停止、创建时间缺失恢复 |
+| 类型／Lint／构建／静态检查 | 完整 TypeScript、21 个本轮产品 TS／TSX 文件及 4 个修改脚本 ESLint 零警告、脚本语法、主页面与登录页 Renderer 构建、废弃引用和 Git 差异检查通过 |
+
+首轮失败与重测没有隐去：账号完整命令最初为 8 项通过、5 项失败，其中 3 项因旧独立 Python 缺少 `aiohttp` 无法启动夹具网关，1 项因旧登录标题阻断完整隔离，1 项是已知套餐 401。通过原版 PM 在新临时目录准备 `dev / test / web / messaging` 环境，实际导入 `aiohttp`、MCP 和 psutil 后，运行中崩溃恢复用例通过；标题修复后，真实退出监督和完整 A→B→A 用例通过。补依赖后的中间轮仍暴露退出辅助夹具的旧标题与到期焦点失败，均单列，不把环境准备等同于产品修复。
+
+最终短期限用例在没有其它原生夹具并行运行时，原断言全部通过：四类工具在原期限前启动，到期后心跳继续、账号与凭据期限不变、页面焦点不被到期提示移动、通知只出现一次、手动退出停止工作、冷启动拒绝过期记录。没有修改系统时间或到期产品实现。此前并行轮次的焦点失败保留，只记录串行复测结果，不据此推断已经查明产品根因。
+
+按最终用例状态去重，原生检查共 32 项通过、1 项已知 401 失败、1 项原有真实网络检查跳过；由上述多条实际命令取得，不是一次全绿整组结果，也不重复计算首次失败后的重测。
+
+五文件原生合组首轮为 14 项通过、1 项失败、2 项超时取消、1 项原有网络检查跳过；云盘占用冲突发生在页面检查之前，开发重启超时源于夹具 bundle。清理的仅是两条已核对 PID、父进程和创建时间的失败云盘测试子进程。新增端口占用用例在修复前按预期报占用错误；修复后不使用强制退出，云盘与重启全部通过。单登录与其它登录／退出通过项保留各自真实结果，不将首轮合组写成全通过。
+
+复现入口（除注明外在 `apps/desktop` 执行；使用完整路径指定本轮独立 `FIXTURE_PYTHON`，`HERMES_LOGIN_LIVE_CAPTCHA=0`）：
+
+```powershell
+node --test --test-concurrency=1 scripts/account-desktop.native.mjs
+node --test --test-concurrency=1 scripts/login-bootstrap.native.mjs scripts/account-exit-window.native.mjs scripts/dev-electron.native.mjs scripts/cloud-library.native.mjs scripts/single-login.native.mjs
+node --test --test-concurrency=1 scripts/cloud-library.native.mjs scripts/dev-electron.native.mjs
+node --test --test-concurrency=1 --test-name-pattern='P25 真实 Electron：running' scripts/account-desktop.native.mjs
+node --test --test-concurrency=1 --test-name-pattern='P19/P20 真实开发监督进程|P15～P17 原生 Electron' scripts/account-desktop.native.mjs
+node --test --test-concurrency=1 --test-name-pattern='P22 真实短期限' scripts/account-desktop.native.mjs
+node --test --test-isolation=none scripts/gateway-incomplete-identity.native.mjs
+node --test scripts/gateway-logout.native.mjs
+npm run typecheck
+```
+
+组件组使用 `npx --no-install vitest run --maxWorkers 1 --testTimeout 30000`，Electron 目标为 `electron/login`、`electron/entry_local`、三个 preload 用例、三个 `gateway-file-download` 用例、`preview-guest-preload.test.ts` 与 `scripts/dev-electron.test.mjs`；UI 目标为 `src/main.test.tsx`、`src/app/login`、账号角标、错误文案、翻译、缩放、三个产物用例及附件／文件预览／预览窗／会话附件用例。构建组在 `tests-js` 执行 `npx --no-install vitest run desktop-builder.test.mjs`。
+
+Python 通过本机 Git Bash 的原版 `scripts/run_tests.sh` 运行，设置独立 `HERMES_PYTHON`，目标为 `tests/hermes_cli/` 下的 `test_desktop_drive_routes.py`、`test_desktop_login_routes.py`、四个 `test_dashboard_auth_*`、`test_web_server_boot_handshake.py`、`test_web_server_files.py`、`test_web_server_fs.py`；参数 `-j 2 --file-retries 0 -q --tb=short`，没有失败自动重试。
+
+检查了新登录页宽／窄窗、云盘窄窗与返回 A 的桌面截图。代表性证据位于临时目录 `hermes-mt-login-FJsvWT`、`hermes-cloud-library-pgPgX5`、`hermes-mt-desktop-OMldNL`、`hermes-single-login-AYfbRY`；登录图片与响应受控。正式双入口 Renderer 产物位于 `hermes-r11-renderer-Rn8XUu`，不是独立安装包。
+
+保留既有 `advancedChunks` 弃用、插件耗时、Vite 依赖动态导入／大文件警告；部分原生退出日志出现 PTY `AttachConsole failed` 或 GPU 警告，相应进程及退出断言仍通过，未据此宣称运行日志无异常。
+
+套餐 401 首次聊天页重登提示仍未通过，主进程拒绝标志和退出入口保留。本轮未修复该产品问题，也没有跳过或降低其可见性断言。真实短信双账号、UID 稳定性、实际套餐／有效无套餐、付费模型、旧对话正文、真实 MCP／消息平台、官方版并行、系统重启／休眠和安装包仍待人工验收；云盘业务尚未接入。测试不操作用户现有窗口，不删除历史、缓存或远端文件。本轮只做本地 R11 提交，完成后停下等待用户核验，不推送。
+
+本轮开始前已存在且必须保留、不纳入这些提交的文件：
+
+```text
+ M apps/desktop/scripts/account-desktop.native.mjs
+ M apps/desktop/scripts/login-renderer.fixture.mjs
+?? apps/desktop/scripts/account-startup-compare.native.mjs
+?? apps/desktop/scripts/account-timing.native.mjs
+?? apps/desktop/scripts/account-timing.probe.mjs
+```
+
+实施时以重新读取的工作区状态为准。若测试必须修改这些已有文件，应先隔离本次改动与用户改动；不能直接整文件提交，也不能覆盖其本地内容。

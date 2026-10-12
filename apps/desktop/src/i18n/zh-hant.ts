@@ -4,7 +4,24 @@ import { defineLocale } from './define-locale'
 import { introZhHant } from './intro-zh-hant'
 
 export const zhHant = defineLocale({
+  cloudLibrary: {
+    personal: '個人雲端硬碟',
+    local: '本機產物',
+    search: '搜尋目前資料夾',
+    createFolder: '新增資料夾',
+    refresh: '重新整理',
+    rename: '重新命名',
+    trash: '移至垃圾桶',
+    preview: '預覽',
+    download: '下載',
+    unavailable: '雲端硬碟介面待接入',
+    unavailableDescription: '暫時無法查看雲端檔案，搜尋與檔案操作將在接入後開放。'
+  },
   desktopLogin: {
+    brand: 'UNIWORK',
+    welcome: '歡迎使用 UniWork',
+    headline: '讓工作流動起來，',
+    headlineAccent: '讓智慧觸手可及。',
     logout: '登出',
     logoutTitle: '登出目前帳號？',
     logoutDescription: '將停止目前帳號的本機後端、訊息閘道及其託管工作，並返回登入頁。保留歷史、檔案與排程工作定義。',
@@ -21,7 +38,7 @@ export const zhHant = defineLocale({
     captchaPlaceholder: '輸入圖片文字',
     smsPlaceholder: '6 位數字',
     captchaLoadError: '圖形驗證碼取得失敗，請點擊重新整理圖片重試。',
-    title: '登入 Hermes',
+    title: '登入你的工作空間',
     subtitle: '使用 MaaS 帳號，進入自己的本機工作空間。',
     phone: '手機號碼',
     captcha: '圖片驗證碼',

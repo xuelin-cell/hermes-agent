@@ -3,7 +3,25 @@ import { FIELD_DESCRIPTIONS, FIELD_LABELS } from '@/app/settings/constants'
 import type { Translations } from './types'
 
 export const en: Translations = {
+  cloudLibrary: {
+    personal: 'Personal drive',
+    local: 'Local artifacts',
+    search: 'Search current folder',
+    createFolder: 'New folder',
+    refresh: 'Refresh',
+    rename: 'Rename',
+    trash: 'Move to trash',
+    preview: 'Preview',
+    download: 'Download',
+    unavailable: 'Cloud drive integration pending',
+    unavailableDescription:
+      'Cloud files are not available yet. Search and file operations will be enabled after integration.'
+  },
   desktopLogin: {
+    brand: 'UNIWORK',
+    welcome: 'Welcome to UniWork',
+    headline: 'Let your work flow.',
+    headlineAccent: 'Intelligence within reach.',
     logout: 'Sign out',
     logoutTitle: 'Sign out of this account?',
     logoutDescription:
@@ -21,7 +39,7 @@ export const en: Translations = {
     captchaPlaceholder: 'Enter the image code',
     smsPlaceholder: '6-digit code',
     captchaLoadError: 'Could not load the captcha. Refresh the image to retry.',
-    title: 'Sign in to Hermes',
+    title: 'Sign in to your workspace',
     subtitle: 'Use your MaaS account to access your own local workspace.',
     phone: 'Phone number',
     captcha: 'Image code',

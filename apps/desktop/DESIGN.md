@@ -351,6 +351,8 @@ so glass and message-bubble transparency do not reveal scrolling text.
 
 ## Feedback & empty/error/loading states
 
+资料库的个人云盘在接口接入前保留入口、搜索和操作区域，显示本地化待接入状态；搜索、新建、刷新和文件操作禁用，并关联同一状态说明。工具栏在窄窗换行，不使用假文件、空盘提示或持续加载掩盖未接入状态。本地产物仍按原有会话与文件链路工作。
+
 - **Loading:** `Loader` (`src/components/ui/loader.tsx`) — animated math/ascii
   curves (`lemniscate-bloom` for long ops). Never ship the literal text
   "Loading…".
@@ -577,6 +579,8 @@ The detailed state contract lives in the scoped
 ## Before you add something — checklist
 
 登录表单复用 `Input`、`Button` 的 `size="auth"`：44px 最小高度、10px 圆角及 14px 正文，用于独立登录卡片。`Button size="captcha"` 提供 96×44px 的无内边距图片操作位。普通桌面控件的默认尺寸保持原有约定。验证码以同一行中的图片按钮呈现，点击、Enter 或 Space 均可刷新；图片加载和失败仍保留该位置。
+
+桌面 MaaS 登录页使用 `src/app/login/login.css` 的局部深色 token、蓝青渐变背景和主按钮，保持上述控件尺寸与行为。宽窗展示品牌／表单双栏，窄窗保留完整表单并允许纵向滚动。配色只绑定 `.desktop-login`，不改变根主题、用户偏好、登录后的启动画面或退出等待页；品牌与宣传文案使用国际化，说明限定为已实现的本地工作空间。
 
 登录或恢复身份后，直接使用 `ConnectingScreen` 的官方 `CONNECTING` 动画；该纯展示组件也由 `GatewayConnectingOverlay` 使用。账号与套餐卡片不作为启动中间页，不添加进度解释或额外文案。主进程在后台准备账号环境，原版首窗就绪后交接，桌面的连接完成动画保持原有行为。
 

@@ -59,7 +59,24 @@ interface AuxTaskCopy {
 }
 
 export interface Translations {
+  cloudLibrary: {
+    personal: string
+    local: string
+    search: string
+    createFolder: string
+    refresh: string
+    rename: string
+    trash: string
+    preview: string
+    download: string
+    unavailable: string
+    unavailableDescription: string
+  }
   desktopLogin: {
+    brand: string
+    welcome: string
+    headline: string
+    headlineAccent: string
     logout: string
     logoutTitle: string
     logoutDescription: string

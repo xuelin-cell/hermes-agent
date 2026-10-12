@@ -24,7 +24,25 @@ const RU_NOUN = (count: number | string, one: string, few: string, many: string)
 }
 
 export const ru = defineLocale({
+  cloudLibrary: {
+    personal: 'Личное облачное хранилище',
+    local: 'Локальные результаты',
+    search: 'Поиск в текущей папке',
+    createFolder: 'Новая папка',
+    refresh: 'Обновить',
+    rename: 'Переименовать',
+    trash: 'В корзину',
+    preview: 'Предпросмотр',
+    download: 'Скачать',
+    unavailable: 'Облачное хранилище ещё не подключено',
+    unavailableDescription:
+      'Облачные файлы пока недоступны. Поиск и операции с файлами станут доступны после подключения.'
+  },
   desktopLogin: {
+    brand: 'UNIWORK',
+    welcome: 'Добро пожаловать в UniWork',
+    headline: 'Пусть работа идёт легко.',
+    headlineAccent: 'Интеллект всегда рядом.',
     logout: 'Выйти',
     logoutTitle: 'Выйти из этого аккаунта?',
     logoutDescription:
@@ -42,7 +60,7 @@ export const ru = defineLocale({
     captchaPlaceholder: 'Код с изображения',
     smsPlaceholder: '6 цифр',
     captchaLoadError: 'Не удалось загрузить капчу. Обновите изображение и повторите попытку.',
-    title: 'Войти в Hermes',
+    title: 'Вход в ваше рабочее пространство',
     subtitle: 'Используйте аккаунт MaaS для доступа к своему локальному рабочему пространству.',
     phone: 'Номер телефона',
     captcha: 'Код с картинки',
