@@ -20,6 +20,8 @@ const getRecommendedSkills = vi.fn().mockResolvedValue([
 ])
 const installUniWorkSkill = vi.fn().mockResolvedValue({ ok: true, name: 'office-writer', install_path: 'office-writer' })
 const installHubSkill = vi.fn().mockResolvedValue(undefined)
+const notify = vi.fn()
+const notifyError = vi.fn()
 
 vi.mock('@/hermes', async importOriginal => ({
   ...(await importOriginal<typeof HermesApi>()),
@@ -29,10 +31,14 @@ vi.mock('@/hermes', async importOriginal => ({
 }))
 
 vi.mock('@/store/hub-actions', () => ({ installHubSkill }))
+vi.mock('@/store/notifications', () => ({ notify, notifyError }))
 
 const { SkillMarket } = await import('./skill-market')
 
-afterEach(() => cleanup())
+afterEach(() => {
+  cleanup()
+  vi.clearAllMocks()
+})
 
 describe('SkillMarket', () => {
   it('推荐技能使用与已安装技能一致的目录卡片外观', async () => {
@@ -71,7 +77,7 @@ describe('SkillMarket', () => {
     await vi.waitFor(() => expect(installUniWorkSkill).toHaveBeenCalledWith(expect.objectContaining({ id: 'writer' }), undefined))
   })
 
-  it('市场技能同时提供下载地址时优先使用 ClawHub 安装链', async () => {
+  it('市场技能同时提供页面和下载地址时直接安装下载包', async () => {
     getRecommendedSkills.mockResolvedValueOnce([
       {
         id: '1password',
@@ -92,7 +98,23 @@ describe('SkillMarket', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Install' }))
 
     await vi.waitFor(() =>
-      expect(installHubSkill).toHaveBeenCalledWith('https://clawhub.ai/steipete/1password', undefined)
+      expect(installUniWorkSkill).toHaveBeenCalledWith(expect.objectContaining({ id: '1password' }), undefined)
     )
+    expect(installHubSkill).not.toHaveBeenCalled()
+  })
+
+  it('安装接口返回未完成时不会显示成功提示', async () => {
+    installUniWorkSkill.mockResolvedValueOnce({ ok: false, name: '', install_path: '' })
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <SkillMarket installed={<div>installed</div>} installedCount={0} installedNames={new Set()} />
+      </QueryClientProvider>
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Recommended' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Install' }))
+
+    await vi.waitFor(() => expect(notifyError).toHaveBeenCalled())
+    expect(notify).not.toHaveBeenCalled()
   })
 })

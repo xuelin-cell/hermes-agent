@@ -107,14 +107,14 @@ export function SkillMarket({ installed, installedCount, installedNames, profile
     setInstalling(skill.id)
 
     try {
-      if (skill.package_download_path) {
-        await installUniWorkSkill(skill, profile)
+      if (skill.package_download_path || skill.download_url) {
+        const result = await installUniWorkSkill(skill, profile)
+        if (!result.ok || !result.name || !result.install_path) {
+          throw new Error(zh ? '技能安装未完成，请重试' : 'Skill installation did not complete. Please retry.')
+        }
         await queryClient.invalidateQueries({ queryKey: SKILLS_QUERY_KEY })
       } else if (skill.clawhub_url) {
         await installHubSkill(skill.clawhub_url, profile)
-      } else if (skill.download_url) {
-        await installUniWorkSkill(skill, profile)
-        await queryClient.invalidateQueries({ queryKey: SKILLS_QUERY_KEY })
       } else {
         throw new Error(zh ? '该技能暂时没有可安装的软件包' : 'No installable package is available.')
       }

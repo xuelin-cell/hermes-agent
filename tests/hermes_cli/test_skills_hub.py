@@ -605,6 +605,24 @@ def test_do_install_stale_index_names_the_problem(monkeypatch):
     assert "Could not fetch" not in out
 
 
+def test_cli_install_download_failure_exits_nonzero(monkeypatch):
+    """真实安装分支下载不到包时，CLI 必须向桌面动作返回失败退出码。"""
+    from types import SimpleNamespace
+    import hermes_cli.skills_hub as cli_hub
+
+    console, sink = _stale_env(monkeypatch)
+    monkeypatch.setattr(cli_hub, "_console", console)
+    args = SimpleNamespace(
+        skills_action="install", identifier="skills-sh/org/gone-skill",
+        category="", force=False, yes=True, name="",
+    )
+    with pytest.raises(SystemExit) as error:
+        cli_hub.skills_command(args)
+
+    assert error.value.code == 1
+    assert "Stale index entry" in sink.getvalue()
+
+
 @pytest.mark.parametrize("meta_hit", [False, True])
 def test_do_install_generic_when_no_index_hit_or_rate_limited(monkeypatch, meta_hit):
     """No index hit — or a throttled fetch that only *looks* like a stale entry — keeps the
