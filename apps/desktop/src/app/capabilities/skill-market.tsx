@@ -1,7 +1,10 @@
+import './catalog/catalog.css'
+
 import { useQuery } from '@tanstack/react-query'
 import type * as React from 'react'
 import { useMemo, useState } from 'react'
 
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import type { ProfileScope, UniWorkSkill } from '@/hermes'
 import {
@@ -15,6 +18,8 @@ import { Loader2, Plus, Search } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { installHubSkill } from '@/store/hub-actions'
 import { notify, notifyError } from '@/store/notifications'
+
+import { CARD_ACCENTS } from './catalog/catalog-card'
 
 type MarketTab = 'recommended' | 'market' | 'installed'
 
@@ -72,7 +77,9 @@ export function SkillMarket({ installed, installedCount, installedNames, profile
 
     return (skills ?? []).filter(skill => {
       const inCategory = category === 'all' || skill.category === category || skill.category_id === category
-      const inSearch = !needle || `${skill.name} ${skill.description} ${skill.provider ?? ''}`.toLocaleLowerCase().includes(needle)
+
+      const inSearch =
+        !needle || `${skill.name} ${skill.description} ${skill.provider ?? ''}`.toLocaleLowerCase().includes(needle)
 
       return inCategory && inSearch
     })
@@ -90,7 +97,10 @@ export function SkillMarket({ installed, installedCount, installedNames, profile
   )
 
   async function install(skill: UniWorkSkill) {
-    if (installedNames.has(skill.name)) {return}
+    if (installedNames.has(skill.name)) {
+      return
+    }
+
     setInstalling(skill.id)
 
     try {
@@ -102,7 +112,11 @@ export function SkillMarket({ installed, installedCount, installedNames, profile
         throw new Error(zh ? '该技能暂时没有可安装的软件包' : 'No installable package is available.')
       }
 
-      notify({ kind: 'success', title: zh ? `正在安装 ${skill.name}` : `Installing ${skill.name}`, message: zh ? '可在操作日志中查看进度' : 'Follow progress in the action log.' })
+      notify({
+        kind: 'success',
+        title: zh ? `正在安装 ${skill.name}` : `Installing ${skill.name}`,
+        message: zh ? '可在操作日志中查看进度' : 'Follow progress in the action log.'
+      })
     } catch (error) {
       notifyError(error, zh ? '安装失败' : 'Install failed')
     } finally {
@@ -122,54 +136,95 @@ export function SkillMarket({ installed, installedCount, installedNames, profile
         <div className="flex gap-7">
           {tabs.map(item => (
             <button
-              className={cn('relative pb-2 text-sm font-semibold text-(--ui-text-tertiary)', tab === item.id && 'text-(--ui-text-primary) after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-full after:bg-(--accent-primary)')}
+              className={cn(
+                'relative pb-2 text-sm font-semibold text-(--ui-text-tertiary)',
+                tab === item.id &&
+                  'text-(--ui-text-primary) after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-full after:bg-(--accent-primary)'
+              )}
               key={item.id}
-              onClick={() => { setTab(item.id); setCategory('all') }}
+              onClick={() => {
+                setTab(item.id)
+                setCategory('all')
+              }}
               type="button"
             >
-              {item.label}{item.count !== undefined && <span className="ml-2 rounded-full bg-(--ui-bg-quaternary) px-2 py-0.5 text-xs">{item.count}</span>}
+              {item.label}
+              {item.count !== undefined && (
+                <span className="ml-2 rounded-full bg-(--ui-bg-quaternary) px-2 py-0.5 text-xs">{item.count}</span>
+              )}
             </button>
           ))}
         </div>
         {tab !== 'installed' && (
           <label className="mb-2 flex w-72 items-center gap-2 rounded-lg border border-(--ui-stroke-secondary) bg-(--ui-bg-quaternary) px-3 py-1.5">
             <Search className="size-4 text-(--ui-text-tertiary)" />
-            <input className="min-w-0 flex-1 bg-transparent text-sm outline-none" onChange={event => setQuery(event.target.value)} placeholder={zh ? '搜索技能' : 'Search skills'} value={query} />
+            <input
+              className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+              onChange={event => setQuery(event.target.value)}
+              placeholder={zh ? '搜索技能' : 'Search skills'}
+              value={query}
+            />
           </label>
         )}
       </div>
 
-      {tab === 'installed' ? installed : (
+      {tab === 'installed' ? (
+        installed
+      ) : (
         <div className="min-h-0 flex-1 overflow-auto px-5 py-4">
           <div className="mb-4 flex flex-wrap gap-2">
-            <CategoryButton active={category === 'all'} onClick={() => setCategory('all')}>{zh ? '全部' : 'All'}</CategoryButton>
-            {visibleCategories.map(item => <CategoryButton active={category === item.id} key={item.id} onClick={() => setCategory(item.id)}>{item.name}</CategoryButton>)}
-            {tab === 'market' && <a className="ml-auto text-xs text-(--ui-text-secondary) hover:text-(--ui-text-primary)" href="https://skillhub.ai-yuanjing.com:8081/skill-square/" rel="noreferrer" target="_blank">↗ {zh ? '元景万悟 Skills' : 'Yuanjing Skills'}</a>}
+            <CategoryButton active={category === 'all'} onClick={() => setCategory('all')}>
+              {zh ? '全部' : 'All'}
+            </CategoryButton>
+            {visibleCategories.map(item => (
+              <CategoryButton active={category === item.id} key={item.id} onClick={() => setCategory(item.id)}>
+                {item.name}
+              </CategoryButton>
+            ))}
+            {tab === 'market' && (
+              <a
+                className="ml-auto text-xs text-(--ui-text-secondary) hover:text-(--ui-text-primary)"
+                href="https://skillhub.ai-yuanjing.com:8081/skill-square/"
+                rel="noreferrer"
+                target="_blank"
+              >
+                ↗ {zh ? '元景万悟 Skills' : 'Yuanjing Skills'}
+              </a>
+            )}
           </div>
-          {(marketSkills.isLoading || recommendedSkills.isLoading) ? (
-            <div className="flex h-48 items-center justify-center"><Loader2 className="size-5 animate-spin" /></div>
+          {marketSkills.isLoading || recommendedSkills.isLoading ? (
+            <div className="flex h-48 items-center justify-center">
+              <Loader2 className="size-5 animate-spin" />
+            </div>
           ) : (tab === 'market' ? marketSkills.isError : recommendedSkills.isError) ? (
-            <div className="flex h-48 items-center justify-center text-sm text-(--ui-text-tertiary)">{zh ? '技能市场加载失败，请稍后重试' : 'Could not load the skill market. Try again later.'}</div>
+            <div className="flex h-48 items-center justify-center text-sm text-(--ui-text-tertiary)">
+              {zh ? '技能市场加载失败，请稍后重试' : 'Could not load the skill market. Try again later.'}
+            </div>
           ) : visible.length === 0 ? (
-            <div className="flex h-48 items-center justify-center text-sm text-(--ui-text-tertiary)">{zh ? '没有找到匹配的技能' : 'No matching skills found.'}</div>
+            <div className="flex h-48 items-center justify-center text-sm text-(--ui-text-tertiary)">
+              {zh ? '没有找到匹配的技能' : 'No matching skills found.'}
+            </div>
           ) : (
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-3">
-              {visible.map(skill => {
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-3" data-catalog-hover-group>
+              {visible.map((skill, index) => {
                 const installedSkill = installedNames.has(skill.name)
 
-                return <article className="min-h-30 rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-bg-quaternary) p-3.5" key={skill.id}>
-                  <div className="flex items-start gap-2.5">
-                    <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-(--accent-primary) text-xs font-bold text-white">{skill.name.slice(0, 2).toUpperCase()}</div>
-                    <div className="min-w-0 flex-1">
-                      <h3 className="truncate text-sm font-semibold">{skill.name}</h3>
-                      <p className="mt-1 line-clamp-2 text-xs leading-5 text-(--ui-text-secondary)">{skill.description}</p>
-                      <p className="mt-1.5 truncate text-[0.68rem] text-(--ui-text-tertiary)">{skill.provider || skill.category}</p>
-                    </div>
-                    <Button aria-label={installedSkill ? (zh ? '已安装' : 'Installed') : (zh ? '安装' : 'Install')} disabled={installedSkill || installing === skill.id} onClick={() => void install(skill)} size="icon-sm" variant="outline">
-                      {installing === skill.id ? <Loader2 className="size-4 animate-spin" /> : installedSkill ? '✓' : <Plus className="size-4" />}
-                    </Button>
-                  </div>
-                </article>
+                return (
+                  <MarketSkillCard
+                    category={skill.category}
+                    description={skill.description}
+                    index={index}
+                    installed={installedSkill}
+                    installing={installing === skill.id}
+                    key={skill.id}
+                    name={skill.name}
+                    onCategory={value => setCategory(value)}
+                    onInstall={() => void install(skill)}
+                    provider={skill.provider}
+                    tags={skill.tags}
+                    zh={zh}
+                  />
+                )
               })}
             </div>
           )}
@@ -179,6 +234,102 @@ export function SkillMarket({ installed, installedCount, installedNames, profile
   )
 }
 
-function CategoryButton({ active, children, onClick }: { active: boolean; children: React.ReactNode; onClick: () => void }) {
-  return <button className={cn('rounded-lg px-3 py-1.5 text-sm text-(--ui-text-secondary)', active && 'border border-(--accent-primary) bg-(--ui-bg-quaternary) font-semibold text-(--accent-primary)')} onClick={onClick} type="button">{children}</button>
+interface MarketSkillCardProps {
+  category?: string
+  description: string
+  index: number
+  installed: boolean
+  installing: boolean
+  name: string
+  onCategory: (category: string) => void
+  onInstall: () => void
+  provider?: string
+  tags?: string[]
+  zh: boolean
+}
+
+/** 使用已安装技能卡片的视觉规范展示市场技能，同时保留市场安装操作。 */
+function MarketSkillCard({
+  category,
+  description,
+  index,
+  installed,
+  installing,
+  name,
+  onCategory,
+  onInstall,
+  provider,
+  tags = [],
+  zh
+}: MarketSkillCardProps) {
+  return (
+    <article
+      className={cn(
+        'group relative flex min-h-48 min-w-0 flex-col overflow-hidden rounded-lg border',
+        CARD_ACCENTS[index % CARD_ACCENTS.length]
+      )}
+      data-catalog-card
+    >
+      <div className="flex min-h-0 flex-1 flex-col gap-2 p-3">
+        <div className="flex min-w-0 items-start gap-2.5">
+          <h3 className="line-clamp-2 min-w-0 flex-1 break-words text-lg font-semibold leading-snug">{name}</h3>
+          <span className="relative shrink-0 opacity-[.66] transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+            <Button
+              aria-label={installed ? (zh ? '已安装' : 'Installed') : zh ? '安装' : 'Install'}
+              disabled={installed || installing}
+              onClick={onInstall}
+              size="icon-sm"
+              variant="outline"
+            >
+              {installing ? <Loader2 className="size-4 animate-spin" /> : installed ? '✓' : <Plus className="size-4" />}
+            </Button>
+          </span>
+        </div>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
+          <span className="truncate text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)">
+            {provider || category}
+          </span>
+          <p className="line-clamp-4 min-h-0 text-[length:var(--conversation-caption-font-size)] leading-relaxed text-(--ui-text-secondary)">
+            {description}
+          </p>
+        </div>
+      </div>
+      <div className="mt-auto flex flex-wrap items-center gap-1 px-3 pb-3">
+        {category && (
+          <Button onClick={() => onCategory(category)} size="xs" variant="chip">
+            {category}
+          </Button>
+        )}
+        {tags.slice(0, 4).map(tag => (
+          <Badge key={tag} variant="muted">
+            {tag}
+          </Badge>
+        ))}
+        {tags.length > 4 && <Badge variant="muted">+{tags.length - 4}</Badge>}
+      </div>
+    </article>
+  )
+}
+
+function CategoryButton({
+  active,
+  children,
+  onClick
+}: {
+  active: boolean
+  children: React.ReactNode
+  onClick: () => void
+}) {
+  return (
+    <button
+      className={cn(
+        'rounded-lg px-3 py-1.5 text-sm text-(--ui-text-secondary)',
+        active && 'border border-(--accent-primary) bg-(--ui-bg-quaternary) font-semibold text-(--accent-primary)'
+      )}
+      onClick={onClick}
+      type="button"
+    >
+      {children}
+    </button>
+  )
 }

@@ -50,7 +50,7 @@ export function CatalogImage({ src, className }: { src: string; className?: stri
 
 // Shared classes, not per-card inline custom properties: identical declarations
 // let the style engine reuse computed styles across cards. catalog.css paints them.
-const CARD_ACCENTS = [
+export const CARD_ACCENTS = [
   '[--catalog-accent:var(--ui-blue)]',
   '[--catalog-accent:var(--ui-orange)]',
   '[--catalog-accent:var(--ui-purple)]',
