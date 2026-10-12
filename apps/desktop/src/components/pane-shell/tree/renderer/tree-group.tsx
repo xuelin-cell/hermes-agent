@@ -568,7 +568,7 @@ export function TreeGroup({
           ) : headerVisible ? (
             <ZoneMenu {...zoneMenu}>
               <PaneTabStrip
-                className={cn('flex-1', tabsBelowControls && 'absolute inset-x-0 bottom-0')}
+                className={cn('flex-1', sidebarGroup && 'pl-3', tabsBelowControls && 'absolute inset-x-0 bottom-0')}
                 // data-zone-tabstrip: a drop over here STACKS (drag-session reads it).
                 data-zone-tabstrip={node.id}
                 listRef={tabsRef}
