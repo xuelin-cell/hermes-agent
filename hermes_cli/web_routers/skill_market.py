@@ -7,8 +7,7 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from hermes_cli.web_routers._common import spawn_profile_action
-from hermes_cli.web_server_profiles import _hub_action_name
+from hermes_cli.skill_market_install import MarketSkillInstallError, install_market_skill
 
 router = APIRouter()
 MARKET_BASE = "https://maas.ai-yuanjing.com/app/gateway/wanwu"
@@ -70,11 +69,14 @@ async def install_skill(body: SkillInstall, profile: Optional[str] = None):
     if url.startswith("/uniwork/skills/"):
         url = urljoin(RECOMMENDED_BASE + "/", "uniwork/skills/" + url[len("/uniwork/skills/"):])
     parsed = urlparse(url)
-    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
-        raise HTTPException(400, "技能下载地址必须使用 HTTPS")
+    if (parsed.scheme != "https" or parsed.hostname != "maas.ai-yuanjing.com"
+            or parsed.username or parsed.password):
+        raise HTTPException(400, "技能下载地址必须来自元景 HTTPS 服务")
     label = (body.name or body.id).strip()
     if not label:
         raise HTTPException(400, "技能名称不能为空")
-    return spawn_profile_action(profile, ["skills", "install", url, "--yes"],
-                                _hub_action_name("install", label),
-                                log_msg="Failed to install UniWork skill", prefix="技能安装失败")
+    import asyncio
+    try:
+        return await asyncio.to_thread(install_market_skill, url, body.id, profile)
+    except MarketSkillInstallError as exc:
+        raise HTTPException(400, str(exc)) from exc

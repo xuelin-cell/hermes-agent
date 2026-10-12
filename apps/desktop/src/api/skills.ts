@@ -194,11 +194,15 @@ export interface UniWorkSkillCategory {
 }
 
 function arrayFromEnvelope<T>(value: unknown): T[] {
-  if (Array.isArray(value)) return value as T[]
+  if (Array.isArray(value)) {
+    return value as T[]
+  }
   if (value && typeof value === 'object') {
     const record = value as Record<string, unknown>
     for (const key of ['list', 'records', 'items']) {
-      if (Array.isArray(record[key])) return record[key] as T[]
+      if (Array.isArray(record[key])) {
+        return record[key] as T[]
+      }
     }
   }
   return []
@@ -225,13 +229,19 @@ export async function getUniWorkRecommendedSkills(): Promise<UniWorkSkill[]> {
   return arrayFromEnvelope<UniWorkSkill>(value)
 }
 
-export function installUniWorkSkill(skill: UniWorkSkill, profile?: ProfileScope): Promise<ActionResponse> {
+export function installUniWorkSkill(
+  skill: UniWorkSkill,
+  profile?: ProfileScope
+): Promise<{ install_path: string; name: string; ok: boolean }> {
   const downloadUrl = skill.download_url || skill.package_download_path
-  if (!downloadUrl) return Promise.reject(new Error('This skill has no installable package.'))
-  return window.hermesDesktop.api<ActionResponse>({
+  if (!downloadUrl) {
+    return Promise.reject(new Error('This skill has no installable package.'))
+  }
+  return window.hermesDesktop.api<{ install_path: string; name: string; ok: boolean }>({
     ...capabilityScoped(profile),
     path: '/api/skills/market/install',
     method: 'POST',
-    body: { id: skill.id, name: skill.name, download_url: downloadUrl }
+    body: { id: skill.id, name: skill.name, download_url: downloadUrl },
+    timeoutMs: 120_000
   })
 }

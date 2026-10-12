@@ -1,6 +1,6 @@
 import './catalog/catalog.css'
 
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type * as React from 'react'
 import { useMemo, useState } from 'react'
 
@@ -21,6 +21,7 @@ import { installHubSkill } from '@/store/hub-actions'
 import { notify, notifyError } from '@/store/notifications'
 
 import { CARD_ACCENTS } from './catalog/catalog-card'
+import { SKILLS_QUERY_KEY } from './skills/skills-data'
 
 type MarketTab = 'recommended' | 'market' | 'installed'
 
@@ -35,6 +36,7 @@ const isChinese = () => typeof navigator !== 'undefined' && /^zh\b/i.test(naviga
 
 export function SkillMarket({ installed, installedCount, installedNames, profile, className }: SkillMarketProps) {
   const zh = isChinese()
+  const queryClient = useQueryClient()
   // Preserve the former Skills-page landing behavior: management opens first;
   // discovery is one click away in Recommended / Skill Market.
   const [tab, setTab] = useState<MarketTab>('installed')
@@ -107,6 +109,7 @@ export function SkillMarket({ installed, installedCount, installedNames, profile
     try {
       if (skill.download_url || skill.package_download_path) {
         await installUniWorkSkill(skill, profile)
+        await queryClient.invalidateQueries({ queryKey: SKILLS_QUERY_KEY })
       } else if (skill.clawhub_url) {
         await installHubSkill(skill.clawhub_url, profile)
       } else {
@@ -115,8 +118,8 @@ export function SkillMarket({ installed, installedCount, installedNames, profile
 
       notify({
         kind: 'success',
-        title: zh ? `正在安装 ${skill.name}` : `Installing ${skill.name}`,
-        message: zh ? '可在操作日志中查看进度' : 'Follow progress in the action log.'
+        title: zh ? `${skill.name} 安装完成` : `${skill.name} installed`,
+        message: zh ? '技能将在新会话中可用' : 'The skill will be available in new sessions.'
       })
     } catch (error) {
       notifyError(error, zh ? '安装失败' : 'Install failed')

@@ -14,14 +14,17 @@ const getRecommendedSkills = vi.fn().mockResolvedValue([
     description: '帮助整理和撰写办公文档',
     category: 'office',
     provider: 'UniWork',
-    tags: ['文档', '办公']
+    tags: ['文档', '办公'],
+    package_download_path: '/uniwork/skills/writer/package'
   }
 ])
+const installUniWorkSkill = vi.fn().mockResolvedValue({ ok: true, name: 'office-writer', install_path: 'office-writer' })
 
 vi.mock('@/hermes', async importOriginal => ({
   ...(await importOriginal<typeof HermesApi>()),
   getUniWorkRecommendedCategories: getRecommendedCategories,
-  getUniWorkRecommendedSkills: getRecommendedSkills
+  getUniWorkRecommendedSkills: getRecommendedSkills,
+  installUniWorkSkill
 }))
 
 const { SkillMarket } = await import('./skill-market')
@@ -49,5 +52,19 @@ describe('SkillMarket', () => {
     expect(card?.closest('[data-slot="masonry"]')).toBeTruthy()
     expect(screen.getByText('UniWork')).toBeTruthy()
     expect(screen.getByText('文档')).toBeTruthy()
+  })
+
+  it('点击安装会调用市场安装接口并等待完成', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <SkillMarket installed={<div>installed</div>} installedCount={0} installedNames={new Set()} />
+      </QueryClientProvider>
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Recommended' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Install' }))
+
+    await vi.waitFor(() => expect(installUniWorkSkill).toHaveBeenCalledWith(expect.objectContaining({ id: 'writer' }), undefined))
   })
 })
