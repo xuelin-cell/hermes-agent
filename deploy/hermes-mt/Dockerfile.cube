@@ -13,6 +13,7 @@
 #   - 对外端口：只有一个
 #   - envd —— 平台创建沙箱时若带了环境变量，镜像里没有 envd 会导致**创建直接失败**，
 #     所以必须打进来，即使我们并不使用它的命令/文件/终端能力
+#   - 本分支对 hermes 源码的改动（overlay/，按原路径覆盖进 /opt/hermes，见下面那段）
 #
 # 为什么 CMD 只起转发器、不起 hermes：
 #   平台下发创建时环境变量是在容器进程已经起来之后（起容器 → 探针 → 创建后处理 → 下发变量），
@@ -110,6 +111,15 @@ COPY seed/forward.py /opt/mt/forward.py
 COPY seed/mtstate.py /opt/mt/mtstate.py
 COPY seed/mtuser.py /opt/mt/mtuser.py
 RUN chmod 0644 /opt/mt/forward.py /opt/mt/mtstate.py /opt/mt/mtuser.py
+
+# ---- hermes 源码覆盖（overlay/） --------------------------------------------
+# 基础镜像里的 hermes 是上游某个版本；/opt/hermes 是可编辑安装，且不留预编译缓存
+# （PYTHONDONTWRITEBYTECODE=1），所以覆盖源文件就生效。本分支在 hermes 源码上的改动按原路径
+# 放在 overlay/ 下，目前只有 hermes_cli/web_routers/skills.py：UniWork 技能市场与推荐的后端
+# 接口（匿名转发元景的公开技能目录，安装走 hermes 自己的 skills install）。
+# overlay/ 里每个文件都必须和仓库里同路径的文件逐字节相同：deploy.sh 构建前后都核对，
+# 平时由 tests/hermes_mt/test_image_overlay.py 核对。
+COPY overlay/ /opt/hermes/
 
 # ---- 所有用户相同的环境变量 -------------------------------------------------
 # 与 entry/entry/tenants.py::_create 里那份清单保持一致。缺的那个

@@ -11,6 +11,7 @@ import {
   getUniWorkRecommendedSkills,
   installUniWorkSkill
 } from '@/hermes'
+import { skillMarketInstallPending } from '@/lib/browser-shell'
 import { Loader2, Plus, Search } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { installHubSkill } from '@/store/hub-actions'
@@ -93,6 +94,15 @@ export function SkillMarket({ installed, installedCount, installedNames, profile
 
   async function install(skill: UniWorkSkill) {
     if (installedNames.has(skill.name)) {
+      return
+    }
+
+    // Browser build: installing a market skill is in development (see lib/browser-shell).
+    const pending = skillMarketInstallPending(zh ? 'zh' : 'en')
+
+    if (pending) {
+      notify({ kind: 'info', message: pending })
+
       return
     }
 

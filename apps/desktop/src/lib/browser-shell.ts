@@ -35,6 +35,7 @@ import { storedBoolean } from '@/lib/storage'
  *   app/settings/index.tsx                             * no Gateway or About page
  *   app/settings/plugins-settings.tsx                  * no desktop (local) plugins section
  *   app/shell/gateway-menu-panel.tsx                   * no gateway restart
+ *   app/skills/skill-market.tsx                        installing from the market says it is in development
  *   contrib/plugins.ts                                 * no Bot Mode (the BOTS tab): its plugin is not started
  *   lib/model-options.ts                               * model pickers: the platform's providers only
  *   store/developer-mode.ts                            flipping UniWork's developer mode reloads the page
@@ -242,6 +243,7 @@ interface BrowserShellCopy {
   previewTitle: string
   previewTooLarge: string
   restoreFailed: string
+  skillInstallPending: string
   terminalDisconnected: string
   terminalUnavailable: string
   undo: string
@@ -271,6 +273,7 @@ const COPY: Record<'en' | 'zh', BrowserShellCopy> = {
     previewTitle: 'Preview',
     previewTooLarge: 'This file is too large to open in a tab. Download it instead.',
     restoreFailed: 'Could not restore the file',
+    skillInstallPending: 'Installing from here is in development.',
     terminalDisconnected: 'Disconnected from the instance. Close this tab and open a new terminal.',
     terminalUnavailable: 'Could not reach the shell in your instance. Try again shortly (at most 8 terminals at once).',
     undo: 'Undo'
@@ -295,6 +298,7 @@ const COPY: Record<'en' | 'zh', BrowserShellCopy> = {
     previewTitle: '预览',
     previewTooLarge: '文件太大，不能在标签页中打开，请下载后查看。',
     restoreFailed: '恢复失败',
+    skillInstallPending: '功能开发中',
     terminalDisconnected: '和实例的连接断了。关掉这个标签页，再开一个终端。',
     terminalUnavailable: '连不上实例里的命令行，请稍后再试（每台实例最多同时开 8 个终端）。',
     undo: '撤销'
@@ -307,4 +311,12 @@ const COPY: Record<'en' | 'zh', BrowserShellCopy> = {
  * effect, after the first render — which the React Compiler may have memoized. */
 export function browserShellCopy(locale: string = getRuntimeI18nLocale()): BrowserShellCopy {
   return locale.startsWith('zh') ? COPY.zh : COPY.en
+}
+
+/** The skill market's install button (app/skills/skill-market.tsx). A market
+ * skill comes as a zip package, which Hermes' install-from-URL does not take (it
+ * wants a SKILL.md URL), so the browser build says the feature is in development
+ * rather than report an install that never lands. Null where installing goes on. */
+export function skillMarketInstallPending(locale?: string): null | string {
+  return isBrowserShell() ? browserShellCopy(locale).skillInstallPending : null
 }

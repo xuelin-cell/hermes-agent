@@ -15,6 +15,7 @@ import {
   isSettingsViewHidden,
   remoteHtmlFrameDocument,
   remoteHtmlFrameSandbox,
+  skillMarketInstallPending,
   visibleModelOptions,
   withoutHiddenNavItems,
   withoutHiddenPaletteItems
@@ -218,6 +219,15 @@ describe('browser shell', () => {
     localStorage.setItem(DEVELOPER_MODE_KEY, 'true')
 
     expect(visibleModelOptions(options)).toBe(options)
+  })
+
+  it('says installing from the skill market is in development, in the browser build only', () => {
+    expect(skillMarketInstallPending('zh')).toBeNull()
+
+    document.documentElement.dataset.hermesBrowser = 'production'
+
+    expect(skillMarketInstallPending('zh')).toBe('功能开发中')
+    expect(skillMarketInstallPending('en')).toMatch(/in development/)
   })
 
   it('speaks the interface language', () => {
