@@ -344,6 +344,7 @@ async def scan_skill_hub(identifier: str = "", profile: Optional[str] = None):
 
 @router.get("/api/skills")
 async def get_skills(profile: Optional[str] = None):
+    from agent.skill_utils import ESSENTIAL_SKILLS
     from tools.skills_tool import _find_all_skills
     from hermes_cli.skills_config import get_disabled_skills
     from tools.skill_usage import (
@@ -368,7 +369,7 @@ async def get_skills(profile: Optional[str] = None):
                 "hub" if s["name"] in hub_names
                 else "bundled" if s["name"] in bundled_names
                 else "agent")
-        return skills
+        return [s for s in skills if s["name"] not in ESSENTIAL_SKILLS]
 
     return await asyncio.to_thread(_run)
 

@@ -70,6 +70,8 @@ def _manifest_file() -> Path:
 # Written by `hermes profile create --no-skills` / installer `--no-skills`: sync seeds only
 # essential skills. Mirrors hermes_cli.profiles.NO_BUNDLED_SKILLS_MARKER (no CLI import here).
 NO_BUNDLED_SKILLS_MARKER = ".no-bundled-skills"
+UNIWORK_BUNDLED_ONLY_MARKER = "UNIWORK_BUNDLED_ONLY"
+UNIWORK_BUNDLED_CATEGORY = "uniwork"
 
 
 def _get_bundled_dir() -> Path:  # HERMES_BUNDLED_SKILLS env first, then repo-relative
@@ -177,6 +179,59 @@ def _discover_bundled_skills(bundled_dir: Path) -> List[Tuple[str, Path]]:
         (_read_skill_name(md, md.parent.name), md.parent)
         for md in bundled_dir.rglob("SKILL.md")
         if not is_excluded_skill_path(md.relative_to(bundled_dir), root=bundled_dir)]
+
+
+def _select_distribution_skills(
+    bundled_dir: Path, bundled_skills: List[Tuple[str, Path]]
+) -> Tuple[List[Tuple[str, Path]], List[Tuple[str, Path]]]:
+    """按 UniWork 发行策略拆分保留技能与待退役的 Hermes 原生技能。"""
+    if not (bundled_dir / UNIWORK_BUNDLED_ONLY_MARKER).is_file():
+        return bundled_skills, []
+    kept = []
+    retired = []
+    for name, source in bundled_skills:
+        relative = source.relative_to(bundled_dir)
+        target = kept if relative.parts[0] == UNIWORK_BUNDLED_CATEGORY or name in ESSENTIAL_SKILLS else retired
+        target.append((name, source))
+    return kept, retired
+
+
+def _retired_archive_path(name: str) -> Path:
+    """为用户修改过的退役技能选择不覆盖既有备份的归档路径。"""
+    root = _skills_dir() / ".retired-hermes"
+    candidate = root / name
+    index = 2
+    while candidate.exists():
+        candidate = root / f"{name}-{index}"
+        index += 1
+    return candidate
+
+
+def _retire_excluded_bundled_skills(
+    st: "_SyncState", bundled_dir: Path, excluded: List[Tuple[str, Path]]
+) -> Tuple[List[str], List[str]]:
+    """删除未修改的 Hermes 技能，并把有本地改动的副本移入隐藏归档。"""
+    removed = []
+    archived = []
+    for name, source in excluded:
+        if name not in st.manifest:
+            continue
+        destination = _compute_relative_dest(source, bundled_dir)
+        if not destination.exists():
+            st.manifest.pop(name, None)
+            continue
+        try:
+            if _matches_origin_hash(destination, st.manifest[name]):
+                _rmtree_writable(destination)
+                removed.append(name)
+            else:
+                archive = _retired_archive_path(name)
+                _move_dir(destination, archive)
+                archived.append(name)
+            st.manifest.pop(name, None)
+        except (OSError, ValueError) as exc:
+            st.say(f"  ! Failed to retire {name}: {exc}")
+    return removed, archived
 
 
 def _compute_relative_dest(skill_dir: Path, bundled_dir: Path) -> Path:
@@ -405,12 +460,16 @@ def sync_skills(quiet: bool = False) -> dict:
         return {"copied": [], "updated": [], "skipped": 0, "user_modified": [], "cleaned": [],
                 "suppressed": [], "total_bundled": 0, "optional_provenance_backfilled": []}
     _skills_dir().mkdir(parents=True, exist_ok=True)
-    bundled_skills = _discover_bundled_skills(bundled_dir)
+    all_bundled_skills = _discover_bundled_skills(bundled_dir)
+    bundled_skills, excluded_bundled_skills = _select_distribution_skills(bundled_dir, all_bundled_skills)
     if essential_only:
         bundled_skills = [(name, src) for name, src in bundled_skills if name in ESSENTIAL_SKILLS]
     suppressed = _read_suppressed_names()
     external_index = _build_external_skill_index()
     st = _SyncState(manifest=_read_manifest(), quiet=quiet)
+    retired_pristine, retired_modified = _retire_excluded_bundled_skills(
+        st, bundled_dir, excluded_bundled_skills
+    )
 
     for skill_name, skill_src in bundled_skills:
         # Curator-pruned built-ins must not resurrect on every update; essentials are exempt.
@@ -454,6 +513,8 @@ def sync_skills(quiet: bool = False) -> dict:
         "total_bundled": len(bundled_skills),
         "optional_provenance_backfilled": _backfill_optional_provenance(quiet=quiet),
         "shadowed_by_external": st.shadowed_by_external,
+        "retired_pristine": retired_pristine,
+        "retired_modified": retired_modified,
         "skipped_opt_out": essential_only}  # lets callers report "opted out", not a normal sync
 
 

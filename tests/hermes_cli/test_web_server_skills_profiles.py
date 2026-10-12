@@ -37,6 +37,7 @@ def isolated_profiles(tmp_path, monkeypatch, _isolate_hermes_home):
 
     _write_skill(default_home / "skills", "dashboard-skill")
     _write_skill(worker_home / "skills", "worker-skill")
+    _write_skill(worker_home / "skills", "hermes-agent")
 
     monkeypatch.setattr(profiles, "_get_default_hermes_home", lambda: default_home)
     monkeypatch.setattr(profiles, "_get_profiles_root", lambda: profiles_root)
@@ -65,6 +66,13 @@ def _load_cfg(home):
 
 
 class TestProfileScopedSkills:
+
+    def test_internal_hermes_skill_is_hidden_from_installed_list(self, client):
+        """核心技能继续存在于磁盘，但不会作为用户技能展示。"""
+        response = client.get("/api/skills", params={"profile": "worker_alpha"})
+
+        assert response.status_code == 200
+        assert {skill["name"] for skill in response.json()} == {"worker-skill"}
 
 
     def test_toggle_writes_into_target_profile_only(self, client, isolated_profiles):

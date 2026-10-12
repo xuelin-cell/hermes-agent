@@ -109,6 +109,50 @@ class TestDiscoverBundledSkills:
         assert [name for name, _ in _discover_bundled_skills(tmp_path)] == ["umbrella"]
 
 
+class TestUniWorkBundledDistribution:
+    def test_keeps_uniwork_and_internal_skill_while_retiring_hermes_skills(self, tmp_path):
+        """发行切换后仅同步 UniWork，原生技能删除或按修改状态安全归档。"""
+        bundled = tmp_path / "bundled"
+        skill_files = {
+            "uniwork/doc": "---\nname: doc\n---\n# Doc",
+            "autonomous-ai-agents/hermes-agent": "---\nname: hermes-agent\n---\n# Internal",
+            "devops/pristine": "---\nname: pristine\n---\n# Pristine",
+            "creative/edited": "---\nname: edited\n---\n# Edited",
+        }
+        for relative, content in skill_files.items():
+            directory = bundled / relative
+            directory.mkdir(parents=True)
+            (directory / "SKILL.md").write_text(content, encoding="utf-8")
+
+        skills_dir = tmp_path / "home" / "skills"
+        manifest = skills_dir / ".bundled_manifest"
+        with (
+            patch("tools.skills_sync._get_bundled_dir", return_value=bundled),
+            patch("tools.skills_sync._get_optional_dir", return_value=tmp_path / "optional"),
+            patch("tools.skills_sync.SKILLS_DIR", skills_dir),
+            patch("tools.skills_sync.MANIFEST_FILE", manifest),
+            patch("agent.skill_utils.get_external_skills_dirs", return_value=[]),
+        ):
+            first = sync_skills(quiet=True)
+            assert set(first["copied"]) == {"doc", "hermes-agent", "pristine", "edited"}
+            (skills_dir / "creative" / "edited" / "SKILL.md").write_text(
+                "---\nname: edited\n---\n# User changed", encoding="utf-8"
+            )
+            (bundled / "UNIWORK_BUNDLED_ONLY").write_text("enabled", encoding="utf-8")
+
+            result = sync_skills(quiet=True)
+            tracked = _read_manifest()
+
+        assert set(tracked) == {"doc", "hermes-agent"}
+        assert result["retired_pristine"] == ["pristine"]
+        assert result["retired_modified"] == ["edited"]
+        assert not (skills_dir / "devops" / "pristine").exists()
+        assert not (skills_dir / "creative" / "edited").exists()
+        assert (skills_dir / ".retired-hermes" / "edited" / "SKILL.md").is_file()
+        assert (skills_dir / "uniwork" / "doc" / "SKILL.md").is_file()
+        assert (skills_dir / "autonomous-ai-agents" / "hermes-agent" / "SKILL.md").is_file()
+
+
 class TestReadSkillName:
     def test_name_from_frontmatter_with_dir_name_fallbacks(self, tmp_path):
         skill_md = tmp_path / "SKILL.md"
