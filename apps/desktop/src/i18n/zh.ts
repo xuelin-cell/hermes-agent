@@ -149,6 +149,9 @@ export const zh = defineLocale({
     authorizedToolsUnavailable: '已授权。工具不可用。',
     required: '必填'
   },
+  connectorsPage: {
+    title: '连接器'
+  },
   sessionImport: {
     title: '从其他应用继续',
     subtitle: '将对话导入 Hermes，接着上次的进度继续。',

@@ -23,6 +23,14 @@ describe('desktop i18n runtime translator', () => {
     expect(translateNow('boot.ready')).not.toBe(TRANSLATIONS.en.boot.ready)
   })
 
+  it('uses the localized connector title only for Chinese', () => {
+    setRuntimeI18nLocale('zh')
+    expect(translateNow('connectorsPage.title')).toBe('连接器')
+
+    setRuntimeI18nLocale('en')
+    expect(translateNow('connectorsPage.title')).toBe('Connectors')
+  })
+
   it('passes arguments to function translations', () => {
     expect(translateNow('notifications.updateReadyMessage', 2)).toBe(
       TRANSLATIONS.en.notifications.updateReadyMessage(2)
