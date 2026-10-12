@@ -148,7 +148,7 @@ export function SkillMarket({ installed, installedCount, installedNames, profile
           </div>
           {(marketSkills.isLoading || recommendedSkills.isLoading) ? (
             <div className="flex h-48 items-center justify-center"><Loader2 className="size-5 animate-spin" /></div>
-          ) : (marketSkills.isError || recommendedSkills.isError) ? (
+          ) : (tab === 'market' ? marketSkills.isError : recommendedSkills.isError) ? (
             <div className="flex h-48 items-center justify-center text-sm text-(--ui-text-tertiary)">{zh ? '技能市场加载失败，请稍后重试' : 'Could not load the skill market. Try again later.'}</div>
           ) : visible.length === 0 ? (
             <div className="flex h-48 items-center justify-center text-sm text-(--ui-text-tertiary)">{zh ? '没有找到匹配的技能' : 'No matching skills found.'}</div>

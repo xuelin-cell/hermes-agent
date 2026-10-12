@@ -20,8 +20,10 @@ from hermes_cli.web_models import (
 from hermes_cli.web_routers._common import (
     _profile_scope, config_write_scope, http_failure, log as _log, require, scoped_to_thread,
     spawn_profile_action)
+from hermes_cli.web_routers.skill_market import router as market_router
 
 hub_router = APIRouter()
+hub_router.include_router(market_router)
 router = APIRouter()
 
 _config_profile_scope = late("_config_profile_scope", "hermes_cli.web_server_profiles")
