@@ -45,6 +45,8 @@ describe('SkillMarket', () => {
 
     expect(card?.hasAttribute('data-catalog-card')).toBe(true)
     expect(card?.className).toContain('--catalog-accent')
+    expect(card?.className).not.toContain('min-h-48')
+    expect(card?.closest('[data-slot="masonry"]')).toBeTruthy()
     expect(screen.getByText('UniWork')).toBeTruthy()
     expect(screen.getByText('文档')).toBeTruthy()
   })

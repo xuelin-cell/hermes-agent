@@ -6,6 +6,7 @@ import { useMemo, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Masonry } from '@/components/ui/masonry'
 import type { ProfileScope, UniWorkSkill } from '@/hermes'
 import {
   getUniWorkMarketCategories,
@@ -205,7 +206,7 @@ export function SkillMarket({ installed, installedCount, installedNames, profile
               {zh ? '没有找到匹配的技能' : 'No matching skills found.'}
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-3" data-catalog-hover-group>
+            <Masonry data-catalog-hover-group>
               {visible.map((skill, index) => {
                 const installedSkill = installedNames.has(skill.name)
 
@@ -226,7 +227,7 @@ export function SkillMarket({ installed, installedCount, installedNames, profile
                   />
                 )
               })}
-            </div>
+            </Masonry>
           )}
         </div>
       )}
@@ -265,7 +266,7 @@ function MarketSkillCard({
   return (
     <article
       className={cn(
-        'group relative flex min-h-48 min-w-0 flex-col overflow-hidden rounded-lg border',
+        'group relative flex min-w-0 flex-col overflow-hidden rounded-lg border',
         CARD_ACCENTS[index % CARD_ACCENTS.length]
       )}
       data-catalog-card
