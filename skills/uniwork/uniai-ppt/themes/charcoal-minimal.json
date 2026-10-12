@@ -1,0 +1,24 @@
+{
+  "name": "charcoal-minimal",
+  "display_name": "炭灰极简 Charcoal Minimal",
+  "tags": ["minimal", "tech", "architecture", "design", "modern"],
+  "colors": {
+    "primary": "36454F",
+    "secondary": "708090",
+    "accent": "E8491D",
+    "bg_dark": "212121",
+    "bg_light": "F7F7F7",
+    "text_on_dark": "F2F2F2",
+    "text_on_light": "212121",
+    "text_muted": "999999",
+    "card_bg": "FFFFFF",
+    "card_border": "E0E0E0"
+  },
+  "fonts": {
+    "title": "Arial Black",
+    "body": "Arial",
+    "accent": "Consolas"
+  },
+  "motif": "sharp-line",
+  "description": "Clean charcoal with minimal accents. Ideal for tech, architecture, design showcases, and modern business decks."
+}

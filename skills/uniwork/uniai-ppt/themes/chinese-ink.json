@@ -1,0 +1,24 @@
+{
+  "name": "chinese-ink",
+  "display_name": "水墨国风 Chinese Ink",
+  "tags": ["chinese", "traditional", "culture", "elegant"],
+  "colors": {
+    "primary": "2C2C2C",
+    "secondary": "8B4513",
+    "accent": "C41E3A",
+    "bg_dark": "1A1A1A",
+    "bg_light": "F5F0E8",
+    "text_on_dark": "E8DCC8",
+    "text_on_light": "2C2C2C",
+    "text_muted": "8C7B6B",
+    "card_bg": "FAF6F0",
+    "card_border": "D4C8B8"
+  },
+  "fonts": {
+    "title": "Georgia",
+    "body": "Calibri",
+    "accent": "Palatino"
+  },
+  "motif": "elegant-border",
+  "description": "Classic ink-wash aesthetics with warm paper tones. Perfect for Chinese culture, traditional arts, history, and elegant reports."
+}

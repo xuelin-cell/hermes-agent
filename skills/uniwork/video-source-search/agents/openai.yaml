@@ -1,0 +1,7 @@
+interface:
+  display_name: "Video Source Search"
+  short_description: "搜索、验证并下载影视播放源"
+  default_prompt: "Use $video-source-search to search for playable sources for a movie or TV title."
+
+policy:
+  allow_implicit_invocation: true

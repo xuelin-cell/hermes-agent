@@ -1,0 +1,20 @@
+{
+  "name": "飞书套件",
+  "installedAt": 1781083717583,
+  "source": "marketplace",
+  "version": "1.0.0",
+  "skillId": "skill_2053082253572640768",
+  "examples_zh": [
+    "用飞书给团队群发一条消息",
+    "在飞书云文档新建一篇文档",
+    "查询飞书多维表格里的记录"
+  ],
+  "examples_en": [
+    "Send a message to a Lark group chat",
+    "Create a new document in Lark Docs",
+    "Query records from a Lark Base table"
+  ],
+  "iconSource": "https://openplatform-cdn.codebuddy.cn/public/skills/icons/lark-unified.svg",
+  "iconLocalPath": "/Users/sujh/.workbuddy/skills/skill_2053082253572640768/_icon.svg",
+  "iconDownloadedFrom": "https://openplatform-cdn.codebuddy.cn/public/skills/icons/lark-unified.svg"
+}

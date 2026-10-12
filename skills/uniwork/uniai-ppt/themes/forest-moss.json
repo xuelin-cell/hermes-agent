@@ -1,0 +1,24 @@
+{
+  "name": "forest-moss",
+  "display_name": "森林苔藓 Forest & Moss",
+  "tags": ["nature", "sustainability", "eco", "wellness"],
+  "colors": {
+    "primary": "2C5F2D",
+    "secondary": "97BC62",
+    "accent": "F5E6CC",
+    "bg_dark": "1A3A1C",
+    "bg_light": "F5F9F0",
+    "text_on_dark": "F5F5F5",
+    "text_on_light": "2C5F2D",
+    "text_muted": "6B8F6D",
+    "card_bg": "FFFFFF",
+    "card_border": "D4E8C8"
+  },
+  "fonts": {
+    "title": "Cambria",
+    "body": "Calibri",
+    "accent": "Trebuchet MS"
+  },
+  "motif": "rounded-card",
+  "description": "Earthy greens with organic warmth. Ideal for environmental, sustainability, outdoor brands, and wellness topics."
+}

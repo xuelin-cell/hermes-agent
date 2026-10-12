@@ -1,0 +1,24 @@
+{
+  "name": "berry-cream",
+  "display_name": "浆果奶油 Berry & Cream",
+  "tags": ["fashion", "beauty", "luxury", "feminine"],
+  "colors": {
+    "primary": "6D2E46",
+    "secondary": "A26769",
+    "accent": "D4A574",
+    "bg_dark": "3D1929",
+    "bg_light": "FDF5F0",
+    "text_on_dark": "ECE2D0",
+    "text_on_light": "6D2E46",
+    "text_muted": "B88B8D",
+    "card_bg": "FFFFFF",
+    "card_border": "E8D0C8"
+  },
+  "fonts": {
+    "title": "Palatino",
+    "body": "Garamond",
+    "accent": "Georgia"
+  },
+  "motif": "elegant-border",
+  "description": "Rich berry tones with warm cream accents. Ideal for fashion, beauty, luxury brands, and boutique presentations."
+}

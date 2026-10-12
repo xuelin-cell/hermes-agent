@@ -1,0 +1,24 @@
+{
+  "name": "ocean-gradient",
+  "display_name": "海洋深蓝 Ocean Depths",
+  "tags": ["corporate", "consulting", "trust", "professional"],
+  "colors": {
+    "primary": "065A82",
+    "secondary": "1C7293",
+    "accent": "21295C",
+    "bg_dark": "0A2E4D",
+    "bg_light": "EDF5FA",
+    "text_on_dark": "FFFFFF",
+    "text_on_light": "065A82",
+    "text_muted": "6AABCF",
+    "card_bg": "FFFFFF",
+    "card_border": "C8DFF0"
+  },
+  "fonts": {
+    "title": "Georgia",
+    "body": "Calibri Light",
+    "accent": "Calibri"
+  },
+  "motif": "top-gradient-bar",
+  "description": "Professional ocean blues conveying trust and depth. Perfect for consulting, financial services, and corporate communications."
+}

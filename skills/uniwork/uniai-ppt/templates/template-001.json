@@ -1,0 +1,8 @@
+{
+  "name": "template-001",
+  "display_name": "Template 001",
+  "style_tags": ["professional", "business", "corporate"],
+  "description": "Professional business template with clean layout",
+  "slides_count": "unknown",
+  "layouts": ["title", "content", "two-column"]
+}

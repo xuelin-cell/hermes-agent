@@ -1,0 +1,24 @@
+{
+  "name": "sage-calm",
+  "display_name": "鼠尾宁静 Sage Calm",
+  "tags": ["wellness", "interior", "calm", "lifestyle"],
+  "colors": {
+    "primary": "84B59F",
+    "secondary": "69A297",
+    "accent": "50808E",
+    "bg_dark": "2D4A42",
+    "bg_light": "F2F8F5",
+    "text_on_dark": "E8F0EC",
+    "text_on_light": "2D4A42",
+    "text_muted": "8FAFA4",
+    "card_bg": "FFFFFF",
+    "card_border": "C8DDD4"
+  },
+  "fonts": {
+    "title": "Cambria",
+    "body": "Calibri Light",
+    "accent": "Calibri"
+  },
+  "motif": "soft-shadow-card",
+  "description": "Soft sage greens creating a sense of calm. Perfect for wellness, interior design, lifestyle, and mindfulness topics."
+}

@@ -1,6 +1,11 @@
 ---
 name: skill-creator
-description: Create new skills, modify and improve existing skills, and measure skill performance. Use when users want to create a skill from scratch, edit, or optimize an existing skill, run evals to test a skill, benchmark skill performance with variance analysis, or optimize a skill's description for better triggering accuracy.
+description: "创建、修改、评测和优化智能体技能."
+version: "1.0.0"
+author: "OpenAI / UniWork"
+license: Proprietary
+platforms: [linux, macos, windows]
+tags: [技能, 开发, 评测]
 metadata:
   author: openai
   url: https://github.com/openai/skills/tree/main/skills/.curated

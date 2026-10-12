@@ -88,6 +88,45 @@ def _read_hub_install_paths() -> Set[str]:
     return {str(e["install_path"]).strip("/") for e in _hub_lock_entries(_load_hub_lock()) if e.get("install_path")}
 
 
+def retire_backfilled_optional_skills() -> Tuple[List[str], List[str]]:
+    """退役旧版自动回填的官方可选技能，同时保留用户主动安装的技能。"""
+    ss = _ss()
+    data = _load_hub_lock()
+    if data is None:
+        return [], []
+    installed = data.get("installed")
+    if not isinstance(installed, dict):
+        return [], []
+    removed: List[str] = []
+    archived: List[str] = []
+    changed = False
+    for name, entry in list(installed.items()):
+        metadata = entry.get("metadata") if isinstance(entry, dict) else None
+        if not isinstance(metadata, dict) or metadata.get("backfilled_from") != "optional-skills":
+            continue
+        install_path = str(entry.get("install_path") or "").strip("/")
+        destination = ss._skills_dir() / Path(*PurePosixPath(install_path).parts) if install_path else None
+        try:
+            if destination and destination.is_dir():
+                if entry.get("content_hash") == _content_hash(destination):
+                    ss._rmtree_writable(destination)
+                    removed.append(name)
+                else:
+                    ss._move_dir(destination, ss._retired_archive_path(name))
+                    archived.append(name)
+            installed.pop(name, None)
+            changed = True
+        except (OSError, ValueError) as exc:
+            logger.debug("Failed to retire backfilled optional skill %s: %s", name, exc, exc_info=True)
+    if changed:
+        atomic_write_text(
+            ss._skills_dir() / ".hub" / "lock.json",
+            tmp_prefix=".lock_",
+            content=json.dumps(data, indent=2, ensure_ascii=False) + "\n",
+        )
+    return removed, archived
+
+
 def _iter_optional_skills(optional_dir: Path, *, root_relative: bool) -> Iterator[Tuple[Path, Path, str]]:
     """Yield ``(skill_md, src, install_path)`` for every safe official optional skill."""
     for skill_md in sorted(optional_dir.rglob("SKILL.md")):

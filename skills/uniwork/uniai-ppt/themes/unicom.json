@@ -1,0 +1,24 @@
+{
+  "name": "unicom",
+  "display_name": "联通红 China Unicom",
+  "tags": ["unicom", "联通", "中国联通", "数智", "元景", "telecom", "brand", "red", "corporate", "government", "科技", "婉约"],
+  "colors": {
+    "primary": "C00000",
+    "secondary": "EE0000",
+    "accent": "EE0000",
+    "bg_dark": "C00000",
+    "bg_light": "FFFFFF",
+    "text_on_dark": "FFFFFF",
+    "text_on_light": "1A1A1A",
+    "text_muted": "808080",
+    "card_bg": "FFFFFF",
+    "card_border": "E0E0E0"
+  },
+  "fonts": {
+    "title": "Microsoft YaHei",
+    "body": "Microsoft YaHei",
+    "accent": "Impact"
+  },
+  "motif": "unicom-red-frame",
+  "description": "China Unicom (中国联通 / 联通元景) official brand template. Deep brand red (C00000) + bright red accent (EE0000) on clean white canvas, Microsoft YaHei typography, dual co-brand logo (中国联通 + 联通元景) anchored top-right, red header rule and left accent bars. The default template for any 联通 / 中国联通 / 联通数智 / 联通元景 deck. Style modifiers such as 科技风 / 婉约风 only tune the secondary accent and mood; the red-frame brand identity stays fixed."
+}

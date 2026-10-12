@@ -1,0 +1,24 @@
+{
+  "name": "midnight-executive",
+  "display_name": "午夜高管 Midnight Executive",
+  "tags": ["corporate", "finance", "executive", "formal"],
+  "colors": {
+    "primary": "1E2761",
+    "secondary": "CADCFC",
+    "accent": "F4A261",
+    "bg_dark": "0F1B3D",
+    "bg_light": "F0F4FA",
+    "text_on_dark": "FFFFFF",
+    "text_on_light": "1E2761",
+    "text_muted": "8A9CC5",
+    "card_bg": "FFFFFF",
+    "card_border": "D6E0F0"
+  },
+  "fonts": {
+    "title": "Georgia",
+    "body": "Calibri",
+    "accent": "Arial Black"
+  },
+  "motif": "left-accent-bar",
+  "description": "Deep, authoritative navy with ice-blue accents. Perfect for executive briefings, financial reports, and corporate strategy presentations."
+}

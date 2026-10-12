@@ -1,0 +1,24 @@
+{
+  "name": "tech-innovation",
+  "display_name": "科技创新 Tech Innovation",
+  "tags": ["tech", "startup", "AI", "digital", "innovation"],
+  "colors": {
+    "primary": "0066FF",
+    "secondary": "00D4AA",
+    "accent": "FF6B35",
+    "bg_dark": "0A0E27",
+    "bg_light": "F0F4FF",
+    "text_on_dark": "FFFFFF",
+    "text_on_light": "0A0E27",
+    "text_muted": "6B7DB3",
+    "card_bg": "FFFFFF",
+    "card_border": "D0DCFF"
+  },
+  "fonts": {
+    "title": "Trebuchet MS",
+    "body": "Calibri",
+    "accent": "Consolas"
+  },
+  "motif": "gradient-accent",
+  "description": "Electric blue with neon accents on dark canvas. Perfect for tech startups, AI/ML, digital transformation, and innovation decks."
+}

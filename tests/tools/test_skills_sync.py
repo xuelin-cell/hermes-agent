@@ -115,6 +115,7 @@ class TestUniWorkBundledDistribution:
         bundled = tmp_path / "bundled"
         skill_files = {
             "uniwork/doc": "---\nname: doc\n---\n# Doc",
+            "uniwork/legacy": "---\nname: legacy\n---\n# Legacy",
             "autonomous-ai-agents/hermes-agent": "---\nname: hermes-agent\n---\n# Internal",
             "devops/pristine": "---\nname: pristine\n---\n# Pristine",
             "creative/edited": "---\nname: edited\n---\n# Edited",
@@ -134,23 +135,54 @@ class TestUniWorkBundledDistribution:
             patch("agent.skill_utils.get_external_skills_dirs", return_value=[]),
         ):
             first = sync_skills(quiet=True)
-            assert set(first["copied"]) == {"doc", "hermes-agent", "pristine", "edited"}
+            assert set(first["copied"]) == {"doc", "legacy", "hermes-agent", "pristine", "edited"}
+            hub_skill = skills_dir / "community" / "hub-keep"
+            hub_skill.mkdir(parents=True)
+            (hub_skill / "SKILL.md").write_text("---\nname: hub-keep\n---\n# Hub", encoding="utf-8")
+            backfilled_skill = skills_dir / "official" / "old-optional"
+            backfilled_skill.mkdir(parents=True)
+            (backfilled_skill / "SKILL.md").write_text(
+                "---\nname: old-optional\n---\n# Optional", encoding="utf-8"
+            )
+            from tools.skills_sync_optional import _content_hash
+            tracked = _read_manifest()
+            tracked["hub-keep"] = _dir_hash(hub_skill)
+            _write_manifest(tracked)
+            hub_lock = skills_dir / ".hub" / "lock.json"
+            hub_lock.parent.mkdir(parents=True)
+            hub_lock.write_text(
+                json.dumps({"installed": {
+                    "hub-keep": {"install_path": "community/hub-keep"},
+                    "old-optional": {
+                        "install_path": "official/old-optional",
+                        "content_hash": _content_hash(backfilled_skill),
+                        "metadata": {"backfilled_from": "optional-skills"},
+                    },
+                }}),
+                encoding="utf-8",
+            )
             (skills_dir / "creative" / "edited" / "SKILL.md").write_text(
                 "---\nname: edited\n---\n# User changed", encoding="utf-8"
             )
             (bundled / "UNIWORK_BUNDLED_ONLY").write_text("enabled", encoding="utf-8")
+            shutil.rmtree(bundled / "uniwork" / "legacy")
 
             result = sync_skills(quiet=True)
             tracked = _read_manifest()
 
         assert set(tracked) == {"doc", "hermes-agent"}
-        assert result["retired_pristine"] == ["pristine"]
+        assert set(result["retired_pristine"]) == {"pristine", "legacy", "old-optional"}
         assert result["retired_modified"] == ["edited"]
         assert not (skills_dir / "devops" / "pristine").exists()
         assert not (skills_dir / "creative" / "edited").exists()
+        assert not (skills_dir / "uniwork" / "legacy").exists()
         assert (skills_dir / ".retired-hermes" / "edited" / "SKILL.md").is_file()
         assert (skills_dir / "uniwork" / "doc" / "SKILL.md").is_file()
         assert (skills_dir / "autonomous-ai-agents" / "hermes-agent" / "SKILL.md").is_file()
+        assert (skills_dir / "community" / "hub-keep" / "SKILL.md").is_file()
+        assert not (skills_dir / "official" / "old-optional").exists()
+        lock = json.loads((skills_dir / ".hub" / "lock.json").read_text(encoding="utf-8"))
+        assert set(lock["installed"]) == {"hub-keep"}
 
 
 class TestReadSkillName:

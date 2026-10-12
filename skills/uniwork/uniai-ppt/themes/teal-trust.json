@@ -1,0 +1,24 @@
+{
+  "name": "teal-trust",
+  "display_name": "青绿信赖 Teal Trust",
+  "tags": ["healthcare", "science", "education", "trust"],
+  "colors": {
+    "primary": "028090",
+    "secondary": "00A896",
+    "accent": "02C39A",
+    "bg_dark": "014451",
+    "bg_light": "ECFAF7",
+    "text_on_dark": "FFFFFF",
+    "text_on_light": "014451",
+    "text_muted": "5CBFB0",
+    "card_bg": "FFFFFF",
+    "card_border": "B8E8E0"
+  },
+  "fonts": {
+    "title": "Trebuchet MS",
+    "body": "Calibri",
+    "accent": "Calibri"
+  },
+  "motif": "rounded-card",
+  "description": "Calming teal tones that inspire trust. Perfect for healthcare, education, science, and social impact presentations."
+}

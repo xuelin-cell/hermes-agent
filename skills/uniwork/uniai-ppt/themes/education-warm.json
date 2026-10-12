@@ -1,0 +1,24 @@
+{
+  "name": "education-warm",
+  "display_name": "教育暖阳 Education Warm",
+  "tags": ["education", "academic", "school", "training"],
+  "colors": {
+    "primary": "1B4965",
+    "secondary": "5FA8D3",
+    "accent": "F4A261",
+    "bg_dark": "1B4965",
+    "bg_light": "FDF8F3",
+    "text_on_dark": "FFFFFF",
+    "text_on_light": "1B4965",
+    "text_muted": "7BA5C0",
+    "card_bg": "FFFFFF",
+    "card_border": "E0D8C8"
+  },
+  "fonts": {
+    "title": "Cambria",
+    "body": "Calibri",
+    "accent": "Trebuchet MS"
+  },
+  "motif": "colored-icon-circle",
+  "description": "Warm navy and amber conveying knowledge and warmth. Perfect for educational content, training materials, and academic presentations."
+}

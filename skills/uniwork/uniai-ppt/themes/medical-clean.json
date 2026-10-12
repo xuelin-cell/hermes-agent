@@ -1,0 +1,24 @@
+{
+  "name": "medical-clean",
+  "display_name": "医疗净白 Medical Clean",
+  "tags": ["medical", "healthcare", "pharma", "clinical"],
+  "colors": {
+    "primary": "0077B6",
+    "secondary": "48CAE4",
+    "accent": "00B4D8",
+    "bg_dark": "023E73",
+    "bg_light": "F0F8FF",
+    "text_on_dark": "FFFFFF",
+    "text_on_light": "023E73",
+    "text_muted": "6AABCF",
+    "card_bg": "FFFFFF",
+    "card_border": "D0E8F5"
+  },
+  "fonts": {
+    "title": "Calibri",
+    "body": "Calibri Light",
+    "accent": "Calibri"
+  },
+  "motif": "rounded-card",
+  "description": "Clinical blues with pristine whites. Designed for medical reports, pharmaceutical presentations, and healthcare conferences."
+}

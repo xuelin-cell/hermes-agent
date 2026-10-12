@@ -28,6 +28,7 @@ from agent.skill_utils import ESSENTIAL_SKILLS, is_excluded_skill_path
 from tools.skill_usage import _read_skill_name
 from tools.skills_sync_optional import (
     _backfill_optional_provenance, _ignore_runtime_cache, _is_runtime_cache, _read_hub_install_paths,
+    retire_backfilled_optional_skills,
 )
 from utils import atomic_write_text
 
@@ -231,6 +232,39 @@ def _retire_excluded_bundled_skills(
             st.manifest.pop(name, None)
         except (OSError, ValueError) as exc:
             st.say(f"  ! Failed to retire {name}: {exc}")
+    return removed, archived
+
+
+def _retire_stale_distribution_skills(st: "_SyncState", current_names: Set[str]) -> Tuple[List[str], List[str]]:
+    """退役 manifest 仍跟踪、但已不属于最新 UniWork 发行清单的技能。"""
+    removed = []
+    archived = []
+    stale_names = set(st.manifest) - current_names - set(ESSENTIAL_SKILLS)
+    hub_paths = _read_hub_install_paths()
+    active = {
+        _read_skill_name(skill_md, skill_md.parent.name): skill_md.parent
+        for skill_md in _iter_active_skill_mds(sort=True)
+    }
+    for name in sorted(stale_names):
+        destination = active.get(name)
+        if destination is None:
+            st.manifest.pop(name, None)
+            continue
+        relative = _rel_skills_posix(destination)
+        if relative in hub_paths:
+            st.manifest.pop(name, None)
+            continue
+        try:
+            if _matches_origin_hash(destination, st.manifest[name]):
+                _rmtree_writable(destination)
+                removed.append(name)
+            else:
+                archive = _retired_archive_path(name)
+                _move_dir(destination, archive)
+                archived.append(name)
+            st.manifest.pop(name, None)
+        except (OSError, ValueError) as exc:
+            st.say(f"  ! Failed to retire stale bundled skill {name}: {exc}")
     return removed, archived
 
 
@@ -470,6 +504,13 @@ def sync_skills(quiet: bool = False) -> dict:
     retired_pristine, retired_modified = _retire_excluded_bundled_skills(
         st, bundled_dir, excluded_bundled_skills
     )
+    if (bundled_dir / UNIWORK_BUNDLED_ONLY_MARKER).is_file():
+        removed, archived = _retire_stale_distribution_skills(st, {name for name, _ in bundled_skills})
+        retired_pristine.extend(removed)
+        retired_modified.extend(archived)
+        removed, archived = retire_backfilled_optional_skills()
+        retired_pristine.extend(removed)
+        retired_modified.extend(archived)
 
     for skill_name, skill_src in bundled_skills:
         # Curator-pruned built-ins must not resurrect on every update; essentials are exempt.
@@ -511,7 +552,10 @@ def sync_skills(quiet: bool = False) -> dict:
         "copied": st.copied, "updated": st.updated, "skipped": st.skipped, "user_modified": st.user_modified,
         "cleaned": cleaned, "suppressed": st.suppressed, "relocated": st.relocated,
         "total_bundled": len(bundled_skills),
-        "optional_provenance_backfilled": _backfill_optional_provenance(quiet=quiet),
+        "optional_provenance_backfilled": (
+            [] if (bundled_dir / UNIWORK_BUNDLED_ONLY_MARKER).is_file()
+            else _backfill_optional_provenance(quiet=quiet)
+        ),
         "shadowed_by_external": st.shadowed_by_external,
         "retired_pristine": retired_pristine,
         "retired_modified": retired_modified,

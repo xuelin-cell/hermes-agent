@@ -1,0 +1,24 @@
+{
+  "name": "coral-energy",
+  "display_name": "珊瑚活力 Coral Energy",
+  "tags": ["creative", "marketing", "startup", "vibrant"],
+  "colors": {
+    "primary": "F96167",
+    "secondary": "F9E795",
+    "accent": "2F3C7E",
+    "bg_dark": "2F3C7E",
+    "bg_light": "FFF8F0",
+    "text_on_dark": "FFFFFF",
+    "text_on_light": "2F3C7E",
+    "text_muted": "8B8FA8",
+    "card_bg": "FFFFFF",
+    "card_border": "FFD6D8"
+  },
+  "fonts": {
+    "title": "Arial Black",
+    "body": "Calibri",
+    "accent": "Trebuchet MS"
+  },
+  "motif": "colored-icon-circle",
+  "description": "Bold coral and gold with deep navy anchoring. Great for creative pitches, marketing decks, and startup presentations."
+}

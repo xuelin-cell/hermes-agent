@@ -1,0 +1,24 @@
+{
+  "name": "finance-gold",
+  "display_name": "金融尊贵 Finance Gold",
+  "tags": ["finance", "banking", "investment", "premium"],
+  "colors": {
+    "primary": "1C1C1C",
+    "secondary": "C9A96E",
+    "accent": "B8860B",
+    "bg_dark": "111111",
+    "bg_light": "FAF7F2",
+    "text_on_dark": "E8DCC0",
+    "text_on_light": "1C1C1C",
+    "text_muted": "9A8F7F",
+    "card_bg": "FFFFFF",
+    "card_border": "E0D4C0"
+  },
+  "fonts": {
+    "title": "Georgia",
+    "body": "Calibri",
+    "accent": "Palatino"
+  },
+  "motif": "elegant-border",
+  "description": "Premium black and gold for financial gravitas. Ideal for investment reports, banking presentations, and wealth management decks."
+}

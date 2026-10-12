@@ -1,0 +1,24 @@
+{
+  "name": "chinese-festive",
+  "display_name": "国潮喜庆 Chinese Festive",
+  "tags": ["chinese", "festival", "celebration", "new-year"],
+  "colors": {
+    "primary": "CC0000",
+    "secondary": "FFD700",
+    "accent": "8B0000",
+    "bg_dark": "660000",
+    "bg_light": "FFF8F0",
+    "text_on_dark": "FFD700",
+    "text_on_light": "8B0000",
+    "text_muted": "CC8888",
+    "card_bg": "FFFAF5",
+    "card_border": "FFD0D0"
+  },
+  "fonts": {
+    "title": "Georgia",
+    "body": "Calibri",
+    "accent": "Impact"
+  },
+  "motif": "bold-accent-bar",
+  "description": "Vibrant red and gold for celebrations. Ideal for Spring Festival, company annual meetings, award ceremonies, and festive events."
+}

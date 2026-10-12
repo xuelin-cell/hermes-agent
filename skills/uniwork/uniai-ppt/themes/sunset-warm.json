@@ -1,0 +1,24 @@
+{
+  "name": "sunset-warm",
+  "display_name": "暖阳日落 Sunset Warm",
+  "tags": ["warm", "hospitality", "food", "artisan", "creative"],
+  "colors": {
+    "primary": "E76F51",
+    "secondary": "F4A261",
+    "accent": "264653",
+    "bg_dark": "264653",
+    "bg_light": "FFF5EB",
+    "text_on_dark": "FFFFFF",
+    "text_on_light": "264653",
+    "text_muted": "B0946A",
+    "card_bg": "FFFFFF",
+    "card_border": "F0DCC8"
+  },
+  "fonts": {
+    "title": "Trebuchet MS",
+    "body": "Calibri",
+    "accent": "Georgia"
+  },
+  "motif": "rounded-card",
+  "description": "Warm sunset oranges with teal contrast. Perfect for hospitality, food & beverage, travel, and creative agency presentations."
+}

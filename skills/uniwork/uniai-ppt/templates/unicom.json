@@ -1,0 +1,14 @@
+{
+  "name": "unicom",
+  "display_name": "中国联通 · 联通元景 数智品牌模板",
+  "style_tags": ["unicom", "联通", "中国联通", "联通模板", "联通风格", "联通ppt", "联通数智", "数智", "元景", "联通元景", "联通科技风", "联通婉约风", "telecom", "brand", "red", "corporate"],
+  "description": "China Unicom official brand deck (数智公司PPT模版-联通元景新logo). White canvas, Unicom deep-red C00000 + bright-red EE0000 accents, Microsoft YaHei, dual co-brand logo (中国联通 + 联通元景) top-right, red header rule + left accent bars. Use for ANY 联通 / 中国联通 / 联通数智 / 联通元景 request, including 科技风 / 婉约风 style variants. Reproduce with pptxgenjs via ../unicom-template.md (do NOT just edit this pptx unless the user wants in-place editing).",
+  "slides_count": 4,
+  "layouts": ["cover", "contents", "content", "section", "closing"],
+  "guide": "unicom-template.md",
+  "theme": "themes/unicom.json",
+  "assets": {
+    "logo_dual": "templates/unicom/assets/logo-cube-yuanjing.png",
+    "logo_unicom": "templates/unicom/assets/logo-unicom.png"
+  }
+}

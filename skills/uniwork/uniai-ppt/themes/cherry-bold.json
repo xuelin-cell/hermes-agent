@@ -1,0 +1,24 @@
+{
+  "name": "cherry-bold",
+  "display_name": "樱桃大胆 Cherry Bold",
+  "tags": ["bold", "impact", "sales", "urgency"],
+  "colors": {
+    "primary": "990011",
+    "secondary": "FCF6F5",
+    "accent": "2F3C7E",
+    "bg_dark": "4A0008",
+    "bg_light": "FCF6F5",
+    "text_on_dark": "FFFFFF",
+    "text_on_light": "990011",
+    "text_muted": "CC6670",
+    "card_bg": "FFFFFF",
+    "card_border": "F0D0D4"
+  },
+  "fonts": {
+    "title": "Impact",
+    "body": "Arial",
+    "accent": "Arial Black"
+  },
+  "motif": "bold-accent-bar",
+  "description": "High-impact cherry red for bold statements. Great for sales pitches, product launches, and attention-grabbing presentations."
+}
