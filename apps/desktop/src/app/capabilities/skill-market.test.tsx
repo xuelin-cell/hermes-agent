@@ -19,6 +19,7 @@ const getRecommendedSkills = vi.fn().mockResolvedValue([
   }
 ])
 const installUniWorkSkill = vi.fn().mockResolvedValue({ ok: true, name: 'office-writer', install_path: 'office-writer' })
+const installHubSkill = vi.fn().mockResolvedValue(undefined)
 
 vi.mock('@/hermes', async importOriginal => ({
   ...(await importOriginal<typeof HermesApi>()),
@@ -26,6 +27,8 @@ vi.mock('@/hermes', async importOriginal => ({
   getUniWorkRecommendedSkills: getRecommendedSkills,
   installUniWorkSkill
 }))
+
+vi.mock('@/store/hub-actions', () => ({ installHubSkill }))
 
 const { SkillMarket } = await import('./skill-market')
 
@@ -66,5 +69,30 @@ describe('SkillMarket', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Install' }))
 
     await vi.waitFor(() => expect(installUniWorkSkill).toHaveBeenCalledWith(expect.objectContaining({ id: 'writer' }), undefined))
+  })
+
+  it('市场技能同时提供下载地址时优先使用 ClawHub 安装链', async () => {
+    getRecommendedSkills.mockResolvedValueOnce([
+      {
+        id: '1password',
+        name: '密码管家（1password）',
+        description: 'fixture',
+        clawhub_url: 'https://clawhub.ai/steipete/1password',
+        download_url: 'https://wry-manatee-359.convex.site/api/v1/download?slug=1password'
+      }
+    ])
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <SkillMarket installed={<div>installed</div>} installedCount={0} installedNames={new Set()} />
+      </QueryClientProvider>
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Recommended' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Install' }))
+
+    await vi.waitFor(() =>
+      expect(installHubSkill).toHaveBeenCalledWith('https://clawhub.ai/steipete/1password', undefined)
+    )
   })
 })

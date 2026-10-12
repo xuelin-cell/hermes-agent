@@ -12,6 +12,7 @@ from hermes_cli.skill_market_install import MarketSkillInstallError, install_mar
 router = APIRouter()
 MARKET_BASE = "https://maas.ai-yuanjing.com/app/gateway/wanwu"
 RECOMMENDED_BASE = "https://maas.ai-yuanjing.com/app/gateway"
+PACKAGE_HOSTS = frozenset({"maas.ai-yuanjing.com", "wry-manatee-359.convex.site"})
 
 
 async def catalog_get(base: str, route: str, params: Optional[dict] = None):
@@ -69,9 +70,9 @@ async def install_skill(body: SkillInstall, profile: Optional[str] = None):
     if url.startswith("/uniwork/skills/"):
         url = urljoin(RECOMMENDED_BASE + "/", "uniwork/skills/" + url[len("/uniwork/skills/"):])
     parsed = urlparse(url)
-    if (parsed.scheme != "https" or parsed.hostname != "maas.ai-yuanjing.com"
+    if (parsed.scheme != "https" or parsed.hostname not in PACKAGE_HOSTS
             or parsed.username or parsed.password):
-        raise HTTPException(400, "技能下载地址必须来自元景 HTTPS 服务")
+        raise HTTPException(400, "技能下载地址必须来自技能市场的 HTTPS 服务")
     label = (body.name or body.id).strip()
     if not label:
         raise HTTPException(400, "技能名称不能为空")

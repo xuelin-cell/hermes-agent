@@ -118,6 +118,25 @@ def test_install_route_returns_completed_install(monkeypatch):
     assert calls == [("https://maas.ai-yuanjing.com/app/gateway/uniwork/skills/fixture/package", "fixture", "work")]
 
 
+def test_install_route_accepts_fixed_market_package_host(monkeypatch):
+    """市场目录公布的固定包托管域名可以进入相同安全安装链。"""
+    from hermes_cli import web_server
+    from hermes_cli.web_routers import skill_market
+
+    monkeypatch.setattr(
+        skill_market,
+        "install_market_skill",
+        lambda _url, _identifier, _profile: {"ok": True, "name": "fixture", "install_path": "fixture"},
+    )
+    with TestClient(web_server.app, headers={"Authorization": "Bearer " + web_server._SESSION_TOKEN}) as client:
+        result = client.post("/api/skills/market/install", json={
+            "id": "fixture",
+            "download_url": "https://wry-manatee-359.convex.site/api/v1/download?slug=fixture",
+        })
+
+    assert result.status_code == 200
+
+
 def test_market_package_runs_real_scan_and_install_chain(tmp_path, monkeypatch):
     """真实隔离、扫描和落盘链能把安全市场包安装到指定用户目录。"""
     from hermes_cli import skill_market_install
