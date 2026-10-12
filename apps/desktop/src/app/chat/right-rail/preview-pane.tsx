@@ -10,6 +10,7 @@ import { openGuestContextMenu } from '@/app/context-menu/store'
 import { PanelEmpty } from '@/app/overlays/panel'
 import { Tip } from '@/components/ui/tooltip'
 import { type Translations, useI18n } from '@/i18n'
+import { remoteHtmlFrameDocument, remoteHtmlFrameSandbox } from '@/lib/browser-shell'
 import { isDesktopFsRemoteMode } from '@/lib/desktop-fs'
 import { guardGuestPointers } from '@/lib/guest-pointer-guard'
 import { openPreviewTargetInBrowser, remoteHtmlPreviewDocument } from '@/lib/local-preview'
@@ -277,7 +278,7 @@ export function PreviewPane({ embedded = false, onRestartServer, reloadRequest =
   const isRemoteHtml = isRemoteHtmlTarget && target.renderMode !== 'source' && Boolean(target.dataUrl)
 
   const remoteHtmlDocument = useMemo(
-    () => (isRemoteHtml ? remoteHtmlPreviewDocument(target.dataUrl!) : null),
+    () => (isRemoteHtml ? remoteHtmlFrameDocument(target.dataUrl!, remoteHtmlPreviewDocument) : null),
     [isRemoteHtml, target.dataUrl]
   )
 
@@ -1062,7 +1063,7 @@ export function PreviewPane({ embedded = false, onRestartServer, reloadRequest =
             <iframe
               className="absolute inset-0 size-full border-0 bg-white"
               referrerPolicy="no-referrer"
-              sandbox=""
+              sandbox={remoteHtmlFrameSandbox()}
               srcDoc={remoteHtmlDocument || ''}
               title={target.label || copy.fallbackTitle}
             />

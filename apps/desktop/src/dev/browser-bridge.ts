@@ -7,7 +7,12 @@ import type {
   HermesTerminalExit,
   HermesTerminalSession
 } from '@/global'
-import { browserShellCopy, type InstanceFileErrorCode, isInstanceLocalUrl } from '@/lib/browser-shell'
+import {
+  browserShellCopy,
+  HTML_PREVIEW_SANDBOX,
+  type InstanceFileErrorCode,
+  isInstanceLocalUrl
+} from '@/lib/browser-shell'
 
 const noopOff = () => () => undefined
 const productionBrowserBuild = import.meta.env.VITE_HERMES_BROWSER_BUILD === '1'
@@ -492,15 +497,16 @@ function escapeHtml(text: string): string {
 /** Agent-written HTML must not run as this app: a document opened straight from
  * a blob shares the app's origin and could call the gateway with the user's
  * session. It is framed instead, in an iframe sandboxed WITHOUT
- * `allow-same-origin` — its scripts run, in an opaque origin with no access to
- * the app, its storage or its cookies. */
+ * `allow-same-origin` (`HTML_PREVIEW_SANDBOX`, as in the preview pane) — its
+ * scripts run, in an opaque origin with no access to the app, its storage or
+ * its cookies. */
 export function isolatedPreviewPage(contentUrl: string, title: string): string {
   return [
     '<!doctype html><html><head><meta charset="utf-8">',
     `<title>${escapeHtml(title)}</title>`,
     '<style>html,body{margin:0;height:100%;background:#fff}iframe{display:block;width:100%;height:100%;border:0}</style>',
     '</head><body>',
-    `<iframe sandbox="allow-scripts allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox" src="${escapeHtml(contentUrl)}"></iframe>`,
+    `<iframe sandbox="${HTML_PREVIEW_SANDBOX}" src="${escapeHtml(contentUrl)}"></iframe>`,
     '</body></html>'
   ].join('')
 }

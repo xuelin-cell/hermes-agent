@@ -1,15 +1,18 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { setRuntimeI18nLocale } from '@/i18n/runtime'
 
 import {
   browserShellCopy,
   hideForUsers,
+  HTML_PREVIEW_SANDBOX,
   isBrowserShell,
   isBrowserTerminalPaste,
   isDeveloperMode,
   isInstanceLocalUrl,
   isSettingsViewHidden,
+  remoteHtmlFrameDocument,
+  remoteHtmlFrameSandbox,
   visibleModelOptions,
   withoutHiddenNavItems,
   withoutHiddenPaletteItems
@@ -111,6 +114,33 @@ describe('browser shell', () => {
     expect(isBrowserTerminalPaste(key({ ctrlKey: true, altKey: true }))).toBe(false)
     expect(isBrowserTerminalPaste(new KeyboardEvent('keydown', { ctrlKey: true, key: 'c' }))).toBe(false)
     expect(isBrowserTerminalPaste(new KeyboardEvent('keyup', { ctrlKey: true, key: 'v' }))).toBe(false)
+  })
+
+  it('runs HTML files from the instance as they are, in a frame without the app’s origin', () => {
+    const html =
+      '<!doctype html><title>贪吃蛇</title><button onclick="go()">开始</button><script>function go() {}</script>'
+
+    const dataUrl = `data:text/html;base64,${btoa(String.fromCharCode(...new TextEncoder().encode(html)))}`
+    const staticCopy = vi.fn((_dataUrl: string) => '<p>static</p>')
+
+    expect(remoteHtmlFrameDocument(dataUrl, staticCopy)).toBe('<p>static</p>')
+    expect(staticCopy).toHaveBeenCalledWith(dataUrl)
+    expect(remoteHtmlFrameSandbox()).toBe('')
+
+    document.documentElement.dataset.hermesBrowser = 'production'
+    staticCopy.mockClear()
+
+    expect(remoteHtmlFrameDocument(dataUrl, staticCopy)).toBe(html)
+    expect(staticCopy).not.toHaveBeenCalled()
+    expect(remoteHtmlFrameDocument('data:text/plain;base64,aGk=', staticCopy)).toBeNull()
+    expect(remoteHtmlFrameDocument('data:text/html;base64,%%%', staticCopy)).toBeNull()
+
+    const sandbox = remoteHtmlFrameSandbox().split(' ')
+
+    expect(sandbox).toContain('allow-scripts')
+    expect(sandbox).not.toContain('allow-same-origin')
+    expect(sandbox.filter(token => token.startsWith('allow-top-navigation'))).toEqual([])
+    expect(remoteHtmlFrameSandbox()).toBe(HTML_PREVIEW_SANDBOX)
   })
 
   it('lists only the platform providers in model pickers, plus the one in use', () => {

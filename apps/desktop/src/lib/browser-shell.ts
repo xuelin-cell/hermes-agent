@@ -17,6 +17,7 @@ import { getRuntimeI18nLocale } from '@/i18n/runtime'
  * developer mode or not.
  *
  *   api/models.ts                                      * model pickers: the platform's providers only
+ *   app/chat/right-rail/preview-pane.tsx               HTML files from the instance run their scripts, sandboxed
  *   app/chat/sidebar/filter-menu.tsx                   * no profile submenu (filter / new / import)
  *   app/chat/sidebar/index.tsx                         * no messaging platforms entry
  *   app/chat/sidebar/profile-switcher.tsx              * no add / import profile, no "connect gateway"
@@ -90,6 +91,46 @@ export function isBrowserTerminalPaste(event: KeyboardEvent): boolean {
   const mac = /mac/i.test(globalThis.navigator?.platform ?? '')
 
   return mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey
+}
+
+/** Sandbox for agent-written HTML, in the preview pane and in a new tab
+ * (`browser-bridge.ts`). Never `allow-same-origin`: its scripts run in an opaque
+ * origin, with no access to the app, its storage or its cookies, and it cannot
+ * navigate the app away. */
+export const HTML_PREVIEW_SANDBOX = 'allow-scripts allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox'
+
+const HTML_DATA_URL_PREFIX = 'data:text/html;base64,'
+
+/** The preview pane's document for an HTML file in the instance. The desktop
+ * app, on a remote gateway, shows a static copy with the scripts stripped
+ * (`staticCopy`). The browser build shows the file as it is, so games, charts
+ * and other pages that need their scripts work, isolated by
+ * `remoteHtmlFrameSandbox()` the same way as when opened in a new tab. */
+export function remoteHtmlFrameDocument(
+  dataUrl: string,
+  staticCopy: (dataUrl: string) => null | string
+): null | string {
+  if (!isBrowserShell()) {
+    return staticCopy(dataUrl)
+  }
+
+  if (!dataUrl.startsWith(HTML_DATA_URL_PREFIX)) {
+    return null
+  }
+
+  try {
+    const bytes = Uint8Array.from(atob(dataUrl.slice(HTML_DATA_URL_PREFIX.length)), char => char.charCodeAt(0))
+
+    return new TextDecoder().decode(bytes)
+  } catch {
+    return null
+  }
+}
+
+/** The pane's frame sandbox for those files: the desktop app's static copy runs
+ * nothing (`''`). */
+export function remoteHtmlFrameSandbox(): string {
+  return isBrowserShell() ? HTML_PREVIEW_SANDBOX : ''
 }
 
 const INSTANCE_LOCAL_HOST_RE = /^(?:localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|\[::1\])$/i
