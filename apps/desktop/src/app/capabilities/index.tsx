@@ -1,3 +1,4 @@
+import { useStore } from '@nanostores/react'
 import type * as React from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
@@ -7,6 +8,7 @@ import { useI18n } from '@/i18n'
 import { queryClient } from '@/lib/query-client'
 import { invalidateSlashCompletions } from '@/lib/slash-completion-cache'
 import { useStoreSelector } from '@/lib/use-session-slice'
+import { $developerMode } from '@/store/developer-mode'
 import { $gateway } from '@/store/gateway'
 import { OFFICIAL_SKILLS_KEY } from '@/store/hub-actions'
 
@@ -64,11 +66,20 @@ export function CapabilitiesView({
   ...props
 }: CapabilitiesViewProps) {
   const { t } = useI18n()
+  const developerMode = useStore($developerMode)
   // Both hooks run unconditionally (rules of hooks); embedded picks the local
   // one so tab clicks inside a dialog don't rewrite the page URL.
   const routeTab = useRouteEnumParam('tab', CAPABILITY_MODES, 'skills')
   const localTab = useState<CapabilityMode>('skills')
-  const [mode, setMode] = embedded ? localTab : routeTab
+  const [requestedMode, setMode] = embedded ? localTab : routeTab
+  const mode = !developerMode && requestedMode === 'toolsets' ? 'skills' : requestedMode
+
+  // 立即阻止隐藏页挂载，同时清理旧链接和嵌入视图的选中状态。
+  useEffect(() => {
+    if (!developerMode && requestedMode === 'toolsets') {
+      setMode('skills')
+    }
+  }, [developerMode, requestedMode, setMode])
   const gateway = useStoreSelector($gateway, g => (mode === 'connectors' ? g : null))
 
   const [query, setQuery] = useState('')
@@ -197,7 +208,9 @@ export function CapabilitiesView({
       searchValue={query}
       tabs={[
         { id: 'skills', label: t.skills.tabSkills, meta: skills?.length ?? null },
-        { id: 'toolsets', label: t.skills.tabToolsets, meta: toolsets ? visibleToolsetCount(toolsets) : null },
+        ...(developerMode
+          ? [{ id: 'toolsets', label: t.skills.tabToolsets, meta: toolsets ? visibleToolsetCount(toolsets) : null }]
+          : []),
         { id: 'connectors', label: t.connectorsPage.title },
         { id: 'plugins', label: t.skills.tabPlugins }
       ]}

@@ -710,10 +710,17 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
   // Deep-link into a nested page (e.g. `/pet list` → pets picker).
   useEffect(() => {
     if (pendingPage) {
-      setPage(pendingPage)
+      setPage(!developerMode && pendingPage === 'pets' ? null : pendingPage)
       $commandPalettePage.set(null)
     }
-  }, [pendingPage])
+  }, [developerMode, pendingPage])
+
+  // 关闭开发者模式时，不保留已经打开的宠物管理页面。
+  useEffect(() => {
+    if (!developerMode && page === 'pets') {
+      setPage(null)
+    }
+  }, [developerMode, page])
 
   // Landing on a page (deep-link open onto Settings, drilling into a submenu,
   // stepping back out) must leave the filter typeable immediately — the whole
@@ -1022,7 +1029,7 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
             label: cc.generatePet.title,
             run: () => openPetGenerate()
           }
-        ]
+        ].filter(item => developerMode || !['appearance-pets', 'appearance-generate-pet'].includes(item.id))
       },
       {
         heading: cc.settings,
@@ -1161,7 +1168,7 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
           label: `${capLabel}: ${t.skills.tabPlugins}`,
           run: go(`${CAPABILITIES_ROUTE}?tab=plugins`)
         }
-      ]
+      ].filter(item => developerMode || item.id !== 'cap-toolsets')
     })
 
     // Apply a theme directly from the root search (e.g. "nous" → Nous). Live
@@ -1302,6 +1309,7 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
   }, [
     archivedSessions,
     availableThemes,
+    developerMode,
     go,
     goSession,
     mcpServers,

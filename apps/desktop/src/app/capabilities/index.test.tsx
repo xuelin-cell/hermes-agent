@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type * as HermesApi from '@/hermes'
 import { queryClient } from '@/lib/query-client'
+import { $developerMode } from '@/store/developer-mode'
 import type * as HubActions from '@/store/hub-actions'
 
 import { parseCatalog } from './catalog/catalog-data'
@@ -100,6 +101,7 @@ async function renderSkills() {
 }
 
 beforeEach(() => {
+  $developerMode.set(true)
   $catalogCardView.set(true)
   getSkills.mockResolvedValue([])
   getToolsets.mockResolvedValue([toolset()])
@@ -120,6 +122,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  $developerMode.set(false)
   vi.clearAllMocks()
   // Shared singleton client — drop cached skills/toolsets so each test refetches.
   queryClient.clear()
@@ -131,6 +134,26 @@ afterEach(() => {
 // all 11 tests (2× in a row on PR #93612, plus a main run the same hour).
 // Give this file headroom; the tests are not slow individually.
 describe('CapabilitiesView toolset management', { timeout: 60_000 }, () => {
+  // 验证旧链接不能绕过开发者模式，开启后仍可正常使用工具集。
+  it('blocks a bookmarked toolsets page while developer mode is off', async () => {
+    $developerMode.set(false)
+    await renderSkills()
+    expect(screen.queryByRole('button', { name: /^Tools\d/ })).toBeNull()
+    expect(screen.queryByRole('switch', { name: 'Turn Web Search toolset off' })).toBeNull()
+    await act(async () => { $developerMode.set(true) })
+    fireEvent.click(screen.getAllByRole('button', { name: /^Tools\d/ })[0])
+    expect(await screen.findByRole('switch', { name: 'Turn Web Search toolset off' })).toBeTruthy()
+  })
+
+  // 验证关闭开关后已经打开的工具集立即退出，不再显示配置控件。
+  it('unmounts toolset controls when developer mode is disabled', async () => {
+    await renderSkills()
+    await screen.findByRole('switch', { name: 'Turn Web Search toolset off' })
+    await act(async () => { $developerMode.set(false) })
+    expect(screen.queryByRole('button', { name: /^Tools\d/ })).toBeNull()
+    expect(screen.queryByRole('switch', { name: 'Turn Web Search toolset off' })).toBeNull()
+  })
+
   it('renders a switch for each toolset and toggles it off', async () => {
     await renderSkills()
 
