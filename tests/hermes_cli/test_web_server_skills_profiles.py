@@ -128,6 +128,32 @@ class TestProfileScopedSkills:
 
 
 class TestProfileScopedHubActions:
+    def test_market_install_matches_original_clawhub_catalog_identity(
+        self, client, isolated_profiles
+    ):
+        """市场包沿用已安装名称，只有来源可验证的 ClawHub 包获得目录别名。"""
+        import json
+
+        hub_dir = isolated_profiles["worker_alpha"] / "skills" / ".hub"
+        hub_dir.mkdir()
+        (hub_dir / "lock.json").write_text(json.dumps({"installed": {
+            "api-gateway": {
+                "source": "uniwork", "identifier": "api-gateway",
+                "metadata": {"source_url": "https://wry-manatee-359.convex.site/api/v1/download?slug=api-gateway&ownerHandle=byungkyu"},
+            },
+            "other": {
+                "source": "uniwork", "identifier": "other",
+                "metadata": {"source_url": "https://example.com/api/v1/download?slug=api-gateway"},
+            },
+        }}), encoding="utf-8")
+        response = client.get("/api/skills/hub/sources", params={"profile": "worker_alpha"})
+
+        assert response.status_code == 200
+        installed = response.json()["installed"]
+        assert installed["clawhub/api-gateway"]["name"] == "api-gateway"
+        assert installed["clawhub/api-gateway"] == installed["api-gateway"]
+        assert "clawhub/other" not in installed
+
     def test_hub_install_spawns_with_profile_flag(
         self, client, isolated_profiles, monkeypatch
     ):

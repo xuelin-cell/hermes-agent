@@ -470,7 +470,25 @@ def _installed_hub_identifiers(profile: Optional[str] = None) -> dict:
             profile_dir = _resolve_profile_dir(profile.strip())
             lock = HubLockFile(profile_dir / "skills" / ".hub" / "lock.json")
         keys = ("name", "trust_level", "scan_verdict")
-        return {entry["identifier"]: {k: entry.get(k) for k in keys}
-                for entry in lock.list_installed() if entry.get("identifier")}
+        installed = {}
+        from urllib.parse import parse_qs, urlparse
+        for entry in lock.list_installed():
+            identifier = entry.get("identifier")
+            if not identifier:
+                continue
+            record = {k: entry.get(k) for k in keys}
+            installed[identifier] = record
+            # 市场下载的 ClawHub 包保留原来源别名，让目录卡片关联到同一个本地技能。
+            source_url = urlparse((entry.get("metadata") or {}).get("source_url", ""))
+            if (
+                entry.get("source") == "uniwork"
+                and source_url.scheme == "https"
+                and source_url.hostname in {"wry-manatee-359.convex.site", "clawhub.ai"}
+                and source_url.path == "/api/v1/download"
+            ):
+                slug = parse_qs(source_url.query).get("slug", [""])[0]
+                if slug:
+                    installed.setdefault(f"clawhub/{slug}", record)
+        return installed
     except Exception:
         return {}

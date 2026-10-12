@@ -289,12 +289,13 @@ function ScopedSkillCatalog({
       onQueryChange={onQueryChange}
       query={query}
       renderInstalledAction={entry => {
-        const skill = catalog.skillsById.get(entry.id)
+        // 本地技能按名称唯一；同名目录项已禁止重复安装，也必须提供该本地技能的启用开关。
+        const skill = catalog.skillsById.get(entry.id) ?? catalog.skillsByName.get(entry.name)
 
         return skill && renderInstalledAction ? renderInstalledAction(skill) : null
       }}
       renderInstalledDetail={entry => {
-        const skill = catalog.skillsById.get(entry.id)
+        const skill = catalog.skillsById.get(entry.id) ?? catalog.skillsByName.get(entry.name)
 
         return skill ? renderInstalledDetail(skill) : null
       }}
