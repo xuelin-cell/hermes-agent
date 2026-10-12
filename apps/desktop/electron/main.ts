@@ -326,7 +326,7 @@ import { resolveIpcFileReadPath, resolveMediaStreamFile, resolvePreviewTargetPat
 import { localSkinProfileKey, readLocalSkinPayload } from './local-skin'
 import { ACTIVE_LOG_POLL_MS, planLogRotation, reclaimActiveLogIfOversized } from './log-rotation'
 import { installAccountIpc } from './login/account-ipc'
-import { currentDesktopAccount, currentDesktopLocalContext, sealDesktopAccount } from './login/bootstrap'
+import { currentDesktopAccount, currentDesktopIdentity, currentDesktopLocalContext, sealDesktopAccount } from './login/bootstrap'
 import { registerMachineProfile } from './machine-profile'
 import { createMainProcessLagWatchdog } from './main-process-lag-watchdog'
 import { ensureMainWindow } from './main-window-lifecycle'
@@ -653,7 +653,8 @@ installAccountIpc(
   ACCOUNT_SESSION,
   () => DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString(),
   currentDesktopAccount,
-  () => logoutDesktopAccount()
+  () => logoutDesktopAccount(),
+  currentDesktopIdentity
 )
 
 // Device-local preference: block F12 from opening DevTools.

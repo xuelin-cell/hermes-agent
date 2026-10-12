@@ -1,13 +1,16 @@
 import { BrowserWindow, ipcMain, type IpcMainInvokeEvent, type Session } from 'electron'
 
+import { CloudDriveClient } from './cloud-drive'
 import type { LoginAccount } from './contract'
+import type { LoginIdentity } from './session'
 
 /** 仅向当前账号桌面的主框架提供只读展示信息，不接受页面身份参数。 */
 export function installAccountIpc(
   session: Session,
   rendererUrl: () => string,
   readAccount: () => LoginAccount | null,
-  logout?: () => Promise<void>
+  logout?: () => Promise<void>,
+  readIdentity?: () => LoginIdentity | null
 ): void {
   /** 展示与退出共用来源校验，不接收 UID、路径或进程号。 */
   function trusted(event: IpcMainInvokeEvent, args: unknown[]): boolean {
@@ -50,6 +53,25 @@ export function installAccountIpc(
       }
 
       await logout()
+    })
+  }
+
+  if (readIdentity) {
+    const drive = new CloudDriveClient(readIdentity)
+    ipcMain.handle('hermes:maas-drive:request', async (event, ...args) => {
+      if (!trusted(event, []) || args.length !== 1 || !readIdentity()) {
+        throw new Error('云盘请求无效')
+      }
+
+      try {
+        return await drive.execute(args[0])
+      } catch (error) {
+        throw new Error(
+          error instanceof Error && /^(请|个人云盘|云盘|登录)/.test(error.message)
+            ? error.message
+            : '个人云盘请求失败，请重试'
+        )
+      }
     })
   }
 

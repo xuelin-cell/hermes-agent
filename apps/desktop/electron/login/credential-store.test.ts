@@ -20,6 +20,7 @@ import { CredentialStore, MAAS_IDENTITY_NAMESPACE } from './credential-store'
 const roots: string[] = []
 
 const identity = {
+  phone: '13800000000',
   uid: 'fixture-uid',
   token: 'fixture-token',
   expiresAt: Date.now() + 60_000,

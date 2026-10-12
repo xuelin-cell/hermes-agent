@@ -205,6 +205,11 @@ export function currentDesktopAccount(): LoginAccount | null {
   return stopping ? null : (accountRuntime?.currentAccount() ?? null)
 }
 
+/** 云盘只在主进程读取当前有效身份，不恢复旧 Web 凭据。 */
+export function currentDesktopIdentity() {
+  return stopping ? null : (accountRuntime?.login.currentIdentity() ?? null)
+}
+
 /** 退出确认后立即撤销主进程身份，不再允许读取或准备旧账号。 */
 export function sealDesktopAccount(): void {
   stopping = true

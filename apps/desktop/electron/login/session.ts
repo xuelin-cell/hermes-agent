@@ -3,6 +3,7 @@ import type { CredentialStore } from './credential-store'
 import { type FetchedPlan, fetchPlan, type MaasPlan } from './plan'
 
 export interface LoginIdentity {
+  phone?: string
   uid: string
   token: string
   expiresAt: number
@@ -57,7 +58,7 @@ function parseIdentity(body: unknown, phone: string): LoginIdentity | null {
     return null
   }
 
-  return { uid, token: payload.token.trim(), expiresAt, maskedPhone: `${phone.slice(0, 3)}****${phone.slice(-4)}` }
+  return { uid, token: payload.token.trim(), expiresAt, phone, maskedPhone: `${phone.slice(0, 3)}****${phone.slice(-4)}` }
 }
 
 /** 只挑选可跨越 IPC 的账号展示字段，不返回 UID、token 或原始响应。 */

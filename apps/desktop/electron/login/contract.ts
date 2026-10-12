@@ -9,6 +9,12 @@ export interface LoginRequest {
   smsCode: string
 }
 
+export interface CloudDriveRequest {
+  route: string
+  method?: 'GET' | 'POST' | 'PATCH'
+  body?: Record<string, unknown>
+}
+
 export interface LoginAccount {
   maskedPhone: string
   expiresAt: number

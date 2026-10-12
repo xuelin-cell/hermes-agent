@@ -4,7 +4,7 @@ import type { TranslucencyState } from '@hermes/shared/translucency'
 
 import type { ScreenshotApi } from '../electron/command-screenshot-types'
 import type { HudModifierApi } from '../electron/hud-modifier-types'
-import type { LoginAccount } from '../electron/login/contract'
+import type { CloudDriveRequest, LoginAccount } from '../electron/login/contract'
 import type { MachineProfile } from '../electron/machine-profile'
 import type { HermesNotification } from '../electron/notification-types'
 import type { PoolLimits } from '../electron/pool-limits'
@@ -28,6 +28,7 @@ declare global {
     hermesDesktop: {
       /** 只读本次已准备账号的脱敏信息，运行中到期仍返回原期限。 */
       getMaasAccount: () => Promise<LoginAccount | null>
+      cloudDriveRequest: (input: CloudDriveRequest) => Promise<unknown>
       logoutMaasAccount: () => Promise<void>
       // Resolve a backend connection. Omit `profile` (or pass the primary) for
       // the window's backend; pass a named profile to lazily spawn/reuse that

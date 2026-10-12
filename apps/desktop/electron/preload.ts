@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, webFrame, webUtils } from 'electron'
 
 import type { DesktopProfileRoute } from './desktop-profile'
 import type { HudModifierApi, HudModifierStatus } from './hud-modifier-types'
+import type { CloudDriveRequest } from './login/contract'
 import { customWindowControlsEnabled } from './window-controls'
 
 // Which translucency the OS can back. Asked synchronously because the renderer
@@ -26,6 +27,7 @@ const localSkin = ipcRenderer.sendSync('hermes:skin:local')
 contextBridge.exposeInMainWorld('hermesDesktop', {
   // 只读脱敏账号信息，页面不能传入身份或账号路径。
   getMaasAccount: () => ipcRenderer.invoke('hermes:maas-account:get'),
+    cloudDriveRequest: (input: CloudDriveRequest) => ipcRenderer.invoke('hermes:maas-drive:request', input),
   logoutMaasAccount: () => ipcRenderer.invoke('hermes:maas-account:logout'),
   glassSupported: translucencySupport?.glass === true,
   translucencySupported: translucencySupport?.translucency === true,

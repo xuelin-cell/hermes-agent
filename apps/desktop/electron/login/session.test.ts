@@ -54,7 +54,7 @@ it('只接受完整可信字段与未来期限，UID 不丢精度，失败始终
   request.mockResolvedValueOnce(Response.json({ code: 0, data: payload }))
   const result = await session.login({ ...input, uid: 'forged', token: 'forged', application: 'forged' })
   expect(result).toEqual({ ok: true, account: { maskedPhone: '138****0000', expiresAt: payload.expiresAt } })
-  expect(session.currentIdentity()).toEqual({ ...payload, maskedPhone: '138****0000' })
+  expect(session.currentIdentity()).toEqual({ ...payload, phone: input.phone, maskedPhone: '138****0000' })
   expect(save).toHaveBeenCalledExactlyOnceWith(session.currentIdentity())
   const [url, options] = request.mock.calls.at(-1)!
   expect(url).toBe('https://maas.ai-yuanjing.com/app/login/smsLogin')

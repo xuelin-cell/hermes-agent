@@ -351,7 +351,7 @@ so glass and message-bubble transparency do not reveal scrolling text.
 
 ## Feedback & empty/error/loading states
 
-资料库的个人云盘在接口接入前保留入口、搜索和操作区域，显示本地化待接入状态；搜索、新建、刷新和文件操作禁用，并关联同一状态说明。工具栏在窄窗换行，不使用假文件、空盘提示或持续加载掩盖未接入状态。本地产物仍按原有会话与文件链路工作。
+资料库的个人云盘通过受限主进程 IPC 使用当前桌面账号，凭据不进入 Renderer。目录支持分页读取、搜索、文件夹导航、新建、重命名、回收站、签名链接预览和下载。加载使用 PageLoader，失败提供重试，旧请求不覆盖新目录；新建与重命名使用共享 Dialog，删除使用 ConfirmDialog。缺少完整手机号的旧密文登录记录提示退出重登，不读取旧 Web 登录缓存。本地产物仍按原有会话与文件链路工作。
 
 - **Loading:** `Loader` (`src/components/ui/loader.tsx`) — animated math/ascii
   curves (`lemniscate-bloom` for long ops). Never ship the literal text

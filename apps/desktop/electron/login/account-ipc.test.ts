@@ -85,3 +85,17 @@ it('退出 IPC 同样验证主框架与账号，不接受页面指定身份或�
   await expect(invoke(event)).rejects.toThrow()
   expect(logout).toHaveBeenCalledTimes(1)
 })
+// 云盘不接受其他账号分区、子框架或页面提供的凭据。
+it('云盘只允许当前桌面主框架调用，不接受额外身份参数', async () => {
+  const identity = { uid: 'a', token: 'private', phone: '13800000000', maskedPhone: '138****0000', expiresAt: Date.now() + 60_000 }
+  const partition = {}
+  const frame = { url: 'http://127.0.0.1:5174/#/artifacts' }
+  const sender = { mainFrame: frame, session: partition }
+  fromWebContents.mockReturnValue({ isDestroyed: () => false, webContents: sender })
+  installAccountIpc(partition as never, () => 'http://127.0.0.1:5174', () => identity, undefined, () => identity)
+  const invoke = handle.mock.calls.findLast(call => call[0] === 'hermes:maas-drive:request')![1]
+  await expect(invoke({ sender, senderFrame: {} }, { route: '/asset-spaces' })).rejects.toThrow('无效')
+  await expect(invoke({ sender, senderFrame: frame }, { route: '/asset-spaces' }, 'forged-token')).rejects.toThrow('无效')
+  frame.url = 'https://untrusted.example/'
+  await expect(invoke({ sender, senderFrame: frame }, { route: '/asset-spaces' })).rejects.toThrow('无效')
+})

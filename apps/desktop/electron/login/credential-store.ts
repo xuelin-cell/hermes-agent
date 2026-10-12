@@ -41,6 +41,11 @@ function parseRecord(value: unknown): StoredLoginIdentity {
 
   return {
     namespace: MAAS_IDENTITY_NAMESPACE,
+    ...(typeof record.phone === 'string' &&
+    /^1\d{10}$/.test(record.phone) &&
+    `${record.phone.slice(0, 3)}****${record.phone.slice(-4)}` === record.maskedPhone
+      ? { phone: record.phone }
+      : {}),
     uid: record.uid,
     token: record.token,
     expiresAt: record.expiresAt,
