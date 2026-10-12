@@ -354,7 +354,8 @@ async def get_skills(profile: Optional[str] = None):
         with _profile_scope(profile):
             config = load_config()
             disabled = get_disabled_skills(config)
-            skills = _find_all_skills(skip_disabled=True)
+            # 管理页必须展示已经落盘但在当前主机暂不可运行的技能；运行时发现仍会过滤它们。
+            skills = _find_all_skills(skip_disabled=True, include_unavailable=True)
             usage = load_usage()
             # Set-based provenance (same classification as skill_usage.provenance,
             # without a per-skill manifest read): hub > bundled > agent, where

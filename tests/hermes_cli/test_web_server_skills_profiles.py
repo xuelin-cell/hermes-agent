@@ -22,6 +22,16 @@ def _write_skill(skills_dir, name, description="test skill"):
     )
 
 
+def _write_unavailable_skill(skills_dir, name):
+    """写入一个当前主机不可提供、但管理页仍应展示的技能。"""
+    d = skills_dir / name
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "SKILL.md").write_text(
+        f"---\nname: {name}\ndescription: unavailable skill\nrequires_apps: [missing-test-app]\n---\n",
+        encoding="utf-8",
+    )
+
+
 @pytest.fixture
 def isolated_profiles(tmp_path, monkeypatch, _isolate_hermes_home):
     """Isolated default home + one named profile, each with its own skills."""
@@ -73,6 +83,22 @@ class TestProfileScopedSkills:
 
         assert response.status_code == 200
         assert {skill["name"] for skill in response.json()} == {"worker-skill"}
+
+    def test_installed_list_keeps_skills_unavailable_on_current_host(
+        self, client, isolated_profiles
+    ):
+        """安装管理列表不应把缺少外部应用的已安装技能误判成未安装。"""
+        _write_unavailable_skill(
+            isolated_profiles["worker_alpha"] / "skills", "needs-missing-app"
+        )
+
+        response = client.get("/api/skills", params={"profile": "worker_alpha"})
+
+        assert response.status_code == 200
+        assert {skill["name"] for skill in response.json()} == {
+            "worker-skill",
+            "needs-missing-app",
+        }
 
 
     def test_toggle_writes_into_target_profile_only(self, client, isolated_profiles):

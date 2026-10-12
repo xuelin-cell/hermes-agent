@@ -66,3 +66,20 @@ def test_disabled_and_full_views_cached_separately(tmp_path, monkeypatch):
     everything = sorted(s["name"] for s in st._find_all_skills(skip_disabled=True))
     assert filtered == ["skill-one"]
     assert everything == ["skill-one", "skill-two"]
+
+
+def test_unavailable_skills_only_appear_when_explicitly_requested(tmp_path):
+    """管理视图可看见不可用技能，运行时发现仍保持原有过滤边界。"""
+    skill_dir = _write_skill(tmp_path, "cat-a", "needs-app")
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: needs-app\ndescription: needs app\nrequires_apps: [missing-test-app]\n---\n",
+        encoding="utf-8",
+    )
+
+    assert st._find_all_skills(skip_disabled=True) == []
+    assert [
+        skill["name"]
+        for skill in st._find_all_skills(
+            skip_disabled=True, include_unavailable=True
+        )
+    ] == ["needs-app"]
