@@ -5,13 +5,13 @@ import { processStartMarker, REAP_PROBE_TIMEOUT_MS } from '../backend-claim'
 import { parseBackendOwnershipDetailed, serializeBackendOwnership } from '../backend-ownership'
 import { writeSecretFileAtomic } from '../hardening'
 import { electronProcessStartMarker } from '../parent-process-identity'
-import { resolveSourcePython } from '../source-python'
 
 import { accountPathsById, type AccountRoots } from './account-paths'
 import { accountDesktopStatePaths } from './desktop-state'
 import { createAccountGatewayLogout, gatewayLogoutRoots } from './gateway-logout'
 import { type AccountExitMode, completeAccountExit, logoutIntentPath } from './logout'
 import { listLogoutProcesses, type LogoutProcess, logoutProcessTree, stopLogoutProcesses } from './logout-processes'
+import { resolveAccountInstallation } from './runtime-installation'
 
 interface PendingAccount {
   account: string
@@ -163,13 +163,7 @@ export async function recoverAccountRun(
     backendRoots.push(entry.pid)
   }
 
-  const python = resolveSourcePython(installationRoot, { override: pythonOverride })
-
-  if (!python) {
-    throw new Error('账号恢复运行组件不可用。')
-  }
-
-  const context = { ...account, installationRoot, python }
+  const context = { ...account, ...resolveAccountInstallation(installationRoot, pythonOverride) }
   const owned = new Map<string, LogoutProcess>()
 
   for (const row of [...(pending.processes ?? []), ...logoutProcessTree(rows, backendRoots)]) {

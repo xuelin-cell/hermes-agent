@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, readFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
@@ -45,6 +45,8 @@ export async function bundleElectronMain({ source, out, stamp, dev = false }) {
     define.__HERMES_PRODUCT_IDENTITY__ = productIdentity(source, metadata)
   }
   mkdirSync(out, { recursive: true })
+  // 账号退出辅助脚本随 dist 解包，供安装包内的 Python 直接执行。
+  copyFileSync(join(source, 'apps/desktop/electron/entry_local/gateway-logout.py'), join(out, 'gateway-logout.py'))
   const common = {
     absWorkingDir: join(source, 'apps/desktop'),
     bundle: true,

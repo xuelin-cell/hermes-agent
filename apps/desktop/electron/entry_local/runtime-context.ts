@@ -4,16 +4,13 @@ import path from 'node:path'
 import type { LoginAccount } from '../login/contract'
 import { MAAS_IDENTITY_NAMESPACE } from '../login/credential-store'
 import type { LoginSession } from '../login/session'
-import { resolveSourcePython } from '../source-python'
 
 import { type AccountPaths, type AccountRoots, resolveAccountPaths } from './account-paths'
 import { prepareLocalEnvironment } from './prepare-account'
+import { type AccountInstallation, resolveAccountInstallation } from './runtime-installation'
 import { LocalStartupError } from './startup-failure'
 
-export interface PreparedLocalContext extends Readonly<AccountPaths> {
-  readonly installationRoot: string
-  readonly python: string
-}
+export interface PreparedLocalContext extends Readonly<AccountPaths>, Readonly<AccountInstallation> {}
 
 /** 主进程持有身份和固定路径；本模块不导入聊天运行时，也不修改进程环境。 */
 export class LocalRuntimeContext {
@@ -49,10 +46,18 @@ export class LocalRuntimeContext {
       throw new Error('本次运行不能更换账号，请完整退出后重新登录。')
     }
 
-    const python = this.context?.python ?? resolveSourcePython(this.installationRoot, { override: this.pythonOverride })
+    let installation: AccountInstallation
 
     try {
-      if (!fs.statSync(path.join(this.installationRoot, 'hermes_cli', 'main.py')).isFile()) {
+      installation = this.context ?? resolveAccountInstallation(this.installationRoot, this.pythonOverride)
+    } catch (error) {
+      throw new LocalStartupError('runtime', error)
+    }
+
+    const { python, installationRoot } = installation
+
+    try {
+      if (!fs.statSync(path.join(installationRoot, 'hermes_cli', 'main.py')).isFile()) {
         throw new Error()
       }
     } catch (error) {
@@ -68,7 +73,7 @@ export class LocalRuntimeContext {
     }
 
     const paths = prepareLocalEnvironment(this.login, this.roots)
-    this.context ??= Object.freeze({ ...paths, installationRoot: this.installationRoot, python })
+    this.context ??= Object.freeze({ ...paths, ...installation })
     const plan = this.login.currentPlan()
     this.account = {
       maskedPhone: identity.maskedPhone,

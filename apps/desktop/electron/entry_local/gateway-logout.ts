@@ -37,7 +37,9 @@ export function createAccountGatewayLogout(context: PreparedLocalContext) {
   const env = accountDesktopEnvironment(context)
   const backend = accountSourceBackend(context, [], env)
 
-  const child = spawn(backend.command, [path.join(context.installationRoot, 'apps/desktop/electron/entry_local/gateway-logout.py')], {
+  const script = context.gatewayLogoutScript ?? path.join(context.installationRoot, 'apps/desktop/electron/entry_local/gateway-logout.py')
+
+  const child = spawn(backend.command, [script], {
     cwd: context.installationRoot, env: { ...env, ...backend.env }, windowsHide: true,
     stdio: ['pipe', 'pipe', 'ignore']
   })

@@ -49,5 +49,9 @@ export function accountSourceBackend(
     throw new Error('账号开发运行时不可用，请检查源码与 Python。')
   }
 
+  if (context.sitePackages) {
+    backend.env.PYTHONPATH = [context.installationRoot, context.sitePackages].join(path.delimiter)
+  }
+
   return backend
 }
