@@ -4572,7 +4572,12 @@ export const zh = defineLocale({
       unavailable: '无法预览此文件，仍可查看或下载原文件。',
       unsupported: '暂不支持此文件格式或音视频编码。'
     },
-    delimited: { table: '表格', empty: '表格为空。', limited: '仅显示前 500 条数据行。' },
+    delimited: {
+      table: '表格',
+      empty: '表格为空。',
+      limited: '仅显示前 500 条数据行。',
+      columnsLimited: '仅显示前 50 列。'
+    },
     tiffFirstPage: '此 TIFF 包含多页，仅显示第一页。',
     edit: '编辑',
     editing: '编辑中',

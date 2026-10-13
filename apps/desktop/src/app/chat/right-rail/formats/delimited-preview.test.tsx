@@ -100,6 +100,19 @@ describe('delimited preview', () => {
     expect(screen.queryByRole('cell', { name: 'record-500' })).toBeNull()
   })
 
+  it('bounds very wide tables, says columns were left out and keeps the source view available', async () => {
+    const wide = Array.from({ length: 60 }, (_, column) => `c${column + 1}`).join(',')
+    read.mockResolvedValue({ path: target.path, text: `${wide}
+${wide}` })
+    render(<DelimitedPreview onFailure={vi.fn()} path={target.path} reloadKey={0} target={target} />)
+    const table = await screen.findByRole('table')
+    expect(within(table).getByRole('columnheader', { name: 'c50' })).toBeTruthy()
+    expect(within(table).queryByRole('columnheader', { name: 'c51' })).toBeNull()
+    expect(within(table).queryByRole('cell', { name: 'c51' })).toBeNull()
+    expect(screen.getByText('Showing the first 50 columns.')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'SOURCE' }).hasAttribute('disabled')).toBe(false)
+  })
+
   it('ignores a late read after leaving the preview', async () => {
     let resolveOld!: (value: Awaited<ReturnType<typeof readPreviewText>>) => void
     read.mockImplementationOnce(

@@ -4127,6 +4127,7 @@ export interface Translations {
       table: string
       empty: string
       limited: string
+      columnsLimited: string
     }
     tiffFirstPage: string
     edit: string

@@ -3773,7 +3773,12 @@ export const zhHant = defineLocale({
       unavailable: '無法預覽此檔案，仍可查看或下載原檔案。',
       unsupported: '暫不支援此檔案格式或影音編碼。'
     },
-    delimited: { table: '表格', empty: '表格為空。', limited: '僅顯示前 500 筆資料列。' },
+    delimited: {
+      table: '表格',
+      empty: '表格為空。',
+      limited: '僅顯示前 500 筆資料列。',
+      columnsLimited: '僅顯示前 50 欄。'
+    },
     tiffFirstPage: '此 TIFF 包含多頁，僅顯示第一頁。',
     edit: '編輯',
     editing: '編輯中',

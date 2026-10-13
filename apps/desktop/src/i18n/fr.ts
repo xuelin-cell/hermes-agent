@@ -5278,7 +5278,12 @@ export const frOverrides = {
       unavailable: 'Aperçu impossible. Vous pouvez toujours accéder au fichier original ou le télécharger.',
       unsupported: 'Ce format de fichier ou cet encodage multimédia n’est pas pris en charge.'
     },
-    delimited: { table: 'Tableau', empty: 'Ce tableau est vide.', limited: 'Affichage des 500 premières lignes de données.' },
+    delimited: {
+      table: 'Tableau',
+      empty: 'Ce tableau est vide.',
+      limited: 'Affichage des 500 premières lignes de données.',
+      columnsLimited: 'Affichage des 50 premières colonnes.'
+    },
     tiffFirstPage: 'Ce TIFF contient plusieurs pages. Seule la première est affichée.',
     edit: 'Modifier',
     editing: 'Modification',

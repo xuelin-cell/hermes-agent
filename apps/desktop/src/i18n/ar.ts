@@ -3089,7 +3089,12 @@ export const ar = defineLocale({
       unavailable: 'تعذرت معاينة الملف. يمكنك الوصول إلى الملف الأصلي أو تنزيله.',
       unsupported: 'تنسيق الملف أو ترميز الوسائط غير مدعوم.'
     },
-    delimited: { table: 'جدول', empty: 'هذا الجدول فارغ.', limited: 'عرض أول 500 صف بيانات.' },
+    delimited: {
+      table: 'جدول',
+      empty: 'هذا الجدول فارغ.',
+      limited: 'عرض أول 500 صف بيانات.',
+      columnsLimited: 'عرض أول 50 عمودًا.'
+    },
     tiffFirstPage: 'يحتوي ملف TIFF على عدة صفحات. تُعرض الصفحة الأولى فقط.',
     edit: 'تحرير',
     editing: 'جار التحرير',

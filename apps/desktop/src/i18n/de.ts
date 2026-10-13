@@ -5267,7 +5267,12 @@ export const deOverrides = {
       unavailable: 'Keine Vorschau möglich. Die Originaldatei kann weiterhin geöffnet oder heruntergeladen werden.',
       unsupported: 'Dieses Dateiformat oder diese Medienkodierung wird nicht unterstützt.'
     },
-    delimited: { table: 'Tabelle', empty: 'Diese Tabelle ist leer.', limited: 'Die ersten 500 Datenzeilen werden angezeigt.' },
+    delimited: {
+      table: 'Tabelle',
+      empty: 'Diese Tabelle ist leer.',
+      limited: 'Die ersten 500 Datenzeilen werden angezeigt.',
+      columnsLimited: 'Die ersten 50 Spalten werden angezeigt.'
+    },
     tiffFirstPage: 'Diese TIFF-Datei enthält mehrere Seiten. Nur die erste Seite wird angezeigt.',
     edit: 'Bearbeiten',
     editing: 'Wird bearbeitet',

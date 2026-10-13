@@ -5255,7 +5255,12 @@ export const esOverrides = {
       unavailable: 'No se pudo mostrar la vista previa. Puedes acceder al archivo original o descargarlo.',
       unsupported: 'Este formato de archivo o codificación multimedia no es compatible.'
     },
-    delimited: { table: 'Tabla', empty: 'Esta tabla está vacía.', limited: 'Mostrando las primeras 500 filas de datos.' },
+    delimited: {
+      table: 'Tabla',
+      empty: 'Esta tabla está vacía.',
+      limited: 'Mostrando las primeras 500 filas de datos.',
+      columnsLimited: 'Mostrando las primeras 50 columnas.'
+    },
     tiffFirstPage: 'Este TIFF contiene varias páginas. Solo se muestra la primera.',
     edit: 'Editar',
     editing: 'Edición',

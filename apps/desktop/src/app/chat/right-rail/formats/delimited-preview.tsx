@@ -12,6 +12,9 @@ import { type DelimitedTable, delimiterForPath, parseDelimited } from './delimit
 import type { FormatRendererProps } from './registry'
 import { readPreviewText } from './source'
 
+// 每个单元格都是真实节点；列数不设限时，很宽的文件会一次生成几十万个节点，卡住整个界面。
+const MAX_COLUMNS = 50
+
 interface DelimitedState {
   loading: boolean
   table?: DelimitedTable
@@ -75,7 +78,9 @@ export default function DelimitedPreview({ onClose, onSelectRendered, path, relo
   }
 
   const table = state.table
-  const columns = table ? Math.max(table.headers.length, ...table.rows.map(row => row.length)) : 0
+  const totalColumns = table ? Math.max(table.headers.length, ...table.rows.map(row => row.length)) : 0
+  const columns = Math.min(totalColumns, MAX_COLUMNS)
+  const columnsLimited = totalColumns > MAX_COLUMNS
 
   return (
     <div className="flex size-full min-h-0 flex-col">
@@ -133,10 +138,11 @@ export default function DelimitedPreview({ onClose, onSelectRendered, path, relo
           </div>
         )}
       </div>
-      {!sourceMode && (state.truncated || table?.limited) && (
+      {!sourceMode && (state.truncated || table?.limited || columnsLimited) && (
         <div className="shrink-0 px-3 py-2 text-xs text-muted-foreground" role="status">
           {state.truncated && <div>{t.preview.truncated}</div>}
           {table?.limited && <div>{t.preview.delimited.limited}</div>}
+          {columnsLimited && <div>{t.preview.delimited.columnsLimited}</div>}
         </div>
       )}
     </div>

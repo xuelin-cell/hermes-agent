@@ -4871,7 +4871,12 @@ export const en: Translations = {
       unavailable: 'Could not preview this file. You can still access the original file.',
       unsupported: 'This format or media encoding is not supported.'
     },
-    delimited: { table: 'Table', empty: 'This table is empty.', limited: 'Showing the first 500 data rows.' },
+    delimited: {
+      table: 'Table',
+      empty: 'This table is empty.',
+      limited: 'Showing the first 500 data rows.',
+      columnsLimited: 'Showing the first 50 columns.'
+    },
     tiffFirstPage: 'This TIFF has multiple pages. Only the first page is shown.',
     edit: 'Edit',
     editing: 'Editing',
