@@ -447,41 +447,67 @@ PY
 # 204 删掉了、404 本来就没有都算成功；删不掉时把平台给的原因打出来。
 # 平台自己会拒绝删「还有运行中实例在用」的模板，但认不出暂停中的实例（Cube v0.7.1 的 isTemplateInUse
 # 只认节点上报的实例，暂停的实例那一行不带模板 ID），所以调用方要先用入口自己的记录排除掉还在用的。
+# 模板的构建任务还没结束时平台也回 409（build job is still active）：这种等任务结束再删，最多等 2 分钟。
 delete_template() {
     local id="$1" out code
-    out="$(curl -sS -m 300 -w '\n%{http_code}' -X DELETE "$CUBE_API/templates/$id?sync=true" 2>&1 || true)"
-    code="${out##*$'\n'}"
-    case "$code" in
-        204|404) return 0 ;;
-    esac
+    for _ in $(seq 1 12); do
+        out="$(curl -sS -m 300 -w '\n%{http_code}' -X DELETE "$CUBE_API/templates/$id?sync=true" 2>&1 || true)"
+        code="${out##*$'\n'}"
+        case "$code" in
+            204|404) return 0 ;;
+        esac
+        case "$code:$out" in
+            409:*"build job is still active"*) sleep 10 ;;
+            *) break ;;
+        esac
+    done
     printf '    %s 删不掉（HTTP %s）：%s\n' "$id" "$code" "$(printf '%s' "${out%$'\n'*}" | tr '\n' ' ' | cut -c1-240)"
     return 1
 }
 
-# 建一个模板并等它就绪，模板 ID 放进 NEW_TPL。返回 0 = READY；1 = 有节点失败（或整体失败）；2 = 十分钟还在建。
-# 有节点失败就不再等它就绪：失败的副本不会自己好，整体只会停在 PARTIALLY_READY。只等其余节点建完（还在建的
-# 模板平台不让删），好接着把它删掉。
+# 建一个模板并等它的构建任务结束，模板 ID 放进 NEW_TPL。返回 0 = READY；1 = 建完了但有节点失败（或整体失败）；
+# 2 = 十分钟还没建完。
+# ★别拿副本的 status 判断：平台给节点建副本时先把它记成 status=FAILED，进度写在 phase 里（DISTRIBUTING、
+# SNAPSHOTTING……做完才是 READY；phase=FAILED 才是真失败，带 error_message），同一个构建任务里还会重试失败的
+# 节点（Cube 源码 templatecenter/store.go、distribution.go）。10-13 晚只看 status，把还在建的节点判成失败，
+# 删不掉（409）又马上重建，连建四次，其实第三、四次都建成了。所以：构建任务结束（GET /templates/<ID>/builds/
+# <jobID>/status 不再是 building）、而且没有副本还在建，才下结论；读不到任务状态时只看 phase。
 build_template() {
-    local fp="$1" last="" s
-    NEW_TPL="$(api POST /templates -d "{
+    local fp="$1" last="" s created job
+    created="$(api POST /templates -d "{
       \"name\": \"hermes-mt-$fp\",
       \"image\": \"http://$REGISTRY/$REPO_PATH:$fp\",
       \"cpu\": $TPL_CPU, \"memory\": $TPL_MEM, \"writableLayerSize\": \"$TPL_DISK\",
       \"exposedPorts\": [9121, 49983], \"probePort\": 9121, \"probePath\": \"/__mt/health\",
       \"allowInternetAccess\": true
-    }" | py 'import json,sys; d=json.load(sys.stdin); print(d.get("templateID") or ""); sys.stderr.write("  " + json.dumps(d)[:200] + "\n")')"
+    }" | py 'import json,sys; d=json.load(sys.stdin); print(d.get("templateID") or "", d.get("jobID") or ""); sys.stderr.write("  " + json.dumps(d)[:200] + "\n")')"
+    NEW_TPL="${created%% *}"
+    NEW_JOB="${created#* }"
     [ -n "$NEW_TPL" ] || die "建模板失败"
     for _ in $(seq 1 120); do
-        s="$(api GET "/templates/$NEW_TPL" | py '
+        job=""
+        [ -n "$NEW_JOB" ] && job="$(api GET "/templates/$NEW_TPL/builds/$NEW_JOB/status" 2>/dev/null | py '
 import json,sys
-d = json.load(sys.stdin)
+try: print(json.load(sys.stdin).get("status") or "")
+except Exception: print("")' 2>/dev/null || true)"
+        s="$(api GET "/templates/$NEW_TPL" 2>/dev/null | py '
+import json,sys
+job = sys.argv[1]
+try: d = json.load(sys.stdin)
+except Exception: print("BUILDING 读不到模板状态"); raise SystemExit
 replicas = d.get("replicas") or []
-failed = [r for r in replicas if r.get("status") == "FAILED"]
-busy = [r for r in replicas if r.get("status") not in ("READY", "FAILED")]
-if failed:
-    print("FAILED_ON" if not busy else "FAILING_ON", ",".join(r.get("node_ip") or "?" for r in failed), (failed[0].get("error_message") or "")[:160])
+phase = lambda r: str(r.get("phase") or r.get("status") or "?").upper()
+failed = [r for r in replicas if phase(r) == "FAILED"]
+building = not replicas or any(phase(r) not in ("READY", "FAILED") for r in replicas)
+settled = job == "error" or (job != "building" and not building)
+nodes = " ".join("%s:%s" % (r.get("node_ip") or "?", phase(r)) for r in replicas)
+if not settled:
+    print("BUILDING", nodes or d.get("status") or "")
+elif d.get("status") == "READY" and not failed:
+    print("READY", nodes)
 else:
-    print(d.get("status"), (d.get("lastError") or "")[:200])')"
+    why = (failed[0].get("error_message") if failed else "") or d.get("lastError") or d.get("status") or ""
+    print("FAILED_ON", ",".join(r.get("node_ip") or "?" for r in failed) or "-", " ".join(str(why).split())[:160])' "$job")"
         [ "$s" != "$last" ] && { printf '  %s %s\n' "$(date +%T)" "$s"; last="$s"; }
         case "$s" in
             READY*) return 0 ;;
