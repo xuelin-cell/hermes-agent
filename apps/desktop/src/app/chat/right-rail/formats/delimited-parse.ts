@@ -13,7 +13,7 @@ export function delimiterForPath(path: string): string {
   return DELIMITERS.get(extension) || ','
 }
 
-/** 解析引号、转义引号和单元格换行；截断读取时丢弃末尾不完整记录。 */
+/** 解析引号、转义引号和单元格换行；字段中间的引号按原文保留；截断读取时丢弃末尾不完整记录。 */
 export function parseDelimited(text: string, delimiter: string, maxRows = 500, truncated = false): DelimitedTable {
   const records: string[][] = []
   let row: string[] = []
@@ -68,11 +68,9 @@ export function parseDelimited(text: string, delimiter: string, maxRows = 500, t
     } else if (character === '"' && !value && !closedQuote) {
       quoted = true
     } else {
-      if (character === '"' || closedQuote) {
-        throw new Error('Invalid delimited field')
-      }
-
+      // TSV 等文件常把引号当普通字符；只有字段开头的引号才表示包裹，其余照原样显示。
       value += character
+      closedQuote = false
     }
   }
 

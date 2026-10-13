@@ -40,8 +40,17 @@ describe('delimited parser', () => {
     expect(parseDelimited('a,b\n1,2\n3,partial', ',', 500, true).rows).toEqual([['1', '2']])
   })
 
-  it.each(['a,b\n1,"unclosed', 'a,b\n1,wrong"quote', 'a,b\n1,"closed"tail'])('rejects malformed quoting', text => {
-    expect(() => parseDelimited(text, ',')).toThrow()
+  it.each([
+    ['inside a TSV cell', 'size\tnote\n5" disk\tHe said "hi"', '\t', [['5" disk', 'He said "hi"']]],
+    ['after a leading space', 'a,b\n1, "x"', ',', [['1', ' "x"']]],
+    ['in the middle of text', 'a,b\n2,wrong"quote', ',', [['2', 'wrong"quote']]],
+    ['before trailing text', 'a,b\n1,"closed"tail', ',', [['1', 'closedtail']]]
+  ])('keeps a quote %s as cell text instead of rejecting the table', (_name, text, delimiter, rows) => {
+    expect(parseDelimited(text as string, delimiter as string).rows).toEqual(rows)
+  })
+
+  it('rejects a quoted field that never closes', () => {
+    expect(() => parseDelimited('a,b\n1,"unclosed', ',')).toThrow()
   })
 
   it('selects TSV by extension while handling uppercase and revisions', () => {
