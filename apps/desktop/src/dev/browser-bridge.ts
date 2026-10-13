@@ -327,6 +327,16 @@ async function fetchGatewayFile(path: string): Promise<Response> {
   return response
 }
 
+/** Where an audio or video file plays from (lib/browser-shell.ts::browserMediaPlaybackUrl):
+ * the same download route, which answers Range requests, so playback starts
+ * before the whole file is here and the player can seek. A file dropped into
+ * this tab plays from memory; the caller revokes that `blob:` URL. */
+export function mediaPlaybackUrl(path: string): string {
+  const local = virtualFileFor(path)
+
+  return local ? URL.createObjectURL(local) : `${apiPrefix()}${fsQuery('download', path)}`
+}
+
 function triggerBrowserDownload(blob: Blob, name: string): void {
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')

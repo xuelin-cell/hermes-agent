@@ -10,7 +10,12 @@ import { openGuestContextMenu } from '@/app/context-menu/store'
 import { PanelEmpty } from '@/app/overlays/panel'
 import { Tip } from '@/components/ui/tooltip'
 import { type Translations, useI18n } from '@/i18n'
-import { previewsOfficeAsSlides, remoteHtmlFrameDocument, remoteHtmlFrameSandbox } from '@/lib/browser-shell'
+import {
+  previewsMediaInPanel,
+  previewsOfficeAsSlides,
+  remoteHtmlFrameDocument,
+  remoteHtmlFrameSandbox
+} from '@/lib/browser-shell'
 import { isDesktopFsRemoteMode } from '@/lib/desktop-fs'
 import { guardGuestPointers } from '@/lib/guest-pointer-guard'
 import { openPreviewTargetInBrowser, remoteHtmlPreviewDocument } from '@/lib/local-preview'
@@ -30,6 +35,7 @@ import {
 } from '@/store/preview'
 import { canOpenBrowserWindow, isBrowserWindow } from '@/store/windows'
 
+import { MediaPreview } from './media-preview'
 import { OfficeSlides } from './office-slides'
 import { ArtifactPreview } from './preview-artifact'
 import { PreviewBrowserBar } from './preview-browser-bar'
@@ -1074,6 +1080,8 @@ export function PreviewPane({ embedded = false, onRestartServer, reloadRequest =
               <ArtifactPreview target={target} />
             ) : previewsOfficeAsSlides(target.path || target.source) ? (
               <OfficeSlides reloadKey={localReloadKey} target={target} />
+            ) : previewsMediaInPanel(target.path || target.source) ? (
+              <MediaPreview reloadKey={localReloadKey} target={target} />
             ) : (
               <LocalFilePreview reloadKey={localReloadKey} target={target} />
             ))}

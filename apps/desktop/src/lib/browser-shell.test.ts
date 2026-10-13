@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { setRuntimeI18nLocale } from '@/i18n/runtime'
 
 import {
+  browserMediaPlaybackUrl,
   browserShellCopy,
   browserShellZoom,
   hideForUsers,
@@ -14,6 +15,7 @@ import {
   isInstanceLocalUrl,
   isSettingsViewHidden,
   officePreviewPdf,
+  previewsMediaInPanel,
   previewsOfficeAsPdf,
   previewsOfficeAsSlides,
   remoteHtmlFrameDocument,
@@ -24,9 +26,11 @@ import {
   withoutHiddenNavItems,
   withoutHiddenPaletteItems
 } from './browser-shell'
+import { mediaKind } from './media'
 
-// The bridge fetches the PDF from the instance (its own tests cover that).
+// The bridge fetches the PDF from the instance and says where media plays from (its own tests cover that).
 const bridge = vi.hoisted(() => ({
+  mediaPlaybackUrl: vi.fn((path: string) => `/__hermes_backend/api/fs/download?path=${encodeURIComponent(path)}`),
   officePreviewDataUrl: vi.fn(async () => 'data:application/pdf;base64,JVBERi0xLjc=')
 }))
 
@@ -289,6 +293,38 @@ describe('browser shell', () => {
     ])
     expect(browserShellCopy('zh').slides.counter(2, 5)).toBe('2 / 5')
     expect(browserShellCopy('zh').slides.page(3)).toBe('第 3 页')
+  })
+
+  it('plays audio and video from the instance, in the browser build only', async () => {
+    expect(browserMediaPlaybackUrl('/w/clip.mp4')).toBeNull()
+    expect(previewsMediaInPanel('/w/clip.mp4')).toBe(false)
+
+    document.documentElement.dataset.hermesBrowser = 'production'
+
+    await expect(browserMediaPlaybackUrl('/w/小狗视频.mp4')).resolves.toBe(
+      `/__hermes_backend/api/fs/download?path=${encodeURIComponent('/w/小狗视频.mp4')}`
+    )
+    expect(['/w/a.mp4', '/w/b.MP3', '/w/c.webm', '/w/d.wav', '/w/e.m4a'].map(previewsMediaInPanel)).toEqual([
+      true,
+      true,
+      true,
+      true,
+      true
+    ])
+    expect(['/w/a.png', '/w/b.pdf', '/w/c.pptx', '/w/d.mp4.md', '/w/e.txt'].map(previewsMediaInPanel)).toEqual([
+      false,
+      false,
+      false,
+      false,
+      false
+    ])
+
+    // The pane plays the same files as the chat's players (lib/media.ts).
+    for (const ext of 'aac avi flac gif m4a m4v mkv mov mp3 mp4 ogg opus wav webm'.split(' ')) {
+      expect(previewsMediaInPanel(`/w/x.${ext}`), ext).toBe(['audio', 'video'].includes(mediaKind(`/w/x.${ext}`)))
+    }
+
+    expect(browserShellCopy('zh').media.failed).toBe('浏览器放不了这个文件，请下载后查看。')
   })
 
   it('speaks the interface language', () => {

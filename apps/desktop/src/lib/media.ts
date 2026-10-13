@@ -1,3 +1,4 @@
+import { browserMediaPlaybackUrl } from '@/lib/browser-shell'
 import { readDesktopFileDataUrl } from '@/lib/desktop-fs'
 import { capitalize } from '@/lib/text'
 import { $connection } from '@/store/session'
@@ -103,7 +104,7 @@ export async function resolveMediaPlaybackSrc(path: string): Promise<string> {
   }
 
   if (window.hermesDesktop && ['audio', 'video'].includes(mediaKind(path))) {
-    return isRemoteGateway() ? mediaGatewayStreamUrl(path) : mediaStreamUrl(path)
+    return browserMediaPlaybackUrl(path) ?? (isRemoteGateway() ? mediaGatewayStreamUrl(path) : mediaStreamUrl(path))
   }
 
   return resolveMediaDisplaySrc(path)

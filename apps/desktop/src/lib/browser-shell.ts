@@ -22,10 +22,11 @@ import { storedBoolean } from '@/lib/storage'
  *   app/artifacts/cloud-drive-tab.tsx                  the personal cloud drive tab says it is in development
  *   app/artifacts/index.tsx                            the library opens on local artifacts
  *   app/auth/auth-gate.tsx                             no UniWork sign-in page: the entry has signed the user in
+ *   app/chat/right-rail/media-preview.tsx              (ours) the player for audio and video files
  *   app/chat/right-rail/office-slides.tsx              (ours) the slide viewer: decks the instance renders page by page
  *   app/chat/right-rail/preview-file.tsx               Office files show as the PDF the instance converts them to
  *   app/chat/right-rail/preview-pane.tsx               HTML files from the instance run their scripts, sandboxed;
- *                                                      slide decks open in the slide viewer
+ *                                                      slide decks open in the slide viewer, audio and video in the player
  *   app/chat/sidebar/filter-menu.tsx                   * no profile submenu (filter / new / import)
  *   app/chat/sidebar/index.tsx                         * no messaging platforms entry
  *   app/chat/sidebar/profile-switcher.tsx              * no add / import profile, no "connect gateway"
@@ -42,6 +43,7 @@ import { storedBoolean } from '@/lib/storage'
  *   app/skills/skill-market.tsx                        installing from the market says it is in development
  *   contrib/plugins.ts                                 * no Bot Mode (the BOTS tab): its plugin is not started
  *   lib/local-preview.ts                               Office files (pptx, docx, xlsx …) open as PDF previews
+ *   lib/media.ts                                       audio and video in the chat play straight from the instance
  *   lib/model-options.ts                               * model pickers: the platform's providers only
  *   store/developer-mode.ts                            flipping UniWork's developer mode reloads the page
  *   store/preview.ts                                   no in-app browser: links and URL previews open in a new tab
@@ -191,9 +193,9 @@ export function officePreviewPdf(path: string): null | Promise<string> {
 const SLIDE_DECK_RE = /\.(?:pptx?|odp)$/i
 
 /** Slide decks (PowerPoint, Impress) in the browser build open in the slide
- * viewer (app/chat/right-rail/office-slides.tsx) rather than as a scrolling
- * PDF: one slide at a time, thumbnails, arrow keys, full screen. The instance
- * renders each page as an image. */
+ * viewer (app/chat/right-rail/office-slides.tsx) rather than the browser's PDF
+ * viewer: the slides scroll top to bottom, and full screen shows one at a time.
+ * The instance renders each page as an image. */
 export function previewsOfficeAsSlides(path: string): boolean {
   return isBrowserShell() && SLIDE_DECK_RE.test(path)
 }
@@ -219,6 +221,25 @@ export async function officeSlideDeck(path: string): Promise<OfficeSlideDeck> {
     pages: info.pages,
     width: info.width
   }
+}
+
+/** Where audio and video from the instance play from in the browser build: the
+ * instance's download route, which answers Range requests, so playback starts
+ * early and the player can seek. The desktop shell streams through its own
+ * hermes-media:// protocol, which a browser cannot load: the chat's players
+ * stayed black. Null outside the browser build. */
+export function browserMediaPlaybackUrl(path: string): null | Promise<string> {
+  return isBrowserShell() ? import('@/dev/browser-bridge').then(bridge => bridge.mediaPlaybackUrl(path)) : null
+}
+
+// The audio and video extensions of lib/media.ts (which imports this module).
+const PLAYABLE_MEDIA_RE = /\.(?:avi|flac|m4a|mkv|mov|mp3|mp4|ogg|opus|wav|webm)$/i
+
+/** Audio and video files open in the preview pane's player
+ * (app/chat/right-rail/media-preview.tsx). Upstream reads them as binary and
+ * offers to show the bytes as text. */
+export function previewsMediaInPanel(path: string): boolean {
+  return isBrowserShell() && PLAYABLE_MEDIA_RE.test(path)
 }
 
 const INSTANCE_LOCAL_HOST_RE = /^(?:localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|\[::1\])$/i
@@ -309,6 +330,10 @@ interface BrowserShellCopy {
   fileErrors: Record<InstanceFileErrorCode, string>
   instanceLocalUrl: (host: string) => string
   instanceOutdated: string
+  media: {
+    failed: string
+    loading: string
+  }
   movedToTrash: (name: string) => string
   officePreview: Record<OfficePreviewErrorCode, string>
   open: string
@@ -349,6 +374,10 @@ const COPY: Record<'en' | 'zh', BrowserShellCopy> = {
     instanceLocalUrl: (host: string) =>
       `${host} is a web service inside your cloud instance. The browser version cannot open it yet.`,
     instanceOutdated: 'Your instance is being upgraded. Reload the page and try again.',
+    media: {
+      failed: 'This file does not play in the browser. Download it instead.',
+      loading: 'Loading…'
+    },
     movedToTrash: (name: string) => `Moved “${name}” to the recycle bin.`,
     officePreview: {
       convert_failed:
@@ -394,6 +423,10 @@ const COPY: Record<'en' | 'zh', BrowserShellCopy> = {
     },
     instanceLocalUrl: (host: string) => `这是实例里的网页服务（${host}），浏览器版暂时打不开。`,
     instanceOutdated: '实例正在升级，请刷新页面后再试。',
+    media: {
+      failed: '浏览器放不了这个文件，请下载后查看。',
+      loading: '正在加载…'
+    },
     movedToTrash: (name: string) => `已把「${name}」移到回收站。`,
     officePreview: {
       convert_failed: '这个文件转不成预览，可能已损坏或格式不受支持，请下载后查看。',

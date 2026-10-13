@@ -594,6 +594,32 @@ describe('browser bridge: Office files preview as PDF', () => {
   })
 })
 
+describe('browser bridge: audio and video', () => {
+  const originalCreateObjectURL = URL.createObjectURL
+
+  afterEach(() => {
+    URL.createObjectURL = originalCreateObjectURL
+  })
+
+  it('plays files on the instance from the download route, and dropped files from memory', async () => {
+    const mod = await installFresh()
+    const path = '/opt/data/workspace/小狗 视频.mp4'
+
+    // The download route answers Range requests: the player can start early and seek.
+    expect(mod.mediaPlaybackUrl(path)).toBe(`/__hermes_backend/api/fs/download?path=${encodeURIComponent(path)}`)
+    expect(mod.mediaPlaybackUrl(`file://${encodeURI(path)}`)).toBe(
+      `/__hermes_backend/api/fs/download?path=${encodeURIComponent(path)}`
+    )
+
+    URL.createObjectURL = vi.fn(() => 'blob:dropped')
+
+    const dropped = new File([new Uint8Array([0, 0, 0, 24])], 'clip.mp4', { type: 'video/mp4' })
+
+    expect(mod.mediaPlaybackUrl(window.hermesDesktop.getPathForFile(dropped))).toBe('blob:dropped')
+    expect(URL.createObjectURL).toHaveBeenCalledWith(dropped)
+  })
+})
+
 describe('browser bridge: the instance’s terminal', () => {
   class FakeSocket {
     static OPEN = 1
