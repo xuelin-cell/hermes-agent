@@ -73,7 +73,10 @@ describe('format preview', () => {
   })
 
   it('gives every registered format a renderer and leaves existing formats alone', () => {
-    for (const path of ['/fixture/sound.MP3', '/fixture/clip.mp4']) {
+    const examples = ['/fixture/sound.MP3', '/fixture/clip.mp4', '/fixture/table.csv', '/fixture/table.tsv']
+    expect(new Set(examples.map(path => previewFormat(fileTarget(path))))).toEqual(new Set(Object.keys(FORMAT_RENDERERS)))
+
+    for (const path of examples) {
       const kind = previewFormat(fileTarget(path))!
       expect(FORMAT_RENDERERS[kind].length).toBeGreaterThan(0)
     }
@@ -84,6 +87,7 @@ describe('format preview', () => {
       '/fixture/page.html',
       '/fixture/photo.png',
       '/fixture/doc.pdf',
+      '/fixture/file.constructor',
       '/fixture/book.xlsx'
     ]) {
       expect(previewFormat(fileTarget(path))).toBeNull()

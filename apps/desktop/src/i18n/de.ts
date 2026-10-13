@@ -5266,6 +5266,7 @@ export const deOverrides = {
       unavailable: 'Keine Vorschau möglich. Die Originaldatei kann weiterhin geöffnet oder heruntergeladen werden.',
       unsupported: 'Dieses Dateiformat oder diese Medienkodierung wird nicht unterstützt.'
     },
+    delimited: { table: 'Tabelle', empty: 'Diese Tabelle ist leer.', limited: 'Die ersten 500 Datenzeilen werden angezeigt.' },
     edit: 'Bearbeiten',
     editing: 'Wird bearbeitet',
     unsavedChanges: 'Nicht gespeicherte Änderungen',

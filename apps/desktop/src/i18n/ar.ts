@@ -3088,6 +3088,7 @@ export const ar = defineLocale({
       unavailable: 'تعذرت معاينة الملف. يمكنك الوصول إلى الملف الأصلي أو تنزيله.',
       unsupported: 'تنسيق الملف أو ترميز الوسائط غير مدعوم.'
     },
+    delimited: { table: 'جدول', empty: 'هذا الجدول فارغ.', limited: 'عرض أول 500 صف بيانات.' },
     edit: 'تحرير',
     editing: 'جار التحرير',
     unsavedChanges: 'تغييرات غير محفوظة',

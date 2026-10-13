@@ -3587,6 +3587,7 @@ export const ja = defineLocale({
       unavailable: 'プレビューできません。元のファイルを確認またはダウンロードできます。',
       unsupported: 'このファイル形式またはメディアのエンコードには対応していません。'
     },
+    delimited: { table: '表', empty: '表は空です。', limited: '最初の 500 データ行を表示しています。' },
     edit: '編集',
     editing: '編集中',
     unsavedChanges: '未保存の変更',

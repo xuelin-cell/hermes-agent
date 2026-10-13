@@ -5277,6 +5277,7 @@ export const frOverrides = {
       unavailable: 'Aperçu impossible. Vous pouvez toujours accéder au fichier original ou le télécharger.',
       unsupported: 'Ce format de fichier ou cet encodage multimédia n’est pas pris en charge.'
     },
+    delimited: { table: 'Tableau', empty: 'Ce tableau est vide.', limited: 'Affichage des 500 premières lignes de données.' },
     edit: 'Modifier',
     editing: 'Modification',
     unsavedChanges: 'Modifications non enregistrées',

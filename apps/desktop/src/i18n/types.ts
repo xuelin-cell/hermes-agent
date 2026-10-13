@@ -4122,6 +4122,11 @@ export interface Translations {
       unavailable: string
       unsupported: string
     }
+    delimited: {
+      table: string
+      empty: string
+      limited: string
+    }
     edit: string
     editing: string
     unsavedChanges: string

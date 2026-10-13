@@ -5254,6 +5254,7 @@ export const esOverrides = {
       unavailable: 'No se pudo mostrar la vista previa. Puedes acceder al archivo original o descargarlo.',
       unsupported: 'Este formato de archivo o codificación multimedia no es compatible.'
     },
+    delimited: { table: 'Tabla', empty: 'Esta tabla está vacía.', limited: 'Mostrando las primeras 500 filas de datos.' },
     edit: 'Editar',
     editing: 'Edición',
     unsavedChanges: 'Cambios no guardados',
