@@ -795,6 +795,7 @@ class TenantManager:
             state=self._state_block(sandbox_id, epoch, restore_from),
         )
         if body.get("already"):
+            await self._adopt_bootstrapped(user_id, slug, sandbox_id)
             return
         report = body.get("state") or {}
         # 恢复完成：这台实例成为当前主人。它用了哪份归档、行数多少，一并记下。
@@ -812,6 +813,27 @@ class TenantManager:
         log.info("tenant %s: 实例 %s 引导完成，恢复自 %s / %s", slug, sandbox_id[:12],
                  (report.get("restored_from") or "-")[:12], report.get("archive") or "-")
 
+    async def _adopt_bootstrapped(self, user_id: str, slug: str, sandbox_id: str, st: dict | None = None) -> None:
+        """实例早已引导完成，库里记的数据主人却还不是它：上一次引导其实做成了、回包没回来（被代理挡回、
+        超时），或别的请求抢先引导了。问它的状态管家，主人是它自己就补记。不补也不丢数据（下一代会优先从卷上
+        记的主人恢复，见 mtstate.prepare），但在那之前每个请求都会因为「主人 ≠ 实例」走一遍慢路径。"""
+        assert self.cube is not None
+        rt = await self.store.get_runtime(user_id)
+        if rt.state_owner == sandbox_id:
+            return
+        if st is None:
+            try:
+                st = await self.cube.status(sandbox_id, self.s.forward_port)
+            except CubeError:
+                return
+        state = st.get("state")
+        if not st.get("bootstrapped") or not isinstance(state, dict) or state.get("owner") != sandbox_id:
+            return
+        restored_from = str(state.get("restored_from") or "")
+        await self.store.set_state_owner(user_id, sandbox_id, "", {"restored_from": restored_from})
+        log.info("tenant %s: 实例 %s 早已引导完成，补记为数据主人（恢复自 %s）", slug, sandbox_id[:12],
+                 restored_from[:12] or "-")
+
     async def _repair_bootstrap(self, user_id: str, slug: str, sandbox_id: str, token: str, context) -> tuple[str, bool]:
         """问转发器这台实例引导过没有：没引导过就补引导；窗口已关就删掉让调用方重建。
 
@@ -825,6 +847,7 @@ class TenantManager:
         except CubeError:
             return sandbox_id, False
         if st.get("bootstrapped"):
+            await self._adopt_bootstrapped(user_id, slug, sandbox_id, st)
             return sandbox_id, False
         rt = await self.store.get_runtime(user_id)
         if st.get("boot_window_left_s", 0) > 30:

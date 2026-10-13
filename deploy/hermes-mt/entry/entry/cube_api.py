@@ -55,6 +55,21 @@ class SandboxGone(CubeError):
     """等就绪时控制面确认这台实例已经不存在。调用方该立即重建，而不是等满就绪超时。"""
 
 
+# 引导请求被平台代理挡回时重发：间隔、总时长。见 ``proxy_hiccup``。
+BOOTSTRAP_RETRY_S = 30.0
+BOOTSTRAP_RETRY_INTERVAL_S = 1.0
+
+
+def proxy_hiccup(exc: CubeError) -> bool:
+    """数据面这次失败是平台代理自己挡回来的，请求没到实例：连不上（状态 0），或代理回 502 / 503 / 504
+    （回包是代理的 HTML 页）。转发器自己回的错都是 JSON（``_req`` 里转成 dict 的字符串），不算。
+
+    10-14 换模板时撞上过：转发器刚应答了健康检查，紧接着的引导请求被代理回了 502。"""
+    if exc.status == 0:
+        return True
+    return exc.status in (502, 503, 504) and not (exc.message or "").lstrip().startswith("{")
+
+
 class Cube:
     """CubeAPI 客户端。
 
@@ -380,25 +395,33 @@ class Cube:
         只认第一次。实例已经引导过时转发器返回 409「已经引导过了」，这里当作成功 ——
         调用方重试或多个请求撞上时不该因此失败。★ 同样是 409 的「拒绝启动」（卷上的
         记录比入口新）**不是**成功，原样抛出，由调用方决定是停下还是带 force 重试。
+
+        被平台代理挡回（``proxy_hiccup``）就隔 1 秒重发，最多 30 秒：转发器的引导是串行的，
+        重复的那个等第一个做完再回「已经引导过了」，所以重发安全。
         """
         payload: dict[str, Any] = {"token": token, "files": files, "ready_timeout_s": ready_timeout_s}
         if state:
             payload["state"] = state
-        try:
-            _, body = await self._tenant_req(
-                "POST",
-                sandbox_id,
-                port,
-                "/__mt/bootstrap",
-                json_body=payload,
-                timeout_s=ready_timeout_s + 30,
-            )
-            return body if isinstance(body, dict) else {}
-        except CubeError as exc:
-            if exc.status == 409 and "引导过" in (exc.message or ""):
-                log.info("sandbox %s 已经引导过，跳过", sandbox_id[:12])
-                return {"ok": True, "already": True}
-            raise
+        deadline = time.monotonic() + BOOTSTRAP_RETRY_S
+        while True:
+            try:
+                _, body = await self._tenant_req(
+                    "POST",
+                    sandbox_id,
+                    port,
+                    "/__mt/bootstrap",
+                    json_body=payload,
+                    timeout_s=ready_timeout_s + 30,
+                )
+                return body if isinstance(body, dict) else {}
+            except CubeError as exc:
+                if exc.status == 409 and "引导过" in (exc.message or ""):
+                    log.info("sandbox %s 已经引导过，跳过", sandbox_id[:12])
+                    return {"ok": True, "already": True}
+                if not proxy_hiccup(exc) or time.monotonic() >= deadline:
+                    raise
+                log.warning("sandbox %s 的引导请求被平台代理挡回（%s），重发", sandbox_id[:12], exc.status)
+            await asyncio.sleep(BOOTSTRAP_RETRY_INTERVAL_S)
 
     async def sync_state(self, sandbox_id: str, port: int, token: str) -> dict:
         """让状态管家立即归档一次（暂停前调）。

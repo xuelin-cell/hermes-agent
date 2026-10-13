@@ -131,6 +131,9 @@ class FakeCube:
         self.activity: dict | None = None            # 转发器报的忙不忙；None = 老转发器，不报
         self.sync_error: CubeError | None = None
         self.status_error: CubeError | None = None
+        self.already: set[str] = set()               # 引导回「已经引导过了」的实例（上一次其实做成了）
+        self.restored: dict[str, str] = {}           # 状态管家报的「恢复自」
+        self.owner_reported: dict[str, str] = {}     # 状态管家报的主人；默认是实例自己
 
     def host_for(self, sandbox_id, port):
         return f"{port}-{sandbox_id}.cube.app"
@@ -169,6 +172,9 @@ class FakeCube:
         if self.boot_failures:
             raise self.boot_failures.pop(0)
         self.hermes_ready.add(sandbox_id)
+        if sandbox_id in self.already:
+            return {"ok": True, "already": True}
+        self.restored[sandbox_id] = (state or {}).get("restore_from", "")
         return {"ok": True, "state": {"restored_from": (state or {}).get("restore_from", ""), "archive": "a.tar.gz",
                                       "counts": {"state.db": {"messages": 3}}, "notes": []}}
 
@@ -192,6 +198,9 @@ class FakeCube:
         if self.status_error is not None:
             raise self.status_error
         body = {"bootstrapped": sandbox_id in self.hermes_ready, "boot_window_left_s": 500}
+        if sandbox_id in self.hermes_ready:
+            body["state"] = {"owner": self.owner_reported.get(sandbox_id, sandbox_id),
+                             "restored_from": self.restored.get(sandbox_id, "")}
         if self.activity is not None:
             body["activity"] = dict(self.activity)
         return body
@@ -306,6 +315,53 @@ async def test_unbootstrapped_instance_gets_bootstrapped(monkeypatch) -> None:
     assert tenant.sandbox_id == "sbX"
     boot = next(c for c in cube.calls if c[0] == "bootstrap")
     assert boot[1] == "sbX" and boot[2]["restore_from"] == "sbPrev" and boot[2]["epoch"] == 3
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_whose_reply_never_came_back_is_adopted(monkeypatch) -> None:
+    """引导其实做成了、回包没回来：下一次请求问状态管家，主人是这台就补记成数据主人，之后的请求走快路径。"""
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    store = FakeStore(runtime=Runtime("stopped", "sbX", "tpl-new", 3, "sbPrev", "p.tar.gz", ""))
+    cube = FakeCube({"sbX": {"sandboxID": "sbX", "templateID": "tpl-new", "state": "running"}})
+    cube.restored["sbX"] = "sbPrev"
+    mgr = _manager(store, cube)
+
+    tenant = await mgr.ensure_running("u")
+
+    assert tenant.sandbox_id == "sbX"
+    assert ("set_state_owner", "sbX", "") in store.calls
+    assert store.runtime.state_owner == "sbX" and store.runtime.state_archive == "p.tar.gz"
+    assert not any(c[0] == "bootstrap" for c in cube.calls)
+    cube.calls.clear()
+    await mgr.ensure_running("u")
+    assert ("status", "sbX") not in cube.calls
+
+
+@pytest.mark.asyncio
+async def test_resent_bootstrap_answered_already_still_records_the_owner(monkeypatch) -> None:
+    """重发的引导回「已经引导过了」（第一次其实到了）：新实例照样记成数据主人。"""
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    store = FakeStore(runtime=Runtime("stopped", "", "", 2, "sbPrev", "p.tar.gz", ""))
+    cube = FakeCube()
+    cube.already.add("sb1")
+    cube.restored["sb1"] = "sbPrev"
+
+    tenant = await _manager(store, cube).ensure_running("u")
+
+    assert tenant.sandbox_id == "sb1" and store.runtime.state_owner == "sb1"
+
+
+@pytest.mark.asyncio
+async def test_instance_whose_state_keeper_names_another_owner_is_not_adopted(monkeypatch) -> None:
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    store = FakeStore(runtime=Runtime("stopped", "sbX", "tpl-new", 3, "sbPrev", "p.tar.gz", ""))
+    cube = FakeCube({"sbX": {"sandboxID": "sbX", "templateID": "tpl-new", "state": "running"}})
+    cube.owner_reported["sbX"] = "sbOther"
+
+    await _manager(store, cube).ensure_running("u")
+
+    assert store.runtime.state_owner == "sbPrev"
+    assert not any(c[0] == "set_state_owner" for c in store.calls)
 
 
 @pytest.mark.asyncio

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 
+import aiohttp
 import pytest
 
 from entry import cube_api
@@ -29,14 +30,22 @@ class _Resp:
 
 
 class _FakeHttp:
+    """``responses`` 按路径最后一段给回包：``(状态, 内容)``；给一串就按次序一个个回（最后一个一直回下去）；
+    给一个异常就抛它。"""
+
     def __init__(self):
         self.calls: list[tuple[str, str, dict]] = []
-        self.responses: dict[str, tuple[int, object]] = {}
+        self.responses: dict[str, object] = {}
 
     def request(self, method, url, **kwargs):
         headers = dict(kwargs.get("headers") or {})
         self.calls.append((method, url, headers))
-        status, body = self.responses.get(url.split("?")[0].rsplit("/", 1)[-1], (200, {"ok": True}))
+        found = self.responses.get(url.split("?")[0].rsplit("/", 1)[-1], (200, {"ok": True}))
+        if isinstance(found, list):
+            found = found.pop(0) if len(found) > 1 else found[0]
+        if isinstance(found, Exception):
+            raise found
+        status, body = found
         return _Resp(status, body)
 
     async def close(self):
@@ -145,3 +154,80 @@ async def test_wait_hermes_keeps_waiting_while_control_plane_still_lists_it(monk
     assert not isinstance(exc.value, SandboxGone)
     control = [c for c in fake.calls if c[1] == "http://api:3000/sandboxes/sbAlive"]
     assert len(control) == 1
+
+
+# ---- 引导请求被平台代理挡回时重发（10-14 换模板时撞上过：转发器刚应答了健康检查，引导请求就被代理回了 502）
+
+PROXY_502 = "<html>\n<head><title>502 Bad Gateway</title></head>\n<body>\n<center><h1>502 Bad Gateway</h1></center>\n<hr><center>openresty</center>\n</body>\n</html>\n"
+
+
+def _bootstrap_posts(fake: _FakeHttp) -> int:
+    return sum(1 for c in fake.calls if c[1].endswith("/__mt/bootstrap"))
+
+
+def test_only_what_the_platform_proxy_bounced_counts_as_a_hiccup() -> None:
+    assert cube_api.proxy_hiccup(CubeError(502, PROXY_502[:300]))
+    assert cube_api.proxy_hiccup(CubeError(504, "<html>gateway timeout</html>"))
+    assert cube_api.proxy_hiccup(CubeError(0, "ClientConnectorError: refused"))
+    # 转发器自己回的错是 JSON：hermes 没在超时内就绪、恢复失败、卷没挂好……重发也一样，不算
+    assert not cube_api.proxy_hiccup(CubeError(503, str({"ok": False, "error": "hermes 未在超时内就绪"})))
+    assert not cube_api.proxy_hiccup(CubeError(500, str({"ok": False, "error": "恢复失败: x"})))
+    assert not cube_api.proxy_hiccup(CubeError(409, str({"ok": False, "error": "拒绝启动", "refused": True})))
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_is_resent_when_the_platform_proxy_bounces_it(monkeypatch) -> None:
+    monkeypatch.setattr(cube_api.asyncio, "sleep", _no_sleep)
+    cube, fake = _cube()
+    fake.responses["bootstrap"] = [(502, PROXY_502), (200, {"ok": True, "state": {"archive": "a.tar.gz"}})]
+
+    body = await cube.bootstrap("sb1", 9121, token="t", files=[], state=None)
+
+    assert body["state"]["archive"] == "a.tar.gz" and _bootstrap_posts(fake) == 2
+
+
+@pytest.mark.asyncio
+async def test_resent_bootstrap_that_finds_it_already_done_counts_as_done(monkeypatch) -> None:
+    """第一次其实到了实例、只是回包被挡：重发的那次回「已经引导过了」，当作成功。"""
+    monkeypatch.setattr(cube_api.asyncio, "sleep", _no_sleep)
+    cube, fake = _cube()
+    fake.responses["bootstrap"] = [(502, PROXY_502), (409, {"ok": False, "error": "已经引导过了"})]
+
+    assert await cube.bootstrap("sb1", 9121, token="t", files=[], state=None) == {"ok": True, "already": True}
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_is_not_resent_when_the_instance_itself_says_no(monkeypatch) -> None:
+    monkeypatch.setattr(cube_api.asyncio, "sleep", _no_sleep)
+    cube, fake = _cube()
+    fake.responses["bootstrap"] = (503, {"ok": False, "error": "hermes 未在超时内就绪"})
+
+    with pytest.raises(CubeError) as exc:
+        await cube.bootstrap("sb1", 9121, token="t", files=[], state=None)
+
+    assert exc.value.status == 503 and _bootstrap_posts(fake) == 1
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_resends_for_at_most_thirty_seconds(monkeypatch) -> None:
+    """一直被挡：30 秒后把最后那个错抛出去，交给下一次请求补引导。"""
+    clock = iter(range(0, 1000, 10))
+    monkeypatch.setattr(cube_api.asyncio, "sleep", _no_sleep)
+    monkeypatch.setattr(cube_api.time, "monotonic", lambda: next(clock))
+    cube, fake = _cube()
+    fake.responses["bootstrap"] = (502, PROXY_502)
+
+    with pytest.raises(CubeError) as exc:
+        await cube.bootstrap("sb1", 9121, token="t", files=[], state=None)
+
+    assert exc.value.status == 502 and _bootstrap_posts(fake) == 3
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_is_resent_when_the_proxy_cannot_be_reached(monkeypatch) -> None:
+    monkeypatch.setattr(cube_api.asyncio, "sleep", _no_sleep)
+    cube, fake = _cube()
+    fake.responses["bootstrap"] = [aiohttp.ClientConnectionError("reset"), (200, {"ok": True, "state": {}})]
+
+    assert (await cube.bootstrap("sb1", 9121, token="t", files=[], state=None))["ok"] is True
+    assert _bootstrap_posts(fake) == 2
