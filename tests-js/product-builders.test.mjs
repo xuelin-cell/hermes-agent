@@ -1,4 +1,5 @@
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
+import { once } from 'node:events'
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, symlinkSync, statSync, utimesSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -23,6 +24,62 @@ function put(root, name, content) {
   mkdirSync(path.dirname(file), { recursive: true })
   writeFileSync(file, content)
 }
+
+// 用真实 Windows 文件共享锁验证发布重试，不伪造宿主系统或文件错误。
+async function lockWindowsFile(file) {
+  const command = `$handle = [IO.File]::Open('${file.replaceAll("'", "''")}', 'Open', 'Read', [IO.FileShare]::Read)
+try {
+  [Console]::WriteLine('READY')
+  [Console]::ReadLine() | Out-Null
+} finally { $handle.Dispose() }
+`
+  const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], { windowsHide: true })
+  const [ready] = await once(child.stdout, 'data')
+  expect(ready.toString().trim()).toBe('READY')
+  return child
+}
+
+// 验证暂时占用的新产物在释放文件锁后完整替换旧产物。
+test.skipIf(process.platform !== 'win32')('publication survives a real temporary Windows file lock', async () => {
+  const root = fixture()
+  const out = path.join(root, 'out')
+  await withProduct(out, product => put(product, 'old.txt', 'old'))
+  const staged = path.join(root, 'staged')
+  put(staged, 'new.txt', 'new')
+  const child = await lockWindowsFile(path.join(staged, 'new.txt'))
+  try {
+    const publication = publishDirectory(staged, out)
+    child.stdin.end('\n')
+    await publication
+    expect(readFileSync(path.join(out, 'new.txt'), 'utf8')).toBe('new')
+    expect(existsSync(path.join(out, 'old.txt'))).toBe(false)
+  } finally {
+    if (child.exitCode === null) {
+      if (!child.stdin.writableEnded) child.stdin.end('\n')
+      await once(child, 'exit')
+    }
+  }
+}, 30_000)
+
+// 验证占用长期存在时仍报错，并恢复上一份完整产物。
+test.skipIf(process.platform !== 'win32')('publication restores the previous product when a Windows lock persists', async () => {
+  const root = fixture()
+  const out = path.join(root, 'out')
+  await withProduct(out, product => put(product, 'old.txt', 'old'))
+  const staged = path.join(root, 'staged')
+  put(staged, 'new.txt', 'new')
+  const child = await lockWindowsFile(path.join(staged, 'new.txt'))
+  try {
+    await expect(publishDirectory(staged, out)).rejects.toThrow()
+    expect(readFileSync(path.join(out, 'old.txt'), 'utf8')).toBe('old')
+    expect(readFileSync(path.join(staged, 'new.txt'), 'utf8')).toBe('new')
+  } finally {
+    if (child.exitCode === null) {
+      child.stdin.end('\n')
+      await once(child, 'exit')
+    }
+  }
+}, 30_000)
 function dependency(root, workspace, name) {
   const target = path.dirname(require.resolve(`${name}/package.json`))
   const link = path.join(root, workspace, 'node_modules', name)
@@ -96,7 +153,7 @@ test('publication replaces only builder-owned directories and rechecks ownership
   }
   const staged = path.join(base, 'staged')
   put(staged, 'new.txt', 'new product')
-  expect(() => publishDirectory(staged, unowned)).toThrow(/output/i)
+  await expect(publishDirectory(staged, unowned)).rejects.toThrow(/output/i)
   expect(readFileSync(path.join(unowned, 'keep.txt'), 'utf8')).toBe('not a product')
   expect(readFileSync(path.join(staged, 'new.txt'), 'utf8')).toBe('new product')
 

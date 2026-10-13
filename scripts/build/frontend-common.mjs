@@ -3,6 +3,7 @@ import { createRequire } from 'node:module'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
+import { setTimeout as delay } from 'node:timers/promises'
 
 export const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 
@@ -73,19 +74,32 @@ export function productOutput(source, out, inputs) {
   return { source: src, out: dest }
 }
 
+// Windows 文件暂时占用时让出事件循环并有限重试，真正的错误仍向上传递。
+async function renamePublishedDirectory(from, to) {
+  for (let attempt = 0; attempt < 6; attempt++) {
+    try {
+      renameSync(from, to)
+      return
+    } catch (error) {
+      if (process.platform !== 'win32' || !['EPERM', 'EACCES', 'EBUSY'].includes(error.code) || attempt === 5) throw error
+      await delay(500 * 2 ** attempt)
+    }
+  }
+}
+
 // Never delete the last successful product before a compiler succeeds. The
 // staging and backup directories are siblings so publication stays on one FS.
-export function publishDirectory(staged, out, { source } = {}) {
+export async function publishDirectory(staged, out, { source } = {}) {
   // The destination may have been occupied while the compiler was running.
   requireOwnedOutput(out, source)
   writeFileSync(path.join(staged, productMarker), productOwner)
   const backup = `${staged}.previous`
   const previous = existsSync(out)
-  if (previous) renameSync(out, backup)
+  if (previous) await renamePublishedDirectory(out, backup)
   try {
-    renameSync(staged, out)
+    await renamePublishedDirectory(staged, out)
   } catch (error) {
-    if (previous) renameSync(backup, out)
+    if (previous) await renamePublishedDirectory(backup, out)
     throw error
   }
   if (previous) rmSync(backup, { recursive: true, force: true })
@@ -99,7 +113,7 @@ export async function withProduct(out, compile, { source } = {}) {
   mkdirSync(product)
   try {
     await compile(product, scratch)
-    publishDirectory(product, out, { source })
+    await publishDirectory(product, out, { source })
   } finally {
     rmSync(scratch, { recursive: true, force: true })
   }
