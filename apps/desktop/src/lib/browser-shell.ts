@@ -52,7 +52,9 @@ import { storedBoolean } from '@/lib/storage'
  *
  * The terminal panel, rename and the recycle bin need no page changes: the
  * bridge implements them against the instance (`/__mt_user/…` behind the
- * entry), see `browser-bridge.ts`.
+ * entry), see `browser-bridge.ts`. Nor do the masked keys on the MCP page: the
+ * bridge masks what the page reads and puts the keys back in what it saves, see
+ * `dev/mcp-secrets.ts`.
  */
 export function isBrowserShell(): boolean {
   // The production browser build is known at build time. The bridge's mark
@@ -330,6 +332,7 @@ interface BrowserShellCopy {
   fileErrors: Record<InstanceFileErrorCode, string>
   instanceLocalUrl: (host: string) => string
   instanceOutdated: string
+  mcpKeyStale: string
   media: {
     failed: string
     loading: string
@@ -374,6 +377,7 @@ const COPY: Record<'en' | 'zh', BrowserShellCopy> = {
     instanceLocalUrl: (host: string) =>
       `${host} is a web service inside your cloud instance. The browser version cannot open it yet.`,
     instanceOutdated: 'Your instance is being upgraded. Reload the page and try again.',
+    mcpKeyStale: 'A masked key on this page is out of date. Reload the page and save again.',
     media: {
       failed: 'This file does not play in the browser. Download it instead.',
       loading: 'Loading…'
@@ -423,6 +427,7 @@ const COPY: Record<'en' | 'zh', BrowserShellCopy> = {
     },
     instanceLocalUrl: (host: string) => `这是实例里的网页服务（${host}），浏览器版暂时打不开。`,
     instanceOutdated: '实例正在升级，请刷新页面后再试。',
+    mcpKeyStale: '页面上打了码的 key 已经过期，请刷新页面后再保存。',
     media: {
       failed: '浏览器放不了这个文件，请下载后查看。',
       loading: '正在加载…'

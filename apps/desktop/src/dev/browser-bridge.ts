@@ -15,6 +15,8 @@ import {
   type OfficePreviewErrorCode
 } from '@/lib/browser-shell'
 
+import { maskMcpSecrets, restoreMcpSecrets } from './mcp-secrets'
+
 const noopOff = () => () => undefined
 const productionBrowserBuild = import.meta.env.VITE_HERMES_BROWSER_BUILD === '1'
 const backendUrl = (import.meta.env.VITE_HERMES_BROWSER_BACKEND as string | undefined)?.replace(/\/$/, '')
@@ -90,7 +92,7 @@ async function api<T>({ body, method = 'GET', path, upload }: HermesApiRequest):
     requestBody = form
   } else if (body !== undefined) {
     headers.set('Content-Type', 'application/json')
-    requestBody = JSON.stringify(body)
+    requestBody = JSON.stringify(restoreMcpSecrets(method, path, body))
   }
 
   const response = await fetch(`${apiPrefix()}${path}`, {
@@ -106,7 +108,7 @@ async function api<T>({ body, method = 'GET', path, upload }: HermesApiRequest):
     throw new Error(`${response.status}: ${text || response.statusText}`)
   }
 
-  return (text ? JSON.parse(text) : {}) as T
+  return maskMcpSecrets(method, path, (text ? JSON.parse(text) : {}) as T)
 }
 
 // ---------------------------------------------------------------------------

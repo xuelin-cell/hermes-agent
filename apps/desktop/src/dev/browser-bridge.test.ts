@@ -517,6 +517,34 @@ describe('browser bridge: rename and the recycle bin', () => {
   })
 })
 
+describe('browser bridge: keys on the MCP page', () => {
+  it('masks keys in what the page reads and sends the real ones when it saves', async () => {
+    await installFresh()
+    const url = 'https://maas.example.com/mcp?key=sk-0123456789abcdefTAIL&client_id=UniWork'
+    const saved: unknown[] = []
+
+    globalThis.fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'PUT') {
+        saved.push(JSON.parse(String(init.body)))
+
+        return jsonResponse({ ok: true })
+      }
+
+      return jsonResponse({ mcp_servers: { yuanjing: { url } } })
+    }) as typeof fetch
+
+    const config = await window.hermesDesktop.api<{ mcp_servers: Record<string, { url: string }> }>({
+      path: '/api/config'
+    })
+
+    expect(config.mcp_servers.yuanjing.url).toBe('https://maas.example.com/mcp?key=sk-••••••TAIL&client_id=UniWork')
+
+    await window.hermesDesktop.api({ body: { servers: config.mcp_servers }, method: 'PUT', path: '/api/mcp/servers' })
+
+    expect(saved).toEqual([{ servers: { yuanjing: { url } } }])
+  })
+})
+
 describe('browser bridge: Office files preview as PDF', () => {
   it('fetches the PDF the instance makes of the file', async () => {
     const mod = await installFresh()
