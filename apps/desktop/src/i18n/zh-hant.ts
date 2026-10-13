@@ -1107,6 +1107,7 @@ export const zhHant = defineLocale({
 
   skills: {
     tabSkills: '技能',
+    kitSkillsNote: '套件技能在「套件」頁管理。',
     tabToolsets: '工具集',
     tabMcp: 'MCP',
     all: '全部',

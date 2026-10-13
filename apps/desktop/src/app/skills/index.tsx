@@ -62,6 +62,7 @@ import { TerminalBackendPanel } from '../settings/terminal-backend-panel'
 import { ToolsetConfigPanel } from '../settings/toolset-config-panel'
 import type { SetStatusbarItemGroup } from '../shell/statusbar-controls'
 
+import { isManagedKitSkill } from './kit-skills'
 import { McpTab } from './mcp-tab'
 import { SkillMarket } from './skill-market'
 import { $skillsSortDesc, $toolsetsSortDesc } from './store'
@@ -211,6 +212,7 @@ export function SkillsView({
   ...props
 }: SkillsViewProps) {
   const { t } = useI18n()
+  const navigate = useNavigate()
   const developerMode = useStore($developerMode)
   // Both hooks run unconditionally (rules of hooks); embedded picks the local
   // one so tab clicks inside a dialog don't rewrite the page URL.
@@ -397,9 +399,14 @@ export function SkillsView({
     setScopeOverride(null)
   })
 
+  const manageableSkills = useMemo(
+    () => (skills ?? []).filter(skill => !isManagedKitSkill(skill.name)),
+    [skills]
+  )
+
   const visibleSkills = useMemo(
-    () => (skills ? filteredSkills(skills, query, skillsSortDesc) : []),
-    [query, skills, skillsSortDesc]
+    () => filteredSkills(manageableSkills, query, skillsSortDesc),
+    [manageableSkills, query, skillsSortDesc]
   )
 
   const visibleToolsets = useMemo(
@@ -410,7 +417,7 @@ export function SkillsView({
   // Bulk actions ("All" master switch, "Disable unused") and the master-switch
   // state target the WHOLE tab, never the search-filtered view — a tab-wide
   // control that silently scoped to the current query would be a lie.
-  const bulkSkills = skills ?? []
+  const bulkSkills = manageableSkills
   const bulkToolsets = useMemo(() => (toolsets ?? []).filter(ts => isDesktopToolsetVisible(ts.name)), [toolsets])
 
   // Installed-name set for the hub picker's already-installed guard — the
@@ -777,7 +784,7 @@ export function SkillsView({
       searchPlaceholder={mode === 'skills' ? t.skills.searchSkills : t.skills.searchToolsets}
       searchValue={query}
       tabs={[
-        { id: 'skills', label: t.skills.tabSkills, meta: skills?.length ?? null },
+        { id: 'skills', label: t.skills.tabSkills, meta: skills ? manageableSkills.length : null },
         ...(developerMode
           ? [{ id: 'toolsets', label: t.skills.tabToolsets, meta: toolsets ? visibleToolsetCount(toolsets) : null }]
           : []),
@@ -835,6 +842,15 @@ export function SkillsView({
                       />
                     }
                   >
+                    {manageableSkills.length !== (skills?.length ?? 0) ? (
+                      <button
+                        className="mx-3 mt-2 rounded-md border border-(--ui-stroke-secondary) px-3 py-2 text-left text-xs text-(--ui-text-secondary)"
+                        onClick={() => navigate('/kits')}
+                        type="button"
+                      >
+                        {t.skills.kitSkillsNote}
+                      </button>
+                    ) : null}
                     {visibleSkills.map(skill => (
                       <CapRow
                         active={activeSkill?.name === skill.name}

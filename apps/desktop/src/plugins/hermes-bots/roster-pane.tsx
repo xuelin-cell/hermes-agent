@@ -30,6 +30,10 @@ import {
 } from '@hermes/plugin-sdk'
 import { useEffect, useRef, useState } from 'react'
 
+import { useContributions } from '@/contrib/react/use-contributions'
+
+import { BOTS_HEADER_AREA } from './header-slot'
+
 import { BotRow, GroupRow } from './bot-row'
 import {
   $botChatFocused,
@@ -271,6 +275,7 @@ export function BotsPane() {
   const rosterHydrated = useValue($rosterHydrated)
   const selectionHydrated = useValue($selectedRosterHydrated)
   const selectedRosterKey = useValue($selectedRosterKey)
+  const headerActions = useContributions(BOTS_HEADER_AREA)
 
   // The socket opening (boot, SSH reconnect, sleep/wake) is the signal to
   // retry immediately instead of waiting out the poll interval.
@@ -603,8 +608,13 @@ export function BotsPane() {
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between gap-2 px-2.5 pt-2.5 pb-1.5">
-        <span className="text-[0.6875rem] font-semibold uppercase tracking-wider text-(--ui-text-quaternary)">
-          Bots
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="text-[0.6875rem] font-semibold uppercase tracking-wider text-(--ui-text-quaternary)">
+            Bots
+          </span>
+          {headerActions.map(item => (
+            <span key={`${item.source || 'core'}:${item.id}`}>{item.render?.()}</span>
+          ))}
         </span>
         <div className="flex items-center gap-0.5">
           <Tip

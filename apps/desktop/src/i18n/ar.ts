@@ -996,6 +996,7 @@ export const ar = defineLocale({
   },
   skills: {
     tabSkills: 'المهارات',
+    kitSkillsNote: 'تُدار مهارات الحزم من صفحة الحزم.',
     tabToolsets: 'مجموعات الأدوات',
     all: 'الكل',
     searchSkills: 'البحث في المهارات',

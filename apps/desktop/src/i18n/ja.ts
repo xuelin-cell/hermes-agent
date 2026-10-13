@@ -1147,6 +1147,7 @@ export const ja = defineLocale({
 
   skills: {
     tabSkills: 'スキル',
+    kitSkillsNote: 'キットのスキルはキットページで管理します。',
     tabToolsets: 'ツールセット',
     tabMcp: 'MCP',
     all: 'すべて',
