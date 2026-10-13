@@ -5272,6 +5272,11 @@ export const frOverrides = {
     truncated: 'Affichage des 512 Ko premiers.',
     noInlineTitle: 'Aucun aperçu en ligne',
     noInlineBody: mimeType => `${mimeType || 'Ce type de fichier'} peut tout de même être joint en tant que contexte.`,
+    formatFailure: {
+      not_found: "Ce fichier n’existe plus ou n’est pas accessible.",
+      unavailable: 'Aperçu impossible. Vous pouvez toujours accéder au fichier original ou le télécharger.',
+      unsupported: 'Ce format de fichier ou cet encodage multimédia n’est pas pris en charge.'
+    },
     edit: 'Modifier',
     editing: 'Modification',
     unsavedChanges: 'Modifications non enregistrées',

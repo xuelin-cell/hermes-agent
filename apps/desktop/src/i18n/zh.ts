@@ -4566,6 +4566,11 @@ export const zh = defineLocale({
     truncated: '显示前 512 KB。',
     noInlineTitle: '没有内联预览',
     noInlineBody: mimeType => `${mimeType || '此文件类型'} 仍可作为上下文附件。`,
+    formatFailure: {
+      not_found: '文件已不存在或无法访问。',
+      unavailable: '无法预览此文件，仍可查看或下载原文件。',
+      unsupported: '暂不支持此文件格式或音视频编码。'
+    },
     edit: '编辑',
     editing: '编辑中',
     unsavedChanges: '未保存的更改',

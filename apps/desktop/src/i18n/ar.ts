@@ -3083,6 +3083,11 @@ export const ar = defineLocale({
     truncated: 'عرض أول 512 KB.',
     noInlineTitle: 'لا توجد معاينة مضمّنة',
     noInlineBody: mimeType => `${mimeType || 'هذا النوع من الملفات'} لا يزال بالإمكان إرفاقه كسياق.`,
+    formatFailure: {
+      not_found: 'الملف لم يعد موجودًا أو لا يمكن الوصول إليه.',
+      unavailable: 'تعذرت معاينة الملف. يمكنك الوصول إلى الملف الأصلي أو تنزيله.',
+      unsupported: 'تنسيق الملف أو ترميز الوسائط غير مدعوم.'
+    },
     edit: 'تحرير',
     editing: 'جار التحرير',
     unsavedChanges: 'تغييرات غير محفوظة',

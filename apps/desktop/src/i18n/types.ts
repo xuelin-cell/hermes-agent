@@ -4117,6 +4117,11 @@ export interface Translations {
     truncated: string
     noInlineTitle: string
     noInlineBody: (mimeType: string) => string
+    formatFailure: {
+      not_found: string
+      unavailable: string
+      unsupported: string
+    }
     edit: string
     editing: string
     unsavedChanges: string

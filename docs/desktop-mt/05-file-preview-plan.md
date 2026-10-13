@@ -2,7 +2,7 @@
 
 日期：2026-10-13。基线：`desktop-mt @ d5ff498050`（代码事实核对于同步远端 `40caef7b87` 之前，P01 动手前需复核）。参考实现：UniWork 桌面版 `Kyle549/UniClaw @ uniwork_release`（`8ae3548e`）、Web 版 `feat/hermes-ch`（`3bef1c5bd4`）。
 
-状态：仅计划，尚未开始实施。生成本文不授权推送，也不代表任何一步已经完成。每步完成验证并本地提交后暂停，等待用户核验，再继续下一步。
+状态：P01 已实现并完成自动验证，等待用户核验；P02～P16 未开始。本文不授权推送。每步完成验证并本地提交后暂停，等待用户核验，再继续下一步。
 
 路径约定：`src/`、`electron/` 指 `apps/desktop/` 下的对应目录；`shared/` 指 `apps/shared/src/`。各步骤的行数是预估的业务代码行数，不含测试、夹具和文档；多语言文案单独列出。
 
@@ -211,7 +211,7 @@ shared/office-preview.ts             前端与主进程共用的约定：扩展�
 
 ### P01 · 预览中心骨架与音视频
 
-- 范围：新增 `formats/` 下的 `kinds.ts`、`registry.tsx`、`format-preview.tsx`、`failure.ts`、`media-preview.tsx` 及测试；`preview-pane.tsx` 一处接入；文案。
+- 范围：新增 `formats/` 下的 `kinds.ts`、`registry.tsx`、`format-preview.tsx`、`failure.ts`、`media-preview.tsx` 及测试；`source.ts` 集中连接归属与失败出口；`preview-pane.tsx` 一处接入；文案。
 - `kinds.ts`：扩展名到类型的表；音视频用 `lib/media.ts` 的 `mediaKind` 判断。表里没有的返回空，表示沿用现有预览。
 - `registry.tsx`：类型到显示器列表的表，写法照 `embeds/registry.tsx`（懒加载＋错误边界）。
 - `format-preview.tsx`：接收与 `LocalFilePreview` 相同的参数。类型为空时原样渲染 `LocalFilePreview`；否则按表逐个尝试，显示器报告失败就换下一个，文件已不存在时不再尝试；全部失败时用现有的 `PreviewEmptyState` 显示原因和出口。
@@ -236,7 +236,7 @@ shared/office-preview.ts             前端与主进程共用的约定：扩展�
 
 ### P03 · TIFF 图片
 
-- 范围：新增依赖 `utif2`；`formats/source.ts`（取文件字节，本步首次引入）；`formats/tiff-preview.tsx` 及测试；登记；文案。
+- 范围：新增依赖 `utif2`；`formats/source.ts` 增加取文件字节；`formats/tiff-preview.tsx` 及测试；登记；文案。
 - `source.ts` 的取字节函数基于现有的 `readDesktopFileDataUrl`，因此本机、远程都可用，上限沿用现有的 16 MB。超过上限时报告“太大”。
 - 解码第一页，转成 PNG 后按图片显示；多页时说明只显示第一页（与 UniWork 一致）。
 - 业务代码：约 150 行；文案约 10 行。
@@ -411,7 +411,7 @@ UniWork 的表格预览由三个文件组成，共约 1300 行，并依赖表格
 
 | 阶段 | 步骤 | 当前状态 |
 | --- | --- | --- |
-| A · 预览中心与音视频 | P01 | 未开始 |
+| A · 预览中心与音视频 | P01 | 已实现并自动验证，待用户核验；本地提交，未推送 |
 | A · CSV／TSV | P02 | 未开始 |
 | A · TIFF | P03 | 未开始 |
 | B · 约定与探测 | P04 | 未开始 |
@@ -429,3 +429,23 @@ UniWork 的表格预览由三个文件组成，共约 1300 行，并依赖表格
 | E · 收尾 | P16 | 未开始 |
 
 业务代码预估合计约 4200 行，分 16 步，单步不超过 400 行。各步的实施记录在完成后追加到本节之后。
+
+### P01 实施记录（2026-10-13）
+
+- 动手前核对本地与远端均为 `58a9d13a9b`，无需同步；重新核查预览入口、媒体通道与账号分区，不按旧基线猜测实现。
+- 预览面板的一处文件入口改为 `FormatPreview`。音视频用原版扩展名判断、懒加载播放器和 `resolveMediaPlaybackSrc`；不自动播放，复用既有流式读取与进度拖动。AVI、MKV 等仍取决于 Chromium 的编码支持，失败给出说明。
+- 其余格式原样交给 `LocalFilePreview`，保留原参数及回调。`preview-file.tsx`、`lib/local-preview.ts`、`store/preview.ts`、媒体协议和 Hermes Python 后端均未改。
+- 显示器登记、失败降级与错误边界已接通。明确 `not_found` 时停止继续尝试，未知内部错误不显示路径或异常详情。失败时提供本机文件夹入口或远程下载，关闭入口仍可用。
+- `source.ts` 在本步已有真实用途：集中确定连接归属与失败出口，按连接、Profile、路径和刷新次数隔离加载状态，远程下载固定原归属。P03 再在此增加取字节，不另建判断本机／远程的位置。
+- 新文案补齐全部九种语言与类型定义。没有新增依赖、读文件 IPC、预览默认设置或文件预转换。
+
+自动检查：
+
+- `npm run typecheck` 通过；本步改动文件的 ESLint 零警告；原生夹具语法与 `git diff --check` 通过。
+- `npx vitest run --project ui src/app/chat/right-rail/formats/format-preview.test.tsx src/app/chat/right-rail/preview-pane.test.tsx src/app/chat/right-rail/preview-file.test.tsx src/i18n/catalog-completeness.test.ts`：4 个文件，65 项通过。
+- `npx vitest run --project electron electron/media-protocol.test.ts electron/media-range.test.ts`：2 个文件，27 项通过。
+- `node --test scripts/file-preview.native.mjs`：1 项综合检查通过。样例由指定的本机 FFmpeg 生成；正式 Vite 生产配置构建独立预览入口，使用正式 preload、文件校验、媒体协议与 Range 响应，没有启动 Hermes 后端或登录 MaaS。
+- 实际验证 MP3、H.264 MP4 解码播放、程序化跳转、鼠标拖动 Chromium 原生进度条、206 分段读取，以及损坏 MP4 的失败界面与文件夹 IPC。测试文件夹入口由夹具记录请求，不真正打开用户的文件管理器。截图位于 `C:\Users\stan\AppData\Local\Temp\hermes-file-preview-e9DJIE`。
+- 早期夹具的开发依赖扫描超时、隐藏窗截图、错误 IPC 名称和未唤出视频控件问题已修正；上述通过结果来自修正后的整组复测，未降低播放、拖动或失败出口断言。生产构建仍报告既有的分块弃用及无效动态导入警告。
+
+证据边界：远程下载归属与切换由组件测试覆盖，未连接真实远程服务器；未验证其它媒体编码、macOS、Linux 或安装包。用户登录后从文件树打开音视频的界面核验仍待完成。按计划停在 P01，未实施 P02，也未推送。

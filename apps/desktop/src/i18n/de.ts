@@ -5261,6 +5261,11 @@ export const deOverrides = {
     truncated: 'Die ersten 512 KB werden angezeigt.',
     noInlineTitle: 'Keine Inline-Vorschau',
     noInlineBody: mimeType => `${mimeType || 'Dieser Dateityp'} kann trotzdem als Kontext angehängt werden.`,
+    formatFailure: {
+      not_found: 'Diese Datei ist nicht mehr vorhanden oder nicht zugänglich.',
+      unavailable: 'Keine Vorschau möglich. Die Originaldatei kann weiterhin geöffnet oder heruntergeladen werden.',
+      unsupported: 'Dieses Dateiformat oder diese Medienkodierung wird nicht unterstützt.'
+    },
     edit: 'Bearbeiten',
     editing: 'Wird bearbeitet',
     unsavedChanges: 'Nicht gespeicherte Änderungen',

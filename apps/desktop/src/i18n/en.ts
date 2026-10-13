@@ -4865,6 +4865,11 @@ export const en: Translations = {
     truncated: 'Showing first 512 KB.',
     noInlineTitle: 'No inline preview',
     noInlineBody: mimeType => `${mimeType || 'This file type'} can still be attached as context.`,
+    formatFailure: {
+      not_found: 'This file is no longer available.',
+      unavailable: 'Could not preview this file. You can still access the original file.',
+      unsupported: 'This format or media encoding is not supported.'
+    },
     edit: 'Edit',
     editing: 'Editing',
     unsavedChanges: 'Unsaved changes',

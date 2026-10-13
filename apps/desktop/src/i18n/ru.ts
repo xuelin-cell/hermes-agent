@@ -3815,6 +3815,11 @@ export const ru = defineLocale({
     truncated: 'Показаны первые 512 КБ.',
     noInlineTitle: 'Нет inline-предпросмотра',
     noInlineBody: mimeType => `${mimeType || 'Этот тип файла'} всё равно можно прикрепить как контекст.`,
+    formatFailure: {
+      not_found: 'Файл больше не существует или недоступен.',
+      unavailable: 'Не удалось показать предпросмотр. Можно открыть или скачать исходный файл.',
+      unsupported: 'Этот формат файла или кодек не поддерживается.'
+    },
     edit: 'Изменить',
     editing: 'Изменение',
     unsavedChanges: 'Несохранённые изменения',

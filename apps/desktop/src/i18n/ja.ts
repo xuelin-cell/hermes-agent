@@ -3582,6 +3582,11 @@ export const ja = defineLocale({
     truncated: '最初の 512 KB を表示しています。',
     noInlineTitle: 'インラインプレビューなし',
     noInlineBody: mimeType => `${mimeType || 'このファイルタイプ'} はコンテキストとして添付できます。`,
+    formatFailure: {
+      not_found: 'ファイルが存在しないか、アクセスできません。',
+      unavailable: 'プレビューできません。元のファイルを確認またはダウンロードできます。',
+      unsupported: 'このファイル形式またはメディアのエンコードには対応していません。'
+    },
     edit: '編集',
     editing: '編集中',
     unsavedChanges: '未保存の変更',

@@ -3767,6 +3767,11 @@ export const zhHant = defineLocale({
     truncated: '顯示前 512 KB。',
     noInlineTitle: '沒有行內預覽',
     noInlineBody: mimeType => `${mimeType || '此檔案類型'} 仍可作為脈絡附件。`,
+    formatFailure: {
+      not_found: '檔案已不存在或無法存取。',
+      unavailable: '無法預覽此檔案，仍可查看或下載原檔案。',
+      unsupported: '暫不支援此檔案格式或影音編碼。'
+    },
     edit: '編輯',
     editing: '編輯中',
     unsavedChanges: '未儲存的變更',

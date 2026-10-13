@@ -5249,6 +5249,11 @@ export const esOverrides = {
     truncated: 'Mostrando los primeros 512 KB.',
     noInlineTitle: 'Sin vista previa inline',
     noInlineBody: mimeType => `${mimeType || 'Este tipo de archivo'} aún puede adjuntarse como contexto.`,
+    formatFailure: {
+      not_found: 'Este archivo ya no existe o no es accesible.',
+      unavailable: 'No se pudo mostrar la vista previa. Puedes acceder al archivo original o descargarlo.',
+      unsupported: 'Este formato de archivo o codificación multimedia no es compatible.'
+    },
     edit: 'Editar',
     editing: 'Edición',
     unsavedChanges: 'Cambios no guardados',
