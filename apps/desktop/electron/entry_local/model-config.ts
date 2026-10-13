@@ -27,9 +27,10 @@ function isManaged(id: string, entry: unknown): entry is YAMLMap {
   }
 
   const api = entry.get('api')
+  const baseUrl = entry.get('base_url')
 
   if (
-    ['name', 'api', 'key_env', 'transport', 'discover_models'].some(field => {
+    ['name', 'api', 'base_url', 'api_mode', 'key_env', 'transport', 'discover_models'].some(field => {
       const value = entry.get(field, true)
 
       return isAlias(value) || (isScalar(value) && !!value.anchor)
@@ -42,6 +43,9 @@ function isManaged(id: string, entry: unknown): entry is YAMLMap {
     typeof api === 'string' &&
     id === providerId(api) &&
     entry.get('key_env') === MAAS_MODEL_KEY_ENV &&
+    (!entry.has('base_url') ||
+      (typeof baseUrl === 'string' && baseUrl.replace(/\/+$/, '') === api.replace(/\/+$/, ''))) &&
+    (!entry.has('api_mode') || entry.get('api_mode') === 'chat_completions') &&
     ![
       'api_key',
       'key_cmd',
@@ -49,10 +53,8 @@ function isManaged(id: string, entry: unknown): entry is YAMLMap {
       'keyEnv',
       'apiKey',
       'apiKeyEnv',
-      'base_url',
       'url',
       'baseUrl',
-      'api_mode',
       'apiMode'
     ].some(field => entry.has(field))
   )
@@ -163,6 +165,9 @@ export function mergeMaasModelConfig(home: string, catalog: Pick<MaasPlan, 'mode
     entry.set('name', `MaaS · ${models[0].name} · ${id.slice(-8)}`)
     entry.set('api', api)
     entry.set('key_env', MAAS_MODEL_KEY_ENV)
+    // 原版设置保存等价字段后，统一为托管写法，避免两套地址或协议互相覆盖。
+    entry.delete('base_url')
+    entry.delete('api_mode')
     entry.set('transport', 'chat_completions')
     entry.set('discover_models', false)
     entry.set('models', modelOptions)

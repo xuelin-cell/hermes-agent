@@ -131,6 +131,60 @@ future_counter: 900719925474099312345
   }
 })
 
+it('原版端点保存后的等价地址和协议可再次合并，保留默认与模型选项并清理退出套餐的端点', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-model-saved-'))
+  const file = path.join(home, 'config.yaml')
+
+  try {
+    mergeMaasModelConfig(home, catalog)
+    const original = readConfig(file)
+    const activeId = Object.keys(original.providers).find(id => original.providers[id].api === catalog.models[0].baseUrl)!
+
+    for (const trailingSlash of ['', '/']) {
+      const saved = readConfig(file)
+
+      for (const entry of Object.values(saved.providers) as any[]) {
+        entry.base_url = `${entry.api}${trailingSlash}`
+        entry.api_mode = 'chat_completions'
+        delete entry.transport
+      }
+
+      saved.model = { provider: `custom:${activeId}`, default: 'other-model' }
+      saved.providers[activeId].models['other-model'] = { context_length: 16384, extra_option: 'keep' }
+      saved.providers[activeId].model = 'other-model'
+      fs.writeFileSync(file, stringify(saved))
+      mergeMaasModelConfig(home, catalog)
+      const refreshed = readConfig(file)
+      expect(refreshed.model).toEqual(saved.model)
+      expect(refreshed.providers[activeId].models['other-model']).toEqual({ context_length: 16384n, extra_option: 'keep' })
+
+      for (const entry of Object.values(refreshed.providers) as any[]) {
+        expect(entry.transport).toBe('chat_completions')
+        expect(entry).not.toHaveProperty('base_url')
+        expect(entry).not.toHaveProperty('api_mode')
+      }
+
+      const stable = fs.readFileSync(file, 'utf8')
+      mergeMaasModelConfig(home, catalog)
+      expect(fs.readFileSync(file, 'utf8')).toBe(stable)
+    }
+
+    const saved = readConfig(file)
+
+    for (const entry of Object.values(saved.providers) as any[]) {
+      entry.base_url = entry.api
+      // 原版自动检测模式会省略 api_mode；保存仍会增加 base_url。
+      delete entry.transport
+    }
+
+    fs.writeFileSync(file, stringify(saved))
+    mergeMaasModelConfig(home, { models: [catalog.models[0], catalog.models[2]], mainModelIndex: 0 })
+    expect(Object.keys(readConfig(file).providers)).toEqual([activeId])
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
 it('坏文件、归属冲突、共享配置及写入失败均拒绝，保留原字节；链接不写穿到其他目录', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-model-fail-'))
   const file = path.join(home, 'config.yaml')
@@ -152,6 +206,12 @@ it('坏文件、归属冲突、共享配置及写入失败均拒绝，保留原�
       'providers: &shared {}\nother: *shared\n',
       stringify({ providers: { [id]: { ...managed, key_env: 'PERSONAL_KEY' } } }),
       stringify({ providers: { [id]: { ...managed, api_key: 'private-user-key' } } }),
+      stringify({ providers: { [id]: { ...managed, base_url: 'https://personal.invalid/v1' } } }),
+      stringify({ providers: { [id]: { ...managed, base_url: null } } }),
+      stringify({ providers: { [id]: { ...managed, api_mode: 'codex_responses' } } }),
+      stringify({ providers: { [id]: { ...managed, api_mode: null } } }),
+      `providers:\n  ${id}:\n    api: ${managed.api}\n    base_url: &address ${managed.api}\n    key_env: ${MAAS_MODEL_KEY_ENV}\nother: *address\n`,
+      `providers:\n  ${id}:\n    api: ${managed.api}\n    api_mode: &mode chat_completions\n    key_env: ${MAAS_MODEL_KEY_ENV}\nother: *mode\n`,
       `providers:\n  ${id}:\n    name: &label Shared\n    api: ${managed.api}\n    key_env: ${MAAS_MODEL_KEY_ENV}\nother: *label\n`,
       `shared: &list {}\nproviders:\n  ${id}:\n    api: ${managed.api}\n    key_env: ${MAAS_MODEL_KEY_ENV}\n    models: *list\n`
     ]) {
