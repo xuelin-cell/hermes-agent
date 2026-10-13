@@ -166,6 +166,31 @@ describe('Office program detection', () => {
     expect(readComRegistrations).toHaveBeenCalledTimes(2)
   })
 
+  it('keeps LibreOffice usable when the registry query fails, then recovers the COM programs', async () => {
+    const winword = 'C:\\Office\\winword.exe'
+
+    const readComRegistrations = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('powershell blocked'))
+      .mockResolvedValue([registration('word', winword)])
+
+    const detector = createOfficeDetector({
+      readComRegistrations,
+      isFile: file => file === winword || /soffice(\.exe)?$/.test(file),
+      env: {}
+    })
+
+    const degraded = await detector.get()
+
+    for (const programs of Object.values(degraded)) {
+      expect(programs.map(program => program.provider)).toEqual(['libreoffice'])
+    }
+
+    expect((await detector.get()).word.map(program => program.provider)).toEqual(['ms-office', 'libreoffice'])
+    await detector.get()
+    expect(readComRegistrations).toHaveBeenCalledTimes(2)
+  })
+
   it('keeps the fresh probe cached when an invalidated older query fails late', async () => {
     let failOld!: (error: Error) => void
 

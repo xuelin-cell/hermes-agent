@@ -231,14 +231,24 @@ export function createOfficeDetector(overrides: Partial<OfficeDetectionDeps> = {
   let cached: Promise<OfficeDetection> | undefined
 
   /** 检查真实路径，并按 MS Office、WPS、LibreOffice 给出每类文件的转换候选。 */
-  async function detect(): Promise<OfficeDetection> {
-    const registrations = await deps.readComRegistrations()
+  async function detect(): Promise<{ complete: boolean; result: OfficeDetection }> {
+    // 注册表查询失败只影响 MS Office 和 WPS，不能连带丢掉不依赖注册表的 LibreOffice。
+    const com = await deps.readComRegistrations().then(
+      registrations => ({ registrations }),
+      (error: unknown) => ({ error, registrations: [] as OfficeComRegistration[] })
+    )
 
-    const programs = registrations
+    const programs = com.registrations
       .map(registration => classifyOfficeRegistration(registration, deps.isFile, deps.env))
       .filter(program => program !== null)
 
     const libreOffice = libreOfficeCandidates(process.platform, deps.env, os.homedir()).find(deps.isFile)
+
+    // 没有任何可用候选时保留查询异常，调用方才能区分“查询失败”和“确实没装”。
+    if ('error' in com && !libreOffice) {
+      throw com.error
+    }
+
     const result: OfficeDetection = { word: [], slides: [], sheet: [] }
 
     for (const kind of Object.keys(result) as OfficeDocumentKind[]) {
@@ -252,20 +262,34 @@ export function createOfficeDetector(overrides: Partial<OfficeDetectionDeps> = {
       })
     }
 
-    return result
+    return { complete: !('error' in com), result }
   }
 
   return {
-    /** 复用正在进行或已完成的查询；查询异常后允许下次显式调用重试。 */
+    /** 复用正在进行或已完成的查询；查询异常或结果不完整时允许下次显式调用重试。 */
     get(): Promise<OfficeDetection> {
       if (!cached) {
-        const pending = detect().catch(error => {
+        /** 只作废自己这次查询，不清掉其后发起的新查询。 */
+        const forget = () => {
           if (cached === pending) {
             cached = undefined
           }
+        }
 
-          throw error
-        })
+        const pending: Promise<OfficeDetection> = detect().then(
+          ({ complete, result }) => {
+            if (!complete) {
+              forget()
+            }
+
+            return result
+          },
+          error => {
+            forget()
+
+            throw error
+          }
+        )
 
         cached = pending
       }
