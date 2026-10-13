@@ -38,6 +38,8 @@ from .store import Store
 log = logging.getLogger("entry.tenants")
 
 SEED_DIR = Path(__file__).resolve().parent.parent / "seed"
+# 平台给用户的默认人设（元景数字员工），代替 hermes 自带的「You are Hermes Agent, built by Nous Research」。
+DEFAULT_SOUL_FILE = Path(__file__).resolve().parent / "default_soul.md"
 
 # 平台正在删的实例：控制面还列得出来，但不能再当"在"用。
 GONE_STATES = frozenset({"deleting", "terminating", "deleted"})
@@ -269,7 +271,7 @@ class TenantManager:
         catalog: list[tuple[str, str]] | None = None,
         limits: dict[str, int] | None = None,
     ) -> dict[str, bytes]:
-        """只渲染「属于这个用户」的两份文件：``config.yaml`` 和 ``.env``。
+        """只渲染「属于这个用户」的三份文件：``config.yaml``、``.env`` 和默认人设 ``SOUL.md``。
 
         与 ``_render_seed`` 分开，是因为两种后端要的东西不一样：
         Docker 后端还要把转发器一并塞进卷，沙箱后端不要 —— 转发器已经烘进镜像了。
@@ -299,6 +301,7 @@ class TenantManager:
         if api_key:
             env_lines.append(f"{self.s.key_env_name}={api_key}")
         files[".env"] = ("\n".join(env_lines) + "\n").encode("utf-8")
+        files["SOUL.md"] = DEFAULT_SOUL_FILE.read_bytes()
         return files
 
     def _render_seed(
@@ -543,6 +546,13 @@ class TenantManager:
                 "path": ".env",
                 "content": rendered[".env"].decode("utf-8"),
                 "overwrite": "upsert-lines",
+            },
+            {
+                # 默认人设：盘上那份还是镜像首启种的 hermes 默认人设才换成平台的；
+                # 用户在「管理配置档案」里改过的不动（同样按镜像里的示例逐字节比对）。
+                "path": "SOUL.md",
+                "content": rendered["SOUL.md"].decode("utf-8"),
+                "overwrite": "if-pristine",
             },
         ]
 

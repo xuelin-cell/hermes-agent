@@ -54,6 +54,26 @@ def test_write_seed_modes(forward, tmp_path: Path) -> None:
     assert written == []
 
 
+def test_soul_if_pristine_replaces_only_the_image_default(forward, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """SOUL.md 用 if-pristine：还是镜像首启种的默认人设才换成平台的，用户改过的不动。"""
+    image_default = tmp_path / "image-SOUL.md"
+    image_default.write_text("You are Hermes Agent, built by Nous Research.", encoding="utf-8")
+    monkeypatch.setitem(forward._PRISTINE_REF, "SOUL.md", str(image_default))
+    soul = tmp_path / "SOUL.md"
+    platform = [{"path": "SOUL.md", "content": "你是「元景数字员工」", "overwrite": "if-pristine"}]
+
+    soul.write_bytes(image_default.read_bytes())  # 镜像首启种的，没人碰过
+    assert forward._write_seed(platform) == ["SOUL.md"]
+    assert soul.read_text(encoding="utf-8") == "你是「元景数字员工」"
+
+    soul.write_text("你是我的私人助理，说话简短。", encoding="utf-8")  # 用户在「管理配置档案」里改过
+    assert forward._write_seed(platform) == []
+    assert soul.read_text(encoding="utf-8") == "你是我的私人助理，说话简短。"
+
+    soul.unlink()  # 没有就写
+    assert forward._write_seed(platform) == ["SOUL.md"]
+
+
 def test_write_seed_rejects_traversal(forward) -> None:
     with pytest.raises(ValueError):
         forward._write_seed([{"path": "../etc/passwd", "content": "x", "overwrite": True}])

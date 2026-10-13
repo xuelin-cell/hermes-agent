@@ -356,9 +356,17 @@ def test_seed_files_use_patch_and_upsert_modes() -> None:
     manager = _manager(FakeStore(), FakeCube())
     files = manager._cube_seed_files("key", ("http://plan/v1", "m1"), [("m1", ""), ("m2", "")])
     modes = [(f["path"], f["overwrite"]) for f in files]
-    assert modes == [("config.yaml", "if-pristine"), ("config.yaml", "patch-model"), (".env", "upsert-lines")]
+    assert modes == [
+        ("config.yaml", "if-pristine"),
+        ("config.yaml", "patch-model"),
+        (".env", "upsert-lines"),
+        ("SOUL.md", "if-pristine"),
+    ]
     assert '"models": ["m1", "m2"]' in files[1]["content"]
     assert files[2]["content"].splitlines() == ["TERMINAL_ENV=local", "HERMES_CUSTOM_YUANJING_API_KEY=key"]
+    # 默认人设是平台的「元景数字员工」，不是 hermes 自带的那份
+    assert files[3]["content"].startswith("你是「元景数字员工」")
+    assert "Nous Research" not in files[3]["content"]
 
 
 @pytest.mark.asyncio
