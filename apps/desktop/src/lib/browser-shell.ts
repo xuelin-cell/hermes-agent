@@ -22,8 +22,10 @@ import { storedBoolean } from '@/lib/storage'
  *   app/artifacts/cloud-drive-tab.tsx                  the personal cloud drive tab says it is in development
  *   app/artifacts/index.tsx                            the library opens on local artifacts
  *   app/auth/auth-gate.tsx                             no UniWork sign-in page: the entry has signed the user in
+ *   app/chat/right-rail/office-slides.tsx              (ours) the slide viewer: decks the instance renders page by page
  *   app/chat/right-rail/preview-file.tsx               Office files show as the PDF the instance converts them to
- *   app/chat/right-rail/preview-pane.tsx               HTML files from the instance run their scripts, sandboxed
+ *   app/chat/right-rail/preview-pane.tsx               HTML files from the instance run their scripts, sandboxed;
+ *                                                      slide decks open in the slide viewer
  *   app/chat/sidebar/filter-menu.tsx                   * no profile submenu (filter / new / import)
  *   app/chat/sidebar/index.tsx                         * no messaging platforms entry
  *   app/chat/sidebar/profile-switcher.tsx              * no add / import profile, no "connect gateway"
@@ -186,6 +188,39 @@ export function officePreviewPdf(path: string): null | Promise<string> {
     : null
 }
 
+const SLIDE_DECK_RE = /\.(?:pptx?|odp)$/i
+
+/** Slide decks (PowerPoint, Impress) in the browser build open in the slide
+ * viewer (app/chat/right-rail/office-slides.tsx) rather than as a scrolling
+ * PDF: one slide at a time, thumbnails, arrow keys, full screen. The instance
+ * renders each page as an image. */
+export function previewsOfficeAsSlides(path: string): boolean {
+  return isBrowserShell() && SLIDE_DECK_RE.test(path)
+}
+
+/** A deck as the slide viewer shows it: page count, page size in points, and
+ * where each page's image is (it changes when the file does). */
+export interface OfficeSlideDeck {
+  height: number
+  imageUrl: (page: number) => string
+  pages: number
+  width: number
+}
+
+/** The bridge is loaded only when a deck is opened: importing it installs the
+ * browser bridge, which nothing outside the browser build should do. */
+export async function officeSlideDeck(path: string): Promise<OfficeSlideDeck> {
+  const bridge = await import('@/dev/browser-bridge')
+  const info = await bridge.officeSlidesInfo(path)
+
+  return {
+    height: info.height,
+    imageUrl: (page: number) => bridge.officeSlideImageUrl(path, page, info.version),
+    pages: info.pages,
+    width: info.width
+  }
+}
+
 const INSTANCE_LOCAL_HOST_RE = /^(?:localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|\[::1\])$/i
 
 /** A web address on the agent's own machine (a dev server it started, …). In
@@ -282,6 +317,15 @@ interface BrowserShellCopy {
   previewTooLarge: string
   restoreFailed: string
   skillInstallPending: string
+  slides: {
+    counter: (page: number, pages: number) => string
+    exitFullscreen: string
+    fullscreen: string
+    next: string
+    page: (page: number) => string
+    preparing: string
+    previous: string
+  }
   terminalDisconnected: string
   terminalUnavailable: string
   undo: string
@@ -323,6 +367,15 @@ const COPY: Record<'en' | 'zh', BrowserShellCopy> = {
     previewTooLarge: 'This file is too large to open in a tab. Download it instead.',
     restoreFailed: 'Could not restore the file',
     skillInstallPending: 'Installing from here is in development.',
+    slides: {
+      counter: (page: number, pages: number) => `${page} / ${pages}`,
+      exitFullscreen: 'Exit full screen',
+      fullscreen: 'Present full screen',
+      next: 'Next slide',
+      page: (page: number) => `Slide ${page}`,
+      preparing: 'Preparing the preview…',
+      previous: 'Previous slide'
+    },
     terminalDisconnected: 'Disconnected from the instance. Close this tab and open a new terminal.',
     terminalUnavailable: 'Could not reach the shell in your instance. Try again shortly (at most 8 terminals at once).',
     undo: 'Undo'
@@ -358,6 +411,15 @@ const COPY: Record<'en' | 'zh', BrowserShellCopy> = {
     previewTooLarge: '文件太大，不能在标签页中打开，请下载后查看。',
     restoreFailed: '恢复失败',
     skillInstallPending: '功能开发中',
+    slides: {
+      counter: (page: number, pages: number) => `${page} / ${pages}`,
+      exitFullscreen: '退出全屏',
+      fullscreen: '全屏放映',
+      next: '下一页',
+      page: (page: number) => `第 ${page} 页`,
+      preparing: '正在生成预览…',
+      previous: '上一页'
+    },
     terminalDisconnected: '和实例的连接断了。关掉这个标签页，再开一个终端。',
     terminalUnavailable: '连不上实例里的命令行，请稍后再试（每台实例最多同时开 8 个终端）。',
     undo: '撤销'

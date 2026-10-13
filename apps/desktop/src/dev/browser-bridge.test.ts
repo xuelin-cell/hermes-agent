@@ -566,6 +566,32 @@ describe('browser bridge: Office files preview as PDF', () => {
 
     await expect(mod.officePreviewDataUrl('/w/a.pptx')).rejects.toThrow(/Could not make a preview|生成预览失败/)
   })
+
+  it('asks the instance for a deck’s pages, and builds each page image’s address', async () => {
+    const mod = await installFresh()
+    const path = '/mnt/u/workspace/新疆 文旅.pptx'
+
+    globalThis.fetch = vi.fn(async () =>
+      jsonResponse({ height: 405, ok: true, pages: 5, version: 'abc123', width: 720 })
+    ) as typeof fetch
+
+    await expect(mod.officeSlidesInfo(`file://${path}`)).resolves.toEqual({
+      height: 405,
+      pages: 5,
+      version: 'abc123',
+      width: 720
+    })
+    expect(vi.mocked(globalThis.fetch).mock.calls[0]?.[0]).toBe(
+      `/__hermes_backend/__mt_user/office-preview?path=${encodeURIComponent(path)}`
+    )
+    expect(mod.officeSlideImageUrl(path, 3, 'abc123')).toBe(
+      `/__hermes_backend/__mt_user/office-preview/page?path=${encodeURIComponent(path)}&n=3&v=abc123`
+    )
+
+    globalThis.fetch = vi.fn(async () => jsonResponse({ code: 'unavailable', ok: false }, 501)) as typeof fetch
+
+    await expect(mod.officeSlidesInfo(path)).rejects.toThrow(/right now|暂时不能/)
+  })
 })
 
 describe('browser bridge: the instance’s terminal', () => {

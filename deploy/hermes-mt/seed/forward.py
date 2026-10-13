@@ -21,7 +21,7 @@
    这两个接口和 ``/__mt/status`` 都附带「忙不忙」（定时任务、对话回合，见 mtstate.activity）：
    入口据此决定这轮回收要不要暂停，并在实例停着时按下一个定时任务的时间把它叫起来。
 
-``/__mt_user/*`` 是给用户用的（命令行通道、回收站、重命名、Office 文件转 PDF 预览，见 mtuser.py）：浏览器经入口的
+``/__mt_user/*`` 是给用户用的（命令行通道、回收站、重命名、Office 文件预览：转 PDF、幻灯片按页出图，见 mtuser.py）：浏览器经入口的
 ``/__hermes_backend/__mt_user/…`` 转进来，带的是和 hermes 一样的会话令牌。入口照常校验登录后放行；
 ``/__mt/*`` 这组管理接口入口不放行，用户碰不到。
 
@@ -656,7 +656,8 @@ def _office_preview() -> mtuser.OfficePreview:
     return _office
 
 
-async def _send_file(writer: asyncio.StreamWriter, path: Path, content_type: str) -> None:
+async def _send_file(writer: asyncio.StreamWriter, path: Path, content_type: str,
+                     cache_control: str = "no-store") -> None:
     """整份文件作为 200 的响应体发出去。浏览器中途断开就算了。"""
     with path.open("rb") as fh:
         size = os.fstat(fh.fileno()).st_size
@@ -664,7 +665,7 @@ async def _send_file(writer: asyncio.StreamWriter, path: Path, content_type: str
             "HTTP/1.1 200 OK\r\n"
             f"Content-Type: {content_type}\r\n"
             f"Content-Length: {size}\r\n"
-            "Cache-Control: no-store\r\n"
+            f"Cache-Control: {cache_control}\r\n"
             "X-Content-Type-Options: nosniff\r\n"
             "Connection: close\r\n\r\n"
         ).encode("ascii"))
@@ -699,12 +700,20 @@ async def _handle_user(
 
     files = mtuser.Files(WORKSPACE)
     try:
-        if route == "/__mt_user/office-pdf":
+        if route in ("/__mt_user/office-pdf", "/__mt_user/office-preview", "/__mt_user/office-preview/page"):
             if method != "GET":
                 _reply(writer, 405, {"ok": False, "code": "method", "error": "只接受 GET"})
                 return
-            pdf = await _office_preview().pdf((query.get("path") or [""])[0])
-            await _send_file(writer, pdf, "application/pdf")
+            office, target = _office_preview(), (query.get("path") or [""])[0]
+            if route == "/__mt_user/office-pdf":
+                await _send_file(writer, await office.pdf(target), "application/pdf")
+            elif route == "/__mt_user/office-preview":
+                _reply(writer, 200, {"ok": True, **await office.info(target)})
+            else:
+                # 地址里带着版本号（文件一改就变）：版本对得上的图可以让浏览器缓存一天。
+                version, image = await office.page(target, (query.get("n") or [""])[0])
+                fresh = (query.get("v") or [""])[0] == version
+                await _send_file(writer, image, "image/jpeg", "private, max-age=86400" if fresh else "no-store")
             return
         if route == "/__mt_user/trash":
             if method != "GET":

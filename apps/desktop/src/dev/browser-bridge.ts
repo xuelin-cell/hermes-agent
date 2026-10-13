@@ -727,10 +727,12 @@ async function renamePath(path: string, newName: string): Promise<{ path: string
 }
 
 // ---------------------------------------------------------------------------
-// Office files (Word, PowerPoint, Excel) preview as PDF: the instance converts
-// them with LibreOffice (`/__mt_user/office-pdf`, deploy/hermes-mt/seed/
-// mtuser.py) and the preview pane shows the PDF like any other. A converted
-// file is kept until it changes, so opening it again is quick.
+// Office files (Word, PowerPoint, Excel): the instance converts them with
+// LibreOffice (deploy/hermes-mt/seed/mtuser.py). Documents and sheets show as
+// the PDF (`/__mt_user/office-pdf`) in the preview pane; slide decks go to the
+// slide viewer (app/chat/right-rail/office-slides.tsx), which shows one page
+// image at a time (`/__mt_user/office-preview`). A converted file is kept
+// until it changes, so opening it again is quick.
 // ---------------------------------------------------------------------------
 
 function isOfficePreviewErrorCode(code: string): code is OfficePreviewErrorCode {
@@ -773,6 +775,55 @@ export async function officePreviewDataUrl(path: string): Promise<string> {
   }
 
   return blobToDataUrl(new Blob([await response.arrayBuffer()], { type: 'application/pdf' }))
+}
+
+/** What the slide viewer needs before it shows anything: the page count, the
+ * page size in points (for the aspect ratio) and a version that changes with the
+ * file, so the page images can be cached until it does. */
+export interface OfficeSlidesInfo {
+  height: number
+  pages: number
+  version: string
+  width: number
+}
+
+function officeQuery(path: string): string {
+  return `path=${encodeURIComponent(plainPath(path))}`
+}
+
+/** Pages of a slide deck: the instance converts it once, then renders each page
+ * as an image on request (`/__mt_user/office-preview`). */
+export async function officeSlidesInfo(path: string): Promise<OfficeSlidesInfo> {
+  let response: Response
+
+  try {
+    response = await fetch(`${apiPrefix()}/__mt_user/office-preview?${officeQuery(path)}`, {
+      credentials: credentials(),
+      headers: authHeaders()
+    })
+  } catch {
+    throw new Error(browserShellCopy().officePreview.failed)
+  }
+
+  const body = await response.text()
+
+  if (!response.ok) {
+    throw officePreviewError(response.status, body)
+  }
+
+  const info = JSON.parse(body) as Partial<OfficeSlidesInfo>
+
+  return {
+    height: Number(info.height) || 540,
+    pages: Number(info.pages) || 0,
+    version: String(info.version ?? ''),
+    width: Number(info.width) || 960
+  }
+}
+
+/** The image of one page (1-based). Same-origin, so the entry's cookie carries it. */
+export function officeSlideImageUrl(path: string, page: number, version: string): string {
+  return `${apiPrefix()}/__mt_user/office-preview/page?${officeQuery(path)}&n=${page}&v=${encodeURIComponent(version)}`
 }
 
 // ---------------------------------------------------------------------------

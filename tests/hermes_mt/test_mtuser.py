@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import os
+import json
 import struct
 import sys
 import time
@@ -183,7 +184,7 @@ async def test_user_routes_are_closed_while_draining(forward) -> None:
     assert writer.data.startswith(b"HTTP/1.1 503")
 
 
-# ---------------------------------------------------------------- Office 文件预览（转 PDF）
+# ---------------------------------------------------------------- Office 文件预览（转 PDF、按页出图）
 
 FAKE_SOFFICE = """
 import os, sys, time
@@ -204,6 +205,24 @@ with open(source, "rb") as src, open(os.path.join(outdir, stem + ".pdf"), "wb") 
     out.write(b"%PDF-1.4 fake of " + src.read())
 """
 
+# poppler 的两个命令：pdfinfo 报 3 页、720 x 405 磅；pdftoppm 照 -singlefile 的样子写 <输出前缀>.jpg。
+FAKE_PDFINFO = """
+print("Producer:       LibreOffice")
+print("Pages:          3")
+print("Page size:      720 x 405 pts")
+"""
+
+FAKE_PDFTOPPM = """
+import os, sys
+args = sys.argv[1:]
+page = args[args.index("-f") + 1]
+# 每次调用各记一个文件：两个进程同时追加同一个文件，Windows 上会丢行
+with open(os.path.join(os.environ["FAKE_PDFTOPPM_LOG"], "call-%s-%d" % (page, os.getpid())), "w") as fh:
+    fh.write(repr(args))
+with open(args[-1] + ".jpg", "wb") as out:
+    out.write(b"JPEG page " + page.encode())
+"""
+
 
 @pytest.fixture
 def office(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -215,8 +234,16 @@ def office(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     log = tmp_path / "soffice.log"
     monkeypatch.setenv("FAKE_SOFFICE_LOG", str(log))
     monkeypatch.setattr(mtuser, "soffice_command", lambda: [sys.executable, str(script)])
+    tools = {}
+    for name, body in (("pdfinfo", FAKE_PDFINFO), ("pdftoppm", FAKE_PDFTOPPM)):
+        tools[name] = tmp_path / f"fake_{name}.py"
+        tools[name].write_text(body, encoding="utf-8")
+    (tmp_path / "pdftoppm-calls").mkdir()
+    monkeypatch.setenv("FAKE_PDFTOPPM_LOG", str(tmp_path / "pdftoppm-calls"))
+    monkeypatch.setattr(mtuser, "poppler_command", lambda name: [sys.executable, str(tools[name])])
     preview = mtuser.OfficePreview(workspace, cache_dir=tmp_path / "cache")
     preview.log = log  # type: ignore[attr-defined]
+    preview.render_log = tmp_path / "pdftoppm-calls"  # type: ignore[attr-defined]
     return preview
 
 
@@ -289,29 +316,69 @@ async def test_office_preview_reports_why_it_could_not_convert(office, monkeypat
         await office.pdf(str(deck))
     assert exc.value.code == "unavailable"
     # 失败的不进缓存：下次还会再试
-    assert list(office.cache_dir.glob("*.pdf")) == []
+    assert list(office.cache_dir.glob("*/doc.pdf")) == []
 
 
-def test_office_preview_keeps_the_most_recent_pdfs(office) -> None:
+@pytest.mark.asyncio
+async def test_slides_are_rendered_page_by_page_once(office) -> None:
+    """幻灯片查看器先问页数和版本号，再一页一页地要图；每页只出一次图，文件一改版本号就变。"""
+    deck = office.files.workspace / "deck.pptx"
+    deck.write_bytes(b"PK deck")
+    info = await office.info(str(deck))
+    assert info["pages"] == 3 and (info["width"], info["height"]) == (720.0, 405.0)
+    assert len(info["version"]) == 40
+    pages = await asyncio.gather(office.page(str(deck), "2"), office.page(str(deck), 2), office.page(str(deck), "1"))
+    (v2, img2), again, (_, img1) = pages
+    assert v2 == info["version"] and again == (v2, img2)
+    assert img2.read_bytes() == b"JPEG page 2" and img1.read_bytes() == b"JPEG page 1"
+    renders = sorted(f.name.rsplit("-", 1)[0] for f in office.render_log.iterdir())
+    assert renders == ["call-1", "call-2"]  # 第 2 页要了两次，只出了一次图
+    args = next(office.render_log.glob("call-2-*")).read_text()
+    assert "-singlefile" in args and "1600" in args
+    assert sorted(p.name for p in img2.parent.iterdir()) == ["doc.pdf", "info.json", "p1.jpg", "p2.jpg"]
+    for bad, code in (("4", "no_page"), ("0", "no_page"), ("x", "invalid_page"), ("", "invalid_page")):
+        with pytest.raises(mtuser.FileError) as exc:
+            await office.page(str(deck), bad)
+        assert exc.value.code == code, bad
+    deck.write_bytes(b"PK deck, edited")
+    os.utime(deck, (time.time() + 5, time.time() + 5))
+    assert (await office.info(str(deck)))["version"] != info["version"]
+
+
+@pytest.mark.asyncio
+async def test_slides_say_so_without_poppler(office, monkeypatch: pytest.MonkeyPatch) -> None:
+    deck = office.files.workspace / "deck.pptx"
+    deck.write_bytes(b"PK deck")
+    monkeypatch.setattr(mtuser, "poppler_command", lambda name: None)
+    with pytest.raises(mtuser.FileError) as exc:
+        await office.info(str(deck))
+    assert exc.value.code == "unavailable" and exc.value.status == 501
+
+
+def test_office_preview_keeps_the_most_recent_files(office) -> None:
     cache = office.cache_dir
     cache.mkdir()
     now = time.time()
-    for i in range(33):
-        pdf = cache / f"{i:02d}.pdf"
-        pdf.write_bytes(b"%PDF")
-        os.utime(pdf, (now - i, now - i))
-    stale, fresh = cache / "job-stale", cache / "job-fresh"
-    stale.mkdir()
-    fresh.mkdir()
+    keys = [f"{i:040x}" for i in range(33)]  # 一个文件一个目录，目录名是 40 位版本号
+    for i, key in enumerate(keys):
+        folder = cache / key
+        folder.mkdir()
+        (folder / "doc.pdf").write_bytes(b"%PDF")
+        (folder / "p1.jpg").write_bytes(b"JPEG")
+        os.utime(folder, (now - i, now - i))
+    stale, fresh, home = cache / "job-stale", cache / "job-fresh", cache / "home"
+    for folder in (stale, fresh, home):
+        folder.mkdir()
     os.utime(stale, (now - 7200, now - 7200))
+    os.utime(home, (now - 7200, now - 7200))
     assert office.prune(keep=30, now=now) == 4
-    assert sorted(p.name for p in cache.glob("*.pdf")) == [f"{i:02d}.pdf" for i in range(30)]
-    assert fresh.exists() and not stale.exists()
-    # 总量也有上限（每份 4 字节，上限 10 字节 ⇒ 留最新两份）；最新那份再大也留着
-    assert office.prune(keep=30, max_bytes=10, now=now) == 28
-    assert sorted(p.name for p in cache.glob("*.pdf")) == ["00.pdf", "01.pdf"]
+    assert sorted(p.name for p in cache.iterdir() if len(p.name) == 40) == keys[:30]
+    assert fresh.exists() and home.exists() and not stale.exists()
+    # 总量也有上限（每个 8 字节，上限 20 字节 ⇒ 留最新两个）；最新那个再大也留着
+    assert office.prune(keep=30, max_bytes=20, now=now) == 28
+    assert sorted(p.name for p in cache.iterdir() if len(p.name) == 40) == keys[:2]
     assert office.prune(keep=30, max_bytes=1, now=now) == 1
-    assert [p.name for p in cache.glob("*.pdf")] == ["00.pdf"]
+    assert [p.name for p in cache.iterdir() if len(p.name) == 40] == keys[:1]
 
 
 @pytest.mark.asyncio
@@ -336,6 +403,33 @@ async def test_office_route_answers_with_the_pdf(forward, office, monkeypatch: p
     writer = _Writer()
     await forward._handle_user("GET", f"/__mt_user/office-pdf?{query}", {}, b"", None, writer)
     assert writer.data.startswith(b"HTTP/1.1 403")
+
+
+@pytest.mark.asyncio
+async def test_slide_routes_answer_with_pages_and_images(forward, office) -> None:
+    forward._hermes_token = "tok"
+    forward._office = office
+    deck = office.files.workspace / "deck.pptx"
+    deck.write_bytes(b"PK deck")
+    auth = {"x-hermes-session-token": "tok"}
+    query = "path=" + quote(str(deck))
+    writer = _Writer()
+    await forward._handle_user("GET", f"/__mt_user/office-preview?{query}", auth, b"", None, writer)
+    head, _, body = bytes(writer.data).partition(b"\r\n\r\n")
+    info = json.loads(body)
+    assert head.startswith(b"HTTP/1.1 200") and info["ok"] is True and info["pages"] == 3
+    writer = _Writer()
+    await forward._handle_user("GET", f"/__mt_user/office-preview/page?{query}&n=2&v={info['version']}",
+                               auth, b"", None, writer)
+    head, _, body = bytes(writer.data).partition(b"\r\n\r\n")
+    assert head.startswith(b"HTTP/1.1 200") and b"Content-Type: image/jpeg" in head and body == b"JPEG page 2"
+    assert b"Cache-Control: private, max-age=86400" in head  # 版本对得上：浏览器可以缓存
+    writer = _Writer()
+    await forward._handle_user("GET", f"/__mt_user/office-preview/page?{query}&n=2&v=old", auth, b"", None, writer)
+    assert b"Cache-Control: no-store" in bytes(writer.data)
+    writer = _Writer()
+    await forward._handle_user("GET", f"/__mt_user/office-preview/page?{query}&n=9", auth, b"", None, writer)
+    assert writer.data.startswith(b"HTTP/1.1 404") and b'"code": "no_page"' in writer.data
 
 
 def test_requests_passed_to_hermes_are_closed_after_the_response(forward) -> None:

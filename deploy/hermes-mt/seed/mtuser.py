@@ -685,9 +685,10 @@ class Files:
 # ---------------------------------------------------------------- Office 文件预览
 
 # 预览面板只会显示文本、图片、PDF 和网页，Word / PowerPoint / Excel 在它眼里是二进制。这里用镜像里的
-# LibreOffice 把它们转成 PDF，面板按 PDF 显示。转好的放在本地盘（不进卷、不进归档），按「真实路径 +
-# 大小 + 修改时间」认，文件一改就重新转。同一时间只转一个；浏览器等不及断开了，这次转换照样做完，
-# 下次打开直接用。
+# LibreOffice 把它们转成 PDF：文档、表格在面板里按 PDF 显示；幻灯片再用 poppler 按页出图，由垫片的幻灯片
+# 查看器一页一页地放。转好的放在本地盘（不进卷、不进归档），一个文件一个目录（PDF、页数、每页的图），
+# 按「真实路径 + 大小 + 修改时间」认，文件一改就重新转。同一时间只转一个；浏览器等不及断开了，
+# 这次转换照样做完，下次打开直接用。
 OFFICE_EXTENSIONS = frozenset({".doc", ".docx", ".odp", ".ods", ".odt", ".ppt", ".pptx", ".xls", ".xlsx"})
 OFFICE_MAX_BYTES = int(os.environ.get("MT_OFFICE_PREVIEW_MAX_BYTES", str(100 << 20)))
 OFFICE_PDF_MAX_BYTES = int(os.environ.get("MT_OFFICE_PREVIEW_PDF_MAX_BYTES", str(50 << 20)))
@@ -696,8 +697,12 @@ OFFICE_CACHE_DIR = Path(os.environ.get("MT_OFFICE_PREVIEW_DIR", "/tmp/mt-office-
 # 缓存在实例的可写层上，和对话库共用那几 G：份数和总量都要有上限。
 OFFICE_CACHE_KEEP = 30
 OFFICE_CACHE_MAX_BYTES = 500 << 20
+# 每页的图：长边 1600 像素的 JPEG，16:9 的幻灯片一页一两百 KB。
+PAGE_LONG_EDGE = 1600
+PAGE_TIMEOUT_S = 60.0
 _JOB_PREFIX = "job-"
 _JOB_STALE_S = 3600
+_KEY_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
 def soffice_command() -> list[str] | None:
@@ -707,6 +712,12 @@ def soffice_command() -> list[str] | None:
         if found:
             return [found]
     return None
+
+
+def poppler_command(name: str) -> list[str] | None:
+    """poppler 的 pdfinfo / pdftoppm；没装就是 None。"""
+    found = shutil.which(name)
+    return [found] if found else None
 
 
 def _kill_group(proc: asyncio.subprocess.Process) -> None:
@@ -724,16 +735,38 @@ def _kill_group(proc: asyncio.subprocess.Process) -> None:
 
 def _tail(output: str, limit: int = 300) -> str:
     lines = [ln.strip() for ln in output.splitlines() if ln.strip()]
-    return " / ".join(lines)[-limit:] or "LibreOffice 没有给出原因"
+    return " / ".join(lines)[-limit:] or "没有给出原因"
+
+
+def _page_size(info: str) -> tuple[float, float]:
+    """pdfinfo 的「Page size:  720 x 405 pts (…)」→ (720.0, 405.0)；读不出就当 16:9。"""
+    m = re.search(r"Page size:\s*([\d.]+)\s*x\s*([\d.]+)", info)
+    return (float(m.group(1)), float(m.group(2))) if m else (960.0, 540.0)
+
+
+def _write_json(path: Path, data: dict) -> None:
+    tmp = path.with_name(f".{path.name}.{secrets.token_hex(4)}")
+    tmp.write_text(json.dumps(data), encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def _tree_size(folder: Path) -> int:
+    total = 0
+    for item in folder.rglob("*"):
+        with contextlib.suppress(OSError):
+            if item.is_file():
+                total += item.stat().st_size
+    return total
 
 
 class OfficePreview:
-    """Office 文件转 PDF。转发器里只有一个：锁和「正在转哪些」要跨请求共用。"""
+    """Office 文件转 PDF、按页出图。转发器里只有一个：锁和「正在做哪些」要跨请求共用。"""
 
     def __init__(self, workspace: Path, cache_dir: Path = OFFICE_CACHE_DIR):
         self.files = Files(workspace)
         self.cache_dir = Path(cache_dir)
-        self._lock: asyncio.Lock | None = None
+        self._lock: asyncio.Lock | None = None              # soffice 一次只跑一个
+        self._render: asyncio.Semaphore | None = None       # pdftoppm 最多同时两个
         self._jobs: dict[str, asyncio.Future] = {}
 
     def locate(self, path: object) -> tuple[Path, os.stat_result]:
@@ -755,22 +788,54 @@ class OfficePreview:
             raise FileError(413, "too_large", f"文件超过 {OFFICE_MAX_BYTES >> 20} MB，不能在线预览")
         return real, st
 
-    async def pdf(self, path: object) -> Path:
-        """这个文件对应的 PDF（缓存里有就直接给）。出错抛 FileError。"""
+    async def _entry(self, path: object) -> tuple[str, Path]:
+        """(版本号, 这个文件的缓存目录)，目录里的 doc.pdf 已经转好。出错抛 FileError。"""
         real, st = await asyncio.to_thread(self.locate, path)
         ident = f"{real}\0{st.st_size}\0{st.st_mtime_ns}".encode("utf-8", "surrogateescape")
         key = hashlib.sha256(ident).hexdigest()[:40]
-        out = self.cache_dir / f"{key}.pdf"
-        if out.is_file():
-            with contextlib.suppress(OSError):
-                os.utime(out)  # 清理按修改时间留最近用过的
-            return out
+        folder = self.cache_dir / key
+        if not (folder / "doc.pdf").is_file():
+            await self._once(key, lambda: self._convert(real, folder))
+        with contextlib.suppress(OSError):
+            os.utime(folder)  # 清理按目录的修改时间留最近用过的
+        return key, folder
+
+    async def pdf(self, path: object) -> Path:
+        """这个文件对应的 PDF（缓存里有就直接给）。"""
+        _, folder = await self._entry(path)
+        return folder / "doc.pdf"
+
+    async def info(self, path: object) -> dict:
+        """页数、页面尺寸（磅）和版本号。前端拿版本号拼每页图片的地址：文件一改，地址就变。"""
+        key, folder = await self._entry(path)
+        try:
+            data = json.loads((folder / "info.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            data = await self._once(f"{key}:info", lambda: self._read_info(folder))
+        return {"pages": data["pages"], "width": data["width"], "height": data["height"], "version": key}
+
+    async def page(self, path: object, n: object) -> tuple[str, Path]:
+        """第 n 页（从 1 数）的图，返回 (版本号, 图片)。"""
+        try:
+            number = int(str(n))
+        except ValueError:
+            raise FileError(400, "invalid_page", "页码不对") from None
+        info = await self.info(path)
+        if not 1 <= number <= info["pages"]:
+            raise FileError(404, "no_page", "没有这一页")
+        key = info["version"]
+        out = self.cache_dir / key / f"p{number}.jpg"
+        if not out.is_file():
+            await self._once(f"{key}:p{number}", lambda: self._render_page(out.parent / "doc.pdf", number, out))
+        return key, out
+
+    async def _once(self, key: str, start):
+        """同一件事只做一次，已经在做就一起等。浏览器断开时取消的只是这次等待，事情本身接着做完。"""
         job = self._jobs.get(key)
         if job is None:
-            job = asyncio.ensure_future(self._convert(real, out))
+            job = asyncio.ensure_future(start())
             self._jobs[key] = job
             job.add_done_callback(lambda done: self._finished(key, done))
-        # 浏览器断开时取消的只是这次等待，转换本身接着做完。
         return await asyncio.shield(job)
 
     def _finished(self, key: str, job: asyncio.Future) -> None:
@@ -778,12 +843,12 @@ class OfficePreview:
         if not job.cancelled():
             job.exception()  # 没人在等时也算取走了，免得事件循环报「异常没人看」
 
-    async def _convert(self, real: Path, out: Path) -> Path:
+    async def _convert(self, real: Path, folder: Path) -> None:
         if self._lock is None:
             self._lock = asyncio.Lock()
         async with self._lock:
-            if out.is_file():
-                return out
+            if (folder / "doc.pdf").is_file():
+                return
             command = soffice_command()
             if command is None:
                 raise FileError(501, "unavailable", "实例里没有 LibreOffice，不能生成预览")
@@ -795,12 +860,17 @@ class OfficePreview:
                 source = work / f"source{real.suffix.lower()}"
                 await asyncio.to_thread(shutil.copyfile, real, source)
                 profile = (self.cache_dir / "profile").resolve().as_uri()
-                code, output = await self._run(command + [
-                    f"-env:UserInstallation={profile}",
-                    "--headless", "--invisible", "--nologo", "--nodefault", "--norestore",
-                    "--nolockcheck", "--nofirststartwizard",
-                    "--convert-to", "pdf", "--outdir", str(work), str(source),
-                ], work)
+                try:
+                    code, output = await self._run(command + [
+                        f"-env:UserInstallation={profile}",
+                        "--headless", "--invisible", "--nologo", "--nodefault", "--norestore",
+                        "--nolockcheck", "--nofirststartwizard",
+                        "--convert-to", "pdf", "--outdir", str(work), str(source),
+                    ], work, OFFICE_TIMEOUT_S)
+                except FileError:
+                    # 杀掉的 soffice 可能把配置目录留在「使用中」，下一次换个干净的。
+                    await asyncio.to_thread(shutil.rmtree, self.cache_dir / "profile", True)
+                    raise
                 produced = work / "source.pdf"
                 size = produced.stat().st_size if produced.is_file() else 0
                 if code != 0 or size == 0:
@@ -808,13 +878,48 @@ class OfficePreview:
                     raise FileError(422, "convert_failed", "转换失败：" + _tail(output))
                 if size > OFFICE_PDF_MAX_BYTES:
                     raise FileError(413, "too_large", f"转出来的 PDF 超过 {OFFICE_PDF_MAX_BYTES >> 20} MB，不能在线预览")
-                os.replace(produced, out)
+                folder.mkdir(parents=True, exist_ok=True)
+                os.replace(produced, folder / "doc.pdf")
             finally:
                 await asyncio.to_thread(shutil.rmtree, work, True)
-            await asyncio.to_thread(self.prune)
-            return out
+        await asyncio.to_thread(self.prune)
 
-    async def _run(self, argv: list[str], cwd: Path) -> tuple[int, str]:
+    async def _read_info(self, folder: Path) -> dict:
+        command = poppler_command("pdfinfo")
+        if command is None:
+            raise FileError(501, "unavailable", "实例里没有 poppler，不能按页预览")
+        code, output = await self._run(command + [str(folder / "doc.pdf")], folder, PAGE_TIMEOUT_S)
+        pages = re.search(r"^Pages:\s*(\d+)", output, re.M)
+        if code != 0 or not pages or int(pages.group(1)) < 1:
+            raise FileError(422, "convert_failed", "读不出页数：" + _tail(output))
+        width, height = _page_size(output)
+        data = {"pages": int(pages.group(1)), "width": width, "height": height}
+        await asyncio.to_thread(_write_json, folder / "info.json", data)
+        return data
+
+    async def _render_page(self, pdf: Path, number: int, out: Path) -> None:
+        command = poppler_command("pdftoppm")
+        if command is None:
+            raise FileError(501, "unavailable", "实例里没有 poppler，不能按页预览")
+        if self._render is None:
+            self._render = asyncio.Semaphore(2)
+        async with self._render:
+            if out.is_file():
+                return
+            stem = out.with_name(f".{out.stem}-{secrets.token_hex(4)}")
+            made = stem.with_name(stem.name + ".jpg")
+            code, output = await self._run(command + [
+                "-f", str(number), "-l", str(number), "-singlefile",
+                "-jpeg", "-jpegopt", "quality=85", "-scale-to", str(PAGE_LONG_EDGE),
+                str(pdf), str(stem),
+            ], out.parent, PAGE_TIMEOUT_S)
+            if code != 0 or not made.is_file():
+                with contextlib.suppress(OSError):
+                    made.unlink()
+                raise FileError(422, "convert_failed", f"第 {number} 页出图失败：" + _tail(output))
+            os.replace(made, out)
+
+    async def _run(self, argv: list[str], cwd: Path, timeout_s: float) -> tuple[int, str]:
         proc = await asyncio.create_subprocess_exec(
             *argv,
             cwd=str(cwd), env=self._env(),
@@ -822,13 +927,11 @@ class OfficePreview:
             start_new_session=True,
         )
         try:
-            raw, _ = await asyncio.wait_for(proc.communicate(), timeout=OFFICE_TIMEOUT_S)
+            raw, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
         except asyncio.TimeoutError:
             _kill_group(proc)
             await proc.wait()
-            # 杀掉的 soffice 可能把配置目录留在「使用中」，下一次换个干净的。
-            await asyncio.to_thread(shutil.rmtree, self.cache_dir / "profile", True)
-            raise FileError(504, "timeout", f"生成预览超过 {int(OFFICE_TIMEOUT_S)} 秒") from None
+            raise FileError(504, "timeout", f"生成预览超过 {int(timeout_s)} 秒") from None
         except BaseException:
             _kill_group(proc)
             raise
@@ -849,32 +952,31 @@ class OfficePreview:
 
     def prune(self, keep: int = OFFICE_CACHE_KEEP, max_bytes: int = OFFICE_CACHE_MAX_BYTES,
               now: float | None = None) -> int:
-        """只留最近用过的 PDF：最多 keep 份、合计不超过 max_bytes（最新那份总留着）；
+        """只留最近用过的文件：最多 keep 个、合计不超过 max_bytes（最新那个总留着）；
         崩溃留下的转换目录过一小时清掉。返回删了几项。"""
         now = time.time() if now is None else now
         removed = 0
-        pdfs: list[tuple[float, int, Path]] = []
+        kept: list[tuple[float, Path]] = []
         try:
             entries = list(self.cache_dir.iterdir())
         except OSError:
             return 0
         for entry in entries:
             try:
-                st = entry.stat()
+                mtime = entry.stat().st_mtime
             except OSError:
                 continue
-            if entry.suffix == ".pdf" and entry.is_file():
-                pdfs.append((st.st_mtime, st.st_size, entry))
-            elif entry.name.startswith(_JOB_PREFIX) and now - st.st_mtime > _JOB_STALE_S:
+            if _KEY_RE.match(entry.name) and entry.is_dir():
+                kept.append((mtime, entry))
+            elif entry.name.startswith(_JOB_PREFIX) and now - mtime > _JOB_STALE_S:
                 shutil.rmtree(entry, ignore_errors=True)
                 removed += 1
-        pdfs.sort(key=lambda item: item[0], reverse=True)
+        kept.sort(key=lambda item: item[0], reverse=True)
         total = 0
-        for i, (_, size, entry) in enumerate(pdfs):
-            total += size
+        for i, (_, entry) in enumerate(kept):
+            total += _tree_size(entry)
             if i == 0 or (i < keep and total <= max_bytes):
                 continue
-            with contextlib.suppress(OSError):
-                entry.unlink()
-                removed += 1
+            shutil.rmtree(entry, ignore_errors=True)
+            removed += 1
         return removed

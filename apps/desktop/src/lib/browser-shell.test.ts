@@ -15,6 +15,7 @@ import {
   isSettingsViewHidden,
   officePreviewPdf,
   previewsOfficeAsPdf,
+  previewsOfficeAsSlides,
   remoteHtmlFrameDocument,
   remoteHtmlFrameSandbox,
   sidebarPageOutlivesReactivation,
@@ -272,6 +273,22 @@ describe('browser shell', () => {
 
     expect(browserShellCopy().officePreview.too_large).toBe('文件太大，不能在线预览，请下载后查看。')
     expect(browserShellCopy('en').officePreview.convert_failed).toMatch(/Download it instead/)
+  })
+
+  it('opens slide decks in the slide viewer, in the browser build only', () => {
+    expect(previewsOfficeAsSlides('/w/deck.pptx')).toBe(false)
+
+    document.documentElement.dataset.hermesBrowser = 'production'
+
+    expect(['/w/a.pptx', '/w/b.PPT', '/w/c.odp'].map(previewsOfficeAsSlides)).toEqual([true, true, true])
+    expect(['/w/a.docx', '/w/b.xlsx', '/w/c.pdf', '/w/d.pptx.md'].map(previewsOfficeAsSlides)).toEqual([
+      false,
+      false,
+      false,
+      false
+    ])
+    expect(browserShellCopy('zh').slides.counter(2, 5)).toBe('2 / 5')
+    expect(browserShellCopy('zh').slides.page(3)).toBe('第 3 页')
   })
 
   it('speaks the interface language', () => {
