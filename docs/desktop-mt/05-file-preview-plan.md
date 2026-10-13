@@ -124,6 +124,7 @@ shared/office-preview.ts             前端与主进程共用的约定：扩展�
 | 文件 | 改动 | 步骤 |
 | --- | --- | --- |
 | `src/app/chat/right-rail/preview-pane.tsx` | 渲染 `LocalFilePreview` 的那一处改为渲染 `FormatPreview`，连同引用共约 3 行 | P01 |
+| `src/app/chat/right-rail/preview-file.tsx` | 只给已有的 `filePathForTarget` 加上导出，供预览中心与原版预览共用同一套取路径算法；函数内容不变，1 处 | 审阅修复 |
 | `src/i18n/` 各语言文件与 `types.ts` | 在 `preview` 下追加新文案 | 用到的各步 |
 | `shared/index.ts` | 导出约定文件，1 行 | P04 |
 | `apps/desktop/tsconfig.electron.json` | 将新共享约定文件加入 Electron 编译清单，1 处 | P04 |
@@ -133,7 +134,7 @@ shared/office-preview.ts             前端与主进程共用的约定：扩展�
 | `apps/desktop/package.json`、根 `package-lock.json` | 新增依赖 | P03、P09、P10、P12、P15 |
 | 根 `package.json` | FortuneSheet 需要的一条依赖覆盖（UniWork 已有同样配置；实施时确认是否仍需要） | P12 |
 
-明确不改：`preview-file.tsx`、`src/lib/local-preview.ts`、`src/store/preview.ts`、`electron/media-protocol.ts`、Hermes Python 后端。
+明确不改：`preview-file.tsx` 的现有逻辑（上表的导出除外）、`src/lib/local-preview.ts`、`src/store/preview.ts`、`electron/media-protocol.ts`、Hermes Python 后端。
 
 ### 4.2 各类型的显示方式
 

@@ -7,6 +7,8 @@ import type { PreviewFormat } from './kinds'
 
 export interface FormatRendererProps extends ComponentProps<typeof LocalFilePreview> {
   onFailure: (failure: PreviewFailure) => void
+  /** 预览中心算好的文件路径；显示器不自行推导，保证读取、出口和原版预览指向同一文件。 */
+  path: string
 }
 
 const MediaPreview = lazy(() => import('./media-preview'))

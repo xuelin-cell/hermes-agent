@@ -19,12 +19,11 @@ interface DelimitedState {
 }
 
 /** 表格只读；源码及编辑交给原版组件，未保存时禁止切走丢失草稿。 */
-export default function DelimitedPreview({ onClose, onSelectRendered, reloadKey, target }: FormatRendererProps) {
+export default function DelimitedPreview({ onClose, onSelectRendered, path, reloadKey, target }: FormatRendererProps) {
   const { t } = useI18n()
   const [state, setState] = useState<DelimitedState>({ loading: true })
   const [sourceMode, setSourceMode] = useState(false)
   const dirtyUrls = useStore($dirtyPreviewUrls)
-  const path = target.path || target.source || target.url
   const legacyProps = { onClose, onSelectRendered, reloadKey, target }
 
   useEffect(() => {

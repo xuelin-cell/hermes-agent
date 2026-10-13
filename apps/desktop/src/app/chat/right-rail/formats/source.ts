@@ -7,6 +7,8 @@ import { revealFile } from '@/store/file-actions'
 import type { PreviewTarget } from '@/store/preview'
 import { $connection } from '@/store/session'
 
+import { filePathForTarget } from '../preview-file'
+
 import { type PreviewFailure, previewFailure } from './failure'
 
 /** 把读取异常归为固定失败代码；IPC 丢失错误字段时识别其固定错误消息。 */
@@ -65,10 +67,10 @@ export async function readPreviewText(path: string) {
   return file
 }
 
-/** 在一处确定文件归属与失败出口，下载固定到显示该文件的连接。 */
+/** 在一处确定文件路径、归属与失败出口；路径与原版预览同一算法，下载固定到显示该文件的连接。 */
 export function usePreviewSource(target: PreviewTarget) {
   const connection = useStore($connection)
-  const path = target.path || target.source || target.url
+  const path = filePathForTarget(target)
   const remote = connection?.mode === 'remote'
 
   return {

@@ -1,6 +1,8 @@
 import { mediaKind } from '@/lib/media'
 import type { PreviewTarget } from '@/store/preview'
 
+import { filePathForTarget } from '../preview-file'
+
 export type PreviewFormat = 'audio' | 'delimited' | 'tiff' | 'video'
 
 const FORMAT_BY_EXT = new Map<string, PreviewFormat>([
@@ -18,7 +20,7 @@ export function previewFormat(target: PreviewTarget): PreviewFormat | null {
     return null
   }
 
-  const path = target.path || target.source || target.url
+  const path = filePathForTarget(target)
   const extension = path.split(/[?#]/, 1)[0].split('.').at(-1)?.toLowerCase() || ''
 
   return FORMAT_BY_EXT.get(extension) || MEDIA_FORMATS[mediaKind(path)]

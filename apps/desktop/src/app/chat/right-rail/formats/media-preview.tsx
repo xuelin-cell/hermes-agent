@@ -9,9 +9,8 @@ import type { FormatRendererProps } from './registry'
 import { previewAccessFailure } from './source'
 
 /** 复用原版可拖动进度的媒体通道，不自动播放，也不读取整份文件。 */
-export default function MediaPreview({ onFailure, reloadKey, target }: FormatRendererProps) {
+export default function MediaPreview({ onFailure, path, reloadKey, target }: FormatRendererProps) {
   const { t } = useI18n()
-  const path = target.path || target.source || target.url
   const [src, setSrc] = useState('')
 
   useEffect(() => {

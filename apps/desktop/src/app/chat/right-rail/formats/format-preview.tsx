@@ -67,7 +67,7 @@ function RegisteredPreview({ kind, onClose, source, ...props }: RegisteredPrevie
   return (
     <RichBoundary fallback={<FailedRenderer onFailure={onFailure} />} key={index}>
       <Suspense fallback={<PageLoader label={t.preview.loading} />}>
-        <Renderer {...props} onClose={onClose} onFailure={onFailure} />
+        <Renderer {...props} onClose={onClose} onFailure={onFailure} path={source.path} />
       </Suspense>
     </RichBoundary>
   )

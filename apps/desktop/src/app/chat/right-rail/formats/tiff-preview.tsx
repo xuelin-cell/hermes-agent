@@ -127,10 +127,9 @@ async function tiffPng(input: ArrayBuffer) {
 }
 
 /** TIFF 按图片显示第一页；关闭、刷新及换文件时释放 PNG，并忽略迟到结果。 */
-export default function TiffPreview({ onFailure, reloadKey, target }: FormatRendererProps) {
+export default function TiffPreview({ onFailure, path, reloadKey, target }: FormatRendererProps) {
   const { t } = useI18n()
   const [image, setImage] = useState<{ multiplePages: boolean; url: string } | null>(null)
-  const path = target.path || target.source || target.url
 
   useEffect(() => {
     let active = true

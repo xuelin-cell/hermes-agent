@@ -181,6 +181,22 @@ describe('format preview', () => {
     expect(screen.queryByText('private transport details')).toBeNull()
   })
 
+  it('reads and reveals a target that only has a file URL at the path the original preview uses', async () => {
+    const target = {
+      ...fileTarget(),
+      path: undefined,
+      source: 'sample one.mp3',
+      url: 'file:///fixture/sample%20one.mp3'
+    }
+
+    const { container } = render(<FormatPreview reloadKey={0} target={target} />)
+    await waitFor(() => expect(container.querySelector('audio')).toBeTruthy())
+    expect(resolvePlayback).toHaveBeenCalledWith('/fixture/sample one.mp3')
+    fireEvent.error(container.querySelector('audio')!)
+    fireEvent.click(await screen.findByRole('button', { name: 'Open containing folder' }))
+    expect(window.hermesDesktop?.revealPath).toHaveBeenCalledWith('/fixture/sample one.mp3')
+  })
+
   it('downloads from the remote connection and profile that owns the file', async () => {
     const saveGatewayFile = vi.fn(async () => ({ canceled: true, saved: false }))
     window.hermesDesktop = { saveGatewayFile } as never
