@@ -4119,6 +4119,7 @@ export interface Translations {
     noInlineBody: (mimeType: string) => string
     formatFailure: {
       not_found: string
+      too_large: string
       unavailable: string
       unsupported: string
     }
@@ -4127,6 +4128,7 @@ export interface Translations {
       empty: string
       limited: string
     }
+    tiffFirstPage: string
     edit: string
     editing: string
     unsavedChanges: string

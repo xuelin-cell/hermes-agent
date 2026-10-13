@@ -5274,10 +5274,12 @@ export const frOverrides = {
     noInlineBody: mimeType => `${mimeType || 'Ce type de fichier'} peut tout de même être joint en tant que contexte.`,
     formatFailure: {
       not_found: "Ce fichier n’existe plus ou n’est pas accessible.",
+      too_large: 'Le fichier ou l’image dépasse la limite de l’aperçu. Le fichier original reste accessible.',
       unavailable: 'Aperçu impossible. Vous pouvez toujours accéder au fichier original ou le télécharger.',
       unsupported: 'Ce format de fichier ou cet encodage multimédia n’est pas pris en charge.'
     },
     delimited: { table: 'Tableau', empty: 'Ce tableau est vide.', limited: 'Affichage des 500 premières lignes de données.' },
+    tiffFirstPage: 'Ce TIFF contient plusieurs pages. Seule la première est affichée.',
     edit: 'Modifier',
     editing: 'Modification',
     unsavedChanges: 'Modifications non enregistrées',

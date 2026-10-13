@@ -3769,10 +3769,12 @@ export const zhHant = defineLocale({
     noInlineBody: mimeType => `${mimeType || '此檔案類型'} 仍可作為脈絡附件。`,
     formatFailure: {
       not_found: '檔案已不存在或無法存取。',
+      too_large: '檔案過大或圖片尺寸超出預覽上限，仍可查看或下載原檔案。',
       unavailable: '無法預覽此檔案，仍可查看或下載原檔案。',
       unsupported: '暫不支援此檔案格式或影音編碼。'
     },
     delimited: { table: '表格', empty: '表格為空。', limited: '僅顯示前 500 筆資料列。' },
+    tiffFirstPage: '此 TIFF 包含多頁，僅顯示第一頁。',
     edit: '編輯',
     editing: '編輯中',
     unsavedChanges: '未儲存的變更',

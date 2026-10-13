@@ -73,8 +73,18 @@ describe('format preview', () => {
   })
 
   it('gives every registered format a renderer and leaves existing formats alone', () => {
-    const examples = ['/fixture/sound.MP3', '/fixture/clip.mp4', '/fixture/table.csv', '/fixture/table.tsv']
-    expect(new Set(examples.map(path => previewFormat(fileTarget(path))))).toEqual(new Set(Object.keys(FORMAT_RENDERERS)))
+    const examples = [
+      '/fixture/sound.MP3',
+      '/fixture/clip.mp4',
+      '/fixture/table.csv',
+      '/fixture/table.tsv',
+      '/fixture/photo.TIF',
+      '/fixture/photo.tiff'
+    ]
+
+    expect(new Set(examples.map(path => previewFormat(fileTarget(path))))).toEqual(
+      new Set(Object.keys(FORMAT_RENDERERS))
+    )
 
     for (const path of examples) {
       const kind = previewFormat(fileTarget(path))!
@@ -174,6 +184,15 @@ describe('format preview', () => {
     render(<FormatPreview reloadKey={0} target={fileTarget()} />)
     expect(await screen.findByText('This file is no longer available.')).toBeTruthy()
     expect(second).not.toHaveBeenCalled()
+  })
+
+  it('explains a read or image size limit and retains the original file exit', async () => {
+    FORMAT_RENDERERS.tiff = [failingRenderer('too_large')]
+    render(<FormatPreview reloadKey={0} target={fileTarget('/fixture/large.tiff')} />)
+    expect(
+      await screen.findByText('This file or image is too large to preview. You can still access the original file.')
+    ).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Open containing folder' })).toBeTruthy()
   })
 
   it('contains a renderer exception and continues the same fallback sequence', async () => {

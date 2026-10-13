@@ -4867,10 +4867,12 @@ export const en: Translations = {
     noInlineBody: mimeType => `${mimeType || 'This file type'} can still be attached as context.`,
     formatFailure: {
       not_found: 'This file is no longer available.',
+      too_large: 'This file or image is too large to preview. You can still access the original file.',
       unavailable: 'Could not preview this file. You can still access the original file.',
       unsupported: 'This format or media encoding is not supported.'
     },
     delimited: { table: 'Table', empty: 'This table is empty.', limited: 'Showing the first 500 data rows.' },
+    tiffFirstPage: 'This TIFF has multiple pages. Only the first page is shown.',
     edit: 'Edit',
     editing: 'Editing',
     unsavedChanges: 'Unsaved changes',

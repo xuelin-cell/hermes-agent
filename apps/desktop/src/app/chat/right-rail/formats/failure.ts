@@ -1,10 +1,10 @@
-export type PreviewFailureCode = 'not_found' | 'unavailable' | 'unsupported'
+export type PreviewFailureCode = 'not_found' | 'too_large' | 'unavailable' | 'unsupported'
 
 export interface PreviewFailure {
   code: PreviewFailureCode
 }
 
-const FAILURE_CODES = new Set<PreviewFailureCode>(['not_found', 'unavailable', 'unsupported'])
+const FAILURE_CODES = new Set<PreviewFailureCode>(['not_found', 'too_large', 'unavailable', 'unsupported'])
 
 /** 保留明确的失败代码，未知异常不把内部详情显示给页面。 */
 export function previewFailure(error: unknown): PreviewFailure {
