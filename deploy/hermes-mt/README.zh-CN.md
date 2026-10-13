@@ -114,8 +114,10 @@ HERMES_DASHBOARD_SESSION_TOKEN>`，REST 加 `X-Hermes-Session-Token` ④ `Host` 
 登录那一跳；入口自己签不透明的 cookie，有效期不超过上游给的 `expiresAt`。**没套餐 = 没 key**，不会拿平台的 key 兜底。
 
 同一把套餐 key 也给内置的元景 MCP 用（搜图、文生图等）：入口每次引导在 `config.yaml` 写 `mcp_servers.yuanjing`，地址是
-`MT_YUANJING_MCP_URL?key=${HERMES_CUSTOM_YUANJING_API_KEY}&client_id=UniWork`，key 由 hermes 连接时从 `.env` 取，配置文件里没有明文。
-`client_id` 要在元景 mcp-server 的白名单里，否则套餐 key 调下游会回 1004。没套餐的用户不写这一条；地址设成空就是不提供。
+`MT_YUANJING_MCP_URL?key=${HERMES_CUSTOM_YUANJING_API_KEY}&client_id=UniWork&oss_mode=internal`，key 由 hermes 连接时从 `.env` 取，配置文件里没有明文。
+`client_id` 要在元景 mcp-server 的白名单里，否则套餐 key 调下游会回 1004。`oss_mode=internal` 让工具产出的文件给内网链接
+（云端版用户的浏览器在内网，公网链接打不开），`MT_YUANJING_MCP_OSS_MODE` 设成空就不带。没套餐的用户不写这一条；地址设成空就是不提供。
+这一条归平台：每次引导都按入口的配置重写它的地址和超时，用户手改的地址会被改回（用户的开关、自己加的别的 MCP 不动）。
 
 重新登录会重新读取 MaaS 当前返回的 Key，但不假设 MaaS 每次都会生成新 Key。若 Key 发生变化，
 Entry 不重启租户容器，而是原子更新卷内 `.env`；该用户所有已有会话在各自的**下一轮对话开始时**

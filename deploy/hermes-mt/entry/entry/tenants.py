@@ -497,6 +497,7 @@ class TenantManager:
 
         key 不写明文：地址里写 ``${<key 的变量名>}``，hermes 连接时从 .env 取 —— 就是 .env 里模型用的那把
         套餐 key，换 key 只动 .env。没有 key 的用户（没套餐）不给这一条：连上去只会 401。
+        ``oss_mode`` 让工具给内网链接（用户的浏览器在内网），见 config.py。
         """
         url = self.s.yuanjing_mcp_url.strip()
         if not url or not api_key:
@@ -504,6 +505,8 @@ class TenantManager:
         params = [f"key=${{{self.s.key_env_name}}}"]
         if self.s.yuanjing_mcp_client_id:
             params.append("client_id=" + quote(self.s.yuanjing_mcp_client_id, safe=""))
+        if self.s.yuanjing_mcp_oss_mode:
+            params.append("oss_mode=" + quote(self.s.yuanjing_mcp_oss_mode, safe=""))
         sep = "&" if "?" in url else "?"
         return {YUANJING_MCP_NAME: {"url": url + sep + "&".join(params), "timeout": YUANJING_MCP_TIMEOUT_S}}
 

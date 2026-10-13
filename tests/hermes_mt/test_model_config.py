@@ -167,7 +167,8 @@ def test_old_entry_spec_still_patches_like_before(mtstate) -> None:
 
 # ---- 内置的元景 MCP（10-13）
 
-MCP_URL = "https://maas.ai-yuanjing.com/app/mcp-server/mcp?key=${HERMES_CUSTOM_YUANJING_API_KEY}&client_id=UniWork"
+MCP_URL = ("https://maas.ai-yuanjing.com/app/mcp-server/mcp"
+           "?key=${HERMES_CUSTOM_YUANJING_API_KEY}&client_id=UniWork&oss_mode=internal")
 
 
 def test_builtin_mcp_names_the_key_variable_not_the_key(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -177,10 +178,19 @@ def test_builtin_mcp_names_the_key_variable_not_the_key(monkeypatch: pytest.Monk
     assert mgr._mcp_servers("") == {YUANJING_MCP_NAME: None}
     assert _manager(monkeypatch, yuanjing_mcp_url="")._mcp_servers("sk-secret") == {YUANJING_MCP_NAME: None}
     other = _manager(monkeypatch, yuanjing_mcp_url="https://mcp.example/mcp?v=2", yuanjing_mcp_client_id="",
-                     key_env_name="K")
+                     yuanjing_mcp_oss_mode="", key_env_name="K")
     assert other._mcp_servers("sk-secret")[YUANJING_MCP_NAME]["url"] == "https://mcp.example/mcp?v=2&key=${K}"
     odd = _manager(monkeypatch, yuanjing_mcp_client_id="a&b c")._mcp_servers("sk-secret")
-    assert odd[YUANJING_MCP_NAME]["url"].endswith("&client_id=a%26b%20c")
+    assert "&client_id=a%26b%20c&" in odd[YUANJING_MCP_NAME]["url"]
+
+
+def test_builtin_mcp_asks_for_intranet_links(monkeypatch: pytest.MonkeyPatch) -> None:
+    """云端版用户的浏览器在内网：默认带 oss_mode=internal，工具产出的文件给内网 OSS 链接（10-13 实测：不带时给的是
+    公网链接，内网浏览器打不开）。设成空就不带。"""
+    url = _manager(monkeypatch)._mcp_servers("sk-secret")[YUANJING_MCP_NAME]["url"]
+    assert url.endswith("&client_id=UniWork&oss_mode=internal")
+    public = _manager(monkeypatch, yuanjing_mcp_oss_mode="")._mcp_servers("sk-secret")[YUANJING_MCP_NAME]["url"]
+    assert public.endswith("&client_id=UniWork") and "oss_mode" not in public
 
 
 def test_the_bootstrap_patch_carries_the_builtin_mcp_and_the_docker_path_does_not(
