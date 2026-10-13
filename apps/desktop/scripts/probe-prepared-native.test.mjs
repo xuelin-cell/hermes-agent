@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { test } from 'vitest'
 import { prepareDesktopNativeDependencies } from './stage-native-deps.mjs'
+import { NATIVE_PROBE_TIMEOUT_MS } from './probe-prepared-native.mjs'
 
 test('the native admission child refuses ordinary Node instead of certifying an Electron ABI', () => {
   const child = spawnSync(process.execPath, [path.join(import.meta.dirname, 'probe-prepared-native.mjs'), '--child', import.meta.dirname], {
@@ -22,7 +23,7 @@ test.runIf(process.platform === 'win32')('the Electron PTY probe exits after its
     prepareDesktopNativeDependencies({ source, out: native })
     const { default: electron } = await import('electron')
     const child = spawnSync(electron, [path.join(import.meta.dirname, 'probe-prepared-native.mjs'), '--child', native], {
-      cwd: out, encoding: 'utf8', timeout: 15000, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+      cwd: out, encoding: 'utf8', timeout: NATIVE_PROBE_TIMEOUT_MS, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
     })
     assert.equal(child.error, undefined)
     assert.equal(child.status, 0, child.stderr)
@@ -33,4 +34,4 @@ test.runIf(process.platform === 'win32')('the Electron PTY probe exits after its
   } finally {
     fs.rmSync(out, { recursive: true, force: true })
   }
-}, 30000)
+}, NATIVE_PROBE_TIMEOUT_MS + 30000)

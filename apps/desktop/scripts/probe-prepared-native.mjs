@@ -9,6 +9,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { readNativeInputs } from './prepared-native-deps.mjs'
 import { readPackagingInputs } from './prepared-packaging.mjs'
 
+// 新解压的 Electron 在 Windows 首次加载时可能较慢；仍限定总时长，不放宽 PTY 自身的十秒检查。
+export const NATIVE_PROBE_TIMEOUT_MS = 60000
+
 /** @param {string} nativeDeps @returns {Promise<void>} */
 async function probeChild(nativeDeps) {
   if (!process.versions.electron) throw new Error('Electron runtime required')
@@ -56,7 +59,7 @@ export function probePreparedNative({ source, nativeDeps, packaging, out, native
   const executable = new Map([['win32', 'electron.exe'], ['darwin', 'Electron.app/Contents/MacOS/Electron'], ['linux', 'electron']]).get(process.platform)
   if (!executable) throw new Error(`Unsupported native probe platform: ${process.platform}`)
   const child = spawnSync(path.join(work, executable), [fileURLToPath(import.meta.url), '--child', admitted], {
-    cwd: work, encoding: 'utf8', timeout: 15000, killSignal: 'SIGKILL',
+    cwd: work, encoding: 'utf8', timeout: NATIVE_PROBE_TIMEOUT_MS, killSignal: 'SIGKILL',
     env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, stdio: ['ignore', 'pipe', 'pipe'],
   })
   if (child.error || child.status !== 0) throw new Error(`Prepared Electron PTY admission failed: ${child.error?.message || child.stderr}`)
