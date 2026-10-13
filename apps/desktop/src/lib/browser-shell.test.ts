@@ -15,6 +15,7 @@ import {
   isSettingsViewHidden,
   remoteHtmlFrameDocument,
   remoteHtmlFrameSandbox,
+  sidebarPageOutlivesReactivation,
   skillMarketInstallPending,
   visibleModelOptions,
   withoutHiddenNavItems,
@@ -228,6 +229,14 @@ describe('browser shell', () => {
 
     expect(skillMarketInstallPending('zh')).toBe('功能开发中')
     expect(skillMarketInstallPending('en')).toMatch(/in development/)
+  })
+
+  it('keeps a sidebar page that lands after the one gateway was activated again, in the browser build only', () => {
+    expect(sidebarPageOutlivesReactivation()).toBe(false)
+
+    document.documentElement.dataset.hermesBrowser = 'production'
+
+    expect(sidebarPageOutlivesReactivation()).toBe(true)
   })
 
   it('speaks the interface language', () => {

@@ -30,6 +30,7 @@ import { storedBoolean } from '@/lib/storage'
  *   app/profiles/index.tsx                             * no "new profile"
  *   app/right-sidebar/file-actions.tsx                 rename + delete (to the instance's recycle bin) in the menu
  *   app/right-sidebar/terminal/use-terminal-session.ts Ctrl+V / Ctrl+Shift+V paste through the browser
+ *   app/session/hooks/use-session-list-actions.ts      a sidebar page fetched before the gateway was activated again still shows
  *   app/settings/about-settings.tsx                    no UniWork account row (signing out is the entry's)
  *   app/settings/appearance-settings.tsx               * no theme marketplace results, no UI scale row
  *   app/settings/index.tsx                             * no Gateway or About page
@@ -73,6 +74,16 @@ export function reloadAfterDeveloperModeToggle(): void {
   if (isBrowserShell()) {
     window.location.reload()
   }
+}
+
+/** A sidebar page that lands after the gateway was activated again still shows.
+ * Upstream drops a page fetched before the latest activation, because on the
+ * desktop that can mean another backend took over. The browser build has one
+ * backend behind one gateway, and opening a session activates that same gateway
+ * again: on a reload with a session open, the first page arrived one activation
+ * late and the sidebar was left with only the opened session. */
+export function sidebarPageOutlivesReactivation(): boolean {
+  return isBrowserShell()
 }
 
 /** Hide something regular users of the browser build have no use for: desktop-only

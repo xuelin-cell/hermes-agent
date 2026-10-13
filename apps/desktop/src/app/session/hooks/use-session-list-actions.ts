@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 
 import { listAllProfileSessions, listSidebarSessions, type SessionInfo } from '@/hermes'
+import { sidebarPageOutlivesReactivation } from '@/lib/browser-shell'
 import { sameCronSignature } from '@/lib/session-signatures'
 import {
   isMessagingSource,
@@ -274,7 +275,7 @@ export function useSessionListActions({ profileScope }: UseSessionListActionsArg
           shouldPublish() &&
           refreshSessionsRequestRef.current === requestId &&
           sidebarProfileForScope(profileScopeRef.current) === sessionProfile &&
-          gatewayActivationEpoch() === activationEpoch
+          (gatewayActivationEpoch() === activationEpoch || sidebarPageOutlivesReactivation())
         ) {
           const recents = result.recents
 
