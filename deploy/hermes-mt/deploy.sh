@@ -8,6 +8,7 @@
 #   ./deploy.sh up             启动 / 更新三个容器（入口重建后自动重启 nginx）
 #   ./deploy.sh status         看现状：容器、PG 里的租户、集群上的实例和模板
 #   ./deploy.sh purge-old      删掉不在当前模板上的实例（会问确认；只有旧转发器的实例才需要）
+#   ./deploy.sh purge-templates [--api URL]  删掉我们不再用的模板：保留当前和上一版，有实例在用的不删（会问确认）
 #   ./deploy.sh set KEY=VALUE… 改 entry.env 里的一项或几项（只认 MT_ 开头），然后提示你跑 up 生效
 #   ./deploy.sh init --http-port IP:端口 --cube-api URL --cube-proxy URL [--registry HOST:PORT]
 #                              首次部署：生成 entry.env（密钥现场随机、600）和 compose.override.yaml
@@ -31,6 +32,7 @@
 #   MT_DEPLOY_BASE_IMAGE    沙箱镜像的基础镜像，默认 hermes-custom:a2007f2（必须已在本机）
 #   MT_DEPLOY_TPL_CPU/MEM   模板规格，默认 2000 / 2000（毫核 / MiB）
 #   MT_DEPLOY_TPL_DISK      模板可写层，默认 8G
+#   MT_DEPLOY_TPL_RETRIES   建模板有节点失败（平台偶发）时重建几次，第一次之外，默认 3
 #   MT_DEPLOY_BRANCH        all 时拉哪个分支，默认当前分支
 #   MT_DEPLOY_FWD_PORT      推镜像用的本机临时转发端口，默认 15000
 #   MT_DEPLOY_FRONTEND_SRC  前端产物目录为空时从这里复制（例如 /mnt/hermes-runtime/hermes）
@@ -54,8 +56,9 @@ FWD_PID=""
 FWD_REF=""
 
 # 推镜像时起的后台转发进程和临时标签：不管脚本怎么退出都要收掉。
+# 杀掉后等它退出：不等的话部署机的 bash（4.2）会把整段转发脚本连同「Terminated」打出来，像出了错。
 cleanup() {
-    if [ -n "$FWD_PID" ]; then kill "$FWD_PID" 2>/dev/null || true; FWD_PID=""; fi
+    if [ -n "$FWD_PID" ]; then kill "$FWD_PID" 2>/dev/null || true; wait "$FWD_PID" 2>/dev/null || true; FWD_PID=""; fi
     if [ -n "$FWD_REF" ]; then docker rmi "$FWD_REF" >/dev/null 2>&1 || true; FWD_REF=""; fi
 }
 trap cleanup EXIT
@@ -114,6 +117,7 @@ load_cfg() {
     TPL_CPU="$(cfg MT_DEPLOY_TPL_CPU 2000)"
     TPL_MEM="$(cfg MT_DEPLOY_TPL_MEM 2000)"
     TPL_DISK="$(cfg MT_DEPLOY_TPL_DISK 8G)"
+    TPL_RETRIES="$(cfg MT_DEPLOY_TPL_RETRIES 3)"
     FWD_PORT="$(cfg MT_DEPLOY_FWD_PORT 15000)"
     FRONTEND_SRC="$(cfg MT_DEPLOY_FRONTEND_SRC)"
     BRANCH="${BRANCH_OPT:-$(cfg MT_DEPLOY_BRANCH "$(g rev-parse --abbrev-ref HEAD)")}"
@@ -439,6 +443,55 @@ PY
 
 # ---------------------------------------------------------------- template
 
+# 删一个模板，等平台删完（sync=true）：节点上的副本（根盘、快照）、根盘包、元数据一起清掉。
+# 204 删掉了、404 本来就没有都算成功；删不掉时把平台给的原因打出来。
+# 平台自己会拒绝删「还有运行中实例在用」的模板，但认不出暂停中的实例（Cube v0.7.1 的 isTemplateInUse
+# 只认节点上报的实例，暂停的实例那一行不带模板 ID），所以调用方要先用入口自己的记录排除掉还在用的。
+delete_template() {
+    local id="$1" out code
+    out="$(curl -sS -m 300 -w '\n%{http_code}' -X DELETE "$CUBE_API/templates/$id?sync=true" 2>&1 || true)"
+    code="${out##*$'\n'}"
+    case "$code" in
+        204|404) return 0 ;;
+    esac
+    printf '    %s 删不掉（HTTP %s）：%s\n' "$id" "$code" "$(printf '%s' "${out%$'\n'*}" | tr '\n' ' ' | cut -c1-240)"
+    return 1
+}
+
+# 建一个模板并等它就绪，模板 ID 放进 NEW_TPL。返回 0 = READY；1 = 有节点失败（或整体失败）；2 = 十分钟还在建。
+# 有节点失败就不再等它就绪：失败的副本不会自己好，整体只会停在 PARTIALLY_READY。只等其余节点建完（还在建的
+# 模板平台不让删），好接着把它删掉。
+build_template() {
+    local fp="$1" last="" s
+    NEW_TPL="$(api POST /templates -d "{
+      \"name\": \"hermes-mt-$fp\",
+      \"image\": \"http://$REGISTRY/$REPO_PATH:$fp\",
+      \"cpu\": $TPL_CPU, \"memory\": $TPL_MEM, \"writableLayerSize\": \"$TPL_DISK\",
+      \"exposedPorts\": [9121, 49983], \"probePort\": 9121, \"probePath\": \"/__mt/health\",
+      \"allowInternetAccess\": true
+    }" | py 'import json,sys; d=json.load(sys.stdin); print(d.get("templateID") or ""); sys.stderr.write("  " + json.dumps(d)[:200] + "\n")')"
+    [ -n "$NEW_TPL" ] || die "建模板失败"
+    for _ in $(seq 1 120); do
+        s="$(api GET "/templates/$NEW_TPL" | py '
+import json,sys
+d = json.load(sys.stdin)
+replicas = d.get("replicas") or []
+failed = [r for r in replicas if r.get("status") == "FAILED"]
+busy = [r for r in replicas if r.get("status") not in ("READY", "FAILED")]
+if failed:
+    print("FAILED_ON" if not busy else "FAILING_ON", ",".join(r.get("node_ip") or "?" for r in failed), (failed[0].get("error_message") or "")[:160])
+else:
+    print(d.get("status"), (d.get("lastError") or "")[:200])')"
+        [ "$s" != "$last" ] && { printf '  %s %s\n' "$(date +%T)" "$s"; last="$s"; }
+        case "$s" in
+            READY*) return 0 ;;
+            FAILED*) return 1 ;;
+        esac
+        sleep 5
+    done
+    return 2
+}
+
 cmd_template() {
     local fp tpl
     fp="$(fingerprint)"
@@ -448,22 +501,23 @@ cmd_template() {
     if [ -n "$tpl" ]; then
         ok "集群上已有这个镜像的模板 $tpl，复用"
     else
-        tpl="$(api POST /templates -d "{
-          \"name\": \"hermes-mt-$fp\",
-          \"image\": \"http://$REGISTRY/$REPO_PATH:$fp\",
-          \"cpu\": $TPL_CPU, \"memory\": $TPL_MEM, \"writableLayerSize\": \"$TPL_DISK\",
-          \"exposedPorts\": [9121, 49983], \"probePort\": 9121, \"probePath\": \"/__mt/health\",
-          \"allowInternetAccess\": true
-        }" | py 'import json,sys; d=json.load(sys.stdin); print(d.get("templateID") or ""); sys.stderr.write("  " + json.dumps(d)[:200] + "\n")')"
-        [ -n "$tpl" ] || die "建模板失败"
-        local last="" s
-        for _ in $(seq 1 120); do
-            s="$(api GET "/templates/$tpl" | py 'import json,sys; d=json.load(sys.stdin); print(d.get("status"), (d.get("lastError") or "")[:200])')"
-            [ "$s" != "$last" ] && { printf '  %s %s\n' "$(date +%T)" "$s"; last="$s"; }
-            case "$s" in READY*) break ;; FAILED*) die "模板 $tpl 构建失败" ;; esac
-            sleep 5
+        # 平台建模板偶发失败：某个节点做根盘时 mke2fs 报错，换节点出现，同一个镜像重建就好（10-09、10-12、10-13）。
+        # 所以有节点失败就重建一个，第一次之外最多再试 TPL_RETRIES 次。失败的模板从没被用过、没起过实例，当场删掉；
+        # 删不掉的列出来交给平台的同事。
+        local attempt=0 rc left=""
+        while :; do
+            attempt=$((attempt + 1))
+            [ "$attempt" -gt 1 ] && warn "第 $attempt 次建模板：上一次有节点失败（平台偶发），重建一个"
+            rc=0
+            build_template "$fp" || rc=$?
+            [ "$rc" = 0 ] && break
+            [ "$rc" = 2 ] && die "模板 $NEW_TPL 十分钟内没 READY（还在建，没有节点失败）；过一会儿再跑 ./deploy.sh template"
+            if delete_template "$NEW_TPL"; then ok "失败的模板 $NEW_TPL 已删掉"; else left="${left:+$left }$NEW_TPL"; fi
+            [ "$attempt" -gt "$TPL_RETRIES" ] && die "建了 $attempt 次模板都有节点失败，停下${left:+。没删掉的失败模板：$left（交给平台的同事）}"
         done
-        case "$last" in READY*) ok "模板 $tpl READY（可写层 $TPL_DISK）" ;; *) die "模板 $tpl 十分钟内没 READY" ;; esac
+        tpl="$NEW_TPL"
+        ok "模板 $tpl READY（可写层 $TPL_DISK）"
+        [ -z "$left" ] || warn "没删掉的失败模板：$left（交给平台的同事）"
     fi
     if [ "$TEMPLATE" != "$tpl" ]; then
         set_cfg MT_CUBE_TEMPLATE "$tpl"
@@ -607,6 +661,80 @@ cmd_purge_old() {
     ok "剩余：$(our_sandboxes | awk -v t="$TEMPLATE" '$3 != t' | wc -l) 台不在当前模板上"
 }
 
+# ---------------------------------------------------------------- purge-templates
+
+# 集群上我们的模板（镜像来自 hermes-mt），每行：模板ID 状态。控制面不可达时返回非 0。
+our_templates() {
+    api GET /templates 2>/dev/null | py '
+import json,sys
+try: items = json.load(sys.stdin)
+except Exception: sys.exit(3)
+for t in items:
+    if "hermes-mt" in (t.get("imageInfo") or ""):
+        print(t["templateID"], t.get("status"))'
+}
+
+# 入口记着的、还挂着实例的模板（运行中和暂停的都算）。平台认不出暂停的实例，这份是兜底。
+tenant_templates() {
+    docker exec "$PROJECT-postgres" sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -c "SELECT DISTINCT template_id FROM tenant_runtime WHERE sandbox_id IS NOT NULL AND template_id IS NOT NULL"'
+}
+
+# 集群上所有实例用的模板（不只是我们的），一行一个；看不出模板的（多半是暂停中的）记为 -。
+cluster_sandbox_templates() {
+    api GET /sandboxes 2>/dev/null | py '
+import json,sys
+try: items = json.load(sys.stdin)
+except Exception: sys.exit(3)
+for s in items:
+    print(s.get("templateID") or "-")'
+}
+
+# 删掉我们不再用的模板，腾出各节点的磁盘：保留当前和上一版（回退用），还有实例在用的不删，其余列出来确认后删。
+# --api 指另一个集群的控制面（例如搬走以后的老集群）：入口没接它，「当前 / 上一版」不适用，只按有没有实例判断。
+cmd_purge_templates() {
+    local api_url="" keep="" prev="" list sbx in_use unknown t status todo="" done_n=0 fail_n=0
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --api) api_url="${2:-}"; shift 2 ;;
+            *) die "purge-templates 只认 --api <控制面地址>" ;;
+        esac
+    done
+    if [ -n "$api_url" ] && [ "$api_url" != "$CUBE_API" ]; then
+        CUBE_API="$api_url"
+        say "清理 $CUBE_API 上我们的模板（入口没接这个集群，不分当前 / 上一版）"
+    else
+        say "清理 $CUBE_API 上我们的模板"
+        [ -f "$HISTORY" ] && prev="$(sed -n 's/.*template=\(tpl-[0-9a-z]*\).*/\1/p' "$HISTORY" | awk -v cur="$TEMPLATE" '$0 != cur' | tail -1)"
+        keep="$TEMPLATE $prev"
+        ok "保留当前 ${TEMPLATE:-（无）}、上一版 ${prev:-（无）}"
+    fi
+    list="$(our_templates)" || die "控制面 $CUBE_API 列不出模板"
+    [ -n "$list" ] || { ok "集群上没有我们的模板"; return 0; }
+    in_use="$(tenant_templates)" || die "读不到入口数据库：不知道哪些模板还有用户的实例（暂停的平台认不出），不敢删"
+    sbx="$(cluster_sandbox_templates)" || die "控制面列不出实例，不敢删"
+    unknown="$(printf '%s\n' "$sbx" | grep -cx -- '-' || true)"
+    [ "$unknown" = 0 ] || warn "集群上有 $unknown 台实例看不出用的哪个模板（多半是暂停中的）；我们用户的实例以入口数据库为准"
+    in_use="$in_use
+$sbx"
+    echo "  我们的模板："
+    while read -r t status; do
+        if printf '%s\n' $keep | grep -qx -- "$t"; then
+            printf '    %-32s %-16s 保留\n' "$t" "$status"
+        elif printf '%s\n' "$in_use" | grep -qx -- "$t"; then
+            printf '    %-32s %-16s 还有实例在用，不删\n' "$t" "$status"
+        else
+            printf '    %-32s %-16s 删\n' "$t" "$status"
+            todo="${todo:+$todo }$t"
+        fi
+    done <<< "$list"
+    [ -n "$todo" ] || { ok "没有可删的"; return 0; }
+    confirm "  确定删除标「删」的模板？（只删模板，用户的卷和归档不受影响）" || { echo "  没删"; return 0; }
+    for t in $todo; do
+        if delete_template "$t"; then printf '    %s 已删\n' "$t"; done_n=$((done_n + 1)); else fail_n=$((fail_n + 1)); fi
+    done
+    if [ "$fail_n" = 0 ]; then ok "删掉 $done_n 个"; else warn "删掉 $done_n 个，$fail_n 个删不掉（原因见上，交给平台的同事）"; fi
+}
+
 # ---------------------------------------------------------------- all
 
 cmd_all() {
@@ -651,7 +779,7 @@ main() {
     # shellcheck disable=SC2086
     case "$cmd" in
         init) cmd_init $rest ;;
-        all|check|image|template|up|status|purge-old|pull|set)
+        all|check|image|template|up|status|purge-old|purge-templates|pull|set)
             load_cfg
             case "$cmd" in
                 all) cmd_all ;;
@@ -661,10 +789,11 @@ main() {
                 up) cmd_up ;;
                 status) cmd_status ;;
                 purge-old) cmd_purge_old ;;
+                purge-templates) cmd_purge_templates $rest ;;
                 pull) cmd_pull ;;
                 set) cmd_set $rest ;;
             esac ;;
-        *) sed -n '2,13p' "$SCRIPT"; exit 1 ;;
+        *) sed -n '2,15p' "$SCRIPT"; exit 1 ;;
     esac
 }
 
