@@ -270,6 +270,18 @@ def _zip_symlink(member: str, target: str, dest: Path) -> None:
         link.write_text(target, encoding="utf-8")
 
 
+def _rename_extracted_entry(source: Path, target: Path) -> None:
+    """在 Windows 解压后短暂占用时有限重试移动；其它错误立即返回。"""
+    for attempt in range(6):
+        try:
+            source.rename(target)
+            return
+        except OSError as exc:
+            if os.name != "nt" or exc.winerror not in (5, 32) or attempt == 5:
+                raise
+            time.sleep(0.5 * 2 ** attempt)
+
+
 def flatten_single_dir(dest: Path) -> None:
     """Hoist a lone top-level dir's contents unless it IS the layout
     (bin/, cmd/, lib/...). Refuses on name collisions."""
@@ -282,7 +294,7 @@ def flatten_single_dir(dest: Path) -> None:
         target = dest / item.name
         if target.exists():
             return
-        item.rename(target)
+        _rename_extracted_entry(item, target)
     inner.rmdir()
 
 

@@ -248,6 +248,52 @@ class TestCollisionsAndClobbering:
         assert (dest / "bin" / "gh").is_file()
 
 
+@win_only
+def test_flatten_recovers_from_temporary_windows_lock(tmp_path, monkeypatch):
+    """短暂占用解除后继续真实移动，保留文件内容。"""
+    dest = tmp_path / "dest"
+    source = dest / "wrapper" / "bin"
+    source.mkdir(parents=True)
+    (source / "tool").write_text("content")
+    original = Path.rename
+    attempts = []
+
+    # 前两次模拟 Windows 文件占用，随后执行真实目录移动。
+    def rename(path, target):
+        attempts.append(path)
+        if len(attempts) < 3:
+            raise PermissionError(13, "occupied", str(path), 32)
+        return original(path, target)
+
+    monkeypatch.setattr(Path, "rename", rename)
+    monkeypatch.setattr("pm.store.time.sleep", lambda delay: None)
+    flatten_single_dir(dest)
+    assert len(attempts) == 3
+    assert (dest / "bin" / "tool").read_text() == "content"
+
+
+@win_only
+def test_flatten_persistent_windows_lock_remains_failure(tmp_path, monkeypatch):
+    """永久权限错误不得被吞掉，未移动的源文件仍然保留。"""
+    dest = tmp_path / "dest"
+    source = dest / "wrapper" / "bin"
+    source.mkdir(parents=True)
+    (source / "tool").write_text("content")
+    attempts = []
+
+    # 保持权限错误，验证重试有界且不会伪报移动成功。
+    def rename(path, target):
+        attempts.append(path)
+        raise PermissionError(13, "denied", str(path), 5)
+
+    monkeypatch.setattr(Path, "rename", rename)
+    monkeypatch.setattr("pm.store.time.sleep", lambda delay: None)
+    with pytest.raises(PermissionError):
+        flatten_single_dir(dest)
+    assert len(attempts) == 6
+    assert (source / "tool").read_text() == "content"
+
+
 class TestStoreIsolation:
     def test_extract_replaces_only_its_own_entry_directory(self, tmp_path):
         """Each staged entry owns exactly its dest dir. Neighbouring
