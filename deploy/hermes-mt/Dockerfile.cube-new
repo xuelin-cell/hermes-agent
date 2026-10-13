@@ -51,6 +51,7 @@ RUN chmod 0755 /usr/bin/envd /usr/local/bin/cube-entrypoint.sh
 # fonts-noto-color-emoji：emoji，网页渲染常用
 # x11-utils：xdpyinfo（guide 验证用，确认 :99 的分辨率）
 # 注意：base 是 debian:13.4，novnc/websockify 在 trixie 仓库里有
+# 桌面应用：xterm（终端）、pcmanfm（文件管理器）—— 右键桌面菜单可拉起
 RUN apt-get update && apt-get install -y --no-install-recommends \
         xvfb \
         x11vnc \
@@ -65,7 +66,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         fonts-noto-cjk \
         fonts-noto-color-emoji \
         dbus-x11 \
-    && rm -rf /var/lib/apt/lists/*
+        xterm \
+        pcmanfm \
+        chromium \
+        chromium-sandbox \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/chromium /usr/local/bin/chromium
 
 # ---- VNC 密码（guide 方案）-------------------------------------------------
 # 构建时生成 /root/.vnc/passwd（权限 600），x11vnc 用 -rfbauth 鉴权。
@@ -95,7 +101,7 @@ ENV NOVNC_PORT=6080
 # 才能装进该 venv —— 与根 Dockerfile 第 293 行的写法一致。
 # uv 在 WORKDIR=/opt/hermes 下自动发现 /opt/hermes/.venv。
 RUN uv pip install --no-cache-dir playwright \
-    && /opt/hermes/.venv/bin/playwright install --with-deps chromium
+    && /opt/hermes/.venv/bin/playwright install chromium
 
 # ---- 屏幕入口脚本 ----------------------------------------------------------
 # 在 cube-entrypoint.sh 之前 exec：先拉起 Xvfb/fluxbox/x11vnc/websockify，

@@ -22,6 +22,12 @@ RES="${RES:-1280x720x24}"
 NOVNC_PORT="${NOVNC_PORT:-6080}"
 VNC_PASSWORD_FILE="${VNC_PASSWORD_FILE:-/root/.vnc/passwd}"
 
+# Chromium 二进制：优先 PLAYWRIGHT_CHROMIUM_PATH，否则按 build 号 glob 兜底。
+CHROMIUM_BIN="${PLAYWRIGHT_CHROMIUM_PATH:-}"
+if [ -z "${CHROMIUM_BIN}" ]; then
+    CHROMIUM_BIN="$(ls /opt/hermes/.playwright/chromium-*/chrome-linux64/chrome 2>/dev/null | head -n1)"
+fi
+
 echo "[screen] starting Xvfb on :${DISPLAY_NUM} (${RES})"
 # -ac            关闭访问控制，非 root 的 hermes 用户也能连 :99
 # +extension ... 显式启用 RANDR/GLX，部分 X 应用需要
@@ -35,6 +41,25 @@ for _ in $(seq 1 50); do
     [ -e "/tmp/.X11-unix/X${DISPLAY_NUM}" ] && break
     sleep 0.1
 done
+
+# fluxbox 菜单：右键桌面弹出。自定义部分覆盖默认 /etc/X11/fluxbox/menu，
+# 但把默认菜单里的 [fluxbox] / [workspaces] / [style] / Restart / Exit
+# 这些系统功能通过 [include] 保留下来。
+mkdir -p /root/.fluxbox
+cat > /root/.fluxbox/menu <<'MENU'
+[begin] (Desktop)
+  [exec] (Terminal) {xterm}
+  [exec] (File Manager) {pcmanfm}
+  [exec] (Browser) {/usr/local/bin/chromium}
+  [submenu] (System)
+    [config] (Fluxbox)
+    [workspaces] (Workspaces)
+    [stylesdir] (Styles) {/usr/share/fluxbox/styles}
+    [restart] (Restart Fluxbox)
+    [exit] (Exit)
+  [end]
+[end]
+MENU
 
 echo "[screen] starting fluxbox window manager"
 # DISPLAY 已在环境里；fluxbox 找不到配置也能裸跑（空桌面 + 右键菜单）。
