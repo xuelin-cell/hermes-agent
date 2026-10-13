@@ -53,6 +53,11 @@ test('prepared inputs are path-bound and reject changed or missing bytes without
   assert.throws(() => validatePreparedBuilderArgs([], result), /run preparation again/)
   assert.throws(() => validatePreparedBuilderArgs(['--dir', '-c.electronDist=/another.zip'], result), /run preparation again/)
   validatePreparedBuilderArgs(['--dir', '-c.extraMetadata.version=1.2.3'], result)
+  validatePreparedBuilderArgs(['--win', 'nsis'], { target: 'win32-x64', formats: ['nsis'] })
+  assert.throws(
+    () => validatePreparedBuilderArgs(['--win', 'msix'], { target: 'win32-x64', formats: ['nsis'] }),
+    /Package formats were not prepared/
+  )
   fs.writeFileSync(inputs.electron, 'corrupt')
   assert.throws(() => prepared.readPackagingInputs(manifest, inputs.source, 'linux-x64'), /run preparation again/i)
   assert.equal(fs.readFileSync(inputs.electron, 'utf8'), 'corrupt')

@@ -49,7 +49,9 @@ Prebuilt installers are built and distributed via [the Hermes Desktop website.](
 
 Update through the owner of the installed artifact: Windows App Installer for
 sideload MSIX, Microsoft Store for Store packages, and `electron-updater` for
-macOS bundles. Source-built apps use the checkout update handoff.
+macOS bundles. Source-built apps use the checkout update handoff. The default
+local Windows NSIS installer is an unsigned per-user build; Windows may show a
+publisher warning, and source-built apps update through the checkout handoff.
 
 `hermes update` updates managed source checkouts; it does not rewrite a bundled
 payload. See [BUILDING.md](BUILDING.md) for package and release contracts.
@@ -104,7 +106,8 @@ npm run dev:fake-boot   # exercise the startup overlay with deterministic delays
 
 ```bash
 npm run dist:mac     # DMG + zip
-npm run dist:win     # MSIX
+npm run dist:win     # unsigned per-user NSIS Setup.exe
+npm run dist:win:msix # MSIX release target (signing credentials required for signed output)
 npm run dist:linux   # AppImage + deb + rpm
 npm run pack         # unpacked app under release/ (no installer)
 ```

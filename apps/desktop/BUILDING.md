@@ -14,7 +14,10 @@ commands package the current desktop build; they do not stage a fresh runtime.
 
 The current MSIX manifest requires Windows 11 22H2 (`10.0.22621.0`).
 The source-script Windows support range is separate from this package floor.
-Windows desktop packaging uses MSIX, not NSIS or MSI.
+Tagged Windows releases use MSIX. The ordinary Windows desktop build defaults
+to an unsigned per-user NSIS Setup.exe, which can be installed without a code
+signing certificate; Windows may still show an unknown-publisher or SmartScreen
+warning. Use `npm run dist:win:msix` for the MSIX release target.
 
 `bundled` carries the local runtime. `store` carries the same runtime under
 Partner Center's package identity. `light` is a remote-only client without

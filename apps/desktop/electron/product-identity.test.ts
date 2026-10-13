@@ -198,6 +198,16 @@ test('light and bundled retain distinct OS markers from the full client', async 
   }
 })
 
+// Keep package-managed Windows variants on MSIX; their update owners require it.
+test('bundled, light and Store variants retain MSIX packaging', async (): Promise<void> => {
+  for (const variant of ['bundled', 'light', 'store'] as const) {
+    await identityForVariant(variant)
+    delete require.cache[require.resolve('../electron-builder.config.cjs')]
+    const config: PackagingConfiguration = require('../electron-builder.config.cjs')
+    assert.deepEqual(config.win.target, ['msix'])
+  }
+})
+
 test('packaging isolates boot metadata and executable names without renaming release artifacts', async (): Promise<void> => {
   const pkg: { name: string; productName: string; version: string; description: string } = require('../package.json')
 
@@ -207,8 +217,15 @@ test('packaging isolates boot metadata and executable names without renaming rel
     return require('../electron-builder.config.cjs')
   }
 
+  await identityForVariant(undefined)
+  const bootstrap: PackagingConfiguration = load()
+  assert.deepEqual(bootstrap.win.target, ['nsis'])
+  assert.equal(bootstrap.nsis?.oneClick, false)
+  assert.equal(bootstrap.nsis?.perMachine, false)
+
   const stableIdentity: ProductIdentity = await identityForVariant('bundled')
   const stable: PackagingConfiguration = load()
+  assert.deepEqual(stable.win.target, ['msix'])
   assert.equal(stable.extraMetadata.productName || pkg.productName, pkg.productName)
 
   process.env.HERMES_PAYLOAD_TAG = 'v0.28.0'

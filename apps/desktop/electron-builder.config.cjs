@@ -36,6 +36,7 @@ const {
 /** @type {NonNullable<typeof storeMsix> | undefined} */
 const storeMsixWhenStore = storeMsix
 const releaseBuild = Boolean(process.env.HERMES_PAYLOAD_TAG)
+const appInstallerManaged = ['bundled', 'light', 'store'].includes(process.env.HERMES_DESKTOP_VARIANT || '')
 
 /**
  * The store MSIX packaging identity. Callers must only invoke this when
@@ -217,8 +218,14 @@ module.exports = {
   win: {
     executableName: windowsExecutableName,
     legalTrademarks: displayName,
-    target: ['msix'],
+    target: appInstallerManaged ? ['msix'] : ['nsis'],
     ...windowsSigning()
+  },
+  nsis: {
+    oneClick: false,
+    perMachine: false,
+    allowElevation: false,
+    allowToChangeInstallationDirectory: true
   },
   msix: {
     // A store build uses the Partner Center packaging identity (the Store
