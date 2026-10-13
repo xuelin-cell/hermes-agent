@@ -7,9 +7,25 @@ import { revealFile } from '@/store/file-actions'
 import type { PreviewTarget } from '@/store/preview'
 import { $connection } from '@/store/session'
 
-import { previewFailure } from './failure'
+import { type PreviewFailure, previewFailure } from './failure'
 
-/** 沿用既有文件读取与大小限制；IPC 丢失错误字段时识别其固定错误消息。 */
+/** 把读取异常归为固定失败代码；IPC 丢失错误字段时识别其固定错误消息。 */
+function readFailure(error: unknown): PreviewFailure {
+  const detail = error as { code?: string; message?: string; statusCode?: number } | null
+  const message = detail?.message || ''
+
+  if (detail?.code === 'EFBIG' || detail?.statusCode === 413 || /\b413:|file is too large \(/i.test(message)) {
+    return { code: 'too_large' }
+  }
+
+  if (detail?.code === 'ENOENT' || detail?.statusCode === 404 || /\b404:|path does not exist/i.test(message)) {
+    return { code: 'not_found' }
+  }
+
+  return previewFailure(error)
+}
+
+/** 沿用既有文件读取与大小限制，读取失败统一转成失败代码。 */
 export async function readPreviewBytes(path: string): Promise<ArrayBuffer> {
   try {
     const blob = dataUrlToBlob(await readDesktopFileDataUrl(path))
@@ -20,18 +36,21 @@ export async function readPreviewBytes(path: string): Promise<ArrayBuffer> {
 
     return await blob.arrayBuffer()
   } catch (error) {
-    const detail = error as { code?: string; message?: string; statusCode?: number } | null
-    const message = detail?.message || ''
+    throw readFailure(error)
+  }
+}
 
-    if (detail?.code === 'EFBIG' || detail?.statusCode === 413 || /\b413:|file is too large \(/i.test(message)) {
-      throw { code: 'too_large' }
-    }
+/** 播放器对文件缺失和编码不支持报同一错误码，失败后用原有文本读取确认文件是否还能访问。 */
+export async function previewAccessFailure(path: string): Promise<PreviewFailure | null> {
+  try {
+    await readDesktopFileText(path)
 
-    if (detail?.code === 'ENOENT' || detail?.statusCode === 404 || /\b404:|path does not exist/i.test(message)) {
-      throw { code: 'not_found' }
-    }
+    return null
+  } catch (error) {
+    const failure = readFailure(error)
 
-    throw previewFailure(error)
+    // 超过文本读取上限说明文件还在，不算访问失败。
+    return failure.code === 'too_large' ? null : failure
   }
 }
 

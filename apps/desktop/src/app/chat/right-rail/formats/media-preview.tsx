@@ -6,6 +6,7 @@ import { mediaKind, resolveMediaPlaybackSrc } from '@/lib/media'
 
 import { previewFailure } from './failure'
 import type { FormatRendererProps } from './registry'
+import { previewAccessFailure } from './source'
 
 /** 复用原版可拖动进度的媒体通道，不自动播放，也不读取整份文件。 */
 export default function MediaPreview({ onFailure, reloadKey, target }: FormatRendererProps) {
@@ -41,9 +42,14 @@ export default function MediaPreview({ onFailure, reloadKey, target }: FormatRen
   const player = {
     'aria-label': target.label,
     controls: true,
-    // 解码与格式错误单独提示，其他播放失败保留通用出口。
-    onError: (event: SyntheticEvent<HTMLMediaElement>) =>
-      onFailure({ code: [3, 4].includes(event.currentTarget.error?.code || 0) ? 'unsupported' : 'unavailable' }),
+    // 文件缺失、连接失败和编码不支持可能是同一错误码；确认文件还能访问后才提示不支持。
+    onError: (event: SyntheticEvent<HTMLMediaElement>) => {
+      const decoding = [3, 4].includes(event.currentTarget.error?.code || 0)
+
+      void previewAccessFailure(path).then(failure =>
+        onFailure(failure || { code: decoding ? 'unsupported' : 'unavailable' })
+      )
+    },
     preload: 'metadata',
     src
   }

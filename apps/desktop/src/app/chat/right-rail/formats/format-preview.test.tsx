@@ -150,6 +150,37 @@ describe('format preview', () => {
     expect(onClose).toHaveBeenCalled()
   })
 
+  it.each([
+    ['is gone', new Error('File read failed: path does not exist.'), 'This file is no longer available.'],
+    [
+      'cannot be reached',
+      new Error('private transport details'),
+      'Could not preview this file. You can still access the original file.'
+    ],
+    ['is readable', null, 'This format or media encoding is not supported.'],
+    [
+      'only exceeds the text read limit',
+      new Error('File read failed: file is too large (20000000 bytes; limit 10485760 bytes).'),
+      'This format or media encoding is not supported.'
+    ]
+  ])('explains a player source error by checking whether the file %s', async (_name, readError, message) => {
+    const path = '/fixture/sample.mp4'
+
+    const readFileText = readError
+      ? vi.fn().mockRejectedValue(readError)
+      : vi.fn(async () => ({ binary: true, path, text: '' }))
+
+    window.hermesDesktop = { readFileText, revealPath: vi.fn() } as never
+    const { container } = render(<FormatPreview reloadKey={0} target={fileTarget(path)} />)
+    await waitFor(() => expect(container.querySelector('video')).toBeTruthy())
+    const video = container.querySelector('video')!
+    Object.defineProperty(video, 'error', { value: { code: 4 } })
+    fireEvent.error(video)
+    expect(await screen.findByText(message)).toBeTruthy()
+    expect(readFileText).toHaveBeenCalledWith(path)
+    expect(screen.queryByText('private transport details')).toBeNull()
+  })
+
   it('downloads from the remote connection and profile that owns the file', async () => {
     const saveGatewayFile = vi.fn(async () => ({ canceled: true, saved: false }))
     window.hermesDesktop = { saveGatewayFile } as never
