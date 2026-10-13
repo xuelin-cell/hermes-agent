@@ -57,17 +57,38 @@ describe('TIFF decoding', () => {
     const oversized = UTIF.encode([{ ...page, t256: [100000], t257: [100000] }])
     expect(() => decodeTiffFirstPage(oversized)).toThrow(expect.objectContaining({ code: 'too_large' }))
   })
+
+  it('keeps an A3 scan at 300 dpi within the size limit and reports a clearly larger page as too large', () => {
+    const page = UTIF.decode(singlePage)[0]
+
+    /** 只改尺寸并让数据位置无效：通过尺寸检查的会停在数据校验，不分配像素。 */
+    const sized = (width: number, height: number) =>
+      UTIF.encode([{ ...page, t256: [width], t257: [height], t273: [4] }])
+
+    expect(() => decodeTiffFirstPage(sized(3508, 4961))).toThrow(expect.objectContaining({ code: 'unsupported' }))
+    expect(() => decodeTiffFirstPage(sized(5000, 5000))).toThrow(expect.objectContaining({ code: 'too_large' }))
+  })
 })
 
 describe('TIFF preview', () => {
+  const putImageData = vi.fn()
+
   beforeEach(() => {
     read.mockReset().mockResolvedValue(singlePage)
+    putImageData.mockReset()
     URL.createObjectURL = vi.fn(() => 'blob:fixture-tiff')
     URL.revokeObjectURL = vi.fn()
-    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
-      createImageData: (width: number, height: number) => ({ data: new Uint8ClampedArray(width * height * 4) }),
-      putImageData: vi.fn()
-    } as never)
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ putImageData } as never)
+    vi.stubGlobal(
+      'ImageData',
+      class {
+        constructor(
+          readonly data: Uint8ClampedArray,
+          readonly width: number,
+          readonly height: number
+        ) {}
+      }
+    )
     vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(callback =>
       callback(new Blob(['png'], { type: 'image/png' }))
     )
@@ -89,6 +110,8 @@ describe('TIFF preview', () => {
     const view = render(<TiffPreview onFailure={onFailure} path={target.path} reloadKey={0} target={target} />)
     expect((await screen.findByRole('img', { name: target.label })).getAttribute('src')).toBe('blob:fixture-tiff')
     expect(screen.queryByRole('status')).toBeNull()
+    const drawn = putImageData.mock.calls[0][0]
+    expect([drawn.width, drawn.height, ...drawn.data]).toEqual([2, 1, ...rgba])
     read.mockResolvedValue(twoPages())
     view.rerender(<TiffPreview onFailure={onFailure} path={target.path} reloadKey={1} target={target} />)
     expect(await screen.findByText('This TIFF has multiple pages. Only the first page is shown.')).toBeTruthy()

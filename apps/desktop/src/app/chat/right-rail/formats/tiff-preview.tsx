@@ -8,7 +8,9 @@ import { previewFailure } from './failure'
 import type { FormatRendererProps } from './registry'
 import { readPreviewBytes } from './source'
 
-const MAX_PIXELS = 32 * 1024 * 1024
+// 解码在界面线程同步进行，期间窗口无法响应。上限能放下 A3 幅面 300 dpi 的扫描件（约 1740 万像素）；
+// 实测最慢的 G4 压缩在上限处约 1.3 秒，3200 万像素约 2.5 秒。
+const MAX_PIXELS = 20 * 1024 * 1024
 const MAX_DECODE_BYTES = MAX_PIXELS * 4
 const COMPRESSIONS = new Set([1, 2, 3, 4, 5, 6, 7, 8, 32773, 32809, 32946, 34892])
 const COLOR_SPACES = new Set([0, 1, 2, 3, 5, 6, 32845])
@@ -114,10 +116,13 @@ async function tiffPng(input: ArrayBuffer) {
     throw { code: 'unavailable' }
   }
 
-  const pixels = context.createImageData(width, height)
-  pixels.data.set(rgba)
-  context.putImageData(pixels, 0, 0)
+  // 直接包装解码结果，不再复制一份同样大的像素数组。
+  const pixels = new Uint8ClampedArray(rgba.buffer as ArrayBuffer, rgba.byteOffset, rgba.byteLength)
+  context.putImageData(new ImageData(pixels, width, height), 0, 0)
   const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'))
+  // 编码结束立即归还画布占用的像素内存，不等垃圾回收。
+  canvas.width = 0
+  canvas.height = 0
 
   if (!blob) {
     throw { code: 'unsupported' }
