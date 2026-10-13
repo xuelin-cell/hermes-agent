@@ -17,8 +17,8 @@
 # 入口重建后 nginx 要重启、entry.env 权限……），漏一条就是线上事故。这里把它们全部变成
 # 检查项和自动步骤，人只需要跑一条命令、看一份摘要。
 #
-# 沙箱镜像按「内容指纹」命名，不按提交号：指纹 = Dockerfile.cube + seed/* + overlay/ + 基础镜像 ID + 模板参数。
-# overlay/ 是本分支对 hermes 源码的改动，按原路径覆盖进镜像的 /opt/hermes，必须和仓库里的同路径文件相同。
+# 沙箱镜像按「内容指纹」命名，不按提交号：指纹 = Dockerfile.cube + seed/* + overlay.list 列的仓库文件 + 基础镜像 ID + 模板参数。
+# overlay.list 列本分支在 hermes 源码上的改动和新增（仓库路径），构建前原样拷进 .overlay/，按原路径覆盖进镜像的 /opt/hermes。
 # 只改入口代码时镜像和模板一个都不会重做；改了转发器就一定重做。入口发现实例的模板和配置里的
 # 不一致，会在用户下次请求时自动排空、删除、重建、恢复（见 seed/mtstate.py），不用手工删实例。
 #
@@ -148,27 +148,41 @@ fingerprint() {
             printf 'seed/%s\n' "$(basename "$f")"; cat "$f"
         done
         for f in $(overlay_files); do
-            printf 'overlay/%s\n' "$f"; cat "$HERE/overlay/$f"
+            printf 'overlay/%s\n' "$f"; cat "$REPO/$f"
         done
         printf 'base=%s\ntpl=%s/%s/%s\n' "$base_id" "$TPL_CPU" "$TPL_MEM" "$TPL_DISK"
     } | sha256sum | cut -c1-12
 }
 
-# overlay/ 下的文件，相对路径、顺序固定。它们按原路径覆盖进镜像的 /opt/hermes（见 Dockerfile.cube）。
-overlay_files() {
-    (cd "$HERE/overlay" 2>/dev/null && find . -type f | sed 's|^\./||' | LC_ALL=C sort)
+# overlay.list 里的条目（去掉注释和空行）：仓库路径，目录表示其下全部受版本管理的文件。
+overlay_entries() {
+    sed -e 's/#.*//' -e 's/[[:space:]]*$//' -e '/^[[:space:]]*$/d' "$HERE/overlay.list"
 }
 
-# overlay/ 里每个文件都必须和仓库里同路径的文件逐字节相同，否则镜像里跑的不是仓库里的代码。
+# 条目展开成文件：相对仓库根、只算受版本管理的、顺序固定。它们按原路径覆盖进镜像的 /opt/hermes（见 Dockerfile.cube）。
+overlay_files() {
+    local p
+    overlay_entries | while read -r p; do
+        (cd "$REPO" && git ls-files -- "$p")
+    done | LC_ALL=C sort -u
+}
+
+# 清单里每一项都得是仓库里受版本管理的路径，否则镜像里少东西却没人发现。
 check_overlay() {
-    local f n=0
-    [ -d "$HERE/overlay" ] || die "缺少 $HERE/overlay（hermes 源码覆盖，Dockerfile.cube 要用）"
-    for f in $(overlay_files); do
-        [ -f "$REPO/$f" ] && [ "$(sha256sum < "$HERE/overlay/$f")" = "$(sha256sum < "$REPO/$f")" ] \
-            || die "overlay/$f 和仓库里的 $f 不一致：把仓库里的拷过来（cp $f deploy/hermes-mt/overlay/$f）再部署"
-        n=$((n + 1))
+    local p n
+    [ -f "$HERE/overlay.list" ] || die "缺少 $HERE/overlay.list（覆盖进镜像的仓库路径，Dockerfile.cube 要用）"
+    for p in $(overlay_entries); do
+        [ -n "$(cd "$REPO" && git ls-files -- "$p")" ] || die "overlay.list 里的 $p 不是仓库里受版本管理的路径"
     done
-    ok "hermes 源码覆盖 $n 个文件，与仓库一致"
+    n="$(overlay_files | wc -l | tr -d ' ')"
+    ok "覆盖进镜像的仓库文件 $n 个（overlay.list）"
+}
+
+# 构建前把清单里的文件原样拷进 .overlay/（构建目录，不进 git），Dockerfile.cube 从那里覆盖进 /opt/hermes。
+stage_overlay() {
+    rm -rf "$HERE/.overlay"
+    mkdir -p "$HERE/.overlay"
+    (cd "$REPO" && overlay_files | tar -cf - -T -) | tar -xf - -C "$HERE/.overlay"
 }
 
 # ---------------------------------------------------------------- 集群查询
@@ -352,9 +366,10 @@ cmd_check() {
 cmd_image() {
     local fp
     fp="$(fingerprint)"
-    say "沙箱镜像：指纹 $fp（Dockerfile.cube + seed/* + overlay/ + 基础镜像 + 模板参数）"
+    say "沙箱镜像：指纹 $fp（Dockerfile.cube + seed/* + overlay.list 列的仓库文件 + 基础镜像 + 模板参数）"
     cd "$HERE"
     check_overlay
+    stage_overlay
     BUILDX_BUILDER=default docker build -f Dockerfile.cube --build-arg "BASE_IMAGE=$BASE_IMAGE" -t "$IMAGE_NAME:$fp" . 2>&1 | tail -n 4 | sed 's/^/  /'
     ok "已构建 $IMAGE_NAME:$fp"
     # 镜像里的转发器必须和仓库里的逐字节相同——这是「入口和模板一起升级」能成立的前提。
@@ -362,14 +377,15 @@ cmd_image() {
     in_img="$(docker run --rm --network none --entrypoint sha256sum "$IMAGE_NAME:$fp" /opt/mt/forward.py /opt/mt/mtstate.py /opt/mt/mtuser.py | awk '{print $1}' | tr '\n' ' ')"
     in_repo="$(sha256sum seed/forward.py seed/mtstate.py seed/mtuser.py | awk '{print $1}' | tr '\n' ' ')"
     [ "$in_img" = "$in_repo" ] && ok "镜像里的转发器与仓库一致" || die "镜像里的 forward.py/mtstate.py/mtuser.py 与仓库不一致"
-    # hermes 源码覆盖同理：镜像里 /opt/hermes 下的那份必须就是 overlay/ 里的。
-    local f
-    for f in $(overlay_files); do
-        in_img="$(docker run --rm --network none --entrypoint sha256sum "$IMAGE_NAME:$fp" "/opt/hermes/$f" | awk '{print $1}')"
-        in_repo="$(sha256sum "overlay/$f" | awk '{print $1}')"
-        [ "$in_img" = "$in_repo" ] || die "镜像里的 /opt/hermes/$f 与 overlay/$f 不一致"
-    done
-    ok "镜像里的 hermes 源码覆盖与仓库一致"
+    # 覆盖进 /opt/hermes 的仓库文件同理，开一个容器一次比完。
+    local files
+    files="$(overlay_files | tr '\n' ' ')"
+    # shellcheck disable=SC2086,SC2016
+    in_img="$(docker run --rm --network none --entrypoint sh "$IMAGE_NAME:$fp" -c 'cd /opt/hermes && sha256sum "$@"' sh $files | awk '{print $1}' | tr '\n' ' ')"
+    # shellcheck disable=SC2086
+    in_repo="$(cd "$REPO" && sha256sum $files | awk '{print $1}' | tr '\n' ' ')"
+    [ "$in_img" = "$in_repo" ] || die "镜像里 /opt/hermes 下的覆盖文件与仓库不一致（overlay.list）"
+    ok "镜像里覆盖的 $(overlay_files | wc -l | tr -d ' ') 个仓库文件与仓库一致"
 
     if registry_has_tag "$fp"; then
         ok "仓库 $REGISTRY 已有 $REPO_PATH:$fp，跳过推送"

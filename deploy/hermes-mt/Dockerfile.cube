@@ -13,7 +13,8 @@
 #   - 对外端口：只有一个
 #   - envd —— 平台创建沙箱时若带了环境变量，镜像里没有 envd 会导致**创建直接失败**，
 #     所以必须打进来，即使我们并不使用它的命令/文件/终端能力
-#   - 本分支对 hermes 源码的改动（overlay/，按原路径覆盖进 /opt/hermes，见下面那段）
+#   - 本分支对 hermes 的改动和新增（overlay.list 列的仓库路径，按原路径覆盖进 /opt/hermes，见下面那段），
+#     包括 UniWork 内置技能和它们要用的库
 #
 # 为什么 CMD 只起转发器、不起 hermes：
 #   平台下发创建时环境变量是在容器进程已经起来之后（起容器 → 探针 → 创建后处理 → 下发变量），
@@ -94,6 +95,18 @@ RUN uv pip install --no-cache-dir playwright
 # PLAYWRIGHT_BROWSERS_PATH=/opt/hermes/.playwright 在 base 里已设。
 RUN /opt/hermes/.venv/bin/playwright install --with-deps chromium
 
+# ---- UniWork 内置技能要用的库 ---------------------------------------------------
+# skills/uniwork/ 下的技能（随 overlay.list 进镜像，见下）在实例里直接 import 这些库。hermes venv
+# 没有 pip，技能脚本自己装不上，所以预装。weasyprint 要的 pango / harfbuzz 已随上面的 chromium、
+# LibreOffice 装好；pdf2image 转图走上面的 poppler。版本写死：同一个指纹构建出的镜像才一样。
+#   doc：python-docx、pdf2image           excel：openpyxl、pandas
+#   data-insight-report：duckdb、openpyxl  pdf-generator：weasyprint、reportlab、pypdf
+RUN uv pip install --no-cache-dir \
+        python-docx==1.2.0 pdf2image==1.17.0 openpyxl==3.1.5 pandas==3.0.6 \
+        duckdb==1.5.6 weasyprint==70.0 reportlab==5.0.1 pypdf==6.19.0
+# web-artifacts-builder 用 pnpm 起 React 工程；它的脚本缺 pnpm 时会去 npm install -g，hermes 用户装不了全局包。
+RUN npm install -g pnpm@12.11.2 && npm cache clean --force
+
 # ---- envd 与 Cube 的通用入口脚本 ------------------------------------------
 # 入口脚本的契约：后台拉起 envd（让平台的 SDK 数据面和默认探针可用），
 # 然后前台 exec 我们给的命令。我们把上游镜像自己的 dispatcher 作为那条命令，
@@ -112,14 +125,15 @@ COPY seed/mtstate.py /opt/mt/mtstate.py
 COPY seed/mtuser.py /opt/mt/mtuser.py
 RUN chmod 0644 /opt/mt/forward.py /opt/mt/mtstate.py /opt/mt/mtuser.py
 
-# ---- hermes 源码覆盖（overlay/） --------------------------------------------
+# ---- 本分支对 hermes 的改动和新增（overlay.list） -----------------------------
 # 基础镜像里的 hermes 是上游某个版本；/opt/hermes 是可编辑安装，且不留预编译缓存
-# （PYTHONDONTWRITEBYTECODE=1），所以覆盖源文件就生效。本分支在 hermes 源码上的改动按原路径
-# 放在 overlay/ 下，目前只有 hermes_cli/web_routers/skills.py：UniWork 技能市场与推荐的后端
-# 接口（匿名转发元景的公开技能目录，安装走 hermes 自己的 skills install）。
-# overlay/ 里每个文件都必须和仓库里同路径的文件逐字节相同：deploy.sh 构建前后都核对，
-# 平时由 tests/hermes_mt/test_image_overlay.py 核对。
-COPY overlay/ /opt/hermes/
+# （PYTHONDONTWRITEBYTECODE=1），所以覆盖源文件就生效。要覆盖的仓库路径列在 overlay.list：
+#   - hermes_cli/web_routers/skills.py：UniWork 技能市场与推荐的后端接口
+#   - skills/uniwork/：UniWork 内置技能。/opt/hermes/skills 下的技能在实例每次启动时由
+#     tools/skills_sync.py 同步进用户的技能目录（新的加进去，用户删掉的不再加回，改过的不覆盖）
+# deploy.sh 构建前把这些文件从仓库原样拷进 .overlay/（构建目录，不进 git），构建后核对镜像里那份；
+# tests/hermes_mt/test_image_overlay.py 核对清单本身。
+COPY .overlay/ /opt/hermes/
 
 # ---- 所有用户相同的环境变量 -------------------------------------------------
 # 与 entry/entry/tenants.py::_create 里那份清单保持一致。缺的那个
@@ -146,7 +160,8 @@ ENV TIRITH_ENABLED=0
 # 工作区在对象存储上，小文件慢、没有硬链接；重活放本地盘的 scratch，成品再写回工作区。
 # 用户在网页里用：写出的文件从输入框上方的预览条或文件面板打开，别建议 file://；实例里起的 localhost
 # 服务用户的浏览器打不开；文件面板删的东西在卷上的回收站里留 7 天（见 seed/mtuser.py），用户要可以找回。
-ENV HERMES_ENVIRONMENT_HINT="Environment notes: /opt/data/workspace is the user's persistent workspace. It lives on network object storage: many small files are slow there and hard links are not supported. Do heavy or temporary work (git clone, package installs, builds, scratch files) under /opt/data/scratch on the fast local disk, then copy finished results into the workspace. /opt/data/scratch is not preserved when the sandbox is recreated. The user talks to you through a web page in their browser, not a desktop app or a terminal on their own computer: files you write are opened from the preview bar above the chat input or from the Files panel, so never suggest file:// URLs or opening files with a local program. Web servers you start here (localhost ports) cannot be reached from the user's browser; deliver results as files instead. Files the user deletes in the Files panel go to /mnt/u/.trash and are kept for 7 days: each entry is a folder holding the item and a meta.json with its original path, so you can restore one on request by moving it back."
+# 预览只打开那一个 HTML 文件，旁边单独的 .css / .js / 图片加载不到，所以网页要写成单个文件。
+ENV HERMES_ENVIRONMENT_HINT="Environment notes: /opt/data/workspace is the user's persistent workspace. It lives on network object storage: many small files are slow there and hard links are not supported. Do heavy or temporary work (git clone, package installs, builds, scratch files) under /opt/data/scratch on the fast local disk, then copy finished results into the workspace. /opt/data/scratch is not preserved when the sandbox is recreated. The user talks to you through a web page in their browser, not a desktop app or a terminal on their own computer: files you write are opened from the preview bar above the chat input or from the Files panel, so never suggest file:// URLs or opening files with a local program. The preview opens a single HTML file on its own, so a web page you make must be self-contained: put its CSS and JavaScript inside the HTML file (inline <style> and <script>) and embed small images as data: URLs instead of separate files next to it. Web servers you start here (localhost ports) cannot be reached from the user's browser; deliver results as files instead. Files the user deletes in the Files panel go to /mnt/u/.trash and are kept for 7 days: each entry is a folder holding the item and a meta.json with its original path, so you can restore one on request by moving it back."
 
 # 浏览器断开后，hermes 等多久才回收那条会话（还在跑的回合到时会被打断）。上游默认 20 秒：关掉浏览器
 # 长任务就断。10-09 本机实测每条遗留会话约 4MB、不多出进程；定 1 小时。

@@ -4,3 +4,4 @@ entry.env.*
 .deploy-history
 .image-fingerprint
 compose.override.yaml
+.overlay/
