@@ -2,7 +2,7 @@
 
 日期：2026-10-13。基线：`desktop-mt @ d5ff498050`（代码事实核对于同步远端 `40caef7b87` 之前，P01 动手前需复核）。参考实现：UniWork 桌面版 `Kyle549/UniClaw @ uniwork_release`（`8ae3548e`）、Web 版 `feat/hermes-ch`（`3bef1c5bd4`）。
 
-状态：P01、P02 已推送；P03 已实现并完成定向检查，等待用户真实验收；P04～P16 未开始。本文不授权推送。每步完成验证并本地提交后暂停，等待用户核验，再继续下一步。
+状态：P01～P03 已推送；P04 已实现并完成定向检查与本机只读探测，未验证 Office 转换；P05～P16 未开始。本文不授权推送。每步完成验证并本地提交后暂停，等待用户核验，再继续下一步。
 
 路径约定：`src/`、`electron/` 指 `apps/desktop/` 下的对应目录；`shared/` 指 `apps/shared/src/`。各步骤的行数是预估的业务代码行数，不含测试、夹具和文档；多语言文案单独列出。
 
@@ -126,6 +126,7 @@ shared/office-preview.ts             前端与主进程共用的约定：扩展�
 | `src/app/chat/right-rail/preview-pane.tsx` | 渲染 `LocalFilePreview` 的那一处改为渲染 `FormatPreview`，连同引用共约 3 行 | P01 |
 | `src/i18n/` 各语言文件与 `types.ts` | 在 `preview` 下追加新文案 | 用到的各步 |
 | `shared/index.ts` | 导出约定文件，1 行 | P04 |
+| `apps/desktop/tsconfig.electron.json` | 将新共享约定文件加入 Electron 编译清单，1 处 | P04 |
 | `electron/main.ts` | 引入并注册转换服务，约 10 行 | P07 |
 | `electron/preload.ts` | 新增 1 个桥接方法 | P07 |
 | `src/global.d.ts` | 该方法的类型 | P07 |
@@ -253,7 +254,7 @@ shared/office-preview.ts             前端与主进程共用的约定：扩展�
 
 - 范围：`shared/office-preview.ts`、`shared/index.ts` 导出 1 行；`electron/office-preview/detect.ts` 及测试。
 - 约定文件：按 Word、PPT、Excel 分组的扩展名；三项上限；失败原因代码；转换结果的形状。前端和主进程共用，将来云端也按它对接。
-- 探测 MS Office 与 WPS：查 COM 名字实际指向的程序（`reg query` 读 `CLSID` 和 `LocalServer32`），按程序文件名区分是哪家软件。这样能找到装在非默认路径的 WPS，也不会把“兼容模式下顶替了 MS Office 名字的 WPS”误认成 MS Office。
+- 探测 MS Office 与 WPS：一次隐藏 PowerShell 通过 Windows 注册表 API 只读查询 `CLSID`、必要时的 `CurVer` 和 `LocalServer32`（优先 `ServerExecutable`），按程序文件名区分厂家，并保留 32／64 位视图。这样能找到装在非默认路径的 WPS，也不会把“兼容模式下顶替了 MS Office 名字的 WPS”误认成 MS Office；不激活 COM。
 - 探测 LibreOffice：按顺序检查 PATH 和常见安装位置，写法照 `electron/git-binary-candidates.ts`（候选列表是纯函数，文件系统可注入）。
 - 探测结果在进程内缓存；转换报告“不可用”时作废重查。
 - 业务代码：约 290 行。
@@ -414,8 +415,8 @@ UniWork 的表格预览由三个文件组成，共约 1300 行，并依赖表格
 | --- | --- | --- |
 | A · 预览中心与音视频 | P01 | 已实现并自动验证，已推送 `df151293dd` |
 | A · CSV／TSV | P02 | 已实现，定向检查通过；已推送 `aaaea847f5`，真实桌面验收待用户完成 |
-| A · TIFF | P03 | 已实现，定向检查通过，待用户真实验收；本地提交，未推送 |
-| B · 约定与探测 | P04 | 未开始 |
+| A · TIFF | P03 | 已实现，定向检查通过；已推送 `f63ae9e9cc`，真实桌面验收待用户完成 |
+| B · 约定与探测 | P04 | 已实现，定向检查和本机只读探测通过；本地提交，未推送，转换未验证 |
 | B · 缓存与排队 | P05 | 未开始 |
 | B · MS Office 与 WPS 转换 | P06 | 未开始 |
 | B · LibreOffice、服务与接入 | P07 | 未开始 |
@@ -486,4 +487,23 @@ UniWork 的表格预览由三个文件组成，共约 1300 行，并依赖表格
 - 按用户要求没有启动原生 Electron、操作用户窗口或搭建额外原生夹具。真实桌面图片效果、远程服务器、其它 TIFF 编码、安装包及其它操作系统未实测。
 - 人工样例目录：`C:\Users\stan\AppData\Local\Temp\hermes-preview-p03-VxonC2`。`single.tif` 应显示彩色渐变；`multi.tiff` 应显示同一第一页并提示多页（第二页为蓝色，不显示）；`broken.tif` 应提供失败出口；`large-dimensions.tiff` 应明确提示超限。可用原有项目文件树打开这些文件。
 
-本步停在 P03，本地提交，未推送；P04 尚未实施。等待用户核验和下一次授权。
+`f63ae9e9cc` 已按用户当次“推送，然后继续”授权推送到 `origin/desktop-mt`；随后开始 P04。TIFF 真实桌面验收仍由用户完成，未因推送改记为已实测。
+
+### P04 实施记录（2026-10-13）
+
+- 新增共享约定 `apps/shared/src/office-preview.ts`：Word、PPT、Excel 扩展名分组，转换器顺序、源文件 100 MB、PDF 50 MB、总耗时 180 秒，以及成功／失败结果形状。失败代码与本地已抓取 `origin/feat/hermes-ch` 的 `deploy/hermes-mt/seed/mtuser.py` 对齐（`too_large`、`timeout`、`convert_failed`、`unavailable`、`unsupported`、`not_found`）；没有改动该 Web 分支。
+- 新增 `electron/office-preview/detect.ts`，返回每类文件的 MS Office → WPS → LibreOffice 候选。不凭 ProgID 名称认厂家，先查 COM 实际服务程序、验证真实文件，再按组件程序名分类；记录 ProgID 与 32／64 位视图，供后续调用正确位数的转换进程。同厂家的重复别名／视图只保留首个候选。
+- 实施时把逐次 `reg query` 调整为一次隐藏 PowerShell，通过系统 `.NET RegistryKey` API 批量读取同样的注册表键。原因是避免反复启动辅助进程和本地化命令输出乱码；JSON 明确以 UTF-8 返回，句柄及时关闭。只读查询 `CLSID`、必要时的 `CurVer`、`LocalServer32`，优先使用命名值 `ServerExecutable`，不激活 COM、不启动 Office、不读写文档。
+- 注册表读取限制为 10 秒与 256 KB 输出；查询异常上抛，不缓存成“未安装”。同一个探测器共享正在进行或已完成的查询；显式作废后重查，旧请求迟到失败不会清掉新请求。P07 将接入转换服务，本步没有新增 IPC、界面或自动启动探测。
+- LibreOffice 按 PATH 与常见目录查找，排除相对路径及隐式当前目录搜索；程序必须是实际文件。Windows 在本机验证，macOS／Linux 只检查候选生成的纯函数，不伪造运行平台或声称已实测。
+- 上游改动仅为 `apps/shared/src/index.ts` 导出一行，以及 `apps/desktop/tsconfig.electron.json` 增补一个共享源码路径。后者是 Electron composite 编译清单的必要接线，已加入第 4.1 节清单；未修改原版后端、窗口、预览组件、用户配置或 Office 注册表，也未新增依赖。
+
+验证结果与边界：
+
+- `npx vitest run --project electron electron/office-preview/detect.test.ts`：1 个文件、13 项通过。覆盖扩展名登记关系、只有 WPS、部分 MS Office、没有软件、微软别名被 WPS 占用、中文／非默认路径、`ServerExecutable` 优先、缺失／错误程序、候选顺序、重复去重、并发缓存、显式作废、异常重试与迟到请求。
+- 测试中包含真实 Windows 只读查询；另外通过 `npx tsx -e` 直接调用正式 `createOfficeDetector().get()`，未使用替身，确认三类文件均有 MS Office 与 WPS 候选、LibreOffice 未找到。MS Office 来自 64 位登记，路径在 `C:\Program Files\Microsoft Office\Root\Office16`；WPS 来自 32 位登记，路径在 D 盘，部分微软 ProgID 实际指向 WPS。结果保留这些位数，不把 WPS 误认成微软组件。
+- `npm run typecheck`、修改文件 ESLint 零警告和 `git diff --check` 通过。自动测试只花费定向检查，不运行全套桌面或 Office 原生转换夹具。
+- 本步确认的只是注册表与文件路径可识别，不保证 COM 激活、授权、宏控制、文档转换或 PDF 正确。未打开用户 Office 窗口、未转换 Word／PPT／Excel，也未验证 LibreOffice、其它操作系统或安装包。这些属于后续步骤和人工验收。
+- 探测约定依据 [Microsoft LocalServer32](https://learn.microsoft.com/en-us/windows/win32/com/localserver32) 与 [RegistryKey.OpenBaseKey](https://learn.microsoft.com/en-us/dotnet/api/microsoft.win32.registrykey.openbasekey)；使用 `ServerExecutable` 的真实路径优先于命令行推断，不把注册表信息当作转换已经成功的证明。
+
+本步停在 P04，本地提交，未推送；P05 缓存与排队尚未实施。等待用户下一次授权。
