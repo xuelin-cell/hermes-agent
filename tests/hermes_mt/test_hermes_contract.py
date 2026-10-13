@@ -129,3 +129,37 @@ def test_environment_hint_env_var_reaches_the_system_prompt(monkeypatch: pytest.
 
     monkeypatch.setenv("HERMES_ENVIRONMENT_HINT", "The user works in a web page; never suggest file:// URLs.")
     assert "never suggest file:// URLs" in build_environment_hints()
+
+
+YUANJING_MCP_URL = "https://maas.example/mcp?key=${HERMES_CUSTOM_YUANJING_API_KEY}&client_id=UniWork"
+
+
+def test_mcp_url_takes_the_key_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """E11：内置元景 MCP 的地址里只写 ${HERMES_CUSTOM_YUANJING_API_KEY}，hermes 连接时换成 .env 里的 key。"""
+    mcp_tool = pytest.importorskip("tools.mcp_tool")
+
+    monkeypatch.setenv("HERMES_CUSTOM_YUANJING_API_KEY", "sk-test-0000")
+    resolved = mcp_tool._interpolate_env_vars({"url": YUANJING_MCP_URL, "timeout": 600})
+    assert resolved == {"url": "https://maas.example/mcp?key=sk-test-0000&client_id=UniWork", "timeout": 600}
+
+
+def test_saving_the_config_keeps_the_key_placeholder() -> None:
+    """E11：hermes 读配置时把 ${…} 展开；用户改了别的设置、hermes 存回去时，那个地址照原样写回 ${…}，key 不落进 config.yaml。"""
+    from hermes_cli.config import _preserve_env_ref_templates
+
+    expanded = YUANJING_MCP_URL.replace("${HERMES_CUSTOM_YUANJING_API_KEY}", "sk-test-0000")
+    raw = {"mcp_servers": {"yuanjing": {"url": YUANJING_MCP_URL}}, "display": {"personality": "kawaii"}}
+    loaded = {"mcp_servers": {"yuanjing": {"url": expanded}}, "display": {"personality": "kawaii"}}
+    saved = {"mcp_servers": {"yuanjing": {"url": expanded}}, "display": {"personality": "concise"}}
+    kept = _preserve_env_ref_templates(saved, raw, loaded)
+    assert kept == {"mcp_servers": {"yuanjing": {"url": YUANJING_MCP_URL}}, "display": {"personality": "concise"}}
+
+
+def test_logs_mask_an_sk_key_in_an_mcp_address() -> None:
+    """E11：hermes 的 HTTP 日志会打出整个地址；写进日志文件前，sk- 开头的 key 按前缀打码。"""
+    from agent.redact import redact_sensitive_text
+
+    key = "sk-" + "0a1b2c3d" * 4
+    line = f"HTTP Request: POST https://maas.example/mcp?key={key}&client_id=UniWork \"HTTP/1.1 200 OK\""
+    masked = redact_sensitive_text(line)
+    assert key not in masked and "client_id=UniWork" in masked

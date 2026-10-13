@@ -1,7 +1,8 @@
 """转发器给用户用的接口（deploy/hermes-mt/seed/mtuser.py + forward.py 的 /__mt_user/ 分流）。
 
 pty 和真实文件操作要 Linux：容器里的整链路测试见 handover/tools/fwdtest/driver_batch2.py。
-这里测与平台无关的部分：WebSocket 帧、受保护目录、名字校验、回收站过期清理、令牌校验。
+这里测与平台无关的部分：WebSocket 帧、受保护目录、名字校验、回收站过期清理、令牌校验，
+以及 Office 预览（用假的 soffice：真 LibreOffice 的转换在实例镜像里验）。
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import struct
 import sys
 import time
 from pathlib import Path
+from urllib.parse import quote
 
 import pytest
 
@@ -179,6 +181,161 @@ async def test_user_routes_are_closed_while_draining(forward) -> None:
     writer = _Writer()
     await forward._handle_user("GET", "/__mt_user/trash", {"x-hermes-session-token": "tok"}, b"", None, writer)
     assert writer.data.startswith(b"HTTP/1.1 503")
+
+
+# ---------------------------------------------------------------- Office 文件预览（转 PDF）
+
+FAKE_SOFFICE = """
+import os, sys, time
+args = sys.argv[1:]
+log = os.environ["FAKE_SOFFICE_LOG"]
+with open(log, "a", encoding="utf-8") as fh:
+    fh.write(repr(args) + "\\n")
+mode = os.environ.get("FAKE_SOFFICE_MODE", "ok")
+if mode == "fail":
+    print("Error: source file could not be loaded")
+    sys.exit(1)
+if mode == "sleep":
+    time.sleep(30)
+outdir = args[args.index("--outdir") + 1]
+source = args[-1]
+stem = os.path.splitext(os.path.basename(source))[0]
+with open(source, "rb") as src, open(os.path.join(outdir, stem + ".pdf"), "wb") as out:
+    out.write(b"%PDF-1.4 fake of " + src.read())
+"""
+
+
+@pytest.fixture
+def office(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """工作区 + 假 soffice（照真的那样在 --outdir 里写 <名字>.pdf，并把每次的参数记下来）。"""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    script = tmp_path / "fake_soffice.py"
+    script.write_text(FAKE_SOFFICE, encoding="utf-8")
+    log = tmp_path / "soffice.log"
+    monkeypatch.setenv("FAKE_SOFFICE_LOG", str(log))
+    monkeypatch.setattr(mtuser, "soffice_command", lambda: [sys.executable, str(script)])
+    preview = mtuser.OfficePreview(workspace, cache_dir=tmp_path / "cache")
+    preview.log = log  # type: ignore[attr-defined]
+    return preview
+
+
+def _calls(preview) -> list[str]:
+    return preview.log.read_text(encoding="utf-8").splitlines() if preview.log.exists() else []
+
+
+def test_office_preview_only_takes_office_files_in_the_workspace(office, tmp_path: Path, monkeypatch) -> None:
+    ws = office.files.workspace
+    (ws / "deck.pptx").write_bytes(b"PK deck")
+    (ws / "notes.txt").write_text("x", encoding="utf-8")
+    (ws / "folder.docx").mkdir()
+    (tmp_path / "outside.pptx").write_bytes(b"PK")
+    cases = {
+        "relative.pptx": "invalid_path",
+        str(tmp_path / "outside.pptx"): "outside",
+        str(ws / "notes.txt"): "unsupported",
+        str(ws / "gone.xlsx"): "not_found",
+        str(ws / "folder.docx"): "not_found",
+    }
+    for path, code in cases.items():
+        with pytest.raises(mtuser.FileError) as exc:
+            office.locate(path)
+        assert exc.value.code == code, path
+    real, st = office.locate(str(ws / "deck.pptx"))
+    assert real.name == "deck.pptx" and st.st_size == 7
+    monkeypatch.setattr(mtuser, "OFFICE_MAX_BYTES", 3)
+    with pytest.raises(mtuser.FileError) as exc:
+        office.locate(str(ws / "deck.pptx"))
+    assert exc.value.code == "too_large" and exc.value.status == 413
+
+
+@pytest.mark.asyncio
+async def test_office_preview_converts_a_copy_once_and_reuses_it(office) -> None:
+    ws = office.files.workspace
+    deck = ws / "新疆 文旅.PPTX"
+    deck.write_bytes(b"PK v1")
+    first, again, *rest = await asyncio.gather(*(office.pdf(str(deck)) for _ in range(4)))
+    assert first == again and all(p == first for p in rest)
+    assert first.read_bytes() == b"%PDF-1.4 fake of PK v1"
+    calls = _calls(office)
+    assert len(calls) == 1  # 四个请求只转了一次
+    # 转的是工作目录里的 ASCII 副本，配置目录指到缓存目录；工作区里不留任何东西
+    assert "source.pptx" in calls[0] and "-env:UserInstallation=file:" in calls[0]
+    assert sorted(p.name for p in ws.iterdir()) == ["新疆 文旅.PPTX"]
+    assert [p.name for p in office.cache_dir.iterdir() if p.name.startswith("job-")] == []
+    assert await office.pdf(str(deck)) == first and len(_calls(office)) == 1
+    # 文件改了就重新转
+    deck.write_bytes(b"PK version 2")
+    os.utime(deck, (time.time() + 5, time.time() + 5))
+    second = await office.pdf(str(deck))
+    assert second != first and second.read_bytes().endswith(b"PK version 2") and len(_calls(office)) == 2
+
+
+@pytest.mark.asyncio
+async def test_office_preview_reports_why_it_could_not_convert(office, monkeypatch: pytest.MonkeyPatch) -> None:
+    deck = office.files.workspace / "broken.docx"
+    deck.write_bytes(b"not really")
+    monkeypatch.setenv("FAKE_SOFFICE_MODE", "fail")
+    with pytest.raises(mtuser.FileError) as exc:
+        await office.pdf(str(deck))
+    assert exc.value.code == "convert_failed" and "could not be loaded" in exc.value.message
+    monkeypatch.setenv("FAKE_SOFFICE_MODE", "sleep")
+    monkeypatch.setattr(mtuser, "OFFICE_TIMEOUT_S", 1.0)
+    with pytest.raises(mtuser.FileError) as exc:
+        await office.pdf(str(deck))
+    assert exc.value.code == "timeout" and exc.value.status == 504
+    monkeypatch.setattr(mtuser, "soffice_command", lambda: None)
+    with pytest.raises(mtuser.FileError) as exc:
+        await office.pdf(str(deck))
+    assert exc.value.code == "unavailable"
+    # 失败的不进缓存：下次还会再试
+    assert list(office.cache_dir.glob("*.pdf")) == []
+
+
+def test_office_preview_keeps_the_most_recent_pdfs(office) -> None:
+    cache = office.cache_dir
+    cache.mkdir()
+    now = time.time()
+    for i in range(33):
+        pdf = cache / f"{i:02d}.pdf"
+        pdf.write_bytes(b"%PDF")
+        os.utime(pdf, (now - i, now - i))
+    stale, fresh = cache / "job-stale", cache / "job-fresh"
+    stale.mkdir()
+    fresh.mkdir()
+    os.utime(stale, (now - 7200, now - 7200))
+    assert office.prune(keep=30, now=now) == 4
+    assert sorted(p.name for p in cache.glob("*.pdf")) == [f"{i:02d}.pdf" for i in range(30)]
+    assert fresh.exists() and not stale.exists()
+    # 总量也有上限（每份 4 字节，上限 10 字节 ⇒ 留最新两份）；最新那份再大也留着
+    assert office.prune(keep=30, max_bytes=10, now=now) == 28
+    assert sorted(p.name for p in cache.glob("*.pdf")) == ["00.pdf", "01.pdf"]
+    assert office.prune(keep=30, max_bytes=1, now=now) == 1
+    assert [p.name for p in cache.glob("*.pdf")] == ["00.pdf"]
+
+
+@pytest.mark.asyncio
+async def test_office_route_answers_with_the_pdf(forward, office, monkeypatch: pytest.MonkeyPatch) -> None:
+    forward._hermes_token = "tok"
+    forward._office = office
+    deck = office.files.workspace / "deck.xlsx"
+    deck.write_bytes(b"PK sheet")
+    auth = {"x-hermes-session-token": "tok"}
+    query = "path=" + quote(str(deck))
+    writer = _Writer()
+    await forward._handle_user("GET", f"/__mt_user/office-pdf?{query}", auth, b"", None, writer)
+    head, _, body = bytes(writer.data).partition(b"\r\n\r\n")
+    assert head.startswith(b"HTTP/1.1 200") and b"Content-Type: application/pdf" in head
+    assert f"Content-Length: {len(body)}".encode() in head and body == b"%PDF-1.4 fake of PK sheet"
+    writer = _Writer()
+    await forward._handle_user("POST", f"/__mt_user/office-pdf?{query}", auth, b"", None, writer)
+    assert writer.data.startswith(b"HTTP/1.1 405")
+    writer = _Writer()
+    await forward._handle_user("GET", "/__mt_user/office-pdf?path=%2Fetc%2Fpasswd.docx", auth, b"", None, writer)
+    assert writer.data.startswith(b"HTTP/1.1 40") and b'"code": "' in writer.data
+    writer = _Writer()
+    await forward._handle_user("GET", f"/__mt_user/office-pdf?{query}", {}, b"", None, writer)
+    assert writer.data.startswith(b"HTTP/1.1 403")
 
 
 def test_requests_passed_to_hermes_are_closed_after_the_response(forward) -> None:

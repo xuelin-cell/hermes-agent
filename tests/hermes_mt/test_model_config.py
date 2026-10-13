@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -13,7 +14,7 @@ from entry.config import Settings
 from entry.maas import Plan
 from entry.store import Store, TenantContext
 from entry import tenants as tenants_module
-from entry.tenants import PLATFORM_POLICY, TenantManager, parse_reasoning_defaults
+from entry.tenants import PLATFORM_POLICY, YUANJING_MCP_NAME, TenantManager, parse_reasoning_defaults
 
 SEED_DIR = Path(__file__).resolve().parents[2] / "deploy" / "hermes-mt" / "seed"
 
@@ -161,3 +162,73 @@ def test_old_entry_spec_still_patches_like_before(mtstate) -> None:
     cfg = yaml.safe_load(new_text)
     assert cfg["providers"]["yuanjing"]["models"] == {"m1": {}, "deepseek-v4.1-flash": {}}
     assert "model_catalog" not in cfg and "security" not in cfg and "agent" not in cfg
+    assert "mcp_servers" not in cfg
+
+
+# ---- 内置的元景 MCP（10-13）
+
+MCP_URL = "https://maas.ai-yuanjing.com/app/mcp-server/mcp?key=${HERMES_CUSTOM_YUANJING_API_KEY}&client_id=UniWork"
+
+
+def test_builtin_mcp_names_the_key_variable_not_the_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """地址里只有变量名，hermes 连接时从 .env 取；没套餐 key 的用户不给（连上去只会 401）。"""
+    mgr = _manager(monkeypatch)
+    assert mgr._mcp_servers("sk-secret") == {YUANJING_MCP_NAME: {"url": MCP_URL, "timeout": 600}}
+    assert mgr._mcp_servers("") == {YUANJING_MCP_NAME: None}
+    assert _manager(monkeypatch, yuanjing_mcp_url="")._mcp_servers("sk-secret") == {YUANJING_MCP_NAME: None}
+    other = _manager(monkeypatch, yuanjing_mcp_url="https://mcp.example/mcp?v=2", yuanjing_mcp_client_id="",
+                     key_env_name="K")
+    assert other._mcp_servers("sk-secret")[YUANJING_MCP_NAME]["url"] == "https://mcp.example/mcp?v=2&key=${K}"
+    odd = _manager(monkeypatch, yuanjing_mcp_client_id="a&b c")._mcp_servers("sk-secret")
+    assert odd[YUANJING_MCP_NAME]["url"].endswith("&client_id=a%26b%20c")
+
+
+def test_the_bootstrap_patch_carries_the_builtin_mcp_and_the_docker_path_does_not(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    mgr = _manager(monkeypatch)
+    endpoint, catalog = ("http://plan/v1", "m1"), [("m1", "")]
+    assert "mcp_servers" not in mgr._config_patch_spec(endpoint, catalog)  # Docker 路径：不碰
+    assert mgr._config_patch_spec(endpoint, catalog, api_key="")["mcp_servers"] == {YUANJING_MCP_NAME: None}
+    files = mgr._cube_seed_files("sk-secret", endpoint, catalog)
+    patch = next(f for f in files if f["overwrite"] == "patch-model")
+    assert json.loads(patch["content"])["mcp_servers"][YUANJING_MCP_NAME]["url"] == MCP_URL
+    # 明文 key 只进 .env
+    assert [f["path"] for f in files if "sk-secret" in f["content"]] == [".env"]
+
+
+def test_builtin_mcp_is_added_next_to_the_users_own_and_stays_put(mtstate) -> None:
+    user_cfg = "model: {}\nmcp_servers:\n  mine:\n    url: https://mine.example/mcp\n"
+    spec = _spec(mcp_servers={YUANJING_MCP_NAME: {"url": MCP_URL, "timeout": 600}})
+    new_text, notes = mtstate.patch_config_text(user_cfg, spec)
+    servers = yaml.safe_load(new_text)["mcp_servers"]
+    assert notes
+    assert servers == {"mine": {"url": "https://mine.example/mcp"}, "yuanjing": {"url": MCP_URL, "timeout": 600}}
+    again, notes = mtstate.patch_config_text(new_text, spec)
+    assert notes == [] and again == new_text  # 第二次引导没有变化
+
+
+def test_the_user_can_switch_the_builtin_mcp_off(mtstate) -> None:
+    """用户在界面里停用了：平台照样刷新地址，停用留着。"""
+    user_cfg = (
+        "model: {}\nmcp_servers:\n  yuanjing:\n    url: https://old.example/mcp\n    timeout: 30\n"
+        "    enabled: false\n"
+    )
+    spec = _spec(mcp_servers={YUANJING_MCP_NAME: {"url": MCP_URL, "timeout": 600}})
+    new_text, notes = mtstate.patch_config_text(user_cfg, spec)
+    assert notes and yaml.safe_load(new_text)["mcp_servers"]["yuanjing"] == {
+        "url": MCP_URL, "timeout": 600, "enabled": False}
+
+
+def test_builtin_mcp_goes_away_when_the_platform_stops_offering_it(mtstate) -> None:
+    user_cfg = (
+        "model: {}\nmcp_servers:\n  mine:\n    url: https://mine.example/mcp\n"
+        f"  yuanjing:\n    url: '{MCP_URL}'\n"
+    )
+    spec = _spec(mcp_servers={YUANJING_MCP_NAME: None})
+    new_text, notes = mtstate.patch_config_text(user_cfg, spec)
+    assert notes and yaml.safe_load(new_text)["mcp_servers"] == {"mine": {"url": "https://mine.example/mcp"}}
+    again, notes = mtstate.patch_config_text(new_text, spec)
+    assert notes == [] and again == new_text
+    # 本来就没有：什么都不加
+    plain, notes = mtstate.patch_config_text("model: {}\n", _spec(mcp_servers={YUANJING_MCP_NAME: None}))
+    assert "mcp_servers" not in yaml.safe_load(plain)

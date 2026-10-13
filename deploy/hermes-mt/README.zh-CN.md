@@ -113,6 +113,10 @@ HERMES_DASHBOARD_SESSION_TOKEN>`，REST 加 `X-Hermes-Session-Token` ④ `Host` 
 端点或模型清单任一变化都会触发同步（`.mt/endpoint.stamp` 记的是两者）。JWT 不验签、不解码，只信
 登录那一跳；入口自己签不透明的 cookie，有效期不超过上游给的 `expiresAt`。**没套餐 = 没 key**，不会拿平台的 key 兜底。
 
+同一把套餐 key 也给内置的元景 MCP 用（搜图、文生图等）：入口每次引导在 `config.yaml` 写 `mcp_servers.yuanjing`，地址是
+`MT_YUANJING_MCP_URL?key=${HERMES_CUSTOM_YUANJING_API_KEY}&client_id=UniWork`，key 由 hermes 连接时从 `.env` 取，配置文件里没有明文。
+`client_id` 要在元景 mcp-server 的白名单里，否则套餐 key 调下游会回 1004。没套餐的用户不写这一条；地址设成空就是不提供。
+
 重新登录会重新读取 MaaS 当前返回的 Key，但不假设 MaaS 每次都会生成新 Key。若 Key 发生变化，
 Entry 不重启租户容器，而是原子更新卷内 `.env`；该用户所有已有会话在各自的**下一轮对话开始时**
 复用 Hermes 现有刷新逻辑重建模型客户端。已经执行中的一轮不会中途换 Key。

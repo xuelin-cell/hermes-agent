@@ -13,6 +13,8 @@ import {
   isDeveloperMode,
   isInstanceLocalUrl,
   isSettingsViewHidden,
+  officePreviewPdf,
+  previewsOfficeAsPdf,
   remoteHtmlFrameDocument,
   remoteHtmlFrameSandbox,
   sidebarPageOutlivesReactivation,
@@ -21,6 +23,13 @@ import {
   withoutHiddenNavItems,
   withoutHiddenPaletteItems
 } from './browser-shell'
+
+// The bridge fetches the PDF from the instance (its own tests cover that).
+const bridge = vi.hoisted(() => ({
+  officePreviewDataUrl: vi.fn(async () => 'data:application/pdf;base64,JVBERi0xLjc=')
+}))
+
+vi.mock('@/dev/browser-bridge', () => bridge)
 
 // UniWork's developer mode (store/developer-mode.ts), which the browser build follows.
 const DEVELOPER_MODE_KEY = 'uniwork.desktop.developerMode.v1'
@@ -237,6 +246,32 @@ describe('browser shell', () => {
     document.documentElement.dataset.hermesBrowser = 'production'
 
     expect(sidebarPageOutlivesReactivation()).toBe(true)
+  })
+
+  it('previews Office files as the PDF the instance makes of them, in the browser build only', async () => {
+    expect(previewsOfficeAsPdf('/w/deck.pptx')).toBe(false)
+    expect(officePreviewPdf('/w/deck.pptx')).toBeNull()
+
+    document.documentElement.dataset.hermesBrowser = 'production'
+
+    expect(['/w/a.pptx', '/w/b.DOCX', '/w/c.xls', '/w/d.odp', '/w/e.ppt', '/w/f.doc'].map(previewsOfficeAsPdf)).toEqual(
+      [true, true, true, true, true, true]
+    )
+    expect(['/w/a.pdf', '/w/notes.txt', '/w/pptx', '/w/a.pptx.md', '/w/a.docm'].map(previewsOfficeAsPdf)).toEqual([
+      false,
+      false,
+      false,
+      false,
+      false
+    ])
+    expect(officePreviewPdf('/w/notes.md')).toBeNull()
+    await expect(officePreviewPdf('/w/新疆文旅.pptx')).resolves.toBe('data:application/pdf;base64,JVBERi0xLjc=')
+    expect(bridge.officePreviewDataUrl).toHaveBeenCalledWith('/w/新疆文旅.pptx')
+
+    setRuntimeI18nLocale('zh')
+
+    expect(browserShellCopy().officePreview.too_large).toBe('文件太大，不能在线预览，请下载后查看。')
+    expect(browserShellCopy('en').officePreview.convert_failed).toMatch(/Download it instead/)
   })
 
   it('speaks the interface language', () => {

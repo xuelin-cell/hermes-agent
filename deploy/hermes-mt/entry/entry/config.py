@@ -128,6 +128,13 @@ class Settings:
     # 智谱 GLM 5.3 Flash 都不收（10-10 实测），high 几家都收。空 = 不写，用 hermes 自己的默认。
     default_reasoning_effort: str = _env("MT_DEFAULT_REASONING_EFFORT", "high").strip()
 
+    # 内置的元景 MCP（搜图、文生图、图片理解、语音、翻译等工具）：每次引导写进 config.yaml 的 mcp_servers.yuanjing。
+    # key 不写明文：地址里是 ${MT_KEY_ENV_NAME 那个变量}，hermes 连接时从 .env 取，就是模型用的那把套餐 key。
+    # client_id 要在元景 mcp-server 的白名单里（UniWork）：白名单里的只拿用户的 key 验身份，调下游用平台的 key；
+    # 不在白名单就拿用户的套餐 key 调下游，会回 1004。地址设成空 = 不提供（实例下次引导时删掉这一条）。
+    yuanjing_mcp_url: str = _env("MT_YUANJING_MCP_URL", "https://maas.ai-yuanjing.com/app/mcp-server/mcp")
+    yuanjing_mcp_client_id: str = _env("MT_YUANJING_MCP_CLIENT_ID", "UniWork")
+
     # 开发模式：不走短信登录，任意用户名直接进；模型 key 用 MT_DEV_API_KEY。生产必须关。
     dev_login: bool = _env("MT_DEV_LOGIN", "0") == "1"
     dev_api_key: str = _env("MT_DEV_API_KEY", "")

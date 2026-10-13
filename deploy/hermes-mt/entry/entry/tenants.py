@@ -27,6 +27,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 import aiohttp
 
@@ -43,6 +44,12 @@ DEFAULT_SOUL_FILE = Path(__file__).resolve().parent / "default_soul.md"
 
 # 平台正在删的实例：控制面还列得出来，但不能再当"在"用。
 GONE_STATES = frozenset({"deleting", "terminating", "deleted"})
+
+# 内置的元景 MCP 在 config.yaml 里叫这个名字，agent 看到的工具名是 mcp__yuanjing__<工具>。这一条归平台：
+# 每次引导按平台的写（用户在界面里停用的保留停用），平台不提供时删掉。
+YUANJING_MCP_NAME = "yuanjing"
+# 元景 mcp-server 最慢的工具（文档翻译）要 10 分钟；hermes 默认一次工具调用最多等 300 秒。
+YUANJING_MCP_TIMEOUT_S = 600
 
 # 平台策略：每次引导都按这里写进用户的 config.yaml（seed/mtstate.py 的 apply_platform_block）。
 PLATFORM_POLICY = {
@@ -485,18 +492,36 @@ class TenantManager:
             return PLATFORM_POLICY
         return {**PLATFORM_POLICY, "agent": {"reasoning_effort": effort}}
 
+    def _mcp_servers(self, api_key: str) -> dict:
+        """平台内置的 MCP 服务，{名字: 配置}；配置为 None = 平台不提供，实例里有这一条就删掉。
+
+        key 不写明文：地址里写 ``${<key 的变量名>}``，hermes 连接时从 .env 取 —— 就是 .env 里模型用的那把
+        套餐 key，换 key 只动 .env。没有 key 的用户（没套餐）不给这一条：连上去只会 401。
+        """
+        url = self.s.yuanjing_mcp_url.strip()
+        if not url or not api_key:
+            return {YUANJING_MCP_NAME: None}
+        params = [f"key=${{{self.s.key_env_name}}}"]
+        if self.s.yuanjing_mcp_client_id:
+            params.append("client_id=" + quote(self.s.yuanjing_mcp_client_id, safe=""))
+        sep = "&" if "?" in url else "?"
+        return {YUANJING_MCP_NAME: {"url": url + sep + "&".join(params), "timeout": YUANJING_MCP_TIMEOUT_S}}
+
     def _config_patch_spec(
         self,
         endpoint: tuple[str, str] | None,
         catalog: list[tuple[str, str]] | None,
         limits: dict[str, int] | None = None,
+        api_key: str | None = None,
     ) -> dict:
         """patch-model 的内容：平台块四项 + 套餐清单 + 每个模型的上下文长度 + 平台策略 + 推理强度预设，
-        外加一份渲染好的模板（文件坏到救不回来时按它重建）。见 seed/mtstate.py 的 apply_platform_block。"""
+        外加一份渲染好的模板（文件坏到救不回来时按它重建）。见 seed/mtstate.py 的 apply_platform_block。
+
+        给了 ``api_key``（沙箱路径的引导）才带内置 MCP；Docker 路径不传，实例里的 MCP 配置不动。"""
         base_url, model_name = endpoint or ("", "")
         model = model_name or self.s.model_name
         names = [n for n, _ in (catalog or [])]
-        return {
+        spec = {
             "base_url": base_url or self.s.model_base_url,
             "model": model,
             "provider_key": self.s.provider_key,
@@ -507,6 +532,9 @@ class TenantManager:
             "reasoning_defaults": parse_reasoning_defaults(self.s.reasoning_defaults),
             "template": self._render_user_files("", endpoint, catalog, limits)["config.yaml"].decode("utf-8"),
         }
+        if api_key is not None:
+            spec["mcp_servers"] = self._mcp_servers(api_key)
+        return spec
 
     def _cube_seed_files(
         self,
@@ -527,7 +555,7 @@ class TenantManager:
            ``if-pristine`` 的判据是与镜像里的示例逐字节比对，见 seed/forward.py。
         """
         rendered = self._render_user_files(api_key, endpoint, catalog, limits)
-        patch = self._config_patch_spec(endpoint, catalog, limits)
+        patch = self._config_patch_spec(endpoint, catalog, limits, api_key=api_key or "")
         return [
             {
                 "path": "config.yaml",

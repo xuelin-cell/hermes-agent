@@ -1,5 +1,6 @@
 import DOMPurify from 'dompurify'
 
+import { previewsOfficeAsPdf } from '@/lib/browser-shell'
 import { isDesktopFsRemoteMode, readDesktopFileDataUrl, readDesktopFileText } from '@/lib/desktop-fs'
 import type { PreviewTarget } from '@/store/preview'
 
@@ -204,7 +205,7 @@ export function localPreviewTarget(rawTarget: string, cwd?: string | null): Prev
   const ext = extension(path)
   const isHtml = HTML_EXTENSIONS.has(ext)
   const isImage = IMAGE_EXTENSIONS.has(ext)
-  const isPdf = PDF_EXTENSIONS.has(ext)
+  const isPdf = PDF_EXTENSIONS.has(ext) || previewsOfficeAsPdf(path)
 
   return {
     kind: 'file',

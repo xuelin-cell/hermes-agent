@@ -11,7 +11,8 @@ import {
   browserShellCopy,
   HTML_PREVIEW_SANDBOX,
   type InstanceFileErrorCode,
-  isInstanceLocalUrl
+  isInstanceLocalUrl,
+  type OfficePreviewErrorCode
 } from '@/lib/browser-shell'
 
 const noopOff = () => () => undefined
@@ -723,6 +724,55 @@ async function renamePath(path: string, newName: string): Promise<{ path: string
   await closePreviewsFor(moved.old_paths ?? [])
 
   return { path: moved.path }
+}
+
+// ---------------------------------------------------------------------------
+// Office files (Word, PowerPoint, Excel) preview as PDF: the instance converts
+// them with LibreOffice (`/__mt_user/office-pdf`, deploy/hermes-mt/seed/
+// mtuser.py) and the preview pane shows the PDF like any other. A converted
+// file is kept until it changes, so opening it again is quick.
+// ---------------------------------------------------------------------------
+
+function isOfficePreviewErrorCode(code: string): code is OfficePreviewErrorCode {
+  return code in browserShellCopy().officePreview
+}
+
+function officePreviewError(status: number, body: string): Error {
+  const copy = browserShellCopy()
+  let code = ''
+
+  try {
+    code = String((JSON.parse(body) as { code?: unknown }).code ?? '')
+  } catch {
+    // Not the instance's JSON: the entry or the platform answered.
+  }
+
+  if (isOfficePreviewErrorCode(code)) {
+    return new Error(copy.officePreview[code])
+  }
+
+  // An instance from before this release: its forwarder does not know the route.
+  return new Error(status === 404 ? copy.instanceOutdated : copy.officePreview.failed)
+}
+
+/** The PDF the instance makes of an Office file, as a `data:application/pdf` URL. */
+export async function officePreviewDataUrl(path: string): Promise<string> {
+  let response: Response
+
+  try {
+    response = await fetch(`${apiPrefix()}/__mt_user/office-pdf?path=${encodeURIComponent(plainPath(path))}`, {
+      credentials: credentials(),
+      headers: authHeaders()
+    })
+  } catch {
+    throw new Error(browserShellCopy().officePreview.failed)
+  }
+
+  if (!response.ok) {
+    throw officePreviewError(response.status, await response.text())
+  }
+
+  return blobToDataUrl(new Blob([await response.arrayBuffer()], { type: 'application/pdf' }))
 }
 
 // ---------------------------------------------------------------------------

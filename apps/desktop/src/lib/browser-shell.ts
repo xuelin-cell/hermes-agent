@@ -22,6 +22,7 @@ import { storedBoolean } from '@/lib/storage'
  *   app/artifacts/cloud-drive-tab.tsx                  the personal cloud drive tab says it is in development
  *   app/artifacts/index.tsx                            the library opens on local artifacts
  *   app/auth/auth-gate.tsx                             no UniWork sign-in page: the entry has signed the user in
+ *   app/chat/right-rail/preview-file.tsx               Office files show as the PDF the instance converts them to
  *   app/chat/right-rail/preview-pane.tsx               HTML files from the instance run their scripts, sandboxed
  *   app/chat/sidebar/filter-menu.tsx                   * no profile submenu (filter / new / import)
  *   app/chat/sidebar/index.tsx                         * no messaging platforms entry
@@ -38,6 +39,7 @@ import { storedBoolean } from '@/lib/storage'
  *   app/shell/gateway-menu-panel.tsx                   * no gateway restart
  *   app/skills/skill-market.tsx                        installing from the market says it is in development
  *   contrib/plugins.ts                                 * no Bot Mode (the BOTS tab): its plugin is not started
+ *   lib/local-preview.ts                               Office files (pptx, docx, xlsx …) open as PDF previews
  *   lib/model-options.ts                               * model pickers: the platform's providers only
  *   store/developer-mode.ts                            flipping UniWork's developer mode reloads the page
  *   store/preview.ts                                   no in-app browser: links and URL previews open in a new tab
@@ -165,6 +167,25 @@ export function remoteHtmlFrameSandbox(): string {
   return isBrowserShell() ? HTML_PREVIEW_SANDBOX : ''
 }
 
+const OFFICE_FILE_RE = /\.(?:docx?|pptx?|xlsx?|od[pst])$/i
+
+/** Office files (Word, PowerPoint, Excel and their OpenDocument kin) in the
+ * browser build. The preview pane has no Office viewer: upstream reads them as
+ * binary, and "preview anyway" shows the zip bytes as text. The instance turns
+ * them into a PDF with LibreOffice and the pane shows that PDF. */
+export function previewsOfficeAsPdf(path: string): boolean {
+  return isBrowserShell() && OFFICE_FILE_RE.test(path)
+}
+
+/** The preview pane's bytes for an Office file: the PDF the instance makes of
+ * it, as a `data:application/pdf` URL. Null for every other file, which the pane
+ * reads as usual. */
+export function officePreviewPdf(path: string): null | Promise<string> {
+  return previewsOfficeAsPdf(path)
+    ? import('@/dev/browser-bridge').then(bridge => bridge.officePreviewDataUrl(path))
+    : null
+}
+
 const INSTANCE_LOCAL_HOST_RE = /^(?:localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|\[::1\])$/i
 
 /** A web address on the agent's own machine (a dev server it started, …). In
@@ -241,6 +262,11 @@ export function browserShellZoom(): AppZoom {
 /** Codes the instance's file endpoints answer with (`deploy/hermes-mt/seed/mtuser.py`). */
 export type InstanceFileErrorCode = 'exists' | 'invalid_name' | 'not_found' | 'outside' | 'protected'
 
+/** Why the instance could not make a PDF of an Office file (same module), plus
+ * `failed` for anything else. */
+export type OfficePreviewErrorCode =
+  'convert_failed' | 'failed' | 'not_found' | 'outside' | 'timeout' | 'too_large' | 'unavailable' | 'unsupported'
+
 interface BrowserShellCopy {
   agentOpenedLink: (host: string) => string
   deleteBody: (isDirectory: boolean) => string
@@ -249,6 +275,7 @@ interface BrowserShellCopy {
   instanceLocalUrl: (host: string) => string
   instanceOutdated: string
   movedToTrash: (name: string) => string
+  officePreview: Record<OfficePreviewErrorCode, string>
   open: string
   popupBlocked: string
   previewTitle: string
@@ -279,6 +306,17 @@ const COPY: Record<'en' | 'zh', BrowserShellCopy> = {
       `${host} is a web service inside your cloud instance. The browser version cannot open it yet.`,
     instanceOutdated: 'Your instance is being upgraded. Reload the page and try again.',
     movedToTrash: (name: string) => `Moved “${name}” to the recycle bin.`,
+    officePreview: {
+      convert_failed:
+        'This file could not be turned into a preview. It may be damaged or in a format that is not supported. Download it instead.',
+      failed: 'Could not make a preview of this file. Download it instead.',
+      not_found: 'The file is no longer there.',
+      outside: 'Only files in the workspace can be previewed. Download it instead.',
+      timeout: 'Making the preview took too long. Try again later, or download the file.',
+      too_large: 'This file is too large to preview. Download it instead.',
+      unavailable: 'Your instance cannot make previews right now. Download the file instead.',
+      unsupported: 'Files of this kind cannot be previewed. Download it instead.'
+    },
     open: 'Open',
     popupBlocked: 'The browser blocked the new tab. Allow pop-ups for this site and try again.',
     previewTitle: 'Preview',
@@ -304,6 +342,16 @@ const COPY: Record<'en' | 'zh', BrowserShellCopy> = {
     instanceLocalUrl: (host: string) => `这是实例里的网页服务（${host}），浏览器版暂时打不开。`,
     instanceOutdated: '实例正在升级，请刷新页面后再试。',
     movedToTrash: (name: string) => `已把「${name}」移到回收站。`,
+    officePreview: {
+      convert_failed: '这个文件转不成预览，可能已损坏或格式不受支持，请下载后查看。',
+      failed: '生成预览失败，请下载后查看。',
+      not_found: '文件已经不在了。',
+      outside: '只能预览工作区里的文件，请下载后查看。',
+      timeout: '生成预览超时，请稍后再试，或下载后查看。',
+      too_large: '文件太大，不能在线预览，请下载后查看。',
+      unavailable: '实例暂时不能生成预览，请下载后查看。',
+      unsupported: '这种文件不能在线预览，请下载后查看。'
+    },
     open: '打开',
     popupBlocked: '浏览器拦截了新标签页，请允许本站弹出窗口后再试。',
     previewTitle: '预览',

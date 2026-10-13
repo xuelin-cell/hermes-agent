@@ -1,11 +1,12 @@
-"""实例里给用户用的接口：命令行通道、回收站、重命名。
+"""实例里给用户用的接口：命令行通道、回收站、重命名、Office 文件预览。
 
 浏览器经入口的 ``/__hermes_backend/__mt_user/…`` 转进来，路径原样落到转发器的 ``/__mt_user/…``。
 令牌校验和分流在 forward.py，这里只管干活。只用标准库；pty 相关的模块用到时才导入，
 好让 Windows 上的单元测试也能导入本文件。
 
 为什么不用 hermes 自己的：hermes 的 ``/api/pty`` 起的是它的命令行聊天界面、不是 shell；
-它也没有重命名接口，删除是直接删。浏览器版的右侧终端、回收站、改名都要在实例里另做。
+它也没有重命名接口，删除是直接删；预览面板不认 Office 文件，pptx 会被当成二进制。
+浏览器版的右侧终端、回收站、改名、Office 预览都要在实例里另做。
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import codecs
+import contextlib
 import hashlib
 import json
 import os
@@ -21,7 +23,9 @@ import re
 import secrets
 import shutil
 import signal
+import stat
 import struct
+import tempfile
 import time
 from pathlib import Path
 
@@ -674,5 +678,203 @@ class Files:
             match = _ENTRY_ID.match(entry.name)
             if match and now_ms - int(match.group(1)) > keep_s * 1000:
                 shutil.rmtree(entry, ignore_errors=True)
+                removed += 1
+        return removed
+
+
+# ---------------------------------------------------------------- Office 文件预览
+
+# 预览面板只会显示文本、图片、PDF 和网页，Word / PowerPoint / Excel 在它眼里是二进制。这里用镜像里的
+# LibreOffice 把它们转成 PDF，面板按 PDF 显示。转好的放在本地盘（不进卷、不进归档），按「真实路径 +
+# 大小 + 修改时间」认，文件一改就重新转。同一时间只转一个；浏览器等不及断开了，这次转换照样做完，
+# 下次打开直接用。
+OFFICE_EXTENSIONS = frozenset({".doc", ".docx", ".odp", ".ods", ".odt", ".ppt", ".pptx", ".xls", ".xlsx"})
+OFFICE_MAX_BYTES = int(os.environ.get("MT_OFFICE_PREVIEW_MAX_BYTES", str(100 << 20)))
+OFFICE_PDF_MAX_BYTES = int(os.environ.get("MT_OFFICE_PREVIEW_PDF_MAX_BYTES", str(50 << 20)))
+OFFICE_TIMEOUT_S = float(os.environ.get("MT_OFFICE_PREVIEW_TIMEOUT_S", "180"))
+OFFICE_CACHE_DIR = Path(os.environ.get("MT_OFFICE_PREVIEW_DIR", "/tmp/mt-office-preview"))
+# 缓存在实例的可写层上，和对话库共用那几 G：份数和总量都要有上限。
+OFFICE_CACHE_KEEP = 30
+OFFICE_CACHE_MAX_BYTES = 500 << 20
+_JOB_PREFIX = "job-"
+_JOB_STALE_S = 3600
+
+
+def soffice_command() -> list[str] | None:
+    """LibreOffice 的命令行；没装就是 None。"""
+    for name in ("soffice", "libreoffice"):
+        found = shutil.which(name)
+        if found:
+            return [found]
+    return None
+
+
+def _kill_group(proc: asyncio.subprocess.Process) -> None:
+    """soffice 会再起一个 soffice.bin：整组一起杀。"""
+    if proc.returncode is not None:
+        return
+    try:
+        if hasattr(os, "killpg"):
+            os.killpg(proc.pid, signal.SIGKILL)
+        else:
+            proc.kill()
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
+def _tail(output: str, limit: int = 300) -> str:
+    lines = [ln.strip() for ln in output.splitlines() if ln.strip()]
+    return " / ".join(lines)[-limit:] or "LibreOffice 没有给出原因"
+
+
+class OfficePreview:
+    """Office 文件转 PDF。转发器里只有一个：锁和「正在转哪些」要跨请求共用。"""
+
+    def __init__(self, workspace: Path, cache_dir: Path = OFFICE_CACHE_DIR):
+        self.files = Files(workspace)
+        self.cache_dir = Path(cache_dir)
+        self._lock: asyncio.Lock | None = None
+        self._jobs: dict[str, asyncio.Future] = {}
+
+    def locate(self, path: object) -> tuple[Path, os.stat_result]:
+        """返回 (真实路径, stat)。只认工作区里的 Office 文件（链接解开后算）。"""
+        if not isinstance(path, str) or not os.path.isabs(path) or "\0" in path:
+            raise FileError(400, "invalid_path", "路径不合法")
+        real = Path(os.path.realpath(path))
+        if not self.files._within(real):
+            raise FileError(403, "outside", "只能预览工作区里的文件")
+        if real.suffix.lower() not in OFFICE_EXTENSIONS:
+            raise FileError(415, "unsupported", "这种文件不能转成 PDF 预览")
+        try:
+            st = real.stat()
+        except OSError as exc:
+            raise FileError(404, "not_found", "文件不存在") from exc
+        if not stat.S_ISREG(st.st_mode):
+            raise FileError(404, "not_found", "文件不存在")
+        if st.st_size > OFFICE_MAX_BYTES:
+            raise FileError(413, "too_large", f"文件超过 {OFFICE_MAX_BYTES >> 20} MB，不能在线预览")
+        return real, st
+
+    async def pdf(self, path: object) -> Path:
+        """这个文件对应的 PDF（缓存里有就直接给）。出错抛 FileError。"""
+        real, st = await asyncio.to_thread(self.locate, path)
+        ident = f"{real}\0{st.st_size}\0{st.st_mtime_ns}".encode("utf-8", "surrogateescape")
+        key = hashlib.sha256(ident).hexdigest()[:40]
+        out = self.cache_dir / f"{key}.pdf"
+        if out.is_file():
+            with contextlib.suppress(OSError):
+                os.utime(out)  # 清理按修改时间留最近用过的
+            return out
+        job = self._jobs.get(key)
+        if job is None:
+            job = asyncio.ensure_future(self._convert(real, out))
+            self._jobs[key] = job
+            job.add_done_callback(lambda done: self._finished(key, done))
+        # 浏览器断开时取消的只是这次等待，转换本身接着做完。
+        return await asyncio.shield(job)
+
+    def _finished(self, key: str, job: asyncio.Future) -> None:
+        self._jobs.pop(key, None)
+        if not job.cancelled():
+            job.exception()  # 没人在等时也算取走了，免得事件循环报「异常没人看」
+
+    async def _convert(self, real: Path, out: Path) -> Path:
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        async with self._lock:
+            if out.is_file():
+                return out
+            command = soffice_command()
+            if command is None:
+                raise FileError(501, "unavailable", "实例里没有 LibreOffice，不能生成预览")
+            await asyncio.to_thread(self._prepare)
+            work = Path(await asyncio.to_thread(tempfile.mkdtemp, prefix=_JOB_PREFIX, dir=str(self.cache_dir)))
+            try:
+                # 拷一份 ASCII 名字的副本去转：LibreOffice 会在文档旁边放锁文件，不能让它出现在用户的工作区里；
+                # 文件名里的中文、空格也就不用操心它的命令行怎么解析。
+                source = work / f"source{real.suffix.lower()}"
+                await asyncio.to_thread(shutil.copyfile, real, source)
+                profile = (self.cache_dir / "profile").resolve().as_uri()
+                code, output = await self._run(command + [
+                    f"-env:UserInstallation={profile}",
+                    "--headless", "--invisible", "--nologo", "--nodefault", "--norestore",
+                    "--nolockcheck", "--nofirststartwizard",
+                    "--convert-to", "pdf", "--outdir", str(work), str(source),
+                ], work)
+                produced = work / "source.pdf"
+                size = produced.stat().st_size if produced.is_file() else 0
+                if code != 0 or size == 0:
+                    await asyncio.to_thread(shutil.rmtree, self.cache_dir / "profile", True)
+                    raise FileError(422, "convert_failed", "转换失败：" + _tail(output))
+                if size > OFFICE_PDF_MAX_BYTES:
+                    raise FileError(413, "too_large", f"转出来的 PDF 超过 {OFFICE_PDF_MAX_BYTES >> 20} MB，不能在线预览")
+                os.replace(produced, out)
+            finally:
+                await asyncio.to_thread(shutil.rmtree, work, True)
+            await asyncio.to_thread(self.prune)
+            return out
+
+    async def _run(self, argv: list[str], cwd: Path) -> tuple[int, str]:
+        proc = await asyncio.create_subprocess_exec(
+            *argv,
+            cwd=str(cwd), env=self._env(),
+            stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+            start_new_session=True,
+        )
+        try:
+            raw, _ = await asyncio.wait_for(proc.communicate(), timeout=OFFICE_TIMEOUT_S)
+        except asyncio.TimeoutError:
+            _kill_group(proc)
+            await proc.wait()
+            # 杀掉的 soffice 可能把配置目录留在「使用中」，下一次换个干净的。
+            await asyncio.to_thread(shutil.rmtree, self.cache_dir / "profile", True)
+            raise FileError(504, "timeout", f"生成预览超过 {int(OFFICE_TIMEOUT_S)} 秒") from None
+        except BaseException:
+            _kill_group(proc)
+            raise
+        return proc.returncode or 0, raw.decode("utf-8", "replace")
+
+    def _env(self) -> dict[str, str]:
+        env = {k: v for k, v in os.environ.items() if not k.startswith("MT_")}
+        env.pop("HERMES_DASHBOARD_SESSION_TOKEN", None)
+        # 配置目录由 -env:UserInstallation 指到缓存目录；HOME 也指过去，字体缓存之类不落进用户的数据目录。
+        env["HOME"] = str(self.cache_dir / "home")
+        env.setdefault("LANG", "C.UTF-8")
+        return env
+
+    def _prepare(self) -> None:
+        (self.cache_dir / "home").mkdir(parents=True, exist_ok=True)
+        with contextlib.suppress(OSError):
+            self.cache_dir.chmod(0o700)
+
+    def prune(self, keep: int = OFFICE_CACHE_KEEP, max_bytes: int = OFFICE_CACHE_MAX_BYTES,
+              now: float | None = None) -> int:
+        """只留最近用过的 PDF：最多 keep 份、合计不超过 max_bytes（最新那份总留着）；
+        崩溃留下的转换目录过一小时清掉。返回删了几项。"""
+        now = time.time() if now is None else now
+        removed = 0
+        pdfs: list[tuple[float, int, Path]] = []
+        try:
+            entries = list(self.cache_dir.iterdir())
+        except OSError:
+            return 0
+        for entry in entries:
+            try:
+                st = entry.stat()
+            except OSError:
+                continue
+            if entry.suffix == ".pdf" and entry.is_file():
+                pdfs.append((st.st_mtime, st.st_size, entry))
+            elif entry.name.startswith(_JOB_PREFIX) and now - st.st_mtime > _JOB_STALE_S:
+                shutil.rmtree(entry, ignore_errors=True)
+                removed += 1
+        pdfs.sort(key=lambda item: item[0], reverse=True)
+        total = 0
+        for i, (_, size, entry) in enumerate(pdfs):
+            total += size
+            if i == 0 or (i < keep and total <= max_bytes):
+                continue
+            with contextlib.suppress(OSError):
+                entry.unlink()
                 removed += 1
         return removed

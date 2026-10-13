@@ -779,7 +779,7 @@ def _platform_snapshot(cfg, key: str, policy: dict | None = None) -> str:
     model = cfg.get("model") if isinstance(cfg.get("model"), dict) else {}
     providers = cfg.get("providers") if isinstance(cfg.get("providers"), dict) else {}
     agent = cfg.get("agent") if isinstance(cfg.get("agent"), dict) else {}
-    sections = {"model_catalog", "security", *(str(k) for k in (policy or {}))}
+    sections = {"model_catalog", "security", "mcp_servers", *(str(k) for k in (policy or {}))}
     return json.dumps({
         "model": {k: model.get(k) for k in ("default", "provider", "base_url", "key_env")},
         "provider": providers.get(key),
@@ -814,6 +814,27 @@ def _apply_policy(cfg, policy: dict) -> None:
                 section[str(leaf)] = value
 
 
+def _apply_mcp_servers(cfg, servers: dict) -> None:
+    """平台内置的 MCP 服务，{名字: 配置或 None}。平台给的字段（地址、超时）每次按平台的写，
+    这一条里用户自己加的（比如在界面里停用了）留着；None = 平台不再提供，删掉这一条。"""
+    for name, conf in servers.items():
+        name = str(name)
+        if conf is None:
+            existing = cfg.get("mcp_servers")
+            if isinstance(existing, dict) and name in existing:
+                del existing[name]
+            continue
+        if not isinstance(conf, dict):
+            continue
+        section = _section(cfg, "mcp_servers")
+        entry = section.get(name)
+        if not isinstance(entry, dict):
+            entry = {}
+            section[name] = entry
+        for key, value in conf.items():
+            entry[str(key)] = value
+
+
 def _apply_reasoning_defaults(cfg, defaults: dict) -> None:
     """按模型预设推理强度：只补用户没设过的模型，用户自己写过的（任何写法）不动。"""
     defaults = {str(m).strip(): str(e).strip() for m, e in defaults.items() if str(m).strip() and str(e).strip()}
@@ -840,9 +861,10 @@ def apply_platform_block(cfg, spec: dict) -> bool:
     """把入口下发的平台块写进解析后的配置。返回有没有改动。
 
     平台归平台：model 段的 provider / base_url / key_env，providers.<key> 整块（端点、key 来源、模型清单
-    和每个模型的上下文长度），以及平台策略（policy，如关在线模型目录、关临时装包）。
+    和每个模型的上下文长度），平台策略（policy，如关在线模型目录、关临时装包），以及平台内置的 MCP 服务
+    （mcp_servers，入口没给这一项就不碰）。
     用户归用户：model.default 保留他自己选的，只要在套餐清单里；推理强度预设只补他没设过的模型；
-    别的段一概不碰。
+    内置 MCP 那一条里用户停用了就保留停用；别的段一概不碰。
     """
     key = str(spec.get("provider_key", "")).strip()
     base_url = str(spec.get("base_url", "")).strip()
@@ -894,6 +916,8 @@ def apply_platform_block(cfg, spec: dict) -> bool:
             entry["models"] = {chosen: _model_entry(chosen, limits)} if chosen else {}
     if policy:
         _apply_policy(cfg, policy)
+    if isinstance(spec.get("mcp_servers"), dict):
+        _apply_mcp_servers(cfg, spec["mcp_servers"])
     if isinstance(spec.get("reasoning_defaults"), dict):
         _apply_reasoning_defaults(cfg, spec["reasoning_defaults"])
     return _platform_snapshot(cfg, key, policy) != before

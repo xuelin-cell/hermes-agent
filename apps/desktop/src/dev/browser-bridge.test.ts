@@ -517,6 +517,57 @@ describe('browser bridge: rename and the recycle bin', () => {
   })
 })
 
+describe('browser bridge: Office files preview as PDF', () => {
+  it('fetches the PDF the instance makes of the file', async () => {
+    const mod = await installFresh()
+    const path = '/mnt/u/workspace/新疆 文旅.pptx'
+
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(new TextEncoder().encode('%PDF-1.7 deck'), {
+          headers: { 'content-type': 'application/pdf' },
+          status: 200
+        })
+    ) as typeof fetch
+
+    const dataUrl = await mod.officePreviewDataUrl(`file://${path}`)
+
+    expect(dataUrl.startsWith('data:application/pdf;base64,')).toBe(true)
+    expect(atob(dataUrl.slice(dataUrl.indexOf(',') + 1))).toBe('%PDF-1.7 deck')
+    const [url, init] = vi.mocked(globalThis.fetch).mock.calls[0] ?? []
+
+    expect(url).toBe(`/__hermes_backend/__mt_user/office-pdf?path=${encodeURIComponent(path)}`)
+    expect(new Headers(init?.headers).get('X-Hermes-Session-Token')).toBe('hermes-browser-dev')
+  })
+
+  it('says why there is no preview, in the interface language', async () => {
+    const mod = await installFresh()
+
+    const replies = [
+      jsonResponse({ code: 'convert_failed', error: '转换失败：…', ok: false }, 422),
+      jsonResponse({ code: 'too_large', error: '…', ok: false }, 413),
+      jsonResponse({ code: 'not_found', error: '文件不存在', ok: false }, 404),
+      // A forwarder from before this release does not know the route.
+      jsonResponse({ code: 'unknown', error: '未知接口', ok: false }, 404),
+      new Response('Bad Gateway', { status: 502 })
+    ]
+
+    globalThis.fetch = vi.fn(async () => replies.shift() as Response) as typeof fetch
+
+    await expect(mod.officePreviewDataUrl('/w/a.pptx')).rejects.toThrow(/damaged|损坏/)
+    await expect(mod.officePreviewDataUrl('/w/a.pptx')).rejects.toThrow(/too large|太大/)
+    await expect(mod.officePreviewDataUrl('/w/a.pptx')).rejects.toThrow(/no longer there|不在了/)
+    await expect(mod.officePreviewDataUrl('/w/a.pptx')).rejects.toThrow(/Reload|刷新/)
+    await expect(mod.officePreviewDataUrl('/w/a.pptx')).rejects.toThrow(/Could not make a preview|生成预览失败/)
+
+    globalThis.fetch = vi.fn(async () => {
+      throw new TypeError('Failed to fetch')
+    }) as typeof fetch
+
+    await expect(mod.officePreviewDataUrl('/w/a.pptx')).rejects.toThrow(/Could not make a preview|生成预览失败/)
+  })
+})
+
 describe('browser bridge: the instance’s terminal', () => {
   class FakeSocket {
     static OPEN = 1

@@ -21,7 +21,7 @@
    这两个接口和 ``/__mt/status`` 都附带「忙不忙」（定时任务、对话回合，见 mtstate.activity）：
    入口据此决定这轮回收要不要暂停，并在实例停着时按下一个定时任务的时间把它叫起来。
 
-``/__mt_user/*`` 是给用户用的（命令行通道、回收站、重命名，见 mtuser.py）：浏览器经入口的
+``/__mt_user/*`` 是给用户用的（命令行通道、回收站、重命名、Office 文件转 PDF 预览，见 mtuser.py）：浏览器经入口的
 ``/__hermes_backend/__mt_user/…`` 转进来，带的是和 hermes 一样的会话令牌。入口照常校验登录后放行；
 ``/__mt/*`` 这组管理接口入口不放行，用户碰不到。
 
@@ -105,8 +105,9 @@ def _reply(writer: asyncio.StreamWriter, status: int, payload: dict) -> None:
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     reason = {200: "OK", 400: "Bad Request", 403: "Forbidden", 404: "Not Found",
               405: "Method Not Allowed", 409: "Conflict", 413: "Payload Too Large",
-              415: "Unsupported Media Type", 500: "Internal Server Error",
-              503: "Service Unavailable"}.get(status, "Error")
+              415: "Unsupported Media Type", 422: "Unprocessable Entity",
+              500: "Internal Server Error", 501: "Not Implemented",
+              503: "Service Unavailable", 504: "Gateway Timeout"}.get(status, "Error")
     head = (
         f"HTTP/1.1 {status} {reason}\r\n"
         "Content-Type: application/json; charset=utf-8\r\n"
@@ -167,8 +168,8 @@ def _write_seed(files: list[dict]) -> list[str]:
       又不会碰用户或 hermes 自己写过的内容。
     - ``"upsert-lines"`` —— 只改 content 里那几行 ``KEY=VALUE``，其余保持用户自己的。
       这是 ``.env`` 该用的：用户在界面里存的别的 key 不能被抹掉。
-    - ``"patch-model"`` —— content 是 JSON ``{base_url, model, provider_key, key_env, models, template}``：
-      整份解析 config.yaml，只改平台块（端点、provider、key 来源、模型清单），用户自己的设置不碰；
+    - ``"patch-model"`` —— content 是 JSON ``{base_url, model, provider_key, key_env, models, template, …}``：
+      整份解析 config.yaml，只改平台块（端点、provider、key 来源、模型清单、平台策略、内置 MCP），用户自己的设置不碰；
       解析不了的先剔残行，再不行就按 template 重建。见 mtstate.patch_config_text。
     """
     written: list[str] = []
@@ -644,12 +645,45 @@ _FILE_OPS = {
     "/__mt_user/files/restore": lambda files, body: files.restore(body.get("id")),
 }
 
+_office: mtuser.OfficePreview | None = None
+
+
+def _office_preview() -> mtuser.OfficePreview:
+    """整个转发器共用一个：同一时间只转一个文件，同一个文件只转一次。"""
+    global _office
+    if _office is None:
+        _office = mtuser.OfficePreview(WORKSPACE)
+    return _office
+
+
+async def _send_file(writer: asyncio.StreamWriter, path: Path, content_type: str) -> None:
+    """整份文件作为 200 的响应体发出去。浏览器中途断开就算了。"""
+    with path.open("rb") as fh:
+        size = os.fstat(fh.fileno()).st_size
+        writer.write((
+            "HTTP/1.1 200 OK\r\n"
+            f"Content-Type: {content_type}\r\n"
+            f"Content-Length: {size}\r\n"
+            "Cache-Control: no-store\r\n"
+            "X-Content-Type-Options: nosniff\r\n"
+            "Connection: close\r\n\r\n"
+        ).encode("ascii"))
+        try:
+            while True:
+                chunk = await asyncio.to_thread(fh.read, 1 << 20)
+                if not chunk:
+                    break
+                writer.write(chunk)
+                await writer.drain()
+        except (ConnectionError, asyncio.IncompleteReadError):
+            pass
+
 
 async def _handle_user(
     method: str, path: str, headers: dict[str, str],
     rest: bytes, reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
 ) -> None:
-    """命令行通道（WebSocket）、回收站、重命名。都要会话令牌；实例在排空时一律 503。"""
+    """命令行通道（WebSocket）、回收站、重命名、Office 预览。都要会话令牌；实例在排空时一律 503。"""
     route, _, raw_query = path.partition("?")
     query = parse_qs(raw_query)
     if _draining:
@@ -665,6 +699,13 @@ async def _handle_user(
 
     files = mtuser.Files(WORKSPACE)
     try:
+        if route == "/__mt_user/office-pdf":
+            if method != "GET":
+                _reply(writer, 405, {"ok": False, "code": "method", "error": "只接受 GET"})
+                return
+            pdf = await _office_preview().pdf((query.get("path") or [""])[0])
+            await _send_file(writer, pdf, "application/pdf")
+            return
         if route == "/__mt_user/trash":
             if method != "GET":
                 _reply(writer, 405, {"ok": False, "code": "method", "error": "只接受 GET"})
