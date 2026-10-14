@@ -38,6 +38,15 @@ const available = await createOfficeDetector().get()
 const extensions = { word: 'docx', slides: 'pptx', sheet: 'xlsx' }
 const results = []
 
+/** 保留辅助进程失败状态，空输出或坏 JSON 不再掩盖最初的失败阶段。 */
+function helperReport(result) {
+  try {
+    return { failure: result.failure, ...JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1)) }
+  } catch {
+    return { failure: result.failure, ok: false }
+  }
+}
+
 /** 实机生成原生文件及中文路径副本；全过程沿用正式归属、关闭和清理保护。 */
 async function generateSample(program, kind) {
   const directory = await fs.mkdtemp(path.join(output, 'sample-'))
@@ -85,11 +94,24 @@ async function generateSample(program, kind) {
     ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(OFFICE_COM_CLEANUP, 'utf16le').toString('base64')],
     options
   )
-  if (cleaned.failure || JSON.parse(cleaned.stdout.trim()).ok !== true) {
+  let owner
+  try {
+    owner = JSON.parse(await fs.readFile(env.OFFICE_OWNER, 'utf8'))
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      throw error
+    }
+  }
+  const generation = helperReport(generated)
+  const cleanup = helperReport(cleaned)
+  const diagnostic = { operation: 'sample', kind, provider: program.provider, progId: program.progId, generation, cleanup, owner }
+  results.push(diagnostic)
+  await fs.writeFile(path.join(directory, 'sample-report.json'), JSON.stringify(diagnostic, null, 2))
+  process.stdout.write(JSON.stringify(diagnostic) + '\n')
+  if (cleanup.failure || cleanup.ok !== true) {
     throw new Error('样例进程无法确认安全收尾，请保留目录并人工检查：' + directory)
   }
-  const report = JSON.parse(generated.stdout.trim().split(/\r?\n/).at(-1))
-  if (generated.failure || report.ok !== true) {
+  if (generation.failure || generation.ok !== true) {
     throw new Error('原生样例生成失败：' + kind + '；记录保留在 ' + directory)
   }
   const chinese = path.join(output, "中文 示例's." + extensions[kind])
@@ -119,6 +141,9 @@ try {
 } finally {
   await fs.writeFile(path.join(output, 'report.json'), JSON.stringify(results, null, 2))
   process.stdout.write(
-    '样例、PDF 与记录保留在：' + output + '\n请人工检查中文排版，以及原来打开的 Office 文档仍然存在。\n'
+    '验收文件与报告保留在：' + output + '\n' +
+    (results.some(result => result.ok === true)
+      ? '请检查成功转换的 PDF 中文排版，以及原来打开的 Office 文档仍然存在。\n'
+      : '本次没有成功转换的 PDF，请保留报告并检查前面的失败诊断。\n')
   )
 }

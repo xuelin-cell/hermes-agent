@@ -58,6 +58,7 @@ function New-Object {param($ComObject); return $global:officeModel}
 # 返回夹具身份，不查询或结束用户进程。
 function Get-Process {param($Name,$Id)
   if ($Name) {if ($env:CREATED -eq '0') {return [pscustomobject]@{Id=123}}; return}
+  if ($env:BIND_FAIL -eq '1') {throw 'controlled identity failure'}
   return [pscustomobject]@{Id=123;Path=$env:OFFICE_PROGRAM;StartTime=[DateTime]::UtcNow.AddSeconds(1)}
 }
 `
@@ -121,6 +122,21 @@ describe.runIf(process.platform === 'win32')('COM PowerShell behavior', () => {
     expect(result.model.security).toBe(1)
   })
 
+  it('records the failed identity phase without exception text or a guessed process owner', async () => {
+    const result = await modelRun('word', true, false, true)
+    const owner = JSON.parse(await fs.readFile(path.join(fixture, 'owner.json'), 'utf8'))
+
+    expect(result.report.ok).toBe(false)
+    expect(owner.error.stage).toBe('identity')
+    expect(typeof owner.error.type).toBe('string')
+    expect(typeof owner.error.hresult).toBe('number')
+    expect(owner.error).not.toHaveProperty('message')
+    expect(owner.pid).toBeUndefined()
+    expect(result.model.quit).toBe(0)
+    expect(result.model.documents).toBe(0)
+    expect(result.model.security).toBe(1)
+  })
+
   it('validates creation time and leaves borrowed processes alive before stopping only its real owned hidden helper', async () => {
     const child = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { stdio: 'ignore', windowsHide: true })
     const env = { ...process.env, OFFICE_OWNER: path.join(fixture, 'owner.json') }
@@ -177,7 +193,7 @@ describe.runIf(process.platform === 'win32')('COM PowerShell behavior', () => {
 })
 
 /** 执行正式脚本与受控 COM 对象，核对的是运行行为，不读取或匹配产品源码。 */
-async function modelRun(kind: OfficeDocumentKind, created: boolean, exportFail = false) {
+async function modelRun(kind: OfficeDocumentKind, created: boolean, exportFail = false, bindFail = false) {
   const script = path.join(fixture, 'model.ps1')
 
   const summary = String.raw`
@@ -202,7 +218,8 @@ async function modelRun(kind: OfficeDocumentKind, created: boolean, exportFail =
         OTHER_DOCUMENTS: created ? '0' : '2',
         CREATED: created ? '1' : '0',
         WINDOW_COUNT: created ? '0' : '1',
-        EXPORT_FAIL: exportFail ? '1' : '0'
+        EXPORT_FAIL: exportFail ? '1' : '0',
+        BIND_FAIL: bindFail ? '1' : '0'
       }
     }
   )

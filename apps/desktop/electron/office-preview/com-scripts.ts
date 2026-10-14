@@ -104,22 +104,31 @@ function Save-Owner($handle) {
 }
 Write-State
 $app=$null; $doc=$null; $probe=$null; $security=$null; $alerts=$null; $failure='unavailable'; $ok=$false
+$stage='activation'
 # 仅释放真实 COM 引用，不能把普通返回值当作 COM 对象释放。
 function Release-OfficeObject($value) {
   if ($value -and [Runtime.InteropServices.Marshal]::IsComObject($value)) {[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($value)}
 }
 try {
   $app=New-Object -ComObject $env:OFFICE_PROGID
+  $stage='security'
   $security=$app.AutomationSecurity
   $app.AutomationSecurity=3
+  $stage='identity'
   ${commands.bind}
   $initialCount=$app.${commands.collection}.Count
   if ($state.created) {$alerts=$app.DisplayAlerts; $app.DisplayAlerts=${commands.alerts}}
   $failure='convert_failed'
+  $stage='open'
   try {${commands.open}} finally {$app.AutomationSecurity=$security; $security=$null}
+  $stage='export'
   ${commands.export}
   $ok=$true
-} catch {$ok=$false} finally {
+} catch {
+  $ok=$false
+  $cause=$_.Exception.GetBaseException()
+  $state.error=@{stage=$stage; type=$cause.GetType().FullName; hresult=$cause.HResult; line=$_.InvocationInfo.ScriptLineNumber}
+} finally {
   try {
     if ($doc) {${commands.close}; Release-OfficeObject $doc; $doc=$null}
     if ($probe) {[void]$probe.Close($false); Release-OfficeObject $probe}
@@ -128,7 +137,12 @@ try {
     $state.otherDocuments=($app -and $app.${commands.collection}.Count -gt 0)
     $state.closed=($ok -or -not $app -or $app.${commands.collection}.Count -le $initialCount); Write-State
     if ($app -and $state.created -and -not $state.otherDocuments -and -not [PreviewWindows]::Visible($state.pid)) {[void]$app.Quit()}
-  } catch {$ok=$false; $failure='convert_failed'}
+  } catch {
+    $ok=$false; $failure='convert_failed'; $state.closed=$false
+    $cause=$_.Exception.GetBaseException()
+    $state.cleanupError=@{type=$cause.GetType().FullName; hresult=$cause.HResult; line=$_.InvocationInfo.ScriptLineNumber}
+    Write-State
+  }
   Release-OfficeObject $app
 }
 @{ok=$ok; code=$failure}|ConvertTo-Json -Compress
