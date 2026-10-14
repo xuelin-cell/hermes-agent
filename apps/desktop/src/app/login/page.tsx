@@ -2,15 +2,12 @@ import './login.css'
 
 import { type FormEvent, useEffect, useRef, useState } from 'react'
 
-import { BrandMark } from '@/components/brand-mark'
-import { Button } from '@/components/ui/button'
+import loginBrandLogo from '@/assets/login-brand-logo.png'
 import { ConnectingScreen } from '@/components/ui/connecting-screen'
-import { Input } from '@/components/ui/input'
 import { Loader } from '@/components/ui/loader'
 import { useI18n } from '@/i18n/context'
 
 import type { LoginAccount } from '../../../electron/login/contract'
-import { PAGE_INSET_X } from '../layout-constants'
 
 import { useCaptcha } from './use-captcha'
 import { useSms } from './use-sms'
@@ -189,168 +186,142 @@ export function LoginPage() {
   }
 
   return (
-    <main className={`desktop-login flex h-full overflow-y-auto py-8 ${PAGE_INSET_X}`}>
-      <div className="m-auto grid w-full max-w-6xl gap-10 lg:grid-cols-[1.1fr_1fr]">
-        <aside className="hidden flex-col justify-between gap-12 py-6 lg:flex">
-          <div className="flex items-center gap-3 text-base font-semibold tracking-widest">
-            <BrandMark className="size-9" />
-            {copy.brand}
-          </div>
-          <div className="max-w-lg pb-10">
-            <p className="text-5xl leading-tight font-semibold tracking-tight">
-              {copy.headline}
-              <span className="mt-2 block text-muted-foreground">{copy.headlineAccent}</span>
-            </p>
-            <p className="mt-7 max-w-sm text-sm leading-7 text-muted-foreground">{copy.subtitle}</p>
-          </div>
-        </aside>
-        <section
-          aria-labelledby="login-heading"
-          className="desktop-login-panel m-auto w-full max-w-[26rem] space-y-6 rounded-3xl border border-(--ui-stroke-tertiary) p-6 shadow-nous sm:p-10"
-        >
-          <header className="space-y-2">
-            <BrandMark className="mb-6 size-11 lg:hidden" />
-            <p className="text-xs font-medium tracking-widest text-primary">{copy.welcome}</p>
-            <h1 className="text-2xl font-bold tracking-tight" id="login-heading">
-              {copy.title}
-            </h1>
-            <p className="text-sm leading-relaxed text-muted-foreground">{copy.subtitle}</p>
-          </header>
-          {restoring ? (
-            <Loader className="mx-auto size-8" label={copy.title} />
-          ) : (
-            <form
-              aria-busy={pending || sms.pending}
-              className="space-y-4"
-              noValidate
-              onSubmit={event => void submit(event)}
-            >
-              <div className="space-y-2">
-                <label className="text-sm text-muted-foreground" htmlFor="login-phone">
-                  {copy.phone}
-                </label>
-                <Input
+    <main className="desktop-login login-container">
+      <section aria-labelledby="login-heading" className="login-card">
+        <header className="login-header">
+          <img alt={copy.brand} className="login-logo" src={loginBrandLogo} />
+          <h1 className="sr-only" id="login-heading">
+            {copy.title}
+          </h1>
+        </header>
+        {restoring ? (
+          <Loader className="login-loader" label={copy.title} />
+        ) : (
+          <form
+            aria-busy={pending || sms.pending}
+            className="login-form"
+            noValidate
+            onSubmit={event => void submit(event)}
+          >
+            <div className="login-field">
+              <label className="sr-only" htmlFor="login-phone">
+                {copy.phone}
+              </label>
+              <div className="login-input-group">
+                <span className="login-addon">+86</span>
+                <input
                   aria-describedby="login-error"
                   aria-invalid={error === 'phoneError'}
                   autoComplete="off"
+                  className="login-input"
                   disabled={pending || sms.pending}
                   id="login-phone"
                   inputMode="tel"
                   maxLength={11}
-                  onChange={event => updateField('phone', event.target.value)}
+                  onChange={event => updateField('phone', event.target.value.replace(/\D/g, '').slice(0, 11))}
                   placeholder={copy.phonePlaceholder}
-                  size="auth"
+                  type="tel"
                   value={fields.phone}
                 />
               </div>
-              <div className="space-y-2">
-                <label className="text-sm text-muted-foreground" htmlFor="login-captcha">
-                  {copy.captcha}
-                </label>
-                <div className="flex gap-2">
-                  <Input
-                    aria-describedby="login-error"
-                    aria-invalid={error === 'captchaError'}
-                    disabled={pending || sms.pending}
-                    id="login-captcha"
-                    maxLength={6}
-                    onChange={event => updateField('captchaCode', event.target.value)}
-                    placeholder={copy.captchaPlaceholder}
-                    size="auth"
-                    value={fields.captchaCode}
-                  />
-                  <Button
-                    aria-label={copy.refresh}
-                    disabled={!window.hermesLogin || pending || sms.pending}
-                    loading={image.loading}
-                    onClick={() => {
-                      updateField('captchaCode', '')
-                      void image.refresh()
-                    }}
-                    size="captcha"
-                    type="button"
-                    variant="grip"
-                  >
-                    {image.captcha ? (
-                      <img
-                        alt={copy.captcha}
-                        className="h-11 w-auto max-w-full rounded-[0.625rem]"
-                        src={image.captcha.imageDataUrl}
-                      />
-                    ) : (
-                      copy.refresh
-                    )}
-                  </Button>
-                </div>
-                {image.failed && (
-                  <p className="text-sm text-destructive" role="alert">
-                    {copy.captchaLoadError}
-                  </p>
-                )}
+            </div>
+            <div className="login-field">
+              <label className="sr-only" htmlFor="login-captcha">
+                {copy.captcha}
+              </label>
+              <div className="login-input-group">
+                <input
+                  aria-describedby="login-error"
+                  aria-invalid={error === 'captchaError'}
+                  className="login-input login-input-captcha"
+                  disabled={pending || sms.pending}
+                  id="login-captcha"
+                  maxLength={6}
+                  onChange={event => updateField('captchaCode', event.target.value)}
+                  placeholder={copy.captchaPlaceholder}
+                  type="text"
+                  value={fields.captchaCode}
+                />
+                <button
+                  aria-label={copy.refresh}
+                  className="login-captcha-img"
+                  disabled={!window.hermesLogin || pending || sms.pending}
+                  onClick={() => {
+                    updateField('captchaCode', '')
+                    void image.refresh()
+                  }}
+                  type="button"
+                >
+                  {image.loading ? (
+                    <Loader className="size-5" label={copy.refresh} />
+                  ) : image.captcha ? (
+                    <img alt={copy.captcha} src={image.captcha.imageDataUrl} />
+                  ) : (
+                    copy.refresh
+                  )}
+                </button>
               </div>
-              <div className="space-y-2">
-                <label className="text-sm text-muted-foreground" htmlFor="login-sms">
-                  {copy.sms}
-                </label>
-                <div className="flex gap-2">
-                  <Input
-                    aria-describedby="login-error"
-                    aria-invalid={error === 'smsError'}
-                    autoComplete="one-time-code"
-                    disabled={pending}
-                    id="login-sms"
-                    inputMode="numeric"
-                    maxLength={6}
-                    onChange={event => updateField('smsCode', event.target.value)}
-                    placeholder={copy.smsPlaceholder}
-                    size="auth"
-                    value={fields.smsCode}
-                  />
-                  <Button
-                    disabled={!window.hermesLogin || !image.captcha || pending || sms.seconds > 0}
-                    loading={sms.pending}
-                    onClick={() => void sendSms()}
-                    size="auth"
-                    type="button"
-                    variant="outline"
-                  >
-                    {sms.seconds > 0 ? copy.resendAfter.replace('{seconds}', String(sms.seconds)) : copy.send}
-                  </Button>
-                </div>
-                {sms.result && (
-                  <p
-                    className={sms.result.ok ? 'text-sm text-muted-foreground' : 'text-sm text-destructive'}
-                    role={sms.result.ok ? 'status' : 'alert'}
-                  >
-                    {sms.result.ok
-                      ? copy.smsSent
-                      : sms.result.error === 'limited'
-                        ? copy.smsLimited
-                        : copy.smsSendError}
-                  </p>
-                )}
+              {image.failed && (
+                <p className="login-field-error" role="alert">
+                  {copy.captchaLoadError}
+                </p>
+              )}
+            </div>
+            <div className="login-field">
+              <label className="sr-only" htmlFor="login-sms">
+                {copy.sms}
+              </label>
+              <div className="login-input-group">
+                <input
+                  aria-describedby="login-error"
+                  aria-invalid={error === 'smsError'}
+                  autoComplete="one-time-code"
+                  className="login-input login-input-sms"
+                  disabled={pending}
+                  id="login-sms"
+                  inputMode="numeric"
+                  maxLength={6}
+                  onChange={event => updateField('smsCode', event.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder={copy.smsPlaceholder}
+                  type="text"
+                  value={fields.smsCode}
+                />
+                <button
+                  className="login-send-btn"
+                  disabled={!window.hermesLogin || !image.captcha || pending || sms.pending || sms.seconds > 0}
+                  onClick={() => void sendSms()}
+                  type="button"
+                >
+                  {sms.pending
+                    ? copy.send
+                    : sms.seconds > 0
+                      ? copy.resendAfter.replace('{seconds}', String(sms.seconds))
+                      : copy.send}
+                </button>
               </div>
-              <Button
-                className="mt-2 w-full"
-                disabled={!window.hermesLogin || sms.pending}
-                loading={pending}
-                size="auth"
-                type="submit"
-              >
-                {copy.submit}
-              </Button>
-              <p className="text-sm text-destructive empty:hidden" id="login-error" role="alert">
-                {error ? copy[error] : ''}
-              </p>
-            </form>
-          )}
-          {!window.hermesLogin && (
-            <p className="text-center text-xs text-muted-foreground" role="status">
-              {copy.unavailable}
+              {sms.result && (
+                <p
+                  className={sms.result.ok ? 'login-field-status' : 'login-field-error'}
+                  role={sms.result.ok ? 'status' : 'alert'}
+                >
+                  {sms.result.ok ? copy.smsSent : sms.result.error === 'limited' ? copy.smsLimited : copy.smsSendError}
+                </p>
+              )}
+            </div>
+            <p className="login-error" id="login-error" role="alert">
+              {error ? copy[error] : ''}
             </p>
-          )}
-        </section>
-      </div>
+            <button className="login-btn" disabled={!window.hermesLogin || pending || sms.pending} type="submit">
+              {pending ? <Loader className="size-5" label={copy.submit} /> : copy.submit}
+            </button>
+          </form>
+        )}
+        {!window.hermesLogin && (
+          <p className="login-unavailable" role="status">
+            {copy.unavailable}
+          </p>
+        )}
+      </section>
     </main>
   )
 }
