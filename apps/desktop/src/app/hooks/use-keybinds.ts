@@ -16,6 +16,7 @@ import {
 } from '@/components/pane-shell/tree/store'
 import { setWorkspaceScope } from '@/components/pane-shell/workspace-scope'
 import { onReleaseTypingFocus } from '@/components/ui/keyboard-first'
+import { findInPageTakenByViewer } from '@/lib/browser-shell'
 import { findBarClaimsCombo } from '@/lib/find-in-page'
 import { contributedKeybindHandler, PROFILE_SLOT_COUNT, SESSION_SLOT_COUNT } from '@/lib/keybinds/actions'
 import { actionAllowedInInput, comboFromEvent, isEditableTarget } from '@/lib/keybinds/combo'
@@ -278,7 +279,7 @@ export function useKeybinds(deps: KeybindRuntimeDeps): void {
     'view.findInPage': () => {
       // Suppress on overlay routes so it doesn't collide with overlay-specific
       // search surfaces (e.g. Settings search bar).
-      if (!isOverlayView(appViewForPath(location.pathname))) {
+      if (!isOverlayView(appViewForPath(location.pathname)) && !findInPageTakenByViewer()) {
         openFindBar()
       }
     },

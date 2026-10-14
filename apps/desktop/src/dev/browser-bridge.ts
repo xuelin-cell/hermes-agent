@@ -12,7 +12,8 @@ import {
   HTML_PREVIEW_SANDBOX,
   type InstanceFileErrorCode,
   isInstanceLocalUrl,
-  type OfficePreviewErrorCode
+  type OfficePreviewErrorCode,
+  type PdfDocumentSource
 } from '@/lib/browser-shell'
 
 import { maskMcpSecrets, restoreMcpSecrets } from './mcp-secrets'
@@ -337,6 +338,24 @@ export function mediaPlaybackUrl(path: string): string {
   const local = virtualFileFor(path)
 
   return local ? URL.createObjectURL(local) : `${apiPrefix()}${fsQuery('download', path)}`
+}
+
+/** Where the PDF viewer reads a PDF from (lib/browser-shell.ts::pdfDocumentSource):
+ * the same download route, so pdf.js asks for the parts it needs first (Range)
+ * and has no size cap (reading the file as a data URL stops at 16 MB). A file
+ * dropped into this tab is read from memory. */
+export async function pdfDocumentSource(path: string): Promise<PdfDocumentSource> {
+  const local = virtualFileFor(path)
+
+  if (local) {
+    return { data: new Uint8Array(await local.arrayBuffer()) }
+  }
+
+  return {
+    httpHeaders: Object.fromEntries(authHeaders()),
+    url: new URL(`${apiPrefix()}${fsQuery('download', path)}`, window.location.href).href,
+    withCredentials: credentials() === 'include'
+  }
 }
 
 function triggerBrowserDownload(blob: Blob, name: string): void {

@@ -132,6 +132,7 @@
     "motion": "12.42.2",
     "nanostores": "1.4.2",
     "node-pty": "1.1.0",
+    "pdfjs-dist": "6.3.289",
     "radix-ui": "1.6.7",
     "react": "19.2.7",
     "react-arborist": "3.13.2",

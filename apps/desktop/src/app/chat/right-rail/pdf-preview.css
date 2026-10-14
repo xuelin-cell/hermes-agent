@@ -1,0 +1,33 @@
+/* The PDF viewer (pdf-preview.tsx) in the page viewer's look (office-slides.tsx):
+   white pages with a soft shadow, 16px apart and from the edges, on the pane's
+   tint; search hits in amber. pdf.js's own stylesheet is not in a cascade layer,
+   so neither is this one, and it comes after it. */
+
+.hermes-pdf {
+  /* The scrollbar takes its room from the start: the page width fitted to the
+     pane does not change when it appears. */
+  scrollbar-gutter: stable;
+}
+
+.hermes-pdf .pdfViewer {
+  padding: 16px;
+}
+
+.hermes-pdf .pdfViewer.removePageBorders .page {
+  margin: 0 auto 16px;
+  border-radius: 6px;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.12);
+}
+
+.hermes-pdf .pdfViewer.removePageBorders .page:last-child {
+  margin-bottom: 0;
+}
+
+.hermes-pdf .pdfViewer .canvasWrapper {
+  border-radius: inherit;
+}
+
+.hermes-pdf .textLayer .highlight {
+  --highlight-bg-color: rgb(255 196 0 / 0.35);
+  --highlight-selected-bg-color: rgb(255 128 0 / 0.5);
+}

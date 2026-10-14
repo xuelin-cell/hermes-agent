@@ -14,6 +14,7 @@ import {
   previewsMediaInPanel,
   previewsOfficeAsPages,
   previewsOfficeAsSheet,
+  previewsPdfInViewer,
   remoteHtmlFrameDocument,
   remoteHtmlFrameSandbox
 } from '@/lib/browser-shell'
@@ -39,6 +40,7 @@ import { canOpenBrowserWindow, isBrowserWindow } from '@/store/windows'
 import { MediaPreview } from './media-preview'
 import { OfficeSheet } from './office-sheet'
 import { OfficeSlides } from './office-slides'
+import { PdfPreview } from './pdf-preview'
 import { ArtifactPreview } from './preview-artifact'
 import { PreviewBrowserBar } from './preview-browser-bar'
 import {
@@ -1084,6 +1086,8 @@ export function PreviewPane({ embedded = false, onRestartServer, reloadRequest =
               <OfficeSlides reloadKey={localReloadKey} target={target} />
             ) : previewsOfficeAsSheet(target.path || target.source) ? (
               <OfficeSheet reloadKey={localReloadKey} target={target} />
+            ) : previewsPdfInViewer(target.path || target.source) ? (
+              <PdfPreview reloadKey={localReloadKey} target={target} />
             ) : previewsMediaInPanel(target.path || target.source) ? (
               <MediaPreview reloadKey={localReloadKey} target={target} />
             ) : (

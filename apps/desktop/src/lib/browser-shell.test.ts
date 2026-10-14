@@ -6,6 +6,7 @@ import {
   browserMediaPlaybackUrl,
   browserShellCopy,
   browserShellZoom,
+  findInPageTakenByViewer,
   hideForUsers,
   HTML_PREVIEW_SANDBOX,
   isBrowserShell,
@@ -17,10 +18,12 @@ import {
   isSlideDeck,
   officePreviewPdf,
   officeSheetBook,
+  pdfDocumentSource,
   previewsMediaInPanel,
   previewsOfficeAsPages,
   previewsOfficeAsPdf,
   previewsOfficeAsSheet,
+  previewsPdfInViewer,
   remoteHtmlFrameDocument,
   remoteHtmlFrameSandbox,
   sidebarPageOutlivesReactivation,
@@ -40,7 +43,12 @@ const bridge = vi.hoisted(() => ({
     sheets: [{ html: '<table></table>', name: '客流统计', rows: 3, shown: 3 }],
     version: 'v7'
   })),
-  officeSheetImageUrl: vi.fn((path: string, name: string, version: string) => `/charts/${name}?v=${version}`)
+  officeSheetImageUrl: vi.fn((path: string, name: string, version: string) => `/charts/${name}?v=${version}`),
+  pdfDocumentSource: vi.fn(async (path: string) => ({
+    httpHeaders: {},
+    url: `http://localhost/__hermes_backend/api/fs/download?path=${encodeURIComponent(path)}`,
+    withCredentials: false
+  }))
 }))
 
 vi.mock('@/dev/browser-bridge', () => bridge)
@@ -335,6 +343,42 @@ describe('browser shell', () => {
       '只显示前 1000 行（共 20001 行），完整内容请下载后查看。'
     )
     expect(browserShellCopy('en').sheet.unnamed(2)).toBe('Sheet 2')
+  })
+
+  it('opens PDFs in the PDF viewer, in the browser build only', async () => {
+    const viewer = document.createElement('div')
+    const pages = document.createElement('div')
+
+    viewer.dataset.pdfViewer = ''
+    pages.tabIndex = 0
+    viewer.append(pages)
+    document.body.append(viewer)
+    pages.focus()
+
+    expect(previewsPdfInViewer('/w/论文.pdf')).toBe(false)
+    expect(findInPageTakenByViewer()).toBe(false)
+
+    document.documentElement.dataset.hermesBrowser = 'production'
+
+    expect(['/w/a.pdf', '/w/b.PDF'].map(previewsPdfInViewer)).toEqual([true, true])
+    expect(['/w/a.pdf.md', '/w/b.docx', '/w/c.pdfx', '/w/d.png'].map(previewsPdfInViewer)).toEqual([
+      false,
+      false,
+      false,
+      false
+    ])
+    // ⌘F searches the PDF while the viewer has focus, the chat otherwise.
+    expect(findInPageTakenByViewer()).toBe(true)
+    pages.blur()
+    expect(findInPageTakenByViewer()).toBe(false)
+    viewer.remove()
+
+    await expect(pdfDocumentSource('/w/论文.pdf')).resolves.toMatchObject({
+      url: `http://localhost/__hermes_backend/api/fs/download?path=${encodeURIComponent('/w/论文.pdf')}`
+    })
+    expect(bridge.pdfDocumentSource).toHaveBeenCalledWith('/w/论文.pdf')
+    expect(browserShellCopy('zh').pdf.findNone).toBe('无结果')
+    expect(browserShellCopy('en').pdf.fitWidth).toBe('Fit to width')
   })
 
   it('plays audio and video from the instance, in the browser build only', async () => {

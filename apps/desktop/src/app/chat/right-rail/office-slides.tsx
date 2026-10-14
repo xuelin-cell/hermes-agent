@@ -59,7 +59,7 @@ export function currentSlide(slides: readonly Span[], view: Span, atEnd: boolean
   return current
 }
 
-function RoundButton({
+export function RoundButton({
   children,
   className,
   disabled,

@@ -25,14 +25,17 @@ import { storedBoolean } from '@/lib/storage'
  *   app/chat/right-rail/media-preview.tsx              (ours) the player for audio and video files
  *   app/chat/right-rail/office-sheet.tsx               (ours) the sheet viewer: spreadsheets the instance turns into tables
  *   app/chat/right-rail/office-slides.tsx              (ours) the page viewer: decks and documents the instance renders page by page
+ *   app/chat/right-rail/pdf-preview.tsx                (ours) the PDF viewer: pdf.js in the page, in the page viewer's look
  *   app/chat/right-rail/preview-file.tsx               Office files fall back to the PDF the instance converts them to
  *   app/chat/right-rail/preview-pane.tsx               HTML files from the instance run their scripts, sandboxed;
  *                                                      slide decks and documents open in the page viewer, spreadsheets in
- *                                                      the sheet viewer, audio and video in the player
+ *                                                      the sheet viewer, PDFs in the PDF viewer, audio and video in the
+ *                                                      player
  *   app/chat/sidebar/filter-menu.tsx                   * no profile submenu (filter / new / import)
  *   app/chat/sidebar/index.tsx                         * no messaging platforms entry
  *   app/chat/sidebar/profile-switcher.tsx              * no add / import profile, no "connect gateway"
  *   app/command-palette/index.tsx                      * no in-app browser, Hermes update, theme marketplace, gateway restart
+ *   app/hooks/use-keybinds.ts                          ⌘F / Ctrl+F in the PDF viewer searches the PDF, not the chat
  *   app/profiles/index.tsx                             * no "new profile"
  *   app/right-sidebar/file-actions.tsx                 rename + delete (to the instance's recycle bin) in the menu
  *   app/right-sidebar/terminal/use-terminal-session.ts Ctrl+V / Ctrl+Shift+V paste through the browser
@@ -57,6 +60,10 @@ import { storedBoolean } from '@/lib/storage'
  * entry), see `browser-bridge.ts`. Nor do the masked keys on the MCP page: the
  * bridge masks what the page reads and puts the keys back in what it saves, see
  * `dev/mcp-secrets.ts`.
+ *
+ * One build-time hook: vite.config.ts emits the files pdf.js loads by name (its
+ * worker, CMaps, fonts, decoders) for the PDF viewer, see
+ * `scripts/pdfjs-assets.mjs`.
  */
 export function isBrowserShell(): boolean {
   // The production browser build is known at build time. The bridge's mark
@@ -219,6 +226,31 @@ export function previewsOfficeAsSheet(path: string): boolean {
   return isBrowserShell() && SPREADSHEET_RE.test(path)
 }
 
+const PDF_RE = /\.pdf$/i
+
+/** PDFs in the browser build open in the PDF viewer
+ * (app/chat/right-rail/pdf-preview.tsx): pdf.js in the page, laid out like the
+ * page viewer, its text selectable and searchable. Upstream reads the whole file
+ * as a data URL (16 MB at most) and frames the browser's own PDF viewer. */
+export function previewsPdfInViewer(path: string): boolean {
+  return isBrowserShell() && PDF_RE.test(path)
+}
+
+/** ⌘F / Ctrl+F while the PDF viewer has focus opens the viewer's own search,
+ * which searches the whole PDF, rather than the app's find bar over the chat. */
+export function findInPageTakenByViewer(): boolean {
+  return isBrowserShell() && document.activeElement?.closest('[data-pdf-viewer]') != null
+}
+
+/** What pdf.js reads a PDF from: its bytes, or where to fetch it. */
+export type PdfDocumentSource =
+  { data: Uint8Array } | { httpHeaders: Record<string, string>; url: string; withCredentials: boolean }
+
+/** Loads the bridge only when a PDF is opened, as officeSlideDeck does. */
+export async function pdfDocumentSource(path: string): Promise<PdfDocumentSource> {
+  return (await import('@/dev/browser-bridge')).pdfDocumentSource(path)
+}
+
 /** A deck as the slide viewer shows it: page count, page size in points, and
  * where each page's image is (it changes when the file does). */
 export interface OfficeSlideDeck {
@@ -377,6 +409,23 @@ interface BrowserShellCopy {
   movedToTrash: (name: string) => string
   officePreview: Record<OfficePreviewErrorCode, string>
   open: string
+  pdf: {
+    failed: string
+    find: string
+    findClose: string
+    findNext: string
+    findNone: string
+    findPrevious: string
+    fitWidth: string
+    invalid: string
+    loading: string
+    password: string
+    passwordIncorrect: string
+    passwordLabel: string
+    passwordOpen: string
+    zoomIn: string
+    zoomOut: string
+  }
   popupBlocked: string
   previewTitle: string
   previewTooLarge: string
@@ -439,6 +488,23 @@ const COPY: Record<'en' | 'zh', BrowserShellCopy> = {
       unsupported: 'Files of this kind cannot be previewed. Download it instead.'
     },
     open: 'Open',
+    pdf: {
+      failed: 'Could not open this PDF. Download it instead.',
+      find: 'Find in document',
+      findClose: 'Close search',
+      findNext: 'Next match',
+      findNone: 'No matches',
+      findPrevious: 'Previous match',
+      fitWidth: 'Fit to width',
+      invalid: 'This file is damaged or is not a PDF. Download it instead.',
+      loading: 'Opening the PDF…',
+      password: 'This PDF is protected by a password.',
+      passwordIncorrect: 'Wrong password. Try again.',
+      passwordLabel: 'Password',
+      passwordOpen: 'Open',
+      zoomIn: 'Zoom in',
+      zoomOut: 'Zoom out'
+    },
     popupBlocked: 'The browser blocked the new tab. Allow pop-ups for this site and try again.',
     previewTitle: 'Preview',
     previewTooLarge: 'This file is too large to open in a tab. Download it instead.',
@@ -496,6 +562,23 @@ const COPY: Record<'en' | 'zh', BrowserShellCopy> = {
       unsupported: '这种文件不能在线预览，请下载后查看。'
     },
     open: '打开',
+    pdf: {
+      failed: '打不开这个 PDF，请下载后查看。',
+      find: '在文档中查找',
+      findClose: '关闭查找',
+      findNext: '下一个',
+      findNone: '无结果',
+      findPrevious: '上一个',
+      fitWidth: '适合宽度',
+      invalid: '文件已损坏或不是 PDF，请下载后查看。',
+      loading: '正在打开 PDF…',
+      password: '这个 PDF 设了密码。',
+      passwordIncorrect: '密码不对，请重新输入。',
+      passwordLabel: '密码',
+      passwordOpen: '打开',
+      zoomIn: '放大',
+      zoomOut: '缩小'
+    },
     popupBlocked: '浏览器拦截了新标签页，请允许本站弹出窗口后再试。',
     previewTitle: '预览',
     previewTooLarge: '文件太大，不能在标签页中打开，请下载后查看。',

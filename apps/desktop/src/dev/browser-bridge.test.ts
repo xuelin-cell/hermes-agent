@@ -684,6 +684,26 @@ describe('browser bridge: audio and video', () => {
   })
 })
 
+describe('browser bridge: PDFs', () => {
+  it('reads PDFs on the instance from the download route, and dropped ones from memory', async () => {
+    const mod = await installFresh()
+    const path = '/opt/data/workspace/论文 终稿.pdf'
+
+    // pdf.js fetches the parts it needs from the download route (Range), with the session token in development.
+    await expect(mod.pdfDocumentSource(`file://${encodeURI(path)}`)).resolves.toEqual({
+      httpHeaders: { 'x-hermes-session-token': 'hermes-browser-dev' },
+      url: new URL(`/__hermes_backend/api/fs/download?path=${encodeURIComponent(path)}`, window.location.href).href,
+      withCredentials: false
+    })
+
+    const dropped = new File([new Uint8Array([37, 80, 68, 70])], 'scan.pdf', { type: 'application/pdf' })
+
+    await expect(mod.pdfDocumentSource(window.hermesDesktop.getPathForFile(dropped))).resolves.toEqual({
+      data: new Uint8Array([37, 80, 68, 70])
+    })
+  })
+})
+
 describe('browser bridge: the instance’s terminal', () => {
   class FakeSocket {
     static OPEN = 1

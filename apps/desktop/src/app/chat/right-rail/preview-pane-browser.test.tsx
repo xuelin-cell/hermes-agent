@@ -1,9 +1,25 @@
-import { act, cleanup, render } from '@testing-library/react'
+import { act, cleanup, render, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { HTML_PREVIEW_SANDBOX } from '@/lib/browser-shell'
 
 import { PreviewPane } from './preview-pane'
+
+// The PDF viewer's pdf.js (which does not run in jsdom) and the bridge it reads the file through.
+const pdfEngine = vi.hoisted(() => ({
+  createPdfEngine: vi.fn(() => ({
+    destroy: vi.fn(),
+    endFind: vi.fn(),
+    find: vi.fn(),
+    fitWidth: vi.fn(),
+    zoom: vi.fn()
+  }))
+}))
+
+vi.mock('./pdf-engine', () => pdfEngine)
+vi.mock('@/dev/browser-bridge', () => ({
+  pdfDocumentSource: vi.fn(async () => ({ httpHeaders: {}, url: 'http://localhost/download', withCredentials: false }))
+}))
 
 // Browser build (lib/browser-shell.ts): an HTML file from the instance runs in the
 // pane as it is, sandboxed without the app's origin. The desktop app's static copy
@@ -52,5 +68,27 @@ describe('PreviewPane in the browser build', () => {
     expect(iframe?.getAttribute('sandbox')).toBe(HTML_PREVIEW_SANDBOX)
     expect(iframe?.getAttribute('referrerpolicy')).toBe('no-referrer')
     expect(iframe?.getAttribute('srcdoc')).toBe(html)
+  })
+
+  it('opens a PDF in the PDF viewer, not in a frame of the browser’s own viewer', async () => {
+    let rendered!: ReturnType<typeof render>
+    await act(async () => {
+      rendered = render(
+        <PreviewPane
+          target={{
+            kind: 'file',
+            label: '论文.pdf',
+            path: '/opt/data/workspace/论文.pdf',
+            previewKind: 'pdf',
+            source: '/opt/data/workspace/论文.pdf',
+            url: 'file:///opt/data/workspace/paper.pdf'
+          }}
+        />
+      )
+    })
+
+    expect(rendered.container.querySelector('[data-pdf-viewer] .pdfViewer')).not.toBeNull()
+    expect(rendered.container.querySelector('iframe')).toBeNull()
+    await waitFor(() => expect(pdfEngine.createPdfEngine).toHaveBeenCalledTimes(1))
   })
 })
