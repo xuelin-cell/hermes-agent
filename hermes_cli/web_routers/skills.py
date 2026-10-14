@@ -534,7 +534,9 @@ async def get_skills(profile: Optional[str] = None):
             disabled = get_disabled_skills(config)
             # The Installed tab manages disabled skills too; omitting them
             # makes a toggle-off row disappear and leaves no way to re-enable it.
-            skills = _find_all_skills(skip_disabled=False)
+            # skip_disabled=True skips the disabled FILTER, i.e. lists them all
+            # (``enabled`` below marks the ones switched off); False drops them.
+            skills = _find_all_skills(skip_disabled=True)
             usage = load_usage()
             # Set-based provenance (same classification as skill_usage.provenance,
             # without a per-skill manifest read): hub > bundled > agent, where
