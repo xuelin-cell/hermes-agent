@@ -53,6 +53,10 @@ test('prepared inputs are path-bound and reject changed or missing bytes without
   assert.throws(() => validatePreparedBuilderArgs([], result), /run preparation again/)
   assert.throws(() => validatePreparedBuilderArgs(['--dir', '-c.electronDist=/another.zip'], result), /run preparation again/)
   validatePreparedBuilderArgs(['--dir', '-c.extraMetadata.version=1.2.3'], result)
+  for (const compression of ['store', 'normal', 'maximum']) {
+    validatePreparedBuilderArgs(['--dir', `-c.compression=${compression}`], result)
+  }
+  assert.throws(() => validatePreparedBuilderArgs(['--dir', '-c.compression=invalid'], result), /not admitted/)
   validatePreparedBuilderArgs(['--win', 'nsis'], { target: 'win32-x64', formats: ['nsis'] })
   assert.throws(
     () => validatePreparedBuilderArgs(['--win', 'msix'], { target: 'win32-x64', formats: ['nsis'] }),
