@@ -15,11 +15,18 @@ from pm.lock import Facts
 from pm.registry import get_package, walk
 from pm.store import current_target
 
-def _bundle_package_names() -> list[str]:
+
+_WINDOWS_ON_DEMAND_TOOLS = {"llamacpp-cuda", "llamacpp-hip"}
+
+
+def _bundle_package_names(target: str | None = None) -> list[str]:
+    """选择随安装包发布的工具；Windows 大型专用 GPU 后端在首次使用时持久下载。"""
+    target = target or current_target()
     names = [
         n
         for n in _lockfile().names()
-        if not get_package(n).internal or n == "uv"
+        if (not get_package(n).internal or n == "uv")
+        and not (target.startswith("win32-") and n in _WINDOWS_ON_DEMAND_TOOLS)
     ]
     if "python" not in names:
         names.append("python")
@@ -139,6 +146,25 @@ def prune_staged_store(store_dir: Path, names: list[str]) -> None:
             shutil.rmtree(entry)
 
 
+def prune_windows_release_tools(store_dir: Path, target: str) -> tuple[int, int]:
+    """删除 Windows 发行载荷不参与运行的调试符号和 ffplay，并刷新工具摘要。"""
+    if not target.startswith("win32-"):
+        return 0, 0
+    removed_files = 0
+    removed_bytes = 0
+    for path in store_dir.rglob("*"):
+        if not path.is_file():
+            continue
+        if path.suffix.lower() != ".pdb" and path.name.lower() != "ffplay.exe":
+            continue
+        removed_bytes += path.stat().st_size
+        path.unlink()
+        removed_files += 1
+    if removed_files:
+        Facts(store_dir / "facts.json", strict=True).refresh_digests(store_dir)
+    return removed_files, removed_bytes
+
+
 def prepare_native(*, out: Path, ref: str, source: Path, cache: Path,
                    tools: Path | None = None, env: dict | None = None) -> Path:
     """Prepare final payload dependencies inside the caller's isolated PM process.
@@ -200,6 +226,10 @@ def _prepare_native(*, out: Path, ref: str, source: Path, cache: Path,
     # Cached facts may still name packages removed from the current selection.
     # Retain the dependency closure before using facts as the deletion roots.
     prune_staged_store(store_dir, names)
+    removed_files, removed_bytes = prune_windows_release_tools(store_dir, current_target())
+    if removed_files:
+        print(f"✓ tools (removed {removed_files} release-only files, {removed_bytes / 1024 / 1024:.1f} MiB)",
+              flush=True)
 
 
     facts = Facts(store_dir / "facts.json")

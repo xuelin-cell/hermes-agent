@@ -19,6 +19,42 @@ import pytest
 from scripts.bundles import native
 
 
+def test_windows_bundle_defers_vendor_gpu_backends_but_keeps_portable_fallbacks(monkeypatch):
+    """Windows 包按需获取厂商 GPU 后端，同时保留 CPU 和 Vulkan 的离线兜底。"""
+    names = native._bundle_package_names("win32-x64")
+
+    assert "llamacpp-cuda" not in names
+    assert "llamacpp-hip" not in names
+    assert "llamacpp-cpu" in names
+    assert "llamacpp-vulkan" in names
+    assert "llamacpp-cuda" in native._bundle_package_names("linux-x64")
+
+
+def test_windows_release_prunes_symbols_and_ffplay_then_refreshes_digest(tmp_path):
+    """裁剪后的工具事实必须匹配新树，避免运行时把精简载荷误判为损坏。"""
+    from pm.lock import Facts
+    from pm.store import tree_digest
+
+    store = tmp_path / "tools"
+    entry = store / "ffmpeg-test"
+    entry.mkdir(parents=True)
+    kept = entry / "ffmpeg.exe"
+    kept.write_bytes(b"runtime")
+    (entry / "ffplay.exe").write_bytes(b"player")
+    (entry / "symbols.pdb").write_bytes(b"symbols")
+    facts = Facts(store / "facts.json")
+    facts.record("ffmpeg", "1.0", entry.name, {}, store, target="win32-x64",
+                 artifacts=["a" * 64], digest=tree_digest(entry))
+
+    removed_files, removed_bytes = native.prune_windows_release_tools(store, "win32-x64")
+
+    assert (removed_files, removed_bytes) == (2, 13)
+    assert kept.read_bytes() == b"runtime"
+    assert not (entry / "ffplay.exe").exists()
+    assert not (entry / "symbols.pdb").exists()
+    assert Facts(store / "facts.json", strict=True).get("ffmpeg")["digest"] == tree_digest(entry)
+
+
 def test_bundle_stages_git_tree_and_runs_native_children_before_manifest(tmp_path, monkeypatch):
     import importlib
     import inspect
