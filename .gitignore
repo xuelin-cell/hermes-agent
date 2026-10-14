@@ -315,7 +315,8 @@ native/fts5_cjk/*.so
 # Disposable profile created by scripts/probe_active_session_exclusivity.py
 .probe-home/
 
-# Bundle/build scratch roots (scripts/bundles/, scripts/build/frontend-common.mjs)
+# Bundle/build scratch roots and persistent downloaded inputs. Keep these local so
+# repeated desktop installer builds reuse dependencies without committing caches.
 .build/
 .cache/
 
