@@ -1,6 +1,7 @@
 import { app } from 'electron'
 
 import { accountDesktopEnvironment } from './desktop-environment'
+import { ensureDevExtras } from './dev-extras'
 import { recordAccountRun } from './logout'
 import type { PreparedLocalContext } from './runtime-context'
 
@@ -8,6 +9,8 @@ import type { PreparedLocalContext } from './runtime-context'
 export async function startAccountDesktop(context: PreparedLocalContext): Promise<void> {
   recordAccountRun(app.getPath('userData'), context.id)
   const env = accountDesktopEnvironment(context)
+  // 后端启动前装好开发模式缺的组件，免得用到时才报缺依赖。
+  await ensureDevExtras(context, env)
 
   for (const name of Object.keys(process.env)) {
     if (!(name in env)) {

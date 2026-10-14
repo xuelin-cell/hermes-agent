@@ -2631,6 +2631,26 @@ export interface Translations {
       savedRestarting: string
       savedRestartFailed: (detail: string) => string
     }
+    weixinQr: {
+      title: string
+      help: string
+      connect: string
+      rescan: string
+      starting: string
+      waiting: string
+      scanned: string
+      expired: string
+      refresh: string
+      failed: string
+      startFailed: (detail: string) => string
+      unbind: string
+      unbindTitle: string
+      unbindDesc: string
+      unbinding: string
+      unbound: string
+      savedRestarting: string
+      savedRestartFailed: (detail: string) => string
+    }
     fieldCopy: Record<string, { label?: string; help?: string; placeholder?: string }>
     platformIntro: Record<string, string>
   }

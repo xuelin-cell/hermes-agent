@@ -2,6 +2,7 @@ import { useStore } from '@nanostores/react'
 import type * as React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import type { WeixinRestartOutcome } from '@/api/weixin-qr'
 import { PageLoader } from '@/components/page-loader'
 import { StatusDot, type StatusTone } from '@/components/status-dot'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -45,6 +46,7 @@ import type { SetStatusbarItemGroup } from '../shell/statusbar-controls'
 
 import { PlatformAvatar } from './platform-icon'
 import { TelegramQrSetup } from './telegram-qr-setup'
+import { WeixinQrSetup } from './weixin-qr-setup'
 
 interface MessagingViewProps extends React.ComponentProps<'section'> {
   setStatusbarItemGroup?: SetStatusbarItemGroup
@@ -442,16 +444,42 @@ export function MessagingView({ setStatusbarItemGroup: _setStatusbarItemGroup, .
   // the gateway. restart_started only means the child spawned; watch its exit
   // so a failed restart lands in the banner instead of a silent "stopped".
   async function handleTelegramApplied(result: TelegramOnboardingApplyResponse) {
+    const connectedBot = result.bot_username ? `${m.states.connected}: @${result.bot_username}` : null
+
+    await settleQrSetup(result, {
+      restartFailed: m.telegramQr.savedRestartFailed,
+      saved: [connectedBot, m.telegramQr.savedRestarting].filter(Boolean).join(' · '),
+      title: m.setupSaved('Telegram')
+    })
+  }
+
+  // 微信扫码与 Telegram 相同：后端已保存凭据并尝试重启网关。
+  function handleWeixinSaved(result: WeixinRestartOutcome, name: string) {
+    return settleQrSetup(result, {
+      restartFailed: m.weixinQr.savedRestartFailed,
+      saved: m.weixinQr.savedRestarting,
+      title: m.setupSaved(name)
+    })
+  }
+
+  // 解绑后同样刷新状态并跟进网关重启，确保微信通道真正停下。
+  function handleWeixinUnbound(result: WeixinRestartOutcome, name: string) {
+    return settleQrSetup(result, {
+      restartFailed: m.weixinQr.savedRestartFailed,
+      saved: m.weixinQr.unbound,
+      title: m.setupUpdated(name)
+    })
+  }
+
+  /** 扫码保存后的统一收尾：刷新平台状态，跟踪网关重启结果，失败时提示手动重启。 */
+  async function settleQrSetup(
+    result: WeixinRestartOutcome,
+    copy: { restartFailed: (detail: string) => string; saved: string; title: string }
+  ) {
     await refreshPlatforms(true)
 
     if (result.restart_started) {
-      const connectedBot = result.bot_username ? `${m.states.connected}: @${result.bot_username}` : null
-
-      notify({
-        kind: 'success',
-        title: m.setupSaved('Telegram'),
-        message: [connectedBot, m.telegramQr.savedRestarting].filter(Boolean).join(' · ')
-      })
+      notify({ kind: 'success', title: copy.title, message: copy.saved })
       setRestartNeeded(false)
       const ok = await watchGatewayRestartOutcome()
 
@@ -480,7 +508,7 @@ export function MessagingView({ setStatusbarItemGroup: _setStatusbarItemGroup, .
       await restartGatewayNow()
 
       if (result.restart_error) {
-        notifyError(new Error(result.restart_error), m.telegramQr.savedRestartFailed(`: ${result.restart_error}`))
+        notifyError(new Error(result.restart_error), copy.restartFailed(`: ${result.restart_error}`))
         setRestartNeeded(true)
       }
     }
@@ -618,6 +646,8 @@ export function MessagingView({ setStatusbarItemGroup: _setStatusbarItemGroup, .
                     }
                     onRevoke={setPendingRevoke}
                     onTelegramApplied={result => void handleTelegramApplied(result)}
+                    onWeixinSaved={result => void handleWeixinSaved(result, selected.name)}
+                    onWeixinUnbound={result => void handleWeixinUnbound(result, selected.name)}
                     pending={pendingByPlatform[selected.id] ?? []}
                     platform={selected}
                     saving={saving}
@@ -700,6 +730,8 @@ function PlatformDetail({
   onEdit,
   onRevoke,
   onTelegramApplied,
+  onWeixinSaved,
+  onWeixinUnbound,
   pending,
   platform,
   saving,
@@ -713,6 +745,8 @@ function PlatformDetail({
   onEdit: (key: string, value: string) => void
   onRevoke: (user: PairingUser) => void
   onTelegramApplied: (result: TelegramOnboardingApplyResponse) => void
+  onWeixinSaved: (result: WeixinRestartOutcome) => void
+  onWeixinUnbound: (result: WeixinRestartOutcome) => void
   pending: PairingUser[]
   platform: MessagingPlatformInfo
   saving: string | null
@@ -817,6 +851,20 @@ function PlatformDetail({
           <SectionTitle>{m.telegramQr.quickSetup}</SectionTitle>
           <div className="mt-3">
             <TelegramQrSetup onApplied={onTelegramApplied} platform={platform} scopeProfile={scopeProfile} />
+          </div>
+        </section>
+      )}
+
+      {platform.id === 'weixin' && (
+        <section>
+          <SectionTitle>{m.weixinQr.title}</SectionTitle>
+          <div className="mt-3">
+            <WeixinQrSetup
+              onSaved={onWeixinSaved}
+              onUnbound={onWeixinUnbound}
+              platform={platform}
+              scopeProfile={scopeProfile}
+            />
           </div>
         </section>
       )}
@@ -993,7 +1041,7 @@ const PLATFORM_INTRO: Record<string, string> = {
   wecom_callback:
     'Set up a WeCom self-built app, expose its callback URL, and provide the corp ID, secret, agent ID, and AES key.',
   weixin:
-    "Run `hermes gateway setup`, select Weixin, then scan and confirm the QR code with a personal WeChat account. UniWork connects through Tencent's iLink Bot API and saves the credentials.",
+    "Click “Connect with QR code” above, then scan and confirm with a personal WeChat account. UniWork connects through Tencent's iLink Bot API and keeps the credentials on this computer.",
   qqbot: 'Register an app on the QQ Open Platform (q.qq.com) and copy the App ID and Client Secret.',
   api_server:
     'Expose UniWork as an OpenAI-compatible API. Set an auth key, then point Open WebUI / LobeChat / etc. at the host:port.',

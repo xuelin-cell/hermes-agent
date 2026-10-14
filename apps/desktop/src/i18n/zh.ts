@@ -2863,6 +2863,26 @@ export const zh = defineLocale({
       savedRestarting: 'Telegram 已保存；网关正在重启…',
       savedRestartFailed: detail => `Telegram 已保存；网关重启失败${detail}`
     },
+    weixinQr: {
+      title: '扫码连接',
+      help: '用个人微信扫码并在手机上确认，Hermes 会自动保存凭据并启动微信通道。默认只有扫码的微信号本人可以私聊，群聊关闭。',
+      connect: '扫码连接',
+      rescan: '重新扫码',
+      starting: '正在获取二维码…',
+      waiting: '请用微信扫码',
+      scanned: '已扫码，请在手机上确认',
+      expired: '二维码已过期',
+      refresh: '刷新二维码',
+      failed: '连接失败',
+      startFailed: detail => `无法获取二维码：${detail}`,
+      unbind: '解绑',
+      unbindTitle: '解绑微信？',
+      unbindDesc: '解绑后会清除微信凭据，不再接收微信消息。',
+      unbinding: '正在解绑…',
+      unbound: '已解绑微信',
+      savedRestarting: '微信已连接；网关正在重启…',
+      savedRestartFailed: detail => `微信已连接；网关重启失败${detail}`
+    },
     fieldCopy: {
       TELEGRAM_BOT_TOKEN: {
         label: 'Bot 令牌',
@@ -2938,7 +2958,7 @@ export const zh = defineLocale({
       wecom: '在企业微信中添加群机器人，复制其 webhook key 作为 WECOM_BOT_ID。仅可发送——双向请用企业微信 (应用) 选项。',
       wecom_callback: '设置一个企业微信自建应用，暴露其回调 URL，并提供 corp ID、secret、agent ID 和 AES key。',
       weixin:
-        '运行 `hermes gateway setup`，选择 Weixin，然后使用个人微信账号扫描并确认二维码。Hermes 会通过腾讯 iLink Bot API 连接并保存凭据。',
+        '点击上方“扫码连接”，用个人微信扫码并确认即可。Hermes 通过腾讯 iLink Bot API 连接，凭据只保存在本机。',
       qqbot: '在 QQ 开放平台 (q.qq.com) 注册一个应用，复制 App ID 和 Client Secret。',
       api_server:
         '把 Hermes 暴露为兼容 OpenAI 的 API。设置一个鉴权密钥，然后把 Open WebUI / LobeChat 等指向 host:port。',

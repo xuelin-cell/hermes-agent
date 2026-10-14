@@ -3067,6 +3067,26 @@ export const en: Translations = {
       savedRestarting: 'Telegram saved; gateway restarting…',
       savedRestartFailed: detail => `Telegram saved; gateway restart failed${detail}`
     },
+    weixinQr: {
+      title: 'Connect by QR code',
+      help: 'Scan with a personal WeChat account and confirm on your phone. Hermes saves the credentials and starts the WeChat channel. By default only the WeChat account that scanned can send direct messages, and group chats are off.',
+      connect: 'Connect with QR code',
+      rescan: 'Scan again',
+      starting: 'Getting a QR code…',
+      waiting: 'Scan with WeChat',
+      scanned: 'Scanned. Confirm on your phone.',
+      expired: 'The QR code has expired.',
+      refresh: 'Refresh QR code',
+      failed: 'Connection failed',
+      startFailed: detail => `Could not get a QR code: ${detail}`,
+      unbind: 'Disconnect',
+      unbindTitle: 'Disconnect WeChat?',
+      unbindDesc: 'This removes the WeChat credentials. Hermes will stop receiving WeChat messages.',
+      unbinding: 'Disconnecting…',
+      unbound: 'WeChat disconnected',
+      savedRestarting: 'WeChat connected; restarting the gateway…',
+      savedRestartFailed: detail => `WeChat connected; gateway restart failed${detail}`
+    },
     fieldCopy: {
       TELEGRAM_BOT_TOKEN: {
         label: 'Bot token',
