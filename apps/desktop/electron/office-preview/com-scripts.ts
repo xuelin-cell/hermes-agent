@@ -36,7 +36,17 @@ const COMMANDS: Record<OfficeDocumentKind, ComCommands> = {
   word: {
     collection: 'Documents',
     alerts: '0',
-    bind: '$probe=$null; if ($app.Windows.Count -gt 0) {$handle=$app.Windows.Item(1).Hwnd} else {$probe=$app.Documents.Add($missing,$false,0,$false); $handle=$probe.Windows.Item(1).Hwnd}; Save-Owner $handle; if ($probe) {[void]$probe.Close($false); Release-OfficeObject $probe; $probe=$null}',
+    bind: String.raw`
+if ($app.Windows.Count -gt 0) {$handle=$app.Windows.Item(1).Hwnd}
+else {
+  if ($app.Visible) {throw 'Visible Word has no bindable document window'}
+  # 窗口必须存在才能取 HWND；应用保持隐藏，不改变用户窗口的可见性。
+  $probe=$app.Documents.Add($missing,$false,0,$true)
+  $handle=$probe.Windows.Item(1).Hwnd
+}
+Save-Owner $handle
+if ($probe) {[void]$probe.Close($false); Release-OfficeObject $probe; $probe=$null}
+`,
     open: '$doc=$app.Documents.Open($env:OFFICE_SOURCE,$false,$true,$false,"",$missing,$false,"",$missing,$missing,$missing,$false)',
     export: '[void]$doc.SaveAs($env:OFFICE_PDF,17)',
     close: '[void]$doc.Close($false)'

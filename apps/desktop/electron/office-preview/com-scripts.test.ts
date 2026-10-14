@@ -33,7 +33,10 @@ function Add-Type {param($TypeDefinition)}
 $global:quitCount=0; $global:closedCount=0; $global:securityAtOpen=0; $global:openArgs=@()
 $global:window=[pscustomobject]@{Hwnd=123;Visible=$true}
 $windows=[pscustomobject]@{Count=1}
-$windows|Add-Member ScriptMethod Item {return $global:window}
+$windows|Add-Member ScriptMethod Item {
+  if ($this.Count -eq 0) {throw [Runtime.InteropServices.COMException]::new('No document window',-2146822347)}
+  return $global:window
+}
 $global:collection=[pscustomobject]@{Count=[int]$env:OTHER_DOCUMENTS}
 $global:sheet=[pscustomobject]@{PageSetup=[pscustomobject]@{Zoom=$true;FitToPagesWide=0;FitToPagesTall=0}}
 $global:documentModel=[pscustomobject]@{Windows=$windows;Worksheets=@($global:sheet)}
@@ -48,10 +51,14 @@ $global:collection|Add-Member ScriptMethod Open {
   if ($global:securityAtOpen -ne 3) {throw 'macros not disabled'}
   $global:collection.Count++; return $global:documentModel
 }
-$global:collection|Add-Member ScriptMethod Add {$global:collection.Count++; return $global:documentModel}
+$global:collection|Add-Member ScriptMethod Add {
+  $global:collection.Count++
+  $global:documentModel.Windows.Count=if ($args.Count -ge 4 -and -not $args[3]) {0} else {1}
+  return $global:documentModel
+}
 $appWindows=[pscustomobject]@{Count=[int]$env:WINDOW_COUNT}
 $appWindows|Add-Member ScriptMethod Item {return $global:window}
-$global:officeModel=[pscustomobject]@{AutomationSecurity=1;DisplayAlerts=2;Hwnd=123;Windows=$appWindows;Documents=$global:collection;Presentations=$global:collection;Workbooks=$global:collection}
+$global:officeModel=[pscustomobject]@{Visible=$env:APP_VISIBLE -eq '1';AutomationSecurity=1;DisplayAlerts=2;Hwnd=123;Windows=$appWindows;Documents=$global:collection;Presentations=$global:collection;Workbooks=$global:collection}
 $global:officeModel|Add-Member ScriptMethod Quit {$global:quitCount++}
 # 只返回受控对象，不激活真实 COM。
 function New-Object {param($ComObject); return $global:officeModel}
@@ -112,6 +119,18 @@ describe.runIf(process.platform === 'win32')('COM PowerShell behavior', () => {
     expect(result.model.documents).toBe(0)
     expect(result.model.closed).toBe(2)
     expect(result.model.quit).toBe(1)
+    expect(result.model.visible).toBe(false)
+  })
+
+  it('does not create an identity document in a visible Word instance without document windows', async () => {
+    const result = await modelRun('word', true, false, false, true)
+
+    expect(result.report.ok).toBe(false)
+    expect(result.model.closed).toBe(0)
+    expect(result.model.quit).toBe(0)
+    expect(result.model.documents).toBe(0)
+    expect(result.model.visible).toBe(true)
+    expect(result.model.security).toBe(1)
   })
 
   it('closes only its own document and restores settings after export failure', async () => {
@@ -193,11 +212,11 @@ describe.runIf(process.platform === 'win32')('COM PowerShell behavior', () => {
 })
 
 /** 执行正式脚本与受控 COM 对象，核对的是运行行为，不读取或匹配产品源码。 */
-async function modelRun(kind: OfficeDocumentKind, created: boolean, exportFail = false, bindFail = false) {
+async function modelRun(kind: OfficeDocumentKind, created: boolean, exportFail = false, bindFail = false, visible = false) {
   const script = path.join(fixture, 'model.ps1')
 
   const summary = String.raw`
-@{securityAtOpen=$global:securityAtOpen;security=$global:officeModel.AutomationSecurity;alerts=$global:officeModel.DisplayAlerts;documents=$global:collection.Count;quit=$global:quitCount;closed=$global:closedCount;args=@($global:openArgs|ForEach-Object {if ($_ -is [System.Reflection.Missing]) {'missing'} else {$_}});page=$global:sheet.PageSetup;errors=@($Error|ForEach-Object {$_.Exception.Message})}|ConvertTo-Json -Compress -Depth 4
+@{visible=$global:officeModel.Visible;securityAtOpen=$global:securityAtOpen;security=$global:officeModel.AutomationSecurity;alerts=$global:officeModel.DisplayAlerts;documents=$global:collection.Count;quit=$global:quitCount;closed=$global:closedCount;args=@($global:openArgs|ForEach-Object {if ($_ -is [System.Reflection.Missing]) {'missing'} else {$_}});page=$global:sheet.PageSetup;errors=@($Error|ForEach-Object {$_.Exception.Message})}|ConvertTo-Json -Compress -Depth 4
 `
 
   await fs.writeFile(script, '\uFEFF' + MODEL + '\n' + officeComScript(kind) + '\n' + summary)
@@ -219,7 +238,8 @@ async function modelRun(kind: OfficeDocumentKind, created: boolean, exportFail =
         CREATED: created ? '1' : '0',
         WINDOW_COUNT: created ? '0' : '1',
         EXPORT_FAIL: exportFail ? '1' : '0',
-        BIND_FAIL: bindFail ? '1' : '0'
+        BIND_FAIL: bindFail ? '1' : '0',
+        APP_VISIBLE: visible ? '1' : '0'
       }
     }
   )
