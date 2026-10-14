@@ -16,6 +16,7 @@ import {
 import { settingsSearchTargetQuery } from './settings-search'
 import { resolveSettingsSubpage, settingsSubpages } from './subpages'
 import type { SettingsView } from './types'
+import { settingsViewVisible } from './visibility'
 
 const views: SettingsView[] = [
   ...SECTIONS.map(section => `config:${section.id}` as SettingsView),
@@ -23,6 +24,12 @@ const views: SettingsView[] = [
 ]
 
 describe('settings subpage routing', () => {
+  it('仅在开发者模式下显示 Browser 设置入口', () => {
+    expect(settingsViewVisible('config:browser', false)).toBe(false)
+    expect(settingsViewVisible('config:browser', true)).toBe(true)
+    expect(settingsViewVisible('config:chat', false)).toBe(true)
+  })
+
   it('只在开发者模式下暴露宠物外观入口', () => {
     expect(settingsSubpages('config:appearance', false).map(page => page.id)).not.toContain('pet')
     expect(settingsSubpages('config:appearance', true).map(page => page.id)).toContain('pet')
