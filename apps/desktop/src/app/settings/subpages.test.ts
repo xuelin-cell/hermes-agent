@@ -36,6 +36,12 @@ describe('settings subpage routing', () => {
     expect(settingsViewVisible('notifications', false)).toBe(true)
   })
 
+  it('仅在开发者模式下显示通知声音子页', () => {
+    expect(settingsSubpages('notifications', false).map(page => page.id)).not.toContain('sounds')
+    expect(settingsSubpages('notifications', true).map(page => page.id)).toContain('sounds')
+    expect(resolveSettingsSubpage('notifications', new URLSearchParams({ page: 'sounds' }), false)).toBe('alerts')
+  })
+
   it('仅在开发者模式下显示记忆与上下文、对话时区和附件子页', () => {
     expect(settingsViewVisible('config:memory', false)).toBe(false)
     expect(settingsViewVisible('config:memory', true)).toBe(true)

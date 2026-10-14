@@ -41,7 +41,7 @@ export function NotificationsSettings({ subpage }: NotificationsSettingsProps = 
   const developerMode = useStore($developerMode)
   const copy = t.settings.notifications
   const showAlerts = subpage === undefined || subpage === 'alerts'
-  const showSounds = subpage === undefined || subpage === 'sounds'
+  const showSounds = developerMode && (subpage === undefined || subpage === 'sounds')
 
   useSettingDeepLink('notifications', page => subpage === undefined || page === subpage)
 
