@@ -260,7 +260,9 @@ def test_native_cache_identity_tracks_compilers_sdk_and_openssl(tmp_path, monkey
     env["WindowsSDKVersion"] = "10.0.2"
     assert desktop_toolchain.native_cache_path(cache, env) != third
     monkeypatch.setattr(desktop_toolchain.subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(FileNotFoundError()))
-    assert desktop_toolchain.native_cache_path(cache, env) != desktop_toolchain.native_cache_path(cache, env)
+    unavailable = desktop_toolchain.native_cache_path(cache, env)
+    assert desktop_toolchain.native_cache_path(cache, env) == unavailable
+    assert unavailable != third
 
 
 @pytest.mark.parametrize("complete", [False, True])

@@ -12,7 +12,6 @@ from pathlib import Path
 import platform
 import subprocess
 import sys
-import uuid
 
 
 _INSTALL_ENV = {
@@ -140,10 +139,8 @@ def native_cache_path(cache: Path, env: Mapping[str, str]) -> Path:
     commands = [["rustc", "-vV"]]
     if target.startswith("win32"):
         commands.append(["cl", "/Bv"])
-        complete = bool(env.get("WindowsSDKVersion") and env.get("VCToolsVersion"))
     else:
         commands.extend([[env.get("CC") or "cc", "--version"], [env.get("CXX") or "c++", "--version"]])
-        complete = True
     commands.extend([[value, "--version"] for key, value in selected.items() if key.startswith("CC_")])
     if target.startswith("darwin"):
         commands.extend([["xcrun", "--show-sdk-path"], ["xcrun", "--show-sdk-build-version"]])
@@ -155,14 +152,11 @@ def native_cache_path(cache: Path, env: Mapping[str, str]) -> Path:
                  else Path(openssl or "") / "lib"}
         for kind, root in roots.items():
             files = sorted(path for path in root.rglob("*") if path.is_file()) if root.is_dir() else []
-            complete = complete and bool(files)
             for path in files:
                 with path.open("rb") as stream:
                     identity["openssl"][f"{kind}/{path.relative_to(root).as_posix()}"] = hashlib.file_digest(stream, "sha256").hexdigest()
     else:
         commands.append(["openssl", "version", "-a"])
-        if target == "win32-arm64":
-            complete = False  # The provider must identify the linked static libraries.
     for command in commands:
         try:
             result = subprocess.run(command, env=dict(env), capture_output=True, text=True, encoding="utf-8",
@@ -171,9 +165,10 @@ def native_cache_path(cache: Path, env: Mapping[str, str]) -> Path:
             # cl /Bv reports its identity and exits 2 when no source is supplied.
             valid = result.returncode in ((0, 2) if command == ["cl", "/Bv"] else (0,)) and bool(output.strip())
             identity["probes"].append([command, output])
-            complete = complete and valid
+            if not valid:
+                identity["probes"][-1].append(f"returncode={result.returncode}")
         except (OSError, subprocess.TimeoutExpired):
-            complete = False
+            identity["probes"].append([command, "unavailable"])
     # Build-owned locations move across runners; their bytes and relative layout
     # identify them. Keep external compiler/SDK paths significant.
     encoded = json.dumps(identity, sort_keys=True)
@@ -181,7 +176,7 @@ def native_cache_path(cache: Path, env: Mapping[str, str]) -> Path:
     encoded = encoded.replace(json.dumps(owned)[1:-1], "<build-cache>")
     # uv builds sdists below this root. Keep the partition compact so compiler
     # outputs fit Windows MAX_PATH; the target is already part of the identity.
-    digest = hashlib.sha256(encoded.encode()).hexdigest()[:32] if complete else uuid.uuid4().hex
+    digest = hashlib.sha256(encoded.encode()).hexdigest()[:32]
     return cache.resolve() / "python/runtime" / digest
 
 
