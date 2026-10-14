@@ -126,3 +126,76 @@ async def test_status_reports_cron_and_turn_activity(forward, tmp_path: Path, mo
     act = writer.body()["activity"]
     assert act["cron_next_at"] == 1791594000.0 and act["cron_jobs"] == 1
     assert act["cron_running"] == 0 and act["turns"] == 0 and act["errors"] == []
+
+
+# ---------------------------------------------------------------- 技能策略（引导载荷的 skills 段，见 seed/skillpolicy.py）
+
+@pytest.mark.asyncio
+async def test_skill_policy_runs_the_script_with_hermes_python(forward, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """策略从标准输入进、报告取标准输出的最后一行；HERMES_HOME 是用户的数据目录。"""
+    script = tmp_path / "policy.py"
+    script.write_text(
+        "import json, os, sys\n"
+        "policy = json.load(sys.stdin)\n"
+        "print('noise from hermes imports')\n"
+        "print(json.dumps({'removed': 3, 'home': os.environ['HERMES_HOME'], 'policy': policy}))\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(forward, "HERMES_PYTHON", sys.executable)
+    monkeypatch.setattr(forward, "SKILL_POLICY", script)
+
+    assert await forward._apply_skill_policy(None) is None  # 老入口不给：不动
+    policy = {"keep_categories": ["uniwork"], "keep": []}
+    assert await forward._apply_skill_policy(policy) == {
+        "ok": True, "removed": 3, "home": str(forward.HERMES_HOME), "policy": policy,
+    }
+
+
+@pytest.mark.asyncio
+async def test_skill_policy_failures_are_reported_not_raised(forward, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    failing = tmp_path / "failing.py"
+    failing.write_text("import sys\nprint('{\"error\": \"ImportError: no tools\"}')\nsys.exit(1)\n", encoding="utf-8")
+    crashing = tmp_path / "crashing.py"
+    crashing.write_text("raise SystemExit('boom')\n", encoding="utf-8")
+    monkeypatch.setattr(forward, "HERMES_PYTHON", sys.executable)
+
+    monkeypatch.setattr(forward, "SKILL_POLICY", failing)
+    assert await forward._apply_skill_policy({}) == {"ok": False, "error": "ImportError: no tools"}
+    monkeypatch.setattr(forward, "SKILL_POLICY", crashing)
+    report = await forward._apply_skill_policy({})
+    assert report["ok"] is False and "boom" in report["error"]
+    monkeypatch.setattr(forward, "HERMES_PYTHON", str(tmp_path / "no-such-python"))
+    report = await forward._apply_skill_policy({})
+    assert report["ok"] is False and report["error"]
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_applies_the_skill_policy_before_hermes_starts(forward, monkeypatch: pytest.MonkeyPatch) -> None:
+    """hermes 启动时会再同步一遍自带技能：名单得在那之前写好。结果放进引导回包。"""
+    order: list[str] = []
+
+    async def policy(skills):
+        order.append(f"policy {skills}")
+        return {"ok": True, "removed": 80}
+
+    async def spawn(token):
+        order.append("spawn")
+
+    async def alive():
+        return True
+
+    async def idle():
+        return None
+
+    monkeypatch.setattr(forward, "_apply_skill_policy", policy)
+    monkeypatch.setattr(forward, "_spawn_hermes", spawn)
+    monkeypatch.setattr(forward, "_hermes_alive", alive)
+    monkeypatch.setattr(forward, "_supervise", idle)
+    writer = _Writer()
+    payload = {"token": "tok", "files": [], "skills": {"keep_categories": ["uniwork"], "keep": []}}
+
+    await forward._bootstrap(writer, json.dumps(payload).encode("utf-8"))
+
+    assert order == ["policy {'keep_categories': ['uniwork'], 'keep': []}", "spawn"]
+    body = writer.body()
+    assert body["ok"] is True and body["skills"] == {"ok": True, "removed": 80}

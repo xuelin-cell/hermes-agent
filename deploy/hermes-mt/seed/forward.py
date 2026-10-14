@@ -68,6 +68,11 @@ ARCHIVE_INTERVAL_S = int(os.environ.get("MT_ARCHIVE_INTERVAL_S", "300"))
 MAX_HEAD = 64 * 1024  # 请求头上限，超过就当坏请求
 MAX_BODY = 4 * 1024 * 1024  # 引导载荷上限
 
+# 技能策略（引导载荷的 skills 段）用 hermes 自己的 Python 跑 skillpolicy.py：它调 hermes 的同步函数。
+HERMES_PYTHON = os.environ.get("MT_HERMES_PYTHON", "/opt/hermes/.venv/bin/python")
+SKILL_POLICY = Path(__file__).resolve().with_name("skillpolicy.py")
+SKILL_POLICY_TIMEOUT_S = 60.0
+
 _START_TS = time.monotonic()
 _hermes_proc: asyncio.subprocess.Process | None = None
 _hermes_token: str = ""
@@ -207,6 +212,45 @@ def _write_seed(files: list[dict]) -> list[str]:
             pass
         written.append(rel)
     return written
+
+
+async def _apply_skill_policy(policy: object) -> dict | None:
+    """平台的技能策略：拉起 hermes 之前收起上游自带的技能，见 skillpolicy.py。
+
+    入口没给（老入口）就不动。失败不挡 hermes 启动（技能只是锦上添花）：记日志，结果放进引导回包。"""
+    if not isinstance(policy, dict):
+        return None
+    env = dict(os.environ)
+    env.update(_hermes_env)
+    env["HERMES_HOME"] = str(HERMES_HOME)
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            HERMES_PYTHON, str(SKILL_POLICY),
+            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            env=env,
+        )
+    except OSError as exc:
+        _log(f"技能策略没跑起来: {exc}")
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+    try:
+        out, err = await asyncio.wait_for(
+            proc.communicate(json.dumps(policy).encode("utf-8")), timeout=SKILL_POLICY_TIMEOUT_S)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+        _log(f"技能策略超过 {int(SKILL_POLICY_TIMEOUT_S)} 秒")
+        return {"ok": False, "error": "timeout"}
+    lines = out.decode("utf-8", "replace").strip().splitlines()
+    try:
+        report = json.loads(lines[-1]) if lines else {}
+    except ValueError:
+        report = {}
+    if not isinstance(report, dict):
+        report = {}
+    if proc.returncode != 0:
+        report.setdefault("error", err.decode("utf-8", "replace").strip()[-300:] or f"退出码 {proc.returncode}")
+        _log(f"技能策略失败: {report['error']}")
+    return {"ok": proc.returncode == 0, **report}
 
 
 async def _spawn_hermes(token: str) -> None:
@@ -410,6 +454,9 @@ async def _bootstrap(writer: asyncio.StreamWriter, body: bytes) -> None:
             _reply(writer, 400, {"ok": False, "error": f"写种子文件失败: {exc}"})
             return
 
+        # hermes 启动时会再同步一遍自带技能，名单要在那之前写好。
+        skills = await _apply_skill_policy(payload.get("skills"))
+
         _hermes_token = token
         try:
             await _spawn_hermes(token)
@@ -428,7 +475,10 @@ async def _bootstrap(writer: asyncio.StreamWriter, body: bytes) -> None:
     deadline = time.monotonic() + float(payload.get("ready_timeout_s", 180))
     while time.monotonic() < deadline:
         if await _hermes_alive():
-            _reply(writer, 200, {"ok": True, "hermes": True, "written": written, "state": report})
+            reply = {"ok": True, "hermes": True, "written": written, "state": report}
+            if skills is not None:
+                reply["skills"] = skills
+            _reply(writer, 200, reply)
             return
         if _hermes_proc is not None and _hermes_proc.returncode is not None:
             _reply(writer, 500, {

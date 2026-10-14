@@ -377,6 +377,7 @@ class Cube:
         files: list[dict],
         ready_timeout_s: int = 240,
         state: dict | None = None,
+        skills: dict | None = None,
     ) -> dict:
         """把会话令牌和种子文件送进容器，并让它把 hermes 拉起来。
 
@@ -392,6 +393,8 @@ class Cube:
         ``state`` 是给状态管家的：``{"vol", "owner", "epoch", "restore_from", "force"}``，
         转发器先按它把上一代的归档恢复到本地盘再拉 hermes；见 seed/mtstate.py。
 
+        ``skills`` 是平台的技能策略，转发器在拉 hermes 之前执行；见 seed/skillpolicy.py。
+
         只认第一次。实例已经引导过时转发器返回 409「已经引导过了」，这里当作成功 ——
         调用方重试或多个请求撞上时不该因此失败。★ 同样是 409 的「拒绝启动」（卷上的
         记录比入口新）**不是**成功，原样抛出，由调用方决定是停下还是带 force 重试。
@@ -402,6 +405,8 @@ class Cube:
         payload: dict[str, Any] = {"token": token, "files": files, "ready_timeout_s": ready_timeout_s}
         if state:
             payload["state"] = state
+        if skills is not None:
+            payload["skills"] = skills
         deadline = time.monotonic() + BOOTSTRAP_RETRY_S
         while True:
             try:

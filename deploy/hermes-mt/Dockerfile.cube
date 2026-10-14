@@ -123,7 +123,9 @@ RUN mkdir -p /opt/mt /mnt/u
 COPY seed/forward.py /opt/mt/forward.py
 COPY seed/mtstate.py /opt/mt/mtstate.py
 COPY seed/mtuser.py /opt/mt/mtuser.py
-RUN chmod 0644 /opt/mt/forward.py /opt/mt/mtstate.py /opt/mt/mtuser.py
+# 平台的技能策略：引导时收起 hermes 上游自带的技能，由转发器用 hermes 的 Python 跑（见 seed/skillpolicy.py）。
+COPY seed/skillpolicy.py /opt/mt/skillpolicy.py
+RUN chmod 0644 /opt/mt/forward.py /opt/mt/mtstate.py /opt/mt/mtuser.py /opt/mt/skillpolicy.py
 
 # ---- 本分支对 hermes 的改动和新增（overlay.list） -----------------------------
 # 基础镜像里的 hermes 是上游某个版本；/opt/hermes 是可编辑安装，且不留预编译缓存

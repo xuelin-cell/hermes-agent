@@ -137,6 +137,11 @@ class Settings:
     yuanjing_mcp_client_id: str = _env("MT_YUANJING_MCP_CLIENT_ID", "UniWork")
     yuanjing_mcp_oss_mode: str = _env("MT_YUANJING_MCP_OSS_MODE", "internal")
 
+    # hermes 上游自带的技能给不给用户（UniWork 的内置技能总是给）：空 = 一个都不给；* = 全给；逗号分隔的名字 =
+    # 只给这几个。上游那一大套（约 80 个）用户大多用不上，又和 UniWork 的重复，还全都列进系统提示。
+    # 每次引导时由实例的转发器执行（seed/skillpolicy.py）；用户改过的、agent 自己写的、技能市场装的不动。
+    upstream_skills: str = _env("MT_UPSTREAM_SKILLS", "").strip()
+
     # 开发模式：不走短信登录，任意用户名直接进；模型 key 用 MT_DEV_API_KEY。生产必须关。
     dev_login: bool = _env("MT_DEV_LOGIN", "0") == "1"
     dev_api_key: str = _env("MT_DEV_API_KEY", "")

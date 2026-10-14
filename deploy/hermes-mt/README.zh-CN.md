@@ -119,6 +119,8 @@ HERMES_DASHBOARD_SESSION_TOKEN>`，REST 加 `X-Hermes-Session-Token` ④ `Host` 
 （云端版用户的浏览器在内网，公网链接打不开），`MT_YUANJING_MCP_OSS_MODE` 设成空就不带。没套餐的用户不写这一条；地址设成空就是不提供。
 这一条归平台：每次引导都按入口的配置重写它的地址和超时，用户手改的地址会被改回（用户的开关、自己加的别的 MCP 不动）。
 
+**技能**：实例镜像里自带 hermes 上游的一大套技能（约 80 个）和 UniWork 的 11 个内置技能（`skills/uniwork/`）。hermes 把所有启用的技能连说明列进系统提示（约 3000 token），上游那套用户大多用不上，又和 UniWork 的 doc / excel / pdf-generator 重复。所以每次引导时，转发器在拉起 hermes 之前按 `MT_UPSTREAM_SKILLS` 收起上游的（`seed/skillpolicy.py`，用 hermes 自己的「不再补回」名单 `skills/.curator_suppressed`）：默认空 = 只留 UniWork 的和 hermes 的必需技能 hermes-agent；`*` = 全给；逗号分隔的名字 = 再放这几个。用户改过的、agent 自己写的、从技能市场装的不动；放宽后 hermes 下次启动把收起的补回来。
+
 重新登录会重新读取 MaaS 当前返回的 Key，但不假设 MaaS 每次都会生成新 Key。若 Key 发生变化，
 Entry 不重启租户容器，而是原子更新卷内 `.env`；该用户所有已有会话在各自的**下一轮对话开始时**
 复用 Hermes 现有刷新逻辑重建模型客户端。已经执行中的一轮不会中途换 Key。

@@ -378,9 +378,9 @@ cmd_image() {
     ok "已构建 $IMAGE_NAME:$fp"
     # 镜像里的转发器必须和仓库里的逐字节相同——这是「入口和模板一起升级」能成立的前提。
     local in_img in_repo
-    in_img="$(docker run --rm --network none --entrypoint sha256sum "$IMAGE_NAME:$fp" /opt/mt/forward.py /opt/mt/mtstate.py /opt/mt/mtuser.py | awk '{print $1}' | tr '\n' ' ')"
-    in_repo="$(sha256sum seed/forward.py seed/mtstate.py seed/mtuser.py | awk '{print $1}' | tr '\n' ' ')"
-    [ "$in_img" = "$in_repo" ] && ok "镜像里的转发器与仓库一致" || die "镜像里的 forward.py/mtstate.py/mtuser.py 与仓库不一致"
+    in_img="$(docker run --rm --network none --entrypoint sha256sum "$IMAGE_NAME:$fp" /opt/mt/forward.py /opt/mt/mtstate.py /opt/mt/mtuser.py /opt/mt/skillpolicy.py | awk '{print $1}' | tr '\n' ' ')"
+    in_repo="$(sha256sum seed/forward.py seed/mtstate.py seed/mtuser.py seed/skillpolicy.py | awk '{print $1}' | tr '\n' ' ')"
+    [ "$in_img" = "$in_repo" ] && ok "镜像里的转发器与仓库一致" || die "镜像里的 forward.py/mtstate.py/mtuser.py/skillpolicy.py 与仓库不一致"
     # 覆盖进 /opt/hermes 的仓库文件同理，开一个容器一次比完。
     local files
     files="$(overlay_files | tr '\n' ' ')"
