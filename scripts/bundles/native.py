@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import zipfile
 from dataclasses import asdict
 from pathlib import Path
 
@@ -86,6 +87,33 @@ def stage_uv_cache(source: Path, destination: Path) -> None:
         return set()
 
     shutil.copytree(source, destination, ignore=ignore)
+
+
+def pack_uv_cache(source: Path, destination: Path) -> tuple[int, int]:
+    """将离线 UV 种子缓存确定性压成单文件，减少安装器处理的小文件数量。"""
+    temporary = destination.with_suffix(destination.suffix + ".tmp")
+    temporary.unlink(missing_ok=True)
+    files = 0
+    original_bytes = 0
+    try:
+        with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED,
+                             compresslevel=6, allowZip64=True) as archive:
+            for path in sorted(source.rglob("*")):
+                if not path.is_file():
+                    continue
+                relative = path.relative_to(source).as_posix()
+                info = zipfile.ZipInfo(relative, date_time=(1980, 1, 1, 0, 0, 0))
+                info.compress_type = zipfile.ZIP_DEFLATED
+                info.external_attr = 0o600 << 16
+                with path.open("rb") as reader, archive.open(info, "w", force_zip64=True) as writer:
+                    shutil.copyfileobj(reader, writer, length=1024 * 1024)
+                files += 1
+                original_bytes += path.stat().st_size
+        os.replace(temporary, destination)
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        raise
+    return files, original_bytes
 
 
 def stage_pm_runtime(root: Path, python: Path, repo: Path, *, offline: bool = False,
@@ -271,14 +299,19 @@ def _prepare_native(*, out: Path, ref: str, source: Path, cache: Path,
     # plugin extras, feature changes — resolves entirely from the shipped
     # wheels with zero network access, on every profile of this install.
     payload_cache = out / "uv-cache"
+    payload_cache_archive = out / "uv-cache.zip"
     if payload_cache.exists():
         shutil.rmtree(payload_cache, ignore_errors=True)
+    payload_cache_archive.unlink(missing_ok=True)
     src_cache = cache
     if src_cache.is_dir():
         print(f"  uv-cache: copying {src_cache} → payload...", flush=True)
         stage_uv_cache(src_cache, payload_cache)
         pruned = prune_uv_cache_to_lock(payload_cache, repo_dir)
-        print(f"✓ uv-cache (lock-scoped: pruned {pruned} stale entries; offline rebuilds resolve from shipped wheels)", flush=True)
+        files, original_bytes = pack_uv_cache(payload_cache, payload_cache_archive)
+        shutil.rmtree(payload_cache)
+        print(f"✓ uv-cache.zip ({files} files, {original_bytes / 1024 / 1024:.1f} MiB before compression; "
+              f"pruned {pruned} stale entries; offline rebuilds resolve from shipped wheels)", flush=True)
     else:
         raise InstallError("uv-cache", "runtime dependency cache is missing")
 

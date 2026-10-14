@@ -55,6 +55,21 @@ def test_windows_release_prunes_symbols_and_ffplay_then_refreshes_digest(tmp_pat
     assert Facts(store / "facts.json", strict=True).get("ffmpeg")["digest"] == tree_digest(entry)
 
 
+def test_uv_cache_archive_is_deterministic_and_keeps_source(tmp_path):
+    """缓存归档不修改持久构建缓存，相同输入生成相同字节。"""
+    source = tmp_path / "cache"
+    (source / "wheels-v6" / "package").mkdir(parents=True)
+    (source / "wheels-v6" / "package" / "metadata.msgpack").write_bytes(b"metadata")
+    first = tmp_path / "first.zip"
+    second = tmp_path / "second.zip"
+
+    assert native.pack_uv_cache(source, first) == (1, 8)
+    assert native.pack_uv_cache(source, second) == (1, 8)
+
+    assert first.read_bytes() == second.read_bytes()
+    assert (source / "wheels-v6" / "package" / "metadata.msgpack").read_bytes() == b"metadata"
+
+
 def test_bundle_stages_git_tree_and_runs_native_children_before_manifest(tmp_path, monkeypatch):
     import importlib
     import inspect

@@ -9,7 +9,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from pathlib import Path
+import zipfile
+from pathlib import Path, PurePosixPath
 from typing import Optional
 
 from pm.package import (
@@ -304,7 +305,7 @@ def uv_cache_dir() -> Path:
     """The hermes-owned uv cache: machine-scoped and shared (keyed by
     content — two profiles reuse one cache), anchored to the DEFAULT
     hermes root like partials_root(). A bundle ships a seeded copy at
-    the payload root (uv-cache/); the first call on a sealed install
+    the payload root (uv-cache.zip; legacy bundles used uv-cache/); the first call on a sealed install
     copies it out to the writable machine cache (the read-only payload
     can't serve uv's working cache), and a warm `uv sync --offline`
     from it is near-free (probed: 0.4s vs 1.2s cold) — the blow-away-
@@ -322,8 +323,26 @@ def uv_cache_dir() -> Path:
         try:
             from pm.paths import store_root
 
-            payload_cache = store_root().parent / "uv-cache"
-            if payload_cache.is_dir():
+            payload_root = store_root().parent
+            payload_archive = payload_root / "uv-cache.zip"
+            payload_cache = payload_root / "uv-cache"
+            if payload_archive.is_file():
+                machine_cache.parent.mkdir(parents=True, exist_ok=True)
+                with tempfile.TemporaryDirectory(prefix=".uv-seed-", dir=machine_cache.parent) as temp:
+                    extracted = Path(temp)
+                    with zipfile.ZipFile(payload_archive) as archive:
+                        if any(PurePosixPath(name.replace("\\", "/")).is_absolute()
+                               or ".." in PurePosixPath(name.replace("\\", "/")).parts
+                               for name in archive.namelist()):
+                            raise OSError("unsafe uv cache archive path")
+                        archive.extractall(extracted)
+                        if os.name != "nt":
+                            for info in archive.infolist():
+                                mode = (info.external_attr >> 16) & 0o777
+                                if mode and not info.is_dir():
+                                    (extracted / info.filename).chmod(mode)
+                    shutil.copytree(extracted, machine_cache, dirs_exist_ok=True)
+            elif payload_cache.is_dir():
                 machine_cache.mkdir(parents=True, exist_ok=True)
                 for entry in payload_cache.iterdir():
                     if entry.name == ".seeded":

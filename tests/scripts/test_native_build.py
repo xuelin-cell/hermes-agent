@@ -72,7 +72,7 @@ def test_native_cli_consumes_real_minimal_preparation_without_bootstrap(tmp_path
     (runtime / "pm-runtime.json").write_text(json.dumps({"python": "../tools/python/bin/python3", "sitePackages": "lib/site-packages"}))
     features = out / "enabled-features.json"
     features.write_text('{"extras":[]}')
-    (out / "uv-cache").mkdir()
+    (out / "uv-cache.zip").write_bytes(b"fixture")
     prepared = publish_prepared(out, ROOT, "a" * 40, AgentInputs(
         project=code / "pyproject.toml", code=code, repo="hermes-agent", placement="contained",
         target=current_target(), python=python, site_packages=site, environment=out / "venv",

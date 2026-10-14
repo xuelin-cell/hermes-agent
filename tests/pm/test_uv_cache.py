@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-
+import zipfile
 
 import pm.packages as pkgs
 
@@ -33,6 +33,27 @@ def test_uv_cache_dir_seeds_from_payload(monkeypatch, tmp_path):
     (payload / "uv-cache" / "wheels-v5" / "some.pkg").write_text("changed", encoding="utf-8")
     pkgs.uv_cache_dir()
     assert (machine / "wheels-v5" / "some.pkg").read_text(encoding="utf-8") == "x"
+
+
+def test_uv_cache_dir_seeds_from_single_archive(monkeypatch, tmp_path):
+    """新安装包从单个压缩种子恢复缓存，避免安装阶段释放数万个文件。"""
+    home = tmp_path / "home"
+    home.mkdir()
+    payload = tmp_path / "payload"
+    payload.mkdir()
+    with zipfile.ZipFile(payload / "uv-cache.zip", "w") as archive:
+        archive.writestr("archive-v0/bucket/module.py", "seeded = True\n")
+
+    import hermes_constants
+    import pm.paths as paths_mod
+
+    monkeypatch.setattr(hermes_constants, "get_default_hermes_root", lambda: home)
+    monkeypatch.setattr(paths_mod, "store_root", lambda: payload / "tools")
+
+    machine = pkgs.uv_cache_dir()
+
+    assert (machine / "archive-v0" / "bucket" / "module.py").read_text() == "seeded = True\n"
+    assert (machine / ".seeded").is_file()
 
 
 def test_uv_cache_dir_cold_machine_no_payload(monkeypatch, tmp_path):
