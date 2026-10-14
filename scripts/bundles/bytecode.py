@@ -98,8 +98,9 @@ def bake_bytecode(root: Path, python: Path) -> dict:
     # Pycs are read-only BEFORE packaging so a stale-source rewrite (which
     # unchecked-hash never triggers anyway) or any incidental write can never
     # touch them and the macOS signature never observes a pyc change. The
-    # __pycache__ DIRS stay writable: in-place payload rebuilds rmtree the
-    # tree (native._prepare_native), and complete asserted coverage plus
+    # __pycache__ DIRS stay writable: in-place payload rebuilds use the build
+    # filesystem remover that clears Windows read-only attributes, and complete
+    # asserted coverage plus
     # unchecked-hash means no cache-miss write can ever target these dirs.
     for source_root in _import_roots(root):
         for cache in source_root.rglob("__pycache__"):

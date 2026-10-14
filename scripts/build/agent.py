@@ -10,6 +10,7 @@ import shutil
 import tomllib
 
 from scripts.build.inputs import AgentInputs, RESOURCE_ENV, project_entries, validate_frontends
+from scripts.build.filesystem import remove_build_tree
 from scripts.build.launchers import write_launchers
 
 
@@ -19,7 +20,7 @@ def _copy(source: Path, destination: Path, *, replace: bool = False) -> None:
     if destination.resolve().is_relative_to(source.resolve()) or source.resolve().is_relative_to(destination.resolve()):
         raise ValueError(f"output must not be inside copied input: {source}")
     if replace and destination.exists():
-        shutil.rmtree(destination)
+        remove_build_tree(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
     if source.is_dir():
         shutil.copytree(source, destination, symlinks=True, dirs_exist_ok=True,

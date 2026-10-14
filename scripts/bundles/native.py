@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -15,6 +16,7 @@ from pm.install import _lockfile
 from pm.lock import Facts
 from pm.registry import get_package, walk
 from pm.store import current_target
+from scripts.build.filesystem import remove_build_tree
 
 
 _WINDOWS_ON_DEMAND_TOOLS = {"llamacpp-cuda", "llamacpp-hip"}
@@ -124,7 +126,7 @@ def stage_pm_runtime(root: Path, python: Path, repo: Path, *, offline: bool = Fa
 
     destination = root / "pm-runtime"
     if destination.exists():
-        shutil.rmtree(destination)
+        remove_build_tree(destination)
     stage_manager_runtime(python=python, destination=destination, project=repo / "pm", offline=offline, cache=cache)
     seal_pm_runtime(root, python)
 
@@ -171,7 +173,7 @@ def prune_staged_store(store_dir: Path, names: list[str]) -> None:
     keep = facts.entries_in_use()
     for entry in store_dir.iterdir():
         if entry.is_dir() and not entry.name.startswith(".") and entry.name not in keep:
-            shutil.rmtree(entry)
+            remove_build_tree(entry)
 
 
 def prune_windows_release_tools(store_dir: Path, target: str) -> tuple[int, int]:
@@ -219,6 +221,8 @@ def _prepare_native(*, out: Path, ref: str, source: Path, cache: Path,
     from pm.package import InstallError
 
     store_dir = out / "tools"
+    if store_dir.exists():
+        remove_build_tree(store_dir)
     store_dir.mkdir(parents=True, exist_ok=True)
     repo_dir = out / "hermes-agent"
     from scripts.bundles.payload import INERT_SNAPSHOT_DIRS, snapshot
@@ -229,7 +233,9 @@ def _prepare_native(*, out: Path, ref: str, source: Path, cache: Path,
     snapshot(source, revision, repo_dir, exclude=INERT_SNAPSHOT_DIRS)
     # PM's provider code reads its adjacent lock. Never combine that tool graph
     # with a revision selecting different pins.
-    if (repo_dir / "pm/lock.json").read_bytes() != paths.lockfile_path().read_bytes():
+    snapshot_lock = json.loads((repo_dir / "pm/lock.json").read_text(encoding="utf-8-sig"))
+    builder_lock = json.loads(paths.lockfile_path().read_text(encoding="utf-8-sig"))
+    if snapshot_lock != builder_lock:
         raise ValueError("selected revision's PM lock differs from the builder; use a checkout at that revision")
     build_env = os.environ if env is None else env
 
@@ -277,14 +283,16 @@ def _prepare_native(*, out: Path, ref: str, source: Path, cache: Path,
     # must point at the payload's own tree, not this checkout.
     venv_dir = out / "venv"
     if venv_dir.exists():
-        shutil.rmtree(venv_dir)
+        remove_build_tree(venv_dir)
     env = dict(build_env)
-    from pm import build_environment
+    from scripts.build.python_environment import build_python_environment
 
     # Cold native wheels need a larger budget than interactive installs.
-    build_environment(source=repo_dir, python=python_bin, out=venv_dir,
-                      env=env, cache=cache, all_extras=True, sealed=True, explicit=True,
-                      timeout=2 * 60 * 60)
+    build_python_environment(
+        label="application environment", source=repo_dir, python=python_bin, out=venv_dir,
+        env=env, cache=cache, all_extras=True, sealed=True, explicit=True,
+        timeout=2 * 60 * 60,
+    )
     print("✓ venv (all extras, on the staged interpreter)")
 
     # Inventory the staged interpreter before publishing the bundle contract.
@@ -301,7 +309,7 @@ def _prepare_native(*, out: Path, ref: str, source: Path, cache: Path,
     payload_cache = out / "uv-cache"
     payload_cache_archive = out / "uv-cache.zip"
     if payload_cache.exists():
-        shutil.rmtree(payload_cache, ignore_errors=True)
+        remove_build_tree(payload_cache)
     payload_cache_archive.unlink(missing_ok=True)
     src_cache = cache
     if src_cache.is_dir():
@@ -309,7 +317,7 @@ def _prepare_native(*, out: Path, ref: str, source: Path, cache: Path,
         stage_uv_cache(src_cache, payload_cache)
         pruned = prune_uv_cache_to_lock(payload_cache, repo_dir)
         files, original_bytes = pack_uv_cache(payload_cache, payload_cache_archive)
-        shutil.rmtree(payload_cache)
+        remove_build_tree(payload_cache)
         print(f"✓ uv-cache.zip ({files} files, {original_bytes / 1024 / 1024:.1f} MiB before compression; "
               f"pruned {pruned} stale entries; offline rebuilds resolve from shipped wheels)", flush=True)
     else:

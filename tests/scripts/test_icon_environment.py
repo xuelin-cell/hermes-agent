@@ -8,7 +8,7 @@ import pytest
 def test_icon_environment_retries_uv_trampoline_resource_lock(monkeypatch, tmp_path):
     """仅重试 UV 启动器 PE 资源被短暂占用的已知 Windows 错误。"""
     from pm.package import InstallError
-    from scripts.build import icon_environment
+    from scripts.build import icon_environment, python_environment
 
     calls = []
 
@@ -22,8 +22,8 @@ def test_icon_environment_retries_uv_trampoline_resource_lock(monkeypatch, tmp_p
             )
         return kwargs["out"] / "Scripts/python.exe"
 
-    monkeypatch.setattr(icon_environment.pm, "build_environment", build_environment)
-    monkeypatch.setattr(icon_environment.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(python_environment.pm, "build_environment", build_environment)
+    monkeypatch.setattr(python_environment.time, "sleep", lambda _seconds: None)
     source, out, cache = (tmp_path / name for name in ("source", "out", "cache"))
 
     assert icon_environment.prepare_icon_environment(source, out, cache) == out / "Scripts/python.exe"
@@ -34,7 +34,7 @@ def test_icon_environment_retries_uv_trampoline_resource_lock(monkeypatch, tmp_p
 def test_icon_environment_does_not_retry_other_install_failures(monkeypatch, tmp_path):
     """依赖解析等确定性错误立即返回，避免用重试掩盖真实问题。"""
     from pm.package import InstallError
-    from scripts.build import icon_environment
+    from scripts.build import icon_environment, python_environment
 
     calls = []
 
@@ -43,7 +43,7 @@ def test_icon_environment_does_not_retry_other_install_failures(monkeypatch, tmp
         calls.append(kwargs)
         raise InstallError("venv", "dependency resolution failed")
 
-    monkeypatch.setattr(icon_environment.pm, "build_environment", fail)
+    monkeypatch.setattr(python_environment.pm, "build_environment", fail)
 
     with pytest.raises(InstallError, match="dependency resolution failed"):
         icon_environment.prepare_icon_environment(tmp_path / "source", tmp_path / "out", None)

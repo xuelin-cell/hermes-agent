@@ -10,7 +10,6 @@ import re
 from copy import deepcopy
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 
@@ -308,6 +307,7 @@ def _prepare(request: BuildRequest) -> Path:
 def prepare_in_worker(request: BuildRequest) -> Path:
     from scripts.bundles.desktop import run
     from scripts.bundles.desktop_toolchain import prepare_tools
+    from scripts.build.filesystem import remove_build_tree
     from scripts.build.icon_environment import prepare_icon_environment
     from scripts.bundles.native import prepare_native
 
@@ -324,7 +324,7 @@ def prepare_in_worker(request: BuildRequest) -> Path:
     if icon_environment.exists():
         if icon_environment.is_symlink():
             raise ValueError("icon environment must be preparation-owned, not a symlink")
-        shutil.rmtree(icon_environment)
+        remove_build_tree(icon_environment)
     icon_python = prepare_icon_environment(request.source, icon_environment, request.cache / "python/build")
     native = request.source / "apps/desktop/build/native-deps"
     run([str(node), "apps/desktop/scripts/stage-native-deps.mjs", "--source", str(request.source),

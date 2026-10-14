@@ -7,12 +7,14 @@ $ErrorActionPreference = 'Stop'
 $sourceRoot = $PSScriptRoot
 $cacheRoot = Join-Path $sourceRoot '.cache\desktop-inputs'
 $workRoot = Join-Path $sourceRoot '.build\desktop-job-windows'
-$env:TEMP = Join-Path $sourceRoot '.build\temp-windows'
+$tempRoot = Join-Path $sourceRoot '.build\temp-windows'
+$buildTemp = Join-Path $tempRoot ([guid]::NewGuid().ToString('N'))
+$env:TEMP = $buildTemp
 $env:TMP = $env:TEMP
 $env:ELECTRON_BUILDER_CACHE = Join-Path $cacheRoot 'electron-builder'
 $env:UV_CONCURRENT_INSTALLS = '1'
 
-New-Item -ItemType Directory -Force -Path $env:TEMP, $cacheRoot | Out-Null
+New-Item -ItemType Directory -Force -Path $buildTemp, $cacheRoot | Out-Null
 if (-not [string]::IsNullOrWhiteSpace($ProxyUrl)) {
     $env:HTTP_PROXY = $ProxyUrl
     $env:HTTPS_PROXY = $ProxyUrl
@@ -68,4 +70,5 @@ try {
     Write-Host "Size: $sizeMiB MiB"
 } finally {
     Pop-Location
+    Remove-Item -LiteralPath $buildTemp -Recurse -Force -ErrorAction SilentlyContinue
 }
