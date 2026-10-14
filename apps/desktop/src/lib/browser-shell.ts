@@ -23,10 +23,12 @@ import { storedBoolean } from '@/lib/storage'
  *   app/artifacts/index.tsx                            the library opens on local artifacts
  *   app/auth/auth-gate.tsx                             no UniWork sign-in page: the entry has signed the user in
  *   app/chat/right-rail/media-preview.tsx              (ours) the player for audio and video files
- *   app/chat/right-rail/office-slides.tsx              (ours) the slide viewer: decks the instance renders page by page
- *   app/chat/right-rail/preview-file.tsx               Office files show as the PDF the instance converts them to
+ *   app/chat/right-rail/office-sheet.tsx               (ours) the sheet viewer: spreadsheets the instance turns into tables
+ *   app/chat/right-rail/office-slides.tsx              (ours) the page viewer: decks and documents the instance renders page by page
+ *   app/chat/right-rail/preview-file.tsx               Office files fall back to the PDF the instance converts them to
  *   app/chat/right-rail/preview-pane.tsx               HTML files from the instance run their scripts, sandboxed;
- *                                                      slide decks open in the slide viewer, audio and video in the player
+ *                                                      slide decks and documents open in the page viewer, spreadsheets in
+ *                                                      the sheet viewer, audio and video in the player
  *   app/chat/sidebar/filter-menu.tsx                   * no profile submenu (filter / new / import)
  *   app/chat/sidebar/index.tsx                         * no messaging platforms entry
  *   app/chat/sidebar/profile-switcher.tsx              * no add / import profile, no "connect gateway"
@@ -42,7 +44,7 @@ import { storedBoolean } from '@/lib/storage'
  *   app/shell/gateway-menu-panel.tsx                   * no gateway restart
  *   app/skills/skill-market.tsx                        installing from the market says it is in development
  *   contrib/plugins.ts                                 * no Bot Mode (the BOTS tab): its plugin is not started
- *   lib/local-preview.ts                               Office files (pptx, docx, xlsx …) open as PDF previews
+ *   lib/local-preview.ts                               Office files (pptx, docx, xlsx …) are previews, never read as text
  *   lib/media.ts                                       audio and video in the chat play straight from the instance
  *   lib/model-options.ts                               * model pickers: the platform's providers only
  *   store/developer-mode.ts                            flipping UniWork's developer mode reloads the page
@@ -193,13 +195,28 @@ export function officePreviewPdf(path: string): null | Promise<string> {
 }
 
 const SLIDE_DECK_RE = /\.(?:pptx?|odp)$/i
+const DOCUMENT_RE = /\.(?:docx?|odt)$/i
+const SPREADSHEET_RE = /\.(?:xlsx?|ods)$/i
 
-/** Slide decks (PowerPoint, Impress) in the browser build open in the slide
- * viewer (app/chat/right-rail/office-slides.tsx) rather than the browser's PDF
- * viewer: the slides scroll top to bottom, and full screen shows one at a time.
- * The instance renders each page as an image. */
-export function previewsOfficeAsSlides(path: string): boolean {
-  return isBrowserShell() && SLIDE_DECK_RE.test(path)
+/** Slide decks (PowerPoint, Impress) and documents (Word, Writer) in the browser
+ * build open in the page viewer (app/chat/right-rail/office-slides.tsx) rather
+ * than the browser's PDF viewer: the pages scroll top to bottom, as images the
+ * instance renders. */
+export function previewsOfficeAsPages(path: string): boolean {
+  return isBrowserShell() && (SLIDE_DECK_RE.test(path) || DOCUMENT_RE.test(path))
+}
+
+/** A slide deck, not a document: the page viewer presents decks full screen. */
+export function isSlideDeck(path: string): boolean {
+  return SLIDE_DECK_RE.test(path)
+}
+
+/** Spreadsheets (Excel, Calc) in the browser build open in the sheet viewer
+ * (app/chat/right-rail/office-sheet.tsx): a table per sheet as LibreOffice
+ * exports it, formulas worked out, number formats, merged cells and charts kept.
+ * Printed to PDF, a wide table is cut across pages. */
+export function previewsOfficeAsSheet(path: string): boolean {
+  return isBrowserShell() && SPREADSHEET_RE.test(path)
 }
 
 /** A deck as the slide viewer shows it: page count, page size in points, and
@@ -222,6 +239,26 @@ export async function officeSlideDeck(path: string): Promise<OfficeSlideDeck> {
     imageUrl: (page: number) => bridge.officeSlideImageUrl(path, page, info.version),
     pages: info.pages,
     width: info.width
+  }
+}
+
+/** A spreadsheet as the sheet viewer shows it: each sheet's table (HTML, still to
+ * be sanitized), how many rows the sheet has and how many came along, and where a
+ * chart picture in a table is (null for a name the instance did not list). */
+export interface OfficeSheetBook {
+  imageUrl: (name: string) => null | string
+  sheets: { html: string; name: string; rows: number; shown: number }[]
+}
+
+/** Loads the bridge only when a spreadsheet is opened, as officeSlideDeck does. */
+export async function officeSheetBook(path: string): Promise<OfficeSheetBook> {
+  const bridge = await import('@/dev/browser-bridge')
+  const book = await bridge.officeSheet(path)
+  const images = new Set(book.images)
+
+  return {
+    imageUrl: (name: string) => (images.has(name) ? bridge.officeSheetImageUrl(path, name, book.version) : null),
+    sheets: book.sheets
   }
 }
 
@@ -344,9 +381,16 @@ interface BrowserShellCopy {
   previewTitle: string
   previewTooLarge: string
   restoreFailed: string
+  sheet: {
+    empty: string
+    sheets: string
+    truncated: (shown: number, rows: number) => string
+    unnamed: (index: number) => string
+  }
   skillInstallPending: string
   slides: {
     counter: (page: number, pages: number) => string
+    documentPage: (page: number) => string
     exitFullscreen: string
     fullscreen: string
     next: string
@@ -399,9 +443,17 @@ const COPY: Record<'en' | 'zh', BrowserShellCopy> = {
     previewTitle: 'Preview',
     previewTooLarge: 'This file is too large to open in a tab. Download it instead.',
     restoreFailed: 'Could not restore the file',
+    sheet: {
+      empty: 'This spreadsheet has nothing to show.',
+      sheets: 'Sheets',
+      truncated: (shown: number, rows: number) =>
+        `Showing the first ${shown} of ${rows} rows. Download the file to see them all.`,
+      unnamed: (index: number) => `Sheet ${index}`
+    },
     skillInstallPending: 'Installing from here is in development.',
     slides: {
       counter: (page: number, pages: number) => `${page} / ${pages}`,
+      documentPage: (page: number) => `Page ${page}`,
       exitFullscreen: 'Exit full screen',
       fullscreen: 'Present full screen',
       next: 'Next slide',
@@ -448,9 +500,16 @@ const COPY: Record<'en' | 'zh', BrowserShellCopy> = {
     previewTitle: '预览',
     previewTooLarge: '文件太大，不能在标签页中打开，请下载后查看。',
     restoreFailed: '恢复失败',
+    sheet: {
+      empty: '这个表格是空的。',
+      sheets: '工作表',
+      truncated: (shown: number, rows: number) => `只显示前 ${shown} 行（共 ${rows} 行），完整内容请下载后查看。`,
+      unnamed: (index: number) => `工作表 ${index}`
+    },
     skillInstallPending: '功能开发中',
     slides: {
       counter: (page: number, pages: number) => `${page} / ${pages}`,
+      documentPage: (page: number) => `第 ${page} 页`,
       exitFullscreen: '退出全屏',
       fullscreen: '全屏放映',
       next: '下一页',

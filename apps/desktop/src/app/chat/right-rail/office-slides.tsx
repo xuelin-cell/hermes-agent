@@ -2,19 +2,20 @@ import { type KeyboardEvent, type MouseEvent, type ReactNode, useEffect, useRef,
 
 import { PageLoader } from '@/components/page-loader'
 import { useI18n } from '@/i18n'
-import { browserShellCopy, type OfficeSlideDeck, officeSlideDeck } from '@/lib/browser-shell'
+import { browserShellCopy, isSlideDeck, type OfficeSlideDeck, officeSlideDeck } from '@/lib/browser-shell'
 import { ChevronLeft, ChevronRight, Maximize, X } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import type { PreviewTarget } from '@/store/preview'
 
 import { PreviewEmptyState } from './preview-file'
 
-// Browser build only (lib/browser-shell.ts::previewsOfficeAsSlides): the slide
-// viewer for PowerPoint / Impress decks. The instance converts the deck with
-// LibreOffice and renders each page as an image on request (deploy/hermes-mt/
-// seed/mtuser.py). In the pane the slides scroll top to bottom, each image
-// fetched once it comes within a screen of view; full screen presents one slide
-// at a time. Upstream would hand the bytes to the PDF viewer.
+// Browser build only (lib/browser-shell.ts::previewsOfficeAsPages): the page
+// viewer for PowerPoint / Impress decks and Word / Writer documents. The
+// instance converts the file with LibreOffice and renders each page as an image
+// on request (deploy/hermes-mt/seed/mtuser.py). In the pane the pages scroll top
+// to bottom, each image fetched once it comes within a screen of view; a deck
+// can also be presented full screen, one slide at a time. Upstream would hand
+// the bytes to the PDF viewer.
 
 const STEP_KEYS: Record<string, number> = {
   ' ': 1,
@@ -95,6 +96,9 @@ export function OfficeSlides({ reloadKey, target }: { reloadKey: number; target:
   const { locale, t } = useI18n()
   const copy = browserShellCopy(locale)
   const path = target.path || target.source
+  // A document is read, not presented: no full screen, pages as narrow as paper.
+  const presentable = isSlideDeck(path)
+  const pageLabel = presentable ? copy.slides.page : copy.slides.documentPage
   const [deck, setDeck] = useState<null | OfficeSlideDeck>(null)
   const [error, setError] = useState<null | string>(null)
   const [page, setPage] = useState(1)
@@ -314,9 +318,11 @@ export function OfficeSlides({ reloadKey, target }: { reloadKey: number; target:
         <>
           <div className="flex h-7 shrink-0 items-center justify-between gap-3 border-b border-border/40 px-3 text-[0.625rem] font-bold text-muted-foreground">
             <span data-slide-counter="">{copy.slides.counter(page, pages)}</span>
-            <RoundButton className="hover:text-foreground" label={copy.slides.fullscreen} onClick={toggleFullscreen}>
-              <Maximize className="size-3.5" />
-            </RoundButton>
+            {presentable && (
+              <RoundButton className="hover:text-foreground" label={copy.slides.fullscreen} onClick={toggleFullscreen}>
+                <Maximize className="size-3.5" />
+              </RoundButton>
+            )}
           </div>
           <div
             className="min-h-0 flex-1 overflow-y-auto p-4 outline-none"
@@ -324,7 +330,7 @@ export function OfficeSlides({ reloadKey, target }: { reloadKey: number; target:
             ref={listRef}
             tabIndex={0}
           >
-            <div className="mx-auto flex max-w-5xl flex-col gap-4">
+            <div className={cn('mx-auto flex flex-col gap-4', presentable ? 'max-w-5xl' : 'max-w-3xl')}>
               {Array.from({ length: pages }, (_, index) => index + 1).map(n => (
                 <div
                   className="w-full shrink-0 overflow-hidden rounded-md bg-white shadow-[0_6px_24px_rgba(0,0,0,0.12)]"
@@ -334,7 +340,7 @@ export function OfficeSlides({ reloadKey, target }: { reloadKey: number; target:
                 >
                   {fetched.has(n) && (
                     <img
-                      alt={copy.slides.page(n)}
+                      alt={pageLabel(n)}
                       className="size-full object-contain select-none"
                       draggable={false}
                       src={src(n)}

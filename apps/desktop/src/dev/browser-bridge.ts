@@ -740,11 +740,13 @@ async function renamePath(path: string, newName: string): Promise<{ path: string
 
 // ---------------------------------------------------------------------------
 // Office files (Word, PowerPoint, Excel): the instance converts them with
-// LibreOffice (deploy/hermes-mt/seed/mtuser.py). Documents and sheets show as
-// the PDF (`/__mt_user/office-pdf`) in the preview pane; slide decks go to the
-// slide viewer (app/chat/right-rail/office-slides.tsx), which shows one page
-// image at a time (`/__mt_user/office-preview`). A converted file is kept
-// until it changes, so opening it again is quick.
+// LibreOffice (deploy/hermes-mt/seed/mtuser.py). Slide decks and documents go
+// to the page viewer (app/chat/right-rail/office-slides.tsx), which shows each
+// page as an image (`/__mt_user/office-preview`); spreadsheets go to the sheet
+// viewer (app/chat/right-rail/office-sheet.tsx), which shows each sheet as a
+// table (`/__mt_user/office-sheet`). The PDF (`/__mt_user/office-pdf`) is what
+// the preview pane falls back to. A converted file is kept until it changes, so
+// opening it again is quick.
 // ---------------------------------------------------------------------------
 
 function isOfficePreviewErrorCode(code: string): code is OfficePreviewErrorCode {
@@ -836,6 +838,54 @@ export async function officeSlidesInfo(path: string): Promise<OfficeSlidesInfo> 
 /** The image of one page (1-based). Same-origin, so the entry's cookie carries it. */
 export function officeSlideImageUrl(path: string, page: number, version: string): string {
   return `${apiPrefix()}/__mt_user/office-preview/page?${officeQuery(path)}&n=${page}&v=${encodeURIComponent(version)}`
+}
+
+/** A spreadsheet as LibreOffice exports it, one table (HTML) per sheet: the
+ * sheet's name (empty when the file has only one), how many rows it has and how
+ * many of them came along, and the chart pictures the tables show. */
+export interface OfficeSheetData {
+  images: string[]
+  sheets: { html: string; name: string; rows: number; shown: number }[]
+  version: string
+}
+
+/** The sheets of a spreadsheet (`/__mt_user/office-sheet`). The tables are not
+ * sanitized yet: the sheet viewer does that before it shows them. */
+export async function officeSheet(path: string): Promise<OfficeSheetData> {
+  let response: Response
+
+  try {
+    response = await fetch(`${apiPrefix()}/__mt_user/office-sheet?${officeQuery(path)}`, {
+      credentials: credentials(),
+      headers: authHeaders()
+    })
+  } catch {
+    throw new Error(browserShellCopy().officePreview.failed)
+  }
+
+  const body = await response.text()
+
+  if (!response.ok) {
+    throw officePreviewError(response.status, body)
+  }
+
+  const data = JSON.parse(body) as Partial<OfficeSheetData>
+
+  return {
+    images: Array.isArray(data.images) ? data.images.filter(name => typeof name === 'string') : [],
+    sheets: (Array.isArray(data.sheets) ? data.sheets : []).map(sheet => ({
+      html: String(sheet?.html ?? ''),
+      name: String(sheet?.name ?? ''),
+      rows: Number(sheet?.rows) || 0,
+      shown: Number(sheet?.shown) || 0
+    })),
+    version: String(data.version ?? '')
+  }
+}
+
+/** A chart picture in a spreadsheet, by the name the instance listed. */
+export function officeSheetImageUrl(path: string, name: string, version: string): string {
+  return `${apiPrefix()}/__mt_user/office-sheet/image?${officeQuery(path)}&name=${encodeURIComponent(name)}&v=${encodeURIComponent(version)}`
 }
 
 // ---------------------------------------------------------------------------

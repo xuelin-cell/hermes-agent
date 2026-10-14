@@ -620,6 +620,42 @@ describe('browser bridge: Office files preview as PDF', () => {
 
     await expect(mod.officeSlidesInfo(path)).rejects.toThrow(/right now|暂时不能/)
   })
+
+  it('asks the instance for a spreadsheet’s sheets, and builds each chart’s address', async () => {
+    const mod = await installFresh()
+    const path = '/mnt/u/workspace/城市 客流统计.xlsx'
+
+    globalThis.fetch = vi.fn(async () =>
+      jsonResponse({
+        images: ['source_html_1.png', 7],
+        ok: true,
+        sheets: [
+          { html: '<table><tr><td>1</td></tr></table>', name: '客流统计', rows: 20001, shown: 1000 },
+          { html: '<table></table>', name: '汇总', rows: 2, shown: 2 }
+        ],
+        version: 'abc123'
+      })
+    ) as typeof fetch
+
+    await expect(mod.officeSheet(`file://${path}`)).resolves.toEqual({
+      images: ['source_html_1.png'],
+      sheets: [
+        { html: '<table><tr><td>1</td></tr></table>', name: '客流统计', rows: 20001, shown: 1000 },
+        { html: '<table></table>', name: '汇总', rows: 2, shown: 2 }
+      ],
+      version: 'abc123'
+    })
+    expect(vi.mocked(globalThis.fetch).mock.calls[0]?.[0]).toBe(
+      `/__hermes_backend/__mt_user/office-sheet?path=${encodeURIComponent(path)}`
+    )
+    expect(mod.officeSheetImageUrl(path, 'source_html_1.png', 'abc123')).toBe(
+      `/__hermes_backend/__mt_user/office-sheet/image?path=${encodeURIComponent(path)}&name=source_html_1.png&v=abc123`
+    )
+
+    globalThis.fetch = vi.fn(async () => jsonResponse({ code: 'too_large', ok: false }, 413)) as typeof fetch
+
+    await expect(mod.officeSheet(path)).rejects.toThrow(/too large|太大/)
+  })
 })
 
 describe('browser bridge: audio and video', () => {

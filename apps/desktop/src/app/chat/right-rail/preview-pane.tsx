@@ -12,7 +12,8 @@ import { Tip } from '@/components/ui/tooltip'
 import { type Translations, useI18n } from '@/i18n'
 import {
   previewsMediaInPanel,
-  previewsOfficeAsSlides,
+  previewsOfficeAsPages,
+  previewsOfficeAsSheet,
   remoteHtmlFrameDocument,
   remoteHtmlFrameSandbox
 } from '@/lib/browser-shell'
@@ -36,6 +37,7 @@ import {
 import { canOpenBrowserWindow, isBrowserWindow } from '@/store/windows'
 
 import { MediaPreview } from './media-preview'
+import { OfficeSheet } from './office-sheet'
 import { OfficeSlides } from './office-slides'
 import { ArtifactPreview } from './preview-artifact'
 import { PreviewBrowserBar } from './preview-browser-bar'
@@ -1078,8 +1080,10 @@ export function PreviewPane({ embedded = false, onRestartServer, reloadRequest =
           {!isWebPreview &&
             (target.kind === 'artifact' ? (
               <ArtifactPreview target={target} />
-            ) : previewsOfficeAsSlides(target.path || target.source) ? (
+            ) : previewsOfficeAsPages(target.path || target.source) ? (
               <OfficeSlides reloadKey={localReloadKey} target={target} />
+            ) : previewsOfficeAsSheet(target.path || target.source) ? (
+              <OfficeSheet reloadKey={localReloadKey} target={target} />
             ) : previewsMediaInPanel(target.path || target.source) ? (
               <MediaPreview reloadKey={localReloadKey} target={target} />
             ) : (

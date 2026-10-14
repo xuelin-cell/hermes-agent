@@ -27,6 +27,7 @@ import stat
 import struct
 import tempfile
 import time
+from html import unescape as html_unescape
 from pathlib import Path
 
 import mtstate
@@ -685,11 +686,13 @@ class Files:
 # ---------------------------------------------------------------- Office 文件预览
 
 # 预览面板只会显示文本、图片、PDF 和网页，Word / PowerPoint / Excel 在它眼里是二进制。这里用镜像里的
-# LibreOffice 把它们转成 PDF：文档、表格在面板里按 PDF 显示；幻灯片再用 poppler 按页出图，由垫片的幻灯片
-# 查看器一页一页地放。转好的放在本地盘（不进卷、不进归档），一个文件一个目录（PDF、页数、每页的图），
+# LibreOffice 转：幻灯片和文档转成 PDF，再用 poppler 按页出图，由垫片的页面查看器从上往下排；表格转成 HTML，
+# 每个工作表一张表格，由垫片的表格查看器显示（公式由 LibreOffice 重新算过，图表画成图片）。转好的放在本地盘
+# （不进卷、不进归档），一个文件一个目录（PDF、页数、每页的图；表格的 HTML 和图表），
 # 按「真实路径 + 大小 + 修改时间」认，文件一改就重新转。同一时间只转一个；浏览器等不及断开了，
 # 这次转换照样做完，下次打开直接用。
 OFFICE_EXTENSIONS = frozenset({".doc", ".docx", ".odp", ".ods", ".odt", ".ppt", ".pptx", ".xls", ".xlsx"})
+SHEET_EXTENSIONS = frozenset({".ods", ".xls", ".xlsx"})
 OFFICE_MAX_BYTES = int(os.environ.get("MT_OFFICE_PREVIEW_MAX_BYTES", str(100 << 20)))
 OFFICE_PDF_MAX_BYTES = int(os.environ.get("MT_OFFICE_PREVIEW_PDF_MAX_BYTES", str(50 << 20)))
 OFFICE_TIMEOUT_S = float(os.environ.get("MT_OFFICE_PREVIEW_TIMEOUT_S", "180"))
@@ -700,6 +703,11 @@ OFFICE_CACHE_MAX_BYTES = 500 << 20
 # 每页的图：长边 1600 像素的 JPEG，16:9 的幻灯片一页一两百 KB。
 PAGE_LONG_EDGE = 1600
 PAGE_TIMEOUT_S = 60.0
+# 表格每个工作表只留前这么多行：2 万行 × 10 列的表转出来有 25 MB，浏览器也排不动。
+SHEET_MAX_ROWS = int(os.environ.get("MT_OFFICE_SHEET_MAX_ROWS", "1000"))
+# 留下的行加起来还这么大（工作表很多、列很宽）就不预览了。
+SHEET_MAX_BYTES = int(os.environ.get("MT_OFFICE_SHEET_MAX_BYTES", str(16 << 20)))
+SHEET_IMAGE_TYPES = {".gif": "image/gif", ".jpeg": "image/jpeg", ".jpg": "image/jpeg", ".png": "image/png"}
 _JOB_PREFIX = "job-"
 _JOB_STALE_S = 3600
 _KEY_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -759,8 +767,43 @@ def _tree_size(folder: Path) -> int:
     return total
 
 
+# LibreOffice 导出表格的 HTML（HTML (StarCalc)）：多个工作表时，每张表前有
+# `<A NAME="table0"><h1>Sheet 1: <em>名字</em></h1></A>`，只有一个时没有这行；隐藏的行、列、工作表和空表不导出。
+# 单元格里的文字都转义过，不会冒出标签，所以下面按标签切是安全的。
+_SHEET_TABLE_RE = re.compile(r"<table\b.*?</table>", re.I | re.S)
+_SHEET_NAME_RE = re.compile(r"<h1>[^<]*<em>(.*?)</em>\s*</h1>", re.I | re.S)
+_SHEET_ROW_RE = re.compile(r"<tr\b", re.I)
+# 每个单元格都带的数值、格式、公式副本，占了导出的三分之一以上，页面用不上。
+_SHEET_NOISE_RE = re.compile(r'\s(?:data-sheets-[a-z-]+|sdval|sdnum)="[^"]*"', re.I)
+_SHEET_IMG_RE = re.compile(r'<img\b[^>]*?\bsrc="([^"]*)"', re.I)
+_SHEET_IMAGE_NAME_RE = re.compile(r"^[\w.-]+\.(?:gif|jpe?g|png)$", re.I)
+
+
+def split_sheets(document: str, max_rows: int = SHEET_MAX_ROWS) -> tuple[list[dict], list[str]]:
+    """导出的整份 HTML → 每个工作表一项（名字、表格、总行数、留下的行数）和表格里用到的图片名。
+
+    名字从表前的标题取，只有一个工作表时没有标题，名字是空的；超过 max_rows 行的只留前 max_rows 行。"""
+    sheets: list[dict] = []
+    images: list[str] = []
+    start = 0
+    for table in _SHEET_TABLE_RE.finditer(document):
+        names = _SHEET_NAME_RE.findall(document, start, table.start())
+        start = table.end()
+        markup = _SHEET_NOISE_RE.sub("", table.group(0))
+        rows = [row.start() for row in _SHEET_ROW_RE.finditer(markup)]
+        if len(rows) > max_rows:
+            cut = rows[max_rows]
+            markup = markup[:markup.rfind("\n", 0, cut) + 1 or cut] + "</table>"
+        for src in _SHEET_IMG_RE.findall(markup):
+            if _SHEET_IMAGE_NAME_RE.match(src) and src not in images:
+                images.append(src)
+        name = html_unescape(re.sub(r"<[^>]*>", "", names[-1])).strip() if names else ""
+        sheets.append({"name": name, "html": markup, "rows": len(rows), "shown": min(len(rows), max_rows)})
+    return sheets, images
+
+
 class OfficePreview:
-    """Office 文件转 PDF、按页出图。转发器里只有一个：锁和「正在做哪些」要跨请求共用。"""
+    """Office 文件转 PDF、按页出图，表格转 HTML。转发器里只有一个：锁和「正在做哪些」要跨请求共用。"""
 
     def __init__(self, workspace: Path, cache_dir: Path = OFFICE_CACHE_DIR):
         self.files = Files(workspace)
@@ -788,14 +831,19 @@ class OfficePreview:
             raise FileError(413, "too_large", f"文件超过 {OFFICE_MAX_BYTES >> 20} MB，不能在线预览")
         return real, st
 
-    async def _entry(self, path: object) -> tuple[str, Path]:
-        """(版本号, 这个文件的缓存目录)，目录里的 doc.pdf 已经转好。出错抛 FileError。"""
+    async def _entry(self, path: object, made: str = "doc.pdf") -> tuple[str, Path]:
+        """(版本号, 这个文件的缓存目录)，目录里的 made（doc.pdf，或表格的 sheet.json）已经转好。出错抛 FileError。"""
         real, st = await asyncio.to_thread(self.locate, path)
+        if made == "sheet.json" and real.suffix.lower() not in SHEET_EXTENSIONS:
+            raise FileError(415, "unsupported", "只有表格能按表格预览")
         ident = f"{real}\0{st.st_size}\0{st.st_mtime_ns}".encode("utf-8", "surrogateescape")
         key = hashlib.sha256(ident).hexdigest()[:40]
         folder = self.cache_dir / key
-        if not (folder / "doc.pdf").is_file():
-            await self._once(key, lambda: self._convert(real, folder))
+        if not (folder / made).is_file():
+            if made == "doc.pdf":
+                await self._once(key, lambda: self._convert(real, folder))
+            else:
+                await self._once(f"{key}:sheet", lambda: self._convert(real, folder, sheet=True))
         with contextlib.suppress(OSError):
             os.utime(folder)  # 清理按目录的修改时间留最近用过的
         return key, folder
@@ -829,6 +877,21 @@ class OfficePreview:
             await self._once(f"{key}:p{number}", lambda: self._render_page(out.parent / "doc.pdf", number, out))
         return key, out
 
+    async def sheet(self, path: object) -> Path:
+        """表格转成的 sheet.json：版本号、每个工作表（名字、表格的 HTML、总行数、留下的行数）、图表图片的名字。
+        存的就是给浏览器的样子，原样发出去。"""
+        _, folder = await self._entry(path, "sheet.json")
+        return folder / "sheet.json"
+
+    async def sheet_image(self, path: object, name: object) -> tuple[str, Path, str]:
+        """表格里的一张图（LibreOffice 把图表画成的图片），返回 (版本号, 图片, 类型)。只认 sheet.json 里登记过的名字。"""
+        key, folder = await self._entry(path, "sheet.json")
+        data = json.loads(await asyncio.to_thread((folder / "sheet.json").read_text, encoding="utf-8"))
+        image = folder / "sheet-img" / str(name)
+        if not isinstance(name, str) or name not in data.get("images", []) or not image.is_file():
+            raise FileError(404, "not_found", "表格里没有这张图")
+        return key, image, SHEET_IMAGE_TYPES.get(image.suffix.lower(), "application/octet-stream")
+
     async def _once(self, key: str, start):
         """同一件事只做一次，已经在做就一起等。浏览器断开时取消的只是这次等待，事情本身接着做完。"""
         job = self._jobs.get(key)
@@ -843,11 +906,13 @@ class OfficePreview:
         if not job.cancelled():
             job.exception()  # 没人在等时也算取走了，免得事件循环报「异常没人看」
 
-    async def _convert(self, real: Path, folder: Path) -> None:
+    async def _convert(self, real: Path, folder: Path, sheet: bool = False) -> None:
+        """转成 PDF（folder/doc.pdf）；sheet=True 时表格转成 HTML，拆好存成 folder/sheet.json，图表放 folder/sheet-img/。"""
+        made, target = ("sheet.json", "html") if sheet else ("doc.pdf", "pdf")
         if self._lock is None:
             self._lock = asyncio.Lock()
         async with self._lock:
-            if (folder / "doc.pdf").is_file():
+            if (folder / made).is_file():
                 return
             command = soffice_command()
             if command is None:
@@ -865,24 +930,39 @@ class OfficePreview:
                         f"-env:UserInstallation={profile}",
                         "--headless", "--invisible", "--nologo", "--nodefault", "--norestore",
                         "--nolockcheck", "--nofirststartwizard",
-                        "--convert-to", "pdf", "--outdir", str(work), str(source),
+                        "--convert-to", target, "--outdir", str(work), str(source),
                     ], work, OFFICE_TIMEOUT_S)
                 except FileError:
                     # 杀掉的 soffice 可能把配置目录留在「使用中」，下一次换个干净的。
                     await asyncio.to_thread(shutil.rmtree, self.cache_dir / "profile", True)
                     raise
-                produced = work / "source.pdf"
+                produced = work / f"source.{target}"
                 size = produced.stat().st_size if produced.is_file() else 0
                 if code != 0 or size == 0:
                     await asyncio.to_thread(shutil.rmtree, self.cache_dir / "profile", True)
                     raise FileError(422, "convert_failed", "转换失败：" + _tail(output))
-                if size > OFFICE_PDF_MAX_BYTES:
-                    raise FileError(413, "too_large", f"转出来的 PDF 超过 {OFFICE_PDF_MAX_BYTES >> 20} MB，不能在线预览")
-                folder.mkdir(parents=True, exist_ok=True)
-                os.replace(produced, folder / "doc.pdf")
+                if sheet:
+                    await asyncio.to_thread(self._keep_sheet, produced, folder)
+                else:
+                    if size > OFFICE_PDF_MAX_BYTES:
+                        raise FileError(413, "too_large", f"转出来的 PDF 超过 {OFFICE_PDF_MAX_BYTES >> 20} MB，不能在线预览")
+                    folder.mkdir(parents=True, exist_ok=True)
+                    os.replace(produced, folder / "doc.pdf")
             finally:
                 await asyncio.to_thread(shutil.rmtree, work, True)
         await asyncio.to_thread(self.prune)
+
+    def _keep_sheet(self, produced: Path, folder: Path) -> None:
+        """导出的 HTML 拆成工作表存进 sheet.json（目录名就是版本号），用到的图表挪进 sheet-img/。"""
+        sheets, images = split_sheets(produced.read_text(encoding="utf-8", errors="replace"))
+        images = [name for name in images if (produced.parent / name).is_file()]
+        data = {"ok": True, "version": folder.name, "sheets": sheets, "images": images}
+        if len(json.dumps(data, ensure_ascii=False).encode("utf-8")) > SHEET_MAX_BYTES:
+            raise FileError(413, "too_large", "表格太大，不能在线预览")
+        (folder / "sheet-img").mkdir(parents=True, exist_ok=True)
+        for name in images:
+            os.replace(produced.parent / name, folder / "sheet-img" / name)
+        _write_json(folder / "sheet.json", data)
 
     async def _read_info(self, folder: Path) -> dict:
         command = poppler_command("pdfinfo")

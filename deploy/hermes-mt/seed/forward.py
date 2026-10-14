@@ -646,6 +646,10 @@ _FILE_OPS = {
 }
 
 _office: mtuser.OfficePreview | None = None
+_OFFICE_ROUTES = (
+    "/__mt_user/office-pdf", "/__mt_user/office-preview", "/__mt_user/office-preview/page",
+    "/__mt_user/office-sheet", "/__mt_user/office-sheet/image",
+)
 
 
 def _office_preview() -> mtuser.OfficePreview:
@@ -700,7 +704,7 @@ async def _handle_user(
 
     files = mtuser.Files(WORKSPACE)
     try:
-        if route in ("/__mt_user/office-pdf", "/__mt_user/office-preview", "/__mt_user/office-preview/page"):
+        if route in _OFFICE_ROUTES:
             if method != "GET":
                 _reply(writer, 405, {"ok": False, "code": "method", "error": "只接受 GET"})
                 return
@@ -709,11 +713,17 @@ async def _handle_user(
                 await _send_file(writer, await office.pdf(target), "application/pdf")
             elif route == "/__mt_user/office-preview":
                 _reply(writer, 200, {"ok": True, **await office.info(target)})
+            elif route == "/__mt_user/office-sheet":
+                await _send_file(writer, await office.sheet(target), "application/json; charset=utf-8")
             else:
-                # 地址里带着版本号（文件一改就变）：版本对得上的图可以让浏览器缓存一天。
-                version, image = await office.page(target, (query.get("n") or [""])[0])
+                # 每页的图、表格里的图表：地址里带着版本号（文件一改就变），版本对得上的可以让浏览器缓存一天。
+                if route == "/__mt_user/office-preview/page":
+                    version, image = await office.page(target, (query.get("n") or [""])[0])
+                    content_type = "image/jpeg"
+                else:
+                    version, image, content_type = await office.sheet_image(target, (query.get("name") or [""])[0])
                 fresh = (query.get("v") or [""])[0] == version
-                await _send_file(writer, image, "image/jpeg", "private, max-age=86400" if fresh else "no-store")
+                await _send_file(writer, image, content_type, "private, max-age=86400" if fresh else "no-store")
             return
         if route == "/__mt_user/trash":
             if method != "GET":

@@ -199,10 +199,65 @@ if mode == "fail":
 if mode == "sleep":
     time.sleep(30)
 outdir = args[args.index("--outdir") + 1]
+target = args[args.index("--convert-to") + 1]
 source = args[-1]
 stem = os.path.splitext(os.path.basename(source))[0]
-with open(source, "rb") as src, open(os.path.join(outdir, stem + ".pdf"), "wb") as out:
-    out.write(b"%PDF-1.4 fake of " + src.read())
+if target == "html":
+    # 表格：照真的那样写 <名字>.html，图表画成 <名字>_html_<随机>.png 放在旁边
+    with open(os.environ["FAKE_SOFFICE_HTML"], encoding="utf-8") as src:
+        with open(os.path.join(outdir, stem + ".html"), "w", encoding="utf-8") as out:
+            out.write(src.read())
+    with open(os.path.join(outdir, stem + "_html_5d41402a.png"), "wb") as out:
+        out.write(b"PNG chart")
+else:
+    with open(source, "rb") as src, open(os.path.join(outdir, stem + ".pdf"), "wb") as out:
+        out.write(b"%PDF-1.4 fake of " + src.read())
+"""
+
+# LibreOffice（HTML (StarCalc)）导出两个工作表的样子，摘自 25.2 的真实导出：Overview 里是链接，
+# 每张表前是 <A NAME><h1>Sheet N: <em>名字</em></h1></A>；单元格带 data-sheets-*、sdval、sdnum。
+LO_SHEETS_HTML = """<!DOCTYPE html>
+<html>
+<head>
+\t<meta http-equiv="content-type" content="text/html; charset=utf-8"/>
+\t<style type="text/css">body,div,table,thead,tbody,tfoot,tr,th,td,p { font-family:"Calibri"; font-size:x-small }</style>
+</head>
+<body>
+<hr>
+\t<p><center>
+\t\t<h1>Overview</h1>
+\t\t<A HREF="#table0">客流统计</A><br>
+\t\t<A HREF="#table1">R&amp;D &lt;汇总&gt;</A><br>
+\t</center></p>
+<hr>
+<A NAME="table0"><h1>Sheet 1: <em>客流统计</em></h1></A>
+<table cellspacing="0" border="0">
+\t<colgroup width="93"></colgroup>
+\t<tr>
+\t\t<td colspan=3 height="29" align="center" valign=bottom data-sheets-value="{ &quot;1&quot;: 2, &quot;2&quot;: &quot;标题&quot;}"><b>标题</b></td>
+\t\t</tr>
+\t<tr>
+\t\t<td align="right" sdval="591" sdnum="1033;0;#,##0" data-sheets-formula="=SUM(RC[-12]:RC[-1])">591</td>
+\t\t<td style="border-top: 2px solid #c00000">x</td>
+\t\t<td>&lt;script&gt;alert(1)&lt;/script&gt;</td>
+\t</tr>
+\t<tr>
+\t\t<td colspan=3 rowspan=2><img src="source_html_5d41402a.png" width=907 height=378 hspace=37 vspace=20></td>
+\t</tr>
+\t<tr>
+\t\t<td>4</td>
+\t</tr>
+</table>
+<!-- ************************************************************************** -->
+<hr>
+<A NAME="table1"><h1>Sheet 2: <em>R&amp;D &lt;汇总&gt;</em></h1></A>
+<table cellspacing="0" border="0">
+\t<tr><td>1</td></tr>
+\t<tr><td><img src="../../etc/passwd"><img src="missing_html_1.png"></td></tr>
+</table>
+<!-- ************************************************************************** -->
+</body>
+</html>
 """
 
 # poppler 的两个命令：pdfinfo 报 3 页、720 x 405 磅；pdftoppm 照 -singlefile 的样子写 <输出前缀>.jpg。
@@ -430,6 +485,134 @@ async def test_slide_routes_answer_with_pages_and_images(forward, office) -> Non
     writer = _Writer()
     await forward._handle_user("GET", f"/__mt_user/office-preview/page?{query}&n=9", auth, b"", None, writer)
     assert writer.data.startswith(b"HTTP/1.1 404") and b'"code": "no_page"' in writer.data
+
+
+# ---------------------------------------------------------------- 表格按 HTML 预览（每个工作表一张表格）
+
+def test_spreadsheet_export_is_split_into_sheets() -> None:
+    sheets, images = mtuser.split_sheets(LO_SHEETS_HTML)
+    assert [s["name"] for s in sheets] == ["客流统计", "R&D <汇总>"]
+    assert [(s["rows"], s["shown"]) for s in sheets] == [(4, 4), (2, 2)]
+    first = sheets[0]["html"]
+    assert first.startswith('<table cellspacing="0" border="0">') and first.endswith("</table>")
+    # 每个单元格带的数值、格式、公式副本去掉；合并单元格、样式、转义过的文字原样留着
+    assert "data-sheets" not in first and "sdval" not in first and "sdnum" not in first
+    assert '<td colspan=3 height="29" align="center" valign=bottom><b>标题</b></td>' in first
+    assert 'style="border-top: 2px solid #c00000"' in first and "&lt;script&gt;" in first
+    # Overview 里的链接不是表格
+    assert all("Overview" not in s["html"] and "HREF" not in s["html"] for s in sheets)
+    # 图片只认像 LibreOffice 生成的名字
+    assert images == ["source_html_5d41402a.png", "missing_html_1.png"]
+
+
+def test_a_lone_sheet_has_no_name_and_long_sheets_keep_their_first_rows() -> None:
+    rows = "".join(f"\t<tr><td>{n}</td></tr>\n" for n in range(1, 6))
+    rows += '\t<tr><td><img src="source_html_1.png"></td></tr>\n'
+    sheets, images = mtuser.split_sheets(f'<body>\n<table border="0">\n{rows}</table>\n</body>', max_rows=3)
+    assert sheets == [{
+        "name": "",
+        "html": '<table border="0">\n\t<tr><td>1</td></tr>\n\t<tr><td>2</td></tr>\n\t<tr><td>3</td></tr>\n</table>',
+        "rows": 6,
+        "shown": 3,
+    }]
+    assert images == []  # 被截掉的行里的图不要了
+    assert mtuser.split_sheets("<html><body><p>空的</p></body></html>") == ([], [])
+
+
+@pytest.fixture
+def sheet_export(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """假 soffice 转 HTML 时写出的内容。"""
+    path = tmp_path / "export.html"
+    path.write_text(LO_SHEETS_HTML, encoding="utf-8")
+    monkeypatch.setenv("FAKE_SOFFICE_HTML", str(path))
+    return path
+
+
+@pytest.mark.asyncio
+async def test_spreadsheets_are_converted_to_html_once(office, sheet_export) -> None:
+    book = office.files.workspace / "城市客流统计.xlsx"
+    book.write_bytes(b"PK sheet")
+    first, again = await asyncio.gather(office.sheet(str(book)), office.sheet(str(book)))
+    assert first == again and first.name == "sheet.json"
+    calls = _calls(office)
+    assert len(calls) == 1 and "'--convert-to', 'html'" in calls[0] and "source.xlsx" in calls[0]
+    data = json.loads(first.read_text(encoding="utf-8"))
+    assert data["ok"] is True and data["version"] == first.parent.name
+    assert [s["name"] for s in data["sheets"]] == ["客流统计", "R&D <汇总>"]
+    # 图表挪进缓存目录；导出里提到、却没生成出来的图不登记
+    assert data["images"] == ["source_html_5d41402a.png"]
+    version, image, content_type = await office.sheet_image(str(book), "source_html_5d41402a.png")
+    assert version == data["version"] and image.read_bytes() == b"PNG chart" and content_type == "image/png"
+    for bad in ("missing_html_1.png", "../sheet.json", "sheet.json", "", None):
+        with pytest.raises(mtuser.FileError) as exc:
+            await office.sheet_image(str(book), bad)
+        assert exc.value.status == 404
+    assert await office.sheet(str(book)) == first and len(_calls(office)) == 1
+    # 同一个文件也能转 PDF：各转各的，放在同一个目录里
+    pdf = await office.pdf(str(book))
+    assert pdf.parent == first.parent and len(_calls(office)) == 2
+    assert [p.name for p in office.cache_dir.iterdir() if p.name.startswith("job-")] == []
+    assert sorted(p.name for p in office.files.workspace.iterdir()) == ["城市客流统计.xlsx"]
+
+
+@pytest.mark.asyncio
+async def test_only_spreadsheets_open_as_sheets_and_failures_are_not_kept(
+    office, sheet_export, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    doc = office.files.workspace / "报告.docx"
+    doc.write_bytes(b"PK doc")
+    with pytest.raises(mtuser.FileError) as exc:
+        await office.sheet(str(doc))
+    assert exc.value.status == 415 and exc.value.code == "unsupported" and _calls(office) == []
+    book = office.files.workspace / "大表.xlsx"
+    book.write_bytes(b"PK big")
+    monkeypatch.setattr(mtuser, "SHEET_MAX_BYTES", 100)
+    with pytest.raises(mtuser.FileError) as exc:
+        await office.sheet(str(book))
+    assert exc.value.status == 413 and exc.value.code == "too_large"
+    monkeypatch.setattr(mtuser, "SHEET_MAX_BYTES", 16 << 20)
+    monkeypatch.setenv("FAKE_SOFFICE_MODE", "fail")
+    with pytest.raises(mtuser.FileError) as exc:
+        await office.sheet(str(book))
+    assert exc.value.code == "convert_failed"
+    assert list(office.cache_dir.glob("*/sheet.json")) == [] and list(office.cache_dir.glob("*/sheet-img/*")) == []
+
+
+@pytest.mark.asyncio
+async def test_sheet_routes_answer_with_the_tables_and_their_charts(forward, office, sheet_export) -> None:
+    forward._hermes_token = "tok"
+    forward._office = office
+    book = office.files.workspace / "城市客流统计.xlsx"
+    book.write_bytes(b"PK sheet")
+    auth = {"x-hermes-session-token": "tok"}
+    query = "path=" + quote(str(book))
+    writer = _Writer()
+    await forward._handle_user("GET", f"/__mt_user/office-sheet?{query}", auth, b"", None, writer)
+    head, _, body = bytes(writer.data).partition(b"\r\n\r\n")
+    data = json.loads(body)
+    assert head.startswith(b"HTTP/1.1 200") and b"Content-Type: application/json; charset=utf-8" in head
+    assert b"X-Content-Type-Options: nosniff" in head and data["sheets"][0]["name"] == "客流统计"
+    chart = f"/__mt_user/office-sheet/image?{query}&name=source_html_5d41402a.png"
+    writer = _Writer()
+    await forward._handle_user("GET", f"{chart}&v={data['version']}", auth, b"", None, writer)
+    head, _, body = bytes(writer.data).partition(b"\r\n\r\n")
+    assert head.startswith(b"HTTP/1.1 200") and b"Content-Type: image/png" in head and body == b"PNG chart"
+    assert b"Cache-Control: private, max-age=86400" in head  # 版本对得上：浏览器可以缓存
+    writer = _Writer()
+    await forward._handle_user("GET", f"{chart}&v=old", auth, b"", None, writer)
+    assert b"Cache-Control: no-store" in bytes(writer.data)
+    writer = _Writer()
+    await forward._handle_user("GET", f"/__mt_user/office-sheet/image?{query}&name=..%2Fsheet.json", auth, b"",
+                               None, writer)
+    assert writer.data.startswith(b"HTTP/1.1 404") and b'"code": "not_found"' in writer.data
+    deck = office.files.workspace / "deck.pptx"
+    deck.write_bytes(b"PK deck")
+    writer = _Writer()
+    await forward._handle_user("GET", "/__mt_user/office-sheet?path=" + quote(str(deck)), auth, b"", None, writer)
+    assert writer.data.startswith(b"HTTP/1.1 415") and b'"code": "unsupported"' in writer.data
+    writer = _Writer()
+    await forward._handle_user("POST", f"/__mt_user/office-sheet?{query}", auth, b"", None, writer)
+    assert writer.data.startswith(b"HTTP/1.1 405")
 
 
 def test_requests_passed_to_hermes_are_closed_after_the_response(forward) -> None:

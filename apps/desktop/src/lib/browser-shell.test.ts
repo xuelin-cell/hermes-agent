@@ -14,10 +14,13 @@ import {
   isDeveloperMode,
   isInstanceLocalUrl,
   isSettingsViewHidden,
+  isSlideDeck,
   officePreviewPdf,
+  officeSheetBook,
   previewsMediaInPanel,
+  previewsOfficeAsPages,
   previewsOfficeAsPdf,
-  previewsOfficeAsSlides,
+  previewsOfficeAsSheet,
   remoteHtmlFrameDocument,
   remoteHtmlFrameSandbox,
   sidebarPageOutlivesReactivation,
@@ -31,7 +34,13 @@ import { mediaKind } from './media'
 // The bridge fetches the PDF from the instance and says where media plays from (its own tests cover that).
 const bridge = vi.hoisted(() => ({
   mediaPlaybackUrl: vi.fn((path: string) => `/__hermes_backend/api/fs/download?path=${encodeURIComponent(path)}`),
-  officePreviewDataUrl: vi.fn(async () => 'data:application/pdf;base64,JVBERi0xLjc=')
+  officePreviewDataUrl: vi.fn(async () => 'data:application/pdf;base64,JVBERi0xLjc='),
+  officeSheet: vi.fn(async () => ({
+    images: ['source_html_1.png'],
+    sheets: [{ html: '<table></table>', name: '客流统计', rows: 3, shown: 3 }],
+    version: 'v7'
+  })),
+  officeSheetImageUrl: vi.fn((path: string, name: string, version: string) => `/charts/${name}?v=${version}`)
 }))
 
 vi.mock('@/dev/browser-bridge', () => bridge)
@@ -279,20 +288,53 @@ describe('browser shell', () => {
     expect(browserShellCopy('en').officePreview.convert_failed).toMatch(/Download it instead/)
   })
 
-  it('opens slide decks in the slide viewer, in the browser build only', () => {
-    expect(previewsOfficeAsSlides('/w/deck.pptx')).toBe(false)
+  it('opens slide decks and documents in the page viewer, in the browser build only', () => {
+    expect(previewsOfficeAsPages('/w/deck.pptx')).toBe(false)
+    expect(previewsOfficeAsPages('/w/报告.docx')).toBe(false)
 
     document.documentElement.dataset.hermesBrowser = 'production'
 
-    expect(['/w/a.pptx', '/w/b.PPT', '/w/c.odp'].map(previewsOfficeAsSlides)).toEqual([true, true, true])
-    expect(['/w/a.docx', '/w/b.xlsx', '/w/c.pdf', '/w/d.pptx.md'].map(previewsOfficeAsSlides)).toEqual([
+    expect(
+      ['/w/a.pptx', '/w/b.PPT', '/w/c.odp', '/w/d.docx', '/w/e.DOC', '/w/f.odt'].map(previewsOfficeAsPages)
+    ).toEqual([true, true, true, true, true, true])
+    expect(['/w/a.xlsx', '/w/b.pdf', '/w/c.pptx.md', '/w/d.docm'].map(previewsOfficeAsPages)).toEqual([
       false,
       false,
       false,
       false
     ])
+    // Only decks are presented full screen.
+    expect(['/w/a.pptx', '/w/b.odp', '/w/c.docx', '/w/d.odt'].map(isSlideDeck)).toEqual([true, true, false, false])
     expect(browserShellCopy('zh').slides.counter(2, 5)).toBe('2 / 5')
     expect(browserShellCopy('zh').slides.page(3)).toBe('第 3 页')
+    expect(browserShellCopy('en').slides.documentPage(3)).toBe('Page 3')
+  })
+
+  it('opens spreadsheets in the sheet viewer, in the browser build only', async () => {
+    expect(previewsOfficeAsSheet('/w/城市客流统计.xlsx')).toBe(false)
+
+    document.documentElement.dataset.hermesBrowser = 'production'
+
+    expect(['/w/a.xlsx', '/w/b.XLS', '/w/c.ods'].map(previewsOfficeAsSheet)).toEqual([true, true, true])
+    expect(['/w/a.csv', '/w/b.docx', '/w/c.pptx', '/w/d.xlsx.md', '/w/e.xlsm'].map(previewsOfficeAsSheet)).toEqual([
+      false,
+      false,
+      false,
+      false,
+      false
+    ])
+
+    const book = await officeSheetBook('/w/城市客流统计.xlsx')
+
+    expect(bridge.officeSheet).toHaveBeenCalledWith('/w/城市客流统计.xlsx')
+    expect(book.sheets.map(sheet => sheet.name)).toEqual(['客流统计'])
+    // Pictures only by the names the instance listed.
+    expect(book.imageUrl('source_html_1.png')).toBe('/charts/source_html_1.png?v=v7')
+    expect(book.imageUrl('../../etc/passwd')).toBeNull()
+    expect(browserShellCopy('zh').sheet.truncated(1000, 20001)).toBe(
+      '只显示前 1000 行（共 20001 行），完整内容请下载后查看。'
+    )
+    expect(browserShellCopy('en').sheet.unnamed(2)).toBe('Sheet 2')
   })
 
   it('plays audio and video from the instance, in the browser build only', async () => {

@@ -226,4 +226,33 @@ describe('slide viewer', () => {
     await waitFor(() => expect(slideImages()).toEqual(['/slides/1?v=v2', '/slides/2?v=v2']))
     expect(bridge.officeSlidesInfo).toHaveBeenCalledTimes(2)
   })
+
+  it('shows a document’s pages as narrow as paper, with nothing to present', async () => {
+    const report: PreviewTarget = {
+      ...deck,
+      label: '杭州行程.docx',
+      path: '/mnt/u/workspace/杭州行程.docx',
+      source: '/mnt/u/workspace/杭州行程.docx'
+    }
+
+    // A4 portrait, in points.
+    bridge.officeSlidesInfo.mockResolvedValue({ height: 842, pages: 2, version: 'v1', width: 595 })
+
+    render(<OfficeSlides reloadKey={0} target={report} />)
+
+    await waitFor(() => expect(counter()).toBe('1 / 2'))
+    expect(bridge.officeSlidesInfo).toHaveBeenCalledWith('/mnt/u/workspace/杭州行程.docx')
+    await waitFor(() =>
+      expect(screen.queryAllByAltText(/^Page \d+$/).map(image => image.getAttribute('src'))).toEqual([
+        '/slides/1?v=v1',
+        '/slides/2?v=v1'
+      ])
+    )
+    expect(screen.queryByRole('button', { name: copy.slides.fullscreen })).toBeNull()
+
+    const page = window.document.querySelector('[data-slide="1"]') as HTMLElement
+
+    expect(page.parentElement?.className).toContain('max-w-3xl')
+    expect(page.style.aspectRatio).toBe('595 / 842')
+  })
 })
