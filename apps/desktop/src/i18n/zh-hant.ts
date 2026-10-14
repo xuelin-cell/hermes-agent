@@ -4,6 +4,29 @@ import { defineLocale } from './define-locale'
 import { introZhHant } from './intro-zh-hant'
 
 export const zhHant = defineLocale({
+  connectorsPage: {
+    mcpLocal: {
+      addCustom: '新增自訂 MCP',
+      builtIn: '內建 MCP',
+      custom: '自訂 MCP',
+      plugins: '外掛提供的 MCP',
+      profile: '目前 Profile',
+      search: '搜尋 MCP 服務',
+      empty: '尚未新增自訂 MCP',
+      noMatches: '沒有相符的 MCP 服務',
+      loadFailed: '無法讀取 MCP 設定',
+      pluginsFailed: '無法讀取外掛 MCP',
+      playwrightDescription: '使用隔離瀏覽器完成網頁操作，關閉後不保留網站登入。',
+      installPending: '安裝功能待接入。',
+      install: '安裝',
+      configuration: '設定（JSON）',
+      enabled: '已啟用',
+      testing: '正在測試連線…',
+      testPassed: '最近一次連線測試通過',
+      testFailed: '最近一次連線測試失敗',
+      untested: '尚未測試連線'
+    }
+  },
   cloudLibrary: {
     personal: '個人雲端硬碟',
     local: '本機產物',

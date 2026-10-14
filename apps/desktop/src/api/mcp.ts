@@ -48,6 +48,22 @@ export function saveMcpServers(
   })
 }
 
+/** 使用与配置写入相同的目标路由重载，不借用当前聊天的会话或连接。 */
+export async function reloadMcpServers(profile?: ProfileScope): Promise<void> {
+  const { connectionId = null, profile: target = 'default' } = capabilityScoped(profile)
+  const { requestGatewayForAgent } = await import('@/store/gateway')
+
+  await requestGatewayForAgent(
+    connectionId,
+    target,
+    'reload.mcp',
+    { confirm: true },
+    undefined,
+    undefined,
+    { spawnPriority: 'foreground' }
+  )
+}
+
 /** Capture the source before the first await. Every OAuth RPC, including
  *  cleanup after a foreground switch, belongs to this (connection, profile).
  *  Import the store lazily: it consumes the API barrel during initialization. */

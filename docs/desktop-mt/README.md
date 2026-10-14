@@ -45,7 +45,7 @@
 
 ## 文档
 
-- [连接器 MCP 适配实施计划](06-mcp-connectors-plan.md)（M01 原生链路 2 项通过，独立匹配浏览器及隔离模式已确认；M02 开始实施）
+- [连接器 MCP 适配实施计划](06-mcp-connectors-plan.md)（M01 完成；M02～M03 页面与原生管理的定向检查完成，待人工核验；Playwright 安装待 M04 接入）
 - [技能市场与个人云盘](cloud-and-market-repair.md)（已接通功能、数据边界及待验收项）
 - [桌面本地版整理与原生登录改造记录](04-desktop-consolidation-plan.md)（R01～R11 与构建夹具修复已推送；记录当时的受控验证、已知失败与人工待验收项）
 - [文件预览改造实施计划](05-file-preview-plan.md)（仅计划，尚未实施；P01～P16 分步进行）

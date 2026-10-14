@@ -140,6 +140,7 @@ describe('CapabilitiesView toolset management', { timeout: 60_000 }, () => {
     await renderSkills()
     expect(screen.queryByRole('button', { name: /^Tools\d/ })).toBeNull()
     expect(screen.queryByRole('switch', { name: 'Turn Web Search toolset off' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Connectors' })).toBeTruthy()
     await act(async () => { $developerMode.set(true) })
     fireEvent.click(screen.getAllByRole('button', { name: /^Tools\d/ })[0])
     expect(await screen.findByRole('switch', { name: 'Turn Web Search toolset off' })).toBeTruthy()

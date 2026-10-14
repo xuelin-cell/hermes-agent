@@ -10,6 +10,7 @@ import {
   type McpTestResult,
   type ProfileScope,
   profileScopeKey,
+  reloadMcpServers,
   saveMcpServers
 } from '@/hermes'
 import { useI18n } from '@/i18n'
@@ -19,7 +20,6 @@ import { getServers, type McpServerEntry, type McpServers } from '@/lib/mcp-serv
 import { setDisabledTools, toggleToolInServer } from '@/lib/mcp-tool-filter'
 import { notify, notifyError } from '@/store/notifications'
 import { $activeGatewayProfile, normalizeProfileKey } from '@/store/profile'
-import { $activeSessionId } from '@/store/session'
 import type { HermesConfigRecord } from '@/types/hermes'
 
 import { hermesConfigCacheWriter, useHermesConfigRecord } from '../../hooks/use-config-record'
@@ -68,7 +68,6 @@ export interface UseMcpServersOptions {
 export function useMcpServers({ gateway, profile }: UseMcpServersOptions): McpServersController {
   const { t } = useI18n()
   const m = t.settings.mcp
-  const activeSessionId = useStore($activeSessionId)
 
   const appProfile = useStore($activeGatewayProfile)
   const scopeProfileKey = profile != null ? profileScopeKey(profile) : normalizeProfileKey(appProfile)
@@ -151,7 +150,7 @@ export function useMcpServers({ gateway, profile }: UseMcpServersOptions): McpSe
     }
 
     try {
-      await gateway.request('reload.mcp', { confirm: true, session_id: activeSessionId ?? undefined })
+      await reloadMcpServers(profile ?? undefined)
     } catch (err) {
       notifyError(err, m.reloadFailed)
     }
