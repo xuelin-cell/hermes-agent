@@ -11,7 +11,9 @@
 
 ### desktop-mt 新功能放在哪里
 
-**不到万不得已，不修改上游已有文件。** 新功能按下表放到对应位置，用新增文件实现；新增文件不会在同步上游时产生冲突，修改已有文件会。
+**不到万不得已，不修改上游 Hermes 后端已有文件**（`apps/` 以外的 Python 代码，如 `agent/`、`tools/`、`hermes_cli/`、`tui_gateway/`）。新功能按下表放到对应位置，用新增文件实现；新增文件不会在同步上游时产生冲突，修改已有文件会。
+
+桌面前端（`apps/desktop/`）可以修改已有文件，按功能需要改即可，不必为了少改而绕路。
 
 | 功能 | 首选位置 | 注意 |
 |---|---|---|
@@ -23,7 +25,7 @@
 | 改变 agent 运行时行为（工具调用前检查、工具结果加工、新增工具） | 普通 Hermes 插件（钩子、注册工具） | 只使用上游已提供的钩子，不为插件改核心 |
 | 指导模型怎么做事（如本地文件上传步骤、长任务结果下载） | 技能 | 不改代码即可补足能力缺口 |
 
-上表都放不下、必须修改上游已有函数时：优先整理成通用修复提交给上游；确需本地修改时保持改动最小，并在提交描述中说明为什么无法放到上表任何位置。
+上表都放不下、必须修改 Hermes 后端已有函数时：优先整理成通用修复提交给上游；确需本地修改时保持改动最小，并在提交描述中说明为什么无法放到上表任何位置。
 
 Instructions for AI coding assistants and developers working on the hermes-agent codebase.
 This root file holds only what applies everywhere. Each area has its own `AGENTS.md` (aim for
