@@ -131,16 +131,19 @@ describe('developer-only statusbar navigation', () => {
 
     expect(leftItems()).not.toContain('command-center')
     expect(leftItems()).not.toContain('gateway-switcher')
+    expect(result.current.leftStatusbarItems.find(item => item.id === 'gateway-health')?.hidden).toBe(true)
 
     act(() => $developerMode.set(true))
 
     expect(leftItems()).toContain('command-center')
     expect(leftItems()).toContain('gateway-switcher')
+    expect(result.current.leftStatusbarItems.find(item => item.id === 'gateway-health')?.hidden).toBe(false)
 
     act(() => $developerMode.set(false))
 
     expect(leftItems()).not.toContain('command-center')
     expect(leftItems()).not.toContain('gateway-switcher')
+    expect(result.current.leftStatusbarItems.find(item => item.id === 'gateway-health')?.hidden).toBe(true)
   })
 })
 
