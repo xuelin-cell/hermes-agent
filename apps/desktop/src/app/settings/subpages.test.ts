@@ -16,7 +16,7 @@ import {
 import { settingsSearchTargetQuery } from './settings-search'
 import { resolveSettingsSubpage, settingsSubpages } from './subpages'
 import type { SettingsView } from './types'
-import { settingsViewVisible } from './visibility'
+import { settingsFieldVisible, settingsViewVisible } from './visibility'
 
 const views: SettingsView[] = [
   ...SECTIONS.map(section => `config:${section.id}` as SettingsView),
@@ -28,6 +28,17 @@ describe('settings subpage routing', () => {
     expect(settingsViewVisible('config:browser', false)).toBe(false)
     expect(settingsViewVisible('config:browser', true)).toBe(true)
     expect(settingsViewVisible('config:chat', false)).toBe(true)
+  })
+
+  it('仅在开发者模式下显示记忆与上下文、对话时区和附件子页', () => {
+    expect(settingsViewVisible('config:memory', false)).toBe(false)
+    expect(settingsViewVisible('config:memory', true)).toBe(true)
+    expect(settingsFieldVisible('config:chat', 'timezone', false)).toBe(false)
+    expect(settingsFieldVisible('config:chat', 'timezone', true)).toBe(true)
+    expect(settingsFieldVisible('config:chat', 'display.personality', false)).toBe(true)
+    expect(settingsSubpages('config:chat', false).map(page => page.id)).not.toContain('attachments')
+    expect(settingsSubpages('config:chat', true).map(page => page.id)).toContain('attachments')
+    expect(resolveSettingsSubpage('config:chat', new URLSearchParams({ page: 'attachments' }), false)).toBe('behavior')
   })
 
   it('只在开发者模式下暴露宠物外观入口', () => {

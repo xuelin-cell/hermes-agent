@@ -20,7 +20,7 @@ import { SETTING_IDS, settingSearchTargets } from './settings-manifest'
 import { buildConfigSearchEntries, buildCredentialSearchEntries, type SettingsSearchEntry } from './settings-search'
 import { settingsSubpages } from './subpages'
 import type { SettingsView } from './types'
-import { settingsViewVisible } from './visibility'
+import { settingsFieldVisible, settingsViewVisible } from './visibility'
 
 /** An installed plugin row, deep-linkable as `/capabilities?tab=plugins&plugin=<id>`. */
 export interface PluginSearchEntry {
@@ -182,7 +182,11 @@ export function useSettingsSearchCatalog(enabled: boolean) {
   return {
     subpageEntries: subpageEntries.filter(entry => settingsViewVisible(entry.target.view, developerMode)),
     settingEntries: settingEntries.filter(entry => settingsViewVisible(entry.target.view, developerMode)),
-    configEntries: configEntries.filter(entry => settingsViewVisible(entry.target.view, developerMode)),
+    configEntries: configEntries.filter(
+      entry =>
+        settingsViewVisible(entry.target.view, developerMode) &&
+        (!entry.target.field || settingsFieldVisible(entry.target.view, entry.target.field, developerMode))
+    ),
     credentialEntries,
     pluginEntries
   }
