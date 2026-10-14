@@ -3,6 +3,7 @@ const DEVELOPER_SETTINGS = new Set<string>([
   'config:advanced',
   'config:browser',
   'config:memory',
+  'config:voice',
   'vault',
   'gateway',
   'connections',

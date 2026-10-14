@@ -30,6 +30,12 @@ describe('settings subpage routing', () => {
     expect(settingsViewVisible('config:chat', false)).toBe(true)
   })
 
+  it('仅在开发者模式下显示语音设置入口', () => {
+    expect(settingsViewVisible('config:voice', false)).toBe(false)
+    expect(settingsViewVisible('config:voice', true)).toBe(true)
+    expect(settingsViewVisible('notifications', false)).toBe(true)
+  })
+
   it('仅在开发者模式下显示记忆与上下文、对话时区和附件子页', () => {
     expect(settingsViewVisible('config:memory', false)).toBe(false)
     expect(settingsViewVisible('config:memory', true)).toBe(true)
