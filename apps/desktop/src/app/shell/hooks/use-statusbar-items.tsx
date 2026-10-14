@@ -37,6 +37,7 @@ import { cacheHitLabel, contextBarLabel, LiveDuration, tokensPerSecondLabel, usa
 import { useStoreSelector } from '@/lib/use-session-slice'
 import { cn } from '@/lib/utils'
 import { resolveVersionStatus } from '@/lib/version-status'
+import { $developerMode } from '@/store/developer-mode'
 import { copyFilePath, revealFile, shouldOfferLocalReveal } from '@/store/file-actions'
 import { $freeTierStatus, FREE_TIER_MODEL } from '@/store/free-tier'
 import { openFreeTierSignIn } from '@/store/free-tier-sign-in'
@@ -126,6 +127,7 @@ export function useStatusbarItems({
   const terminalShowing = useStore($paneVisible('terminal'))
   const sessionsShowing = useStore($paneVisible('sessions'))
   const profileRailVisible = useStore($profileRailVisible)
+  const developerMode = useStore($developerMode)
   const botsShowing = useStore($paneVisible('hermes-bots:pane'))
   const primaryBusy = useStore($busy)
   // Draft / primary composer atom — used only while the focused surface is the
@@ -462,24 +464,27 @@ export function useStatusbarItems({
 
   const coreLeftStatusbarItems = useMemo<readonly StatusbarItem[]>(
     () => [
-      {
-        className: `w-7 justify-center px-0${commandCenterOpen ? ' bg-accent/55 text-foreground' : ''}`,
-        icon: <Command className="size-3.5" />,
-        id: 'command-center',
-        // The system icon: the way into every other surface, including the
-        // settings that would bring a hidden item back. Never hideable.
-        lockedVisible: true,
-        onSelect: toggleCommandCenter,
-        title: commandCenterOpen ? copy.closeCommandCenter : copy.openCommandCenter,
-        toggleLabel: copy.toggleCommandCenter,
-        variant: 'action'
-      },
-      {
-        hidden: !sessionsShowing,
-        id: 'gateway-switcher',
-        lockedVisible: true,
-        render: () => <StatusbarGatewaySwitcher />
-      },
+      ...(developerMode
+        ? [
+            {
+              className: `w-7 justify-center px-0${commandCenterOpen ? ' bg-accent/55 text-foreground' : ''}`,
+              icon: <Command className="size-3.5" />,
+              id: 'command-center',
+              // 开发者模式关闭时，仍可从设置中重新开启。
+              lockedVisible: true,
+              onSelect: toggleCommandCenter,
+              title: commandCenterOpen ? copy.closeCommandCenter : copy.openCommandCenter,
+              toggleLabel: copy.toggleCommandCenter,
+              variant: 'action' as const
+            },
+            {
+              hidden: !sessionsShowing,
+              id: 'gateway-switcher',
+              lockedVisible: true,
+              render: () => <StatusbarGatewaySwitcher />
+            }
+          ]
+        : []),
       {
         // The rail's stand-in: the profile picker moves down here while the
         // colored strip is hidden, so switching profiles always has a door.
@@ -627,6 +632,7 @@ export function useStatusbarItems({
       commandCenterOpen,
       copy,
       currentCwd,
+      developerMode,
       focusedWorkspaceRemote,
       freeTierCopy,
       fileMenu.copyPath,

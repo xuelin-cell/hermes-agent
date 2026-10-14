@@ -1,10 +1,13 @@
-import { renderHook } from '@testing-library/react'
+import { act, renderHook } from '@testing-library/react'
 import type { WritableAtom } from 'nanostores'
 import { isValidElement, type ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { group } from '@/components/pane-shell/tree/model'
+import { $layoutTree } from '@/components/pane-shell/tree/store'
 import { createClientSessionState } from '@/lib/chat-runtime'
+import { $developerMode } from '@/store/developer-mode'
 import {
   $connection,
   $currentCwd,
@@ -59,6 +62,8 @@ function workspaceMenuIds(): string[] {
 }
 
 afterEach(() => {
+  $developerMode.set(false)
+  $layoutTree.set(null)
   $connection.set(null)
   $currentCwd.set('')
   $sessionTiles.set([])
@@ -115,6 +120,29 @@ const statusbarOptions = {
   statusSnapshot: null,
   toggleCommandCenter: () => {}
 }
+
+describe('developer-only statusbar navigation', () => {
+  it('shows the command center and gateway switcher only while developer mode is enabled', () => {
+    $layoutTree.set(group(['sessions'], { active: 'sessions', id: 'sessions' }))
+    $developerMode.set(false)
+
+    const { result } = renderHook(() => useStatusbarItems(statusbarOptions), { wrapper })
+    const leftItems = () => result.current.leftStatusbarItems.map(item => item.id)
+
+    expect(leftItems()).not.toContain('command-center')
+    expect(leftItems()).not.toContain('gateway-switcher')
+
+    act(() => $developerMode.set(true))
+
+    expect(leftItems()).toContain('command-center')
+    expect(leftItems()).toContain('gateway-switcher')
+
+    act(() => $developerMode.set(false))
+
+    expect(leftItems()).not.toContain('command-center')
+    expect(leftItems()).not.toContain('gateway-switcher')
+  })
+})
 
 function sessionTimerItem() {
   const { result } = renderHook(() => useStatusbarItems(statusbarOptions), { wrapper })
