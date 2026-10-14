@@ -19,7 +19,7 @@ import { PageSearchShell } from '../page-search-shell'
 import type { SetStatusbarItemGroup } from '../shell/statusbar-controls'
 
 import { prefetchCatalogWhenIdle } from './catalog/catalog-data'
-import { ConnectorsTab } from './connectors/connectors-tab'
+import { McpConnectorsTab } from './mcp-mt/connectors-tab'
 import { PluginsTab } from './plugins/plugins-tab'
 import { CapabilityScopeSelector, useCapabilityScope } from './scope-selector'
 import { SkillMarket } from './skill-market'
@@ -72,7 +72,7 @@ export function CapabilitiesView({
   const routeTab = useRouteEnumParam('tab', CAPABILITY_MODES, 'skills')
   const localTab = useState<CapabilityMode>('skills')
   const [requestedMode, setMode] = embedded ? localTab : routeTab
-  const developerTab = requestedMode === 'toolsets' || requestedMode === 'connectors'
+  const developerTab = requestedMode === 'toolsets'
   const mode = !developerMode && developerTab ? 'skills' : requestedMode
 
   // 立即阻止隐藏页挂载，同时清理旧链接和嵌入视图的选中状态。
@@ -149,10 +149,11 @@ export function CapabilitiesView({
     // ACTIVE gateway's socket — for a scope pinned to a different backend that
     // (config edits still apply on that backend's next session).
     connectors: () => (
-      <ConnectorsTab
+      <McpConnectorsTab
         gateway={scope.crossBackend ? null : gateway}
         key={`connectors-${scope.key}`}
         profile={scope.profile}
+        scopeLabel={scope.label}
       />
     ),
     // Agent plugins for the scoped profile and app-level desktop plugins.
@@ -212,7 +213,7 @@ export function CapabilitiesView({
         ...(developerMode
           ? [{ id: 'toolsets', label: t.skills.tabToolsets, meta: toolsets ? visibleToolsetCount(toolsets) : null }]
           : []),
-        ...(developerMode ? [{ id: 'connectors', label: t.connectorsPage.title }] : []),
+        { id: 'connectors', label: t.connectorsPage.title },
         { id: 'plugins', label: t.skills.tabPlugins }
       ]}
     >

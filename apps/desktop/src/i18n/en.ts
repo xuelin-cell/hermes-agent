@@ -159,6 +159,27 @@ export const en: Translations = {
 
   // `connectors.*` above stays the onboarding and chat vocabulary; these are the page's own, and the two are not shared.
   connectorsPage: {
+    mcpLocal: {
+      addCustom: 'Add custom MCP',
+      builtIn: 'Built-in MCP',
+      custom: 'Custom MCP',
+      plugins: 'MCP from plugins',
+      profile: 'Current profile',
+      search: 'Search MCP servers',
+      empty: 'No custom MCP servers',
+      noMatches: 'No matching MCP servers',
+      loadFailed: 'Could not load MCP configuration',
+      pluginsFailed: 'Could not load plugin MCP servers',
+      playwrightDescription: 'Browser automation with an isolated browser context.',
+      installPending: 'Installation will be available after integration.',
+      install: 'Install',
+      configuration: 'Configuration (JSON)',
+      enabled: 'Enabled',
+      testing: 'Testing connection…',
+      testPassed: 'Last connection test passed',
+      testFailed: 'Last connection test failed',
+      untested: 'Connection not tested'
+    },
     title: 'Connectors',
     searchPlaceholder: (count: number) => `Search ${count} apps`,
     filterCategory: 'Category',

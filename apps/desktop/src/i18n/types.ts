@@ -213,6 +213,27 @@ export interface Translations {
     required: string
   }
   connectorsPage: {
+    mcpLocal: {
+      addCustom: string
+      builtIn: string
+      custom: string
+      plugins: string
+      profile: string
+      search: string
+      empty: string
+      noMatches: string
+      loadFailed: string
+      pluginsFailed: string
+      playwrightDescription: string
+      installPending: string
+      install: string
+      configuration: string
+      enabled: string
+      testing: string
+      testPassed: string
+      testFailed: string
+      untested: string
+    }
     title: string
     searchPlaceholder: (count: number) => string
     filterCategory: string
