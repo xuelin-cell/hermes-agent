@@ -15,6 +15,8 @@ $env:TEMP = $buildTemp
 $env:TMP = $env:TEMP
 $env:ELECTRON_BUILDER_CACHE = Join-Path $cacheRoot 'electron-builder'
 $env:UV_CONCURRENT_INSTALLS = '1'
+# NSIS 的内层 7z 不跟随 normal 配置，必须显式设置受支持的压缩级别。
+$env:ELECTRON_BUILDER_COMPRESSION_LEVEL = @{ store = '0'; normal = '5'; maximum = '9' }[$Compression]
 
 New-Item -ItemType Directory -Force -Path $buildTemp, $cacheRoot | Out-Null
 if (-not [string]::IsNullOrWhiteSpace($ProxyUrl)) {
