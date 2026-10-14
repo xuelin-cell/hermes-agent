@@ -1,6 +1,8 @@
 [CmdletBinding()]
 param(
-    [string]$ProxyUrl = ''
+    [string]$ProxyUrl = '',
+    [ValidateSet('store', 'normal', 'maximum')]
+    [string]$Compression = 'normal'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -44,12 +46,14 @@ try {
 
     Write-Host "Building Windows installer from $commit" -ForegroundColor Cyan
     Write-Host "Persistent cache: $cacheRoot" -ForegroundColor DarkGray
+    Write-Host "Installer compression: $Compression" -ForegroundColor DarkGray
 
     & $python scripts\bundles\desktop.py `
         --commit $commit `
         --variant bundled `
         --work $workRoot `
-        --cache $cacheRoot
+        --cache $cacheRoot `
+        -- "-c.compression=$Compression"
     if ($LASTEXITCODE -ne 0) {
         throw "Windows installer build failed with exit code $LASTEXITCODE."
     }
