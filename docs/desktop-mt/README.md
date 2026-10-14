@@ -46,6 +46,7 @@
 ## 文档
 
 - [连接器 MCP 适配实施计划](06-mcp-connectors-plan.md)（M01～M04 实现与定向检查完成；内置 UniAI-Toolkit 配置已接入，打码与页面清理待 M05，实际验证待 M06）
+- [聊天区工作目录选择](07-chat-workdir.md)（已实现，定向检查通过；真实账号使用待人工验收）
 - [技能市场与个人云盘](cloud-and-market-repair.md)（已接通功能、数据边界及待验收项）
 - [桌面本地版整理与原生登录改造记录](04-desktop-consolidation-plan.md)（R01～R11 与构建夹具修复已推送；记录当时的受控验证、已知失败与人工待验收项）
 - [文件预览改造实施计划](05-file-preview-plan.md)（仅计划，尚未实施；P01～P16 分步进行）
