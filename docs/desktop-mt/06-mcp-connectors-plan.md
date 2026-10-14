@@ -2,7 +2,7 @@
 
 日期：2026-10-14。代码核查基线：`desktop-mt @ 7bf5fe50b33dbda75e465191b3fe967213ab4713`。
 
-状态：仅完成方案讨论与源码核查，M01～M06 尚未实施。本文件不是功能完成或测试通过证明，也不授权推送。
+状态：M01 原生链路验证已完成，Playwright 浏览器资源与登录状态方案待用户确认；M02～M06 未开始。验证基线为同步远端后的 `12a5faa603`。本文不授权后续推送。
 
 ## 1. 目标与已确认的范围
 
@@ -160,17 +160,59 @@
 - 按涉及范围执行 TypeScript、ESLint、组件／原生定向测试和差异检查，避免无关全量回归。涉及 Python 测试时遵循仓库测试入口，不直接运行裸 `pytest`。
 - 提交标题简洁中文，正文说明改动、原生复用点、已有文件改动原因、实际验证和限制，附仓库要求的行数统计。
 - 只提交本次相关文件；保留用户已有改动、计时代码、启动器和官方版数据。推送每次另行授权。
-- 本轮文档落地不启动 M01，也不代表后续实现已完成。
+- 已按用户“推送，开始实施”授权推送原计划并启动 M01；后续阶段状态以验证记录为准。
 
 ## 7. 进度记录
 
 | 步骤 | 状态 | 验证与提交 |
 | --- | --- | --- |
-| M01 原生验证与安装方案 | 未开始 | 尚无运行验证 |
+| M01 原生验证与安装方案 | 进行中 | 原生定向 2 项通过；浏览器资源、登录状态待确认 |
 | M02 页面组织 | 未开始 | — |
 | M03 通用管理 | 未开始 | — |
 | M04 Playwright 安装 | 未开始 | — |
 | M05 真实调用与收尾 | 未开始 | — |
 | M06 隔离与文档收尾 | 未开始 | — |
 
-当前只有源码核查与方案讨论记录。后续逐步更新，不用计划中的验收标准充当已通过结果。
+### M01 验证记录（2026-10-14）
+
+推送前发现远端新增登录页、提供方入口和打包提交。仅将未推送的计划提交变基到远端，保留远端内容；原有跟踪和未跟踪改动的文件 SHA-256 均保持一致。原计划以 `12a5faa603` 推送，未强制改写远端历史。
+
+新增两个测试文件：
+
+- `tests/hermes_cli/mcp_stdio.fixture.py`：真实 stdio MCP 握手、工具列表和标记回显服务。
+- `tests/hermes_cli/test_desktop_mcp_native.py`：原生 REST 配置、WS 重载及模型工具分发器调用，两个 Profile 的同名工具隔离。
+
+运行入口为 `scripts/run_tests.sh tests/hermes_cli/test_desktop_mcp_native.py -v --tb=short --file-timeout 150 --file-retries 0`，使用既有独立测试解释器，通过 `HERMES_PYTHON` 指定；Git Bash 为本机已有版本。2 项通过，无跳过、无重试通过项。
+
+实际覆盖：
+
+- 新增配置、连接测试、WS 重载后发现并调用工具。
+- 编辑后得到新工具结果；禁用后从注册表消失；再次启用恢复。
+- 完整替换为空映射后配置与工具均移除。
+- 同名服务在两个 Profile 中通过 REST 分别保存和测试，通过原生 Profile 作用域发现和调用，A→B→A 返回对应标记。
+- 删除一个 Profile 的配置不影响另一个，默认 Profile 不出现两个命名 Profile 的记录。
+
+证据边界：REST／WS 使用 FastAPI／Starlette TestClient 与真实应用处理器，工具链使用真实独立 stdio 子进程及原版 `handle_function_call`。没有模拟保存、发现或调用结果，但没有启动完整 Electron 或真实 TCP 服务；未验证已有会话 Agent 刷新、在途调用、HTTP MCP、OAuth 或 Playwright 浏览器。本轮隔离的是测试 Home／Profile，不等同于已完成真实 MaaS 双账号桌面验收。
+
+### M01 安装调查与待确认决定
+
+| 项目 | 已核查事实／拟议处理 |
+| --- | --- |
+| 官方服务 | 拟固定 `@playwright/mcp@0.0.83`，Apache-2.0；不使用浮动 `latest` |
+| Node 要求 | 官方要求 Node ≥18；Hermes PM 锁定 Node 26.7.0、npm 12.0.2，具备版本基础 |
+| 安装能力 | PM 已有 Node／npm 获取与成对运行能力，优先复用。独立测试解释器的只读 PM 探针未找到已安装记录，不能据此认定用户实际运行环境缺失，M04 需在可信账号运行上下文定位／准备 |
+| 服务依赖 | 官方 0.0.83 固定依赖 `playwright` 与 `playwright-core` 的 `1.64.0-alpha-1790635538000`；这是官方发布内容，不自行替换内部版本。下载时应保留完整锁文件和完整性信息 |
+| 浏览器匹配 | 该 `playwright-core` 的发布包声明 Chromium revision 1247、155.0.8059.12；Hermes PM 锁定的是 revision 1208、145.0.7632.6，不能直接当成匹配浏览器复用 |
+| 推荐资源方案（待确认） | 当前账号受管安装目录单独下载匹配 Chromium，各 Profile 共用程序文件，各自隔离数据／输出。不修改原版 Chromium，不安装全局依赖 |
+| UniWork 参考 | `origin/uniwork_release @ 43fa600b43` 固定 `@playwright/mcp@0.0.74`，默认带 `--isolated`；不强制指向旧浏览器路径 |
+| 推荐运行模式（待确认） | 沿用 UniWork 的 `--isolated`：关闭浏览器后不保留网站登录。如果需要保留登录，须确认账号＋Profile 独立用户目录和并发占用规则 |
+| 启动方式 | 拟由原生 stdio 管理启动，使用明确 Node 路径与本地包入口、匹配浏览器路径；不在每次连接时运行联网 `npx`，不连接个人浏览器 |
+| 安装后状态 | 按原计划安装完成后启用、重载和测试；测试失败仍准确显示原生失败状态，不宣称工具可用 |
+
+依据：[官方固定版本包声明](https://github.com/microsoft/playwright-mcp/blob/v0.0.83/package.json)、[官方配置说明](https://github.com/microsoft/playwright-mcp/tree/v0.0.83)、[Playwright 浏览器版本匹配说明](https://playwright.dev/docs/browsers)。浏览器 revision 另从 npm 官方 `playwright-core@1.64.0-alpha-1790635538000` 发布包的 `browsers.json` 核查；未安装该包或浏览器。
+
+源码还发现：现有连接器页面为跨连接配置禁用即时重载；控制器的重载请求使用当前窗口 gateway 和当前会话 ID。后续页面必须核对所选 Profile 的配置目标与请求目标，优先利用既有 `requestGatewayForAgent`，不能把配置已写入误报为目标后端已重载。当前后端测试没有替这段 Electron／Renderer 接线提供运行证明。
+
+后续拟新增独立页面、Playwright 安装／IPC 模块和类型，不新建通用框架。必要已有文件接线候选：`src/app/capabilities/index.tsx`（页面入口）、`src/app/capabilities/mcp/use-mcp-servers.ts`（仅在确需修正目标作用域时）、`electron/main.ts`、`electron/preload.ts`、`src/global.d.ts`（受限安装能力），以及对应翻译类型与语言文件。路径前缀均为 `apps/desktop/`；具体差异在每步动手前确认。现有 Python 产品文件没有改动。
+
+暂停点：浏览器版本不匹配触发第 5 节第 3 项，网站登录状态属于第 5 项。已向用户提出两项选择，先完成本轮独立验证和记录；匹配浏览器安装、最终参数及相关实现等待答复。
