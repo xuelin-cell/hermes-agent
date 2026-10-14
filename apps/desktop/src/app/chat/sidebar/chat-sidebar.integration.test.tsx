@@ -8,8 +8,10 @@ import { $layoutTree, noteActiveTreeGroup } from '@/components/pane-shell/tree/s
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { registry } from '@/contrib/registry'
 import { $connectionsRegistry } from '@/store/connection-registry-state'
+import { $developerMode } from '@/store/developer-mode'
 import { $sidebarMessagingOpenIds, setSidebarAgentsGrouped, setSidebarGrouping } from '@/store/layout'
 import { $activeGatewayProfile, $profiles, setShowAllProfiles } from '@/store/profile'
+import { $profileRailVisible } from '@/store/profile-rail-prefs'
 import { $projectScope, ALL_PROJECTS } from '@/store/project-scope'
 import { $projectTree } from '@/store/projects'
 import {
@@ -89,6 +91,7 @@ describe('ChatSidebar navigation activity', () => {
   let disposeContributions: () => void
 
   beforeEach(() => {
+    $developerMode.set(false)
     disposeContributions = registry.registerMany([
       { area: ROUTES_AREA, id: 'kanban-page', data: { path: '/kanban' }, render: () => null },
       { area: ROUTES_AREA, id: 'reports-page', data: { path: '/reports' }, render: () => null },
@@ -116,6 +119,19 @@ describe('ChatSidebar navigation activity', () => {
     $removedSessionIds.set(new Set())
     $layoutTree.set(null)
     noteActiveTreeGroup(null)
+    $developerMode.set(false)
+    $profileRailVisible.set(false)
+  })
+
+  it('only shows profile and gateway controls in developer mode', () => {
+    $profileRailVisible.set(true)
+    const view = renderSidebar('/chat', 'chat')
+
+    expect(view.container.querySelector('[data-slot="profile-rail"]')).toBeNull()
+
+    act(() => $developerMode.set(true))
+
+    expect(view.container.querySelector('[data-slot="profile-rail"]')).not.toBeNull()
   })
 
   it('keeps navigation and session activity coherent with the focused pane', () => {

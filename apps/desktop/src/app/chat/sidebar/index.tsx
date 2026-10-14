@@ -32,6 +32,7 @@ import { cn } from '@/lib/utils'
 import { $connectionsRegistry } from '@/store/connection-registry-state'
 import { $activeConnectionId } from '@/store/connections'
 import { $cronJobs } from '@/store/cron'
+import { $developerMode } from '@/store/developer-mode'
 import { $interfaceMode, $showsAdvancedChrome, shownInMode } from '@/store/interface-mode'
 import { $bindings } from '@/store/keybinds'
 import {
@@ -438,6 +439,7 @@ export function ChatSidebar({
 
   const interfaceMode = useStore($interfaceMode)
   const showsAdvancedChrome = useStore($showsAdvancedChrome)
+  const developerMode = useStore($developerMode)
 
   // Nav preferences (`sidebarNav.prefs` contributions): a plugin may hide rows
   // or re-order them. Merged here, at render, from the registry — so the
@@ -2076,7 +2078,7 @@ export function ChatSidebar({
 
         {/* Off, the statusbar's profile dropdown (beside the gateway switcher)
             takes over — the rail is a duplicate door for bot-only setups. */}
-        {profileRailVisible && (
+        {developerMode && profileRailVisible && (
           <div className="shrink-0 px-0.5 pb-1 pt-0.5">
             <ProfileRail />
           </div>
