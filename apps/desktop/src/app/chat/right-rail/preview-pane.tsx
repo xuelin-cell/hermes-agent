@@ -45,6 +45,7 @@ import {
 import { $selectedStoredSessionId } from '@/store/session'
 import { canOpenBrowserWindow, isBrowserWindow } from '@/store/windows'
 
+import { FormatPreview } from './formats/format-preview'
 import { placeAnnotateCard, PreviewAnnotateCard } from './preview-annotate-card'
 import {
   bindPreviewExecuteJavaScript,
@@ -68,7 +69,7 @@ import {
 } from './preview-console'
 import { type ConsoleEntry } from './preview-console-state'
 import { previewConsoleState } from './preview-console-store'
-import { LocalFilePreview, PreviewEmptyState, PreviewModeSwitcher } from './preview-file'
+import { PreviewEmptyState, PreviewModeSwitcher } from './preview-file'
 import { type PreviewInputEvent, registerPreviewInput, toWebviewInputSpace } from './preview-input'
 import { PREVIEW_BROWSER_ATTR, registerPreviewNav } from './preview-nav'
 import { registerPreviewPageReader } from './preview-reader'
@@ -1429,7 +1430,7 @@ export function PreviewPane({
             (target.kind === 'artifact' ? (
               <ArtifactPreview onClose={onClose} target={target} />
             ) : (
-              <LocalFilePreview
+              <FormatPreview
                 onClose={onClose}
                 onSelectRendered={canRenderHtmlFile ? () => selectRenderMode('preview') : undefined}
                 reloadKey={localReloadKey}

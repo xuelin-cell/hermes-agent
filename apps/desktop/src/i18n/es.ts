@@ -5249,6 +5249,19 @@ export const esOverrides = {
     truncated: 'Mostrando los primeros 512 KB.',
     noInlineTitle: 'Sin vista previa inline',
     noInlineBody: mimeType => `${mimeType || 'Este tipo de archivo'} aún puede adjuntarse como contexto.`,
+    formatFailure: {
+      not_found: 'Este archivo ya no existe o no es accesible.',
+      too_large: 'El archivo o la imagen supera el límite de la vista previa. Puedes acceder al archivo original.',
+      unavailable: 'No se pudo mostrar la vista previa. Puedes acceder al archivo original o descargarlo.',
+      unsupported: 'Este formato de archivo o codificación multimedia no es compatible.'
+    },
+    delimited: {
+      table: 'Tabla',
+      empty: 'Esta tabla está vacía.',
+      limited: 'Mostrando las primeras 500 filas de datos.',
+      columnsLimited: 'Mostrando las primeras 50 columnas.'
+    },
+    tiffFirstPage: 'Este TIFF contiene varias páginas. Solo se muestra la primera.',
     edit: 'Editar',
     editing: 'Edición',
     unsavedChanges: 'Cambios no guardados',

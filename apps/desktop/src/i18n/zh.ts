@@ -4566,6 +4566,19 @@ export const zh = defineLocale({
     truncated: '显示前 512 KB。',
     noInlineTitle: '没有内联预览',
     noInlineBody: mimeType => `${mimeType || '此文件类型'} 仍可作为上下文附件。`,
+    formatFailure: {
+      not_found: '文件已不存在或无法访问。',
+      too_large: '文件过大或图片尺寸超出预览上限，仍可查看或下载原文件。',
+      unavailable: '无法预览此文件，仍可查看或下载原文件。',
+      unsupported: '暂不支持此文件格式或音视频编码。'
+    },
+    delimited: {
+      table: '表格',
+      empty: '表格为空。',
+      limited: '仅显示前 500 条数据行。',
+      columnsLimited: '仅显示前 50 列。'
+    },
+    tiffFirstPage: '此 TIFF 包含多页，仅显示第一页。',
     edit: '编辑',
     editing: '编辑中',
     unsavedChanges: '未保存的更改',

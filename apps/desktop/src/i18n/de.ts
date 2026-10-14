@@ -5261,6 +5261,19 @@ export const deOverrides = {
     truncated: 'Die ersten 512 KB werden angezeigt.',
     noInlineTitle: 'Keine Inline-Vorschau',
     noInlineBody: mimeType => `${mimeType || 'Dieser Dateityp'} kann trotzdem als Kontext angehängt werden.`,
+    formatFailure: {
+      not_found: 'Diese Datei ist nicht mehr vorhanden oder nicht zugänglich.',
+      too_large: 'Die Datei oder das Bild ist zu groß für die Vorschau. Die Originaldatei bleibt zugänglich.',
+      unavailable: 'Keine Vorschau möglich. Die Originaldatei kann weiterhin geöffnet oder heruntergeladen werden.',
+      unsupported: 'Dieses Dateiformat oder diese Medienkodierung wird nicht unterstützt.'
+    },
+    delimited: {
+      table: 'Tabelle',
+      empty: 'Diese Tabelle ist leer.',
+      limited: 'Die ersten 500 Datenzeilen werden angezeigt.',
+      columnsLimited: 'Die ersten 50 Spalten werden angezeigt.'
+    },
+    tiffFirstPage: 'Diese TIFF-Datei enthält mehrere Seiten. Nur die erste Seite wird angezeigt.',
     edit: 'Bearbeiten',
     editing: 'Wird bearbeitet',
     unsavedChanges: 'Nicht gespeicherte Änderungen',

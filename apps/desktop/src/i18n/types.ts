@@ -4117,6 +4117,19 @@ export interface Translations {
     truncated: string
     noInlineTitle: string
     noInlineBody: (mimeType: string) => string
+    formatFailure: {
+      not_found: string
+      too_large: string
+      unavailable: string
+      unsupported: string
+    }
+    delimited: {
+      table: string
+      empty: string
+      limited: string
+      columnsLimited: string
+    }
+    tiffFirstPage: string
     edit: string
     editing: string
     unsavedChanges: string
