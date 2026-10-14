@@ -6,6 +6,7 @@ import { prepareAccountDependencyStorage } from './dependency-storage'
 import { mergeMaasModelConfig } from './model-config'
 import { writeAccountMaasKey } from './model-key'
 import { LocalStartupError } from './startup-failure'
+import { updateUniaiToolkitConfig } from './uniai-toolkit-config'
 
 /** 只从主进程 LoginSession 取得有效 UID，不接受页面指定账号或目录。 */
 export function prepareLocalAccount(session: LoginSession, roots: AccountRoots): AccountPaths {
@@ -45,6 +46,12 @@ export function prepareLocalEnvironment(session: LoginSession, roots: AccountRoo
     } catch (error) {
       throw new LocalStartupError('credentials', error)
     }
+  }
+
+  try {
+    updateUniaiToolkitConfig(account.home, result.status)
+  } catch (error) {
+    throw new LocalStartupError('config', error)
   }
 
   return account

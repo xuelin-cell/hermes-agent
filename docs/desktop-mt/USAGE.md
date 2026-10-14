@@ -26,7 +26,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\stan\Documents\Cha
 
 HTTP 同时需要 Bearer 和其他 Header 时，请通过 JSON 保留 Header 并使用环境变量引用：原生 Bearer 输入会替换整组 Header。本轮不新增凭据补存流程，也不改变原生生效规则。
 
-Playwright 当前只展示入口，安装按钮标为待接入。后续使用账号目录内的匹配 Chromium 和隔离运行模式，关闭浏览器后不保留网站登录。插件提供的 MCP 回到插件页面管理，不能作为普通自定义配置删除。M03 已完成定向模拟检查，完整桌面端到端和实际浏览器调用尚未验收；每轮只做一个阶段，状态见[实施计划](06-mcp-connectors-plan.md)。
+有套餐时，启动前在账号默认 Home 写入 UniAI-Toolkit（元景 MCP），地址使用专用模型 Key 的环境变量引用；保留用户停用和工具过滤。明确无套餐删除该记录，查询失败不改；其他 Profile 不自动配置。用户手动删除后，有套餐的下一次启动会重新写入。只支持远程文件地址，不上传本机文件。
+
+M04 配置接入已完成定向检查，页面打码与过时占位清理待 M05；暂未完成远端连接和工具调用验收。插件提供的 MCP 回到插件页面管理，不能作为普通自定义配置删除。每轮只做一个阶段，状态见[实施计划](06-mcp-connectors-plan.md)。
 
 ## 技能、云盘与本地产物
 

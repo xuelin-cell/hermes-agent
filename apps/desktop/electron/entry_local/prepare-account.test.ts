@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { expect, it, vi } from 'vitest'
+import { parse } from 'yaml'
 
 import { LoginSession } from '../login/session'
 
@@ -91,6 +92,7 @@ it('真实账号准备只消费最新成功套餐；失败保留 Key，空套餐
     expect(saved).toContain('model-a')
     expect(saved).not.toContain('private-model-key')
     expect(saved).not.toContain('forged')
+    expect(parse(saved).mcp_servers['UniAI-Toolkit'].url).toContain('${DESKTOP_MT_MAAS_API_KEY}')
     const envSaved = fs.readFileSync(envFile, 'utf8')
     expect(envSaved).toContain('private-model-key')
     expect(envSaved).not.toContain('login-token')
@@ -107,7 +109,10 @@ it('真实账号准备只消费最新成功套餐；失败保留 Key，空套餐
     await session.queryPlan()
     expect(session.currentPlan()).toEqual({ status: 'empty' })
     prepareLocalEnvironment(session, roots)
-    expect(fs.readFileSync(file, 'utf8')).toBe(before)
+    const noPlan = parse(fs.readFileSync(file, 'utf8'))
+    const previous = parse(before)
+    delete previous.mcp_servers['UniAI-Toolkit']
+    expect(noPlan).toEqual(previous)
     expect(fs.readFileSync(envFile, 'utf8')).not.toContain('private-model-key')
     request.mockResolvedValueOnce(
       Response.json({
