@@ -24,13 +24,21 @@ const powershell = path.join(
 const MODEL = String.raw`
 Microsoft.PowerShell.Utility\Add-Type -TypeDefinition 'public static class PreviewWindows {
   // 受控窗口固定属于夹具进程。
-  public static int Pid(long h){return 123;}
+  public static int Pid(long h){return h==0||h==-1?0:123;}
   // 夹具不创建任何真实窗口。
   public static bool Visible(int pid){return false;}
+  // 受控路径模拟原生跨位数查询，不依赖 Get-Process.Path。
+  public static string ProcessPath(int pid){return System.Environment.GetEnvironmentVariable("ACTUAL_PROGRAM")??System.Environment.GetEnvironmentVariable("OFFICE_PROGRAM");}
 }'
 # 防止正式脚本重复注册受控类型。
 function Add-Type {param($TypeDefinition)}
 $global:quitCount=0; $global:closedCount=0; $global:securityAtOpen=0; $global:openArgs=@()
+$global:processModel=[pscustomobject]@{Id=123;StartTime=[DateTime]::UtcNow.AddSeconds(1)}
+# 模拟结束夹具进程，不触碰真实程序。
+$global:processModel|Add-Member ScriptMethod Kill {$global:stoppedCount++}
+# 固定夹具结束状态，供二次身份核对使用。
+$global:processModel|Add-Member ScriptMethod WaitForExit {return $true}
+$global:stoppedCount=0
 $global:window=[pscustomobject]@{Hwnd=123;Visible=$true}
 $windows=[pscustomobject]@{Count=1}
 $windows|Add-Member ScriptMethod Item {
@@ -38,8 +46,8 @@ $windows|Add-Member ScriptMethod Item {
   return $global:window
 }
 $global:collection=[pscustomobject]@{Count=[int]$env:OTHER_DOCUMENTS}
-$global:sheet=[pscustomobject]@{PageSetup=[pscustomobject]@{Zoom=$true;FitToPagesWide=0;FitToPagesTall=0}}
-$global:documentModel=[pscustomobject]@{Windows=$windows;Worksheets=@($global:sheet)}
+$global:worksheetModel=[pscustomobject]@{PageSetup=[pscustomobject]@{Zoom=$true;FitToPagesWide=0;FitToPagesTall=0}}
+$global:documentModel=[pscustomobject]@{Windows=$windows;Worksheets=@($global:worksheetModel)}
 $global:documentModel|Add-Member ScriptMethod Close {$global:collection.Count--; $global:closedCount++}
 $global:documentModel|Add-Member ScriptMethod SaveAs {
   if ($env:EXPORT_FAIL -eq '1') {throw 'controlled export failure'}
@@ -58,7 +66,12 @@ $global:collection|Add-Member ScriptMethod Add {
 }
 $appWindows=[pscustomobject]@{Count=[int]$env:WINDOW_COUNT}
 $appWindows|Add-Member ScriptMethod Item {return $global:window}
-$global:officeModel=[pscustomobject]@{Visible=$env:APP_VISIBLE -eq '1';AutomationSecurity=1;DisplayAlerts=2;Hwnd=123;Windows=$appWindows;Documents=$global:collection;Presentations=$global:collection;Workbooks=$global:collection}
+$global:officeModel=[pscustomobject]@{UserControl=$env:USER_CONTROL -eq '1';Visible=$env:APP_VISIBLE -eq '1';AutomationSecurity=1;DisplayAlerts=2;Hwnd=123;Windows=$appWindows;Documents=$global:collection;Presentations=$global:collection;Workbooks=$global:collection}
+if ($env:APP_HANDLE) {$global:officeModel.Hwnd=[long]$env:APP_HANDLE}
+if ($env:SECURITY_FAIL -eq '1' -or $env:RESTORE_FAIL -eq '1') {
+  $global:securityValue=1
+  $global:officeModel|Add-Member ScriptProperty AutomationSecurity {$global:securityValue} {if (($args[0] -eq 3 -and $env:SECURITY_FAIL -eq '1') -or ($args[0] -eq 1 -and $env:RESTORE_FAIL -eq '1')) {throw 'controlled security failure'}; $global:securityValue=$args[0]} -Force
+}
 $global:officeModel|Add-Member ScriptMethod Quit {$global:quitCount++}
 # 只返回受控对象，不激活真实 COM。
 function New-Object {param($ComObject); return $global:officeModel}
@@ -66,7 +79,7 @@ function New-Object {param($ComObject); return $global:officeModel}
 function Get-Process {param($Name,$Id)
   if ($Name) {if ($env:CREATED -eq '0') {return [pscustomobject]@{Id=123}}; return}
   if ($env:BIND_FAIL -eq '1') {throw 'controlled identity failure'}
-  return [pscustomobject]@{Id=123;Path=$env:OFFICE_PROGRAM;StartTime=[DateTime]::UtcNow.AddSeconds(1)}
+  return $global:processModel
 }
 `
 
@@ -118,7 +131,8 @@ describe.runIf(process.platform === 'win32')('COM PowerShell behavior', () => {
     expect(result.report.ok, JSON.stringify(result.model.errors)).toBe(true)
     expect(result.model.documents).toBe(0)
     expect(result.model.closed).toBe(2)
-    expect(result.model.quit).toBe(1)
+    expect(result.model.quit).toBe(0)
+    expect(result.model.stopped).toBe(1)
     expect(result.model.visible).toBe(false)
   })
 
@@ -133,6 +147,20 @@ describe.runIf(process.platform === 'win32')('COM PowerShell behavior', () => {
     expect(result.model.security).toBe(1)
   })
 
+  it.each([true, false])('closes only its own windowless WPS slides document (new instance: %s)', async created => {
+    const result = await modelRun('slides', created, false, false, false, { APP_HANDLE: '-1', OFFICE_PROVIDER: 'wps' })
+    const owner = JSON.parse(await fs.readFile(path.join(fixture, 'owner.json'), 'utf8'))
+
+    expect(result.report.ok, JSON.stringify(result.model.errors)).toBe(true)
+    expect(result.model.documents).toBe(created ? 0 : 2)
+    expect(result.model.closed).toBe(1)
+    expect(result.model.stopped).toBe(0)
+    expect(result.model.quit).toBe(0)
+    expect(owner.windowless).toBe(true)
+    expect(owner.closed).toBe(true)
+    expect(owner.pid).toBeUndefined()
+  })
+
   it('closes only its own document and restores settings after export failure', async () => {
     const result = await modelRun('word', false, true)
     expect(result.report.ok).toBe(false)
@@ -141,7 +169,7 @@ describe.runIf(process.platform === 'win32')('COM PowerShell behavior', () => {
     expect(result.model.security).toBe(1)
   })
 
-  it('records the failed identity phase without exception text or a guessed process owner', async () => {
+  it('records the failed identity phase and quits only its standalone COM object without guessing a PID', async () => {
     const result = await modelRun('word', true, false, true)
     const owner = JSON.parse(await fs.readFile(path.join(fixture, 'owner.json'), 'utf8'))
 
@@ -151,9 +179,55 @@ describe.runIf(process.platform === 'win32')('COM PowerShell behavior', () => {
     expect(typeof owner.error.hresult).toBe('number')
     expect(owner.error).not.toHaveProperty('message')
     expect(owner.pid).toBeUndefined()
-    expect(result.model.quit).toBe(0)
+    expect(result.model.quit).toBe(1)
+    expect(owner.quit).toBe(true)
     expect(result.model.documents).toBe(0)
     expect(result.model.security).toBe(1)
+  })
+
+  it('quits a standalone Word when security setup fails before any window or PID lookup', async () => {
+    const result = await modelRun('word', true, false, false, false, { SECURITY_FAIL: '1' })
+    const owner = JSON.parse(await fs.readFile(path.join(fixture, 'owner.json'), 'utf8'))
+
+    expect(result.report.ok).toBe(false)
+    expect(owner.error.stage).toBe('security')
+    expect(owner.pid).toBeUndefined()
+    expect(owner.quit).toBe(true)
+    expect(result.model.quit).toBe(1)
+    expect(result.model.documents).toBe(0)
+  })
+
+  it('does not quit a shared PowerPoint or a user-controlled Word after an unregistered identity failure', async () => {
+    const shared = await modelRun('slides', true, false, true)
+    expect(shared.report.ok).toBe(false)
+    expect(shared.model.quit).toBe(0)
+    const controlled = await modelRun('word', true, false, true, false, { USER_CONTROL: '1' })
+    expect(controlled.report.ok).toBe(false)
+    expect(controlled.model.quit).toBe(0)
+  })
+
+  it('still quits its standalone empty Word when restoring settings also fails after the identity error', async () => {
+    const result = await modelRun('word', true, false, true, false, { RESTORE_FAIL: '1' })
+    const owner = JSON.parse(await fs.readFile(path.join(fixture, 'owner.json'), 'utf8'))
+
+    expect(result.report.ok).toBe(false)
+    expect(owner.error.stage).toBe('identity')
+    expect(owner.cleanupError).toBeDefined()
+    expect(owner.closed).toBe(true)
+    expect(owner.quit).toBe(true)
+    expect(result.model.quit).toBe(1)
+  })
+
+  it('records a mismatched COM process before refusing conversion, without quitting the wrong application', async () => {
+    const result = await modelRun('word', true, false, false, false, { ACTUAL_PROGRAM: 'C:\\Other\\other.exe' })
+    const owner = JSON.parse(await fs.readFile(path.join(fixture, 'owner.json'), 'utf8'))
+
+    expect(result.report.ok).toBe(false)
+    expect(owner.pid).toBe(123)
+    expect(owner.matched).toBe(false)
+    expect(owner.actualExecutable).toBe('C:\\Other\\other.exe')
+    expect(result.model.quit).toBe(0)
+    expect(result.model.securityAtOpen).toBe(0)
   })
 
   it('validates creation time and leaves borrowed processes alive before stopping only its real owned hidden helper', async () => {
@@ -181,6 +255,7 @@ describe.runIf(process.platform === 'win32')('COM PowerShell behavior', () => {
         executable: await fs.realpath(process.execPath),
         started,
         created: false,
+        matched: true,
         closed: true
       }
 
@@ -194,6 +269,21 @@ describe.runIf(process.platform === 'win32')('COM PowerShell behavior', () => {
       await fs.writeFile(env.OFFICE_OWNER, JSON.stringify(owner))
       expect(JSON.parse((await runOfficeProcess(powershell, args, options)).stdout).ok).toBe(true)
       expect(child.exitCode).toBeNull()
+      const shell32 = path.join(process.env.SystemRoot || 'C:\\Windows', 'SysWOW64', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+
+      if (await fs.stat(shell32).then(() => true, () => false)) {
+        expect(JSON.parse((await runOfficeProcess(shell32, args, options)).stdout).ok).toBe(true)
+        expect(child.exitCode).toBeNull()
+      }
+
+      const windowless = { paths: [owner.executable], before: [child.pid], began: started, activated: true, closed: false }
+
+      await fs.writeFile(env.OFFICE_OWNER, JSON.stringify(windowless))
+      expect(JSON.parse((await runOfficeProcess(powershell, args, options)).stdout).ok).toBe(false)
+      await fs.writeFile(env.OFFICE_OWNER, JSON.stringify({ ...windowless, closed: true }))
+      expect(JSON.parse((await runOfficeProcess(powershell, args, options)).stdout).ok).toBe(true)
+      expect(child.exitCode).toBeNull()
+
       await fs.writeFile(
         env.OFFICE_OWNER,
         JSON.stringify({ ...owner, created: true, started: (BigInt(started) + 1n).toString() })
@@ -208,15 +298,15 @@ describe.runIf(process.platform === 'win32')('COM PowerShell behavior', () => {
         child.kill('SIGKILL')
       }
     }
-  }, 15000)
+  }, 20000)
 })
 
 /** 执行正式脚本与受控 COM 对象，核对的是运行行为，不读取或匹配产品源码。 */
-async function modelRun(kind: OfficeDocumentKind, created: boolean, exportFail = false, bindFail = false, visible = false) {
+async function modelRun(kind: OfficeDocumentKind, created: boolean, exportFail = false, bindFail = false, visible = false, extraEnv: NodeJS.ProcessEnv = {}) {
   const script = path.join(fixture, 'model.ps1')
 
   const summary = String.raw`
-@{visible=$global:officeModel.Visible;securityAtOpen=$global:securityAtOpen;security=$global:officeModel.AutomationSecurity;alerts=$global:officeModel.DisplayAlerts;documents=$global:collection.Count;quit=$global:quitCount;closed=$global:closedCount;args=@($global:openArgs|ForEach-Object {if ($_ -is [System.Reflection.Missing]) {'missing'} else {$_}});page=$global:sheet.PageSetup;errors=@($Error|ForEach-Object {$_.Exception.Message})}|ConvertTo-Json -Compress -Depth 4
+@{stopped=$global:stoppedCount;visible=$global:officeModel.Visible;securityAtOpen=$global:securityAtOpen;security=$global:officeModel.AutomationSecurity;alerts=$global:officeModel.DisplayAlerts;documents=$global:collection.Count;quit=$global:quitCount;closed=$global:closedCount;args=@($global:openArgs|ForEach-Object {if ($_ -is [System.Reflection.Missing]) {'missing'} else {$_}});page=$global:worksheetModel.PageSetup;errors=@($Error|ForEach-Object {$_.Exception.Message})}|ConvertTo-Json -Compress -Depth 4
 `
 
   await fs.writeFile(script, '\uFEFF' + MODEL + '\n' + officeComScript(kind) + '\n' + summary)
@@ -231,6 +321,9 @@ async function modelRun(kind: OfficeDocumentKind, created: boolean, exportFail =
         ...process.env,
         OFFICE_PROGRAM: process.execPath,
         OFFICE_PROGID: 'Controlled.Application',
+        OFFICE_PATHS: JSON.stringify([process.execPath]),
+        OFFICE_STANDALONE: kind === 'slides' ? '0' : '1',
+        OFFICE_PROVIDER: 'ms-office',
         OFFICE_SOURCE: path.join(fixture, 'sample.docx'),
         OFFICE_PDF: path.join(fixture, 'doc.pdf'),
         OFFICE_OWNER: path.join(fixture, 'owner.json'),
@@ -239,7 +332,8 @@ async function modelRun(kind: OfficeDocumentKind, created: boolean, exportFail =
         WINDOW_COUNT: created ? '0' : '1',
         EXPORT_FAIL: exportFail ? '1' : '0',
         BIND_FAIL: bindFail ? '1' : '0',
-        APP_VISIBLE: visible ? '1' : '0'
+        APP_VISIBLE: visible ? '1' : '0',
+        ...extraEnv
       }
     }
   )

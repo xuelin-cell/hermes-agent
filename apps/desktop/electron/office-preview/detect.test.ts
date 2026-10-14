@@ -145,6 +145,23 @@ describe('Office program detection', () => {
     expect(result.sheet.map(program => program.provider)).toEqual(['libreoffice'])
   })
 
+  it('prefers WPS-specific ProgIDs over occupied Microsoft aliases regardless of registry result order', async () => {
+    const entries = [
+      registration('word', 'D:\\WPS\\wps.exe', 'Word.Application', '32'),
+      registration('word', 'D:\\WPS\\wps.exe', 'KWPS.Application', '32'),
+      registration('slides', 'D:\\WPS\\wpp.exe', 'PowerPoint.Application', '32'),
+      registration('slides', 'D:\\WPS\\wps.exe', 'KWPP.Application', '32'),
+      registration('sheet', 'D:\\WPS\\et.exe', 'Excel.Application', '32'),
+      registration('sheet', 'D:\\WPS\\wps.exe', 'KET.Application', '32')
+    ]
+
+    const result = await detectorFor(entries, ['D:\\WPS\\wps.exe', 'D:\\WPS\\wpp.exe', 'D:\\WPS\\et.exe']).get()
+    expect(Object.values(result).map(programs => programs[0].provider)).toEqual(['wps', 'wps', 'wps'])
+    expect(Object.values(result).map(programs => 'progId' in programs[0] && programs[0].progId)).toEqual([
+      'KWPS.Application', 'KWPP.Application', 'KET.Application'
+    ])
+  })
+
   it('shares concurrent probes until invalidated, then refreshes changed installations', async () => {
     const readComRegistrations = vi.fn(async () => [] as OfficeComRegistration[])
     const detector = createOfficeDetector({ readComRegistrations, isFile: () => false, env: {} })

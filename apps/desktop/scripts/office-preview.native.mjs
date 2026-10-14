@@ -27,7 +27,7 @@ await build({
   format: 'esm'
 })
 const { createOfficeDetector } = await import(pathToFileURL(path.join(output, 'runtime', 'detect.mjs')).href)
-const { convertCom, officePowerShellCandidates } = await import(
+const { convertCom, officePowerShellCandidates, officeComEnvironment } = await import(
   pathToFileURL(path.join(output, 'runtime', 'convert-com.mjs')).href
 )
 const { officeComScript, OFFICE_COM_CLEANUP } = await import(
@@ -52,9 +52,7 @@ async function generateSample(program, kind) {
   const directory = await fs.mkdtemp(path.join(output, 'sample-'))
   const target = path.join(directory, 'sample.' + extensions[kind])
   const env = {
-    ...process.env,
-    OFFICE_PROGID: program.progId,
-    OFFICE_PROGRAM: await fs.realpath(program.executable),
+    ...officeComEnvironment(program, await fs.realpath(program.executable)),
     OFFICE_PDF: target,
     OFFICE_OWNER: path.join(directory, 'owner.json')
   }
@@ -79,6 +77,7 @@ async function generateSample(program, kind) {
     throw new Error('没有匹配位数的 PowerShell')
   }
   const options = { env, cwd: directory, timeoutMs: 60000 }
+  const generationStarted = performance.now()
   const generated = await runOfficeProcess(
     shell,
     [
@@ -89,11 +88,14 @@ async function generateSample(program, kind) {
     ],
     options
   )
+  const generationMs = Math.round(performance.now() - generationStarted)
+  const cleanupStarted = performance.now()
   const cleaned = await runOfficeProcess(
     shell,
     ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(OFFICE_COM_CLEANUP, 'utf16le').toString('base64')],
     options
   )
+  const cleanupMs = Math.round(performance.now() - cleanupStarted)
   let owner
   try {
     owner = JSON.parse(await fs.readFile(env.OFFICE_OWNER, 'utf8'))
@@ -104,7 +106,7 @@ async function generateSample(program, kind) {
   }
   const generation = helperReport(generated)
   const cleanup = helperReport(cleaned)
-  const diagnostic = { operation: 'sample', kind, provider: program.provider, progId: program.progId, generation, cleanup, owner }
+  const diagnostic = { operation: 'sample', kind, provider: program.provider, progId: program.progId, generationMs, cleanupMs, generation, cleanup, owner }
   results.push(diagnostic)
   await fs.writeFile(path.join(directory, 'sample-report.json'), JSON.stringify(diagnostic, null, 2))
   process.stdout.write(JSON.stringify(diagnostic) + '\n')
@@ -130,8 +132,9 @@ try {
     const source = await generateSample(programs[0], kind)
     for (const program of programs) {
       const work = await fs.mkdtemp(path.join(output, 'conversion-'))
+      const started = performance.now()
       const result = await convertCom(program, source, work)
-      results.push({ kind, provider: program.provider, registryView: program.registryView, source, ...result })
+      results.push({ kind, provider: program.provider, registryView: program.registryView, source, elapsedMs: Math.round(performance.now() - started), ...result })
       process.stdout.write(JSON.stringify(results.at(-1)) + '\n')
       if (!result.ok && !result.cleanupSafe) {
         throw new Error('收尾不确定，已停止其它转换，请人工检查并保留 ' + work)

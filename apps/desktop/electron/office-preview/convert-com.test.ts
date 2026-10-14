@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { OFFICE_PDF_MAX_BYTES, OFFICE_SOURCE_MAX_BYTES } from '../../../shared/src/office-preview'
 
-import { convertCom, officePowerShellCandidates } from './convert-com'
+import { convertCom, officeComEnvironment, officePowerShellCandidates } from './convert-com'
 import type { OfficeComProgram } from './detect'
 import type { runOfficeProcess } from './run-process'
 
@@ -44,6 +44,14 @@ describe('COM driver', () => {
     expect(officePowerShellCandidates('32', 'X:\\Windows', 'x64')[0]).toContain('SysWOW64')
     expect(officePowerShellCandidates('64', 'X:\\Windows', 'ia32')[0]).toContain('Sysnative')
     expect(officePowerShellCandidates('64', 'X:\\Windows', 'x64')[0]).toContain('System32')
+  })
+
+  it('limits WPS hosts to the selected installation and gives only real Word and Excel classes standalone ownership', () => {
+    const wps = officeComEnvironment({ ...program, provider: 'wps', kind: 'slides', progId: 'KWPP.Application' }, 'D:\\WPS Office\\office6\\wps.exe')
+    expect(JSON.parse(wps.OFFICE_PATHS!)).toEqual(['D:\\WPS Office\\office6\\wpp.exe', 'D:\\WPS Office\\office6\\wps.exe'])
+    expect(wps.OFFICE_STANDALONE).toBe('0')
+    expect(officeComEnvironment(program, 'C:\\Office\\WINWORD.EXE').OFFICE_STANDALONE).toBe('1')
+    expect(officeComEnvironment({ ...program, kind: 'slides', progId: 'PowerPoint.Application' }, 'C:\\Office\\POWERPNT.EXE').OFFICE_STANDALONE).toBe('0')
   })
 
   it.runIf(process.platform === 'win32')(

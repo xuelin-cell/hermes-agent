@@ -11,6 +11,7 @@ import {
 
 import { OFFICE_COM_CLEANUP, officeComScript } from './com-scripts'
 import type { OfficeComProgram, OfficeRegistryView } from './detect'
+import { WPS_EXECUTABLES } from './detect'
 import { runOfficeProcess } from './run-process'
 
 export interface ComConversionSuccess {
@@ -32,6 +33,26 @@ export function officePowerShellCandidates(view: OfficeRegistryView, systemRoot:
   return directories.map(directory =>
     path.win32.join(systemRoot, directory, 'WindowsPowerShell', 'v1.0', 'powershell.exe')
   )
+}
+
+/** 固定转换实例的可信程序范围；WPS 允许同安装目录内的相应组件，不允许其它软件。 */
+export function officeComEnvironment(program: OfficeComProgram, executable: string): NodeJS.ProcessEnv {
+  const paths = program.provider === 'wps'
+    ? WPS_EXECUTABLES[program.kind].map(name => path.win32.join(path.win32.dirname(executable), name))
+    : [executable]
+
+  const standalone = program.provider === 'ms-office' &&
+    /^(winword|excel)\.exe$/i.test(path.win32.basename(executable)) &&
+    /^(Word|Excel)\.Application(?:\.\d+)?$/i.test(program.progId)
+
+  return {
+    ...process.env,
+    OFFICE_PROGID: program.progId,
+    OFFICE_PROGRAM: executable,
+    OFFICE_PROVIDER: program.provider,
+    OFFICE_PATHS: JSON.stringify(paths),
+    OFFICE_STANDALONE: standalone ? '1' : '0'
+  }
 }
 
 /** 只读取辅助脚本最后一行结果；不将异常文本或内部路径交给前端。 */
@@ -114,9 +135,7 @@ export async function convertCom(
     const directory = await fs.mkdtemp(path.join(workDirectory, 'com-'))
     const pdfPath = path.join(directory, 'doc.pdf')
     env = {
-      ...process.env,
-      OFFICE_PROGID: program.progId,
-      OFFICE_PROGRAM: executable,
+      ...officeComEnvironment(program, executable),
       OFFICE_SOURCE: path.resolve(source),
       OFFICE_PDF: pdfPath,
       OFFICE_OWNER: path.join(directory, 'owner.json')

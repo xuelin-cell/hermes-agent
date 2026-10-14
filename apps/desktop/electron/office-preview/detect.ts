@@ -41,9 +41,9 @@ export interface OfficeDetectionDeps {
 }
 
 const COM_PROGIDS: Readonly<Record<OfficeDocumentKind, readonly string[]>> = {
-  word: ['Word.Application', 'KWPS.Application', 'WPS.Application'],
-  slides: ['PowerPoint.Application', 'KWPP.Application', 'WPP.Application'],
-  sheet: ['Excel.Application', 'KET.Application', 'ET.Application']
+  word: ['KWPS.Application', 'KWPS.Application.6', 'WPS.Application', 'Word.Application'],
+  slides: ['KWPP.Application', 'KWPP.Application.6', 'WPP.Application', 'PowerPoint.Application'],
+  sheet: ['KWET.Application', 'KET.Application', 'KET.Application.6', 'ET.Application', 'Excel.Application']
 }
 
 const MS_EXECUTABLES: Record<OfficeDocumentKind, string> = {
@@ -52,7 +52,7 @@ const MS_EXECUTABLES: Record<OfficeDocumentKind, string> = {
   sheet: 'excel.exe'
 }
 
-const WPS_EXECUTABLES: Record<OfficeDocumentKind, readonly string[]> = {
+export const WPS_EXECUTABLES: Record<OfficeDocumentKind, readonly string[]> = {
   word: ['wps.exe'],
   slides: ['wpp.exe', 'wps.exe'],
   sheet: ['et.exe', 'wps.exe']
@@ -219,6 +219,11 @@ function isProgramFile(filePath: string): boolean {
   }
 }
 
+/** WPS 专用入口优先，避免同时安装时用微软通用 CLSID 激活错误的应用。 */
+function comCandidateRank(program: OfficeComProgram): number {
+  return program.provider === 'wps' && /^(Word|PowerPoint|Excel)\.Application(?:\.\d+)?$/i.test(program.progId) ? 1 : 0
+}
+
 /** 同进程共享探测；失效后重新读取，旧请求完成不能覆盖新的探测。 */
 export function createOfficeDetector(overrides: Partial<OfficeDetectionDeps> = {}) {
   const deps: OfficeDetectionDeps = {
@@ -241,6 +246,7 @@ export function createOfficeDetector(overrides: Partial<OfficeDetectionDeps> = {
     const programs = com.registrations
       .map(registration => classifyOfficeRegistration(registration, deps.isFile, deps.env))
       .filter(program => program !== null)
+      .sort((left, right) => comCandidateRank(left) - comCandidateRank(right))
 
     const libreOffice = libreOfficeCandidates(process.platform, deps.env, os.homedir()).find(deps.isFile)
 

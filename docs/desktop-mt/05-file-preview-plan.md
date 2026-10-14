@@ -2,7 +2,7 @@
 
 日期：2026-10-13。基线：`desktop-mt @ d5ff498050`（代码事实核对于同步远端 `40caef7b87` 之前，P01 动手前需复核）。参考实现：UniWork 桌面版 `Kyle549/UniClaw @ uniwork_release`（`8ae3548e`）、Web 版 `feat/hermes-ch`（`3bef1c5bd4`）。
 
-状态：P01～P05 和六项审阅修复已推送，接续基线为 `8a3a28620c`；P06 模块已实现，实机验收发现 Word 身份探针窗口不存在的问题，已修正取窗逻辑、待实机复验，尚未接入应用；P07～P16 未开始。P04 的 COM 查询异常已修复，WPS 别名与备用候选限制仍保留。本文不授权推送。每步完成验证并本地提交后暂停，等待用户核验，再继续下一步。
+状态：P01～P05 和六项审阅修复已推送，接续基线为 `8a3a28620c`；P06 已修复未登记实例退出与 WPS 转换，38 项定向检查通过，独立临时文件的 MS Office／WPS 三类转换均取得真实 PDF；中文排版和用户已有文档并行仍待人工验收，尚未接入应用。P07～P16 未开始。P04 的 COM 查询异常、主要 WPS 别名和专用入口优先级已修复，同厂家多个备用入口仍未实现。本文不授权推送。每步完成验证并本地提交后暂停，等待用户核验，再继续下一步。
 
 路径约定：`src/`、`electron/` 指 `apps/desktop/` 下的对应目录；`shared/` 指 `apps/shared/src/`。各步骤的行数是预估的业务代码行数，不含测试、夹具和文档；多语言文案单独列出。
 
@@ -417,9 +417,9 @@ UniWork 的表格预览由三个文件组成，共约 1300 行，并依赖表格
 | A · 预览中心与音视频 | P01 | 已实现并自动验证，已推送 `df151293dd` |
 | A · CSV／TSV | P02 | 已实现，定向检查通过；已推送 `aaaea847f5`，真实桌面验收待用户完成 |
 | A · TIFF | P03 | 已实现，定向检查通过；已推送 `f63ae9e9cc`，真实桌面验收待用户完成 |
-| B · 约定与探测 | P04 | 已推送 `4275f8f2a2`；已知探测限制暂不修复，转换未验证 |
+| B · 约定与探测 | P04 | 已推送 `4275f8f2a2`；查询异常及主要 WPS 别名、专用入口优先级已修复；同厂家备用入口仍有限制 |
 | B · 缓存与排队 | P05 | 已实现，13 项定向检查通过；已推送 `e7f05d4015`，应用接线待 P07 |
-| B · MS Office 与 WPS 转换 | P06 | 模块已实现，探针修正后 16 项定向检查通过；Word 身份窗口获取故障待实机复验；本地提交，未推送，应用接线待 P07 |
+| B · MS Office 与 WPS 转换 | P06 | 未登记实例退出与 WPS 修复完成，38 项定向检查通过；两厂家三类真实转换取得 PDF，排版及已有文档并行待人工确认；本地提交，未推送，应用接线待 P07 |
 | B · LibreOffice、服务与接入 | P07 | 未开始 |
 | C · Word 转 PDF | P08 | 未开始 |
 | C · Word 兜底 | P09 | 未开始 |
@@ -507,7 +507,7 @@ UniWork 的表格预览由三个文件组成，共约 1300 行，并依赖表格
 - 本步确认的只是注册表与文件路径可识别，不保证 COM 激活、授权、宏控制、文档转换或 PDF 正确。未打开用户 Office 窗口、未转换 Word／PPT／Excel，也未验证 LibreOffice、其它操作系统或安装包。这些属于后续步骤和人工验收。
 - 探测约定依据 [Microsoft LocalServer32](https://learn.microsoft.com/en-us/windows/win32/com/localserver32) 与 [RegistryKey.OpenBaseKey](https://learn.microsoft.com/en-us/dotnet/api/microsoft.win32.registrykey.openbasekey)；使用 `ServerExecutable` 的真实路径优先于命令行推断，不把注册表信息当作转换已经成功的证明。
 
-P04 后续对照 UniWork `8ae3548e` 发现：COM 查询失败会阻断 LibreOffice 探测；候选缺少 `KWet.Application` 与部分 `.6` 名称；同厂家只保留首个入口会丢失备用 COM。前两项属于错误处理和覆盖问题，第三项是转换接线时的限制。用户明确“先不做，推送后继续”，因此本轮未修改探测代码，不能将这些限制记为已解决。（更新：第一项已在文末“P01～P05 审阅修复记录”中解决，另外两项仍未处理。）
+P04 后续对照 UniWork `8ae3548e` 发现：COM 查询失败会阻断 LibreOffice 探测；候选缺少 `KWet.Application` 与部分 `.6` 名称；同厂家只保留首个入口会丢失备用 COM。前两项属于错误处理和覆盖问题，第三项是转换接线时的限制。用户明确“先不做，推送后继续”，因此当时未修改探测代码。（更新：查询异常已在“P01～P05 审阅修复记录”中解决，主要 WPS 别名和专用入口优先级已在本次 P06 修复中补齐，同厂家多个备用 COM 仍未实现。）
 
 `4275f8f2a2` 已按用户当次授权推送到 `origin/desktop-mt`；随后开始 P05。
 
@@ -591,3 +591,15 @@ P05 完成后对 P01～P04 的四个提交做了一次代码审阅，共 10 条�
 - 修正身份探针的窗口参数：仅在 Word 应用本来隐藏且没有文档窗口时，创建具有正常文档窗口的空白探针来取得 HWND；不设置或切换应用的 `Visible`，取得准确身份后立即关闭探针。已有文档窗口直接复用；可见但没有可绑定文档窗口的实例拒绝创建探针，避免给用户插入空白窗口。正常源文件和样例仍按原有隐藏方式打开，宏控制、只读和收尾保护不变。窗口参数与应用可见性是不同层级，参见 [Documents.Add](https://learn.microsoft.com/en-us/office/vba/api/word.documents.add) 和 [Application.Visible](https://learn.microsoft.com/en-us/office/vba/api/word.application.visible)。
 - 原受控对象无论文档是否可见都返回一个窗口，遗漏了实机发现的无窗口情况。现在让夹具在不可见文档没有窗口时实际抛出同一 COM 错误：两个定向用例先在旧实现失败，修正后通过。整组三个文件 16 项通过，覆盖探针关闭、新空实例退出、应用保持隐藏、可见空实例不新增窗口和原有身份保护。类型检查、相关 ESLint 和 Git 差异检查通过。
 - 本轮没有启动真实 Office 或处理之前的遗留进程。以上属于取窗逻辑修正与受控回归，真实 MS Office／WPS 转换、中文排版和已打开文档保留仍待用户重新运行原生夹具确认，不能将其记为端到端已经通过。
+
+### P06 未登记实例退出、WPS 转换与收尾耗时修复（2026-10-13）
+
+- 用户后续实机运行已取得 MS Office 的三类 PDF，但 WPS 三类不可用，并发现五个遗留 Word PID。此前退出依赖已登记 PID，身份或安全设置阶段失败时会遗漏刚返回的独立 COM 对象。本次对空、隐藏、非用户控制的独立 MS Word／Excel，直接通过本人对象退出，不猜测 PID；此退出与设置恢复分开执行，恢复失败也会尝试。共享 PowerPoint／WPS、可见或存在其它文档的对象不走此路径。激活没有返回对象、对象信息不可读、进程或文件记录不可信时仍不能保证自动清理，不按名称强杀。
+- 按用户指定 PID 逐个核对程序全路径、完整自动化命令行、创建时间及无可见窗口：13212 已不存在，28676、13140、31852、32720 已结束。没有删除历史、文档或转换目录；未触碰原有 WPS 进程。真实转换结束后复查没有新增 Word／PowerPoint／Excel／WPS 演示残留。
+- WPS 优先使用 KWPS／KWPP／KWET／KET 等专用入口，补齐主要 `.6` 别名，避免与 MS Office 共用通用 CLSID 时激活错误软件。同厂家仍只选择一个候选，不宣称所有版本别名或备用入口已覆盖。
+- 实际组件必须位于登记的同一安装目录：WPS 演示允许 wps.exe／wpp.exe，表格允许 wps.exe／et.exe；不接受其它目录。通过 [QueryFullProcessImageNameW](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-queryfullprocessimagenamew) 查询实际路径并展开短路径，不依赖可能受位数限制的 Get-Process.Path。路径冲突先保留诊断再拒绝，不调用错误应用的 Quit。
+- 本机 WPS 12.1.0.29161 的演示 COM 不实现应用／文档 HWND，标准 IOleWindow 也不可用。该分支只关闭本次文档、释放 COM，不创建额外身份文档、不退出或强杀共享 WPS。收尾须同时确认对象关闭和本次新增相关进程已消失；未登记且仍有新进程、文档未确认关闭或超时，返回 cleanupSafe=false，停止后续降级。此保护并不保证无窗口 WPS 在任意崩溃后可自动找回归属。
+- 显式释放窗口、文档集合及样例的范围／单元格等引用。已准确登记的新建空实例，在二次核对 PID、创建时间、路径和不可见后先结束，再释放客户端引用，避免已关闭 PowerPoint 的远端 COM Release 长时间等待；借用实例只释放自身引用。夹具增加生成、收尾和转换计时，成功结果不再附带失败 code。
+- 用户授权的一轮原生转换和失败项定向复测，使用独立临时中文／空格／引号路径，不操作用户文档窗口。MS Office 的 docx／pptx／xlsx 与 WPS 的 docx／pptx／xlsx 均取得真实 PDF；WPS PPT 是修正无 HWND 分支后单独通过，不把最初整轮报告中的失败改写成通过。报告及样例位于 `C:\Users\stan\AppData\Local\Temp\hermes-office-native-TPrUSU`，PPT 复测见 `retest-report.json`。单次 MS PPT 转换约 25.18 秒降至 6.54 秒，WPS PPT 最后约 5.56 秒；这是不同轮次的单次观测，不是严格性能基准，未用最终代码重跑全部六项计时。
+- 最终定向命令：`npx vitest run --project electron electron/office-preview/detect.test.ts electron/office-preview/convert-com.test.ts electron/office-preview/com-scripts.test.ts electron/office-preview/run-process.test.ts`，4 文件 38 项通过。覆盖登记前失败、设置恢复再次失败、共享实例保护、无 HWND 的自有／借用 WPS 文档、路径冲突、32 位辅助进程读取 64 位路径、未登记关闭确认及真实自建进程的创建时间复核。TypeScript、相关 ESLint、夹具语法、默认不启动 Office 的门控和 Git 差异检查通过。
+- PDF 文件头和真实转换成功不等于中文视觉排版验收；用户已有 Word／PPT／Excel 文档并行、真实宏文件、Office 授权异常、安装包、其它系统和 LibreOffice 仍待验证。本次不修改 Hermes Python 后端或上游产品文件；按要求将本次修复写入一个本地提交，不推送，不进入 P07。
