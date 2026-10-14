@@ -161,7 +161,6 @@ export const en: Translations = {
   connectorsPage: {
     mcpLocal: {
       addCustom: 'Add custom MCP',
-      builtIn: 'Built-in MCP',
       custom: 'Custom MCP',
       plugins: 'MCP from plugins',
       profile: 'Current profile',
@@ -170,9 +169,6 @@ export const en: Translations = {
       noMatches: 'No matching MCP servers',
       loadFailed: 'Could not load MCP configuration',
       pluginsFailed: 'Could not load plugin MCP servers',
-      playwrightDescription: 'Browser automation with an isolated browser context.',
-      installPending: 'Installation will be available after integration.',
-      install: 'Install',
       configuration: 'Configuration (JSON)',
       enabled: 'Enabled',
       testing: 'Testing connection…',

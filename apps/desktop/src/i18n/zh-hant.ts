@@ -7,7 +7,6 @@ export const zhHant = defineLocale({
   connectorsPage: {
     mcpLocal: {
       addCustom: '新增自訂 MCP',
-      builtIn: '內建 MCP',
       custom: '自訂 MCP',
       plugins: '外掛提供的 MCP',
       profile: '目前 Profile',
@@ -16,9 +15,6 @@ export const zhHant = defineLocale({
       noMatches: '沒有相符的 MCP 服務',
       loadFailed: '無法讀取 MCP 設定',
       pluginsFailed: '無法讀取外掛 MCP',
-      playwrightDescription: '使用隔離瀏覽器完成網頁操作，關閉後不保留網站登入。',
-      installPending: '安裝功能待接入。',
-      install: '安裝',
       configuration: '設定（JSON）',
       enabled: '已啟用',
       testing: '正在測試連線…',

@@ -32,6 +32,7 @@ beforeEach(() => {
   controller = {
     servers: {
       alpha: { command: 'node', args: ['--secret-do-not-display'] },
+      'UniAI-Toolkit': { url: 'https://example.invalid/mcp?key=sk-••••••TAIL' },
       beta: { url: 'https://example.invalid/mcp', enabled: false }
     },
     statuses: { alpha: 'ok', beta: 'off' },
@@ -100,7 +101,8 @@ it('keeps every custom service and plugin ownership, and delegates row controls 
   expect(within(custom).getByRole('article', { name: 'beta' })).toBeTruthy()
   expect(within(alpha).getByText('Last connection test passed')).toBeTruthy()
   expect(screen.queryByText(/secret-do-not-display/)).toBeNull()
-  expect((screen.getByRole('button', { name: 'Install' }) as HTMLButtonElement).disabled).toBe(true)
+  expect(screen.queryByText('Playwright')).toBeNull()
+  expect(screen.queryByRole('button', { name: 'Install' })).toBeNull()
   fireEvent.click(within(alpha).getByRole('switch'))
   expect(toggle).toHaveBeenCalledWith('alpha', false)
   expect(within(alpha).getByRole('button', { name: 'alpha' }).getAttribute('aria-expanded')).toBe('true')
@@ -109,6 +111,12 @@ it('keeps every custom service and plugin ownership, and delegates row controls 
   expect(within(alpha).getByText('JSON: alpha')).toBeTruthy()
   fireEvent.click(within(alpha).getByRole('button', { name: 'Test connection' }))
   expect(probe).toHaveBeenCalledWith('alpha')
+  const toolkit = within(custom).getByRole('article', { name: 'UniAI-Toolkit' })
+  fireEvent.click(within(toolkit).getByRole('switch'))
+  expect(toggle).toHaveBeenCalledWith('UniAI-Toolkit', false)
+  fireEvent.click(within(toolkit).getByRole('button', { name: 'UniAI-Toolkit' }))
+  fireEvent.click(within(toolkit).getByRole('button', { name: 'Test connection' }))
+  expect(probe).toHaveBeenCalledWith('UniAI-Toolkit')
   const plugin = await screen.findByRole('article', { name: 'plugin__helper' })
   expect(within(plugin).queryByRole('switch')).toBeNull()
   expect(within(plugin).queryByRole('button', { name: /Remove/ })).toBeNull()

@@ -215,7 +215,6 @@ export interface Translations {
   connectorsPage: {
     mcpLocal: {
       addCustom: string
-      builtIn: string
       custom: string
       plugins: string
       profile: string
@@ -224,9 +223,6 @@ export interface Translations {
       noMatches: string
       loadFailed: string
       pluginsFailed: string
-      playwrightDescription: string
-      installPending: string
-      install: string
       configuration: string
       enabled: string
       testing: string

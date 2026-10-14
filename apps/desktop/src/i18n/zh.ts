@@ -152,7 +152,6 @@ export const zh = defineLocale({
   connectorsPage: {
     mcpLocal: {
       addCustom: '添加自定义 MCP',
-      builtIn: '内置 MCP',
       custom: '自定义 MCP',
       plugins: '插件提供的 MCP',
       profile: '当前 Profile',
@@ -161,9 +160,6 @@ export const zh = defineLocale({
       noMatches: '没有匹配的 MCP 服务',
       loadFailed: '无法读取 MCP 配置',
       pluginsFailed: '无法读取插件 MCP',
-      playwrightDescription: '使用隔离浏览器完成网页操作，关闭后不保留网站登录。',
-      installPending: '安装功能待接入。',
-      install: '安装',
       configuration: '配置（JSON）',
       enabled: '已启用',
       testing: '正在测试连接…',
