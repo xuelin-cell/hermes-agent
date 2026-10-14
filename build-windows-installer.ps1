@@ -21,11 +21,9 @@ if (-not [string]::IsNullOrWhiteSpace($ProxyUrl)) {
     $env:ELECTRON_GET_USE_PROXY = '1'
 }
 
-. (Join-Path $sourceRoot 'activate.ps1')
-
 $python = Join-Path $sourceRoot '.venv\Scripts\python.exe'
 if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
-    throw "Build Python not found after activation: $python"
+    throw "Build Python not found: $python. Run '. .\activate.ps1' once, then rerun this script."
 }
 
 Push-Location $sourceRoot
