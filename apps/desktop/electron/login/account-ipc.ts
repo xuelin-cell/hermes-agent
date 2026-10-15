@@ -3,6 +3,9 @@ import { BrowserWindow, ipcMain, type IpcMainInvokeEvent, type Session } from 'e
 import { ASR_CHANNEL, type AsrIdentity } from '../uniwork-asr/contract'
 import { createUniworkAsrHandler } from '../uniwork-asr/ipc'
 
+import { WELCOME_CATALOG_CHANNEL } from '../uniwork-welcome/catalog'
+import { WelcomeCatalogClient } from '../uniwork-welcome/client'
+
 import { CloudDriveClient } from './cloud-drive'
 import type { LoginAccount } from './contract'
 import type { LoginIdentity } from './session'
@@ -71,6 +74,13 @@ export function installAccountIpc(
   }
 
   if (readIdentity) {
+    const catalog = new WelcomeCatalogClient(readIdentity)
+    ipcMain.handle(WELCOME_CATALOG_CHANNEL, async (event, ...args) => {
+      if (!trusted(event, []) || args.length !== 1 || !['zh-CN', 'en'].includes(args[0])) {
+        throw new Error('办公模板请求无效。')
+      }
+      return catalog.load(args[0])
+    })
     const drive = new CloudDriveClient(readIdentity)
     ipcMain.handle('hermes:maas-drive:request', async (event, ...args) => {
       if (!trusted(event, []) || args.length !== 1 || !readIdentity()) {

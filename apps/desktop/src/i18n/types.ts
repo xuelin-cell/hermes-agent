@@ -3278,6 +3278,12 @@ export interface Translations {
     voiceEngineChangeFailed: string
     voiceEngineChainedShort: string
     voiceEngineLiveShort: string
+    workTemplates: string
+    workClearCategory: string
+    workScrollLeft: string
+    workScrollRight: string
+    workCached: string
+    workRetry: string
     startRecognition: string
     stopRecognition: string
     voiceDictation: string

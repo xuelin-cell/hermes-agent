@@ -904,6 +904,7 @@ const ChatViewContent = memo(function ChatViewContent({
                 onTranscribeAudio={onTranscribeAudio}
                 queueSessionKey={queueSessionKey}
                 sessionId={activeSessionId}
+                showWelcomeTemplates={messagesEmpty && !routedHasHistory}
                 state={chatBarState}
               />
             </Suspense>

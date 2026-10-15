@@ -1,3 +1,4 @@
+import { WELCOME_CATALOG_CHANNEL } from './uniwork-welcome/catalog'
 import { contextBridge, ipcRenderer, webFrame, webUtils } from 'electron'
 
 import { ASR_CHANNEL } from './uniwork-asr/contract'
@@ -31,6 +32,8 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   // 只读脱敏账号信息，页面不能传入身份或账号路径。
   getMaasAccount: () => ipcRenderer.invoke('hermes:maas-account:get'),
   cloudDriveRequest: (input: CloudDriveRequest) => ipcRenderer.invoke('hermes:maas-drive:request', input),
+  /** 仅读取固定语言的办公模板目录，不接收请求地址或凭据。 */
+  getWelcomeCatalog: locale => ipcRenderer.invoke(WELCOME_CATALOG_CHANNEL, locale),
   uniworkAsr: {
     start: language => ipcRenderer.invoke(ASR_CHANNEL, { operation: 'start', language }),
     audio: (id, pcm) => ipcRenderer.invoke(ASR_CHANNEL, { operation: 'audio', id, pcm }),

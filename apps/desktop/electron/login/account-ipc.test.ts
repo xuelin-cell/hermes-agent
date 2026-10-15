@@ -142,3 +142,20 @@ it('实时识别拒绝子框架、其他分区和额外凭据，只读取主进�
   await expect(invoke({ sender, senderFrame: frame }, request)).rejects.toThrow('需要有效的元景套餐')
   expect(identity).toHaveBeenCalledOnce()
 })
+
+
+it('办公目录仅允许当前桌面主框架选择固定语言，不接受地址或身份参数', async () => {
+  const partition = {}
+  const frame = { url: 'http://127.0.0.1:5174/#/chat' }
+  const sender = { mainFrame: frame, session: partition }
+  fromWebContents.mockReturnValue({ isDestroyed: () => false, webContents: sender })
+  const identity = vi.fn(() => null)
+  installAccountIpc(partition as never, () => 'http://127.0.0.1:5174', () => null,
+    undefined, identity)
+  const invoke = handle.mock.calls.findLast(call => call[0] === 'hermes:uniwork-welcome:catalog')![1]
+  await expect(invoke({ sender, senderFrame: {} }, 'zh-CN')).rejects.toThrow('请求无效')
+  await expect(invoke({ sender, senderFrame: frame }, 'zh-CN', 'forged-key')).rejects.toThrow('请求无效')
+  await expect(invoke({ sender, senderFrame: frame }, 'https://untrusted.example/')).rejects.toThrow('请求无效')
+  expect(identity).not.toHaveBeenCalled()
+  await expect(invoke({ sender, senderFrame: frame }, 'zh-CN')).rejects.toThrow('请重新登录')
+})

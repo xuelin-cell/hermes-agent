@@ -1,3 +1,4 @@
+import type { WelcomeCategory, WelcomeLocale } from '../electron/uniwork-welcome/catalog'
 import type { GatewayWsUrlResult, OfficePreviewResult } from '@hermes/shared'
 import type { HermesSkin } from '@hermes/shared/skin'
 import type { TranslucencyState } from '@hermes/shared/translucency'
@@ -30,6 +31,8 @@ declare global {
       /** 只读本次已准备账号的脱敏信息，运行中到期仍返回原期限。 */
       getMaasAccount: () => Promise<LoginAccount | null>
       cloudDriveRequest: (input: CloudDriveRequest) => Promise<unknown>
+      /** 取得完整办公目录；主进程负责认证和校验配置。 */
+      getWelcomeCatalog?: (locale: WelcomeLocale) => Promise<WelcomeCategory[]>
       uniworkAsr?: UniworkAsrBridge
       logoutMaasAccount: () => Promise<void>
       // Resolve a backend connection. Omit `profile` (or pass the primary) for

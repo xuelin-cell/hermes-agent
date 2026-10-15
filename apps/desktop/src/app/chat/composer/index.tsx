@@ -112,6 +112,7 @@ import {
   selectionLinkLabel
 } from './url-refs'
 import { VoiceActivity, VoicePlaybackActivity } from './voice-activity'
+import { WorkTemplatePicker } from './work-templates/picker'
 import { WorkdirPicker } from './workdir-mt/workdir-picker'
 
 export function ChatBar({
@@ -121,6 +122,7 @@ export function ChatBar({
   focusKey,
   gateway,
   maxRecordingSeconds = 120,
+  showWelcomeTemplates = false,
   queueSessionKey,
   sessionId,
   state,
@@ -1339,6 +1341,10 @@ export function ChatBar({
               : undefined
           }
         >
+          {showWelcomeTemplates && !guidedChat && !botChat && !hudMode && !poppedOut && (
+            <WorkTemplatePicker scope={activeQueueSessionKey} disabled={inputDisabled || busy || asrActive}
+              onReplaceText={text => replaceText(text)} />
+          )}
           {/* Aligned to the composer SURFACE, which sits inside the composer's
               5px transparent grab margin — so both strips carry the same inset
               and share one left edge with it. */}
