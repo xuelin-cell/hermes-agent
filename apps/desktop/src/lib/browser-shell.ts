@@ -47,6 +47,7 @@ import { storedBoolean } from '@/lib/storage'
  *   app/settings/index.tsx                             * no Gateway, Credential Vault or About page
  *   app/settings/subpages.ts                           * no Advanced ▸ Desktop subpage
  *   app/shell/gateway-menu-panel.tsx                   * no gateway restart
+ *   app/shell/maas-account-status.tsx                  signing out keeps the instance: the confirmation says so
  *   contrib/plugins.ts                                 * no Bot Mode (the BOTS tab): its plugin is not started
  *   lib/local-preview.ts                               Office files (pptx, docx, xlsx …) are previews, never read as text
  *   lib/media.ts                                       audio and video in the chat play straight from the instance
@@ -446,6 +447,7 @@ interface BrowserShellCopy {
     truncated: (shown: number, rows: number) => string
     unnamed: (index: number) => string
   }
+  signOutBody: string
   skillInstallPending: string
   slides: {
     counter: (page: number, pages: number) => string
@@ -526,6 +528,7 @@ const COPY: Record<'en' | 'zh', BrowserShellCopy> = {
         `Showing the first ${shown} of ${rows} rows. Download the file to see them all.`,
       unnamed: (index: number) => `Sheet ${index}`
     },
+    signOutBody: 'You will return to the sign-in page. Your chats, files and scheduled tasks are kept.',
     skillInstallPending: 'Installing from here is in development.',
     slides: {
       counter: (page: number, pages: number) => `${page} / ${pages}`,
@@ -599,6 +602,7 @@ const COPY: Record<'en' | 'zh', BrowserShellCopy> = {
       truncated: (shown: number, rows: number) => `只显示前 ${shown} 行（共 ${rows} 行），完整内容请下载后查看。`,
       unnamed: (index: number) => `工作表 ${index}`
     },
+    signOutBody: '退出后回到登录页。对话、文件和定时任务都会保留。',
     skillInstallPending: '功能开发中',
     slides: {
       counter: (page: number, pages: number) => `${page} / ${pages}`,
@@ -622,6 +626,13 @@ const COPY: Record<'en' | 'zh', BrowserShellCopy> = {
  * effect, after the first render — which the React Compiler may have memoized. */
 export function browserShellCopy(locale: string = getRuntimeI18nLocale()): BrowserShellCopy {
   return locale.startsWith('zh') ? COPY.zh : COPY.en
+}
+
+/** The sign-out confirmation of the statusbar's account item (app/shell/maas-account-status.tsx).
+ * Signing out of the cloud ends the session at the entry; the instance and everything in it stay,
+ * where the desktop app says what it stops. Null on the desktop. */
+export function signOutDescription(locale?: string): null | string {
+  return isBrowserShell() ? browserShellCopy(locale).signOutBody : null
 }
 
 /** The skill market's install button (app/skills/skill-market.tsx). A market

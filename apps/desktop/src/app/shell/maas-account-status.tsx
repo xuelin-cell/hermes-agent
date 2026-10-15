@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Tip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
+import { signOutDescription } from '@/lib/browser-shell'
 import { notify } from '@/store/notifications'
 
 import type { LoginAccount } from '../../../electron/login/contract'
@@ -14,7 +15,7 @@ import type { StatusbarItem } from './statusbar-controls'
 function AccountLogout({ account }: { account: LoginAccount }) {
   const [open, setOpen] = useState(false)
   const [expired, setExpired] = useState(false)
-  const { t } = useI18n()
+  const { locale, t } = useI18n()
   const copy = t.desktopLogin
 
   useEffect(() => {
@@ -76,7 +77,7 @@ function AccountLogout({ account }: { account: LoginAccount }) {
       <ConfirmDialog
         busyLabel={copy.logoutBusy}
         confirmLabel={copy.logout}
-        description={copy.logoutDescription}
+        description={signOutDescription(locale) ?? copy.logoutDescription}
         onClose={() => setOpen(false)}
         onConfirm={() => window.hermesDesktop.logoutMaasAccount()}
         open={open}

@@ -74,6 +74,31 @@ describe('browser development bridge', () => {
     expect(profile).toMatchObject({ ageDays: null, username: '' })
   })
 
+  it('reads the signed-in account from the entry, and nothing where no entry answers', async () => {
+    await installFresh()
+    const calls: string[] = []
+
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      calls.push(String(input))
+
+      return jsonResponse({ display: '186****5230', expires_at: 1_800_000_000, user_id: 'u-1' })
+    }) as typeof fetch
+
+    await expect(window.hermesDesktop.getMaasAccount!()).resolves.toEqual({
+      expiresAt: 1_800_000_000_000,
+      maskedPhone: '186****5230'
+    })
+    expect(calls).toEqual(['/__entry/me'])
+
+    // The dev server answers every path with the page; signed out, the entry says 401.
+    globalThis.fetch = vi.fn(
+      async () => new Response('<!doctype html>', { headers: { 'content-type': 'text/html' } })
+    ) as typeof fetch
+    await expect(window.hermesDesktop.getMaasAccount!()).resolves.toBeNull()
+    globalThis.fetch = vi.fn(async () => jsonResponse({ error: 'unauthorized' }, 401)) as typeof fetch
+    await expect(window.hermesDesktop.getMaasAccount!()).resolves.toBeNull()
+  })
+
   it('reports a remote connection so the renderer uploads attachments and reads files via the gateway', async () => {
     await installFresh()
 

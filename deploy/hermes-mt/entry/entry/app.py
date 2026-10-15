@@ -207,6 +207,7 @@ class Entry:
         return web.Response(status=200, headers={"X-MT-User": session.user_id})
 
     async def me(self, request: web.Request) -> web.Response:
+        """当前登录的是谁：页面状态栏的账号那一项（垫片的 getMaasAccount）读它。"""
         session = await self._require(request)
         states = {user: (state, timestamp) for user, state, timestamp in await self.store.all_tenant_states()}
         state = states.get(session.user_id, ("stopped", 0))
@@ -216,20 +217,9 @@ class Entry:
                 "display": await self.store.masked_phone(session.user_id) or session.user_id,
                 "tenant_state": state[0],
                 "last_seen_at": state[1],
+                # 会话到期时间（秒）：到期后页面在账号旁标「登录已到期」。
+                "expires_at": session.expires_at,
             }
-        )
-
-    async def badge_js(self, request: web.Request) -> web.Response:
-        """返回由 Nginx 注入原生 SPA 的登录用户角标脚本。"""
-        javascript = (STATIC_DIR / "badge.js").read_text(encoding="utf-8").replace(
-            "__BASE__",
-            self.s.base_path,
-        )
-        return web.Response(
-            text=javascript,
-            content_type="application/javascript",
-            charset="utf-8",
-            headers={"Cache-Control": "no-cache"},
         )
 
     async def captcha(self, request: web.Request) -> web.Response:
@@ -502,7 +492,6 @@ def build_app(settings: Settings = SETTINGS) -> web.Application:
     app.router.add_get(path("/__entry/health"), entry.health)
     app.router.add_get(path("/__entry/auth"), entry.auth)
     app.router.add_get(path("/__entry/me"), entry.me)
-    app.router.add_get(path("/__entry/badge.js"), entry.badge_js)
     app.router.add_get(path("/__entry/captcha"), entry.captcha)
     app.router.add_post(path("/__entry/send-code"), entry.send_code)
     app.router.add_post(path("/__entry/login"), entry.login)

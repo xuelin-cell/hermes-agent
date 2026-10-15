@@ -25,6 +25,7 @@ import {
   previewsPdfInViewer,
   remoteHtmlFrameDocument,
   remoteHtmlFrameSandbox,
+  signOutDescription,
   skillMarketInstallPending,
   visibleModelOptions,
   withoutDesktopPlugins,
@@ -277,6 +278,15 @@ describe('browser shell', () => {
 
     expect(skillMarketInstallPending('zh')).toBe('功能开发中')
     expect(skillMarketInstallPending('en')).toMatch(/in development/)
+  })
+
+  it('says signing out keeps the instance, in the browser build only', () => {
+    expect(signOutDescription('zh')).toBeNull()
+
+    document.documentElement.dataset.hermesBrowser = 'production'
+
+    expect(signOutDescription('zh')).toBe('退出后回到登录页。对话、文件和定时任务都会保留。')
+    expect(signOutDescription('en')).toMatch(/sign-in page/)
   })
 
   it('previews Office files as the PDF the instance makes of them, in the browser build only', async () => {

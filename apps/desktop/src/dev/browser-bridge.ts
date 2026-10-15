@@ -16,6 +16,8 @@ import {
   type PdfDocumentSource
 } from '@/lib/browser-shell'
 
+import type { LoginAccount } from '../../electron/login/contract'
+
 import { maskMcpSecrets, restoreMcpSecrets } from './mcp-secrets'
 
 const noopOff = () => () => undefined
@@ -768,6 +770,41 @@ async function renamePath(path: string, newName: string): Promise<{ path: string
 // opening it again is quick.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// The signed-in account is the entry's (deploy/hermes-mt). The statusbar's account item
+// (app/shell/maas-account-status.tsx) shows it the way the desktop app shows its MaaS account.
+
+interface EntryMe {
+  display?: string
+  expires_at?: number
+  user_id?: string
+}
+
+/** Who is signed in, from the entry's `/__entry/me`. Null where nothing answers it with JSON (the
+ *  dev server, the test bench): the statusbar then shows no account. */
+async function getMaasAccount(): Promise<LoginAccount | null> {
+  const response = await fetch(`${browserBasePath()}__entry/me`, { credentials: 'same-origin' })
+
+  if (!response.ok || !(response.headers.get('content-type') ?? '').includes('json')) {
+    return null
+  }
+
+  const me = (await response.json()) as EntryMe
+  const maskedPhone = me.display || me.user_id
+
+  if (!maskedPhone) {
+    return null
+  }
+
+  // The session's end comes in seconds; without one the account never reads as expired.
+  return { expiresAt: me.expires_at ? me.expires_at * 1000 : Number.MAX_SAFE_INTEGER, maskedPhone }
+}
+
+/** Signing out is the entry's: `/logout` ends the session and returns to the sign-in page. */
+async function logoutMaasAccount(): Promise<void> {
+  window.location.assign(`${browserBasePath()}logout`)
+}
+
 function isOfficePreviewErrorCode(code: string): code is OfficePreviewErrorCode {
   return code in browserShellCopy().officePreview
 }
@@ -1262,6 +1299,7 @@ export function installBrowserDevelopmentBridge(): boolean {
     getConnectionFor: async () => conn,
     getGatewayWsUrl: async () => ({ ok: true, wsUrl: conn.wsUrl }),
     getGatewayWsUrlFor: async () => ({ ok: true, wsUrl: conn.wsUrl }),
+    getMaasAccount,
     // i18n/context.tsx takes the interface language from here when none is saved: the desktop app
     // follows the OS, the cloud starts in Chinese (a saved choice in Settings still wins).
     // A page knows nothing else of the machine.
@@ -1279,6 +1317,7 @@ export function installBrowserDevelopmentBridge(): boolean {
     getPathForFile: (file: File) => registerVirtualFile(file, file.name),
     getProfileRoutes: async () => [],
     getRecentLogs: async () => ({ path: '', lines: [] }),
+    logoutMaasAccount,
     notify: async () => false,
     onBackendExit: noopOff,
     onBatteryChanged: noopOff,

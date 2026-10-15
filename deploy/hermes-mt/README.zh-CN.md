@@ -26,8 +26,7 @@
 | `entry/` | 入口服务（Python 3.13 + aiohttp，单进程）。`entry/entry/*.py` 见文件头注释 |
 | `seed/forward.py` | 放进每个租户卷 `/opt/data/.mt/` 的 TCP 转发器（标准库，30 行） |
 | `seed/config.yaml.tmpl` | 每个租户首次建卷时写入的 `config.yaml` 模板 |
-| `nginx/hermes-mt.conf` | 由 `.7` 单用户版的 Nginx 配置改来：两处 `proxy_pass` 指向入口，去掉写死的 token，静态加 `auth_request`，并用 `sub_filter` 注入角标 |
-| `entry/entry/static/badge.js` | 注入 SPA 的角标（谁在登录 + 退出），不碰前端产物 |
+| `nginx/hermes-mt.conf` | 由 `.7` 单用户版的 Nginx 配置改来：两处 `proxy_pass` 指向入口，去掉写死的 token，静态加 `auth_request` |
 | `scripts/build-frontend.sh` | 构建浏览器版前端到 `nginx/dist-browser/`（与 `deploy-custom-web.sh` 同一条 vite 命令） |
 | `scripts/verify_isolation.sh` | 验收 27 项：登录门禁 / 两个用户各自的世界 / 网络围栏 / 文件链路与文件隔离 |
 | `scripts/verify_ws_keepalive.py` | 回归：ws 静默挂着时容器不被空闲回收停掉 |
@@ -79,12 +78,10 @@ Entry 不进入健康状态，Nginx 也不会提前接流量。
 浏览器打开 `http://<host>:18081/hermes/` → 被带到登录页 → 手机号 + 图形验证码 + 短信验证码 → 登录成功后入口
 后台拉起该用户的容器（首次十几秒），页面进入聊天界面。
 
-**谁在登录 / 退出**：页面右下角有一小块角标，显示当前账号（短信登录显示打码手机号，
-鼠标悬停看完整用户 id）和「退出」。点退出即回登录页；也可以直接访问 `<base>/logout`。
-★ 这块角标由 Nginx 的 `sub_filter` 往 index.html 注入一行 `<script>` 实现，
-**前端源码与构建产物一个字节不动**——SPA 是 hermes 原生的，界面上不会有任何跟我们
-登录体系相关的元素。脚本本体是入口的 `/__entry/badge.js`，只往 body 末尾加自己的节点。
-位置贴着最底部状态栏那一行右端：再往上就会压住输入框右侧那排按钮（实测过）。
+**谁在登录 / 退出**：页面底部状态栏有账号那一项，显示当前账号（短信登录显示打码手机号）和「退出」，
+和桌面版是同一个组件。垫片（`apps/desktop/src/dev/browser-bridge.ts`）的 `getMaasAccount` 读入口的
+`/__entry/me`，会话到期后账号旁标「登录已到期」；点退出、确认后跳到 `<base>/logout`（结束会话，回登录页），
+也可以直接访问这个地址。
 
 验收（需要临时 `MT_DEV_LOGIN=1`，不用短信，两个假用户 alice/bob）：
 
