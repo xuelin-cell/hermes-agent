@@ -68,7 +68,11 @@ function AccountFixture() {
 
 /** 通过真实账号按钮展开菜单，再进入退出确认，覆盖鼠标与菜单行为。 */
 async function openLogoutMenu() {
-  const trigger = await screen.findByRole('button', { name: '138****0000' })
+  // 假计时器下 findByRole 的轮询不会推进；账号已渲染时直接取按钮。
+  const trigger =
+    screen.queryByRole('button', { name: '138****0000' }) ??
+    (await screen.findByRole('button', { name: '138****0000' }))
+
   fireEvent.keyDown(trigger, { key: 'Enter' })
   fireEvent.click(screen.getByRole('menuitem', { name: '退出' }))
 }
