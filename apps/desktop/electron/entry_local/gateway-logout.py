@@ -56,8 +56,20 @@ def account_homes(root):
 
 
 def process_snapshot():
-    """同一次退出共用查询进程，每次重新读 CIM；仅向 Electron 返回纯归属。"""
+    """读取本机进程归属；Windows 复用 CIM 查询，macOS 使用 psutil。"""
     global _process_query
+    if sys.platform == "darwin":
+        rows = []
+        for process in psutil.process_iter(["pid", "ppid", "create_time", "cmdline"]):
+            try:
+                info = process.info
+                rows.append({"pid": info["pid"], "parent": info["ppid"] or 0,
+                             "started": str(int(info["create_time"])),
+                             "command": subprocess.list2cmdline(info["cmdline"] or [])})
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        return rows
+
     if _process_query is None:
         command = r'''
 $ErrorActionPreference='Stop'
@@ -143,6 +155,8 @@ def owned_launchers(homes):
 
 def pause_autostart(homes, finish=False):
     """按任务动作路径禁用自动拉起；启动文件移入账号内，保留可恢复副本。"""
+    if sys.platform != "win32":
+        return
     scripts = owned_launchers(homes)
     if not scripts:
         return
@@ -260,8 +274,8 @@ def verify_stopped(homes):
 
 def main():
     """同一次退出共用短生命周期进程，逐行处理受限操作；标准输入关闭即结束。"""
-    if sys.platform != "win32":
-        raise RuntimeError("网关退出仅支持 Windows")
+    if sys.platform not in ("win32", "darwin"):
+        raise RuntimeError("网关退出仅支持 Windows 和 macOS")
     root = Path(os.environ["HERMES_HOME"]).resolve()
     for line in sys.stdin:
         try:
