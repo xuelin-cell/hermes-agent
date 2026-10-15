@@ -3808,10 +3808,26 @@ export const zhHant = defineLocale({
     noInlineTitle: '沒有行內預覽',
     noInlineBody: mimeType => `${mimeType || '此檔案類型'} 仍可作為脈絡附件。`,
     formatFailure: {
+      convert_failed: '文件轉換失敗，仍可查看或下載原檔案。',
+      timeout: '文件轉換逾時，仍可查看或下載原檔案。',
       not_found: '檔案已不存在或無法存取。',
       too_large: '檔案過大或圖片尺寸超出預覽上限，仍可查看或下載原檔案。',
       unavailable: '無法預覽此檔案，仍可查看或下載原檔案。',
       unsupported: '暫不支援此檔案格式或影音編碼。'
+    },
+    office: {
+      converting: '正在轉換文件',
+      firstOpen: '首次預覽可能需要幾秒。',
+      installConverter: '如果沒有可用的轉換軟體，請安裝 LibreOffice 後重試。'
+    },
+    slides: {
+      page: page => `第 ${page} 頁`,
+      counter: (page, total) => `${page} / ${total}`,
+      previous: '上一頁',
+      next: '下一頁',
+      fullscreen: '全螢幕放映',
+      exitFullscreen: '退出全螢幕',
+      fullscreenFailed: '無法切換全螢幕，仍可繼續閱讀投影片。'
     },
     delimited: {
       table: '表格',
@@ -3819,6 +3835,7 @@ export const zhHant = defineLocale({
       limited: '僅顯示前 500 筆資料列。',
       columnsLimited: '僅顯示前 50 欄。'
     },
+    sheetLimited: '部分工作表超過 500 列，僅顯示其前 500 列。',
     tiffFirstPage: '此 TIFF 包含多頁，僅顯示第一頁。',
     edit: '編輯',
     editing: '編輯中',

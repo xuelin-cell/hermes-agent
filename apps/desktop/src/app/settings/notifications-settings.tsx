@@ -9,6 +9,7 @@ import { triggerHaptic } from '@/lib/haptics'
 import { Bell, Play } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { $completionSoundVariantId, setCompletionSoundVariantId } from '@/store/completion-sound'
+import { $developerMode } from '@/store/developer-mode'
 import {
   $nativeNotifyPrefs,
   NATIVE_NOTIFICATION_KINDS,
@@ -37,9 +38,10 @@ export function NotificationsSettings({ subpage }: NotificationsSettingsProps = 
   const { t } = useI18n()
   const prefs = useStore($nativeNotifyPrefs)
   const completionSoundVariantId = useStore($completionSoundVariantId)
+  const developerMode = useStore($developerMode)
   const copy = t.settings.notifications
   const showAlerts = subpage === undefined || subpage === 'alerts'
-  const showSounds = subpage === undefined || subpage === 'sounds'
+  const showSounds = developerMode && (subpage === undefined || subpage === 'sounds')
 
   useSettingDeepLink('notifications', page => subpage === undefined || page === subpage)
 
@@ -54,7 +56,9 @@ export function NotificationsSettings({ subpage }: NotificationsSettingsProps = 
       {showAlerts && (
         <>
           {subpage === undefined && <SectionHeading icon={Bell} title={copy.title} />}
-          <Caption className="mb-2 leading-(--conversation-caption-line-height)">{copy.intro}</Caption>
+          {developerMode && (
+            <Caption className="mb-2 leading-(--conversation-caption-line-height)">{copy.intro}</Caption>
+          )}
 
           <ToggleRow
             checked={prefs.enabled}

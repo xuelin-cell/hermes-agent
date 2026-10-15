@@ -8,7 +8,7 @@ import { LocalFilePreview, PreviewEmptyState } from '../preview-file'
 
 import type { PreviewFailure } from './failure'
 import { previewFormat, type PreviewFormat } from './kinds'
-import { FORMAT_RENDERERS, type FormatRendererProps } from './registry'
+import { type FormatRendererProps, formatRenderers } from './registry'
 import { usePreviewSource } from './source'
 
 type FilePreviewProps = ComponentProps<typeof LocalFilePreview>
@@ -40,7 +40,7 @@ function RegisteredPreview({ kind, onClose, source, ...props }: RegisteredPrevie
   const { t } = useI18n()
   const [attempt, setAttempt] = useState<{ failure?: PreviewFailure; index: number }>({ index: 0 })
   const { index } = attempt
-  const Renderer = attempt.failure?.code === 'not_found' ? undefined : FORMAT_RENDERERS[kind][index]
+  const Renderer = attempt.failure?.code === 'not_found' ? undefined : formatRenderers(kind, source.path)[index]
 
   // 只接受当前候选的失败，旧候选迟到的回调不能跳过新候选。
   const onFailure = useCallback(
@@ -53,7 +53,14 @@ function RegisteredPreview({ kind, onClose, source, ...props }: RegisteredPrevie
   if (!Renderer) {
     return (
       <PreviewEmptyState
-        body={t.preview.formatFailure[attempt.failure?.code || 'unavailable']}
+        body={
+          <>
+            {t.preview.formatFailure[attempt.failure?.code || 'unavailable']}
+            {['word', 'slides', 'sheet'].includes(kind) && source.exit === 'reveal' && attempt.failure?.code === 'unavailable' && (
+              <p className="mt-2">{t.preview.office.installConverter}</p>
+            )}
+          </>
+        }
         primaryAction={{
           label: source.exit === 'download' ? t.fileMenu.download : t.fileMenu.revealFileManager,
           onClick: () => void source.open()

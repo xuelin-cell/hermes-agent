@@ -1,13 +1,11 @@
 import type { OfficeDocumentKind } from '../../../shared/src/office-preview'
 
-// Win32 只用于绑定 COM 窗口与进程，以及确认是否有可见窗口，不能按进程名结束程序。
-const WINDOWS = String.raw`
+// 两个脚本共用：输出 UTF-8，按程序名列出进程，判断进程有没有可见窗口。不按进程名批量结束程序。
+const PRELUDE = String.raw`
 $ErrorActionPreference='Stop'
 [Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
 Add-Type -TypeDefinition @'
 using System;
-using System.Text;
-using System.ComponentModel;
 using System.Runtime.InteropServices;
 public static class PreviewWindows {
   // 读取窗口所属进程。
@@ -16,68 +14,44 @@ public static class PreviewWindows {
   [DllImport("user32.dll")] static extern bool EnumWindows(WindowCallback callback, IntPtr data);
   // 读取窗口可见状态。
   [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
-  // 只取得查询权限，路径查询不依赖辅助进程与 Office 位数相同。
-  [DllImport("kernel32.dll",SetLastError=true)] static extern IntPtr OpenProcess(uint a,bool inherit,int pid);
-  // 读取进程实际程序路径。
-  [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern bool QueryFullProcessImageName(IntPtr p,int flags,StringBuilder name,ref int size);
-  // 展开注册表或启动命令中的短路径。
-  [DllImport("kernel32.dll",CharSet=CharSet.Unicode)] static extern uint GetLongPathName(string name,StringBuilder result,uint size);
-  // 关闭查询句柄。
-  [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
   delegate bool WindowCallback(IntPtr h, IntPtr data);
-  // HWND 可能以有符号 32 位值返回，先保留原位模式。
-  public static int Pid(long h) {uint p; IntPtr handle=IntPtr.Size==4?new IntPtr(unchecked((int)h)):new IntPtr(unchecked((long)(uint)h)); GetWindowThreadProcessId(handle,out p); return (int)p;}
-  // 任意顶层窗口可见时，都不允许强制结束此进程。
+  // 进程有任意可见顶层窗口时返回 true，说明用户可能正在使用它。
   public static bool Visible(int pid) {bool seen=false; EnumWindows((h,d)=>{uint p; GetWindowThreadProcessId(h,out p); seen=seen||(p==pid&&IsWindowVisible(h)); return !seen;},IntPtr.Zero); return seen;}
-  // 可靠读取 32／64 位进程路径，不用可能返回 null 的 MainModule。
-  public static string ProcessPath(int pid) {IntPtr p=OpenProcess(0x1000,false,pid); if(p==IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error()); try {int size=32768; var name=new StringBuilder(size); if(!QueryFullProcessImageName(p,0,name,ref size)) throw new Win32Exception(Marshal.GetLastWin32Error()); var expanded=new StringBuilder(32768); return GetLongPathName(name.ToString(),expanded,32768)>0?expanded.ToString():name.ToString();} finally {CloseHandle(p);}}
 }
 '@
+$names=[string[]](ConvertFrom-Json $env:OFFICE_NAMES)
+# 列出同名程序里启动时间不早于 $since 的进程；查询途中退出或无权查看的进程跳过。
+function Get-Office($since) {
+  @(Get-Process -Name $names -ErrorAction SilentlyContinue | Where-Object {try {$_.StartTime.ToUniversalTime().Ticks -ge $since} catch {$false}})
+}
+# 仅释放真实 COM 引用，不能把普通返回值当作 COM 对象释放。
+function Release-OfficeObject($value) {
+  if ($value -and [Runtime.InteropServices.Marshal]::IsComObject($value)) {[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($value)}
+}
 `
 
 interface ComCommands {
   collection: string
-  bind: string
   open: string
   export: string
   close: string
   alerts: string
 }
 
+// 加密的旧格式文件用这个占位密码打开会直接报错，而不是弹出密码框卡到超时；没加密的文件会忽略它。
+const NO_PASSWORD = 'hermes-preview-no-password'
+
 const COMMANDS: Record<OfficeDocumentKind, ComCommands> = {
   word: {
     collection: 'Documents',
     alerts: '0',
-    bind: String.raw`
-if ($env:OFFICE_PROVIDER -eq 'wps' -and $app.Hwnd) {$handle=$app.Hwnd}
-else {
-  $identityWindows=$app.Windows
-  if ($identityWindows.Count -eq 0) {
-    if ($app.Visible) {throw 'Visible Word has no bindable document window'}
-    # 窗口必须存在才能取 HWND；应用保持隐藏，不改变用户窗口的可见性。
-    $probe=$documents.Add($missing,$false,0,$true)
-    Release-OfficeObject $identityWindows; $identityWindows=$probe.Windows
-  }
-  $identityWindow=$identityWindows.Item(1); $handle=$identityWindow.Hwnd
-}
-Save-Owner $handle
-Release-OfficeObject $identityWindow; $identityWindow=$null
-Release-OfficeObject $identityWindows; $identityWindows=$null
-if ($probe) {[void]$probe.Close($false); Release-OfficeObject $probe; $probe=$null}
-`,
-    open: '$doc=$documents.Open($env:OFFICE_SOURCE,$false,$true,$false,"",$missing,$false,"",$missing,$missing,$missing,$false)',
+    open: `$doc=$documents.Open($env:OFFICE_SOURCE,$false,$true,$false,"${NO_PASSWORD}",$missing,$false,"",$missing,$missing,$missing,$false)`,
     export: '[void]$doc.SaveAs($env:OFFICE_PDF,17)',
     close: '[void]$doc.Close($false)'
   },
   slides: {
     collection: 'Presentations',
     alerts: '1',
-    bind: String.raw`
-$handle=[long]$app.HWND
-# 部分 WPS 演示不实现 HWND；只允许对象级收尾，不能猜测或强杀进程。
-if ($env:OFFICE_PROVIDER -eq 'wps' -and [PreviewWindows]::Pid($handle) -le 0) {$state.windowless=$true; Write-State}
-else {Save-Owner $handle}
-`,
     open: '$doc=$documents.Open($env:OFFICE_SOURCE,-1,0,0)',
     export: '[void]$doc.SaveAs($env:OFFICE_PDF,32)',
     close: '[void]$doc.Close()'
@@ -85,147 +59,140 @@ else {Save-Owner $handle}
   sheet: {
     collection: 'Workbooks',
     alerts: '$false',
-    bind: 'Save-Owner $app.Hwnd',
-    open: '$doc=$documents.Open($env:OFFICE_SOURCE,0,$true,$missing,"","",$true); $identityWindows=$doc.Windows; $identityWindow=$identityWindows.Item(1); $identityWindow.Visible=$false; Release-OfficeObject $identityWindow; $identityWindow=$null; Release-OfficeObject $identityWindows; $identityWindows=$null',
-    export:
-      '$worksheets=$doc.Worksheets; try {foreach ($sheet in $worksheets) {try {$setup=$sheet.PageSetup; $setup.Zoom=$false; $setup.FitToPagesWide=1; $setup.FitToPagesTall=$false} finally {Release-OfficeObject $setup; $setup=$null; Release-OfficeObject $sheet; $sheet=$null}}} finally {Release-OfficeObject $worksheets; $worksheets=$null}; [void]$doc.ExportAsFixedFormat(0,$env:OFFICE_PDF)',
+    open: `$doc=$documents.Open($env:OFFICE_SOURCE,0,$true,$missing,"${NO_PASSWORD}","",$true); $identityWindows=$doc.Windows; $identityWindow=$identityWindows.Item(1); $identityWindow.Visible=$false; Release-OfficeObject $identityWindow; $identityWindow=$null; Release-OfficeObject $identityWindows; $identityWindows=$null`,
+    export: String.raw`
+$worksheets=$doc.Worksheets
+try {
+  foreach ($sheet in $worksheets) {
+    # 受保护或没有打印机的表改不了页面设置，保持原样继续，不让整份工作簿失败。
+    try {$setup=$sheet.PageSetup; $setup.Zoom=$false; $setup.FitToPagesWide=1; $setup.FitToPagesTall=$false} catch {} finally {Release-OfficeObject $setup; $setup=$null; Release-OfficeObject $sheet; $sheet=$null}
+  }
+} finally {Release-OfficeObject $worksheets; $worksheets=$null}
+[void]$doc.ExportAsFixedFormat(0,$env:OFFICE_PDF)
+`,
     close: '[void]$doc.Close($false)'
   }
 }
 
-// 实机夹具通过同一保护流程创建原生样例，避免另写一套不安全的 COM 启停逻辑。
-const SAMPLES: Record<OfficeDocumentKind, Pick<ComCommands, 'open' | 'export'>> = {
-  word: {
-    open: '$doc=$documents.Add($missing,$false,0,$false); $range=$doc.Content; try {$range.Text="中文 Office 预览测试"} finally {Release-OfficeObject $range; $range=$null}',
-    export: '[void]$doc.SaveAs($env:OFFICE_PDF,12)'
-  },
-  slides: {
-    open: '$doc=$documents.Add(0); $slides=$doc.Slides; $slide=$slides.Add(1,12); $shapes=$slide.Shapes; $shape=$shapes.AddTextbox(1,40,40,640,100); $frame=$shape.TextFrame; $range=$frame.TextRange; $range.Text="中文幻灯片预览测试"; foreach ($ref in @($range,$frame,$shape,$shapes,$slide,$slides)) {Release-OfficeObject $ref}; $range=$frame=$shape=$shapes=$slide=$slides=$null',
-    export: '[void]$doc.SaveAs($env:OFFICE_PDF,24)'
-  },
-  sheet: {
-    open: '$doc=$documents.Add(); $worksheets=$doc.Worksheets; $sheet=$worksheets.Item(1); $cells=$sheet.Cells; $first=$cells.Item(1,1); $second=$cells.Item(2,1); $first.Value2="中文表格预览测试"; $second.Value2=12345; foreach ($ref in @($second,$first,$cells,$sheet,$worksheets)) {Release-OfficeObject $ref}; $second=$first=$cells=$sheet=$worksheets=$null',
-    export: '[void]$doc.SaveAs($env:OFFICE_PDF,51)'
-  }
-}
-
-/** 生成同一套只读、禁宏转换脚本，文件路径和 ProgID 只通过子进程环境传入。 */
-export function officeComScript(kind: OfficeDocumentKind, sample = false): string {
-  const commands = sample ? { ...COMMANDS[kind], ...SAMPLES[kind] } : COMMANDS[kind]
+/**
+ * 生成只读、禁宏的转换脚本，文件路径和 ProgID 只通过环境变量传入。
+ * 归属规则：启动 Office 前记下同名进程，启动后新出现的就是本次的实例；Word、Excel 每次都会新开实例，
+ * PowerPoint 全机只有一个，用户开着时只能借用。自己的实例最后退出，借用的只关闭自己打开的那份。
+ * 实机夹具用 sample 换掉打开和导出两步来生成样例文件，其余流程完全相同。
+ */
+export function officeComScript(kind: OfficeDocumentKind, sample?: Pick<ComCommands, 'open' | 'export'>): string {
+  const commands = { ...COMMANDS[kind], ...sample }
 
   return (
-    WINDOWS +
+    PRELUDE +
     String.raw`
 $missing=[Type]::Missing
-$paths=[string[]](ConvertFrom-Json $env:OFFICE_PATHS)
-$names=@($paths|ForEach-Object {[IO.Path]::GetFileNameWithoutExtension($_)}|Select-Object -Unique)
-$before=@(Get-Process -Name $names -ErrorAction SilentlyContinue | ForEach-Object {$_.Id})
-$state=@{before=$before; began=[DateTime]::UtcNow.Ticks.ToString(); executable=$env:OFFICE_PROGRAM; paths=$paths; closed=$false}
-# 先写完整临时记录，再原子替换；超时后不信任半截记录。
+$began=[DateTime]::UtcNow.Ticks
+$state=@{began=$began.ToString(); before=@(Get-Process -Name $names -ErrorAction SilentlyContinue|ForEach-Object {$_.Id}); pids=@(); activated=$false; clean=$false}
+# 先写完整临时记录，再原子替换；超时后收尾脚本不信任半截记录。
 function Write-State {
   $temp=$env:OFFICE_OWNER+'.tmp'
   [IO.File]::WriteAllText($temp,($state|ConvertTo-Json -Compress),[Text.UTF8Encoding]::new($false))
   if ([IO.File]::Exists($env:OFFICE_OWNER)) {[IO.File]::Replace($temp,$env:OFFICE_OWNER,[NullString]::Value)} else {[IO.File]::Move($temp,$env:OFFICE_OWNER)}
 }
-# 记录窗口绑定的 PID 与创建时间；路径冲突保留诊断，但禁止操作该进程。
-function Save-Owner($handle) {
-  $processId=[PreviewWindows]::Pid([long]$handle)
-  if ($processId -le 0) {$state.handle=[long]$handle; Write-State; throw 'No COM process identity'}
-  $process=Get-Process -Id $processId
-  $state.pid=$processId; $state.started=$process.StartTime.ToUniversalTime().Ticks.ToString()
-  $state.actualExecutable=[PreviewWindows]::ProcessPath($processId)
-  $state.matched=($paths -contains $state.actualExecutable)
-  $state.created=($before -notcontains $processId -and [long]$state.started -ge [long]$state.began)
-  Write-State
-  if (-not $state.matched) {throw 'COM executable mismatch'}
-  $state.executable=$state.actualExecutable; Write-State
+# 只记录出错阶段、异常类型和 HRESULT，不记录可能含路径的异常文本。
+function Save-Error($key,$record) {
+  $cause=$record.Exception.GetBaseException()
+  $state[$key]=@{stage=$stage; type=$cause.GetType().FullName; hresult=$cause.HResult; line=$record.InvocationInfo.ScriptLineNumber}
 }
+# 本次启动后新出现的同名进程。
+function Get-New {@(Get-Office $began|Where-Object {$state.before -notcontains $_.Id})}
 Write-State
-$app=$null; $doc=$null; $probe=$null; $documents=$null; $identityWindow=$null; $identityWindows=$null; $security=$null; $alerts=$null; $failure='unavailable'; $ok=$false
+$app=$null; $documents=$null; $doc=$null; $opened=$false; $others=$false; $security=$null; $alerts=$null; $identityWindow=$null; $identityWindows=$null; $failure='unavailable'; $ok=$false
 $stage='activation'
-# 仅释放真实 COM 引用，不能把普通返回值当作 COM 对象释放。
-function Release-OfficeObject($value) {
-  if ($value -and [Runtime.InteropServices.Marshal]::IsComObject($value)) {[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($value)}
-}
 try {
   $app=New-Object -ComObject $env:OFFICE_PROGID
-  $state.activated=$true; Write-State
-  $documents=$app.${commands.collection}; $initialCount=$documents.Count
+  $state.activated=$true; $state.pids=@(Get-New|ForEach-Object {$_.Id}); Write-State
+  $documents=$app.${commands.collection}
   $stage='security'
-  $security=$app.AutomationSecurity
+  $security=$app.AutomationSecurity; $state.security=$security; Write-State
   $app.AutomationSecurity=3
-  $stage='identity'
-  ${commands.bind}
-  if ($state.created) {$alerts=$app.DisplayAlerts; $app.DisplayAlerts=${commands.alerts}}
+  # 只改自己实例的提示设置，借用的实例保持原样。
+  if ($state.pids.Count) {$alerts=$app.DisplayAlerts; $app.DisplayAlerts=${commands.alerts}}
   $failure='convert_failed'
   $stage='open'
-  try {${commands.open}} finally {$app.AutomationSecurity=$security; $security=$null}
+  try {${commands.open}; $opened=$true} finally {$app.AutomationSecurity=$security; $security=$null}
   $stage='export'
   ${commands.export}
   $ok=$true
 } catch {
-  $ok=$false
-  $cause=$_.Exception.GetBaseException()
-  $state.error=@{stage=$stage; type=$cause.GetType().FullName; hresult=$cause.HResult; line=$_.InvocationInfo.ScriptLineNumber}
+  $ok=$false; Save-Error 'error' $_
 } finally {
+  $stage='close'
   try {
-    if ($doc) {${commands.close}; Release-OfficeObject $doc; $doc=$null}
-    Release-OfficeObject $identityWindow; $identityWindow=$null
-    Release-OfficeObject $identityWindows; $identityWindows=$null
-    if ($probe) {${commands.close.replace('$doc', '$probe')}; Release-OfficeObject $probe; $probe=$null}
+    if ($doc) {${commands.close}}
+    $opened=$false
+  } catch {$ok=$false; $failure='convert_failed'; Save-Error 'cleanupError' $_}
+  # 恢复设置或退出失败不影响已经转好的 PDF；退不掉的实例下面再处理。
+  try {
     if ($app -and $null -ne $security) {$app.AutomationSecurity=$security}
     if ($app -and $null -ne $alerts) {$app.DisplayAlerts=$alerts}
-    $state.otherDocuments=($documents -and $documents.Count -gt 0)
-    $state.closed=($ok -or -not $app -or $documents.Count -le $initialCount)
-    Write-State
-    # 已确认的自有空实例先结束，再释放客户端引用，避免远端 Release 长时间阻塞。
-    if ($state.created -and $state.matched -and -not $state.otherDocuments -and -not [PreviewWindows]::Visible($state.pid)) {
-      $owned=Get-Process -Id $state.pid -ErrorAction SilentlyContinue
-      if ($owned -and $owned.StartTime.ToUniversalTime().Ticks.ToString() -eq $state.started -and [string]::Equals([PreviewWindows]::ProcessPath($state.pid),$state.executable,[StringComparison]::OrdinalIgnoreCase) -and -not [PreviewWindows]::Visible($state.pid)) {
-        $owned.Kill(); $state.stopped=$owned.WaitForExit(5000); Write-State
-      }
-    }
-  } catch {
-    $ok=$false; $failure='convert_failed'; $state.closed=$false
-    $cause=$_.Exception.GetBaseException()
-    $state.cleanupError=@{type=$cause.GetType().FullName; hresult=$cause.HResult; line=$_.InvocationInfo.ScriptLineNumber}
-    Write-State
-  } finally {
-    # 未登记的独立 Word／Excel 单独退出；前面的设置恢复失败也不能漏掉它。
-    try {
-      if ($app -and -not $state.matched -and $null -eq $state.actualExecutable -and $env:OFFICE_STANDALONE -eq '1' -and $documents -and $documents.Count -eq 0 -and -not $app.Visible -and -not $app.UserControl) {[void]$app.Quit(); $state.quit=$true; $state.closed=$true; Write-State}
-    } catch {
-      $ok=$false; $failure='convert_failed'; $state.closed=$false
-      $cause=$_.Exception.GetBaseException()
-      $state.cleanupError=@{type=$cause.GetType().FullName; hresult=$cause.HResult; line=$_.InvocationInfo.ScriptLineNumber}
-      Write-State
+    $others=($documents -and $documents.Count -gt 0)
+    if (-not $state.activated) {$state.pids=@(Get-New|ForEach-Object {$_.Id})}
+    elseif ($state.pids.Count -and -not $others) {[void]$app.Quit()}
+  } catch {Save-Error 'quitError' $_}
+  foreach ($ref in @($identityWindow,$identityWindows,$doc,$documents,$app)) {Release-OfficeObject $ref}
+  $identityWindow=$identityWindows=$doc=$documents=$app=$null
+  [GC]::Collect(); [GC]::WaitForPendingFinalizers()
+  # 实例里有别人的文档时交给用户，不等也不结束。否则最多等 10 秒退出，仍在且没有可见窗口才结束。
+  if (-not $others -and $state.pids.Count) {
+    $wait=[Diagnostics.Stopwatch]::StartNew()
+    while (@(Get-New|Where-Object {$state.pids -contains $_.Id}).Count -and $wait.ElapsedMilliseconds -lt 10000) {Start-Sleep -Milliseconds 200}
+    foreach ($process in @(Get-New|Where-Object {$state.pids -contains $_.Id})) {
+      if (-not [PreviewWindows]::Visible($process.Id)) {try {$process.Kill(); [void]$process.WaitForExit(5000)} catch {}}
     }
   }
-  if (-not $state.stopped) {Release-OfficeObject $documents; Release-OfficeObject $app; [GC]::Collect(); [GC]::WaitForPendingFinalizers()}
-  $documents=$app=$null
+  $state.clean=(-not $opened) -and ($others -or @(Get-New|Where-Object {$state.pids -contains $_.Id}).Count -eq 0)
+  Write-State
 }
-if ($ok) {@{ok=$true}|ConvertTo-Json -Compress} else {@{ok=$false; code=$failure}|ConvertTo-Json -Compress}
+@{ok=$ok; code=$failure; clean=$state.clean}|ConvertTo-Json -Compress
 `
   )
 }
 
-/** 异常后仅结束本次新建、创建时间及路径仍匹配且不可见的 Office，未知归属不动。 */
-export const OFFICE_COM_CLEANUP =
-  WINDOWS +
-  String.raw`
+/** 转换脚本没能确认收尾时（超时、崩溃）才运行：结束本次启动的实例，或在借用的实例里关闭本次打开的副本。 */
+export function officeComCleanupScript(kind: OfficeDocumentKind): string {
+  const { collection, close } = COMMANDS[kind]
+
+  return (
+    PRELUDE +
+    String.raw`
 if (-not [IO.File]::Exists($env:OFFICE_OWNER)) {@{ok=$true}|ConvertTo-Json -Compress; exit}
 $state=Get-Content -LiteralPath $env:OFFICE_OWNER -Raw -Encoding UTF8|ConvertFrom-Json
-$safe=$false
-if (-not $state.pid) {
-  $names=@($state.paths|ForEach-Object {[IO.Path]::GetFileNameWithoutExtension($_)}|Select-Object -Unique)
-  $new=@(Get-Process -Name $names -ErrorAction SilentlyContinue | Where-Object {$_.Id -notin $state.before -and $_.StartTime.ToUniversalTime().Ticks -ge [long]$state.began})
-  $safe=($new.Count -eq 0 -and ($state.closed -or -not $state.activated))
-} else {
-  $process=Get-Process -Id $state.pid -ErrorAction SilentlyContinue
-  if (-not $process) {$safe=$true}
-  elseif ($process.StartTime.ToUniversalTime().Ticks.ToString() -ne $state.started -or $state.matched -eq $false -or -not [string]::Equals([PreviewWindows]::ProcessPath($state.pid),$state.executable,[StringComparison]::OrdinalIgnoreCase)) {$safe=$false}
-  elseif (-not $state.created -or $state.otherDocuments -or [PreviewWindows]::Visible($state.pid)) {$safe=[bool]$state.closed}
-  elseif (-not [PreviewWindows]::Visible($state.pid)) {$process.Kill(); $safe=$process.WaitForExit(5000)}
-}
-@{ok=$safe}|ConvertTo-Json -Compress
+$began=[long]$state.began; $pids=@($state.pids); $before=@($state.before)
+$ok=$false
+try {
+  if (-not $state.activated) {
+    # 没启动成功就不会打开文档：只结束新出现且没有可见窗口的实例，不影响能否继续尝试其它软件。
+    foreach ($process in @(Get-Office $began|Where-Object {$before -notcontains $_.Id})) {
+      if (-not [PreviewWindows]::Visible($process.Id)) {try {$process.Kill()} catch {}}
+    }
+    $ok=$true
+  } elseif ($pids.Count) {
+    # 本次启动的实例：超时多半卡在弹窗上，弹窗本身就是可见窗口，所以这里不看窗口直接结束。
+    foreach ($process in @(Get-Office $began|Where-Object {$pids -contains $_.Id})) {try {$process.Kill(); [void]$process.WaitForExit(5000)} catch {}}
+    $ok=@(Get-Office $began|Where-Object {$pids -contains $_.Id}).Count -eq 0
+  } elseif (-not @($before|Where-Object {Get-Process -Id $_ -ErrorAction SilentlyContinue}).Count) {
+    # 借用的实例已经退出，副本随之关闭。
+    $ok=$true
+  } else {
+    # 借用用户已打开的实例：再次连上它，只关闭本次打开的副本，并恢复宏设置。
+    $app=New-Object -ComObject $env:OFFICE_PROGID; $documents=$app.${collection}
+    foreach ($doc in @($documents)) {
+      if ([string]::Equals($doc.FullName,$env:OFFICE_SOURCE,[StringComparison]::OrdinalIgnoreCase)) {${close}}
+      Release-OfficeObject $doc
+    }
+    if ($null -ne $state.security) {$app.AutomationSecurity=$state.security}
+    Release-OfficeObject $documents; Release-OfficeObject $app
+    $ok=$true
+  }
+} catch {$ok=$false}
+@{ok=$ok}|ConvertTo-Json -Compress
 `
+  )
+}

@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import uuid
 import zipfile
 from dataclasses import asdict
 from pathlib import Path
@@ -123,11 +124,15 @@ def stage_pm_runtime(root: Path, python: Path, repo: Path, *, offline: bool = Fa
     """Publish the same PM dependency graph as source installs, ready offline."""
     from pm import stage_manager_runtime
     from scripts.bundles.payload import seal_pm_runtime
+    from scripts.build.python_environment import retry_python_environment
 
     destination = root / "pm-runtime"
     if destination.exists():
         remove_build_tree(destination)
-    stage_manager_runtime(python=python, destination=destination, project=repo / "pm", offline=offline, cache=cache)
+    retry_python_environment(
+        stage_manager_runtime, destination=destination, label="PM runtime",
+        arguments=dict(python=python, destination=destination, project=repo / "pm", offline=offline, cache=cache),
+    )
     seal_pm_runtime(root, python)
 
 
@@ -209,6 +214,15 @@ def prepare_native(*, out: Path, ref: str, source: Path, cache: Path,
         raise ValueError("symlinked native output")
     out.mkdir(parents=True, exist_ok=True)
     with preparation_lock(out):
+        # 先隔离旧产物，避免 Windows 延迟删除句柄阻断下一次构建。
+        if any(out.iterdir()):
+            previous = out.with_name(f".{out.name}-previous-{uuid.uuid4().hex[:8]}")
+            out.rename(previous)
+            out.mkdir()
+            try:
+                remove_build_tree(previous)
+            except PermissionError:
+                print(f"old payload cleanup deferred: {previous}", flush=True)
         prepared_path(out).unlink(missing_ok=True)
         (out / "manifest.json").unlink(missing_ok=True)
         return _prepare_native(out=out, ref=ref, source=Path(source).resolve(),

@@ -379,6 +379,8 @@ import {
   withoutInteractiveOauthLogin
 } from './oauth-rest-request'
 import { wireOauthSessionResponse } from './oauth-session-response'
+import { installOfficePreviewIpc } from './office-preview/ipc'
+import { createOfficePreviewService } from './office-preview/service'
 import { listWindowsProcesses, reapPackageRootedProcesses } from './package-process-reap'
 import { createParentStartMarkerResolver, parentWatchdogEnv } from './parent-process-identity'
 import { bundledPayload, installIdForRoot, type PayloadInfo } from './payload-backend'
@@ -655,6 +657,13 @@ installAccountIpc(
   currentDesktopAccount,
   () => logoutDesktopAccount(),
   currentDesktopIdentity
+)
+
+installOfficePreviewIpc(
+  ACCOUNT_SESSION,
+  () => DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString(),
+  () => currentDesktopLocalContext() === ACCOUNT_RUNTIME,
+  createOfficePreviewService(ACCOUNT_RUNTIME.desktopState, { active: () => currentDesktopLocalContext() === ACCOUNT_RUNTIME })
 )
 
 // Device-local preference: block F12 from opening DevTools.

@@ -1,4 +1,4 @@
-import type { GatewayWsUrlResult } from '@hermes/shared'
+import type { GatewayWsUrlResult, OfficePreviewResult } from '@hermes/shared'
 import type { HermesSkin } from '@hermes/shared/skin'
 import type { TranslucencyState } from '@hermes/shared/translucency'
 
@@ -291,6 +291,10 @@ declare global {
         } | null
       } | null>
       readFileDataUrl: (filePath: string) => Promise<string>
+      /** 只转换当前账号的本机 Office 文件，不接受缓存路径或凭据。 */
+      convertOfficePreview: (filePath: string, requestId: string) => Promise<OfficePreviewResult>
+      /** 页面离开时取消自己的转换请求；排队中没人等的转换会被跳过。 */
+      cancelOfficePreview: (requestId: string) => Promise<void>
       /** Remote non-image attach: higher dedicated cap than preview/Settings default. */
       readFileDataUrlForAttach?: (filePath: string) => Promise<string>
       /** Settings → Chat: max size for local files loaded as data URLs (attach/preview). */

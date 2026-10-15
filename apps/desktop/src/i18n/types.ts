@@ -4156,10 +4156,26 @@ export interface Translations {
     noInlineTitle: string
     noInlineBody: (mimeType: string) => string
     formatFailure: {
+      convert_failed: string
+      timeout: string
       not_found: string
       too_large: string
       unavailable: string
       unsupported: string
+    }
+    office: {
+      converting: string
+      firstOpen: string
+      installConverter: string
+    }
+    slides: {
+      page: (page: number) => string
+      counter: (page: number, total: number) => string
+      previous: string
+      next: string
+      fullscreen: string
+      exitFullscreen: string
+      fullscreenFailed: string
     }
     delimited: {
       table: string
@@ -4167,6 +4183,7 @@ export interface Translations {
       limited: string
       columnsLimited: string
     }
+    sheetLimited: string
     tiffFirstPage: string
     edit: string
     editing: string

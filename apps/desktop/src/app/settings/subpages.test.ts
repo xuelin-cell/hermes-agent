@@ -16,6 +16,7 @@ import {
 import { settingsSearchTargetQuery } from './settings-search'
 import { resolveSettingsSubpage, settingsSubpages } from './subpages'
 import type { SettingsView } from './types'
+import { settingsFieldVisible, settingsViewVisible } from './visibility'
 
 const views: SettingsView[] = [
   ...SECTIONS.map(section => `config:${section.id}` as SettingsView),
@@ -23,6 +24,35 @@ const views: SettingsView[] = [
 ]
 
 describe('settings subpage routing', () => {
+  it('仅在开发者模式下显示 Browser 设置入口', () => {
+    expect(settingsViewVisible('config:browser', false)).toBe(false)
+    expect(settingsViewVisible('config:browser', true)).toBe(true)
+    expect(settingsViewVisible('config:chat', false)).toBe(true)
+  })
+
+  it('仅在开发者模式下显示语音设置入口', () => {
+    expect(settingsViewVisible('config:voice', false)).toBe(false)
+    expect(settingsViewVisible('config:voice', true)).toBe(true)
+    expect(settingsViewVisible('notifications', false)).toBe(true)
+  })
+
+  it('仅在开发者模式下显示通知声音子页', () => {
+    expect(settingsSubpages('notifications', false).map(page => page.id)).not.toContain('sounds')
+    expect(settingsSubpages('notifications', true).map(page => page.id)).toContain('sounds')
+    expect(resolveSettingsSubpage('notifications', new URLSearchParams({ page: 'sounds' }), false)).toBe('alerts')
+  })
+
+  it('仅在开发者模式下显示记忆与上下文、对话时区和附件子页', () => {
+    expect(settingsViewVisible('config:memory', false)).toBe(false)
+    expect(settingsViewVisible('config:memory', true)).toBe(true)
+    expect(settingsFieldVisible('config:chat', 'timezone', false)).toBe(false)
+    expect(settingsFieldVisible('config:chat', 'timezone', true)).toBe(true)
+    expect(settingsFieldVisible('config:chat', 'display.personality', false)).toBe(true)
+    expect(settingsSubpages('config:chat', false).map(page => page.id)).not.toContain('attachments')
+    expect(settingsSubpages('config:chat', true).map(page => page.id)).toContain('attachments')
+    expect(resolveSettingsSubpage('config:chat', new URLSearchParams({ page: 'attachments' }), false)).toBe('behavior')
+  })
+
   it('只在开发者模式下暴露宠物外观入口', () => {
     expect(settingsSubpages('config:appearance', false).map(page => page.id)).not.toContain('pet')
     expect(settingsSubpages('config:appearance', true).map(page => page.id)).toContain('pet')

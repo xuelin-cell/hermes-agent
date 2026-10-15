@@ -4,6 +4,8 @@ import babel from '@rolldown/plugin-babel'
 import react, { reactCompilerPreset } from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
+import { pdfAssets } from './pdf-assets.ts'
+
 /** React Compiler preset scoped to modules that can actually contain
  *  components/hooks (JSX syntax or a react-ish import). The preset's default
  *  code filter matches any PascalCase/use* declaration — effectively every TS
@@ -127,6 +129,7 @@ export default defineConfig(({ command }) => ({
     babel({ presets: [compilerPreset()] }),
     tailwindcss(),
     emojibaseAssets(),
+    pdfAssets(),
     {
       name: 'hermes:login-dev-csp',
       apply: 'serve',

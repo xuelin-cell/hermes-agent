@@ -4904,10 +4904,26 @@ export const en: Translations = {
     noInlineTitle: 'No inline preview',
     noInlineBody: mimeType => `${mimeType || 'This file type'} can still be attached as context.`,
     formatFailure: {
+      convert_failed: 'Could not convert this document. You can still access the original file.',
+      timeout: 'Document conversion timed out. You can still access the original file.',
       not_found: 'This file is no longer available.',
       too_large: 'This file or image is too large to preview. You can still access the original file.',
       unavailable: 'Could not preview this file. You can still access the original file.',
       unsupported: 'This format or media encoding is not supported.'
+    },
+    office: {
+      converting: 'Converting document',
+      firstOpen: 'The first preview may take a few seconds.',
+      installConverter: 'If no conversion software is available, install LibreOffice and try again.'
+    },
+    slides: {
+      page: page => `Slide ${page}`,
+      counter: (page, total) => `${page} / ${total}`,
+      previous: 'Previous slide',
+      next: 'Next slide',
+      fullscreen: 'Present full screen',
+      exitFullscreen: 'Exit full screen',
+      fullscreenFailed: 'Could not enter or exit full screen. You can still read the slides.'
     },
     delimited: {
       table: 'Table',
@@ -4915,6 +4931,7 @@ export const en: Translations = {
       limited: 'Showing the first 500 data rows.',
       columnsLimited: 'Showing the first 50 columns.'
     },
+    sheetLimited: 'Some sheets exceed 500 rows. Only their first 500 rows are shown.',
     tiffFirstPage: 'This TIFF has multiple pages. Only the first page is shown.',
     edit: 'Edit',
     editing: 'Editing',

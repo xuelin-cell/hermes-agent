@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import type { OfficeDocumentKind } from '../../../shared/src/office-preview'
 
-import { OFFICE_COM_CLEANUP, officeComScript } from './com-scripts'
+import { officeComCleanupScript, officeComScript } from './com-scripts'
 import { runOfficeProcess } from './run-process'
 
 let fixture: string
@@ -20,34 +20,39 @@ const powershell = path.join(
   'powershell.exe'
 )
 
-// 真正执行生成的 PowerShell，但 COM、窗口和进程查询全部用受控对象替代。
+// 真正执行生成的 PowerShell，但 COM、窗口和进程表全部用受控对象替代。
+// 进程表：PROCESSES 列出已有进程（7 号是用户一小时前打开的，其余为刚出现的）；SPAWN=1 时启动 Office 会新出现 123 号。
 const MODEL = String.raw`
 Microsoft.PowerShell.Utility\Add-Type -TypeDefinition 'public static class PreviewWindows {
-  // 受控窗口固定属于夹具进程。
-  public static int Pid(long h){return h==0||h==-1?0:123;}
-  // 夹具不创建任何真实窗口。
-  public static bool Visible(int pid){return false;}
-  // 受控路径模拟原生跨位数查询，不依赖 Get-Process.Path。
-  public static string ProcessPath(int pid){return System.Environment.GetEnvironmentVariable("ACTUAL_PROGRAM")??System.Environment.GetEnvironmentVariable("OFFICE_PROGRAM");}
+  // VISIBLE_PIDS 里的进程视为有可见窗口。
+  public static bool Visible(int pid){return (","+System.Environment.GetEnvironmentVariable("VISIBLE_PIDS")+",").Contains(","+pid+",");}
 }'
 # 防止正式脚本重复注册受控类型。
 function Add-Type {param($TypeDefinition)}
-$global:quitCount=0; $global:closedCount=0; $global:securityAtOpen=0; $global:openArgs=@()
-$global:processModel=[pscustomobject]@{Id=123;StartTime=[DateTime]::UtcNow.AddSeconds(1)}
-# 模拟结束夹具进程，不触碰真实程序。
-$global:processModel|Add-Member ScriptMethod Kill {$global:stoppedCount++}
-# 固定夹具结束状态，供二次身份核对使用。
-$global:processModel|Add-Member ScriptMethod WaitForExit {return $true}
-$global:stoppedCount=0
-$global:window=[pscustomobject]@{Hwnd=123;Visible=$true}
-$windows=[pscustomobject]@{Count=1}
-$windows|Add-Member ScriptMethod Item {
-  if ($this.Count -eq 0) {throw [Runtime.InteropServices.COMException]::new('No document window',-2146822347)}
-  return $global:window
+# 等待退出时不真的睡眠。
+function Start-Sleep {param($Milliseconds)}
+$global:killed=@(); $global:quitCount=0; $global:closedCount=0; $global:closedNames=@(); $global:securityAtOpen=0; $global:openArgs=@()
+$global:processes=[Collections.ArrayList]::new()
+# 登记一个受控进程；Kill 从进程表移除并记账，不触碰真实程序。
+function New-ModelProcess($id) {
+  $process=[pscustomobject]@{Id=[int]$id;StartTime=if ($id -eq 7) {[DateTime]::Now.AddHours(-1)} else {[DateTime]::Now.AddSeconds(1)}}
+  $process|Add-Member ScriptMethod Kill {$global:killed+=$this.Id; $global:processes.Remove($this)}
+  $process|Add-Member ScriptMethod WaitForExit {return $true}
+  [void]$global:processes.Add($process)
+}
+foreach ($id in @(($env:PROCESSES -split ',')|Where-Object {$_})) {New-ModelProcess $id}
+# 只返回受控进程表。
+function Get-Process {param($Name,$Id,$ErrorAction)
+  if ($null -ne $Id) {return @($global:processes|Where-Object {$Id -contains $_.Id})}
+  return @($global:processes)
 }
 $global:collection=[pscustomobject]@{Count=[int]$env:OTHER_DOCUMENTS}
+$global:lockedSheet=[pscustomobject]@{}
+$global:lockedSheet|Add-Member ScriptProperty PageSetup {throw 'protected sheet'}
 $global:worksheetModel=[pscustomobject]@{PageSetup=[pscustomobject]@{Zoom=$true;FitToPagesWide=0;FitToPagesTall=0}}
-$global:documentModel=[pscustomobject]@{Windows=$windows;Worksheets=@($global:worksheetModel)}
+$windows=[pscustomobject]@{Count=1}
+$windows|Add-Member ScriptMethod Item {return [pscustomobject]@{Visible=$true}}
+$global:documentModel=[pscustomobject]@{Windows=$windows;Worksheets=@(if ($env:SHEET_LOCKED -eq '1') {$global:lockedSheet}; $global:worksheetModel)}
 $global:documentModel|Add-Member ScriptMethod Close {$global:collection.Count--; $global:closedCount++}
 $global:documentModel|Add-Member ScriptMethod SaveAs {
   if ($env:EXPORT_FAIL -eq '1') {throw 'controlled export failure'}
@@ -59,28 +64,33 @@ $global:collection|Add-Member ScriptMethod Open {
   if ($global:securityAtOpen -ne 3) {throw 'macros not disabled'}
   $global:collection.Count++; return $global:documentModel
 }
-$global:collection|Add-Member ScriptMethod Add {
-  $global:collection.Count++
-  $global:documentModel.Windows.Count=if ($args.Count -ge 4 -and -not $args[3]) {0} else {1}
-  return $global:documentModel
+$global:officeModel=[pscustomobject]@{AutomationSecurity=1;DisplayAlerts=2;Documents=$global:collection;Presentations=$global:collection;Workbooks=$global:collection}
+# 收尾脚本再次连上借用的实例时看到的文档：一份是本次副本，一份是用户自己的。
+if ($env:OPEN_COPIES -eq '1') {
+  $global:officeModel.Presentations=@($env:OFFICE_SOURCE,'C:\Users\someone\deck.pptx'|ForEach-Object {
+    $document=[pscustomobject]@{FullName=$_}
+    $document|Add-Member ScriptMethod Close {$global:closedNames+=$this.FullName}
+    $document
+  })
 }
-$appWindows=[pscustomobject]@{Count=[int]$env:WINDOW_COUNT}
-$appWindows|Add-Member ScriptMethod Item {return $global:window}
-$global:officeModel=[pscustomobject]@{UserControl=$env:USER_CONTROL -eq '1';Visible=$env:APP_VISIBLE -eq '1';AutomationSecurity=1;DisplayAlerts=2;Hwnd=123;Windows=$appWindows;Documents=$global:collection;Presentations=$global:collection;Workbooks=$global:collection}
-if ($env:APP_HANDLE) {$global:officeModel.Hwnd=[long]$env:APP_HANDLE}
-if ($env:SECURITY_FAIL -eq '1' -or $env:RESTORE_FAIL -eq '1') {
+if ($env:SECURITY_FAIL -eq '1') {
   $global:securityValue=1
-  $global:officeModel|Add-Member ScriptProperty AutomationSecurity {$global:securityValue} {if (($args[0] -eq 3 -and $env:SECURITY_FAIL -eq '1') -or ($args[0] -eq 1 -and $env:RESTORE_FAIL -eq '1')) {throw 'controlled security failure'}; $global:securityValue=$args[0]} -Force
+  $global:officeModel|Add-Member ScriptProperty AutomationSecurity {$global:securityValue} {if ($args[0] -eq 3) {throw 'controlled security failure'}; $global:securityValue=$args[0]} -Force
 }
-$global:officeModel|Add-Member ScriptMethod Quit {$global:quitCount++}
-# 只返回受控对象，不激活真实 COM。
-function New-Object {param($ComObject); return $global:officeModel}
-# 返回夹具身份，不查询或结束用户进程。
-function Get-Process {param($Name,$Id)
-  if ($Name) {if ($env:CREATED -eq '0') {return [pscustomobject]@{Id=123}}; return}
-  if ($env:BIND_FAIL -eq '1') {throw 'controlled identity failure'}
-  return $global:processModel
+$global:officeModel|Add-Member ScriptMethod Quit {
+  $global:quitCount++
+  if ($env:QUIT_EXITS -ne '0') {$global:processes.Remove(@($global:processes|Where-Object {$_.Id -eq 123})[0])}
 }
+# 只返回受控对象，不激活真实 COM；SPAWN=1 时像 Word 一样新开一个进程。
+function New-Object {param($ComObject)
+  if ($env:SPAWN -eq '1' -and -not @($global:processes|Where-Object {$_.Id -eq 123}).Count) {New-ModelProcess 123}
+  if ($env:ACTIVATION_FAIL -eq '1') {throw 'controlled activation failure'}
+  return $global:officeModel
+}
+`
+
+const SUMMARY = String.raw`
+@{errors=@($Error|ForEach-Object {$_.Exception.Message});killed=@($global:killed);left=@($global:processes|ForEach-Object {$_.Id});securityAtOpen=$global:securityAtOpen;security=$global:officeModel.AutomationSecurity;alerts=$global:officeModel.DisplayAlerts;documents=$global:collection.Count;quit=$global:quitCount;closed=$global:closedCount;closedNames=@($global:closedNames);args=@($global:openArgs|ForEach-Object {if ($_ -is [System.Reflection.Missing]) {'missing'} else {$_}});page=$global:worksheetModel.PageSetup}|ConvertTo-Json -Compress -Depth 4
 `
 
 beforeEach(async () => {
@@ -96,250 +106,204 @@ afterEach(async () => {
   await fs.rm(fixture, { recursive: true, force: true })
 })
 
-describe.runIf(process.platform === 'win32')('COM PowerShell behavior', () => {
-  it.each(['word', 'slides', 'sheet'] as const)(
-    'opens %s read-only with macros disabled and preserves existing documents and settings',
-    async kind => {
-      const result = await modelRun(kind, false)
-      expect(result.report.ok, JSON.stringify(result.model.errors)).toBe(true)
-      expect(result.model.securityAtOpen).toBe(3)
-      expect(result.model.security).toBe(1)
-      expect(result.model.alerts).toBe(2)
-      expect(result.model.documents).toBe(2)
-      expect(result.model.quit).toBe(0)
+/** .NET 的时间刻度（100 纳秒，从公元 1 年起），与脚本记录的启动时间同一单位。 */
+function ticks(ms: number) {
+  return ((BigInt(ms) + 62_135_596_800_000n) * 10_000n).toString()
+}
 
-      if (kind === 'word') {
-        expect(result.model.args[2]).toBe(true)
-        expect(result.model.args[11]).toBe(false)
-      }
+/** 执行正式脚本与受控 COM 对象，核对的是运行行为，不读取或匹配产品源码。 */
+async function modelRun(script: string, env: NodeJS.ProcessEnv) {
+  const file = path.join(fixture, 'model.ps1')
+  await fs.writeFile(file, '\uFEFF' + MODEL + '\n' + script + '\n' + SUMMARY)
 
-      if (kind === 'slides') {
-        expect(result.model.args[1]).toBe(-1)
-        expect(result.model.args[3]).toBe(0)
-      }
-
-      if (kind === 'sheet') {
-        expect(result.model.args[1]).toBe(0)
-        expect(result.model.args[2]).toBe(true)
-        expect(result.model.page.FitToPagesWide).toBe(1)
+  const result = await runOfficeProcess(
+    powershell,
+    ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', file],
+    {
+      cwd: fixture,
+      timeoutMs: 15000,
+      env: {
+        ...process.env,
+        OFFICE_PROGID: 'Controlled.Application',
+        OFFICE_NAMES: JSON.stringify(['controlled']),
+        OFFICE_SOURCE: path.join(fixture, 'source.docx'),
+        OFFICE_PDF: path.join(fixture, 'doc.pdf'),
+        OFFICE_OWNER: path.join(fixture, 'owner.json'),
+        OTHER_DOCUMENTS: '0',
+        ...env
       }
     }
   )
 
-  it('closes its hidden Word identity probe and quits only a new empty invisible instance', async () => {
-    const result = await modelRun('word', true)
-    expect(result.report.ok, JSON.stringify(result.model.errors)).toBe(true)
-    expect(result.model.documents).toBe(0)
-    expect(result.model.closed).toBe(2)
-    expect(result.model.quit).toBe(0)
-    expect(result.model.stopped).toBe(1)
-    expect(result.model.visible).toBe(false)
+  expect(result.failure, result.stdout).toBeUndefined()
+  const lines = result.stdout.trim().split(/\r?\n/)
+  const owner = await fs.readFile(path.join(fixture, 'owner.json'), 'utf8').then(JSON.parse, () => null)
+
+  return { report: JSON.parse(lines.at(-2)!), model: JSON.parse(lines.at(-1)!), owner }
+}
+
+/** 运行转换脚本；默认是用户开着另一个实例、本次借用它的情形。 */
+function convertRun(kind: OfficeDocumentKind, env: NodeJS.ProcessEnv = {}) {
+  return modelRun(officeComScript(kind), { PROCESSES: '7', ...env })
+}
+
+describe.runIf(process.platform === 'win32')('COM PowerShell behavior', { timeout: 30000 }, () => {
+  it.each(['word', 'slides', 'sheet'] as const)(
+    'opens %s read-only with macros disabled; in a borrowed instance closes only its own copy and changes nothing else',
+    async kind => {
+      const { report, model } = await convertRun(kind, { OTHER_DOCUMENTS: '2' })
+      expect(report).toEqual({ ok: true, code: 'convert_failed', clean: true })
+      expect(model.securityAtOpen).toBe(3)
+      expect(model.security).toBe(1)
+      expect(model.alerts).toBe(2)
+      expect(model.documents).toBe(2)
+      expect(model.closed).toBe(1)
+      expect(model.quit).toBe(0)
+      expect(model.killed).toEqual([])
+      expect(model.left).toEqual([7])
+
+      if (kind === 'word') {
+        expect(model.args[2]).toBe(true)
+        // 带一个占位密码：加密文件直接报错，不弹密码框。
+        expect(model.args[4]).toMatch(/\S/)
+        expect(model.args[11]).toBe(false)
+      }
+
+      if (kind === 'slides') {
+        expect(model.args[1]).toBe(-1)
+        expect(model.args[3]).toBe(0)
+      }
+
+      if (kind === 'sheet') {
+        expect(model.args[1]).toBe(0)
+        expect(model.args[2]).toBe(true)
+        expect(model.args[4]).toMatch(/\S/)
+        expect(model.page.FitToPagesWide).toBe(1)
+      }
+    }
+  )
+
+  it.each([{}, { EXPORT_FAIL: '1' }, { SECURITY_FAIL: '1' }])(
+    'always quits the new instance it started, leaving the user process alone (%o)',
+    async failure => {
+      const { report, model, owner } = await convertRun('word', { SPAWN: '1', ...failure })
+      expect(report.ok).toBe(Object.keys(failure).length === 0)
+      expect(report.clean).toBe(true)
+      expect(owner.pids).toEqual([123])
+      expect(model.quit).toBe(1)
+      expect(model.killed).toEqual([])
+      expect(model.left).toEqual([7])
+      expect(model.documents).toBe(0)
+      expect(model.alerts).toBe(2)
+    }
+  )
+
+  it('ends its own hidden instance that does not exit after quitting, but not one that shows a window', async () => {
+    const hidden = await convertRun('word', { SPAWN: '1', QUIT_EXITS: '0' })
+    expect(hidden.report).toMatchObject({ ok: true, clean: true })
+    expect(hidden.model.killed).toEqual([123])
+    expect(hidden.model.left).toEqual([7])
+
+    const visible = await convertRun('word', { SPAWN: '1', QUIT_EXITS: '0', VISIBLE_PIDS: '123' })
+    expect(visible.report).toMatchObject({ ok: true, clean: false })
+    expect(visible.model.killed).toEqual([])
   })
 
-  it('does not create an identity document in a visible Word instance without document windows', async () => {
-    const result = await modelRun('word', true, false, false, true)
-
-    expect(result.report.ok).toBe(false)
-    expect(result.model.closed).toBe(0)
-    expect(result.model.quit).toBe(0)
-    expect(result.model.documents).toBe(0)
-    expect(result.model.visible).toBe(true)
-    expect(result.model.security).toBe(1)
+  it('hands its instance over without quitting when someone else opened a document in it', async () => {
+    const { report, model } = await convertRun('word', { SPAWN: '1', OTHER_DOCUMENTS: '1' })
+    expect(report).toMatchObject({ ok: true, clean: true })
+    expect(model.quit).toBe(0)
+    expect(model.killed).toEqual([])
+    expect(model.documents).toBe(1)
   })
 
-  it.each([true, false])('closes only its own windowless WPS slides document (new instance: %s)', async created => {
-    const result = await modelRun('slides', created, false, false, false, { APP_HANDLE: '-1', OFFICE_PROVIDER: 'wps' })
-    const owner = JSON.parse(await fs.readFile(path.join(fixture, 'owner.json'), 'utf8'))
-
-    expect(result.report.ok, JSON.stringify(result.model.errors)).toBe(true)
-    expect(result.model.documents).toBe(created ? 0 : 2)
-    expect(result.model.closed).toBe(1)
-    expect(result.model.stopped).toBe(0)
-    expect(result.model.quit).toBe(0)
-    expect(owner.windowless).toBe(true)
-    expect(owner.closed).toBe(true)
-    expect(owner.pid).toBeUndefined()
-  })
-
-  it('closes only its own document and restores settings after export failure', async () => {
-    const result = await modelRun('word', false, true)
-    expect(result.report.ok).toBe(false)
-    expect(result.model.documents).toBe(2)
-    expect(result.model.quit).toBe(0)
-    expect(result.model.security).toBe(1)
-  })
-
-  it('records the failed identity phase and quits only its standalone COM object without guessing a PID', async () => {
-    const result = await modelRun('word', true, false, true)
-    const owner = JSON.parse(await fs.readFile(path.join(fixture, 'owner.json'), 'utf8'))
-
-    expect(result.report.ok).toBe(false)
-    expect(owner.error.stage).toBe('identity')
-    expect(typeof owner.error.type).toBe('string')
+  it('records the failed activation and stops the hidden process it left behind', async () => {
+    const { report, model, owner } = await convertRun('word', { SPAWN: '1', ACTIVATION_FAIL: '1' })
+    expect(report).toEqual({ ok: false, code: 'unavailable', clean: true })
+    expect(owner.error.stage).toBe('activation')
     expect(typeof owner.error.hresult).toBe('number')
     expect(owner.error).not.toHaveProperty('message')
-    expect(owner.pid).toBeUndefined()
-    expect(result.model.quit).toBe(1)
-    expect(owner.quit).toBe(true)
-    expect(result.model.documents).toBe(0)
-    expect(result.model.security).toBe(1)
+    expect(model.killed).toEqual([123])
+    expect(model.left).toEqual([7])
   })
 
-  it('quits a standalone Word when security setup fails before any window or PID lookup', async () => {
-    const result = await modelRun('word', true, false, false, false, { SECURITY_FAIL: '1' })
-    const owner = JSON.parse(await fs.readFile(path.join(fixture, 'owner.json'), 'utf8'))
-
-    expect(result.report.ok).toBe(false)
-    expect(owner.error.stage).toBe('security')
-    expect(owner.pid).toBeUndefined()
-    expect(owner.quit).toBe(true)
-    expect(result.model.quit).toBe(1)
-    expect(result.model.documents).toBe(0)
+  it('exports a workbook even when one sheet refuses page setup changes', async () => {
+    const { report, model } = await convertRun('sheet', { SHEET_LOCKED: '1' })
+    expect(report.ok).toBe(true)
+    expect(model.page.FitToPagesWide).toBe(1)
+    expect(await fs.readFile(path.join(fixture, 'doc.pdf'), 'utf8')).toBe('%PDF-fixture')
   })
 
-  it('does not quit a shared PowerPoint or a user-controlled Word after an unregistered identity failure', async () => {
-    const shared = await modelRun('slides', true, false, true)
-    expect(shared.report.ok).toBe(false)
-    expect(shared.model.quit).toBe(0)
-    const controlled = await modelRun('word', true, false, true, false, { USER_CONTROL: '1' })
-    expect(controlled.report.ok).toBe(false)
-    expect(controlled.model.quit).toBe(0)
+  it('after a timeout ends only the instance it started, even while a dialog is showing', async () => {
+    const owner = { activated: true, pids: [123], before: [7], began: ticks(Date.now() - 60_000) }
+    await fs.writeFile(path.join(fixture, 'owner.json'), JSON.stringify(owner))
+
+    const { report, model } = await modelRun(officeComCleanupScript('word'), {
+      PROCESSES: '7,123',
+      VISIBLE_PIDS: '7,123'
+    })
+
+    expect(report.ok).toBe(true)
+    expect(model.killed).toEqual([123])
+    expect(model.left).toEqual([7])
   })
 
-  it('still quits its standalone empty Word when restoring settings also fails after the identity error', async () => {
-    const result = await modelRun('word', true, false, true, false, { RESTORE_FAIL: '1' })
-    const owner = JSON.parse(await fs.readFile(path.join(fixture, 'owner.json'), 'utf8'))
-
-    expect(result.report.ok).toBe(false)
-    expect(owner.error.stage).toBe('identity')
-    expect(owner.cleanupError).toBeDefined()
-    expect(owner.closed).toBe(true)
-    expect(owner.quit).toBe(true)
-    expect(result.model.quit).toBe(1)
+  it('after a timeout in a borrowed PowerPoint closes only its own copy and restores macro security', async () => {
+    const owner = { activated: true, pids: [], before: [7], began: ticks(Date.now() - 60_000), security: 2 }
+    await fs.writeFile(path.join(fixture, 'owner.json'), JSON.stringify(owner))
+    const { report, model } = await modelRun(officeComCleanupScript('slides'), { PROCESSES: '7', OPEN_COPIES: '1' })
+    expect(report.ok).toBe(true)
+    expect(model.closedNames).toEqual([path.join(fixture, 'source.docx')])
+    expect(model.security).toBe(2)
+    expect(model.killed).toEqual([])
   })
 
-  it('records a mismatched COM process before refusing conversion, without quitting the wrong application', async () => {
-    const result = await modelRun('word', true, false, false, false, { ACTUAL_PROGRAM: 'C:\\Other\\other.exe' })
-    const owner = JSON.parse(await fs.readFile(path.join(fixture, 'owner.json'), 'utf8'))
+  it('after a failed activation stops only hidden new processes and lets other software be tried', async () => {
+    const owner = { activated: false, pids: [], before: [7], began: ticks(Date.now() - 60_000) }
+    await fs.writeFile(path.join(fixture, 'owner.json'), JSON.stringify(owner))
 
-    expect(result.report.ok).toBe(false)
-    expect(owner.pid).toBe(123)
-    expect(owner.matched).toBe(false)
-    expect(owner.actualExecutable).toBe('C:\\Other\\other.exe')
-    expect(result.model.quit).toBe(0)
-    expect(result.model.securityAtOpen).toBe(0)
+    const { report, model } = await modelRun(officeComCleanupScript('word'), {
+      PROCESSES: '7,123,124',
+      VISIBLE_PIDS: '123'
+    })
+
+    expect(report.ok).toBe(true)
+    expect(model.killed).toEqual([124])
+    expect(model.left).toEqual([7, 123])
   })
 
-  it('validates creation time and leaves borrowed processes alive before stopping only its real owned hidden helper', async () => {
+  it('stops a real recorded process after a timeout, but not a process that only reuses its number', async () => {
     const child = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { stdio: 'ignore', windowsHide: true })
-    const env = { ...process.env, OFFICE_OWNER: path.join(fixture, 'owner.json') }
-    const options = { cwd: fixture, env, timeoutMs: 10000 }
+
+    const env = {
+      ...process.env,
+      OFFICE_NAMES: JSON.stringify([path.basename(process.execPath, '.exe')]),
+      OFFICE_OWNER: path.join(fixture, 'owner.json')
+    }
+
+    const args = [
+      '-NoProfile',
+      '-NonInteractive',
+      '-EncodedCommand',
+      Buffer.from(officeComCleanupScript('word'), 'utf16le').toString('base64')
+    ]
+
+    const options = { cwd: fixture, env, timeoutMs: 15000 }
 
     try {
-      const probe = await runOfficeProcess(
-        powershell,
-        [
-          '-NoProfile',
-          '-NonInteractive',
-          '-Command',
-          `(Get-Process -Id ${child.pid}).StartTime.ToUniversalTime().Ticks.ToString()`
-        ],
-        options
-      )
-
-      expect(probe.failure).toBeUndefined()
-      const started = probe.stdout.trim()
-
-      const owner = {
-        pid: child.pid,
-        executable: await fs.realpath(process.execPath),
-        started,
-        created: false,
-        matched: true,
-        closed: true
-      }
-
-      const args = [
-        '-NoProfile',
-        '-NonInteractive',
-        '-EncodedCommand',
-        Buffer.from(OFFICE_COM_CLEANUP, 'utf16le').toString('base64')
-      ]
-
-      await fs.writeFile(env.OFFICE_OWNER, JSON.stringify(owner))
-      expect(JSON.parse((await runOfficeProcess(powershell, args, options)).stdout).ok).toBe(true)
-      expect(child.exitCode).toBeNull()
-      const shell32 = path.join(process.env.SystemRoot || 'C:\\Windows', 'SysWOW64', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
-
-      if (await fs.stat(shell32).then(() => true, () => false)) {
-        expect(JSON.parse((await runOfficeProcess(shell32, args, options)).stdout).ok).toBe(true)
-        expect(child.exitCode).toBeNull()
-      }
-
-      const windowless = { paths: [owner.executable], before: [child.pid], began: started, activated: true, closed: false }
-
-      await fs.writeFile(env.OFFICE_OWNER, JSON.stringify(windowless))
-      expect(JSON.parse((await runOfficeProcess(powershell, args, options)).stdout).ok).toBe(false)
-      await fs.writeFile(env.OFFICE_OWNER, JSON.stringify({ ...windowless, closed: true }))
+      // 记录的启动时间晚于这个进程：说明编号已被别的进程重用，不能结束。
+      const reused = { activated: true, pids: [child.pid], before: [], began: ticks(Date.now() + 60_000) }
+      await fs.writeFile(env.OFFICE_OWNER, JSON.stringify(reused))
       expect(JSON.parse((await runOfficeProcess(powershell, args, options)).stdout).ok).toBe(true)
       expect(child.exitCode).toBeNull()
 
-      await fs.writeFile(
-        env.OFFICE_OWNER,
-        JSON.stringify({ ...owner, created: true, started: (BigInt(started) + 1n).toString() })
-      )
-      expect(JSON.parse((await runOfficeProcess(powershell, args, options)).stdout).ok).toBe(false)
-      expect(child.exitCode).toBeNull()
-      await fs.writeFile(env.OFFICE_OWNER, JSON.stringify({ ...owner, created: true }))
+      await fs.writeFile(env.OFFICE_OWNER, JSON.stringify({ ...reused, began: ticks(Date.now() - 60_000) }))
       expect(JSON.parse((await runOfficeProcess(powershell, args, options)).stdout).ok).toBe(true)
-      expect(child.exitCode !== null || child.signalCode !== null).toBe(true)
+      await expect.poll(() => child.exitCode !== null || child.signalCode !== null).toBe(true)
     } finally {
       if (child.exitCode === null && child.signalCode === null) {
         child.kill('SIGKILL')
       }
     }
-  }, 20000)
+  }, 30000)
 })
-
-/** 执行正式脚本与受控 COM 对象，核对的是运行行为，不读取或匹配产品源码。 */
-async function modelRun(kind: OfficeDocumentKind, created: boolean, exportFail = false, bindFail = false, visible = false, extraEnv: NodeJS.ProcessEnv = {}) {
-  const script = path.join(fixture, 'model.ps1')
-
-  const summary = String.raw`
-@{stopped=$global:stoppedCount;visible=$global:officeModel.Visible;securityAtOpen=$global:securityAtOpen;security=$global:officeModel.AutomationSecurity;alerts=$global:officeModel.DisplayAlerts;documents=$global:collection.Count;quit=$global:quitCount;closed=$global:closedCount;args=@($global:openArgs|ForEach-Object {if ($_ -is [System.Reflection.Missing]) {'missing'} else {$_}});page=$global:worksheetModel.PageSetup;errors=@($Error|ForEach-Object {$_.Exception.Message})}|ConvertTo-Json -Compress -Depth 4
-`
-
-  await fs.writeFile(script, '\uFEFF' + MODEL + '\n' + officeComScript(kind) + '\n' + summary)
-
-  const result = await runOfficeProcess(
-    powershell,
-    ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script],
-    {
-      cwd: fixture,
-      timeoutMs: 10000,
-      env: {
-        ...process.env,
-        OFFICE_PROGRAM: process.execPath,
-        OFFICE_PROGID: 'Controlled.Application',
-        OFFICE_PATHS: JSON.stringify([process.execPath]),
-        OFFICE_STANDALONE: kind === 'slides' ? '0' : '1',
-        OFFICE_PROVIDER: 'ms-office',
-        OFFICE_SOURCE: path.join(fixture, 'sample.docx'),
-        OFFICE_PDF: path.join(fixture, 'doc.pdf'),
-        OFFICE_OWNER: path.join(fixture, 'owner.json'),
-        OTHER_DOCUMENTS: created ? '0' : '2',
-        CREATED: created ? '1' : '0',
-        WINDOW_COUNT: created ? '0' : '1',
-        EXPORT_FAIL: exportFail ? '1' : '0',
-        BIND_FAIL: bindFail ? '1' : '0',
-        APP_VISIBLE: visible ? '1' : '0',
-        ...extraEnv
-      }
-    }
-  )
-
-  expect(result.failure).toBeUndefined()
-  const lines = result.stdout.trim().split(/\r?\n/)
-
-  return { report: JSON.parse(lines.at(-2)!), model: JSON.parse(lines.at(-1)!) }
-}

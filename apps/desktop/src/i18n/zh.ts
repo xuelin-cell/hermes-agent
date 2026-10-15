@@ -4605,10 +4605,26 @@ export const zh = defineLocale({
     noInlineTitle: '没有内联预览',
     noInlineBody: mimeType => `${mimeType || '此文件类型'} 仍可作为上下文附件。`,
     formatFailure: {
+      convert_failed: '文档转换失败，仍可查看或下载原文件。',
+      timeout: '文档转换超时，仍可查看或下载原文件。',
       not_found: '文件已不存在或无法访问。',
       too_large: '文件过大或图片尺寸超出预览上限，仍可查看或下载原文件。',
       unavailable: '无法预览此文件，仍可查看或下载原文件。',
       unsupported: '暂不支持此文件格式或音视频编码。'
+    },
+    office: {
+      converting: '正在转换文档',
+      firstOpen: '首次预览可能需要几秒。',
+      installConverter: '如果没有可用的转换软件，请安装 LibreOffice 后重试。'
+    },
+    slides: {
+      page: page => `第 ${page} 页`,
+      counter: (page, total) => `${page} / ${total}`,
+      previous: '上一页',
+      next: '下一页',
+      fullscreen: '全屏放映',
+      exitFullscreen: '退出全屏',
+      fullscreenFailed: '未能切换全屏，仍可继续阅读幻灯片。'
     },
     delimited: {
       table: '表格',
@@ -4616,6 +4632,7 @@ export const zh = defineLocale({
       limited: '仅显示前 500 条数据行。',
       columnsLimited: '仅显示前 50 列。'
     },
+    sheetLimited: '部分工作表超过 500 行，仅显示其前 500 行。',
     tiffFirstPage: '此 TIFF 包含多页，仅显示第一页。',
     edit: '编辑',
     editing: '编辑中',

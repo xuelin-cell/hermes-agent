@@ -98,7 +98,13 @@ export function settingsSubpages(view: SettingsView, developerMode = true): read
   }
 
   if (view.startsWith('config:')) {
-    return CONFIG_SUBPAGES[view.slice('config:'.length)] ?? []
+    const pages = CONFIG_SUBPAGES[view.slice('config:'.length)] ?? []
+
+    return view === 'config:chat' && !developerMode ? pages.filter(page => page.id !== 'attachments') : pages
+  }
+
+  if (view === 'notifications' && !developerMode) {
+    return OTHER_SUBPAGES[view].filter(page => page.id !== 'sounds')
   }
 
   return OTHER_SUBPAGES[view] ?? []
