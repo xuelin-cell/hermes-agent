@@ -101,3 +101,39 @@ export function openWorkbookPackage(bytes: Uint8Array) {
 }
 
 export type WorkbookPackage = ReturnType<typeof openWorkbookPackage>
+
+/** 图片和图表共用真实绘图关系，不重复遍历工作簿或猜测部件编号。 */
+export function* workbookDrawings(archive: WorkbookPackage) {
+  const rels = archive.relationships('xl/workbook.xml')
+
+  for (const sheet of descendants(archive.xml('xl/workbook.xml'), 'sheet')) {
+    const id = Array.from(sheet.attributes).find(attribute => attribute.localName === 'id')?.value
+    const sheetPart = rels.find(rel => rel.id === id)?.target
+
+    if (!sheetPart) {
+      continue
+    }
+
+    const drawing = descendants(archive.xml(sheetPart), 'drawing')[0]
+
+    if (!drawing) {
+      continue
+    }
+
+    const drawingId = Array.from(drawing.attributes).find(attribute => attribute.localName === 'id')?.value
+    const drawingPart = archive.relationships(sheetPart).find(rel => rel.id === drawingId)?.target
+    const doc = archive.xml(drawingPart)
+
+    if (!doc || !drawingPart) {
+      throw { code: 'unsupported' }
+    }
+
+    const relations = archive.relationships(drawingPart)
+
+    for (const anchor of Array.from(doc.documentElement.children)) {
+      if (['twoCellAnchor', 'oneCellAnchor', 'absoluteAnchor'].includes(anchor.localName)) {
+        yield { name: attr(sheet, 'name') || '', anchor, relations }
+      }
+    }
+  }
+}

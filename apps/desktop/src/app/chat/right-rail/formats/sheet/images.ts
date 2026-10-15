@@ -2,7 +2,7 @@ import type { Image } from '@fortune-sheet/core'
 import { strFromU8, strToU8 } from 'fflate'
 
 import type { PreviewSheet } from './model'
-import { attr, child, descendants, type WorkbookPackage } from './package'
+import { attr, child, workbookDrawings, type WorkbookPackage } from './package'
 
 const EMU_PER_PIXEL = 9525
 
@@ -25,99 +25,70 @@ export interface PreviewImage {
 }
 
 /** 只接受包内位图，外链不请求；不支持或缺失的内嵌图片交给原有 PDF 候选。 */
-export function readWorkbookImages({ parts, xml, relationships }: WorkbookPackage) {
+export function readWorkbookImages(archive: WorkbookPackage) {
   const result = new Map<string, PreviewImage[]>()
-  const rels = relationships('xl/workbook.xml')
   let count = 0
   let imageBytes = 0
 
-  for (const sheet of descendants(xml('xl/workbook.xml'), 'sheet')) {
-    const id = Array.from(sheet.attributes).find(attribute => attribute.localName === 'id')?.value
-    const sheetPart = rels.find(rel => rel.id === id)?.target
+  for (const { name, anchor, relations } of workbookDrawings(archive)) {
+    const picture = child(anchor, 'pic')
 
-    if (!sheetPart) {
+    if (!picture) {
       continue
     }
 
-    const drawing = descendants(xml(sheetPart), 'drawing')[0]
-    const drawingId = Array.from(drawing?.attributes || []).find(attribute => attribute.localName === 'id')?.value
-    const drawingPart = relationships(sheetPart).find(rel => rel.id === drawingId)?.target
+    const fill = child(picture, 'blipFill')
+    const blip = child(fill, 'blip')
+    const embed = Array.from(blip?.attributes || []).find(attribute => attribute.localName === 'embed')?.value
 
-    if (drawing && !xml(drawingPart)) {
+    if (!embed) {
+      continue
+    } // 链接图像不属于文件内嵌内容。
+
+    const part = relations.find(rel => rel.id === embed)?.target
+    const bytes = part && archive.parts[part]
+    const mime = MIME[part?.split('.').at(-1)?.toLowerCase() || '']
+
+    if (!bytes || !mime) {
       throw { code: 'unsupported' }
     }
 
-    if (!drawingPart) {
-      continue
+    imageBytes += bytes.length
+
+    if (++count > 64 || imageBytes > 32 * 1024 * 1024) {
+      throw { code: 'too_large' }
     }
 
-    const images: PreviewImage[] = []
-    const imageRels = relationships(drawingPart)
+    const rect = child(fill, 'srcRect')
 
-    for (const anchor of Array.from(xml(drawingPart)?.documentElement.children || [])) {
-      if (!['twoCellAnchor', 'oneCellAnchor', 'absoluteAnchor'].includes(anchor.localName)) {
-        continue
-      }
+    const crop = Object.fromEntries(
+      ['left', 'top', 'right', 'bottom'].map(side => [
+        side,
+        Math.max(0, Math.min(0.99, Number(attr(rect, side[0]) || 0) / 100000))
+      ])
+    ) as PreviewImage['crop']
 
-      const picture = child(anchor, 'pic')
-
-      if (!picture) {
-        continue
-      } // 图表由 P15 单独处理。
-
-      const fill = child(picture, 'blipFill')
-      const blip = child(fill, 'blip')
-      const embed = Array.from(blip?.attributes || []).find(attribute => attribute.localName === 'embed')?.value
-
-      if (!embed) {
-        continue
-      } // 链接图像不属于文件内嵌内容。
-
-      const part = imageRels.find(rel => rel.id === embed)?.target
-      const bytes = part && parts[part]
-      const mime = MIME[part?.split('.').at(-1)?.toLowerCase() || '']
-
-      if (!bytes || !mime) {
-        throw { code: 'unsupported' }
-      }
-
-      imageBytes += bytes.length
-
-      if (++count > 64 || imageBytes > 32 * 1024 * 1024) {
-        throw { code: 'too_large' }
-      }
-
-      const rect = child(fill, 'srcRect')
-
-      const crop = Object.fromEntries(
-        ['left', 'top', 'right', 'bottom'].map(side => [
-          side,
-          Math.max(0, Math.min(0.99, Number(attr(rect, side[0]) || 0) / 100000))
-        ])
-      ) as PreviewImage['crop']
-
-      if (!Object.values(crop).every(Number.isFinite) || crop.left + crop.right >= 1 || crop.top + crop.bottom >= 1) {
-        throw { code: 'unsupported' }
-      }
-
-      const transform = child(child(picture, 'spPr'), 'xfrm')
-      const rotation = Number(attr(transform, 'rot') || 0) / 60000
-
-      if (!Number.isFinite(rotation)) {
-        throw { code: 'unsupported' }
-      }
-
-      images.push({
-        anchor,
-        src: `data:${mime};base64,${btoa(strFromU8(bytes, true))}`,
-        crop,
-        rotation,
-        flipH: ['1', 'true'].includes(attr(transform, 'flipH') || ''),
-        flipV: ['1', 'true'].includes(attr(transform, 'flipV') || '')
-      })
+    if (!Object.values(crop).every(Number.isFinite) || crop.left + crop.right >= 1 || crop.top + crop.bottom >= 1) {
+      throw { code: 'unsupported' }
     }
 
-    result.set(attr(sheet, 'name') || '', images)
+    const transform = child(child(picture, 'spPr'), 'xfrm')
+    const rotation = Number(attr(transform, 'rot') || 0) / 60000
+
+    if (!Number.isFinite(rotation)) {
+      throw { code: 'unsupported' }
+    }
+
+    const images = result.get(name) || []
+    images.push({
+      anchor,
+      src: `data:${mime};base64,${btoa(strFromU8(bytes, true))}`,
+      crop,
+      rotation,
+      flipH: ['1', 'true'].includes(attr(transform, 'flipH') || ''),
+      flipV: ['1', 'true'].includes(attr(transform, 'flipV') || '')
+    })
+    result.set(name, images)
   }
 
   return result
@@ -142,7 +113,11 @@ function offset(sizes: number[], hidden: number[], index: number, fallback: numb
 }
 
 /** EMU 转为组件像素，保留单格、双格和绝对三种锚点。 */
-function imageBox(anchor: Element, sheet: PreviewSheet) {
+export function drawingBox(anchor: Element, sheet: PreviewSheet) {
+  if (anchor.localName !== 'absoluteAnchor' && Number(child(child(anchor, 'from'), 'row')?.textContent) >= 500) {
+    return null
+  }
+
   /** 单元格坐标和偏移仅作为数字读取，不执行文档属性。 */
   function marker(group: string, field: string) {
     const value = Number(child(child(anchor, group), field)?.textContent || 0)
@@ -180,7 +155,18 @@ function imageBox(anchor: Element, sheet: PreviewSheet) {
     throw { code: 'unsupported' }
   }
 
-  return { left, top, width: right - left, height: bottom - top }
+  if (top >= offset(sheet.rowHeights, sheet.hiddenRows, 500, 20)) {
+    return null
+  }
+
+  const width = right - left,
+    height = bottom - top
+
+  if (width > 32768 || height > 32768 || width * height > 16 * 1024 * 1024) {
+    throw { code: 'too_large' }
+  }
+
+  return { left, top, width, height }
 }
 
 /** 只生成自己的 SVG 容器，内部只有包内位图；不插入文件自带的 SVG 或 HTML。 */
@@ -202,24 +188,11 @@ function pictureSource(image: PreviewImage, width: number, height: number) {
 
 /** 图片只显示在前 500 行的可见区域；尺寸和位置随表格布局一起交给组件。 */
 export function toFortuneImages(sheet: PreviewSheet, sheetIndex: number): Image[] {
-  const bottom = offset(sheet.rowHeights, sheet.hiddenRows, 500, 20)
-
   return (sheet.images || []).flatMap((image, index) => {
-    if (
-      image.anchor.localName !== 'absoluteAnchor' &&
-      Number(child(child(image.anchor, 'from'), 'row')?.textContent) >= 500
-    ) {
+    const box = drawingBox(image.anchor, sheet)
+
+    if (!box) {
       return []
-    }
-
-    const box = imageBox(image.anchor, sheet)
-
-    if (box.top >= bottom) {
-      return []
-    }
-
-    if (box.width > 32768 || box.height > 32768 || box.width * box.height > 16 * 1024 * 1024) {
-      throw { code: 'too_large' }
     }
 
     return [{ id: `preview-image-${sheetIndex}-${index}`, ...box, src: pictureSource(image, box.width, box.height) }]
