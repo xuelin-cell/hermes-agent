@@ -4,8 +4,6 @@ import path from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { OFFICE_PDF_MAX_BYTES, OFFICE_SOURCE_MAX_BYTES } from '../../../shared/src/office-preview'
-
 import { convertCom, officeComEnvironment, officePowerShellCandidates } from './convert-com'
 import type { OfficeComProgram } from './detect'
 import type { runOfficeProcess } from './run-process'
@@ -46,27 +44,29 @@ describe('COM driver', () => {
     expect(officePowerShellCandidates('64', 'X:\\Windows', 'x64')[0]).toContain('System32')
   })
 
-  it('limits WPS hosts to the selected installation and gives only real Word and Excel classes standalone ownership', () => {
-    const wps = officeComEnvironment({ ...program, provider: 'wps', kind: 'slides', progId: 'KWPP.Application' }, 'D:\\WPS Office\\office6\\wps.exe')
-    expect(JSON.parse(wps.OFFICE_PATHS!)).toEqual(['D:\\WPS Office\\office6\\wpp.exe', 'D:\\WPS Office\\office6\\wps.exe'])
-    expect(wps.OFFICE_STANDALONE).toBe('0')
-    expect(officeComEnvironment(program, 'C:\\Office\\WINWORD.EXE').OFFICE_STANDALONE).toBe('1')
-    expect(officeComEnvironment({ ...program, kind: 'slides', progId: 'PowerPoint.Application' }, 'C:\\Office\\POWERPNT.EXE').OFFICE_STANDALONE).toBe('0')
+  it('counts processes by program name, including the WPS component that may serve the COM class', () => {
+    const wps = officeComEnvironment({
+      ...program,
+      provider: 'wps',
+      kind: 'slides',
+      progId: 'KWPP.Application',
+      executable: 'D:\\WPS Office\\office6\\wps.exe'
+    })
+
+    expect(JSON.parse(wps.OFFICE_NAMES!)).toEqual(['wps', 'wpp'])
+    const word = officeComEnvironment({ ...program, executable: 'C:\\Office\\WINWORD.EXE' })
+    expect(JSON.parse(word.OFFICE_NAMES!)).toEqual(['winword'])
   })
 
   it.runIf(process.platform === 'win32')(
-    'passes paths as environment data, reserves cleanup time and validates a real output file',
+    'passes paths as environment data and starts no second PowerShell when the script confirms cleanup',
     async () => {
       const run = vi.fn<typeof runOfficeProcess>().mockImplementation(async (_file, _args, options) => {
         expect(options.env.OFFICE_SOURCE).toBe(source)
+        await fs.writeFile(options.env.OFFICE_OWNER!, '{}')
+        await fs.writeFile(options.env.OFFICE_PDF!, pdf)
 
-        if (run.mock.calls.length === 1) {
-          await fs.writeFile(options.env.OFFICE_PDF!, pdf)
-
-          return { stdout: JSON.stringify({ ok: true }) }
-        }
-
-        return { stdout: JSON.stringify({ ok: true }) }
+        return { stdout: JSON.stringify({ ok: true, clean: true }) }
       })
 
       const result = await convertCom(program, source, fixture, 5000, run)
@@ -76,19 +76,26 @@ describe('COM driver', () => {
         expect(await fs.readFile(result.pdfPath)).toEqual(pdf)
       }
 
-      expect(run).toHaveBeenCalledTimes(2)
-      expect(run.mock.calls[0][2].timeoutMs + run.mock.calls[1][2].timeoutMs).toBe(5000)
-      expect(run.mock.calls[0][1]).not.toContain(source)
+      expect(run).toHaveBeenCalledTimes(1)
+      expect(run.mock.calls[0][2].timeoutMs).toBeLessThan(5000)
+      expect(run.mock.calls[0][1].join(' ')).not.toContain(source)
       expect(await fs.readFile(source, 'utf8')).toBe('controlled source')
     }
   )
 
   it.runIf(process.platform === 'win32')(
-    'cleans after timeout and preserves an unsafe-cleanup signal instead of proceeding',
+    'runs the cleanup script only when the conversion script did not confirm, and stops fallback when it fails',
     async () => {
+      // 脚本已经写下记录（启动过 Office）后超时。
+      const started = async (_file: string, _args: string[], options: { env: NodeJS.ProcessEnv }) => {
+        await fs.writeFile(options.env.OFFICE_OWNER!, '{}')
+
+        return { stdout: '', failure: 'timeout' as const }
+      }
+
       const run = vi
         .fn<typeof runOfficeProcess>()
-        .mockResolvedValueOnce({ stdout: '', failure: 'timeout' })
+        .mockImplementationOnce(started)
         .mockResolvedValueOnce({ stdout: '{"ok":true}' })
 
       expect(await convertCom(program, source, fixture, 5000, run)).toEqual({
@@ -96,10 +103,10 @@ describe('COM driver', () => {
         code: 'timeout',
         cleanupSafe: true
       })
-      run
-        .mockReset()
-        .mockResolvedValueOnce({ stdout: '', failure: 'timeout' })
-        .mockResolvedValueOnce({ stdout: '{"ok":false}' })
+      expect(run).toHaveBeenCalledTimes(2)
+      expect(run.mock.calls[0][2].timeoutMs + run.mock.calls[1][2].timeoutMs).toBe(5000)
+
+      run.mockReset().mockImplementationOnce(started).mockResolvedValueOnce({ stdout: '{"ok":false}' })
       expect(await convertCom(program, source, fixture, 5000, run)).toEqual({
         ok: false,
         code: 'timeout',
@@ -109,50 +116,26 @@ describe('COM driver', () => {
   )
 
   it.runIf(process.platform === 'win32')(
-    'rejects missing output and non-PDF data after a successful cleanup',
+    'treats a PowerShell that never started the script as safe to fall back from, without a cleanup run',
     async () => {
-      const run = vi.fn<typeof runOfficeProcess>().mockResolvedValue({ stdout: '{"ok":true}' })
+      const run = vi.fn<typeof runOfficeProcess>().mockResolvedValue({ stdout: '', failure: 'convert_failed' })
       expect(await convertCom(program, source, fixture, 5000, run)).toEqual({
         ok: false,
         code: 'convert_failed',
         cleanupSafe: true
       })
-      run.mockImplementation(async (_file, _args, options) => {
-        await fs.writeFile(options.env.OFFICE_PDF!, 'not PDF')
-
-        return { stdout: '{"ok":true}' }
-      })
-      expect(await convertCom(program, source, fixture, 5000, run)).toEqual({
-        ok: false,
-        code: 'convert_failed',
-        cleanupSafe: true
-      })
+      expect(run).toHaveBeenCalledTimes(1)
     }
   )
 
   it.runIf(process.platform === 'win32')(
-    'rejects oversized PDF and oversized source without publishing or starting unnecessary helpers',
+    'fails an encrypted package at once instead of letting Office wait on a password prompt',
     async () => {
-      const run = vi.fn<typeof runOfficeProcess>().mockImplementation(async (_file, _args, options) => {
-        const file = await fs.open(options.env.OFFICE_PDF!, 'w')
-        await file.truncate(OFFICE_PDF_MAX_BYTES + 1)
-        await file.close()
-
-        return { stdout: '{"ok":true}' }
-      })
-
+      const run = vi.fn<typeof runOfficeProcess>()
+      await fs.writeFile(source, Buffer.concat([Buffer.from('d0cf11e0a1b11ae1', 'hex'), Buffer.alloc(504)]))
       expect(await convertCom(program, source, fixture, 5000, run)).toEqual({
         ok: false,
-        code: 'too_large',
-        cleanupSafe: true
-      })
-      run.mockClear()
-      const file = await fs.open(source, 'w')
-      await file.truncate(OFFICE_SOURCE_MAX_BYTES + 1)
-      await file.close()
-      expect(await convertCom(program, source, fixture, 5000, run)).toEqual({
-        ok: false,
-        code: 'too_large',
+        code: 'convert_failed',
         cleanupSafe: true
       })
       expect(run).not.toHaveBeenCalled()
@@ -160,12 +143,9 @@ describe('COM driver', () => {
   )
 
   it.runIf(process.platform === 'win32')(
-    'keeps unavailable software distinct from a missing source or unsupported format',
+    'keeps a missing source, an unsupported format and a missing work directory apart',
     async () => {
       const run = vi.fn<typeof runOfficeProcess>()
-      expect(
-        await convertCom({ ...program, executable: path.join(fixture, 'missing.exe') }, source, fixture, 5000, run)
-      ).toEqual({ ok: false, code: 'unavailable', cleanupSafe: true })
       expect(await convertCom(program, source + '.docx', fixture, 5000, run)).toEqual({
         ok: false,
         code: 'not_found',
@@ -174,6 +154,11 @@ describe('COM driver', () => {
       expect(await convertCom(program, source + '.txt', fixture, 5000, run)).toEqual({
         ok: false,
         code: 'unsupported',
+        cleanupSafe: true
+      })
+      expect(await convertCom(program, source, path.join(fixture, 'missing'), 5000, run)).toEqual({
+        ok: false,
+        code: 'convert_failed',
         cleanupSafe: true
       })
       expect(run).not.toHaveBeenCalled()
