@@ -132,11 +132,11 @@ function countsText(row: KitRow, t: Translate): string {
     .join(' · ')
 }
 
-/** A quiet chip, in the look of the catalog's tag chips. */
-function Chip({ children }: { children: ReactNode }) {
+/** A quiet chip, in the look of the catalog's tag chips. Cards cut long text; details wrap it. */
+function Chip({ children, wrap = false }: { children: ReactNode; wrap?: boolean }) {
   return (
     <span className="inline-flex max-w-full items-center rounded-md bg-(--ui-bg-quaternary) px-2 py-0.5 text-[0.6875rem] leading-4 text-(--ui-text-primary)">
-      <span className="truncate">{children}</span>
+      <span className={wrap ? 'break-words' : 'truncate'}>{children}</span>
     </span>
   )
 }
@@ -502,7 +502,9 @@ function KitDetail({
           <DetailSection title={t('tryAsking')}>
             <span className="flex flex-wrap gap-1">
               {expert.quick_prompts.map(prompt => (
-                <Chip key={prompt}>{prompt}</Chip>
+                <Chip key={prompt} wrap>
+                  {prompt}
+                </Chip>
               ))}
             </span>
           </DetailSection>
@@ -511,7 +513,9 @@ function KitDetail({
           <DetailSection title={t('canSay')}>
             <span className="flex flex-wrap gap-1">
               {row.phrases.map(phrase => (
-                <Chip key={phrase}>{phrase}</Chip>
+                <Chip key={phrase} wrap>
+                  {phrase}
+                </Chip>
               ))}
             </span>
           </DetailSection>
