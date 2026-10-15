@@ -23,15 +23,13 @@ import { storedBoolean } from '@/lib/storage'
  *   app/artifacts/index.tsx                            the library opens on local artifacts
  *   app/capabilities/plugins/plugins-tab.tsx           * no desktop (local) plugins, no "open plugins folder"
  *   app/capabilities/skill-market.tsx                  installing from the market says it is in development
- *   app/chat/right-rail/media-preview.tsx              (ours) the player for audio and video files
- *   app/chat/right-rail/office-sheet.tsx               (ours) the sheet viewer: spreadsheets the instance turns into tables
+ *   app/chat/right-rail/office-sheet.tsx              (ours) the sheet viewer: spreadsheets the instance turns into tables
  *   app/chat/right-rail/office-slides.tsx              (ours) the page viewer: decks and documents the instance renders page by page
  *   app/chat/right-rail/pdf-preview.tsx                (ours) the PDF viewer: pdf.js in the page, in the page viewer's look
  *   app/chat/right-rail/preview-file.tsx               Office files fall back to the PDF the instance converts them to
  *   app/chat/right-rail/preview-pane.tsx               HTML files from the instance run their scripts, sandboxed;
  *                                                      slide decks and documents open in the page viewer, spreadsheets in
- *                                                      the sheet viewer, PDFs in the PDF viewer, audio and video in the
- *                                                      player
+ *                                                      the sheet viewer, PDFs in the PDF viewer
  *   app/chat/sidebar/filter-menu.tsx                   * no profile submenu (filter / new / import)
  *   app/chat/sidebar/index.tsx                         * no messaging platforms or session import entry
  *   app/chat/sidebar/profile-switcher.tsx              * no add / import profile, no "connect gateway"
@@ -50,7 +48,8 @@ import { storedBoolean } from '@/lib/storage'
  *   app/shell/maas-account-status.tsx                  signing out keeps the instance: the confirmation says so
  *   contrib/plugins.ts                                 * no Bot Mode (the BOTS tab): its plugin is not started
  *   lib/local-preview.ts                               Office files (pptx, docx, xlsx …) are previews, never read as text
- *   lib/media.ts                                       audio and video in the chat play straight from the instance
+ *   lib/media.ts                                       audio and video play straight from the instance (in the chat and
+ *                                                      in the preview pane's own player, formats/media-preview.tsx)
  *   lib/model-options.ts                               * model pickers: the platform's providers only
  *   store/developer-mode.ts                            flipping UniWork's developer mode reloads the page
  *   store/preview.ts                                   no in-app browser: links and URL previews open in a new tab
@@ -302,16 +301,6 @@ export function browserMediaPlaybackUrl(path: string): null | Promise<string> {
   return isBrowserShell() ? import('@/dev/browser-bridge').then(bridge => bridge.mediaPlaybackUrl(path)) : null
 }
 
-// The audio and video extensions of lib/media.ts (which imports this module).
-const PLAYABLE_MEDIA_RE = /\.(?:avi|flac|m4a|mkv|mov|mp3|mp4|ogg|opus|wav|webm)$/i
-
-/** Audio and video files open in the preview pane's player
- * (app/chat/right-rail/media-preview.tsx). Upstream reads them as binary and
- * offers to show the bytes as text. */
-export function previewsMediaInPanel(path: string): boolean {
-  return isBrowserShell() && PLAYABLE_MEDIA_RE.test(path)
-}
-
 const INSTANCE_LOCAL_HOST_RE = /^(?:localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|\[::1\])$/i
 
 /** A web address on the agent's own machine (a dev server it started, …). In
@@ -413,10 +402,6 @@ interface BrowserShellCopy {
   instanceLocalUrl: (host: string) => string
   instanceOutdated: string
   mcpKeyStale: string
-  media: {
-    failed: string
-    loading: string
-  }
   movedToTrash: (name: string) => string
   officePreview: Record<OfficePreviewErrorCode, string>
   open: string
@@ -483,10 +468,6 @@ const COPY: Record<'en' | 'zh', BrowserShellCopy> = {
       `${host} is a web service inside your cloud instance. The browser version cannot open it yet.`,
     instanceOutdated: 'Your instance is being upgraded. Reload the page and try again.',
     mcpKeyStale: 'A masked key on this page is out of date. Reload the page and save again.',
-    media: {
-      failed: 'This file does not play in the browser. Download it instead.',
-      loading: 'Loading…'
-    },
     movedToTrash: (name: string) => `Moved “${name}” to the recycle bin.`,
     officePreview: {
       convert_failed:
@@ -559,10 +540,6 @@ const COPY: Record<'en' | 'zh', BrowserShellCopy> = {
     instanceLocalUrl: (host: string) => `这是实例里的网页服务（${host}），浏览器版暂时打不开。`,
     instanceOutdated: '实例正在升级，请刷新页面后再试。',
     mcpKeyStale: '页面上打了码的 key 已经过期，请刷新页面后再保存。',
-    media: {
-      failed: '浏览器放不了这个文件，请下载后查看。',
-      loading: '正在加载…'
-    },
     movedToTrash: (name: string) => `已把「${name}」移到回收站。`,
     officePreview: {
       convert_failed: '这个文件转不成预览，可能已损坏或格式不受支持，请下载后查看。',

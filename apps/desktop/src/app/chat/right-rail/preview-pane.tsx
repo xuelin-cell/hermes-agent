@@ -13,7 +13,6 @@ import { isElementInHiddenPane } from '@/components/pane-shell/pane-visibility'
 import { Tip } from '@/components/ui/tooltip'
 import { type Translations, useI18n } from '@/i18n'
 import {
-  previewsMediaInPanel,
   previewsOfficeAsPages,
   previewsOfficeAsSheet,
   previewsPdfInViewer,
@@ -54,7 +53,6 @@ import { $selectedStoredSessionId } from '@/store/session'
 import { canOpenBrowserWindow, isBrowserWindow } from '@/store/windows'
 
 import { FormatPreview } from './formats/format-preview'
-import { MediaPreview } from './media-preview'
 import { OfficeSheet } from './office-sheet'
 import { OfficeSlides } from './office-slides'
 import { PdfPreview } from './pdf-preview'
@@ -1447,8 +1445,6 @@ export function PreviewPane({
               <OfficeSheet reloadKey={localReloadKey} target={target} />
             ) : previewsPdfInViewer(target.path || target.source) ? (
               <PdfPreview reloadKey={localReloadKey} target={target} />
-            ) : previewsMediaInPanel(target.path || target.source) ? (
-              <MediaPreview reloadKey={localReloadKey} target={target} />
             ) : (
               <FormatPreview
                 onClose={onClose}
