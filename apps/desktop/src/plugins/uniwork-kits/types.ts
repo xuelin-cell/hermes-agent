@@ -15,6 +15,12 @@ export interface KitRow {
   name: string
   kind: string
   display_name: string
+  /** Experts: the subtitle under the name (e.g. 东方财富妙想). */
+  profession: string
+  /** What the package does, in one or two sentences. */
+  description: string
+  /** A few of its Chinese trigger phrases — what a user can say to use it. */
+  phrases: string[]
   version: string
   enabled: boolean | null
   profile: string

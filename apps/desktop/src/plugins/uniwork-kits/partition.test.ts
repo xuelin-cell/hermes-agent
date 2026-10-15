@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { partition } from './partition'
+import { matchesQuery, partition } from './partition'
 import type { KitRow } from './types'
 
 function row(partial: Partial<KitRow> & Pick<KitRow, 'kind' | 'name'>): KitRow {
   return {
     agent_count: 0,
+    description: '',
     display_name: partial.name,
     enabled: partial.kind === 'expert' ? null : true,
     market_id: '',
@@ -13,6 +14,8 @@ function row(partial: Partial<KitRow> & Pick<KitRow, 'kind' | 'name'>): KitRow {
     missing_secrets: [],
     oauth_servers: [],
     pending_triggers: 0,
+    phrases: [],
+    profession: '',
     profile: '',
     self: false,
     skill_count: 0,
@@ -40,5 +43,25 @@ describe('kit shelves', () => {
 
     expect(shelves.kits.map(item => item.name)).toEqual(['equity-research'])
     expect(shelves.experts).toEqual([])
+  })
+})
+
+describe('kit search', () => {
+  const kit = row({
+    description: '用 pptxgenjs 生成演示文稿',
+    display_name: 'PPT 写作',
+    kind: 'kit',
+    name: 'ppt-writer',
+    phrases: ['做个PPT', '写幻灯片']
+  })
+
+  it('matches the name, description and trigger phrases, ignoring case', () => {
+    for (const query of ['', 'PPT-writer', '演示文稿', '幻灯片', 'ppt 写作']) {
+      expect(matchesQuery(kit, query)).toBe(true)
+    }
+  })
+
+  it('needs every word to match', () => {
+    expect(matchesQuery(kit, 'ppt 基金')).toBe(false)
   })
 })
