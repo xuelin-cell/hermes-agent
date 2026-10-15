@@ -6,6 +6,7 @@ never what they are set to.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -51,6 +52,49 @@ def _missing(target: Path, entry: Dict[str, Any]) -> List[str]:
     return missing
 
 
+_MANIFEST_SPOTS = ("plugin.json", ".codebuddy-plugin/plugin.json", ".claude-plugin/plugin.json")
+
+
+def _description(home: Path, entry: Dict[str, Any]) -> str:
+    """What the card says the package does: the expert's intro, else the manifest's own line.
+
+    Entries installed before the description was recorded read it from the
+    retained package copy.
+    """
+    intro = entry.get("intro") if isinstance(entry.get("intro"), dict) else {}
+    text = str(intro.get("description") or entry.get("description") or "")
+    if text or not entry.get("source_dir"):
+        return text
+    from .host_rules import localized
+
+    source = home / str(entry["source_dir"])
+    for spot in _MANIFEST_SPOTS:
+        try:
+            manifest = json.loads((source / spot).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(manifest, dict):
+            return localized(manifest.get("description"))
+    return ""
+
+
+_CARD_PHRASES = 8
+
+
+def _phrases(entry: Dict[str, Any]) -> List[str]:
+    """A few of the package's Chinese trigger phrases — what a user can say to use it."""
+    out: List[str] = []
+    table = entry.get("triggers") if isinstance(entry.get("triggers"), dict) else {}
+    for phrases in table.values():
+        for phrase in phrases if isinstance(phrases, list) else []:
+            text = str(phrase).strip()
+            if text and text not in out:
+                out.append(text)
+            if len(out) >= _CARD_PHRASES:
+                return out
+    return out
+
+
 def _row(home: Path, name: str, entry: Dict[str, Any]) -> Dict[str, Any]:
     target = _config_home(home, entry)
     state = entry.get("trigger_state") if isinstance(entry.get("trigger_state"), dict) else {}
@@ -59,6 +103,9 @@ def _row(home: Path, name: str, entry: Dict[str, Any]) -> Dict[str, Any]:
         "name": name,
         "kind": kind,
         "display_name": str(entry.get("display_name") or name),
+        "profession": str(entry.get("profession") or ""),
+        "description": _description(home, entry),
+        "phrases": _phrases(entry),
         "version": str(entry.get("version") or ""),
         "enabled": None if kind == "expert" else bool(entry.get("enabled", True)),
         "profile": str(entry.get("profile") or ""),

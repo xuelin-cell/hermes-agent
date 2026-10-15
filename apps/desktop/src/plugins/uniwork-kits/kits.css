@@ -1,0 +1,38 @@
+/* Kit and expert cards in the look of the Skills catalog (技能与工具): one
+   accent per card (`--kit-accent`, set by class) washes a soft gradient over
+   the card surface, and hover rings it in the primary color. Plugins cannot
+   import the app's catalog.css, so the recipe is repeated here. */
+[data-kit-card] {
+  --kit-rest-y: 100%;
+  --kit-tint: 10%;
+  --kit-edge: 20%;
+  border-color: color-mix(in srgb, var(--kit-accent) var(--kit-edge), var(--ui-stroke-tertiary));
+  background: radial-gradient(
+      140% 100% at 0% var(--kit-rest-y),
+      color-mix(in srgb, var(--kit-accent) var(--kit-tint), transparent),
+      transparent 70%
+    )
+    var(--ui-chat-bubble-background);
+  transition:
+    border-color 0.1s ease,
+    box-shadow 0.1s ease;
+}
+
+:root.dark [data-kit-card] {
+  --kit-rest-y: 0%;
+  --kit-tint: 18%;
+  --kit-edge: 24%;
+}
+
+[data-kit-card]:hover {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 20%, transparent);
+}
+
+/* Same tracks as the catalog grid: cards in a row share one height. */
+.kits-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr));
+  grid-auto-rows: minmax(12rem, auto);
+  gap: calc(var(--spacing) * 3);
+}

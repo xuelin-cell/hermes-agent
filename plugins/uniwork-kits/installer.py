@@ -686,6 +686,7 @@ def install_into_home(
     entry: Dict[str, Any] = {
         "kind": entry_kind,
         "display_name": plan.display_name(),
+        "description": host_rules.localized(plan.manifest.description),
         "version": plan.version,
         "digest": plan.digest,
         "enabled": enabled,

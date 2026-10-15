@@ -688,12 +688,19 @@ def test_api_lists_toggles_config_and_background_install(kits, profile_env, kit_
     app.include_router(module.router, prefix="/api/plugins/uniwork-kits")
     client = TestClient(app)
 
-    kits.installer.install(kit_pkg, profile_env, triggers={})
+    kits.installer.install(kit_pkg, profile_env, triggers={"demo-kit": {"triggers": {"skill:alpha-probe": ["阿尔法探测"]}}})
     listed = client.get("/api/plugins/uniwork-kits/")
     assert listed.status_code == 200
     body = listed.json()["plugins"]
     demo = next(row for row in body if row["name"] == "demo-kit")
     assert demo["skill_count"] >= 1
+    # The card says what the kit does and what a user can say to use it.
+    assert demo["description"] == "演示套件，用来测试安装器" and "阿尔法探测" in demo["phrases"]
+    index = kits.store.load_index(profile_env)
+    del index["plugins"]["demo-kit"]["description"]  # installed before descriptions were recorded
+    kits.store.save_index(profile_env, index)
+    older = next(row for row in client.get("/api/plugins/uniwork-kits/").json()["plugins"] if row["name"] == "demo-kit")
+    assert older["description"] == "演示套件，用来测试安装器"
     assert "DEMO_KIT_API_KEY" in demo["missing_secrets"]
     assert "kept-secret" not in listed.text
 

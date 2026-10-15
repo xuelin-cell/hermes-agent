@@ -20,3 +20,18 @@ export function partition(rows: KitRow[]): KitShelves {
 
   return { kits, experts }
 }
+
+/** Whether *row* matches a search: every word must appear in its name, description or phrases. */
+export function matchesQuery(row: KitRow, query: string): boolean {
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean)
+
+  if (words.length === 0) {
+    return true
+  }
+
+  const haystack = [row.name, row.display_name, row.profession, row.description, ...(row.phrases ?? [])]
+    .join('\n')
+    .toLowerCase()
+
+  return words.every(word => haystack.includes(word))
+}
