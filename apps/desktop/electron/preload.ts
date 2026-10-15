@@ -356,7 +356,9 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   readWindowBelow: () => ipcRenderer.invoke('hermes:window:readBelow'),
   readFileDataUrl: filePath => ipcRenderer.invoke('hermes:readFileDataUrl', filePath),
   // 只调用当前账号桌面的受限转换接口，缓存路径由主进程决定。
-  convertOfficePreview: filePath => ipcRenderer.invoke('hermes:office-preview:convert', filePath),
+  convertOfficePreview: (filePath, requestId) =>
+    ipcRenderer.invoke('hermes:office-preview:convert', filePath, requestId),
+  cancelOfficePreview: requestId => ipcRenderer.invoke('hermes:office-preview:cancel', requestId),
   readFileDataUrlForAttach: filePath => ipcRenderer.invoke('hermes:readFileDataUrlForAttach', filePath),
   dataUrlReadMax: {
     get: () => ipcRenderer.invoke('hermes:data-url-read-max:get'),

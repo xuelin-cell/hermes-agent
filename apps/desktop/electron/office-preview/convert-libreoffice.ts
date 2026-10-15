@@ -8,7 +8,7 @@ import type { ComConversionResult } from './convert-com'
 import type { OfficeCliProgram } from './detect'
 import { runOfficeProcess } from './run-process'
 
-/** 独立配置只用于本次转换；超时或异常终止时保留现场，不碰用户 LibreOffice。 */
+/** 独立配置只用于本次转换；超时时结束本次的整个进程树，无法确认结束才保留现场，不碰用户 LibreOffice。 */
 export async function convertLibreOffice(
   program: OfficeCliProgram,
   source: string,
@@ -52,8 +52,8 @@ export async function convertLibreOffice(
       { cwd: directory, env: process.env, timeoutMs }
     )
 
-    // 失败时辅助进程可能已有后代；没有准确归属就不强杀，也不删除仍可能在用的配置。
-    cleanupSafe = !result.failure || result.failure === 'unavailable'
+    // 本次进程树是由我们启动的；只有超时且没能确认结束整棵树时，才可能还有进程在用配置。
+    cleanupSafe = result.stopped !== false
 
     return result.failure
       ? { ok: false, code: result.failure, cleanupSafe }

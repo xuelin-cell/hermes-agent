@@ -43,8 +43,9 @@ export default function SlidesPreview({ onFailure, path, reloadKey, target }: Fo
   useEffect(() => {
     let active = true
     let owned: PdfPages | null = null
+    const request = new AbortController()
     setSource(null)
-    void readOfficePreviewPdf(path)
+    void readOfficePreviewPdf(path, request.signal)
       .then(bytes => (active ? openPdfPages(bytes) : null))
       .then(next => {
         owned = next
@@ -63,6 +64,7 @@ export default function SlidesPreview({ onFailure, path, reloadKey, target }: Fo
 
     return () => {
       active = false
+      request.abort()
       void owned?.dispose()
     }
   }, [onFailure, path, reloadKey])

@@ -15,7 +15,7 @@ const originalCreate = URL.createObjectURL
 const originalRevoke = URL.revokeObjectURL
 const pdf = Uint8Array.from(new TextEncoder().encode('%PDF-1.7\ncontrolled conversion\n%%EOF'))
 const success: OfficePreviewResult = { ok: true, pdf, converter: 'wps', version: 'fixture-version' }
-const convert = vi.fn<(path: string) => Promise<OfficePreviewResult>>()
+const convert = vi.fn<(path: string, requestId: string) => Promise<OfficePreviewResult>>()
 const onFailure = vi.fn()
 
 /** 文件树与聊天卡片交给预览中心的同一种目标，不另造 Word 专属路径。 */
@@ -36,6 +36,7 @@ beforeEach(() => {
   onFailure.mockReset()
   window.hermesDesktop = {
     convertOfficePreview: convert,
+    cancelOfficePreview: vi.fn(async () => undefined),
     revealPath: vi.fn(async () => true),
     saveGatewayFile: vi.fn(async () => ({ canceled: true, saved: false }))
   } as never
@@ -63,7 +64,7 @@ it.each(['docx', 'doc', 'odt'])('预览中心把 %s 转成 PDF，以 Blob iframe
   const frame = await screen.findByTitle(file.label)
   expect(frame.tagName).toBe('IFRAME')
   expect(frame.getAttribute('src')).toBe('blob:word-preview')
-  expect(convert).toHaveBeenCalledWith(file.path)
+  expect(convert).toHaveBeenCalledWith(file.path, expect.any(String))
   const blob = vi.mocked(URL.createObjectURL).mock.calls[0][0] as Blob
   expect(blob.type).toBe('application/pdf')
   expect(new Uint8Array(await blob.arrayBuffer())).toEqual(pdf)
@@ -139,6 +140,10 @@ it('换文件后旧转换不覆盖新文件，也不创建额外的 Blob 地址'
   await act(async () => resolve(success))
   expect(URL.createObjectURL).toHaveBeenCalledTimes(1)
   expect(screen.queryByTitle(target().label)).toBeNull()
+  // 离开旧文件时取消它自己的那次请求，排队中的旧转换不再挡住新文件。
+  const [, firstRequest] = convert.mock.calls[0]
+  expect(window.hermesDesktop.cancelOfficePreview).toHaveBeenCalledWith(firstRequest)
+  expect(window.hermesDesktop.cancelOfficePreview).toHaveBeenCalledTimes(1)
 })
 
 it('切换连接后忽略旧转换，缺少桥接和未知异常统一为不可用', async () => {
@@ -161,6 +166,7 @@ it('切换连接后忽略旧转换，缺少桥接和未知异常统一为不可�
   window.hermesDesktop = {} as never
   await expect(readOfficePreviewPdf(target().path)).rejects.toEqual({ code: 'unavailable' })
   window.hermesDesktop = {
+    cancelOfficePreview: vi.fn(async () => undefined),
     convertOfficePreview: vi.fn().mockRejectedValue(new Error('private paths and secrets'))
   } as never
   await expect(readOfficePreviewPdf(target().path)).rejects.toEqual({ code: 'unavailable' })

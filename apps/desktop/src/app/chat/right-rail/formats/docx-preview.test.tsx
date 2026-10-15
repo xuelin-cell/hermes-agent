@@ -68,6 +68,7 @@ beforeEach(() => {
   panelWidth = 420
   window.hermesDesktop = {
     convertOfficePreview: convert,
+    cancelOfficePreview: vi.fn(async () => undefined),
     readFileDataUrl: read,
     revealPath: vi.fn(),
     saveGatewayFile: vi.fn()
@@ -119,7 +120,7 @@ it('转换不可用后真实落到 docx，使用原读取接口并随面板缩�
   expect(frame.srcdoc).toContain('中文文档')
   expect(frame.getAttribute('sandbox')).toBe('')
   expect(frame.getAttribute('referrerpolicy')).toBe('no-referrer')
-  expect(convert).toHaveBeenCalledWith(file.path)
+  expect(convert).toHaveBeenCalledWith(file.path, expect.any(String))
   expect(read).toHaveBeenCalledWith(file.path)
   expect(frame.style.transform).toBe(`scale(${396 / 816})`)
   act(() => {

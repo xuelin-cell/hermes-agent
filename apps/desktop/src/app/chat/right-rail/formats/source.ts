@@ -42,16 +42,22 @@ export async function readPreviewBytes(path: string): Promise<ArrayBuffer> {
   }
 }
 
-/** 本机才请求受限转换；连接变化或未知异常不把旧产物及内部错误交给显示器。 */
-export async function readOfficePreviewPdf(path: string): Promise<Uint8Array> {
+/** 本机才请求受限转换；连接变化或未知异常不把旧产物及内部错误交给显示器。signal 取消时通知主进程跳过排队中的转换。 */
+export async function readOfficePreviewPdf(path: string, signal?: AbortSignal): Promise<Uint8Array> {
+  const desktop = window.hermesDesktop
+  const requestId = crypto.randomUUID()
+  // 只取消本次请求；主进程按发送页面和编号定位，不会影响其它页面的同一文件。
+  const cancel = () => void desktop?.cancelOfficePreview(requestId)
+
   try {
     const owner = desktopFsCacheKey()
 
-    if ($connection.get()?.mode === 'remote' || !window.hermesDesktop?.convertOfficePreview) {
+    if ($connection.get()?.mode === 'remote' || !desktop?.convertOfficePreview) {
       throw { code: 'unavailable' }
     }
 
-    const result = await window.hermesDesktop.convertOfficePreview(path)
+    signal?.addEventListener('abort', cancel, { once: true })
+    const result = await desktop.convertOfficePreview(path, requestId)
 
     if (owner !== desktopFsCacheKey()) {throw { code: 'unavailable' }}
 
@@ -60,6 +66,8 @@ export async function readOfficePreviewPdf(path: string): Promise<Uint8Array> {
     return result.pdf
   } catch (error) {
     throw previewFailure(error)
+  } finally {
+    signal?.removeEventListener('abort', cancel)
   }
 }
 

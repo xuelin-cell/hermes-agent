@@ -15,9 +15,10 @@ export default function OfficePdfPreview({ onFailure, path, reloadKey, target }:
   useEffect(() => {
     let active = true
     let objectUrl: string | undefined
+    const request = new AbortController()
     setUrl(null)
 
-    void readOfficePreviewPdf(path)
+    void readOfficePreviewPdf(path, request.signal)
       .then(pdf => {
         if (!active) {
           return
@@ -34,6 +35,7 @@ export default function OfficePdfPreview({ onFailure, path, reloadKey, target }:
 
     return () => {
       active = false
+      request.abort()
 
       if (objectUrl) {
         URL.revokeObjectURL(objectUrl)

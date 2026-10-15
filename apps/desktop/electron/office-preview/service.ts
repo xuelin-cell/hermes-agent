@@ -55,6 +55,34 @@ function failure(error: unknown): OfficePreviewResult {
   }
 }
 
+/** 发布前唯一的产物检查：普通文件、非空、不超过上限、以 PDF 文件头开头；合格返回 null。 */
+async function pdfFailure(pdfPath: string): Promise<OfficePreviewFailureCode | null> {
+  try {
+    const stat = await fs.lstat(pdfPath)
+
+    if (!stat.isFile() || stat.isSymbolicLink() || !stat.size) {
+      return 'convert_failed'
+    }
+
+    if (stat.size > OFFICE_PDF_MAX_BYTES) {
+      return 'too_large'
+    }
+
+    const handle = await fs.open(pdfPath, 'r')
+    const header = Buffer.alloc(5)
+
+    try {
+      await handle.read(header, 0, 5, 0)
+    } finally {
+      await handle.close()
+    }
+
+    return header.toString() === '%PDF-' ? null : 'convert_failed'
+  } catch {
+    return 'convert_failed'
+  }
+}
+
 /** 固定账号缓存，只把原文件的英文副本交给转换器，全进程串行转换。 */
 export function createOfficePreviewService(desktopState: string, overrides: Partial<ServiceDeps> = {}) {
   const deps: ServiceDeps = {
@@ -81,8 +109,8 @@ export function createOfficePreviewService(desktopState: string, overrides: Part
     }
   }
 
-  /** 转换成功还要验证 PDF；失败只在安全收尾后尝试下一厂家。 */
-  async function convert(filePath: string): Promise<OfficePreviewResult> {
+  /** 转换成功还要验证 PDF；失败只在安全收尾后尝试下一厂家。请求方离开时传入的 signal 会取消，排队中的转换随之跳过。 */
+  async function convert(filePath: string, signal?: AbortSignal): Promise<OfficePreviewResult> {
     try {
       if (!deps.active()) {
         return { ok: false, code: 'unavailable' }
@@ -96,18 +124,15 @@ export function createOfficePreviewService(desktopState: string, overrides: Part
 
       const source = await sourceInfo(filePath)
 
-      return await jobs.run(cache.directory, source.version, async () => {
+      /** 轮到这个请求时执行的一次转换；排队期间没人再等就不会执行。 */
+      const work = async (): Promise<OfficePreviewResult> => {
         if (!deps.active()) {
           return { ok: false, code: 'unavailable' }
         }
 
+        // 排队期间文件可能又被保存过：以开始转换时的版本为准，转换并缓存最新内容。
         const current = await sourceInfo(filePath)
-
-        if (current.version !== source.version) {
-          return { ok: false, code: 'convert_failed' }
-        }
-
-        const cached = await cache.get(source.version)
+        const cached = await cache.get(current.version)
 
         if (cached) {
           return { ok: true, pdf: cached.pdf, version: cached.version, converter: cached.converter }
@@ -121,11 +146,11 @@ export function createOfficePreviewService(desktopState: string, overrides: Part
 
         try {
           const copy = path.join(work, 'source' + path.extname(filePath).toLowerCase())
-          await fs.copyFile(source.realPath, copy)
+          await fs.copyFile(current.realPath, copy)
 
           if (
-            (await sourceInfo(filePath)).version !== source.version ||
-            (await fs.stat(copy)).size !== source.stat.size
+            (await sourceInfo(filePath)).version !== current.version ||
+            (await fs.stat(copy)).size !== current.stat.size
           ) {
             return { ok: false, code: 'convert_failed' }
           }
@@ -174,37 +199,16 @@ export function createOfficePreviewService(desktopState: string, overrides: Part
               continue
             }
 
-            try {
-              const stat = await fs.lstat(result.pdfPath)
+            const invalid = await pdfFailure(result.pdfPath)
 
-              if (!stat.isFile() || stat.isSymbolicLink() || !stat.size) {
-                throw { code: 'convert_failed' }
-              }
-
-              if (stat.size > OFFICE_PDF_MAX_BYTES) {
-                throw { code: 'too_large' }
-              }
-
-              const handle = await fs.open(result.pdfPath, 'r')
-              const header = Buffer.alloc(5)
-
-              try {
-                await handle.read(header, 0, 5, 0)
-              } finally {
-                await handle.close()
-              }
-
-              if (header.toString() !== '%PDF-') {
-                throw { code: 'convert_failed' }
-              }
-            } catch (error) {
-              code = (error as NodeJS.ErrnoException)?.code === 'too_large' ? 'too_large' : 'convert_failed'
+            if (invalid) {
+              code = invalid
 
               continue
             }
 
-            await cache.publish(source.version, result.pdfPath, provider)
-            const published = await cache.get(source.version)
+            await cache.publish(current.version, result.pdfPath, provider)
+            const published = await cache.get(current.version)
 
             return published
               ? { ok: true, pdf: published.pdf, version: published.version, converter: published.converter }
@@ -213,13 +217,12 @@ export function createOfficePreviewService(desktopState: string, overrides: Part
 
           return { ok: false, code }
         } finally {
-          if (safe) {
-            await cache.discardWorkDirectory(work)
-          } else {
-            await cache.preserveWorkDirectory(work)
-          }
+          // 清理出错（文件仍被占用等）不改变已经得到的结果；没删掉的临时目录由之后的淘汰回收。
+          await (safe ? cache.discardWorkDirectory(work) : cache.preserveWorkDirectory(work)).catch(() => undefined)
         }
-      })
+      }
+
+      return await jobs.run(cache.directory, source.version, work, signal)
     } catch (error) {
       return failure(error)
     }

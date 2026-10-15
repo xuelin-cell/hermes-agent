@@ -59,6 +59,32 @@ describe('Office preview jobs', () => {
     expect(order).toEqual(['A', 'B', 'C'])
   })
 
+  it('skips a queued job once every requester has left, but finishes a job that has started', async () => {
+    const jobs = new OfficePreviewJobs<string>()
+    const running = gate<string>()
+    const viewing = new AbortController()
+    const started = jobs.run('account-A', 'viewing', () => running.promise, viewing.signal)
+
+    const left = new AbortController()
+    const abandonedWork = vi.fn(async () => 'nobody is waiting')
+    const abandoned = jobs.run('account-A', 'abandoned', abandonedWork, left.signal)
+    const stillWanted = new AbortController()
+    const sharedWork = vi.fn(async () => 'shared PDF')
+    const shared = jobs.run('account-A', 'shared', sharedWork, new AbortController().signal)
+    jobs.run('account-A', 'shared', vi.fn(), stillWanted.signal)
+
+    await Promise.resolve()
+    left.abort()
+    viewing.abort()
+    running.resolve('started PDF')
+
+    await expect(started).resolves.toBe('started PDF')
+    await expect(abandoned).rejects.toMatchObject({ code: 'unavailable' })
+    expect(abandonedWork).not.toHaveBeenCalled()
+    await expect(shared).resolves.toBe('shared PDF')
+    expect(sharedWork).toHaveBeenCalledTimes(1)
+  })
+
   it('releases failed work, starts the next job and allows an explicit retry', async () => {
     const jobs = new OfficePreviewJobs<string>()
 

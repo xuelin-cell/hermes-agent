@@ -68,6 +68,7 @@ beforeEach(() => {
   convert.mockReset().mockResolvedValue({ ok: true, pdf: new Uint8Array([1, 2]), version: 'fixture', converter: 'wps' })
   window.hermesDesktop = {
     convertOfficePreview: convert,
+    cancelOfficePreview: vi.fn(async () => undefined),
     revealPath: vi.fn(),
     saveGatewayFile: vi.fn(async () => ({ saved: false, canceled: true }))
   } as never
@@ -148,7 +149,7 @@ it.each(['pptx', 'ppt', 'odp'])('%s 从正式预览中心接入，保留 32 页�
   expect(doc.querySelectorAll('[data-slide]')).toHaveLength(book.pages.length)
   await screen.findByAltText('Slide 1')
   expect(draw).toHaveBeenCalledTimes(1)
-  expect(convert).toHaveBeenCalledWith(file.path)
+  expect(convert).toHaveBeenCalledWith(file.path, expect.any(String))
   expect(mock.open).toHaveBeenCalledWith(new Uint8Array([1, 2]))
   // DOM 带有 React 循环引用，只核对容器身份，不对整棵节点做深比较。
   expect(observer.options?.root).toBe(list())

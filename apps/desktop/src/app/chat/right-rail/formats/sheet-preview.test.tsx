@@ -70,6 +70,7 @@ beforeEach(() => {
   window.hermesDesktop = {
     readFileDataUrl: read,
     convertOfficePreview: convert,
+    cancelOfficePreview: vi.fn(async () => undefined),
     revealPath: vi.fn(),
     saveGatewayFile: vi.fn(async () => ({ saved: false, canceled: true }))
   } as never
@@ -144,7 +145,7 @@ it('损坏内容和组件异常均进入现有 PDF 候选，关闭后释放 PDF 
   read.mockResolvedValue('data:application/octet-stream;base64,UEsDBAA=')
   const view = render(<FormatPreview reloadKey={0} target={target()} />)
   expect(await screen.findByTitle(target().label)).toHaveProperty('tagName', 'IFRAME')
-  expect(convert).toHaveBeenCalledWith(target().path)
+  expect(convert).toHaveBeenCalledWith(target().path, expect.any(String))
   view.unmount()
   expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:sheet-pdf')
   mock.crash = true
@@ -152,7 +153,7 @@ it('损坏内容和组件异常均进入现有 PDF 候选，关闭后释放 PDF 
   vi.spyOn(console, 'error').mockImplementation(() => undefined)
   render(<FormatPreview reloadKey={0} target={target('xls')} />)
   expect(await screen.findByTitle(target('xls').label)).toBeTruthy()
-  expect(convert).toHaveBeenCalledWith(target('xls').path)
+  expect(convert).toHaveBeenCalledWith(target('xls').path, expect.any(String))
 })
 
 it('内嵌图片解码失败经过正式预览入口降级，不挂载空白表格', async () => {
