@@ -10,7 +10,6 @@ import { useApprovalModeStatusbarItem } from '@/app/shell/approval-mode-menu'
 import { ContextUsagePanel } from '@/app/shell/context-usage-panel'
 import { GatewayMenuPanel } from '@/app/shell/gateway-menu-panel'
 import { useContextBreakdown } from '@/app/shell/hooks/use-context-breakdown'
-import { useMaasAccountStatusbarItem } from '@/app/shell/maas-account-status'
 import { useSystemResourcesStatusbarItem } from '@/app/shell/system-resources-statusbar'
 import { $paneVisible } from '@/components/pane-shell/tree/store'
 import { Badge } from '@/components/ui/badge'
@@ -542,7 +541,8 @@ export function useStatusbarItems({
         variant: 'action'
       },
       {
-        hidden: !currentCwd,
+        // 工作目录保留在会话与输入工具中，底栏不再显示 workspace 按钮。
+        hidden: true,
         icon: <FolderOpen className="size-3" />,
         id: 'workspace-cwd',
         // Prefer the named project; fall back to the cwd leaf. Hover tip uses
@@ -754,16 +754,14 @@ export function useStatusbarItems({
     ]
   )
 
-  const accountItem = useMaasAccountStatusbarItem()
-
   const leftStatusbarItems = useMemo(
     () => [...coreLeftStatusbarItems, ...extraLeftItems],
     [coreLeftStatusbarItems, extraLeftItems]
   )
 
   const statusbarItems = useMemo(
-    () => [...extraRightItems, ...coreRightStatusbarItems, ...(accountItem ? [accountItem] : [])],
-    [accountItem, coreRightStatusbarItems, extraRightItems]
+    () => [...extraRightItems, ...coreRightStatusbarItems],
+    [coreRightStatusbarItems, extraRightItems]
   )
 
   return { leftStatusbarItems, statusbarItems }

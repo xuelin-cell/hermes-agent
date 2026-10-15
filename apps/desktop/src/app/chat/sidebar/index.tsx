@@ -1,3 +1,4 @@
+import { MaasAccountSidebar } from '@/app/shell/maas-account-status'
 import { KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { useStore } from '@nanostores/react'
@@ -2084,6 +2085,7 @@ export function ChatSidebar({
           </div>
         )}
       </SidebarContent>
+      <MaasAccountSidebar />
       <ProjectDialog />
       {/* One mount for the whole app. The header of WorktreeDialog tells why. */}
       <WorktreeDialog />
