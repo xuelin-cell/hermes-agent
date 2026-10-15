@@ -1,6 +1,7 @@
 import type { ModelCapabilities, ModelOptionProvider, ModelOptionsResult } from '@hermes/shared'
 
 import { getGlobalModelOptions, type HermesGateway } from '@/hermes'
+import { visibleModelOptions } from '@/lib/browser-shell'
 
 type CatalogProviderIdentity = Partial<Pick<ModelOptionProvider, 'aliases' | 'name'>> &
   Pick<ModelOptionProvider, 'slug'>
@@ -178,7 +179,7 @@ export async function requestModelOptions({
     let gatewayOptions: ModelOptionsResult | undefined
 
     try {
-      gatewayOptions = await dispatch<ModelOptionsResult>('model.options', params)
+      gatewayOptions = visibleModelOptions(await dispatch<ModelOptionsResult>('model.options', params))
     } catch (error) {
       gatewayError = error
     }

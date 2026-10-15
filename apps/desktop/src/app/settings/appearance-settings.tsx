@@ -10,6 +10,7 @@ import { Slider } from '@/components/ui/slider'
 import type { DesktopMarketplaceSearchItem } from '@/global'
 import { saveHermesConfig } from '@/hermes'
 import { useI18n } from '@/i18n'
+import { hideForUsers } from '@/lib/browser-shell'
 import { triggerHaptic } from '@/lib/haptics'
 import { Check, Download, Loader2, Palette, Trash2 } from '@/lib/icons'
 import { selectableCardClass } from '@/lib/selectable-card'
@@ -247,7 +248,8 @@ function MarketplaceThemeResults({
     }
   }
 
-  if (!debounced) {
+  // Browser build: no marketplace (it is fetched by the desktop main process).
+  if (!debounced || hideForUsers()) {
     return null
   }
 
@@ -685,6 +687,8 @@ export function AppearanceSettings({ subpage }: AppearanceSettingsProps = {}) {
                     value={matchedScalePreset ?? ('' as UiScalePreset)}
                   />
                 }
+                // Browser build: no app zoom, the page keeps the browser's own.
+                className={hideForUsers() ? 'hidden' : undefined}
                 description={a.uiScaleDesc(zoomPercent)}
                 id={settingElementId(ids.uiScale)}
                 title={a.uiScaleTitle}

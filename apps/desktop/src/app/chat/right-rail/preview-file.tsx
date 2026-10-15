@@ -21,6 +21,7 @@ import { LazyShiki as ShikiHighlighter } from '@/components/chat/shiki-highlight
 import { PageLoader } from '@/components/page-loader'
 import { Tip } from '@/components/ui/tooltip'
 import { translateNow, useI18n } from '@/i18n'
+import { officePreviewPdf, previewsOfficeAsPdf } from '@/lib/browser-shell'
 import {
   desktopFileDiff,
   desktopFsCacheKey,
@@ -772,7 +773,7 @@ export function LocalFilePreview({
   const fsCacheKey = desktopFsCacheKey(connection)
   const filePath = filePathForTarget(target)
   const isImage = target.previewKind === 'image'
-  const isPdf = target.previewKind === 'pdf'
+  const isPdf = target.previewKind === 'pdf' || previewsOfficeAsPdf(filePath)
 
   // eslint-disable-next-line no-restricted-syntax -- legitimate non-atom ref write (see eslint rule comment)
   useEffect(() => {
@@ -815,7 +816,7 @@ export function LocalFilePreview({
         if (isImage || isPdf) {
           // Prefer bytes the caller already handed us (a pasted/dropped
           // screenshot) over re-reading a path that may be transient/unreadable.
-          const dataUrl = target.dataUrl || (await readDesktopFileDataUrl(filePath))
+          const dataUrl = target.dataUrl || (await (officePreviewPdf(filePath) ?? readDesktopFileDataUrl(filePath)))
 
           if (active) {
             setState({ dataUrl, loading: false })

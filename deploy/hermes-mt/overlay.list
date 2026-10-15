@@ -1,0 +1,10 @@
+# 覆盖进实例镜像 /opt/hermes 的仓库路径：本分支在 hermes 源码上的改动和新增。
+# 一行一个，相对仓库根；目录表示其下全部受版本管理的文件。deploy.sh 构建前把它们原样拷进
+# .overlay/（构建目录，不进 git），Dockerfile.cube 再按原路径覆盖进 /opt/hermes，构建后核对镜像里那份。
+
+# UniWork 技能市场与推荐的后端接口（匿名转发元景的公开技能目录）
+hermes_cli/web_routers/skills.py
+
+# UniWork 内置技能：/opt/hermes/skills 下的技能在实例每次启动时同步进用户的技能目录
+# （tools/skills_sync.py：新的加进去，用户删掉的不再加回，用户改过的不覆盖）
+skills/uniwork

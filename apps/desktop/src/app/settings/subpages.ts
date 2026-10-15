@@ -1,3 +1,4 @@
+import { withoutHiddenSubpages } from '@/lib/browser-shell'
 import {
   Archive,
   Bell,
@@ -98,7 +99,7 @@ export function settingsSubpages(view: SettingsView, developerMode = true): read
   }
 
   if (view.startsWith('config:')) {
-    return CONFIG_SUBPAGES[view.slice('config:'.length)] ?? []
+    return withoutHiddenSubpages(view, CONFIG_SUBPAGES[view.slice('config:'.length)] ?? [])
   }
 
   return OTHER_SUBPAGES[view] ?? []

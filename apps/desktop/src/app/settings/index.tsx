@@ -7,6 +7,7 @@ import { KbdCombo } from '@/components/ui/kbd'
 import { Tip } from '@/components/ui/tooltip'
 import { getHermesConfigDefaults, getHermesConfigRecord, saveHermesConfig } from '@/hermes'
 import { useI18n } from '@/i18n'
+import { isSettingsViewHidden } from '@/lib/browser-shell'
 import { triggerHaptic } from '@/lib/haptics'
 import {
   Archive,
@@ -140,6 +141,13 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
   )
 
   const setActiveView = useCallback((view: SettingsViewId) => openSettingsPage(view), [openSettingsPage])
+
+  // Browser build: desktop-only pages are not offered (see lib/browser-shell).
+  useEffect(() => {
+    if (isSettingsViewHidden(requestedView)) {
+      setActiveView('config:appearance' as SettingsViewId)
+    }
+  }, [requestedView, setActiveView])
 
   // Connections merged into the unified Gateways page: land old
   // `?tab=connections` routes/bookmarks there instead of a dead entry.
@@ -517,7 +525,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
   return (
     <OverlayView closeLabel={t.settings.closeSettings} edgeBadge={searchPill} onClose={onClose}>
       <OverlaySplitLayout>
-        <OverlayNav footer={navFooter} groups={navGroups} />
+        <OverlayNav footer={navFooter} groups={navGroups.filter(group => !isSettingsViewHidden(group.id))} />
 
         <OverlayMain className="px-0 pb-0">
           <SettingsBreadcrumbContext.Provider value>

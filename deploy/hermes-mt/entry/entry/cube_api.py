@@ -1,0 +1,512 @@
+"""CubeSandbox 控制面的最小客户端（HTTP + aiohttp，不依赖官方 SDK）。
+
+和 ``docker_api.py`` 平级：那一份是「我们自己用 Docker 建容器」的后端，
+这一份是「让沙箱平台替我们建实例」的后端。只封装租户生命周期要用的那些调用。
+
+与 Docker 后端的三处根本差异，决定了这里的接口为什么长这样：
+
+1. **没有「往未启动的实例里塞文件」这个能力。** Docker 那边是
+   ``put_archive`` 到停着的容器再启动；这里只能等实例跑起来之后，
+   经平台代理调容器内的引导接口（见 ``bootstrap``）。
+
+2. **不建网络、不起名字。** 隔离由平台的 MicroVM 提供，实例标识由平台下发。
+   我们只需要把「用户 → sandbox_id」存进自己的库。
+
+3. **空闲回收是「暂停」不是「停容器」。** 而且暂停不会取消平台的空闲回收：
+   建实例时必须显式把超时动作设成暂停、并允许请求自动唤醒，否则暂停的实例
+   到点会连同可写层（对话库就在上面）一起被销毁，且不报任何错。
+   这两项写死在 ``create_sandbox`` 里，不给调用方传错的机会。
+
+存储分两处，原因见 docs/Hermes多租户-Cube架构说明.html §5：
+对话库放实例可写层（能跑 SQLite，靠暂停保住），用户文件放持久卷（跨实例生命周期）。
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import time
+from typing import Any
+
+import aiohttp
+
+log = logging.getLogger("entry.cube")
+
+# 平台代理按 ``<容器端口>-<沙箱ID>.<域名>`` 解析路由。
+_HOST_TMPL = "{port}-{sandbox_id}.{domain}"
+
+# 交给平台的上游 Host 模板。``${PORT}`` 由平台替换成实际容器端口。
+# hermes 只认回环形式的 Host，见架构说明 §4.1。
+_MASK_REQUEST_HOST = "localhost:${PORT}"
+
+# 数据面流量令牌的请求头（CubeProxy 也认 e2b-traffic-access-token）。
+TRAFFIC_TOKEN_HEADER = "cube-traffic-access-token"
+
+
+class CubeError(Exception):
+    def __init__(self, status: int, message: str):
+        super().__init__(f"cube {status}: {message}")
+        self.status = status
+        self.message = message
+
+
+class SandboxGone(CubeError):
+    """等就绪时控制面确认这台实例已经不存在。调用方该立即重建，而不是等满就绪超时。"""
+
+
+# 引导请求被平台代理挡回时重发：间隔、总时长。见 ``proxy_hiccup``。
+BOOTSTRAP_RETRY_S = 30.0
+BOOTSTRAP_RETRY_INTERVAL_S = 1.0
+
+
+def proxy_hiccup(exc: CubeError) -> bool:
+    """数据面这次失败是平台代理自己挡回来的，请求没到实例：连不上（状态 0），或代理回 502 / 503 / 504
+    （回包是代理的 HTML 页）。转发器自己回的错都是 JSON（``_req`` 里转成 dict 的字符串），不算。
+
+    10-14 换模板时撞上过：转发器刚应答了健康检查，紧接着的引导请求被代理回了 502。"""
+    if exc.status == 0:
+        return True
+    return exc.status in (502, 503, 504) and not (exc.message or "").lstrip().startswith("{")
+
+
+class Cube:
+    """CubeAPI 客户端。
+
+    ``api_base``  控制面地址，例如 ``http://10.0.0.5:3000``
+    ``proxy_base`` 数据面地址（平台代理）。转发用户流量和调容器内引导接口都走它。
+    ``domain``    平台的沙箱域名，用于拼 Host 头
+    ``api_key``   控制面鉴权；集群没开鉴权时留空
+    """
+
+    def __init__(
+        self,
+        api_base: str,
+        proxy_base: str,
+        domain: str,
+        api_key: str = "",
+        template: str = "",
+    ):
+        self.api_base = api_base.rstrip("/")
+        self.proxy_base = proxy_base.rstrip("/")
+        self.domain = domain
+        self.template = template
+        headers = {"X-API-Key": api_key} if api_key else {}
+        self._http = aiohttp.ClientSession(headers=headers)
+        # 限制了公开访问的实例，数据面每个请求都要带它的流量令牌。令牌只在创建响应里
+        # 给一次（查询接口不返回），入口把它存进 PG；这里是进程内的登记表，
+        # 建实例时自动登记，入口从 PG 读到运行态时也登记一次，数据面请求按 sandbox_id 取。
+        self._traffic_tokens: dict[str, str] = {}
+
+    def register_traffic_token(self, sandbox_id: str, token: str) -> None:
+        if sandbox_id and token:
+            self._traffic_tokens[sandbox_id] = token
+
+    def forget_traffic_token(self, sandbox_id: str) -> None:
+        self._traffic_tokens.pop(sandbox_id, None)
+
+    def traffic_token(self, sandbox_id: str) -> str:
+        return self._traffic_tokens.get(sandbox_id, "")
+
+    async def close(self) -> None:
+        await self._http.close()
+
+    # ---- 底层 ----------------------------------------------------------------
+
+    async def _req(
+        self,
+        method: str,
+        path: str,
+        *,
+        base: str | None = None,
+        json_body: Any = None,
+        data: bytes | None = None,
+        headers: dict | None = None,
+        ok: tuple[int, ...] = (200, 201, 204),
+        timeout_s: float = 60,
+    ) -> tuple[int, Any]:
+        url = (base or self.api_base) + path
+        kwargs: dict[str, Any] = {
+            "headers": headers,
+            "timeout": aiohttp.ClientTimeout(total=timeout_s),
+        }
+        if json_body is not None:
+            kwargs["json"] = json_body
+        if data is not None:
+            kwargs["data"] = data
+            kwargs.setdefault("headers", {})
+        try:
+            async with self._http.request(method, url, **kwargs) as resp:
+                text = await resp.text()
+                body: Any
+                try:
+                    body = json.loads(text) if text.strip() else None
+                except json.JSONDecodeError:
+                    body = text
+                if resp.status not in ok:
+                    message = ""
+                    if isinstance(body, dict):
+                        message = str(body.get("message") or body.get("detail") or body)
+                    else:
+                        message = str(body)[:300]
+                    raise CubeError(resp.status, message)
+                return resp.status, body
+        except aiohttp.ClientError as exc:
+            raise CubeError(0, f"{type(exc).__name__}: {exc}") from exc
+        except asyncio.TimeoutError as exc:
+            raise CubeError(0, f"请求超时（{timeout_s}s）") from exc
+
+    def host_for(self, sandbox_id: str, port: int) -> str:
+        """拼平台代理认的 Host 头。"""
+        return _HOST_TMPL.format(port=port, sandbox_id=sandbox_id, domain=self.domain)
+
+    # ---- 卷 ------------------------------------------------------------------
+    #
+    # 卷是独立对象，不随实例销毁。平台返回的 volumeID 与我们传的 name 相同，
+    # 所以直接拿用户 ID 当卷名，不需要在库里额外存一份映射。
+
+    async def list_volumes(self) -> list[dict]:
+        _, body = await self._req("GET", "/volumes")
+        return body or []
+
+    async def ensure_volume(self, name: str, driver: str = "") -> bool:
+        """卷不存在就建。返回 True 表示这次新建的（可据此判断是不是新用户）。"""
+        for vol in await self.list_volumes():
+            if vol.get("name") == name or vol.get("volumeID") == name:
+                return False
+        payload: dict[str, Any] = {"name": name}
+        if driver:
+            payload["driver"] = driver
+        try:
+            await self._req("POST", "/volumes", json_body=payload)
+        except CubeError as exc:
+            # 并发建同名卷时后到的那个会冲突，此时当作已存在。
+            if exc.status == 409:
+                return False
+            raise
+        return True
+
+    async def remove_volume(self, name: str) -> None:
+        """删卷会清空后端数据，不可恢复。只在真的要注销用户时调。"""
+        try:
+            await self._req("DELETE", f"/volumes/{name}", timeout_s=120)
+        except CubeError as exc:
+            if exc.status != 404:
+                raise
+
+    # ---- 沙箱 ----------------------------------------------------------------
+
+    async def create_sandbox(
+        self,
+        *,
+        volume_name: str,
+        workspace_path: str,
+        metadata: dict | None = None,
+        template: str = "",
+        allow_internet: bool = True,
+        private_traffic: bool = False,
+    ) -> str:
+        """建一个实例，返回平台下发的 sandbox_id。
+
+        生命周期那两项是写死的，不给调用方传错的机会：
+        ``timeout=-1`` 永不超时、``onTimeout=pause`` 超时改成暂停而非销毁。
+        少任何一项，暂停的实例都会被平台连同可写层一起回收 —— 对话库就在可写层上，
+        而且这个过程不报错，表现为用户的历史无声无息消失。
+
+        ``private_traffic=True`` 关闭数据面的公开访问（``allowPublicTraffic=false``）：
+        平台返回一个流量令牌，之后数据面上每个请求都要带它，否则 403。令牌登记在
+        本客户端里（``traffic_token(sandbox_id)``），调用方要把它存进 PG，
+        因为查询接口不会再返回它。出网策略不在这里设：平台默认已挡内网。
+        """
+        payload: dict[str, Any] = {
+            "templateID": template or self.template,
+            "timeout": -1,
+            "lifecycle": {"onTimeout": "pause", "autoResume": True},
+            "network": {
+                "maskRequestHost": _MASK_REQUEST_HOST,
+                "allowInternetAccess": allow_internet,
+            },
+            "volumeMounts": [
+                {"name": volume_name, "path": workspace_path, "readOnly": False}
+            ],
+        }
+        if private_traffic:
+            payload["network"]["allowPublicTraffic"] = False
+        if metadata:
+            payload["metadata"] = metadata
+        _, body = await self._req("POST", "/sandboxes", json_body=payload, timeout_s=180)
+        sandbox_id = (body or {}).get("sandboxID")
+        if not sandbox_id:
+            raise CubeError(0, f"创建实例的响应里没有 sandboxID: {str(body)[:200]}")
+        token = str((body or {}).get("trafficAccessToken") or "")
+        if private_traffic and not token:
+            # 平台没给令牌却关了公开访问 ⇒ 这台实例谁都连不上。立刻删掉，别留下一台废实例。
+            try:
+                await self.remove_sandbox(sandbox_id)
+            except CubeError:
+                pass
+            raise CubeError(0, "要求限制公开访问，但创建响应里没有 trafficAccessToken（平台版本不支持？）")
+        self.register_traffic_token(sandbox_id, token)
+        return sandbox_id
+
+    async def list_sandboxes(self) -> list[dict]:
+        """★ 平台的列表接口写死最多返回 200 条、不能翻页。只能用来巡检，不能用来判断某台实例在不在。"""
+        _, body = await self._req("GET", "/sandboxes")
+        return body or []
+
+    async def get_sandbox(self, sandbox_id: str) -> dict | None:
+        """按 ID 查一台实例；平台说没有（404）才返回 None。
+
+        ★ 不能用列表接口找：它最多返回 200 条，集群实例总数超过之后，排在后面的用户
+          会被判成「实例没了」，入口给他新建一台，历史就悄悄没了。
+        """
+        try:
+            _, body = await self._req("GET", f"/sandboxes/{sandbox_id}")
+        except CubeError as exc:
+            if exc.status == 404:
+                return None
+            raise
+        return body if isinstance(body, dict) else None
+
+    async def sandbox_state(self, sandbox_id: str) -> str:
+        """``running`` / ``paused`` / ``gone``（已不存在）。"""
+        sb = await self.get_sandbox(sandbox_id)
+        return "gone" if sb is None else str(sb.get("state") or "unknown")
+
+    async def wait_gone(self, sandbox_id: str, timeout_s: float = 60) -> bool:
+        """删实例之后确认平台上真的没有了。删不干净就不能建新的：两台实例会同写一个卷。"""
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            if await self.get_sandbox(sandbox_id) is None:
+                return True
+            await asyncio.sleep(1.0)
+        return False
+
+    async def pause_sandbox(self, sandbox_id: str) -> None:
+        try:
+            await self._req("POST", f"/sandboxes/{sandbox_id}/pause", json_body={}, timeout_s=180)
+        except CubeError as exc:
+            if exc.status != 404:
+                raise
+
+    async def resume_sandbox(self, sandbox_id: str) -> None:
+        """显式恢复。
+
+        平常不需要调 —— 建实例时开了自动唤醒，请求打到代理会自己把实例叫醒。
+        这个方法留给「想在用户请求到达前先预热」的场景。
+        """
+        await self._req("POST", f"/sandboxes/{sandbox_id}/resume", json_body={}, timeout_s=180)
+
+    async def remove_sandbox(self, sandbox_id: str) -> None:
+        """销毁实例。
+
+        ★ 不可逆，而且会连同可写层一起删掉 —— 对话库就在上面。
+        空闲回收请用 ``pause_sandbox``，只有注销用户时才该调这个。
+        """
+        self.forget_traffic_token(sandbox_id)
+        try:
+            await self._req("DELETE", f"/sandboxes/{sandbox_id}", timeout_s=180)
+        except CubeError as exc:
+            if exc.status != 404:
+                raise
+
+    # ---- 容器内的引导与探活 ----------------------------------------------------
+
+    async def _tenant_req(
+        self,
+        method: str,
+        sandbox_id: str,
+        port: int,
+        path: str,
+        *,
+        json_body: Any = None,
+        timeout_s: float = 30,
+        ok: tuple[int, ...] = (200,),
+        extra_headers: dict[str, str] | None = None,
+    ) -> tuple[int, Any]:
+        """数据面请求的唯一出口：Host 路由头、流量令牌（登记过就带）都在这里加。"""
+        headers = {"Host": self.host_for(sandbox_id, port), **(extra_headers or {})}
+        token = self._traffic_tokens.get(sandbox_id)
+        if token:
+            headers[TRAFFIC_TOKEN_HEADER] = token
+        try:
+            return await self._req(
+                method,
+                path,
+                base=self.proxy_base,
+                headers=headers,
+                json_body=json_body,
+                timeout_s=timeout_s,
+                ok=ok,
+            )
+        except CubeError as exc:
+            if exc.status == 403:
+                # 限制了公开访问的实例回 403 只有两种可能：我们没带令牌（PG 里没有、登记表没登记），
+                # 或平台那边的令牌记录和创建时给的不一致。两种都要人看，日志里说清楚但不打印令牌。
+                log.warning("sandbox %s 数据面 403（%s %s）：%s", sandbox_id[:12], method, path,
+                            "带了令牌仍被拒" if token else "本实例没有登记流量令牌")
+            raise
+
+    async def wait_forwarder(self, sandbox_id: str, port: int, timeout_s: float = 120) -> None:
+        """等容器里的转发进程能应答。
+
+        它不依赖任何用户数据，实测秒级就绪；等不到通常意味着实例根本没起来。
+        """
+        deadline = time.monotonic() + timeout_s
+        last = ""
+        while time.monotonic() < deadline:
+            try:
+                await self._tenant_req("GET", sandbox_id, port, "/__mt/health", timeout_s=8)
+                return
+            except CubeError as exc:
+                last = exc.message or str(exc.status)
+            await asyncio.sleep(0.5)
+        raise CubeError(0, f"转发进程 {timeout_s}s 内没就绪：{last}")
+
+    async def status(self, sandbox_id: str, port: int) -> dict:
+        """问容器：hermes 起了没、引导过没、引导窗口还剩多久，以及忙不忙（``activity``）。"""
+        _, body = await self._tenant_req("GET", sandbox_id, port, "/__mt/status", timeout_s=15)
+        return body if isinstance(body, dict) else {}
+
+    async def bootstrap(
+        self,
+        sandbox_id: str,
+        port: int,
+        *,
+        token: str,
+        files: list[dict],
+        ready_timeout_s: int = 240,
+        state: dict | None = None,
+        skills: dict | None = None,
+    ) -> dict:
+        """把会话令牌和种子文件送进容器，并让它把 hermes 拉起来。
+
+        这是绕开平台时序限制的那条通道：平台下发创建时环境变量是在容器进程
+        已经起来之后，而 hermes 缺了令牌会直接退出、导致实例根本建不起来。
+        详见架构说明 §4.2。
+
+        ``files`` 每项 ``{"path", "content", "overwrite"}``；``overwrite`` 取
+        ``True`` / ``False`` / ``"if-pristine"`` 三者之一，语义见 seed/forward.py。
+        用户配置该用 ``"if-pristine"``：既能盖掉镜像首启种下的默认示例，
+        又不会动用户或 hermes 自己写过的内容。
+
+        ``state`` 是给状态管家的：``{"vol", "owner", "epoch", "restore_from", "force"}``，
+        转发器先按它把上一代的归档恢复到本地盘再拉 hermes；见 seed/mtstate.py。
+
+        ``skills`` 是平台的技能策略，转发器在拉 hermes 之前执行；见 seed/skillpolicy.py。
+
+        只认第一次。实例已经引导过时转发器返回 409「已经引导过了」，这里当作成功 ——
+        调用方重试或多个请求撞上时不该因此失败。★ 同样是 409 的「拒绝启动」（卷上的
+        记录比入口新）**不是**成功，原样抛出，由调用方决定是停下还是带 force 重试。
+
+        被平台代理挡回（``proxy_hiccup``）就隔 1 秒重发，最多 30 秒：转发器的引导是串行的，
+        重复的那个等第一个做完再回「已经引导过了」，所以重发安全。
+        """
+        payload: dict[str, Any] = {"token": token, "files": files, "ready_timeout_s": ready_timeout_s}
+        if state:
+            payload["state"] = state
+        if skills is not None:
+            payload["skills"] = skills
+        deadline = time.monotonic() + BOOTSTRAP_RETRY_S
+        while True:
+            try:
+                _, body = await self._tenant_req(
+                    "POST",
+                    sandbox_id,
+                    port,
+                    "/__mt/bootstrap",
+                    json_body=payload,
+                    timeout_s=ready_timeout_s + 30,
+                )
+                return body if isinstance(body, dict) else {}
+            except CubeError as exc:
+                if exc.status == 409 and "引导过" in (exc.message or ""):
+                    log.info("sandbox %s 已经引导过，跳过", sandbox_id[:12])
+                    return {"ok": True, "already": True}
+                if not proxy_hiccup(exc) or time.monotonic() >= deadline:
+                    raise
+                log.warning("sandbox %s 的引导请求被平台代理挡回（%s），重发", sandbox_id[:12], exc.status)
+            await asyncio.sleep(BOOTSTRAP_RETRY_INTERVAL_S)
+
+    async def sync_state(self, sandbox_id: str, port: int, token: str) -> dict:
+        """让状态管家立即归档一次（暂停前调）。
+
+        返回转发器的整个回包：``archive`` 是归档摘要，``activity`` 是忙不忙和下一个定时任务的时间
+        （老转发器没有这一项）。
+        """
+        _, body = await self._tenant_req(
+            "POST", sandbox_id, port, "/__mt/sync",
+            json_body={}, timeout_s=180, extra_headers={"X-MT-Token": token},
+        )
+        return body if isinstance(body, dict) else {}
+
+    async def drain(self, sandbox_id: str, port: int, token: str) -> dict:
+        """停 hermes、做最终归档（删实例前调）。可重复调。回包同 ``sync_state``。"""
+        _, body = await self._tenant_req(
+            "POST", sandbox_id, port, "/__mt/drain",
+            json_body={}, timeout_s=300, extra_headers={"X-MT-Token": token},
+        )
+        return body if isinstance(body, dict) else {}
+
+    async def wait_hermes(self, sandbox_id: str, port: int, timeout_s: float = 240) -> None:
+        """等 hermes 真的能应答业务请求。
+
+        注意 Host 头由平台按 ``maskRequestHost`` 改写成回环形式，所以这里
+        照常用平台的路由 Host 即可，不需要我们自己伪造回环 Host。
+        """
+        deadline = time.monotonic() + timeout_s
+        last = ""
+        next_probe = 0.0
+        while time.monotonic() < deadline:
+            try:
+                st, body = await self._tenant_req(
+                    "GET", sandbox_id, port, "/api/health", timeout_s=8, ok=(200,)
+                )
+                if isinstance(body, dict) and body.get("ok"):
+                    return
+                last = str(body)[:120]
+            except CubeError as exc:
+                last = exc.message or str(exc.status)
+                unknown = exc.status == 404 or "not found" in last.lower()
+                if unknown and time.monotonic() >= next_probe:
+                    # 数据面说不认识这台实例：可能是刚起来路由还没登记，也可能是实例已经被删了。
+                    # 10-08 真机：外部删实例是异步的，刚删完控制面还说"在"，这里一直等到 180 秒超时。
+                    # 现在每 5 秒问一次控制面，它说没了就立刻报，由调用方当场重建。
+                    next_probe = time.monotonic() + 5.0
+                    if await self.get_sandbox(sandbox_id) is None:
+                        raise SandboxGone(404, f"实例 {sandbox_id[:12]} 已不存在（控制面 404）") from exc
+            await asyncio.sleep(1.0)
+        raise CubeError(0, f"hermes {timeout_s}s 内没就绪：{last}")
+
+    # ---- 空闲回收 --------------------------------------------------------------
+
+    async def sweep_idle(
+        self,
+        active: dict[str, float],
+        idle_seconds: float,
+        metadata_key: str = "",
+        metadata_value: str = "",
+    ) -> list[str]:
+        """把闲置超过阈值的实例暂停掉（不是销毁）。返回被暂停的 sandbox_id。
+
+        ``active`` 是 ``{sandbox_id: 最后活跃的单调时间}``，由入口自己维护。
+        表里没有的实例不动 —— 可能是别的入口实例在管，也可能是刚建还没记上。
+        """
+        now = time.monotonic()
+        paused: list[str] = []
+        for sb in await self.list_sandboxes():
+            sid = sb.get("sandboxID")
+            if not sid or sb.get("state") == "paused":
+                continue
+            if metadata_key and (sb.get("metadata") or {}).get(metadata_key) != metadata_value:
+                continue
+            last = active.get(sid)
+            if last is None or now - last < idle_seconds:
+                continue
+            try:
+                await self.pause_sandbox(sid)
+                paused.append(sid)
+                log.info("sandbox %s 闲置 %.0fs，已暂停", sid[:12], now - last)
+            except CubeError as exc:
+                log.warning("暂停 sandbox %s 失败: %s", sid[:12], exc)
+        return paused

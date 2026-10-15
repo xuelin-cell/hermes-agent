@@ -8,6 +8,7 @@ import type { CSSProperties } from 'react'
 
 import { writeClipboardText } from '@/components/ui/copy-button'
 import { markRightPanePerf } from '@/debug/right-pane-events'
+import { isBrowserTerminalPaste } from '@/lib/browser-shell'
 import { triggerHaptic } from '@/lib/haptics'
 import { isComposerChord } from '@/lib/keybinds/chords'
 import { $previewTarget } from '@/store/preview'
@@ -813,6 +814,10 @@ export function useTerminalSession({
     // to the PTY; every path that doesn't copy or paste returns true, so plain
     // Ctrl+C with no selection still interrupts the running process.
     term.attachCustomKeyEventHandler(event => {
+      if (isBrowserTerminalPaste(event)) {
+        return false
+      }
+
       const intent = terminalClipboardIntent(event, {
         hasSelection: Boolean(term.getSelection()),
         isMac: isMacPlatform()

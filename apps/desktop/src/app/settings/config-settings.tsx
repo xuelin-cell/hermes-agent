@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { getElevenLabsVoices, getHermesConfigSchema, saveHermesConfig } from '@/hermes'
 import { useI18n } from '@/i18n'
+import { hideForUsers } from '@/lib/browser-shell'
 import { triggerHaptic } from '@/lib/haptics'
 import { isSubmitEnter } from '@/lib/ime'
 import { confirm } from '@/store/confirm'
@@ -298,7 +299,9 @@ function ConfigSettingsInner({
   const showModelSettings =
     activeSectionId === 'model' && (subpage === undefined || ['main', 'auxiliary', 'moa'].includes(subpage))
 
-  const showDesktopSettings = activeSectionId === 'advanced' && (subpage === undefined || subpage === 'desktop')
+  const showDesktopSettings =
+    !hideForUsers() && activeSectionId === 'advanced' && (subpage === undefined || subpage === 'desktop')
+
   const showAttachments = activeSectionId === 'chat' && (subpage === undefined || subpage === 'attachments')
 
   // Deep-link target from the command palette (?field=<key>): scroll the row

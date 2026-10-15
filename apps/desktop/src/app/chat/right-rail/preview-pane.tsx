@@ -12,6 +12,14 @@ import { PanelEmpty } from '@/app/overlays/panel'
 import { isElementInHiddenPane } from '@/components/pane-shell/pane-visibility'
 import { Tip } from '@/components/ui/tooltip'
 import { type Translations, useI18n } from '@/i18n'
+import {
+  previewsMediaInPanel,
+  previewsOfficeAsPages,
+  previewsOfficeAsSheet,
+  previewsPdfInViewer,
+  remoteHtmlFrameDocument,
+  remoteHtmlFrameSandbox
+} from '@/lib/browser-shell'
 import { isDesktopFsRemoteMode } from '@/lib/desktop-fs'
 import { guardGuestPointers } from '@/lib/guest-pointer-guard'
 import { isLoopbackPreviewUrl, openPreviewTargetInBrowser, remoteHtmlPreviewDocument } from '@/lib/local-preview'
@@ -46,6 +54,10 @@ import { $selectedStoredSessionId } from '@/store/session'
 import { canOpenBrowserWindow, isBrowserWindow } from '@/store/windows'
 
 import { FormatPreview } from './formats/format-preview'
+import { MediaPreview } from './media-preview'
+import { OfficeSheet } from './office-sheet'
+import { OfficeSlides } from './office-slides'
+import { PdfPreview } from './pdf-preview'
 import { placeAnnotateCard, PreviewAnnotateCard } from './preview-annotate-card'
 import {
   bindPreviewExecuteJavaScript,
@@ -343,7 +355,7 @@ export function PreviewPane({
   const isRemoteHtml = isRemoteHtmlTarget && renderMode !== 'source' && Boolean(target.dataUrl)
 
   const remoteHtmlDocument = useMemo(
-    () => (isRemoteHtml ? remoteHtmlPreviewDocument(target.dataUrl!) : null),
+    () => (isRemoteHtml ? remoteHtmlFrameDocument(target.dataUrl!, remoteHtmlPreviewDocument) : null),
     [isRemoteHtml, target.dataUrl]
   )
 
@@ -1421,7 +1433,7 @@ export function PreviewPane({
             <iframe
               className="absolute inset-0 size-full border-0 bg-white"
               referrerPolicy="no-referrer"
-              sandbox=""
+              sandbox={remoteHtmlFrameSandbox()}
               srcDoc={remoteHtmlDocument || ''}
               title={target.label || copy.fallbackTitle}
             />
@@ -1429,6 +1441,14 @@ export function PreviewPane({
           {!isWebPreview &&
             (target.kind === 'artifact' ? (
               <ArtifactPreview onClose={onClose} target={target} />
+            ) : previewsOfficeAsPages(target.path || target.source) ? (
+              <OfficeSlides reloadKey={localReloadKey} target={target} />
+            ) : previewsOfficeAsSheet(target.path || target.source) ? (
+              <OfficeSheet reloadKey={localReloadKey} target={target} />
+            ) : previewsPdfInViewer(target.path || target.source) ? (
+              <PdfPreview reloadKey={localReloadKey} target={target} />
+            ) : previewsMediaInPanel(target.path || target.source) ? (
+              <MediaPreview reloadKey={localReloadKey} target={target} />
             ) : (
               <FormatPreview
                 onClose={onClose}

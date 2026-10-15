@@ -29,7 +29,12 @@ const ATTACHED_CONTEXT_MARKER_RE = /(?:^|\n)--- Attached Context ---\s*\n/
 // one that types those rows `display_kind=hidden`. It is model scaffolding,
 // not something the user wrote, so it never paints as a bubble.
 const LEGACY_HEARTBEAT_ROW_RE = /^\[Background process \S+ heartbeat #\d+ /
-const CONTEXT_WARNINGS_MARKER_RE = /(?:^|\n)--- Context Warnings ---[\s\S]*$/
+// The warnings block runs to the end of the prompt text, but when the gateway
+// persists an image turn it appends the `@image:` directive lines AFTER it
+// (`_build_persist_message_with_image_refs`). Stop at the first such line so a
+// turn that carried both a context warning and a pasted image keeps its image
+// on resume instead of losing it with the warnings.
+const CONTEXT_WARNINGS_MARKER_RE = /(?:^|\n)--- Context Warnings ---[\s\S]*?(?=\n@image:|$)/
 const CONTEXT_REF_RE = /@(file|folder|url|image|tool|terminal):(?:"[^"\n]+"|'[^'\n]+'|`[^`\n]+`|\S+)/g
 
 // Gateway routing note for Discord turns (gateway/run_inbound.py::discord_triggering_note).

@@ -25,6 +25,7 @@ import { Tip, TipKeybindLabel } from '@/components/ui/tooltip'
 import { useContributions } from '@/contrib/react/use-contributions'
 import { searchSessions, type SessionInfo, type SessionSearchResult } from '@/hermes'
 import { useI18n } from '@/i18n'
+import { withoutHiddenNavItems } from '@/lib/browser-shell'
 import { comboTokens } from '@/lib/keybinds/combo'
 import { sessionMatchesSearch } from '@/lib/session-search'
 import { normalizeSessionSource, sessionSourceLabel } from '@/lib/session-source'
@@ -448,7 +449,11 @@ export function ChatSidebar({
   const navPrefs = useContributions(SIDEBAR_NAV_PREFS_AREA)
 
   const navItems = useMemo(
-    () => applySidebarNavPrefs([...SIDEBAR_NAV, ...contributedNav].filter(shownInMode(interfaceMode)), navPrefs),
+    () =>
+      applySidebarNavPrefs(
+        withoutHiddenNavItems([...SIDEBAR_NAV, ...contributedNav]).filter(shownInMode(interfaceMode)),
+        navPrefs
+      ),
     [contributedNav, interfaceMode, navPrefs]
   )
 

@@ -1,0 +1,180 @@
+# 沙箱（CubeSandbox）用的薄封装镜像。
+#
+# 设计原则：**上游那 466 行 Dockerfile 一个字不改**，只在它之上叠一层。
+# 这一层把「对所有用户都一样」的东西全部固化进镜像，好让平台那边需要按用户
+# 支持的口子尽可能少。
+#
+# 固化了什么：
+#   - 8 个所有用户相同的环境变量（第 9 个 HERMES_DASHBOARD_SESSION_TOKEN 每人不同，
+#     由入口在创建后通过 /__mt/bootstrap 送进来，不能进镜像 —— 镜像是共享且要分发的）
+#   - 启动命令
+#   - 转发器本体（放在 /opt/mt，**不在数据卷里**。原先它放在用户可写的 /opt/data/.mt/，
+#     意味着租户能替换掉它；挪进镜像层一并解决）
+#   - 对外端口：只有一个
+#   - envd —— 平台创建沙箱时若带了环境变量，镜像里没有 envd 会导致**创建直接失败**，
+#     所以必须打进来，即使我们并不使用它的命令/文件/终端能力
+#   - 本分支对 hermes 的改动和新增（overlay.list 列的仓库路径，按原路径覆盖进 /opt/hermes，见下面那段），
+#     包括 UniWork 内置技能和它们要用的库
+#
+# 为什么 CMD 只起转发器、不起 hermes：
+#   平台下发创建时环境变量是在容器进程已经起来之后（起容器 → 探针 → 创建后处理 → 下发变量），
+#   hermes 缺了会话令牌会直接退出，进程一死探针永远不通，沙箱根本建不起来。
+#   所以让秒级启动的转发器先顶上让探针过，hermes 由引导接口拉起。细节见 seed/forward.py。
+#
+# 构建（在 deploy/hermes-mt/ 下）：
+#   docker build -f Dockerfile.cube -t hermes-mt-cube:dev .
+#
+# 注册成模板：
+#   cubemastercli tpl create-from-image \
+#     --image <推到集群能拉到的仓库>/hermes-mt-cube:dev \
+#     --writable-layer-size 2G \
+#     --expose-port 9121 --expose-port 49983 \
+#     --probe 9121 --probe-path /__mt/health
+#
+#   探针指向转发器而不是 hermes：转发器不依赖任何用户数据，秒级就绪，
+#   模板快照因此能早做、冷启动更快。
+
+ARG BASE_IMAGE=hermes-custom:dev
+ARG CUBE_BASE=ghcr.io/tencentcloud/cubesandbox-base:2026.16
+
+FROM ${CUBE_BASE} AS cubebase
+
+FROM ${BASE_IMAGE}
+
+USER root
+
+# ---- LibreOffice + Chromium + Playwright -----------------------------------
+# 在薄封装基础上补齐「办公文档 + 浏览器自动化」三件套，让初始模板就能：
+#   1. 跑 LibreOffice headless —— skills/productivity/{xlsx,docx,pptx}/scripts
+#      里的 recalc / convert-to-pdf / 渲染幻灯片全靠 `soffice`。
+#   2. 跑 Chromium —— 浏览器自动化（agent-browser / cua-driver 截图）需要
+#      一个 headless Chromium。
+#   3. 跑 Python Playwright —— optional-skills/web-development/.../har_capture.py
+#      直接 `from playwright.sync_api import sync_playwright`，需要 venv 里有这个包。
+#
+# 分层策略：系统包一层（apt），Python 包一层（pip 进 hermes venv），
+# Playwright 浏览器二进制复用 base 已经装好的 /opt/hermes/.playwright
+# （base 的根 Dockerfile 跑过 `npx playwright install --with-deps chromium
+# --only-shell`，把 Chromium 和它要的系统依赖一并装好了）。
+
+# ---- 系统层：LibreOffice + Chromium + poppler ------------------------------
+# libreoffice-{calc,writer,impress} 拆分安装，比整套 libreoffice 元包小很多，
+# 且覆盖 xlsx_recalc / docx_create / pptx_render 三个脚本的 `soffice` 调用。
+# poppler-utils 提供 pdftoppm / pdftocairo，pptx_render.py 把 soffice 转出的
+# PDF 再拆成 PNG 幻灯片靠它。
+# chromium：系统级浏览器，装到 /usr/bin/chromium，任何用户/工具都能直接拉起，
+# 不依赖某个 venv —— 这就是「全局可用」。agent-browser / cua-driver 截图、
+# har_capture.py 的 headless Chromium 全走它。
+# fonts-noto-cjk / fonts-noto-color-emoji：CJK + emoji 字体，LibreOffice 渲染
+# 和 Chromium 截图里中文/emoji 不再是方块。
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libreoffice-calc \
+        libreoffice-writer \
+        libreoffice-impress \
+        libreoffice-core \
+        poppler-utils \
+        chromium \
+        fonts-noto-cjk \
+        fonts-noto-color-emoji \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---- Python 层：Playwright 库装进 hermes venv ------------------------------
+# har_capture.py 这类脚本 `from playwright.sync_api import sync_playwright`，
+# 需要 venv 里有 playwright 包。浏览器走系统 /usr/bin/chromium（见上），
+# 这里只补 Python 库本身。
+#
+# 注意：hermes venv 是 uv sync 创建的，**不带 pip**（uv 自己当 installer）。
+# 所以不能用 /opt/hermes/.venv/bin/pip（不存在 → 报 not found）。
+# 用 `uv pip install`，uv 在 base 的 /usr/local/bin/uv，
+# WORKDIR=/opt/hermes 下 uv 会自动找到 .venv。
+# --no-cache-dir: 别在镜像层留 uv 缓存。
+RUN uv pip install --no-cache-dir playwright
+# 装完 playwright，把它的 chromium 浏览器二进制也装上（含系统依赖）。
+# base 的根 Dockerfile 里 npx playwright install --with-deps chromium --only-shell
+# 已经装过 Node 端的 Chromium shell，但 Python playwright 需要自己的浏览器缓存。
+# PLAYWRIGHT_BROWSERS_PATH=/opt/hermes/.playwright 在 base 里已设。
+RUN /opt/hermes/.venv/bin/playwright install --with-deps chromium
+
+# ---- UniWork 内置技能要用的库 ---------------------------------------------------
+# skills/uniwork/ 下的技能（随 overlay.list 进镜像，见下）在实例里直接 import 这些库。hermes venv
+# 没有 pip，技能脚本自己装不上，所以预装。weasyprint 要的 pango / harfbuzz 已随上面的 chromium、
+# LibreOffice 装好；pdf2image 转图走上面的 poppler。版本写死：同一个指纹构建出的镜像才一样。
+#   doc：python-docx、pdf2image           excel：openpyxl、pandas
+#   data-insight-report：duckdb、openpyxl  pdf-generator：weasyprint、reportlab、pypdf
+RUN uv pip install --no-cache-dir \
+        python-docx==1.2.0 pdf2image==1.17.0 openpyxl==3.1.5 pandas==3.0.6 \
+        duckdb==1.5.6 weasyprint==70.0 reportlab==5.0.1 pypdf==6.19.0
+# web-artifacts-builder 用 pnpm 起 React 工程；它的脚本缺 pnpm 时会去 npm install -g，hermes 用户装不了全局包。
+RUN npm install -g pnpm@12.11.2 && npm cache clean --force
+
+# ---- envd 与 Cube 的通用入口脚本 ------------------------------------------
+# 入口脚本的契约：后台拉起 envd（让平台的 SDK 数据面和默认探针可用），
+# 然后前台 exec 我们给的命令。我们把上游镜像自己的 dispatcher 作为那条命令，
+# 于是 s6 的 stage2 引导和降权到 hermes 用户这两件事一件都不少。
+COPY --from=cubebase /usr/bin/envd /usr/bin/envd
+COPY --from=cubebase /usr/local/bin/cube-entrypoint.sh /usr/local/bin/cube-entrypoint.sh
+RUN chmod 0755 /usr/bin/envd /usr/local/bin/cube-entrypoint.sh
+
+# ---- 转发器与状态管家 -------------------------------------------------------
+# 放在镜像层而不是数据卷：卷是租户可写的，脚本放里面等于让租户能改自己的转发器。
+# /mnt/u 是用户的 S3 卷的挂载点：挂在 hermes 数据目录之外，hermes 的仪表盘备份才不会
+# 把整个卷打进可写层。工作区、附件、图片由状态管家做成指向卷内的目录链接。
+RUN mkdir -p /opt/mt /mnt/u
+COPY seed/forward.py /opt/mt/forward.py
+COPY seed/mtstate.py /opt/mt/mtstate.py
+COPY seed/mtuser.py /opt/mt/mtuser.py
+# 平台的技能策略：引导时收起 hermes 上游自带的技能，由转发器用 hermes 的 Python 跑（见 seed/skillpolicy.py）。
+COPY seed/skillpolicy.py /opt/mt/skillpolicy.py
+RUN chmod 0644 /opt/mt/forward.py /opt/mt/mtstate.py /opt/mt/mtuser.py /opt/mt/skillpolicy.py
+
+# ---- 本分支对 hermes 的改动和新增（overlay.list） -----------------------------
+# 基础镜像里的 hermes 是上游某个版本；/opt/hermes 是可编辑安装，且不留预编译缓存
+# （PYTHONDONTWRITEBYTECODE=1），所以覆盖源文件就生效。要覆盖的仓库路径列在 overlay.list：
+#   - hermes_cli/web_routers/skills.py：UniWork 技能市场与推荐的后端接口
+#   - skills/uniwork/：UniWork 内置技能。/opt/hermes/skills 下的技能在实例每次启动时由
+#     tools/skills_sync.py 同步进用户的技能目录（新的加进去，用户删掉的不再加回，改过的不覆盖）
+# deploy.sh 构建前把这些文件从仓库原样拷进 .overlay/（构建目录，不进 git），构建后核对镜像里那份；
+# tests/hermes_mt/test_image_overlay.py 核对清单本身。
+COPY .overlay/ /opt/hermes/
+
+# ---- 所有用户相同的环境变量 -------------------------------------------------
+# 与 entry/entry/tenants.py::_create 里那份清单保持一致。缺的那个
+# HERMES_DASHBOARD_SESSION_TOKEN 每人不同，走引导接口。
+ENV HERMES_HOME=/opt/data \
+    HERMES_UID=10000 \
+    HERMES_GID=10000 \
+    TZ=Asia/Shanghai \
+    TERMINAL_ENV=local \
+    HERMES_DASHBOARD_FILES_ROOT=/opt/data/workspace \
+    MT_FWD_PORT=9121 \
+    MT_HERMES_PORT=9120
+
+# 引导窗口：容器启动后多少秒内允许调 /__mt/bootstrap。
+ENV MT_BOOTSTRAP_WINDOW_S=600
+# 状态管家默认多久归档一次（入口可在引导时覆盖）。
+ENV MT_ARCHIVE_INTERVAL_S=300
+# hermes 的终端工具在第一条命令前会从 GitHub 下载 tirith（命令安全扫描器）到数据目录；
+# 集群里的实例连不上 GitHub，下载挂住会让第一条命令卡几分钟（10-08 真机撞过）。
+# 每人一台隔离的虚机，扫描的意义本来就不大，关掉。
+ENV TIRITH_ENABLED=0
+
+# 给 agent 的环境说明，进它的系统提示（hermes 专门留给宿主平台的口子，不占用户的 SOUL.md）。
+# 工作区在对象存储上，小文件慢、没有硬链接；重活放本地盘的 scratch，成品再写回工作区。
+# 用户在网页里用：写出的文件从输入框上方的预览条或文件面板打开，别建议 file://；实例里起的 localhost
+# 服务用户的浏览器打不开；文件面板删的东西在卷上的回收站里留 7 天（见 seed/mtuser.py），用户要可以找回。
+# 预览只打开那一个 HTML 文件，旁边单独的 .css / .js / 图片加载不到，所以网页要写成单个文件。
+ENV HERMES_ENVIRONMENT_HINT="Environment notes: /opt/data/workspace is the user's persistent workspace. It lives on network object storage: many small files are slow there and hard links are not supported. Do heavy or temporary work (git clone, package installs, builds, scratch files) under /opt/data/scratch on the fast local disk, then copy finished results into the workspace. /opt/data/scratch is not preserved when the sandbox is recreated. The user talks to you through a web page in their browser, not a desktop app or a terminal on their own computer: files you write are opened from the preview bar above the chat input or from the Files panel, so never suggest file:// URLs or opening files with a local program. The preview opens a single HTML file on its own, so a web page you make must be self-contained: put its CSS and JavaScript inside the HTML file (inline <style> and <script>) and embed small images as data: URLs instead of separate files next to it. Web servers you start here (localhost ports) cannot be reached from the user's browser; deliver results as files instead. Files the user deletes in the Files panel go to /mnt/u/.trash and are kept for 7 days: each entry is a folder holding the item and a meta.json with its original path, so you can restore one on request by moving it back."
+
+# 浏览器断开后，hermes 等多久才回收那条会话（还在跑的回合到时会被打断）。上游默认 20 秒：关掉浏览器
+# 长任务就断。10-09 本机实测每条遗留会话约 4MB、不多出进程；定 1 小时。
+ENV HERMES_TUI_WS_ORPHAN_REAP_GRACE_S=3600
+
+# ---- 端口 -----------------------------------------------------------------
+# 对外只有转发器这一个。hermes 自己绑 127.0.0.1:9120，故意不暴露 ——
+# 它一旦发现自己绑在非回环地址就会强制开鉴权门，而浏览器版前端不说那套协议。
+# 49983 是 envd，由平台自己用。
+EXPOSE 9121
+EXPOSE 49983
+
+ENTRYPOINT [ "/usr/local/bin/cube-entrypoint.sh", "/opt/hermes/docker/entrypoint-dispatch.sh" ]
+CMD [ "python3", "/opt/mt/forward.py" ]

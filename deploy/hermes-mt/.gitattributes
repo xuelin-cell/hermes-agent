@@ -1,0 +1,11 @@
+# 这个目录下的文件会被原样复制进镜像、写进容器的卷、当作 nginx/shell 配置执行，
+# 所以行尾必须钉死成 LF，不能随检出平台变。
+#
+# 仓库根的 .gitattributes 只按扩展名保 LF，漏掉了没有扩展名或扩展名不在清单里的文件
+# （.gitignore / .env.example / requirements.txt / *.conf / *.tmpl 等）。在
+# core.autocrlf=true 的 Windows 检出里，这些文件会变成 CRLF，然后被 docker build
+# 带进镜像 —— seed 出去的 config.yaml、nginx 配置、shell 脚本都会带 \r。
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary

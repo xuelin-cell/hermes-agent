@@ -609,7 +609,9 @@ export function useComposerActions({
         // Reuse the in-hand blob for the chip preview — do not re-read the
         // just-written temp file as a data URL. A late component unmount must
         // not leak the attach: attach only while still current.
-        return isCurrent() ? attachImagePath(savedPath, blob) : false
+        // Await inside the try: a rejected attach must land in the catch (and
+        // toast), not escape as a silent unhandled rejection.
+        return isCurrent() ? await attachImagePath(savedPath, blob) : false
       } catch (err) {
         notifyError(err, copy.imageAttachFailed)
 
@@ -635,10 +637,15 @@ export function useComposerActions({
       return
     }
 
-    for (const path of paths) {
-      await attachImagePath(path)
+    try {
+      for (const path of paths) {
+        await attachImagePath(path)
+      }
+    } catch (err) {
+      // Callers fire-and-forget this; surface failures instead of dropping them.
+      notifyError(err, copy.imageAttachFailed)
     }
-  }, [attachImagePath, copy.attachImages, currentCwd, t.composer.images])
+  }, [attachImagePath, copy.attachImages, copy.imageAttachFailed, currentCwd, t.composer.images])
 
   const pasteClipboardImage = useCallback(
     async ({ silent = false }: { silent?: boolean } = {}) => {

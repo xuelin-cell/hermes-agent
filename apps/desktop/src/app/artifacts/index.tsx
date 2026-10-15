@@ -21,6 +21,7 @@ import { Tip } from '@/components/ui/tooltip'
 import { getAllSessionMessages, listAllProfileSessions } from '@/hermes'
 import { type Translations, useI18n } from '@/i18n'
 import { resolveBrandIcon } from '@/lib/brand-icon'
+import { isBrowserShell } from '@/lib/browser-shell'
 import {
   ExternalLink,
   ExternalLinkIcon,
@@ -49,7 +50,7 @@ import {
   type ArtifactRecord,
   loadArtifactsForSessions
 } from './artifact-utils'
-import { CloudLibrary } from './cloud-library'
+import { CloudDriveTab } from './cloud-drive-tab'
 
 function formatArtifactTime(timestamp: number): string {
   return fmtDayTime.format(new Date(timestamp))
@@ -411,7 +412,8 @@ function LocalArtifactsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...
 
 export function ArtifactsView(props: ArtifactsViewProps) {
   const { t } = useI18n()
-  const [libraryTab, setLibraryTab] = useState<'cloud' | 'local'>('cloud')
+  // Browser build: opens on the instance's artifacts, the cloud drive is not connected yet.
+  const [libraryTab, setLibraryTab] = useState<'cloud' | 'local'>(isBrowserShell() ? 'local' : 'cloud')
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-background">
@@ -442,7 +444,7 @@ export function ArtifactsView(props: ArtifactsViewProps) {
         </button>
       </div>
       <div className="min-h-0 flex-1">
-        {libraryTab === 'cloud' ? <CloudLibrary /> : <LocalArtifactsView {...props} />}
+        {libraryTab === 'cloud' ? <CloudDriveTab /> : <LocalArtifactsView {...props} />}
       </div>
     </section>
   )

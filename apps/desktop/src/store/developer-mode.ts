@@ -1,5 +1,6 @@
 import { atom } from 'nanostores'
 
+import { reloadAfterDeveloperModeToggle } from '@/lib/browser-shell'
 import { persistBoolean, storedBoolean } from '@/lib/storage'
 
 const KEY = 'uniwork.desktop.developerMode.v1'
@@ -13,6 +14,7 @@ export function setDeveloperMode(enabled: boolean): void {
 export function toggleDeveloperMode(): boolean {
   const enabled = !$developerMode.get()
   setDeveloperMode(enabled)
+  reloadAfterDeveloperModeToggle()
 
   return enabled
 }

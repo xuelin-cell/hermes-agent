@@ -274,6 +274,42 @@ describe('toChatMessages', () => {
     expect((message as { attachmentRefs?: string[] }).attachmentRefs).toEqual(['@image:/tmp/cat.png'])
   })
 
+  it('keeps image refs the gateway appended after a context-warnings block', () => {
+    // Shape persisted by the gateway when a turn had an @file warning AND a
+    // pasted image: prompt text, warnings, then the `@image:` directive lines.
+    const [message] = toChatMessages([
+      {
+        role: 'user',
+        content:
+          '@file:/opt/data/attachments/note.txt\n\ndescribe both\n\n--- Context Warnings ---\n' +
+          '- @file:/opt/data/attachments/note.txt: path is outside the allowed workspace\n' +
+          '@image:/opt/data/images/upload_1.png',
+        timestamp: 1
+      }
+    ])
+
+    expect(chatMessageText(message)).not.toContain('Context Warnings')
+    expect(chatMessageText(message)).toContain('describe both')
+    // The leading @file ref is an attachment chip too; the point here is that the
+    // image after the warnings block is not swallowed with them.
+    expect((message as { attachmentRefs?: string[] }).attachmentRefs).toEqual([
+      '@file:/opt/data/attachments/note.txt',
+      '@image:/opt/data/images/upload_1.png'
+    ])
+  })
+
+  it('still drops a trailing context-warnings block that has no image refs after it', () => {
+    const [message] = toChatMessages([
+      {
+        role: 'user',
+        content: 'hello\n\n--- Context Warnings ---\n- @file:x.txt: not found',
+        timestamp: 1
+      }
+    ])
+
+    expect(chatMessageText(message)).toBe('hello')
+  })
+
   it('keeps a user turn that carried only an attached image (no caption)', () => {
     const [message] = toChatMessages([
       {

@@ -1,0 +1,158 @@
+"""入口服务配置：全部来自环境变量，没有配置文件。
+
+变量名前缀 ``MT_``。凡是凭据（MT_DEV_API_KEY）只从环境读，绝不落日志。
+"""
+
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+
+
+def _env(name: str, default: str = "") -> str:
+    return os.environ.get(name, default).strip()
+
+
+def _parse_bytes(text: str) -> int:
+    text = text.strip().lower()
+    units = {"k": 1024, "m": 1024**2, "g": 1024**3}
+    if text and text[-1] in units:
+        return int(float(text[:-1]) * units[text[-1]])
+    return int(text)
+
+
+@dataclass(frozen=True)
+class Settings:
+    # 对外路径与监听
+    base_path: str = _env("MT_BASE_PATH", "/hermes").rstrip("/")
+    listen_port: int = int(_env("MT_PORT", "9400"))
+
+    # 执行后端：docker = 我们自己用 Docker 建容器；cube = 让沙箱平台建实例。
+    # 两条路并存，切换只改这一个变量。默认 docker，保持既有部署不受影响。
+    backend: str = _env("MT_BACKEND", "docker").lower()
+
+    # 沙箱后端（backend=cube 时才用）
+    cube_api: str = _env("MT_CUBE_API", "").rstrip("/")          # 控制面，形如 http://host:3000
+    cube_proxy: str = _env("MT_CUBE_PROXY", "").rstrip("/")      # 数据面（平台代理），转发和引导都走它
+    cube_domain: str = _env("MT_CUBE_DOMAIN", "cube.app")        # 沙箱域名，拼路由 Host 用
+    cube_api_key: str = _env("MT_CUBE_API_KEY", "")              # 控制面鉴权；集群没开就留空
+    cube_template: str = _env("MT_CUBE_TEMPLATE", "")            # 模板 ID 或别名
+    cube_volume_driver: str = _env("MT_CUBE_VOLUME_DRIVER", "")  # 空 = 用平台默认后端
+    # 卷挂进沙箱的位置。挂在 hermes 数据目录之外：hermes 的仪表盘备份会遍历整个数据目录，
+    # 卷挂在里面会被整个打进可写层。工作区、附件、图片由转发器做成指向卷内的目录链接。
+    # ★ 卷由对象存储支撑，放不了 SQLite；对话库在实例可写层上跑，由状态管家定时归档到卷。
+    #   见 docs/Hermes-MT-05-持久化存储方案。
+    cube_volume_mount: str = _env("MT_CUBE_VOLUME_MOUNT", "/mnt/u")
+    # 状态管家：定时归档间隔；长期空闲（暂停后又过了这么久）就排空并删实例，0 = 不删。
+    archive_interval_s: int = int(_env("MT_ARCHIVE_INTERVAL_S", "300"))
+    idle_delete_hours: int = int(_env("MT_IDLE_DELETE_HOURS", "0"))
+    # 删掉旧实例后等这么久再建新的：节点上旧的卷挂载要卸干净，否则新实例看到的是 root 的空挂载点。
+    volume_detach_grace_s: float = float(_env("MT_VOLUME_DETACH_GRACE_S", "3"))
+    # 新实例拒绝启动（卷上的记录比 PG 新）时是否强行按 PG 的来源恢复。只在人工确认后临时打开。
+    state_force: bool = _env("MT_STATE_FORCE", "0") == "1"
+    # 建实例时关闭数据面的公开访问：平台给每台实例发一个流量令牌，数据面上每个请求都要带，
+    # 否则 403。令牌只在创建响应里给一次，入口加密存 PG。只对新建的实例生效，老实例不变。
+    cube_private_traffic: bool = _env("MT_CUBE_PRIVATE_TRAFFIC", "0") == "1"
+    # 对同一用户的实例做变更（建 / 删 / 补引导 / 暂停）时，除进程内的锁外再加一把 PG 咨询锁，
+    # 入口跑多副本时也不会两个副本同时给一个用户建实例。单副本可关。
+    pg_lock: bool = _env("MT_PG_LOCK", "1") == "1"
+    # 定时任务：实例停着（暂停或已删）时，在下一个任务到点前这么多秒把它叫起来；0 = 不叫。
+    cron_wake_lead_s: int = int(_env("MT_CRON_WAKE_LEAD_S", "90"))
+    # 回收空闲实例前问转发器忙不忙：定时任务在跑、对话回合在跑、或前后这么多秒内有任务到点 ⇒ 这轮不暂停。
+    # 为定时任务叫醒的实例也至少留这么久，等 hermes 的调度线程转到它。
+    cron_keepalive_s: int = int(_env("MT_CRON_KEEPALIVE_S", "300"))
+
+    # 卷外第二份副本：入口定期把每个用户卷上最新的归档拷到实例碰不到的桶前缀下。
+    # 四项都填了才启用。凭据只能访问这两个前缀（由桶的管理员发）。
+    backup_s3_endpoint: str = _env("MT_BACKUP_S3_ENDPOINT", "").rstrip("/")
+    backup_s3_bucket: str = _env("MT_BACKUP_S3_BUCKET", "")
+    backup_s3_access_key: str = _env("MT_BACKUP_S3_ACCESS_KEY", "")
+    backup_s3_secret_key: str = _env("MT_BACKUP_S3_SECRET_KEY", "")
+    backup_s3_region: str = _env("MT_BACKUP_S3_REGION", "us-east-1")
+    backup_s3_path_style: bool = _env("MT_BACKUP_S3_PATH_STYLE", "1") == "1"
+    backup_volume_prefix: str = _env("MT_BACKUP_VOLUME_PREFIX", "volumes/")   # 卷在桶里的前缀，卷插件决定
+    backup_prefix: str = _env("MT_BACKUP_PREFIX", "backups/hermes-mt/")      # 副本放哪，实例碰不到
+    backup_interval_h: int = int(_env("MT_BACKUP_INTERVAL_H", "24"))
+    backup_initial_delay_s: int = int(_env("MT_BACKUP_INITIAL_DELAY_S", "300"))
+    backup_keep_days: int = int(_env("MT_BACKUP_KEEP_DAYS", "7"))
+    backup_keep_weeks: int = int(_env("MT_BACKUP_KEEP_WEEKS", "4"))
+
+    # 租户容器
+    image: str = _env("MT_IMAGE", "hermes-custom:dev")
+    prefix: str = _env("MT_PREFIX", "hermes")  # hermes-t-<uid> / hermes-net-<uid> / hermes-data-<uid>
+    docker_sock: str = _env("MT_DOCKER_SOCK", "/var/run/docker.sock")
+    self_container: str = _env("MT_SELF_CONTAINER", "")  # 空 = 用主机名（容器短 id）
+    memory_bytes: int = _parse_bytes(_env("MT_MEMORY", "2g"))
+    nano_cpus: int = int(float(_env("MT_CPUS", "1")) * 1_000_000_000)
+    pids_limit: int = int(_env("MT_PIDS", "512"))
+    idle_minutes: int = int(_env("MT_IDLE_MINUTES", "30"))
+    ready_timeout_s: int = int(_env("MT_READY_TIMEOUT_S", "180"))
+    tz: str = _env("MT_TZ", "Asia/Shanghai")
+    hermes_port: int = 9120
+    forward_port: int = 9121
+    files_root: str = _env("MT_FILES_ROOT", "/opt/data/workspace")
+
+    # 会话 cookie
+    cookie_name: str = _env("MT_COOKIE", "hermes_mt_session")
+    cookie_secure: bool = _env("MT_COOKIE_SECURE", "0") == "1"
+    session_ttl_s: int = int(_env("MT_SESSION_TTL_S", str(7 * 24 * 3600)))
+    # 写请求和 WebSocket 只接受本站页面发起的（看 Origin）。cookie 的 SameSite=Lax 挡不住同一主机别的端口上的页面
+    # （浏览器把同 IP 不同端口算同站）。出了误伤可临时设 0 关掉。
+    origin_check: bool = _env("MT_ORIGIN_CHECK", "1") == "1"
+
+    # Entry 平台数据库与凭据加密
+    database_url: str = _env("MT_DATABASE_URL")
+    db_pool_min_size: int = int(_env("MT_DB_POOL_MIN_SIZE", "1"))
+    db_pool_max_size: int = int(_env("MT_DB_POOL_MAX_SIZE", "10"))
+    db_command_timeout_s: int = int(_env("MT_DB_COMMAND_TIMEOUT_S", "30"))
+    credential_key: str = _env("MT_CREDENTIAL_KEY")
+
+    # MaaS 登录 / 套餐
+    maas_app: str = _env("MT_MAAS_APP", "https://maas.ai-yuanjing.com/app").rstrip("/")
+    myplan_url: str = _env("MT_MYPLAN_URL", "https://maas.ai-yuanjing.com/app/gateway/uniwork/my-plan")
+    login_application: str = _env("MT_LOGIN_APPLICATION", "uniwork")
+    upstream_timeout_s: int = int(_env("MT_UPSTREAM_TIMEOUT_S", "15"))
+
+    # 模型（写进每个租户卷的 config.yaml）
+    model_base_url: str = _env("MT_MODEL_BASE_URL", "https://maas-api.ai-yuanjing.com/openapi/compatible-mode/v1")
+    model_name: str = _env("MT_MODEL", "deepseek-v4-flash")
+    provider_key: str = _env("MT_PROVIDER_KEY", "yuanjing")
+    key_env_name: str = _env("MT_KEY_ENV_NAME", "HERMES_CUSTOM_YUANJING_API_KEY")
+    # 套餐没给上下文长度（context_window）的模型按这个写：报小了只是早一点压缩，报大了上游会报超长。
+    default_context_window: int = int(_env("MT_DEFAULT_CONTEXT_WINDOW", "128000"))
+    # 按模型预设推理强度（写进 agent.reasoning_overrides，用户自己设过的不动），格式「模型=强度,模型=强度」。
+    # DeepSeek V4.1 Flash 只接受 low/high/xhigh/max，hermes 默认发 medium，不预设就每条都 400。
+    reasoning_defaults: str = _env("MT_REASONING_DEFAULTS", "deepseek-v4.1-flash=high")
+    # 默认推理强度：作为平台策略写进 agent.reasoning_effort（每次引导按平台的写）。前端没手动选过强度时，
+    # 显示和发出去的都是它（前端从配置读默认值）。hermes 和前端自带的默认是 medium，DeepSeek V4.1 Flash、
+    # 智谱 GLM 5.3 Flash 都不收（10-10 实测），high 几家都收。空 = 不写，用 hermes 自己的默认。
+    default_reasoning_effort: str = _env("MT_DEFAULT_REASONING_EFFORT", "high").strip()
+
+    # 内置的元景 MCP（搜图、文生图、图片理解、语音、翻译等工具）：每次引导写进 config.yaml 的 mcp_servers.yuanjing。
+    # key 不写明文：地址里是 ${MT_KEY_ENV_NAME 那个变量}，hermes 连接时从 .env 取，就是模型用的那把套餐 key。
+    # client_id 要在元景 mcp-server 的白名单里（UniWork）：白名单里的只拿用户的 key 验身份，调下游用平台的 key；
+    # 不在白名单就拿用户的套餐 key 调下游，会回 1004。地址设成空 = 不提供（实例下次引导时删掉这一条）。
+    # oss_mode=internal：工具产出的文件给内网 OSS 链接 —— 云端版用户的浏览器在内网，公网链接打不开。设成空 = 不带（公网链接）。
+    yuanjing_mcp_url: str = _env("MT_YUANJING_MCP_URL", "https://maas.ai-yuanjing.com/app/mcp-server/mcp")
+    yuanjing_mcp_client_id: str = _env("MT_YUANJING_MCP_CLIENT_ID", "UniWork")
+    yuanjing_mcp_oss_mode: str = _env("MT_YUANJING_MCP_OSS_MODE", "internal")
+
+    # hermes 上游自带的技能给不给用户（UniWork 的内置技能总是给）：空 = 一个都不给；* = 全给；逗号分隔的名字 =
+    # 只给这几个。上游那一大套（约 80 个）用户大多用不上，又和 UniWork 的重复，还全都列进系统提示。
+    # 每次引导时由实例的转发器执行（seed/skillpolicy.py）；用户改过的、agent 自己写的、技能市场装的不动。
+    upstream_skills: str = _env("MT_UPSTREAM_SKILLS", "").strip()
+
+    # 开发模式：不走短信登录，任意用户名直接进；模型 key 用 MT_DEV_API_KEY。生产必须关。
+    dev_login: bool = _env("MT_DEV_LOGIN", "0") == "1"
+    dev_api_key: str = _env("MT_DEV_API_KEY", "")
+
+    def path(self, suffix: str) -> str:
+        return f"{self.base_path}{suffix}"
+
+    @property
+    def backup_enabled(self) -> bool:
+        return bool(self.backup_s3_endpoint and self.backup_s3_bucket
+                    and self.backup_s3_access_key and self.backup_s3_secret_key)
+
+
+SETTINGS = Settings()
