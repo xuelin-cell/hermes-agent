@@ -5300,6 +5300,7 @@ export const frOverrides = {
       limited: 'Affichage des 500 premières lignes de données.',
       columnsLimited: 'Affichage des 50 premières colonnes.'
     },
+    sheetLimited: 'Certaines feuilles dépassent 500 lignes. Seules leurs 500 premières lignes sont affichées.',
     tiffFirstPage: 'Ce TIFF contient plusieurs pages. Seule la première est affichée.',
     edit: 'Modifier',
     editing: 'Modification',

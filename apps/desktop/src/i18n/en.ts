@@ -4930,6 +4930,7 @@ export const en: Translations = {
       limited: 'Showing the first 500 data rows.',
       columnsLimited: 'Showing the first 50 columns.'
     },
+    sheetLimited: 'Some sheets exceed 500 rows. Only their first 500 rows are shown.',
     tiffFirstPage: 'This TIFF has multiple pages. Only the first page is shown.',
     edit: 'Edit',
     editing: 'Editing',

@@ -4631,6 +4631,7 @@ export const zh = defineLocale({
       limited: '仅显示前 500 条数据行。',
       columnsLimited: '仅显示前 50 列。'
     },
+    sheetLimited: '部分工作表超过 500 行，仅显示其前 500 行。',
     tiffFirstPage: '此 TIFF 包含多页，仅显示第一页。',
     edit: '编辑',
     editing: '编辑中',

@@ -85,7 +85,10 @@ describe('format preview', () => {
       '/fixture/document.odt',
       '/fixture/deck.pptx',
       '/fixture/deck.ppt',
-      '/fixture/deck.odp'
+      '/fixture/deck.odp',
+      '/fixture/book.xlsx',
+      '/fixture/book.xls',
+      '/fixture/book.ods'
     ]
 
     expect(new Set(examples.map(path => previewFormat(fileTarget(path))))).toEqual(
@@ -103,8 +106,7 @@ describe('format preview', () => {
       '/fixture/page.html',
       '/fixture/photo.png',
       '/fixture/doc.pdf',
-      '/fixture/file.constructor',
-      '/fixture/book.xlsx'
+      '/fixture/file.constructor'
     ]) {
       expect(previewFormat(fileTarget(path))).toBeNull()
     }

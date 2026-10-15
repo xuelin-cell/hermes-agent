@@ -3834,6 +3834,7 @@ export const zhHant = defineLocale({
       limited: '僅顯示前 500 筆資料列。',
       columnsLimited: '僅顯示前 50 欄。'
     },
+    sheetLimited: '部分工作表超過 500 列，僅顯示其前 500 列。',
     tiffFirstPage: '此 TIFF 包含多頁，僅顯示第一頁。',
     edit: '編輯',
     editing: '編輯中',

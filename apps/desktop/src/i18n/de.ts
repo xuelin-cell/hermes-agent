@@ -5289,6 +5289,7 @@ export const deOverrides = {
       limited: 'Die ersten 500 Datenzeilen werden angezeigt.',
       columnsLimited: 'Die ersten 50 Spalten werden angezeigt.'
     },
+    sheetLimited: 'Einige Tabellenblätter haben mehr als 500 Zeilen. Nur ihre ersten 500 Zeilen werden angezeigt.',
     tiffFirstPage: 'Diese TIFF-Datei enthält mehrere Seiten. Nur die erste Seite wird angezeigt.',
     edit: 'Bearbeiten',
     editing: 'Wird bearbeitet',

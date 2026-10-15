@@ -5,11 +5,12 @@ import type { PreviewTarget } from '@/store/preview'
 
 import { filePathForTarget } from '../preview-file'
 
-export type PreviewFormat = 'audio' | 'delimited' | 'slides' | 'tiff' | 'video' | 'word'
+export type PreviewFormat = 'audio' | 'delimited' | 'sheet' | 'slides' | 'tiff' | 'video' | 'word'
 
 const FORMAT_BY_EXT = new Map<string, PreviewFormat>([
   ...OFFICE_EXTENSIONS.word.map(extension => [extension, 'word'] as const),
   ...OFFICE_EXTENSIONS.slides.map(extension => [extension, 'slides'] as const),
+  ...OFFICE_EXTENSIONS.sheet.map(extension => [extension, 'sheet'] as const),
   ['csv', 'delimited'],
   ['tsv', 'delimited'],
   ['tif', 'tiff'],

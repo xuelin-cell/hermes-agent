@@ -3111,6 +3111,7 @@ export const ar = defineLocale({
       limited: 'عرض أول 500 صف بيانات.',
       columnsLimited: 'عرض أول 50 عمودًا.'
     },
+    sheetLimited: 'تتجاوز بعض الأوراق 500 صف. تُعرض أول 500 صف منها فقط.',
     tiffFirstPage: 'يحتوي ملف TIFF على عدة صفحات. تُعرض الصفحة الأولى فقط.',
     edit: 'تحرير',
     editing: 'جار التحرير',

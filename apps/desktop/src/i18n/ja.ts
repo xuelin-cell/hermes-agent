@@ -3610,6 +3610,7 @@ export const ja = defineLocale({
       limited: '最初の 500 データ行を表示しています。',
       columnsLimited: '最初の 50 列を表示しています。'
     },
+    sheetLimited: '500 行を超えるシートは、先頭の 500 行のみ表示しています。',
     tiffFirstPage: 'この TIFF は複数ページです。最初のページのみ表示しています。',
     edit: '編集',
     editing: '編集中',

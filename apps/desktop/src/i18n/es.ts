@@ -5277,6 +5277,7 @@ export const esOverrides = {
       limited: 'Mostrando las primeras 500 filas de datos.',
       columnsLimited: 'Mostrando las primeras 50 columnas.'
     },
+    sheetLimited: 'Algunas hojas superan las 500 filas. Solo se muestran sus primeras 500 filas.',
     tiffFirstPage: 'Este TIFF contiene varias páginas. Solo se muestra la primera.',
     edit: 'Editar',
     editing: 'Edición',

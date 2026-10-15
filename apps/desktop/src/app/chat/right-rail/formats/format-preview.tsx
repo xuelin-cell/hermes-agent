@@ -56,7 +56,7 @@ function RegisteredPreview({ kind, onClose, source, ...props }: RegisteredPrevie
         body={
           <>
             {t.preview.formatFailure[attempt.failure?.code || 'unavailable']}
-            {(kind === 'word' || kind === 'slides') && source.exit === 'reveal' && attempt.failure?.code === 'unavailable' && (
+            {['word', 'slides', 'sheet'].includes(kind) && source.exit === 'reveal' && attempt.failure?.code === 'unavailable' && (
               <p className="mt-2">{t.preview.office.installConverter}</p>
             )}
           </>
