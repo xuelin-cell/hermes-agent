@@ -1037,6 +1037,7 @@ def install(
             receipt.ok, receipt.error = False, plan.problem or "残包"
             receipt.notes.append("残包：没有安装任何技能、MCP，也没有建 profile。")
             return receipt
+        fresh_profile = _profile_to_create(plan)
         try:
             if plan.kind == "expert":
                 install_expert(
@@ -1054,11 +1055,82 @@ def install(
                     receipt.notes.append(f"斜杠命令形如 {naming.slash_command(receipt.skills[0])}")
                 if plan.kind == "team":
                     receipt.notes.append("专家团不能作为一个专家打开；成员已降级为派工技能，装在当前 profile。")
-        except KitError as exc:
-            receipt.ok, receipt.error = False, str(exc)
+        except (KitError, OSError) as exc:
+            receipt.ok, receipt.error = False, _failure_text(exc, home)
+            if fresh_profile:
+                _discard_new_profile(fresh_profile, receipt)
             return receipt
         _write_receipt(home, plan.name, receipt)
         return receipt
+
+
+def _profile_to_create(plan: package.Plan) -> str:
+    """The expert profile this install is about to create, or ``""`` when it already exists."""
+    if plan.kind != "expert":
+        return ""
+    from hermes_cli.profiles import profile_exists
+
+    profile = profile_name_for(plan.name)
+    return "" if profile_exists(profile) else profile
+
+
+_WINDOWS_MAX_PATH = 260
+
+
+def _failure_text(exc: Exception, home: Path) -> str:
+    """The receipt's error line; a path past Windows' 260-character limit says what to do."""
+    if isinstance(exc, KitError):
+        return str(exc)
+    if os.name != "nt" or max(map(len, _error_paths(exc)), default=0) < _WINDOWS_MAX_PATH:
+        return f"安装失败：{exc}"
+    return (
+        f"有文件路径超过了 Windows 的 {_WINDOWS_MAX_PATH} 字符上限，没有装上"
+        f"（数据目录 {home} 本身就有 {len(str(home))} 个字符）。"
+        "请开启 Windows 长路径支持（注册表 LongPathsEnabled=1，需要管理员权限），或把数据目录放到更短的路径后重装。"
+    )
+
+
+def _error_paths(exc: BaseException) -> List[str]:
+    """Paths an ``OSError`` (or ``shutil.Error``'s per-file list) failed on."""
+    found = [getattr(exc, "filename", None), getattr(exc, "filename2", None)]
+    if isinstance(exc, shutil.Error) and exc.args and isinstance(exc.args[0], list):
+        for item in exc.args[0]:
+            if isinstance(item, tuple):
+                found.extend(item[:2])
+    return [str(p) for p in found if p]
+
+
+_EXTENDED_PREFIX = "\\\\?\\"
+
+
+def _extended(path: Path) -> str:
+    """*path* in Windows' extended-length form, which is not bound by the 260-character limit."""
+    text = str(path.resolve())
+    return text if os.name != "nt" or text.startswith(_EXTENDED_PREFIX) else _EXTENDED_PREFIX + text
+
+
+def _discard_new_profile(profile: str, receipt: Receipt) -> None:
+    """Undo a profile this install created before failing, so a retry is not refused as someone else's."""
+    import contextlib
+    import io
+
+    from hermes_cli.profiles import delete_profile, get_profile_dir, profile_exists
+
+    if not profile_exists(profile):
+        return
+    phome = Path(get_profile_dir(profile))
+    # Package copies can lie past the path limit that stopped the install; clear them
+    # in extended-length form so the core delete does not trip over the same files.
+    for sub in (store.imported_root(phome), phome / "skills"):
+        if sub.is_dir() and not sub.is_symlink():
+            shutil.rmtree(_extended(sub), ignore_errors=True)
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            delete_profile(profile, yes=True)
+    except Exception as exc:  # noqa: BLE001 - report, the install already failed
+        receipt.warnings.append(f"安装失败后没能删掉这次新建的 profile {profile}：{exc}；重装前请先删除它")
+    else:
+        receipt.notes.append(f"已撤回这次新建的 profile {profile}，修好问题后可以直接重装")
 
 
 def receipt_home(receipt: Receipt) -> str:

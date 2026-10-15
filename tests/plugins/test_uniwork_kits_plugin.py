@@ -1414,6 +1414,35 @@ def test_experts_are_named_by_their_job(kits, monkeypatch):
     assert shown["init_prompt"] == "请帮忙写方案" and shown["quick_prompts"] == ["请帮忙写方案", "写脚本"]
 
 
+def test_failed_first_expert_install_takes_its_new_profile_back(kits, profile_env, expert_pkg, monkeypatch):
+    """A half-made profile would make every retry refuse it as someone else's."""
+    real = kits.installer.install_into_home
+
+    def broken(plan, home, receipt, **kw):
+        raise OSError(2, "No such file or directory", str(home / "deep" / "file.md"))
+
+    monkeypatch.setattr(kits.installer, "install_into_home", broken)
+    receipt = kits.installer.install(expert_pkg, profile_env, triggers={})
+    assert not receipt.ok and "安装失败" in receipt.error
+    assert not _expert_home().exists()
+    assert "demo-expert" not in (kits.store.load_index(profile_env).get("plugins") or {})
+
+    monkeypatch.setattr(kits.installer, "install_into_home", real)
+    assert kits.installer.install(expert_pkg, profile_env, triggers={}).ok
+    assert _expert_home().is_dir()
+
+
+@pytest.mark.windows_only
+def test_path_past_windows_limit_says_how_to_fix_it(kits, tmp_path):
+    import shutil
+
+    deep = "C:\\" + "x" * 300 + "\a.md"
+    exc = shutil.Error([("C:\src\a.md", deep, "[WinError 3] 系统找不到指定的路径。")])
+    text = kits.installer._failure_text(exc, tmp_path)
+    assert "260" in text and "LongPathsEnabled" in text
+    assert kits.installer._failure_text(OSError(2, "gone", "C:\short.md"), tmp_path).startswith("安装失败")
+
+
 def test_summon_endpoints_over_http(kits, profile_env, expert_pkg, monkeypatch):
     import importlib.util
 
