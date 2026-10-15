@@ -52,7 +52,7 @@ def kits():
     parts = (
         "installer", "host_rules", "router", "store", "naming", "llm", "triggers",
         "media_slot", "xiaohongshu", "deck_check", "package_hooks", "turns", "delivery", "expert_sync", "experts",
-        "host_hooks", "image_landing", "deck_geometry", "expert_cards",
+        "host_hooks", "image_landing", "deck_geometry", "expert_cards", "catalog",
     )
     for part in parts:
         importlib.import_module(f"{name}.{part}")
@@ -1439,7 +1439,7 @@ def test_failed_first_expert_install_takes_its_new_profile_back(kits, profile_en
     assert _expert_home().is_dir()
 
 
-@pytest.mark.windows_only
+@pytest.mark.platforms("windows")
 def test_path_past_windows_limit_says_how_to_fix_it(kits, tmp_path):
     import shutil
 
@@ -1557,3 +1557,15 @@ def test_chinese_skill_names_each_keep_a_slash_command(kits, profile_env, tmp_pa
     assert "/zh-kit-ppt-design" in commands and "/zh-kit-content-generation" in commands
     design = _skill_md(profile_env, "zh-kit", "ppt-design")
     assert "PPT视觉设计" in design and "zh-kit--content-generation" in design
+
+
+def test_kit_cards_use_a_chinese_title_without_replacing_an_expert_name(kits, profile_env):
+    kits.store.save_index(profile_env, {"plugins": {
+        "docx": {"kind": "kit", "display_name": "docx", "enabled": True,
+                 "skill_names": [], "agent_skill_names": [], "mcp_keys": [], "user_config": []},
+        "demo-expert": {"kind": "expert", "display_name": "演示专家", "profile": "demo-expert",
+                         "skill_names": [], "agent_skill_names": [], "mcp_keys": [], "user_config": []},
+    }})
+    rows = {row["name"]: row for row in kits.catalog.describe(profile_env)["plugins"]}
+    assert rows["docx"]["display_name"] == "Word 文档"
+    assert rows["demo-expert"]["display_name"] == "演示专家"
