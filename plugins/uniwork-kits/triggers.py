@@ -302,7 +302,15 @@ def refresh(
             pending=[k for k in previous.pending if k in by_key],
             attempts=previous.attempts,
         )
-        if not state.open or state.attempts >= MAX_ATTEMPTS:
+        # Never tried: an install with generation off left them in no list at
+        # all, and a later refresh skipped them for good. They are pending,
+        # and the retry cap (meant for rejected phrases) does not apply.
+        known = set(previous.triggers) | set(previous.unverified) | set(previous.pending)
+        fresh = [k for k in by_key if k not in known]
+        exhausted = state.attempts >= MAX_ATTEMPTS
+        if fresh:
+            state.pending = ([] if exhausted else state.pending) + fresh
+        elif not state.open or exhausted:
             state.stats = dict(previous.stats)
             return state, False
     else:

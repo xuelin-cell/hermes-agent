@@ -42,6 +42,7 @@ def _ensure_plugin() -> None:
 _ensure_plugin()
 
 catalog = importlib.import_module("hermes_plugins.uniwork_kits.catalog")
+experts = importlib.import_module("hermes_plugins.uniwork_kits.experts")
 installer = importlib.import_module("hermes_plugins.uniwork_kits.installer")
 jobs = importlib.import_module("hermes_plugins.uniwork_kits.jobs")
 store = importlib.import_module("hermes_plugins.uniwork_kits.store")
@@ -75,6 +76,10 @@ class ConfigBody(BaseModel):
 class TriggersBody(BaseModel):
     name: str
     regenerate: bool = False
+
+
+class RecentBody(BaseModel):
+    name: str
 
 
 @router.get("")
@@ -146,6 +151,25 @@ async def refresh_triggers(body: TriggersBody) -> Dict[str, Any]:
         args.append("--regenerate")
     job = await asyncio.to_thread(jobs.start, _home(), args)
     return {"job": job}
+
+
+@router.get("/experts")
+def expert_directory() -> Dict[str, Any]:
+    """What the summon picker lists: every installed expert and the recent five."""
+    return experts.directory(_home())
+
+
+@router.get("/experts/{name}/avatar")
+def expert_avatar(name: str) -> Dict[str, str]:
+    return {"data_url": experts.avatar_data_url(_home(), name)}
+
+
+@router.post("/experts/recent")
+def summoned(body: RecentBody) -> Dict[str, Any]:
+    try:
+        return {"recent": experts.record_recent(_home(), body.name.strip())}
+    except installer.KitError as exc:
+        raise _fail(exc) from exc
 
 
 @router.get("/receipts/{name}")

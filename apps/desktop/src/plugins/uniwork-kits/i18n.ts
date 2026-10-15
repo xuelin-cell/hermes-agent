@@ -21,7 +21,20 @@ const en = {
   mcp: 'MCP',
   missing: 'Missing',
   job: 'Working…',
-  failed: 'Failed'
+  failed: 'Failed',
+  summon: 'Experts',
+  summonHint: 'Summon an expert into a new chat',
+  summonButton: 'Summon',
+  noExperts: 'No experts installed yet. Install them on the Kits page.',
+  recentExperts: 'Recent',
+  allExperts: 'All experts',
+  leaveExpert: 'Back to the assistant',
+  talkingTo: 'Expert: ',
+  tryAsking: 'Try asking',
+  jobDone: 'Done',
+  details: 'Details',
+  hideDetails: 'Hide details',
+  close: 'Close'
 }
 
 const zh = {
@@ -45,7 +58,20 @@ const zh = {
   mcp: 'MCP',
   missing: '缺',
   job: '正在处理…',
-  failed: '失败'
+  failed: '失败',
+  summon: '专家',
+  summonHint: '召唤一位专家，开一个新对话',
+  summonButton: '召唤',
+  noExperts: '还没有安装专家，先到「套件」页安装。',
+  recentExperts: '最近召唤',
+  allExperts: '全部专家',
+  leaveExpert: '回到通用助手',
+  talkingTo: '当前专家：',
+  tryAsking: '试试这样问',
+  jobDone: '完成',
+  details: '详情',
+  hideDetails: '收起',
+  close: '关闭'
 }
 
 export const KITS_LOCALES: PluginLocaleBundles = { en, zh }

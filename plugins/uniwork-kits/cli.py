@@ -74,8 +74,8 @@ def setup(parser: argparse.ArgumentParser) -> None:
     p = sub.add_parser("xiaohongshu", help="下载、启动种草草的本机小红书程序，或只查看状态")
     p.add_argument(
         "action",
-        choices=("status", "attach", "install", "start", "stop", "consent"),
-        help="install 下载；start 启动；consent 记下是否允许；扫码在对话里完成",
+        choices=("status", "attach", "install", "start", "stop", "consent", "prepare"),
+        help="prepare = 同意 + 下载 + 启动 + 接入（种草草在对话里征得同意后运行）；扫码在对话里完成",
     )
     p.add_argument("--decision", choices=("accept", "decline"), default="accept")
     _add_profile(p)
@@ -214,6 +214,8 @@ def handle(args: argparse.Namespace) -> None:
                 _print(xiaohongshu.stop(home))
             elif args.action == "consent":
                 _print(xiaohongshu.set_consent(home, args.decision))
+            elif args.action == "prepare":
+                _print(xiaohongshu.prepare(home))
             else:
                 _print(xiaohongshu.attach(home))
         elif command == "sync":

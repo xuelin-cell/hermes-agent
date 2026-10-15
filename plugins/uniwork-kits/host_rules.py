@@ -145,12 +145,12 @@ HOST_NOTES: Dict[str, str] = {
     ),
     "xiaohongshu-operations-expert": (
         "- 加载本专家的技能写全名，例如 `xiaohongshu-operations-expert--xiaohongshu`。\n"
-        "- 查登录、搜笔记、看详情、发布、评论需要本机小红书 MCP（`http://127.0.0.1:18060/mcp`）。"
-        "工具全名形如 `mcp__xiaohongshu_mcp__check_login_status`：工具列表里没有时在 `tool_search` 的目录里找，"
-        "用 `tool_describe` 取参数后 `tool_call` 调用；目录里也没有就说明本机小红书服务尚未接入，策略和文案照常做。"
-        "禁止用浏览器、网页抓取或 `web_extract` 代替账号操作。\n"
+        "- 查登录、搜笔记、看详情、发布、评论需要本机小红书 MCP（`http://127.0.0.1:18060/mcp`），"
+        "工具全名形如 `mcp__xiaohongshu_mcp__check_login_status`，不在工具列表里时在 `tool_search` 的目录里。"
+        "目录里也没有，说明本机程序还没接入：按本轮提示先征得同意，再用终端和 `setup_mcp` 接入；"
+        "用户不同意就只做策略和文案。禁止用浏览器、网页抓取或 `web_extract` 代替账号操作。\n"
         "- 要用账号时先调 `check_login_status`，已登录就直接往下做；确认未登录才调一次 "
-        "`get_login_qrcode`，按它返回的原话回复用户。不要为确认图片重复调用，每调一次上一张就作废；"
+        "`get_login_qrcode`，把二维码图片用 `MEDIA:<图片路径>` 单独一行发给用户。不要为确认图片重复调用，每调一次上一张就作废；"
         "只有二维码过期或用户说扫不上时才再调一次，并说明是新的一张。\n"
         "- 发布前先定可见范围：`visibility` 支持「公开可见」「仅自己可见」「仅互关好友可见」，"
         "不传就是公开；用户没说就先问。话题标签用 `tags` 参数传，不要写进正文。\n"

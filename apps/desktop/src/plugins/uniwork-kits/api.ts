@@ -1,6 +1,6 @@
 import { type PluginRestOptions } from '@hermes/plugin-sdk'
 
-import type { Catalog, JobView } from './types'
+import type { Catalog, ExpertDirectory, JobView } from './types'
 
 type Rest = <T>(path: string, opts?: PluginRestOptions) => Promise<T>
 
@@ -29,6 +29,18 @@ function api<T>(path: string, opts?: PluginRestOptions): Promise<T> {
 
 export function fetchCatalog(): Promise<Catalog> {
   return api<Catalog>('/')
+}
+
+export function fetchExperts(): Promise<ExpertDirectory> {
+  return api<ExpertDirectory>('/experts')
+}
+
+export function fetchExpertAvatar(name: string): Promise<{ data_url: string }> {
+  return api(`/experts/${encodeURIComponent(name)}/avatar`)
+}
+
+export function recordSummon(name: string): Promise<{ recent: string[] }> {
+  return api('/experts/recent', { body: { name }, method: 'POST' })
 }
 
 export function fetchJob(id: string): Promise<JobView> {

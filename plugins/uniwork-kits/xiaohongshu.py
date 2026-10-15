@@ -4,6 +4,14 @@ Download, start, and the in-chat login prompt live here. The program speaks
 HTTP at ``http://127.0.0.1:18060/mcp``. Scanning the QR code is the MCP tool
 ``get_login_qrcode``; this module starts the program and tells the expert to
 call that tool once. It does not log in by itself.
+
+数字员工 asked in the chat, then downloaded, started and showed the QR code
+itself. Here the same steps run through tools the expert already has: it asks
+with ``clarify``, runs ``hermes kit xiaohongshu prepare`` (consent, download,
+start, connect), calls ``setup_mcp`` so the desktop reloads the server into the
+open chat, and sends the QR image back with ``MEDIA:``. After a reboot the
+program starts again on its own once consent is on record
+(:func:`ensure_running`).
 """
 
 from __future__ import annotations
@@ -240,24 +248,58 @@ def consent_accepted(home: Path) -> bool:
     return any(isinstance(item, dict) and item.get("decision") == "accepted" for item in conversations.values())
 
 
+def prepare(home: Path, *, fetch=None, popen=None, listening=None, wait_s: float = 20.0) -> str:
+    """The user agreed in the chat: record it, download if missing, start, connect."""
+    if not _is_xiaohongshu_home(home):
+        raise XiaohongshuError("只能在种草草自己的 profile 上准备小红书程序。")
+    lines = [set_consent(home, "accept")]
+    if not binary_path(home).is_file():
+        lines.append(f"已下载到 {install_binary(home, fetch=fetch)}")
+    lines.append(start(home, popen=popen, listening=listening, wait_s=wait_s))
+    return "\n".join(lines)
+
+
+def ensure_running(home: Path, *, popen=None, listening=None) -> bool:
+    """Start the program for 种草草 when consent is on record and it is not serving yet."""
+    if not _is_xiaohongshu_home(home) or not consent_accepted(home) or not binary_path(home).is_file():
+        return False
+    listening = port_open if listening is None else listening
+    if listening():
+        return False
+    start(home, popen=popen, listening=listening)
+    return True
+
+
 _LOGIN_RE = __import__("re").compile(r"登录|扫码|登入|二维码")
 
 
-def turn_context(home: Path, user_message: str) -> str:
+_QR_STEPS = (
+    "登录：先调 `mcp__xiaohongshu_mcp__check_login_status`，已登录就直接往下做；确认未登录才调一次 "
+    "`mcp__xiaohongshu_mcp__get_login_qrcode`，把返回的二维码图片在回复里单独一行写成 `MEDIA:<图片路径>` "
+    "发给用户，请其用小红书 App 扫码，扫完告诉你再查一次登录状态。不要为确认而重复取码，每取一次上一张就作废。"
+    "这两个工具不在工具列表里时，就在 `tool_search` 的目录里，用 `tool_describe` 取参数后 `tool_call` 调用。"
+)
+
+
+def turn_context(home: Path, user_message: str, *, listening=None) -> str:
     """Prompt for 种草草 only. Empty when this turn does not touch the account."""
     if not _is_xiaohongshu_home(home) or not _LOGIN_RE.search(user_message or ""):
         return ""
+    profile = home.name
+    connect = (
+        f"在终端运行 `hermes -p {profile} kit xiaohongshu prepare`（记下同意、下载并在本机启动程序，第一次可能要等一会儿），"
+        "成功后调用 `setup_mcp`（server=`xiaohongshu-mcp`，action=`enable`，reason 写「接入本机小红书程序，用来扫码登录」），"
+        "用户在卡片上点接入后工具就在本次对话里可用。"
+    )
     if not consent_accepted(home):
         return (
-            "用户要登录小红书，但这台电脑还没同意启动本机程序。"
-            "先用 `clarify` 问是否允许下载并启动非官方小红书程序。不要调用登录工具。"
-            "用户同意后，请其执行 `hermes kit xiaohongshu consent accept`，再 `install` 和 `start`。"
+            "用户要登录小红书，这台电脑还没同意启动本机程序。先用 `clarify` 问一次是否允许，说明："
+            "会从 GitHub 下载开源的非官方小红书程序 xiaohongshu-mcp，在本机后台运行，用来扫码登录、搜索和发布。"
+            "用户同意后：" + connect + "然后" + _QR_STEPS
+            + "用户不同意就不再提，继续做不依赖账号的工作（定位、选题、文案、封面）。"
         )
-    if not binary_path(home).is_file():
-        return "用户要扫码登录，程序还没下载。请其执行 `hermes kit xiaohongshu install`，然后再 `start`。不要声称已经出示二维码。"
-    return (
-        "本机小红书程序的地址是 `http://127.0.0.1:18060/mcp`。"
-        "扫码登录只调用一次 `mcp__xiaohongshu_mcp__get_login_qrcode`，把返回的图片给用户。"
-        "不要为确认而重复调用，否则上一张二维码会失效。"
-    )
+    listening = port_open if listening is None else listening
+    if not binary_path(home).is_file() or not listening():
+        return "用户要登录小红书，本机程序还没就绪（用户之前已同意）。" + connect + "然后" + _QR_STEPS
+    return _QR_STEPS
 

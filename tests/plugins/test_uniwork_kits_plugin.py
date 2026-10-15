@@ -51,7 +51,7 @@ def kits():
     spec.loader.exec_module(mod)
     parts = (
         "installer", "host_rules", "router", "store", "naming", "llm", "triggers",
-        "media_slot", "xiaohongshu", "deck_check", "package_hooks", "turns", "delivery", "expert_sync",
+        "media_slot", "xiaohongshu", "deck_check", "package_hooks", "turns", "delivery", "expert_sync", "experts",
         "host_hooks", "image_landing", "deck_geometry",
     )
     for part in parts:
@@ -1360,3 +1360,130 @@ def test_experts_follow_the_default_profiles_model_key_and_uniai(kits, profile_e
     _write(profile_env / "config.yaml", yaml.safe_dump({"model": {"provider": "zai", "default": "glm-test"}}))
     kits.expert_sync.sync_all(profile_env)
     assert "UniAI-Toolkit" not in (_config(home).get("mcp_servers") or {})
+
+
+def test_summon_directory_carries_prompts_recent_and_avatar(kits, profile_env, tmp_path):
+    root = _expert_pkg(tmp_path)
+    manifest = root / ".codebuddy-plugin" / "plugin.json"
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    data.update({
+        "displayDescription": {"zh": "演示用的专家", "en": "Demo expert"},
+        "defaultInitPrompt": {"zh": "帮我做个演示", "en": "Demo please"},
+        "quickPrompts": [{"zh": "演示一"}, {"zh": "演示二"}, "演示三"],
+        "tags": [{"zh": "演示"}],
+    })
+    manifest.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    kits.installer.install(root, profile_env, triggers={})
+
+    listed = kits.experts.directory(profile_env)
+    assert listed["recent"] == []
+    [expert] = listed["experts"]
+    assert expert["profile"] == "demo-expert" and expert["display_name"] == "演示专家"
+    assert expert["profession"] == "演示顾问" and expert["description"] == "演示用的专家"
+    assert expert["init_prompt"] == "帮我做个演示"
+    assert expert["quick_prompts"] == ["演示一", "演示二", "演示三"] and expert["tags"] == ["演示"]
+
+    assert kits.experts.record_recent(profile_env, "demo-expert") == ["demo-expert"]
+    assert kits.experts.directory(profile_env)["recent"] == ["demo-expert"]
+    with pytest.raises(kits.installer.KitError):
+        kits.experts.record_recent(profile_env, "not-installed")
+
+    assert kits.experts.avatar_data_url(profile_env, "demo-expert").startswith("data:image/png;base64,")
+    assert kits.experts.avatar_data_url(profile_env, "not-installed") == ""
+
+
+def test_summon_endpoints_over_http(kits, profile_env, expert_pkg):
+    import importlib.util
+
+    from fastapi import FastAPI
+    from starlette.testclient import TestClient
+
+    mod_name = "uniwork_kits_dashboard_api_summon_test"
+    sys.modules.pop(mod_name, None)
+    spec = importlib.util.spec_from_file_location(mod_name, PLUGIN_DIR / "dashboard" / "plugin_api.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[mod_name] = module
+    spec.loader.exec_module(module)
+    app = FastAPI()
+    app.include_router(module.router, prefix="/api/plugins/uniwork-kits")
+    client = TestClient(app)
+
+    kits.installer.install(expert_pkg, profile_env, triggers={})
+    listed = client.get("/api/plugins/uniwork-kits/experts").json()
+    assert [row["profile"] for row in listed["experts"]] == ["demo-expert"]
+    picked = client.post("/api/plugins/uniwork-kits/experts/recent", json={"name": "demo-expert"})
+    assert picked.status_code == 200 and picked.json()["recent"] == ["demo-expert"]
+    assert client.post("/api/plugins/uniwork-kits/experts/recent", json={"name": "nope"}).status_code == 400
+    face = client.get("/api/plugins/uniwork-kits/experts/demo-expert/avatar").json()
+    assert face["data_url"].startswith("data:image/png;base64,")
+
+
+def test_capabilities_installed_without_generation_get_phrases_later(kits, profile_env, kit_pkg):
+    """A seed with --no-generate-triggers must not mark its capabilities as done."""
+    kits.installer.install(kit_pkg, profile_env, triggers={}, generate_triggers=False)
+    assert not (kits.store.load_index(profile_env)["plugins"]["demo-kit"].get("triggers") or {})
+
+    calls = _fake_llm(kits)
+    kits.installer.refresh_triggers(profile_env, "demo-kit")
+    assert calls["generate"] == 1
+    assert kits.store.load_index(profile_env)["plugins"]["demo-kit"]["triggers"]
+
+
+def test_xiaohongshu_login_is_asked_in_chat_then_prepared_and_kept_running(kits, profile_env):
+    """数字员工's flow: ask in chat, then the host downloads, starts and connects; restarts after a reboot."""
+    xhs = kits.xiaohongshu
+    kits.store.save_index(
+        profile_env,
+        {"plugins": {xhs.EXPERT_NAME: {"kind": "expert", "self": True, "display_name": "种草草"}}},
+    )
+    asking = xhs.turn_context(profile_env, "帮我扫码登录小红书", listening=lambda: False)
+    assert "clarify" in asking and "kit xiaohongshu prepare" in asking and "setup_mcp" in asking
+    assert "MEDIA:" in asking
+    assert xhs.turn_context(profile_env, "帮我想几个选题", listening=lambda: False) == ""
+
+    started = []
+
+    class Proc:
+        pid = 7
+
+    note = xhs.prepare(
+        profile_env,
+        fetch=lambda url: b"fake-binary",
+        popen=lambda args, **kw: started.append(args) or Proc(),
+        listening=lambda: False,
+        wait_s=0,
+    )
+    assert xhs.consent_accepted(profile_env) and xhs.binary_path(profile_env).is_file()
+    assert started and "已下载" in note
+    entry = _config(profile_env)["mcp_servers"][xhs.MCP_KEY]
+    assert entry["enabled"] is True
+
+    ready = xhs.turn_context(profile_env, "扫码登录", listening=lambda: True)
+    assert "check_login_status" in ready and "clarify" not in ready and "prepare" not in ready
+
+    # After a reboot: consent on record, program present, nothing listening → start it again.
+    started.clear()
+    assert xhs.ensure_running(profile_env, popen=lambda args, **kw: started.append(args) or Proc(), listening=lambda: False)
+    assert started
+    assert not xhs.ensure_running(profile_env, popen=lambda args, **kw: started.append(args), listening=lambda: True)
+
+
+def test_chinese_skill_names_each_keep_a_slash_command(kits, profile_env, tmp_path, monkeypatch):
+    """ppt-writer's 「PPT视觉设计」 and 「PPT内容生成」 both became /ppt-writer-ppt; one lost its command."""
+    root = tmp_path / "pkgs" / "zh-kit"
+    _write(root / "plugin.json", json.dumps({"name": "zh-kit", "version": "1.0.0", "description": "中文套件"}))
+    _write(root / "skills" / "ppt-design" / "SKILL.md",
+           "---\nname: PPT视觉设计\ndescription: 设计幻灯片的版式\n---\n做完交给 `zh-kit:PPT内容生成`。\n")
+    _write(root / "skills" / "content-generation" / "SKILL.md",
+           "---\nname: PPT内容生成\ndescription: 写幻灯片的内容\n---\n正文\n")
+    receipt = kits.installer.install(root, profile_env, triggers={}, generate_triggers=False)
+    assert sorted(receipt.skills) == ["zh-kit--content-generation", "zh-kit--ppt-design"]
+
+    import agent.skill_commands as sc
+    import tools.skills_tool as st
+
+    monkeypatch.setattr(st, "SKILLS_DIR", profile_env / "skills")
+    commands = sc.scan_skill_commands()
+    assert "/zh-kit-ppt-design" in commands and "/zh-kit-content-generation" in commands
+    design = _skill_md(profile_env, "zh-kit", "ppt-design")
+    assert "PPT视觉设计" in design and "zh-kit--content-generation" in design
