@@ -2,7 +2,7 @@
 
 日期：2026-10-13。基线：`desktop-mt @ d5ff498050`（代码事实核对于同步远端 `40caef7b87` 之前，P01 动手前需复核）。参考实现：UniWork 桌面版 `Kyle549/UniClaw @ uniwork_release`（`8ae3548e`）、Web 版 `feat/hermes-ch`（`3bef1c5bd4`）。
 
-状态：P01～P06 已推送，P06 最新修复为 `7bf5fe50b3`；MS Office／WPS 三类转换均取得真实 PDF，中文排版和用户已有文档并行仍待人工验收。P07 已接入本机转换服务、账号缓存和受限 IPC，独立 Electron 页面调用及缓存命中通过，本步本地提交、未推送；Word／PPT／Excel 查看器尚未接入，P08～P16 未开始。P04 的 COM 查询异常、主要 WPS 别名和专用入口优先级已修复，同厂家多个备用入口仍未实现。本文不授权推送。每步完成验证并本地提交后暂停，等待用户核验，再继续下一步。
+状态：P01～P06 已推送，P06 最新修复为 `7bf5fe50b3`；MS Office／WPS 三类转换均取得真实 PDF，中文排版和用户已有文档并行仍待人工验收。P07 本机转换服务已本地提交 `26bcd424a6`、未推送。P08 已将 docx／doc／odt 接入 PDF 预览，界面与失败出口定向检查通过，本步本地提交、未推送，真实桌面显示待用户核验。P09～P16 未开始，Word 前端兜底、PPT／Excel 查看器尚未接入。P04 同厂家多个备用入口仍未实现。本文不授权推送。每步完成验证并本地提交后暂停，等待用户核验，再继续下一步。
 
 路径约定：`src/`、`electron/` 指 `apps/desktop/` 下的对应目录；`shared/` 指 `apps/shared/src/`。各步骤的行数是预估的业务代码行数，不含测试、夹具和文档；多语言文案单独列出。
 
@@ -420,8 +420,8 @@ UniWork 的表格预览由三个文件组成，共约 1300 行，并依赖表格
 | B · 约定与探测 | P04 | 已推送 `4275f8f2a2`；查询异常及主要 WPS 别名、专用入口优先级已修复；同厂家备用入口仍有限制 |
 | B · 缓存与排队 | P05 | 已实现，13 项定向检查通过；已推送 `e7f05d4015`，应用接线待 P07 |
 | B · MS Office 与 WPS 转换 | P06 | 已推送至 `7bf5fe50b3`；38 项定向检查通过，两厂家三类真实转换取得 PDF，排版及已有文档并行待人工确认 |
-| B · LibreOffice、服务与接入 | P07 | 已实现；预览模块 60 项、独立 Electron IPC／缓存命中通过；本地提交未推送，真实软件接线仍待人工核验 |
-| C · Word 转 PDF | P08 | 未开始 |
+| B · LibreOffice、服务与接入 | P07 | 已实现；预览模块 60 项、独立 Electron IPC／缓存命中通过；本地提交 `26bcd424a6` 未推送，真实软件接线仍待人工核验 |
+| C · Word 转 PDF | P08 | 已接入 docx／doc／odt；定向检查通过，本地提交未推送，真实排版、再次打开速度和文件保存后刷新待用户核验 |
 | C · Word 兜底 | P09 | 未开始 |
 | C · PDF 逐页渲染 | P10 | 未开始 |
 | C · 幻灯片查看器 | P11 | 未开始 |
@@ -616,3 +616,15 @@ P05 完成后对 P01～P04 的四个提交做了一次代码审阅，共 10 条�
 - 定向检查：`npx vitest run --project electron electron/office-preview`，9 文件 60 项通过；随后修改到的服务、LibreOffice、IPC 和缓存四文件 19 项复测通过。检查顺序、降级、总预算、原文件保留、伪／超限／缺失 PDF、缓存复用、A→B→A 账号缓存、退出时的队列限制及 retain 回收保护。类型检查最初发现 LibreOffice 测试替身误用了 COM 参数类型，已修正；ESLint 格式警告已按仓库规则处理。最终 `npm run typecheck`、改动文件 ESLint 零警告、夹具语法与 `git diff --check` 通过。
 - `node scripts/office-service.native.mjs`：1 项隐藏独立 Electron 检查通过，经过正式 Renderer／preload／IPC、文件复制与缓存，第二次调用不重复转换，返回真实跨 IPC 的 Uint8Array。仅软件转换器使用受控产物，没有启动 Office、MaaS、Hermes 后端或用户窗口；这不是 P07 真实软件全链路验收。夹具记录位于 `C:\Users\stan\AppData\Local\Temp\hermes-office-service-native-xJQkXu`。本轮不重跑 P06 Office 实机轮次、不验证中文排版、安装包、已有文档并行或云端。
 - 本步按约定本地提交后暂停，不推送，不进入 P08；真实查看器验收继续交由用户。
+
+### P08 Word 转 PDF 预览（2026-10-14）
+
+- 接续 HEAD 为 `26bcd424a6`，远端仍为 `6f3c7cc558`；P07 是已完成但尚未推送的本地提交，不需要拉取或覆盖。保留用户本机计时内容。本步不修改主进程、Hermes Python 后端、官方对照版或用户文件，不安装新依赖。
+- 在预览中心登记共享约定中的 docx／doc／odt，懒加载新的 `office-pdf-preview.tsx`。`source.ts` 是唯一的连接判断处：本机调用 P07 的 `convertOfficePreview`，远程直接报告不可用，不把远程路径送到本机软件。连接变化后不再返回旧 PDF。Word 前端直接渲染兜底仍属于 P09；PPT、Excel 尚未登记。
+- 使用已有 PageLoader 和本地化首次转换说明；PDF 字节转成 application/pdf Blob，以 Chromium 原生 iframe 阅读器显示，不把 Office 源文件或 data URL 当成 PDF。关闭、换文件和刷新时撤销旧 Blob 地址；忽略迟到的转换结果，页面离开不取消主进程已经执行的任务。沿用 PreviewPane 已有的文件监视及 reloadKey，没有另建文件监听或前端缓存；版本与转换缓存仍由 P07 管理。
+- 失败原因与共享转换约定对齐，新增超时、转换失败说明；所有错误经过预览中心保留原文件出口。本机 Word 不可用时说明可安装 LibreOffice；远程只保留原连接、Profile 的下载，不提示安装本机软件。补齐全部九种语言与类型定义，不改现有 CSV／TIFF／音视频、文本、HTML、PDF 的入口或源文件逻辑。
+- 按 [iframe 的事件说明](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/iframe#error_and_load_event_behavior)，浏览器不会可靠地用 error／load 区分内容是否成功显示。本步复用原有 PDF 阅读器，不保留无效的 iframe error 回调，不将 iframe 挂载当成 PDF 排版或解析已经验收。转换错误和 Blob 创建失败可回到正式失败流程，阅读器内部解析或排版仍需实机确认。
+- 新组件先因尚未实现而测试失败，再接入并验证。四个定向文件（office-pdf-preview、format-preview、source、catalog-completeness）64 项通过，覆盖三类 Word 登记、加载说明、PDF MIME／字节、刷新与释放、换文件和连接后的迟到结果、六种错误、安装提示、远程不调用本机转换及归属正确的下载。原有 preview-file／preview-pane 两文件 33 项回归通过；合计六文件 97 项。完整 `npm run typecheck`、改动文件 ESLint 零警告和 `git diff --check` 通过。早期夹具曾试图触发 iframe error，核对浏览器行为后删除无效产品回调，改为真正能发生的 Blob 创建失败检查，转换失败的断言继续保留。
+- 按用户要求不重复原生 Office 或整套 Electron 验收。本轮组件调用的转换接口返回受控字节，jsdom 不渲染真实 PDF；未重新证明 P06 的真实转换，也未验证真实桌面 Word 排版、缓存打开速度、磁盘保存事件、安装包或云端。不能把上述自动检查写成“真实 Word 端到端已通过”。
+- 人工验收：重启源码开发版，在文件树或聊天文件卡片打开 docx／doc／odt，检查首次说明、中文排版及 PDF 滚动；关闭后再次打开观察缓存效果；修改并保存原文档后确认预览刷新；再核对普通 HTML、PDF、文本和音视频仍正常。首次调用会使用本机转换软件，已有 Office 文档不要关闭，顺便确认其仍保留。P09 完成前，没有转换软件或远程 Word 只显示原因及原文件出口。
+- 本步本地提交后暂停，不推送，不进入 P09。

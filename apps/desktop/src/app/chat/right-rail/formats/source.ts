@@ -42,6 +42,27 @@ export async function readPreviewBytes(path: string): Promise<ArrayBuffer> {
   }
 }
 
+/** 本机才请求受限转换；连接变化或未知异常不把旧产物及内部错误交给显示器。 */
+export async function readOfficePreviewPdf(path: string): Promise<Uint8Array> {
+  try {
+    const owner = desktopFsCacheKey()
+
+    if ($connection.get()?.mode === 'remote' || !window.hermesDesktop?.convertOfficePreview) {
+      throw { code: 'unavailable' }
+    }
+
+    const result = await window.hermesDesktop.convertOfficePreview(path)
+
+    if (owner !== desktopFsCacheKey()) {throw { code: 'unavailable' }}
+
+    if (result.ok === false) {throw previewFailure(result)}
+
+    return result.pdf
+  } catch (error) {
+    throw previewFailure(error)
+  }
+}
+
 /** 播放器对文件缺失和编码不支持报同一错误码，失败后用原有文本读取确认文件是否还能访问。 */
 export async function previewAccessFailure(path: string): Promise<PreviewFailure | null> {
   try {

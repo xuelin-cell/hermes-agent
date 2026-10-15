@@ -4903,10 +4903,17 @@ export const en: Translations = {
     noInlineTitle: 'No inline preview',
     noInlineBody: mimeType => `${mimeType || 'This file type'} can still be attached as context.`,
     formatFailure: {
+      convert_failed: 'Could not convert this document. You can still access the original file.',
+      timeout: 'Document conversion timed out. You can still access the original file.',
       not_found: 'This file is no longer available.',
       too_large: 'This file or image is too large to preview. You can still access the original file.',
       unavailable: 'Could not preview this file. You can still access the original file.',
       unsupported: 'This format or media encoding is not supported.'
+    },
+    office: {
+      converting: 'Converting document',
+      firstOpen: 'The first preview may take a few seconds.',
+      installConverter: 'If no conversion software is available, install LibreOffice and try again.'
     },
     delimited: {
       table: 'Table',

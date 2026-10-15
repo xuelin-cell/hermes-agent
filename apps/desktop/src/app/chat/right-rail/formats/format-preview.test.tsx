@@ -79,7 +79,10 @@ describe('format preview', () => {
       '/fixture/table.csv',
       '/fixture/table.tsv',
       '/fixture/photo.TIF',
-      '/fixture/photo.tiff'
+      '/fixture/photo.tiff',
+      '/fixture/document.docx',
+      '/fixture/document.doc',
+      '/fixture/document.odt'
     ]
 
     expect(new Set(examples.map(path => previewFormat(fileTarget(path))))).toEqual(

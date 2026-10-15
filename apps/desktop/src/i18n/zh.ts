@@ -4604,10 +4604,17 @@ export const zh = defineLocale({
     noInlineTitle: '没有内联预览',
     noInlineBody: mimeType => `${mimeType || '此文件类型'} 仍可作为上下文附件。`,
     formatFailure: {
+      convert_failed: '文档转换失败，仍可查看或下载原文件。',
+      timeout: '文档转换超时，仍可查看或下载原文件。',
       not_found: '文件已不存在或无法访问。',
       too_large: '文件过大或图片尺寸超出预览上限，仍可查看或下载原文件。',
       unavailable: '无法预览此文件，仍可查看或下载原文件。',
       unsupported: '暂不支持此文件格式或音视频编码。'
+    },
+    office: {
+      converting: '正在转换文档',
+      firstOpen: '首次预览可能需要几秒。',
+      installConverter: '如果没有可用的转换软件，请安装 LibreOffice 后重试。'
     },
     delimited: {
       table: '表格',

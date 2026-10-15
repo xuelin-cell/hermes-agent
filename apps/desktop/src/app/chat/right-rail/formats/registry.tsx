@@ -14,6 +14,7 @@ export interface FormatRendererProps extends ComponentProps<typeof LocalFilePrev
 const MediaPreview = lazy(() => import('./media-preview'))
 const DelimitedPreview = lazy(() => import('./delimited-preview'))
 const TiffPreview = lazy(() => import('./tiff-preview'))
+const OfficePdfPreview = lazy(() => import('./office-pdf-preview'))
 
 // 显示器只在这张表登记；后续格式按顺序追加真正可用的候选。
 export const FORMAT_RENDERERS: Record<
@@ -23,5 +24,6 @@ export const FORMAT_RENDERERS: Record<
   audio: [MediaPreview],
   delimited: [DelimitedPreview],
   tiff: [TiffPreview],
-  video: [MediaPreview]
+  video: [MediaPreview],
+  word: [OfficePdfPreview]
 }

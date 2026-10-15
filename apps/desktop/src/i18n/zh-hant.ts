@@ -3807,10 +3807,17 @@ export const zhHant = defineLocale({
     noInlineTitle: '沒有行內預覽',
     noInlineBody: mimeType => `${mimeType || '此檔案類型'} 仍可作為脈絡附件。`,
     formatFailure: {
+      convert_failed: '文件轉換失敗，仍可查看或下載原檔案。',
+      timeout: '文件轉換逾時，仍可查看或下載原檔案。',
       not_found: '檔案已不存在或無法存取。',
       too_large: '檔案過大或圖片尺寸超出預覽上限，仍可查看或下載原檔案。',
       unavailable: '無法預覽此檔案，仍可查看或下載原檔案。',
       unsupported: '暫不支援此檔案格式或影音編碼。'
+    },
+    office: {
+      converting: '正在轉換文件',
+      firstOpen: '首次預覽可能需要幾秒。',
+      installConverter: '如果沒有可用的轉換軟體，請安裝 LibreOffice 後重試。'
     },
     delimited: {
       table: '表格',

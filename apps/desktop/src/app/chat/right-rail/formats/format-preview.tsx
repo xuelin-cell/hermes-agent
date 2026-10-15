@@ -53,7 +53,14 @@ function RegisteredPreview({ kind, onClose, source, ...props }: RegisteredPrevie
   if (!Renderer) {
     return (
       <PreviewEmptyState
-        body={t.preview.formatFailure[attempt.failure?.code || 'unavailable']}
+        body={
+          <>
+            {t.preview.formatFailure[attempt.failure?.code || 'unavailable']}
+            {kind === 'word' && source.exit === 'reveal' && attempt.failure?.code === 'unavailable' && (
+              <p className="mt-2">{t.preview.office.installConverter}</p>
+            )}
+          </>
+        }
         primaryAction={{
           label: source.exit === 'download' ? t.fileMenu.download : t.fileMenu.revealFileManager,
           onClick: () => void source.open()

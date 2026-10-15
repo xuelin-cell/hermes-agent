@@ -4155,10 +4155,17 @@ export interface Translations {
     noInlineTitle: string
     noInlineBody: (mimeType: string) => string
     formatFailure: {
+      convert_failed: string
+      timeout: string
       not_found: string
       too_large: string
       unavailable: string
       unsupported: string
+    }
+    office: {
+      converting: string
+      firstOpen: string
+      installConverter: string
     }
     delimited: {
       table: string

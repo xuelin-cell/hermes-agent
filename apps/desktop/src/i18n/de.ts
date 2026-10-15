@@ -5262,10 +5262,17 @@ export const deOverrides = {
     noInlineTitle: 'Keine Inline-Vorschau',
     noInlineBody: mimeType => `${mimeType || 'Dieser Dateityp'} kann trotzdem als Kontext angehängt werden.`,
     formatFailure: {
+      convert_failed: 'Das Dokument konnte nicht konvertiert werden. Die Originaldatei bleibt zugänglich.',
+      timeout: 'Zeitüberschreitung bei der Konvertierung. Die Originaldatei bleibt zugänglich.',
       not_found: 'Diese Datei ist nicht mehr vorhanden oder nicht zugänglich.',
       too_large: 'Die Datei oder das Bild ist zu groß für die Vorschau. Die Originaldatei bleibt zugänglich.',
       unavailable: 'Keine Vorschau möglich. Die Originaldatei kann weiterhin geöffnet oder heruntergeladen werden.',
       unsupported: 'Dieses Dateiformat oder diese Medienkodierung wird nicht unterstützt.'
+    },
+    office: {
+      converting: 'Dokument wird konvertiert',
+      firstOpen: 'Die erste Vorschau kann einige Sekunden dauern.',
+      installConverter: 'Wenn keine Konvertierungssoftware verfügbar ist, installieren Sie LibreOffice und versuchen Sie es erneut.'
     },
     delimited: {
       table: 'Tabelle',
