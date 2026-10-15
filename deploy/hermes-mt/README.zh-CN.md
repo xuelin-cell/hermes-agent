@@ -43,6 +43,8 @@
 cd deploy/hermes-mt
 # 首次：生成 entry.env（密钥现场随机、600）和 compose.override.yaml
 ./deploy.sh init --http-port 192.168.x.x:18081 --cube-api http://<控制面>:3000 --cube-proxy http://<数据面>
+# 第一次部署、或 hermes 源码变了（合了上游、改了内置技能）：先建基础镜像，15~45 分钟；源码没变会直接跳过
+./deploy.sh base
 # 之后每次升级都是这一条：拉代码 → 检查 → 沙箱镜像(按需) → 模板(按需) → 写配置 → 起容器 → 验收
 ./deploy.sh all
 ./deploy.sh status      # 看现状；./deploy.sh check 只读检查；./deploy.sh purge-old 删旧模板上的实例
@@ -50,10 +52,14 @@ cd deploy/hermes-mt
 
 要点：沙箱镜像按内容指纹命名（`Dockerfile.cube` + `seed/*` + 基础镜像 + 模板参数），只改入口代码不会重做镜像和模板；改了转发器就一定重做，并把新模板 ID 写进 `entry.env`。**入口和沙箱模板必须一起升级**——新入口配旧转发器会把用户的 `config.yaml` 写坏，脚本保证这一点。入口发现实例的模板和配置不一致，会在用户下次请求时自动排空、删除、重建、从卷上的归档恢复。部署机的规矩（不重启 Docker、不 prune、不切换构建器、页面只绑内网 IP、不打印密钥）也都在脚本里。
 
+**基础镜像**：沙箱镜像叠在基础镜像（hermes 本体）上。基础镜像用本仓库根目录的 `Dockerfile` 构建，和桌面版同一份（只补了一行它漏掉的 `COPY scripts/build/filesystem.py`），里面是 hermes 代码、内置技能（`skills/uniwork`）和 pm 锁定的 Python 3.14、Node、Chromium、ffmpeg、ripgrep（都在 `/opt/hermes/tools`；uv 不在 PATH 上）。镜像名 `hermes-custom:src-<指纹>`，指纹只算 hermes 源码（不含 `apps/`、`deploy/`、`docs/`、`tests/`、`website/`），所以只改前端或部署脚本不用重建；`./deploy.sh all` 找不到当前指纹的基础镜像就停下来，让你先跑 `./deploy.sh base`。构建要从外网下载（GitHub、nodejs.org、Playwright 的 CDN、PyPI、npm、Debian 源）。以前按摘要拉的 `hermes-custom:a2007f2` 不能再用：它没有内置技能的标记文件，`deploy.sh` 会拦下。`entry.env` 里如果写了 `MT_DEPLOY_BASE_IMAGE`，就固定用它，一般不要写。
+
+**实例里给技能用的东西**（`Dockerfile.cube`）：LibreOffice（文件预览转 PDF、文档类技能）、poppler、系统 Chromium（frontend-design 截图）、字体；技能要的 Python 库装进 hermes 的 venv（已有的 hermes 依赖钉在原版本，不会被顺带升级）；agent 的终端命令在登录 shell 里跑，`/etc/profile` 会把 PATH 重置成系统默认值，镜像 ENV 里的 `/opt/hermes/bin`、`/opt/hermes/.venv/bin`、`/opt/data/.local/bin` 都会丢，`python3` 落到不带库的 Python（旧镜像也这样），所以 `/etc/profile.d/hermes-path.sh` 把这几项补回来，agent 终端和用户的终端面板用的是同一个 Python；Python 版 Playwright 锁在和 pm 那份 Chromium 同一个修订号，只补 headless shell（`PLAYWRIGHT_SKIP_BROWSER_GC=1`，否则会把 pm 的 Chromium 当旧版删掉）；uniai-ppt 要的 pptxgenjs 装在 `/opt/skill-node`，靠 `NODE_PATH` 让任何目录下的脚本都能 `require`。
+
 ## 前置条件
 
-- docker ≥ 20.10、docker compose v2；宿主能跑 `hermes-custom:dev`（`.7` 上已验证：CentOS 7 / 3.10 内核 / docker 26.1.4）。
-- 镜像 `hermes-custom:dev` 已存在（`.7` 上就是现网那个），或按 `docs/custom-web-docker-deployment.zh-CN.md` 构建。
+- docker ≥ 20.10、docker compose v2（`.7` 上已验证：CentOS 7 / 3.10 内核 / docker 26.1.4）。
+- 基础镜像：沙箱后端用 `./deploy.sh base` 从本仓库构建（见上「基础镜像」）；下面手工部署的 Docker 后端用 `hermes-custom:dev`，按 `docs/custom-web-docker-deployment.zh-CN.md` 构建。
 - 浏览器版前端产物：`bash deploy/hermes-mt/scripts/build-frontend.sh`；或直接复制现网 release：
   `cp -a /mnt/hermes-runtime/hermes/. deploy/hermes-mt/nginx/dist-browser/`（注意末尾 `/.`）。
 - 与单用户版**并存**：端口默认 `18081`（单用户版是 `18080`），容器名前缀 `hermes-mt-` / `hermes-t-`，互不冲突。

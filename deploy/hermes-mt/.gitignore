@@ -5,3 +5,4 @@ entry.env.*
 .image-fingerprint
 compose.override.yaml
 .overlay/
+.base-build.log

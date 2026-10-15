@@ -221,6 +221,9 @@ RUN set -eu; \
     mkdir -p /etc/hermes; \
     printf '%s' "$browser_bin" > /etc/hermes/agent-browser-executable-path
 
+# payload.py imports scripts.build.filesystem (stdlib only) for the seal step below.
+COPY scripts/build/filesystem.py scripts/build/filesystem.py
+
 # PM is resident too: never borrow application libraries or create its worker
 # environment under /root (unreachable to the runtime UID).
 RUN python3 -c 'from pathlib import Path; from pm import stage_manager_runtime; from scripts.bundles.payload import seal_pm_runtime; root = Path("/opt/hermes"); python = Path("/usr/local/bin/python3").resolve(); stage_manager_runtime(python=python, destination=root / "pm-runtime", project=root / "pm"); seal_pm_runtime(root, python)'

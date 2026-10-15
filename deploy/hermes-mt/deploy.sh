@@ -2,6 +2,8 @@
 # 多租户栈的一键部署 / 升级脚本。在部署机上以 root 运行，工作目录随意。
 #
 #   ./deploy.sh all            拉代码 → 只读检查 → 沙箱镜像(按需) → 模板(按需) → 写配置 → 起容器 → 验收
+#   ./deploy.sh base           拉代码 → 用本仓库根目录的 Dockerfile 构建基础镜像（hermes 本体，15~45 分钟）。
+#                              按 hermes 源码指纹命名，源码没变就跳过；all 发现没有当前指纹的基础镜像会停下来让你先跑它
 #   ./deploy.sh check          只读摸底，不改任何东西
 #   ./deploy.sh image          构建沙箱镜像并推到集群仓库（内容没变就跳过推送）
 #   ./deploy.sh template       确保集群上有当前镜像的模板，把模板 ID 写进 entry.env
@@ -12,7 +14,7 @@
 #   ./deploy.sh set KEY=VALUE… 改 entry.env 里的一项或几项（只认 MT_ 开头），然后提示你跑 up 生效
 #   ./deploy.sh init --http-port IP:端口 --cube-api URL --cube-proxy URL [--registry HOST:PORT]
 #                              首次部署：生成 entry.env（密钥现场随机、600）和 compose.override.yaml
-#   选项：--no-pull（all 时不拉代码）  --branch 名字  --yes（不问确认）
+#   选项：--no-pull（all / base 时不拉代码）  --branch 名字  --yes（不问确认）
 #
 # 为什么要有这个脚本：手册里的每一步都有能出错的细节（构建器、不安全仓库、模板要和入口一起换、
 # 入口重建后 nginx 要重启、entry.env 权限……），漏一条就是线上事故。这里把它们全部变成
@@ -29,7 +31,8 @@
 #
 # 配置全部从 entry.env 读。除入口自己的变量外，部署专用的几项（都有默认值）：
 #   MT_DEPLOY_REGISTRY      集群镜像仓库 HOST:PORT，默认 = MT_CUBE_API 的主机 + :5000
-#   MT_DEPLOY_BASE_IMAGE    沙箱镜像的基础镜像，默认 hermes-custom:a2007f2（必须已在本机）
+#   MT_DEPLOY_BASE_IMAGE    沙箱镜像的基础镜像，默认 hermes-custom:src-<hermes 源码指纹>（./deploy.sh base 构建）；
+#                           一般不要设，设了就固定用它（必须已在本机）
 #   MT_DEPLOY_TPL_CPU/MEM   模板规格，默认 2000 / 2000（毫核 / MiB）
 #   MT_DEPLOY_TPL_DISK      模板可写层，默认 8G
 #   MT_DEPLOY_TPL_RETRIES   建模板有节点失败（平台偶发）时重建几次，第一次之外，默认 3
@@ -113,7 +116,7 @@ load_cfg() {
     local api_host
     api_host="$(printf '%s' "$CUBE_API" | sed -E 's|^[a-z]+://||; s|[:/].*$||')"
     REGISTRY="$(cfg MT_DEPLOY_REGISTRY "${api_host}:5000")"
-    BASE_IMAGE="$(cfg MT_DEPLOY_BASE_IMAGE hermes-custom:a2007f2)"
+    BASE_IMAGE="$(cfg MT_DEPLOY_BASE_IMAGE "$(base_tag)")"
     TPL_CPU="$(cfg MT_DEPLOY_TPL_CPU 2000)"
     TPL_MEM="$(cfg MT_DEPLOY_TPL_MEM 2000)"
     TPL_DISK="$(cfg MT_DEPLOY_TPL_DISK 8G)"
@@ -137,12 +140,18 @@ py() { python3 -c "$@"; }
 g() { (cd "$REPO" && git "$@"); }
 head_short() { g rev-parse --short=7 HEAD; }
 
+# 基础镜像（hermes 本体）按 hermes 源码指纹命名：当前提交里除前端、部署、文档、测试之外的文件。
+# 这些没变就不用重建（构建要 15~45 分钟）。git 1.8 没有排除式路径，用 ls-tree 自己滤。
+base_tag() {
+    printf 'hermes-custom:src-%s' "$(g ls-tree -r HEAD | grep -vE $'\t(apps|deploy|docs|tests|website)/' | sha256sum | cut -c1-12)"
+}
+
 # ---------------------------------------------------------------- 指纹
 
 fingerprint() {
     local base_id
     base_id="$(docker image inspect --format '{{.Id}}' "$BASE_IMAGE" 2>/dev/null || true)"
-    [ -n "$base_id" ] || die "基础镜像 $BASE_IMAGE 不在本机（MT_DEPLOY_BASE_IMAGE）"
+    [ -n "$base_id" ] || die "基础镜像 $BASE_IMAGE 不在本机：hermes 源码变了或第一次部署，先跑 ./deploy.sh base"
     {
         cat "$HERE/Dockerfile.cube"
         # config.yaml.tmpl 由入口渲染后经引导接口送进实例，不在镜像里，改它不必换模板。
@@ -336,7 +345,8 @@ cmd_check() {
     [ -n "$CUBE_API" ] && [ -n "$CUBE_PROXY" ] || die "MT_CUBE_API / MT_CUBE_PROXY 没配"
     [ -f "$OVERRIDE" ] && grep -q '!reset' "$OVERRIDE" && ok "compose.override.yaml 去掉了 docker.sock" || warn "没有 compose.override.yaml，起容器前会自动生成"
 
-    docker image inspect "$BASE_IMAGE" >/dev/null 2>&1 && ok "基础镜像 $BASE_IMAGE 在本机" || die "基础镜像 $BASE_IMAGE 不在本机"
+    docker image inspect "$BASE_IMAGE" >/dev/null 2>&1 && ok "基础镜像 $BASE_IMAGE 在本机" \
+        || die "基础镜像 $BASE_IMAGE 不在本机：hermes 源码变了或第一次部署，先跑 ./deploy.sh base（15~45 分钟）"
     check_overlay
     if [ -s "$HERE/nginx/dist-browser/index.html" ]; then
         ok "前端产物 $(find "$HERE/nginx/dist-browser" -type f | wc -l) 个文件"
@@ -365,6 +375,46 @@ cmd_check() {
     ok "当前模板 ${TEMPLATE:-（未设置）}"
 }
 
+# ---------------------------------------------------------------- base
+
+# 基础镜像 = 本仓库根目录的 Dockerfile（和桌面版同一份）构建出来的 hermes 本体：hermes 代码、内置技能、
+# pm 锁定的 Python / Node / Chromium / ffmpeg（在 /opt/hermes/tools）。构建时要从外网下载这些和 Python / npm 依赖。
+cmd_base() {
+    if [ "$NO_PULL" = 0 ]; then
+        cmd_pull
+        local pass="--no-pull"
+        if [ -n "$BRANCH_OPT" ]; then pass="$pass --branch $BRANCH_OPT"; fi
+        if [ "$YES" = 1 ]; then pass="$pass --yes"; fi
+        # shellcheck disable=SC2086
+        exec bash "$SCRIPT" base $pass
+    fi
+    need docker; need git
+    local tag log free_g
+    tag="$(base_tag)"
+    say "基础镜像：$tag（代码 $(head_short)；指纹只算 hermes 源码，不含前端 / 部署 / 文档 / 测试）"
+    if docker image inspect "$tag" >/dev/null 2>&1; then
+        ok "本机已有 $tag，不用重建"
+    else
+        free_g="$(df -BG --output=avail / | tail -1 | tr -dc 0-9)"
+        [ "${free_g:-0}" -ge 20 ] || warn "根分区只剩 ${free_g}G，构建过程要十几 G"
+        log="$HERE/.base-build.log"
+        warn "要从外网下载 Python、Node、Chromium 和依赖包，约 15~45 分钟；完整输出在 $log"
+        # 只把步骤行打到屏幕上，免得几十分钟没动静；成败看镜像在不在。
+        (cd "$REPO" && BUILDX_BUILDER=default docker build --progress=plain -f Dockerfile -t "$tag" . 2>&1) \
+            | tee "$log" | grep --line-buffered -E '^#[0-9]+ \[[^]]+\] (RUN|COPY|FROM)|ERROR' | cut -c1-110 | sed 's/^/  /' || true
+        docker image inspect "$tag" >/dev/null 2>&1 || die "基础镜像没建成，看 $log 末尾"
+        ok "已构建 $tag"
+    fi
+    docker run --rm --network none --entrypoint test "$tag" -f /opt/hermes/skills/UNIWORK_BUNDLED_ONLY \
+        && ok "镜像里有 UniWork 内置技能的标记" \
+        || die "镜像里没有 /opt/hermes/skills/UNIWORK_BUNDLED_ONLY：这个提交不是带 UniWork 技能的版本"
+    if [ "$BASE_IMAGE" != "$tag" ]; then
+        warn "entry.env 里固定了 MT_DEPLOY_BASE_IMAGE=$BASE_IMAGE，沙箱镜像会继续用它；要用刚建的，删掉 entry.env 里那一行"
+    else
+        ok "沙箱镜像会用它：接着跑 ./deploy.sh all"
+    fi
+}
+
 # ---------------------------------------------------------------- image
 
 cmd_image() {
@@ -385,15 +435,19 @@ cmd_image() {
     docker run --rm --network none --entrypoint test "$IMAGE_NAME:$fp" -f /opt/hermes/skills/UNIWORK_BUNDLED_ONLY \
         && ok "镜像里的 hermes 只发 UniWork 内置技能" \
         || die "镜像里没有 /opt/hermes/skills/UNIWORK_BUNDLED_ONLY：基础镜像太旧，要用本仓库构建的（见 README「技能」）"
-    # 覆盖进 /opt/hermes 的仓库文件同理，开一个容器一次比完。
+    # 覆盖进 /opt/hermes 的仓库文件同理，开一个容器一次比完。清单为空就不比（sha256sum 没参数会去读标准输入）。
     local files
     files="$(overlay_files | tr '\n' ' ')"
-    # shellcheck disable=SC2086,SC2016
-    in_img="$(docker run --rm --network none --entrypoint sh "$IMAGE_NAME:$fp" -c 'cd /opt/hermes && sha256sum "$@"' sh $files | awk '{print $1}' | tr '\n' ' ')"
-    # shellcheck disable=SC2086
-    in_repo="$(cd "$REPO" && sha256sum $files | awk '{print $1}' | tr '\n' ' ')"
-    [ "$in_img" = "$in_repo" ] || die "镜像里 /opt/hermes 下的覆盖文件与仓库不一致（overlay.list）"
-    ok "镜像里覆盖的 $(overlay_files | wc -l | tr -d ' ') 个仓库文件与仓库一致"
+    if [ -n "${files// /}" ]; then
+        # shellcheck disable=SC2086,SC2016
+        in_img="$(docker run --rm --network none --entrypoint sh "$IMAGE_NAME:$fp" -c 'cd /opt/hermes && sha256sum "$@"' sh $files | awk '{print $1}' | tr '\n' ' ')"
+        # shellcheck disable=SC2086
+        in_repo="$(cd "$REPO" && sha256sum $files | awk '{print $1}' | tr '\n' ' ')"
+        [ "$in_img" = "$in_repo" ] || die "镜像里 /opt/hermes 下的覆盖文件与仓库不一致（overlay.list）"
+        ok "镜像里覆盖的 $(overlay_files | wc -l | tr -d ' ') 个仓库文件与仓库一致"
+    else
+        ok "没有覆盖进 /opt/hermes 的仓库文件（overlay.list 为空）"
+    fi
 
     if registry_has_tag "$fp"; then
         ok "仓库 $REGISTRY 已有 $REPO_PATH:$fp，跳过推送"
@@ -809,10 +863,11 @@ main() {
     # shellcheck disable=SC2086
     case "$cmd" in
         init) cmd_init $rest ;;
-        all|check|image|template|up|status|purge-old|purge-templates|pull|set)
+        all|base|check|image|template|up|status|purge-old|purge-templates|pull|set)
             load_cfg
             case "$cmd" in
                 all) cmd_all ;;
+                base) cmd_base ;;
                 check) cmd_check ;;
                 image) cmd_image ;;
                 template) cmd_template ;;
@@ -823,7 +878,7 @@ main() {
                 pull) cmd_pull ;;
                 set) cmd_set $rest ;;
             esac ;;
-        *) sed -n '2,15p' "$SCRIPT"; exit 1 ;;
+        *) sed -n '2,17p' "$SCRIPT"; exit 1 ;;
     esac
 }
 

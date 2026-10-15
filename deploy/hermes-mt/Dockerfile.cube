@@ -1,6 +1,6 @@
 # 沙箱（CubeSandbox）用的薄封装镜像。
 #
-# 设计原则：**上游那 466 行 Dockerfile 一个字不改**，只在它之上叠一层。
+# 设计原则：基础镜像用本仓库根目录的 Dockerfile 构建（见 README「基础镜像」），这里只在它之上叠一层。
 # 这一层把「对所有用户都一样」的东西全部固化进镜像，好让平台那边需要按用户
 # 支持的口子尽可能少。
 #
@@ -13,8 +13,9 @@
 #   - 对外端口：只有一个
 #   - envd —— 平台创建沙箱时若带了环境变量，镜像里没有 envd 会导致**创建直接失败**，
 #     所以必须打进来，即使我们并不使用它的命令/文件/终端能力
-#   - 本分支对 hermes 的改动和新增（overlay.list 列的仓库路径，按原路径覆盖进 /opt/hermes，见下面那段），
-#     包括 UniWork 内置技能和它们要用的库
+#   - 内置技能要用的程序和库（LibreOffice、Python 库、Playwright 的无头浏览器、pptxgenjs）。
+#     技能本身随基础镜像（/opt/hermes/skills/uniwork）
+#   - 本分支对 hermes 源码的改动（overlay.list 列的仓库路径，按原路径覆盖进 /opt/hermes，见下面那段）
 #
 # 为什么 CMD 只起转发器、不起 hermes：
 #   平台下发创建时环境变量是在容器进程已经起来之后（起容器 → 探针 → 创建后处理 → 下发变量），
@@ -43,30 +44,15 @@ FROM ${BASE_IMAGE}
 
 USER root
 
-# ---- LibreOffice + Chromium + Playwright -----------------------------------
-# 在薄封装基础上补齐「办公文档 + 浏览器自动化」三件套，让初始模板就能：
-#   1. 跑 LibreOffice headless —— skills/productivity/{xlsx,docx,pptx}/scripts
-#      里的 recalc / convert-to-pdf / 渲染幻灯片全靠 `soffice`。
-#   2. 跑 Chromium —— 浏览器自动化（agent-browser / cua-driver 截图）需要
-#      一个 headless Chromium。
-#   3. 跑 Python Playwright —— optional-skills/web-development/.../har_capture.py
-#      直接 `from playwright.sync_api import sync_playwright`，需要 venv 里有这个包。
-#
-# 分层策略：系统包一层（apt），Python 包一层（pip 进 hermes venv），
-# Playwright 浏览器二进制复用 base 已经装好的 /opt/hermes/.playwright
-# （base 的根 Dockerfile 跑过 `npx playwright install --with-deps chromium
-# --only-shell`，把 Chromium 和它要的系统依赖一并装好了）。
-
-# ---- 系统层：LibreOffice + Chromium + poppler ------------------------------
-# libreoffice-{calc,writer,impress} 拆分安装，比整套 libreoffice 元包小很多，
-# 且覆盖 xlsx_recalc / docx_create / pptx_render 三个脚本的 `soffice` 调用。
-# poppler-utils 提供 pdftoppm / pdftocairo，pptx_render.py 把 soffice 转出的
-# PDF 再拆成 PNG 幻灯片靠它。
-# chromium：系统级浏览器，装到 /usr/bin/chromium，任何用户/工具都能直接拉起，
-# 不依赖某个 venv —— 这就是「全局可用」。agent-browser / cua-driver 截图、
-# har_capture.py 的 headless Chromium 全走它。
-# fonts-noto-cjk / fonts-noto-color-emoji：CJK + emoji 字体，LibreOffice 渲染
-# 和 Chromium 截图里中文/emoji 不再是方块。
+# ---- 办公文档与系统浏览器 ---------------------------------------------------
+# 在基础镜像上补齐文件预览和内置技能要用的系统程序：
+#   - LibreOffice headless：文件面板的 Word / Excel / PPT 预览先转成 PDF（seed/mtuser.py），
+#     uniai-docx / uniai-xlsx / uniai-ppt 技能的渲染、重算、转 PDF 也靠 `soffice`。
+#     libreoffice-{calc,writer,impress} 拆分安装，比整套 libreoffice 元包小很多。
+#   - poppler-utils：pdftoppm / pdftocairo，把 PDF 拆成 PNG（pdf2image 也走它）。
+#   - chromium：系统浏览器 /usr/bin/chromium，frontend-design 技能按 `command -v chromium` 找它截图。
+#     hermes 自己的浏览器工具用基础镜像里 pm 锁定的那份（/opt/hermes/tools/chromium-*）。
+#   - fonts-noto-cjk / fonts-noto-color-emoji：LibreOffice 渲染和浏览器截图里的中文、emoji 不再是方块。
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libreoffice-calc \
         libreoffice-writer \
@@ -78,34 +64,58 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         fonts-noto-color-emoji \
     && rm -rf /var/lib/apt/lists/*
 
-# ---- Python 层：Playwright 库装进 hermes venv ------------------------------
-# har_capture.py 这类脚本 `from playwright.sync_api import sync_playwright`，
-# 需要 venv 里有 playwright 包。浏览器走系统 /usr/bin/chromium（见上），
-# 这里只补 Python 库本身。
-#
-# 注意：hermes venv 是 uv sync 创建的，**不带 pip**（uv 自己当 installer）。
-# 所以不能用 /opt/hermes/.venv/bin/pip（不存在 → 报 not found）。
-# 用 `uv pip install`，uv 在 base 的 /usr/local/bin/uv，
-# WORKDIR=/opt/hermes 下 uv 会自动找到 .venv。
-# --no-cache-dir: 别在镜像层留 uv 缓存。
-RUN uv pip install --no-cache-dir playwright
-# 装完 playwright，把它的 chromium 浏览器二进制也装上（含系统依赖）。
-# base 的根 Dockerfile 里 npx playwright install --with-deps chromium --only-shell
-# 已经装过 Node 端的 Chromium shell，但 Python playwright 需要自己的浏览器缓存。
-# PLAYWRIGHT_BROWSERS_PATH=/opt/hermes/.playwright 在 base 里已设。
-RUN /opt/hermes/.venv/bin/playwright install --with-deps chromium
+# ---- 内置技能要用的 Python 库，装进 hermes 的 venv -------------------------------
+# 技能脚本在实例里直接 import 这些库；venv 没有 pip，hermes 用户也装不了，所以预装（hermes 自己不用它们）。
+# uv 用基础镜像里 pm 锁定的那份（pm 不把它放上 PATH）。-c 把 venv 里已有的包钉在现有版本：新装的库
+# 不会顺带改动 hermes 自己的依赖，非改不可时构建直接失败。版本写死：同一个指纹构建出的镜像才一样。
+#   uniai-docx：python-docx、pdf2image、PyMuPDF   uniai-pdf：pypdf、pdfplumber、reportlab
+#   uniai-xlsx：openpyxl、pandas                   uniai-ppt：python-pptx、markitdown[pptx]、PyMuPDF、lxml
+#   data-insight-viz：duckdb、openpyxl             maishou、skill-creator：PyYAML
+#   canvas-design、webapp-testing：playwright（浏览器见下一段）
+#   Pillow、requests、aiohttp、defusedxml 已是 hermes 自己的依赖。没装的是可选功能，缺了技能会跳过：
+#   uniai-ppt 把 SVG 转 PNG 的 svglib（reportlab 新版出图还要从源码编 pycairo）、uniai-pdf 的 OCR。
+RUN set -eu; \
+    uv="$(ls /opt/hermes/tools/uv-*/uv)"; \
+    "$uv" pip freeze --python /opt/hermes/.venv/bin/python --exclude-editable > /tmp/hermes-pins.txt; \
+    "$uv" pip install --no-cache --python /opt/hermes/.venv/bin/python -c /tmp/hermes-pins.txt \
+        python-docx==1.2.0 pdf2image==1.17.0 PyMuPDF==1.28.2 \
+        pypdf==6.19.0 pdfplumber==0.11.10 reportlab==5.0.1 \
+        openpyxl==3.1.5 pandas==3.0.6 duckdb==1.5.6 \
+        python-pptx==1.0.2 "markitdown[pptx]==0.1.8" lxml==6.1.2 \
+        PyYAML==6.0.3 playwright==1.58.0; \
+    rm -f /tmp/hermes-pins.txt /opt/hermes/.venv/.lock
 
-# ---- UniWork 内置技能要用的库 ---------------------------------------------------
-# skills/uniwork/ 下的技能（随 overlay.list 进镜像，见下）在实例里直接 import 这些库。hermes venv
-# 没有 pip，技能脚本自己装不上，所以预装。weasyprint 要的 pango / harfbuzz 已随上面的 chromium、
-# LibreOffice 装好；pdf2image 转图走上面的 poppler。版本写死：同一个指纹构建出的镜像才一样。
-#   doc：python-docx、pdf2image           excel：openpyxl、pandas
-#   data-insight-report：duckdb、openpyxl  pdf-generator：weasyprint、reportlab、pypdf
-RUN uv pip install --no-cache-dir \
-        python-docx==1.2.0 pdf2image==1.17.0 openpyxl==3.1.5 pandas==3.0.6 \
-        duckdb==1.5.6 weasyprint==70.0 reportlab==5.0.1 pypdf==6.19.0
-# web-artifacts-builder 用 pnpm 起 React 工程；它的脚本缺 pnpm 时会去 npm install -g，hermes 用户装不了全局包。
-RUN npm install -g pnpm@12.11.2 && npm cache clean --force
+# ---- Python 版 Playwright 的浏览器 ----------------------------------------------
+# canvas-design、webapp-testing 技能截图自检用 `p.chromium.launch()`（默认无头，走 headless shell）。
+# playwright 锁在 1.58.0：它认的 Chromium 修订号 1208 正是基础镜像里 pm 锁定的那份，完整 Chromium
+# 直接共用，这里只多下 headless shell。PLAYWRIGHT_BROWSERS_PATH 指着 pm 的工具目录 /opt/hermes/tools，
+# playwright install 默认会把那里它不认识的 chromium-* / ffmpeg-* 当旧版本删掉，所以必须带
+# PLAYWRIGHT_SKIP_BROWSER_GC=1。装完起一次无头浏览器，再确认 pm 的 Chromium 和 ffmpeg 都还在。
+# headless shell 默认从 Playwright 的 CDN 下；连不上时构建时可换成目录结构相同的源，例如
+# --build-arg PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST=https://storage.googleapis.com/chrome-for-testing-public
+ARG PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST=
+RUN set -eu; \
+    PLAYWRIGHT_SKIP_BROWSER_GC=1 /opt/hermes/.venv/bin/playwright install chromium; \
+    /opt/hermes/.venv/bin/python -c 'from playwright.sync_api import sync_playwright; p = sync_playwright().start(); b = p.chromium.launch(); pg = b.new_page(); pg.set_content("<p>ok</p>"); assert pg.inner_text("p") == "ok"; b.close(); p.stop()'; \
+    /opt/hermes/.venv/bin/python -c 'from pm import installed_package; gone = [n for n in ("chromium", "ffmpeg") if not installed_package(n).binary.is_file()]; assert not gone, gone'
+
+# ---- 内置技能要用的 Node 包 -------------------------------------------------------
+# uniai-ppt 用 pptxgenjs 生成 PPT（agent 写的脚本里 `require("pptxgenjs")`）。hermes 用户装不了全局包，
+# 预装到 /opt/skill-node，NODE_PATH 让任何目录下的脚本都 require 得到。不装进 npm 默认的全局目录：
+# 那是 pm 管的工具目录。
+RUN npm install -g --prefix /opt/skill-node --no-audit --no-fund pptxgenjs@4.0.1 && npm cache clean --force
+ENV NODE_PATH=/opt/skill-node/lib/node_modules
+
+# ---- 登录 shell 的 PATH -------------------------------------------------------------
+# agent 的终端命令在登录 shell 里跑，/etc/profile 会把 PATH 重置成系统默认值，镜像 ENV 里放在前面的
+# /opt/hermes/bin（hermes 命令）、/opt/hermes/.venv/bin（带上面这些库的 Python）、/opt/data/.local/bin 都丢了，
+# python3 落到 pm 那份不带库的 Python，技能脚本 import 不到库（旧镜像也是这样）。hermes 自己的设计是这几项在
+# PATH 上（它给子进程去掉 VIRTUAL_ENV 时就假定 venv 仍在 PATH 上）；转发器给用户开的终端不用登录 shell，本来就有。
+# 这里让登录 shell 把它们补回来，两边的 python3 是同一个；环境被整个清掉的登录（su -l）也补上 NODE_PATH。
+RUN printf '%s\n' \
+        'case ":$PATH:" in *:/opt/hermes/.venv/bin:*) ;; *) PATH="/opt/hermes/bin:/opt/hermes/.venv/bin:/opt/data/.local/bin:$PATH" ;; esac' \
+        'export NODE_PATH="${NODE_PATH:-/opt/skill-node/lib/node_modules}"' \
+        > /etc/profile.d/hermes-path.sh && chmod 0644 /etc/profile.d/hermes-path.sh
 
 # ---- envd 与 Cube 的通用入口脚本 ------------------------------------------
 # 入口脚本的契约：后台拉起 envd（让平台的 SDK 数据面和默认探针可用），
@@ -125,14 +135,11 @@ COPY seed/mtstate.py /opt/mt/mtstate.py
 COPY seed/mtuser.py /opt/mt/mtuser.py
 RUN chmod 0644 /opt/mt/forward.py /opt/mt/mtstate.py /opt/mt/mtuser.py
 
-# ---- 本分支对 hermes 的改动和新增（overlay.list） -----------------------------
-# 基础镜像里的 hermes 是上游某个版本；/opt/hermes 是可编辑安装，且不留预编译缓存
-# （PYTHONDONTWRITEBYTECODE=1），所以覆盖源文件就生效。要覆盖的仓库路径列在 overlay.list：
-#   - hermes_cli/web_routers/skills.py：UniWork 技能市场与推荐的后端接口
-#   - skills/uniwork/：UniWork 内置技能。/opt/hermes/skills 下的技能在实例每次启动时由
-#     tools/skills_sync.py 同步进用户的技能目录（新的加进去，用户删掉的不再加回，改过的不覆盖）
-# deploy.sh 构建前把这些文件从仓库原样拷进 .overlay/（构建目录，不进 git），构建后核对镜像里那份；
-# tests/hermes_mt/test_image_overlay.py 核对清单本身。
+# ---- 本分支对 hermes 源码的改动（overlay.list） -------------------------------
+# 基础镜像就是用本仓库构建的，hermes 源码（含 skills/uniwork 内置技能）已在里面，所以清单现在是空的。
+# 留着这条路给「不重建基础镜像、先改几个 hermes 文件」：/opt/hermes 是可编辑安装，且不留预编译缓存
+# （PYTHONDONTWRITEBYTECODE=1），覆盖源文件就生效。deploy.sh 构建前把清单里的文件从仓库原样拷进
+# .overlay/（构建目录，不进 git），构建后核对镜像里那份；tests/hermes_mt/test_image_overlay.py 核对清单本身。
 COPY .overlay/ /opt/hermes/
 
 # ---- 所有用户相同的环境变量 -------------------------------------------------
