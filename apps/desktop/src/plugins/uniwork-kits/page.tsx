@@ -1,8 +1,8 @@
 /**
  * Kits — a standalone desktop page over `/api/plugins/uniwork-kits`.
  *
- * Experts are installed and removed here. Opening an expert chat stays on
- * the Bots list; this page does not pick a session.
+ * Experts are installed and removed here. An expert's forever-chat stays on
+ * the Bots list; 「召唤」 opens a new chat with it, like the composer picker.
  */
 
 import { atom, host, usePluginI18n, useQuery, useValue } from '@hermes/plugin-sdk'
@@ -19,13 +19,58 @@ import {
   uninstallKit,
   writeConfig
 } from './api'
+import { $expertDirectory, loadExperts } from './experts-store'
 import { oauthStartParams } from './oauth'
 import { partition } from './partition'
 import { publishInstalledExperts } from './roster'
 import { installedExperts } from './roster-model'
+import { summonExpert } from './summon'
 import type { KitRow, UserField } from './types'
 
-export const $job = atom<{ id: string; tail: string } | null>(null)
+interface JobState {
+  id: string
+  tail: string
+  running?: boolean
+  exitCode?: null | number
+}
+
+export const $job = atom<JobState | null>(null)
+
+/** The last non-empty line of a job log, for the one-line status. */
+export function lastLine(tail: string): string {
+  const lines = tail.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+
+  return lines.at(-1) ?? ''
+}
+
+/** One status line for a background job; the full log only on request. */
+function JobStatus({ job }: { job: JobState }) {
+  const t = usePluginI18n('uniwork-kits')
+  const [open, setOpen] = useState(false)
+  const done = job.running === false
+  const ok = done && job.exitCode === 0
+  const label = !done ? t('job') : ok ? t('jobDone') : t('failed')
+
+  return (
+    <div className="rounded border border-(--ui-stroke-secondary) px-2 py-1.5 text-xs">
+      <div className="flex items-center gap-3">
+        <span className="shrink-0">{label}</span>
+        <span className="min-w-0 flex-1 truncate text-(--ui-text-tertiary)">{lastLine(job.tail)}</span>
+        {job.tail ? (
+          <button className="shrink-0 underline" onClick={() => setOpen(value => !value)} type="button">
+            {open ? t('hideDetails') : t('details')}
+          </button>
+        ) : null}
+        {done ? (
+          <button className="shrink-0 underline" onClick={() => $job.set(null)} type="button">
+            {t('close')}
+          </button>
+        ) : null}
+      </div>
+      {open ? <pre className="mt-1.5 max-h-40 overflow-auto whitespace-pre-wrap">{job.tail}</pre> : null}
+    </div>
+  )
+}
 
 async function readFile(file: File): Promise<{ bytes: ArrayBuffer; filename: string }> {
   const bytes = await file.arrayBuffer()
@@ -98,6 +143,7 @@ function Authorize({ profile, serverKey }: { profile?: string; serverKey: string
   const [note, setNote] = useState('')
   const alive = useRef(true)
 
+  // eslint-disable-next-line no-restricted-syntax -- mount flag, not an atom mirror
   useEffect(() => {
     alive.current = true
 
@@ -136,16 +182,19 @@ function Authorize({ profile, serverKey }: { profile?: string; serverKey: string
               }
 
               let tries = 0
+
               const poll = async () => {
                 if (!alive.current || tries > 30) {
                   return
                 }
 
                 tries += 1
+
                 const result = await host.request<{ result?: { status?: string }; status?: string }>(
                   'mcp.servers.oauth.poll',
                   { ...params, session_id: sessionId }
                 )
+
                 const status = (result.result ?? result).status
 
                 if (!alive.current) {
@@ -183,6 +232,8 @@ function KitCard({ onChange, row }: { onChange: () => void; row: KitRow }) {
   const [confirm, setConfirm] = useState(false)
   const [receipt, setReceipt] = useState('')
   const expert = row.kind === 'expert' && !row.self
+  const directory = useValue($expertDirectory)
+  const summonable = expert ? directory.experts.find(card => card.name === row.name) : undefined
 
   return (
     <article className="rounded-md border border-(--ui-stroke-secondary) p-3">
@@ -191,6 +242,11 @@ function KitCard({ onChange, row }: { onChange: () => void; row: KitRow }) {
           <div className="text-sm font-medium">{row.display_name}</div>
           <Counts row={row} t={t} />
         </div>
+        {summonable ? (
+          <button className="text-xs underline" onClick={() => summonExpert(summonable)} type="button">
+            {t('summonButton')}
+          </button>
+        ) : null}
         {expert ? null : (
           <label className="flex items-center gap-1 text-xs">
             <input
@@ -280,6 +336,7 @@ export function KitsPage() {
 
     let stopped = false
     let timer = 0
+
     const tick = () => {
       void fetchJob(job.id)
         .then(view => {
@@ -287,12 +344,13 @@ export function KitsPage() {
             return
           }
 
-          $job.set({ id: view.id, tail: view.tail })
+          $job.set({ exitCode: view.exit_code, id: view.id, running: view.running, tail: view.tail })
 
           if (!view.running) {
             void reloadCatalog().then(next => {
               void publishInstalledExperts(installedExperts(next.data?.plugins ?? []))
             })
+            void loadExperts()
 
             return
           }
@@ -337,11 +395,7 @@ export function KitsPage() {
           />
         </label>
       </div>
-      {job ? (
-        <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded bg-(--ui-bg-secondary) p-2 text-xs">
-          {job.tail || t('job')}
-        </pre>
-      ) : null}
+      {job ? <JobStatus job={job} /> : null}
       <section className="grid gap-2">
         <h2 className="text-sm font-medium">{t('kits')}</h2>
         {shelves.kits.length === 0 ? <p className="text-xs text-(--ui-text-tertiary)">{t('emptyKits')}</p> : null}
@@ -355,7 +409,14 @@ export function KitsPage() {
           <p className="text-xs text-(--ui-text-tertiary)">{t('emptyExperts')}</p>
         ) : null}
         {shelves.experts.map(row => (
-          <KitCard key={row.name} onChange={() => void catalog.refetch()} row={row} />
+          <KitCard
+            key={row.name}
+            onChange={() => {
+              void catalog.refetch()
+              void loadExperts()
+            }}
+            row={row}
+          />
         ))}
       </section>
     </div>

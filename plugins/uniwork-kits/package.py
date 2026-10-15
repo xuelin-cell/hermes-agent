@@ -68,6 +68,7 @@ class SkillItem:
     body: str
     origin: str = "skill"     # skill | command
     trigger_key: str = ""     # UniClaw plugin_index component key
+    alias: str = ""           # the package's own name when it was not usable as one (see _usable_bare)
 
     @property
     def description(self) -> str:
@@ -351,6 +352,14 @@ def _collect_skills(plan: Plan, converted: set[str]) -> None:
         if not bare or bare in (".", "..") or any(ch in '<>:"/\\|?*' for ch in bare):
             plan.warnings.append(f"技能「{skill_dir.name}」的名字不能用（{bare!r}），已跳过。")
             continue
+        alias = ""
+        usable = _usable_bare(bare, skill_dir.name)
+        if usable != bare:
+            alias, bare = bare, usable
+            fm = dict(fm)
+            description = str(fm.get("description") or "").strip()
+            if alias not in description:
+                fm["description"] = f"{alias}｜{description}" if description else alias
         full = naming.skill_name(plan.name, bare, taken=taken, warnings=plan.warnings)
         if full in taken:
             plan.warnings.append(f"包里有两个技能都叫 {full}，后一个已跳过。")
@@ -377,8 +386,26 @@ def _collect_skills(plan: Plan, converted: set[str]) -> None:
                 body=body,
                 origin="command" if skill_dir.name in converted else "skill",
                 trigger_key=f"skill:{skill_dir.name}",
+                alias=alias,
             )
         )
+
+
+_ASCII_SLUG_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+
+
+def _usable_bare(name: str, directory: str) -> str:
+    """A skill name Hermes can turn into a slash command.
+
+    Hermes keeps only ``[a-z0-9-]`` of a skill name for its ``/command``, so
+    ``PPT视觉设计`` and ``PPT内容生成`` in one package both became ``/ppt-writer-ppt``
+    and the second lost its command. Such a skill is registered under its
+    directory name instead (``ppt-design``); the package's own name leads its
+    description and still resolves ``<plugin>:<name>`` references.
+    """
+    if name.isascii() or not _ASCII_SLUG_RE.fullmatch(directory or ""):
+        return name
+    return directory
 
 
 def _collect_mcp(plan: Plan) -> None:

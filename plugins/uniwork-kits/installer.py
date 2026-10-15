@@ -329,6 +329,7 @@ def agent_skill_names(plan: package.Plan) -> Dict[str, str]:
 def ref_mapping(plan: package.Plan) -> Dict[str, str]:
     """``{name a package text may use after "<plugin>:": installed full name}``."""
     skills = [(i.bare_name, i.full_name) for i in plan.skills] + [(i.rel_dir, i.full_name) for i in plan.skills]
+    skills += [(i.alias, i.full_name) for i in plan.skills if i.alias]
     return naming.ref_mapping(plan.name, skills, agent_skill_names(plan).items())
 
 

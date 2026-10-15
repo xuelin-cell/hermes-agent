@@ -37,6 +37,11 @@ def register(ctx) -> None:
         # The default profile's backend starts right after the desktop login
         # rewrote its model, key and UniAI entry: carry them to the experts.
         expert_sync.sync_on_load(Path(get_hermes_home()))
+        # 种草草's backend: bring its local program back after a reboot, once
+        # the user has agreed to it, so the MCP connects with the session.
+        from . import xiaohongshu
+
+        xiaohongshu.ensure_running(Path(get_hermes_home()))
     except Exception:
         pass
     ctx.register_cli_command(

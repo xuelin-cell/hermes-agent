@@ -34,6 +34,24 @@ export interface Catalog {
   plugins: KitRow[]
 }
 
+/** One installed expert as the summon picker shows it. */
+export interface ExpertCard {
+  name: string
+  profile: string
+  display_name: string
+  profession: string
+  description: string
+  init_prompt: string
+  quick_prompts: string[]
+  tags: string[]
+}
+
+export interface ExpertDirectory {
+  experts: ExpertCard[]
+  /** Names, most recent first. */
+  recent: string[]
+}
+
 export interface JobView {
   id: string
   running: boolean

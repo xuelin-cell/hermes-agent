@@ -48,6 +48,7 @@ import { registry } from '@/contrib/registry'
 import type { WorkspaceMode } from '@/contrib/types'
 import { deleteProfile, getLogs, getStatus, hermesApi, type HermesGateway } from '@/hermes'
 import { completeMcpDesktopOAuth } from '@/lib/mcp-dashboard-oauth'
+import { setComposerDraft } from '@/store/composer'
 import {
   $gateway,
   activeGatewayConnectionId,
@@ -1396,6 +1397,11 @@ export const host = {
 
     window.location.hash = '#/'
   },
+
+  /** Replace the text in the focused chat's input box — how a plugin hands the
+   *  user a prompt to edit and send (e.g. a summoned expert's opening prompt).
+   *  Never sends. Feature-detect on older desktops. */
+  setComposerText: (text: string): void => setComposerDraft(String(text ?? '')),
 
   /** Front the tab a Bot Mode owner already has open — the tile that owner's
    *  zone last had active, else its most recent — and return that stored id;
