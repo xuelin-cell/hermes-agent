@@ -3104,7 +3104,8 @@ export const ar = defineLocale({
       next: 'الشريحة التالية',
       fullscreen: 'عرض بملء الشاشة',
       exitFullscreen: 'الخروج من ملء الشاشة',
-      fullscreenFailed: 'تعذر تبديل وضع ملء الشاشة. لا يزال بإمكانك قراءة الشرائح.'
+      fullscreenFailed: 'تعذر تبديل وضع ملء الشاشة. لا يزال بإمكانك قراءة الشرائح.',
+      pageFailed: page => `تعذر عرض الشريحة ${page}.`
     },
     delimited: {
       table: 'جدول',

@@ -11,10 +11,16 @@ export interface PdfPageSize {
 }
 
 export interface PdfPages {
+  /** 只量第一页；其余页先沿用它作为占位比例，画图时按各页真实尺寸。 */
   readonly pages: readonly PdfPageSize[]
   /** 页码从 1 开始；返回受本阅读器管理的图片地址，淘汰或关闭后失效。 */
   renderPage: (number: number) => Promise<string>
   dispose: () => Promise<void>
+}
+
+/** 页面尺寸必须是有限正数，损坏的页面框不能用来分配画布。 */
+function validSize({ width, height }: PdfPageSize) {
+  return Number.isFinite(width + height) && width > 0 && height > 0
 }
 
 /** 只读取已提供的字节；Worker 与辅助资源均来自随应用发布的本机资源。 */
@@ -35,19 +41,19 @@ export async function openPdfPages(bytes: Uint8Array): Promise<PdfPages> {
 
   try {
     const pdf = await task.promise
-    const pages: PdfPageSize[] = []
+    const first = await pdf.getPage(1)
+    const size = first.getViewport({ scale: 1 })
+    first.cleanup()
 
-    for (let number = 1; number <= pdf.numPages; number++) {
-      const page = await pdf.getPage(number)
-      const { width, height } = page.getViewport({ scale: 1 })
-      page.cleanup()
-
-      if (!Number.isFinite(width + height) || width <= 0 || height <= 0) {
-        throw { code: 'unsupported' }
-      }
-
-      pages.push({ width, height })
+    if (!validSize(size)) {
+      throw { code: 'unsupported' }
     }
+
+    // 几百页的演示文稿逐页读尺寸要等很久；幻灯片通常同尺寸，先显示，个别不同的页留白边。
+    const pages: PdfPageSize[] = Array.from({ length: pdf.numPages }, () => ({
+      width: size.width,
+      height: size.height
+    }))
 
     let closed = false
     let disposal: Promise<void> | undefined
@@ -71,8 +77,13 @@ export async function openPdfPages(bytes: Uint8Array): Promise<PdfPages> {
           throw { code: 'unavailable' }
         }
 
-        const size = pages[number - 1]
-        const viewport = page.getViewport({ scale: LONG_EDGE / Math.max(size.width, size.height) })
+        const own = page.getViewport({ scale: 1 })
+
+        if (!validSize(own)) {
+          throw { code: 'unsupported' }
+        }
+
+        const viewport = page.getViewport({ scale: LONG_EDGE / Math.max(own.width, own.height) })
         canvas.width = Math.max(1, Math.round(viewport.width))
         canvas.height = Math.max(1, Math.round(viewport.height))
         await page.render({ canvas, viewport }).promise

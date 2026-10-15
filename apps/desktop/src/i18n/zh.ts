@@ -4624,7 +4624,8 @@ export const zh = defineLocale({
       next: '下一页',
       fullscreen: '全屏放映',
       exitFullscreen: '退出全屏',
-      fullscreenFailed: '未能切换全屏，仍可继续阅读幻灯片。'
+      fullscreenFailed: '未能切换全屏，仍可继续阅读幻灯片。',
+      pageFailed: page => `第 ${page} 页无法显示。`
     },
     delimited: {
       table: '表格',

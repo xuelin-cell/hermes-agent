@@ -1,9 +1,48 @@
-import { expect, it, vi } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 
 const { exec } = vi.hoisted(() => ({ exec: vi.fn() }))
 vi.mock('node:child_process', () => ({ execFileSync: exec }))
 
-import { logoutProcessTree, stopLogoutProcesses } from './logout-processes'
+import { listLogoutProcesses, logoutProcessTree, stopLogoutProcesses } from './logout-processes'
+
+const originalPlatform = process.platform
+
+/** 为跨平台分支测试设置 Node 的平台标识，并在测试后恢复。 */
+function setPlatform(platform: NodeJS.Platform): void {
+  Object.defineProperty(process, 'platform', { configurable: true, value: platform })
+}
+
+afterEach(() => {
+  setPlatform(originalPlatform)
+  vi.restoreAllMocks()
+  exec.mockReset()
+})
+
+it('macOS 快照将 ps 创建时间规范为 UTC 秒并只返回进程归属字段', () => {
+  setPlatform('darwin')
+  exec.mockReturnValue('  123  1 Wed Oct 15 09:43:40 2026\n')
+
+  expect(listLogoutProcesses()).toEqual([{ pid: 123, parent: 1, started: '1792057420' }])
+  expect(exec).toHaveBeenCalledWith(
+    'ps',
+    ['-axo', 'pid=,ppid=,lstart='],
+    expect.objectContaining({
+      env: expect.objectContaining({ LC_ALL: 'C', TZ: 'UTC' })
+    })
+  )
+})
+
+it('macOS 不会向启动时间不同的复用 PID 发送停止信号', () => {
+  setPlatform('darwin')
+  const kill = vi.spyOn(process, 'kill').mockReturnValue(true)
+  exec.mockReturnValue('Wed Oct 15 09:43:41 2026\n')
+
+  stopLogoutProcesses([{ pid: 123, parent: 1, started: '1792057420' }])
+
+  expect(kill).toHaveBeenCalledWith(123, 0)
+  expect(kill).not.toHaveBeenCalledWith(123, 'SIGTERM')
+  expect(kill).not.toHaveBeenCalledWith(123, 'SIGKILL')
+})
 
 it('只选择所持有后端的后代，排除官方进程与父 PID 被复用前的旧子进程', () => {
   const rows = [
@@ -19,9 +58,13 @@ it('只选择所持有后端的后代，排除官方进程与父 PID 被复用�
 })
 
 it('批量停止只启动一次外部命令；同 PID 新实例无关，存活旧实例阻止成功', () => {
+  setPlatform('win32')
   vi.spyOn(process, 'kill').mockReturnValue(true)
   exec.mockClear()
-  const owned = [{ pid: 123, parent: 1, started: '100' }, { pid: 124, parent: 123, started: '110' }]
+  const owned = [
+    { pid: 123, parent: 1, started: '100' },
+    { pid: 124, parent: 123, started: '110' }
+  ]
   exec.mockReturnValueOnce(JSON.stringify([{ ...owned[0], started: '200' }]))
   stopLogoutProcesses(owned)
   expect(exec).toHaveBeenCalledTimes(1)
@@ -34,6 +77,7 @@ it('批量停止只启动一次外部命令；同 PID 新实例无关，存活�
 })
 
 it('原版已停止全部进程时不启动清理程序；无法确认的探测不能当作已退出', () => {
+  setPlatform('win32')
   exec.mockClear()
 
   const probe = vi.spyOn(process, 'kill').mockImplementation(() => {
@@ -46,11 +90,15 @@ it('原版已停止全部进程时不启动清理程序；无法确认的探测�
   expect(probe).toHaveBeenCalledWith(123, 0)
   expect(exec).not.toHaveBeenCalled()
 
-  probe.mockImplementation(() => { throw Object.assign(new Error('unknown'), { code: 'EIO' }) })
+  probe.mockImplementation(() => {
+    throw Object.assign(new Error('unknown'), { code: 'EIO' })
+  })
   expect(() => stopLogoutProcesses(owned)).toThrow('无法确认')
   expect(exec).not.toHaveBeenCalled()
 
-  probe.mockImplementation(() => { throw Object.assign(new Error('denied'), { code: 'EPERM' }) })
+  probe.mockImplementation(() => {
+    throw Object.assign(new Error('denied'), { code: 'EPERM' })
+  })
   exec.mockReturnValueOnce(JSON.stringify(owned))
   expect(() => stopLogoutProcesses(owned)).toThrow('尚未停止')
   expect(exec).toHaveBeenCalledTimes(1)

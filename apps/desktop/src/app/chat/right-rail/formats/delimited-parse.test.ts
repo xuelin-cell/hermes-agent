@@ -54,7 +54,9 @@ describe('delimited parser', () => {
   })
 
   it('selects TSV by extension while handling uppercase and revisions', () => {
-    expect(delimiterForPath('/files/table.TSV?revision=2')).toBe('\t')
+    expect(delimiterForPath('https://files.invalid/table.TSV?revision=2#top')).toBe('\t')
+    // 本机文件名里的 # 不是网址锚点。
+    expect(delimiterForPath('/files/report#2.tsv')).toBe('\t')
     expect(delimiterForPath('/files/table.csv')).toBe(',')
   })
 })

@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { lazy, useEffect } from 'react'
+import { lazy, useEffect, useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { resolveMediaPlaybackSrc } from '@/lib/media'
@@ -111,6 +111,9 @@ describe('format preview', () => {
       expect(previewFormat(fileTarget(path))).toBeNull()
     }
 
+    // 本机文件名里的 # 和 ? 是名字的一部分，不能把扩展名截掉。
+    expect(previewFormat(fileTarget('/fixture/report#2.csv'))).toBe('delimited')
+    expect(previewFormat(fileTarget('/fixture/v1?final.xlsx'))).toBe('sheet')
     expect(previewFormat({ ...fileTarget(), kind: 'url' })).toBeNull()
     expect(previewFormat({ ...fileTarget(), kind: 'artifact' })).toBeNull()
   })
@@ -283,6 +286,29 @@ describe('format preview', () => {
     await screen.findByRole('button', { name: 'Open containing folder' })
     view.rerender(<FormatPreview reloadKey={1} target={fileTarget('/fixture/new.mp4')} />)
     await waitFor(() => expect(view.container.querySelector('video')).toBeTruthy())
+  })
+
+  it('keeps the renderer and its view state on refresh and hands it the new reload key', async () => {
+    const mounts = vi.fn()
+    const reloads: number[] = []
+    FORMAT_RENDERERS.audio = [
+      lazy(async () => ({
+        /** 像 CSV 的源码／表格切换一样带有自己的视图状态。 */
+        default: function Stateful({ reloadKey }: FormatRendererProps) {
+          const [mode, setMode] = useState('table')
+          useEffect(() => mounts(), [])
+          useEffect(() => void reloads.push(reloadKey), [reloadKey])
+
+          return <button onClick={() => setMode('source')}>{mode} view</button>
+        }
+      }))
+    ]
+    const view = render(<FormatPreview reloadKey={0} target={fileTarget()} />)
+    fireEvent.click(await screen.findByText('table view'))
+    view.rerender(<FormatPreview reloadKey={1} target={fileTarget()} />)
+    expect(await screen.findByText('source view')).toBeTruthy()
+    expect(mounts).toHaveBeenCalledTimes(1)
+    expect(reloads).toEqual([0, 1])
   })
 
   it('reloads the source when the owning connection changes', async () => {

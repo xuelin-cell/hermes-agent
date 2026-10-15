@@ -145,6 +145,26 @@ test('P12～P15 工作簿、样式、图片及按需图表经正式显示器呈�
       if (extension !== 'xlsx') assert.equal(chartRequests.length,0,'无图表的表格不能加载图表库')
       if (extension === 'xlsx') {
         assert.equal(chartRequests.length,1,'有图表才加载独立绘制入口')
+        // 表格组件的整张样式表（含全局的 label、页面滚动条规则）只在预览区域内生效。
+        // Chromium 自带样式里 label 本来就是 default 光标，无法区分，改用组件自己的类名核对作用范围。
+        const scope = await page.evaluate(() => {
+          const region = document.querySelector('[role=region]')
+          const probes = [document.body, region].map(parent => {
+            const probe = parent.appendChild(document.createElement('div'))
+            probe.className = 'fortune-container'
+
+            return probe
+          })
+          const result = {
+            outside: getComputedStyle(probes[0]).display,
+            inside: getComputedStyle(probes[1]).display,
+            rules: region.querySelector(':scope > style').sheet.cssRules.length
+          }
+          probes.forEach(probe => probe.remove())
+
+          return result
+        })
+        assert.deepEqual(scope, { outside: 'block', inside: 'flex', rules: 1 })
         styleEvidence = await page.evaluate(() => ({
           text: window.stylePaints.filter(item => item.color === '#990000'),
           multiline: window.stylePaints.filter(item => item.text.includes('中文换行') || item.text === '第二行'),

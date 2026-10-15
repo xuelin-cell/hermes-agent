@@ -64,6 +64,29 @@ it('没有图表缓存时只读取当前工作簿单元格，不把缺失单元�
   }
 })
 
+it('日期横轴按图表缓存的格式显示日期，而不是 Excel 内部的序号', () => {
+  const charts = parseWorkbook(
+    fixture(parts =>
+      edit(parts, xml =>
+        xml
+          .replace(
+            /<c:strRef>[\s\S]*?<\/c:strRef>/,
+            '<c:numRef><c:f>明细!$A$2:$A$4</c:f><c:numCache><c:formatCode>yyyy-mm-dd</c:formatCode><c:ptCount val="3"/>' +
+              '<c:pt idx="0"><c:v>45292</c:v></c:pt><c:pt idx="1"><c:v>45323</c:v></c:pt><c:pt idx="2"><c:v>45352</c:v></c:pt></c:numCache></c:numRef>'
+          )
+          .replace(
+            /<c:catAx>([\s\S]*?)<\/c:catAx>/,
+            '<c:dateAx>$1<c:title><c:tx><c:rich><a:p><a:r><a:t>日期</a:t></a:r></a:p></c:rich></c:tx></c:title></c:dateAx>'
+          )
+      )
+    )
+  )[0].charts!
+
+  expect(charts[0].series[0].categories).toEqual(['2024-01-01', '2024-02-01', '2024-03-01'])
+  expect(charts[0].series[0].values).toEqual([10, 20, 30])
+  expect(charts[0].axes[0].title).toBe('日期')
+})
+
 it('静态选项保留横向、堆积、百分比和反向轴，不把百分比堆积当普通总数', () => {
   const chart = parseWorkbook(fixture())[0].charts![0]
   chart.horizontal = true

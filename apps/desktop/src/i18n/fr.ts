@@ -5292,7 +5292,8 @@ export const frOverrides = {
       next: 'Diapositive suivante',
       fullscreen: 'Présenter en plein écran',
       exitFullscreen: 'Quitter le plein écran',
-      fullscreenFailed: 'Impossible de changer le mode plein écran. Les diapositives restent consultables.'
+      fullscreenFailed: 'Impossible de changer le mode plein écran. Les diapositives restent consultables.',
+      pageFailed: page => `Impossible d’afficher la diapositive ${page}.`
     },
     delimited: {
       table: 'Tableau',

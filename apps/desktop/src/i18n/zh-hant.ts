@@ -3827,7 +3827,8 @@ export const zhHant = defineLocale({
       next: '下一頁',
       fullscreen: '全螢幕放映',
       exitFullscreen: '退出全螢幕',
-      fullscreenFailed: '無法切換全螢幕，仍可繼續閱讀投影片。'
+      fullscreenFailed: '無法切換全螢幕，仍可繼續閱讀投影片。',
+      pageFailed: page => `第 ${page} 頁無法顯示。`
     },
     delimited: {
       table: '表格',

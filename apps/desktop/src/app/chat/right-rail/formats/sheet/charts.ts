@@ -1,4 +1,4 @@
-import { utils, type WorkBook } from 'xlsx'
+import { SSF, utils, type WorkBook } from 'xlsx'
 
 import { attr, child, children, descendants, workbookDrawings, type WorkbookPackage } from './package'
 
@@ -34,8 +34,21 @@ function text(element: Element | undefined) {
   )
 }
 
-/** 缓存按 idx 保留空洞；缺缓存时只读本工作簿的单元格缓存值，绝不执行公式。 */
-function values(element: Element | undefined, book: WorkBook): (string | number | null)[] {
+/** 按图表缓存里的数字格式显示类别（日期等），格式无法识别时保留原值。 */
+function formatted(value: string | null, code: string | undefined, book: WorkBook) {
+  if (value === null || !code || code === 'General' || !Number.isFinite(Number(value))) {
+    return value
+  }
+
+  try {
+    return SSF.format(code, Number(value), { date1904: !!book.Workbook?.WBProps?.date1904 })
+  } catch {
+    return value
+  }
+}
+
+/** 缓存按 idx 保留空洞；缺缓存时只读本工作簿的单元格缓存值，绝不执行公式。labels 为真时返回单元格显示的文字。 */
+function values(element: Element | undefined, book: WorkBook, labels = false): (string | number | null)[] {
   if (!element) {
     return []
   }
@@ -59,8 +72,9 @@ function values(element: Element | undefined, book: WorkBook): (string | number 
     }
 
     const result: (string | number | null)[] = Array.from({ length }, () => null)
+    const code = labels ? child(cache, 'formatCode')?.textContent || undefined : undefined
     points.forEach((point, index) => {
-      result[indices[index]] = child(point, 'v')?.textContent ?? null
+      result[indices[index]] = formatted(child(point, 'v')?.textContent ?? null, code, book)
     })
 
     return result
@@ -91,7 +105,7 @@ function values(element: Element | undefined, book: WorkBook): (string | number 
   for (let row = range.s.r; row <= range.e.r; row++) {
     for (let column = range.s.c; column <= range.e.c; column++) {
       const cell = sheet[utils.encode_cell({ r: row, c: column })]
-      result.push(cell?.t === 'e' ? null : (cell?.v ?? null))
+      result.push(cell?.t === 'e' ? null : ((labels ? cell?.w : undefined) ?? cell?.v ?? null))
     }
   }
 
@@ -131,7 +145,7 @@ export function readWorkbookCharts(archive: WorkbookPackage, book: WorkBook) {
     }
 
     const series = entries.map((ser, index) => {
-      const categories = values(child(ser, kind === 'scatter' ? 'xVal' : 'cat'), book)
+      const categories = values(child(ser, kind === 'scatter' ? 'xVal' : 'cat'), book, kind !== 'scatter')
       const data = values(child(ser, kind === 'scatter' ? 'yVal' : 'val'), book)
       total += categories.length + data.length
 
@@ -161,7 +175,10 @@ export function readWorkbookCharts(archive: WorkbookPackage, book: WorkBook) {
     }
 
     const axisNodes =
-      kind === 'scatter' ? descendants(chart, 'valAx') : ['catAx', 'valAx'].map(tag => descendants(chart, tag)[0])
+      kind === 'scatter'
+        ? descendants(chart, 'valAx')
+        : // 横轴是日期时 Excel 写成 dateAx。
+          [descendants(chart, 'catAx')[0] || descendants(chart, 'dateAx')[0], descendants(chart, 'valAx')[0]]
 
     const axes = [axisNodes[0], axisNodes[1]].map(axis => {
       const scaling = child(axis, 'scaling')

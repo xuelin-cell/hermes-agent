@@ -267,11 +267,23 @@ it('换文件后关闭迟到的解析器，刷新也重新取 PDF 并收尾旧�
   expect(dispose).toHaveBeenCalled()
 })
 
-it('取图失败进入统一错误与原文件出口，不留下解析器', async () => {
-  draw.mockRejectedValue({ code: 'unsupported' })
-  render(<FormatPreview reloadKey={0} target={target()} />)
-  expect(await screen.findByText('This format or media encoding is not supported.')).toBeTruthy()
-  expect(screen.getByRole('button', { name: 'Open containing folder' })).toBeTruthy()
+it('某一页画不出来只在该页显示说明，其它页照常，整份不转入失败页', async () => {
+  draw.mockImplementation(async (number: number) => {
+    if (number === 2) {
+      throw { code: 'unsupported' }
+    }
+
+    return `blob:cache-${number}`
+  })
+  const view = render(<FormatPreview reloadKey={0} target={target()} />)
+  await screen.findByAltText('Slide 1')
+  near(2, true)
+  expect(await screen.findByText('Slide 2 could not be shown.')).toBeTruthy()
+  expect(screen.getByAltText('Slide 1')).toBeTruthy()
+  expect(screen.queryByText('This format or media encoding is not supported.')).toBeNull()
+  expect(screen.queryByRole('button', { name: 'Open containing folder' })).toBeNull()
+  expect(dispose).not.toHaveBeenCalled()
+  view.unmount()
   expect(dispose).toHaveBeenCalled()
 })
 

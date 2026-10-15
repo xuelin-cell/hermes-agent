@@ -4923,7 +4923,8 @@ export const en: Translations = {
       next: 'Next slide',
       fullscreen: 'Present full screen',
       exitFullscreen: 'Exit full screen',
-      fullscreenFailed: 'Could not enter or exit full screen. You can still read the slides.'
+      fullscreenFailed: 'Could not enter or exit full screen. You can still read the slides.',
+      pageFailed: page => `Slide ${page} could not be shown.`
     },
     delimited: {
       table: 'Table',

@@ -1,4 +1,4 @@
-import { OFFICE_EXTENSIONS } from '@hermes/shared'
+import { fileExtension, OFFICE_EXTENSIONS } from '@hermes/shared'
 
 import { mediaKind } from '@/lib/media'
 import type { PreviewTarget } from '@/store/preview'
@@ -26,7 +26,6 @@ export function previewFormat(target: PreviewTarget): PreviewFormat | null {
   }
 
   const path = filePathForTarget(target)
-  const extension = path.split(/[?#]/, 1)[0].split('.').at(-1)?.toLowerCase() || ''
 
-  return FORMAT_BY_EXT.get(extension) || MEDIA_FORMATS[mediaKind(path)]
+  return FORMAT_BY_EXT.get(fileExtension(path)) || MEDIA_FORMATS[mediaKind(path)]
 }

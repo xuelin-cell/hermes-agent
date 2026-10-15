@@ -1,4 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { zlibSync } from 'fflate'
 import * as UTIF from 'utif2'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -50,6 +51,43 @@ describe('TIFF decoding', () => {
     const invalid = singlePage.slice(0)
     new Uint8Array(invalid).set(new Uint8Array(UTIF.encode([{ ...page, t259: [500] }])))
     expect(() => decodeTiffFirstPage(invalid)).toThrow()
+  })
+
+  it('turns the picture upright according to the orientation tag', () => {
+    const page = UTIF.decode(singlePage)[0]
+    const [red, green] = [rgba.slice(0, 4), rgba.slice(4)]
+
+    /** 只改方向标签，像素数据沿用原样例。 */
+    const oriented = (orientation: number) => {
+      const bytes = singlePage.slice(0)
+      new Uint8Array(bytes).set(new Uint8Array(UTIF.encode([{ ...page, t274: [orientation] }])))
+
+      return decodeTiffFirstPage(bytes)
+    }
+
+    expect(oriented(1)).toMatchObject({ width: 2, height: 1, rgba })
+    expect(oriented(2)).toMatchObject({ width: 2, height: 1, rgba: Uint8Array.from([...green, ...red]) })
+    expect(oriented(3)).toMatchObject({ width: 2, height: 1, rgba: Uint8Array.from([...green, ...red]) })
+    // 6 表示要顺时针转 90 度：原来的左右两点变成上下两点，红在上。
+    expect(oriented(6)).toMatchObject({ width: 1, height: 2, rgba })
+    expect(oriented(8)).toMatchObject({ width: 1, height: 2, rgba: Uint8Array.from([...green, ...red]) })
+  })
+
+  it('accepts blank strips without data and leaves them empty, including compressed images', () => {
+    const page = UTIF.decode(singlePage)[0]
+    const strip = zlibSync(rgba)
+    const bytes = new Uint8Array(1000 + strip.length)
+    const header = UTIF.encode([{ ...page, t257: [2], t278: [1], t259: [8], t273: [1000, 0], t279: [strip.length, 0] }])
+    bytes.set(new Uint8Array(header))
+    bytes.set(strip, 1000)
+    const decoded = decodeTiffFirstPage(bytes.buffer)
+    expect(decoded).toMatchObject({ width: 2, height: 2 })
+    expect(decoded.rgba.slice(0, 8)).toEqual(rgba)
+    expect(decoded.rgba.slice(8)).toEqual(new Uint8Array(8))
+    // 全部条带都是空的不算一张图。
+    const empty = new Uint8Array(1000)
+    empty.set(new Uint8Array(UTIF.encode([{ ...page, t273: [0], t279: [0] }])))
+    expect(() => decodeTiffFirstPage(empty.buffer)).toThrow(expect.objectContaining({ code: 'unsupported' }))
   })
 
   it('rejects excessive image dimensions before allocating decoded pixels', () => {
