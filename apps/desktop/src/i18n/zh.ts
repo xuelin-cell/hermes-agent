@@ -3645,6 +3645,8 @@ export const zh = defineLocale({
     voiceEngineChangeFailed: '无法更改语音聊天引擎',
     voiceEngineChainedShort: '语音转文字',
     voiceEngineLiveShort: 'GPT-Live',
+    startRecognition: '开始语音识别',
+    stopRecognition: '停止语音识别',
     voiceDictation: '语音听写',
     speakReplies: '朗读回复',
     stopSpeakingReplies: '停止朗读回复',

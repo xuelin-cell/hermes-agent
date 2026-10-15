@@ -2937,6 +2937,8 @@ export const ru = defineLocale({
     stopDictation: 'Остановить диктовку',
     transcribingDictation: 'Расшифровка диктовки',
     voiceControls: 'Голос',
+    startRecognition: 'Начать распознавание речи',
+    stopRecognition: 'Остановить распознавание речи',
     voiceDictation: 'Голосовая диктовка',
     speakReplies: 'Зачитывать ответы вслух',
     stopSpeakingReplies: 'Перестать зачитывать ответы вслух',

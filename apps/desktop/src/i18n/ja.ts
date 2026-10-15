@@ -2731,6 +2731,8 @@ export const ja = defineLocale({
     stopDictation: '口述を停止',
     transcribingDictation: '口述を文字起こし中',
     voiceControls: '音声',
+    startRecognition: '音声認識を開始',
+    stopRecognition: '音声認識を停止',
     voiceDictation: '音声口述',
     speakReplies: '返信を読み上げる',
     stopSpeakingReplies: '返信の読み上げを停止',

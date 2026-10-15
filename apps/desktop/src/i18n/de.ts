@@ -4219,6 +4219,8 @@ export const deOverrides = {
     voiceEngineChangeFailed: 'Sprachchat-Engine konnte nicht geändert werden',
     voiceEngineChainedShort: 'Sprache-zu-Text',
     voiceEngineLiveShort: 'GPT-Live',
+    startRecognition: 'Spracherkennung starten',
+    stopRecognition: 'Spracherkennung stoppen',
     voiceDictation: 'Sprachdiktat',
     speakReplies: 'Antworten vorlesen',
     stopSpeakingReplies: 'Antworten nicht mehr vorlesen',

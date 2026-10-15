@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { ChatBarState } from '@/app/chat/composer/types'
 import { I18nProvider } from '@/i18n'
+import { $developerMode } from '@/store/developer-mode'
 import { $hudMode } from '@/store/hud'
 import { applyWakeStartResult, applyWakeStatus, resetWakeWordState } from '@/store/wake-word'
 
@@ -16,7 +17,8 @@ const state: ChatBarState = {
   voice: { active: false, enabled: false }
 }
 
-function renderControls(overrides: Partial<React.ComponentProps<typeof ComposerControls>> = {}) {
+function renderControls(overrides: Partial<React.ComponentProps<typeof ComposerControls>> = {}, developerMode = true) {
+  $developerMode.set(developerMode)
   return render(
     <I18nProvider configClient={null} initialLocale="en">
       <ComposerControls
@@ -59,6 +61,7 @@ async function expectShortcutTooltip(label: string, shortcut: string) {
 afterEach(() => {
   cleanup()
   $hudMode.set(false)
+  $developerMode.set(false)
 })
 
 // The HUD is a Spotlight bar a few hundred pixels wide: the voice controls
@@ -216,4 +219,26 @@ describe('wake-word ear visibility', () => {
     const ear = screen.getByLabelText('Wake word: "hey hermes" — paused during voice chat')
     expect((ear as HTMLButtonElement).disabled).toBe(true)
   })
+})
+
+it('普通模式只显示元景识别，开发模式保留旧语音入口', () => {
+  renderControls({ hasComposerPayload: false, asr: { status: 'idle', toggle: vi.fn() } }, false)
+  expect(screen.getByRole('button', { name: 'Start speech recognition' })).toBeTruthy()
+  expect(screen.queryByLabelText('Voice dictation')).toBeNull()
+  expect(screen.queryByLabelText('Start voice conversation')).toBeNull()
+  expect(screen.getByRole('button', { name: 'Send' })).toBeTruthy()
+  cleanup()
+  renderControls({ asr: { status: 'idle', toggle: vi.fn() } }, true)
+  expect(screen.getByLabelText('Voice dictation')).toBeTruthy()
+  expect(screen.getByRole('button', { name: 'Start speech recognition' })).toBeTruthy()
+})
+
+it('实时识别录音时保留停止入口，不能发送未完成的草稿', () => {
+  const toggle = vi.fn()
+  renderControls({ asr: { status: 'recording', toggle }, disabled: true, canSubmit: false }, false)
+  const stop = screen.getByRole('button', { name: 'Stop speech recognition' })
+  expect(stop).not.toHaveProperty('disabled', true)
+  fireEvent.click(stop)
+  expect(toggle).toHaveBeenCalledOnce()
+  expect(screen.getByRole('button', { name: 'Send' })).toHaveProperty('disabled', true)
 })

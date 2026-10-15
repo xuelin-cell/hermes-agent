@@ -3876,6 +3876,8 @@ export const en: Translations = {
     voiceEngineChangeFailed: 'Could not change the voice chat engine',
     voiceEngineChainedShort: 'speech-to-text',
     voiceEngineLiveShort: 'GPT-Live',
+    startRecognition: 'Start speech recognition',
+    stopRecognition: 'Stop speech recognition',
     voiceDictation: 'Voice dictation',
     speakReplies: 'Read replies aloud',
     stopSpeakingReplies: 'Stop reading replies aloud',

@@ -4227,6 +4227,8 @@ export const frOverrides = {
     voiceEngineChangeFailed: 'Impossible de changer le moteur de conversation vocale',
     voiceEngineChainedShort: 'reconnaissance vocale',
     voiceEngineLiveShort: 'GPT-Live',
+    startRecognition: 'Démarrer la reconnaissance vocale',
+    stopRecognition: 'Arrêter la reconnaissance vocale',
     voiceDictation: 'Dictée vocale',
     speakReplies: 'Lire les réponses à haute voix',
     stopSpeakingReplies: 'Arrêter la lecture des réponses à haute voix',

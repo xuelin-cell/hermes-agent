@@ -4208,6 +4208,8 @@ export const esOverrides = {
     voiceEngineChangeFailed: 'No se pudo cambiar el motor del chat de voz',
     voiceEngineChainedShort: 'voz a texto',
     voiceEngineLiveShort: 'GPT-Live',
+    startRecognition: 'Iniciar reconocimiento de voz',
+    stopRecognition: 'Detener reconocimiento de voz',
     voiceDictation: 'Dictado por voz',
     speakReplies: 'Leer las respuestas en voz alta',
     stopSpeakingReplies: 'Dejar de leer las respuestas en voz alta',

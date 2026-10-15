@@ -1,5 +1,8 @@
 import { BrowserWindow, ipcMain, type IpcMainInvokeEvent, type Session } from 'electron'
 
+import { ASR_CHANNEL, type AsrIdentity } from '../uniwork-asr/contract'
+import { createUniworkAsrHandler } from '../uniwork-asr/ipc'
+
 import { CloudDriveClient } from './cloud-drive'
 import type { LoginAccount } from './contract'
 import type { LoginIdentity } from './session'
@@ -10,7 +13,8 @@ export function installAccountIpc(
   rendererUrl: () => string,
   readAccount: () => LoginAccount | null,
   logout?: () => Promise<void>,
-  readIdentity?: () => LoginIdentity | null
+  readIdentity?: () => LoginIdentity | null,
+  readAsrIdentity?: () => AsrIdentity | null
 ): void {
   /** 展示与退出共用来源校验，不接收 UID、路径或进程号。 */
   function trusted(event: IpcMainInvokeEvent, args: unknown[]): boolean {
@@ -44,6 +48,16 @@ export function installAccountIpc(
     } catch {
       return false
     }
+  }
+
+  if (readAsrIdentity) {
+    const asr = createUniworkAsrHandler(readAsrIdentity)
+    ipcMain.handle(ASR_CHANNEL, async (event, ...args) => {
+      if (!trusted(event, []) || args.length !== 1) {
+        throw new Error('语音识别请求无效。')
+      }
+      return asr(event, args[0])
+    })
   }
 
   if (logout) {

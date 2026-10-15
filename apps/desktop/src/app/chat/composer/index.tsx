@@ -74,6 +74,7 @@ import { triggerKeyUpHandler, useComposerTrigger } from './hooks/use-composer-tr
 import { useComposerUndo } from './hooks/use-composer-undo'
 import { useComposerUrlDialog } from './hooks/use-composer-url-dialog'
 import { useComposerVoice } from './hooks/use-composer-voice'
+import { useUniworkAsr } from './hooks/use-uniwork-asr'
 import { useEmojiCompletions } from './hooks/use-emoji-completions'
 import { useComposerMicroActions } from './hooks/use-micro-actions'
 import { useSlashCompletions } from './hooks/use-slash-completions'
@@ -151,6 +152,7 @@ export function ChatBar({
   // semantics as SAYING "stop" (voice-stop-word.ts) or clicking the pill's
   // end control. Populated after useComposerVoice below (the submit wrapper
   // is created first); render-time assignment keeps the ref current.
+  const asrBusyRef = useRef(false)
   const voiceStopRef = useRef<{ active: boolean; end: () => void }>({ active: false, end: () => {} })
 
   // Every send (typed, queued, voice) passes through the contributed
@@ -158,6 +160,9 @@ export function ChatBar({
   // exact pass-through, so surfaces without contributions are byte-identical.
   const onSubmit = useCallback<ChatBarProps['onSubmit']>(
     async (value, options) => {
+      if (asrBusyRef.current) {
+        return false
+      }
       // Bare stop phrase typed while the voice conversation is live: end the
       // conversation (mic off, pill dismissed) instead of sending "stop" to
       // the agent. Spoken transcripts are already stop-checked inside
@@ -308,6 +313,7 @@ export function ChatBar({
     isSteerableText,
     loadIntoComposer,
     requestMainFocus,
+    replaceText,
     sessionIdRef,
     setComposerText,
     stashAt,
@@ -1132,12 +1138,23 @@ export function ChatBar({
     />
   )
 
+  const asr = useUniworkAsr({
+    scope: activeQueueSessionKey,
+    disabled: inputDisabled || busy || voiceConversationActive || voiceStatus !== 'idle',
+    language: navigator.language.toLowerCase().startsWith('zh') ? 'zh' : 'en',
+    readText: () => syncDraftFromEditor(),
+    replaceText: text => replaceText(text, false)
+  })
+  const asrActive = asr.status !== 'idle'
+  asrBusyRef.current = asrActive
+
   const controls = (
     <ComposerControls
+      asr={asr}
       autoSpeak={autoSpeak}
       busy={busy}
       busyAction={busyAction}
-      canSubmit={canSubmit}
+      canSubmit={canSubmit && !asrActive}
       compactModelPill={poppedOut || compactPill}
       conversation={{
         active: voiceConversationActive,
@@ -1165,7 +1182,7 @@ export function ChatBar({
   const input = (
     <div className={cn('relative', stacked ? 'w-full' : 'min-w-(--composer-input-inline-min-width) flex-1')}>
       <div
-        aria-disabled={inputDisabled ? true : undefined}
+        aria-disabled={inputDisabled || asrActive ? true : undefined}
         aria-label={t.composer.message}
         autoCapitalize="off"
         // Chromium's macOS text-replacement path shares the autocorrect gate.
@@ -1181,7 +1198,7 @@ export function ChatBar({
           // becomes unclickable. Buttons use the global no-drag rule.
           hudNativeDrag && '[-webkit-app-region:no-drag]'
         )}
-        contentEditable={!inputDisabled}
+        contentEditable={!inputDisabled && !asrActive}
         data-placeholder={placeholder}
         data-slot={RICH_INPUT_SLOT}
         dir={textDirection}
@@ -1395,7 +1412,7 @@ export function ChatBar({
             onSubmit={e => {
               e.preventDefault()
 
-              if (composingRef.current) {
+              if (composingRef.current || asrActive) {
                 return
               }
 

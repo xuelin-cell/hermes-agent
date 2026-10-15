@@ -213,6 +213,15 @@ export function currentDesktopIdentity() {
   return stopping ? null : (accountRuntime?.login.currentIdentity() ?? null)
 }
 
+/** 实时识别只读取当前有效套餐的专用 Key，不交给页面。 */
+export function currentDesktopAsrIdentity() {
+  const identity = currentDesktopIdentity()
+  const result = accountRuntime?.login.currentPlan()
+  return identity && result?.status === 'available'
+    ? { owner: identity.uid, key: result.plan.apiKey, expiresAt: identity.expiresAt }
+    : null
+}
+
 /** 退出确认后立即撤销主进程身份，不再允许读取或准备旧账号。 */
 export function sealDesktopAccount(): void {
   stopping = true

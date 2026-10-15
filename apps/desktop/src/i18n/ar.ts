@@ -2326,6 +2326,8 @@ export const ar = defineLocale({
     stopDictation: 'إيقاف الإملاء',
     transcribingDictation: 'جار تفريغ الإملاء',
     voiceControls: 'صوت',
+    startRecognition: 'بدء التعرف على الكلام',
+    stopRecognition: 'إيقاف التعرف على الكلام',
     voiceDictation: 'إملاء صوتي',
     lookupLoading: 'جار البحث...',
     lookupNoMatches: 'لا توجد نتائج',

@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer, webFrame, webUtils } from 'electron'
 
+import { ASR_CHANNEL } from './uniwork-asr/contract'
+
 import type { DesktopProfileRoute } from './desktop-profile'
 import type { HudModifierApi, HudModifierStatus } from './hud-modifier-types'
 import type { CloudDriveRequest } from './login/contract'
@@ -28,7 +30,14 @@ const localSkin = ipcRenderer.sendSync('hermes:skin:local')
 contextBridge.exposeInMainWorld('hermesDesktop', {
   // 只读脱敏账号信息，页面不能传入身份或账号路径。
   getMaasAccount: () => ipcRenderer.invoke('hermes:maas-account:get'),
-    cloudDriveRequest: (input: CloudDriveRequest) => ipcRenderer.invoke('hermes:maas-drive:request', input),
+  cloudDriveRequest: (input: CloudDriveRequest) => ipcRenderer.invoke('hermes:maas-drive:request', input),
+  uniworkAsr: {
+    start: language => ipcRenderer.invoke(ASR_CHANNEL, { operation: 'start', language }),
+    audio: (id, pcm) => ipcRenderer.invoke(ASR_CHANNEL, { operation: 'audio', id, pcm }),
+    poll: id => ipcRenderer.invoke(ASR_CHANNEL, { operation: 'poll', id }),
+    stop: id => ipcRenderer.invoke(ASR_CHANNEL, { operation: 'stop', id }),
+    cancel: id => ipcRenderer.invoke(ASR_CHANNEL, { operation: 'cancel', id })
+  },
   logoutMaasAccount: () => ipcRenderer.invoke('hermes:maas-account:logout'),
   glassSupported: translucencySupport?.glass === true,
   translucencySupported: translucencySupport?.translucency === true,
