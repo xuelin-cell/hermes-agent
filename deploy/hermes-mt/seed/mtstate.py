@@ -811,7 +811,22 @@ def _apply_policy(cfg, policy: dict) -> None:
         if isinstance(leaves, dict) and leaves:
             section = _section(cfg, str(top))
             for leaf, value in leaves.items():
-                section[str(leaf)] = value
+                section[str(leaf)] = _quoted_if_ambiguous(value)
+
+
+# hermes 按 YAML 1.1 读配置（hermes_yaml.safe_load）：on / off / yes / no 这类不加引号会读成布尔值，
+# 比如 onboarding.profile_build: off 读成 False 就等于没关。ruamel 按 1.2 写，不会替我们加引号。
+_YAML11_WORDS = {"", "~", "null", "y", "yes", "n", "no", "on", "off", "true", "false"}
+
+
+def _quoted_if_ambiguous(value):
+    if not isinstance(value, str) or value.strip().lower() not in _YAML11_WORDS:
+        return value
+    try:
+        from ruamel.yaml.scalarstring import DoubleQuotedScalarString
+    except ImportError:  # 没有 ruamel 时用 PyYAML 写，它自己会加引号
+        return value
+    return DoubleQuotedScalarString(value)
 
 
 def _apply_mcp_servers(cfg, servers: dict) -> None:

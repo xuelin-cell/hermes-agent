@@ -83,6 +83,7 @@ def test_rendered_template_is_valid_yaml_with_the_new_sections(monkeypatch: pyte
     assert cfg["providers"]["yuanjing"]["models"] == {"m1": {"context_length": 300000}, "m2": {"context_length": 128000}}
     assert cfg["model_catalog"] == {"enabled": False}
     assert cfg["security"] == {"allow_lazy_installs": False}
+    assert cfg["onboarding"] == {"profile_build": "off"}
     assert cfg["agent"]["reasoning_overrides"] == {"deepseek-v4.1-flash": "high"}
     plain = _manager(monkeypatch, reasoning_defaults="")
     cfg = yaml.safe_load(plain._render_user_files("", ("http://plan/v1", "m1"), [("m1", "")])["config.yaml"])
@@ -112,6 +113,7 @@ def test_patch_writes_limits_policy_and_reasoning_for_an_existing_user(mtstate) 
         "m1": {"context_length": 300000}, "deepseek-v4.1-flash": {"context_length": 300000}}
     assert cfg["model_catalog"]["enabled"] is False
     assert cfg["security"] == {"redact_secrets": True, "allow_lazy_installs": False}  # 同一段里用户的设置不动
+    assert cfg["onboarding"] == {"profile_build": "off"}  # 按 YAML 1.1 读（hermes 就这么读）也是字符串，不是 False
     assert cfg["agent"]["reasoning_overrides"] == {"deepseek-v4.1-flash": "high"}
     assert cfg["display"] == {"personality": "kawaii"} and cfg["model"]["default"] == "deepseek-v4.1-flash"
     again, notes = mtstate.patch_config_text(new_text, full)

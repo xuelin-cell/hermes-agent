@@ -58,6 +58,9 @@ PLATFORM_POLICY = {
     "model_catalog": {"enabled": False},
     # 用到时才从 PyPI 装的依赖：页面一打开就会往每台实例的可写层下 392MB 语音依赖。
     "security": {"allow_lazy_installs": False},
+    # 用户第一条消息时，hermes 默认让 agent 提出「建用户画像」（征得同意后联网查用户的公开信息、记进记忆）。
+    # 平台不主动打听用户：关掉，第一条消息只附一句简短自我介绍的提示。
+    "onboarding": {"profile_build": "off"},
 }
 
 

@@ -101,11 +101,18 @@ def test_reasoning_override_per_model_and_spelling_tolerance() -> None:
 
 
 def test_platform_policy_keys_exist_in_hermes_defaults() -> None:
-    """E5：平台策略写的两个开关是 hermes 真认的键（改名了这里会红）。"""
+    """E5：平台策略写的开关是 hermes 真认的键（改名了这里会红）。"""
     from hermes_cli.config_defaults import DEFAULT_CONFIG
 
     assert DEFAULT_CONFIG["model_catalog"]["enabled"] is True
     assert DEFAULT_CONFIG["security"]["allow_lazy_installs"] is True
+    assert DEFAULT_CONFIG["onboarding"]["profile_build"] == "ask"
+
+    # 首次对话：profile_build 为 off 时只给简短自我介绍的提示，不提出建用户画像。
+    from agent.onboarding import profile_build_mode
+
+    assert profile_build_mode({"onboarding": {"profile_build": "off"}}) == "off"
+    assert profile_build_mode(DEFAULT_CONFIG) == "ask"
 
     # 默认推理强度：没有按模型设置的模型，用 agent.reasoning_effort（它不在 DEFAULT_CONFIG 里，hermes 读时缺省为空）。
     from hermes_constants import parse_reasoning_effort, resolve_reasoning_config

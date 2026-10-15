@@ -29,10 +29,13 @@ terminal:
 dashboard:
   public_url: ""
 
-# 平台策略：不拉在线模型目录（集群里访问慢、会卡住模型下拉），不在用到时临时装依赖包。
+# 平台策略：不拉在线模型目录（集群里访问慢、会卡住模型下拉），不在用到时临时装依赖包，
+# 第一条消息时不提出建用户画像（off 要加引号：hermes 按 YAML 1.1 读，不加会读成 false）。
 model_catalog:
   enabled: false
 security:
   allow_lazy_installs: false
+onboarding:
+  profile_build: "off"
 
 {{REASONING_BLOCK}}
