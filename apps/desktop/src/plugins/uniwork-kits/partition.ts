@@ -5,6 +5,19 @@ export interface KitShelves {
   kits: KitRow[]
 }
 
+/** Fill what an older backend's catalog leaves out, so the page renders against either. */
+export function normalizeRow(row: KitRow): KitRow {
+  return {
+    ...row,
+    description: row.description ?? '',
+    missing_secrets: row.missing_secrets ?? [],
+    oauth_servers: row.oauth_servers ?? [],
+    phrases: row.phrases ?? [],
+    profession: row.profession ?? '',
+    user_config: row.user_config ?? []
+  }
+}
+
 /** Parent-profile rows: expert stubs go on the expert shelf; everything else is a kit. */
 export function partition(rows: KitRow[]): KitShelves {
   const kits: KitRow[] = []
