@@ -1,11 +1,14 @@
+import { OFFICE_EXTENSIONS } from '@hermes/shared'
+
 import { mediaKind } from '@/lib/media'
 import type { PreviewTarget } from '@/store/preview'
 
 import { filePathForTarget } from '../preview-file'
 
-export type PreviewFormat = 'audio' | 'delimited' | 'tiff' | 'video'
+export type PreviewFormat = 'audio' | 'delimited' | 'tiff' | 'video' | 'word'
 
 const FORMAT_BY_EXT = new Map<string, PreviewFormat>([
+  ...OFFICE_EXTENSIONS.word.map(extension => [extension, 'word'] as const),
   ['csv', 'delimited'],
   ['tsv', 'delimited'],
   ['tif', 'tiff'],

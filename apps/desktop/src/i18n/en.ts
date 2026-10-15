@@ -161,7 +161,6 @@ export const en: Translations = {
   connectorsPage: {
     mcpLocal: {
       addCustom: 'Add custom MCP',
-      builtIn: 'Built-in MCP',
       custom: 'Custom MCP',
       plugins: 'MCP from plugins',
       profile: 'Current profile',
@@ -170,9 +169,6 @@ export const en: Translations = {
       noMatches: 'No matching MCP servers',
       loadFailed: 'Could not load MCP configuration',
       pluginsFailed: 'Could not load plugin MCP servers',
-      playwrightDescription: 'Browser automation with an isolated browser context.',
-      installPending: 'Installation will be available after integration.',
-      install: 'Install',
       configuration: 'Configuration (JSON)',
       enabled: 'Enabled',
       testing: 'Testing connection…',
@@ -3071,6 +3067,26 @@ export const en: Translations = {
       savedRestarting: 'Telegram saved; gateway restarting…',
       savedRestartFailed: detail => `Telegram saved; gateway restart failed${detail}`
     },
+    weixinQr: {
+      title: 'Connect by QR code',
+      help: 'Scan with a personal WeChat account and confirm on your phone. Hermes saves the credentials and starts the WeChat channel. By default only the WeChat account that scanned can send direct messages, and group chats are off.',
+      connect: 'Connect with QR code',
+      rescan: 'Scan again',
+      starting: 'Getting a QR code…',
+      waiting: 'Scan with WeChat',
+      scanned: 'Scanned. Confirm on your phone.',
+      expired: 'The QR code has expired.',
+      refresh: 'Refresh QR code',
+      failed: 'Connection failed',
+      startFailed: detail => `Could not get a QR code: ${detail}`,
+      unbind: 'Disconnect',
+      unbindTitle: 'Disconnect WeChat?',
+      unbindDesc: 'This removes the WeChat credentials. Hermes will stop receiving WeChat messages.',
+      unbinding: 'Disconnecting…',
+      unbound: 'WeChat disconnected',
+      savedRestarting: 'WeChat connected; restarting the gateway…',
+      savedRestartFailed: detail => `WeChat connected; gateway restart failed${detail}`
+    },
     fieldCopy: {
       TELEGRAM_BOT_TOKEN: {
         label: 'Bot token',
@@ -4887,10 +4903,17 @@ export const en: Translations = {
     noInlineTitle: 'No inline preview',
     noInlineBody: mimeType => `${mimeType || 'This file type'} can still be attached as context.`,
     formatFailure: {
+      convert_failed: 'Could not convert this document. You can still access the original file.',
+      timeout: 'Document conversion timed out. You can still access the original file.',
       not_found: 'This file is no longer available.',
       too_large: 'This file or image is too large to preview. You can still access the original file.',
       unavailable: 'Could not preview this file. You can still access the original file.',
       unsupported: 'This format or media encoding is not supported.'
+    },
+    office: {
+      converting: 'Converting document',
+      firstOpen: 'The first preview may take a few seconds.',
+      installConverter: 'If no conversion software is available, install LibreOffice and try again.'
     },
     delimited: {
       table: 'Table',

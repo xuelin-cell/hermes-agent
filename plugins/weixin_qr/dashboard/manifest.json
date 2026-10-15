@@ -1,0 +1,11 @@
+{
+  "name": "weixin-qr",
+  "label": "Weixin QR login",
+  "description": "Backend routes for connecting a personal WeChat account by scanning a QR code in the desktop messaging page",
+  "icon": "QrCode",
+  "version": "1.0.0",
+  "tab": {
+    "hidden": true
+  },
+  "api": "plugin_api.py"
+}

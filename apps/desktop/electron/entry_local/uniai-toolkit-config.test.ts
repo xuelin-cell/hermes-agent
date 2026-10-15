@@ -1,0 +1,79 @@
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+
+import { expect, it, vi } from 'vitest'
+import { parse } from 'yaml'
+
+import { MAAS_MODEL_KEY_ENV } from './model-config'
+import { updateUniaiToolkitConfig } from './uniai-toolkit-config'
+
+it('按套餐新建和更新内置记录，保留停用、工具过滤和其他服务，重复或失败不写盘，空套餐只删除内置项', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-uniai-config-'))
+  const file = path.join(home, 'config.yaml')
+  const rename = vi.spyOn(fs, 'renameSync')
+
+  try {
+    updateUniaiToolkitConfig(home, 'empty')
+    expect(fs.existsSync(file)).toBe(false)
+    updateUniaiToolkitConfig(home, 'available')
+    const created = parse(fs.readFileSync(file, 'utf8')).mcp_servers['UniAI-Toolkit']
+    expect(created).toEqual({
+      url: `https://maas.ai-yuanjing.com/app/mcp-server/mcp?key=\${${MAAS_MODEL_KEY_ENV}}&client_id=UniWork`,
+      timeout: 600
+    })
+
+    const original =
+      '# 用户说明\nmodel: {provider: personal}\nmcp_servers:\n' +
+      '  custom: {command: node}\n  UniAI-Toolkit:\n    url: https://old.invalid\n' +
+      '    timeout: 30\n    enabled: false # 用户停用\n    tools: {exclude: [danger]}\n'
+
+    fs.writeFileSync(file, original)
+    updateUniaiToolkitConfig(home, 'available')
+    const saved = fs.readFileSync(file, 'utf8')
+    const config = parse(saved)
+    expect(config.model).toEqual({ provider: 'personal' })
+    expect(config.mcp_servers.custom).toEqual({ command: 'node' })
+    expect(config.mcp_servers['UniAI-Toolkit']).toEqual({ ...created, enabled: false, tools: { exclude: ['danger'] } })
+    expect(saved).toContain('# 用户说明')
+    expect(saved).toContain('# 用户停用')
+    rename.mockClear()
+    updateUniaiToolkitConfig(home, 'available')
+    updateUniaiToolkitConfig(home, 'failed')
+    expect(rename).not.toHaveBeenCalled()
+    expect(fs.readFileSync(file, 'utf8')).toBe(saved)
+    updateUniaiToolkitConfig(home, 'empty')
+    expect(parse(fs.readFileSync(file, 'utf8')).mcp_servers).toEqual({ custom: { command: 'node' } })
+  } finally {
+    vi.restoreAllMocks()
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+it('无效配置报错但不覆盖，共享或非映射 MCP 保持原状且不阻断', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-uniai-shared-'))
+  const file = path.join(home, 'config.yaml')
+
+  try {
+    for (const invalid of ['mcp_servers: [broken', '- not-a-config-map\n']) {
+      fs.writeFileSync(file, invalid)
+      expect(() => updateUniaiToolkitConfig(home, 'available')).toThrow()
+      expect(fs.readFileSync(file, 'utf8')).toBe(invalid)
+      expect(() => updateUniaiToolkitConfig(home, 'failed')).not.toThrow()
+    }
+
+    for (const shared of [
+      'mcp_servers: []\n',
+      'shared: &all {UniAI-Toolkit: {url: old}}\nmcp_servers: *all\n',
+      'mcp_servers:\n  UniAI-Toolkit: &tool {url: old}\nother: *tool\n',
+      'shared: &tool {url: old}\nmcp_servers:\n  UniAI-Toolkit: {<<: *tool, enabled: false}\n'
+    ]) {
+      fs.writeFileSync(file, shared)
+      expect(() => updateUniaiToolkitConfig(home, 'available')).not.toThrow()
+      expect(() => updateUniaiToolkitConfig(home, 'empty')).not.toThrow()
+      expect(fs.readFileSync(file, 'utf8')).toBe(shared)
+    }
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})

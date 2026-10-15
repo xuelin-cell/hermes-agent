@@ -4,7 +4,6 @@ import { useLocation, useNavigate } from 'react-router'
 
 import { PAGE_INSET_X } from '@/app/layout-constants'
 import { PageLoader } from '@/components/page-loader'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorState } from '@/components/ui/error-state'
@@ -142,22 +141,6 @@ export function McpConnectorsTab({ gateway, profile, scopeLabel }: McpConnectors
           {copy.addCustom}
         </Button>
       </div>
-      <section aria-label={copy.builtIn} className="grid gap-3">
-        <h2 className="text-sm font-semibold">{copy.builtIn}</h2>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="grid gap-1">
-            <div className="flex items-center gap-2">
-              <span className="text-sm">Playwright</span>
-              <Badge variant="muted">STDIO</Badge>
-            </div>
-            <p className="text-xs text-(--ui-text-tertiary)">{copy.playwrightDescription}</p>
-            <p className="text-xs text-(--ui-text-tertiary)">{copy.installPending}</p>
-          </div>
-          <Button disabled size="sm" variant="secondary">
-            {copy.install}
-          </Button>
-        </div>
-      </section>
       {cards.length > 0 && (
         <SearchField aria-label={copy.search} onChange={setQuery} placeholder={copy.search} value={query} />
       )}

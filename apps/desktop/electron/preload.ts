@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer, webFrame, webUtils } from 'electron'
 import type { DesktopProfileRoute } from './desktop-profile'
 import type { HudModifierApi, HudModifierStatus } from './hud-modifier-types'
 import type { CloudDriveRequest } from './login/contract'
+import { maskMcpSecrets, restoreMcpSecrets } from './mcp-secrets'
 import { customWindowControlsEnabled } from './window-controls'
 
 // Which translucency the OS can back. Asked synchronously because the renderer
@@ -339,11 +340,23 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     remember: name => ipcRenderer.invoke('hermes:profile:remember', name),
     set: name => ipcRenderer.invoke('hermes:profile:set', name)
   },
-  api: request => ipcRenderer.invoke('hermes:api', request),
+  // MCP 密钥只在当前窗口的隔离 preload 中还原，页面只收到打码值。
+  api: async request => {
+    const method = request.method ?? 'GET'
+
+    const result = await ipcRenderer.invoke('hermes:api', {
+      ...request,
+      body: restoreMcpSecrets(method, request.path, request.body)
+    })
+
+    return maskMcpSecrets(method, request.path, result)
+  },
   notify: payload => ipcRenderer.invoke('hermes:notify', payload),
   requestMicrophoneAccess: () => ipcRenderer.invoke('hermes:requestMicrophoneAccess'),
   readWindowBelow: () => ipcRenderer.invoke('hermes:window:readBelow'),
   readFileDataUrl: filePath => ipcRenderer.invoke('hermes:readFileDataUrl', filePath),
+  // 只调用当前账号桌面的受限转换接口，缓存路径由主进程决定。
+  convertOfficePreview: filePath => ipcRenderer.invoke('hermes:office-preview:convert', filePath),
   readFileDataUrlForAttach: filePath => ipcRenderer.invoke('hermes:readFileDataUrlForAttach', filePath),
   dataUrlReadMax: {
     get: () => ipcRenderer.invoke('hermes:data-url-read-max:get'),

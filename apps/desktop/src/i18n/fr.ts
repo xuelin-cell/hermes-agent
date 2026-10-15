@@ -5273,10 +5273,17 @@ export const frOverrides = {
     noInlineTitle: 'Aucun aperçu en ligne',
     noInlineBody: mimeType => `${mimeType || 'Ce type de fichier'} peut tout de même être joint en tant que contexte.`,
     formatFailure: {
+      convert_failed: 'La conversion du document a échoué. Le fichier original reste accessible.',
+      timeout: 'La conversion du document a expiré. Le fichier original reste accessible.',
       not_found: "Ce fichier n’existe plus ou n’est pas accessible.",
       too_large: 'Le fichier ou l’image dépasse la limite de l’aperçu. Le fichier original reste accessible.',
       unavailable: 'Aperçu impossible. Vous pouvez toujours accéder au fichier original ou le télécharger.',
       unsupported: 'Ce format de fichier ou cet encodage multimédia n’est pas pris en charge.'
+    },
+    office: {
+      converting: 'Conversion du document',
+      firstOpen: 'Le premier aperçu peut prendre quelques secondes.',
+      installConverter: 'Si aucun logiciel de conversion ne fonctionne, installez LibreOffice et réessayez.'
     },
     delimited: {
       table: 'Tableau',

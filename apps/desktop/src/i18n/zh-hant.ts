@@ -7,7 +7,6 @@ export const zhHant = defineLocale({
   connectorsPage: {
     mcpLocal: {
       addCustom: '新增自訂 MCP',
-      builtIn: '內建 MCP',
       custom: '自訂 MCP',
       plugins: '外掛提供的 MCP',
       profile: '目前 Profile',
@@ -16,9 +15,6 @@ export const zhHant = defineLocale({
       noMatches: '沒有相符的 MCP 服務',
       loadFailed: '無法讀取 MCP 設定',
       pluginsFailed: '無法讀取外掛 MCP',
-      playwrightDescription: '使用隔離瀏覽器完成網頁操作，關閉後不保留網站登入。',
-      installPending: '安裝功能待接入。',
-      install: '安裝',
       configuration: '設定（JSON）',
       enabled: '已啟用',
       testing: '正在測試連線…',
@@ -2276,6 +2272,26 @@ export const zhHant = defineLocale({
       savedRestarting: 'Telegram 已儲存；閘道正在重新啟動…',
       savedRestartFailed: detail => `Telegram 已儲存；閘道重新啟動失敗${detail}`
     },
+    weixinQr: {
+      title: '掃碼連接',
+      help: '用個人微信掃碼並在手機上確認，Hermes 會自動儲存憑證並啟動微信通道。預設只有掃碼的微信號本人可以私訊，群聊關閉。',
+      connect: '掃碼連接',
+      rescan: '重新掃碼',
+      starting: '正在取得 QR 碼…',
+      waiting: '請用微信掃碼',
+      scanned: '已掃碼，請在手機上確認',
+      expired: 'QR 碼已過期',
+      refresh: '重新整理 QR 碼',
+      failed: '連接失敗',
+      startFailed: detail => `無法取得 QR 碼：${detail}`,
+      unbind: '解除綁定',
+      unbindTitle: '解除綁定微信？',
+      unbindDesc: '解除綁定後會清除微信憑證，不再接收微信訊息。',
+      unbinding: '正在解除綁定…',
+      unbound: '已解除綁定微信',
+      savedRestarting: '微信已連接；閘道正在重新啟動…',
+      savedRestartFailed: detail => `微信已連接；閘道重新啟動失敗${detail}`
+    },
     credentialsSet: '憑證已設定',
     needsSetup: '需要設定',
     gatewayStopped: '訊息閘道已停止',
@@ -3791,10 +3807,17 @@ export const zhHant = defineLocale({
     noInlineTitle: '沒有行內預覽',
     noInlineBody: mimeType => `${mimeType || '此檔案類型'} 仍可作為脈絡附件。`,
     formatFailure: {
+      convert_failed: '文件轉換失敗，仍可查看或下載原檔案。',
+      timeout: '文件轉換逾時，仍可查看或下載原檔案。',
       not_found: '檔案已不存在或無法存取。',
       too_large: '檔案過大或圖片尺寸超出預覽上限，仍可查看或下載原檔案。',
       unavailable: '無法預覽此檔案，仍可查看或下載原檔案。',
       unsupported: '暫不支援此檔案格式或影音編碼。'
+    },
+    office: {
+      converting: '正在轉換文件',
+      firstOpen: '首次預覽可能需要幾秒。',
+      installConverter: '如果沒有可用的轉換軟體，請安裝 LibreOffice 後重試。'
     },
     delimited: {
       table: '表格',

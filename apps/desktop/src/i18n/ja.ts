@@ -3583,10 +3583,17 @@ export const ja = defineLocale({
     noInlineTitle: 'インラインプレビューなし',
     noInlineBody: mimeType => `${mimeType || 'このファイルタイプ'} はコンテキストとして添付できます。`,
     formatFailure: {
+      convert_failed: 'ドキュメントを変換できませんでした。元のファイルは確認またはダウンロードできます。',
+      timeout: 'ドキュメントの変換がタイムアウトしました。元のファイルは確認またはダウンロードできます。',
       not_found: 'ファイルが存在しないか、アクセスできません。',
       too_large: 'ファイルまたは画像が大きすぎるためプレビューできません。元のファイルは確認またはダウンロードできます。',
       unavailable: 'プレビューできません。元のファイルを確認またはダウンロードできます。',
       unsupported: 'このファイル形式またはメディアのエンコードには対応していません。'
+    },
+    office: {
+      converting: 'ドキュメントを変換しています',
+      firstOpen: '初回のプレビューには数秒かかる場合があります。',
+      installConverter: '変換ソフトが利用できない場合は、LibreOffice をインストールして再試行してください。'
     },
     delimited: {
       table: '表',

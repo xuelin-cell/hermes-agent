@@ -5250,10 +5250,17 @@ export const esOverrides = {
     noInlineTitle: 'Sin vista previa inline',
     noInlineBody: mimeType => `${mimeType || 'Este tipo de archivo'} aún puede adjuntarse como contexto.`,
     formatFailure: {
+      convert_failed: 'No se pudo convertir el documento. Puedes acceder al archivo original.',
+      timeout: 'La conversión del documento agotó el tiempo de espera. Puedes acceder al archivo original.',
       not_found: 'Este archivo ya no existe o no es accesible.',
       too_large: 'El archivo o la imagen supera el límite de la vista previa. Puedes acceder al archivo original.',
       unavailable: 'No se pudo mostrar la vista previa. Puedes acceder al archivo original o descargarlo.',
       unsupported: 'Este formato de archivo o codificación multimedia no es compatible.'
+    },
+    office: {
+      converting: 'Convirtiendo documento',
+      firstOpen: 'La primera vista previa puede tardar unos segundos.',
+      installConverter: 'Si no hay un programa de conversión disponible, instala LibreOffice y vuelve a intentarlo.'
     },
     delimited: {
       table: 'Tabla',

@@ -215,7 +215,6 @@ export interface Translations {
   connectorsPage: {
     mcpLocal: {
       addCustom: string
-      builtIn: string
       custom: string
       plugins: string
       profile: string
@@ -224,9 +223,6 @@ export interface Translations {
       noMatches: string
       loadFailed: string
       pluginsFailed: string
-      playwrightDescription: string
-      installPending: string
-      install: string
       configuration: string
       enabled: string
       testing: string
@@ -2635,6 +2631,26 @@ export interface Translations {
       savedRestarting: string
       savedRestartFailed: (detail: string) => string
     }
+    weixinQr: {
+      title: string
+      help: string
+      connect: string
+      rescan: string
+      starting: string
+      waiting: string
+      scanned: string
+      expired: string
+      refresh: string
+      failed: string
+      startFailed: (detail: string) => string
+      unbind: string
+      unbindTitle: string
+      unbindDesc: string
+      unbinding: string
+      unbound: string
+      savedRestarting: string
+      savedRestartFailed: (detail: string) => string
+    }
     fieldCopy: Record<string, { label?: string; help?: string; placeholder?: string }>
     platformIntro: Record<string, string>
   }
@@ -4139,10 +4155,17 @@ export interface Translations {
     noInlineTitle: string
     noInlineBody: (mimeType: string) => string
     formatFailure: {
+      convert_failed: string
+      timeout: string
       not_found: string
       too_large: string
       unavailable: string
       unsupported: string
+    }
+    office: {
+      converting: string
+      firstOpen: string
+      installConverter: string
     }
     delimited: {
       table: string

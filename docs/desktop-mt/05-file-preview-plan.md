@@ -2,7 +2,7 @@
 
 日期：2026-10-13。基线：`desktop-mt @ d5ff498050`（代码事实核对于同步远端 `40caef7b87` 之前，P01 动手前需复核）。参考实现：UniWork 桌面版 `Kyle549/UniClaw @ uniwork_release`（`8ae3548e`）、Web 版 `feat/hermes-ch`（`3bef1c5bd4`）。
 
-状态：P01～P05 和六项审阅修复已推送，接续基线为 `8a3a28620c`；P06 已修复未登记实例退出与 WPS 转换，38 项定向检查通过，独立临时文件的 MS Office／WPS 三类转换均取得真实 PDF；中文排版和用户已有文档并行仍待人工验收，尚未接入应用。P07～P16 未开始。P04 的 COM 查询异常、主要 WPS 别名和专用入口优先级已修复，同厂家多个备用入口仍未实现。本文不授权推送。每步完成验证并本地提交后暂停，等待用户核验，再继续下一步。
+状态：P01～P09 已推送，P09 最新为 `1766d565ef`；Word 已接入 PDF 预览和 docx 前端兜底，实际桌面排版仍待用户核验。P10 已完成逐页绘图、缓存释放及开发／生产本地 Worker 检查，并用已有 MS Office／WPS 中文 PPT PDF 对照放行，本步本地提交、未推送。P11～P16 未开始，PPT／Excel 查看器尚未接入。复杂文档、Office 已有文档并行仍待人工验收；P04 同厂家多个备用入口仍未实现。本文不授权推送。每步完成验证并本地提交后暂停，等待用户核验，再继续下一步。
 
 路径约定：`src/`、`electron/` 指 `apps/desktop/` 下的对应目录；`shared/` 指 `apps/shared/src/`。各步骤的行数是预估的业务代码行数，不含测试、夹具和文档；多语言文案单独列出。
 
@@ -132,6 +132,7 @@ shared/office-preview.ts             前端与主进程共用的约定：扩展�
 | `electron/preload.ts` | 新增 1 个桥接方法 | P07 |
 | `src/global.d.ts` | 该方法的类型 | P07 |
 | `apps/desktop/package.json`、根 `package-lock.json` | 新增依赖 | P03、P09、P10、P12、P15 |
+| `apps/desktop/vite.config.ts` | 注册本地 PDF 资源插件，导入与登记共 3 行；新增 `pdf-assets.ts` 提供开发资源及构建输出 | P10 |
 | 根 `package.json` | FortuneSheet 需要的一条依赖覆盖（UniWork 已有同样配置；实施时确认是否仍需要） | P12 |
 
 明确不改：`preview-file.tsx` 的现有逻辑（上表的导出除外）、`src/lib/local-preview.ts`、`src/store/preview.ts`、`electron/media-protocol.ts`、Hermes Python 后端。
@@ -284,7 +285,7 @@ shared/office-preview.ts             前端与主进程共用的约定：扩展�
 ### P07 · LibreOffice 转换、转换服务与接入
 
 - 范围：`electron/office-preview/convert-libreoffice.ts`、`service.ts`、`ipc.ts` 及测试；`electron/main.ts`、`electron/preload.ts`、`src/global.d.ts` 的接入。
-- LibreOffice：参数与独立配置目录的做法取自 Web 版；失败或超时后清掉配置目录。
+- LibreOffice：沿用独立配置目录和无界面转换；仅确认安全收尾后删除配置，超时或异常终止且不能确认后代状态时保留记录，不强杀用户软件。
 - `service.ts`：校验扩展名和大小 → 查缓存 → 排队 → 拷贝英文名副本 → 按顺序尝试可用的转换器 → 检查 PDF 大小 → 发布并淘汰旧缓存。失败以原因代码返回，不抛出只有文字的异常。
 - `ipc.ts`：一个接口，成功返回 PDF 字节、版本号和所用转换器，失败返回原因代码。
 - 业务代码：约 280 行。
@@ -419,11 +420,11 @@ UniWork 的表格预览由三个文件组成，共约 1300 行，并依赖表格
 | A · TIFF | P03 | 已实现，定向检查通过；已推送 `f63ae9e9cc`，真实桌面验收待用户完成 |
 | B · 约定与探测 | P04 | 已推送 `4275f8f2a2`；查询异常及主要 WPS 别名、专用入口优先级已修复；同厂家备用入口仍有限制 |
 | B · 缓存与排队 | P05 | 已实现，13 项定向检查通过；已推送 `e7f05d4015`，应用接线待 P07 |
-| B · MS Office 与 WPS 转换 | P06 | 未登记实例退出与 WPS 修复完成，38 项定向检查通过；两厂家三类真实转换取得 PDF，排版及已有文档并行待人工确认；本地提交，未推送，应用接线待 P07 |
-| B · LibreOffice、服务与接入 | P07 | 未开始 |
-| C · Word 转 PDF | P08 | 未开始 |
-| C · Word 兜底 | P09 | 未开始 |
-| C · PDF 逐页渲染 | P10 | 未开始 |
+| B · MS Office 与 WPS 转换 | P06 | 已推送至 `7bf5fe50b3`；38 项定向检查通过，两厂家三类真实转换取得 PDF，排版及已有文档并行待人工确认 |
+| B · LibreOffice、服务与接入 | P07 | 已推送 `26bcd424a6`；预览模块 60 项、独立 Electron IPC／缓存命中通过，真实软件接线仍待人工核验 |
+| C · Word 转 PDF | P08 | 已推送 `6811e87775`；docx／doc／odt 定向检查通过，真实排版、再次打开速度和文件保存后刷新待用户核验 |
+| C · Word 兜底 | P09 | 已推送 `1766d565ef`；44 项定向检查通过，真实排版与缩放待用户核验 |
+| C · PDF 逐页渲染 | P10 | 已实现；19 项组件检查及开发／生产文件模式真实 Worker 通过，两厂家中文样例图像对照放行；本步本地提交、未推送 |
 | C · 幻灯片查看器 | P11 | 未开始 |
 | D · Excel 基础表格 | P12 | 未开始 |
 | D · Excel 样式 | P13 | 未开始 |
@@ -603,3 +604,54 @@ P05 完成后对 P01～P04 的四个提交做了一次代码审阅，共 10 条�
 - 用户授权的一轮原生转换和失败项定向复测，使用独立临时中文／空格／引号路径，不操作用户文档窗口。MS Office 的 docx／pptx／xlsx 与 WPS 的 docx／pptx／xlsx 均取得真实 PDF；WPS PPT 是修正无 HWND 分支后单独通过，不把最初整轮报告中的失败改写成通过。报告及样例位于 `C:\Users\stan\AppData\Local\Temp\hermes-office-native-TPrUSU`，PPT 复测见 `retest-report.json`。单次 MS PPT 转换约 25.18 秒降至 6.54 秒，WPS PPT 最后约 5.56 秒；这是不同轮次的单次观测，不是严格性能基准，未用最终代码重跑全部六项计时。
 - 最终定向命令：`npx vitest run --project electron electron/office-preview/detect.test.ts electron/office-preview/convert-com.test.ts electron/office-preview/com-scripts.test.ts electron/office-preview/run-process.test.ts`，4 文件 38 项通过。覆盖登记前失败、设置恢复再次失败、共享实例保护、无 HWND 的自有／借用 WPS 文档、路径冲突、32 位辅助进程读取 64 位路径、未登记关闭确认及真实自建进程的创建时间复核。TypeScript、相关 ESLint、夹具语法、默认不启动 Office 的门控和 Git 差异检查通过。
 - PDF 文件头和真实转换成功不等于中文视觉排版验收；用户已有 Word／PPT／Excel 文档并行、真实宏文件、Office 授权异常、安装包、其它系统和 LibreOffice 仍待验证。本次不修改 Hermes Python 后端或上游产品文件；按要求将本次修复写入一个本地提交，不推送，不进入 P07。
+
+### P07 本机转换服务与桌面接线（2026-10-14）
+
+- 接续时本地与远端均为 `6f3c7cc558`。核对此前之后的 MCP、工作目录、微信及登录样式提交，未修改已有预览模块；只在当前 preload 上新增一个方法，没有覆盖协作者的 MCP 密钥处理。P06 四个提交此前已推送，最新为 `7bf5fe50b3`。不修改 Hermes Python 后端、官方对照版、用户数据或本机计时文件。
+- 新增 `convert-libreoffice.ts`、`service.ts`、`ipc.ts`。正式服务串起读文件校验、真实路径与版本键、缓存、全进程单队列、英文名副本及 MS Office → WPS → LibreOffice 降级。排队后和复制后复核源版本；不同厂家使用不同产物目录，坏 PDF 不会被后续转换误当成成功。源文件 100 MB、PDF 50 MB；检查普通文件、非符号链接、非空和 PDF 文件头。
+- 同账号同版本的并发请求共用一次转换，后续读取直接命中账号缓存；不同账号不共用缓存。软件不可用时使探测缓存失效，下一次请求重新探测，不在本轮无限重试。各转换器共享 180 秒剩余执行预算，不为每家重新分配完整预算；源文件读写和排队等待不提供硬实时保证。全部失败保留实际转换失败／太大／超时等原因，不让末尾的不可用覆盖前面的实际错误。
+- 继续遵守 P06 的 cleanupSafe 约定：不安全立即停止降级，保留该次源副本、配置和归属记录。为受管临时目录增加 `retain` 标记，普通的一小时残留回收跳过它，避免服务重建后丢失排障证据；该目录须人工确认后处理，本步不实现自动恢复或按名称清进程。
+- LibreOffice 使用独立配置和最高宏安全级别，不借用用户配置；不经过 shell。Windows 使用同安装目录的 soffice.com 控制台入口，不回退到可能提前返回的 GUI 启动器，参数依据 [LibreOffice 官方说明](https://help.libreoffice.org/latest/en-US/text/shared/guide/start_parameters.html)。正常结束或未能启动时回收配置；超时／异常终止无法确认后代状态时保留现场并报告不安全，不把辅助程序退出当成所有后代都已结束。本机没有 LibreOffice，实际软件、宏策略及其它系统未验证。
+- 实际改动的上游产品文件仅 `electron/main.ts`（导入与注册）、`electron/preload.ts`（单一方法）和 `src/global.d.ts`（返回类型）。缓存固定来自主进程账号上下文，页面只提供文件路径，不提供账号、缓存目录、程序或凭据。新增 IPC 校验桌面窗口、主框架、固定页面、账号分区和当前上下文；等候时账号退出或页面跳转后不返回 PDF，账号撤销后不再启动等待中的转换。已有执行中的转换不因页面离开而取消。
+- 新增接口为 `window.hermesDesktop.convertOfficePreview(文件绝对路径)`：成功仅返回 `ok/pdf/version/converter`，PDF 为 Uint8Array；失败只返回 `ok/code`，不传内部异常、缓存路径或进程信息。重启源码开发版后可在自己的开发者工具调用；本步没有 Word／PPT／Excel 查看器，不会改变当前预览面板。P08 再接 Word 的可见预览。
+- 定向检查：`npx vitest run --project electron electron/office-preview`，9 文件 60 项通过；随后修改到的服务、LibreOffice、IPC 和缓存四文件 19 项复测通过。检查顺序、降级、总预算、原文件保留、伪／超限／缺失 PDF、缓存复用、A→B→A 账号缓存、退出时的队列限制及 retain 回收保护。类型检查最初发现 LibreOffice 测试替身误用了 COM 参数类型，已修正；ESLint 格式警告已按仓库规则处理。最终 `npm run typecheck`、改动文件 ESLint 零警告、夹具语法与 `git diff --check` 通过。
+- `node scripts/office-service.native.mjs`：1 项隐藏独立 Electron 检查通过，经过正式 Renderer／preload／IPC、文件复制与缓存，第二次调用不重复转换，返回真实跨 IPC 的 Uint8Array。仅软件转换器使用受控产物，没有启动 Office、MaaS、Hermes 后端或用户窗口；这不是 P07 真实软件全链路验收。夹具记录位于 `C:\Users\stan\AppData\Local\Temp\hermes-office-service-native-xJQkXu`。本轮不重跑 P06 Office 实机轮次、不验证中文排版、安装包、已有文档并行或云端。
+- 本步按约定本地提交后暂停，不推送，不进入 P08；真实查看器验收继续交由用户。
+
+### P08 Word 转 PDF 预览（2026-10-14）
+
+- 接续 HEAD 为 `26bcd424a6`，远端仍为 `6f3c7cc558`；P07 是已完成但尚未推送的本地提交，不需要拉取或覆盖。保留用户本机计时内容。本步不修改主进程、Hermes Python 后端、官方对照版或用户文件，不安装新依赖。
+- 在预览中心登记共享约定中的 docx／doc／odt，懒加载新的 `office-pdf-preview.tsx`。`source.ts` 是唯一的连接判断处：本机调用 P07 的 `convertOfficePreview`，远程直接报告不可用，不把远程路径送到本机软件。连接变化后不再返回旧 PDF。Word 前端直接渲染兜底仍属于 P09；PPT、Excel 尚未登记。
+- 使用已有 PageLoader 和本地化首次转换说明；PDF 字节转成 application/pdf Blob，以 Chromium 原生 iframe 阅读器显示，不把 Office 源文件或 data URL 当成 PDF。关闭、换文件和刷新时撤销旧 Blob 地址；忽略迟到的转换结果，页面离开不取消主进程已经执行的任务。沿用 PreviewPane 已有的文件监视及 reloadKey，没有另建文件监听或前端缓存；版本与转换缓存仍由 P07 管理。
+- 失败原因与共享转换约定对齐，新增超时、转换失败说明；所有错误经过预览中心保留原文件出口。本机 Word 不可用时说明可安装 LibreOffice；远程只保留原连接、Profile 的下载，不提示安装本机软件。补齐全部九种语言与类型定义，不改现有 CSV／TIFF／音视频、文本、HTML、PDF 的入口或源文件逻辑。
+- 按 [iframe 的事件说明](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/iframe#error_and_load_event_behavior)，浏览器不会可靠地用 error／load 区分内容是否成功显示。本步复用原有 PDF 阅读器，不保留无效的 iframe error 回调，不将 iframe 挂载当成 PDF 排版或解析已经验收。转换错误和 Blob 创建失败可回到正式失败流程，阅读器内部解析或排版仍需实机确认。
+- 新组件先因尚未实现而测试失败，再接入并验证。四个定向文件（office-pdf-preview、format-preview、source、catalog-completeness）64 项通过，覆盖三类 Word 登记、加载说明、PDF MIME／字节、刷新与释放、换文件和连接后的迟到结果、六种错误、安装提示、远程不调用本机转换及归属正确的下载。原有 preview-file／preview-pane 两文件 33 项回归通过；合计六文件 97 项。完整 `npm run typecheck`、改动文件 ESLint 零警告和 `git diff --check` 通过。早期夹具曾试图触发 iframe error，核对浏览器行为后删除无效产品回调，改为真正能发生的 Blob 创建失败检查，转换失败的断言继续保留。
+- 按用户要求不重复原生 Office 或整套 Electron 验收。本轮组件调用的转换接口返回受控字节，jsdom 不渲染真实 PDF；未重新证明 P06 的真实转换，也未验证真实桌面 Word 排版、缓存打开速度、磁盘保存事件、安装包或云端。不能把上述自动检查写成“真实 Word 端到端已通过”。
+- 人工验收：重启源码开发版，在文件树或聊天文件卡片打开 docx／doc／odt，检查首次说明、中文排版及 PDF 滚动；关闭后再次打开观察缓存效果；修改并保存原文档后确认预览刷新；再核对普通 HTML、PDF、文本和音视频仍正常。首次调用会使用本机转换软件，已有 Office 文档不要关闭，顺便确认其仍保留。P09 完成前，没有转换软件或远程 Word 只显示原因及原文件出口。
+- 本步本地提交后暂停，不推送，不进入 P09。
+
+### P09 Word 前端渲染兜底（2026-10-14）
+
+- 按用户当次授权将 P07、P08 推送到 `origin/desktop-mt`，远端核对为 `6811e87775`。本步继续已批准的实施计划，不修改 Hermes Python 后端、官方版或用户文件。
+- 查阅 UniWork 的 `DocxViewer.tsx` 和 [docx-preview 官方接口](https://github.com/VolodymyrBaydalka/docxjs#api)，新增精确依赖 `docx-preview@0.4.1`。npm 元数据确认发布于 2026-09-21，满足十四天规则。库按需懒加载；JSZip 是该库自己的间接依赖，不新增直接 JSZip 依赖或解压实现。
+- Word 登记顺序仍为本机转 PDF → docx 前端渲染；候选筛选集中在 registry，只让 docx 使用第二项。doc／odt 不交给错误的解析器，保留原转换失败和文件出口；文件不存在时仍直接停止。源字节复用 `source.ts` 和既有读文件限制，远程使用原连接和 Profile 的鉴权接口，不送到本机 Office。本步没有增加云端转换接口。
+- 新阅读器保留文档分页、表格和内嵌内容，视口按最宽页面及面板宽度缩小，不重排原有页面。面板变宽后恢复原尺寸，不额外放大；缩放包含原生滚动条。刷新重新解析，离开或换文件后忽略迟到结果并解除尺寸监听；base64 内嵌资源随组件释放，不产生需要回收的文档 Blob 地址。
+- 不把文档 CSS 注入应用页面。复用现有 DOMPurify 清理生成内容并保留必要排版样式，移除链接跳转、禁用 altChunk HTML；在空 sandbox 的独立 iframe 显示。内容策略只允许内联样式及 data 图片／字体，不允许脚本、外部资源、表单或基址覆盖，iframe 不获得 preload、同源访问或弹窗权限。参考实现直接注入页面的方式没有照搬。
+- 定向命令：`npx vitest run --project ui src/app/chat/right-rail/formats/docx-preview.test.tsx src/app/chat/right-rail/formats/office-pdf-preview.test.tsx src/app/chat/right-rail/formats/format-preview.test.tsx`，最终三文件 44 项通过，其中新文件 13 项。真实生成 OOXML 压缩包并调用正式解析库，覆盖中文、表格、分页、样式保留、链接清理、altChunk 禁止、PDF 优先、转换失败降级、远程归属、读取错误、损坏文件、刷新及迟到结果。面板尺寸通知受控，jsdom 不做真实排版。原 PDF 失败说明检查改用没有前端候选的 doc／odt，继续检查原错误和出口，并未降低新 docx 的降级断言。
+- 完整 `npm run typecheck`、改动文件 ESLint 零警告、`git diff --check` 通过。未重复原生 Electron／Office 夹具，不发送短信、不调用模型，不把组件检查写成视觉验收。中文分页、图片／字体、滚动条缩放手感、复杂文档、安装包和真实远程环境待人工核验。
+- 人工检查兜底时，可在自己的开发环境临时将 registry 的 Word 候选调为前端优先，再打开 docx，检查中文、表格、分页、窄面板与宽面板，保存原文件后检查刷新；检查完恢复 PDF 优先。此临时顺序不是提交内容，也不新增常驻调试开关。本步使用上述受控转换失败检查正式顺序，没有操作用户窗口。
+- 本步本地提交后暂停，未推送，不进入 P10。实际改动的上游文件只有桌面 `package.json` 和根 `package-lock.json`；其余产品改动在已有预览中心及新增阅读器内，没有改变原版 PDF／HTML／文本或音视频入口。
+
+### P10 PDF 逐页渲染（2026-10-14）
+
+- 按用户当次授权推送 P09，核对远端为 `1766d565ef`。本步新增 `pdf-pages.ts` 供 P11 使用，不登记 PPT，不改现有 Word／PDF 阅读器，不修改 Hermes 后端、官方版或用户数据。
+- npm 元数据表明最新版 `6.4.299` 发布于 2026-10-03，尚未满十四天，因此精确安装 `pdfjs-dist@6.3.289`。查阅官方接口及包内类型，不采用已删除的旧参数。常规构建在当前 Electron 真实执行时缺少 `Map.getOrInsertComputed`，改用包内官方提供的 legacy 主模块和对应 Worker，没有自写 polyfill 或静默切到主线程。该构建选择符合包内 README 对环境支持的说明。
+- 接口提供 `pages` 尺寸列表、从 1 开始的 `renderPage(页码)` 和幂等 `dispose()`。原 PDF 字节先复制，避免 Worker 转移所有权使调用方数据失效。每张图长边 1600 像素，每份文档串行绘制，同页并发共用一次任务；最近六页保留 PNG 地址，命中更新使用顺序，淘汰时撤销旧地址。每次绘制或失败都清空画布并清理页面，失败不阻塞后页。关闭时撤销缓存、终止 Worker、禁止排队任务继续，并等候正在编码的页面归还资源；调用方不能继续使用被淘汰的图片地址。
+- 为落实离线资源要求，补充计划最初清单之外的必要构建接线：新增 `pdf-assets.ts`，在 `vite.config.ts` 导入并注册，共 3 行。开发服务器只提供已登记的 CMap、标准字体、WASM、ICC 文件，不能通过 URL 读取任意磁盘路径；生产构建将同一份文件及许可证写入相对目录。Worker 使用 Vite 的本地资源导入，辅助资源基于页面地址定位，不使用 CDN。本步没有修改其它构建策略，已同步 4.1 文件清单。
+- 六项定向检查覆盖原字节与尺寸、长边限制、同页合并、LRU、画布释放、失败后续、非法页码、空编码、关闭期间迟到结果、排队限制及重复关闭。最后与 P09 新阅读器共同运行：`npx vitest run --project ui src/app/chat/right-rail/formats/pdf-pages.test.ts src/app/chat/right-rail/formats/docx-preview.test.tsx`，两文件 19 项通过。缓存／收尾使用受控 PDF.js 对象，不将其写成真实解析证明。
+- `scripts/pdf-pages.native.mjs` 只接受现成 PDF，不启动 Office，未传参数时只显示用法。复用 `hermes-office-service-real-df63158d/pdf/ms-office/slides.pdf` 与 `pdf/wps/slides.pdf`；对应旧报告确认两者来自本机真实软件。本轮没有再次执行转换，也没有操作任何用户窗口。
+- 最终原生夹具 1 组通过，实际覆盖开发 HTTP 与生产 file 两种模式 × 两厂家样例。经过正式 Vite 配置及正式模块，每份 PDF 启动真实 Worker，不接受 fake worker；每页取得 1600×900 PNG，关闭后检查 Worker 消失。两种模式均读取 CMap／字体／WASM／ICC，比较文件长度和文件头，防止把 404 HTML 当资源成功；外部网络请求被阻断。该检查验证生产构建文件可读，不等于安装包已经验收，也未证明每一种图片解码器。
+- 依照 PDF 技能，用 Poppler 分别渲染两份源文件作为参考，逐一查看开发与生产的四张实际 PNG，中文均可读、未见缺字乱码，因此不启用方案 B。源样例各只有一页，不能外推为复杂字体、全部文字、30 页长文档或其它系统都已验证；这些继续由后续真实验收覆盖。PDF.js 留有 `TT: undefined function: 3` 字体提示，已保留在报告；本次图像对照没有观察到对应缺字，不把它写成零运行警告。
+- 夹具早期暴露常规构建不适配当前 Electron；另曾因开发页热更新失去句柄，隐藏窗截图也不能代表实际编码图像。最终关闭夹具热更新，直接保存正式图片地址的 PNG 字节。临时入口的资源基址曾指向 `/@fs` 下的测试目录，现显式对齐正式开发页根地址，严格资源内容断言保留。失败轮次记录不覆盖；最终报告与四张图片保留在 `C:\Users\stan\AppData\Local\Temp\hermes-pdf-pages-hzG5pY`。
+- 完整 `npm run typecheck`、新增资源插件独立 TypeScript、改动 TS 文件 ESLint 零警告、原生脚本语法及 `git diff --check` 通过。Vite 仍有已有的 advancedChunks 弃用提示。未制作安装包，未跑整套桌面测试，未验证 PPT 滚动／全屏界面、真实云端或新一轮 Office 收尾。
+- 本步本地提交后暂停，未推送；下一步 P11 才接入幻灯片查看器。
