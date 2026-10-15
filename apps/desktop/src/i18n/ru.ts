@@ -3828,6 +3828,15 @@ export const ru = defineLocale({
       firstOpen: 'Первый предпросмотр может занять несколько секунд.',
       installConverter: 'Если программа преобразования недоступна, установите LibreOffice и повторите попытку.'
     },
+    slides: {
+      page: page => `Слайд ${page}`,
+      counter: (page, total) => `${page} / ${total}`,
+      previous: 'Предыдущий слайд',
+      next: 'Следующий слайд',
+      fullscreen: 'Полноэкранный показ',
+      exitFullscreen: 'Выйти из полноэкранного режима',
+      fullscreenFailed: 'Не удалось переключить полноэкранный режим. Слайды по-прежнему доступны.'
+    },
     delimited: {
       table: 'Таблица',
       empty: 'Таблица пуста.',

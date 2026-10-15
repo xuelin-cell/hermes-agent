@@ -82,7 +82,10 @@ describe('format preview', () => {
       '/fixture/photo.tiff',
       '/fixture/document.docx',
       '/fixture/document.doc',
-      '/fixture/document.odt'
+      '/fixture/document.odt',
+      '/fixture/deck.pptx',
+      '/fixture/deck.ppt',
+      '/fixture/deck.odp'
     ]
 
     expect(new Set(examples.map(path => previewFormat(fileTarget(path))))).toEqual(

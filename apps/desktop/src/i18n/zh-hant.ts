@@ -3819,6 +3819,15 @@ export const zhHant = defineLocale({
       firstOpen: '首次預覽可能需要幾秒。',
       installConverter: '如果沒有可用的轉換軟體，請安裝 LibreOffice 後重試。'
     },
+    slides: {
+      page: page => `第 ${page} 頁`,
+      counter: (page, total) => `${page} / ${total}`,
+      previous: '上一頁',
+      next: '下一頁',
+      fullscreen: '全螢幕放映',
+      exitFullscreen: '退出全螢幕',
+      fullscreenFailed: '無法切換全螢幕，仍可繼續閱讀投影片。'
+    },
     delimited: {
       table: '表格',
       empty: '表格為空。',

@@ -4167,6 +4167,15 @@ export interface Translations {
       firstOpen: string
       installConverter: string
     }
+    slides: {
+      page: (page: number) => string
+      counter: (page: number, total: number) => string
+      previous: string
+      next: string
+      fullscreen: string
+      exitFullscreen: string
+      fullscreenFailed: string
+    }
     delimited: {
       table: string
       empty: string

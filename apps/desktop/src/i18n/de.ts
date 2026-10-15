@@ -5274,6 +5274,15 @@ export const deOverrides = {
       firstOpen: 'Die erste Vorschau kann einige Sekunden dauern.',
       installConverter: 'Wenn keine Konvertierungssoftware verfügbar ist, installieren Sie LibreOffice und versuchen Sie es erneut.'
     },
+    slides: {
+      page: page => `Folie ${page}`,
+      counter: (page, total) => `${page} / ${total}`,
+      previous: 'Vorherige Folie',
+      next: 'Nächste Folie',
+      fullscreen: 'Im Vollbild präsentieren',
+      exitFullscreen: 'Vollbild verlassen',
+      fullscreenFailed: 'Der Vollbildmodus konnte nicht gewechselt werden. Die Folien bleiben lesbar.'
+    },
     delimited: {
       table: 'Tabelle',
       empty: 'Diese Tabelle ist leer.',

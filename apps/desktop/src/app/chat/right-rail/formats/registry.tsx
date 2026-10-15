@@ -16,6 +16,7 @@ const DelimitedPreview = lazy(() => import('./delimited-preview'))
 const TiffPreview = lazy(() => import('./tiff-preview'))
 const OfficePdfPreview = lazy(() => import('./office-pdf-preview'))
 const DocxPreview = lazy(() => import('./docx-preview'))
+const SlidesPreview = lazy(() => import('./slides-preview'))
 
 // 显示器只在这张表登记；后续格式按顺序追加真正可用的候选。
 export const FORMAT_RENDERERS: Record<
@@ -24,6 +25,7 @@ export const FORMAT_RENDERERS: Record<
 > = {
   audio: [MediaPreview],
   delimited: [DelimitedPreview],
+  slides: [SlidesPreview],
   tiff: [TiffPreview],
   video: [MediaPreview],
   word: [OfficePdfPreview, DocxPreview]

@@ -4616,6 +4616,15 @@ export const zh = defineLocale({
       firstOpen: '首次预览可能需要几秒。',
       installConverter: '如果没有可用的转换软件，请安装 LibreOffice 后重试。'
     },
+    slides: {
+      page: page => `第 ${page} 页`,
+      counter: (page, total) => `${page} / ${total}`,
+      previous: '上一页',
+      next: '下一页',
+      fullscreen: '全屏放映',
+      exitFullscreen: '退出全屏',
+      fullscreenFailed: '未能切换全屏，仍可继续阅读幻灯片。'
+    },
     delimited: {
       table: '表格',
       empty: '表格为空。',

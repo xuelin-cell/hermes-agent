@@ -3595,6 +3595,15 @@ export const ja = defineLocale({
       firstOpen: '初回のプレビューには数秒かかる場合があります。',
       installConverter: '変換ソフトが利用できない場合は、LibreOffice をインストールして再試行してください。'
     },
+    slides: {
+      page: page => `スライド ${page}`,
+      counter: (page, total) => `${page} / ${total}`,
+      previous: '前のスライド',
+      next: '次のスライド',
+      fullscreen: '全画面で表示',
+      exitFullscreen: '全画面を終了',
+      fullscreenFailed: '全画面を切り替えられませんでした。スライドは引き続き閲覧できます。'
+    },
     delimited: {
       table: '表',
       empty: '表は空です。',

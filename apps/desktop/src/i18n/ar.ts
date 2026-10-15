@@ -3096,6 +3096,15 @@ export const ar = defineLocale({
       firstOpen: 'قد تستغرق المعاينة الأولى بضع ثوانٍ.',
       installConverter: 'إذا لم يتوفر برنامج للتحويل، فثبّت LibreOffice وحاول مرة أخرى.'
     },
+    slides: {
+      page: page => `الشريحة ${page}`,
+      counter: (page, total) => `${page} / ${total}`,
+      previous: 'الشريحة السابقة',
+      next: 'الشريحة التالية',
+      fullscreen: 'عرض بملء الشاشة',
+      exitFullscreen: 'الخروج من ملء الشاشة',
+      fullscreenFailed: 'تعذر تبديل وضع ملء الشاشة. لا يزال بإمكانك قراءة الشرائح.'
+    },
     delimited: {
       table: 'جدول',
       empty: 'هذا الجدول فارغ.',

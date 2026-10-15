@@ -5285,6 +5285,15 @@ export const frOverrides = {
       firstOpen: 'Le premier aperçu peut prendre quelques secondes.',
       installConverter: 'Si aucun logiciel de conversion ne fonctionne, installez LibreOffice et réessayez.'
     },
+    slides: {
+      page: page => `Diapositive ${page}`,
+      counter: (page, total) => `${page} / ${total}`,
+      previous: 'Diapositive précédente',
+      next: 'Diapositive suivante',
+      fullscreen: 'Présenter en plein écran',
+      exitFullscreen: 'Quitter le plein écran',
+      fullscreenFailed: 'Impossible de changer le mode plein écran. Les diapositives restent consultables.'
+    },
     delimited: {
       table: 'Tableau',
       empty: 'Ce tableau est vide.',
