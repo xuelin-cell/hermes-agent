@@ -46,15 +46,18 @@ function cellStyle(style: PreviewStyle | undefined): Partial<Cell> {
 /** 只读适配；不传公式与超链接，合并区域同时登记到配置与单元格。 */
 export function toFortuneWorkbook(sheets: PreviewSheet[]): Sheet[] {
   let gridCells = 0
+  let paddedCells = 0
   let mergedCells = 0
 
   return sheets.map((sheet, index) => {
     const row = Math.max(200, sheet.rows)
     const column = Math.max(26, sheet.columns)
-    gridCells += row * column
+    gridCells += sheet.rows * sheet.columns
+    paddedCells += row * column
 
-    // 画布内部仍会分配二维数组，跨工作表累计限制，不能只靠文件字节上限。
-    if (gridCells > MAX_GRID_CELLS) {
+    // 画布内部仍会为每张表分配二维数组，跨工作表累计限制，不能只靠文件字节上限。
+    // 补到 200×26 的空白格只占数组槽位，另设宽松上限，几十张小表不会因此被判太大。
+    if (gridCells > MAX_GRID_CELLS || paddedCells > MAX_GRID_CELLS * 4) {
       throw { code: 'too_large' }
     }
 

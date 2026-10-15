@@ -216,6 +216,32 @@ it('分隔条连续改变尺寸时合并一次原版 resize 通知', async () =>
   window.removeEventListener('resize', listener)
 })
 
+it('窗口本身改变尺寸时表格组件已收到通知，不再补发', async () => {
+  render(<FormatPreview reloadKey={0} target={target()} />)
+  await screen.findByText('中文表')
+  const listener = vi.fn()
+  window.addEventListener('resize', listener)
+  act(() => {
+    window.dispatchEvent(new Event('resize'))
+    resize([{ contentRect: { width: 640, height: 500 } } as ResizeObserverEntry], {} as ResizeObserver)
+  })
+  await new Promise(resolve => setTimeout(resolve, 300))
+  expect(listener).toHaveBeenCalledTimes(1)
+  window.removeEventListener('resize', listener)
+})
+
+it('表格组件的样式只放在预览区域内，不影响应用其它部分', async () => {
+  const page = render(<FormatPreview reloadKey={0} target={target()} />).baseElement.ownerDocument
+  await screen.findByText('中文表')
+
+  // 测试环境不加载样式表正文（vitest 只保留指定的 CSS），这里核对包装和位置，正文由生产构建检查。
+  const styles = Array.from(page.querySelectorAll('style')).filter(style => style.textContent?.startsWith('@scope {'))
+
+  expect(styles).toHaveLength(1)
+  expect(styles[0].parentElement?.getAttribute('role')).toBe('region')
+  expect(page.head.contains(styles[0])).toBe(false)
+})
+
 it('远程字节使用原连接与 Profile；失败只提供该连接下载，不启动本机 Office', async () => {
   $connection.set({ connectionId: 'sheet-remote', mode: 'remote', profile: 'team' } as never)
   setApiRequestConnection('sheet-remote')

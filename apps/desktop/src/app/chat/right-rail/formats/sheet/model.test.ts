@@ -1,5 +1,9 @@
+import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate'
 import { expect, it } from 'vitest'
 import { type BookType, utils, type WorkSheet, write } from 'xlsx'
+
+import { createImageWorkbook } from '../../../../../../scripts/sheet-images.fixture'
+import { createStyledWorkbook } from '../../../../../../scripts/sheet-styles.fixture'
 
 import { toFortuneWorkbook } from './fortune'
 import { MAX_ROWS, parseWorkbook } from './model'
@@ -88,7 +92,47 @@ it('损坏 ZIP 失败，不把空表当作成功；二维网格累计超限时�
   expect(() => toFortuneWorkbook([{ ...parsed[0], columns: 16384 }])).toThrowError(
     expect.objectContaining({ code: 'too_large' })
   )
-  expect(() => toFortuneWorkbook(Array.from({ length: 50 }, () => parsed[0]))).toThrowError(
+  // 几十张小表（例如按月分表）不因补齐到 200×26 的空白格被判太大；补齐部分仍有上限。
+  expect(toFortuneWorkbook(Array.from({ length: 60 }, () => parsed[0]))).toHaveLength(60)
+  expect(() => toFortuneWorkbook(Array.from({ length: 200 }, () => parsed[0]))).toThrowError(
     expect.objectContaining({ code: 'too_large' })
   )
 })
+
+it.each(['xlsx', 'biff8'] as const)('%s 隐藏和深度隐藏的工作表不显示，第一张可见表成为当前表', type => {
+  const book = utils.book_new()
+
+  for (const name of ['隐藏', '可见', '深度隐藏', '最后']) {
+    utils.book_append_sheet(book, utils.aoa_to_sheet([[name]]), name)
+  }
+
+  utils.book_set_sheet_visibility(book, '隐藏', 1)
+  utils.book_set_sheet_visibility(book, '深度隐藏', 2)
+  const parsed = parseWorkbook(write(book, { type: 'array', bookType: type }) as ArrayBuffer)
+  expect(parsed.map(sheet => sheet.name)).toEqual(['可见', '最后'])
+  expect(toFortuneWorkbook(parsed).map(sheet => sheet.status)).toEqual([1, 0])
+})
+
+it('工作表正文超过 16 MB 时仍显示前 500 行，样式和图片照常读取', () => {
+  const original = createImageWorkbook(createStyledWorkbook())
+  const baseline = parseWorkbook(original.slice().buffer)[0]
+  const parts = unzipSync(original)
+
+  const rows = Array.from({ length: 400_000 }, (_, index) => {
+    const row = index + 1001
+
+    return `<row r="${row}"><c r="A${row}"><v>${row}</v></c></row>`
+  }).join('')
+
+  parts['xl/worksheets/named.xml'] = strToU8(
+    strFromU8(parts['xl/worksheets/named.xml'])
+      .replace(/<dimension ref="([A-Z]+\d+):([A-Z]+)\d+"\/>/, '<dimension ref="$1:$2401000"/>')
+      .replace('</sheetData>', `${rows}</sheetData>`)
+  )
+  expect(parts['xl/worksheets/named.xml'].length).toBeGreaterThan(16 * 1024 * 1024)
+  const parsed = parseWorkbook(zipSync(parts).buffer as ArrayBuffer)[0]
+  expect(parsed).toMatchObject({ rows: MAX_ROWS, limited: true })
+  expect(parsed.cells).toEqual(baseline.cells)
+  expect(parsed.images?.length).toBeGreaterThan(0)
+  expect(parsed.images?.length).toBe(baseline.images?.length)
+}, 60_000)

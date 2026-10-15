@@ -2,10 +2,10 @@ import { type Range, read, utils } from 'xlsx'
 
 import { type PreviewChart, readWorkbookCharts } from './charts'
 import { type PreviewImage, readWorkbookImages } from './images'
-import { openWorkbookPackage } from './package'
+import { MAX_ROWS, openWorkbookPackage } from './package'
 import { type PreviewStyle, readWorkbookStyles } from './styles'
 
-export const MAX_ROWS = 500
+export { MAX_ROWS }
 export const MAX_GRID_CELLS = 250000
 
 export interface PreviewCell {
@@ -52,13 +52,17 @@ export function parseWorkbook(bytes: ArrayBuffer): PreviewSheet[] {
     sheetRows: MAX_ROWS
   })
 
-  if (!book.SheetNames.length) {
+  // 隐藏和深度隐藏的工作表 Excel 不显示、导出 PDF 也没有，这里同样跳过。
+  const hidden = new Set(book.Workbook?.Sheets?.filter(sheet => sheet.Hidden).map(sheet => sheet.name))
+  const names = book.SheetNames.filter(name => !hidden.has(name))
+
+  if (!names.length) {
     throw { code: 'unsupported' }
   }
 
   const charts = readWorkbookCharts(archive, book)
 
-  return book.SheetNames.map(name => {
+  return names.map(name => {
     const source = book.Sheets[name]
     const cellStyles = styles.get(name)
     const range = utils.decode_range(source['!fullref'] || source['!ref'] || 'A1')
