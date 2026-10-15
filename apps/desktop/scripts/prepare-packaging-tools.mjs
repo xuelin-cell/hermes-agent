@@ -35,6 +35,22 @@ export function packagingTargetArch(target) {
   throw new Error(`Packaging preparation requires a same-OS x64/arm64 target, got ${target}`)
 }
 
+/** 从锁定的 Electron npm 包读取官方校验值，缓存命中时无需联网取校验清单。
+ * @param {string} source @param {string} version @param {string} target
+ * @returns {Record<string, string>}
+ */
+export function pinnedElectronChecksums(source, version, target) {
+  const root = pinnedPackageRoot(source, 'electron')
+  const installed = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
+  if (installed.version !== version) throw new Error('Electron packaging version differs from the lock-pinned package')
+  const filename = `electron-v${version}-${target}.zip`
+  const checksums = JSON.parse(fs.readFileSync(path.join(root, 'checksums.json'), 'utf8'))
+  if (!/^[a-f0-9]{64}$/.test(checksums[filename] ?? '')) {
+    throw new Error(`Missing official Electron checksum: ${filename}`)
+  }
+  return { [filename]: checksums[filename] }
+}
+
 /** @param {string} from @param {string} to @returns {string} */
 function copyTool(from, to) {
   fs.rmSync(to, { recursive: true, force: true })
@@ -87,7 +103,8 @@ async function acquirePackagingTools({ source, out, cache, target, formats, buil
   const resourcesDir = path.join(source, 'apps/desktop', config.directories?.buildResources || 'build')
   const [archive, archiveTool, iconTools] = await Promise.all([
     electronGet.downloadElectronArtifactZip({ version: config.electronVersion, platformName: process.platform, arch: packagingTargetArch(target),
-      artifactName: 'electron', cacheDir: path.join(cache, 'electron') }),
+      artifactName: 'electron', cacheDir: path.join(cache, 'electron'),
+      options: { checksums: pinnedElectronChecksums(source, config.electronVersion, target) } }),
     sevenZip.getPath7za(), icons.getIconsToolsetPath(config.toolsets?.icons, resourcesDir),
   ])
   const electron = copyTool(archive, path.join(out, 'electron.zip'))
