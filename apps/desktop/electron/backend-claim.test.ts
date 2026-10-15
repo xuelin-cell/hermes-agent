@@ -57,7 +57,7 @@ test('probeStartMarker converts a probe throw into { ok: false, reason }', async
 test('processStartMarker resolves a real marker for the current process', async () => {
   const marker = await processStartMarker(process.pid)
 
-  assert.match(marker, /^(linux|win|winms|ps):.+/)
+  assert.match(marker, /^(linux|win|winms|darwin|ps):.+/)
 })
 
 test('a missing PID is classified as ESRCH so reapOrphans can drop the record', async () => {

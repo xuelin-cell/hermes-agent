@@ -19,6 +19,21 @@ interface PendingAccount {
   processes?: LogoutProcess[]
 }
 
+/** 将 macOS 的当前秒级指纹和旧版 ps 文本指纹统一为 Unix 秒。 */
+function darwinMarkerSecond(marker: string): number | null {
+  if (/^darwin:\d+$/.test(marker)) {
+    return Number(marker.slice('darwin:'.length))
+  }
+
+  if (marker.startsWith('ps:')) {
+    const milliseconds = Date.parse(marker.slice(3))
+
+    return Number.isFinite(milliseconds) ? Math.floor(milliseconds / 1000) : null
+  }
+
+  return null
+}
+
 /** 缺文件与坏文件分开；链接、读取错误和解析错误均保留原件并阻止启动。 */
 function readRecord(file: string): string | null {
   const stat = fs.lstatSync(file, { throwIfNoEntry: false })
@@ -113,12 +128,18 @@ export async function recoverAccountRun(
     }
 
     // 活进程必须有可复核指纹；不使用原版面向非账号模式的 PID-only 降级。
-    if (!/^win:\d+$/.test(entry.startMarker)) {
+    if (!/^(?:win|darwin):\d+$|^ps:.+$/.test(entry.startMarker)) {
       throw new Error('后端创建时间无法确认。')
     }
 
     try {
-      if ((await processStartMarker(entry.pid, REAP_PROBE_TIMEOUT_MS)) !== entry.startMarker) {
+      const currentMarker = await processStartMarker(entry.pid, REAP_PROBE_TIMEOUT_MS)
+      const recordedDarwinSecond = darwinMarkerSecond(entry.startMarker)
+      const currentDarwinSecond = darwinMarkerSecond(currentMarker)
+      const sameDarwinProcess =
+        process.platform === 'darwin' && recordedDarwinSecond !== null && recordedDarwinSecond === currentDarwinSecond
+
+      if (currentMarker !== entry.startMarker && !sameDarwinProcess) {
         continue
       }
     } catch (error) {
@@ -132,7 +153,7 @@ export async function recoverAccountRun(
     if (
       !Number.isSafeInteger(entry.parentPid) ||
       entry.parentPid! <= 0 ||
-      !/^win(?:ms)?:\d+$/.test(entry.parentStartMarker ?? '')
+      !/^(?:win(?:ms)?|darwin):\d+$|^ps:.+$/.test(entry.parentStartMarker ?? '')
     ) {
       throw new Error('后端父进程归属无法确认。')
     }
@@ -145,15 +166,18 @@ export async function recoverAccountRun(
         throw new Error('后端父进程归属无法确认。')
       }
 
-      // 沿用原版毫秒指纹；系统 ticks 指纹只容许探针的亚毫秒精度差异。
-      const milliseconds = Number((BigInt(parent.started) - 621355968000000000n) / 10_000n)
-
+      // Windows 使用 ticks 与毫秒指纹；macOS 快照和探针共用 UTC 秒指纹。
+      const isDarwinMarker =
+        entry.parentStartMarker!.startsWith('darwin:') || entry.parentStartMarker!.startsWith('ps:')
+      const milliseconds = isDarwinMarker ? null : Number((BigInt(parent.started) - 621355968000000000n) / 10_000n)
       const difference = entry.parentStartMarker!.startsWith('win:')
         ? BigInt(entry.parentStartMarker!.slice(4)) - BigInt(parent.started)
         : null
 
       if (
-        entry.parentStartMarker === electronProcessStartMarker(parent.pid, parent.pid, milliseconds) ||
+        (isDarwinMarker && darwinMarkerSecond(entry.parentStartMarker!) === Number(parent.started)) ||
+        (milliseconds !== null &&
+          entry.parentStartMarker === electronProcessStartMarker(parent.pid, parent.pid, milliseconds)) ||
         (difference !== null && difference > -10_000n && difference < 10_000n)
       ) {
         throw new Error('上次账号实例仍在运行。')
