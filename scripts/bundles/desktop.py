@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -15,7 +16,12 @@ if str(ROOT) not in sys.path:
 
 def run(argv: list[str], *, cwd: Path, env: dict[str, str]) -> None:
     print("bundle: " + subprocess.list2cmdline(argv), flush=True)
-    subprocess.run(argv, cwd=cwd, env=env, check=True)
+    # 输出每一步实际耗时，帮助区分编译、缓存校验和压缩瓶颈。
+    started = time.perf_counter()
+    try:
+        subprocess.run(argv, cwd=cwd, env=env, check=True)
+    finally:
+        print(f"bundle: step finished in {time.perf_counter() - started:.1f}s", flush=True)
 
 
 def capture(argv: list[str], repo: Path) -> str:
@@ -81,8 +87,8 @@ def _build_prepared(prepared, builder_args: list[str], variant: str | None) -> N
     run([str(prepared.icon_python), "-I", str(repo / "scripts/generate_icons.py"),
          "--source", str(repo), "--out", str(icons)], cwd=repo, env=env)
     if variant != "light":
-        run([node, "scripts/build/tui.mjs", "--source", str(repo), "--out", str(products / "tui")], cwd=repo, env=env)
-        run([node, "scripts/build/web.mjs", "--source", str(repo), "--icons", str(products / "icons"),
+        run([node, "scripts/build/tui.mjs", "--reuse", "--source", str(repo), "--out", str(products / "tui")], cwd=repo, env=env)
+        run([node, "scripts/build/web.mjs", "--reuse", "--source", str(repo), "--icons", str(products / "icons"),
              "--out", str(products / "web")], cwd=repo, env=env)
         if prepared.payload is None:
             raise ValueError("payload dependencies were not prepared")
@@ -91,7 +97,7 @@ def _build_prepared(prepared, builder_args: list[str], variant: str | None) -> N
     from scripts.bundles.desktop_prepare import require_source
     require_source(repo, request.commit)
     run([node, "scripts/write-build-stamp.mjs"], cwd=desktop, env=env)
-    run([node, "scripts/build/desktop.mjs", "--source", str(repo), "--icons", str(icons),
+    run([node, "scripts/build/desktop.mjs", "--reuse", "--source", str(repo), "--icons", str(icons),
          "--stamp", str(desktop / "build/install-stamp.json"), "--native-deps", str(prepared.native),
          "--out", str(desktop / "dist")], cwd=repo, env=env)
     version_args = []

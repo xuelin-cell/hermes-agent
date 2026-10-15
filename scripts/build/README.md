@@ -422,3 +422,21 @@ Artifact acceptance still needs these checks:
 
 Docker/Nix build execution belongs to the distribution verification work, not
 this documentation pass. No build-pass claim follows from this reference.
+
+## Windows 本地打包的增量复用
+
+`build-windows-installer.ps1` 继续作为完整 EXE 入口。打包调用三个前端编译器时传入
+`--reuse`；输入和输出的内容指纹一致才跳过编译，终端显示
+`build-cache: reusing verified ... product`。首次应用此变更需重建一次生成新收据。
+源码、锁文件、工具版本、编译环境、图标或产物变化都会失效；校验使用内容而非修改时间。
+`.build` 等生成目录不参与源码指纹；`VITE_*` 等编译环境仅记录摘要。
+未传 `--reuse` 的独立编译仍会完整执行；显式 `--typecheck` 不跳过桌面编译。
+
+仅修改桌面界面时，未变化的 TUI/Web 可直接复用。桌面内嵌的构建戳含本轮时间，
+构建戳变化时桌面仍重建，不复用旧版本身份。Python payload 准备、原生依赖验证和
+NSIS 生成继续执行，下载缓存保持在 `.cache/desktop-inputs`，不等同于整个环境缓存。
+各外部步骤结束后输出实际秒数，便于定位后续瓶颈，不承诺固定提速比例。
+Windows 的产物语法检查使用当前 Node 可执行文件，避免固定工具链在空 PATH 时误判失败。
+
+本地快速验证可选 `./build-windows-installer.ps1 -Compression store`；此选项减少压缩工作，
+但包可能显著增大。正常分发继续使用默认 `normal`，不默认改成最大压缩。

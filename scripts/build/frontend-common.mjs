@@ -124,7 +124,7 @@ export function isMain(url) {
 }
 
 export function frontendArgs(args, extra = {}) {
-  const { values } = parseArgs({ args, options: { source: { type: 'string' }, out: { type: 'string' }, ...extra } })
+  const { values } = parseArgs({ args, options: { source: { type: 'string' }, out: { type: 'string' }, reuse: { type: 'boolean' }, ...extra } })
   if (!values.source || !values.out) throw new Error('--source and --out are required for product builds')
   return values
 }

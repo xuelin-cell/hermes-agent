@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { resolve, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { frontendArgs, isMain, productOutput, publishDirectory, repoRoot, withProduct, workspaceTool } from './frontend-common.mjs'
-import { recordProduct, buildInputs } from './freshness.mjs'
+import { recordProduct, buildInputs, productCurrent } from './freshness.mjs'
 
 // `react-devtools-core` is only imported when DEV=true at runtime (Ink dev
 // mode). Stub it out so the bundle doesn't carry the dep.
@@ -25,6 +25,10 @@ const stubDevtools = {
 
 export async function buildTui(options) {
   const { source, out: destination } = productOutput(options.source, options.out, ['ui-tui', 'apps/shared', 'node_modules'])
+  if (options.reuse && productCurrent({ source, product: 'tui', out: join(destination, 'dist') })) {
+    console.log('build-cache: reusing verified tui product')
+    return { out: destination, entry: join(destination, 'dist/entry.js') }
+  }
   const { build } = await import(pathToFileURL(workspaceTool(source, 'ui-tui', 'esbuild')).href)
   const root = join(source, 'ui-tui')
   const inputs = buildInputs(source, 'tui')
