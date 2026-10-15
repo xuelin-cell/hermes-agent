@@ -134,7 +134,6 @@ class FakeCube:
         self.already: set[str] = set()               # 引导回「已经引导过了」的实例（上一次其实做成了）
         self.restored: dict[str, str] = {}           # 状态管家报的「恢复自」
         self.owner_reported: dict[str, str] = {}     # 状态管家报的主人；默认是实例自己
-        self.skill_policies: dict[str, dict | None] = {}  # 引导时带的技能策略
 
     def host_for(self, sandbox_id, port):
         return f"{port}-{sandbox_id}.cube.app"
@@ -168,9 +167,8 @@ class FakeCube:
     async def wait_forwarder(self, sandbox_id, port, timeout_s=120):
         self.calls.append(("wait_forwarder", sandbox_id))
 
-    async def bootstrap(self, sandbox_id, port, *, token, files, ready_timeout_s=240, state=None, skills=None):
+    async def bootstrap(self, sandbox_id, port, *, token, files, ready_timeout_s=240, state=None):
         self.calls.append(("bootstrap", sandbox_id, state))
-        self.skill_policies[sandbox_id] = skills
         if self.boot_failures:
             raise self.boot_failures.pop(0)
         self.hermes_ready.add(sandbox_id)
@@ -255,20 +253,6 @@ async def test_new_user_creates_instance_with_state_block(monkeypatch) -> None:
     assert ("record_sandbox", "sb1", "tpl-new", 1) in store.calls
     assert ("set_state_owner", "sb1", "a.tar.gz") in store.calls
     assert store.runtime.state == "running"
-
-
-@pytest.mark.asyncio
-async def test_bootstrap_carries_the_skill_policy(monkeypatch) -> None:
-    """上游自带的技能默认都收起、只留 UniWork 的；MT_UPSTREAM_SKILLS 可以点名放几个，* 全放。"""
-    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
-    for setting, policy in (
-        ("", {"keep_categories": ["uniwork"], "keep": []}),
-        ("powerpoint, arxiv ,", {"keep_categories": ["uniwork"], "keep": ["powerpoint", "arxiv"]}),
-        ("*", {"all": True}),
-    ):
-        store, cube = FakeStore(), FakeCube()
-        await _manager(store, cube, upstream_skills=setting).ensure_running("u")
-        assert cube.skill_policies == {"sb1": policy}, setting
 
 
 @pytest.mark.asyncio

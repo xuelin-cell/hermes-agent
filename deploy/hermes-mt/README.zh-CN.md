@@ -119,7 +119,7 @@ HERMES_DASHBOARD_SESSION_TOKEN>`，REST 加 `X-Hermes-Session-Token` ④ `Host` 
 （云端版用户的浏览器在内网，公网链接打不开），`MT_YUANJING_MCP_OSS_MODE` 设成空就不带。没套餐的用户不写这一条；地址设成空就是不提供。
 这一条归平台：每次引导都按入口的配置重写它的地址和超时，用户手改的地址会被改回（用户的开关、自己加的别的 MCP 不动）。
 
-**技能**：实例镜像里自带 hermes 上游的一大套技能（约 80 个）和 UniWork 的 11 个内置技能（`skills/uniwork/`）。hermes 把所有启用的技能连说明列进系统提示（约 3000 token），上游那套用户大多用不上，又和 UniWork 的 doc / excel / pdf-generator 重复。所以每次引导时，转发器在拉起 hermes 之前按 `MT_UPSTREAM_SKILLS` 收起上游的（`seed/skillpolicy.py`，用 hermes 自己的「不再补回」名单 `skills/.curator_suppressed`）：默认空 = 只留 UniWork 的和 hermes 的必需技能 hermes-agent；`*` = 全给；逗号分隔的名字 = 再放这几个。用户改过的、agent 自己写的、从技能市场装的不动；放宽后 hermes 下次启动把收起的补回来。
+**技能**：用户只拿到 UniWork 的内置技能（`skills/uniwork/`，和桌面版同一套），hermes 上游自带的那一大套不给（只留 hermes 必需的 hermes-agent）。规则在 hermes 里、桌面版和云端共用：有 `skills/UNIWORK_BUNDLED_ONLY` 这个标记文件时，`tools/skills_sync.py` 只同步 `skills/uniwork/`；用户手里已经不再发行的技能（包括以前同步进去的上游技能、下架的旧内置技能），没改过的删掉，改过的移进 `~/.hermes/skills/.retired-hermes/`；agent 自己写的、从技能市场装的不动。容器启动时那一遍同步早于恢复用户目录，hermes serve 启动时又不同步，所以转发器在每次引导、恢复完用户目录之后再跑一遍（`seed/forward.py` 的 `_sync_bundled_skills`，结果在引导回包的 `skills` 里）。基础镜像必须是本仓库构建的（带这个标记文件），`deploy.sh` 构建模板时会检查。
 
 重新登录会重新读取 MaaS 当前返回的 Key，但不假设 MaaS 每次都会生成新 Key。若 Key 发生变化，
 Entry 不重启租户容器，而是原子更新卷内 `.env`；该用户所有已有会话在各自的**下一轮对话开始时**

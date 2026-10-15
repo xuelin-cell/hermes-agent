@@ -35,13 +35,11 @@ class _FakeHttp:
 
     def __init__(self):
         self.calls: list[tuple[str, str, dict]] = []
-        self.bodies: list[object] = []
         self.responses: dict[str, object] = {}
 
     def request(self, method, url, **kwargs):
         headers = dict(kwargs.get("headers") or {})
         self.calls.append((method, url, headers))
-        self.bodies.append(kwargs.get("json"))
         found = self.responses.get(url.split("?")[0].rsplit("/", 1)[-1], (200, {"ok": True}))
         if isinstance(found, list):
             found = found.pop(0) if len(found) > 1 else found[0]
@@ -233,14 +231,3 @@ async def test_bootstrap_is_resent_when_the_proxy_cannot_be_reached(monkeypatch)
 
     assert (await cube.bootstrap("sb1", 9121, token="t", files=[], state=None))["ok"] is True
     assert _bootstrap_posts(fake) == 2
-
-
-@pytest.mark.asyncio
-async def test_bootstrap_sends_the_skill_policy_only_when_given() -> None:
-    cube, fake = _cube()
-    await cube.bootstrap("sb1", 9121, token="t", files=[], state=None,
-                         skills={"keep_categories": ["uniwork"], "keep": []})
-    await cube.bootstrap("sb2", 9121, token="t", files=[], state=None)
-    first, second = [body for body, call in zip(fake.bodies, fake.calls) if call[1].endswith("/__mt/bootstrap")]
-    assert first["skills"] == {"keep_categories": ["uniwork"], "keep": []}
-    assert "skills" not in second  # 老转发器不认这一项也没关系，但没给就别带

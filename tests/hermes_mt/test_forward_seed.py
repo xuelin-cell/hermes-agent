@@ -128,55 +128,62 @@ async def test_status_reports_cron_and_turn_activity(forward, tmp_path: Path, mo
     assert act["cron_running"] == 0 and act["turns"] == 0 and act["errors"] == []
 
 
-# ---------------------------------------------------------------- 技能策略（引导载荷的 skills 段，见 seed/skillpolicy.py）
+# ---------------------------------------------------------------- 自带技能同步（hermes 的 tools/skills_sync.py）
+
+def _fake_install(root: Path, body: str) -> Path:
+    """一个只有 tools/skills_sync.py 的假 hermes 安装目录。"""
+    (root / "tools").mkdir(parents=True)
+    (root / "tools" / "__init__.py").write_text("", encoding="utf-8")
+    (root / "tools" / "skills_sync.py").write_text(body, encoding="utf-8")
+    return root
+
 
 @pytest.mark.asyncio
-async def test_skill_policy_runs_the_script_with_hermes_python(forward, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """策略从标准输入进、报告取标准输出的最后一行；HERMES_HOME 是用户的数据目录。"""
-    script = tmp_path / "policy.py"
-    script.write_text(
-        "import json, os, sys\n"
-        "policy = json.load(sys.stdin)\n"
-        "print('noise from hermes imports')\n"
-        "print(json.dumps({'removed': 3, 'home': os.environ['HERMES_HOME'], 'policy': policy}))\n",
-        encoding="utf-8",
-    )
+async def test_skills_sync_runs_hermes_own_sync_in_the_user_home(forward, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """hermes 自己的同步函数在它的安装目录里跑，HERMES_HOME 是用户的数据目录；回包只带名字和计数。"""
+    install = _fake_install(tmp_path / "install", (
+        "import os\n"
+        "def sync_skills(quiet=False):\n"
+        "    print('noise from hermes imports')\n"
+        "    open(os.path.join(os.environ['HERMES_HOME'], 'synced'), 'w').write(str(quiet))\n"
+        "    return {'copied': ['uniai-ppt'], 'updated': [], 'user_modified': [], 'skipped': 17,\n"
+        "            'retired_pristine': ['excel'], 'retired_modified': ['doc'], 'total_bundled': 18}\n"
+    ))
     monkeypatch.setattr(forward, "HERMES_PYTHON", sys.executable)
-    monkeypatch.setattr(forward, "SKILL_POLICY", script)
+    monkeypatch.setattr(forward, "HERMES_INSTALL", install)
 
-    assert await forward._apply_skill_policy(None) is None  # 老入口不给：不动
-    policy = {"keep_categories": ["uniwork"], "keep": []}
-    assert await forward._apply_skill_policy(policy) == {
-        "ok": True, "removed": 3, "home": str(forward.HERMES_HOME), "policy": policy,
+    assert await forward._sync_bundled_skills() == {
+        "ok": True, "copied": ["uniai-ppt"], "updated": [], "user_modified": [],
+        "retired_pristine": ["excel"], "retired_modified": ["doc"], "total_bundled": 18,
     }
+    assert (Path(forward.HERMES_HOME) / "synced").read_text(encoding="utf-8") == "True"
 
 
 @pytest.mark.asyncio
-async def test_skill_policy_failures_are_reported_not_raised(forward, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    failing = tmp_path / "failing.py"
-    failing.write_text("import sys\nprint('{\"error\": \"ImportError: no tools\"}')\nsys.exit(1)\n", encoding="utf-8")
-    crashing = tmp_path / "crashing.py"
-    crashing.write_text("raise SystemExit('boom')\n", encoding="utf-8")
+async def test_skills_sync_failures_are_reported_not_raised(forward, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    install = _fake_install(tmp_path / "install", (
+        "def sync_skills(quiet=False):\n"
+        "    raise RuntimeError('bundled dir missing')\n"
+    ))
     monkeypatch.setattr(forward, "HERMES_PYTHON", sys.executable)
+    monkeypatch.setattr(forward, "HERMES_INSTALL", install)
 
-    monkeypatch.setattr(forward, "SKILL_POLICY", failing)
-    assert await forward._apply_skill_policy({}) == {"ok": False, "error": "ImportError: no tools"}
-    monkeypatch.setattr(forward, "SKILL_POLICY", crashing)
-    report = await forward._apply_skill_policy({})
-    assert report["ok"] is False and "boom" in report["error"]
+    report = await forward._sync_bundled_skills()
+    assert report["ok"] is False and "bundled dir missing" in report["error"]
     monkeypatch.setattr(forward, "HERMES_PYTHON", str(tmp_path / "no-such-python"))
-    report = await forward._apply_skill_policy({})
+    report = await forward._sync_bundled_skills()
     assert report["ok"] is False and report["error"]
 
 
 @pytest.mark.asyncio
-async def test_bootstrap_applies_the_skill_policy_before_hermes_starts(forward, monkeypatch: pytest.MonkeyPatch) -> None:
-    """hermes 启动时会再同步一遍自带技能：名单得在那之前写好。结果放进引导回包。"""
+async def test_bootstrap_syncs_skills_before_hermes_starts(forward, monkeypatch: pytest.MonkeyPatch) -> None:
+    """用户目录恢复之后、拉 hermes 之前同步自带技能（hermes serve 启动时不同步）；结果放进引导回包。
+    老入口还会带 skills 段，不再看它。"""
     order: list[str] = []
 
-    async def policy(skills):
-        order.append(f"policy {skills}")
-        return {"ok": True, "removed": 80}
+    async def sync():
+        order.append("sync")
+        return {"ok": True, "retired_pristine": ["excel"]}
 
     async def spawn(token):
         order.append("spawn")
@@ -187,7 +194,7 @@ async def test_bootstrap_applies_the_skill_policy_before_hermes_starts(forward, 
     async def idle():
         return None
 
-    monkeypatch.setattr(forward, "_apply_skill_policy", policy)
+    monkeypatch.setattr(forward, "_sync_bundled_skills", sync)
     monkeypatch.setattr(forward, "_spawn_hermes", spawn)
     monkeypatch.setattr(forward, "_hermes_alive", alive)
     monkeypatch.setattr(forward, "_supervise", idle)
@@ -196,6 +203,6 @@ async def test_bootstrap_applies_the_skill_policy_before_hermes_starts(forward, 
 
     await forward._bootstrap(writer, json.dumps(payload).encode("utf-8"))
 
-    assert order == ["policy {'keep_categories': ['uniwork'], 'keep': []}", "spawn"]
+    assert order == ["sync", "spawn"]
     body = writer.body()
-    assert body["ok"] is True and body["skills"] == {"ok": True, "removed": 80}
+    assert body["ok"] is True and body["skills"] == {"ok": True, "retired_pristine": ["excel"]}

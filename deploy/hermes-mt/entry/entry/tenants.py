@@ -51,9 +51,6 @@ YUANJING_MCP_NAME = "yuanjing"
 # 元景 mcp-server 最慢的工具（文档翻译）要 10 分钟；hermes 默认一次工具调用最多等 300 秒。
 YUANJING_MCP_TIMEOUT_S = 600
 
-# 实例镜像里 UniWork 的内置技能所在的分类（skills/uniwork/，随 overlay.list 进镜像）：技能策略总是留着。
-UNIWORK_SKILL_CATEGORY = "uniwork"
-
 # 平台策略：每次引导都按这里写进用户的 config.yaml（seed/mtstate.py 的 apply_platform_block）。
 PLATFORM_POLICY = {
     # 在线模型目录（OpenRouter / Nous 的推荐清单）：集群里访问慢，超时会把模型下拉卡住；
@@ -734,17 +731,6 @@ class TenantManager:
             "archive_interval_s": self.s.archive_interval_s,
         }
 
-    def _skill_policy(self) -> dict:
-        """引导时给转发器的技能策略（seed/skillpolicy.py）：UniWork 的内置技能总留着，
-        hermes 上游自带的按 MT_UPSTREAM_SKILLS：空 = 都收起，* = 都给，名字列表 = 只给这几个。"""
-        wanted = self.s.upstream_skills
-        if wanted == "*":
-            return {"all": True}
-        return {
-            "keep_categories": [UNIWORK_SKILL_CATEGORY],
-            "keep": [name.strip() for name in wanted.split(",") if name.strip()],
-        }
-
     async def _create_cube(self, user_id: str, slug: str, volume: str, token: str, context) -> str:
         """建一台实例并引导：先落库，再让状态管家从上一代恢复，再拉 hermes。返回 sandbox_id。
 
@@ -807,7 +793,6 @@ class TenantManager:
                 context.api_key, context.endpoint, context.catalog, getattr(context, "limits", None)),
             ready_timeout_s=self.s.ready_timeout_s,
             state=self._state_block(sandbox_id, epoch, restore_from),
-            skills=self._skill_policy(),
         )
         if body.get("already"):
             await self._adopt_bootstrapped(user_id, slug, sandbox_id)

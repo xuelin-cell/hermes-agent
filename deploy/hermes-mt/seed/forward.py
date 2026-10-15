@@ -68,10 +68,17 @@ ARCHIVE_INTERVAL_S = int(os.environ.get("MT_ARCHIVE_INTERVAL_S", "300"))
 MAX_HEAD = 64 * 1024  # 请求头上限，超过就当坏请求
 MAX_BODY = 4 * 1024 * 1024  # 引导载荷上限
 
-# 技能策略（引导载荷的 skills 段）用 hermes 自己的 Python 跑 skillpolicy.py：它调 hermes 的同步函数。
+# 自带技能的同步用 hermes 自己的 Python 跑 hermes 的同步函数（见 _sync_bundled_skills）。
 HERMES_PYTHON = os.environ.get("MT_HERMES_PYTHON", "/opt/hermes/.venv/bin/python")
-SKILL_POLICY = Path(__file__).resolve().with_name("skillpolicy.py")
-SKILL_POLICY_TIMEOUT_S = 60.0
+HERMES_INSTALL = Path(os.environ.get("MT_HERMES_INSTALL", "/opt/hermes"))
+SKILLS_SYNC_TIMEOUT_S = 60.0
+# 回包只要名字和计数：删掉了哪些、归档了哪些（用户改过的）、新发了哪些。
+SKILLS_SYNC_SCRIPT = (
+    "import json, sys; sys.path.insert(0, '.'); from tools.skills_sync import sync_skills; "
+    "r = sync_skills(quiet=True); "
+    "print(json.dumps({k: r.get(k) for k in ('copied', 'updated', 'user_modified', 'retired_pristine', "
+    "'retired_modified', 'total_bundled')}, ensure_ascii=False, default=str))"
+)
 
 _START_TS = time.monotonic()
 _hermes_proc: asyncio.subprocess.Process | None = None
@@ -214,31 +221,30 @@ def _write_seed(files: list[dict]) -> list[str]:
     return written
 
 
-async def _apply_skill_policy(policy: object) -> dict | None:
-    """平台的技能策略：拉起 hermes 之前收起上游自带的技能，见 skillpolicy.py。
+async def _sync_bundled_skills() -> dict:
+    """恢复用户目录之后、拉起 hermes 之前，按 hermes 自己的规则同步一遍自带技能。
 
-    入口没给（老入口）就不动。失败不挡 hermes 启动（技能只是锦上添花）：记日志，结果放进引导回包。"""
-    if not isinstance(policy, dict):
-        return None
+    规则在 hermes 里（tools/skills_sync.py，skills/UNIWORK_BUNDLED_ONLY）：只发 UniWork 的内置技能；
+    用户手里已经不再发行的，没改过的删掉、改过的移进 .retired-hermes/。容器启动时那一遍早于恢复，
+    hermes serve 启动时又不同步，不在这里补一遍，归档里带回来的旧技能会原样留下。
+    失败不挡 hermes 启动（技能只是锦上添花）：记日志，结果放进引导回包。"""
     env = dict(os.environ)
     env.update(_hermes_env)
     env["HERMES_HOME"] = str(HERMES_HOME)
     try:
         proc = await asyncio.create_subprocess_exec(
-            HERMES_PYTHON, str(SKILL_POLICY),
-            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-            env=env,
+            HERMES_PYTHON, "-c", SKILLS_SYNC_SCRIPT,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, cwd=str(HERMES_INSTALL), env=env,
         )
     except OSError as exc:
-        _log(f"技能策略没跑起来: {exc}")
+        _log(f"技能同步没跑起来: {exc}")
         return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
     try:
-        out, err = await asyncio.wait_for(
-            proc.communicate(json.dumps(policy).encode("utf-8")), timeout=SKILL_POLICY_TIMEOUT_S)
+        out, err = await asyncio.wait_for(proc.communicate(), timeout=SKILLS_SYNC_TIMEOUT_S)
     except asyncio.TimeoutError:
         proc.kill()
         await proc.wait()
-        _log(f"技能策略超过 {int(SKILL_POLICY_TIMEOUT_S)} 秒")
+        _log(f"技能同步超过 {int(SKILLS_SYNC_TIMEOUT_S)} 秒")
         return {"ok": False, "error": "timeout"}
     lines = out.decode("utf-8", "replace").strip().splitlines()
     try:
@@ -249,7 +255,7 @@ async def _apply_skill_policy(policy: object) -> dict | None:
         report = {}
     if proc.returncode != 0:
         report.setdefault("error", err.decode("utf-8", "replace").strip()[-300:] or f"退出码 {proc.returncode}")
-        _log(f"技能策略失败: {report['error']}")
+        _log(f"技能同步失败: {report['error']}")
     return {"ok": proc.returncode == 0, **report}
 
 
@@ -454,8 +460,8 @@ async def _bootstrap(writer: asyncio.StreamWriter, body: bytes) -> None:
             _reply(writer, 400, {"ok": False, "error": f"写种子文件失败: {exc}"})
             return
 
-        # hermes 启动时会再同步一遍自带技能，名单要在那之前写好。
-        skills = await _apply_skill_policy(payload.get("skills"))
+        # 用户目录已经从上一代恢复：这时再按发行规则同步自带技能，见 _sync_bundled_skills。
+        skills = await _sync_bundled_skills()
 
         _hermes_token = token
         try:
