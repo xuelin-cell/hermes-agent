@@ -12,6 +12,8 @@ import electronPath from 'electron'
 import { build } from 'vite'
 import { utils, write } from 'xlsx'
 
+import { createStyledWorkbook } from './sheet-styles.fixture.ts'
+
 if (!process.argv.includes('--run')) {
   console.log('独立隐藏窗口检查，不启动 Hermes 或 Office：node scripts/sheet-preview.native.mjs --run')
   process.exit(0)
@@ -21,7 +23,7 @@ const desktop = path.resolve(import.meta.dirname, '..')
 const resolve = createRequire(import.meta.url).resolve
 
 /** 正式来源、解析与界面经生产构建后在真实 Electron 中执行，不启动 Office。 */
-test('P12 三种工作簿可通过正式显示器画图、切表与调整面板', { timeout: 90000 }, async () => {
+test('P12/P13 三种工作簿与 XLSX 样式经正式显示器绘制、切表与调整面板', { timeout: 90000 }, async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'hermes-sheet-preview-'))
   console.log('表格兼容性记录：' + root)
   const entry = path.join(root, 'fixture.js')
@@ -33,7 +35,7 @@ test('P12 三种工作簿可通过正式显示器画图、切表与调整面板'
   utils.book_append_sheet(book, utils.aoa_to_sheet([['第二表内容', 7]]), '汇总')
   const files = {}
   for (const [extension, bookType] of [['xlsx', 'xlsx'], ['xls', 'biff8'], ['ods', 'ods']]) {
-    const bytes = write(book, { bookType, type: 'buffer' })
+    const bytes = extension === 'xlsx' ? Buffer.from(createStyledWorkbook()) : write(book, { bookType, type: 'buffer' })
     await fs.writeFile(path.join(root, `中文样例.${extension}`), bytes)
     files[extension] = `data:application/octet-stream;base64,${bytes.toString('base64')}`
   }
@@ -46,6 +48,9 @@ test('P12 三种工作簿可通过正式显示器画图、切表与调整面板'
     window.reads = []
     window.failures = []
     window.painted = []
+    window.stylePaints = []
+    window.backgrounds = new Set()
+    window.strokes = new Set()
     // 仅替换读取桥接，正式来源模块仍负责字节解码与错误边界。
     window.hermesDesktop = {readFileDataUrl: async path => {
       window.reads.push(path)
@@ -55,12 +60,27 @@ test('P12 三种工作簿可通过正式显示器画图、切表与调整面板'
     // 记录真实画布的绘制文字，不用 API 中有数据代替已经画出来。
     CanvasRenderingContext2D.prototype.fillText = function(...args) {
       window.painted.push(String(args[0]))
+      window.stylePaints.push({text:String(args[0]),font:this.font,color:this.fillStyle,x:args[1],y:args[2]})
       return original.apply(this,args)
+    }
+    const fillRect = CanvasRenderingContext2D.prototype.fillRect
+    // 捕获真正交给画布的背景和边框，不用数据模型代替渲染证据。
+    CanvasRenderingContext2D.prototype.fillRect = function(...args) {
+      window.backgrounds.add(this.fillStyle)
+      return fillRect.apply(this,args)
+    }
+    const stroke = CanvasRenderingContext2D.prototype.stroke
+    CanvasRenderingContext2D.prototype.stroke = function(...args) {
+      window.strokes.add(this.strokeStyle)
+      return stroke.apply(this,args)
     }
     const root = createRoot(document.getElementById('root'))
     // 仅夹具持有切换入口，产品不暴露测试专用能力。
     window.loadSheet = extension => {
       window.painted = []
+      window.stylePaints = []
+      window.backgrounds.clear()
+      window.strokes.clear()
       document.getElementById('root').style.width = '100%'
       const path = '/fixture/中文样例.' + extension
       root.render(React.createElement(SheetPreview, {key:extension, path,reloadKey:0,
@@ -93,6 +113,7 @@ test('P12 三种工作簿可通过正式显示器画图、切表与调整面板'
   const messages = []
   const external = []
   const blockedBaselineFonts = []
+  let styleEvidence
   try {
     app = await electron.launch({ executablePath: electronPath, args: [path.join(root, 'main.cjs')], cwd: desktop, env })
     const page = await app.firstWindow()
@@ -114,6 +135,20 @@ test('P12 三种工作簿可通过正式显示器画图、切表与调整面板'
     for (const extension of Object.keys(files)) {
       await page.evaluate(extension => window.loadSheet(extension), extension)
       await page.waitForFunction(() => window.painted.join('').includes('中文数据'))
+      if (extension === 'xlsx') {
+        styleEvidence = await page.evaluate(() => ({
+          text: window.stylePaints.filter(item => item.color === '#990000'),
+          multiline: window.stylePaints.filter(item => item.text.includes('中文换行') || item.text === '第二行'),
+          backgrounds: [...window.backgrounds], strokes: [...window.strokes]
+        }))
+        assert.ok(styleEvidence.text.some(item => /bold/.test(item.font) && /italic/.test(item.font) && /Arial/.test(item.font)), JSON.stringify(styleEvidence))
+        assert.ok(styleEvidence.text.every(item => !item.font.includes('Arial, Calibri')), JSON.stringify(styleEvidence))
+        assert.ok(new Set(styleEvidence.multiline.map(item => item.y)).size >= 2, JSON.stringify(styleEvidence))
+        assert.ok(styleEvidence.backgrounds.includes('#ffeedd'), JSON.stringify(styleEvidence))
+        assert.ok(styleEvidence.strokes.includes('#008800'), JSON.stringify(styleEvidence))
+        const png = await page.locator('canvas').evaluateAll(items => items.toSorted((a,b) => b.width*b.height-a.width*a.height)[0].toDataURL('image/png'))
+        await fs.writeFile(path.join(root, 'styled-canvas.png'), Buffer.from(png.split(',')[1], 'base64'))
+      }
       await expect(page.getByText('Some sheets exceed 500 rows. Only their first 500 rows are shown.')).toBeVisible()
       assert.ok(await page.locator('canvas').evaluateAll(items => items.some(item => item.width > 0 && item.height > 0)))
       await page.getByText('汇总', { exact: true }).click()
@@ -139,9 +174,9 @@ test('P12 三种工作簿可通过正式显示器画图、切表与调整面板'
     assert.equal(await page.evaluate(() => window.reads.length), 3)
     assert.deepEqual(messages, [])
     assert.deepEqual(external, [])
-    console.log('三种真实格式经正式读取／解析／显示器通过画布、切表、行数提示和面板尺寸检查；用户文档排版仍待验收。')
+    console.log('三种格式及 XLSX 字体／背景／边框经过真实画布；切表、只读、行数与尺寸检查通过。复杂排版仍待用户验收。')
   } finally {
-    await fs.writeFile(path.join(root, 'report.json'), JSON.stringify({ messages, external, blockedBaselineFonts }, null, 2))
+    await fs.writeFile(path.join(root, 'report.json'), JSON.stringify({ messages, external, blockedBaselineFonts, styleEvidence }, null, 2))
     await app?.close()
   }
 })

@@ -1,5 +1,7 @@
 import { type Range, read, utils } from 'xlsx'
 
+import { type PreviewStyle, readWorkbookStyles } from './styles'
+
 export const MAX_ROWS = 500
 export const MAX_GRID_CELLS = 250000
 
@@ -9,6 +11,7 @@ export interface PreviewCell {
   value: string | number | boolean
   display: string
   numberFormat?: string
+  style?: PreviewStyle
 }
 
 export interface PreviewSheet {
@@ -31,6 +34,8 @@ function positive(value: number | undefined, fallback: number) {
 
 /** 只解析字节与缓存值，不执行宏、公式或文档链接；行号始终保留原文件的位置。 */
 export function parseWorkbook(bytes: ArrayBuffer): PreviewSheet[] {
+  const styles = readWorkbookStyles(new Uint8Array(bytes))
+
   const book = read(new Uint8Array(bytes), {
     type: 'array',
     cellNF: true,
@@ -46,6 +51,7 @@ export function parseWorkbook(bytes: ArrayBuffer): PreviewSheet[] {
 
   return book.SheetNames.map(name => {
     const source = book.Sheets[name]
+    const cellStyles = styles.get(name)
     const range = utils.decode_range(source['!fullref'] || source['!ref'] || 'A1')
     const merges = source['!merges'] || []
     const originalRows = merges.reduce((end, merge) => Math.max(end, merge.e.r + 1), range.e.r + 1)
@@ -71,7 +77,7 @@ export function parseWorkbook(bytes: ArrayBuffer): PreviewSheet[] {
 
     const cells: PreviewCell[] = []
 
-    for (const address of Object.keys(source)) {
+    for (const address of new Set([...Object.keys(source), ...(cellStyles?.keys() || [])])) {
       if (!/^[A-Z]+\d+$/.test(address)) {
         continue
       }
@@ -82,11 +88,11 @@ export function parseWorkbook(bytes: ArrayBuffer): PreviewSheet[] {
         continue
       }
 
-      const cell = source[address]
+      const cell = source[address] || { t: 'z' }
       const display = String(cell.w ?? utils.format_cell(cell))
       const raw = cell.v
       const value = cell.t !== 'e' && ['string', 'number', 'boolean'].includes(typeof raw) ? raw : display
-      cells.push({ row: r, column: c, value, display, numberFormat: cell.z })
+      cells.push({ row: r, column: c, value, display, numberFormat: cell.z, style: cellStyles?.get(address) })
     }
 
     return {
