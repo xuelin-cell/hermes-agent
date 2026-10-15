@@ -1342,8 +1342,11 @@ export function ChatBar({
           }
         >
           {showWelcomeTemplates && !guidedChat && !botChat && !hudMode && !poppedOut && (
-            <WorkTemplatePicker scope={activeQueueSessionKey} disabled={inputDisabled || busy || asrActive}
-              onReplaceText={text => replaceText(text)} />
+            <WorkTemplatePicker
+              scope={activeQueueSessionKey}
+              disabled={inputDisabled || busy || asrActive}
+              onReplaceText={text => replaceText(text)}
+            />
           )}
           {/* Aligned to the composer SURFACE, which sits inside the composer's
               5px transparent grab margin — so both strips carry the same inset
@@ -1405,6 +1408,7 @@ export function ChatBar({
             data-hud-grabbing={hudGrabbing ? '' : undefined}
             data-popped-out={poppedOut ? '' : undefined}
             data-slot="composer-root"
+            data-welcome={showWelcomeTemplates && !guidedChat && !botChat && !hudMode && !poppedOut ? '' : undefined}
             data-status-stack={statusStackVisible && !statusDrawerCollapsed ? '' : undefined}
             data-thread-scrolled-up={scrolledUp ? '' : undefined}
             data-tip-region=""

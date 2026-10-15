@@ -22,6 +22,25 @@ This doc contains two kinds of content, maintained differently:
 When a rule and the code disagree, fix whichever is wrong rather than forking a
 one-off at the call site.
 
+## 元景数字员工默认视觉
+
+设计来源：[MasterGo 24:09019](https://mastergo.com/file/204500798093134?layer_id=24%3A09019)。
+仅调整现有功能的视觉，不新增设计稿中的功能。`themes/uniwork.ts` 定义明暗配色，
+`themes/uniwork.css` 定义共享几何、字体层级和界面状态。默认主题为 `uniwork`；
+旧默认 Nous 的本机选择只迁移一次，其他主题、字体偏好和明暗设置保留。
+
+- 明亮模式：白色主界面，浅灰侧栏，朱红 `#E1401D` 强调，正文 `#101219`，
+  次级文字 `#32374A` / `#686F82`，边框 `#E6E9ED`。实心按钮使用略深的朱红保证小字号白字对比度；暗色模式沿用同一朱红色系。
+- 正文及常规控件 14px / 22px，辅助文字 12px / 20px，欢迎标题最高 36px。
+  正文优先设计稿的 DFPKingGothicGB / PingFang SC，标题优先 Alimama ShuHeiTi；
+  字体未安装时回退到微软雅黑等系统中文字体。没有捆绑未授权的商业字体。
+  代码继续使用内置 JetBrains Mono，用户配置字体仍然有效。
+- 常规输入框和按钮使用 `--control-radius`（8px）、`--control-font-size`、
+  `--control-line-height`；紧凑辅助变体保留尺寸覆盖。输入区域圆角 16px，
+  分类标签为 38px 高胶囊，浮层保持统一边框和阴影，不给各页面另造样式。
+- 设置、技能、连接器、历史、聊天和浮层共用语义令牌；主题外的品牌色不可散落到页面。
+  保留现有导航、快捷键、开发者模式边界和后台行为。
+
 ## Principles
 
 1. **Flat, not boxed.** No card-in-card, no divider borders inside a panel.
@@ -226,8 +245,8 @@ context-dependent (e.g. "Show" / "Hide"). Never hardcode combos; always use
 `useKeybindHint` or `TipKeybindLabel`.
 
 Notes:
-- Text buttons are square (no radius) and sized by padding + line-height (no
-  fixed heights). Only icon buttons carry the shared 4px radius.
+- Text buttons use theme control radius, type size and line height; padding determines
+  height. Compact/icon variants keep their explicit dimensions.
 - SVGs inherit `size-3.5` (`size-3` at `xs`). Don't re-set icon size.
 - Polymorph with `asChild` when the button must render as a link/Slot.
 

@@ -1,0 +1,142 @@
+/* 元景数字员工设计基准。只覆盖内置元景主题，不污染用户安装的其他主题。 */
+:root[data-hermes-theme='uniwork'] {
+  --uniwork-text-secondary: #32374a;
+  --uniwork-text-tertiary: #686f82;
+  --uniwork-text-muted: #868d9c;
+  --uniwork-row-active: #e6e6e6;
+  --uniwork-row-hover: #f0f0f0;
+  --uniwork-title-font: 'Alimama ShuHeiTi', 'PingFang SC', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
+  --ui-bg-chrome: var(--theme-background-seed);
+  --ui-bg-sidebar: var(--theme-sidebar-seed);
+  --ui-bg-editor: var(--theme-card-seed);
+  --ui-bg-elevated: var(--theme-elevated-seed);
+  --ui-bg-input: var(--theme-card-seed);
+  --ui-text-primary: var(--theme-foreground);
+  --ui-text-secondary: var(--uniwork-text-secondary);
+  --ui-text-tertiary: var(--uniwork-text-tertiary);
+  --ui-text-quaternary: var(--uniwork-text-muted);
+  --ui-stroke-primary: var(--dt-border);
+  --ui-stroke-secondary: var(--dt-border);
+  --ui-stroke-tertiary: color-mix(in srgb, var(--dt-border) 70%, transparent);
+  --ui-stroke-quaternary: color-mix(in srgb, var(--dt-border) 45%, transparent);
+  --ui-bg-quaternary: var(--dt-secondary);
+  --ui-control-hover-background: var(--uniwork-row-hover);
+  --ui-control-active-background: var(--uniwork-row-active);
+  --ui-row-hover-background: var(--uniwork-row-hover);
+  --ui-row-active-background: var(--uniwork-row-active);
+  --ui-chat-bubble-background: var(--theme-bubble-seed);
+  --ui-selection-background: color-mix(in srgb, var(--theme-primary) 20%, transparent);
+  --dt-popover: var(--ui-bg-elevated);
+  --dt-muted-foreground: var(--ui-text-tertiary);
+  --radius-scalar: 1;
+  --control-radius: 8px;
+  --control-font-size: 0.875rem;
+  --control-line-height: 1.375rem;
+  --conversation-text-font-size: 0.875rem;
+  --conversation-line-height: 1.375rem;
+  --conversation-tool-font-size: 0.75rem;
+  --conversation-caption-line-height: 1.25rem;
+  --composer-control-size: 2rem;
+  --composer-control-primary-size: 2rem;
+  --composer-control-gap: 0.5rem;
+  --composer-surface-pad-x: 1rem;
+  --composer-surface-pad-y: 0.75rem;
+  --composer-row-gap: 0.5rem;
+  --noise-opacity-mul: 0;
+}
+
+:root[data-hermes-theme='uniwork'].dark {
+  --uniwork-text-secondary: #d8dbe4;
+  --uniwork-text-tertiary: #a5aaba;
+  --uniwork-text-muted: #858b9c;
+  --uniwork-row-active: #34363e;
+  --uniwork-row-hover: #292b32;
+}
+
+:root[data-hermes-theme='uniwork'] body {
+  font-size: 0.875rem;
+  line-height: 1.375rem;
+}
+
+:root[data-hermes-theme='uniwork'] [data-slot='aui_intro'] h1 {
+  font-family: var(--uniwork-title-font);
+  font-size: clamp(1.625rem, 3vw, 2.25rem);
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+:root[data-hermes-theme='uniwork'] [data-slot='aui_intro'] p {
+  font-size: 0.875rem;
+  line-height: 1.375rem;
+  color: var(--ui-text-tertiary);
+}
+
+:root[data-hermes-theme='uniwork'] [data-slot='composer-root'] {
+  --composer-fill: var(--dt-card);
+  border-radius: 16px;
+}
+
+:root[data-hermes-theme='uniwork'] [data-slot='composer-surface'] {
+  border-color: var(--dt-input);
+  box-shadow: 0 2px 8px rgb(16 18 25 / 10%);
+}
+
+:root[data-hermes-theme='uniwork'] [data-slot='composer-surface']:focus-within {
+  border-color: var(--dt-ring);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--dt-ring) 12%, transparent);
+}
+
+:root[data-hermes-theme='uniwork'] [data-slot='composer-rich-input'] {
+  font-size: 0.875rem;
+  line-height: 1.375rem;
+}
+
+:root[data-hermes-theme='uniwork'] [data-slot='work-template-picker'] {
+  margin-bottom: 16px;
+}
+
+:root[data-hermes-theme='uniwork'] [data-slot='work-template-picker'] [data-variant='chip'] {
+  min-height: 38px;
+  padding-inline: 16px;
+  border-radius: 999px;
+  background: var(--dt-card);
+  box-shadow: inset 0 0 0 1px var(--dt-border);
+  color: var(--ui-text-secondary);
+}
+
+:root[data-hermes-theme='uniwork']
+  [data-slot='work-template-picker']
+  [data-variant='chip']:is(:hover, [aria-pressed='true']) {
+  color: var(--dt-accent-foreground);
+  background: var(--theme-accent-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dt-ring) 25%, var(--dt-border));
+}
+
+:root[data-hermes-theme='uniwork'] [data-slot='sidebar-menu-button'] {
+  border-radius: 8px;
+  min-height: 36px;
+}
+
+/* 模板和现有输入功能使用同一布局；不添加设计稿中尚未实现的模式入口。 */
+@media (min-width: 768px) {
+  :root[data-hermes-theme='uniwork'] [data-slot='composer-root'][data-welcome] [data-slot='composer-rich-input'] {
+    min-height: 84px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-container {
+    animation: none;
+  }
+}
+
+/* 常规按钮为 14px 白字，将实心朱红略微加深以达到正文对比度，强调线仍用设计原色。 */
+:root[data-hermes-theme='uniwork'] [data-slot='button'][data-variant='default'] {
+  background: var(--dt-primary-solid);
+  color: var(--dt-primary-solid-foreground);
+}
+
+:root[data-hermes-theme='uniwork'] [data-slot='button'][data-variant='default']:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--dt-primary-solid) 92%, black);
+}

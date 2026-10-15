@@ -57,7 +57,7 @@ $backendThemes.listen(themes => writeJson(BACKEND_THEMES_KEY, themes))
  *  built-in. The palette policy keeps built-in palettes (a user `mono.yaml`
  *  must not shadow the desktop's hand-tuned mono), but the user's CSS is still
  *  the skin file's truth — keyed by the name the desktop resolves the skin
- *  under (`default` → `nous`). Merged into the active theme in context.tsx. */
+ *  under (`default` → DEFAULT_SKIN_NAME). Merged into the active theme in context.tsx. */
 export const $backendCustomCSS = atom<Record<string, string>>({})
 
 /** One-shot skin name the ThemeProvider should switch to (it clears this). */

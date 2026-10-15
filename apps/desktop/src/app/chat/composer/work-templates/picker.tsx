@@ -89,7 +89,7 @@ export function WorkTemplatePicker({ scope, disabled, onReplaceText }: WorkTempl
     : catalog.categories.map(item => item.id).join('|')
 
   return (
-    <section aria-label={t.composer.workTemplates} className="mb-2 min-w-0 px-[5px]">
+    <section data-slot="work-template-picker" aria-label={t.composer.workTemplates} className="mb-2 min-w-0 px-[5px]">
       <HorizontalRow contentKey={key} leftLabel={t.composer.workScrollLeft} rightLabel={t.composer.workScrollRight}>
         {category
           ? category.templates.map(template => (
