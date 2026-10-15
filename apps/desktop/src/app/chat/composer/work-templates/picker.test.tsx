@@ -9,6 +9,7 @@ import { WorkTemplatePicker } from './picker'
 const defaults = $welcomeCatalog.get()['zh-CN'].categories
 afterEach(() => {
   cleanup()
+  document.getElementById('selection-host')?.remove()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
 })
@@ -19,7 +20,12 @@ function view(scope = 'draft-a', disabled = false, replace = vi.fn()) {
     replace,
     element: (
       <I18nProvider configClient={null} initialLocale="zh">
-        <WorkTemplatePicker disabled={disabled} onReplaceText={replace} scope={scope} />
+        <WorkTemplatePicker
+          selectionContainer={document.getElementById('selection-host')}
+          disabled={disabled}
+          onReplaceText={replace}
+          scope={scope}
+        />
       </I18nProvider>
     )
   }
@@ -28,6 +34,9 @@ function view(scope = 'draft-a', disabled = false, replace = vi.fn()) {
 it('完整分类可进入模板，填写完整提示词，取消保留草稿且切换会话清除选择', async () => {
   vi.stubGlobal('hermesDesktop', { getWelcomeCatalog: vi.fn().mockResolvedValue(defaults) })
   await loadWelcomeCatalog('zh-CN', true)
+  const selectionHost = document.createElement('div')
+  selectionHost.id = 'selection-host'
+  document.body.append(selectionHost)
   const v = view()
   const ui = render(v.element)
 
@@ -41,7 +50,9 @@ it('完整分类可进入模板，填写完整提示词，取消保留草稿且�
   const template = category.templates[0]!
   fireEvent.click(screen.getByRole('button', { name: template.name }))
   expect(v.replace).toHaveBeenLastCalledWith(template.prompt)
-  expect(screen.getByRole('button', { name: template.name }).getAttribute('aria-pressed')).toBe('true')
+  expect(selectionHost.textContent).toContain(category.name)
+  expect(screen.getByRole('button', { name: '文档处理' })).toBeTruthy()
+  expect(screen.queryByRole('button', { name: template.name })).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: '取消所选分类' }))
   expect(v.replace).toHaveBeenLastCalledWith(template.prompt)
   expect(screen.getByRole('button', { name: '文档处理' })).toBeTruthy()

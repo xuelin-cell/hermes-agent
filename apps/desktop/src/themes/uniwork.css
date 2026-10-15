@@ -93,12 +93,14 @@
 }
 
 :root[data-hermes-theme='uniwork'] [data-slot='work-template-picker'] {
-  margin-bottom: 16px;
+  margin-bottom: 8px;
 }
 
 :root[data-hermes-theme='uniwork'] [data-slot='work-template-picker'] [data-variant='chip'] {
-  min-height: 38px;
-  padding-inline: 16px;
+  min-height: 32px;
+  padding-inline: 14px;
+  font-size: 0.75rem;
+  line-height: 1.25rem;
   border-radius: 999px;
   background: var(--dt-card);
   box-shadow: inset 0 0 0 1px var(--dt-border);
@@ -139,4 +141,62 @@
 
 :root[data-hermes-theme='uniwork'] [data-slot='button'][data-variant='default']:hover:not(:disabled) {
   background: color-mix(in srgb, var(--dt-primary-solid) 92%, black);
+}
+
+/* 输入区固定为上方编辑、下方左右工具栏，保留现有模型和语音操作。 */
+:root[data-hermes-theme='uniwork'] [data-slot='composer-root'][data-standard-layout] [data-slot='composer-layout'] {
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas: 'input input' 'menu controls';
+  align-items: end;
+  row-gap: 12px;
+}
+
+[data-slot='work-selection-container']:empty {
+  display: none;
+}
+
+[data-slot='work-selected-category'] {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  border-radius: 999px;
+  background: var(--theme-accent-soft);
+  color: var(--dt-accent-foreground);
+}
+
+[data-slot='work-selected-category'] [data-slot='button'] {
+  color: inherit;
+}
+
+:root[data-hermes-theme='uniwork']
+  [data-slot='composer-root'][data-standard-layout]
+  [data-slot='composer-controls']
+  button[type='submit'] {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+}
+
+:root[data-hermes-theme='uniwork']
+  [data-slot='composer-root'][data-standard-layout]
+  [data-slot='composer-controls']
+  button[type='submit']:disabled {
+  background: var(--uniwork-text-muted);
+  color: var(--dt-card);
+  opacity: 1;
+}
+
+:root[data-hermes-theme='uniwork'] [data-slot='composer-root'][data-standard-layout] {
+  border-radius: 28px;
+}
+
+:root[data-hermes-theme='uniwork'] [data-slot='work-selected-category'] [data-slot='button'] {
+  height: 22px;
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+}
+
+:root[data-hermes-theme='uniwork'] [data-slot='composer-root'][data-standard-layout] [data-slot='composer-leading'] {
+  align-self: center;
+  translate: none;
 }

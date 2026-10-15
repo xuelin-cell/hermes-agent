@@ -11,8 +11,10 @@ import {
   IconVideo
 } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 import { Button } from '@/components/ui/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useI18n } from '@/i18n'
 import { BarChart3, FileText, type IconComponent, iconSize, Search, X } from '@/lib/icons'
 
@@ -50,17 +52,19 @@ function CategoryIcon({ category }: { category: WelcomeCategory }) {
 }
 
 interface WorkTemplatePickerProps {
+  selectionContainer?: HTMLElement | null
   scope: string | null
   disabled: boolean
   onReplaceText: (text: string) => void
 }
 
 /** 完整办公入口：选分类进入模板、模板回填草稿、取消分类保留已填内容。 */
-export function WorkTemplatePicker({ scope, disabled, onReplaceText }: WorkTemplatePickerProps) {
+export function WorkTemplatePicker({ scope, disabled, onReplaceText, selectionContainer }: WorkTemplatePickerProps) {
   const { locale, t } = useI18n()
   const language = locale.startsWith('zh') ? 'zh-CN' : 'en'
   const catalog = useStore($welcomeCatalog)[language]
 
+  const [templatesOpen, setTemplatesOpen] = useState(false)
   const [selection, setSelection] = useState({
     scope,
     language,
@@ -78,74 +82,89 @@ export function WorkTemplatePicker({ scope, disabled, onReplaceText }: WorkTempl
   }, [language])
   useEffect(() => {
     setSelection({ scope, language, category: null, template: null })
+    setTemplatesOpen(false)
   }, [scope, language])
 
   if (!catalog.categories.length) {
     return null
   }
 
-  const key = category
-    ? `${category.id}:${category.templates.map(item => item.id).join('|')}`
-    : catalog.categories.map(item => item.id).join('|')
-
-  return (
-    <section data-slot="work-template-picker" aria-label={t.composer.workTemplates} className="mb-2 min-w-0 px-[5px]">
-      <HorizontalRow contentKey={key} leftLabel={t.composer.workScrollLeft} rightLabel={t.composer.workScrollRight}>
-        {category
-          ? category.templates.map(template => (
+  const selectedChip = category && (
+    <div data-slot="work-selected-category">
+      <Popover open={templatesOpen} onOpenChange={setTemplatesOpen}>
+        <PopoverTrigger asChild>
+          <Button disabled={disabled} size="micro" type="button" variant="ghost">
+            {category.name}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="start" variant="menu" className="max-h-72 max-w-[calc(100vw-2rem)] overflow-y-auto">
+          <div className="flex flex-col gap-1">
+            {category.templates.map(template => (
               <Button
-                aria-pressed={selection.template === template.id}
-                className="rounded-full aria-pressed:bg-accent aria-pressed:text-accent-foreground"
-                disabled={disabled}
                 key={template.id}
+                aria-pressed={selection.template === template.id}
+                disabled={disabled}
                 onClick={() => {
                   setSelection({ scope, language, category: category.id, template: template.id })
                   onReplaceText(template.prompt)
+                  setTemplatesOpen(false)
                 }}
                 size="sm"
-                title={template.prompt}
                 type="button"
-                variant="chip"
+                variant="ghost"
+                className="justify-start whitespace-normal text-left"
               >
                 {template.name}
                 <IconArrowDownRight className={iconSize.sm} />
               </Button>
-            ))
-          : catalog.categories.map(item => (
-              <Button
-                className="rounded-full"
-                disabled={disabled}
-                key={item.id}
-                onClick={() => {
-                  setSelection({ scope, language, category: item.id, template: null })
-                  onReplaceText('')
-                }}
-                size="sm"
-                type="button"
-                variant="chip"
-              >
-                <CategoryIcon category={item} />
-                {item.name}
-              </Button>
             ))}
-      </HorizontalRow>
-      {category && (
-        <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-          <CategoryIcon category={category} />
-          <span>{category.name}</span>
+          </div>
+        </PopoverContent>
+      </Popover>
+      <Button
+        aria-label={t.composer.workClearCategory}
+        disabled={disabled}
+        onClick={() => {
+          setSelection({ scope, language, category: null, template: null })
+          setTemplatesOpen(false)
+        }}
+        size="icon-xs"
+        type="button"
+        variant="ghost"
+      >
+        <X className={iconSize.xs} />
+      </Button>
+    </div>
+  )
+
+  return (
+    <section data-slot="work-template-picker" aria-label={t.composer.workTemplates} className="mb-2 min-w-0 px-[5px]">
+      <HorizontalRow
+        contentKey={catalog.categories.map(item => item.id).join('|')}
+        leftLabel={t.composer.workScrollLeft}
+        rightLabel={t.composer.workScrollRight}
+      >
+        {catalog.categories.map(item => (
           <Button
-            aria-label={t.composer.workClearCategory}
+            aria-pressed={category?.id === item.id}
+            className="rounded-full"
             disabled={disabled}
-            onClick={() => setSelection({ scope, language, category: null, template: null })}
-            size="icon-xs"
-            title={t.composer.workClearCategory}
+            key={item.id}
+            onClick={() => {
+              setSelection({ scope, language, category: item.id, template: null })
+              onReplaceText('')
+              setTemplatesOpen(true)
+            }}
+            size="sm"
             type="button"
-            variant="ghost"
+            variant="chip"
           >
-            <X className={iconSize.xs} />
+            <CategoryIcon category={item} />
+            {item.name}
           </Button>
-        </div>
-      )}
+        ))}
+      </HorizontalRow>
+      {selectionContainer ? createPortal(selectedChip, selectionContainer) : selectedChip}
       {catalog.status === 'cached' && (
         <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
           <span>{t.composer.workCached}</span>

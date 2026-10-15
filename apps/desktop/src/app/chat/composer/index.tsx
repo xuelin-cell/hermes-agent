@@ -8,7 +8,8 @@ import {
   useEffect,
   useId,
   useMemo,
-  useRef
+  useRef,
+  useState
 } from 'react'
 
 import { useTourMarker } from '@/app/chat/tour-marker'
@@ -218,6 +219,7 @@ export function ChatBar({
   const { collapsed: statusDrawerCollapsed, toggle: toggleStatusDrawer } = useStatusDrawer(activeQueueSessionKey)
   const statusDrawerId = useId()
   const codingDrawerId = useId()
+  const [welcomeSelectionContainer, setWelcomeSelectionContainer] = useState<HTMLDivElement | null>(null)
 
   // Status items (subagents, background processes) are keyed by the RUNTIME
   // session id — gateway events and process.list both speak that id. Only the
@@ -1343,6 +1345,7 @@ export function ChatBar({
         >
           {showWelcomeTemplates && !guidedChat && !botChat && !hudMode && !poppedOut && (
             <WorkTemplatePicker
+              selectionContainer={welcomeSelectionContainer}
               scope={activeQueueSessionKey}
               disabled={inputDisabled || busy || asrActive}
               onReplaceText={text => replaceText(text)}
@@ -1408,6 +1411,7 @@ export function ChatBar({
             data-hud-grabbing={hudGrabbing ? '' : undefined}
             data-popped-out={poppedOut ? '' : undefined}
             data-slot="composer-root"
+            data-standard-layout={!hudMode && !poppedOut ? '' : undefined}
             data-welcome={showWelcomeTemplates && !guidedChat && !botChat && !hudMode && !poppedOut ? '' : undefined}
             data-status-stack={statusStackVisible && !statusDrawerCollapsed ? '' : undefined}
             data-thread-scrolled-up={scrolledUp ? '' : undefined}
@@ -1518,6 +1522,7 @@ export function ChatBar({
                   {/* Contribution seams: banners above, a row below, inline
                     additions beside the "+" menu and before the controls.
                     All four render nothing until something contributes. */}
+                  <div data-slot="work-selection-container" ref={setWelcomeSelectionContainer} />
                   <ContribSlot area={COMPOSER_AREAS.top} />
                   <RestoredDraftNotice
                     freshDraft={activeQueueSessionKey === null}
@@ -1552,6 +1557,7 @@ export function ChatBar({
                   )}
                   {attachments.length > 0 && <AttachmentList attachments={attachments} onRemove={onRemoveAttachment} />}
                   <div
+                    data-slot="composer-layout"
                     className={cn(
                       'grid w-full',
                       stacked
@@ -1559,7 +1565,10 @@ export function ChatBar({
                         : 'grid-cols-[auto_1fr_auto] items-center gap-(--composer-control-gap) [grid-template-areas:"menu_input_controls"]'
                     )}
                   >
-                    <div className="flex translate-y-[3px] items-start gap-(--composer-control-gap) self-start [grid-area:menu]">
+                    <div
+                      data-slot="composer-leading"
+                      className="flex translate-y-[3px] items-start gap-(--composer-control-gap) self-start [grid-area:menu]"
+                    >
                       {contextMenu}
                       {!botChat && !guidedChat && <WorkdirPicker cwd={cwd} gateway={gateway} sessionId={sessionId} />}
                       <ContribSlot area={COMPOSER_AREAS.leading} />
@@ -1570,7 +1579,10 @@ export function ChatBar({
                       `ml-auto`: in the stacked layout the auto margin absorbs the
                       row's free space and pins a contributed action to the row
                       start, detached from the cluster (#116332). */}
-                    <div className="flex min-w-0 items-center justify-end gap-(--composer-control-gap) [grid-area:controls]">
+                    <div
+                      data-slot="composer-controls"
+                      className="flex min-w-0 items-center justify-end gap-(--composer-control-gap) [grid-area:controls]"
+                    >
                       <ContribSlot area={COMPOSER_AREAS.actions} />
                       {controls}
                     </div>
