@@ -163,6 +163,14 @@ export function useComposerDraft({
         return
       }
 
+      if (mode === 'replace' || mode === 'fill') {
+        if (mode === 'replace' || !draftRef.current.trim()) {
+          paintDraft(value)
+        }
+
+        return
+      }
+
       // 'prefix' puts the value at the START of the draft — slash commands
       // (the skill-suggestion pill) only route when they lead the message.
       if (mode === 'prefix') {

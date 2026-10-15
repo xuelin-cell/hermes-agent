@@ -17,14 +17,13 @@ import { $expertDirectory } from './experts-store'
 import { openingPrompt } from './summon-model'
 import type { ExpertCard } from './types'
 
-const READY_TIMEOUT_MS = 8000
+// An expert whose backend is not running yet starts on the first summon, which
+// can take a while on a cold machine.
+const READY_TIMEOUT_MS = 30_000
 // The fresh draft settles a beat after the profile switch and may clear the
-// box; a second write covers that without racing a user who is already typing.
+// box; a second write covers that. Both only fill an empty box, so a draft the
+// user carried over or started typing is never overwritten.
 const SETTLE_MS = [150, 700]
-
-function setComposerText(text: string): void {
-  host.setComposerText(text)
-}
 
 /** Fill *text* once the focused chat is a draft in *profile*. */
 function prefillWhenReady(profile: string, text: string): void {
@@ -34,7 +33,7 @@ function prefillWhenReady(profile: string, text: string): void {
     for (const delay of SETTLE_MS) {
       setTimeout(() => {
         if (ready()) {
-          setComposerText(text)
+          host.setComposerText(text, { ifEmpty: true })
         }
       }, delay)
     }
@@ -74,7 +73,7 @@ export function summonExpert(expert: ExpertCard): void {
 
 /** Put a quick prompt in the chat on screen. */
 export function fillPrompt(text: string): void {
-  setComposerText(text)
+  host.setComposerText(text)
 }
 
 /** Back to the general assistant: a new chat in the default profile. */

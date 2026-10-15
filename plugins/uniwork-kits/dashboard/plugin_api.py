@@ -51,7 +51,9 @@ router = APIRouter()
 
 
 def _home() -> Path:
-    return Path(get_hermes_home())
+    # Whichever profile serves the call, the page and the summon picker speak
+    # for the default profile, where kits and experts are installed.
+    return store.root_home(Path(get_hermes_home()))
 
 
 def _fail(exc: Exception) -> HTTPException:

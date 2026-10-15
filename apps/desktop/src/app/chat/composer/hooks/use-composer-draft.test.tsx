@@ -7,7 +7,7 @@ import { $connection } from '@/store/session'
 
 import { useComposerActions } from '../../hooks/use-composer-actions'
 import type { QueueEditState } from '../composer-utils'
-import { type ComposerTarget, getActiveComposer, markActiveComposer } from '../focus'
+import { type ComposerTarget, getActiveComposer, markActiveComposer, requestComposerInsert } from '../focus'
 import { type ComposerScope, ComposerScopeProvider, MAIN_COMPOSER_SCOPE } from '../scope'
 
 import { useComposerDraft } from './use-composer-draft'
@@ -292,5 +292,58 @@ describe('useComposerDraft — a closing composer hands the focus-bus key back',
     unmount()
 
     expect(getActiveComposer()).toBe('tile:other')
+  })
+})
+
+describe('useComposerDraft — handing the user a prompt (replace / fill)', () => {
+  afterEach(() => {
+    cleanup()
+    mainComposerScope.clear()
+    clearSessionDraft('session-prompt')
+    mockComposerApi.setText.mockClear()
+  })
+
+  function renderWithDraft(text: string) {
+    stashSessionDraft('session-prompt', text, [])
+    render(
+      <ProbeHarness
+        activeQueueSessionKey="session-prompt"
+        onLayoutSnapshot={() => undefined}
+        sessionId="session-prompt"
+      />
+    )
+    mockComposerApi.setText.mockClear()
+  }
+
+  // The focus bus delivers on the next tick.
+  const insert = async (text: string, mode: 'fill' | 'replace') => {
+    await act(async () => {
+      requestComposerInsert(text, { mode, target: 'main' })
+      await new Promise(resolve => setTimeout(resolve, 0))
+    })
+  }
+
+  it('replace swaps out whatever the draft held', async () => {
+    renderWithDraft('old words')
+
+    await insert('a fresh prompt', 'replace')
+
+    expect(mockComposerApi.setText).toHaveBeenLastCalledWith('a fresh prompt')
+  })
+
+  it('fill puts the prompt into an empty draft', async () => {
+    renderWithDraft('')
+
+    await insert('a fresh prompt', 'fill')
+
+    expect(mockComposerApi.setText).toHaveBeenLastCalledWith('a fresh prompt')
+  })
+
+  it('fill leaves text the user already typed alone', async () => {
+    renderWithDraft('my own question')
+
+    await insert('a fresh prompt', 'fill')
+
+    expect(mockComposerApi.setText).not.toHaveBeenCalled()
   })
 })

@@ -19,7 +19,10 @@ import { RICH_INPUT_SLOT } from './rich-editor'
 /** Composer routing key. The main chat is `'main'`, the edit composer
  *  `'edit'`; scoped composers (session tiles) use `'tile:<id>'`. */
 export type ComposerTarget = 'edit' | 'main' | (string & {})
-export type ComposerInsertMode = 'block' | 'inline' | 'prefix'
+/** `'replace'` swaps the whole draft — a prompt handed over to edit and send;
+ *  `'fill'` does the same only when the draft is empty, so text the user
+ *  already typed wins. */
+export type ComposerInsertMode = 'block' | 'fill' | 'inline' | 'prefix' | 'replace'
 
 export interface FocusDetail {
   target: ComposerTarget

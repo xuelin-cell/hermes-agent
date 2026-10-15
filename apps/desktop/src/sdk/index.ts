@@ -21,6 +21,7 @@
 import { atom, computed, type ReadableAtom } from 'nanostores'
 import type { ReactNode } from 'react'
 
+import { requestComposerInsert } from '@/app/chat/composer/focus'
 import { PRIMARY_SESSION_VIEW } from '@/app/chat/session-view'
 import { openSession, type OpenSessionIntent } from '@/app/open-session'
 import type { ClientSessionState } from '@/app/types'
@@ -42,7 +43,6 @@ import { onGatewayEvent } from '@/contrib/events'
 import { registry } from '@/contrib/registry'
 import type { WorkspaceMode } from '@/contrib/types'
 import { deleteProfile, getLogs, getStatus, hermesApi, type HermesGateway } from '@/hermes'
-import { setComposerDraft } from '@/store/composer'
 import {
   $gateway,
   activeGatewayConnectionId,
@@ -1203,10 +1203,12 @@ export const host = {
     window.location.hash = '#/'
   },
 
-  /** Replace the text in the focused chat's input box — how a plugin hands the
+  /** Replace the text in the main chat's input box — how a plugin hands the
    *  user a prompt to edit and send (e.g. a summoned expert's opening prompt).
-   *  Never sends. Feature-detect on older desktops. */
-  setComposerText: (text: string): void => setComposerDraft(String(text ?? '')),
+   *  `ifEmpty` leaves text the user already typed alone. Never sends; empty
+   *  text is ignored. Feature-detect on older desktops. */
+  setComposerText: (text: string, options: { ifEmpty?: boolean } = {}): void =>
+    requestComposerInsert(String(text ?? ''), { mode: options.ifEmpty ? 'fill' : 'replace', target: 'main' }),
 
   /** Front the tab a Bot Mode owner already has open — the tile that owner's
    *  zone last had active, else its most recent — and return that stored id;

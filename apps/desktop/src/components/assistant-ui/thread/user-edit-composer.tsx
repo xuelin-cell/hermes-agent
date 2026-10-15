@@ -186,14 +186,14 @@ export const UserEditComposer: FC<UserEditComposerProps> = ({ cwd, gateway, sess
     (text: string, mode: ComposerInsertMode) => {
       const value = text.trim()
 
-      if (!value) {
+      if (!value || (mode === 'fill' && draftRef.current.trim())) {
         return
       }
 
       rememberInitialDraft()
       const base = mode === 'inline' ? draftRef.current.trimEnd() : draftRef.current
       const sep = mode === 'inline' ? (base ? ' ' : '') : base && !base.endsWith('\n') ? '\n\n' : ''
-      const next = `${base}${sep}${value}`
+      const next = mode === 'replace' || mode === 'fill' ? value : `${base}${sep}${value}`
 
       draftRef.current = next
       aui.composer().setText(next)

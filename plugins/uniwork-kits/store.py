@@ -26,6 +26,19 @@ KITS_DIRNAME = "kits"
 INDEX_VERSION = 1
 
 
+def root_home(home: Path) -> Path:
+    """The default profile's home when *home* is a named profile's, else *home*.
+
+    Kits are managed and experts installed from the default profile. The
+    desktop sends plugin calls to the profile of the chat on screen, so while
+    an expert's chat is open they would otherwise land in that expert's home.
+    """
+    from hermes_constants import named_profile_home
+
+    named = named_profile_home(home)
+    return named.parent.parent if named is not None else home
+
+
 def imported_root(home: Path) -> Path:
     return home / IMPORTED_DIRNAME
 

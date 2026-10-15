@@ -4,14 +4,7 @@
  * chat with it (see ./summon).
  */
 
-import {
-  Codicon,
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-  usePluginI18n,
-  useValue
-} from '@hermes/plugin-sdk'
+import { Codicon, Popover, PopoverContent, PopoverTrigger, usePluginI18n, useValue } from '@hermes/plugin-sdk'
 import { useState } from 'react'
 
 import { ExpertFace } from './expert-face'
