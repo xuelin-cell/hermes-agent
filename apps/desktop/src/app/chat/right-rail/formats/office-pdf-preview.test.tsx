@@ -104,7 +104,7 @@ it.each([
   ['convert_failed', 'Could not convert this document. You can still access the original file.']
 ] as const)('解释 %s，保留原文件出口，不显示内部详情', async (code, message) => {
   convert.mockResolvedValue({ ok: false, code })
-  const file = target()
+  const file = target('doc')
   render(<FormatPreview reloadKey={0} target={file} />)
   expect(await screen.findByText(message)).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: 'Open containing folder' }))
@@ -117,13 +117,13 @@ it.each([
 it('远程不调用本机转换，只保留原连接下载，也不提示安装本机软件', async () => {
   $connection.set({ connectionId: 'remote-office', mode: 'remote', profile: 'team' } as never)
   await expect(readOfficePreviewPdf('/work/source.docx')).rejects.toEqual({ code: 'unavailable' })
-  render(<FormatPreview reloadKey={0} target={target()} />)
+  render(<FormatPreview reloadKey={0} target={target('doc')} />)
   fireEvent.click(await screen.findByRole('button', { name: 'Download' }))
   expect(window.hermesDesktop.saveGatewayFile).toHaveBeenCalledWith({
     connectionId: 'remote-office',
     profile: 'team',
-    path: target().path,
-    suggestedName: target().label
+    path: target('doc').path,
+    suggestedName: target('doc').label
   })
   expect(convert).not.toHaveBeenCalled()
   expect(screen.queryByText('If no conversion software is available, install LibreOffice and try again.')).toBeNull()
@@ -149,13 +149,13 @@ it('切换连接后忽略旧转换，缺少桥接和未知异常统一为不可�
         resolve = done
       })
   )
-  const view = render(<FormatPreview reloadKey={0} target={target()} />)
+  const view = render(<FormatPreview reloadKey={0} target={target('odt')} />)
   await waitFor(() => expect(convert).toHaveBeenCalledTimes(1))
   act(() => $connection.set({ connectionId: 'remote-office', mode: 'remote' } as never))
   await screen.findByRole('button', { name: 'Download' })
   await act(async () => resolve(success))
   expect(URL.createObjectURL).not.toHaveBeenCalled()
-  expect(screen.queryByTitle(target().label)).toBeNull()
+  expect(screen.queryByTitle(target('odt').label)).toBeNull()
   view.unmount()
   $connection.set(null)
   window.hermesDesktop = {} as never
