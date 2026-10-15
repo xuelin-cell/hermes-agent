@@ -2,7 +2,7 @@
 
 日期：2026-10-13。基线：`desktop-mt @ d5ff498050`（代码事实核对于同步远端 `40caef7b87` 之前，P01 动手前需复核）。参考实现：UniWork 桌面版 `Kyle549/UniClaw @ uniwork_release`（`8ae3548e`）、Web 版 `feat/hermes-ch`（`3bef1c5bd4`）。
 
-状态：P01～P05 和六项审阅修复已推送，接续基线为 `8a3a28620c`；P06 已修复未登记实例退出与 WPS 转换，38 项定向检查通过，独立临时文件的 MS Office／WPS 三类转换均取得真实 PDF；中文排版和用户已有文档并行仍待人工验收，尚未接入应用。P07～P16 未开始。P04 的 COM 查询异常、主要 WPS 别名和专用入口优先级已修复，同厂家多个备用入口仍未实现。本文不授权推送。每步完成验证并本地提交后暂停，等待用户核验，再继续下一步。
+状态：P01～P06 已推送，P06 最新修复为 `7bf5fe50b3`；MS Office／WPS 三类转换均取得真实 PDF，中文排版和用户已有文档并行仍待人工验收。P07 已接入本机转换服务、账号缓存和受限 IPC，独立 Electron 页面调用及缓存命中通过，本步本地提交、未推送；Word／PPT／Excel 查看器尚未接入，P08～P16 未开始。P04 的 COM 查询异常、主要 WPS 别名和专用入口优先级已修复，同厂家多个备用入口仍未实现。本文不授权推送。每步完成验证并本地提交后暂停，等待用户核验，再继续下一步。
 
 路径约定：`src/`、`electron/` 指 `apps/desktop/` 下的对应目录；`shared/` 指 `apps/shared/src/`。各步骤的行数是预估的业务代码行数，不含测试、夹具和文档；多语言文案单独列出。
 
@@ -284,7 +284,7 @@ shared/office-preview.ts             前端与主进程共用的约定：扩展�
 ### P07 · LibreOffice 转换、转换服务与接入
 
 - 范围：`electron/office-preview/convert-libreoffice.ts`、`service.ts`、`ipc.ts` 及测试；`electron/main.ts`、`electron/preload.ts`、`src/global.d.ts` 的接入。
-- LibreOffice：参数与独立配置目录的做法取自 Web 版；失败或超时后清掉配置目录。
+- LibreOffice：沿用独立配置目录和无界面转换；仅确认安全收尾后删除配置，超时或异常终止且不能确认后代状态时保留记录，不强杀用户软件。
 - `service.ts`：校验扩展名和大小 → 查缓存 → 排队 → 拷贝英文名副本 → 按顺序尝试可用的转换器 → 检查 PDF 大小 → 发布并淘汰旧缓存。失败以原因代码返回，不抛出只有文字的异常。
 - `ipc.ts`：一个接口，成功返回 PDF 字节、版本号和所用转换器，失败返回原因代码。
 - 业务代码：约 280 行。
@@ -419,8 +419,8 @@ UniWork 的表格预览由三个文件组成，共约 1300 行，并依赖表格
 | A · TIFF | P03 | 已实现，定向检查通过；已推送 `f63ae9e9cc`，真实桌面验收待用户完成 |
 | B · 约定与探测 | P04 | 已推送 `4275f8f2a2`；查询异常及主要 WPS 别名、专用入口优先级已修复；同厂家备用入口仍有限制 |
 | B · 缓存与排队 | P05 | 已实现，13 项定向检查通过；已推送 `e7f05d4015`，应用接线待 P07 |
-| B · MS Office 与 WPS 转换 | P06 | 未登记实例退出与 WPS 修复完成，38 项定向检查通过；两厂家三类真实转换取得 PDF，排版及已有文档并行待人工确认；本地提交，未推送，应用接线待 P07 |
-| B · LibreOffice、服务与接入 | P07 | 未开始 |
+| B · MS Office 与 WPS 转换 | P06 | 已推送至 `7bf5fe50b3`；38 项定向检查通过，两厂家三类真实转换取得 PDF，排版及已有文档并行待人工确认 |
+| B · LibreOffice、服务与接入 | P07 | 已实现；预览模块 60 项、独立 Electron IPC／缓存命中通过；本地提交未推送，真实软件接线仍待人工核验 |
 | C · Word 转 PDF | P08 | 未开始 |
 | C · Word 兜底 | P09 | 未开始 |
 | C · PDF 逐页渲染 | P10 | 未开始 |
@@ -603,3 +603,16 @@ P05 完成后对 P01～P04 的四个提交做了一次代码审阅，共 10 条�
 - 用户授权的一轮原生转换和失败项定向复测，使用独立临时中文／空格／引号路径，不操作用户文档窗口。MS Office 的 docx／pptx／xlsx 与 WPS 的 docx／pptx／xlsx 均取得真实 PDF；WPS PPT 是修正无 HWND 分支后单独通过，不把最初整轮报告中的失败改写成通过。报告及样例位于 `C:\Users\stan\AppData\Local\Temp\hermes-office-native-TPrUSU`，PPT 复测见 `retest-report.json`。单次 MS PPT 转换约 25.18 秒降至 6.54 秒，WPS PPT 最后约 5.56 秒；这是不同轮次的单次观测，不是严格性能基准，未用最终代码重跑全部六项计时。
 - 最终定向命令：`npx vitest run --project electron electron/office-preview/detect.test.ts electron/office-preview/convert-com.test.ts electron/office-preview/com-scripts.test.ts electron/office-preview/run-process.test.ts`，4 文件 38 项通过。覆盖登记前失败、设置恢复再次失败、共享实例保护、无 HWND 的自有／借用 WPS 文档、路径冲突、32 位辅助进程读取 64 位路径、未登记关闭确认及真实自建进程的创建时间复核。TypeScript、相关 ESLint、夹具语法、默认不启动 Office 的门控和 Git 差异检查通过。
 - PDF 文件头和真实转换成功不等于中文视觉排版验收；用户已有 Word／PPT／Excel 文档并行、真实宏文件、Office 授权异常、安装包、其它系统和 LibreOffice 仍待验证。本次不修改 Hermes Python 后端或上游产品文件；按要求将本次修复写入一个本地提交，不推送，不进入 P07。
+
+### P07 本机转换服务与桌面接线（2026-10-14）
+
+- 接续时本地与远端均为 `6f3c7cc558`。核对此前之后的 MCP、工作目录、微信及登录样式提交，未修改已有预览模块；只在当前 preload 上新增一个方法，没有覆盖协作者的 MCP 密钥处理。P06 四个提交此前已推送，最新为 `7bf5fe50b3`。不修改 Hermes Python 后端、官方对照版、用户数据或本机计时文件。
+- 新增 `convert-libreoffice.ts`、`service.ts`、`ipc.ts`。正式服务串起读文件校验、真实路径与版本键、缓存、全进程单队列、英文名副本及 MS Office → WPS → LibreOffice 降级。排队后和复制后复核源版本；不同厂家使用不同产物目录，坏 PDF 不会被后续转换误当成成功。源文件 100 MB、PDF 50 MB；检查普通文件、非符号链接、非空和 PDF 文件头。
+- 同账号同版本的并发请求共用一次转换，后续读取直接命中账号缓存；不同账号不共用缓存。软件不可用时使探测缓存失效，下一次请求重新探测，不在本轮无限重试。各转换器共享 180 秒剩余执行预算，不为每家重新分配完整预算；源文件读写和排队等待不提供硬实时保证。全部失败保留实际转换失败／太大／超时等原因，不让末尾的不可用覆盖前面的实际错误。
+- 继续遵守 P06 的 cleanupSafe 约定：不安全立即停止降级，保留该次源副本、配置和归属记录。为受管临时目录增加 `retain` 标记，普通的一小时残留回收跳过它，避免服务重建后丢失排障证据；该目录须人工确认后处理，本步不实现自动恢复或按名称清进程。
+- LibreOffice 使用独立配置和最高宏安全级别，不借用用户配置；不经过 shell。Windows 使用同安装目录的 soffice.com 控制台入口，不回退到可能提前返回的 GUI 启动器，参数依据 [LibreOffice 官方说明](https://help.libreoffice.org/latest/en-US/text/shared/guide/start_parameters.html)。正常结束或未能启动时回收配置；超时／异常终止无法确认后代状态时保留现场并报告不安全，不把辅助程序退出当成所有后代都已结束。本机没有 LibreOffice，实际软件、宏策略及其它系统未验证。
+- 实际改动的上游产品文件仅 `electron/main.ts`（导入与注册）、`electron/preload.ts`（单一方法）和 `src/global.d.ts`（返回类型）。缓存固定来自主进程账号上下文，页面只提供文件路径，不提供账号、缓存目录、程序或凭据。新增 IPC 校验桌面窗口、主框架、固定页面、账号分区和当前上下文；等候时账号退出或页面跳转后不返回 PDF，账号撤销后不再启动等待中的转换。已有执行中的转换不因页面离开而取消。
+- 新增接口为 `window.hermesDesktop.convertOfficePreview(文件绝对路径)`：成功仅返回 `ok/pdf/version/converter`，PDF 为 Uint8Array；失败只返回 `ok/code`，不传内部异常、缓存路径或进程信息。重启源码开发版后可在自己的开发者工具调用；本步没有 Word／PPT／Excel 查看器，不会改变当前预览面板。P08 再接 Word 的可见预览。
+- 定向检查：`npx vitest run --project electron electron/office-preview`，9 文件 60 项通过；随后修改到的服务、LibreOffice、IPC 和缓存四文件 19 项复测通过。检查顺序、降级、总预算、原文件保留、伪／超限／缺失 PDF、缓存复用、A→B→A 账号缓存、退出时的队列限制及 retain 回收保护。类型检查最初发现 LibreOffice 测试替身误用了 COM 参数类型，已修正；ESLint 格式警告已按仓库规则处理。最终 `npm run typecheck`、改动文件 ESLint 零警告、夹具语法与 `git diff --check` 通过。
+- `node scripts/office-service.native.mjs`：1 项隐藏独立 Electron 检查通过，经过正式 Renderer／preload／IPC、文件复制与缓存，第二次调用不重复转换，返回真实跨 IPC 的 Uint8Array。仅软件转换器使用受控产物，没有启动 Office、MaaS、Hermes 后端或用户窗口；这不是 P07 真实软件全链路验收。夹具记录位于 `C:\Users\stan\AppData\Local\Temp\hermes-office-service-native-xJQkXu`。本轮不重跑 P06 Office 实机轮次、不验证中文排版、安装包、已有文档并行或云端。
+- 本步按约定本地提交后暂停，不推送，不进入 P08；真实查看器验收继续交由用户。

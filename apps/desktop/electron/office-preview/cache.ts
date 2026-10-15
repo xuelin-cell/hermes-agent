@@ -204,6 +204,16 @@ export class OfficePreviewCache {
     await this.serial(() => this.removeOwned(directory))
   }
 
+  /** 收尾未确认的工作目录留作人工处理，启动时不按普通残留回收。 */
+  async preserveWorkDirectory(directory: string): Promise<void> {
+    if (path.dirname(path.resolve(directory)) !== this.directory || !WORK_PATTERN.test(path.basename(directory)) ||
+      (await fs.lstat(directory)).isSymbolicLink()) {
+      throw new Error('Invalid retained Office work directory')
+    }
+
+    await fs.writeFile(path.join(directory, 'retain'), 'cleanup-unconfirmed', { flag: 'wx' })
+  }
+
   /** PDF 与说明先写入新目录，再原子发布；缓存中不保留转换源文件。 */
   async publish(key: string, pdfPath: string, converter: OfficeConverter, now = Date.now()): Promise<void> {
     const destination = this.entryDirectory(key)
@@ -257,6 +267,14 @@ export class OfficePreviewCache {
       const directory = path.join(this.directory, item.name)
 
       if (WORK_PATTERN.test(item.name)) {
+        try {
+          await fs.lstat(path.join(directory, 'retain'))
+
+          continue
+        } catch (error) {
+          if (!isMissing(error)) {throw error}
+        }
+
         const stat = await fs.lstat(directory)
 
         if (now - stat.mtimeMs > STALE_WORK_MS) {
