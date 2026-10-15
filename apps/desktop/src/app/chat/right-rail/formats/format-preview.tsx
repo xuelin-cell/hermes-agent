@@ -19,12 +19,8 @@ export function FormatPreview(props: FilePreviewProps) {
   const kind = previewFormat(props.target)
 
   return kind ? (
-    <RegisteredPreview
-      key={JSON.stringify([source.key, source.path, props.reloadKey])}
-      {...props}
-      kind={kind}
-      source={source}
-    />
+    // 刷新不重建：显示器自己按 reloadKey 重读，保留源码／表格等视图状态。
+    <RegisteredPreview key={JSON.stringify([source.key, source.path])} {...props} kind={kind} source={source} />
   ) : (
     <LocalFilePreview {...props} />
   )
@@ -38,14 +34,24 @@ interface RegisteredPreviewProps extends FilePreviewProps {
 /** 按登记顺序降级，文件不存在时停止尝试，并提供原文件出口。 */
 function RegisteredPreview({ kind, onClose, source, ...props }: RegisteredPreviewProps) {
   const { t } = useI18n()
-  const [attempt, setAttempt] = useState<{ failure?: PreviewFailure; index: number }>({ index: 0 })
+
+  const [attempt, setAttempt] = useState<{ failure?: PreviewFailure; index: number; reloadKey: number }>({
+    index: 0,
+    reloadKey: props.reloadKey
+  })
+
+  // 刷新后从第一个候选重新尝试；当前就是第一个候选时它保持挂载，只重读文件。
+  if (attempt.reloadKey !== props.reloadKey) {
+    setAttempt({ index: 0, reloadKey: props.reloadKey })
+  }
+
   const { index } = attempt
   const Renderer = attempt.failure?.code === 'not_found' ? undefined : formatRenderers(kind, source.path)[index]
 
   // 只接受当前候选的失败，旧候选迟到的回调不能跳过新候选。
   const onFailure = useCallback(
     (failure: PreviewFailure) => {
-      setAttempt(current => (current.index === index ? { failure, index: index + 1 } : current))
+      setAttempt(current => (current.index === index ? { ...current, failure, index: index + 1 } : current))
     },
     [index]
   )
@@ -56,7 +62,7 @@ function RegisteredPreview({ kind, onClose, source, ...props }: RegisteredPrevie
         body={
           <>
             {t.preview.formatFailure[attempt.failure?.code || 'unavailable']}
-            {kind === 'word' && source.exit === 'reveal' && attempt.failure?.code === 'unavailable' && (
+            {['word', 'slides', 'sheet'].includes(kind) && source.exit === 'reveal' && attempt.failure?.code === 'unavailable' && (
               <p className="mt-2">{t.preview.office.installConverter}</p>
             )}
           </>

@@ -92,6 +92,8 @@
     "@dnd-kit/core": "6.3.1",
     "@dnd-kit/sortable": "10.0.0",
     "@dnd-kit/utilities": "3.2.2",
+    "@fortune-sheet/core": "1.0.4",
+    "@fortune-sheet/react": "1.0.4",
     "@hermes/shared": "file:../shared",
     "@icons-pack/react-simple-icons": "13.11.1",
     "@lezer/highlight": "1.2.3",
@@ -122,6 +124,7 @@
     "docx-preview": "0.4.1",
     "dompurify": "3.4.13",
     "driver.js": "1.8.0",
+    "echarts": "6.1.0",
     "electron-updater": "6.8.9",
     "emojibase-data": "16.0.3",
     "fflate": "0.8.3",
@@ -161,6 +164,7 @@
     "vfile": "6.0.3",
     "web-haptics": "0.0.6",
     "ws": "8.21.1",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "yaml": "2.8.1"
   },
   "optionalDependencies": {

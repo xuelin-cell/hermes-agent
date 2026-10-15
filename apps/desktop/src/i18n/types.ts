@@ -4175,12 +4175,23 @@ export interface Translations {
       firstOpen: string
       installConverter: string
     }
+    slides: {
+      page: (page: number) => string
+      counter: (page: number, total: number) => string
+      previous: string
+      next: string
+      fullscreen: string
+      exitFullscreen: string
+      fullscreenFailed: string
+      pageFailed: (page: number) => string
+    }
     delimited: {
       table: string
       empty: string
       limited: string
       columnsLimited: string
     }
+    sheetLimited: string
     tiffFirstPage: string
     edit: string
     editing: string

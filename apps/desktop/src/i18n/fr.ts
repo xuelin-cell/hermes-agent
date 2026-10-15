@@ -5293,12 +5293,23 @@ export const frOverrides = {
       firstOpen: 'Le premier aperçu peut prendre quelques secondes.',
       installConverter: 'Si aucun logiciel de conversion ne fonctionne, installez LibreOffice et réessayez.'
     },
+    slides: {
+      page: page => `Diapositive ${page}`,
+      counter: (page, total) => `${page} / ${total}`,
+      previous: 'Diapositive précédente',
+      next: 'Diapositive suivante',
+      fullscreen: 'Présenter en plein écran',
+      exitFullscreen: 'Quitter le plein écran',
+      fullscreenFailed: 'Impossible de changer le mode plein écran. Les diapositives restent consultables.',
+      pageFailed: page => `Impossible d’afficher la diapositive ${page}.`
+    },
     delimited: {
       table: 'Tableau',
       empty: 'Ce tableau est vide.',
       limited: 'Affichage des 500 premières lignes de données.',
       columnsLimited: 'Affichage des 50 premières colonnes.'
     },
+    sheetLimited: 'Certaines feuilles dépassent 500 lignes. Seules leurs 500 premières lignes sont affichées.',
     tiffFirstPage: 'Ce TIFF contient plusieurs pages. Seule la première est affichée.',
     edit: 'Modifier',
     editing: 'Modification',

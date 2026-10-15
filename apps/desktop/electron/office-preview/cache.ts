@@ -61,10 +61,10 @@ export class OfficePreviewCache {
     this.directory = path.resolve(desktopState, 'office-preview')
   }
 
-  /** 首次使用建立缓存目录，清理旧临时目录并执行启动淘汰，不跟随目录联接。 */
+  /** 首次使用建立缓存目录，清理旧临时目录并执行启动淘汰，不跟随目录联接；失败后下次调用重新准备。 */
   private ready(now = Date.now()): Promise<void> {
     if (!this.prepared) {
-      this.prepared = (async () => {
+      const prepared = (async () => {
         await fs.mkdir(this.directory, { recursive: true })
         const stat = await fs.lstat(this.directory)
 
@@ -74,6 +74,14 @@ export class OfficePreviewCache {
 
         await this.pruneEntries(now)
       })()
+
+      this.prepared = prepared
+      // 一次失败（例如目录暂时不可用）不能让之后所有预览都失败；只作废自己这次准备。
+      prepared.catch(() => {
+        if (this.prepared === prepared) {
+          this.prepared = undefined
+        }
+      })
     }
 
     return this.prepared
@@ -214,7 +222,7 @@ export class OfficePreviewCache {
     await fs.writeFile(path.join(directory, 'retain'), 'cleanup-unconfirmed', { flag: 'wx' })
   }
 
-  /** PDF 与说明先写入新目录，再原子发布；缓存中不保留转换源文件。 */
+  /** PDF 与说明先写入新目录，再原子发布；缓存中不保留转换源文件。调用方负责先检查 PDF。 */
   async publish(key: string, pdfPath: string, converter: OfficeConverter, now = Date.now()): Promise<void> {
     const destination = this.entryDirectory(key)
     await this.ready(now)
@@ -227,16 +235,7 @@ export class OfficePreviewCache {
         return
       }
 
-      const stat = await fs.lstat(pdfPath)
-
-      if (!stat.isFile() || stat.isSymbolicLink() || !stat.size) {
-        throw { code: 'convert_failed' }
-      }
-
-      if (stat.size > OFFICE_PDF_MAX_BYTES) {
-        throw { code: 'too_large' }
-      }
-
+      // 产物已由转换服务检查过，这里只负责原子发布。
       const staging = await this.createWorkDirectory(now)
 
       try {
@@ -254,7 +253,18 @@ export class OfficePreviewCache {
     })
   }
 
-  /** 按最近使用淘汰份数与总量，始终保留最近一份；仅清理过期的受管临时目录。 */
+  /** 删除一项淘汰目标；被占用或无权限时跳过，下次淘汰再试，不让清理失败影响预览。 */
+  private async tryRemove(directory: string): Promise<boolean> {
+    try {
+      await this.removeOwned(directory)
+
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  /** 按最近使用淘汰份数与总量，始终保留最近一份；仅清理过期的受管临时目录，单项失败不中断。 */
   private async pruneEntries(now: number, protectedKey?: string): Promise<number> {
     const entries: CacheEntry[] = []
     let removed = 0
@@ -266,27 +276,27 @@ export class OfficePreviewCache {
 
       const directory = path.join(this.directory, item.name)
 
-      if (WORK_PATTERN.test(item.name)) {
-        try {
-          await fs.lstat(path.join(directory, 'retain'))
+      try {
+        if (WORK_PATTERN.test(item.name)) {
+          if (await this.isRetained(directory)) {
+            continue
+          }
 
-          continue
-        } catch (error) {
-          if (!isMissing(error)) {throw error}
+          const stat = await fs.lstat(directory)
+
+          if (now - stat.mtimeMs > STALE_WORK_MS && (await this.tryRemove(directory))) {
+            removed++
+          }
+        } else if (KEY_PATTERN.test(item.name)) {
+          const cached = await this.entry(item.name)
+
+          if (cached) {
+            entries.push(cached)
+          }
         }
-
-        const stat = await fs.lstat(directory)
-
-        if (now - stat.mtimeMs > STALE_WORK_MS) {
-          await this.removeOwned(directory)
-          removed++
-        }
-      } else if (KEY_PATTERN.test(item.name)) {
-        const cached = await this.entry(item.name)
-
-        if (cached) {
-          entries.push(cached)
-        }
+      } catch {
+        // 读不了的单项（权限、占用）留到下次，不影响其它缓存的淘汰和本次预览。
+        continue
       }
     }
 
@@ -302,13 +312,27 @@ export class OfficePreviewCache {
       if (!kept || (kept < this.limits.maxEntries && bytes + entry.bytes <= this.limits.maxBytes)) {
         kept++
         bytes += entry.bytes
-      } else {
-        await this.removeOwned(entry.directory)
+      } else if (await this.tryRemove(entry.directory)) {
         removed++
       }
     }
 
     return removed
+  }
+
+  /** 收尾未确认而保留的工作目录带有 retain 标记，启动淘汰不回收。 */
+  private async isRetained(directory: string): Promise<boolean> {
+    try {
+      await fs.lstat(path.join(directory, 'retain'))
+
+      return true
+    } catch (error) {
+      if (isMissing(error)) {
+        return false
+      }
+
+      throw error
+    }
   }
 
   /** 对发布完成的缓存执行回收，文件正在转换时不发布半成品。 */

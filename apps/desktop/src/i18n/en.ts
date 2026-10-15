@@ -4923,12 +4923,23 @@ export const en: Translations = {
       firstOpen: 'The first preview may take a few seconds.',
       installConverter: 'If no conversion software is available, install LibreOffice and try again.'
     },
+    slides: {
+      page: page => `Slide ${page}`,
+      counter: (page, total) => `${page} / ${total}`,
+      previous: 'Previous slide',
+      next: 'Next slide',
+      fullscreen: 'Present full screen',
+      exitFullscreen: 'Exit full screen',
+      fullscreenFailed: 'Could not enter or exit full screen. You can still read the slides.',
+      pageFailed: page => `Slide ${page} could not be shown.`
+    },
     delimited: {
       table: 'Table',
       empty: 'This table is empty.',
       limited: 'Showing the first 500 data rows.',
       columnsLimited: 'Showing the first 50 columns.'
     },
+    sheetLimited: 'Some sheets exceed 500 rows. Only their first 500 rows are shown.',
     tiffFirstPage: 'This TIFF has multiple pages. Only the first page is shown.',
     edit: 'Edit',
     editing: 'Editing',

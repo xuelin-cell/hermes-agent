@@ -4624,12 +4624,23 @@ export const zh = defineLocale({
       firstOpen: '首次预览可能需要几秒。',
       installConverter: '如果没有可用的转换软件，请安装 LibreOffice 后重试。'
     },
+    slides: {
+      page: page => `第 ${page} 页`,
+      counter: (page, total) => `${page} / ${total}`,
+      previous: '上一页',
+      next: '下一页',
+      fullscreen: '全屏放映',
+      exitFullscreen: '退出全屏',
+      fullscreenFailed: '未能切换全屏，仍可继续阅读幻灯片。',
+      pageFailed: page => `第 ${page} 页无法显示。`
+    },
     delimited: {
       table: '表格',
       empty: '表格为空。',
       limited: '仅显示前 500 条数据行。',
       columnsLimited: '仅显示前 50 列。'
     },
+    sheetLimited: '部分工作表超过 500 行，仅显示其前 500 行。',
     tiffFirstPage: '此 TIFF 包含多页，仅显示第一页。',
     edit: '编辑',
     editing: '编辑中',

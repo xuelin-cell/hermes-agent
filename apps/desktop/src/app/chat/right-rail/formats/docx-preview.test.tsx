@@ -19,7 +19,7 @@ let resize: () => void
 let panelWidth = 420
 
 /** 用真实 OOXML 压缩包覆盖中文、表格、分页、链接与应禁止的内嵌 HTML，不替换解析库。 */
-function sample(text = '中文文档') {
+function sample(text = '中文文档', section = '<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:bottom="1440" w:left="1440" w:right="1440"/></w:sectPr>') {
   const archive = zipSync({
     '[Content_Types].xml': strToU8(
       '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/></Types>'
@@ -28,7 +28,7 @@ function sample(text = '中文文档') {
       '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>'
     ),
     'word/document.xml': strToU8(
-      `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body><w:p><w:r><w:t>${text}</w:t></w:r><w:hyperlink r:id="external"><w:r><w:t>危险链接</w:t></w:r></w:hyperlink></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>表格内容</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:r><w:br w:type="page"/><w:t>第二页</w:t></w:r></w:p><w:altChunk r:id="html"/><w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:bottom="1440" w:left="1440" w:right="1440"/></w:sectPr></w:body></w:document>`
+      `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body><w:p><w:r><w:t>${text}</w:t></w:r><w:hyperlink r:id="external"><w:r><w:t>危险链接</w:t></w:r></w:hyperlink></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>表格内容</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:r><w:br w:type="page"/><w:t>第二页</w:t></w:r></w:p><w:altChunk r:id="html"/>${section}</w:body></w:document>`
     ),
     'word/_rels/document.xml.rels': strToU8(
       '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="external" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="javascript:alert(1)" TargetMode="External"/><Relationship Id="html" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/aFChunk" Target="chunk.html"/></Relationships>'
@@ -68,6 +68,7 @@ beforeEach(() => {
   panelWidth = 420
   window.hermesDesktop = {
     convertOfficePreview: convert,
+    cancelOfficePreview: vi.fn(async () => undefined),
     readFileDataUrl: read,
     revealPath: vi.fn(),
     saveGatewayFile: vi.fn()
@@ -112,6 +113,14 @@ it('真实解析按页保留中文和表格，清除链接且不渲染 altChunk'
   expect(result.width).toBeGreaterThan(0)
 })
 
+it('没写页面尺寸的文档按 A4 宽度显示，而不是判为不支持', async () => {
+  const result = await renderDocxPage(sample('程序生成', ''))
+  const doc = new DOMParser().parseFromString(result.html, 'text/html')
+  expect(result.width).toBe(794)
+  expect(doc.body.textContent).toContain('程序生成')
+  expect(doc.querySelector<HTMLElement>('section.docx')?.style.width).toBe('794px')
+})
+
 it('转换不可用后真实落到 docx，使用原读取接口并随面板缩放，关闭解除监听', async () => {
   const file = target()
   const view = render(<FormatPreview reloadKey={0} target={file} />)
@@ -119,7 +128,7 @@ it('转换不可用后真实落到 docx，使用原读取接口并随面板缩�
   expect(frame.srcdoc).toContain('中文文档')
   expect(frame.getAttribute('sandbox')).toBe('')
   expect(frame.getAttribute('referrerpolicy')).toBe('no-referrer')
-  expect(convert).toHaveBeenCalledWith(file.path)
+  expect(convert).toHaveBeenCalledWith(file.path, expect.any(String))
   expect(read).toHaveBeenCalledWith(file.path)
   expect(frame.style.transform).toBe(`scale(${396 / 816})`)
   act(() => {

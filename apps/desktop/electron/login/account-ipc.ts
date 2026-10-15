@@ -1,4 +1,6 @@
-import { BrowserWindow, ipcMain, type IpcMainInvokeEvent, type Session } from 'electron'
+import { ipcMain, type IpcMainInvokeEvent, type Session } from 'electron'
+
+import { isDesktopRendererSender } from '../desktop-renderer-sender'
 
 import { ASR_CHANNEL, type AsrIdentity } from '../uniwork-asr/contract'
 import { createUniworkAsrHandler } from '../uniwork-asr/ipc'
@@ -21,36 +23,7 @@ export function installAccountIpc(
 ): void {
   /** 展示与退出共用来源校验，不接收 UID、路径或进程号。 */
   function trusted(event: IpcMainInvokeEvent, args: unknown[]): boolean {
-    const window = BrowserWindow.fromWebContents(event.sender)
-
-    if (
-      args.length ||
-      !window ||
-      window.isDestroyed() ||
-      window.webContents !== event.sender ||
-      event.sender.session !== session ||
-      event.senderFrame !== event.sender.mainFrame ||
-      !event.senderFrame
-    ) {
-      return false
-    }
-
-    try {
-      const actual = new URL(event.senderFrame.url)
-      const expected = new URL(rendererUrl())
-
-      // 同一桌面的副窗通过查询参数和 hash 路由区分，不允许其他页面或来源。
-      actual.search = expected.search = ''
-      actual.hash = expected.hash = ''
-
-      if (actual.href !== expected.href) {
-        return false
-      }
-
-      return true
-    } catch {
-      return false
-    }
+    return !args.length && isDesktopRendererSender(event, session, rendererUrl())
   }
 
   if (readAsrIdentity) {

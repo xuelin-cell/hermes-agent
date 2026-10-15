@@ -5282,12 +5282,23 @@ export const deOverrides = {
       firstOpen: 'Die erste Vorschau kann einige Sekunden dauern.',
       installConverter: 'Wenn keine Konvertierungssoftware verfügbar ist, installieren Sie LibreOffice und versuchen Sie es erneut.'
     },
+    slides: {
+      page: page => `Folie ${page}`,
+      counter: (page, total) => `${page} / ${total}`,
+      previous: 'Vorherige Folie',
+      next: 'Nächste Folie',
+      fullscreen: 'Im Vollbild präsentieren',
+      exitFullscreen: 'Vollbild verlassen',
+      fullscreenFailed: 'Der Vollbildmodus konnte nicht gewechselt werden. Die Folien bleiben lesbar.',
+      pageFailed: page => `Folie ${page} kann nicht angezeigt werden.`
+    },
     delimited: {
       table: 'Tabelle',
       empty: 'Diese Tabelle ist leer.',
       limited: 'Die ersten 500 Datenzeilen werden angezeigt.',
       columnsLimited: 'Die ersten 50 Spalten werden angezeigt.'
     },
+    sheetLimited: 'Einige Tabellenblätter haben mehr als 500 Zeilen. Nur ihre ersten 500 Zeilen werden angezeigt.',
     tiffFirstPage: 'Diese TIFF-Datei enthält mehrere Seiten. Nur die erste Seite wird angezeigt.',
     edit: 'Bearbeiten',
     editing: 'Wird bearbeitet',

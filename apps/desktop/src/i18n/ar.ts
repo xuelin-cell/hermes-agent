@@ -3104,12 +3104,23 @@ export const ar = defineLocale({
       firstOpen: 'قد تستغرق المعاينة الأولى بضع ثوانٍ.',
       installConverter: 'إذا لم يتوفر برنامج للتحويل، فثبّت LibreOffice وحاول مرة أخرى.'
     },
+    slides: {
+      page: page => `الشريحة ${page}`,
+      counter: (page, total) => `${page} / ${total}`,
+      previous: 'الشريحة السابقة',
+      next: 'الشريحة التالية',
+      fullscreen: 'عرض بملء الشاشة',
+      exitFullscreen: 'الخروج من ملء الشاشة',
+      fullscreenFailed: 'تعذر تبديل وضع ملء الشاشة. لا يزال بإمكانك قراءة الشرائح.',
+      pageFailed: page => `تعذر عرض الشريحة ${page}.`
+    },
     delimited: {
       table: 'جدول',
       empty: 'هذا الجدول فارغ.',
       limited: 'عرض أول 500 صف بيانات.',
       columnsLimited: 'عرض أول 50 عمودًا.'
     },
+    sheetLimited: 'تتجاوز بعض الأوراق 500 صف. تُعرض أول 500 صف منها فقط.',
     tiffFirstPage: 'يحتوي ملف TIFF على عدة صفحات. تُعرض الصفحة الأولى فقط.',
     edit: 'تحرير',
     editing: 'جار التحرير',

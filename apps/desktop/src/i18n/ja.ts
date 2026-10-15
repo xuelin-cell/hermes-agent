@@ -3603,12 +3603,23 @@ export const ja = defineLocale({
       firstOpen: '初回のプレビューには数秒かかる場合があります。',
       installConverter: '変換ソフトが利用できない場合は、LibreOffice をインストールして再試行してください。'
     },
+    slides: {
+      page: page => `スライド ${page}`,
+      counter: (page, total) => `${page} / ${total}`,
+      previous: '前のスライド',
+      next: '次のスライド',
+      fullscreen: '全画面で表示',
+      exitFullscreen: '全画面を終了',
+      fullscreenFailed: '全画面を切り替えられませんでした。スライドは引き続き閲覧できます。',
+      pageFailed: page => `スライド ${page} を表示できませんでした。`
+    },
     delimited: {
       table: '表',
       empty: '表は空です。',
       limited: '最初の 500 データ行を表示しています。',
       columnsLimited: '最初の 50 列を表示しています。'
     },
+    sheetLimited: '500 行を超えるシートは、先頭の 500 行のみ表示しています。',
     tiffFirstPage: 'この TIFF は複数ページです。最初のページのみ表示しています。',
     edit: '編集',
     editing: '編集中',

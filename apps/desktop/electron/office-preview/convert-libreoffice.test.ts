@@ -56,8 +56,17 @@ it('为每次转换独立配置并禁宏，参数不走 shell；正常结束删�
   expect(await fs.readFile(source, 'utf8')).toBe('source')
 })
 
-it('超时保留配置并报告收尾不确定，不把启动器退出当作后代全部已结束', async () => {
-  const run = vi.fn<typeof runOfficeProcess>().mockResolvedValue({ stdout: '', failure: 'timeout' })
+it('超时且已结束整个进程树时删除配置并允许继续，不留下现场', async () => {
+  const run = vi.fn<typeof runOfficeProcess>().mockResolvedValue({ stdout: '', failure: 'timeout', stopped: true })
+  expect(
+    await convertLibreOffice({ provider: 'libreoffice', executable }, path.join(root, 'source.docx'), root, 2000, run)
+  ).toEqual({ ok: false, code: 'timeout', cleanupSafe: true })
+  const directory = (await fs.readdir(root)).find(name => name.startsWith('lo-'))!
+  expect(await fs.stat(path.join(root, directory, 'profile')).catch(() => null)).toBeNull()
+})
+
+it('超时但无法确认进程树已结束时保留配置并报告收尾不确定', async () => {
+  const run = vi.fn<typeof runOfficeProcess>().mockResolvedValue({ stdout: '', failure: 'timeout', stopped: false })
   expect(
     await convertLibreOffice(
       { provider: 'libreoffice', executable },

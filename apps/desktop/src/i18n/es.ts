@@ -5270,12 +5270,23 @@ export const esOverrides = {
       firstOpen: 'La primera vista previa puede tardar unos segundos.',
       installConverter: 'Si no hay un programa de conversión disponible, instala LibreOffice y vuelve a intentarlo.'
     },
+    slides: {
+      page: page => `Diapositiva ${page}`,
+      counter: (page, total) => `${page} / ${total}`,
+      previous: 'Diapositiva anterior',
+      next: 'Diapositiva siguiente',
+      fullscreen: 'Presentar en pantalla completa',
+      exitFullscreen: 'Salir de pantalla completa',
+      fullscreenFailed: 'No se pudo cambiar el modo de pantalla completa. Puedes seguir leyendo las diapositivas.',
+      pageFailed: page => `No se puede mostrar la diapositiva ${page}.`
+    },
     delimited: {
       table: 'Tabla',
       empty: 'Esta tabla está vacía.',
       limited: 'Mostrando las primeras 500 filas de datos.',
       columnsLimited: 'Mostrando las primeras 50 columnas.'
     },
+    sheetLimited: 'Algunas hojas superan las 500 filas. Solo se muestran sus primeras 500 filas.',
     tiffFirstPage: 'Este TIFF contiene varias páginas. Solo se muestra la primera.',
     edit: 'Editar',
     editing: 'Edición',

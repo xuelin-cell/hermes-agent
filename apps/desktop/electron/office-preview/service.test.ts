@@ -93,6 +93,47 @@ it('按厂家顺序安全降级，合并并发并命中缓存，A→B→A 不共
   expect(a.detector.invalidate).toHaveBeenCalled()
 })
 
+it('排队期间文件被再次保存时转换保存后的版本，而不是报告失败', async () => {
+  const a = setup()
+  const other = path.join(root, 'other.docx')
+  await fs.writeFile(other, 'source text')
+  let release!: () => void
+  const gate = new Promise<void>(resolve => (release = resolve))
+
+  a.com.mockImplementationOnce(async (_program, _copy, directory) => {
+    await gate
+    const pdfPath = path.join(directory, 'result.pdf')
+    await fs.writeFile(pdfPath, pdf)
+
+    return { ok: true, pdfPath }
+  })
+
+  // 先让另一份文件占住队列，再提交被测文件，保证它确实在排队。
+  const first = a.service.convert(other)
+  await vi.waitFor(() => expect(a.com).toHaveBeenCalledTimes(1))
+  const queued = a.service.convert(source)
+  await new Promise(resolve => setTimeout(resolve, 200))
+  const saved = new Date(Date.now() + 60_000)
+  await fs.utimes(source, saved, saved)
+  release()
+
+  expect(await first).toMatchObject({ ok: true })
+  const result = await queued
+  expect(result).toMatchObject({ ok: true, converter: 'ms-office', pdf })
+  // 结果按保存后的版本缓存：再次打开直接命中，不再转换。
+  expect(await a.service.convert(source)).toEqual(result)
+  expect(a.com).toHaveBeenCalledTimes(2)
+})
+
+it('转换成功后删除临时目录失败，仍返回已经发布的结果', async () => {
+  const a = setup()
+  const busy = Object.assign(new Error('resource busy'), { code: 'EBUSY' })
+  const discard = vi.spyOn(OfficePreviewCache.prototype, 'discardWorkDirectory').mockRejectedValueOnce(busy)
+  expect(await a.service.convert(source)).toMatchObject({ ok: true, converter: 'ms-office', pdf })
+  expect(discard).toHaveBeenCalledTimes(1)
+  discard.mockRestore()
+})
+
 it('收尾不确定停止降级，保留目录，超过一小时或服务重建也不回收证据', async () => {
   const fixture = setup()
   fixture.com.mockResolvedValue({ ok: false, code: 'timeout', cleanupSafe: false })
