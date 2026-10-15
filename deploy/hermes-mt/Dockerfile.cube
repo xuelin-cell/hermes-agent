@@ -91,11 +91,17 @@ RUN set -eu; \
 # 直接共用，这里只多下 headless shell。PLAYWRIGHT_BROWSERS_PATH 指着 pm 的工具目录 /opt/hermes/tools，
 # playwright install 默认会把那里它不认识的 chromium-* / ffmpeg-* 当旧版本删掉，所以必须带
 # PLAYWRIGHT_SKIP_BROWSER_GC=1。装完起一次无头浏览器，再确认 pm 的 Chromium 和 ffmpeg 都还在。
-# headless shell 默认从 Playwright 的 CDN 下；连不上时构建时可换成目录结构相同的源，例如
-# --build-arg PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST=https://storage.googleapis.com/chrome-for-testing-public
-ARG PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST=
+# 下载源：部署机连不上 Playwright 的 CDN（10-15 实测，cdn.playwright.dev 跳转后超时），headless shell 和
+# Playwright 自带的 ffmpeg 改从 npmmirror 下（目录结构和官方一样）。Playwright 不校验下载内容，这里按 sha256
+# 核对这两个文件（和官方那份逐字节相同）；换 Playwright 版本时这两个值要跟着换。
+ARG PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/chrome-for-testing
+ARG PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright
 RUN set -eu; \
     PLAYWRIGHT_SKIP_BROWSER_GC=1 /opt/hermes/.venv/bin/playwright install chromium; \
+    printf '%s  %s\n' \
+        27e55cc30e487493b89b663085d6deeb0707be201a568657c922fac9076c317c /opt/hermes/tools/chromium_headless_shell-1208/chrome-headless-shell-linux64/chrome-headless-shell \
+        460d44f3416005662f528d4b92e7b94ace924e8a0288106d3803b73c56eaadc8 /opt/hermes/tools/ffmpeg-1011/ffmpeg-linux \
+        | sha256sum -c -; \
     /opt/hermes/.venv/bin/python -c 'from playwright.sync_api import sync_playwright; p = sync_playwright().start(); b = p.chromium.launch(); pg = b.new_page(); pg.set_content("<p>ok</p>"); assert pg.inner_text("p") == "ok"; b.close(); p.stop()'; \
     /opt/hermes/.venv/bin/python -c 'from pm import installed_package; gone = [n for n in ("chromium", "ffmpeg") if not installed_package(n).binary.is_file()]; assert not gone, gone'
 
