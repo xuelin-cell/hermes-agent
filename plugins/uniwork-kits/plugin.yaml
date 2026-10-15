@@ -1,0 +1,12 @@
+name: uniwork-kits
+version: "0.1.0"
+description: "Install WorkBuddy / UniClaw kits and experts into Hermes: kit skills and MCP go into a profile's skills tree and config, an expert becomes its own profile (SOUL = lead persona). Adds `hermes kit`, per-expert host rules as cache-safe system prompt sections, and per-turn kit hints."
+author: "UniWork"
+hooks:
+  - pre_llm_call
+  - pre_tool_call
+  - post_tool_call
+  - transform_tool_result
+  - transform_llm_output
+  - on_session_start
+  - on_session_end

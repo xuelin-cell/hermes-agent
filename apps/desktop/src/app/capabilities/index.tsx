@@ -1,6 +1,7 @@
 import { useStore } from '@nanostores/react'
 import type * as React from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router'
 
 import { PageLoader } from '@/components/page-loader'
 import { Button } from '@/components/ui/button'
@@ -19,6 +20,7 @@ import { PageSearchShell } from '../page-search-shell'
 import type { SetStatusbarItemGroup } from '../shell/statusbar-controls'
 
 import { prefetchCatalogWhenIdle } from './catalog/catalog-data'
+import { isManagedKitSkill } from './kit-skills'
 import { McpConnectorsTab } from './mcp-mt/connectors-tab'
 import { PluginsTab } from './plugins/plugins-tab'
 import { CapabilityScopeSelector, useCapabilityScope } from './scope-selector'
@@ -66,6 +68,7 @@ export function CapabilitiesView({
   ...props
 }: CapabilitiesViewProps) {
   const { t } = useI18n()
+  const navigate = useNavigate()
   const developerMode = useStore($developerMode)
   // Both hooks run unconditionally (rules of hooks); embedded picks the local
   // one so tab clicks inside a dialog don't rewrite the page URL.
@@ -92,6 +95,10 @@ export function CapabilitiesView({
   const { data: skills, isError: skillsFailed, error: skillsError } = useSkillsQuery(scope.profile)
   const { data: toolsets, isError: toolsetsFailed } = useToolsetsQuery(scope.profile)
   const installedSkillNames = useMemo(() => new Set((skills ?? []).map(skill => skill.name)), [skills])
+  // Kit skills (`套件--技能`) are switched on the Kits page; listing them here too
+  // would give one skill two switches. The install guard above still sees them.
+  const manageableSkills = useMemo(() => (skills ?? []).filter(skill => !isManagedKitSkill(skill.name)), [skills])
+  const hiddenKitSkills = (skills?.length ?? 0) - manageableSkills.length
 
   const refreshCapabilities = useCallback(async () => {
     await Promise.all([
@@ -114,8 +121,8 @@ export function CapabilitiesView({
   // Rotating placeholder nudges from the user's own data — teach that search
   // understands categories and tool names, not just titles.
   const searchHints = useMemo(() => {
-    if (mode === 'skills' && skills?.length) {
-      return skillSearchTerms(skills).map(term => t.common.tryHint(term))
+    if (mode === 'skills' && manageableSkills.length) {
+      return skillSearchTerms(manageableSkills).map(term => t.common.tryHint(term))
     }
 
     if (mode === 'toolsets' && toolsets?.length) {
@@ -123,7 +130,7 @@ export function CapabilitiesView({
     }
 
     return undefined
-  }, [mode, skills, t, toolsets])
+  }, [manageableSkills, mode, t, toolsets])
 
   // MCP and Plugins load independently of the installed Skills/Tools lists.
   const gated = mode === 'toolsets'
@@ -170,18 +177,29 @@ export function CapabilitiesView({
     skills: () => (
       <SkillMarket
         installed={
-          <SkillsTab
-            installedError={skillsError}
-            installedPending={!skills || skillsFailed}
-            key={`skills-${scope.key}`}
-            onQueryChange={setQuery}
-            onRefresh={() => void refreshCapabilities()}
-            profile={scope.profile}
-            query={query}
-            skills={skills ?? []}
-          />
+          <div className="flex min-h-0 flex-1 flex-col">
+            {hiddenKitSkills > 0 ? (
+              <button
+                className="mx-3 mt-2 rounded-md border border-(--ui-stroke-secondary) px-3 py-2 text-left text-xs text-(--ui-text-secondary)"
+                onClick={() => navigate('/kits')}
+                type="button"
+              >
+                {t.skills.kitSkillsNote}
+              </button>
+            ) : null}
+            <SkillsTab
+              installedError={skillsError}
+              installedPending={!skills || skillsFailed}
+              key={`skills-${scope.key}`}
+              onQueryChange={setQuery}
+              onRefresh={() => void refreshCapabilities()}
+              profile={scope.profile}
+              query={query}
+              skills={manageableSkills}
+            />
+          </div>
         }
-        installedCount={skills?.length ?? 0}
+        installedCount={manageableSkills.length}
         installedNames={installedSkillNames}
         profile={scope.profile}
       />
@@ -209,7 +227,7 @@ export function CapabilitiesView({
       }
       searchValue={query}
       tabs={[
-        { id: 'skills', label: t.skills.tabSkills, meta: skills?.length ?? null },
+        { id: 'skills', label: t.skills.tabSkills, meta: skills ? manageableSkills.length : null },
         ...(developerMode
           ? [{ id: 'toolsets', label: t.skills.tabToolsets, meta: toolsets ? visibleToolsetCount(toolsets) : null }]
           : []),
