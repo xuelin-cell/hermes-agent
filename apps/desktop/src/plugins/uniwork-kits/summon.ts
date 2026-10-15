@@ -25,6 +25,36 @@ const READY_TIMEOUT_MS = 30_000
 // user carried over or started typing is never overwritten.
 const SETTLE_MS = [150, 700]
 
+/** The two composer doors desktops have shipped: newer ones expose
+ *  `host.composer` (draft read/write by session address, `'new'` = the draft
+ *  with no session yet); older ones only `host.setComposerText`. */
+interface ComposerDoor {
+  getDraft: (sessionId: null | string) => Promise<null | string>
+  setDraft: (sessionId: null | string, text: string) => Promise<boolean>
+}
+
+interface HostComposerDoors {
+  composer?: ComposerDoor
+  setComposerText?: (text: string, options?: { ifEmpty?: boolean }) => void
+}
+
+/** Put *text* in the new chat's input box; with *ifEmpty*, only when the box is empty. */
+async function putPrompt(text: string, ifEmpty: boolean): Promise<void> {
+  const doors = host as unknown as HostComposerDoors
+
+  if (doors.composer) {
+    if (ifEmpty && (await doors.composer.getDraft('new'))?.trim()) {
+      return
+    }
+
+    await doors.composer.setDraft('new', text)
+
+    return
+  }
+
+  doors.setComposerText?.(text, { ifEmpty })
+}
+
 /** Fill *text* once the focused chat is a draft in *profile*. */
 function prefillWhenReady(profile: string, text: string): void {
   const ready = () => host.state.focusedSessionProfile.get() === profile && !host.state.focusedSessionId.get()
@@ -33,7 +63,7 @@ function prefillWhenReady(profile: string, text: string): void {
     for (const delay of SETTLE_MS) {
       setTimeout(() => {
         if (ready()) {
-          host.setComposerText(text, { ifEmpty: true })
+          void putPrompt(text, true).catch(() => undefined)
         }
       }, delay)
     }
@@ -73,7 +103,7 @@ export function summonExpert(expert: ExpertCard): void {
 
 /** Put a quick prompt in the chat on screen. */
 export function fillPrompt(text: string): void {
-  host.setComposerText(text)
+  void putPrompt(text, false).catch(() => undefined)
 }
 
 /** Back to the general assistant: a new chat in the default profile. */
