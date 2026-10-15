@@ -70,7 +70,7 @@ export default function SlidesPreview({ onFailure, path, reloadKey, target }: Fo
   }, [onFailure, path, reloadKey])
 
   return source ? (
-    <SlidesViewer label={target.label} onFailure={onFailure} source={source} />
+    <SlidesViewer label={target.label} source={source} />
   ) : (
     <div className="flex h-full flex-col items-center justify-center gap-3 p-3">
       <PageLoader className="h-auto" label={t.preview.office.converting} />
@@ -82,7 +82,6 @@ export default function SlidesPreview({ onFailure, path, reloadKey, target }: Fo
 interface ViewerProps {
   label: string
   source: PdfPages
-  onFailure: FormatRendererProps['onFailure']
 }
 
 const STEPS: Record<string, number> = {
@@ -96,7 +95,7 @@ const STEPS: Record<string, number> = {
 }
 
 /** 普通模式按需画图，全屏只显示当前页；键盘只在本查看器拥有全屏时接管。 */
-export function SlidesViewer({ label, source, onFailure }: ViewerProps) {
+export function SlidesViewer({ label, source }: ViewerProps) {
   const { t } = useI18n()
   const copy = t.preview.slides
   const root = useRef<HTMLDivElement>(null)
@@ -304,12 +303,7 @@ export function SlidesViewer({ label, source, onFailure }: ViewerProps) {
               style={{ aspectRatio: `${size.width}/${size.height}` }}
             >
               {near.has(index + 1) && (
-                <SlideImage
-                  className="size-full object-contain"
-                  number={index + 1}
-                  onFailure={onFailure}
-                  source={source}
-                />
+                <SlideImage className="size-full object-contain" number={index + 1} source={source} />
               )}
             </div>
           ))}
@@ -317,31 +311,26 @@ export function SlidesViewer({ label, source, onFailure }: ViewerProps) {
       </div>
       {fullscreen && (
         <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-4">
-          <SlideImage
-            className="max-h-full max-w-full object-contain"
-            key={page}
-            number={page}
-            onFailure={onFailure}
-            source={source}
-          />
+          <SlideImage className="max-h-full max-w-full object-contain" key={page} number={page} source={source} />
         </div>
       )}
     </div>
   )
 }
 
-/** 图片持有自己的 Blob 地址，避免后台六页缓存淘汰时使仍在显示的图片失效。 */
+/** 图片持有自己的 Blob 地址，避免后台六页缓存淘汰时使仍在显示的图片失效；画不出来只在这一页显示说明。 */
 function SlideImage({
   source,
   number,
-  className,
-  onFailure
-}: Pick<ViewerProps, 'source' | 'onFailure'> & { number: number; className: string }) {
+  className
+}: Pick<ViewerProps, 'source'> & { number: number; className: string }) {
   const { t } = useI18n()
   const [url, setUrl] = useState('')
+  const [broken, setBroken] = useState(false)
   useEffect(() => {
     let active = true
     let owned: string | undefined
+    setBroken(false)
     void source
       .renderPage(number)
       .then(async image => {
@@ -356,9 +345,9 @@ function SlideImage({
           setUrl(owned)
         }
       })
-      .catch(error => {
+      .catch(() => {
         if (active) {
-          onFailure(previewFailure(error))
+          setBroken(true)
         }
       })
 
@@ -369,14 +358,25 @@ function SlideImage({
         URL.revokeObjectURL(owned)
       }
     }
-  }, [number, onFailure, source])
+  }, [number, source])
+
+  if (broken) {
+    return (
+      <div
+        className="flex size-full items-center justify-center p-4 text-center text-xs text-muted-foreground"
+        role="status"
+      >
+        {t.preview.slides.pageFailed(number)}
+      </div>
+    )
+  }
 
   return url ? (
     <img
       alt={t.preview.slides.page(number)}
       className={className}
       draggable={false}
-      onError={() => onFailure({ code: 'unsupported' })}
+      onError={() => setBroken(true)}
       src={url}
     />
   ) : (

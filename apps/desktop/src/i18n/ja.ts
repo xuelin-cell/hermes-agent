@@ -3602,7 +3602,8 @@ export const ja = defineLocale({
       next: '次のスライド',
       fullscreen: '全画面で表示',
       exitFullscreen: '全画面を終了',
-      fullscreenFailed: '全画面を切り替えられませんでした。スライドは引き続き閲覧できます。'
+      fullscreenFailed: '全画面を切り替えられませんでした。スライドは引き続き閲覧できます。',
+      pageFailed: page => `スライド ${page} を表示できませんでした。`
     },
     delimited: {
       table: '表',

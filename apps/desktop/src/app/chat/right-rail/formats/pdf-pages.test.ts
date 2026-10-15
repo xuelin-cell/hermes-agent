@@ -40,7 +40,7 @@ beforeEach(() => {
 
 afterEach(() => vi.restoreAllMocks())
 
-it('保留原字节和逐页尺寸，长边统一 1600，完成后归还画布与页面', async () => {
+it('保留原字节，打开时只读第一页尺寸，画图按各页真实尺寸、长边统一 1600，完成后归还画布与页面', async () => {
   const bytes = new Uint8Array([1, 2, 3])
   const reader = await openPdfPages(bytes)
   const options = mock.getDocument.mock.calls[0][0]
@@ -48,7 +48,10 @@ it('保留原字节和逐页尺寸，长边统一 1600，完成后归还画布�
   expect(options.data).not.toBe(bytes)
   expect(options.useSystemFonts).toBe(true)
   expect(options.cMapUrl).toMatch(/\/pdfjs\/cmaps\/$/)
-  expect(reader.pages[1]).toEqual({ width: 300, height: 200 })
+  // 几百页的文稿不必先逐页读尺寸：其余页先沿用第一页的比例占位。
+  expect(getPage).toHaveBeenCalledTimes(1)
+  expect(reader.pages).toHaveLength(9)
+  expect(reader.pages[1]).toEqual({ width: 100, height: 200 })
   await reader.renderPage(1)
   await reader.renderPage(2)
   expect(sizes[0].slice(0, 2)).toEqual([800, 1600])

@@ -15,6 +15,43 @@ const MAX_DECODE_BYTES = MAX_PIXELS * 4
 const COMPRESSIONS = new Set([1, 2, 3, 4, 5, 6, 7, 8, 32773, 32809, 32946, 34892])
 const COLOR_SPACES = new Set([0, 1, 2, 3, 5, 6, 32845])
 
+// 规范允许字节数为 0 的空白条带或瓦片；库仍会按压缩格式去解，Deflate 等会因此报错。跳过它们，那部分保持空白。
+const decoder = UTIF.decode as unknown as { _decompress: (...args: unknown[]) => void }
+const decompress = decoder._decompress
+decoder._decompress = (...args) => (args[4] === 0 ? undefined : decompress(...args))
+
+/** 按方向标签（274）把像素摆正：2～8 为镜像或旋转，5～8 宽高互换；常规方向直接返回，不复制。 */
+function orient(rgba: Uint8Array, width: number, height: number, orientation: number) {
+  if (orientation < 2 || orientation > 8) {
+    return { rgba, width, height }
+  }
+
+  const source = new Uint32Array(rgba.slice().buffer)
+  const target = new Uint32Array(width * height)
+  const swap = orientation >= 5
+  const columns = swap ? height : width
+  const [w, h] = [width - 1, height - 1]
+
+  // 目标列 = cx·x + cy·y + c0，目标行 = rx·x + ry·y + r0；逐像素只做整数运算。
+  const [cx, cy, c0, rx, ry, r0] = [
+    [-1, 0, w, 0, 1, 0],
+    [-1, 0, w, 0, -1, h],
+    [1, 0, 0, 0, -1, h],
+    [0, 1, 0, 1, 0, 0],
+    [0, -1, h, 1, 0, 0],
+    [0, -1, h, -1, 0, w],
+    [0, 1, 0, -1, 0, w]
+  ][orientation - 2]
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      target[(rx * x + ry * y + r0) * columns + cx * x + cy * y + c0] = source[y * width + x]
+    }
+  }
+
+  return { rgba: new Uint8Array(target.buffer), width: swap ? height : width, height: swap ? width : height }
+}
+
 /** 在分配像素内存前检查尺寸，只解码第一目录，避免遍历损坏的后续页。 */
 export function decodeTiffFirstPage(input: ArrayBuffer) {
   const buffer = input.slice(0)
@@ -85,10 +122,12 @@ export function decodeTiffFirstPage(input: ArrayBuffer) {
       (start, index) =>
         !Number.isInteger(start) ||
         !Number.isInteger(lengths[index]) ||
-        Number(start) < 8 ||
-        Number(lengths[index]) < 1 ||
-        Number(start) + Number(lengths[index]) > buffer.byteLength
-    )
+        Number(lengths[index]) < 0 ||
+        // 字节数为 0 的空白条带不读取数据，位置可以是 0。
+        (Number(lengths[index]) > 0 &&
+          (Number(start) < 8 || Number(start) + Number(lengths[index]) > buffer.byteLength))
+    ) ||
+    lengths.every(length => Number(length) === 0)
   ) {
     throw { code: 'unsupported' }
   }
@@ -99,9 +138,7 @@ export function decodeTiffFirstPage(input: ArrayBuffer) {
     throw { code: 'unsupported' }
   }
 
-  const rgba = UTIF.toRGBA8(page)
-
-  return { height, multiplePages, rgba, width }
+  return { ...orient(UTIF.toRGBA8(page), width, height, tag('t274', 1)), multiplePages }
 }
 
 /** 把解码后的像素转为本机 PNG，不将文档上传或请求外部转换服务。 */

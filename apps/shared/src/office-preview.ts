@@ -34,10 +34,15 @@ const KIND_BY_EXTENSION = new Map(
   )
 )
 
+/** 取文件名最后一个点之后的扩展名（小写）。只有网址才去掉 ? 和 # 之后的部分；本机路径里它们是文件名的一部分。 */
+export function fileExtension(filePath: string): string {
+  const clean = /^[a-z][a-z\d+.-]*:\/\//i.test(filePath) ? filePath.split(/[?#]/, 1)[0] : filePath
+  const name = clean.split(/[\\/]/).at(-1) || ''
+
+  return name.includes('.') ? name.split('.').at(-1)!.toLowerCase() : ''
+}
+
 /** 按文件名扩展名识别 Office 分组，未登记类型不进入转换链路。 */
 export function officeDocumentKind(filePath: string): OfficeDocumentKind | null {
-  const name = filePath.split(/[\\/]/).at(-1) || ''
-  const extension = name.includes('.') ? name.split('.').at(-1)!.toLowerCase() : ''
-
-  return KIND_BY_EXTENSION.get(extension) || null
+  return KIND_BY_EXTENSION.get(fileExtension(filePath)) || null
 }

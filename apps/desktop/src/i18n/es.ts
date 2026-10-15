@@ -5269,7 +5269,8 @@ export const esOverrides = {
       next: 'Diapositiva siguiente',
       fullscreen: 'Presentar en pantalla completa',
       exitFullscreen: 'Salir de pantalla completa',
-      fullscreenFailed: 'No se pudo cambiar el modo de pantalla completa. Puedes seguir leyendo las diapositivas.'
+      fullscreenFailed: 'No se pudo cambiar el modo de pantalla completa. Puedes seguir leyendo las diapositivas.',
+      pageFailed: page => `No se puede mostrar la diapositiva ${page}.`
     },
     delimited: {
       table: 'Tabla',

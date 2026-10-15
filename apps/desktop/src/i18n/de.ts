@@ -5281,7 +5281,8 @@ export const deOverrides = {
       next: 'Nächste Folie',
       fullscreen: 'Im Vollbild präsentieren',
       exitFullscreen: 'Vollbild verlassen',
-      fullscreenFailed: 'Der Vollbildmodus konnte nicht gewechselt werden. Die Folien bleiben lesbar.'
+      fullscreenFailed: 'Der Vollbildmodus konnte nicht gewechselt werden. Die Folien bleiben lesbar.',
+      pageFailed: page => `Folie ${page} kann nicht angezeigt werden.`
     },
     delimited: {
       table: 'Tabelle',

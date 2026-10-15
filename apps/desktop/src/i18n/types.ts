@@ -4175,6 +4175,7 @@ export interface Translations {
       fullscreen: string
       exitFullscreen: string
       fullscreenFailed: string
+      pageFailed: (page: number) => string
     }
     delimited: {
       table: string

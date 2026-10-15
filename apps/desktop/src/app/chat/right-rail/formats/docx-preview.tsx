@@ -9,6 +9,9 @@ import { previewFailure } from './failure'
 import type { FormatRendererProps } from './registry'
 import { readPreviewBytes } from './source'
 
+// A4 纸宽 210 毫米，按 96 DPI 约 794 像素。
+const A4_WIDTH = 794
+
 /** 只画压缩包内的内容；清除跳转，并把文档样式限制在无脚本、无网络的独立页面内。 */
 export async function renderDocxPage(bytes: ArrayBuffer) {
   const body = document.createElement('div')
@@ -21,6 +24,8 @@ export async function renderDocxPage(bytes: ArrayBuffer) {
   })
 
   const widths = Array.from(body.querySelectorAll<HTMLElement>('section.docx')).map(page => {
+    // 没写页面尺寸的文档（程序生成的常见）不带宽度，按 Word 的 A4 默认宽度显示。
+    page.style.width ||= `${A4_WIDTH}px`
     const match = /^([\d.]+)(pt|px)$/.exec(page.style.width)
 
     return match ? Number(match[1]) * (match[2] === 'pt' ? 96 / 72 : 1) : 0
