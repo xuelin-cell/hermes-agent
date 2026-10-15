@@ -544,8 +544,9 @@ def install_into_home(
         if skill_filter is not None and item.full_name not in skill_filter:
             continue
         if item.bare_name in builtin:
-            receipt.skipped_skills.append(f"{item.full_name}（Hermes 已有内置技能 {item.bare_name}，跳过；要装请加 --allow-builtin-overlap）")
-            continue
+            receipt.notes.append(
+                f"{item.full_name}（Hermes 已有内置技能 {item.bare_name}，套件这份使用 {item.full_name}，不覆盖原来的技能）"
+            )
         kept.append(item)
     agent_full = agent_skill_names(plan)
     agents = list(plan.agents) if include_agents else []
@@ -965,11 +966,12 @@ def inspect(path: Path, *, triggers: Dict[str, Any], allow_overlap: bool = False
         builtin = builtin_skill_names() if (plan.kind != "expert" and not allow_overlap) else set()
         for item in plan.skills:
             if item.bare_name in builtin:
-                receipt.skipped_skills.append(f"{item.full_name}（Hermes 已有内置技能 {item.bare_name}）")
-            else:
-                receipt.skills.append(item.full_name)
-                if item.origin == "command":
-                    receipt.command_skills.append(item.full_name)
+                receipt.notes.append(
+                    f"{item.full_name}（Hermes 已有内置技能 {item.bare_name}，套件这份使用 {item.full_name}，不覆盖原来的技能）"
+                )
+            receipt.skills.append(item.full_name)
+            if item.origin == "command":
+                receipt.command_skills.append(item.full_name)
         receipt.agent_skills = list(agent_skill_names(plan).values())
         if receipt.skills:
             receipt.notes.append(f"斜杠命令形如 {naming.slash_command(receipt.skills[0])}")

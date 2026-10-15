@@ -17,7 +17,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
-from . import media_slot, store
+from . import delivery, media_slot, store
 
 # Skills from another package a given expert keeps (UniClaw EXPERT_COMPANION_SKILLS).
 # equity-research keeps the data CLI only; the kit's catch-all
@@ -146,8 +146,8 @@ HOST_NOTES: Dict[str, str] = {
     "xiaohongshu-operations-expert": (
         "- 加载本专家的技能写全名，例如 `xiaohongshu-operations-expert--xiaohongshu`。\n"
         "- 查登录、搜笔记、看详情、发布、评论需要本机小红书 MCP（`http://127.0.0.1:18060/mcp`）。"
-        "工具全名形如 `mcp__xiaohongshu_mcp__check_login_status`：先在工具列表里找以 "
-        "`__check_login_status` 结尾的工具；找不到就说明本机小红书服务尚未接入，策略和文案照常做。"
+        "工具全名形如 `mcp__xiaohongshu_mcp__check_login_status`：工具列表里没有时在 `tool_search` 的目录里找，"
+        "用 `tool_describe` 取参数后 `tool_call` 调用；目录里也没有就说明本机小红书服务尚未接入，策略和文案照常做。"
         "禁止用浏览器、网页抓取或 `web_extract` 代替账号操作。\n"
         "- 要用账号时先调 `check_login_status`，已登录就直接往下做；确认未登录才调一次 "
         "`get_login_qrcode`，按它返回的原话回复用户。不要为确认图片重复调用，每调一次上一张就作废；"
@@ -200,8 +200,7 @@ SHARED_RULES = (
     "- 用 `delegate_task` 派子任务时，`goal` 只写当前步的产出和保存路径，`context` 放必要材料；"
     "不要把整份技能正文贴进去。派工结果是异步回来的。\n"
     "- 有平台像素要求、且图上必须有可读标题的封面：用 Python + Pillow 按尺寸画终稿；生图只用于无字底图。\n"
-    "- 交付文件写好后在回复里写明文件的完整路径。本应用没有 PresentToUser / present_files，"
-    "不要声称已弹出文件卡片；包里提到的 ToolSearch 在本应用不需要，工具直接调用。\n"
+    "- 包里提到的 ToolSearch 对应本应用的 `tool_search`：MCP 工具不在工具列表里时，先 `tool_describe` 再 `tool_call`。\n"
 )
 
 ASK_BEFORE_WORKING = (
@@ -316,6 +315,7 @@ def section_expert_working(session_info: Mapping[str, Any]) -> str:
             identity_line(*found),
             "专家工作守则（适用于所有专家）：",
             SHARED_RULES.rstrip(),
+            delivery.instruction(str(session_info.get("platform") or "")),
             ASK_BEFORE_WORKING.rstrip(),
             WORKING_STYLE.rstrip(),
         ]

@@ -23,14 +23,14 @@ def setup(parser: argparse.ArgumentParser) -> None:
     p = sub.add_parser("inspect", help="只解析包、打印检查结果，不写任何文件")
     p.add_argument("paths", nargs="+", help="插件 zip 或已解压的目录")
     p.add_argument("--triggers", help="UniClaw 的 plugin_index.json，用来导入中文触发词")
-    p.add_argument("--allow-builtin-overlap", action="store_true", help="不跳过与 Hermes 内置技能同名的技能")
+    p.add_argument("--allow-builtin-overlap", action="store_true", help="兼容旧参数。和内置技能重名时总会装成「套件--技能」，不再跳过")
 
     p = sub.add_parser("install", help="安装套件或专家")
     p.add_argument("paths", nargs="+", help="插件 zip 或已解压的目录")
     _add_profile(p)
     p.add_argument("--triggers", help="UniClaw 的 plugin_index.json，用来导入中文触发词")
     p.add_argument("--avatars-dir", help="专家头像目录，里面放 <插件名>.png（UniClaw 宿主头像）")
-    p.add_argument("--allow-builtin-overlap", action="store_true", help="不跳过与 Hermes 内置技能同名的技能")
+    p.add_argument("--allow-builtin-overlap", action="store_true", help="兼容旧参数。和内置技能重名时总会装成「套件--技能」，不再跳过")
     p.add_argument("--market-id", default="", help="市场条目 id，记在索引上，用来认出已经装过的市场包")
     p.add_argument(
         "--no-generate-triggers",
@@ -80,6 +80,12 @@ def setup(parser: argparse.ArgumentParser) -> None:
     p.add_argument("--decision", choices=("accept", "decline"), default="accept")
     _add_profile(p)
 
+    p = sub.add_parser("media", help="查看这个 profile 的生图 / 搜图 / 生视频工具；把 UniAI 工具箱写进配置")
+    p.add_argument("action", choices=("status", "connect"), help="status 只看；connect 写入 UniAI-Toolkit 这条 MCP")
+    p.add_argument("--key-env", default="", help="密钥所在的 .env 变量名（默认 DESKTOP_MT_MAAS_API_KEY）")
+    p.add_argument("--name", default="UniAI-Toolkit", help="写进 mcp_servers 的名字")
+    _add_profile(p)
+
 
 def _home(args: argparse.Namespace) -> Path:
     from hermes_constants import get_hermes_home
@@ -116,7 +122,7 @@ def handle(args: argparse.Namespace) -> None:
 
     command = getattr(args, "kit_command", None)
     if not command:
-        _print("用法：hermes kit {inspect,install,seed,list,enable,disable,uninstall,triggers,config,xiaohongshu} ...（hermes kit -h 看说明）")
+        _print("用法：hermes kit {inspect,install,seed,list,enable,disable,uninstall,triggers,config,xiaohongshu,media} ...（hermes kit -h 看说明）")
         return
     failed = False
     try:
@@ -207,6 +213,19 @@ def handle(args: argparse.Namespace) -> None:
                 _print(xiaohongshu.set_consent(home, args.decision))
             else:
                 _print(xiaohongshu.attach(home))
+        elif command == "media":
+            from . import media_slot
+
+            home = _home(args)
+            if args.action == "connect":
+                try:
+                    _print(media_slot.connect_uniai(
+                        home, key_env=args.key_env or media_slot.DEFAULT_KEY_ENV, name=args.name,
+                    ))
+                except ValueError as exc:
+                    raise installer.KitError(str(exc)) from exc
+            for line in media_slot.status_lines(home):
+                _print(line)
     except XiaohongshuError as exc:
         _print(str(exc))
         failed = True

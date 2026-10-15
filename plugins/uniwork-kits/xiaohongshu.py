@@ -164,12 +164,12 @@ def start(home: Path, popen=None, listening=None, wait_s: float = 0.0) -> str:
     if sys.platform != "win32":
         exe.chmod(exe.stat().st_mode | 0o111)
     log_dir = exe.parent
-    stdout = (log_dir / "mcp-stdout.log").open("ab")
-    stderr = (log_dir / "mcp-stderr.log").open("ab")
     flags = {}
     if sys.platform == "win32":
         flags["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    proc = popen([str(exe), "-headless=true"], cwd=str(log_dir), stdout=stdout, stderr=stderr, **flags)
+    # The child keeps its own copies of the handles; ours close right away.
+    with (log_dir / "mcp-stdout.log").open("ab") as stdout, (log_dir / "mcp-stderr.log").open("ab") as stderr:
+        proc = popen([str(exe), "-headless=true"], cwd=str(log_dir), stdout=stdout, stderr=stderr, **flags)
     state = _read_json(_state_path(home))
     state.update({"pid": getattr(proc, "pid", 0), "running": True})
     _write_json(_state_path(home), state)
@@ -185,31 +185,41 @@ def start(home: Path, popen=None, listening=None, wait_s: float = 0.0) -> str:
     return "已启动，18060 还没就绪。首次启动可能在下载浏览器；稍后再说「扫码登录」。"
 
 
+def _ours(pid: int, home: Path) -> bool:
+    """Whether *pid* is still the program this profile started (a recycled pid is not)."""
+    try:
+        import psutil
+
+        exe = psutil.Process(pid).exe()
+    except Exception:
+        return False
+    try:
+        return Path(exe).resolve() == binary_path(home).resolve()
+    except OSError:
+        return False
+
+
 def stop(home: Path) -> str:
     state = _read_json(_state_path(home))
     pid = int(state.get("pid") or 0)
-    if pid:
-        import subprocess
+    stopped = False
+    if pid and _ours(pid, home):
+        import psutil
 
-        if sys.platform == "win32":
-            subprocess.run(
-                ["taskkill", "/PID", str(pid), "/T", "/F"],
-                check=False,
-                capture_output=True,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            )
-        else:
-            import os
-            import signal
-
-            try:
-                os.kill(pid, signal.SIGTERM)
-            except OSError:
-                pass
+        try:
+            process = psutil.Process(pid)
+            for child in process.children(recursive=True):
+                child.kill()
+            process.kill()
+            stopped = True
+        except psutil.Error:
+            pass
     state["pid"] = 0
     state["running"] = False
     _write_json(_state_path(home), state)
-    return "已停止本机小红书程序。"
+    if stopped:
+        return "已停止本机小红书程序。"
+    return "没有找到这个 profile 启动的小红书程序（可能已经退出，或 18060 是别的程序开的），没有结束任何进程。"
 
 
 def set_consent(home: Path, decision: str, conversation_id: str = "machine") -> str:

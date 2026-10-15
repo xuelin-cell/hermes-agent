@@ -47,7 +47,8 @@ def kits():
     spec.loader.exec_module(mod)
     parts = (
         "installer", "host_rules", "router", "store", "naming", "llm", "triggers",
-        "media_slot", "xiaohongshu", "deck_check", "package_hooks",
+        "media_slot", "xiaohongshu", "deck_check", "package_hooks", "turns", "delivery",
+        "host_hooks", "image_landing", "deck_geometry",
     )
     for part in parts:
         importlib.import_module(f"{name}.{part}")
@@ -566,6 +567,7 @@ def test_register_wires_cli_sections_and_hook(kits):
         "on_session_start",
         "on_session_end",
         "transform_tool_result",
+        "transform_llm_output",
     }
     assert calls["sections"] and all(is_valid_system_prompt_section_id(s) for s in calls["sections"])
 
@@ -762,25 +764,60 @@ def test_media_slot_rewrites_only_tools_a_colleague_has_named(kits):
 
 
 def test_picture_rules_follow_a_deck_and_name_the_open_slot(kits, profile_env, monkeypatch):
-    deck = kits.router.on_pre_llm_call(user_message="帮我做一份幻灯片")
+    deck = kits.router.on_pre_llm_call(user_message="帮我做一份幻灯片", platform="desktop")
     assert deck and "PPT 配图原则" in deck["context"]
-    assert "真图搜索还没有接入" in deck["context"]
-    assert "image_generate" in deck["context"]
+    assert "搜图工具还没有接入" in deck["context"] and "Wikimedia" in deck["context"]
+    assert "MEDIA:" in deck["context"]
     assert kits.router.on_pre_llm_call(user_message="今天天气怎么样") is None
     follow = kits.router.on_pre_llm_call(
         user_message="第三页换成真图",
         conversation_history=[{"role": "user", "content": "先做一份幻灯片"}],
+        platform="cli",
     )
-    assert follow and "PPT 配图原则" in follow["context"]
+    assert follow and "PPT 配图原则" in follow["context"] and "MEDIA:" not in follow["context"]
 
-    monkeypatch.setattr(
-        kits.media_slot,
-        "load_slot",
-        lambda raw=None: kits.media_slot.MediaSlot("txt2img_generate", "", "image_search"),
-    )
+    _write(profile_env / "config.yaml", yaml.safe_dump({"mcp_servers": {"UniAI-Toolkit": {"url": "https://x"}}}))
     named = kits.router.on_pre_llm_call(user_message="做个PPT")
-    assert named and "txt2img_generate" in named["context"] and "image_search" in named["context"]
-    assert "真图搜索还没有接入" not in named["context"]
+    assert named and "mcp__UniAI_Toolkit__txt2img_generate" in named["context"]
+    assert "mcp__UniAI_Toolkit__image_search" in named["context"]
+    assert "tool_describe" in named["context"] and "搜图工具还没有接入" not in named["context"]
+
+
+def test_media_slot_finds_the_uniai_toolkit_by_name_or_address(kits):
+    slot = kits.media_slot.load_slot({}, {"yuanjing": {"url": "https://maas/app/mcp-server/mcp?key=${K}"}})
+    assert slot.search_tool == "mcp__yuanjing__image_search" and slot.image_tool == "mcp__yuanjing__txt2img_generate"
+    renamed = kits.media_slot.load_slot(
+        {}, {"maas-tools": {"url": "https://maas.ai-yuanjing.com/app/mcp-server/mcp?key=${K}&client_id=UniWork"}},
+    )
+    assert renamed.search_tool == "mcp__maas_tools__image_search"
+    off = kits.media_slot.load_slot({}, {"UniAI-Toolkit": {"url": "https://x", "enabled": False}})
+    assert off.search_tool == "" and off.server == ""
+    pinned = kits.media_slot.load_slot({"search_tool": ""}, {"UniAI-Toolkit": {"url": "https://x"}})
+    assert pinned.search_tool == "" and pinned.image_tool == "mcp__UniAI_Toolkit__txt2img_generate"
+    assert "tool_call" in kits.media_slot.media_note(slot)
+
+
+def test_media_connect_writes_a_key_reference_and_never_the_key(kits, profile_env, capsys):
+    note = kits.media_slot.connect_uniai(profile_env)
+    assert "DESKTOP_MT_MAAS_API_KEY" in note
+    cfg = yaml.safe_load((profile_env / "config.yaml").read_text(encoding="utf-8"))
+    entry = cfg["mcp_servers"]["UniAI-Toolkit"]
+    assert "${DESKTOP_MT_MAAS_API_KEY}" in entry["url"] and "client_id=UniWork" in entry["url"]
+    assert entry["timeout"] == kits.media_slot.UNIAI_TIMEOUT_S
+
+    cfg["mcp_servers"]["UniAI-Toolkit"]["enabled"] = False
+    (profile_env / "config.yaml").write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    kits.media_slot.connect_uniai(profile_env)
+    kept = yaml.safe_load((profile_env / "config.yaml").read_text(encoding="utf-8"))["mcp_servers"]["UniAI-Toolkit"]
+    assert kept["enabled"] is False
+
+    with (profile_env / ".env").open("a", encoding="utf-8") as env:
+        env.write("DESKTOP_MT_MAAS_API_KEY=sk-secret-value\n")
+    kept["enabled"] = True
+    (profile_env / "config.yaml").write_text(yaml.safe_dump({"mcp_servers": {"UniAI-Toolkit": kept}}), encoding="utf-8")
+    lines = "\n".join(kits.media_slot.status_lines(profile_env))
+    assert "mcp__UniAI_Toolkit__image_search" in lines and "sk-secret-value" not in lines
+    assert "缺密钥" not in lines
 
 
 def test_xiaohongshu_attach_writes_only_that_experts_profile_and_does_not_download(kits, profile_env):
@@ -822,7 +859,7 @@ def _png(width: int, height: int) -> bytes:
     return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
 
 
-def _pptx(path: Path, png: bytes, box: tuple | None) -> None:
+def _pptx(path: Path, png: bytes, box: tuple | None, origin: tuple = (0, 0)) -> None:
     import zipfile
 
     cx, cy = box or (0, 0)
@@ -831,7 +868,7 @@ def _pptx(path: Path, png: bytes, box: tuple | None) -> None:
         picture = (
             "<p:pic><p:nvPicPr><p:cNvPr id=\"2\" name=\"pic\"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>"
             '<p:blipFill><a:blip r:embed="rId1"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>'
-            f'<p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="{cx}" cy="{cy}"/></a:xfrm>'
+            f'<p:spPr><a:xfrm><a:off x="{origin[0]}" y="{origin[1]}"/><a:ext cx="{cx}" cy="{cy}"/></a:xfrm>'
             '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>'
         )
     slide = (
@@ -856,7 +893,9 @@ def _pptx(path: Path, png: bytes, box: tuple | None) -> None:
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
         '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" '
-        'Target="../media/image1.png"/></Relationships>'
+        'Target="../media/image1.png"/>'
+        '<Relationship Id="rId9" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" '
+        'Target="../slideLayouts/slideLayout1.xml"/></Relationships>'
     )
     path.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(path, "w") as archive:
@@ -866,39 +905,318 @@ def _pptx(path: Path, png: bytes, box: tuple | None) -> None:
         archive.writestr("ppt/media/image1.png", png)
 
 
-def test_deck_check_flags_stretch_and_lands_a_picture_at_its_own_aspect(kits, tmp_path):
-    wide = _png(100, 50)
+def test_builtin_office_skill_is_installed_under_the_kit_name(kits, profile_env, tmp_path):
+    root = tmp_path / "pkgs" / "office-kit"
+    _write(root / "plugin.json", json.dumps({
+        "name": "office-kit", "version": "1.0.0", "description": "办公套件",
+    }, ensure_ascii=False))
+    _write(root / "skills" / "docx" / "SKILL.md",
+           "---\nname: docx\ndescription: 套件里的文档写法。\n---\n按套件步骤写文档。\n")
+    receipt = kits.installer.install(root, profile_env, triggers={}, generate_triggers=False)
+    assert receipt.ok, receipt.render()
+    assert "office-kit--docx" in receipt.skills
+    assert receipt.skipped_skills == []
+    assert any("office-kit--docx" in note and "docx" in note for note in receipt.notes)
+    assert "office-kit--docx" in _index_text(profile_env)
+
+
+def _turn(kits, session="s1", turn="t1", platform="desktop", deck=True):
+    return kits.turns.begin(session, turn, platform=platform, deck=deck)
+
+
+def _rewrite(path: Path, *args, **kwargs) -> None:
+    """Rewrite a deck so its size and mtime both move, the way a rerun script does."""
+    import os
+    import time
+
+    before = path.stat().st_mtime_ns if path.exists() else 0
+    _pptx(path, *args, **kwargs)
+    with path.open("ab") as handle:
+        handle.write(b"\0" * (int(time.time_ns()) % 7 + 1))
+    os.utime(path, ns=(before + 10_000_000, before + 10_000_000))
+
+
+def test_broken_deck_is_sent_back_twice_per_request_then_released(kits, tmp_path):
+    kits.turns.clear()
+    turn = _turn(kits)
+    path = tmp_path / "bleed.pptx"
+    args = {"command": f'node "{tmp_path / "make.js"}"'}
+    (tmp_path / "make.js").write_text(f'writeFileSync("{path.as_posix()}", "")\n', encoding="utf-8")
+    replies = []
+    for _ in range(3):
+        _rewrite(path, _png(20, 20), (914400, 914400), origin=(-2 * 914400, 0))
+        replies.append(kits.deck_check.annotate("terminal", args, "exit 0", turn))
+    assert "没有交付" in replies[0] and "页面外" in replies[0]
+    assert "没有交付" in replies[1]
+    assert "可以交给用户" in replies[2] and "没有交付" not in replies[2]
+
+    # Mentioning the same, unchanged file again says nothing new.
+    assert kits.deck_check.annotate("terminal", {"command": f"dir {path}"}, "listed", turn) is None
+
+    # A new request gets its own two bounces.
+    fresh = kits.turns.current("s1", "t2")
+    _rewrite(path, _png(20, 20), (914400, 914400), origin=(-2 * 914400, 0))
+    assert "没有交付" in kits.deck_check.annotate("terminal", args, "exit 0", fresh)
+
+
+def test_clean_deck_passes_with_the_desktop_delivery_line(kits, tmp_path):
+    kits.turns.clear()
+    path = tmp_path / "ok.pptx"
+    _pptx(path, _png(100, 50), (2 * 914400, 914400))
+    passed = kits.deck_check.annotate("write_file", {"path": str(path)}, "ok", _turn(kits))
+    assert "没有发现问题" in passed and "MEDIA:" in passed
+    _rewrite(path, _png(100, 50), (2 * 914400, 914400))
+    on_cli = kits.deck_check.annotate("write_file", {"path": str(path)}, "ok", _turn(kits, "s2", platform="cli"))
+    assert "MEDIA:" not in on_cli and "完整路径" in on_cli
+
+
+def test_deck_check_flags_a_stretched_picture(kits, tmp_path):
     stretched = tmp_path / "stretched.pptx"
-    square = 2 * 914400
-    _pptx(stretched, wide, (square, square))
-    problems = kits.deck_check.check_pptx(stretched)
-    assert any("拉伸" in item for item in problems)
-
-    landed = tmp_path / "landed.pptx"
-    _pptx(landed, wide, None)
-    note = kits.deck_check.insert_picture(landed, wide)
-    assert "第 1 页" in note
-    assert not any("拉伸" in item for item in kits.deck_check.check_pptx(landed))
-    saved = kits.deck_check.land_image(tmp_path / "pics", "moutai.png", wide, "westock")
-    assert (tmp_path / "pics" / "moutai.png").is_file()
-    assert "100×50" in saved
+    _pptx(stretched, _png(100, 50), (2 * 914400, 2 * 914400))
+    assert any("拉伸" in item for item in kits.deck_check.check_pptx(stretched))
 
 
-def test_package_hook_blocks_a_failing_command(kits, profile_env):
+def _deck_with(path: Path, *, slide_extra: str = "", presentation: str = "", parts: dict | None = None) -> None:
+    import zipfile
+
+    _pptx(path, _png(20, 20), None)
+    with zipfile.ZipFile(path) as archive:
+        files = {name: archive.read(name) for name in archive.namelist()}
+    slide = files["ppt/slides/slide1.xml"].decode("utf-8")
+    files["ppt/slides/slide1.xml"] = slide.replace("</p:spTree>", "</p:spTree>" + slide_extra, 1).encode("utf-8") \
+        if slide_extra.startswith("<p:timing") else slide.replace("</p:spTree>", slide_extra + "</p:spTree>", 1).encode("utf-8")
+    files["ppt/slides/_rels/slide1.xml.rels"] = (
+        b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        b'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        b'<Relationship Id="rId9" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" '
+        b'Target="../slideLayouts/slideLayout1.xml"/></Relationships>'
+    )
+    if presentation:
+        files["ppt/presentation.xml"] = presentation.encode("utf-8")
+    for name, body in (parts or {}).items():
+        files[name] = body.encode("utf-8")
+    with zipfile.ZipFile(path, "w") as archive:
+        for name, body in files.items():
+            archive.writestr(name, body)
+
+
+def test_deck_check_names_what_powerpoint_refuses_to_open(kits, tmp_path):
+    shape = (
+        '<p:sp><p:nvSpPr><p:cNvPr id="5" name="t"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>'
+        '<p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/></a:xfrm>'
+        '<a:ln><a:prstDash val="roundDot"/></a:ln></p:spPr>'
+        '<p:txBody><a:bodyPr/><a:p><a:r><a:rPr sz="90"/><a:t>小字</a:t></a:r></a:p></p:txBody></p:sp>'
+    )
+    bad_values = tmp_path / "values.pptx"
+    _deck_with(bad_values, slide_extra=shape)
+    problems = "\n".join(kits.deck_check.check_pptx(bad_values))
+    assert "roundDot" in problems and "0.9 磅" in problems and "打不开" in problems
+
+    animation = tmp_path / "animation.pptx"
+    _deck_with(animation, slide_extra=(
+        '<p:timing><p:tnLst><p:par><p:cTn id="1"><p:childTnLst>'
+        '<p:par><p:cTn id="2" presetClass="entr"><p:childTnLst><p:set><p:cBhvr><p:cTn id="3"/>'
+        '<p:tgtEl><p:spTgt spid="42"/></p:tgtEl></p:cBhvr></p:set></p:childTnLst></p:cTn></p:par>'
+        '</p:childTnLst></p:cTn></p:par></p:tnLst></p:timing>'
+    ))
+    assert any("id=42" in item for item in kits.deck_check.check_pptx(animation))
+
+    notes = tmp_path / "notes.pptx"
+    theme_rel = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" '
+        'Target="../theme/theme1.xml"/></Relationships>'
+    )
+    presentation = (
+        '<p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        '<p:notesMasterIdLst><p:notesMasterId r:id="rId8"/></p:notesMasterIdLst>'
+        '<p:sldIdLst><p:sldId id="256" r:id="rId1"/></p:sldIdLst><p:sldSz cx="12192000" cy="6858000"/></p:presentation>'
+    )
+    parts = {
+        "ppt/notesMasters/notesMaster1.xml": "<p:notesMaster/>",
+        "ppt/notesMasters/_rels/notesMaster1.xml.rels": theme_rel,
+        "ppt/slideMasters/slideMaster1.xml": "<p:sldMaster/>",
+        "ppt/slideMasters/_rels/slideMaster1.xml.rels": theme_rel,
+        "ppt/theme/theme1.xml": "<a:theme/>",
+    }
+    _deck_with(notes, presentation=presentation, parts=parts)
+    assert any("备注母版" in item for item in kits.deck_check.check_pptx(notes))
+    # The same deck with notesMasterIdLst out of schema order opens, so it is left alone.
+    tolerated = tmp_path / "tolerated.pptx"
+    _deck_with(tolerated, presentation=presentation.replace(
+        '<p:notesMasterIdLst><p:notesMasterId r:id="rId8"/></p:notesMasterIdLst><p:sldIdLst><p:sldId id="256" r:id="rId1"/></p:sldIdLst>',
+        '<p:sldIdLst><p:sldId id="256" r:id="rId1"/></p:sldIdLst><p:notesMasterIdLst><p:notesMasterId r:id="rId8"/></p:notesMasterIdLst>',
+    ), parts=parts)
+    assert not any("备注母版" in item for item in kits.deck_check.check_pptx(tolerated))
+
+
+def test_generated_pictures_are_reviewed_once_per_request(kits, profile_env, tmp_path):
+    kits.turns.clear()
+    hooks = kits.host_hooks
+    kits.router.on_pre_llm_call(user_message="做一份西游记幻灯片", session_id="g1", turn_id="r1", platform="desktop")
+    hooks.on_transform_tool_result(
+        tool_name="mcp__UniAI_Toolkit__txt2img_generate",
+        args={"prompt": "水墨风 孙悟空 腾云"},
+        result='{"images": ["https://oss/x.png"]}',
+        session_id="g1", turn_id="r1",
+    )
+    path = tmp_path / "xyj.pptx"
+    _pptx(path, _png(100, 50), (2 * 914400, 914400))
+    first = hooks.on_transform_tool_result(tool_name="write_file", args={"path": str(path)}, result="ok",
+                                           session_id="g1", turn_id="r1")
+    assert "先别交付" in first and "孙悟空" in first and "一处「AI 生成」都没有" in first
+    _rewrite(path, _png(100, 50), (2 * 914400, 914400))
+    second = hooks.on_transform_tool_result(tool_name="write_file", args={"path": str(path)}, result="ok",
+                                            session_id="g1", turn_id="r1")
+    assert "先别交付" not in second and "MEDIA:" in second
+
+
+def test_ppt_kit_skill_brings_the_picture_rules_once(kits, profile_env, expert_pkg, monkeypatch):
+    kits.turns.clear()
+    hooks = kits.host_hooks
+    kits.router.on_pre_llm_call(user_message="帮我看看这个", session_id="k1", turn_id="r1", platform="desktop")
+    loaded = hooks.on_transform_tool_result(tool_name="skill_view", args={"name": "pptx--pptx"}, result="# PPTX",
+                                            session_id="k1", turn_id="r1")
+    assert loaded and "PPT 配图原则" in loaded and "MEDIA:" in loaded
+    again = hooks.on_transform_tool_result(tool_name="skill_view", args={"name": "ppt-writer--create-ppt"},
+                                           result="# create", session_id="k1", turn_id="r1")
+    assert again is None
+    assert hooks.on_transform_tool_result(tool_name="skill_view", args={"name": "docx--docx"}, result="# docx",
+                                          session_id="k1", turn_id="r2") is None
+
+    kits.installer.install(expert_pkg, profile_env, triggers={})
+    monkeypatch.setenv("HERMES_HOME", str(_expert_home()))
+    assert hooks.on_transform_tool_result(tool_name="skill_view", args={"name": "pptx--pptx"}, result="# PPTX",
+                                          session_id="e1", turn_id="r1") is None
+
+
+_SEARCH_RESULT = (
+    "1. 西湖断桥\n原图：https://img.example.com/a.jpg\n缩略图：https://img.example.com/a_s.jpg\n"
+    "来源：杭州网 https://www.hangzhou.example/page1\n"
+    "2. 西湖全景\n原图：https://img.example.com/b.jpg\n来源：浙江在线 https://zj.example/page2\n"
+)
+
+
+def _jpeg(width: int, height: int) -> bytes:
+    import struct
+
+    sof = b"\xff\xc0" + struct.pack(">HBHHB", 17, 8, height, width, 3) + b"\x01\x11\x00\x02\x11\x00\x03\x11\x00"
+    return b"\xff\xd8" + sof + b"\x00" * 9000 + b"\xff\xd9"
+
+
+def test_image_search_lands_pictures_in_a_deck_conversation_only(kits, profile_env, tmp_path, monkeypatch):
+    kits.turns.clear()
+    monkeypatch.setenv("TERMINAL_CWD", str(tmp_path))
+    landing = kits.image_landing
+    fetched = []
+
+    def fetcher(url: str) -> bytes:
+        fetched.append(url)
+        return _jpeg(1600, 900) if "a.jpg" in url else _jpeg(800, 1200)
+
+    plain = _turn(kits, "p1", deck=False)
+    assert landing.after_search(plain, {"query": "西湖"}, _SEARCH_RESULT, fetcher=fetcher) is None
+
+    turn = _turn(kits, "d1")
+    assert landing.before_search(turn, {"query": "西湖 断桥"}) is None
+    landed = landing.after_search(turn, {"query": "西湖 断桥"}, _SEARCH_RESULT, fetcher=fetcher)
+    assert "【宿主已落地图片】" in landed and "横图" in landed and "竖图" in landed and "杭州网" in landed
+    files = sorted((tmp_path / "assets" / "image-search").rglob("*.jpg"))
+    assert len(files) == 2 and any(path.name == "来源.txt" for path in files[0].parent.iterdir())
+
+    repeat = kits.host_hooks.on_pre_tool_call(
+        tool_name="mcp__UniAI_Toolkit__image_search", args={"query": "西湖  断桥"}, session_id="d1", turn_id="t1",
+    )
+    assert repeat and repeat["action"] == "block" and "刚搜过" in repeat["message"]
+
+    for index in range(landing.MAX_SEARCHES - 1):
+        assert landing.before_search(turn, {"query": f"关键词{index}"}) is None
+        landing.after_search(turn, {"query": f"关键词{index}"}, _SEARCH_RESULT, fetcher=fetcher)
+    spent = landing.before_search(turn, {"query": "再来一个"})
+    assert "已经用完" in spent and "不要告诉用户它不可用" in spent and "换个关键词再搜" not in spent
+    assert all(url.startswith("https://img.example.com/") for url in fetched)
+
+
+def test_image_download_refuses_private_addresses(kits):
+    allowed = kits.image_landing._allowed
+    assert allowed("https://img.example.com/a.jpg")
+    assert not allowed("http://127.0.0.1/a.jpg")
+    assert not allowed("http://10.0.0.8/a.jpg")
+    assert not allowed("file:///etc/passwd")
+    assert not allowed("http://169.254.169.254/latest/meta-data")
+
+
+def test_expert_rules_say_how_files_reach_the_chat(kits, profile_env, expert_pkg):
+    kits.installer.install(expert_pkg, profile_env, triggers={})
+    working = kits.host_rules.SECTIONS[1][1]
+    on_desktop = working({"profile_name": "demo-expert", "platform": "desktop"})
+    assert "MEDIA:<绝对路径>" in on_desktop and "不要声称已弹出文件卡片" not in on_desktop
+    on_cli = working({"profile_name": "demo-expert", "platform": "cli"})
+    assert "MEDIA:" not in on_cli and "完整路径" in on_cli
+
+
+def test_reply_naming_new_files_gets_desktop_cards(kits, tmp_path):
+    import os
+    import time
+
+    kits.turns.clear()
+    started = time.time()
+    out = tmp_path / "out dir"
+    out.mkdir()
+    report = out / "华为首次覆盖报告.docx"
+    model = out / "Huawei_Model.xlsx"
+    old = out / "旧数据.xlsx"
+    for path in (report, model, old):
+        path.write_bytes(b"x")
+    os.utime(old, (started - 3600, started - 3600))
+    deck = tmp_path / "deck.pptx"
+    deck.write_bytes(b"x")
+
+    turn = _turn(kits, "c1")
+    turn.started = started
+    reply = (
+        f"已完成。交付目录 `{out}`\n\n| 文件 | 说明 |\n|---|---|\n| **{report.name}** | 报告 |\n| {model.name} | 模型 |\n"
+        f"| {old.name} | 去年的 |\n\n另见 {deck.as_posix()} 和 https://example.com/a.png\n\nMEDIA:{deck}"
+    )
+    carded = kits.delivery.on_transform_llm_output(response_text=reply, session_id="c1", platform="desktop")
+    added = carded[len(reply):]
+    assert str(report) in added and str(model) in added
+    assert old.name not in added and "example.com" not in added
+    assert added.count("deck.pptx") == 0  # already carded by the model
+    assert "MEDIA:`" in added  # a path with a space is quoted
+
+    assert kits.delivery.on_transform_llm_output(response_text=reply, session_id="c1", platform="cli") is None
+    assert kits.delivery.on_transform_llm_output(response_text="没有文件", session_id="c1", platform="desktop") is None
+
+
+def test_package_hook_blocks_only_on_exit_2_or_an_explicit_deny(kits, profile_env):
     import sys
 
     root = profile_env / "imported-plugins" / "demo-kit" / "1.0.0"
     root.mkdir(parents=True)
-    command = f'"{sys.executable}" -c "import sys; sys.exit(3)"'
-    kits.store.save_index(profile_env, {"plugins": {"demo-kit": {
-        "kind": "kit",
-        "enabled": True,
-        "source_dir": "imported-plugins/demo-kit/1.0.0",
-        "hooks": {"PreToolUse": [{"matcher": "Skill", "hooks": [{"type": "command", "command": command}]}]},
-    }}})
-    blocked = kits.package_hooks.on_pre_tool_call(tool_name="skill_view", args={})
-    assert blocked and blocked["action"] == "block"
+
+    def install(command: str) -> None:
+        kits.store.save_index(profile_env, {"plugins": {"demo-kit": {
+            "kind": "kit",
+            "enabled": True,
+            "source_dir": "imported-plugins/demo-kit/1.0.0",
+            "hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": command}]}]},
+        }}})
+
+    install(f'"{sys.executable}" -c "import sys; sys.exit(3)"')
+    assert kits.package_hooks.on_pre_tool_call(tool_name="terminal", args={"command": "ls"}) is None
+
+    install(f'"{sys.executable}" -c "import sys, json; d = json.load(sys.stdin); '
+            f'sys.stderr.write(d[\'tool_name\'] + \' \' + d[\'tool_input\'][\'command\']); sys.exit(2)"')
+    blocked = kits.package_hooks.on_pre_tool_call(tool_name="terminal", args={"command": "rm -rf x"})
+    assert blocked and blocked["action"] == "block" and blocked["message"] == "Bash rm -rf x"
     assert kits.package_hooks.on_pre_tool_call(tool_name="web_search", args={}) is None
+
+    install(f'"{sys.executable}" -c "print(\'{{\\"decision\\": \\"block\\", \\"reason\\": \\"nope\\"}}\')"')
+    denied = kits.package_hooks.on_pre_tool_call(tool_name="terminal", args={"command": "ls"})
+    assert denied and denied["message"] == "nope"
 
 
 def test_xiaohongshu_download_start_and_login_prompt_use_the_slot(kits, profile_env):
@@ -926,4 +1244,63 @@ def test_xiaohongshu_download_start_and_login_prompt_use_the_slot(kits, profile_
     assert "get_login_qrcode" in xhs.turn_context(profile_env, "扫码登录")
 
 
+def test_xiaohongshu_stop_never_kills_a_process_it_did_not_start(kits, profile_env):
+    import os
 
+    xhs = kits.xiaohongshu
+    kits.store.save_index(
+        profile_env,
+        {"plugins": {xhs.EXPERT_NAME: {"kind": "expert", "self": True, "display_name": "种草草"}}},
+    )
+    xhs.binary_path(profile_env).parent.mkdir(parents=True, exist_ok=True)
+    xhs._write_json(xhs._state_path(profile_env), {"pid": os.getpid(), "running": True})
+    note = xhs.stop(profile_env)
+    assert "没有结束任何进程" in note
+    assert xhs._read_json(xhs._state_path(profile_env))["pid"] == 0
+
+
+def test_deep_paths_in_tool_output_do_not_stall_the_deck_check(kits, tmp_path):
+    """A `find` over node_modules once hung a conversation in the path scan (2026-10-14)."""
+    import time
+
+    kits.turns.clear()
+    deck = tmp_path / "with space" / "deck.pptx"
+    _pptx(deck, _png(100, 50), (2 * 914400, 914400))
+    deep = "/".join(f"dir{i}" for i in range(40))
+    listing = "\n".join(f"/c/Users/me/AppData/Local/Temp/ppt/node_modules/{deep}/file{i}.js" for i in range(200))
+    output = listing + f'\nsaved "{deck}"\n'
+    started = time.perf_counter()
+    checked = kits.deck_check.annotate("terminal", {"command": "find . -maxdepth 40"}, output, _turn(kits))
+    assert time.perf_counter() - started < 2.0
+    assert checked and "deck.pptx" in checked
+
+
+def test_old_expert_chats_get_a_card_correction_on_the_desktop(kits, profile_env, expert_pkg, monkeypatch):
+    """A bot keeps one forever-chat whose prompt was frozen with the old 'no cards' rule."""
+    from hermes_state import SessionDB
+
+    kits.installer.install(expert_pkg, profile_env, triggers={})
+    home = _expert_home()
+    db = SessionDB(db_path=home / "state.db")
+    db.create_session("old-chat", "desktop")
+    db.update_system_prompt("old-chat", "……交付文件写好后在回复里写明文件的完整路径。本应用没有 PresentToUser，不要声称已弹出文件卡片……")
+    db.create_session("new-chat", "desktop")
+    db.update_system_prompt("new-chat", "……每个文件单独一行写 MEDIA:<绝对路径>……")
+    db.close()
+    monkeypatch.setenv("HERMES_HOME", str(home))
+
+    old = kits.router.on_pre_llm_call(user_message="写个开头", session_id="old-chat", turn_id="1", platform="desktop")
+    assert old and "宿主更正" in old["context"] and "MEDIA:" in old["context"]
+    assert kits.router.on_pre_llm_call(user_message="写个开头", session_id="new-chat", turn_id="1", platform="desktop") is None
+    assert kits.router.on_pre_llm_call(user_message="写个开头", session_id="old-chat", turn_id="2", platform="cli") is None
+
+
+def test_deck_written_by_a_script_in_a_cd_directory_is_checked_at_once(kits, tmp_path):
+    kits.turns.clear()
+    out = tmp_path / "ppt out"
+    deck = out / "xihu.pptx"
+    _pptx(deck, _png(20, 20), (914400, 914400), origin=(-2 * 914400, 0))
+    (out / "gen.js").write_text('pres.writeFile({ fileName: "xihu.pptx" })\n', encoding="utf-8")
+    args = {"command": f'cd "{out}" && node gen.js && ls -la xihu.pptx'}
+    checked = kits.deck_check.annotate("terminal", args, "OK xihu.pptx\n-rw-r--r-- 1 me 3701461 xihu.pptx", _turn(kits))
+    assert checked and "没有交付" in checked and "xihu.pptx" in checked

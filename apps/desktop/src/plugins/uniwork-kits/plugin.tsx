@@ -11,11 +11,9 @@ import {
   type SidebarNavContribution
 } from '@hermes/plugin-sdk'
 
-import { BOTS_HEADER_AREA } from '../hermes-bots/header-slot'
 import { bindApi, bindOpener } from './api'
 import { KITS_LOCALES } from './i18n'
 import { KitsPage } from './page'
-import { KitsRosterLink } from './roster-link'
 
 const plugin: HermesPlugin = {
   id: 'uniwork-kits',
@@ -38,12 +36,6 @@ const plugin: HermesPlugin = {
         area: SIDEBAR_NAV_AREA,
         order: 40,
         data: { codicon: 'package', label: '套件', path: '/kits' } satisfies SidebarNavContribution
-      },
-      {
-        id: 'bots-link',
-        area: BOTS_HEADER_AREA,
-        order: 10,
-        render: () => <KitsRosterLink />
       }
     ])
   }

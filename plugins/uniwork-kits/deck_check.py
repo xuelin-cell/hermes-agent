@@ -1,103 +1,44 @@
-"""Deck geometry and landing a searched image onto a slide.
+"""Check a deck when a tool writes it, before the user sees it.
 
-The check measures the file: a picture whose frame does not match its pixel
-aspect is stretched, and a shape past the page edge is off the slide. Landing
-writes the image into the pptx at that same aspect, so the check can pass.
-Search itself stays in :mod:`media_slot`; this module only stores bytes it is
-given.
+数字员工 measured every ``.pptx`` at ``PresentToUser`` and, at most twice per
+request, answered with the defect list instead of delivering it. Hermes has no
+delivery tool, so the check rides on the tool result that wrote the deck
+(``transform_tool_result``): any ``.pptx`` the call's arguments, its output or
+a script it ran names, measured again only when its bytes changed. Two bounces
+per request; after that the report rides along and the deck goes through,
+because a check that can trap a conversation is worse than the defect.
+
+Generated pictures get one review per request, kits only (an expert carries
+its own picture rules): the prompts this request generated from, and how many
+「AI 生成」 captions the deck has. Which picture came from which generation
+cannot be read from the file, so this asks once and then lets go.
 """
 
 from __future__ import annotations
 
-import io
+import json
+import os
 import re
-import struct
-import zipfile
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
-EMU = 914400
-RATIO_TOLERANCE_PCT = 3.0
-BLEED_IN = 0.02
+from . import deck_geometry, delivery, turns
 
-
-def image_pixels(data: bytes) -> Optional[Tuple[int, int]]:
-    """Width and height of a PNG or JPEG, or ``None`` when the format is unknown."""
-    if data.startswith(b"\x89PNG\r\n\x1a\n") and len(data) >= 24:
-        width, height = struct.unpack(">II", data[16:24])
-        return int(width), int(height)
-    if data.startswith(b"\xff\xd8"):
-        view = memoryview(data)
-        index = 2
-        while index + 9 < len(view):
-            if view[index] != 0xFF:
-                return None
-            marker = view[index + 1]
-            size = struct.unpack(">H", view[index + 2 : index + 4])[0]
-            if marker in {0xC0, 0xC1, 0xC2}:
-                height, width = struct.unpack(">HH", view[index + 5 : index + 9])
-                return int(width), int(height)
-            index += 2 + size
-    return None
-
-
-def _problems(data: bytes) -> List[str]:
-    try:
-        archive = zipfile.ZipFile(io.BytesIO(data))
-        presentation = archive.read("ppt/presentation.xml").decode("utf-8", "ignore")
-    except (zipfile.BadZipFile, KeyError, OSError) as exc:
-        return [f"文件读不开：{exc}"]
-    size = re.search(r'sldSz[^>]*cx="(\d+)"[^>]*cy="(\d+)"', presentation)
-    page_w = int(size.group(1)) / EMU if size else 0.0
-    page_h = int(size.group(2)) / EMU if size else 0.0
-    problems: List[str] = []
-    slides = sorted(name for name in archive.namelist() if re.fullmatch(r"ppt/slides/slide\d+\.xml", name))
-    for name in slides:
-        number = int(re.search(r"slide(\d+)", name).group(1))
-        xml = archive.read(name).decode("utf-8", "ignore")
-        try:
-            rels = archive.read(f"ppt/slides/_rels/slide{number}.xml.rels").decode("utf-8", "ignore")
-        except KeyError:
-            rels = ""
-        rel_map = dict(re.findall(r'Id="([^"]+)"[^>]*Target="([^"]+)"', rels))
-        for shape in re.findall(r"<p:pic>.*?</p:pic>|<p:sp>.*?</p:sp>", xml, flags=re.S):
-            off = re.search(r'<a:off x="(-?\d+)" y="(-?\d+)"', shape)
-            ext = re.search(r'<a:ext cx="(\d+)" cy="(\d+)"', shape)
-            if not off or not ext:
-                continue
-            x = int(off.group(1)) / EMU
-            y = int(off.group(2)) / EMU
-            width = int(ext.group(1)) / EMU
-            height = int(ext.group(2)) / EMU
-            over = []
-            if page_w and x + width > page_w + BLEED_IN:
-                over.append("右边超出页面")
-            if page_h and y + height > page_h + BLEED_IN:
-                over.append("下边超出页面")
-            if x < -BLEED_IN or y < -BLEED_IN:
-                over.append("左边或上边出界")
-            if over:
-                problems.append(f"第{number}页有形状{'、'.join(over)}")
-            if "<p:pic>" not in shape or not width or not height:
-                continue
-            embed = re.search(r'r:embed="([^"]+)"', shape)
-            if not embed:
-                continue
-            target = rel_map.get(embed.group(1), "").replace("../", "")
-            try:
-                blob = archive.read("ppt/" + target)
-            except KeyError:
-                continue
-            pixels = image_pixels(blob)
-            if not pixels:
-                continue
-            deviation = abs((pixels[0] / pixels[1]) - (width / height)) / (width / height) * 100
-            if deviation > RATIO_TOLERANCE_PCT:
-                problems.append(
-                    f"第{number}页图片被拉伸 {deviation:.0f}%：原图 {pixels[0]}×{pixels[1]}，"
-                    f"画框 {width:.2f}×{height:.2f} 英寸"
-                )
-    return problems
+MAX_BOUNCES = 2
+_MAX_DECK_BYTES = 80 * 1024 * 1024
+_PROMPT_SHOWN_CHARS = 60
+_PROMPTS_LISTED = 8
+# Paths are found by their suffix and read back to a delimiter — never with a
+# pattern that repeats a path segment. The earlier ``(?:[^\s]+[\\/])+`` form
+# backtracked exponentially on a long path without the suffix: a ``find`` over
+# node_modules (16 levels deep) hung the tool result, and the conversation, for
+# good (2026-10-14).
+_DECK_SUFFIX_RE = re.compile(r"\.pptx(?![A-Za-z0-9_])", re.IGNORECASE)
+_SCRIPT_SUFFIX_RE = re.compile(r"\.(?:js|mjs|cjs|py)(?![A-Za-z0-9_])", re.IGNORECASE)
+_HARD_STOPS = "\"'\n\r\t<>|`*?"
+_SOFT_STOPS = " (){}[],;=:"
+_MAX_SCAN = 400_000
+_DECK_WORK_RE = re.compile(r"\.pptx\b|pptxgenjs|python-pptx|from\s+pptx\s+import", re.IGNORECASE)
 
 
 def check_pptx(path: Path) -> List[str]:
@@ -106,105 +47,241 @@ def check_pptx(path: Path) -> List[str]:
         data = Path(path).read_bytes()
     except OSError as exc:
         return [f"文件读不开：{exc}"]
-    return _problems(data)
+    return [str(item) for item in deck_geometry.measure(data).problems]
 
 
-def insert_picture(pptx_path: Path, image: bytes, slide: int = 1) -> str:
-    """Put *image* on *slide*, sized to its pixel aspect, and rewrite the pptx."""
-    pixels = image_pixels(image)
-    if not pixels:
-        raise ValueError("这张图不是 PNG 或 JPEG，没有放进幻灯片")
-    path = Path(pptx_path)
-    original = path.read_bytes()
-    archive = zipfile.ZipFile(io.BytesIO(original))
-    slide_name = f"ppt/slides/slide{slide}.xml"
-    rels_name = f"ppt/slides/_rels/slide{slide}.xml.rels"
+def is_deck_work(args: object) -> bool:
+    """Whether a tool call builds or edits a deck (.pptx / pptxgenjs / python-pptx)."""
     try:
-        slide_xml = archive.read(slide_name).decode("utf-8")
-        rels_xml = archive.read(rels_name).decode("utf-8")
-    except KeyError as exc:
-        raise ValueError(f"幻灯片里没有第 {slide} 页") from exc
-    media_name = "ppt/media/landed-image.png" if image.startswith(b"\x89PNG") else "ppt/media/landed-image.jpg"
-    relation = "rIdLanded"
-    width_in = 6.0
-    height_in = width_in * pixels[1] / pixels[0]
-    if height_in > 4.5:
-        height_in = 4.5
-        width_in = height_in * pixels[0] / pixels[1]
-    cx = int(width_in * EMU)
-    cy = int(height_in * EMU)
-    off_x = int(0.5 * EMU)
-    off_y = int(0.5 * EMU)
-    picture = (
-        "<p:pic><p:nvPicPr><p:cNvPr id=\"900\" name=\"landed\"/>"
-        "<p:cNvPicPr><a:picLocks noChangeAspect=\"1\"/></p:cNvPicPr><p:nvPr/></p:nvPicPr>"
-        "<p:blipFill><a:blip r:embed=\"rIdLanded\"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>"
-        "<p:spPr><a:xfrm>"
-        f'<a:off x="{off_x}" y="{off_y}"/><a:ext cx="{cx}" cy="{cy}"/>'
-        "</a:xfrm><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></p:spPr></p:pic>"
+        flat = args if isinstance(args, str) else json.dumps(args, ensure_ascii=False)
+    except (TypeError, ValueError):
+        flat = str(args)
+    return bool(_DECK_WORK_RE.search(flat or ""))
+
+
+def format_generated_review(prompts: List[str], ai_labels: int) -> str:
+    """One-time check of this request's generated pictures."""
+    shown = [
+        f"  {i}. {p[:_PROMPT_SHOWN_CHARS]}{'…' if len(p) > _PROMPT_SHOWN_CHARS else ''}"
+        for i, p in enumerate(prompts[:_PROMPTS_LISTED], 1)
+    ]
+    if len(prompts) > _PROMPTS_LISTED:
+        shown.append(f"  ……另有 {len(prompts) - _PROMPTS_LISTED} 次")
+    labels = (
+        "成品里现在一处「AI 生成」都没有。" if ai_labels == 0
+        else f"成品里找到 {ai_labels} 处「AI 生成」，确认每张用上的生成图都有。"
     )
-    if "</p:spTree>" not in slide_xml:
-        raise ValueError("这一页没有可放入图片的 spTree")
-    slide_xml = slide_xml.replace("</p:spTree>", picture + "</p:spTree>", 1)
-    relationship = (
-        f'<Relationship Id="{relation}" '
-        'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" '
-        f'Target="../{media_name.removeprefix("ppt/")}"/>'
-    )
-    rels_xml = rels_xml.replace("</Relationships>", relationship + "</Relationships>", 1)
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w") as rebuilt:
-        names = set(archive.namelist())
-        for name in names:
-            if name in {slide_name, rels_name, media_name}:
-                continue
-            rebuilt.writestr(name, archive.read(name))
-        rebuilt.writestr(slide_name, slide_xml.encode("utf-8"))
-        rebuilt.writestr(rels_name, rels_xml.encode("utf-8"))
-        rebuilt.writestr(media_name, image)
-    path.write_bytes(buffer.getvalue())
-    return f"已把图片放进第 {slide} 页，画框 {width_in:.2f}×{height_in:.2f} 英寸，比例与 {pixels[0]}×{pixels[1]} 一致。"
+    return "\n".join([
+        f"交付前核对生成图（这次请求生成了 {len(prompts)} 次，每次请求只核对这一回）：",
+        *shown,
+        "- 画的是真实存在的具体产品、品牌 IP、logo、真人、地标、事件的，换成搜到的真图；"
+        "本来就没有照片的（古人、未发布产品）可以保留，图下标「示意图（AI 生成）」。",
+        f"- 放进 PPT 的每张生成图，正下方要有一行小字「AI 生成」。{labels}",
+        "需要改的改好后重新生成；核对下来都没问题（或生成的图一张没用），直接交付，不会再拦。",
+    ])
 
 
-def land_image(directory: Path, name: str, image: bytes, source: str = "") -> str:
-    """Save *image* and return the line the model should read."""
-    pixels = image_pixels(image)
-    if not pixels:
-        raise ValueError("落地的文件不是 PNG 或 JPEG")
-    safe = Path(name).name
-    if not safe or safe in {".", ".."}:
-        raise ValueError("落地文件名不合法")
-    directory.mkdir(parents=True, exist_ok=True)
-    dest = directory / safe
-    dest.write_bytes(image)
-    origin = f"来源：{source}。" if source else "来源未提供，放上幻灯片时标「图片来源：网络」。"
-    return f"已落地 {dest}（{pixels[0]}×{pixels[1]}）。{origin}放进幻灯片时画框比例必须与像素比例一致。"
-
-
-def annotate(tool_name: str, args: object, result: str) -> Optional[str]:
-    """Append a geometry report when a tool just wrote a pptx. ``None`` leaves the result."""
-    path = _pptx_path(args)
-    notes: List[str] = []
-    if isinstance(args, dict) and path is not None and path.is_file():
-        image = args.get("image_path") or args.get("image")
-        if isinstance(image, str) and Path(image).is_file():
-            try:
-                notes.append(insert_picture(path, Path(image).read_bytes()))
-            except ValueError as exc:
-                notes.append(str(exc))
-        notes.extend(check_pptx(path))
-    if not notes:
+def _signature(path: Path) -> Optional[Tuple[int, int]]:
+    try:
+        stat = path.stat()
+    except OSError:
         return None
-    body = result if isinstance(result, str) else str(result)
-    lines = "\n".join(f"- {item}" for item in notes)
-    return body.rstrip() + "\n\n配图检查：\n" + lines
+    return stat.st_size, stat.st_mtime_ns
 
 
-def _pptx_path(args: object) -> Optional[Path]:
-    if not isinstance(args, dict):
+def _key(path: Path) -> str:
+    try:
+        return os.path.normcase(str(path.resolve()))
+    except OSError:
+        return os.path.normcase(str(path))
+
+
+def annotate(tool_name: str, args: object, result: str, turn: Optional[turns.Turn] = None) -> Optional[str]:
+    """Report on decks this call wrote. ``None`` leaves the tool result alone."""
+    turn = turn or turns.Turn(session_id="")
+    paths = _pptx_paths(args, result if isinstance(result, str) else str(result or ""), turns.session_cwd(turn))
+    refused: List[str] = []
+    passed: List[str] = []
+    released: List[str] = []
+    labels = 0
+    for path in paths:
+        key = _key(path)
+        signature = _signature(path)
+        if signature is None or turn.measured.get(key) == signature:
+            continue  # unchanged since the last report: nothing new to say
+        turn.measured[key] = signature
+        if signature[0] > _MAX_DECK_BYTES:
+            continue
+        try:
+            report = deck_geometry.measure(path.read_bytes())
+        except OSError as exc:
+            refused.append(f"{path.name}\n文件读不开：{exc}")
+            continue
+        labels += report.ai_labels
+        if report.ok:
+            passed.append(f"{path.name}\n{report.as_text()}")
+        elif turn.bounces < MAX_BOUNCES:
+            refused.append(f"{path.name}\n{report.as_text()}")
+        else:
+            released.append(
+                f"{path.name} 这次请求已经退回 {MAX_BOUNCES} 次。可以交给用户，同时在回复里说明还剩这些问题：\n{report.as_text()}"
+            )
+    if not (refused or passed or released):
         return None
-    for key in ("path", "file_path", "file", "target"):
-        value = args.get(key)
-        if isinstance(value, str) and value.lower().endswith(".pptx"):
-            return Path(value)
+
+    review = ""
+    if (passed or released) and not refused and turn.generated and not turn.reviewed:
+        turn.reviewed = True
+        review = format_generated_review(list(turn.generated), labels)
+
+    parts: List[str] = []
+    if refused:
+        turn.bounces += 1
+        parts.append("没有交付：宿主在写入后做了版面自检，这份 PPT 还不能给用户。请按改法改文件，改完重新生成，宿主会再查一遍。")
+        parts.extend(refused)
+    elif review:
+        parts.append("先别交付：" + review)
+    parts.extend(released)
+    parts.extend(passed)
+    if not refused and not review:
+        parts.append(delivery.deck_line(turn.platform))
+    body = result if isinstance(result, str) else str(result or "")
+    return body.rstrip() + "\n\n" + "\n\n".join(parts)
+
+
+def _walk(value: Any, found: List[str]) -> None:
+    if isinstance(value, str):
+        found.append(value)
+    elif isinstance(value, dict):
+        for item in value.values():
+            _walk(item, found)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            _walk(item, found)
+
+
+def candidates(text: str, suffix_re: "re.Pattern[str]") -> List[str]:
+    """Strings ending in a suffix *suffix_re* finds, read back to a delimiter.
+
+    Each hit yields the span back to the last quote-like character (a path with
+    spaces) and the span back to the last space or bracket (a bare path).
+    Linear in the text; nothing here can backtrack.
+    """
+    text = (text or "")[:_MAX_SCAN]
+    out: List[str] = []
+    hard = soft = -1
+    position = 0
+    for match in suffix_re.finditer(text):
+        for index in range(position, match.start()):
+            char = text[index]
+            if char in _HARD_STOPS:
+                hard = soft = index
+            elif char in _SOFT_STOPS and not (char == ":" and index >= 1 and text[index - 1].isalpha()
+                                              and (index < 2 or not text[index - 2].isalnum())):
+                soft = index
+        position = match.start()
+        for start in dict.fromkeys((soft + 1, hard + 1)):
+            token = text[start:match.end()].strip()
+            if token and token not in out:
+                out.append(token)
+    return out
+
+
+_CD_RE = re.compile(r"(?:^|&&|;|\|\||\n)\s*(?:cd|pushd|Set-Location)\s+(?:/d\s+)?(\"[^\"\r\n]+\"|'[^'\r\n]+'|[^\s;&|]+)")
+_GIT_BASH_DRIVE_RE = re.compile(r"^/([A-Za-z])(/|$)")
+
+
+def local_dir(raw: str) -> Optional[Path]:
+    """A directory named in a command, with env vars expanded and ``/c/…`` read as ``C:/…``."""
+    text = os.path.expandvars(raw.strip().strip('"').strip("'"))
+    if os.name == "nt":
+        text = _GIT_BASH_DRIVE_RE.sub(lambda m: f"{m.group(1).upper()}:/", text)
+    path = Path(os.path.expanduser(text))
+    try:
+        return path if path.is_dir() else None
+    except (OSError, ValueError):
+        return None
+
+
+def command_dirs(args: object) -> List[Path]:
+    """Directories a shell command ``cd``s into, in order."""
+    blobs: List[str] = []
+    _walk(args, blobs)
+    found: List[Path] = []
+    for blob in blobs:
+        for match in _CD_RE.finditer(blob[:_MAX_SCAN]):
+            folder = local_dir(match.group(1))
+            if folder is not None and folder not in found:
+                found.append(folder)
+    return found
+
+
+def _existing(token: str, bases: List[Path]) -> Optional[Path]:
+    text = os.path.expandvars(token)
+    if os.name == "nt":
+        text = _GIT_BASH_DRIVE_RE.sub(lambda m: f"{m.group(1).upper()}:/", text)
+    path = Path(text)
+    tries = [path] if path.is_absolute() else [base / path for base in bases]
+    for candidate in tries:
+        try:
+            if candidate.is_file():
+                return candidate
+        except (OSError, ValueError):
+            continue
     return None
+
+
+def _from_text(text: str, bases: List[Path]) -> List[Path]:
+    found: List[Path] = []
+    for token in candidates(text, _DECK_SUFFIX_RE):
+        path = _existing(token, bases)
+        if path is not None and path not in found:
+            found.append(path)
+    return found
+
+
+def _scripts(text: str, bases: List[Path]) -> List[Path]:
+    found: List[Path] = []
+    for token in candidates(text, _SCRIPT_SUFFIX_RE):
+        path = _existing(token, bases)
+        try:
+            if path is not None and path.stat().st_size <= 200_000 and path not in found:
+                found.append(path)
+        except OSError:
+            continue
+    return found
+
+
+def _pptx_paths(args: object, result: str, cwd: str = "") -> List[Path]:
+    """Decks the call names: in its arguments, its output, or a script it ran.
+
+    Relative names are read against the directories the command ``cd``s into
+    and the session's working directory — a model that ran
+    ``cd out && node gen.js`` and printed ``xihu.pptx`` was missed otherwise.
+    """
+    blobs: List[str] = []
+    _walk(args, blobs)
+    blobs.append(result)
+    try:
+        _walk(json.loads(result), blobs)
+    except (ValueError, TypeError):
+        pass
+    bases = command_dirs(args)
+    if cwd:
+        folder = local_dir(cwd)
+        if folder is not None and folder not in bases:
+            bases.append(folder)
+    found: List[Path] = []
+    for blob in blobs:
+        for path in _from_text(blob, bases):
+            if path not in found:
+                found.append(path)
+        for script in _scripts(blob, bases):
+            try:
+                body = script.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            for path in _from_text(body, [script.parent, *bases]):
+                if path not in found:
+                    found.append(path)
+    return found

@@ -29,7 +29,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from . import media_slot, naming, store
+from . import delivery, media_slot, naming, store, turns
 
 logger = logging.getLogger(__name__)
 
@@ -184,7 +184,10 @@ def _line(candidate: Candidate) -> str:
     if candidate.kind == "agent":
         return f"- {kind} `{candidate.label}` → 用 `skill_view` 加载后按说明用 `delegate_task` 派工"
     safe = re.sub(r"[^A-Za-z0-9_]", "_", candidate.label)
-    return f"- {kind} `{candidate.label}` → 工具名以 `mcp__{safe}__` 开头，直接调用"
+    return (
+        f"- {kind} `{candidate.label}` → 工具名以 `mcp__{safe}__` 开头；工具列表里没有就在 `tool_search` 的目录里，"
+        "用 `tool_describe` 取参数后 `tool_call` 调用"
+    )
 
 
 def build_hint(text: str, catalog: Iterable[Candidate]) -> Optional[str]:
@@ -232,6 +235,11 @@ def _load(home: Path) -> Tuple[Tuple[Candidate, ...], bool]:
     return result
 
 
+def is_expert_home(home: Path) -> bool:
+    """Whether *home* is a profile an expert was installed as."""
+    return _load(home)[1]
+
+
 _PPT_INTENT_RE = re.compile(
     r"幻灯片|演示文稿|课件|(?<![A-Za-z])(?:pptx?|powerpoint|slides?|slide\s+deck|pitch\s+deck|presentation)(?![A-Za-z])",
     re.IGNORECASE,
@@ -265,6 +273,10 @@ def deck_requested(user_message: str, history: Any) -> bool:
     return any(names_a_deck(_user_text(item)) for item in history)
 
 
+def pictures_enabled() -> bool:
+    return _pictures_enabled()
+
+
 def _pictures_enabled() -> bool:
     try:
         from hermes_cli.config import load_config_readonly
@@ -289,27 +301,43 @@ def on_pre_llm_call(**kwargs: Any) -> Optional[Dict[str, str]]:
     """Suggest kit skills, and attach PPT picture rules when this turn is a deck.
 
     Picture rules name whatever :func:`media_slot.load_slot` currently says.
-    An expert profile gets neither: it routes itself.
+    An expert profile gets neither: it routes itself. Either way this opens
+    the session's request (:mod:`turns`) for the tool hooks that follow.
     """
     try:
-        text = str(kwargs.get("user_message") or "").strip()
-        if not text:
-            return None
         from hermes_constants import get_hermes_home
 
+        text = str(kwargs.get("user_message") or "").strip()
+        platform = str(kwargs.get("platform") or "")
         catalog, is_expert = _load(Path(get_hermes_home()))
+        deck = not is_expert and deck_requested(text, kwargs.get("conversation_history"))
+        turn = turns.begin(
+            str(kwargs.get("session_id") or ""),
+            str(kwargs.get("turn_id") or ""),
+            platform=platform,
+            deck=deck,
+            parent_session_id=str(kwargs.get("parent_session_id") or ""),
+        )
+        if not text:
+            return None
         if is_expert:
             from . import xiaohongshu
 
-            extra = xiaohongshu.turn_context(Path(get_hermes_home()), text)
+            home = Path(get_hermes_home())
+            extras = [
+                delivery.stale_rule_correction(home, str(kwargs.get("session_id") or ""), platform),
+                xiaohongshu.turn_context(home, text),
+            ]
+            extra = "\n\n".join(item for item in extras if item)
             return {"context": extra} if extra else None
         parts: List[str] = []
         if _router_enabled() and catalog:
             hint = build_hint(text, catalog)
             if hint:
                 parts.append(hint)
-        if _pictures_enabled() and deck_requested(text, kwargs.get("conversation_history")):
-            parts.append(media_slot.picture_rules())
+        if _pictures_enabled() and deck:
+            parts.append(media_slot.picture_rules(delivery=delivery.deck_line(platform)))
+            turn.rules_shown = True
         return {"context": "\n\n".join(parts)} if parts else None
     except Exception:  # never break a turn over a suggestion
         logger.warning("[uniwork-kits] router hint failed", exc_info=True)

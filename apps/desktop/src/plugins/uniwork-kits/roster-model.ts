@@ -3,7 +3,7 @@ export interface InstalledExpert {
   profile: string
 }
 
-interface RosterProfile {
+export interface RosterProfile {
   display_name?: string
   name?: string
   title?: string

@@ -2,15 +2,21 @@
 
 Hermes core does not know WorkBuddy / UniClaw packages. This plugin unpacks
 them into what Hermes already has — skills, ``mcp_servers``, profiles and
-``SOUL.md`` — and adds three things on top:
+``SOUL.md`` — and adds on top:
 
 * ``hermes kit ...`` — inspect / install / seed / list / enable / disable /
-  uninstall / triggers / config (see :mod:`.cli`);
+  uninstall / triggers / config / media (see :mod:`.cli`);
 * cache-safe system prompt sections carrying each expert's host rules
   (:mod:`.host_rules`), empty for every profile that is not an expert;
 * a ``pre_llm_call`` hook suggesting matching kit skills in ordinary
   conversations, and PPT picture rules that name the media slot
-  (:mod:`.router`, :mod:`.media_slot`).
+  (:mod:`.router`, :mod:`.media_slot`);
+* tool hooks doing what 数字员工's middlewares did: picture rules when a PPT
+  kit loads, search hits landed as local files, decks checked when written
+  (:mod:`.host_hooks`), plus a package's own command hooks
+  (:mod:`.package_hooks`);
+* a ``transform_llm_output`` safety net that turns files a reply names into
+  desktop file cards (:mod:`.delivery`).
 
 Enable with ``hermes plugins enable uniwork-kits``. Expert profiles created by
 ``hermes kit install`` enable it for themselves.
@@ -18,7 +24,7 @@ Enable with ``hermes plugins enable uniwork-kits``. Expert profiles created by
 
 from __future__ import annotations
 
-from . import cli, host_rules, llm, package_hooks, router
+from . import cli, delivery, host_hooks, host_rules, llm, package_hooks, router
 
 
 def register(ctx) -> None:
@@ -33,8 +39,10 @@ def register(ctx) -> None:
     for section_id, render in host_rules.SECTIONS:
         ctx.register_system_prompt_section(section_id, render, max_chars=4000)
     ctx.register_hook("pre_llm_call", router.on_pre_llm_call)
+    ctx.register_hook("pre_tool_call", host_hooks.on_pre_tool_call)
     ctx.register_hook("pre_tool_call", package_hooks.on_pre_tool_call)
-    ctx.register_hook("post_tool_call", lambda tool_name="", **kw: package_hooks.on_observed("post_tool_call", tool_name))
-    ctx.register_hook("on_session_start", lambda **kw: package_hooks.on_observed("on_session_start"))
-    ctx.register_hook("on_session_end", lambda **kw: package_hooks.on_observed("on_session_end"))
-    ctx.register_hook("transform_tool_result", package_hooks.on_transform_tool_result)
+    ctx.register_hook("post_tool_call", lambda tool_name="", **kw: package_hooks.on_observed("post_tool_call", tool_name, **kw))
+    ctx.register_hook("on_session_start", lambda **kw: package_hooks.on_observed("on_session_start", **kw))
+    ctx.register_hook("on_session_end", lambda **kw: package_hooks.on_observed("on_session_end", **kw))
+    ctx.register_hook("transform_tool_result", host_hooks.on_transform_tool_result)
+    ctx.register_hook("transform_llm_output", delivery.on_transform_llm_output)

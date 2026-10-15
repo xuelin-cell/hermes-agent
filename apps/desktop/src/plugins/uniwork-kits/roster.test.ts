@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { installedExperts, withInstalledExperts } from './roster-model'
+import { installedExperts, type RosterProfile, withInstalledExperts } from './roster-model'
 
 describe('installed experts on the bots roster', () => {
   it('keeps experts and skips kit rows and the expert profile’s own copy', () => {
@@ -14,10 +14,8 @@ describe('installed experts on the bots roster', () => {
   })
 
   it('adds a missing expert to the snapshot the bots pane is already painting', () => {
-    const next = withInstalledExperts(
-      { profiles: [{ display_name: 'UniWork', name: 'default' }] },
-      [{ displayName: '看效果', profile: 'view-expert' }]
-    )
+    const snapshot: { profiles: RosterProfile[] } = { profiles: [{ display_name: 'UniWork', name: 'default' }] }
+    const next = withInstalledExperts(snapshot, [{ displayName: '看效果', profile: 'view-expert' }])
 
     expect(next?.profiles?.map(row => row.name)).toEqual(['default', 'view-expert'])
     expect(next?.profiles?.[1]?.display_name).toBe('看效果')
