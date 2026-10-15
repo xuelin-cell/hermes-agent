@@ -167,8 +167,11 @@ class Plan:
         return self.manifest.version
 
     def display_name(self) -> str:
+        from .expert_cards import card_name
         from .host_rules import localized
 
+        if self.kind == "expert":
+            return card_name(self.name, self.manifest.persona)[0]
         return (
             localized(self.manifest.persona.get("displayName"))
             or DISPLAY_TITLES.get(self.name, "")

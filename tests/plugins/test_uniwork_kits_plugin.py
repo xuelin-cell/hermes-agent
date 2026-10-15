@@ -52,7 +52,7 @@ def kits():
     parts = (
         "installer", "host_rules", "router", "store", "naming", "llm", "triggers",
         "media_slot", "xiaohongshu", "deck_check", "package_hooks", "turns", "delivery", "expert_sync", "experts",
-        "host_hooks", "image_landing", "deck_geometry",
+        "host_hooks", "image_landing", "deck_geometry", "expert_cards",
     )
     for part in parts:
         importlib.import_module(f"{name}.{part}")
@@ -109,8 +109,8 @@ def _expert_pkg(tmp_path, avatar_name="face.png", avatar_bytes=b"\x89PNG\r\n\x1a
         "description": "演示专家",
         "expertType": "agent",
         "agentName": "lead-probe",
-        "displayName": {"zh": "演示专家", "en": "Demo"},
-        "profession": {"zh": "演示顾问"},
+        "displayName": {"zh": "小演", "en": "Demo"},
+        "profession": {"zh": "演示专家"},
         "avatar": f"avatars/{avatar_name}",
     }, ensure_ascii=False))
     _write(root / "agents" / "lead-probe.md",
@@ -501,7 +501,7 @@ def test_prompt_sections_only_render_for_experts(kits, profile_env, expert_pkg, 
     # An expert without host-specific notes still gets its name and the shared rules.
     host, working, delivery = [render({"profile_name": "demo-expert"}) for _, render in kits.host_rules.SECTIONS]
     assert host == "" and delivery
-    assert "「演示专家」（演示顾问）" in working and "以这个名字为准" in working
+    assert "名字是「演示专家」。" in working and "以这个名字为准" in working
 
     monkeypatch.setitem(kits.host_rules.HOST_NOTES, "demo-expert", "- 演示专属说明\n")
     host = kits.host_rules.SECTIONS[0][1]({"profile_name": "demo-expert"})
@@ -1379,7 +1379,7 @@ def test_summon_directory_carries_prompts_recent_and_avatar(kits, profile_env, t
     assert listed["recent"] == []
     [expert] = listed["experts"]
     assert expert["profile"] == "demo-expert" and expert["display_name"] == "演示专家"
-    assert expert["profession"] == "演示顾问" and expert["description"] == "演示用的专家"
+    assert expert["profession"] == "" and expert["description"] == "演示用的专家"
     assert expert["init_prompt"] == "帮我做个演示"
     assert expert["quick_prompts"] == ["演示一", "演示二", "演示三"] and expert["tags"] == ["演示"]
 
@@ -1390,6 +1390,28 @@ def test_summon_directory_carries_prompts_recent_and_avatar(kits, profile_env, t
 
     assert kits.experts.avatar_data_url(profile_env, "demo-expert").startswith("data:image/png;base64,")
     assert kits.experts.avatar_data_url(profile_env, "not-installed") == ""
+
+
+def test_experts_are_named_by_their_job(kits, monkeypatch):
+    """Users read 「基金诊断专家」, not a character name like 福帮手."""
+    name = kits.expert_cards.card_name
+    assert name("x", {"displayName": {"zh": "小演"}, "profession": {"zh": "演示专家"}}) == ("演示专家", "")
+    # <job>-<maker>: the maker moves to the subtitle so the job is not cut off in lists.
+    maker = {"displayName": {"zh": "基金诊断专家-东方财富妙想"}, "profession": {"zh": "基金诊断专家-东方财富妙想"}}
+    assert name("x", maker) == ("基金诊断专家", "东方财富妙想")
+    assert name("x", {"displayName": {"zh": "插件顾问"}}) == ("插件顾问", "")
+
+    for plugin, card in kits.expert_cards.CARDS.items():
+        assert name(plugin, {"displayName": "人设名", "profession": "某职业"})[0].endswith("专家"), plugin
+        if "init_prompt" in card:
+            shown = kits.expert_cards.intro(plugin, {"defaultInitPrompt": "本次WorkBuddy任务"})
+            assert shown["init_prompt"] == shown["quick_prompts"][0]
+            assert "WorkBuddy" not in shown["init_prompt"] + "".join(shown["quick_prompts"]), plugin
+
+    # A card can patch the phrase that still calls the expert by its old title, keeping the rest.
+    monkeypatch.setitem(kits.expert_cards.CARDS, "renamed", {"name": "新专家", "replace": {"请旧称帮忙": "请帮忙"}})
+    shown = kits.expert_cards.intro("renamed", {"defaultInitPrompt": "请旧称帮忙写方案", "quickPrompts": ["请旧称帮忙写方案", "写脚本"]})
+    assert shown["init_prompt"] == "请帮忙写方案" and shown["quick_prompts"] == ["请帮忙写方案", "写脚本"]
 
 
 def test_summon_endpoints_over_http(kits, profile_env, expert_pkg, monkeypatch):
