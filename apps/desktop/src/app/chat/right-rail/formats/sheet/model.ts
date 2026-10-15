@@ -1,5 +1,6 @@
 import { type Range, read, utils } from 'xlsx'
 
+import { type PreviewChart, readWorkbookCharts } from './charts'
 import { type PreviewImage, readWorkbookImages } from './images'
 import { openWorkbookPackage } from './package'
 import { type PreviewStyle, readWorkbookStyles } from './styles'
@@ -28,6 +29,7 @@ export interface PreviewSheet {
   hiddenColumns: number[]
   limited: boolean
   images?: PreviewImage[]
+  charts?: PreviewChart[]
 }
 
 /** 无效尺寸使用默认值，不让损坏的行高列宽污染画布几何。 */
@@ -53,6 +55,8 @@ export function parseWorkbook(bytes: ArrayBuffer): PreviewSheet[] {
   if (!book.SheetNames.length) {
     throw { code: 'unsupported' }
   }
+
+  const charts = readWorkbookCharts(archive, book)
 
   return book.SheetNames.map(name => {
     const source = book.Sheets[name]
@@ -107,6 +111,7 @@ export function parseWorkbook(bytes: ArrayBuffer): PreviewSheet[] {
       cells,
       limited: originalRows > MAX_ROWS,
       images: images.get(name),
+      charts: charts.get(name),
       merges: merges
         .filter(merge => merge.s.r < rows && merge.s.c < columns)
         .map(merge => ({

@@ -42,6 +42,14 @@ export default function SheetPreview({ onFailure, path, reloadKey, target }: For
         }
 
         const parsed = parseWorkbook(bytes)
+
+        if (parsed.some(sheet => sheet.charts?.length)) {
+          const { renderWorkbookCharts } = await import('./sheet/charts-render')
+
+          if (!active) {return}
+          renderWorkbookCharts(parsed)
+        }
+
         await validateWorkbookImages(parsed)
 
         if (active) {

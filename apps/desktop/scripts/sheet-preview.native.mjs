@@ -14,6 +14,7 @@ import { utils, write } from 'xlsx'
 
 import { createStyledWorkbook } from './sheet-styles.fixture.ts'
 import { createImageWorkbook } from './sheet-images.fixture.ts'
+import { createChartWorkbook } from './sheet-charts.fixture.ts'
 
 if (!process.argv.includes('--run')) {
   console.log('独立隐藏窗口检查，不启动 Hermes 或 Office：node scripts/sheet-preview.native.mjs --run')
@@ -24,7 +25,7 @@ const desktop = path.resolve(import.meta.dirname, '..')
 const resolve = createRequire(import.meta.url).resolve
 
 /** 正式来源、解析与界面经生产构建后在真实 Electron 中执行，不启动 Office。 */
-test('P12～P14 三种工作簿、样式及内嵌图片经正式显示器呈现', { timeout: 90000 }, async () => {
+test('P12～P15 工作簿、样式、图片及按需图表经正式显示器呈现', { timeout: 90000 }, async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'hermes-sheet-preview-'))
   console.log('表格兼容性记录：' + root)
   const entry = path.join(root, 'fixture.js')
@@ -36,7 +37,7 @@ test('P12～P14 三种工作簿、样式及内嵌图片经正式显示器呈现'
   utils.book_append_sheet(book, utils.aoa_to_sheet([['第二表内容', 7]]), '汇总')
   const files = {}
   for (const [extension, bookType] of [['xlsx', 'xlsx'], ['xls', 'biff8'], ['ods', 'ods']]) {
-    const bytes = extension === 'xlsx' ? Buffer.from(createImageWorkbook(createStyledWorkbook())) : write(book, { bookType, type: 'buffer' })
+    const bytes = extension === 'xlsx' ? Buffer.from(createChartWorkbook(createImageWorkbook(createStyledWorkbook()))) : write(book, { bookType, type: 'buffer' })
     await fs.writeFile(path.join(root, `中文样例.${extension}`), bytes)
     files[extension] = `data:application/octet-stream;base64,${bytes.toString('base64')}`
   }
@@ -94,6 +95,8 @@ test('P12～P14 三种工作簿、样式及内嵌图片经正式显示器呈现'
   await build({ root: desktop, logLevel: 'warn', build: { outDir: output, emptyOutDir: true, manifest: 'manifest.json', reportCompressedSize: false, rolldownOptions: { input: entry } } })
   const manifest = JSON.parse(await fs.readFile(path.join(output, 'manifest.json'), 'utf8'))
   const built = Object.values(manifest).find(item => item.isEntry)
+  const chartBundle = Object.entries(manifest).find(([key]) => key.endsWith('/charts-render.ts'))?.[1].file
+  assert.ok(chartBundle,'图表绘制必须保留独立按需入口')
   await fs.writeFile(path.join(output, 'index.html'), `<!doctype html><meta charset="utf-8"><title>独立表格检查</title>
     ${(built.css || []).map(file => `<link rel="stylesheet" href="./${file}">`).join('')}
     <style>html,body,#root{width:100%;height:100%;margin:0}</style>
@@ -116,9 +119,11 @@ test('P12～P14 三种工作簿、样式及内嵌图片经正式显示器呈现'
   const blockedBaselineFonts = []
   let styleEvidence
   let imageEvidence
+  const chartRequests = []
   try {
     app = await electron.launch({ executablePath: electronPath, args: [path.join(root, 'main.cjs')], cwd: desktop, env })
     const page = await app.firstWindow()
+    page.on('request', request => {if(request.url().endsWith(chartBundle)) chartRequests.push(request.url())})
     page.on('pageerror', error => messages.push(String(error)))
     await page.route('**/*', route => {
       if (/^(file:|data:|blob:)/.test(route.request().url())) { return route.continue() }
@@ -134,10 +139,12 @@ test('P12～P14 三种工作簿、样式及内嵌图片经正式显示器呈现'
     })
     await page.goto(pathToFileURL(path.join(output, 'index.html')).href)
     await page.waitForFunction(() => typeof window.loadSheet === 'function')
-    for (const extension of Object.keys(files)) {
+    for (const extension of ['xls','ods','xlsx']) {
       await page.evaluate(extension => window.loadSheet(extension), extension)
       await page.waitForFunction(() => window.painted.join('').includes('中文数据'))
+      if (extension !== 'xlsx') assert.equal(chartRequests.length,0,'无图表的表格不能加载图表库')
       if (extension === 'xlsx') {
+        assert.equal(chartRequests.length,1,'有图表才加载独立绘制入口')
         styleEvidence = await page.evaluate(() => ({
           text: window.stylePaints.filter(item => item.color === '#990000'),
           multiline: window.stylePaints.filter(item => item.text.includes('中文换行') || item.text === '第二行'),
@@ -151,7 +158,7 @@ test('P12～P14 三种工作簿、样式及内嵌图片经正式显示器呈现'
         const png = await page.locator('canvas').evaluateAll(items => items.toSorted((a,b) => b.width*b.height-a.width*a.height)[0].toDataURL('image/png'))
         await fs.writeFile(path.join(root, 'styled-canvas.png'), Buffer.from(png.split(',')[1], 'base64'))
         const images = page.locator('#luckysheet-image-showBoxs .img-list img')
-        await expect(images).toHaveCount(3)
+        await expect(images).toHaveCount(6)
         imageEvidence = await images.evaluateAll(async items => {
           const results = []
           for (const image of items) {
@@ -161,9 +168,13 @@ test('P12～P14 三种工作簿、样式及内嵌图片经正式显示器呈现'
             canvas.height = image.height
             const ctx = canvas.getContext('2d')
             ctx.drawImage(image,0,0,image.width,image.height)
+            const svg = image.src.startsWith('data:image/svg+xml') ? new TextDecoder().decode(Uint8Array.from(atob(image.src.split(',')[1]),c=>c.charCodeAt(0))) : ''
+            const colors = ctx.getImageData(0,0,image.width,image.height).data
             results.push({ width:image.width,height:image.height,
               pixel:[...ctx.getImageData(Math.floor(image.width/4),Math.floor(image.height/2),1,1).data],
               left:image.parentElement.parentElement.style.left,top:image.parentElement.parentElement.style.top,
+              text:svg ? [...new DOMParser().parseFromString(svg,'image/svg+xml').querySelectorAll('text')].map(node=>node.textContent).join(' ') : '',
+              coloredPixels:Array.from({length:colors.length/4},(_,i)=>i*4).filter(i=>colors[i+3]>0 && (colors[i]<240 || colors[i+1]<240 || colors[i+2]<240)).length,
               png:canvas.toDataURL('image/png') })
           }
 
@@ -174,6 +185,13 @@ test('P12～P14 三种工作簿、样式及内嵌图片经正式显示器呈现'
         assert.deepEqual(imageEvidence[2].pixel,[0,0,255,255])
         assert.equal(imageEvidence[0].width,96)
         assert.equal(imageEvidence[0].height,64)
+        for (const [offset,title] of ['月度销售','趋势变化','分类占比'].entries()) {
+          const item = imageEvidence[offset+3]
+          assert.ok(item.text.includes(title),JSON.stringify(item))
+          assert.ok(item.coloredPixels>100,JSON.stringify(item))
+          assert.equal(item.width,360)
+          assert.equal(item.height,240)
+        }
         await images.first().click()
         assert.equal(await page.locator('#luckysheet-modal-dialog-activeImage').count(),0,'只读预览不能进入图片编辑状态')
         for (const [index, item] of imageEvidence.entries()) {
@@ -206,9 +224,9 @@ test('P12～P14 三种工作簿、样式及内嵌图片经正式显示器呈现'
     assert.equal(await page.evaluate(() => window.reads.length), 3)
     assert.deepEqual(messages, [])
     assert.deepEqual(external, [])
-    console.log('三种格式、XLSX 样式与三种锚点图片通过实际显示；裁剪、翻转、只读、切表和尺寸检查通过。复杂文件仍待用户验收。')
+    console.log('三格式、样式、图片与柱状／折线／饼图实际呈现；无图表不加载图表库，图片只读、切表与尺寸检查通过。复杂文件仍待用户验收。')
   } finally {
-    await fs.writeFile(path.join(root, 'report.json'), JSON.stringify({ messages, external, blockedBaselineFonts, styleEvidence,imageEvidence }, null, 2))
+    await fs.writeFile(path.join(root, 'report.json'), JSON.stringify({ messages, external, blockedBaselineFonts, styleEvidence,imageEvidence,chartRequests }, null, 2))
     await app?.close()
   }
 })
