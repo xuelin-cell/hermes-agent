@@ -6,13 +6,27 @@ export interface LogoutProcess {
   started: string
 }
 
+/** 冷启动或系统繁忙时仅重试一次只读查询；权限和数据错误仍立即失败。 */
+function queryLogoutProcesses(): string {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return readLogoutProcesses()
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ETIMEDOUT' || attempt >= 1) {
+        throw error
+      }
+      console.warn('[account-recovery] Windows process query timed out; retrying (2/2).')
+    }
+  }
+}
+
 /** 只读取进程关系与创建时间，不采集可能包含凭据的命令行。 */
-export function listLogoutProcesses(): LogoutProcess[] {
+function readLogoutProcesses(): string {
   if (process.platform !== 'win32') {
     throw new Error('当前退出验证仅支持 Windows。')
   }
 
-  const output = execFileSync(
+  return execFileSync(
     'powershell.exe',
     [
       '-NoProfile',
@@ -20,10 +34,14 @@ export function listLogoutProcesses(): LogoutProcess[] {
       '-Command',
       "$ErrorActionPreference='Stop'; @(Get-CimInstance Win32_Process | Select-Object @{n='pid';e={[int]$_.ProcessId}},@{n='parent';e={[int]$_.ParentProcessId}},@{n='started';e={if ($_.CreationDate) {$_.CreationDate.ToUniversalTime().Ticks.ToString()} else {''}}}) | ConvertTo-Json -Compress"
     ],
-    { encoding: 'utf8', windowsHide: true, timeout: 15_000 }
+    { encoding: 'utf8', windowsHide: true, timeout: 30_000 }
   )
 
-  const rows: unknown = JSON.parse(output)
+}
+
+/** 取得并校验完整快照；查询失败时不能把未知状态当作没有进程。 */
+export function listLogoutProcesses(): LogoutProcess[] {
+  const rows: unknown = JSON.parse(queryLogoutProcesses())
 
   if (
     !Array.isArray(rows) ||

@@ -3,7 +3,7 @@ import { expect, it, vi } from 'vitest'
 const { exec } = vi.hoisted(() => ({ exec: vi.fn() }))
 vi.mock('node:child_process', () => ({ execFileSync: exec }))
 
-import { logoutProcessTree, stopLogoutProcesses } from './logout-processes'
+import { listLogoutProcesses, logoutProcessTree, stopLogoutProcesses } from './logout-processes'
 
 it('只选择所持有后端的后代，排除官方进程与父 PID 被复用前的旧子进程', () => {
   const rows = [
@@ -55,4 +55,28 @@ it('原版已停止全部进程时不启动清理程序；无法确认的探测�
   expect(() => stopLogoutProcesses(owned)).toThrow('尚未停止')
   expect(exec).toHaveBeenCalledTimes(1)
   vi.restoreAllMocks()
+})
+
+
+it.runIf(process.platform === 'win32')('只读进程查询超时后重新查询，持续超时或权限错误均不放行', () => {
+  exec.mockReset()
+  const timeout = Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' })
+  const denied = Object.assign(new Error('denied'), { code: 'EACCES' })
+  const rows = [{ pid: 123, parent: 1, started: '100' }]
+  exec.mockImplementationOnce(() => { throw timeout }).mockReturnValueOnce(JSON.stringify(rows))
+  expect(listLogoutProcesses()).toEqual(rows)
+  expect(exec).toHaveBeenCalledTimes(2)
+  expect(exec.mock.calls[0][2]).toMatchObject({ windowsHide: true, timeout: 30_000 })
+
+  exec.mockReset().mockImplementation(() => { throw timeout })
+  expect(() => listLogoutProcesses()).toThrow(timeout)
+  expect(exec).toHaveBeenCalledTimes(2)
+
+  exec.mockReset().mockImplementation(() => { throw denied })
+  expect(() => listLogoutProcesses()).toThrow(denied)
+  expect(exec).toHaveBeenCalledTimes(1)
+  exec.mockReset().mockReturnValue('{}')
+  expect(() => listLogoutProcesses()).toThrow('无法确认账号进程状态')
+  expect(exec).toHaveBeenCalledTimes(1)
+  exec.mockReset()
 })

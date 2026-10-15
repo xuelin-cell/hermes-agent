@@ -56,11 +56,14 @@ function initializeLoginShell(): void {
   recovery = app
     .whenReady()
     .then(() => recoverAccountRun(roots, installationRoot, process.env.HERMES_DESKTOP_PYTHON))
-    .catch(() => {
+    .catch(error => {
       stopping = true
+      const advice = (error as NodeJS.ErrnoException)?.code === 'ETIMEDOUT'
+        ? 'Windows 进程状态查询超时，请稍后重新启动应用。'
+        : '上次账号工作未能安全收尾，请寻求支持。'
       dialog.showErrorBox(
         'Hermes Desktop MT',
-        '上次账号工作未能安全收尾，已阻止恢复登录。记录和历史已保留，请寻求支持。'
+        `${advice}已阻止恢复登录，账号记录和历史已保留。`
       )
       app.quit()
     })
