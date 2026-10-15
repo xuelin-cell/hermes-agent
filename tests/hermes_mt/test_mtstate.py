@@ -414,6 +414,17 @@ def test_patch_config_repairs_the_production_broken_file(tmp_path: Path) -> None
     assert mtstate.patch_config_file(cfg, _SPEC) == []
 
 
+def test_patch_config_works_without_pyyaml(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """新版 hermes 只带 ruamel：改配置和改完的自检都不能 import yaml（引导曾因此报 No module named 'yaml'）。"""
+    pytest.importorskip("ruamel.yaml")
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(_PROD_BROKEN, encoding="utf-8")
+    monkeypatch.setitem(sys.modules, "yaml", None)
+    assert mtstate.patch_config_file(cfg, _SPEC)
+    monkeypatch.undo()
+    assert _load(cfg)["model"]["base_url"] == _URL
+
+
 def test_patch_config_normalizes_folded_doubled_base_url(tmp_path: Path) -> None:
     """归档里 base_url 是"URL URL"折成两行：解析后整体换掉，不再按行改，文件回到一行。"""
     cfg = tmp_path / "config.yaml"

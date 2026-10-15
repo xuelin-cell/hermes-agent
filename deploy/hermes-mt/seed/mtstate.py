@@ -754,9 +754,17 @@ def _yaml_io():
 
 
 def _check_parses(text: str) -> None:
-    """自检：PyYAML（hermes 读配置用的库）必须能把它解析成映射。"""
-    import yaml
-    doc = yaml.safe_load(text) if text.strip() else {}
+    """自检：按 hermes 读配置的方式（hermes_yaml.safe_load：ruamel、YAML 1.1）必须能解析成映射。
+    新版 hermes 不再带 PyYAML；没有 ruamel（本地测试）才用 PyYAML。"""
+    try:
+        from ruamel.yaml import YAML
+    except ImportError:
+        import yaml
+        doc = yaml.safe_load(text) if text.strip() else {}
+    else:
+        reader = YAML(typ="safe", pure=True)
+        reader.version = (1, 1)
+        doc = reader.load(text) if text.strip() else {}
     if not isinstance(doc, dict):
         raise ValueError("config.yaml 顶层不是映射")
 
