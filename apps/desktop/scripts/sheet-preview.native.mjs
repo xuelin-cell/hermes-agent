@@ -13,6 +13,7 @@ import { build } from 'vite'
 import { utils, write } from 'xlsx'
 
 import { createStyledWorkbook } from './sheet-styles.fixture.ts'
+import { createImageWorkbook } from './sheet-images.fixture.ts'
 
 if (!process.argv.includes('--run')) {
   console.log('独立隐藏窗口检查，不启动 Hermes 或 Office：node scripts/sheet-preview.native.mjs --run')
@@ -23,7 +24,7 @@ const desktop = path.resolve(import.meta.dirname, '..')
 const resolve = createRequire(import.meta.url).resolve
 
 /** 正式来源、解析与界面经生产构建后在真实 Electron 中执行，不启动 Office。 */
-test('P12/P13 三种工作簿与 XLSX 样式经正式显示器绘制、切表与调整面板', { timeout: 90000 }, async () => {
+test('P12～P14 三种工作簿、样式及内嵌图片经正式显示器呈现', { timeout: 90000 }, async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'hermes-sheet-preview-'))
   console.log('表格兼容性记录：' + root)
   const entry = path.join(root, 'fixture.js')
@@ -35,7 +36,7 @@ test('P12/P13 三种工作簿与 XLSX 样式经正式显示器绘制、切表与
   utils.book_append_sheet(book, utils.aoa_to_sheet([['第二表内容', 7]]), '汇总')
   const files = {}
   for (const [extension, bookType] of [['xlsx', 'xlsx'], ['xls', 'biff8'], ['ods', 'ods']]) {
-    const bytes = extension === 'xlsx' ? Buffer.from(createStyledWorkbook()) : write(book, { bookType, type: 'buffer' })
+    const bytes = extension === 'xlsx' ? Buffer.from(createImageWorkbook(createStyledWorkbook())) : write(book, { bookType, type: 'buffer' })
     await fs.writeFile(path.join(root, `中文样例.${extension}`), bytes)
     files[extension] = `data:application/octet-stream;base64,${bytes.toString('base64')}`
   }
@@ -114,6 +115,7 @@ test('P12/P13 三种工作簿与 XLSX 样式经正式显示器绘制、切表与
   const external = []
   const blockedBaselineFonts = []
   let styleEvidence
+  let imageEvidence
   try {
     app = await electron.launch({ executablePath: electronPath, args: [path.join(root, 'main.cjs')], cwd: desktop, env })
     const page = await app.firstWindow()
@@ -148,6 +150,36 @@ test('P12/P13 三种工作簿与 XLSX 样式经正式显示器绘制、切表与
         assert.ok(styleEvidence.strokes.includes('#008800'), JSON.stringify(styleEvidence))
         const png = await page.locator('canvas').evaluateAll(items => items.toSorted((a,b) => b.width*b.height-a.width*a.height)[0].toDataURL('image/png'))
         await fs.writeFile(path.join(root, 'styled-canvas.png'), Buffer.from(png.split(',')[1], 'base64'))
+        const images = page.locator('#luckysheet-image-showBoxs .img-list img')
+        await expect(images).toHaveCount(3)
+        imageEvidence = await images.evaluateAll(async items => {
+          const results = []
+          for (const image of items) {
+            await image.decode()
+            const canvas = document.createElement('canvas')
+            canvas.width = image.width
+            canvas.height = image.height
+            const ctx = canvas.getContext('2d')
+            ctx.drawImage(image,0,0,image.width,image.height)
+            results.push({ width:image.width,height:image.height,
+              pixel:[...ctx.getImageData(Math.floor(image.width/4),Math.floor(image.height/2),1,1).data],
+              left:image.parentElement.parentElement.style.left,top:image.parentElement.parentElement.style.top,
+              png:canvas.toDataURL('image/png') })
+          }
+
+          return results
+        })
+        assert.deepEqual(imageEvidence[0].pixel,[0,0,255,255])
+        assert.deepEqual(imageEvidence[1].pixel,[255,0,0,255])
+        assert.deepEqual(imageEvidence[2].pixel,[0,0,255,255])
+        assert.equal(imageEvidence[0].width,96)
+        assert.equal(imageEvidence[0].height,64)
+        await images.first().click()
+        assert.equal(await page.locator('#luckysheet-modal-dialog-activeImage').count(),0,'只读预览不能进入图片编辑状态')
+        for (const [index, item] of imageEvidence.entries()) {
+          await fs.writeFile(path.join(root,`picture-${index+1}.png`),Buffer.from(item.png.split(',')[1],'base64'))
+          delete item.png
+        }
       }
       await expect(page.getByText('Some sheets exceed 500 rows. Only their first 500 rows are shown.')).toBeVisible()
       assert.ok(await page.locator('canvas').evaluateAll(items => items.some(item => item.width > 0 && item.height > 0)))
@@ -174,9 +206,9 @@ test('P12/P13 三种工作簿与 XLSX 样式经正式显示器绘制、切表与
     assert.equal(await page.evaluate(() => window.reads.length), 3)
     assert.deepEqual(messages, [])
     assert.deepEqual(external, [])
-    console.log('三种格式及 XLSX 字体／背景／边框经过真实画布；切表、只读、行数与尺寸检查通过。复杂排版仍待用户验收。')
+    console.log('三种格式、XLSX 样式与三种锚点图片通过实际显示；裁剪、翻转、只读、切表和尺寸检查通过。复杂文件仍待用户验收。')
   } finally {
-    await fs.writeFile(path.join(root, 'report.json'), JSON.stringify({ messages, external, blockedBaselineFonts, styleEvidence }, null, 2))
+    await fs.writeFile(path.join(root, 'report.json'), JSON.stringify({ messages, external, blockedBaselineFonts, styleEvidence,imageEvidence }, null, 2))
     await app?.close()
   }
 })

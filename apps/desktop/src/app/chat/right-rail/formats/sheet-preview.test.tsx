@@ -1,4 +1,4 @@
-import { Blob as NodeBlob } from 'node:buffer'
+import { Buffer, Blob as NodeBlob } from 'node:buffer'
 
 import type { Settings } from '@fortune-sheet/core'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -8,6 +8,9 @@ import { type BookType, utils, write } from 'xlsx'
 import { setApiRequestConnection } from '@/api/client'
 import { I18nProvider } from '@/i18n'
 import { $connection } from '@/store/session'
+
+import { createImageWorkbook } from '../../../../../scripts/sheet-images.fixture'
+import { createStyledWorkbook } from '../../../../../scripts/sheet-styles.fixture'
 
 import { FormatPreview } from './format-preview'
 
@@ -150,6 +153,24 @@ it('损坏内容和组件异常均进入现有 PDF 候选，关闭后释放 PDF 
   render(<FormatPreview reloadKey={0} target={target('xls')} />)
   expect(await screen.findByTitle(target('xls').label)).toBeTruthy()
   expect(convert).toHaveBeenCalledWith(target('xls').path)
+})
+
+it('内嵌图片解码失败经过正式预览入口降级，不挂载空白表格', async () => {
+  const bytes = createImageWorkbook(createStyledWorkbook())
+  read.mockResolvedValue(`data:application/octet-stream;base64,${Buffer.from(bytes).toString('base64')}`)
+  vi.stubGlobal(
+    'Image',
+    class {
+      src = ''
+      /** jsdom 不解码图片，只控制解码失败，字节、XML 和降级仍真实执行。 */
+      decode() {
+        return Promise.reject(new Error('controlled bad image'))
+      }
+    }
+  )
+  render(<FormatPreview reloadKey={0} target={target()} />)
+  await waitFor(() => expect(convert).toHaveBeenCalledTimes(1))
+  expect(mock.props).not.toHaveBeenCalled()
 })
 
 it('明确文件不存在时停止降级，不启动本机转换', async () => {

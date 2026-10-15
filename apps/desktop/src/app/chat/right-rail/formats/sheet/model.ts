@@ -1,5 +1,7 @@
 import { type Range, read, utils } from 'xlsx'
 
+import { type PreviewImage, readWorkbookImages } from './images'
+import { openWorkbookPackage } from './package'
 import { type PreviewStyle, readWorkbookStyles } from './styles'
 
 export const MAX_ROWS = 500
@@ -25,6 +27,7 @@ export interface PreviewSheet {
   hiddenRows: number[]
   hiddenColumns: number[]
   limited: boolean
+  images?: PreviewImage[]
 }
 
 /** 无效尺寸使用默认值，不让损坏的行高列宽污染画布几何。 */
@@ -34,7 +37,9 @@ function positive(value: number | undefined, fallback: number) {
 
 /** 只解析字节与缓存值，不执行宏、公式或文档链接；行号始终保留原文件的位置。 */
 export function parseWorkbook(bytes: ArrayBuffer): PreviewSheet[] {
-  const styles = readWorkbookStyles(new Uint8Array(bytes))
+  const archive = openWorkbookPackage(new Uint8Array(bytes))
+  const styles = readWorkbookStyles(archive)
+  const images = readWorkbookImages(archive)
 
   const book = read(new Uint8Array(bytes), {
     type: 'array',
@@ -101,6 +106,7 @@ export function parseWorkbook(bytes: ArrayBuffer): PreviewSheet[] {
       columns,
       cells,
       limited: originalRows > MAX_ROWS,
+      images: images.get(name),
       merges: merges
         .filter(merge => merge.s.r < rows && merge.s.c < columns)
         .map(merge => ({

@@ -1,5 +1,6 @@
 import type { Cell, CellWithRowAndCol, Sheet, SheetConfig } from '@fortune-sheet/core'
 
+import { toFortuneImages } from './images'
 import { MAX_GRID_CELLS, type PreviewSheet } from './model'
 import type { PreviewStyle } from './styles'
 
@@ -114,6 +115,7 @@ export function toFortuneWorkbook(sheets: PreviewSheet[]): Sheet[] {
       defaultRowHeight: 20,
       defaultColWidth: 64,
       celldata: [...cells.values()],
+      images: toFortuneImages(sheet, index),
       config: {
         borderInfo: sheet.cells.flatMap<NonNullable<SheetConfig['borderInfo']>[number]>(cell => {
           const borders = Object.fromEntries(

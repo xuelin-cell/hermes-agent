@@ -1,5 +1,6 @@
 import { parseColor, toHex } from '@hermes/shared/color'
-import { strFromU8, unzipSync } from 'fflate'
+
+import { attr, child, children, descendants, type WorkbookPackage } from './package'
 
 export interface PreviewStyle {
   fontFamily?: string
@@ -26,26 +27,6 @@ const INDEXED = (
   '000080 FF00FF FFFF00 00FFFF 800080 800000 008080 0000FF 00CCFF CCFFFF CCFFCC FFFF99 99CCFF FF99CC CC99FF FFCC99 ' +
   '3366FF 33CCCC 99CC00 FFCC00 FF9900 FF6600 666699 969696 003366 339966 003300 333300 993300 993366 333399 333333'
 ).split(' ')
-
-/** 按局部名称读取直接子项，不依赖 XML 的具体前缀。 */
-function children(parent: Element | undefined, name: string) {
-  return Array.from(parent?.children || []).filter(element => element.localName === name)
-}
-
-/** 单项属性块只读取直接子项，避免误把嵌套格式当成本层。 */
-function child(parent: Element | undefined, name: string) {
-  return children(parent, name)[0]
-}
-
-/** 缺失属性保持缺失，避免 Number(null) 把不存在的颜色错误变成色板 0。 */
-function attr(element: Element | undefined, name: string) {
-  return element?.getAttribute(name) ?? undefined
-}
-
-/** 后代查询同样忽略前缀，兼容正常的命名空间序列化差异。 */
-function descendants(parent: Element | Document | undefined, name: string) {
-  return Array.from(parent?.getElementsByTagNameNS('*', name) || [])
-}
 
 /** Excel tint 调整 HSL 的亮度，不能用应用 UI 的 sRGB 混色替代。 */
 function tintColor(hex: string, tint: number) {
@@ -108,52 +89,9 @@ function enabled(parent: Element, name: string) {
   return !!element && !['0', 'false', 'none'].includes(attr(element, 'val') || '')
 }
 
-/** 只解压工作簿 XML 与关系；资源超限或坏 XML 走既有失败链，不静默丢掉样式。 */
-export function readWorkbookStyles(bytes: Uint8Array): Map<string, Map<string, PreviewStyle>> {
+/** 从已校验的工作簿部件读取样式，失败仍交给原有候选链。 */
+export function readWorkbookStyles({ xml, relationships }: WorkbookPackage): Map<string, Map<string, PreviewStyle>> {
   const result = new Map<string, Map<string, PreviewStyle>>()
-
-  if (bytes[0] !== 80 || bytes[1] !== 75) {
-    return result
-  }
-
-  let expanded = 0
-
-  const parts = unzipSync(bytes, {
-    filter: file => {
-      if (!/^xl\/.*\.(xml|rels)$/.test(file.name)) {
-        return false
-      }
-
-      expanded += file.originalSize
-
-      if (expanded > 16 * 1024 * 1024) {
-        throw { code: 'too_large' }
-      }
-
-      return true
-    }
-  })
-
-  /** XML 仅作为数据读取，不加载 DTD、链接或其它外部内容。 */
-  function xml(name: string | undefined) {
-    if (!name || !parts[name]) {
-      return undefined
-    }
-
-    const text = strFromU8(parts[name])
-
-    if (/<!DOCTYPE/i.test(text)) {
-      throw { code: 'unsupported' }
-    }
-
-    const doc = new DOMParser().parseFromString(text, 'application/xml')
-
-    if (doc.getElementsByTagName('parsererror').length) {
-      throw { code: 'unsupported' }
-    }
-
-    return doc
-  }
 
   const workbook = xml('xl/workbook.xml')
 
@@ -161,30 +99,14 @@ export function readWorkbookStyles(bytes: Uint8Array): Map<string, Map<string, P
     return result
   } // ODS 等仍由原有通用解析器负责。
 
-  const rels = descendants(xml('xl/_rels/workbook.xml.rels'), 'Relationship').filter(
-    rel => attr(rel, 'TargetMode') !== 'External'
-  )
-
-  /** 关系只定位压缩包内部文件，绝不请求 URL 或读取本机路径。 */
-  function part(rel: Element | undefined) {
-    const target = attr(rel, 'Target')
-
-    if (!target) {
-      return undefined
-    }
-
-    const url = new URL(target, 'https://package.invalid/xl/workbook.xml')
-
-    return url.origin === 'https://package.invalid' ? decodeURIComponent(url.pathname.slice(1)) : undefined
-  }
-
-  const styles = xml(part(rels.find(rel => attr(rel, 'Type')?.endsWith('/styles'))))?.documentElement
+  const rels = relationships('xl/workbook.xml')
+  const styles = xml(rels.find(rel => rel.type?.endsWith('/styles'))?.target)?.documentElement
 
   if (!styles) {
     return result
   }
 
-  const theme = xml(part(rels.find(rel => attr(rel, 'Type')?.endsWith('/theme'))))
+  const theme = xml(rels.find(rel => rel.type?.endsWith('/theme'))?.target)
   const scheme = descendants(theme, 'clrScheme')[0]
 
   const colors = THEME_KEYS.map((name, index) => {
@@ -280,7 +202,7 @@ export function readWorkbookStyles(bytes: Uint8Array): Map<string, Map<string, P
 
   for (const sheet of descendants(workbook, 'sheet')) {
     const id = Array.from(sheet.attributes).find(attribute => attribute.localName === 'id')?.value
-    const doc = xml(part(rels.find(rel => attr(rel, 'Id') === id)))
+    const doc = xml(rels.find(rel => rel.id === id)?.target)
     const cells = new Map<string, PreviewStyle>()
 
     for (const cell of descendants(doc, 'c')) {

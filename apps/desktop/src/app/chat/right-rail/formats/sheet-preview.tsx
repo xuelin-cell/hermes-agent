@@ -2,7 +2,7 @@ import '@fortune-sheet/react/dist/index.css'
 
 import type { Sheet } from '@fortune-sheet/core'
 import { Workbook } from '@fortune-sheet/react'
-import { useEffect, useRef, useState } from 'react'
+import { type SyntheticEvent, useEffect, useRef, useState } from 'react'
 
 import { PageLoader } from '@/components/page-loader'
 import { useI18n } from '@/i18n'
@@ -10,8 +10,21 @@ import { useI18n } from '@/i18n'
 import { previewFailure } from './failure'
 import type { FormatRendererProps } from './registry'
 import { toFortuneWorkbook } from './sheet/fortune'
+import { validateWorkbookImages } from './sheet/images'
 import { parseWorkbook } from './sheet/model'
 import { readPreviewBytes } from './source'
+
+/** 库的只读开关不覆盖图片编辑，阻止图片选择、拖动及键盘编辑，普通表格仍可交互。 */
+function preventImageEditing(event: SyntheticEvent) {
+  if ('key' in event && event.key === 'Tab') {
+    return
+  }
+
+  if (event.target instanceof Element && event.target.closest('#luckysheet-image-showBoxs')) {
+    event.preventDefault()
+    event.stopPropagation()
+  }
+}
 
 /** 只读工作簿；读取失败交给登记表的 PDF 候选，过期结果不能覆盖新文件。 */
 export default function SheetPreview({ onFailure, path, reloadKey, target }: FormatRendererProps) {
@@ -23,13 +36,17 @@ export default function SheetPreview({ onFailure, path, reloadKey, target }: For
     let active = true
     setResult(null)
     void readPreviewBytes(path)
-      .then(bytes => {
+      .then(async bytes => {
         if (!active) {
           return
         }
 
         const parsed = parseWorkbook(bytes)
-        setResult({ sheets: toFortuneWorkbook(parsed), limited: parsed.some(sheet => sheet.limited) })
+        await validateWorkbookImages(parsed)
+
+        if (active) {
+          setResult({ sheets: toFortuneWorkbook(parsed), limited: parsed.some(sheet => sheet.limited) })
+        }
       })
       .catch(error => {
         if (active) {
@@ -71,7 +88,16 @@ export default function SheetPreview({ onFailure, path, reloadKey, target }: For
   }, [])
 
   return (
-    <div aria-label={target.label} className="flex size-full min-h-0 flex-col" ref={root} role="region">
+    <div
+      aria-label={target.label}
+      className="flex size-full min-h-0 flex-col"
+      onClickCapture={preventImageEditing}
+      onContextMenuCapture={preventImageEditing}
+      onKeyDownCapture={preventImageEditing}
+      onMouseDownCapture={preventImageEditing}
+      ref={root}
+      role="region"
+    >
       <div className="relative min-h-0 flex-1">
         {result ? (
           <Workbook

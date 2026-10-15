@@ -6,6 +6,7 @@ import { createStyledWorkbook } from '../../../../../../scripts/sheet-styles.fix
 
 import { toFortuneWorkbook } from './fortune'
 import { parseWorkbook } from './model'
+import { openWorkbookPackage } from './package'
 import { readWorkbookStyles } from './styles'
 
 /** 修改压缩包内的真实 XML，不替换正式解析器或样式结果。 */
@@ -148,7 +149,7 @@ it('自定义索引色、XML 前缀与非固定 styles/theme 路径仍按文件�
     )
   })
 
-  const styles = readWorkbookStyles(new Uint8Array(bytes)).get('明细')!
+  const styles = readWorkbookStyles(openWorkbookPackage(new Uint8Array(bytes))).get('明细')!
   expect(styles.get('B2')?.color).toBe('#123456')
   expect(styles.get('B3')?.fill).toBe('#123456')
   expect(styles.get('A1')?.borders?.t?.color).toBe('#123456')
