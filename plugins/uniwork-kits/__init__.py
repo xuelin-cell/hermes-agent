@@ -24,11 +24,21 @@ Enable with ``hermes plugins enable uniwork-kits``. Expert profiles created by
 
 from __future__ import annotations
 
-from . import cli, delivery, host_hooks, host_rules, llm, package_hooks, router
+from . import cli, delivery, expert_sync, host_hooks, host_rules, llm, package_hooks, router
 
 
 def register(ctx) -> None:
     llm.set_context(ctx)
+    try:
+        from pathlib import Path
+
+        from hermes_constants import get_hermes_home
+
+        # The default profile's backend starts right after the desktop login
+        # rewrote its model, key and UniAI entry: carry them to the experts.
+        expert_sync.sync_on_load(Path(get_hermes_home()))
+    except Exception:
+        pass
     ctx.register_cli_command(
         "kit",
         "安装和管理 WorkBuddy / UniClaw 的套件与专家",

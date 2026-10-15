@@ -13,7 +13,11 @@ import types
 from pathlib import Path
 
 import pytest
-import yaml
+
+try:  # newer Hermes ships ruamel behind hermes_yaml; develop-uni ships PyYAML
+    import hermes_yaml as yaml
+except ImportError:
+    import yaml
 
 PLUGIN_DIR = Path(__file__).resolve().parents[2] / "plugins" / "uniwork-kits"
 
@@ -47,7 +51,7 @@ def kits():
     spec.loader.exec_module(mod)
     parts = (
         "installer", "host_rules", "router", "store", "naming", "llm", "triggers",
-        "media_slot", "xiaohongshu", "deck_check", "package_hooks", "turns", "delivery",
+        "media_slot", "xiaohongshu", "deck_check", "package_hooks", "turns", "delivery", "expert_sync",
         "host_hooks", "image_landing", "deck_geometry",
     )
     for part in parts:
@@ -1304,3 +1308,55 @@ def test_deck_written_by_a_script_in_a_cd_directory_is_checked_at_once(kits, tmp
     args = {"command": f'cd "{out}" && node gen.js && ls -la xihu.pptx'}
     checked = kits.deck_check.annotate("terminal", args, "OK xihu.pptx\n-rw-r--r-- 1 me 3701461 xihu.pptx", _turn(kits))
     assert checked and "没有交付" in checked and "xihu.pptx" in checked
+
+
+def test_experts_follow_the_default_profiles_model_key_and_uniai(kits, profile_env, tmp_path):
+    """A desktop login rewrites the default profile only; installed experts must keep up."""
+    root = _expert_pkg(tmp_path)
+    manifest = root / ".codebuddy-plugin" / "plugin.json"
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    data["userConfig"] = {"APP_SECRET": {"title": "密钥", "sensitive": True}}
+    manifest.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    kits.installer.install(root, profile_env, triggers={})
+    home = _expert_home()
+    own = kits.installer.env_name("demo-expert", "APP_SECRET")
+    with (home / ".env").open("a", encoding="utf-8") as env:
+        env.write(f"{own}=mine\n")
+
+    uniai = "https://maas.ai-yuanjing.com/app/mcp-server/mcp?key=${DESKTOP_MT_MAAS_API_KEY}&client_id=UniWork"
+    (profile_env / ".env").write_text(
+        f"GLM_API_KEY=rotated\nDESKTOP_MT_MAAS_API_KEY=maas-1\nTELEGRAM_BOT_TOKEN=bot\n{own}=default-copy\n",
+        encoding="utf-8",
+    )
+    _write(profile_env / "config.yaml", yaml.safe_dump({
+        "model": {"provider": "custom:desktop-mt-maas-abc", "default": "m-1"},
+        "providers": {
+            "desktop-mt-maas-abc": {"base_url": "https://maas.example/v1", "key_env": "DESKTOP_MT_MAAS_API_KEY"},
+            "personal": {"base_url": "https://mine.example/v1"},
+        },
+        "mcp_servers": {"UniAI-Toolkit": {"url": uniai, "timeout": 600}},
+    }))
+
+    assert kits.expert_sync.sync_all(profile_env)
+    cfg = _config(home)
+    env = kits.expert_sync._read(home)[1]
+    assert cfg["model"] == {"provider": "custom:desktop-mt-maas-abc", "default": "m-1"}
+    assert "desktop-mt-maas-abc" in cfg["providers"] and "personal" not in cfg["providers"]
+    assert cfg["mcp_servers"]["UniAI-Toolkit"] == {"url": uniai, "timeout": 600}
+    assert env["DESKTOP_MT_MAAS_API_KEY"] == "maas-1" and env["GLM_API_KEY"] == "rotated"
+    assert env[own] == "mine" and "TELEGRAM_BOT_TOKEN" not in env
+    assert kits.expert_sync.sync_all(profile_env) == []  # nothing left to change
+
+    # The user turned the toolkit off for this expert and picked another model: both stay.
+    cfg["mcp_servers"]["UniAI-Toolkit"]["enabled"] = False
+    cfg["model"] = {"provider": "zai", "default": "glm-x"}
+    _write(home / "config.yaml", yaml.safe_dump(cfg))
+    kits.expert_sync.sync_all(profile_env)
+    cfg = _config(home)
+    assert cfg["mcp_servers"]["UniAI-Toolkit"]["enabled"] is False
+    assert cfg["model"]["default"] == "glm-x"
+
+    # No 套餐 any more: the default drops the toolkit and the expert loses it too.
+    _write(profile_env / "config.yaml", yaml.safe_dump({"model": {"provider": "zai", "default": "glm-test"}}))
+    kits.expert_sync.sync_all(profile_env)
+    assert "UniAI-Toolkit" not in (_config(home).get("mcp_servers") or {})

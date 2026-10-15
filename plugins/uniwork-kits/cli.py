@@ -80,6 +80,9 @@ def setup(parser: argparse.ArgumentParser) -> None:
     p.add_argument("--decision", choices=("accept", "decline"), default="accept")
     _add_profile(p)
 
+    p = sub.add_parser("sync", help="让已装专家跟上默认配置档案的模型、密钥和 UniAI 生图搜图工具")
+    _add_profile(p)
+
     p = sub.add_parser("media", help="查看这个 profile 的生图 / 搜图 / 生视频工具；把 UniAI 工具箱写进配置")
     p.add_argument("action", choices=("status", "connect"), help="status 只看；connect 写入 UniAI-Toolkit 这条 MCP")
     p.add_argument("--key-env", default="", help="密钥所在的 .env 变量名（默认 DESKTOP_MT_MAAS_API_KEY）")
@@ -213,6 +216,13 @@ def handle(args: argparse.Namespace) -> None:
                 _print(xiaohongshu.set_consent(home, args.decision))
             else:
                 _print(xiaohongshu.attach(home))
+        elif command == "sync":
+            from . import expert_sync
+
+            lines = expert_sync.sync_all(_home(args))
+            for line in lines or ["专家都已和默认配置档案一致，没有改动。"]:
+                _print(line)
+            failed = any("同步失败" in line for line in lines)
         elif command == "media":
             from . import media_slot
 
