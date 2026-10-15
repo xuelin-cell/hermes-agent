@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { matchesQuery, partition } from './partition'
+import { matchesQuery, normalizeRow, partition } from './partition'
 import type { KitRow } from './types'
 
 function row(partial: Partial<KitRow> & Pick<KitRow, 'kind' | 'name'>): KitRow {
@@ -63,5 +63,18 @@ describe('kit search', () => {
 
   it('needs every word to match', () => {
     expect(matchesQuery(kit, 'ppt 基金')).toBe(false)
+  })
+})
+
+describe('catalog rows from an older backend', () => {
+  it('get empty description, subtitle and phrases instead of undefined', () => {
+    const { description, phrases, profession, ...old } = row({ kind: 'kit', name: 'pptx' })
+    const filled = normalizeRow(old as KitRow)
+
+    expect([description, profession, phrases]).toEqual(['', '', []])
+    expect(filled.description).toBe('')
+    expect(filled.profession).toBe('')
+    expect(filled.phrases).toEqual([])
+    expect(matchesQuery(filled, 'pptx')).toBe(true)
   })
 })
