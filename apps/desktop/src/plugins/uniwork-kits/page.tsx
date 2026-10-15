@@ -38,7 +38,10 @@ export const $job = atom<JobState | null>(null)
 
 /** The last non-empty line of a job log, for the one-line status. */
 export function lastLine(tail: string): string {
-  const lines = tail.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+  const lines = tail
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean)
 
   return lines.at(-1) ?? ''
 }
@@ -405,9 +408,7 @@ export function KitsPage() {
       </section>
       <section className="grid gap-2">
         <h2 className="text-sm font-medium">{t('experts')}</h2>
-        {shelves.experts.length === 0 ? (
-          <p className="text-xs text-(--ui-text-tertiary)">{t('emptyExperts')}</p>
-        ) : null}
+        {shelves.experts.length === 0 ? <p className="text-xs text-(--ui-text-tertiary)">{t('emptyExperts')}</p> : null}
         {shelves.experts.map(row => (
           <KitCard
             key={row.name}

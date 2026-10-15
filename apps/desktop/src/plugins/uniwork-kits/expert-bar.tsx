@@ -27,14 +27,21 @@ export function ExpertBar() {
   }
 
   const leave = (
-    <button className="shrink-0 text-xs text-(--ui-text-tertiary) underline-offset-2 hover:underline" onClick={leaveExpert} type="button">
+    <button
+      className="shrink-0 text-xs text-(--ui-text-tertiary) underline-offset-2 hover:underline"
+      onClick={leaveExpert}
+      type="button"
+    >
       {t('leaveExpert')}
     </button>
   )
 
   if (sessionId) {
     return (
-      <div className="flex items-center gap-2 px-3 pt-1.5 pb-0.5 text-xs text-(--ui-text-tertiary)" data-slot="uniwork_expert_bar">
+      <div
+        className="flex items-center gap-2 px-3 pt-1.5 pb-0.5 text-xs text-(--ui-text-tertiary)"
+        data-slot="uniwork_expert_bar"
+      >
         <ExpertFace expert={expert} size={18} />
         <span className="min-w-0 flex-1 truncate">
           {t('talkingTo')}
@@ -49,7 +56,10 @@ export function ExpertBar() {
   const prompts = quickPrompts(expert)
 
   return (
-    <div className="mx-2 mt-2 mb-1 rounded-lg border border-(--ui-stroke-secondary) px-3 py-2.5" data-slot="uniwork_expert_welcome">
+    <div
+      className="mx-2 mt-2 mb-1 rounded-lg border border-(--ui-stroke-secondary) px-3 py-2.5"
+      data-slot="uniwork_expert_welcome"
+    >
       <div className="flex items-start gap-3">
         <ExpertFace expert={expert} size={40} />
         <div className="min-w-0 flex-1">
@@ -60,7 +70,10 @@ export function ExpertBar() {
             ) : null}
           </div>
           {expert.description ? (
-            <p className="m-0 mt-0.5 line-clamp-2 text-xs leading-5 text-(--ui-text-secondary)" title={expert.description}>
+            <p
+              className="m-0 mt-0.5 line-clamp-2 text-xs leading-5 text-(--ui-text-secondary)"
+              title={expert.description}
+            >
               {expert.description}
             </p>
           ) : null}

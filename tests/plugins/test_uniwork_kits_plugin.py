@@ -1392,7 +1392,7 @@ def test_summon_directory_carries_prompts_recent_and_avatar(kits, profile_env, t
     assert kits.experts.avatar_data_url(profile_env, "not-installed") == ""
 
 
-def test_summon_endpoints_over_http(kits, profile_env, expert_pkg):
+def test_summon_endpoints_over_http(kits, profile_env, expert_pkg, monkeypatch):
     import importlib.util
 
     from fastapi import FastAPI
@@ -1416,6 +1416,18 @@ def test_summon_endpoints_over_http(kits, profile_env, expert_pkg):
     assert client.post("/api/plugins/uniwork-kits/experts/recent", json={"name": "nope"}).status_code == 400
     face = client.get("/api/plugins/uniwork-kits/experts/demo-expert/avatar").json()
     assert face["data_url"].startswith("data:image/png;base64,")
+
+    # With an expert's chat on screen the desktop routes plugin calls to that
+    # expert's backend; the picker and the kits page still see the default
+    # profile's experts and kits, not the expert's own registry.
+    from_default = client.get("/api/plugins/uniwork-kits/").json()
+    expert_home = profile_env / "profiles" / "demo-expert"
+    assert expert_home.is_dir()
+    monkeypatch.setenv("HERMES_HOME", str(expert_home))
+    listed = client.get("/api/plugins/uniwork-kits/experts").json()
+    assert [row["profile"] for row in listed["experts"]] == ["demo-expert"]
+    assert listed["recent"] == ["demo-expert"]
+    assert client.get("/api/plugins/uniwork-kits/").json() == from_default
 
 
 def test_capabilities_installed_without_generation_get_phrases_later(kits, profile_env, kit_pkg):
