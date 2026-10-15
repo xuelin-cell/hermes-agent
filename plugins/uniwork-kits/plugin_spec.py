@@ -1,6 +1,7 @@
 # Vendored verbatim from UniClaw libs/hexagent_demo/backend/hexagent_api/plugin_spec.py
 # (feat/plugin @ 14314c7f). Pure stdlib + PyYAML; keep in sync by re-copying,
-# not by editing here.
+# not by editing here. One Hermes-side change: import yaml reads
+# yaml_compat so the module also runs where Hermes ships ruamel instead.
 """Plugin manifest (``plugin.json``) parsing and validation.
 
 A plugin is a zip package that aggregates existing primitives — skills
@@ -40,7 +41,7 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import yaml
+from . import yaml_compat as yaml  # Hermes-side swap: hermes_yaml (ruamel) or PyYAML
 
 logger = logging.getLogger(__name__)
 

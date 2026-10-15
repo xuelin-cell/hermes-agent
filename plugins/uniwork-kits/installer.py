@@ -22,11 +22,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
-import yaml
 
 from . import host_rules, llm, naming, package, router, store
 from . import plugin_spec as spec
 from . import triggers as triggers_mod
+from . import yaml_compat as yaml
 
 PLUGIN_KEY = "uniwork-kits"
 SOUL_SOFT_LIMIT = 20_000  # Hermes' context-file truncation floor
@@ -899,6 +899,7 @@ def install_expert(
             "profile": profile,
             "agent_name": plan.manifest.agent_name,
             "profession": host_rules.localized(plan.manifest.persona.get("profession")),
+            "intro": expert_intro(plan.manifest.persona),
             "soul_sha256": soul_hash,
             **({"market_id": market_id} if market_id else {}),
         },
@@ -943,6 +944,8 @@ def install_expert(
         "version": plan.version,
         "digest": plan.digest,
         "profile": profile,
+        "profession": host_rules.localized(plan.manifest.persona.get("profession")),
+        "intro": expert_intro(plan.manifest.persona),
         "installed_at": _now(),
         "user_config": stored_user_config(plan.name, plan.manifest.user_config),
     }
@@ -950,6 +953,28 @@ def install_expert(
         stub["market_id"] = market_id
     index["plugins"][plan.name] = stub
     store.save_index(home, index)
+
+    from . import expert_sync
+
+    try:
+        for change in expert_sync.sync_expert(home, phome):
+            receipt.notes.append(f"跟随默认配置档案：{change}")
+    except Exception as exc:  # the expert is installed either way; `hermes kit sync` retries
+        receipt.warnings.append(f"同步默认配置档案的模型 / 密钥 / 生图工具失败：{exc}")
+
+
+def expert_intro(persona: Dict[str, Any]) -> Dict[str, Any]:
+    """What summoning shows: description, opening prompt, quick prompts, tags (Chinese first)."""
+    def texts(value: Any) -> List[str]:
+        items = value if isinstance(value, list) else []
+        return [text for text in (host_rules.localized(item) for item in items) if text]
+
+    return {
+        "description": host_rules.localized(persona.get("displayDescription")),
+        "init_prompt": host_rules.localized(persona.get("defaultInitPrompt")),
+        "quick_prompts": texts(persona.get("quickPrompts"))[:6],
+        "tags": texts(persona.get("tags"))[:6],
+    }
 
 
 # ── public operations ───────────────────────────────────────────────────────
