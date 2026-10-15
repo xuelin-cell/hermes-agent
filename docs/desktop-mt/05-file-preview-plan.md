@@ -2,7 +2,7 @@
 
 日期：2026-10-13。基线：`desktop-mt @ d5ff498050`（代码事实核对于同步远端 `40caef7b87` 之前，P01 动手前需复核）。参考实现：UniWork 桌面版 `Kyle549/UniClaw @ uniwork_release`（`8ae3548e`）、Web 版 `feat/hermes-ch`（`3bef1c5bd4`）。
 
-状态：P01～P08 已推送，P08 最新为 `6811e87775`；MS Office／WPS 三类转换均取得真实 PDF，中文排版和用户已有文档并行仍待人工验收。P07 已接入本机转换服务，P08 已将 docx／doc／odt 接入 PDF 预览。P09 已增加 docx 前端渲染兜底，本步本地提交、未推送，真实桌面排版与缩放待用户核验。P10～P16 未开始，PPT／Excel 查看器尚未接入。P04 同厂家多个备用入口仍未实现。本文不授权推送。每步完成验证并本地提交后暂停，等待用户核验，再继续下一步。
+状态：P01～P09 已推送，P09 最新为 `1766d565ef`；Word 已接入 PDF 预览和 docx 前端兜底，实际桌面排版仍待用户核验。P10 已完成逐页绘图、缓存释放及开发／生产本地 Worker 检查，并用已有 MS Office／WPS 中文 PPT PDF 对照放行，本步本地提交、未推送。P11～P16 未开始，PPT／Excel 查看器尚未接入。复杂文档、Office 已有文档并行仍待人工验收；P04 同厂家多个备用入口仍未实现。本文不授权推送。每步完成验证并本地提交后暂停，等待用户核验，再继续下一步。
 
 路径约定：`src/`、`electron/` 指 `apps/desktop/` 下的对应目录；`shared/` 指 `apps/shared/src/`。各步骤的行数是预估的业务代码行数，不含测试、夹具和文档；多语言文案单独列出。
 
@@ -132,6 +132,7 @@ shared/office-preview.ts             前端与主进程共用的约定：扩展�
 | `electron/preload.ts` | 新增 1 个桥接方法 | P07 |
 | `src/global.d.ts` | 该方法的类型 | P07 |
 | `apps/desktop/package.json`、根 `package-lock.json` | 新增依赖 | P03、P09、P10、P12、P15 |
+| `apps/desktop/vite.config.ts` | 注册本地 PDF 资源插件，导入与登记共 3 行；新增 `pdf-assets.ts` 提供开发资源及构建输出 | P10 |
 | 根 `package.json` | FortuneSheet 需要的一条依赖覆盖（UniWork 已有同样配置；实施时确认是否仍需要） | P12 |
 
 明确不改：`preview-file.tsx` 的现有逻辑（上表的导出除外）、`src/lib/local-preview.ts`、`src/store/preview.ts`、`electron/media-protocol.ts`、Hermes Python 后端。
@@ -422,8 +423,8 @@ UniWork 的表格预览由三个文件组成，共约 1300 行，并依赖表格
 | B · MS Office 与 WPS 转换 | P06 | 已推送至 `7bf5fe50b3`；38 项定向检查通过，两厂家三类真实转换取得 PDF，排版及已有文档并行待人工确认 |
 | B · LibreOffice、服务与接入 | P07 | 已推送 `26bcd424a6`；预览模块 60 项、独立 Electron IPC／缓存命中通过，真实软件接线仍待人工核验 |
 | C · Word 转 PDF | P08 | 已推送 `6811e87775`；docx／doc／odt 定向检查通过，真实排版、再次打开速度和文件保存后刷新待用户核验 |
-| C · Word 兜底 | P09 | 已实现，定向检查通过；本步本地提交、未推送，真实排版与缩放待用户核验 |
-| C · PDF 逐页渲染 | P10 | 未开始 |
+| C · Word 兜底 | P09 | 已推送 `1766d565ef`；44 项定向检查通过，真实排版与缩放待用户核验 |
+| C · PDF 逐页渲染 | P10 | 已实现；19 项组件检查及开发／生产文件模式真实 Worker 通过，两厂家中文样例图像对照放行；本步本地提交、未推送 |
 | C · 幻灯片查看器 | P11 | 未开始 |
 | D · Excel 基础表格 | P12 | 未开始 |
 | D · Excel 样式 | P13 | 未开始 |
@@ -640,3 +641,17 @@ P05 完成后对 P01～P04 的四个提交做了一次代码审阅，共 10 条�
 - 完整 `npm run typecheck`、改动文件 ESLint 零警告、`git diff --check` 通过。未重复原生 Electron／Office 夹具，不发送短信、不调用模型，不把组件检查写成视觉验收。中文分页、图片／字体、滚动条缩放手感、复杂文档、安装包和真实远程环境待人工核验。
 - 人工检查兜底时，可在自己的开发环境临时将 registry 的 Word 候选调为前端优先，再打开 docx，检查中文、表格、分页、窄面板与宽面板，保存原文件后检查刷新；检查完恢复 PDF 优先。此临时顺序不是提交内容，也不新增常驻调试开关。本步使用上述受控转换失败检查正式顺序，没有操作用户窗口。
 - 本步本地提交后暂停，未推送，不进入 P10。实际改动的上游文件只有桌面 `package.json` 和根 `package-lock.json`；其余产品改动在已有预览中心及新增阅读器内，没有改变原版 PDF／HTML／文本或音视频入口。
+
+### P10 PDF 逐页渲染（2026-10-14）
+
+- 按用户当次授权推送 P09，核对远端为 `1766d565ef`。本步新增 `pdf-pages.ts` 供 P11 使用，不登记 PPT，不改现有 Word／PDF 阅读器，不修改 Hermes 后端、官方版或用户数据。
+- npm 元数据表明最新版 `6.4.299` 发布于 2026-10-03，尚未满十四天，因此精确安装 `pdfjs-dist@6.3.289`。查阅官方接口及包内类型，不采用已删除的旧参数。常规构建在当前 Electron 真实执行时缺少 `Map.getOrInsertComputed`，改用包内官方提供的 legacy 主模块和对应 Worker，没有自写 polyfill 或静默切到主线程。该构建选择符合包内 README 对环境支持的说明。
+- 接口提供 `pages` 尺寸列表、从 1 开始的 `renderPage(页码)` 和幂等 `dispose()`。原 PDF 字节先复制，避免 Worker 转移所有权使调用方数据失效。每张图长边 1600 像素，每份文档串行绘制，同页并发共用一次任务；最近六页保留 PNG 地址，命中更新使用顺序，淘汰时撤销旧地址。每次绘制或失败都清空画布并清理页面，失败不阻塞后页。关闭时撤销缓存、终止 Worker、禁止排队任务继续，并等候正在编码的页面归还资源；调用方不能继续使用被淘汰的图片地址。
+- 为落实离线资源要求，补充计划最初清单之外的必要构建接线：新增 `pdf-assets.ts`，在 `vite.config.ts` 导入并注册，共 3 行。开发服务器只提供已登记的 CMap、标准字体、WASM、ICC 文件，不能通过 URL 读取任意磁盘路径；生产构建将同一份文件及许可证写入相对目录。Worker 使用 Vite 的本地资源导入，辅助资源基于页面地址定位，不使用 CDN。本步没有修改其它构建策略，已同步 4.1 文件清单。
+- 六项定向检查覆盖原字节与尺寸、长边限制、同页合并、LRU、画布释放、失败后续、非法页码、空编码、关闭期间迟到结果、排队限制及重复关闭。最后与 P09 新阅读器共同运行：`npx vitest run --project ui src/app/chat/right-rail/formats/pdf-pages.test.ts src/app/chat/right-rail/formats/docx-preview.test.tsx`，两文件 19 项通过。缓存／收尾使用受控 PDF.js 对象，不将其写成真实解析证明。
+- `scripts/pdf-pages.native.mjs` 只接受现成 PDF，不启动 Office，未传参数时只显示用法。复用 `hermes-office-service-real-df63158d/pdf/ms-office/slides.pdf` 与 `pdf/wps/slides.pdf`；对应旧报告确认两者来自本机真实软件。本轮没有再次执行转换，也没有操作任何用户窗口。
+- 最终原生夹具 1 组通过，实际覆盖开发 HTTP 与生产 file 两种模式 × 两厂家样例。经过正式 Vite 配置及正式模块，每份 PDF 启动真实 Worker，不接受 fake worker；每页取得 1600×900 PNG，关闭后检查 Worker 消失。两种模式均读取 CMap／字体／WASM／ICC，比较文件长度和文件头，防止把 404 HTML 当资源成功；外部网络请求被阻断。该检查验证生产构建文件可读，不等于安装包已经验收，也未证明每一种图片解码器。
+- 依照 PDF 技能，用 Poppler 分别渲染两份源文件作为参考，逐一查看开发与生产的四张实际 PNG，中文均可读、未见缺字乱码，因此不启用方案 B。源样例各只有一页，不能外推为复杂字体、全部文字、30 页长文档或其它系统都已验证；这些继续由后续真实验收覆盖。PDF.js 留有 `TT: undefined function: 3` 字体提示，已保留在报告；本次图像对照没有观察到对应缺字，不把它写成零运行警告。
+- 夹具早期暴露常规构建不适配当前 Electron；另曾因开发页热更新失去句柄，隐藏窗截图也不能代表实际编码图像。最终关闭夹具热更新，直接保存正式图片地址的 PNG 字节。临时入口的资源基址曾指向 `/@fs` 下的测试目录，现显式对齐正式开发页根地址，严格资源内容断言保留。失败轮次记录不覆盖；最终报告与四张图片保留在 `C:\Users\stan\AppData\Local\Temp\hermes-pdf-pages-hzG5pY`。
+- 完整 `npm run typecheck`、新增资源插件独立 TypeScript、改动 TS 文件 ESLint 零警告、原生脚本语法及 `git diff --check` 通过。Vite 仍有已有的 advancedChunks 弃用提示。未制作安装包，未跑整套桌面测试，未验证 PPT 滚动／全屏界面、真实云端或新一轮 Office 收尾。
+- 本步本地提交后暂停，未推送；下一步 P11 才接入幻灯片查看器。
