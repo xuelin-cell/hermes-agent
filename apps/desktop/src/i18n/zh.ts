@@ -19,6 +19,9 @@ export const zh = defineLocale({
   },
   desktopLogin: {
     planUsage: {
+      actualUsage: '套餐实际用量',
+      details: '查看详情',
+      logout: '退出登录',
       title: '套餐用量',
       loading: '正在查询套餐用量…',
       refresh: '刷新用量',
@@ -28,7 +31,7 @@ export const zh = defineLocale({
       empty: '暂无可展示的用量数据',
       unnamed: '当前套餐',
       expired: '已到期',
-      expires: '到期时间',
+      expires: '截止日期',
       used: '已用',
       remaining: '剩余',
       fiveHour: '5 小时额度',

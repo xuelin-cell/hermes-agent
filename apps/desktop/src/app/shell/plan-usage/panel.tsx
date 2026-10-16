@@ -1,6 +1,13 @@
 import './style.css'
 
-import { useEffect, useState } from 'react'
+import { type ReactElement, useEffect, useState } from 'react'
+import { Link } from 'react-router'
+
+import planIcon from './icons/plan.svg'
+import usageIcon from './icons/usage.svg'
+import deadlineIcon from './icons/deadline.svg'
+import settingsIcon from './icons/settings.svg'
+import logoutIcon from './icons/logout.svg'
 
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
@@ -9,6 +16,17 @@ import { useI18n } from '@/i18n'
 
 import type { LoginAccount } from '../../../../electron/login/contract'
 import type { PlanUsage } from '../../../../electron/uniwork-usage/contract'
+
+/** 设计稿图标以遮罩继承主题颜色，保留原始矢量轮廓。 */
+function AccountIcon({ src }: { src: string }) {
+  return <span aria-hidden="true" className="account-card-icon" style={{ maskImage: `url(${src})` }} />
+}
+
+interface PlanUsagePanelProps {
+  account: LoginAccount
+  trigger?: ReactElement
+  onLogout?: () => void
+}
 
 /** 共享可访问进度条，数值来自主进程校验结果，颜色沿用当前主题。 */
 function UsageMeter({ label, value }: { label: string; value: number }) {
@@ -101,10 +119,11 @@ function UsageDetails({ data }: { data: PlanUsage }) {
 }
 
 /** 侧栏套餐面板只在展开时刷新，关闭或账号切换后丢弃迟到响应，不落盘保存用量。 */
-export function PlanUsagePanel({ account }: { account: LoginAccount }) {
+export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelProps) {
   const { t } = useI18n()
   const c = t.desktopLogin.planUsage
   const [open, setOpen] = useState(false)
+  const [details, setDetails] = useState(false)
   const [retry, setRetry] = useState(0)
   const [data, setData] = useState<PlanUsage | null>(null)
   const [loading, setLoading] = useState(false)
@@ -159,27 +178,85 @@ export function PlanUsagePanel({ account }: { account: LoginAccount }) {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button className="w-full justify-start" size="sm" variant="ghost" type="button">
-          <Codicon name="dashboard" size="1rem" />
-          <span>{c.title}</span>
-          <Codicon className="ml-auto" name="chevron-right" size="0.875rem" />
-        </Button>
+        {trigger ?? (
+          <Button className="w-full justify-start" size="sm" variant="ghost" type="button">
+            <Codicon name="dashboard" size="1rem" />
+            <span>{c.title}</span>
+            <Codicon className="ml-auto" name="chevron-right" size="0.875rem" />
+          </Button>
+        )}
       </PopoverTrigger>
-      <PopoverContent side="top" align="start" variant="menu" className="plan-usage-card">
+      <PopoverContent
+        side="top"
+        align="start"
+        variant="menu"
+        className={trigger ? 'plan-usage-card account-card' : 'plan-usage-card'}
+      >
         <section aria-label={c.title}>
-          <div className="plan-usage-heading">
-            <h3>{c.title}</h3>
-            <Button
-              variant="text"
-              size="micro"
-              disabled={loading}
-              onClick={() => setRetry(value => value + 1)}
-              type="button"
-            >
-              {c.refresh}
-            </Button>
-          </div>
-          {data && <UsageDetails data={data} />}
+          {trigger && (
+            <>
+              <div className="account-card-row account-card-plan">
+                <AccountIcon src={planIcon} />
+                <span>{data?.productName || (loading ? c.loading : c.unnamed)}</span>
+              </div>
+              <button
+                type="button"
+                className="account-card-row"
+                aria-expanded={details}
+                onClick={() => setDetails(value => !value)}
+              >
+                <AccountIcon src={usageIcon} />
+                <span>{c.actualUsage}</span>
+                <span className="account-card-summary">
+                  {data?.quota
+                    ? `${c.remaining}${new Intl.NumberFormat().format(data.quota.remaining)} ${data.quota.unit ?? ''}`
+                    : ''}
+                </span>
+                <span className="account-card-details">{c.details}</span>
+              </button>
+              <div className="account-card-row">
+                <AccountIcon src={deadlineIcon} />
+                <span>{c.expires}</span>
+                <span className="account-card-summary">
+                  {data?.endTime ?? '—'}
+                  {data?.expired ? ` · ${c.expired}` : ''}
+                </span>
+              </div>
+              <Link className="account-card-row" to="/settings" onClick={() => setOpen(false)}>
+                <AccountIcon src={settingsIcon} />
+                <span>{t.commandCenter.nav.settings.title}</span>
+              </Link>
+              <div className="account-card-divider" />
+              <button
+                type="button"
+                className="account-card-row account-card-logout"
+                onClick={() => {
+                  setOpen(false)
+                  onLogout?.()
+                }}
+              >
+                <AccountIcon src={logoutIcon} />
+                <span>{c.logout}</span>
+              </button>
+            </>
+          )}
+          {(!trigger || details) && (
+            <div className="account-card-expanded">
+              <div className="plan-usage-heading">
+                <h3>{c.title}</h3>
+                <Button
+                  variant="text"
+                  size="micro"
+                  disabled={loading}
+                  onClick={() => setRetry(value => value + 1)}
+                  type="button"
+                >
+                  {c.refresh}
+                </Button>
+              </div>
+              {data && <UsageDetails data={data} />}
+            </div>
+          )}
           {loading && !data && (
             <p role="status" className="plan-usage-meta">
               {c.loading}

@@ -19,6 +19,9 @@ export const en: Translations = {
   },
   desktopLogin: {
     planUsage: {
+      actualUsage: 'Plan usage',
+      details: 'View details',
+      logout: 'Sign out',
       title: 'Plan usage',
       loading: 'Loading plan usage…',
       refresh: 'Refresh usage',

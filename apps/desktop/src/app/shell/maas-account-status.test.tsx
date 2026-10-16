@@ -1,4 +1,5 @@
 import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
 import { afterEach, expect, it, vi } from 'vitest'
 
 import { I18nProvider } from '@/i18n/context'
@@ -61,7 +62,9 @@ it('未登录不显示账号，主进程保留到期账号时展示与退出入�
 function AccountFixture() {
   return (
     <I18nProvider configClient={null} initialLocale="zh">
-      <MaasAccountSidebar />
+      <MemoryRouter>
+        <MaasAccountSidebar />
+      </MemoryRouter>
     </I18nProvider>
   )
 }
@@ -73,8 +76,8 @@ async function openLogoutMenu() {
     screen.queryByRole('button', { name: '138****0000' }) ??
     (await screen.findByRole('button', { name: '138****0000' }))
 
-  fireEvent.keyDown(trigger, { key: 'Enter' })
-  fireEvent.click(screen.getByRole('menuitem', { name: '退出' }))
+  fireEvent.click(trigger)
+  fireEvent.click(screen.getByRole('button', { name: '退出登录' }))
 }
 
 it('只有账号和退出入口，取消不注销，确认合并重复点击并显示主进程错误', async () => {

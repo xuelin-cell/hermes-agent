@@ -74,6 +74,9 @@ export interface Translations {
   }
   desktopLogin: {
     planUsage: {
+      actualUsage: string
+      details: string
+      logout: string
       title: string
       loading: string
       refresh: string
