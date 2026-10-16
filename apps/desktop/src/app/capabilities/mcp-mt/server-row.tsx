@@ -97,6 +97,11 @@ export function McpServerRow({
       </p>
       {expanded && (
         <div className="grid min-w-0 gap-3" id={id}>
+          {probe && probe !== 'probing' && !probe.ok && probe.error && (
+            <p className="whitespace-pre-wrap break-words text-xs text-destructive" role="alert">
+              {probe.error}
+            </p>
+          )}
           {!plugin && (
             <div className="flex flex-wrap items-center gap-3">
               <TextTab active={view === 'tools'} onClick={() => setView('tools')}>

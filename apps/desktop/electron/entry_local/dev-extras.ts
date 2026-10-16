@@ -19,7 +19,7 @@ const SYNC_TIMEOUT_MS = 3 * 60_000
 const SYNC_SCRIPT = 'import sys, pm; pm.sync_venv(sys.argv[1:], explicit=True)'
 
 /**
- * PM 已为该账号记录的组件；null 表示账号还没有自己的环境（直接用源码目录的 .venv）。
+ * PM 已为该账号记录的组件；null 表示尚未建立该账号的依赖环境。
  * 目录规则同 pm/environments.py 的 install_key：源码目录真实路径的 sha256 前 16 位。
  */
 export function recordedExtras(home: string, installationRoot: string): null | string[] {
@@ -49,7 +49,10 @@ function runSync(context: PreparedLocalContext, env: NodeJS.ProcessEnv, extras: 
 
   return new Promise(resolve => {
     const child = spawn(backend.command, ['-c', SYNC_SCRIPT, ...extras], {
-      cwd: context.installationRoot, env: { ...env, ...backend.env }, windowsHide: true, stdio: 'ignore'
+      cwd: context.installationRoot,
+      env: { ...env, ...backend.env },
+      windowsHide: true,
+      stdio: 'ignore'
     })
 
     const timer = setTimeout(() => child.kill(), SYNC_TIMEOUT_MS)
@@ -66,10 +69,9 @@ function runSync(context: PreparedLocalContext, env: NodeJS.ProcessEnv, extras: 
 }
 
 /**
- * 开发模式下给已有自己环境的账号补装缺少的组件；都已记录时不启动 Python。失败只记一行日志，桌面照常启动。
- *
- * 新账号直接用源码目录的 .venv（已含 aiohttp），这里跳过：从零建环境要重新下载全部依赖，
- * 慢网下超过十分钟，不能卡住登录。账号第一次装组件、有了自己的环境后，下次启动再补齐。
+ * 开发模式下通过 PM 为新旧账号补齐组件；源码解释器只用于启动，不能视为已安装可选依赖。
+ * 没有账号记录时也执行预装，后端启动后由 Hermes 原生机制绑定该账号选定的依赖环境。
+ * 失败或超时只记日志，桌面照常启动；都已记录时不重复安装。
  * 设置 HERMES_DESKTOP_MT_SKIP_DEV_EXTRAS=1 可完全跳过（原生测试的临时账号、离线开发）。
  */
 export async function ensureDevExtras(
@@ -84,7 +86,7 @@ export async function ensureDevExtras(
   const recorded = recordedExtras(context.home, context.installationRoot)
   const missing = DEV_EXTRAS.filter(extra => !recorded?.includes(extra))
 
-  if (recorded === null || missing.length === 0) {
+  if (missing.length === 0) {
     return
   }
 

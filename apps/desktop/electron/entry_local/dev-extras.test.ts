@@ -23,7 +23,9 @@ function fixture(extras?: unknown) {
   }
 
   const context = {
-    home, installationRoot: source, python: path.join(source, 'python.exe')
+    home,
+    installationRoot: source,
+    python: path.join(source, 'python.exe')
   } as PreparedLocalContext
 
   return { context, home, source }
@@ -37,7 +39,7 @@ it('读取 PM 为本源码目录记录的组件；没有记录表示账号还没
   expect(recordedExtras(fixture().home, source)).toBeNull()
 })
 
-it('只给已有环境的账号补装缺少的组件；都已记录或新账号时不启动 Python', async () => {
+it('新账号同样补装声明组件，已有环境仅追加缺项且不丢失其他组件', async () => {
   const run = vi.fn(async () => true)
   const partial = fixture(['mcp'])
 
@@ -50,9 +52,11 @@ it('只给已有环境的账号补装缺少的组件；都已记录或新账号�
 
   run.mockClear()
   await ensureDevExtras(fixture([...DEV_EXTRAS, 'dingtalk']).context, {}, run)
-  // 新账号用源码目录的 .venv，从零建环境太慢，不在登录时做。
-  await ensureDevExtras(fixture().context, {}, run)
   expect(run).not.toHaveBeenCalled()
+
+  const fresh = fixture()
+  await ensureDevExtras(fresh.context, {}, run)
+  expect(run).toHaveBeenCalledWith(fresh.context, {}, [...DEV_EXTRAS])
 })
 
 it('安装版不预装；预装失败只记日志，不中断启动', async () => {

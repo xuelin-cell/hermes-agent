@@ -126,6 +126,20 @@ it('keeps every custom service and plugin ownership, and delegates row controls 
   expect(readStatus).toHaveBeenCalledWith('work')
 })
 
+it('展示对应服务原生连接测试的失败原因，不混入其他服务或配置字段', async () => {
+  const failure = 'MCP HTTP transport is unavailable: mcp package is not installed'
+  controller.probes = { alpha: { ok: false, error: failure, tools: [] } }
+  renderTab('/capabilities?tab=connectors&server=alpha')
+  const custom = screen.getByRole('region', { name: 'Custom MCP' })
+  const alpha = within(custom).getByRole('article', { name: 'alpha' })
+  expect(within(alpha).getByRole('alert').textContent).toBe(failure)
+  const toolkit = within(custom).getByRole('article', { name: 'UniAI-Toolkit' })
+  fireEvent.click(within(toolkit).getByRole('button', { name: 'UniAI-Toolkit' }))
+  expect(within(toolkit).queryByRole('alert')).toBeNull()
+  expect(screen.queryByText(/secret-do-not-display/)).toBeNull()
+  await screen.findByRole('article', { name: 'plugin__helper' })
+})
+
 it('reports configuration and plugin failures without enabling writes or claiming an empty configuration', async () => {
   controller.configFailed = true
   listServers.mockRejectedValue(new Error('fixture offline'))
