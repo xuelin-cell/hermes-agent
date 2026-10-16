@@ -8,7 +8,7 @@
  * user can go back to the general assistant (a new chat; see ./summon).
  */
 
-import { host, usePluginI18n, useValue } from '@hermes/plugin-sdk'
+import { host, Tip, usePluginI18n, useValue } from '@hermes/plugin-sdk'
 
 import { ExpertFace } from './expert-face'
 import { $expertDirectory } from './experts-store'
@@ -85,15 +85,15 @@ export function ExpertBar() {
           <p className="m-0 mb-1 text-[0.7rem] text-(--ui-text-tertiary)">{t('tryAsking')}</p>
           <div className="grid gap-1.5 sm:grid-cols-3">
             {prompts.map(prompt => (
-              <button
-                className="line-clamp-2 rounded-md border border-(--ui-stroke-secondary) px-2 py-1.5 text-left text-xs leading-5 text-(--ui-text-secondary) hover:bg-(--ui-bg-tertiary)"
-                key={prompt}
-                onClick={() => fillPrompt(prompt)}
-                title={prompt}
-                type="button"
-              >
-                {prompt}
-              </button>
+              <Tip key={prompt} label={prompt}>
+                <button
+                  className="line-clamp-2 rounded-md border border-(--ui-stroke-secondary) px-2 py-1.5 text-left text-xs leading-5 text-(--ui-text-secondary) hover:bg-(--ui-bg-tertiary)"
+                  onClick={() => fillPrompt(prompt)}
+                  type="button"
+                >
+                  {prompt}
+                </button>
+              </Tip>
             ))}
           </div>
         </div>

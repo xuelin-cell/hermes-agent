@@ -4,7 +4,7 @@
  * chat with it (see ./summon).
  */
 
-import { Codicon, Popover, PopoverContent, PopoverTrigger, usePluginI18n, useValue } from '@hermes/plugin-sdk'
+import { Codicon, Popover, PopoverContent, PopoverTrigger, Tip, usePluginI18n, useValue } from '@hermes/plugin-sdk'
 import { useState } from 'react'
 
 import { $bundled } from './bundled'
@@ -55,17 +55,18 @@ export function SummonPicker() {
       }}
       open={open}
     >
-      <PopoverTrigger asChild>
-        <button
-          aria-label={t('summon')}
-          className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs text-(--ui-text-tertiary) hover:bg-(--ui-bg-tertiary) hover:text-(--ui-text-primary)"
-          title={t('summonHint')}
-          type="button"
-        >
-          <Codicon name="organization" />
-          <span>{t('summon')}</span>
-        </button>
-      </PopoverTrigger>
+      <Tip label={t('summonHint')}>
+        <PopoverTrigger asChild>
+          <button
+            aria-label={t('summon')}
+            className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs text-(--ui-text-tertiary) hover:bg-(--ui-bg-tertiary) hover:text-(--ui-text-primary)"
+            type="button"
+          >
+            <Codicon name="organization" />
+            <span>{t('summon')}</span>
+          </button>
+        </PopoverTrigger>
+      </Tip>
       <PopoverContent align="start" className="w-72 p-1.5" side="top">
         {directory.experts.length === 0 ? (
           <p className="m-0 px-2 py-3 text-xs text-(--ui-text-tertiary)">
