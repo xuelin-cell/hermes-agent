@@ -2112,6 +2112,34 @@ export const ru = defineLocale({
     }
   },
   messaging: {
+    cards: {
+      heading: 'Чат-приложения',
+      description: 'Подключите WeChat, DingTalk и другие приложения для обмена сообщениями с телефона.',
+      configure: 'Настроить',
+      guide: 'Инструкция',
+      save: 'Сохранить и включить',
+      comingSoon: 'Интеграция ожидается',
+      unavailable: 'Компонент сообщений недоступен',
+      notConnected: 'Не подключено',
+      unbind: 'Отключить',
+      unbindTitle: 'Отключить эту платформу?',
+      unbindDescription:
+        'Учётные данные платформы будут удалены, а она отключена. Другие настройки, история и файлы сохранятся.',
+      titles: {
+        weixin: 'Интеграция WeChat ClawBot',
+        dingtalk: 'Интеграция бота DingTalk',
+        feishu: 'Интеграция бота Feishu',
+        wecom: 'Интеграция умного бота WeCom',
+        uniagentgate: 'Шлюз сообщений 5G (RCS)'
+      },
+      descriptions: {
+        weixin: 'Отсканируйте код в WeChat, чтобы подключить ClawBot и обмениваться сообщениями.',
+        dingtalk: 'Зарегистрируйте бота DingTalk для получения сообщений и ответов.',
+        feishu: 'Зарегистрируйте бота Feishu для получения сообщений и ответов.',
+        wecom: 'Зарегистрируйте умного бота WeCom для получения сообщений и ответов.',
+        uniagentgate: 'Подключите uniAgentGate для обмена сообщениями RCS.'
+      }
+    },
     search: 'Поиск в сообщениях...',
     loading: 'Загрузка платформ сообщений...',
     loadFailed: 'Не удалось загрузить платформы сообщений',
@@ -2661,6 +2689,20 @@ export const ru = defineLocale({
     generating: lines => `Генерация… ${lines} ${RU_NOUN(lines, 'строка', 'строки', 'строк')}`,
     versionBadge: count => `${count} ${RU_NOUN(count, 'версия', 'версии', 'версий')}`,
     open: 'Открыть'
+  },
+
+  artifactShare: {
+    originRequired: 'Делиться можно только подтверждёнными результатами модели. Загруженные, производные файлы и неизвестные источники заблокированы.',
+    share: 'Поделиться',
+    shareArtifact: 'Поделиться артефактом',
+    updateShared: 'Обновить общий контент',
+    viewShared: 'Открыть общую страницу',
+    copyShared: 'Копировать ссылку',
+    revokeShared: 'Отозвать ссылку',
+    shareFailed: 'Не удалось поделиться артефактом',
+    revokeFailed: 'Не удалось отозвать ссылку',
+    previewNotReady: 'Предпросмотр Markdown ещё не готов.',
+    imageNotEmbedded: 'В Markdown есть изображение без встроенных данных.',
   },
 
   artifactPreview: {

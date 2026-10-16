@@ -128,6 +128,19 @@ export async function uploadComposerAttachment(
   let imagePayload: Awaited<ReturnType<typeof readImageForRemoteAttach>> | null = null
   let fileDataUrl: null | string = null
 
+  /** 成功附加后持久化禁用事实，同时覆盖稳定和运行时身份；远程会话不写本机来源。 */
+  const recordUpload = async (liveSessionId: string) => {
+    if (remote) {
+      return
+    }
+
+    await window.hermesDesktop?.artifactShare?.markUploaded?.(storedSessionId || liveSessionId)
+
+    if (storedSessionId && storedSessionId !== liveSessionId) {
+      await window.hermesDesktop?.artifactShare?.markUploaded?.(liveSessionId)
+    }
+  }
+
   if (uploadBytes) {
     try {
       if (attachment.kind === 'image') {
@@ -162,6 +175,7 @@ export async function uploadComposerAttachment(
       }
 
       const attachedPath = result.path || path
+      await recordUpload(liveSessionId)
 
       return {
         ...attachment,
@@ -182,6 +196,8 @@ export async function uploadComposerAttachment(
     if (!result.attached || !result.ref_text) {
       throw new Error(result.message || `Could not attach ${label}`)
     }
+
+    await recordUpload(liveSessionId)
 
     return {
       ...attachment,

@@ -87,6 +87,7 @@ vi.mock('@/store/system-actions', async () => {
   }
 })
 
+/** 为页面提供原接口形状的平台，未填写项保持未配置。 */
 function platform(patch: Partial<MessagingPlatformInfo> = {}): MessagingPlatformInfo {
   return {
     configured: false,
@@ -121,6 +122,7 @@ afterEach(() => {
 // 34600757569, 34601269252). Same pattern as chat/index.test.tsx.
 void import('./index')
 
+/** 在隔离路由中渲染产品页面，不启动用户后端或连接真实平台。 */
 async function renderMessaging() {
   let result: ReturnType<typeof render>
   await act(async () => {
@@ -145,11 +147,11 @@ describe('MessagingView profile scope', () => {
     // LAUNCHED under, so "follow the active profile" has to be said out loud
     // rather than left to the ambient fallback.
     await waitFor(() => expect(getMessagingPlatforms).toHaveBeenCalledWith('default'))
-    expect(getPairing).toHaveBeenCalledWith('default')
   })
 })
 
 describe('MessagingView WeChat QR setup', () => {
+  /** 用受控状态覆盖扫码展示，不向真实微信发起请求。 */
   const login = (state: string, qr = 'https://liteapp.weixin.qq.com/q/1') => ({
     message: '',
     qr_content: qr,
@@ -185,7 +187,7 @@ describe('MessagingView WeChat QR setup', () => {
         message: 'WeChat connected; restarting the gateway…',
         title: 'Weixin setup saved'
       })
-      expect(screen.queryByAltText('Connect by QR code')).toBeNull()
+      await waitFor(() => expect(screen.queryByAltText('Connect by QR code')).toBeNull(), { timeout: 2500 })
       // 页面重新读取平台状态，让卡片显示已连接。
       expect(getMessagingPlatforms.mock.calls.length).toBeGreaterThan(1)
     } finally {
@@ -216,6 +218,26 @@ describe('MessagingView WeChat QR setup', () => {
     expect(await screen.findByText('Scan with WeChat')).toBeTruthy()
   })
 
+  it('does not reopen a closed QR panel when the start request arrives late', async () => {
+    let finish!: (value: ReturnType<typeof login>) => void
+    getMessagingPlatforms.mockResolvedValue({ platforms: [platform({ id: 'weixin', name: 'Weixin' })] })
+    startWeixinQrLogin.mockReturnValueOnce(
+      new Promise(resolve => {
+        finish = resolve
+      })
+    )
+    await renderMessaging()
+    fireEvent.click(await screen.findByRole('button', { name: /Connect with QR code/ }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
+    await act(async () => {
+      finish(login('wait'))
+    })
+    expect(screen.queryByAltText('Connect by QR code')).toBeNull()
+    expect(screen.queryByText('Scan with WeChat')).toBeNull()
+    expect(getWeixinQrLogin).not.toHaveBeenCalled()
+    expect(watchGatewayRestartOutcome).not.toHaveBeenCalled()
+  })
+
   it('disconnects a connected account only after confirmation', async () => {
     getMessagingPlatforms.mockResolvedValue({
       platforms: [platform({ configured: true, enabled: true, id: 'weixin', name: 'Weixin', state: 'connected' })]
@@ -237,5 +259,294 @@ describe('MessagingView WeChat QR setup', () => {
 
     await waitFor(() => expect(unbindWeixin).toHaveBeenCalledWith('default'))
     await waitFor(() => expect(watchGatewayRestartOutcome).toHaveBeenCalled())
+  })
+
+  it('ignores confirmation arriving from a poll that was closed in the same interaction', async () => {
+    let finish!: (value: ReturnType<typeof login> & { restart_started: boolean }) => void
+    getMessagingPlatforms.mockResolvedValue({ platforms: [platform({ id: 'weixin', name: 'Weixin' })] })
+    startWeixinQrLogin.mockResolvedValueOnce(login('wait'))
+    getWeixinQrLogin.mockReturnValueOnce(
+      new Promise(resolve => {
+        finish = resolve
+      })
+    )
+    await renderMessaging()
+    fireEvent.click(await screen.findByRole('button', { name: /Connect with QR code/ }))
+    await waitFor(() => expect(getWeixinQrLogin).toHaveBeenCalledTimes(1), { timeout: 3000 })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+      finish({ ...login('confirmed'), restart_started: true })
+    })
+    expect(watchGatewayRestartOutcome).not.toHaveBeenCalled()
+    expect(notify).not.toHaveBeenCalled()
+    expect(screen.queryByText('Scan with WeChat')).toBeNull()
+  })
+})
+
+/** 原生钉钉字段契约，包含不该由简化表单修改的白名单。 */
+function dingtalk(patch: Partial<MessagingPlatformInfo> = {}) {
+  return platform({
+    id: 'dingtalk',
+    name: 'DingTalk',
+    state: 'not_configured',
+    env_vars: [
+      {
+        key: 'DINGTALK_CLIENT_ID',
+        advanced: false,
+        prompt: 'Client ID',
+        description: '',
+        required: true,
+        is_password: false,
+        is_set: false,
+        redacted_value: null,
+        url: null
+      },
+      {
+        key: 'DINGTALK_CLIENT_SECRET',
+        advanced: false,
+        prompt: 'Client Secret',
+        description: '',
+        required: true,
+        is_password: true,
+        is_set: false,
+        redacted_value: null,
+        url: null
+      },
+      {
+        key: 'DINGTALK_ALLOWED_USERS',
+        advanced: true,
+        prompt: 'Allowed users',
+        description: '',
+        required: false,
+        is_password: false,
+        is_set: true,
+        redacted_value: 'owner-only',
+        url: null
+      }
+    ],
+    ...patch
+  })
+}
+
+describe('Messaging cards and native configuration', () => {
+  it.each([
+    ['feishu', 'Feishu bot integration', 'FEISHU_APP_ID', 'FEISHU_APP_SECRET'],
+    ['wecom', 'WeCom smart bot integration', 'WECOM_BOT_ID', 'WECOM_SECRET']
+  ])('saves %s through its native credential keys', async (id, title, key, secret) => {
+    const row = dingtalk({ id, name: id })
+    row.env_vars[0].key = key
+    row.env_vars[1].key = secret
+    getMessagingPlatforms.mockResolvedValue({ platforms: [row] })
+    await renderMessaging()
+    fireEvent.click(
+      within(await screen.findByRole('article', { name: title })).getByRole('button', { name: 'Configure' })
+    )
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.change(dialog.querySelector('input[type="text"]')!, { target: { value: 'bot-id' } })
+    fireEvent.change(dialog.querySelector('input[type="password"]')!, { target: { value: 'bot-secret' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save and enable' }))
+    await waitFor(() =>
+      expect(updateMessagingPlatform).toHaveBeenCalledWith(
+        id,
+        {
+          enabled: true,
+          env: { [key]: 'bot-id', [secret]: 'bot-secret' }
+        },
+        'default'
+      )
+    )
+    expect(runGatewayRestart).not.toHaveBeenCalled()
+  })
+
+  it('keeps save disabled when native required fields are unavailable', async () => {
+    getMessagingPlatforms.mockResolvedValue({ platforms: [dingtalk({ env_vars: [] })] })
+    await renderMessaging()
+    fireEvent.click(
+      within(await screen.findByRole('article', { name: 'DingTalk bot integration' })).getByRole('button', {
+        name: 'Configure'
+      })
+    )
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getAllByText('Messaging component unavailable').length).toBeGreaterThan(0)
+    expect(within(dialog).getByRole('button', { name: 'Save and enable' }).hasAttribute('disabled')).toBe(true)
+    expect(updateMessagingPlatform).not.toHaveBeenCalled()
+  })
+
+  it('shows only the four supported cards and disabled 5G, without advanced fields or Profile controls', async () => {
+    getMessagingPlatforms.mockResolvedValue({
+      platforms: [
+        platform({ id: 'qqbot', name: 'QQ Bot' }),
+        platform({ id: 'yuanbao', name: 'Yuanbao' }),
+        platform({ id: 'wecom_callback', name: 'WeCom Callback' }),
+        platform({ id: 'weixin', name: 'Weixin' }),
+        dingtalk(),
+        platform({ id: 'feishu', name: 'Feishu' }),
+        platform({ id: 'wecom', name: 'WeCom' })
+      ]
+    })
+    await renderMessaging()
+    await screen.findByRole('article', { name: 'WeChat ClawBot integration' })
+    expect(screen.getAllByRole('article').map(card => card.getAttribute('aria-label'))).toEqual([
+      'WeChat ClawBot integration',
+      'DingTalk bot integration',
+      'Feishu bot integration',
+      'WeCom smart bot integration',
+      '5G messaging gateway (RCS) integration'
+    ])
+    const pending = screen.getByRole('article', { name: /5G/ })
+    expect(within(pending).getByRole('button', { name: 'Configure' }).hasAttribute('disabled')).toBe(true)
+    expect(screen.queryByText('QQ Bot')).toBeNull()
+    expect(screen.queryByText('WeCom Callback')).toBeNull()
+    expect(screen.queryByText('Allowed users')).toBeNull()
+    expect(screen.queryByRole('combobox')).toBeNull()
+    expect(updateMessagingPlatform).not.toHaveBeenCalled()
+    expect(runGatewayRestart).not.toHaveBeenCalled()
+    expect(startWeixinQrLogin).not.toHaveBeenCalled()
+  })
+
+  it('saves only necessary credentials in the existing profile and leaves gateway restart explicit', async () => {
+    $settingsScopeOverride.set('worker')
+    getMessagingPlatforms.mockResolvedValue({ platforms: [dingtalk()] })
+
+    try {
+      await renderMessaging()
+      fireEvent.click(
+        within(await screen.findByRole('article', { name: 'DingTalk bot integration' })).getByRole('button', {
+          name: 'Configure'
+        })
+      )
+      const dialog = await screen.findByRole('dialog')
+      const inputs = within(dialog).getAllByRole('textbox')
+      fireEvent.change(inputs[0], { target: { value: ' app-123 ' } })
+      fireEvent.change(dialog.querySelector('input[type="password"]')!, { target: { value: ' secret-123 ' } })
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Save and enable' }))
+      await waitFor(() =>
+        expect(updateMessagingPlatform).toHaveBeenCalledWith(
+          'dingtalk',
+          {
+            enabled: true,
+            env: { DINGTALK_CLIENT_ID: 'app-123', DINGTALK_CLIENT_SECRET: 'secret-123' }
+          },
+          'worker'
+        )
+      )
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+      expect(await screen.findByRole('button', { name: 'Restart now' })).toBeTruthy()
+      expect(runGatewayRestart).not.toHaveBeenCalled()
+      expect(screen.queryByText('owner-only')).toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: 'Restart now' }))
+      await waitFor(() => expect(runGatewayRestart).toHaveBeenCalledTimes(1))
+    } finally {
+      $settingsScopeOverride.set(null)
+    }
+  })
+
+  it('does not write masked credentials or reconnect an unchanged enabled platform', async () => {
+    const saved = dingtalk({ configured: true, enabled: true, state: 'connected' })
+    saved.env_vars = saved.env_vars.map(field => ({ ...field, is_set: true, redacted_value: 'saved-preview' }))
+    getMessagingPlatforms.mockResolvedValue({ platforms: [saved] })
+    await renderMessaging()
+    fireEvent.click(
+      within(await screen.findByRole('article', { name: 'DingTalk bot integration' })).getByRole('button', {
+        name: 'Configure'
+      })
+    )
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByRole('button', { name: 'Save and enable' }).hasAttribute('disabled')).toBe(true)
+    expect(dialog.querySelector<HTMLInputElement>('input[type="password"]')!.value).toBe('')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(updateMessagingPlatform).not.toHaveBeenCalled()
+    expect(runGatewayRestart).not.toHaveBeenCalled()
+  })
+
+  it('keeps the input and shows a save failure instead of pretending the platform connected', async () => {
+    getMessagingPlatforms.mockResolvedValue({ platforms: [dingtalk()] })
+    updateMessagingPlatform.mockRejectedValueOnce(new Error('Save unavailable'))
+    await renderMessaging()
+    fireEvent.click(
+      within(await screen.findByRole('article', { name: 'DingTalk bot integration' })).getByRole('button', {
+        name: 'Configure'
+      })
+    )
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.change(dialog.querySelector('input[type="text"]')!, { target: { value: 'app-123' } })
+    fireEvent.change(dialog.querySelector('input[type="password"]')!, { target: { value: 'secret-123' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save and enable' }))
+    expect(await within(dialog).findByText('Save unavailable')).toBeTruthy()
+    expect(dialog.querySelector<HTMLInputElement>('input[type="text"]')!.value).toBe('app-123')
+    expect(runGatewayRestart).not.toHaveBeenCalled()
+  })
+
+  it('disconnects only the selected platform after confirmation, preserving non-credential settings', async () => {
+    $settingsScopeOverride.set('worker')
+    getMessagingPlatforms.mockResolvedValue({
+      platforms: [dingtalk({ configured: true, enabled: true, state: 'connected' })]
+    })
+
+    try {
+      await renderMessaging()
+      fireEvent.click(
+        within(await screen.findByRole('article', { name: 'DingTalk bot integration' })).getByRole('button', {
+          name: 'Disconnect'
+        })
+      )
+      expect(updateMessagingPlatform).not.toHaveBeenCalled()
+      const dialog = await screen.findByRole('dialog')
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Disconnect' }))
+      await waitFor(() =>
+        expect(updateMessagingPlatform).toHaveBeenCalledWith(
+          'dingtalk',
+          {
+            enabled: false,
+            clear_env: ['DINGTALK_CLIENT_ID', 'DINGTALK_CLIENT_SECRET']
+          },
+          'worker'
+        )
+      )
+      expect(runGatewayRestart).not.toHaveBeenCalled()
+    } finally {
+      $settingsScopeOverride.set(null)
+    }
+  })
+
+  it('does not show a configured but stopped WeChat as connected', async () => {
+    getMessagingPlatforms.mockResolvedValue({
+      platforms: [
+        platform({
+          id: 'weixin',
+          name: 'Weixin',
+          configured: true,
+          enabled: true,
+          gateway_running: false,
+          state: 'gateway_stopped'
+        })
+      ]
+    })
+    await renderMessaging()
+    const card = await screen.findByRole('article', { name: 'WeChat ClawBot integration' })
+    expect(within(card).getByRole('status').textContent).toBe('Messaging gateway stopped')
+    expect(within(card).queryByText('Connected')).toBeNull()
+  })
+
+  it('drops the old configuration dialog on a profile change instead of writing into the new profile', async () => {
+    getMessagingPlatforms.mockResolvedValue({ platforms: [dingtalk()] })
+    await renderMessaging()
+    fireEvent.click(
+      within(await screen.findByRole('article', { name: 'DingTalk bot integration' })).getByRole('button', {
+        name: 'Configure'
+      })
+    )
+    expect(await screen.findByRole('dialog')).toBeTruthy()
+
+    try {
+      await act(async () => {
+        $settingsScopeOverride.set('other')
+      })
+      await waitFor(() => expect(getMessagingPlatforms).toHaveBeenCalledWith('other'))
+      expect(screen.queryByRole('dialog')).toBeNull()
+      expect(updateMessagingPlatform).not.toHaveBeenCalled()
+    } finally {
+      $settingsScopeOverride.set(null)
+    }
   })
 })

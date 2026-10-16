@@ -1590,6 +1590,33 @@ export const ar = defineLocale({
     actions: count => `${count} إجراء`
   },
   messaging: {
+    cards: {
+      heading: 'تطبيقات الدردشة',
+      description: 'اربط WeChat وDingTalk وتطبيقات الدردشة الأخرى لاستقبال الرسائل والرد عليها من هاتفك.',
+      configure: 'إعداد',
+      guide: 'دليل الإعداد',
+      save: 'حفظ وتفعيل',
+      comingSoon: 'التكامل قيد الانتظار',
+      unavailable: 'مكوّن المراسلة غير متاح',
+      notConnected: 'غير متصل',
+      unbind: 'إلغاء الربط',
+      unbindTitle: 'إلغاء ربط هذه المنصة؟',
+      unbindDescription: 'تُحذف بيانات اعتماد هذه المنصة وتُعطّل. تُحفظ إعدادات المنصات الأخرى والسجل والملفات.',
+      titles: {
+        weixin: 'تكامل WeChat ClawBot',
+        dingtalk: 'تكامل بوت DingTalk',
+        feishu: 'تكامل بوت Feishu',
+        wecom: 'تكامل بوت WeCom الذكي',
+        uniagentgate: 'بوابة رسائل الجيل الخامس (RCS)'
+      },
+      descriptions: {
+        weixin: 'امسح الرمز عبر WeChat لربط ClawBot وتبادل الرسائل.',
+        dingtalk: 'سجّل بوت DingTalk لاستقبال الرسائل والرد عليها.',
+        feishu: 'سجّل بوت Feishu لاستقبال الرسائل والرد عليها.',
+        wecom: 'سجّل بوت WeCom الذكي لاستقبال الرسائل والرد عليها.',
+        uniagentgate: 'اربط uniAgentGate لتبادل رسائل RCS.'
+      }
+    },
     search: 'بحث',
     loading: 'جار التحميل...',
     loadFailed: 'فشل التحميل',
@@ -2089,6 +2116,20 @@ export const ar = defineLocale({
     generating: lines => `جارٍ الإنشاء… ${lines} سطرًا`,
     versionBadge: count => `${count} إصدارات`,
     open: 'فتح'
+  },
+
+  artifactShare: {
+    originRequired: 'يمكن مشاركة مخرجات النموذج الموثقة فقط. الملفات المرفوعة والمشتقة ومجهولة المصدر محظورة.',
+    share: 'مشاركة',
+    shareArtifact: 'مشاركة الناتج',
+    updateShared: 'تحديث المحتوى المشترك',
+    viewShared: 'عرض الصفحة المشتركة',
+    copyShared: 'نسخ رابط المشاركة',
+    revokeShared: 'إلغاء المشاركة',
+    shareFailed: 'تعذرت مشاركة الناتج',
+    revokeFailed: 'تعذر إلغاء المشاركة',
+    previewNotReady: 'معاينة Markdown غير جاهزة.',
+    imageNotEmbedded: 'يحتوي Markdown على صورة غير مضمنة.',
   },
 
   artifactPreview: {

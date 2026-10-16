@@ -2,10 +2,36 @@
 // a card for the text before the first space and left the rest as prose.
 import { describe, expect, it } from 'vitest'
 
+import { localPreviewTarget } from '@/lib/local-preview'
+
 import { appendAssistantTextPart, chatMessageText, mediaTagValues, renderMediaTags } from './parts'
 
 const SPACED = '/home/hermes/Morten - Nobly Kickoff - Opening and cue cards EN.docx'
 const CARD = `[File: Morten - Nobly Kickoff - Opening and cue cards EN.docx](#media:${encodeURIComponent(SPACED)})`
+
+describe('中文说明与文件交付路径的边界', () => {
+  it('将中文说明留在正文，预览只读取实际文件路径', () => {
+    for (const path of ['你好.md', '/workspace/你好.md', 'outputs/你好.html']) {
+      const prose = '，内容为「你好」。'
+      const text = `已创建：\nMEDIA:${path}${prose}`
+      expect(mediaTagValues(text)).toEqual([path])
+      expect(renderMediaTags(text)).toBe(
+        `已创建：\n[File: ${path.split('/').pop()}](#media:${encodeURIComponent(path)})${prose}`
+      )
+      expect(localPreviewTarget(mediaTagValues(text)[0], '/workspace')?.path).toBe(
+        path.startsWith('/') ? path : `/workspace/${path}`
+      )
+    }
+  })
+
+  it('带引号的真实文件名可以包含中文标点', () => {
+    const path = '/workspace/你好.md，最终版本.md'
+    expect(mediaTagValues(`MEDIA:"${path}"，请查看。`)).toEqual([`"${path}"`])
+    expect(renderMediaTags(`MEDIA:"${path}"，请查看。`)).toBe(
+      `[File: 你好.md，最终版本.md](#media:${encodeURIComponent(path)})，请查看。`
+    )
+  })
+})
 
 describe('renderMediaTags with interior spaces', () => {
   it('keeps the whole spaced path in one card on every surface that reads MEDIA tags', () => {

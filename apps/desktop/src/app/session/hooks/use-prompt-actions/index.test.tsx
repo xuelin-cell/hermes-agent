@@ -5552,6 +5552,32 @@ describe('usePromptActions eager attachment upload (drop-time)', () => {
   })
 })
 
+describe('uploadComposerAttachment 来源登记', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it.each(['file', 'image'] as const)('本地 %s 附加成功才登记上传，并同时绑定稳定和运行时会话', async kind => {
+    const markUploaded = vi.fn(async () => undefined)
+    vi.stubGlobal('hermesDesktop', { artifactShare: { markUploaded } })
+    const filename = kind === 'image' ? 'user.png' : 'user.html'
+    const requestGateway = vi.fn(async () => ({ attached: true, ref_text: `@file:${filename}`, path: `/work/${filename}` }))
+
+    const options = {
+      backendCwd: '/work', remote: false, requestGateway: requestGateway as never,
+      sessionId: 'runtime', storedSessionId: 'stored'
+    }
+
+    const attachment = { id: 'upload', kind, path: `/work/${filename}`, label: filename }
+
+    await uploadComposerAttachment(attachment, options)
+    expect(markUploaded.mock.calls).toEqual([['stored'], ['runtime']])
+    requestGateway.mockResolvedValue({ attached: false, ref_text: '', path: '' })
+    await expect(uploadComposerAttachment(attachment, options)).rejects.toThrow()
+    expect(markUploaded).toHaveBeenCalledTimes(2)
+  })
+})
+
 describe('uploadComposerAttachment remote read failures', () => {
   afterEach(() => {
     vi.restoreAllMocks()

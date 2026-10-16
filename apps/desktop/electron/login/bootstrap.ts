@@ -7,6 +7,7 @@ import { app, BrowserWindow, dialog, net } from 'electron'
 import { platformDefaultHermesHome, resolveDesktopUserData } from '../data-paths'
 import { markDesktopLaunchSuccessful, prepareDesktopLaunch } from '../desktop-launch'
 import { startAccountDesktop } from '../entry_local/desktop-runtime'
+import { installArtifactSharePlugin } from '../entry_local/install-artifact-share'
 import { recoverAccountRun } from '../entry_local/recover-account'
 import { LocalRuntimeContext, type PreparedLocalContext } from '../entry_local/runtime-context'
 import { LocalStartupError, showLocalStartupFailure } from '../entry_local/startup-failure'
@@ -156,6 +157,7 @@ async function openLoginWindow(): Promise<BrowserWindow | null> {
 
     try {
       const context = accountRuntime!.prepare()
+      installArtifactSharePlugin(context.home, app.getAppPath())
       desktopStarting ??= startAccountDesktop(context)
         .then(() => {
           if (stopping || window.isDestroyed()) {

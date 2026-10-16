@@ -2988,6 +2988,34 @@ export const en: Translations = {
   },
 
   messaging: {
+    cards: {
+      heading: 'Chat apps',
+      description: 'Connect WeChat, DingTalk and other chat apps to receive and reply to messages from your phone.',
+      configure: 'Configure',
+      guide: 'Setup guide',
+      save: 'Save and enable',
+      comingSoon: 'Not integrated yet',
+      unavailable: 'Messaging component unavailable',
+      notConnected: 'Not connected',
+      unbind: 'Disconnect',
+      unbindTitle: 'Disconnect this platform?',
+      unbindDescription:
+        'Remove this platform’s credentials and disable it. Other platform settings, history and files are retained.',
+      titles: {
+        weixin: 'WeChat ClawBot integration',
+        dingtalk: 'DingTalk bot integration',
+        feishu: 'Feishu bot integration',
+        wecom: 'WeCom smart bot integration',
+        uniagentgate: '5G messaging gateway (RCS) integration'
+      },
+      descriptions: {
+        weixin: 'Scan with WeChat to connect ClawBot and exchange messages.',
+        dingtalk: 'Register a DingTalk bot to receive and reply to messages.',
+        feishu: 'Register a Feishu bot to receive and reply to messages.',
+        wecom: 'Register a WeCom smart bot to receive and reply to messages.',
+        uniagentgate: 'Connect to uniAgentGate to receive and reply to RCS messages.'
+      }
+    },
     search: 'Search messaging...',
     loading: 'Loading messaging platforms...',
     loadFailed: 'Messaging platforms failed to load',
@@ -3608,6 +3636,20 @@ export const en: Translations = {
     generating: lines => `Generating… ${lines} lines`,
     versionBadge: count => `${count} versions`,
     open: 'Open'
+  },
+
+  artifactShare: {
+    originRequired: 'Only verified model artifacts can be shared. Uploads, derived files and unknown sources are blocked.',
+    share: 'Share',
+    shareArtifact: 'Share artifact',
+    updateShared: 'Update shared content',
+    viewShared: 'View shared page',
+    copyShared: 'Copy shared link',
+    revokeShared: 'Revoke shared link',
+    shareFailed: 'Could not share artifact',
+    revokeFailed: 'Could not revoke link',
+    previewNotReady: 'Markdown preview is not ready.',
+    imageNotEmbedded: 'Markdown contains an image that is not embedded. Make the page self-contained first.',
   },
 
   artifactPreview: {

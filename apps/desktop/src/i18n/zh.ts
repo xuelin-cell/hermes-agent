@@ -2789,6 +2789,33 @@ export const zh = defineLocale({
   },
 
   messaging: {
+    cards: {
+      heading: '聊天应用',
+      description: '接入微信、钉钉、飞书等聊天应用，从手机上接收和回复消息。',
+      configure: '配置',
+      guide: '配置指南',
+      save: '保存并启用',
+      comingSoon: '待接入',
+      unavailable: '消息平台组件未就绪',
+      notConnected: '未连接',
+      unbind: '解绑',
+      unbindTitle: '解绑此消息平台？',
+      unbindDescription: '清除这个平台的凭据并停用它，保留其它平台设置、历史和文件。',
+      titles: {
+        weixin: '微信 ClawBot 集成',
+        dingtalk: '钉钉机器人集成',
+        feishu: '飞书机器人集成',
+        wecom: '企业微信智能机器人集成',
+        uniagentgate: '5G 消息网关（RCS）集成'
+      },
+      descriptions: {
+        weixin: '通过微信扫码连接 ClawBot，接收和回复消息。',
+        dingtalk: '注册钉钉机器人以接收和回复消息。',
+        feishu: '注册飞书机器人以接收和回复消息。',
+        wecom: '注册企业微信智能机器人以接收和回复消息。',
+        uniagentgate: '连接 uniAgentGate 5G 消息网关，接收和回复 RCS 短信。'
+      }
+    },
     search: '搜索消息平台…',
     loading: '正在加载消息平台…',
     loadFailed: '消息平台加载失败',
@@ -3386,6 +3413,20 @@ export const zh = defineLocale({
     generating: lines => `生成中… ${lines} 行`,
     versionBadge: count => `${count} 个版本`,
     open: '打开'
+  },
+
+  artifactShare: {
+    originRequired: '仅支持来源已确认的模型产物；上传文件、派生产物和来源未知的文件不能分享。',
+    share: '分享',
+    shareArtifact: '分享产物',
+    updateShared: '更新分享内容',
+    viewShared: '查看分享页',
+    copyShared: '复制链接',
+    revokeShared: '取消分享',
+    shareFailed: '分享失败',
+    revokeFailed: '取消分享失败',
+    previewNotReady: 'Markdown 预览尚未完成。',
+    imageNotEmbedded: 'Markdown 包含未内嵌的图片，请先整理为自包含内容。',
   },
 
   artifactPreview: {

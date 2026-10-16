@@ -2222,6 +2222,33 @@ export const zhHant = defineLocale({
   },
 
   messaging: {
+    cards: {
+      heading: '聊天應用',
+      description: '接入微信、釘釘、飛書等聊天應用，從手機接收及回覆訊息。',
+      configure: '設定',
+      guide: '設定指南',
+      save: '儲存並啟用',
+      comingSoon: '待接入',
+      unavailable: '訊息平台元件尚未就緒',
+      notConnected: '未連線',
+      unbind: '解除綁定',
+      unbindTitle: '解除此訊息平台的綁定？',
+      unbindDescription: '清除此平台的憑證並停用，保留其他平台設定、歷史與檔案。',
+      titles: {
+        weixin: '微信 ClawBot 整合',
+        dingtalk: '釘釘機器人整合',
+        feishu: '飛書機器人整合',
+        wecom: '企業微信智慧機器人整合',
+        uniagentgate: '5G 訊息閘道（RCS）整合'
+      },
+      descriptions: {
+        weixin: '透過微信掃碼連接 ClawBot，接收及回覆訊息。',
+        dingtalk: '註冊釘釘機器人以接收及回覆訊息。',
+        feishu: '註冊飛書機器人以接收及回覆訊息。',
+        wecom: '註冊企業微信智慧機器人以接收及回覆訊息。',
+        uniagentgate: '連接 uniAgentGate 5G 訊息閘道，接收及回覆 RCS 簡訊。'
+      }
+    },
     search: '搜尋訊息平台…',
     loading: '正在載入訊息平台…',
     loadFailed: '訊息平台載入失敗',
@@ -2719,6 +2746,20 @@ export const zhHant = defineLocale({
     generating: lines => `產生中… ${lines} 行`,
     versionBadge: count => `${count} 個版本`,
     open: '開啟'
+  },
+
+  artifactShare: {
+    originRequired: '僅支援來源已確認的模型產物；上傳檔案、衍生產物及來源不明的檔案無法分享。',
+    share: '分享',
+    shareArtifact: '分享產物',
+    updateShared: '更新分享內容',
+    viewShared: '查看分享頁',
+    copyShared: '複製連結',
+    revokeShared: '取消分享',
+    shareFailed: '分享失敗',
+    revokeFailed: '取消分享失敗',
+    previewNotReady: 'Markdown 預覽尚未完成。',
+    imageNotEmbedded: 'Markdown 包含未內嵌的圖片，請先整理為自包含內容。',
   },
 
   artifactPreview: {

@@ -1961,6 +1961,34 @@ export const ja = defineLocale({
   },
 
   messaging: {
+    cards: {
+      heading: 'チャットアプリ',
+      description: 'WeChat、DingTalk、Feishu などに接続し、スマートフォンでメッセージを送受信します。',
+      configure: '設定',
+      guide: '設定ガイド',
+      save: '保存して有効化',
+      comingSoon: '連携準備中',
+      unavailable: 'メッセージ機能を利用できません',
+      notConnected: '未接続',
+      unbind: '連携解除',
+      unbindTitle: 'このプラットフォームの連携を解除しますか？',
+      unbindDescription:
+        'このプラットフォームの認証情報を削除して無効にします。他の設定、履歴、ファイルは保持されます。',
+      titles: {
+        weixin: 'WeChat ClawBot 連携',
+        dingtalk: 'DingTalk ボット連携',
+        feishu: 'Feishu ボット連携',
+        wecom: 'WeCom スマートボット連携',
+        uniagentgate: '5G メッセージゲートウェイ（RCS）連携'
+      },
+      descriptions: {
+        weixin: 'WeChat で QR コードを読み取り、ClawBot とメッセージを送受信します。',
+        dingtalk: 'DingTalk ボットを登録してメッセージを送受信します。',
+        feishu: 'Feishu ボットを登録してメッセージを送受信します。',
+        wecom: 'WeCom スマートボットを登録してメッセージを送受信します。',
+        uniagentgate: 'uniAgentGate に接続して RCS メッセージを送受信します。'
+      }
+    },
     search: 'メッセージングを検索...',
     loading: 'メッセージングプラットフォームを読み込み中...',
     loadFailed: 'メッセージングプラットフォームの読み込みに失敗しました',
@@ -2465,6 +2493,20 @@ export const ja = defineLocale({
     generating: lines => `生成中… ${lines} 行`,
     versionBadge: count => `${count} 個のバージョン`,
     open: '開く'
+  },
+
+  artifactShare: {
+    originRequired: '生成元を確認できたモデルの成果物のみ共有できます。アップロード、派生ファイル、生成元不明のファイルは共有できません。',
+    share: '共有',
+    shareArtifact: '成果物を共有',
+    updateShared: '共有内容を更新',
+    viewShared: '共有ページを表示',
+    copyShared: '共有リンクをコピー',
+    revokeShared: '共有を取り消す',
+    shareFailed: '共有できませんでした',
+    revokeFailed: '共有を取り消せませんでした',
+    previewNotReady: 'Markdown プレビューの準備ができていません。',
+    imageNotEmbedded: 'Markdown に埋め込まれていない画像があります。',
   },
 
   artifactPreview: {

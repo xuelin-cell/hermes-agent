@@ -2564,6 +2564,21 @@ export interface Translations {
   }
 
   messaging: {
+    cards: {
+      heading: string
+      description: string
+      configure: string
+      guide: string
+      save: string
+      comingSoon: string
+      unavailable: string
+      notConnected: string
+      unbind: string
+      unbindTitle: string
+      unbindDescription: string
+      titles: Record<string, string>
+      descriptions: Record<string, string>
+    }
     search: string
     loading: string
     loadFailed: string
@@ -3037,6 +3052,20 @@ export interface Translations {
     generating: (lines: number) => string
     versionBadge: (count: number) => string
     open: string
+  }
+
+  artifactShare: {
+    originRequired: string
+    share: string
+    shareArtifact: string
+    updateShared: string
+    viewShared: string
+    copyShared: string
+    revokeShared: string
+    shareFailed: string
+    revokeFailed: string
+    previewNotReady: string
+    imageNotEmbedded: string
   }
 
   artifactPreview: {

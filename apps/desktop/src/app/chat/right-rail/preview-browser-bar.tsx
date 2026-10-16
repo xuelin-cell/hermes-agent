@@ -14,7 +14,7 @@
  * buttons, so a glyph here and a glyph on the strip are still the same button.
  */
 
-import { useEffect, useState } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 
 import { Codicon } from '@/components/ui/codicon'
 import { CopyButton } from '@/components/ui/copy-button'
@@ -26,6 +26,7 @@ import { ANNOTATE_BLUE } from '@/lib/preview-annotate'
 import { cn } from '@/lib/utils'
 
 interface PreviewBrowserBarProps {
+  actions?: ReactNode
   annotateMode?: boolean
   canGoBack: boolean
   canGoForward: boolean
@@ -95,6 +96,7 @@ export function normalizePreviewAddress(value: string): null | string {
 }
 
 export function PreviewBrowserBar({
+  actions,
   annotateMode = false,
   canGoBack,
   canGoForward,
@@ -216,6 +218,7 @@ export function PreviewBrowserBar({
           text={url}
         />
       </div>
+      {actions}
       {onToggleAnnotate ? (
         <PaneStripGlyph
           active={annotateMode}
