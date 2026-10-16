@@ -27,6 +27,8 @@ import {
   PaneTabStrip
 } from '@/components/ui/pane-tab'
 import { ContribBoundary, ContribRender } from '@/contrib/react/boundary'
+import { $developerMode } from '@/store/developer-mode'
+
 import { useContributions } from '@/contrib/react/use-contributions'
 import { useI18n } from '@/i18n'
 import { useKeybindHint } from '@/lib/keybinds/use-keybind-hint'
@@ -261,6 +263,7 @@ export function TreeGroup({
   const revealsHidden = useStore($layoutEditRevealsHidden)
   const wcOverlap = useWindowControlsOverlap(ref, !topEdge)
 
+  const developerMode = useStore($developerMode)
   const hiddenPanes = useStore($hiddenTreePanes)
   const narrow = useStore($narrowViewport)
   const workspaceMode = useStore($workspaceMode)
@@ -281,8 +284,12 @@ export function TreeGroup({
   // shown one (render-side — the tree keeps `active`).
   // Edit mode (in Advanced) forces toggle-hidden panes visible so they can be
   // rearranged (mirrors tree-split's paneGone) — restores itself on exit.
+  // 开发者入口只影响当前显示，不写入用户布局或删除机器人档案。
   const paneShown = (id: string) =>
-    Boolean(paneFor(id)) && (revealsHidden || !hiddenPanes.has(id)) && !(narrow && paneChrome(paneFor(id)).collapsible)
+    (developerMode || id !== 'hermes-bots:pane') &&
+    Boolean(paneFor(id)) &&
+    (revealsHidden || !hiddenPanes.has(id)) &&
+    !(narrow && paneChrome(paneFor(id)).collapsible)
 
   const shown = node.panes.filter(paneShown)
   const memoryKey = workspaceScopeKey(workspaceMode, workspaceOwnerKey)

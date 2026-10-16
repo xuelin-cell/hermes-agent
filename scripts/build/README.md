@@ -422,3 +422,36 @@ Artifact acceptance still needs these checks:
 
 Docker/Nix build execution belongs to the distribution verification work, not
 this documentation pass. No build-pass claim follows from this reference.
+
+## Windows 本地打包的增量复用
+
+`build-windows-installer.ps1` 继续作为完整 EXE 入口。打包调用三个前端编译器时传入
+`--reuse`；输入和输出的内容指纹一致才跳过编译，终端显示
+`build-cache: reusing verified ... product`。首次应用此变更需重建一次生成新收据。
+源码、锁文件、工具版本、编译环境、图标或产物变化都会失效；校验使用内容而非修改时间。
+`.build` 等生成目录不参与源码指纹；`VITE_*` 等编译环境仅记录摘要。
+未传 `--reuse` 的独立编译仍会完整执行；显式 `--typecheck` 不跳过桌面编译。
+
+仅修改桌面界面时，未变化的 TUI/Web 可直接复用。桌面内嵌的构建戳含本轮时间，
+构建戳变化时桌面仍重建，不复用旧版本身份。Python payload 准备、原生依赖验证和
+NSIS 生成继续执行，下载缓存保持在 `.cache/desktop-inputs`，不等同于整个环境缓存。
+各外部步骤结束后输出实际秒数，便于定位后续瓶颈，不承诺固定提速比例。
+Windows 的产物语法检查使用当前 Node 可执行文件，避免固定工具链在空 PATH 时误判失败。
+
+本地快速验证可选 `./build-windows-installer.ps1 -Compression store`；此选项减少压缩工作，
+但包可能显著增大。正常分发继续使用默认 `normal`，不默认改成最大压缩。
+
+## 打包阶段日志
+
+完整桌面打包按六个阶段输出 `[当前步/总步数]`：
+
+1. 准备工具链、依赖和 Python 运行环境。
+2. 校验打包参数与已准备依赖。
+3. 生成应用图标。
+4. 编译 TUI、Web 并组装内置运行环境。
+5. 写入构建信息并编译桌面应用。
+6. 生成安装包与更新校验文件。
+
+每个阶段输出开始、完成或失败与实际耗时，保留子步骤和工具原有日志。
+编号表示执行阶段，不代表耗时百分比。轻量版本在第 4 步明确提示无需执行；
+`--prepare-only` 显示 `[1/1]`，`--prepared` 的第 1 步校验已有准备结果。

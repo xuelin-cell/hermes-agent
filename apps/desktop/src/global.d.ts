@@ -1,3 +1,4 @@
+import type { PlanUsageResult } from '../electron/uniwork-usage/contract'
 import type { GatewayWsUrlResult, OfficePreviewResult } from '@hermes/shared'
 import type { ArtifactShareEligibility, ArtifactShareSource } from '@hermes/shared/artifact-share'
 import type { ConversationShareApi } from '@hermes/shared/conversation-share'
@@ -37,6 +38,8 @@ declare global {
   interface Window {
     hermesDesktop: {
       /** 只读本次已准备账号的脱敏信息，运行中到期仍返回原期限。 */
+      /** 仅返回当前账号套餐展示信息，不接受页面身份参数。 */
+      getPlanUsage?: () => Promise<PlanUsageResult>
       getMaasAccount: () => Promise<LoginAccount | null>
       conversationShare: ConversationShareApi
       artifactShare: {

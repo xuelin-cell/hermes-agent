@@ -394,7 +394,7 @@ export function useStatusbarItems({
 
     return {
       className: status.hasUpdate ? 'text-primary hover:text-primary' : undefined,
-      hidden: status.unknown,
+      hidden: !developerMode || status.unknown,
       icon: applying ? <Loader2 className="size-3 animate-spin" /> : <Hash className="size-3" />,
       id: 'version-client',
       label: status.label,
@@ -407,6 +407,7 @@ export function useStatusbarItems({
       variant: 'action'
     }
   }, [
+    developerMode,
     desktopVersion?.appVersion,
     connection?.mode,
     copy,
@@ -440,7 +441,7 @@ export function useStatusbarItems({
 
     return {
       className: status.hasUpdate ? 'text-primary hover:text-primary' : undefined,
-      hidden: status.unknown,
+      hidden: !developerMode || status.unknown,
       icon: applying ? <Loader2 className="size-3 animate-spin" /> : <Hash className="size-3" />,
       id: 'version-backend',
       label: status.label,
@@ -451,6 +452,7 @@ export function useStatusbarItems({
       variant: 'action'
     }
   }, [
+    developerMode,
     connection?.mode,
     statusSnapshot?.version,
     backendUpdateStatus?.behind,
@@ -715,13 +717,13 @@ export function useStatusbarItems({
       systemResourcesItem,
       {
         ...approvalModeItem,
-        hidden: gatewayState !== 'open',
+        hidden: !developerMode || gatewayState !== 'open',
         toggleLabel: copy.toggleApprovalMode
       },
       {
         actionId: 'view.showTerminal',
         className: `w-7 justify-center px-0${terminalShowing ? ' bg-accent/55 text-foreground' : ''}`,
-        hidden: !chatOpen,
+        hidden: !developerMode || !chatOpen,
         icon: <Terminal className="size-3.5" />,
         id: 'terminal',
         onSelect: () => toggleTerminalPane(),
@@ -734,6 +736,7 @@ export function useStatusbarItems({
     ],
     [
       approvalModeItem,
+      developerMode,
       backendVersionItem,
       busy,
       cacheHit,

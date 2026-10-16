@@ -8,7 +8,7 @@ import { checkDistBuilt } from '../../apps/desktop/scripts/assert-dist-built.mjs
 import { classifyNativeBinary } from '../../apps/desktop/scripts/stage-native-deps.mjs'
 import { copyNativeTree } from '../../apps/desktop/scripts/prepared-native-deps.mjs'
 import { frontendArgs, isMain, productOutput, withProduct, workspaceTool } from './frontend-common.mjs'
-import { recordProduct, buildInputs } from './freshness.mjs'
+import { recordProduct, buildInputs, productCurrent } from './freshness.mjs'
 
 function validateNativeTree(nativeDeps, platform) {
   const pty = join(nativeDeps, 'node-pty')
@@ -26,7 +26,7 @@ function validateNativeTree(nativeDeps, platform) {
 }
 
 /** Pure desktop compilation. out is the dist directory, not the source app. */
-export async function buildDesktop({ source, out, icons, stamp, nativeDeps, typecheck = false, platform = process.platform }) {
+export async function buildDesktop({ source, out, icons, stamp, nativeDeps, typecheck = false, reuse = false, platform = process.platform }) {
   if (!icons || !stamp || !nativeDeps) throw new Error('icons, stamp and nativeDeps are required prepared inputs')
   const app = 'apps/desktop'
   ;({ source, out } = productOutput(source, out, [
@@ -40,6 +40,12 @@ export async function buildDesktop({ source, out, icons, stamp, nativeDeps, type
   const publicIcons = join(resolve(icons), app, 'public')
   if (!existsSync(join(publicIcons, 'apple-touch-icon.png'))) throw new Error(`Missing desktop icon: ${join(publicIcons, 'apple-touch-icon.png')}`)
   validateNativeTree(resolve(nativeDeps), platform)
+  if (reuse && !typecheck && platform === process.platform && productCurrent({
+    source, product: 'desktop', out, prepared: { icons: publicIcons, stamp, nativeDeps },
+  })) {
+    console.log('build-cache: reusing verified desktop product')
+    return { out }
+  }
   const inputs = buildInputs(source, 'desktop', { icons: publicIcons, stamp, nativeDeps })
   await withProduct(out, async (product, scratch) => {
     const publicDir = join(scratch, 'public')

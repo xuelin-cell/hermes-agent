@@ -166,6 +166,31 @@ export const zh = defineLocale({
     unavailableDescription: '暂时无法查看云端文件，搜索与文件操作将在接入后开放。'
   },
   desktopLogin: {
+    planUsage: {
+      restart: '用量查询组件尚未更新，请完全退出并重新启动桌面应用。',
+      actualUsage: '套餐实际用量',
+      details: '查看详情',
+      logout: '退出登录',
+      title: '套餐用量',
+      loading: '正在查询套餐用量…',
+      refresh: '刷新用量',
+      failed: '刷新失败，请重试。',
+      stale: '刷新失败，当前显示上次查询结果。',
+      auth: '登录状态已失效，请重新登录后查询。',
+      empty: '暂无可展示的用量数据',
+      unnamed: '当前套餐',
+      expired: '已到期',
+      expires: '截止日期',
+      used: '已用',
+      remaining: '剩余',
+      fiveHour: '5 小时额度',
+      week: '每周额度',
+      month: '每月额度',
+      reset: '重置时间',
+      notStarted: '尚未开始计时',
+      resetDue: '等待重置',
+      concurrency: '当前并发'
+    },
     brand: 'UNIWORK',
     welcome: '欢迎使用 UniWork',
     headline: '让工作流动起来，',
@@ -2480,6 +2505,7 @@ export const zh = defineLocale({
 
   skills: {
     tabSkills: '技能',
+    kitSkillsNote: '套件技能在「套件」页管理。',
     tabToolsets: '工具集',
     configuringProfile: '正在配置：',
     all: '全部',

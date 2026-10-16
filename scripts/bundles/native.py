@@ -245,6 +245,9 @@ def _prepare_native(*, out: Path, ref: str, source: Path, cache: Path,
         ["git", "rev-parse", "--verify", f"{ref}^{{commit}}"], cwd=source,
         text=True, encoding="utf-8").strip()
     snapshot(source, revision, repo_dir, exclude=INERT_SNAPSHOT_DIRS)
+    # desktop-mt: built-in kits and experts come from the gitcode config repo, not this repo's git tree.
+    from scripts.bundles.uniwork_bundled import stage_bundled_plugins
+    stage_bundled_plugins(repo_dir, env)
     # PM's provider code reads its adjacent lock. Never combine that tool graph
     # with a revision selecting different pins.
     snapshot_lock = json.loads((repo_dir / "pm/lock.json").read_text(encoding="utf-8-sig"))

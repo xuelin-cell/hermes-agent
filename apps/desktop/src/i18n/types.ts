@@ -194,6 +194,31 @@ export interface Translations {
     unavailableDescription: string
   }
   desktopLogin: {
+    planUsage: {
+      restart: string
+      actualUsage: string
+      details: string
+      logout: string
+      title: string
+      loading: string
+      refresh: string
+      failed: string
+      stale: string
+      auth: string
+      empty: string
+      unnamed: string
+      expired: string
+      expires: string
+      used: string
+      remaining: string
+      fiveHour: string
+      week: string
+      month: string
+      reset: string
+      notStarted: string
+      resetDue: string
+      concurrency: string
+    }
     brand: string
     welcome: string
     headline: string
@@ -2229,6 +2254,7 @@ export interface Translations {
 
   skills: {
     tabSkills: string
+    kitSkillsNote: string
     tabToolsets: string
     configuringProfile: string
     all: string

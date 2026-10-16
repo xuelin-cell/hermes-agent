@@ -7,7 +7,7 @@ import { isMain } from './frontend-common.mjs'
 
 const receiptName = 'hermes-build.json'
 const workspaces = { tui: 'ui-tui', web: 'web', desktop: 'apps/desktop' }
-const generated = new Set(['node_modules', 'dist', 'build', 'release', '.cache', '.git', 'coverage', 'test-results', 'playwright-report'])
+const generated = new Set(['node_modules', 'dist', 'build', 'release', '.cache', '.build', '.git', 'coverage', 'test-results', 'playwright-report'])
 
 // buildTui bundles these source roots (including the Ink source alias), not
 // the workspaces' documentation, test runners or other product recipes.
@@ -64,9 +64,19 @@ function outputHash(out) {
     name => !name.split('/').includes('node_modules') && !name.startsWith('native/'))
 }
 
+/** 记录会影响编译结果的环境配置，只存摘要，避免将配置内容写入产物。 */
+function compilerEnvironment() {
+  const names = [...new Set(['NODE_ENV', ...Object.keys(process.env)])].filter(name => name.startsWith('VITE_') || [
+    'NODE_ENV', 'BABEL_ENV', 'BROWSERSLIST', 'BROWSERSLIST_ENV',
+    'HERMES_BUNDLE_ENV_JSON', 'HERMES_DESKTOP_VARIANT', 'HERMES_DASHBOARD_URL',
+  ].includes(name)).sort()
+  return createHash('sha256').update(JSON.stringify(names.map(name => [name, name === 'NODE_ENV' ? (process.env[name] ?? 'production') : process.env[name]]))).digest('hex')
+}
+
 export function buildInputs(source, product, prepared = {}) {
   return {
     sourceHash: sourceHash(source, product),
+    environmentHash: compilerEnvironment(),
     prepared: Object.entries(prepared).sort().map(([name, path]) => ({
       name, path: resolve(path), hash: treeHash(resolve(path), ['.'], () => false),
     })),

@@ -6,6 +6,7 @@ import { mergeMaasModelConfig } from './model-config'
 import { writeAccountMaasKey } from './model-key'
 import { LocalStartupError } from './startup-failure'
 import { updateUniaiToolkitConfig } from './uniai-toolkit-config'
+import { enableUniworkKits } from './uniwork-kits-config'
 
 /** 只从主进程 LoginSession 取得有效 UID，不接受页面指定账号或目录。 */
 export function prepareLocalAccount(session: LoginSession, roots: AccountRoots): AccountPaths {
@@ -46,6 +47,11 @@ export function prepareLocalEnvironment(session: LoginSession, roots: AccountRoo
 
   try {
     updateUniaiToolkitConfig(account.home, result.status)
+
+    // 和套餐同一条规则：查询失败时不改账号文件。
+    if (result.status !== 'failed') {
+      enableUniworkKits(account.home)
+    }
   } catch (error) {
     throw new LocalStartupError('config', error)
   }

@@ -72,6 +72,9 @@ def identity_environment(request: BuildRequest, variant: str, inherited: Mapping
         env.pop("HERMES_BUILD_COMMIT", None)
         env["HERMES_PAYLOAD_TAG"] = request.tag
         env["GITHUB_REF_NAME"] = request.tag
+    # desktop-mt: 正式打包默认带上 gitcode 配置仓库里的内置套件和专家；单独调用 prepare_native（如单元测试）不联网。
+    from scripts.bundles.uniwork_bundled import DEFAULT_SOURCE
+    env.setdefault("UNIWORK_BUNDLED_PLUGINS", DEFAULT_SOURCE)
     return env
 
 

@@ -3,6 +3,8 @@ import { ipcMain, type IpcMainInvokeEvent, type Session } from 'electron'
 import { isDesktopRendererSender } from '../desktop-renderer-sender'
 import { ASR_CHANNEL, type AsrIdentity } from '../uniwork-asr/contract'
 import { createUniworkAsrHandler } from '../uniwork-asr/ipc'
+import { PlanUsageClient } from '../uniwork-usage/client'
+import { PLAN_USAGE_CHANNEL } from '../uniwork-usage/contract'
 import { WELCOME_CATALOG_CHANNEL } from '../uniwork-welcome/catalog'
 import { WelcomeCatalogClient } from '../uniwork-welcome/client'
 
@@ -62,6 +64,11 @@ export function installAccountIpc(
   }
 
   if (readIdentity && drive) {
+    const usage = new PlanUsageClient(readIdentity)
+    ipcMain.handle(PLAN_USAGE_CHANNEL, (event, ...args) => {
+      if (!trusted(event, args)) return { status: 'failed' }
+      return usage.load()
+    })
     const catalog = new WelcomeCatalogClient(readIdentity)
     ipcMain.handle(WELCOME_CATALOG_CHANNEL, async (event, ...args) => {
       if (!trusted(event, []) || args.length !== 1 || !['zh-CN', 'en'].includes(args[0])) {

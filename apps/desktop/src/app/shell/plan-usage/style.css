@@ -1,0 +1,135 @@
+.plan-usage-card {
+  width: min(320px, calc(100vw - 32px));
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--ui-bg-elevated);
+  font-size: 14px;
+  line-height: 22px;
+}
+.plan-usage-heading,
+.plan-usage-summary,
+.plan-usage-product {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.plan-usage-heading {
+  margin-bottom: 16px;
+}
+.plan-usage-heading h3,
+.plan-usage-product strong {
+  font-weight: 600;
+}
+.plan-usage-product {
+  align-items: start;
+  overflow-wrap: anywhere;
+}
+.plan-usage-product > span {
+  color: var(--dt-destructive);
+  white-space: nowrap;
+}
+.plan-usage-window {
+  margin-top: 16px;
+}
+.plan-usage-meta {
+  color: var(--ui-text-tertiary);
+  font-size: 12px;
+  line-height: 20px;
+  margin-top: 6px;
+}
+.plan-usage-meter {
+  height: 6px;
+  margin-top: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--dt-secondary);
+}
+.plan-usage-meter > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--theme-primary);
+}
+.plan-usage-error {
+  font-size: 12px;
+  color: var(--dt-destructive);
+  margin-top: 12px;
+}
+
+/* MasterGo 24:09213：24px 圆角、8px 内边距、正文 14/22、辅助文字 12/20。 */
+.plan-usage-card.account-card {
+  width: min(363px, calc(100vw - 32px));
+  padding: 8px;
+  border-radius: 24px;
+  box-shadow:
+    inset 0 4px 10px rgb(255 255 255 / 10%),
+    0 4px 15px rgb(0 0 0 / 6%);
+  max-height: var(--radix-popover-content-available-height);
+  overflow-y: auto;
+}
+.account-card-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 38px;
+  gap: 8px;
+  padding: 8px 16px;
+  margin-bottom: 12px;
+  color: var(--ui-text-primary);
+  text-align: left;
+  border-radius: 20px;
+}
+button.account-card-row,
+a.account-card-row {
+  cursor: pointer;
+}
+button.account-card-row:hover,
+a.account-card-row:hover {
+  background: var(--dt-secondary);
+}
+.account-card-row:focus-visible {
+  outline: 2px solid var(--theme-primary);
+  outline-offset: -2px;
+}
+.account-card-plan {
+  min-height: 40px;
+}
+.account-card-icon {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  color: var(--ui-text-secondary);
+}
+.account-card-summary {
+  margin-left: auto;
+  color: var(--ui-text-tertiary);
+  font-size: 12px;
+  line-height: 20px;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.account-card-details {
+  color: var(--ui-text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.account-card-divider {
+  height: 1px;
+  margin-bottom: 12px;
+  background: var(--dt-border);
+}
+.account-card-logout {
+  background: var(--dt-secondary);
+  margin-bottom: 0;
+}
+.account-card-expanded {
+  padding: 16px;
+}
+
+.account-card-icon > svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
