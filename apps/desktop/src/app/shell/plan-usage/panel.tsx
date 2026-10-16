@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useI18n } from '@/i18n'
+import { isPlanUsageHidden } from '@/lib/browser-shell'
 
 import type { LoginAccount } from '../../../../electron/login/contract'
 import type { PlanUsage } from '../../../../electron/uniwork-usage/contract'
@@ -130,7 +131,7 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
   const [error, setError] = useState<'auth' | 'failed' | 'restart' | null>(null)
 
   useEffect(() => {
-    if (!open) return
+    if (!open || isPlanUsageHidden()) return
     let live = true
     let sequence = 0
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -200,7 +201,7 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
         <section aria-label={c.title}>
           {trigger && (
             <>
-              <div className="account-card-row account-card-plan">
+              <div className="account-card-row account-card-plan" hidden={isPlanUsageHidden()}>
                 <AccountIcon src={planIcon} />
                 <span>{data?.productName || (loading ? c.loading : c.unnamed)}</span>
               </div>
@@ -208,6 +209,7 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
                 type="button"
                 className="account-card-row"
                 aria-expanded={details}
+                hidden={isPlanUsageHidden()}
                 onClick={() => setDetails(value => !value)}
               >
                 <AccountIcon src={usageIcon} />
@@ -223,7 +225,7 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
                 </span>
                 <span className="account-card-details">{c.details}</span>
               </button>
-              <div className="account-card-row">
+              <div className="account-card-row" hidden={isPlanUsageHidden()}>
                 <AccountIcon src={deadlineIcon} />
                 <span>{c.expires}</span>
                 <span className="account-card-summary">

@@ -26,6 +26,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Input } from '@/components/ui/input'
 import { renameSession } from '@/hermes'
 import { useI18n } from '@/i18n'
+import { withoutConversationShare } from '@/lib/browser-shell'
 import { triggerHaptic } from '@/lib/haptics'
 import { ArchiveOff } from '@/lib/icons'
 import { isSubmitEnter } from '@/lib/ime'
@@ -308,6 +309,7 @@ function useSessionActions({
     spec({
       disabled: !sessionId,
       icon: 'share',
+      key: 'conversation-share',
       label: t.conversationShare.sessionShare,
       onSelect: () => {
         try {
@@ -506,7 +508,7 @@ function useSessionActions({
     <>
       {openItems.map(item => renderActionItem(kit, item))}
       {openItems.length > 0 && <kit.Separator />}
-      {identityItems.map(item => renderActionItem(kit, item))}
+      {withoutConversationShare(identityItems).map(item => renderActionItem(kit, item))}
       <kit.Sub>
         <kit.SubTrigger disabled={!sessionId}>
           <Codicon name="symbol-color" size="0.875rem" />

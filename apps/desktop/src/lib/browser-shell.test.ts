@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import sessionMenuSource from '@/app/chat/sidebar/session-actions-menu.tsx?raw'
 import { setRuntimeI18nLocale } from '@/i18n/runtime'
 
 import {
@@ -14,8 +15,10 @@ import {
   isBrowserShell,
   isBrowserTerminalPaste,
   isBundledPluginHidden,
+  isConversationShareHidden,
   isDeveloperMode,
   isInstanceLocalUrl,
+  isPlanUsageHidden,
   isSettingsViewHidden,
   isSlideDeck,
   newSessionTitle,
@@ -31,6 +34,7 @@ import {
   signOutDescription,
   skillMarketInstallPending,
   visibleModelOptions,
+  withoutConversationShare,
   withoutDesktopPlugins,
   withoutHiddenNavItems,
   withoutHiddenPaletteItems,
@@ -194,17 +198,41 @@ describe('browser shell', () => {
     expect(withoutHiddenNavItems(nav).map(item => item.id)).toEqual(['new-session', 'skills', 'artifacts'])
   })
 
-  it('does not start Bot Mode for regular users', () => {
+  it('does not start Bot Mode or kits and experts for regular users', () => {
     expect(isBundledPluginHidden('hermes-bots')).toBe(false)
+    expect(isBundledPluginHidden('uniwork-kits')).toBe(false)
 
     document.documentElement.dataset.hermesBrowser = 'production'
 
     expect(isBundledPluginHidden('hermes-bots')).toBe(true)
+    expect(isBundledPluginHidden('uniwork-kits')).toBe(true)
     expect(isBundledPluginHidden('kanban')).toBe(false)
 
     localStorage.setItem(DEVELOPER_MODE_KEY, 'true')
 
     expect(isBundledPluginHidden('hermes-bots')).toBe(false)
+    expect(isBundledPluginHidden('uniwork-kits')).toBe(false)
+  })
+
+  it('hides sharing conversations and the plan on the account card from regular users', () => {
+    const items = [{ key: 'conversation-share', label: 'Share' }, { label: 'Rename' }]
+
+    expect(isConversationShareHidden()).toBe(false)
+    expect(withoutConversationShare(items)).toBe(items)
+    expect(isPlanUsageHidden()).toBe(false)
+
+    document.documentElement.dataset.hermesBrowser = 'production'
+
+    expect(isConversationShareHidden()).toBe(true)
+    expect(withoutConversationShare(items)).toEqual([{ label: 'Rename' }])
+    expect(isPlanUsageHidden()).toBe(true)
+
+    localStorage.setItem(DEVELOPER_MODE_KEY, 'true')
+
+    expect(withoutConversationShare(items)).toBe(items)
+    expect(isPlanUsageHidden()).toBe(false)
+    // The session menu marks its "share session" row with the key the filter drops.
+    expect(sessionMenuSource).toContain("key: 'conversation-share'")
   })
 
   it('lists only the agent’s plugins for regular users, not the desktop ones', () => {
