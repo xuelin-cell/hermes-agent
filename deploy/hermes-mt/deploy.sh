@@ -315,13 +315,15 @@ cmd_pull() {
     else
         git fetch origin "$BRANCH"
     fi
-    local before after
+    local before after crlf
     before="$(git rev-parse --short=7 HEAD)"
     git reset -q --hard FETCH_HEAD
     after="$(git rev-parse --short=7 HEAD)"
     ok "HEAD: $before -> $after  $(git log -1 --format=%s | cut -c1-60)"
-    if [ "$(grep -rlI $'\r' "$HERE" 2>/dev/null | grep -vc dist-browser || true)" != 0 ]; then
-        die "部署目录里有带 CR 的文件（检出时行尾没保住），不能继续"
+    # 只查受版本管理的文件：base 的构建日志（apt、pip 的进度条带 CR）、前端产物这些生成的文件不算检出出错。
+    crlf="$(cd "$HERE" && git ls-files -z | xargs -0 -r grep -lI $'\r' 2>/dev/null || true)"
+    if [ -n "$crlf" ]; then
+        die "部署目录里有带 CR 的文件（检出时行尾没保住），不能继续：$(printf '%s\n' "$crlf" | head -n 3 | tr '\n' ' ')"
     fi
 }
 
