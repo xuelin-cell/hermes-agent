@@ -8,6 +8,9 @@ import { createUniworkAsrHandler } from '../uniwork-asr/ipc'
 import { WELCOME_CATALOG_CHANNEL } from '../uniwork-welcome/catalog'
 import { WelcomeCatalogClient } from '../uniwork-welcome/client'
 
+import { PLAN_USAGE_CHANNEL } from '../uniwork-usage/contract'
+import { PlanUsageClient } from '../uniwork-usage/client'
+
 import { CloudDriveClient } from './cloud-drive'
 import type { LoginAccount } from './contract'
 import type { LoginIdentity } from './session'
@@ -47,6 +50,11 @@ export function installAccountIpc(
   }
 
   if (readIdentity) {
+    const usage = new PlanUsageClient(readIdentity)
+    ipcMain.handle(PLAN_USAGE_CHANNEL, (event, ...args) => {
+      if (!trusted(event, args)) return { status: 'failed' }
+      return usage.load()
+    })
     const catalog = new WelcomeCatalogClient(readIdentity)
     ipcMain.handle(WELCOME_CATALOG_CHANNEL, async (event, ...args) => {
       if (!trusted(event, []) || args.length !== 1 || !['zh-CN', 'en'].includes(args[0])) {

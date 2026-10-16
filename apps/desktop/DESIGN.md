@@ -631,3 +631,12 @@ The detailed state contract lives in the scoped
 - [ ] `cursor-pointer`, focus ring, and `Esc`-to-close behave?
 - [ ] Touched a primitive, token, or variant? Its named-contract entry in this
       file is updated in the same change.
+
+## 套餐用量
+
+侧栏账号上方的“套餐用量”打开共享 Popover。面板使用主题前景色、朱红进度条、
+浅灰轨道与辅助文字，不引入独立品牌颜色。仅展开时查询，焦点恢复与每分钟更新，
+主进程对同一账号合并并发查询并缓存 30 秒。失败保留同账号的旧结果并标记刷新失败，
+登录失效或账号不匹配则清空。Coding 与 Token 载荷按服务端 planType 选择，缺失值
+显示暂无数据，不补造零用量。凭据、模型地址与原始响应不跨 IPC，不持久化用量。
+源功能参考 `hexagent/libs/hexagent_demo/frontend/src/uniclawUsage.ts` 与 `components/Sidebar.tsx`。

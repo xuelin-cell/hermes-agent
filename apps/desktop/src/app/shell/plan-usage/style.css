@@ -1,0 +1,58 @@
+.plan-usage-card {
+  width: min(320px, calc(100vw - 32px));
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--ui-bg-elevated);
+  font-size: 14px;
+  line-height: 22px;
+}
+.plan-usage-heading,
+.plan-usage-summary,
+.plan-usage-product {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.plan-usage-heading {
+  margin-bottom: 16px;
+}
+.plan-usage-heading h3,
+.plan-usage-product strong {
+  font-weight: 600;
+}
+.plan-usage-product {
+  align-items: start;
+  overflow-wrap: anywhere;
+}
+.plan-usage-product > span {
+  color: var(--dt-destructive);
+  white-space: nowrap;
+}
+.plan-usage-window {
+  margin-top: 16px;
+}
+.plan-usage-meta {
+  color: var(--ui-text-tertiary);
+  font-size: 12px;
+  line-height: 20px;
+  margin-top: 6px;
+}
+.plan-usage-meter {
+  height: 6px;
+  margin-top: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--dt-secondary);
+}
+.plan-usage-meter > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--theme-primary);
+}
+.plan-usage-error {
+  font-size: 12px;
+  color: var(--dt-destructive);
+  margin-top: 12px;
+}

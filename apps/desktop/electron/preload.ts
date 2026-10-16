@@ -1,3 +1,4 @@
+import { PLAN_USAGE_CHANNEL } from './uniwork-usage/contract'
 import { WELCOME_CATALOG_CHANNEL } from './uniwork-welcome/catalog'
 import { contextBridge, ipcRenderer, webFrame, webUtils } from 'electron'
 
@@ -30,6 +31,7 @@ const localSkin = ipcRenderer.sendSync('hermes:skin:local')
 
 contextBridge.exposeInMainWorld('hermesDesktop', {
   // 只读脱敏账号信息，页面不能传入身份或账号路径。
+  getPlanUsage: () => ipcRenderer.invoke(PLAN_USAGE_CHANNEL),
   getMaasAccount: () => ipcRenderer.invoke('hermes:maas-account:get'),
   cloudDriveRequest: (input: CloudDriveRequest) => ipcRenderer.invoke('hermes:maas-drive:request', input),
   /** 仅读取固定语言的办公模板目录，不接收请求地址或凭据。 */

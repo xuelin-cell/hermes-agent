@@ -14,6 +14,8 @@ import {
 import { useI18n } from '@/i18n'
 import { notify } from '@/store/notifications'
 
+import { PlanUsagePanel } from './plan-usage/panel'
+
 import type { LoginAccount } from '../../../electron/login/contract'
 
 /** 账号旁只提供一个退出入口，统一确认后交给主进程处理停止与重启。 */
@@ -154,6 +156,7 @@ export function MaasAccountSidebar() {
   const account = useMaasAccount()
   return account ? (
     <div data-slot="sidebar-account" className="shrink-0 px-3 pb-3 pt-2">
+      <PlanUsagePanel account={account} key={`${account.maskedPhone}:${account.expiresAt}`} />
       <AccountLogout account={account} />
     </div>
   ) : null

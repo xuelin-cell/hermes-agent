@@ -18,6 +18,27 @@ export const en: Translations = {
       'Cloud files are not available yet. Search and file operations will be enabled after integration.'
   },
   desktopLogin: {
+    planUsage: {
+      title: 'Plan usage',
+      loading: 'Loading plan usage…',
+      refresh: 'Refresh usage',
+      failed: 'Could not refresh. Try again.',
+      stale: 'Refresh failed. Showing the previous result.',
+      auth: 'Your sign-in has expired. Sign in again to check usage.',
+      empty: 'No usage data available',
+      unnamed: 'Current plan',
+      expired: 'Expired',
+      expires: 'Expires',
+      used: 'Used',
+      remaining: 'Remaining',
+      fiveHour: '5-hour quota',
+      week: 'Weekly quota',
+      month: 'Monthly quota',
+      reset: 'Resets',
+      notStarted: 'Not started',
+      resetDue: 'Reset pending',
+      concurrency: 'Concurrent requests'
+    },
     brand: 'UNIWORK',
     welcome: 'Welcome to UniWork',
     headline: 'Let your work flow.',
