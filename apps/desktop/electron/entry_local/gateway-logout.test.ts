@@ -14,18 +14,35 @@ import { type AccountGateway, createAccountGatewayLogout, gatewayLogoutRoots } f
 import type { PreparedLocalContext } from './runtime-context'
 
 const gateway: AccountGateway = {
-  pid: 42, created: 1_700_000_000, home: 'fixed-account', launcher: false, external: false
+  pid: 42,
+  created: 1_700_000_000,
+  home: 'fixed-account',
+  launcher: false,
+  external: false
 }
 
 const context = { installationRoot: 'C:/fixed-source' } as PreparedLocalContext
-afterEach(() => { vi.useRealTimers(); vi.clearAllMocks() })
+const originalPlatform = process.platform
+
+/** 设置平台标识以覆盖 Windows ticks 与 macOS Unix 秒两种进程指纹。 */
+function setPlatform(platform: NodeJS.Platform): void {
+  Object.defineProperty(process, 'platform', { configurable: true, value: platform })
+}
+
+afterEach(() => {
+  setPlatform(originalPlatform)
+  vi.useRealTimers()
+  vi.clearAllMocks()
+})
 
 /** 用真实逐行管道模拟辅助进程，只控制应答或断开，不绕过生产校验。 */
 function fixture() {
   const events = new EventEmitter()
 
   const child = Object.assign(events, {
-    stdin: new PassThrough(), stdout: new PassThrough(), kill: vi.fn(() => events.emit('close', 0))
+    stdin: new PassThrough(),
+    stdout: new PassThrough(),
+    kill: vi.fn(() => events.emit('close', 0))
   })
 
   child.stdin.on('finish', () => events.emit('close', 0))
@@ -55,12 +72,19 @@ it('同一次退出复用一个辅助进程，共享快照不泄露命令行，�
     }
 
     expect(execute).toHaveBeenCalledTimes(1)
-    expect(execute).toHaveBeenCalledWith('fixed-python', [expect.stringContaining('gateway-logout.py')],
-      expect.objectContaining({ windowsHide: true, env: { HERMES_HOME: 'fixed-account' } }))
+    expect(execute).toHaveBeenCalledWith(
+      'fixed-python',
+      [expect.stringContaining('gateway-logout.py')],
+      expect.objectContaining({ windowsHide: true, env: { HERMES_HOME: 'fixed-account' } })
+    )
     expect(f.requests).toEqual([
-      { operation: 'snapshot', saved: [] }, { operation: 'stop', saved: [gateway] }, { operation: 'check', saved: [gateway] }
+      { operation: 'snapshot', saved: [] },
+      { operation: 'stop', saved: [gateway] },
+      { operation: 'check', saved: [gateway] }
     ])
-  } finally { await f.adapter.dispose() }
+  } finally {
+    await f.adapter.dispose()
+  }
 
   expect(f.child.stdin.writableEnded).toBe(true)
   expect(f.child.kill).not.toHaveBeenCalled()
@@ -68,7 +92,8 @@ it('同一次退出复用一个辅助进程，共享快照不泄露命令行，�
 
 it('坏指纹、额外秘密、异常断开与超时均拒绝放行；新尝试使用新进程', async () => {
   for (const response of [
-    { error: true }, { processes: [], gateways: [{ ...gateway, pid: -1 }] },
+    { error: true },
+    { processes: [], gateways: [{ ...gateway, pid: -1 }] },
     { processes: [{ pid: 42, parent: 1, started: '123', command: 'private-key' }], gateways: [] }
   ]) {
     const f = fixture()
@@ -95,6 +120,7 @@ it('坏指纹、额外秘密、异常断开与超时均拒绝放行；新尝试�
 })
 
 it('原生创建时间匹配才纳入子树，退出和 PID 重用不会扩大停止范围', () => {
+  setPlatform('win32')
   const started = (621355968000000000n + BigInt(gateway.created) * 10_000_000n).toString()
   expect(gatewayLogoutRoots([gateway], [{ pid: 42, parent: 1, started }])).toEqual([42])
   expect(gatewayLogoutRoots([gateway], [])).toEqual([])
@@ -102,4 +128,12 @@ it('原生创建时间匹配才纳入子树，退出和 PID 重用不会扩大�
     gatewayLogoutRoots([gateway], [{ pid: 42, parent: 1, started: (BigInt(started) + 10_000_000n).toString() }])
   ).toEqual([])
   expect(() => gatewayLogoutRoots([gateway], [{ pid: 42, parent: 1, started: '' }])).toThrow('创建时间')
+})
+
+it('macOS 创建时间按秒级标记复核网关进程', () => {
+  setPlatform('darwin')
+  const macGateway = { ...gateway, created: 1_792_057_420.8 }
+
+  expect(gatewayLogoutRoots([macGateway], [{ pid: 42, parent: 1, started: '1792057420' }])).toEqual([42])
+  expect(gatewayLogoutRoots([macGateway], [{ pid: 42, parent: 1, started: '1792057418' }])).toEqual([])
 })

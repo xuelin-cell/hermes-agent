@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { onComposerAttachImagesRequest } from '@/app/chat/composer/focus'
 import { $previewTabs, closeRightRail, openPreview, previewTabId } from '@/store/preview'
-import { $connection, $selectedStoredSessionId } from '@/store/session'
+import { $activeSessionId, $connection, $currentCwd, $selectedStoredSessionId } from '@/store/session'
 
 import { PreviewTilePane } from './preview'
 import { forgetPreviewConsole, previewConsoleState } from './preview-console-store'
@@ -801,6 +801,7 @@ describe('PreviewPane local HTML Render|Source toggle', () => {
 
   beforeEach(() => {
     $connection.set({ mode: 'local' } as never)
+    $currentCwd.set('/work')
     desktopWindow.hermesDesktop = {
       readFileText: vi.fn(async () => ({ byteSize: 22, path: target.path, text: '<!doctype html><p>x</p>' }))
     } as unknown as Window['hermesDesktop']
@@ -813,9 +814,61 @@ describe('PreviewPane local HTML Render|Source toggle', () => {
   afterEach(() => {
     cleanup()
     closeRightRail()
+    $activeSessionId.set(null)
+    $currentCwd.set('')
     $connection.set(null)
     delete desktopWindow.hermesDesktop
     vi.unstubAllGlobals()
+  })
+
+  it.each(['file', 'url'] as const)('工作区 HTML 在 %s 入口提供分享，导航后不再指向旧文件', async kind => {
+    const generated = {
+      ...target,
+      kind,
+      path: '/work/hello world.html',
+      source: '/work/hello world.html',
+      url: 'file:///work/hello%20world.html'
+    }
+
+    const readFileText = vi.fn(async () => ({ byteSize: 8, path: generated.path, text: '<p>x</p>' }))
+    const publish = vi.fn(async () => ({ shareId: 'shared', url: 'https://share.example/shared', version: 1 }))
+    $activeSessionId.set('session-1')
+    desktopWindow.hermesDesktop = {
+      readFileText,
+      artifactShare: {
+        inspect: vi.fn(async () => null),
+        eligibility: vi.fn(async () => ({ publishable: true })),
+        publish,
+        revoke: vi.fn(async () => undefined),
+        onChanged: vi.fn(() => () => undefined)
+      }
+    } as unknown as Window['hermesDesktop']
+    openPreview(generated)
+
+    let rendered!: ReturnType<typeof render>
+    const tabId = $previewTabs.get().find(tab => tab.target.url === generated.url)!.id
+
+    await act(async () => {
+      rendered = render(<PreviewTilePane tabId={tabId} />)
+    })
+
+    expect(rendered.container.querySelector('webview')).toBeInstanceOf(HTMLElement)
+    expect(readFileText).not.toHaveBeenCalled()
+    await waitFor(() => expect((rendered.getByRole('button', { name: 'Share artifact' }) as HTMLButtonElement).disabled).toBe(false))
+    fireEvent.click(rendered.getByRole('button', { name: 'Share artifact' }))
+    await waitFor(() => expect(publish).toHaveBeenCalledWith({
+      key: 'file:session-1:/work/hello world.html', html: '<p>x</p>', title: 'hello world.html',
+      source: expect.objectContaining({ sessionId: 'session-1', path: '/work/hello world.html', hash: expect.any(String) })
+    }))
+    expect(readFileText).toHaveBeenCalledWith(generated.path)
+
+    const webview = rendered.container.querySelector('webview')!
+
+    await act(async () => {
+      webview.dispatchEvent(Object.assign(new Event('did-navigate'), { url: 'file:///private/report.html' }))
+    })
+    expect(rendered.queryByRole('button', { name: 'Share artifact' })).toBeNull()
+    expect(rendered.queryByRole('button', { name: 'Update shared content' })).toBeNull()
   })
 
   it('defaults a browsed HTML file to Render and toggles Source on the same tab', async () => {

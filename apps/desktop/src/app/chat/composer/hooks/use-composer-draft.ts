@@ -622,6 +622,7 @@ export function useComposerDraft({
     isSteerableText,
     loadIntoComposer,
     requestMainFocus,
+    replaceText: paintDraft,
     sessionIdRef,
     setComposerText,
     stashAt,

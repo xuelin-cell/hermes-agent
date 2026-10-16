@@ -3937,6 +3937,20 @@ export const frOverrides = {
     versionBadge: count => `${count} versions`,
     open: 'Ouvrir'
   },
+  artifactShare: {
+    originRequired: 'Seuls les résultats vérifiés du modèle peuvent être partagés. Les fichiers importés, dérivés ou de source inconnue sont bloqués.',
+    share: 'Partager',
+    shareArtifact: 'Partager le contenu',
+    updateShared: 'Mettre à jour le contenu partagé',
+    viewShared: 'Voir la page partagée',
+    copyShared: 'Copier le lien',
+    revokeShared: 'Révoquer le lien',
+    shareFailed: 'Impossible de partager le contenu',
+    revokeFailed: 'Impossible de révoquer le lien',
+    previewNotReady: 'Aperçu Markdown indisponible.',
+    imageNotEmbedded: 'Le Markdown contient une image non intégrée.',
+  },
+
   artifactPreview: {
     versionOf: (current, total) => `v${current} sur ${total}`,
     olderVersion: 'Version précédente',
@@ -4227,6 +4241,14 @@ export const frOverrides = {
     voiceEngineChangeFailed: 'Impossible de changer le moteur de conversation vocale',
     voiceEngineChainedShort: 'reconnaissance vocale',
     voiceEngineLiveShort: 'GPT-Live',
+    workTemplates: 'Modèles bureautiques',
+    workClearCategory: 'Effacer la catégorie choisie',
+    workScrollLeft: 'Défiler à gauche',
+    workScrollRight: 'Défiler à droite',
+    workCached: 'Utilisation des modèles locaux',
+    workRetry: 'Actualiser les modèles',
+    startRecognition: 'Démarrer la reconnaissance vocale',
+    stopRecognition: 'Arrêter la reconnaissance vocale',
     voiceDictation: 'Dictée vocale',
     speakReplies: 'Lire les réponses à haute voix',
     stopSpeakingReplies: 'Arrêter la lecture des réponses à haute voix',
@@ -5273,10 +5295,27 @@ export const frOverrides = {
     noInlineTitle: 'Aucun aperçu en ligne',
     noInlineBody: mimeType => `${mimeType || 'Ce type de fichier'} peut tout de même être joint en tant que contexte.`,
     formatFailure: {
+      convert_failed: 'La conversion du document a échoué. Le fichier original reste accessible.',
+      timeout: 'La conversion du document a expiré. Le fichier original reste accessible.',
       not_found: "Ce fichier n’existe plus ou n’est pas accessible.",
       too_large: 'Le fichier ou l’image dépasse la limite de l’aperçu. Le fichier original reste accessible.',
       unavailable: 'Aperçu impossible. Vous pouvez toujours accéder au fichier original ou le télécharger.',
       unsupported: 'Ce format de fichier ou cet encodage multimédia n’est pas pris en charge.'
+    },
+    office: {
+      converting: 'Conversion du document',
+      firstOpen: 'Le premier aperçu peut prendre quelques secondes.',
+      installConverter: 'Si aucun logiciel de conversion ne fonctionne, installez LibreOffice et réessayez.'
+    },
+    slides: {
+      page: page => `Diapositive ${page}`,
+      counter: (page, total) => `${page} / ${total}`,
+      previous: 'Diapositive précédente',
+      next: 'Diapositive suivante',
+      fullscreen: 'Présenter en plein écran',
+      exitFullscreen: 'Quitter le plein écran',
+      fullscreenFailed: 'Impossible de changer le mode plein écran. Les diapositives restent consultables.',
+      pageFailed: page => `Impossible d’afficher la diapositive ${page}.`
     },
     delimited: {
       table: 'Tableau',
@@ -5284,6 +5323,7 @@ export const frOverrides = {
       limited: 'Affichage des 500 premières lignes de données.',
       columnsLimited: 'Affichage des 50 premières colonnes.'
     },
+    sheetLimited: 'Certaines feuilles dépassent 500 lignes. Seules leurs 500 premières lignes sont affichées.',
     tiffFirstPage: 'Ce TIFF contient plusieurs pages. Seule la première est affichée.',
     edit: 'Modifier',
     editing: 'Modification',

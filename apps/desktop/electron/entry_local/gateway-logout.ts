@@ -22,13 +22,33 @@ export interface AccountExitSnapshot {
 /** 验证辅助进程的纯归属数据，拒绝坏指纹及额外命令行或凭据字段。 */
 function validSnapshot(value: AccountExitSnapshot): boolean {
   return Boolean(
-    value && Object.keys(value).length === 2 && Array.isArray(value.processes) && Array.isArray(value.gateways) &&
-    value.processes.every(row => row && Object.keys(row).length === 3 &&
-      Number.isSafeInteger(row.pid) && row.pid >= 0 && Number.isSafeInteger(row.parent) && row.parent >= 0 &&
-      typeof row.started === 'string' && /^\d*$/.test(row.started)) &&
-    value.gateways.every(row => row && Object.keys(row).length === 5 &&
-      Number.isSafeInteger(row.pid) && row.pid > 0 && Number.isFinite(row.created) && row.created > 0 &&
-      typeof row.home === 'string' && typeof row.launcher === 'boolean' && typeof row.external === 'boolean')
+    value &&
+    Object.keys(value).length === 2 &&
+    Array.isArray(value.processes) &&
+    Array.isArray(value.gateways) &&
+    value.processes.every(
+      row =>
+        row &&
+        Object.keys(row).length === 3 &&
+        Number.isSafeInteger(row.pid) &&
+        row.pid >= 0 &&
+        Number.isSafeInteger(row.parent) &&
+        row.parent >= 0 &&
+        typeof row.started === 'string' &&
+        /^\d*$/.test(row.started)
+    ) &&
+    value.gateways.every(
+      row =>
+        row &&
+        Object.keys(row).length === 5 &&
+        Number.isSafeInteger(row.pid) &&
+        row.pid > 0 &&
+        Number.isFinite(row.created) &&
+        row.created > 0 &&
+        typeof row.home === 'string' &&
+        typeof row.launcher === 'boolean' &&
+        typeof row.external === 'boolean'
+    )
   )
 }
 
@@ -37,10 +57,14 @@ export function createAccountGatewayLogout(context: PreparedLocalContext) {
   const env = accountDesktopEnvironment(context)
   const backend = accountSourceBackend(context, [], env)
 
-  const script = context.gatewayLogoutScript ?? path.join(context.installationRoot, 'apps/desktop/electron/entry_local/gateway-logout.py')
+  const script =
+    context.gatewayLogoutScript ??
+    path.join(context.installationRoot, 'apps/desktop/electron/entry_local/gateway-logout.py')
 
   const child = spawn(backend.command, [script], {
-    cwd: context.installationRoot, env: { ...env, ...backend.env }, windowsHide: true,
+    cwd: context.installationRoot,
+    env: { ...env, ...backend.env },
+    windowsHide: true,
     stdio: ['pipe', 'pipe', 'ignore']
   })
 
@@ -56,7 +80,9 @@ export function createAccountGatewayLogout(context: PreparedLocalContext) {
 
   /** 只撤销本次辅助进程；失败不释放账号归属，也不暴露原始错误。 */
   function dispose(): Promise<void> {
-    if (disposal) {return disposal}
+    if (disposal) {
+      return disposal
+    }
 
     closed = true
     clearTimeout(pending?.timer)
@@ -119,11 +145,20 @@ export function gatewayLogoutRoots(gateways: AccountGateway[], processes: Logout
   return gateways.flatMap(gateway => {
     const row = processes.find(process => process.pid === gateway.pid)
 
-    if (!row) {return []}
+    if (!row) {
+      return []
+    }
 
-    if (!row.started) {throw new Error('无法核对消息网关创建时间。')}
-    const created = Number(BigInt(row.started) - 621355968000000000n) / 10_000_000
+    if (!row.started) {
+      throw new Error('无法核对消息网关创建时间。')
+    }
+    const created =
+      process.platform === 'darwin'
+        ? Number(row.started)
+        : Number(BigInt(row.started) - 621355968000000000n) / 10_000_000
 
-    return Math.abs(created - gateway.created) < 0.001 ? [gateway.pid] : []
+    const tolerance = process.platform === 'darwin' ? 1 : 0.001
+
+    return Math.abs(created - gateway.created) < tolerance ? [gateway.pid] : []
   })
 }

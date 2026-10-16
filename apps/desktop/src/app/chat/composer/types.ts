@@ -40,6 +40,8 @@ export interface ChatBarProps {
   busy: boolean
   disabled: boolean
   focusKey?: string | null
+  /** 新对话空白页显示办公模板，已有历史的会话不展示。 */
+  showWelcomeTemplates?: boolean
   maxRecordingSeconds?: number
   state: ChatBarState
   gateway?: HermesGateway | null

@@ -46,6 +46,9 @@ describe('Office preview contract', () => {
       }
     }
 
+    expect(officeDocumentKind('C:\\资料\\报告#2.docx')).toBe('word')
+    expect(officeDocumentKind('/home/user/deck#final.pptx')).toBe('slides')
+
     for (const file of ['report.pdf', 'data.csv', 'file.constructor', '/folder.docx/file', 'no-extension']) {
       expect(officeDocumentKind(file)).toBeNull()
     }
@@ -232,6 +235,29 @@ describe('Office program detection', () => {
     expect(detector.get()).toBe(fresh)
   })
 
+  it('checks all candidate paths concurrently and still prefers them in candidate order', async () => {
+    const candidates = libreOfficeCandidates(process.platform, {}, '')
+    let inFlight = 0
+    let most = 0
+
+    const detector = createOfficeDetector({
+      readComRegistrations: vi.fn(async () => []),
+      isFile: async file => {
+        most = Math.max(most, ++inFlight)
+        // 排在前面的候选更晚返回，结果仍按候选顺序选择。
+        await new Promise(resolve => setTimeout(resolve, file === candidates[1] ? 1 : 20))
+        inFlight--
+
+        return file === candidates[1] || file === candidates[2]
+      },
+      env: {}
+    })
+
+    const result = await detector.get()
+    expect(most).toBeGreaterThan(1)
+    expect(result.word).toEqual([{ provider: 'libreoffice', executable: candidates[1] }])
+  })
+
   it.runIf(process.platform === 'win32')('reads the real Windows registry without activating Office', async () => {
     const registrations = await readOfficeComRegistrations()
 
@@ -281,6 +307,18 @@ describe('LibreOffice candidates', () => {
   it('generates Linux and macOS paths as pure data, without pretending to run on another OS', () => {
     expect(libreOfficeCandidates('linux', { PATH: '/custom/bin:/usr/bin' }, '/users/test')[0]).toBe(
       '/custom/bin/soffice'
+    )
+    expect(libreOfficeCandidates('linux', { PATH: '/custom/bin' }, '/users/test')).toEqual(
+      expect.arrayContaining([
+        '/custom/bin/libreoffice',
+        '/usr/lib/libreoffice/program/soffice',
+        '/snap/bin/libreoffice',
+        '/var/lib/flatpak/exports/bin/org.libreoffice.LibreOffice',
+        '/users/test/.local/share/flatpak/exports/bin/org.libreoffice.LibreOffice'
+      ])
+    )
+    expect(libreOfficeCandidates('darwin', { PATH: '/custom/bin' }, '/users/test')).not.toContain(
+      '/custom/bin/libreoffice'
     )
     expect(libreOfficeCandidates('darwin', {}, '/users/test')).toContain(
       '/Applications/LibreOffice.app/Contents/MacOS/soffice'

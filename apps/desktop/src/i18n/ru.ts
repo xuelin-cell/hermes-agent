@@ -2663,6 +2663,20 @@ export const ru = defineLocale({
     open: 'Открыть'
   },
 
+  artifactShare: {
+    originRequired: 'Делиться можно только подтверждёнными результатами модели. Загруженные, производные файлы и неизвестные источники заблокированы.',
+    share: 'Поделиться',
+    shareArtifact: 'Поделиться артефактом',
+    updateShared: 'Обновить общий контент',
+    viewShared: 'Открыть общую страницу',
+    copyShared: 'Копировать ссылку',
+    revokeShared: 'Отозвать ссылку',
+    shareFailed: 'Не удалось поделиться артефактом',
+    revokeFailed: 'Не удалось отозвать ссылку',
+    previewNotReady: 'Предпросмотр Markdown ещё не готов.',
+    imageNotEmbedded: 'В Markdown есть изображение без встроенных данных.',
+  },
+
   artifactPreview: {
     versionOf: (current, total) => `v${current} из ${total}`,
     olderVersion: 'Более старая версия',
@@ -2937,6 +2951,14 @@ export const ru = defineLocale({
     stopDictation: 'Остановить диктовку',
     transcribingDictation: 'Расшифровка диктовки',
     voiceControls: 'Голос',
+    workTemplates: 'Офисные шаблоны',
+    workClearCategory: 'Снять выбор категории',
+    workScrollLeft: 'Прокрутить влево',
+    workScrollRight: 'Прокрутить вправо',
+    workCached: 'Используются локальные шаблоны',
+    workRetry: 'Обновить шаблоны',
+    startRecognition: 'Начать распознавание речи',
+    stopRecognition: 'Остановить распознавание речи',
     voiceDictation: 'Голосовая диктовка',
     speakReplies: 'Зачитывать ответы вслух',
     stopSpeakingReplies: 'Перестать зачитывать ответы вслух',
@@ -3816,10 +3838,27 @@ export const ru = defineLocale({
     noInlineTitle: 'Нет inline-предпросмотра',
     noInlineBody: mimeType => `${mimeType || 'Этот тип файла'} всё равно можно прикрепить как контекст.`,
     formatFailure: {
+      convert_failed: 'Не удалось преобразовать документ. Можно открыть или скачать исходный файл.',
+      timeout: 'Время преобразования документа истекло. Можно открыть или скачать исходный файл.',
       not_found: 'Файл больше не существует или недоступен.',
       too_large: 'Файл или изображение слишком велико для предпросмотра. Можно открыть или скачать исходный файл.',
       unavailable: 'Не удалось показать предпросмотр. Можно открыть или скачать исходный файл.',
       unsupported: 'Этот формат файла или кодек не поддерживается.'
+    },
+    office: {
+      converting: 'Преобразование документа',
+      firstOpen: 'Первый предпросмотр может занять несколько секунд.',
+      installConverter: 'Если программа преобразования недоступна, установите LibreOffice и повторите попытку.'
+    },
+    slides: {
+      page: page => `Слайд ${page}`,
+      counter: (page, total) => `${page} / ${total}`,
+      previous: 'Предыдущий слайд',
+      next: 'Следующий слайд',
+      fullscreen: 'Полноэкранный показ',
+      exitFullscreen: 'Выйти из полноэкранного режима',
+      fullscreenFailed: 'Не удалось переключить полноэкранный режим. Слайды по-прежнему доступны.',
+      pageFailed: page => `Не удалось показать слайд ${page}.`
     },
     delimited: {
       table: 'Таблица',
@@ -3827,6 +3866,7 @@ export const ru = defineLocale({
       limited: 'Показаны первые 500 строк данных.',
       columnsLimited: 'Показаны первые 50 столбцов.'
     },
+    sheetLimited: 'Некоторые листы содержат больше 500 строк. Показаны только первые 500 строк.',
     tiffFirstPage: 'В этом TIFF несколько страниц. Показана только первая.',
     edit: 'Изменить',
     editing: 'Изменение',

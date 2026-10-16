@@ -1,9 +1,17 @@
 [CmdletBinding()]
 param(
-    [string]$ProxyUrl = ''
+    [string]$ProxyUrl = '',
+    [ValidateSet('store', 'normal', 'maximum')]
+    [string]$Compression = 'normal'
 )
 
 $ErrorActionPreference = 'Stop'
+$previousEnvironment = @{}
+foreach ($name in @('TEMP', 'TMP', 'ELECTRON_BUILDER_CACHE', 'UV_CONCURRENT_INSTALLS',
+                    'ELECTRON_BUILDER_COMPRESSION_LEVEL', 'HTTP_PROXY', 'HTTPS_PROXY',
+                    'NO_PROXY', 'NODE_USE_ENV_PROXY', 'ELECTRON_GET_USE_PROXY')) {
+    $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+}
 $sourceRoot = $PSScriptRoot
 $cacheRoot = Join-Path $sourceRoot '.cache\desktop-inputs'
 $workRoot = Join-Path $sourceRoot '.build\desktop-job-windows'
@@ -13,6 +21,8 @@ $env:TEMP = $buildTemp
 $env:TMP = $env:TEMP
 $env:ELECTRON_BUILDER_CACHE = Join-Path $cacheRoot 'electron-builder'
 $env:UV_CONCURRENT_INSTALLS = '1'
+# NSIS 的内层 7z 不跟随 normal 配置，必须显式设置受支持的压缩级别。
+$env:ELECTRON_BUILDER_COMPRESSION_LEVEL = @{ store = '0'; normal = '5'; maximum = '9' }[$Compression]
 
 New-Item -ItemType Directory -Force -Path $buildTemp, $cacheRoot | Out-Null
 if (-not [string]::IsNullOrWhiteSpace($ProxyUrl)) {
@@ -44,19 +54,22 @@ try {
 
     Write-Host "Building Windows installer from $commit" -ForegroundColor Cyan
     Write-Host "Persistent cache: $cacheRoot" -ForegroundColor DarkGray
+    Write-Host "Installer compression: $Compression" -ForegroundColor DarkGray
+    $buildStarted = Get-Date
 
     & $python scripts\bundles\desktop.py `
         --commit $commit `
         --variant bundled `
         --work $workRoot `
-        --cache $cacheRoot
+        --cache $cacheRoot `
+        -- "-c.compression=$Compression"
     if ($LASTEXITCODE -ne 0) {
         throw "Windows installer build failed with exit code $LASTEXITCODE."
     }
 
     $release = Join-Path $sourceRoot 'apps\desktop\release'
     $installer = Get-ChildItem -LiteralPath $release -Filter '*.exe' -File |
-        Where-Object { $_.Name -notmatch 'uninstall' } |
+        Where-Object { $_.Name -notmatch 'uninstall' -and $_.LastWriteTime -ge $buildStarted } |
         Sort-Object LastWriteTime -Descending |
         Select-Object -First 1
     if ($null -eq $installer) {
@@ -71,4 +84,7 @@ try {
 } finally {
     Pop-Location
     Remove-Item -LiteralPath $buildTemp -Recurse -Force -ErrorAction SilentlyContinue
+    foreach ($name in $previousEnvironment.Keys) {
+        [Environment]::SetEnvironmentVariable($name, $previousEnvironment[$name], 'Process')
+    }
 }

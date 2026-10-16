@@ -2721,6 +2721,20 @@ export const zhHant = defineLocale({
     open: '開啟'
   },
 
+  artifactShare: {
+    originRequired: '僅支援來源已確認的模型產物；上傳檔案、衍生產物及來源不明的檔案無法分享。',
+    share: '分享',
+    shareArtifact: '分享產物',
+    updateShared: '更新分享內容',
+    viewShared: '查看分享頁',
+    copyShared: '複製連結',
+    revokeShared: '取消分享',
+    shareFailed: '分享失敗',
+    revokeFailed: '取消分享失敗',
+    previewNotReady: 'Markdown 預覽尚未完成。',
+    imageNotEmbedded: 'Markdown 包含未內嵌的圖片，請先整理為自包含內容。',
+  },
+
   artifactPreview: {
     versionOf: (current, total) => `第 ${current}/${total} 版`,
     olderVersion: '較舊版本',
@@ -2981,6 +2995,14 @@ export const zhHant = defineLocale({
     stopDictation: '停止聽寫',
     transcribingDictation: '正在轉寫聽寫',
     voiceControls: '語音',
+    workTemplates: '辦公範本',
+    workClearCategory: '取消所選分類',
+    workScrollLeft: '向左捲動',
+    workScrollRight: '向右捲動',
+    workCached: '正在使用本機範本',
+    workRetry: '重新整理範本',
+    startRecognition: '開始語音識別',
+    stopRecognition: '停止語音識別',
     voiceDictation: '語音聽寫',
     speakReplies: '朗讀回覆',
     stopSpeakingReplies: '停止朗讀回覆',
@@ -3807,10 +3829,27 @@ export const zhHant = defineLocale({
     noInlineTitle: '沒有行內預覽',
     noInlineBody: mimeType => `${mimeType || '此檔案類型'} 仍可作為脈絡附件。`,
     formatFailure: {
+      convert_failed: '文件轉換失敗，仍可查看或下載原檔案。',
+      timeout: '文件轉換逾時，仍可查看或下載原檔案。',
       not_found: '檔案已不存在或無法存取。',
       too_large: '檔案過大或圖片尺寸超出預覽上限，仍可查看或下載原檔案。',
       unavailable: '無法預覽此檔案，仍可查看或下載原檔案。',
       unsupported: '暫不支援此檔案格式或影音編碼。'
+    },
+    office: {
+      converting: '正在轉換文件',
+      firstOpen: '首次預覽可能需要幾秒。',
+      installConverter: '如果沒有可用的轉換軟體，請安裝 LibreOffice 後重試。'
+    },
+    slides: {
+      page: page => `第 ${page} 頁`,
+      counter: (page, total) => `${page} / ${total}`,
+      previous: '上一頁',
+      next: '下一頁',
+      fullscreen: '全螢幕放映',
+      exitFullscreen: '退出全螢幕',
+      fullscreenFailed: '無法切換全螢幕，仍可繼續閱讀投影片。',
+      pageFailed: page => `第 ${page} 頁無法顯示。`
     },
     delimited: {
       table: '表格',
@@ -3818,6 +3857,7 @@ export const zhHant = defineLocale({
       limited: '僅顯示前 500 筆資料列。',
       columnsLimited: '僅顯示前 50 欄。'
     },
+    sheetLimited: '部分工作表超過 500 列，僅顯示其前 500 列。',
     tiffFirstPage: '此 TIFF 包含多頁，僅顯示第一頁。',
     edit: '編輯',
     editing: '編輯中',

@@ -36,7 +36,8 @@ export type OfficeDetection = Record<OfficeDocumentKind, readonly OfficeProgram[
 
 export interface OfficeDetectionDeps {
   readComRegistrations: () => Promise<OfficeComRegistration[]>
-  isFile: (filePath: string) => boolean
+  /** 可以是异步的；探测并行检查所有候选，不在主进程同步等待磁盘或网络盘。 */
+  isFile: (filePath: string) => boolean | Promise<boolean>
   env: NodeJS.ProcessEnv
 }
 
@@ -149,12 +150,14 @@ export function libreOfficeCandidates(platform: NodeJS.Platform, env: NodeJS.Pro
   const windows = platform === 'win32'
   const paths = windows ? path.win32 : path.posix
   const executable = windows ? 'soffice.exe' : 'soffice'
+  // Linux 发行版常只在 PATH 里放 libreoffice 这个启动名。
+  const names = platform === 'linux' ? [executable, 'libreoffice'] : [executable]
 
   const candidates = (env.PATH || env.Path || '')
     .split(windows ? ';' : ':')
     .map(entry => entry.trim().replace(/^"|"$/g, ''))
     .filter(entry => paths.isAbsolute(entry))
-    .map(entry => paths.join(entry, executable))
+    .flatMap(entry => names.map(name => paths.join(entry, name)))
 
   if (windows) {
     for (const root of [
@@ -173,6 +176,17 @@ export function libreOfficeCandidates(platform: NodeJS.Platform, env: NodeJS.Pro
   } else {
     candidates.push('/usr/bin/soffice', '/usr/local/bin/soffice', '/opt/libreoffice/program/soffice')
 
+    if (platform === 'linux') {
+      // 发行版包、Snap 和 Flatpak（系统级与用户级）的常见位置。
+      candidates.push(
+        '/usr/lib/libreoffice/program/soffice',
+        '/usr/lib64/libreoffice/program/soffice',
+        '/snap/bin/libreoffice',
+        '/var/lib/flatpak/exports/bin/org.libreoffice.LibreOffice',
+        paths.join(userHome, '.local/share/flatpak/exports/bin/org.libreoffice.LibreOffice')
+      )
+    }
+
     if (platform === 'darwin') {
       candidates.push(
         '/Applications/LibreOffice.app/Contents/MacOS/soffice',
@@ -187,12 +201,10 @@ export function libreOfficeCandidates(platform: NodeJS.Platform, env: NodeJS.Pro
 /** 以实际程序名认厂家，不能根据 Word.Application 等别名认定安装了微软软件。 */
 export function classifyOfficeRegistration(
   registration: OfficeComRegistration,
-  isFile: OfficeDetectionDeps['isFile'],
+  isFile: (filePath: string) => boolean,
   env: NodeJS.ProcessEnv
 ): OfficeComProgram | null {
-  const raw = expandWindowsEnvRefs(registration.serverExecutable || registration.command, env).trim()
-  const match = raw.match(/^"([^"\r\n]+\.exe)"(?:\s|$)|^([^"\r\n]+?\.exe)(?:\s|$)/i)
-  const executable = match?.[1] || match?.[2]
+  const executable = registrationExecutable(registration, env)
 
   if (!executable || !path.win32.isAbsolute(executable) || !isFile(executable)) {
     return null
@@ -210,13 +222,23 @@ export function classifyOfficeRegistration(
   return provider ? { ...registration, executable, provider } : null
 }
 
-/** 区分可执行文件和目录，缺失或不可读取的路径不作为可用转换器。 */
-function isProgramFile(filePath: string): boolean {
-  try {
-    return fs.statSync(filePath).isFile()
-  } catch {
-    return false
-  }
+/** 区分可执行文件和目录，缺失或不可读取的路径不作为可用转换器；PATH 里失效的网络盘最多等 5 秒。 */
+function isProgramFile(filePath: string): Promise<boolean> {
+  return Promise.race([
+    fs.promises.stat(filePath).then(
+      stat => stat.isFile(),
+      () => false
+    ),
+    new Promise<boolean>(resolve => setTimeout(resolve, 5000, false).unref())
+  ])
+}
+
+/** 取出注册表启动命令里的程序路径，展开环境变量；格式不对时返回 undefined。 */
+function registrationExecutable(registration: OfficeComRegistration, env: NodeJS.ProcessEnv) {
+  const raw = expandWindowsEnvRefs(registration.serverExecutable || registration.command, env).trim()
+  const match = raw.match(/^"([^"\r\n]+\.exe)"(?:\s|$)|^([^"\r\n]+?\.exe)(?:\s|$)/i)
+
+  return match?.[1] || match?.[2]
 }
 
 /** WPS 专用入口优先，避免同时安装时用微软通用 CLSID 激活错误的应用。 */
@@ -243,12 +265,25 @@ export function createOfficeDetector(overrides: Partial<OfficeDetectionDeps> = {
       (error: unknown) => ({ error, registrations: [] as OfficeComRegistration[] })
     )
 
+    // 先并行检查所有候选路径，再按结果分类；不逐个同步等待磁盘。
+    const candidates = libreOfficeCandidates(process.platform, deps.env, os.homedir())
+
+    const paths = [
+      ...new Set([
+        ...com.registrations.flatMap(registration => registrationExecutable(registration, deps.env) || []),
+        ...candidates
+      ])
+    ]
+
+    const checked = await Promise.all(paths.map(async file => ((await deps.isFile(file)) ? file : '')))
+    const existing = new Set(checked.filter(Boolean))
+
     const programs = com.registrations
-      .map(registration => classifyOfficeRegistration(registration, deps.isFile, deps.env))
+      .map(registration => classifyOfficeRegistration(registration, file => existing.has(file), deps.env))
       .filter(program => program !== null)
       .sort((left, right) => comCandidateRank(left) - comCandidateRank(right))
 
-    const libreOffice = libreOfficeCandidates(process.platform, deps.env, os.homedir()).find(deps.isFile)
+    const libreOffice = candidates.find(file => existing.has(file))
 
     // 没有任何可用候选时保留查询异常，调用方才能区分“查询失败”和“确实没装”。
     if ('error' in com && !libreOffice) {

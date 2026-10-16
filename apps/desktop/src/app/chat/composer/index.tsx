@@ -8,7 +8,8 @@ import {
   useEffect,
   useId,
   useMemo,
-  useRef
+  useRef,
+  useState
 } from 'react'
 
 import { useTourMarker } from '@/app/chat/tour-marker'
@@ -74,6 +75,7 @@ import { triggerKeyUpHandler, useComposerTrigger } from './hooks/use-composer-tr
 import { useComposerUndo } from './hooks/use-composer-undo'
 import { useComposerUrlDialog } from './hooks/use-composer-url-dialog'
 import { useComposerVoice } from './hooks/use-composer-voice'
+import { useUniworkAsr } from './hooks/use-uniwork-asr'
 import { useEmojiCompletions } from './hooks/use-emoji-completions'
 import { useComposerMicroActions } from './hooks/use-micro-actions'
 import { useSlashCompletions } from './hooks/use-slash-completions'
@@ -111,6 +113,7 @@ import {
   selectionLinkLabel
 } from './url-refs'
 import { VoiceActivity, VoicePlaybackActivity } from './voice-activity'
+import { WorkTemplatePicker } from './work-templates/picker'
 import { WorkdirPicker } from './workdir-mt/workdir-picker'
 
 export function ChatBar({
@@ -120,6 +123,7 @@ export function ChatBar({
   focusKey,
   gateway,
   maxRecordingSeconds = 120,
+  showWelcomeTemplates = false,
   queueSessionKey,
   sessionId,
   state,
@@ -151,6 +155,7 @@ export function ChatBar({
   // semantics as SAYING "stop" (voice-stop-word.ts) or clicking the pill's
   // end control. Populated after useComposerVoice below (the submit wrapper
   // is created first); render-time assignment keeps the ref current.
+  const asrBusyRef = useRef(false)
   const voiceStopRef = useRef<{ active: boolean; end: () => void }>({ active: false, end: () => {} })
 
   // Every send (typed, queued, voice) passes through the contributed
@@ -158,6 +163,9 @@ export function ChatBar({
   // exact pass-through, so surfaces without contributions are byte-identical.
   const onSubmit = useCallback<ChatBarProps['onSubmit']>(
     async (value, options) => {
+      if (asrBusyRef.current) {
+        return false
+      }
       // Bare stop phrase typed while the voice conversation is live: end the
       // conversation (mic off, pill dismissed) instead of sending "stop" to
       // the agent. Spoken transcripts are already stop-checked inside
@@ -211,6 +219,7 @@ export function ChatBar({
   const { collapsed: statusDrawerCollapsed, toggle: toggleStatusDrawer } = useStatusDrawer(activeQueueSessionKey)
   const statusDrawerId = useId()
   const codingDrawerId = useId()
+  const [welcomeSelectionContainer, setWelcomeSelectionContainer] = useState<HTMLDivElement | null>(null)
 
   // Status items (subagents, background processes) are keyed by the RUNTIME
   // session id — gateway events and process.list both speak that id. Only the
@@ -308,6 +317,7 @@ export function ChatBar({
     isSteerableText,
     loadIntoComposer,
     requestMainFocus,
+    replaceText,
     sessionIdRef,
     setComposerText,
     stashAt,
@@ -1132,12 +1142,23 @@ export function ChatBar({
     />
   )
 
+  const asr = useUniworkAsr({
+    scope: activeQueueSessionKey,
+    disabled: inputDisabled || busy || voiceConversationActive || voiceStatus !== 'idle',
+    language: navigator.language.toLowerCase().startsWith('zh') ? 'zh' : 'en',
+    readText: () => syncDraftFromEditor(),
+    replaceText: text => replaceText(text, false)
+  })
+  const asrActive = asr.status !== 'idle'
+  asrBusyRef.current = asrActive
+
   const controls = (
     <ComposerControls
+      asr={asr}
       autoSpeak={autoSpeak}
       busy={busy}
       busyAction={busyAction}
-      canSubmit={canSubmit}
+      canSubmit={canSubmit && !asrActive}
       compactModelPill={poppedOut || compactPill}
       conversation={{
         active: voiceConversationActive,
@@ -1165,7 +1186,7 @@ export function ChatBar({
   const input = (
     <div className={cn('relative', stacked ? 'w-full' : 'min-w-(--composer-input-inline-min-width) flex-1')}>
       <div
-        aria-disabled={inputDisabled ? true : undefined}
+        aria-disabled={inputDisabled || asrActive ? true : undefined}
         aria-label={t.composer.message}
         autoCapitalize="off"
         // Chromium's macOS text-replacement path shares the autocorrect gate.
@@ -1181,7 +1202,7 @@ export function ChatBar({
           // becomes unclickable. Buttons use the global no-drag rule.
           hudNativeDrag && '[-webkit-app-region:no-drag]'
         )}
-        contentEditable={!inputDisabled}
+        contentEditable={!inputDisabled && !asrActive}
         data-placeholder={placeholder}
         data-slot={RICH_INPUT_SLOT}
         dir={textDirection}
@@ -1322,6 +1343,14 @@ export function ChatBar({
               : undefined
           }
         >
+          {showWelcomeTemplates && !guidedChat && !botChat && !hudMode && !poppedOut && (
+            <WorkTemplatePicker
+              selectionContainer={welcomeSelectionContainer}
+              scope={activeQueueSessionKey}
+              disabled={inputDisabled || busy || asrActive}
+              onReplaceText={text => replaceText(text)}
+            />
+          )}
           {/* Aligned to the composer SURFACE, which sits inside the composer's
               5px transparent grab margin — so both strips carry the same inset
               and share one left edge with it. */}
@@ -1382,6 +1411,8 @@ export function ChatBar({
             data-hud-grabbing={hudGrabbing ? '' : undefined}
             data-popped-out={poppedOut ? '' : undefined}
             data-slot="composer-root"
+            data-standard-layout={!hudMode && !poppedOut ? '' : undefined}
+            data-welcome={showWelcomeTemplates && !guidedChat && !botChat && !hudMode && !poppedOut ? '' : undefined}
             data-status-stack={statusStackVisible && !statusDrawerCollapsed ? '' : undefined}
             data-thread-scrolled-up={scrolledUp ? '' : undefined}
             data-tip-region=""
@@ -1395,7 +1426,7 @@ export function ChatBar({
             onSubmit={e => {
               e.preventDefault()
 
-              if (composingRef.current) {
+              if (composingRef.current || asrActive) {
                 return
               }
 
@@ -1491,6 +1522,7 @@ export function ChatBar({
                   {/* Contribution seams: banners above, a row below, inline
                     additions beside the "+" menu and before the controls.
                     All four render nothing until something contributes. */}
+                  <div data-slot="work-selection-container" ref={setWelcomeSelectionContainer} />
                   <ContribSlot area={COMPOSER_AREAS.top} />
                   <RestoredDraftNotice
                     freshDraft={activeQueueSessionKey === null}
@@ -1525,6 +1557,7 @@ export function ChatBar({
                   )}
                   {attachments.length > 0 && <AttachmentList attachments={attachments} onRemove={onRemoveAttachment} />}
                   <div
+                    data-slot="composer-layout"
                     className={cn(
                       'grid w-full',
                       stacked
@@ -1532,7 +1565,10 @@ export function ChatBar({
                         : 'grid-cols-[auto_1fr_auto] items-center gap-(--composer-control-gap) [grid-template-areas:"menu_input_controls"]'
                     )}
                   >
-                    <div className="flex translate-y-[3px] items-start gap-(--composer-control-gap) self-start [grid-area:menu]">
+                    <div
+                      data-slot="composer-leading"
+                      className="flex translate-y-[3px] items-start gap-(--composer-control-gap) self-start [grid-area:menu]"
+                    >
                       {contextMenu}
                       {!botChat && !guidedChat && <WorkdirPicker cwd={cwd} gateway={gateway} sessionId={sessionId} />}
                       <ContribSlot area={COMPOSER_AREAS.leading} />
@@ -1543,7 +1579,10 @@ export function ChatBar({
                       `ml-auto`: in the stacked layout the auto margin absorbs the
                       row's free space and pins a contributed action to the row
                       start, detached from the cluster (#116332). */}
-                    <div className="flex min-w-0 items-center justify-end gap-(--composer-control-gap) [grid-area:controls]">
+                    <div
+                      data-slot="composer-controls"
+                      className="flex min-w-0 items-center justify-end gap-(--composer-control-gap) [grid-area:controls]"
+                    >
                       <ContribSlot area={COMPOSER_AREAS.actions} />
                       {controls}
                     </div>

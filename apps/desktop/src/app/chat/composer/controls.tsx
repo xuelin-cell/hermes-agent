@@ -7,6 +7,7 @@ import { useI18n } from '@/i18n'
 import { triggerHaptic } from '@/lib/haptics'
 import { Ear, EarOff, iconSize, Layers3, Loader2, Square } from '@/lib/icons'
 import { cn } from '@/lib/utils'
+import { $developerMode } from '@/store/developer-mode'
 import { $hudMode, closeHud, resetHudLayout } from '@/store/hud'
 import { $wakeWord, toggleWakeWord } from '@/store/wake-word'
 
@@ -16,6 +17,7 @@ import { ModelPill } from './model-pill'
 import { ReasoningPill } from './reasoning-pill'
 import { StartVoiceButton } from './start-voice-button'
 import type { ChatBarState, VoiceStatus } from './types'
+import { UniworkAsrButton } from './uniwork-asr-button'
 import { VoiceFan } from './voice-fan'
 import { VoiceMenu } from './voice-menu'
 
@@ -35,6 +37,7 @@ interface ConversationProps {
 }
 
 export function ComposerControls({
+  asr,
   autoSpeak,
   busy,
   busyAction,
@@ -52,6 +55,7 @@ export function ComposerControls({
   onQueue,
   onToggleAutoSpeak
 }: {
+  asr?: { status: 'idle' | 'connecting' | 'recording' | 'finishing'; toggle: () => void }
   autoSpeak: boolean
   busy: boolean
   busyAction: 'steer' | 'queue' | 'stop'
@@ -72,12 +76,13 @@ export function ComposerControls({
   const { t } = useI18n()
   const c = t.composer
   const hudMode = useStore($hudMode)
+  const developerMode = useStore($developerMode)
 
   if (conversation.active) {
     return <ConversationPill {...conversation} disabled={disabled} />
   }
 
-  const showVoicePrimary = !busy && !hasComposerPayload
+  const showVoicePrimary = developerMode && !busy && !hasComposerPayload
   // Steer is just send: a payload keeps the Send affordance mid-turn. Stop
   // only when the composer is empty and a turn is running.
   const showStop = busy && !hasComposerPayload
@@ -122,7 +127,16 @@ export function ComposerControls({
               {compactModelPill ? null : <ReasoningPill disabled={disabled} model={state.model} />}
             </>
           )}
-          {voiceControls}
+          {asr ? (
+            <UniworkAsrButton
+              disabled={disabled || busy || (asr.status === 'idle' && voiceStatus !== 'idle')}
+              onToggle={asr.toggle}
+              status={asr.status}
+            />
+          ) : null}
+          {developerMode && asr?.status !== 'connecting' && asr?.status !== 'recording' && asr?.status !== 'finishing'
+            ? voiceControls
+            : null}
         </>
       )}
       {showQueueButton ? (

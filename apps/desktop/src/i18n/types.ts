@@ -3014,6 +3014,20 @@ export interface Translations {
     open: string
   }
 
+  artifactShare: {
+    originRequired: string
+    share: string
+    shareArtifact: string
+    updateShared: string
+    viewShared: string
+    copyShared: string
+    revokeShared: string
+    shareFailed: string
+    revokeFailed: string
+    previewNotReady: string
+    imageNotEmbedded: string
+  }
+
   artifactPreview: {
     versionOf: (current: number, total: number) => string
     olderVersion: string
@@ -3278,6 +3292,14 @@ export interface Translations {
     voiceEngineChangeFailed: string
     voiceEngineChainedShort: string
     voiceEngineLiveShort: string
+    workTemplates: string
+    workClearCategory: string
+    workScrollLeft: string
+    workScrollRight: string
+    workCached: string
+    workRetry: string
+    startRecognition: string
+    stopRecognition: string
     voiceDictation: string
     speakReplies: string
     stopSpeakingReplies: string
@@ -4155,10 +4177,27 @@ export interface Translations {
     noInlineTitle: string
     noInlineBody: (mimeType: string) => string
     formatFailure: {
+      convert_failed: string
+      timeout: string
       not_found: string
       too_large: string
       unavailable: string
       unsupported: string
+    }
+    office: {
+      converting: string
+      firstOpen: string
+      installConverter: string
+    }
+    slides: {
+      page: (page: number) => string
+      counter: (page: number, total: number) => string
+      previous: string
+      next: string
+      fullscreen: string
+      exitFullscreen: string
+      fullscreenFailed: string
+      pageFailed: (page: number) => string
     }
     delimited: {
       table: string
@@ -4166,6 +4205,7 @@ export interface Translations {
       limited: string
       columnsLimited: string
     }
+    sheetLimited: string
     tiffFirstPage: string
     edit: string
     editing: string

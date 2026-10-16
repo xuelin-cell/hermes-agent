@@ -5,8 +5,7 @@
   align-items: center;
   justify-content: center;
   overflow-y: auto;
-  background: #f9fafb;
-  color-scheme: light;
+  background: var(--dt-background);
   animation: login-fade-in-up 0.6s ease-out;
 }
 
@@ -55,33 +54,33 @@
   display: flex;
   align-items: stretch;
   overflow: hidden;
-  background: #fff;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
+  background: var(--dt-card);
+  border: 1px solid var(--dt-border);
+  border-radius: 8px;
 }
 
 .login-input-group:focus-within {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 2px rgb(37 99 235 / 15%);
+  border-color: var(--dt-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--dt-primary) 15%, transparent);
 }
 
 .login-addon {
   display: flex;
   align-items: center;
   padding: 0 12px;
-  color: #374151;
+  color: var(--ui-text-secondary);
   font-size: 14px;
   white-space: nowrap;
   user-select: none;
-  background: #f9fafb;
-  border-right: 1px solid #d1d5db;
+  background: var(--dt-background);
+  border-right: 1px solid var(--dt-border);
 }
 
 .login-input {
   min-width: 0;
   flex: 1;
   padding: 10px 12px;
-  color: #111827;
+  color: var(--dt-foreground);
   font-size: 14px;
   background: transparent;
   border: 0;
@@ -89,7 +88,7 @@
 }
 
 .login-input::placeholder {
-  color: #9ca3af;
+  color: var(--ui-text-quaternary);
 }
 
 .login-input:disabled {
@@ -106,11 +105,11 @@
   justify-content: center;
   padding: 0;
   overflow: hidden;
-  color: #9ca3af;
+  color: var(--ui-text-quaternary);
   font-size: 11px;
-  background: #f3f4f6;
+  background: var(--dt-muted);
   border: 0;
-  border-left: 1px solid #d1d5db;
+  border-left: 1px solid var(--dt-border);
   cursor: pointer;
 }
 
@@ -128,21 +127,21 @@
   width: 112px;
   flex-shrink: 0;
   padding: 0 8px;
-  color: #2563eb;
+  color: var(--dt-primary);
   font-size: 13px;
   white-space: nowrap;
-  background: #fff;
+  background: var(--dt-card);
   border: 0;
-  border-left: 1px solid #d1d5db;
+  border-left: 1px solid var(--dt-border);
   cursor: pointer;
 }
 
 .login-send-btn:hover:not(:disabled) {
-  background: #eff6ff;
+  background: var(--theme-accent-soft);
 }
 
 .login-send-btn:disabled {
-  color: #9ca3af;
+  color: var(--ui-text-quaternary);
   cursor: not-allowed;
 }
 
@@ -150,7 +149,7 @@
 .login-field-error,
 .login-field-status,
 .login-unavailable {
-  color: #dc2626;
+  color: var(--dt-destructive);
   font-size: 14px;
   text-align: center;
 }
@@ -167,7 +166,7 @@
 
 .login-field-status,
 .login-unavailable {
-  color: #6b7280;
+  color: var(--ui-text-tertiary);
 }
 
 .login-unavailable {
@@ -180,22 +179,22 @@
   height: 44px;
   align-items: center;
   justify-content: center;
-  color: #fff;
-  font-size: 16px;
+  color: var(--dt-primary-solid-foreground);
+  font-size: 14px;
   font-weight: 500;
-  background: #2563eb;
+  background: var(--dt-primary-solid);
   border: 0;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
   transition: background 0.2s;
 }
 
 .login-btn:hover:not(:disabled) {
-  background: #1d4ed8;
+  background: color-mix(in srgb, var(--dt-primary-solid) 85%, black);
 }
 
 .login-btn:disabled {
-  background: #93c5fd;
+  background: color-mix(in srgb, var(--dt-primary-solid) 40%, var(--dt-card));
   cursor: not-allowed;
 }
 
@@ -203,6 +202,11 @@
 .login-btn:focus-visible,
 .login-send-btn:focus-visible,
 .login-captcha-img:focus-visible {
-  outline: 2px solid #2563eb;
+  outline: 2px solid var(--dt-primary);
   outline-offset: 2px;
+}
+
+/* 登录标识为透明底黑色字标，暗色背景下使用反白保持辨识度。 */
+:root[data-hermes-theme='uniwork'].dark .login-logo {
+  filter: brightness(0) invert(1);
 }

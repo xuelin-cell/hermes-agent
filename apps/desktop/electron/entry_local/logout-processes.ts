@@ -6,13 +6,79 @@ export interface LogoutProcess {
   started: string
 }
 
+/** 冷启动或系统繁忙时仅重试一次只读查询；权限和数据错误仍立即失败。 */
+function queryLogoutProcesses(): string {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return readLogoutProcesses()
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ETIMEDOUT' || attempt >= 1) {
+        throw error
+      }
+      console.warn('[account-recovery] Windows process query timed out; retrying (2/2).')
+    }
+  }
+}
+
+/** 将 macOS `ps` 的本地化启动时间统一成 UTC 秒级指纹。 */
+function darwinStarted(value: string): string {
+  const milliseconds = Date.parse(`${value.trim()} UTC`)
+
+  if (!Number.isFinite(milliseconds)) {
+    throw new Error('无法确认账号进程状态。')
+  }
+
+  return String(Math.floor(milliseconds / 1000))
+}
+
+/** 读取 macOS 进程表，只保留 PID、父 PID 和 UTC 启动秒数。 */
+function listDarwinLogoutProcesses(): LogoutProcess[] {
+  const output = execFileSync('ps', ['-axo', 'pid=,ppid=,lstart='], {
+    encoding: 'utf8',
+    timeout: 15_000,
+    env: { ...process.env, LC_ALL: 'C', TZ: 'UTC' }
+  })
+
+  return output
+    .split('\n')
+    .filter(Boolean)
+    .map(line => {
+      const match = /^\s*(\d+)\s+(\d+)\s+(.+?)\s*$/.exec(line)
+
+      if (!match) {
+        throw new Error('无法确认账号进程状态。')
+      }
+
+      return { pid: Number(match[1]), parent: Number(match[2]), started: darwinStarted(match[3]) }
+    })
+}
+
+/** 重新读取单个 macOS PID 的启动秒数，防止信号发给已复用的 PID。 */
+function darwinProcessStarted(pid: number): string | null {
+  try {
+    const output = execFileSync('ps', ['-p', String(pid), '-o', 'lstart='], {
+      encoding: 'utf8',
+      timeout: 5_000,
+      env: { ...process.env, LC_ALL: 'C', TZ: 'UTC' }
+    })
+
+    return output.trim() ? darwinStarted(output) : null
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException & { status?: number }).status === 1) {
+      return null
+    }
+
+    throw new Error('无法确认账号进程状态。')
+  }
+}
+
 /** 只读取进程关系与创建时间，不采集可能包含凭据的命令行。 */
-export function listLogoutProcesses(): LogoutProcess[] {
+function readLogoutProcesses(): string {
   if (process.platform !== 'win32') {
     throw new Error('当前退出验证仅支持 Windows。')
   }
 
-  const output = execFileSync(
+  return execFileSync(
     'powershell.exe',
     [
       '-NoProfile',
@@ -20,10 +86,18 @@ export function listLogoutProcesses(): LogoutProcess[] {
       '-Command',
       "$ErrorActionPreference='Stop'; @(Get-CimInstance Win32_Process | Select-Object @{n='pid';e={[int]$_.ProcessId}},@{n='parent';e={[int]$_.ParentProcessId}},@{n='started';e={if ($_.CreationDate) {$_.CreationDate.ToUniversalTime().Ticks.ToString()} else {''}}}) | ConvertTo-Json -Compress"
     ],
-    { encoding: 'utf8', windowsHide: true, timeout: 15_000 }
+    { encoding: 'utf8', windowsHide: true, timeout: 30_000 }
   )
 
-  const rows: unknown = JSON.parse(output)
+}
+
+/** 取得并校验完整快照；查询失败时不能把未知状态当作没有进程。 */
+export function listLogoutProcesses(): LogoutProcess[] {
+  if (process.platform === 'darwin') {
+    return listDarwinLogoutProcesses()
+  }
+
+  const rows: unknown = JSON.parse(queryLogoutProcesses())
 
   if (
     !Array.isArray(rows) ||
@@ -84,9 +158,13 @@ function logoutProcessPresent(pid: number): boolean {
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code
 
-    if (code === 'ESRCH') {return false}
+    if (code === 'ESRCH') {
+      return false
+    }
 
-    if (code === 'EPERM') {return true}
+    if (code === 'EPERM') {
+      return true
+    }
 
     throw new Error('无法确认账号进程状态。')
   }
@@ -102,7 +180,53 @@ export function stopLogoutProcesses(owned: LogoutProcess[]): void {
 
   const pending = owned.filter(row => logoutProcessPresent(row.pid))
 
-  if (!pending.length) {return}
+  if (!pending.length) {
+    return
+  }
+
+  if (process.platform === 'darwin') {
+    const matching = pending.filter(row => darwinProcessStarted(row.pid) === row.started)
+
+    for (const row of matching) {
+      if (darwinProcessStarted(row.pid) === row.started) {
+        try {
+          process.kill(row.pid, 'SIGTERM')
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ESRCH') {
+            throw new Error('账号后端或工具子进程尚未停止。')
+          }
+        }
+      }
+    }
+
+    const deadline = Date.now() + 4_000
+
+    while (matching.some(row => darwinProcessStarted(row.pid) === row.started) && Date.now() < deadline) {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100)
+    }
+
+    for (const row of matching) {
+      if (darwinProcessStarted(row.pid) === row.started) {
+        try {
+          process.kill(row.pid, 'SIGKILL')
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ESRCH') {
+            throw new Error('账号后端或工具子进程尚未停止。')
+          }
+        }
+      }
+    }
+
+    if (matching.some(row => darwinProcessStarted(row.pid) === row.started)) {
+      throw new Error('账号后端或工具子进程尚未停止。')
+    }
+
+    if (pending.some(row => darwinProcessStarted(row.pid) === row.started)) {
+      throw new Error('账号后端或工具子进程尚未停止。')
+    }
+
+    return
+  }
 
   const output = execFileSync(
     'powershell.exe',
@@ -126,7 +250,9 @@ $filter=($owned | ForEach-Object {'ProcessId='+$_.pid}) -join ' OR '
 ConvertTo-Json -Compress -InputObject @(Get-CimInstance Win32_Process -Filter $filter | Select-Object @{n='pid';e={[int]$_.ProcessId}},@{n='started';e={if ($_.CreationDate) {$_.CreationDate.ToUniversalTime().Ticks.ToString()} else {''}}})`
     ],
     {
-      encoding: 'utf8', windowsHide: true, timeout: 15_000,
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 15_000,
       // 身份作为数据从标准输入传入，避免拼接命令或超出 Windows 命令行长度。
       input: JSON.stringify(pending.map(({ pid, started }) => ({ pid, started })))
     }
@@ -136,8 +262,12 @@ ConvertTo-Json -Compress -InputObject @(Get-CimInstance Win32_Process -Filter $f
 
   if (
     !Array.isArray(remaining) ||
-    remaining.some(row => !row || !Number.isInteger(row.pid) || typeof row.started !== 'string' || !/^\d*$/.test(row.started))
-  ) {throw new Error('无法确认账号进程状态。')}
+    remaining.some(
+      row => !row || !Number.isInteger(row.pid) || typeof row.started !== 'string' || !/^\d*$/.test(row.started)
+    )
+  ) {
+    throw new Error('无法确认账号进程状态。')
+  }
 
   if (
     pending.some(row => remaining.some(item => item.pid === row.pid && (!item.started || item.started === row.started)))

@@ -21,6 +21,7 @@ import {
   refreshDataUrlReadMaxMb,
   setDataUrlReadMaxMb
 } from '@/store/data-url-read-max'
+import { $developerMode } from '@/store/developer-mode'
 import { $disableF12, setDisableF12 } from '@/store/disable-f12'
 import { $alwaysExternalLinks, setAlwaysExternalLinks } from '@/store/external-links'
 import { $keepAwake, setKeepAwake } from '@/store/keep-awake'
@@ -55,6 +56,7 @@ import { SettingsProfileScope } from './profile-scope'
 import { QuickEntrySettings } from './quick-entry-settings'
 import { SETTING_IDS, settingElementId } from './settings-manifest'
 import { useSettingDeepLink } from './use-setting-deep-link'
+import { settingsFieldVisible } from './visibility'
 
 export function ConfigSettings({
   activeSectionId,
@@ -101,6 +103,7 @@ function ConfigSettingsInner({
 }: ConfigSettingsProps & { scopeProfile: string | undefined }) {
   const { t } = useI18n()
   const c = t.settings.config
+  const developerMode = useStore($developerMode)
   const keepAwake = useStore($keepAwake)
   const disableF12 = useStore($disableF12)
   const alwaysExternalLinks = useStore($alwaysExternalLinks)
@@ -292,8 +295,12 @@ function ConfigSettingsInner({
     return sectionFieldEntries(schema, config)
   }, [schema, config])
 
+  const settingsView = `config:${activeSectionId}`
+
   const fields = (sectionFields.get(activeSectionId) ?? []).filter(
-    ([key]) => subpage === undefined || configSubpageForField(activeSectionId, key) === subpage
+    ([key]) =>
+      settingsFieldVisible(settingsView, key, developerMode) &&
+      (subpage === undefined || configSubpageForField(activeSectionId, key) === subpage)
   )
 
   const showModelSettings =
@@ -302,7 +309,8 @@ function ConfigSettingsInner({
   const showDesktopSettings =
     !hideForUsers() && activeSectionId === 'advanced' && (subpage === undefined || subpage === 'desktop')
 
-  const showAttachments = activeSectionId === 'chat' && (subpage === undefined || subpage === 'attachments')
+  const showAttachments =
+    developerMode && activeSectionId === 'chat' && (subpage === undefined || subpage === 'attachments')
 
   // Deep-link target from the command palette (?field=<key>): scroll the row
   // into view and flash it, then drop the param so it doesn't re-fire.

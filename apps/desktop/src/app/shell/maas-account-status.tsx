@@ -1,15 +1,21 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { Tip } from '@/components/ui/tooltip'
+import { Codicon } from '@/components/ui/codicon'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu'
 import { useI18n } from '@/i18n'
 import { signOutDescription } from '@/lib/browser-shell'
 import { notify } from '@/store/notifications'
 
 import type { LoginAccount } from '../../../electron/login/contract'
-
-import type { StatusbarItem } from './statusbar-controls'
 
 /** 账号旁只提供一个退出入口，统一确认后交给主进程处理停止与重启。 */
 function AccountLogout({ account }: { account: LoginAccount }) {
@@ -62,18 +68,23 @@ function AccountLogout({ account }: { account: LoginAccount }) {
 
   return (
     <>
-      <span className="inline-flex h-full shrink-0 items-center gap-1 px-1.5 text-[0.6875rem] text-(--ui-text-tertiary)">
-        <span>{account.maskedPhone}</span>
-        {expired ? (
-          <Tip label={copy.expiredRunning}>
-            <span>{copy.expiredLabel}</span>
-          </Tip>
-        ) : null}
-        <span aria-hidden="true">|</span>
-        <Button className="text-[0.6875rem]" onClick={() => setOpen(true)} size="inline" variant="text">
-          {copy.logout}
-        </Button>
-      </span>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button data-slot="sidebar-account-trigger" aria-label={account.maskedPhone} variant="ghost" type="button">
+            <span data-slot="sidebar-account-avatar" aria-hidden="true">
+              <Codicon name="account" size="1rem" />
+            </span>
+            <span className="min-w-0 flex-1 truncate text-left">{account.maskedPhone}</span>
+            {expired && <span className="text-xs text-muted-foreground">{copy.expiredLabel}</span>}
+            <Codicon name="chevron-up" size="0.875rem" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent side="top" align="start" className="min-w-52">
+          <DropdownMenuLabel>{account.maskedPhone}</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => setOpen(true)}>{copy.logout}</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
       <ConfirmDialog
         busyLabel={copy.logoutBusy}
         confirmLabel={copy.logout}
@@ -88,7 +99,7 @@ function AccountLogout({ account }: { account: LoginAccount }) {
 }
 
 /** 读取本次运行账号，保留到期账号和退出入口；不持久化身份、不执行注销。 */
-export function useMaasAccountStatusbarItem(): StatusbarItem | null {
+export function useMaasAccount(): LoginAccount | null {
   const [account, setAccount] = useState<LoginAccount | null>(null)
 
   useEffect(() => {
@@ -136,17 +147,15 @@ export function useMaasAccountStatusbarItem(): StatusbarItem | null {
     }
   }, [])
 
-  return useMemo(
-    () =>
-      account
-        ? {
-            id: 'maas-account',
-            variant: 'text',
-            label: account.maskedPhone,
-            render: () => <AccountLogout account={account} />,
-            className: 'shrink-0'
-          }
-        : null,
-    [account]
-  )
+  return account
+}
+
+/** 侧栏底部统一承载账号菜单，沿用主进程账号读取、到期提醒和安全退出。 */
+export function MaasAccountSidebar() {
+  const account = useMaasAccount()
+  return account ? (
+    <div data-slot="sidebar-account" className="shrink-0 px-3 pb-3 pt-2">
+      <AccountLogout account={account} />
+    </div>
+  ) : null
 }

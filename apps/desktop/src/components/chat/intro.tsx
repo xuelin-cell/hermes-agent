@@ -145,7 +145,7 @@ function pickCopy(copies: IntroCopy[], seed = 0): IntroCopy {
   return copies[Math.abs(seed) % copies.length] || FALLBACK_COPY[0]
 }
 
-const HERO_TITLE = ['元景数字员工', '助你高效完成任务'] as const
+const HERO_TITLE = ['元景数字员工，我帮你'] as const
 
 function resolveCopy(personality?: string, seed?: number): IntroCopy {
   const personalityKey = normalizeKey(personality)

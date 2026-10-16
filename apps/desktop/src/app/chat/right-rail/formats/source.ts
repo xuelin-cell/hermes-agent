@@ -42,6 +42,35 @@ export async function readPreviewBytes(path: string): Promise<ArrayBuffer> {
   }
 }
 
+/** 本机才请求受限转换；连接变化或未知异常不把旧产物及内部错误交给显示器。signal 取消时通知主进程跳过排队中的转换。 */
+export async function readOfficePreviewPdf(path: string, signal?: AbortSignal): Promise<Uint8Array> {
+  const desktop = window.hermesDesktop
+  const requestId = crypto.randomUUID()
+  // 只取消本次请求；主进程按发送页面和编号定位，不会影响其它页面的同一文件。
+  const cancel = () => void desktop?.cancelOfficePreview(requestId)
+
+  try {
+    const owner = desktopFsCacheKey()
+
+    if ($connection.get()?.mode === 'remote' || !desktop?.convertOfficePreview) {
+      throw { code: 'unavailable' }
+    }
+
+    signal?.addEventListener('abort', cancel, { once: true })
+    const result = await desktop.convertOfficePreview(path, requestId)
+
+    if (owner !== desktopFsCacheKey()) {throw { code: 'unavailable' }}
+
+    if (result.ok === false) {throw previewFailure(result)}
+
+    return result.pdf
+  } catch (error) {
+    throw previewFailure(error)
+  } finally {
+    signal?.removeEventListener('abort', cancel)
+  }
+}
+
 /** 播放器对文件缺失和编码不支持报同一错误码，失败后用原有文本读取确认文件是否还能访问。 */
 export async function previewAccessFailure(path: string): Promise<PreviewFailure | null> {
   try {

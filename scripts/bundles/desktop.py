@@ -4,7 +4,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -91,7 +90,6 @@ def _build_prepared(prepared, builder_args: list[str], variant: str | None) -> N
             raise RuntimeError("prepared payload assembly failed")
     from scripts.bundles.desktop_prepare import require_source
     require_source(repo, request.commit)
-    shutil.copytree(icons / "apps/desktop/assets", desktop / "assets", dirs_exist_ok=True)
     run([node, "scripts/write-build-stamp.mjs"], cwd=desktop, env=env)
     run([node, "scripts/build/desktop.mjs", "--source", str(repo), "--icons", str(icons),
          "--stamp", str(desktop / "build/install-stamp.json"), "--native-deps", str(prepared.native),

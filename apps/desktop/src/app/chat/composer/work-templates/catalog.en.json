@@ -1,0 +1,322 @@
+{
+  "modules": [
+    {
+      "id": "office",
+      "name": "办公",
+      "sort": 10,
+      "enabled": true,
+      "tags": [
+        {
+          "id": "document-processing",
+          "name": "文档处理",
+          "sort": 10,
+          "enabled": true,
+          "templates": [
+            {
+              "id": "financial-report-analysis-workflow",
+              "name": "财报分析全流程",
+              "prompt": "帮我分析【麦格米特】这只股票，从【行业地位/财务指标/估值水平/技术面】等方面进行分析，给出投资建议",
+              "sort": 10,
+              "enabled": true
+            },
+            {
+              "id": "competitor-comparison-analysis",
+              "name": "竞品对比分析",
+              "prompt": "帮我从这 3 份竞品分析 PDF 中提取核心信息，整理成一份 Excel 竞品对比矩阵（功能维度 × 竞品），并生成一份 Word 竞品分析报告，包含：市场定位对比、功能差异分析、优劣势总结、建议行动项。",
+              "sort": 20,
+              "enabled": true
+            },
+            {
+              "id": "markdown-to-pdf-document",
+              "name": "MD转PDF文档",
+              "prompt": "帮我把【上传的 Markdown 文件】转换成排版精美的 PDF 文档，要求：自定义封面页（标题 + 作者 + 日期）、自动生成目录、代码块带语法高亮、表格有交替行底色、页脚显示页码。",
+              "sort": 30,
+              "enabled": true
+            },
+            {
+              "id": "weekly-report-to-word",
+              "name": "项目周报转写成word",
+              "prompt": "帮我基于【上传的项目周报 Excel】，自动生成一份 Word 格式的项目状态报告，包含：项目概况仪表板（进度百分比、风险等级、里程碑状态）、本周完成事项、下周计划、风险与阻塞项、资源需求，使用专业的项目报告模板排版。",
+              "sort": 40,
+              "enabled": true
+            }
+          ]
+        },
+        {
+          "id": "presentations",
+          "name": "幻灯片",
+          "sort": 20,
+          "enabled": true,
+          "templates": [
+            {
+              "id": "ai-history-presentation",
+              "name": "AI发展历程PPT",
+              "prompt": "制作一份 AI 发展历程科普 PPT，按时间线梳理符号主义、专家系统、机器学习、深度学习和大模型，突出关键人物、技术与事件。采用“科技档案馆”风格，深蓝黑（#0B1020）搭配电光蓝（#3478F6）和橙红（#FF6B4A）。以纵向时间轴、历史事件卡片和技术演进图为主，中文使用思源黑体，整体兼具历史纵深与未来科技感。",
+              "sort": 10,
+              "enabled": true
+            },
+            {
+              "id": "year-end-summary-presentation",
+              "name": "年终总结PPT",
+              "prompt": "制作一份 10 页的个人或团队年终总结 PPT，内容包括年度目标、重点项目、核心成果、问题复盘和明年规划，缺失信息使用占位符。采用简洁商务风格，白底搭配深蓝（#173A63）和暖橙（#F08A4B）。每页只表达一个核心结论，以大数字、项目卡片、里程碑和季度路线图展示，整体清晰克制，突出结果、贡献与成长。",
+              "sort": 20,
+              "enabled": true
+            },
+            {
+              "id": "journey-to-the-west-presentation",
+              "name": "西游记介绍PPT",
+              "prompt": "幻灯片 制作一份 《西游记》文化介绍 PPT，涵盖创作背景、故事主线、主要人物、经典情节、神魔体系和文化影响。采用“东方神话绘卷”风格，宣纸米白（#F3E8D2）搭配朱砂红（#B83A32）、墨黑和鎏金（#C89B4B）。使用取经路线、人物关系、法宝卡片和水墨插画，页码设计成印章样式，整体古典生动，兼具故事性与文化感。",
+              "sort": 30,
+              "enabled": true
+            },
+            {
+              "id": "pop-mart-presentation",
+              "name": "泡泡玛特PPT",
+              "prompt": "制作一份 泡泡玛特品牌分析 PPT，联网整理品牌发展、核心 IP、盲盒机制、用户画像、渠道布局、海外市场和商业模式。采用“潮玩展览册”风格，奶油白（#F7F3EE）搭配泡泡粉（#F4A8C4）、亮红（#E94752）和湖水蓝（#64C9D4）。使用大幅 IP 图片、圆角卡片、贴纸标签、IP 矩阵和海外地图，整体年轻鲜明、有收藏感，但不过度幼稚。",
+              "sort": 40,
+              "enabled": true
+            }
+          ]
+        },
+        {
+          "id": "copywriting",
+          "name": "帮我写作",
+          "sort": 30,
+          "enabled": true,
+          "templates": [
+            {
+              "id": "leave-request-message",
+              "name": "帮我写请假消息",
+              "prompt": "帮我写一段发给领导的简短请假消息。",
+              "sort": 10,
+              "enabled": true
+            },
+            {
+              "id": "polite-progress-reminder",
+              "name": "怎么礼貌催进度",
+              "prompt": "帮我写一句礼貌提醒对方按时完成的消息。",
+              "sort": 20,
+              "enabled": true
+            },
+            {
+              "id": "birthday-greeting",
+              "name": "帮我写生日祝福",
+              "prompt": "写一段自然、不尴尬的朋友生日祝福。",
+              "sort": 30,
+              "enabled": true
+            },
+            {
+              "id": "apology-message",
+              "name": "帮我写道歉信",
+              "prompt": "帮我写一段真诚又不过分客套的道歉短信。",
+              "sort": 40,
+              "enabled": true
+            },
+            {
+              "id": "moments-copywriting",
+              "name": "帮我写朋友圈文案",
+              "prompt": "根据今天的心情写一条简短朋友圈文案。",
+              "sort": 50,
+              "enabled": true
+            }
+          ]
+        },
+        {
+          "id": "data-analysis",
+          "name": "数据分析",
+          "sort": 40,
+          "enabled": true,
+          "templates": [
+            {
+              "id": "ecommerce-customer-value-analysis",
+              "name": "电商用户价值分析",
+              "prompt": "帮我基于 UCI 的 Online Retail.xlsx（电商逐行订单明细），据做一次“电商业务健康度 + 用户价值”完整分析。\n\n目标： \n1) 构建数据字典：字段含义、数据粒度、潜在主键、时间字段、金额字段、国家字段；指出你对业务含义的推断（并标注不确定点） \n2) 数据质量审计： \n- 缺失率/异常值（Quantity、UnitPrice 的极端值、负数、取消单 InvoiceNo 以 C 开头等） \n- 重复记录、异常国家/时间分布 \n- 输出“清洗规则清单”（每条规则：原因、影响面、可回滚策略） \n3) 核心指标看板（按 月）： \n- GMV（剔除取消单）、订单数、客单价、活跃购买用户数、复购率、退款/取消率 \n- 用 plotly 生成交互图（趋势 + 分布 + Top 国家/商品） \n4) 用户分群与 LTV： \n- RFM 分群（含参数选择依据） \n- 简化版 LTV（按 cohort：首购月 -> 后续月贡献） \n5) 异常检测： \n- 识别 GMV/订单数异常波动（给出异常日期、可能原因假设、验证方法） \n6) 结论与动作： \n- 输出 5 条可执行建议（每条建议：预期收益指标、验证实验设计、风险点） \n交付物： \n- 一份结构化报告（Executive summary + 关键图表 + 结论） \n数据下载链接：\nhttps://archive.ics.uci.edu/static/public/352/online+retail.zip",
+              "sort": 10,
+              "enabled": true
+            },
+            {
+              "id": "employment-economic-analysis",
+              "name": "就业景气分析",
+              "prompt": "帮我基于 USDA ERS 的县级失业率与家庭收入 Excel（2000–2023），做一个“宏观就业景气 + 区域分化”的完整分析报告。请按以下步骤输出：\n1) 数据探索：字段字典、缺失率、时间跨度、county/state 标识字段的可用性与一致性检查\n2) 指标构建：\n- 失业率：同比、环比、3 年移动平均\n- 家庭收入：实际值 vs 同比增速（如无 CPI 数据先给名义分析，并注明局限）\n- 区域分化：州内分位差、全国基尼/泰尔（能算就算）\n3) 识别“异常县”：\n- 失业率在 2020–2021 的冲击幅度 Top N\n- 2022–2023 恢复最慢 Top N（定义你自己的“恢复指标”，并解释）\n4) 可视化（plotly）：\n- 全国趋势 + 分位带\n- 州级/县级热力图（如果缺地理边界就先做 TopN 表 + 条形图）\n5) 输出政策/商业含义的结论（5 条） 下载地址：\nhttps://www.ers.usda.gov/media/5494/unemployment-and-median-household-income-for-the-united-states-states-and-counties-2000-23.xlsx?v=67259",
+              "sort": 20,
+              "enabled": true
+            },
+            {
+              "id": "gdp-hdi-analysis",
+              "name": "GDP与HDI分析",
+              "prompt": "帮我基于世界银行 World Development Indicators 数据（可联网获取），做一次「全球人均 GDP 与人类发展指数（HDI）相关性分析」，覆盖 2000–2023 年。要求：\n1) 数据获取与清洗：从世界银行 API 或 UNDP 数据源获取人均 GDP（PPP）和 HDI 数据，处理缺失国家/年份，说明数据覆盖率\n2) 交互式散点图：X 轴人均 GDP（对数刻度）、Y 轴 HDI、按洲着色（亚洲/欧洲/非洲/美洲/大洋洲）、气泡大小表示人口规模，悬停显示国家名和具体数值\n3) 时间滑块动画：可拖动查看 2000–2023 每年的全球分布变化\n4) 趋势线分析：Top 10 进步最快国家和 Bottom 10 停滞/倒退国家的 HDI 趋势折线对比\n5) 相关性量化：计算不同收入组（低/中低/中高/高收入）的 GDP-HDI 相关系数，分析「收入越高 HDI 边际递减」现象\n6) 输出 3 条政策建议：基于数据发现，针对不同发展阶段国家的发展策略建议",
+              "sort": 30,
+              "enabled": true
+            },
+            {
+              "id": "global-population-analysis",
+              "name": "全球人口结构分析",
+              "prompt": "帮我基于联合国人口司数据（可联网获取），做一次「全球人口结构变迁」可视化分析，覆盖 1950–2100（含预测）。\n\n要求：\n1) 数据获取：从 UN Population Division 获取各国人口年龄结构、生育率、城市化率数据，说明数据来源和预测方法论\n2) 人口金字塔动画：每 10 年一帧（1950/1960/.../2050/2100），中国/印度/美国/日本四国并排对比，展示从「金字塔型」到「倒金字塔型」的结构性转变\n3) 老龄化率趋势折线：65 岁以上人口占比，按国家分组，标注关键转折点（如日本 2005 超老龄化、中国预计 2035 进入深度老龄化）\n4) 生育率 vs 城市化率散点图：分析两者相关性，按发展水平分组着色，标注异常国家（如以色列高收入但高生育率）\n5) 人口红利窗口期标注：定义「劳动年龄人口占比 > 65%」为红利期，在时间轴上标注各国的窗口开启和关闭时间\n6) 区域人口增长贡献瀑布图：展示 2024–2050 全球新增人口中，各大洲/区域的贡献份额",
+              "sort": 40,
+              "enabled": true
+            }
+          ]
+        },
+        {
+          "id": "meeting-minutes",
+          "name": "会议纪要",
+          "sort": 50,
+          "enabled": true,
+          "templates": [
+            {
+              "id": "audio-video-meeting-minutes",
+              "name": "音视频转会议纪要",
+              "prompt": "根据上传的音\\视频内容，帮我生成会议纪要",
+              "sort": 10,
+              "enabled": true
+            },
+            {
+              "id": "image-to-meeting-minutes",
+              "name": "图片转会议纪要",
+              "prompt": "根据上传的图片，帮我生成会议纪要",
+              "sort": 20,
+              "enabled": true
+            }
+          ]
+        },
+        {
+          "id": "deep-research",
+          "name": "深度研究",
+          "sort": 60,
+          "enabled": true,
+          "templates": [
+            {
+              "id": "top-ai-models-comparison",
+              "name": "顶尖AI模型对比",
+              "prompt": "请研究2026年全球表现最优的10个AI模型，对比分析它们在编码、多模态等关键能力上的表现，并总结各自的技术特点和优势场景。",
+              "sort": 10,
+              "enabled": true
+            },
+            {
+              "id": "ai-coding-business-model",
+              "name": "AI编程商业模式",
+              "prompt": "分析 AI Coding 行业的商业模式演变，从 2023 年到现在，找出关键转折点和驱动因素。",
+              "sort": 20,
+              "enabled": true
+            },
+            {
+              "id": "cheetah-conservation-research",
+              "name": "猎豹保护究",
+              "prompt": "研究非洲草原猎豹种群的生存困境与保护现状。",
+              "sort": 30,
+              "enabled": true
+            },
+            {
+              "id": "international-gold-price-research",
+              "name": "国际金价研究",
+              "prompt": "研究近十年国际金价的走势变化、关键影响因素及未来趋势，分析地缘政治、货币政策、通胀等因素对金价的影响。",
+              "sort": 40,
+              "enabled": true
+            }
+          ]
+        },
+        {
+          "id": "video-search",
+          "name": "视频搜索",
+          "sort": 70,
+          "enabled": true,
+          "templates": [
+            {
+              "id": "movie-search",
+              "name": "搜电影",
+              "prompt": "搜索电影永生战士第一部",
+              "sort": 10,
+              "enabled": true
+            },
+            {
+              "id": "trending-video-search",
+              "name": "搜热点视频",
+              "prompt": "搜索视频GPT6上线",
+              "sort": 20,
+              "enabled": true
+            }
+          ]
+        },
+        {
+          "id": "financial-planning",
+          "name": "金融理财",
+          "sort": 80,
+          "enabled": true,
+          "templates": [
+            {
+              "id": "stock-research-default",
+              "name": "股票研究",
+              "prompt": "帮我分析【股票代码/名称】这只股票，从【行业地位/财务指标/估值水平/技术面】等方面进行分析，给出投资建议。",
+              "sort": 10,
+              "enabled": true
+            },
+            {
+              "id": "financial-report-analysis-default",
+              "name": "财报分析",
+              "prompt": "帮我分析【公司名称】最新发布的【年份/季度】财报，重点关注收入、利润、现金流等核心指标的变化趋势和业务亮点。",
+              "sort": 20,
+              "enabled": true
+            },
+            {
+              "id": "personal-financial-planning-default",
+              "name": "理财规划",
+              "prompt": "我目前【收入/资产/负债情况】，目标是【理财目标如买房/子女教育/退休】，风险偏好【保守/稳健/进取】，请帮我做一个理财规划。",
+              "sort": 30,
+              "enabled": true
+            }
+          ]
+        },
+        {
+          "id": "lifestyle-entertainment",
+          "name": "生活娱乐",
+          "sort": 90,
+          "enabled": true,
+          "templates": [
+            {
+              "id": "social-media-content-default",
+              "name": "自媒体内容创作",
+              "prompt": "帮我创作一篇关于【主题】的自媒体内容，平台是【小红书/抖音/公众号】，风格【种草/干货/故事】，目标受众【受众描述】。",
+              "sort": 10,
+              "enabled": true
+            },
+            {
+              "id": "flower-ordering-default",
+              "name": "订鲜花",
+              "prompt": "帮我在鲜花速递上订一束花，送给【收花人】，预算【金额】，风格【浪漫/清新/大气】，配送时间【时间】。",
+              "sort": 20,
+              "enabled": true
+            },
+            {
+              "id": "travel-planning-default",
+              "name": "旅游出行",
+              "prompt": "帮我规划一个从【出发地】到【目的地】的【天数】天旅游行程，偏好【休闲/深度/美食/文化】风格，预算【金额】。",
+              "sort": 30,
+              "enabled": true
+            },
+            {
+              "id": "ride-hailing-default",
+              "name": "打车",
+              "prompt": "帮我叫一辆车，从【出发地】到【目的地】，现在出发。",
+              "sort": 40,
+              "enabled": true
+            },
+            {
+              "id": "shopping-comparison-default",
+              "name": "购物比价",
+              "prompt": "帮我在全网搜索【商品名称】，对比各平台（淘宝/京东/拼多多/抖音）的价格和优惠信息，找到最优购买方案。",
+              "sort": 50,
+              "enabled": true
+            },
+            {
+              "id": "game-generation-default",
+              "name": "游戏生成",
+              "prompt": "生成跳一跳小游戏",
+              "sort": 60,
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

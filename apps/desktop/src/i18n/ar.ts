@@ -2091,6 +2091,20 @@ export const ar = defineLocale({
     open: 'فتح'
   },
 
+  artifactShare: {
+    originRequired: 'يمكن مشاركة مخرجات النموذج الموثقة فقط. الملفات المرفوعة والمشتقة ومجهولة المصدر محظورة.',
+    share: 'مشاركة',
+    shareArtifact: 'مشاركة الناتج',
+    updateShared: 'تحديث المحتوى المشترك',
+    viewShared: 'عرض الصفحة المشتركة',
+    copyShared: 'نسخ رابط المشاركة',
+    revokeShared: 'إلغاء المشاركة',
+    shareFailed: 'تعذرت مشاركة الناتج',
+    revokeFailed: 'تعذر إلغاء المشاركة',
+    previewNotReady: 'معاينة Markdown غير جاهزة.',
+    imageNotEmbedded: 'يحتوي Markdown على صورة غير مضمنة.',
+  },
+
   artifactPreview: {
     versionOf: (current, total) => `الإصدار ${current} من ${total}`,
     olderVersion: 'إصدار أقدم',
@@ -2326,6 +2340,14 @@ export const ar = defineLocale({
     stopDictation: 'إيقاف الإملاء',
     transcribingDictation: 'جار تفريغ الإملاء',
     voiceControls: 'صوت',
+    workTemplates: 'قوالب مكتبية',
+    workClearCategory: 'إلغاء الفئة المحددة',
+    workScrollLeft: 'التمرير لليسار',
+    workScrollRight: 'التمرير لليمين',
+    workCached: 'استخدام القوالب المحلية',
+    workRetry: 'تحديث القوالب',
+    startRecognition: 'بدء التعرف على الكلام',
+    stopRecognition: 'إيقاف التعرف على الكلام',
     voiceDictation: 'إملاء صوتي',
     lookupLoading: 'جار البحث...',
     lookupNoMatches: 'لا توجد نتائج',
@@ -3084,10 +3106,27 @@ export const ar = defineLocale({
     noInlineTitle: 'لا توجد معاينة مضمّنة',
     noInlineBody: mimeType => `${mimeType || 'هذا النوع من الملفات'} لا يزال بالإمكان إرفاقه كسياق.`,
     formatFailure: {
+      convert_failed: 'تعذر تحويل المستند. لا يزال بإمكانك الوصول إلى الملف الأصلي أو تنزيله.',
+      timeout: 'انتهت مهلة تحويل المستند. لا يزال بإمكانك الوصول إلى الملف الأصلي أو تنزيله.',
       not_found: 'الملف لم يعد موجودًا أو لا يمكن الوصول إليه.',
       too_large: 'الملف أو الصورة أكبر من حد المعاينة. يمكنك الوصول إلى الملف الأصلي أو تنزيله.',
       unavailable: 'تعذرت معاينة الملف. يمكنك الوصول إلى الملف الأصلي أو تنزيله.',
       unsupported: 'تنسيق الملف أو ترميز الوسائط غير مدعوم.'
+    },
+    office: {
+      converting: 'جارٍ تحويل المستند',
+      firstOpen: 'قد تستغرق المعاينة الأولى بضع ثوانٍ.',
+      installConverter: 'إذا لم يتوفر برنامج للتحويل، فثبّت LibreOffice وحاول مرة أخرى.'
+    },
+    slides: {
+      page: page => `الشريحة ${page}`,
+      counter: (page, total) => `${page} / ${total}`,
+      previous: 'الشريحة السابقة',
+      next: 'الشريحة التالية',
+      fullscreen: 'عرض بملء الشاشة',
+      exitFullscreen: 'الخروج من ملء الشاشة',
+      fullscreenFailed: 'تعذر تبديل وضع ملء الشاشة. لا يزال بإمكانك قراءة الشرائح.',
+      pageFailed: page => `تعذر عرض الشريحة ${page}.`
     },
     delimited: {
       table: 'جدول',
@@ -3095,6 +3134,7 @@ export const ar = defineLocale({
       limited: 'عرض أول 500 صف بيانات.',
       columnsLimited: 'عرض أول 50 عمودًا.'
     },
+    sheetLimited: 'تتجاوز بعض الأوراق 500 صف. تُعرض أول 500 صف منها فقط.',
     tiffFirstPage: 'يحتوي ملف TIFF على عدة صفحات. تُعرض الصفحة الأولى فقط.',
     edit: 'تحرير',
     editing: 'جار التحرير',

@@ -3928,6 +3928,20 @@ export const deOverrides = {
     versionBadge: count => `${count} Versionen`,
     open: 'Öffnen'
   },
+  artifactShare: {
+    originRequired: 'Nur bestätigte Modellergebnisse können geteilt werden. Uploads, abgeleitete Dateien und unbekannte Quellen sind gesperrt.',
+    share: 'Teilen',
+    shareArtifact: 'Artefakt teilen',
+    updateShared: 'Geteilten Inhalt aktualisieren',
+    viewShared: 'Geteilte Seite ansehen',
+    copyShared: 'Freigabelink kopieren',
+    revokeShared: 'Freigabe widerrufen',
+    shareFailed: 'Artefakt konnte nicht geteilt werden',
+    revokeFailed: 'Freigabe konnte nicht widerrufen werden',
+    previewNotReady: 'Markdown-Vorschau ist noch nicht bereit.',
+    imageNotEmbedded: 'Markdown enthält ein nicht eingebettetes Bild.',
+  },
+
   artifactPreview: {
     versionOf: (current, total) => `v${current} von ${total}`,
     olderVersion: 'Ältere Version',
@@ -4219,6 +4233,14 @@ export const deOverrides = {
     voiceEngineChangeFailed: 'Sprachchat-Engine konnte nicht geändert werden',
     voiceEngineChainedShort: 'Sprache-zu-Text',
     voiceEngineLiveShort: 'GPT-Live',
+    workTemplates: 'Bürovorlagen',
+    workClearCategory: 'Kategorie abwählen',
+    workScrollLeft: 'Nach links scrollen',
+    workScrollRight: 'Nach rechts scrollen',
+    workCached: 'Lokale Vorlagen werden verwendet',
+    workRetry: 'Vorlagen aktualisieren',
+    startRecognition: 'Spracherkennung starten',
+    stopRecognition: 'Spracherkennung stoppen',
     voiceDictation: 'Sprachdiktat',
     speakReplies: 'Antworten vorlesen',
     stopSpeakingReplies: 'Antworten nicht mehr vorlesen',
@@ -5262,10 +5284,27 @@ export const deOverrides = {
     noInlineTitle: 'Keine Inline-Vorschau',
     noInlineBody: mimeType => `${mimeType || 'Dieser Dateityp'} kann trotzdem als Kontext angehängt werden.`,
     formatFailure: {
+      convert_failed: 'Das Dokument konnte nicht konvertiert werden. Die Originaldatei bleibt zugänglich.',
+      timeout: 'Zeitüberschreitung bei der Konvertierung. Die Originaldatei bleibt zugänglich.',
       not_found: 'Diese Datei ist nicht mehr vorhanden oder nicht zugänglich.',
       too_large: 'Die Datei oder das Bild ist zu groß für die Vorschau. Die Originaldatei bleibt zugänglich.',
       unavailable: 'Keine Vorschau möglich. Die Originaldatei kann weiterhin geöffnet oder heruntergeladen werden.',
       unsupported: 'Dieses Dateiformat oder diese Medienkodierung wird nicht unterstützt.'
+    },
+    office: {
+      converting: 'Dokument wird konvertiert',
+      firstOpen: 'Die erste Vorschau kann einige Sekunden dauern.',
+      installConverter: 'Wenn keine Konvertierungssoftware verfügbar ist, installieren Sie LibreOffice und versuchen Sie es erneut.'
+    },
+    slides: {
+      page: page => `Folie ${page}`,
+      counter: (page, total) => `${page} / ${total}`,
+      previous: 'Vorherige Folie',
+      next: 'Nächste Folie',
+      fullscreen: 'Im Vollbild präsentieren',
+      exitFullscreen: 'Vollbild verlassen',
+      fullscreenFailed: 'Der Vollbildmodus konnte nicht gewechselt werden. Die Folien bleiben lesbar.',
+      pageFailed: page => `Folie ${page} kann nicht angezeigt werden.`
     },
     delimited: {
       table: 'Tabelle',
@@ -5273,6 +5312,7 @@ export const deOverrides = {
       limited: 'Die ersten 500 Datenzeilen werden angezeigt.',
       columnsLimited: 'Die ersten 50 Spalten werden angezeigt.'
     },
+    sheetLimited: 'Einige Tabellenblätter haben mehr als 500 Zeilen. Nur ihre ersten 500 Zeilen werden angezeigt.',
     tiffFirstPage: 'Diese TIFF-Datei enthält mehrere Seiten. Nur die erste Seite wird angezeigt.',
     edit: 'Bearbeiten',
     editing: 'Wird bearbeitet',

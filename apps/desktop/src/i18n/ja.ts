@@ -2467,6 +2467,20 @@ export const ja = defineLocale({
     open: '開く'
   },
 
+  artifactShare: {
+    originRequired: '生成元を確認できたモデルの成果物のみ共有できます。アップロード、派生ファイル、生成元不明のファイルは共有できません。',
+    share: '共有',
+    shareArtifact: '成果物を共有',
+    updateShared: '共有内容を更新',
+    viewShared: '共有ページを表示',
+    copyShared: '共有リンクをコピー',
+    revokeShared: '共有を取り消す',
+    shareFailed: '共有できませんでした',
+    revokeFailed: '共有を取り消せませんでした',
+    previewNotReady: 'Markdown プレビューの準備ができていません。',
+    imageNotEmbedded: 'Markdown に埋め込まれていない画像があります。',
+  },
+
   artifactPreview: {
     versionOf: (current, total) => `${total} 中 v${current}`,
     olderVersion: '前のバージョン',
@@ -2731,6 +2745,14 @@ export const ja = defineLocale({
     stopDictation: '口述を停止',
     transcribingDictation: '口述を文字起こし中',
     voiceControls: '音声',
+    workTemplates: '業務テンプレート',
+    workClearCategory: 'カテゴリの選択を解除',
+    workScrollLeft: '左へスクロール',
+    workScrollRight: '右へスクロール',
+    workCached: 'ローカルテンプレートを使用中',
+    workRetry: 'テンプレートを更新',
+    startRecognition: '音声認識を開始',
+    stopRecognition: '音声認識を停止',
     voiceDictation: '音声口述',
     speakReplies: '返信を読み上げる',
     stopSpeakingReplies: '返信の読み上げを停止',
@@ -3583,10 +3605,27 @@ export const ja = defineLocale({
     noInlineTitle: 'インラインプレビューなし',
     noInlineBody: mimeType => `${mimeType || 'このファイルタイプ'} はコンテキストとして添付できます。`,
     formatFailure: {
+      convert_failed: 'ドキュメントを変換できませんでした。元のファイルは確認またはダウンロードできます。',
+      timeout: 'ドキュメントの変換がタイムアウトしました。元のファイルは確認またはダウンロードできます。',
       not_found: 'ファイルが存在しないか、アクセスできません。',
       too_large: 'ファイルまたは画像が大きすぎるためプレビューできません。元のファイルは確認またはダウンロードできます。',
       unavailable: 'プレビューできません。元のファイルを確認またはダウンロードできます。',
       unsupported: 'このファイル形式またはメディアのエンコードには対応していません。'
+    },
+    office: {
+      converting: 'ドキュメントを変換しています',
+      firstOpen: '初回のプレビューには数秒かかる場合があります。',
+      installConverter: '変換ソフトが利用できない場合は、LibreOffice をインストールして再試行してください。'
+    },
+    slides: {
+      page: page => `スライド ${page}`,
+      counter: (page, total) => `${page} / ${total}`,
+      previous: '前のスライド',
+      next: '次のスライド',
+      fullscreen: '全画面で表示',
+      exitFullscreen: '全画面を終了',
+      fullscreenFailed: '全画面を切り替えられませんでした。スライドは引き続き閲覧できます。',
+      pageFailed: page => `スライド ${page} を表示できませんでした。`
     },
     delimited: {
       table: '表',
@@ -3594,6 +3633,7 @@ export const ja = defineLocale({
       limited: '最初の 500 データ行を表示しています。',
       columnsLimited: '最初の 50 列を表示しています。'
     },
+    sheetLimited: '500 行を超えるシートは、先頭の 500 行のみ表示しています。',
     tiffFirstPage: 'この TIFF は複数ページです。最初のページのみ表示しています。',
     edit: '編集',
     editing: '編集中',

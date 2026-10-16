@@ -1,4 +1,12 @@
-import { BrowserWindow, ipcMain, type IpcMainInvokeEvent, type Session } from 'electron'
+import { ipcMain, type IpcMainInvokeEvent, type Session } from 'electron'
+
+import { isDesktopRendererSender } from '../desktop-renderer-sender'
+
+import { ASR_CHANNEL, type AsrIdentity } from '../uniwork-asr/contract'
+import { createUniworkAsrHandler } from '../uniwork-asr/ipc'
+
+import { WELCOME_CATALOG_CHANNEL } from '../uniwork-welcome/catalog'
+import { WelcomeCatalogClient } from '../uniwork-welcome/client'
 
 import { CloudDriveClient } from './cloud-drive'
 import type { LoginAccount } from './contract'
@@ -10,40 +18,22 @@ export function installAccountIpc(
   rendererUrl: () => string,
   readAccount: () => LoginAccount | null,
   logout?: () => Promise<void>,
-  readIdentity?: () => LoginIdentity | null
+  readIdentity?: () => LoginIdentity | null,
+  readAsrIdentity?: () => AsrIdentity | null
 ): void {
   /** 展示与退出共用来源校验，不接收 UID、路径或进程号。 */
   function trusted(event: IpcMainInvokeEvent, args: unknown[]): boolean {
-    const window = BrowserWindow.fromWebContents(event.sender)
+    return !args.length && isDesktopRendererSender(event, session, rendererUrl())
+  }
 
-    if (
-      args.length ||
-      !window ||
-      window.isDestroyed() ||
-      window.webContents !== event.sender ||
-      event.sender.session !== session ||
-      event.senderFrame !== event.sender.mainFrame ||
-      !event.senderFrame
-    ) {
-      return false
-    }
-
-    try {
-      const actual = new URL(event.senderFrame.url)
-      const expected = new URL(rendererUrl())
-
-      // 同一桌面的副窗通过查询参数和 hash 路由区分，不允许其他页面或来源。
-      actual.search = expected.search = ''
-      actual.hash = expected.hash = ''
-
-      if (actual.href !== expected.href) {
-        return false
+  if (readAsrIdentity) {
+    const asr = createUniworkAsrHandler(readAsrIdentity)
+    ipcMain.handle(ASR_CHANNEL, async (event, ...args) => {
+      if (!trusted(event, []) || args.length !== 1) {
+        throw new Error('语音识别请求无效。')
       }
-
-      return true
-    } catch {
-      return false
-    }
+      return asr(event, args[0])
+    })
   }
 
   if (logout) {
@@ -57,6 +47,13 @@ export function installAccountIpc(
   }
 
   if (readIdentity) {
+    const catalog = new WelcomeCatalogClient(readIdentity)
+    ipcMain.handle(WELCOME_CATALOG_CHANNEL, async (event, ...args) => {
+      if (!trusted(event, []) || args.length !== 1 || !['zh-CN', 'en'].includes(args[0])) {
+        throw new Error('办公模板请求无效。')
+      }
+      return catalog.load(args[0])
+    })
     const drive = new CloudDriveClient(readIdentity)
     ipcMain.handle('hermes:maas-drive:request', async (event, ...args) => {
       if (!trusted(event, []) || args.length !== 1 || !readIdentity()) {

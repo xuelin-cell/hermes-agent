@@ -7,6 +7,7 @@ import { app, BrowserWindow, dialog, net } from 'electron'
 import { platformDefaultHermesHome, resolveDesktopUserData } from '../data-paths'
 import { markDesktopLaunchSuccessful, prepareDesktopLaunch } from '../desktop-launch'
 import { startAccountDesktop } from '../entry_local/desktop-runtime'
+import { installArtifactSharePlugin } from '../entry_local/install-artifact-share'
 import { recoverAccountRun } from '../entry_local/recover-account'
 import { LocalRuntimeContext, type PreparedLocalContext } from '../entry_local/runtime-context'
 import { LocalStartupError, showLocalStartupFailure } from '../entry_local/startup-failure'
@@ -56,11 +57,14 @@ function initializeLoginShell(): void {
   recovery = app
     .whenReady()
     .then(() => recoverAccountRun(roots, installationRoot, process.env.HERMES_DESKTOP_PYTHON))
-    .catch(() => {
+    .catch(error => {
       stopping = true
+      const advice = (error as NodeJS.ErrnoException)?.code === 'ETIMEDOUT'
+        ? 'Windows 进程状态查询超时，请稍后重新启动应用。'
+        : '上次账号工作未能安全收尾，请寻求支持。'
       dialog.showErrorBox(
         'Hermes Desktop MT',
-        '上次账号工作未能安全收尾，已阻止恢复登录。记录和历史已保留，请寻求支持。'
+        `${advice}已阻止恢复登录，账号记录和历史已保留。`
       )
       app.quit()
     })
@@ -153,6 +157,7 @@ async function openLoginWindow(): Promise<BrowserWindow | null> {
 
     try {
       const context = accountRuntime!.prepare()
+      installArtifactSharePlugin(context.home, app.getAppPath())
       desktopStarting ??= startAccountDesktop(context)
         .then(() => {
           if (stopping || window.isDestroyed()) {
@@ -208,6 +213,15 @@ export function currentDesktopAccount(): LoginAccount | null {
 /** 云盘只在主进程读取当前有效身份，不恢复旧 Web 凭据。 */
 export function currentDesktopIdentity() {
   return stopping ? null : (accountRuntime?.login.currentIdentity() ?? null)
+}
+
+/** 实时识别只读取当前有效套餐的专用 Key，不交给页面。 */
+export function currentDesktopAsrIdentity() {
+  const identity = currentDesktopIdentity()
+  const result = accountRuntime?.login.currentPlan()
+  return identity && result?.status === 'available'
+    ? { owner: identity.uid, key: result.plan.apiKey, expiresAt: identity.expiresAt }
+    : null
 }
 
 /** 退出确认后立即撤销主进程身份，不再允许读取或准备旧账号。 */

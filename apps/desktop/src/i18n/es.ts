@@ -3917,6 +3917,20 @@ export const esOverrides = {
     versionBadge: count => `${count} versiones`,
     open: 'Abrir'
   },
+  artifactShare: {
+    originRequired: 'Solo se comparten resultados verificados del modelo. Las cargas, los derivados y los archivos de origen desconocido están bloqueados.',
+    share: 'Compartir',
+    shareArtifact: 'Compartir artefacto',
+    updateShared: 'Actualizar contenido compartido',
+    viewShared: 'Ver página compartida',
+    copyShared: 'Copiar enlace',
+    revokeShared: 'Revocar enlace',
+    shareFailed: 'No se pudo compartir el artefacto',
+    revokeFailed: 'No se pudo revocar el enlace',
+    previewNotReady: 'La vista previa de Markdown no está lista.',
+    imageNotEmbedded: 'Markdown contiene una imagen no incrustada.',
+  },
+
   artifactPreview: {
     versionOf: (current, total) => `v${current} de ${total}`,
     olderVersion: 'Versión anterior',
@@ -4208,6 +4222,14 @@ export const esOverrides = {
     voiceEngineChangeFailed: 'No se pudo cambiar el motor del chat de voz',
     voiceEngineChainedShort: 'voz a texto',
     voiceEngineLiveShort: 'GPT-Live',
+    workTemplates: 'Plantillas de oficina',
+    workClearCategory: 'Quitar categoría seleccionada',
+    workScrollLeft: 'Desplazar a la izquierda',
+    workScrollRight: 'Desplazar a la derecha',
+    workCached: 'Usando plantillas locales',
+    workRetry: 'Actualizar plantillas',
+    startRecognition: 'Iniciar reconocimiento de voz',
+    stopRecognition: 'Detener reconocimiento de voz',
     voiceDictation: 'Dictado por voz',
     speakReplies: 'Leer las respuestas en voz alta',
     stopSpeakingReplies: 'Dejar de leer las respuestas en voz alta',
@@ -5250,10 +5272,27 @@ export const esOverrides = {
     noInlineTitle: 'Sin vista previa inline',
     noInlineBody: mimeType => `${mimeType || 'Este tipo de archivo'} aún puede adjuntarse como contexto.`,
     formatFailure: {
+      convert_failed: 'No se pudo convertir el documento. Puedes acceder al archivo original.',
+      timeout: 'La conversión del documento agotó el tiempo de espera. Puedes acceder al archivo original.',
       not_found: 'Este archivo ya no existe o no es accesible.',
       too_large: 'El archivo o la imagen supera el límite de la vista previa. Puedes acceder al archivo original.',
       unavailable: 'No se pudo mostrar la vista previa. Puedes acceder al archivo original o descargarlo.',
       unsupported: 'Este formato de archivo o codificación multimedia no es compatible.'
+    },
+    office: {
+      converting: 'Convirtiendo documento',
+      firstOpen: 'La primera vista previa puede tardar unos segundos.',
+      installConverter: 'Si no hay un programa de conversión disponible, instala LibreOffice y vuelve a intentarlo.'
+    },
+    slides: {
+      page: page => `Diapositiva ${page}`,
+      counter: (page, total) => `${page} / ${total}`,
+      previous: 'Diapositiva anterior',
+      next: 'Diapositiva siguiente',
+      fullscreen: 'Presentar en pantalla completa',
+      exitFullscreen: 'Salir de pantalla completa',
+      fullscreenFailed: 'No se pudo cambiar el modo de pantalla completa. Puedes seguir leyendo las diapositivas.',
+      pageFailed: page => `No se puede mostrar la diapositiva ${page}.`
     },
     delimited: {
       table: 'Tabla',
@@ -5261,6 +5300,7 @@ export const esOverrides = {
       limited: 'Mostrando las primeras 500 filas de datos.',
       columnsLimited: 'Mostrando las primeras 50 columnas.'
     },
+    sheetLimited: 'Algunas hojas superan las 500 filas. Solo se muestran sus primeras 500 filas.',
     tiffFirstPage: 'Este TIFF contiene varias páginas. Solo se muestra la primera.',
     edit: 'Editar',
     editing: 'Edición',

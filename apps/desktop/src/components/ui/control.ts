@@ -1,12 +1,8 @@
 import { cva, type VariantProps } from 'class-variance-authority'
 
-// Single source of truth for non-composer form-control chrome — Input,
-// Textarea, and SelectTrigger all consume this. Mirrors `buttonVariants`:
-// 2.5px radius, 12px text, padding-driven sizing (no fixed heights). The visual
-// chrome (background, border tint, hover, focus glow, invalid state) comes from
-// the `desktop-input-chrome` CSS so every control shares one exact look.
+// 表单控件共用主题圆角、字号和行高，小尺寸变体仍可显式覆盖。
 export const controlVariants = cva(
-  'desktop-input-chrome w-full min-w-0 rounded-[2.5px] border text-xs leading-4 text-foreground outline-none placeholder:text-muted-foreground disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
+  'desktop-input-chrome w-full min-w-0 rounded-[var(--control-radius,2.5px)] border text-[length:var(--control-font-size,0.75rem)] leading-[var(--control-line-height,1rem)] text-foreground outline-none placeholder:text-muted-foreground disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
   {
     variants: {
       size: {

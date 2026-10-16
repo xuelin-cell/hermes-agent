@@ -1,3 +1,5 @@
+import { fileExtension } from '@hermes/shared'
+
 export interface DelimitedTable {
   headers: string[]
   limited: boolean
@@ -8,9 +10,7 @@ const DELIMITERS = new Map([['csv', ','], ['tsv', '\t']])
 
 /** 分隔符只由文件扩展名确定，不用内容猜测改变列含义。 */
 export function delimiterForPath(path: string): string {
-  const extension = path.split(/[?#]/, 1)[0].split('.').at(-1)?.toLowerCase() || ''
-
-  return DELIMITERS.get(extension) || ','
+  return DELIMITERS.get(fileExtension(path)) || ','
 }
 
 /** 解析引号、转义引号和单元格换行；字段中间的引号按原文保留；截断读取时丢弃末尾不完整记录。 */

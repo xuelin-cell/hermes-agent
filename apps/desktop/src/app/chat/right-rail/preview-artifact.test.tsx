@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { $artifactRegistry, $artifactVersionSelection, artifactPreviewTarget, upsertArtifact } from '@/store/artifacts'
+import { $connection } from '@/store/session'
 
 import { ArtifactPreview } from './preview-artifact'
 
@@ -28,6 +29,26 @@ describe('ArtifactPreview', () => {
     cleanup()
     $artifactRegistry.set({})
     $artifactVersionSelection.set({})
+    $connection.set(null)
+    vi.unstubAllGlobals()
+  })
+
+  it('本地对话 HTML 产物预览提供分享按钮', async () => {
+    $connection.set({ mode: 'local' } as never)
+    vi.stubGlobal('hermesDesktop', {
+      artifactShare: {
+        inspect: vi.fn(async () => null),
+        eligibility: vi.fn(async () => ({ publishable: true })),
+        publish: vi.fn(),
+        revoke: vi.fn(),
+        onChanged: vi.fn(() => () => undefined)
+      }
+    })
+    const { artifactId } = register('Dashboard', 'html', '<h1>Hi</h1>')
+
+    await renderArtifact(artifactId)
+
+    expect(screen.getByRole('button', { name: 'Share artifact' })).toBeTruthy()
   })
 
   it('renders html in a scripts-only sandboxed frame the parent app is unreachable from', async () => {

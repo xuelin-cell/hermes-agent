@@ -1,9 +1,13 @@
 import { contextBridge, ipcRenderer, webFrame, webUtils } from 'electron'
 
+import type { ArtifactShareSource } from '../../shared/src/artifact-share'
+
 import type { DesktopProfileRoute } from './desktop-profile'
 import type { HudModifierApi, HudModifierStatus } from './hud-modifier-types'
 import type { CloudDriveRequest } from './login/contract'
 import { maskMcpSecrets, restoreMcpSecrets } from './mcp-secrets'
+import { ASR_CHANNEL } from './uniwork-asr/contract'
+import { WELCOME_CATALOG_CHANNEL } from './uniwork-welcome/catalog'
 import { customWindowControlsEnabled } from './window-controls'
 
 // Which translucency the OS can back. Asked synchronously because the renderer
@@ -28,7 +32,30 @@ const localSkin = ipcRenderer.sendSync('hermes:skin:local')
 contextBridge.exposeInMainWorld('hermesDesktop', {
   // 只读脱敏账号信息，页面不能传入身份或账号路径。
   getMaasAccount: () => ipcRenderer.invoke('hermes:maas-account:get'),
-    cloudDriveRequest: (input: CloudDriveRequest) => ipcRenderer.invoke('hermes:maas-drive:request', input),
+  cloudDriveRequest: (input: CloudDriveRequest) => ipcRenderer.invoke('hermes:maas-drive:request', input),
+  /** 仅读取固定语言的办公模板目录，不接收请求地址或凭据。 */
+  getWelcomeCatalog: locale => ipcRenderer.invoke(WELCOME_CATALOG_CHANNEL, locale),
+  uniworkAsr: {
+    start: language => ipcRenderer.invoke(ASR_CHANNEL, { operation: 'start', language }),
+    audio: (id, pcm) => ipcRenderer.invoke(ASR_CHANNEL, { operation: 'audio', id, pcm }),
+    poll: id => ipcRenderer.invoke(ASR_CHANNEL, { operation: 'poll', id }),
+    stop: id => ipcRenderer.invoke(ASR_CHANNEL, { operation: 'stop', id }),
+    cancel: id => ipcRenderer.invoke(ASR_CHANNEL, { operation: 'cancel', id })
+  },
+  artifactShare: {
+    inspect: (key: string) => ipcRenderer.invoke('hermes:artifact-share:inspect', key),
+    publish: (input: { key: string; html: string; title: string; source: ArtifactShareSource }) => ipcRenderer.invoke('hermes:artifact-share:publish', input),
+    eligibility: (source: ArtifactShareSource) => ipcRenderer.invoke('hermes:artifact-share:eligibility', source),
+    markUploaded: (sessionId: string) => ipcRenderer.invoke('hermes:artifact-share:markUploaded', sessionId),
+    revoke: (key: string) => ipcRenderer.invoke('hermes:artifact-share:revoke', key),
+    onChanged: (callback: (key: string) => void) => {
+      // 转发主进程的分享状态变化，并在取消订阅时移除同一个监听器。
+      const listener = (_event: Electron.IpcRendererEvent, key: string) => callback(key)
+      ipcRenderer.on('hermes:artifact-share:changed', listener)
+
+      return () => ipcRenderer.removeListener('hermes:artifact-share:changed', listener)
+    }
+  },
   logoutMaasAccount: () => ipcRenderer.invoke('hermes:maas-account:logout'),
   glassSupported: translucencySupport?.glass === true,
   translucencySupported: translucencySupport?.translucency === true,
@@ -355,6 +382,10 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   requestMicrophoneAccess: () => ipcRenderer.invoke('hermes:requestMicrophoneAccess'),
   readWindowBelow: () => ipcRenderer.invoke('hermes:window:readBelow'),
   readFileDataUrl: filePath => ipcRenderer.invoke('hermes:readFileDataUrl', filePath),
+  // 只调用当前账号桌面的受限转换接口，缓存路径由主进程决定。
+  convertOfficePreview: (filePath, requestId) =>
+    ipcRenderer.invoke('hermes:office-preview:convert', filePath, requestId),
+  cancelOfficePreview: requestId => ipcRenderer.invoke('hermes:office-preview:cancel', requestId),
   readFileDataUrlForAttach: filePath => ipcRenderer.invoke('hermes:readFileDataUrlForAttach', filePath),
   dataUrlReadMax: {
     get: () => ipcRenderer.invoke('hermes:data-url-read-max:get'),

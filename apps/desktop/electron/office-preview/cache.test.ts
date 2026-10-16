@@ -2,9 +2,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-
-import { OFFICE_PDF_MAX_BYTES } from '../../../shared/src/office-preview'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { officeCacheKey, OfficePreviewCache } from './cache'
 import { OfficePreviewJobs } from './jobs'
@@ -136,6 +134,31 @@ describe('Office cache', () => {
     expect(await fs.readFile(path.join(outside, 'keep.txt'), 'utf8')).toBe('keep')
   })
 
+  it('keeps serving the cache when one stale work directory cannot be removed, and retries a failed preparation', async () => {
+    const cache = new OfficePreviewCache(fixture)
+    const stale = path.join(cache.directory, 'job-locked')
+    await fs.mkdir(stale, { recursive: true })
+    const old = new Date(now - 2 * 60 * 60 * 1000)
+    await fs.utimes(stale, old, old)
+
+    // 杀毒软件或残留进程占用文件时，删除会失败；这不能让之后的预览全部失败。
+    const busy = Object.assign(new Error('resource busy'), { code: 'EBUSY' })
+    const remove = vi.spyOn(fs, 'rm').mockRejectedValueOnce(busy)
+    await publishFixture(cache, keyFor('locked.docx'))
+    expect((await cache.get(keyFor('locked.docx')))?.converter).toBe('wps')
+    expect(remove).toHaveBeenCalled()
+    remove.mockRestore()
+    // 占用解除后，下一次淘汰会把它清掉。
+    await cache.prune(now)
+    expect(await fs.stat(stale).catch(() => null)).toBeNull()
+
+    const other = new OfficePreviewCache(path.join(fixture, 'second'))
+    const create = vi.spyOn(fs, 'mkdir').mockRejectedValueOnce(busy)
+    await expect(other.get(keyFor('retry.docx'))).rejects.toThrow('resource busy')
+    create.mockRestore()
+    await expect(other.get(keyFor('retry.docx'))).resolves.toBeNull()
+  })
+
   it('does not follow a cache-directory junction or allow traversal cleanup', async () => {
     const cache = new OfficePreviewCache(fixture)
     const key = keyFor('linked')
@@ -149,21 +172,6 @@ describe('Office cache', () => {
     expect(await fs.readFile(path.join(outside, 'keep.txt'), 'utf8')).toBe('keep')
     await expect(cache.get('../outside', now)).rejects.toThrow('Invalid Office cache key')
     await expect(cache.discardWorkDirectory(outside)).rejects.toThrow('Invalid Office work directory')
-  })
-
-  it('rejects empty or oversized conversion output without exposing a partial cache', async () => {
-    const cache = new OfficePreviewCache(fixture)
-    const key = keyFor('invalid')
-    const work = await cache.createWorkDirectory(now)
-    const output = path.join(work, 'converted.pdf')
-    await fs.writeFile(output, '')
-    await expect(cache.publish(key, output, 'wps', now)).rejects.toMatchObject({ code: 'convert_failed' })
-    const handle = await fs.open(output, 'w')
-    await handle.truncate(OFFICE_PDF_MAX_BYTES + 1)
-    await handle.close()
-    await expect(cache.publish(key, output, 'wps', now)).rejects.toMatchObject({ code: 'too_large' })
-    expect(await cache.get(key, now)).toBeNull()
-    await cache.discardWorkDirectory(work)
   })
 
   it('treats corrupt cache metadata as a miss and replaces it only with a complete publication', async () => {

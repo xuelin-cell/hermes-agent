@@ -4,12 +4,15 @@ import { createRoot } from 'react-dom/client'
 
 import { I18nProvider } from '@/i18n/context'
 import { resolveInitialLocale } from '@/i18n/languages'
+import { applyLoginTheme } from './theme'
 
 import { AccountExitPage } from './exit-page'
 import { LoginPage } from './page'
 
 const params = new URLSearchParams(location.search)
 const exiting = params.get('exit') === '1'
+
+if (!exiting) applyLoginTheme()
 
 if (exiting) {
   document.documentElement.classList.toggle('dark', params.get('dark') === '1')

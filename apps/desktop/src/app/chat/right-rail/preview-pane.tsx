@@ -9,9 +9,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { requestComposerAttachImages, requestComposerFocus, requestComposerInsert } from '@/app/chat/composer/focus'
 import { openGuestContextMenu } from '@/app/context-menu/store'
 import { PanelEmpty } from '@/app/overlays/panel'
+import { ShareControls } from '@/components/artifact-share/share-controls'
 import { isElementInHiddenPane } from '@/components/pane-shell/pane-visibility'
 import { Tip } from '@/components/ui/tooltip'
 import { type Translations, useI18n } from '@/i18n'
+import { artifactShareFilePath } from '@/lib/artifact-share-source'
 import {
   previewsOfficeAsPages,
   previewsOfficeAsSheet,
@@ -19,7 +21,7 @@ import {
   remoteHtmlFrameDocument,
   remoteHtmlFrameSandbox
 } from '@/lib/browser-shell'
-import { isDesktopFsRemoteMode } from '@/lib/desktop-fs'
+import { isDesktopFsRemoteMode, readDesktopFileText } from '@/lib/desktop-fs'
 import { guardGuestPointers } from '@/lib/guest-pointer-guard'
 import { isLoopbackPreviewUrl, openPreviewTargetInBrowser, remoteHtmlPreviewDocument } from '@/lib/local-preview'
 import { isRemoteGateway } from '@/lib/media'
@@ -49,7 +51,7 @@ import {
   type PreviewTarget,
   setPreviewRenderMode
 } from '@/store/preview'
-import { $selectedStoredSessionId } from '@/store/session'
+import { $activeSessionId, $connection, $currentCwd, $selectedStoredSessionId } from '@/store/session'
 import { canOpenBrowserWindow, isBrowserWindow } from '@/store/windows'
 
 import { FormatPreview } from './formats/format-preview'
@@ -288,7 +290,11 @@ export function PreviewPane({
   const previewServerRestart = useStore($previewServerRestart)
   const consoleHeight = useStore(consoleState.$height)
   const consoleOpen = useStore(consoleState.$open)
+  const connection = useStore($connection)
+  const activeSessionId = useStore($activeSessionId)
+  const currentCwd = useStore($currentCwd)
   const selectedStoredSessionId = useStore($selectedStoredSessionId)
+  const shareSessionId = selectedStoredSessionId || activeSessionId
   const [currentUrl, setCurrentUrl] = useState(target.url)
   const liveUrlRef = useRef(currentUrl)
   liveUrlRef.current = currentUrl
@@ -322,6 +328,26 @@ export function PreviewPane({
     target.kind === 'file' &&
     target.previewKind === 'html' &&
     (!target.transient || Boolean(target.dataUrl))
+
+  const shareFilePath = /^file:/i.test(currentUrl) ? artifactShareFilePath(currentUrl, currentCwd) : null
+
+  const shareableRenderedHtml = isWebPreview && connection?.mode === 'local' && shareSessionId &&
+    shareFilePath && /\.html?$/i.test(shareFilePath) && window.hermesDesktop?.artifactShare
+
+  /** 点击分享时重新读取文件，发布与当前预览目标对应的完整 HTML。 */
+  const htmlShareSnapshot = async () => {
+    if (!shareFilePath) {
+      throw new Error(t.preview.unavailable)
+    }
+
+    const result = await readDesktopFileText(shareFilePath)
+
+    if (result.binary || result.truncated || (result.byteSize ?? 0) > 2 * 1024 * 1024) {
+      throw new Error(t.preview.unavailable)
+    }
+
+    return result.text
+  }
 
   const selectRenderMode = (next: PreviewRenderMode) => {
     if (tabId) {
@@ -1382,6 +1408,15 @@ export function PreviewPane({
 
         {isWebPreview && !isRemoteHtml && (
           <PreviewBrowserBar
+            actions={shareableRenderedHtml ? (
+              <ShareControls
+                artifactKey={`file:${shareSessionId}:${shareFilePath}`}
+                html={htmlShareSnapshot}
+                key={shareFilePath}
+                source={{ sessionId: shareSessionId!, path: shareFilePath }}
+                title={shareFilePath.split(/[\\/]/).pop() || target.label}
+              />
+            ) : undefined}
             annotateMode={annotate.mode}
             canGoBack={history.back}
             canGoForward={history.forward}

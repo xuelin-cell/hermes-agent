@@ -1,4 +1,5 @@
-import type { GatewayWsUrlResult } from '@hermes/shared'
+import type { GatewayWsUrlResult, OfficePreviewResult } from '@hermes/shared'
+import type { ArtifactShareEligibility, ArtifactShareSource } from '@hermes/shared/artifact-share'
 import type { HermesSkin } from '@hermes/shared/skin'
 import type { TranslucencyState } from '@hermes/shared/translucency'
 
@@ -8,6 +9,8 @@ import type { CloudDriveRequest, LoginAccount } from '../electron/login/contract
 import type { MachineProfile } from '../electron/machine-profile'
 import type { HermesNotification } from '../electron/notification-types'
 import type { PoolLimits } from '../electron/pool-limits'
+import type { UniworkAsrBridge } from '../electron/uniwork-asr/contract'
+import type { WelcomeCategory, WelcomeLocale } from '../electron/uniwork-welcome/catalog'
 import type { GrowRequest } from '../electron/window-growth'
 
 import type { WakeIndicatorState } from './lib/wake-indicator'
@@ -28,7 +31,18 @@ declare global {
     hermesDesktop: {
       /** 只读本次已准备账号的脱敏信息，运行中到期仍返回原期限。 */
       getMaasAccount: () => Promise<LoginAccount | null>
+      artifactShare: {
+        inspect: (key: string) => Promise<{ key: string; shareId: string; url: string; title: string; hash: string; version: number; updatedAt: string } | null>
+        publish: (input: { key: string; html: string; title: string; source: ArtifactShareSource }) => Promise<{ key: string; shareId: string; url: string; title: string; hash: string; version: number; updatedAt: string }>
+        eligibility: (source: ArtifactShareSource) => Promise<ArtifactShareEligibility>
+        markUploaded: (sessionId: string) => Promise<void>
+        revoke: (key: string) => Promise<void>
+        onChanged: (callback: (key: string) => void) => () => void
+      }
       cloudDriveRequest: (input: CloudDriveRequest) => Promise<unknown>
+      /** 取得完整办公目录；主进程负责认证和校验配置。 */
+      getWelcomeCatalog?: (locale: WelcomeLocale) => Promise<WelcomeCategory[]>
+      uniworkAsr?: UniworkAsrBridge
       logoutMaasAccount: () => Promise<void>
       // Resolve a backend connection. Omit `profile` (or pass the primary) for
       // the window's backend; pass a named profile to lazily spawn/reuse that
@@ -291,6 +305,10 @@ declare global {
         } | null
       } | null>
       readFileDataUrl: (filePath: string) => Promise<string>
+      /** 只转换当前账号的本机 Office 文件，不接受缓存路径或凭据。 */
+      convertOfficePreview: (filePath: string, requestId: string) => Promise<OfficePreviewResult>
+      /** 页面离开时取消自己的转换请求；排队中没人等的转换会被跳过。 */
+      cancelOfficePreview: (requestId: string) => Promise<void>
       /** Remote non-image attach: higher dedicated cap than preview/Settings default. */
       readFileDataUrlForAttach?: (filePath: string) => Promise<string>
       /** Settings → Chat: max size for local files loaded as data URLs (attach/preview). */

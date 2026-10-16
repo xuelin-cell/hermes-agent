@@ -11,9 +11,7 @@
 
 ### desktop-mt 新功能放在哪里
 
-**不到万不得已，不修改上游 Hermes 后端已有文件**（`apps/` 以外的 Python 代码，如 `agent/`、`tools/`、`hermes_cli/`、`tui_gateway/`）。新功能按下表放到对应位置，用新增文件实现；新增文件不会在同步上游时产生冲突，修改已有文件会。
-
-桌面前端（`apps/desktop/`）可以修改已有文件，按功能需要改即可，不必为了少改而绕路。
+**不到万不得已，不修改 Hermes 核心的已有文件**。核心指：`agent/`、`run_agent.py`、`tools/`、`toolsets.py`、`model_tools.py`、`hermes_cli/`、`cli.py`、`gateway/`、`tui_gateway/`、`cron/`、`pm/`，以及根目录的其他 Python 文件。新功能按下表放到对应位置，用新增文件实现；新增文件不会在同步上游时产生冲突，修改已有文件会。
 
 | 功能 | 首选位置 | 注意 |
 |---|---|---|
@@ -21,11 +19,20 @@
 | UniWork 技能市场、额外的后端管理接口 | 官方插件路由（`plugins/<名字>/dashboard/` 的 `manifest.json` + `plugin_api.py`，挂载到 `/api/plugins/<名字>/`） | 只能新增接口，改不了已有接口的行为；后端启动时加载，改动后需重启后端 |
 | MCP 配置、连接、工具发现和调用 | Hermes 原生 MCP | 后端运行中改配置走 Hermes 自己的 MCP 管理接口，不直接写 `config.yaml`，避免并发写同一文件 |
 | 推荐连接器的第三方服务适配 | OpenConnector 等独立 MCP 服务 | 进程由 Electron 管，对 Hermes 只是普通 MCP 记录，服务适配在它内部完成 |
-| 安装包身份、资源清单、输出格式 | 定制发行构建层 | 内置资源的取舍（例如只保留 UniWork 技能）优先在打包时完成，不在运行时改同步逻辑 |
+| 安装包身份、资源清单、输出格式 | 打包脚本（`scripts/build/`、`scripts/bundles/`） | 内置资源的取舍（例如只保留 UniWork 技能）优先在打包时完成，不在运行时改同步逻辑 |
 | 改变 agent 运行时行为（工具调用前检查、工具结果加工、新增工具） | 普通 Hermes 插件（钩子、注册工具） | 只使用上游已提供的钩子，不为插件改核心 |
 | 指导模型怎么做事（如本地文件上传步骤、长任务结果下载） | 技能 | 不改代码即可补足能力缺口 |
 
-上表都放不下、必须修改 Hermes 后端已有函数时：优先整理成通用修复提交给上游；确需本地修改时保持改动最小，并在提交描述中说明为什么无法放到上表任何位置。
+上表都放不下、必须修改核心已有文件时，可以在本分支直接改，但要做到：
+
+- 主要逻辑写在新增文件里，已有文件中只加几行调用，改动越少，同步上游时冲突越少；
+- 改动处加注释 `# desktop-mt: 原因`，同步上游时搜这个标记就能找到全部本地改动；
+- 提交描述说明为什么放不进上表任何位置。
+
+本规则制定前已修改、代码中未加标记的核心文件（历史遗留，不作为先例）：
+
+- 技能市场与技能同步：`hermes_cli/skills_hub.py`、`hermes_cli/web_routers/skills.py`、`hermes_cli/web_server_profiles.py`、`tools/skills_sync.py`、`tools/skills_sync_optional.py`、`tools/skills_tool.py`
+- 依赖下载缓存：`pm/packages.py`、`pm/store.py`
 
 Instructions for AI coding assistants and developers working on the hermes-agent codebase.
 This root file holds only what applies everywhere. Each area has its own `AGENTS.md` (aim for

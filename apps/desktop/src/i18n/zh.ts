@@ -3363,6 +3363,20 @@ export const zh = defineLocale({
     open: '打开'
   },
 
+  artifactShare: {
+    originRequired: '仅支持来源已确认的模型产物；上传文件、派生产物和来源未知的文件不能分享。',
+    share: '分享',
+    shareArtifact: '分享产物',
+    updateShared: '更新分享内容',
+    viewShared: '查看分享页',
+    copyShared: '复制链接',
+    revokeShared: '取消分享',
+    shareFailed: '分享失败',
+    revokeFailed: '取消分享失败',
+    previewNotReady: 'Markdown 预览尚未完成。',
+    imageNotEmbedded: 'Markdown 包含未内嵌的图片，请先整理为自包含内容。',
+  },
+
   artifactPreview: {
     versionOf: (current, total) => `第 ${current}/${total} 版`,
     olderVersion: '较旧版本',
@@ -3645,6 +3659,14 @@ export const zh = defineLocale({
     voiceEngineChangeFailed: '无法更改语音聊天引擎',
     voiceEngineChainedShort: '语音转文字',
     voiceEngineLiveShort: 'GPT-Live',
+    workTemplates: '办公模板',
+    workClearCategory: '取消所选分类',
+    workScrollLeft: '向左滑动',
+    workScrollRight: '向右滑动',
+    workCached: '正在使用本地模板',
+    workRetry: '刷新模板',
+    startRecognition: '开始语音识别',
+    stopRecognition: '停止语音识别',
     voiceDictation: '语音听写',
     speakReplies: '朗读回复',
     stopSpeakingReplies: '停止朗读回复',
@@ -4604,10 +4626,27 @@ export const zh = defineLocale({
     noInlineTitle: '没有内联预览',
     noInlineBody: mimeType => `${mimeType || '此文件类型'} 仍可作为上下文附件。`,
     formatFailure: {
+      convert_failed: '文档转换失败，仍可查看或下载原文件。',
+      timeout: '文档转换超时，仍可查看或下载原文件。',
       not_found: '文件已不存在或无法访问。',
       too_large: '文件过大或图片尺寸超出预览上限，仍可查看或下载原文件。',
       unavailable: '无法预览此文件，仍可查看或下载原文件。',
       unsupported: '暂不支持此文件格式或音视频编码。'
+    },
+    office: {
+      converting: '正在转换文档',
+      firstOpen: '首次预览可能需要几秒。',
+      installConverter: '如果没有可用的转换软件，请安装 LibreOffice 后重试。'
+    },
+    slides: {
+      page: page => `第 ${page} 页`,
+      counter: (page, total) => `${page} / ${total}`,
+      previous: '上一页',
+      next: '下一页',
+      fullscreen: '全屏放映',
+      exitFullscreen: '退出全屏',
+      fullscreenFailed: '未能切换全屏，仍可继续阅读幻灯片。',
+      pageFailed: page => `第 ${page} 页无法显示。`
     },
     delimited: {
       table: '表格',
@@ -4615,6 +4654,7 @@ export const zh = defineLocale({
       limited: '仅显示前 500 条数据行。',
       columnsLimited: '仅显示前 50 列。'
     },
+    sheetLimited: '部分工作表超过 500 行，仅显示其前 500 行。',
     tiffFirstPage: '此 TIFF 包含多页，仅显示第一页。',
     edit: '编辑',
     editing: '编辑中',
