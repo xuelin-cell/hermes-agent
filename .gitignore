@@ -324,3 +324,7 @@ native/fts5_cjk/*.so
 /pm/.lock.json.lock
 
 apps/desktop/.dist-build*
+
+# desktop-mt: built-in kits and experts are copied in from the gitcode config repo at
+# packaging time (scripts/bundles/uniwork_bundled.py); a local copy for development stays out of git.
+plugins/uniwork-kits/bundled/

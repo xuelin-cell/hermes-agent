@@ -174,7 +174,9 @@ export function pullServerAvatars(roster: RosterRow[]) {
       continue
     }
 
-    if ($botMeta.get()[key]?.image) {
+    const existingImage = $botMeta.get()[key]?.image
+
+    if (existingImage && !isBackfilledFacePng(existingImage)) {
       continue
     }
 

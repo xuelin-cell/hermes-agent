@@ -1355,6 +1355,7 @@ export const ar = defineLocale({
       pageBlurb: 'يمكن للإضافة توسيع هذا التطبيق أو الوكيل أو كليهما — ولكل جزء مفتاح تشغيل مستقل.'
     },
     tabSkills: 'المهارات',
+    kitSkillsNote: 'تُدار مهارات الحزم من صفحة الحزم.',
     tabToolsets: 'مجموعات الأدوات',
     all: 'الكل',
     searchSkills: 'البحث في المهارات',
