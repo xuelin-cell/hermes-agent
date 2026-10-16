@@ -69,7 +69,7 @@ describe('browser shell', () => {
     document.documentElement.dataset.hermesBrowser = 'production'
 
     expect(isBrowserShell()).toBe(true)
-    expect(['gateway', 'connections', 'about', 'vault'].map(isSettingsViewHidden)).toEqual([true, true, true, true])
+    expect(['gateway', 'connections', 'about', 'providers', 'vault'].map(isSettingsViewHidden)).toEqual([true, true, true, true, true])
     expect(isSettingsViewHidden('config:model')).toBe(false)
   })
 
@@ -190,6 +190,7 @@ describe('browser shell', () => {
     expect(isDeveloperMode()).toBe(true)
     expect(hideForUsers()).toBe(false)
     expect(isSettingsViewHidden('gateway')).toBe(false)
+    expect(isSettingsViewHidden('providers')).toBe(false)
     expect(withoutHiddenNavItems([{ id: 'messaging' }]).map(item => item.id)).toEqual(['messaging'])
     expect(withoutHiddenPaletteItems([{ items: [{ id: 'cc-restart-gateway' }] }])).toHaveLength(1)
     expect(withoutHiddenSubpages('config:advanced', [{ id: 'desktop' }])).toHaveLength(1)

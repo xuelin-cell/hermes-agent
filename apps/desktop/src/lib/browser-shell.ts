@@ -42,8 +42,9 @@ import { storedBoolean } from '@/lib/storage'
  *   app/settings/appearance-settings.tsx               * no theme marketplace results, no UI scale row
  *   app/settings/config-settings.tsx                   * no Advanced ▸ Desktop settings (keep awake, F12, backend pool,
  *                                                      Quick Entry)
- *   app/settings/index.tsx                             * no Gateway, Credential Vault or About page
+ *   app/settings/index.tsx                             * no Gateway, Credential Vault, Providers or About page
  *   app/settings/subpages.ts                           * no Advanced ▸ Desktop subpage
+ *   app/settings/visibility.ts                         * the settings search (command palette) skips those pages too
  *   app/shell/gateway-menu-panel.tsx                   * no gateway restart
  *   app/shell/maas-account-status.tsx                  signing out keeps the instance: the confirmation says so
  *   contrib/plugins.ts                                 * no Bot Mode (the BOTS tab): its plugin is not started
@@ -316,13 +317,15 @@ export function isInstanceLocalUrl(url: string): boolean {
   }
 }
 
-const SETTINGS_VIEWS_HIDDEN = new Set(['about', 'connections', 'gateway', 'vault'])
+const SETTINGS_VIEWS_HIDDEN = new Set(['about', 'connections', 'gateway', 'providers', 'vault'])
 
 /** Settings pages that only make sense for the desktop app: gateway / SSH
  * connections (`connections` is the old link to the gateway page), About (app
  * version, self-update, uninstall), and the Credential Vault: it keeps logins in
  * the instance's home, which is not on the user's volume and does not survive
- * the instance being replaced. */
+ * the instance being replaced. Providers too: the platform supplies the model and
+ * its key (the user's plan), so signing in to another provider or adding keys and
+ * endpoints is left to developer mode. */
 export function isSettingsViewHidden(view: string): boolean {
   return hideForUsers() && SETTINGS_VIEWS_HIDDEN.has(view)
 }
