@@ -1,3 +1,5 @@
+import { withCloudChinese } from '@/lib/browser-shell-zh'
+
 import { ar } from './ar'
 import { de } from './de'
 import { en } from './en'
@@ -11,7 +13,7 @@ import { zhHant } from './zh-hant'
 
 export const TRANSLATIONS: Record<Locale, Translations> = {
   en,
-  zh,
+  zh: withCloudChinese(zh),
   'zh-hant': zhHant,
   ja,
   ar,
