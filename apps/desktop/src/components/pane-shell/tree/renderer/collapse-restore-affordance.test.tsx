@@ -2,6 +2,8 @@ import { useStore } from '@nanostores/react'
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { $developerMode } from '@/store/developer-mode'
+
 import { registry } from '@/contrib/registry'
 
 import { group, type GroupNode, split } from '../model'
@@ -54,6 +56,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   cleanup()
+  $developerMode.set(false)
   disposers.splice(0).forEach(dispose => dispose())
 })
 
@@ -91,6 +94,7 @@ const zoneAt = (index: number) => {
 
 describe('Sessions/Bots strip — #91223', () => {
   beforeEach(() => {
+    $developerMode.set(true)
     registerPane('sessions', { hideOnly: true, placement: 'left' }, 'Sessions')
     registerPane('hermes-bots:pane', { hideOnly: true, placement: 'left' }, 'Bots')
     registerPane('workspace', { placement: 'main', uncloseable: true }, 'Chat')

@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { group } from '@/components/pane-shell/tree/model'
 import { $layoutTree } from '@/components/pane-shell/tree/store'
 import { createClientSessionState } from '@/lib/chat-runtime'
+import { $desktopVersion } from '@/store/updates'
 import { $developerMode } from '@/store/developer-mode'
 import {
   $connection,
@@ -63,6 +64,7 @@ function workspaceMenuIds(): string[] {
 
 afterEach(() => {
   $developerMode.set(false)
+  $desktopVersion.set(null)
   $layoutTree.set(null)
   $connection.set(null)
   $currentCwd.set('')
@@ -122,6 +124,23 @@ const statusbarOptions = {
 }
 
 describe('developer-only statusbar navigation', () => {
+  it('实时切换智能菜单和版本分支显示，不改变审批模式', () => {
+    $desktopVersion.set({ appVersion: '0.21.5' } as never)
+    const { result } = renderHook(() => useStatusbarItems({ ...statusbarOptions, gatewayState: 'open' as const }), {
+      wrapper
+    })
+    const approval = () => result.current.statusbarItems.find(item => item.id === 'approval-mode')
+    const version = () => result.current.statusbarItems.find(item => item.id === 'version-client')
+    expect(approval()?.hidden).toBe(true)
+    expect(version()?.hidden).toBe(true)
+    act(() => $developerMode.set(true))
+    expect(approval()?.hidden).toBe(false)
+    expect(version()?.hidden).toBe(false)
+    act(() => $developerMode.set(false))
+    expect(approval()?.hidden).toBe(true)
+    expect(version()?.hidden).toBe(true)
+  })
+
   it('shows the command center and gateway switcher only while developer mode is enabled', () => {
     $layoutTree.set(group(['sessions'], { active: 'sessions', id: 'sessions' }))
     $developerMode.set(false)
