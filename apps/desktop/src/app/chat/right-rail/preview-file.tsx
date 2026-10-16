@@ -13,6 +13,7 @@ import { defaultRehypePlugins, defaultRemarkPlugins, Streamdown } from 'streamdo
 import { requestComposerFocus, requestComposerInsertRefs } from '@/app/chat/composer/focus'
 import { droppedFileInlineRef } from '@/app/chat/composer/inline-refs'
 import { HERMES_PATHS_MIME } from '@/app/chat/hooks/use-composer-actions'
+import { markdownShareSnapshot } from '@/components/artifact-share/markdown-snapshot'
 import { ShareControls } from '@/components/artifact-share/share-controls'
 import { RichCodeBlock } from '@/components/assistant-ui/embeds'
 import { CodeEditor } from '@/components/chat/code-editor'
@@ -46,6 +47,7 @@ import {
   remarkPreviewFileLinks,
   scrollPreviewHeading
 } from '@/lib/preview-markdown-links'
+import { type PreviewShareFileSource, previewShareSource } from '@/lib/preview-share-source'
 import { previewTargetFromMarkdownHref } from '@/lib/preview-targets'
 import { cn } from '@/lib/utils'
 import { openPreview, type PreviewTarget } from '@/store/preview'
@@ -736,6 +738,7 @@ export function LocalFilePreview({
   onClose,
   onSelectRendered,
   reloadKey,
+  shareSource,
   target
 }: {
   /** Closes the preview's tab; offered when the file can't be shown. */
@@ -744,6 +747,8 @@ export function LocalFilePreview({
    *  `rendered` mode to the switcher and routes its selection to the pane. */
   onSelectRendered?: () => void
   reloadKey: number
+  /** 资料库预览显式携带来源会话；null 禁止借用当前聊天的分享身份。 */
+  shareSource?: PreviewShareFileSource | null
   target: PreviewTarget
 }) {
   const { t } = useI18n()
@@ -776,7 +781,8 @@ export function LocalFilePreview({
   const connection = useStore($connection)
   const activeSessionId = useStore($activeSessionId)
   const storedSessionId = useStore($selectedStoredSessionId)
-  const shareSessionId = storedSessionId || activeSessionId
+  const resolvedShareSource = shareSource === undefined ? previewShareSource(target, connection) : shareSource
+  const shareSessionId = resolvedShareSource === undefined ? storedSessionId || activeSessionId : resolvedShareSource?.sessionId
   const currentCwd = useStore($currentCwd)
   const fsCacheKey = desktopFsCacheKey(connection)
   const filePath = filePathForTarget(target)
@@ -925,7 +931,7 @@ export function LocalFilePreview({
   // Editing is only offered for whole, readable text — never images, binaries,
   // or files we only loaded the first 512 KB of (saving would drop the tail).
   const canEdit =
-    isText && !isImage && !blockedByTarget && state.text !== undefined && !state.truncated && !state.binary
+    !target.source.startsWith('cloud-drive:') && isText && !isImage && !blockedByTarget && state.text !== undefined && !state.truncated && !state.binary
 
   // Per-keystroke: update the draft ref (no render) and only set `dirty` when it
   // actually changes — React bails on an identical value, so a long typing run
@@ -1171,32 +1177,13 @@ export function LocalFilePreview({
   if (isText && state.text !== undefined) {
     const isMarkdown = (state.language || target.language) === 'markdown'
 
-    const sharePath = artifactShareFilePath(filePath, currentCwd)
+    const sharePath = resolvedShareSource === undefined ? artifactShareFilePath(filePath, currentCwd) : resolvedShareSource?.path
 
     const shareableFile = connection?.mode === 'local' && !state.truncated && shareSessionId && sharePath &&
       (isMarkdown || /\.html?$/i.test(filePath)) && window.hermesDesktop?.artifactShare
 
-    /** 从与预览同一渲染器取得静态 Markdown 快照，拒绝本机图片地址泄露。 */
-    const markdownSnapshot = () => {
-      const rendered = shareSnapshotRef.current?.querySelector<HTMLElement>('[data-preview-markdown]')
-
-      if (!rendered) {
-        throw new Error(t.artifactShare.previewNotReady)
-      }
-
-      const clone = rendered.cloneNode(true) as HTMLElement
-
-      for (const image of clone.querySelectorAll('img')) {
-        if (!image.getAttribute('src')?.startsWith('data:')) {
-          throw new Error(t.artifactShare.imageNotEmbedded)
-        }
-      }
-
-      return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
-        '<style>body{font:16px/1.65 system-ui,sans-serif;max-width:800px;margin:40px auto;padding:0 24px;color:#202124}' +
-        'pre{overflow:auto;padding:16px;background:#f5f5f5}img{max-width:100%}table{border-collapse:collapse}' +
-        'td,th{border:1px solid #ccc;padding:6px}</style></head><body>' + clone.outerHTML + '</body></html>'
-    }
+    /** 与资料库分享工具栏共用同一 Markdown 快照及图片校验。 */
+    const markdownSnapshot = () => markdownShareSnapshot(shareSnapshotRef.current, t.artifactShare)
 
     const hasDiff = Boolean(state.diff && state.diff.trim())
     // Order the toggle reads left→right; default lands on the most useful view.

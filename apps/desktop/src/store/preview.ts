@@ -25,6 +25,13 @@ import { canOpenBrowserWindow, openBrowserInNewWindow } from './windows'
 /** How an HTML file target shows: the live page, or its source. */
 export type PreviewRenderMode = 'preview' | 'source'
 
+export interface PreviewShareOrigin {
+  connectionId: string
+  profile: string
+  sessionId: string
+  path: string
+}
+
 export interface PreviewTarget {
   binary?: boolean
   byteSize?: number
@@ -44,6 +51,8 @@ export interface PreviewTarget {
   path?: string
   previewKind?: 'binary' | 'html' | 'image' | 'pdf' | 'text'
   renderMode?: PreviewRenderMode
+  /** 资料库文件显式保留来源，右侧预览不能借用当前其他会话的分享身份。 */
+  shareOrigin?: PreviewShareOrigin | null
   source: string
   /** Runtime-only target that cannot be restored from persisted state. */
   transient?: boolean
@@ -173,6 +182,7 @@ function persistableTabs(tabs: PreviewTab[]): PreviewTab[] {
     tab =>
       tab.target.kind !== 'artifact' &&
       !tab.target.transient &&
+      !tab.target.source.startsWith('cloud-drive:') &&
       !(tab.target.previewKind === 'html' && tab.target.dataUrl)
   )
 }
@@ -271,16 +281,37 @@ function applyPreviewScope(next: string) {
   $previewTabs.set(tabsByProfile[next] ?? [])
 }
 
+/** Profile 改名或删除时同步显式分享来源，保留文件标签但不留下失效的会话归属。 */
+function updatePreviewShareOrigins(from: string, to: string | null): boolean {
+  let viewChanged = false
+
+  for (const [key, tabs] of Object.entries(tabsByProfile)) {
+    if (!tabs.some(tab => tab.target.shareOrigin?.profile === from)) {
+      continue
+    }
+
+    tabsByProfile[key] = tabs.map(tab =>
+      tab.target.shareOrigin?.profile === from
+        ? { ...tab, target: { ...tab.target, shareOrigin: to ? { ...tab.target.shareOrigin, profile: to } : null } }
+        : tab
+    )
+    viewChanged ||= key === viewKey
+  }
+
+  return viewChanged
+}
+
 /** Drop one profile's rail. Delete counterpart of the tiles store's
  *  `dropTilesForProfile`, which profile deletion calls. */
 export function dropPreviewTabsForProfile(profile: string) {
   const key = normalizeProfileKey(profile)
 
   delete tabsByProfile[key]
+  const originChanged = updatePreviewShareOrigins(key, null)
   persistTabs()
 
-  if (key === viewKey) {
-    $previewTabs.set([])
+  if (key === viewKey || originChanged) {
+    $previewTabs.set(tabsByProfile[viewKey] ?? [])
   }
 }
 
@@ -295,6 +326,7 @@ export function migratePreviewTabsForProfile(oldProfile: string, newProfile: str
     return
   }
 
+  const originChanged = updatePreviewShareOrigins(from, to)
   const moved = tabsByProfile[from]
 
   if (moved) {
@@ -313,8 +345,8 @@ export function migratePreviewTabsForProfile(oldProfile: string, newProfile: str
 
   persistTabs()
 
-  if (wasInView) {
-    $previewTabs.set(tabsByProfile[to] ?? [])
+  if (wasInView || originChanged) {
+    $previewTabs.set(tabsByProfile[viewKey] ?? [])
   }
 }
 

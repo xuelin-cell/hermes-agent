@@ -15,6 +15,8 @@ interface DriveFolderPickerProps {
   path: DriveFolderLocation[] | null
   items: DriveAsset[]
   complete: boolean
+  emptyHint?: string
+  showPartialHint?: boolean
   disabled: boolean
   onNavigate: (id: string) => void
 }
@@ -28,6 +30,8 @@ export function DriveFolderPicker({
   path,
   items,
   complete,
+  emptyHint,
+  showPartialHint = true,
   disabled,
   onNavigate
 }: DriveFolderPickerProps) {
@@ -63,13 +67,13 @@ export function DriveFolderPicker({
         </Button>
       )}
       <div aria-label={copy.destination} className="min-h-0 flex-1 overflow-y-auto" role="region">
-        {!complete && <p className="px-3 py-4 text-center text-xs text-muted-foreground">{copy.partialHint}</p>}
+        {!complete && showPartialHint && <p className="px-3 py-4 text-center text-xs text-muted-foreground">{copy.partialHint}</p>}
         {path === null ? (
           <p className="px-3 py-4 text-center text-xs text-muted-foreground" role="alert">
             {copy.loadFailed}
           </p>
         ) : !folders.length && complete ? (
-          <p className="px-3 py-8 text-center text-xs text-muted-foreground">{copy.noSubfolders}</p>
+          <p className="px-3 py-8 text-center text-xs text-muted-foreground">{emptyHint || copy.noSubfolders}</p>
         ) : (
           rows.map(folder => (
             <Button

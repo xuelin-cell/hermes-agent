@@ -1,6 +1,7 @@
 import { useStore } from '@nanostores/react'
 
 import { desktopFsCacheKey, readDesktopFileDataUrl, readDesktopFileText } from '@/lib/desktop-fs'
+import { assertDesktopPreviewFileOwner, isDesktopPreviewFile } from '@/lib/desktop-preview-files'
 import { dataUrlToBlob } from '@/lib/embedded-images'
 import { downloadGatewayFileWithFeedback } from '@/lib/media'
 import { revealFile } from '@/store/file-actions'
@@ -42,7 +43,7 @@ export async function readPreviewBytes(path: string): Promise<ArrayBuffer> {
   }
 }
 
-/** 本机才请求受限转换；连接变化或未知异常不把旧产物及内部错误交给显示器。signal 取消时通知主进程跳过排队中的转换。 */
+/** 原文件按读取归属请求现有转换；连接变化或未知异常不把旧产物交给显示器，取消时跳过排队转换。 */
 export async function readOfficePreviewPdf(path: string, signal?: AbortSignal): Promise<Uint8Array> {
   const desktop = window.hermesDesktop
   const requestId = crypto.randomUUID()
@@ -51,8 +52,9 @@ export async function readOfficePreviewPdf(path: string, signal?: AbortSignal): 
 
   try {
     const owner = desktopFsCacheKey()
+    assertDesktopPreviewFileOwner(path)
 
-    if ($connection.get()?.mode === 'remote' || !desktop?.convertOfficePreview) {
+    if (($connection.get()?.mode === 'remote' && !isDesktopPreviewFile(path)) || !desktop?.convertOfficePreview) {
       throw { code: 'unavailable' }
     }
 
@@ -100,7 +102,7 @@ export async function readPreviewText(path: string) {
 export function usePreviewSource(target: PreviewTarget) {
   const connection = useStore($connection)
   const path = filePathForTarget(target)
-  const remote = connection?.mode === 'remote'
+  const remote = connection?.mode === 'remote' && !isDesktopPreviewFile(path)
 
   return {
     exit: remote ? ('download' as const) : ('reveal' as const),

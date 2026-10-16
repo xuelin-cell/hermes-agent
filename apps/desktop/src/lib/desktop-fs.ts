@@ -6,6 +6,7 @@ import type {
   HermesSelectPathsOptions
 } from '@/global'
 import { translateNow } from '@/i18n'
+import { assertDesktopPreviewFileOwner, isDesktopPreviewFile } from '@/lib/desktop-preview-files'
 import { $connection } from '@/store/session'
 
 export interface DesktopFsRemotePicker {
@@ -81,7 +82,9 @@ export async function readDesktopDir(path: string): Promise<HermesReadDirResult>
 }
 
 export async function readDesktopFileText(path: string): Promise<HermesReadFileTextResult> {
-  if (!isDesktopFsRemoteMode()) {
+  assertDesktopPreviewFileOwner(path)
+
+  if (!isDesktopFsRemoteMode() || isDesktopPreviewFile(path)) {
     return bridge().readFileText(path)
   }
 
@@ -117,7 +120,9 @@ export async function createRemoteDir(path: string): Promise<string> {
 }
 
 export async function readDesktopFileDataUrl(path: string): Promise<string> {
-  if (!isDesktopFsRemoteMode()) {
+  assertDesktopPreviewFileOwner(path)
+
+  if (!isDesktopFsRemoteMode() || isDesktopPreviewFile(path)) {
     return bridge().readFileDataUrl(path)
   }
 
@@ -150,6 +155,8 @@ export async function readDesktopFileDataUrlLocalFirst(path: string): Promise<st
 }
 
 export async function desktopGitRoot(path: string): Promise<string | null> {
+  if (isDesktopPreviewFile(path)) { return null }
+
   const desktop = bridge()
 
   if (!isDesktopFsRemoteMode()) {

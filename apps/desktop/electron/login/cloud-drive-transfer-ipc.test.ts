@@ -15,6 +15,7 @@ const { handle, fromWebContents, showOpenDialog, showSaveDialog } = vi.hoisted((
 }))
 
 vi.mock('electron', () => ({
+  app: { once: vi.fn() },
   ipcMain: { handle },
   BrowserWindow: { fromWebContents },
   dialog: { showOpenDialog, showSaveDialog }

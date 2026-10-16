@@ -55,7 +55,7 @@ export interface CloudDriveTransferFileResult {
 export type CloudDriveTransferResult = (
   | CloudDriveFailure
   | { status: 'cancelled' }
-  | { status: 'succeeded'; name: string; preview?: { dataUrl: string; kind: 'image' | 'pdf' | 'text' } }
+  | { status: 'succeeded'; name: string; preview?: { path: string; kind: 'file' } }
 ) & { files?: CloudDriveTransferFileResult[] }
 
 /** 主进程和页面共用读操作分类，POST 的查询接口不应被当作写入。 */

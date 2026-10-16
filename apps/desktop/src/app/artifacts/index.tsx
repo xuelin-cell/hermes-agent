@@ -1,3 +1,4 @@
+import { useStore } from '@nanostores/react'
 import type * as React from 'react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
@@ -36,6 +37,7 @@ import { normalize } from '@/lib/text'
 import { fmtDayTime } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { notify, notifyError } from '@/store/notifications'
+import { $connection } from '@/store/session'
 
 import { useRefreshHotkey } from '../hooks/use-refresh-hotkey'
 import { useRouteEnumParam } from '../hooks/use-route-enum-param'
@@ -52,6 +54,7 @@ import {
   loadArtifactsForSessions
 } from './artifact-utils'
 import { CloudDriveTab } from './cloud-drive-tab'
+import { LocalArtifactLibrary } from './local-artifact-library'
 
 function formatArtifactTime(timestamp: number): string {
   return fmtDayTime.format(new Date(timestamp))
@@ -422,6 +425,7 @@ function LocalArtifactsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...
 }
 
 export function ArtifactsView(props: ArtifactsViewProps) {
+  const connection = useStore($connection)
   const navigate = useNavigate()
   const { t } = useI18n()
   // Browser build: opens on the instance's artifacts, the cloud drive is not connected yet.
@@ -456,7 +460,13 @@ export function ArtifactsView(props: ArtifactsViewProps) {
         </button>
       </div>
       <div className="min-h-0 flex-1">
-        {libraryTab === 'cloud' ? <CloudDriveTab onDraftReady={navigate} /> : <LocalArtifactsView {...props} />}
+        {libraryTab === 'cloud' ? (
+          <CloudDriveTab onDraftReady={navigate} />
+        ) : !isBrowserShell() && connection?.mode === 'local' ? (
+          <LocalArtifactLibrary />
+        ) : (
+          <LocalArtifactsView {...props} />
+        )}
       </div>
     </section>
   )

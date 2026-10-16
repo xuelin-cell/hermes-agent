@@ -77,6 +77,12 @@ export const en: Translations = {
     permanentDeleteHint: 'Permanently delete this item? It cannot be recovered. Deleting a folder also permanently deletes its contents.',
     emptyRecycleHint: 'Permanently delete all files and folders in your personal cloud drive recycle bin? This cannot be undone.',
     filter: 'File type',
+    fileName: 'File name',
+    fileSize: 'Size',
+    modifiedTime: 'Modified time',
+    sortAscending: 'Ascending',
+    sortDefault: 'Default order',
+    sortDescending: 'Descending',
     filterAll: 'All',
     filterFiles: 'Files',
     filterFolders: 'Folders',
@@ -100,6 +106,7 @@ export const en: Translations = {
     moveHint: count => `Choose a destination for ${count} items.`,
     parentFolder: 'Parent folder',
     noSubfolders: 'No subfolders. You can move items here.',
+    noUploadSubfolders: 'No subfolders. You can upload files here.',
     /** 明确展示当前确认操作的目标目录。 */
     destinationIs: name => `Destination: ${name}`,
     breadcrumb: 'Folder location',
@@ -136,7 +143,7 @@ export const en: Translations = {
     transferring: 'Transferring…',
     transferFailed: 'Transfer incomplete. Check your network, login and file permissions before retrying.',
     previewUnsupported: 'Cannot preview this format. Download the file to open it.',
-    previewTooLarge: 'The file or converted PDF exceeds 16 MiB. Download the original file to open it.',
+    previewTooLarge: 'Files larger than 20 MB cannot be previewed. Download it to open.',
     uploaded: 'Saved to cloud drive',
     downloaded: 'Saved to this device',
     move: 'Move',
@@ -3723,6 +3730,56 @@ export const en: Translations = {
     }
   },
 
+  localArtifacts: {
+    categories: {
+      all: 'All types',
+      document: 'Documents',
+      spreadsheet: 'Spreadsheets',
+      presentation: 'Presentations',
+      pdf: 'PDF',
+      image: 'Images',
+      video: 'Video',
+      audio: 'Audio',
+      website: 'Websites',
+      markdown: 'Markdown',
+      code: 'Code',
+      other: 'Other'
+    },
+    filterType: 'Filter by type',
+    myFavorites: 'My favorites',
+    favorite: 'Favorite',
+    unfavorite: 'Remove favorite',
+    favorited: 'Favorited',
+    favoriteFailed: 'Could not save favorites. Try again.',
+    search: 'Search files or conversations',
+    addToChat: 'Add to new conversation',
+    attachFailed: 'Could not add the file. Check that it still exists and try again.',
+    fileUnavailable: 'File is missing or inaccessible. Refresh and try again.',
+    uploaded: 'Uploaded to cloud drive',
+    more: 'More actions',
+    share: 'Share',
+    openChat: 'View conversation',
+    other: 'File',
+    archived: 'Archived',
+    untitled: 'Untitled conversation',
+    empty: 'No local artifacts yet',
+    noFavorites: 'No favorite files yet',
+    noResults: 'No matching results',
+    loading: 'Loading artifacts',
+    showMore: 'Show more',
+    /** 格式化会话和文件总数。 */
+    total: (tasks, files) => `${tasks} conversations · ${files} files`,
+    /** 格式化单个会话的产物数量。 */
+    fileCount: count => `${count} files`,
+    /** 显示扫描进度，不伪造百分比。 */
+    scanning: (processed, total) => `Loading artifacts ${processed} / ${total}`,
+    /** 说明未完成的来源读取数量。 */
+    partialLoad: count => `Could not load ${count} conversations or directories. Some artifacts may be missing.`,
+    /** 为展开按钮提供来源会话名称。 */
+    expand: title => `Expand files in “${title}”`,
+    /** 为收起按钮提供来源会话名称。 */
+    collapse: title => `Collapse files in “${title}”`
+  },
   artifacts: {
     search: 'Search artifacts...',
     refresh: 'Refresh artifacts',
@@ -3773,6 +3830,7 @@ export const en: Translations = {
     viewShared: 'View shared page',
     copyShared: 'Copy shared link',
     revokeShared: 'Revoke shared link',
+    publishSucceeded: 'Published successfully',
     shareFailed: 'Could not share artifact',
     revokeFailed: 'Could not revoke link',
     previewNotReady: 'Markdown preview is not ready.',

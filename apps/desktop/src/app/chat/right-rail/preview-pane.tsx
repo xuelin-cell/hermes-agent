@@ -37,6 +37,7 @@ import {
 } from '@/lib/preview-annotate'
 import { admitPreviewExternalUrl, PREVIEW_EXTERNAL_CHANNEL } from '@/lib/preview-external'
 import { reachablePreviewUrl } from '@/lib/preview-reach'
+import { previewShareSource } from '@/lib/preview-share-source'
 import { rafCoalesce } from '@/lib/raf-coalesce'
 import { cn } from '@/lib/utils'
 import { notify, notifyError } from '@/store/notifications'
@@ -294,7 +295,6 @@ export function PreviewPane({
   const activeSessionId = useStore($activeSessionId)
   const currentCwd = useStore($currentCwd)
   const selectedStoredSessionId = useStore($selectedStoredSessionId)
-  const shareSessionId = selectedStoredSessionId || activeSessionId
   const [currentUrl, setCurrentUrl] = useState(target.url)
   const liveUrlRef = useRef(currentUrl)
   liveUrlRef.current = currentUrl
@@ -329,7 +329,12 @@ export function PreviewPane({
     target.previewKind === 'html' &&
     (!target.transient || Boolean(target.dataUrl))
 
-  const shareFilePath = /^file:/i.test(currentUrl) ? artifactShareFilePath(currentUrl, currentCwd) : null
+  const shareSource = previewShareSource(target, connection, currentUrl)
+  const shareSessionId = shareSource === undefined ? selectedStoredSessionId || activeSessionId : shareSource?.sessionId
+
+  const shareFilePath = /^file:/i.test(currentUrl)
+    ? shareSource === undefined ? artifactShareFilePath(currentUrl, currentCwd) : shareSource?.path
+    : null
 
   const shareableRenderedHtml = isWebPreview && connection?.mode === 'local' && shareSessionId &&
     shareFilePath && /\.html?$/i.test(shareFilePath) && window.hermesDesktop?.artifactShare
