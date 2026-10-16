@@ -31,6 +31,7 @@ import { ArchiveOff } from '@/lib/icons'
 import { isSubmitEnter } from '@/lib/ime'
 import { PROFILE_SWATCHES } from '@/lib/profile-color'
 import { exportSession } from '@/lib/session-export'
+import { openConversationShare } from '@/store/conversation-share'
 import { activeGateway } from '@/store/gateway'
 import { notify, notifyError } from '@/store/notifications'
 import {
@@ -304,6 +305,17 @@ function useSessionActions({
   // disabled) for a session whose title is not its name — a canonical Bot
   // Chat — so the menu never offers a verb whose result the user cannot see.
   const identityItems: ActionItemSpec[] = [
+    spec({
+      disabled: !sessionId,
+      icon: 'share',
+      label: t.conversationShare.sessionShare,
+      onSelect: () => {
+        try {
+          suppressCloseFocusRef.current = true
+          openConversationShare(sessionId)
+        } catch (error) {notifyError(error, t.conversationShare.unavailable)}
+      }
+    }),
     ...(renameable
       ? [
           spec({

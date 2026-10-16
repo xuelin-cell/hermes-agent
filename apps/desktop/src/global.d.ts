@@ -1,5 +1,6 @@
 import type { GatewayWsUrlResult, OfficePreviewResult } from '@hermes/shared'
 import type { ArtifactShareEligibility, ArtifactShareSource } from '@hermes/shared/artifact-share'
+import type { ConversationShareApi } from '@hermes/shared/conversation-share'
 import type { HermesSkin } from '@hermes/shared/skin'
 import type { TranslucencyState } from '@hermes/shared/translucency'
 
@@ -31,6 +32,7 @@ declare global {
     hermesDesktop: {
       /** 只读本次已准备账号的脱敏信息，运行中到期仍返回原期限。 */
       getMaasAccount: () => Promise<LoginAccount | null>
+      conversationShare: ConversationShareApi
       artifactShare: {
         inspect: (key: string) => Promise<{ key: string; shareId: string; url: string; title: string; hash: string; version: number; updatedAt: string } | null>
         publish: (input: { key: string; html: string; title: string; source: ArtifactShareSource }) => Promise<{ key: string; shareId: string; url: string; title: string; hash: string; version: number; updatedAt: string }>

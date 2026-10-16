@@ -59,6 +59,31 @@ interface AuxTaskCopy {
 }
 
 export interface Translations {
+  conversationShare: {
+    sessionShare: string
+    responseShare: string
+    disclosure: string
+    includeProcess: string
+    readonly: string
+    user: string
+    assistant: string
+    process: string
+    resourceError: string
+    unavailable: string
+    preview: string
+    preparing: string
+    retry: string
+    working: string
+    publish: string
+    history: string
+    empty: string
+    pending: string
+    published: string
+    revoked: string
+    copyLink: string
+    openLink: string
+    revoke: string
+  }
   cloudLibrary: {
     personal: string
     local: string

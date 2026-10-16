@@ -4,6 +4,32 @@ import { defineLocale } from './define-locale'
 import { introJa } from './intro-ja'
 
 export const ja = defineLocale({
+  conversationShare: {
+    sessionShare: '会話を共有',
+    responseShare: '回答を共有',
+    disclosure:
+      'リンクを知る人は取り消しまで閲覧できます。添付ファイルは含まれません。選択した思考過程は折りたたんでも公開されます。公開前に機密情報を確認してください。',
+    includeProcess: '閲覧可能な思考過程とツール名を含める',
+    readonly: '読み取り専用の会話',
+    user: 'あなた',
+    assistant: 'アシスタント',
+    process: '思考過程',
+    resourceError: 'ページ全体を準備できませんでした。公開していません。',
+    unavailable: '共有できません。バックエンドの共有プラグインを確認してください。',
+    preview: '共有ページのプレビュー',
+    preparing: '全体を準備中…',
+    retry: '再準備',
+    working: '処理中…',
+    publish: '公開',
+    history: 'この端末での共有履歴',
+    empty: '共有履歴はありません',
+    pending: 'アップロード確認待ち',
+    published: '公開済み',
+    revoked: '取り消し済み',
+    copyLink: '共有リンクをコピー',
+    openLink: '共有リンクを開く',
+    revoke: '共有を取り消す'
+  },
   cloudLibrary: {
     personal: '個人クラウドドライブ',
     local: 'ローカル成果物',

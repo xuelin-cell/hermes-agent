@@ -1,0 +1,8 @@
+{
+  "name": "conversation-share",
+  "label": "Conversation sharing",
+  "description": "Read-only verified conversation snapshots for the desktop",
+  "version": "1.0.0",
+  "tab": { "hidden": true },
+  "api": "plugin_api.py"
+}

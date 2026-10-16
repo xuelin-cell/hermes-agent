@@ -34,6 +34,7 @@ import { isApprovalActivity, isCurrentTurnMessage } from '@/components/assistant
 import { TooltipIconButton } from '@/components/assistant-ui/tooltip-icon-button'
 import { formatElapsed } from '@/components/chat/activity-timer'
 import { PreviewAttachment } from '@/components/chat/preview-attachment'
+import { ConversationReplyShareButton } from '@/components/conversation-share/reply-button'
 import { Codicon } from '@/components/ui/codicon'
 import { CopyButton } from '@/components/ui/copy-button'
 import { useI18n } from '@/i18n'
@@ -1020,6 +1021,7 @@ const AssistantActionBar: FC<MessageActionProps & { durationS?: number }> = ({
             <GitForkIcon className="size-3.5" />
           </TooltipIconButton>
         )}
+        <ConversationReplyShareButton messageId={messageId} />
         <CopyButton appearance="icon" buttonSize="icon" label={copy.copy} text={getMessageText} />
         {fullResponseAvailable && (
           <CopyButton appearance="icon" buttonSize="icon" label={copy.copyFullResponse} text={getFullResponseText} />

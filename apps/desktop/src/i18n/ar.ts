@@ -1,6 +1,32 @@
 import { defineLocale } from './define-locale'
 
 export const ar = defineLocale({
+  conversationShare: {
+    sessionShare: 'مشاركة المحادثة',
+    responseShare: 'مشاركة الرد',
+    disclosure:
+      'يمكن لأي شخص لديه الرابط قراءة هذه النسخة حتى إلغائها. تُستبعد المرفقات. يظل التفكير المحدد علنيًا حتى عند طيه. راجع المعلومات الحساسة قبل النشر.',
+    includeProcess: 'تضمين التفكير المتاح وأسماء الأدوات',
+    readonly: 'نسخة محادثة للقراءة فقط',
+    user: 'أنت',
+    assistant: 'المساعد',
+    process: 'التفكير',
+    resourceError: 'تعذر إعداد الصفحة كاملة. لم يُنشر شيء.',
+    unavailable: 'المشاركة غير متاحة. تحقق من إضافة المشاركة على الخادم.',
+    preview: 'معاينة الصفحة العامة',
+    preparing: 'جارٍ إعداد النسخة الكاملة…',
+    retry: 'الإعداد مجددًا',
+    working: 'جارٍ التنفيذ…',
+    publish: 'نشر النسخة',
+    history: 'مشاركات هذه المحادثة على هذا الجهاز',
+    empty: 'لا توجد مشاركات بعد',
+    pending: 'بانتظار تأكيد الرفع',
+    published: 'منشور',
+    revoked: 'ملغى',
+    copyLink: 'نسخ رابط المشاركة',
+    openLink: 'فتح رابط المشاركة',
+    revoke: 'إلغاء المشاركة'
+  },
   cloudLibrary: {
     personal: 'القرص السحابي الشخصي',
     local: 'الملفات المحلية',

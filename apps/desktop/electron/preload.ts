@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webFrame, webUtils } from 'electron'
 
 import type { ArtifactShareSource } from '../../shared/src/artifact-share'
+import type { ConversationShareApi } from '../../shared/src/conversation-share'
 
 import type { DesktopProfileRoute } from './desktop-profile'
 import type { HudModifierApi, HudModifierStatus } from './hud-modifier-types'
@@ -42,6 +43,14 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     stop: id => ipcRenderer.invoke(ASR_CHANNEL, { operation: 'stop', id }),
     cancel: id => ipcRenderer.invoke(ASR_CHANNEL, { operation: 'cancel', id })
   },
+  conversationShare: {
+    prepare: (owner, request) => ipcRenderer.invoke('hermes:conversation-share:prepare', owner, request),
+    publish: (ticket, html) => ipcRenderer.invoke('hermes:conversation-share:publish', ticket, html),
+    image: (ticket, reference) => ipcRenderer.invoke('hermes:conversation-share:image', ticket, reference),
+    cancel: ticket => ipcRenderer.invoke('hermes:conversation-share:cancel', ticket),
+    list: (owner, sessionId) => ipcRenderer.invoke('hermes:conversation-share:list', owner, sessionId),
+    revoke: key => ipcRenderer.invoke('hermes:conversation-share:revoke', key)
+  } satisfies ConversationShareApi,
   artifactShare: {
     inspect: (key: string) => ipcRenderer.invoke('hermes:artifact-share:inspect', key),
     publish: (input: { key: string; html: string; title: string; source: ArtifactShareSource }) => ipcRenderer.invoke('hermes:artifact-share:publish', input),

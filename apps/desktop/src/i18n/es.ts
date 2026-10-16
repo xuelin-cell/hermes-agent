@@ -4,6 +4,32 @@ import { defineLocale, type TranslationOverrides } from './define-locale'
 import { introEs } from './intro-es'
 
 export const esOverrides = {
+  conversationShare: {
+    sessionShare: 'Compartir conversación',
+    responseShare: 'Compartir respuesta',
+    disclosure:
+      'Cualquier persona con el enlace puede leer esta copia hasta que la revoques. Se excluyen los adjuntos. Los procesos seleccionados son públicos incluso plegados. Revisa la información sensible antes de publicar.',
+    includeProcess: 'Incluir razonamiento visible y nombres de herramientas',
+    readonly: 'Copia de solo lectura',
+    user: 'Tú',
+    assistant: 'Asistente',
+    process: 'Razonamiento',
+    resourceError: 'No se pudo preparar la página completa. No se publicó nada.',
+    unavailable: 'No se puede compartir. Comprueba el complemento del servidor.',
+    preview: 'Vista previa de la página pública',
+    preparing: 'Preparando la copia completa…',
+    retry: 'Preparar de nuevo',
+    working: 'Procesando…',
+    publish: 'Publicar copia',
+    history: 'Enlaces de esta conversación en este dispositivo',
+    empty: 'Sin enlaces compartidos',
+    pending: 'Carga pendiente de confirmación',
+    published: 'Publicado',
+    revoked: 'Revocado',
+    copyLink: 'Copiar enlace compartido',
+    openLink: 'Abrir enlace compartido',
+    revoke: 'Revocar enlace'
+  },
   cloudLibrary: {
     personal: 'Almacenamiento personal',
     local: 'Archivos locales',

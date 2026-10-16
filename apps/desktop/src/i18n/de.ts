@@ -4,6 +4,32 @@ import { defineLocale, type TranslationOverrides } from './define-locale'
 import { introDe } from './intro-de'
 
 export const deOverrides = {
+  conversationShare: {
+    sessionShare: 'Unterhaltung teilen',
+    responseShare: 'Antwort teilen',
+    disclosure:
+      'Alle mit dem Link können den Stand bis zum Widerruf lesen. Anhänge sind ausgeschlossen. Ausgewählte Denkprozesse sind auch eingeklappt öffentlich. Vor der Veröffentlichung auf vertrauliche Daten prüfen.',
+    includeProcess: 'Sichtbare Denkprozesse und Werkzeugnamen einschließen',
+    readonly: 'Schreibgeschützte Unterhaltung',
+    user: 'Du',
+    assistant: 'Assistent',
+    process: 'Denkprozess',
+    resourceError: 'Die vollständige Seite konnte nicht erstellt werden. Nichts wurde veröffentlicht.',
+    unavailable: 'Teilen nicht verfügbar. Bitte das Backend-Plugin prüfen.',
+    preview: 'Vorschau der öffentlichen Seite',
+    preparing: 'Vollständigen Stand vorbereiten…',
+    retry: 'Erneut vorbereiten',
+    working: 'Wird bearbeitet…',
+    publish: 'Stand veröffentlichen',
+    history: 'Freigaben dieser Unterhaltung auf diesem Gerät',
+    empty: 'Noch keine Freigaben',
+    pending: 'Upload-Bestätigung ausstehend',
+    published: 'Veröffentlicht',
+    revoked: 'Widerrufen',
+    copyLink: 'Freigabelink kopieren',
+    openLink: 'Freigabelink öffnen',
+    revoke: 'Freigabe widerrufen'
+  },
   cloudLibrary: {
     personal: 'Persönlicher Cloud-Speicher',
     local: 'Lokale Ergebnisse',

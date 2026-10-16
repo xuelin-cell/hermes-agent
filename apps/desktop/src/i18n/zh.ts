@@ -4,6 +4,32 @@ import { defineLocale } from './define-locale'
 import { introZh } from './intro-zh'
 
 export const zh = defineLocale({
+  conversationShare: {
+    sessionShare: '分享会话',
+    responseShare: '分享回复',
+    disclosure:
+      '持有链接的人均可查看此快照，直到你主动撤销。附件不公开；勾选的过程内容即使折叠也会公开。发布前请检查预览中的敏感信息。',
+    includeProcess: '包含可查看的思考过程与工具名称',
+    readonly: '只读会话快照',
+    user: '你',
+    assistant: '助手',
+    process: '思考过程',
+    resourceError: '无法准备完整页面，未发布任何内容。',
+    unavailable: '分享不可用，请确认后端已安装会话分享插件。',
+    preview: '公网分享预览',
+    preparing: '正在准备完整快照…',
+    retry: '重新准备',
+    working: '正在处理…',
+    publish: '发布快照',
+    history: '此设备上本会话的分享',
+    empty: '暂无分享记录',
+    pending: '上传结果待确认',
+    published: '已发布',
+    revoked: '已撤销',
+    copyLink: '复制分享链接',
+    openLink: '打开分享链接',
+    revoke: '撤销分享'
+  },
   cloudLibrary: {
     personal: '个人云盘',
     local: '本地产物',

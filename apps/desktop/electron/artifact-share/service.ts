@@ -3,10 +3,10 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 
 import type { ArtifactShareSource } from '../../../shared/src/artifact-share'
+import { deleteSharedPage, uploadShareHtml } from '../share-gateway'
 
 import { ArtifactOriginStore, type OriginEvent } from './origins'
 
-const GATEWAY = 'https://maas.ai-yuanjing.com/app/gateway'
 const MAX_BYTES = 2 * 1024 * 1024
 const SHARE_ID = /^[A-Za-z0-9_-]{16,64}$/
 
@@ -179,25 +179,10 @@ export class ArtifactShareService {
         await fs.writeFile(pending, JSON.stringify({ key: input.key, shareId }), { mode: 0o600 })
       }
 
-      const response = await (this.deps.request ?? fetch)(`${GATEWAY}/uniclaw-shares/${shareId}.html`, {
-        method: 'PUT',
-        headers: { Authorization: `Bearer ${identity.token}`, 'Content-Type': 'text/html' },
-        body: bytes,
-        signal: AbortSignal.timeout(30_000)
-      })
-
-      if (!response.ok) {throw new Error(`分享服务返回 ${response.status}，请稍后重试。`)}
-      const payload: unknown = await response.json()
-
-      if (!payload || typeof payload !== 'object') {throw new Error('分享服务返回无效数据。')}
-      const result = payload as Record<string, unknown>
-
-      if (result.shareId !== shareId || typeof result.url !== 'string' || !result.url.startsWith('https://')) {
-        throw new Error('分享服务返回无效链接。')
-      }
+      const url = await uploadShareHtml(this.deps.request ?? fetch, identity.token, shareId, bytes)
 
       const record: ShareRecord = {
-        key: input.key, shareId, url: result.url, title: input.title.slice(0, 200), hash,
+        key: input.key, shareId, url, title: input.title.slice(0, 200), hash,
         version: (existing?.version ?? 0) + 1, updatedAt: new Date().toISOString()
       }
 
@@ -220,11 +205,7 @@ export class ArtifactShareService {
 
       if (!record) {return}
 
-      const response = await (this.deps.request ?? fetch)(`${GATEWAY}/uniclaw-shares/${record.shareId}.html`, {
-        method: 'DELETE', headers: { Authorization: `Bearer ${identity.token}` }, signal: AbortSignal.timeout(30_000)
-      })
-
-      if (response.status !== 204) {throw new Error(`取消分享失败：服务返回 ${response.status}。`)}
+      await deleteSharedPage(this.deps.request ?? fetch, identity.token, record.shareId)
       await fs.rm(this.recordPath(identity, key))
       this.deps.changed?.(key)
     })

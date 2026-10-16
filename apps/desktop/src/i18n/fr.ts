@@ -4,6 +4,32 @@ import { defineLocale, type TranslationOverrides } from './define-locale'
 import { introFr } from './intro-fr'
 
 export const frOverrides = {
+  conversationShare: {
+    sessionShare: 'Partager la conversation',
+    responseShare: 'Partager la réponse',
+    disclosure:
+      'Toute personne disposant du lien peut lire cet instantané jusqu’à sa révocation. Les pièces jointes sont exclues. Les étapes sélectionnées restent publiques même repliées. Vérifiez les informations sensibles avant publication.',
+    includeProcess: 'Inclure les raisonnements visibles et les noms des outils',
+    readonly: 'Instantané en lecture seule',
+    user: 'Vous',
+    assistant: 'Assistant',
+    process: 'Raisonnement',
+    resourceError: 'La page complète n’a pas pu être préparée. Rien n’a été publié.',
+    unavailable: 'Partage indisponible. Vérifiez le plugin du serveur.',
+    preview: 'Aperçu de la page publique',
+    preparing: 'Préparation de l’instantané complet…',
+    retry: 'Préparer à nouveau',
+    working: 'Traitement…',
+    publish: 'Publier l’instantané',
+    history: 'Partages de cette conversation sur cet appareil',
+    empty: 'Aucun partage',
+    pending: 'En attente de confirmation de l’envoi',
+    published: 'Publié',
+    revoked: 'Révoqué',
+    copyLink: 'Copier le lien de partage',
+    openLink: 'Ouvrir le lien de partage',
+    revoke: 'Révoquer le partage'
+  },
   cloudLibrary: {
     personal: 'Espace cloud personnel',
     local: 'Résultats locaux',

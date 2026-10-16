@@ -192,6 +192,7 @@ import {
 } from './connection-registry'
 import type { RosterProfileMetadata } from './connection-registry'
 import { liveWindowState, overlayWindowState } from './connection-window-state'
+import { installConversationShareIpc } from './conversation-share/ipc'
 import { describeCrashReason, installCrashForensics } from './crash-forensics'
 import { adoptServedDashboardToken, resolveServedDashboardToken } from './dashboard-token'
 import { loadOrCreateInstallationId, sshOwnershipId } from './desktop-installation'
@@ -17152,10 +17153,25 @@ async function artifactShareBridgeEnv(): Promise<ArtifactShareBridge['env']> {
 function assertArtifactShareWindow(event: Electron.IpcMainInvokeEvent): void {
   const win = BrowserWindow.fromWebContents(event.sender)
 
-  if (!win || !artifactShareWindows.has(win) || win.isDestroyed() || event.sender !== win.webContents) {
+  if (!win || !artifactShareWindows.has(win) || win.isDestroyed() || event.sender !== win.webContents || event.senderFrame !== win.webContents.mainFrame) {
     throw new Error('当前窗口没有产物分享权限。')
   }
 }
+
+installConversationShareIpc(ipcMain, assertArtifactShareWindow, {
+  identity: () => {
+    const identity = currentDesktopIdentity()
+    const account = currentDesktopLocalContext()
+
+    return identity && account ? { accountId: account.id, home: account.home, token: identity.token } : null
+  },
+  readImage: (owner, sessionId, filePath) => handleHermesApiRequest({
+    ...owner, method: 'GET', path: `/api/fs/read-data-url?${new URLSearchParams({ path: filePath, session_id: sessionId })}`, timeoutMs: 30_000
+  }),
+  readSnapshot: (owner, request) => handleHermesApiRequest({
+    ...owner, method: 'POST', path: '/api/plugins/conversation-share/snapshot', body: request, timeoutMs: 60_000
+  })
+})
 
 ipcMain.handle('hermes:artifact-share:inspect', async (event, key) => {
   assertArtifactShareWindow(event)

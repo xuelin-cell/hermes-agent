@@ -2,6 +2,8 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { atom } from 'nanostores'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { openConversationShare } from '@/store/conversation-share'
+
 import { SessionActionsMenu, SessionContextMenu } from './session-actions-menu'
 
 afterEach(cleanup)
@@ -34,6 +36,7 @@ vi.mock('@/i18n', () => ({
         save: 'Save'
       },
       errors: { genericFailure: 'Something went wrong' },
+      conversationShare: { sessionShare: 'Share conversation', unavailable: 'Sharing unavailable' },
       sidebar: {
         projects: {
           menuAppearance: 'Appearance',
@@ -71,6 +74,7 @@ vi.mock('@/i18n', () => ({
     }
   })
 }))
+vi.mock('@/store/conversation-share', () => ({ openConversationShare: vi.fn() }))
 vi.mock('@/lib/haptics', () => ({ triggerHaptic: vi.fn() }))
 vi.mock('@/lib/profile-color', () => ({ PROFILE_SWATCHES: [] }))
 vi.mock('@/lib/session-export', () => ({ exportSession: vi.fn() }))
@@ -124,6 +128,16 @@ function renderMenu() {
 }
 
 describe('SessionActionsMenu', () => {
+  it('从会话菜单将指定会话交给共用分享窗口', async () => {
+    renderMenu()
+    const trigger = screen.getByRole('button', { name: 'Session actions' })
+    fireEvent.pointerDown(trigger, { button: 0, pointerType: 'mouse' })
+    fireEvent.pointerUp(trigger, { button: 0, pointerType: 'mouse' })
+    fireEvent.click(trigger)
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Share conversation' }))
+    expect(openConversationShare).toHaveBeenCalledWith('s1')
+  })
+
   it('opens the dropdown on click', async () => {
     renderMenu()
 

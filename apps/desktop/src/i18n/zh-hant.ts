@@ -23,6 +23,32 @@ export const zhHant = defineLocale({
       untested: '尚未測試連線'
     }
   },
+  conversationShare: {
+    sessionShare: '分享對話',
+    responseShare: '分享回覆',
+    disclosure:
+      '持有連結的人均可查看此快照，直到你主動撤銷。附件不公開；勾選的過程內容即使摺疊也會公開。發佈前請檢查預覽中的敏感資訊。',
+    includeProcess: '包含可查看的思考過程與工具名稱',
+    readonly: '唯讀對話快照',
+    user: '你',
+    assistant: '助理',
+    process: '思考過程',
+    resourceError: '無法準備完整頁面，未發佈任何內容。',
+    unavailable: '分享不可用，請確認後端已安裝對話分享外掛。',
+    preview: '公開分享預覽',
+    preparing: '正在準備完整快照…',
+    retry: '重新準備',
+    working: '正在處理…',
+    publish: '發佈快照',
+    history: '此裝置上本對話的分享',
+    empty: '暫無分享記錄',
+    pending: '上傳結果待確認',
+    published: '已發佈',
+    revoked: '已撤銷',
+    copyLink: '複製分享連結',
+    openLink: '開啟分享連結',
+    revoke: '撤銷分享'
+  },
   cloudLibrary: {
     personal: '個人雲端硬碟',
     local: '本機產物',

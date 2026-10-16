@@ -3,6 +3,32 @@ import { FIELD_DESCRIPTIONS, FIELD_LABELS } from '@/app/settings/constants'
 import type { Translations } from './types'
 
 export const en: Translations = {
+  conversationShare: {
+    sessionShare: 'Share conversation',
+    responseShare: 'Share response',
+    disclosure:
+      'Anyone with the link can read this snapshot until you revoke it. Attachments are excluded. Selected process content is public even when collapsed. Review the page for sensitive information before publishing.',
+    includeProcess: 'Include available reasoning and tool names',
+    readonly: 'Read-only conversation snapshot',
+    user: 'You',
+    assistant: 'Assistant',
+    process: 'Reasoning',
+    resourceError: 'The complete page could not be prepared. Nothing was published.',
+    unavailable: 'Sharing is unavailable. Check that the backend has the conversation sharing plugin.',
+    preview: 'Public page preview',
+    preparing: 'Preparing the complete snapshot…',
+    retry: 'Prepare again',
+    working: 'Working…',
+    publish: 'Publish snapshot',
+    history: 'Shares from this session on this device',
+    empty: 'No shares yet',
+    pending: 'Upload awaiting confirmation',
+    published: 'Published',
+    revoked: 'Revoked',
+    copyLink: 'Copy share link',
+    openLink: 'Open share link',
+    revoke: 'Revoke share'
+  },
   cloudLibrary: {
     personal: 'Personal drive',
     local: 'Local artifacts',
