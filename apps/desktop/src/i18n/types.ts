@@ -85,9 +85,105 @@ export interface Translations {
     revoke: string
   }
   cloudLibrary: {
+    transfers: string
+    clearFinished: string
+    stopTransfers: string
+    transferUploading: string
+    transferPreparingPreview: string
+    transferDownloading: string
+    transferVerifying: string
+    transferWaiting: string
+    transferNotStarted: string
+    transferCancelled: string
+    transferUploadStopped: string
+    transferUnknown: string
+    transferDownloadPartial: string
+    transferStopFailed: string
+    downloadSaved: (name: string) => string
+    uploadSaved: (name: string) => string
+    downloadsSaved: (saved: number, skipped: number) => string
+    transferErrors: Record<string, string>
+    emptyRecycle: string
+    permanentDelete: string
+    permanentDeleteHint: string
+    emptyRecycleHint: string
+    filter: string
+    filterAll: string
+    filterFiles: string
+    filterFolders: string
+    usageUnknown: string
+    usageLabel: string
+    usageRefreshFailed: string
+    selectAll: string
+    clearSelection: string
+    selectionActions: string
+    deleteSelectionTitle: string
+    usage: (used: string, total: string) => string
+    selectItem: (name: string) => string
+    selectedCount: (count: number) => string
+    deleteSelectionHint: (count: number) => string
+    deleteFileTitle: string
+    deleteFolderTitle: string
+    deleteHint: string
+    deleteFolderHint: string
+    moveTitle: string
+    moveHint: (count: number) => string
+    parentFolder: string
+    noSubfolders: string
+    destinationIs: (name: string) => string
+    breadcrumb: string
+    connecting: string
+    connectingHint: string
+    loading: string
+    loadFailed: string
+    emptyFolder: string
+    emptyHint: string
+    noResults: string
+    noResultsHint: string
+    partialHint: string
+    officePreviewUnavailable: string
+    officePreviewTimeout: string
+    officePreviewFailed: string
+    artifactSensitive: string
+    uploadArtifact: string
+    uploadHere: string
+    chooseUploadFolder: string
+    artifactRemote: string
+    artifactUnavailable: string
+    artifactChanged: string
+    artifactCloudUnavailable: string
+    addToDraft: string
+    draftAdded: string
+    draftRemote: string
+    draftChanged: string
+    draftNotReady: string
+    draftUnavailable: string
+    upload: string
+    transferring: string
+    transferFailed: string
+    previewUnsupported: string
+    previewTooLarge: string
+    uploaded: string
+    downloaded: string
+    move: string
+    moveHere: string
+    destination: string
+    recycle: string
+    restore: string
+    restoreHint: string
+    recycleFailed: string
+    recycleEmpty: string
+    operationUnknown: string
+    operationPartial: string
+    operationFailed: string
     personal: string
     local: string
     search: string
+    indexing: string
+    indexFailed: string
+    partialResults: string
+    capabilitiesUnavailable: string
+    loadMore: string
     createFolder: string
     refresh: string
     rename: string

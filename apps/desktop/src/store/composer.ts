@@ -61,6 +61,8 @@ export interface ComposerAttachment {
   label: string
   detail?: string
   refText?: string
+  /** 云盘卡片仅引用业务 ID；没有本机路径，不参加附件上传或本地预览。 */
+  cloudAssetId?: string
   /** Legacy/on-demand full source. New local image chips omit this and read
    * `path` only when the lightbox opens, avoiding retained multi-MB base64. */
   previewUrl?: string

@@ -53,9 +53,14 @@ function AttachmentPill({ attachment, onRemove }: { attachment: ComposerAttachme
   const isUploading = attachment.uploadState === 'uploading'
   const hasUploadError = attachment.uploadState === 'error'
 
-  const canPreview = attachment.kind !== 'folder' && attachment.kind !== 'terminal' && !isUploading
+  const canPreview =
+    !attachment.cloudAssetId && attachment.kind !== 'folder' && attachment.kind !== 'terminal' && !isUploading
 
-  const detail = attachment.detail && attachment.detail !== attachment.label ? attachment.detail : undefined
+  const detail = attachment.cloudAssetId
+    ? t.cloudLibrary.personal
+    : attachment.detail && attachment.detail !== attachment.label
+      ? attachment.detail
+      : undefined
 
   // Keep full image bytes out of composer state. New chips read their path only
   // when clicked; previewUrl remains a compatibility fallback for older drafts.
@@ -141,13 +146,19 @@ function AttachmentPill({ attachment, onRemove }: { attachment: ComposerAttachme
 
   return (
     <>
-      <Tip label={attachment.path || attachment.detail || attachment.label}>
-        <div className="group/attachment relative min-w-0 shrink-0">
+      <Tip
+        label={
+          attachment.cloudAssetId
+            ? `${t.cloudLibrary.personal} · ${attachment.label}`
+            : attachment.path || attachment.detail || attachment.label
+        }
+      >
+        <div className="group/attachment relative w-56 min-w-0 max-w-full shrink-0">
           <button
             aria-busy={isUploading || undefined}
             aria-label={canPreview ? c.previewLabel(attachment.label) : attachment.label}
             className={cn(
-              'flex max-w-56 items-center gap-2 rounded-2xl border bg-background/50 px-2 py-1.5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] transition-colors disabled:cursor-default',
+              'flex w-full items-center gap-2 rounded-2xl border bg-background/50 px-2 py-1.5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] transition-colors disabled:cursor-default',
               hasUploadError
                 ? 'border-destructive/45 hover:border-destructive/60'
                 : 'border-border/60 hover:border-primary/35 hover:bg-accent/45'

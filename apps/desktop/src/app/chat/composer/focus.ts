@@ -12,6 +12,7 @@
 
 import { isElementInHiddenPane, queryAllVisible, queryVisible } from '@/components/pane-shell/pane-visibility'
 import { $hoveredTreeGroup } from '@/components/pane-shell/tree/store'
+import type { ComposerAttachment } from '@/store/composer'
 
 import { $floatingComposerOwner } from './floating-state'
 import type { InlineRefInput } from './inline-refs'
@@ -414,12 +415,15 @@ export interface DraftRequestDetail {
   active?: boolean
   /** Set-draft payload; absent on read requests. */
   text?: string
+  /** 可选附件快照与正文一起写入同一个会话；省略时保留原附件。 */
+  attachments?: ComposerAttachment[]
   /** Stamped by the first owning surface so a second owner of the same id
    *  (the primary pane plus a keep-alive tile showing that session) skips it. */
   claimed?: boolean
 }
 
 interface DraftReplyDetail {
+  attachments?: ComposerAttachment[]
   ids?: string[]
   ok?: boolean
   text?: null | string
@@ -494,7 +498,7 @@ if (typeof window !== 'undefined') {
 export const requestComposerGetDraft = (
   ids: string[],
   opts?: { active?: boolean }
-): Promise<null | { text: null | string }> => {
+): Promise<null | { text: null | string; attachments?: ComposerAttachment[] }> => {
   const cleaned = [...new Set(ids.map(id => id?.trim()).filter(Boolean))] as string[]
   const active = opts?.active === true
   const token = ++draftToken
@@ -506,20 +510,28 @@ export const requestComposerGetDraft = (
     return Promise.resolve(null)
   }
 
-  return promise.then(reply => (reply ? { text: reply.text ?? '' } : null))
+  return promise.then(reply =>
+    reply ? { text: reply.text ?? '', ...(reply.attachments ? { attachments: reply.attachments } : {}) } : null
+  )
 }
 
 /** Replace a mounted composer's draft (the app's own paint path — the text
  *  re-renders through `renderComposerContents`, so `@`-ref / `/`-command
  *  tokens hydrate as chips exactly like official paste). Returns false when
  *  no mounted surface answers; never writes another session's composer. */
-export const requestComposerSetDraft = (ids: string[], text: string, opts?: { active?: boolean }): Promise<boolean> => {
+export const requestComposerSetDraft = (
+  ids: string[],
+  text: string,
+  opts?: { active?: boolean; attachments?: ComposerAttachment[] }
+): Promise<boolean> => {
   const cleaned = [...new Set(ids.map(id => id?.trim()).filter(Boolean))] as string[]
   const active = opts?.active === true
   const token = ++draftToken
 
   const promise =
-    cleaned.length || active ? requestDraftOnce('set', SET_DRAFT_EVENT, { active, ids: cleaned, text, token }) : null
+    cleaned.length || active
+      ? requestDraftOnce('set', SET_DRAFT_EVENT, { active, ids: cleaned, text, token, attachments: opts?.attachments })
+      : null
 
   return promise ? promise.then(reply => reply?.ok === true) : Promise.resolve(false)
 }
@@ -533,7 +545,11 @@ export const requestComposerSetDraft = (ids: string[], text: string, opts?: { ac
  *  answers with the live text; `write` replaces the draft and reports success. */
 export const onComposerDraftRequests = (
   address: { getIds: () => string[]; isActive: () => boolean },
-  handlers: { read: () => null | string; write: (text: string) => boolean }
+  handlers: {
+    read: () => null | string
+    readAttachments?: () => ComposerAttachment[]
+    write: (text: string, attachments?: ComposerAttachment[]) => boolean
+  }
 ) => {
   if (typeof window === 'undefined') {
     return () => undefined
@@ -574,11 +590,18 @@ export const onComposerDraftRequests = (
     if (e.type === GET_DRAFT_EVENT) {
       window.dispatchEvent(
         new CustomEvent<DraftReplyDetail>(DRAFT_REPLY_EVENT, {
-          detail: { text: handlers.read(), token: e.detail.token }
+          detail: {
+            text: handlers.read(),
+            attachments: handlers.readAttachments?.().map(item => ({ ...item })),
+            token: e.detail.token
+          }
         })
       )
     } else if (e.type === SET_DRAFT_EVENT) {
-      const ok = handlers.write(e.detail.text ?? '')
+      const ok =
+        e.detail.attachments && !handlers.readAttachments
+          ? false
+          : handlers.write(e.detail.text ?? '', e.detail.attachments)
 
       window.dispatchEvent(
         new CustomEvent<DraftReplyDetail>(DRAFT_REPLY_EVENT, { detail: { ok, token: e.detail.token } })

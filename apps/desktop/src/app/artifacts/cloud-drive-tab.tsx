@@ -3,11 +3,14 @@ import { Cloud } from '@/lib/icons'
 
 import { CloudLibrary } from './cloud-library'
 
-// The 个人云盘 tab. Browser build: the cloud drive is not connected yet, so the
-// tab says so instead of calling the drive API (see lib/browser-shell).
-export function CloudDriveTab() {
+interface CloudDriveTabProps {
+  onDraftReady?: (route: string) => void
+}
+
+/** 桌面云盘加入草稿后由外层导航；浏览器继续显示占位，不调用原生云盘接口。 */
+export function CloudDriveTab({ onDraftReady }: CloudDriveTabProps) {
   if (!isBrowserShell()) {
-    return <CloudLibrary />
+    return <CloudLibrary onDraftReady={onDraftReady} />
   }
 
   return (

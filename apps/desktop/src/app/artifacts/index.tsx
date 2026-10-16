@@ -43,6 +43,7 @@ import { openSessionFromPicker } from '../open-session'
 import { PageSearchShell } from '../page-search-shell'
 import type { SetStatusbarItemGroup } from '../shell/statusbar-controls'
 
+import { ArtifactUploadAction, ArtifactUploadDialog } from './artifact-upload'
 import {
   ARTIFACT_FILTERS,
   type ArtifactFilter,
@@ -96,6 +97,7 @@ function paginationItems(page: number, pageCount: number): Array<number | 'ellip
 type CellCtx = {
   onOpen: (artifact: ArtifactRecord) => void | Promise<void>
   onOpenChat: (sessionId: string) => void
+  onUpload: (artifact: ArtifactRecord) => void
 }
 
 interface ArtifactColumn {
@@ -119,6 +121,7 @@ function LocalArtifactsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...
   const navigate = useNavigate()
   const [artifacts, setArtifacts] = useState<ArtifactRecord[] | null>(null)
   const [query, setQuery] = useState('')
+  const [uploadArtifact, setUploadArtifact] = useState<ArtifactRecord | null>(null)
 
   const [kindFilter, setKindFilter] = useRouteEnumParam('tab', ARTIFACT_FILTERS, 'all')
 
@@ -315,7 +318,11 @@ function LocalArtifactsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...
   // async title fetch re-rendered the page repeatedly. openArtifact is already
   // a useCallback; navigate is stable, so onOpenChat can be too.
   const openChat = useCallback((sessionId: string) => openSessionFromPicker(sessionId, navigate), [navigate])
-  const cellCtx: CellCtx = useMemo(() => ({ onOpen: openArtifact, onOpenChat: openChat }), [openArtifact, openChat])
+
+  const cellCtx: CellCtx = useMemo(
+    () => ({ onOpen: openArtifact, onOpenChat: openChat, onUpload: setUploadArtifact }),
+    [openArtifact, openChat]
+  )
 
   return (
     <PageSearchShell
@@ -348,6 +355,9 @@ function LocalArtifactsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...
         { id: 'link', label: a.tabLinks, meta: artifacts ? counts.link : null }
       ]}
     >
+      {!isBrowserShell() && uploadArtifact && (
+        <ArtifactUploadDialog artifact={uploadArtifact} onClose={() => setUploadArtifact(null)} />
+      )}
       {!artifacts ? (
         <PageLoader label={a.indexing} />
       ) : visibleArtifacts.length === 0 ? (
@@ -380,6 +390,7 @@ function LocalArtifactsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...
                       key={artifact.id}
                       onImageError={markImageFailed}
                       onOpenChat={sessionId => openSessionFromPicker(sessionId, navigate)}
+                      onUpload={setUploadArtifact}
                     />
                   ))}
                 </div>
@@ -411,6 +422,7 @@ function LocalArtifactsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...
 }
 
 export function ArtifactsView(props: ArtifactsViewProps) {
+  const navigate = useNavigate()
   const { t } = useI18n()
   // Browser build: opens on the instance's artifacts, the cloud drive is not connected yet.
   const [libraryTab, setLibraryTab] = useState<'cloud' | 'local'>(isBrowserShell() ? 'local' : 'cloud')
@@ -444,7 +456,7 @@ export function ArtifactsView(props: ArtifactsViewProps) {
         </button>
       </div>
       <div className="min-h-0 flex-1">
-        {libraryTab === 'cloud' ? <CloudDriveTab /> : <LocalArtifactsView {...props} />}
+        {libraryTab === 'cloud' ? <CloudDriveTab onDraftReady={navigate} /> : <LocalArtifactsView {...props} />}
       </div>
     </section>
   )
@@ -508,9 +520,10 @@ interface ArtifactImageCardProps {
   failedImage: boolean
   onImageError: (id: string) => void
   onOpenChat: (sessionId: string) => void
+  onUpload: (artifact: ArtifactRecord) => void
 }
 
-function ArtifactImageCard({ artifact, failedImage, onImageError, onOpenChat }: ArtifactImageCardProps) {
+function ArtifactImageCard({ artifact, failedImage, onImageError, onOpenChat, onUpload }: ArtifactImageCardProps) {
   const { t } = useI18n()
   const a = t.artifacts
   const kindLabel = artifact.kind === 'image' ? a.kindImage : artifact.kind === 'file' ? a.kindFile : a.kindLink
@@ -579,6 +592,7 @@ function ArtifactImageCard({ artifact, failedImage, onImageError, onOpenChat }: 
         </div>
 
         <div className="flex flex-wrap gap-1.5">
+          <ArtifactUploadAction artifact={artifact} onSelect={onUpload} />
           <Button onClick={() => onOpenChat(artifact.sessionId)} size="xs" type="button" variant="textStrong">
             <FolderOpen className="size-3" />
             {a.chat}
@@ -650,7 +664,7 @@ const PrimaryCell = memo(function PrimaryCell({ artifact, ctx }: { artifact: Art
   )
 })
 
-const LocationCell = memo(function LocationCell({ artifact }: { artifact: ArtifactRecord; ctx: CellCtx }) {
+const LocationCell = memo(function LocationCell({ artifact, ctx }: { artifact: ArtifactRecord; ctx: CellCtx }) {
   const { t } = useI18n()
   const isLink = artifact.kind === 'link'
   const value = isLink ? hostPathLabel(artifact.value) : artifact.value
@@ -677,6 +691,7 @@ const LocationCell = memo(function LocationCell({ artifact }: { artifact: Artifa
         text={artifact.value}
         title={copyLabel}
       />
+      <ArtifactUploadAction artifact={artifact} onSelect={ctx.onUpload} />
     </div>
   )
 })

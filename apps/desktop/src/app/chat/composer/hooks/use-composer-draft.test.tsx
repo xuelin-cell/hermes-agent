@@ -2,6 +2,7 @@ import { act, cleanup, render, waitFor } from '@testing-library/react'
 import { useLayoutEffect } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { appendCloudAttachments } from '@/app/artifacts/drive-chat-reference'
 import { PaneVisibleContext } from '@/components/pane-shell/pane-visibility'
 import {
   $restoredDraftNotice,
@@ -18,7 +19,13 @@ import { $connection } from '@/store/session'
 
 import { useComposerActions } from '../../hooks/use-composer-actions'
 import type { QueueEditState } from '../composer-utils'
-import { type ComposerTarget, getActiveComposer, markActiveComposer } from '../focus'
+import {
+  type ComposerTarget,
+  getActiveComposer,
+  markActiveComposer,
+  requestComposerGetDraft,
+  requestComposerSetDraft
+} from '../focus'
 import { composerPlainText } from '../rich-editor'
 import { type ComposerScope, ComposerScopeProvider, MAIN_COMPOSER_SCOPE } from '../scope'
 
@@ -574,5 +581,45 @@ describe('useComposerDraft — a hidden keep-alive tab never auto-focuses its co
     expect(composerPlainText(draft.editorRef.current!)).toBe('rejected draft')
     expectForegroundSelectionPreserved(foreground)
     foreground.editor.remove()
+  })
+})
+
+describe('云盘卡片通过实时草稿总线进入原有附件作用域', () => {
+  afterEach(() => {
+    cleanup()
+    mainComposerScope.clear()
+    clearSessionDraft('cloud-card-chat')
+  })
+
+  it('保留实时正文和本地附件，卡片可移除，卸载后还原草稿不会留下引用正文', async () => {
+    const local: ComposerAttachment = { id: 'local', kind: 'file', label: 'local.txt', path: '/local.txt' }
+    stashSessionDraft('cloud-card-chat', '帮我阅读资料', [local])
+
+    /** 用真实草稿 Hook 挂载编辑器，验证附件总线进入同一个会话作用域。 */
+    function Draft() {
+      const draft = useComposerDraft({
+        activeQueueSessionKey: 'cloud-card-chat',
+        focusKey: null,
+        inputDisabled: false,
+        queueEditRef: { current: null },
+        sessionId: 'cloud-card-chat'
+      })
+
+      return <div contentEditable data-slot="composer-rich-input" ref={draft.editorRef} />
+    }
+
+    const view = render(<Draft />)
+    const live = await requestComposerGetDraft(['cloud-card-chat'])
+    expect(live).toMatchObject({ text: '帮我阅读资料', attachments: [local] })
+    const cards = appendCloudAttachments(live!.attachments!, [{ asset_id: 'drive-id', name: '报告.pdf', kind: 'file' }])
+    await act(async () => {
+      expect(await requestComposerSetDraft(['cloud-card-chat'], live!.text!, { attachments: cards })).toBe(true)
+    })
+    expect(mainComposerScope.$attachments.get().map(item => item.label)).toEqual(['local.txt', '报告.pdf'])
+    expect(view.container.textContent).toBe('帮我阅读资料')
+    expect(takeSessionDraft('cloud-card-chat').attachments).toHaveLength(2)
+    act(() => mainComposerScope.remove(cards[1]!.id))
+    view.unmount()
+    expect(takeSessionDraft('cloud-card-chat')).toEqual({ text: '帮我阅读资料', attachments: [local] })
   })
 })

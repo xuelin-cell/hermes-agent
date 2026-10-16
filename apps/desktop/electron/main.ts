@@ -331,6 +331,12 @@ import { localSkinProfileKey, readLocalSkinPayload } from './local-skin'
 import { ACTIVE_LOG_POLL_MS, planLogRotation, reclaimActiveLogIfOversized } from './log-rotation'
 import { installAccountIpc } from './login/account-ipc'
 import { currentDesktopAccount, currentDesktopAsrIdentity, currentDesktopIdentity, currentDesktopLocalContext, sealDesktopAccount } from './login/bootstrap'
+import { CloudDriveClient } from './login/cloud-drive'
+import { createDriveArtifactResolver } from './login/cloud-drive-artifact-source'
+import { CloudDriveMcp } from './login/cloud-drive-mcp'
+import { createCloudDriveOfficePreview } from './login/cloud-drive-office-preview'
+import { installDriveCredentialRenewal } from './login/cloud-drive-renewal'
+import { CloudDriveTokenStore } from './login/cloud-drive-token-store'
 import { registerMachineProfile } from './machine-profile'
 import { createMainProcessLagWatchdog } from './main-process-lag-watchdog'
 import { ensureMainWindow } from './main-window-lifecycle'
@@ -655,20 +661,47 @@ const GLASS_SUPPORTED = glassSupportedOn(process.platform, os.release())
 const TRANSLUCENCY_SUPPORTED = translucencySupportedOn(process.platform)
 const APP_ROOT = app.getAppPath()
 
+// desktop-mt: 云盘业务通过独立本机 MCP 扩展，不修改 Hermes 工具和会话核心。
+const ACCOUNT_DRIVE_CLIENT = new CloudDriveClient(currentDesktopIdentity, fetch, {
+  store: new CloudDriveTokenStore(ACCOUNT_RUNTIME.desktopState)
+})
+
+let stopDriveCredentialRenewal: (() => void) | null = null
+
+const ACCOUNT_OFFICE_PREVIEW = createOfficePreviewService(ACCOUNT_RUNTIME.desktopState, {
+  active: () => currentDesktopLocalContext() === ACCOUNT_RUNTIME
+})
+
+const ACCOUNT_DRIVE_MCP = new CloudDriveMcp(ACCOUNT_DRIVE_CLIENT, ACCOUNT_RUNTIME.home, ACCOUNT_RUNTIME.workspace)
+
+const ACCOUNT_DRIVE_ARTIFACT = createDriveArtifactResolver({
+  workspace: ACCOUNT_RUNTIME.workspace,
+  connect: profile => ensureRegistryBackend('local', profile, '', { spawnPriority: 'foreground' }),
+  read: (backend, route) => fetchJsonForBackend(backend, route, { timeoutMs: 60_000 })
+})
+
 installAccountIpc(
   ACCOUNT_SESSION,
   () => DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString(),
   currentDesktopAccount,
-  () => logoutDesktopAccount(),
+  async () => {
+    await ACCOUNT_DRIVE_MCP.close()
+    await logoutDesktopAccount()
+  },
   currentDesktopIdentity,
-  currentDesktopAsrIdentity
+  currentDesktopAsrIdentity,
+  path.join(ACCOUNT_RUNTIME.desktopState, 'cloud-drive-preview'),
+  ACCOUNT_DRIVE_CLIENT,
+  profile => ACCOUNT_DRIVE_MCP.available(profile),
+  ACCOUNT_DRIVE_ARTIFACT,
+  createCloudDriveOfficePreview(ACCOUNT_OFFICE_PREVIEW)
 )
 
 installOfficePreviewIpc(
   ACCOUNT_SESSION,
   () => DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString(),
   () => currentDesktopLocalContext() === ACCOUNT_RUNTIME,
-  createOfficePreviewService(ACCOUNT_RUNTIME.desktopState, { active: () => currentDesktopLocalContext() === ACCOUNT_RUNTIME })
+  ACCOUNT_OFFICE_PREVIEW
 )
 
 // Device-local preference: block F12 from opening DevTools.
@@ -11722,6 +11755,10 @@ async function runPoolBackendStart(
   assertPoolEntryStillOwned(poolKey, entry, backendPool, localBackendLifecycle.signal)
   installArtifactSharePlugin(profile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', profile), app.getAppPath())
 
+  // desktop-mt: 仅在本地后端启动前维护对应 Profile 的内置 MCP 记录。
+  await ACCOUNT_DRIVE_MCP.prepare(profile)
+  assertPoolEntryStillOwned(poolKey, entry, backendPool, localBackendLifecycle.signal)
+
   const child = spawnOwnedBackend(
     backend.command,
     backend.args,
@@ -12081,6 +12118,8 @@ const accountLogout = createAccountLogout({
     accountExitWindows.finish()
 
     if (mode === 'logout') {
+      // desktop-mt: 停止事务成功后、重启登录页前清除当前账号云盘密文。
+      ACCOUNT_DRIVE_CLIENT.clearCredentials()
       await relaunchDesktop()
     } else {
       app.quit()
@@ -12729,6 +12768,8 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
     const backendNonce = crypto.randomBytes(16).toString('hex')
     const parentIdentityEnv = parentWatchdogEnv(process.pid, parentStartMarker, backendNonce)
 
+    // desktop-mt: 账号云盘工具由 Electron 监听回环，Agent 沿用原生 MCP 发现和调用。
+    await ACCOUNT_DRIVE_MCP.prepare(profile)
     backendConnectionState.assertCurrentAttempt(connectionAttempt)
 
     const hermesProcess = spawnOwnedBackend(
@@ -17519,6 +17560,8 @@ app.on('before-quit', () => {
 // Close the pooled keep-alive sockets on quit so lingering connections can't
 // hold the event loop open or leak FDs past app teardown.
 app.on('will-quit', () => {
+  stopDriveCredentialRenewal?.()
+  void ACCOUNT_DRIVE_MCP.close()
   sshIsolatedKeepalives.stopAll()
   destroyKeepaliveAgents()
   nativeNotifications.dispose()
@@ -18548,6 +18591,8 @@ app.on('open-url', (event, url) => {
 })
 
 const desktopStartup = app.whenReady().then(() => {
+  // desktop-mt: 云盘续期只管理桌面令牌，不触碰 Hermes 账号或会话缓存。
+  stopDriveCredentialRenewal = installDriveCredentialRenewal(ACCOUNT_DRIVE_CLIENT, powerMonitor)
   // Post-update relaunch detection (App Installer arm): when the previous
   // version wrote the one-shot pending-relaunch marker before quitting into
   // an OS package swap, consume it here — the renderer toasts "Hermes

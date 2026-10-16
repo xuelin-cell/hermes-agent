@@ -1,106 +1,114 @@
-import { useEffect, useState } from 'react'
+import { useMemo, useState } from 'react'
 
-import { type DriveAsset, driveDownload, driveRequest } from '@/api/drive'
-import { PageLoader } from '@/components/page-loader'
+import { type DriveAsset, driveRequest } from '@/api/drive'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
+import { Checkbox } from '@/components/ui/checkbox'
 import { useI18n } from '@/i18n'
-import { Download, FolderOpen, Pencil, Plus, RefreshCw, Search, Trash2 } from '@/lib/icons'
-import { confirm } from '@/store/confirm'
 import { notifyError } from '@/store/notifications'
-import { openPreview } from '@/store/preview'
 
-interface DriveSpace {
-  space_id: string
-  root_asset_id: string
-  kind: string
-}
+import { CloudDirectoryEmpty, CloudDriveLoading } from './cloud-directory-empty'
+import { CloudFilePreview } from './cloud-file-preview'
+import { CloudLibraryRow } from './cloud-library-row'
+import { type CloudLibraryFilter, CloudLibraryToolbar } from './cloud-library-toolbar'
+import { CloudLocationBar } from './cloud-location-bar'
+import { CloudNameDialog } from './cloud-name-dialog'
+import { CloudRecycleActionDialog } from './cloud-recycle-action-dialog'
+import { CloudRecycleBin } from './cloud-recycle-bin'
+import { CloudSelectionActions } from './cloud-selection-actions'
+import { CloudTransferFeedback } from './cloud-transfer-feedback'
+import { DriveBreadcrumbs } from './drive-breadcrumbs'
+import { driveFolderPath, filterDriveFiles } from './drive-directory-index'
+import { DriveMoveDialog } from './drive-move-dialog'
+import { useCloudDraft } from './use-cloud-draft'
+import { useCloudLibraryData } from './use-cloud-library-data'
+import { useCloudTransfer } from './use-cloud-transfer'
+import { driveMutationMessage } from './use-drive-mutation'
+import { useDriveSelection } from './use-drive-selection'
+import { useDriveTrash } from './use-drive-trash'
+import { useDriveUsage } from './use-drive-usage'
 
-/** 云盘独立读取当前账号的数据，离开页面时丢弃过期异步结果。 */
-export function CloudLibrary() {
+/** 云盘组合独立的工具栏、列表与批量动作，账号鉴权和文件传输继续由主进程负责。 */
+export function CloudLibrary({ onDraftReady }: { onDraftReady?: (route: string) => void } = {}) {
   const { t } = useI18n()
   const copy = t.cloudLibrary
+  const { snapshot, space, capabilities, error, refresh: refreshFiles, refreshBackground } = useCloudLibraryData()
+  const quota = useDriveUsage(space?.space_id)
+  const transfer = useCloudTransfer(refresh)
+  const draft = useCloudDraft(onDraftReady)
+  const [previewAsset, setPreviewAsset] = useState<DriveAsset | null>(null)
   const [folders, setFolders] = useState<Array<{ id: string; name: string }>>([])
-  const [space, setSpace] = useState<DriveSpace | null>(null)
-  const [items, setItems] = useState<DriveAsset[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
   const [query, setQuery] = useState('')
-  const [revision, setRevision] = useState(0)
+  const [filter, setFilter] = useState<'all' | 'file' | 'directory'>('all')
+  const [visibleCount, setVisibleCount] = useState(50)
   const [editing, setEditing] = useState<DriveAsset | 'new' | null>(null)
   const [name, setName] = useState('')
   const [saving, setSaving] = useState(false)
+  const [recycle, setRecycle] = useState(false)
+  const [recycleRevision, setRecycleRevision] = useState(0)
+  const [recycleLoading, setRecycleLoading] = useState(false)
+  const [recycleBusy, setRecycleBusy] = useState(false)
+  const [emptyRecycle, setEmptyRecycle] = useState(false)
+  const [moving, setMoving] = useState<readonly DriveAsset[] | null>(null)
   const parent = folders.at(-1)?.id || space?.root_asset_id
+  const loading = !space && !error
 
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    setError('')
+  const visible = useMemo(
+    () =>
+      space && parent
+        ? filterDriveFiles(snapshot.items, space.root_asset_id, parent, query).filter(
+            asset => filter === 'all' || asset.kind === filter
+          )
+        : [],
+    [snapshot.items, space, parent, query, filter]
+  )
 
-    void (async () => {
-      try {
-        const next = (await driveRequest<{ items: DriveSpace[] }>('/asset-spaces')).items.find(
-          item => item.kind === 'personal'
-        )
+  const rows = visible.slice(0, visibleCount)
+  const selection = useDriveSelection(JSON.stringify([parent, filter, query]), rows)
+  const deletion = useDriveTrash(refresh)
+  const busy = transfer.busy || draft.busy || deletion.busy || saving || moving !== null || recycleBusy || emptyRecycle
+  const writable = snapshot.items.find(item => item.asset_id === parent)?.permissions?.write !== false
 
-        if (!next) {
-          throw new Error(copy.personal)
-        }
+  /** 刷新保留本页列表，同时重读容量；清除旧选择，防止对刷新后的其他文件误操作。 */
+  function refresh(): void {
+    selection.clear()
+    refreshFiles()
+    quota.refresh()
 
-        const params = new URLSearchParams({
-          space_id: next.space_id,
-          parent_asset_id: folders.at(-1)?.id || next.root_asset_id,
-          page_no: '1',
-          page_size: '100',
-          sort: 'name_asc'
-        })
+    if (recycle) {
+      setRecycleRevision(value => value + 1)
+    }
+  }
 
-        const result: DriveAsset[] = []
+  /** 切换目录时只调整本页位置，清除原目录的选择和搜索。 */
+  function navigate(id: string): void {
+    selection.clear()
+    setFolders(value => value.slice(0, value.findIndex(folder => folder.id === id) + 1))
+    setQuery('')
+    setVisibleCount(50)
+  }
 
-        for (let page = 1; ; page++) {
-          params.set('page_no', String(page))
-          const batch = await driveRequest<{ items: DriveAsset[]; page?: { has_more: boolean } }>(`/assets?${params}`)
+  /** 筛选与回收站共用上排入口，不把其他范围的勾选带进当前列表。 */
+  function changeFilter(value: CloudLibraryFilter): void {
+    selection.clear()
+    setRecycle(value === 'recycle')
 
-          if (cancelled) {
-            return
-          }
+    if (value !== 'recycle') {
+      setFilter(value)
+      refreshBackground()
+      quota.refresh()
+    }
 
-          result.push(...batch.items)
-
-          if (!batch.page?.has_more) {
-            break
-          }
-
-          if (page >= 100) {
-            throw new Error('云盘目录过大，请进入子目录查看')
-          }
-        }
-
-        if (cancelled) {
-          return
-        }
-
-        setSpace(next)
-        setItems(result)
-      } catch (failure) {
-        if (!cancelled) {
-          setItems([])
-          setError(failure instanceof Error ? failure.message : copy.personal)
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false)
-        }
-      }
-    })()
-
-    return () => { cancelled = true }
-  }, [folders, revision, copy.personal])
+    setVisibleCount(50)
+  }
 
   /** 弹窗提交名称，成功后刷新权威列表。 */
   async function saveName() {
-    if (!name.trim() || !editing || !parent) {
+    if (
+      !name.trim() ||
+      !editing ||
+      !parent ||
+      (editing === 'new' ? !capabilities?.create_folder : !capabilities?.rename || editing.permissions?.write === false)
+    ) {
       return
     }
 
@@ -115,175 +123,219 @@ export function CloudLibrary() {
           : { new_name: name.trim(), kind: editing.kind }
       )
       setEditing(null)
-      setRevision(value => value + 1)
+      refresh()
     } catch (failure) {
-      notifyError(failure, copy.rename)
+      notifyError(new Error(driveMutationMessage(failure, copy)), copy.rename)
+      refresh()
     } finally {
       setSaving(false)
     }
   }
 
-  /** 用户确认后才移动到回收站。 */
-  async function trash(asset: DriveAsset) {
-    if (!(await confirm({ title: copy.trash, description: asset.name, destructive: true }))) {
-      return
-    }
-
-    try {
-      await driveRequest('/assets/trash', 'POST', {
-        file_ids: asset.kind === 'file' ? [asset.asset_id] : [],
-        directory_ids: asset.kind === 'directory' ? [asset.asset_id] : []
-      })
-      setRevision(value => value + 1)
-    } catch (failure) {
-      notifyError(failure, copy.trash)
-    }
-  }
-
-  /** 文件交给既有预览浏览器，下载只由用户点击触发。 */
+  /** 目录只切换列表，文件交由原生受控下载或独立预览。 */
   async function open(asset: DriveAsset, download = false) {
+    if (asset.permissions?.read === false) {
+      return
+    }
+
     if (asset.kind === 'directory') {
-      setFolders(value => [...value, { id: asset.asset_id, name: asset.name }])
+      const path = space && driveFolderPath(snapshot.items, space.root_asset_id, asset.asset_id)
+
+      if (path) {
+        selection.clear()
+        setFolders(path)
+        setQuery('')
+        setVisibleCount(50)
+      }
 
       return
     }
 
-    try {
-      const url = await driveDownload(asset)
-
-      if (download) {
-        await window.hermesDesktop.openExternal(url)
-      } else {
-        openPreview({ kind: 'url', url, label: asset.name, source: 'cloud-drive', transient: true })
-      }
-    } catch (failure) {
-      notifyError(failure, copy.preview)
+    if (!capabilities?.download) {
+      return
     }
-  }
 
-  const visible = items.filter(item => item.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
+    setPreviewAsset(asset)
+    await transfer.start({
+      operation: download ? 'download' : 'preview',
+      assetId: asset.asset_id,
+      name: asset.name,
+      size: asset.size_bytes
+    })
+  }
 
   return (
-    <section className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border/70 px-4 py-2">
-        <Button onClick={() => setFolders([])} size="sm" variant="ghost">
-          {copy.personal}
-        </Button>
-        {folders.map((folder, index) => (
-          <Button
-            key={folder.id}
-            onClick={() => setFolders(value => value.slice(0, index + 1))}
-            size="sm"
-            variant="ghost"
-          >
-            / {folder.name}
-          </Button>
-        ))}
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          <Input
-            aria-label={copy.search}
-            containerClassName="w-52 max-w-full"
-            onChange={event => setQuery(event.target.value)}
-            placeholder={copy.search}
-            prefix={<Search />}
-            value={query}
-          />
-          <Button
-            disabled={!parent || loading}
-            onClick={() => {
-              setName('')
-              setEditing('new')
-            }}
-            size="sm"
-            variant="outline"
-          >
-            <Plus />
-            {copy.createFolder}
-          </Button>
-          <Button
-            aria-label={copy.refresh}
-            disabled={loading}
-            onClick={() => setRevision(value => value + 1)}
-            size="icon-xs"
-            variant="ghost"
-          >
-            <RefreshCw />
-          </Button>
-        </div>
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        {loading ? (
-          <PageLoader label={t.common.loading} />
-        ) : error ? (
-          <div role="alert">
-            {error}
-            <Button onClick={() => setRevision(value => value + 1)}>{copy.refresh}</Button>
-          </div>
-        ) : visible.length === 0 ? (
-          <p>{t.catalog.noResults}</p>
-        ) : (
-          visible.map(asset => (
-            <div className="flex items-center gap-2 border-b border-border/50 py-2 text-sm" key={asset.asset_id}>
-              <Button className="min-w-0 flex-1 justify-start" onClick={() => void open(asset)} variant="ghost">
-                <FolderOpen />
-                <span className="truncate">{asset.name}</span>
-              </Button>
-              <Button
-                aria-label={copy.rename}
-                onClick={() => {
-                  setName(asset.name)
-                  setEditing(asset)
-                }}
-                size="icon-xs"
-                variant="ghost"
-              >
-                <Pencil />
-              </Button>
-              <Button aria-label={copy.trash} onClick={() => void trash(asset)} size="icon-xs" variant="ghost">
-                <Trash2 />
-              </Button>
-              {asset.kind === 'file' && (
-                <Button
-                  aria-label={copy.download}
-                  onClick={() => void open(asset, true)}
-                  size="icon-xs"
-                  variant="ghost"
-                >
-                  <Download />
-                </Button>
-              )}
-            </div>
-          ))
-        )}
-      </div>
-      <Dialog
-        onOpenChange={value => {
-          if (!value && !saving) {
-            setEditing(null)
-          }
+    <section className="@container/drive flex h-full min-h-0 flex-col">
+      <CloudLibraryToolbar
+        busy={busy}
+        canCreate={!!parent && !!capabilities?.create_folder && writable}
+        canEmpty={!!capabilities?.trash}
+        canUpload={!!parent && !!capabilities?.upload && writable}
+        connected={!!space}
+        filter={recycle ? 'recycle' : filter}
+        onCreate={() => {
+          setName('')
+          setEditing('new')
         }}
+        onEmpty={() => setEmptyRecycle(true)}
+        onFilter={changeFilter}
+        onQuery={value => {
+          selection.clear()
+          setQuery(value)
+          setVisibleCount(50)
+        }}
+        onRefresh={refresh}
+        onUpload={() => parent && void transfer.start({ operation: 'upload', parentAssetId: parent })}
+        query={query}
+        refreshing={recycle ? recycleLoading : loading || snapshot.scanning}
+        transferControl={<CloudTransferFeedback transfer={transfer} />}
+        usage={quota.usage}
+        usageFailed={quota.failed}
+      />
+      {recycle ? (
+        <CloudRecycleBin
+          canWrite={!!capabilities?.trash}
+          embedded
+          externalRevision={recycleRevision}
+          onBack={() => changeFilter(filter)}
+          onChanged={refresh}
+          onInteractionChange={setRecycleBusy}
+          onLoadingChange={setRecycleLoading}
+        />
+      ) : (
+        <>
+          <CloudLocationBar
+            leading={
+              <Checkbox
+                aria-label={copy.selectAll}
+                checked={
+                  rows.length > 0 && selection.chosen.length === rows.length
+                    ? true
+                    : selection.chosen.length
+                      ? 'indeterminate'
+                      : false
+                }
+                disabled={!rows.length || busy}
+                onCheckedChange={checked => selection.selectAll(checked === true)}
+              />
+            }
+          >
+            <DriveBreadcrumbs disabled={busy} onNavigate={navigate} path={folders} root={space?.root_asset_id || ''} />
+            <CloudSelectionActions
+              assets={selection.chosen}
+              busy={busy}
+              canMove={!snapshot.scanning && !snapshot.error}
+              capabilities={capabilities}
+              onAdd={() => void draft.add(selection.chosen)}
+              onClear={selection.clear}
+              onDownload={() =>
+                void transfer.start({
+                  operation: 'download-many',
+                  assets: selection.chosen.map(asset => ({
+                    assetId: asset.asset_id,
+                    name: asset.name,
+                    size: asset.size_bytes
+                  }))
+                })
+              }
+              onMove={() => setMoving([...selection.chosen])}
+              onTrash={() => void deletion.trash(selection.chosen)}
+            />
+          </CloudLocationBar>
+          {draft.message && (
+            <p className="px-4 py-2 text-sm" role="status">
+              {draft.message}
+            </p>
+          )}
+          {space && snapshot.error && (
+            <div aria-live="polite" className="px-4 py-2 text-sm text-muted-foreground" role="alert">
+              {copy.indexFailed}
+              <Button onClick={refresh} size="sm" variant="ghost">
+                {copy.refresh}
+              </Button>
+            </div>
+          )}
+          {space && !capabilities && (
+            <p className="px-4 py-2 text-sm" role="alert">
+              {copy.capabilitiesUnavailable}
+            </p>
+          )}
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+            {loading ? (
+              <CloudDriveLoading label={copy.connecting} />
+            ) : error ? (
+              <div role="alert">
+                {copy.loadFailed}
+                <Button onClick={refresh}>{copy.refresh}</Button>
+              </div>
+            ) : !visible.length ? (
+              <CloudDirectoryEmpty parent={parent} query={query} snapshot={snapshot} />
+            ) : (
+              rows.map(asset => (
+                <CloudLibraryRow
+                  asset={asset}
+                  busy={busy}
+                  canMove={!snapshot.scanning && !snapshot.error}
+                  capabilities={capabilities}
+                  key={asset.asset_id}
+                  onAdd={() => void draft.add(asset)}
+                  onMove={() => setMoving([asset])}
+                  onOpen={download => void open(asset, download)}
+                  onRename={() => {
+                    setName(asset.name)
+                    setEditing(asset)
+                  }}
+                  onToggle={() => selection.toggle(asset.asset_id)}
+                  onTrash={() => void deletion.trash(asset)}
+                  selected={selection.selected.has(asset.asset_id)}
+                />
+              ))
+            )}
+            {visible.length > visibleCount && (
+              <Button disabled={busy} onClick={() => setVisibleCount(value => value + 50)} size="sm" variant="ghost">
+                {copy.loadMore}
+              </Button>
+            )}
+          </div>
+        </>
+      )}
+      <CloudNameDialog
+        creating={editing === 'new'}
+        name={name}
+        onClose={() => setEditing(null)}
+        onName={setName}
+        onSave={() => void saveName()}
         open={editing !== null}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editing === 'new' ? copy.createFolder : copy.rename}</DialogTitle>
-          </DialogHeader>
-          <Input
-            aria-label={editing === 'new' ? copy.createFolder : copy.rename}
-            disabled={saving}
-            onChange={event => setName(event.target.value)}
-            value={name}
-          />
-          <DialogFooter>
-            <Button disabled={saving} onClick={() => setEditing(null)}>
-              {t.common.cancel}
-            </Button>
-            <Button disabled={saving || !name.trim()} onClick={() => void saveName()}>
-              {t.common.save}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        saving={saving}
+      />
+      {emptyRecycle && (
+        <CloudRecycleActionDialog
+          action={{ kind: 'empty' }}
+          onChanged={refresh}
+          onClose={() => setEmptyRecycle(false)}
+        />
+      )}
+      {moving && space && (
+        <DriveMoveDialog
+          asset={moving}
+          complete={snapshot.complete}
+          items={snapshot.items}
+          onChanged={refresh}
+          onClose={() => setMoving(null)}
+          space={space}
+        />
+      )}
+      {transfer.preview?.preview && previewAsset && (
+        <CloudFilePreview
+          name={transfer.preview.name}
+          onClose={transfer.closePreview}
+          onDownload={() => {
+            transfer.closePreview()
+            void open(previewAsset, true)
+          }}
+          preview={transfer.preview.preview}
+        />
+      )}
     </section>
   )
 }

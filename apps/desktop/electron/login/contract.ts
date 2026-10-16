@@ -15,6 +15,58 @@ export interface CloudDriveRequest {
   body?: Record<string, unknown>
 }
 
+export interface CloudDriveFailure {
+  protocol: 'uniwork.drive-result.v1'
+  ok: false
+  status: 'failed' | 'partial_success' | 'outcome_unknown'
+  code: string
+}
+
+export interface CloudDriveArtifactSource {
+  sessionId: string
+  profile: string
+  connectionId?: string
+  value: string
+}
+
+export type CloudDriveTransferRequest =
+  | { id: string; operation: 'upload'; parentAssetId: string; artifact?: CloudDriveArtifactSource }
+  | { id: string; operation: 'download' | 'preview'; assetId: string; name: string; size?: number | null }
+  | { id: string; operation: 'download-many'; assets: Array<{ assetId: string; name: string; size?: number | null }> }
+
+export interface CloudDriveTransferProgress {
+  id: string
+  completed: number
+  total: number | null
+  phase?: 'converting' | 'verifying'
+  fileIndex?: number
+  fileCount?: number
+  name?: string
+  fileStatus?: 'succeeded' | 'cancelled'
+}
+
+export interface CloudDriveTransferFileResult {
+  index: number
+  name: string
+  status: 'succeeded' | 'cancelled' | 'failed' | 'partial_success' | 'outcome_unknown' | 'not_started'
+  code?: string
+}
+
+export type CloudDriveTransferResult = (
+  | CloudDriveFailure
+  | { status: 'cancelled' }
+  | { status: 'succeeded'; name: string; preview?: { dataUrl: string; kind: 'image' | 'pdf' | 'text' } }
+) & { files?: CloudDriveTransferFileResult[] }
+
+/** 主进程和页面共用读操作分类，POST 的查询接口不应被当作写入。 */
+export function isCloudDriveReadOperation(input: CloudDriveRequest): boolean {
+  return (
+    (input.method ?? 'GET') === 'GET' ||
+    (input.method === 'POST' &&
+      ['/assets/download', '/unicom/FileDetails', '/unicom/QueryRecycleData'].includes(input.route.split('?')[0]))
+  )
+}
+
 export interface LoginAccount {
   maskedPhone: string
   expiresAt: number

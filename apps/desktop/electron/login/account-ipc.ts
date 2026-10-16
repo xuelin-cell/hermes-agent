@@ -1,14 +1,15 @@
 import { ipcMain, type IpcMainInvokeEvent, type Session } from 'electron'
 
 import { isDesktopRendererSender } from '../desktop-renderer-sender'
-
 import { ASR_CHANNEL, type AsrIdentity } from '../uniwork-asr/contract'
 import { createUniworkAsrHandler } from '../uniwork-asr/ipc'
-
 import { WELCOME_CATALOG_CHANNEL } from '../uniwork-welcome/catalog'
 import { WelcomeCatalogClient } from '../uniwork-welcome/client'
 
-import { CloudDriveClient } from './cloud-drive'
+import { CloudDriveClient, CloudDriveOperationError } from './cloud-drive'
+import type { ResolveDriveArtifact } from './cloud-drive-artifact-source'
+import type { CloudDriveOfficePreview } from './cloud-drive-office-preview'
+import { installCloudDriveTransferIpc } from './cloud-drive-transfer-ipc'
 import type { LoginAccount } from './contract'
 import type { LoginIdentity } from './session'
 
@@ -19,7 +20,12 @@ export function installAccountIpc(
   readAccount: () => LoginAccount | null,
   logout?: () => Promise<void>,
   readIdentity?: () => LoginIdentity | null,
-  readAsrIdentity?: () => AsrIdentity | null
+  readAsrIdentity?: () => AsrIdentity | null,
+  transferCacheRoot?: string,
+  sharedDrive?: CloudDriveClient,
+  driveAgentReady?: (profile: string) => boolean,
+  resolveArtifact?: ResolveDriveArtifact,
+  previewOffice?: CloudDriveOfficePreview
 ): void {
   /** 展示与退出共用来源校验，不接收 UID、路径或进程号。 */
   function trusted(event: IpcMainInvokeEvent, args: unknown[]): boolean {
@@ -32,9 +38,17 @@ export function installAccountIpc(
       if (!trusted(event, []) || args.length !== 1) {
         throw new Error('语音识别请求无效。')
       }
+
       return asr(event, args[0])
     })
   }
+
+  const drive = sharedDrive ?? (readIdentity ? new CloudDriveClient(readIdentity) : null)
+
+  const transfers =
+    drive && transferCacheRoot
+      ? installCloudDriveTransferIpc(drive, transferCacheRoot, trusted, resolveArtifact, previewOffice)
+      : null
 
   if (logout) {
     ipcMain.handle('hermes:maas-account:logout', async (event, ...args): Promise<void> => {
@@ -42,19 +56,29 @@ export function installAccountIpc(
         throw new Error('退出请求无效。')
       }
 
+      transfers?.cancelAll()
       await logout()
     })
   }
 
-  if (readIdentity) {
+  if (readIdentity && drive) {
     const catalog = new WelcomeCatalogClient(readIdentity)
     ipcMain.handle(WELCOME_CATALOG_CHANNEL, async (event, ...args) => {
       if (!trusted(event, []) || args.length !== 1 || !['zh-CN', 'en'].includes(args[0])) {
         throw new Error('办公模板请求无效。')
       }
+
       return catalog.load(args[0])
     })
-    const drive = new CloudDriveClient(readIdentity)
+    ipcMain.handle('hermes:maas-drive:agent-ready', (event, ...args): boolean => {
+      return (
+        trusted(event, []) &&
+        args.length === 1 &&
+        typeof args[0] === 'string' &&
+        !!readIdentity() &&
+        driveAgentReady?.(args[0]) === true
+      )
+    })
     ipcMain.handle('hermes:maas-drive:request', async (event, ...args) => {
       if (!trusted(event, []) || args.length !== 1 || !readIdentity()) {
         throw new Error('云盘请求无效')
@@ -63,6 +87,10 @@ export function installAccountIpc(
       try {
         return await drive.execute(args[0])
       } catch (error) {
+        if (error instanceof CloudDriveOperationError) {
+          return error.result
+        }
+
         throw new Error(
           error instanceof Error && /^(请|个人云盘|云盘|登录)/.test(error.message)
             ? error.message

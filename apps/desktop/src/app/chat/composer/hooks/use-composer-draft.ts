@@ -311,7 +311,9 @@ export function useComposerDraft({
 
           return editor ? composerPlainText(editor) : draftRef.current
         },
-        write: text => {
+        // 外部引用读取同一个会话的实时附件，避免用过期缓存覆盖本地文件卡片。
+        readAttachments: () => attachmentScope.$attachments.get(),
+        write: (text, attachments) => {
           const editor = editorRef.current
 
           // Hidden keep-alive panes still answer: multi-session plugins route
@@ -323,11 +325,17 @@ export function useComposerDraft({
 
           paintDraft(text)
 
+          // 外部文件引用复用本会话附件作用域，不触发下载、上传或提交。
+          if (attachments) {
+            attachmentScope.$attachments.set(cloneAttachments(attachments))
+            stashSessionDraft(activeQueueSessionKeyRef.current, text, attachments)
+          }
+
           return true
         }
       }
     )
-  }, [inputDisabled, paintDraft, target])
+  }, [attachmentScope.$attachments, inputDisabled, paintDraft, target])
 
   const loadIntoComposer = (text: string, attachments: ComposerAttachment[]) => {
     // Diagnostic breadcrumb for #59305-class reports: identifies WHAT kind of

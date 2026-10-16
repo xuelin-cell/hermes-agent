@@ -20,7 +20,8 @@ import { storedBoolean } from '@/lib/storage'
  *
  *   api/models.ts                                      * model pickers: the platform's providers only
  *   app/artifacts/cloud-drive-tab.tsx                  the personal cloud drive tab says it is in development
- *   app/artifacts/index.tsx                            the library opens on local artifacts
+ *   app/artifacts/artifact-upload.tsx                  no native desktop upload action in the browser
+ *   app/artifacts/index.tsx                            the library opens on local artifacts, without a native upload dialog
  *   app/capabilities/index.tsx                         * no Plugins tab (a community catalog), like Toolsets
  *   app/capabilities/plugins/plugins-tab.tsx           * no desktop (local) plugins, no "open plugins folder"
  *   app/capabilities/skill-market.tsx                  installing from the market says it is in development
@@ -52,7 +53,7 @@ import { storedBoolean } from '@/lib/storage'
  *   app/shell/maas-account-status.tsx                  signing out keeps the instance: the confirmation says so
  *   app/shell/model-catalog-menu.tsx                   * no "add custom model" or "edit models" in the model menus
  *   contrib/plugins.ts                                 * no Bot Mode (the BOTS tab): its plugin is not started
- *   i18n/catalog.ts                                    Chinese where zh.ts is still English, see `lib/browser-shell-zh.ts`
+ *   i18n/catalog.ts                                    Chinese supplement and original cloud artifact names, see `lib/browser-shell-{zh,artifacts}.ts`
  *   i18n/profile-provider.tsx                          the interface starts in Chinese, before the instance's config answers
  *   lib/chat-runtime.ts                                a session with no title yet is 新建会话, not "New session"
  *   lib/local-preview.ts                               Office files (pptx, docx, xlsx …) are previews, never read as text

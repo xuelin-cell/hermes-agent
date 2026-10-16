@@ -6,7 +6,13 @@ import type { TranslucencyState } from '@hermes/shared/translucency'
 
 import type { ScreenshotApi } from '../electron/command-screenshot-types'
 import type { HudModifierApi } from '../electron/hud-modifier-types'
-import type { CloudDriveRequest, LoginAccount } from '../electron/login/contract'
+import type {
+  CloudDriveRequest,
+  CloudDriveTransferProgress,
+  CloudDriveTransferRequest,
+  CloudDriveTransferResult,
+  LoginAccount
+} from '../electron/login/contract'
 import type { MachineProfile } from '../electron/machine-profile'
 import type { HermesNotification } from '../electron/notification-types'
 import type { PoolLimits } from '../electron/pool-limits'
@@ -45,6 +51,10 @@ declare global {
       /** 取得完整办公目录；主进程负责认证和校验配置。 */
       getWelcomeCatalog?: (locale: WelcomeLocale) => Promise<WelcomeCategory[]>
       uniworkAsr?: UniworkAsrBridge
+      cloudDriveAgentReady: (profile: string) => Promise<boolean>
+      cloudDriveTransfer: (input: CloudDriveTransferRequest) => Promise<CloudDriveTransferResult>
+      cancelCloudDriveTransfer: (id: string) => Promise<void>
+      onCloudDriveProgress: (listener: (progress: CloudDriveTransferProgress) => void) => () => void
       logoutMaasAccount: () => Promise<void>
       // Resolve a backend connection. Omit `profile` (or pass the primary) for
       // the window's backend; pass a named profile to lazily spawn/reuse that

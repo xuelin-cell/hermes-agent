@@ -4,6 +4,7 @@ import type { MutableRefObject } from 'react'
 import { useEffect, useRef } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { appendCloudAttachments } from '@/app/artifacts/drive-chat-reference'
 import { getLatestSessionMessages, getSession } from '@/hermes'
 import { textPart, toChatMessages } from '@/lib/chat-messages'
 import { createClientSessionState } from '@/lib/chat-runtime'
@@ -2992,6 +2993,34 @@ describe('usePromptActions file attachment sync', () => {
       refText: '@file:`/Users/alice/Downloads/report.txt`'
     }
   }
+
+  it.each(['', '请分析这个文件'])('云盘卡片发送时携带文件引用（正文=%s），不走本机附件读写或提前下载', async text => {
+    $connection.set({ mode: 'local' } as never)
+    const readFileDataUrl = vi.fn()
+    const cloudDriveTransfer = vi.fn()
+    Object.defineProperty(window, 'hermesDesktop', {
+      configurable: true,
+      value: { readFileDataUrl, cloudDriveTransfer }
+    })
+    const requestGateway = vi.fn(async (_method: string, _params?: Record<string, unknown>) => ({}) as never)
+    const cards = appendCloudAttachments([], [{ asset_id: 'cloud-business-id', kind: 'file', name: '报告.pdf' }])
+    let handle: HarnessHandle | null = null
+    await actRender(
+      <Harness onReady={h => (handle = h)} refreshSessions={async () => undefined} requestGateway={requestGateway} />
+    )
+    expect(await handle!.submitText(text, { attachments: cards })).toBe(true)
+    expect(requestGateway.mock.calls.map(call => call[0])).toEqual(['prompt.submit'])
+    expect(requestGateway).toHaveBeenCalledWith(
+      'prompt.submit',
+      {
+        session_id: RUNTIME_SESSION_ID,
+        text: [cards[0]!.refText, text].filter(Boolean).join('\n\n')
+      },
+      1_800_000
+    )
+    expect(readFileDataUrl).not.toHaveBeenCalled()
+    expect(cloudDriveTransfer).not.toHaveBeenCalled()
+  })
 
   it('uploads file bytes via file.attach on a remote gateway and submits the rewritten ref', async () => {
     // Remote gateway can't read the client-disk path, so the desktop must upload

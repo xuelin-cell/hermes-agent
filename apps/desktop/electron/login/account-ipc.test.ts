@@ -5,6 +5,25 @@ vi.mock('electron', () => ({ ipcMain: { handle }, BrowserWindow: { fromWebConten
 
 import { installAccountIpc } from './account-ipc'
 
+// 下载工具可用性同样绑定账号主框架，页面只读取布尔值。
+it('云盘 MCP 可用性拒绝其他来源和额外身份参数', () => {
+  const partition = {}
+  const frame = { url: 'http://127.0.0.1:5174/#/artifacts' }
+  const sender = { mainFrame: frame, session: partition }
+  const identity = { uid: 'a', token: 'private', phone: '13800000000', maskedPhone: '138****0000', expiresAt: Date.now() + 60_000 }
+  const ready = vi.fn((profile: string) => profile === 'work')
+  fromWebContents.mockReturnValue({ isDestroyed: () => false, webContents: sender })
+  installAccountIpc(partition as never, () => 'http://127.0.0.1:5174', () => identity, undefined, () => identity, undefined, undefined, undefined, ready)
+  const invoke = handle.mock.calls.findLast(call => call[0] === 'hermes:maas-drive:agent-ready')![1]
+  const event = { sender, senderFrame: frame }
+  expect(invoke({ sender, senderFrame: {} }, 'work')).toBe(false)
+  expect(invoke(event, 'work', 'forged-identity')).toBe(false)
+  expect(ready).not.toHaveBeenCalled()
+  expect(invoke(event, 'work')).toBe(true)
+  expect(invoke(event, 'unknown')).toBe(false)
+  expect(ready.mock.calls).toEqual([['work'], ['unknown']])
+})
+
 it('主副窗只读取已准备账号的展示字段，到期保留退出入口，撤销后不显示旧账号', async () => {
   const identity = {
     uid: 'private-uid',
@@ -94,6 +113,7 @@ it('云盘只允许当前桌面主框架调用，不接受额外身份参数', a
     maskedPhone: '138****0000',
     expiresAt: Date.now() + 60_000
   }
+
   const partition = {}
   const frame = { url: 'http://127.0.0.1:5174/#/artifacts' }
   const sender = { mainFrame: frame, session: partition }
@@ -158,4 +178,29 @@ it('办公目录仅允许当前桌面主框架选择固定语言，不接受地�
   await expect(invoke({ sender, senderFrame: frame }, 'https://untrusted.example/')).rejects.toThrow('请求无效')
   expect(identity).not.toHaveBeenCalled()
   await expect(invoke({ sender, senderFrame: frame }, 'zh-CN')).rejects.toThrow('请重新登录')
+})
+
+it('语音身份保持第六个参数，办公模板和云盘传输在同一次安装中同时可用', async () => {
+  const partition = {}
+  const frame = { url: 'http://127.0.0.1:5174/#/chat' }
+  const sender = { id: 3, mainFrame: frame, session: partition }
+  const account = { uid: 'a', token: 'private', phone: '13800000000', maskedPhone: '138****0000', expiresAt: Date.now() + 60_000 }
+  let active = true
+  // 在同一安装实例中模拟登录失效，核对模板和云盘共用账号但不混入语音身份。
+  const readIdentity = () => active ? account : null
+  const readAsrIdentity = vi.fn(() => null)
+  const ready = vi.fn((profile: string) => profile === 'work')
+  const start = handle.mock.calls.length
+  fromWebContents.mockReturnValue({ isDestroyed: () => false, webContents: sender })
+  installAccountIpc(partition as never, () => 'http://127.0.0.1:5174', () => account,
+    undefined, readIdentity, readAsrIdentity, '/unused/cloud-preview', undefined, ready)
+  const handlers = new Map(handle.mock.calls.slice(start).map(([channel, invoke]) => [channel, invoke]))
+  const event = { sender, senderFrame: frame }
+  expect(handlers.get('hermes:maas-drive:agent-ready')!(event, 'work')).toBe(true)
+  expect(ready).toHaveBeenCalledWith('work')
+  await expect(handlers.get('hermes:uniwork-asr')!(event, { operation: 'start', language: 'zh' })).rejects.toThrow('需要有效的元景套餐')
+  expect(readAsrIdentity).toHaveBeenCalledOnce()
+  await expect(handlers.get('hermes:maas-drive:transfer')!({ sender, senderFrame: {} }, {})).rejects.toThrow('请求无效')
+  active = false
+  await expect(handlers.get('hermes:uniwork-welcome:catalog')!(event, 'zh-CN')).rejects.toThrow('请重新登录')
 })

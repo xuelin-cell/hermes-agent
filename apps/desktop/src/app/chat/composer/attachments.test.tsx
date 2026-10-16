@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { appendCloudAttachments } from '@/app/artifacts/drive-chat-reference'
 import { I18nProvider } from '@/i18n/context'
 import type { ComposerAttachment } from '@/store/composer'
 import { $previewTabs } from '@/store/preview'
@@ -236,4 +237,33 @@ describe('AttachmentList', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
     expect($previewTabs.get().map(tab => tab.target.path)).toEqual(['/tmp/notes.md'])
   })
+  it.each(['en', 'zh', 'zh-hant'] as const)(
+    '云盘引用在 %s 显示同款可移除卡片，不展示 JSON 或读取本机文件',
+    async locale => {
+      const [card] = appendCloudAttachments([], [{ asset_id: 'cloud-id', name: '报告.pdf', kind: 'file' }])
+      const readFileDataUrl = vi.fn()
+      Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: { readFileDataUrl } })
+      const remove = vi.fn()
+
+      const view = render(
+        <I18nProvider configClient={null} initialLocale={locale}>
+          <AttachmentList attachments={[card!]} onRemove={remove} />
+        </I18nProvider>
+      )
+
+      expect(view.container.querySelector('[data-slot="composer-attachments"]')).toBeTruthy()
+      expect(screen.getByText('报告.pdf')).toBeTruthy()
+      expect(
+        screen.getByText(locale === 'en' ? 'Personal drive' : locale === 'zh' ? '个人云盘' : '個人雲端硬碟')
+      ).toBeTruthy()
+      expect(view.container.textContent).not.toMatch(/uniwork.drive-reference|cloud-id|JSON/)
+      const label = screen.getByRole('button', { name: '报告.pdf' })
+      expect(label.hasAttribute('disabled')).toBe(true)
+      fireEvent.click(label)
+      expect(readFileDataUrl).not.toHaveBeenCalled()
+      const removeButton = view.container.querySelector<HTMLButtonElement>('button:not([disabled])')!
+      fireEvent.click(removeButton)
+      expect(remove).toHaveBeenCalledWith(card!.id)
+    }
+  )
 })

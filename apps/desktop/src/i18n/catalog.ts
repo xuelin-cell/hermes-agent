@@ -1,3 +1,4 @@
+import { withBrowserArtifactLabels } from '@/lib/browser-shell-artifacts'
 import { withCloudChinese } from '@/lib/browser-shell-zh'
 
 import { ar } from './ar'
@@ -12,10 +13,10 @@ import { zh } from './zh'
 import { zhHant } from './zh-hant'
 
 export const TRANSLATIONS: Record<Locale, Translations> = {
-  en,
-  zh: withCloudChinese(zh),
-  'zh-hant': zhHant,
-  ja,
+  en: withBrowserArtifactLabels('en', en),
+  zh: withBrowserArtifactLabels('zh', withCloudChinese(zh)),
+  'zh-hant': withBrowserArtifactLabels('zh-hant', zhHant),
+  ja: withBrowserArtifactLabels('ja', ja),
   ar,
   ru,
   fr,

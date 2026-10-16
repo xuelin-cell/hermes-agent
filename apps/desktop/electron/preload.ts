@@ -5,7 +5,7 @@ import type { ConversationShareApi } from '../../shared/src/conversation-share'
 
 import type { DesktopProfileRoute } from './desktop-profile'
 import type { HudModifierApi, HudModifierStatus } from './hud-modifier-types'
-import type { CloudDriveRequest } from './login/contract'
+import type { CloudDriveRequest, CloudDriveTransferProgress, CloudDriveTransferRequest } from './login/contract'
 import { maskMcpSecrets, restoreMcpSecrets } from './mcp-secrets'
 import { ASR_CHANNEL } from './uniwork-asr/contract'
 import { WELCOME_CATALOG_CHANNEL } from './uniwork-welcome/catalog'
@@ -64,6 +64,15 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
 
       return () => ipcRenderer.removeListener('hermes:artifact-share:changed', listener)
     }
+  },
+  cloudDriveAgentReady: (profile: string) => ipcRenderer.invoke('hermes:maas-drive:agent-ready', profile),
+  cloudDriveTransfer: (input: CloudDriveTransferRequest) => ipcRenderer.invoke('hermes:maas-drive:transfer', input),
+  cancelCloudDriveTransfer: (id: string) => ipcRenderer.invoke('hermes:maas-drive:cancel', id),
+  onCloudDriveProgress: (listener: (progress: CloudDriveTransferProgress) => void) => {
+    const handle = (_event: Electron.IpcRendererEvent, progress: CloudDriveTransferProgress) => listener(progress)
+    ipcRenderer.on('hermes:maas-drive:progress', handle)
+
+    return () => ipcRenderer.removeListener('hermes:maas-drive:progress', handle)
   },
   logoutMaasAccount: () => ipcRenderer.invoke('hermes:maas-account:logout'),
   glassSupported: translucencySupport?.glass === true,
