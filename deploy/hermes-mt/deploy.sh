@@ -33,6 +33,7 @@
 #   MT_DEPLOY_REGISTRY      集群镜像仓库 HOST:PORT，默认 = MT_CUBE_API 的主机 + :5000
 #   MT_DEPLOY_BASE_IMAGE    沙箱镜像的基础镜像，默认 hermes-custom:src-<hermes 源码指纹>（./deploy.sh base 构建）；
 #                           一般不要设，设了就固定用它（必须已在本机）
+#   MT_DEPLOY_SEED_DIR      ./deploy.sh base 预置大文件的目录，默认 /var/cache/hermes-mt/base-seed（约 500M，可重复用）
 #   MT_DEPLOY_TPL_CPU/MEM   模板规格，默认 2000 / 2000（毫核 / MiB）
 #   MT_DEPLOY_TPL_DISK      模板可写层，默认 8G
 #   MT_DEPLOY_TPL_RETRIES   建模板有节点失败（平台偶发）时重建几次，第一次之外，默认 3
@@ -378,7 +379,9 @@ cmd_check() {
 # ---------------------------------------------------------------- base
 
 # 基础镜像 = 本仓库根目录的 Dockerfile（和桌面版同一份）构建出来的 hermes 本体：hermes 代码、内置技能、
-# pm 锁定的 Python / Node / Chromium / ffmpeg（在 /opt/hermes/tools）。构建时要从外网下载这些和 Python / npm 依赖。
+# pm 锁定的 Python / Node / Chromium / ffmpeg（在 /opt/hermes/tools）。部署机连 GitHub 极慢、连不上 Playwright 的
+# CDN，所以构建前先由 scripts/base_seed.py 把这些大文件按 sha256 从 hermes 的公开镜像、npmmirror 备好（GitHub 只剩
+# s6-overlay 三个小包），再用它生成的 Dockerfile 副本（多两行 COPY）构建；构建本身只再连 PyPI、npm、Debian 源。
 cmd_base() {
     if [ "$NO_PULL" = 0 ]; then
         cmd_pull
@@ -388,8 +391,8 @@ cmd_base() {
         # shellcheck disable=SC2086
         exec bash "$SCRIPT" base $pass
     fi
-    need docker; need git
-    local tag log free_g
+    need docker; need git; need python3; need curl
+    local tag log free_g seed
     tag="$(base_tag)"
     say "基础镜像：$tag（代码 $(head_short)；指纹只算 hermes 源码，不含前端 / 部署 / 文档 / 测试）"
     if docker image inspect "$tag" >/dev/null 2>&1; then
@@ -397,10 +400,14 @@ cmd_base() {
     else
         free_g="$(df -BG --output=avail / | tail -1 | tr -dc 0-9)"
         [ "${free_g:-0}" -ge 20 ] || warn "根分区只剩 ${free_g}G，构建过程要十几 G"
+        seed="$(cfg MT_DEPLOY_SEED_DIR /var/cache/hermes-mt/base-seed)"
+        say "预置构建要下载的大文件到 $seed（已备好且 sha256 对得上的不重下）"
+        python3 "$HERE/scripts/base_seed.py" "$REPO" "$seed" || die "预置文件没备齐，看上面的输出"
         log="$HERE/.base-build.log"
-        warn "要从外网下载 Python、Node、Chromium 和依赖包，约 15~45 分钟；完整输出在 $log"
+        warn "构建还要从 PyPI、npm、Debian 源下载依赖，约 15~45 分钟；完整输出在 $log"
         # 只把步骤行打到屏幕上，免得几十分钟没动静；成败看镜像在不在。
-        (cd "$REPO" && BUILDX_BUILDER=default docker build --progress=plain -f Dockerfile -t "$tag" . 2>&1) \
+        (cd "$REPO" && BUILDX_BUILDER=default docker build --progress=plain -f "$seed/Dockerfile" \
+            --build-context "seed=$seed" --build-arg S6_OVERLAY_BASE_URL=file:///tmp/s6-seed -t "$tag" . 2>&1) \
             | tee "$log" | grep --line-buffered -E '^#[0-9]+ \[[^]]+\] (RUN|COPY|FROM)|ERROR' | cut -c1-110 | sed 's/^/  /' || true
         docker image inspect "$tag" >/dev/null 2>&1 || die "基础镜像没建成，看 $log 末尾"
         ok "已构建 $tag"
