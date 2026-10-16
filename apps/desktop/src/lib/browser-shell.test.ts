@@ -6,6 +6,7 @@ import {
   browserInitialLocale,
   browserMediaPlaybackUrl,
   browserShellCopy,
+  completionHint,
   effortShortLabels,
   findInPageTakenByViewer,
   hideForUsers,
@@ -134,10 +135,11 @@ describe('browser shell', () => {
     const groups = [
       {
         heading: 'view',
+        // As the palette keys contributed rows: `<source>:<id>`.
         items: [
-          { detail: 'on', id: 'view.toggleStatusbar', label: 'Toggle status bar' },
-          { id: 'profile.export', label: 'Export profile…' },
-          { id: 'some.plugin', label: 'Plugin row' }
+          { detail: 'on', id: 'core:view.toggleStatusbar', label: 'Toggle status bar' },
+          { id: 'core:profile.export', label: 'Export profile…' },
+          { id: 'kanban:some.row', label: 'Plugin row' }
         ]
       }
     ]
@@ -147,8 +149,8 @@ describe('browser shell', () => {
     document.documentElement.dataset.hermesBrowser = 'production'
 
     expect(withoutHiddenPaletteItems(groups)[0].items).toEqual([
-      { detail: '开', id: 'view.toggleStatusbar', label: '显示 / 隐藏状态栏' },
-      { id: 'some.plugin', label: 'Plugin row' }
+      { detail: '开', id: 'core:view.toggleStatusbar', label: '显示 / 隐藏状态栏' },
+      { id: 'kanban:some.row', label: 'Plugin row' }
     ])
 
     localStorage.setItem(DEVELOPER_MODE_KEY, 'true')
@@ -160,16 +162,20 @@ describe('browser shell', () => {
     ])
   })
 
-  it('names a new session and the effort levels in Chinese', () => {
+  it('names a new session, the effort levels and the backend’s `@` hints in Chinese', () => {
     const english = { high: 'High', low: 'Low' }
 
     expect(newSessionTitle('New session')).toBe('New session')
     expect(effortShortLabels(english)).toBe(english)
+    expect(completionHint('attach file')).toBe('attach file')
 
     document.documentElement.dataset.hermesBrowser = 'production'
 
     expect(newSessionTitle('New session')).toBe('新建会话')
     expect(effortShortLabels(english)).toMatchObject({ high: '高', low: '低', medium: '中' })
+    expect(completionHint('attach file')).toBe('附加文件')
+    expect(completionHint('a skill of mine')).toBe('a skill of mine')
+    expect(completionHint(undefined)).toBeUndefined()
   })
 
   it('drops the messaging platforms and session import entries from the sidebar', () => {

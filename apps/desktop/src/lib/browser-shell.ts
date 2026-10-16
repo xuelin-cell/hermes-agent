@@ -24,6 +24,7 @@ import { storedBoolean } from '@/lib/storage'
  *   app/capabilities/index.tsx                         * no Plugins tab (a community catalog), like Toolsets
  *   app/capabilities/plugins/plugins-tab.tsx           * no desktop (local) plugins, no "open plugins folder"
  *   app/capabilities/skill-market.tsx                  installing from the market says it is in development
+ *   app/chat/composer/trigger-popover.tsx              the backend's English hints of `@` completions in Chinese
  *   app/chat/right-rail/office-sheet.tsx              (ours) the sheet viewer: spreadsheets the instance turns into tables
  *   app/chat/right-rail/office-slides.tsx              (ours) the page viewer: decks and documents the instance renders page by page
  *   app/chat/right-rail/pdf-preview.tsx                (ours) the PDF viewer: pdf.js in the page, in the page viewer's look
@@ -392,6 +393,8 @@ export function withoutHiddenPaletteItems<G extends { items: readonly PaletteRow
   }
 
   const hide = hideForUsers()
+  // Contributed rows carry their source in the palette (`core:layout.reset`).
+  const rowId = (item: PaletteRow) => item.id.replace(/^core:/, '')
 
   return groups
     .map(
@@ -399,15 +402,33 @@ export function withoutHiddenPaletteItems<G extends { items: readonly PaletteRow
         ({
           ...group,
           items: group.items
-            .filter(item => !(hide && PALETTE_ITEMS_HIDDEN.has(item.id)))
+            .filter(item => !(hide && PALETTE_ITEMS_HIDDEN.has(rowId(item))))
             .map(item => ({
               ...item,
-              ...(PALETTE_LABELS_ZH[item.id] ? { label: PALETTE_LABELS_ZH[item.id] } : {}),
+              ...(PALETTE_LABELS_ZH[rowId(item)] ? { label: PALETTE_LABELS_ZH[rowId(item)] } : {}),
               ...(item.detail && PALETTE_DETAILS_ZH[item.detail] ? { detail: PALETTE_DETAILS_ZH[item.detail] } : {})
             }))
         }) as G
     )
     .filter(group => group.items.length > 0)
+}
+
+// The hints the backend gives `@` completions (tui_gateway/methods_complete.py).
+const COMPLETION_HINTS_ZH: Record<string, string> = {
+  'agent profile': '智能体配置档',
+  'agent profile (primary)': '智能体配置档（主）',
+  'attach file': '附加文件',
+  'attach folder': '附加文件夹',
+  'fetch url': '抓取网页',
+  'git diff': '未暂存的改动（git diff）',
+  'git log': '提交记录（git log）',
+  'staged diff': '已暂存的改动'
+}
+
+/** A completion row's hint (app/chat/composer/trigger-popover.tsx): the backend
+ * writes the `@` ones in English for every language. */
+export function completionHint(hint: string | undefined): string | undefined {
+  return isBrowserShell() && hint ? (COMPLETION_HINTS_ZH[hint] ?? hint) : hint
 }
 
 /** The title of a session that has none yet (lib/chat-runtime.ts NEW_SESSION_TITLE),
