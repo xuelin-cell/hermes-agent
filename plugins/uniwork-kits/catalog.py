@@ -95,6 +95,20 @@ def _phrases(entry: Dict[str, Any]) -> List[str]:
     return out
 
 
+def _display_name(name: str, entry: Dict[str, Any]) -> str:
+    """包自己没有中文名时，卡片标题用内置的中文名。
+
+    已存的名字和包名不同就保留：专家是特意改过名的，包里声明的显示名也不能被覆盖。
+    """
+    from .package import DISPLAY_TITLES
+
+    stored = str(entry.get("display_name") or "").strip()
+    titled = DISPLAY_TITLES.get(name, "")
+    if titled and stored in {"", name}:
+        return titled
+    return stored or name
+
+
 def _row(home: Path, name: str, entry: Dict[str, Any]) -> Dict[str, Any]:
     target = _config_home(home, entry)
     state = entry.get("trigger_state") if isinstance(entry.get("trigger_state"), dict) else {}
@@ -102,7 +116,7 @@ def _row(home: Path, name: str, entry: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "name": name,
         "kind": kind,
-        "display_name": str(entry.get("display_name") or name),
+        "display_name": _display_name(name, entry),
         "profession": str(entry.get("profession") or ""),
         "description": _description(home, entry),
         "phrases": _phrases(entry),

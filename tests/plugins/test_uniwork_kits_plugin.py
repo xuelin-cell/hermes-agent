@@ -52,6 +52,7 @@ def kits():
     parts = (
         "installer", "host_rules", "router", "store", "naming", "llm", "triggers",
         "media_slot", "xiaohongshu", "deck_check", "package_hooks", "turns", "delivery", "expert_sync", "experts",
+        "eastmoney_slot",
         "host_hooks", "image_landing", "deck_geometry", "expert_cards", "catalog",
     )
     for part in parts:
@@ -101,10 +102,10 @@ def kit_pkg(tmp_path):
     return root
 
 
-def _expert_pkg(tmp_path, avatar_name="face.png", avatar_bytes=b"\x89PNG\r\n\x1a\n" + b"0" * 32):
-    root = tmp_path / "pkgs" / "demo-expert"
+def _expert_pkg(tmp_path, avatar_name="face.png", avatar_bytes=b"\x89PNG\r\n\x1a\n" + b"0" * 32, name="demo-expert"):
+    root = tmp_path / "pkgs" / name
     _write(root / ".codebuddy-plugin" / "plugin.json", json.dumps({
-        "name": "demo-expert",
+        "name": name,
         "version": "2.0.0",
         "description": "演示专家",
         "expertType": "agent",
@@ -1607,6 +1608,90 @@ def test_xiaohongshu_login_is_asked_in_chat_then_prepared_and_kept_running(kits,
     assert xhs.ensure_running(profile_env, popen=lambda args, **kw: started.append(args) or Proc(), listening=lambda: False)
     assert started
     assert not xhs.ensure_running(profile_env, popen=lambda args, **kw: started.append(args), listening=lambda: True)
+
+
+def test_eastmoney_connector_is_recognized_only_by_the_agreed_shape(kits):
+    slot = kits.eastmoney_slot
+    url = "https://mxapi-stg.eastmoney.com/mxds/v2/mcp"
+    assert slot.server_name({}) == ""
+    assert slot.server_name({"eastmoney_mcp": {"url": url, "enabled": False}}) == ""
+    assert slot.server_name({"notes": {"url": "https://example.com/eastmoney"}}) == ""
+    assert slot.server_name({"eastmoney_mcp": {"url": url}}) == "eastmoney_mcp"
+    assert slot.server_name({"colleague": {"url": url}}) == "colleague"
+    note = slot.data_note("connector-eastmoney-mcp")
+    assert "mcp__connector_eastmoney_mcp__execute_action" in note
+    assert "eastmoney_mcp.list_tools" in note and "get_data.py" in note and "em_api_key" in note
+
+
+def test_eastmoney_expert_keeps_scripts_until_the_connector_appears(kits, profile_env, tmp_path, monkeypatch):
+    kits.installer.install(_expert_pkg(tmp_path, name="stock-diagnosis-expert"), profile_env, triggers={})
+    kits.installer.install(_expert_pkg(tmp_path, name="demo-expert"), profile_env, triggers={})
+    from hermes_cli.profiles import get_profile_dir
+
+    home = Path(get_profile_dir("stock-diagnosis-expert"))
+    monkeypatch.setenv("HERMES_HOME", str(home))
+    quiet = kits.router.on_pre_llm_call(
+        user_message="综合分析宁德时代", session_id="s", turn_id="1", platform="desktop",
+    )
+    quiet_text = (quiet or {}).get("context") or ""
+    assert "execute_action" not in quiet_text and "get_data.py" not in quiet_text
+
+    cfg = _config(home)
+    cfg["mcp_servers"] = {"eastmoney_mcp": {"url": "https://mxapi-stg.eastmoney.com/mxds/v2/mcp"}}
+    _write(home / "config.yaml", yaml.safe_dump(cfg))
+    loud = kits.router.on_pre_llm_call(
+        user_message="综合分析宁德时代", session_id="s", turn_id="2", platform="desktop",
+    )
+    assert loud and "mcp__eastmoney_mcp__execute_action" in loud["context"]
+    assert "get_data.py" in loud["context"] and "em_api_key" in loud["context"]
+
+    other = Path(get_profile_dir("demo-expert"))
+    other_cfg = _config(other)
+    other_cfg["mcp_servers"] = {"eastmoney_mcp": {"url": "https://mxapi-stg.eastmoney.com/mxds/v2/mcp"}}
+    _write(other / "config.yaml", yaml.safe_dump(other_cfg))
+    monkeypatch.setenv("HERMES_HOME", str(other))
+    plain = kits.router.on_pre_llm_call(
+        user_message="综合分析宁德时代", session_id="s", turn_id="3", platform="desktop",
+    )
+    assert "execute_action" not in ((plain or {}).get("context") or "")
+
+
+def test_eastmoney_connector_syncs_only_onto_those_experts(kits, profile_env, tmp_path):
+    kits.installer.install(_expert_pkg(tmp_path, name="stock-diagnosis-expert"), profile_env, triggers={})
+    kits.installer.install(_expert_pkg(tmp_path, name="demo-expert"), profile_env, triggers={})
+    entry = {"url": "https://mxapi-stg.eastmoney.com/mxds/v2/mcp", "timeout": 180}
+    _write(profile_env / "config.yaml", yaml.safe_dump({
+        "model": {"provider": "zai", "default": "glm-test"},
+        "mcp_servers": {
+            "UniAI-Toolkit": {"url": "https://maas.ai-yuanjing.com/app/mcp-server/mcp?key=${DESKTOP_MT_MAAS_API_KEY}"},
+            "eastmoney_mcp": entry,
+            "notes": {"url": "https://example.com/eastmoney"},
+        },
+    }))
+    (profile_env / ".env").write_text(
+        "DESKTOP_MT_MAAS_API_KEY=maas-1\nEASTMONEY_TOKEN=tok-1\nTELEGRAM_BOT_TOKEN=bot\n",
+        encoding="utf-8",
+    )
+    # The connector entry itself does not reference EASTMONEY_TOKEN; a referenced key must travel.
+    cfg = _config(profile_env)
+    cfg["mcp_servers"]["eastmoney_mcp"]["headers"] = {"Authorization": "Bearer ${EASTMONEY_TOKEN}"}
+    _write(profile_env / "config.yaml", yaml.safe_dump(cfg))
+
+    kits.expert_sync.sync_all(profile_env)
+    from hermes_cli.profiles import get_profile_dir
+
+    em = Path(get_profile_dir("stock-diagnosis-expert"))
+    plain = Path(get_profile_dir("demo-expert"))
+    em_servers = _config(em)["mcp_servers"]
+    assert em_servers["eastmoney_mcp"]["timeout"] == 180
+    assert "UniAI-Toolkit" in em_servers and "notes" not in em_servers
+    assert "eastmoney_mcp" not in (_config(plain).get("mcp_servers") or {})
+    assert kits.expert_sync._read(em)[1]["EASTMONEY_TOKEN"] == "tok-1"
+    assert "EASTMONEY_TOKEN" not in kits.expert_sync._read(plain)[1]
+
+    _write(profile_env / "config.yaml", yaml.safe_dump({"model": {"provider": "zai", "default": "glm-test"}}))
+    kits.expert_sync.sync_all(profile_env)
+    assert "eastmoney_mcp" not in (_config(em).get("mcp_servers") or {})
 
 
 def test_chinese_skill_names_each_keep_a_slash_command(kits, profile_env, tmp_path, monkeypatch):

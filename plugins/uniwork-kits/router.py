@@ -321,7 +321,7 @@ def on_pre_llm_call(**kwargs: Any) -> Optional[Dict[str, str]]:
         if not text:
             return None
         if is_expert:
-            from . import xiaohongshu
+            from . import eastmoney_slot, xiaohongshu
 
             home = Path(get_hermes_home())
             xiaohongshu.ensure_running(home)
@@ -329,6 +329,7 @@ def on_pre_llm_call(**kwargs: Any) -> Optional[Dict[str, str]]:
                 delivery.stale_rule_correction(home, str(kwargs.get("session_id") or ""), platform),
                 xiaohongshu.turn_context(home, text),
                 media_slot.picture_request_hint(text) if _pictures_enabled() else "",
+                eastmoney_slot.turn_note(home),
             ]
             extra = "\n\n".join(item for item in extras if item)
             return {"context": extra} if extra else None

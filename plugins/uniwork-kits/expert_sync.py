@@ -21,6 +21,9 @@ So the default profile pushes these across, and nothing else:
   expert since the last sync.
 * the UniAI toolkit entry: mirrored, keeping the expert's own ``enabled`` flag
   and tool filter; removed again when the default no longer has it.
+* the 东方财富 connector, and only onto the nine Eastmoney experts: same
+  mirror rules. Until a colleague writes that MCP into the default profile,
+  nothing here is copied and those experts keep the package's own scripts.
 
 Hermes keeps profiles independent on purpose; this touches only profiles this
 plugin installed as experts, and only these fields. It runs when the default
@@ -36,7 +39,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Set, Tuple
 
-from . import media_slot, store
+from . import eastmoney_slot, media_slot, store
 
 logger = logging.getLogger(__name__)
 
@@ -94,10 +97,42 @@ def _expert_homes(default_home: Path) -> List[Tuple[str, Path]]:
     return out
 
 
+def _mcp_to_follow(plugin: str, default_servers: Mapping[str, Any]) -> List[Tuple[str, str]]:
+    """默认档案里这个专家要跟上的 MCP，每项是（配置键, 说明）。"""
+    followed: List[Tuple[str, str]] = []
+    uniai = media_slot.uniai_server(default_servers)
+    if uniai:
+        followed.append((uniai, "生图 / 搜图"))
+    if plugin in eastmoney_slot.EXPERTS:
+        found = eastmoney_slot.server_name(default_servers)
+        if found and found != uniai:
+            followed.append((found, "东方财富连接器"))
+    return followed
+
+
+def _mirror_mcp_entry(
+    servers: Dict[str, Any],
+    default_servers: Mapping[str, Any],
+    name: str,
+    label: str,
+    changes: List[str],
+) -> None:
+    """把默认档案的一条 MCP 抄进专家档案，保留专家自己的 enabled 和 tools。"""
+    mirrored = copy.deepcopy(dict(default_servers[name]))
+    mine = servers.get(name) if isinstance(servers.get(name), Mapping) else {}
+    for field in _KEEP_FROM_EXPERT:
+        if field in mine:
+            mirrored[field] = copy.deepcopy(mine[field])
+    if mine != mirrored:
+        servers[name] = mirrored
+        changes.append(f"同步 {name}（{label}）")
+
+
 def _plan_config(
     expert_raw: Dict[str, Any],
     default_raw: Mapping[str, Any],
     record: Mapping[str, Any],
+    plugin: str,
 ) -> Tuple[Dict[str, Any], Dict[str, Any], List[str]]:
     """``(new raw config, new sync record, what changed)`` for one expert."""
     raw = copy.deepcopy(expert_raw)
@@ -130,25 +165,19 @@ def _plan_config(
 
     servers = raw.get("mcp_servers") if isinstance(raw.get("mcp_servers"), dict) else {}
     default_servers = default_raw.get("mcp_servers") if isinstance(default_raw.get("mcp_servers"), Mapping) else {}
-    name = media_slot.uniai_server(default_servers)
+    wanted = _mcp_to_follow(plugin, default_servers)
+    wanted_names = [name for name, _label in wanted]
     previous = [str(n) for n in record.get("synced_mcp") or []]
-    for stale in [n for n in previous if n != name and n in servers]:
-        servers.pop(stale)
+    for stale in [n for n in previous if n not in wanted_names and n in servers]:
+        servers.pop(stale, None)
         changes.append(f"移除 {stale}（默认配置档案已经没有）")
-    if name:
-        mirrored = copy.deepcopy(dict(default_servers[name]))
-        mine = servers.get(name) if isinstance(servers.get(name), Mapping) else {}
-        for field in _KEEP_FROM_EXPERT:
-            if field in mine:
-                mirrored[field] = mine[field]
-        if mine != mirrored:
-            servers[name] = mirrored
-            changes.append(f"同步 {name}（生图 / 搜图）")
+    for name, label in wanted:
+        _mirror_mcp_entry(servers, default_servers, name, label, changes)
     if servers:
         raw["mcp_servers"] = servers
     else:
         raw.pop("mcp_servers", None)
-    new_record["synced_mcp"] = [name] if name else []
+    new_record["synced_mcp"] = wanted_names
     return raw, new_record, changes
 
 
@@ -162,11 +191,14 @@ def sync_expert(default_home: Path, expert_home: Path) -> List[str]:
         return []
     plugin, entry = found
     record = entry.get("sync") if isinstance(entry.get("sync"), dict) else {}
-    new_raw, new_record, changes = _plan_config(expert_raw, default_raw, record)
+    new_raw, new_record, changes = _plan_config(expert_raw, default_raw, record, plugin)
 
     servers = new_raw.get("mcp_servers") if isinstance(new_raw.get("mcp_servers"), Mapping) else {}
-    name = media_slot.uniai_server(servers)
-    referenced = _referenced_keys(_managed_providers(new_raw), servers.get(name) if name else None)
+    referenced = _referenced_keys(_managed_providers(new_raw), None)
+    for mcp_name in new_record.get("synced_mcp") or []:
+        mcp_entry = servers.get(mcp_name)
+        if isinstance(mcp_entry, Mapping):
+            referenced |= _referenced_keys({}, mcp_entry)
     own = _own_keys(entry)
     env_updates: Dict[str, str] = {}
     for key, value in default_env.items():

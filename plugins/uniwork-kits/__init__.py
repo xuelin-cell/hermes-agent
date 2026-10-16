@@ -10,7 +10,10 @@ them into what Hermes already has — skills, ``mcp_servers``, profiles and
   (:mod:`.host_rules`), empty for every profile that is not an expert;
 * a ``pre_llm_call`` hook suggesting matching kit skills in ordinary
   conversations, and PPT picture rules that name the media slot
-  (:mod:`.router`, :mod:`.media_slot`);
+  (:mod:`.router`, :mod:`.media_slot`); the nine Eastmoney experts stay on
+  their package scripts until a colleague's 东方财富 connector shows up in
+  ``mcp_servers``, then the same hook switches that turn onto it
+  (:mod:`.eastmoney_slot`);
 * tool hooks doing what 数字员工's middlewares did: picture rules when a PPT
   kit loads, search hits landed as local files, decks checked when written
   (:mod:`.host_hooks`), plus a package's own command hooks
