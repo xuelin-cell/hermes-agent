@@ -70,14 +70,14 @@ function fixturePlugin() {
         import {MemoryRouter} from 'react-router';
         import {I18nProvider} from '/src/i18n/context';
         import {ThemeProvider,useTheme} from '/src/themes/context';
-        import {McpConnectorsTab} from '/src/app/capabilities/mcp-mt/connectors-tab';
+        import {ConnectorsPage} from '/src/app/capabilities/mcp-mt/connectors-page';
         import '/src/styles.css';
         // 使用产品原生主题切换，避免只改部分颜色导致错误的明暗截图。
         function FixtureTheme() {
           const {setMode}=useTheme();
           useEffect(()=>{window.fixtureSetMode=setMode},[setMode]);
           return React.createElement(MemoryRouter,null,
-            React.createElement(McpConnectorsTab,{gateway:null,profile:'work',scopeLabel:'work'}));
+            React.createElement(ConnectorsPage,{gateway:null,profile:'work',scopeLabel:'work'}));
         }
         createRoot(document.getElementById('root')).render(React.createElement(ThemeProvider,null,
           React.createElement(I18nProvider,
@@ -115,10 +115,9 @@ try {
   instance = await electron.launch({executablePath:electronPath,args:[main],env,timeout:45000})
   const page = await instance.firstWindow()
   page.on('pageerror', error => errors.push(error.message))
-  await page.getByRole('heading',{name:'自定义 MCP'}).waitFor({timeout:60000})
-  await page.getByRole('button',{name:'test-reader',exact:true}).click()
+  await page.getByRole('tab',{name:'推荐'}).waitFor({timeout:60000})
   for (const dark of [false,true]) {
-    for (const width of [1000,460]) {
+    for (const width of [1400,1000,460]) {
       await instance.evaluate(({BrowserWindow},size)=>BrowserWindow.getAllWindows()[0].setContentSize(size,760),width)
       await page.evaluate(value => window.fixtureSetMode(value ? 'dark' : 'light'),dark)
       await page.waitForFunction(value => document.documentElement.dataset.hermesMode === value,dark?'dark':'light')
@@ -128,10 +127,20 @@ try {
       await writeFile(path.join(root,`${dark?'dark':'light'}-${width}.png`),png)
       const fits = await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth)
       assert.ok(fits,`页面不得横向溢出：${width}`)
+      assert.equal(await page.locator('.mt-connector-icon').evaluateAll(images=>images.every(image=>image.complete&&image.naturalWidth>0)),true,'推荐图标必须全部正常加载')
     }
   }
+  await page.getByRole('button',{name:'查看QQ 邮箱',exact:true}).click()
+  await page.getByRole('dialog').getByText('暂未开放连接').waitFor()
+  await writeFile(path.join(root,'detail-dark-460.png'),await capturePng(instance,page))
+  await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click()
+  await page.getByRole('tab',{name:'MCP',exact:true}).click()
+  await page.getByRole('heading',{name:'自定义 MCP'}).waitFor()
+  await page.getByRole('button',{name:'test-reader',exact:true}).click()
+  await writeFile(path.join(root,'mcp-dark-460.png'),await capturePng(instance,page))
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth),'MCP 页面不得横向溢出')
   assert.deepEqual(errors,[])
-  console.log(`M02 受控 Renderer：4 个主题／尺寸组合通过；截图 ${root}`)
+  console.log(`连接器受控 Renderer：6 个主题／尺寸组合、详情和原生 MCP 入口通过；截图 ${root}`)
 } finally {
   await instance?.close()
   await server.close()

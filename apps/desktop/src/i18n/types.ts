@@ -334,6 +334,15 @@ export interface Translations {
     required: string
   }
   connectorsPage: {
+    recommended: {
+      tab: string
+      search: string
+      details: (name: string) => string
+      unavailable: string
+      unavailableHint: string
+      noMatches: string
+      catalog: Record<string, { name: string; description: string; provider: string }>
+    }
     mcpLocal: {
       addCustom: string
       custom: string

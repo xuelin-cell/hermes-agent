@@ -43,6 +43,8 @@ one-off at the call site.
 
 ## Principles
 
+`desktop-mt` 连接器页按 HexAgent 参考界面使用「推荐 / MCP」双标签。推荐目录为最多三列的圆角卡片，窄容器切换为两列或一列；图标、名称、介绍和供应商保持一致层级，背景、文字与选中标记仍使用当前主题语义令牌。详情沿用原生 Dialog。授权未接入的推荐项只展示详情和明确说明，不收集凭据或显示虚构的连接状态。MCP 标签保留原生管理与 Profile 范围，切换标签保留编辑草稿。
+
 1. **Flat, not boxed.** No card-in-card, no divider borders inside a panel.
    Group with whitespace and a single hairline, never nested rounded boxes.
 2. **Borderless elevation for floating panels.** Overlays float on

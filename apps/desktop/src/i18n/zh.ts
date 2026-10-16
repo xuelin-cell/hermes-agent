@@ -298,6 +298,72 @@ export const zh = defineLocale({
     required: '必填'
   },
   connectorsPage: {
+    recommended: {
+      tab: '推荐',
+      search: '搜索连接器',
+      details: (name: string) => `查看${name}`,
+      unavailable: '暂未开放连接',
+      unavailableHint: '连接器授权服务尚未接入。已有 MCP 服务可在 MCP 标签中添加和管理。',
+      noMatches: '没有匹配的连接器',
+      catalog: {
+        qq_mail: {
+          name: 'QQ 邮箱',
+          description: '收发、搜索和整理 QQ 邮件。连接后可让 Agent 读取邮件内容、汇总邮件线索、处理邮件信息。',
+          provider: 'Tencent'
+        },
+        netease_mail: {
+          name: '网易邮箱',
+          description:
+            '收发、搜索和整理网易邮箱（163 / 126 / yeah.net）邮件。连接后可让 Agent 读取邮件内容、汇总邮件线索、处理邮件信息。',
+          provider: 'NetEase'
+        },
+        amap: {
+          name: '高德地图',
+          description: '地点搜索、地址解析、天气查询和路线规划。',
+          provider: '高德'
+        },
+        wps_mcp: {
+          name: 'WPS',
+          description: '搜索、读取、整理和创建 WPS 云文档、表格及文件夹，让 Agent 直接处理你的 WPS 内容。',
+          provider: '金山办公'
+        },
+        youdao_note: {
+          name: '有道云笔记',
+          description: '搜索、读取、创建和整理有道云笔记及待办，让 Agent 帮你管理个人知识与资料。',
+          provider: '网易有道'
+        },
+        ima: {
+          name: '腾讯 ima 知识库',
+          description: '搜索、读取、创建和整理腾讯 ima 笔记与知识库内容，让 Agent 帮你管理资料和知识库。',
+          provider: '腾讯'
+        },
+        qcc_mcp: {
+          name: '企查查',
+          description: '连接企查查企业信息、风险、知识产权、经营和董监高服务，让 Agent 查询企业数据。',
+          provider: '企查查'
+        },
+        eastmoney_mcp: {
+          name: '东方财富',
+          description: '连接东方财富 Choice 数据 MCP，查询行情、公告、宏观指标、证券筛选和研究资讯。',
+          provider: '东方财富'
+        },
+        ifind_mcp: {
+          name: '同花顺 iFinD',
+          description: '查询同花顺 iFinD 金融数据、企业工商信息与法律内容，让 Agent 检索行情、财务、企业与法规数据。',
+          provider: '同花顺'
+        },
+        aminer: {
+          name: 'AMiner学术',
+          description: '搜索和查询 AMiner 的论文、学者、机构、专利及期刊会议数据。',
+          provider: '智谱'
+        },
+        wecom_bot: {
+          name: '企业微信',
+          description: '使用企业微信扫码授权智能机器人，连接文档、日程、待办、通讯录和消息等办公能力。',
+          provider: '企业微信'
+        }
+      }
+    },
     mcpLocal: {
       addCustom: '添加自定义 MCP',
       custom: '自定义 MCP',

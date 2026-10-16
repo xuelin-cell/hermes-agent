@@ -20,7 +20,7 @@ import { PageSearchShell } from '../page-search-shell'
 import type { SetStatusbarItemGroup } from '../shell/statusbar-controls'
 
 import { prefetchCatalogWhenIdle } from './catalog/catalog-data'
-import { McpConnectorsTab } from './mcp-mt/connectors-tab'
+import { ConnectorsPage } from './mcp-mt/connectors-page'
 import { PluginsTab } from './plugins/plugins-tab'
 import { CapabilityScopeSelector, useCapabilityScope } from './scope-selector'
 import { SkillMarket } from './skill-market'
@@ -151,7 +151,7 @@ export function CapabilitiesView({
     // ACTIVE gateway's socket — for a scope pinned to a different backend that
     // (config edits still apply on that backend's next session).
     connectors: () => (
-      <McpConnectorsTab
+      <ConnectorsPage
         gateway={scope.crossBackend ? null : gateway}
         key={`connectors-${scope.key}`}
         profile={scope.profile}

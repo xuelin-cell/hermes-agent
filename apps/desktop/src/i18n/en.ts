@@ -311,6 +311,77 @@ export const en: Translations = {
 
   // `connectors.*` above stays the onboarding and chat vocabulary; these are the page's own, and the two are not shared.
   connectorsPage: {
+    recommended: {
+      tab: 'Recommended',
+      search: 'Search connectors',
+      details: (name: string) => `View ${name}`,
+      unavailable: 'Connection coming soon',
+      unavailableHint: 'Connector sign-in is not available yet. You can add an existing MCP service in the MCP tab.',
+      noMatches: 'No matching connectors',
+      catalog: {
+        qq_mail: {
+          name: 'QQ Mail',
+          description:
+            'Send, search, and organize QQ Mail. After connecting, Agent can read email content, summarize mail threads, and process mail information.',
+          provider: 'Tencent'
+        },
+        netease_mail: {
+          name: 'NetEase Mail',
+          description:
+            'Send, search, and organize NetEase Mail (163 / 126 / yeah.net). After connecting, Agent can read email content, summarize mail threads, and process mail information.',
+          provider: 'NetEase'
+        },
+        amap: {
+          name: 'Amap',
+          description: 'Search places, resolve addresses, check weather, and plan routes.',
+          provider: 'Amap'
+        },
+        wps_mcp: {
+          name: 'WPS',
+          description: 'Search, read, organize, and create WPS cloud documents, spreadsheets, and folders with Agent.',
+          provider: 'Kingsoft Office'
+        },
+        youdao_note: {
+          name: 'Youdao Note',
+          description: 'Search, read, create, and organize Youdao notes and todos with Agent.',
+          provider: 'NetEase Youdao'
+        },
+        ima: {
+          name: 'Tencent ima Knowledge Base',
+          description: 'Search, read, create, and organize Tencent ima notes and knowledge-base content with Agent.',
+          provider: 'Tencent'
+        },
+        qcc_mcp: {
+          name: 'Qichacha',
+          description:
+            'Connect Qichacha company, risk, intellectual property, operation, and executive services for enterprise data queries.',
+          provider: 'Qichacha'
+        },
+        eastmoney_mcp: {
+          name: 'Eastmoney',
+          description:
+            'Connect Eastmoney Choice-data MCP for financial market data, notices, macro indicators, securities screening, and research news.',
+          provider: 'Eastmoney'
+        },
+        ifind_mcp: {
+          name: 'iFinD (Tonghuashun)',
+          description:
+            'Query Tonghuashun iFinD financial data, enterprise registration, and legal content, letting Agent retrieve quotes, financials, company, and regulation data.',
+          provider: 'Tonghuashun'
+        },
+        aminer: {
+          name: 'AMiner Academic',
+          description: 'Search and query AMiner papers, scholars, organizations, patents, journals, and conferences.',
+          provider: 'Zhipu'
+        },
+        wecom_bot: {
+          name: 'WeCom',
+          description:
+            'Scan a QR code in WeCom to authorize an intelligent bot and connect documents, schedules, todos, contacts, and messaging capabilities.',
+          provider: 'WeCom'
+        }
+      }
+    },
     mcpLocal: {
       addCustom: 'Add custom MCP',
       custom: 'Custom MCP',

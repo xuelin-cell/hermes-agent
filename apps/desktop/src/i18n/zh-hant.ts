@@ -10,6 +10,68 @@ export const zhHant = defineLocale({
     }
   },
   connectorsPage: {
+    recommended: {
+      tab: '推薦',
+      search: '搜尋連接器',
+      details: (name: string) => `查看${name}`,
+      unavailable: '暫未開放連線',
+      unavailableHint: '連接器授權服務尚未接入。已有 MCP 服務可在 MCP 分頁中新增和管理。',
+      noMatches: '沒有相符的連接器',
+      catalog: {
+        qq_mail: {
+          name: 'QQ 郵箱',
+          description: '收發、搜尋和整理 QQ 郵件。連接後可讓 Agent 讀取郵件內容、彙整郵件線索、處理郵件資訊。',
+          provider: 'Tencent'
+        },
+        netease_mail: {
+          name: '網易郵箱',
+          description:
+            '收發、搜尋和整理網易郵箱（163 / 126 / yeah.net）郵件。連接後可讓 Agent 讀取郵件內容、彙整郵件線索、處理郵件資訊。',
+          provider: 'NetEase'
+        },
+        amap: { name: '高德地圖', description: '地點搜尋、地址解析、天氣查詢和路線規劃。', provider: '高德' },
+        wps_mcp: {
+          name: 'WPS',
+          description: '搜尋、讀取、整理和建立 WPS 雲端文件、試算表及資料夾，讓 Agent 直接處理你的 WPS 內容。',
+          provider: '金山辦公'
+        },
+        youdao_note: {
+          name: '有道雲筆記',
+          description: '搜尋、讀取、建立和整理有道雲筆記及待辦，讓 Agent 幫你管理個人知識與資料。',
+          provider: '網易有道'
+        },
+        ima: {
+          name: '騰訊 ima 知識庫',
+          description: '搜尋、讀取、建立和整理騰訊 ima 筆記與知識庫內容，讓 Agent 幫你管理資料和知識庫。',
+          provider: '騰訊'
+        },
+        qcc_mcp: {
+          name: '企查查',
+          description: '連接企查查企業資訊、風險、智慧財產權、經營和董監高服務，讓 Agent 查詢企業資料。',
+          provider: '企查查'
+        },
+        eastmoney_mcp: {
+          name: '東方財富',
+          description: '連接東方財富 Choice 資料 MCP，查詢行情、公告、總體經濟指標、證券篩選和研究資訊。',
+          provider: '東方財富'
+        },
+        ifind_mcp: {
+          name: '同花順 iFinD',
+          description: '查詢同花順 iFinD 金融資料、企業工商資訊與法律內容，讓 Agent 檢索行情、財務、企業與法規資料。',
+          provider: '同花順'
+        },
+        aminer: {
+          name: 'AMiner 學術',
+          description: '搜尋和查詢 AMiner 的論文、學者、機構、專利及期刊會議資料。',
+          provider: '智譜'
+        },
+        wecom_bot: {
+          name: '企業微信',
+          description: '使用企業微信掃碼授權智慧機器人，連接文件、日程、待辦、通訊錄和訊息等辦公能力。',
+          provider: '企業微信'
+        }
+      }
+    },
     mcpLocal: {
       addCustom: '新增自訂 MCP',
       custom: '自訂 MCP',
