@@ -14,6 +14,7 @@ import { FallbackModelsField } from './fallback-models-field'
 import { fieldCopyForSchemaKey } from './field-copy'
 import { ListRow, ToggleRow } from './primitives'
 import { SearchableSelect } from './searchable-select'
+import { WorkingDirectoryInput } from './working-directory-input'
 
 /**
  * One generic config row: label + description resolved from the i18n field
@@ -103,6 +104,10 @@ export function ConfigField({
   // dedicated structured editor instead.
   if (schemaKey === 'fallback_providers') {
     return wideRow(<FallbackModelsField onChange={onChange} value={value} />)
+  }
+
+  if (schemaKey === 'terminal.cwd') {
+    return row(<WorkingDirectoryInput label={label} onChange={onChange} value={String(value ?? '')} />)
   }
 
   if (schema.type === 'boolean') {
