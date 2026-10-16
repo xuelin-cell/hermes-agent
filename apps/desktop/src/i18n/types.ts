@@ -2539,6 +2539,21 @@ export interface Translations {
   }
 
   messaging: {
+    cards: {
+      heading: string
+      description: string
+      configure: string
+      guide: string
+      save: string
+      comingSoon: string
+      unavailable: string
+      notConnected: string
+      unbind: string
+      unbindTitle: string
+      unbindDescription: string
+      titles: Record<string, string>
+      descriptions: Record<string, string>
+    }
     search: string
     loading: string
     loadFailed: string

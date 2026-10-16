@@ -54,18 +54,34 @@ function fixturePlugin() {
       return `
         import React,{useEffect,useState} from 'react';
         import {createRoot} from 'react-dom/client';
-        import {I18nProvider} from '/src/i18n/context';
+        import {I18nProvider,useI18n} from '/src/i18n/context';
         import {ThemeProvider,useTheme} from '/src/themes/context';
         import {WeixinQrSetup} from '/src/app/messaging/weixin-qr-setup';
+        import {PlatformCard,CREDENTIAL_KEYS} from '/src/app/messaging/platform-card';
+        import {PlatformConfigDialog} from '/src/app/messaging/platform-config-dialog';
+        import {Button} from '/src/components/ui/button';
         import '/src/styles.css';
         const base={description:'',docs_url:'',enabled:false,env_vars:[],gateway_running:true,id:'weixin',name:'微信',state:'not_configured'};
+        // 使用原生字段结构，只替换数据，不复制产品弹窗实现。
+        const platforms=Object.entries(CREDENTIAL_KEYS).map(([id,keys])=>({...base,id,name:id,configured:false,
+          env_vars:keys.map((key,index)=>({key,prompt:index?'Secret':'App ID',required:true,is_password:!!index,is_set:false}))}));
+        // 隔离展示真实卡片和弹窗，避免加载账号、后端或用户配置。
         function Card(){
           const {setMode}=useTheme();
+          const {t}=useI18n();
           const [configured,setConfigured]=useState(false);
+          const [selected,setSelected]=useState(null);
           useEffect(()=>{window.fixtureSetMode=setMode;window.fixtureConfigured=setConfigured},[setMode]);
-          return React.createElement('div',{className:'p-6'},React.createElement(WeixinQrSetup,{
+          return React.createElement('div',{className:'mx-auto grid max-w-3xl gap-4 p-6'},
+            React.createElement('h2',{className:'text-sm font-semibold'},t.messaging.cards.heading),
+            React.createElement(WeixinQrSetup,{
             onSaved:()=>setConfigured(true),onUnbound:()=>setConfigured(false),
-            platform:{...base,configured,state:configured?'connected':'not_configured'},scopeProfile:undefined}));
+            platform:{...base,configured,enabled:configured,state:configured?'connected':'not_configured'},scopeProfile:undefined}),
+            ...platforms.map(platform=>React.createElement(PlatformCard,{key:platform.id,id:platform.id,platform,
+              actions:React.createElement(Button,{size:'sm',variant:'outline',onClick:()=>setSelected(platform)},t.messaging.cards.configure)})),
+            React.createElement(PlatformCard,{id:'uniagentgate'}),
+            selected&&React.createElement(PlatformConfigDialog,{platform:selected,onClose:()=>setSelected(null),
+              onSave:async env=>{window.fixtureSaved={id:selected.id,env}}}));
         }
         createRoot(document.getElementById('root')).render(React.createElement(ThemeProvider,null,
           React.createElement(I18nProvider,{configClient:null,initialLocale:'zh'},React.createElement(Card))));
@@ -125,10 +141,29 @@ try {
 
   for (const dark of [false, true]) {
     for (const width of [900, 460]) {
-      await instance.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0].setContentSize(size, 640), width)
+      await instance.evaluate(
+        ({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0].setContentSize(size, 640),
+        width
+      )
       await page.evaluate(value => window.fixtureSetMode(value ? 'dark' : 'light'), dark)
-      await page.waitForFunction(value => document.documentElement.dataset.hermesMode === value, dark ? 'dark' : 'light')
+      await page.waitForFunction(
+        value => document.documentElement.dataset.hermesMode === value,
+        dark ? 'dark' : 'light'
+      )
       await page.waitForFunction(value => window.innerWidth === value, width)
+      await shoot(`${dark ? 'dark' : 'light'}-${width}-cards`)
+      const dingtalk = page.getByRole('article', { name: '钉钉机器人集成' })
+      await dingtalk.getByRole('button', { name: '配置', exact: true }).click()
+      const dialog = page.getByRole('dialog')
+      await dialog.locator('input[type="text"]').fill('fixture-app')
+      await dialog.locator('input[type="password"]').fill('fixture-secret')
+      await shoot(`${dark ? 'dark' : 'light'}-${width}-dialog`)
+      await dialog.getByRole('button', { name: '保存并启用' }).click()
+      await dialog.waitFor({ state: 'hidden' })
+      assert.deepEqual(await page.evaluate(() => window.fixtureSaved), {
+        id: 'dingtalk',
+        env: { DINGTALK_CLIENT_ID: 'fixture-app', DINGTALK_CLIENT_SECRET: 'fixture-secret' }
+      })
       await page.evaluate(() => {
         window.fixtureState = 'wait'
       })
@@ -156,7 +191,9 @@ try {
   await shoot('dark-460-connected')
 
   assert.deepEqual(errors, [])
-  console.log(`微信扫码受控 Renderer：4 个主题／尺寸组合与过期、已连接状态通过；截图 ${root}`)
+  console.log(
+    `消息平台受控 Renderer：4 个主题／尺寸组合的卡片、凭据弹窗、等待扫码和已扫码，以及过期、已连接状态通过；截图 ${root}`
+  )
 } finally {
   await instance?.close()
   await server.close()

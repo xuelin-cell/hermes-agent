@@ -3268,6 +3268,34 @@ export const esOverrides = {
     }
   },
   messaging: {
+    cards: {
+      heading: 'Aplicaciones de chat',
+      description: 'Conecta WeChat, DingTalk y otras aplicaciones para recibir y responder mensajes desde el móvil.',
+      configure: 'Configurar',
+      guide: 'Guía de configuración',
+      save: 'Guardar y activar',
+      comingSoon: 'Integración pendiente',
+      unavailable: 'Componente de mensajería no disponible',
+      notConnected: 'Sin conexión',
+      unbind: 'Desvincular',
+      unbindTitle: '¿Desvincular esta plataforma?',
+      unbindDescription:
+        'Elimina sus credenciales y la desactiva. Se conservan las otras configuraciones, el historial y los archivos.',
+      titles: {
+        weixin: 'Integración de WeChat ClawBot',
+        dingtalk: 'Integración del bot de DingTalk',
+        feishu: 'Integración del bot de Feishu',
+        wecom: 'Integración del bot inteligente de WeCom',
+        uniagentgate: 'Pasarela de mensajes 5G (RCS)'
+      },
+      descriptions: {
+        weixin: 'Escanea con WeChat para conectar ClawBot e intercambiar mensajes.',
+        dingtalk: 'Registra un bot de DingTalk para recibir y responder mensajes.',
+        feishu: 'Registra un bot de Feishu para recibir y responder mensajes.',
+        wecom: 'Registra un bot inteligente de WeCom para recibir y responder mensajes.',
+        uniagentgate: 'Conecta uniAgentGate para intercambiar mensajes RCS.'
+      }
+    },
     search: 'Buscar mensajería...',
     loading: 'Cargando plataformas de mensajería...',
     loadFailed: 'No se pudieron cargar las plataformas de mensajería',
