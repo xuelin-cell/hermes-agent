@@ -108,7 +108,7 @@ export function settingsSubpages(view: SettingsView, developerMode = true): read
     return OTHER_SUBPAGES[view].filter(page => page.id !== 'sounds')
   }
 
-  return OTHER_SUBPAGES[view] ?? []
+  return withoutHiddenSubpages(view, OTHER_SUBPAGES[view] ?? [])
 }
 
 /** Shared by search serialization and saved links that predate subpages. */

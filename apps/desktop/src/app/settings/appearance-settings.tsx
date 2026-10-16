@@ -783,8 +783,9 @@ export function AppearanceSettings({ subpage }: AppearanceSettingsProps = {}) {
           )}
 
           {/* Linux has neither half of this setting (see TRANSLUCENCY_SUPPORTED),
-              so the row is absent there rather than offering a dead lever. */}
-          {show('window-layout') && TRANSLUCENCY_SUPPORTED && (
+              so the row is absent there rather than offering a dead lever. Nor has the browser build,
+              whose answer TRANSLUCENCY_SUPPORTED misses: it is read while loading, before the bridge. */}
+          {show('window-layout') && TRANSLUCENCY_SUPPORTED && !hideForUsers() && (
             <ListRow
               action={
                 <div

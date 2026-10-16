@@ -1,6 +1,7 @@
 import { useStore } from '@nanostores/react'
 import type { ReactNode } from 'react'
 
+import { browserInitialLocale } from '@/lib/browser-shell'
 import { $activeGatewayProfile } from '@/store/profile'
 import { $connection } from '@/store/session'
 
@@ -21,5 +22,9 @@ export function ProfileI18nProvider({ children }: { children: ReactNode }) {
     profile
   ])
 
-  return <I18nProvider scopeKey={scopeKey}>{children}</I18nProvider>
+  return (
+    <I18nProvider initialLocale={browserInitialLocale()} scopeKey={scopeKey}>
+      {children}
+    </I18nProvider>
+  )
 }

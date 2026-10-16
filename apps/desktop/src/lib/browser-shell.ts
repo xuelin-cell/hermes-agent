@@ -21,6 +21,7 @@ import { storedBoolean } from '@/lib/storage'
  *   api/models.ts                                      * model pickers: the platform's providers only
  *   app/artifacts/cloud-drive-tab.tsx                  the personal cloud drive tab says it is in development
  *   app/artifacts/index.tsx                            the library opens on local artifacts
+ *   app/capabilities/index.tsx                         * no Plugins tab (a community catalog), like Toolsets
  *   app/capabilities/plugins/plugins-tab.tsx           * no desktop (local) plugins, no "open plugins folder"
  *   app/capabilities/skill-market.tsx                  installing from the market says it is in development
  *   app/chat/right-rail/office-sheet.tsx              (ours) the sheet viewer: spreadsheets the instance turns into tables
@@ -39,15 +40,17 @@ import { storedBoolean } from '@/lib/storage'
  *   app/profiles/index.tsx                             * no "new profile"
  *   app/right-sidebar/file-actions.tsx                 rename + delete (to the instance's recycle bin) in the menu
  *   app/right-sidebar/terminal/use-terminal-session.ts Ctrl+V / Ctrl+Shift+V paste through the browser
- *   app/settings/appearance-settings.tsx               * no theme marketplace results, no UI scale row
+ *   app/settings/appearance-settings.tsx               * no theme marketplace results, no UI scale or window translucency row
  *   app/settings/config-settings.tsx                   * no Advanced ▸ Desktop settings (keep awake, F12, backend pool,
  *                                                      Quick Entry)
  *   app/settings/index.tsx                             * no Gateway, Credential Vault, Providers or About page
- *   app/settings/subpages.ts                           * no Advanced ▸ Desktop subpage
+ *   app/settings/subpages.ts                           * no Advanced ▸ Desktop, Keyboard ▸ HUD gesture or Screen capture
  *   app/settings/visibility.ts                         * the settings search (command palette) skips those pages too
  *   app/shell/gateway-menu-panel.tsx                   * no gateway restart
  *   app/shell/maas-account-status.tsx                  signing out keeps the instance: the confirmation says so
+ *   app/shell/model-catalog-menu.tsx                   * no "add custom model" or "edit models" in the model menus
  *   contrib/plugins.ts                                 * no Bot Mode (the BOTS tab): its plugin is not started
+ *   i18n/profile-provider.tsx                          the interface starts in Chinese, before the instance's config answers
  *   lib/local-preview.ts                               Office files (pptx, docx, xlsx …) are previews, never read as text
  *   lib/media.ts                                       audio and video play straight from the instance (in the chat and
  *                                                      in the preview pane's own player, formats/media-preview.tsx)
@@ -82,6 +85,14 @@ export function isBrowserShell(): boolean {
     import.meta.env.VITE_HERMES_BROWSER_BUILD === '1' ||
     (typeof document !== 'undefined' && Boolean(document.documentElement?.dataset?.hermesBrowser))
   )
+}
+
+/** The language the browser build starts in, before the instance's config answers
+ * (i18n/profile-provider.tsx). The cloud is Chinese from the first frame, so text
+ * picked once while mounting (the composer's placeholder) is Chinese too; a saved
+ * language still applies once the config arrives. Undefined on the desktop. */
+export function browserInitialLocale(): string | undefined {
+  return isBrowserShell() ? 'zh-CN' : undefined
 }
 
 // UniWork's own developer mode, the key of store/developer-mode.ts.
@@ -380,11 +391,12 @@ export function withoutDesktopPlugins<T extends object>(records: T): T {
   return hideForUsers() ? (NO_DESKTOP_PLUGINS as T) : records
 }
 
-const SETTINGS_SUBPAGES_HIDDEN = new Set(['config:advanced/desktop'])
+const SETTINGS_SUBPAGES_HIDDEN = new Set(['config:advanced/desktop', 'keybinds/hud-gesture', 'keybinds/screen-capture'])
 
 /** Settings subpages of this-computer-only knobs: Advanced ▸ Desktop (keep the
  * machine awake, F12, the backend pool, Quick Entry's global shortcut, app
- * updates). The browser has none of them. */
+ * updates), and Keyboard ▸ HUD gesture and Screen capture (global shortcuts of
+ * the desktop's floating HUD window and of screenshots). The browser has none of them. */
 export function withoutHiddenSubpages<P extends { id: string }>(view: string, pages: readonly P[]): readonly P[] {
   return hideForUsers() ? pages.filter(page => !SETTINGS_SUBPAGES_HIDDEN.has(`${view}/${page.id}`)) : pages
 }

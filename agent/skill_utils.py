@@ -21,6 +21,7 @@ PLATFORM_MAP = {"macos": "darwin", "linux": "linux", "windows": "win32"}
 
 EXCLUDED_SKILL_DIRS = frozenset((
     ".git", ".github", ".hub", ".archive", ".curator_backups", ".locks",
+    ".retired-hermes",  # hermes-mt: tools/skills_sync.py 把用户改过的退役技能移进这里当隐藏归档，列技能时要跳过
     ".venv", "venv", "node_modules", "site-packages", "__pycache__",
     ".tox", ".nox", ".pytest_cache", ".mypy_cache", ".ruff_cache",
 ))

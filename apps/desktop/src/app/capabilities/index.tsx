@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { PageLoader } from '@/components/page-loader'
 import { Button } from '@/components/ui/button'
 import { useI18n } from '@/i18n'
+import { hideForUsers } from '@/lib/browser-shell'
 import { queryClient } from '@/lib/query-client'
 import { invalidateSlashCompletions } from '@/lib/slash-completion-cache'
 import { useStoreSelector } from '@/lib/use-session-slice'
@@ -72,7 +73,8 @@ export function CapabilitiesView({
   const routeTab = useRouteEnumParam('tab', CAPABILITY_MODES, 'skills')
   const localTab = useState<CapabilityMode>('skills')
   const [requestedMode, setMode] = embedded ? localTab : routeTab
-  const developerTab = requestedMode === 'toolsets'
+  // Browser build: Plugins (a community catalog) is developer mode's too, like Toolsets.
+  const developerTab = requestedMode === 'toolsets' || (requestedMode === 'plugins' && hideForUsers())
   const mode = !developerMode && developerTab ? 'skills' : requestedMode
 
   // 立即阻止隐藏页挂载，同时清理旧链接和嵌入视图的选中状态。
@@ -214,7 +216,7 @@ export function CapabilitiesView({
           ? [{ id: 'toolsets', label: t.skills.tabToolsets, meta: toolsets ? visibleToolsetCount(toolsets) : null }]
           : []),
         { id: 'connectors', label: t.connectorsPage.title },
-        { id: 'plugins', label: t.skills.tabPlugins }
+        ...(hideForUsers() ? [] : [{ id: 'plugins', label: t.skills.tabPlugins }])
       ]}
     >
       <div className="flex h-full flex-col">

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { setRuntimeI18nLocale } from '@/i18n/runtime'
 
 import {
+  browserInitialLocale,
   browserMediaPlaybackUrl,
   browserShellCopy,
   findInPageTakenByViewer,
@@ -177,6 +178,24 @@ describe('browser shell', () => {
 
     expect(withoutHiddenSubpages('config:advanced', pages).map(page => page.id)).toEqual(['runtime', 'tools'])
     expect(withoutHiddenSubpages('config:chat', [{ id: 'desktop' }])).toEqual([{ id: 'desktop' }])
+  })
+
+  it('drops the keyboard subpages of the desktop HUD window and of screen capture', () => {
+    const pages = [{ id: 'shortcuts' }, { id: 'hud-gesture' }, { id: 'screen-capture' }]
+
+    expect(withoutHiddenSubpages('keybinds', pages)).toBe(pages)
+
+    document.documentElement.dataset.hermesBrowser = 'production'
+
+    expect(withoutHiddenSubpages('keybinds', pages).map(page => page.id)).toEqual(['shortcuts'])
+  })
+
+  it('starts the interface in Chinese before the config answers', () => {
+    expect(browserInitialLocale()).toBeUndefined()
+
+    document.documentElement.dataset.hermesBrowser = 'production'
+
+    expect(browserInitialLocale()).toBe('zh-CN')
   })
 
   it('shows everything again in developer mode, but keeps what the browser build needs', () => {
