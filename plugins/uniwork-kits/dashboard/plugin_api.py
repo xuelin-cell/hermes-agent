@@ -46,8 +46,19 @@ experts = importlib.import_module("hermes_plugins.uniwork_kits.experts")
 installer = importlib.import_module("hermes_plugins.uniwork_kits.installer")
 jobs = importlib.import_module("hermes_plugins.uniwork_kits.jobs")
 store = importlib.import_module("hermes_plugins.uniwork_kits.store")
+autoseed = importlib.import_module("hermes_plugins.uniwork_kits.autoseed")
 
 router = APIRouter()
+
+# The backend mounts this module when it starts: put the bundled kits and
+# experts into a new account, or update the ones that changed, off the
+# request path. Only the default profile's backend does it (see autoseed).
+try:
+    autoseed.start(Path(get_hermes_home()))
+except Exception:  # a failed start must not keep the API from mounting
+    import logging
+
+    logging.getLogger(__name__).warning("[uniwork-kits] could not start the bundled kit install", exc_info=True)
 
 
 def _home() -> Path:
@@ -153,6 +164,12 @@ async def refresh_triggers(body: TriggersBody) -> Dict[str, Any]:
         args.append("--regenerate")
     job = await asyncio.to_thread(jobs.start, _home(), args)
     return {"job": job}
+
+
+@router.get("/bundled")
+def bundled_status() -> Dict[str, Any]:
+    """Whether the bundled kits and experts are still going in, for the page's status line."""
+    return autoseed.status()
 
 
 @router.get("/experts")

@@ -17,6 +17,7 @@ import {
 } from '@hermes/plugin-sdk'
 
 import { bindApi, bindOpener } from './api'
+import { watchBundled } from './bundled'
 import { ExpertBar } from './expert-bar'
 import { loadExperts } from './experts-store'
 import { KITS_LOCALES } from './i18n'
@@ -33,6 +34,8 @@ const plugin: HermesPlugin = {
     bindApi(ctx.rest)
     bindOpener(url => ctx.os.openExternal(url))
     void loadExperts()
+    // A new account gets the bundled kits and experts from the backend itself.
+    void watchBundled()
     ctx.registerMany([
       {
         id: 'page',

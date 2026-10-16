@@ -7,6 +7,7 @@
 import { Codicon, Popover, PopoverContent, PopoverTrigger, usePluginI18n, useValue } from '@hermes/plugin-sdk'
 import { useState } from 'react'
 
+import { $bundled } from './bundled'
 import { ExpertFace } from './expert-face'
 import { $expertDirectory, loadExperts } from './experts-store'
 import { summonExpert } from './summon'
@@ -34,6 +35,7 @@ function ExpertRow({ expert, onPick }: { expert: ExpertCard; onPick: (expert: Ex
 export function SummonPicker() {
   const t = usePluginI18n('uniwork-kits')
   const directory = useValue($expertDirectory)
+  const bundled = useValue($bundled)
   const [open, setOpen] = useState(false)
   const { recent, rest } = pickerGroups(directory)
 
@@ -66,7 +68,9 @@ export function SummonPicker() {
       </PopoverTrigger>
       <PopoverContent align="start" className="w-72 p-1.5" side="top">
         {directory.experts.length === 0 ? (
-          <p className="m-0 px-2 py-3 text-xs text-(--ui-text-tertiary)">{t('noExperts')}</p>
+          <p className="m-0 px-2 py-3 text-xs text-(--ui-text-tertiary)">
+            {bundled.running ? t('preparingExperts') : t('noExperts')}
+          </p>
         ) : (
           <div className="max-h-96 overflow-y-auto">
             {recent.length ? (

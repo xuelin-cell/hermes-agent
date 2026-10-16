@@ -43,6 +43,7 @@ import {
   uninstallKit,
   writeConfig
 } from './api'
+import { $bundled, $bundledFinished, watchBundled } from './bundled'
 import { ExpertFace } from './expert-face'
 import { $expertDirectory, loadExperts } from './experts-store'
 import { oauthStartParams } from './oauth'
@@ -631,6 +632,20 @@ export function KitsPage() {
   const [query, setQuery] = useState('')
   const [opened, setOpened] = useState('')
   const fileInput = useRef<HTMLInputElement | null>(null)
+  const bundled = useValue($bundled)
+  const bundledFinished = useValue($bundledFinished)
+
+  // The backend may still be putting the bundled kits in (a new account):
+  // follow it, and show the full shelves once it is done.
+  useEffect(() => {
+    void watchBundled()
+  }, [])
+
+  useEffect(() => {
+    if (bundledFinished) {
+      void reloadCatalog()
+    }
+  }, [bundledFinished, reloadCatalog])
 
   useEffect(() => {
     if (!job?.id) {
@@ -743,6 +758,18 @@ export function KitsPage() {
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-auto px-5 py-4">
+        {bundled.running ? (
+          <div className="mb-3 flex items-center gap-2 rounded-lg border border-(--ui-stroke-secondary) bg-(--ui-bg-quinary) px-3 py-2 text-xs">
+            <Codicon className="shrink-0" name="loading" spinning />
+            <span className="font-medium">{t('preparingKits')}</span>
+            {bundled.total ? (
+              <span className="text-(--ui-text-tertiary)">
+                {bundled.done}/{bundled.total}
+                {bundled.name ? ` · ${bundled.name}` : ''}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
         {job ? <JobStatus job={job} /> : null}
         {rows.length === 0 ? (
           <p className="py-10 text-center text-sm text-(--ui-text-tertiary)">

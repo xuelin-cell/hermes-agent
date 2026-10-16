@@ -58,6 +58,21 @@ export interface ExpertDirectory {
   recent: string[]
 }
 
+/** The backend's own install of the bundled kits and experts (GET /bundled). */
+export interface BundledStatus {
+  /** This backend started an install since it came up. */
+  ran: boolean
+  running: boolean
+  /** Package being installed right now. */
+  name: string
+  done: number
+  total: number
+  installed: number
+  unchanged: number
+  failed: string[]
+  error: string
+}
+
 export interface JobView {
   id: string
   running: boolean
