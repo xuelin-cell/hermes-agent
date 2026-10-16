@@ -5,6 +5,8 @@
 #   bash deploy/hermes-mt/scripts/build-frontend.sh
 # 产物不进 git：改了 apps/desktop 之后要在部署机上重跑这一步，再 ./deploy.sh up 让 nginx 带上新产物。
 # npm 仓库默认走 npmmirror（内网到官方仓库慢或不通），要换用 NPM_REGISTRY=... 覆盖。
+# 锁文件里不在 npm 仓库的包（xlsx 从 cdn.sheetjs.com 下，部署机连它极慢）放在 deploy/hermes-mt/vendor/npm/，
+# 装依赖前按校验值放进 npm 缓存，npm ci 就不再去下载（tests/hermes_mt/test_frontend_vendor.py 核对）。
 set -Eeuo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 OUT="$REPO/deploy/hermes-mt/nginx/dist-browser"
@@ -29,6 +31,7 @@ docker run --rm \
         deps_hash="$(sha256sum package.json package-lock.json apps/desktop/package.json apps/shared/package.json | sha256sum | cut -d" " -f1)"
         deps_stamp=/workspace/node_modules/.hermes-desktop-deps-hash
         if [ "${deps_hash}" != "$(cat "${deps_stamp}" 2>/dev/null || true)" ] || [ ! -f /workspace/node_modules/vite/bin/vite.js ]; then
+            for tgz in /workspace/deploy/hermes-mt/vendor/npm/*.tgz; do npm cache add "$tgz" >/dev/null; done
             npm ci --workspace apps/desktop --include-workspace-root --no-audit --no-fund
             printf "%s\n" "${deps_hash}" > "${deps_stamp}"
         fi
