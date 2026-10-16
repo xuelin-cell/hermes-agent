@@ -124,21 +124,25 @@ const statusbarOptions = {
 }
 
 describe('developer-only statusbar navigation', () => {
-  it('实时切换智能菜单和版本分支显示，不改变审批模式', () => {
+  it('实时切换智能菜单、终端和版本分支显示，不改变审批模式', () => {
     $desktopVersion.set({ appVersion: '0.21.5' } as never)
     const { result } = renderHook(() => useStatusbarItems({ ...statusbarOptions, gatewayState: 'open' as const }), {
       wrapper
     })
     const approval = () => result.current.statusbarItems.find(item => item.id === 'approval-mode')
+    const terminal = () => result.current.statusbarItems.find(item => item.id === 'terminal')
     const version = () => result.current.statusbarItems.find(item => item.id === 'version-client')
     expect(approval()?.hidden).toBe(true)
     expect(version()?.hidden).toBe(true)
+    expect(terminal()?.hidden).toBe(true)
     act(() => $developerMode.set(true))
     expect(approval()?.hidden).toBe(false)
     expect(version()?.hidden).toBe(false)
+    expect(terminal()?.hidden).toBe(false)
     act(() => $developerMode.set(false))
     expect(approval()?.hidden).toBe(true)
     expect(version()?.hidden).toBe(true)
+    expect(terminal()?.hidden).toBe(true)
   })
 
   it('shows the command center and gateway switcher only while developer mode is enabled', () => {

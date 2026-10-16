@@ -723,7 +723,7 @@ export function useStatusbarItems({
       {
         actionId: 'view.showTerminal',
         className: `w-7 justify-center px-0${terminalShowing ? ' bg-accent/55 text-foreground' : ''}`,
-        hidden: !chatOpen,
+        hidden: !developerMode || !chatOpen,
         icon: <Terminal className="size-3.5" />,
         id: 'terminal',
         onSelect: () => toggleTerminalPane(),
