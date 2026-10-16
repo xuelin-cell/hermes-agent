@@ -10,8 +10,11 @@ On first start the backend seeds them into the account (``autoseed``).
 Source, from the environment of the build:
 
 * ``UNIWORK_BUNDLED_PLUGINS`` — a git URL, or a local directory: a checkout of
-  the config repo, its ``plugins/`` or ``plugins/uniwork-bundled/``. Default:
-  the gitcode repo. ``off`` builds without built-in kits.
+  the config repo, its ``plugins/`` or ``plugins/uniwork-bundled/``. The desktop
+  build's identity environment (``desktop_inputs.identity_environment``) sets
+  the gitcode repo unless the builder chose another source; ``off`` builds
+  without built-in kits. Unset — ``prepare_native`` called on its own, as the
+  packaging tests do — stages nothing and goes to no network.
 * ``UNIWORK_BUNDLED_PLUGINS_REF`` — branch, tag or commit (default: the
   repository's default branch).
 
@@ -36,6 +39,7 @@ MANIFEST_MAX_DEPTH = 2
 
 
 def _bundle_root(source: Path) -> Path | None:
+    """在配置仓库、它的 plugins/ 或 plugins/uniwork-bundled/ 里找到放 zip 的那一层。"""
     for candidate in (source / "plugins" / "uniwork-bundled", source / "uniwork-bundled", source):
         if (candidate / "plugins").is_dir():
             return candidate
@@ -43,7 +47,7 @@ def _bundle_root(source: Path) -> Path | None:
 
 
 def usable(archive: Path) -> bool:
-    """Whether the runtime can install *archive*: a real zip with a plugin.json near the top."""
+    """这个 zip 运行时能不能装：能打开，并且前两层里有 plugin.json。"""
     try:
         with zipfile.ZipFile(archive) as zf:
             return any(
@@ -58,9 +62,10 @@ FETCH_TIMEOUT_S = 300
 
 
 def _fetch(url: str, ref: str, into: Path) -> None:
-    # init + fetch works for a branch, a tag and a bare commit alike, all shallow.
-    # Never prompt: a build machine (or a test) without gitcode credentials must
-    # fail at once and build without the packages, not wait for input.
+    """浅拉取配置仓库的一个分支、标签或提交到 *into*。
+
+    绝不等输入：没有 gitcode 权限的打包机器要立刻失败、不带内置包继续打包，而不是卡住。
+    """
     env = {
         **os.environ,
         "GIT_TERMINAL_PROMPT": "0",
@@ -73,11 +78,11 @@ def _fetch(url: str, ref: str, into: Path) -> None:
 
 
 def stage_bundled_plugins(repo_dir: Path, env: dict[str, str] | None = None) -> int:
-    """Copy the bundled packages into the staged *repo_dir*; return how many went in."""
+    """把内置套件和专家拷进打包目录 *repo_dir*，返回拷了几个包。"""
     env = os.environ if env is None else env
-    source = (env.get("UNIWORK_BUNDLED_PLUGINS") or DEFAULT_SOURCE).strip()
-    if source.lower() == "off":
-        print("==> Bundled plugins: off (UNIWORK_BUNDLED_PLUGINS=off)", flush=True)
+    source = (env.get("UNIWORK_BUNDLED_PLUGINS") or "").strip()
+    if not source or source.lower() == "off":
+        print(f"==> Bundled plugins: {'off' if source else 'not configured'} (UNIWORK_BUNDLED_PLUGINS)", flush=True)
         return 0
     ref = (env.get("UNIWORK_BUNDLED_PLUGINS_REF") or "").strip()
     with tempfile.TemporaryDirectory(prefix="uniwork-bundled-") as temp:

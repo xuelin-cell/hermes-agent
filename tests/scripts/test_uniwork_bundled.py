@@ -51,10 +51,24 @@ def test_a_git_source_is_fetched_at_the_requested_revision(tmp_path):
     assert stage_bundled_plugins(repo_dir, env) == 1
 
 
-def test_off_or_an_unreachable_source_builds_without_bundled_kits(tmp_path, capsys):
+def test_off_unset_or_an_unreachable_source_builds_without_bundled_kits(tmp_path, capsys):
     repo_dir = tmp_path / "hermes-agent"
     assert stage_bundled_plugins(repo_dir, {"UNIWORK_BUNDLED_PLUGINS": "off"}) == 0
+    assert stage_bundled_plugins(repo_dir, {}) == 0
     missing = (tmp_path / "nowhere").resolve().as_uri()
     assert stage_bundled_plugins(repo_dir, {"UNIWORK_BUNDLED_PLUGINS": missing}) == 0
     assert not (repo_dir / TARGET).exists()
     assert "building without them" in capsys.readouterr().out
+
+
+def test_the_desktop_build_defaults_to_the_gitcode_source_and_keeps_a_chosen_one():
+    from types import SimpleNamespace
+
+    from scripts.bundles.desktop_inputs import identity_environment
+    from scripts.bundles.uniwork_bundled import DEFAULT_SOURCE
+
+    request = SimpleNamespace(validate_channel=lambda: None, channel_request=None, commit="a" * 40,
+                              version="1.0.0", bundle_env={}, release_epoch=None, tag=None)
+    assert identity_environment(request, "bundled", {})["UNIWORK_BUNDLED_PLUGINS"] == DEFAULT_SOURCE
+    chosen = {"UNIWORK_BUNDLED_PLUGINS": "off"}
+    assert identity_environment(request, "bundled", chosen)["UNIWORK_BUNDLED_PLUGINS"] == "off"
