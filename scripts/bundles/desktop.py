@@ -14,6 +14,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
+from scripts.bundles.desktop_progress import build_step
+
+
 def run(argv: list[str], *, cwd: Path, env: dict[str, str]) -> None:
     print("bundle: " + subprocess.list2cmdline(argv), flush=True)
     # 输出每一步实际耗时，帮助区分编译、缓存校验和压缩瓶颈。
@@ -47,7 +50,9 @@ def build(repo: Path, tag: str | None, variant: str, builder_args: list[str],
     request = BuildRequest.create(repo, tag=tag, commit=commit_build, variant=variant,
                                   work=repo / ".build/desktop-job", cache=repo / ".cache/desktop-inputs",
                                   bundle_env=decode(os.environ.get("HERMES_BUNDLE_ENV_JSON", "")))
-    build_prepared(prepare(request), builder_args)
+    with build_step(1, "准备工具链、依赖和 Python 运行环境"):
+        prepared_path = prepare(request)
+    build_prepared(prepared_path, builder_args)
 
 
 def build_prepared(path: Path, builder_args: list[str], variant: str | None = None) -> None:
@@ -59,55 +64,62 @@ def build_prepared(path: Path, builder_args: list[str], variant: str | None = No
 
 
 def _build_prepared(prepared, builder_args: list[str], variant: str | None) -> None:
-    prepared.validate()
-    from scripts.bundles.desktop_inputs import build_environment, packaging_environment, select_variant, validate_builder_identity
-    from scripts.bundles.native import finish_native
+    with build_step(2, "校验打包参数与已准备依赖"):
+        prepared.validate()
+        from scripts.bundles.desktop_inputs import build_environment, packaging_environment, select_variant, validate_builder_identity
+        from scripts.bundles.native import finish_native
 
-    request = prepared.request
-    validate_builder_identity(request, builder_args)
-    if request.channel_request is not None and not request.target.startswith(("darwin-", "win32-")):
-        raise ValueError("channel builds require a supported native macOS or Windows target")
-    variant = select_variant(prepared, variant)
-    repo, node = request.source, str(prepared.node)
-    env = build_environment(prepared, variant, os.environ)
-    if request.release_epoch is not None:
-        env["HERMES_RELEASE_EPOCH"] = str(request.release_epoch)
-    desktop = repo / "apps/desktop"
-    windows_format = "nsis" if variant == "bundled" and request.tag is None and request.channel_request is None else "msix"
-    targets = {"win32": ["--win", windows_format], "darwin": ["--mac", "dmg", "zip"], "linux": ["--linux", "AppImage"]}[sys.platform]
-    package_args = ["--prepared", str(prepared.packager), "--native-deps", str(prepared.native),
-                    *targets, f"-c.extraMetadata.version={request.version}"]
-    run([node, "scripts/run-electron-builder.mjs", "--validate-only", *package_args, *builder_args],
-        cwd=desktop, env=env)
-    run([node, "scripts/build/node-deps.mjs", "--source", str(repo), "--reuse", "--no-install",
-         "--native-toolchain", prepared.native_toolchain,
-         *[arg for name in request.workspaces() for arg in ("--workspace", name)]], cwd=repo, env=env)
+        request = prepared.request
+        validate_builder_identity(request, builder_args)
+        if request.channel_request is not None and not request.target.startswith(("darwin-", "win32-")):
+            raise ValueError("channel builds require a supported native macOS or Windows target")
+        variant = select_variant(prepared, variant)
+        repo, node = request.source, str(prepared.node)
+        env = build_environment(prepared, variant, os.environ)
+        if request.release_epoch is not None:
+            env["HERMES_RELEASE_EPOCH"] = str(request.release_epoch)
+        desktop = repo / "apps/desktop"
+        windows_format = "nsis" if variant == "bundled" and request.tag is None and request.channel_request is None else "msix"
+        targets = {"win32": ["--win", windows_format], "darwin": ["--mac", "dmg", "zip"], "linux": ["--linux", "AppImage"]}[sys.platform]
+        package_args = ["--prepared", str(prepared.packager), "--native-deps", str(prepared.native),
+                        *targets, f"-c.extraMetadata.version={request.version}"]
+        run([node, "scripts/run-electron-builder.mjs", "--validate-only", *package_args, *builder_args],
+            cwd=desktop, env=env)
+        run([node, "scripts/build/node-deps.mjs", "--source", str(repo), "--reuse", "--no-install",
+             "--native-toolchain", prepared.native_toolchain,
+             *[arg for name in request.workspaces() for arg in ("--workspace", name)]], cwd=repo, env=env)
     products = repo / "apps/desktop/build/products"
     icons = products / "icons"
-    run([str(prepared.icon_python), "-I", str(repo / "scripts/generate_icons.py"),
-         "--source", str(repo), "--out", str(icons)], cwd=repo, env=env)
-    if variant != "light":
-        run([node, "scripts/build/tui.mjs", "--reuse", "--source", str(repo), "--out", str(products / "tui")], cwd=repo, env=env)
-        run([node, "scripts/build/web.mjs", "--reuse", "--source", str(repo), "--icons", str(products / "icons"),
-             "--out", str(products / "web")], cwd=repo, env=env)
-        if prepared.payload is None:
-            raise ValueError("payload dependencies were not prepared")
-        if finish_native(prepared.payload, {"tui": products / "tui", "web": products / "web"}):
-            raise RuntimeError("prepared payload assembly failed")
+    with build_step(3, "生成应用图标"):
+        run([str(prepared.icon_python), "-I", str(repo / "scripts/generate_icons.py"),
+             "--source", str(repo), "--out", str(icons)], cwd=repo, env=env)
+    with build_step(4, "编译 TUI、Web 并组装内置运行环境"):
+        if variant != "light":
+            run([node, "scripts/build/tui.mjs", "--reuse", "--source", str(repo), "--out", str(products / "tui")], cwd=repo, env=env)
+            run([node, "scripts/build/web.mjs", "--reuse", "--source", str(repo), "--icons", str(products / "icons"),
+                 "--out", str(products / "web")], cwd=repo, env=env)
+            if prepared.payload is None:
+                raise ValueError("payload dependencies were not prepared")
+            if finish_native(prepared.payload, {"tui": products / "tui", "web": products / "web"}):
+                raise RuntimeError("prepared payload assembly failed")
+        else:
+            print("轻量版本无需内置运行环境，跳过此阶段的编译。", flush=True)
     from scripts.bundles.desktop_prepare import require_source
-    require_source(repo, request.commit)
-    run([node, "scripts/write-build-stamp.mjs"], cwd=desktop, env=env)
-    run([node, "scripts/build/desktop.mjs", "--reuse", "--source", str(repo), "--icons", str(icons),
-         "--stamp", str(desktop / "build/install-stamp.json"), "--native-deps", str(prepared.native),
-         "--out", str(desktop / "dist")], cwd=repo, env=env)
-    version_args = []
-    if sys.platform == "win32" and request.channel_request is None and request.tag is not None:
-        script = "const m=require('./scripts/msix-shared.mjs');console.log(m.nativeQuad(process.argv[1], Number(process.env.HERMES_RELEASE_EPOCH)))"
-        quad = capture([node, "-e", script, request.tag], repo).strip()
-        version_args = [f'-c.extraMetadata.shortVersion={quad}', f'-c.extraMetadata.shortVersionWindows={quad}']
-    require_source(repo, request.commit)
-    run([node, "scripts/run-electron-builder.mjs", *package_args, *version_args, *builder_args], cwd=desktop,
-        env=packaging_environment(env, os.environ, request.target))
+    with build_step(5, "写入构建信息并编译桌面应用"):
+        require_source(repo, request.commit)
+        run([node, "scripts/write-build-stamp.mjs"], cwd=desktop, env=env)
+        run([node, "scripts/build/desktop.mjs", "--reuse", "--source", str(repo), "--icons", str(icons),
+             "--stamp", str(desktop / "build/install-stamp.json"), "--native-deps", str(prepared.native),
+             "--out", str(desktop / "dist")], cwd=repo, env=env)
+    with build_step(6, "生成安装包与更新校验文件"):
+        version_args = []
+        if sys.platform == "win32" and request.channel_request is None and request.tag is not None:
+            script = "const m=require('./scripts/msix-shared.mjs');console.log(m.nativeQuad(process.argv[1], Number(process.env.HERMES_RELEASE_EPOCH)))"
+            quad = capture([node, "-e", script, request.tag], repo).strip()
+            version_args = [f'-c.extraMetadata.shortVersion={quad}', f'-c.extraMetadata.shortVersionWindows={quad}']
+        require_source(repo, request.commit)
+        run([node, "scripts/run-electron-builder.mjs", *package_args, *version_args, *builder_args], cwd=desktop,
+            env=packaging_environment(env, os.environ, request.target))
 
 
 def main() -> None:
@@ -133,6 +145,9 @@ def main() -> None:
             if (args.tag or args.commit_build or args.release_commit or args.channel_request
                     or args.prepare_only or args.work or args.cache):
                 parser.error("--prepared supplies the complete build request")
+            with build_step(1, "使用已有依赖准备结果"):
+                from scripts.bundles.desktop_prepare import PreparedDesktop
+                PreparedDesktop.load(args.prepared)
             build_prepared(args.prepared, builder_args, args.variant)
         else:
             from scripts.bundles.desktop_prepare import BuildRequest, prepare
@@ -147,7 +162,8 @@ def main() -> None:
                                           release_commit=args.release_commit)
             if args.prepare_only and builder_args:
                 parser.error("builder arguments belong to the build phase")
-            result = prepare(request)
+            with build_step(1, "准备工具链、依赖和 Python 运行环境", total=1 if args.prepare_only else 6):
+                result = prepare(request)
             if args.prepare_only:
                 print(result)
             else:

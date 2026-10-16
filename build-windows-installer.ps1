@@ -81,6 +81,7 @@ try {
     Write-Host 'Windows installer completed.' -ForegroundColor Green
     Write-Host "Path: $($installer.FullName)"
     Write-Host "Size: $sizeMiB MiB"
+    Write-Host ("Total time: " + ((Get-Date) - $buildStarted).ToString('hh\:mm\:ss'))
 } finally {
     Pop-Location
     Remove-Item -LiteralPath $buildTemp -Recurse -Force -ErrorAction SilentlyContinue
