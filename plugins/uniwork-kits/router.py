@@ -328,6 +328,7 @@ def on_pre_llm_call(**kwargs: Any) -> Optional[Dict[str, str]]:
             extras = [
                 delivery.stale_rule_correction(home, str(kwargs.get("session_id") or ""), platform),
                 xiaohongshu.turn_context(home, text),
+                media_slot.picture_request_hint(text) if _pictures_enabled() else "",
             ]
             extra = "\n\n".join(item for item in extras if item)
             return {"context": extra} if extra else None
@@ -339,6 +340,9 @@ def on_pre_llm_call(**kwargs: Any) -> Optional[Dict[str, str]]:
         if _pictures_enabled() and deck:
             parts.append(media_slot.picture_rules(delivery=delivery.deck_line(platform)))
             turn.rules_shown = True
+        elif _pictures_enabled():
+            parts.append(media_slot.picture_request_hint(text))
+        parts = [part for part in parts if part]
         return {"context": "\n\n".join(parts)} if parts else None
     except Exception:  # never break a turn over a suggestion
         logger.warning("[uniwork-kits] router hint failed", exc_info=True)

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from . import installer, package, store
 
@@ -86,23 +86,34 @@ def seed(
     *,
     avatars_dir: Optional[Path] = None,
     generate_triggers: bool = True,
+    triggers: Optional[Dict[str, Any]] = None,
 ) -> List[SeedItem]:
     """Install new or changed archives. Same bytes are left alone.
 
     Enable flags, ``.env`` values, and a hand-edited expert ``SOUL.md`` stay
     as ``installer.install`` already keeps them. This function never uninstalls.
+    Trigger phrases default to the verified table shipped with the plugin
+    (:func:`installer.bundled_triggers`), so a fresh home spends no model calls
+    on the packages that table covers.
     """
     archives = iter_archives(directory)
     if not archives:
         return [SeedItem("empty", detail="目录里没有 zip，已装的套件和专家保持原样")]
+    if triggers is None:
+        triggers = installer.bundled_triggers()
     index = store.load_index(home).get("plugins") or {}
     items: List[SeedItem] = []
+    identified: List[tuple[Path, str, str, str]] = []
     for archive in archives:
         try:
-            name, digest, kind = _identity(archive)
+            identified.append((archive, *_identity(archive)))
         except package.PackageError as exc:
             items.append(SeedItem("unreadable", path=archive.name, detail=str(exc)))
-            continue
+    # Kits first: an expert copies its companion skills out of an installed kit
+    # (股票研报专家 needs finance-research's westock-data), so a kit that sorts
+    # after the expert would be missing when the expert is installed.
+    identified.sort(key=lambda item: item[3] == "expert")
+    for archive, name, digest, kind in identified:
         if kind == "broken":
             items.append(SeedItem("unreadable", name=name, path=archive.name, detail="残包"))
             continue
@@ -114,7 +125,7 @@ def seed(
         receipt = installer.install(
             archive,
             home,
-            triggers={},
+            triggers=triggers,
             avatars_dir=portraits,
             generate_triggers=generate_triggers,
         )

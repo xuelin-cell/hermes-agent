@@ -130,7 +130,9 @@ def handle(args: argparse.Namespace) -> None:
     failed = False
     try:
         if command in ("inspect", "install"):
-            triggers = installer.load_triggers(Path(args.triggers) if args.triggers else None)
+            triggers = (
+                installer.load_triggers(Path(args.triggers)) if args.triggers else installer.bundled_triggers()
+            )
             for raw in args.paths:
                 try:
                     if command == "inspect":

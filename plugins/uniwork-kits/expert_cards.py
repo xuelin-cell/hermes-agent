@@ -21,6 +21,9 @@ from __future__ import annotations
 from typing import Any, Dict, List, Mapping, Tuple
 
 CARDS: Dict[str, Dict[str, Any]] = {
+    # 数字员工 has its own stock-research-expert called 股票研究专家; this one
+    # (persona 严估深) writes research reports, so it takes the report name.
+    "equity-research": {"name": "股票研报专家"},
     "douyin-strategist": {"name": "抖音运营专家", "replace": {"请抖音战略家帮我们": "请帮我们"}},
     "mx-market-intelligence": {"name": "市场情报专家", "subtitle": "东方财富妙想"},
     "long-manuscript-expert": {

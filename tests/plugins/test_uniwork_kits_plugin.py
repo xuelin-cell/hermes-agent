@@ -661,6 +661,60 @@ def test_seed_unreadable_or_empty_directory_leaves_installed_kits(kits, profile_
     assert "demo-kit" in kits.store.load_index(profile_env)["plugins"]
 
 
+def test_seed_installs_kits_before_the_experts_that_borrow_from_them(kits, profile_env, kit_pkg, expert_pkg, monkeypatch):
+    """demo-expert sorts before demo-kit; its companion skill must still be found."""
+    seed = _mod("seed")
+    monkeypatch.setitem(kits.host_rules.COMPANION_SKILLS, "demo-expert", ("demo-kit--alpha-probe",))
+    directory = profile_env / "seed" / "uniwork-bundled"
+    _zip_dir(expert_pkg, directory / "plugins" / "demo-expert.zip")
+    _zip_dir(kit_pkg, directory / "plugins" / "demo-kit.zip")
+
+    items = seed.seed(profile_env, directory, generate_triggers=False)
+    assert [item.name for item in items] == ["demo-kit", "demo-expert"]
+    assert all(item.status == "installed" for item in items)
+    companion = kits.store.load_index(_expert_home())["plugins"].get("demo-kit")
+    assert companion and companion["kind"] == "companion"
+
+
+def test_seed_uses_the_shipped_trigger_table(kits, profile_env, kit_pkg, monkeypatch, tmp_path):
+    seed = _mod("seed")
+    table = tmp_path / "bundled_triggers.json"
+    table.write_text(json.dumps({"plugins": {"demo-kit": {"triggers": {"skill:alpha-probe": ["阿尔法探测"]}}}},
+                                ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(kits.installer, "BUNDLED_TRIGGERS", table)
+    directory = profile_env / "seed" / "uniwork-bundled"
+    _zip_dir(kit_pkg, directory / "plugins" / "demo-kit.zip")
+
+    seed.seed(profile_env, directory, generate_triggers=False)
+    phrases = kits.store.load_index(profile_env)["plugins"]["demo-kit"]["triggers"]
+    assert any("阿尔法探测" in values for values in phrases.values())
+
+
+def test_shipped_trigger_table_is_well_formed(kits):
+    table = kits.installer.bundled_triggers()
+    assert table, "the plugin ships a trigger table"
+    for plugin, entry in table.items():
+        assert entry["triggers"], plugin
+        for key, phrases in entry["triggers"].items():
+            assert key.split(":", 1)[0] in {"skill", "agent", "mcp"}, (plugin, key)
+            assert phrases and all(isinstance(p, str) and p.strip() for p in phrases), (plugin, key)
+
+
+def test_picture_requests_in_ordinary_chats_point_at_the_uniai_tools(kits):
+    servers = {"UniAI-Toolkit": {"url": "https://maas.ai-yuanjing.com/app/mcp-server/mcp?key=x"}}
+    slot = kits.media_slot.load_slot(raw={}, servers=servers)
+    hint = kits.media_slot.picture_request_hint
+
+    found = hint("帮我搜三张杭州西湖断桥的实景照片，给我图片链接和来源", slot)
+    assert slot.search_tool in found and "网页搜索" in found and "tool_describe" in found
+    made = hint("生成一张水墨风格的西湖插画", slot)
+    assert slot.image_tool in made and slot.search_tool not in made
+    for text in ("帮我画个系统架构图", "分析一下这张图里有什么", "今天天气怎么样", "帮我查一下宁德时代的K线图"):
+        assert hint(text, slot) == "", text
+    # Without the toolkit there is nothing to point at.
+    assert hint("帮我搜几张猫的照片", kits.media_slot.load_slot(raw={"search_tool": ""}, servers={})) == ""
+
+
 def test_seed_command_is_registered(kits, tmp_path):
     import argparse
 
@@ -1022,6 +1076,23 @@ def test_deck_check_names_what_powerpoint_refuses_to_open(kits, tmp_path):
     _deck_with(bad_values, slide_extra=shape)
     problems = "\n".join(kits.deck_check.check_pptx(bad_values))
     assert "roundDot" in problems and "0.9 磅" in problems and "打不开" in problems
+
+    # A preset shape name outside the schema (pptxgenjs strings like "oval") keeps
+    # PowerPoint from opening the deck; the schema's own names pass.
+    def shape_named(prst: str) -> str:
+        return (
+            '<p:sp><p:nvSpPr><p:cNvPr id="6" name="s"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>'
+            '<p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/></a:xfrm>'
+            f'<a:prstGeom prst="{prst}"><a:avLst/></a:prstGeom></p:spPr></p:sp>'
+        )
+
+    bad_shape = tmp_path / "shape.pptx"
+    _deck_with(bad_shape, slide_extra=shape_named("oval"))
+    problems = "\n".join(kits.deck_check.check_pptx(bad_shape))
+    assert "oval" in problems and "ellipse" in problems and "打不开" in problems
+    good_shape = tmp_path / "ellipse.pptx"
+    _deck_with(good_shape, slide_extra=shape_named("ellipse"))
+    assert not any("prst" in item for item in kits.deck_check.check_pptx(good_shape))
 
     animation = tmp_path / "animation.pptx"
     _deck_with(animation, slide_extra=(

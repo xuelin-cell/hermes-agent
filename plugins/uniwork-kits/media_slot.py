@@ -222,6 +222,40 @@ def call_hint(slot: MediaSlot) -> str:
     )
 
 
+# Ordinary chats (not decks) that ask for a picture. Without a word about the
+# UniAI tools a model reaches for web search and curl instead, because MCP
+# tools sit behind Tool Search (Hermes, 2026-10-16: "搜三张西湖断桥的实景照片"
+# went to web_search / web_extract and never touched image_search).
+_PICTURE = r"(?:图片|照片|相片|实景图|配图|壁纸|插画|插图|海报|封面图?|头像|图)"
+_DRAWN_BY_CODE = re.compile(
+    r"流程图|架构图|结构图|示意图|思维导图|脑图|图表|饼图|柱状图|条形图|折线图|散点图|K线图|甘特图|时序图|拓扑图|"
+    r"截图|看图|这张图|这幅图|图里|图中|识图|分析.{0,6}图"
+)
+_FIND_PICTURE = re.compile(rf"(?:搜|找|查|下载|来|给我|要)[^，。,.!?！？\n]{{0,12}}{_PICTURE}")
+_MAKE_PICTURE = re.compile(rf"(?:生成|画|绘制|创作|设计|做)[^，。,.!?！？\n]{{0,12}}{_PICTURE}")
+
+
+def picture_request_hint(text: str, slot: Optional[MediaSlot] = None) -> str:
+    """Point a picture request in an ordinary chat at the search / generation tools."""
+    if not text or _DRAWN_BY_CODE.search(text):
+        return ""
+    wants_found = bool(_FIND_PICTURE.search(text))
+    wants_made = bool(_MAKE_PICTURE.search(text)) and not wants_found
+    if not (wants_found or wants_made):
+        return ""
+    slot = slot or load_slot()
+    if wants_found and slot.search_tool:
+        line = (
+            f"本轮要找现成的图片：用 `{slot.search_tool}` 搜图，它直接返回图片链接和来源。"
+            "不要改用网页搜索、网页抓取或终端去下载网页上的图。"
+        )
+    elif wants_made and slot.image_tool:
+        line = f"本轮要生成图片：用 `{slot.image_tool}` 生成，不要只给设计说明。"
+    else:
+        return ""
+    return line + call_hint(slot)
+
+
 def media_note(slot: Optional[MediaSlot] = None) -> str:
     """One host-note line. Tool names come from the slot, never from a package."""
     slot = slot or load_slot()

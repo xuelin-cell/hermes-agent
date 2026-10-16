@@ -1,0 +1,866 @@
+{
+ "_comment": "Verified Chinese trigger phrases for the bundled kits (UniClaw plugin_index.json shape). Exported 2026-10-15 from a home where every phrase passed model review; used by hermes kit seed/install when no --triggers file is given.",
+ "plugins": {
+  "agent-team-agile-workflow": {
+   "triggers": {
+    "skill:bmad-pilot": [
+     "敏捷工作流开发",
+     "组个AI开发团队",
+     "走一遍敏捷流程",
+     "从需求到测试全流程",
+     "模拟完整开发团队",
+     "AI多角色协作开发"
+    ],
+    "agent:bmad-architect": [
+     "做架构设计",
+     "技术方案设计",
+     "架构师来设计",
+     "出系统架构",
+     "架构方案评审"
+    ],
+    "agent:bmad-dev": [
+     "开始开发",
+     "写代码实现",
+     "实现这个功能",
+     "按方案开发",
+     "动手编码"
+    ],
+    "agent:bmad-orchestrator": [
+     "分析仓库",
+     "梳理项目结构",
+     "协调整个流程",
+     "查看代码仓库",
+     "编排工作流"
+    ],
+    "agent:bmad-po": [
+     "梳理需求",
+     "产品需求分析",
+     "当产品经理",
+     "帮我写PRD",
+     "需求确认"
+    ],
+    "agent:bmad-qa": [
+     "写测试用例",
+     "执行测试",
+     "全面测试",
+     "做QA测试",
+     "测试功能"
+    ],
+    "agent:bmad-review": [
+     "代码审查",
+     "审查代码",
+     "代码评审",
+     "代码走查",
+     "帮忙看代码"
+    ],
+    "agent:bmad-sm": [
+     "拆分任务",
+     "制定迭代计划",
+     "Sprint规划",
+     "任务分解",
+     "冲刺计划"
+    ]
+   }
+  },
+  "algorithmic-art": {
+   "triggers": {
+    "skill:algorithmic-art": [
+     "生成艺术",
+     "用代码画画",
+     "画个粒子系统",
+     "做一个流场动画",
+     "用p5.js画画",
+     "算法生成一幅画"
+    ]
+   }
+  },
+  "cloudbase": {
+   "triggers": {
+    "skill:cloudbase": [
+     "开发小程序",
+     "用CloudBase建网站",
+     "部署云函数",
+     "配置NoSQL数据库",
+     "使用云存储",
+     "调用AI模型"
+    ]
+   }
+  },
+  "code-simplifier": {
+   "triggers": {
+    "agent:code-simplifier": [
+     "简化代码",
+     "优化代码结构",
+     "代码整洁一下",
+     "整理代码",
+     "清理代码",
+     "重构最近写的代码"
+    ]
+   }
+  },
+  "commit-commands": {
+   "triggers": {
+    "skill:clean_gone": [
+     "清理失效分支",
+     "删掉本地残留分支",
+     "远程已删的分支清理下",
+     "清理gone分支",
+     "本地多余分支清掉",
+     "收拾一下本地旧分支"
+    ],
+    "skill:commit": [
+     "提交代码",
+     "帮我提交一下",
+     "提交这次改动",
+     "git提交一下",
+     "写个commit",
+     "提交修改"
+    ],
+    "skill:commit-push-pr": [
+     "提交推送开PR",
+     "提交并发起PR",
+     "推上去再建个PR",
+     "一条龙提交推送建PR",
+     "提交代码后开合并请求",
+     "commit完发PR"
+    ]
+   }
+  },
+  "development-essentials": {
+   "triggers": {
+    "skill:ask": [
+     "架构咨询",
+     "帮我设计方案",
+     "系统怎么设计",
+     "技术选型建议",
+     "架构评审",
+     "这样设计合理吗"
+    ],
+    "skill:bugfix": [
+     "修复bug",
+     "帮我修个bug",
+     "解决报错",
+     "修复缺陷",
+     "bug修一下",
+     "修复线上问题"
+    ],
+    "skill:code": [
+     "写代码",
+     "帮我实现功能",
+     "写个函数",
+     "开发个小工具",
+     "写段脚本",
+     "用代码实现一下"
+    ],
+    "skill:debug": [
+     "调试一下",
+     "排查问题",
+     "程序报错帮我看看",
+     "帮我debug",
+     "找出bug在哪",
+     "看看哪里出错了"
+    ],
+    "skill:docs": [
+     "写文档",
+     "生成API文档",
+     "写使用说明",
+     "补个README",
+     "生成接口文档",
+     "帮我整理文档"
+    ],
+    "skill:enhance-prompt": [
+     "优化提示词",
+     "帮我改下提示词",
+     "润色prompt",
+     "让需求更清晰",
+     "重写这个指令"
+    ],
+    "skill:optimize": [
+     "性能优化",
+     "代码太慢了",
+     "帮我提速",
+     "降低内存占用",
+     "让程序跑得更快"
+    ],
+    "skill:refactor": [
+     "重构代码",
+     "重构一下",
+     "帮我重构这段代码",
+     "优化代码结构",
+     "代码整改"
+    ],
+    "skill:review": [
+     "代码审查",
+     "帮我review代码",
+     "看看这段代码有没有问题",
+     "代码走查",
+     "评审一下我的代码"
+    ],
+    "skill:test": [
+     "写单元测试",
+     "生成测试用例",
+     "帮我补测试",
+     "测试一下这段代码",
+     "跑下测试"
+    ],
+    "skill:think": [
+     "帮我分析一下",
+     "深度思考",
+     "帮我理清思路",
+     "拆解需求",
+     "评估几个方案的优劣"
+    ],
+    "agent:bugfix-verify": [
+     "验证修复结果",
+     "检查修复是否成功",
+     "确认bug已修好",
+     "修复验收",
+     "看看问题解决了没",
+     "修复效果评估"
+    ],
+    "agent:bugfix": [
+     "修bug",
+     "修复缺陷",
+     "解决这个bug",
+     "修一下程序错误",
+     "缺陷修复",
+     "处理这个故障"
+    ],
+    "agent:code": [
+     "写代码",
+     "实现功能",
+     "开发新功能",
+     "写个脚本",
+     "编码实现",
+     "帮我写段程序"
+    ],
+    "agent:debug": [
+     "调试程序",
+     "排查问题",
+     "定位故障原因",
+     "查一下为什么报错",
+     "调试一下",
+     "找bug根因"
+    ],
+    "agent:optimize": [
+     "性能优化",
+     "优化速度",
+     "让程序跑快点",
+     "提升性能",
+     "性能调优",
+     "系统变慢怎么处理"
+    ]
+   }
+  },
+  "doc-coauthoring": {
+   "triggers": {
+    "skill:doc-coauthoring": [
+     "帮我写文档",
+     "写一份提案",
+     "起草技术方案",
+     "写个决策文档",
+     "一起润色文档",
+     "整理成文档"
+    ]
+   }
+  },
+  "docx": {
+   "triggers": {
+    "skill:docx": [
+     "写Word文档",
+     "生成docx文件",
+     "改一下Word内容",
+     "做带目录的报告",
+     "提取Word里的文字",
+     "给Word加批注"
+    ]
+   }
+  },
+  "feature-dev": {
+   "triggers": {
+    "skill:feature-dev": [
+     "开发新功能",
+     "加一个新功能",
+     "帮我实现这个需求",
+     "设计并实现一个新模块",
+     "从需求到上线完整开发",
+     "结合现有架构做开发"
+    ],
+    "agent:code-architect": [
+     "设计新功能架构",
+     "画一下实现方案",
+     "功能怎么搭",
+     "给我个开发蓝图",
+     "梳理代码改动方案"
+    ],
+    "agent:code-explorer": [
+     "查一下代码结构",
+     "这个功能怎么实现的",
+     "梳理代码逻辑",
+     "找找相关代码",
+     "代码依赖分析",
+     "理一下项目脉络"
+    ],
+    "agent:code-reviewer": [
+     "帮我看看代码",
+     "代码有没有问题",
+     "审查一下这段代码",
+     "找找Bug和漏洞",
+     "代码质量检查",
+     "检查代码规范"
+    ]
+   }
+  },
+  "finance-research": {
+   "triggers": {
+    "skill:finance-analysis": [
+     "帮我分析这只股票",
+     "现在能买吗",
+     "该不该加仓",
+     "套牢了怎么办",
+     "估值贵不贵",
+     "帮我做持仓分析"
+    ],
+    "skill:westock-data": [
+     "查最新行情",
+     "看K线",
+     "查最新财报",
+     "看资金流向",
+     "帮我选股",
+     "查机构研报"
+    ]
+   }
+  },
+  "find-skills": {
+   "triggers": {
+    "skill:find-skills": [
+     "找技能",
+     "搜索技能",
+     "有没有技能",
+     "发现技能",
+     "安装技能",
+     "技能市场"
+    ]
+   }
+  },
+  "frontend-design": {
+   "triggers": {
+    "skill:frontend-design": [
+     "做个网站",
+     "写个落地页",
+     "做数据看板",
+     "写个React组件",
+     "美化页面样式",
+     "做张海报"
+    ]
+   }
+  },
+  "hot-skills": {
+   "triggers": {
+    "skill:apple-notes": [
+     "新建备忘录",
+     "查备忘录",
+     "管理苹果备忘录",
+     "搜索备忘录",
+     "整理备忘录文件夹"
+    ],
+    "skill:apple-reminders": [
+     "添加提醒",
+     "完成提醒事项",
+     "查看待办清单",
+     "管理苹果提醒",
+     "列出今天提醒"
+    ],
+    "skill:blogwatcher": [
+     "监控博客更新",
+     "订阅RSS动态",
+     "查看博客新文章",
+     "跟踪信息源更新",
+     "RSS订阅监控"
+    ],
+    "skill:gifgrep": [
+     "搜GIF动图",
+     "下载表情包",
+     "查找动图",
+     "GIF图搜索",
+     "提取GIF静帧"
+    ],
+    "skill:github": [
+     "查看GitHub仓库",
+     "创建PR",
+     "检查CI运行状态",
+     "提issue",
+     "用gh命令操作GitHub",
+     "查询GitHub API"
+    ],
+    "skill:gog": [
+     "查收Gmail邮件",
+     "操作Google日历",
+     "管理谷歌文档",
+     "查看Google Drive文件",
+     "编辑Google表格",
+     "处理谷歌通讯录"
+    ],
+    "skill:healthcheck": [
+     "记录喝水",
+     "跟踪睡眠",
+     "睡眠打卡",
+     "记录今日饮水",
+     "查看睡眠数据"
+    ],
+    "skill:humanizer": [
+     "让文本更自然",
+     "去除AI写作痕迹",
+     "改写像人写的",
+     "减少AI腔调",
+     "润色更像真人写"
+    ],
+    "skill:imsg": [
+     "发送iMessage",
+     "查看短信记录",
+     "短信对话列表",
+     "用imessage发消息",
+     "监控短信收件箱"
+    ],
+    "skill:mcporter": [
+     "调用MCP工具",
+     "配置MCP服务器",
+     "查看MCP列表",
+     "认证MCP连接",
+     "使用mcporter"
+    ],
+    "skill:nano-banana-pro": [
+     "生成图片",
+     "修改照片",
+     "用Nano Banana画图",
+     "AI绘图",
+     "编辑现有图片",
+     "生成高清图片"
+    ],
+    "skill:nano-pdf": [
+     "编辑PDF",
+     "修改PDF内容",
+     "用自然语言改PDF",
+     "处理PDF文件",
+     "对PDF进行排版"
+    ],
+    "skill:obsidian": [
+     "管理Obsidian库",
+     "打开Obsidian笔记",
+     "搜索笔记库",
+     "在Obsidian中记录",
+     "操作obsidian仓库"
+    ],
+    "skill:openai-image-gen": [
+     "批量生成图片",
+     "生成一组图像",
+     "随机提示词批量画图",
+     "OpenAI批量绘图",
+     "生成多张图片"
+    ],
+    "skill:openai-whisper": [
+     "语音转文字",
+     "本地转录音频",
+     "Whisper语音识别",
+     "听写音频文件",
+     "转录录音为文本"
+    ],
+    "skill:openai-whisper-api": [
+     "用API转写音频",
+     "OpenAI语音转文字",
+     "在线转录音频",
+     "调用Whisper API",
+     "音频转写服务"
+    ],
+    "skill:oracle": [
+     "让AI帮我审代码",
+     "获取第二意见",
+     "代码审查复核",
+     "设计检查",
+     "交叉验证方案"
+    ],
+    "skill:peekaboo": [
+     "自动化Mac界面",
+     "模拟点击UI",
+     "控制macOS窗口",
+     "Peekaboo UI操作",
+     "获取屏幕界面元素"
+    ],
+    "skill:qmd": [
+     "搜索本地笔记",
+     "查找相关文档",
+     "在笔记里检索",
+     "按语义搜索笔记",
+     "文档相似内容查找"
+    ],
+    "skill:sag": [
+     "文本转语音",
+     "用ElevenLabs朗读",
+     "播放文字语音",
+     "生成语音朗读",
+     "文字配音"
+    ],
+    "skill:skill-creator": [
+     "创建新技能",
+     "编写技能",
+     "更新技能",
+     "开发智能体技能",
+     "技能创作指南"
+    ],
+    "skill:skill-vetter": [
+     "技能安全检查",
+     "审查这个技能",
+     "安装前测一下",
+     "技能风险扫描",
+     "这个技能安全吗"
+    ],
+    "skill:songsee": [
+     "音频频谱图",
+     "生成声谱图",
+     "声音可视化",
+     "音频特征图",
+     "提取音频频谱"
+    ],
+    "skill:summarize": [
+     "总结这个链接",
+     "网页摘要",
+     "总结PDF",
+     "视频内容总结",
+     "总结这份文件",
+     "音频文件摘要"
+    ],
+    "skill:things-mac": [
+     "在Things加任务",
+     "查看Things收件箱",
+     "搜索Things任务",
+     "查看Things今天",
+     "管理Things项目"
+    ],
+    "skill:tmux": [
+     "控制tmux会话",
+     "给tmux发按键",
+     "查看tmux窗口",
+     "操作tmux终端",
+     "tmux重新连接"
+    ],
+    "skill:trello": [
+     "创建Trello卡片",
+     "移动Trello列表",
+     "更新Trello看板",
+     "查看Trello卡片",
+     "Trello任务管理"
+    ],
+    "skill:video-frames": [
+     "提取视频帧",
+     "视频抽帧",
+     "截取视频片段",
+     "从视频取画面",
+     "视频关键帧提取"
+    ],
+    "skill:wacli": [
+     "发送WhatsApp消息",
+     "查看WhatsApp历史",
+     "同步WhatsApp聊天",
+     "搜索WhatsApp记录",
+     "群发WhatsApp消息"
+    ],
+    "skill:weather": [
+     "今天天气",
+     "当前气温",
+     "天气预报",
+     "查询天气",
+     "明天下雨吗",
+     "天气怎么样"
+    ],
+    "skill:xiaohongshu": [
+     "搜小红书笔记",
+     "小红书热点追踪",
+     "小红书舆情报告",
+     "发条小红书",
+     "看小红书推荐",
+     "小红书帖子转长图"
+    ],
+    "skill:xurl": [
+     "分析Twitter资料",
+     "推特内容研究",
+     "看推文找客户",
+     "Twitter对话分析",
+     "挖掘推特痛点",
+     "Twitter情报整理"
+    ]
+   }
+  },
+  "pdf": {
+   "triggers": {
+    "skill:pdf": [
+     "处理PDF文件",
+     "提取PDF文字",
+     "合并PDF文档",
+     "拆分PDF",
+     "解密PDF",
+     "PDF转文字"
+    ]
+   }
+  },
+  "playwright-cli": {
+   "triggers": {
+    "skill:playwright-cli": [
+     "打开网页",
+     "网页截图",
+     "抓取网页数据",
+     "自动填表单",
+     "测网页功能",
+     "浏览器操作"
+    ]
+   }
+  },
+  "plugin-advisor": {
+   "triggers": {
+    "skill:find-specialist-skill": [
+     "写份研究报告",
+     "帮我建个财务模型",
+     "出一份行业分析",
+     "做个PPT汇报",
+     "起草正式文书",
+     "出个设计方案"
+    ]
+   }
+  },
+  "ppt-writer": {
+   "triggers": {
+    "skill:content-generation": [
+     "帮我写PPT大纲",
+     "写个年终总结PPT",
+     "生成一份演讲稿",
+     "帮我理一下汇报思路",
+     "扩写这页PPT内容",
+     "做一份产品介绍PPT"
+    ],
+    "skill:create-ppt": [
+     "做个PPT",
+     "新建演示文稿",
+     "帮我做一份汇报PPT",
+     "创建幻灯片",
+     "我要一个新PPT",
+     "生成PPT文件"
+    ],
+    "skill:ppt-design": [
+     "帮我美化PPT",
+     "PPT配色太丑了",
+     "排版有点乱帮我调一下",
+     "换个好看的PPT模板",
+     "这页布局怎么优化",
+     "让PPT更有设计感"
+    ],
+    "agent:ppt-designer": [
+     "PPT设计顾问",
+     "帮我规划演示内容",
+     "演讲有什么技巧",
+     "整套PPT怎么策划",
+     "辅导我演讲",
+     "汇报怎么讲更好"
+    ]
+   }
+  },
+  "pptx": {
+   "triggers": {
+    "skill:pptx": [
+     "创建PPT",
+     "做演示文稿",
+     "制作幻灯片",
+     "读取PPT文件",
+     "提取PPT内容",
+     "编辑幻灯片"
+    ]
+   }
+  },
+  "pr-review-toolkit": {
+   "triggers": {
+    "skill:review-pr": [
+     "审查PR",
+     "代码审查",
+     "帮我review代码",
+     "检查这次提交",
+     "合并前检查代码",
+     "看看这个PR有什么问题"
+    ],
+    "agent:code-reviewer": [
+     "检查代码规范",
+     "代码风格审查",
+     "提交前检查代码",
+     "代码质量检查",
+     "看看代码有没有问题"
+    ],
+    "agent:code-simplifier": [
+     "简化代码",
+     "代码太复杂了",
+     "精简一下代码",
+     "重构简化",
+     "把代码写简单点"
+    ],
+    "agent:comment-analyzer": [
+     "检查注释质量",
+     "代码注释审查",
+     "注释写得好不好",
+     "完善文档注释",
+     "审查文档字符串"
+    ],
+    "agent:pr-test-analyzer": [
+     "检查测试覆盖",
+     "测试覆盖率够吗",
+     "PR测试审查",
+     "看看测试齐全吗",
+     "测试完整性分析"
+    ],
+    "agent:silent-failure-hunter": [
+     "找静默失败",
+     "检查错误处理",
+     "异常处理审查",
+     "查找被吞的错误",
+     "错误处理哪里不到位"
+    ],
+    "agent:type-design-analyzer": [
+     "检查类型设计",
+     "类型定义合理吗",
+     "类型设计审查",
+     "分析类型结构",
+     "类型封装是否合理"
+    ]
+   }
+  },
+  "requirements-driven-workflow": {
+   "triggers": {
+    "skill:requirements-pilot": [
+     "需求驱动开发",
+     "按需求流程开发",
+     "先确认需求再写代码",
+     "走一遍开发工作流",
+     "需求分析后实现功能",
+     "带质量门控的开发流程"
+    ],
+    "agent:requirements-code": [
+     "直接写代码",
+     "按规格实现",
+     "把需求变成代码",
+     "实现功能",
+     "代码生成",
+     "根据文档写码"
+    ],
+    "agent:requirements-generate": [
+     "整理技术需求",
+     "写开发规格",
+     "把需求转成技术方案",
+     "生成开发文档",
+     "需求拆解",
+     "写实现说明"
+    ],
+    "agent:requirements-review": [
+     "代码评审",
+     "检查代码质量",
+     "帮我看看实现",
+     "功能代码审查",
+     "看下代码有没有问题"
+    ],
+    "agent:requirements-testing": [
+     "跑下功能测试",
+     "测试实现效果",
+     "集成验证一下",
+     "测测这个功能",
+     "功能冒烟测试",
+     "验证下代码是否可用"
+    ]
+   }
+  },
+  "security-rules": {
+   "triggers": {
+    "skill:install": [
+     "安装安全规则包",
+     "装一下安全规则",
+     "开启安全编码规则",
+     "接入安全防护规则",
+     "加载漏洞防护规则",
+     "装个代码安全规则"
+    ]
+   }
+  },
+  "skills-security-check": {
+   "triggers": {
+    "skill:skills-security-check": [
+     "skill安全审查",
+     "审查技能文件",
+     "检查skill脚本安全",
+     "skill.md安全审计",
+     "扫描skill后门",
+     "技能有没有安全问题"
+    ]
+   }
+  },
+  "tmap-lbs-plugin": {
+   "triggers": {
+    "skill:route-plan": [
+     "规划路线",
+     "帮我导航",
+     "开车怎么走",
+     "步行路线",
+     "骑行过去怎么走",
+     "公交换乘方案"
+    ],
+    "skill:search-poi": [
+     "搜索地点",
+     "附近的餐厅",
+     "找附近的咖啡店",
+     "周边有什么好玩的",
+     "帮我找加油站",
+     "查一下地址在哪"
+    ],
+    "skill:set-key": [
+     "设置地图Key",
+     "配置腾讯地图key",
+     "填写API密钥",
+     "地图密钥怎么设置",
+     "换个key"
+    ],
+    "skill:tmap-jsapi-gl": [
+     "开发地图应用",
+     "腾讯地图jsapi",
+     "初始化地图",
+     "地图上添加标记",
+     "地图图层控制",
+     "调试地图代码"
+    ],
+    "skill:tmap-lbs-skills": [
+     "做旅游攻略",
+     "轨迹可视化",
+     "旅游路线规划",
+     "地图数据可视化",
+     "画轨迹图",
+     "景点推荐"
+    ]
+   }
+  },
+  "web-artifacts-builder": {
+   "triggers": {
+    "skill:web-artifacts-builder": [
+     "做个网页应用",
+     "用React搭个应用",
+     "做一个数据仪表盘",
+     "搭个管理后台页面",
+     "做个多页面网站",
+     "写一个交互式网页工具"
+    ]
+   }
+  },
+  "xlsx": {
+   "triggers": {
+    "skill:xlsx": [
+     "做个Excel表格",
+     "处理CSV文件",
+     "整理表格数据",
+     "表格加个求和公式",
+     "合并多张表",
+     "生成销售报表"
+    ]
+   }
+  }
+ }
+}

@@ -6,7 +6,10 @@ rule below is a cause that was confirmed by fixing that one thing alone and
 reopening the deck in PowerPoint. 数字员工 judged attribute values against the
 ECMA-376 schemas with lxml; Hermes ships no lxml, so the values that actually
 broke decks are checked by name instead: a font size under 1 pt, a dash type
-the schema does not know, and the animation shapes PowerPoint refused.
+or preset shape name the schema does not know, and the animation shapes
+PowerPoint refused. (Hermes, 2026-10-16: a 年会 deck drew prst="oval",
+"star5Point" and "isocelesTriangle"; PowerPoint 16 refused it, and renaming just
+those three to ellipse / star5 / triangle made it open.)
 
 What PowerPoint tolerates matters as much, because flagging it would bounce
 good decks: elements out of schema order (``notesMasterIdLst`` in 41 decks
@@ -32,6 +35,7 @@ _REL_RE = re.compile(r"<Relationship\b[^>]*>")
 _ATTR_RE = re.compile(r'(\w+)="([^"]*)"')
 _FONT_SIZE_RE = re.compile(r'<a:(rPr|endParaRPr|defRPr)\b[^>]*?\bsz="(\d+)"')
 _DASH_RE = re.compile(r'<a:prstDash\b[^>]*?\bval="([^"]*)"')
+_SHAPE_RE = re.compile(r'<a:prstGeom\b[^>]*?\bprst="([^"]*)"')
 _PRESET_CLASS_RE = re.compile(r'\bpresetClass="([^"]*)"')
 _MEDIA_NODE_RE = re.compile(r"<p:(video|audio)\b[^>]*>(.*?)</p:\1>", re.DOTALL)
 _EMPTY_CHILDREN_RE = re.compile(r"<p:childTnLst\s*/>|<p:childTnLst>\s*</p:childTnLst>")
@@ -43,12 +47,56 @@ _DASHES = frozenset({
     "sysDash", "sysDot", "sysDashDot", "sysDashDotDot",
 })
 _PRESET_CLASSES = frozenset({"entr", "exit", "emph", "path", "verb", "mediacall"})
+# ECMA-376 ST_ShapeType (dml-main.xsd): every preset a <a:prstGeom prst> may name.
+_SHAPES = frozenset({
+    "line", "lineInv", "triangle", "rtTriangle", "rect", "diamond", "parallelogram", "trapezoid",
+    "nonIsoscelesTrapezoid", "pentagon", "hexagon", "heptagon", "octagon", "decagon", "dodecagon",
+    "star4", "star5", "star6", "star7", "star8", "star10", "star12", "star16", "star24", "star32",
+    "roundRect", "round1Rect", "round2SameRect", "round2DiagRect", "snipRoundRect", "snip1Rect",
+    "snip2SameRect", "snip2DiagRect", "plaque", "ellipse", "teardrop", "homePlate", "chevron",
+    "pieWedge", "pie", "blockArc", "donut", "noSmoking", "rightArrow", "leftArrow", "upArrow",
+    "downArrow", "stripedRightArrow", "notchedRightArrow", "bentUpArrow", "leftRightArrow",
+    "upDownArrow", "leftUpArrow", "leftRightUpArrow", "quadArrow", "leftArrowCallout",
+    "rightArrowCallout", "upArrowCallout", "downArrowCallout", "leftRightArrowCallout",
+    "upDownArrowCallout", "quadArrowCallout", "bentArrow", "uturnArrow", "circularArrow",
+    "leftCircularArrow", "leftRightCircularArrow", "curvedRightArrow", "curvedLeftArrow",
+    "curvedUpArrow", "curvedDownArrow", "swooshArrow", "cube", "can", "lightningBolt", "heart", "sun",
+    "moon", "smileyFace", "irregularSeal1", "irregularSeal2", "foldedCorner", "bevel", "frame",
+    "halfFrame", "corner", "diagStripe", "chord", "arc", "leftBracket", "rightBracket", "leftBrace",
+    "rightBrace", "bracketPair", "bracePair", "straightConnector1", "bentConnector2", "bentConnector3",
+    "bentConnector4", "bentConnector5", "curvedConnector2", "curvedConnector3", "curvedConnector4",
+    "curvedConnector5", "callout1", "callout2", "callout3", "accentCallout1", "accentCallout2",
+    "accentCallout3", "borderCallout1", "borderCallout2", "borderCallout3", "accentBorderCallout1",
+    "accentBorderCallout2", "accentBorderCallout3", "wedgeRectCallout", "wedgeRoundRectCallout",
+    "wedgeEllipseCallout", "cloudCallout", "cloud", "ribbon", "ribbon2", "ellipseRibbon",
+    "ellipseRibbon2", "leftRightRibbon", "verticalScroll", "horizontalScroll", "wave", "doubleWave",
+    "plus", "flowChartProcess", "flowChartDecision", "flowChartInputOutput",
+    "flowChartPredefinedProcess", "flowChartInternalStorage", "flowChartDocument",
+    "flowChartMultidocument", "flowChartTerminator", "flowChartPreparation", "flowChartManualInput",
+    "flowChartManualOperation", "flowChartConnector", "flowChartPunchedCard", "flowChartPunchedTape",
+    "flowChartSummingJunction", "flowChartOr", "flowChartCollate", "flowChartSort", "flowChartExtract",
+    "flowChartMerge", "flowChartOfflineStorage", "flowChartOnlineStorage", "flowChartMagneticTape",
+    "flowChartMagneticDisk", "flowChartMagneticDrum", "flowChartDisplay", "flowChartDelay",
+    "flowChartAlternateProcess", "flowChartOffpageConnector", "actionButtonBlank", "actionButtonHome",
+    "actionButtonHelp", "actionButtonInformation", "actionButtonForwardNext",
+    "actionButtonBackPrevious", "actionButtonEnd", "actionButtonBeginning", "actionButtonReturn",
+    "actionButtonDocument", "actionButtonSound", "actionButtonMovie", "gear6", "gear9", "funnel",
+    "mathPlus", "mathMinus", "mathMultiply", "mathDivide", "mathEqual", "mathNotEqual", "cornerTabs",
+    "squareTabs", "plaqueTabs", "chartX", "chartStar", "chartPlus",
+})
+# Names models write for a shape the schema calls something else.
+_SHAPE_SPELLINGS: Dict[str, str] = {
+    "oval": "ellipse", "circle": "ellipse", "star5Point": "star5", "star": "star5",
+    "isocelesTriangle": "triangle", "isoscelesTriangle": "triangle", "rectangle": "rect", "square": "rect",
+    "roundedRectangle": "roundRect", "roundRectangle": "roundRect", "arrow": "rightArrow",
+}
 _MIN_SZ, _MAX_SZ = 100, 400000
 
 FIX_HINTS: Dict[str, str] = {
     "invalid_value": (
         "按提示改成规范允许的取值：字号最小 1 磅；虚线只能是 solid、dot、dash、lgDash、dashDot、sysDash、sysDot 等，"
-        "pptxgenjs 的 dashType 别写 roundDot 这类自造名字。"
+        "pptxgenjs 的 dashType 别写 roundDot 这类自造名字；图形只能用规范里的预设名（圆和椭圆是 ellipse、五角星 star5、"
+        "三角形 triangle、圆角矩形 roundRect），pptxgenjs 里用 pptx.ShapeType 的常量，不要手写字符串。"
     ),
     "broken_animation": (
         "动画 XML 按 PowerPoint 的结构写：<p:video>/<p:audio> 里必须是 <p:cMediaNode>，不放媒体就不要写这类节点；"
@@ -106,6 +154,12 @@ def _value_findings(part: str, xml: str) -> List[Tuple[int, str, str]]:
     dashes = sorted({value for value in _DASH_RE.findall(xml) if value not in _DASHES})
     if dashes:
         found.append((slide, "invalid_value", f"虚线类型 prstDash=\"{'、'.join(dashes[:3])}\" 不是合法取值{_FATAL}"))
+    shapes = sorted({value for value in _SHAPE_RE.findall(xml) if value not in _SHAPES})
+    if shapes:
+        named = "、".join(
+            f"{value}（应为 {_SHAPE_SPELLINGS[value]}）" if value in _SHAPE_SPELLINGS else value for value in shapes[:3]
+        )
+        found.append((slide, "invalid_value", f"图形预设名 prst=\"{named}\" 不是合法取值{_FATAL}"))
     return found
 
 

@@ -205,6 +205,23 @@ def builtin_skill_names() -> Set[str]:
     return _BUILTIN_NAMES
 
 
+BUNDLED_TRIGGERS = Path(__file__).with_name("bundled_triggers.json")
+
+
+def bundled_triggers() -> Dict[str, Any]:
+    """Verified Chinese trigger phrases for the bundled kits, in plugin_index.json form.
+
+    Exported from a home where every phrase had passed model review, so
+    installing the bundled packages costs no model calls. A package that
+    changed keeps whatever keys still match; new capabilities fall back to
+    generation. Missing or unreadable file: no phrases, never an error.
+    """
+    try:
+        return load_triggers(BUNDLED_TRIGGERS) if BUNDLED_TRIGGERS.is_file() else {}
+    except KitError:
+        return {}
+
+
 def load_triggers(path: Optional[Path]) -> Dict[str, Any]:
     """A UniClaw ``plugin_index.json`` (``{"plugins": {name: {"triggers": {...}}}}``)."""
     if not path:
