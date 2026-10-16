@@ -2091,6 +2091,20 @@ export const ar = defineLocale({
     open: 'فتح'
   },
 
+  artifactShare: {
+    originRequired: 'يمكن مشاركة مخرجات النموذج الموثقة فقط. الملفات المرفوعة والمشتقة ومجهولة المصدر محظورة.',
+    share: 'مشاركة',
+    shareArtifact: 'مشاركة الناتج',
+    updateShared: 'تحديث المحتوى المشترك',
+    viewShared: 'عرض الصفحة المشتركة',
+    copyShared: 'نسخ رابط المشاركة',
+    revokeShared: 'إلغاء المشاركة',
+    shareFailed: 'تعذرت مشاركة الناتج',
+    revokeFailed: 'تعذر إلغاء المشاركة',
+    previewNotReady: 'معاينة Markdown غير جاهزة.',
+    imageNotEmbedded: 'يحتوي Markdown على صورة غير مضمنة.',
+  },
+
   artifactPreview: {
     versionOf: (current, total) => `الإصدار ${current} من ${total}`,
     olderVersion: 'إصدار أقدم',

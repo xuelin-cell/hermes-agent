@@ -3014,6 +3014,20 @@ export interface Translations {
     open: string
   }
 
+  artifactShare: {
+    originRequired: string
+    share: string
+    shareArtifact: string
+    updateShared: string
+    viewShared: string
+    copyShared: string
+    revokeShared: string
+    shareFailed: string
+    revokeFailed: string
+    previewNotReady: string
+    imageNotEmbedded: string
+  }
+
   artifactPreview: {
     versionOf: (current: number, total: number) => string
     olderVersion: string

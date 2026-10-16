@@ -3585,6 +3585,20 @@ export const en: Translations = {
     open: 'Open'
   },
 
+  artifactShare: {
+    originRequired: 'Only verified model artifacts can be shared. Uploads, derived files and unknown sources are blocked.',
+    share: 'Share',
+    shareArtifact: 'Share artifact',
+    updateShared: 'Update shared content',
+    viewShared: 'View shared page',
+    copyShared: 'Copy shared link',
+    revokeShared: 'Revoke shared link',
+    shareFailed: 'Could not share artifact',
+    revokeFailed: 'Could not revoke link',
+    previewNotReady: 'Markdown preview is not ready.',
+    imageNotEmbedded: 'Markdown contains an image that is not embedded. Make the page self-contained first.',
+  },
+
   artifactPreview: {
     versionOf: (current, total) => `v${current} of ${total}`,
     olderVersion: 'Older version',

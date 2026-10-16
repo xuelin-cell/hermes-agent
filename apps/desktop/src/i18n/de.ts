@@ -3928,6 +3928,20 @@ export const deOverrides = {
     versionBadge: count => `${count} Versionen`,
     open: 'Öffnen'
   },
+  artifactShare: {
+    originRequired: 'Nur bestätigte Modellergebnisse können geteilt werden. Uploads, abgeleitete Dateien und unbekannte Quellen sind gesperrt.',
+    share: 'Teilen',
+    shareArtifact: 'Artefakt teilen',
+    updateShared: 'Geteilten Inhalt aktualisieren',
+    viewShared: 'Geteilte Seite ansehen',
+    copyShared: 'Freigabelink kopieren',
+    revokeShared: 'Freigabe widerrufen',
+    shareFailed: 'Artefakt konnte nicht geteilt werden',
+    revokeFailed: 'Freigabe konnte nicht widerrufen werden',
+    previewNotReady: 'Markdown-Vorschau ist noch nicht bereit.',
+    imageNotEmbedded: 'Markdown enthält ein nicht eingebettetes Bild.',
+  },
+
   artifactPreview: {
     versionOf: (current, total) => `v${current} von ${total}`,
     olderVersion: 'Ältere Version',

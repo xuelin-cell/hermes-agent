@@ -3363,6 +3363,20 @@ export const zh = defineLocale({
     open: '打开'
   },
 
+  artifactShare: {
+    originRequired: '仅支持来源已确认的模型产物；上传文件、派生产物和来源未知的文件不能分享。',
+    share: '分享',
+    shareArtifact: '分享产物',
+    updateShared: '更新分享内容',
+    viewShared: '查看分享页',
+    copyShared: '复制链接',
+    revokeShared: '取消分享',
+    shareFailed: '分享失败',
+    revokeFailed: '取消分享失败',
+    previewNotReady: 'Markdown 预览尚未完成。',
+    imageNotEmbedded: 'Markdown 包含未内嵌的图片，请先整理为自包含内容。',
+  },
+
   artifactPreview: {
     versionOf: (current, total) => `第 ${current}/${total} 版`,
     olderVersion: '较旧版本',

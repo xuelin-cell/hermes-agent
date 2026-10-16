@@ -2467,6 +2467,20 @@ export const ja = defineLocale({
     open: '開く'
   },
 
+  artifactShare: {
+    originRequired: '生成元を確認できたモデルの成果物のみ共有できます。アップロード、派生ファイル、生成元不明のファイルは共有できません。',
+    share: '共有',
+    shareArtifact: '成果物を共有',
+    updateShared: '共有内容を更新',
+    viewShared: '共有ページを表示',
+    copyShared: '共有リンクをコピー',
+    revokeShared: '共有を取り消す',
+    shareFailed: '共有できませんでした',
+    revokeFailed: '共有を取り消せませんでした',
+    previewNotReady: 'Markdown プレビューの準備ができていません。',
+    imageNotEmbedded: 'Markdown に埋め込まれていない画像があります。',
+  },
+
   artifactPreview: {
     versionOf: (current, total) => `${total} 中 v${current}`,
     olderVersion: '前のバージョン',

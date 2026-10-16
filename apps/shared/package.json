@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./ansi": "./src/ansi.ts",
+    "./artifact-share": "./src/artifact-share.ts",
     "./billing": "./src/billing-types.ts",
     "./billing-policy": "./src/billing-policy.ts",
     "./charge-settlement": "./src/charge-settlement.ts",

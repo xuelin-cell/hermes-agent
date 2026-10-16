@@ -2721,6 +2721,20 @@ export const zhHant = defineLocale({
     open: '開啟'
   },
 
+  artifactShare: {
+    originRequired: '僅支援來源已確認的模型產物；上傳檔案、衍生產物及來源不明的檔案無法分享。',
+    share: '分享',
+    shareArtifact: '分享產物',
+    updateShared: '更新分享內容',
+    viewShared: '查看分享頁',
+    copyShared: '複製連結',
+    revokeShared: '取消分享',
+    shareFailed: '分享失敗',
+    revokeFailed: '取消分享失敗',
+    previewNotReady: 'Markdown 預覽尚未完成。',
+    imageNotEmbedded: 'Markdown 包含未內嵌的圖片，請先整理為自包含內容。',
+  },
+
   artifactPreview: {
     versionOf: (current, total) => `第 ${current}/${total} 版`,
     olderVersion: '較舊版本',

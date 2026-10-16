@@ -54,6 +54,8 @@ import {
 } from './app-version'
 import { runAppInstallerChecker } from './appinstaller-checker'
 import { installApplicationMenuAfterFirstWindow } from './application-menu-startup'
+import { type ArtifactShareBridge, startArtifactShareBridge } from './artifact-share/bridge'
+import { ArtifactShareService } from './artifact-share/service'
 import { stopBackendChild as stopBackendChildImpl, waitForBackendExit } from './backend-child'
 import {
   type BackendOutputTail,
@@ -222,6 +224,7 @@ import { accountBrowserPartition } from './entry_local/browser-partition'
 import { accountSourceBackend } from './entry_local/desktop-environment'
 import { accountDesktopStatePaths } from './entry_local/desktop-state'
 import { type AccountGateway, createAccountGatewayLogout, gatewayLogoutRoots } from './entry_local/gateway-logout'
+import { installArtifactSharePlugin } from './entry_local/install-artifact-share'
 import { createAccountLogout } from './entry_local/logout'
 import {
   type LogoutProcess,
@@ -1361,6 +1364,7 @@ function registerMediaProtocol(): void {
 }
 
 let mainWindow = null
+const artifactShareWindows = new WeakSet<BrowserWindow>()
 let firstDesktopWindowReady: Promise<BrowserWindow> | null = null
 const backendConnectionState = createBackendConnectionState<ReturnType<typeof spawn>, any>()
 
@@ -11715,6 +11719,7 @@ async function runPoolBackendStart(
   const backendNonce = crypto.randomBytes(16).toString('hex')
   const parentIdentityEnv = parentWatchdogEnv(process.pid, parentStartMarker, backendNonce)
   assertPoolEntryStillOwned(poolKey, entry, backendPool, localBackendLifecycle.signal)
+  installArtifactSharePlugin(profile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', profile), app.getAppPath())
 
   const child = spawnOwnedBackend(
     backend.command,
@@ -11735,6 +11740,7 @@ async function runPoolBackendStart(
           // Marks this dashboard backend as desktop-spawned so it runs the cron
           // scheduler tick loop (the gateway isn't running under the app).
           HERMES_DESKTOP: '1',
+          ...(await artifactShareBridgeEnv()),
           // Exact parent identity lets the backend self-exit after an unclean
           // Desktop death without mistaking a reused PID for its owner. If the
           // optional marker probe fails, retain legacy PID-only tracking.
@@ -12701,6 +12707,7 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
     }
 
     // Local WSL backend — paths are bridgeable.
+    installArtifactSharePlugin(primaryProfile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', primaryProfile), app.getAppPath())
     setWslBridgeProfileState(primaryProfile, true)
 
     stopAttachedBackendMonitor()
@@ -12747,6 +12754,7 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
             // Marks this dashboard backend as desktop-spawned so it runs the cron
             // scheduler tick loop (the gateway isn't running under the app).
             HERMES_DESKTOP: '1',
+            ...(await artifactShareBridgeEnv()),
             // Exact parent identity lets the backend self-exit after an unclean
             // Desktop death without mistaking a reused PID for its owner. If the
             // optional marker probe fails, retain legacy PID-only tracking.
@@ -13244,6 +13252,8 @@ function spawnSecondaryWindow({
     webPreferences: chatWindowWebPreferences(PRELOAD_PATH, ACCOUNT_RENDERER_PARTITION)
   })
 
+  artifactShareWindows.add(win)
+
   // Chat-surface registration: applyWindowTranslucency swaps this window's
   // backing between opaque-themed and alpha-0 when glass toggles.
   minimizeToTray.registerWindow(win)
@@ -13441,6 +13451,8 @@ function createInstanceWindow(
     show: false,
     webPreferences: chatWindowWebPreferences(PRELOAD_PATH, ACCOUNT_RENDERER_PARTITION)
   })
+
+  artifactShareWindows.add(win)
 
   instanceWindows.add(win)
   minimizeToTray.registerWindow(win)
@@ -14549,6 +14561,7 @@ function createWindow() {
   })
 
   const createdMainWindow = mainWindow
+  artifactShareWindows.add(createdMainWindow)
 
   // 在开始导航前监听文档就绪；不等待图片等次要资源，避免卡在登录卡片。
   firstDesktopWindowReady ??= new Promise<BrowserWindow>((resolve, reject) => {
@@ -17107,6 +17120,69 @@ ipcMain.handle('hermes:readFileDataUrlForAttach', async (_event, filePath) => {
     mimeType: mimeTypeForPath(resolveRequestedPathForIpc(bridgedPath, { purpose: 'Attachment upload' })),
     purpose: 'Attachment upload'
   })
+})
+
+// 发布服务只读取主进程持有的账号身份；页面无法指定 token 或存储目录。
+const artifactShareService = new ArtifactShareService({
+  changed: key => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (artifactShareWindows.has(win) && !win.isDestroyed()) {
+        win.webContents.send('hermes:artifact-share:changed', key)
+      }
+    }
+  },
+  identity: () => {
+    const identity = currentDesktopIdentity()
+    const account = currentDesktopLocalContext()
+
+    return identity && account ? { accountId: account.id, home: account.home, token: identity.token } : null
+  }
+})
+
+let artifactShareBridge: Promise<ArtifactShareBridge> | null = null
+
+/** 每个桌面进程仅启动一条本机分享桥，凭证只交给本进程创建的后端子进程。 */
+async function artifactShareBridgeEnv(): Promise<ArtifactShareBridge['env']> {
+  artifactShareBridge ??= startArtifactShareBridge(artifactShareService)
+
+  return (await artifactShareBridge).env
+}
+
+// 只有主聊天窗口可以发起公开发布；预览 guest 和其他窗口均不可调用。
+function assertArtifactShareWindow(event: Electron.IpcMainInvokeEvent): void {
+  const win = BrowserWindow.fromWebContents(event.sender)
+
+  if (!win || !artifactShareWindows.has(win) || win.isDestroyed() || event.sender !== win.webContents) {
+    throw new Error('当前窗口没有产物分享权限。')
+  }
+}
+
+ipcMain.handle('hermes:artifact-share:inspect', async (event, key) => {
+  assertArtifactShareWindow(event)
+
+  return artifactShareService.inspect(key)
+})
+
+ipcMain.handle('hermes:artifact-share:eligibility', (event, source) => {
+  assertArtifactShareWindow(event)
+
+  return artifactShareService.eligibility(source)
+})
+
+ipcMain.handle('hermes:artifact-share:markUploaded', (event, sessionId) => {
+  assertArtifactShareWindow(event)
+  artifactShareService.markUploaded(sessionId)
+})
+
+ipcMain.handle('hermes:artifact-share:publish', async (event, input) => {
+  assertArtifactShareWindow(event)
+
+  return artifactShareService.publish(input)
+})
+
+ipcMain.handle('hermes:artifact-share:revoke', async (event, key) => {
+  assertArtifactShareWindow(event)
+  await artifactShareService.revoke(key)
 })
 
 ipcMain.handle('hermes:readFileText', async (_event, filePath) => {

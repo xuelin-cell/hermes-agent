@@ -3937,6 +3937,20 @@ export const frOverrides = {
     versionBadge: count => `${count} versions`,
     open: 'Ouvrir'
   },
+  artifactShare: {
+    originRequired: 'Seuls les résultats vérifiés du modèle peuvent être partagés. Les fichiers importés, dérivés ou de source inconnue sont bloqués.',
+    share: 'Partager',
+    shareArtifact: 'Partager le contenu',
+    updateShared: 'Mettre à jour le contenu partagé',
+    viewShared: 'Voir la page partagée',
+    copyShared: 'Copier le lien',
+    revokeShared: 'Révoquer le lien',
+    shareFailed: 'Impossible de partager le contenu',
+    revokeFailed: 'Impossible de révoquer le lien',
+    previewNotReady: 'Aperçu Markdown indisponible.',
+    imageNotEmbedded: 'Le Markdown contient une image non intégrée.',
+  },
+
   artifactPreview: {
     versionOf: (current, total) => `v${current} sur ${total}`,
     olderVersion: 'Version précédente',

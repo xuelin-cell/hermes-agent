@@ -2663,6 +2663,20 @@ export const ru = defineLocale({
     open: 'Открыть'
   },
 
+  artifactShare: {
+    originRequired: 'Делиться можно только подтверждёнными результатами модели. Загруженные, производные файлы и неизвестные источники заблокированы.',
+    share: 'Поделиться',
+    shareArtifact: 'Поделиться артефактом',
+    updateShared: 'Обновить общий контент',
+    viewShared: 'Открыть общую страницу',
+    copyShared: 'Копировать ссылку',
+    revokeShared: 'Отозвать ссылку',
+    shareFailed: 'Не удалось поделиться артефактом',
+    revokeFailed: 'Не удалось отозвать ссылку',
+    previewNotReady: 'Предпросмотр Markdown ещё не готов.',
+    imageNotEmbedded: 'В Markdown есть изображение без встроенных данных.',
+  },
+
   artifactPreview: {
     versionOf: (current, total) => `v${current} из ${total}`,
     olderVersion: 'Более старая версия',

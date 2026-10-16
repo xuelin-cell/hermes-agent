@@ -13,6 +13,7 @@ import { defaultRehypePlugins, defaultRemarkPlugins, Streamdown } from 'streamdo
 import { requestComposerFocus, requestComposerInsertRefs } from '@/app/chat/composer/focus'
 import { droppedFileInlineRef } from '@/app/chat/composer/inline-refs'
 import { HERMES_PATHS_MIME } from '@/app/chat/hooks/use-composer-actions'
+import { ShareControls } from '@/components/artifact-share/share-controls'
 import { RichCodeBlock } from '@/components/assistant-ui/embeds'
 import { CodeEditor } from '@/components/chat/code-editor'
 import { FileDiffPanel } from '@/components/chat/diff-lines'
@@ -21,6 +22,7 @@ import { LazyShiki as ShikiHighlighter } from '@/components/chat/shiki-highlight
 import { PageLoader } from '@/components/page-loader'
 import { Tip } from '@/components/ui/tooltip'
 import { translateNow, useI18n } from '@/i18n'
+import { artifactShareFilePath } from '@/lib/artifact-share-source'
 import {
   desktopFileDiff,
   desktopFsCacheKey,
@@ -47,6 +49,7 @@ import { previewTargetFromMarkdownHref } from '@/lib/preview-targets'
 import { cn } from '@/lib/utils'
 import { openPreview, type PreviewTarget } from '@/store/preview'
 import { setPreviewDirty } from '@/store/preview-edit'
+import { $activeSessionId, $selectedStoredSessionId } from '@/store/session'
 import { $connection, $currentCwd } from '@/store/session'
 import { notifyWorkspaceChanged } from '@/store/workspace-events'
 
@@ -767,8 +770,13 @@ export function LocalFilePreview({
   // For the bare-`e` shortcut: the read-view root (to detect focus-within) and a
   // hover flag (no state — only the keydown handler reads it).
   const readViewRef = useRef<HTMLDivElement>(null)
+  const shareSnapshotRef = useRef<HTMLDivElement>(null)
   const hoverRef = useRef(false)
   const connection = useStore($connection)
+  const activeSessionId = useStore($activeSessionId)
+  const storedSessionId = useStore($selectedStoredSessionId)
+  const shareSessionId = storedSessionId || activeSessionId
+  const currentCwd = useStore($currentCwd)
   const fsCacheKey = desktopFsCacheKey(connection)
   const filePath = filePathForTarget(target)
   const isImage = target.previewKind === 'image'
@@ -1161,6 +1169,34 @@ export function LocalFilePreview({
 
   if (isText && state.text !== undefined) {
     const isMarkdown = (state.language || target.language) === 'markdown'
+
+    const sharePath = artifactShareFilePath(filePath, currentCwd)
+
+    const shareableFile = connection?.mode === 'local' && !state.truncated && shareSessionId && sharePath &&
+      (isMarkdown || /\.html?$/i.test(filePath)) && window.hermesDesktop?.artifactShare
+
+    /** 从与预览同一渲染器取得静态 Markdown 快照，拒绝本机图片地址泄露。 */
+    const markdownSnapshot = () => {
+      const rendered = shareSnapshotRef.current?.querySelector<HTMLElement>('[data-preview-markdown]')
+
+      if (!rendered) {
+        throw new Error(t.artifactShare.previewNotReady)
+      }
+
+      const clone = rendered.cloneNode(true) as HTMLElement
+
+      for (const image of clone.querySelectorAll('img')) {
+        if (!image.getAttribute('src')?.startsWith('data:')) {
+          throw new Error(t.artifactShare.imageNotEmbedded)
+        }
+      }
+
+      return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+        '<style>body{font:16px/1.65 system-ui,sans-serif;max-width:800px;margin:40px auto;padding:0 24px;color:#202124}' +
+        'pre{overflow:auto;padding:16px;background:#f5f5f5}img{max-width:100%}table{border-collapse:collapse}' +
+        'td,th{border:1px solid #ccc;padding:6px}</style></head><body>' + clone.outerHTML + '</body></html>'
+    }
+
     const hasDiff = Boolean(state.diff && state.diff.trim())
     // Order the toggle reads left→right; default lands on the most useful view.
     const modes: PreviewViewMode[] = []
@@ -1209,20 +1245,36 @@ export function LocalFilePreview({
           modes={modes}
           onSelect={selectMode}
           trailing={
-            canEdit ? (
-              <Tip label={`${t.preview.edit} (e)`}>
-                <button
-                  className="flex items-center gap-1 text-[0.625rem] font-bold text-muted-foreground underline-offset-4 transition-colors hover:text-foreground"
-                  onClick={beginEdit}
-                  type="button"
-                >
-                  <Pencil className="size-3" />
-                  {t.preview.edit}
-                </button>
-              </Tip>
-            ) : null
+            <>
+              {shareableFile && (
+                <ShareControls
+                  artifactKey={`file:${shareSessionId}:${sharePath}`}
+                  html={isMarkdown ? markdownSnapshot : state.text}
+                  source={{ sessionId: shareSessionId!, path: sharePath! }}
+                  sourceText={state.text}
+                  title={target.label}
+                />
+              )}
+              {canEdit ? (
+                <Tip label={`${t.preview.edit} (e)`}>
+                  <button
+                    className="flex items-center gap-1 text-[0.625rem] font-bold text-muted-foreground underline-offset-4 transition-colors hover:text-foreground"
+                    onClick={beginEdit}
+                    type="button"
+                  >
+                    <Pencil className="size-3" />
+                    {t.preview.edit}
+                  </button>
+                </Tip>
+              ) : null}
+            </>
           }
         />
+        {shareableFile && isMarkdown && (
+          <div aria-hidden="true" className="pointer-events-none absolute -left-[10000px] top-0 w-[800px]" ref={shareSnapshotRef}>
+            <MarkdownPreview filePath={filePath} text={state.text} />
+          </div>
+        )}
         <div className="min-h-0 flex-1 overflow-auto">
           {mode === 'rendered' ? (
             <MarkdownPreview filePath={filePath} text={state.text} />

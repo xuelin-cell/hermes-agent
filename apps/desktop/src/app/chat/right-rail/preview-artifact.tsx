@@ -1,7 +1,9 @@
+import { composeArtifactHtml } from '@hermes/shared/artifact-share'
 import { useStore } from '@nanostores/react'
 import DOMPurify from 'dompurify'
 import { useEffect, useMemo, useState } from 'react'
 
+import { ShareControls } from '@/components/artifact-share/share-controls'
 import { CopyButton } from '@/components/ui/copy-button'
 import { Tip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
@@ -11,6 +13,7 @@ import { ChevronLeft, ChevronRight, Download, ExternalLink } from '@/lib/icons'
 import { $artifactRegistry, $artifactVersionSelection, findArtifact, selectArtifactVersion } from '@/store/artifacts'
 import { notifyError } from '@/store/notifications'
 import type { PreviewTarget } from '@/store/preview'
+import { $connection } from '@/store/session'
 
 import { PreviewEmptyState, PreviewModeSwitcher, type PreviewViewMode, SourceView } from './preview-file'
 
@@ -25,23 +28,6 @@ const SOURCE_LANGUAGE_BY_KIND: Record<ArtifactKind, string | undefined> = {
 
 const HEADER_BUTTON_CLASS =
   'flex items-center gap-1 rounded-md px-1.5 text-[0.625rem] font-bold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-40'
-
-/** Wrap an HTML fragment in a minimal document shell; full documents pass
- *  through untouched. Keeps generated fragments (no <html>/<body>) rendering
- *  with sane defaults instead of quirks-mode soup. */
-function composeArtifactHtml(content: string): string {
-  if (/<html[\s>]|<!doctype\s+html/i.test(content)) {
-    return content
-  }
-
-  return [
-    '<!doctype html>',
-    '<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">',
-    '<style>body{margin:0;font-family:system-ui,sans-serif}</style></head><body>',
-    content,
-    '</body></html>'
-  ].join('\n')
-}
 
 /** Write the composed document to a real temp file through the existing
  *  buffer-save IPC, then hand it to the OS browser. A blob/data URL can't
@@ -177,6 +163,7 @@ export function ArtifactPreview({ onClose, target }: { onClose?: () => void; tar
   const copy = t.artifactPreview
   const artifactId = target.url
   const registry = useStore($artifactRegistry)
+  const connection = useStore($connection)
   const versionSelection = useStore($artifactVersionSelection)
   const [userMode, setUserMode] = useState<PreviewViewMode | null>(null)
 
@@ -216,6 +203,14 @@ export function ArtifactPreview({ onClose, target }: { onClose?: () => void; tar
               onSelect={index => selectArtifactVersion(artifactId, index)}
               total={record.versions.length}
             />
+            {record.kind === 'html' && connection?.mode === 'local' && window.hermesDesktop?.artifactShare && (
+              <ShareControls
+                artifactKey={`artifact:${record.sessionId}:${record.slug}`}
+                html={composeArtifactHtml(version.content)}
+                source={{ sessionId: record.sessionId, content: version.content }}
+                title={record.title}
+              />
+            )}
             <CopyButton
               appearance="inline"
               className="h-5 px-1 opacity-70 hover:opacity-100"
