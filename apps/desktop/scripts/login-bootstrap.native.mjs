@@ -592,7 +592,7 @@ test('P14 真实登录入口：跨进程 A→B→A 自动准备固定上下文�
     const initialPage = await instance.firstWindow()
     await initialPage.getByRole('img').waitFor()
     assert.equal(await instance.evaluate(() => globalThis.currentFixtureRuntime()), null)
-    await assert.rejects(access(path.join(fixture.env.LOCALAPPDATA, 'hermes-desktop-mt')), {code:'ENOENT'})
+    await assert.rejects(access(path.join(fixture.env.LOCALAPPDATA, 'hmt')), {code:'ENOENT'})
     // 无账号的旧 UI 提示不能为运行时授权，也不能改变新账号的默认工作目录。
     await writeFile(path.join(fixture.userData, 'active-profile.json'), JSON.stringify({profile:'forged-profile'}))
     await writeFile(path.join(fixture.userData, 'project-dir.json'), JSON.stringify({dir:fixture.home}))
@@ -612,7 +612,7 @@ test('P14 真实登录入口：跨进程 A→B→A 自动准备固定上下文�
       assert.equal(state.source, state.context.installationRoot)
       assert.equal(state.context.python, state.python)
       assert.equal(state.parentHome, fixture.home)
-      assert.equal(state.context.home.startsWith(path.join(fixture.env.LOCALAPPDATA, 'hermes-desktop-mt', 'accounts')), true)
+      assert.equal(state.context.home.startsWith(path.join(fixture.env.LOCALAPPDATA, 'hmt')), true)
       assert.equal(state.context.desktopState.startsWith(path.join(fixture.userData, 'accounts')), true)
       assert.notEqual(state.context.workspace, fixture.home)
       for (const directory of [state.context.home, state.context.workspace, state.context.desktopState]) {

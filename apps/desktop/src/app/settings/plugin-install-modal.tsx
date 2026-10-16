@@ -23,6 +23,7 @@ import { useI18n } from '@/i18n'
 import { ExternalLink } from '@/lib/external-link'
 import { AlertTriangle } from '@/lib/icons'
 import { resolvePluginSourceLinks } from '@/lib/plugin-source-urls'
+import { explainWindowsPathTooLong } from '@/lib/windows-path-too-long'
 import { type AgentPluginLiveNow, COMMIT_SHA_RE, installAgentPlugin, loadAgentPlugins } from '@/store/agent-plugins'
 import { notify } from '@/store/notifications'
 import {
@@ -274,7 +275,7 @@ export function PluginInstallModal() {
 
           return
         } else {
-          errors.push(result.error || m.agentFailed)
+          errors.push(result.error ? explainWindowsPathTooLong(result.error) : m.agentFailed)
         }
       }
 
@@ -310,7 +311,7 @@ export function PluginInstallModal() {
               successes.push(m.desktopSuccess(result.pluginName ?? request.repo))
               await discoverRuntimePlugins()
             } else {
-              errors.push(result.error || m.desktopFailed)
+              errors.push(result.error ? explainWindowsPathTooLong(result.error) : m.desktopFailed)
             }
           }
         }

@@ -6,7 +6,7 @@ import { parseBackendOwnershipDetailed, serializeBackendOwnership } from '../bac
 import { writeSecretFileAtomic } from '../hardening'
 import { electronProcessStartMarker } from '../parent-process-identity'
 
-import { accountPathsById, type AccountRoots } from './account-paths'
+import { accountPathsById, type AccountRoots, assertAccountDirectoryOwner } from './account-paths'
 import { accountDesktopStatePaths } from './desktop-state'
 import { createAccountGatewayLogout, gatewayLogoutRoots } from './gateway-logout'
 import { type AccountExitMode, completeAccountExit, logoutIntentPath } from './logout'
@@ -94,11 +94,11 @@ export async function recoverAccountRun(
   const account = accountPathsById(roots, pending.account)
 
   for (const directory of [
-    ...[roots.data, roots.userData].flatMap(root => [
-      root,
-      path.join(root, 'accounts'),
-      path.join(root, 'accounts', account.id)
-    ]),
+    roots.data,
+    path.dirname(account.home),
+    roots.userData,
+    path.join(roots.userData, 'accounts'),
+    path.dirname(account.desktopState),
     account.home,
     account.workspace,
     account.desktopState
@@ -109,6 +109,8 @@ export async function recoverAccountRun(
       throw new Error('账号恢复目录无效。')
     }
   }
+
+  assertAccountDirectoryOwner(account)
 
   const ownershipFile = accountDesktopStatePaths(account).backendOwnership
   const ownershipText = readRecord(ownershipFile)

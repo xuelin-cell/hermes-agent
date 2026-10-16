@@ -768,7 +768,7 @@ test('P15～P17 原生 Electron：自动进入账号桌面，REST/WS 与 A→B�
       await login.getByRole('heading',{name:'登录你的工作空间',exact:true}).waitFor()
       assert.equal(await login.evaluate(() => typeof window.hermesDesktop),'undefined')
       assert.equal(await instance.evaluate(() => globalThis.fixtureContext()),null)
-      await assert.rejects(access(path.join(fixture.root,'local-app-data','hermes-desktop-mt','accounts')),{code:'ENOENT'})
+      await assert.rejects(access(path.join(fixture.root,'local-app-data','hmt')),{code:'ENOENT'})
       // 在未归属账号的旧默认分区放哨兵；正式账号不得认领，测试也不删除它。
       await instance.evaluate(async ({session,BrowserWindow},url) => {
         await session.defaultSession.cookies.set({url,name:'fixture_global',value:'old-global',
@@ -803,7 +803,7 @@ test('P15～P17 原生 Electron：自动进入账号桌面，REST/WS 与 A→B�
         const context = await instance.evaluate(() => globalThis.fixtureContext())
         accountA ??= context
         assert.equal(context.installationRoot,path.resolve(desktop,'../..'))
-        assert.ok(context.home.startsWith(path.join(fixture.root,'local-app-data','hermes-desktop-mt','accounts')))
+        assert.ok(context.home.startsWith(path.join(fixture.root,'local-app-data','hmt')))
         assert.equal(await page.evaluate(() => typeof window.hermesLogin),'undefined')
         assert.equal(instance.windows().some(page => page.url().includes('login.html')),false)
         const connections = await page.evaluate(() => Promise.all(Array.from({length:3}, () => window.hermesDesktop.getConnection())))

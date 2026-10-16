@@ -78,23 +78,25 @@ HTTP 同时需要 Bearer 和其他 Header 时，请通过 JSON 保留 Header 并
 默认位置：
 
 ```text
-%LOCALAPPDATA%\hermes-desktop-mt\accounts\account-<摘要>\
-  hermes-home\       会话、记忆、配置、Profiles、日志
+%LOCALAPPDATA%\hmt\<摘要前 12 位>\
+  account-id         账号完整标识，用于核对目录归属
+  home\              会话、记忆、配置、Profiles、日志、Python 依赖
   workspace\         账号默认工作区
 
-%APPDATA%\HermesDesktopMT\
+%APPDATA%\hmt\
   maas-login.enc       系统加密的恢复登录记录
   maas-logout-pending.json
                       正常运行／退出恢复记录
-  accounts\account-<摘要>\desktop-state\
-                      连接、项目、原生 OAuth、账号缓存
+  accounts\<摘要前 12 位>\
+    account-id         账号完整标识，用于核对目录归属
+    desktop-state\     连接、项目、原生 OAuth、账号缓存
   Partitions\hermes-mt-<摘要>\
                       按账号与用途保存的浏览器状态和草稿
 ```
 
 账号目录由身份域和 UID 的完整摘要决定；浏览器分区摘要还包含用途。窗口位置、外观、托盘等设备偏好保持应用级。
 
-Windows 的 Python 依赖安装树位于 `%LOCALAPPDATA%\hermes-desktop-mt\deps\<摘要>`，原 `hermes-home/installs` 是指向本账号依赖的目录联接；用于缩短原生扩展加载路径。准备时保留已有依赖，历史、配置和工作文件不搬动。备份账号时也应保留对应依赖目录，或之后通过原版 PM 重新准备依赖；不要把该联接改到其它账号。
+目录名取短是为了避开 Windows 260 字符的路径上限，不需要开启系统长路径支持。旧版本的 `%LOCALAPPDATA%\hermes-desktop-mt` 和 `%APPDATA%\HermesDesktopMT` 不迁移也不删除；升级后需要重新登录，账号、窗口位置和内置浏览器状态都从全新目录开始。升级前请正常退出账号，让旧版后台进程停止。不要手工修改或复制 `account-id`。
 
 登录密文受系统加密保护，模型 Key 在账号 `.env` 中按原版机制明文保存。不要上传登录密文、`.env`、原生 OAuth 文件或浏览器数据库。
 

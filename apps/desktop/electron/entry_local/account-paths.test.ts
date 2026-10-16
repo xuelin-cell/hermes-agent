@@ -4,7 +4,14 @@ import path from 'node:path'
 
 import { afterEach, expect, it } from 'vitest'
 
-import { type AccountRoots, prepareAccountPaths, resolveAccountPaths } from './account-paths'
+import {
+  accountDataRoot,
+  accountPathsById,
+  type AccountRoots,
+  assertAccountDirectoryOwner,
+  prepareAccountPaths,
+  resolveAccountPaths
+} from './account-paths'
 
 const temporaryRoots: string[] = []
 const namespace = 'maas.ai-yuanjing.com/uniwork'
@@ -68,8 +75,11 @@ it('A→B→A 在真实文件系统中分开保存并复用 Home、默认工作�
   ]) {
     const mapped = prepareAccountPaths(roots, namespace, uid)
     expect(mapped.id).toMatch(/^account-[a-f0-9]{64}$/)
-    expect(path.relative(roots.data, mapped.workspace)).toBe(path.join('accounts', mapped.id, 'workspace'))
-    expect(path.relative(roots.userData, mapped.desktopState)).toBe(path.join('accounts', mapped.id, 'desktop-state'))
+    expect(path.relative(roots.data, mapped.home)).toBe(path.join(mapped.id.slice(8, 20), 'home'))
+    expect(path.relative(roots.data, mapped.workspace)).toBe(path.join(mapped.id.slice(8, 20), 'workspace'))
+    expect(path.relative(roots.userData, mapped.desktopState)).toBe(
+      path.join('accounts', mapped.id.slice(8, 20), 'desktop-state')
+    )
     expect(resolveAccountPaths(roots, namespace, uid)).toEqual(mapped)
     expect(ids.has(mapped.id)).toBe(false)
     ids.add(mapped.id)
@@ -84,16 +94,27 @@ it('A→B→A 在真实文件系统中分开保存并复用 Home、默认工作�
 })
 
 it('受管根、accounts、账号及叶目录的链接或文件占位均拒绝，不写入链接目标', () => {
-  for (const location of ['root', 'accounts', 'account', 'home', 'workspace', 'desktopState'] as const) {
+  for (const location of [
+    'root',
+    'account',
+    'home',
+    'workspace',
+    'desktopRoot',
+    'accounts',
+    'desktopAccount',
+    'desktopState'
+  ] as const) {
     const roots = fixture()
     const paths = resolveAccountPaths(roots, namespace, 'fixture-A')
 
     const target = {
       root: roots.data,
-      accounts: path.join(roots.data, 'accounts'),
       account: path.dirname(paths.home),
       home: paths.home,
       workspace: paths.workspace,
+      desktopRoot: roots.userData,
+      accounts: path.join(roots.userData, 'accounts'),
+      desktopAccount: path.dirname(paths.desktopState),
       desktopState: paths.desktopState
     }[location]
 
@@ -108,5 +129,40 @@ it('受管根、accounts、账号及叶目录的链接或文件占位均拒绝�
     fs.writeFileSync(target, 'occupied-file')
     expect(() => prepareAccountPaths(roots, namespace, 'fixture-A')).toThrow()
     expect(fs.readFileSync(target, 'utf8')).toBe('occupied-file')
+  }
+})
+
+it('Windows 数据根使用短目录名，其他平台保持原位置', () => {
+  expect(accountDataRoot('C:\\Users\\stan', { LOCALAPPDATA: 'D:\\Local' }, 'win32')).toBe('D:\\Local\\hmt')
+  expect(accountDataRoot('C:\\Users\\stan', { LOCALAPPDATA: ' ' }, 'win32')).toBe(
+    'C:\\Users\\stan\\AppData\\Local\\hmt'
+  )
+  expect(accountDataRoot('/Users/stan', {}, 'darwin')).toBe('/Users/stan/.hermes-desktop-mt')
+})
+
+it('短目录名相同的另一账号、伪造或缺失的身份标识均拒绝，不写入原目录', () => {
+  const roots = fixture()
+  const a = prepareAccountPaths(roots, namespace, 'fixture-A')
+  // 前 12 位与 A 相同的另一完整摘要会落到同一组短目录。
+  const twin = accountPathsById(roots, `${a.id.slice(0, 20)}${'0'.repeat(52)}`)
+  expect([twin.home, twin.desktopState]).toEqual([a.home, a.desktopState])
+
+  for (const marker of [
+    path.join(path.dirname(a.home), 'account-id'),
+    path.join(path.dirname(a.desktopState), 'account-id')
+  ]) {
+    expect(fs.readFileSync(marker, 'utf8')).toBe(a.id)
+    expect(() => assertAccountDirectoryOwner(twin, true)).toThrow('另一账号')
+    expect(fs.readFileSync(marker, 'utf8')).toBe(a.id)
+
+    fs.writeFileSync(marker, twin.id)
+    expect(() => prepareAccountPaths(roots, namespace, 'fixture-A')).toThrow('另一账号')
+
+    fs.unlinkSync(marker)
+    expect(() => assertAccountDirectoryOwner(a)).toThrow('缺少身份标识')
+    fs.mkdirSync(marker)
+    expect(() => prepareAccountPaths(roots, namespace, 'fixture-A')).toThrow('不是普通文件')
+    fs.rmdirSync(marker)
+    expect(prepareAccountPaths(roots, namespace, 'fixture-A')).toEqual(a)
   }
 })

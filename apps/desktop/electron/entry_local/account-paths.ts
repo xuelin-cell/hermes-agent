@@ -14,6 +14,25 @@ export interface AccountPaths {
   desktopState: string
 }
 
+// 硬盘目录名只取摘要前 12 位（48 位），身份仍以完整摘要为准并由标识文件核对。
+const DIRECTORY_DIGEST_LENGTH = 12
+const ACCOUNT_ID_FILE = 'account-id'
+
+/** 账号数据根；Windows 用短目录名，给 Hermes 与依赖包的深层文件留出 260 字符余量。 */
+export function accountDataRoot(
+  home: string,
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform
+): string {
+  if (platform === 'win32') {
+    const base = (env.LOCALAPPDATA || '').trim() || path.win32.join(home, 'AppData', 'Local')
+
+    return path.win32.join(base, 'hmt')
+  }
+
+  return path.posix.join(home, '.hermes-desktop-mt')
+}
+
 /** 用完整身份二元组生成稳定标识，UID 原文不会成为路径组件。 */
 export function resolveAccountPaths(roots: AccountRoots, namespace: string, uid: string): AccountPaths {
   if (!namespace || namespace !== namespace.trim() || !uid || uid !== uid.trim()) {
@@ -37,11 +56,47 @@ export function accountPathsById(roots: AccountRoots, id: string): AccountPaths 
     throw new Error('账号恢复标识无效。')
   }
 
+  const name = id.slice('account-'.length, 'account-'.length + DIRECTORY_DIGEST_LENGTH)
+  const directory = path.join(roots.data, name)
+
   return {
     id,
-    home: path.join(roots.data, 'accounts', id, 'hermes-home'),
-    workspace: path.join(roots.data, 'accounts', id, 'workspace'),
-    desktopState: path.join(roots.userData, 'accounts', id, 'desktop-state')
+    home: path.join(directory, 'home'),
+    workspace: path.join(directory, 'workspace'),
+    desktopState: path.join(roots.userData, 'accounts', name, 'desktop-state')
+  }
+}
+
+/** 核对数据目录与桌面状态目录都属于本账号；缺少标识文件时按 allowCreate 决定补写或拒绝。 */
+export function assertAccountDirectoryOwner(paths: AccountPaths, allowCreate = false): void {
+  for (const directory of [path.dirname(paths.home), path.dirname(paths.desktopState)]) {
+    assertDirectoryOwner(path.join(directory, ACCOUNT_ID_FILE), paths.id, allowCreate)
+  }
+}
+
+/** 核对单个短目录的身份标识文件。 */
+function assertDirectoryOwner(file: string, id: string, allowCreate: boolean): void {
+  const stat = fs.lstatSync(file, { throwIfNoEntry: false })
+
+  if (!stat) {
+    if (!allowCreate) {
+      throw new Error('账号目录缺少身份标识。')
+    }
+
+    // wx 不覆盖并发写入的标识；随后仍按下方读取结果核对。
+    try {
+      fs.writeFileSync(file, id, { flag: 'wx', mode: 0o600 })
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
+        throw error
+      }
+    }
+  } else if (!stat.isFile() || stat.isSymbolicLink()) {
+    throw new Error('账号身份标识不是普通文件。')
+  }
+
+  if (fs.readFileSync(file, 'utf8') !== id) {
+    throw new Error('账号目录属于另一账号。')
   }
 }
 
@@ -60,11 +115,18 @@ function ensureDirectory(directory: string): void {
 export function prepareAccountPaths(roots: AccountRoots, namespace: string, uid: string): AccountPaths {
   const paths = resolveAccountPaths(roots, namespace, uid)
 
-  for (const root of [roots.data, roots.userData]) {
-    ensureDirectory(root)
-    ensureDirectory(path.join(root, 'accounts'))
-    ensureDirectory(path.join(root, 'accounts', paths.id))
+  for (const directory of [
+    roots.data,
+    path.dirname(paths.home),
+    roots.userData,
+    path.join(roots.userData, 'accounts'),
+    path.dirname(paths.desktopState)
+  ]) {
+    ensureDirectory(directory)
   }
+
+  // 先核对归属再创建子目录，摘要前缀相同的另一账号不会写进本目录。
+  assertAccountDirectoryOwner(paths, true)
 
   for (const directory of [paths.home, paths.workspace, paths.desktopState]) {
     ensureDirectory(directory)

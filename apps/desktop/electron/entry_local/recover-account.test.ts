@@ -106,7 +106,8 @@ it('坏记录、越界路径、未知指纹或活父实例均阻止清理且保�
     'parent',
     'parent-ms',
     'probe',
-    'junction'
+    'junction',
+    'owner'
   ]) {
     const f = fixture()
 
@@ -147,6 +148,11 @@ it('坏记录、越界路径、未知指纹或活父实例均阻止清理且保�
 
     if (fault === 'probe') {
       fake.probe.mockRejectedValue(new Error('probe unavailable'))
+    }
+
+    if (fault === 'owner') {
+      // 摘要前 12 位相同的另一账号占用目录时，不能按本账号记录处理进程。
+      fs.writeFileSync(path.join(path.dirname(f.account.desktopState), 'account-id'), `account-${'0'.repeat(64)}`)
     }
 
     if (fault === 'junction') {

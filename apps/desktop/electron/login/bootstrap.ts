@@ -4,8 +4,9 @@ import { pathToFileURL } from 'node:url'
 
 import { app, BrowserWindow, dialog, net } from 'electron'
 
-import { platformDefaultHermesHome, resolveDesktopUserData } from '../data-paths'
+import { resolveDesktopUserData } from '../data-paths'
 import { markDesktopLaunchSuccessful, prepareDesktopLaunch } from '../desktop-launch'
+import { accountDataRoot } from '../entry_local/account-paths'
 import { startAccountDesktop } from '../entry_local/desktop-runtime'
 import { installArtifactSharePlugin } from '../entry_local/install-artifact-share'
 import { recoverAccountRun } from '../entry_local/recover-account'
@@ -36,7 +37,8 @@ function initializeLoginShell(): void {
 
   initialized = true
   app.setName('Hermes Desktop MT')
-  const userData = resolveDesktopUserData(path.join(app.getPath('appData'), 'HermesDesktopMT'))
+  // 与账号数据根同名，Local 和 Roaming 两处都是 hmt。
+  const userData = resolveDesktopUserData(path.join(app.getPath('appData'), 'hmt'))
   mkdirSync(userData, { recursive: true })
   app.setPath('userData', userData)
   prepareDesktopLaunch()
@@ -49,7 +51,7 @@ function initializeLoginShell(): void {
   }
 
   const roots = {
-    data: platformDefaultHermesHome(app.getPath('home'), { ...process.env, HERMES_DATA_DIR_SUFFIX: '-desktop-mt' }),
+    data: accountDataRoot(app.getPath('home')),
     userData
   }
 

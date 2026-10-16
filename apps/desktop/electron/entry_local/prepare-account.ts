@@ -2,7 +2,6 @@ import { MAAS_IDENTITY_NAMESPACE } from '../login/credential-store'
 import type { LoginSession } from '../login/session'
 
 import { type AccountPaths, type AccountRoots, prepareAccountPaths } from './account-paths'
-import { prepareAccountDependencyStorage } from './dependency-storage'
 import { mergeMaasModelConfig } from './model-config'
 import { writeAccountMaasKey } from './model-key'
 import { LocalStartupError } from './startup-failure'
@@ -17,10 +16,7 @@ export function prepareLocalAccount(session: LoginSession, roots: AccountRoots):
   }
 
   try {
-    const account = prepareAccountPaths(roots, MAAS_IDENTITY_NAMESPACE, identity.uid)
-    prepareAccountDependencyStorage(roots, account)
-
-    return account
+    return prepareAccountPaths(roots, MAAS_IDENTITY_NAMESPACE, identity.uid)
   } catch (error) {
     // 原始文件系统错误可能含账号路径，不能直接交给页面或日志。
     throw new LocalStartupError('directory', error)

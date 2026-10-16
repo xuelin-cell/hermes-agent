@@ -2,6 +2,7 @@ import { atom } from 'nanostores'
 
 import { translateNow } from '@/i18n'
 import { isOutOfSyncRpcParams } from '@/lib/gateway-rpc'
+import { isWindowsPathTooLong, windowsPathTooLongMessage } from '@/lib/windows-path-too-long'
 import { isLocalBackendSlotWaitTimeout, requestPoolLimitsSettings } from '@/store/pool-limits'
 import { requestBackendRestart, requestRoute } from '@/store/recovery-requests'
 
@@ -135,6 +136,11 @@ interface ErrorSummaryRule {
 }
 
 const ERROR_SUMMARIES: ErrorSummaryRule[] = [
+  {
+    // desktop-mt: Windows 路径超过 260 字符时说明原因，避免只显示被截断的系统报错。
+    test: isWindowsPathTooLong,
+    summarize: windowsPathTooLongMessage
+  },
   {
     // Disk full / ENOSPC — session DB write, backend crash, or any path that
     // bubbles "no space left" / SQLITE_FULL through notifyError. Match before

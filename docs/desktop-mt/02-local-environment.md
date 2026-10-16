@@ -6,19 +6,26 @@
 
 `account-paths.ts` 使用 UTF-8 的 `JSON.stringify([平台身份域, UID])` 计算完整 SHA-256，形成 `account-<64 位摘要>`。token、手机号、Key 和期限不参与标识；同账号重新登录定位原目录。
 
+Local 和 Roaming 两处的应用目录都叫 `hmt`，账号目录都只用摘要前 12 位命名，各自的 `account-id` 保存完整标识。准备账号和退出恢复都先核对两处标识，前 12 位相同的另一账号不会写进或清理本目录。退出恢复记录和浏览器分区仍按完整标识。
+
 默认目录：
 
 ```text
-%LOCALAPPDATA%\hermes-desktop-mt\accounts\account-<摘要>\
-  hermes-home\
-  workspace\
+%LOCALAPPDATA%\hmt\<摘要前 12 位>\
+  account-id
+  home\              HERMES_HOME
+  workspace\         默认工作区
 
-%APPDATA%\HermesDesktopMT\accounts\account-<摘要>\desktop-state\
+%APPDATA%\hmt\accounts\<摘要前 12 位>\
+  account-id
+  desktop-state\
 ```
 
 UID 原文不成为路径组件。主进程只接受有效 `LoginSession` 的身份和绝对受管根；逐层拒绝符号链接、Windows junction 或文件占位，重复初始化保留内容。失败不回退其它 Home、不删除数据。
 
-Windows 的 PM 依赖安装树单独放在 `%LOCALAPPDATA%\hermes-desktop-mt\deps\<64 位摘要>`，`hermes-home/installs` 使用主进程建立的固定目标 junction。原版 PM 解析真实路径后加载依赖，避免深层路径导致 `.pyd` 无法加载；不依赖修改系统长路径开关。账号 Home、配置、会话和工作区保持原位。已有依赖树在启动后端前同盘重命名，联接失败则回移；中断后可补全联接。拒绝目标被链接替代、跨账号联接及两处目录冲突，不覆盖已有内容。这个特定依赖入口不放宽账号根目录的链接检查。
+目录名刻意取短。Windows 默认路径上限是 260 字符，多数电脑没有开启长路径支持；原生扩展（`.pyd`）加载即使开启也受此限，所以不依赖系统长路径开关。用户名 4 个字符时，账号 Home `C:\Users\<用户名>\AppData\Local\hmt\<12 位>\home` 共 46 个字符，与原版 `%LOCALAPPDATA%\hermes` 相近。PM 依赖、内置 Python、下载缓存和专家文件都直接放在 Home 内，不再另建依赖目录或目录联接。
+
+旧布局 `%LOCALAPPDATA%\hermes-desktop-mt` 与 `%APPDATA%\HermesDesktopMT` 不迁移、不读取、不删除。升级后需要重新登录，账号数据、窗口位置和内置浏览器状态都从新目录开始；旧版的运行记录也不再读取。升级前仍应正常退出账号，让旧版的后端和消息网关先停止，新版不会代为清理它们。
 
 ## P12 · MaaS 模型配置
 

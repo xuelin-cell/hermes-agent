@@ -170,7 +170,7 @@ it('准备失败可重试，已准备环境跨到期保留；到期不能重新�
     session.restore()
     expect(() => runtime.prepare()).toThrow('不能更换账号')
     expect(runtime.current()).toBeNull()
-    expect(fs.readdirSync(path.join(f.roots.data, 'accounts'))).toEqual([context.id])
+    expect(fs.readdirSync(f.roots.data)).toEqual([path.basename(path.dirname(context.home))])
   } finally {
     runtime.dispose()
     vi.restoreAllMocks()
