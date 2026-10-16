@@ -99,10 +99,8 @@ a.account-card-row:hover {
   flex: 0 0 16px;
   width: 16px;
   height: 16px;
-  background: var(--ui-text-secondary);
-  mask-size: contain;
-  mask-position: center;
-  mask-repeat: no-repeat;
+  display: inline-flex;
+  color: var(--ui-text-secondary);
 }
 .account-card-summary {
   margin-left: auto;
@@ -128,4 +126,10 @@ a.account-card-row:hover {
 }
 .account-card-expanded {
   padding: 16px;
+}
+
+.account-card-icon > svg {
+  display: block;
+  width: 16px;
+  height: 16px;
 }

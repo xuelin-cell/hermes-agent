@@ -3,11 +3,11 @@ import './style.css'
 import { type ReactElement, useEffect, useState } from 'react'
 import { Link } from 'react-router'
 
-import planIcon from './icons/plan.svg'
-import usageIcon from './icons/usage.svg'
-import deadlineIcon from './icons/deadline.svg'
-import settingsIcon from './icons/settings.svg'
-import logoutIcon from './icons/logout.svg'
+import planIcon from './icons/plan.svg?raw'
+import usageIcon from './icons/usage.svg?raw'
+import deadlineIcon from './icons/deadline.svg?raw'
+import settingsIcon from './icons/settings.svg?raw'
+import logoutIcon from './icons/logout.svg?raw'
 
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
@@ -17,9 +17,9 @@ import { useI18n } from '@/i18n'
 import type { LoginAccount } from '../../../../electron/login/contract'
 import type { PlanUsage } from '../../../../electron/uniwork-usage/contract'
 
-/** 设计稿图标以遮罩继承主题颜色，保留原始矢量轮廓。 */
+/** 直接渲染随包编译的可信 SVG，避免 file 协议下外部遮罩加载失败；不接收远端 SVG。 */
 function AccountIcon({ src }: { src: string }) {
-  return <span aria-hidden="true" className="account-card-icon" style={{ maskImage: `url(${src})` }} />
+  return <span aria-hidden="true" className="account-card-icon" dangerouslySetInnerHTML={{ __html: src }} />
 }
 
 interface PlanUsagePanelProps {
@@ -120,14 +120,14 @@ function UsageDetails({ data }: { data: PlanUsage }) {
 
 /** 侧栏套餐面板只在展开时刷新，关闭或账号切换后丢弃迟到响应，不落盘保存用量。 */
 export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelProps) {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const c = t.desktopLogin.planUsage
   const [open, setOpen] = useState(false)
   const [details, setDetails] = useState(false)
   const [retry, setRetry] = useState(0)
   const [data, setData] = useState<PlanUsage | null>(null)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<'auth' | 'failed' | null>(null)
+  const [error, setError] = useState<'auth' | 'failed' | 'restart' | null>(null)
 
   useEffect(() => {
     if (!open) return
@@ -140,7 +140,12 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
       clearTimeout(timer)
       setLoading(true)
       try {
-        const result = await window.hermesDesktop?.getPlanUsage?.()
+        if (!window.hermesDesktop?.getPlanUsage) {
+          setData(null)
+          setError('restart')
+          return
+        }
+        const result = await window.hermesDesktop.getPlanUsage()
         if (!live || request !== sequence) return
         if (
           result?.status === 'available' &&
@@ -209,8 +214,12 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
                 <span>{c.actualUsage}</span>
                 <span className="account-card-summary">
                   {data?.quota
-                    ? `${c.remaining}${new Intl.NumberFormat().format(data.quota.remaining)} ${data.quota.unit ?? ''}`
-                    : ''}
+                    ? `${c.remaining}${new Intl.NumberFormat(locale).format(data.quota.remaining)} ${data.quota.unit ?? ''}`
+                    : data?.kind === 'coding_plan' && data.windows.length
+                      ? `${c.used} ${new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(data.windows[0].usedPercent)}% · ${{ 'five-hour': c.fiveHour, week: c.week, month: c.month }[data.windows[0].name]}`
+                      : loading
+                        ? '—'
+                        : c.empty}
                 </span>
                 <span className="account-card-details">{c.details}</span>
               </button>
@@ -264,8 +273,19 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
           )}
           {error && (
             <p role="status" className="plan-usage-error">
-              {error === 'auth' ? c.auth : data ? c.stale : c.failed}
+              {error === 'restart' ? c.restart : error === 'auth' ? c.auth : data ? c.stale : c.failed}
             </p>
+          )}
+          {trigger && error && !details && (
+            <Button
+              variant="text"
+              size="micro"
+              disabled={loading}
+              onClick={() => setRetry(value => value + 1)}
+              type="button"
+            >
+              {c.refresh}
+            </Button>
           )}
         </section>
       </PopoverContent>

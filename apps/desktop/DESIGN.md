@@ -643,3 +643,7 @@ The detailed state contract lives in the scoped
 登录失效或账号不匹配则清空。Coding 与 Token 载荷按服务端 planType 选择，缺失值
 显示暂无数据，不补造零用量。凭据、模型地址与原始响应不跨 IPC，不持久化用量。
 源功能参考 `hexagent/libs/hexagent_demo/frontend/src/uniclawUsage.ts` 与 `components/Sidebar.tsx`。
+
+账号卡片图标直接内嵌随包编译的 SVG，不通过外部 CSS 遮罩加载。
+Coding 套餐摘要展示服务端存在的首个周期及已用百分比，Token 套餐展示剩余额度；
+无用量时明确显示暂无数据。旧主进程缺少用量桥接时提示完全重启，查询失败时可直接重试。

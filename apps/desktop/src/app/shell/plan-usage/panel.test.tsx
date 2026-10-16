@@ -74,6 +74,8 @@ it('头像卡片展示真实套餐，详情按需展开，设置沿用现有路�
   expect(query).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole('button', { name: '头像' }))
   expect(await screen.findByText('真实套餐')).toBeTruthy()
+  expect(document.querySelectorAll('.account-card-icon > svg')).toHaveLength(5)
+  expect(document.querySelector('.account-card-icon')?.getAttribute('style')).toBeNull()
   expect(screen.getByText('2026-12-12')).toBeTruthy()
   expect(screen.getByText('剩余750 tokens')).toBeTruthy()
   expect(screen.queryByRole('progressbar')).toBeNull()
@@ -82,4 +84,28 @@ it('头像卡片展示真实套餐，详情按需展开，设置沿用现有路�
   fireEvent.click(screen.getByRole('link', { name: '设置' }))
   expect(await screen.findByRole('heading', { name: '设置页面' })).toBeTruthy()
   expect(screen.queryByRole('button', { name: '退出登录' })).toBeNull()
+})
+
+it('旧主进程给出重启提示，接口可用后展示 Coding 周期摘要而非空余额', async () => {
+  const account = { maskedPhone: '138****0001', expiresAt: Date.now() + 60_000 }
+  vi.stubGlobal('hermesDesktop', {})
+  render(
+    <I18nProvider configClient={null} initialLocale="zh">
+      <MemoryRouter>
+        <PlanUsagePanel account={account} trigger={<button>头像</button>} onLogout={vi.fn()} />
+      </MemoryRouter>
+    </I18nProvider>
+  )
+  fireEvent.click(screen.getByRole('button', { name: '头像' }))
+  expect(await screen.findByText('用量查询组件尚未更新，请完全退出并重新启动桌面应用。')).toBeTruthy()
+  const data = normalizePlanUsage(
+    { planType: 'coding_plan', productName: 'Coding 套餐', codingPlanUsage: { second: 35, secondTtl: 7200 } },
+    Date.now()
+  )
+  const query = vi.fn().mockResolvedValue({ status: 'available', data, account })
+  vi.stubGlobal('hermesDesktop', { getPlanUsage: query })
+  fireEvent.click(screen.getByRole('button', { name: '刷新用量' }))
+  expect(await screen.findByText('已用 35% · 5 小时额度')).toBeTruthy()
+  expect(screen.queryByText('用量查询组件尚未更新，请完全退出并重新启动桌面应用。')).toBeNull()
+  expect(screen.queryByText('剩余0')).toBeNull()
 })

@@ -19,6 +19,7 @@ export const en: Translations = {
   },
   desktopLogin: {
     planUsage: {
+      restart: 'Restart the desktop app completely to update the usage query component.',
       actualUsage: 'Plan usage',
       details: 'View details',
       logout: 'Sign out',

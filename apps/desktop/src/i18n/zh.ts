@@ -19,6 +19,7 @@ export const zh = defineLocale({
   },
   desktopLogin: {
     planUsage: {
+      restart: '用量查询组件尚未更新，请完全退出并重新启动桌面应用。',
       actualUsage: '套餐实际用量',
       details: '查看详情',
       logout: '退出登录',

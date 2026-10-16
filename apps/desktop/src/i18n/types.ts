@@ -74,6 +74,7 @@ export interface Translations {
   }
   desktopLogin: {
     planUsage: {
+      restart: string
       actualUsage: string
       details: string
       logout: string
