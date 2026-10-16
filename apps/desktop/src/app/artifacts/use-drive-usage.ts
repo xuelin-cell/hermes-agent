@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 
 import { driveRequest } from '@/api/drive'
 
+import { readCloudUsageCache, writeCloudUsageCache } from './cloud-library-cache'
+
 export interface DriveUsage {
   used_bytes: number | null
   total_bytes: number | null
@@ -25,14 +27,14 @@ function parseUsage(value: unknown): DriveUsage {
   return { used_bytes: usage.used_bytes, total_bytes: usage.total_bytes }
 }
 
-/** 容量按当前云盘空间归属；暂时刷新失败保留旧值，切换空间丢弃迟到响应。 */
+/** 容量先显示账号窗口缓存再静默刷新；刷新失败保留旧值，切换账号或空间丢弃迟到响应。 */
 export function useDriveUsage(spaceId?: string) {
+  const bridge = window.hermesDesktop
   const [revision, setRevision] = useState(0)
 
-  const [state, setState] = useState<{ spaceId?: string; usage: DriveUsage | null; failed: boolean }>({
-    usage: null,
-    failed: false
-  })
+  const [state, setState] = useState<{ bridge?: object; spaceId?: string; usage: DriveUsage | null; failed: boolean }>(
+    () => ({ bridge, spaceId, usage: readCloudUsageCache(bridge, spaceId), failed: false })
+  )
 
   useEffect(() => {
     if (!spaceId) {
@@ -40,29 +42,36 @@ export function useDriveUsage(spaceId?: string) {
     }
 
     let cancelled = false
+    /** 原生桥代表账号窗口；离页、换空间或替换账号桥后不再发布旧响应。 */
+    const current = () => !cancelled && window.hermesDesktop === bridge
+
+    setState({ bridge, spaceId, usage: readCloudUsageCache(bridge, spaceId), failed: false })
 
     void driveRequest<unknown>(`/asset-spaces/${encodeURIComponent(spaceId)}/usage`)
       .then(value => {
         const usage = parseUsage(value)
 
-        if (!cancelled) {
-          setState({ spaceId, usage, failed: false })
+        if (current()) {
+          writeCloudUsageCache(bridge, spaceId, usage)
+          setState({ bridge, spaceId, usage, failed: false })
         }
       })
       .catch(() => {
-        if (!cancelled) {
-          setState(previous => ({ spaceId, usage: previous.spaceId === spaceId ? previous.usage : null, failed: true }))
+        if (current()) {
+          setState({ bridge, spaceId, usage: readCloudUsageCache(bridge, spaceId), failed: true })
         }
       })
 
     return () => {
       cancelled = true
     }
-  }, [spaceId, revision])
+  }, [bridge, spaceId, revision])
+
+  const owned = state.bridge === bridge && state.spaceId === spaceId
 
   return {
-    usage: state.spaceId === spaceId ? state.usage : null,
-    failed: state.spaceId === spaceId && state.failed,
+    usage: owned ? state.usage : readCloudUsageCache(bridge, spaceId),
+    failed: owned && state.failed,
     refresh: () => setRevision(value => value + 1)
   }
 }

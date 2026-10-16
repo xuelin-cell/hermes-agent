@@ -20,6 +20,7 @@ type TransferInput =
 
 interface ActiveTransfer {
   id: string
+  operation: TransferInput['operation']
   sawProgress: boolean
   cancelRequested: boolean
 }
@@ -36,7 +37,6 @@ export function useCloudTransfer(onUploaded: () => void) {
   const [cancelling, setCancelling] = useState(false)
   const [progress, setProgress] = useState<CloudDriveTransferProgress | null>(null)
   const [result, setResult] = useState<CloudDriveTransferResult | null>(null)
-  const [preview, setPreview] = useState<Extract<CloudDriveTransferResult, { status: 'succeeded' }> | null>(null)
 
   useEffect(() => {
     const lifecycle = mounted.current
@@ -49,7 +49,10 @@ export function useCloudTransfer(onUploaded: () => void) {
         }
 
         setProgress(value)
-        updateHistory(value)
+
+        if (active.current?.operation !== 'preview') {
+          updateHistory(value)
+        }
       }
     })
 
@@ -138,12 +141,12 @@ export function useCloudTransfer(onUploaded: () => void) {
   }
 
   /** 原生端选择路径及鉴权；关闭浮窗不取消，离页才终止尚未完成的传输。 */
-  async function start(input: TransferInput, displayName?: string): Promise<void> {
+  async function start(input: TransferInput, displayName?: string): Promise<CloudDriveTransferResult | undefined> {
     if (active.current) {
       return
     }
 
-    const context = { id: crypto.randomUUID(), sawProgress: false, cancelRequested: false }
+    const context = { id: crypto.randomUUID(), operation: input.operation, sawProgress: false, cancelRequested: false }
     active.current = context
     const request = { ...input, id: context.id } as CloudDriveTransferRequest
     history.begin(request, displayName || copy.upload)
@@ -151,7 +154,6 @@ export function useCloudTransfer(onUploaded: () => void) {
     setCancelling(false)
     setResult(null)
     setProgress(null)
-    setPreview(null)
 
     try {
       if (!window.hermesDesktop?.cloudDriveTransfer) {
@@ -172,10 +174,8 @@ export function useCloudTransfer(onUploaded: () => void) {
         !context.cancelRequested &&
         !value.files?.some(file => file.status === 'succeeded')
 
-      history.finish(context.id, value, silent)
-
-      if (value.status === 'succeeded' && value.preview) {
-        setPreview(value)
+      if (input.operation !== 'preview') {
+        history.finish(context.id, value, silent)
       }
 
       if (!silent) {
@@ -185,6 +185,8 @@ export function useCloudTransfer(onUploaded: () => void) {
       if (input.operation === 'upload' && !silent) {
         onUploaded()
       }
+
+      return value
     } catch {
       if (mounted.current.active) {
         const failure = {
@@ -195,7 +197,11 @@ export function useCloudTransfer(onUploaded: () => void) {
         } as const
 
         setResult(failure)
-        history.finish(context.id, failure)
+
+        if (input.operation !== 'preview') {
+          history.finish(context.id, failure)
+        }
+
         announce(input, failure)
 
         if (input.operation === 'upload') {
@@ -216,8 +222,6 @@ export function useCloudTransfer(onUploaded: () => void) {
     busy,
     cancelling,
     cancel,
-    closePreview: () => setPreview(null),
-    preview,
     progress,
     result,
     start,

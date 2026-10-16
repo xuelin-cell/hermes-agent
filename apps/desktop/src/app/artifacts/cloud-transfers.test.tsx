@@ -1,11 +1,14 @@
+import { useStore } from '@nanostores/react'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 
 import { $apiRequestScope } from '@/api/client'
+import { PreviewTilePane } from '@/app/chat/right-rail/preview'
 import { NotificationStack } from '@/components/notifications'
 import { I18nProvider } from '@/i18n'
 import { clearSessionDraft, stashSessionDraft, takeSessionDraft } from '@/store/composer'
 import { $notifications, clearNotifications } from '@/store/notifications'
+import { $previewTabs, closeRightRailTab } from '@/store/preview'
 import { $newChatProfile, $newChatRoute } from '@/store/profile'
 import { $connection, $selectedStoredSessionId } from '@/store/session'
 
@@ -13,10 +16,26 @@ import { CloudLibrary } from './cloud-library'
 
 afterEach(() => {
   cleanup()
+  $previewTabs.set([])
   clearNotifications()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
 })
+
+/** 测试实际右侧预览渲染器，通过原生标签状态更新而非复刻文件显示界面。 */
+function CloudPreviewHarness() {
+  const tabs = useStore($previewTabs)
+
+  return (
+    <>
+      {tabs
+        .filter(tab => tab.target.source.startsWith('cloud-drive:'))
+        .map(tab => (
+          <PreviewTilePane key={tab.id} onClose={() => closeRightRailTab(tab.id)} tabId={tab.id} />
+        ))}
+    </>
+  )
+}
 
 /** 云盘能力和目录固定，传输由每个测试提供真实 IPC 返回形状。 */
 function setup(
@@ -57,6 +76,23 @@ function setup(
 
   vi.stubGlobal('hermesDesktop', {
     api,
+    normalizePreviewTarget: vi.fn(async (path: string) => ({
+      kind: 'file',
+      label: fileName,
+      source: path,
+      path,
+      url: 'file://' + path,
+      previewKind: /\.docx$/.test(path) ? 'binary' : 'text',
+      language: 'text'
+    })),
+    readFileText: vi.fn(async () => ({ text: 'hello', byteSize: 5, language: 'text' })),
+    convertOfficePreview: vi.fn(async () => ({
+      ok: true,
+      pdf: Uint8Array.of(37, 80, 68, 70),
+      converter: 'fixture',
+      version: '1'
+    })),
+    cancelOfficePreview: vi.fn(),
     cloudDriveAgentReady: vi.fn().mockResolvedValue(true),
     cloudDriveRequest: request,
     cloudDriveTransfer: transfer,
@@ -68,6 +104,7 @@ function setup(
   const view = render(
     <I18nProvider configClient={null} initialLocale="zh">
       <CloudLibrary onDraftReady={onDraftReady} />
+      <CloudPreviewHarness />
     </I18nProvider>
   )
 
@@ -109,13 +146,13 @@ it('上传绑定服务根目录，进度只接受当前任务，取消完成前�
   expect(transfer).toHaveBeenCalledTimes(1)
 })
 
-it('预览消费已下载文本，下载只调用受控原生入口，不打开外部签名链接', async () => {
+it('预览原文件经统一规范化和读取入口，下载只调用原生入口，不打开签名链接', async () => {
   const transfer = vi
     .fn()
     .mockResolvedValueOnce({
       status: 'succeeded',
       name: 'report.txt',
-      preview: { kind: 'text', dataUrl: 'data:text/plain;base64,aGVsbG8=' }
+      preview: { kind: 'file', path: '/account/cloud-drive-preview/report.txt' }
     })
     .mockResolvedValue({ status: 'succeeded', name: 'report.txt' })
 
@@ -128,15 +165,16 @@ it('预览消费已下载文本，下载只调用受控原生入口，不打开�
     name: 'report.txt',
     size: 5
   })
-  fireEvent.click(screen.getAllByRole('button', { name: '关闭' })[0])
-  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  expect(screen.queryByRole('dialog')).toBeNull()
+  expect(screen.queryByRole('button', { name: '编辑' })).toBeNull()
+  act(() => closeRightRailTab($previewTabs.get()[0].id))
   fireEvent.click(screen.getByRole('button', { name: '下载' }))
   await screen.findByText('已保存到本机')
   expect(transfer.mock.calls[1][0]).toMatchObject({ operation: 'download', assetId: 'asset-one' })
   expect(fixture.openExternal).not.toHaveBeenCalled()
 })
 
-it('Office 下载完成后展示转换阶段，预览 PDF 关闭时释放地址，下载仍指向原始 Office 文件', async () => {
+it('Office 原文件交给既有预览入口，转换结果关闭后释放，下载仍指向原文件', async () => {
   let finish!: (value: unknown) => void
   const createUrl = vi.fn(() => 'blob:cloud-office-preview')
   const revokeUrl = vi.fn()
@@ -163,47 +201,32 @@ it('Office 下载完成后展示转换阶段，预览 PDF 关闭时释放地址�
   const input = transfer.mock.calls[0][0]
   expect(input).toMatchObject({ operation: 'preview', name: '报告.docx', assetId: 'asset-one' })
   act(() => fixture.listener.mock.calls[0][0]({ id: input.id, completed: 5, total: 5, phase: 'converting' }))
-  expect(screen.getByText('正在转换文档')).toBeTruthy()
+  expect(screen.queryByRole('dialog', { name: '传输记录' })).toBeNull()
   expect(screen.queryByText('正在传输…')).toBeNull()
-  expect(screen.getByRole('button', { name: '停止传输' })).toBeTruthy()
+  expect(screen.queryByRole('button', { name: '停止传输' })).toBeNull()
 
   await act(async () =>
     finish({
       status: 'succeeded',
       name: '报告.docx',
       preview: {
-        kind: 'pdf',
-        dataUrl: 'data:application/pdf;base64,JVBERi0xLjc='
+        kind: 'file',
+        path: '/account/cloud-drive-preview/报告.docx'
       }
     })
   )
   expect(await screen.findByTitle('报告.docx')).toHaveProperty('src', 'blob:cloud-office-preview')
   expect(createUrl).toHaveBeenCalledTimes(1)
-  fireEvent.click(screen.getAllByRole('button', { name: '关闭' })[0])
+  expect(window.hermesDesktop.convertOfficePreview).toHaveBeenCalledWith(
+    '/account/cloud-drive-preview/报告.docx',
+    expect.any(String)
+  )
+  act(() => closeRightRailTab($previewTabs.get()[0].id))
   await waitFor(() => expect(revokeUrl).toHaveBeenCalledWith('blob:cloud-office-preview'))
   fireEvent.click(screen.getByRole('button', { name: '下载' }))
   await screen.findByText('已保存到本机')
   expect(transfer.mock.calls[1][0]).toMatchObject({ operation: 'download', assetId: 'asset-one', name: '报告.docx' })
   expect(fixture.openExternal).not.toHaveBeenCalled()
-})
-
-it.each([
-  ['OFFICE_PREVIEW_UNAVAILABLE', '此设备没有可用的 Office 转换软件，请安装 LibreOffice，或下载原文件查看。'],
-  ['OFFICE_PREVIEW_TIMEOUT', 'Office 文件转换超时，请重试或下载原文件查看。'],
-  ['OFFICE_PREVIEW_FAILED', 'Office 文件转换失败，请下载原文件查看。']
-])('Office 预览失败 %s 说明原因并保留原文件下载', async (code, message) => {
-  const transfer = vi
-    .fn()
-    .mockResolvedValueOnce({ protocol: 'uniwork.drive-result.v1', ok: false, status: 'failed', code })
-    .mockResolvedValue({ status: 'succeeded', name: '报告.docx' })
-
-  setup(transfer, undefined, '报告.docx')
-  fireEvent.click(await screen.findByRole('button', { name: '报告.docx' }))
-  expect(await screen.findByText(message)).toBeTruthy()
-  expect(screen.getByRole('dialog', { name: '传输记录' })).toBeTruthy()
-  fireEvent.click(screen.getByRole('button', { name: '下载' }))
-  await screen.findByText('已保存到本机')
-  expect(transfer.mock.calls[1][0]).toMatchObject({ operation: 'download', name: '报告.docx' })
 })
 
 it('离开资料库取消在途上传并解除进度订阅，迟到响应不会刷新目录', async () => {
@@ -371,4 +394,33 @@ it('批量下载部分成功逐项保留保存、失败和未开始状态，不�
     message: '部分文件已保存到本机，其余文件未完成，请查看传输记录。'
   })
   expect(fixture.transfer).toHaveBeenCalledTimes(1)
+})
+
+it('预览不打开传输浮窗，切换 Profile 后迟到字节不打开旧文件', async () => {
+  let finish!: (value: unknown) => void
+
+  const fixture = setup(
+    vi.fn().mockImplementation(
+      () =>
+        new Promise(resolve => {
+          finish = resolve
+        })
+    )
+  )
+
+  fireEvent.click(await screen.findByRole('button', { name: 'report.txt' }))
+  expect(screen.queryByRole('dialog')).toBeNull()
+  expect(screen.queryByRole('button', { name: '传输记录' })).toBeNull()
+  const previous = $apiRequestScope.get()
+  act(() => $apiRequestScope.set({ connectionId: 'local', profile: 'other' }))
+  await act(async () =>
+    finish({
+      status: 'succeeded',
+      name: 'report.txt',
+      preview: { kind: 'file', path: '/account/cloud-drive-preview/report.txt' }
+    })
+  )
+  expect($previewTabs.get()).toHaveLength(0)
+  expect(fixture.openExternal).not.toHaveBeenCalled()
+  act(() => $apiRequestScope.set(previous))
 })

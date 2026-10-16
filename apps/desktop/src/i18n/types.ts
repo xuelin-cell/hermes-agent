@@ -108,6 +108,12 @@ export interface Translations {
     permanentDeleteHint: string
     emptyRecycleHint: string
     filter: string
+    fileName: string
+    fileSize: string
+    modifiedTime: string
+    sortAscending: string
+    sortDefault: string
+    sortDescending: string
     filterAll: string
     filterFiles: string
     filterFolders: string
@@ -130,6 +136,7 @@ export interface Translations {
     moveHint: (count: number) => string
     parentFolder: string
     noSubfolders: string
+    noUploadSubfolders: string
     destinationIs: (name: string) => string
     breadcrumb: string
     connecting: string
@@ -3134,6 +3141,51 @@ export interface Translations {
     }
   }
 
+  localArtifacts: {
+    categories: Record<
+      | 'all'
+      | 'document'
+      | 'spreadsheet'
+      | 'presentation'
+      | 'pdf'
+      | 'image'
+      | 'video'
+      | 'audio'
+      | 'website'
+      | 'markdown'
+      | 'code'
+      | 'other',
+      string
+    >
+    filterType: string
+    myFavorites: string
+    favorite: string
+    unfavorite: string
+    favorited: string
+    favoriteFailed: string
+    search: string
+    addToChat: string
+    attachFailed: string
+    fileUnavailable: string
+    uploaded: string
+    more: string
+    share: string
+    openChat: string
+    other: string
+    archived: string
+    untitled: string
+    empty: string
+    noFavorites: string
+    noResults: string
+    loading: string
+    showMore: string
+    total: (tasks: number, files: number) => string
+    fileCount: (count: number) => string
+    scanning: (processed: number, total: number) => string
+    partialLoad: (count: number) => string
+    expand: (title: string) => string
+    collapse: (title: string) => string
+  }
   artifacts: {
     search: string
     refresh: string
@@ -3184,6 +3236,7 @@ export interface Translations {
     viewShared: string
     copyShared: string
     revokeShared: string
+    publishSucceeded: string
     shareFailed: string
     revokeFailed: string
     previewNotReady: string

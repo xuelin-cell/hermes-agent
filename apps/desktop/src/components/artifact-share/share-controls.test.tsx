@@ -1,17 +1,25 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 
+import { Popover } from '@/components/ui/popover'
+import { $notifications, clearNotifications } from '@/store/notifications'
+
 import { ShareControls } from './share-controls'
 
 afterEach(() => {
   cleanup()
+  clearNotifications()
   vi.unstubAllGlobals()
 })
 
 it('仅在用户点击时发布，并在工具改变链接后刷新状态', async () => {
   let changed: ((key: string) => void) | undefined
   const inspect = vi.fn().mockResolvedValue(null)
-  const publish = vi.fn().mockResolvedValue({ key: 'artifact:1', shareId: 'id', url: 'https://share.example/id', version: 1 })
+
+  const publish = vi
+    .fn()
+    .mockResolvedValue({ key: 'artifact:1', shareId: 'id', url: 'https://share.example/id', version: 1 })
+
   const revoke = vi.fn().mockResolvedValue(undefined)
   const eligibility = vi.fn().mockResolvedValue({ publishable: true })
   const writeClipboard = vi.fn().mockResolvedValue(undefined)
@@ -27,7 +35,9 @@ it('仅在用户点击时发布，并在工具改变链接后刷新状态', asyn
       onChanged: (listener: (key: string) => void) => {
         changed = listener
 
-        return () => { changed = undefined }
+        return () => {
+          changed = undefined
+        }
       }
     }
   })
@@ -35,9 +45,14 @@ it('仅在用户点击时发布，并在工具改变链接后刷新状态', asyn
   const source = { sessionId: 's', content: '<h1>ready</h1>' }
   render(<ShareControls artifactKey="artifact:1" html="<h1>ready</h1>" source={source} title="Report" />)
   expect(publish).not.toHaveBeenCalled()
-  await waitFor(() => expect((screen.getByRole('button', { name: 'Share artifact' }) as HTMLButtonElement).disabled).toBe(false))
+  await waitFor(() =>
+    expect((screen.getByRole('button', { name: 'Share artifact' }) as HTMLButtonElement).disabled).toBe(false)
+  )
   fireEvent.click(screen.getByRole('button', { name: 'Share artifact' }))
-  await waitFor(() => expect(publish).toHaveBeenCalledWith({ key: 'artifact:1', html: '<h1>ready</h1>', title: 'Report', source }))
+  await waitFor(() =>
+    expect(publish).toHaveBeenCalledWith({ key: 'artifact:1', html: '<h1>ready</h1>', title: 'Report', source })
+  )
+  expect($notifications.get().some(item => item.title === 'Published successfully')).toBe(true)
   const url = 'https://share.example/id'
   await waitFor(() => expect(screen.getByRole('link', { name: 'View shared page' }).getAttribute('href')).toBe(url))
   const update = screen.getByRole('button', { name: 'Update shared content' })
@@ -67,5 +82,71 @@ it('仅在用户点击时发布，并在工具改变链接后刷新状态', asyn
   await waitFor(() => expect(screen.queryByRole('link', { name: 'View shared page' })).toBeNull())
   eligibility.mockResolvedValue({ publishable: false, reason: 'user_upload' })
   changed?.('*')
-  await waitFor(() => expect((screen.getByRole('button', { name: 'Share artifact' }) as HTMLButtonElement).disabled).toBe(true))
+  await waitFor(() =>
+    expect((screen.getByRole('button', { name: 'Share artifact' }) as HTMLButtonElement).disabled).toBe(true)
+  )
+})
+
+it('分享内容读取期间关闭组件不会发布到后续窗口', async () => {
+  let resolve!: (value: string) => void
+
+  /** 延迟读取分享内容，验证关闭后不再发布。 */
+  const html = () =>
+    new Promise<string>(ready => {
+      resolve = ready
+    })
+
+  const publish = vi.fn()
+  vi.stubGlobal('hermesDesktop', {
+    artifactShare: {
+      inspect: async () => null,
+      eligibility: async () => ({ publishable: true }),
+      onChanged: () => () => {},
+      publish
+    }
+  })
+
+  const view = render(
+    <ShareControls artifactKey="artifact:late" html={html} source={{ sessionId: 's', content: 'late' }} title="Late" />
+  )
+
+  const share = screen.getByRole('button', { name: 'Share artifact' })
+  await waitFor(() => expect((share as HTMLButtonElement).disabled).toBe(false))
+  fireEvent.click(share)
+  await waitFor(() => expect(resolve).toBeTypeOf('function'))
+  view.unmount()
+  resolve('<p>late</p>')
+  await new Promise(ready => setTimeout(ready, 20))
+  expect(publish).not.toHaveBeenCalled()
+  expect($notifications.get()).toHaveLength(0)
+})
+
+it('撤销后即使外层展开状态尚未关闭，也不渲染只有分享按钮的工具栏', async () => {
+  const onClose = vi.fn()
+  const revoke = vi.fn().mockResolvedValue(undefined)
+  vi.stubGlobal('hermesDesktop', {
+    artifactShare: {
+      inspect: async () => ({ key: 'artifact:revoke', shareId: 'id', url: 'https://share.example/id', version: 1 }),
+      eligibility: async () => ({ publishable: true }),
+      onChanged: () => () => {},
+      revoke
+    }
+  })
+  render(
+    <Popover open>
+      <ShareControls
+        artifactKey="artifact:revoke"
+        html="<p>shared</p>"
+        listAction={{ onOpen: vi.fn(), onClose }}
+        source={{ sessionId: 's', content: 'shared' }}
+        title="Shared"
+      />
+    </Popover>
+  )
+  fireEvent.click(await screen.findByRole('button', { name: 'Revoke shared link' }))
+  await waitFor(() => expect(onClose).toHaveBeenCalled())
+  expect(revoke).toHaveBeenCalledWith('artifact:revoke')
+  expect(screen.queryByRole('toolbar')).toBeNull()
+  expect(screen.queryByRole('dialog')).toBeNull()
+  expect(screen.queryByRole('button', { name: 'Share artifact' })).toBeNull()
 })

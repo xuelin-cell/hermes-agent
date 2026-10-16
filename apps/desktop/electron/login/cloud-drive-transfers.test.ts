@@ -5,6 +5,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 import { CloudDriveClient } from './cloud-drive'
+import { CLOUD_DRIVE_PREVIEW_BYTES } from './cloud-drive-preview'
 import { CloudDriveTransfers } from './cloud-drive-transfers'
 
 const savedIdentity = {
@@ -287,7 +288,7 @@ it('下载使用授权中转并校验长度，失败不覆盖已有文件且清�
   })
 })
 
-it('预览返回有限字节并清理缓存，HTML 作为文本且无需 Agent 或本机路径', async () => {
+it('预览准备原文件交给统一入口，窗口关闭后清理账号缓存', async () => {
   const { transfers, host } = fixture()
 
   const result = await transfers.run(
@@ -296,18 +297,27 @@ it('预览返回有限字节并清理缓存，HTML 作为文本且无需 Agent �
     host
   )
 
-  expect(result).toEqual({
-    status: 'succeeded',
-    name: 'report.html',
-    preview: { kind: 'text', dataUrl: 'data:text/plain;base64,aGVsbG8=' }
-  })
-  expect(await readdir(path.join(root, 'cache'))).toEqual([])
+  expect(result).toMatchObject({ status: 'succeeded', name: 'report.html', preview: { kind: 'file' } })
+
+  if (result.status !== 'succeeded' || !result.preview) {
+    throw new Error('Preview missing')
+  }
+
+  expect(await readFile(result.preview.path, 'utf8')).toBe('hello')
+  expect(result.preview.path).toMatch(/report\.html$/)
   expect(host.selectDownload).not.toHaveBeenCalled()
-  expect(JSON.stringify(result)).not.toContain(root)
+  await transfers.clearPreviews(1)
+  expect(await readdir(path.join(root, 'cache'))).toEqual([])
   expect(
     await transfers.run(
       1,
-      { id: 'preview-2', operation: 'preview', assetId: 'asset', name: 'report.pdf', size: 17 * 1024 * 1024 },
+      {
+        id: 'preview-2',
+        operation: 'preview',
+        assetId: 'asset',
+        name: 'report.pdf',
+        size: CLOUD_DRIVE_PREVIEW_BYTES + 1
+      },
       host
     )
   ).toMatchObject({ status: 'failed', code: 'PREVIEW_TOO_LARGE' })
@@ -441,4 +451,40 @@ it('上传最后一片保留部分成功、未知和明确失败，接受中不�
   }
 
   expect(request.mock.calls.filter(([url]) => String(url).endsWith('/drive/upload-part'))).toHaveLength(4)
+})
+
+it.each([['image.svg'], ['image.tif'], ['image.tiff']])(
+  '图片 %s 保留原格式交给现有显示器，窗口关闭后清理临时文件',
+  async name => {
+    const { transfers, host } = fixture()
+
+    const result = await transfers.run(
+      1,
+      { id: name.replace(/\./g, '-'), operation: 'preview', assetId: 'asset', name, size: 5 },
+      host
+    )
+
+    expect(result).toMatchObject({ status: 'succeeded', preview: { kind: 'file' } })
+
+    if (result.status !== 'succeeded' || !result.preview) {
+      throw new Error('Preview missing')
+    }
+
+    expect(result.preview.path.endsWith(name)).toBe(true)
+    expect(await readFile(result.preview.path, 'utf8')).toBe('hello')
+    expect(host.selectDownload).not.toHaveBeenCalled()
+    await transfers.clearPreviews(1)
+    expect(await readdir(path.join(root, 'cache'))).toEqual([])
+  }
+)
+
+it.each(['video.mp4', 'archive.zip'])('数字员工不支持的 %s 在下载前拒绝', async name => {
+  const { transfers, host } = fixture()
+  expect(
+    await transfers.run(1, { id: name.replace(/\./g, '-'), operation: 'preview', assetId: 'asset', name }, host)
+  ).toMatchObject({
+    status: 'failed',
+    code: 'PREVIEW_UNSUPPORTED'
+  })
+  expect(request).not.toHaveBeenCalled()
 })

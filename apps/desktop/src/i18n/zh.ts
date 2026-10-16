@@ -78,6 +78,12 @@ export const zh = defineLocale({
     permanentDeleteHint: '确定彻底删除此项资料吗？删除后无法恢复；文件夹中的内容也将一并彻底删除。',
     emptyRecycleHint: '确定彻底删除个人云盘回收站中的所有文件和文件夹吗？此操作无法撤销。',
     filter: '文件类型',
+    fileName: '文件名称',
+    fileSize: '大小',
+    modifiedTime: '修改时间',
+    sortAscending: '升序',
+    sortDefault: '默认顺序',
+    sortDescending: '降序',
     filterAll: '全部',
     filterFiles: '文件',
     filterFolders: '文件夹',
@@ -101,6 +107,7 @@ export const zh = defineLocale({
     moveHint: count => `为 ${count} 项资料选择目标文件夹。`,
     parentFolder: '返回上一级',
     noSubfolders: '没有子文件夹，可以移动到当前目录。',
+    noUploadSubfolders: '没有子文件夹，可以上传到当前目录。',
     /** 明确展示当前确认操作的目标目录。 */
     destinationIs: name => `目标：${name}`,
     breadcrumb: '目录位置',
@@ -134,7 +141,7 @@ export const zh = defineLocale({
     transferring: '正在传输…',
     transferFailed: '传输未完成，请检查网络、登录状态和文件权限后重试。',
     previewUnsupported: '无法预览此格式，请下载后打开。',
-    previewTooLarge: '文件或转换后的 PDF 超过 16 MiB，无法预览，请下载后打开。',
+    previewTooLarge: '文件超过 20 MB，无法预览，请下载后打开。',
     uploaded: '已保存到云盘',
     downloaded: '已保存到本机',
     move: '移动',
@@ -3522,6 +3529,56 @@ export const zh = defineLocale({
     }
   },
 
+  localArtifacts: {
+    categories: {
+      all: '全部类型',
+      document: '文档',
+      spreadsheet: '表格',
+      presentation: '幻灯片',
+      pdf: 'PDF',
+      image: '图片',
+      video: '视频',
+      audio: '音频',
+      website: '网站',
+      markdown: 'Markdown',
+      code: '代码',
+      other: '其他'
+    },
+    filterType: '按类型筛选',
+    myFavorites: '我的收藏',
+    favorite: '收藏',
+    unfavorite: '取消收藏',
+    favorited: '已收藏',
+    favoriteFailed: '收藏保存失败，请重试。',
+    search: '搜索文件或会话',
+    addToChat: '添加到新会话',
+    attachFailed: '添加失败，请确认文件仍然存在，并重试。',
+    fileUnavailable: '文件不存在或无法访问，请刷新后重试。',
+    uploaded: '已上传到云盘',
+    more: '更多操作',
+    share: '分享',
+    openChat: '查看会话',
+    other: '文件',
+    archived: '已归档',
+    untitled: '未命名会话',
+    empty: '暂无本地产物',
+    noFavorites: '暂无收藏文件',
+    noResults: '没有找到相关资料',
+    loading: '正在加载产物',
+    showMore: '显示更多',
+    /** 格式化会话和文件总数。 */
+    total: (tasks, files) => `${tasks} 个会话 · ${files} 个文件`,
+    /** 格式化单个会话的产物数量。 */
+    fileCount: count => `${count} 个文件`,
+    /** 显示扫描进度，不伪造百分比。 */
+    scanning: (processed, total) => `正在加载产物 ${processed} / ${total}`,
+    /** 说明未完成的来源读取数量。 */
+    partialLoad: count => `${count} 个会话或目录加载失败，部分产物可能尚未显示。`,
+    /** 为展开按钮提供来源会话名称。 */
+    expand: title => `展开“${title}”的文件`,
+    /** 为收起按钮提供来源会话名称。 */
+    collapse: title => `收起“${title}”的文件`
+  },
   artifacts: {
     search: '搜索产物…',
     refresh: '刷新产物',
@@ -3572,6 +3629,7 @@ export const zh = defineLocale({
     viewShared: '查看分享页',
     copyShared: '复制链接',
     revokeShared: '取消分享',
+    publishSucceeded: '发布成功',
     shareFailed: '分享失败',
     revokeFailed: '取消分享失败',
     previewNotReady: 'Markdown 预览尚未完成。',

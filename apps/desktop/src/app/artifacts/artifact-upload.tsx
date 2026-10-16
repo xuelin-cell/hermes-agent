@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -10,16 +10,18 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog'
+import { Tip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
 import { isBrowserShell } from '@/lib/browser-shell'
-import { FolderOpen } from '@/lib/icons'
+import { RefreshCw } from '@/lib/icons'
 import { isArtifactFilePath } from '@/lib/media'
+import { cn } from '@/lib/utils'
 import { $connection } from '@/store/session'
 
 import type { ArtifactRecord } from './artifact-utils'
 import { CloudTransferFeedback } from './cloud-transfer-feedback'
-import { DriveBreadcrumbs } from './drive-breadcrumbs'
 import { driveFolderPath } from './drive-directory-index'
+import { DriveFolderPicker } from './drive-folder-picker'
 import { useCloudLibraryData } from './use-cloud-library-data'
 import { useCloudTransfer } from './use-cloud-transfer'
 
@@ -34,14 +36,13 @@ export function canUploadArtifact(artifact: ArtifactRecord, mode?: string): bool
   )
 }
 
-/** 叶子只展示选择按钮，不为列表里的每一个文件创建传输订阅。 */
-export function ArtifactUploadAction({
-  artifact,
-  onSelect
-}: {
+interface ArtifactUploadActionProps {
   artifact: ArtifactRecord
   onSelect: (artifact: ArtifactRecord) => void
-}) {
+}
+
+/** 叶子只展示选择按钮，不为列表里的每一个文件创建传输订阅。 */
+export function ArtifactUploadAction({ artifact, onSelect }: ArtifactUploadActionProps) {
   const connection = useStore($connection)
   const { t } = useI18n()
 
@@ -61,13 +62,29 @@ export function ArtifactUploadAction({
   )
 }
 
+interface ArtifactUploadDialogProps {
+  artifact: ArtifactRecord
+  onClose: () => void
+  onUploaded?: () => void
+}
+
 /** 选好云盘目录后直接上传已核对的产物，不要求用户再次从本机文件框寻找它。 */
-export function ArtifactUploadDialog({ artifact, onClose }: { artifact: ArtifactRecord; onClose: () => void }) {
+export function ArtifactUploadDialog({ artifact, onClose, onUploaded }: ArtifactUploadDialogProps) {
   const { t } = useI18n()
   const copy = t.cloudLibrary
   const connection = useStore($connection)
   const { space, capabilities, snapshot, error, refresh } = useCloudLibraryData()
   const transfer = useCloudTransfer(refresh)
+  const refreshing = snapshot.scanning || (!space && !error)
+  const reported = useRef(false)
+  // reported 是一次性完成通知锁，不是响应式值的镜像。
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
+    if (transfer.result?.status === 'succeeded' && !reported.current) {
+      reported.current = true
+      onUploaded?.()
+    }
+  }, [transfer.result, onUploaded])
   const [selected, setSelected] = useState('')
   const parent = selected || space?.root_asset_id || ''
   const path = space && driveFolderPath(snapshot.items, space.root_asset_id, parent)
@@ -84,10 +101,6 @@ export function ArtifactUploadDialog({ artifact, onClose }: { artifact: Artifact
     target?.permissions?.write !== false &&
     !transfer.busy &&
     !terminal
-
-  const children = snapshot.items
-    .filter(item => item.kind === 'directory' && item.parent_asset_id === parent && item.permissions?.read !== false)
-    .sort((left, right) => left.name.localeCompare(right.name))
 
   /** 关闭弹窗会卸载传输控制器，原生端同步取消未结束的请求。 */
   function close(): void {
@@ -126,35 +139,37 @@ export function ArtifactUploadDialog({ artifact, onClose }: { artifact: Artifact
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{copy.uploadArtifact}</DialogTitle>
+          <div className="flex items-center gap-1">
+            <DialogTitle>{copy.uploadArtifact}</DialogTitle>
+            <Tip label={copy.refresh}>
+              <Button
+                aria-busy={refreshing}
+                aria-label={copy.refresh}
+                disabled={transfer.busy || refreshing}
+                onClick={refresh}
+                size="icon-sm"
+                variant="ghost"
+              >
+                <RefreshCw aria-hidden="true" className={cn(refreshing && 'animate-spin')} />
+              </Button>
+            </Tip>
+          </div>
           <DialogDescription>
-            {artifact.label} · {artifact.sessionTitle}
+            {copy.chooseUploadFolder} · {artifact.label}
           </DialogDescription>
         </DialogHeader>
-        <p className="text-sm text-muted-foreground">{copy.chooseUploadFolder}</p>
         {space && (
-          <>
-            <DriveBreadcrumbs
-              disabled={transfer.busy || !!terminal}
-              onNavigate={setSelected}
-              path={path || []}
-              root={space.root_asset_id}
-            />
-            <div aria-label={copy.destination} className="max-h-64 overflow-y-auto" role="region">
-              {children.map(folder => (
-                <Button
-                  className="flex w-full justify-start"
-                  disabled={transfer.busy || !!terminal}
-                  key={folder.asset_id}
-                  onClick={() => setSelected(folder.asset_id)}
-                  variant="ghost"
-                >
-                  <FolderOpen />
-                  {folder.name}
-                </Button>
-              ))}
-            </div>
-          </>
+          <DriveFolderPicker
+            complete={snapshot.complete}
+            disabled={transfer.busy || !!terminal}
+            emptyHint={copy.noUploadSubfolders}
+            items={snapshot.items}
+            onNavigate={setSelected}
+            parent={parent}
+            path={path}
+            root={space.root_asset_id}
+            showPartialHint={false}
+          />
         )}
         {!space && !error && <p role="status">{t.common.loading}</p>}
         {(error || snapshot.error || (space && !capabilities)) && (
@@ -172,7 +187,7 @@ export function ArtifactUploadDialog({ artifact, onClose }: { artifact: Artifact
         <DialogFooter>
           <CloudTransferFeedback transfer={transfer} />
           <Button onClick={close} variant="ghost">
-            {t.common.close}
+            {terminal ? t.common.close : t.common.cancel}
           </Button>
           <Button disabled={!canUpload} onClick={submit}>
             {copy.uploadHere}

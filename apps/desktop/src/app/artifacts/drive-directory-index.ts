@@ -225,43 +225,36 @@ export function driveFolderPath(items: DriveAsset[], root: string, parent: strin
   return path
 }
 
-/** 普通列表只显示当前目录；关键词搜索覆盖该目录的全部已索引子目录。 */
+/** 普通列表只显示当前目录；搜索覆盖已索引子目录，筛选保留服务顺序并交由列表排序。 */
 export function filterDriveFiles(items: DriveAsset[], root: string, parent: string, query: string): DriveAsset[] {
   const needle = query.trim().toLocaleLowerCase()
   const parents = new Map(items.map(item => [item.asset_id, item.parent_asset_id]))
 
-  return items
-    .filter(asset => {
-      if (!needle) {
-        return asset.parent_asset_id === parent
+  return items.filter(asset => {
+    if (!needle) {
+      return asset.parent_asset_id === parent
+    }
+
+    if (!asset.name.toLocaleLowerCase().includes(needle)) {
+      return false
+    }
+
+    const visited = new Set<string>()
+    let id = asset.parent_asset_id
+
+    while (id && !visited.has(id)) {
+      if (id === parent) {
+        return true
       }
 
-      if (!asset.name.toLocaleLowerCase().includes(needle)) {
+      if (id === root) {
         return false
       }
 
-      const visited = new Set<string>()
-      let id = asset.parent_asset_id
+      visited.add(id)
+      id = parents.get(id)
+    }
 
-      while (id && !visited.has(id)) {
-        if (id === parent) {
-          return true
-        }
-
-        if (id === root) {
-          return false
-        }
-
-        visited.add(id)
-        id = parents.get(id)
-      }
-
-      return false
-    })
-    .sort(
-      (left, right) =>
-        Number(right.kind === 'directory') - Number(left.kind === 'directory') ||
-        left.name.localeCompare(right.name) ||
-        left.asset_id.localeCompare(right.asset_id)
-    )
+    return false
+  })
 }

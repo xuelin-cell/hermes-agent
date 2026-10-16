@@ -1,11 +1,11 @@
-import { IconArrowBackUp } from '@tabler/icons-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { DRIVE_RECYCLE_PAGE_SIZE, type DriveRecycleItem, listDriveRecycle } from '@/api/drive-file-management'
+import { PanelEmpty } from '@/app/overlays/panel'
 import { Button } from '@/components/ui/button'
 import { Tip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
-import { RefreshCw, Trash2 } from '@/lib/icons'
+import { ArrowBackUp, RefreshCw, Trash2 } from '@/lib/icons'
 import { fmtDayTime } from '@/lib/time'
 
 import { CloudDriveLoading } from './cloud-directory-empty'
@@ -163,7 +163,7 @@ export function CloudRecycleBin({
                   size="icon-xs"
                   variant="ghost"
                 >
-                  <IconArrowBackUp aria-hidden="true" />
+                  <ArrowBackUp aria-hidden="true" />
                 </Button>
               </Tip>
               <Tip label={copy.permanentDelete}>
@@ -181,7 +181,7 @@ export function CloudRecycleBin({
             </CloudFileRow>
           ))
         )}
-        {!loading && !error && !rows.length && <p>{copy.recycleEmpty}</p>}
+        {!loading && !error && !rows.length && <PanelEmpty icon="trash" title={copy.recycleEmpty} />}
         {!loading && !error && more && (
           <Button onClick={() => setPage(page + 1)} size="sm" variant="ghost">
             {copy.loadMore}

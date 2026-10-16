@@ -334,7 +334,6 @@ import { currentDesktopAccount, currentDesktopAsrIdentity, currentDesktopIdentit
 import { CloudDriveClient } from './login/cloud-drive'
 import { createDriveArtifactResolver } from './login/cloud-drive-artifact-source'
 import { CloudDriveMcp } from './login/cloud-drive-mcp'
-import { createCloudDriveOfficePreview } from './login/cloud-drive-office-preview'
 import { installDriveCredentialRenewal } from './login/cloud-drive-renewal'
 import { CloudDriveTokenStore } from './login/cloud-drive-token-store'
 import { registerMachineProfile } from './machine-profile'
@@ -693,8 +692,7 @@ installAccountIpc(
   path.join(ACCOUNT_RUNTIME.desktopState, 'cloud-drive-preview'),
   ACCOUNT_DRIVE_CLIENT,
   profile => ACCOUNT_DRIVE_MCP.available(profile),
-  ACCOUNT_DRIVE_ARTIFACT,
-  createCloudDriveOfficePreview(ACCOUNT_OFFICE_PREVIEW)
+  ACCOUNT_DRIVE_ARTIFACT
 )
 
 installOfficePreviewIpc(

@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest'
 
 const { handle, fromWebContents } = vi.hoisted(() => ({ handle: vi.fn(), fromWebContents: vi.fn() }))
-vi.mock('electron', () => ({ ipcMain: { handle }, BrowserWindow: { fromWebContents } }))
+vi.mock('electron', () => ({ app: { once: vi.fn() }, ipcMain: { handle }, BrowserWindow: { fromWebContents } }))
 
 import { installAccountIpc } from './account-ipc'
 

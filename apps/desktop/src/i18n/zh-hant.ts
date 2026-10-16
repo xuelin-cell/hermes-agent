@@ -102,6 +102,12 @@ export const zhHant = defineLocale({
     permanentDeleteHint: '確定徹底刪除此項資料嗎？刪除後無法還原；資料夾中的內容也將一併徹底刪除。',
     emptyRecycleHint: '確定徹底刪除個人雲端硬碟資源回收筒中的所有檔案和資料夾嗎？此操作無法復原。',
     filter: '檔案類型',
+    fileName: '檔案名稱',
+    fileSize: '大小',
+    modifiedTime: '修改時間',
+    sortAscending: '遞增',
+    sortDefault: '預設順序',
+    sortDescending: '遞減',
     filterAll: '全部',
     filterFiles: '檔案',
     filterFolders: '資料夾',
@@ -125,6 +131,7 @@ export const zhHant = defineLocale({
     moveHint: count => `為 ${count} 項資料選擇目標資料夾。`,
     parentFolder: '返回上一層',
     noSubfolders: '沒有子資料夾，可以移動到目前目錄。',
+    noUploadSubfolders: '沒有子資料夾，可以上傳到目前目錄。',
     /** 明确展示当前确认操作的目标目录。 */
     destinationIs: name => `目標：${name}`,
     breadcrumb: '目錄位置',
@@ -158,7 +165,7 @@ export const zhHant = defineLocale({
     transferring: '正在傳輸…',
     transferFailed: '傳輸未完成，請檢查網路、登入狀態和檔案權限後重試。',
     previewUnsupported: '無法預覽此格式，請下載後開啟。',
-    previewTooLarge: '檔案或轉換後的 PDF 超過 16 MiB，無法預覽，請下載後開啟。',
+    previewTooLarge: '檔案超過 20 MB，無法預覽，請下載後開啟。',
     uploaded: '已儲存至雲端硬碟',
     downloaded: '已儲存至本機',
     move: '移動',
@@ -2860,6 +2867,56 @@ export const zhHant = defineLocale({
     }
   },
 
+  localArtifacts: {
+    categories: {
+      all: '全部類型',
+      document: '文件',
+      spreadsheet: '試算表',
+      presentation: '投影片',
+      pdf: 'PDF',
+      image: '圖片',
+      video: '影片',
+      audio: '音訊',
+      website: '網站',
+      markdown: 'Markdown',
+      code: '程式碼',
+      other: '其他'
+    },
+    filterType: '依類型篩選',
+    myFavorites: '我的收藏',
+    favorite: '收藏',
+    unfavorite: '取消收藏',
+    favorited: '已收藏',
+    favoriteFailed: '收藏儲存失敗，請重試。',
+    search: '搜尋檔案或對話',
+    addToChat: '新增至新對話',
+    attachFailed: '新增失敗，請確認檔案仍然存在，並重試。',
+    fileUnavailable: '檔案不存在或無法存取，請重新整理後重試。',
+    uploaded: '已上傳至雲端硬碟',
+    more: '更多操作',
+    share: '分享',
+    openChat: '查看對話',
+    other: '檔案',
+    archived: '已封存',
+    untitled: '未命名對話',
+    empty: '暫無本機產物',
+    noFavorites: '暫無收藏檔案',
+    noResults: '找不到相關資料',
+    loading: '正在載入產物',
+    showMore: '顯示更多',
+    /** 格式化会话和文件总数。 */
+    total: (tasks, files) => `${tasks} 個對話 · ${files} 個檔案`,
+    /** 格式化单个会话的产物数量。 */
+    fileCount: count => `${count} 個檔案`,
+    /** 显示扫描进度，不伪造百分比。 */
+    scanning: (processed, total) => `正在載入產物 ${processed} / ${total}`,
+    /** 说明未完成的来源读取数量。 */
+    partialLoad: count => `${count} 個對話或目錄載入失敗，部分產物可能尚未顯示。`,
+    /** 为展开按钮提供来源会话名称。 */
+    expand: title => `展開「${title}」的檔案`,
+    /** 为收起按钮提供来源会话名称。 */
+    collapse: title => `收合「${title}」的檔案`
+  },
   artifacts: {
     search: '搜尋成品…',
     refresh: '重新整理成品',
@@ -2910,6 +2967,7 @@ export const zhHant = defineLocale({
     viewShared: '查看分享頁',
     copyShared: '複製連結',
     revokeShared: '取消分享',
+    publishSucceeded: '發布成功',
     shareFailed: '分享失敗',
     revokeFailed: '取消分享失敗',
     previewNotReady: 'Markdown 預覽尚未完成。',

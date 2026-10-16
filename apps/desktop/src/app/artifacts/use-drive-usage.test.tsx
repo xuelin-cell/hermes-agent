@@ -95,3 +95,85 @@ it('原生桥通过真实 HTTP 读取容量，空间 A→B→A 不接受迟到�
     await new Promise<void>(resolve => server.close(() => resolve()))
   }
 })
+
+it('重新进入页面立即显示容量缓存，后台损坏响应不清空缓存，刷新成功更新下次缓存', async () => {
+  let finish!: (value: unknown) => void
+
+  const request = vi
+    .fn()
+    .mockResolvedValueOnce({ used_bytes: 42, total_bytes: 100 })
+    .mockImplementationOnce(
+      () =>
+        new Promise(resolve => {
+          finish = resolve
+        })
+    )
+    .mockResolvedValueOnce({ used_bytes: 53, total_bytes: 100 })
+    .mockImplementation(() => new Promise(() => {}))
+
+  vi.stubGlobal('hermesDesktop', { cloudDriveRequest: request })
+  let hook = renderHook(() => useDriveUsage('personal'))
+
+  try {
+    await waitFor(() => expect(hook.result.current.usage?.used_bytes).toBe(42))
+    hook.unmount()
+    hook = renderHook(() => useDriveUsage('personal'))
+    expect(hook.result.current.usage).toEqual({ used_bytes: 42, total_bytes: 100 })
+    expect(request).toHaveBeenCalledTimes(2)
+    await act(async () => finish({ used_bytes: -1, total_bytes: 100 }))
+    await waitFor(() => expect(hook.result.current.failed).toBe(true))
+    expect(hook.result.current.usage?.used_bytes).toBe(42)
+    act(() => hook.result.current.refresh())
+    await waitFor(() => expect(hook.result.current.usage?.used_bytes).toBe(53))
+    expect(hook.result.current.failed).toBe(false)
+    hook.unmount()
+    hook = renderHook(() => useDriveUsage('personal'))
+    expect(hook.result.current.usage?.used_bytes).toBe(53)
+    expect(request).toHaveBeenCalledTimes(4)
+  } finally {
+    hook.unmount()
+    vi.unstubAllGlobals()
+  }
+})
+
+it('账号窗口 A→B→A 隔离同名空间缓存，旧窗口迟到响应不能改写容量', async () => {
+  let finishOld!: (value: unknown) => void
+
+  const accountA = {
+    cloudDriveRequest: vi
+      .fn()
+      .mockResolvedValueOnce({ used_bytes: 42, total_bytes: 100 })
+      .mockImplementationOnce(
+        () =>
+          new Promise(resolve => {
+            finishOld = resolve
+          })
+      )
+      .mockImplementation(() => new Promise(() => {}))
+  }
+
+  const accountB = { cloudDriveRequest: vi.fn().mockResolvedValue({ used_bytes: 7, total_bytes: 200 }) }
+  vi.stubGlobal('hermesDesktop', accountA)
+  let hook = renderHook(() => useDriveUsage('personal'))
+
+  try {
+    await waitFor(() => expect(hook.result.current.usage?.used_bytes).toBe(42))
+    act(() => hook.result.current.refresh())
+    await waitFor(() => expect(accountA.cloudDriveRequest).toHaveBeenCalledTimes(2))
+    // 账号切换会销毁原窗口，按真实生命周期卸载旧页面后打开新窗口。
+    hook.unmount()
+    vi.stubGlobal('hermesDesktop', accountB)
+    hook = renderHook(() => useDriveUsage('personal'))
+    expect(hook.result.current.usage).toBeNull()
+    await waitFor(() => expect(hook.result.current.usage?.used_bytes).toBe(7))
+    await act(async () => finishOld({ used_bytes: 99, total_bytes: 100 }))
+    expect(hook.result.current.usage?.used_bytes).toBe(7)
+    hook.unmount()
+    vi.stubGlobal('hermesDesktop', accountA)
+    hook = renderHook(() => useDriveUsage('personal'))
+    expect(hook.result.current.usage?.used_bytes).toBe(42)
+  } finally {
+    hook.unmount()
+    vi.unstubAllGlobals()
+  }
+})
