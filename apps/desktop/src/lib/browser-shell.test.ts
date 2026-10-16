@@ -6,6 +6,7 @@ import {
   browserInitialLocale,
   browserMediaPlaybackUrl,
   browserShellCopy,
+  effortShortLabels,
   findInPageTakenByViewer,
   hideForUsers,
   HTML_PREVIEW_SANDBOX,
@@ -16,6 +17,7 @@ import {
   isInstanceLocalUrl,
   isSettingsViewHidden,
   isSlideDeck,
+  newSessionTitle,
   officePreviewPdf,
   officeSheetBook,
   pdfDocumentSource,
@@ -126,6 +128,48 @@ describe('browser shell', () => {
     expect(withoutHiddenPaletteItems(groups)).toEqual([
       { heading: 'command center', items: [{ id: 'cc-reload-window' }] }
     ])
+  })
+
+  it('reads the rows the desktop labels in English in Chinese, developer mode or not', () => {
+    const groups = [
+      {
+        heading: 'view',
+        items: [
+          { detail: 'on', id: 'view.toggleStatusbar', label: 'Toggle status bar' },
+          { id: 'profile.export', label: 'Export profile…' },
+          { id: 'some.plugin', label: 'Plugin row' }
+        ]
+      }
+    ]
+
+    expect(withoutHiddenPaletteItems(groups)).toBe(groups)
+
+    document.documentElement.dataset.hermesBrowser = 'production'
+
+    expect(withoutHiddenPaletteItems(groups)[0].items).toEqual([
+      { detail: '开', id: 'view.toggleStatusbar', label: '显示 / 隐藏状态栏' },
+      { id: 'some.plugin', label: 'Plugin row' }
+    ])
+
+    localStorage.setItem(DEVELOPER_MODE_KEY, 'true')
+
+    expect(withoutHiddenPaletteItems(groups)[0].items.map(item => item.label)).toEqual([
+      '显示 / 隐藏状态栏',
+      'Export profile…',
+      'Plugin row'
+    ])
+  })
+
+  it('names a new session and the effort levels in Chinese', () => {
+    const english = { high: 'High', low: 'Low' }
+
+    expect(newSessionTitle('New session')).toBe('New session')
+    expect(effortShortLabels(english)).toBe(english)
+
+    document.documentElement.dataset.hermesBrowser = 'production'
+
+    expect(newSessionTitle('New session')).toBe('新建会话')
+    expect(effortShortLabels(english)).toMatchObject({ high: '高', low: '低', medium: '中' })
   })
 
   it('drops the messaging platforms and session import entries from the sidebar', () => {

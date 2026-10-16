@@ -35,7 +35,8 @@ import { storedBoolean } from '@/lib/storage'
  *   app/chat/sidebar/index.tsx                         * no messaging platforms or session import entry
  *   app/chat/sidebar/profile-switcher.tsx              * no add / import profile, no "connect gateway"
  *   app/command-palette/index.tsx                      * no in-app browser, Hermes update, theme marketplace, gateway
- *                                                      restart, session import
+ *                                                      restart, desktop plugin reload, profile export / import,
+ *                                                      session import; the rows the desktop labels in English in Chinese
  *   app/hooks/use-keybinds.ts                          ⌘F / Ctrl+F in the PDF viewer searches the PDF, not the chat
  *   app/profiles/index.tsx                             * no "new profile"
  *   app/right-sidebar/file-actions.tsx                 rename + delete (to the instance's recycle bin) in the menu
@@ -50,11 +51,14 @@ import { storedBoolean } from '@/lib/storage'
  *   app/shell/maas-account-status.tsx                  signing out keeps the instance: the confirmation says so
  *   app/shell/model-catalog-menu.tsx                   * no "add custom model" or "edit models" in the model menus
  *   contrib/plugins.ts                                 * no Bot Mode (the BOTS tab): its plugin is not started
+ *   i18n/catalog.ts                                    Chinese where zh.ts is still English, see `lib/browser-shell-zh.ts`
  *   i18n/profile-provider.tsx                          the interface starts in Chinese, before the instance's config answers
+ *   lib/chat-runtime.ts                                a session with no title yet is 新建会话, not "New session"
  *   lib/local-preview.ts                               Office files (pptx, docx, xlsx …) are previews, never read as text
  *   lib/media.ts                                       audio and video play straight from the instance (in the chat and
  *                                                      in the preview pane's own player, formats/media-preview.tsx)
  *   lib/model-options.ts                               * model pickers: the platform's providers only
+ *   lib/reasoning-effort.ts                            the reasoning-effort pill reads 高 / 中 / 低, not High / Med / Low
  *   store/developer-mode.ts                            flipping UniWork's developer mode reloads the page
  *   store/preview.ts                                   no in-app browser: links and URL previews open in a new tab
  *   store/profile.ts                                   only the default profile
@@ -345,22 +349,79 @@ const PALETTE_ITEMS_HIDDEN = new Set([
   'cc-open-browser',
   'cc-restart-gateway',
   'cc-update-hermes',
+  'plugins.reload',
+  'profile.export',
+  'profile.import',
   'session-import',
   'theme-install'
 ])
 
+// Rows the desktop registers with English labels (app/contrib/controller.tsx,
+// app/right-sidebar/terminal/reveal-focus.ts); their keywords stay English, so
+// searching in English still finds them.
+const PALETTE_LABELS_ZH: Record<string, string> = {
+  'keybinds.panel': '键盘快捷键',
+  'layout.editMode': '切换布局编辑模式',
+  'layout.reset': '重置布局',
+  'logs.toggle': '显示 / 隐藏日志',
+  'session.yolo': '切换免审批（YOLO）模式',
+  'view.showTerminal': '显示 / 隐藏终端',
+  'view.simpleMode': '简洁模式',
+  'view.toggleProfileRail': '显示 / 隐藏配置档栏',
+  'view.toggleStatusbar': '显示 / 隐藏状态栏',
+  'view.toggleTabStrip': '显示 / 隐藏标签栏'
+}
+
+const PALETTE_DETAILS_ZH: Record<string, string> = { off: '关', on: '开' }
+
+interface PaletteRow {
+  detail?: string
+  id: string
+  label?: string
+}
+
 /** Command-palette rows for desktop-only features: the in-app browser, updating
  * Hermes from the app (the cloud upgrades instances itself), the theme
- * marketplace, restarting the messaging gateway (an instance runs none), and
- * session import (see the sidebar below). Empty groups go too. */
-export function withoutHiddenPaletteItems<G extends { items: readonly { id: string }[] }>(groups: G[]): G[] {
-  if (!hideForUsers()) {
+ * marketplace, restarting the messaging gateway (an instance runs none), reloading
+ * desktop plugins, exporting or importing a profile and session import (see the
+ * sidebar below). Empty groups go too. The rows the desktop labels in English
+ * read in Chinese, developer mode or not. */
+export function withoutHiddenPaletteItems<G extends { items: readonly PaletteRow[] }>(groups: G[]): G[] {
+  if (!isBrowserShell()) {
     return groups
   }
 
+  const hide = hideForUsers()
+
   return groups
-    .map(group => ({ ...group, items: group.items.filter(item => !PALETTE_ITEMS_HIDDEN.has(item.id)) }) as G)
+    .map(
+      group =>
+        ({
+          ...group,
+          items: group.items
+            .filter(item => !(hide && PALETTE_ITEMS_HIDDEN.has(item.id)))
+            .map(item => ({
+              ...item,
+              ...(PALETTE_LABELS_ZH[item.id] ? { label: PALETTE_LABELS_ZH[item.id] } : {}),
+              ...(item.detail && PALETTE_DETAILS_ZH[item.detail] ? { detail: PALETTE_DETAILS_ZH[item.detail] } : {})
+            }))
+        }) as G
+    )
     .filter(group => group.items.length > 0)
+}
+
+/** The title of a session that has none yet (lib/chat-runtime.ts NEW_SESSION_TITLE),
+ * English on the desktop in every language. */
+export function newSessionTitle(english: string): string {
+  return isBrowserShell() ? '新建会话' : english
+}
+
+/** The reasoning-effort pill's short labels (lib/reasoning-effort.ts), English on the
+ * desktop in every language; the words of zh.ts's model menu (shell.modelOptions). */
+export function effortShortLabels(english: Record<string, string>): Record<string, string> {
+  return isBrowserShell()
+    ? { none: '关', minimal: '最小', low: '低', medium: '中', high: '高', xhigh: '极高', max: '最高', ultra: '超高' }
+    : english
 }
 
 const SIDEBAR_NAV_HIDDEN = new Set(['messaging', 'session-import'])
