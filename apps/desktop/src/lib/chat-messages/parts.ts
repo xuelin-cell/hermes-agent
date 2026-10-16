@@ -87,20 +87,24 @@ const _MEDIA_EXT_ALTERNATION = [...MEDIA_DELIVERY_EXTS].sort((a, b) => b.length 
  * extension. Matches the Python-side `MEDIA_TAG_CLEANUP_RE` behavior where
  * `(?:[^\S\n]+\S+?)*?\.(?:EXT)` permits spaces inside filenames (#96657).
  */
-const _MEDIA_PATH_ANCHORED = `(?:~/|/|[A-Za-z]:[/\\\\])\\S+?(?:[^\\S\\n]+\\S+?)*?\\.(?:${_MEDIA_EXT_ALTERNATION})(?=[\\s\`"'*_,;:)\\]}]|MEDIA:|$)`
+// 未加引号的交付路径在扩展名后的中文标点处结束，后面的说明仍属于正文。
+const _MEDIA_PATH_END = '(?=[\\s`"\'*_,;:)\\]}，。；：！？、」』）】]|MEDIA:|$)'
+const _MEDIA_PATH_ANCHORED = `(?:~/|/|[A-Za-z]:[/\\\\])\\S+?(?:[^\\S\\n]+\\S+?)*?\\.(?:${_MEDIA_EXT_ALTERNATION})${_MEDIA_PATH_END}`
+const _MEDIA_PATH_RELATIVE = `[^\\s\`"]+?\\.(?:${_MEDIA_EXT_ALTERNATION})${_MEDIA_PATH_END}`
 
 // Bare-word fallback for paths the anchored branch misses (relative paths,
 // unknown extensions). Stop before backtick and double-quote so an inline-code
 // closer is not swallowed. Apostrophes stay legal inside the path.
-const _MEDIA_PATH_BARE = '[^\\s`"]+'
+// 已识别出扩展名边界时，不允许整行匹配回退后再次吞入后面的说明。
+const _MEDIA_PATH_BARE = `(?!${_MEDIA_PATH_ANCHORED}|${_MEDIA_PATH_RELATIVE})[^\\s\`"]+`
 
 const MEDIA_LINE_RE = new RegExp(
-  `(^|\\n)[\\t ]*[\`"']?MEDIA:\\s*(?<line>\`[^\`\\n]+\`|"[^"\\n]+"|'[^'\\n]+'|${_MEDIA_PATH_ANCHORED}|${_MEDIA_PATH_BARE})[\`"']?[\\t ]*(\\n|$)`,
+  `(^|\\n)[\\t ]*[\`"']?MEDIA:\\s*(?<line>\`[^\`\\n]+\`|"[^"\\n]+"|'[^'\\n]+'|${_MEDIA_PATH_ANCHORED}|${_MEDIA_PATH_RELATIVE}|${_MEDIA_PATH_BARE})[\`"']?[\\t ]*(\\n|$)`,
   'g'
 )
 
 const MEDIA_TAG_RE = new RegExp(
-  `[\`"']?MEDIA:\\s*(?<inline>\`[^\`\\n]+\`|"[^"\\n]+"|'[^'\\n]+'|${_MEDIA_PATH_ANCHORED}|${_MEDIA_PATH_BARE})[\`"']?`,
+  `[\`"']?MEDIA:\\s*(?<inline>\`[^\`\\n]+\`|"[^"\\n]+"|'[^'\\n]+'|${_MEDIA_PATH_ANCHORED}|${_MEDIA_PATH_RELATIVE}|${_MEDIA_PATH_BARE})[\`"']?`,
   'g'
 )
 
