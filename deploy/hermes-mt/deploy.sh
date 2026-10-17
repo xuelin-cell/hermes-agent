@@ -8,6 +8,7 @@
 #   ./deploy.sh image          构建沙箱镜像并推到集群仓库（内容没变就跳过推送）
 #   ./deploy.sh template       确保集群上有当前镜像的模板，把模板 ID 写进 entry.env
 #   ./deploy.sh up             启动 / 更新三个容器（前端不是当前代码构建的先重建；入口重建后自动重启 nginx）
+#   ./deploy.sh log            看部署进度：在跑就接着实时看，跑完了打出最后几十行和结果
 #   ./deploy.sh status         看现状：容器、PG 里的租户、集群上的实例和模板
 #   ./deploy.sh purge-old      删掉不在当前模板上的实例（会问确认；只有旧转发器的实例才需要）
 #   ./deploy.sh purge-templates [--api URL]  删掉我们不再用的模板：保留当前和上一版，有实例在用的不删（会问确认）
@@ -15,6 +16,8 @@
 #   ./deploy.sh init --http-port IP:端口 --cube-api URL --cube-proxy URL [--registry HOST:PORT]
 #                              首次部署：生成 entry.env（密钥现场随机、600）和 compose.override.yaml
 #   选项：--no-pull（all / base 时不拉代码）  --branch 名字  --yes（不问确认）
+#   all / base / image / template / up 在终端里敲：部署在后台跑，屏幕上实时显示进度；Ctrl+C、终端断开都只是不看了，
+#   部署照样跑完（./deploy.sh log 接着看）。同一时间只跑一次部署；每次的日志在 .deploy-logs/。
 #
 # 为什么要有这个脚本：手册里的每一步都有能出错的细节（构建器、不安全仓库、模板要和入口一起换、
 # 入口重建后 nginx 要重启、entry.env 权限……），漏一条就是线上事故。这里把它们全部变成
@@ -52,6 +55,9 @@ REPO="$(cd "$HERE/../.." && pwd)"
 ENV_FILE="$HERE/entry.env"
 OVERRIDE="$HERE/compose.override.yaml"
 HISTORY="$HERE/.deploy-history"
+LOG_DIR="$HERE/.deploy-logs"
+RUNNING="$HERE/.deploy-running"      # 正在跑的那次部署：第 1 行进程号，第 2 行命令和开始时间，第 3 行日志
+LAST_EXIT="$HERE/.deploy-last-exit"  # 上一次部署的退出码
 PROJECT=hermes-mt
 IMAGE_NAME=hermes-mt-cube
 REPO_PATH=hermes-mt/hermes-mt-cube
@@ -65,8 +71,14 @@ FWD_REF=""
 # 推镜像时起的后台转发进程和临时标签：不管脚本怎么退出都要收掉。
 # 杀掉后等它退出：不等的话部署机的 bash（4.2）会把整段转发脚本连同「Terminated」打出来，像出了错。
 cleanup() {
+    local rc=$?
     if [ -n "$FWD_PID" ]; then kill "$FWD_PID" 2>/dev/null || true; wait "$FWD_PID" 2>/dev/null || true; FWD_PID=""; fi
     if [ -n "$FWD_REF" ]; then docker rmi "$FWD_REF" >/dev/null 2>&1 || true; FWD_REF=""; fi
+    # 这次部署登记过「正在跑」：结束时记下退出码、撤掉登记（前台跟进度的和 ./deploy.sh log 要看）。
+    if [ "$(sed -n 1p "$RUNNING" 2>/dev/null || true)" = "$$" ]; then
+        printf '%s\n' "$rc" > "$LAST_EXIT"
+        rm -f "$RUNNING"
+    fi
 }
 trap cleanup EXIT
 
@@ -918,11 +930,111 @@ cmd_all() {
     echo "  验收：浏览器登录 → 发一句话 → 拖一个文件；5 分钟后 ./deploy.sh status 看 state_archive 有值。"
 }
 
+# ---------------------------------------------------------------- 后台跑、前台看
+
+# 耗时、会改东西的命令（几分钟到一小时）。
+long_running() { case "$1" in all|base|image|template|up) return 0 ;; *) return 1 ;; esac; }
+
+# 正在跑的那次部署的进程号：登记过、进程也还在；没有就空（进程没了的登记当它不存在）。
+running_pid() {
+    local pid
+    pid="$(sed -n 1p "$RUNNING" 2>/dev/null || true)"
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then printf '%s' "$pid"; fi
+    return 0
+}
+
+# 真正开跑前登记「正在跑」。同一时间只许一次部署：两次同时跑会抢着构建、改 entry.env。
+# 日志：后台跑的是 .deploy-logs/ 里那份；在前台跑、输出又重定向到文件的（nohup … > 文件），记那个文件。
+register_run() {
+    local pid log
+    pid="$(running_pid)"
+    if [ -n "$pid" ] && [ "$pid" != "$$" ]; then
+        die "已有一次部署在跑（$(sed -n 2p "$RUNNING")，进程 $pid），等它跑完；看进度：./deploy.sh log"
+    fi
+    log="${MT_DEPLOY_LOG:-$(readlink -f "/proc/$$/fd/1" 2>/dev/null || true)}"
+    [ -f "$log" ] || log=""
+    printf '%s\n%s\n%s\n' "$$" "$1，$(date '+%m-%d %H:%M') 开始" "$log" > "$RUNNING"
+}
+
+# 在终端里敲耗时的命令：真正的部署放到后台单独的会话里跑（终端断开、Ctrl+C 都碰不到它），
+# 前台实时跟它的日志，它结束前台也结束，退出码一样。已经有一次在跑就不再起，直接跟那一次。
+run_detached() {
+    local cmd="$1" log
+    shift
+    if [ -n "$(running_pid)" ]; then
+        warn "已有一次部署在跑（$(sed -n 2p "$RUNNING")），不再起第二次；下面接着看它的进度"
+        follow_run
+    fi
+    mkdir -p "$LOG_DIR"
+    log="$LOG_DIR/$cmd-$(date +%Y%m%d-%H%M%S).log"
+    ln -sfn "$(basename "$log")" "$LOG_DIR/latest.log"
+    rm -f "$LAST_EXIT"
+    if command -v setsid >/dev/null 2>&1; then
+        MT_DEPLOY_DETACHED=1 MT_DEPLOY_LOG="$log" setsid bash "$SCRIPT" "$cmd" "$@" > "$log" 2>&1 < /dev/null &
+    else
+        MT_DEPLOY_DETACHED=1 MT_DEPLOY_LOG="$log" nohup bash "$SCRIPT" "$cmd" "$@" > "$log" 2>&1 < /dev/null &
+    fi
+    # 等它自己登记（setsid 可能再分叉一次，$! 不一定是它的进程号）。
+    for _ in $(seq 1 50); do
+        [ -n "$(running_pid)" ] && break
+        sleep 0.2
+    done
+    if [ -z "$(running_pid)" ] && [ ! -s "$LAST_EXIT" ]; then
+        cat "$log" 2>/dev/null || true
+        die "部署没起来，看 $log"
+    fi
+    say "部署在后台跑，下面是实时进度（日志 $log）。Ctrl+C、终端断开都只是不看了，部署照样跑完；接着看：./deploy.sh log"
+    follow_run "$log"
+}
+
+# follow_run [日志]：跟正在跑的那次部署直到它结束（刚跑完、没来得及跟的，把日志整个打出来），
+# 再报结果；退出码和那次部署的一样。
+follow_run() {
+    local pid log
+    pid="$(running_pid)"
+    log="${1:-$(sed -n 3p "$RUNNING" 2>/dev/null || true)}"
+    if [ -n "$pid" ] && [ -n "$log" ] && [ -f "$log" ]; then
+        trap 'printf "\n"; warn "只是不看了，部署还在后台跑；接着看：./deploy.sh log"; exit 0' INT
+        tail -n +1 -f --pid="$pid" "$log" || true
+        trap - INT
+    elif [ -n "$pid" ]; then
+        warn "这次部署的输出没有落到文件里（$(sed -n 2p "$RUNNING")），只能等它结束"
+        while kill -0 "$pid" 2>/dev/null; do sleep 2; done
+    elif [ -n "$log" ] && [ -f "$log" ]; then
+        cat "$log"
+    fi
+    report_last "${log:-$(readlink -f "$LOG_DIR/latest.log" 2>/dev/null || true)}"
+}
+
+# 报上一次部署的结果，按它的退出码退出。
+report_last() {
+    local rc
+    rc="$(cat "$LAST_EXIT" 2>/dev/null || true)"
+    case "$rc" in
+        0) ok "部署跑完了（日志 $1）" ;;
+        '') rc=1; printf '  \033[31m[停止]\033[0m %s\n' "部署进程没了，也没留下结果（可能被强行结束或机器重启过）；看日志 $1" >&2 ;;
+        *) printf '  \033[31m[停止]\033[0m %s\n' "部署中途停了（退出码 $rc），原因看上面最后几行；日志 $1" >&2 ;;
+    esac
+    exit "$rc"
+}
+
+# ./deploy.sh log：在跑就接着实时看；没在跑就打出上一次的最后 40 行和结果。
+cmd_log() {
+    if [ -n "$(running_pid)" ]; then
+        follow_run
+    fi
+    local log
+    log="$(readlink -f "$LOG_DIR/latest.log" 2>/dev/null || true)"
+    [ -n "$log" ] && [ -f "$log" ] || die "$LOG_DIR 里还没有日志：在终端里敲 ./deploy.sh all 才会留"
+    tail -n 40 "$log"
+    report_last "$log"
+}
+
 # ---------------------------------------------------------------- main
 
 main() {
     local cmd="${1:-}"; shift || true
-    local rest=""
+    local args=("$@") rest=""
     while [ $# -gt 0 ]; do
         case "$1" in
             --yes) YES=1; shift ;;
@@ -934,7 +1046,16 @@ main() {
     # shellcheck disable=SC2086
     case "$cmd" in
         init) cmd_init $rest ;;
+        log) cmd_log ;;
         all|base|check|image|template|up|status|purge-old|purge-templates|pull|set)
+            if long_running "$cmd"; then
+                # 在终端里敲的：后台跑、前台实时看（run_detached 不会返回）。输出已经重定向到别处、
+                # 或者这本身就是后台那一份，就照常往下跑。部署机的 bash 4.2 在 set -u 下展开空数组会报错。
+                if [ -z "${MT_DEPLOY_DETACHED:-}" ] && [ -t 1 ]; then
+                    run_detached "$cmd" ${args[@]+"${args[@]}"}
+                fi
+                register_run "$cmd"
+            fi
             load_cfg
             case "$cmd" in
                 all) cmd_all ;;
@@ -949,7 +1070,7 @@ main() {
                 pull) cmd_pull ;;
                 set) cmd_set $rest ;;
             esac ;;
-        *) sed -n '2,17p' "$SCRIPT"; exit 1 ;;
+        *) sed -n '2,20p' "$SCRIPT"; exit 1 ;;
     esac
 }
 

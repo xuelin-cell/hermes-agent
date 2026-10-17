@@ -43,12 +43,15 @@
 cd deploy/hermes-mt
 # 首次：生成 entry.env（密钥现场随机、600）和 compose.override.yaml
 ./deploy.sh init --http-port 192.168.x.x:18081 --cube-api http://<控制面>:3000 --cube-proxy http://<数据面>
-# 之后每次部署 / 升级都只有这一条（放后台跑，开头会说这次要做哪些耗时的步骤）：
+# 之后每次部署 / 升级都只有这一条，屏幕上实时显示进度（开头会说这次要做哪些耗时的步骤）：
 #   拉代码 → 基础镜像(按需) → 前端(按需) → 检查 → 沙箱镜像(按需) → 模板(按需) → 写配置 → 起容器 → 验收
-nohup ./deploy.sh all > /tmp/hermes-all.out 2>&1 &
-tail -f /tmp/hermes-all.out
+./deploy.sh all
+# 部署其实在后台跑：Ctrl+C、终端断开都只是不看了，部署照样跑完。重新连上后接着看（跑完了就打出结果）：
+./deploy.sh log
 ./deploy.sh status      # 看现状；./deploy.sh check 只读检查；./deploy.sh purge-old 删旧模板上的实例
 ```
+
+同一时间只跑一次部署：已经有一次在跑时再敲 `all`，不会起第二次，直接接着看那一次。每次的日志在 `.deploy-logs/`（`latest.log` 是最近一次）。输出重定向到文件时（`nohup ./deploy.sh all > 文件 2>&1 &` 的老写法）照常在前台跑，也能用。
 
 耗时：只改了入口或配置几分钟；改了前端多 5~10 分钟；hermes 源码变了（合了上游、桌面版改了插件或内置技能）基础镜像要重建 15~45 分钟，沙箱镜像也跟着整个重建 20~40 分钟。
 

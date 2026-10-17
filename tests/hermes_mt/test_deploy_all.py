@@ -82,5 +82,39 @@ def test_the_renderer_imports_nothing_outside_apps() -> None:
 
 
 def test_generated_files_stay_out_of_git_and_out_of_the_page() -> None:
-    assert ".frontend-build.log" in (DEPLOY / ".gitignore").read_text(encoding="utf-8").splitlines()
+    ignored = (DEPLOY / ".gitignore").read_text(encoding="utf-8").splitlines()
+    for name in (".frontend-build.log", ".deploy-logs/", ".deploy-running", ".deploy-last-exit"):
+        assert name in ignored, name
     assert "dist-browser/.source-fingerprint" in (DEPLOY / "nginx" / ".dockerignore").read_text(encoding="utf-8").splitlines()
+
+
+# ---- 在终端里敲：后台跑、前台实时看（实际行为在 Linux 的伪终端里验过：Ctrl+C、并发、失败、重定向、log） ----
+
+def test_long_commands_typed_in_a_terminal_run_detached_and_are_followed() -> None:
+    main = _function(SCRIPT, "main")
+    assert re.search(r'if \[ -z "\$\{MT_DEPLOY_DETACHED:-\}" \] && \[ -t 1 \]; then\s+run_detached', main)
+    assert main.index("run_detached") < main.index("register_run") < main.index("load_cfg")
+    detached = _function(SCRIPT, "run_detached")
+    assert "setsid bash" in detached and "< /dev/null &" in detached
+    assert "tail -n +1 -f --pid=" in _function(SCRIPT, "follow_run")
+
+
+def test_the_relaunch_survives_bash_4_2_with_no_arguments() -> None:
+    # 部署机的 bash 4.2：set -u 下 "${args[@]}" 展开空数组会报 unbound variable。
+    assert 'run_detached "$cmd" ${args[@]+"${args[@]}"}' in _function(SCRIPT, "main")
+
+
+def test_one_deploy_at_a_time_and_the_result_is_kept() -> None:
+    register = _function(SCRIPT, "register_run")
+    assert '[ "$pid" != "$$" ]' in register and "die " in register
+    cleanup = _function(SCRIPT, "cleanup")
+    assert cleanup.split("\n")[2].strip() == "local rc=$?"  # 第一句就取退出码，后面的命令会改掉 $?
+    assert '= "$$" ]' in cleanup and '> "$LAST_EXIT"' in cleanup and 'rm -f "$RUNNING"' in cleanup
+
+
+def test_the_usage_text_shows_the_whole_header() -> None:
+    printed = re.search(r"sed -n '2,(\d+)p' \"\$SCRIPT\"", SCRIPT)
+    lines = SCRIPT.splitlines()
+    end = int(printed.group(1))
+    assert "./deploy.sh log" in "\n".join(lines[1:end])
+    assert lines[end] == "#", lines[end]  # 用法说明到空注释行为止，正好打全
