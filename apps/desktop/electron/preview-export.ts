@@ -1,5 +1,7 @@
 import fs from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 import { BrowserWindow, dialog, ipcMain, session, type Session } from 'electron'
 // 只用同步纯 JS 入口，不引入 Node Worker 的 createRequire 初始化，避免与 Electron 打包横幅重名。
@@ -49,8 +51,13 @@ export function wordDocument(html: string): Uint8Array {
 /** 在无凭据、无 preload、禁脚本和网络的临时窗口打印；超时或失败也销毁窗口与独立分区。 */
 export async function previewPdf(html: string): Promise<Uint8Array> {
   const isolated = session.fromPartition('preview-export-' + crypto.randomUUID())
+  let documentUrl: string | undefined
   isolated.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
-  isolated.webRequest.onBeforeRequest((details, callback) => callback({ cancel: !details.url.startsWith('data:') }))
+  isolated.webRequest.onBeforeRequest((details, callback) =>
+    callback({
+      cancel: !details.url.startsWith('data:') && !(details.resourceType === 'mainFrame' && details.url === documentUrl)
+    })
+  )
 
   const window = new BrowserWindow({
     show: false,
@@ -66,14 +73,20 @@ export async function previewPdf(html: string): Promise<Uint8Array> {
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   window.webContents.on('will-navigate', event => event.preventDefault())
   let timer: ReturnType<typeof setTimeout> | undefined
+  let directory: string | undefined
 
   try {
     return await Promise.race([
       (async () => {
         const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:; base-uri 'none'; form-action 'none'">`
-        await window.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(csp + html))
+        // 样式和字体内嵌后可能超过 Chromium 的 data URL 长度上限，只放行本轮主文档。
+        directory = await fs.mkdtemp(path.join(os.tmpdir(), 'hermes-preview-export-'))
+        const document = path.join(directory, 'document.html')
+        documentUrl = pathToFileURL(document).href
+        await fs.writeFile(document, csp + html, { encoding: 'utf8', mode: 0o600 })
+        await window.loadURL(documentUrl)
 
-        return window.webContents.printToPDF({ pageSize: 'A4', printBackground: true })
+        return window.webContents.printToPDF({ pageSize: 'A4', preferCSSPageSize: true, printBackground: true })
       })(),
       new Promise<never>((_resolve, reject) => {
         timer = setTimeout(() => reject(new Error('Preview export timeout')), 30_000)
@@ -82,7 +95,14 @@ export async function previewPdf(html: string): Promise<Uint8Array> {
   } finally {
     clearTimeout(timer)
     window.destroy()
-    await isolated.clearStorageData()
+
+    try {
+      await isolated.clearStorageData()
+    } finally {
+      if (directory) {
+        await fs.rm(directory, { recursive: true, force: true })
+      }
+    }
   }
 }
 

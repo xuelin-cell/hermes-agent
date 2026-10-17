@@ -3636,7 +3636,7 @@ export const ja = defineLocale({
   preview: {
     copyAll: '全文をコピー',
     saveAs: '名前を付けて保存',
-    exportFailed: 'エクスポートできませんでした。プレビューと画像の読み込みを確認してください。',
+    exportFailed: 'プレビューをエクスポートできませんでした。もう一度お試しください。',
     exportFormats: { md: 'Markdown (.md)', pdf: 'PDF (.pdf)', docx: 'Word (.docx)' },
     tab: 'プレビュー',
     closePane: 'プレビューペインを閉じる',

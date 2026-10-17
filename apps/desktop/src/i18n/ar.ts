@@ -3136,7 +3136,7 @@ export const ar = defineLocale({
   preview: {
     copyAll: 'نسخ النص الكامل',
     saveAs: 'حفظ باسم',
-    exportFailed: 'تعذر التصدير. تأكد من جاهزية المعاينة والصور.',
+    exportFailed: 'تعذر تصدير المعاينة. حاول مرة أخرى.',
     exportFormats: { md: 'Markdown (.md)', pdf: 'PDF (.pdf)', docx: 'Word (.docx)' },
     tab: 'معاينة',
     closePane: 'إغلاق جزء المعاينة',

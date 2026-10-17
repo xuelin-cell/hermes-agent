@@ -5302,7 +5302,7 @@ export const esOverrides = {
   preview: {
     copyAll: 'Copiar todo el texto',
     saveAs: 'Guardar como',
-    exportFailed: 'No se pudo exportar. Compruebe que el contenido y las imágenes estén cargados.',
+    exportFailed: 'No se pudo exportar la vista previa. Inténtelo de nuevo.',
     exportFormats: { md: 'Markdown (.md)', pdf: 'PDF (.pdf)', docx: 'Word (.docx)' },
     tab: 'Vista previa',
     closePane: 'Cerrar panel de vista previa',

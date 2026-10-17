@@ -5326,7 +5326,7 @@ export const frOverrides = {
   preview: {
     copyAll: 'Copier tout le texte',
     saveAs: 'Enregistrer sous',
-    exportFailed: 'Échec de l’exportation. Vérifiez que le contenu et les images sont chargés.',
+    exportFailed: 'Impossible d’exporter cet aperçu. Veuillez réessayer.',
     exportFormats: { md: 'Markdown (.md)', pdf: 'PDF (.pdf)', docx: 'Word (.docx)' },
     tab: 'Aperçu',
     closePane: "Fermer le panneau d'aperçu",

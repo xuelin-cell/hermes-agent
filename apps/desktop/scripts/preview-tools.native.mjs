@@ -135,6 +135,8 @@ test('Markdown 三种另存为、全文复制、SVG 切换和 PDF 文件卡片',
       .toBe(true)
     const page = app.windows().find(page => page.url() === pathToFileURL(index).href)
     page.on('pageerror', error => errors.push(String(error)))
+    // 超过 data URL 的长度限制，但仍小于 IPC 内容上限；经过正式快照和保存接口导出。
+    await page.addStyleTag({ content: ':root{--snapshot-padding:"' + 'x'.repeat(3 * 1024 * 1024) + '"}' })
     await expect(page.getByText('sample.pdf', { exact: true })).toBeVisible({ timeout: 30000 })
     await expect(page.getByRole('img', { name: 'sample.pdf' })).toHaveCount(0)
     await page.getByRole('button', { name: 'Copy full text' }).click()

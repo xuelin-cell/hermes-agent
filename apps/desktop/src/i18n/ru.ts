@@ -3871,7 +3871,7 @@ export const ru = defineLocale({
   preview: {
     copyAll: 'Копировать весь текст',
     saveAs: 'Сохранить как',
-    exportFailed: 'Не удалось экспортировать. Убедитесь, что содержимое и изображения загружены.',
+    exportFailed: 'Не удалось экспортировать предпросмотр. Повторите попытку.',
     exportFormats: { md: 'Markdown (.md)', pdf: 'PDF (.pdf)', docx: 'Word (.docx)' },
     tab: 'Предпросмотр',
     closePane: 'Закрыть панель предпросмотра',

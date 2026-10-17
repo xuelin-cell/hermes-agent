@@ -5315,7 +5315,7 @@ export const deOverrides = {
   preview: {
     copyAll: 'Gesamten Text kopieren',
     saveAs: 'Speichern unter',
-    exportFailed: 'Export fehlgeschlagen. Prüfen Sie, ob Inhalt und Bilder geladen sind.',
+    exportFailed: 'Die Vorschau konnte nicht exportiert werden. Bitte versuchen Sie es erneut.',
     exportFormats: { md: 'Markdown (.md)', pdf: 'PDF (.pdf)', docx: 'Word (.docx)' },
     tab: 'Vorschau',
     closePane: 'Vorschau-Fenster schließen',
