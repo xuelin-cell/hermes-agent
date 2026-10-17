@@ -6,5 +6,6 @@ entry.env.*
 compose.override.yaml
 .overlay/
 .base-build.log
+.frontend-build.log
 # 根目录 .gitignore 忽略 *.tgz；这里放的是部署机下载不动、按校验值核对过的前端依赖包（见 scripts/build-frontend.sh）
 !vendor/npm/*.tgz

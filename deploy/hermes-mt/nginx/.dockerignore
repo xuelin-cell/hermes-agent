@@ -1,0 +1,2 @@
+# 前端产物里的指纹（scripts/build-frontend.sh 写的，deploy.sh 比对用）不发到页面上。
+dist-browser/.source-fingerprint

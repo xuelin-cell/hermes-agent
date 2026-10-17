@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # 多租户栈的一键部署 / 升级脚本。在部署机上以 root 运行，工作目录随意。
 #
-#   ./deploy.sh all            拉代码 → 只读检查 → 沙箱镜像(按需) → 模板(按需) → 写配置 → 起容器 → 验收
-#   ./deploy.sh base           拉代码 → 用本仓库根目录的 Dockerfile 构建基础镜像（hermes 本体，15~45 分钟）。
-#                              按 hermes 源码指纹命名，源码没变就跳过；all 发现没有当前指纹的基础镜像会停下来让你先跑它
+#   ./deploy.sh all            一键：拉代码 → 基础镜像(按需) → 前端(按需) → 只读检查 → 沙箱镜像(按需) → 模板(按需) → 起容器 → 验收
+#   ./deploy.sh base           拉代码 → 只建基础镜像（hermes 本体，15~45 分钟；按 hermes 源码指纹命名，源码没变就跳过）。
+#                              all 缺当前指纹的基础镜像会自己先建，一般不用单独跑
 #   ./deploy.sh check          只读摸底，不改任何东西
 #   ./deploy.sh image          构建沙箱镜像并推到集群仓库（内容没变就跳过推送）
 #   ./deploy.sh template       确保集群上有当前镜像的模板，把模板 ID 写进 entry.env
-#   ./deploy.sh up             启动 / 更新三个容器（入口重建后自动重启 nginx）
+#   ./deploy.sh up             启动 / 更新三个容器（前端不是当前代码构建的先重建；入口重建后自动重启 nginx）
 #   ./deploy.sh status         看现状：容器、PG 里的租户、集群上的实例和模板
 #   ./deploy.sh purge-old      删掉不在当前模板上的实例（会问确认；只有旧转发器的实例才需要）
 #   ./deploy.sh purge-templates [--api URL]  删掉我们不再用的模板：保留当前和上一版，有实例在用的不删（会问确认）
@@ -39,7 +39,10 @@
 #   MT_DEPLOY_TPL_RETRIES   建模板有节点失败（平台偶发）时重建几次，第一次之外，默认 3
 #   MT_DEPLOY_BRANCH        all 时拉哪个分支，默认当前分支
 #   MT_DEPLOY_FWD_PORT      推镜像用的本机临时转发端口，默认 15000
-#   MT_DEPLOY_FRONTEND_SRC  前端产物目录为空时从这里复制（例如 /mnt/hermes-runtime/hermes）
+#
+# 前端（nginx/dist-browser/）不进 git，由 scripts/build-frontend.sh 从本仓库构建，构建时把前端指纹
+# （apps/、根目录的依赖声明、构建脚本、预置的 npm 包）写进产物。all 和 up 比对它和当前代码的指纹，
+# 对不上就先重新构建（5~10 分钟），不会把旧前端发出去。
 
 set -euo pipefail
 
@@ -123,7 +126,6 @@ load_cfg() {
     TPL_DISK="$(cfg MT_DEPLOY_TPL_DISK 8G)"
     TPL_RETRIES="$(cfg MT_DEPLOY_TPL_RETRIES 3)"
     FWD_PORT="$(cfg MT_DEPLOY_FWD_PORT 15000)"
-    FRONTEND_SRC="$(cfg MT_DEPLOY_FRONTEND_SRC)"
     BRANCH="${BRANCH_OPT:-$(cfg MT_DEPLOY_BRANCH "$(g rev-parse --abbrev-ref HEAD)")}"
 }
 
@@ -146,6 +148,14 @@ head_short() { g rev-parse --short=7 HEAD; }
 base_tag() {
     printf 'hermes-custom:src-%s' "$(g ls-tree -r HEAD | grep -vE $'\t(apps|deploy|docs|tests|website)/' | sha256sum | cut -c1-12)"
 }
+
+# 前端产物是不是当前代码构建的：比对 scripts/build-frontend.sh 算的指纹和它构建时写进产物的那份。
+frontend_want() { bash "$HERE/scripts/build-frontend.sh" --fingerprint; }
+frontend_have() { cat "$HERE/nginx/dist-browser/.source-fingerprint" 2>/dev/null || true; }
+frontend_current() {
+    [ -s "$HERE/nginx/dist-browser/index.html" ] && [ "$(frontend_have)" = "$(frontend_want)" ]
+}
+frontend_files() { find "$HERE/nginx/dist-browser" -type f ! -name .source-fingerprint | wc -l; }
 
 # ---------------------------------------------------------------- 指纹
 
@@ -348,15 +358,18 @@ cmd_check() {
     [ -n "$CUBE_API" ] && [ -n "$CUBE_PROXY" ] || die "MT_CUBE_API / MT_CUBE_PROXY 没配"
     [ -f "$OVERRIDE" ] && grep -q '!reset' "$OVERRIDE" && ok "compose.override.yaml 去掉了 docker.sock" || warn "没有 compose.override.yaml，起容器前会自动生成"
 
-    docker image inspect "$BASE_IMAGE" >/dev/null 2>&1 && ok "基础镜像 $BASE_IMAGE 在本机" \
-        || die "基础镜像 $BASE_IMAGE 不在本机：hermes 源码变了或第一次部署，先跑 ./deploy.sh base（15~45 分钟）"
-    check_overlay
-    if [ -s "$HERE/nginx/dist-browser/index.html" ]; then
-        ok "前端产物 $(find "$HERE/nginx/dist-browser" -type f | wc -l) 个文件"
-    elif [ -n "$FRONTEND_SRC" ] && [ -s "$FRONTEND_SRC/index.html" ]; then
-        warn "前端产物为空，起容器前会从 $FRONTEND_SRC 复制"
+    if docker image inspect "$BASE_IMAGE" >/dev/null 2>&1; then
+        ok "基础镜像 $BASE_IMAGE 在本机"
+    elif [ "$BASE_IMAGE" = "$(base_tag)" ]; then
+        warn "基础镜像 $BASE_IMAGE 不在本机（hermes 源码变了或第一次部署）：all 会先构建，15~45 分钟"
     else
-        die "nginx/dist-browser 为空，且没有 MT_DEPLOY_FRONTEND_SRC 可复制（见 README「前置条件」）"
+        die "entry.env 固定的基础镜像 $BASE_IMAGE 不在本机（MT_DEPLOY_BASE_IMAGE 固定的不会自动构建）"
+    fi
+    check_overlay
+    if frontend_current; then
+        ok "前端产物 $(frontend_files) 个文件，是当前代码构建的"
+    else
+        warn "前端产物不在或不是当前代码构建的：all / up 会先重新构建，5~10 分钟"
     fi
 
     local code
@@ -393,6 +406,16 @@ cmd_base() {
         # shellcheck disable=SC2086
         exec bash "$SCRIPT" base $pass
     fi
+    build_base
+    if [ "$BASE_IMAGE" != "$(base_tag)" ]; then
+        warn "entry.env 里固定了 MT_DEPLOY_BASE_IMAGE=$BASE_IMAGE，沙箱镜像会继续用它；要用刚建的，删掉 entry.env 里那一行"
+    else
+        ok "沙箱镜像会用它：接着跑 ./deploy.sh all"
+    fi
+}
+
+# 构建当前 hermes 源码指纹的基础镜像（本机已有就跳过），再核对 UniWork 内置技能的标记。base 和 all 共用。
+build_base() {
     need docker; need git; need python3; need curl
     local tag log free_g seed
     tag="$(base_tag)"
@@ -417,11 +440,38 @@ cmd_base() {
     docker run --rm --network none --entrypoint test "$tag" -f /opt/hermes/skills/UNIWORK_BUNDLED_ONLY \
         && ok "镜像里有 UniWork 内置技能的标记" \
         || die "镜像里没有 /opt/hermes/skills/UNIWORK_BUNDLED_ONLY：这个提交不是带 UniWork 技能的版本"
-    if [ "$BASE_IMAGE" != "$tag" ]; then
-        warn "entry.env 里固定了 MT_DEPLOY_BASE_IMAGE=$BASE_IMAGE，沙箱镜像会继续用它；要用刚建的，删掉 entry.env 里那一行"
-    else
-        ok "沙箱镜像会用它：接着跑 ./deploy.sh all"
+}
+
+# all：当前指纹的基础镜像不在本机就先建。entry.env 里用 MT_DEPLOY_BASE_IMAGE 固定的不自动建（那是人指定的）。
+ensure_base() {
+    if docker image inspect "$BASE_IMAGE" >/dev/null 2>&1; then
+        ok "基础镜像 $BASE_IMAGE 在本机，不用建"
+        return 0
     fi
+    [ "$BASE_IMAGE" = "$(base_tag)" ] \
+        || die "entry.env 固定的基础镜像 $BASE_IMAGE 不在本机（MT_DEPLOY_BASE_IMAGE 固定的不会自动构建）"
+    build_base
+}
+
+# ---------------------------------------------------------------- frontend
+
+# all / up：前端产物不在、或不是当前代码构建的，就先重新构建（5~10 分钟）。成败看产物里的指纹。
+ensure_frontend() {
+    local want log
+    want="$(frontend_want)"
+    if [ -s "$HERE/nginx/dist-browser/index.html" ] && [ "$(frontend_have)" = "$want" ]; then
+        ok "前端产物是当前代码构建的（指纹 $want），不用重建"
+        return 0
+    fi
+    log="$HERE/.frontend-build.log"
+    say "构建前端（指纹 $want）：产物不在或不是当前代码构建的，约 5~10 分钟；完整输出在 $log"
+    # 只把关键行打到屏幕上，免得满屏 vite 输出。
+    bash "$HERE/scripts/build-frontend.sh" 2>&1 | tee "$log" \
+        | grep --line-buffered -iE 'added [0-9]+ packages|built in|前端已就位|npm (err|error)|error during build' \
+        | sed 's/^/  /' || true
+    [ -s "$HERE/nginx/dist-browser/index.html" ] && [ "$(frontend_have)" = "$want" ] \
+        || die "前端没建成，看 $log 末尾"
+    ok "前端产物 $(frontend_files) 个文件（指纹 $want）"
 }
 
 # ---------------------------------------------------------------- image
@@ -627,13 +677,9 @@ cmd_template() {
 cmd_up() {
     say "起容器"
     ensure_override
-    if [ ! -s "$HERE/nginx/dist-browser/index.html" ]; then
-        [ -n "$FRONTEND_SRC" ] && [ -s "$FRONTEND_SRC/index.html" ] || die "前端产物为空"
-        mkdir -p "$HERE/nginx/dist-browser"
-        cp -rL "$FRONTEND_SRC/." "$HERE/nginx/dist-browser/"
-        ok "前端产物已从 $FRONTEND_SRC 复制（$(find "$HERE/nginx/dist-browser" -type f | wc -l) 个文件）"
-    fi
     [ -n "$TEMPLATE" ] || die "entry.env 里 MT_CUBE_TEMPLATE 为空，先跑 ./deploy.sh template"
+    # nginx 镜像在下面 up --build 时把 nginx/dist-browser/ 拷进去：先保证它是当前代码构建的。
+    ensure_frontend
     chmod 600 "$ENV_FILE"
 
     local foreign_before entry_before
@@ -830,6 +876,19 @@ $sbx"
 
 # ---------------------------------------------------------------- all
 
+# all 开头先说这次要做哪些耗时的步骤。沙箱镜像叠在基础镜像上：基础镜像一换，沙箱镜像也整个重建。
+plan() {
+    local base front cube="按内容指纹，没变就跳过"
+    if docker image inspect "$BASE_IMAGE" >/dev/null 2>&1; then
+        base="已有，跳过"
+    else
+        base="要构建，15~45 分钟"
+        cube="跟着基础镜像整个重建，20~40 分钟"
+    fi
+    if frontend_current; then front="是当前代码构建的，跳过"; else front="要重新构建，5~10 分钟"; fi
+    say "这次要做：基础镜像 $base；前端 $front；沙箱镜像和模板 $cube"
+}
+
 cmd_all() {
     if [ "$NO_PULL" = 0 ]; then
         cmd_pull
@@ -840,6 +899,9 @@ cmd_all() {
         # shellcheck disable=SC2086
         exec bash "$SCRIPT" all $pass
     fi
+    plan
+    ensure_base
+    ensure_frontend
     cmd_check
     cmd_image
     cmd_template
