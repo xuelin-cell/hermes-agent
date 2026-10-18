@@ -1,6 +1,7 @@
 """只观察本机桌面产物，通过原生输出钩子把卡片和回复一同持久化。"""
 
 from collections import OrderedDict
+import asyncio
 from dataclasses import dataclass, field
 import json
 from itertools import islice
@@ -18,6 +19,7 @@ from .paths import (
     media_line,
     named_paths,
     resolve_path,
+    requested_roots,
     snapshot,
 )
 
@@ -36,6 +38,10 @@ class Turn:
     uploads: set = field(default_factory=set)
     paths: dict = field(default_factory=dict)
     pending: dict = field(default_factory=dict)
+    scans: dict = field(default_factory=dict)
+    ambiguous: set = field(default_factory=set)
+    guess: bool = True
+    downloads: dict = field(default_factory=dict)
 
 
 def scope(session_id):
@@ -122,6 +128,10 @@ def before_turn(
             uploads=attachment_paths(user_message, cwd),
         )
         _turns.move_to_end(key)
+        turn = _turns[key]
+        budget = [time.monotonic(), 0]
+        for root in requested_roots(as_text(user_message), cwd):
+            watch_root(turn, root, budget)
         while len(_turns) > 128:
             _turns.popitem(last=False)
 
@@ -130,6 +140,26 @@ def current(session_id, turn_id):
     """旧轮迟到的工具结果不能进入新轮；调用方在锁内读取和修改。"""
     turn = _turns.get(scope(session_id))
     return turn if turn and turn.turn_id == turn_id else None
+
+
+def watch_root(turn, root, budget=None):
+    """开始观察时记基线；包含关系也算并发，歧义保留到两轮都结束。"""
+    if root in turn.scans or len(turn.scans) >= 4:
+        return
+    turn.scans[root] = snapshot(root, budget)
+    for active in _turns.values():
+        if active is turn:
+            continue
+        for other in active.scans:
+            if root.is_relative_to(other) or other.is_relative_to(root):
+                active.ambiguous.add(other)
+                turn.ambiguous.add(root)
+                for observed in (active, turn):
+                    for pending in observed.pending.values():
+                        if pending[0].is_relative_to(root) or root.is_relative_to(
+                            pending[0]
+                        ):
+                            pending[1] = None
 
 
 def before_tool(
@@ -147,15 +177,17 @@ def before_tool(
             root = resolve_path(args["workdir"], root)
             if root is None or not root.is_dir():
                 return
+        watch_root(turn, root)
         before = (
             snapshot(root)
             if tool_name in {"terminal", "execute_code"}
             and not (args or {}).get("background")
+            and root not in turn.ambiguous
             else None
         )
         for active in _turns.values():
             for pending in active.pending.values():
-                if pending[0] == root:
+                if pending[0].is_relative_to(root) or root.is_relative_to(pending[0]):
                     pending[1] = before = None
         if tool_call_id and tool_name in {"terminal", "execute_code"}:
             turn.pending[tool_call_id] = [root, before]
@@ -182,13 +214,8 @@ def after_tool(
             data = json.loads(result) if isinstance(result, str) else result
         except ValueError:
             data = None
-        if status != "ok" or (args or {}).get("background"):
-            return
-        if isinstance(data, dict) and (
-            data.get("error")
-            or data.get("status") in {"running", "background", "error"}
-            or data.get("exit_code") not in (None, 0)
-        ):
+        if not completed(data, status, args):
+            turn.guess = False
             return
         root = (
             pending[0]
@@ -221,6 +248,17 @@ def transform(*, response_text="", session_id="", turn_id="", platform="", **kwa
         turn = current(session_id, turn_id)
         if not turn:
             return None
+        watch_root(turn, local_cwd(turn.task_id) or turn.cwd)
+        budget = [time.monotonic(), 0]
+        if turn.guess:
+            for root, before in turn.scans.items():
+                if root in turn.ambiguous or before is None:
+                    continue
+                after = snapshot(root, budget)
+                if after is not None:
+                    for path, stat in after.items():
+                        if before.get(path) != stat:
+                            turn.paths.setdefault(path, None)
         _turns.pop(scope(session_id), None)
     cwd = local_cwd(turn.task_id) or turn.cwd
     paths = dict.fromkeys([*turn.paths, *named_paths(response_text, cwd)])
@@ -253,6 +291,76 @@ def transform(*, response_text="", session_id="", turn_id="", platform="", **kwa
     return rewritten if rewritten != response_text else None
 
 
+def completed(data, status, args):
+    """观察和下载共用完成判据，MCP 失败、非零退出和后台任务都不能冒充成品。"""
+    return (
+        status == "ok"
+        and not (args or {}).get("background")
+        and not (
+            isinstance(data, dict)
+            and (
+                data.get("error")
+                or data.get("isError")
+                or data.get("status") in {"error", "running", "background"}
+                or data.get("exit_code") not in (None, 0)
+            )
+        )
+    )
+
+
+async def download_result(
+    *,
+    tool_name="",
+    args=None,
+    result=None,
+    status="ok",
+    session_id="",
+    turn_id="",
+    **kwargs,
+):
+    """原结果保留，成功下载才向模型补本地路径；每轮最多四次，网络不占状态锁。"""
+    from .downloads import fetch, generator_urls
+
+    try:
+        data = json.loads(result) if isinstance(result, str) else result
+    except ValueError:
+        data = result
+    if not completed(data, status, args):
+        return None
+    urls = generator_urls(tool_name, as_text(data))
+    if not urls:
+        return None
+    with _lock:
+        turn = current(session_id, turn_id)
+        if turn is None:
+            return None
+        root = local_cwd(turn.task_id) or turn.cwd
+        wanted = [url for url in urls if url not in turn.downloads][
+            : max(0, 4 - len(turn.downloads))
+        ]
+        turn.downloads.update(dict.fromkeys(wanted))
+    # 同批最多四个并行，避免顺序等待突破原生钩子的三十秒上限。
+    saved = await asyncio.gather(*(fetch(url, root) for url in wanted))
+    with _lock:
+        if current(session_id, turn_id) is not turn:
+            for path in saved:
+                if path:
+                    path.unlink(missing_ok=True)
+            return None
+        turn.downloads.update(zip(wanted, saved))
+        paths = [turn.downloads[url] for url in urls if turn.downloads.get(url)]
+        for path in paths:
+            turn.paths[path] = None
+    if not paths:
+        return None
+    if isinstance(data, dict):
+        return json.dumps(
+            {**data, "desktop_deliverables": [str(path) for path in paths]},
+            ensure_ascii=False,
+        )
+    return str(result) + "\n\n已下载到本机：\n" + "\n".join(str(path) for path in paths)
+
+
 def end_turn(*, session_id="", **kwargs):
     """取消、失败和会话结束都清除观察状态，不在下轮补旧文件。"""
     with _lock:
@@ -265,6 +373,7 @@ def register(ctx):
         ("pre_llm_call", before_turn),
         ("pre_tool_call", before_tool),
         ("post_tool_call", after_tool),
+        ("transform_tool_result", download_result),
         ("transform_llm_output", transform),
         ("on_session_end", end_turn),
     ]:

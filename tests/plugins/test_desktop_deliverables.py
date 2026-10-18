@@ -224,7 +224,7 @@ def test_stale_files_and_snapshot_budgets(delivery, monkeypatch):
     """旧文件不补卡；目录过大、层级太深或耗时超限时不拿不完整快照认领产物。"""
     plugin, work = delivery
     future = time.time() + 30
-    monkeypatch.setattr(plugin, "time", SimpleNamespace(time=lambda: future))
+    monkeypatch.setattr(plugin.time, "time", lambda: future)
     begin(plugin)
     output = work / "old.pdf"
     output.write_bytes(b"old")

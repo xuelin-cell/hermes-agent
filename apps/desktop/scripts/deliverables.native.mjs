@@ -14,7 +14,9 @@ import electronPath from 'electron'
 import { build } from 'vite'
 
 if (!process.argv.includes('--run')) {
-  console.log('独立本机模型夹具、原版对话和 Electron 卡片重开验收：node scripts/deliverables.native.mjs --run')
+  console.log(
+    '独立本机模型夹具、原版对话和 Electron 卡片重开验收：node scripts/deliverables.native.mjs --run [--fallback]'
+  )
   process.exit(0)
 }
 
@@ -30,7 +32,15 @@ test('交付卡片从真实持久记录重放，关闭重开与 Renderer 重载�
   }
   await promisify(execFile)(
     process.env.FIXTURE_PYTHON || path.join(repo, '.venv/Scripts/python.exe'),
-    [path.join(repo, 'tests/plugins/desktop_deliverables_fixture.py'), path.join(root, 'conversation')],
+    [
+      path.join(
+        repo,
+        process.argv.includes('--fallback')
+          ? 'tests/plugins/desktop_deliverables_generated_fixture.py'
+          : 'tests/plugins/desktop_deliverables_fixture.py'
+      ),
+      path.join(root, 'conversation')
+    ],
     { cwd: repo, windowsHide: true, timeout: 120000, maxBuffer: 5 * 1024 * 1024, env: { ...env, PYTHONPATH: repo } }
   )
   const receipt = JSON.parse(await fs.readFile(path.join(root, 'conversation/receipt.json'), 'utf8'))

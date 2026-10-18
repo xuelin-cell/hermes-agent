@@ -137,14 +137,13 @@ def fresh(path, since):
         return False
 
 
-def snapshot(root):
+def snapshot(root, budget=None):
     """四层、三千项、半秒内比较文件元数据；不完整快照不用来声称文件是本轮新建。"""
-    started = time.monotonic()
+    budget = budget if budget is not None else [time.monotonic(), 0]
     result = {}
-    count = 0
     for folder, directories, files in os.walk(root, followlinks=False):
-        count += len(directories) + len(files)
-        if count > 3000 or time.monotonic() - started > 0.5:
+        budget[1] += len(directories) + len(files)
+        if budget[1] > 3000 or time.monotonic() - budget[0] > 0.5:
             return None
         directories[:] = [
             name
@@ -156,7 +155,7 @@ def snapshot(root):
             and len((Path(folder) / name).relative_to(root).parts) < 4
         ]
         for name in files:
-            if time.monotonic() - started > 0.5:
+            if time.monotonic() - budget[0] > 0.5:
                 return None
             path = Path(folder) / name
             if eligible(path) and not path.is_symlink():
@@ -166,6 +165,68 @@ def snapshot(root):
                 except OSError:
                     continue
     return result
+
+
+def known_folders():
+    """Windows 使用系统已重定向的用户目录，其它系统使用标准用户目录名。"""
+    folders = {
+        name: Path.home() / name for name in ("Desktop", "Downloads", "Documents")
+    }
+    if os.name == "nt":
+        import winreg
+
+        names = {
+            "Desktop": "Desktop",
+            "Downloads": "{374DE290-123F-4565-9164-39C4925E467B}",
+            "Documents": "Personal",
+        }
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders",
+        ) as key:
+            for name, value in names.items():
+                try:
+                    raw = winreg.QueryValueEx(key, value)[0]
+                    folders[name] = Path(os.path.expandvars(raw))
+                except FileNotFoundError:
+                    continue
+    return folders
+
+
+def requested_roots(text, cwd):
+    """只扫描工作目录和用户本次明示的目录，最多四个，不扫描泛指的整个磁盘。"""
+    roots = [cwd]
+    candidates = [
+        next(value for value in match.groups() if value is not None)
+        for match in _QUOTED.finditer(text)
+    ]
+    candidates += re.findall(_ROOT + r'[^\n`"<>|*?，。；！？、）)\]}]+', text)
+    aliases = {
+        "Desktop": r"(?:到|在|至)桌面|\b(?:to|in|on) (?:the )?desktop\b",
+        "Downloads": r"(?:到|在|至)下载(?:目录|文件夹)?|\b(?:to|in) (?:the )?downloads\b",
+        "Documents": r"(?:到|在|至)文档(?:目录|文件夹)?|\b(?:to|in) (?:the )?documents\b",
+    }
+    selected = [
+        name for name, pattern in aliases.items() if re.search(pattern, text, re.I)
+    ]
+    if selected:
+        folders = known_folders()
+        candidates += [str(folders[name]) for name in selected if name in folders]
+    for raw in candidates[:64]:
+        path = resolve_path(raw, cwd)
+        directory = path and (
+            path.is_dir()
+            or (
+                not path.exists()
+                and Path(raw).expanduser().is_absolute()
+                and not path.suffix
+            )
+        )
+        if directory and path.parent != path and path not in roots:
+            roots.append(path)
+        if len(roots) == 4:
+            break
+    return roots
 
 
 def priority(path):
