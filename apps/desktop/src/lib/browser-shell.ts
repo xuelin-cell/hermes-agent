@@ -28,7 +28,7 @@ import { storedBoolean } from '@/lib/storage'
  *   app/chat/composer/trigger-popover.tsx              the backend's English hints of `@` completions in Chinese
  *   app/chat/right-rail/office-sheet.tsx              (ours) the sheet viewer: spreadsheets the instance turns into tables
  *   app/chat/right-rail/office-slides.tsx              (ours) the page viewer: decks and documents the instance renders page by page
- *   app/chat/right-rail/pdf-preview.tsx                (ours) the PDF viewer: pdf.js in the page, in the page viewer's look
+ *   app/chat/right-rail/pdf-preview.tsx                the shared PDF viewer: browser URLs or desktop-provided bytes
  *   app/chat/right-rail/preview-file.tsx               Office files fall back to the PDF the instance converts them to
  *   app/chat/right-rail/preview-pane.tsx               HTML files from the instance run their scripts, sandboxed;
  *                                                      slide decks and documents open in the page viewer, spreadsheets in
@@ -83,7 +83,7 @@ import { storedBoolean } from '@/lib/storage'
  * for every desktop-only feature (screenshots, tray, pool limits, MaaS account …).
  *
  * Two build-time hooks in vite.config.ts: it emits the files pdf.js loads by
- * name (its worker, CMaps, fonts, decoders) for the PDF viewer, see
+ * name (its worker, CMaps, fonts, decoders) for the shared PDF/PPT viewers, see
  * `scripts/pdfjs-assets.mjs`; and the browser build has no `login.html` page
  * (the entry signs users in, not the desktop's login window).
  */
@@ -259,7 +259,7 @@ export function previewsPdfInViewer(path: string): boolean {
 /** ⌘F / Ctrl+F while the PDF viewer has focus opens the viewer's own search,
  * which searches the whole PDF, rather than the app's find bar over the chat. */
 export function findInPageTakenByViewer(): boolean {
-  return isBrowserShell() && document.activeElement?.closest('[data-pdf-viewer]') != null
+  return document.activeElement?.closest('[data-pdf-viewer]') != null
 }
 
 /** What pdf.js reads a PDF from: its bytes, or where to fetch it. */

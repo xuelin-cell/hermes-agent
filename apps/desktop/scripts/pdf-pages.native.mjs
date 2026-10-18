@@ -1,5 +1,7 @@
+/* global window, document, Image, XMLHttpRequest -- Playwright 页面回调在独立 Electron Renderer 中执行。 */
 import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -11,6 +13,8 @@ import electronPath from 'electron'
 import { build, createServer } from 'vite'
 
 const desktop = path.resolve(import.meta.dirname, '..')
+const { version } = createRequire(import.meta.url)('pdfjs-dist/package.json')
+const assetBase = `assets/pdfjs-${version}`
 const inputs = process.argv.slice(2)
 if (!inputs.length) {
   console.log('只读取现成 PDF，不启动 Office。用法：node scripts/pdf-pages.native.mjs <MS Office PDF> <WPS PDF>')
@@ -71,16 +75,30 @@ test('P10 开发与生产页面均可离线逐页绘制中文 PDF', { timeout: 1
     ]) {
       await page.goto(url)
       await page.waitForFunction(() => typeof window.openPdfPages === 'function')
-      const fetched = await page.evaluate(paths => Promise.all(paths.map(file => new Promise((resolve, reject) => {
-        const request = new XMLHttpRequest()
-        request.open('GET', new URL('pdfjs/' + file, document.baseURI))
-        request.responseType = 'arraybuffer'
-        request.onload = () => resolve({ file, length: request.response?.byteLength, header: [...new Uint8Array(request.response).slice(0, 16)] })
-        request.onerror = reject
-        request.send()
-      }))), resources)
+      const fetched = await page.evaluate(
+        ({ paths, assetBase }) =>
+          Promise.all(
+            paths.map(
+              file =>
+                new Promise((resolve, reject) => {
+                  const request = new XMLHttpRequest()
+                  request.open('GET', new URL(assetBase + '/' + file, document.baseURI))
+                  request.responseType = 'arraybuffer'
+                  request.onload = () =>
+                    resolve({
+                      file,
+                      length: request.response?.byteLength,
+                      header: [...new Uint8Array(request.response).slice(0, 16)]
+                    })
+                  request.onerror = reject
+                  request.send()
+                })
+            )
+          ),
+        { paths: resources, assetBase }
+      )
       for (const resource of fetched) {
-        const expected = await fs.readFile(path.join(output, 'pdfjs', resource.file))
+        const expected = await fs.readFile(path.join(output, assetBase, resource.file))
         assert.equal(resource.length, expected.length, `${mode} ${resource.file} 资源长度`)
         assert.deepEqual(resource.header, [...expected.subarray(0, 16)], `${mode} ${resource.file} 资源内容`)
       }

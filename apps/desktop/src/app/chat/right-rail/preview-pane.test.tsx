@@ -1,3 +1,5 @@
+import { Blob as NodeBlob } from 'node:buffer'
+
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -16,25 +18,20 @@ vi.mock('./real-profile-consent-dialog', () => ({
   RealProfileConsentDialog: () => null
 }))
 
-function stubPdfObjectUrls() {
-  const NativeUrl = URL
-  let objectUrlIndex = 0
-  const createObjectURL = vi.fn((_blob: Blob) => `blob:pdf-preview-${(objectUrlIndex += 1)}`)
-  const revokeObjectURL = vi.fn()
+const pdf = vi.hoisted(() => ({ sources: [] as { data: Uint8Array }[], destroy: vi.fn() }))
+vi.mock('./pdf-engine', () => ({
+  // 仅替代 jsdom 不绘制的引擎，正式预览中心、读取、PDF 校验和字节组件仍运行。
+  createPdfEngine: (_container: unknown, _viewer: unknown, source: { data: Uint8Array }) => {
+    pdf.sources.push(source)
 
-  class TestUrl extends NativeUrl {}
-
-  Object.defineProperties(TestUrl, {
-    createObjectURL: { configurable: true, value: createObjectURL },
-    revokeObjectURL: { configurable: true, value: revokeObjectURL }
-  })
-  vi.stubGlobal('URL', TestUrl)
-
-  return { createObjectURL, revokeObjectURL }
-}
+    return { destroy: pdf.destroy }
+  }
+}))
 
 describe('PreviewPane console state', () => {
   beforeEach(() => {
+    pdf.sources.length = 0
+    pdf.destroy.mockClear()
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) =>
       window.setTimeout(() => callback(Date.now()), 0)
     )
@@ -514,10 +511,10 @@ describe('PreviewPane console state', () => {
     expect(fireEvent.click(sourceLink!)).toBe(false)
   })
 
-  it('renders PDF targets in an embedded viewer', async () => {
+  it('PDF 目标使用分页查看器，换文件和关闭时收尾引擎，不再嵌入 iframe', async () => {
+    vi.stubGlobal('Blob', NodeBlob)
     const dataUrl = 'data:application/pdf;base64,JVBERi0xLjQ='
     const readFileDataUrl = vi.fn(async () => dataUrl)
-    const { createObjectURL, revokeObjectURL } = stubPdfObjectUrls()
     $connection.set({ mode: 'local' } as never)
     vi.stubGlobal('window', {
       ...window,
@@ -542,16 +539,13 @@ describe('PreviewPane console state', () => {
       )
     })
 
-    await waitFor(() => expect(rendered.container.querySelector('iframe')).not.toBeNull(), {
+    await waitFor(() => expect(pdf.sources).toHaveLength(1), {
       container: rendered.container
     })
-    expect(rendered.container.querySelector('iframe')?.getAttribute('src')).toBe('blob:pdf-preview-1')
+    expect(rendered.container.querySelector('[data-pdf-viewer]')).not.toBeNull()
+    expect(rendered.container.querySelector('iframe')).toBeNull()
     expect(readFileDataUrl).toHaveBeenCalledWith('/tmp/spec.pdf')
-    const blob = createObjectURL.mock.calls[0]?.[0]
-
-    expect(blob).toBeInstanceOf(Blob)
-    expect(blob?.type).toBe('application/pdf')
-    expect(await blob?.text()).toBe('%PDF-1.4')
+    expect(new TextDecoder().decode(pdf.sources[0].data)).toBe('%PDF-1.4')
 
     await act(async () => {
       rendered.rerender(
@@ -568,19 +562,18 @@ describe('PreviewPane console state', () => {
       )
     })
 
-    await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(2), {
+    await waitFor(() => expect(pdf.sources).toHaveLength(2), {
       container: rendered.container
     })
-    expect(revokeObjectURL).toHaveBeenCalledWith('blob:pdf-preview-1')
-    expect(rendered.container.querySelector('iframe')?.getAttribute('src')).toBe('blob:pdf-preview-2')
+    expect(pdf.destroy).toHaveBeenCalledTimes(1)
 
     rendered.unmount()
-    expect(revokeObjectURL).toHaveBeenCalledWith('blob:pdf-preview-2')
+    expect(pdf.destroy).toHaveBeenCalledTimes(2)
   })
 
   it('accepts case-insensitive metadata and percent-escaped base64', async () => {
-    const readFileDataUrl = vi.fn(async () => 'data:APPLICATION/PDF;BASE64,%4AVBERi0xLjQ=')
-    const { createObjectURL } = stubPdfObjectUrls()
+    vi.stubGlobal('Blob', NodeBlob)
+    const readFileDataUrl = vi.fn(async () => 'data:APPLICATION/PDF ;charset=binary;BASE64,%4AVBERi0xLjQ=')
     $connection.set({ mode: 'local' } as never)
     vi.stubGlobal('window', {
       ...window,
@@ -605,19 +598,27 @@ describe('PreviewPane console state', () => {
       )
     })
 
-    await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(1), {
+    await waitFor(() => expect(pdf.sources).toHaveLength(1), {
       container: rendered.container
     })
-    expect(rendered.container.querySelector('iframe')?.getAttribute('src')).toBe('blob:pdf-preview-1')
+    expect(new TextDecoder().decode(pdf.sources[0].data)).toBe('%PDF-1.4')
   })
 
   it.each([
-    ['a non-PDF MIME type', 'data:text/html;base64,JVBERi0xLjQ=', 'Invalid PDF data URL type'],
-    ['bytes without a PDF header', 'data:application/pdf;base64,PGh0bWw+', 'Invalid PDF file header'],
-    ['a malformed payload', 'data:application/pdf;base64,%', 'Invalid PDF data URL payload']
-  ])('rejects %s before creating an object URL', async (_case, dataUrl, expectedError) => {
+    ['a non-PDF MIME type', 'data:text/html;base64,JVBERi0xLjQ=', 'This format or media encoding is not supported.'],
+    [
+      'bytes without a PDF header',
+      'data:application/pdf;base64,PGh0bWw+',
+      'This format or media encoding is not supported.'
+    ],
+    [
+      'a malformed payload',
+      'data:application/pdf;base64,%',
+      'Could not preview this file. You can still access the original file.'
+    ]
+  ])('rejects %s before starting the PDF engine', async (_case, dataUrl, expectedError) => {
+    vi.stubGlobal('Blob', NodeBlob)
     const readFileDataUrl = vi.fn(async () => dataUrl)
-    const { createObjectURL } = stubPdfObjectUrls()
     $connection.set({ mode: 'local' } as never)
     vi.stubGlobal('window', {
       ...window,
@@ -646,13 +647,13 @@ describe('PreviewPane console state', () => {
       container: rendered.container
     })
     expect(rendered.container.querySelector('iframe')).toBeNull()
-    expect(createObjectURL).not.toHaveBeenCalled()
+    expect(pdf.sources).toHaveLength(0)
   })
 
   it('retries a restored PDF when the filesystem connection becomes remote', async () => {
+    vi.stubGlobal('Blob', NodeBlob)
     const filePath = '/remote/spec.pdf'
     const dataUrl = 'data:application/pdf;base64,JVBERi0xLjQ='
-    stubPdfObjectUrls()
 
     const readFileDataUrl = vi.fn(async () => {
       throw new Error('File preview failed: file does not exist')
@@ -690,7 +691,7 @@ describe('PreviewPane console state', () => {
       $connection.set({ baseUrl: 'http://macmini', mode: 'remote', profile: 'macmini' } as never)
     })
 
-    await waitFor(() => expect(rendered.container.querySelector('iframe')).not.toBeNull(), {
+    await waitFor(() => expect(pdf.sources).toHaveLength(1), {
       container: rendered.container
     })
     expect(api).toHaveBeenCalledWith({

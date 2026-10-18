@@ -15,6 +15,12 @@ import { createStyledWorkbook } from '../../../../../scripts/sheet-styles.fixtur
 import { FormatPreview } from './format-preview'
 
 const mock = vi.hoisted(() => ({ props: vi.fn(), crash: false }))
+vi.mock('../pdf-preview', () => ({
+  /** 表格降级只核对 PDF 入口；真实 PDF 绘制由专门组件和 Electron 夹具覆盖。 */
+  PdfPreview: function PdfPreview({ target }: { target: { label: string } }) {
+    return <div data-pdf-viewer="" title={target.label} />
+  }
+}))
 vi.mock('@fortune-sheet/react', () => ({
   /** 只替换画布组件；读取、解析、登记和降级仍走正式代码。 */
   Workbook: function Workbook(props: Settings) {
@@ -141,13 +147,13 @@ it('超过 500 行显示说明，繁体中文使用库实际支持的语言标�
   expect(mock.props.mock.lastCall?.[0].data[0].row).toBe(500)
 })
 
-it('损坏内容和组件异常均进入现有 PDF 候选，关闭后释放 PDF 地址', async () => {
+it('损坏内容和组件异常均进入分页 PDF 候选，不再创建 iframe 地址', async () => {
   read.mockResolvedValue('data:application/octet-stream;base64,UEsDBAA=')
   const view = render(<FormatPreview reloadKey={0} target={target()} />)
-  expect(await screen.findByTitle(target().label)).toHaveProperty('tagName', 'IFRAME')
+  expect((await screen.findByTitle(target().label)).hasAttribute('data-pdf-viewer')).toBe(true)
   expect(convert).toHaveBeenCalledWith(target().path, expect.any(String))
   view.unmount()
-  expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:sheet-pdf')
+  expect(URL.createObjectURL).not.toHaveBeenCalled()
   mock.crash = true
   read.mockResolvedValue(dataUrl())
   vi.spyOn(console, 'error').mockImplementation(() => undefined)

@@ -14,7 +14,7 @@ export interface FormatRendererProps extends ComponentProps<typeof LocalFilePrev
 const MediaPreview = lazy(() => import('./media-preview'))
 const DelimitedPreview = lazy(() => import('./delimited-preview'))
 const TiffPreview = lazy(() => import('./tiff-preview'))
-const OfficePdfPreview = lazy(() => import('./office-pdf-preview'))
+const PdfFilePreview = lazy(() => import('./pdf-file-preview'))
 const DocxPreview = lazy(() => import('./docx-preview'))
 const SlidesPreview = lazy(() => import('./slides-preview'))
 const SheetPreview = lazy(() => import('./sheet-preview'))
@@ -26,11 +26,12 @@ export const FORMAT_RENDERERS: Record<
 > = {
   audio: [MediaPreview],
   delimited: [DelimitedPreview],
-  sheet: [SheetPreview, OfficePdfPreview],
+  pdf: [PdfFilePreview],
+  sheet: [SheetPreview, PdfFilePreview],
   slides: [SlidesPreview],
   tiff: [TiffPreview],
   video: [MediaPreview],
-  word: [OfficePdfPreview, DocxPreview]
+  word: [PdfFilePreview, DocxPreview]
 }
 
 /** 前端 Word 候选仅支持 docx；其它 Word 格式保留原转换失败原因与出口。 */

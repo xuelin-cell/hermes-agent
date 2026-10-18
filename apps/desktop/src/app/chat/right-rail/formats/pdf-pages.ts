@@ -1,9 +1,10 @@
 import type { PDFPageProxy } from 'pdfjs-dist'
-import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf.mjs'
-import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
+import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
+
+import { PDF_RESOURCE_OPTIONS } from '../pdf-resources'
 
 const LONG_EDGE = 1600
-const CACHE_PAGES = 6
+const CACHE_PAGES = 30
 
 export interface PdfPageSize {
   width: number
@@ -15,6 +16,8 @@ export interface PdfPages {
   readonly pages: readonly PdfPageSize[]
   /** 页码从 1 开始；返回受本阅读器管理的图片地址，淘汰或关闭后失效。 */
   renderPage: (number: number) => Promise<string>
+  /** 命中时用于首次绘制，避免回看缓存页先闪一次加载占位。 */
+  cachedPage: (number: number) => string | undefined
   dispose: () => Promise<void>
 }
 
@@ -25,16 +28,9 @@ function validSize({ width, height }: PdfPageSize) {
 
 /** 只读取已提供的字节；Worker 与辅助资源均来自随应用发布的本机资源。 */
 export async function openPdfPages(bytes: Uint8Array): Promise<PdfPages> {
-  GlobalWorkerOptions.workerSrc = workerUrl
-  const assets = new URL('pdfjs/', document.baseURI)
-
   const task = getDocument({
     data: bytes.slice(),
-    cMapUrl: new URL('cmaps/', assets).href,
-    cMapPacked: true,
-    standardFontDataUrl: new URL('standard_fonts/', assets).href,
-    wasmUrl: new URL('wasm/', assets).href,
-    iccUrl: new URL('iccs/', assets).href,
+    ...PDF_RESOURCE_OPTIONS,
     useSystemFonts: true,
     stopAtErrors: true
   })
@@ -115,6 +111,8 @@ export async function openPdfPages(bytes: Uint8Array): Promise<PdfPages> {
 
     return {
       pages,
+      /** 只读当前可用地址，随后 renderPage 会更新 LRU 并为显示器复制独立图片。 */
+      cachedPage: number => cache.get(number),
       /** 同页并发共用一次任务，命中时更新最近使用顺序，失败不阻塞下一页。 */
       renderPage(number) {
         if (closed) {

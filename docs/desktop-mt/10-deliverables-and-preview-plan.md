@@ -2,7 +2,7 @@
 
 日期：2026-10-18。分支：`release`（基线 `d149b1f1b4`）。参考实现：UniWork 桌面版 `Kyle549/UniClaw @ uniwork_release`（`ce575e5c`）、服务器版 `zhr12345678/Uni-Work @ feat/postgresql-multitenant`（`a0f5c5c`）。
 
-状态：阶段 1 实现与自动化验证完成，等待用户核验；阶段 2～6 未开始。
+状态：阶段 1、2 实现与自动化验证完成，等待用户核验；阶段 3～6 未开始。
 
 路径约定：`src/`、`electron/` 指 `apps/desktop/` 下的对应目录；`plugins/` 指仓库根目录下的 Hermes 插件目录。行数是预估的产品代码行数，不含测试、夹具和文档。
 
@@ -96,13 +96,24 @@
 
 | 项 | 内容 | 主要改动 |
 | --- | --- | --- |
-| B2 | 桌面版 PDF 与 Office 转出的 PDF 改用白底分页查看器（文字可选、可搜、可缩放）；查看器支持直接传入文件字节 | 预览中心登记 PDF 类型；`office-pdf-preview.tsx`；`pdf-preview.tsx` 增加字节来源（Kyle549 的文件，只加入口） |
+| B2 | 桌面版 PDF 与 Office 转出的 PDF 改用白底分页查看器（文字可选、可搜、可缩放）；查看器支持直接传入文件字节 | 预览中心登记 PDF 类型；`formats/pdf-file-preview.tsx` 替换旧 Office iframe；`pdf-preview.tsx` 增加字节来源（Kyle549 的文件，只加入口） |
 | B3 | PPT 进入一屏范围开始绘制，离开 4～5 屏才释放；缓存约 30 页；新图画好前保留旧图 | `formats/slides-preview.tsx`、`formats/pdf-pages.ts` |
 | B4 | Word 回看重载随 B2 解决 | — |
 
 需留意：白底查看器与 `pdf-pages.ts` 都设置 pdf.js 的 Worker，实施时确认两者共用同一份资源、不互相覆盖。
 
 验证：真实 Electron 打开模型生成的 PDF、Word 转出的 PDF、几十页 PPT，滚到底再回到开头不出现加载占位；`src/app/chat/right-rail` 全部测试通过。
+
+阶段 2 执行记录（2026-10-18）：
+
+- 普通 PDF、Word 转换结果和表格的 PDF 候选统一交给现有白底分页查看器。只为查看器增加字节入口，浏览器原有 URL 与鉴权来源不变；保留 PDF 类型、编码与文件头检查。删除旧 Office iframe 显示器、Blob 地址状态及重复解码逻辑。
+- PPT 在接近一屏时绘制，离开五屏才释放显示图片；范围按面板真实高度计算并随尺寸更新。缓存最多 30 页，命中时立即显示，新图完成前保留旧图；淘汰和关闭仍释放资源。
+- PDF、PPT 共用 `pdf-resources.ts` 与 `scripts/pdfjs-assets.mjs`，开发 HTTP 和生产 file 页面使用相同版本目录下的 Worker、字体及解码资源。删除重复的 `pdf-assets.ts` 和旧资源发布路径，不保留回退插件。
+- 字节入口、PDF 登记、桌面资源输出、PPT 缓存和图片保留断言先在旧实现上观察到失败，再切回新实现通过；另补回归测试保留目标已带的临时 PDF 字节和合法 Data URL 元数据。`npx vitest run src/app/chat/right-rail src/lib/browser-shell.test.ts scripts/pdfjs-assets.test.mjs` 最终 33 个文件、338 项通过；完整 TypeScript、改动文件 ESLint 零警告、脚本语法及 Git 差异检查通过。自己新增或修改的行已核对格式，未重排存量整文件格式差异。
+- 经用户授权，在独立临时目录生成 4 页 Word、24 页 PPT，由现有 MS Office 转换服务生成真实 PDF。使用前确认无现用 Word／PowerPoint，转换后确认本轮实例退出；没有借用已存在的 WPS，没有操作用户文档、现用窗口、账号数据或 Hermes 后端。
+- 真实 Electron 生产页面从正式预览中心与 preload 打开已有模型 PDF、真实 Word PDF 和 24 页 PPT；原 PDF 文件读取走真实 IPC，Office 转换响应由夹具传回上述真实产物。完成鼠标选字、搜索、缩放、白底检查，以及滚到底再回开头；PPT 回看时监测不到加载占位。开发页面另验证正式 PDF 引擎、PPT 绘制和同版本 Worker；原有逐页绘制夹具也通过开发／生产资源校验。截图已检查。
+- 可复验命令：`node scripts/pdf-preview.native.mjs --run [已有PDF] --office`。只有显式 `--office` 才调用本机 Office，未指定时使用受控转换产物。最近真实转换与界面记录位于 `%TEMP%\hermes-pdf-viewer-8Z1fvw`，逐页资源记录位于 `%TEMP%\hermes-pdf-pages-OEhAua`。
+- 边界：不是整应用登录到聊天的验收；本轮未实测 WPS、LibreOffice、复杂文档和安装包，未调用模型、未开始交付物插件或提前转换。仍需用户在日常桌面文件上核验；`pdf-preview.tsx` 的字节入口改动可转告 Kyle549，本轮未向协作者发消息。
 
 ### 阶段 3：交付物主体（约 350 行）
 

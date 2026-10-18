@@ -12,13 +12,11 @@ import type { PdfEngine, PdfFindResult } from './pdf-engine'
 import { MAX_ZOOM, MIN_ZOOM } from './pdf-zoom'
 import { PreviewEmptyState } from './preview-file'
 
-// Browser build only (lib/browser-shell.ts::previewsPdfInViewer): the PDF
-// viewer. pdf.js draws the pages in the page itself (pdf-engine.ts, loaded the
+// Shared PDF viewer. pdf.js draws the pages in the page itself (pdf-engine.ts, loaded the
 // first time a PDF is opened), laid out like the page viewer shows a Word
 // document (office-slides.tsx): pages top to bottom under a page counter. The
 // text can be selected and copied, and searched from the search box (⌘F / Ctrl+F
-// opens it); the zoom fits the pane until it is changed. Upstream frames the
-// browser's own PDF viewer.
+// opens it); the zoom fits the pane until it is changed.
 
 type Status = 'error' | 'loading' | 'password' | 'ready'
 
@@ -37,7 +35,16 @@ function failureMessage(failure: unknown, copy: ReturnType<typeof browserShellCo
   return copy.pdf.failed
 }
 
-export function PdfPreview({ reloadKey, target }: { reloadKey: number; target: PreviewTarget }) {
+/** 桌面直接传入字节；不提供字节时仍沿用浏览器原有的鉴权来源。 */
+export function PdfPreview({
+  bytes,
+  reloadKey,
+  target
+}: {
+  bytes?: Uint8Array
+  reloadKey: number
+  target: PreviewTarget
+}) {
   const { locale, t } = useI18n()
   const copy = browserShellCopy(locale)
   const path = target.path || target.source
@@ -88,32 +95,35 @@ export function PdfPreview({ reloadKey, target }: { reloadKey: number; target: P
     setQuery('')
     setFound(null)
 
-    Promise.all([import('./pdf-engine'), pdfDocumentSource(path)]).then(([{ createPdfEngine }, source]) => {
-      if (!active) {
-        return
-      }
+    Promise.all([import('./pdf-engine'), bytes ? { data: bytes.slice() } : pdfDocumentSource(path)]).then(
+      ([{ createPdfEngine }, source]) => {
+        if (!active) {
+          return
+        }
 
-      engine = createPdfEngine(container, viewer, source, {
-        onError: fail,
-        onFind: result => active && setFound(result),
-        onPages: count => {
-          if (active) {
-            setPages(count)
-            setStatus('ready')
-          }
-        },
-        onPassword: (retry, incorrect) => {
-          if (active) {
-            retryRef.current = retry
-            setPassword('')
-            setPasswordWrong(incorrect)
-            setStatus('password')
-          }
-        },
-        onScale: next => active && setScale(next)
-      })
-      engineRef.current = engine
-    }, fail)
+        engine = createPdfEngine(container, viewer, source, {
+          onError: fail,
+          onFind: result => active && setFound(result),
+          onPages: count => {
+            if (active) {
+              setPages(count)
+              setStatus('ready')
+            }
+          },
+          onPassword: (retry, incorrect) => {
+            if (active) {
+              retryRef.current = retry
+              setPassword('')
+              setPasswordWrong(incorrect)
+              setStatus('password')
+            }
+          },
+          onScale: next => active && setScale(next)
+        })
+        engineRef.current = engine
+      },
+      fail
+    )
 
     return () => {
       active = false
@@ -123,7 +133,7 @@ export function PdfPreview({ reloadKey, target }: { reloadKey: number; target: P
       // pdf.js draws into this element itself; the next file starts on an empty one.
       viewer.replaceChildren()
     }
-  }, [path, reloadKey])
+  }, [bytes, path, reloadKey])
 
   useEffect(() => {
     if (status === 'password') {

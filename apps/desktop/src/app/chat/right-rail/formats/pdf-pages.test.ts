@@ -3,7 +3,11 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { openPdfPages } from './pdf-pages'
 
 const mock = vi.hoisted(() => ({ getDocument: vi.fn() }))
-vi.mock('pdfjs-dist/legacy/build/pdf.mjs', () => ({ getDocument: mock.getDocument, GlobalWorkerOptions: {} }))
+vi.mock('pdfjs-dist/legacy/build/pdf.mjs', () => ({
+  getDocument: mock.getDocument,
+  GlobalWorkerOptions: {},
+  version: 'fixture'
+}))
 
 const draw = vi.fn()
 const cleanup = vi.fn()
@@ -29,7 +33,7 @@ beforeEach(() => {
     render: draw,
     cleanup
   }))
-  mock.getDocument.mockReset().mockReturnValue({ promise: Promise.resolve({ numPages: 9, getPage }), destroy })
+  mock.getDocument.mockReset().mockReturnValue({ promise: Promise.resolve({ numPages: 32, getPage }), destroy })
   let url = 0
   vi.spyOn(URL, 'createObjectURL').mockImplementation(() => `blob:pdf-${++url}`)
   vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined)
@@ -47,10 +51,10 @@ it('保留原字节，打开时只读第一页尺寸，画图按各页真实尺�
   expect(options.data).toEqual(bytes)
   expect(options.data).not.toBe(bytes)
   expect(options.useSystemFonts).toBe(true)
-  expect(options.cMapUrl).toMatch(/\/pdfjs\/cmaps\/$/)
+  expect(options.cMapUrl).toMatch(/\/assets\/pdfjs-[^/]+\/cmaps\/$/)
   // 几百页的文稿不必先逐页读尺寸：其余页先沿用第一页的比例占位。
   expect(getPage).toHaveBeenCalledTimes(1)
-  expect(reader.pages).toHaveLength(9)
+  expect(reader.pages).toHaveLength(32)
   expect(reader.pages[1]).toEqual({ width: 100, height: 200 })
   await reader.renderPage(1)
   await reader.renderPage(2)
@@ -69,20 +73,21 @@ it('同页并发只画一次，重复访问更新 LRU，超过上限仅撤销最
   expect(first).toBe(second)
   expect(draw).toHaveBeenCalledTimes(1)
 
-  for (let number = 2; number <= 6; number++) {
+  for (let number = 2; number <= 30; number++) {
     await reader.renderPage(number)
   }
 
+  expect(URL.revokeObjectURL).not.toHaveBeenCalled()
   await reader.renderPage(1)
   const before = draw.mock.calls.length
-  await reader.renderPage(7)
+  await reader.renderPage(31)
   expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:pdf-2')
   expect(URL.revokeObjectURL).not.toHaveBeenCalledWith(first)
   expect(await reader.renderPage(1)).toBe(first)
   expect(draw).toHaveBeenCalledTimes(before + 1)
   expect(await reader.renderPage(2)).not.toBe('blob:pdf-2')
   await reader.dispose()
-  expect(URL.revokeObjectURL).toHaveBeenCalledTimes(8)
+  expect(URL.revokeObjectURL).toHaveBeenCalledTimes(32)
   await reader.dispose()
   expect(destroy).toHaveBeenCalledTimes(1)
 })
@@ -136,7 +141,7 @@ it('编码期间关闭不会发布图片，排队任务不再启动，关闭可�
 it('非法页码和空编码结果明确失败，不留图片或画布', async () => {
   const reader = await openPdfPages(new Uint8Array([1]))
 
-  for (const number of [0, -1, 1.2, NaN, 10]) {
+  for (const number of [0, -1, 1.2, NaN, 33]) {
     await expect(reader.renderPage(number)).rejects.toEqual({ code: 'unsupported' })
   }
 

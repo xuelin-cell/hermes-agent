@@ -46,10 +46,12 @@ test('the browser build publishes the worker and the files pdf.js loads by name'
   assert.ok([...files.keys()].every(name => name.startsWith(base)))
 })
 
-test('the desktop build publishes none of them', () => {
+test('桌面构建发布与浏览器相同的 Worker 及资源，不再维护两套路径', () => {
+  process.env.VITE_HERMES_BROWSER_BUILD = '1'
+  const browserFiles = emitted()
   delete process.env.VITE_HERMES_BROWSER_BUILD
 
-  assert.equal(emitted().size, 0)
+  assert.deepEqual(emitted(), browserFiles)
 })
 
 test('the dev server serves them from the package', () => {

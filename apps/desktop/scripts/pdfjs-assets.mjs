@@ -1,4 +1,4 @@
-// The browser build's PDF viewer (src/app/chat/right-rail/pdf-preview.tsx) runs
+// The shared PDF viewer (src/app/chat/right-rail/pdf-preview.tsx) runs
 // pdf.js, which starts its worker from a URL and fetches, on demand, the files a
 // PDF may need: CMaps (CJK text in fonts the file does not embed), the standard
 // fonts, image decoders (wasm) and a CMYK colour profile. It asks for them by
@@ -7,8 +7,7 @@
 // gets a new folder, so the long cache on assets/ stays safe) and served from
 // node_modules by the dev server. The worker is emitted as .js: nginx's MIME
 // types do not know .mjs, and a module worker served as anything but JavaScript
-// does not start. Only the browser build (VITE_HERMES_BROWSER_BUILD=1) emits
-// them; the desktop app does not show PDFs this way.
+// does not start. Both desktop and browser builds publish this same set.
 import fs from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
@@ -18,6 +17,7 @@ const WORKER = 'legacy/build/pdf.worker.min.mjs'
 
 const CONTENT_TYPES = { '.js': 'text/javascript', '.wasm': 'application/wasm' }
 
+/** PDF 与 PPT 共用这一份 Worker、字体和解码资源，开发与发行保持相同地址。 */
 export function pdfjsAssets() {
   const root = path.dirname(createRequire(import.meta.url).resolve('pdfjs-dist/package.json'))
   const { version } = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
@@ -47,7 +47,6 @@ export function pdfjsAssets() {
       })
     },
     generateBundle() {
-      if (process.env.VITE_HERMES_BROWSER_BUILD !== '1') return
       for (const [name, file] of files()) {
         this.emitFile({ type: 'asset', fileName: base + name, source: fs.readFileSync(file) })
       }

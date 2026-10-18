@@ -471,7 +471,7 @@ describe('browser shell', () => {
     pages.focus()
 
     expect(previewsPdfInViewer('/w/论文.pdf')).toBe(false)
-    expect(findInPageTakenByViewer()).toBe(false)
+    expect(findInPageTakenByViewer()).toBe(true)
 
     document.documentElement.dataset.hermesBrowser = 'production'
 

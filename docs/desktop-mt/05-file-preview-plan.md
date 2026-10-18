@@ -134,7 +134,7 @@ shared/office-preview.ts             前端与主进程共用的约定：扩展�
 | `electron/preload.ts` | 新增 2 个桥接方法：转换（可带请求编号）与取消 | P07、审阅修复阶段 1 |
 | `src/global.d.ts` | 这两个方法的类型 | P07、审阅修复阶段 1 |
 | `apps/desktop/package.json`、根 `package-lock.json` | 新增依赖 | P03、P09、P10、P12、P15 |
-| `apps/desktop/vite.config.ts` | 注册本地 PDF 资源插件，导入与登记共 3 行；新增 `pdf-assets.ts` 提供开发资源及构建输出 | P10 |
+| `apps/desktop/vite.config.ts` | PDF 与 PPT 统一由 `scripts/pdfjs-assets.mjs` 提供本机 Worker、字体和解码资源；重复的 `pdf-assets.ts` 已移除 | P10、交付物预览阶段 2 |
 | 根 `package.json` | FortuneSheet 需要的一条依赖覆盖（UniWork 已有同样配置；实施时确认是否仍需要） | P12 |
 
 明确不改：`preview-file.tsx` 的现有逻辑（上表的导出除外）、`src/lib/local-preview.ts`、`src/store/preview.ts`、`electron/media-protocol.ts`、Hermes Python 后端。

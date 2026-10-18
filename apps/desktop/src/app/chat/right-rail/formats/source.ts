@@ -43,6 +43,39 @@ export async function readPreviewBytes(path: string): Promise<ArrayBuffer> {
   }
 }
 
+/** PDF 保留原有类型、编码及文件头校验；字节读取后直接交给分页引擎，不创建 iframe 地址。 */
+export async function readPdfBytes(path: string, supplied?: string): Promise<Uint8Array> {
+  try {
+    const source = supplied ?? (await readDesktopFileDataUrl(path))
+    const comma = source.indexOf(',')
+
+    const metadata = source
+      .slice(5, comma)
+      .split(';')
+      .map(part => part.trim().toLowerCase())
+
+    if (!source.startsWith('data:') || comma < 0 || metadata[0] !== 'application/pdf' || !metadata.includes('base64')) {
+      throw { code: 'unsupported' }
+    }
+
+    const blob = dataUrlToBlob(`data:application/pdf;base64,${decodeURIComponent(source.slice(comma + 1))}`)
+
+    if (!blob) {
+      throw { code: 'unsupported' }
+    }
+
+    const bytes = new Uint8Array(await blob.arrayBuffer())
+
+    if (new TextDecoder().decode(bytes.subarray(0, 5)) !== '%PDF-') {
+      throw { code: 'unsupported' }
+    }
+
+    return bytes
+  } catch (error) {
+    throw readFailure(error)
+  }
+}
+
 /** 原文件按读取归属请求现有转换；连接变化或未知异常不把旧产物交给显示器，取消时跳过排队转换。 */
 export async function readOfficePreviewPdf(path: string, signal?: AbortSignal): Promise<Uint8Array> {
   const desktop = window.hermesDesktop
@@ -61,9 +94,13 @@ export async function readOfficePreviewPdf(path: string, signal?: AbortSignal): 
     signal?.addEventListener('abort', cancel, { once: true })
     const result = await desktop.convertOfficePreview(path, requestId)
 
-    if (owner !== desktopFsCacheKey()) {throw { code: 'unavailable' }}
+    if (owner !== desktopFsCacheKey()) {
+      throw { code: 'unavailable' }
+    }
 
-    if (result.ok === false) {throw previewFailure(result)}
+    if (result.ok === false) {
+      throw previewFailure(result)
+    }
 
     return result.pdf
   } catch (error) {

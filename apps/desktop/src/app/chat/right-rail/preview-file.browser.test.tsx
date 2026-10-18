@@ -1,3 +1,5 @@
+import { Blob as NodeBlob } from 'node:buffer'
+
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -7,6 +9,16 @@ const bridge = vi.hoisted(() => ({ officePreviewDataUrl: vi.fn() }))
 const fs = vi.hoisted(() => ({ readDesktopFileDataUrl: vi.fn(), readDesktopFileText: vi.fn() }))
 
 vi.mock('@/dev/browser-bridge', () => bridge)
+
+const viewed = vi.hoisted(() => ({ bytes: [] as Uint8Array[] }))
+vi.mock('./pdf-preview', () => ({
+  /** 仅替代绘制入口，验证浏览器旧 Office 目标仍从原桥接取得同一份字节。 */
+  PdfPreview: function PdfPreview({ bytes }: { bytes: Uint8Array }) {
+    viewed.bytes.push(bytes)
+
+    return <div data-pdf-viewer="" />
+  }
+}))
 
 vi.mock('@/lib/desktop-fs', async importOriginal => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -35,6 +47,8 @@ const restored: PreviewTarget = {
 const { createObjectURL, revokeObjectURL } = URL
 
 beforeEach(() => {
+  viewed.bytes.length = 0
+  vi.stubGlobal('Blob', NodeBlob)
   window.document.documentElement.dataset.hermesBrowser = 'production'
   URL.createObjectURL = vi.fn(() => 'blob:office-pdf')
   URL.revokeObjectURL = vi.fn()
@@ -46,6 +60,7 @@ afterEach(() => {
   URL.createObjectURL = createObjectURL
   URL.revokeObjectURL = revokeObjectURL
   vi.clearAllMocks()
+  vi.unstubAllGlobals()
 })
 
 describe('Office files in the browser build’s preview pane', () => {
@@ -54,7 +69,10 @@ describe('Office files in the browser build’s preview pane', () => {
 
     const { container } = render(<LocalFilePreview reloadKey={0} target={restored} />)
 
-    await waitFor(() => expect(container.querySelector('iframe')?.getAttribute('src')).toBe('blob:office-pdf'))
+    await waitFor(() => expect(viewed.bytes).toHaveLength(1))
+    expect(new TextDecoder().decode(viewed.bytes[0])).toBe('%PDF-1.7 deck')
+    expect(container.querySelector('[data-pdf-viewer]')).not.toBeNull()
+    expect(container.querySelector('iframe')).toBeNull()
     expect(bridge.officePreviewDataUrl).toHaveBeenCalledWith('/mnt/u/workspace/新疆文旅.pptx')
     expect(fs.readDesktopFileDataUrl).not.toHaveBeenCalled()
     expect(fs.readDesktopFileText).not.toHaveBeenCalled()

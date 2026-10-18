@@ -7,8 +7,18 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { $connection } from '@/store/session'
 
 import { FormatPreview } from './format-preview'
-import OfficePdfPreview from './office-pdf-preview'
+import PdfFilePreview from './pdf-file-preview'
 import { readOfficePreviewPdf } from './source'
+
+const opened = vi.hoisted(() => ({ sources: [] as { data: Uint8Array }[], destroy: vi.fn() }))
+vi.mock('../pdf-engine', () => ({
+  // 仅替代 jsdom 无法绘制的 pdf.js 层，正式读取、分页组件与字节交接均执行。
+  createPdfEngine: (_container: unknown, _viewer: unknown, source: { data: Uint8Array }) => {
+    opened.sources.push(source)
+
+    return { destroy: opened.destroy }
+  }
+}))
 
 const originalBridge = window.hermesDesktop
 const originalCreate = URL.createObjectURL
@@ -31,6 +41,8 @@ function target(extension = 'docx') {
 }
 
 beforeEach(() => {
+  opened.sources.length = 0
+  opened.destroy.mockClear()
   $connection.set(null)
   convert.mockReset().mockResolvedValue(success)
   onFailure.mockReset()
@@ -58,21 +70,32 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-it.each(['docx', 'doc', 'odt'])('预览中心把 %s 转成 PDF，以 Blob iframe 显示并在关闭时释放', async extension => {
+it.each(['docx', 'doc', 'odt'])('预览中心把 %s 转成 PDF 字节，交给分页查看器，关闭后释放引擎', async extension => {
   const file = target(extension)
   const view = render(<FormatPreview reloadKey={0} target={file} />)
-  const frame = await screen.findByTitle(file.label)
-  expect(frame.tagName).toBe('IFRAME')
-  expect(frame.getAttribute('src')).toBe('blob:word-preview')
+  await waitFor(() => expect(opened.sources).toHaveLength(1))
+  expect(screen.getByRole('region', { name: file.label }).hasAttribute('data-pdf-viewer')).toBe(true)
   expect(convert).toHaveBeenCalledWith(file.path, expect.any(String))
-  const blob = vi.mocked(URL.createObjectURL).mock.calls[0][0] as Blob
-  expect(blob.type).toBe('application/pdf')
-  expect(new Uint8Array(await blob.arrayBuffer())).toEqual(pdf)
+  expect(opened.sources[0].data).toEqual(pdf)
+  expect(view.container.querySelector('iframe')).toBeNull()
+  expect(URL.createObjectURL).not.toHaveBeenCalled()
   view.unmount()
-  expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:word-preview')
+  expect(opened.destroy).toHaveBeenCalledTimes(1)
 })
 
-it('等待转换显示公共加载器和说明，刷新重新请求并释放旧 Blob', async () => {
+it('PDF 已随目标提供字节时直接显示，不重新读取可能已失效的临时路径', async () => {
+  const readFileDataUrl = vi.fn().mockRejectedValue(new Error('temporary file gone'))
+  window.hermesDesktop.readFileDataUrl = readFileDataUrl
+  render(
+    <FormatPreview reloadKey={0} target={{ ...target('pdf'), dataUrl: 'data:application/pdf;base64,JVBERi0xLjQ=' }} />
+  )
+  await waitFor(() => expect(opened.sources).toHaveLength(1))
+  expect(new TextDecoder().decode(opened.sources[0].data)).toBe('%PDF-1.4')
+  expect(readFileDataUrl).not.toHaveBeenCalled()
+  expect(convert).not.toHaveBeenCalled()
+})
+
+it('等待转换显示公共加载器和说明，刷新重新请求并收尾旧引擎', async () => {
   let resolve!: (result: OfficePreviewResult) => void
   convert.mockImplementationOnce(
     () =>
@@ -81,18 +104,18 @@ it('等待转换显示公共加载器和说明，刷新重新请求并释放旧 
       })
   )
   const file = target()
-  const view = render(<OfficePdfPreview onFailure={onFailure} path={file.path} reloadKey={0} target={file} />)
+  const view = render(<PdfFilePreview onFailure={onFailure} path={file.path} reloadKey={0} target={file} />)
   expect(screen.getByRole('status', { name: 'Converting document' })).toBeTruthy()
   expect(screen.getByText('The first preview may take a few seconds.')).toBeTruthy()
   await act(async () => resolve(success))
-  await screen.findByTitle(file.label)
-  view.rerender(<OfficePdfPreview onFailure={onFailure} path={file.path} reloadKey={1} target={file} />)
+  await waitFor(() => expect(opened.sources).toHaveLength(1))
+  view.rerender(<PdfFilePreview onFailure={onFailure} path={file.path} reloadKey={1} target={file} />)
   await waitFor(() => expect(convert).toHaveBeenCalledTimes(2))
-  await screen.findByTitle(file.label)
-  expect(URL.revokeObjectURL).toHaveBeenCalledTimes(1)
+  await waitFor(() => expect(opened.sources).toHaveLength(2))
+  expect(opened.destroy).toHaveBeenCalledTimes(1)
   expect(onFailure).not.toHaveBeenCalled()
-  vi.mocked(URL.createObjectURL).mockImplementationOnce(() => { throw new Error('private Blob error') })
-  view.rerender(<OfficePdfPreview onFailure={onFailure} path={file.path} reloadKey={2} target={file} />)
+  convert.mockRejectedValueOnce(new Error('private conversion error'))
+  view.rerender(<PdfFilePreview onFailure={onFailure} path={file.path} reloadKey={2} target={file} />)
   await waitFor(() => expect(onFailure).toHaveBeenCalledWith({ code: 'unavailable' }))
 })
 
@@ -130,16 +153,21 @@ it('远程不调用本机转换，只保留原连接下载，也不提示安装�
   expect(screen.queryByText('If no conversion software is available, install LibreOffice and try again.')).toBeNull()
 })
 
-it('换文件后旧转换不覆盖新文件，也不创建额外的 Blob 地址', async () => {
+it('换文件后旧转换不覆盖新文件，也不创建额外的 PDF 引擎', async () => {
   let resolve!: (result: OfficePreviewResult) => void
-  convert.mockImplementationOnce(() => new Promise(done => { resolve = done }))
+  convert.mockImplementationOnce(
+    () =>
+      new Promise(done => {
+        resolve = done
+      })
+  )
   const view = render(<FormatPreview reloadKey={0} target={target()} />)
   await waitFor(() => expect(convert).toHaveBeenCalledTimes(1))
   view.rerender(<FormatPreview reloadKey={0} target={target('doc')} />)
-  await screen.findByTitle(target('doc').label)
+  await waitFor(() => expect(opened.sources).toHaveLength(1))
   await act(async () => resolve(success))
-  expect(URL.createObjectURL).toHaveBeenCalledTimes(1)
-  expect(screen.queryByTitle(target().label)).toBeNull()
+  expect(opened.sources).toHaveLength(1)
+  expect(screen.queryByRole('region', { name: target().label })).toBeNull()
   // 离开旧文件时取消它自己的那次请求，排队中的旧转换不再挡住新文件。
   const [, firstRequest] = convert.mock.calls[0]
   expect(window.hermesDesktop.cancelOfficePreview).toHaveBeenCalledWith(firstRequest)
@@ -160,7 +188,7 @@ it('切换连接后忽略旧转换，缺少桥接和未知异常统一为不可�
   await screen.findByRole('button', { name: 'Download' })
   await act(async () => resolve(success))
   expect(URL.createObjectURL).not.toHaveBeenCalled()
-  expect(screen.queryByTitle(target('odt').label)).toBeNull()
+  expect(screen.queryByRole('region', { name: target('odt').label })).toBeNull()
   view.unmount()
   $connection.set(null)
   window.hermesDesktop = {} as never
