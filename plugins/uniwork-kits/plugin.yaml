@@ -7,6 +7,5 @@ hooks:
   - pre_tool_call
   - post_tool_call
   - transform_tool_result
-  - transform_llm_output
   - on_session_start
   - on_session_end

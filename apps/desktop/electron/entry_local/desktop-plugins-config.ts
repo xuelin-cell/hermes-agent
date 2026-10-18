@@ -5,7 +5,7 @@ import { isMap, isScalar, isSeq, type Node, parseDocument, type YAMLMap } from '
 
 import { writeSecretFileAtomic } from '../hardening'
 
-const PLUGIN = 'uniwork-kits'
+const PLUGINS = ['uniwork-kits', 'desktop-deliverables']
 const OPTIONS = { version: '1.1' as const, intAsBigInt: true, prettyErrors: false, logLevel: 'silent' as const }
 
 /** 共享映射和合并键不改写，避免影响用户引用的其他配置。 */
@@ -15,15 +15,16 @@ function isIndependentMap(value: unknown): value is YAMLMap {
   )
 }
 
+/** 识别已有启用和明确停用项，不覆盖用户的插件选择。 */
 function lists(value: unknown, name: string): boolean {
   return isSeq(value) && value.items.some(item => (isScalar(item) ? item.value : item) === name)
 }
 
 /**
- * 内置套件和专家靠 uniwork-kits 插件装进账号：后端启动时它把安装包里带的套件和专家
- * 按内容比对后装好。登录时确保它在启用名单里；用户自己写进 disabled 的保持不动。
+ * 登录准备时启用内置套件与交付观察插件；共享一次 YAML 校验和原子写入。
+ * 用户自己写进 disabled 的插件保持停用，不为新版另留旧的单插件入口。
  */
-export function enableUniworkKits(home: string): void {
+export function enableDesktopPlugins(home: string, names: readonly string[] = PLUGINS): void {
   const file = path.join(home, 'config.yaml')
   const existing = fs.lstatSync(file, { throwIfNoEntry: false })
 
@@ -57,9 +58,11 @@ export function enableUniworkKits(home: string): void {
   const enabled = isMap(plugins) ? plugins.get('enabled') : undefined
   const disabled = isMap(plugins) ? plugins.get('disabled') : undefined
 
+  const missing = names.filter(name => !lists(enabled, name) && !lists(disabled, name))
+
   if (
-    lists(enabled, PLUGIN) ||
-    lists(disabled, PLUGIN) ||
+    !missing.length ||
+    (isSeq(enabled) && enabled.anchor) ||
     (enabled !== undefined && enabled !== null && !isSeq(enabled))
   ) {
     return
@@ -70,9 +73,11 @@ export function enableUniworkKits(home: string): void {
   }
 
   if (isSeq(enabled)) {
-    enabled.add(doc.createNode(PLUGIN))
+    for (const name of missing) {
+      enabled.add(doc.createNode(name))
+    }
   } else {
-    doc.setIn(['plugins', 'enabled'], doc.createNode([PLUGIN]))
+    doc.setIn(['plugins', 'enabled'], doc.createNode(missing))
   }
 
   const next = doc.toString({ lineWidth: 0 })

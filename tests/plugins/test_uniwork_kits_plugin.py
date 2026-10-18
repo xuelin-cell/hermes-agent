@@ -572,9 +572,9 @@ def test_register_wires_cli_sections_and_hook(kits):
         "on_session_start",
         "on_session_end",
         "transform_tool_result",
-        "transform_llm_output",
     }
     assert calls["sections"] and all(is_valid_system_prompt_section_id(s) for s in calls["sections"])
+    assert "transform_llm_output" not in calls["hooks"]
 
 
 def _zip_dir(src: Path, dest: Path) -> None:
@@ -1238,40 +1238,6 @@ def test_expert_rules_say_how_files_reach_the_chat(kits, profile_env, expert_pkg
     assert "MEDIA:<绝对路径>" in on_desktop and "不要声称已弹出文件卡片" not in on_desktop
     on_cli = working({"profile_name": "demo-expert", "platform": "cli"})
     assert "MEDIA:" not in on_cli and "完整路径" in on_cli
-
-
-def test_reply_naming_new_files_gets_desktop_cards(kits, tmp_path):
-    import os
-    import time
-
-    kits.turns.clear()
-    started = time.time()
-    out = tmp_path / "out dir"
-    out.mkdir()
-    report = out / "华为首次覆盖报告.docx"
-    model = out / "Huawei_Model.xlsx"
-    old = out / "旧数据.xlsx"
-    for path in (report, model, old):
-        path.write_bytes(b"x")
-    os.utime(old, (started - 3600, started - 3600))
-    deck = tmp_path / "deck.pptx"
-    deck.write_bytes(b"x")
-
-    turn = _turn(kits, "c1")
-    turn.started = started
-    reply = (
-        f"已完成。交付目录 `{out}`\n\n| 文件 | 说明 |\n|---|---|\n| **{report.name}** | 报告 |\n| {model.name} | 模型 |\n"
-        f"| {old.name} | 去年的 |\n\n另见 {deck.as_posix()} 和 https://example.com/a.png\n\nMEDIA:{deck}"
-    )
-    carded = kits.delivery.on_transform_llm_output(response_text=reply, session_id="c1", platform="desktop")
-    added = carded[len(reply):]
-    assert str(report) in added and str(model) in added
-    assert old.name not in added and "example.com" not in added
-    assert added.count("deck.pptx") == 0  # already carded by the model
-    assert "MEDIA:`" in added  # a path with a space is quoted
-
-    assert kits.delivery.on_transform_llm_output(response_text=reply, session_id="c1", platform="cli") is None
-    assert kits.delivery.on_transform_llm_output(response_text="没有文件", session_id="c1", platform="desktop") is None
 
 
 def test_package_hook_blocks_only_on_exit_2_or_an_explicit_deny(kits, profile_env):

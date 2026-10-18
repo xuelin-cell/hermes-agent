@@ -2,7 +2,7 @@
 
 日期：2026-10-18。分支：`release`（基线 `d149b1f1b4`）。参考实现：UniWork 桌面版 `Kyle549/UniClaw @ uniwork_release`（`ce575e5c`）、服务器版 `zhr12345678/Uni-Work @ feat/postgresql-multitenant`（`a0f5c5c`）。
 
-状态：阶段 1、2 实现与自动化验证完成，等待用户核验；阶段 3～6 未开始。
+状态：阶段 1～3 实现与自动化验证完成，等待用户核验；阶段 4～6 未开始。
 
 路径约定：`src/`、`electron/` 指 `apps/desktop/` 下的对应目录；`plugins/` 指仓库根目录下的 Hermes 插件目录。行数是预估的产品代码行数，不含测试、夹具和文档。
 
@@ -65,7 +65,7 @@
 
 ### 3.3 新插件
 
-- 位置：`plugins/desktop-deliverables/`（`plugin.yaml`、`__init__.py` 及子模块），登录时由 Electron 写入账号启用名单，做法同 `entry_local/uniwork-kits-config.ts`。
+- 位置：`plugins/desktop-deliverables/`（`plugin.yaml`、`__init__.py` 及子模块），Electron 通过 `entry_local/desktop-plugins-config.ts` 在登录准备及本机 Profile 启动时启用。
 - 钩子：`pre_llm_call`（记本轮开始时间、用户消息里的目录）、`pre_tool_call`／`post_tool_call`（运行代码与终端命令前后对比，生成类工具下载链接）、`transform_tool_result`（告诉模型已下载到本地的路径）、`transform_llm_output`（追加卡片）。
 - 与 `uniwork-kits` 的关系：移植其 `delivery.py` 中已验证的路径识别，并在 `plugins/uniwork-kits/__init__.py` 去掉交付兜底的注册（一行）。专家与 PPT 规则里的交付说明保持不变。
 
@@ -125,6 +125,18 @@
 | A6 | 合并去重、排序、最多 8 张，追加 `MEDIA:` 行；关闭 `uniwork-kits` 的交付兜底；Electron 登录时启用新插件 |
 
 验证：插件单元测试（需在本机 `.venv` 安装 pytest）；真实对话分别让模型把文件存到工作目录、桌面、系统临时目录，确认卡片出现、关闭重开仍在；`uniwork-kits` 现有测试通过。
+
+阶段 3 执行记录（2026-10-18）：
+
+- 改动前用户确认已与 xuelin 协调。先通过隔离对话验证原生钩子的持久化前提：本机受控 HTTP 模型服务给出写文件调用和结束语，真实执行原版工具、插件发现和 SQLite 写入，关闭数据库后重开仍有追加的 `MEDIA:`。没有把“调用钩子函数返回字符串”当作持久化证据。
+- 新插件只在 `desktop` 会话且终端后端为 `local` 时观察。状态按实际 Profile Home、会话和轮次分开；旧轮迟到结果、失败工具、后台启动返回、上传附件、空文件、旧文件和素材目录不补卡。结束或取消后清理本轮状态，不保存身份、凭据或跨轮观察结果。
+- 合并写文件参数、工具结果、回复路径与终端／代码执行前后差异。命令指定 `workdir` 时比较实际指定目录；文件读取核对沿用白名单和时间要求。快照限制为四层、3,000 项、0.5 秒，不完整或并发观察窗口重叠时不靠差异认领文件；不做回复结束时的兜底扫描。
+- 插件管理的卡片按文档、文本、图片、音视频排序，最多八张；有文档时不额外展示图片素材卡。保留已有 Markdown 文件链接的去重，规范本轮确认文件的独立 `MEDIA:` 行；不擅自删除模型指向旧文件、附件或未知文件的原标记。
+- 移除 `uniwork-kits` 的输出改写注册、清单声明及旧观察／补卡函数，保留专家、PPT 的交付说明。原单插件启用器改为 `desktop-plugins-config.ts`，不留旧入口；默认账号与本机 Profiles 启动均启用交付插件，但不顺带给普通 Profile 开启套件。明确停用、共享 YAML 锚点及个人配置保持不动。
+- Python 最终四文件 95 项通过（新插件 11 项，真实对话与持久化 6 项，既有套件 76 项，核心输出持久化 2 项），均使用 `scripts/run_tests.sh`，关闭自动重试。测试环境通过 PM 在独立临时目录构建，没有往用户开发解释器直接装包。新插件入口和桌面启用断言先观察失败，指定工作目录和共享锚点回归同样先失败后修复。
+- 生产插件经过真实 `write_file`、`terminal`、`execute_code` 工具链；同时检查重开后的模型历史和显示历史。工作区外路径使用独立的 `desktop`、`temp` 测试目录等价覆盖，没有写用户真实桌面。原生 Electron 再用重开后的显示正文生成正式卡片，经过实际 preload、文件读取边界和右侧 Markdown 预览，关开夹具会话和重载 Renderer 后卡片及原文件正文仍在，截图已检查。
+- 桌面三文件定向 Vitest 12 项、完整 TypeScript、改动文件 ESLint、Python Ruff／格式、脚本语法和 Git 差异检查通过；只核对自己修改行的格式，没有重排主进程等存量大文件。原生复验：`node scripts/deliverables.native.mjs --run`，需要可用的测试 Python 和 Git Bash；本机依赖路径通过运行环境提供，不写入产品或提交。最近记录在 `%TEMP%\hmt-delivery-native-552Tig`。
+- 边界：模型回复受控，不是 MaaS 真实模型和短信验收；原生窗口为独立预览夹具，不是整应用真实账号聊天验收。真实桌面路径、复杂项目、真实用户模型产物仍待人工核验；没有修改 Hermes Python 核心、官方对照版、用户数据或本机计时内容，没有实施阶段 4 的目录兜底及链接下载，也没有实施提前转换。
 
 ### 阶段 4：兜住没留路径的文件和生成工具的链接（约 300 行）
 

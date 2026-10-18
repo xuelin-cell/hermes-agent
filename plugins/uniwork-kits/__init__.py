@@ -17,9 +17,7 @@ them into what Hermes already has — skills, ``mcp_servers``, profiles and
 * tool hooks doing what 数字员工's middlewares did: picture rules when a PPT
   kit loads, search hits landed as local files, decks checked when written
   (:mod:`.host_hooks`), plus a package's own command hooks
-  (:mod:`.package_hooks`);
-* a ``transform_llm_output`` safety net that turns files a reply names into
-  desktop file cards (:mod:`.delivery`).
+  (:mod:`.package_hooks`).
 
 Enable with ``hermes plugins enable uniwork-kits``. Expert profiles created by
 ``hermes kit install`` enable it for themselves.
@@ -27,7 +25,7 @@ Enable with ``hermes plugins enable uniwork-kits``. Expert profiles created by
 
 from __future__ import annotations
 
-from . import cli, delivery, expert_sync, host_hooks, host_rules, llm, package_hooks, router
+from . import cli, expert_sync, host_hooks, host_rules, llm, package_hooks, router
 
 
 def register(ctx) -> None:
@@ -63,4 +61,3 @@ def register(ctx) -> None:
     ctx.register_hook("on_session_start", lambda **kw: package_hooks.on_observed("on_session_start", **kw))
     ctx.register_hook("on_session_end", lambda **kw: package_hooks.on_observed("on_session_end", **kw))
     ctx.register_hook("transform_tool_result", host_hooks.on_transform_tool_result)
-    ctx.register_hook("transform_llm_output", delivery.on_transform_llm_output)

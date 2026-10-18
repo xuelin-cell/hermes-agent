@@ -223,6 +223,7 @@ import { preReadyDockLaunchSteps } from './dock-launch-order'
 import { installEmbedReferer } from './embed-referer'
 import { accountBrowserPartition } from './entry_local/browser-partition'
 import { accountSourceBackend } from './entry_local/desktop-environment'
+import { enableDesktopPlugins } from './entry_local/desktop-plugins-config'
 import { accountDesktopStatePaths } from './entry_local/desktop-state'
 import { type AccountGateway, createAccountGatewayLogout, gatewayLogoutRoots } from './entry_local/gateway-logout'
 import { installArtifactSharePlugin } from './entry_local/install-artifact-share'
@@ -11751,6 +11752,7 @@ async function runPoolBackendStart(
   const backendNonce = crypto.randomBytes(16).toString('hex')
   const parentIdentityEnv = parentWatchdogEnv(process.pid, parentStartMarker, backendNonce)
   assertPoolEntryStillOwned(poolKey, entry, backendPool, localBackendLifecycle.signal)
+  enableDesktopPlugins(profile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', profile), ['desktop-deliverables'])
   installArtifactSharePlugin(profile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', profile), app.getAppPath())
 
   // desktop-mt: 仅在本地后端启动前维护对应 Profile 的内置 MCP 记录。
@@ -12745,6 +12747,7 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
     }
 
     // Local WSL backend — paths are bridgeable.
+    enableDesktopPlugins(primaryProfile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', primaryProfile), ['desktop-deliverables'])
     installArtifactSharePlugin(primaryProfile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', primaryProfile), app.getAppPath())
     setWslBridgeProfileState(primaryProfile, true)
 

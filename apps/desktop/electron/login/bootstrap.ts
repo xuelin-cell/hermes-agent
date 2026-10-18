@@ -7,6 +7,7 @@ import { app, BrowserWindow, dialog, net } from 'electron'
 import { resolveDesktopUserData } from '../data-paths'
 import { markDesktopLaunchSuccessful, prepareDesktopLaunch } from '../desktop-launch'
 import { accountDataRoot } from '../entry_local/account-paths'
+import { enableDesktopPlugins } from '../entry_local/desktop-plugins-config'
 import { startAccountDesktop } from '../entry_local/desktop-runtime'
 import { installArtifactSharePlugin } from '../entry_local/install-artifact-share'
 import { recoverAccountRun } from '../entry_local/recover-account'
@@ -61,9 +62,11 @@ function initializeLoginShell(): void {
     .then(() => recoverAccountRun(roots, installationRoot, process.env.HERMES_DESKTOP_PYTHON))
     .catch(error => {
       stopping = true
+
       const advice = (error as NodeJS.ErrnoException)?.code === 'ETIMEDOUT'
         ? 'Windows 进程状态查询超时，请稍后重新启动应用。'
         : '上次账号工作未能安全收尾，请寻求支持。'
+
       dialog.showErrorBox(
         'Hermes Desktop MT',
         `${advice}已阻止恢复登录，账号记录和历史已保留。`
@@ -159,6 +162,7 @@ async function openLoginWindow(): Promise<BrowserWindow | null> {
 
     try {
       const context = accountRuntime!.prepare()
+      enableDesktopPlugins(context.home, ['desktop-deliverables'])
       installArtifactSharePlugin(context.home, app.getAppPath())
       desktopStarting ??= startAccountDesktop(context)
         .then(() => {
@@ -221,6 +225,7 @@ export function currentDesktopIdentity() {
 export function currentDesktopAsrIdentity() {
   const identity = currentDesktopIdentity()
   const result = accountRuntime?.login.currentPlan()
+
   return identity && result?.status === 'available'
     ? { owner: identity.uid, key: result.plan.apiKey, expiresAt: identity.expiresAt }
     : null
