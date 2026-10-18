@@ -130,6 +130,11 @@ export function createOfficePreviewService(desktopState: string, overrides: Part
         return { ok: true, pdf: ready.pdf, version: ready.version, converter: ready.converter }
       }
 
+      // 历史卡片挂载不应排满转换队列；主动预览和已有磁盘缓存不受此限制。
+      if (background && source.stat.mtimeMs < deps.now() - 10 * 60_000) {
+        return { ok: false, code: 'unavailable' }
+      }
+
       /** 轮到这个请求时执行的一次转换；排队期间没人再等就不会执行。 */
       const work = async (): Promise<OfficePreviewResult> => {
         if (!deps.active()) {

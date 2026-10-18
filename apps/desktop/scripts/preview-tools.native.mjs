@@ -19,7 +19,7 @@ if (!process.argv.includes('--run')) {
 }
 
 /** 正式组件与原生导出串联；只控制保存位置，不操作用户文档或窗口。 */
-test('Markdown 三种另存为、全文复制、SVG 切换和 PDF 首页缩略图', { timeout: 240000 }, async () => {
+test('Markdown 三种另存为、全文复制、SVG 切换和 PDF 文件卡片', { timeout: 240000 }, async () => {
   const desktop = path.resolve(import.meta.dirname, '..')
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'hermes-preview-tools-'))
   console.log('阶段六原生记录：' + root)
@@ -47,7 +47,7 @@ test('Markdown 三种另存为、全文复制、SVG 切换和 PDF 首页缩略�
     import {FormatPreview} from ${source('src/app/chat/right-rail/formats/format-preview.tsx')}
     import {PreviewAttachment} from ${source('src/components/chat/preview-attachment.tsx')}
     import ${source('src/styles.css')}
-    // 测试按钮只选择目标，内容读取、工具栏和缩略图均使用正式组件。
+    // 测试按钮只选择目标，内容读取、工具栏和文件卡片均使用正式组件。
     function Fixture(){
       const [file,setFile]=useState(${JSON.stringify(md)}); window.fixtureOpen=setFile
       const target={kind:'file',source:file,path:file,label:file.split(/[/\\\\]/).at(-1),url:'file://'+file,previewKind:file.endsWith('.svg')?'image':file.endsWith('.pdf')?'pdf':'text'}
@@ -135,7 +135,8 @@ test('Markdown 三种另存为、全文复制、SVG 切换和 PDF 首页缩略�
       .toBe(true)
     const page = app.windows().find(page => page.url() === pathToFileURL(index).href)
     page.on('pageerror', error => errors.push(String(error)))
-    await expect(page.getByRole('img', { name: 'sample.pdf' })).toBeVisible({ timeout: 30000 })
+    await expect(page.getByText('sample.pdf', { exact: true })).toBeVisible({ timeout: 30000 })
+    await expect(page.getByRole('img', { name: 'sample.pdf' })).toHaveCount(0)
     await page.getByRole('button', { name: 'Copy full text' }).click()
     assert.equal(await app.evaluate(({ clipboard }) => clipboard.readText()), markdown)
     for (const [format, label] of [
@@ -158,7 +159,7 @@ test('Markdown 三种另存为、全文复制、SVG 切换和 PDF 首页缩略�
       await expect(page.getByRole('button', { name: 'Save as' })).toBeEnabled()
     }
     assert.equal(await fs.readFile(path.join(root, 'saved.md'), 'utf8'), markdown)
-    await page.screenshot({ path: path.join(root, 'markdown-and-thumbnail.png') })
+    await page.screenshot({ path: path.join(root, 'markdown-and-card.png') })
     await page.getByRole('button', { name: 'SVG fixture' }).click()
     await expect(page.getByRole('img', { name: 'chart.svg' })).toBeVisible()
     await page.getByRole('button', { name: 'SOURCE', exact: true }).click()

@@ -9,6 +9,20 @@ import { appendAssistantTextPart, chatMessageText, mediaTagValues, renderMediaTa
 const SPACED = '/home/hermes/Morten - Nobly Kickoff - Opening and cue cards EN.docx'
 const CARD = `[File: Morten - Nobly Kickoff - Opening and cue cards EN.docx](#media:${encodeURIComponent(SPACED)})`
 
+describe('MEDIA 作为 Markdown 链接目标', () => {
+  it.each([
+    ['![小狗](MEDIA:/C:/a/b.png)', '/C:/a/b.png'],
+    ['![小狗](MEDIA:/C:\\a\\b.png)', '/C:\\a\\b.png'],
+    ['[说明](MEDIA:C:\\a\\b.mp4)', 'C:\\a\\b.mp4'],
+    ['![说明](<MEDIA:/tmp/a b.wav>)', '/tmp/a b.wav'],
+    ['[说明](MEDIA:/tmp/a b.mp3)', '/tmp/a b.mp3'],
+    ['![说明](MEDIA:/tmp/a b.png)', '/tmp/a b.png']
+  ])('完整消费包装，显示与独立 MEDIA 行相同：%s', (source, target) => {
+    expect(renderMediaTags(source)).toBe(renderMediaTags(`MEDIA:${target}`))
+    expect(renderMediaTags(`开始 ${source} 结束`)).toBe(`开始 ${renderMediaTags(`MEDIA:${target}`)} 结束`)
+  })
+})
+
 describe('中文说明与文件交付路径的边界', () => {
   it('将中文说明留在正文，预览只读取实际文件路径', () => {
     for (const path of ['你好.md', '/workspace/你好.md', 'outputs/你好.html']) {

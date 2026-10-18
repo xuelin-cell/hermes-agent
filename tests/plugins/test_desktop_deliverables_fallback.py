@@ -3,6 +3,7 @@
 import importlib.util
 from pathlib import Path
 import sys
+from threading import Event, Thread
 
 import pytest
 
@@ -179,3 +180,130 @@ def test_requested_directory_can_be_created_during_the_turn(delivery, tmp_path):
     output = requested / "report.pdf"
     output.write_bytes(b"new")
     assert str(output) in finish(plugin)
+
+
+@pytest.mark.parametrize("tool", ["read_file", "web_search", "terminal"])
+def test_only_failed_writers_disable_final_scan(delivery, tool):
+    """读文件或搜索失败不影响本轮新产物，可能写文件的失败命令仍关闭猜测。"""
+    plugin, work = delivery
+    begin(plugin)
+    output = work / "finished.pdf"
+    output.write_bytes(b"pdf")
+    plugin.after_tool(
+        tool_name=tool, result={"error": "missing"}, session_id="s", turn_id="t"
+    )
+    result = finish(plugin)
+    assert (result is None) if tool == "terminal" else (str(output) in result)
+
+
+def test_first_command_reuses_new_root_baseline(delivery, tmp_path, monkeypatch):
+    """首次命令的新目录只扫一遍，快照不能持有阻塞其他会话的全局锁。"""
+    plugin, _ = delivery
+    begin(plugin)
+    root = tmp_path / "command"
+    root.mkdir()
+    calls = []
+    original = plugin.snapshot
+
+    def observe(directory, budget=None):
+        """记录实际快照次数和执行时的锁归属。"""
+        calls.append((directory, plugin._lock._is_owned()))
+        return original(directory, budget)
+
+    monkeypatch.setattr(plugin, "snapshot", observe)
+    plugin.before_tool(
+        tool_name="terminal",
+        args={"workdir": str(root)},
+        session_id="s",
+        turn_id="t",
+        tool_call_id="a",
+    )
+    assert calls == [(root, False)]
+
+
+@pytest.mark.parametrize("phase", ["begin", "before", "after", "final"])
+def test_interleaved_scan_cannot_claim_other_session(delivery, monkeypatch, phase):
+    """另一会话在锁外扫描期间完整执行并结束，也不能把其文件算给当前会话。"""
+    plugin, work = delivery
+    if phase != "begin":
+        begin(plugin, "a")
+    if phase == "after":
+        plugin.before_tool(
+            tool_name="terminal", session_id="a", turn_id="t", tool_call_id="a"
+        )
+    scanning, release, completed = Event(), Event(), Event()
+    original = plugin.snapshot
+    errors = []
+
+    def delayed(directory, budget=None):
+        """只暂停 A 的第一次真实扫描，为另一个会话留出完整执行窗口。"""
+        if not scanning.is_set():
+            scanning.set()
+            assert release.wait(10)
+        return original(directory, budget)
+
+    def scan_a():
+        """执行被测钩子并收集线程异常，不能把线程崩溃当成通过。"""
+        try:
+            if phase == "begin":
+                begin(plugin, "a")
+            elif phase == "before":
+                plugin.before_tool(
+                    tool_name="terminal", session_id="a", turn_id="t", tool_call_id="a"
+                )
+            elif phase == "after":
+                plugin.after_tool(
+                    tool_name="terminal",
+                    result={},
+                    session_id="a",
+                    turn_id="t",
+                    tool_call_id="a",
+                )
+            else:
+                assert finish(plugin, "a") is None
+        except BaseException as error:
+            errors.append(error)
+
+    def execute_b():
+        """真实经过另一轮的命令前后钩子，结束后也要留下歧义证据。"""
+        try:
+            begin(plugin, "b")
+            plugin.before_tool(
+                tool_name="terminal", session_id="b", turn_id="t", tool_call_id="b"
+            )
+            (work / "belongs-to-b.pdf").write_bytes(b"other")
+            plugin.after_tool(
+                tool_name="terminal",
+                result={},
+                session_id="b",
+                turn_id="t",
+                tool_call_id="b",
+            )
+            assert finish(plugin, "b") is None
+        except BaseException as error:
+            errors.append(error)
+        finally:
+            completed.set()
+
+    monkeypatch.setattr(plugin, "snapshot", delayed)
+    a, b = Thread(target=scan_a), Thread(target=execute_b)
+    a.start()
+    try:
+        assert scanning.wait(10)
+        b.start()
+        assert completed.wait(3), "扫描期间其他会话被全局锁阻塞"
+    finally:
+        release.set()
+        a.join(10)
+        if b.ident is not None:
+            b.join(10)
+    assert not a.is_alive() and not b.is_alive() and not errors
+    if phase == "before":
+        plugin.after_tool(
+            tool_name="terminal",
+            result={},
+            session_id="a",
+            turn_id="t",
+            tool_call_id="a",
+        )
+    assert finish(plugin, "a") is None

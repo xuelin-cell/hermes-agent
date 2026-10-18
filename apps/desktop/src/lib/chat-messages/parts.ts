@@ -108,6 +108,9 @@ const MEDIA_TAG_RE = new RegExp(
   'g'
 )
 
+// 整体匹配 Markdown 包装，让 MEDIA 生成的文件卡片不残留图片语法或右括号。
+const MEDIA_MARKDOWN_RE = /!?\[[^\]\n]*\]\(\s*(?:<MEDIA:\s*([^>\n]+)>|MEDIA:\s*([^)\n]+))\s*\)/g
+
 function unquoteMediaPath(value: string): string {
   const trimmed = value.trim()
   const quote = trimmed[0]
@@ -131,6 +134,7 @@ function mediaLink(value: string): string {
 
 export function renderMediaTags(text: string): string {
   return text
+    .replace(MEDIA_MARKDOWN_RE, (_match, angled: string, plain: string) => mediaLink(angled ?? plain))
     .replace(
       MEDIA_LINE_RE,
       (_match, lead: string, value: string, trailer: string) => `${lead}${mediaLink(value)}${trailer}`

@@ -11,8 +11,6 @@ import { previewName } from '@/lib/preview-targets'
 import { notifyError } from '@/store/notifications'
 import { $previewTabSources, closePreviewForSource, openPreview } from '@/store/preview'
 
-import { PdfThumbnail } from './pdf-thumbnail'
-
 export function PreviewAttachment({ target }: { target: string }) {
   const { t } = useI18n()
   // This link lives in one session's transcript; resolve it against THAT
@@ -131,13 +129,9 @@ export function PreviewAttachment({ target }: { target: string }) {
 
   return (
     <span className="flex w-full max-w-160 items-center gap-2 rounded-lg border border-(--ui-stroke-tertiary) bg-card/55 px-2.5 py-1.5 text-sm">
-      {/\.pdf$/i.test(name) ? (
-        <PdfThumbnail cwd={cwd} label={name} target={target} />
-      ) : (
-        <span className="grid size-6 shrink-0 place-items-center rounded-md bg-muted/55 text-muted-foreground/85">
-          <MonitorPlay className="size-3.5" />
-        </span>
-      )}
+      <span className="grid size-6 shrink-0 place-items-center rounded-md bg-muted/55 text-muted-foreground/85">
+        <MonitorPlay className="size-3.5" />
+      </span>
       <span className="min-w-0 flex-1 truncate text-[0.78rem] font-medium text-foreground/90" title={target}>
         {name}
       </span>

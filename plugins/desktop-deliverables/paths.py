@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 import re
+import stat
 import time
 from urllib.parse import unquote, urlsplit
 
@@ -57,9 +58,17 @@ _ABSOLUTE = re.compile(
 _BARE = re.compile(r"(?<![\w./\\-])([\w.-]+\.(?:" + _EXT + r"))(?![A-Za-z0-9])", re.I)
 _QUOTED = re.compile(r"`([^`\n]+)`|\"([^\"\n]+)\"|'([^'\n]+)'|\]\(<?([^)>\n]+)>?\)")
 MEDIA = re.compile(
-    r"^[ \t]*MEDIA:[ \t]*(`[^`\n]+`|\"[^\"\n]+\"|'[^'\n]+'|\S+)[ \t]*$", re.M
+    r"^[ \t]*MEDIA:[ \t]*(`[^`\n]+`|\"[^\"\n]+\"|'[^'\n]+'|\S+)[ \t]*(?:\r?\n|$)", re.M
 )
 LINKS = re.compile(r"\]\(\s*<?([^)>\n]+)>?\s*\)")
+_INLINE_MEDIA = re.compile(
+    r"MEDIA:[ \t]*(`[^`\n]+`|\"[^\"\n]+\"|'[^'\n]+'|"
+    r"(?:~/|/|[A-Za-z]:[/\\])[^\n]+?\.(?:"
+    + _EXT
+    + r")(?=[\s`\"'*,;:)\]}>，。；：！？、」』）】]|MEDIA:|$))",
+    re.I,
+)
+_PREVIEW = re.compile(r"::preview\{[^}\n]*?\bfile\s*=\s*([\"'])(.*?)\1[^}\n]*\}")
 
 
 def resolve_path(value, cwd):
@@ -81,6 +90,29 @@ def resolve_path(value, cwd):
         return (path if path.is_absolute() else cwd / path).resolve()
     except (OSError, ValueError):
         return None
+
+
+def shown_paths(text, cwd):
+    """只认非独立行的已展示文件，独立 MEDIA 行由追加选择后统一处理。"""
+    text = MEDIA.sub("", text)
+    values = [
+        re.sub(r"^MEDIA:\s*", "", match.group(1).lstrip())
+        for match in LINKS.finditer(text)
+    ]
+    values += [match.group(1) for match in _INLINE_MEDIA.finditer(text)]
+    values += [match.group(2) for match in _PREVIEW.finditer(text)]
+    return {path for value in values if (path := resolve_path(value, cwd)) is not None}
+
+
+def is_link(path):
+    """使用 3.11 已有的 lstat 识别符号链接和 Windows 目录联接；新目录可尚不存在。"""
+    try:
+        info = os.lstat(path)
+    except FileNotFoundError:
+        return False
+    return stat.S_ISLNK(info.st_mode) or getattr(
+        info, "st_reparse_tag", None
+    ) == getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", -1)
 
 
 def named_paths(text, cwd):
@@ -150,8 +182,7 @@ def snapshot(root, budget=None):
             for name in directories
             if not name.startswith(".")
             and name.lower() not in EXCLUDED
-            and not (Path(folder) / name).is_symlink()
-            and not (Path(folder) / name).is_junction()
+            and not is_link(Path(folder) / name)
             and len((Path(folder) / name).relative_to(root).parts) < 4
         ]
         for name in files:

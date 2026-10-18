@@ -133,6 +133,23 @@ it('后台预转换复用原缓存，已缓存文件不等待别的文件转换'
   }
 })
 
+it('后台只准备十分钟内的新文件，旧文件有缓存仍复用，主动打开不受时间限制', async () => {
+  const fixture = setup()
+  const old = new Date(Date.now() - 11 * 60_000)
+  await fs.utimes(source, old, old)
+  expect(await fixture.service.convert(source, undefined, true)).toEqual({ ok: false, code: 'unavailable' })
+  expect(fixture.com).not.toHaveBeenCalled()
+  expect(fixture.detector.get).not.toHaveBeenCalled()
+  const opened = await fixture.service.convert(source)
+  expect(opened).toMatchObject({ ok: true, pdf })
+  expect(await fixture.service.convert(source, undefined, true)).toEqual(opened)
+  expect(fixture.com).toHaveBeenCalledTimes(1)
+  const recent = new Date()
+  await fs.utimes(source, recent, recent)
+  expect(await fixture.service.convert(source, undefined, true)).toMatchObject({ ok: true, pdf })
+  expect(fixture.com).toHaveBeenCalledTimes(2)
+})
+
 it('WPS 的第一个入口安全失败后尝试同厂家备用入口，收尾不安全则立即停止', async () => {
   const fixture = setup()
   const second = { ...wps, progId: 'WPS.Application' }

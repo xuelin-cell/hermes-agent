@@ -262,3 +262,88 @@ def test_terminal_workdir_is_observed_instead_of_default_workspace(delivery, tmp
         tool_call_id="cd",
     )
     assert str(output) in reply(plugin)
+
+
+@pytest.mark.parametrize("form", ["forward", "mixed", "inline", "double", "single"])
+def test_shown_file_is_not_appended_again(delivery, form):
+    """真实回复中的 MEDIA 链接、行内标记和预览指令只保留一个展示位置。"""
+    plugin, work = delivery
+    begin(plugin)
+    output = work / "kitten.png"
+    output.write_bytes(b"image")
+    target = "/" + str(output) if os.name == "nt" else str(output)
+    forms = {
+        "forward": f"![小狗](MEDIA:{target.replace(chr(92), '/')})",
+        "mixed": f"![小狗](MEDIA:{target})",
+        "inline": f"请查看 MEDIA:`{output}`，这是成品。",
+        "double": f'::preview{{file="{output}"}}',
+        "single": f"::preview{{file='{output}'}}",
+    }
+    original = forms[form] + f"\nMEDIA:{output}\n结束。"
+    result = reply(plugin, original) or original
+    assert result == forms[form] + "\n结束。"
+
+
+def test_moving_media_only_removes_its_own_line(delivery):
+    """移走正文中的 MEDIA 时吃掉该行换行，原有空行和代码块逐字保留。"""
+    plugin, work = delivery
+    begin(plugin)
+    output = work / "report.docx"
+    output.write_bytes(b"docx")
+    prefix = "首段\n\n```text\n\n\n保留代码中的空行\n```\n\n"
+    original = prefix + f"说明\n\nMEDIA:{output}\n尾段"
+    assert reply(plugin, original) == prefix + f"说明\n\n尾段\n\nMEDIA:{output}"
+
+
+@pytest.mark.parametrize("kind", ["document-and-image", "nine"])
+def test_unappended_standalone_media_is_preserved(delivery, kind):
+    """有文档时被过滤的图片和超过八张的标记仍在原位，不丢模型已经写出的交付。"""
+    plugin, work = delivery
+    begin(plugin)
+    names = (
+        ["picture.png", "report.docx"]
+        if kind == "document-and-image"
+        else [f"{n}.md" for n in range(9)]
+    )
+    files = [work / name for name in names]
+    for file in files:
+        file.write_bytes(b"deliverable")
+    original = "\n".join(f"MEDIA:{file}" for file in files)
+    result = reply(plugin, original) or original
+    for file in files:
+        assert result.count(f"MEDIA:{file}") == 1
+
+
+def test_link_detection_works_without_path_is_junction(delivery, tmp_path):
+    """普通目录和不存在路径不是链接，Windows 联接也不依赖 Python 3.12 API。"""
+    plugin, work = delivery
+    from delivery_test import paths
+
+    assert not paths.is_link(work)
+    assert not paths.is_link(work / "missing")
+    link = work / "linked"
+    if os.name == "nt":
+        import subprocess
+
+        subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(link), str(tmp_path)],
+            check=True,
+            capture_output=True,
+        )
+    else:
+        link.symlink_to(tmp_path, target_is_directory=True)
+    assert paths.is_link(link)
+    assert plugin.snapshot(work) == {}
+
+
+def test_symbolic_link_is_detected(delivery):
+    """具备创建权限时检查真实符号链接，无权限则明确跳过。"""
+    _, work = delivery
+    from delivery_test import paths
+
+    link = work / "symbolic"
+    try:
+        link.symlink_to(work, target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"无法创建符号链接：{error.errno}")
+    assert paths.is_link(link)

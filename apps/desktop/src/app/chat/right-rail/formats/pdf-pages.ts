@@ -27,7 +27,7 @@ function validSize({ width, height }: PdfPageSize) {
 }
 
 /** 只读取已提供的字节；Worker 与辅助资源均来自随应用发布的本机资源。 */
-export async function openPdfPages(bytes: Uint8Array, longEdge = LONG_EDGE): Promise<PdfPages> {
+export async function openPdfPages(bytes: Uint8Array): Promise<PdfPages> {
   const task = getDocument({
     data: bytes.slice(),
     ...PDF_RESOURCE_OPTIONS,
@@ -79,7 +79,7 @@ export async function openPdfPages(bytes: Uint8Array, longEdge = LONG_EDGE): Pro
           throw { code: 'unsupported' }
         }
 
-        const viewport = page.getViewport({ scale: longEdge / Math.max(own.width, own.height) })
+        const viewport = page.getViewport({ scale: LONG_EDGE / Math.max(own.width, own.height) })
         canvas.width = Math.max(1, Math.round(viewport.width))
         canvas.height = Math.max(1, Math.round(viewport.height))
         await page.render({ canvas, viewport }).promise

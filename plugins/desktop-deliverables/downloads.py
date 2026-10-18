@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from tools.url_safety import async_is_safe_url, create_ssrf_safe_async_client
 
-from .paths import EXTENSIONS
+from .paths import EXTENSIONS, is_link
 
 logger = logging.getLogger(__name__)
 GENERATORS = {
@@ -54,7 +54,7 @@ async def fetch(url, root):
     try:
         async with asyncio.timeout(TIMEOUT):
             folder = root / "outputs"
-            if folder.is_symlink() or folder.is_junction():
+            if is_link(folder):
                 raise ValueError("outputs is linked")
             folder.mkdir(exist_ok=True)
             target = folder / (

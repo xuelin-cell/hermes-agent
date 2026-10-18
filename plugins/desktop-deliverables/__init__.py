@@ -13,18 +13,19 @@ import time
 from .paths import (
     DOCUMENTS,
     IMAGES,
-    LINKS,
     MEDIA,
     fresh,
     media_line,
     named_paths,
     resolve_path,
     requested_roots,
+    shown_paths,
     snapshot,
 )
 
 _turns = OrderedDict()
 _lock = RLock()
+WRITERS = {"terminal", "execute_code", "write_file", "patch"}
 
 
 @dataclass
@@ -118,6 +119,7 @@ def before_turn(
     cwd = local_cwd(task_id)
     if cwd is None:
         return
+    roots = requested_roots(as_text(user_message), cwd)
     with _lock:
         key = scope(session_id)
         _turns[key] = Turn(
@@ -129,11 +131,17 @@ def before_turn(
         )
         _turns.move_to_end(key)
         turn = _turns[key]
-        budget = [time.monotonic(), 0]
-        for root in requested_roots(as_text(user_message), cwd):
-            watch_root(turn, root, budget)
+        for root in roots:
+            watch_root(turn, root)
         while len(_turns) > 128:
             _turns.popitem(last=False)
+    budget = [time.monotonic(), 0]
+    for root in roots:
+        baseline = snapshot(root, budget)
+        with _lock:
+            if current(session_id, turn_id) is not turn:
+                return
+            turn.scans[root] = baseline
 
 
 def current(session_id, turn_id):
@@ -142,11 +150,11 @@ def current(session_id, turn_id):
     return turn if turn and turn.turn_id == turn_id else None
 
 
-def watch_root(turn, root, budget=None):
-    """开始观察时记基线；包含关系也算并发，歧义保留到两轮都结束。"""
+def watch_root(turn, root):
+    """锁内先登记观察范围；扫描期间也能标记歧义，并保留到该轮结束。"""
     if root in turn.scans or len(turn.scans) >= 4:
-        return
-    turn.scans[root] = snapshot(root, budget)
+        return False
+    turn.scans[root] = None
     for active in _turns.values():
         if active is turn:
             continue
@@ -160,13 +168,14 @@ def watch_root(turn, root, budget=None):
                             pending[0]
                         ):
                             pending[1] = None
+    return True
 
 
 def before_tool(
     *, tool_name="", args=None, session_id="", turn_id="", tool_call_id="", **kwargs
 ):
     """同步命令及代码运行前取快照；观察窗口重叠时放弃无法确认归属的差异。"""
-    if tool_name not in {"terminal", "execute_code", "write_file", "patch"}:
+    if tool_name not in WRITERS:
         return
     with _lock:
         turn = current(session_id, turn_id)
@@ -177,10 +186,11 @@ def before_tool(
             root = resolve_path(args["workdir"], root)
             if root is None or not root.is_dir():
                 return
-        watch_root(turn, root)
+        added = watch_root(turn, root)
         before = (
-            snapshot(root)
-            if tool_name in {"terminal", "execute_code"}
+            {}
+            if tool_call_id
+            and tool_name in {"terminal", "execute_code"}
             and not (args or {}).get("background")
             and root not in turn.ambiguous
             else None
@@ -189,8 +199,18 @@ def before_tool(
             for pending in active.pending.values():
                 if pending[0].is_relative_to(root) or root.is_relative_to(pending[0]):
                     pending[1] = before = None
+        pending = [root, before]
         if tool_call_id and tool_name in {"terminal", "execute_code"}:
-            turn.pending[tool_call_id] = [root, before]
+            turn.pending[tool_call_id] = pending
+    # 执行窗口先登记再扫描；重叠命令即使已结束，也会把此窗口的 before 作废。
+    baseline = snapshot(root) if added or before is not None else None
+    with _lock:
+        if current(session_id, turn_id) is not turn:
+            return
+        if added:
+            turn.scans[root] = baseline
+        if pending[1] is not None:
+            pending[1] = baseline
 
 
 def after_tool(
@@ -209,13 +229,15 @@ def after_tool(
         turn = current(session_id, turn_id)
         if turn is None:
             return
-        pending = turn.pending.pop(tool_call_id, None)
+        pending = turn.pending.get(tool_call_id)
         try:
             data = json.loads(result) if isinstance(result, str) else result
         except ValueError:
             data = None
         if not completed(data, status, args):
-            turn.guess = False
+            turn.pending.pop(tool_call_id, None)
+            if tool_name in WRITERS:
+                turn.guess = False
             return
         root = (
             pending[0]
@@ -227,9 +249,14 @@ def after_tool(
             candidate = resolve_path((args or {}).get("path"), root)
             if candidate:
                 candidates.insert(0, candidate)
-        if pending and pending[1] is not None:
-            after = snapshot(pending[0])
-            if after is not None:
+    after = snapshot(root) if pending and pending[1] is not None else None
+    with _lock:
+        if current(session_id, turn_id) is not turn:
+            return
+        # 后快照完成前不注销窗口，让锁外扫描期间的重叠执行也能作废它。
+        if pending is not None and turn.pending.get(tool_call_id) is pending:
+            turn.pending.pop(tool_call_id)
+            if pending[1] is not None and after is not None:
                 candidates += [
                     path for path, stat in after.items() if pending[1].get(path) != stat
                 ]
@@ -249,17 +276,31 @@ def transform(*, response_text="", session_id="", turn_id="", platform="", **kwa
         if not turn:
             return None
         watch_root(turn, local_cwd(turn.task_id) or turn.cwd)
-        budget = [time.monotonic(), 0]
-        if turn.guess:
-            for root, before in turn.scans.items():
-                if root in turn.ambiguous or before is None:
-                    continue
-                after = snapshot(root, budget)
-                if after is not None:
-                    for path, stat in after.items():
-                        if before.get(path) != stat:
-                            turn.paths.setdefault(path, None)
-        _turns.pop(scope(session_id), None)
+        roots = (
+            [
+                (root, before)
+                for root, before in turn.scans.items()
+                if root not in turn.ambiguous
+            ]
+            if turn.guess
+            else []
+        )
+    budget = [time.monotonic(), 0]
+    for root, before in roots:
+        if before is None:
+            continue
+        after = snapshot(root, budget)
+        with _lock:
+            if current(session_id, turn_id) is not turn:
+                return None
+            if turn.guess and root not in turn.ambiguous and after is not None:
+                for path, stat in after.items():
+                    if before.get(path) != stat:
+                        turn.paths.setdefault(path, None)
+    with _lock:
+        if current(session_id, turn_id) is not turn:
+            return None
+        _turns.pop(scope(session_id))
     cwd = local_cwd(turn.task_id) or turn.cwd
     paths = dict.fromkeys([*turn.paths, *named_paths(response_text, cwd)])
     paths = [
@@ -268,26 +309,31 @@ def transform(*, response_text="", session_id="", turn_id="", platform="", **kwa
     if not paths:
         return None
     managed = set(paths)
+    shown = shown_paths(response_text, cwd)
     if any(path.suffix.lower().lstrip(".") in DOCUMENTS for path in paths):
         paths = [
             path for path in paths if path.suffix.lower().lstrip(".") not in IMAGES
         ]
     from .paths import priority
 
-    # 只移除本轮确认的独立 MEDIA 行再统一追加；旧文件、附件和未知标记不擅自改写。
+    appended = [path for path in sorted(paths, key=priority) if path not in shown][:8]
+    moved = set(appended) | (managed & shown)
+    # 只移走将追加或已有另一展示位置的独立行，未选中卡片不能被误删。
     text = MEDIA.sub(
         lambda match: (
-            "" if resolve_path(match.group(1), cwd) in managed else match.group()
+            "" if resolve_path(match.group(1), cwd) in moved else match.group()
         ),
         response_text,
     )
-    linked = {resolve_path(match.group(1), cwd) for match in LINKS.finditer(text)}
-    lines = [
-        media_line(path) for path in sorted(paths, key=priority) if path not in linked
-    ][:8]
-    if not lines:
-        return None
-    rewritten = "\n\n".join(part for part in [text.rstrip(), "\n".join(lines)] if part)
+    rewritten = (
+        "\n\n".join(
+            part
+            for part in [text.rstrip(), "\n".join(map(media_line, appended))]
+            if part
+        )
+        if appended
+        else text
+    )
     return rewritten if rewritten != response_text else None
 
 
