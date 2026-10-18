@@ -126,7 +126,7 @@ shared/office-preview.ts             前端与主进程共用的约定：扩展�
 | 文件 | 改动 | 步骤 |
 | --- | --- | --- |
 | `src/app/chat/right-rail/preview-pane.tsx` | 渲染 `LocalFilePreview` 的那一处改为渲染 `FormatPreview`，连同引用共约 3 行 | P01 |
-| `src/app/chat/right-rail/preview-file.tsx` | 只给已有的 `filePathForTarget` 加上导出，供预览中心与原版预览共用同一套取路径算法；函数内容不变，1 处 | 审阅修复 |
+| `src/app/chat/right-rail/formats/path.ts` | 共用 `filePathForTarget` 的取路径算法，预览中心、原版预览与空闲准备使用同一入口，不依赖显示器模块 | 路径职责拆分 |
 | `src/i18n/` 各语言文件与 `types.ts` | 在 `preview` 下追加新文案 | 用到的各步 |
 | `shared/index.ts` | 导出约定文件，1 行 | P04 |
 | `apps/desktop/tsconfig.electron.json` | 将新共享约定文件加入 Electron 编译清单，1 处 | P04 |
@@ -555,7 +555,7 @@ P05 完成后对 P01～P04 的四个提交做了一次代码审阅，共 10 条�
 需要留意的边界：
 
 - TIFF 和表格这两条是限制上限，不是根治。TIFF 解码仍在界面线程，A3 幅面 300 dpi 的 G4 扫描件实测约 0.9 秒；表格没有做虚拟滚动。把 TIFF 解码移到后台线程后可以再放宽上限，列入 P16。
-- 第 4 条改动了一处上游文件：`preview-file.tsx` 的 `filePathForTarget` 加上导出，函数内容不变，已补进 4.1 节清单。第 6 条在 i18n 各语言文件和 `types.ts` 新增一条 `preview.delimited.columnsLimited`。
+- 第 4 条共用的 `filePathForTarget` 现位于 `formats/path.ts`，原版 `preview-file.tsx` 和预览中心均从该入口取路径，已补进 4.1 节清单。第 6 条在 i18n 各语言文件和 `types.ts` 新增一条 `preview.delimited.columnsLimited`。
 - 注册表查询一直失败的机器上，每次需要转换都会重新查询一次，最长等待原有的 10 秒超时。
 - 每条修复都先确认新测试在旧实现上失败、在新实现上通过。合并后 `npm run typecheck` 通过；right-rail、office-preview、i18n 三个目录共 28 个测试文件、275 项通过；改动文件 ESLint 零警告。没有启动 Electron 或操作用户窗口，真实桌面效果仍待人工验收。
 

@@ -110,9 +110,9 @@ export function createOfficePreviewService(desktopState: string, overrides: Part
   }
 
   /** 转换成功还要验证 PDF；失败只在安全收尾后尝试下一厂家。请求方离开时传入的 signal 会取消，排队中的转换随之跳过。 */
-  async function convert(filePath: string, signal?: AbortSignal): Promise<OfficePreviewResult> {
+  async function convert(filePath: string, signal?: AbortSignal, background = false): Promise<OfficePreviewResult> {
     try {
-      if (!deps.active()) {
+      if (!deps.active() || signal?.aborted) {
         return { ok: false, code: 'unavailable' }
       }
 
@@ -123,6 +123,12 @@ export function createOfficePreviewService(desktopState: string, overrides: Part
       }
 
       const source = await sourceInfo(filePath)
+      // 已准备好的文件不排在另一份长文档后；实际转换仍共用唯一队列。
+      const ready = await cache.get(source.version)
+
+      if (ready) {
+        return { ok: true, pdf: ready.pdf, version: ready.version, converter: ready.converter }
+      }
 
       /** 轮到这个请求时执行的一次转换；排队期间没人再等就不会执行。 */
       const work = async (): Promise<OfficePreviewResult> => {
@@ -222,7 +228,7 @@ export function createOfficePreviewService(desktopState: string, overrides: Part
         }
       }
 
-      return await jobs.run(cache.directory, source.version, work, signal)
+      return await jobs.run(cache.directory, source.version, work, signal, background)
     } catch (error) {
       return failure(error)
     }

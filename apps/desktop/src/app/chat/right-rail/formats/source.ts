@@ -8,9 +8,8 @@ import { revealFile } from '@/store/file-actions'
 import type { PreviewTarget } from '@/store/preview'
 import { $connection } from '@/store/session'
 
-import { filePathForTarget } from '../preview-file'
-
 import { type PreviewFailure, previewFailure } from './failure'
+import { filePathForTarget } from './path'
 
 /** 把读取异常归为固定失败代码；IPC 丢失错误字段时识别其固定错误消息。 */
 function readFailure(error: unknown): PreviewFailure {

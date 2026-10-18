@@ -1,4 +1,3 @@
-import type { PlanUsageResult } from '../electron/uniwork-usage/contract'
 import type { GatewayWsUrlResult, OfficePreviewResult } from '@hermes/shared'
 import type { ArtifactShareEligibility, ArtifactShareSource } from '@hermes/shared/artifact-share'
 import type { ConversationShareApi } from '@hermes/shared/conversation-share'
@@ -18,6 +17,7 @@ import type { MachineProfile } from '../electron/machine-profile'
 import type { HermesNotification } from '../electron/notification-types'
 import type { PoolLimits } from '../electron/pool-limits'
 import type { UniworkAsrBridge } from '../electron/uniwork-asr/contract'
+import type { PlanUsageResult } from '../electron/uniwork-usage/contract'
 import type { WelcomeCategory, WelcomeLocale } from '../electron/uniwork-welcome/catalog'
 import type { GrowRequest } from '../electron/window-growth'
 
@@ -322,6 +322,8 @@ declare global {
       readFileDataUrl: (filePath: string) => Promise<string>
       /** 只转换当前账号的本机 Office 文件，不接受缓存路径或凭据。 */
       convertOfficePreview: (filePath: string, requestId: string) => Promise<OfficePreviewResult>
+      /** 卡片出现后低优先级准备 Word/PPT，只填充账号缓存，不返回文档内容。 */
+      prepareOfficePreview: (filePath: string, requestId: string) => Promise<void>
       /** 页面离开时取消自己的转换请求；排队中没人等的转换会被跳过。 */
       cancelOfficePreview: (requestId: string) => Promise<void>
       /** Remote non-image attach: higher dedicated cap than preview/Settings default. */

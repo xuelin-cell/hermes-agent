@@ -3,7 +3,7 @@ import { fileExtension, OFFICE_EXTENSIONS } from '@hermes/shared'
 import { mediaKind } from '@/lib/media'
 import type { PreviewTarget } from '@/store/preview'
 
-import { filePathForTarget } from '../preview-file'
+import { filePathForTarget } from './path'
 
 export type PreviewFormat = 'audio' | 'delimited' | 'pdf' | 'sheet' | 'slides' | 'tiff' | 'video' | 'word'
 

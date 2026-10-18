@@ -1,4 +1,3 @@
-import { PLAN_USAGE_CHANNEL } from './uniwork-usage/contract'
 import { contextBridge, ipcRenderer, webFrame, webUtils } from 'electron'
 
 import type { ArtifactShareSource } from '../../shared/src/artifact-share'
@@ -9,6 +8,7 @@ import type { HudModifierApi, HudModifierStatus } from './hud-modifier-types'
 import type { CloudDriveRequest, CloudDriveTransferProgress, CloudDriveTransferRequest } from './login/contract'
 import { maskMcpSecrets, restoreMcpSecrets } from './mcp-secrets'
 import { ASR_CHANNEL } from './uniwork-asr/contract'
+import { PLAN_USAGE_CHANNEL } from './uniwork-usage/contract'
 import { WELCOME_CATALOG_CHANNEL } from './uniwork-welcome/catalog'
 import { customWindowControlsEnabled } from './window-controls'
 
@@ -405,6 +405,9 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   // 只调用当前账号桌面的受限转换接口，缓存路径由主进程决定。
   convertOfficePreview: (filePath, requestId) =>
     ipcRenderer.invoke('hermes:office-preview:convert', filePath, requestId),
+  // 卡片提前准备沿用同一个受限通道，以后台优先级填充账号缓存。
+  prepareOfficePreview: (filePath, requestId) =>
+    ipcRenderer.invoke('hermes:office-preview:convert', filePath, requestId, 'background'),
   cancelOfficePreview: requestId => ipcRenderer.invoke('hermes:office-preview:cancel', requestId),
   readFileDataUrlForAttach: filePath => ipcRenderer.invoke('hermes:readFileDataUrlForAttach', filePath),
   dataUrlReadMax: {

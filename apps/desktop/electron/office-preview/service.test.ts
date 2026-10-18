@@ -93,6 +93,46 @@ it('按厂家顺序安全降级，合并并发并命中缓存，A→B→A 不共
   expect(a.detector.invalidate).toHaveBeenCalled()
 })
 
+it('后台预转换复用原缓存，已缓存文件不等待别的文件转换', async () => {
+  const fixture = setup()
+  const warmed = await fixture.service.convert(source, undefined, true)
+  expect(warmed).toMatchObject({ ok: true, pdf })
+  const other = path.join(root, 'blocking.docx')
+  await fs.writeFile(other, 'source text')
+  let release!: () => void
+  let begun!: () => void
+
+  const started = new Promise<void>(resolve => {
+    begun = resolve
+  })
+
+  const gate = new Promise<void>(resolve => {
+    release = resolve
+  })
+
+  fixture.com.mockImplementationOnce(async () => {
+    begun()
+    await gate
+
+    return { ok: false, code: 'unavailable', cleanupSafe: true }
+  })
+  const pending = fixture.service.convert(other, undefined, true)
+  await started
+  let reused = false
+
+  const foreground = fixture.service.convert(source).then(result => {
+    expect(result).toEqual(warmed)
+    reused = true
+  })
+
+  try {
+    await vi.waitFor(() => expect(reused).toBe(true), { timeout: 2000 })
+  } finally {
+    release()
+    await Promise.all([pending, foreground])
+  }
+})
+
 it('排队期间文件被再次保存时转换保存后的版本，而不是报告失败', async () => {
   const a = setup()
   const other = path.join(root, 'other.docx')
@@ -178,7 +218,10 @@ it('源文件、产物和类型有上限，伪 PDF 不发布；无软件或全�
   expect(await fixture.service.convert(source)).toEqual({ ok: false, code: 'too_large' })
   expect(fixture.com).not.toHaveBeenCalled()
   await fs.writeFile(source, 'source text')
-  fixture.com.mockImplementation(async (_program, _copy, directory) => ({ ok: true, pdfPath: path.join(directory, 'missing.pdf') }))
+  fixture.com.mockImplementation(async (_program, _copy, directory) => ({
+    ok: true,
+    pdfPath: path.join(directory, 'missing.pdf')
+  }))
   expect(await fixture.service.convert(source)).toEqual({ ok: false, code: 'convert_failed' })
   fixture.com.mockImplementation(async (_program, _copy, directory) => {
     const pdfPath = path.join(directory, 'bad.pdf')

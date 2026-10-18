@@ -58,6 +58,7 @@ import { $connection, $currentCwd } from '@/store/session'
 import { notifyWorkspaceChanged } from '@/store/workspace-events'
 
 import { previewFailure } from './formats/failure'
+import { filePathForTarget } from './formats/path'
 import { readPdfBytes } from './formats/source'
 import { PdfPreview } from './pdf-preview'
 
@@ -195,20 +196,6 @@ function isTypableElement(el: Element | null): boolean {
   const tag = el.tagName
 
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (el as HTMLElement).isContentEditable
-}
-
-export function filePathForTarget(target: PreviewTarget) {
-  if (target.path) {
-    return target.path
-  }
-
-  try {
-    const url = new URL(target.url)
-
-    return url.protocol === 'file:' ? decodeURIComponent(url.pathname) : target.url
-  } catch {
-    return target.url
-  }
 }
 
 function formatBytes(bytes: number | undefined) {

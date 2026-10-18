@@ -14,6 +14,49 @@ function gate<T>() {
 }
 
 describe('Office preview jobs', () => {
+  it('promotes a clicked queued file ahead of background work without interrupting the running conversion', async () => {
+    const jobs = new OfficePreviewJobs<string>()
+    const running = gate<string>()
+    const order: string[] = []
+
+    const first = jobs.run('A', 'running', () => {
+      order.push('running')
+
+      return running.promise
+    })
+
+    const background = jobs.run(
+      'A',
+      'background',
+      async () => {
+        order.push('background')
+
+        return 'background'
+      },
+      undefined,
+      true
+    )
+
+    const promoted = jobs.run(
+      'A',
+      'clicked',
+      async () => {
+        order.push('clicked')
+
+        return 'clicked'
+      },
+      undefined,
+      true
+    )
+
+    expect(jobs.run('A', 'clicked', vi.fn())).toBe(promoted)
+    await Promise.resolve()
+    expect(order).toEqual(['running'])
+    running.resolve('running')
+    await Promise.all([first, background, promoted])
+    expect(order).toEqual(['running', 'clicked', 'background'])
+  })
+
   it('coalesces identical pending jobs and preserves the result after one caller leaves', async () => {
     const jobs = new OfficePreviewJobs<string>()
     const pending = gate<string>()

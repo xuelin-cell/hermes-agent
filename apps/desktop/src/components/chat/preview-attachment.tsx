@@ -1,6 +1,7 @@
 import { useStore } from '@nanostores/react'
 import { useEffect, useRef, useState } from 'react'
 
+import { usePreparePreview } from '@/app/chat/right-rail/formats/prepare'
 import { useSessionView } from '@/app/chat/session-view'
 import { useI18n } from '@/i18n'
 import { Download, MonitorPlay } from '@/lib/icons'
@@ -15,6 +16,7 @@ export function PreviewAttachment({ target }: { target: string }) {
   // This link lives in one session's transcript; resolve it against THAT
   // session's cwd, not the primary chat's.
   const cwd = useStore(useSessionView().$cwd)
+  usePreparePreview(target, cwd)
   const openSources = useStore($previewTabSources)
   const [opening, setOpening] = useState(false)
   const [downloading, setDownloading] = useState(false)

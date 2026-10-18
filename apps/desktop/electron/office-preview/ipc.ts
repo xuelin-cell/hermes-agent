@@ -1,6 +1,6 @@
 import { ipcMain, type IpcMainInvokeEvent, type Session } from 'electron'
 
-import type { OfficePreviewResult } from '../../../shared/src/office-preview'
+import { officeDocumentKind, type OfficePreviewResult } from '../../../shared/src/office-preview'
 import { isDesktopRendererSender } from '../desktop-renderer-sender'
 import { resolveIpcFileReadPath } from '../local-read-path'
 
@@ -26,15 +26,18 @@ export function installOfficePreviewIpc(
     return typeof requestId === 'string' && /^[\w-]{1,64}$/.test(requestId) ? `${event.sender.id}:${requestId}` : null
   }
 
-  ipcMain.handle('hermes:office-preview:convert', async (event, ...args): Promise<OfficePreviewResult> => {
-    const key = args.length === 2 ? requestKey(event, args[1]) : null
+  ipcMain.handle('hermes:office-preview:convert', async (event, ...args): Promise<OfficePreviewResult | undefined> => {
+    const key = args.length >= 2 ? requestKey(event, args[1]) : null
+    const background = args[2] === 'background'
 
     if (
       !trusted(event) ||
       (args.length !== 1 && !key) ||
-      args.length > 2 ||
+      args.length > 3 ||
+      (args.length === 3 && !background) ||
       typeof args[0] !== 'string' ||
-      !args[0].trim()
+      !args[0].trim() ||
+      (background && !['word', 'slides'].includes(officeDocumentKind(args[0]) || ''))
     ) {
       return { ok: false, code: 'unsupported' }
     }
@@ -46,7 +49,12 @@ export function installOfficePreviewIpc(
     }
 
     try {
-      const result = await service.convert(resolveIpcFileReadPath(args[0]), controller.signal)
+      const result = await service.convert(resolveIpcFileReadPath(args[0]), controller.signal, background)
+
+      // 预准备只填充账号缓存，不把可能很大的 PDF 字节传回每张卡片。
+      if (background) {
+        return
+      }
 
       return trusted(event) ? result : { ok: false, code: 'unavailable' }
     } catch {
