@@ -131,7 +131,7 @@ export function createOfficePreviewService(desktopState: string, overrides: Part
       }
 
       // 历史卡片挂载不应排满转换队列；主动预览和已有磁盘缓存不受此限制。
-      if (background && source.stat.mtimeMs < deps.now() - 10 * 60_000) {
+      if (background && Math.max(source.stat.mtimeMs, source.stat.birthtimeMs) < deps.now() - 10 * 60_000) {
         return { ok: false, code: 'unavailable' }
       }
 

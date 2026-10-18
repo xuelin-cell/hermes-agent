@@ -29,7 +29,7 @@ const wps: OfficeComProgram = { ...ms, provider: 'wps', progId: 'KWPS.Applicatio
 const lo = { provider: 'libreoffice' as const, executable: process.execPath }
 
 /** 测试用正式文件、账号缓存和队列，只替换实际软件转换器。 */
-function setup(account = 'A') {
+function setup(account = 'A', now = Date.now) {
   const detector = { get: vi.fn(async () => ({ word: [lo, wps, ms], slides: [], sheet: [] })), invalidate: vi.fn() }
 
   const com = vi.fn<typeof convertCom>().mockImplementation(async (_program, copy, directory) => {
@@ -52,7 +52,7 @@ function setup(account = 'A') {
     detector,
     com,
     libreoffice,
-    service: createOfficePreviewService(state, { detector, com, libreoffice })
+    service: createOfficePreviewService(state, { detector, com, libreoffice, now })
   }
 }
 
@@ -134,8 +134,9 @@ it('后台预转换复用原缓存，已缓存文件不等待别的文件转换'
 })
 
 it('后台只准备十分钟内的新文件，旧文件有缓存仍复用，主动打开不受时间限制', async () => {
-  const fixture = setup()
-  const old = new Date(Date.now() - 11 * 60_000)
+  const now = Date.now() + 11 * 60_000
+  const fixture = setup('A', () => now)
+  const old = new Date(now - 11 * 60_000)
   await fs.utimes(source, old, old)
   expect(await fixture.service.convert(source, undefined, true)).toEqual({ ok: false, code: 'unavailable' })
   expect(fixture.com).not.toHaveBeenCalled()
@@ -144,10 +145,18 @@ it('后台只准备十分钟内的新文件，旧文件有缓存仍复用，主�
   expect(opened).toMatchObject({ ok: true, pdf })
   expect(await fixture.service.convert(source, undefined, true)).toEqual(opened)
   expect(fixture.com).toHaveBeenCalledTimes(1)
-  const recent = new Date()
+  const recent = new Date(now)
   await fs.utimes(source, recent, recent)
   expect(await fixture.service.convert(source, undefined, true)).toMatchObject({ ok: true, pdf })
   expect(fixture.com).toHaveBeenCalledTimes(2)
+})
+
+it('新复制的模板保留旧修改时间时仍提前转换，不把旧内容时间当成创建时间', async () => {
+  const fixture = setup()
+  const old = new Date(Date.now() - 24 * 60 * 60_000)
+  await fs.utimes(source, old, old)
+  expect(await fixture.service.convert(source, undefined, true)).toMatchObject({ ok: true, pdf })
+  expect(fixture.com).toHaveBeenCalledTimes(1)
 })
 
 it('WPS 的第一个入口安全失败后尝试同厂家备用入口，收尾不安全则立即停止', async () => {

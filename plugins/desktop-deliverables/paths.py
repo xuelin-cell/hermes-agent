@@ -61,13 +61,6 @@ MEDIA = re.compile(
     r"^[ \t]*MEDIA:[ \t]*(`[^`\n]+`|\"[^\"\n]+\"|'[^'\n]+'|\S+)[ \t]*(?:\r?\n|$)", re.M
 )
 LINKS = re.compile(r"\]\(\s*<?([^)>\n]+)>?\s*\)")
-_INLINE_MEDIA = re.compile(
-    r"MEDIA:[ \t]*(`[^`\n]+`|\"[^\"\n]+\"|'[^'\n]+'|"
-    r"(?:~/|/|[A-Za-z]:[/\\])[^\n]+?\.(?:"
-    + _EXT
-    + r")(?=[\s`\"'*,;:)\]}>，。；：！？、」』）】]|MEDIA:|$))",
-    re.I,
-)
 _PREVIEW = re.compile(r"::preview\{[^}\n]*?\bfile\s*=\s*([\"'])(.*?)\1[^}\n]*\}")
 
 
@@ -93,15 +86,44 @@ def resolve_path(value, cwd):
 
 
 def shown_paths(text, cwd):
-    """只认非独立行的已展示文件，独立 MEDIA 行由追加选择后统一处理。"""
-    text = MEDIA.sub("", text)
+    """复用原版 MEDIA 与示例屏蔽规则；独立行交给追加选择后处理。"""
+    from gateway.platforms.base import MEDIA_TAG_CLEANUP_RE, _mask_media_scan_text
+
+    text = MEDIA.sub("", _mask_media_scan_text(text))
     values = [
-        re.sub(r"^MEDIA:\s*", "", match.group(1).lstrip())
+        match.group(1)
         for match in LINKS.finditer(text)
+        if not match.group(1).lstrip().startswith("MEDIA:")
     ]
-    values += [match.group(1) for match in _INLINE_MEDIA.finditer(text)]
+    # Markdown 尖括号是包装，原版扫描器以空白识别同一个路径终点。
+    values += [
+        match.group("path")
+        for match in MEDIA_TAG_CLEANUP_RE.finditer(text.replace(">", " "))
+    ]
     values += [match.group(2) for match in _PREVIEW.finditer(text)]
     return {path for value in values if (path := resolve_path(value, cwd)) is not None}
+
+
+def remove_media_lines(text, cwd, moved):
+    """只收拢被移走行附近的空白；代码、引用及其它段落不作全局压缩。"""
+    from gateway.platforms.base import _mask_media_scan_text
+
+    matches = list(MEDIA.finditer(_mask_media_scan_text(text)))
+    for match in reversed(matches):
+        if resolve_path(match.group(1), cwd) not in moved:
+            continue
+        start, end = match.span()
+        left = re.search(r"(?:\r?\n[ \t]*)+$", text[:start])
+        right = re.match(r"(?:[ \t]*\r?\n)*", text[end:])
+        start = left.start() if left else start
+        end += right.end()
+        around = text[start:end]
+        newline = "\r\n" if "\r\n" in around else "\n"
+        separator = newline * min(2, max(1, around.count("\n") - 1))
+        text = (
+            text[:start] + (separator if start and end < len(text) else "") + text[end:]
+        )
+    return text
 
 
 def is_link(path):
@@ -173,28 +195,41 @@ def snapshot(root, budget=None):
     """四层、三千项、半秒内比较文件元数据；不完整快照不用来声称文件是本轮新建。"""
     budget = budget if budget is not None else [time.monotonic(), 0]
     result = {}
-    for folder, directories, files in os.walk(root, followlinks=False):
-        budget[1] += len(directories) + len(files)
-        if budget[1] > 3000 or time.monotonic() - budget[0] > 0.5:
-            return None
-        directories[:] = [
-            name
-            for name in directories
-            if not name.startswith(".")
-            and name.lower() not in EXCLUDED
-            and not is_link(Path(folder) / name)
-            and len((Path(folder) / name).relative_to(root).parts) < 4
-        ]
-        for name in files:
-            if time.monotonic() - budget[0] > 0.5:
+
+    def walk_error(error):
+        """仅尚未创建的观察根可视为空，其它遍历失败使整份快照失效。"""
+        if not (
+            isinstance(error, FileNotFoundError)
+            and error.filename
+            and Path(error.filename) == root
+        ):
+            raise error
+
+    try:
+        for folder, directories, files in os.walk(
+            root, followlinks=False, onerror=walk_error
+        ):
+            budget[1] += len(directories) + len(files)
+            if budget[1] > 3000 or time.monotonic() - budget[0] > 0.5:
                 return None
-            path = Path(folder) / name
-            if eligible(path) and not path.is_symlink():
-                try:
-                    stat = path.stat()
-                    result[path.resolve()] = (stat.st_mtime_ns, stat.st_size)
-                except OSError:
-                    continue
+            directories[:] = [
+                name
+                for name in directories
+                if not name.startswith(".")
+                and name.lower() not in EXCLUDED
+                and len((Path(folder) / name).relative_to(root).parts) < 4
+                and not is_link(Path(folder) / name)
+            ]
+            for name in files:
+                if time.monotonic() - budget[0] > 0.5:
+                    return None
+                path = Path(folder) / name
+                if eligible(path) and not is_link(path):
+                    info = path.stat()
+                    result[path.resolve()] = (info.st_mtime_ns, info.st_size)
+    except OSError:
+        # 包含 lstat 的权限错误：不能把漏读文件的部分结果当成完整基线。
+        return None
     return result
 
 

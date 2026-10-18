@@ -284,15 +284,36 @@ def test_shown_file_is_not_appended_again(delivery, form):
     assert result == forms[form] + "\n结束。"
 
 
-def test_moving_media_only_removes_its_own_line(delivery):
-    """移走正文中的 MEDIA 时吃掉该行换行，原有空行和代码块逐字保留。"""
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+@pytest.mark.parametrize("below", ["", "\n", "\n\n"])
+def test_moving_media_only_removes_its_own_line(delivery, newline, below):
+    """只收拢被移走 MEDIA 两侧的空行，保留其它正文及代码块原样。"""
     plugin, work = delivery
     begin(plugin)
     output = work / "report.docx"
     output.write_bytes(b"docx")
     prefix = "首段\n\n```text\n\n\n保留代码中的空行\n```\n\n"
-    original = prefix + f"说明\n\nMEDIA:{output}\n尾段"
-    assert reply(plugin, original) == prefix + f"说明\n\n尾段\n\nMEDIA:{output}"
+    original = (prefix + f"说明\n\nMEDIA:{output}\n{below}尾段").replace("\n", newline)
+    expected = (prefix + "说明\n\n尾段").replace("\n", newline)
+    assert reply(plugin, original) == expected + f"\n\nMEDIA:{output}"
+
+
+@pytest.mark.parametrize(
+    "example",
+    [
+        "```text\nMEDIA:{path}\n```",
+        "> MEDIA:{path}",
+        "```text\n见 MEDIA:{path} 示例\n```",
+    ],
+)
+def test_example_is_preserved_but_does_not_suppress_real_delivery(delivery, example):
+    """原版屏蔽的代码和引用示例不算已展示，也不能被移走独立行。"""
+    plugin, work = delivery
+    begin(plugin)
+    output = work / "example.pdf"
+    output.write_bytes(b"pdf")
+    original = example.format(path=output)
+    assert reply(plugin, original) == original + f"\n\nMEDIA:{output}"
 
 
 @pytest.mark.parametrize("kind", ["document-and-image", "nine"])
@@ -347,3 +368,33 @@ def test_symbolic_link_is_detected(delivery):
     except OSError as error:
         pytest.skip(f"无法创建符号链接：{error.errno}")
     assert paths.is_link(link)
+
+
+@pytest.mark.parametrize("operation", ["walk", "stat"])
+def test_unreadable_tree_never_returns_partial_baseline(
+    delivery, monkeypatch, operation
+):
+    """目录遍历和文件元数据任一读失败，都不能留下可用于差异推断的部分快照。"""
+    _, work = delivery
+    from delivery_test import paths
+
+    (work / "visible.pdf").write_bytes(b"visible")
+    blocked = work / "blocked"
+    blocked.mkdir()
+    hidden = blocked / "hidden.pdf"
+    hidden.write_bytes(b"hidden")
+    original = paths.os.scandir if operation == "walk" else Path.stat
+
+    def deny(target, *args, **kwargs):
+        """模拟 OS 拒绝特定目录或文件，其它文件操作保持真实。"""
+        if Path(target) == (blocked if operation == "walk" else hidden):
+            raise PermissionError(13, "controlled denial", str(target))
+        return original(target, *args, **kwargs)
+
+    monkeypatch.setattr(
+        paths.os if operation == "walk" else Path,
+        "scandir" if operation == "walk" else "stat",
+        deny,
+    )
+    assert paths.snapshot(work) is None
+    assert paths.snapshot(work / "not-created") == {}

@@ -15,7 +15,7 @@ import { build } from 'vite'
 
 if (!process.argv.includes('--run')) {
   console.log(
-    '独立本机模型夹具、原版对话和 Electron 卡片重开验收：node scripts/deliverables.native.mjs --run [--fallback]'
+    '独立本机模型夹具、原版对话和 Electron 卡片重开验收：node scripts/deliverables.native.mjs --run [--fallback | --wrapped]'
   )
   process.exit(0)
 }
@@ -39,7 +39,8 @@ test('交付卡片从真实持久记录重放，关闭重开与 Renderer 重载�
           ? 'tests/plugins/desktop_deliverables_generated_fixture.py'
           : 'tests/plugins/desktop_deliverables_fixture.py'
       ),
-      path.join(root, 'conversation')
+      path.join(root, 'conversation'),
+      process.argv.includes('--wrapped') ? 'wrapped' : process.argv.includes('--fallback') ? 'fallback' : 'workspace'
     ],
     { cwd: repo, windowsHide: true, timeout: 120000, maxBuffer: 5 * 1024 * 1024, env: { ...env, PYTHONPATH: repo } }
   )

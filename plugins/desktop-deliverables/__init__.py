@@ -13,10 +13,10 @@ import time
 from .paths import (
     DOCUMENTS,
     IMAGES,
-    MEDIA,
     fresh,
     media_line,
     named_paths,
+    remove_media_lines,
     resolve_path,
     requested_roots,
     shown_paths,
@@ -40,6 +40,7 @@ class Turn:
     paths: dict = field(default_factory=dict)
     pending: dict = field(default_factory=dict)
     scans: dict = field(default_factory=dict)
+    roots: set = field(default_factory=set)
     ambiguous: set = field(default_factory=set)
     guess: bool = True
     downloads: dict = field(default_factory=dict)
@@ -120,14 +121,15 @@ def before_turn(
     if cwd is None:
         return
     roots = requested_roots(as_text(user_message), cwd)
+    key = scope(session_id)
+    uploads = attachment_paths(user_message, cwd)
     with _lock:
-        key = scope(session_id)
         _turns[key] = Turn(
             turn_id,
             cwd,
             time.time(),
             task_id=task_id,
-            uploads=attachment_paths(user_message, cwd),
+            uploads=uploads,
         )
         _turns.move_to_end(key)
         turn = _turns[key]
@@ -139,35 +141,44 @@ def before_turn(
     for root in roots:
         baseline = snapshot(root, budget)
         with _lock:
-            if current(session_id, turn_id) is not turn:
+            if current(key, turn_id) is not turn:
                 return
             turn.scans[root] = baseline
 
 
-def current(session_id, turn_id):
+def current(key, turn_id):
     """旧轮迟到的工具结果不能进入新轮；调用方在锁内读取和修改。"""
-    turn = _turns.get(scope(session_id))
+    turn = _turns.get(key)
     return turn if turn and turn.turn_id == turn_id else None
 
 
+def invalidate(turn, root):
+    """目录归属不确定时作废所有重叠基线，持续到本轮结束。"""
+    turn.ambiguous.update(
+        other
+        for other in turn.roots
+        if root.is_relative_to(other) or other.is_relative_to(root)
+    )
+    for pending in turn.pending.values():
+        if root.is_relative_to(pending[0]) or pending[0].is_relative_to(root):
+            pending[1] = None
+
+
 def watch_root(turn, root):
-    """锁内先登记观察范围；扫描期间也能标记歧义，并保留到该轮结束。"""
-    if root in turn.scans or len(turn.scans) >= 4:
+    """所有执行目录都登记冲突，只有前四个目录保存结束扫描基线。"""
+    if root in turn.roots:
         return False
-    turn.scans[root] = None
+    turn.roots.add(root)
     for active in _turns.values():
         if active is turn:
             continue
-        for other in active.scans:
+        for other in active.roots:
             if root.is_relative_to(other) or other.is_relative_to(root):
-                active.ambiguous.add(other)
-                turn.ambiguous.add(root)
-                for observed in (active, turn):
-                    for pending in observed.pending.values():
-                        if pending[0].is_relative_to(root) or root.is_relative_to(
-                            pending[0]
-                        ):
-                            pending[1] = None
+                invalidate(active, root)
+                invalidate(turn, other)
+    if len(turn.scans) >= 4:
+        return False
+    turn.scans[root] = None
     return True
 
 
@@ -177,39 +188,49 @@ def before_tool(
     """同步命令及代码运行前取快照；观察窗口重叠时放弃无法确认归属的差异。"""
     if tool_name not in WRITERS:
         return
+    key = scope(session_id)
     with _lock:
-        turn = current(session_id, turn_id)
-        if not turn or len(turn.pending) >= 64:
+        turn = current(key, turn_id)
+        if not turn:
             return
-        root = local_cwd(kwargs.get("task_id") or turn.task_id) or turn.cwd
-        if tool_name == "terminal" and (args or {}).get("workdir"):
-            root = resolve_path(args["workdir"], root)
-            if root is None or not root.is_dir():
-                return
+    root = local_cwd(kwargs.get("task_id") or turn.task_id) or turn.cwd
+    if tool_name == "terminal" and (args or {}).get("workdir"):
+        root = resolve_path(args["workdir"], root)
+        if root is None or not root.is_dir():
+            return
+    with _lock:
+        if current(key, turn_id) is not turn:
+            return
         added = watch_root(turn, root)
-        before = (
-            {}
-            if tool_call_id
+        observe = (
+            bool(tool_call_id)
             and tool_name in {"terminal", "execute_code"}
             and not (args or {}).get("background")
             and root not in turn.ambiguous
-            else None
         )
         for active in _turns.values():
             for pending in active.pending.values():
                 if pending[0].is_relative_to(root) or root.is_relative_to(pending[0]):
-                    pending[1] = before = None
-        pending = [root, before]
+                    invalidate(active, root)
+                    invalidate(turn, pending[0])
+                    observe = False
+        if len(turn.pending) >= 64:
+            invalidate(turn, root)
+            return
+        # 未取得完整快照前保持 None，绝不以空字典冒充成功基线。
+        pending = [root, None]
         if tool_call_id and tool_name in {"terminal", "execute_code"}:
             turn.pending[tool_call_id] = pending
     # 执行窗口先登记再扫描；重叠命令即使已结束，也会把此窗口的 before 作废。
-    baseline = snapshot(root) if added or before is not None else None
+    baseline = snapshot(root) if added or observe else None
     with _lock:
-        if current(session_id, turn_id) is not turn:
+        if current(key, turn_id) is not turn:
             return
         if added:
             turn.scans[root] = baseline
-        if pending[1] is not None:
+        if (added or observe) and baseline is None:
+            invalidate(turn, root)
+        if observe and root not in turn.ambiguous:
             pending[1] = baseline
 
 
@@ -225,20 +246,25 @@ def after_tool(
     **kwargs,
 ):
     """合并写入参数、工具输出和执行差异，失败或后台任务不冒充已完成交付。"""
+    key = scope(session_id)
+    try:
+        data = json.loads(result) if isinstance(result, str) else result
+    except ValueError:
+        data = None
     with _lock:
-        turn = current(session_id, turn_id)
+        turn = current(key, turn_id)
         if turn is None:
             return
         pending = turn.pending.get(tool_call_id)
-        try:
-            data = json.loads(result) if isinstance(result, str) else result
-        except ValueError:
-            data = None
         if not completed(data, status, args):
             turn.pending.pop(tool_call_id, None)
             if tool_name in WRITERS:
                 turn.guess = False
             return
+    candidates, delta = [], []
+    ready = False
+    checked = False
+    try:
         root = (
             pending[0]
             if pending
@@ -249,33 +275,49 @@ def after_tool(
             candidate = resolve_path((args or {}).get("path"), root)
             if candidate:
                 candidates.insert(0, candidate)
-    after = snapshot(root) if pending and pending[1] is not None else None
-    with _lock:
-        if current(session_id, turn_id) is not turn:
-            return
-        # 后快照完成前不注销窗口，让锁外扫描期间的重叠执行也能作废它。
-        if pending is not None and turn.pending.get(tool_call_id) is pending:
-            turn.pending.pop(tool_call_id)
-            if pending[1] is not None and after is not None:
-                candidates += [
-                    path for path, stat in after.items() if pending[1].get(path) != stat
-                ]
-        for path in candidates:
-            if len(turn.paths) >= 256:
-                break
-            if path not in turn.uploads and fresh(path, turn.started):
-                turn.paths[path] = None
+        before = pending[1] if pending else None
+        after = snapshot(root) if before is not None else None
+        if before is not None and after is not None:
+            delta = [path for path, info in after.items() if before.get(path) != info]
+        candidates = [
+            path
+            for path in candidates
+            if path not in turn.uploads and fresh(path, turn.started)
+        ]
+        delta = [
+            path
+            for path in delta
+            if path not in turn.uploads and fresh(path, turn.started)
+        ]
+        checked = before is None or after is not None
+        ready = True
+    except OSError:
+        # 路径证据也可能遇到权限变化；不保留未完成的执行窗口。
+        candidates, delta = [], []
+    finally:
+        with _lock:
+            if current(key, turn_id) is turn:
+                if not checked:
+                    invalidate(turn, pending[0] if pending else turn.cwd)
+                if pending is not None and turn.pending.get(tool_call_id) is pending:
+                    turn.pending.pop(tool_call_id)
+                    if pending[1] is not None:
+                        candidates += delta
+                for path in candidates if ready else []:
+                    if len(turn.paths) >= 256:
+                        break
+                    turn.paths[path] = None
 
 
 def transform(*, response_text="", session_id="", turn_id="", platform="", **kwargs):
     """只改本轮尚未存储的回复，统一排序、去重和最多八张交付卡。"""
     if platform != "desktop" or not isinstance(response_text, str):
         return None
+    key = scope(session_id)
     with _lock:
-        turn = current(session_id, turn_id)
+        turn = current(key, turn_id)
         if not turn:
             return None
-        watch_root(turn, local_cwd(turn.task_id) or turn.cwd)
         roots = (
             [
                 (root, before)
@@ -286,21 +328,22 @@ def transform(*, response_text="", session_id="", turn_id="", platform="", **kwa
             else []
         )
     budget = [time.monotonic(), 0]
-    for root, before in roots:
-        if before is None:
-            continue
-        after = snapshot(root, budget)
+    try:
+        for root, before in roots:
+            if before is None:
+                continue
+            after = snapshot(root, budget)
+            with _lock:
+                if current(key, turn_id) is not turn:
+                    return None
+                if turn.guess and root not in turn.ambiguous and after is not None:
+                    for path, stat in after.items():
+                        if before.get(path) != stat:
+                            turn.paths.setdefault(path, None)
+    finally:
         with _lock:
-            if current(session_id, turn_id) is not turn:
-                return None
-            if turn.guess and root not in turn.ambiguous and after is not None:
-                for path, stat in after.items():
-                    if before.get(path) != stat:
-                        turn.paths.setdefault(path, None)
-    with _lock:
-        if current(session_id, turn_id) is not turn:
-            return None
-        _turns.pop(scope(session_id))
+            if current(key, turn_id) is turn:
+                _turns.pop(key)
     cwd = local_cwd(turn.task_id) or turn.cwd
     paths = dict.fromkeys([*turn.paths, *named_paths(response_text, cwd)])
     paths = [
@@ -319,12 +362,7 @@ def transform(*, response_text="", session_id="", turn_id="", platform="", **kwa
     appended = [path for path in sorted(paths, key=priority) if path not in shown][:8]
     moved = set(appended) | (managed & shown)
     # 只移走将追加或已有另一展示位置的独立行，未选中卡片不能被误删。
-    text = MEDIA.sub(
-        lambda match: (
-            "" if resolve_path(match.group(1), cwd) in moved else match.group()
-        ),
-        response_text,
-    )
+    text = remove_media_lines(response_text, cwd, moved)
     rewritten = (
         "\n\n".join(
             part
@@ -376,27 +414,30 @@ async def download_result(
     urls = generator_urls(tool_name, as_text(data))
     if not urls:
         return None
+    key = scope(session_id)
     with _lock:
-        turn = current(session_id, turn_id)
+        turn = current(key, turn_id)
         if turn is None:
             return None
-        root = local_cwd(turn.task_id) or turn.cwd
         wanted = [url for url in urls if url not in turn.downloads][
             : max(0, 4 - len(turn.downloads))
         ]
         turn.downloads.update(dict.fromkeys(wanted))
+    root = local_cwd(turn.task_id) or turn.cwd
     # 同批最多四个并行，避免顺序等待突破原生钩子的三十秒上限。
     saved = await asyncio.gather(*(fetch(url, root) for url in wanted))
     with _lock:
-        if current(session_id, turn_id) is not turn:
-            for path in saved:
-                if path:
-                    path.unlink(missing_ok=True)
-            return None
-        turn.downloads.update(zip(wanted, saved))
-        paths = [turn.downloads[url] for url in urls if turn.downloads.get(url)]
-        for path in paths:
-            turn.paths[path] = None
+        active = current(key, turn_id) is turn
+        if active:
+            turn.downloads.update(zip(wanted, saved))
+            paths = [turn.downloads[url] for url in urls if turn.downloads.get(url)]
+            for path in paths:
+                turn.paths[path] = None
+    if not active:
+        for path in saved:
+            if path:
+                path.unlink(missing_ok=True)
+        return None
     if not paths:
         return None
     if isinstance(data, dict):
@@ -409,8 +450,9 @@ async def download_result(
 
 def end_turn(*, session_id="", **kwargs):
     """取消、失败和会话结束都清除观察状态，不在下轮补旧文件。"""
+    key = scope(session_id)
     with _lock:
-        _turns.pop(scope(session_id), None)
+        _turns.pop(key, None)
 
 
 def register(ctx):

@@ -24,7 +24,7 @@ def run_scenario(root, kind="workspace"):
         work if kind in {"workspace", "terminal", "execute_code"} else root / kind
     )
     destination.mkdir(exist_ok=True)
-    output = destination / (kind + "报告.md")
+    output = destination / ("报告 (1).md" if kind == "wrapped" else kind + "报告.md")
     command = f"printf '# 交付测试' > '{output.as_posix()}'"
     call = ToolCall("write_file", {"path": str(output), "content": "# 交付测试"})
     if kind == "terminal":
@@ -47,7 +47,10 @@ def run_scenario(root, kind="workspace"):
                 "TERMINAL_CWD": str(work),
             },
         ),
-        FakeLLMServer([call, Text("完成了。")]) as server,
+        FakeLLMServer([
+            call,
+            Text(f"![报告](<MEDIA:{output}>)" if kind == "wrapped" else "完成了。"),
+        ]) as server,
     ):
         write_hermes_home(
             home,

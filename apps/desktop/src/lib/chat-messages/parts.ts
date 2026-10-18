@@ -108,8 +108,10 @@ const MEDIA_TAG_RE = new RegExp(
   'g'
 )
 
-// 整体匹配 Markdown 包装，让 MEDIA 生成的文件卡片不残留图片语法或右括号。
-const MEDIA_MARKDOWN_RE = /!?\[[^\]\n]*\]\(\s*(?:<MEDIA:\s*([^>\n]+)>|MEDIA:\s*([^)\n]+))\s*\)/g
+const MEDIA_TOKEN_RE = new RegExp(`${MEDIA_LINE_RE.source}|${MEDIA_TAG_RE.source}`, 'g')
+
+// 模型会省略带空格目标所需的尖括号，不能直接交给标准 Markdown 链接解析器。
+const MEDIA_MARKDOWN_START_RE = /!?\[[^\]\n]*\]\([\t ]*(<?)MEDIA:[\t ]*/g
 
 function unquoteMediaPath(value: string): string {
   const trimmed = value.trim()
@@ -132,19 +134,81 @@ function mediaLink(value: string): string {
   return `[${mediaDisplayLabel(path)}](${mediaMarkdownHref(path)})`
 }
 
-export function renderMediaTags(text: string): string {
-  return text
-    .replace(MEDIA_MARKDOWN_RE, (_match, angled: string, plain: string) => mediaLink(angled ?? plain))
-    .replace(
-      MEDIA_LINE_RE,
-      (_match, lead: string, value: string, trailer: string) => `${lead}${mediaLink(value)}${trailer}`
+/** 按成对括号找目标结尾；引号和尖括号内的括号属于文件名。 */
+function mediaMarkdownEnd(text: string, start: number, angled: boolean): number {
+  let depth = 1
+  const quote = ['"', "'", '`'].includes(text[start]) ? text[start] : ''
+  let quoted = Boolean(quote)
+
+  for (let index = start; index < text.length && !/[\r\n]/.test(text[index]); index++) {
+    const char = text[index]
+
+    if (angled) {
+      if (char === '>') {
+        const close = /^[\t ]*\)/.exec(text.slice(index + 1))
+
+        return close ? index + close[0].length : -1
+      }
+    } else if (quoted) {
+      if (index > start && char === quote) {
+        quoted = false
+      }
+    } else if (char === '(') {
+      depth++
+    } else if (char === ')' && --depth === 0) {
+      return index
+    }
+  }
+
+  return -1
+}
+
+/** 聊天渲染和产物收集共用包装与裸标记处理，保持顺序且每个标记只消费一次。 */
+function replaceMediaTags(text: string, replace: (value: string) => string): string {
+  /** 仅处理完整 Markdown 包装以外的片段。 */
+  const bare = (part: string) =>
+    part.replace(MEDIA_TOKEN_RE, (_match, lead: string, value: string | undefined, trailer: string, inline: string) =>
+      value === undefined ? replace(inline) : `${lead}${replace(value)}${trailer}`
     )
-    .replace(MEDIA_TAG_RE, (_match, value: string) => mediaLink(value))
+
+  let cursor = 0
+  const result: string[] = []
+
+  for (const match of text.matchAll(MEDIA_MARKDOWN_START_RE)) {
+    if (match.index < cursor) {
+      continue
+    }
+
+    const start = match.index + match[0].length
+    const end = mediaMarkdownEnd(text, start, Boolean(match[1]))
+
+    if (end < 0) {
+      continue
+    }
+
+    const value = text.slice(start, end).replace(match[1] ? />[\t ]*$/ : /[\t ]*$/, '')
+    result.push(bare(text.slice(cursor, match.index)), replace(value))
+    cursor = end + 1
+  }
+
+  return result.join('') + bare(text.slice(cursor))
+}
+
+/** 将同一解析结果转为聊天媒体卡片链接。 */
+export function renderMediaTags(text: string): string {
+  return replaceMediaTags(text, mediaLink)
 }
 
 /** Raw `MEDIA:` values in `text`, quotes intact — the one parser Artifacts and chat share. */
 export function mediaTagValues(text: string): string[] {
-  return [...text.matchAll(MEDIA_TAG_RE)].map(match => match[1] ?? '')
+  const values: string[] = []
+  replaceMediaTags(text, value => {
+    values.push(value)
+
+    return ''
+  })
+
+  return values
 }
 
 export function assistantTextPart(text: string, timestamp?: number): ChatMessagePart {

@@ -222,6 +222,176 @@ def test_first_command_reuses_new_root_baseline(delivery, tmp_path, monkeypatch)
 
 
 @pytest.mark.parametrize("phase", ["begin", "before", "after", "final"])
+def test_scan_permission_failure_cannot_claim_files_and_releases_state(
+    delivery, monkeypatch, phase
+):
+    """真实扫描遇到不可读条目时放弃差异，命令窗口与结束轮次都必须收尾。"""
+    plugin, work = delivery
+    from fallback_delivery import paths
+
+    blocked = work / "blocked"
+    blocked.mkdir()
+    old = blocked / "existing.pdf"
+    old.write_bytes(b"old")
+    original = paths.os.lstat
+
+    def denied(path, *args, **kwargs):
+        """仅注入文件系统拒绝访问，其余快照和钩子均实际执行。"""
+        if Path(path) == blocked:
+            raise PermissionError("controlled access denied")
+        return original(path, *args, **kwargs)
+
+    if phase != "begin":
+        begin(plugin)
+    if phase in {"after", "final"}:
+        plugin.before_tool(
+            tool_name="terminal", session_id="s", turn_id="t", tool_call_id="cmd"
+        )
+    with monkeypatch.context() as fault:
+        fault.setattr(paths.os, "lstat", denied)
+        if phase == "begin":
+            begin(plugin)
+        elif phase == "before":
+            plugin.before_tool(
+                tool_name="terminal", session_id="s", turn_id="t", tool_call_id="cmd"
+            )
+        elif phase == "after":
+            plugin.after_tool(
+                tool_name="terminal",
+                result={},
+                session_id="s",
+                turn_id="t",
+                tool_call_id="cmd",
+            )
+        else:
+            assert finish(plugin) is None
+    if phase == "before":
+        plugin.after_tool(
+            tool_name="terminal",
+            result={},
+            session_id="s",
+            turn_id="t",
+            tool_call_id="cmd",
+        )
+    if phase in {"before", "after"}:
+        assert not plugin._turns[plugin.scope("s")].pending
+    assert finish(plugin) is None
+    assert not plugin._turns
+    begin(plugin)
+    fresh = work / "next-turn.pdf"
+    fresh.write_bytes(b"new")
+    assert str(fresh) in finish(plugin)
+
+
+@pytest.mark.parametrize("b_starts_first", [True, False])
+def test_fifth_execution_directory_still_invalidates_other_session(
+    delivery, tmp_path, monkeypatch, b_starts_first
+):
+    """扫描上限不能截断归属登记，第五个工作目录的并发也不能互认文件。"""
+    plugin, work = delivery
+    begin(plugin, "a")
+    roots = [tmp_path / f"extra-{index}" for index in range(4)]
+    for index, root in enumerate(roots):
+        root.mkdir()
+        if index == 3 and b_starts_first:
+            monkeypatch.setenv("TERMINAL_CWD", str(root))
+            begin(plugin, "b")
+        plugin.before_tool(
+            tool_name="terminal",
+            args={"workdir": str(root)},
+            session_id="a",
+            turn_id="t",
+            tool_call_id=str(index),
+        )
+        if index == 3:
+            if not b_starts_first:
+                monkeypatch.setenv("TERMINAL_CWD", str(root))
+                begin(plugin, "b")
+            (root / "belongs-to-a.pdf").write_bytes(b"A")
+        plugin.after_tool(
+            tool_name="terminal",
+            result={},
+            session_id="a",
+            turn_id="t",
+            tool_call_id=str(index),
+        )
+    assert finish(plugin, "b") is None
+    assert finish(plugin, "a") is None
+
+
+def test_final_response_does_not_register_unobserved_cwd(
+    delivery, tmp_path, monkeypatch
+):
+    """回复结束时仅处理已有基线，不因临时 cwd 变化废掉其他会话的观察。"""
+    plugin, work = delivery
+    begin(plugin, "a")
+    other = tmp_path / "other"
+    other.mkdir()
+    monkeypatch.setenv("TERMINAL_CWD", str(other))
+    begin(plugin, "b")
+    assert finish(plugin, "a") is None
+    output = other / "belongs-to-b.pdf"
+    output.write_bytes(b"B")
+    assert str(output) in finish(plugin, "b")
+
+
+@pytest.mark.parametrize("operation", ["named_paths", "fresh"])
+def test_candidate_io_does_not_block_other_turn_and_late_results_are_discarded(
+    delivery, monkeypatch, operation
+):
+    """路径读取阻塞时其他会话仍可收尾，取消后的旧结果不能重新写入。"""
+    plugin, work = delivery
+    begin(plugin, "a")
+    entered, release, done = Event(), Event(), Event()
+    errors = []
+    original = getattr(plugin, operation)
+    output = work / "candidate.pdf"
+    output.write_bytes(b"pdf")
+
+    def delayed(*args):
+        """暂停真实候选解析以观察状态锁是否被文件 I/O 占用。"""
+        entered.set()
+        assert release.wait(10)
+        return original(*args)
+
+    def finish_tool():
+        """收集后台钩子异常，避免测试线程失败被忽略。"""
+        try:
+            plugin.after_tool(
+                tool_name="terminal",
+                result={"output": str(output)},
+                session_id="a",
+                turn_id="t",
+                tool_call_id="a",
+            )
+        except BaseException as error:
+            errors.append(error)
+
+    def cancel_turn():
+        """在候选解析尚未完成时走正式结束钩子。"""
+        plugin.end_turn(session_id="a")
+        done.set()
+
+    plugin.before_tool(
+        tool_name="terminal", session_id="a", turn_id="t", tool_call_id="a"
+    )
+    monkeypatch.setattr(plugin, operation, delayed)
+    a, b = Thread(target=finish_tool), Thread(target=cancel_turn)
+    a.start()
+    try:
+        assert entered.wait(10)
+        b.start()
+        assert done.wait(3), "候选文件 I/O 占用了状态锁"
+    finally:
+        release.set()
+        a.join(10)
+        if b.ident is not None:
+            b.join(10)
+    assert not a.is_alive() and not b.is_alive() and not errors
+    assert not plugin._turns
+
+
+@pytest.mark.parametrize("phase", ["begin", "before", "after", "final"])
 def test_interleaved_scan_cannot_claim_other_session(delivery, monkeypatch, phase):
     """另一会话在锁外扫描期间完整执行并结束，也不能把其文件算给当前会话。"""
     plugin, work = delivery

@@ -67,7 +67,8 @@ export function mediaName(path: string): string {
 }
 
 export function mediaMarkdownHref(path: string): string {
-  return `#media:${encodeURIComponent(normalizeMediaPath(path))}`
+  // encodeURIComponent 保留括号；在 Markdown 目标里继续编码，避免消费者把它当作链接边界。
+  return `#media:${encodeURIComponent(normalizeMediaPath(path)).replace(/\(/g, '%28').replace(/\)/g, '%29')}`
 }
 
 /** 只修正 Windows 本机媒体多出的盘符前斜杠；远程路径按服务端原样处理。 */
