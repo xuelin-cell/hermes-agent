@@ -4373,6 +4373,9 @@ export interface Translations {
     opening: string
     hide: string
     openPreview: string
+    imageZoomIn: string
+    imageZoomOut: string
+    imageReset: string
     openInBrowser: string
     openInExternal: string
     popIn: string
@@ -4945,6 +4948,8 @@ export interface Translations {
     restartToSaveImages: string
     imageDownloadFailed: string
     openImage: string
+    openAudioFile: string
+    openVideoFile: string
     downloadImage: string
     savingImage: string
     imagePreviewFailed: string

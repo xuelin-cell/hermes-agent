@@ -18,6 +18,7 @@ import { TranscriptVideo } from '@/components/chat/transcript-video'
 import { ZoomableImage } from '@/components/chat/zoomable-image'
 import { ErrorBoundary } from '@/components/error-boundary'
 import { useMediaImage } from '@/hooks/use-media-image'
+import { useI18n } from '@/i18n'
 import { detectArtifact } from '@/lib/artifact-detect'
 import { renderMediaTags } from '@/lib/chat-messages/parts'
 import { normalizeExternalUrl, openExternalLink, PrettyLink } from '@/lib/external-link'
@@ -27,12 +28,12 @@ import { preprocessMarkdown } from '@/lib/markdown-preprocess'
 import {
   downloadGatewayMediaFile,
   isFileMediaPath,
-  isMarkdownDocumentPath,
   isRemoteGateway,
   mediaExternalUrl,
   mediaKind,
   mediaName,
   mediaPathFromMarkdownHref,
+  normalizeMediaPath,
   resolveMediaPlaybackSrc,
   validImageDimensions
 } from '@/lib/media'
@@ -140,6 +141,7 @@ function OpenMediaFailedNote({ name }: { name: string }) {
 
 function OpenMediaButton({ kind, path }: { kind: 'audio' | 'video'; path: string }) {
   const { open, openFailed } = useOpenMediaFile(path)
+  const { t } = useI18n()
 
   return (
     <span className="block">
@@ -148,18 +150,10 @@ function OpenMediaButton({ kind, path }: { kind: 'audio' | 'video'; path: string
         onClick={open}
         type="button"
       >
-        Open {kind} file
+        {kind === 'audio' ? t.desktop.openAudioFile : t.desktop.openVideoFile}
       </button>
       {openFailed && <OpenMediaFailedNote name={mediaName(path)} />}
     </span>
-  )
-}
-
-function MediaAttachment({ path }: { path: string }) {
-  return mediaKind(path) === 'image' ? (
-    <MarkdownImage alt={mediaName(path)} src={path} />
-  ) : (
-    <MediaPlaybackAttachment path={path} />
   )
 }
 
@@ -176,14 +170,6 @@ function MediaPlaybackAttachment({ path }: { path: string }) {
 
     setFailed(false)
     setSrc('')
-
-    if (kind === 'file') {
-      setFailed(true)
-
-      return () => {
-        cancelled = true
-      }
-    }
 
     void resolveMediaPlaybackSrc(path)
       .then(value => {
@@ -210,7 +196,7 @@ function MediaPlaybackAttachment({ path }: { path: string }) {
         URL.revokeObjectURL(objectUrl)
       }
     }
-  }, [kind, path])
+  }, [path])
 
   if (kind === 'audio' && src) {
     return (
@@ -286,25 +272,12 @@ function MarkdownLink({ children, className, href, ...props }: ComponentProps<'a
   const mediaPath = mediaPathFromMarkdownHref(href)
 
   if (mediaPath) {
-    // A delivered markdown document is renderable content, not an opaque
-    // download: route it to the preview rail (which renders .md with a
-    // rendered/source toggle) instead of the download-link fallback that
-    // `mediaKind() === 'file'` would produce. (#84951)
-    if (isMarkdownDocumentPath(mediaPath)) {
-      return <PreviewAttachment target={mediaPath} />
-    }
-
-    // Non-media files (PDFs, data files, anything outside MEDIA_BY_EXT):
-    // MediaAttachment's kind==='file' branch is a degraded dead-end (bare
-    // "Open <name>" anchor). Route through the preview pipeline instead —
-    // the same file card + "Open preview" the bare-path markdown-link
-    // branch below produces — so MEDIA: uniformly delivers the richest
-    // rendering for every file type.
+    // 文档统一使用文件卡片；图片和音视频同时保留内嵌展示与同一预览入口。
     if (mediaKind(mediaPath) === 'file') {
       return <PreviewAttachment target={mediaPath} />
     }
 
-    return <MediaAttachment path={mediaPath} />
+    return <MarkdownImage alt={mediaName(mediaPath)} src={mediaPath} />
   }
 
   const previewTarget = previewTargetFromMarkdownHref(href)
@@ -331,13 +304,13 @@ function MarkdownLink({ children, className, href, ...props }: ComponentProps<'a
     // remote fetches it over the authenticated /api/fs bridge), so the same
     // transcript works from every machine that opens it. Media extensions
     // keep their richer inline player.
-    const fileHref = href && !href.startsWith('#') && isFileMediaPath(href) ? href : null
+    const fileHref = href && !href.startsWith('#') && isFileMediaPath(href) ? normalizeMediaPath(href) : null
 
     if (fileHref) {
       return mediaKind(fileHref) === 'file' ? (
         <PreviewAttachment target={fileHref} />
       ) : (
-        <MediaAttachment path={fileHref} />
+        <MarkdownImage alt={mediaName(fileHref)} src={fileHref} />
       )
     }
 
@@ -383,7 +356,7 @@ function MarkdownLink({ children, className, href, ...props }: ComponentProps<'a
 // Generated/inline media often arrives as image markdown — `![clip](clip.mp4)`.
 // A raw <img> with a video/audio source renders a broken-image icon (the file is
 // valid, the browser just can't paint it as an image), so route those sources to
-// MediaAttachment, which picks the right <video>/<audio> element (streaming
+// MediaPlaybackAttachment, which picks the right <video>/<audio> element (streaming
 // protocol + open-externally fallback) by media kind. Detection is
 // extension-based via mediaKind(); an extension-less/data/blob video URL still
 // resolves to 'file' and falls through to the image path as before.
@@ -391,15 +364,21 @@ function MarkdownLink({ children, className, href, ...props }: ComponentProps<'a
 // This is split from the image path because that path is built on hooks: a
 // conditional return inside it would have to sit after every hook call, which
 // would still fire an image resolve for media we never render as an image.
+/** 媒体保留对话内展示，并通过同一文件卡片显式打开右侧预览。 */
 export function MarkdownImage(props: ComponentProps<'img'>) {
-  const rawSrc = typeof props.src === 'string' ? props.src : ''
+  const rawSrc = typeof props.src === 'string' ? normalizeMediaPath(props.src) : ''
   const kind = rawSrc ? mediaKind(rawSrc) : 'file'
 
-  if (kind === 'video' || kind === 'audio') {
-    return <MediaAttachment path={rawSrc} />
-  }
-
-  return <MarkdownImageContent {...props} />
+  return (
+    <>
+      {kind === 'video' || kind === 'audio' ? (
+        <MediaPlaybackAttachment path={rawSrc} />
+      ) : (
+        <MarkdownImageContent {...props} src={rawSrc} />
+      )}
+      {rawSrc && !/^(?:data|blob):/i.test(rawSrc) && <PreviewAttachment target={rawSrc} />}
+    </>
+  )
 }
 
 // A cold frame is ~4:3 because that is the envelope an image can occupy here

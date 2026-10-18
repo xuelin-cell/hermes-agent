@@ -18,6 +18,7 @@ import { ShareControls } from '@/components/artifact-share/share-controls'
 import { RichCodeBlock } from '@/components/assistant-ui/embeds'
 import { CodeEditor } from '@/components/chat/code-editor'
 import { FileDiffPanel } from '@/components/chat/diff-lines'
+import { ImagePreview } from '@/components/chat/image-preview'
 import { chunkTextLines, useFixedRowWindow } from '@/components/chat/fixed-row-window'
 import { LazyShiki as ShikiHighlighter } from '@/components/chat/shiki-highlighter'
 import { PageLoader } from '@/components/page-loader'
@@ -1145,16 +1146,7 @@ export function LocalFilePreview({
   }
 
   if (isImage && state.dataUrl) {
-    return (
-      <div className="flex h-full w-full items-center justify-center overflow-auto bg-transparent p-4">
-        <img
-          alt={target.label}
-          className="max-h-full max-w-full rounded-lg object-contain shadow-sm"
-          draggable={false}
-          src={state.dataUrl}
-        />
-      </div>
-    )
+    return <ImagePreview alt={target.label} key={filePath} src={state.dataUrl} />
   }
 
   if (isPdf && state.dataUrl && pdfUrl) {

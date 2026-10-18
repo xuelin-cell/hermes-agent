@@ -1,7 +1,7 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { isMarkdownDocumentPath, mediaMarkdownHref } from '@/lib/media'
+import { mediaMarkdownHref } from '@/lib/media'
 
 import { MarkdownTextContent } from './markdown-text'
 
@@ -11,16 +11,6 @@ import { MarkdownTextContent } from './markdown-text'
 // preview rail (which renders .md with a rendered/source toggle) instead.
 describe('markdown documents delivered via MEDIA', () => {
   afterEach(cleanup)
-
-  it('classifies markdown extensions as markdown documents', () => {
-    expect(isMarkdownDocumentPath('/tmp/report.md')).toBe(true)
-    expect(isMarkdownDocumentPath('/tmp/notes.markdown')).toBe(true)
-    expect(isMarkdownDocumentPath('C:\\Users\\a\\report.MD')).toBe(true)
-    expect(isMarkdownDocumentPath('/tmp/report.md?x=1')).toBe(true)
-    expect(isMarkdownDocumentPath('/tmp/archive.zip')).toBe(false)
-    expect(isMarkdownDocumentPath('/tmp/clip.mp4')).toBe(false)
-    expect(isMarkdownDocumentPath('/tmp/README')).toBe(false)
-  })
 
   it('renders a MEDIA .md as a preview attachment, not a download link', async () => {
     const href = mediaMarkdownHref('/home/user/out/report.md')

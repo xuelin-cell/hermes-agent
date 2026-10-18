@@ -230,6 +230,24 @@ it('窗口本身改变尺寸时表格组件已收到通知，不再补发', asyn
   window.removeEventListener('resize', listener)
 })
 
+it('表格收到向上滚轮前校正分数像素偏差，不改变整数位置或水平滚动', async () => {
+  render(<FormatPreview reloadKey={0} target={target()} />)
+  const workbook = await screen.findByTestId('workbook')
+  const scrollbar = workbook.appendChild(workbook.ownerDocument.createElement('div'))
+  scrollbar.className = 'luckysheet-scrollbar-y'
+  scrollbar.scrollTop = 105.072
+  const positions: number[] = []
+  workbook.addEventListener('wheel', () => positions.push(scrollbar.scrollTop))
+  fireEvent.wheel(workbook, { deltaY: -80 })
+  expect(positions[0]).toBeLessThan(105)
+  scrollbar.scrollTop = 84
+  fireEvent.wheel(workbook, { deltaY: -80 })
+  expect(positions[1]).toBe(84)
+  scrollbar.scrollTop = 105.072
+  fireEvent.wheel(workbook, { deltaX: 80, deltaY: 0 })
+  expect(positions[2]).toBe(105.072)
+})
+
 it('表格组件的样式只放在预览区域内，不影响应用其它部分', async () => {
   const page = render(<FormatPreview reloadKey={0} target={target()} />).baseElement.ownerDocument
   await screen.findByText('中文表')
