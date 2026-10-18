@@ -133,6 +133,23 @@ it('后台预转换复用原缓存，已缓存文件不等待别的文件转换'
   }
 })
 
+it('WPS 的第一个入口安全失败后尝试同厂家备用入口，收尾不安全则立即停止', async () => {
+  const fixture = setup()
+  const second = { ...wps, progId: 'WPS.Application' }
+  fixture.detector.get.mockResolvedValue({ word: [wps, second, lo], slides: [], sheet: [] })
+  fixture.com.mockResolvedValueOnce({ ok: false, code: 'unavailable', cleanupSafe: true })
+  expect(await fixture.service.convert(source)).toMatchObject({ ok: true, converter: 'wps' })
+  expect(fixture.com.mock.calls.map(call => call[0].progId)).toEqual(['KWPS.Application', 'WPS.Application'])
+  expect(new Set(fixture.com.mock.calls.map(call => call[2])).size).toBe(2)
+  expect(fixture.libreoffice).not.toHaveBeenCalled()
+  const blocked = setup('blocked')
+  blocked.detector.get.mockResolvedValue({ word: [wps, second, lo], slides: [], sheet: [] })
+  blocked.com.mockResolvedValueOnce({ ok: false, code: 'timeout', cleanupSafe: false })
+  expect(await blocked.service.convert(source)).toEqual({ ok: false, code: 'timeout' })
+  expect(blocked.com).toHaveBeenCalledTimes(1)
+  expect(blocked.libreoffice).not.toHaveBeenCalled()
+})
+
 it('排队期间文件被再次保存时转换保存后的版本，而不是报告失败', async () => {
   const a = setup()
   const other = path.join(root, 'other.docx')

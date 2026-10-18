@@ -161,16 +161,16 @@ export function createOfficePreviewService(desktopState: string, overrides: Part
             return { ok: false, code: 'convert_failed' }
           }
 
-          for (const provider of OFFICE_CONVERTER_ORDER) {
+          const candidates = OFFICE_CONVERTER_ORDER.flatMap(provider =>
+            available.filter(program => program.provider === provider)
+          )
+
+          for (const [index, program] of candidates.entries()) {
             if (!deps.active()) {
               return { ok: false, code: 'unavailable' }
             }
 
-            const program = available.find(candidate => candidate.provider === provider)
-
-            if (!program) {
-              continue
-            }
+            const provider = program.provider
 
             const remaining = deadline - deps.now()
 
@@ -178,7 +178,7 @@ export function createOfficePreviewService(desktopState: string, overrides: Part
               return { ok: false, code: 'timeout' }
             }
 
-            const attempt = path.join(work, provider)
+            const attempt = path.join(work, `${provider}-${index}`)
             await fs.mkdir(attempt)
             safe = false
 

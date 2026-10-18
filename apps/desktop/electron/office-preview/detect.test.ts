@@ -3,12 +3,7 @@ import path from 'node:path'
 
 import { describe, expect, it, vi } from 'vitest'
 
-import {
-  OFFICE_CONVERTER_ORDER,
-  OFFICE_EXTENSIONS,
-  officeDocumentKind,
-  type OfficeDocumentKind
-} from '../../../shared/src/office-preview'
+import { OFFICE_EXTENSIONS, officeDocumentKind, type OfficeDocumentKind } from '../../../shared/src/office-preview'
 
 import {
   classifyOfficeRegistration,
@@ -130,7 +125,7 @@ describe('Office program detection', () => {
     expect(await detectorFor([], []).get()).toEqual({ word: [], slides: [], sheet: [] })
   })
 
-  it('orders available providers and deduplicates COM aliases and registry views', async () => {
+  it('orders providers, retains WPS alternatives and deduplicates repeated registrations', async () => {
     const word = 'C:\\Office\\winword.exe'
     const wps = 'D:\\WPS\\wps.exe'
     const libreOffice = libreOfficeCandidates(process.platform, {}, '')[0]
@@ -143,7 +138,10 @@ describe('Office program detection', () => {
     ]
 
     const result = await detectorFor(entries, [word, wps, libreOffice]).get()
-    expect(result.word.map(program => program.provider)).toEqual(OFFICE_CONVERTER_ORDER)
+    expect(result.word.map(program => program.provider)).toEqual(['ms-office', 'wps', 'wps', 'libreoffice'])
+    expect(
+      result.word.filter(program => program.provider === 'wps').map(program => 'progId' in program && program.progId)
+    ).toEqual(['KWPS.Application', 'Word.Application'])
     expect(result.slides.map(program => program.provider)).toEqual(['libreoffice'])
     expect(result.sheet.map(program => program.provider)).toEqual(['libreoffice'])
   })
@@ -161,7 +159,9 @@ describe('Office program detection', () => {
     const result = await detectorFor(entries, ['D:\\WPS\\wps.exe', 'D:\\WPS\\wpp.exe', 'D:\\WPS\\et.exe']).get()
     expect(Object.values(result).map(programs => programs[0].provider)).toEqual(['wps', 'wps', 'wps'])
     expect(Object.values(result).map(programs => 'progId' in programs[0] && programs[0].progId)).toEqual([
-      'KWPS.Application', 'KWPP.Application', 'KET.Application'
+      'KWPS.Application',
+      'KWPP.Application',
+      'KET.Application'
     ])
   })
 

@@ -4366,6 +4366,10 @@ export interface Translations {
   }
 
   preview: {
+    copyAll: string
+    saveAs: string
+    exportFailed: string
+    exportFormats: { md: string; pdf: string; docx: string }
     tab: string
     closePane: string
     loading: string

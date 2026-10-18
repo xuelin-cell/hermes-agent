@@ -1,3 +1,4 @@
+/* global window, location */
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import { access, mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
@@ -107,7 +108,7 @@ async function readyDesktop(instance) {
   await expect.poll(() => instance.windows().some(page => page.url().startsWith('http') && !page.url().includes('login.html')),
     { timeout: 120_000 }).toBe(true)
   const page = instance.windows().find(page => page.url().startsWith('http') && !page.url().includes('login.html'))
-  await page.locator('[data-slot=statusbar]').waitFor({ timeout: 120_000 })
+  await page.locator('[data-slot=sidebar-account-trigger]').waitFor({ timeout: 120_000 })
   // 恢复可能停在上次访问的云盘页；明确返回聊天，再验收输入区和草稿。
   await page.evaluate(() => { location.hash = '/' })
   await page.locator('textarea,[contenteditable="true"]').first().waitFor({ timeout: 120_000 })
@@ -138,7 +139,8 @@ async function readyDesktop(instance) {
 /** 使用正式退出账号 IPC 和停止事务，确认凭据已清除后才启动下一账号。 */
 async function signOut(instance, page, fixture) {
   const exited = once(instance.process(), 'exit', { signal: AbortSignal.timeout(45_000) })
-  await page.locator('[data-slot=statusbar]').getByRole('button', { name: '退出', exact: true }).click()
+  await page.locator('[data-slot=sidebar-account-trigger]').click()
+  await page.locator('.account-card').getByRole('button', { name: '退出登录', exact: true }).click()
   await page.getByRole('dialog').getByRole('button', { name: '退出', exact: true }).click()
   // 页面执行真实确认；重启动作由夹具接管，停止与凭据清除仍由正式实现产生。
   const [code] = await exited

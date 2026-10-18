@@ -1,3 +1,4 @@
+/* global window */
 import assert from 'node:assert/strict'
 import {spawn} from 'node:child_process'
 import {once} from 'node:events'
@@ -131,7 +132,7 @@ export async function exerciseAccountRecovery(fixture,mode) {
       assert.ok(current.every(row=>!ownership.backends.some(old=>old.pid===row.pid && old.startMarker===row.startMarker)))
       assert.deepEqual(await readFile(credentialFile),encrypted)
       assert.ok(firstConnection.baseUrl)
-      await page.locator('[data-slot=statusbar]').getByText('138****0000',{exact:true}).waitFor({timeout:90_000})
+      await page.locator('[data-slot=sidebar-account-trigger]').getByText('138****0000',{exact:true}).waitFor({timeout:90_000})
     } else {
       await page.waitForFunction(()=>typeof window.hermesLogin?.restore==='function',null,{polling:100,timeout:30_000})
       assert.equal(await instance.evaluate(()=>globalThis.fixtureContext()),null)

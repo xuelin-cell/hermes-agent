@@ -3634,6 +3634,10 @@ export const ja = defineLocale({
   },
 
   preview: {
+    copyAll: '全文をコピー',
+    saveAs: '名前を付けて保存',
+    exportFailed: 'エクスポートできませんでした。プレビューと画像の読み込みを確認してください。',
+    exportFormats: { md: 'Markdown (.md)', pdf: 'PDF (.pdf)', docx: 'Word (.docx)' },
     tab: 'プレビュー',
     closePane: 'プレビューペインを閉じる',
     loading: 'プレビューを読み込み中',

@@ -5313,6 +5313,10 @@ export const deOverrides = {
     addToChat: 'Zum Chat hinzufügen'
   },
   preview: {
+    copyAll: 'Gesamten Text kopieren',
+    saveAs: 'Speichern unter',
+    exportFailed: 'Export fehlgeschlagen. Prüfen Sie, ob Inhalt und Bilder geladen sind.',
+    exportFormats: { md: 'Markdown (.md)', pdf: 'PDF (.pdf)', docx: 'Word (.docx)' },
     tab: 'Vorschau',
     closePane: 'Vorschau-Fenster schließen',
     loading: 'Vorschau wird geladen',

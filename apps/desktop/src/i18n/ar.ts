@@ -3134,6 +3134,10 @@ export const ar = defineLocale({
     addToChat: 'إضافة للمحادثة'
   },
   preview: {
+    copyAll: 'نسخ النص الكامل',
+    saveAs: 'حفظ باسم',
+    exportFailed: 'تعذر التصدير. تأكد من جاهزية المعاينة والصور.',
+    exportFormats: { md: 'Markdown (.md)', pdf: 'PDF (.pdf)', docx: 'Word (.docx)' },
     tab: 'معاينة',
     closePane: 'إغلاق جزء المعاينة',
     loading: 'جار تحميل المعاينة',

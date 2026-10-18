@@ -3869,6 +3869,10 @@ export const ru = defineLocale({
     addToChat: 'Добавить в чат'
   },
   preview: {
+    copyAll: 'Копировать весь текст',
+    saveAs: 'Сохранить как',
+    exportFailed: 'Не удалось экспортировать. Убедитесь, что содержимое и изображения загружены.',
+    exportFormats: { md: 'Markdown (.md)', pdf: 'PDF (.pdf)', docx: 'Word (.docx)' },
     tab: 'Предпросмотр',
     closePane: 'Закрыть панель предпросмотра',
     loading: 'Загрузка предпросмотра',

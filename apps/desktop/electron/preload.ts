@@ -409,6 +409,8 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   prepareOfficePreview: (filePath, requestId) =>
     ipcRenderer.invoke('hermes:office-preview:convert', filePath, requestId, 'background'),
   cancelOfficePreview: requestId => ipcRenderer.invoke('hermes:office-preview:cancel', requestId),
+  // 显式另存为交给账号受限接口，位置由原生保存框选择。
+  exportPreview: input => ipcRenderer.invoke('hermes:preview:export', input),
   readFileDataUrlForAttach: filePath => ipcRenderer.invoke('hermes:readFileDataUrlForAttach', filePath),
   dataUrlReadMax: {
     get: () => ipcRenderer.invoke('hermes:data-url-read-max:get'),

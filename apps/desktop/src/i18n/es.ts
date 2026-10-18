@@ -5300,6 +5300,10 @@ export const esOverrides = {
     addToChat: 'Añadir al chat'
   },
   preview: {
+    copyAll: 'Copiar todo el texto',
+    saveAs: 'Guardar como',
+    exportFailed: 'No se pudo exportar. Compruebe que el contenido y las imágenes estén cargados.',
+    exportFormats: { md: 'Markdown (.md)', pdf: 'PDF (.pdf)', docx: 'Word (.docx)' },
     tab: 'Vista previa',
     closePane: 'Cerrar panel de vista previa',
     loading: 'Cargando vista previa',

@@ -4042,6 +4042,10 @@ export const zhHant = defineLocale({
   },
 
   preview: {
+    copyAll: '複製全文',
+    saveAs: '另存新檔',
+    exportFailed: '匯出失敗，請確認預覽內容和圖片已準備好。',
+    exportFormats: { md: 'Markdown（.md）', pdf: 'PDF（.pdf）', docx: 'Word（.docx）' },
     tab: '預覽',
     closePane: '關閉預覽窗格',
     loading: '正在載入預覽',

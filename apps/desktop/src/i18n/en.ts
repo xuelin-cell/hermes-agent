@@ -5163,6 +5163,10 @@ export const en: Translations = {
   },
 
   preview: {
+    copyAll: 'Copy full text',
+    saveAs: 'Save as',
+    exportFailed: 'Could not export this preview. Check that its content and images are ready.',
+    exportFormats: { md: 'Markdown (.md)', pdf: 'PDF (.pdf)', docx: 'Word (.docx)' },
     tab: 'Preview',
     closePane: 'Close preview pane',
     loading: 'Loading preview',

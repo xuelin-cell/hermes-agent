@@ -16,6 +16,7 @@ import type {
 import type { MachineProfile } from '../electron/machine-profile'
 import type { HermesNotification } from '../electron/notification-types'
 import type { PoolLimits } from '../electron/pool-limits'
+import type { PreviewExport, PreviewExportResult } from '../electron/preview-export'
 import type { UniworkAsrBridge } from '../electron/uniwork-asr/contract'
 import type { PlanUsageResult } from '../electron/uniwork-usage/contract'
 import type { WelcomeCategory, WelcomeLocale } from '../electron/uniwork-welcome/catalog'
@@ -324,6 +325,8 @@ declare global {
       convertOfficePreview: (filePath: string, requestId: string) => Promise<OfficePreviewResult>
       /** 卡片出现后低优先级准备 Word/PPT，只填充账号缓存，不返回文档内容。 */
       prepareOfficePreview: (filePath: string, requestId: string) => Promise<void>
+      /** 只另存当前预览内容，不接受页面指定的写入路径。 */
+      exportPreview: (input: PreviewExport) => Promise<PreviewExportResult>
       /** 页面离开时取消自己的转换请求；排队中没人等的转换会被跳过。 */
       cancelOfficePreview: (requestId: string) => Promise<void>
       /** Remote non-image attach: higher dedicated cap than preview/Settings default. */

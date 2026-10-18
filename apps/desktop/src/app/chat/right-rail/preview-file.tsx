@@ -22,6 +22,7 @@ import { chunkTextLines, useFixedRowWindow } from '@/components/chat/fixed-row-w
 import { ImagePreview } from '@/components/chat/image-preview'
 import { LazyShiki as ShikiHighlighter } from '@/components/chat/shiki-highlighter'
 import { PageLoader } from '@/components/page-loader'
+import { CopyButton } from '@/components/ui/copy-button'
 import { Tip } from '@/components/ui/tooltip'
 import { translateNow, useI18n } from '@/i18n'
 import { artifactShareFilePath } from '@/lib/artifact-share-source'
@@ -61,6 +62,7 @@ import { previewFailure } from './formats/failure'
 import { filePathForTarget } from './formats/path'
 import { readPdfBytes } from './formats/source'
 import { PdfPreview } from './pdf-preview'
+import { PreviewExportControls } from './preview-export'
 
 const SHIKI_THEME = { dark: 'github-dark-default', light: 'github-light-default' } as const
 const TEXT_PREVIEW_MAX_BYTES = 512 * 1024
@@ -738,7 +740,8 @@ export function LocalFilePreview({
   const currentCwd = useStore($currentCwd)
   const fsCacheKey = desktopFsCacheKey(connection)
   const filePath = filePathForTarget(target)
-  const isImage = target.previewKind === 'image'
+  const isSvg = /\.svg$/i.test(filePath)
+  const isImage = target.previewKind === 'image' && !isSvg
   const isPdf = target.previewKind === 'pdf' || previewsOfficeAsPdf(filePath)
 
   // eslint-disable-next-line no-restricted-syntax -- legitimate non-atom ref write (see eslint rule comment)
@@ -756,7 +759,8 @@ export function LocalFilePreview({
   // In source mode HTML files take the same path as plain text files; the
   // pane owns the rendered (webview) mode. `previewKind === 'binary'` arrives
   // when the file is forcibly previewed past the binary refusal screen.
-  const isText = target.previewKind === 'text' || target.previewKind === 'binary' || target.previewKind === 'html'
+  const isText =
+    isSvg || target.previewKind === 'text' || target.previewKind === 'binary' || target.previewKind === 'html'
 
   const blockedByTarget = !isImage && !isPdf && !forcePreview && (target.binary || target.large)
 
@@ -1091,7 +1095,7 @@ export function LocalFilePreview({
     // Order the toggle reads left→right; default lands on the most useful view.
     const modes: PreviewViewMode[] = []
 
-    if (isMarkdown || onSelectRendered) {
+    if (isMarkdown || isSvg || onSelectRendered) {
       modes.push('rendered')
     }
 
@@ -1101,7 +1105,7 @@ export function LocalFilePreview({
       modes.push('diff')
     }
 
-    const autoMode: PreviewViewMode = hasDiff ? 'diff' : isMarkdown ? 'rendered' : 'source'
+    const autoMode: PreviewViewMode = hasDiff ? 'diff' : isMarkdown || isSvg ? 'rendered' : 'source'
     // The pane hands an HTML file over only once Source was picked; that pick
     // outranks the diff-first default.
     const mode = userMode && modes.includes(userMode) ? userMode : onSelectRendered ? 'source' : autoMode
@@ -1136,6 +1140,21 @@ export function LocalFilePreview({
           onSelect={selectMode}
           trailing={
             <>
+              <CopyButton
+                appearance="icon"
+                buttonSize="icon-xs"
+                disabled={state.truncated}
+                label={t.preview.copyAll}
+                text={state.text}
+              />
+              {isMarkdown && typeof window.hermesDesktop?.exportPreview === 'function' && (
+                <PreviewExportControls
+                  disabled={Boolean(state.truncated)}
+                  name={target.label}
+                  snapshot={markdownSnapshot}
+                  text={state.text}
+                />
+              )}
               {shareableFile && (
                 <ShareControls
                   artifactKey={`file:${shareSessionId}:${sharePath}`}
@@ -1160,14 +1179,29 @@ export function LocalFilePreview({
             </>
           }
         />
-        {shareableFile && isMarkdown && (
-          <div aria-hidden="true" className="pointer-events-none absolute -left-[10000px] top-0 w-[800px]" ref={shareSnapshotRef}>
-            <MarkdownPreview filePath={filePath} text={state.text} />
-          </div>
-        )}
+        {isMarkdown &&
+          mode !== 'rendered' &&
+          (shareableFile || typeof window.hermesDesktop?.exportPreview === 'function') && (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute -left-[10000px] top-0 w-[800px]"
+              ref={shareSnapshotRef}
+            >
+              <MarkdownPreview filePath={filePath} text={state.text} />
+            </div>
+          )}
         <div className="min-h-0 flex-1 overflow-auto">
           {mode === 'rendered' ? (
-            <MarkdownPreview filePath={filePath} text={state.text} />
+            isSvg ? (
+              <ImagePreview
+                alt={target.label}
+                src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(state.text)}`}
+              />
+            ) : (
+              <div ref={shareSnapshotRef}>
+                <MarkdownPreview filePath={filePath} text={state.text} />
+              </div>
+            )
           ) : mode === 'diff' ? (
             <FileDiffPanel
               className="mx-0 mb-0 h-full max-h-none"

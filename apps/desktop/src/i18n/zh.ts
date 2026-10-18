@@ -4859,6 +4859,10 @@ export const zh = defineLocale({
   },
 
   preview: {
+    copyAll: '复制全文',
+    saveAs: '另存为',
+    exportFailed: '导出失败，请确认预览内容和图片已准备好。',
+    exportFormats: { md: 'Markdown（.md）', pdf: 'PDF（.pdf）', docx: 'Word（.docx）' },
     tab: '预览',
     closePane: '关闭预览面板',
     loading: '正在加载预览',

@@ -427,6 +427,7 @@ import { createPortalSession } from './portal-session'
 import { createKeepAwake } from './power-save'
 import { readPreUpdateBackupEnabled } from './pre-update-backup-config'
 import { capturePreviewContents } from './preview-capture'
+import { installPreviewExportIpc } from './preview-export'
 import { onPreviewWatchOwnerDestroyed, sendPreviewFileChangedToOwner } from './preview-file-watch'
 import { PreviewReachRegistry } from './preview-reach'
 import {
@@ -701,6 +702,11 @@ installOfficePreviewIpc(
   () => DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString(),
   () => currentDesktopLocalContext() === ACCOUNT_RUNTIME,
   ACCOUNT_OFFICE_PREVIEW
+)
+installPreviewExportIpc(
+  ACCOUNT_SESSION,
+  () => DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString(),
+  () => currentDesktopLocalContext() === ACCOUNT_RUNTIME
 )
 
 // Device-local preference: block F12 from opening DevTools.

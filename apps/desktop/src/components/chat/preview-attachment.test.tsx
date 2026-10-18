@@ -17,6 +17,12 @@ vi.mock('@/lib/local-preview', async original => ({
   normalizeOrLocalPreviewTarget: normalize
 }))
 vi.mock('@/app/chat/right-rail/formats/registry', () => ({ preloadFormat: preload }))
+vi.mock('./pdf-thumbnail', () => ({
+  /** 这里仅核对卡片入口，真实可见性、读取和释放由缩略图测试与原生夹具验证。 */
+  PdfThumbnail: function Thumbnail({ label }: { label: string }) {
+    return <img alt={label} src="data:image/png;base64,fixture" />
+  }
+}))
 vi.mock('@/store/preview', async original => ({ ...(await original<object>()), openPreview: open }))
 
 import { PreviewAttachment } from './preview-attachment'
@@ -55,6 +61,13 @@ it('卡片挂载即准备 Word，空闲才加载显示器，不读正文、不�
   expect(preload).not.toHaveBeenCalled()
   await act(async () => idle.forEach(callback => callback()))
   await waitFor(() => expect(preload).toHaveBeenCalledWith('word', '/account/work/report.docx'))
+})
+
+it('PDF 附件接入首页缩略图，普通文件仍保留原图标', () => {
+  const view = render(<PreviewAttachment target="report.pdf" />)
+  expect(screen.queryByRole('img', { name: 'report.pdf' })).toBeTruthy()
+  view.rerender(<PreviewAttachment target="report.txt" />)
+  expect(screen.queryByRole('img')).toBeNull()
 })
 
 it('目标或连接变化取消自己的准备请求，远程文件不交给本机 Office', () => {

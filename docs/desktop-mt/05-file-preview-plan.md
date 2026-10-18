@@ -2,7 +2,7 @@
 
 日期：2026-10-13。基线：`desktop-mt @ d5ff498050`（代码事实核对于同步远端 `40caef7b87` 之前，P01 动手前需复核）。参考实现：UniWork 桌面版 `Kyle549/UniClaw @ uniwork_release`（`8ae3548e`）、Web 版 `feat/hermes-ch`（`3bef1c5bd4`）。
 
-状态：P01～P15 已推送，P15 为 `2eff5ef79f`；真实桌面文档排版仍待用户核验。P16 未开始。P06～P15 审阅后的修复分四个阶段进行，阶段 1（转换服务可靠性）已推送 `421043d7c1`，阶段 2（Office 转换简化）已推送 `e7f5dd555f`，阶段 3（Excel 表格修正）已推送 `02572f34d9`，阶段 4（PPT、Word、PDF 与 P01～P04 遗留）已完成，四个阶段全部完成；用户要求每个阶段合并为一个提交，完成后直接继续下一阶段。复杂文档、Office 已有文档并行仍待人工验收；P04 同厂家多个备用入口仍未实现。本文不授权推送。P01～P16 每步完成验证并本地提交后暂停，等待用户核验，再继续下一步。
+状态：P01～P15 已推送，P15 为 `2eff5ef79f`；四阶段审阅修复已完成。P16 未开始，复杂文档及 Office 已有文档并行仍待人工验收。后续预览操作、PDF 查看器与缓存、提前转换及 WPS 备用入口的当前实现与验证，统一见 [交付物与预览计划](10-deliverables-and-preview-plan.md)。本文不授权推送，每阶段本地提交后暂停，等待用户核验。
 
 Web 对齐补充（2026-10-14）：核对已抓取的 `origin/feat/hermes-ch @ 07579969c5`。`office-slides.tsx` 的 PPT 主交互仍是竖排按需加载与全屏逐页；Word 也使用了分页图片，但不提供放映。本分支只参考适合桌面的交互，不合并 Web 登录、浏览器桥接、服务器转换和部署代码；Word 现有显示方式不在 P11 改动。
 
@@ -21,7 +21,7 @@ Web 对齐补充（2026-10-14）：核对已抓取的 `origin/feat/hermes-ch @ 0
 
 必须保留：
 
-- 现有文本、代码、Markdown、图片、PDF、HTML 预览的行为。`preview-file.tsx` 不搬、不改。
+- 现有文本、代码、Markdown、图片、PDF、HTML 预览的基础行为，复用原版预览组件，不另建重复显示器。
 - 文本预览的编辑、差异对比、行引用拖拽；HTML 的渲染／源码切换和内置浏览器。
 - 官方远程连接下已有的预览能力，不因本轮改造退化。
 - 账号隔离：转换缓存放在当前账号目录下，不跨账号共用。
@@ -143,7 +143,7 @@ shared/office-preview.ts             前端与主进程共用的约定：扩展�
 
 | 类型 | 扩展名 | 依次尝试 | 全部失败时 |
 | --- | --- | --- | --- |
-| 文本、代码、Markdown、图片、PDF、HTML | 现有范围 | 现有预览，不改 | 现有行为 |
+| 文本、代码、Markdown、图片、PDF、HTML | 现有范围 | 复用现有预览；新增操作见后续计划 | 保留原有基础能力 |
 | 音频 | flac m4a mp3 ogg opus wav | 播放器 | 说明原因，给出口 |
 | 视频 | avi mkv mov mp4 webm | 播放器，可拖进度 | 同上（avi、mkv 取决于 Chromium 能否解码） |
 | CSV／TSV | csv tsv | 表格；可切到源码，源码仍可编辑 | 按文本显示 |
@@ -422,7 +422,7 @@ UniWork 的表格预览由三个文件组成，共约 1300 行，并依赖表格
 | A · 预览中心与音视频 | P01 | 已实现并自动验证，已推送 `df151293dd` |
 | A · CSV／TSV | P02 | 已实现，定向检查通过；已推送 `aaaea847f5`，真实桌面验收待用户完成 |
 | A · TIFF | P03 | 已实现，定向检查通过；已推送 `f63ae9e9cc`，真实桌面验收待用户完成 |
-| B · 约定与探测 | P04 | 已推送 `4275f8f2a2`；查询异常及主要 WPS 别名、专用入口优先级已修复；同厂家备用入口仍有限制 |
+| B · 约定与探测 | P04 | 已推送 `4275f8f2a2`；查询异常、主要 WPS 别名和专用入口优先级已修复，WPS 备用入口见后续阶段六 |
 | B · 缓存与排队 | P05 | 已实现，13 项定向检查通过；已推送 `e7f05d4015`，应用接线待 P07 |
 | B · MS Office 与 WPS 转换 | P06 | 已推送至 `7bf5fe50b3`；38 项定向检查通过，两厂家三类真实转换取得 PDF，排版及已有文档并行待人工确认 |
 | B · LibreOffice、服务与接入 | P07 | 已推送 `26bcd424a6`；预览模块 60 项、独立 Electron IPC／缓存命中通过，真实软件接线仍待人工核验 |
@@ -502,7 +502,7 @@ P01～P16 业务代码预估合计约 4200 行，单步不超过 400 行。各�
 ### P04 实施记录（2026-10-13）
 
 - 新增共享约定 `apps/shared/src/office-preview.ts`：Word、PPT、Excel 扩展名分组，转换器顺序、源文件 100 MB、PDF 50 MB、总耗时 180 秒，以及成功／失败结果形状。失败代码与本地已抓取 `origin/feat/hermes-ch` 的 `deploy/hermes-mt/seed/mtuser.py` 对齐（`too_large`、`timeout`、`convert_failed`、`unavailable`、`unsupported`、`not_found`）；没有改动该 Web 分支。
-- 新增 `electron/office-preview/detect.ts`，返回每类文件的 MS Office → WPS → LibreOffice 候选。不凭 ProgID 名称认厂家，先查 COM 实际服务程序、验证真实文件，再按组件程序名分类；记录 ProgID 与 32／64 位视图，供后续调用正确位数的转换进程。同厂家的重复别名／视图只保留首个候选。
+- `electron/office-preview/detect.ts` 返回每类文件的 MS Office → WPS → LibreOffice 候选。不凭 ProgID 名称认厂家，先查 COM 实际服务程序、验证真实文件，再按组件程序名分类；记录 ProgID 与 32／64 位视图。MS Office 保留首个候选，WPS 保留不同真实程序、ProgID 或位数的备用入口，重复记录只留一份。
 - 实施时把逐次 `reg query` 调整为一次隐藏 PowerShell，通过系统 `.NET RegistryKey` API 批量读取同样的注册表键。原因是避免反复启动辅助进程和本地化命令输出乱码；JSON 明确以 UTF-8 返回，句柄及时关闭。只读查询 `CLSID`、必要时的 `CurVer`、`LocalServer32`，优先使用命名值 `ServerExecutable`，不激活 COM、不启动 Office、不读写文档。
 - 注册表读取限制为 10 秒与 256 KB 输出；查询异常上抛，不缓存成“未安装”。同一个探测器共享正在进行或已完成的查询；显式作废后重查，旧请求迟到失败不会清掉新请求。P07 将接入转换服务，本步没有新增 IPC、界面或自动启动探测。
 - LibreOffice 按 PATH 与常见目录查找，排除相对路径及隐式当前目录搜索；程序必须是实际文件。Windows 在本机验证，macOS／Linux 只检查候选生成的纯函数，不伪造运行平台或声称已实测。
@@ -516,7 +516,7 @@ P01～P16 业务代码预估合计约 4200 行，单步不超过 400 行。各�
 - 本步确认的只是注册表与文件路径可识别，不保证 COM 激活、授权、宏控制、文档转换或 PDF 正确。未打开用户 Office 窗口、未转换 Word／PPT／Excel，也未验证 LibreOffice、其它操作系统或安装包。这些属于后续步骤和人工验收。
 - 探测约定依据 [Microsoft LocalServer32](https://learn.microsoft.com/en-us/windows/win32/com/localserver32) 与 [RegistryKey.OpenBaseKey](https://learn.microsoft.com/en-us/dotnet/api/microsoft.win32.registrykey.openbasekey)；使用 `ServerExecutable` 的真实路径优先于命令行推断，不把注册表信息当作转换已经成功的证明。
 
-P04 后续对照 UniWork `8ae3548e` 发现：COM 查询失败会阻断 LibreOffice 探测；候选缺少 `KWet.Application` 与部分 `.6` 名称；同厂家只保留首个入口会丢失备用 COM。前两项属于错误处理和覆盖问题，第三项是转换接线时的限制。用户明确“先不做，推送后继续”，因此当时未修改探测代码。（更新：查询异常已在“P01～P05 审阅修复记录”中解决，主要 WPS 别名和专用入口优先级已在本次 P06 修复中补齐，同厂家多个备用 COM 仍未实现。）
+COM 查询失败不阻断独立的 LibreOffice 探测；主要 WPS 别名、专用入口优先级与同厂家备用入口均已接入。实际 WPS 多入口切换仍待实机验收，当前证据见后续阶段六。
 
 `4275f8f2a2` 已按用户当次授权推送到 `origin/desktop-mt`；随后开始 P05。
 
@@ -605,7 +605,7 @@ P05 完成后对 P01～P04 的四个提交做了一次代码审阅，共 10 条�
 
 - 用户后续实机运行已取得 MS Office 的三类 PDF，但 WPS 三类不可用，并发现五个遗留 Word PID。此前退出依赖已登记 PID，身份或安全设置阶段失败时会遗漏刚返回的独立 COM 对象。本次对空、隐藏、非用户控制的独立 MS Word／Excel，直接通过本人对象退出，不猜测 PID；此退出与设置恢复分开执行，恢复失败也会尝试。共享 PowerPoint／WPS、可见或存在其它文档的对象不走此路径。激活没有返回对象、对象信息不可读、进程或文件记录不可信时仍不能保证自动清理，不按名称强杀。
 - 按用户指定 PID 逐个核对程序全路径、完整自动化命令行、创建时间及无可见窗口：13212 已不存在，28676、13140、31852、32720 已结束。没有删除历史、文档或转换目录；未触碰原有 WPS 进程。真实转换结束后复查没有新增 Word／PowerPoint／Excel／WPS 演示残留。
-- WPS 优先使用 KWPS／KWPP／KWET／KET 等专用入口，补齐主要 `.6` 别名，避免与 MS Office 共用通用 CLSID 时激活错误软件。同厂家仍只选择一个候选，不宣称所有版本别名或备用入口已覆盖。
+- WPS 优先使用 KWPS／KWPP／KWET／KET 等专用入口，包含主要 `.6` 别名，避免与 MS Office 共用通用 CLSID 时激活错误软件；不同入口按顺序安全尝试，不宣称所有版本别名或实机组合均已覆盖。
 - 实际组件必须位于登记的同一安装目录：WPS 演示允许 wps.exe／wpp.exe，表格允许 wps.exe／et.exe；不接受其它目录。通过 [QueryFullProcessImageNameW](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-queryfullprocessimagenamew) 查询实际路径并展开短路径，不依赖可能受位数限制的 Get-Process.Path。路径冲突先保留诊断再拒绝，不调用错误应用的 Quit。
 - 本机 WPS 12.1.0.29161 的演示 COM 不实现应用／文档 HWND，标准 IOleWindow 也不可用。该分支只关闭本次文档、释放 COM，不创建额外身份文档、不退出或强杀共享 WPS。收尾须同时确认对象关闭和本次新增相关进程已消失；未登记且仍有新进程、文档未确认关闭或超时，返回 cleanupSafe=false，停止后续降级。此保护并不保证无窗口 WPS 在任意崩溃后可自动找回归属。
 - 显式释放窗口、文档集合及样例的范围／单元格等引用。已准确登记的新建空实例，在二次核对 PID、创建时间、路径和不可见后先结束，再释放客户端引用，避免已关闭 PowerPoint 的远端 COM Release 长时间等待；借用实例只释放自身引用。夹具增加生成、收尾和转换计时，成功结果不再附带失败 code。

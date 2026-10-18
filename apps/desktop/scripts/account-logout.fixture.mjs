@@ -30,7 +30,7 @@ export async function exerciseLogout(root, userData) {
     return
   }
   const window = await until(() => BrowserWindow.getAllWindows().find(w => w.webContents.getURL().startsWith('http') && !w.webContents.getURL().includes('login.html')),'桌面窗')
-  await until(() => window.webContents.executeJavaScript("Boolean(window.hermesDesktop && Array.from(document.querySelectorAll('[data-slot=statusbar] button')).some(b=>b.textContent==='退出'))"),'退出按钮')
+  await until(() => window.webContents.executeJavaScript("Boolean(window.hermesDesktop && document.querySelector('[data-slot=sidebar-account-trigger]'))"),'侧栏账号')
   const context = globalThis.fixtureContext()
   const gateway = await startFixtureGateway(context,path.join(context.home,'profiles','gateway-check'))
   const gateways = await gatewayOperation(context,'snapshot')
@@ -52,7 +52,9 @@ export async function exerciseLogout(root, userData) {
   await until(() => existsSync(leafFile),'受控孙进程')
   const leaf = JSON.parse(readFileSync(leafFile,'utf8')).pid
   writeFileSync(path.join(root,'logout-before.json'),JSON.stringify({electron:process.pid,backend:ledger.pid,controlled:controlled.pid,leaf,context,gateways}))
-  await window.webContents.executeJavaScript("Array.from(document.querySelectorAll('[data-slot=statusbar] button')).find(b=>b.textContent==='退出').click()")
+  await window.webContents.executeJavaScript("document.querySelector('[data-slot=sidebar-account-trigger]').click()")
+  await until(() => window.webContents.executeJavaScript("Boolean(document.querySelector('.account-card .account-card-logout'))"),'账号菜单')
+  await window.webContents.executeJavaScript("document.querySelector('.account-card .account-card-logout').click()")
   await until(() => window.webContents.executeJavaScript("Boolean(document.querySelector('[role=dialog]'))"),'退出确认')
   window.show()
   await delay(1000)
