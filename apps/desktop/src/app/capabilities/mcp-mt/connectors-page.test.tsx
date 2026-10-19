@@ -55,7 +55,7 @@ it('卡片打开参考详情；加号独立进入凭据表单，服务确认后�
   const search = screen.getByRole('textbox', { name: '搜索连接器' })
   fireEvent.change(search, { target: { value: 'Tencent' } })
   expect(screen.getAllByRole('button', { name: /^查看/ })).toHaveLength(1)
-  fireEvent.click(screen.getByRole('button', { name: '查看QQ 邮箱' }))
+  fireEvent.keyDown(screen.getByRole('button', { name: '查看QQ 邮箱' }), { key: 'Enter' })
   const dialog = screen.getByRole('dialog')
   expect(within(dialog).getByRole('heading', { name: '连接 QQ 邮箱' })).toBeTruthy()
   expect(within(dialog).getByText('试试这样用')).toBeTruthy()

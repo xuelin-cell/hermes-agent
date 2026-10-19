@@ -46,10 +46,12 @@ export const en: Translations = {
     transferStopFailed: 'Could not stop the transfer. Please try again.',
     downloadSaved: name => `${name} saved locally`,
     uploadSaved: name => `“${name}” uploaded to cloud`,
-    downloadsSaved: (saved, skipped) => skipped ? `${saved} files saved locally; ${skipped} downloads cancelled.` : `${saved} files saved locally.`,
+    downloadsSaved: (saved, skipped) =>
+      skipped ? `${saved} files saved locally; ${skipped} downloads cancelled.` : `${saved} files saved locally.`,
     transferErrors: {
       AUTH_REQUIRED: 'Your UniWork session has expired. Sign in to UniWork again and retry.',
-      DRIVE_AUTH_EXPIRED: 'Your drive session has expired. Refresh to reconnect. If it still fails, sign in to UniWork again.',
+      DRIVE_AUTH_EXPIRED:
+        'Your drive session has expired. Refresh to reconnect. If it still fails, sign in to UniWork again.',
       PERMISSION_DENIED: 'You do not have permission for this operation.',
       REQUEST_TIMEOUT: 'The request timed out and the operation did not complete. Please try again later.',
       NETWORK_ERROR: 'Network connection failed. Check your connection.',
@@ -63,19 +65,24 @@ export const en: Translations = {
       LOCAL_FILE_READ_FAILED: 'Could not read the local file. Check the file and retry.',
       UPLOAD_NOT_ALLOWED: 'Uploads are not available for this drive.',
       UPSTREAM_UNAVAILABLE: 'The cloud drive is temporarily unavailable.',
-      SERVER_UPGRADE_REQUIRED: 'The cloud drive transfer service needs an update. Go to Settings → Feedback and upload logs to report the issue.',
+      SERVER_UPGRADE_REQUIRED:
+        'The cloud drive transfer service needs an update. Go to Settings → Feedback and upload logs to report the issue.',
       INVALID_RESPONSE: 'The service returned an incomplete response.',
       SIZE_MISMATCH: 'The file could not be saved completely. Please retry.',
       TRANSPORT_ERROR: 'Network connection failed. Check your connection.',
-      UPLOAD_INCOMPLETE: 'The upload result is unconfirmed. Do not upload again yet. Refresh to check the cloud result.',
-      UPLOAD_UNCONFIRMED: 'The upload result is unconfirmed. Do not upload again yet. Refresh to check the cloud result.',
+      UPLOAD_INCOMPLETE:
+        'The upload result is unconfirmed. Do not upload again yet. Refresh to check the cloud result.',
+      UPLOAD_UNCONFIRMED:
+        'The upload result is unconfirmed. Do not upload again yet. Refresh to check the cloud result.',
       IPC_ERROR: 'Network connection failed. Check your connection.',
-      AUTH_CHANGED: 'The account changed and the transfer stopped. Retry under the current account.',
+      AUTH_CHANGED: 'The account changed and the transfer stopped. Retry under the current account.'
     },
     emptyRecycle: 'Empty recycle bin',
     permanentDelete: 'Delete permanently',
-    permanentDeleteHint: 'Permanently delete this item? It cannot be recovered. Deleting a folder also permanently deletes its contents.',
-    emptyRecycleHint: 'Permanently delete all files and folders in your personal cloud drive recycle bin? This cannot be undone.',
+    permanentDeleteHint:
+      'Permanently delete this item? It cannot be recovered. Deleting a folder also permanently deletes its contents.',
+    emptyRecycleHint:
+      'Permanently delete all files and folders in your personal cloud drive recycle bin? This cannot be undone.',
     filter: 'File type',
     fileName: 'File name',
     fileSize: 'Size',
@@ -344,6 +351,127 @@ export const en: Translations = {
   // `connectors.*` above stays the onboarding and chat vocabulary; these are the page's own, and the two are not shared.
   connectorsPage: {
     recommended: {
+      qrHint: 'Scan with WeCom to create and authorize the bot.',
+      qrExpired: 'The QR code expired. Refresh it and try again.',
+      qrRefresh: 'Refresh QR code',
+      connect: (name: string) => `Connect ${name}`,
+      connectAction: 'Connect',
+      connected: 'Connected',
+      disconnect: 'Disconnect',
+      tryIt: 'Try it like this',
+      brand: 'Hermes',
+      credentials: 'Enter connection details',
+      credentialsHint:
+        'Credentials are encrypted and stored locally. For mail, use an app authorization code rather than your sign-in password.',
+      waiting: 'Finish authorization in your browser. This page will update automatically.',
+      cancel: 'Cancel',
+      localOnly:
+        'Recommended connectors are available with a local desktop backend. Manage remote MCP services in the MCP tab.',
+      nextSession: 'Ready for new chats. Existing conversations keep their current tool set.',
+      needAuth: 'Authorization required',
+      saveAndConnect: 'Save and connect',
+      saving: 'Saving connection…',
+      openChat: 'Open connector chat',
+      fields: {
+        email: 'Email address',
+        authorizationCode: 'Authorization code',
+        apiKey: 'API Key',
+        clientId: 'Client ID',
+        botId: 'Bot ID',
+        secret: 'Secret'
+      },
+      placeholders: {
+        email: 'user@example.com',
+        authorizationCode: '16-character code',
+        apiKey: 'Paste API Key',
+        clientId: 'Paste Client ID',
+        botId: 'Paste Bot ID',
+        secret: 'Paste Secret'
+      },
+      hints: {
+        qq_mail: 'Use the authorization code created after enabling POP3/IMAP/SMTP in QQ Mail, not your mail password.',
+        netease_mail:
+          'Use the 16-character client authorization code created after enabling IMAP/SMTP or POP3/SMTP in NetEase Mail, not your mail password.',
+        amap: 'Use a Web Service API Key created in the Amap developer console.',
+        wps_mcp: 'Create an Agent API Key from the Agent Identity page in WPS User Center.',
+        youdao_note: 'Bind a phone number to Youdao Note, then create an API Key in the NetEase developer platform.',
+        ima: 'Get the Client ID and API Key from the Tencent ima Agent Interface page.',
+        aminer: 'Request an Auth Token in the AMiner Open Platform console; paste the token without a Bearer prefix.',
+        wecom_bot: 'Scan with WeCom and confirm creation of the intelligent bot.'
+      },
+      guides: {
+        qq_mail: {
+          title: 'How do I get a QQ Mail authorization code?',
+          steps: [
+            'Sign in to QQ Mail on the web.',
+            'Open Account & Security in Settings.',
+            'Enable IMAP/SMTP or POP3/SMTP and complete verification.',
+            'Copy the generated authorization code and paste it here.'
+          ],
+          link: 'View QQ Mail instructions'
+        },
+        netease_mail: {
+          title: 'How do I get a NetEase Mail authorization code?',
+          steps: [
+            'Sign in to your 163, 126, or yeah.net mailbox.',
+            'Open Settings and find POP3/SMTP/IMAP services.',
+            'Enable IMAP/SMTP or POP3/SMTP.',
+            'Complete the requested security verification and create a client authorization code.',
+            'Copy the 16-character code and paste it here.'
+          ],
+          link: 'View NetEase Mail instructions'
+        },
+        amap: {
+          title: 'How do I get an Amap API Key?',
+          steps: [
+            'Sign in to the Amap developer console.',
+            'Complete developer verification.',
+            'Create an application and add a Web Service Key.',
+            'Copy the Key and paste it here.'
+          ],
+          link: 'Open the Amap console'
+        },
+        wps_mcp: {
+          title: 'How do I get a WPS Agent API Key?',
+          steps: [
+            'Sign in to WPS User Center.',
+            'Open Agent Identity.',
+            'Create an AI assistant and copy the one-time Key.',
+            'Paste the Key here.'
+          ],
+          link: 'Open WPS Agent Identity'
+        },
+        youdao_note: {
+          title: 'How do I get a Youdao Note API Key?',
+          steps: [
+            'Make sure your Youdao Note account has a phone number.',
+            'Sign in to the NetEase developer platform.',
+            'Open API Management and create a Key.',
+            'Copy the Key and paste it here.'
+          ],
+          link: 'Open the NetEase developer platform'
+        },
+        ima: {
+          title: 'How do I get Tencent ima credentials?',
+          steps: [
+            'Open the ima Agent Interface page.',
+            'Follow the page to obtain an API Key.',
+            'Copy both the Client ID and API Key.',
+            'Paste both values here.'
+          ],
+          link: 'Open the ima Agent Interface'
+        },
+        aminer: {
+          title: 'How do I get an AMiner Auth Token?',
+          steps: [
+            'Sign in to the AMiner Open Platform console.',
+            'Choose Apply for Auth Token.',
+            'Copy the complete token without adding Bearer.',
+            'Paste the token here.'
+          ],
+          link: 'Open the AMiner console'
+        }
+      },
       tab: 'Recommended',
       search: 'Search connectors',
       details: (name: string) => `View ${name}`,
@@ -3920,7 +4048,8 @@ export const en: Translations = {
   },
 
   artifactShare: {
-    originRequired: 'Only verified model artifacts can be shared. Uploads, derived files and unknown sources are blocked.',
+    originRequired:
+      'Only verified model artifacts can be shared. Uploads, derived files and unknown sources are blocked.',
     share: 'Share',
     shareArtifact: 'Share artifact',
     updateShared: 'Update shared content',
@@ -3931,7 +4060,7 @@ export const en: Translations = {
     shareFailed: 'Could not share artifact',
     revokeFailed: 'Could not revoke link',
     previewNotReady: 'Markdown preview is not ready.',
-    imageNotEmbedded: 'Markdown contains an image that is not embedded. Make the page self-contained first.',
+    imageNotEmbedded: 'Markdown contains an image that is not embedded. Make the page self-contained first.'
   },
 
   artifactPreview: {

@@ -47,7 +47,8 @@ export const zh = defineLocale({
     transferStopFailed: '未能停止传输，请再试一次。',
     downloadSaved: name => `${name} 已保存到本机`,
     uploadSaved: name => `“${name}”已上传到云盘`,
-    downloadsSaved: (saved, skipped) => skipped ? `已将 ${saved} 个文件保存到本机，${skipped} 个下载已取消。` : `已将 ${saved} 个文件保存到本机。`,
+    downloadsSaved: (saved, skipped) =>
+      skipped ? `已将 ${saved} 个文件保存到本机，${skipped} 个下载已取消。` : `已将 ${saved} 个文件保存到本机。`,
     transferErrors: {
       AUTH_REQUIRED: 'UniWork 登录已失效，请重新登录 UniWork 后再试。',
       DRIVE_AUTH_EXPIRED: '云盘连接已失效，请点击刷新重新连接；若仍无法恢复，请重新登录 UniWork。',
@@ -71,7 +72,7 @@ export const zh = defineLocale({
       UPLOAD_INCOMPLETE: '上传结果待确认，请勿立即重复上传。请刷新核对云盘结果。',
       UPLOAD_UNCONFIRMED: '上传结果待确认，请勿立即重复上传。请刷新核对云盘结果。',
       IPC_ERROR: '网络连接异常，请检查网络。',
-      AUTH_CHANGED: '登录状态已变化，本次传输已停止。请在当前账号下重试。',
+      AUTH_CHANGED: '登录状态已变化，本次传输已停止。请在当前账号下重试。'
     },
     emptyRecycle: '清空回收站',
     permanentDelete: '彻底删除',
@@ -331,6 +332,125 @@ export const zh = defineLocale({
   },
   connectorsPage: {
     recommended: {
+      qrHint: '请使用企业微信扫描二维码，创建并授权智能机器人。',
+      qrExpired: '二维码已过期，请刷新后重试。',
+      qrRefresh: '重新生成二维码',
+      connect: (name: string) => `连接 ${name}`,
+      connectAction: '连接',
+      connected: '已连接',
+      disconnect: '解绑',
+      tryIt: '试试这样用',
+      brand: 'Hermes',
+      credentials: '填写连接信息',
+      credentialsHint: '凭据会在本机加密存储。邮箱请填写开启 IMAP/SMTP 后生成的授权码，而不是登录密码。',
+      waiting: '请在浏览器完成授权，此页面会自动更新。',
+      cancel: '取消',
+      localOnly: '推荐连接器仅支持本机桌面后端。远程 MCP 服务请在 MCP 标签中管理。',
+      nextSession: '已就绪，可在新聊天中使用；现有会话保持原工具集。',
+      needAuth: '需要授权',
+      saveAndConnect: '保存并连接',
+      saving: '正在保存连接…',
+      openChat: '打开连接器对话',
+      fields: {
+        email: '邮箱地址',
+        authorizationCode: '授权码',
+        apiKey: 'API Key',
+        clientId: 'Client ID',
+        botId: 'Bot ID',
+        secret: 'Secret'
+      },
+      placeholders: {
+        email: 'user@example.com',
+        authorizationCode: '16-character code',
+        apiKey: '粘贴 API Key',
+        clientId: '粘贴 Client ID',
+        botId: '粘贴 Bot ID',
+        secret: '粘贴 Secret'
+      },
+      hints: {
+        qq_mail: '请使用 QQ 邮箱网页设置中开启 POP3/IMAP/SMTP 服务后生成的授权码，不要填写邮箱登录密码。',
+        netease_mail:
+          '请使用网易邮箱开启 IMAP/SMTP 或 POP3/SMTP 服务后生成的 16 位客户端授权码，不要填写邮箱登录密码。',
+        amap: '请使用高德开放平台控制台中创建的 Web 服务 API Key。',
+        wps_mcp: '请使用 WPS 用户中心「Agent 身份」页面生成的 Agent API Key。',
+        youdao_note: '请先为有道云笔记账号绑定手机号，再登录网易智能开发者平台创建 API Key。',
+        ima: '请在腾讯 ima 的 Agent 接口页面获取 Client ID 和 API Key。',
+        aminer: '请在 AMiner 开放平台控制台申请 Auth Token；这里填写 Token 原文，无需添加 Bearer 前缀。',
+        wecom_bot: '扫码后按提示确认创建并绑定机器人。'
+      },
+      guides: {
+        qq_mail: {
+          title: '如何获取 QQ 邮箱授权码？',
+          steps: [
+            '打开 QQ 邮箱网页版并登录当前邮箱账号。',
+            '进入设置中的账号与安全，找到 POP3/IMAP/SMTP 服务。',
+            '按页面提示开启 IMAP/SMTP 或 POP3/SMTP 服务，并完成安全验证。',
+            '复制生成的授权码，返回 Hermes 填入授权码输入框。'
+          ],
+          link: '查看 QQ 邮箱授权码说明'
+        },
+        netease_mail: {
+          title: '如何获取网易邮箱授权码？',
+          steps: [
+            '打开网易邮箱网页版，登录需要连接的 163、126 或 yeah.net 邮箱。',
+            '进入“设置”，找到 POP3/SMTP/IMAP 服务相关设置。',
+            '开启 IMAP/SMTP 或 POP3/SMTP 服务。',
+            '按照网易邮箱提示完成手机短信等安全验证，并创建客户端授权码。',
+            '复制生成的 16 位授权码，返回 Hermes 填入授权码输入框。'
+          ],
+          link: '查看网易邮箱官方获取说明'
+        },
+        amap: {
+          title: '如何获取高德地图 API Key？',
+          steps: [
+            '打开高德开放平台控制台并登录开发者账号。',
+            '按平台提示完成开发者认证。',
+            '创建应用并添加服务平台为“Web 服务”的 Key。',
+            '复制生成的 Key，返回 Hermes 粘贴到下方输入框。'
+          ],
+          link: '前往高德开放平台'
+        },
+        wps_mcp: {
+          title: '如何获取 WPS Agent API Key？',
+          steps: [
+            '打开 WPS 用户中心并登录。',
+            '进入“Agent 身份”页面。',
+            '创建 AI 助理并复制只显示一次的 Key。',
+            '返回 Hermes 粘贴 Key。'
+          ],
+          link: '前往 WPS Agent 身份'
+        },
+        youdao_note: {
+          title: '如何获取有道云笔记 API Key？',
+          steps: [
+            '确认有道云笔记账号已绑定手机号。',
+            '登录网易智能开发者平台。',
+            '进入“API 管理”并创建 API Key。',
+            '复制 API Key，返回 Hermes 粘贴。'
+          ],
+          link: '前往网易开发者平台'
+        },
+        ima: {
+          title: '如何获取腾讯 ima Client ID 和 API Key？',
+          steps: [
+            '打开腾讯 ima Agent 接口页面。',
+            '按页面提示获取 API Key。',
+            '分别复制 Client ID 和 API Key。',
+            '返回 Hermes 填写两项凭据。'
+          ],
+          link: '前往 ima Agent 接口'
+        },
+        aminer: {
+          title: '如何获取 AMiner Auth Token？',
+          steps: [
+            '打开 AMiner 开放平台控制台并登录。',
+            '点击“申请 Auth Token”。',
+            '复制平台下发的完整 Token，请勿添加 Bearer 前缀。',
+            '返回 Hermes 粘贴 Token。'
+          ],
+          link: '前往 AMiner 开放平台控制台'
+        }
+      },
       tab: '推荐',
       search: '搜索连接器',
       details: (name: string) => `查看${name}`,
@@ -3231,8 +3351,7 @@ export const zh = defineLocale({
       feishu: '创建飞书 / Lark 应用，配置机器人能力，复制 App ID、App secret 和事件加密密钥。',
       wecom: '在企业微信中添加群机器人，复制其 webhook key 作为 WECOM_BOT_ID。仅可发送——双向请用企业微信 (应用) 选项。',
       wecom_callback: '设置一个企业微信自建应用，暴露其回调 URL，并提供 corp ID、secret、agent ID 和 AES key。',
-      weixin:
-        '点击上方“扫码连接”，用个人微信扫码并确认即可。Hermes 通过腾讯 iLink Bot API 连接，凭据只保存在本机。',
+      weixin: '点击上方“扫码连接”，用个人微信扫码并确认即可。Hermes 通过腾讯 iLink Bot API 连接，凭据只保存在本机。',
       qqbot: '在 QQ 开放平台 (q.qq.com) 注册一个应用，复制 App ID 和 Client Secret。',
       api_server:
         '把 Hermes 暴露为兼容 OpenAI 的 API。设置一个鉴权密钥，然后把 Open WebUI / LobeChat 等指向 host:port。',
@@ -3699,7 +3818,7 @@ export const zh = defineLocale({
     shareFailed: '分享失败',
     revokeFailed: '取消分享失败',
     previewNotReady: 'Markdown 预览尚未完成。',
-    imageNotEmbedded: 'Markdown 包含未内嵌的图片，请先整理为自包含内容。',
+    imageNotEmbedded: 'Markdown 包含未内嵌的图片，请先整理为自包含内容。'
   },
 
   artifactPreview: {
