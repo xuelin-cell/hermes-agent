@@ -4,6 +4,7 @@ import { useI18n } from '@/i18n'
 import { capitalize, normalize } from '@/lib/text'
 
 import introCopyJsonl from './intro-copy.jsonl?raw'
+import { WorkspaceCategoryTabs } from './workspace-category-tabs'
 
 type IntroCopy = {
   headline: string
@@ -183,6 +184,7 @@ export function Intro({ personality, seed }: IntroProps) {
 
         <p className="m-0 text-center leading-normal tracking-tight">{body}</p>
       </div>
+      <WorkspaceCategoryTabs />
     </div>
   )
 }
