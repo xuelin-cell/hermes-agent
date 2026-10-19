@@ -227,7 +227,7 @@ export function LocalArtifactLibrary() {
           <SelectTrigger aria-label={copy.filterType} className="w-28 shrink-0">
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="w-(--radix-select-trigger-width) min-w-0">
             {LOCAL_ARTIFACT_TYPES.map(value => (
               <SelectItem key={value} value={value}>
                 {copy.categories[value]}

@@ -108,14 +108,21 @@ export class CloudDriveClient {
     const route = input.route.split('?')[0]
 
     const allowed = {
-      GET: [/^\/asset-spaces$/, /^\/asset-spaces\/[^/]+\/usage$/, /^\/assets$/, /^\/drive\/capabilities$/],
+      GET: [
+        /^\/asset-spaces$/,
+        /^\/asset-spaces\/[^/]+\/usage$/,
+        /^\/assets$/,
+        /^\/drive\/capabilities$/,
+        /^\/assets\/search\/[a-f0-9]{32}$/
+      ],
       POST: [
         /^\/folders$/,
-        /^\/assets\/(move|trash|download)$/,
+        /^\/assets\/(move|trash|download|search)$/,
         /^\/unicom\/FileDetails$/,
         /^\/unicom\/(QueryRecycleData|ReductionRecycleData|DeleteRecycleData|EmptyRecycleData)$/
       ],
-      PATCH: [/^\/assets\/[^/]+$/]
+      PATCH: [/^\/assets\/[^/]+$/],
+      DELETE: [/^\/assets\/search\/[a-f0-9]{32}$/]
     }
 
     if (
@@ -212,7 +219,9 @@ export class CloudDriveClient {
         !response.ok ||
         payload?.ok !== true ||
         !Object.hasOwn(payload, 'data') ||
-        (payload.status !== undefined && payload.status !== 'succeeded')
+        (payload.status !== undefined &&
+          payload.status !== 'succeeded' &&
+          !(payload.status === 'accepted' && route.startsWith('/assets/search') && readOnly))
       ) {
         const status =
           payload?.status === 'partial_success' || payload?.status === 'outcome_unknown'

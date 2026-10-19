@@ -26,7 +26,7 @@ export function CloudFileListHeader({ sort, disabled, onSort }: CloudFileListHea
           aria-description={description}
           aria-label={copy.modifiedTime}
           aria-pressed={sort !== 'default'}
-          className="col-start-3 w-40 justify-start @max-[42rem]/drive:w-auto"
+          className="col-start-3 w-max justify-start"
           disabled={disabled}
           onClick={onSort}
           size="micro"

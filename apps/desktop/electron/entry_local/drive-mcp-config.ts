@@ -125,10 +125,16 @@ export function prepareDriveMcpConfig(accountHome: string, profile: string, url:
   }
 
   if (!entry) {
-    doc.setIn(['mcp_servers', DRIVE_MCP_SERVER], doc.createNode({ uniwork_managed: DRIVE_MCP_MANAGED, timeout: 600 }))
+    doc.setIn(['mcp_servers', DRIVE_MCP_SERVER], doc.createNode({ uniwork_managed: DRIVE_MCP_MANAGED, timeout: 720 }))
   }
 
   const current = doc.getIn(['mcp_servers', DRIVE_MCP_SERVER]) as YAMLMap
+
+  // 原内置超时短于全盘搜索预算；仅迁移旧默认值，保留用户自定义超时。
+  if (current.get('timeout') === 600) {
+    current.set('timeout', 720)
+  }
+
   const headers = current.get('headers')
 
   if (current.has('headers') && !independent(headers)) {

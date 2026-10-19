@@ -33,7 +33,7 @@ beforeEach(async () => {
     String(source).endsWith('access-token')
       ? Response.json({ meta: { code: '' }, result: { accessToken: 'private-drive' } })
       : String(source).endsWith('/unicom/FileDetails')
-        ? Response.json({ ok: true, data: { fid: 'one' } })
+        ? Response.json({ ok: true, data: { fid: 'one', fileName: '报告.txt' } })
         : String(source).endsWith('/assets/download')
           ? Response.json({ ok: true, data: { download_path: '/drive/content?fid=one' } })
           : new Response('hello')
@@ -69,7 +69,9 @@ it('握手与工具发现不下载，工具调用成功后才返回当前账号�
     capabilities: { tools: {} }
   })
   const tools = await rpc('tools/list')
-  expect(tools.result.tools.map((tool: { name: string }) => tool.name)).toEqual(['download'])
+  expect(tools.result.tools.map((tool: { name: string }) => tool.name)).toEqual(
+    expect.arrayContaining(['download', 'upload', 'filesearch'])
+  )
   expect(request).not.toHaveBeenCalled()
   const result = await rpc('tools/call', { name: 'download', arguments: { asset_id: 'asset-one', name: '报告.txt' } })
   const data = JSON.parse(result.result.content[0].text)
@@ -108,7 +110,7 @@ it('拒绝无凭证、其他 Origin、Host、超大请求及越界工具参数',
       await fetch(url, {
         method: 'POST',
         headers: { Authorization: authorization, 'Content-Type': 'application/json' },
-        body: 'x'.repeat(9000)
+        body: 'x'.repeat(256 * 1024 + 1)
       })
     ).status
   ).toBe(413)
@@ -150,7 +152,7 @@ it('工作区被替换为符号链接时不下载，不把文件写到其他目�
   await symlink(elsewhere, workspace, process.platform === 'win32' ? 'junction' : 'dir')
   const result = await rpc('tools/call', { name: 'download', arguments: { asset_id: 'asset', name: 'safe.txt' } })
   expect(result.result.isError).toBe(true)
-  expect(JSON.parse(result.result.content[0].text)).toEqual({ ok: false, code: 'INVALID_WORKSPACE' })
+  expect(JSON.parse(result.result.content[0].text)).toMatchObject({ ok: false, code: 'INVALID_WORKSPACE' })
   expect(request).not.toHaveBeenCalled()
 })
 
@@ -161,6 +163,168 @@ it('可用性只确认当前桌面自己的 MCP 端点，同名配置被改写�
   const config = await readFile(file, 'utf8')
   await writeFile(file, config.replace(url, 'https://personal.invalid/mcp'))
   expect(mcp.available('default')).toBe(false)
+  expect(request).not.toHaveBeenCalled()
+})
+
+it('发现的云盘动作走真实 MCP 和账号客户端，写入参数与上传字节一致，未知写入不重放', async () => {
+  const original = request.getMockImplementation()!
+  request.mockImplementation(async (source, options) => {
+    const route = new URL(String(source)).pathname
+
+    if (route.endsWith('/unicom/QueryRecycleData')) {
+      return Response.json({ ok: true, data: [{ deleteNo: 'trash-one', name: 'old.txt', type: '1', fileSize: 5 }] })
+    }
+
+    if (route.endsWith('/drive/capabilities')) {
+      return Response.json({ ok: true, data: { upload: true } })
+    }
+
+    if (route.endsWith('/drive/upload-part')) {
+      return Response.json({ ok: true, status: 'succeeded', data: {} })
+    }
+
+    if (route.endsWith('/unicom/DeleteRecycleData') && String(options?.body).includes('unknown')) {
+      throw new Error('connection interrupted')
+    }
+
+    if (
+      /\/(assets|folders|usage|ReductionRecycleData|DeleteRecycleData|move|trash)$/.test(route) ||
+      options?.method === 'PATCH'
+    ) {
+      return Response.json({ ok: true, status: 'succeeded', data: { saved: true } })
+    }
+
+    return original(source, options)
+  })
+  const listed = (await rpc('tools/list')).result.tools.map((tool: { name: string }) => tool.name)
+
+  const cases = [
+    ['list_files', {}, '/assets', 'GET', undefined],
+    ['make_dir', { name: '新目录' }, '/folders', 'POST', { parent_asset_id: '0', name: '新目录' }],
+    [
+      'rename_file',
+      { asset_id: 'asset-one', new_name: '新名称.txt', kind: 'file' },
+      '/assets/asset-one',
+      'PATCH',
+      { new_name: '新名称.txt', kind: 'file' }
+    ],
+    [
+      'move_files',
+      { file_ids: ['asset-one'], target_parent_asset_id: 'folder' },
+      '/assets/move',
+      'POST',
+      { file_ids: ['asset-one'], directory_ids: [], target_parent_asset_id: 'folder' }
+    ],
+    [
+      'delete_files',
+      { file_ids: ['asset-one'] },
+      '/assets/trash',
+      'POST',
+      { file_ids: ['asset-one'], directory_ids: [] }
+    ],
+    ['get_file_info', { asset_id: 'asset-one' }, '/unicom/FileDetails', 'POST', { fileId: 'asset-one' }],
+    ['list_recycle_bin', {}, '/unicom/QueryRecycleData', 'POST', { pageNo: 1, pageSize: 50, sortRule: '0' }],
+    [
+      'restore_files',
+      { delete_nos: ['trash-one'] },
+      '/unicom/ReductionRecycleData',
+      'POST',
+      { deleteNos: ['trash-one'] }
+    ],
+    ['get_capacity', {}, '/asset-spaces/personal/usage', 'GET', undefined]
+  ] as const
+
+  for (const [name, args, route, method, body] of cases) {
+    expect(listed).toContain(name)
+    const result = (await rpc('tools/call', { name, arguments: args })).result
+    expect(result.isError).not.toBe(true)
+    const [source, options] = request.mock.calls.at(-1)!
+    expect(new URL(String(source)).pathname.endsWith(route)).toBe(true)
+    expect(options?.method).toBe(method)
+    expect(options?.body ? JSON.parse(String(options.body)) : undefined).toEqual(body)
+
+    if (name === 'list_files') {
+      expect(new URL(String(source)).searchParams.get('space_id')).toBe('personal')
+    }
+
+    if (name === 'list_recycle_bin') {
+      expect(JSON.parse(result.content[0].text).data.items[0]).toMatchObject({
+        delete_no: 'trash-one',
+        name: 'old.txt',
+        kind: 'file',
+        size_bytes: 5
+      })
+    }
+  }
+
+  const downloaded = JSON.parse(
+    (await rpc('tools/call', { name: 'download', arguments: { asset_id: 'asset-one' } })).result.content[0].text
+  )
+
+  expect(await readFile(downloaded.path, 'utf8')).toBe('hello')
+  expect(downloaded.name).toBe('报告.txt')
+  const sourcePath = path.join(root, 'workspace', 'upload.txt')
+  await writeFile(sourcePath, 'upload bytes')
+
+  const uploaded = (
+    await rpc('tools/call', { name: 'upload', arguments: { source_path: 'upload.txt', parent_asset_id: 'folder' } })
+  ).result
+
+  expect(JSON.parse(uploaded.content[0].text)).toMatchObject({
+    ok: true,
+    name: 'upload.txt',
+    parent_asset_id: 'folder'
+  })
+  const [, upload] = request.mock.calls.find(([source]) => String(source).endsWith('/drive/upload-part'))!
+  expect(Buffer.from(upload!.body as Uint8Array).toString()).toBe('upload bytes')
+  expect(
+    JSON.parse(Buffer.from((upload!.headers as Record<string, string>)['X-Drive-Upload-Metadata'], 'base64').toString())
+  ).toMatchObject({ fileName: 'upload.txt', directoryId: 'folder', totalPart: 1 })
+
+  const purged = (
+    await rpc('tools/call', {
+      name: 'delete_files',
+      arguments: { mode: 'purge', delete_nos: ['confirmed', 'unknown', 'untouched'] }
+    })
+  ).result
+
+  expect(purged.isError).toBe(true)
+  expect(JSON.parse(purged.content[0].text)).toMatchObject({
+    ok: false,
+    status: 'outcome_unknown',
+    item_results: [
+      { delete_no: 'confirmed', status: 'succeeded' },
+      { delete_no: 'unknown', status: 'outcome_unknown' },
+      { delete_no: 'untouched', status: 'not_started' }
+    ]
+  })
+  expect(request.mock.calls.filter(([source]) => String(source).endsWith('/unicom/DeleteRecycleData'))).toHaveLength(2)
+  expect(JSON.stringify(purged)).not.toMatch(/private-login|private-drive|connection interrupted/)
+})
+
+it('批量工具拒绝跨空间、混用 ID、敏感文件和符号链接目标，不发送任何上游请求', async () => {
+  for (const [name, args] of [
+    ['list_files', { space_id: 'project' }],
+    ['list_recycle_bin', { spaceType: 1 }],
+    ['get_capacity', { token: 'external' }],
+    ['move_files', { target_parent_asset_id: '0', file_ids: [] }],
+    ['delete_files', { mode: 'purge', file_ids: ['file'], delete_nos: ['trash'] }],
+    ['delete_files', { delete_nos: ['trash'] }],
+    ['restore_files', { delete_nos: ['one', 'one'] }],
+    ['filesearch', { query: ' ' }],
+    ['list_files', { page_size: 201 }]
+  ]) {
+    expect((await rpc('tools/call', { name, arguments: args })).result.isError).toBe(true)
+  }
+
+  const sensitive = path.join(root, 'workspace', '.env')
+  await writeFile(sensitive, 'secret')
+  await symlink(sensitive, path.join(root, 'workspace', 'disguised.txt'))
+
+  for (const source_path of ['.env', 'disguised.txt', 'https://untrusted.invalid/source']) {
+    expect((await rpc('tools/call', { name: 'upload', arguments: { source_path } })).result.isError).toBe(true)
+  }
+
   expect(request).not.toHaveBeenCalled()
 })
 
@@ -201,7 +365,8 @@ asyncio.run(main())`
     })
 
     const result = JSON.parse(output)
-    expect(result).toMatchObject({ tools: ['download'], error: false, data: { ok: true } })
+    expect(result).toMatchObject({ error: false, data: { ok: true } })
+    expect(result.tools).toContain('download')
     expect(await readFile(result.data.path, 'utf8')).toBe('hello')
   },
   15_000
