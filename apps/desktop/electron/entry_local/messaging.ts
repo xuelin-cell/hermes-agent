@@ -212,7 +212,7 @@ export class DesktopMessaging {
 
     if (input.operation === 'watch') {
       this.publish(input, 'restarting', true)
-      const ok = await this.watch(profile, 'gateway-restart')
+      const ok = await this.watch(profile, 'gateway-restart') && await this.checkPlatforms(input)
       this.publish(input, ok ? 'completed' : 'failed', true, ok ? undefined : 'apply_failed')
 
       return { actionFailed: !ok }
@@ -259,7 +259,7 @@ export class DesktopMessaging {
     return { saved: true, changed: result.changed, actionFailed: result.changed ? !(await this.apply(input)) : false }
   }
 
-  /** 原版动作完成只表示启停结束；平台连接状态继续读取原版状态接口。 */
+  /** 原版动作完成后继续确认平台状态，不把启动辅助命令退出当成连接成功。 */
   private async apply(input: MessagingSetupRequest): Promise<boolean> {
     this.publish(input, 'applying', true)
     let ok = false
@@ -271,7 +271,7 @@ export class DesktopMessaging {
 
       const action = await this.deps.request('default', `${BASE}/apply`, 'POST', {})
       this.publish(input, action.name === 'gateway-stop' ? 'stopping' : 'restarting', true)
-      ok = await this.watch('default', action.name)
+      ok = await this.watch('default', action.name) && await this.checkPlatforms(input, action.name === 'gateway-stop')
 
       return ok
     } catch {
@@ -279,6 +279,40 @@ export class DesktopMessaging {
     } finally {
       this.publish(input, ok ? 'completed' : 'failed', true, ok ? undefined : 'apply_failed')
     }
+  }
+
+  /** 在原 Profile 有界确认可见平台已连接或网关已停止；只读状态，不再次启停。 */
+  private async checkPlatforms(input: MessagingSetupRequest, stopped = false): Promise<boolean> {
+    this.publish(input, 'checking', true)
+    const profile = input.profile || 'default'
+    const deadline = Date.now() + 36_000
+
+    for (let attempt = 0; attempt < 30 && Date.now() < deadline && !this.closed; attempt++) {
+      try {
+        const result = await this.deps.request(profile, `/api/messaging/platforms?profile=${encodeURIComponent(profile)}`, 'GET')
+        const rows = Array.isArray(result?.platforms) ? result.platforms : []
+        const target = rows.find(row => row?.id === input.platform)
+
+        const targetReady = !input.platform || (target && (input.operation === 'disconnect'
+          ? !target.enabled : target.enabled && target.configured))
+
+        if (rows.length && targetReady && (stopped
+          ? rows.every(row => row && row.gateway_running === false)
+          : rows.some(row => row?.gateway_running === true) && rows
+            .filter(row => row && ['weixin', ...Object.keys(IDS)].includes(row.id) && row.enabled && row.configured)
+            .every(row => row.gateway_running === true && row.state === 'connected'))) {
+          return true
+        }
+      } catch {
+        // 读取失败不当作就绪；仍受总期限和次数上限约束。
+      }
+
+      if (attempt < 29 && !this.closed && Date.now() < deadline) {
+        await (this.deps.sleep ?? (ms => new Promise(resolve => setTimeout(resolve, ms))))(1200)
+      }
+    }
+
+    return false
   }
 
   /** 有界跟踪既有动作；轮询不依赖页面存在，也不会触发第二次重启。 */

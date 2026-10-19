@@ -4,6 +4,7 @@ export interface MessagingConnectionCopy {
   saving: string
   restarting: string
   stopping: string
+  checking: string
   applied: string
   saveFailed: string
   connecting: string
@@ -22,6 +23,7 @@ export const messagingConnectionCopy: Record<Locale, MessagingConnectionCopy> = 
     saving: "Validating and saving messaging settings…",
     restarting: "Messaging gateway is restarting… Other chat apps will disconnect briefly.",
     stopping: "Messaging gateway is stopping…",
+    checking: "Checking messaging platform status…",
     applied: "Messaging settings applied.",
     saveFailed: "Could not save messaging settings. Your previous configuration is unchanged.",
     connecting: 'Connecting… Other chat apps may disconnect briefly.',
@@ -38,6 +40,7 @@ export const messagingConnectionCopy: Record<Locale, MessagingConnectionCopy> = 
     saving: "正在校验并保存消息平台配置…",
     restarting: "网关正在重启，其它消息平台会短暂断开…",
     stopping: "网关正在停止…",
+    checking: "正在确认消息平台状态…",
     applied: "消息平台配置已应用。",
     saveFailed: "消息平台配置保存失败，原配置保持不变。",
     connecting: '正在连接，其它消息平台会短暂断开。',
@@ -54,6 +57,7 @@ export const messagingConnectionCopy: Record<Locale, MessagingConnectionCopy> = 
     saving: "正在驗證並儲存訊息平台設定…",
     restarting: "閘道正在重新啟動，其他訊息平台會短暫斷線…",
     stopping: "閘道正在停止…",
+    checking: "正在確認訊息平台狀態…",
     applied: "訊息平台設定已套用。",
     saveFailed: "訊息平台設定儲存失敗，原設定保持不變。",
     connecting: '正在連線，其他訊息平台會短暫斷線。',
@@ -70,6 +74,7 @@ export const messagingConnectionCopy: Record<Locale, MessagingConnectionCopy> = 
     saving: "メッセージ設定を検証して保存しています…",
     restarting: "メッセージゲートウェイを再起動しています。他のチャットは一時切断されます。",
     stopping: "メッセージゲートウェイを停止しています…",
+    checking: "メッセージプラットフォームの状態を確認しています…",
     applied: "メッセージ設定を適用しました。",
     saveFailed: "設定を保存できませんでした。以前の設定は変更されていません。",
     connecting: '接続中です。他のチャットアプリは一時的に切断されます。',
@@ -87,6 +92,7 @@ export const messagingConnectionCopy: Record<Locale, MessagingConnectionCopy> = 
     saving: "جارٍ التحقق من إعدادات المراسلة وحفظها…",
     restarting: "جارٍ إعادة تشغيل بوابة المراسلة. ستنقطع التطبيقات الأخرى مؤقتًا.",
     stopping: "جارٍ إيقاف بوابة المراسلة…",
+    checking: "جارٍ التحقق من حالة منصات المراسلة…",
     applied: "تم تطبيق إعدادات المراسلة.",
     saveFailed: "تعذر حفظ إعدادات المراسلة. لم تتغير الإعدادات السابقة.",
     connecting: 'جارٍ الاتصال. قد تنقطع تطبيقات المحادثة الأخرى مؤقتًا.',
@@ -103,6 +109,7 @@ export const messagingConnectionCopy: Record<Locale, MessagingConnectionCopy> = 
     saving: "Проверка и сохранение настроек сообщений…",
     restarting: "Шлюз сообщений перезапускается. Другие чаты ненадолго отключатся.",
     stopping: "Шлюз сообщений останавливается…",
+    checking: "Проверка состояния платформ сообщений…",
     applied: "Настройки сообщений применены.",
     saveFailed: "Не удалось сохранить настройки сообщений. Прежняя конфигурация не изменена.",
     connecting: 'Подключение… Другие чаты могут ненадолго отключиться.',
@@ -120,6 +127,7 @@ export const messagingConnectionCopy: Record<Locale, MessagingConnectionCopy> = 
     saving: "Vérification et enregistrement des paramètres de messagerie…",
     restarting: "La passerelle redémarre. Les autres applications seront brièvement déconnectées.",
     stopping: "La passerelle de messagerie s’arrête…",
+    checking: "Vérification de l’état des plateformes de messagerie…",
     applied: "Paramètres de messagerie appliqués.",
     saveFailed: "Impossible d’enregistrer les paramètres. La configuration précédente est inchangée.",
     connecting: 'Connexion… Les autres applications peuvent être brièvement déconnectées.',
@@ -136,6 +144,7 @@ export const messagingConnectionCopy: Record<Locale, MessagingConnectionCopy> = 
     saving: "Nachrichteneinstellungen werden geprüft und gespeichert…",
     restarting: "Das Nachrichten-Gateway startet neu. Andere Chats werden kurz getrennt.",
     stopping: "Das Nachrichten-Gateway wird gestoppt…",
+    checking: "Status der Nachrichtenplattformen wird geprüft…",
     applied: "Nachrichteneinstellungen angewendet.",
     saveFailed: "Einstellungen konnten nicht gespeichert werden. Die bisherige Konfiguration bleibt unverändert.",
     connecting: 'Verbindung wird hergestellt… Andere Chats werden kurz getrennt.',
@@ -153,6 +162,7 @@ export const messagingConnectionCopy: Record<Locale, MessagingConnectionCopy> = 
     saving: "Validando y guardando la configuración de mensajes…",
     restarting: "La pasarela se está reiniciando. Las otras aplicaciones se desconectarán brevemente.",
     stopping: "La pasarela de mensajes se está deteniendo…",
+    checking: "Comprobando el estado de las plataformas de mensajes…",
     applied: "Configuración de mensajes aplicada.",
     saveFailed: "No se pudo guardar la configuración. La configuración anterior no ha cambiado.",
     connecting: 'Conectando… Las otras aplicaciones pueden desconectarse brevemente.',

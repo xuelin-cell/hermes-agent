@@ -29,6 +29,11 @@ interface MessagingViewProps extends ComponentProps<'section'> {
   setStatusbarItemGroup?: SetStatusbarItemGroup
 }
 
+interface PlatformSnapshot {
+  platforms: MessagingPlatformInfo[]
+  operationRevision: number
+}
+
 /** 继续使用原有配置作用域；页面不展示 Profile 选择，作用域变化时清掉旧表单与轮询。 */
 export function MessagingView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...props }: MessagingViewProps) {
   const scopeProfile = useStore($settingsRequestProfile)
@@ -40,19 +45,24 @@ export function MessagingView({ setStatusbarItemGroup: _setStatusbarItemGroup, .
 function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & { scopeProfile: string | undefined }) {
   const { t } = useI18n()
   const m = t.messaging
-  const [platforms, setPlatforms] = useState<MessagingPlatformInfo[] | null>(null)
+  const [snapshot, setSnapshot] = useState<PlatformSnapshot | null>(null)
+  const platforms = snapshot?.platforms ?? null
   const [query, setQuery] = useState('')
   const [loadError, setLoadError] = useState(false)
   const [requestFailed, setRequestFailed] = useState(false)
   const [configuring, setConfiguring] = useState<Exclude<PlatformId, 'weixin'> | null>(null)
   const [disconnecting, setDisconnecting] = useState<MessagingPlatformInfo | null>(null)
   const operation = useStore($messagingOperation)
-  const applying = ['saving', 'applying', 'restarting', 'stopping'].includes(operation.phase)
-  const gatewayChanging = operation.phase === 'restarting' || operation.phase === 'stopping'
+
+  // 成功提示与卡片共用同一轮操作后的读取，不能先成功再显示旧的停机状态。
+  const phase = operation.phase === 'completed' && snapshot?.operationRevision !== operation.revision
+    ? 'checking' : operation.phase
+
+  const applying = ['saving', 'applying', 'restarting', 'stopping', 'checking'].includes(phase)
+  const gatewayChanging = ['restarting', 'stopping', 'checking'].includes(phase)
   const platformsTick = useStore($platformsChangeTick)
   const revisionRef = useRef(0)
   const activeRef = useRef(true)
-  const refreshTimer = useRef<number | null>(null)
 
   /** 只接收最后一轮读取结果；失败保留已有卡片，且不把旧状态当作刷新成功。 */
   const refresh = useCallback(async () => {
@@ -61,6 +71,7 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
     }
 
     const revision = ++revisionRef.current
+    const operationRevision = $messagingOperation.get().revision
 
     try {
       const result = await getMessagingPlatforms(scopeProfile)
@@ -69,7 +80,10 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
         return
       }
 
-      setPlatforms(result.platforms.filter(platform => PLATFORM_IDS.includes(platform.id as PlatformId)))
+      setSnapshot({
+        platforms: result.platforms.filter(platform => PLATFORM_IDS.includes(platform.id as PlatformId)),
+        operationRevision
+      })
       setLoadError(false)
     } catch {
       if (revision === revisionRef.current) {
@@ -116,10 +130,6 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
       revisionRef.current += 1
       window.clearInterval(interval)
       document.removeEventListener('visibilitychange', visible)
-
-      if (refreshTimer.current !== null) {
-        window.clearTimeout(refreshTimer.current)
-      }
     }
   }, [refresh])
 
@@ -129,22 +139,12 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
     }
   }, [platformsTick, refresh])
 
-  /** 保留原有重启后的延迟读取，不增加重复重启。 */
-  const refreshAfterConnect = useCallback(() => {
-    if (refreshTimer.current !== null) {
-      window.clearTimeout(refreshTimer.current)
-    }
-
-    refreshTimer.current = window.setTimeout(() => void refresh(), 4000)
-  }, [refresh])
-
   // 任务由主进程继续；页面只在阶段变化后更新卡片，不参与任务生命周期。
   useEffect(() => {
     if (operation.revision > 0 && !document.hidden) {
       void refresh()
-      refreshAfterConnect()
     }
-  }, [operation.revision, refresh, refreshAfterConnect])
+  }, [operation.revision, refresh])
 
   /** 等待主进程接收后立即关闭配置框；凭据校验和重启进度在页面展示。 */
   async function save(platform: MessagingPlatformInfo, env: Record<string, string>) {
@@ -189,7 +189,7 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
     setRequestFailed(false)
 
     try {
-      await window.hermesDesktop.messagingSetup({ operation: 'retry' })
+      await window.hermesDesktop.messagingSetup({ operation: 'retry', profile: scopeProfile })
     } catch {
       if (activeRef.current) {setRequestFailed(true)}
     }
@@ -226,11 +226,12 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
   const phaseMessages = {
     idle: '', saving: operation.operation === 'disconnect' ? m.weixinQr.unbinding : m.connection.saving, applying: m.connection.connecting,
     restarting: m.connection.restarting, stopping: m.connection.stopping,
+    checking: m.connection.checking,
     completed: m.connection.applied,
     failed: operation.saved ? m.connection.savedFailed : errors[operation.error || ''] || m.connection.saveFailed
   }
 
-  const message = requestFailed ? m.connection.savedFailed : phaseMessages[operation.phase]
+  const message = requestFailed ? m.connection.savedFailed : phaseMessages[phase]
 
   const selected = platforms?.find(platform => platform.id === configuring)
   const search = query.trim().toLocaleLowerCase()

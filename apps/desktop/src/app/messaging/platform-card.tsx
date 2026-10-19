@@ -30,7 +30,7 @@ export function PlatformStatus({ platform, pending = false }: { platform?: Messa
 
   const state = !platform
     ? 'unknown'
-    : pending && platform.enabled && platform.configured
+    : pending && platform.enabled && platform.configured && !['fatal', 'startup_failed'].includes(platform.state ?? '')
       ? 'connecting'
     : !platform.enabled
       ? 'disabled'

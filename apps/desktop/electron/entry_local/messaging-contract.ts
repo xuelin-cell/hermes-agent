@@ -16,7 +16,7 @@ export interface MessagingSetupResult {
 
 export interface MessagingOperationStatus {
   revision: number
-  phase: 'idle' | 'saving' | 'applying' | 'restarting' | 'stopping' | 'completed' | 'failed'
+  phase: 'idle' | 'saving' | 'applying' | 'restarting' | 'stopping' | 'checking' | 'completed' | 'failed'
   profile?: string
   platform?: MessagingSetupRequest['platform']
   operation?: MessagingSetupRequest['operation']

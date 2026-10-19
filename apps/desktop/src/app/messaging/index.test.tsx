@@ -355,6 +355,29 @@ function dingtalk(patch: Partial<MessagingPlatformInfo> = {}) {
 }
 
 describe('Messaging cards and native configuration', () => {
+  it('平台确认中不展示过渡停机或需重启，完成后先同步卡片再显示成功', async () => {
+    const ready = dingtalk({ configured: true, enabled: true, gateway_running: true, state: 'connected' })
+    getMessagingPlatforms.mockResolvedValue({ platforms: [ready] })
+    await renderMessaging()
+    let oldSnapshot!: (value: { platforms: MessagingPlatformInfo[] }) => void
+    let freshSnapshot!: (value: { platforms: MessagingPlatformInfo[] }) => void
+    getMessagingPlatforms.mockReturnValueOnce(new Promise(resolve => { oldSnapshot = resolve }))
+    await act(async () => { publishOperation({ phase: 'checking', saved: true, operation: 'save' }) })
+    expect(await screen.findByText('Checking messaging platform status…')).toBeTruthy()
+    getMessagingPlatforms.mockReturnValueOnce(new Promise(resolve => { freshSnapshot = resolve }))
+    await act(async () => { publishOperation({ phase: 'completed' }) })
+    expect(screen.queryByText('Messaging settings applied.')).toBeNull()
+    await act(async () => { oldSnapshot({ platforms: [{ ...ready, state: 'pending_restart', gateway_running: false }] }) })
+    const card = screen.getByRole('article', { name: 'DingTalk bot integration' })
+    expect(within(card).queryByText('Messaging gateway stopped')).toBeNull()
+    expect(within(card).queryByText('Restart required')).toBeNull()
+    expect(screen.queryByText('Messaging settings applied.')).toBeNull()
+    await act(async () => { freshSnapshot({ platforms: [ready] }) })
+    expect(await screen.findByText('Messaging settings applied.')).toBeTruthy()
+    expect(within(card).getByText('Connected')).toBeTruthy()
+    expect(notify).not.toHaveBeenCalled()
+  })
+
   it('保存后关闭弹窗，离开页面时任务状态继续，返回后显示失败并可重试', async () => {
     getMessagingPlatforms.mockResolvedValue({ platforms: [dingtalk({ configured: true, enabled: true, state: 'connected' })] })
     const view = await renderMessaging()
@@ -376,7 +399,7 @@ describe('Messaging cards and native configuration', () => {
     view.rerender(<MemoryRouter><MessagingView /></MemoryRouter>)
     expect(await screen.findByText('Settings saved, but the messaging connection could not be restored. Retry the connection.')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
-    await waitFor(() => expect(messagingSetup).toHaveBeenCalledWith({ operation: 'retry' }))
+    await waitFor(() => expect(messagingSetup).toHaveBeenCalledWith({ operation: 'retry', profile: 'default' }))
   })
 
   it('解绑确认立即关闭，页面展示停止状态，旧快照不能覆盖新状态', async () => {
