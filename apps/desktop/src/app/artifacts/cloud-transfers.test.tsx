@@ -14,6 +14,16 @@ import { $connection, $selectedStoredSessionId } from '@/store/session'
 
 import { CloudLibrary } from './cloud-library'
 
+const opened = vi.hoisted(() => ({ sources: [] as { data: Uint8Array }[], destroy: vi.fn() }))
+vi.mock('../chat/right-rail/pdf-engine', () => ({
+  // 仅替代 jsdom 无法绘制的 pdf.js 层；转换、分页查看器和字节交接照常执行。
+  createPdfEngine: (_container: unknown, _viewer: unknown, source: { data: Uint8Array }) => {
+    opened.sources.push(source)
+
+    return { destroy: opened.destroy }
+  }
+}))
+
 afterEach(() => {
   cleanup()
   $previewTabs.set([])
@@ -176,15 +186,8 @@ it('预览原文件经统一规范化和读取入口，下载只调用原生入�
 
 it('Office 原文件交给既有预览入口，转换结果关闭后释放，下载仍指向原文件', async () => {
   let finish!: (value: unknown) => void
-  const createUrl = vi.fn(() => 'blob:cloud-office-preview')
-  const revokeUrl = vi.fn()
-  vi.stubGlobal(
-    'URL',
-    class extends URL {
-      static createObjectURL = createUrl
-      static revokeObjectURL = revokeUrl
-    }
-  )
+  opened.sources.length = 0
+  opened.destroy.mockClear()
 
   const transfer = vi
     .fn()
@@ -215,14 +218,14 @@ it('Office 原文件交给既有预览入口，转换结果关闭后释放，下
       }
     })
   )
-  expect(await screen.findByTitle('报告.docx')).toHaveProperty('src', 'blob:cloud-office-preview')
-  expect(createUrl).toHaveBeenCalledTimes(1)
+  await waitFor(() => expect(opened.sources).toHaveLength(1))
+  expect(Array.from(opened.sources[0].data)).toEqual([37, 80, 68, 70])
   expect(window.hermesDesktop.convertOfficePreview).toHaveBeenCalledWith(
     '/account/cloud-drive-preview/报告.docx',
     expect.any(String)
   )
   act(() => closeRightRailTab($previewTabs.get()[0].id))
-  await waitFor(() => expect(revokeUrl).toHaveBeenCalledWith('blob:cloud-office-preview'))
+  await waitFor(() => expect(opened.destroy).toHaveBeenCalled())
   fireEvent.click(screen.getByRole('button', { name: '下载' }))
   await screen.findByText('已保存到本机')
   expect(transfer.mock.calls[1][0]).toMatchObject({ operation: 'download', assetId: 'asset-one', name: '报告.docx' })

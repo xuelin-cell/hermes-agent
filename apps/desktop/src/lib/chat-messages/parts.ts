@@ -89,7 +89,8 @@ const _MEDIA_EXT_ALTERNATION = [...MEDIA_DELIVERY_EXTS].sort((a, b) => b.length 
  */
 // 未加引号的交付路径在扩展名后的中文标点处结束，后面的说明仍属于正文。
 const _MEDIA_PATH_END = '(?=[\\s`"\'*_,;:)\\]}，。；：！？、」』）】]|MEDIA:|$)'
-const _MEDIA_PATH_ANCHORED = `(?:~/|/|[A-Za-z]:[/\\\\])\\S+?(?:[^\\S\\n]+\\S+?)*?\\.(?:${_MEDIA_EXT_ALTERNATION})${_MEDIA_PATH_END}`
+// 路径可以含空格，但空格后紧跟 MEDIA: 是下一个文件，不能并进同一路径。
+const _MEDIA_PATH_ANCHORED = `(?:~/|/|[A-Za-z]:[/\\\\])\\S+?(?:[^\\S\\n]+(?!MEDIA:)\\S+?)*?\\.(?:${_MEDIA_EXT_ALTERNATION})${_MEDIA_PATH_END}`
 const _MEDIA_PATH_RELATIVE = `[^\\s\`"]+?\\.(?:${_MEDIA_EXT_ALTERNATION})${_MEDIA_PATH_END}`
 
 // Bare-word fallback for paths the anchored branch misses (relative paths,
