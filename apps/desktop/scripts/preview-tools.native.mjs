@@ -46,14 +46,25 @@ test('Markdown 三种另存为、全文复制、SVG 切换和 PDF 文件卡片',
     import {MaasAccountSidebar} from ${source('src/app/shell/maas-account-status.tsx')}
     import {FormatPreview} from ${source('src/app/chat/right-rail/formats/format-preview.tsx')}
     import {PreviewAttachment} from ${source('src/components/chat/preview-attachment.tsx')}
+    import {ShareControls} from ${source('src/components/artifact-share/share-controls.tsx')}
+    import {ConversationShareDialog} from ${source('src/components/conversation-share/dialog.tsx')}
+    import {ConversationSessionShareButton} from ${source('src/components/conversation-share/session-button.tsx')}
+    import {TreeGroup} from ${source('src/components/pane-shell/tree/renderer/tree-group.tsx')}
+    import {registry} from ${source('src/contrib/registry.ts')}
+    import {setSessionOwnerHint} from ${source('src/store/session.ts')}
+    import {$conversationShareTarget} from ${source('src/store/conversation-share.ts')}
     import ${source('src/styles.css')}
     // 测试按钮只选择目标，内容读取、工具栏和文件卡片均使用正式组件。
+    window.fixtureShare=scope=>$conversationShareTarget.set({owner:{profile:'fixture'},request:{sessionId:'fixture',scope,...(scope==='response'?{responseRowId:42}:{})}})
+    setSessionOwnerHint('fixture',{connectionId:'local',profile:'fixture'})
+    window.fixtureTarget=()=>$conversationShareTarget.get()
+    registry.register({id:'session-header-fixture',area:'panes',title:'Session header fixture',data:{placement:'main',headerActions:()=> <ConversationSessionShareButton sessionId="fixture"/>},render:()=> <div/>})
     function Fixture(){
       const [file,setFile]=useState(${JSON.stringify(md)}); window.fixtureOpen=setFile
       const target={kind:'file',source:file,path:file,label:file.split(/[/\\\\]/).at(-1),url:'file://'+file,previewKind:file.endsWith('.svg')?'image':file.endsWith('.pdf')?'pdf':'text'}
       return <I18nProvider configClient={null} initialLocale="en"><MemoryRouter><div style={{display:'flex',height:'100vh'}}>
-        <aside style={{width:340,flexShrink:0}}><button onClick={()=>setFile(${JSON.stringify(md)})}>Markdown fixture</button><button onClick={()=>setFile(${JSON.stringify(svg)})}>SVG fixture</button><PreviewAttachment target=${JSON.stringify(pdf)}/><MaasAccountSidebar/></aside>
-        <main style={{position:'relative',flex:1,minHeight:0,minWidth:0}}><FormatPreview key={file} reloadKey={0} target={target}/></main>
+        <aside style={{width:340,flexShrink:0}}><div style={{height:80,position:'relative'}}><TreeGroup node={{type:'group',id:'header-zone',active:'session-header-fixture',panes:['session-header-fixture'],tabStrip:'always'}} topEdge/></div><button onClick={()=>setFile(${JSON.stringify(md)})}>Markdown fixture</button><button onClick={()=>setFile(${JSON.stringify(svg)})}>SVG fixture</button><ShareControls artifactKey="fixture-share" html="<h1>Preview export</h1>" title="report.md" source={{sessionId:'fixture',content:'<h1>Preview export</h1>'}}/><PreviewAttachment target=${JSON.stringify(pdf)}/><MaasAccountSidebar/></aside>
+        <main style={{position:'relative',flex:1,minHeight:0,minWidth:0}}><FormatPreview key={file} reloadKey={0} target={target}/></main><ConversationShareDialog/>
       </div></MemoryRouter></I18nProvider>
     }createRoot(document.getElementById('root')).render(<Fixture/>);
   `
@@ -92,6 +103,7 @@ test('Markdown 三种另存为、全文复制、SVG 切换和 PDF 文件卡片',
       resolveDir: desktop,
       contents: `
     import fs from 'node:fs/promises'
+    import {createHash} from 'node:crypto'
     import {app,BrowserWindow,ipcMain,session,dialog,clipboard} from 'electron'
     import {installPreviewExportIpc,previewPdf} from './electron/preview-export'
     import {resolveReadableFileForIpc,readFileDataUrlForIpc} from './electron/hardening'
@@ -99,6 +111,26 @@ test('Markdown 三种另存为、全文复制、SVG 切换和 PDF 文件卡片',
     app.on('window-all-closed',()=>{}) // 样例打印窗结束后继续创建测试主窗，由夹具统一关闭进程。
     globalThis.saved=[]
     globalThis.fixtureLogouts=0
+    globalThis.shareRecord=null;globalThis.sharePublications=0;globalThis.shareRevocations=0
+    // 分享仅替换为本机响应，弹窗与 preload 仍走正式组件，绝不上传测试内容。
+    ipcMain.handle('hermes:artifact-share:eligibility',()=>({publishable:true}))
+    ipcMain.handle('hermes:artifact-share:inspect',()=>globalThis.shareRecord)
+    ipcMain.handle('hermes:artifact-share:publish',(_event,input)=>{globalThis.sharePublications++;return globalThis.shareRecord={key:input.key,shareId:'fixture',url:'https://share.example.test/fixture',hash:createHash('sha256').update(input.html).digest('hex'),version:1}})
+    ipcMain.handle('hermes:artifact-share:revoke',()=>{globalThis.shareRevocations++;globalThis.shareRecord=null})
+    globalThis.conversationRecords=[];globalThis.conversationPublications=0;globalThis.conversationRevocations=0
+    const documents=new Map()
+    ipcMain.handle('hermes:conversation-share:prepare',(_event,owner,request)=>{
+      const document={schemaVersion:1,snapshotId:request.scope+'-'+request.includeProcess,scope:request.scope,title:'Design review',locale:'en',theme:'light',rendererVersion:1,messages:[{role:'user',blocks:[{type:'markdown',text:'Please review the **sharing flow**.'}]},{role:'assistant',blocks:[{type:'markdown',text:'## Review complete\\n\\nThe public page is a read-only snapshot.\\n\\n- Preview the content\\n- Create the link\\n- Copy or revoke it'}]}]}
+      const ticket=document.snapshotId;documents.set(ticket,{document,owner,request});return {ticket,document}
+    })
+    ipcMain.handle('hermes:conversation-share:cancel',()=>{})
+    ipcMain.handle('hermes:conversation-share:list',()=>globalThis.conversationRecords)
+    ipcMain.handle('hermes:conversation-share:publish',(_event,ticket)=>{
+      const {document,owner,request}=documents.get(ticket);globalThis.conversationPublications++
+      const record={key:ticket,shareId:ticket,snapshotId:document.snapshotId,scope:request.scope,title:document.title,createdAt:new Date().toISOString(),state:'published',url:'https://share.example.test/'+ticket,owner,sessionId:request.sessionId}
+      globalThis.conversationRecords=[record,...globalThis.conversationRecords.filter(item=>item.key!==ticket)];return record
+    })
+    ipcMain.handle('hermes:conversation-share:revoke',(_event,key)=>{globalThis.conversationRevocations++;globalThis.conversationRecords=globalThis.conversationRecords.map(item=>item.key===key?{...item,state:'revoked'}:item)})
     const fixtureAccount={maskedPhone:'138****0000',expiresAt:Date.now()-1000}
     ipcMain.handle('hermes:maas-account:get',()=>fixtureAccount)
     ipcMain.handle('hermes:maas-account:usage',()=>({status:'failed'}))
@@ -135,6 +167,60 @@ test('Markdown 三种另存为、全文复制、SVG 切换和 PDF 文件卡片',
       .toBe(true)
     const page = app.windows().find(page => page.url() === pathToFileURL(index).href)
     page.on('pageerror', error => errors.push(String(error)))
+    const headerShare = page
+      .locator('[data-zone-tabstrip="header-zone"]')
+      .getByRole('button', { name: 'Share conversation', exact: true })
+    await expect(headerShare).toBeVisible()
+    assert.equal(await headerShare.evaluate(node => node.closest('[role="tablist"]')), null)
+    await headerShare.click()
+    assert.ok(await page.evaluate(() => window.fixtureTarget()), '顶部分享应设置对话目标')
+    const headerDialog = page.getByRole('dialog', { name: 'Share conversation', exact: true })
+    await expect(headerDialog.getByRole('button', { name: 'Create public link' })).toBeEnabled()
+    assert.equal(await app.evaluate(() => globalThis.conversationPublications), 0)
+    await page.screenshot({ path: path.join(root, 'session-header-share.png') })
+    await headerDialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+    for (const [scope, name] of [
+      ['session', 'Share conversation'],
+      ['response', 'Share response']
+    ]) {
+      await page.evaluate(scope => window.fixtureShare(scope), scope)
+      const dialog = page.getByRole('dialog', { name, exact: true })
+      await expect(dialog.getByRole('button', { name: 'Create public link' })).toBeEnabled({ timeout: 30000 })
+      const count = scope === 'session' ? 0 : 1
+      assert.equal(await app.evaluate(() => globalThis.conversationPublications), count)
+      await page.screenshot({ path: path.join(root, scope + '-share-preview.png') })
+      await dialog.getByRole('button', { name: 'Create public link' }).click()
+      await expect(dialog.getByRole('button', { name: 'Copy share link', exact: true })).toBeVisible()
+      await page.screenshot({ path: path.join(root, scope + '-share-link.png') })
+      await dialog.getByRole('button', { name: 'Copy share link', exact: true }).click()
+      assert.equal(
+        await app.evaluate(({ clipboard }) => clipboard.readText()),
+        'https://share.example.test/' + scope + '-false'
+      )
+      await dialog.getByRole('button', { name: 'Revoke share', exact: true }).click()
+      assert.equal(await app.evaluate(() => globalThis.conversationRevocations), count)
+      await dialog.getByRole('button', { name: 'Revoke share', exact: true }).click()
+      await expect(dialog.getByRole('button', { name: 'Create public link' })).toBeEnabled()
+      await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+    }
+    // 超过 data URL 的长度限制，但仍小于 IPC 内容上限；经过正式快照和保存接口导出。
+    await page.addStyleTag({ content: ':root{--snapshot-padding:"' + 'x'.repeat(3 * 1024 * 1024) + '"}' })
+    await page.getByRole('button', { name: 'Share artifact', exact: true }).click()
+    const share = page.getByRole('dialog', { name: 'Share artifact' })
+    await expect(share.getByRole('button', { name: 'Create public link' })).toBeEnabled()
+    assert.equal(await app.evaluate(() => globalThis.sharePublications), 0)
+    await page.screenshot({ path: path.join(root, 'share-confirm.png') })
+    await share.getByRole('button', { name: 'Create public link' }).click()
+    await expect(share.getByRole('button', { name: 'Copy shared link' })).toBeVisible()
+    await page.screenshot({ path: path.join(root, 'share-link.png') })
+    await share.getByRole('button', { name: 'Revoke shared link' }).click()
+    assert.equal(await app.evaluate(() => globalThis.shareRevocations), 0)
+    await share.getByRole('button', { name: 'Revoke shared link' }).click()
+    await expect(share.getByRole('button', { name: 'Create public link' })).toBeEnabled()
+    assert.equal(await app.evaluate(() => globalThis.sharePublications), 1)
+    assert.equal(await app.evaluate(() => globalThis.shareRevocations), 1)
+    await share.getByRole('button', { name: 'Cancel' }).click()
+    await expect(share).toHaveCount(0)
     await expect(page.getByText('sample.pdf', { exact: true })).toBeVisible({ timeout: 30000 })
     await expect(page.getByRole('img', { name: 'sample.pdf' })).toHaveCount(0)
     await page.getByRole('button', { name: 'Copy full text' }).click()

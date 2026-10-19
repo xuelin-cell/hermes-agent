@@ -1152,6 +1152,7 @@ export function LocalFilePreview({
                   disabled={Boolean(state.truncated)}
                   name={target.label}
                   snapshot={markdownSnapshot}
+                  snapshotRoot={() => shareSnapshotRef.current}
                   text={state.text}
                 />
               )}

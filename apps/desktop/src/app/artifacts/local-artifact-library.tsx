@@ -54,7 +54,7 @@ export function LocalArtifactLibrary() {
   const [limits, setLimits] = useState<Record<string, number>>({})
   const [groupLimit, setGroupLimit] = useState(50)
   const [share, setShare] = useState<LocalArtifact | null>(null)
-  /** 发布结束和工具栏关闭共用稳定回调，避免重新启动文件读取。 */
+  /** 分享对话框关闭使用稳定回调，避免重新启动文件读取。 */
   const closeShare = useCallback(() => setShare(null), [])
   const [upload, setUpload] = useState<LocalArtifact | null>(null)
   const [uploaded, setUploaded] = useState(new Set<string>())

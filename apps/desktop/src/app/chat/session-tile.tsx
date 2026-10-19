@@ -27,6 +27,7 @@ import { ModelMenuPanel } from '@/app/shell/model-menu-panel'
 import { ReasoningMenuPanel } from '@/app/shell/reasoning-menu-panel'
 import { formatRefValue } from '@/components/assistant-ui/directive-text'
 import { CenteredThreadSpinner } from '@/components/assistant-ui/thread/status'
+import { ConversationSessionShareButton } from '@/components/conversation-share/session-button'
 import { findGroupOfPane } from '@/components/pane-shell/tree/model'
 import { $layoutTree, closeTreePane, moveTreePane, setTreeGroupTabStrip } from '@/components/pane-shell/tree/store'
 import {
@@ -218,6 +219,17 @@ function buildTileView(storedSessionId: string): SessionView {
     $storedId: atom(storedSessionId),
     $turnStartedAt: computed($state, state => state?.turnStartedAt ?? null)
   }
+}
+
+/** 标签栏位于会话内容 Provider 外，显式绑定此标签的会话状态。 */
+function SessionTileShareButton({ storedSessionId }: { storedSessionId: string }) {
+  const view = useMemo(() => buildTileView(storedSessionId), [storedSessionId])
+
+  return (
+    <SessionViewProvider value={view}>
+      <ConversationSessionShareButton sessionId={storedSessionId} />
+    </SessionViewProvider>
+  )
 }
 
 // Module-level constants so these ChatView props are referentially stable —
@@ -918,6 +930,7 @@ export const watchSessionTiles = paneMirror<SessionTile>({
   before: t => t.before,
   minWidth: '20rem',
   title: tileCaption,
+  headerActions: storedSessionId => <SessionTileShareButton storedSessionId={storedSessionId} />,
   // The tab's status dot — the SAME primitive the sidebar row renders, keyed by
   // the stored id, so a session's status/color can never disagree between the
   // two surfaces. Self-subscribing (live state + resolved color), so the strip

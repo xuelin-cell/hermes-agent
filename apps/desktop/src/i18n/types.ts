@@ -3230,6 +3230,13 @@ export interface Translations {
   }
 
   artifactShare: {
+    disclosure: string
+    checking: string
+    createLink: string
+    linkReady: string
+    changedNotice: string
+    confirmUpdate: string
+    confirmRevoke: string
     originRequired: string
     share: string
     shareArtifact: string

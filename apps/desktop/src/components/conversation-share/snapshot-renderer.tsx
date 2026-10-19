@@ -7,12 +7,16 @@ import { type Components, defaultRemarkPlugins, Streamdown } from 'streamdown'
 import { visitParents } from 'unist-util-visit-parents'
 
 import { MARKDOWN_CONTAINER_CLASS_NAME } from '@/components/assistant-ui/markdown-text-style'
+import { CodeCard, CodeCardBody } from '@/components/chat/code-card'
 import { SHIKI_COLOR_REPLACEMENTS, SHIKI_THEME } from '@/components/chat/shiki-config'
+import { renderMediaTags } from '@/lib/chat-messages/parts'
+import { FileText } from '@/lib/icons'
 import { createMemoizedMathPlugin } from '@/lib/katex-memo'
 import { preprocessMarkdown } from '@/lib/markdown-preprocess'
 
 import { collectFontStyles } from './font-styles'
 import { waitForPreparation } from './preparation-wait'
+import { ConversationSharePage } from './snapshot-page'
 
 const math = createMemoizedMathPlugin({ singleDollarTextMath: true })
 const LIMIT = 2 * 1024 * 1024
@@ -36,6 +40,10 @@ const STYLE_PROPERTIES = [
   'padding',
   'margin',
   'border',
+  'border-top',
+  'border-right',
+  'border-bottom',
+  'border-left',
   'border-radius',
   'border-collapse',
   'border-spacing',
@@ -44,6 +52,12 @@ const STYLE_PROPERTIES = [
   'direction',
   'unicode-bidi',
   'flex-direction',
+  'flex-shrink',
+  'flex-grow',
+  'flex-basis',
+  'min-width',
+  'max-width',
+  'min-height',
   'align-items',
   'justify-content',
   'gap',
@@ -67,9 +81,23 @@ const STYLE_PROPERTIES = [
 
 const components: Components = {
   // 禁用应用中的文件预览、附件卡片、指令和网络嵌入，只保留静态语义。
-  a: ({ href, children }) => <a href={href}>{children}</a>,
+  a: ({ href, children }) =>
+    href?.startsWith('#media:') || href?.startsWith('#preview') ? (
+      <span className="inline-flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
+        <FileText aria-hidden="true" style={{ width: 16, height: 16, flexShrink: 0 }} />
+        {children}
+      </span>
+    ) : (
+      <a href={href}>{children}</a>
+    ),
   img: ({ src, alt }) => <img alt={alt ?? ''} data-share-image-source={src} />,
-  pre: ({ children }) => <pre>{children}</pre>,
+  pre: ({ children }) => (
+    <CodeCard>
+      <CodeCardBody>
+        <pre>{children}</pre>
+      </CodeCardBody>
+    </CodeCard>
+  ),
   h1: ({ children }) => <h1 className="my-1 font-semibold text-[1rem] tracking-tight">{children}</h1>,
   h2: ({ children }) => <h2 className="my-1 font-semibold text-[0.9375rem] tracking-tight">{children}</h2>,
   h3: ({ children }) => <h3 className="my-1 font-semibold text-[0.875rem]">{children}</h3>,
@@ -359,6 +387,10 @@ async function freezeStyles(root: HTMLElement, signal: AbortSignal): Promise<str
       }
     }
 
+    if (element.matches('table')) {
+      element.style.width = '100%'
+    }
+
     if (element.closest('.katex')) {
       for (const name of ['width', 'height', 'min-width', 'min-height', 'max-width', 'max-height']) {
         element.style.setProperty(name, style.getPropertyValue(name))
@@ -399,69 +431,32 @@ export async function exportConversationHtml(
     signal.throwIfAborted()
     flushSync(() =>
       react.render(
-        <main
-          lang={source.locale}
-          style={{
-            background: 'var(--background)',
-            color: 'var(--foreground)',
-            padding: '32px',
-            fontFamily: 'inherit'
-          }}
-        >
-          <header>
-            <h1 style={{ fontSize: '20px', fontWeight: 600 }}>{source.title}</h1>
-            <p>{labels.readonly}</p>
-          </header>
-          {source.messages.map((message, index) => (
-            <article key={index} style={{ margin: '28px 0' }}>
-              <h2 style={{ fontSize: '14px', color: 'var(--muted-foreground)' }}>
-                {message.role === 'user' ? labels.user : labels.assistant}
-              </h2>
-              {message.blocks.map((block, part) =>
-                block.type === 'tool' ? (
-                  // 当前快照仅含工具名称，不为没有明细的条目提供空折叠入口。
-                  <p key={part}>{block.name}</p>
-                ) : block.type === 'reasoning' ? (
-                  <details key={part}>
-                    <summary>{labels.process}</summary>
-                    <Streamdown
-                      className={MARKDOWN_CONTAINER_CLASS_NAME}
-                      components={components}
-                      controls={false}
-                      mode="static"
-                      plugins={{ math }}
-                      remarkPlugins={remarkPlugins}
-                      skipHtml
-                      urlTransform={url => url}
-                    >
-                      {preprocessMarkdown(block.text || '')}
-                    </Streamdown>
-                  </details>
-                ) : (
-                  <Streamdown
-                    className={MARKDOWN_CONTAINER_CLASS_NAME}
-                    components={components}
-                    controls={false}
-                    key={part}
-                    mode="static"
-                    plugins={{ math }}
-                    remarkPlugins={remarkPlugins}
-                    skipHtml
-                    urlTransform={url => url}
-                  >
-                    {preprocessMarkdown(block.text || '')}
-                  </Streamdown>
-                )
-              )}
-            </article>
-          ))}
-        </main>
+        <ConversationSharePage
+          labels={labels}
+          renderMarkdown={text => (
+            <Streamdown
+              className={MARKDOWN_CONTAINER_CLASS_NAME}
+              components={components}
+              controls={false}
+              mode="static"
+              plugins={{ math }}
+              remarkPlugins={remarkPlugins}
+              skipHtml
+              urlTransform={url => url}
+            >
+              {preprocessMarkdown(renderMediaTags(text))}
+            </Streamdown>
+          )}
+          source={source}
+        />
       )
     )
     const root = host.firstElementChild as HTMLElement
     await waitForPreparation(resolveResources(root, source.theme === 'dark', signal, source, readImage), signal)
     const fonts = await waitForPreparation(freezeStyles(root, signal), signal)
     signal.throwIfAborted()
+    // 计算样式中的 margin 已按离屏容器宽度解析成像素，公开页需要按实际视口重新居中。
+    root.style.margin = '0 auto'
     const content = sanitizeShareContent(root.outerHTML)
     const title = document.createElement('span')
     title.textContent = source.title

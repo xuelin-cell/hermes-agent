@@ -35,6 +35,8 @@ export interface PaneMirror<T> {
    *  self-subscribing component (e.g. a session's status dot) so the strip needn't
    *  re-sync on status/color change — only `title` drives re-registration. */
   tabLead?: (key: string) => ReactNode
+  /** 活动面板的标签栏操作，固定在可滚动标签列表之外。 */
+  headerActions?: (key: string) => ReactNode
   /** Custom label NODE for the tile's tab, self-subscribing for the same reason
    *  as `tabLead` — a name that moves faster than re-registration (see
    *  PaneChrome.tabTitle). Falls back to `title`. */
@@ -83,6 +85,7 @@ export function paneMirror<T>(cfg: PaneMirror<T>): () => void {
         title,
         data: {
           tabLead: cfg.tabLead ? () => cfg.tabLead!(key) : undefined,
+          headerActions: cfg.headerActions ? () => cfg.headerActions!(key) : undefined,
           tabTitle: cfg.tabTitle ? () => cfg.tabTitle!(key) : undefined,
           dock: {
             before: cfg.before?.(tile),

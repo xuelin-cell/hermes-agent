@@ -2962,6 +2962,13 @@ export const zhHant = defineLocale({
   },
 
   artifactShare: {
+    disclosure: "取得連結的人都可以查看此產物，不會分享其他檔案或對話。",
+    checking: "正在檢查分享狀態…",
+    createLink: "產生公開連結",
+    linkReady: "公開連結已產生",
+    changedNotice: "內容已變更，連結目前仍顯示上次發布的版本。",
+    confirmUpdate: "是否以目前版本覆蓋已發布內容？連結位址保持不變。",
+    confirmRevoke: "確認取消分享？取消後，取得連結的人將無法再存取。",
     originRequired: '僅支援來源已確認的模型產物；上傳檔案、衍生產物及來源不明的檔案無法分享。',
     share: '分享',
     shareArtifact: '分享產物',
@@ -4046,7 +4053,7 @@ export const zhHant = defineLocale({
   preview: {
     copyAll: '複製全文',
     saveAs: '另存新檔',
-    exportFailed: '匯出失敗，請確認預覽內容和圖片已準備好。',
+    exportFailed: '匯出預覽失敗，請重試。',
     exportFormats: { md: 'Markdown（.md）', pdf: 'PDF（.pdf）', docx: 'Word（.docx）' },
     tab: '預覽',
     closePane: '關閉預覽窗格',

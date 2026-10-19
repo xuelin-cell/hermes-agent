@@ -2148,6 +2148,13 @@ export const ar = defineLocale({
   },
 
   artifactShare: {
+    disclosure: "يمكن لأي شخص لديه الرابط عرض هذا الملف. لن تتم مشاركة ملفاتك أو محادثاتك الأخرى.",
+    checking: "جارٍ التحقق من حالة المشاركة…",
+    createLink: "إنشاء رابط عام",
+    linkReady: "الرابط العام جاهز",
+    changedNotice: "تغير المحتوى. لا يزال الرابط يعرض النسخة المنشورة سابقًا.",
+    confirmUpdate: "هل تريد استبدال المحتوى المنشور بهذه النسخة؟ سيبقى الرابط كما هو.",
+    confirmRevoke: "هل تريد إلغاء هذا الرابط العام؟ لن يتمكن من لديه الرابط من فتحه بعد ذلك.",
     originRequired: 'يمكن مشاركة مخرجات النموذج الموثقة فقط. الملفات المرفوعة والمشتقة ومجهولة المصدر محظورة.',
     share: 'مشاركة',
     shareArtifact: 'مشاركة الناتج',
@@ -3138,7 +3145,7 @@ export const ar = defineLocale({
   preview: {
     copyAll: 'نسخ النص الكامل',
     saveAs: 'حفظ باسم',
-    exportFailed: 'تعذر التصدير. تأكد من جاهزية المعاينة والصور.',
+    exportFailed: 'تعذر تصدير المعاينة. حاول مرة أخرى.',
     exportFormats: { md: 'Markdown (.md)', pdf: 'PDF (.pdf)', docx: 'Word (.docx)' },
     tab: 'معاينة',
     closePane: 'إغلاق جزء المعاينة',
