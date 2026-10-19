@@ -359,7 +359,7 @@ async def download_result(
         turn.downloads.update(dict.fromkeys(wanted))
     root = local_cwd(turn.task_id) or turn.cwd
     # 同批最多四个并行，避免顺序等待突破原生钩子的三十秒上限。
-    saved = await asyncio.gather(*(fetch(url, root) for url in wanted))
+    saved = await asyncio.gather(*(fetch(url, root, tool_name) for url in wanted))
     with _lock:
         active = current(key, turn_id) is turn
         if active:

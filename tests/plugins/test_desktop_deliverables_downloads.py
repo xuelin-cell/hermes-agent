@@ -122,6 +122,66 @@ def test_failures_preserve_links_and_remove_partial_files(delivery, monkeypatch)
     assert finish(plugin) is None
 
 
+def test_trusted_generator_storage_matches_only_its_own_paths(delivery):
+    """可信范围只认对象存储域名、https 和各工具的成品目录，其它一律照常检查。"""
+    from fallback_delivery.downloads import trusted
+
+    host = "https://obs-nmhhht6.cucloud.cn"
+    signed = "?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=abc"
+    image = host + "/yuanjing-t2i-oss/mllm/yuanjingt2i/2026-10-19/a.png" + signed
+    video = host + "/app-agent-prod/videos/5a25.mp4" + signed
+    assert trusted("mcp__UniAI_Toolkit__txt2img_generate", image)
+    assert trusted("mcp__1__txt2vid_generate", video)
+    assert trusted("img2vid_generate", video)
+    assert trusted("tts_synthesize", host + "/app-agent-prod/temp/a.wav")
+    assert trusted("doc_translate", host + "/app-agent-prod/translate/a.pdf")
+    for name, url in [
+        ("txt2img_generate", video),
+        ("txt2vid_generate", image),
+        ("image_search", image),
+        ("txt2vid_generate", video.replace("https://", "http://")),
+        ("txt2vid_generate", video.replace("cucloud.cn", "cucloud.cn.evil.com")),
+        ("txt2vid_generate", video.replace("obs-nmhhht6", "user@obs-nmhhht6")),
+        ("txt2vid_generate", video.replace(".cn/", ".cn:8443/")),
+        ("txt2vid_generate", video + "#x"),
+        ("txt2vid_generate", host + "/app-agent-prod/videos/../temp/a.mp4"),
+        ("txt2vid_generate", host + "/app-agent-prod/videos/%2e%2e/temp/a.mp4"),
+        ("txt2vid_generate", "https://[::1"),
+    ]:
+        assert not trusted(name, url), url
+
+
+def test_trusted_storage_skips_private_check_but_not_redirect_limits(
+    delivery, monkeypatch
+):
+    """代理把可信成品解析成保留地址时仍能下载；跳出可信范围的跳转照样拒绝。"""
+    plugin, work = delivery
+    from fallback_delivery import downloads
+
+    # 内网检查保持默认开启：不免检的本机链接必然被拒。httpx 会读 Windows 系统代理设置，
+    # 本机地址因此走不受连接期检查的绕过通道；这里去掉系统代理，确保免检靠的是普通客户端。
+    monkeypatch.setattr("httpx._client.get_environment_proxies", lambda: {})
+    monkeypatch.setattr(
+        downloads, "trusted", lambda name, url: "/video" in url or "/redirect" in url
+    )
+    with serving() as (base, requests):
+        begin(plugin)
+        result = call(plugin, "txt2vid_generate", base + "/video.mp4?signature=x")
+        # 非 JSON 结果在原文后追加“已下载到本机”和本地路径。
+        output = Path(result.rsplit("\n", 1)[-1])
+        assert output.parent == work / "outputs" and output.read_bytes()
+        assert len(requests) == 1
+
+        begin(plugin)
+        assert call(plugin, "txt2vid_generate", base + "/redirect.mp4") is None
+        assert requests[-1].startswith("/redirect")
+        assert len(list((work / "outputs").iterdir())) == 1
+
+        begin(plugin)
+        assert call(plugin, "txt2vid_generate", base + "/other.mp4") is None
+        assert len(requests) == 2
+
+
 def test_linked_outputs_directory_is_not_written(delivery, tmp_path, monkeypatch):
     """不能利用 outputs 联接把下载写到账号工作区之外。"""
     plugin, work = delivery
