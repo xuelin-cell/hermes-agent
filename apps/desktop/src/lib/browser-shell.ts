@@ -338,7 +338,7 @@ export function isInstanceLocalUrl(url: string): boolean {
   }
 }
 
-const SETTINGS_VIEWS_HIDDEN = new Set(['about', 'connections', 'gateway', 'providers', 'vault'])
+const SETTINGS_VIEWS_HIDDEN = new Set(['about', 'connections', 'gateway', 'models', 'providers', 'vault'])
 
 /** Settings pages that only make sense for the desktop app: gateway / SSH
  * connections (`connections` is the old link to the gateway page), About (app

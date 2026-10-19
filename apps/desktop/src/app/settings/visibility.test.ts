@@ -14,7 +14,10 @@ describe('settingsViewVisible', () => {
   it('shows the developer pages only in developer mode', () => {
     expect(settingsViewVisible('gateway', false)).toBe(false)
     expect(settingsViewVisible('gateway', true)).toBe(true)
-    expect(settingsViewVisible('providers', false)).toBe(true)
+    // 普通用户在「模型」页管理模型；提供方的完整管理只在开发者模式。
+    expect(settingsViewVisible('providers', false)).toBe(false)
+    expect(settingsViewVisible('providers', true)).toBe(true)
+    expect(settingsViewVisible('models', false)).toBe(true)
   })
 
   // The settings nav, the command palette's settings rows and its settings search all ask this:
@@ -22,11 +25,21 @@ describe('settingsViewVisible', () => {
   it('drops the pages the browser build hides, until developer mode is on', () => {
     document.documentElement.dataset.hermesBrowser = 'production'
 
-    expect(['about', 'providers', 'vault'].map(view => settingsViewVisible(view, false))).toEqual([false, false, false])
+    expect(['about', 'models', 'providers', 'vault'].map(view => settingsViewVisible(view, false))).toEqual([
+      false,
+      false,
+      false,
+      false
+    ])
     expect(settingsViewVisible('config:appearance', false)).toBe(true)
 
     localStorage.setItem(DEVELOPER_MODE_KEY, 'true')
 
-    expect(['about', 'providers', 'vault'].map(view => settingsViewVisible(view, true))).toEqual([true, true, true])
+    expect(['about', 'models', 'providers', 'vault'].map(view => settingsViewVisible(view, true))).toEqual([
+      true,
+      true,
+      true,
+      true
+    ])
   })
 })

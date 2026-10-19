@@ -180,7 +180,7 @@ import { POOL_LIMITS_SETTINGS_ROUTE } from './wiring-routing'
 // ChatRoutesSurface's and live in ./surfaces.
 const AgentsView = lazy(async () => ({ default: (await import('../agents')).AgentsView }))
 const CommandCenterView = lazy(async () => ({ default: (await import('../command-center')).CommandCenterView }))
-const CronView = lazy(async () => ({ default: (await import('../cron')).CronView }))
+const CronView = lazy(async () => ({ default: (await import('../cron/tasks-mt')).CronEntry }))
 const WebhooksView = lazy(async () => ({ default: (await import('../webhooks')).WebhooksView }))
 const ProfilesView = lazy(async () => ({ default: (await import('../profiles')).ProfilesView }))
 const StarmapView = lazy(async () => ({ default: (await import('../starmap')).StarmapView }))
