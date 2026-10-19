@@ -5,6 +5,7 @@ import type { HermesSkin } from '@hermes/shared/skin'
 import type { TranslucencyState } from '@hermes/shared/translucency'
 
 import type { ScreenshotApi } from '../electron/command-screenshot-types'
+import type { MessagingOperationStatus, MessagingSetupRequest, MessagingSetupResult } from '../electron/entry_local/messaging-contract'
 import type { HudModifierApi } from '../electron/hud-modifier-types'
 import type {
   CloudDriveRequest,
@@ -42,8 +43,9 @@ declare global {
       /** 仅返回当前账号套餐展示信息，不接受页面身份参数。 */
       getPlanUsage?: () => Promise<PlanUsageResult>
       getMaasAccount: () => Promise<LoginAccount | null>
-      messagingSetup: (input: import('../electron/entry_local/messaging-contract').MessagingSetupRequest) =>
-        Promise<import('../electron/entry_local/messaging-contract').MessagingSetupResult>
+      messagingSetup: (input: MessagingSetupRequest) => Promise<MessagingSetupResult>
+      messagingStatus: () => Promise<MessagingOperationStatus>
+      onMessagingStatus: (callback: (status: MessagingOperationStatus) => void) => () => void
       conversationShare: ConversationShareApi
       artifactShare: {
         inspect: (key: string) => Promise<{ key: string; shareId: string; url: string; title: string; hash: string; version: number; updatedAt: string } | null>

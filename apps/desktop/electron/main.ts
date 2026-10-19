@@ -234,6 +234,7 @@ import {
   stopLogoutProcesses
 } from './entry_local/logout-processes'
 import { createAccountExitWindows, retryLogout } from './entry_local/logout-window'
+import { DesktopMessaging, MessagingBotIndex } from './entry_local/messaging'
 import { LocalStartupError, showLocalStartupFailure } from './entry_local/startup-failure'
 import { createAmbientClaimArbiter } from './event-dedupe'
 import { openExternalUrl as externalOpen, type ExternalOpenDeps, reportPreOpenStatFailure } from './external-open'
@@ -332,7 +333,6 @@ import { localSkinProfileKey, readLocalSkinPayload } from './local-skin'
 import { ACTIVE_LOG_POLL_MS, planLogRotation, reclaimActiveLogIfOversized } from './log-rotation'
 import { installAccountIpc } from './login/account-ipc'
 import { currentDesktopAccount, currentDesktopAsrIdentity, currentDesktopIdentity, currentDesktopLocalContext, sealDesktopAccount } from './login/bootstrap'
-import { DesktopMessaging, MessagingBotIndex } from './entry_local/messaging'
 import { CloudDriveClient } from './login/cloud-drive'
 import { createDriveArtifactResolver } from './login/cloud-drive-artifact-source'
 import { CloudDriveMcp } from './login/cloud-drive-mcp'
@@ -12053,6 +12053,7 @@ const accountLogout = createAccountLogout({
   userData: app.getPath('userData'),
   account: ACCOUNT_RUNTIME.id,
   seal: mode => {
+    desktopMessaging.seal()
     sealDesktopAccount()
     primaryRecoverySuppressed = true
     logoutChildren = localBackendLifecycle.ownedChildren()
@@ -12062,6 +12063,8 @@ const accountLogout = createAccountLogout({
     accountExitWindows.seal(mode)
   },
   snapshot: async () => {
+    await desktopMessaging.settle()
+
     const roots = [
       ...logoutTerminals,
       ...logoutChildren
@@ -17212,13 +17215,30 @@ const desktopMessaging = new DesktopMessaging({
   index: new MessagingBotIndex(app.getPath('userData')),
   request: (profile, requestPath, method, body) => handleHermesApiRequest({
     connectionId: 'local', profile, path: requestPath, method, body, timeoutMs: 30_000
-  })
+  }),
+  onState: state => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (artifactShareWindows.has(win) && !win.isDestroyed()) {
+        win.webContents.send('hermes:messaging:status', state)
+      }
+    }
+  }
 })
 
 ipcMain.handle('hermes:messaging:setup', (event, input) => {
   assertArtifactShareWindow(event)
-  if (!currentDesktopLocalContext()) throw new Error('messaging_account_closed')
-  return desktopMessaging.run(input)
+
+  if (!currentDesktopLocalContext()) {
+    throw new Error('messaging_account_closed')
+  }
+
+  return desktopMessaging.submit(input)
+})
+
+ipcMain.handle('hermes:messaging:status', event => {
+  assertArtifactShareWindow(event)
+
+  return desktopMessaging.status()
 })
 
 installConversationShareIpc(ipcMain, assertArtifactShareWindow, {

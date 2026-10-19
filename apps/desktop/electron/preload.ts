@@ -36,6 +36,15 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   getPlanUsage: () => ipcRenderer.invoke(PLAN_USAGE_CHANNEL),
   getMaasAccount: () => ipcRenderer.invoke('hermes:maas-account:get'),
   messagingSetup: input => ipcRenderer.invoke('hermes:messaging:setup', input),
+  /** 补取当前账号脱敏进度，不会启动或重启网关。 */
+  messagingStatus: () => ipcRenderer.invoke('hermes:messaging:status'),
+  /** 只转发操作状态；页面卸载后注销同一订阅。 */
+  onMessagingStatus: callback => {
+    const listener = (_event, status) => callback(status)
+    ipcRenderer.on('hermes:messaging:status', listener)
+
+    return () => ipcRenderer.removeListener('hermes:messaging:status', listener)
+  },
   cloudDriveRequest: (input: CloudDriveRequest) => ipcRenderer.invoke('hermes:maas-drive:request', input),
   /** 仅读取固定语言的办公模板目录，不接收请求地址或凭据。 */
   getWelcomeCatalog: locale => ipcRenderer.invoke(WELCOME_CATALOG_CHANNEL, locale),

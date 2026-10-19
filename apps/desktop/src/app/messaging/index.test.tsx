@@ -1,10 +1,15 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanStores } from 'nanostores'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { $settingsScopeOverride } from '@/store/settings-scope'
 import type { MessagingPlatformInfo } from '@/types/hermes'
+
+import type { MessagingOperationStatus } from '../../../electron/entry_local/messaging-contract'
+
+import { $messagingOperation } from './operation-store'
 
 import { MessagingView } from './index'
 
@@ -30,6 +35,15 @@ const startWeixinQrLogin = vi.fn()
 const getWeixinQrLogin = vi.fn()
 const unbindWeixin = vi.fn()
 const messagingSetup = vi.fn()
+const statusListeners = new Set<(status: MessagingOperationStatus) => void>()
+let currentStatus: MessagingOperationStatus = { phase: 'idle', revision: 0 }
+
+/** 模拟主进程在页面之外推进任务，并保存供新页面补取的快照。 */
+function publishOperation(patch: Partial<MessagingOperationStatus>) {
+  currentStatus = { ...currentStatus, ...patch, revision: currentStatus.revision + 1 }
+
+  for (const listener of statusListeners) {listener(currentStatus)}
+}
 
 vi.mock('@/hermes', () => ({
   approvePairing: (platformId: string, requestId: string, profile?: null | string) =>
@@ -105,8 +119,17 @@ function platform(patch: Partial<MessagingPlatformInfo> = {}): MessagingPlatform
 }
 
 beforeEach(() => {
-  window.hermesDesktop = { ...window.hermesDesktop, messagingSetup } as typeof window.hermesDesktop
-  messagingSetup.mockResolvedValue({ saved: true, changed: true, actionFailed: false })
+  currentStatus = { phase: 'idle', revision: 0 }
+  $messagingOperation.set({ phase: 'idle', revision: -1 })
+  window.hermesDesktop = { ...window.hermesDesktop, messagingSetup,
+    messagingStatus: async () => currentStatus,
+    onMessagingStatus: listener => {
+      statusListeners.add(listener)
+
+      return () => { statusListeners.delete(listener) }
+    }
+  } as typeof window.hermesDesktop
+  messagingSetup.mockResolvedValue({ accepted: true })
   updateMessagingPlatform.mockResolvedValue({ ok: true, platform: 'teams' })
   getPairing.mockResolvedValue({ approved: [], pending: [] })
   runGatewayRestart.mockResolvedValue(true)
@@ -115,6 +138,8 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  cleanStores($messagingOperation)
+  statusListeners.clear()
   vi.clearAllMocks()
 })
 
@@ -183,13 +208,10 @@ describe('MessagingView WeChat QR setup', () => {
       expect(await screen.findByAltText('Connect by QR code')).toBeTruthy()
       expect(await screen.findByText('Scanned. Confirm on your phone.', {}, { timeout: 4000 })).toBeTruthy()
 
-      await waitFor(() => expect(watchGatewayRestartOutcome).toHaveBeenCalled(), { timeout: 4000 })
+      await waitFor(() => expect(messagingSetup).toHaveBeenCalledWith({ operation: 'watch', platform: 'weixin', profile: 'worker' }), { timeout: 4000 })
       expect(getWeixinQrLogin).toHaveBeenCalledWith('wx-1', 'worker')
-      expect(notify).toHaveBeenCalledWith({
-        kind: 'success',
-        message: 'WeChat connected; restarting the gateway…',
-        title: 'Weixin setup saved'
-      })
+      expect(notify).not.toHaveBeenCalled()
+      expect(watchGatewayRestartOutcome).not.toHaveBeenCalled()
       await waitFor(() => expect(screen.queryByAltText('Connect by QR code')).toBeNull(), { timeout: 2500 })
       // 页面重新读取平台状态，让卡片显示已连接。
       expect(getMessagingPlatforms.mock.calls.length).toBeGreaterThan(1)
@@ -260,8 +282,9 @@ describe('MessagingView WeChat QR setup', () => {
       fireEvent.click(within(dialog).getByRole('button', { name: /^Disconnect$/ }))
     })
 
-    await waitFor(() => expect(unbindWeixin).toHaveBeenCalledWith('default'))
-    await waitFor(() => expect(watchGatewayRestartOutcome).toHaveBeenCalled())
+    await waitFor(() => expect(messagingSetup).toHaveBeenCalledWith({ operation: 'disconnect', platform: 'weixin', profile: 'default' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(watchGatewayRestartOutcome).not.toHaveBeenCalled()
   })
 
   it('ignores confirmation arriving from a poll that was closed in the same interaction', async () => {
@@ -332,6 +355,49 @@ function dingtalk(patch: Partial<MessagingPlatformInfo> = {}) {
 }
 
 describe('Messaging cards and native configuration', () => {
+  it('保存后关闭弹窗，离开页面时任务状态继续，返回后显示失败并可重试', async () => {
+    getMessagingPlatforms.mockResolvedValue({ platforms: [dingtalk({ configured: true, enabled: true, state: 'connected' })] })
+    const view = await renderMessaging()
+    fireEvent.click(within(await screen.findByRole('article', { name: 'DingTalk bot integration' })).getByRole('button', { name: 'Configure' }))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.change(dialog.querySelector('input[type="text"]')!, { target: { value: 'id' } })
+    fireEvent.change(dialog.querySelector('input[type="password"]')!, { target: { value: 'secret' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save and enable' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    await act(async () => { publishOperation({ phase: 'restarting', saved: true, operation: 'save' }) })
+    expect(await screen.findByText('Messaging gateway is restarting… Other chat apps will disconnect briefly.')).toBeTruthy()
+    expect(within(screen.getByRole('article', { name: 'DingTalk bot integration' })).queryByText('Connected')).toBeNull()
+
+    view.rerender(<MemoryRouter><div>Other page</div></MemoryRouter>)
+    await act(async () => { publishOperation({ phase: 'failed', saved: true, error: 'apply_failed' }) })
+    expect(screen.getByText('Other page')).toBeTruthy()
+    expect(screen.queryByText(/Settings saved, but/)).toBeNull()
+    expect(notify).not.toHaveBeenCalled()
+    view.rerender(<MemoryRouter><MessagingView /></MemoryRouter>)
+    expect(await screen.findByText('Settings saved, but the messaging connection could not be restored. Retry the connection.')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    await waitFor(() => expect(messagingSetup).toHaveBeenCalledWith({ operation: 'retry' }))
+  })
+
+  it('解绑确认立即关闭，页面展示停止状态，旧快照不能覆盖新状态', async () => {
+    let resolveSnapshot!: (status: MessagingOperationStatus) => void
+    window.hermesDesktop.messagingStatus = () => new Promise(resolve => { resolveSnapshot = resolve })
+    getMessagingPlatforms.mockResolvedValue({ platforms: [dingtalk({ configured: true, enabled: true, state: 'connected' })] })
+    await renderMessaging()
+    fireEvent.click(within(await screen.findByRole('article', { name: 'DingTalk bot integration' })).getByRole('button', { name: 'Disconnect' }))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Disconnect' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    await act(async () => {
+      publishOperation({ phase: 'stopping', saved: true, operation: 'disconnect' })
+      resolveSnapshot({ phase: 'idle', revision: 0 })
+    })
+    expect(await screen.findByText('Messaging gateway is stopping…')).toBeTruthy()
+    expect(notify).not.toHaveBeenCalled()
+    await act(async () => { publishOperation({ phase: 'completed' }) })
+    expect(await screen.findByText('Messaging settings applied.')).toBeTruthy()
+  })
+
   it.each([
     ['feishu', 'Feishu bot integration', 'FEISHU_APP_ID', 'FEISHU_APP_SECRET'],
     ['wecom', 'WeCom smart bot integration', 'WECOM_BOT_ID', 'WECOM_SECRET']
@@ -470,7 +536,7 @@ describe('Messaging cards and native configuration', () => {
     fireEvent.change(dialog.querySelector('input[type="text"]')!, { target: { value: 'app-123' } })
     fireEvent.change(dialog.querySelector('input[type="password"]')!, { target: { value: 'secret-123' } })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save and enable' }))
-    expect(await within(dialog).findByText('ID or Secret was rejected.')).toBeTruthy()
+    expect(await within(dialog).findByText('Could not save messaging settings. Your previous configuration is unchanged.')).toBeTruthy()
     expect(dialog.querySelector<HTMLInputElement>('input[type="text"]')!.value).toBe('app-123')
     expect(runGatewayRestart).not.toHaveBeenCalled()
   })

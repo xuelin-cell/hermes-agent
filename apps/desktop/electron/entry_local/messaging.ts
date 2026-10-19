@@ -4,7 +4,7 @@ import path from 'node:path'
 
 import { writeSecretFileAtomic } from '../hardening'
 
-import type { MessagingSetupRequest, MessagingSetupResult } from './messaging-contract'
+import type { MessagingOperationStatus, MessagingSetupRequest, MessagingSetupResult } from './messaging-contract'
 
 const IDS = { dingtalk: 'DINGTALK_CLIENT_ID', feishu: 'FEISHU_APP_ID', wecom: 'WECOM_BOT_ID' }
 const SECRETS = { dingtalk: 'DINGTALK_CLIENT_SECRET', feishu: 'FEISHU_APP_SECRET', wecom: 'WECOM_SECRET' }
@@ -85,6 +85,8 @@ export class MessagingBotIndex {
 export class DesktopMessaging {
   private pending: Promise<unknown> = Promise.resolve()
   private closed = false
+  private state: MessagingOperationStatus = { phase: 'idle', revision: 0 }
+  private submitted = new Set<string>()
 
   /** 请求始终由可信主进程定位到本机账号后端。 */
   constructor(
@@ -93,15 +95,53 @@ export class DesktopMessaging {
       index: MessagingBotIndex
       request: (profile: string, path: string, method: string, body?: unknown) => Promise<any>
       sleep?: (milliseconds: number) => Promise<void>
+      onState?: (state: MessagingOperationStatus) => void
     }
   ) {}
 
+  /** IPC 只等待接收和重复机器人确认；长任务由主进程继续执行。 */
+  submit(input: MessagingSetupRequest): Promise<MessagingSetupResult> {
+    this.validate(input)
+
+    const key = createHash('sha256').update(JSON.stringify([
+      input.operation, input.profile || 'default', input.platform, Object.entries(input.env || {}).sort(), !!input.confirmed
+    ])).digest('hex')
+
+    if (this.submitted.has(key)) {return Promise.resolve({ accepted: true })}
+
+    if (input.operation === 'save' && !input.confirmed && this.deps.index.conflicts(
+      this.deps.account, input.profile || 'default', input.platform!, input.env?.[IDS[input.platform as keyof typeof IDS]]?.trim()
+    )) {
+      return Promise.resolve({ confirmationRequired: true })
+    }
+
+    this.submitted.add(key)
+    void this.run(input).finally(() => { this.submitted.delete(key) }).catch(() => undefined)
+
+    return Promise.resolve({ accepted: true })
+  }
+
+  /** 只提供脱敏操作快照，页面切走或新窗口打开后仍可读取结果。 */
+  status(): MessagingOperationStatus {
+    return { ...this.state }
+  }
+
+  /** 主进程发布事实阶段；配置、凭据和原始异常不跨过状态 IPC。 */
+  private publish(input: MessagingSetupRequest, phase: MessagingOperationStatus['phase'], saved = false, error?: string): void {
+    this.state = { phase, revision: this.state.revision + 1, profile: input.profile || 'default',
+      platform: input.platform, operation: input.operation, saved, ...(error ? { error } : {}) }
+    this.deps.onState?.(this.status())
+  }
+
   /** 在 IPC 边界验证固定操作与字段，不接收 URL、路径或任意平台。 */
-  run(input: MessagingSetupRequest): Promise<MessagingSetupResult> {
+  private validate(input: MessagingSetupRequest): void {
     if (
-      !input ||
-      !['save', 'disconnect', 'retry'].includes(input.operation) ||
-      (input.operation !== 'retry' && !Object.hasOwn(IDS, input.platform ?? '')) ||
+      !input || typeof input !== 'object' ||
+      !['save', 'disconnect', 'retry', 'watch'].includes(input.operation) ||
+      (input.platform !== undefined && !['weixin', ...Object.keys(IDS)].includes(input.platform)) ||
+      (input.confirmed !== undefined && typeof input.confirmed !== 'boolean') ||
+      (input.operation === 'save' && !Object.hasOwn(IDS, input.platform ?? '')) ||
+      (input.operation === 'disconnect' && !['weixin', ...Object.keys(IDS)].includes(input.platform ?? '')) ||
       (input.profile !== undefined && (typeof input.profile !== 'string' || !/^[\w-]{1,64}$/.test(input.profile))) ||
       (input.env !== undefined &&
         (!input.env ||
@@ -111,13 +151,38 @@ export class DesktopMessaging {
             ([key, value]) =>
               typeof value !== 'string' ||
               value.length > 8192 ||
-              ![IDS[input.platform!], SECRETS[input.platform!]].includes(key)
+              ![IDS[input.platform as keyof typeof IDS], SECRETS[input.platform as keyof typeof IDS]].includes(key) ||
+              input.operation !== 'save'
           )))
     ) {
-      return Promise.reject(new Error('invalid_messaging_request'))
+      throw new Error('invalid_messaging_request')
     }
 
-    const result = this.pending.then(() => this.setup(input))
+    if (this.closed) {throw new Error('messaging_account_closed')}
+  }
+
+  /** 可等待的执行入口用于串行队列与检查；Renderer 使用立即返回的 submit。 */
+  run(input: MessagingSetupRequest): Promise<MessagingSetupResult> {
+    try {
+      this.validate(input)
+    } catch (cause) {
+      return Promise.reject(cause)
+    }
+
+    const result = this.pending.then(async () => {
+      try {
+        return await this.setup(input)
+      } catch (cause) {
+        const message = cause instanceof Error ? cause.message : ''
+
+        const codes = ['credentials_rejected', 'credentials_required', 'secret_required_for_new_id',
+          'validation_network', 'validation_timeout', 'validation_response', 'validation_unavailable']
+
+        this.publish(input, 'failed', false, codes.find(code => message.includes(code)) || 'save_failed')
+        throw cause
+      }
+    })
+
     this.pending = result.catch(() => undefined)
 
     return result
@@ -142,7 +207,23 @@ export class DesktopMessaging {
     const profile = input.profile || 'default'
 
     if (input.operation === 'retry') {
-      return { actionFailed: !(await this.apply()) }
+      return { actionFailed: !(await this.apply(input)) }
+    }
+
+    if (input.operation === 'watch') {
+      this.publish(input, 'restarting', true)
+      const ok = await this.watch(profile, 'gateway-restart')
+      this.publish(input, ok ? 'completed' : 'failed', true, ok ? undefined : 'apply_failed')
+
+      return { actionFailed: !ok }
+    }
+
+    this.publish(input, 'saving')
+
+    if (input.platform === 'weixin') {
+      await this.deps.request(profile, `/api/plugins/weixin-qr/unbind?profile=${encodeURIComponent(profile)}`, 'POST', {})
+
+      return { saved: true, changed: true, actionFailed: !(await this.apply(input)) }
     }
 
     const platform = input.platform!
@@ -153,6 +234,8 @@ export class DesktopMessaging {
       !input.confirmed &&
       this.deps.index.conflicts(this.deps.account, profile, platform, id)
     ) {
+      this.publish(input, 'failed', false, 'bot_conflict')
+
       return { confirmationRequired: true }
     }
 
@@ -166,33 +249,51 @@ export class DesktopMessaging {
     try {
       this.deps.index.remember(this.deps.account, profile, platform, input.operation === 'disconnect' ? null : id)
     } catch {
+      this.publish(input, 'failed', true, 'apply_failed')
+
       return { saved: true, changed: result.changed, actionFailed: true }
     }
 
-    return { saved: true, changed: result.changed, actionFailed: result.changed ? !(await this.apply()) : false }
+    if (!result.changed) {this.publish(input, 'completed', true)}
+
+    return { saved: true, changed: result.changed, actionFailed: result.changed ? !(await this.apply(input)) : false }
   }
 
   /** 原版动作完成只表示启停结束；平台连接状态继续读取原版状态接口。 */
-  private async apply(): Promise<boolean> {
+  private async apply(input: MessagingSetupRequest): Promise<boolean> {
+    this.publish(input, 'applying', true)
+    let ok = false
+
     try {
       if (this.closed) {
         return false
       }
 
       const action = await this.deps.request('default', `${BASE}/apply`, 'POST', {})
+      this.publish(input, action.name === 'gateway-stop' ? 'stopping' : 'restarting', true)
+      ok = await this.watch('default', action.name)
 
+      return ok
+    } catch {
+      return false
+    } finally {
+      this.publish(input, ok ? 'completed' : 'failed', true, ok ? undefined : 'apply_failed')
+    }
+  }
+
+  /** 有界跟踪既有动作；轮询不依赖页面存在，也不会触发第二次重启。 */
+  private async watch(profile: string, name: string): Promise<boolean> {
+    try {
       for (let attempt = 0; attempt < 150; attempt++) {
         await (this.deps.sleep ?? (ms => new Promise(resolve => setTimeout(resolve, ms))))(1200)
-        const status = await this.deps.request('default', `/api/actions/${action.name}/status?lines=1`, 'GET')
+        const status = await this.deps.request(profile, `/api/actions/${name}/status?lines=1`, 'GET')
 
-        if (!status.running) {
-          return status.exit_code === 0
-        }
+        if (!status.running) {return status.exit_code === 0}
       }
-
-      return false
     } catch {
       return false
     }
+
+    return false
   }
 }
