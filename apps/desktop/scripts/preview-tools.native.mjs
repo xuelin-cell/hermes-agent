@@ -46,13 +46,14 @@ test('Markdown 三种另存为、全文复制、SVG 切换和 PDF 文件卡片',
     import {MaasAccountSidebar} from ${source('src/app/shell/maas-account-status.tsx')}
     import {FormatPreview} from ${source('src/app/chat/right-rail/formats/format-preview.tsx')}
     import {PreviewAttachment} from ${source('src/components/chat/preview-attachment.tsx')}
+    import {ShareControls} from ${source('src/components/artifact-share/share-controls.tsx')}
     import ${source('src/styles.css')}
     // 测试按钮只选择目标，内容读取、工具栏和文件卡片均使用正式组件。
     function Fixture(){
       const [file,setFile]=useState(${JSON.stringify(md)}); window.fixtureOpen=setFile
       const target={kind:'file',source:file,path:file,label:file.split(/[/\\\\]/).at(-1),url:'file://'+file,previewKind:file.endsWith('.svg')?'image':file.endsWith('.pdf')?'pdf':'text'}
       return <I18nProvider configClient={null} initialLocale="en"><MemoryRouter><div style={{display:'flex',height:'100vh'}}>
-        <aside style={{width:340,flexShrink:0}}><button onClick={()=>setFile(${JSON.stringify(md)})}>Markdown fixture</button><button onClick={()=>setFile(${JSON.stringify(svg)})}>SVG fixture</button><PreviewAttachment target=${JSON.stringify(pdf)}/><MaasAccountSidebar/></aside>
+        <aside style={{width:340,flexShrink:0}}><button onClick={()=>setFile(${JSON.stringify(md)})}>Markdown fixture</button><button onClick={()=>setFile(${JSON.stringify(svg)})}>SVG fixture</button><ShareControls artifactKey="fixture-share" html="<h1>Preview export</h1>" title="report.md" source={{sessionId:'fixture',content:'<h1>Preview export</h1>'}}/><PreviewAttachment target=${JSON.stringify(pdf)}/><MaasAccountSidebar/></aside>
         <main style={{position:'relative',flex:1,minHeight:0,minWidth:0}}><FormatPreview key={file} reloadKey={0} target={target}/></main>
       </div></MemoryRouter></I18nProvider>
     }createRoot(document.getElementById('root')).render(<Fixture/>);
@@ -92,6 +93,7 @@ test('Markdown 三种另存为、全文复制、SVG 切换和 PDF 文件卡片',
       resolveDir: desktop,
       contents: `
     import fs from 'node:fs/promises'
+    import {createHash} from 'node:crypto'
     import {app,BrowserWindow,ipcMain,session,dialog,clipboard} from 'electron'
     import {installPreviewExportIpc,previewPdf} from './electron/preview-export'
     import {resolveReadableFileForIpc,readFileDataUrlForIpc} from './electron/hardening'
@@ -99,6 +101,12 @@ test('Markdown 三种另存为、全文复制、SVG 切换和 PDF 文件卡片',
     app.on('window-all-closed',()=>{}) // 样例打印窗结束后继续创建测试主窗，由夹具统一关闭进程。
     globalThis.saved=[]
     globalThis.fixtureLogouts=0
+    globalThis.shareRecord=null;globalThis.sharePublications=0;globalThis.shareRevocations=0
+    // 分享仅替换为本机响应，弹窗与 preload 仍走正式组件，绝不上传测试内容。
+    ipcMain.handle('hermes:artifact-share:eligibility',()=>({publishable:true}))
+    ipcMain.handle('hermes:artifact-share:inspect',()=>globalThis.shareRecord)
+    ipcMain.handle('hermes:artifact-share:publish',(_event,input)=>{globalThis.sharePublications++;return globalThis.shareRecord={key:input.key,shareId:'fixture',url:'https://share.example.test/fixture',hash:createHash('sha256').update(input.html).digest('hex'),version:1}})
+    ipcMain.handle('hermes:artifact-share:revoke',()=>{globalThis.shareRevocations++;globalThis.shareRecord=null})
     const fixtureAccount={maskedPhone:'138****0000',expiresAt:Date.now()-1000}
     ipcMain.handle('hermes:maas-account:get',()=>fixtureAccount)
     ipcMain.handle('hermes:maas-account:usage',()=>({status:'failed'}))
@@ -137,6 +145,22 @@ test('Markdown 三种另存为、全文复制、SVG 切换和 PDF 文件卡片',
     page.on('pageerror', error => errors.push(String(error)))
     // 超过 data URL 的长度限制，但仍小于 IPC 内容上限；经过正式快照和保存接口导出。
     await page.addStyleTag({ content: ':root{--snapshot-padding:"' + 'x'.repeat(3 * 1024 * 1024) + '"}' })
+    await page.getByRole('button', { name: 'Share artifact', exact: true }).click()
+    const share = page.getByRole('dialog', { name: 'Share artifact' })
+    await expect(share.getByRole('button', { name: 'Create public link' })).toBeEnabled()
+    assert.equal(await app.evaluate(() => globalThis.sharePublications), 0)
+    await page.screenshot({ path: path.join(root, 'share-confirm.png') })
+    await share.getByRole('button', { name: 'Create public link' }).click()
+    await expect(share.getByRole('button', { name: 'Copy shared link' })).toBeVisible()
+    await page.screenshot({ path: path.join(root, 'share-link.png') })
+    await share.getByRole('button', { name: 'Revoke shared link' }).click()
+    assert.equal(await app.evaluate(() => globalThis.shareRevocations), 0)
+    await share.getByRole('button', { name: 'Revoke shared link' }).click()
+    await expect(share.getByRole('button', { name: 'Create public link' })).toBeEnabled()
+    assert.equal(await app.evaluate(() => globalThis.sharePublications), 1)
+    assert.equal(await app.evaluate(() => globalThis.shareRevocations), 1)
+    await share.getByRole('button', { name: 'Cancel' }).click()
+    await expect(share).toHaveCount(0)
     await expect(page.getByText('sample.pdf', { exact: true })).toBeVisible({ timeout: 30000 })
     await expect(page.getByRole('img', { name: 'sample.pdf' })).toHaveCount(0)
     await page.getByRole('button', { name: 'Copy full text' }).click()

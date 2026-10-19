@@ -3993,6 +3993,13 @@ export const frOverrides = {
     open: 'Ouvrir'
   },
   artifactShare: {
+    disclosure: "Toute personne disposant du lien peut consulter ce fichier. Les autres fichiers et conversations ne sont pas partagés.",
+    checking: "Vérification du partage…",
+    createLink: "Créer un lien public",
+    linkReady: "Le lien public est prêt",
+    changedNotice: "Le contenu a changé. Le lien affiche encore la version précédemment publiée.",
+    confirmUpdate: "Remplacer le contenu publié par cette version ? Le lien restera identique.",
+    confirmRevoke: "Révoquer ce lien public ? Les personnes qui le possèdent ne pourront plus y accéder.",
     originRequired: 'Seuls les résultats vérifiés du modèle peuvent être partagés. Les fichiers importés, dérivés ou de source inconnue sont bloqués.',
     share: 'Partager',
     shareArtifact: 'Partager le contenu',

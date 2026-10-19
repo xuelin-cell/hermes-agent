@@ -3984,6 +3984,13 @@ export const deOverrides = {
     open: 'Öffnen'
   },
   artifactShare: {
+    disclosure: "Jeder mit dem Link kann dieses Artefakt ansehen. Andere Dateien und Gespräche werden nicht geteilt.",
+    checking: "Freigabestatus wird geprüft…",
+    createLink: "Öffentlichen Link erstellen",
+    linkReady: "Öffentlicher Link ist bereit",
+    changedNotice: "Der Inhalt wurde geändert. Der Link zeigt noch die zuvor veröffentlichte Version.",
+    confirmUpdate: "Den veröffentlichten Inhalt durch diese Version ersetzen? Der Link bleibt gleich.",
+    confirmRevoke: "Diesen öffentlichen Link widerrufen? Danach kann niemand mehr darüber zugreifen.",
     originRequired: 'Nur bestätigte Modellergebnisse können geteilt werden. Uploads, abgeleitete Dateien und unbekannte Quellen sind gesperrt.',
     share: 'Teilen',
     shareArtifact: 'Artefakt teilen',

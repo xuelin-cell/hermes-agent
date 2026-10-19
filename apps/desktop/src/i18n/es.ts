@@ -3972,6 +3972,13 @@ export const esOverrides = {
     open: 'Abrir'
   },
   artifactShare: {
+    disclosure: "Cualquier persona con el enlace puede ver este archivo. No se comparten otros archivos ni conversaciones.",
+    checking: "Comprobando el estado del enlace…",
+    createLink: "Crear enlace público",
+    linkReady: "El enlace público está listo",
+    changedNotice: "El contenido ha cambiado. El enlace aún muestra la versión publicada anteriormente.",
+    confirmUpdate: "¿Reemplazar el contenido publicado por esta versión? El enlace seguirá siendo el mismo.",
+    confirmRevoke: "¿Revocar este enlace público? Las personas que lo tengan ya no podrán abrirlo.",
     originRequired: 'Solo se comparten resultados verificados del modelo. Las cargas, los derivados y los archivos de origen desconocido están bloqueados.',
     share: 'Compartir',
     shareArtifact: 'Compartir artefacto',

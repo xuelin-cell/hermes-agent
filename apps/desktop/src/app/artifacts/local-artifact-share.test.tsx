@@ -138,43 +138,25 @@ function openMenu(name: string): void {
   })
 }
 
-it('未发布只执行发布，成功后仍不展开；再次点击已有链接才展开工具栏', async () => {
+it('列表点击先确认分享，生成后可关闭重开管理链接，撤销再次确认', async () => {
   const test = await fixture()
   expect(test.eligibility).not.toHaveBeenCalled()
   openMenu('picture.png')
   await screen.findByRole('menuitem', { name: 'Open folder' })
   expect(screen.queryByRole('menuitem', { name: 'Share' })).toBeNull()
-  expect(test.eligibility).not.toHaveBeenCalled()
   fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
   openMenu('unknown.md')
   await waitFor(() => expect(test.eligibility).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'unknown' })))
   expect(screen.queryByRole('menuitem', { name: 'Share' })).toBeNull()
   fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
-  const request = test.request.getMockImplementation()!
-  let finish!: () => void
-
-  const gate = new Promise<void>(resolve => {
-    finish = resolve
-  })
-
-  test.request.mockImplementationOnce(async (...args) => {
-    await gate
-
-    return request(...args)
-  })
   openMenu('report.md')
   fireEvent.click(await screen.findByRole('menuitem', { name: 'Share' }))
-  await waitFor(() => expect(test.request).toHaveBeenCalledTimes(1))
-  expect(screen.queryByRole('toolbar')).toBeNull()
-  expect(screen.queryByRole('dialog')).toBeNull()
+  await screen.findByRole('dialog', { name: 'Share artifact' })
+  const create = await screen.findByRole('button', { name: 'Create public link' })
+  await waitFor(() => expect((create as HTMLButtonElement).disabled).toBe(false))
+  expect(test.request).not.toHaveBeenCalled()
   expect($previewTabs.get()).toHaveLength(0)
-  await act(async () => finish())
-  await waitFor(() => expect($notifications.get().some(item => item.title === 'Published successfully')).toBe(true))
-  expect(screen.queryByRole('toolbar')).toBeNull()
-  expect(screen.queryByRole('button', { name: 'Copy shared link' })).toBeNull()
-  openMenu('report.md')
-  fireEvent.click(await screen.findByRole('menuitem', { name: 'Share' }))
-  await screen.findByRole('toolbar', { name: 'Share artifact' })
+  fireEvent.click(create)
   await screen.findByRole('button', { name: 'Copy shared link' })
   expect(test.publish).toHaveBeenCalledWith(
     expect.objectContaining({
@@ -185,32 +167,30 @@ it('未发布只执行发布，成功后仍不展开；再次点击已有链接�
       })
     })
   )
-  expect(test.request).toHaveBeenCalledTimes(1)
-  fireEvent.click(screen.getByRole('button', { name: 'Copy shared link' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  openMenu('report.md')
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Share' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Copy shared link' }))
   await waitFor(() =>
     expect(window.hermesDesktop.writeClipboard).toHaveBeenCalledWith(expect.stringContaining('https://share.example/'))
   )
-  fireEvent.click(screen.getByRole('link', { name: 'View shared page' }))
   await waitFor(() =>
-    expect(window.hermesDesktop.openExternal).toHaveBeenCalledWith(expect.stringContaining('https://share.example/'))
+    expect((screen.getByRole('button', { name: 'View shared page' }) as HTMLButtonElement).disabled).toBe(false)
   )
-  fireEvent.keyDown(screen.getByRole('toolbar'), { key: 'Escape' })
-  await waitFor(() => expect(screen.queryByRole('toolbar')).toBeNull())
-  openMenu('report.md')
-  fireEvent.click(await screen.findByRole('menuitem', { name: 'Share' }))
-  await screen.findByRole('button', { name: 'Copy shared link' })
-  expect(test.publish).toHaveBeenCalledTimes(1)
+  fireEvent.click(screen.getByRole('button', { name: 'View shared page' }))
+  await waitFor(() => expect(window.hermesDesktop.openExternal).toHaveBeenCalled())
+  expect(test.request).toHaveBeenCalledTimes(1)
+  await waitFor(() =>
+    expect((screen.getByRole('button', { name: 'Revoke shared link' }) as HTMLButtonElement).disabled).toBe(false)
+  )
   fireEvent.click(screen.getByRole('button', { name: 'Revoke shared link' }))
-  await waitFor(() => expect(screen.queryByRole('button', { name: 'Copy shared link' })).toBeNull())
+  expect(test.request).toHaveBeenCalledTimes(1)
+  fireEvent.click(screen.getByRole('button', { name: 'Revoke shared link' }))
+  await screen.findByRole('button', { name: 'Create public link' })
   expect(test.request).toHaveBeenCalledTimes(2)
-  cleanup()
-  render(
-    <I18nProvider configClient={null} initialLocale="en">
-      <MemoryRouter>
-        <LocalArtifactLibrary />
-      </MemoryRouter>
-    </I18nProvider>
-  )
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
   openMenu('report.md')
   await screen.findByRole('menuitem', { name: 'Share' })
   act(() => test.service.markUploaded('source'))
@@ -245,29 +225,23 @@ it('菜单资格迟到和 Profile 往返不会复活旧分享入口', async () =
   expect(screen.queryByRole('menuitem', { name: 'Share' })).toBeNull()
 })
 
-it('发布失败不展开，列表按钮可重试；撤销后恢复为单纯发布按钮', async () => {
+it('发布失败留在弹窗内重试，撤销后可重新生成链接', async () => {
   const test = await fixture()
   test.request.mockRejectedValueOnce(new Error('Fixture network unavailable'))
   openMenu('report.md')
   fireEvent.click(await screen.findByRole('menuitem', { name: 'Share' }))
-  await waitFor(() => expect($notifications.get().some(item => item.kind === 'error')).toBe(true))
+  const create = await screen.findByRole('button', { name: 'Create public link' })
+  await waitFor(() => expect((create as HTMLButtonElement).disabled).toBe(false))
+  fireEvent.click(create)
+  await screen.findByRole('alert')
+  expect(screen.getByRole('dialog', { name: 'Share artifact' })).toBeTruthy()
   expect($notifications.get().some(item => item.title === 'Published successfully')).toBe(false)
-  expect(screen.queryByRole('toolbar')).toBeNull()
-  expect(screen.queryByRole('button', { name: 'Copy shared link' })).toBeNull()
-  openMenu('report.md')
-  fireEvent.click(await screen.findByRole('menuitem', { name: 'Share' }))
-  await waitFor(() => expect($notifications.get().some(item => item.title === 'Published successfully')).toBe(true))
-  expect(test.publish).toHaveBeenCalledTimes(2)
-  expect(screen.queryByRole('toolbar')).toBeNull()
-  openMenu('report.md')
-  fireEvent.click(await screen.findByRole('menuitem', { name: 'Share' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Create public link' }))
   fireEvent.click(await screen.findByRole('button', { name: 'Revoke shared link' }))
-  await waitFor(() => expect(screen.queryByRole('toolbar')).toBeNull())
-  expect(test.request).toHaveBeenCalledTimes(3)
-  clearNotifications()
-  openMenu('report.md')
-  fireEvent.click(await screen.findByRole('menuitem', { name: 'Share' }))
-  await waitFor(() => expect($notifications.get().some(item => item.title === 'Published successfully')).toBe(true))
+  fireEvent.click(screen.getByRole('button', { name: 'Revoke shared link' }))
+  const again = await screen.findByRole('button', { name: 'Create public link' })
+  fireEvent.click(again)
+  await screen.findByRole('button', { name: 'Copy shared link' })
   expect(test.publish).toHaveBeenCalledTimes(3)
-  expect(screen.queryByRole('toolbar')).toBeNull()
+  expect(test.request).toHaveBeenCalledTimes(4)
 })
