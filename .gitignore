@@ -162,6 +162,7 @@ models-dev-upstream/
 .cursor/
 .gemini/
 .zed/
+.qoder/
 .mcp.json
 opencode.json
 config/mcporter.json
