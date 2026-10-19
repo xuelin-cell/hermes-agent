@@ -264,7 +264,9 @@ def test_terminal_workdir_is_observed_instead_of_default_workspace(delivery, tmp
     assert str(output) in reply(plugin)
 
 
-@pytest.mark.parametrize("form", ["forward", "mixed", "inline", "double", "single"])
+@pytest.mark.parametrize(
+    "form", ["forward", "mixed", "relative", "inline", "double", "single"]
+)
 def test_shown_file_is_not_appended_again(delivery, form):
     """真实回复中的 MEDIA 链接、行内标记和预览指令只保留一个展示位置。"""
     plugin, work = delivery
@@ -275,6 +277,7 @@ def test_shown_file_is_not_appended_again(delivery, form):
     forms = {
         "forward": f"![小狗](MEDIA:{target.replace(chr(92), '/')})",
         "mixed": f"![小狗](MEDIA:{target})",
+        "relative": "[小狗](MEDIA:kitten.png)",
         "inline": f"请查看 MEDIA:`{output}`，这是成品。",
         "double": f'::preview{{file="{output}"}}',
         "single": f"::preview{{file='{output}'}}",
@@ -370,31 +373,39 @@ def test_symbolic_link_is_detected(delivery):
     assert paths.is_link(link)
 
 
-@pytest.mark.parametrize("operation", ["walk", "stat"])
-def test_unreadable_tree_never_returns_partial_baseline(
-    delivery, monkeypatch, operation
-):
-    """目录遍历和文件元数据任一读失败，都不能留下可用于差异推断的部分快照。"""
+@pytest.mark.parametrize("operation", ["walk", "lstat", "stat", "vanish"])
+def test_unreadable_or_vanishing_entries_are_skipped(delivery, monkeypatch, operation):
+    """读不到或扫描中途消失的条目只跳过它自己，其余文件照常进入基线。"""
     _, work = delivery
     from delivery_test import paths
 
-    (work / "visible.pdf").write_bytes(b"visible")
+    visible = work / "visible.pdf"
+    visible.write_bytes(b"visible")
     blocked = work / "blocked"
     blocked.mkdir()
     hidden = blocked / "hidden.pdf"
     hidden.write_bytes(b"hidden")
-    original = paths.os.scandir if operation == "walk" else Path.stat
+    target = {"walk": blocked, "lstat": blocked, "stat": hidden, "vanish": blocked}
+    error = FileNotFoundError if operation == "vanish" else PermissionError
+    owner, name = {
+        "walk": (paths.os, "scandir"),
+        "vanish": (paths.os, "scandir"),
+        "lstat": (paths.os, "lstat"),
+        "stat": (Path, "stat"),
+    }[operation]
+    original = getattr(owner, name)
 
-    def deny(target, *args, **kwargs):
-        """模拟 OS 拒绝特定目录或文件，其它文件操作保持真实。"""
-        if Path(target) == (blocked if operation == "walk" else hidden):
-            raise PermissionError(13, "controlled denial", str(target))
-        return original(target, *args, **kwargs)
+    def deny(path, *args, **kwargs):
+        """只让指定目录或文件失败，其它文件操作保持真实。"""
+        if Path(path) == target[operation]:
+            raise error(13, "controlled failure", str(path))
+        return original(path, *args, **kwargs)
 
-    monkeypatch.setattr(
-        paths.os if operation == "walk" else Path,
-        "scandir" if operation == "walk" else "stat",
-        deny,
-    )
-    assert paths.snapshot(work) is None
+    with monkeypatch.context() as fault:
+        fault.setattr(owner, name, deny)
+        before = paths.snapshot(work)
+    assert before[visible.resolve()] is not None
+    assert before.get(hidden.resolve()) is None
+    # 恢复可读后，之前读漏的文件不能被当成新增。
+    assert paths.changed(before, paths.snapshot(work)) == []
     assert paths.snapshot(work / "not-created") == {}
