@@ -1732,6 +1732,7 @@ export const ja = defineLocale({
       pickerHint: 'スキルの「+ Add to this Agent」を押すと、インストールされて上の一覧に表示されます。'
     },
     tabSkills: 'スキル',
+    kitSkillsNote: 'キットのスキルはキットページで管理します。',
     tabToolsets: 'ツールセット',
     all: 'すべて',
     searchSkills: 'スキルを検索...',
@@ -3633,6 +3634,10 @@ export const ja = defineLocale({
   },
 
   preview: {
+    copyAll: '全文をコピー',
+    saveAs: '名前を付けて保存',
+    exportFailed: 'エクスポートできませんでした。プレビューと画像の読み込みを確認してください。',
+    exportFormats: { md: 'Markdown (.md)', pdf: 'PDF (.pdf)', docx: 'Word (.docx)' },
     tab: 'プレビュー',
     closePane: 'プレビューペインを閉じる',
     loading: 'プレビューを読み込み中',
@@ -3640,6 +3645,9 @@ export const ja = defineLocale({
     opening: '開いています...',
     hide: '非表示',
     openPreview: 'プレビューを開く',
+    imageZoomIn: '画像を拡大',
+    imageZoomOut: '画像を縮小',
+    imageReset: '画像をリセット',
     openInBrowser: 'ブラウザで開く',
     openInExternal: '外部で開く',
     popIn: 'ポップイン',
@@ -4281,6 +4289,8 @@ export const ja = defineLocale({
     restartToSaveImages: '画像を保存するには Hermes Desktop を再起動してください',
     imageDownloadFailed: '画像のダウンロードに失敗しました',
     openImage: '画像を開く',
+    openAudioFile: '音声ファイルを開く',
+    openVideoFile: '動画ファイルを開く',
     downloadImage: '画像をダウンロード',
     savingImage: '画像を保存中',
     imagePreviewFailed: '画像のプレビューに失敗しました',

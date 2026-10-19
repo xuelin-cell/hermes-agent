@@ -3,12 +3,13 @@ import { ipcMain, type IpcMainInvokeEvent, type Session } from 'electron'
 import { isDesktopRendererSender } from '../desktop-renderer-sender'
 import { ASR_CHANNEL, type AsrIdentity } from '../uniwork-asr/contract'
 import { createUniworkAsrHandler } from '../uniwork-asr/ipc'
+import { PlanUsageClient } from '../uniwork-usage/client'
+import { PLAN_USAGE_CHANNEL } from '../uniwork-usage/contract'
 import { WELCOME_CATALOG_CHANNEL } from '../uniwork-welcome/catalog'
 import { WelcomeCatalogClient } from '../uniwork-welcome/client'
 
 import { CloudDriveClient, CloudDriveOperationError } from './cloud-drive'
 import type { ResolveDriveArtifact } from './cloud-drive-artifact-source'
-import type { CloudDriveOfficePreview } from './cloud-drive-office-preview'
 import { installCloudDriveTransferIpc } from './cloud-drive-transfer-ipc'
 import type { LoginAccount } from './contract'
 import type { LoginIdentity } from './session'
@@ -24,8 +25,7 @@ export function installAccountIpc(
   transferCacheRoot?: string,
   sharedDrive?: CloudDriveClient,
   driveAgentReady?: (profile: string) => boolean,
-  resolveArtifact?: ResolveDriveArtifact,
-  previewOffice?: CloudDriveOfficePreview
+  resolveArtifact?: ResolveDriveArtifact
 ): void {
   /** 展示与退出共用来源校验，不接收 UID、路径或进程号。 */
   function trusted(event: IpcMainInvokeEvent, args: unknown[]): boolean {
@@ -47,7 +47,7 @@ export function installAccountIpc(
 
   const transfers =
     drive && transferCacheRoot
-      ? installCloudDriveTransferIpc(drive, transferCacheRoot, trusted, resolveArtifact, previewOffice)
+      ? installCloudDriveTransferIpc(drive, transferCacheRoot, trusted, resolveArtifact)
       : null
 
   if (logout) {
@@ -57,11 +57,17 @@ export function installAccountIpc(
       }
 
       transfers?.cancelAll()
+      await transfers?.clearPreviews()
       await logout()
     })
   }
 
   if (readIdentity && drive) {
+    const usage = new PlanUsageClient(readIdentity)
+    ipcMain.handle(PLAN_USAGE_CHANNEL, (event, ...args) => {
+      if (!trusted(event, args)) return { status: 'failed' }
+      return usage.load()
+    })
     const catalog = new WelcomeCatalogClient(readIdentity)
     ipcMain.handle(WELCOME_CATALOG_CHANNEL, async (event, ...args) => {
       if (!trusted(event, []) || args.length !== 1 || !['zh-CN', 'en'].includes(args[0])) {

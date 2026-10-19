@@ -13,8 +13,12 @@ export function useCloudTransferHistory() {
   const [records, setRecords] = useState<DriveTransferRecord[]>([])
   const [open, setOpen] = useState(false)
 
-  /** 用户开始传输时打开浮窗，批量任务按顺序保留各自名称。 */
+  /** 上传及下载才进入传输浮窗，预览准备由右侧预览入口负责。 */
   function begin(input: CloudDriveTransferRequest, name: string): void {
+    if (input.operation === 'preview') {
+      return
+    }
+
     const files =
       input.operation === 'download-many'
         ? input.assets

@@ -293,13 +293,29 @@ export function createOfficeDetector(overrides: Partial<OfficeDetectionDeps> = {
     const result: OfficeDetection = { word: [], slides: [], sheet: [] }
 
     for (const kind of Object.keys(result) as OfficeDocumentKind[]) {
-      result[kind] = OFFICE_CONVERTER_ORDER.flatMap(provider => {
-        const program =
-          provider === 'libreoffice'
-            ? libreOffice && { executable: libreOffice, provider: 'libreoffice' as const }
-            : programs.find(candidate => candidate.kind === kind && candidate.provider === provider)
+      result[kind] = OFFICE_CONVERTER_ORDER.flatMap((provider): OfficeProgram[] => {
+        if (provider === 'libreoffice') {
+          return libreOffice ? [{ executable: libreOffice, provider: 'libreoffice' as const }] : []
+        }
 
-        return program ? [program] : []
+        const seen = new Set<string>()
+        const candidates = programs.filter(candidate => candidate.kind === kind && candidate.provider === provider)
+
+        return candidates.filter(candidate => {
+          const key = JSON.stringify([
+            candidate.executable.toLowerCase(),
+            candidate.progId.toLowerCase(),
+            candidate.registryView
+          ])
+
+          if (seen.has(key)) {
+            return false
+          }
+
+          seen.add(key)
+
+          return provider === 'wps' || candidate === candidates[0]
+        })
       })
     }
 

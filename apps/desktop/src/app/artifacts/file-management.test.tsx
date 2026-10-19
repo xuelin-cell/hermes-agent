@@ -3,7 +3,9 @@ import { afterEach, expect, it, vi } from 'vitest'
 
 import { I18nProvider } from '@/i18n'
 
+import { CloudDirectoryEmpty } from './cloud-directory-empty'
 import { CloudLibrary } from './cloud-library'
+import { CloudRecycleBin } from './cloud-recycle-bin'
 
 afterEach(() => {
   cleanup()
@@ -12,6 +14,25 @@ afterEach(() => {
 })
 
 const capabilities = { create_folder: true, rename: true, trash: true, download: true, move: true }
+
+it('空回收站和空文件夹使用相同的空状态排版，不再显示列表顶部的普通段落', async () => {
+  vi.stubGlobal('hermesDesktop', { cloudDriveRequest: vi.fn().mockResolvedValue([]) })
+  render(
+    <I18nProvider configClient={null} initialLocale="zh">
+      <CloudDirectoryEmpty
+        parent="root"
+        query=""
+        snapshot={{ items: [], scanning: false, complete: true, error: false, loadedDirectories: ['root'] }}
+      />
+      <CloudRecycleBin onBack={() => {}} onChanged={() => {}} />
+    </I18nProvider>
+  )
+  const folder = screen.getByText('文件夹为空')
+  const recycle = await screen.findByText('回收站为空')
+  expect(recycle.className).toBe(folder.className)
+  expect(recycle.parentElement?.className).toBe(folder.parentElement?.className)
+  expect(recycle.parentElement?.parentElement?.className).toBe(folder.parentElement?.parentElement?.className)
+})
 
 /** 构造资料库原生桌面请求，保留云盘文件和目录的真实身份字段。 */
 function listing(route: string) {

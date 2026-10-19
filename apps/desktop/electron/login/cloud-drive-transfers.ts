@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { constants, createWriteStream } from 'node:fs'
-import { lstat, mkdir, mkdtemp, open, readFile, rename, rm } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, open, rename, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
@@ -11,7 +11,7 @@ import { OFFICE_EXTENSIONS } from '../../../shared/src/office-preview'
 import type { CloudDriveClient } from './cloud-drive'
 import { CloudDriveOperationError } from './cloud-drive'
 import type { AuthorizedArtifactFile } from './cloud-drive-artifact-source'
-import { type CloudDriveOfficePreview, CLOUD_DRIVE_PREVIEW_BYTES as PREVIEW_BYTES } from './cloud-drive-office-preview'
+import { CLOUD_DRIVE_PREVIEW_BYTES as PREVIEW_BYTES } from './cloud-drive-preview'
 import type {
   CloudDriveTransferFileResult,
   CloudDriveTransferProgress,
@@ -27,7 +27,10 @@ const IMAGE_MIME: Record<string, string> = {
   '.jpeg': 'image/jpeg',
   '.gif': 'image/gif',
   '.webp': 'image/webp',
-  '.bmp': 'image/bmp'
+  '.bmp': 'image/bmp',
+  '.svg': 'image/svg+xml',
+  '.tif': 'image/tiff',
+  '.tiff': 'image/tiff'
 }
 
 const TEXT_EXT = new Set(['.txt', '.csv', '.md', '.mdx', '.markdown', '.json', '.xml', '.html', '.htm'])
@@ -107,12 +110,14 @@ function transferFailure(
 /** 大文件使用顺序分片和流式落盘；实际路径只取自主进程核对结果或原生选择框。 */
 export class CloudDriveTransfers {
   private readonly active = new Map<number, { id: string; controller: AbortController }>()
+  private readonly previews = new Map<number, Set<string>>()
+  private previewRootReady: Promise<void> | undefined
+  private readonly previewCleanups = new Set<Promise<unknown>>()
 
   /** 缓存根目录来自当前账号运行时，不接受 Renderer 指定。 */
   constructor(
     private readonly drive: CloudDriveClient,
-    private readonly cacheRoot: string,
-    private readonly previewOffice?: CloudDriveOfficePreview
+    private readonly cacheRoot: string
   ) {}
 
   /** 取消仅作用于发起窗口自己的传输。 */
@@ -129,9 +134,39 @@ export class CloudDriveTransfers {
     for (const transfer of this.active.values()) {
       transfer.controller.abort()
     }
+
+    void this.clearPreviews()
   }
 
-  /** 所有异常转为固定状态码，不跨 IPC 返回账号、认证头或本机路径。 */
+  /** 关闭账号窗口后释放它准备的原文件，不触碰用户下载位置或 Office 转换缓存。 */
+  async clearPreviews(owner?: number): Promise<void> {
+    const directories =
+      owner === undefined
+        ? [...this.previews.values()].flatMap(value => [...value])
+        : [...(this.previews.get(owner) || [])]
+
+    if (owner === undefined) {
+      this.previews.clear()
+    } else {
+      this.previews.delete(owner)
+    }
+
+    const previous = [...this.previewCleanups]
+
+    const pending = Promise.all(
+      directories.map(directory => rm(directory, { recursive: true, force: true }).catch(() => {}))
+    )
+
+    this.previewCleanups.add(pending)
+
+    try {
+      await Promise.all([...previous, pending])
+    } finally {
+      this.previewCleanups.delete(pending)
+    }
+  }
+
+  /** 异常只返回固定状态码；仅成功预览返回已验证的原文件路径，不返回账号或认证头。 */
   async run(owner: number, input: CloudDriveTransferRequest, host: TransferHost): Promise<CloudDriveTransferResult> {
     if (
       !input ||
@@ -178,7 +213,7 @@ export class CloudDriveTransfers {
 
       return input.operation === 'upload'
         ? await this.upload(input, host, controller.signal, check)
-        : await this.download(input, host, controller, check)
+        : await this.download(input, host, controller, check, owner)
     } catch (error) {
       return transferFailure(error, controller, input.operation === 'upload')
     } finally {
@@ -390,7 +425,8 @@ export class CloudDriveTransfers {
     input: Extract<CloudDriveTransferRequest, { assetId: string }>,
     host: TransferHost,
     controller: AbortController,
-    check: () => void
+    check: () => void,
+    owner?: number
   ): Promise<CloudDriveTransferResult> {
     const preview = input.operation === 'preview'
     const extension = path.extname(input.name).toLowerCase()
@@ -398,10 +434,6 @@ export class CloudDriveTransfers {
 
     if (preview && (!kind || (input.size != null && input.size > PREVIEW_BYTES))) {
       throw new CloudDriveOperationError('failed', kind ? 'PREVIEW_TOO_LARGE' : 'PREVIEW_UNSUPPORTED')
-    }
-
-    if (preview && kind === 'office' && !this.previewOffice) {
-      throw new CloudDriveOperationError('failed', 'OFFICE_PREVIEW_UNAVAILABLE')
     }
 
     let directory: string | undefined
@@ -412,6 +444,10 @@ export class CloudDriveTransfers {
       let destination: string
 
       if (preview) {
+        // 专用账号临时目录在本进程首次使用时清理，覆盖意外退出后留下的原文件。
+        this.previewRootReady ??= rm(this.cacheRoot, { recursive: true, force: true })
+        await this.previewRootReady
+        check()
         await mkdir(this.cacheRoot, { recursive: true, mode: 0o700 })
         const root = await lstat(this.cacheRoot)
 
@@ -420,7 +456,7 @@ export class CloudDriveTransfers {
         }
 
         directory = await mkdtemp(path.join(this.cacheRoot, 'preview-'))
-        destination = path.join(directory, 'content' + extension)
+        destination = path.join(directory, input.name)
       } else {
         const selected = await host.selectDownload(input.name)
         check()
@@ -499,26 +535,14 @@ export class CloudDriveTransfers {
         return { status: 'succeeded', name: input.name }
       }
 
-      // 下载空闲计时不能截断转换器自己的超时；文件在转换结束前继续由本请求保管。
-      clearTimeout(idle)
-
-      if (kind === 'office') {
-        host.progress({ id: input.id, completed, total: completed, phase: 'converting' })
-        const converted = await this.previewOffice!(destination, controller.signal)
-        check()
-
-        return { status: 'succeeded', name: input.name, preview: converted }
-      }
-
-      const bytes = await readFile(destination)
+      // 只发布已完整落盘的原文件；格式选择、转换与降级由现有预览系统负责。
       check()
-      const mime = kind === 'image' ? IMAGE_MIME[extension] : kind === 'pdf' ? 'application/pdf' : 'text/plain'
+      const retained = this.previews.get(owner!) || new Set<string>()
+      retained.add(directory!)
+      this.previews.set(owner!, retained)
+      directory = undefined
 
-      return {
-        status: 'succeeded',
-        name: input.name,
-        preview: { kind: kind!, dataUrl: `data:${mime};base64,${bytes.toString('base64')}` }
-      }
+      return { status: 'succeeded', name: input.name, preview: { kind: 'file', path: destination } }
     } finally {
       clearTimeout(idle)
 

@@ -52,10 +52,7 @@ export function McpServerRow({
     probe === 'probing' ? copy.testing : probe ? (probe.ok ? copy.testPassed : copy.testFailed) : copy.untested
 
   return (
-    <article
-      aria-label={name}
-      className="grid min-w-0 gap-2 rounded-xl border border-(--stroke-nous) bg-(--ui-bg-sidebar) p-4"
-    >
+    <article aria-label={name} className="grid min-w-0 gap-2 py-2">
       <div className="flex flex-wrap items-center gap-3">
         <Button
           aria-controls={id}

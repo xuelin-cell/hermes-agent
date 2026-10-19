@@ -99,8 +99,6 @@ export function McpConnectorsTab({ gateway, profile, scopeLabel }: McpConnectors
       params.delete(key)
     }
 
-    params.set('connectorView', 'mcp')
-
     navigate({ ...location, search: params.toString() ? `?${params.toString()}` : '' }, { replace: true })
   }, [cards, location, navigate])
 
@@ -130,7 +128,7 @@ export function McpConnectorsTab({ gateway, profile, scopeLabel }: McpConnectors
   }
 
   return (
-    <div className={cn('flex h-full min-h-0 flex-1 flex-col gap-5 overflow-y-auto py-4', PAGE_INSET_X)}>
+    <div className={cn('flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto py-4', PAGE_INSET_X)}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-(--ui-text-tertiary)">
           {copy.profile}: {profileName}

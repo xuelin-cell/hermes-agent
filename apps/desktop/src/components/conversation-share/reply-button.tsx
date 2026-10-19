@@ -3,6 +3,7 @@ import { useStore } from '@nanostores/react'
 import { useSessionView } from '@/app/chat/session-view'
 import { TooltipIconButton } from '@/components/assistant-ui/tooltip-icon-button'
 import { useI18n } from '@/i18n'
+import { isConversationShareHidden } from '@/lib/browser-shell'
 import { Share2 } from '@/lib/icons'
 import { openConversationShare } from '@/store/conversation-share'
 import { notifyError } from '@/store/notifications'
@@ -23,7 +24,7 @@ export function ConversationReplyShareButton({ messageId }: ConversationReplySha
   const message = messages.find(item => item.id === messageId)
   const sessionId = storedId || runtimeId
 
-  if (!message?.rowId || !sessionId || message.interim) {
+  if (!message?.rowId || !sessionId || message.interim || isConversationShareHidden()) {
     return null
   }
 

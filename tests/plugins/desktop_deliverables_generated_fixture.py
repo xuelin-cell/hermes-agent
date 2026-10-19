@@ -1,0 +1,182 @@
+"""真实 Agent 使用隔离生成工具与本机下载服务，供持久化和原生窗口复验。"""
+
+import base64
+import io
+import json
+import os
+from pathlib import Path
+import sys
+from unittest.mock import patch
+import wave
+
+from tests.fakes.fake_llm_provider import (
+    FakeLLMServer,
+    Text,
+    ToolCall,
+    write_hermes_home,
+)
+from tests.plugins.desktop_deliverables_http_fixture import serving
+
+
+def run_scenario(root, kind="fallback", media_dir=None):
+    """使用独立 Home 和正式插件发现，真实工具执行后关闭重开两种历史投影。"""
+    work, home = root / "workspace", root / "home"
+    assert not work.exists() and not home.exists(), "拒绝覆盖已有测试数据"
+    work.mkdir(parents=True)
+    names = {
+        "image": ("txt2img_generate", "png"),
+        "video": ("txt2vid_generate", "mp4"),
+        "audio": ("tts_synthesize", "wav"),
+        "offline": ("txt2img_generate", "png"),
+    }
+    leaf, extension = names.get(kind, ("fixture_write", "md"))
+    output = work / "fallback报告.md"
+    payload = b"controlled-video-container"
+    if media_dir:
+        payload = (media_dir / ("sample." + extension)).read_bytes()
+    elif extension == "png":
+        payload = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII="
+        )
+    elif extension == "wav":
+        stream = io.BytesIO()
+        with wave.open(stream, "wb") as audio:
+            audio.setparams((1, 2, 8000, 0, "NONE", "not compressed"))
+            audio.writeframes(b"\0\0" * 8000)
+        payload = stream.getvalue()
+    with serving({"/artifact." + extension: payload}) as (base, requests):
+        url = base + "/artifact." + extension
+        if kind == "offline":
+            # 零端口不可连接，不尝试占用或关闭用户正在使用的端口。
+            url = "http://127.0.0.1:0/artifact.png"
+        name = "mcp__fixture__" + leaf
+        final = "结果链接：" + url if kind == "offline" else "完成了。"
+        returned = json.dumps({"url": url}) if kind != "fallback" else '{"ok":true}'
+        body = (
+            f"    Path({str(output)!r}).write_text('# 交付测试', encoding='utf-8')\n"
+            if kind == "fallback"
+            else ""
+        )
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "HERMES_HOME": str(home),
+                    "TERMINAL_ENV": "local",
+                    "TERMINAL_CWD": str(work),
+                },
+            ),
+            FakeLLMServer([
+                ToolCall("tool_call", {"calls": [{"name": name, "arguments": {}}]}),
+                Text(final),
+            ]) as server,
+        ):
+            write_hermes_home(
+                home,
+                server.base_url,
+                extra_config=(
+                    "plugins:\n  enabled: [desktop-deliverables, delivery-fixture, uniwork-kits]\n"
+                    "security:\n  allow_private_urls: true\n"
+                    "auxiliary:\n  title_generation:\n    enabled: false\n"
+                ),
+            )
+            plugin = home / "plugins/delivery-fixture"
+            plugin.mkdir(parents=True)
+            (plugin / "plugin.yaml").write_text(
+                'name: delivery-fixture\nversion: "0.1.0"\n', encoding="utf-8"
+            )
+            (plugin / "__init__.py").write_text(
+                "from pathlib import Path\n"
+                "def generate(args, **kwargs):\n"
+                '    """只写测试产物或返回本机服务链接，不调用真实生成平台。"""\n'
+                + body
+                + f"    return {returned!r}\n"
+                "def register(ctx):\n"
+                '    """通过正式插件注册受控工具，不替换原生工具调度。"""\n'
+                f"    ctx.register_tool({name!r}, 'delivery_fixture', "
+                f"{{'name':{name!r},'description':'fixture output','parameters':{{'type':'object','properties':{{}}}}}}, generate)\n",
+                encoding="utf-8",
+            )
+            from hermes_cli.plugins import discover_plugins
+            from hermes_state import SessionDB
+            from run_agent import AIAgent
+            from tools.terminal_tool import record_session_cwd
+
+            discover_plugins(force=True)
+            record_session_cwd("generated-delivery", str(work))
+            database = SessionDB(home / "state.db")
+            agent = AIAgent(
+                provider="custom",
+                base_url=server.base_url,
+                api_key="sk-fake-e2e",
+                model="fake-model",
+                session_db=database,
+                session_id="generated-delivery",
+                platform="desktop",
+                enabled_toolsets=["delivery_fixture"],
+                quiet_mode=True,
+                skip_memory=True,
+                skip_context_files=True,
+            )
+            try:
+                result = agent.run_conversation(
+                    "生成文件。", task_id="generated-delivery"
+                )
+                expected = result["final_response"]
+                tool_results = [
+                    row
+                    for request in server.main_requests()
+                    for row in request["messages"]
+                    if row["role"] == "tool"
+                ]
+                assert tool_results, "受控工具必须经过真实调度"
+                assert all(
+                    "does not exist" not in row["content"] for row in tool_results
+                ), tool_results
+                if kind == "offline":
+                    assert url in expected and "MEDIA:" not in expected
+                    assert all(
+                        "desktop_deliverables" not in row["content"]
+                        for row in tool_results
+                    )
+                else:
+                    if kind != "fallback":
+                        output = next((work / "outputs").glob("*." + extension))
+                        assert output.read_bytes() == payload
+                        # tool_call 桥会再次编码 JSON，Windows 路径反斜杠因此转义。
+                        assert any(
+                            "desktop_deliverables" in row["content"]
+                            and output.name in row["content"]
+                            for row in tool_results
+                        )
+                        assert len(requests) == 1
+                    assert f"MEDIA:{output}" in expected
+            finally:
+                agent.close()
+                database.close()
+            reopened = SessionDB(home / "state.db")
+            try:
+                for history in reopened.get_resume_conversations("generated-delivery"):
+                    assert (
+                        next(
+                            row["content"]
+                            for row in reversed(history)
+                            if row["role"] == "assistant"
+                        )
+                        == expected
+                    )
+            finally:
+                reopened.close()
+            receipt = {"text": expected, "path": str(output), "kind": kind}
+            (root / "receipt.json").write_text(
+                json.dumps(receipt, ensure_ascii=False), encoding="utf-8"
+            )
+            return receipt
+
+
+if __name__ == "__main__":
+    run_scenario(
+        Path(sys.argv[1]),
+        sys.argv[2] if len(sys.argv) > 2 else "fallback",
+        Path(sys.argv[3]) if len(sys.argv) > 3 else None,
+    )

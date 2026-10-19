@@ -16,7 +16,9 @@ import type {
 import type { MachineProfile } from '../electron/machine-profile'
 import type { HermesNotification } from '../electron/notification-types'
 import type { PoolLimits } from '../electron/pool-limits'
+import type { PreviewExport, PreviewExportResult } from '../electron/preview-export'
 import type { UniworkAsrBridge } from '../electron/uniwork-asr/contract'
+import type { PlanUsageResult } from '../electron/uniwork-usage/contract'
 import type { WelcomeCategory, WelcomeLocale } from '../electron/uniwork-welcome/catalog'
 import type { GrowRequest } from '../electron/window-growth'
 
@@ -37,6 +39,8 @@ declare global {
   interface Window {
     hermesDesktop: {
       /** 只读本次已准备账号的脱敏信息，运行中到期仍返回原期限。 */
+      /** 仅返回当前账号套餐展示信息，不接受页面身份参数。 */
+      getPlanUsage?: () => Promise<PlanUsageResult>
       getMaasAccount: () => Promise<LoginAccount | null>
       conversationShare: ConversationShareApi
       artifactShare: {
@@ -319,6 +323,10 @@ declare global {
       readFileDataUrl: (filePath: string) => Promise<string>
       /** 只转换当前账号的本机 Office 文件，不接受缓存路径或凭据。 */
       convertOfficePreview: (filePath: string, requestId: string) => Promise<OfficePreviewResult>
+      /** 卡片出现后低优先级准备 Word/PPT，只填充账号缓存，不返回文档内容。 */
+      prepareOfficePreview: (filePath: string, requestId: string) => Promise<void>
+      /** 只另存当前预览内容，不接受页面指定的写入路径。 */
+      exportPreview: (input: PreviewExport) => Promise<PreviewExportResult>
       /** 页面离开时取消自己的转换请求；排队中没人等的转换会被跳过。 */
       cancelOfficePreview: (requestId: string) => Promise<void>
       /** Remote non-image attach: higher dedicated cap than preview/Settings default. */

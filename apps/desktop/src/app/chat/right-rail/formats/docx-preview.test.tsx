@@ -19,7 +19,10 @@ let resize: () => void
 let panelWidth = 420
 
 /** 用真实 OOXML 压缩包覆盖中文、表格、分页、链接与应禁止的内嵌 HTML，不替换解析库。 */
-function sample(text = '中文文档', section = '<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:bottom="1440" w:left="1440" w:right="1440"/></w:sectPr>') {
+function sample(
+  text = '中文文档',
+  section = '<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:bottom="1440" w:left="1440" w:right="1440"/></w:sectPr>'
+) {
   const archive = zipSync({
     '[Content_Types].xml': strToU8(
       '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/></Types>'
@@ -163,10 +166,9 @@ it('已有 PDF 转换成功时不读取源文件，也不执行 Word 兜底', as
   vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined)
   convert.mockResolvedValue({ ok: true, pdf: new Uint8Array([1]), version: 'fixture', converter: 'wps' })
   render(<FormatPreview reloadKey={0} target={target()} />)
-  const frame = (await screen.findByTitle(target().label)) as HTMLIFrameElement
-  expect(frame.src).toBe('blob:converted')
+  expect((await screen.findByRole('region', { name: target().label })).hasAttribute('data-pdf-viewer')).toBe(true)
   expect(read).not.toHaveBeenCalled()
-  expect(create).toHaveBeenCalled()
+  expect(create).not.toHaveBeenCalled()
 })
 
 it.each(['timeout', 'convert_failed'])('本机 %s 后也能用前端显示正文', async code => {

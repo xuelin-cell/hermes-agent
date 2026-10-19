@@ -122,3 +122,46 @@ it('页面离开时只能取消自己发起的请求，取消信号交给转换�
     code: 'unsupported'
   })
 })
+
+it('后台准备沿用来源和参数校验，只允许 Word/PPT，且不把 PDF 字节送回卡片', async () => {
+  const session = {}
+  const frame = { url: 'file:///desktop/index.html' }
+  const sender = { id: 1, mainFrame: frame, session }
+  fromWebContents.mockReturnValue({ isDestroyed: () => false, webContents: sender })
+
+  const service = {
+    convert: vi.fn(async () => ({
+      ok: true as const,
+      pdf: new Uint8Array([1]),
+      version: 'v',
+      converter: 'wps' as const
+    }))
+  }
+
+  installOfficePreviewIpc(
+    session as never,
+    () => frame.url,
+    () => true,
+    service
+  )
+  const invoke = handler('hermes:office-preview:convert')
+  const event = { sender, senderFrame: frame }
+  expect(await invoke(event, 'report.pptx', 'prepare-1', 'background')).toBeUndefined()
+  expect(service.convert).toHaveBeenCalledWith(expect.any(String), expect.any(AbortSignal), true)
+  service.convert.mockClear()
+
+  for (const args of [
+    ['report.xlsx', 'p', 'background'],
+    ['r.docx', 'p', 'foreground'],
+    ['r.docx', 'p', {}],
+    ['r.docx', '../p', 'background']
+  ]) {
+    expect(await invoke(event, ...args)).toEqual({ ok: false, code: 'unsupported' })
+  }
+
+  expect(await invoke({ ...event, senderFrame: { ...frame } }, 'r.docx', 'p', 'background')).toEqual({
+    ok: false,
+    code: 'unsupported'
+  })
+  expect(service.convert).not.toHaveBeenCalled()
+})

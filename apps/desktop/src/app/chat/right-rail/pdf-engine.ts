@@ -1,4 +1,4 @@
-// Browser build only: pdf.js behind the PDF viewer (pdf-preview.tsx), loaded
+// pdf.js behind the shared PDF viewer (pdf-preview.tsx), loaded
 // with it the first time a PDF is opened. pdf.js's own viewer component does
 // what is easy to get wrong: drawing only the pages near the view and letting
 // the others go, the text layer that makes the text selectable, links, and the
@@ -13,11 +13,9 @@ import {
   AnnotationEditorType,
   AnnotationMode,
   getDocument,
-  GlobalWorkerOptions,
   PasswordResponses,
   type PDFDocumentProxy,
-  PDFWorker,
-  version
+  PDFWorker
 } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import {
   EventBus,
@@ -30,11 +28,8 @@ import {
 
 import type { PdfDocumentSource } from '@/lib/browser-shell'
 
+import { PDF_RESOURCE_OPTIONS } from './pdf-resources'
 import { clampZoom, fitScale, stepZoom } from './pdf-zoom'
-
-const ASSETS = new URL(`${import.meta.env.BASE_URL}assets/pdfjs-${version}/`, window.location.href).href
-
-GlobalWorkerOptions.workerSrc = `${ASSETS}pdf.worker.js`
 
 // .pdfViewer's side padding (pdf-preview.css): the room a page is fitted into.
 const SIDE_PADDING_PX = 16
@@ -221,10 +216,7 @@ export function createPdfEngine(
 
   const task = getDocument({
     ...source,
-    cMapUrl: `${ASSETS}cmaps/`,
-    iccUrl: `${ASSETS}iccs/`,
-    standardFontDataUrl: `${ASSETS}standard_fonts/`,
-    wasmUrl: `${ASSETS}wasm/`,
+    ...PDF_RESOURCE_OPTIONS,
     worker: pdfWorker()
   })
 

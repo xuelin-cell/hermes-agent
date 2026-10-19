@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -47,7 +48,8 @@ async function dragPlaybackTimeline(page, player) {
 async function prepareMedia(root) {
   const samples = [
     ['sample.mp3', ['-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=44100', '-c:a', 'libmp3lame']],
-    ['sample.mp4', ['-f', 'lavfi', '-i', 'testsrc=size=320x180:rate=24', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-movflags', '+faststart']]
+    ['sample.mp4', ['-f', 'lavfi', '-i', 'testsrc=size=320x180:rate=24', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-movflags', '+faststart']],
+    ['sample.png', ['-f', 'lavfi', '-i', 'testsrc=size=320x180:rate=1', '-frames:v', '1', '-update', '1']]
   ]
   for (const [name, options] of samples) {
     const result = spawnSync(process.env.HERMES_PREVIEW_TEST_FFMPEG || 'ffmpeg',
@@ -68,20 +70,33 @@ async function prepareFixture() {
   await writeFile(entry, `
     import ${sourcePath('src/styles.css')}
     import { useState } from 'react'
+    import { useStore } from ${JSON.stringify(createRequire(import.meta.url).resolve('@nanostores/react'))}
     import { createRoot } from 'react-dom/client'
     import { I18nProvider } from ${sourcePath('src/i18n/context.tsx')}
     import { FormatPreview } from ${sourcePath('src/app/chat/right-rail/formats/format-preview.tsx')}
-    const files = ${JSON.stringify(['sample.mp3', 'sample.mp4', 'broken.mp4'].map(name => ({
+    import { LocalFilePreview } from ${sourcePath('src/app/chat/right-rail/preview-file.tsx')}
+    import { MessageTextContent } from ${sourcePath('src/components/assistant-ui/markdown-text.tsx')}
+    import { $previewTabs } from ${sourcePath('src/store/preview.ts')}
+    const files = ${JSON.stringify(['sample.mp3', 'sample.mp4', 'sample.png', 'broken.mp4'].map(name => ({
       kind: 'file', label: name, path: path.join(root, name), previewKind: 'binary',
       source: path.join(root, name), url: 'file://' + path.join(root, name)
     })))}
     // 测试按钮只选择正式文件目标，播放器由产品组件创建。
     function Fixture() {
       const [target, select] = useState(files[0])
+      const [chat, setChat] = useState(false)
+      const tabs = useStore($previewTabs)
+      const preview = chat ? tabs.at(-1)?.target : target
       return <I18nProvider configClient={null} initialLocale="zh">
         <div style={{height:'100vh',display:'flex',flexDirection:'column'}}>
-          <nav>{files.map(file => <button key={file.path} onClick={() => select(file)}>{file.label}</button>)}</nav>
-          <div style={{position:'relative',flex:1,minHeight:0}}><FormatPreview reloadKey={0} target={target}/></div>
+          <nav>{files.map(file => <button key={file.path} onClick={() => {select(file);setChat(false);$previewTabs.set([])}}>{file.label}</button>)}
+            <button onClick={() => setChat(true)}>对话交付物</button></nav>
+          <div style={{display:'flex',flex:1,minHeight:0}}>
+            {chat && <div data-testid="chat" style={{width:'50%',overflow:'auto'}}><MessageTextContent text={'MEDIA:/' + target.path}/></div>}
+            <div data-testid="rail" style={{position:'relative',flex:1,minHeight:0}}>{preview && (preview.previewKind === 'image'
+              ? <LocalFilePreview reloadKey={0} target={preview}/>
+              : <FormatPreview reloadKey={0} target={preview}/>)}</div>
+          </div>
         </div>
       </I18nProvider>
     }
@@ -110,7 +125,7 @@ async function prepareFixture() {
       import { app, BrowserWindow, ipcMain, protocol, session } from 'electron'
       import { createMediaProtocolHandler, MEDIA_PROTOCOL } from './electron/media-protocol'
       import { fetchLocalMedia } from './electron/media-range'
-      import { resolveReadableFileForIpc } from './electron/hardening'
+      import { resolveReadableFileForIpc, readFileDataUrlForIpc } from './electron/hardening'
       import { resolveMediaStreamFile } from './electron/local-read-path'
       app.disableHardwareAcceleration()
       app.setPath('userData', ${JSON.stringify(path.join(root, 'user-data'))})
@@ -120,6 +135,7 @@ async function prepareFixture() {
         ipcMain.on(channel, event => { event.returnValue = {} })
       }
       ipcMain.handle('hermes:fs:reveal', (_event, file) => { globalThis.previewProbe.reveals.push(file); return true })
+      ipcMain.handle('hermes:readFileDataUrl', (_event, file) => readFileDataUrlForIpc(file, {purpose:'File preview',mimeType:'image/png',maxBytes:16*1024*1024}))
       app.whenReady().then(() => {
         const partition = session.fromPartition('persist:file-preview-fixture')
         partition.protocol.handle(MEDIA_PROTOCOL, createMediaProtocolHandler({
@@ -134,7 +150,7 @@ async function prepareFixture() {
           resolveRemoteConnection: async () => { throw new Error('No remote fixture') },
           resolveLocalFile: async file => (await resolveReadableFileForIpc(resolveMediaStreamFile(file), {purpose:'Media stream'})).resolvedPath
         }))
-        const window = new BrowserWindow({show:false,width:640,height:480,webPreferences:{
+        const window = new BrowserWindow({show:false,width:1100,height:720,webPreferences:{
           session:partition,preload:${JSON.stringify(path.join(root, 'preload.cjs'))},contextIsolation:true,sandbox:true,nodeIntegration:false,backgroundThrottling:false
         }})
         window.loadURL('about:blank')
@@ -161,6 +177,7 @@ test('真实 Electron 音视频能播放、跳转进度，失败保留原文件�
     const errors = []
     page.on('pageerror', error => errors.push(error.message))
     await page.goto(fixture.url)
+    // 自建窗口只在后台显示以获取真实合成帧，不激活或操作用户的现用窗口。
     await instance.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].showInactive())
     console.log('独立预览页面已加载')
     for (const [name, tag] of [['sample.mp3', 'audio'], ['sample.mp4', 'video']]) {
@@ -190,6 +207,37 @@ test('真实 Electron 音视频能播放、跳转进度，失败保留原文件�
     const probe = await instance.evaluate(() => globalThis.previewProbe)
     assert.deepEqual(probe.reveals, [path.join(fixture.root, 'broken.mp4')])
     assert.equal(probe.ranges.some(request => request.status === 206 && request.range === 'bytes=200-499'), true)
+    for (const [name, tag] of [['sample.png', 'img'], ['sample.mp4', 'video'], ['sample.mp3', 'audio']]) {
+      await page.getByRole('button', { name, exact: true }).click()
+      await page.getByRole('button', { name: '对话交付物', exact: true }).click()
+      await page.getByTestId('chat').getByRole('button', { name: '打开预览', exact: true }).click()
+      const media = page.getByTestId('rail').locator(tag)
+      await expect(media).toBeVisible()
+      if (tag === 'img') {
+        await expect.poll(() => media.evaluate(image => image.complete && image.naturalWidth)).toBe(320)
+        const stage = page.getByTestId('rail').getByRole('region', { name })
+        await stage.hover()
+        await page.mouse.wheel(0, -100)
+        await expect.poll(() => media.evaluate(image => image.parentElement.style.transform)).toContain('scale(1.1)')
+        const box = await stage.boundingBox()
+        await page.mouse.move(box.x + 30, box.y + 30)
+        await page.mouse.down()
+        await page.mouse.move(box.x + 70, box.y + 50, { steps: 3 })
+        await page.mouse.up()
+        await expect.poll(() => media.evaluate(image => {
+          const matrix = new DOMMatrix(getComputedStyle(image.parentElement).transform)
+          return Math.abs(matrix.m41 - 40) < 1 && Math.abs(matrix.m42 - 20) < 1
+        })).toBe(true)
+        await stage.dblclick()
+        await expect.poll(() => media.evaluate(image => image.parentElement.style.transform)).toBe('translate(0px, 0px) scale(1)')
+      } else {
+        await expect.poll(() => media.evaluate(player => player.readyState)).toBeGreaterThanOrEqual(2)
+        await media.evaluate(async player => { player.muted = true; await player.play() })
+        await expect.poll(() => media.evaluate(player => player.currentTime)).toBeGreaterThan(0.2)
+        await media.evaluate(player => player.pause())
+      }
+      await page.screenshot({ path: path.join(fixture.root, `chat-${tag}.png`) })
+    }
     assert.deepEqual(errors, [])
     await page.screenshot({ path: path.join(fixture.root, 'failure.png') })
     console.log('音视频独立夹具与截图：' + fixture.root)

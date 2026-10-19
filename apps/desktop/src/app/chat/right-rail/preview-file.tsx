@@ -13,13 +13,16 @@ import { defaultRehypePlugins, defaultRemarkPlugins, Streamdown } from 'streamdo
 import { requestComposerFocus, requestComposerInsertRefs } from '@/app/chat/composer/focus'
 import { droppedFileInlineRef } from '@/app/chat/composer/inline-refs'
 import { HERMES_PATHS_MIME } from '@/app/chat/hooks/use-composer-actions'
+import { markdownShareSnapshot } from '@/components/artifact-share/markdown-snapshot'
 import { ShareControls } from '@/components/artifact-share/share-controls'
 import { RichCodeBlock } from '@/components/assistant-ui/embeds'
 import { CodeEditor } from '@/components/chat/code-editor'
 import { FileDiffPanel } from '@/components/chat/diff-lines'
 import { chunkTextLines, useFixedRowWindow } from '@/components/chat/fixed-row-window'
+import { ImagePreview } from '@/components/chat/image-preview'
 import { LazyShiki as ShikiHighlighter } from '@/components/chat/shiki-highlighter'
 import { PageLoader } from '@/components/page-loader'
+import { CopyButton } from '@/components/ui/copy-button'
 import { Tip } from '@/components/ui/tooltip'
 import { translateNow, useI18n } from '@/i18n'
 import { artifactShareFilePath } from '@/lib/artifact-share-source'
@@ -46,6 +49,7 @@ import {
   remarkPreviewFileLinks,
   scrollPreviewHeading
 } from '@/lib/preview-markdown-links'
+import { type PreviewShareFileSource, previewShareSource } from '@/lib/preview-share-source'
 import { previewTargetFromMarkdownHref } from '@/lib/preview-targets'
 import { cn } from '@/lib/utils'
 import { openPreview, type PreviewTarget } from '@/store/preview'
@@ -53,6 +57,12 @@ import { setPreviewDirty } from '@/store/preview-edit'
 import { $activeSessionId, $selectedStoredSessionId } from '@/store/session'
 import { $connection, $currentCwd } from '@/store/session'
 import { notifyWorkspaceChanged } from '@/store/workspace-events'
+
+import { previewFailure } from './formats/failure'
+import { filePathForTarget } from './formats/path'
+import { readPdfBytes } from './formats/source'
+import { PdfPreview } from './pdf-preview'
+import { PreviewExportControls } from './preview-export'
 
 const SHIKI_THEME = { dark: 'github-dark-default', light: 'github-light-default' } as const
 const TEXT_PREVIEW_MAX_BYTES = 512 * 1024
@@ -167,6 +177,7 @@ interface LocalPreviewState {
   binary?: boolean
   byteSize?: number
   dataUrl?: string
+  pdfBytes?: Uint8Array
   /** Working-tree-vs-HEAD unified diff, when the file has uncommitted changes. */
   diff?: string
   error?: string
@@ -187,20 +198,6 @@ function isTypableElement(el: Element | null): boolean {
   const tag = el.tagName
 
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (el as HTMLElement).isContentEditable
-}
-
-export function filePathForTarget(target: PreviewTarget) {
-  if (target.path) {
-    return target.path
-  }
-
-  try {
-    const url = new URL(target.url)
-
-    return url.protocol === 'file:' ? decodeURIComponent(url.pathname) : target.url
-  } catch {
-    return target.url
-  }
 }
 
 function formatBytes(bytes: number | undefined) {
@@ -238,45 +235,6 @@ function looksBinaryBytes(bytes: Uint8Array) {
   }
 
   return suspicious / Math.min(bytes.length, 4096) > 0.12
-}
-
-function dataUrlToBlob(dataUrl: string) {
-  const comma = dataUrl.indexOf(',')
-
-  if (comma < 0 || !dataUrl.startsWith('data:')) {
-    throw new Error('Invalid PDF data URL')
-  }
-
-  const metadata = dataUrl
-    .slice(5, comma)
-    .split(';')
-    .map(part => part.trim().toLowerCase())
-
-  const payload = dataUrl.slice(comma + 1)
-
-  if (metadata[0] !== 'application/pdf' || !metadata.slice(1).includes('base64')) {
-    throw new Error('Invalid PDF data URL type')
-  }
-
-  let binary: string
-
-  try {
-    binary = atob(decodeURIComponent(payload))
-  } catch {
-    throw new Error('Invalid PDF data URL payload')
-  }
-
-  if (!binary.startsWith('%PDF-')) {
-    throw new Error('Invalid PDF file header')
-  }
-
-  const bytes = new Uint8Array(binary.length)
-
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index)
-  }
-
-  return new Blob([bytes], { type: 'application/pdf' })
 }
 
 async function readTextPreview(filePath: string) {
@@ -736,6 +694,7 @@ export function LocalFilePreview({
   onClose,
   onSelectRendered,
   reloadKey,
+  shareSource,
   target
 }: {
   /** Closes the preview's tab; offered when the file can't be shown. */
@@ -744,13 +703,13 @@ export function LocalFilePreview({
    *  `rendered` mode to the switcher and routes its selection to the pane. */
   onSelectRendered?: () => void
   reloadKey: number
+  /** 资料库预览显式携带来源会话；null 禁止借用当前聊天的分享身份。 */
+  shareSource?: PreviewShareFileSource | null
   target: PreviewTarget
 }) {
   const { t } = useI18n()
   const [state, setState] = useState<LocalPreviewState>({ loading: true })
   const [forcePreview, setForcePreview] = useState(false)
-  const [pdfError, setPdfError] = useState<string>()
-  const [pdfUrl, setPdfUrl] = useState<string>()
   // User-picked view; null = auto (diff when changed, else rendered markdown,
   // else source). Reset when the previewed file changes.
   const [userMode, setUserMode] = useState<null | PreviewViewMode>(null)
@@ -776,11 +735,13 @@ export function LocalFilePreview({
   const connection = useStore($connection)
   const activeSessionId = useStore($activeSessionId)
   const storedSessionId = useStore($selectedStoredSessionId)
-  const shareSessionId = storedSessionId || activeSessionId
+  const resolvedShareSource = shareSource === undefined ? previewShareSource(target, connection) : shareSource
+  const shareSessionId = resolvedShareSource === undefined ? storedSessionId || activeSessionId : resolvedShareSource?.sessionId
   const currentCwd = useStore($currentCwd)
   const fsCacheKey = desktopFsCacheKey(connection)
   const filePath = filePathForTarget(target)
-  const isImage = target.previewKind === 'image'
+  const isSvg = /\.svg$/i.test(filePath)
+  const isImage = target.previewKind === 'image' && !isSvg
   const isPdf = target.previewKind === 'pdf' || previewsOfficeAsPdf(filePath)
 
   // eslint-disable-next-line no-restricted-syntax -- legitimate non-atom ref write (see eslint rule comment)
@@ -798,7 +759,8 @@ export function LocalFilePreview({
   // In source mode HTML files take the same path as plain text files; the
   // pane owns the rendered (webview) mode. `previewKind === 'binary'` arrives
   // when the file is forcibly previewed past the binary refusal screen.
-  const isText = target.previewKind === 'text' || target.previewKind === 'binary' || target.previewKind === 'html'
+  const isText =
+    isSvg || target.previewKind === 'text' || target.previewKind === 'binary' || target.previewKind === 'html'
 
   const blockedByTarget = !isImage && !isPdf && !forcePreview && (target.binary || target.large)
 
@@ -825,9 +787,10 @@ export function LocalFilePreview({
           // Prefer bytes the caller already handed us (a pasted/dropped
           // screenshot) over re-reading a path that may be transient/unreadable.
           const dataUrl = target.dataUrl || (await (officePreviewPdf(filePath) ?? readDesktopFileDataUrl(filePath)))
+          const pdfBytes = isPdf ? await readPdfBytes(filePath, dataUrl) : undefined
 
           if (active) {
-            setState({ dataUrl, loading: false })
+            setState({ dataUrl: isPdf ? undefined : dataUrl, pdfBytes, loading: false })
           }
 
           return
@@ -866,7 +829,12 @@ export function LocalFilePreview({
       } catch (error) {
         if (active) {
           setState({
-            error: error instanceof Error ? error.message : String(error),
+            error:
+              isPdf && !(error instanceof Error)
+                ? translateNow(`preview.formatFailure.${previewFailure(error).code}`)
+                : error instanceof Error
+                  ? error.message
+                  : String(error),
             loading: false
           })
         }
@@ -892,40 +860,10 @@ export function LocalFilePreview({
     target.language
   ])
 
-  useEffect(() => {
-    setPdfUrl(undefined)
-    setPdfError(undefined)
-
-    if (!isPdf || !state.dataUrl) {
-      return
-    }
-
-    // Chromium's PDF viewer is blank for large data: URLs in an iframe. Use a
-    // blob URL instead, and revoke it when the target or loaded bytes change.
-    if (typeof URL.createObjectURL !== 'function') {
-      setPdfError('PDF preview requires object URL support')
-
-      return
-    }
-
-    let objectUrl: string
-
-    try {
-      objectUrl = URL.createObjectURL(dataUrlToBlob(state.dataUrl))
-      setPdfUrl(objectUrl)
-    } catch (error) {
-      setPdfError(error instanceof Error ? error.message : String(error))
-
-      return
-    }
-
-    return () => URL.revokeObjectURL(objectUrl)
-  }, [isPdf, state.dataUrl])
-
   // Editing is only offered for whole, readable text — never images, binaries,
   // or files we only loaded the first 512 KB of (saving would drop the tail).
   const canEdit =
-    isText && !isImage && !blockedByTarget && state.text !== undefined && !state.truncated && !state.binary
+    !target.source.startsWith('cloud-drive:') && isText && !isImage && !blockedByTarget && state.text !== undefined && !state.truncated && !state.binary
 
   // Per-keystroke: update the draft ref (no render) and only set `dirty` when it
   // actually changes — React bails on an identical value, so a long typing run
@@ -1115,10 +1053,6 @@ export function LocalFilePreview({
     return <PreviewEmptyState body={state.error} primaryAction={closeAction} title={t.preview.unavailable} />
   }
 
-  if (pdfError) {
-    return <PreviewEmptyState body={pdfError} primaryAction={closeAction} title={t.preview.unavailable} />
-  }
-
   if (
     !isImage &&
     !isPdf &&
@@ -1139,70 +1073,29 @@ export function LocalFilePreview({
   }
 
   if (isImage && state.dataUrl) {
-    return (
-      <div className="flex h-full w-full items-center justify-center overflow-auto bg-transparent p-4">
-        <img
-          alt={target.label}
-          className="max-h-full max-w-full rounded-lg object-contain shadow-sm"
-          draggable={false}
-          src={state.dataUrl}
-        />
-      </div>
-    )
+    return <ImagePreview alt={target.label} key={filePath} src={state.dataUrl} />
   }
 
-  if (isPdf && state.dataUrl && pdfUrl) {
-    return (
-      <div className="h-full w-full overflow-hidden bg-transparent">
-        <iframe
-          aria-label={target.label}
-          className="h-full w-full border-0 bg-white"
-          src={pdfUrl}
-          title={target.label}
-        />
-      </div>
-    )
-  }
-
-  if (isPdf && state.dataUrl) {
-    return <PageLoader label={t.preview.loading} />
+  if (isPdf && state.pdfBytes) {
+    return <PdfPreview bytes={state.pdfBytes} reloadKey={reloadKey} target={target} />
   }
 
   if (isText && state.text !== undefined) {
     const isMarkdown = (state.language || target.language) === 'markdown'
 
-    const sharePath = artifactShareFilePath(filePath, currentCwd)
+    const sharePath = resolvedShareSource === undefined ? artifactShareFilePath(filePath, currentCwd) : resolvedShareSource?.path
 
     const shareableFile = connection?.mode === 'local' && !state.truncated && shareSessionId && sharePath &&
       (isMarkdown || /\.html?$/i.test(filePath)) && window.hermesDesktop?.artifactShare
 
-    /** 从与预览同一渲染器取得静态 Markdown 快照，拒绝本机图片地址泄露。 */
-    const markdownSnapshot = () => {
-      const rendered = shareSnapshotRef.current?.querySelector<HTMLElement>('[data-preview-markdown]')
-
-      if (!rendered) {
-        throw new Error(t.artifactShare.previewNotReady)
-      }
-
-      const clone = rendered.cloneNode(true) as HTMLElement
-
-      for (const image of clone.querySelectorAll('img')) {
-        if (!image.getAttribute('src')?.startsWith('data:')) {
-          throw new Error(t.artifactShare.imageNotEmbedded)
-        }
-      }
-
-      return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
-        '<style>body{font:16px/1.65 system-ui,sans-serif;max-width:800px;margin:40px auto;padding:0 24px;color:#202124}' +
-        'pre{overflow:auto;padding:16px;background:#f5f5f5}img{max-width:100%}table{border-collapse:collapse}' +
-        'td,th{border:1px solid #ccc;padding:6px}</style></head><body>' + clone.outerHTML + '</body></html>'
-    }
+    /** 与资料库分享工具栏共用同一 Markdown 快照及图片校验。 */
+    const markdownSnapshot = () => markdownShareSnapshot(shareSnapshotRef.current, t.artifactShare)
 
     const hasDiff = Boolean(state.diff && state.diff.trim())
     // Order the toggle reads left→right; default lands on the most useful view.
     const modes: PreviewViewMode[] = []
 
-    if (isMarkdown || onSelectRendered) {
+    if (isMarkdown || isSvg || onSelectRendered) {
       modes.push('rendered')
     }
 
@@ -1212,7 +1105,7 @@ export function LocalFilePreview({
       modes.push('diff')
     }
 
-    const autoMode: PreviewViewMode = hasDiff ? 'diff' : isMarkdown ? 'rendered' : 'source'
+    const autoMode: PreviewViewMode = hasDiff ? 'diff' : isMarkdown || isSvg ? 'rendered' : 'source'
     // The pane hands an HTML file over only once Source was picked; that pick
     // outranks the diff-first default.
     const mode = userMode && modes.includes(userMode) ? userMode : onSelectRendered ? 'source' : autoMode
@@ -1247,6 +1140,21 @@ export function LocalFilePreview({
           onSelect={selectMode}
           trailing={
             <>
+              <CopyButton
+                appearance="icon"
+                buttonSize="icon-xs"
+                disabled={state.truncated}
+                label={t.preview.copyAll}
+                text={state.text}
+              />
+              {isMarkdown && typeof window.hermesDesktop?.exportPreview === 'function' && (
+                <PreviewExportControls
+                  disabled={Boolean(state.truncated)}
+                  name={target.label}
+                  snapshot={markdownSnapshot}
+                  text={state.text}
+                />
+              )}
               {shareableFile && (
                 <ShareControls
                   artifactKey={`file:${shareSessionId}:${sharePath}`}
@@ -1271,14 +1179,29 @@ export function LocalFilePreview({
             </>
           }
         />
-        {shareableFile && isMarkdown && (
-          <div aria-hidden="true" className="pointer-events-none absolute -left-[10000px] top-0 w-[800px]" ref={shareSnapshotRef}>
-            <MarkdownPreview filePath={filePath} text={state.text} />
-          </div>
-        )}
+        {isMarkdown &&
+          mode !== 'rendered' &&
+          (shareableFile || typeof window.hermesDesktop?.exportPreview === 'function') && (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute -left-[10000px] top-0 w-[800px]"
+              ref={shareSnapshotRef}
+            >
+              <MarkdownPreview filePath={filePath} text={state.text} />
+            </div>
+          )}
         <div className="min-h-0 flex-1 overflow-auto">
           {mode === 'rendered' ? (
-            <MarkdownPreview filePath={filePath} text={state.text} />
+            isSvg ? (
+              <ImagePreview
+                alt={target.label}
+                src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(state.text)}`}
+              />
+            ) : (
+              <div ref={shareSnapshotRef}>
+                <MarkdownPreview filePath={filePath} text={state.text} />
+              </div>
+            )
           ) : mode === 'diff' ? (
             <FileDiffPanel
               className="mx-0 mb-0 h-full max-h-none"

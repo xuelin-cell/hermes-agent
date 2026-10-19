@@ -223,6 +223,7 @@ import { preReadyDockLaunchSteps } from './dock-launch-order'
 import { installEmbedReferer } from './embed-referer'
 import { accountBrowserPartition } from './entry_local/browser-partition'
 import { accountSourceBackend } from './entry_local/desktop-environment'
+import { enableDesktopPlugins } from './entry_local/desktop-plugins-config'
 import { accountDesktopStatePaths } from './entry_local/desktop-state'
 import { type AccountGateway, createAccountGatewayLogout, gatewayLogoutRoots } from './entry_local/gateway-logout'
 import { installArtifactSharePlugin } from './entry_local/install-artifact-share'
@@ -334,7 +335,6 @@ import { currentDesktopAccount, currentDesktopAsrIdentity, currentDesktopIdentit
 import { CloudDriveClient } from './login/cloud-drive'
 import { createDriveArtifactResolver } from './login/cloud-drive-artifact-source'
 import { CloudDriveMcp } from './login/cloud-drive-mcp'
-import { createCloudDriveOfficePreview } from './login/cloud-drive-office-preview'
 import { installDriveCredentialRenewal } from './login/cloud-drive-renewal'
 import { CloudDriveTokenStore } from './login/cloud-drive-token-store'
 import { registerMachineProfile } from './machine-profile'
@@ -427,6 +427,7 @@ import { createPortalSession } from './portal-session'
 import { createKeepAwake } from './power-save'
 import { readPreUpdateBackupEnabled } from './pre-update-backup-config'
 import { capturePreviewContents } from './preview-capture'
+import { installPreviewExportIpc } from './preview-export'
 import { onPreviewWatchOwnerDestroyed, sendPreviewFileChangedToOwner } from './preview-file-watch'
 import { PreviewReachRegistry } from './preview-reach'
 import {
@@ -693,8 +694,7 @@ installAccountIpc(
   path.join(ACCOUNT_RUNTIME.desktopState, 'cloud-drive-preview'),
   ACCOUNT_DRIVE_CLIENT,
   profile => ACCOUNT_DRIVE_MCP.available(profile),
-  ACCOUNT_DRIVE_ARTIFACT,
-  createCloudDriveOfficePreview(ACCOUNT_OFFICE_PREVIEW)
+  ACCOUNT_DRIVE_ARTIFACT
 )
 
 installOfficePreviewIpc(
@@ -702,6 +702,11 @@ installOfficePreviewIpc(
   () => DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString(),
   () => currentDesktopLocalContext() === ACCOUNT_RUNTIME,
   ACCOUNT_OFFICE_PREVIEW
+)
+installPreviewExportIpc(
+  ACCOUNT_SESSION,
+  () => DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString(),
+  () => currentDesktopLocalContext() === ACCOUNT_RUNTIME
 )
 
 // Device-local preference: block F12 from opening DevTools.
@@ -11753,6 +11758,7 @@ async function runPoolBackendStart(
   const backendNonce = crypto.randomBytes(16).toString('hex')
   const parentIdentityEnv = parentWatchdogEnv(process.pid, parentStartMarker, backendNonce)
   assertPoolEntryStillOwned(poolKey, entry, backendPool, localBackendLifecycle.signal)
+  enableDesktopPlugins(profile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', profile), ['desktop-deliverables'])
   installArtifactSharePlugin(profile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', profile), app.getAppPath())
 
   // desktop-mt: 仅在本地后端启动前维护对应 Profile 的内置 MCP 记录。
@@ -12747,6 +12753,7 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
     }
 
     // Local WSL backend — paths are bridgeable.
+    enableDesktopPlugins(primaryProfile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', primaryProfile), ['desktop-deliverables'])
     installArtifactSharePlugin(primaryProfile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', primaryProfile), app.getAppPath())
     setWslBridgeProfileState(primaryProfile, true)
 

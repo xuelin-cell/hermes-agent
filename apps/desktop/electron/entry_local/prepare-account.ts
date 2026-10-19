@@ -2,6 +2,7 @@ import { MAAS_IDENTITY_NAMESPACE } from '../login/credential-store'
 import type { LoginSession } from '../login/session'
 
 import { type AccountPaths, type AccountRoots, prepareAccountPaths } from './account-paths'
+import { enableDesktopPlugins } from './desktop-plugins-config'
 import { mergeMaasModelConfig } from './model-config'
 import { writeAccountMaasKey } from './model-key'
 import { LocalStartupError } from './startup-failure'
@@ -46,6 +47,11 @@ export function prepareLocalEnvironment(session: LoginSession, roots: AccountRoo
 
   try {
     updateUniaiToolkitConfig(account.home, result.status)
+
+    // 和套餐同一条规则：查询失败时不改账号文件。
+    if (result.status !== 'failed') {
+      enableDesktopPlugins(account.home)
+    }
   } catch (error) {
     throw new LocalStartupError('config', error)
   }

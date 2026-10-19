@@ -1,8 +1,7 @@
-import { BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent } from 'electron'
 
 import type { CloudDriveClient } from './cloud-drive'
 import type { ResolveDriveArtifact } from './cloud-drive-artifact-source'
-import type { CloudDriveOfficePreview } from './cloud-drive-office-preview'
 import { CloudDriveTransfers } from './cloud-drive-transfers'
 import type { CloudDriveTransferRequest } from './contract'
 
@@ -11,10 +10,12 @@ export function installCloudDriveTransferIpc(
   drive: CloudDriveClient,
   cacheRoot: string,
   trusted: (event: IpcMainInvokeEvent, args: unknown[]) => boolean,
-  resolveArtifact?: ResolveDriveArtifact,
-  previewOffice?: CloudDriveOfficePreview
+  resolveArtifact?: ResolveDriveArtifact
 ): CloudDriveTransfers {
-  const transfers = new CloudDriveTransfers(drive, cacheRoot, previewOffice)
+  const transfers = new CloudDriveTransfers(drive, cacheRoot)
+
+  const previewOwners = new Set<number>()
+  app.once('will-quit', () => transfers.cancelAll())
 
   ipcMain.handle('hermes:maas-drive:cancel', (event, ...args) => {
     if (trusted(event, []) && args.length === 1 && typeof args[0] === 'string') {
@@ -42,6 +43,30 @@ export function installCloudDriveTransferIpc(
 
     try {
       const input = args[0] as CloudDriveTransferRequest
+
+      if (input.operation === 'preview' && !previewOwners.has(event.sender.id)) {
+        previewOwners.add(event.sender.id)
+
+        /** 主框架重载或关闭时释放临时文件，SPA 切页不影响仍打开的预览标签。 */
+        const release = () => {
+          transfers.cancel(event.sender.id)
+          void transfers.clearPreviews(event.sender.id)
+        }
+
+        /** 只在真实主框架导航时清理，内部锚点和子页面不夺走预览文件。 */
+        const leave = (_event: unknown, _url: string, inPlace: boolean, mainFrame: boolean) => {
+          if (mainFrame && !inPlace) {
+            release()
+          }
+        }
+
+        event.sender.on('did-start-navigation', leave)
+        event.sender.once('destroyed', () => {
+          release()
+          event.sender.removeListener('did-start-navigation', leave)
+          previewOwners.delete(event.sender.id)
+        })
+      }
 
       return await transfers.run(event.sender.id, input, {
         selectUpload: async signal => {

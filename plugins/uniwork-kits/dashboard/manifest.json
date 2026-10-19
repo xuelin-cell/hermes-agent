@@ -1,0 +1,10 @@
+{
+  "name": "uniwork-kits",
+  "label": "套件",
+  "description": "套件与专家：安装、开关、配置、市场。页面在桌面独立页，这里只提供接口。",
+  "version": "0.1.0",
+  "tab": {
+    "hidden": true
+  },
+  "api": "plugin_api.py"
+}

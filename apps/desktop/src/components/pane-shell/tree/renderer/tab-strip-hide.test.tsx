@@ -1,6 +1,8 @@
 import { useStore } from '@nanostores/react'
-import { cleanup, fireEvent, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { $developerMode } from '@/store/developer-mode'
 
 import { registry } from '@/contrib/registry'
 
@@ -67,6 +69,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   cleanup()
+  $developerMode.set(false)
   disposers.splice(0).forEach(dispose => dispose())
 })
 
@@ -116,4 +119,35 @@ describe('tab strip hide grammar', () => {
     expect(toggleTargetZoneTabStrip()).toBe('always')
     expect(tabStripVisibleForGroup(groupNode())).toBe(true)
   })
+})
+
+it('机器人选项卡仅在开发者模式显示，退出后回退到对话且保留布局', () => {
+  disposers.push(
+    registry.register({
+      area: 'panes',
+      data: { placement: 'left', hideOnly: true },
+      id: 'hermes-bots:pane',
+      render: () => <div>机器人内容</div>,
+      title: '机器人'
+    })
+  )
+  disposers.push(
+    registry.register({
+      area: 'panes',
+      data: { placement: 'left', hideOnly: true },
+      id: 'sessions',
+      render: () => <div>对话内容</div>,
+      title: '对话'
+    })
+  )
+  $layoutTree.set(group(['sessions', 'hermes-bots:pane'], { active: 'hermes-bots:pane', id: 'side' }))
+  const { queryByText } = render(<LiveTreeGroup />)
+  expect(document.querySelector('[data-tree-tab="hermes-bots:pane"]')).toBeNull()
+  expect(queryByText('对话内容')).toBeTruthy()
+  act(() => $developerMode.set(true))
+  expect(document.querySelector('[data-tree-tab="hermes-bots:pane"]')).toBeTruthy()
+  act(() => $developerMode.set(false))
+  expect(document.querySelector('[data-tree-tab="hermes-bots:pane"]')).toBeNull()
+  expect(queryByText('对话内容')).toBeTruthy()
+  expect(($layoutTree.get() as GroupNode).panes).toContain('hermes-bots:pane')
 })

@@ -138,10 +138,30 @@ test('P12～P15 工作簿、样式、图片及按需图表经正式显示器呈�
       return route.abort()
     })
     await page.goto(pathToFileURL(path.join(output, 'index.html')).href)
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.setZoomFactor(1.104))
     await page.waitForFunction(() => typeof window.loadSheet === 'function')
     for (const extension of ['xls','ods','xlsx']) {
       await page.evaluate(extension => window.loadSheet(extension), extension)
       await page.waitForFunction(() => window.painted.join('').includes('中文数据'))
+      if (extension === 'xls') {
+        const scrollbar = page.locator('.luckysheet-scrollbar-y')
+        for (const zoom of [1, 1.104]) {
+          await app.evaluate(({ BrowserWindow }, zoom) => BrowserWindow.getAllWindows()[0].webContents.setZoomFactor(zoom), zoom)
+          await page.locator('.fortune-sheet-container').hover({ position: { x: 100, y: 100 } })
+          for (let step = 0; step < 6; step++) {
+            const before = await scrollbar.evaluate(node => node.scrollTop)
+            await page.mouse.wheel(0, 80)
+            await expect.poll(() => scrollbar.evaluate(node => node.scrollTop)).toBeGreaterThan(before)
+          }
+          const before = await scrollbar.evaluate(node => node.scrollTop)
+          for (let step = 0; step < 3; step++) {
+            const previous = await scrollbar.evaluate(node => node.scrollTop)
+            await page.mouse.wheel(0, -80)
+            await expect.poll(() => scrollbar.evaluate(node => node.scrollTop)).toBeLessThan(previous - 2)
+          }
+          console.log('分数缩放滚动：' + JSON.stringify({ dpr: await page.evaluate(() => window.devicePixelRatio), before, after: await scrollbar.evaluate(node => node.scrollTop) }))
+        }
+      }
       if (extension !== 'xlsx') assert.equal(chartRequests.length,0,'无图表的表格不能加载图表库')
       if (extension === 'xlsx') {
         assert.equal(chartRequests.length,1,'有图表才加载独立绘制入口')

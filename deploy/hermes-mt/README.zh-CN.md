@@ -43,24 +43,31 @@
 cd deploy/hermes-mt
 # 首次：生成 entry.env（密钥现场随机、600）和 compose.override.yaml
 ./deploy.sh init --http-port 192.168.x.x:18081 --cube-api http://<控制面>:3000 --cube-proxy http://<数据面>
-# 第一次部署、或 hermes 源码变了（合了上游、改了内置技能）：先建基础镜像，15~45 分钟；源码没变会直接跳过
-./deploy.sh base
-# 之后每次升级都是这一条：拉代码 → 检查 → 沙箱镜像(按需) → 模板(按需) → 写配置 → 起容器 → 验收
+# 之后每次部署 / 升级都只有这一条，屏幕上实时显示进度（开头会说这次要做哪些耗时的步骤）：
+#   拉代码 → 基础镜像(按需) → 前端(按需) → 检查 → 沙箱镜像(按需) → 模板(按需) → 写配置 → 起容器 → 验收
 ./deploy.sh all
+# 部署其实在后台跑：Ctrl+C、终端断开都只是不看了，部署照样跑完。重新连上后接着看（跑完了就打出结果）：
+./deploy.sh log
 ./deploy.sh status      # 看现状；./deploy.sh check 只读检查；./deploy.sh purge-old 删旧模板上的实例
 ```
 
+同一时间只跑一次部署：已经有一次在跑时再敲 `all`，不会起第二次，直接接着看那一次。每次的日志在 `.deploy-logs/`（`latest.log` 是最近一次）。输出重定向到文件时（`nohup ./deploy.sh all > 文件 2>&1 &` 的老写法）照常在前台跑，也能用。
+
+耗时：只改了入口或配置几分钟；改了前端多 5~10 分钟；hermes 源码变了（合了上游、桌面版改了插件或内置技能）基础镜像要重建 15~45 分钟，沙箱镜像也跟着整个重建 20~40 分钟。
+
 要点：沙箱镜像按内容指纹命名（`Dockerfile.cube` + `seed/*` + 基础镜像 + 模板参数），只改入口代码不会重做镜像和模板；改了转发器就一定重做，并把新模板 ID 写进 `entry.env`。**入口和沙箱模板必须一起升级**——新入口配旧转发器会把用户的 `config.yaml` 写坏，脚本保证这一点。入口发现实例的模板和配置不一致，会在用户下次请求时自动排空、删除、重建、从卷上的归档恢复。部署机的规矩（不重启 Docker、不 prune、不切换构建器、页面只绑内网 IP、不打印密钥）也都在脚本里。
 
-**基础镜像**：沙箱镜像叠在基础镜像（hermes 本体）上。基础镜像用本仓库根目录的 `Dockerfile` 构建，和桌面版同一份（只补了一行它漏掉的 `COPY scripts/build/filesystem.py`），里面是 hermes 代码、内置技能（`skills/uniwork`）和 pm 锁定的 Python 3.14、Node、Chromium、ffmpeg、ripgrep（都在 `/opt/hermes/tools`；uv 不在 PATH 上）。镜像名 `hermes-custom:src-<指纹>`，指纹只算 hermes 源码（不含 `apps/`、`deploy/`、`docs/`、`tests/`、`website/`），所以只改前端或部署脚本不用重建；`./deploy.sh all` 找不到当前指纹的基础镜像就停下来，让你先跑 `./deploy.sh base`。部署机连 GitHub 极慢、连不上 Playwright 的 CDN，所以 `deploy.sh base` 先用 `scripts/base_seed.py` 把 pm 锁定的 7 个大文件（uv、Python、Chromium、node、npm、ffmpeg、ripgrep）和 s6-overlay 的三个包按 sha256 备好：pm 的文件来源依次是 hermes 的公开镜像、npmmirror、原地址；s6-overlay 的包公开镜像上没有，放在仓库的 `vendor/s6-overlay/` 里随代码拉下来（上游升了 s6 版本要把新包放进去，测试会提醒）；目录是 `MT_DEPLOY_SEED_DIR`（默认 `/var/cache/hermes-mt/base-seed`，备好的不重下）。然后用它生成的 Dockerfile 副本构建：副本只比原文件多两行 COPY，上游文件本身不改。构建本身只再连 PyPI、npm 和 Debian 源。以前按摘要拉的 `hermes-custom:a2007f2` 不能再用：它没有内置技能的标记文件，`deploy.sh` 会拦下。`entry.env` 里如果写了 `MT_DEPLOY_BASE_IMAGE`，就固定用它，一般不要写。
+**基础镜像**：沙箱镜像叠在基础镜像（hermes 本体）上。基础镜像用本仓库根目录的 `Dockerfile` 构建，和桌面版同一份（只补了一行它漏掉的 `COPY scripts/build/filesystem.py`），里面是 hermes 代码、内置技能（`skills/uniwork`）和 pm 锁定的 Python 3.14、Node、Chromium、ffmpeg、ripgrep（都在 `/opt/hermes/tools`；uv 不在 PATH 上）。镜像名 `hermes-custom:src-<指纹>`，指纹只算 hermes 源码（不含 `apps/`、`deploy/`、`docs/`、`tests/`、`website/`），所以只改前端或部署脚本不用重建；`./deploy.sh all` 找不到当前指纹的基础镜像会自己先建（也可以提前单独跑 `./deploy.sh base`）。部署机连 GitHub 极慢、连不上 Playwright 的 CDN，所以 `deploy.sh base` 先用 `scripts/base_seed.py` 把 pm 锁定的 7 个大文件（uv、Python、Chromium、node、npm、ffmpeg、ripgrep）和 s6-overlay 的三个包按 sha256 备好：pm 的文件来源依次是 hermes 的公开镜像、npmmirror、原地址；s6-overlay 的包公开镜像上没有，放在仓库的 `vendor/s6-overlay/` 里随代码拉下来（上游升了 s6 版本要把新包放进去，测试会提醒）；目录是 `MT_DEPLOY_SEED_DIR`（默认 `/var/cache/hermes-mt/base-seed`，备好的不重下）。然后用它生成的 Dockerfile 副本构建：副本只比原文件多两行 COPY，上游文件本身不改。构建本身只再连 PyPI、npm 和 Debian 源。以前按摘要拉的 `hermes-custom:a2007f2` 不能再用：它没有内置技能的标记文件，`deploy.sh` 会拦下。`entry.env` 里如果写了 `MT_DEPLOY_BASE_IMAGE`，就固定用它，一般不要写。
+
+**前端**：浏览器版前端（`nginx/dist-browser/`）不进 git，由 `scripts/build-frontend.sh` 从本仓库构建（`apps/desktop` 加 `VITE_HERMES_BROWSER_BUILD=1`，和桌面版同一份代码）。构建时把前端指纹写进产物（`dist-browser/.source-fingerprint`，`nginx/.dockerignore` 不让它进镜像）；指纹算 `apps/`、根目录的 `package.json` / `package-lock.json` / `.npmrc`、构建脚本和 `vendor/npm/`。`./deploy.sh all` 和 `up` 比对它和当前代码的指纹，对不上就先重新构建，不会把旧前端发出去；完整输出在 `.frontend-build.log`。`bash scripts/build-frontend.sh --fingerprint` 只打印当前代码的前端指纹。
 
 **实例里给技能用的东西**（`Dockerfile.cube`）：LibreOffice（文件预览转 PDF、文档类技能）、poppler、系统 Chromium（frontend-design 截图）、字体；技能要的 Python 库装进 hermes 的 venv（已有的 hermes 依赖钉在原版本，不会被顺带升级）；agent 的终端命令在登录 shell 里跑，`/etc/profile` 会把 PATH 重置成系统默认值，镜像 ENV 里的 `/opt/hermes/bin`、`/opt/hermes/.venv/bin`、`/opt/data/.local/bin` 都会丢，`python3` 落到不带库的 Python（旧镜像也这样），所以 `/etc/profile.d/hermes-path.sh` 把这几项补回来，agent 终端和用户的终端面板用的是同一个 Python；Python 版 Playwright 锁在和 pm 那份 Chromium 同一个修订号，只补 headless shell（`PLAYWRIGHT_SKIP_BROWSER_GC=1`，否则会把 pm 的 Chromium 当旧版删掉）；uniai-ppt 要的 pptxgenjs 装在 `/opt/skill-node`，靠 `NODE_PATH` 让任何目录下的脚本都能 `require`。
 
 ## 前置条件
 
 - docker ≥ 20.10、docker compose v2（`.7` 上已验证：CentOS 7 / 3.10 内核 / docker 26.1.4）。
-- 基础镜像：沙箱后端用 `./deploy.sh base` 从本仓库构建（见上「基础镜像」）；下面手工部署的 Docker 后端用 `hermes-custom:dev`，按 `docs/custom-web-docker-deployment.zh-CN.md` 构建。
-- 浏览器版前端产物：`bash deploy/hermes-mt/scripts/build-frontend.sh`；或直接复制现网 release：
+- 基础镜像：沙箱后端由 `./deploy.sh all` 从本仓库按需构建（见上「基础镜像」）；下面手工部署的 Docker 后端用 `hermes-custom:dev`，按 `docs/custom-web-docker-deployment.zh-CN.md` 构建。
+- 浏览器版前端产物：沙箱后端由 `./deploy.sh all` / `up` 按需构建（见上「前端」）；下面手工部署的 Docker 后端用 `bash deploy/hermes-mt/scripts/build-frontend.sh`，或直接复制现网 release：
   `cp -a /mnt/hermes-runtime/hermes/. deploy/hermes-mt/nginx/dist-browser/`（注意末尾 `/.`）。
 - 与单用户版**并存**：端口默认 `18081`（单用户版是 `18080`），容器名前缀 `hermes-mt-` / `hermes-t-`，互不冲突。
 

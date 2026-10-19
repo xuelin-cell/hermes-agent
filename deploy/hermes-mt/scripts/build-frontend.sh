@@ -2,8 +2,10 @@
 # 把 apps/desktop 的 Electron renderer 构建成浏览器版静态 SPA，输出到 deploy/hermes-mt/nginx/dist-browser/。
 # 与 scripts/deploy-custom-web.sh 的前端步骤一致（同一条 vite 命令、同一个 --base=/hermes/），
 # 只是不动 Nginx、不做 release 目录。Linux 宿主上直接跑；需要 docker。
-#   bash deploy/hermes-mt/scripts/build-frontend.sh
-# 产物不进 git：改了 apps/desktop 之后要在部署机上重跑这一步，再 ./deploy.sh up 让 nginx 带上新产物。
+#   bash deploy/hermes-mt/scripts/build-frontend.sh                构建
+#   bash deploy/hermes-mt/scripts/build-frontend.sh --fingerprint  只打印前端指纹，不构建
+# 产物不进 git。./deploy.sh all / up 会比对产物里的指纹（dist-browser/.source-fingerprint）和当前代码的，
+# 不一样就自己调这个脚本重建，一般不用手工跑。
 # npm 仓库默认走 npmmirror（内网到官方仓库慢或不通），要换用 NPM_REGISTRY=... 覆盖。
 # 锁文件里不在 npm 仓库的包（xlsx 从 cdn.sheetjs.com 下，部署机连它极慢）放在 deploy/hermes-mt/vendor/npm/，
 # 装依赖前按校验值放进 npm 缓存，npm ci 就不再去下载（tests/hermes_mt/test_frontend_vendor.py 核对）。
@@ -13,6 +15,18 @@ OUT="$REPO/deploy/hermes-mt/nginx/dist-browser"
 BUILD_CPUS="${BUILD_CPUS:-4}"
 BUILD_MEMORY="${BUILD_MEMORY:-8g}"
 NPM_REGISTRY="${NPM_REGISTRY:-https://registry.npmmirror.com}"
+
+# 前端指纹 = 决定产物的那些仓库内容：apps/ 全部、根目录的依赖声明、本脚本、预置的 npm 包。
+# 只看已提交的（部署机上 pull 是 reset --hard，工作区就是 HEAD）。部署机的 git 是 1.8，不用 -C。
+fingerprint() {
+    (cd "$REPO" && git ls-tree HEAD apps package.json package-lock.json .npmrc \
+        deploy/hermes-mt/scripts/build-frontend.sh deploy/hermes-mt/vendor/npm) | sha256sum | cut -c1-12
+}
+if [ "${1:-}" = --fingerprint ]; then
+    fingerprint
+    exit 0
+fi
+FINGERPRINT="$(fingerprint)"
 
 docker run --rm \
     --name hermes-mt-frontend-builder \
@@ -42,4 +56,6 @@ docker run --rm \
 [[ -f "$REPO/apps/desktop/dist-browser/index.html" ]] || { echo "前端构建没有产出 index.html" >&2; exit 1; }
 rm -rf "$OUT"
 cp -a "$REPO/apps/desktop/dist-browser" "$OUT"
-echo "前端已就位: $OUT ($(find "$OUT" -type f | wc -l) 个文件)"
+# 构建成功才写指纹：deploy.sh 靠它判断产物是不是当前代码构建的。nginx/.dockerignore 不让它进镜像。
+printf '%s\n' "$FINGERPRINT" > "$OUT/.source-fingerprint"
+echo "前端已就位: $OUT ($(find "$OUT" -type f ! -name .source-fingerprint | wc -l) 个文件，指纹 $FINGERPRINT)"

@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest'
 
 const { handle, fromWebContents } = vi.hoisted(() => ({ handle: vi.fn(), fromWebContents: vi.fn() }))
-vi.mock('electron', () => ({ ipcMain: { handle }, BrowserWindow: { fromWebContents } }))
+vi.mock('electron', () => ({ app: { once: vi.fn() }, ipcMain: { handle }, BrowserWindow: { fromWebContents } }))
 
 import { installAccountIpc } from './account-ipc'
 
@@ -172,6 +172,15 @@ it('办公目录仅允许当前桌面主框架选择固定语言，不接受地�
   const identity = vi.fn(() => null)
   installAccountIpc(partition as never, () => 'http://127.0.0.1:5174', () => null,
     undefined, identity)
+  const usage = handle.mock.calls.findLast(call => call[0] === 'hermes:maas-account:usage')![1]
+  expect(usage({ sender, senderFrame: {} })).toEqual({ status: 'failed' })
+  expect(usage({ sender, senderFrame: frame }, 'forged-token')).toEqual({ status: 'failed' })
+  sender.session = {}
+  expect(usage({ sender, senderFrame: frame })).toEqual({ status: 'failed' })
+  sender.session = partition
+  expect(identity).not.toHaveBeenCalled()
+  expect(await usage({ sender, senderFrame: frame })).toEqual({ status: 'failed', reason: 'auth' })
+  identity.mockClear()
   const invoke = handle.mock.calls.findLast(call => call[0] === 'hermes:uniwork-welcome:catalog')![1]
   await expect(invoke({ sender, senderFrame: {} }, 'zh-CN')).rejects.toThrow('请求无效')
   await expect(invoke({ sender, senderFrame: frame }, 'zh-CN', 'forged-key')).rejects.toThrow('请求无效')

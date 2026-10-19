@@ -526,4 +526,26 @@ describe('CapabilitiesView toolset management', { timeout: 60_000 }, () => {
       expect(vi.mocked(installHubSkill)).toHaveBeenCalledWith('official/gifs/gif-search', expect.anything())
     )
   })
+
+  it('hides kit skills and points at the kits page', async () => {
+    getSkills.mockResolvedValue([
+      { name: 'web-research', description: 'Research the web', category: 'research', enabled: true },
+      { name: 'pptx--pptx', description: 'Slides', category: 'kits', enabled: true }
+    ])
+
+    await act(async () => {
+      render(
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter initialEntries={['/capabilities?tab=skills']}>
+            <CapabilitiesView />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+    })
+
+    expect(await screen.findByRole('switch', { name: 'web-research' })).toBeTruthy()
+    expect(screen.queryByRole('switch', { name: 'pptx--pptx' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /kit skills are managed on the kits page/i }))
+    expect(navigateSpy).toHaveBeenCalledWith('/kits')
+  })
 })

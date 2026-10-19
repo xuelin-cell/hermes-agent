@@ -49,7 +49,7 @@ export async function exerciseExpiry(window,context,runtime,root,userData) {
   const before=names.map(name=>({name,...heartbeat(root,name)}))
   // 自动提示不应移动当前页面焦点。
   await window.webContents.executeJavaScript("document.body.tabIndex=-1; document.body.focus()")
-  await until(()=>window.webContents.executeJavaScript("document.querySelector('[data-slot=statusbar]')?.textContent.includes('登录已到期')"),'真实到期提示')
+  await until(()=>window.webContents.executeJavaScript("document.querySelector('[data-slot=sidebar-account-trigger]')?.textContent.includes('登录已到期')"),'侧栏账号真实到期提示')
   const atExpiry=names.map(name=>({name,...heartbeat(root,name)}))
   await until(()=>atExpiry.every(row=>heartbeat(root,row.name)?.tick>row.tick),'到期后全部继续执行')
   assert.equal(worker.exitCode,null)

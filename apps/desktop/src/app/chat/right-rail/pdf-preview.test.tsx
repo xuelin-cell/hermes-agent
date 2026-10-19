@@ -85,6 +85,18 @@ afterEach(() => {
 })
 
 describe('PDF viewer', () => {
+  it('桌面字节直接交给查看器，保留调用方字节，刷新不走浏览器下载桥接', async () => {
+    const bytes = Uint8Array.of(37, 80, 68, 70)
+    const view = render(<PdfPreview bytes={bytes} reloadKey={0} target={report} />)
+    const first = await engineFor()
+    expect(first.source).toEqual({ data: bytes })
+    expect((first.source as { data: Uint8Array }).data).not.toBe(bytes)
+    expect(bridge.pdfDocumentSource).not.toHaveBeenCalled()
+    view.rerender(<PdfPreview bytes={bytes} reloadKey={1} target={report} />)
+    await engineFor(2)
+    expect(first.engine.destroy).toHaveBeenCalledTimes(1)
+  })
+
   it('opens the PDF with pdf.js, then counts the pages and shows the zoom', async () => {
     render(<PdfPreview reloadKey={0} target={report} />)
 
@@ -152,7 +164,7 @@ describe('PDF viewer', () => {
     laidOut(pdf, 3)
     fireEvent.click(screen.getByRole('button', { name: copy.pdf.zoomIn }))
     fireEvent.click(screen.getByRole('button', { name: copy.pdf.zoomOut }))
-    fireEvent.click(document.querySelector<HTMLButtonElement>('[data-pdf-zoom]')!)
+    fireEvent.click(window.document.querySelector<HTMLButtonElement>('[data-pdf-zoom]')!)
 
     expect(pdf.engine.zoom.mock.calls).toEqual([[1], [-1]])
     expect(pdf.engine.fitWidth).toHaveBeenCalledTimes(1)

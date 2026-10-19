@@ -1,4 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { useLayoutEffect } from 'react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 import { $connection } from '@/store/session'
@@ -9,6 +10,15 @@ import { currentSlide } from './slides-preview'
 
 const mock = vi.hoisted(() => ({ open: vi.fn() }))
 vi.mock('./pdf-pages', () => ({ openPdfPages: mock.open }))
+vi.mock('@/hooks/use-resize-observer', () => ({
+  // jsdom 没有布局；固定为窄而高的面板，确认预绘制按高度而非宽度计算。
+  useResizeObserver: (callback: () => void, ref: { current: HTMLElement | null }) => {
+    useLayoutEffect(() => {
+      Object.defineProperty(ref.current, 'clientHeight', { configurable: true, value: 700 })
+      callback()
+    }, [callback, ref])
+  }
+}))
 const originalBridge = window.hermesDesktop
 const doc = window.document
 const oldFullscreen = Object.getOwnPropertyDescriptor(doc, 'fullscreenElement')
@@ -22,6 +32,7 @@ const request = vi.fn()
 let book: PdfPages
 let fullscreen: Element | null
 let observer: { callback: IntersectionObserverCallback; options?: IntersectionObserverInit }
+const observers: (typeof observer)[] = []
 
 /** 构造三类共享幻灯片扩展名，沿用正式文件入口。 */
 function target(extension = 'pptx') {
@@ -50,12 +61,27 @@ function near(number: number, visible: boolean) {
   )
 }
 
+/** 离开保留区才发送释放通知，区分预绘制与回看保留两个边界。 */
+function far(number: number) {
+  act(() =>
+    observers
+      .at(-1)!
+      .callback(
+        [
+          { target: doc.querySelector(`[data-slide="${number}"]`)!, isIntersecting: false } as IntersectionObserverEntry
+        ],
+        {} as IntersectionObserver
+      )
+  )
+}
+
 /** 取得真实滚动容器，几何与浏览器全屏权限在组件测试中受控。 */
 function list() {
   return doc.querySelector('[data-slide="1"]')!.parentElement!.parentElement!
 }
 
 beforeEach(() => {
+  observers.length = 0
   fullscreen = null
   // 不在无布局的 jsdom 中运行装饰动画；真实几何由人工验收。
   vi.stubGlobal('requestAnimationFrame', () => 0)
@@ -63,7 +89,12 @@ beforeEach(() => {
   $connection.set(null)
   draw.mockReset().mockImplementation(async (number: number) => `blob:cache-${number}`)
   dispose.mockReset().mockResolvedValue(undefined)
-  book = { pages: Array.from({ length: 32 }, () => ({ width: 960, height: 540 })), renderPage: draw, dispose }
+  book = {
+    pages: Array.from({ length: 32 }, () => ({ width: 960, height: 540 })),
+    renderPage: draw,
+    cachedPage: () => undefined,
+    dispose
+  }
   mock.open.mockReset().mockResolvedValue(book)
   convert.mockReset().mockResolvedValue({ ok: true, pdf: new Uint8Array([1, 2]), version: 'fixture', converter: 'wps' })
   window.hermesDesktop = {
@@ -84,7 +115,8 @@ beforeEach(() => {
     class {
       /** 保留正式订阅参数供测试发送边界事件。 */
       constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
-        observer = { callback, options }
+        observers.push({ callback, options })
+        observer = observers.at(-2) || observers[0]
       }
       /** 不自动让所有页可见。 */
       observe() {}
@@ -153,10 +185,10 @@ it.each(['pptx', 'ppt', 'odp'])('%s 从正式预览中心接入，保留 32 页�
   expect(mock.open).toHaveBeenCalledWith(new Uint8Array([1, 2]))
   // DOM 带有 React 循环引用，只核对容器身份，不对整棵节点做深比较。
   expect(observer.options?.root).toBe(list())
-  expect(observer.options?.rootMargin).toBe('100% 0px')
+  expect(observer.options?.rootMargin).toBe('700px 0px')
 })
 
-it('接近才画图，离开就释放自己的地址，不直接展示缓存地址', async () => {
+it('接近才画图，离开预绘制区保留旧图，超过五屏才释放自己的地址', async () => {
   render(<FormatPreview reloadKey={0} target={target()} />)
   const first = await screen.findByAltText('Slide 1')
   const address = first.getAttribute('src')
@@ -164,9 +196,46 @@ it('接近才画图，离开就释放自己的地址，不直接展示缓存地�
   near(2, true)
   await screen.findByAltText('Slide 2')
   near(1, false)
+  expect(screen.getByAltText('Slide 1').getAttribute('src')).toBe(address)
+  near(1, true)
+  expect(draw).toHaveBeenCalledTimes(2)
+  expect(observers.at(-1)!.options?.rootMargin).toBe('3500px 0px')
+  far(1)
   await waitFor(() => expect(screen.queryByAltText('Slide 1')).toBeNull())
   expect(URL.revokeObjectURL).toHaveBeenCalledWith(address)
   expect(draw).not.toHaveBeenCalledWith(32)
+})
+
+it('全屏翻页期间保留旧图，下一页就绪后才替换和释放，不闪加载占位', async () => {
+  let finish!: (value: string) => void
+  draw.mockImplementation((number: number) =>
+    number === 2
+      ? new Promise(resolve => {
+          finish = resolve
+        })
+      : Promise.resolve(`blob:cache-${number}`)
+  )
+  render(<FormatPreview reloadKey={0} target={target()} />)
+  await screen.findByAltText('Slide 1')
+  fireEvent.click(screen.getByRole('button', { name: 'Present full screen' }))
+  const first = await screen.findByAltText('Slide 1')
+  const old = first.getAttribute('src')
+  fireEvent.click(screen.getByRole('button', { name: 'Next slide' }))
+  expect(screen.getByAltText('Slide 2').getAttribute('src')).toBe(old)
+  expect(URL.revokeObjectURL).not.toHaveBeenCalledWith(old)
+  await act(async () => finish('blob:cache-2'))
+  await waitFor(() => expect(screen.getByAltText('Slide 2').getAttribute('src')).not.toBe(old))
+  expect(URL.revokeObjectURL).toHaveBeenCalledWith(old)
+})
+
+it('离开保留区后重回已缓存页，在首帧显示缓存图，不先显示加载占位', async () => {
+  render(<FormatPreview reloadKey={0} target={target()} />)
+  await screen.findByAltText('Slide 1')
+  far(1)
+  expect(screen.queryByAltText('Slide 1')).toBeNull()
+  book.cachedPage = () => 'blob:cache-1'
+  near(1, true)
+  expect(screen.getByAltText('Slide 1').getAttribute('src')).toBe('blob:cache-1')
 })
 
 it('滚动更新当前页，全屏从该页开始，键盘翻页并在退出时恢复所在页', async () => {

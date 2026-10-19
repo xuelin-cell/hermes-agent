@@ -1,0 +1,10 @@
+name: desktop-deliverables
+version: "0.1.0"
+description: "Observe local desktop output files and persist preview cards with the reply."
+hooks:
+  - pre_llm_call
+  - pre_tool_call
+  - post_tool_call
+  - transform_tool_result
+  - transform_llm_output
+  - on_session_end

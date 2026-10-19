@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { renderMediaTags } from '@/lib/chat-messages/parts'
 import { $connection } from '@/store/session'
 import type { SessionInfo, SessionMessage } from '@/types/hermes'
 
@@ -29,6 +30,17 @@ describe('collectArtifactsForSession', () => {
     vi.unstubAllGlobals()
     vi.clearAllMocks()
     $connection.set(null)
+  })
+
+  it.each([
+    ['![报告](MEDIA:C:/tmp/报告 (1).docx)', 'C:/tmp/报告 (1).docx'],
+    ['![报告](<MEDIA:C:/tmp/my report.docx>)', 'C:/tmp/my report.docx'],
+    ['[报告](MEDIA:/tmp/报告 (草稿 (1)).pptx)', '/tmp/报告 (草稿 (1)).pptx']
+  ])('原始历史与聊天渲染后的产物指向同一个完整文件：%s', (text, expected) => {
+    for (const content of [text, renderMediaTags(text)]) {
+      const artifacts = collectArtifactsForSession(makeSession(), [{ content, role: 'assistant', timestamp: 2000 }])
+      expect(artifacts.map(artifact => artifact.value)).toEqual([expected])
+    }
   })
 
   it('indexes plain https links from assistant text', () => {

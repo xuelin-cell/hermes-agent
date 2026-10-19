@@ -88,7 +88,8 @@ describe('format preview', () => {
       '/fixture/deck.odp',
       '/fixture/book.xlsx',
       '/fixture/book.xls',
-      '/fixture/book.ods'
+      '/fixture/book.ods',
+      '/fixture/doc.pdf'
     ]
 
     expect(new Set(examples.map(path => previewFormat(fileTarget(path))))).toEqual(
@@ -105,7 +106,6 @@ describe('format preview', () => {
       '/fixture/notes.md',
       '/fixture/page.html',
       '/fixture/photo.png',
-      '/fixture/doc.pdf',
       '/fixture/file.constructor'
     ]) {
       expect(previewFormat(fileTarget(path))).toBeNull()
@@ -116,6 +116,10 @@ describe('format preview', () => {
     expect(previewFormat(fileTarget('/fixture/v1?final.xlsx'))).toBe('sheet')
     expect(previewFormat({ ...fileTarget(), kind: 'url' })).toBeNull()
     expect(previewFormat({ ...fileTarget(), kind: 'artifact' })).toBeNull()
+  })
+
+  it('普通 PDF 纳入预览中心，不再回到 Chromium iframe 分支', () => {
+    expect(previewFormat(fileTarget('/fixture/报告.pdf'))).toBe('pdf')
   })
 
   it('forwards all legacy props without changing the target or callbacks', () => {

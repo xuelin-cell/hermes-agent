@@ -15,6 +15,12 @@ import { createStyledWorkbook } from '../../../../../scripts/sheet-styles.fixtur
 import { FormatPreview } from './format-preview'
 
 const mock = vi.hoisted(() => ({ props: vi.fn(), crash: false }))
+vi.mock('../pdf-preview', () => ({
+  /** 表格降级只核对 PDF 入口；真实 PDF 绘制由专门组件和 Electron 夹具覆盖。 */
+  PdfPreview: function PdfPreview({ target }: { target: { label: string } }) {
+    return <div data-pdf-viewer="" title={target.label} />
+  }
+}))
 vi.mock('@fortune-sheet/react', () => ({
   /** 只替换画布组件；读取、解析、登记和降级仍走正式代码。 */
   Workbook: function Workbook(props: Settings) {
@@ -141,13 +147,13 @@ it('超过 500 行显示说明，繁体中文使用库实际支持的语言标�
   expect(mock.props.mock.lastCall?.[0].data[0].row).toBe(500)
 })
 
-it('损坏内容和组件异常均进入现有 PDF 候选，关闭后释放 PDF 地址', async () => {
+it('损坏内容和组件异常均进入分页 PDF 候选，不再创建 iframe 地址', async () => {
   read.mockResolvedValue('data:application/octet-stream;base64,UEsDBAA=')
   const view = render(<FormatPreview reloadKey={0} target={target()} />)
-  expect(await screen.findByTitle(target().label)).toHaveProperty('tagName', 'IFRAME')
+  expect((await screen.findByTitle(target().label)).hasAttribute('data-pdf-viewer')).toBe(true)
   expect(convert).toHaveBeenCalledWith(target().path, expect.any(String))
   view.unmount()
-  expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:sheet-pdf')
+  expect(URL.createObjectURL).not.toHaveBeenCalled()
   mock.crash = true
   read.mockResolvedValue(dataUrl())
   vi.spyOn(console, 'error').mockImplementation(() => undefined)
@@ -228,6 +234,24 @@ it('窗口本身改变尺寸时表格组件已收到通知，不再补发', asyn
   await new Promise(resolve => setTimeout(resolve, 300))
   expect(listener).toHaveBeenCalledTimes(1)
   window.removeEventListener('resize', listener)
+})
+
+it('表格收到向上滚轮前校正分数像素偏差，不改变整数位置或水平滚动', async () => {
+  render(<FormatPreview reloadKey={0} target={target()} />)
+  const workbook = await screen.findByTestId('workbook')
+  const scrollbar = workbook.appendChild(workbook.ownerDocument.createElement('div'))
+  scrollbar.className = 'luckysheet-scrollbar-y'
+  scrollbar.scrollTop = 105.072
+  const positions: number[] = []
+  workbook.addEventListener('wheel', () => positions.push(scrollbar.scrollTop))
+  fireEvent.wheel(workbook, { deltaY: -80 })
+  expect(positions[0]).toBeLessThan(105)
+  scrollbar.scrollTop = 84
+  fireEvent.wheel(workbook, { deltaY: -80 })
+  expect(positions[1]).toBe(84)
+  scrollbar.scrollTop = 105.072
+  fireEvent.wheel(workbook, { deltaX: 80, deltaY: 0 })
+  expect(positions[2]).toBe(105.072)
 })
 
 it('表格组件的样式只放在预览区域内，不影响应用其它部分', async () => {

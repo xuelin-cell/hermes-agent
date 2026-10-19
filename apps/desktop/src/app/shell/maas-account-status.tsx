@@ -3,21 +3,15 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Codicon } from '@/components/ui/codicon'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger
-} from '@/components/ui/dropdown-menu'
 import { useI18n } from '@/i18n'
 import { signOutDescription } from '@/lib/browser-shell'
 import { notify } from '@/store/notifications'
 
+import { PlanUsagePanel } from './plan-usage/panel'
+
 import type { LoginAccount } from '../../../electron/login/contract'
 
-/** 账号旁只提供一个退出入口，统一确认后交给主进程处理停止与重启。 */
+/** 头像卡片整合套餐和设置，退出仍统一确认后交给主进程处理停止与重启。 */
 function AccountLogout({ account }: { account: LoginAccount }) {
   const [open, setOpen] = useState(false)
   const [expired, setExpired] = useState(false)
@@ -68,8 +62,10 @@ function AccountLogout({ account }: { account: LoginAccount }) {
 
   return (
     <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
+      <PlanUsagePanel
+        account={account}
+        onLogout={() => setOpen(true)}
+        trigger={
           <Button data-slot="sidebar-account-trigger" aria-label={account.maskedPhone} variant="ghost" type="button">
             <span data-slot="sidebar-account-avatar" aria-hidden="true">
               <Codicon name="account" size="1rem" />
@@ -78,13 +74,8 @@ function AccountLogout({ account }: { account: LoginAccount }) {
             {expired && <span className="text-xs text-muted-foreground">{copy.expiredLabel}</span>}
             <Codicon name="chevron-up" size="0.875rem" />
           </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent side="top" align="start" className="min-w-52">
-          <DropdownMenuLabel>{account.maskedPhone}</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={() => setOpen(true)}>{copy.logout}</DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+        }
+      />
       <ConfirmDialog
         busyLabel={copy.logoutBusy}
         confirmLabel={copy.logout}
@@ -155,7 +146,7 @@ export function MaasAccountSidebar() {
   const account = useMaasAccount()
   return account ? (
     <div data-slot="sidebar-account" className="shrink-0 px-3 pb-3 pt-2">
-      <AccountLogout account={account} />
+      <AccountLogout account={account} key={`${account.maskedPhone}:${account.expiresAt}`} />
     </div>
   ) : null
 }

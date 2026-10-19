@@ -1,13 +1,49 @@
+import remarkParse from 'remark-parse'
+import { unified } from 'unified'
 // Regression for #96657: an unquoted MEDIA: path with interior spaces rendered
 // a card for the text before the first space and left the rest as prose.
 import { describe, expect, it } from 'vitest'
 
 import { localPreviewTarget } from '@/lib/local-preview'
+import { mediaMarkdownHref } from '@/lib/media'
 
 import { appendAssistantTextPart, chatMessageText, mediaTagValues, renderMediaTags } from './parts'
 
 const SPACED = '/home/hermes/Morten - Nobly Kickoff - Opening and cue cards EN.docx'
 const CARD = `[File: Morten - Nobly Kickoff - Opening and cue cards EN.docx](#media:${encodeURIComponent(SPACED)})`
+
+describe('MEDIA 作为 Markdown 链接目标', () => {
+  it('混合行内、独立行和包装时保持原始顺序，不重复解析已转换的路径', () => {
+    const content = '见 MEDIA:/tmp/first.pdf\nMEDIA:/tmp/second.pdf\n[文件](MEDIA:/tmp/third.pdf)'
+    expect(mediaTagValues(content)).toEqual(['/tmp/first.pdf', '/tmp/second.pdf', '/tmp/third.pdf'])
+  })
+  it.each([
+    ['![小狗](MEDIA:/C:/a/b.png)', '/C:/a/b.png'],
+    ['![小狗](MEDIA:/C:\\a\\b.png)', '/C:\\a\\b.png'],
+    ['[说明](MEDIA:C:\\a\\b.mp4)', 'C:\\a\\b.mp4'],
+    ['![说明](<MEDIA:/tmp/a b.wav>)', '/tmp/a b.wav'],
+    ['[说明](MEDIA:/tmp/a b.mp3)', '/tmp/a b.mp3'],
+    ['![说明](MEDIA:/tmp/a b.png)', '/tmp/a b.png'],
+    ['![报告](MEDIA:C:/tmp/报告 (1).docx)', 'C:/tmp/报告 (1).docx'],
+    ['[报告](MEDIA:C:\\tmp\\报告 (草稿 (1)).pptx)', 'C:\\tmp\\报告 (草稿 (1)).pptx'],
+    ['[报告](<MEDIA:/tmp/报告 (1).docx>)', '/tmp/报告 (1).docx'],
+    ['[报告](MEDIA:"/tmp/报告 (1).docx")', '"/tmp/报告 (1).docx"']
+  ])('完整消费包装，显示与独立 MEDIA 行相同：%s', (source, target) => {
+    expect(renderMediaTags(source)).toBe(renderMediaTags(`MEDIA:${target}`))
+    expect(renderMediaTags(`开始 ${source} 结束`)).toBe(`开始 ${renderMediaTags(`MEDIA:${target}`)} 结束`)
+    expect(mediaTagValues(source)).toEqual([target])
+    expect(unified().use(remarkParse).parse(renderMediaTags(source))).toMatchObject({
+      children: [
+        { type: 'paragraph', children: [{ type: 'link', url: mediaMarkdownHref(target.replace(/^"|"$/g, '')) }] }
+      ]
+    })
+    expect(mediaTagValues(`MEDIA:/tmp/first.pdf\n${source}\nMEDIA:/tmp/last.pdf`)).toEqual([
+      '/tmp/first.pdf',
+      target,
+      '/tmp/last.pdf'
+    ])
+  })
+})
 
 describe('中文说明与文件交付路径的边界', () => {
   it('将中文说明留在正文，预览只读取实际文件路径', () => {

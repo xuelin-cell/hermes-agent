@@ -1,17 +1,22 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { $apiRequestScope } from '@/api/client'
 import { type DriveAsset, driveRequest } from '@/api/drive'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useI18n } from '@/i18n'
+import { desktopFsCacheKey } from '@/lib/desktop-fs'
 import { notifyError } from '@/store/notifications'
+import { openPreview } from '@/store/preview'
 
 import { CloudDirectoryEmpty, CloudDriveLoading } from './cloud-directory-empty'
-import { CloudFilePreview } from './cloud-file-preview'
+import { CloudFileListHeader } from './cloud-file-list-header'
+import { type CloudFileSort, sortCloudFiles } from './cloud-file-metadata'
 import { CloudLibraryRow } from './cloud-library-row'
 import { type CloudLibraryFilter, CloudLibraryToolbar } from './cloud-library-toolbar'
 import { CloudLocationBar } from './cloud-location-bar'
 import { CloudNameDialog } from './cloud-name-dialog'
+import { cloudPreviewTarget } from './cloud-preview-target'
 import { CloudRecycleActionDialog } from './cloud-recycle-action-dialog'
 import { CloudRecycleBin } from './cloud-recycle-bin'
 import { CloudSelectionActions } from './cloud-selection-actions'
@@ -27,18 +32,32 @@ import { useDriveSelection } from './use-drive-selection'
 import { useDriveTrash } from './use-drive-trash'
 import { useDriveUsage } from './use-drive-usage'
 
+interface CloudLibraryProps {
+  onDraftReady?: (route: string) => void
+}
+
 /** 云盘组合独立的工具栏、列表与批量动作，账号鉴权和文件传输继续由主进程负责。 */
-export function CloudLibrary({ onDraftReady }: { onDraftReady?: (route: string) => void } = {}) {
+export function CloudLibrary({ onDraftReady }: CloudLibraryProps = {}) {
   const { t } = useI18n()
   const copy = t.cloudLibrary
   const { snapshot, space, capabilities, error, refresh: refreshFiles, refreshBackground } = useCloudLibraryData()
   const quota = useDriveUsage(space?.space_id)
   const transfer = useCloudTransfer(refresh)
   const draft = useCloudDraft(onDraftReady)
-  const [previewAsset, setPreviewAsset] = useState<DriveAsset | null>(null)
+  const previewLifecycle = useRef({ active: true })
+  // 目录页面卸载后，迟到的原生文件规范化结果不能重新打开预览。
+  useEffect(() => {
+    const lifecycle = previewLifecycle.current
+    lifecycle.active = true
+
+    return () => {
+      lifecycle.active = false
+    }
+  }, [])
   const [folders, setFolders] = useState<Array<{ id: string; name: string }>>([])
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<'all' | 'file' | 'directory'>('all')
+  const [sort, setSort] = useState<CloudFileSort>('default')
   const [visibleCount, setVisibleCount] = useState(50)
   const [editing, setEditing] = useState<DriveAsset | 'new' | null>(null)
   const [name, setName] = useState('')
@@ -55,15 +74,18 @@ export function CloudLibrary({ onDraftReady }: { onDraftReady?: (route: string) 
   const visible = useMemo(
     () =>
       space && parent
-        ? filterDriveFiles(snapshot.items, space.root_asset_id, parent, query).filter(
-            asset => filter === 'all' || asset.kind === filter
+        ? sortCloudFiles(
+            filterDriveFiles(snapshot.items, space.root_asset_id, parent, query).filter(
+              asset => filter === 'all' || asset.kind === filter
+            ),
+            sort
           )
         : [],
-    [snapshot.items, space, parent, query, filter]
+    [snapshot.items, space, parent, query, filter, sort]
   )
 
   const rows = visible.slice(0, visibleCount)
-  const selection = useDriveSelection(JSON.stringify([parent, filter, query]), rows)
+  const selection = useDriveSelection(JSON.stringify([parent, filter, query, sort]), rows)
   const deletion = useDriveTrash(refresh)
   const busy = transfer.busy || draft.busy || deletion.busy || saving || moving !== null || recycleBusy || emptyRecycle
   const writable = snapshot.items.find(item => item.asset_id === parent)?.permissions?.write !== false
@@ -77,6 +99,13 @@ export function CloudLibrary({ onDraftReady }: { onDraftReady?: (route: string) 
     if (recycle) {
       setRecycleRevision(value => value + 1)
     }
+  }
+
+  /** 显式改变排序时清除选择并回到首批，保持排序后的文件和批量动作一一对应。 */
+  function changeSort(): void {
+    selection.clear()
+    setVisibleCount(50)
+    setSort(previous => (previous === 'default' ? 'desc' : previous === 'desc' ? 'asc' : 'default'))
   }
 
   /** 切换目录时只调整本页位置，清除原目录的选择和搜索。 */
@@ -132,7 +161,7 @@ export function CloudLibrary({ onDraftReady }: { onDraftReady?: (route: string) 
     }
   }
 
-  /** 目录只切换列表，文件交由原生受控下载或独立预览。 */
+  /** 目录只切换列表；文件经原生受控准备后进入 Hermes 右侧预览。 */
   async function open(asset: DriveAsset, download = false) {
     if (asset.permissions?.read === false) {
       return
@@ -155,13 +184,40 @@ export function CloudLibrary({ onDraftReady }: { onDraftReady?: (route: string) 
       return
     }
 
-    setPreviewAsset(asset)
-    await transfer.start({
+    const scope = $apiRequestScope.get()
+    const bridge = window.hermesDesktop
+    const owner = desktopFsCacheKey()
+
+    const result = await transfer.start({
       operation: download ? 'download' : 'preview',
       assetId: asset.asset_id,
       name: asset.name,
       size: asset.size_bytes
     })
+
+    if (
+      !download &&
+      result?.status === 'succeeded' &&
+      space &&
+      bridge === window.hermesDesktop &&
+      scope === $apiRequestScope.get() &&
+      owner === desktopFsCacheKey()
+    ) {
+      const target = await cloudPreviewTarget(space.space_id, asset, result).catch(() => null)
+
+      if (
+        previewLifecycle.current.active &&
+        bridge === window.hermesDesktop &&
+        scope === $apiRequestScope.get() &&
+        owner === desktopFsCacheKey()
+      ) {
+        if (target) {
+          openPreview(target)
+        } else {
+          notifyError(new Error(copy.previewUnsupported), copy.transfers)
+        }
+      }
+    }
   }
 
   return (
@@ -220,7 +276,26 @@ export function CloudLibrary({ onDraftReady }: { onDraftReady?: (route: string) 
               />
             }
           >
-            <DriveBreadcrumbs disabled={busy} onNavigate={navigate} path={folders} root={space?.root_asset_id || ''} />
+            <div className="flex min-w-0 flex-1 items-center gap-4">
+              <div
+                className={
+                  selection.chosen.length
+                    ? 'min-w-24 flex-1 overflow-x-auto'
+                    : 'min-w-0 flex-[0_1_28rem] overflow-x-auto @max-[42rem]/drive:flex-1'
+                }
+              >
+                <DriveBreadcrumbs
+                  disabled={busy}
+                  onNavigate={navigate}
+                  path={folders}
+                  root={space?.root_asset_id || ''}
+                />
+              </div>
+              {space && <CloudFileListHeader disabled={busy} onSort={changeSort} sort={sort} />}
+            </div>
+            {space && !selection.chosen.length && (
+              <span aria-hidden="true" className="w-40 shrink-0 @max-[42rem]/drive:w-6" />
+            )}
             <CloudSelectionActions
               assets={selection.chosen}
               busy={busy}
@@ -323,17 +398,6 @@ export function CloudLibrary({ onDraftReady }: { onDraftReady?: (route: string) 
           onChanged={refresh}
           onClose={() => setMoving(null)}
           space={space}
-        />
-      )}
-      {transfer.preview?.preview && previewAsset && (
-        <CloudFilePreview
-          name={transfer.preview.name}
-          onClose={transfer.closePreview}
-          onDownload={() => {
-            transfer.closePreview()
-            void open(previewAsset, true)
-          }}
-          preview={transfer.preview.preview}
         />
       )}
     </section>

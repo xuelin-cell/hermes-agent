@@ -8,6 +8,7 @@ import type { HudModifierApi, HudModifierStatus } from './hud-modifier-types'
 import type { CloudDriveRequest, CloudDriveTransferProgress, CloudDriveTransferRequest } from './login/contract'
 import { maskMcpSecrets, restoreMcpSecrets } from './mcp-secrets'
 import { ASR_CHANNEL } from './uniwork-asr/contract'
+import { PLAN_USAGE_CHANNEL } from './uniwork-usage/contract'
 import { WELCOME_CATALOG_CHANNEL } from './uniwork-welcome/catalog'
 import { customWindowControlsEnabled } from './window-controls'
 
@@ -32,6 +33,7 @@ const localSkin = ipcRenderer.sendSync('hermes:skin:local')
 
 contextBridge.exposeInMainWorld('hermesDesktop', {
   // 只读脱敏账号信息，页面不能传入身份或账号路径。
+  getPlanUsage: () => ipcRenderer.invoke(PLAN_USAGE_CHANNEL),
   getMaasAccount: () => ipcRenderer.invoke('hermes:maas-account:get'),
   cloudDriveRequest: (input: CloudDriveRequest) => ipcRenderer.invoke('hermes:maas-drive:request', input),
   /** 仅读取固定语言的办公模板目录，不接收请求地址或凭据。 */
@@ -403,7 +405,12 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   // 只调用当前账号桌面的受限转换接口，缓存路径由主进程决定。
   convertOfficePreview: (filePath, requestId) =>
     ipcRenderer.invoke('hermes:office-preview:convert', filePath, requestId),
+  // 卡片提前准备沿用同一个受限通道，以后台优先级填充账号缓存。
+  prepareOfficePreview: (filePath, requestId) =>
+    ipcRenderer.invoke('hermes:office-preview:convert', filePath, requestId, 'background'),
   cancelOfficePreview: requestId => ipcRenderer.invoke('hermes:office-preview:cancel', requestId),
+  // 显式另存为交给账号受限接口，位置由原生保存框选择。
+  exportPreview: input => ipcRenderer.invoke('hermes:preview:export', input),
   readFileDataUrlForAttach: filePath => ipcRenderer.invoke('hermes:readFileDataUrlForAttach', filePath),
   dataUrlReadMax: {
     get: () => ipcRenderer.invoke('hermes:data-url-read-max:get'),

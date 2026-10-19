@@ -1,8 +1,9 @@
-import { type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { type KeyboardEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import { PageLoader } from '@/components/page-loader'
 import { Button } from '@/components/ui/button'
 import { Tip } from '@/components/ui/tooltip'
+import { useResizeObserver } from '@/hooks/use-resize-observer'
 import { useI18n } from '@/i18n'
 import { ChevronLeft, ChevronRight, Maximize, X } from '@/lib/icons'
 
@@ -105,7 +106,14 @@ export function SlidesViewer({ label, source }: ViewerProps) {
   const [fullscreen, setFullscreen] = useState(false)
   const [fullError, setFullError] = useState(false)
   const [near, setNear] = useState<ReadonlySet<number>>(() => new Set([1]))
+  const [height, setHeight] = useState(0)
   const total = source.pages.length
+
+  // IntersectionObserver 的百分比按宽度计算；以真实高度定义一屏，窄面板也保留五屏。
+  useResizeObserver(
+    useCallback(() => setHeight(list.current?.clientHeight || 0), []),
+    list
+  )
 
   useEffect(() => {
     /** 浏览器退出全屏时也恢复阅读位置，不只处理自己的退出按钮。 */
@@ -167,21 +175,43 @@ export function SlidesViewer({ label, source }: ViewerProps) {
 
             if (entry.isIntersecting) {
               next.add(number)
-            } else {
-              next.delete(number)
             }
           }
 
           return next.size === current.size && [...next].every(number => current.has(number)) ? current : next
         })
       },
-      { root: view, rootMargin: '100% 0px' }
+      { root: view, rootMargin: `${height}px 0px` }
     )
 
-    view.querySelectorAll('[data-slide]').forEach(element => observer.observe(element))
+    // 开始绘制与释放使用不同边界，回看相邻几屏不销毁刚画好的图片。
+    const release = new IntersectionObserver(
+      entries => {
+        setNear(current => {
+          const next = new Set(current)
 
-    return () => observer.disconnect()
-  }, [fullscreen, source])
+          for (const entry of entries) {
+            if (!entry.isIntersecting) {
+              next.delete(Number((entry.target as HTMLElement).dataset.slide))
+            }
+          }
+
+          return next.size === current.size ? current : next
+        })
+      },
+      { root: view, rootMargin: `${height * 5}px 0px` }
+    )
+
+    view.querySelectorAll('[data-slide]').forEach(element => {
+      observer.observe(element)
+      release.observe(element)
+    })
+
+    return () => {
+      observer.disconnect()
+      release.disconnect()
+    }
+  }, [fullscreen, height, source])
 
   /** 按真实页面位置更新计数，不改变用户的滚动位置。 */
   function onScroll() {
@@ -311,25 +341,34 @@ export function SlidesViewer({ label, source }: ViewerProps) {
       </div>
       {fullscreen && (
         <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-4">
-          <SlideImage className="max-h-full max-w-full object-contain" key={page} number={page} source={source} />
+          <SlideImage className="max-h-full max-w-full object-contain" number={page} source={source} />
         </div>
       )}
     </div>
   )
 }
 
-/** 图片持有自己的 Blob 地址，避免后台六页缓存淘汰时使仍在显示的图片失效；画不出来只在这一页显示说明。 */
+/** 图片持有自己的地址，下一张就绪前保留旧图；后台缓存淘汰不影响仍显示的页。 */
 function SlideImage({
   source,
   number,
   className
 }: Pick<ViewerProps, 'source'> & { number: number; className: string }) {
   const { t } = useI18n()
-  const [url, setUrl] = useState('')
+  const [url, setUrl] = useState(() => source.cachedPage(number) || '')
   const [broken, setBroken] = useState(false)
+  const owned = useRef<string | undefined>(undefined)
+  useEffect(
+    () => () => {
+      if (owned.current) {
+        URL.revokeObjectURL(owned.current)
+      }
+    },
+    []
+  )
+  // eslint-disable-next-line no-restricted-syntax -- 持有待释放的 Blob 资源句柄，不是响应式状态镜像。
   useEffect(() => {
     let active = true
-    let owned: string | undefined
     setBroken(false)
     void source
       .renderPage(number)
@@ -341,8 +380,14 @@ function SlideImage({
         const blob = await (await fetch(image)).blob()
 
         if (active) {
-          owned = URL.createObjectURL(blob)
-          setUrl(owned)
+          const next = URL.createObjectURL(blob)
+          const previous = owned.current
+          owned.current = next
+          setUrl(next)
+
+          if (previous) {
+            URL.revokeObjectURL(previous)
+          }
         }
       })
       .catch(() => {
@@ -353,10 +398,6 @@ function SlideImage({
 
     return () => {
       active = false
-
-      if (owned) {
-        URL.revokeObjectURL(owned)
-      }
     }
   }, [number, source])
 

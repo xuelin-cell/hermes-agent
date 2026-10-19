@@ -28,7 +28,7 @@ import { storedBoolean } from '@/lib/storage'
  *   app/chat/composer/trigger-popover.tsx              the backend's English hints of `@` completions in Chinese
  *   app/chat/right-rail/office-sheet.tsx              (ours) the sheet viewer: spreadsheets the instance turns into tables
  *   app/chat/right-rail/office-slides.tsx              (ours) the page viewer: decks and documents the instance renders page by page
- *   app/chat/right-rail/pdf-preview.tsx                (ours) the PDF viewer: pdf.js in the page, in the page viewer's look
+ *   app/chat/right-rail/pdf-preview.tsx                the shared PDF viewer: browser URLs or desktop-provided bytes
  *   app/chat/right-rail/preview-file.tsx               Office files fall back to the PDF the instance converts them to
  *   app/chat/right-rail/preview-pane.tsx               HTML files from the instance run their scripts, sandboxed;
  *                                                      slide decks and documents open in the page viewer, spreadsheets in
@@ -36,7 +36,8 @@ import { storedBoolean } from '@/lib/storage'
  *   app/chat/sidebar/filter-menu.tsx                   * no profile submenu (filter / new / import)
  *   app/chat/sidebar/index.tsx                         * no messaging platforms or session import entry
  *   app/chat/sidebar/profile-switcher.tsx              * no add / import profile, no "connect gateway"
- *   app/command-palette/index.tsx                      * no in-app browser, Hermes update, theme marketplace, gateway
+ *   app/chat/sidebar/session-actions-menu.tsx          * no "share session" in the session menu
+ *   app/command-palette/index.tsx                     * no in-app browser, Hermes update, theme marketplace, gateway
  *                                                      restart, desktop plugin reload, profile export / import,
  *                                                      session import; the rows the desktop labels in English in Chinese
  *   app/hooks/use-keybinds.ts                          ⌘F / Ctrl+F in the PDF viewer searches the PDF, not the chat
@@ -52,7 +53,10 @@ import { storedBoolean } from '@/lib/storage'
  *   app/shell/gateway-menu-panel.tsx                   * no gateway restart
  *   app/shell/maas-account-status.tsx                  signing out keeps the instance: the confirmation says so
  *   app/shell/model-catalog-menu.tsx                   * no "add custom model" or "edit models" in the model menus
- *   contrib/plugins.ts                                 * no Bot Mode (the BOTS tab): its plugin is not started
+ *   app/shell/plan-usage/panel.tsx                     * the account card without the plan's name, usage and expiry
+ *   components/conversation-share/reply-button.tsx     * no "share reply" under answers
+ *   contrib/plugins.ts                                 * no Bot Mode (the BOTS tab), no kits and experts: their plugins
+ *                                                      are not started
  *   i18n/catalog.ts                                    Chinese supplement and original cloud artifact names, see `lib/browser-shell-{zh,artifacts}.ts`
  *   i18n/profile-provider.tsx                          the interface starts in Chinese, before the instance's config answers
  *   lib/chat-runtime.ts                                a session with no title yet is 新建会话, not "New session"
@@ -79,7 +83,7 @@ import { storedBoolean } from '@/lib/storage'
  * for every desktop-only feature (screenshots, tray, pool limits, MaaS account …).
  *
  * Two build-time hooks in vite.config.ts: it emits the files pdf.js loads by
- * name (its worker, CMaps, fonts, decoders) for the PDF viewer, see
+ * name (its worker, CMaps, fonts, decoders) for the shared PDF/PPT viewers, see
  * `scripts/pdfjs-assets.mjs`; and the browser build has no `login.html` page
  * (the entry signs users in, not the desktop's login window).
  */
@@ -255,7 +259,7 @@ export function previewsPdfInViewer(path: string): boolean {
 /** ⌘F / Ctrl+F while the PDF viewer has focus opens the viewer's own search,
  * which searches the whole PDF, rather than the app's find bar over the chat. */
 export function findInPageTakenByViewer(): boolean {
-  return isBrowserShell() && document.activeElement?.closest('[data-pdf-viewer]') != null
+  return document.activeElement?.closest('[data-pdf-viewer]') != null
 }
 
 /** What pdf.js reads a PDF from: its bytes, or where to fetch it. */
@@ -456,13 +460,37 @@ export function withoutHiddenNavItems<T extends { id: string }>(items: T[]): T[]
   return hideForUsers() ? items.filter(item => !SIDEBAR_NAV_HIDDEN.has(item.id)) : items
 }
 
-const BUNDLED_PLUGINS_HIDDEN = new Set(['hermes-bots'])
+const BUNDLED_PLUGINS_HIDDEN = new Set(['hermes-bots', 'uniwork-kits'])
 
 /** Bundled plugins that are not started for regular users. Bot Mode (the
  * SESSIONS | BOTS tabs, Routines, @bot mentions) is one agent per profile, and
- * the browser build has only the default profile. */
+ * the browser build has only the default profile. So is every expert of kits and
+ * experts (the 套件 page, the composer's 专家 picker), and the built-in kits are
+ * copied into the desktop installer when it is packaged, not into the instance. */
 export function isBundledPluginHidden(id: string): boolean {
   return hideForUsers() && BUNDLED_PLUGINS_HIDDEN.has(id)
+}
+
+/** Sharing a conversation or a reply (components/conversation-share): the desktop
+ * app renders the page and publishes it through its own share service, which the
+ * bridge does not offer, so the dialog could only say that sharing is unavailable. */
+export function isConversationShareHidden(): boolean {
+  return hideForUsers()
+}
+
+// The key app/chat/sidebar/session-actions-menu.tsx gives its "share session" row.
+const CONVERSATION_SHARE_ITEM = 'conversation-share'
+
+/** The session menu without "share session", see `isConversationShareHidden`. */
+export function withoutConversationShare<T extends { key?: string }>(items: T[]): T[] {
+  return isConversationShareHidden() ? items.filter(item => item.key !== CONVERSATION_SHARE_ITEM) : items
+}
+
+/** The account card (app/shell/plan-usage/panel.tsx) without the plan's name, usage
+ * and expiry: the desktop app asks MaaS for them with the user's login, which the
+ * entry uses once, at sign-in, and does not keep. Settings and signing out stay. */
+export function isPlanUsageHidden(): boolean {
+  return hideForUsers()
 }
 
 const NO_DESKTOP_PLUGINS = {}

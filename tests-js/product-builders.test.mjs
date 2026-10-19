@@ -1,6 +1,6 @@
 import { execFileSync, spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, symlinkSync, statSync, utimesSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync, symlinkSync, statSync, utimesSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { createRequire } from 'node:module'
@@ -394,4 +394,56 @@ test('TUI freshness invalidates source, configuration and compiler inputs and da
   expect(execFileSync(process.execPath, [entry], { encoding: 'utf8' }).trim()).toBe('rebuilt source')
   writeFileSync(entry, 'damaged output')
   expect(current()).toBe(false)
+})
+
+// 用真实编译验证命中时不重写产物，源码、环境、图标变化及损坏时仍重新构建。
+test('web reuse skips verified products and rebuilds changed or damaged inputs', async () => {
+  const base = fixture(), source = path.join(base, 'source'), icons = path.join(base, 'icons'), out = path.join(base, 'web')
+  webSource(source)
+  dependency(source, '', 'typescript')
+  dependency(source, '', 'vite')
+  put(icons, 'web/public/favicon.ico', 'icon')
+  const options = { source, icons, out, reuse: true }
+  await buildWeb(options)
+  const receipt = path.join(out, 'hermes-build.json')
+  const oldTime = new Date('2000-01-01T00:00:00Z')
+  utimesSync(receipt, oldTime, oldTime)
+  put(source, 'web/.build/preview/assets/generated.js', 'ignored generated bundle')
+  await buildWeb(options)
+  expect(statSync(receipt).mtimeMs).toBe(oldTime.getTime())
+  put(out, 'index.html', 'damaged')
+  await buildWeb(options)
+  expect(readFileSync(path.join(out, 'index.html'), 'utf8')).not.toBe('damaged')
+  put(source, 'web/src/value.ts', 'export const answer: string = "updated web";')
+  await buildWeb(options)
+  expect(readdirSync(path.join(out, 'assets')).some(name => readFileSync(path.join(out, 'assets', name), 'utf8').includes('updated web'))).toBe(true)
+  const previous = process.env.VITE_BUILD_CACHE_TEST
+  try {
+    utimesSync(receipt, oldTime, oldTime)
+    process.env.VITE_BUILD_CACHE_TEST = 'changed'
+    await buildWeb(options)
+    expect(statSync(receipt).mtimeMs).not.toBe(oldTime.getTime())
+  } finally {
+    if (previous === undefined) delete process.env.VITE_BUILD_CACHE_TEST
+    else process.env.VITE_BUILD_CACHE_TEST = previous
+  }
+  put(icons, 'web/public/favicon.ico', 'new icon')
+  await buildWeb(options)
+  expect(readFileSync(path.join(out, 'favicon.ico'), 'utf8')).toBe('new icon')
+}, 30_000)
+
+// 真实执行 TUI 编译及生成文件，验证缓存命中和缺失文件后的恢复。
+test('TUI reuse retains unchanged products but restores missing output', async () => {
+  const base = fixture(), source = path.join(base, 'source'), out = path.join(base, 'tui')
+  tuiSource(source)
+  dependency(source, '', 'esbuild')
+  await buildTui({ source, out, reuse: true })
+  const receipt = path.join(out, 'dist/hermes-build.json'), entry = path.join(out, 'dist/entry.js')
+  const oldTime = new Date('2000-01-01T00:00:00Z')
+  utimesSync(receipt, oldTime, oldTime)
+  await buildTui({ source, out, reuse: true })
+  expect(statSync(receipt).mtimeMs).toBe(oldTime.getTime())
+  rmSync(entry)
+  await buildTui({ source, out, reuse: true })
+  expect(execFileSync(process.execPath, [entry], { encoding: 'utf8' }).trim()).toBe('prepared source')
 })

@@ -1,7 +1,7 @@
 import type { Sheet } from '@fortune-sheet/core'
 import { Workbook } from '@fortune-sheet/react'
 import fortuneStyles from '@fortune-sheet/react/dist/index.css?raw'
-import { type SyntheticEvent, useEffect, useRef, useState } from 'react'
+import { type SyntheticEvent, useEffect, useRef, useState, type WheelEvent } from 'react'
 
 import { PageLoader } from '@/components/page-loader'
 import { useI18n } from '@/i18n'
@@ -28,6 +28,20 @@ function preventImageEditing(event: SyntheticEvent) {
   }
 }
 
+/** 原库按整数行边界定位；向上滚动前消除显示缩放造成的分数像素越界。 */
+function correctWheelPosition(event: WheelEvent<HTMLDivElement>) {
+  if (event.deltaY >= 0) {
+    return
+  }
+
+  const scrollbar = event.currentTarget.querySelector<HTMLElement>('.luckysheet-scrollbar-y')
+
+  if (scrollbar && scrollbar.scrollTop % 1 !== 0) {
+    // 留在边界内侧，避免 Chromium 再次把目标位置量化到边界上方；不接管库的滚动规则。
+    scrollbar.scrollTop = Math.max(0, Math.floor(scrollbar.scrollTop) - 1)
+  }
+}
+
 /** 只读工作簿；读取失败交给登记表的 PDF 候选，过期结果不能覆盖新文件。 */
 export default function SheetPreview({ onFailure, path, reloadKey, target }: FormatRendererProps) {
   const { locale, t } = useI18n()
@@ -48,7 +62,10 @@ export default function SheetPreview({ onFailure, path, reloadKey, target }: For
         if (parsed.some(sheet => sheet.charts?.length)) {
           const { renderWorkbookCharts } = await import('./sheet/charts-render')
 
-          if (!active) {return}
+          if (!active) {
+            return
+          }
+
           renderWorkbookCharts(parsed)
         }
 
@@ -121,6 +138,7 @@ export default function SheetPreview({ onFailure, path, reloadKey, target }: For
       onContextMenuCapture={preventImageEditing}
       onKeyDownCapture={preventImageEditing}
       onMouseDownCapture={preventImageEditing}
+      onWheelCapture={correctWheelPosition}
       ref={root}
       role="region"
     >

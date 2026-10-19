@@ -75,6 +75,10 @@ function setup(transfer = vi.fn().mockResolvedValue({ status: 'succeeded', name:
 it('选择云盘目录后直接上传捕获的产物源，成功后禁用重复提交', async () => {
   const fixture = setup()
   fireEvent.click(await screen.findByRole('button', { name: '团队' }))
+  await screen.findByText('没有子文件夹，可以上传到当前目录。')
+  expect(screen.getByText('目标：团队')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: '返回上一级' }))
+  fireEvent.click(screen.getByRole('button', { name: '团队' }))
   fireEvent.click(screen.getByRole('button', { name: '上传到此文件夹' }))
   await screen.findByText('已保存到云盘')
   expect(fixture.transfer.mock.calls[0][0]).toMatchObject({

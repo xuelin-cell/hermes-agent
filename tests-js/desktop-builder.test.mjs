@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -26,6 +26,7 @@ afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: 
 function put(path, text) { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, text) }
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'desktop build with spaces-'))
+  cpSync(join(repo, 'apps/desktop/electron/entry_local'), join(root, 'source/apps/desktop/electron/entry_local'), { recursive: true })
   roots.push(root)
   const source = join(root, 'source')
   const app = join(source, 'apps/desktop')
@@ -71,6 +72,11 @@ test('desktop compiler consumes explicit immutable inputs, replaces variants, an
   const input = fixture()
   const before = files(input.source)
   await buildDesktop(input)
+  const receipt = join(input.out, 'hermes-build.json')
+  const oldTime = new Date('2000-01-01T00:00:00Z')
+  utimesSync(receipt, oldTime, oldTime)
+  await buildDesktop({ ...input, reuse: true })
+  expect(statSync(receipt).mtimeMs).toBe(oldTime.getTime())
   const { productCurrent } = await import('../scripts/build/freshness.mjs')
   expect(productCurrent({ ...input, product: 'desktop' })).toBe(true)
   for (const file of [join(input.icons, 'apps/desktop/public/apple-touch-icon.png'), input.stamp,

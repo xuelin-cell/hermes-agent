@@ -1,39 +1,5 @@
 # Hermes Agent - Development Guide
 
-## desktop-mt 项目协作规范
-
-- 每完成一次小而完整的修改，就在本地创建一次 Git commit。提交只包含本次修改，不夹带用户已有的无关改动。
-- 本地提交后等待用户明确同意，才可推送到云端仓库分支。一次推送授权只适用于当次已说明的改动，不代表后续提交可以自动推送。
-- 提交标题采用 `类型(范围): 简洁中文说明`，例如 `fix(desktop): 修复源码开发模式下的快捷键循环依赖`。根据实际改动选择 fix、feat、perf、docs 等类型。
-- 提交描述用通俗中文分段说明：原来存在什么问题、现在如何处理、关键行为和边界、实际验证结果，以及尚未验证的部分。详细程度与改动规模相称，不堆砌术语，不把未执行的检查写成已通过。
-- 完整提交描述仍按上述要求分段说明；只有“代码变化情况”用一句话统计，格式为“产品代码新增 N 行、删除 N 行；测试及夹具新增 N 行、删除 N 行；文档新增 N 行、删除 N 行；总计新增 N 行、删除 N 行”。零改动写 0，不必列文件数，不在提交描述中提及本地未提交内容。
-- 每一个新增函数或方法，都必须附带简洁中文注释，说明用途；必要时解释关键约束或设计原因。注释放在定义附近，避免逐行复述代码。
-
-### desktop-mt 新功能放在哪里
-
-**不到万不得已，不修改 Hermes 核心的已有文件**。核心指：`agent/`、`run_agent.py`、`tools/`、`toolsets.py`、`model_tools.py`、`hermes_cli/`、`cli.py`、`gateway/`、`tui_gateway/`、`cron/`、`pm/`，以及根目录的其他 Python 文件。新功能按下表放到对应位置，用新增文件实现；新增文件不会在同步上游时产生冲突，修改已有文件会。
-
-| 功能 | 首选位置 | 注意 |
-|---|---|---|
-| MaaS 登录、系统加密、账号切换、本机安装和进程管理 | Electron 主进程＋受限 IPC | 后端启动前写入平台内置 MCP 配置、OpenConnector 边车的启动和守护也放这里 |
-| UniWork 技能市场、额外的后端管理接口 | 官方插件路由（`plugins/<名字>/dashboard/` 的 `manifest.json` + `plugin_api.py`，挂载到 `/api/plugins/<名字>/`） | 只能新增接口，改不了已有接口的行为；后端启动时加载，改动后需重启后端 |
-| MCP 配置、连接、工具发现和调用 | Hermes 原生 MCP | 后端运行中改配置走 Hermes 自己的 MCP 管理接口，不直接写 `config.yaml`，避免并发写同一文件 |
-| 推荐连接器的第三方服务适配 | OpenConnector 等独立 MCP 服务 | 进程由 Electron 管，对 Hermes 只是普通 MCP 记录，服务适配在它内部完成 |
-| 安装包身份、资源清单、输出格式 | 打包脚本（`scripts/build/`、`scripts/bundles/`） | 内置资源的取舍（例如只保留 UniWork 技能）优先在打包时完成，不在运行时改同步逻辑 |
-| 改变 agent 运行时行为（工具调用前检查、工具结果加工、新增工具） | 普通 Hermes 插件（钩子、注册工具） | 只使用上游已提供的钩子，不为插件改核心 |
-| 指导模型怎么做事（如本地文件上传步骤、长任务结果下载） | 技能 | 不改代码即可补足能力缺口 |
-
-上表都放不下、必须修改核心已有文件时，可以在本分支直接改，但要做到：
-
-- 主要逻辑写在新增文件里，已有文件中只加几行调用，改动越少，同步上游时冲突越少；
-- 改动处加注释 `# desktop-mt: 原因`，同步上游时搜这个标记就能找到全部本地改动；
-- 提交描述说明为什么放不进上表任何位置。
-
-本规则制定前已修改、代码中未加标记的核心文件（历史遗留，不作为先例）：
-
-- 技能市场与技能同步：`hermes_cli/skills_hub.py`、`hermes_cli/web_routers/skills.py`、`hermes_cli/web_server_profiles.py`、`tools/skills_sync.py`、`tools/skills_sync_optional.py`、`tools/skills_tool.py`
-- 依赖下载缓存：`pm/packages.py`、`pm/store.py`
-
 Instructions for AI coding assistants and developers working on the hermes-agent codebase.
 This root file holds only what applies everywhere. Each area has its own `AGENTS.md` (aim for
 ~8k chars; `agent/subdirectory_hints.py` delivers up to 32k and truncates head/tail with a warning

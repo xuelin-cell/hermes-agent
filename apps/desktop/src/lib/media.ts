@@ -6,6 +6,7 @@ import { translateNow } from '@/i18n'
 import { browserMediaPlaybackUrl } from '@/lib/browser-shell'
 import { desktopFsCacheKey, readDesktopFileDataUrl } from '@/lib/desktop-fs'
 import { LruCache } from '@/lib/lru-cache'
+import { isWindowsPlatform } from '@/lib/platform'
 import { capitalize } from '@/lib/text'
 import { notify, notifyError } from '@/store/notifications'
 import { $connection } from '@/store/session'
@@ -48,17 +49,6 @@ export function mediaKind(path: string): MediaKind {
   return mediaInfo(path)?.kind ?? 'file'
 }
 
-// Markdown is renderable content, not an opaque download: the preview rail
-// already knows how to render a `.md` file (rendered/source toggle), so the
-// MEDIA delivery path routes these to a preview instead of a download link.
-const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown', 'mdown', 'mkd'])
-
-export function isMarkdownDocumentPath(path: string): boolean {
-  const ext = path.split(/[?#]/, 1)[0]?.split('.').pop()?.toLowerCase()
-
-  return ext ? MARKDOWN_EXTENSIONS.has(ext) : false
-}
-
 export function mediaMime(path: string): string {
   return mediaInfo(path)?.mime ?? 'application/octet-stream'
 }
@@ -77,7 +67,13 @@ export function mediaName(path: string): string {
 }
 
 export function mediaMarkdownHref(path: string): string {
-  return `#media:${encodeURIComponent(path)}`
+  // encodeURIComponent 保留括号；在 Markdown 目标里继续编码，避免消费者把它当作链接边界。
+  return `#media:${encodeURIComponent(normalizeMediaPath(path)).replace(/\(/g, '%28').replace(/\)/g, '%29')}`
+}
+
+/** 只修正 Windows 本机媒体多出的盘符前斜杠；远程路径按服务端原样处理。 */
+export function normalizeMediaPath(path: string): string {
+  return isWindowsPlatform() && !isRemoteGateway() ? path.replace(/^\/([a-z]:[\\/])/i, '$1') : path
 }
 
 export function isInlineMediaSrc(path: string): boolean {
@@ -220,6 +216,8 @@ export async function resolveMediaPlaybackSrc(path: string): Promise<string> {
 // gateway-local paths to an authenticated /api/files/download URL (the file
 // lives on the gateway, not this disk); local mode keeps the file:// form.
 export function mediaExternalUrl(path: string): string {
+  path = normalizeMediaPath(path)
+
   if (/^https?:/i.test(path)) {
     return path
   }
@@ -273,7 +271,7 @@ export function mediaPathFromMarkdownHref(href?: string): string | null {
   }
 
   try {
-    return decodeURIComponent(href.slice('#media:'.length))
+    return normalizeMediaPath(decodeURIComponent(href.slice('#media:'.length)))
   } catch {
     return null
   }
@@ -281,11 +279,11 @@ export function mediaPathFromMarkdownHref(href?: string): string | null {
 
 export function filePathFromMediaPath(path: string): string {
   if (!path.startsWith('file:')) {
-    return path
+    return normalizeMediaPath(path)
   }
 
   try {
-    return decodeURIComponent(new URL(path).pathname)
+    return normalizeMediaPath(decodeURIComponent(new URL(path).pathname))
   } catch {
     return path.replace(/^file:\/\//, '')
   }

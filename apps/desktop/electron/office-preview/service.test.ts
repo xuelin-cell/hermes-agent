@@ -29,7 +29,7 @@ const wps: OfficeComProgram = { ...ms, provider: 'wps', progId: 'KWPS.Applicatio
 const lo = { provider: 'libreoffice' as const, executable: process.execPath }
 
 /** 测试用正式文件、账号缓存和队列，只替换实际软件转换器。 */
-function setup(account = 'A') {
+function setup(account = 'A', now = Date.now) {
   const detector = { get: vi.fn(async () => ({ word: [lo, wps, ms], slides: [], sheet: [] })), invalidate: vi.fn() }
 
   const com = vi.fn<typeof convertCom>().mockImplementation(async (_program, copy, directory) => {
@@ -52,7 +52,7 @@ function setup(account = 'A') {
     detector,
     com,
     libreoffice,
-    service: createOfficePreviewService(state, { detector, com, libreoffice })
+    service: createOfficePreviewService(state, { detector, com, libreoffice, now })
   }
 }
 
@@ -91,6 +91,89 @@ it('按厂家顺序安全降级，合并并发并命中缓存，A→B→A 不共
   expect(await a.service.convert(source)).toEqual({ ok: false, code: 'unavailable' })
   expect(a.com).toHaveBeenCalledTimes(4)
   expect(a.detector.invalidate).toHaveBeenCalled()
+})
+
+it('后台预转换复用原缓存，已缓存文件不等待别的文件转换', async () => {
+  const fixture = setup()
+  const warmed = await fixture.service.convert(source, undefined, true)
+  expect(warmed).toMatchObject({ ok: true, pdf })
+  const other = path.join(root, 'blocking.docx')
+  await fs.writeFile(other, 'source text')
+  let release!: () => void
+  let begun!: () => void
+
+  const started = new Promise<void>(resolve => {
+    begun = resolve
+  })
+
+  const gate = new Promise<void>(resolve => {
+    release = resolve
+  })
+
+  fixture.com.mockImplementationOnce(async () => {
+    begun()
+    await gate
+
+    return { ok: false, code: 'unavailable', cleanupSafe: true }
+  })
+  const pending = fixture.service.convert(other, undefined, true)
+  await started
+  let reused = false
+
+  const foreground = fixture.service.convert(source).then(result => {
+    expect(result).toEqual(warmed)
+    reused = true
+  })
+
+  try {
+    await vi.waitFor(() => expect(reused).toBe(true), { timeout: 2000 })
+  } finally {
+    release()
+    await Promise.all([pending, foreground])
+  }
+})
+
+it('后台只准备十分钟内的新文件，旧文件有缓存仍复用，主动打开不受时间限制', async () => {
+  const now = Date.now() + 11 * 60_000
+  const fixture = setup('A', () => now)
+  const old = new Date(now - 11 * 60_000)
+  await fs.utimes(source, old, old)
+  expect(await fixture.service.convert(source, undefined, true)).toEqual({ ok: false, code: 'unavailable' })
+  expect(fixture.com).not.toHaveBeenCalled()
+  expect(fixture.detector.get).not.toHaveBeenCalled()
+  const opened = await fixture.service.convert(source)
+  expect(opened).toMatchObject({ ok: true, pdf })
+  expect(await fixture.service.convert(source, undefined, true)).toEqual(opened)
+  expect(fixture.com).toHaveBeenCalledTimes(1)
+  const recent = new Date(now)
+  await fs.utimes(source, recent, recent)
+  expect(await fixture.service.convert(source, undefined, true)).toMatchObject({ ok: true, pdf })
+  expect(fixture.com).toHaveBeenCalledTimes(2)
+})
+
+it('新复制的模板保留旧修改时间时仍提前转换，不把旧内容时间当成创建时间', async () => {
+  const fixture = setup()
+  const old = new Date(Date.now() - 24 * 60 * 60_000)
+  await fs.utimes(source, old, old)
+  expect(await fixture.service.convert(source, undefined, true)).toMatchObject({ ok: true, pdf })
+  expect(fixture.com).toHaveBeenCalledTimes(1)
+})
+
+it('WPS 的第一个入口安全失败后尝试同厂家备用入口，收尾不安全则立即停止', async () => {
+  const fixture = setup()
+  const second = { ...wps, progId: 'WPS.Application' }
+  fixture.detector.get.mockResolvedValue({ word: [wps, second, lo], slides: [], sheet: [] })
+  fixture.com.mockResolvedValueOnce({ ok: false, code: 'unavailable', cleanupSafe: true })
+  expect(await fixture.service.convert(source)).toMatchObject({ ok: true, converter: 'wps' })
+  expect(fixture.com.mock.calls.map(call => call[0].progId)).toEqual(['KWPS.Application', 'WPS.Application'])
+  expect(new Set(fixture.com.mock.calls.map(call => call[2])).size).toBe(2)
+  expect(fixture.libreoffice).not.toHaveBeenCalled()
+  const blocked = setup('blocked')
+  blocked.detector.get.mockResolvedValue({ word: [wps, second, lo], slides: [], sheet: [] })
+  blocked.com.mockResolvedValueOnce({ ok: false, code: 'timeout', cleanupSafe: false })
+  expect(await blocked.service.convert(source)).toEqual({ ok: false, code: 'timeout' })
+  expect(blocked.com).toHaveBeenCalledTimes(1)
+  expect(blocked.libreoffice).not.toHaveBeenCalled()
 })
 
 it('排队期间文件被再次保存时转换保存后的版本，而不是报告失败', async () => {
@@ -178,7 +261,10 @@ it('源文件、产物和类型有上限，伪 PDF 不发布；无软件或全�
   expect(await fixture.service.convert(source)).toEqual({ ok: false, code: 'too_large' })
   expect(fixture.com).not.toHaveBeenCalled()
   await fs.writeFile(source, 'source text')
-  fixture.com.mockImplementation(async (_program, _copy, directory) => ({ ok: true, pdfPath: path.join(directory, 'missing.pdf') }))
+  fixture.com.mockImplementation(async (_program, _copy, directory) => ({
+    ok: true,
+    pdfPath: path.join(directory, 'missing.pdf')
+  }))
   expect(await fixture.service.convert(source)).toEqual({ ok: false, code: 'convert_failed' })
   fixture.com.mockImplementation(async (_program, _copy, directory) => {
     const pdfPath = path.join(directory, 'bad.pdf')

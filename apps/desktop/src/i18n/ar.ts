@@ -1381,6 +1381,7 @@ export const ar = defineLocale({
       pageBlurb: 'يمكن للإضافة توسيع هذا التطبيق أو الوكيل أو كليهما — ولكل جزء مفتاح تشغيل مستقل.'
     },
     tabSkills: 'المهارات',
+    kitSkillsNote: 'تُدار مهارات الحزم من صفحة الحزم.',
     tabToolsets: 'مجموعات الأدوات',
     all: 'الكل',
     searchSkills: 'البحث في المهارات',
@@ -3133,6 +3134,10 @@ export const ar = defineLocale({
     addToChat: 'إضافة للمحادثة'
   },
   preview: {
+    copyAll: 'نسخ النص الكامل',
+    saveAs: 'حفظ باسم',
+    exportFailed: 'تعذر التصدير. تأكد من جاهزية المعاينة والصور.',
+    exportFormats: { md: 'Markdown (.md)', pdf: 'PDF (.pdf)', docx: 'Word (.docx)' },
     tab: 'معاينة',
     closePane: 'إغلاق جزء المعاينة',
     loading: 'جار تحميل المعاينة',
@@ -3140,6 +3145,9 @@ export const ar = defineLocale({
     opening: 'جار الفتح...',
     hide: 'إخفاء',
     openPreview: 'فتح المعاينة',
+    imageZoomIn: 'تكبير الصورة',
+    imageZoomOut: 'تصغير الصورة',
+    imageReset: 'إعادة ضبط الصورة',
     openInBrowser: 'فتح في المتصفح',
     openInExternal: 'فتح في الخارج',
     popIn: 'إدخال',
@@ -3758,6 +3766,8 @@ export const ar = defineLocale({
     restartToSaveImages: 'أعد التشغيل لحفظ الصور',
     imageDownloadFailed: 'فشل تنزيل الصورة',
     openImage: 'فتح الصورة',
+    openAudioFile: 'فتح ملف الصوت',
+    openVideoFile: 'فتح ملف الفيديو',
     downloadImage: 'تنزيل الصورة',
     savingImage: 'جار حفظ الصورة',
     imagePreviewFailed: 'فشلت معاينة الصورة',

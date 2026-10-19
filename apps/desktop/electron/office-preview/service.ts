@@ -110,9 +110,9 @@ export function createOfficePreviewService(desktopState: string, overrides: Part
   }
 
   /** 转换成功还要验证 PDF；失败只在安全收尾后尝试下一厂家。请求方离开时传入的 signal 会取消，排队中的转换随之跳过。 */
-  async function convert(filePath: string, signal?: AbortSignal): Promise<OfficePreviewResult> {
+  async function convert(filePath: string, signal?: AbortSignal, background = false): Promise<OfficePreviewResult> {
     try {
-      if (!deps.active()) {
+      if (!deps.active() || signal?.aborted) {
         return { ok: false, code: 'unavailable' }
       }
 
@@ -123,6 +123,17 @@ export function createOfficePreviewService(desktopState: string, overrides: Part
       }
 
       const source = await sourceInfo(filePath)
+      // 已准备好的文件不排在另一份长文档后；实际转换仍共用唯一队列。
+      const ready = await cache.get(source.version)
+
+      if (ready) {
+        return { ok: true, pdf: ready.pdf, version: ready.version, converter: ready.converter }
+      }
+
+      // 历史卡片挂载不应排满转换队列；主动预览和已有磁盘缓存不受此限制。
+      if (background && Math.max(source.stat.mtimeMs, source.stat.birthtimeMs) < deps.now() - 10 * 60_000) {
+        return { ok: false, code: 'unavailable' }
+      }
 
       /** 轮到这个请求时执行的一次转换；排队期间没人再等就不会执行。 */
       const work = async (): Promise<OfficePreviewResult> => {
@@ -155,16 +166,16 @@ export function createOfficePreviewService(desktopState: string, overrides: Part
             return { ok: false, code: 'convert_failed' }
           }
 
-          for (const provider of OFFICE_CONVERTER_ORDER) {
+          const candidates = OFFICE_CONVERTER_ORDER.flatMap(provider =>
+            available.filter(program => program.provider === provider)
+          )
+
+          for (const [index, program] of candidates.entries()) {
             if (!deps.active()) {
               return { ok: false, code: 'unavailable' }
             }
 
-            const program = available.find(candidate => candidate.provider === provider)
-
-            if (!program) {
-              continue
-            }
+            const provider = program.provider
 
             const remaining = deadline - deps.now()
 
@@ -172,7 +183,7 @@ export function createOfficePreviewService(desktopState: string, overrides: Part
               return { ok: false, code: 'timeout' }
             }
 
-            const attempt = path.join(work, provider)
+            const attempt = path.join(work, `${provider}-${index}`)
             await fs.mkdir(attempt)
             safe = false
 
@@ -222,7 +233,7 @@ export function createOfficePreviewService(desktopState: string, overrides: Part
         }
       }
 
-      return await jobs.run(cache.directory, source.version, work, signal)
+      return await jobs.run(cache.directory, source.version, work, signal, background)
     } catch (error) {
       return failure(error)
     }

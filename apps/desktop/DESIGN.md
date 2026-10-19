@@ -633,3 +633,19 @@ The detailed state contract lives in the scoped
 - [ ] `cursor-pointer`, focus ring, and `Esc`-to-close behave?
 - [ ] Touched a primitive, token, or variant? Its named-contract entry in this
       file is updated in the same change.
+
+## 套餐用量
+
+点击侧栏头像打开账号卡片（MasterGo 24:09213），宽 363px、圆角 24px、内边距 8px，
+依次显示真实套餐、套餐实际用量、截止日期、设置及安全退出。用量行展开详情，
+设置进入现有设置页；未接入购买流程时不显示订阅按钮。图标取自原设计 SVG，
+缺失截止日期显示破折号，不用登录令牌有效期冒充套餐截止日期。面板使用主题前景色、朱红进度条、
+浅灰轨道与辅助文字，不引入独立品牌颜色。仅展开时查询，焦点恢复与每分钟更新，
+主进程对同一账号合并并发查询并缓存 30 秒。失败保留同账号的旧结果并标记刷新失败，
+登录失效或账号不匹配则清空。Coding 与 Token 载荷按服务端 planType 选择，缺失值
+显示暂无数据，不补造零用量。凭据、模型地址与原始响应不跨 IPC，不持久化用量。
+源功能参考 `hexagent/libs/hexagent_demo/frontend/src/uniclawUsage.ts` 与 `components/Sidebar.tsx`。
+
+账号卡片图标直接内嵌随包编译的 SVG，不通过外部 CSS 遮罩加载。
+Coding 套餐摘要展示服务端存在的首个周期及已用百分比，Token 套餐展示剩余额度；
+无用量时明确显示暂无数据。旧主进程缺少用量桥接时提示完全重启，查询失败时可直接重试。
