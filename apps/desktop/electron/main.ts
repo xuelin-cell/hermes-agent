@@ -222,6 +222,8 @@ import {
 import { preReadyDockLaunchSteps } from './dock-launch-order'
 import { installEmbedReferer } from './embed-referer'
 import { accountBrowserPartition } from './entry_local/browser-partition'
+// desktop-mt: 未选目录的新对话在账号工作区下建专属文件夹。
+import { createConversationFolders, installConversationFolderIpc } from './entry_local/conversation-folder'
 import { accountSourceBackend } from './entry_local/desktop-environment'
 import { enableDesktopPlugins } from './entry_local/desktop-plugins-config'
 import { accountDesktopStatePaths } from './entry_local/desktop-state'
@@ -708,6 +710,13 @@ installPreviewExportIpc(
   ACCOUNT_SESSION,
   () => DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString(),
   () => currentDesktopLocalContext() === ACCOUNT_RUNTIME
+)
+// desktop-mt: 每个对话一个工作文件夹，只在当前账号工作区内创建。
+installConversationFolderIpc(
+  ACCOUNT_SESSION,
+  () => DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString(),
+  () => currentDesktopLocalContext() === ACCOUNT_RUNTIME,
+  createConversationFolders(ACCOUNT_RUNTIME.workspace)
 )
 
 // Device-local preference: block F12 from opening DevTools.

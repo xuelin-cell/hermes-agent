@@ -2,6 +2,8 @@ import { useStore } from '@nanostores/react'
 import { type MutableRefObject, useCallback, useEffect, useRef } from 'react'
 import type { NavigateFunction } from 'react-router'
 
+// desktop-mt: 未选目录的新对话在账号工作区下建专属文件夹。
+import { applyConversationFolder, discardConversationFolder } from '@/app/chat/composer/workdir-mt/conversation-folder'
 import { NO_PROJECT_ID } from '@/app/chat/sidebar/projects/workspace-groups'
 import {
   extendRefreshPageToOverlap,
@@ -679,6 +681,16 @@ export function useSessionActions({
           ...sessionCreateOverrideParams(createOverrides, seedMessages)
         }
 
+        // desktop-mt: 未选目录的新对话改用账号工作区下的专属文件夹；新手引导对话不建。
+        const conversationFolder =
+          createOverrides || seedMessages?.length
+            ? null
+            : await applyConversationFolder(params, (method, body) =>
+                capturedRoute
+                  ? requestGatewayForAgent(capturedRoute.connectionId, capturedRoute.profile, method, body)
+                  : requestGateway(method, body)
+              )
+
         // Lease the owner socket for the whole create → owner-publication
         // sequence (#93602 primitive). The per-request lease inside
         // requestGatewayForAgent ends when session.create returns; the
@@ -730,6 +742,11 @@ export function useSessionActions({
             // in that gap cannot close the runtime before the first prompt.
             holdSessionOwnerUntilForeground(stored, capturedRoute)
           }
+        } catch (error) {
+          // desktop-mt: 创建失败时删掉刚建的空文件夹。
+          discardConversationFolder(conversationFolder)
+
+          throw error
         } finally {
           releaseCreateLease()
         }
@@ -946,6 +963,16 @@ export function useSessionActions({
           ...(workspaceScope.workspaceMode === 'bots' ? { hidden: true } : {})
         }
 
+        // desktop-mt: 分屏新开的普通对话同样用专属文件夹；Bot 标签不建。
+        const conversationFolder =
+          workspaceScope.workspaceMode === 'bots'
+            ? null
+            : await applyConversationFolder(params, (method, body) =>
+                capturedRoute
+                  ? requestGatewayForAgent(capturedRoute.connectionId, capturedRoute.profile, method, body)
+                  : requestGateway(method, body)
+              )
+
         // Same lease chain as createBackendSessionForSend: owner socket held
         // across the create, then the foreground hold carries it until the
         // tile is mounted ($sessionTiles names the owner from then on). Same
@@ -986,11 +1013,19 @@ export function useSessionActions({
             // bridge the create-to-mount gap with the same profile pool.
             holdSessionOwnerUntilForeground(stored, legacyOwnerProfile)
           }
+        } catch (error) {
+          // desktop-mt: 创建失败时删掉刚建的空文件夹。
+          discardConversationFolder(conversationFolder)
+
+          throw error
         } finally {
           releaseCreateLease()
         }
 
         if (!stored) {
+          // desktop-mt: 没拿到会话时同样清理空文件夹。
+          discardConversationFolder(conversationFolder)
+
           const closeCreated = capturedRoute
             ? requestGatewayForAgent(capturedRoute.connectionId, capturedRoute.profile, 'session.close', {
                 session_id: created.session_id

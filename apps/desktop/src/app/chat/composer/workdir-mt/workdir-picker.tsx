@@ -31,6 +31,7 @@ import {
   setNewChatWorkspaceTarget
 } from '@/store/session'
 
+import { isConversationFolder } from './conversation-folder'
 import { useWorkdirCopy } from './copy'
 import { isBlockedWorkdir, recentWorkdirs, sameWorkdir, workdirName } from './folders'
 
@@ -94,6 +95,8 @@ export function WorkdirPicker({ cwd, gateway, sessionId }: WorkdirPickerProps) {
   const sessions = useStore($sessions)
   const [defaultCwd, refreshDefault] = useDefaultWorkdir(gateway)
   const [open, setOpen] = useState(false)
+  // 本机账号环境才会给未选目录的新对话自动建文件夹。
+  const autoFolders = typeof window.hermesDesktop?.createConversationFolder === 'function'
   const sessionIdRef = useRef<null | string>(sessionId ?? null)
 
   sessionIdRef.current = sessionId ?? null
@@ -111,7 +114,10 @@ export function WorkdirPicker({ cwd, gateway, sessionId }: WorkdirPickerProps) {
   const fullPath = shown || defaultCwd
 
   const recent = useMemo(
-    () => (locked ? [] : recentWorkdirs(sessions, defaultCwd ? [defaultCwd] : [])),
+    () =>
+      locked
+        ? []
+        : recentWorkdirs(sessions, defaultCwd ? [defaultCwd] : [], dir => isConversationFolder(dir, defaultCwd)),
     [defaultCwd, locked, sessions]
   )
 
@@ -230,7 +236,7 @@ export function WorkdirPicker({ cwd, gateway, sessionId }: WorkdirPickerProps) {
           <span>{t('choose')}</span>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <div className={HINT}>{t('draftHint')}</div>
+        <div className={HINT}>{t(isDefault && autoFolders ? 'folderHint' : 'draftHint')}</div>
       </DropdownMenuContent>
     </DropdownMenu>
   )
