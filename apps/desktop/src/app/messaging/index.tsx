@@ -221,17 +221,30 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
     bot_conflict: m.connection.duplicateDescription
   }
 
-  const failed = operation.phase === 'failed' || requestFailed
+  const operationFailed = operation.phase === 'failed' || requestFailed
+  const activePlatforms = platforms?.filter(platform => platform.enabled && platform.configured) ?? []
+
+  const disconnected = !applying && activePlatforms.some(platform => !platform.gateway_running ||
+    ['fatal', 'startup_failed', 'disconnected', 'stopped', 'pending_restart'].includes(platform.state ?? ''))
+
+  const reconnecting = !applying && activePlatforms.some(platform => ['retrying', 'connecting'].includes(platform.state ?? ''))
+  const failed = operationFailed || disconnected
+  const progress = applying || (!failed && reconnecting)
+  const recovery = operationFailed || disconnected || reconnecting
 
   const phaseMessages = {
-    idle: '', saving: operation.operation === 'disconnect' ? m.weixinQr.unbinding : m.connection.saving, applying: m.connection.connecting,
+    idle: '', saving: operation.operation === 'disconnect' ? m.weixinQr.unbinding : m.connection.saving,
+    applying: operation.operation === 'restore' ? m.connection.restoring : m.connection.connecting,
     restarting: m.connection.restarting, stopping: m.connection.stopping,
     checking: m.connection.checking,
     completed: m.connection.applied,
-    failed: operation.saved ? m.connection.savedFailed : errors[operation.error || ''] || m.connection.saveFailed
+    failed: operation.error === 'gateway_identity_unverified' ? m.connection.ownership
+      : operation.operation === 'restore' ? m.connection.restoreFailed
+      : operation.saved ? m.connection.savedFailed : errors[operation.error || ''] || m.connection.saveFailed
   }
 
-  const message = requestFailed ? m.connection.savedFailed : phaseMessages[phase]
+  const message = requestFailed ? m.connection.savedFailed : operation.phase === 'failed' ? phaseMessages.failed
+    : disconnected ? m.connection.disconnected : reconnecting ? m.connection.reconnecting : phaseMessages[phase]
 
   const selected = platforms?.find(platform => platform.id === configuring)
   const search = query.trim().toLocaleLowerCase()
@@ -256,13 +269,18 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
             </ErrorBanner>
           )}
           {message && (
-            <Alert role="status" variant={failed ? 'warning' : applying ? 'default' : 'success'}>
-              {failed ? <AlertTriangle /> : applying ? <Loader2 className="animate-spin" /> : <CheckCircle2 />}
+            <Alert role="status" variant={failed ? 'warning' : progress ? 'default' : 'success'}>
+              {failed ? <AlertTriangle /> : progress ? <Loader2 className="animate-spin" /> : <CheckCircle2 />}
               <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
                 <span>{message}</span>
-                {failed && (operation.saved || requestFailed) && (
+                {recovery && (operation.saved || requestFailed || disconnected || reconnecting) && (
                   <Button disabled={applying} onClick={() => void restart()} size="sm" variant="secondary">
                     <RefreshCw />{t.common.retry}
+                  </Button>
+                )}
+                {recovery && (
+                  <Button onClick={() => void window.hermesDesktop.revealLogs().catch(() => undefined)} size="sm" variant="secondary">
+                    {m.openLogs}
                   </Button>
                 )}
               </AlertDescription>

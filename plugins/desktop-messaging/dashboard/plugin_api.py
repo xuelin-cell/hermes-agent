@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 from importlib import import_module
+from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException
@@ -26,6 +27,47 @@ POLICIES = {
     "wecom": {"WECOM_ALLOW_ALL_USERS": "true", "WECOM_DM_POLICY": "open", "WECOM_GROUP_POLICY": "open"},
 }
 _locks: dict[str, asyncio.Lock] = {}
+_gateway_lock = asyncio.Lock()
+
+
+def _managed_profiles() -> list:
+    """沿用原版受管范围，拒绝链接到其它账号的 Profile。"""
+    from hermes_cli.profiles import profiles_to_serve
+    from hermes_cli.web_server_gateway import _has_own_gateway
+    from hermes_constants import get_default_hermes_root
+
+    root = get_default_hermes_root().resolve()
+    profiles = []
+    for name, home in profiles_to_serve(True):
+        expected = root if name == "default" else root / "profiles" / name
+        if home.resolve() != expected or (name != "default" and expected.parent.resolve() != root / "profiles"):
+            raise HTTPException(409, detail="gateway_identity_unverified")
+        if name != "default" and _has_own_gateway(home):
+            continue
+        profiles.append((name, home))
+    return profiles
+
+
+def _owned_gateway() -> bool:
+    """复用前核对原版 PID、创建时间及实时 Home；归属不明时拒绝启动。"""
+    import psutil
+    from gateway.status import get_running_pid, get_running_pid_identity_strict, get_runtime_status_running_pid, read_runtime_status
+    from hermes_constants import get_default_hermes_root
+
+    home = get_default_hermes_root().resolve()
+    identity = get_running_pid_identity_strict(home / "gateway.pid")
+    if identity is None:
+        if get_runtime_status_running_pid(read_runtime_status(home / "gateway_state.json"), expected_home=home):
+            raise RuntimeError("unverified_gateway")
+        return False
+    process = psutil.Process(identity[0])
+    env_home = process.environ().get("HERMES_HOME")
+    if not env_home or (
+        get_running_pid(home / "gateway.pid", cleanup_stale=False) != identity[0]
+        or home != Path(env_home).resolve()
+    ):
+        raise RuntimeError("unverified_gateway")
+    return True
 
 
 class Setup(BaseModel):
@@ -101,12 +143,11 @@ async def save_platform(platform: Literal["dingtalk", "feishu", "wecom"], body: 
 @router.post("/prepare")
 async def prepare() -> dict:
     """检查本账号受管环境并补写已启用平台规则，供启动及解绑后选择动作。"""
-    from hermes_cli.profiles import profiles_to_serve
-
-    profiles = [name for name, _ in await asyncio.to_thread(profiles_to_serve, True)]
+    profiles = await asyncio.to_thread(_managed_profiles)
     configured = False
     changed = False
-    for profile in profiles:
+    configured_profiles = []
+    for profile, _ in profiles:
         with _config_profile_scope(profile):
             from hermes_cli.web_routers.messaging import _platform_enablement
 
@@ -115,9 +156,35 @@ async def prepare() -> dict:
                 enabled, complete, _ = _platform_enablement(entry["id"], entry, env, True)
                 if enabled and complete:
                     configured = True
+                    if profile not in configured_profiles:
+                        configured_profiles.append(profile)
                     if entry["id"] in POLICIES:
                         changed = _write_policies(entry["id"]) or changed
-    return {"configured": configured, "changed": changed}
+    return {"configured": configured, "changed": changed, "profiles": configured_profiles}
+
+
+@router.post("/restore")
+async def restore_gateway(restart: bool = False) -> dict:
+    """后台恢复复用可信进程；仅规则变化或用户明确重试时重新连接。"""
+    from hermes_cli.web_server_gateway import _gateway_subcommand, _spawn_hermes_action
+
+    async with _gateway_lock:
+        state = await prepare()
+        if not state["configured"]:
+            return {**state, "name": None}
+        try:
+            running = await asyncio.to_thread(_owned_gateway)
+        except Exception as exc:
+            raise HTTPException(409, detail="gateway_identity_unverified") from exc
+        if running and not (state["changed"] or restart):
+            return {**state, "name": None}
+        # 运行期直接用原版 run 启动，不调用可能修复／启用系统自动启动项的 start。
+        # 旧准入规则变化时先停止，主进程确认动作结束后再调用本入口启动。
+        verb = "stop" if running else "run"
+        name = "gateway-stop" if running else "gateway-start"
+        await asyncio.to_thread(_spawn_hermes_action, _gateway_subcommand("default", verb), name,
+                                env_overrides={"HERMES_GATEWAY_INSTALL_START_ON_LOGIN": "0"})
+        return {**state, "name": name}
 
 
 @router.post("/apply")
@@ -125,8 +192,10 @@ async def apply_gateway() -> dict:
     """由桌面串行调用原版动作；无配置时停止，不复用旧凭据的重启冷却结果。"""
     from hermes_cli.web_server_gateway import _gateway_subcommand, _spawn_hermes_action
 
-    state = await prepare()
-    verb = "restart" if state["configured"] else "stop"
-    name = f"gateway-{verb}"
-    proc = await asyncio.to_thread(_spawn_hermes_action, _gateway_subcommand("default", verb), name)
-    return {"ok": True, "name": name, "pid": proc.pid}
+    async with _gateway_lock:
+        state = await prepare()
+        verb = "restart" if state["configured"] else "stop"
+        name = f"gateway-{verb}"
+        proc = await asyncio.to_thread(_spawn_hermes_action, _gateway_subcommand("default", verb), name,
+                                       env_overrides={"HERMES_GATEWAY_INSTALL_START_ON_LOGIN": "0"})
+        return {"ok": True, "name": name, "pid": proc.pid}

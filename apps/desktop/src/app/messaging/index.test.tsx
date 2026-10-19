@@ -355,6 +355,41 @@ function dingtalk(patch: Partial<MessagingPlatformInfo> = {}) {
 }
 
 describe('Messaging cards and native configuration', () => {
+  it.each(['retrying', 'fatal'])('运行期 %s 保留原版原因并提供恢复入口，不自行重启网关', async state => {
+    const detail = state === 'fatal' ? 'Authentication rejected' : 'Network temporarily unavailable'
+    getMessagingPlatforms.mockResolvedValue({ platforms: [dingtalk({ configured: true, enabled: true, state, error_message: detail })] })
+    await renderMessaging()
+    expect(await screen.findByText(detail)).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Open logs' })).toBeTruthy()
+    expect(messagingSetup).not.toHaveBeenCalled()
+    expect(notify).not.toHaveBeenCalled()
+  })
+
+  it('自动恢复不依赖页面，失败后进入消息页可查看日志和安全重试', async () => {
+    getMessagingPlatforms.mockResolvedValue({ platforms: [dingtalk({
+      configured: true, enabled: true, state: 'retrying', error_message: 'Original adapter is reconnecting'
+    })] })
+    const revealLogs = vi.fn(async () => ({ ok: true, path: '' }))
+    window.hermesDesktop.revealLogs = revealLogs
+    publishOperation({ phase: 'applying', saved: true, operation: 'restore' })
+    const view = await renderMessaging()
+    expect(await screen.findByText('Restoring messaging connections…')).toBeTruthy()
+    view.rerender(<MemoryRouter><div>Desktop chat</div></MemoryRouter>)
+    await act(async () => { publishOperation({ phase: 'failed', error: 'apply_failed' }) })
+    expect(screen.getByText('Desktop chat')).toBeTruthy()
+    expect(notify).not.toHaveBeenCalled()
+    view.rerender(<MemoryRouter><MessagingView /></MemoryRouter>)
+    expect(await screen.findByText('Messaging could not be restored. Desktop chat is available. Retry the connection or open logs.')).toBeTruthy()
+    expect(screen.getByText('Original adapter is reconnecting')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Open logs' }))
+    expect(revealLogs).toHaveBeenCalledOnce()
+    await act(async () => { publishOperation({ phase: 'failed', error: 'gateway_identity_unverified' }) })
+    expect(await screen.findByText('The existing gateway’s ownership could not be verified. No new gateway was started. Open logs for details.')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    await waitFor(() => expect(messagingSetup).toHaveBeenCalledWith({ operation: 'retry', profile: 'default' }))
+  })
+
   it('平台确认中不展示过渡停机或需重启，完成后先同步卡片再显示成功', async () => {
     const ready = dingtalk({ configured: true, enabled: true, gateway_running: true, state: 'connected' })
     getMessagingPlatforms.mockResolvedValue({ platforms: [ready] })

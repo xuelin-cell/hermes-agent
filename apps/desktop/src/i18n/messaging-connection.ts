@@ -1,6 +1,11 @@
 import type { Locale } from './types'
 
 export interface MessagingConnectionCopy {
+  restoring: string
+  restoreFailed: string
+  ownership: string
+  reconnecting: string
+  disconnected: string
   saving: string
   restarting: string
   stopping: string
@@ -20,6 +25,11 @@ export interface MessagingConnectionCopy {
 
 export const messagingConnectionCopy: Record<Locale, MessagingConnectionCopy> = {
   en: {
+    reconnecting: 'The gateway is reconnecting using its built-in policy. Desktop chat is available.',
+    disconnected: 'Some messaging connections are unavailable. Check the platform settings or logs. Desktop chat is available.',
+    restoring: 'Restoring messaging connections…',
+    restoreFailed: 'Messaging could not be restored. Desktop chat is available. Retry the connection or open logs.',
+    ownership: 'The existing gateway’s ownership could not be verified. No new gateway was started. Open logs for details.',
     saving: "Validating and saving messaging settings…",
     restarting: "Messaging gateway is restarting… Other chat apps will disconnect briefly.",
     stopping: "Messaging gateway is stopping…",
@@ -37,6 +47,11 @@ export const messagingConnectionCopy: Record<Locale, MessagingConnectionCopy> = 
     newSecret: 'Enter the Secret when changing the bot ID.'
   },
   zh: {
+    reconnecting: '网关正在按原版策略重连，桌面聊天不受影响。',
+    disconnected: '部分消息平台连接不可用，请检查平台配置或日志。桌面聊天不受影响。',
+    restoring: '正在恢复消息平台连接…',
+    restoreFailed: '消息平台自动连接失败，桌面聊天不受影响。可重试连接或查看日志。',
+    ownership: '无法确认现有网关归属，未启动新的网关，请查看日志。',
     saving: "正在校验并保存消息平台配置…",
     restarting: "网关正在重启，其它消息平台会短暂断开…",
     stopping: "网关正在停止…",
@@ -54,6 +69,11 @@ export const messagingConnectionCopy: Record<Locale, MessagingConnectionCopy> = 
     newSecret: '更换机器人 ID 时，请同时填写对应 Secret。'
   },
   'zh-hant': {
+    reconnecting: '閘道正在按原版策略重新連線，桌面聊天不受影響。',
+    disconnected: '部分訊息平台連線不可用，請檢查平台設定或日誌。桌面聊天不受影響。',
+    restoring: '正在恢復訊息平台連線…',
+    restoreFailed: '訊息平台自動連線失敗，桌面聊天不受影響。可重試連線或查看日誌。',
+    ownership: '無法確認現有閘道歸屬，未啟動新的閘道，請查看日誌。',
     saving: "正在驗證並儲存訊息平台設定…",
     restarting: "閘道正在重新啟動，其他訊息平台會短暫斷線…",
     stopping: "閘道正在停止…",
@@ -71,6 +91,11 @@ export const messagingConnectionCopy: Record<Locale, MessagingConnectionCopy> = 
     newSecret: '更換機器人 ID 時，請同時填寫對應的 Secret。'
   },
   ja: {
+    reconnecting: 'ゲートウェイが標準の方針で再接続しています。デスクトップチャットは利用できます。',
+    disconnected: '一部のメッセージ接続が利用できません。設定やログを確認してください。デスクトップチャットは利用できます。',
+    restoring: 'メッセージ接続を復元しています…',
+    restoreFailed: 'メッセージ接続を復元できませんでした。デスクトップチャットは利用できます。再試行するかログを確認してください。',
+    ownership: '既存ゲートウェイの所有元を確認できないため、新規起動はしていません。ログを確認してください。',
     saving: "メッセージ設定を検証して保存しています…",
     restarting: "メッセージゲートウェイを再起動しています。他のチャットは一時切断されます。",
     stopping: "メッセージゲートウェイを停止しています…",
@@ -89,6 +114,11 @@ export const messagingConnectionCopy: Record<Locale, MessagingConnectionCopy> = 
     newSecret: 'ボット ID を変更する場合は Secret も入力してください。'
   },
   ar: {
+    reconnecting: 'تعيد البوابة الاتصال وفق سياستها الأصلية. الدردشة المكتبية متاحة.',
+    disconnected: 'بعض اتصالات المراسلة غير متاحة. تحقق من إعدادات المنصة أو السجلات. الدردشة المكتبية متاحة.',
+    restoring: 'جارٍ استعادة اتصالات المراسلة…',
+    restoreFailed: 'تعذرت استعادة المراسلة. الدردشة المكتبية متاحة. أعد المحاولة أو افتح السجلات.',
+    ownership: 'تعذر التحقق من ملكية البوابة الحالية. لم تُشغّل بوابة جديدة. افتح السجلات للتفاصيل.',
     saving: "جارٍ التحقق من إعدادات المراسلة وحفظها…",
     restarting: "جارٍ إعادة تشغيل بوابة المراسلة. ستنقطع التطبيقات الأخرى مؤقتًا.",
     stopping: "جارٍ إيقاف بوابة المراسلة…",
@@ -106,6 +136,11 @@ export const messagingConnectionCopy: Record<Locale, MessagingConnectionCopy> = 
     newSecret: 'أدخل السر عند تغيير معرّف الروبوت.'
   },
   ru: {
+    reconnecting: 'Шлюз переподключается по встроенным правилам. Чат на компьютере доступен.',
+    disconnected: 'Некоторые подключения сообщений недоступны. Проверьте настройки или журнал. Чат на компьютере доступен.',
+    restoring: 'Восстановление подключений сообщений…',
+    restoreFailed: 'Не удалось восстановить сообщения. Чат на компьютере доступен. Повторите попытку или откройте журнал.',
+    ownership: 'Не удалось проверить принадлежность шлюза. Новый шлюз не запущен. Подробности в журнале.',
     saving: "Проверка и сохранение настроек сообщений…",
     restarting: "Шлюз сообщений перезапускается. Другие чаты ненадолго отключатся.",
     stopping: "Шлюз сообщений останавливается…",
@@ -124,6 +159,11 @@ export const messagingConnectionCopy: Record<Locale, MessagingConnectionCopy> = 
     newSecret: 'При смене ID бота введите соответствующий Secret.'
   },
   fr: {
+    reconnecting: 'La passerelle se reconnecte selon sa politique intégrée. Le chat reste disponible.',
+    disconnected: 'Certaines connexions sont indisponibles. Vérifiez les paramètres ou les journaux. Le chat reste disponible.',
+    restoring: 'Rétablissement des connexions de messagerie…',
+    restoreFailed: 'Impossible de rétablir la messagerie. Le chat reste disponible. Réessayez ou consultez les journaux.',
+    ownership: 'Le propriétaire de la passerelle existante n’a pas pu être vérifié. Aucune nouvelle passerelle n’a été lancée. Consultez les journaux.',
     saving: "Vérification et enregistrement des paramètres de messagerie…",
     restarting: "La passerelle redémarre. Les autres applications seront brièvement déconnectées.",
     stopping: "La passerelle de messagerie s’arrête…",
@@ -141,6 +181,11 @@ export const messagingConnectionCopy: Record<Locale, MessagingConnectionCopy> = 
     newSecret: 'Saisissez le Secret correspondant lors du changement d’ID.'
   },
   de: {
+    reconnecting: 'Das Gateway verbindet sich nach seiner integrierten Richtlinie neu. Der Desktop-Chat bleibt verfügbar.',
+    disconnected: 'Einige Nachrichtenverbindungen sind nicht verfügbar. Einstellungen oder Protokolle prüfen. Der Desktop-Chat bleibt verfügbar.',
+    restoring: 'Nachrichtenverbindungen werden wiederhergestellt…',
+    restoreFailed: 'Nachrichten konnten nicht wiederhergestellt werden. Der Desktop-Chat bleibt verfügbar. Erneut versuchen oder Protokolle öffnen.',
+    ownership: 'Die Zuordnung des vorhandenen Gateways konnte nicht bestätigt werden. Kein neues Gateway wurde gestartet. Protokolle öffnen.',
     saving: "Nachrichteneinstellungen werden geprüft und gespeichert…",
     restarting: "Das Nachrichten-Gateway startet neu. Andere Chats werden kurz getrennt.",
     stopping: "Das Nachrichten-Gateway wird gestoppt…",
@@ -159,6 +204,11 @@ export const messagingConnectionCopy: Record<Locale, MessagingConnectionCopy> = 
     newSecret: 'Beim Ändern der Bot-ID auch das zugehörige Secret eingeben.'
   },
   es: {
+    reconnecting: 'La pasarela se reconecta según su política integrada. El chat de escritorio sigue disponible.',
+    disconnected: 'Algunas conexiones no están disponibles. Revisa la configuración o los registros. El chat de escritorio sigue disponible.',
+    restoring: 'Restaurando las conexiones de mensajes…',
+    restoreFailed: 'No se pudieron restaurar los mensajes. El chat de escritorio sigue disponible. Reinténtalo o abre los registros.',
+    ownership: 'No se pudo verificar a quién pertenece la pasarela existente. No se inició otra pasarela. Consulta los registros.',
     saving: "Validando y guardando la configuración de mensajes…",
     restarting: "La pasarela se está reiniciando. Las otras aplicaciones se desconectarán brevemente.",
     stopping: "La pasarela de mensajes se está deteniendo…",

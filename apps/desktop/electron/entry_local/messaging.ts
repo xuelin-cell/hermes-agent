@@ -10,6 +10,10 @@ const IDS = { dingtalk: 'DINGTALK_CLIENT_ID', feishu: 'FEISHU_APP_ID', wecom: 'W
 const SECRETS = { dingtalk: 'DINGTALK_CLIENT_SECRET', feishu: 'FEISHU_APP_SECRET', wecom: 'WECOM_SECRET' }
 const BASE = '/api/plugins/desktop-messaging'
 
+interface MessagingTask extends Omit<MessagingSetupRequest, 'operation'> {
+  operation: NonNullable<MessagingOperationStatus['operation']>
+}
+
 /** 应用级摘要索引只保存机器人与账号摘要，不读取其他账号 Home。 */
 export class MessagingBotIndex {
   private readonly file: string
@@ -87,6 +91,7 @@ export class DesktopMessaging {
   private closed = false
   private state: MessagingOperationStatus = { phase: 'idle', revision: 0 }
   private submitted = new Set<string>()
+  private restoration: Promise<MessagingSetupResult> | null = null
 
   /** 请求始终由可信主进程定位到本机账号后端。 */
   constructor(
@@ -127,7 +132,7 @@ export class DesktopMessaging {
   }
 
   /** 主进程发布事实阶段；配置、凭据和原始异常不跨过状态 IPC。 */
-  private publish(input: MessagingSetupRequest, phase: MessagingOperationStatus['phase'], saved = false, error?: string): void {
+  private publish(input: MessagingTask, phase: MessagingOperationStatus['phase'], saved = false, error?: string): void {
     this.state = { phase, revision: this.state.revision + 1, profile: input.profile || 'default',
       platform: input.platform, operation: input.operation, saved, ...(error ? { error } : {}) }
     this.deps.onState?.(this.status())
@@ -169,16 +174,31 @@ export class DesktopMessaging {
       return Promise.reject(cause)
     }
 
+    return this.enqueue(input, () => this.setup(input))
+  }
+
+  /** 每次账号进程只自动恢复一次；不依赖页面，失败不循环重启。 */
+  restore(): Promise<MessagingSetupResult> {
+    const input: MessagingTask = { operation: 'restore', profile: 'default' }
+    this.restoration ??= this.enqueue(input, () => this.restoreGateway(input))
+
+    return this.restoration
+  }
+
+  /** 启动、保存和解绑共用同一队列；封闭后不再执行任何新操作。 */
+  private enqueue(input: MessagingTask, action: () => Promise<MessagingSetupResult>): Promise<MessagingSetupResult> {
     const result = this.pending.then(async () => {
       try {
-        return await this.setup(input)
+        if (this.closed) {throw new Error('messaging_account_closed')}
+
+        return await action()
       } catch (cause) {
         const message = cause instanceof Error ? cause.message : ''
 
         const codes = ['credentials_rejected', 'credentials_required', 'secret_required_for_new_id',
-          'validation_network', 'validation_timeout', 'validation_response', 'validation_unavailable']
+          'validation_network', 'validation_timeout', 'validation_response', 'validation_unavailable', 'gateway_identity_unverified']
 
-        this.publish(input, 'failed', false, codes.find(code => message.includes(code)) || 'save_failed')
+        this.publish(input, 'failed', input.operation === 'restore', codes.find(code => message.includes(code)) || 'save_failed')
         throw cause
       }
     })
@@ -186,6 +206,43 @@ export class DesktopMessaging {
     this.pending = result.catch(() => undefined)
 
     return result
+  }
+
+  /** 原版插件负责准备和可信复用；有动作才等待动作，随后核对全部受管配置。 */
+  private async restoreGateway(input: MessagingTask, restart = false): Promise<MessagingSetupResult> {
+    this.publish(input, 'applying', true)
+    let state = await this.deps.request('default', `${BASE}/restore${restart ? '?restart=true' : ''}`, 'POST', {})
+
+    if (state.name === 'gateway-stop') {
+      this.publish(input, 'stopping', true)
+
+      if (!(await this.watch('default', 'gateway-stop')) || this.closed) {
+        this.publish(input, 'failed', true, 'apply_failed')
+
+        return { actionFailed: true }
+      }
+
+      state = await this.deps.request('default', `${BASE}/restore`, 'POST', {})
+    }
+
+    if (state.configured === false) {
+      this.publish(input, 'idle')
+
+      return {}
+    }
+
+    if (!Array.isArray(state.profiles) || !state.profiles.length ||
+      state.profiles.some(name => typeof name !== 'string' || !/^[\w-]{1,64}$/.test(name))) {
+      throw new Error('restore_response_invalid')
+    }
+
+    if (state.name && state.name !== 'gateway-start') {throw new Error('restore_response_invalid')}
+
+    // gateway-start 是原版常驻 run 进程，不能等待它退出才判断启动完成。
+    const ok = await this.checkPlatforms(input, false, state.profiles)
+    this.publish(input, ok ? 'completed' : 'failed', true, ok ? undefined : 'apply_failed')
+
+    return { actionFailed: !ok }
   }
 
   /** 停止接受新操作；退出快照前等待已有动作结束。 */
@@ -207,6 +264,10 @@ export class DesktopMessaging {
     const profile = input.profile || 'default'
 
     if (input.operation === 'retry') {
+      if (this.state.phase === 'failed' && this.state.operation === 'restore') {
+        return this.restoreGateway({ ...input, operation: 'restore' }, true)
+      }
+
       return { actionFailed: !(await this.apply(input)) }
     }
 
@@ -282,25 +343,30 @@ export class DesktopMessaging {
   }
 
   /** 在原 Profile 有界确认可见平台已连接或网关已停止；只读状态，不再次启停。 */
-  private async checkPlatforms(input: MessagingSetupRequest, stopped = false): Promise<boolean> {
+  private async checkPlatforms(input: MessagingTask, stopped = false, profiles = [input.profile || 'default']): Promise<boolean> {
     this.publish(input, 'checking', true)
-    const profile = input.profile || 'default'
     const deadline = Date.now() + 36_000
 
     for (let attempt = 0; attempt < 30 && Date.now() < deadline && !this.closed; attempt++) {
       try {
-        const result = await this.deps.request(profile, `/api/messaging/platforms?profile=${encodeURIComponent(profile)}`, 'GET')
-        const rows = Array.isArray(result?.platforms) ? result.platforms : []
-        const target = rows.find(row => row?.id === input.platform)
+        const results = await Promise.allSettled(profiles.map(profile =>
+          this.deps.request(profile, `/api/messaging/platforms?profile=${encodeURIComponent(profile)}`, 'GET')))
 
-        const targetReady = !input.platform || (target && (input.operation === 'disconnect'
-          ? !target.enabled : target.enabled && target.configured))
+        if (results.every(result => {
+          if (result.status !== 'fulfilled') {return false}
 
-        if (rows.length && targetReady && (stopped
-          ? rows.every(row => row && row.gateway_running === false)
-          : rows.some(row => row?.gateway_running === true) && rows
-            .filter(row => row && ['weixin', ...Object.keys(IDS)].includes(row.id) && row.enabled && row.configured)
-            .every(row => row.gateway_running === true && row.state === 'connected'))) {
+          const rows = Array.isArray(result.value?.platforms) ? result.value.platforms : []
+          const target = rows.find(row => row?.id === input.platform)
+
+          const targetReady = !input.platform || (target && (input.operation === 'disconnect'
+            ? !target.enabled : target.enabled && target.configured))
+
+          return rows.length && targetReady && (stopped
+            ? rows.every(row => row && row.gateway_running === false)
+            : rows.some(row => row?.gateway_running === true) && rows
+              .filter(row => row && ['weixin', ...Object.keys(IDS)].includes(row.id) && row.enabled && row.configured)
+              .every(row => row.gateway_running === true && row.state === 'connected'))
+        })) {
           return true
         }
       } catch {

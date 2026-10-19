@@ -19,7 +19,7 @@ export interface MessagingOperationStatus {
   phase: 'idle' | 'saving' | 'applying' | 'restarting' | 'stopping' | 'checking' | 'completed' | 'failed'
   profile?: string
   platform?: MessagingSetupRequest['platform']
-  operation?: MessagingSetupRequest['operation']
+  operation?: MessagingSetupRequest['operation'] | 'restore'
   saved?: boolean
   error?: string
 }
