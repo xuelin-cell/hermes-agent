@@ -9,7 +9,9 @@ const DEVELOPER_SETTINGS = new Set<string>([
   'vault',
   'gateway',
   'connections',
-  'billing'
+  'billing',
+  // 普通用户改用「模型」页（models-mt），提供方的完整管理留给开发者模式。
+  'providers'
 ])
 
 /** 根据开发者模式统一决定设置入口是否可见。 */
