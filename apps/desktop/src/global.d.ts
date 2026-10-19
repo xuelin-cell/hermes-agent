@@ -14,6 +14,7 @@ import type {
   LoginAccount
 } from '../electron/login/contract'
 import type { MachineProfile } from '../electron/machine-profile'
+import type { LocalConnectorRequest, LocalConnectorResult } from '../electron/open-connector/contract'
 import type { HermesNotification } from '../electron/notification-types'
 import type { PoolLimits } from '../electron/pool-limits'
 import type { PreviewExport, PreviewExportResult } from '../electron/preview-export'
@@ -52,6 +53,7 @@ declare global {
         onChanged: (callback: (key: string) => void) => () => void
       }
       cloudDriveRequest: (input: CloudDriveRequest) => Promise<unknown>
+      localConnectors: (input: LocalConnectorRequest) => Promise<LocalConnectorResult>
       /** 取得完整办公目录；主进程负责认证和校验配置。 */
       getWelcomeCatalog?: (locale: WelcomeLocale) => Promise<WelcomeCategory[]>
       uniworkAsr?: UniworkAsrBridge

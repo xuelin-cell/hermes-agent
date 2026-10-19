@@ -1,0 +1,9 @@
+{
+  "extends": "@hyrious/configs/tsconfig.node.json",
+  "compilerOptions": {
+    "declaration": true,
+    "isolatedDeclarations": true,
+    "noEmit": true,
+    "types": ["node"]
+  }
+}

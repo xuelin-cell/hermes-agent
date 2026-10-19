@@ -1,0 +1,1637 @@
+{
+  "service": "netease_mail",
+  "displayName": "NetEase Mail",
+  "description": "Unavailable on Cloudflare Workers. NetEase Mail requires IMAP/SMTP, so run this provider from the Node.js runtime.",
+  "categories": [
+    "Communication",
+    "Productivity"
+  ],
+  "authTypes": [
+    "custom_credential"
+  ],
+  "auth": [
+    {
+      "type": "custom_credential",
+      "fields": [
+        {
+          "key": "email",
+          "label": "Email Address",
+          "inputType": "text",
+          "required": true,
+          "secret": false,
+          "placeholder": "user@163.com",
+          "description": "The full personal NetEase Mail address to connect, using 163.com, 126.com, or yeah.net."
+        },
+        {
+          "key": "authorizationCode",
+          "label": "Authorization Code",
+          "inputType": "password",
+          "required": true,
+          "secret": true,
+          "placeholder": "16-character code",
+          "description": "The 16-character client authorization code created after enabling IMAP/SMTP in NetEase Mail settings: https://help.mail.163.com/faqDetail.do?code=d7a5dc8471cd0c0e8b4b8f4f8e49998b374173cfe9171305fa1ce630d7f67ac2a5feb28b66796d3b. This is not the NetEase Mail web login password."
+        }
+      ],
+      "testAction": {
+        "actionName": "list_folders",
+        "input": {}
+      }
+    }
+  ],
+  "homepageUrl": "https://mail.163.com/",
+  "actions": [
+    {
+      "id": "netease_mail.delete_email",
+      "service": "netease_mail",
+      "name": "delete_email",
+      "description": "Delete one NetEase Mail message from a folder.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "folder": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The IMAP folder path returned by list_folders.",
+            "default": "INBOX"
+          },
+          "uid": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The IMAP UID of the message."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "uid"
+        ],
+        "description": "The input payload for deleting one NetEase Mail email."
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "folder": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The IMAP folder path that contained the message."
+          },
+          "uid": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The IMAP UID of the message."
+          },
+          "deleted": {
+            "const": true,
+            "type": "boolean",
+            "description": "Whether the message was deleted."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "folder",
+          "uid",
+          "deleted"
+        ],
+        "description": "The response returned after deleting one NetEase Mail email."
+      }
+    },
+    {
+      "id": "netease_mail.download_attachment",
+      "service": "netease_mail",
+      "name": "download_attachment",
+      "description": "Download one NetEase Mail attachment by IMAP body part identifier.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "folder": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The IMAP folder path returned by list_folders.",
+            "default": "INBOX"
+          },
+          "uid": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The IMAP UID of the message."
+          },
+          "attachmentId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The IMAP body part identifier returned in an attachment metadata item."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "uid",
+          "attachmentId"
+        ],
+        "description": "The input payload for downloading one NetEase Mail attachment."
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "folder": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The IMAP folder path that contained the message."
+          },
+          "uid": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The IMAP UID of the message."
+          },
+          "attachmentId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The IMAP body part identifier returned in an attachment metadata item."
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "description": "The attachment size in bytes when available."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "file": {
+            "type": "object",
+            "properties": {
+              "fileId": {
+                "type": "string",
+                "minLength": 1,
+                "description": "The local transit file identifier."
+              },
+              "downloadUrl": {
+                "type": "string",
+                "description": "The local transit URL for downloading the file.",
+                "format": "uri"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "description": "The file name used in transit storage."
+              },
+              "mimeType": {
+                "type": "string",
+                "minLength": 1,
+                "description": "The file MIME type."
+              },
+              "sizeBytes": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The stored file size in bytes."
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "fileId",
+              "downloadUrl",
+              "name",
+              "mimeType",
+              "sizeBytes"
+            ],
+            "description": "A file uploaded to local transit file storage."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "folder",
+          "uid",
+          "attachmentId",
+          "size",
+          "file"
+        ],
+        "description": "The response returned when downloading one NetEase Mail attachment."
+      }
+    },
+    {
+      "id": "netease_mail.forward_email",
+      "service": "netease_mail",
+      "name": "forward_email",
+      "description": "Forward one NetEase Mail email using SMTP with quoted original content.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "folder": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The IMAP folder path returned by list_folders.",
+            "default": "INBOX"
+          },
+          "uid": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The IMAP UID of the message."
+          },
+          "to": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "description": "An email address.",
+              "format": "email"
+            },
+            "description": "The forwarding recipient email addresses.",
+            "minItems": 1
+          },
+          "cc": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "description": "An email address.",
+              "format": "email"
+            },
+            "description": "The carbon-copy recipient email addresses.",
+            "minItems": 1
+          },
+          "bcc": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "description": "An email address.",
+              "format": "email"
+            },
+            "description": "The blind-carbon-copy recipient email addresses.",
+            "minItems": 1
+          },
+          "subject": {
+            "type": "string",
+            "description": "Override forward email subject."
+          },
+          "text": {
+            "type": "string",
+            "description": "Additional plain text content to prepend before the forwarded message."
+          },
+          "html": {
+            "type": "string",
+            "description": "Additional HTML content to prepend before the forwarded message."
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "filename": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "The filename to use for the outgoing attachment."
+                },
+                "contentType": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "The MIME content type of the attachment."
+                },
+                "contentUrl": {
+                  "type": "string",
+                  "description": "The public HTTP or HTTPS URL to fetch attachment content from.",
+                  "format": "uri"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "filename",
+                "contentUrl"
+              ],
+              "description": "An attachment to fetch and include in an outgoing email."
+            },
+            "description": "Attachments to fetch and include in the outgoing email. The combined size of all attachments must not exceed 10 MB per message.",
+            "minItems": 1,
+            "maxItems": 10
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "uid",
+          "to"
+        ],
+        "description": "The input payload for forwarding one NetEase Mail email."
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "messageId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "The SMTP Message-ID returned by the mail client."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "accepted": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "description": "An email address.",
+              "format": "email"
+            },
+            "description": "Recipient addresses accepted by the SMTP server."
+          },
+          "rejected": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "description": "An email address.",
+              "format": "email"
+            },
+            "description": "Recipient addresses rejected by the SMTP server."
+          },
+          "response": {
+            "type": "string",
+            "description": "The SMTP response text returned by the server."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "messageId",
+          "accepted",
+          "rejected",
+          "response"
+        ],
+        "description": "The response returned after sending a NetEase Mail email."
+      }
+    },
+    {
+      "id": "netease_mail.get_email",
+      "service": "netease_mail",
+      "name": "get_email",
+      "description": "Fetch and parse one NetEase Mail message without marking it as read.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "folder": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The IMAP folder path returned by list_folders.",
+            "default": "INBOX"
+          },
+          "uid": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The IMAP UID of the message."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "uid"
+        ],
+        "description": "The input payload for fetching one NetEase Mail email."
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "folder": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The IMAP folder path that contained the message."
+          },
+          "uid": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The IMAP UID of the message."
+          },
+          "messageId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "The Message-ID header when available."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "The email subject when available."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "from": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "description": "The display name when one was provided."
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "email": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "description": "The email address when one was provided."
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "email"
+                ],
+                "description": "A normalized email address."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "to": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The display name when one was provided."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "email": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The email address when one was provided."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "name",
+                "email"
+              ],
+              "description": "A normalized email address."
+            },
+            "description": "The primary recipients parsed from the message."
+          },
+          "cc": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The display name when one was provided."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "email": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The email address when one was provided."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "name",
+                "email"
+              ],
+              "description": "A normalized email address."
+            },
+            "description": "The carbon-copy recipients parsed from the message."
+          },
+          "date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "The message date as an ISO 8601 timestamp.",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "flags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "description": "One IMAP flag."
+            },
+            "description": "The IMAP flags currently set on the message."
+          },
+          "seen": {
+            "type": "boolean",
+            "description": "Whether the message has the IMAP Seen flag."
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "The parsed plain text body within the fetch budget."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "html": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "The parsed HTML body within the fetch budget."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "Whether returned body content was truncated or omitted by budget."
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "attachmentId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "The IMAP body part identifier returned in an attachment metadata item."
+                },
+                "filename": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The attachment filename when available."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "contentType": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The attachment MIME content type when available."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "size": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "description": "The attachment size in bytes when available."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "contentId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The attachment Content-ID when available."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "attachmentId",
+                "filename",
+                "contentType",
+                "size",
+                "contentId"
+              ],
+              "description": "Attachment metadata without attachment content."
+            },
+            "description": "Attachment metadata parsed from the message."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "folder",
+          "uid",
+          "messageId",
+          "subject",
+          "from",
+          "to",
+          "cc",
+          "date",
+          "flags",
+          "seen",
+          "text",
+          "html",
+          "truncated",
+          "attachments"
+        ],
+        "description": "The response returned when fetching one NetEase Mail email."
+      }
+    },
+    {
+      "id": "netease_mail.get_folder_status",
+      "service": "netease_mail",
+      "name": "get_folder_status",
+      "description": "Get lightweight message counters for one NetEase Mail folder.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "folder": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The IMAP folder path returned by list_folders.",
+            "default": "INBOX"
+          }
+        },
+        "additionalProperties": false,
+        "description": "The input payload for reading one NetEase Mail folder status."
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "folder": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The IMAP folder path that was checked."
+          },
+          "messages": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "description": "The total number of messages when available."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recent": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "description": "The number of recent messages when available."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unseen": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "description": "The number of unread messages when available."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "uidNext": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "description": "The next predicted IMAP UID when available."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "uidValidity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "The mailbox UIDVALIDITY value when available."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "folder",
+          "messages",
+          "recent",
+          "unseen",
+          "uidNext",
+          "uidValidity"
+        ],
+        "description": "The response returned when reading one NetEase Mail folder status."
+      }
+    },
+    {
+      "id": "netease_mail.list_folders",
+      "service": "netease_mail",
+      "name": "list_folders",
+      "description": "List folders visible to the connected NetEase Mail account.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false,
+        "description": "The input payload for listing NetEase Mail folders."
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "folders": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "The canonical IMAP mailbox path to pass back into folder inputs."
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "The decoded display name for the folder."
+                },
+                "delimiter": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The mailbox hierarchy delimiter when available."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "flags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "description": "One IMAP mailbox flag."
+                  },
+                  "description": "The IMAP flags attached to this mailbox."
+                },
+                "specialUse": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The special-use mailbox flag when available."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "path",
+                "name",
+                "delimiter",
+                "flags",
+                "specialUse"
+              ],
+              "description": "A NetEase Mail IMAP folder summary."
+            },
+            "description": "The folders returned by NetEase Mail IMAP."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "folders"
+        ],
+        "description": "The response returned when listing NetEase Mail folders."
+      }
+    },
+    {
+      "id": "netease_mail.mark_email_read",
+      "service": "netease_mail",
+      "name": "mark_email_read",
+      "description": "Mark one NetEase Mail message as read.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "folder": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The IMAP folder path returned by list_folders.",
+            "default": "INBOX"
+          },
+          "uid": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The IMAP UID of the message."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "uid"
+        ],
+        "description": "The input payload for marking one NetEase Mail email as read."
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "folder": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The IMAP folder path that contained the message."
+          },
+          "uid": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The IMAP UID of the message."
+          },
+          "read": {
+            "const": true,
+            "type": "boolean",
+            "description": "Whether the message is now marked as read."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "folder",
+          "uid",
+          "read"
+        ],
+        "description": "The response returned after marking one NetEase Mail email as read."
+      }
+    },
+    {
+      "id": "netease_mail.mark_email_unread",
+      "service": "netease_mail",
+      "name": "mark_email_unread",
+      "description": "Mark one NetEase Mail message as unread.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "folder": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The IMAP folder path returned by list_folders.",
+            "default": "INBOX"
+          },
+          "uid": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The IMAP UID of the message."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "uid"
+        ],
+        "description": "The input payload for marking one NetEase Mail email as unread."
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "folder": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The IMAP folder path that contained the message."
+          },
+          "uid": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The IMAP UID of the message."
+          },
+          "read": {
+            "const": false,
+            "type": "boolean",
+            "description": "Whether the message is now marked as read."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "folder",
+          "uid",
+          "read"
+        ],
+        "description": "The response returned after marking one NetEase Mail email as unread."
+      }
+    },
+    {
+      "id": "netease_mail.move_email",
+      "service": "netease_mail",
+      "name": "move_email",
+      "description": "Move one NetEase Mail message to another folder.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "folder": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The IMAP folder path returned by list_folders.",
+            "default": "INBOX"
+          },
+          "uid": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The IMAP UID of the message."
+          },
+          "targetFolder": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The destination IMAP folder path."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "uid",
+          "targetFolder"
+        ],
+        "description": "The input payload for moving one NetEase Mail email."
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "folder": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The source IMAP folder path."
+          },
+          "targetFolder": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The destination IMAP folder path."
+          },
+          "uid": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The IMAP UID of the message."
+          },
+          "moved": {
+            "const": true,
+            "type": "boolean",
+            "description": "Whether the message was moved."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "folder",
+          "targetFolder",
+          "uid",
+          "moved"
+        ],
+        "description": "The response returned after moving one NetEase Mail email."
+      }
+    },
+    {
+      "id": "netease_mail.reply_email",
+      "service": "netease_mail",
+      "name": "reply_email",
+      "description": "Reply to one NetEase Mail email using SMTP reply headers and quoted content.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "folder": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The IMAP folder path returned by list_folders.",
+            "default": "INBOX"
+          },
+          "uid": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The IMAP UID of the message."
+          },
+          "to": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "description": "An email address.",
+              "format": "email"
+            },
+            "description": "Override reply recipient email addresses.",
+            "minItems": 1
+          },
+          "cc": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "description": "An email address.",
+              "format": "email"
+            },
+            "description": "Override carbon-copy recipient email addresses.",
+            "minItems": 1
+          },
+          "bcc": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "description": "An email address.",
+              "format": "email"
+            },
+            "description": "Blind-carbon-copy recipient email addresses.",
+            "minItems": 1
+          },
+          "replyAll": {
+            "type": "boolean",
+            "description": "Whether to include original To and Cc recipients except the connected account.",
+            "default": false
+          },
+          "subject": {
+            "type": "string",
+            "description": "Override reply email subject."
+          },
+          "text": {
+            "type": "string",
+            "description": "The plain text reply body."
+          },
+          "html": {
+            "type": "string",
+            "description": "The HTML reply body."
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "filename": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "The filename to use for the outgoing attachment."
+                },
+                "contentType": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "The MIME content type of the attachment."
+                },
+                "contentUrl": {
+                  "type": "string",
+                  "description": "The public HTTP or HTTPS URL to fetch attachment content from.",
+                  "format": "uri"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "filename",
+                "contentUrl"
+              ],
+              "description": "An attachment to fetch and include in an outgoing email."
+            },
+            "description": "Attachments to fetch and include in the outgoing email. The combined size of all attachments must not exceed 10 MB per message.",
+            "minItems": 1,
+            "maxItems": 10
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "uid"
+        ],
+        "description": "The input payload for replying to one NetEase Mail email.",
+        "anyOf": [
+          {
+            "required": [
+              "text"
+            ]
+          },
+          {
+            "required": [
+              "html"
+            ]
+          }
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "messageId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "The SMTP Message-ID returned by the mail client."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "accepted": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "description": "An email address.",
+              "format": "email"
+            },
+            "description": "Recipient addresses accepted by the SMTP server."
+          },
+          "rejected": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "description": "An email address.",
+              "format": "email"
+            },
+            "description": "Recipient addresses rejected by the SMTP server."
+          },
+          "response": {
+            "type": "string",
+            "description": "The SMTP response text returned by the server."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "messageId",
+          "accepted",
+          "rejected",
+          "response"
+        ],
+        "description": "The response returned after sending a NetEase Mail email."
+      }
+    },
+    {
+      "id": "netease_mail.search_emails",
+      "service": "netease_mail",
+      "name": "search_emails",
+      "description": "Search one NetEase Mail folder and return lightweight email summaries.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "folder": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The IMAP folder path returned by list_folders.",
+            "default": "INBOX"
+          },
+          "unseen": {
+            "type": "boolean",
+            "description": "Whether to return only unread messages."
+          },
+          "from": {
+            "type": "string",
+            "minLength": 1,
+            "description": "A sender search term."
+          },
+          "to": {
+            "type": "string",
+            "minLength": 1,
+            "description": "A recipient search term."
+          },
+          "subject": {
+            "type": "string",
+            "minLength": 1,
+            "description": "A subject search term."
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "description": "A body text search term."
+          },
+          "since": {
+            "type": "string",
+            "description": "Only include messages on or after this YYYY-MM-DD date.",
+            "format": "date"
+          },
+          "before": {
+            "type": "string",
+            "description": "Only include messages before this YYYY-MM-DD date.",
+            "format": "date"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "description": "The maximum number of email summaries to return.",
+            "default": 20
+          },
+          "beforeUid": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Only include message UIDs lower than this cursor."
+          }
+        },
+        "additionalProperties": false,
+        "description": "The input payload for searching NetEase Mail emails."
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "folder": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The IMAP folder path that was searched."
+          },
+          "emails": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uid": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "The IMAP UID of the message."
+                },
+                "messageId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The Message-ID header when available."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "subject": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The email subject when available."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "from": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "description": "The display name when one was provided."
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "email": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "description": "The email address when one was provided."
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "required": [
+                        "name",
+                        "email"
+                      ],
+                      "description": "A normalized email address."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "to": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "description": "The display name when one was provided."
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "email": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "description": "The email address when one was provided."
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                      "name",
+                      "email"
+                    ],
+                    "description": "A normalized email address."
+                  },
+                  "description": "The primary recipients parsed from the message envelope."
+                },
+                "date": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The message date as an ISO 8601 timestamp.",
+                      "format": "date-time"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "flags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "description": "One IMAP flag."
+                  },
+                  "description": "The IMAP flags currently set on the message."
+                },
+                "seen": {
+                  "type": "boolean",
+                  "description": "Whether the message has the IMAP Seen flag."
+                },
+                "hasAttachments": {
+                  "type": "boolean",
+                  "description": "Whether the message has attachment parts."
+                },
+                "size": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "description": "The message size in bytes when available."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "uid",
+                "messageId",
+                "subject",
+                "from",
+                "to",
+                "date",
+                "flags",
+                "seen",
+                "hasAttachments",
+                "size"
+              ],
+              "description": "A lightweight NetEase Mail message summary."
+            },
+            "description": "The email summaries returned for this page."
+          },
+          "nextBeforeUid": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1,
+                "description": "The cursor to pass as beforeUid for the next page."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "folder",
+          "emails",
+          "nextBeforeUid"
+        ],
+        "description": "The response returned when searching NetEase Mail emails."
+      }
+    },
+    {
+      "id": "netease_mail.send_email",
+      "service": "netease_mail",
+      "name": "send_email",
+      "description": "Send an email through NetEase Mail SMTP.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "to": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "description": "An email address.",
+              "format": "email"
+            },
+            "description": "The primary recipient email addresses.",
+            "minItems": 1
+          },
+          "cc": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "description": "An email address.",
+              "format": "email"
+            },
+            "description": "The carbon-copy recipient email addresses.",
+            "minItems": 1
+          },
+          "bcc": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "description": "An email address.",
+              "format": "email"
+            },
+            "description": "The blind-carbon-copy recipient email addresses.",
+            "minItems": 1
+          },
+          "replyTo": {
+            "type": "string",
+            "minLength": 1,
+            "description": "An email address.",
+            "format": "email"
+          },
+          "subject": {
+            "type": "string",
+            "description": "The email subject."
+          },
+          "text": {
+            "type": "string",
+            "description": "The plain text email body."
+          },
+          "html": {
+            "type": "string",
+            "description": "The HTML email body."
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "filename": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "The filename to use for the outgoing attachment."
+                },
+                "contentType": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "The MIME content type of the attachment."
+                },
+                "contentUrl": {
+                  "type": "string",
+                  "description": "The public HTTP or HTTPS URL to fetch attachment content from.",
+                  "format": "uri"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "filename",
+                "contentUrl"
+              ],
+              "description": "An attachment to fetch and include in an outgoing email."
+            },
+            "description": "Attachments to fetch and include in the outgoing email. The combined size of all attachments must not exceed 10 MB per message.",
+            "minItems": 1,
+            "maxItems": 10
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "to",
+          "subject"
+        ],
+        "description": "The input payload for sending an email through NetEase Mail SMTP.",
+        "anyOf": [
+          {
+            "required": [
+              "text"
+            ]
+          },
+          {
+            "required": [
+              "html"
+            ]
+          }
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "messageId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "The SMTP Message-ID returned by the mail client."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "accepted": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "description": "An email address.",
+              "format": "email"
+            },
+            "description": "Recipient addresses accepted by the SMTP server."
+          },
+          "rejected": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "description": "An email address.",
+              "format": "email"
+            },
+            "description": "Recipient addresses rejected by the SMTP server."
+          },
+          "response": {
+            "type": "string",
+            "description": "The SMTP response text returned by the server."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "messageId",
+          "accepted",
+          "rejected",
+          "response"
+        ],
+        "description": "The response returned after sending a NetEase Mail email."
+      }
+    }
+  ]
+}

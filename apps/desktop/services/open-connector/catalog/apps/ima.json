@@ -1,0 +1,1895 @@
+{
+  "service": "ima",
+  "displayName": "ima",
+  "categories": [
+    "AI",
+    "Productivity"
+  ],
+  "authTypes": [
+    "custom_credential"
+  ],
+  "auth": [
+    {
+      "type": "custom_credential",
+      "fields": [
+        {
+          "key": "clientId",
+          "label": "Client ID",
+          "inputType": "text",
+          "required": true,
+          "secret": false,
+          "description": "The IMA OpenAPI client ID sent with the ima-openapi-clientid header. Get it from the Tencent IMA desktop client."
+        },
+        {
+          "key": "apiKey",
+          "label": "API Key",
+          "inputType": "password",
+          "required": true,
+          "secret": true,
+          "description": "The IMA OpenAPI API key sent with the ima-openapi-apikey header. Get it from the Tencent IMA desktop client."
+        }
+      ]
+    }
+  ],
+  "homepageUrl": "https://ima.qq.com",
+  "actions": [
+    {
+      "id": "ima.add_note_to_knowledge_base",
+      "service": "ima",
+      "name": "add_note_to_knowledge_base",
+      "description": "Add an existing IMA note into one IMA knowledge base.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "knowledgeBaseId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The IMA knowledge base ID."
+          },
+          "folderId": {
+            "type": "string",
+            "description": "The target folder ID inside the knowledge base."
+          },
+          "noteId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The IMA note ID to add."
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The title to use for the knowledge-base item."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "knowledgeBaseId",
+          "noteId",
+          "title"
+        ],
+        "description": "The input payload for adding an IMA note into a knowledge base."
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "mediaId": {
+            "type": "string",
+            "description": "The created knowledge-base media ID."
+          }
+        },
+        "additionalProperties": false,
+        "description": "The output payload for adding an IMA note into a knowledge base."
+      }
+    },
+    {
+      "id": "ima.append_note",
+      "service": "ima",
+      "name": "append_note",
+      "description": "Append Markdown content to an existing IMA note.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "noteId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The target IMA note ID."
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The Markdown content to append to the note."
+          }
+        },
+        "additionalProperties": false,
+        "description": "The input payload for appending to an IMA note."
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "noteId": {
+            "type": "string",
+            "description": "The target IMA note ID."
+          }
+        },
+        "additionalProperties": false,
+        "description": "The output payload for appending to an IMA note."
+      }
+    },
+    {
+      "id": "ima.check_repeated_names",
+      "service": "ima",
+      "name": "check_repeated_names",
+      "description": "Check whether file names already exist in an IMA knowledge-base folder.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "knowledgeBaseId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The IMA knowledge base ID."
+          },
+          "folderId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The target folder ID inside the knowledge base."
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "The file name to check."
+                },
+                "mediaType": {
+                  "type": "integer",
+                  "description": "The IMA media type for this file."
+                }
+              },
+              "additionalProperties": false,
+              "description": "One file name and media type to check."
+            },
+            "description": "The files to check for duplicate names.",
+            "minItems": 1,
+            "maxItems": 2000
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "knowledgeBaseId",
+          "files"
+        ],
+        "description": "The input payload for checking repeated IMA knowledge-base file names."
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "The checked file name."
+                },
+                "isRepeated": {
+                  "type": "boolean",
+                  "description": "Whether a file with this name already exists in the target folder."
+                }
+              },
+              "additionalProperties": false,
+              "description": "One IMA duplicate filename check result."
+            },
+            "description": "The duplicate check results."
+          }
+        },
+        "additionalProperties": false,
+        "description": "The output payload for repeated-name checks."
+      }
+    },
+    {
+      "id": "ima.create_note",
+      "service": "ima",
+      "name": "create_note",
+      "description": "Create a new IMA note from Markdown content.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The Markdown content to import as a new note."
+          },
+          "folderId": {
+            "type": "string",
+            "description": "The notebook folder ID that should receive the new note."
+          },
+          "folderName": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The notebook folder name that should receive the new note."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "content"
+        ],
+        "description": "The input payload for creating an IMA note."
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "noteId": {
+            "type": "string",
+            "description": "The created IMA note ID."
+          }
+        },
+        "additionalProperties": false,
+        "description": "The output payload for creating an IMA note."
+      }
+    },
+    {
+      "id": "ima.get_knowledge_bases",
+      "service": "ima",
+      "name": "get_knowledge_bases",
+      "description": "Fetch metadata for one or more IMA knowledge bases.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "knowledgeBaseIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "description": "One unique IMA knowledge base ID."
+            },
+            "description": "The unique IMA knowledge-base IDs to fetch.",
+            "minItems": 1,
+            "maxItems": 20,
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "The input payload for fetching IMA knowledge-base metadata."
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "knowledgeBases": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "The IMA knowledge base ID."
+                },
+                "name": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The knowledge base name."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "coverUrl": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The knowledge base cover image URL."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "description": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The knowledge base description."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "recommendedQuestions": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "description": "One recommended question returned by IMA."
+                  },
+                  "description": "The recommended questions configured for the knowledge base."
+                }
+              },
+              "additionalProperties": false,
+              "description": "One normalized IMA knowledge base summary."
+            },
+            "description": "The normalized knowledge-base metadata results."
+          }
+        },
+        "additionalProperties": false,
+        "description": "The output payload for fetching IMA knowledge-base metadata."
+      }
+    },
+    {
+      "id": "ima.get_knowledge_item_original",
+      "service": "ima",
+      "name": "get_knowledge_item_original",
+      "description": "Fetch access information for a knowledge-base item and download URL-backed original content through local transit storage when available.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "mediaId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The IMA media ID."
+          },
+          "fileName": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The preferred transit file name when downloading URL content."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "mediaId"
+        ],
+        "description": "The input payload for retrieving original IMA knowledge-base content."
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "mediaInfo": {
+            "type": "object",
+            "properties": {
+              "mediaType": {
+                "type": "integer",
+                "description": "The IMA media type."
+              },
+              "url": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "description": "The original media URL when IMA can provide one."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "headers": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string",
+                      "description": "One HTTP header value."
+                    },
+                    "description": "The HTTP headers required when fetching the original media URL."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "notebookId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "description": "The linked IMA note ID when the media is a note."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "accessible": {
+                "type": "boolean",
+                "description": "Whether the media can be accessed through a URL or linked note ID."
+              }
+            },
+            "additionalProperties": false,
+            "description": "The normalized IMA media information."
+          },
+          "content": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "The note content when the media item is an IMA note."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "file": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "fileId": {
+                    "type": "string",
+                    "description": "The local transit file identifier."
+                  },
+                  "downloadUrl": {
+                    "type": "string",
+                    "description": "The local URL for downloading the original file.",
+                    "format": "uri"
+                  },
+                  "sizeBytes": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "The downloaded file size in bytes."
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "The transit file name."
+                  },
+                  "mimeType": {
+                    "type": "string",
+                    "description": "The MIME type of the downloaded original file."
+                  }
+                },
+                "additionalProperties": false,
+                "description": "A downloaded original file stored in local transit storage."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "description": "The output payload for original IMA knowledge-base content retrieval."
+      }
+    },
+    {
+      "id": "ima.get_media_info",
+      "service": "ima",
+      "name": "get_media_info",
+      "description": "Get IMA knowledge-base media access information for one media item.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "mediaId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The IMA media ID."
+          }
+        },
+        "additionalProperties": false,
+        "description": "The input payload for fetching IMA media information."
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "mediaType": {
+            "type": "integer",
+            "description": "The IMA media type."
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "The original media URL when IMA can provide one."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "headers": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string",
+                  "description": "One HTTP header value."
+                },
+                "description": "The HTTP headers required when fetching the original media URL."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "notebookId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "The linked IMA note ID when the media is a note."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "accessible": {
+            "type": "boolean",
+            "description": "Whether the media can be accessed through a URL or linked note ID."
+          }
+        },
+        "additionalProperties": false,
+        "description": "The normalized IMA media information."
+      }
+    },
+    {
+      "id": "ima.get_note_content",
+      "service": "ima",
+      "name": "get_note_content",
+      "description": "Fetch the plain-text or JSON content for one IMA note.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "noteId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The IMA note ID."
+          },
+          "targetContentFormat": {
+            "type": "string",
+            "enum": [
+              "plain_text",
+              "json"
+            ],
+            "description": "The target content format returned by IMA."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "noteId"
+        ],
+        "description": "The input payload for fetching IMA note content."
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string",
+            "description": "The returned note content."
+          },
+          "targetContentFormat": {
+            "type": "string",
+            "enum": [
+              "plain_text",
+              "json"
+            ],
+            "description": "The target content format returned by IMA."
+          }
+        },
+        "additionalProperties": false,
+        "description": "The output payload for fetching IMA note content."
+      }
+    },
+    {
+      "id": "ima.import_urls",
+      "service": "ima",
+      "name": "import_urls",
+      "description": "Import webpages or WeChat article URLs into one IMA knowledge base.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "knowledgeBaseId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The IMA knowledge base ID."
+          },
+          "folderId": {
+            "type": "string",
+            "description": "The target folder ID inside the knowledge base."
+          },
+          "urls": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "description": "One webpage or WeChat article URL."
+            },
+            "description": "The URLs to import into the knowledge base.",
+            "minItems": 1,
+            "maxItems": 10
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "knowledgeBaseId",
+          "urls"
+        ],
+        "description": "The input payload for importing URLs into an IMA knowledge base."
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "description": "The imported URL."
+                },
+                "retCode": {
+                  "type": "integer",
+                  "description": "The per-URL return code reported by IMA."
+                },
+                "mediaId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The created media ID when the import succeeds."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false,
+              "description": "One normalized IMA URL import result."
+            },
+            "description": "The per-URL import results."
+          }
+        },
+        "additionalProperties": false,
+        "description": "The output payload for importing URLs into an IMA knowledge base."
+      }
+    },
+    {
+      "id": "ima.list_addable_knowledge_bases",
+      "service": "ima",
+      "name": "list_addable_knowledge_bases",
+      "description": "List the IMA knowledge bases that accept new content.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cursor": {
+            "type": "string",
+            "description": "The addable knowledge-base pagination cursor."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50,
+            "description": "The maximum number of knowledge bases to request."
+          }
+        },
+        "additionalProperties": false,
+        "description": "The input payload for listing addable IMA knowledge bases."
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "knowledgeBases": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "The IMA knowledge base ID."
+                },
+                "name": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The knowledge base name."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "coverUrl": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The knowledge base cover image URL."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "description": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The knowledge base description."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "recommendedQuestions": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "description": "One recommended question returned by IMA."
+                  },
+                  "description": "The recommended questions configured for the knowledge base."
+                }
+              },
+              "additionalProperties": false,
+              "description": "One normalized IMA knowledge base summary."
+            },
+            "description": "The normalized addable knowledge-base results."
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "The cursor for the next addable knowledge-base page, if any."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "isEnd": {
+            "type": "boolean",
+            "description": "Whether this addable knowledge-base page is the last page."
+          }
+        },
+        "additionalProperties": false,
+        "description": "The output payload for listing addable IMA knowledge bases."
+      }
+    },
+    {
+      "id": "ima.list_knowledge_items",
+      "service": "ima",
+      "name": "list_knowledge_items",
+      "description": "List files and folders inside one IMA knowledge-base folder.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "knowledgeBaseId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The IMA knowledge base ID."
+          },
+          "folderId": {
+            "type": "string",
+            "description": "The target folder ID inside the knowledge base."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "The knowledge-item pagination cursor."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50,
+            "description": "The maximum number of files and folders to request."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "knowledgeBaseId"
+        ],
+        "description": "The input payload for listing IMA knowledge-base items."
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "itemType": {
+                  "type": "string",
+                  "enum": [
+                    "knowledge",
+                    "folder"
+                  ],
+                  "description": "The normalized item type."
+                },
+                "mediaId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The knowledge media ID when the item is a file."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "folderId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The folder ID when the item is a folder."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "title": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The knowledge title when the item is a file."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "name": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The folder name when the item is a folder."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "parentFolderId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The parent folder ID."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "fileCount": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "description": "The number of files in the folder."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "folderCount": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "description": "The number of child folders in the folder."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "isTop": {
+                  "anyOf": [
+                    {
+                      "type": "boolean",
+                      "description": "Whether the folder is pinned to the top."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "highlightContent": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The highlighted content fragment returned by search."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false,
+              "description": "One normalized IMA knowledge-base item."
+            },
+            "description": "The normalized files and folders."
+          },
+          "currentPath": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "itemType": {
+                  "type": "string",
+                  "enum": [
+                    "knowledge",
+                    "folder"
+                  ],
+                  "description": "The normalized item type."
+                },
+                "mediaId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The knowledge media ID when the item is a file."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "folderId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The folder ID when the item is a folder."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "title": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The knowledge title when the item is a file."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "name": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The folder name when the item is a folder."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "parentFolderId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The parent folder ID."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "fileCount": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "description": "The number of files in the folder."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "folderCount": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "description": "The number of child folders in the folder."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "isTop": {
+                  "anyOf": [
+                    {
+                      "type": "boolean",
+                      "description": "Whether the folder is pinned to the top."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "highlightContent": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The highlighted content fragment returned by search."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false,
+              "description": "One normalized IMA knowledge-base item."
+            },
+            "description": "The normalized breadcrumb folders for the current location."
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "The cursor for the next knowledge-item page, if any."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "isEnd": {
+            "type": "boolean",
+            "description": "Whether this knowledge-item page is the last page."
+          }
+        },
+        "additionalProperties": false,
+        "description": "The output payload for listing IMA knowledge-base items."
+      }
+    },
+    {
+      "id": "ima.list_notebooks",
+      "service": "ima",
+      "name": "list_notebooks",
+      "description": "List IMA note folders for the connected account.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cursor": {
+            "type": "string",
+            "description": "The notebook pagination cursor."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20,
+            "description": "The maximum number of notebooks to request."
+          }
+        },
+        "additionalProperties": false,
+        "description": "The input payload for listing IMA notebooks."
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "notebooks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "folderId": {
+                  "type": "string",
+                  "description": "The IMA notebook folder ID."
+                },
+                "name": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The notebook name."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "noteCount": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "description": "The number of notes in the notebook."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "createTime": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "description": "The notebook creation time as a Unix timestamp in milliseconds."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "modifyTime": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "description": "The notebook modification time as a Unix timestamp in milliseconds."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "parentFolderId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The parent notebook folder ID."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "folderType": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "user_created",
+                        "all_notes",
+                        "uncategorized"
+                      ],
+                      "description": "The IMA notebook type."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false,
+              "description": "One normalized IMA notebook summary."
+            },
+            "description": "The normalized notebook results."
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "The cursor for the next notebook page, if any."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "isEnd": {
+            "type": "boolean",
+            "description": "Whether this notebook page is the last page."
+          }
+        },
+        "additionalProperties": false,
+        "description": "The output payload for listing IMA notebooks."
+      }
+    },
+    {
+      "id": "ima.list_notes",
+      "service": "ima",
+      "name": "list_notes",
+      "description": "List notes in one IMA notebook or across all notes.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "folderId": {
+            "type": "string",
+            "description": "The notebook folder ID to list. Omit it to list across all notes."
+          },
+          "sortType": {
+            "type": "string",
+            "enum": [
+              "modify_time",
+              "create_time",
+              "title",
+              "size"
+            ],
+            "description": "The IMA note sorting mode."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "The note pagination cursor."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20,
+            "description": "The maximum number of notes to request."
+          }
+        },
+        "additionalProperties": false,
+        "description": "The input payload for listing IMA notes."
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "noteId": {
+                  "type": "string",
+                  "description": "The IMA note ID."
+                },
+                "title": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The note title."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "summary": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The note summary returned by IMA."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "createTime": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "description": "The note creation time as a Unix timestamp in milliseconds."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "modifyTime": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "description": "The note modification time as a Unix timestamp in milliseconds."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "folderId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The notebook ID that owns the note."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "folderName": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The notebook name that owns the note."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "highlightInfo": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string",
+                        "description": "One returned string value."
+                      },
+                      "description": "A string-to-string map returned by IMA."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false,
+              "description": "One normalized IMA note summary."
+            },
+            "description": "The normalized note list results."
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "The cursor for the next note page, if any."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "isEnd": {
+            "type": "boolean",
+            "description": "Whether this note page is the last page."
+          }
+        },
+        "additionalProperties": false,
+        "description": "The output payload for listing IMA notes."
+      }
+    },
+    {
+      "id": "ima.search_knowledge_bases",
+      "service": "ima",
+      "name": "search_knowledge_bases",
+      "description": "Search IMA knowledge bases by name, or pass an empty query to list accessible knowledge bases.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "The knowledge-base search query. Use an empty string to list accessible bases."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "The knowledge-base pagination cursor."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20,
+            "description": "The maximum number of knowledge bases to request."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "query"
+        ],
+        "description": "The input payload for searching IMA knowledge bases."
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "knowledgeBases": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "The IMA knowledge base ID."
+                },
+                "name": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The knowledge base name."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "coverUrl": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The knowledge base cover image URL."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "description": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The knowledge base description."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "recommendedQuestions": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "description": "One recommended question returned by IMA."
+                  },
+                  "description": "The recommended questions configured for the knowledge base."
+                }
+              },
+              "additionalProperties": false,
+              "description": "One normalized IMA knowledge base summary."
+            },
+            "description": "The normalized knowledge-base search results."
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "The cursor for the next knowledge-base page, if any."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "isEnd": {
+            "type": "boolean",
+            "description": "Whether this knowledge-base page is the last page."
+          }
+        },
+        "additionalProperties": false,
+        "description": "The output payload for searching IMA knowledge bases."
+      }
+    },
+    {
+      "id": "ima.search_knowledge_items",
+      "service": "ima",
+      "name": "search_knowledge_items",
+      "description": "Search files and folders inside one IMA knowledge base.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "knowledgeBaseId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The IMA knowledge base ID."
+          },
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The search keyword."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "The knowledge-item search cursor."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "knowledgeBaseId",
+          "query"
+        ],
+        "description": "The input payload for searching IMA knowledge-base items."
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "itemType": {
+                  "type": "string",
+                  "enum": [
+                    "knowledge",
+                    "folder"
+                  ],
+                  "description": "The normalized item type."
+                },
+                "mediaId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The knowledge media ID when the item is a file."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "folderId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The folder ID when the item is a folder."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "title": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The knowledge title when the item is a file."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "name": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The folder name when the item is a folder."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "parentFolderId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The parent folder ID."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "fileCount": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "description": "The number of files in the folder."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "folderCount": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "description": "The number of child folders in the folder."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "isTop": {
+                  "anyOf": [
+                    {
+                      "type": "boolean",
+                      "description": "Whether the folder is pinned to the top."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "highlightContent": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The highlighted content fragment returned by search."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false,
+              "description": "One normalized IMA knowledge-base item."
+            },
+            "description": "The normalized knowledge-item search results."
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "The cursor for the next knowledge-item search page, if any."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "isEnd": {
+            "type": "boolean",
+            "description": "Whether this knowledge-item search page is the last page."
+          }
+        },
+        "additionalProperties": false,
+        "description": "The output payload for searching IMA knowledge-base items."
+      }
+    },
+    {
+      "id": "ima.search_notes",
+      "service": "ima",
+      "name": "search_notes",
+      "description": "Search IMA notes by title or note body text.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The search keyword."
+          },
+          "searchType": {
+            "type": "string",
+            "enum": [
+              "title",
+              "content"
+            ],
+            "description": "The IMA note search field."
+          },
+          "sortType": {
+            "type": "string",
+            "enum": [
+              "modify_time",
+              "create_time",
+              "title",
+              "size"
+            ],
+            "description": "The IMA note sorting mode."
+          },
+          "start": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The zero-based start offset for this search page."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20,
+            "description": "The maximum number of notes to request for this page."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "query"
+        ],
+        "description": "The input payload for searching IMA notes."
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "noteId": {
+                  "type": "string",
+                  "description": "The IMA note ID."
+                },
+                "title": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The note title."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "summary": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The note summary returned by IMA."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "createTime": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "description": "The note creation time as a Unix timestamp in milliseconds."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "modifyTime": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "description": "The note modification time as a Unix timestamp in milliseconds."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "folderId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The notebook ID that owns the note."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "folderName": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "description": "The notebook name that owns the note."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "highlightInfo": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string",
+                        "description": "One returned string value."
+                      },
+                      "description": "A string-to-string map returned by IMA."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false,
+              "description": "One normalized IMA note summary."
+            },
+            "description": "The normalized note search results."
+          },
+          "isEnd": {
+            "type": "boolean",
+            "description": "Whether this page is the last search page."
+          },
+          "totalHitCount": {
+            "type": "integer",
+            "description": "The total number of matched notes."
+          },
+          "nextStart": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "description": "The next start offset to use for another page, if any."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "description": "The output payload for searching IMA notes."
+      }
+    },
+    {
+      "id": "ima.upload_file_to_knowledge_base",
+      "service": "ima",
+      "name": "upload_file_to_knowledge_base",
+      "description": "Upload a file from an HTTP URL into one IMA knowledge base, including duplicate checks, COS upload, and add_knowledge.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "knowledgeBaseId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The IMA knowledge base ID."
+          },
+          "folderId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The target folder ID inside the knowledge base."
+          },
+          "fileUrl": {
+            "type": "string",
+            "description": "The HTTP or HTTPS URL whose bytes should be uploaded to IMA.",
+            "format": "uri"
+          },
+          "fileName": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The file name to store in IMA, including the extension."
+          },
+          "contentType": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The MIME type of the file. If omitted, IMA upload type is inferred from fileName."
+          },
+          "duplicatePolicy": {
+            "type": "string",
+            "enum": [
+              "fail",
+              "keep_both"
+            ],
+            "description": "How to handle an existing file with the same name."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "knowledgeBaseId",
+          "fileUrl",
+          "fileName"
+        ],
+        "description": "The input payload for uploading a file into an IMA knowledge base."
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "mediaId": {
+            "type": "string",
+            "description": "The created IMA media ID."
+          },
+          "fileName": {
+            "type": "string",
+            "description": "The final uploaded file name."
+          },
+          "mediaType": {
+            "type": "integer",
+            "description": "The IMA media type used for upload."
+          },
+          "contentType": {
+            "type": "string",
+            "description": "The MIME type uploaded to COS."
+          },
+          "fileSize": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The uploaded file size in bytes."
+          },
+          "duplicate": {
+            "type": "boolean",
+            "description": "Whether the original file name was already repeated."
+          }
+        },
+        "additionalProperties": false,
+        "description": "The output payload for an uploaded IMA knowledge-base file."
+      }
+    }
+  ]
+}

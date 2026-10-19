@@ -1,0 +1,221 @@
+{
+  "service": "qcc_mcp",
+  "displayName": "企查查",
+  "description": "连接企查查企业信息、风险、知识产权、经营和董监高服务。",
+  "categories": [
+    "数据",
+    "商业"
+  ],
+  "authTypes": [
+    "oauth2"
+  ],
+  "auth": [
+    {
+      "type": "oauth2",
+      "authorizationUrl": "https://agent.qcc.com/oauth/authorize",
+      "tokenUrl": "https://agent.qcc.com/oauth/token",
+      "refreshTokenUrl": "https://agent.qcc.com/oauth/token",
+      "scopes": [
+        "mcp:tools"
+      ],
+      "tokenEndpointAuthMethod": "none",
+      "pkce": {
+        "method": "S256"
+      },
+      "authorizationParams": {
+        "resource": "https://agent.qcc.com/mcp/company/stream"
+      },
+      "tokenParams": {
+        "resource": "https://agent.qcc.com/mcp/company/stream"
+      },
+      "dynamicClientRegistration": {
+        "registrationUrl": "https://agent.qcc.com/oauth/register",
+        "clientName": "元景数字员工",
+        "tokenEndpointAuthMethod": "none"
+      },
+      "clientSetup": {
+        "docsUrl": "https://agent.qcc.com/.well-known/oauth-authorization-server",
+        "steps": [
+          "Qichacha uses the Yuanjing Digital Employee OAuth client for this local runtime.",
+          "Register this runtime's exact callback URL in the Qichacha OAuth app before signing in.",
+          "After signing in, one grant can be used across the Qichacha resource set."
+        ]
+      }
+    }
+  ],
+  "homepageUrl": "https://www.qcc.com",
+  "actions": [
+    {
+      "id": "qcc_mcp.call_tool",
+      "service": "qcc_mcp",
+      "name": "call_tool",
+      "description": "Call a current Qichacha MCP tool with JSON arguments. Discover the live schema first, then choose the matching resource group before calling.",
+      "requiredScopes": [
+        "qcc_mcp.tools"
+      ],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "resource": {
+            "type": "string",
+            "enum": [
+              "company",
+              "risk",
+              "ipr",
+              "operation",
+              "executive"
+            ],
+            "description": "The Qichacha MCP resource group to inspect or call. Defaults to company."
+          },
+          "toolName": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The exact tool name returned by Qichacha MCP discovery."
+          },
+          "arguments": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": true,
+            "description": "JSON arguments matching the current inputSchema for the selected Qichacha MCP tool."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "toolName"
+        ],
+        "description": "Input for invoking one current Qichacha MCP tool."
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "resource": {
+            "type": "string",
+            "enum": [
+              "company",
+              "risk",
+              "ipr",
+              "operation",
+              "executive"
+            ],
+            "description": "The Qichacha MCP resource group to inspect or call. Defaults to company."
+          },
+          "result": {
+            "description": "The current Qichacha MCP result after standard MCP content normalization."
+          }
+        },
+        "additionalProperties": false,
+        "description": "The normalized result returned by the Qichacha MCP tool."
+      },
+      "followUpActions": [
+        "qcc_mcp.list_tools"
+      ]
+    },
+    {
+      "id": "qcc_mcp.list_tools",
+      "service": "qcc_mcp",
+      "name": "list_tools",
+      "description": "List the current tool catalog and live input schemas exposed by one Qichacha MCP resource group.",
+      "requiredScopes": [
+        "qcc_mcp.tools"
+      ],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "resource": {
+            "type": "string",
+            "enum": [
+              "company",
+              "risk",
+              "ipr",
+              "operation",
+              "executive"
+            ],
+            "description": "The Qichacha MCP resource group to inspect or call. Defaults to company."
+          }
+        },
+        "additionalProperties": false,
+        "description": "Input for discovering Qichacha MCP tools."
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "resource": {
+            "type": "string",
+            "enum": [
+              "company",
+              "risk",
+              "ipr",
+              "operation",
+              "executive"
+            ],
+            "description": "The Qichacha MCP resource group to inspect or call. Defaults to company."
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "The exact Qichacha MCP tool name to pass to call_tool."
+                },
+                "description": {
+                  "type": "string",
+                  "description": "The current tool description supplied by Qichacha."
+                },
+                "annotations": {
+                  "type": "object",
+                  "properties": {
+                    "title": {
+                      "type": "string",
+                      "description": "A human-readable title for the tool."
+                    },
+                    "readOnlyHint": {
+                      "type": "boolean",
+                      "description": "Whether Qichacha expects the tool not to modify data."
+                    },
+                    "destructiveHint": {
+                      "type": "boolean",
+                      "description": "Whether Qichacha indicates that the tool may be destructive."
+                    },
+                    "idempotentHint": {
+                      "type": "boolean",
+                      "description": "Whether repeated calls with the same arguments are idempotent."
+                    },
+                    "openWorldHint": {
+                      "type": "boolean",
+                      "description": "Whether the tool may interact with external entities."
+                    }
+                  },
+                  "additionalProperties": true,
+                  "description": "MCP behavior hints supplied by Qichacha for a tool."
+                },
+                "inputSchema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": true,
+                  "description": "The current JSON Schema for the tool arguments, supplied by Qichacha MCP."
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "name",
+                "inputSchema"
+              ],
+              "description": "A tool currently exposed by Qichacha MCP."
+            },
+            "description": "Tools currently exposed by the selected MCP resource."
+          }
+        },
+        "additionalProperties": false,
+        "description": "The current Qichacha MCP tool catalog for the selected resource."
+      },
+      "followUpActions": [
+        "qcc_mcp.call_tool"
+      ]
+    }
+  ]
+}

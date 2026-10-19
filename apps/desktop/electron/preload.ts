@@ -7,6 +7,7 @@ import type { DesktopProfileRoute } from './desktop-profile'
 import type { HudModifierApi, HudModifierStatus } from './hud-modifier-types'
 import type { CloudDriveRequest, CloudDriveTransferProgress, CloudDriveTransferRequest } from './login/contract'
 import { maskMcpSecrets, restoreMcpSecrets } from './mcp-secrets'
+import { CONNECTOR_CHANNEL, type LocalConnectorRequest } from './open-connector/contract'
 import { ASR_CHANNEL } from './uniwork-asr/contract'
 import { PLAN_USAGE_CHANNEL } from './uniwork-usage/contract'
 import { WELCOME_CATALOG_CHANNEL } from './uniwork-welcome/catalog'
@@ -32,6 +33,7 @@ const launchFlags: { localModels?: boolean; guestOnboarding?: boolean; skipIntro
 const localSkin = ipcRenderer.sendSync('hermes:skin:local')
 
 contextBridge.exposeInMainWorld('hermesDesktop', {
+  localConnectors: (input: LocalConnectorRequest) => ipcRenderer.invoke(CONNECTOR_CHANNEL, input),
   // 只读脱敏账号信息，页面不能传入身份或账号路径。
   getPlanUsage: () => ipcRenderer.invoke(PLAN_USAGE_CHANNEL),
   getMaasAccount: () => ipcRenderer.invoke('hermes:maas-account:get'),

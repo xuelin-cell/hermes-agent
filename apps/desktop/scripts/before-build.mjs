@@ -28,6 +28,9 @@ const {
 } = require('../product-identity.cjs')
 
 export default async function beforeBuild() {
+  if (!fs.existsSync(path.join(import.meta.dirname, '../services/open-connector/node_modules/hono/package.json'))) {
+    throw new Error('OpenConnector dependencies are missing. Run npm run connectors:install in apps/desktop before packaging.')
+  }
   stageMsixAssets()
   writeMsixExtensions()
   if (store) stageStoreManifest(path.join(import.meta.dirname, '..'), process.env.HERMES_PAYLOAD_TAG)

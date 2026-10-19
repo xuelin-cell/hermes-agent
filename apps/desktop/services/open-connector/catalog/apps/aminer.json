@@ -1,0 +1,866 @@
+{
+  "service": "aminer",
+  "displayName": "AMiner 学术",
+  "description": "搜索和查询 AMiner 的论文、学者、机构、专利及期刊会议数据。",
+  "categories": [
+    "数据",
+    "研究"
+  ],
+  "authTypes": [
+    "api_key"
+  ],
+  "auth": [
+    {
+      "type": "api_key",
+      "label": "AMiner Auth Token",
+      "placeholder": "粘贴 AMiner Auth Token",
+      "description": "在 AMiner 开放平台控制台申请 Auth Token。OpenConnector 会通过 Authorization: Bearer 请求头访问 AMiner MCP。"
+    }
+  ],
+  "homepageUrl": "https://www.aminer.cn/open/docs?mcp=1",
+  "actions": [
+    {
+      "id": "aminer.disambiguate_organization",
+      "service": "aminer",
+      "name": "disambiguate_organization",
+      "description": "Normalize a free-form organization name to an AMiner canonical organization name.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "org": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The free-form organization name."
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "org"
+        ],
+        "description": "An organization name to normalize."
+      },
+      "outputSchema": {
+        "description": "The canonical organization match returned by AMiner."
+      }
+    },
+    {
+      "id": "aminer.disambiguate_organization_pro",
+      "service": "aminer",
+      "name": "disambiguate_organization_pro",
+      "description": "Resolve a free-form organization name to AMiner first-level and second-level organization IDs.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "org": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The free-form organization name."
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "org"
+        ],
+        "description": "An organization name to resolve."
+      },
+      "outputSchema": {
+        "description": "The resolved organization hierarchy returned by AMiner."
+      }
+    },
+    {
+      "id": "aminer.get_organization_detail",
+      "service": "aminer",
+      "name": "get_organization_detail",
+      "description": "Get AMiner details for one or more organizations, including names, aliases, type, and profile data.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "description": "One value."
+            },
+            "description": "AMiner organization IDs."
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "ids"
+        ],
+        "description": "An organization lookup."
+      },
+      "outputSchema": {
+        "description": "Organization metadata returned by AMiner."
+      }
+    },
+    {
+      "id": "aminer.get_organization_papers",
+      "service": "aminer",
+      "name": "get_organization_papers",
+      "description": "List papers published by scholars from an AMiner organization.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "org_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The AMiner organization ID."
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The result offset."
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "org_id"
+        ],
+        "description": "An organization paper lookup."
+      },
+      "outputSchema": {
+        "description": "Organization papers returned by AMiner."
+      }
+    },
+    {
+      "id": "aminer.get_organization_patents",
+      "service": "aminer",
+      "name": "get_organization_patents",
+      "description": "List patents assigned to or applied for by an AMiner organization.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The AMiner organization ID."
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The one-based result page."
+          },
+          "page_size": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The number of patents to return."
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "ass",
+              "app"
+            ],
+            "description": "The organization role to match."
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "id"
+        ],
+        "description": "An organization patent lookup."
+      },
+      "outputSchema": {
+        "description": "Organization patents returned by AMiner."
+      }
+    },
+    {
+      "id": "aminer.get_organization_persons",
+      "service": "aminer",
+      "name": "get_organization_persons",
+      "description": "List scholars associated with an AMiner organization.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "org_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The AMiner organization ID."
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The result offset."
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "org_id"
+        ],
+        "description": "An organization scholar lookup."
+      },
+      "outputSchema": {
+        "description": "Organization scholars returned by AMiner."
+      }
+    },
+    {
+      "id": "aminer.get_paper_citations",
+      "service": "aminer",
+      "name": "get_paper_citations",
+      "description": "List papers cited by an AMiner paper.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The AMiner paper ID."
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "id"
+        ],
+        "description": "A paper citation lookup."
+      },
+      "outputSchema": {
+        "description": "Cited papers returned by AMiner."
+      }
+    },
+    {
+      "id": "aminer.get_paper_detail",
+      "service": "aminer",
+      "name": "get_paper_detail",
+      "description": "Get detailed AMiner metadata for one paper, including authors, DOI, keywords, venue, and year.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The AMiner paper ID."
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "id"
+        ],
+        "description": "A paper lookup."
+      },
+      "outputSchema": {
+        "description": "Detailed paper metadata returned by AMiner."
+      }
+    },
+    {
+      "id": "aminer.get_papers_info",
+      "service": "aminer",
+      "name": "get_papers_info",
+      "description": "Get summary metadata for up to 100 AMiner papers in one call.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "description": "One AMiner paper ID."
+            },
+            "description": "AMiner paper IDs, up to 100.",
+            "maxItems": 100
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "ids"
+        ],
+        "description": "A batch paper lookup."
+      },
+      "outputSchema": {
+        "description": "Batch paper metadata returned by AMiner."
+      }
+    },
+    {
+      "id": "aminer.get_patent_detail",
+      "service": "aminer",
+      "name": "get_patent_detail",
+      "description": "Get detailed AMiner patent metadata, including claims, applicants, assignees, and inventors.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The AMiner patent ID."
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "id"
+        ],
+        "description": "A patent lookup."
+      },
+      "outputSchema": {
+        "description": "Detailed patent metadata returned by AMiner."
+      }
+    },
+    {
+      "id": "aminer.get_patent_info",
+      "service": "aminer",
+      "name": "get_patent_info",
+      "description": "Get concise AMiner patent metadata, including title, publication number, country, and inventors.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The AMiner patent ID."
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "id"
+        ],
+        "description": "A patent summary lookup."
+      },
+      "outputSchema": {
+        "description": "Patent summary metadata returned by AMiner."
+      }
+    },
+    {
+      "id": "aminer.get_person_detail",
+      "service": "aminer",
+      "name": "get_person_detail",
+      "description": "Get a scholar profile from AMiner, including biography, education, position, and honors.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The AMiner scholar ID."
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "id"
+        ],
+        "description": "A scholar lookup."
+      },
+      "outputSchema": {
+        "description": "Detailed scholar metadata returned by AMiner."
+      }
+    },
+    {
+      "id": "aminer.get_person_figure",
+      "service": "aminer",
+      "name": "get_person_figure",
+      "description": "Get an AMiner scholar portrait with research interests, domains, work history, and education.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The AMiner scholar ID."
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "id"
+        ],
+        "description": "A scholar portrait lookup."
+      },
+      "outputSchema": {
+        "description": "The scholar portrait returned by AMiner."
+      }
+    },
+    {
+      "id": "aminer.get_person_papers",
+      "service": "aminer",
+      "name": "get_person_papers",
+      "description": "List papers associated with an AMiner scholar.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The AMiner scholar ID."
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "id"
+        ],
+        "description": "A scholar paper lookup."
+      },
+      "outputSchema": {
+        "description": "Papers associated with the scholar."
+      }
+    },
+    {
+      "id": "aminer.get_person_patents",
+      "service": "aminer",
+      "name": "get_person_patents",
+      "description": "List patents associated with an AMiner scholar.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The AMiner scholar ID."
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "id"
+        ],
+        "description": "A scholar patent lookup."
+      },
+      "outputSchema": {
+        "description": "Patents associated with the scholar."
+      }
+    },
+    {
+      "id": "aminer.get_person_projects",
+      "service": "aminer",
+      "name": "get_person_projects",
+      "description": "Get projects led by or involving an AMiner scholar.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The AMiner scholar ID."
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "id"
+        ],
+        "description": "A scholar project lookup."
+      },
+      "outputSchema": {
+        "description": "Scholar projects returned by AMiner."
+      }
+    },
+    {
+      "id": "aminer.get_person_stats",
+      "service": "aminer",
+      "name": "get_person_stats",
+      "description": "Get AMiner statistics for a scholar, including publication, citation, H-index, and G-index values.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The AMiner scholar ID."
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "id"
+        ],
+        "description": "A scholar statistics lookup."
+      },
+      "outputSchema": {
+        "description": "Scholar statistics returned by AMiner."
+      }
+    },
+    {
+      "id": "aminer.get_venue_detail",
+      "service": "aminer",
+      "name": "get_venue_detail",
+      "description": "Get AMiner details for a journal or conference, including ISSN, aliases, and venue type.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The AMiner venue ID."
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "id"
+        ],
+        "description": "A venue lookup."
+      },
+      "outputSchema": {
+        "description": "Venue metadata returned by AMiner."
+      }
+    },
+    {
+      "id": "aminer.get_venue_papers",
+      "service": "aminer",
+      "name": "get_venue_papers",
+      "description": "List papers published in an AMiner journal or conference, optionally filtered by year.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The AMiner venue ID."
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The result offset."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The maximum number of papers to return."
+          },
+          "year": {
+            "type": "integer",
+            "description": "The publication year to filter by."
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "id"
+        ],
+        "description": "A venue paper lookup."
+      },
+      "outputSchema": {
+        "description": "Venue papers returned by AMiner."
+      }
+    },
+    {
+      "id": "aminer.recommend_paper",
+      "service": "aminer",
+      "name": "recommend_paper",
+      "description": "Recommend AMiner papers using research topics, a scholar name, or an AMiner scholar ID.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "topics": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "description": "One value."
+            },
+            "description": "Research topics of interest."
+          },
+          "author_name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "A scholar name used as a recommendation seed."
+          },
+          "author_org": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The scholar organization used to narrow an author-name match."
+          },
+          "aminer_author_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "An AMiner scholar ID used as a recommendation seed."
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20,
+            "description": "The number of recommendations, from 1 to 20."
+          }
+        },
+        "additionalProperties": true,
+        "description": "Paper recommendation interests. Supply topics, author_name, or aminer_author_id.",
+        "anyOf": [
+          {
+            "required": [
+              "topics"
+            ]
+          },
+          {
+            "required": [
+              "author_name"
+            ]
+          },
+          {
+            "required": [
+              "aminer_author_id"
+            ]
+          }
+        ]
+      },
+      "outputSchema": {
+        "description": "Paper recommendations returned by AMiner."
+      }
+    },
+    {
+      "id": "aminer.search_organization",
+      "service": "aminer",
+      "name": "search_organization",
+      "description": "Search AMiner for organization IDs and canonical names using one or more name queries.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "orgs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "description": "One value."
+            },
+            "description": "Organization names or name fragments."
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "orgs"
+        ],
+        "description": "Organization names to search for."
+      },
+      "outputSchema": {
+        "description": "Organization matches returned by AMiner."
+      }
+    },
+    {
+      "id": "aminer.search_paper",
+      "service": "aminer",
+      "name": "search_paper",
+      "description": "Search AMiner papers by title, keywords, abstract, author, organization, or venue and return matching paper IDs.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Words from the paper title."
+          },
+          "keyword": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Keywords associated with the paper."
+          },
+          "abstract": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Words expected in the abstract."
+          },
+          "author": {
+            "type": "string",
+            "minLength": 1,
+            "description": "An author name."
+          },
+          "org": {
+            "type": "string",
+            "minLength": 1,
+            "description": "An author organization."
+          },
+          "venue": {
+            "type": "string",
+            "minLength": 1,
+            "description": "A journal or conference name."
+          },
+          "page": {
+            "type": "integer",
+            "description": "The one-based result page."
+          },
+          "size": {
+            "type": "integer",
+            "description": "The number of results to return."
+          },
+          "order": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The AMiner result ordering option."
+          }
+        },
+        "additionalProperties": true,
+        "description": "Paper search filters. Supply at least one meaningful search field."
+      },
+      "outputSchema": {
+        "description": "Paper matches returned by AMiner."
+      }
+    },
+    {
+      "id": "aminer.search_paper_by_title",
+      "service": "aminer",
+      "name": "search_paper_by_title",
+      "description": "Search AMiner for paper IDs, titles, and DOIs using a paper title.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The paper title to search for."
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10,
+            "description": "The one-based result page, up to 10."
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20,
+            "description": "The number of results to return, up to 20."
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "title"
+        ],
+        "description": "A title-based paper search."
+      },
+      "outputSchema": {
+        "description": "Paper title matches returned by AMiner."
+      }
+    },
+    {
+      "id": "aminer.search_patent",
+      "service": "aminer",
+      "name": "search_patent",
+      "description": "Search AMiner for patent IDs, titles, and publication numbers by patent name.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The patent name or search phrase."
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5,
+            "description": "The one-based result page, up to 5."
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20,
+            "description": "The number of results to return, up to 20."
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "query"
+        ],
+        "description": "A patent search."
+      },
+      "outputSchema": {
+        "description": "Patent matches returned by AMiner."
+      }
+    },
+    {
+      "id": "aminer.search_person",
+      "service": "aminer",
+      "name": "search_person",
+      "description": "Search AMiner for scholar IDs, names, and affiliations.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The scholar name to search for."
+          },
+          "org": {
+            "type": "string",
+            "minLength": 1,
+            "description": "An organization name used to narrow the search."
+          },
+          "org_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "An AMiner organization ID used to narrow the search."
+          },
+          "size": {
+            "type": "integer",
+            "description": "The number of scholars to return."
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "name"
+        ],
+        "description": "Scholar search filters."
+      },
+      "outputSchema": {
+        "description": "Scholar matches returned by AMiner."
+      }
+    },
+    {
+      "id": "aminer.search_venue",
+      "service": "aminer",
+      "name": "search_venue",
+      "description": "Search AMiner for journal or conference IDs and standard names.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The journal or conference name."
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "name"
+        ],
+        "description": "A journal or conference search."
+      },
+      "outputSchema": {
+        "description": "Venue matches returned by AMiner."
+      }
+    }
+  ]
+}

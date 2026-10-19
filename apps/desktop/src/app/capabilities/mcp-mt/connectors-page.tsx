@@ -4,15 +4,17 @@ import { useEffect, useId, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
 import { PAGE_INSET_X } from '@/app/layout-constants'
-import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { SearchField } from '@/components/ui/search-field'
 import { useI18n } from '@/i18n'
 import { cn } from '@/lib/utils'
 
+import { CONNECTOR_SPECS, type ConnectorId } from '../../../../electron/open-connector/contract'
+
 import { McpConnectorsTab, type McpConnectorsTabProps } from './connectors-tab'
 import { RECOMMENDED_CONNECTORS } from './recommended-catalog'
 import { RecommendedConnectorCard, RecommendedConnectorDetail } from './recommended-connector'
+import { useRecommendedConnections } from './use-recommended-connections'
 
 /** 推荐目录只负责展示，MCP 页继续使用原生管理；深链始终优先打开 MCP。 */
 export function ConnectorsPage(props: McpConnectorsTabProps) {
@@ -26,8 +28,11 @@ export function ConnectorsPage(props: McpConnectorsTabProps) {
   const [mcpOpened, setMcpOpened] = useState(view === 'mcp')
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [detailMode, setDetailMode] = useState<'overview' | 'credentials'>('overview')
+  const connections = useRecommendedConnections(props.profile)
   const panelId = useId()
   const selected = RECOMMENDED_CONNECTORS.find(entry => entry.id === selectedId)
+  const connected = connections.rows.some(row => row.id === selectedId && row.connected)
   const term = query.trim().toLocaleLowerCase()
 
   const entries = RECOMMENDED_CONNECTORS.filter(entry => {
@@ -37,7 +42,7 @@ export function ConnectorsPage(props: McpConnectorsTabProps) {
   })
 
   // 切换账号或 Profile 后不保留上一个范围打开的详情。
-  useEffect(() => setSelectedId(null), [props.profile])
+  useEffect(() => setSelectedId(null), [connections.scopeKey])
 
   // 首次打开后保留原生编辑器，切换推荐页不丢失尚未保存的 MCP 草稿。
   useEffect(() => {
@@ -60,6 +65,40 @@ export function ConnectorsPage(props: McpConnectorsTabProps) {
 
     setSelectedId(null)
     navigate({ ...location, search: nextParams.toString() ? `?${nextParams.toString()}` : '' }, { replace: true })
+  }
+
+  function connect(id: ConnectorId): void {
+    setSelectedId(id)
+
+    if (CONNECTOR_SPECS[id].auth === 'oauth2') {
+      setDetailMode('overview')
+      void connections.request('authorize', id)
+    } else {
+      setDetailMode('credentials')
+    }
+  }
+
+  async function openExample(text: string): Promise<void> {
+    if (!selected) {
+      return
+    }
+
+    if (!connected) {
+      connect(selected.id)
+
+      return
+    }
+
+    const current = connections.capture()
+    const { openConnectorExample } = await import('./open-connector-example')
+
+    if (!current()) {
+      return
+    }
+
+    openConnectorExample(props.profile, text)
+    setSelectedId(null)
+    navigate('/')
   }
 
   return (
@@ -123,7 +162,17 @@ export function ConnectorsPage(props: McpConnectorsTabProps) {
       >
         <div className="mt-connectors-grid">
           {entries.map(entry => (
-            <RecommendedConnectorCard entry={entry} key={entry.id} onSelect={() => setSelectedId(entry.id)} />
+            <RecommendedConnectorCard
+              connected={connections.rows.some(row => row.id === entry.id && row.connected)}
+              disabled={connections.busy || !connections.available}
+              entry={entry}
+              key={entry.id}
+              onConnect={() => connect(entry.id)}
+              onSelect={() => {
+                setDetailMode('overview')
+                setSelectedId(entry.id)
+              }}
+            />
           ))}
         </div>
         {entries.length === 0 && <EmptyState title={copy.noMatches} />}
@@ -137,11 +186,36 @@ export function ConnectorsPage(props: McpConnectorsTabProps) {
       >
         {(mcpOpened || view === 'mcp') && <McpConnectorsTab {...props} />}
       </div>
-      <RecommendedConnectorDetail entry={selected ?? null} onClose={() => setSelectedId(null)}>
-        <Button onClick={() => changeView('mcp')} variant="secondary">
-          MCP
-        </Button>
-      </RecommendedConnectorDetail>
+      <RecommendedConnectorDetail
+        available={connections.available}
+        busy={connections.busy}
+        connected={connected}
+        entry={selected ?? null}
+        error={connections.error}
+        key={selectedId}
+        mode={detailMode}
+        onCancel={connections.cancel}
+        onClose={() => setSelectedId(null)}
+        onConnect={() => {
+          if (selected) {
+            connect(selected.id)
+          }
+        }}
+        onConnected={() => setDetailMode('overview')}
+        onDisconnect={() => {
+          if (selected) {
+            void connections.request('disconnect', selected.id)
+          }
+        }}
+        onExample={text => void openExample(text)}
+        onQr={connections.qr}
+        onSubmit={async values => {
+          if (selected && (await connections.request('connect', selected.id, values))) {
+            setDetailMode('overview')
+          }
+        }}
+        waiting={connections.pending === selectedId}
+      />
     </div>
   )
 }

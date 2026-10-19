@@ -11,6 +11,29 @@ export const zhHant = defineLocale({
   },
   connectorsPage: {
     recommended: {
+      qrHint: '使用企業微信掃碼建立並授權機器人，也可在下方手動填寫 Bot ID / Secret。',
+      qrExpired: '二維碼已過期，請重新整理後重試。',
+      qrRefresh: '重新整理二維碼',
+      connect: (name: string) => `連接 ${name}`,
+      connectAction: '連接',
+      connected: '已連接',
+      disconnect: '中斷連接',
+      tryIt: '試試這樣用',
+      brand: '元景數字員工',
+      credentials: '填寫連接資訊',
+      credentialsHint: '憑證在本機加密儲存。郵箱請填寫開啟 IMAP/SMTP 後產生的授權碼，而不是登入密碼。',
+      waiting: '請在瀏覽器完成授權，此頁面會自動更新。',
+      cancel: '取消',
+      localOnly: '推薦連接器僅支援本機桌面後端。遠端 MCP 服務請在 MCP 分頁管理。',
+      nextSession: '已就緒，可在新聊天使用；現有對話保持原工具集。',
+      fields: {
+        email: '郵箱地址',
+        authorizationCode: '授權碼',
+        apiKey: 'API Key',
+        clientId: 'Client ID',
+        botId: 'Bot ID',
+        secret: 'Secret'
+      },
       tab: '推薦',
       search: '搜尋連接器',
       details: (name: string) => `查看${name}`,
@@ -133,7 +156,8 @@ export const zhHant = defineLocale({
     transferStopFailed: '未能停止傳輸，請再試一次。',
     downloadSaved: name => `${name} 已儲存到本機`,
     uploadSaved: name => `「${name}」已上傳到雲端硬碟`,
-    downloadsSaved: (saved, skipped) => skipped ? `已將 ${saved} 個檔案儲存到本機，${skipped} 個下載已取消。` : `已將 ${saved} 個檔案儲存到本機。`,
+    downloadsSaved: (saved, skipped) =>
+      skipped ? `已將 ${saved} 個檔案儲存到本機，${skipped} 個下載已取消。` : `已將 ${saved} 個檔案儲存到本機。`,
     transferErrors: {
       AUTH_REQUIRED: 'UniWork 登入已失效，請重新登入 UniWork 後再試。',
       DRIVE_AUTH_EXPIRED: '雲端硬碟連線已失效，請點擊重新整理以重新連線；若仍無法恢復，請重新登入 UniWork。',
@@ -157,7 +181,7 @@ export const zhHant = defineLocale({
       UPLOAD_INCOMPLETE: '上傳結果待確認，請勿立即重複上傳。請重新整理以核對雲端硬碟結果。',
       UPLOAD_UNCONFIRMED: '上傳結果待確認，請勿立即重複上傳。請重新整理以核對雲端硬碟結果。',
       IPC_ERROR: '網路連線異常，請檢查網路。',
-      AUTH_CHANGED: '登入狀態已變更，本次傳輸已停止。請在目前帳號下重試。',
+      AUTH_CHANGED: '登入狀態已變更，本次傳輸已停止。請在目前帳號下重試。'
     },
     emptyRecycle: '清空資源回收筒',
     permanentDelete: '徹底刪除',
@@ -3033,7 +3057,7 @@ export const zhHant = defineLocale({
     shareFailed: '分享失敗',
     revokeFailed: '取消分享失敗',
     previewNotReady: 'Markdown 預覽尚未完成。',
-    imageNotEmbedded: 'Markdown 包含未內嵌的圖片，請先整理為自包含內容。',
+    imageNotEmbedded: 'Markdown 包含未內嵌的圖片，請先整理為自包含內容。'
   },
 
   artifactPreview: {

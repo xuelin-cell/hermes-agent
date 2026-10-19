@@ -1,7 +1,7 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { useState } from 'react'
 import { MemoryRouter, useLocation } from 'react-router'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 import { I18nProvider } from '@/i18n/context'
 
@@ -12,7 +12,7 @@ vi.mock('./connectors-tab', () => ({
 
     return (
       <label>
-        {profile}
+        {typeof profile === 'string' ? profile : 'work'}
         <input aria-label="MCP draft" onChange={event => setDraft(event.target.value)} value={draft} />
       </label>
     )
@@ -22,6 +22,14 @@ vi.mock('./connectors-tab', () => ({
 import { ConnectorsPage } from './connectors-page'
 
 afterEach(cleanup)
+const localConnectors = vi.fn()
+beforeEach(() => {
+  localConnectors.mockReset()
+  localConnectors.mockImplementation(async input => ({
+    connectors: [{ id: 'qq_mail', connected: input.operation === 'connect' }]
+  }))
+  window.hermesDesktop = { ...window.hermesDesktop, localConnectors }
+})
 
 /** 展示当前路由以核对 MCP 入口没有丢失 Profile 之外的查询参数。 */
 function RouteLocation() {
@@ -33,14 +41,14 @@ function renderPage(route = '/capabilities?tab=connectors') {
   return render(
     <I18nProvider configClient={null} initialLocale="zh">
       <MemoryRouter initialEntries={[route]}>
-        <ConnectorsPage gateway={null} profile="work" />
+        <ConnectorsPage gateway={null} profile={{ connectionId: 'local', profile: 'work' }} />
         <RouteLocation />
       </MemoryRouter>
     </I18nProvider>
   )
 }
 
-it('搜索真实目录并展示尚未接入的详情，不收集凭据或伪造连接成功', () => {
+it('卡片打开参考详情；加号独立进入凭据表单，服务确认后才展示已连接', async () => {
   renderPage()
   expect(screen.getByRole('tab', { name: '推荐' }).getAttribute('aria-selected')).toBe('true')
   expect(screen.getAllByRole('button', { name: /^查看/ })).toHaveLength(11)
@@ -49,9 +57,35 @@ it('搜索真实目录并展示尚未接入的详情，不收集凭据或伪造�
   expect(screen.getAllByRole('button', { name: /^查看/ })).toHaveLength(1)
   fireEvent.click(screen.getByRole('button', { name: '查看QQ 邮箱' }))
   const dialog = screen.getByRole('dialog')
-  expect(within(dialog).getByText('暂未开放连接')).toBeTruthy()
+  expect(within(dialog).getByRole('heading', { name: '连接 QQ 邮箱' })).toBeTruthy()
+  expect(within(dialog).getByText('试试这样用')).toBeTruthy()
+  expect(
+    within(dialog)
+      .getAllByRole('button')
+      .filter(button => button.textContent?.includes('「QQ 邮箱」'))
+  ).toHaveLength(5)
   expect(within(dialog).queryByRole('textbox')).toBeNull()
   fireEvent.click(within(dialog).getByRole('button', { name: '关闭' }))
+  await waitFor(() =>
+    expect((screen.getByRole('button', { name: '连接 QQ 邮箱' }) as HTMLButtonElement).disabled).toBe(false)
+  )
+  fireEvent.click(screen.getByRole('button', { name: '连接 QQ 邮箱' }))
+  expect(screen.getByText('填写连接信息')).toBeTruthy()
+  fireEvent.change(screen.getByLabelText('邮箱地址'), { target: { value: 'demo@qq.com' } })
+  fireEvent.change(screen.getByLabelText('授权码'), { target: { value: 'test-only-authorization' } })
+  fireEvent.submit(screen.getByLabelText('邮箱地址').closest('form')!)
+  await waitFor(() =>
+    expect(localConnectors).toHaveBeenCalledWith({
+      operation: 'connect',
+      profile: 'work',
+      id: 'qq_mail',
+      values: { email: 'demo@qq.com', authorizationCode: 'test-only-authorization' }
+    })
+  )
+  await screen.findByText('已就绪，可在新聊天中使用；现有会话保持原工具集。')
+  expect(screen.queryByLabelText('授权码')).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: '关闭' }))
+  expect((await screen.findByRole('button', { name: 'QQ 邮箱 · 已连接' })).textContent).toContain('已连接')
   fireEvent.change(search, { target: { value: 'no-such-provider' } })
   expect(screen.getByText('没有匹配的连接器')).toBeTruthy()
 })
