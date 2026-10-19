@@ -2693,6 +2693,7 @@ export interface Translations {
   }
 
   messaging: {
+    connection: import('./messaging-connection').MessagingConnectionCopy
     cards: {
       heading: string
       description: string

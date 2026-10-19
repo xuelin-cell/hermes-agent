@@ -1,3 +1,4 @@
+import { messagingConnectionCopy } from './messaging-connection'
 import { FIELD_DESCRIPTIONS, FIELD_LABELS } from '@/app/settings/constants'
 
 import type { Translations } from './types'
@@ -3148,6 +3149,7 @@ export const en: Translations = {
   },
 
   messaging: {
+    connection: messagingConnectionCopy["en"],
     cards: {
       heading: 'Chat apps',
       description: 'Connect WeChat, DingTalk and other chat apps to receive and reply to messages from your phone.',

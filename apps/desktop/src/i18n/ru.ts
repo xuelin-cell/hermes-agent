@@ -1,3 +1,4 @@
+import { messagingConnectionCopy } from './messaging-connection'
 import { defineFieldCopy } from '@/app/settings/field-copy'
 
 import { defineLocale } from './define-locale'
@@ -2138,6 +2139,7 @@ export const ru = defineLocale({
     }
   },
   messaging: {
+    connection: messagingConnectionCopy["ru"],
     cards: {
       heading: 'Чат-приложения',
       description: 'Подключите WeChat, DingTalk и другие приложения для обмена сообщениями с телефона.',

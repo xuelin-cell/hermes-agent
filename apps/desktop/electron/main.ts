@@ -332,6 +332,7 @@ import { localSkinProfileKey, readLocalSkinPayload } from './local-skin'
 import { ACTIVE_LOG_POLL_MS, planLogRotation, reclaimActiveLogIfOversized } from './log-rotation'
 import { installAccountIpc } from './login/account-ipc'
 import { currentDesktopAccount, currentDesktopAsrIdentity, currentDesktopIdentity, currentDesktopLocalContext, sealDesktopAccount } from './login/bootstrap'
+import { DesktopMessaging, MessagingBotIndex } from './entry_local/messaging'
 import { CloudDriveClient } from './login/cloud-drive'
 import { createDriveArtifactResolver } from './login/cloud-drive-artifact-source'
 import { CloudDriveMcp } from './login/cloud-drive-mcp'
@@ -17205,6 +17206,20 @@ function assertArtifactShareWindow(event: Electron.IpcMainInvokeEvent): void {
     throw new Error('当前窗口没有产物分享权限。')
   }
 }
+
+const desktopMessaging = new DesktopMessaging({
+  account: ACCOUNT_RUNTIME.id,
+  index: new MessagingBotIndex(app.getPath('userData')),
+  request: (profile, requestPath, method, body) => handleHermesApiRequest({
+    connectionId: 'local', profile, path: requestPath, method, body, timeoutMs: 30_000
+  })
+})
+
+ipcMain.handle('hermes:messaging:setup', (event, input) => {
+  assertArtifactShareWindow(event)
+  if (!currentDesktopLocalContext()) throw new Error('messaging_account_closed')
+  return desktopMessaging.run(input)
+})
 
 installConversationShareIpc(ipcMain, assertArtifactShareWindow, {
   identity: () => {

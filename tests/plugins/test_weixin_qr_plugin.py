@@ -111,15 +111,16 @@ def test_confirmed_login_saves_owner_only_access_and_never_returns_the_token(ili
     assert (Path(get_hermes_home()) / "weixin" / "accounts" / "bot123@im.bot.json").is_file()
 
 
-def test_missing_owner_id_falls_back_to_pairing(ilink):
+def test_missing_owner_id_leaves_binding_incomplete(ilink):
+    """扫码人缺失时不启用或覆盖旧配置，不把终端配对当成成功。"""
     ilink([{**CONFIRMED, "ilink_user_id": ""}])
 
     _, final = _run_login()
 
     env = load_env()
-    assert final["state"] == "confirmed"
-    assert env["WEIXIN_DM_POLICY"] == "pairing"
-    assert env.get("WEIXIN_ALLOWED_USERS", "") == ""
+    assert final["state"] == "error"
+    assert "WEIXIN_TOKEN" not in env
+    assert "WEIXIN_DM_POLICY" not in env
 
 
 def test_expired_qr_ends_the_login(ilink):

@@ -1,3 +1,4 @@
+import { messagingConnectionCopy } from './messaging-connection'
 import { defineFieldCopy } from '@/app/settings/field-copy'
 
 import { defineLocale, type TranslationOverrides } from './define-locale'
@@ -3312,6 +3313,7 @@ export const frOverrides = {
     }
   },
   messaging: {
+    connection: messagingConnectionCopy["fr"],
     cards: {
       heading: 'Applications de messagerie',
       description:

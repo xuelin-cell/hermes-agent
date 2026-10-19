@@ -1,3 +1,4 @@
+import { messagingConnectionCopy } from './messaging-connection'
 import { defineFieldCopy } from '@/app/settings/field-copy'
 
 import { defineLocale, type TranslationOverrides } from './define-locale'
@@ -3294,6 +3295,7 @@ export const esOverrides = {
     }
   },
   messaging: {
+    connection: messagingConnectionCopy["es"],
     cards: {
       heading: 'Aplicaciones de chat',
       description: 'Conecta WeChat, DingTalk y otras aplicaciones para recibir y responder mensajes desde el móvil.',

@@ -42,6 +42,8 @@ declare global {
       /** 仅返回当前账号套餐展示信息，不接受页面身份参数。 */
       getPlanUsage?: () => Promise<PlanUsageResult>
       getMaasAccount: () => Promise<LoginAccount | null>
+      messagingSetup: (input: import('../electron/entry_local/messaging-contract').MessagingSetupRequest) =>
+        Promise<import('../electron/entry_local/messaging-contract').MessagingSetupResult>
       conversationShare: ConversationShareApi
       artifactShare: {
         inspect: (key: string) => Promise<{ key: string; shareId: string; url: string; title: string; hash: string; version: number; updatedAt: string } | null>

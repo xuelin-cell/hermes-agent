@@ -1,3 +1,4 @@
+import { messagingConnectionCopy } from './messaging-connection'
 import { defineFieldCopy } from '@/app/settings/field-copy'
 
 import { defineLocale } from './define-locale'
@@ -2383,6 +2384,7 @@ export const zhHant = defineLocale({
   },
 
   messaging: {
+    connection: messagingConnectionCopy["zh-hant"],
     cards: {
       heading: '聊天應用',
       description: '接入微信、釘釘、飛書等聊天應用，從手機接收及回覆訊息。',

@@ -1,3 +1,4 @@
+import { messagingConnectionCopy } from './messaging-connection'
 import { defineFieldCopy } from '@/app/settings/field-copy'
 
 import { defineLocale } from './define-locale'
@@ -1988,6 +1989,7 @@ export const ja = defineLocale({
   },
 
   messaging: {
+    connection: messagingConnectionCopy["ja"],
     cards: {
       heading: 'チャットアプリ',
       description: 'WeChat、DingTalk、Feishu などに接続し、スマートフォンでメッセージを送受信します。',

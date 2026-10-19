@@ -29,6 +29,7 @@ const notify = vi.fn()
 const startWeixinQrLogin = vi.fn()
 const getWeixinQrLogin = vi.fn()
 const unbindWeixin = vi.fn()
+const messagingSetup = vi.fn()
 
 vi.mock('@/hermes', () => ({
   approvePairing: (platformId: string, requestId: string, profile?: null | string) =>
@@ -104,6 +105,8 @@ function platform(patch: Partial<MessagingPlatformInfo> = {}): MessagingPlatform
 }
 
 beforeEach(() => {
+  window.hermesDesktop = { ...window.hermesDesktop, messagingSetup } as typeof window.hermesDesktop
+  messagingSetup.mockResolvedValue({ saved: true, changed: true, actionFailed: false })
   updateMessagingPlatform.mockResolvedValue({ ok: true, platform: 'teams' })
   getPairing.mockResolvedValue({ approved: [], pending: [] })
   runGatewayRestart.mockResolvedValue(true)
@@ -346,14 +349,12 @@ describe('Messaging cards and native configuration', () => {
     fireEvent.change(dialog.querySelector('input[type="password"]')!, { target: { value: 'bot-secret' } })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save and enable' }))
     await waitFor(() =>
-      expect(updateMessagingPlatform).toHaveBeenCalledWith(
-        id,
-        {
-          enabled: true,
-          env: { [key]: 'bot-id', [secret]: 'bot-secret' }
-        },
-        'default'
-      )
+      expect(messagingSetup).toHaveBeenCalledWith({
+        operation: 'save',
+        platform: id,
+        env: { [key]: 'bot-id', [secret]: 'bot-secret' },
+        profile: 'default'
+      })
     )
     expect(runGatewayRestart).not.toHaveBeenCalled()
   })
@@ -404,7 +405,7 @@ describe('Messaging cards and native configuration', () => {
     expect(startWeixinQrLogin).not.toHaveBeenCalled()
   })
 
-  it('saves only necessary credentials in the existing profile and leaves gateway restart explicit', async () => {
+  it('saves necessary credentials in the selected profile and applies automatically', async () => {
     $settingsScopeOverride.set('worker')
     getMessagingPlatforms.mockResolvedValue({ platforms: [dingtalk()] })
 
@@ -421,21 +422,18 @@ describe('Messaging cards and native configuration', () => {
       fireEvent.change(dialog.querySelector('input[type="password"]')!, { target: { value: ' secret-123 ' } })
       fireEvent.click(within(dialog).getByRole('button', { name: 'Save and enable' }))
       await waitFor(() =>
-        expect(updateMessagingPlatform).toHaveBeenCalledWith(
-          'dingtalk',
-          {
-            enabled: true,
-            env: { DINGTALK_CLIENT_ID: 'app-123', DINGTALK_CLIENT_SECRET: 'secret-123' }
-          },
-          'worker'
-        )
+        expect(messagingSetup).toHaveBeenCalledWith({
+          operation: 'save',
+          platform: 'dingtalk',
+          env: { DINGTALK_CLIENT_ID: 'app-123', DINGTALK_CLIENT_SECRET: 'secret-123' },
+          profile: 'worker'
+        })
       )
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
-      expect(await screen.findByRole('button', { name: 'Restart now' })).toBeTruthy()
+      expect(screen.queryByRole('button', { name: 'Restart now' })).toBeNull()
       expect(runGatewayRestart).not.toHaveBeenCalled()
       expect(screen.queryByText('owner-only')).toBeNull()
-      fireEvent.click(screen.getByRole('button', { name: 'Restart now' }))
-      await waitFor(() => expect(runGatewayRestart).toHaveBeenCalledTimes(1))
+      expect(messagingSetup).toHaveBeenCalledTimes(1)
     } finally {
       $settingsScopeOverride.set(null)
     }
@@ -461,7 +459,7 @@ describe('Messaging cards and native configuration', () => {
 
   it('keeps the input and shows a save failure instead of pretending the platform connected', async () => {
     getMessagingPlatforms.mockResolvedValue({ platforms: [dingtalk()] })
-    updateMessagingPlatform.mockRejectedValueOnce(new Error('Save unavailable'))
+    messagingSetup.mockRejectedValueOnce(new Error('credentials_rejected'))
     await renderMessaging()
     fireEvent.click(
       within(await screen.findByRole('article', { name: 'DingTalk bot integration' })).getByRole('button', {
@@ -472,7 +470,7 @@ describe('Messaging cards and native configuration', () => {
     fireEvent.change(dialog.querySelector('input[type="text"]')!, { target: { value: 'app-123' } })
     fireEvent.change(dialog.querySelector('input[type="password"]')!, { target: { value: 'secret-123' } })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save and enable' }))
-    expect(await within(dialog).findByText('Save unavailable')).toBeTruthy()
+    expect(await within(dialog).findByText('ID or Secret was rejected.')).toBeTruthy()
     expect(dialog.querySelector<HTMLInputElement>('input[type="text"]')!.value).toBe('app-123')
     expect(runGatewayRestart).not.toHaveBeenCalled()
   })
@@ -494,14 +492,11 @@ describe('Messaging cards and native configuration', () => {
       const dialog = await screen.findByRole('dialog')
       fireEvent.click(within(dialog).getByRole('button', { name: 'Disconnect' }))
       await waitFor(() =>
-        expect(updateMessagingPlatform).toHaveBeenCalledWith(
-          'dingtalk',
-          {
-            enabled: false,
-            clear_env: ['DINGTALK_CLIENT_ID', 'DINGTALK_CLIENT_SECRET']
-          },
-          'worker'
-        )
+        expect(messagingSetup).toHaveBeenCalledWith({
+          operation: 'disconnect',
+          platform: 'dingtalk',
+          profile: 'worker'
+        })
       )
       expect(runGatewayRestart).not.toHaveBeenCalled()
     } finally {

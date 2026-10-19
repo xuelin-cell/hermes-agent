@@ -1,3 +1,4 @@
+import { messagingConnectionCopy } from './messaging-connection'
 import { defineLocale } from './define-locale'
 
 export const ar = defineLocale({
@@ -1617,6 +1618,7 @@ export const ar = defineLocale({
     actions: count => `${count} إجراء`
   },
   messaging: {
+    connection: messagingConnectionCopy["ar"],
     cards: {
       heading: 'تطبيقات الدردشة',
       description: 'اربط WeChat وDingTalk وتطبيقات الدردشة الأخرى لاستقبال الرسائل والرد عليها من هاتفك.',

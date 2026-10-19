@@ -8,20 +8,21 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ErrorBanner } from '@/components/ui/error-state'
-import { getMessagingPlatforms, type MessagingPlatformInfo, updateMessagingPlatform } from '@/hermes'
+import { getMessagingPlatforms, type MessagingPlatformInfo } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { AlertTriangle, MessageCircle, RefreshCw } from '@/lib/icons'
+import { confirm } from '@/store/confirm'
 import { $changeEventsAvailable, $platformsChangeTick } from '@/store/live-sync'
 import { notify } from '@/store/notifications'
 import { $settingsRequestProfile } from '@/store/settings-scope'
-import { $gatewayRestarting, runGatewayRestart, watchGatewayRestartOutcome } from '@/store/system-actions'
+import { $gatewayRestarting, watchGatewayRestartOutcome } from '@/store/system-actions'
 
 import { useRefreshHotkey } from '../hooks/use-refresh-hotkey'
 import { PAGE_INSET_X } from '../layout-constants'
 import { PageSearchShell } from '../page-search-shell'
 import type { SetStatusbarItemGroup } from '../shell/statusbar-controls'
 
-import { CREDENTIAL_KEYS, PLATFORM_IDS, PlatformCard, type PlatformId } from './platform-card'
+import { PLATFORM_IDS, PlatformCard, type PlatformId } from './platform-card'
 import { PlatformConfigDialog } from './platform-config-dialog'
 import { WeixinQrSetup } from './weixin-qr-setup'
 
@@ -36,7 +37,7 @@ export function MessagingView({ setStatusbarItemGroup: _setStatusbarItemGroup, .
   return <MessagingPage key={scopeProfile ?? 'custom'} scopeProfile={scopeProfile} {...props} />
 }
 
-/** 卡片页面只组合现有接口，不介入账号启动、消息执行或网关生命周期。 */
+/** 页面提交必要配置，主进程统一校验保存和网关动作，原版接口提供连接状态。 */
 function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & { scopeProfile: string | undefined }) {
   const { t } = useI18n()
   const m = t.messaging
@@ -47,19 +48,25 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
   const [configuring, setConfiguring] = useState<Exclude<PlatformId, 'weixin'> | null>(null)
   const [disconnecting, setDisconnecting] = useState<MessagingPlatformInfo | null>(null)
   const gatewayRestarting = useStore($gatewayRestarting)
+  const [applying, setApplying] = useState(false)
   const changesAvailable = useStore($changeEventsAvailable)
   const platformsTick = useStore($platformsChangeTick)
   const revisionRef = useRef(0)
+  const activeRef = useRef(true)
   const refreshTimer = useRef<number | null>(null)
 
   /** 只接收最后一轮读取结果；失败保留已有卡片，且不把旧状态当作刷新成功。 */
   const refresh = useCallback(async () => {
+    if (!activeRef.current) {
+      return
+    }
+
     const revision = ++revisionRef.current
 
     try {
       const result = await getMessagingPlatforms(scopeProfile)
 
-      if (revision !== revisionRef.current) {
+      if (!activeRef.current || revision !== revisionRef.current) {
         return
       }
 
@@ -73,6 +80,15 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
   }, [scopeProfile])
 
   useRefreshHotkey(() => void refresh())
+  // 仅记录组件是否仍存在，不镜像账号或响应式状态。
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
+    activeRef.current = true
+
+    return () => {
+      activeRef.current = false
+    }
+  }, [])
 
   // 清理函数只让旧请求失效，不把响应式值同步到 ref。
   // eslint-disable-next-line no-restricted-syntax
@@ -81,7 +97,7 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
 
     /** 失去推送事件时沿用原页面的定时刷新，隐藏窗口不发起轮询。 */
     const tick = () => {
-      if (!document.hidden && !changesAvailable) {
+      if (!document.hidden) {
         void refresh()
       }
     }
@@ -123,25 +139,64 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
     refreshTimer.current = window.setTimeout(() => void refresh(), 4000)
   }
 
-  /** 原生热生效或重启提示保持原逻辑，第二阶段再处理连接联动。 */
-  function settleUpdate(hotServed?: boolean) {
-    if (hotServed) {
-      refreshAfterConnect()
-    } else {
-      setRestartNeeded(true)
-    }
-  }
-
-  /** 必要凭据与启用开关通过同一个既有接口保存，其它配置不写回。 */
+  /** 先校验再保存；重复机器人由用户确认，保存与连接失败分别展示。 */
   async function save(platform: MessagingPlatformInfo, env: Record<string, string>) {
-    const result = await updateMessagingPlatform(platform.id, { env, enabled: true }, scopeProfile)
-    await refresh()
-    settleUpdate(result.hot_served)
-    notify({
-      kind: 'success',
-      title: m.setupSaved(platform.name),
-      message: result.hot_served ? m.connectingLive : m.restartToReconnect
-    })
+    setApplying(true)
+
+    try {
+      const input = {
+        operation: 'save' as const,
+        platform: platform.id as Exclude<PlatformId, 'weixin'>,
+        env,
+        profile: scopeProfile
+      }
+
+      let result = await window.hermesDesktop.messagingSetup(input)
+
+      if (!activeRef.current) {
+        return false
+      }
+
+      if (result.confirmationRequired) {
+        if (!(await confirm({ title: m.connection.duplicateTitle, description: m.connection.duplicateDescription }))) {
+          return false
+        }
+
+        result = await window.hermesDesktop.messagingSetup({ ...input, confirmed: true })
+      }
+
+      if (!activeRef.current) {
+        return false
+      }
+
+      setRestartNeeded(!!result.actionFailed)
+      await refresh()
+      refreshAfterConnect()
+      notify({
+        kind: result.actionFailed ? 'error' : 'success',
+        title: m.setupSaved(platform.name),
+        message: result.actionFailed ? m.connection.savedFailed : m.saved
+      })
+
+      return true
+    } catch (cause) {
+      const code = cause instanceof Error ? cause.message : ''
+      const copy = m.connection
+
+      const errors: Record<string, string> = {
+        credentials_rejected: copy.invalid,
+        credentials_required: copy.invalid,
+        secret_required_for_new_id: copy.newSecret,
+        validation_network: copy.network,
+        validation_timeout: copy.timeout,
+        validation_response: copy.unavailable,
+        validation_unavailable: copy.unavailable
+      }
+
+      throw new Error(Object.entries(errors).find(([key]) => code.includes(key))?.[1] || m.failedSave(platform.name))
+    } finally {
+      setApplying(false)
+    }
   }
 
   /** 只移除本平台的必要凭据并关闭它，保留白名单、群聊及其它平台配置。 */
@@ -152,21 +207,37 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
 
     const id = disconnecting.id as Exclude<PlatformId, 'weixin'>
 
-    const result = await updateMessagingPlatform(
-      id,
-      { enabled: false, clear_env: [...CREDENTIAL_KEYS[id]] },
-      scopeProfile
-    )
+    setApplying(true)
 
-    await refresh()
-    settleUpdate(result.hot_served)
+    try {
+      const result = await window.hermesDesktop.messagingSetup({
+        operation: 'disconnect',
+        platform: id,
+        profile: scopeProfile
+      })
+
+      setRestartNeeded(!!result.actionFailed)
+      await refresh()
+
+      if (result.actionFailed) {
+        notify({ kind: 'error', message: m.connection.savedFailed })
+      }
+    } finally {
+      setApplying(false)
+    }
   }
 
-  /** 沿用原版手动网关重启，成功后再刷新；不自动恢复网关。 */
+  /** 失败后重试已保存配置，不重新验证凭据或重复保存。 */
   async function restart() {
-    if (await runGatewayRestart()) {
-      setRestartNeeded(false)
+    setApplying(true)
+
+    try {
+      const result = await window.hermesDesktop.messagingSetup({ operation: 'retry' })
+      setRestartNeeded(!!result.actionFailed)
+      await refresh()
       refreshAfterConnect()
+    } finally {
+      setApplying(false)
     }
   }
 
@@ -224,12 +295,17 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
               </Button>
             </ErrorBanner>
           )}
-          {restartNeeded && (
+          {(applying || restartNeeded) && (
             <Alert variant="warning">
               <AlertTriangle />
               <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
-                <span>{m.restartNeeded}</span>
-                <Button disabled={gatewayRestarting} onClick={() => void restart()} size="sm" variant="secondary">
+                <span>{applying ? m.connection.connecting : m.connection.savedFailed}</span>
+                <Button
+                  disabled={gatewayRestarting || applying}
+                  onClick={() => void restart()}
+                  size="sm"
+                  variant="secondary"
+                >
                   <RefreshCw className={gatewayRestarting ? 'animate-spin' : undefined} />
                   {gatewayRestarting ? m.restarting : m.restartNow}
                 </Button>
@@ -265,7 +341,7 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
                       id !== 'uniagentgate' && (
                         <>
                           <Button
-                            disabled={!platform}
+                            disabled={!platform || applying || gatewayRestarting}
                             onClick={() => setConfiguring(id as Exclude<PlatformId, 'weixin'>)}
                             size="sm"
                             variant="outline"
@@ -273,7 +349,12 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
                             {m.cards.configure}
                           </Button>
                           {platform?.configured && (
-                            <Button onClick={() => setDisconnecting(platform)} size="sm" variant="outline">
+                            <Button
+                              disabled={applying || gatewayRestarting}
+                              onClick={() => setDisconnecting(platform)}
+                              size="sm"
+                              variant="outline"
+                            >
                               {m.cards.unbind}
                             </Button>
                           )}
