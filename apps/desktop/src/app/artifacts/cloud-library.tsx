@@ -28,7 +28,7 @@ import { DriveMoveDialog } from './drive-move-dialog'
 import { useCloudDraft } from './use-cloud-draft'
 import { useCloudLibraryData } from './use-cloud-library-data'
 import { useCloudTransfer } from './use-cloud-transfer'
-import { driveMutationMessage } from './use-drive-mutation'
+import { notifyDriveMutationFailure, runVerifiedDriveMutation } from './use-drive-mutation'
 import { useDriveSelection } from './use-drive-selection'
 import { useDriveTrash } from './use-drive-trash'
 import { useDriveUsage } from './use-drive-usage'
@@ -145,20 +145,32 @@ export function CloudLibrary({ onDraftReady }: CloudLibraryProps = {}) {
     setSaving(true)
 
     try {
-      await driveRequest(
-        editing === 'new' ? '/folders' : `/assets/${encodeURIComponent(editing.asset_id)}`,
-        editing === 'new' ? 'POST' : 'PATCH',
-        editing === 'new'
-          ? { parent_asset_id: parent, name: name.trim() }
-          : { new_name: name.trim(), kind: editing.kind }
+      await runVerifiedDriveMutation(
+        verifying =>
+          driveRequest(
+            editing === 'new' ? '/folders' : `/assets/${encodeURIComponent(editing.asset_id)}`,
+            editing === 'new' ? 'POST' : 'PATCH',
+            editing === 'new'
+              ? { parent_asset_id: parent, name: name.trim() }
+              : { new_name: name.trim(), kind: editing.kind },
+            verifying
+          ),
+        () => previewLifecycle.current.active
       )
-      setEditing(null)
-      refresh()
+
+      if (previewLifecycle.current.active) {
+        setEditing(null)
+        refresh()
+      }
     } catch (failure) {
-      notifyError(new Error(driveMutationMessage(failure, copy)), copy.rename)
-      refresh()
+      if (previewLifecycle.current.active) {
+        notifyDriveMutationFailure(failure, editing === 'new' ? copy.createFolder : copy.rename, copy)
+        refresh()
+      }
     } finally {
-      setSaving(false)
+      if (previewLifecycle.current.active) {
+        setSaving(false)
+      }
     }
   }
 

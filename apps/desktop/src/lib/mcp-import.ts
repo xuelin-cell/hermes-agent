@@ -56,7 +56,8 @@ function packageBasename(spec: string): string {
 
 // Shell-ish tokenizer: whitespace-split with single/double quotes (and
 // backslash escapes inside double quotes). Null on an unterminated quote.
-function tokenize(line: string): null | string[] {
+// desktop-mt: exported so the connectors form splits "arguments" the same way.
+export function tokenize(line: string): null | string[] {
   const tokens: string[] = []
   let current = ''
   let sawQuote = false

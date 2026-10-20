@@ -1,5 +1,6 @@
-import { createServer } from 'node:http'
 import { once } from 'node:events'
+import { createServer } from 'node:http'
+
 import { expect, it, vi } from 'vitest'
 
 vi.mock('electron', () => ({ net: {} }))
@@ -12,14 +13,17 @@ it('真实 HTTP 查询白名单字段、合并请求、隔离账号缓存并拒�
   let hold = false
   let release: (() => void) | undefined
   let started: (() => void) | undefined
+
   const server = createServer(async (request, response) => {
     calls++
     const isA = request.headers.authorization === 'Bearer token-a'
+
     if (isA && hold)
-      await new Promise<void>(done => {
+      {await new Promise<void>(done => {
         release = done
         started?.()
-      })
+      })}
+
     response.setHeader('Content-Type', 'application/json')
     response.end(
       JSON.stringify({
@@ -28,6 +32,8 @@ it('真实 HTTP 查询白名单字段、合并请求、隔离账号缓存并拒�
           apiKey: 'secret-key',
           models: 'secret-models',
           agentKeyPersonal: 'private-agent-key',
+          ipUrl: 'https://gateway.invalid',
+          agentIdPersonal: isA ? 'agent-a' : 'agent-b',
           productName: isA ? 'Coding' : 'Token',
           planType: isA ? 'coding_plan' : 'token_plan',
           codingPlanUsage: { second: 20, secondTtl: 60, week: null, month: 0, monthTtl: 0 },
@@ -42,42 +48,58 @@ it('真实 HTTP 查询白名单字段、合并请求、隔离账号缓存并拒�
       })
     )
   })
+
   server.listen(0, '127.0.0.1')
   await once(server, 'listening')
   const address = server.address() as { port: number }
+
   const request: typeof fetch = async (url, options) => {
     expect(url).toBe('https://maas.ai-yuanjing.com/app/gateway/uniwork/my-plan')
     expect(options?.redirect).toBe('error')
+
     return fetch(`http://127.0.0.1:${address.port}`, options)
   }
-  const client = new PlanUsageClient(() => identity, request)
+
+  const applyBinding = vi.fn(async () => undefined)
+  const client = new PlanUsageClient(() => identity, request, applyBinding)
   const accountA = { ...identity }
+
   try {
     const [first, second] = await Promise.all([client.load(), client.load()])
     expect(first).toEqual(second)
     expect(calls).toBe(1)
+    expect(applyBinding).toHaveBeenCalledOnce()
+    expect(applyBinding).toHaveBeenLastCalledWith({ status: 'available', binding: {
+      gatewayUrl: 'https://gateway.invalid', agentId: 'agent-a', agentSk: 'private-agent-key'
+    } })
     expect(JSON.stringify(first)).not.toMatch(/secret|private-agent|token-a|apiKey|models/)
-    if (first.status !== 'available') throw new Error('Missing data')
+
+    if (first.status !== 'available') {throw new Error('Missing data')}
     expect(first.data.windows.map(window => window.name)).toEqual(['five-hour', 'month'])
     expect(first.data.windows[0]!.resetAt).toBe(first.data.fetchedAt + 60_000)
     expect(first.data.quota).toBeNull()
     identity = { ...accountA, uid: 'b', token: 'token-b', maskedPhone: '138****0002' }
     const accountB = { ...identity }
     const token = await client.load()
-    if (token.status !== 'available') throw new Error('Missing token usage')
+
+    if (token.status !== 'available') {throw new Error('Missing token usage')}
     expect(token.data.quota?.remaining).toBe(750)
     expect(token.data.windows).toEqual([])
     identity = { ...accountA }
     hold = true
+
     const waiting = new Promise<void>(done => {
       started = done
     })
+
     const late = client.load()
     await waiting
     identity = { ...accountB }
     await client.load()
+    const appliedBeforeLateResponse = applyBinding.mock.calls.length
     release?.()
     expect(await late).toEqual({ status: 'failed', reason: 'auth' })
+    expect(applyBinding.mock.calls).toHaveLength(appliedBeforeLateResponse)
     hold = false
     identity = { ...accountA, expiresAt: Date.now() - 1 }
     const before = calls

@@ -89,7 +89,7 @@ export function installCloudDriveTransferIpc(
         },
         progress: progress => {
           if (!event.sender.isDestroyed() && trusted(event, [])) {
-            if (Date.now() - lastProgress >= 200 || progress.completed === progress.total) {
+            if (progress.phase || Date.now() - lastProgress >= 200 || progress.completed === progress.total) {
               lastProgress = Date.now()
               event.sender.send('hermes:maas-drive:progress', progress)
             }

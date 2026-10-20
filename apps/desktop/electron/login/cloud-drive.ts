@@ -1,4 +1,5 @@
 import { CloudDriveCredentials, type DriveCredentialOptions } from './cloud-drive-credentials'
+import { confirmDriveState, prepareMutationVerification } from './cloud-drive-verification'
 import { type CloudDriveFailure, type CloudDriveRequest, isCloudDriveReadOperation } from './contract'
 import type { LoginIdentity } from './session'
 
@@ -19,6 +20,7 @@ export class CloudDriveOperationError extends Error {
 /** 主进程持有云盘凭据，固定上游与操作范围；不将 token 返回页面。 */
 export class CloudDriveClient {
   private readonly credentials: CloudDriveCredentials
+  private readonly uploadQueues = new Map<string, Promise<void>>()
 
   /** 身份由登录模块提供，测试可替换网络但不能让页面选择上游。 */
   constructor(
@@ -27,6 +29,31 @@ export class CloudDriveClient {
     options: DriveCredentialOptions = {}
   ) {
     this.credentials = new CloudDriveCredentials(identity, value => this.acquireToken(value), options)
+  }
+
+  /** GUI 和 MCP 使用同一客户端的上传锁，每个同签名文件开始前重新取快照。 */
+  async withUploadLock<T>(key: string, signal: AbortSignal, action: () => Promise<T>): Promise<T> {
+    const previous = this.uploadQueues.get(key) ?? Promise.resolve()
+    let release!: () => void
+
+    const current = new Promise<void>(resolve => {
+      release = resolve
+    })
+
+    this.uploadQueues.set(key, current)
+
+    try {
+      await previous
+      signal.throwIfAborted()
+
+      return await action()
+    } finally {
+      release()
+
+      if (this.uploadQueues.get(key) === current) {
+        this.uploadQueues.delete(key)
+      }
+    }
   }
 
   /** 定期和唤醒检查共享同一份主进程令牌，MCP 调用无需单独同步凭据。 */
@@ -88,8 +115,203 @@ export class CloudDriveClient {
     return token
   }
 
+  /** 写入只发一次；响应不确定时，GUI 和 MCP 共用按目标身份的只读核验。 */
+  async execute(input: CloudDriveRequest, signal?: AbortSignal, verifying?: () => void): Promise<unknown> {
+    this.validateRequest(input)
+
+    if (isCloudDriveReadOperation(input)) {
+      return this.executeRequest(input, signal)
+    }
+
+    const check = this.guardIdentity()
+
+    const read = async (request: CloudDriveRequest, scope: AbortSignal) => {
+      check()
+      scope.throwIfAborted()
+      const result = await this.executeRequest(request, scope)
+      check()
+
+      return result
+    }
+
+    let query: Awaited<ReturnType<typeof prepareMutationVerification>> | undefined
+
+    try {
+      query = await prepareMutationVerification(
+        read,
+        input,
+        AbortSignal.any([signal ?? new AbortController().signal, AbortSignal.timeout(8000)])
+      )
+    } catch {
+      // 基线不可读时仍允许原有写入；响应丢失后只报告无法自动确认。
+    }
+
+    check()
+    signal?.throwIfAborted()
+
+    try {
+      // 服务正式成功回执是最终结果；不能因追加读取滞后或缺字段把成功降为无法确认。
+      return await this.executeRequest(input, signal)
+    } catch (error) {
+      if (
+        !(error instanceof CloudDriveOperationError) ||
+        (error.result.status === 'failed' &&
+          ![
+            'NETWORK_ERROR',
+            'REQUEST_TIMEOUT',
+            'TRANSPORT_ERROR',
+            'OUTCOME_UNKNOWN',
+            'INVALID_UPSTREAM_RESPONSE'
+          ].includes(error.result.code))
+      ) {
+        throw error
+      }
+
+      const incomplete = () =>
+        new CloudDriveOperationError(
+          error.result.status === 'partial_success' ? 'partial_success' : 'outcome_unknown',
+          'OPERATION_CONFIRMATION_UNAVAILABLE'
+        )
+
+      if (!query) {
+        throw incomplete()
+      }
+
+      try {
+        check()
+        signal?.throwIfAborted()
+        const scope = AbortSignal.any([signal ?? new AbortController().signal, AbortSignal.timeout(45000)])
+        verifying?.()
+        const verdict = await confirmDriveState(() => query!(scope), scope, check)
+
+        if (verdict === 'confirmed') {
+          return {
+            ...query.result,
+            ...(input.method === 'PATCH'
+              ? { asset_id: decodeURIComponent(input.route.split('?')[0].slice('/assets/'.length)) }
+              : {}),
+            verified: true,
+            confirmed_by: 'desktop_state_read'
+          }
+        }
+      } catch {
+        // 取消、切换账号或查询失败都不等于写入失败，也不能跨账号继续核验。
+      }
+
+      throw incomplete()
+    }
+  }
+
   /** 只转发云盘业务操作，并在服务明确报告云盘令牌过期时刷新一次。 */
-  async execute(input: CloudDriveRequest, signal?: AbortSignal): Promise<unknown> {
+  private async executeRequest(input: CloudDriveRequest, signal?: AbortSignal): Promise<unknown> {
+    const { identity, method, route } = this.validateRequest(input)
+
+    const readOnly = isCloudDriveReadOperation(input)
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const token = await this.credentials.get()
+
+      if (this.identity()?.token !== identity.token || this.identity()?.uid !== identity.uid) {
+        throw new Error('登录状态已变化，请重新打开资料库')
+      }
+
+      let response: Response
+      let payload
+
+      try {
+        response = await this.request(BASE + input.route, {
+          method,
+          redirect: 'error',
+          signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(60_000)]) : AbortSignal.timeout(60_000),
+          headers: {
+            Authorization: `Bearer ${identity.token}`,
+            'X-Drive-Access-Token': token,
+            'Content-Type': 'application/json'
+          },
+          ...(input.body ? { body: JSON.stringify(input.body) } : {})
+        })
+        payload = await response.json()
+      } catch {
+        throw new CloudDriveOperationError(readOnly ? 'failed' : 'outcome_unknown', 'TRANSPORT_ERROR')
+      }
+
+      if (this.identity()?.token !== identity.token || this.identity()?.uid !== identity.uid) {
+        throw new CloudDriveOperationError(readOnly ? 'failed' : 'outcome_unknown', 'AUTH_CHANGED')
+      }
+
+      const expired =
+        payload?.error?.code === 'DRIVE_AUTH_EXPIRED' || String(payload?.error?.provider_code ?? '') === '9999'
+
+      if (expired) {
+        if (attempt === 0) {
+          try {
+            await this.credentials.recover(token)
+          } catch {
+            throw new CloudDriveOperationError('failed', 'DRIVE_AUTH_EXPIRED')
+          }
+
+          if (readOnly) {
+            continue
+          }
+        }
+
+        // 更新凭据但不自动重放写操作，仍需用户明确重试。
+        throw new CloudDriveOperationError('failed', 'DRIVE_AUTH_EXPIRED')
+      }
+
+      if (
+        !response.ok ||
+        payload?.ok !== true ||
+        !Object.hasOwn(payload, 'data') ||
+        (payload.status !== undefined &&
+          payload.status !== 'succeeded' &&
+          !(payload.status === 'accepted' && route.startsWith('/assets/search') && readOnly))
+      ) {
+        const uncertainItems =
+          route === '/assets/trash' &&
+          Array.isArray(payload?.data?.item_results) &&
+          payload.data.item_results.some((item: { error?: { code?: string } }) =>
+            ['OUTCOME_UNKNOWN', 'NETWORK_ERROR', 'REQUEST_TIMEOUT'].includes(item.error?.code ?? '')
+          )
+
+        const status =
+          payload?.status === 'partial_success' || payload?.status === 'outcome_unknown'
+            ? payload.status
+            : uncertainItems
+              ? 'outcome_unknown'
+              : payload?.status === 'failed' || payload?.ok === false || readOnly
+                ? 'failed'
+                : 'outcome_unknown'
+
+        const itemErrors: unknown[] =
+          route === '/assets/trash' && Array.isArray(payload?.data?.item_results)
+            ? payload.data.item_results.map((item: { ok?: boolean; error?: { code?: unknown } }) =>
+                item.ok === false ? item.error?.code : undefined
+              )
+            : []
+
+        const candidate =
+          itemErrors.length && itemErrors.every(code => code === itemErrors[0]) ? itemErrors[0] : payload?.error?.code
+
+        const code = uncertainItems
+          ? 'OUTCOME_UNKNOWN'
+          : typeof candidate === 'string' && /^[A-Z_]{1,64}$/.test(candidate)
+            ? candidate
+            : response.status === 401
+              ? 'AUTH_REQUIRED'
+              : 'SERVICE_ERROR'
+
+        throw new CloudDriveOperationError(status, code)
+      }
+
+      return payload.data
+    }
+
+    throw new Error('个人云盘认证失败，请重试')
+  }
+
+  /** 在任何查询或发送之前限制原生操作范围。 */
+  private validateRequest(input: CloudDriveRequest) {
     const identity = this.identity()
 
     if (!identity || identity.expiresAt <= Date.now()) {
@@ -162,88 +384,7 @@ export class CloudDriveClient {
       throw new Error('云盘操作不受支持')
     }
 
-    const readOnly = isCloudDriveReadOperation(input)
-
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const token = await this.credentials.get()
-
-      if (this.identity()?.token !== identity.token || this.identity()?.uid !== identity.uid) {
-        throw new Error('登录状态已变化，请重新打开资料库')
-      }
-
-      let response: Response
-      let payload
-
-      try {
-        response = await this.request(BASE + input.route, {
-          method,
-          redirect: 'error',
-          signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(60_000)]) : AbortSignal.timeout(60_000),
-          headers: {
-            Authorization: `Bearer ${identity.token}`,
-            'X-Drive-Access-Token': token,
-            'Content-Type': 'application/json'
-          },
-          ...(input.body ? { body: JSON.stringify(input.body) } : {})
-        })
-        payload = await response.json()
-      } catch {
-        throw new CloudDriveOperationError(readOnly ? 'failed' : 'outcome_unknown', 'TRANSPORT_ERROR')
-      }
-
-      if (this.identity()?.token !== identity.token || this.identity()?.uid !== identity.uid) {
-        throw new CloudDriveOperationError(readOnly ? 'failed' : 'outcome_unknown', 'AUTH_CHANGED')
-      }
-
-      const expired =
-        payload?.error?.code === 'DRIVE_AUTH_EXPIRED' || String(payload?.error?.provider_code ?? '') === '9999'
-
-      if (expired) {
-        if (attempt === 0) {
-          try {
-            await this.credentials.recover(token)
-          } catch {
-            throw new CloudDriveOperationError('failed', 'DRIVE_AUTH_EXPIRED')
-          }
-
-          if (readOnly) {
-            continue
-          }
-        }
-
-        // 更新凭据但不自动重放写操作，仍需用户明确重试。
-        throw new CloudDriveOperationError('failed', 'DRIVE_AUTH_EXPIRED')
-      }
-
-      if (
-        !response.ok ||
-        payload?.ok !== true ||
-        !Object.hasOwn(payload, 'data') ||
-        (payload.status !== undefined &&
-          payload.status !== 'succeeded' &&
-          !(payload.status === 'accepted' && route.startsWith('/assets/search') && readOnly))
-      ) {
-        const status =
-          payload?.status === 'partial_success' || payload?.status === 'outcome_unknown'
-            ? payload.status
-            : payload?.status === 'failed' || payload?.ok === false || readOnly
-              ? 'failed'
-              : 'outcome_unknown'
-
-        const code =
-          typeof payload?.error?.code === 'string' && /^[A-Z_]{1,64}$/.test(payload.error.code)
-            ? payload.error.code
-            : response.status === 401
-              ? 'AUTH_REQUIRED'
-              : 'SERVICE_ERROR'
-
-        throw new CloudDriveOperationError(status, code)
-      }
-
-      return payload.data
-    }
-
-    throw new Error('个人云盘认证失败，请重试')
+    return { identity, method, route }
   }
 
   /** 分片只发送一次；凭据与固定上传地址始终留在主进程。 */
@@ -291,20 +432,33 @@ export class CloudDriveClient {
 
     const final = metadata.partIndex === metadata.totalPart
 
+    const ambiguous = [
+      'OUTCOME_UNKNOWN',
+      'NETWORK_ERROR',
+      'REQUEST_TIMEOUT',
+      'INVALID_UPSTREAM_RESPONSE',
+      'UPLOAD_UNCONFIRMED',
+      'UPLOAD_INTERRUPTED'
+    ].includes(payload?.error?.code)
+
     if (
       !response.ok ||
       payload?.ok !== true ||
       !['succeeded', ...(final ? [] : ['accepted'])].includes(payload.status)
     ) {
       throw new CloudDriveOperationError(
-        payload?.status === 'partial_success'
-          ? 'partial_success'
-          : payload?.status === 'failed' || payload?.ok === false
-            ? 'failed'
-            : 'outcome_unknown',
+        ambiguous
+          ? 'outcome_unknown'
+          : payload?.status === 'partial_success' || payload?.status === 'outcome_unknown'
+            ? payload.status
+            : payload?.status === 'failed' || payload?.ok === false
+              ? 'failed'
+              : 'outcome_unknown',
         typeof payload?.error?.code === 'string' && /^[A-Z_]{1,64}$/.test(payload.error.code)
           ? payload.error.code
-          : 'UPLOAD_UNCONFIRMED'
+          : payload?.status === 'failed' || payload?.ok === false
+            ? 'UPLOAD_FAILED'
+            : 'UPLOAD_UNCONFIRMED'
       )
     }
   }

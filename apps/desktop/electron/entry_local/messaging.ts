@@ -368,7 +368,7 @@ export class DesktopMessaging {
           return rows.length && targetReady && (stopped
             ? rows.every(row => row && row.gateway_running === false)
             : rows.some(row => row?.gateway_running === true) && rows
-              .filter(row => row && ['weixin', ...Object.keys(IDS)].includes(row.id) && row.enabled && row.configured)
+              .filter(row => row && ['weixin', 'uniagentgate', ...Object.keys(IDS)].includes(row.id) && row.enabled && row.configured)
               .every(row => row.gateway_running === true && row.state === 'connected'))
         })) {
           return true

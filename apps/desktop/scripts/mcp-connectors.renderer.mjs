@@ -49,18 +49,17 @@ function fixturePlugin() {
         export const setMcpBearerToken=async()=>({ok:true});
       `
       if (id === controllerId) return `
-        import {useRef} from 'react';
         // 仅返回本轮受控配置，真实后端行为另由 M01 验证。
         export function useMcpServers() {
-          const editorApi=useRef(null);
-          return {servers:{'test-reader':{command:'node',args:[]},'test-http':{url:'https://example.invalid/mcp',enabled:false}},
-            statuses:{'test-reader':'ok','test-http':'off'},
-            probes:{'test-reader':{ok:true,tools:[{name:'read_document',description:'Read a test document'}]}},
-            toolCounts:{},usageByServer:{},catalog:[],blocks:[],draft:'{}',docVersion:0,editorApi,
-            profilePending:false,configLoading:false,configFailed:false,saving:false,
-            runProbe:async()=>{},setServerEnabled:async()=>{},setServerTools:async()=>true,
-            removeServer:async()=>true,addServerEntry:async()=>true,resetDraft:()=>{},
-            setDraft:()=>{},setCursor:()=>{},saveDoc:async()=>{},refetchConfig:()=>{},authing:null};
+          return {servers:{'UniAI-Toolkit':{url:'https://example.invalid/mcp?key=sk-••••••TAIL',timeout:600},
+              'test-reader':{command:'node',args:['reader.js','--root','C:/docs']},
+              'test-http':{url:'https://example.invalid/mcp',headers:{'X-Team':'docs'},enabled:false}},
+            statuses:{'UniAI-Toolkit':'ok','test-reader':'ok','test-http':'off'},
+            probes:{'UniAI-Toolkit':{ok:true,tools:[{name:'text_to_image',description:''},{name:'asr',description:''}]},
+              'test-reader':{ok:true,tools:[{name:'read_document',description:'Read a test document'}]}},
+            toolCounts:{},profilePending:false,configLoading:false,configFailed:false,saving:false,authing:null,
+            runProbe:async()=>null,replaceServers:async()=>true,removeServer:async()=>true,
+            authenticate:async()=>{},refetchConfig:()=>{}};
         }
       `
       if (id === moduleId) return `
@@ -115,8 +114,8 @@ try {
   instance = await electron.launch({executablePath:electronPath,args:[main],env,timeout:45000})
   const page = await instance.firstWindow()
   page.on('pageerror', error => errors.push(error.message))
-  await page.getByRole('heading',{name:'自定义 MCP'}).waitFor({timeout:60000})
-  await page.getByRole('button',{name:'test-reader',exact:true}).click()
+  await page.getByRole('heading',{name:'自定义 MCP 服务'}).waitFor({timeout:60000})
+  await page.getByRole('button',{name:/^test-reader/}).click()
   for (const dark of [false,true]) {
     for (const width of [1000,460]) {
       await instance.evaluate(({BrowserWindow},size)=>BrowserWindow.getAllWindows()[0].setContentSize(size,760),width)
@@ -131,7 +130,7 @@ try {
     }
   }
   assert.deepEqual(errors,[])
-  console.log(`M02 受控 Renderer：4 个主题／尺寸组合通过；截图 ${root}`)
+  console.log(`连接器受控 Renderer：4 个主题／尺寸组合通过；截图 ${root}`)
 } finally {
   await instance?.close()
   await server.close()

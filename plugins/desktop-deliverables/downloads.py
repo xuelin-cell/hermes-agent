@@ -44,8 +44,6 @@ TRUSTED_PATHS = {
 # 元景生图返回的成品链接是 http，其它工具是 https；只按工具放行它实际使用的协议。
 TRUSTED_SCHEMES = {"txt2img_generate": ("http", "https")}
 DEFAULT_PORTS = {"http": 80, "https": 443}
-# 生成和编辑出的图片链接还要留给图生视频、再次编辑等工具使用；其余成品下载后从结果中移除链接。
-KEEP_LINKS = {"txt2img_generate", "image_edit"}
 # 没有描述可用时的文件名，同名由 claim 加序号区分。
 FALLBACK_NAMES = {
     "txt2img_generate": "生成图片",
@@ -122,7 +120,16 @@ def clean_name(value):
     # 先把换行等空白并成一个空格，再去掉非法字符，避免描述里的两行粘成一个词。
     text = re.sub(r"\s+", " ", str(value or ""))
     text = re.sub(r'[<>:"/\\|?*\x00-\x1f\x7f]', "", text)
-    text = re.sub(r" {2,}", " ", text).strip(" .")[:NAME_LIMIT].strip(" .")
+    text = re.sub(r" {2,}", " ", text).strip(" .")
+    cut = text[:NAME_LIMIT]
+    # 英文等以空格分词的描述退到上一个空格，不留半个单词；中文没有单词边界，照常截。
+    if (
+        len(text) > NAME_LIMIT
+        and " " in cut
+        and all(char.isascii() and char.isalnum() for char in text[NAME_LIMIT - 1 : NAME_LIMIT + 1])
+    ):
+        cut = cut[: cut.rindex(" ")]
+    text = cut.strip(" .")
     return "" if not text or _RESERVED.match(text) else text
 
 
@@ -262,16 +269,15 @@ def strip_data(value, urls):
     return value
 
 
-def saved_note(name, root, paths, missing):
+def saved_note(root, paths, missing):
     """用陈述事实的方式告诉模型本机副本在哪、哪些没存下；结果在不可信包装内，不写成命令。"""
     parts = []
     if paths:
-        usage = (
-            "原链接仍在结果中，仅用于传给图生视频等需要网络地址的工具；在回复中引用时用本机副本"
-            if leaf(name) in KEEP_LINKS
-            else "原下载链接已移除，回复中引用时用本机副本"
+        # 链接一律移除，模型无法把远程地址贴进回复；再交给元景工具时由上传钩子换回原链接。
+        parts.append(
+            "已保存本机副本，桌面聊天区会自动显示预览卡片（原下载链接已移除，回复中引用时用本机副本；"
+            "要再交给图生视频、图片编辑等元景工具，文件参数直接填这个本机路径）。"
         )
-        parts.append(f"已保存本机副本，桌面聊天区会自动显示预览卡片（{usage}）。")
     if missing:
         parts.append(
             f"有 {len(missing)} 个成品没有本机副本（链接保留在结果中，签名链接会过期）。"
@@ -281,11 +287,11 @@ def saved_note(name, root, paths, missing):
     return "".join(parts)
 
 
-def annotate(name, result, data, root, saved, missing):
-    """返回改写后的工具结果：成品去链接或保留链接，并写明本机副本与未保存的成品。"""
+def annotate(result, data, root, saved, missing):
+    """返回改写后的工具结果：已下载的成品去掉链接，并写明本机副本与未保存的成品。"""
     paths = [str(path) for path in saved.values()]
-    removed = [] if leaf(name) in KEEP_LINKS else list(saved)
-    note = saved_note(name, root, paths, missing)
+    removed = list(saved)
+    note = saved_note(root, paths, missing)
     if isinstance(data, dict):
         rewritten = strip_data(data, removed)
         if paths:

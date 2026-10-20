@@ -6,6 +6,7 @@ import { desktopFsCacheKey } from '@/lib/desktop-fs'
 import { $connection } from '@/store/session'
 
 import {
+  cachedLocalArtifactGroups,
   listLocalArtifactSessions,
   type LocalArtifactCache,
   type LocalArtifactScan,
@@ -50,7 +51,7 @@ export function useLocalArtifacts() {
     scopes.set(key, cache)
   }
 
-  const cached = [...cache.values()].map(value => value.group).filter(group => group.files.length)
+  const cached = cachedLocalArtifactGroups(cache)
   const scan = state.bridge === bridge && state.key === key ? state.scan : { ...EMPTY, groups: cached, scanning: true }
 
   // busy 是跨重渲染的请求互斥锁，不镜像任何 store 或响应式值。

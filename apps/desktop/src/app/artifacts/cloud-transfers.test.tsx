@@ -152,7 +152,9 @@ it('上传绑定服务根目录，进度只接受当前任务，取消完成前�
   await act(async () => {
     finish({ protocol: 'uniwork.drive-result.v1', ok: false, status: 'outcome_unknown', code: 'UPLOAD_INTERRUPTED' })
   })
-  expect(await screen.findByText(/上传结果待确认/)).toBeTruthy()
+  expect(await screen.findByText(/暂时无法自动确认上传结果/)).toBeTruthy()
+  expect($notifications.get().find(item => item.message.includes('暂时无法自动确认上传结果'))?.kind).toBe('warning')
+  expect($notifications.get().some(item => item.kind === 'error')).toBe(false)
   expect(transfer).toHaveBeenCalledTimes(1)
 })
 

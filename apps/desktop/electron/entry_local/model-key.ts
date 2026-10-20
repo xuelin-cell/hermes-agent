@@ -7,23 +7,23 @@ import { writeSecretFileAtomic } from '../hardening'
 import { MAAS_MODEL_KEY_ENV } from './model-config'
 
 /** 与 Windows 环境变量规则一致，避免同一个专用 Key 的大小写副本复活。 */
-function isManagedKey(name: string): boolean {
-  return (process.platform === 'win32' ? name.toUpperCase() : name) === MAAS_MODEL_KEY_ENV
+function isManagedKey(name: string, keyName: string): boolean {
+  return (process.platform === 'win32' ? name.toUpperCase() : name) === keyName
 }
 
 /** 生成原版能读取的单行凭据；拒绝控制字符及会被 dotenv 展开的变量引用。 */
-function keyAssignment(apiKey: string | null): string {
+function keyAssignment(apiKey: string | null, keyName: string): string {
   if (apiKey !== null && (!apiKey.trim() || /[^\x20-\x7e]/.test(apiKey) || apiKey.includes('${'))) {
     throw new Error('MaaS 模型凭据格式无效，未更新账号凭据。')
   }
 
   const value = apiKey === null ? '' : `"${apiKey.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`
 
-  return `${MAAS_MODEL_KEY_ENV}=${value}`
+  return `${keyName}=${value}`
 }
 
 /** 只替换完整的专用变量记录，其他记录与换行原样保留，不触碰多行个人值。 */
-function mergeKey(original: string, assignment: string): string {
+function mergeKey(original: string, assignment: string, keyName: string): string {
   const bom = original.startsWith('\uFEFF') ? '\uFEFF' : ''
   const text = original.slice(bom.length)
   const eol = text.includes('\r\n') ? '\r\n' : '\n'
@@ -32,7 +32,7 @@ function mergeKey(original: string, assignment: string): string {
     /^([ \t]*(?:export[ \t]+)?)([A-Za-z_][A-Za-z0-9_]*)[ \t]*=[ \t]*("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^'"\r\n][^\r\n]*|)[ \t]*(?:#[^\r\n]*)?(?:\r?\n|$)/gm
 
   let next = text.replace(records, (record: string, _prefix: string, name: string) =>
-    isManagedKey(name) ? '' : record
+    isManagedKey(name, keyName) ? '' : record
   )
 
   // 原版部分凭据路径逐行读取，末尾唯一赋值同时覆盖多行个人值中的同名文本。
@@ -41,11 +41,14 @@ function mergeKey(original: string, assignment: string): string {
   try {
     const before = parseEnv(text)
     const after = parseEnv(next)
-    const personalNames = new Set([...Object.keys(before), ...Object.keys(after)].filter(name => !isManagedKey(name)))
+
+    const personalNames = new Set(
+      [...Object.keys(before), ...Object.keys(after)].filter(name => !isManagedKey(name, keyName))
+    )
 
     if (
       [...personalNames].some(name => before[name] !== after[name]) ||
-      after[MAAS_MODEL_KEY_ENV] !== parseEnv(assignment)[MAAS_MODEL_KEY_ENV]
+      after[keyName] !== parseEnv(assignment)[keyName]
     ) {
       throw new Error()
     }
@@ -58,7 +61,16 @@ function mergeKey(original: string, assignment: string): string {
 
 /** 原子更新账号专用模型 Key；null 写为空值以阻断旧环境凭据，不保存登录 token。 */
 export function writeAccountMaasKey(home: string, apiKey: string | null): void {
-  const assignment = keyAssignment(apiKey)
+  writeAccountSecret(home, MAAS_MODEL_KEY_ENV, apiKey)
+}
+
+/** 复用同一 dotenv 合并规则写入账号 secret，不能覆盖其他账号/工具的变量。 */
+export function writeAccountSecret(home: string, keyName: string, value: string | null): void {
+  if (!/^[A-Z][A-Z0-9_]*$/.test(keyName)) {
+    throw new Error('账号凭据变量名无效。')
+  }
+
+  const assignment = keyAssignment(value, keyName)
   const file = path.join(home, '.env')
   let original: string
 
@@ -74,7 +86,7 @@ export function writeAccountMaasKey(home: string, apiKey: string | null): void {
     throw new Error('无法读取账号凭据文件，请确认 .env 是 UTF-8 编码的可读普通文件。', { cause: error })
   }
 
-  const next = mergeKey(original, assignment)
+  const next = mergeKey(original, assignment, keyName)
 
   if (next === original) {
     return

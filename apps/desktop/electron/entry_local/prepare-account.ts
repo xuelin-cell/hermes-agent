@@ -7,6 +7,7 @@ import { enableDesktopPlugins } from './desktop-plugins-config'
 import { mergeMaasModelConfig } from './model-config'
 import { writeAccountMaasKey } from './model-key'
 import { LocalStartupError } from './startup-failure'
+import { updateUniAgentGateConfig } from './uniagentgate-config'
 import { updateUniaiToolkitConfig } from './uniai-toolkit-config'
 
 /** 只从主进程 LoginSession 取得有效 UID，不接受页面指定账号或目录。 */
@@ -49,6 +50,7 @@ export function prepareLocalEnvironment(session: LoginSession, roots: AccountRoo
   try {
     prepareAccountSoul(account.home)
     updateUniaiToolkitConfig(account.home, result.status)
+    updateUniAgentGateConfig(account.home, session.currentUniAgentGate())
 
     // 和套餐同一条规则：查询失败时不改账号文件。
     if (result.status !== 'failed') {

@@ -343,6 +343,7 @@ async def download_result(
 ):
     """下载成品并写明本机副本；未能保存的成品保留链接并说明交付方式。每轮最多四次，网络不占状态锁。"""
     from .downloads import annotate, fetch, generator_urls
+    from .uploads import remember_download
 
     try:
         data = json.loads(result) if isinstance(result, str) else result
@@ -379,8 +380,12 @@ async def download_result(
             if path:
                 path.unlink(missing_ok=True)
         return None
+    # 结果里不再给链接；模型之后把本机副本交给元景工具时，上传钩子据此换回原链接。
+    for url, path in zip(wanted, fetched):
+        if path:
+            remember_download(path, url)
     missing = [url for url in urls if url not in saved]
-    return annotate(tool_name, result, data, root, saved, missing)
+    return annotate(result, data, root, saved, missing)
 
 
 def end_turn(*, session_id="", turn_id="", **kwargs):

@@ -22,6 +22,7 @@ const SOURCE_LABELS: Record<string, string> = {
   sms: 'SMS',
   telegram: 'Telegram',
   tui: 'TUI',
+  uniagentgate: '5G 消息',
   webhook: 'Webhook',
   weixin: 'WeChat',
   whatsapp: 'WhatsApp',
@@ -37,6 +38,7 @@ const SOURCE_ALIASES: Record<string, string[]> = {
   qqbot: ['qq'],
   telegram: ['tg'],
   tui: ['terminal'],
+  uniagentgate: ['5g', 'rcs', '5G 消息'],
   weixin: ['wechat'],
   whatsapp: ['wa']
 }
@@ -82,7 +84,8 @@ export const MESSAGING_SESSION_SOURCE_IDS = [
   'qqbot',
   'yuanbao',
   'dingtalk',
-  'feishu'
+  'feishu',
+  'uniagentgate'
 ]
 const MESSAGING_SOURCE_IDS = new Set(MESSAGING_SESSION_SOURCE_IDS)
 

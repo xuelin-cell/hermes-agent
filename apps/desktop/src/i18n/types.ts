@@ -189,6 +189,7 @@ export interface Translations {
     restoreHint: string
     recycleFailed: string
     recycleEmpty: string
+    operationVerifying: string
     operationUnknown: string
     operationPartial: string
     operationFailed: string
@@ -388,21 +389,45 @@ export interface Translations {
   }
   connectorsPage: {
     mcpLocal: {
-      addCustom: string
-      custom: string
-      plugins: string
+      hint: string
       profile: string
-      search: string
+      builtIn: string
+      builtInTag: string
+      custom: string
+      customHint: string
       empty: string
-      noMatches: string
+      addServer: string
+      chooseTransport: string
+      plugins: string
+      openPlugins: string
       loadFailed: string
       pluginsFailed: string
-      configuration: string
-      enabled: string
-      testing: string
-      testPassed: string
-      testFailed: string
-      untested: string
+      untitled: string
+      noUrl: string
+      noCommand: string
+      connecting: string
+      toolsAvailable: (count: number) => string
+      failed: string
+      type: string
+      name: string
+      namePlaceholder: string
+      url: string
+      headers: string
+      command: string
+      args: string
+      env: string
+      addRow: string
+      removeRow: string
+      showValue: string
+      hideValue: string
+      uniAiToolkitSummary: string
+      formErrors: {
+        argsQuote: string
+        commandRequired: string
+        nameRequired: string
+        nameTaken: string
+        urlRequired: string
+      }
     }
     title: string
     searchPlaceholder: (count: number) => string
@@ -2722,6 +2747,13 @@ export interface Translations {
       guide: string
       save: string
       comingSoon: string
+      personalBindingMissing: string
+      reconnect: string
+      reconnecting: string
+      reconnected: string
+      reconnectBusy: string
+      reconnectFailed: string
+      reconnectRestartRequired: string
       unavailable: string
       notConnected: string
       unbind: string
@@ -3251,6 +3283,19 @@ export interface Translations {
   }
 
   artifactShare: {
+    validity: string
+    days: (count: number) => string
+    customValidity: string
+    editValidity: string
+    saveValidity: string
+    expiresAt: (date: string) => string
+    noExpiry: string
+    expired: string
+    cleanupPending: string
+    expiryNotice: string
+    invalidValidity: string
+    inactive: string
+    statusUnavailable: string
     disclosure: string
     checking: string
     createLink: string

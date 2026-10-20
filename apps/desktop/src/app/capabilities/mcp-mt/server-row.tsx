@@ -4,85 +4,146 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { Switch } from '@/components/ui/switch'
-import { TextTab } from '@/components/ui/text-tab'
-import type { ProfileScope } from '@/hermes'
 import { useI18n } from '@/i18n'
+import { NEEDS_AUTH_RE } from '@/lib/mcp-probe-cache'
+import { serverEnabled } from '@/lib/mcp-servers'
+import { cn } from '@/lib/utils'
 
-import { localServerName } from '../connectors/derive'
-import { PluginToolsPanel } from '../connectors/plugin-tools-panel'
-import { LocalToolsPanel } from '../connectors/tools-panel'
-import type { ConnectorCardModel } from '../connectors/types'
-import { McpJsonEditor } from '../mcp/mcp-editor'
-import { canAuthenticate } from '../mcp/mcp-status'
+import type { LocalServerInput } from '../connectors/types'
+import { canAuthenticate, okProbe, STATUS_DOT } from '../mcp/mcp-status'
 import type { McpServersController } from '../mcp/use-mcp-servers'
 
+import { ServerFormFields } from './server-form'
+import {
+  blankForm,
+  formatArgs,
+  formFromEntry,
+  type FormTransport,
+  isBuiltInServer,
+  type ServerForm,
+  transportOf
+} from './server-form-model'
+import type { ServerEdits } from './use-server-edits'
+
+type RowStatus = { count: number; kind: 'ok' } | { kind: 'connecting' } | { kind: 'failed' } | null
+
 export interface McpServerRowProps {
-  card: ConnectorCardModel
   controller: McpServersController
+  edits: ServerEdits
   expanded: boolean
+  id: string
+  /** 已保存服务的名称；新建未保存的行为 null。 */
+  name: null | string
+  newTransport?: FormTransport
   onExpand: () => void
-  onOpenPlugins: () => void
   onRemove: () => void
-  profile: ProfileScope
 }
 
-/** 一行连接配置可展开原生工具和 JSON；插件服务只提供原生只读工具视图。 */
+/** 一行 MCP 服务：名称、类型、连接状态、开关和删除；展开后是配置表单。 */
 export function McpServerRow({
-  card,
   controller,
+  edits,
   expanded,
+  id,
+  name,
+  newTransport = 'http',
   onExpand,
-  onOpenPlugins,
-  onRemove,
-  profile
+  onRemove
 }: McpServerRowProps) {
   const { t } = useI18n()
   const copy = t.connectorsPage.mcpLocal
-  const m = t.settings.mcp
-  const id = useId()
-  const [view, setView] = useState<'tools' | 'config'>('tools')
-  const name = localServerName(card)
-  const entry = controller.servers[name]
-  const probe = controller.probes[name]
-  const plugin = card.plugin !== undefined
-  const enabled = card.ways.local?.serverEnabled === true
-  const pending = controller.saving || controller.profilePending
+  const panelId = useId()
+  const entry = name ? controller.servers[name] : undefined
+  const builtIn = isBuiltInServer(name)
+  const enabled = entry ? serverEnabled(entry) : false
+  const checking = name !== null && edits.checking.has(name)
+  const failure = name ? edits.failures[name] : undefined
+  const busy = controller.profilePending || controller.saving
+  const status = rowStatus()
+  const title = name || copy.untitled
+  const transport = entry ? transportOf(entry) : newTransport
 
-  const result =
-    probe === 'probing' ? copy.testing : probe ? (probe.ok ? copy.testPassed : copy.testFailed) : copy.untested
+  /** 状态与 UniWork 相同：开启验证中、启用后的测试结果，或刚才开启失败。 */
+  function rowStatus(): RowStatus {
+    if (checking) {
+      return { kind: 'connecting' }
+    }
+
+    if (failure !== undefined) {
+      return { kind: 'failed' }
+    }
+
+    if (!name || !enabled) {
+      return null
+    }
+
+    const state = controller.statuses[name]
+
+    if (state === 'probing') {
+      return { kind: 'connecting' }
+    }
+
+    if (state === 'error' || state === 'needs-auth') {
+      return { kind: 'failed' }
+    }
+
+    const probe = okProbe(controller.probes[name])
+
+    return probe ? { count: controller.toolCounts[name]?.on ?? probe.tools.length, kind: 'ok' } : null
+  }
+
+  /** 折叠时的一行摘要：内置服务显示简介，其余显示地址或命令。 */
+  function summary(): string {
+    if (builtIn) {
+      return copy.uniAiToolkitSummary
+    }
+
+    if (!entry) {
+      return transport === 'http' ? copy.noUrl : copy.noCommand
+    }
+
+    if (transport === 'http') {
+      return typeof entry.url === 'string' && entry.url ? entry.url : copy.noUrl
+    }
+
+    const line = [typeof entry.command === 'string' ? entry.command : '', formatArgs(entry.args)].join(' ').trim()
+
+    return line || copy.noCommand
+  }
 
   return (
-    <article aria-label={name} className="grid min-w-0 gap-2 py-2">
-      <div className="flex flex-wrap items-center gap-3">
-        <Button
-          aria-controls={id}
+    <article aria-label={title} className="min-w-0">
+      <div className="flex items-center gap-3 py-3">
+        <button
+          aria-controls={panelId}
           aria-expanded={expanded}
-          className="min-w-0 flex-1 justify-start"
+          className="grid min-w-0 flex-1 gap-1 text-left"
           onClick={onExpand}
-          size="sm"
-          variant="textStrong"
+          type="button"
         >
-          <Codicon name={expanded ? 'chevron-down' : 'chevron-right'} />
-          <span className="min-w-0 truncate">{name}</span>
-        </Button>
-        <Badge variant="muted">{entry?.url ? 'HTTP' : entry ? 'STDIO' : 'MCP'}</Badge>
-        <Badge variant="muted">{enabled ? copy.enabled : m.disabled}</Badge>
-        <div className="ml-auto flex items-center gap-3">
-          {!plugin && (
-            <Switch
-              aria-label={
-                enabled ? t.connectorsPage.card.turnServerOff(name) : t.connectorsPage.card.turnServerOn(name)
-              }
-              checked={enabled}
-              disabled={pending}
-              onCheckedChange={next => void controller.setServerEnabled(name, next)}
-              size="xs"
-            />
-          )}
-          {!plugin && (
+          <span className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className="min-w-0 truncate text-sm font-medium">{title}</span>
+            <Badge variant="muted">{transport.toUpperCase()}</Badge>
+            {builtIn && <Badge variant="muted">{copy.builtInTag}</Badge>}
+            {status && <StatusTag status={status} />}
+          </span>
+          <span className="truncate text-xs text-(--ui-text-tertiary)">{summary()}</span>
+        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Switch
+            aria-label={
+              enabled ? t.connectorsPage.card.turnServerOff(title) : t.connectorsPage.card.turnServerOn(title)
+            }
+            checked={enabled || checking}
+            className={cn(failure !== undefined && 'border-destructive')}
+            disabled={!name || checking || busy}
+            onCheckedChange={next => name && void edits.toggle(name, next)}
+            size="xs"
+          />
+          {!builtIn && (
             <Button
-              aria-label={t.connectorsPage.dialog.removeServerTitle(name)}
-              disabled={pending}
+              aria-label={t.connectorsPage.dialog.removeServerTitle(title)}
+              disabled={checking || busy}
               onClick={onRemove}
               size="icon-xs"
               variant="ghost"
@@ -90,61 +151,146 @@ export function McpServerRow({
               <Codicon name="trash" />
             </Button>
           )}
+          <Codicon
+            className="cursor-pointer text-(--ui-text-tertiary)"
+            name={expanded ? 'chevron-down' : 'chevron-right'}
+            onClick={onExpand}
+          />
         </div>
       </div>
-      <p className="text-xs text-(--ui-text-tertiary)">
-        {plugin ? t.connectorsPage.dialog.providedByPlugin(card.plugin ?? '') : result}
-      </p>
       {expanded && (
-        <div className="grid min-w-0 gap-3" id={id}>
-          {probe && probe !== 'probing' && !probe.ok && probe.error && (
+        <div className="grid gap-3 pb-4" id={panelId}>
+          <RowEditor
+            controller={controller}
+            edits={edits}
+            id={id}
+            name={name}
+            readOnly={builtIn || checking || busy}
+            transport={newTransport}
+          />
+          {failureText() && (
             <p className="whitespace-pre-wrap break-words text-xs text-destructive" role="alert">
-              {probe.error}
+              {failureText()}
             </p>
           )}
-          {!plugin && (
-            <div className="flex flex-wrap items-center gap-3">
-              <TextTab active={view === 'tools'} onClick={() => setView('tools')}>
-                {t.connectorsPage.tools.title}
-              </TextTab>
-              <TextTab active={view === 'config'} onClick={() => setView('config')}>
-                {copy.configuration}
-              </TextTab>
-              <Button
-                disabled={pending || probe === 'probing'}
-                onClick={() => void controller.runProbe(name)}
-                size="xs"
-                variant="secondary"
-              >
-                {m.test}
-              </Button>
-              {entry && canAuthenticate(entry, controller.statuses[name] ?? 'unknown') && (
-                <Button
-                  disabled={controller.authing === name || pending}
-                  onClick={() => void controller.authenticate(name)}
-                  size="xs"
-                  variant="secondary"
-                >
-                  {m.authenticate}
-                </Button>
-              )}
-            </div>
-          )}
-          {plugin ? (
-            <div className="h-80 min-w-0 overflow-hidden">
-              <PluginToolsPanel card={card} onOpenPlugins={onOpenPlugins} plugin={card.plugin ?? ''} scope={profile} />
-            </div>
-          ) : view === 'config' ? (
-            <div className="h-72 min-w-0 overflow-hidden">
-              <McpJsonEditor controller={controller} highlightServer={name} />
-            </div>
-          ) : (
-            <div className="h-80 min-w-0 overflow-hidden">
-              <LocalToolsPanel card={card} controller={controller} onRemove={onRemove} />
-            </div>
+          {name && entry && canAuthenticate(entry, authStatus()) && (
+            <Button
+              className="justify-self-start"
+              disabled={controller.authing === name || busy}
+              onClick={() => {
+                edits.dismissFailure(name)
+                void controller.authenticate(name)
+              }}
+              size="xs"
+              variant="secondary"
+            >
+              {t.settings.mcp.authenticate}
+            </Button>
           )}
         </div>
       )}
+    </article>
+  )
+
+  /** 展开后显示的失败原因：刚才开启失败，或启用中的服务测试失败。 */
+  function failureText(): string {
+    if (failure) {
+      return failure
+    }
+
+    const probe = name ? controller.probes[name] : undefined
+
+    return status?.kind === 'failed' && probe && probe !== 'probing' && !probe.ok ? (probe.error ?? '') : ''
+  }
+
+  /** 判断是否显示“授权”按钮所用的状态：开启失败时按失败原因归类。 */
+  function authStatus() {
+    if (failure !== undefined) {
+      return NEEDS_AUTH_RE.test(failure) ? 'needs-auth' : 'error'
+    }
+
+    return (name && controller.statuses[name]) || 'unknown'
+  }
+}
+
+interface RowEditorProps {
+  controller: McpServersController
+  edits: ServerEdits
+  id: string
+  name: null | string
+  readOnly: boolean
+  transport: FormTransport
+}
+
+/** 展开时才创建表单状态；输入只留在本行，由 `edits` 决定何时保存。 */
+function RowEditor({ controller, edits, id, name, readOnly, transport }: RowEditorProps) {
+  const [form, setForm] = useState<ServerForm>(() => {
+    const entry = name ? controller.servers[name] : undefined
+
+    return entry && name ? formFromEntry(name, entry) : blankForm(transport)
+  })
+
+  /** 更新本行表单并交给编辑逻辑。 */
+  const change = (next: ServerForm) => {
+    setForm(next)
+    edits.edit(id, next)
+  }
+
+  return <ServerFormFields error={edits.errors[id] ?? null} form={form} onChange={change} readOnly={readOnly} />
+}
+
+/** UniWork 同款状态标签：连接中、N 个工具可用、失败。 */
+function StatusTag({ status }: { status: NonNullable<RowStatus> }) {
+  const { t } = useI18n()
+  const copy = t.connectorsPage.mcpLocal
+
+  const view = {
+    connecting: { dot: STATUS_DOT.probing, text: copy.connecting, tone: 'text-(--ui-text-tertiary)' },
+    failed: { dot: STATUS_DOT.error, text: copy.failed, tone: 'text-destructive' },
+    ok: { dot: STATUS_DOT.ok, text: '', tone: 'text-emerald-600 dark:text-emerald-300' }
+  }[status.kind]
+
+  return (
+    <span className={cn('inline-flex items-center gap-1 text-[0.65rem]', view.tone)}>
+      <span className={cn('size-1.5 rounded-full', view.dot)} />
+      {status.kind === 'ok' ? copy.toolsAvailable(status.count) : view.text}
+    </span>
+  )
+}
+
+export interface PluginServerRowProps {
+  onOpenPlugins: () => void
+  row: LocalServerInput
+}
+
+/** 插件提供的服务只读展示，管理入口在插件页。 */
+export function PluginServerRow({ onOpenPlugins, row }: PluginServerRowProps) {
+  const { t } = useI18n()
+  const copy = t.connectorsPage.mcpLocal
+
+  const status: RowStatus =
+    row.status === 'ok'
+      ? { count: row.toolsTotal ?? 0, kind: 'ok' }
+      : row.status === 'probing'
+        ? { kind: 'connecting' }
+        : row.status === 'error' || row.status === 'needs-auth'
+          ? { kind: 'failed' }
+          : null
+
+  return (
+    <article aria-label={row.name} className="flex min-w-0 items-center gap-3 py-3">
+      <div className="grid min-w-0 flex-1 gap-1">
+        <span className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="min-w-0 truncate text-sm font-medium">{row.title ?? row.name}</span>
+          {status && <StatusTag status={status} />}
+        </span>
+        <span className="truncate text-xs text-(--ui-text-tertiary)">
+          {t.connectorsPage.dialog.providedByPlugin(row.plugin ?? '')}
+        </span>
+      </div>
+      <Button onClick={onOpenPlugins} size="xs" variant="secondary">
+        {copy.openPlugins}
+      </Button>
     </article>
   )
 }

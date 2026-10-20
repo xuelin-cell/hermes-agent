@@ -301,3 +301,16 @@ def test_tool_result_needs_user_treats_nonzero_exit_code_as_failure():
     assert server._tool_result_needs_user(json.dumps({"ok": False, "output": "denied"})) is True
     assert server._tool_result_needs_user(json.dumps({"error": "disk full"})) is True
     assert server._tool_result_needs_user("not json") is False
+
+
+def test_answer_only_preserves_published_artifact_lifecycle(monkeypatch):
+    """A public link remains manageable even when optional tool chrome is hidden."""
+    events = _capture(monkeypatch)
+    _session(monkeypatch, "share-card", show_reasoning=False)
+    args = {"path": "report.md"}
+    result = json.dumps({"share_id": "published-artifact-id", "url": "https://share.example/report"})
+    server._on_tool_start("share-card", "publish-id", "publish_artifact", args)
+    server._on_tool_complete("share-card", "publish-id", "publish_artifact", args, result)
+    lifecycle = [event for event in events if event[2].get("tool_id") == "publish-id"]
+    assert [event[0] for event in lifecycle] == ["tool.start", "tool.complete"]
+    assert lifecycle[-1][2]["result"]["share_id"] == "published-artifact-id"

@@ -13,6 +13,7 @@ import { installArtifactSharePlugin } from '../entry_local/install-artifact-shar
 import { recoverAccountRun } from '../entry_local/recover-account'
 import { LocalRuntimeContext, type PreparedLocalContext } from '../entry_local/runtime-context'
 import { LocalStartupError, showLocalStartupFailure } from '../entry_local/startup-failure'
+import { createUniAgentGateBindingUpdate } from '../entry_local/uniagentgate-control'
 import { migrateOldUniworkData } from '../migrate-old-uniwork'
 import { createWindowOpenHandler } from '../window-open-policy'
 
@@ -67,18 +68,17 @@ function initializeLoginShell(): void {
     .catch(error => {
       stopping = true
 
-      const advice = (error as NodeJS.ErrnoException)?.code === 'ETIMEDOUT'
-        ? 'Windows 进程状态查询超时，请稍后重新启动应用。'
-        : '上次账号工作未能安全收尾，请寻求支持。'
+      const advice =
+        (error as NodeJS.ErrnoException)?.code === 'ETIMEDOUT'
+          ? 'Windows 进程状态查询超时，请稍后重新启动应用。'
+          : '上次账号工作未能安全收尾，请寻求支持。'
 
-      dialog.showErrorBox(
-        'Hermes Desktop MT',
-        `${advice}已阻止恢复登录，账号记录和历史已保留。`
-      )
+      dialog.showErrorBox('Hermes Desktop MT', `${advice}已阻止恢复登录，账号记录和历史已保留。`)
       app.quit()
     })
   accountRuntime = new LocalRuntimeContext(
-    new LoginSession(net.fetch, new CredentialStore(userData)),
+    new LoginSession(net.fetch, new CredentialStore(userData),
+      createUniAgentGateBindingUpdate(currentDesktopLocalContext)),
     roots,
     installationRoot,
     process.env.HERMES_DESKTOP_PYTHON

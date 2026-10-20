@@ -35,6 +35,7 @@ const startWeixinQrLogin = vi.fn()
 const getWeixinQrLogin = vi.fn()
 const unbindWeixin = vi.fn()
 const messagingSetup = vi.fn()
+const reconnectUniAgentGate = vi.fn()
 const statusListeners = new Set<(status: MessagingOperationStatus) => void>()
 let currentStatus: MessagingOperationStatus = { phase: 'idle', revision: 0 }
 
@@ -273,7 +274,8 @@ describe('MessagingView WeChat QR setup', () => {
 
     expect(await screen.findByRole('button', { name: /Scan again/ })).toBeTruthy()
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /^Disconnect$/ }))
+      fireEvent.click(within(screen.getByRole('article', { name: 'WeChat ClawBot integration' }))
+        .getByRole('button', { name: /^Disconnect$/ }))
     })
     expect(unbindWeixin).not.toHaveBeenCalled()
 
@@ -497,7 +499,7 @@ describe('Messaging cards and native configuration', () => {
     expect(updateMessagingPlatform).not.toHaveBeenCalled()
   })
 
-  it('shows only the four supported cards and disabled 5G, without advanced fields or Profile controls', async () => {
+  it('shows supported cards and unavailable RCS without advanced fields or Profile controls', async () => {
     getMessagingPlatforms.mockResolvedValue({
       platforms: [
         platform({ id: 'qqbot', name: 'QQ Bot' }),
@@ -519,7 +521,8 @@ describe('Messaging cards and native configuration', () => {
       '5G messaging gateway (RCS) integration'
     ])
     const pending = screen.getByRole('article', { name: /5G/ })
-    expect(within(pending).getByRole('button', { name: 'Configure' }).hasAttribute('disabled')).toBe(true)
+    expect(within(pending).getByRole('status').textContent).toBe('Messaging component unavailable')
+    expect(within(pending).queryByRole('button', { name: 'Configure' })).toBeNull()
     expect(screen.queryByText('QQ Bot')).toBeNull()
     expect(screen.queryByText('WeCom Callback')).toBeNull()
     expect(screen.queryByText('Allowed users')).toBeNull()
@@ -668,4 +671,87 @@ describe('Messaging cards and native configuration', () => {
       $settingsScopeOverride.set(null)
     }
   })
+})
+
+describe('MessagingView RCS integration', () => {
+  it('shows 5G startup as connecting and settles in place without a gateway restart', async () => {
+    const rcs = platform({ id: 'uniagentgate', configured: true, enabled: true,
+      gateway_running: true, state: 'pending_restart' })
+
+    getMessagingPlatforms.mockResolvedValue({ platforms: [rcs] })
+    publishOperation({ phase: 'applying', operation: 'restore', saved: true })
+    await renderMessaging()
+    const card = await screen.findByRole('article', { name: /5G/ })
+    expect(within(card).getByRole('status').textContent).toBe('Connecting')
+    expect(within(card).queryByText('Restart required')).toBeNull()
+    getMessagingPlatforms.mockResolvedValue({ platforms: [{ ...rcs, state: 'connected' }] })
+    await act(async () => { publishOperation({ phase: 'completed' }) })
+    await waitFor(() => expect(within(card).getByRole('status').textContent).toBe('Connected'))
+    expect(messagingSetup).not.toHaveBeenCalled()
+    expect(runGatewayRestart).not.toHaveBeenCalled()
+  })
+
+  it('reconnects RCS through the account bridge and reflects its real state without restarting other platforms', async () => {
+    const rcs = platform({
+      id: 'uniagentgate',
+      name: '5G',
+      configured: true,
+      enabled: true,
+      gateway_running: false,
+      state: 'gateway_stopped'
+    })
+
+    getMessagingPlatforms.mockResolvedValue({ platforms: [rcs] })
+    window.hermesDesktop = { ...window.hermesDesktop, reconnectUniAgentGate }
+    reconnectUniAgentGate.mockResolvedValue({ status: 'failed' })
+    await renderMessaging()
+    const card = await screen.findByRole('article', { name: /5G/ })
+    expect(within(card).getByRole('status').textContent).toBe('Messaging gateway stopped')
+    expect(within(card).queryByText(/Personal credentials saved/)).toBeNull()
+    expect(within(card).queryByRole('button', { name: 'Open logs' })).toBeNull()
+    fireEvent.click(within(card).getByRole('button', { name: 'Setup guide' }))
+    expect(openExternalLink).toHaveBeenCalledWith('https://docs.qq.com/doc/DZmdiTERIT2VjZHJB')
+
+    getMessagingPlatforms.mockResolvedValue({
+      platforms: [{ ...rcs, gateway_running: true, state: 'fatal', error_message: 'Registration rejected' }]
+    })
+    expect(within(card).queryByRole('button', { name: 'Refresh' })).toBeNull()
+    fireEvent.click(within(card).getByRole('button', { name: 'Reconnect' }))
+    await waitFor(() => expect(within(card).getByRole('status').textContent).toBe('Error'))
+    expect(reconnectUniAgentGate).toHaveBeenCalledWith('default')
+    expect(within(card).getByText('Registration rejected')).toBeTruthy()
+
+    getMessagingPlatforms.mockResolvedValue({ platforms: [{ ...rcs, gateway_running: true, state: 'connected' }] })
+    reconnectUniAgentGate.mockResolvedValue({ status: 'connected' })
+    fireEvent.click(within(card).getByRole('button', { name: 'Reconnect' }))
+    await waitFor(() => expect(within(card).getByRole('status').textContent).toBe('Connected'))
+    expect(within(card).queryByText('Registration rejected')).toBeNull()
+    expect(within(card).queryByRole('button', { name: 'Reconnect' })).toBeNull()
+    expect((within(card).getByRole('button', { name: 'Disconnect' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(updateMessagingPlatform).not.toHaveBeenCalled()
+    expect(runGatewayRestart).not.toHaveBeenCalled()
+    expect(messagingSetup).not.toHaveBeenCalled()
+  })
+
+  it('explains an old Electron bridge and does not offer reconnect during protocol recovery', async () => {
+    const rcs = platform({ id: 'uniagentgate', name: '5G', configured: true,
+      enabled: true, gateway_running: true, state: 'fatal' })
+
+    getMessagingPlatforms.mockResolvedValue({ platforms: [rcs] })
+    window.hermesDesktop = { ...window.hermesDesktop, reconnectUniAgentGate: undefined }
+    await renderMessaging()
+    const card = await screen.findByRole('article', { name: /5G/ })
+    fireEvent.click(within(card).getByRole('button', { name: 'Reconnect' }))
+    await waitFor(() => expect(notify).toHaveBeenCalledWith(expect.objectContaining({
+      kind: 'error', message: expect.stringContaining('component update is not active yet')
+    })))
+    await waitFor(() => expect((within(card).getByRole('button', { name: 'Reconnect' }) as HTMLButtonElement).disabled).toBe(false))
+    getMessagingPlatforms.mockResolvedValue({ platforms: [{ ...rcs, state: 'retrying' }] })
+    fireEvent.click(within(card).getByRole('button', { name: 'Reconnect' }))
+    await waitFor(() => expect(within(card).queryByRole('button', { name: 'Reconnect' })).toBeNull())
+    expect((within(card).getByRole('button', { name: 'Disconnect' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(runGatewayRestart).not.toHaveBeenCalled()
+  })
+
+
 })

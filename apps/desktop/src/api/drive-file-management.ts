@@ -83,22 +83,26 @@ export async function listDriveRecycle(page: number): Promise<DriveRecycleItem[]
 }
 
 /** 将单个回收站项目恢复到云盘服务记录的原位置，不自动重试。 */
-export function restoreDriveItem(item: DriveRecycleItem): Promise<unknown> {
-  return driveRequest('/unicom/ReductionRecycleData', 'POST', { deleteNos: [item.deleteNo] })
+export function restoreDriveItem(item: DriveRecycleItem, onVerifying?: () => void): Promise<unknown> {
+  return driveRequest('/unicom/ReductionRecycleData', 'POST', { deleteNos: [item.deleteNo] }, onVerifying)
 }
 
 /** 个人回收站按删除操作号彻底删除一项，不能使用原文件 ID 或项目空间参数。 */
-export function permanentlyDeleteDriveItem(item: DriveRecycleItem): Promise<unknown> {
-  return driveRequest('/unicom/DeleteRecycleData', 'POST', { deleteNos: [item.deleteNo] })
+export function permanentlyDeleteDriveItem(item: DriveRecycleItem, onVerifying?: () => void): Promise<unknown> {
+  return driveRequest('/unicom/DeleteRecycleData', 'POST', { deleteNos: [item.deleteNo] }, onVerifying)
 }
 
 /** 个人回收站清空接口只接收空对象；空间由服务个人入口决定。 */
-export function emptyDriveRecycle(): Promise<unknown> {
-  return driveRequest('/unicom/EmptyRecycleData', 'POST', {})
+export function emptyDriveRecycle(onVerifying?: () => void): Promise<unknown> {
+  return driveRequest('/unicom/EmptyRecycleData', 'POST', {}, onVerifying)
 }
 
 /** 对齐源版本只移动文件的行为，保持原始文件 ID 和目标目录 ID。 */
-export function moveDriveFile(source: DriveAsset | readonly DriveAsset[], destination: string): Promise<unknown> {
+export function moveDriveFile(
+  source: DriveAsset | readonly DriveAsset[],
+  destination: string,
+  onVerifying?: () => void
+): Promise<unknown> {
   const assets = 'asset_id' in source ? [source] : source
 
   if (
@@ -112,9 +116,14 @@ export function moveDriveFile(source: DriveAsset | readonly DriveAsset[], destin
     throw new Error('Invalid move destination')
   }
 
-  return driveRequest('/assets/move', 'POST', {
-    file_ids: [...new Set(assets.map(asset => asset.asset_id))],
-    directory_ids: [],
-    target_parent_asset_id: destination
-  })
+  return driveRequest(
+    '/assets/move',
+    'POST',
+    {
+      file_ids: [...new Set(assets.map(asset => asset.asset_id))],
+      directory_ids: [],
+      target_parent_asset_id: destination
+    },
+    onVerifying
+  )
 }

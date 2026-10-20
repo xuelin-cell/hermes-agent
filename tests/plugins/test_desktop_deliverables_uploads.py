@@ -1,6 +1,9 @@
 """元景工具调用前自动上传本机文件：只传允许的位置，换成 ossPath，失败时说明原因。"""
 
+from datetime import datetime, timezone
 import json
+import os
+import time
 from types import SimpleNamespace
 
 import httpx
@@ -70,6 +73,7 @@ def uploads(delivery, monkeypatch):  # noqa: F811
     home = module.attachments_folder()
     home.mkdir(parents=True)
     return SimpleNamespace(
+        plugin=plugin,
         module=module,
         hooks=hooks,
         work=work,
@@ -258,3 +262,78 @@ def test_upload_target_reads_oss_path_from_url_or_field(uploads):
     ):
         with pytest.raises(ValueError):
             target(bad)
+
+
+def test_downloaded_deliverable_goes_back_as_its_original_link(uploads):
+    """插件下载的成品换回原链接、不上传；内容被换掉、链接快过期或读不出期限时改为上传。"""
+    module = uploads.module
+    output = uploads.work / "outputs" / "小猫.png"
+    output.parent.mkdir()
+    output.write_bytes(b"cat-1")
+    now = int(time.time())
+    image = f"http://obs-nmhhht6.cucloud.cn/yuanjing-t2i-oss/a.png?AWSAccessKeyId=k&Signature=s&Expires={now + 3600}"
+    signed = datetime.fromtimestamp(now - 60, timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    edited = f"{HOST}/app-agent-prod/images/edited/b.jpg?X-Amz-Date={signed}&X-Amz-Expires=604800"
+
+    def sent():
+        """把本机路径交给图生视频，返回实际发出去的参数。"""
+        result = before(
+            uploads, "mcp__UniAI_Toolkit__img2vid_generate", {"image_url": str(output)}
+        )
+        return (
+            result["args"]["image_url"]
+            if result and result["action"] == "modify"
+            else result
+        )
+
+    for link in (image, edited):
+        module.remember_download(output, link)
+        assert sent() == link
+    assert not uploads.calls and not uploads.puts
+    # 同名文件被换成别的内容，即使大小和修改时间不变也认得出来。
+    info = output.stat()
+    output.write_bytes(b"dog-1")
+    os.utime(output, ns=(info.st_atime_ns, info.st_mtime_ns))
+    assert sent() == "app-agent-prod/temp/obj1.png"
+    output.write_bytes(b"cat-2")
+    for link in (
+        image.replace(str(now + 3600), str(now + 60)),
+        f"{HOST}/app-agent-prod/music/c.wav?sig=1",
+    ):
+        module.remember_download(output, link)
+        assert sent().startswith("app-agent-prod/temp/")
+    assert len(uploads.puts) == 2
+
+
+def test_tool_output_downloaded_by_the_plugin_is_reused_without_upload(
+    uploads, monkeypatch
+):
+    """完整流程：生图成品下载后结果里没有链接；再把本机副本交给元景工具时换回原链接。"""
+    from tests.plugins.desktop_deliverables_http_fixture import serving
+    from hermes_cli.plugins import resolve_plugin_command_result
+
+    monkeypatch.setattr("tools.url_safety._global_allow_private_urls", lambda: True)
+    uploads.plugin.before_turn(
+        session_id="s", turn_id="t", task_id="s", platform="desktop"
+    )
+    with serving() as (base, _requests):
+        url = base + f"/cat.png?Expires={int(time.time()) + 3600}"
+        result = resolve_plugin_command_result(
+            uploads.hooks["transform_tool_result"][0](
+                tool_name="mcp__UniAI_Toolkit__txt2img_generate",
+                args={"prompt": "一只小猫"},
+                result=json.dumps({"url": url}),
+                session_id="s",
+                turn_id="t",
+            )
+        )
+    data = json.loads(result)
+    assert "url" not in data and "Expires" not in result
+    output = data["desktop_deliverables"][0]
+    assert before(
+        uploads, "mcp__UniAI_Toolkit__img2vid_generate", {"image_url": output}
+    ) == {
+        "action": "modify",
+        "args": {"image_url": url},
+    }
+    assert not uploads.calls and not uploads.puts

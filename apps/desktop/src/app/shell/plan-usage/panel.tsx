@@ -56,14 +56,21 @@ function UsageMeter({ label, value, valueText }: { label: string; value: number;
   )
 }
 
+interface UsageDetailsProps {
+  data: PlanUsage
+  showPlan?: boolean
+  action?: ReactElement
+}
+
 /** 只展示当前套餐对应的数据，缺失不冒充零用量，重置时间锚定上游查询时间。 */
-function UsageDetails({ data, showPlan = true }: { data: PlanUsage; showPlan?: boolean }) {
+function UsageDetails({ data, showPlan = true, action }: UsageDetailsProps) {
   const { t, locale } = useI18n()
   const c = t.desktopLogin.planUsage
   const now = Date.now()
   const expiry = formatPlanExpiryDate(data.endTime, locale)
   const labels = { 'five-hour': c.fiveHour, week: c.week, month: c.month }
   const hasUsage = data.kind === 'coding_plan' ? data.windows.length > 0 : data.quota !== null
+  const detailsAction = action && <span className="plan-usage-details-action">{action}</span>
   const unit = data.quota?.unit ?? ''
   const exact = data.quota
     ? c.tokenExact(
@@ -87,11 +94,14 @@ function UsageDetails({ data, showPlan = true }: { data: PlanUsage; showPlan?: b
         </>
       )}
       {!hasUsage && (
-        <p role="status" className="plan-usage-meta">
-          {c.empty}
-        </p>
+        <div className="plan-usage-summary">
+          <p role="status" className="plan-usage-meta">
+            {c.empty}
+          </p>
+          {detailsAction}
+        </div>
       )}
-      {data.windows.map(window => {
+      {data.windows.map((window, index) => {
         const used = formatUsagePercentage(window.usedPercent, locale)
         return (
           <div className="plan-usage-window" key={window.name}>
@@ -100,6 +110,7 @@ function UsageDetails({ data, showPlan = true }: { data: PlanUsage; showPlan?: b
               <strong>
                 {c.used} {used}%
               </strong>
+              {index === 0 && detailsAction}
             </div>
             <UsageMeter
               label={labels[window.name]}
@@ -119,13 +130,14 @@ function UsageDetails({ data, showPlan = true }: { data: PlanUsage; showPlan?: b
         )
       })}
       {data.quota && (
-        <div className="plan-usage-window" title={exact}>
+        <div className="plan-usage-window">
           <div className="plan-usage-summary plan-usage-token-summary">
             <span>{c.tokenUsed}</span>
             <strong>{formatTokenQuotaPercent(data.quota.usedPercent, locale)}%</strong>
+            {detailsAction}
           </div>
           <UsageMeter label={exact} value={data.quota.usedPercent} valueText={exact} />
-          <div className="plan-usage-quota">
+          <div className="plan-usage-quota" title={exact}>
             <span>
               <strong className="plan-usage-quota-number">
                 {formatTokenQuotaCompact(data.quota.used, locale)}
@@ -159,7 +171,7 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
   const [data, setData] = useState<PlanUsage | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<'auth' | 'failed' | 'restart' | null>(null)
-  const [subscribing, setSubscribing] = useState(false)
+  const [openingSource, setOpeningSource] = useState<'subscribe' | 'details' | null>(null)
 
   useEffect(() => {
     if (!open || isPlanUsageHidden()) {
@@ -256,12 +268,12 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
   }
 
   /** 订阅只读取主进程身份；失败只提示分类结果，不回传 URL、手机号或 ticket。 */
-  async function subscribe(): Promise<void> {
-    if (subscribing) {
+  async function subscribe(source: 'subscribe' | 'details'): Promise<void> {
+    if (openingSource) {
       return
     }
 
-    setSubscribing(true)
+    setOpeningSource(source)
 
     try {
       if (!window.hermesDesktop?.subscribeMaasPlan) {
@@ -288,7 +300,7 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
     } catch {
       notify({ id: 'maas-plan-subscribe', kind: 'error', message: c.subscribeFailed })
     } finally {
-      setSubscribing(false)
+      setOpeningSource(null)
     }
   }
 
@@ -315,6 +327,24 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
           ? c.stale
           : c.failed
     : null
+  const detailsAction = (
+    <Button
+      aria-busy={openingSource === 'details'}
+      className="account-card-details"
+      disabled={openingSource === 'details'}
+      onClick={() => void subscribe('details')}
+      size="compact"
+      type="button"
+      variant="ghost"
+    >
+      {c.details}
+      <Codicon
+        name={openingSource === 'details' ? 'loading' : 'link-external'}
+        size="0.75rem"
+        spinning={openingSource === 'details'}
+      />
+    </Button>
+  )
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
@@ -352,13 +382,13 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
                   <Codicon className={loading ? 'animate-spin' : undefined} name="refresh" size="0.875rem" />
                 </button>
                 <button
-                  aria-busy={subscribing}
+                  aria-busy={openingSource === 'subscribe'}
                   className="account-card-subscribe"
-                  disabled={subscribing}
-                  onClick={() => void subscribe()}
+                  disabled={openingSource === 'subscribe'}
+                  onClick={() => void subscribe('subscribe')}
                   type="button"
                 >
-                  {subscribing ? c.subscribeBusy : c.subscribe}
+                  {openingSource === 'subscribe' ? c.subscribeBusy : c.subscribe}
                 </button>
               </div>
               <button
@@ -370,18 +400,22 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
               >
                 <AccountIcon src={usageIcon} />
                 <span>{c.actualUsage}</span>
-                {details ? (
-                  <Codicon className="account-card-chevron" name="chevron-down" size="0.875rem" />
-                ) : (
-                  <>
-                    <span className="account-card-summary">{usageSummary}</span>
-                    <span className="account-card-details">{c.details}</span>
-                  </>
-                )}
+                {!details && <span className="account-card-summary">{usageSummary}</span>}
+                <Codicon
+                  className="account-card-chevron"
+                  name={details ? 'chevron-down' : 'chevron-right'}
+                  size="0.875rem"
+                />
               </button>
               {details && (
                 <div className="account-card-expanded account-card-details-inline">
-                  {data && <UsageDetails data={data} showPlan={false} />}
+                  {data ? (
+                    <UsageDetails action={detailsAction} data={data} showPlan={false} />
+                  ) : (
+                    <div className="plan-usage-summary">
+                      <span className="plan-usage-details-action">{detailsAction}</span>
+                    </div>
+                  )}
                   {loading && !data && (
                     <p className="plan-usage-meta" role="status">
                       {c.loading}

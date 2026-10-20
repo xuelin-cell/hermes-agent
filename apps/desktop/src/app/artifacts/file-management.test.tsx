@@ -2,6 +2,9 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, expect, it, vi } from 'vitest'
 
 import { I18nProvider } from '@/i18n'
+import { $notifications, clearNotifications } from '@/store/notifications'
+
+import type { CloudDriveMutationProgress, CloudDriveRequest } from '../../../electron/login/contract'
 
 import { CloudDirectoryEmpty } from './cloud-directory-empty'
 import { CloudLibrary } from './cloud-library'
@@ -9,6 +12,7 @@ import { CloudRecycleBin } from './cloud-recycle-bin'
 
 afterEach(() => {
   cleanup()
+  clearNotifications()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
 })
@@ -77,7 +81,7 @@ it('文件移动发送原始 ID 和目标目录，部分成功时保留弹窗并
   expect((within(dialog).getByRole('button', { name: '确认' }) as HTMLButtonElement).disabled).toBe(true)
   fireEvent.click(within(dialog).getByRole('button', { name: '归档目录' }))
   fireEvent.click(within(dialog).getByRole('button', { name: '确认' }))
-  expect(await within(dialog).findByRole('alert')).toHaveProperty('textContent', expect.stringContaining('仅部分完成'))
+  expect(await within(dialog).findByRole('status')).toHaveProperty('textContent', expect.stringContaining('仅部分完成'))
   const writes = drive.mock.calls.filter(([input]) => input.route === '/assets/move')
   expect(writes).toHaveLength(1)
   expect(writes[0][0]).toMatchObject({
@@ -226,7 +230,7 @@ it('彻底删除使用删除操作号，取消不写入；清空需明确确认�
   expect(within(dialog).getByText(/个人云盘回收站.*无法撤销/)).toBeTruthy()
   expect(request.mock.calls.some(([input]) => input.route === '/unicom/EmptyRecycleData')).toBe(false)
   fireEvent.click(within(dialog).getByRole('button', { name: '清空回收站' }))
-  expect(await within(dialog).findByRole('alert')).toHaveProperty(
+  expect(await within(dialog).findByRole('status')).toHaveProperty(
     'textContent',
     expect.stringContaining('确认操作结果')
   )
@@ -237,4 +241,67 @@ it('彻底删除使用删除操作号，取消不写入；清空需明确确认�
   expect(request.mock.calls.find(([input]) => input.route === '/unicom/EmptyRecycleData')![0]).toMatchObject({
     body: {}
   })
+})
+
+it('只在本请求启动核验时显示中性提示，完成后撤下确认中，无法确认仍能刷新且不重发', async () => {
+  const listeners = new Set<(progress: CloudDriveMutationProgress) => void>()
+  let complete!: (result: unknown) => void
+
+  const request = vi.fn((input: CloudDriveRequest) => {
+    if (input.route === '/assets/move') {
+      for (const listener of listeners) {
+        listener({ id: 'unrelated-request', phase: 'verifying' })
+      }
+
+      expect($notifications.get()).toHaveLength(0)
+
+      for (const listener of listeners) {
+        listener({ id: input.requestId!, phase: 'verifying' })
+      }
+
+      return new Promise(resolve => {
+        complete = resolve
+      })
+    }
+
+    return Promise.resolve(listing(input.route))
+  })
+
+  vi.stubGlobal('hermesDesktop', {
+    cloudDriveRequest: request,
+    onCloudDriveMutationProgress: (listener: (progress: CloudDriveMutationProgress) => void) => {
+      listeners.add(listener)
+
+      return () => listeners.delete(listener)
+    }
+  })
+  render(
+    <I18nProvider configClient={null} initialLocale="zh">
+      <CloudLibrary />
+    </I18nProvider>
+  )
+  const move = await screen.findByRole('button', { name: '移动' })
+  await waitFor(() => expect((move as HTMLButtonElement).disabled).toBe(false))
+  fireEvent.click(move)
+  const dialog = screen.getByRole('dialog', { name: '移动到文件夹' })
+  fireEvent.click(within(dialog).getByRole('button', { name: '归档目录' }))
+  fireEvent.click(within(dialog).getByRole('button', { name: '确认' }))
+  await waitFor(() =>
+    expect($notifications.get().find(item => item.message.includes('正在确认操作结果'))?.kind).toBe('info')
+  )
+  complete({
+    protocol: 'uniwork.drive-result.v1',
+    ok: false,
+    status: 'outcome_unknown',
+    code: 'OPERATION_CONFIRMATION_UNAVAILABLE'
+  })
+  expect(await within(dialog).findByRole('status')).toHaveProperty(
+    'textContent',
+    '暂时无法自动确认操作结果，请刷新文件列表核对。'
+  )
+  expect($notifications.get()).toHaveLength(0)
+  expect(listeners.size).toBe(0)
+  expect(request.mock.calls.filter(([input]) => input.route === '/assets/move')).toHaveLength(1)
+  expect(within(dialog).queryByRole('button', { name: '确认' })).toBeNull()
+  expect(within(dialog).getByRole('button', { name: '刷新' })).toBeTruthy()
 })

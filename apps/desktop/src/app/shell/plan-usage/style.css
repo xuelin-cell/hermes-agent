@@ -187,14 +187,14 @@ a.account-card-row:hover {
 }
 .account-card-details {
   color: var(--dt-primary-deep);
-  font-size: 12px;
-  white-space: nowrap;
 }
-/* 展开后箭头居右替代摘要与“查看详情”，信息只由下方详情承载。 */
+/* 展开后由明细承载用量，收起箭头仍保持居右。 */
 .account-card-chevron {
   flex: none;
-  margin-left: auto;
   color: var(--ui-text-tertiary);
+}
+.account-card-row[aria-expanded='true'] .account-card-chevron {
+  margin-left: auto;
 }
 .account-card-divider {
   height: 1px;
@@ -211,6 +211,10 @@ a.account-card-row:hover {
 /* 卡片内详情紧跟用量行，套餐名与截止日期已在上方行展示，不再重复。 */
 .account-card-details-inline {
   padding: 0 16px 12px;
+}
+.plan-usage-details-action {
+  flex: none;
+  margin-left: auto;
 }
 .account-card-details-inline .plan-usage-window:first-child {
   margin-top: 0;

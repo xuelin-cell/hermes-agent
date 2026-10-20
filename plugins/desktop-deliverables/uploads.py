@@ -3,16 +3,19 @@
 做法参考 UniWork 的 SandboxUploadMiddleware 与 postgresql-multitenant 的 pre_upload：
 只在模型真的调用元景工具、参数里填了本机文件时才上传，用户不用元景就什么都不传；
 只换 ossPath，不调 confirm_oss_upload，ossPath 不带签名、不会过期。
+插件自己下载的成品不再上传，直接换回下载时的原链接（下载后没改过、链接未临近过期时）。
 """
 
 from collections import OrderedDict
+from datetime import datetime, timezone
+import hashlib
 import json
 import logging
 import mimetypes
 import re
 from threading import RLock
 import time
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 import httpx
 
@@ -27,6 +30,8 @@ UPLOAD_PATH = "/app-agent-prod/temp/"
 MAX_BYTES = 64 * 1024 * 1024
 TIMEOUT = 120
 CACHE_SECONDS = 24 * 3600
+# 原链接离过期不足这么多秒就不再换回，改为上传本机副本，免得元景处理到一半链接失效。
+LINK_MARGIN = 600
 _REFERENCE = re.compile(
     r"(?<![\w/])@(?:file|image):(?:`([^`\n]+)`|\"([^\"\n]+)\"|'([^'\n]+)'|(\S+))"
 )
@@ -41,9 +46,11 @@ REMINDER = (
 )
 
 _lock = RLock()
-# (账号 Home, 会话) -> 会话里用户贴过的文件；(账号 Home, 路径, 修改时间, 大小) -> (ossPath, 时间)。
+# (账号 Home, 会话) -> 会话里用户贴过的文件；(账号 Home, 路径, 修改时间, 大小) -> (ossPath, 时间)；
+# (账号 Home, 路径) -> 插件下载的成品：(原链接, 大小, 修改时间, 内容指纹, 链接过期时间)。
 _sessions = OrderedDict()
 _cache = OrderedDict()
+_downloads = OrderedDict()
 
 
 class Refusal(Exception):
@@ -222,8 +229,69 @@ def upload(prefix, path):
         ) from None
 
 
+def fingerprint(path):
+    """文件内容的 SHA-256；同名文件被替换或改过时与下载时不同。"""
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def link_expiry(url):
+    """从签名链接读出过期时刻：生图用 Expires，其它成品用 X-Amz-Date 加 X-Amz-Expires；读不出返回 None。"""
+    try:
+        query = parse_qs(urlsplit(url).query)
+        if query.get("Expires"):
+            return float(query["Expires"][0])
+        start, seconds = query.get("X-Amz-Date"), query.get("X-Amz-Expires")
+        if start and seconds:
+            signed = datetime.strptime(start[0], "%Y%m%dT%H%M%SZ")
+            return signed.replace(tzinfo=timezone.utc).timestamp() + int(seconds[0])
+    except (ValueError, OverflowError):
+        pass
+    return None
+
+
+def remember_download(path, url):
+    """插件下载成品后登记本机路径与原链接；读不出过期时间的链接不登记，之后照常上传。"""
+    try:
+        expires = link_expiry(url)
+        if expires is None:
+            return
+        path = path.resolve()
+        info = path.stat()
+        record = (url, info.st_size, info.st_mtime_ns, fingerprint(path), expires)
+        key = (str(attachments_folder()), str(path))
+        with _lock:
+            _downloads[key] = record
+            _downloads.move_to_end(key)
+            while len(_downloads) > 256:
+                _downloads.popitem(last=False)
+    except Exception:
+        logger.warning("Downloaded deliverable not remembered", exc_info=True)
+
+
+def downloaded_link(path):
+    """本机文件是插件下载的成品、下载后没改过且原链接还没快过期时，返回原链接。"""
+    with _lock:
+        record = _downloads.get((str(attachments_folder()), str(path)))
+    if record is None:
+        return None
+    url, size, mtime, digest, expires = record
+    info = path.stat()
+    if (
+        info.st_size != size
+        or info.st_mtime_ns != mtime
+        or time.time() > expires - LINK_MARGIN
+        or fingerprint(path) != digest
+    ):
+        return None
+    return url
+
+
 def convert(prefix, value, session_id, cwd):
-    """参数值是允许的本机文件就上传并返回 ossPath；不是本机文件返回 None，原样保留。"""
+    """参数值是插件下载的成品就换回原链接，是允许的本机文件就上传并返回 ossPath；不是本机文件返回 None。"""
     if (
         not isinstance(value, str)
         or "\n" in value
@@ -236,6 +304,10 @@ def convert(prefix, value, session_id, cwd):
     )
     if path is None or not path.is_absolute() or not path.is_file():
         return None
+    # 插件自己下载的成品直接换回原链接：内容本来就在元景的对象存储上，不用再传一次。
+    link = downloaded_link(path)
+    if link:
+        return link
     if not allowed(path, session_id, cwd):
         place = f"当前工作目录 {cwd}" if cwd else "当前工作目录"
         raise Refusal(
