@@ -17889,7 +17889,8 @@ ipcMain.handle('hermes:openPreviewInBrowser', async (_event, url) => {
 // session spawn (no app restart needed).
 ipcMain.handle('hermes:setting:defaultProjectDir:get', async () => ({
   dir: readDefaultProjectDir(),
-  defaultLabel: app.getPath('home'),
+  // desktop-mt: 未设置时实际使用账号工作区（见 resolveHermesCwd），不是系统用户目录。
+  defaultLabel: ACCOUNT_RUNTIME.workspace,
   resolvedCwd: resolveHermesCwd()
 }))
 
@@ -17915,7 +17916,8 @@ ipcMain.handle('hermes:setting:defaultProjectDir:pick', async () => {
   const result = await dialog.showOpenDialog({
     title: 'Choose default project directory',
     properties: ['openDirectory', 'createDirectory'],
-    defaultPath: readDefaultProjectDir() || app.getPath('home')
+    // desktop-mt: 选择窗口从账号工作区打开，与未设置时的实际目录一致。
+    defaultPath: readDefaultProjectDir() || ACCOUNT_RUNTIME.workspace
   })
 
   if (result.canceled || result.filePaths.length === 0) {

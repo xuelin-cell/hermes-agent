@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
+// desktop-mt: 账号环境下默认目录的说明随工作目录模块自带。
+import { useWorkdirCopy } from '@/app/chat/composer/workdir-mt/copy'
 import { restoreListedSession } from '@/app/session/hooks/use-session-actions/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -323,6 +325,9 @@ function AutoArchiveSetting() {
 function DefaultProjectDirSetting() {
   const { t } = useI18n()
   const s = t.settings.sessions
+  const workdirCopy = useWorkdirCopy()
+  // desktop-mt: 本机账号环境未设置时用账号工作区，并为每个新对话建文件夹，原说明“使用 home 目录”不再成立。
+  const accountWorkspace = typeof window.hermesDesktop?.createConversationFolder === 'function'
   const [dir, setDir] = useState<null | string>(null)
   const [fallback, setFallback] = useState<string>('')
   const [busy, setBusy] = useState(false)
@@ -408,7 +413,7 @@ function DefaultProjectDirSetting() {
     <div className="mb-6">
       <SectionHeading icon={FolderOpen} page title={s.defaultDirTitle} />
       <p className="mb-2 text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)">
-        {s.defaultDirDesc}
+        {accountWorkspace ? workdirCopy('settingsHint') : s.defaultDirDesc}
       </p>
       <ListRow
         action={
