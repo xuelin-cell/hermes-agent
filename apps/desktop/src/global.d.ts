@@ -8,6 +8,7 @@ import type { ScreenshotApi } from '../electron/command-screenshot-types'
 import type { MessagingOperationStatus, MessagingSetupRequest, MessagingSetupResult } from '../electron/entry_local/messaging-contract'
 import type { HudModifierApi } from '../electron/hud-modifier-types'
 import type {
+  CloudDriveMutationProgress,
   CloudDriveRequest,
   CloudDriveTransferProgress,
   CloudDriveTransferRequest,
@@ -20,7 +21,7 @@ import type { PoolLimits } from '../electron/pool-limits'
 import type { PreviewExport, PreviewExportResult } from '../electron/preview-export'
 import type { UniworkAsrBridge } from '../electron/uniwork-asr/contract'
 import type { PlanSubscriptionResult, PlanUsageResult } from '../electron/uniwork-usage/contract'
-import type { WelcomeModule, WelcomeLocale } from '../electron/uniwork-welcome/catalog'
+import type { WelcomeLocale, WelcomePayload } from '../electron/uniwork-welcome/catalog'
 import type { GrowRequest } from '../electron/window-growth'
 
 import type { WakeIndicatorState } from './lib/wake-indicator'
@@ -57,9 +58,10 @@ declare global {
         revoke: (key: string) => Promise<void>
         onChanged: (callback: (key: string) => void) => () => void
       }
+      onCloudDriveMutationProgress?: (listener: (progress: CloudDriveMutationProgress) => void) => () => void
       cloudDriveRequest: (input: CloudDriveRequest) => Promise<unknown>
       /** 取得完整办公目录；主进程负责认证和校验配置。 */
-      getWelcomeCatalog?: (locale: WelcomeLocale) => Promise<{ modules: WelcomeModule[] }>
+      getWelcomeCatalog?: (locale: WelcomeLocale) => Promise<WelcomePayload>
       uniworkAsr?: UniworkAsrBridge
       cloudDriveAgentReady: (profile: string) => Promise<boolean>
       cloudDriveTransfer: (input: CloudDriveTransferRequest) => Promise<CloudDriveTransferResult>

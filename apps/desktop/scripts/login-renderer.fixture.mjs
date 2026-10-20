@@ -1,4 +1,4 @@
-import { mkdtemp } from 'node:fs/promises'
+import { cp, mkdtemp } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { build, createServer } from 'vite'
@@ -23,6 +23,9 @@ export function prepareLoginRenderer() {
     }
     await bundle({ entryPoints: [path.join(desktop, 'electron/login/preload.ts')], bundle: true,
       platform: 'node', format: 'cjs', external: ['electron'], outfile: path.join(root, 'dist/login-preload.js') })
+    // 正式登录交接需要随包分享插件；复制真实资源，避免夹具因缺文件提前退出。
+    await cp(path.join(desktop, 'assets', 'artifact-share-plugin'),
+      path.join(root, 'assets', 'artifact-share-plugin'), { recursive: true })
     return root
   })()
   return prepared

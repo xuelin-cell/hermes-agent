@@ -35,6 +35,7 @@ import { $sessionListDensity } from '@/store/session-list-density'
 import { $openStoredSessionIds } from '@/store/session-states'
 import { sessionCostUsd } from '@/store/sidebar-archive'
 import { $todoProgressBySession } from '@/store/todos'
+import { $selectedWorkspaceMode } from '@/store/workspace-category'
 
 import { SessionStatusDot } from '../session-status-dot'
 
@@ -166,7 +167,9 @@ function SidebarSessionRowImpl({
   // Opt-in row metadata from the sidebar's filter menu. Read from the store
   // rather than threaded as props: the subscription re-renders past the memo
   // below, and a toggle should repaint every row at once anyway.
-  const rowMeta = useStore($sidebarRowMeta)
+  const preferredRowMeta = useStore($sidebarRowMeta)
+  const codeWorkspace = useStore($selectedWorkspaceMode) === 'codex'
+  const rowMeta = codeWorkspace ? [] : preferredRowMeta
   // Pinned metadata occupies the actions slot and swaps out for the kebab on
   // hover, so the row reserves the same width either way and never reflows.
   const pinnedAge = rowMeta.includes('updated')

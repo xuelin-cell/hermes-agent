@@ -77,3 +77,47 @@ it('无效配置报错但不覆盖，共享或非映射 MCP 保持原状且不�
     fs.rmSync(home, { recursive: true, force: true })
   }
 })
+
+it('有套餐时隐藏 Hermes 自带的看图工具组，保留用户已停用的其他工具组，无套餐或共享引用时不动', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-uniai-vision-'))
+  const file = path.join(home, 'config.yaml')
+  const rename = vi.spyOn(fs, 'renameSync')
+
+  try {
+    updateUniaiToolkitConfig(home, 'available')
+    expect(parse(fs.readFileSync(file, 'utf8')).agent).toEqual({ disabled_toolsets: ['vision'] })
+
+    for (const [original, expected] of [
+      ['agent:\n  max_turns: 9\n  disabled_toolsets: [web] # 用户停用\n', ['web', 'vision']],
+      ['agent:\n  disabled_toolsets: connections\n', ['connections', 'vision']],
+      ['agent:\n  disabled_toolsets:\n    - vision\n    - web\n', ['vision', 'web']]
+    ] as const) {
+      fs.writeFileSync(file, original)
+      updateUniaiToolkitConfig(home, 'available')
+      const saved = fs.readFileSync(file, 'utf8')
+      expect(parse(saved).agent.disabled_toolsets).toEqual(expected)
+      rename.mockClear()
+      updateUniaiToolkitConfig(home, 'available')
+      expect(rename).not.toHaveBeenCalled()
+      expect(fs.readFileSync(file, 'utf8')).toBe(saved)
+    }
+
+    // 同一 agent 段里的其他设置和注释保留。
+    fs.writeFileSync(file, 'agent:\n  max_turns: 9\n  disabled_toolsets: [web] # 用户停用\n')
+    updateUniaiToolkitConfig(home, 'available')
+    expect(parse(fs.readFileSync(file, 'utf8')).agent.max_turns).toBe(9)
+    expect(fs.readFileSync(file, 'utf8')).toContain('# 用户停用')
+
+    // 无套餐不加；agent 是共享引用时也不改，免得影响别处。
+    const noPlan = 'model: {provider: x}\n'
+    fs.writeFileSync(file, noPlan)
+    updateUniaiToolkitConfig(home, 'empty')
+    expect(fs.readFileSync(file, 'utf8')).toBe(noPlan)
+    fs.writeFileSync(file, 'base: &a {max_turns: 3}\nagent: *a\n')
+    updateUniaiToolkitConfig(home, 'available')
+    expect(parse(fs.readFileSync(file, 'utf8')).agent).toEqual({ max_turns: 3 })
+  } finally {
+    vi.restoreAllMocks()
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})

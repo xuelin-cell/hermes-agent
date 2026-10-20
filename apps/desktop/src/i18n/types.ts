@@ -59,6 +59,15 @@ interface AuxTaskCopy {
 }
 
 export interface Translations {
+  workspaceEditor: {
+    title: string
+    capabilities: string
+    openProject: string
+    selectFile: string
+    unsupported: string
+    refresh: string
+    save: string
+  }
   conversationShare: {
     sessionShare: string
     responseShare: string
@@ -180,6 +189,7 @@ export interface Translations {
     restoreHint: string
     recycleFailed: string
     recycleEmpty: string
+    operationVerifying: string
     operationUnknown: string
     operationPartial: string
     operationFailed: string

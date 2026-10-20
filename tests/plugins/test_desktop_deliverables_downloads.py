@@ -43,12 +43,14 @@ def call(plugin, name, result, **kwargs):
         ("txt2img_generate", "png"),
         ("img2vid_generate", "mp4"),
         ("tts_synthesize", "wav"),
+        ("image_edit", "jpg"),
+        ("music_generate", "wav"),
     ],
 )
 def test_generated_media_is_downloaded_and_carded_without_reply_path(
     delivery, monkeypatch, tool, extension
 ):
-    """图片、视频和语音都由真实下载落盘；只有图片保留链接给后续工具，其余成品去掉链接。"""
+    """图片、视频、语音和音乐都由真实下载落盘；只有图片保留链接给后续工具，其余成品去掉链接。"""
     plugin, work = delivery
     monkeypatch.setattr("tools.url_safety._global_allow_private_urls", lambda: True)
     begin(plugin)
@@ -59,15 +61,21 @@ def test_generated_media_is_downloaded_and_carded_without_reply_path(
         assert result is not None
         data = json.loads(result)
         assert data["metadata"] == "keep" and "本机副本" in data["desktop_note"]
-        if tool == "txt2img_generate":
+        if tool in {"txt2img_generate", "image_edit"}:
             assert data["url"] == url
         else:
             assert "url" not in data and "signature=private" not in result
         output = Path(data["desktop_deliverables"][0])
         assert output.parent == work / "outputs"
         # 没有描述参数时按工具起名，不再使用随机码。
-        names = {"png": "生成图片", "mp4": "生成视频", "wav": "语音"}
-        assert output.name == names[extension] + "." + extension
+        names = {
+            "txt2img_generate": "生成图片",
+            "img2vid_generate": "生成视频",
+            "tts_synthesize": "语音",
+            "image_edit": "编辑图片",
+            "music_generate": "生成音乐",
+        }
+        assert output.name == names[tool] + "." + extension
         assert output.read_bytes().startswith(b"file-content")
         assert str(output) in finish(plugin)
         assert len(requests) == 1
@@ -145,6 +153,8 @@ def test_trusted_generator_storage_matches_only_its_own_paths(delivery):
     assert trusted("img2vid_generate", video)
     assert trusted("tts_synthesize", host + "/app-agent-prod/temp/a.wav")
     assert trusted("doc_translate", host + "/app-agent-prod/translate/a.pdf")
+    assert trusted("image_edit", host + "/app-agent-prod/images/edited/2026-a.jpg")
+    assert trusted("music_generate", host + "/app-agent-prod/music/ace-step/a.wav")
     # 元景生图的成品链接是 http，只对生图放行，且限默认端口。
     plain = image.replace("https://", "http://")
     assert trusted("txt2img_generate", plain)
@@ -153,6 +163,8 @@ def test_trusted_generator_storage_matches_only_its_own_paths(delivery):
     for name, url in [
         ("txt2img_generate", video),
         ("txt2vid_generate", image),
+        ("image_edit", host + "/app-agent-prod/temp/a.jpg"),
+        ("music_generate", video),
         ("image_search", image),
         ("txt2vid_generate", video.replace("https://", "http://")),
         ("txt2vid_generate", video.replace("cucloud.cn", "cucloud.cn.evil.com")),

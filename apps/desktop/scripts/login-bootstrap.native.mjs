@@ -17,9 +17,10 @@ const desktop = path.resolve(import.meta.dirname, '..')
 async function launchFixture(cancel = false, devServer, liveCaptcha = false, planScenario = false) {
   const rendererRoot = await prepareLoginRenderer()
   const root = await mkdtemp(path.join(os.tmpdir(), 'hermes-mt-login-'))
-  const userData = path.join(root, 'desktop-state')
+  const appData = path.join(root, 'roaming')
+  const userData = path.join(appData, 'uniworker')
   const home = path.join(root, 'hermes-home')
-  await mkdir(userData)
+  await mkdir(userData, { recursive: true })
   // 放置旧连接哨兵，验证登录壳既不消费也不覆盖它。
   const oldConnection = '{"mode":"remote","url":"http://127.0.0.1:1"}'
   await writeFile(path.join(userData, 'connection.json'), oldConnection)
@@ -36,6 +37,8 @@ async function launchFixture(cancel = false, devServer, liveCaptcha = false, pla
         import { prepareLocalAccount, prepareLocalEnvironment } from './electron/entry_local/prepare-account.ts'
         import { createSourcePythonBackend } from './electron/source-backend.ts'
         app.setAppPath(${JSON.stringify(rendererRoot)})
+        // 使用隔离的 AppData 验证正式默认目录，不通过 userData 环境变量跳过目录选择。
+        app.setPath('appData', ${JSON.stringify(appData)})
         globalThis.loginProbe = { processCalls: [], captchaRequests: [], planAuthorizations: [], cancelled: false }
         // 观察原版 Chromium 设置的真实时序，不替代 Electron 的执行。
         globalThis.loginProbe.launchCalls = []
@@ -167,7 +170,7 @@ async function launchFixture(cancel = false, devServer, liveCaptcha = false, pla
   const env = {
     ...process.env,
     HERMES_HOME: home,
-    HERMES_DESKTOP_USER_DATA_DIR: userData,
+    APPDATA: appData,
     // 独立夹具不争抢用户开发窗口的调试端口。
     HERMES_DESKTOP_CDP_PORT: 'off',
     // 账号默认根与开发安装均明确定位；测试绝不写真实 LOCALAPPDATA。
@@ -176,6 +179,8 @@ async function launchFixture(cancel = false, devServer, liveCaptcha = false, pla
   }
   delete env.HERMES_DESKTOP_DEV_SERVER
   delete env.HERMES_DESKTOP_PYTHON
+  delete env.HERMES_DESKTOP_USER_DATA_DIR
+  delete env.HERMES_DATA_DIR_SUFFIX
   if (devServer) env.HERMES_DESKTOP_DEV_SERVER = devServer
   delete env.ELECTRON_RUN_AS_NODE
   const instance = await electron.launch({ executablePath: electronPath, args: [output], env, timeout: 30_000 })
@@ -196,7 +201,7 @@ test('真实未登录入口不启动后端、不暴露原版桥接，重复启�
   try {
     const page = await instance.firstWindow()
     await page.getByRole('heading', { name: '登录你的工作空间' }).waitFor()
-    await page.getByRole('img').waitFor()
+    await page.getByRole('img', { name: '图形验证码', exact: true }).waitFor()
     assert.equal(await page.locator('form input').count(), 3)
     assert.equal(await page.locator('button:disabled').count(), 0)
     assert.deepEqual(await page.evaluate(() => ({
@@ -204,16 +209,21 @@ test('真实未登录入口不启动后端、不暴露原版桥接，重复启�
       bridge: typeof globalThis.hermesDesktop,
       login: Object.keys(globalThis.hermesLogin)
     })), { node: 'undefined', bridge: 'undefined', login: ['restore', 'plan', 'captcha', 'sendSms', 'login'] })
-    const state = await instance.evaluate(({ BrowserWindow, ipcMain }) => {
+    const state = await instance.evaluate(({ app, BrowserWindow, ipcMain }) => {
       const window = BrowserWindow.getAllWindows()[0]
       return {
         probe: globalThis.loginProbe,
+        userData: app.getPath('userData'),
+        sessionData: app.getPath('sessionData'),
         windows: BrowserWindow.getAllWindows().length,
         prefs: window.webContents.getLastWebPreferences(),
         backendIpcListeners: ipcMain.eventNames().filter(name => String(name).startsWith('hermes:'))
       }
     })
     assert.equal(state.windows, 1)
+    assert.equal(state.userData, fixture.userData)
+    assert.equal(state.sessionData, fixture.userData)
+    await assert.rejects(access(path.join(fixture.env.APPDATA, 'hmt')), { code: 'ENOENT' })
     assert.equal(state.probe.repeat, true)
     assert.equal(state.probe.launchCalls.some(call => call.args[0] === 'disable-renderer-backgrounding'), true)
     assert.equal(state.probe.launchCalls.every(call => call.ready === false), true)
@@ -590,9 +600,9 @@ test('P14 真实登录入口：跨进程 A→B→A 自动准备固定上下文�
   let firstA
   try {
     const initialPage = await instance.firstWindow()
-    await initialPage.getByRole('img').waitFor()
+    await initialPage.getByRole('img', { name: '图形验证码', exact: true }).waitFor()
     assert.equal(await instance.evaluate(() => globalThis.currentFixtureRuntime()), null)
-    await assert.rejects(access(path.join(fixture.env.LOCALAPPDATA, 'hmt')), {code:'ENOENT'})
+    await assert.rejects(access(path.join(fixture.env.LOCALAPPDATA, 'uniworker')), {code:'ENOENT'})
     // 无账号的旧 UI 提示不能为运行时授权，也不能改变新账号的默认工作目录。
     await writeFile(path.join(fixture.userData, 'active-profile.json'), JSON.stringify({profile:'forged-profile'}))
     await writeFile(path.join(fixture.userData, 'project-dir.json'), JSON.stringify({dir:fixture.home}))
@@ -612,7 +622,7 @@ test('P14 真实登录入口：跨进程 A→B→A 自动准备固定上下文�
       assert.equal(state.source, state.context.installationRoot)
       assert.equal(state.context.python, state.python)
       assert.equal(state.parentHome, fixture.home)
-      assert.equal(state.context.home.startsWith(path.join(fixture.env.LOCALAPPDATA, 'hmt')), true)
+      assert.equal(state.context.home.startsWith(path.join(fixture.env.LOCALAPPDATA, 'uniworker')), true)
       assert.equal(state.context.desktopState.startsWith(path.join(fixture.userData, 'accounts')), true)
       assert.notEqual(state.context.workspace, fixture.home)
       for (const directory of [state.context.home, state.context.workspace, state.context.desktopState]) {

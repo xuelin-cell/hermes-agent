@@ -11,6 +11,7 @@ import { useStore } from '@nanostores/react'
 import { type ComponentProps, lazy, memo, type ReactNode, Suspense, useMemo } from 'react'
 import { Navigate, Route, Routes, useParams } from 'react-router'
 
+import { WorkspacePageNav } from '@/components/chat/workspace-page-nav'
 import { ContribBoundary, ContribRender } from '@/contrib/react/boundary'
 import { useContributions } from '@/contrib/react/use-contributions'
 import { $activeConnectionId } from '@/store/connections'
@@ -36,6 +37,7 @@ import type { SidebarActions, WiringActions } from './types'
 // Same lazy-view split as DesktopController — pages load on demand. The
 // full-page views the workspace route table mounts live here; overlay views
 // (agents/settings/…) are the controller's and stay in wiring.tsx.
+const WorkspaceEditor = lazy(async () => ({ default: (await import('../workspace-editor')).WorkspaceEditor }))
 const ArtifactsView = lazy(async () => ({ default: (await import('../artifacts')).ArtifactsView }))
 const MessagingView = lazy(async () => ({ default: (await import('../messaging')).MessagingView }))
 const CapabilitiesView = lazy(async () => ({ default: (await import('../capabilities')).CapabilitiesView }))
@@ -177,15 +179,16 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
   // that used to ride this wrapper gated a body double-click toggle that no
   // longer exists, and nothing has read it since.
   const page = (view: ReactNode) => (
-    <div className="contents">
+    <WorkspacePageNav>
       <Suspense fallback={null}>{view}</Suspense>
-    </div>
+    </WorkspacePageNav>
   )
 
   return (
     <Routes>
       <Route element={chatView} index />
       <Route element={chatView} path=":sessionId" />
+      <Route element={page(<WorkspaceEditor />)} path="editor" />
       <Route element={page(<CapabilitiesView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="capabilities" />
       <Route element={page(<MessagingView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="messaging" />
       <Route element={page(<ArtifactsView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="artifacts" />

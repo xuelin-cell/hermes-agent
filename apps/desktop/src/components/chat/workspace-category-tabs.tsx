@@ -1,20 +1,24 @@
 import './workspace-category-tabs.css'
 
 import { useStore } from '@nanostores/react'
-import { BookOpen, Monitor, SquareCode } from 'lucide-react'
+import { BookOpen, SquareCode } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 
-import { $welcomeCatalog, loadWelcomeCatalog } from '@/app/chat/composer/work-templates/catalog-store'
+import { $resolvedWelcomeCatalog, loadWelcomeCatalog } from '@/app/chat/composer/work-templates/catalog-store'
 import { useI18n } from '@/i18n'
 import { $interfaceMode } from '@/store/interface-mode'
 import { $selectedWelcomeModules, selectWorkspaceModule } from '@/store/workspace-category'
 
 import { workspaceCategoryCopy } from './workspace-category-copy'
 
-export function WorkspaceCategoryTabs() {
+interface WorkspaceCategoryTabsProps {
+  onSelect?: () => void
+}
+
+export function WorkspaceCategoryTabs({ onSelect }: WorkspaceCategoryTabsProps = {}) {
   const { locale } = useI18n()
   const language = locale.startsWith('zh') ? 'zh-CN' : 'en'
-  const { modules } = useStore($welcomeCatalog)[language]
+  const { modules } = useStore($resolvedWelcomeCatalog[language])
   const selected = useStore($selectedWelcomeModules[language])
   const mode = useStore($interfaceMode)
   const copy = workspaceCategoryCopy[locale]
@@ -24,7 +28,7 @@ export function WorkspaceCategoryTabs() {
     void loadWelcomeCatalog(language)
   }, [language])
   useEffect(() => {
-    if (selected && (selected.workspace === 'codex' ? 'advanced' : 'simple') !== mode) {
+    if (selected) {
       selectWorkspaceModule(language, selected)
     }
   }, [language, selected, mode])
@@ -37,13 +41,16 @@ export function WorkspaceCategoryTabs() {
     <div className="workspace-category-nav">
       <div aria-label={copy.label} className="workspace-category-tabs" ref={ref} role="tablist">
         {modules.map((module, index) => {
-          const Icon = module.workspace === 'codex' ? SquareCode : index === 0 ? Monitor : BookOpen
+          const Icon = module.workspace === 'codex' ? SquareCode : BookOpen
 
           return (
             <button
               aria-selected={selected?.id === module.id}
               key={module.id}
-              onClick={() => selectWorkspaceModule(language, module)}
+              onClick={() => {
+                selectWorkspaceModule(language, module)
+                onSelect?.()
+              }}
               onKeyDown={event => {
                 const targets: Record<string, number> = {
                   ArrowRight: (index + 1) % modules.length,
@@ -59,8 +66,20 @@ export function WorkspaceCategoryTabs() {
                 }
 
                 event.preventDefault()
+                const ownerDocument = ref.current?.ownerDocument
+
                 selectWorkspaceModule(language, modules[next])
                 ref.current?.querySelectorAll('button')[next]?.focus()
+                onSelect?.()
+                requestAnimationFrame(() => {
+                  const tabs = ownerDocument?.querySelectorAll<HTMLButtonElement>(
+                    '.workspace-category-tabs button[aria-selected="true"]'
+                  )
+
+                  Array.from(tabs ?? [])
+                    .find(tab => tab.getClientRects().length > 0)
+                    ?.focus()
+                })
               }}
               role="tab"
               tabIndex={selected?.id === module.id ? 0 : -1}

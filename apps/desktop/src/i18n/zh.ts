@@ -5,6 +5,15 @@ import { defineLocale } from './define-locale'
 import { introZh } from './intro-zh'
 
 export const zh = defineLocale({
+  workspaceEditor: {
+    title: '编辑器',
+    capabilities: '技能与工具',
+    openProject: '请先打开项目中的会话，再浏览和编辑文件。',
+    selectFile: '选择一个文件开始编辑。',
+    unsupported: '无法编辑二进制、截断或过大的文件。',
+    refresh: '刷新',
+    save: '保存'
+  },
   conversationShare: {
     sessionShare: '分享会话',
     responseShare: '分享回复',
@@ -43,7 +52,7 @@ export const zh = defineLocale({
     transferNotStarted: '尚未开始',
     transferCancelled: '下载已取消',
     transferUploadStopped: '已停止发送，请刷新核对云盘结果。',
-    transferUnknown: '上传结果待确认，请勿立即重复上传。请刷新核对云盘结果。',
+    transferUnknown: '暂时无法自动确认上传结果，请刷新文件列表核对。',
     transferDownloadPartial: '部分文件已保存到本机，其余文件未完成，请查看传输记录。',
     transferStopFailed: '未能停止传输，请再试一次。',
     downloadSaved: name => `${name} 已保存到本机`,
@@ -69,8 +78,13 @@ export const zh = defineLocale({
       INVALID_RESPONSE: '服务返回的数据不完整，请稍后重试。',
       SIZE_MISMATCH: '文件未能完整保存，请重试。',
       TRANSPORT_ERROR: '网络连接异常，请检查网络。',
-      UPLOAD_INCOMPLETE: '上传结果待确认，请勿立即重复上传。请刷新核对云盘结果。',
-      UPLOAD_UNCONFIRMED: '上传结果待确认，请勿立即重复上传。请刷新核对云盘结果。',
+      OUTCOME_UNKNOWN: '暂时无法自动确认操作结果，请刷新文件列表核对。',
+      UPLOAD_CONFIRMATION_FAILED: '连续三次未在云盘文件列表中确认到该文件，本次上传失败，请重试。',
+      UPLOAD_CONFIRMATION_UNAVAILABLE: '暂时无法自动确认上传结果，请刷新文件列表核对。',
+      OPERATION_CONFIRMATION_UNAVAILABLE: '暂时无法自动确认操作结果，请刷新文件列表核对。',
+      UPLOAD_FAILED: '上传失败，请重新上传。',
+      UPLOAD_INCOMPLETE: '上传中断，请重新上传。',
+      UPLOAD_UNCONFIRMED: '暂时无法自动确认上传结果，请刷新文件列表核对。',
       IPC_ERROR: '网络连接异常，请检查网络。',
       AUTH_CHANGED: '登录状态已变化，本次传输已停止。请在当前账号下重试。',
     },
@@ -153,7 +167,8 @@ export const zh = defineLocale({
     restoreHint: '确定恢复此条目吗？文件夹中的内容也将一并恢复。',
     recycleFailed: '回收站未能完整加载，请刷新后再恢复文件。',
     recycleEmpty: '回收站为空',
-    operationUnknown: '暂时无法确认操作结果，请刷新核对后再操作。',
+    operationVerifying: '正在确认操作结果，请稍候。',
+    operationUnknown: '暂时无法自动确认操作结果，请刷新文件列表核对。',
     operationPartial: '操作仅部分完成，请刷新核对后再操作。',
     operationFailed: '操作未完成，请刷新列表，并检查登录状态或操作权限。',
     personal: '个人云盘',

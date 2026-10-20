@@ -23,6 +23,8 @@ GENERATORS = {
     "tts_synthesize",
     "ai_podcast_generate",
     "doc_translate",
+    "image_edit",
+    "music_generate",
 }
 MAX_BYTES = 32 * 1024 * 1024
 TIMEOUT = 20
@@ -36,12 +38,14 @@ TRUSTED_PATHS = {
     "tts_synthesize": ("/app-agent-prod/temp/",),
     "ai_podcast_generate": ("/app-agent-prod/temp/",),
     "doc_translate": ("/app-agent-prod/translate/", "/app-agent-prod/temp/"),
+    "image_edit": ("/app-agent-prod/images/edited/",),
+    "music_generate": ("/app-agent-prod/music/",),
 }
 # 元景生图返回的成品链接是 http，其它工具是 https；只按工具放行它实际使用的协议。
 TRUSTED_SCHEMES = {"txt2img_generate": ("http", "https")}
 DEFAULT_PORTS = {"http": 80, "https": 443}
-# 生图的链接还要留给图生视频等工具使用；其余成品下载后从结果中移除链接。
-KEEP_LINKS = {"txt2img_generate"}
+# 生成和编辑出的图片链接还要留给图生视频、再次编辑等工具使用；其余成品下载后从结果中移除链接。
+KEEP_LINKS = {"txt2img_generate", "image_edit"}
 # 没有描述可用时的文件名，同名由 claim 加序号区分。
 FALLBACK_NAMES = {
     "txt2img_generate": "生成图片",
@@ -50,6 +54,8 @@ FALLBACK_NAMES = {
     "tts_synthesize": "语音",
     "ai_podcast_generate": "AI播客",
     "doc_translate": "翻译结果",
+    "image_edit": "编辑图片",
+    "music_generate": "生成音乐",
 }
 NAME_LIMIT = 24
 _RESERVED = re.compile(r"^(?:con|prn|aux|nul|com\d|lpt\d)(?:\..*)?$", re.I)

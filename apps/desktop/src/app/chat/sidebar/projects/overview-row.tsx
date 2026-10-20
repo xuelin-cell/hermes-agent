@@ -79,7 +79,7 @@ export function ProjectBackRow({ label, onClick }: { label: string; onClick: () 
   )
 }
 
-interface ProjectOverviewRowProps {
+export interface ProjectOverviewRowProps {
   project: SidebarProjectTree
   onEnter?: (id: string) => void
   onNewSession?: (path: null | string) => void

@@ -14,7 +14,7 @@ afterEach(() => {
 
 /** 生成实际长度为 length 的 Windows 路径，再按 separator 写出分隔符，用于贴近上限的边界检查。 */
 function windowsPath(length: number, separator = '\\'): string {
-  const head = ['C:', 'Users', 'stan', 'AppData', 'Local', 'hmt', '0123456789ab', 'home', ''].join('\\')
+  const head = ['C:', 'Users', 'stan', 'AppData', 'Local', 'uniworker', '0123456789ab', 'home', ''].join('\\')
 
   return (head + 'a'.repeat(length - head.length)).split('\\').join(separator)
 }

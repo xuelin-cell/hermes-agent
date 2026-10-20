@@ -8,6 +8,7 @@ import type { SessionInfo } from '@/types/hermes'
 
 import { filterLocalArtifacts, localFavoriteKey, localSessionKey } from './local-artifact-model'
 import {
+  cachedLocalArtifactGroups,
   listLocalArtifactSessions,
   type LocalArtifactCache,
   type LocalArtifactScan,
@@ -34,7 +35,9 @@ beforeEach(async () => {
       try {
         const resolved = await fs.realpath(path.resolve(cwd || root, value))
 
-        return { kind: 'file', path: resolved, byteSize: (await fs.stat(resolved)).size }
+        const stat = await fs.stat(resolved)
+
+        return stat.isFile() ? { kind: 'file', path: resolved, byteSize: stat.size } : null
       } catch {
         return null
       }
@@ -107,7 +110,7 @@ it('顺序读取 A→B→A 的来源会话，缓存只保留提取结果并重�
       latest = value
     }
   )
-  expect(latest?.groups[0].files[0].resolvedPath).toBeUndefined()
+  expect(latest?.groups.map(group => group.session.profile)).toEqual(['b'])
   expect(cache.get(localSessionKey(session('a')))).not.toHaveProperty('messages')
 })
 
@@ -147,7 +150,7 @@ it('补齐聚合窗口之外的本机会话，远程来源不冒充本机文件'
   })
 })
 
-it('新扫描与旧提取缓存都排除分享页，保留原始文件、同名本机文件和普通网页', async () => {
+it('新扫描与提取缓存排除外部链接，保留交付的同名本机文件', async () => {
   const shareId = 'fixture_shared_page_0123456789abcd'
   const publicUrl = `https://demo.tcloudbaseapp.com/uniclaw-shares/${shareId}.html?view=1#page`
   const gatewayUrl = `https://maas.ai-yuanjing.com/app/gateway/uniclaw-shares/${shareId}.html`
@@ -169,11 +172,65 @@ it('新扫描与旧提取缓存都排除分享页，保留原始文件、同名�
   const publish = vi.fn()
   await scanLocalArtifacts([session('a')], cache, () => true, publish)
   const values = publish.mock.lastCall![0].groups[0].files.map((file: { value: string }) => file.value)
-  expect(new Set(values)).toEqual(new Set(['./report.md', regularUrl, localFile]))
+  expect(new Set(values)).toEqual(new Set(['./report.md', localFile]))
   const stored = cache.get(localSessionKey(session('a')))!
   stored.group.files.push({ ...stored.group.files[0], value: publicUrl, label: shareId + '.html' })
   await scanLocalArtifacts([session('a')], cache, () => true, publish)
   expect(api.messages).toHaveBeenCalledTimes(1)
   expect(cache.get(localSessionKey(session('a')))!.group.files.map(file => file.value)).toEqual(values)
   expect(window.hermesDesktop.normalizePreviewTarget).not.toHaveBeenCalledWith(publicUrl, expect.anything())
+})
+
+it('只收录交付引用，忽略制作过程并按原生路径去重，不复用旧提取缓存', async () => {
+  const owner = session('a')
+  const workspace = owner.cwd!
+
+  for (const name of ['theme.json', 'asset.png', 'deck.pptx', 'final.json', 'final.png']) {
+    await fs.writeFile(path.join(workspace, name), name)
+  }
+
+  await fs.symlink(path.join(workspace, 'deck.pptx'), path.join(workspace, 'alias.pptx'))
+  const cache = new Map<string, LocalArtifactCache>()
+  const publish = vi.fn()
+  api.messages.mockResolvedValue({
+    messages: [
+      { role: 'tool', tool_name: 'write_file', content: JSON.stringify({ files_modified: ['./theme.json'] }) },
+      {
+        role: 'tool',
+        tool_name: 'mcp__Toolkit__txt2img_generate',
+        content: JSON.stringify({
+          local_path: path.join(workspace, 'asset.png'),
+          image_url: 'https://example.com/asset.png'
+        })
+      },
+      { role: 'tool', tool_name: 'terminal', content: `MEDIA:${workspace}/asset.png\nhttps://obs.example.com` },
+      { role: 'assistant', tool_calls: [{ id: 'still-working' }], content: 'MEDIA:./asset.png' },
+      { role: 'assistant', tool_calls: JSON.stringify([{ id: 'legacy-call' }]), content: 'MEDIA:./theme.json' },
+      {
+        role: 'assistant',
+        content: `制作过程在 ${workspace}/theme.json。\n::preview{file="deck.pptx"}\n[下载同一份](#media:${encodeURIComponent(path.join(workspace, 'alias.pptx'))})\n[分享](https://demo.tcloudbaseapp.com/hexagent/shared.html)\nMEDIA:./final.json\nMEDIA:./final.png\nMEDIA:./missing.pdf\nMEDIA:${workspace}\n\n示例：\n\`\`\`text\nMEDIA:./theme.json\n\`\`\``
+      },
+      { role: 'user', content: 'MEDIA:./asset.png' },
+      { role: 'assistant', display_kind: 'hidden', content: 'MEDIA:./asset.png' }
+    ]
+  })
+  await scanLocalArtifacts([owner], cache, () => true, publish)
+  const delivered = publish.mock.lastCall![0].groups[0].files
+  expect(new Set(delivered.map((file: { resolvedPath: string }) => file.resolvedPath))).toEqual(
+    new Set(
+      await Promise.all(['deck.pptx', 'final.json', 'final.png'].map(name => fs.realpath(path.join(workspace, name))))
+    )
+  )
+  expect(delivered).toHaveLength(3)
+  // 旧策略的缓存即使会话时间戳相同，也必须重新提取，不能回显过程文件。
+  const previous = cache.get(localSessionKey(owner))!
+  cache.set(localSessionKey(owner), {
+    stamp: previous.stamp,
+    group: { session: owner, files: [{ ...delivered[0], value: './theme.json' }] }
+  })
+  expect(cachedLocalArtifactGroups(cache)).toEqual([])
+  api.messages.mockResolvedValue({ messages: [] })
+  await scanLocalArtifacts([owner], cache, () => true, publish)
+  expect(api.messages).toHaveBeenCalledTimes(2)
+  expect(publish.mock.lastCall![0].groups).toEqual([])
 })

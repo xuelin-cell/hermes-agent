@@ -34,7 +34,7 @@ it('keeps the task heading and localized guidance in the welcome screen', () => 
   render(<Fixture />)
 
   const heading = screen.getByRole('heading', { level: 1 })
-  expect(heading.textContent).toBe('元景数字员工，我帮你')
+  expect(heading.textContent).toBe('元景数字员工，助你高效完成任务')
   expect(screen.queryByText('UniWork')).toBeNull()
 })
 it('translates every shipped stock body at the same personality and rotation position', async () => {

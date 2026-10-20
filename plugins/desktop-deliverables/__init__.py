@@ -394,9 +394,14 @@ def end_turn(*, session_id="", turn_id="", **kwargs):
 
 def register(ctx):
     """只使用现有原生钩子，不增加模型工具或修改 Hermes 核心。"""
+    from .uploads import before_call, remember_session
+
     for name, handler in [
         ("pre_llm_call", before_turn),
+        # 元景工具读不到本机文件：调用前替模型上传并换成 ossPath。
+        ("pre_llm_call", remember_session),
         ("pre_tool_call", before_tool),
+        ("pre_tool_call", before_call),
         ("post_tool_call", after_tool),
         ("transform_tool_result", download_result),
         ("transform_llm_output", transform),

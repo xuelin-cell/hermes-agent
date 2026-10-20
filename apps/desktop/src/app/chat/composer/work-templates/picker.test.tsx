@@ -6,7 +6,7 @@ import { I18nProvider } from '@/i18n'
 import { $welcomeCatalog, loadWelcomeCatalog } from './catalog-store'
 import { WorkTemplatePicker } from './picker'
 
-const modules = $welcomeCatalog.get()['zh-CN'].modules
+const modules = $welcomeCatalog.get()['zh-CN'].modules!
 const defaults = modules[0].tags
 afterEach(() => {
   cleanup()
@@ -22,10 +22,10 @@ function view(scope = 'draft-a', disabled = false, replace = vi.fn()) {
     element: (
       <I18nProvider configClient={null} initialLocale="zh">
         <WorkTemplatePicker
-          selectionContainer={document.getElementById('selection-host')}
           disabled={disabled}
           onReplaceText={replace}
           scope={scope}
+          selectionContainer={document.getElementById('selection-host')}
         />
       </I18nProvider>
     )
@@ -52,8 +52,8 @@ it('完整分类可进入模板，填写完整提示词，取消保留草稿且�
   fireEvent.click(screen.getByRole('button', { name: template.name }))
   expect(v.replace).toHaveBeenLastCalledWith(template.prompt)
   expect(selectionHost.textContent).toContain(category.name)
-  expect(screen.getByRole('button', { name: '文档处理' })).toBeTruthy()
-  expect(screen.queryByRole('button', { name: template.name })).toBeNull()
+  expect(screen.queryByRole('button', { name: '文档处理' })).toBeNull()
+  expect(screen.getByRole('button', { name: template.name })).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: '取消所选分类' }))
   expect(v.replace).toHaveBeenLastCalledWith(template.prompt)
   expect(screen.getByRole('button', { name: '文档处理' })).toBeTruthy()
@@ -79,7 +79,7 @@ it('更新失败保留可用目录并支持重试；录音或禁用时不能覆�
   })
   expect($welcomeCatalog.get()['zh-CN'].status).toBe('ready')
   expect(screen.queryByText('正在使用本地模板')).toBeNull()
-  expect(JSON.parse(localStorage.getItem('uniwork.welcome.modules.v2.zh-CN')!).modules[0].tags).toHaveLength(
+  expect(JSON.parse(localStorage.getItem('uniwork.welcome.modules.v3.zh-CN')!).modules[0].tags).toHaveLength(
     defaults.length
   )
 })

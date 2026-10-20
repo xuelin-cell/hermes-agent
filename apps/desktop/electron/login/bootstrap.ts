@@ -39,8 +39,8 @@ function initializeLoginShell(): void {
 
   initialized = true
   app.setName('Hermes Desktop MT')
-  // 与账号数据根同名，Local 和 Roaming 两处都是 hmt。
-  const userData = resolveDesktopUserData(path.join(app.getPath('appData'), 'hmt'))
+  // 与账号数据根同名，Local 和 Roaming 两处都是 uniworker。
+  const userData = resolveDesktopUserData(path.join(app.getPath('appData'), 'uniworker'))
   mkdirSync(userData, { recursive: true })
   app.setPath('userData', userData)
   prepareDesktopLaunch()

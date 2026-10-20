@@ -25,12 +25,12 @@ const modules = normalizeWelcomeCatalog({
         {
           id: 'shared',
           name: '学习分类',
-          enabled: true,
-          templates: [{ id: 'same', name: '学习模板', prompt: '学习提示词', enabled: true }]
+          enabled: false,
+          templates: [{ id: 'same', name: '学习模板', prompt: '学习提示词', enabled: false }]
         }
       ]
     },
-    { id: 'duplicate', name: '研发', workspace: 'codex', sort: 20, tags: [] },
+    { id: 'duplicate', name: '代码开发', workspace: 'work', sort: 20, tags: [] },
     {
       name: '事务',
       sort: 10,
@@ -38,8 +38,8 @@ const modules = normalizeWelcomeCatalog({
         {
           id: 'shared',
           name: '办公分类',
-          enabled: true,
-          templates: [{ id: 'same', name: '办公模板', prompt: '办公提示词', enabled: true }]
+          enabled: false,
+          templates: [{ id: 'same', name: '办公模板', prompt: '办公提示词', enabled: false }]
         }
       ]
     }
@@ -78,7 +78,7 @@ it('uses fetched module names and routing and switches templates without carryin
   expect(screen.getByRole('tab', { name: '研习' }).getAttribute('aria-selected')).toBe('true')
   expect($interfaceMode.get()).toBe('simple')
 
-  fireEvent.click(screen.getByRole('tab', { name: '研发' }))
+  fireEvent.click(screen.getByRole('tab', { name: '代码开发' }))
   expect($interfaceMode.get()).toBe('advanced')
   expect(screen.queryByRole('button', { name: '学习分类' })).toBeNull()
 })
@@ -98,7 +98,7 @@ it('navigates only configured tabs with the keyboard and removes tabs and templa
   fireEvent.keyDown(screen.getByRole('tab', { name: '事务' }), { key: 'End' })
   expect(container.ownerDocument.activeElement).toBe(screen.getByRole('tab', { name: '研习' }))
   fireEvent.keyDown(screen.getByRole('tab', { name: '研习' }), { key: 'ArrowLeft' })
-  expect(container.ownerDocument.activeElement).toBe(screen.getByRole('tab', { name: '研发' }))
+  expect(container.ownerDocument.activeElement).toBe(screen.getByRole('tab', { name: '代码开发' }))
   expect($interfaceMode.get()).toBe('advanced')
 
   // A renderer hot reload may still talk to an older main process returning tags.
@@ -109,7 +109,6 @@ it('navigates only configured tabs with the keyboard and removes tabs and templa
 
   request.mockResolvedValue({ modules: [] })
   await act(() => loadWelcomeCatalog('zh-CN', true))
-  expect($welcomeCatalog.get()['zh-CN'].status).toBe('ready')
-  expect(screen.queryByRole('tablist')).toBeNull()
-  expect(screen.queryByRole('region')).toBeNull()
+  expect($welcomeCatalog.get()['zh-CN'].status).toBe('cached')
+  expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual(modules.map(module => module.name))
 })

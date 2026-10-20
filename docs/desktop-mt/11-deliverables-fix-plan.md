@@ -265,3 +265,34 @@
 插件把 `templates`、`assets`、`scripts` 等目录和以点开头的目录当作素材，不出卡片。原来检查的是文件的完整路径，用户选的工作目录本身或它的上级叫这些名字（例如 `D:\assets\季度汇报`）时，整轮生成的文件都不出卡片。
 
 现在 `paths.py` 的 `eligible` 只检查文件在所属工作目录（本轮终端目录及用户本次指名的目录，取最深的一个）里面的那段路径；工作目录里面的素材子目录照旧排除。不在任何工作目录里的文件仍按完整路径判断。命令前后的快照对比按同样规则处理。
+
+## 2026-10-20 补充：图片编辑和音乐也自动下载
+
+实测"换背景"时 `image_edit` 的成品没有自动下载，模型只好自己写代码下载，文件名也是随手起的；`music_generate` 同样不在名单里。现在两者都加入下载名单：
+
+| 工具 | 成品目录 | 文件名（取不到描述时） | 链接 |
+|---|---|---|---|
+| `image_edit` | `/app-agent-prod/images/edited/` | 编辑图片 | 保留，可能接着编辑或做视频 |
+| `music_generate` | `/app-agent-prod/music/` | 生成音乐 | 下载后移除 |
+
+## 2026-10-20 补充：调用元景工具时自动上传本机文件
+
+元景工具在远程，读不到本机路径。以前模型要先试 `vision_analyze`、再查上传工具、自己做"取上传地址 → curl 上传 → 确认"三步，一次图生视频要调十来次工具。新增 `plugins/desktop-deliverables/uploads.py`，参考 UniWork 的 `SandboxUploadMiddleware` 和 postgresql-multitenant 的 `pre_upload.py`：
+
+| 项 | 做法 |
+|---|---|
+| 什么时候传 | 只在模型调用元景工具、参数里填了本机文件时（`pre_tool_call` 的 `modify`）；不用元景就什么都不传，不做预传 |
+| 管哪些工具 | 带 `get_oss_upload_url` 的远程 MCP 服务器的全部工具，上传工具本身除外；文字参数和列表里的每一项都看 |
+| 允许的文件 | 账号 Home 的 `attachments`、当前工作目录、本会话里用户 `@file:`／`@image:` 引用过的文件（从会话历史读，重启不丢）；其它位置拦下并说明，不上传 |
+| 换成什么 | ossPath（如 `app-agent-prod/temp/xxx.png`），不调 `confirm_oss_upload`，不带签名、不会过期；上传地址只认固定对象存储的 `/app-agent-prod/temp/` |
+| 重复使用 | 按"路径 + 修改时间 + 大小"缓存一天 |
+| 失败 | 拦下这次调用，说明卡在"取上传地址"还是"上传文件"；日志不记签名链接 |
+| 提醒模型 | 元景已连接时每轮在本轮上下文里加一句：直接填本机路径，不要自己上传，看图用 `analyze_image` |
+
+## 2026-10-20 补充：有元景套餐时隐藏 Hermes 自带的看图工具
+
+`vision_analyze` 用主模型看图，当前主模型不支持看图，每次报错或回答"没看到图片"，模型还要再绕回元景的 `analyze_image`。桌面端在后端启动前维护元景工具箱配置时（`apps/desktop/electron/entry_local/uniai-toolkit-config.ts`），顺带把 `vision` 写进 `agent.disabled_toolsets`：
+
+- 只在有元景套餐时加；已在列表里不重复写，不重复写盘；用户原来停用的其他工具组和注释都保留；
+- `agent` 是共享引用时不改；
+- 每次启动都会检查，用户手动重新打开 `vision` 后下次启动会再关上。以后如果给 Hermes 配了能看图的模型，要同时调整这条规则。

@@ -21,7 +21,10 @@ function fixture(): AccountRoots {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-account-paths-'))
   temporaryRoots.push(root)
 
-  return { data: path.join(root, 'data'), userData: path.join(root, 'desktop') }
+  return {
+    data: accountDataRoot(root, { LOCALAPPDATA: root }),
+    userData: path.join(root, 'roaming', 'uniworker')
+  }
 }
 
 afterEach(() => {
@@ -35,6 +38,14 @@ it('A→B→A 在真实文件系统中分开保存并复用 Home、默认工作�
   fs.mkdirSync(roots.data)
   const oldFile = path.join(roots.data, 'old-unowned-data')
   fs.writeFileSync(oldFile, 'preserve-old-data')
+
+  const oldRoots = [path.join(path.dirname(roots.data), 'hmt'), path.join(path.dirname(roots.userData), 'hmt')]
+
+  for (const directory of oldRoots) {
+    fs.mkdirSync(directory, { recursive: true })
+    fs.writeFileSync(path.join(directory, 'old-marker'), 'old-hmt-data')
+  }
+
   const a = prepareAccountPaths(roots, namespace, 'fixture-A')
 
   for (const directory of [a.home, a.workspace, a.desktopState]) {
@@ -56,6 +67,12 @@ it('A→B→A 在真实文件系统中分开保存并复用 Home、默认工作�
   }
 
   expect(fs.readFileSync(oldFile, 'utf8')).toBe('preserve-old-data')
+
+  for (const directory of oldRoots) {
+    expect(fs.readdirSync(directory)).toEqual(['old-marker'])
+    expect(fs.readFileSync(path.join(directory, 'old-marker'), 'utf8')).toBe('old-hmt-data')
+  }
+
   expect(resolveAccountPaths(roots, 'another-platform/uniwork', 'fixture-A').id).not.toBe(a.id)
 
   const ids = new Set<string>()
@@ -132,12 +149,13 @@ it('受管根、accounts、账号及叶目录的链接或文件占位均拒绝�
   }
 })
 
-it('Windows 数据根使用短目录名，其他平台保持原位置', () => {
-  expect(accountDataRoot('C:\\Users\\stan', { LOCALAPPDATA: 'D:\\Local' }, 'win32')).toBe('D:\\Local\\hmt')
+it('数据根统一使用 uniworker，遵循 AppData 所在盘且不改变短账号目录', () => {
+  expect(accountDataRoot('C:\\Users\\stan', { LOCALAPPDATA: 'D:\\Local' }, 'win32')).toBe('D:\\Local\\uniworker')
   expect(accountDataRoot('C:\\Users\\stan', { LOCALAPPDATA: ' ' }, 'win32')).toBe(
-    'C:\\Users\\stan\\AppData\\Local\\hmt'
+    'C:\\Users\\stan\\AppData\\Local\\uniworker'
   )
-  expect(accountDataRoot('/Users/stan', {}, 'darwin')).toBe('/Users/stan/.hermes-desktop-mt')
+  expect(accountDataRoot('/Users/stan', {}, 'darwin')).toBe('/Users/stan/.uniworker')
+  expect(accountDataRoot('/home/stan', {}, 'linux')).toBe('/home/stan/.uniworker')
 })
 
 it('短目录名相同的另一账号、伪造或缺失的身份标识均拒绝，不写入原目录', () => {

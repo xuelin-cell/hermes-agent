@@ -5,6 +5,15 @@ import { defineLocale, type TranslationOverrides } from './define-locale'
 import { introEs } from './intro-es'
 
 export const esOverrides = {
+  workspaceEditor: {
+    title: 'Editor',
+    capabilities: 'Habilidades y herramientas',
+    openProject: 'Abre una conversación del proyecto para explorar sus archivos.',
+    selectFile: 'Selecciona un archivo para editar.',
+    unsupported: 'Los archivos binarios, truncados o grandes no se pueden editar aquí.',
+    refresh: 'Actualizar',
+    save: 'Guardar'
+  },
   conversationShare: {
     sessionShare: 'Compartir conversación',
     responseShare: 'Compartir respuesta',

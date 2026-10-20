@@ -2,7 +2,7 @@ import { hermesApi } from '@/api/client'
 import { getAllSessionMessages, listAllProfileSessions } from '@/hermes'
 import type { PaginatedSessions, SessionInfo } from '@/types/hermes'
 
-import { collectArtifactsForSession } from './artifact-utils'
+import { collectDeliveredLocalArtifacts } from './local-artifact-delivery'
 import {
   isPublishedArtifactLink,
   type LocalArtifactGroup,
@@ -18,8 +18,19 @@ export interface LocalArtifactScan {
   scanning: boolean
 }
 export interface LocalArtifactCache {
+  extractionVersion?: number
   stamp: string
   group: LocalArtifactGroup
+}
+
+const EXTRACTION_VERSION = 1
+
+/** 旧版缓存没有交付依据，不能在首屏或读取失败时重新显示过程文件。 */
+export function cachedLocalArtifactGroups(cache: ReadonlyMap<string, LocalArtifactCache>): LocalArtifactGroup[] {
+  return [...cache.values()]
+    .filter(value => value.extractionVersion === EXTRACTION_VERSION)
+    .map(value => value.group)
+    .filter(group => group.files.length)
 }
 
 export interface LocalArtifactSessionList {
@@ -108,8 +119,8 @@ export async function scanLocalArtifacts(
 ): Promise<void> {
   const valid = new Set(sessions.map(localSessionKey))
 
-  for (const key of cache.keys()) {
-    if (!valid.has(key)) {
+  for (const [key, entry] of cache) {
+    if (!valid.has(key) || entry.extractionVersion !== EXTRACTION_VERSION) {
       cache.delete(key)
     }
   }
@@ -160,10 +171,11 @@ export async function scanLocalArtifacts(
           return
         }
 
-        group = { session, files: collectArtifactsForSession(session, result.messages) }
+        group = { session, files: collectDeliveredLocalArtifacts(session, result.messages) }
       }
 
       const files = []
+      const seen = new Set<string>()
 
       for (const file of group.files) {
         if (!isCurrent()) {
@@ -177,22 +189,31 @@ export async function scanLocalArtifacts(
 
         const candidate = localArtifactPath(file, session)
 
+        if (!candidate) {
+          continue
+        }
+
         // 原生预览规范化包含路径策略、文件存在性和有界元信息读取，不搬运文件字节。
-        const metadata = candidate
-          ? await window.hermesDesktop.normalizePreviewTarget(candidate, session.cwd || undefined).catch(() => null)
-          : null
+        const metadata = await window.hermesDesktop
+          .normalizePreviewTarget(candidate, session.cwd || undefined)
+          .catch(() => null)
 
         if (!isCurrent()) {
           return
         }
 
-        files.push({ ...file, id: `${key}:${file.value}`, resolvedPath: metadata?.path, byteSize: metadata?.byteSize })
+        if (metadata?.kind !== 'file' || !metadata.path || seen.has(metadata.path)) {
+          continue
+        }
+
+        seen.add(metadata.path)
+        files.push({ ...file, id: `${key}:${metadata.path}`, resolvedPath: metadata.path, byteSize: metadata.byteSize })
       }
 
       group = { session, files }
 
       if (!session.is_active) {
-        cache.set(key, { stamp, group })
+        cache.set(key, { extractionVersion: EXTRACTION_VERSION, stamp, group })
       } else {
         cache.delete(key)
       }
