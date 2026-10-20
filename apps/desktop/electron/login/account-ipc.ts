@@ -16,7 +16,7 @@ import { WelcomeCatalogClient } from '../uniwork-welcome/client'
 import { CloudDriveClient, CloudDriveOperationError } from './cloud-drive'
 import type { ResolveDriveArtifact } from './cloud-drive-artifact-source'
 import { installCloudDriveTransferIpc } from './cloud-drive-transfer-ipc'
-import type { LoginAccount } from './contract'
+import type { CloudDriveMutationProgress, LoginAccount } from './contract'
 import type { LoginIdentity } from './session'
 
 /** 仅向当前账号桌面的主框架提供只读展示信息，不接受页面身份参数。 */
@@ -104,8 +104,31 @@ export function installAccountIpc(
         throw new Error('云盘请求无效')
       }
 
+      const id =
+        typeof args[0]?.requestId === 'string' && /^[a-zA-Z0-9-]{1,80}$/.test(args[0].requestId)
+          ? args[0].requestId
+          : undefined
+
+      const controller = new AbortController()
+      const stop = () => controller.abort()
+
+      const navigate = (_event: unknown, _url: string, inPlace: boolean, mainFrame: boolean) => {
+        if (mainFrame && !inPlace) {
+          stop()
+        }
+      }
+
+      event.sender.once('destroyed', stop)
+      event.sender.on('did-start-navigation', navigate)
+
+      const progress = (phase: CloudDriveMutationProgress['phase']) => {
+        if (id && !controller.signal.aborted && trusted(event, [])) {
+          event.sender.send('hermes:maas-drive:mutation-progress', { id, phase } satisfies CloudDriveMutationProgress)
+        }
+      }
+
       try {
-        return await drive.execute(args[0])
+        return await drive.execute(args[0], controller.signal, () => progress('verifying'))
       } catch (error) {
         if (error instanceof CloudDriveOperationError) {
           return error.result
@@ -116,6 +139,9 @@ export function installAccountIpc(
             ? error.message
             : '个人云盘请求失败，请重试'
         )
+      } finally {
+        event.sender.removeListener('destroyed', stop)
+        event.sender.removeListener('did-start-navigation', navigate)
       }
     })
   }

@@ -8,6 +8,7 @@ import type { ScreenshotApi } from '../electron/command-screenshot-types'
 import type { MessagingOperationStatus, MessagingSetupRequest, MessagingSetupResult } from '../electron/entry_local/messaging-contract'
 import type { HudModifierApi } from '../electron/hud-modifier-types'
 import type {
+  CloudDriveMutationProgress,
   CloudDriveRequest,
   CloudDriveTransferProgress,
   CloudDriveTransferRequest,
@@ -57,6 +58,7 @@ declare global {
         revoke: (key: string) => Promise<void>
         onChanged: (callback: (key: string) => void) => () => void
       }
+      onCloudDriveMutationProgress?: (listener: (progress: CloudDriveMutationProgress) => void) => () => void
       cloudDriveRequest: (input: CloudDriveRequest) => Promise<unknown>
       /** 取得完整办公目录；主进程负责认证和校验配置。 */
       getWelcomeCatalog?: (locale: WelcomeLocale) => Promise<WelcomePayload>

@@ -59,12 +59,12 @@ export function CloudRecycleActionDialog({
   /** 使用捕获的删除编号或个人清空接口，每次点击只执行一个写操作。 */
   function submit(): void {
     void run(
-      () =>
+      verifying =>
         action.kind === 'empty'
-          ? emptyDriveRecycle()
+          ? emptyDriveRecycle(verifying)
           : action.kind === 'delete'
-            ? permanentlyDeleteDriveItem(action.item)
-            : restoreDriveItem(action.item),
+            ? permanentlyDeleteDriveItem(action.item, verifying)
+            : restoreDriveItem(action.item, verifying),
       () => {
         onChanged()
         onClose()
@@ -87,7 +87,7 @@ export function CloudRecycleActionDialog({
         </DialogHeader>
         {action.kind !== 'empty' && <p className="truncate">{action.item.name}</p>}
         <DialogDescription>{hint}</DialogDescription>
-        {failure !== null && <p role="alert">{driveMutationMessage(failure, copy)}</p>}
+        {failure !== null && <p role={uncertain ? 'status' : 'alert'}>{driveMutationMessage(failure, copy)}</p>}
         <DialogFooter>
           <Button disabled={busy} onClick={close} variant="ghost">
             {t.common.cancel}

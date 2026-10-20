@@ -106,7 +106,7 @@ it('原生选择的文件按 8 MiB 顺序上传，上传元信息和认证均不
   expect(parts[1].metadata).toMatchObject({ uniqueId: parts[0].metadata.uniqueId, partIndex: 2, partSize: 11 })
   expect(Buffer.concat(parts.map(part => part.bytes)).equals(bytes)).toBe(true)
   expect(host.progress.mock.calls.some(([value]) => value.phase === 'verifying' && value.name === '中文.txt')).toBe(
-    true
+    false
   )
 })
 
@@ -240,7 +240,7 @@ it('末片已发但响应丢失保留未知状态，绝不重传', async () => {
   })
   expect(await transfers.run(1, { id: 'upload-1', operation: 'upload', parentAssetId: 'root' }, host)).toMatchObject({
     status: 'outcome_unknown',
-    code: 'UPLOAD_INTERRUPTED'
+    code: 'UPLOAD_CONFIRMATION_UNAVAILABLE'
   })
   expect(request.mock.calls.filter(([url]) => String(url).endsWith('/drive/upload-part'))).toHaveLength(1)
 })
@@ -429,13 +429,13 @@ it('传输中取消和账号切换都清理半个文件，不覆盖保存目标'
   expect((await readdir(root)).some(name => name.endsWith('.part'))).toBe(false)
 })
 
-it('上传最后一片保留部分成功、未知和明确失败，接受中不误报完成', async () => {
+it('上传末片无完整基线时无法自动确认，明确拒绝保留失败，接受中不误报完成', async () => {
   const { transfers, host } = fixture()
   await writeFile(path.join(root, '中文.txt'), 'hello')
   const original = request.getMockImplementation()!
 
   for (const [status, expected] of [
-    ['partial_success', 'partial_success'],
+    ['partial_success', 'outcome_unknown'],
     ['outcome_unknown', 'outcome_unknown'],
     ['failed', 'failed'],
     ['accepted', 'outcome_unknown']

@@ -189,6 +189,7 @@ export interface Translations {
     restoreHint: string
     recycleFailed: string
     recycleEmpty: string
+    operationVerifying: string
     operationUnknown: string
     operationPartial: string
     operationFailed: string

@@ -5,7 +5,7 @@ import type { ConversationShareApi } from '../../shared/src/conversation-share'
 
 import type { DesktopProfileRoute } from './desktop-profile'
 import type { HudModifierApi, HudModifierStatus } from './hud-modifier-types'
-import type { CloudDriveRequest, CloudDriveTransferProgress, CloudDriveTransferRequest } from './login/contract'
+import type { CloudDriveMutationProgress, CloudDriveRequest, CloudDriveTransferProgress, CloudDriveTransferRequest } from './login/contract'
 import { maskMcpSecrets, restoreMcpSecrets } from './mcp-secrets'
 import { ASR_CHANNEL } from './uniwork-asr/contract'
 import { PLAN_SUBSCRIPTION_CHANNEL, PLAN_USAGE_CHANNEL, PLAN_USAGE_REFRESH_CHANNEL } from './uniwork-usage/contract'
@@ -47,6 +47,12 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     ipcRenderer.on('hermes:messaging:status', listener)
 
     return () => ipcRenderer.removeListener('hermes:messaging:status', listener)
+  },
+  onCloudDriveMutationProgress: (listener: (progress: CloudDriveMutationProgress) => void) => {
+    const handle = (_event: Electron.IpcRendererEvent, progress: CloudDriveMutationProgress) => listener(progress)
+    ipcRenderer.on('hermes:maas-drive:mutation-progress', handle)
+
+    return () => ipcRenderer.removeListener('hermes:maas-drive:mutation-progress', handle)
   },
   cloudDriveRequest: (input: CloudDriveRequest) => ipcRenderer.invoke('hermes:maas-drive:request', input),
   /** 仅读取固定语言的办公模板目录，不接收请求地址或凭据。 */

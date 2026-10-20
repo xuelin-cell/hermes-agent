@@ -9,7 +9,13 @@ export interface LoginRequest {
   smsCode: string
 }
 
+export interface CloudDriveMutationProgress {
+  id: string
+  phase: 'verifying'
+}
+
 export interface CloudDriveRequest {
+  requestId?: string
   route: string
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE'
   body?: Record<string, unknown>
