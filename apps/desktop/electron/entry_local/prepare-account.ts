@@ -2,6 +2,7 @@ import { MAAS_IDENTITY_NAMESPACE } from '../login/credential-store'
 import type { LoginSession } from '../login/session'
 
 import { type AccountPaths, type AccountRoots, prepareAccountPaths } from './account-paths'
+import { prepareAccountSoul } from './account-soul'
 import { enableDesktopPlugins } from './desktop-plugins-config'
 import { mergeMaasModelConfig } from './model-config'
 import { writeAccountMaasKey } from './model-key'
@@ -46,6 +47,7 @@ export function prepareLocalEnvironment(session: LoginSession, roots: AccountRoo
   }
 
   try {
+    prepareAccountSoul(account.home)
     updateUniaiToolkitConfig(account.home, result.status)
 
     // 和套餐同一条规则：查询失败时不改账号文件。

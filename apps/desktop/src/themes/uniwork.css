@@ -204,6 +204,10 @@
 
 [data-slot='work-selected-category'] {
   display: inline-flex;
+  min-height: 30px;
+  max-width: 100%;
+  padding: 4px 10px 4px 12px;
+  gap: 6px;
   width: fit-content;
   align-items: center;
   border-radius: 999px;
@@ -211,7 +215,15 @@
   color: var(--dt-accent-foreground);
 }
 
+[data-slot='work-selected-category'] > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 [data-slot='work-selected-category'] [data-slot='button'] {
+  flex-shrink: 0;
   color: inherit;
 }
 

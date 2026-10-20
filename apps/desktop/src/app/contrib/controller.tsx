@@ -100,6 +100,7 @@ import { $botChatScopes } from '@/store/session-states'
 import { watchUnreadWriteGuard } from '@/store/session-unread-remote'
 import { $statusbarVisible } from '@/store/statusbar-prefs'
 import { isBrowserWindow, isHudWindow } from '@/store/windows'
+import { $selectedWorkspaceMode } from '@/store/workspace-category'
 
 import { BrowserPopoutShell } from '../chat/browser-popout-shell'
 import type { SessionDragPayload } from '../chat/composer/inline-refs'
@@ -806,6 +807,7 @@ registerPaneCloser('files', () =>
 export function ContribController() {
   const sidebarOpen = useStore($sidebarOpen)
   const statusbarVisible = useStore($statusbarVisible)
+  const workspaceMode = useStore($selectedWorkspaceMode)
 
   // HUD mode is the SAME app with its frame removed: the wiring (gateway,
   // sessions, streams, submit) mounts identically, and only the shell around
@@ -858,7 +860,11 @@ export function ContribController() {
               statusBar.left/right contributions merged in. Unmounted — not
               just hidden — while toggled off, so its 15s status poll and the
               per-turn readouts stop with it. */}
-          {statusbarVisible && <WiredPane part="statusbar" />}
+          {/* Workspace tabs keep the same bottom inset when Simple mode hides
+              the statusbar. Match StatusbarControls' h-5 without mounting its polls. */}
+          <div className={workspaceMode ? 'min-h-5 shrink-0 bg-(--ui-sidebar-surface-background)' : 'contents'}>
+            {statusbarVisible && <WiredPane part="statusbar" />}
+          </div>
         </div>
       </ContribWiring>
     </SidebarProvider>

@@ -135,7 +135,7 @@ export function WorkTemplatePicker({ scope, disabled, onReplaceText, selectionCo
               <Button
                 aria-pressed={selection.template === template.id}
                 className="rounded-full"
-                disabled={disabled}
+                disabled={disabled || catalog.status === 'loading'}
                 key={template.id}
                 onClick={() => {
                   setSelection({ scope, language, moduleId: module?.id, category: category.id, template: template.id })
@@ -157,6 +157,7 @@ export function WorkTemplatePicker({ scope, disabled, onReplaceText, selectionCo
                 onClick={() => {
                   setSelection({ scope, language, moduleId: module?.id, category: item.id, template: null })
                   onReplaceText('')
+                  void loadWelcomeCatalog(language, true)
                 }}
                 size="sm"
                 type="button"

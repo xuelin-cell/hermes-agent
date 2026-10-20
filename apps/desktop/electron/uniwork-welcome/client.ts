@@ -4,7 +4,7 @@ import type { LoginIdentity } from '../login/session'
 
 import { normalizeWelcomeCatalog, type WelcomeLocale, type WelcomePayload } from './catalog'
 
-/** 启动时可匿名读取，登录后转发当前身份；页面仅能选择固定中英文记录。 */
+/** 只使用当前有效登录身份读取配置；页面仅能选择固定中英文记录。 */
 export class WelcomeCatalogClient {
   /** 网络可注入以验证真实 HTTP 路径，业务调用始终使用 Electron 的网络会话。 */
   constructor(
@@ -23,8 +23,12 @@ export class WelcomeCatalogClient {
     const token = identity && identity.expiresAt > Date.now() ? identity.token : null
 
     try {
+      if (!token) {
+        throw new Error('标签配置需要当前登录身份')
+      }
+
       const response = await this.request(`https://maas.ai-yuanjing.com/app/gateway/uniwork/system-config?key=${key}`, {
-        headers: { Accept: 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
         signal: AbortSignal.timeout(8_000),
         redirect: 'error',
         credentials: 'omit',
@@ -43,7 +47,9 @@ export class WelcomeCatalogClient {
 
       const payload = JSON.parse(envelope.configValue)
 
-      if (!normalizeWelcomeCatalog(payload).length || (token && this.identity?.()?.token !== token)) {
+      const current = this.identity?.()
+
+      if (!normalizeWelcomeCatalog(payload).length || current?.token !== token || current.expiresAt <= Date.now()) {
         throw new Error()
       }
 

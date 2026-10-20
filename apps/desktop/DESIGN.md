@@ -39,7 +39,7 @@ one-off at the call site.
   `--control-line-height`；紧凑辅助变体保留尺寸覆盖。输入区域框内对标 Claude：圆角 20px，
   细中性边框加很淡的阴影，悬停 / 聚焦只加深边框、不用强调色描边；模型名和思考强度读成一个按钮（各自菜单不变）；
   发送按钮为 32px 圆形，空输入时灰底白箭头。
-  分类标签为 32px 高胶囊，已选分类放在编辑区内，选分类后同一推荐行切换为模板按钮，底部工具栏独立成行；浮层保持统一边框和阴影，不给各页面另造样式。
+  分类标签为 32px 高胶囊，已选分类放在编辑区内，使用带 12px 左内边距及文字/关闭按钮间隔的圆角胶囊；选分类后同一推荐行切换为模板按钮，底部工具栏独立成行；浮层保持统一边框和阴影，不给各页面另造样式。
 - 设置、技能、连接器、历史、聊天和浮层共用语义令牌；主题外的品牌色不可散落到页面。
   保留现有导航、快捷键、开发者模式边界和后台行为。
 - 欢迎标题为“元景数字员工，助你高效完成任务”，下方居中显示远端 modules 的名称和顺序。
@@ -54,8 +54,8 @@ one-off at the call site.
   下方分类与模板只读取所选模块，缺少内容时不借用其他模块；切换模块清除分类选择但保留草稿。
   分类选择会清空草稿，模板点击填入 prompt 并聚焦输入框，移除 chip 返回分类行并保留草稿。
   欢迎目录 IPC 返回原始 modules 与 version，不保存前端派生字段；旧分类数组不得提升为一级模块。
-  配置来自 `/app/gateway/uniwork/system-config?key=welcome_config_v3_{locale}`：启动可匿名，登录后转发当前 Token。
-  标准解析外层 JSON 和 configValue 字符串；空模块、无效响应及请求失败保留旧配置，同版本不写缓存。
+  配置来自 `/app/gateway/uniwork/system-config?key=welcome_config_v3_{locale}`：必须携带当前有效登录用户的 Token；无身份或过期时不发送匿名请求，保留本地目录，响应返回后再核对身份。
+  标准解析外层 JSON 和 configValue 字符串；空模块、无效响应及请求失败保留旧配置，比较实际模块内容，版本号相同但 prompt 等内容更新时也刷新缓存。
   缓存键为 `uniwork.welcome.modules.v3.{locale}`。当前语言 modules 为 null/undefined 时回退另一语言，显式空数组不回退。
 
 ## Principles
@@ -605,6 +605,8 @@ The detailed state contract lives in the scoped
 - Prefer `interface` for public props; extend React primitives
   (`React.ComponentProps<'button'>`, `Omit<…>`).
 
+空白应用区域不显示全局右键菜单（新建会话、窗口、命令面板、状态栏等）；链接、图片、文本编辑、终端以及项目/会话/文件自己的上下文操作继续保留。
+
 ## Affordances
 
 - `cursor-pointer` at the primitive level (Button, dropdown/select) — don't
@@ -649,6 +651,8 @@ The detailed state contract lives in the scoped
 - [ ] `cursor-pointer`, focus ring, and `Esc`-to-close behave?
 - [ ] Touched a primitive, token, or variant? Its named-contract entry in this
       file is updated in the same change.
+
+工作区标签切换时，窗口底部统一预留状态栏的 20px 高度；简洁模式隐藏状态栏内容及轮询，但保留同高空位，输入框和侧栏账号区域不随模式切换而上下跳动。
 
 ## 代码工作区导航与编辑器
 

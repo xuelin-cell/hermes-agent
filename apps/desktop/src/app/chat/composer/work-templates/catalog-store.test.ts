@@ -28,15 +28,28 @@ it('keeps source-position selection keys and raw versioned data, retaining a goo
     'configured-module-0'
   ])
   expect(modules[1].workspace).toBe('codex')
-  const stored = localStorage.getItem('uniwork.welcome.modules.v3.zh-CN')
-  expect(JSON.parse(stored!)).toEqual(first)
-  request.mockResolvedValue({ ...first, modules: [{ name: 'Must not replace a matching version' }] })
+  expect(JSON.parse(localStorage.getItem('uniwork.welcome.modules.v3.zh-CN')!)).toEqual(first)
   await loadWelcomeCatalog('zh-CN', true)
   expect($welcomeCatalog.get()['zh-CN'].modules).toBe(modules)
-  expect(localStorage.getItem('uniwork.welcome.modules.v3.zh-CN')).toBe(stored)
+
+  const latest = {
+    ...first,
+    modules: [
+      {
+        name: '日常办公',
+        tags: [{ id: 'slides', name: '幻灯片', templates: [{ id: 'ppt', name: 'PPT', prompt: '接口最新提示词' }] }]
+      }
+    ]
+  }
+
+  request.mockResolvedValue(latest)
+  await loadWelcomeCatalog('zh-CN', true)
+  const refreshed = $welcomeCatalog.get()['zh-CN'].modules!
+  expect(refreshed[0].tags[0].templates[0].prompt).toBe('接口最新提示词')
+  expect(JSON.parse(localStorage.getItem('uniwork.welcome.modules.v3.zh-CN')!)).toEqual(latest)
   request.mockResolvedValue({ modules: [] })
   await loadWelcomeCatalog('zh-CN', true)
-  expect($welcomeCatalog.get()['zh-CN'].modules).toBe(modules)
+  expect($welcomeCatalog.get()['zh-CN'].modules).toBe(refreshed)
   expect($welcomeCatalog.get()['zh-CN'].status).toBe('cached')
 })
 

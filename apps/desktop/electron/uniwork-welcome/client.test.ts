@@ -7,7 +7,7 @@ vi.mock('electron', () => ({ net: { fetch } }))
 import { normalizeWelcomeCatalog } from './catalog'
 import { WelcomeCatalogClient } from './client'
 
-it('reads V3 anonymously at boot, forwards current login credentials, and rejects unusable or extra-escaped payloads', async () => {
+it('requires the current login token for V3 and rejects unusable or extra-escaped payloads', async () => {
   let authorization: string | undefined
   let envelopeOverride: unknown
 
@@ -65,8 +65,11 @@ it('reads V3 anonymously at boot, forwards current login credentials, and reject
       () => (signedIn ? identity : null)
     )
 
-    const result = await client.load('zh-CN')
+    await expect(client.load('zh-CN')).rejects.toThrow('更新失败')
     expect(authorization).toBeUndefined()
+    signedIn = true
+    const result = await client.load('zh-CN')
+    expect(authorization).toBe('Bearer private-token')
     expect(normalizeWelcomeCatalog(result)[0].tags[0].templates[0].prompt).toBe('Create a report')
     expect(result.version).toBe('version-1')
     expect(JSON.stringify(result)).not.toContain('private-token')

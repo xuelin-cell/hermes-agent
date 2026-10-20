@@ -80,9 +80,9 @@ export function loadWelcomeCatalog(locale: WelcomeLocale, force = false): Promis
       }
 
       const previous = $welcomeCatalog.get()[locale]
-      const unchanged = !!raw.version && raw.version === previous.version
+      const unchanged = JSON.stringify(modules) === JSON.stringify(previous.modules)
 
-      if (!unchanged) {
+      if (!unchanged || raw.version !== previous.version || !readKey(KEY + locale)) {
         writeKey(KEY + locale, JSON.stringify(raw))
       }
 

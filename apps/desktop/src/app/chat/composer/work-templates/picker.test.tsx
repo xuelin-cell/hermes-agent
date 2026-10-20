@@ -33,7 +33,8 @@ function view(scope = 'draft-a', disabled = false, replace = vi.fn()) {
 }
 
 it('完整分类可进入模板，填写完整提示词，取消保留草稿且切换会话清除选择', async () => {
-  vi.stubGlobal('hermesDesktop', { getWelcomeCatalog: vi.fn().mockResolvedValue({ modules }) })
+  const request = vi.fn().mockResolvedValue({ modules, version: 'same-version' })
+  vi.stubGlobal('hermesDesktop', { getWelcomeCatalog: request })
   await loadWelcomeCatalog('zh-CN', true)
   const selectionHost = document.createElement('div')
   selectionHost.id = 'selection-host'
@@ -45,19 +46,27 @@ it('完整分类可进入模板，填写完整提示词，取消保留草稿且�
     expect(screen.getByRole('button', { name: category.name })).toBeTruthy()
   }
 
-  fireEvent.click(screen.getByRole('button', { name: '幻灯片' }))
+  const latestModules = structuredClone(modules)
+  const updatedTemplate = latestModules[0].tags.find(item => item.id === 'presentations')!.templates[0]
+  updatedTemplate.prompt = '接口最新的完整 prompt，不使用模板名称或旧提示词'
+  request.mockResolvedValue({ modules: latestModules, version: 'same-version' })
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: '幻灯片' }))
+  })
   expect(v.replace).toHaveBeenLastCalledWith('')
   const category = defaults.find(item => item.id === 'presentations')!
   const template = category.templates[0]!
   fireEvent.click(screen.getByRole('button', { name: template.name }))
-  expect(v.replace).toHaveBeenLastCalledWith(template.prompt)
+  expect(v.replace).toHaveBeenLastCalledWith(updatedTemplate.prompt)
   expect(selectionHost.textContent).toContain(category.name)
   expect(screen.queryByRole('button', { name: '文档处理' })).toBeNull()
   expect(screen.getByRole('button', { name: template.name })).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: '取消所选分类' }))
-  expect(v.replace).toHaveBeenLastCalledWith(template.prompt)
+  expect(v.replace).toHaveBeenLastCalledWith(updatedTemplate.prompt)
   expect(screen.getByRole('button', { name: '文档处理' })).toBeTruthy()
-  fireEvent.click(screen.getByRole('button', { name: '深度研究' }))
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: '深度研究' }))
+  })
   ui.rerender(view('draft-b', false, v.replace).element)
   expect(screen.getByRole('button', { name: '文档处理' })).toBeTruthy()
   expect(screen.queryByRole('button', { name: '取消所选分类' })).toBeNull()

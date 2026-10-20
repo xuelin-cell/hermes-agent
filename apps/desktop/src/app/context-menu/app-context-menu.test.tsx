@@ -369,14 +369,15 @@ describe('AppContextMenu', () => {
     expect(pasteItem.getAttribute('data-disabled')).toBeNull()
   })
 
-  it('offers the window verbs on bare chrome', async () => {
+  it('does not open a global menu on bare chrome', () => {
     installBridge()
     mountMenu()
     const host = attach('<div><p>plain chrome</p></div>')
 
     fireEvent.contextMenu(host.querySelector('p')!)
 
-    expect(await screen.findByText('Settings')).toBeTruthy()
+    expect($contextMenu.get()).toBeNull()
+    expect(screen.queryByRole('menu')).toBeNull()
   })
 
   it('skips plain right-clicks inside a skip-marked surface, but not links in it', async () => {
