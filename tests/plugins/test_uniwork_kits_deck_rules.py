@@ -130,6 +130,30 @@ def test_text_that_only_sits_close_is_noted_while_overlapping_text_is_sent_back(
     assert not report.ok and any(item.kind == "crowded" for item in report.problems)
 
 
+def _two_lines(shape_id: int, top_in: float, spacing: str) -> str:
+    """两段 14 磅文字的文本框；spacing 非空时每段写明行距倍数（pptxgenjs 的 lineSpacingMultiple 就这样写）。"""
+    y = int(top_in * 914400)
+    ppr = f'<a:pPr><a:lnSpc><a:spcPct val="{spacing}"/></a:lnSpc></a:pPr>' if spacing else ""
+    para = "".join(f'<a:p>{ppr}<a:r><a:rPr sz="1400"/><a:t>{text}</a:t></a:r></a:p>' for text in ("第一段正文", "第二段正文"))
+    return (
+        f'<p:sp><p:nvSpPr><p:cNvPr id="{shape_id}" name="t{shape_id}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>'
+        f'<p:spPr><a:xfrm><a:off x="914400" y="{y}"/><a:ext cx="5486400" cy="640080"/></a:xfrm></p:spPr>'
+        f'<p:txBody><a:bodyPr wrap="square" lIns="0" tIns="0" rIns="0" bIns="0"/>{para}</p:txBody></p:sp>'
+    )
+
+
+def test_writing_single_line_spacing_out_measures_the_same_as_leaving_it_default(kits, tmp_path):
+    """行距倍数乘在单倍行距上：明写 100% 和不写是同一个行距，压在两段字下半截的文字两种写法都要查出来。"""
+    verdicts = []
+    for spacing in ("", "100000"):
+        deck = tmp_path / f"spacing{spacing or 'default'}.pptx"
+        # 第二个框的顶边在第一个框两行字的 2.15 倍字号处：单倍行距下两行要占 2.4 倍字号，叠上了
+        _deck_with(deck, slide_extra=_two_lines(11, 1.0, spacing) + _line(12, 1.0 + 2.15 * 14 / 72, "下一块文字"))
+        report = kits.deck_geometry.measure(deck.read_bytes())
+        verdicts.append(any(item.kind == "crowded" for item in report.problems))
+    assert verdicts == [True, True]
+
+
 def test_picture_rules_ask_for_a_visual_check_only_when_the_vision_tool_can_see(kits, profile_env):
     """看图工具交给看不到图的主模型时，规则不让模型看图核对；配了看图模型后，看图核对回来。"""
     blind = kits.media_slot.picture_rules()

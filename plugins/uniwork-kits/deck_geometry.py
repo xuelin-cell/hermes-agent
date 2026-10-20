@@ -30,6 +30,7 @@ CROWD_MIN_GAP_EM = 0.15
 _CROWD_MAX_PT = 48.0
 _CROWD_MAX_LISTED = 6
 _PT_PER_INCH = 72.0
+_SINGLE_LINE = 1.2
 _CARD_MAX_SHARE = 0.6
 _CARD_MIN_ALPHA = 5000
 _CARD_TOLERANCE_IN = 0.05
@@ -199,14 +200,20 @@ def _text_width(text: str) -> float:
     return sum(1.0 if ord(ch) > 0x2E80 else 0.55 for ch in text)
 
 
+def _line_height(shape: str) -> float:
+    """一行字占的高度（以字号为单位）。行距倍数（lnSpc 的 spcPct）是乘在单倍行距上的，单倍约为字号的 1.2 倍；
+    以前把倍数直接当行高，设了行距倍数的文本框会被算矮，实际装不下或叠在一起的字查不出来。"""
+    match = _LINE_SPACING_RE.search(shape)
+    return _SINGLE_LINE * (int(match.group(1)) / 100000 if match else 1.0)
+
+
 def _needed_height(shape: str, width_in: float) -> Tuple[float, str]:
     """估算文本框按当前字号、行距和边距排下全部文字需要的高度（英寸），并返回第一段文字作示例。"""
     insets = {key: int(value) / EMU for key, value in _INSET_RE.findall(shape)}
     usable = width_in - insets.get("lIns", _DEFAULT_SIDE_IN) - insets.get("rIns", _DEFAULT_SIDE_IN)
     if usable <= 0:
         return 0.0, ""
-    spacing_match = _LINE_SPACING_RE.search(shape)
-    spacing = int(spacing_match.group(1)) / 100000 if spacing_match else 1.2
+    spacing = _line_height(shape)
     total = 0.0
     sample = ""
     for para in _PARA_RE.findall(shape):
@@ -277,8 +284,7 @@ def _blocks(xml: str) -> List[_Block]:
             top = y + h - bottom_in - text_h
         else:
             top = y + top_in
-        spacing_match = _LINE_SPACING_RE.search(shape)
-        spacing = int(spacing_match.group(1)) / 100000 if spacing_match else 1.2
+        spacing = _line_height(shape)
         lead = (spacing - 1) * size_pt / _PT_PER_INCH / 2
         usable_w = w - left_in - right_in
         widest = 0.0
