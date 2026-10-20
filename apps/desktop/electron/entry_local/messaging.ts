@@ -198,7 +198,11 @@ export class DesktopMessaging {
         const codes = ['credentials_rejected', 'credentials_required', 'secret_required_for_new_id',
           'validation_network', 'validation_timeout', 'validation_response', 'validation_unavailable', 'gateway_identity_unverified']
 
-        this.publish(input, 'failed', input.operation === 'restore', codes.find(code => message.includes(code)) || 'save_failed')
+        // 恢复失败后的重试走恢复路径；再次失败仍按恢复记录，下次重试才不会绕过归属检查。
+        const task = input.operation === 'retry' && this.state.operation === 'restore'
+          ? { ...input, operation: 'restore' as const } : input
+
+        this.publish(task, 'failed', task.operation === 'restore', codes.find(code => message.includes(code)) || 'save_failed')
         throw cause
       }
     })

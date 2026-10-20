@@ -18763,7 +18763,11 @@ const desktopStartup = app.whenReady().then(() => {
   // captured by the original transaction before removing the journal entry.
   void resumeManagedSshRecoveries()
   // 与桌面后端并行准备消息连接；失败只在消息页面展示，不阻塞首窗或聊天。
-  void desktopMessaging.restore().catch(() => rememberLog('[messaging] account gateway restore failed'))
+  void desktopMessaging.restore()
+    .then(result => {
+      if (result.actionFailed) {rememberLog('[messaging] account gateway restore failed: platforms not ready')}
+    })
+    .catch(error => rememberLog(`[messaging] account gateway restore failed: ${redactSecrets(String(error?.message || error))}`))
   installApplicationMenuAfterFirstWindow({
     isMac: IS_MAC,
     buildMenu: buildApplicationMenu,

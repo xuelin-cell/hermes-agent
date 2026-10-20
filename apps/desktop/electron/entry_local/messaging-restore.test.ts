@@ -61,6 +61,17 @@ it('无配置不启动；启动失败只影响消息状态，显式重试仍经�
   expect(failing.request.mock.calls.some(([, url]) => url.endsWith('/apply'))).toBe(false)
 })
 
+it('恢复后的重试再次失败仍显示恢复失败，下次重试继续经过归属检查', async () => {
+  const { service, request } = fixture()
+  request.mockRejectedValueOnce(new Error('validation_timeout')).mockRejectedValueOnce(new Error('validation_timeout'))
+  await expect(service.restore()).rejects.toThrow()
+  await expect(service.run({ operation: 'retry' })).rejects.toThrow()
+  expect(service.status()).toMatchObject({ phase: 'failed', operation: 'restore' })
+  await service.run({ operation: 'retry' })
+  expect(request.mock.calls.filter(([, url]) => url.includes('/restore'))).toHaveLength(3)
+  expect(request.mock.calls.some(([, url]) => url.endsWith('/apply'))).toBe(false)
+})
+
 it('默认环境就绪不能掩盖命名 Profile 未连接，不重复启动它们的网关', async () => {
   const { service, request } = fixture()
   let finish!: (value: unknown) => void
