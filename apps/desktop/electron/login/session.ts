@@ -1,6 +1,7 @@
 import type { LoginAccount, LoginResult, PlanResult } from './contract'
 import type { CredentialStore } from './credential-store'
 import { type FetchedPlan, fetchPlan, type MaasPlan } from './plan'
+import { parseUniAgentGate, type UniAgentGateUpdate } from './uniagentgate'
 
 export interface LoginIdentity {
   phone?: string
@@ -58,7 +59,13 @@ function parseIdentity(body: unknown, phone: string): LoginIdentity | null {
     return null
   }
 
-  return { uid, token: payload.token.trim(), expiresAt, phone, maskedPhone: `${phone.slice(0, 3)}****${phone.slice(-4)}` }
+  return {
+    uid,
+    token: payload.token.trim(),
+    expiresAt,
+    phone,
+    maskedPhone: `${phone.slice(0, 3)}****${phone.slice(-4)}`
+  }
 }
 
 /** 只挑选可跨越 IPC 的账号展示字段，不返回 UID、token 或原始响应。 */
@@ -73,6 +80,7 @@ export class LoginSession {
   private planStatus: FetchedPlan['status'] = 'failed'
   private planFailureReason: 'auth' | undefined
   private planQuery: Promise<PlanResult> | null = null
+  private binding: UniAgentGateUpdate = { status: 'missing' }
   private pending = false
   private closed = false
   private readonly cancellation = new AbortController()
@@ -80,7 +88,8 @@ export class LoginSession {
   /** 注入主进程网络与必要的安全存储，页面不能替换请求或跳过持久化。 */
   constructor(
     private readonly request: typeof fetch,
-    private readonly credentials: Pick<CredentialStore, 'save' | 'load'>
+    private readonly credentials: Pick<CredentialStore, 'save' | 'load'>,
+    private readonly applyBinding?: (update: UniAgentGateUpdate) => Promise<void>
   ) {}
 
   /** 仅供主进程读取有效身份，返回副本以避免外部改写已校验记录。 */
@@ -90,6 +99,7 @@ export class LoginSession {
       this.plan = null
       this.planStatus = 'failed'
       this.planFailureReason = undefined
+      this.binding = { status: 'missing' }
     }
 
     return this.identity ? { ...this.identity } : null
@@ -108,6 +118,11 @@ export class LoginSession {
     return this.planStatus === 'empty'
       ? { status: 'empty' }
       : { status: 'failed', ...(this.planFailureReason ? { reason: this.planFailureReason } : {}) }
+  }
+
+  /** 仅供账号环境准备读取；可选绑定失败不改变合法登录/模型套餐状态。 */
+  currentUniAgentGate(): UniAgentGateUpdate {
+    return this.currentIdentity() ? structuredClone(this.binding) : { status: 'missing' }
   }
 
   /** 恢复经过存储模块校验且未到期的原账号；读取失败不改写记录。 */
@@ -156,11 +171,32 @@ export class LoginSession {
       return this.planQuery
     }
 
-    this.planQuery = fetchPlan(this.request, identity.token, this.cancellation.signal)
-      .then((result): PlanResult => {
+    let bindingUpdate: UniAgentGateUpdate | undefined
+    this.planQuery = fetchPlan(this.request, identity.token, this.cancellation.signal, update => {
+      const current = this.currentIdentity()
+
+      if (
+        current?.uid === identity.uid &&
+        current.token === identity.token &&
+        (update.status === 'available' || update.status === 'clear')
+      ) {
+        this.binding = update
+        bindingUpdate = update
+      }
+    })
+      .then(async (result): Promise<PlanResult> => {
         const current = this.currentIdentity()
 
         if (!current || current.uid !== identity.uid || current.token !== identity.token) {
+          return { status: 'failed' }
+        }
+
+        // 5G 凭据独立于模型套餐；无模型套餐也必须应用明确的更新/撤销。
+        if (bindingUpdate) {
+          await this.applyBinding?.(bindingUpdate)
+        }
+
+        if (this.currentIdentity()?.token !== identity.token) {
           return { status: 'failed' }
         }
 
@@ -185,6 +221,7 @@ export class LoginSession {
           }))
         }
       })
+      .catch((): PlanResult => ({ status: 'failed' }))
       .finally(() => {
         this.planQuery = null
       })
@@ -229,7 +266,8 @@ export class LoginSession {
         return { ok: false }
       }
 
-      const identity = parseIdentity(await response.json(), input.phone)
+      const body: unknown = await response.json()
+      const identity = parseIdentity(body, input.phone)
 
       if (this.closed || !identity) {
         return { ok: false }
@@ -237,6 +275,8 @@ export class LoginSession {
 
       this.credentials.save(identity)
       this.identity = identity
+      const payload = isRecord(body) && body.data !== undefined ? body.data : body
+      this.binding = parseUniAgentGate(isRecord(payload) ? payload.plan : undefined)
 
       return { ok: true, account: accountFor(identity) }
     } catch {
@@ -253,6 +293,7 @@ export class LoginSession {
     this.plan = null
     this.planStatus = 'failed'
     this.planFailureReason = undefined
+    this.binding = { status: 'missing' }
     this.cancellation.abort()
   }
 }

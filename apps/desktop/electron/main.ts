@@ -260,6 +260,8 @@ import {
 } from './find-in-page'
 import { createFirstRunSetupGate } from './first-run-setup-gate'
 import { registerFsIpc } from './fs-ipc'
+import { createUniAgentGateBindingUpdate } from './entry_local/uniagentgate-control'
+import { installUniAgentGateIpc } from './entry_local/uniagentgate-ipc'
 import type {
   GatewayFileSaveContext,
   GatewayFileSaveDeps,
@@ -700,7 +702,8 @@ installAccountIpc(
   ACCOUNT_DRIVE_CLIENT,
   profile => ACCOUNT_DRIVE_MCP.available(profile),
   ACCOUNT_DRIVE_ARTIFACT,
-  url => openExternalUrl(url)
+  url => openExternalUrl(url),
+  createUniAgentGateBindingUpdate(() => currentDesktopLocalContext() === ACCOUNT_RUNTIME ? ACCOUNT_RUNTIME : null)
 )
 
 installOfficePreviewIpc(
@@ -708,6 +711,11 @@ installOfficePreviewIpc(
   () => DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString(),
   () => currentDesktopLocalContext() === ACCOUNT_RUNTIME,
   ACCOUNT_OFFICE_PREVIEW
+)
+installUniAgentGateIpc(
+  ACCOUNT_SESSION,
+  () => DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString(),
+  () => currentDesktopLocalContext() === ACCOUNT_RUNTIME ? ACCOUNT_RUNTIME : null
 )
 installPreviewExportIpc(
   ACCOUNT_SESSION,

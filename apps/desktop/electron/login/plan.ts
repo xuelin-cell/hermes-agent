@@ -1,3 +1,5 @@
+import { parseUniAgentGate, type UniAgentGateUpdate } from './uniagentgate'
+
 export interface MaasModel {
   id: string
   name: string
@@ -94,7 +96,12 @@ function parsePlan(body: unknown): FetchedPlan {
 }
 
 /** 用主进程保管的登录 token 查询固定地址，失败只返回套餐状态，不判定身份。 */
-export async function fetchPlan(request: typeof fetch, token: string, cancellation: AbortSignal): Promise<FetchedPlan> {
+export async function fetchPlan(
+  request: typeof fetch,
+  token: string,
+  cancellation: AbortSignal,
+  onBinding?: (update: UniAgentGateUpdate) => void
+): Promise<FetchedPlan> {
   try {
     const response = await request('https://maas.ai-yuanjing.com/app/gateway/uniwork/my-plan', {
       method: 'GET',
@@ -109,7 +116,17 @@ export async function fetchPlan(request: typeof fetch, token: string, cancellati
       return { status: 'failed', reason: 'auth' }
     }
 
-    return response.ok ? parsePlan(await response.json()) : { status: 'failed' }
+    if (!response.ok) {
+      return { status: 'failed' }
+    }
+
+    const body: unknown = await response.json()
+
+    if (isRecord(body) && (body.code === undefined || body.code === 0 || body.code === '0')) {
+      onBinding?.(parseUniAgentGate(body.data === undefined ? body : body.data))
+    }
+
+    return parsePlan(body)
   } catch {
     return { status: 'failed' }
   }

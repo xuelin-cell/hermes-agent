@@ -4,6 +4,7 @@ import { accountDesktopEnvironment } from './desktop-environment'
 import { ensureDevExtras } from './dev-extras'
 import { recordAccountRun } from './logout'
 import type { PreparedLocalContext } from './runtime-context'
+import { installUniAgentGatePlugin } from './uniagentgate-config'
 
 /** 绑定可信账号后才加载原版桌面；不接受页面传入的账号、路径或连接。 */
 export async function startAccountDesktop(context: PreparedLocalContext): Promise<void> {
@@ -11,6 +12,7 @@ export async function startAccountDesktop(context: PreparedLocalContext): Promis
   const env = accountDesktopEnvironment(context)
   // 后端启动前装好开发模式缺的组件，免得用到时才报缺依赖。
   await ensureDevExtras(context, env)
+  installUniAgentGatePlugin(context.home, app.getAppPath())
 
   for (const name of Object.keys(process.env)) {
     if (!(name in env)) {
@@ -19,6 +21,7 @@ export async function startAccountDesktop(context: PreparedLocalContext): Promis
   }
 
   Object.assign(process.env, env)
+  // main 的账号恢复队列统一启动所有消息平台，避免两套启动器并发拉起网关。
   const { openAccountDesktop } = await import('../main')
   await openAccountDesktop()
 }

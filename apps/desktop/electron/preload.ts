@@ -38,6 +38,7 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   /** 主进程换取一次性市场凭证并打开系统浏览器，页面不接触手机号或 ticket。 */
   subscribeMaasPlan: () => ipcRenderer.invoke(PLAN_SUBSCRIPTION_CHANNEL),
   getMaasAccount: () => ipcRenderer.invoke('hermes:maas-account:get'),
+  reconnectUniAgentGate: (profile?: string) => ipcRenderer.invoke('hermes:uniagentgate:reconnect', profile),
   messagingSetup: input => ipcRenderer.invoke('hermes:messaging:setup', input),
   /** 补取当前账号脱敏进度，不会启动或重启网关。 */
   messagingStatus: () => ipcRenderer.invoke('hermes:messaging:status'),

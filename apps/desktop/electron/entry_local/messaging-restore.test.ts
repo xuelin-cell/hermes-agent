@@ -32,6 +32,24 @@ function connection(enabled = true) {
   return { id: 'dingtalk', enabled, configured: enabled, gateway_running: enabled, state: enabled ? 'connected' : 'disabled' }
 }
 
+it('5G-only restoration waits for the real connection and uses the same single startup queue', async () => {
+  const { service, request } = fixture()
+  let reads = 0
+  request.mockImplementation(async (_profile, url) => {
+    if (url.endsWith('/restore')) {
+      return { configured: true, name: 'gateway-start', profiles: ['default'] }
+    }
+
+    reads++
+
+    return { platforms: [{ ...connection(), id: 'uniagentgate', state: reads === 1 ? 'pending_restart' : 'connected' }] }
+  })
+  expect(await service.restore()).toEqual({ actionFailed: false })
+  expect(reads).toBe(2)
+  expect(request.mock.calls.filter(([, url]) => url.endsWith('/restore'))).toHaveLength(1)
+  expect(service.status()).toMatchObject({ phase: 'completed', operation: 'restore' })
+})
+
 it.each([null, 'gateway-start', 'gateway-stop'])('恢复独立于页面且每进程一次；已有动作 %s 不被重复启动', async name => {
   const { service, request } = fixture()
   request.mockResolvedValueOnce({ configured: true, name, profiles: ['default'] })

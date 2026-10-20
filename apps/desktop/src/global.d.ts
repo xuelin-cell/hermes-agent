@@ -6,6 +6,7 @@ import type { TranslucencyState } from '@hermes/shared/translucency'
 
 import type { ScreenshotApi } from '../electron/command-screenshot-types'
 import type { MessagingOperationStatus, MessagingSetupRequest, MessagingSetupResult } from '../electron/entry_local/messaging-contract'
+import type { UniAgentGateReconnectResult } from '../electron/entry_local/uniagentgate-contract'
 import type { HudModifierApi } from '../electron/hud-modifier-types'
 import type {
   CloudDriveMutationProgress,
@@ -46,6 +47,7 @@ declare global {
       refreshPlanUsage?: () => Promise<PlanUsageResult>
       subscribeMaasPlan?: () => Promise<PlanSubscriptionResult>
       getMaasAccount: () => Promise<LoginAccount | null>
+      reconnectUniAgentGate?: (profile?: string) => Promise<UniAgentGateReconnectResult>
       messagingSetup: (input: MessagingSetupRequest) => Promise<MessagingSetupResult>
       messagingStatus: () => Promise<MessagingOperationStatus>
       onMessagingStatus: (callback: (status: MessagingOperationStatus) => void) => () => void

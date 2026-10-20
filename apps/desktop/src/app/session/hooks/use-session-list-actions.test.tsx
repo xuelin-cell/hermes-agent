@@ -148,6 +148,23 @@ afterEach(() => {
   setSessionsLoadError(false)
 })
 
+// Existing gateway history keeps its identity when its source gains a sidebar section.
+it('routes existing 5G history to the messaging slice and keeps desktop recents separate', async () => {
+  const stored = [row('desktop-chat'), row('rcs-history', { source: 'uniagentgate' }),
+    row('wechat-chat', { source: 'weixin' })]
+
+  listSidebarSessions.mockImplementation(async (params: { recentsExclude: string[]; messagingExclude: string[] }) =>
+    sidebar(
+      { sessions: stored.filter(session => !params.recentsExclude.includes(session.source ?? '')) },
+      [], stored.filter(session => !params.messagingExclude.includes(session.source ?? ''))
+    ))
+  const { result } = renderHook(() => useSessionListActions({ profileScope: 'default' }))
+  await act(async () => { await result.current.refreshSessions() })
+  expect($sessions.get().map(session => session.id)).toEqual(['desktop-chat'])
+  expect($messagingSessions.get().map(session => session.id)).toEqual(['rcs-history', 'wechat-chat'])
+  expect($messagingSessions.get().find(session => session.id === 'rcs-history')?.source).toBe('uniagentgate')
+})
+
 // #67600: a cold-start read that fails must not render as "No sessions yet".
 describe('refreshSessions cold-start load error', () => {
   const failedScan = (storage?: Record<string, 'corrupt'>): SidebarSessionsResponse => ({

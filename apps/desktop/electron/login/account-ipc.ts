@@ -18,6 +18,7 @@ import type { ResolveDriveArtifact } from './cloud-drive-artifact-source'
 import { installCloudDriveTransferIpc } from './cloud-drive-transfer-ipc'
 import type { CloudDriveMutationProgress, LoginAccount } from './contract'
 import type { LoginIdentity } from './session'
+import type { UniAgentGateUpdate } from './uniagentgate'
 
 /** 仅向当前账号桌面的主框架提供只读展示信息，不接受页面身份参数。 */
 export function installAccountIpc(
@@ -31,7 +32,8 @@ export function installAccountIpc(
   sharedDrive?: CloudDriveClient,
   driveAgentReady?: (profile: string) => boolean,
   resolveArtifact?: ResolveDriveArtifact,
-  openExternal?: (url: string) => Promise<unknown>
+  openExternal?: (url: string) => Promise<unknown>,
+  applyBinding?: (update: UniAgentGateUpdate) => Promise<void>
 ): void {
   /** 展示与退出共用来源校验，不接收 UID、路径或进程号。 */
   function trusted(event: IpcMainInvokeEvent, args: unknown[]): boolean {
@@ -78,7 +80,7 @@ export function installAccountIpc(
   }
 
   if (readIdentity && drive) {
-    const usage = new PlanUsageClient(readIdentity)
+    const usage = new PlanUsageClient(readIdentity, undefined, applyBinding)
     ipcMain.handle(PLAN_USAGE_CHANNEL, (event, ...args) => {
       if (!trusted(event, args)) {
         return { status: 'failed' }
@@ -87,7 +89,8 @@ export function installAccountIpc(
       return usage.load()
     })
     ipcMain.handle(PLAN_USAGE_REFRESH_CHANNEL, (event, ...args) => {
-      if (!trusted(event, args)) return { status: 'failed' }
+      if (!trusted(event, args)) {return { status: 'failed' }}
+
       return usage.load(true)
     })
     ipcMain.handle('hermes:maas-drive:agent-ready', (event, ...args): boolean => {
@@ -149,7 +152,8 @@ export function installAccountIpc(
   if (readIdentity && openExternal) {
     const subscription = new PlanSubscriptionClient(readIdentity, openExternal)
     ipcMain.handle(PLAN_SUBSCRIPTION_CHANNEL, (event, ...args) => {
-      if (!trusted(event, args)) return { status: 'failed' }
+      if (!trusted(event, args)) {return { status: 'failed' }}
+
       return subscription.open()
     })
   }

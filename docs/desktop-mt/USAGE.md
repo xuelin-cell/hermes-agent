@@ -4,13 +4,17 @@
 
 ## 打开开发版
 
-在 PowerShell 执行本机已有入口：
+Windows 源码开发版可双击仓库根目录的 `Start-UniWork.cmd`。也可在项目目录用 PowerShell 执行：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\stan\Documents\ChatGPT\Uni-Work\Launch-HermesDesktopMT.ps1"
+.\Start-UniWork.ps1
 ```
 
-本机启动脚本调用开发仓库的 `npm run dev`，使用已有 Python 和 Git Bash，不随分支推送。保留启动终端，账号退出后开发监督进程需要重开 Electron，Vite 继续运行。
+启动脚本以自身所在目录定位仓库，自动设置源码根目录、Python 和 300 秒启动等待时间，再执行 `npm run dev --workspace apps/desktop`；无需每次手工输入环境变量。变量只用于本次进程，不写入系统环境；脚本结束时恢复调用终端的原变量和目录。
+
+默认沿用已有的 `HERMES_DESKTOP_PYTHON`；未设置时使用本次本机开发准备的 `.hermes/uniagentgate-native/checks/Scripts/python.exe`。该目录属于本地运行环境，不随仓库分发，也不会由启动脚本下载或安装。更换或重新准备解释器后可执行 `.\Start-UniWork.ps1 -Python "D:\path\to\python.exe"`。运行前需已有 Node 依赖及可用的 Hermes Python 环境。
+
+保留开发启动终端查看日志。这是开发服务的终端，与修复前登录后额外弹出的消息网关控制台不同。账号退出后开发监督进程会重新打开 Electron，Vite 继续运行。
 
 未登录时先显示短信表单，登录前不启动 Hermes。输入图形验证码、发送短信并登录后显示官方启动画面；后台查询套餐、准备账号环境和后端，完成后自动进入桌面。完整未到期的加密记录在下次打开恢复，不延长期限。
 

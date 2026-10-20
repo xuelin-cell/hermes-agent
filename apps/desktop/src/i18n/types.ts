@@ -2747,6 +2747,13 @@ export interface Translations {
       guide: string
       save: string
       comingSoon: string
+      personalBindingMissing: string
+      reconnect: string
+      reconnecting: string
+      reconnected: string
+      reconnectBusy: string
+      reconnectFailed: string
+      reconnectRestartRequired: string
       unavailable: string
       notConnected: string
       unbind: string
