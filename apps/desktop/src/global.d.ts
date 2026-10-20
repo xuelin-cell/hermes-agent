@@ -4,6 +4,7 @@ import type { ConversationShareApi } from '@hermes/shared/conversation-share'
 import type { HermesSkin } from '@hermes/shared/skin'
 import type { TranslucencyState } from '@hermes/shared/translucency'
 
+import type { AgentMailRequest, AgentMailResult } from '../electron/agent-mail/contract'
 import type { ScreenshotApi } from '../electron/command-screenshot-types'
 import type { HudModifierApi } from '../electron/hud-modifier-types'
 import type {
@@ -39,14 +40,38 @@ export type DesktopMachineProfile = MachineProfile
 declare global {
   interface Window {
     hermesDesktop: {
+      agentMail: (input: AgentMailRequest) => Promise<AgentMailResult>
       /** 只读本次已准备账号的脱敏信息，运行中到期仍返回原期限。 */
       /** 仅返回当前账号套餐展示信息，不接受页面身份参数。 */
       getPlanUsage?: () => Promise<PlanUsageResult>
       getMaasAccount: () => Promise<LoginAccount | null>
       conversationShare: ConversationShareApi
       artifactShare: {
-        inspect: (key: string) => Promise<{ key: string; shareId: string; url: string; title: string; hash: string; version: number; updatedAt: string } | null>
-        publish: (input: { key: string; html: string; title: string; source: ArtifactShareSource }) => Promise<{ key: string; shareId: string; url: string; title: string; hash: string; version: number; updatedAt: string }>
+        inspect: (
+          key: string
+        ) => Promise<{
+          key: string
+          shareId: string
+          url: string
+          title: string
+          hash: string
+          version: number
+          updatedAt: string
+        } | null>
+        publish: (input: {
+          key: string
+          html: string
+          title: string
+          source: ArtifactShareSource
+        }) => Promise<{
+          key: string
+          shareId: string
+          url: string
+          title: string
+          hash: string
+          version: number
+          updatedAt: string
+        }>
         eligibility: (source: ArtifactShareSource) => Promise<ArtifactShareEligibility>
         markUploaded: (sessionId: string) => Promise<void>
         revoke: (key: string) => Promise<void>

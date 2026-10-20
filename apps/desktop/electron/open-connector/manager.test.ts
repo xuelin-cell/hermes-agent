@@ -5,6 +5,7 @@ import path from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
 
 import { ConnectorManager } from './manager'
+import { CONNECTOR_SPECS } from './contract'
 import { ConnectorRuntime } from './runtime'
 
 afterEach(() => {
@@ -38,9 +39,7 @@ it('mounts an OAuth connector after browser authorization completes', async () =
   vi.spyOn(ConnectorRuntime.prototype, 'request').mockResolvedValue({
     authorizationUrl: 'https://example.test/oauth'
   })
-  vi.spyOn(ConnectorRuntime.prototype, 'rows').mockImplementation(async () => [
-    { id: 'qcc_mcp', connected }
-  ])
+  vi.spyOn(ConnectorRuntime.prototype, 'rows').mockImplementation(async () => [{ id: 'qcc_mcp', connected }])
   vi.spyOn(ConnectorRuntime.prototype, 'config').mockResolvedValue({
     url: 'http://127.0.0.1:1234/mcp',
     headers: { Authorization: 'Bearer runtime' },
@@ -85,9 +84,7 @@ it('does not overwrite a user-owned MCP name claimed while OAuth is open', async
   vi.spyOn(ConnectorRuntime.prototype, 'request').mockResolvedValue({
     authorizationUrl: 'https://example.test/oauth'
   })
-  vi.spyOn(ConnectorRuntime.prototype, 'rows').mockImplementation(async () => [
-    { id: 'qcc_mcp', connected }
-  ])
+  vi.spyOn(ConnectorRuntime.prototype, 'rows').mockImplementation(async () => [{ id: 'qcc_mcp', connected }])
   vi.spyOn(ConnectorRuntime.prototype, 'config').mockResolvedValue({})
   vi.spyOn(ConnectorRuntime.prototype, 'close').mockResolvedValue()
   const manager = makeManager(home, saved, writes)
@@ -98,6 +95,40 @@ it('does not overwrite a user-owned MCP name claimed while OAuth is open', async
     saved.mcp_servers.connector_qcc_mcp = { url: 'https://user.example/mcp' }
     connected = true
     await vi.advanceTimersByTimeAsync(2000)
+    expect(writes).toEqual([])
+  } finally {
+    await manager.close()
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+it('keeps Wo Mail out of the connector catalogue while serving it through Agent Mail', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-agent-mail-'))
+  const writes: unknown[] = []
+  const saved = { mcp_servers: { connector_wo_mail: { desktop_agent_mail: true, enabled: true } } }
+  const request = vi.spyOn(ConnectorRuntime.prototype, 'request').mockResolvedValue({
+    success: true,
+    data: { folders: [{ path: 'INBOX', specialUse: '\\Inbox' }] }
+  })
+  vi.spyOn(ConnectorRuntime.prototype, 'connection').mockResolvedValue({
+    configured: true,
+    displayName: '13800000000@wo.cn'
+  })
+  vi.spyOn(ConnectorRuntime.prototype, 'close').mockResolvedValue()
+  const manager = makeManager(home, saved, writes)
+
+  try {
+    expect(Object.hasOwn(CONNECTOR_SPECS, 'wo_mail')).toBe(false)
+    await expect(
+      manager.agentMail({ operation: 'action', profile: 'default', action: 'list_folders', input: {} }, '13800000000')
+    ).resolves.toMatchObject({
+      data: { folders: [{ path: 'INBOX', specialUse: '\\Inbox' }] },
+      status: { email: '13800000000@wo.cn', enabled: true }
+    })
+    expect(request).toHaveBeenCalledWith('/v1/actions/wo_mail.list_folders', 'POST', {
+      connectionName: 'default',
+      input: {}
+    })
     expect(writes).toEqual([])
   } finally {
     await manager.close()

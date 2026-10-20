@@ -330,6 +330,7 @@ import { createLocalBackendLifecycle, waitForTeardown } from './local-backend-li
 import { resolveIpcFileReadPath, resolveMediaStreamFile, resolvePreviewTargetPath } from './local-read-path'
 import { localSkinProfileKey, readLocalSkinPayload } from './local-skin'
 import { ACTIVE_LOG_POLL_MS, planLogRotation, reclaimActiveLogIfOversized } from './log-rotation'
+import { AGENT_MAIL_CHANNEL } from './agent-mail/contract'
 import { installAccountIpc } from './login/account-ipc'
 import { currentDesktopAccount, currentDesktopAsrIdentity, currentDesktopIdentity, currentDesktopLocalContext, sealDesktopAccount } from './login/bootstrap'
 import { CloudDriveClient } from './login/cloud-drive'
@@ -17229,6 +17230,11 @@ function assertArtifactShareWindow(event: Electron.IpcMainInvokeEvent): void {
 ipcMain.handle(CONNECTOR_CHANNEL, async (event, input) => {
   assertArtifactShareWindow(event)
   return ACCOUNT_CONNECTORS.request(input)
+})
+
+ipcMain.handle(AGENT_MAIL_CHANNEL, async (event, input) => {
+  assertArtifactShareWindow(event)
+  return ACCOUNT_CONNECTORS.agentMail(input, currentDesktopIdentity()?.phone ?? '')
 })
 
 installConversationShareIpc(ipcMain, assertArtifactShareWindow, {

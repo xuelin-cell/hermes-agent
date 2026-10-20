@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer, webFrame, webUtils } from 'electron'
 import type { ArtifactShareSource } from '../../shared/src/artifact-share'
 import type { ConversationShareApi } from '../../shared/src/conversation-share'
 
+import { AGENT_MAIL_CHANNEL, type AgentMailRequest } from './agent-mail/contract'
 import type { DesktopProfileRoute } from './desktop-profile'
 import type { HudModifierApi, HudModifierStatus } from './hud-modifier-types'
 import type { CloudDriveRequest, CloudDriveTransferProgress, CloudDriveTransferRequest } from './login/contract'
@@ -33,6 +34,7 @@ const launchFlags: { localModels?: boolean; guestOnboarding?: boolean; skipIntro
 const localSkin = ipcRenderer.sendSync('hermes:skin:local')
 
 contextBridge.exposeInMainWorld('hermesDesktop', {
+  agentMail: (input: AgentMailRequest) => ipcRenderer.invoke(AGENT_MAIL_CHANNEL, input),
   localConnectors: (input: LocalConnectorRequest) => ipcRenderer.invoke(CONNECTOR_CHANNEL, input),
   // 只读脱敏账号信息，页面不能传入身份或账号路径。
   getPlanUsage: () => ipcRenderer.invoke(PLAN_USAGE_CHANNEL),
@@ -57,7 +59,8 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   } satisfies ConversationShareApi,
   artifactShare: {
     inspect: (key: string) => ipcRenderer.invoke('hermes:artifact-share:inspect', key),
-    publish: (input: { key: string; html: string; title: string; source: ArtifactShareSource }) => ipcRenderer.invoke('hermes:artifact-share:publish', input),
+    publish: (input: { key: string; html: string; title: string; source: ArtifactShareSource }) =>
+      ipcRenderer.invoke('hermes:artifact-share:publish', input),
     eligibility: (source: ArtifactShareSource) => ipcRenderer.invoke('hermes:artifact-share:eligibility', source),
     markUploaded: (sessionId: string) => ipcRenderer.invoke('hermes:artifact-share:markUploaded', sessionId),
     revoke: (key: string) => ipcRenderer.invoke('hermes:artifact-share:revoke', key),

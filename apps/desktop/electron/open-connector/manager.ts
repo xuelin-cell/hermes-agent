@@ -1,6 +1,9 @@
 import path from 'node:path'
 
-import { connectorHome, prepareConnectorConfig } from './config'
+import type { AgentMailAction, AgentMailRequest, AgentMailResult, AgentMailStatus } from '../agent-mail/contract'
+import { fetchWoMailExclusiveCode } from '../agent-mail/exclusive-code'
+
+import { connectorHome, prepareAgentMailConfig, prepareConnectorConfig } from './config'
 import { CONNECTOR_SPECS, type LocalConnectorRequest, type LocalConnectorResult } from './contract'
 import { ConnectorRuntime, type ConnectorRuntimeOptions } from './runtime'
 import { WecomQrSessions } from './wecom-qr'
@@ -17,6 +20,15 @@ interface ConnectorManagerOptions extends Omit<ConnectorRuntimeOptions, 'directo
   }) => Promise<any>
   openExternal: (url: string) => Promise<void>
 }
+
+const AGENT_MAIL_ACTIONS: ReadonlySet<AgentMailAction> = new Set([
+  'delete_email',
+  'get_email',
+  'get_folder_status',
+  'list_folders',
+  'mark_email_read',
+  'search_emails'
+])
 
 /** Credentials stay in OpenConnector; Hermes owns the corresponding MCP settings. */
 export class ConnectorManager {
@@ -54,6 +66,7 @@ export class ConnectorManager {
       rows.filter(row => row.connected).map(row => row.id),
       id => runtime.config(id)
     )
+    await prepareAgentMailConfig(home, Boolean(await runtime.connection('wo_mail')), () => runtime.config('wo_mail'))
   }
 
   private authorizationKey(profile: string, id: string): string {
@@ -144,6 +157,111 @@ export class ConnectorManager {
       .catch(() => undefined)
 
     return run
+  }
+
+  agentMail(input: AgentMailRequest, phone: string): Promise<AgentMailResult> {
+    if (
+      !input ||
+      typeof input.profile !== 'string' ||
+      !['status', 'enable', 'disable', 'action'].includes(input.operation)
+    ) {
+      return Promise.reject(new Error('Invalid Agent Mail request'))
+    }
+
+    const run = (this.queues.get(input.profile) ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(() => this.executeAgentMail(input, phone))
+
+    this.queues.set(input.profile, run)
+    void run
+      .finally(() => {
+        if (this.queues.get(input.profile) === run) {
+          this.queues.delete(input.profile)
+        }
+      })
+      .catch(() => undefined)
+
+    return run
+  }
+
+  private async executeAgentMail(input: AgentMailRequest, phone: string): Promise<AgentMailResult> {
+    const runtime = this.runtime(input.profile)
+    const api = (method: string, route: string, body?: unknown) =>
+      this.options.api({ connectionId: 'local', profile: input.profile, method, path: route, body })
+    const saved = await api('GET', '/api/config?include_defaults=false')
+    const entry = saved.mcp_servers?.connector_wo_mail
+    const connection = await runtime.connection('wo_mail')
+    const ownsEntry = entry?.desktop_agent_mail === true
+    const status = (): AgentMailStatus => ({
+      dailyQuota: 50,
+      email: connection?.displayName ?? '',
+      enabled: Boolean(connection && ownsEntry && entry.enabled !== false),
+      todaySent: 0
+    })
+
+    if (input.operation === 'status') {
+      return { status: status() }
+    }
+
+    if (input.operation === 'action') {
+      if (!connection || !ownsEntry || entry.enabled === false) {
+        throw new Error('请先开通智能体邮箱。')
+      }
+      if (!input.action || !AGENT_MAIL_ACTIONS.has(input.action)) {
+        throw new Error('Unknown Agent Mail action')
+      }
+      if (!input.input || typeof input.input !== 'object' || Array.isArray(input.input)) {
+        throw new Error('Invalid Agent Mail action input')
+      }
+
+      const result = await runtime.request(`/v1/actions/wo_mail.${input.action}`, 'POST', {
+        connectionName: 'default',
+        input: input.input
+      })
+
+      if (!result || result.success !== true || !Object.hasOwn(result, 'data')) {
+        throw new Error('沃邮箱返回了无效结果。')
+      }
+
+      return { data: result.data, status: status() }
+    }
+
+    if (entry && !ownsEntry) {
+      throw new Error('MCP name already exists: connector_wo_mail')
+    }
+
+    if (input.operation === 'disable') {
+      if (ownsEntry && entry.enabled !== false) {
+        await api('PUT', '/api/config', { config: { mcp_servers: { connector_wo_mail: { enabled: false } } } })
+      }
+
+      return { status: { ...status(), enabled: false } }
+    }
+
+    let activeConnection = connection
+
+    if (!activeConnection) {
+      const authorizationCode = await fetchWoMailExclusiveCode(phone)
+      const email = `${phone}@wo.cn`
+      await runtime.request('/api/connections/wo_mail', 'PUT', {
+        authType: 'custom_credential',
+        connectionName: 'default',
+        values: { authorizationCode, email }
+      })
+      activeConnection = await runtime.connection('wo_mail')
+    }
+
+    const next = { ...(await runtime.config('wo_mail')), desktop_agent_mail: true, enabled: true }
+    await api('PUT', '/api/config', { config: { mcp_servers: { connector_wo_mail: next } } })
+
+    return {
+      status: {
+        dailyQuota: 50,
+        email: activeConnection?.displayName ?? `${phone}@wo.cn`,
+        enabled: true,
+        todaySent: 0
+      }
+    }
   }
 
   private async execute(input: LocalConnectorRequest): Promise<LocalConnectorResult> {

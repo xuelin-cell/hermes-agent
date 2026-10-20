@@ -6,7 +6,13 @@ import path from 'node:path'
 
 import { writeSecretFileAtomic } from '../hardening'
 
-import { CONNECTOR_SPECS, type ConnectorId, type LocalConnectorRow } from './contract'
+import {
+  CONNECTOR_SPECS,
+  HIDDEN_CONNECTOR_SERVICES,
+  type ConnectorId,
+  type ConnectorService,
+  type LocalConnectorRow
+} from './contract'
 
 interface RuntimeSecrets {
   encryption: string
@@ -32,13 +38,13 @@ export class ConnectorRuntime {
   constructor(private readonly options: ConnectorRuntimeOptions) {}
 
   /** 只发布绑定本 Profile 的运行时令牌，管理令牌始终留在主进程。 */
-  async config(id: ConnectorId): Promise<Record<string, unknown>> {
+  async config(id: ConnectorService): Promise<Record<string, unknown>> {
     await this.start()
 
     return {
       url: `${this.origin}/mcp`,
       headers: { Authorization: `Bearer ${this.secrets!.runtime}`, 'X-OpenConnector-Allowed-Services': id },
-      desktop_connector: id,
+      ...(Object.hasOwn(CONNECTOR_SPECS, id) ? { desktop_connector: id } : {}),
       timeout: 600
     }
   }
@@ -160,7 +166,7 @@ export class ConnectorRuntime {
       OOMOL_CONNECT_ENCRYPTION_KEY: this.secrets.encryption,
       OOMOL_CONNECT_ADMIN_TOKEN: this.secrets.admin,
       OOMOL_CONNECT_RUNTIME_TOKEN: this.secrets.runtime,
-      OOMOL_CONNECT_MCP_ALLOWED_SERVICES: Object.keys(CONNECTOR_SPECS).join(',')
+      OOMOL_CONNECT_MCP_ALLOWED_SERVICES: [...Object.keys(CONNECTOR_SPECS), ...HIDDEN_CONNECTOR_SERVICES].join(',')
     })
 
     const child = spawn(
@@ -239,6 +245,27 @@ export class ConnectorRuntime {
         row => row.service === id && row.connectionName === 'default' && row.configured === true
       )
     }))
+  }
+
+  async connection(service: ConnectorService): Promise<null | { configured: boolean; displayName: string }> {
+    const connections = await this.request('/api/connections')
+
+    if (!Array.isArray(connections)) {
+      throw new Error('连接器返回了无效状态。')
+    }
+
+    const row = connections.find(
+      item => item?.service === service && item?.connectionName === 'default' && item?.configured === true
+    )
+
+    if (!row) {
+      return null
+    }
+
+    return {
+      configured: true,
+      displayName: typeof row.profile?.displayName === 'string' ? row.profile.displayName : ''
+    }
   }
 
   /** 正常退出和账号退出都撤销服务进程，不删除持久授权。 */

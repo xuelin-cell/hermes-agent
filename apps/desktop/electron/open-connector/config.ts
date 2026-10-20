@@ -125,3 +125,52 @@ export async function prepareConnectorConfig(
     writeSecretFileAtomic(file, doc.toString({ lineWidth: 0 }), { encoding: 'utf8' })
   }
 }
+
+/** Refresh the hidden Agent Mail MCP endpoint without publishing it in the connector catalogue. */
+export async function prepareAgentMailConfig(
+  home: string,
+  connected: boolean,
+  config: () => Promise<Record<string, unknown>>
+): Promise<void> {
+  const file = path.join(home, 'config.yaml')
+  const stat = fs.lstatSync(file, { throwIfNoEntry: false })
+
+  if (!stat || !connected) {
+    return
+  }
+  if (!stat.isFile() || stat.isSymbolicLink()) {
+    throw new Error('Invalid connector config file')
+  }
+
+  const original = fs.readFileSync(file, 'utf8')
+  const doc = parseDocument(original, { version: '1.1', logLevel: 'silent' })
+
+  if (doc.errors.length || doc.warnings.length) {
+    throw new Error('Cannot read connector config')
+  }
+
+  const serversNode = doc.get('mcp_servers')
+
+  if (!isMap(serversNode)) {
+    return
+  }
+
+  const entry = serversNode.get('connector_wo_mail')
+
+  if (!isMap(entry) || entry.get('desktop_agent_mail') !== true) {
+    return
+  }
+  if (serversNode.anchor || entry.anchor || entry.has('<<')) {
+    throw new Error('Shared connector YAML nodes are not supported')
+  }
+
+  const next = await config()
+
+  if (fs.readFileSync(file, 'utf8') !== original) {
+    throw new Error('Connector config changed during startup')
+  }
+
+  entry.set('url', next.url)
+  entry.set('headers', doc.createNode(next.headers))
+  writeSecretFileAtomic(file, doc.toString({ lineWidth: 0 }), { encoding: 'utf8' })
+}

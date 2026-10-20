@@ -15,6 +15,9 @@ export const CONNECTOR_SPECS = {
 } as const
 
 export type ConnectorId = keyof typeof CONNECTOR_SPECS
+export const HIDDEN_CONNECTOR_SERVICES = ['wo_mail'] as const
+export type HiddenConnectorService = (typeof HIDDEN_CONNECTOR_SERVICES)[number]
+export type ConnectorService = ConnectorId | HiddenConnectorService
 export interface LocalConnectorRow {
   id: ConnectorId
   connected: boolean
