@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 
-from . import expert_cards, host_rules, llm, naming, package, router, store
+from . import expert_cards, host_rules, llm, naming, package, router, script_swaps, store
 from . import plugin_spec as spec
 from . import triggers as triggers_mod
 from . import yaml_compat as yaml
@@ -684,6 +684,7 @@ def install_into_home(
         receipt.rewrites.append("子代理改成了派工技能；原定义的 tools / model / maxTurns 只写成文字，Hermes 不强制")
     if ref_count:
         receipt.rewrites.append(f"包内 {ref_count} 处「{plan.name}:技能名」引用改成了 Hermes 里的技能名（{naming.SEP} 分隔）")
+    receipt.rewrites.extend(script_swaps.apply(home, plan.name))
 
     if skill_names or agent_names:
         _copy_root_docs(retained, kroot)

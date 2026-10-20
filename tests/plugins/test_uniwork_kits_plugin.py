@@ -53,7 +53,7 @@ def kits():
     parts = (
         "installer", "host_rules", "router", "store", "naming", "llm", "triggers",
         "media_slot", "xiaohongshu", "deck_check", "package_hooks", "turns", "delivery", "expert_sync", "experts",
-        "eastmoney_slot",
+        "eastmoney_slot", "script_swaps",
         "host_hooks", "image_landing", "deck_geometry", "expert_cards", "catalog",
     )
     for part in parts:

@@ -30,7 +30,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from . import script_python, store
+from . import script_python, script_swaps, store
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +102,8 @@ def _set(**changes: Any) -> None:
 def _run(root: Path, directory: Path) -> None:
     """后台安装的主体：拿到锁后调用 seed，记下装了哪些、哪些没变、哪些失败，并更新「装过哪些内置包」的记录。
 
+    已装的包里有要换成宿主版的脚本（script_swaps），也在锁里一并换掉。
+
     装完再建好脚本运行环境（script_python），第一次跑专家脚本时就不用等；它有自己的锁，不占着安装锁。
     """
     lock = store.imported_root(root) / LOCK_NAME
@@ -121,6 +123,9 @@ def _run(root: Path, directory: Path) -> None:
         present = set(store.load_index(root).get("plugins") or {})
         items = seed.seed(root, directory, progress=progress, removed=seeded - present)
         _save_seeded(record, seeded | {item.name for item in items if item.name and item.status in ("installed", "unchanged")})
+        # 包没变时 seed 不重装；以前装好的脚本在这里补换。
+        for note in script_swaps.apply_installed(root):
+            logger.info("[uniwork-kits] %s", note)
         installed = [item.name for item in items if item.status == "installed"]
         failed = [f"{item.name or item.path}：{item.detail}" for item in items if item.status in ("failed", "unreadable")]
         unchanged = sum(1 for item in items if item.status == "unchanged")
