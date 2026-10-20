@@ -3897,15 +3897,7 @@ export const zh = defineLocale({
     placeholderStarting: '正在启动 Hermes…',
     placeholderReconnecting: '正在重新连接 Hermes…',
     placeholderFollowUp: '发送后续消息',
-    newSessionPlaceholders: [
-      '我们要构建什么？',
-      '给 Hermes 一个任务',
-      '你在想什么？',
-      '描述你需要什么',
-      '我们该处理什么？',
-      '随便问点什么',
-      '从一个目标开始'
-    ],
+    newSessionPlaceholders: ['今天想让我帮你做什么？'],
     followUpPlaceholders: [
       '发送后续消息',
       '补充更多上下文',

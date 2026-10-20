@@ -3206,15 +3206,7 @@ export const zhHant = defineLocale({
     placeholderStarting: '正在啟動 Hermes...',
     placeholderReconnecting: '正在重新連線至 Hermes…',
     placeholderFollowUp: '傳送後續訊息',
-    newSessionPlaceholders: [
-      '我們要建立什麼？',
-      '給 Hermes 一個任務',
-      '您在想什麼？',
-      '描述您需要什麼',
-      '我們該處理什麼？',
-      '盡管問',
-      '從一個目標開始'
-    ],
+    newSessionPlaceholders: ['今天想讓我幫您做什麼？'],
     followUpPlaceholders: [
       '傳送後續訊息',
       '補充更多脈絡',
