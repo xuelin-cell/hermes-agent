@@ -274,3 +274,17 @@
 |---|---|---|---|
 | `image_edit` | `/app-agent-prod/images/edited/` | 编辑图片 | 保留，可能接着编辑或做视频 |
 | `music_generate` | `/app-agent-prod/music/` | 生成音乐 | 下载后移除 |
+
+## 2026-10-20 补充：调用元景工具时自动上传本机文件
+
+元景工具在远程，读不到本机路径。以前模型要先试 `vision_analyze`、再查上传工具、自己做"取上传地址 → curl 上传 → 确认"三步，一次图生视频要调十来次工具。新增 `plugins/desktop-deliverables/uploads.py`，参考 UniWork 的 `SandboxUploadMiddleware` 和 postgresql-multitenant 的 `pre_upload.py`：
+
+| 项 | 做法 |
+|---|---|
+| 什么时候传 | 只在模型调用元景工具、参数里填了本机文件时（`pre_tool_call` 的 `modify`）；不用元景就什么都不传，不做预传 |
+| 管哪些工具 | 带 `get_oss_upload_url` 的远程 MCP 服务器的全部工具，上传工具本身除外；文字参数和列表里的每一项都看 |
+| 允许的文件 | 账号 Home 的 `attachments`、当前工作目录、本会话里用户 `@file:`／`@image:` 引用过的文件（从会话历史读，重启不丢）；其它位置拦下并说明，不上传 |
+| 换成什么 | ossPath（如 `app-agent-prod/temp/xxx.png`），不调 `confirm_oss_upload`，不带签名、不会过期；上传地址只认固定对象存储的 `/app-agent-prod/temp/` |
+| 重复使用 | 按"路径 + 修改时间 + 大小"缓存一天 |
+| 失败 | 拦下这次调用，说明卡在"取上传地址"还是"上传文件"；日志不记签名链接 |
+| 提醒模型 | 元景已连接时每轮在本轮上下文里加一句：直接填本机路径，不要自己上传，看图用 `analyze_image` |
