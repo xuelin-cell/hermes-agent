@@ -50,7 +50,7 @@ def call(plugin, name, result, **kwargs):
 def test_generated_media_is_downloaded_and_carded_without_reply_path(
     delivery, monkeypatch, tool, extension
 ):
-    """图片、视频、语音和音乐都由真实下载落盘；只有图片保留链接给后续工具，其余成品去掉链接。"""
+    """图片、视频、语音和音乐都由真实下载落盘，下载后一律去掉链接，模型只拿到本机路径。"""
     plugin, work = delivery
     monkeypatch.setattr("tools.url_safety._global_allow_private_urls", lambda: True)
     begin(plugin)
@@ -61,10 +61,7 @@ def test_generated_media_is_downloaded_and_carded_without_reply_path(
         assert result is not None
         data = json.loads(result)
         assert data["metadata"] == "keep" and "本机副本" in data["desktop_note"]
-        if tool in {"txt2img_generate", "image_edit"}:
-            assert data["url"] == url
-        else:
-            assert "url" not in data and "signature=private" not in result
+        assert "url" not in data and "signature=private" not in result
         output = Path(data["desktop_deliverables"][0])
         assert output.parent == work / "outputs"
         # 没有描述参数时按工具起名，不再使用随机码。
@@ -318,6 +315,14 @@ def test_output_names_cover_translation_and_unsafe_prompts(delivery):
     assert output_stem("mcp__1__txt2img_generate", "", {"prompt": "CON"}) == "生成图片"
     assert output_stem("tts_synthesize", "", {"text": "  ...  "}) == "语音"
     assert output_stem("tts_synthesize", "", {"text": "欢迎收听今天的节目"}) == "欢迎收听今天的节目"
+    # 英文描述退到上一个空格，不留半个单词；单词正好截满、没有空格时照常截。
+    for prompt, stem in [
+        ("A cute fluffy golden retriever puppy on grass", "A cute fluffy golden"),
+        ("A cute fluffy golden dog runs", "A cute fluffy golden dog"),
+        ("Supercalifragilisticexpialidocious", "Supercalifragilisticexpi"),
+        ("一只毛茸茸的橘色小奶猫，圆圆的大眼睛，好奇地歪着头看着镜头", "一只毛茸茸的橘色小奶猫，圆圆的大眼睛，好奇地歪着"),
+    ]:
+        assert output_stem("txt2img_generate", "", {"prompt": prompt}) == stem
 
 
 def test_downloaded_links_are_removed_from_text_without_touching_other_lines(delivery):
