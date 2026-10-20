@@ -6,26 +6,34 @@
 
 `account-paths.ts` 使用 UTF-8 的 `JSON.stringify([平台身份域, UID])` 计算完整 SHA-256，形成 `account-<64 位摘要>`。token、手机号、Key 和期限不参与标识；同账号重新登录定位原目录。
 
-Local 和 Roaming 两处的应用目录都叫 `hmt`，账号目录都只用摘要前 12 位命名，各自的 `account-id` 保存完整标识。准备账号和退出恢复都先核对两处标识，前 12 位相同的另一账号不会写进或清理本目录。退出恢复记录和浏览器分区仍按完整标识。
+Local 和 Roaming 两处的应用目录都叫 `uniworker`，遵循系统 AppData 所在位置，不固定盘符。账号目录仍只用摘要前 12 位命名，各自的 `account-id` 保存完整标识。准备账号和退出恢复都先核对两处标识，前 12 位相同的另一账号不会写进或清理本目录。退出恢复记录和浏览器分区仍按完整标识。
 
 默认目录：
 
 ```text
-%LOCALAPPDATA%\hmt\<摘要前 12 位>\
+%LOCALAPPDATA%\uniworker\<摘要前 12 位>\
   account-id
   home\              HERMES_HOME
   workspace\         默认工作区
 
-%APPDATA%\hmt\accounts\<摘要前 12 位>\
+%APPDATA%\uniworker\accounts\<摘要前 12 位>\
   account-id
   desktop-state\
 ```
 
 UID 原文不成为路径组件。主进程只接受有效 `LoginSession` 的身份和绝对受管根；逐层拒绝符号链接、Windows junction 或文件占位，重复初始化保留内容。失败不回退其它 Home、不删除数据。
 
-目录名刻意取短。Windows 默认路径上限是 260 字符，多数电脑没有开启长路径支持；原生扩展（`.pyd`）加载即使开启也受此限，所以不依赖系统长路径开关。用户名 4 个字符时，账号 Home `C:\Users\<用户名>\AppData\Local\hmt\<12 位>\home` 共 46 个字符，与原版 `%LOCALAPPDATA%\hermes` 相近。PM 依赖、内置 Python、下载缓存和专家文件都直接放在 Home 内，不再另建依赖目录或目录联接。
+账号目录继续保持短路径，不依赖系统长路径开关解决深层文件问题。用户名 4 个字符时，账号 Home `C:\Users\<用户名>\AppData\Local\uniworker\<12 位>\home` 共 55 个字符，比 `hmt` 布局增加 6 个字符，没有恢复早期 64 位摘要的长目录。PM 依赖、内置 Python、下载缓存和专家文件都直接放在 Home 内，不再另建依赖目录或目录联接；任意深层文件仍需按实际路径验证。非 Windows 的账号数据根为 `~/.uniworker`，应用状态根为 Electron `appData/uniworker`。
 
-旧布局 `%LOCALAPPDATA%\hermes-desktop-mt` 与 `%APPDATA%\HermesDesktopMT` 不迁移、不读取、不删除。升级后需要重新登录，账号数据、窗口位置和内置浏览器状态都从新目录开始；旧版的运行记录也不再读取。升级前仍应正常退出账号，让旧版的后端和消息网关先停止，新版不会代为清理它们。
+旧布局 `%LOCALAPPDATA%\hmt`、`%APPDATA%\hmt` 及更早的 `%LOCALAPPDATA%\hermes-desktop-mt`、`%APPDATA%\HermesDesktopMT` 不迁移、不读取、不删除。升级后需要重新登录，账号数据、窗口位置和内置浏览器状态都从新目录开始；旧版的运行记录也不再读取。升级前仍应正常退出账号，让旧版的后端和消息网关先停止，新版不会代为清理它们。旧数据由用户自行处理；本次不改变另有的旧 UniWork 数据复制功能。
+
+### 目录更名验证（2026-10-20）
+
+- 8 个定向组件文件、29 项通过，覆盖数据根、A→B→A 文件隔离、完整身份校验、目录联接拒绝、桌面状态／分区、会话工作目录及长路径报错。改名前新断言实际失败 2 项，改后通过。
+- 隔离原生检查最终 3 项通过：默认 `userData` 与 `sessionData` 都位于 `appData/uniworker`；P14 跨进程 A→B→A 准备、失败退出及重开；G04 完整桌面与原版后端状态接口可用。MaaS 响应受控，不调用真实短信或付费模型。命令为桌面目录下 `node --test --test-name-pattern="真实未登录入口|P14 真实登录入口" scripts/login-bootstrap.native.mjs` 和 `node --test --test-name-pattern="G04 原生桌面" scripts/messaging-restore.native.mjs`；P14 最后单独复测通过。
+- 原生夹具补入当前随包分享插件资源，并将两处图片定位明确为验证码。补齐后 P14 合组仍出现一次调试连接的 `Resulting promise was garbage collected`，单独复测原断言通过；不记为首次整组全绿。G04 退出时仍打印迟到请求的 `Hermes Desktop is quitting`，不宣称日志无告警。
+- 修改的 TS 文件 ESLint 零警告，相关格式、四个脚本语法、启动脚本语法及 `git diff --check` 通过。Electron 全量类型检查仍被既有 `migrate-old-uniwork.test.ts:27` 的 TS2345 阻断，本次不修改该模块。
+- 未重做 Python 冷下载／解压、专家首次安装、真实 IM 网关、真实账号聊天和安装包验收；路径缩短与组件通过不代替这些场景。旧数据未搬动或删除。
 
 ## P12 · MaaS 模型配置
 

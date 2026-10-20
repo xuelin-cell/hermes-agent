@@ -1,6 +1,6 @@
 # 本地多账号开发版：使用与人工验收
 
-更新：2026-10-19。适用范围：Windows、`release` 分支、源码开发运行。当前连接 MaaS 和本机 Hermes；独立安装包尚未完成验收。
+更新：2026-10-20。适用范围：Windows、`release` 分支、源码开发运行。当前连接 MaaS 和本机 Hermes；独立安装包尚未完成验收。
 
 ## 打开开发版
 
@@ -98,12 +98,12 @@ HTTP 同时需要 Bearer 和其他 Header 时，请通过 JSON 保留 Header 并
 默认位置：
 
 ```text
-%LOCALAPPDATA%\hmt\<摘要前 12 位>\
+%LOCALAPPDATA%\uniworker\<摘要前 12 位>\
   account-id         账号完整标识，用于核对目录归属
   home\              会话、记忆、配置、Profiles、日志、Python 依赖
   workspace\         账号默认工作区
 
-%APPDATA%\hmt\
+%APPDATA%\uniworker\
   maas-login.enc       系统加密的恢复登录记录
   maas-logout-pending.json
                       正常运行／退出恢复记录
@@ -114,9 +114,11 @@ HTTP 同时需要 Bearer 和其他 Header 时，请通过 JSON 保留 Header 并
                       按账号与用途保存的浏览器状态和草稿
 ```
 
-账号目录由身份域和 UID 的完整摘要决定；浏览器分区摘要还包含用途。窗口位置、外观、托盘等设备偏好保持应用级。
+账号目录由身份域和 UID 的完整摘要决定；浏览器分区摘要还包含用途。窗口位置、外观、托盘等设备偏好保持应用级。AppData 被系统重定向到其他盘时仍使用其实际位置，不扫描或批量重命名各盘文件夹。主动选择的外部项目、下载目录与官方对照版不改变。
 
-目录名取短是为了避开 Windows 260 字符的路径上限，不需要开启系统长路径支持。旧版本的 `%LOCALAPPDATA%\hermes-desktop-mt` 和 `%APPDATA%\HermesDesktopMT` 不迁移也不删除；升级后需要重新登录，账号、窗口位置和内置浏览器状态都从全新目录开始。升级前请正常退出账号，让旧版后台进程停止。不要手工修改或复制 `account-id`。
+账号仍使用 12 位短目录，`hmt` 改为 `uniworker` 仅增加 6 个字符，不保证任意深层依赖或文件名都不会超过路径限制。旧 `%LOCALAPPDATA%\hmt`、`%APPDATA%\hmt` 及更早的 `%LOCALAPPDATA%\hermes-desktop-mt`、`%APPDATA%\HermesDesktopMT` 不迁移、不回退读取，也不删除；首次使用新目录需要重新登录，账号、窗口位置和内置浏览器状态都从新目录开始。升级前请正常退出旧版，让后端和消息网关停止，再使用更新后的启动入口；旧数据由你手动处理，不要手工修改或复制 `account-id`。已有的旧 UniWork 数据复制功能不受本次改名调整。
+
+本机启动脚本的 `HERMES_DESKTOP_USER_DATA_DIR` 也需指向 `%APPDATA%\uniworker`；显式指定旧路径会覆盖应用默认值。本机入口已同步调整，其他机器的自定义启动脚本需自行同步。非 Windows 默认账号数据位于 `~/.uniworker`，应用状态位于 Electron 的 `appData/uniworker`。
 
 登录密文受系统加密保护，模型 Key 在账号 `.env` 中按原版机制明文保存。不要上传登录密文、`.env`、原生 OAuth 文件或浏览器数据库。
 
