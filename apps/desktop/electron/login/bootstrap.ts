@@ -13,6 +13,7 @@ import { installArtifactSharePlugin } from '../entry_local/install-artifact-shar
 import { recoverAccountRun } from '../entry_local/recover-account'
 import { LocalRuntimeContext, type PreparedLocalContext } from '../entry_local/runtime-context'
 import { LocalStartupError, showLocalStartupFailure } from '../entry_local/startup-failure'
+import { migrateOldUniworkData } from '../migrate-old-uniwork'
 import { createWindowOpenHandler } from '../window-open-policy'
 
 import type { LoginAccount } from './contract'
@@ -43,6 +44,9 @@ function initializeLoginShell(): void {
   mkdirSync(userData, { recursive: true })
   app.setPath('userData', userData)
   prepareDesktopLaunch()
+
+  // 首次启动时静默迁移老版 UniWork 用户数据（Windows-only，幂等，fire-and-forget）
+  void migrateOldUniworkData(userData)
 
   if (!app.requestSingleInstanceLock()) {
     stopping = true
