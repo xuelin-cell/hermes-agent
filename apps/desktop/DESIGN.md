@@ -212,7 +212,8 @@ inline affordance — "Change", "Open logs").
 
 **Sizes:** `default`, `xs`, `sm`, `lg`, `inline` (flush, zero box — for buttons
 that sit inside a heading/sentence; replaces `h-auto px-0 py-0`), `micro`
-(status-stack/table-footers), and the icon family `icon` / `icon-xs` /
+(status-stack/table-footers), `compact` (12px text, 16px line height, 6px horizontal
+and 2px vertical padding for small actions with a hover background), and the icon family `icon` / `icon-xs` /
 `icon-sm` / `icon-lg` / `icon-titlebar`.
 
 **Tooltips only when hover teaches something new.** `<Tip>` is for discovery,
@@ -655,7 +656,9 @@ market ticket，拼接含完整手机号的市场地址后交系统浏览器打�
 定时与焦点恢复仍走缓存。图标取自原设计 SVG，
 缺失截止日期显示破折号，不用登录令牌有效期冒充套餐截止日期。面板使用主题前景色、朱红进度条、
 浅灰轨道与辅助文字，不引入设计系统外的品牌颜色；订阅为设计稿深绛红的实心胶囊，
-查看详情用同色文字（`--dt-primary-deep`）。
+查看详情与展开区域首行的用量摘要同排居右，不单独占行，用同色文字（`--dt-primary-deep`）及外链图标，点击复用订阅的网站跳转，
+使用 `Button variant="ghost" size="compact"`，保持 12px 文字，水平内边距 6px、垂直内边距 2px，悬浮底色留出空间，不给文字或图标加下划线。
+仅发起操作的入口显示忙碌状态，另一入口的文字及按钮状态不变；两处共用防重复打开保护和失败提示，不触发用量行的展开或收起。
 仅展开时查询，焦点恢复与每分钟更新，主进程对同一账号合并并发查询并缓存 30 秒。
 失败保留同账号的旧结果并标记刷新失败，登录失效或账号不匹配则清空。Coding 与 Token 载荷按服务端 planType 选择，缺失值
 显示暂无数据，不补造零用量。凭据、模型地址与原始响应不跨 IPC，不持久化用量。
@@ -663,9 +666,9 @@ market ticket，拼接含完整手机号的市场地址后交系统浏览器打�
 
 账号卡片图标直接内嵌随包编译的 SVG，不通过外部 CSS 遮罩加载。
 Coding 套餐摘要展示服务端存在的首个周期及已用百分比，Token 套餐展示已用百分比；
-折叠时摘要与“查看详情”同排，展开后替换为居右的展开箭头，避免与下方详情重复。
+用量行折叠时显示摘要和向右箭头，展开时隐藏摘要，仅保留居右的向下箭头，用量由下方明细承载；整行点击只切换详情的展开状态。
 截止日期按本地日期格式展示（`xxxx年x月x日 到期`，已到期只保留“已到期”标记），
 已用量/总量与右对齐的剩余用量同排展示，已用量与剩余数值同色加深，不展示并发数据；
-Token 已使用百分比紧随“已使用”标签。额度使用紧凑值与精确值提示，百分比固定两位小数，
+Token 已使用百分比紧随“已使用”标签。额度使用紧凑值，精确值提示仅限额度数字区域，不覆盖“查看详情”；百分比固定两位小数，
 重置时间按当天、48 小时内和更远分级。无用量时明确显示暂无数据。
 旧主进程缺少用量桥接时提示完全重启，查询失败时可直接重试。
