@@ -29,6 +29,7 @@ class XiaohongshuError(Exception):
 
 
 def binary_name() -> str:
+    """当前系统和架构对应的小红书程序文件名（发布页上的名字）。"""
     if sys.platform == "win32":
         return "xiaohongshu-mcp-windows-amd64.exe"
     if sys.platform == "darwin":
@@ -42,15 +43,17 @@ def binary_name() -> str:
 
 
 def binary_path(home: Path) -> Path:
+    """小红书程序在这个专家档案里的位置。"""
     return home / "xiaohongshu-mcp" / binary_name()
 
 
 def download_url() -> str:
+    """固定版本的小红书程序在 GitHub 发布页上的下载地址。"""
     return f"https://github.com/{REPO}/releases/download/{RELEASE}/{binary_name()}"
 
 
 def status(home: Path) -> Dict[str, Any]:
-    """Report the slot. Does not create directories or contact the network."""
+    """报告程序在不在、放在哪、从哪下载。不建目录，不联网。"""
     path = binary_path(home)
     return {
         "expert": EXPERT_NAME,
@@ -62,6 +65,7 @@ def status(home: Path) -> Dict[str, Any]:
 
 
 def _is_xiaohongshu_home(home: Path) -> bool:
+    """这个档案是不是小红书运营专家（种草草）自己的档案。"""
     from . import store
 
     found = store.self_expert(store.load_index(home))
@@ -69,7 +73,7 @@ def _is_xiaohongshu_home(home: Path) -> bool:
 
 
 def attach(home: Path) -> str:
-    """Write the HTTP MCP entry into *home*. Enable it only when the binary is there."""
+    """把小红书 MCP 的地址写进这个专家档案；程序文件还不在时先写成停用，免得每次开会话都连不上。"""
     from . import store
 
     if not _is_xiaohongshu_home(home):
@@ -93,14 +97,17 @@ def attach(home: Path) -> str:
 
 
 def _state_path(home: Path) -> Path:
+    """记录程序版本、来源和进程号的状态文件。"""
     return binary_path(home).parent / "install_state.json"
 
 
 def _consent_path(home: Path) -> Path:
+    """以前记录「用户是否同意下载、启动」的文件。现在由后端直接记成同意，留着给老版本和命令行用。"""
     return binary_path(home).parent / "consent.json"
 
 
 def _read_json(path: Path) -> Dict[str, Any]:
+    """读一个 JSON 对象文件；文件不在、读不出或不是对象时返回空字典。"""
     if not path.is_file():
         return {}
     try:
@@ -113,6 +120,7 @@ def _read_json(path: Path) -> Dict[str, Any]:
 
 
 def _write_json(path: Path, data: Dict[str, Any]) -> None:
+    """写 JSON 文件（中文不转义），目录不在就先建。"""
     import json
 
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -120,13 +128,14 @@ def _write_json(path: Path, data: Dict[str, Any]) -> None:
 
 
 def install_binary(home: Path, fetch=None) -> str:
-    """Download the pinned release into the expert profile. *fetch* is for tests."""
+    """把固定版本的程序下载进专家档案：先写 .part 再改名，下到一半不会留下坏文件。fetch 供测试替换下载。"""
     if not _is_xiaohongshu_home(home):
         raise XiaohongshuError("只能把小红书程序下载到种草草自己的 profile。")
     if fetch is None:
         import urllib.request
 
         def fetch(url: str) -> bytes:
+            """默认的下载方式：直接请求发布页地址，最多等 120 秒。"""
             with urllib.request.urlopen(url, timeout=120) as response:
                 return response.read()
 
@@ -145,6 +154,7 @@ def install_binary(home: Path, fetch=None) -> str:
 
 
 def port_open(timeout: float = 0.4) -> bool:
+    """本机 18060 端口有没有程序在听。"""
     import socket
 
     try:
@@ -155,7 +165,7 @@ def port_open(timeout: float = 0.4) -> bool:
 
 
 def start(home: Path, popen=None, listening=None, wait_s: float = 0.0) -> str:
-    """Start the binary with ``-headless=true``. Login stays in the chat."""
+    """以无界面模式启动程序并写入 MCP；端口已有程序在听时不另起。登录仍在对话里完成。"""
     if not binary_path(home).is_file():
         raise XiaohongshuError(f"还没有程序：{binary_path(home)}。先执行 hermes kit xiaohongshu install。")
     listening = port_open if listening is None else listening
@@ -191,7 +201,7 @@ def start(home: Path, popen=None, listening=None, wait_s: float = 0.0) -> str:
 
 
 def _ours(pid: int, home: Path) -> bool:
-    """Whether *pid* is still the program this profile started (a recycled pid is not)."""
+    """这个进程号是不是本档案启动的那个程序（按可执行文件路径比，进程号被别的程序复用时不算）。"""
     try:
         import psutil
 
@@ -205,6 +215,7 @@ def _ours(pid: int, home: Path) -> bool:
 
 
 def stop(home: Path) -> str:
+    """只结束本档案启动的那个程序（连同子进程）；18060 是别的程序开的时什么都不杀。"""
     state = _read_json(_state_path(home))
     pid = int(state.get("pid") or 0)
     stopped = False
@@ -228,6 +239,7 @@ def stop(home: Path) -> str:
 
 
 def set_consent(home: Path, decision: str, conversation_id: str = "machine") -> str:
+    """记下同意（accept）或拒绝（decline）。现在后端会自动记成同意，命令行也还能用。"""
     if decision not in ("accept", "decline"):
         raise XiaohongshuError("同意或拒绝只能是 accept / decline。")
     data = _read_json(_consent_path(home))
@@ -239,6 +251,7 @@ def set_consent(home: Path, decision: str, conversation_id: str = "machine") -> 
 
 
 def consent_accepted(home: Path) -> bool:
+    """是否有任何一次记录为同意。"""
     conversations = _read_json(_consent_path(home)).get("conversations") or {}
     if not isinstance(conversations, dict):
         return False
@@ -246,7 +259,7 @@ def consent_accepted(home: Path) -> bool:
 
 
 def prepare(home: Path, *, fetch=None, popen=None, listening=None, wait_s: float = 20.0) -> str:
-    """The user agreed in the chat: record it, download if missing, start, connect."""
+    """命令行 hermes kit xiaohongshu prepare：记成同意，程序不在就下载，然后启动并接入。"""
     if not _is_xiaohongshu_home(home):
         raise XiaohongshuError("只能在种草草自己的 profile 上准备小红书程序。")
     lines = [set_consent(home, "accept")]

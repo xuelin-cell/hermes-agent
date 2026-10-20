@@ -14,6 +14,7 @@ import { summonExpert, warmExpert } from './summon'
 import { pickerGroups, searchExperts } from './summon-model'
 import type { ExpertCard } from './types'
 
+/** 召唤列表里的一行专家；鼠标移上去就先预热这个专家的后端，点下去时少等一会儿。 */
 function ExpertRow({ expert, onPick }: { expert: ExpertCard; onPick: (expert: ExpertCard) => void }) {
   return (
     <button
@@ -33,6 +34,7 @@ function ExpertRow({ expert, onPick }: { expert: ExpertCard; onPick: (expert: Ex
   )
 }
 
+/** 输入框左侧的「召唤专家」按钮和弹出列表：没输入时列最近召唤过的，输入后按名字和介绍搜索；每次打开都重新读一次专家名单。 */
 export function SummonPicker() {
   const t = usePluginI18n('uniwork-kits')
   const directory = useValue($expertDirectory)
@@ -43,6 +45,7 @@ export function SummonPicker() {
   const searching = query.trim().length > 0
   const results = searching ? searchExperts(directory, query) : recent
 
+  /** 选中一位专家：收起列表、清空搜索词，然后召唤。 */
   const pick = (expert: ExpertCard) => {
     setOpen(false)
     setQuery('')

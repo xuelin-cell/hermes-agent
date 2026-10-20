@@ -16,6 +16,7 @@ import { fillPrompt, leaveExpert } from './summon'
 import { expertForProfile, quickPrompts } from './summon-model'
 import { $expertSummon } from './summon-state'
 
+/** 输入框上方的专家栏：已在和专家对话时显示一行「正在和谁对话」；新草稿、准备中或准备失败时显示欢迎卡片，带准备进度和可以直接点的开场问题。 */
 export function ExpertBar() {
   const t = usePluginI18n('uniwork-kits')
   const directory = useValue($expertDirectory)
