@@ -46,6 +46,14 @@ class MediaSlot:
         return any(name.startswith("mcp__") for name in (self.image_tool, self.video_tool, self.search_tool))
 
 
+UNIAI_WATERMARK = "联通元景大模型AI生成"
+
+
+def watermarked(slot: MediaSlot) -> bool:
+    """生图走 UniAI 的 txt2img：图的右下角自带「联通元景大模型AI生成」水印，算作 AI 生成标注（2026-10-20 定）。"""
+    return slot.image_tool.endswith(f"__{UNIAI_IMAGE}")
+
+
 def mcp_tool(server: str, leaf: str) -> str:
     """Hermes 注册 MCP 工具时用的全名：mcp__<服务器名>__<工具名>，服务器名里的特殊字符换成下划线。"""
     return f"mcp__{re.sub(r'[^A-Za-z0-9_]', '_', server)}__{leaf}"
@@ -317,9 +325,10 @@ def picture_rules(slot: Optional[MediaSlot] = None, *, delivery: str = "", can_s
     else:
         search = "找真图（专门的搜图工具还没有接入）：" + _ELSEWHERE
         missing = "都找不到就这页少放一张"
+    marked = watermarked(slot)
     if slot.image_tool:
         generate = f"用 `{slot.image_tool}`，size 选和画框相近的比例。迪士尼等版权角色要官方图，不生成。"
-        no_photo = "先搜画像或官方渲染图，没有再生成，标「示意图（AI 生成）」"
+        no_photo = "先搜画像或官方渲染图，没有再生成，标「示意图」" + ("" if marked else "（AI 生成）")
     else:
         generate = "生图还没有接入：改用代码画的简化图形、渐变或纹理底，不要声称已经生成。"
         no_photo = "先搜画像或官方渲染图，没有就用图形示意并写明是示意"
@@ -340,7 +349,10 @@ def picture_rules(slot: Optional[MediaSlot] = None, *, delivery: str = "", can_s
         "· 不会（公版虚构角色、风格插画、概念、背景、封面、泛泛的场景）→ " + generate,
         "4. 整套画风开工前定一次；统一靠相框和色调，不靠把真图换成生成图。",
         "标注：搜来的图正下方一行小字写来源（不清楚写「图片来源：网络」，英文 PPT 写 Image: …）；"
-        "生成的画面图一律标「AI 生成」。人物、产品、场景不要用色块拼。",
+        + (f"生成图右下角自带「{UNIAI_WATERMARK}」水印，这就是 AI 生成标注，不用再加「AI 生成」小字："
+           "别把水印裁掉或盖住（当背景用 cover 时留出右下角），页码、图注、文字也不要放在生成图的右下角。"
+           if marked else "生成的画面图一律标「AI 生成」。")
+        + "人物、产品、场景不要用色块拼。",
         "放图保持原比例：pptxgenjs 外层 w/h 写图片自己的尺寸（像素÷96），sizing 的 w/h 才是画框；"
         "主体图比例对不上用 contain 完整放下，只有通栏 / 出血背景图用 cover。",
         "宿主在 .pptx 写出后会自动检查图片拉伸和大幅裁切、元素出界、文字挤在一起或空着、内容缩在一角、"

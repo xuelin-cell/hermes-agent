@@ -74,6 +74,21 @@ def test_a_deck_request_asks_for_the_script_in_parts(kits, profile_env):
     assert kits.deck_check.BUILD_RULES in context
 
 
+def test_the_uniai_watermark_stands_in_for_the_ai_label_but_other_generators_still_need_one(kits):
+    """UniAI 生成的图自带水印：规则和交付前核对都不再要求另加「AI 生成」，改为别裁掉、别盖住水印；换成别的生图工具仍要加。"""
+    ms = kits.media_slot
+    uniai = ms.MediaSlot("mcp__UniAI_Toolkit__txt2img_generate", "", "mcp__UniAI_Toolkit__image_search", "UniAI-Toolkit")
+    other = ms.MediaSlot("image_generate", "", "mcp__UniAI_Toolkit__image_search", "UniAI-Toolkit")
+
+    rules = ms.picture_rules(uniai, can_see=False)
+    assert ms.UNIAI_WATERMARK in rules and "一律标「AI 生成」" not in rules
+    assert "一律标「AI 生成」" in ms.picture_rules(other, can_see=False)
+
+    review = kits.deck_check.format_generated_review(["水墨风 孙悟空"], 0, watermarked=True)
+    assert ms.UNIAI_WATERMARK in review and "一处「AI 生成」都没有" not in review
+    assert "一处「AI 生成」都没有" in kits.deck_check.format_generated_review(["水墨风 孙悟空"], 0)
+
+
 def test_text_that_only_sits_close_is_noted_while_overlapping_text_is_sent_back(kits, tmp_path):
     """两行字靠得近但没叠上：不退回，只在说明里提一句；真的叠上了：照旧必须改。"""
     close = tmp_path / "close.pptx"

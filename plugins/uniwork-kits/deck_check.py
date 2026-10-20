@@ -22,7 +22,7 @@ import re
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
 
-from . import deck_geometry, delivery, turns
+from . import deck_geometry, delivery, media_slot, turns
 
 # 做 PPT 时附给模型的写法规则：一次调用写出 20 页的整份脚本，生成十来分钟后会超时作废（2026-10-20 实测
 # 白等了 597 秒），退回修改时也容易整份重写。分份写，每份两三分钟，改哪页只动哪一份。
@@ -72,8 +72,11 @@ def is_deck_work(args: object) -> bool:
     return bool(_DECK_WORK_RE.search(flat or ""))
 
 
-def format_generated_review(prompts: List[str], ai_labels: int) -> str:
-    """交付前对本次请求生成的配图做一次核对提示：列出生成时的提示词，说明成品里有几处「AI 生成」标注。"""
+def format_generated_review(prompts: List[str], ai_labels: int, *, watermarked: bool = False) -> str:
+    """交付前对本次请求生成的配图做一次核对提示：列出生成时的提示词，说明成品里有几处「AI 生成」标注。
+
+    watermarked：图是 UniAI 生成的，右下角自带水印，算作 AI 生成标注，不再要求另加小字，只提醒别裁掉、盖住水印。
+    """
     shown = [
         f"  {i}. {p[:_PROMPT_SHOWN_CHARS]}{'…' if len(p) > _PROMPT_SHOWN_CHARS else ''}"
         for i, p in enumerate(prompts[:_PROMPTS_LISTED], 1)
@@ -84,12 +87,17 @@ def format_generated_review(prompts: List[str], ai_labels: int) -> str:
         "成品里现在一处「AI 生成」都没有。" if ai_labels == 0
         else f"成品里找到 {ai_labels} 处「AI 生成」，确认每张用上的生成图都有。"
     )
+    label_line = (
+        f"- 生成图右下角自带「{media_slot.UNIAI_WATERMARK}」水印，算作 AI 生成标注，不用再加小字；"
+        "确认水印没有被裁掉或盖住，页码、图注、文字没有压在上面。"
+        if watermarked else f"- 放进 PPT 的每张生成图，正下方要有一行小字「AI 生成」。{labels}"
+    )
     return "\n".join([
         f"交付前核对生成图（这次请求生成了 {len(prompts)} 次，每次请求只核对这一回）：",
         *shown,
         "- 画的是真实存在的具体产品、品牌 IP、logo、真人、地标、事件的，换成搜到的真图；"
-        "本来就没有照片的（古人、未发布产品）可以保留，图下标「示意图（AI 生成）」。",
-        f"- 放进 PPT 的每张生成图，正下方要有一行小字「AI 生成」。{labels}",
+        "本来就没有照片的（古人、未发布产品）可以保留，图下标「示意图" + ("」。" if watermarked else "（AI 生成）」。"),
+        label_line,
         "需要改的改好后重新生成；核对下来都没问题（或生成的图一张没用），直接交付，不会再拦。",
     ])
 
@@ -152,7 +160,9 @@ def annotate(tool_name: str, args: object, result: str, turn: Optional[turns.Tur
     review = ""
     if (passed or released) and not refused and turn.generated and not turn.reviewed:
         turn.reviewed = True
-        review = format_generated_review(list(turn.generated), labels)
+        review = format_generated_review(
+            list(turn.generated), labels, watermarked=media_slot.watermarked(media_slot.load_slot()),
+        )
 
     parts: List[str] = []
     if refused:
