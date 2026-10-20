@@ -389,21 +389,45 @@ export interface Translations {
   }
   connectorsPage: {
     mcpLocal: {
-      addCustom: string
-      custom: string
-      plugins: string
+      hint: string
       profile: string
-      search: string
+      builtIn: string
+      builtInTag: string
+      custom: string
+      customHint: string
       empty: string
-      noMatches: string
+      addServer: string
+      chooseTransport: string
+      plugins: string
+      openPlugins: string
       loadFailed: string
       pluginsFailed: string
-      configuration: string
-      enabled: string
-      testing: string
-      testPassed: string
-      testFailed: string
-      untested: string
+      untitled: string
+      noUrl: string
+      noCommand: string
+      connecting: string
+      toolsAvailable: (count: number) => string
+      failed: string
+      type: string
+      name: string
+      namePlaceholder: string
+      url: string
+      headers: string
+      command: string
+      args: string
+      env: string
+      addRow: string
+      removeRow: string
+      showValue: string
+      hideValue: string
+      uniAiToolkitSummary: string
+      formErrors: {
+        argsQuote: string
+        commandRequired: string
+        nameRequired: string
+        nameTaken: string
+        urlRequired: string
+      }
     }
     title: string
     searchPlaceholder: (count: number) => string

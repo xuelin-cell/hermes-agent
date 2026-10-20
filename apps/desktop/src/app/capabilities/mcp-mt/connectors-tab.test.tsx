@@ -1,154 +1,200 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { useState } from 'react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
+import type { McpTestResult } from '@/hermes'
+import type { McpServers } from '@/lib/mcp-servers'
+
 import type { McpServersController } from '../mcp/use-mcp-servers'
 
-const { readController, listServers, readStatus, probe, toggle } = vi.hoisted(() => ({
+const { readController, listServers, readStatus } = vi.hoisted(() => ({
   readController: vi.fn(),
   listServers: vi.fn(),
-  readStatus: vi.fn(),
-  probe: vi.fn(),
-  toggle: vi.fn()
+  readStatus: vi.fn()
 }))
 
 vi.mock('../mcp/use-mcp-servers', () => ({ useMcpServers: readController }))
-vi.mock('../connectors/data/rpc', () => ({
-  listMcpServers: listServers,
-  mcpServerStatus: readStatus,
-  setMcpBearerToken: vi.fn()
-}))
-vi.mock('../mcp/mcp-editor', () => ({
-  McpJsonEditor: ({ highlightServer }: { highlightServer: string }) => <div>JSON: {highlightServer}</div>
-}))
-vi.mock('../connectors/tools-panel', () => ({ LocalToolsPanel: () => <div>native tool filters</div> }))
-vi.mock('../connectors/plugin-tools-panel', () => ({ PluginToolsPanel: () => <div>native plugin tools</div> }))
+vi.mock('../connectors/data/rpc', () => ({ listMcpServers: listServers, mcpServerStatus: readStatus }))
 
 const { McpConnectorsTab } = await import('./connectors-tab')
-let controller: McpServersController
 
-beforeEach(() => {
-  controller = {
-    servers: {
-      alpha: { command: 'node', args: ['--secret-do-not-display'] },
-      'UniAI-Toolkit': { url: 'https://example.invalid/mcp?key=sk-••••••TAIL' },
-      beta: { url: 'https://example.invalid/mcp', enabled: false }
+const TOOLKIT_URL = 'https://example.invalid/mcp?key=${DESKTOP_MT_MAAS_API_KEY}'
+
+let saved: McpServers
+let saves: { next: McpServers; reload: boolean }[]
+let probe: ReturnType<typeof vi.fn<(name: string) => Promise<McpTestResult | null>>>
+let removeServer: ReturnType<typeof vi.fn<(name: string) => Promise<boolean>>>
+let overrides: Partial<McpServersController>
+
+/** 受控的原生控制器替身：保存真的改写配置，便于观察页面写了什么。 */
+function useFakeController(): McpServersController {
+  const [servers, setServers] = useState<McpServers>(saved)
+
+  const replaceServers: McpServersController['replaceServers'] = async (transform, reloadWhen) => {
+    const next = transform(saved)
+    saves.push({ next, reload: reloadWhen ? reloadWhen(saved, next) : true })
+    saved = next
+    setServers(next)
+
+    return true
+  }
+
+  return {
+    servers,
+    statuses: Object.fromEntries(
+      Object.keys(servers).map(name => [name, servers[name].enabled === false ? 'off' : 'ok'])
+    ),
+    probes: {
+      alpha: {
+        ok: true,
+        tools: [
+          { name: 'echo', description: '' },
+          { name: 'ping', description: '' }
+        ]
+      }
     },
-    statuses: { alpha: 'ok', beta: 'off' },
-    catalog: [
-      { name: 'alpha', connector_slug: 'shared' },
-      { name: 'beta', connector_slug: 'shared' }
-    ],
-    probes: { alpha: { ok: true, tools: [{ name: 'echo', description: '' }] } },
     toolCounts: {},
-    usageByServer: {},
-    runProbe: probe,
-    setServerEnabled: toggle,
     configLoading: false,
     configFailed: false,
     profilePending: false,
     saving: false,
-    refetchConfig: vi.fn(),
-    blocks: [],
-    draft: '{}',
-    names: ['alpha', 'beta'],
-    removeServer: vi.fn(),
     authing: null,
-    setServerTools: vi.fn(),
-    addServerEntry: vi.fn(),
-    resetDraft: vi.fn()
+    refetchConfig: vi.fn(),
+    runProbe: probe,
+    removeServer,
+    authenticate: vi.fn(),
+    replaceServers,
+    ...overrides
   } as unknown as McpServersController
-  readController.mockImplementation(() => controller)
+}
+
+beforeEach(() => {
+  saved = {
+    'UniAI-Toolkit': { url: TOOLKIT_URL, timeout: 600 },
+    alpha: { command: 'node', args: ['server.js'], timeout: 90 },
+    beta: { url: 'https://example.invalid/beta', enabled: false }
+  }
+  saves = []
+  overrides = {}
+  probe = vi.fn(async () => ({ ok: true, tools: [{ name: 'echo', description: '' }] }))
+  removeServer = vi.fn(async () => true)
+  readController.mockImplementation(useFakeController)
   listServers.mockResolvedValue({
-    servers: [
-      {
-        name: 'plugin__helper',
-        source: 'plugin',
-        plugin: 'helper',
-        enabled: true,
-        command: 'node',
-        args: [],
-        transport: 'stdio',
-        url: null
-      }
-    ]
+    servers: [{ name: 'helper__docs', source: 'plugin', plugin: 'helper', enabled: true, command: 'node', args: [] }]
   })
-  readStatus.mockResolvedValue({ servers: [{ name: 'plugin__helper', status: 'connected', tools: 1 }] })
+  readStatus.mockResolvedValue({ servers: [{ name: 'helper__docs', status: 'connected', tools: 3 }] })
 })
+
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
 })
 
-/** 使用原生页面组件与独立查询缓存，不连接桌面用户运行实例。 */
-function renderTab(route = '/capabilities?tab=connectors') {
+/** 使用独立查询缓存渲染页面，不连接桌面运行实例。 */
+function renderTab() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[route]}>
+      <MemoryRouter initialEntries={['/capabilities?tab=connectors']}>
         <McpConnectorsTab gateway={null} profile="work" scopeLabel="work" />
       </MemoryRouter>
     </QueryClientProvider>
   )
 }
 
-it('keeps every custom service and plugin ownership, and delegates row controls to native MCP', async () => {
-  renderTab('/capabilities?tab=connectors&server=alpha&tool=echo')
-  const custom = screen.getByRole('region', { name: 'Custom MCP' })
+const row = (name: string) => screen.getByRole('article', { name })
+
+it('lays out built-in, custom and plugin servers the UniWork way', async () => {
+  renderTab()
+  const builtIn = screen.getByRole('region', { name: 'Built-in MCP' })
+  const toolkit = within(builtIn).getByRole('article', { name: 'UniAI-Toolkit' })
+  expect(within(toolkit).getByText('Built-in')).toBeTruthy()
+  expect(within(toolkit).queryByRole('button', { name: 'Remove UniAI-Toolkit?' })).toBeNull()
+  fireEvent.click(within(toolkit).getByRole('button', { name: /^UniAI-Toolkit/ }))
+  expect((within(toolkit).getByLabelText('URL') as HTMLInputElement).readOnly).toBe(true)
+
+  const custom = screen.getByRole('region', { name: 'Custom MCP Servers' })
   const alpha = within(custom).getByRole('article', { name: 'alpha' })
+  expect(within(alpha).getByText('STDIO')).toBeTruthy()
+  expect(within(alpha).getByText('node server.js')).toBeTruthy()
+  expect(within(alpha).getByText('2 tools available')).toBeTruthy()
   expect(within(custom).getByRole('article', { name: 'beta' })).toBeTruthy()
-  expect(within(alpha).getByText('Last connection test passed')).toBeTruthy()
-  expect(screen.queryByText(/secret-do-not-display/)).toBeNull()
-  expect(screen.queryByText('Playwright')).toBeNull()
-  expect(screen.queryByRole('button', { name: 'Install' })).toBeNull()
-  fireEvent.click(within(alpha).getByRole('switch'))
-  expect(toggle).toHaveBeenCalledWith('alpha', false)
-  expect(within(alpha).getByRole('button', { name: 'alpha' }).getAttribute('aria-expanded')).toBe('true')
-  expect(within(alpha).getByText('native tool filters')).toBeTruthy()
-  fireEvent.click(within(alpha).getByRole('button', { name: 'Configuration (JSON)' }))
-  expect(within(alpha).getByText('JSON: alpha')).toBeTruthy()
-  fireEvent.click(within(alpha).getByRole('button', { name: 'Test connection' }))
-  expect(probe).toHaveBeenCalledWith('alpha')
-  const toolkit = within(custom).getByRole('article', { name: 'UniAI-Toolkit' })
-  fireEvent.click(within(toolkit).getByRole('switch'))
-  expect(toggle).toHaveBeenCalledWith('UniAI-Toolkit', false)
-  fireEvent.click(within(toolkit).getByRole('button', { name: 'UniAI-Toolkit' }))
-  fireEvent.click(within(toolkit).getByRole('button', { name: 'Test connection' }))
-  expect(probe).toHaveBeenCalledWith('UniAI-Toolkit')
-  const plugin = await screen.findByRole('article', { name: 'plugin__helper' })
+
+  const plugin = await screen.findByRole('article', { name: 'helper__docs' })
   expect(within(plugin).queryByRole('switch')).toBeNull()
-  expect(within(plugin).queryByRole('button', { name: /Remove/ })).toBeNull()
-  fireEvent.click(within(plugin).getByRole('button', { name: 'plugin__helper' }))
-  expect(within(plugin).getByText('native plugin tools')).toBeTruthy()
+  expect(within(plugin).getByText('3 tools available')).toBeTruthy()
   expect(listServers).toHaveBeenCalledWith('work')
-  expect(readStatus).toHaveBeenCalledWith('work')
 })
 
-it('展示对应服务原生连接测试的失败原因，不混入其他服务或配置字段', async () => {
-  const failure = 'MCP HTTP transport is unavailable: mcp package is not installed'
-  controller.probes = { alpha: { ok: false, error: failure, tools: [] } }
-  renderTab('/capabilities?tab=connectors&server=alpha')
-  const custom = screen.getByRole('region', { name: 'Custom MCP' })
-  const alpha = within(custom).getByRole('article', { name: 'alpha' })
-  expect(within(alpha).getByRole('alert').textContent).toBe(failure)
-  const toolkit = within(custom).getByRole('article', { name: 'UniAI-Toolkit' })
-  fireEvent.click(within(toolkit).getByRole('button', { name: 'UniAI-Toolkit' }))
-  expect(within(toolkit).queryByRole('alert')).toBeNull()
-  expect(screen.queryByText(/secret-do-not-display/)).toBeNull()
-  await screen.findByRole('article', { name: 'plugin__helper' })
+it('turns a server on only after its connection test passes', async () => {
+  renderTab()
+  fireEvent.click(within(row('beta')).getByRole('switch'))
+  await waitFor(() => expect(saved.beta.enabled).toBeUndefined())
+  expect(probe).toHaveBeenCalledWith('beta')
+  expect(saves.at(-1)?.reload).toBe(true)
+
+  probe.mockResolvedValue({ ok: false, error: 'Program not found', tools: [] })
+  saved = { ...saved, beta: { ...saved.beta, enabled: false } }
+  cleanup()
+  renderTab()
+  const beta = row('beta')
+  fireEvent.click(within(beta).getByRole('switch'))
+  expect(await within(beta).findByText('Failed')).toBeTruthy()
+  expect(saved.beta.enabled).toBe(false)
+  expect((within(beta).getByRole('switch') as HTMLButtonElement).getAttribute('aria-checked')).toBe('false')
+  fireEvent.click(within(beta).getByRole('button', { name: /^beta/ }))
+  expect(within(beta).getByRole('alert').textContent).toBe('Program not found')
 })
 
-it('reports configuration and plugin failures without enabling writes or claiming an empty configuration', async () => {
-  controller.configFailed = true
+it('turns an edited server off at once, then saves the form without losing hidden fields', async () => {
+  renderTab()
+  const alpha = row('alpha')
+  fireEvent.click(within(alpha).getByRole('button', { name: /^alpha/ }))
+  fireEvent.change(within(alpha).getByLabelText('Arguments (space-separated)'), {
+    target: { value: 'server.js --port "8 0"' }
+  })
+  await waitFor(() => expect(saved.alpha.enabled).toBe(false))
+  expect(saves[0].reload).toBe(true)
+  await waitFor(() => expect(saved.alpha.args).toEqual(['server.js', '--port', '8 0']))
+  expect(saved.alpha).toEqual({ command: 'node', args: ['server.js', '--port', '8 0'], timeout: 90, enabled: false })
+  expect(saves.at(-1)?.reload).toBe(false)
+
+  fireEvent.change(within(alpha).getByLabelText('Name'), { target: { value: 'renamed' } })
+  await waitFor(() => expect(Object.keys(saved)).toEqual(['UniAI-Toolkit', 'renamed', 'beta']))
+  expect(within(row('renamed')).getByLabelText('Name')).toBeTruthy()
+})
+
+it('adds a blank server that is only written once its name and address are filled in', async () => {
+  renderTab()
+  fireEvent.click(screen.getByRole('button', { name: 'Add MCP Server' }))
+  fireEvent.click(screen.getByRole('button', { name: 'HTTP' }))
+  const draft = row('Untitled server')
+  fireEvent.change(within(draft).getByLabelText('Name'), { target: { value: 'beta' } })
+  expect(within(draft).getByText('Another server already uses this name')).toBeTruthy()
+  fireEvent.change(within(draft).getByLabelText('Name'), { target: { value: 'gamma' } })
+  expect(within(draft).getByText('Enter a URL')).toBeTruthy()
+  fireEvent.change(within(draft).getByLabelText('URL'), { target: { value: 'https://example.invalid/g' } })
+  await waitFor(() => expect(saved.gamma).toEqual({ url: 'https://example.invalid/g', enabled: false }))
+  expect(saves).toHaveLength(1)
+  expect(within(row('gamma')).getByLabelText('URL')).toBeTruthy()
+})
+
+it('confirms before deleting and reports configuration failures', async () => {
+  renderTab()
+  fireEvent.click(within(row('beta')).getByRole('button', { name: 'Remove beta?' }))
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+  })
+  expect(removeServer).toHaveBeenCalledWith('beta')
+
+  cleanup()
+  overrides = { configFailed: true }
   listServers.mockRejectedValue(new Error('fixture offline'))
   renderTab()
   expect(screen.getByText('Could not load MCP configuration')).toBeTruthy()
-  expect(screen.queryByText('No custom MCP servers')).toBeNull()
-  expect((screen.getByRole('button', { name: 'Add custom MCP' }) as HTMLButtonElement).disabled).toBe(true)
+  expect(screen.queryByRole('button', { name: 'Add MCP Server' })).toBeNull()
   expect(await screen.findByText('Could not load plugin MCP servers')).toBeTruthy()
-  const custom = screen.getByRole('region', { name: 'Custom MCP' })
-  fireEvent.click(within(custom).getByRole('button', { name: 'Retry' }))
-  expect(controller.refetchConfig).toHaveBeenCalledOnce()
 })

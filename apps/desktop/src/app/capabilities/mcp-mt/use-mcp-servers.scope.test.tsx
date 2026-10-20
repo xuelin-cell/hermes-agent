@@ -204,3 +204,41 @@ it('reuses native add, JSON save, toggle, probe and removal while preserving oth
   expect(reopened.result.current.servers.custom).toBeUndefined()
   expect(api.mock.calls.every(([request]) => request.profile === 'work' && request.connectionId === 'local')).toBe(true)
 })
+
+it('saves the whole map in one write and reloads only when asked', async () => {
+  const configs: Record<string, McpServers> = { work: { a: { command: 'a', enabled: false }, b: { url: 'u' } } }
+  api.mockImplementation(async (request: HermesApiRequest) => {
+    if (request.method === 'PUT') {
+      configs.work = structuredClone((request.body as { servers: McpServers }).servers)
+
+      return { ok: true }
+    }
+
+    if (request.path === '/api/config') {
+      return { mcp_servers: structuredClone(configs.work) }
+    }
+
+    return request.path === '/api/mcp/catalog' ? { entries: [] } : { ok: true, tools: [] }
+  })
+  const gateway = new HermesGateway()
+
+  const { result } = renderHook(() => useMcpServers({ gateway, profile: { connectionId: 'local', profile: 'work' } }), {
+    wrapper: Wrapper
+  })
+
+  await waitFor(() => expect(result.current.servers.a).toBeTruthy())
+  await waitFor(() => expect(result.current.probes.b).toBeTruthy())
+  routedRequest.mockClear()
+
+  await act(async () => {
+    const renamed = ({ a, ...rest }: McpServers) => ({ renamed: a, ...rest })
+    expect(await result.current.replaceServers(renamed, () => false)).toBe(true)
+    expect(await result.current.replaceServers(current => ({ ...current, c: { command: 'c' } }))).toBe(true)
+  })
+  expect(configs.work).toEqual({ renamed: { command: 'a', enabled: false }, b: { url: 'u' }, c: { command: 'c' } })
+  await waitFor(() => expect(routedRequest).toHaveBeenCalledTimes(1))
+  expect(result.current.probes.b).toEqual({ ok: true, tools: [] })
+  await act(async () => {
+    expect(await result.current.runProbe('c')).toEqual({ ok: true, tools: [] })
+  })
+})

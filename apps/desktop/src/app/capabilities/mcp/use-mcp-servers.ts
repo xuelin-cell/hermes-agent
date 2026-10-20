@@ -51,6 +51,10 @@ export interface McpServersController extends McpDraft, PublishedProbes {
   profilePending: boolean
   refetchConfig: () => void
   removeServer: (name: string) => Promise<boolean>
+  replaceServers: (
+    transform: (current: McpServers) => McpServers,
+    reloadWhen?: (prev: McpServers, next: McpServers) => boolean
+  ) => Promise<boolean>
   saveDoc: () => Promise<void>
   saving: boolean
   servers: McpServers
@@ -223,7 +227,12 @@ export function useMcpServers({ gateway, profile }: UseMcpServersOptions): McpSe
     return table
   }, [fleet.probes, servers])
 
-  const persist = async (nextServers: McpServers): Promise<boolean> => {
+  // desktop-mt: latest map for back-to-back connector-form saves, which run
+  // before React re-renders with the previous save's result.
+  const serversRef = useRef(servers)
+  serversRef.current = servers
+
+  const persist = async (nextServers: McpServers, reload = true): Promise<boolean> => {
     const epoch = profileEpoch.current
     await saveMcpServers(nextServers, profile ?? undefined)
 
@@ -231,8 +240,12 @@ export function useMcpServers({ gateway, profile }: UseMcpServersOptions): McpSe
       return false
     }
 
+    serversRef.current = nextServers
     setConfig(current => ({ ...current, mcp_servers: nextServers }))
-    void silentReload()
+
+    if (reload) {
+      void silentReload()
+    }
 
     return true
   }
@@ -242,6 +255,34 @@ export function useMcpServers({ gateway, profile }: UseMcpServersOptions): McpSe
       draft.patchDraft(patch)
     } else {
       draft.resetDraft(nextServers)
+    }
+  }
+
+  /** desktop-mt: 连接器表单按整份配置保存（含改名），只在影响运行中的服务时才重载。 */
+  const replaceServers = async (
+    transform: (current: McpServers) => McpServers,
+    reloadWhen?: (prev: McpServers, next: McpServers) => boolean
+  ): Promise<boolean> => {
+    if (profilePending) {
+      return false
+    }
+
+    const prev = serversRef.current
+    const next = transform(prev)
+
+    try {
+      if (!(await persist(next, reloadWhen ? reloadWhen(prev, next) : true))) {
+        return false
+      }
+
+      mirror(next, () => next)
+      fleet.retainProbes(next, prev)
+
+      return true
+    } catch (err) {
+      notifyError(err, m.saveFailed)
+
+      return false
     }
   }
 
@@ -413,6 +454,7 @@ export function useMcpServers({ gateway, profile }: UseMcpServersOptions): McpSe
     profilePending,
     refetchConfig: () => void refetchConfigQuery(),
     removeServer,
+    replaceServers,
     runProbe: fleet.runProbe,
     saveDoc,
     saving,
