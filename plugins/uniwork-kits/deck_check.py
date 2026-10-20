@@ -142,7 +142,12 @@ def annotate(tool_name: str, args: object, result: str, turn: Optional[turns.Tur
     parts: List[str] = []
     if refused:
         turn.bounces += 1
-        parts.append("没有交付：宿主在写入后做了版面自检，这份 PPT 还不能给用户。请按改法改文件，改完重新生成，宿主会再查一遍。")
+        # 整份重写几十 KB 的生成脚本要好几分钟，还可能把没问题的页改坏；只改出问题的地方。
+        parts.append(
+            "没有交付：宿主在写入后做了版面自检，这份 PPT 还不能给用户。"
+            "只改下面列出的那几处：用 patch 改生成脚本里对应的几行，不要重写整个脚本；"
+            "某一页确实要大改，就只重写那一页的代码。改完重新生成，宿主会再查一遍。"
+        )
         parts.extend(refused)
     elif review:
         parts.append("先别交付：" + review)

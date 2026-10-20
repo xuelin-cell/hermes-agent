@@ -282,12 +282,33 @@ _ELSEWHERE = (
 )
 
 
-def picture_rules(slot: Optional[MediaSlot] = None, *, delivery: str = "") -> str:
+def vision_ready() -> bool:
+    """看图工具真能看到图：配了专门的看图模型，或者主模型已知能看图。能力未知时按看不到处理。
+
+    看图工具默认交给主模型；主模型看不到时，它只会回「没有收到图片」，每次调用都白等十几秒。
+    """
+    try:
+        from agent.image_routing import decide_image_input_mode
+        from hermes_cli.config import load_config_readonly
+
+        cfg = load_config_readonly() or {}
+        aux = (cfg.get("auxiliary") or {}).get("vision") or {}
+        if str(aux.get("provider") or "auto").strip().lower() not in ("", "auto") or aux.get("model") or aux.get("base_url"):
+            return True
+        model = cfg.get("model") or {}
+        return decide_image_input_mode(str(model.get("provider") or ""), str(model.get("default") or ""), cfg) == "native"
+    except Exception:
+        return False
+
+
+def picture_rules(slot: Optional[MediaSlot] = None, *, delivery: str = "", can_see: Optional[bool] = None) -> str:
     """做 PPT 时每张配图的判断顺序（来自数字员工的 image_companion，换成 Hermes 的工具名）。
 
     不声称已经生成了图片。delivery 是该平台的文件交付说明，放在最后。
+    can_see 是看图工具能否真的看到图（默认按 vision_ready 判断）：看不到时不让模型看图核对，改靠搜索结果的标题和来源挑图。
     """
     slot = slot or load_slot()
+    can_see = vision_ready() if can_see is None else can_see
     if slot.search_tool:
         search = (
             f"用 `{slot.search_tool}` 找真图（宿主会把搜到的图下载到本地，标出横图 / 竖图和来源）。"
@@ -312,8 +333,9 @@ def picture_rules(slot: Optional[MediaSlot] = None, *, delivery: str = "") -> st
         "· 会（具体产品、品牌 IP、logo、真人、地标、事件、软件界面、科普细节）→ " + search
         + "生成图会编造细节，当真就是误导，仿品牌形象还可能侵权。"
         "真图要看得出本来的样子：剪影、线稿、简笔画、玩具周边、同人图都不算；"
-        "核对图片时问「是不是原版形象」，不要只问「是不是这个角色」。"
-        f"本来就没有照片的（古人、未发布产品）{no_photo}；"
+        + ("核对图片时问「是不是原版形象」，不要只问「是不是这个角色」。" if can_see
+           else "按搜索结果的标题、来源挑最像原版的那张。")
+        + f"本来就没有照片的（古人、未发布产品）{no_photo}；"
         f"{missing}，不许用生成图顶替，也不要写「此处放图」。",
         "· 不会（公版虚构角色、风格插画、概念、背景、封面、泛泛的场景）→ " + generate,
         "4. 整套画风开工前定一次；统一靠相框和色调，不靠把真图换成生成图。",
@@ -322,8 +344,11 @@ def picture_rules(slot: Optional[MediaSlot] = None, *, delivery: str = "") -> st
         "放图保持原比例：pptxgenjs 外层 w/h 写图片自己的尺寸（像素÷96），sizing 的 w/h 才是画框；"
         "主体图比例对不上用 contain 完整放下，只有通栏 / 出血背景图用 cover。",
         "宿主在 .pptx 写出后会自动检查图片拉伸和大幅裁切、元素出界、文字挤在一起或空着、内容缩在一角、"
-        "PowerPoint 打不开的写法，不合格会退回；自己看图检查时只看内容对不对、观感好不好"
-        "（配色、对比度、层次），不用写脚本或派子任务逐项复查这些。",
+        "PowerPoint 打不开的写法，不合格会退回"
+        + ("；自己看图检查时只看内容对不对、观感好不好（配色、对比度、层次），不用写脚本或派子任务逐项复查这些。"
+           if can_see else
+           "，不用写脚本或派子任务逐项复查这些。当前模型看不到图片：不要对图片或幻灯片调用 `vision_analyze`，"
+           "它只会回「没有收到图片」。"),
     ]
     hint = call_hint(slot)
     if hint:

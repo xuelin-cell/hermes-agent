@@ -383,6 +383,7 @@ def measure(data: bytes) -> DeckReport:
     all_text: List[str] = []
     tight: List[str] = []
     crowded: List[Problem] = []
+    close: List[str] = []
     shrunk: List[Tuple[float, float]] = []
 
     for name in names:
@@ -408,8 +409,11 @@ def measure(data: bytes) -> DeckReport:
         if right and page_w and page_h and right <= UNDERFILL_RATIO * page_w and bottom <= UNDERFILL_RATIO * page_h:
             shrunk.append((right, bottom))
         for first, second, overlap in _crowded(xml):
-            how = f"重叠 {overlap:.2f} 英寸" if overlap > 0 else "几乎没有间距"
-            crowded.append(Problem(number, "crowded", f"「{first}」和「{second}」挤在一起（{how}）"))
+            # 估算的文字区（已扣掉内边距和行距）叠上了才退回；只是间距小，字没有碰到，只提示。
+            if overlap > 0:
+                crowded.append(Problem(number, "crowded", f"「{first}」和「{second}」挤在一起（重叠 {overlap:.2f} 英寸）"))
+            else:
+                close.append(f"第{number}页「{first}」和「{second}」")
         if page_w and page_h:
             for sample, past in _spills(xml, page_w, page_h):
                 problems.append(Problem(
@@ -512,6 +516,8 @@ def measure(data: bytes) -> DeckReport:
     notes: List[str] = []
     if tight:
         notes.append("另外，这些文字框可能装不下（估算，不拦交付）：" + "；".join(tight[:4]))
+    if close:
+        notes.append("另外，这些文字靠得很近，但没有叠在一起（不拦交付，顺手能拉开就拉开）：" + "；".join(close[:4]))
     body = "".join(all_text)
     if pictures and not any(word in body for word in _CREDIT_WORDS):
         notes.append(f"另外：{pictures} 张图片都没有标注来源。图下方加一行小字，不清楚就写「图片来源：网络」。这一条不拦交付。")
