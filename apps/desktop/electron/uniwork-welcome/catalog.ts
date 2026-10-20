@@ -18,6 +18,15 @@ export interface WelcomeCategory {
   templates: WelcomeTemplate[]
 }
 
+export interface WelcomeModule {
+  id: string
+  name: string
+  workspace: 'work' | 'codex'
+  sort: number
+  enabled: true
+  tags: WelcomeCategory[]
+}
+
 /** 目录文字只作纯文本，拒绝空值、超长字段和非对象条目。 */
 function text(value: unknown, limit = 256): value is string {
   return typeof value === 'string' && value.trim().length > 0 && value.length <= limit
@@ -28,27 +37,47 @@ function order(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : Number.MAX_SAFE_INTEGER
 }
 
-/** 校验元景三级目录，只选办公模块，不把编程模块作为缺失时的替代。 */
-export function normalizeOfficeCatalog(value: unknown): WelcomeCategory[] {
+/** 模块名称、排序和路由来自配置；业务 ID 可缺失或重复，不能用来决定路由。 */
+export function normalizeWelcomeCatalog(value: unknown): WelcomeModule[] {
   if (!value || typeof value !== 'object' || !Array.isArray((value as { modules?: unknown }).modules)) {
     throw new Error('办公模板目录格式无效。')
   }
 
-  const modules = (value as { modules: Record<string, unknown>[] }).modules
-  const office = modules.find(item => item && item.id === 'office' && item.enabled === true)
+  return (value as { modules: unknown[] }).modules
+    .slice(0, 100)
+    .flatMap((raw, index): WelcomeModule[] => {
+      if (!raw || typeof raw !== 'object') {
+        return []
+      }
+      const item = raw as Record<string, unknown>
 
-  if (!office) {
+      if (item.enabled === false || !text(item.name)) {
+        return []
+      }
+
+      return [
+        {
+          id: `configured-module-${index}`,
+          name: item.name,
+          workspace: item.workspace === 'codex' ? 'codex' : 'work',
+          sort: order(item.sort),
+          enabled: true,
+          tags: normalizeWelcomeCategories(item.tags)
+        }
+      ]
+    })
+    .sort((a, b) => a.sort - b.sort)
+}
+
+function normalizeWelcomeCategories(value: unknown): WelcomeCategory[] {
+  if (!Array.isArray(value)) {
     return []
-  }
-
-  if (!Array.isArray(office.tags)) {
-    throw new Error('办公模板分类格式无效。')
   }
 
   const seen = new Set<string>()
   const categories: WelcomeCategory[] = []
 
-  for (const row of office.tags.slice(0, 100)) {
+  for (const row of value.slice(0, 100)) {
     if (
       !row ||
       row.enabled !== true ||

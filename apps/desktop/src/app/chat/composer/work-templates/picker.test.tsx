@@ -6,7 +6,8 @@ import { I18nProvider } from '@/i18n'
 import { $welcomeCatalog, loadWelcomeCatalog } from './catalog-store'
 import { WorkTemplatePicker } from './picker'
 
-const defaults = $welcomeCatalog.get()['zh-CN'].categories
+const modules = $welcomeCatalog.get()['zh-CN'].modules
+const defaults = modules[0].tags
 afterEach(() => {
   cleanup()
   document.getElementById('selection-host')?.remove()
@@ -32,7 +33,7 @@ function view(scope = 'draft-a', disabled = false, replace = vi.fn()) {
 }
 
 it('完整分类可进入模板，填写完整提示词，取消保留草稿且切换会话清除选择', async () => {
-  vi.stubGlobal('hermesDesktop', { getWelcomeCatalog: vi.fn().mockResolvedValue(defaults) })
+  vi.stubGlobal('hermesDesktop', { getWelcomeCatalog: vi.fn().mockResolvedValue({ modules }) })
   await loadWelcomeCatalog('zh-CN', true)
   const selectionHost = document.createElement('div')
   selectionHost.id = 'selection-host'
@@ -72,13 +73,13 @@ it('更新失败保留可用目录并支持重试；录音或禁用时不能覆�
   expect(v.replace).not.toHaveBeenCalled()
   expect(screen.getByText('正在使用本地模板')).toBeTruthy()
   ui.rerender(view('draft-a', false, v.replace).element)
-  request.mockResolvedValue(defaults)
+  request.mockResolvedValue({ modules })
   await act(async () => {
     fireEvent.click(screen.getByRole('button', { name: '刷新模板' }))
   })
   expect($welcomeCatalog.get()['zh-CN'].status).toBe('ready')
   expect(screen.queryByText('正在使用本地模板')).toBeNull()
-  expect(JSON.parse(localStorage.getItem('uniwork.welcome.office.v1.zh-CN')!).modules[0].tags).toHaveLength(
+  expect(JSON.parse(localStorage.getItem('uniwork.welcome.modules.v2.zh-CN')!).modules[0].tags).toHaveLength(
     defaults.length
   )
 })
