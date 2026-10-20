@@ -333,6 +333,9 @@ def _prepare_native(*, out: Path, ref: str, source: Path, cache: Path,
         print(f"  uv-cache: copying {src_cache} → payload...", flush=True)
         stage_uv_cache(src_cache, payload_cache)
         pruned = prune_uv_cache_to_lock(payload_cache, repo_dir)
+        # desktop-mt: kit script dependencies are not in core's lock; add them after the prune so they ship.
+        from scripts.bundles.uniwork_bundled import warm_script_wheels
+        warm_script_wheels(repo_dir, payload_cache, python_bin, env)
         files, original_bytes = pack_uv_cache(payload_cache, payload_cache_archive)
         remove_build_tree(payload_cache)
         print(f"✓ uv-cache.zip ({files} files, {original_bytes / 1024 / 1024:.1f} MiB before compression; "

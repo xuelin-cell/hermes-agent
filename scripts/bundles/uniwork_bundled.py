@@ -35,6 +35,8 @@ from pathlib import Path
 
 DEFAULT_SOURCE = "git@gitcode.com:uni-ai/uniclawwork-local-config.git"
 TARGET = Path("plugins/uniwork-kits/bundled/uniwork-bundled")
+# 套件和专家脚本的依赖清单，插件运行时（script_python.py）读的是同一份。
+SCRIPT_REQUIREMENTS = Path("plugins/uniwork-kits/script-requirements.txt")
 MANIFEST_MAX_DEPTH = 2
 
 
@@ -117,3 +119,54 @@ def stage_bundled_plugins(repo_dir: Path, env: dict[str, str] | None = None) -> 
     if not good:
         print("WARNING: the build carries no bundled kits or experts", flush=True)
     return len(good)
+
+
+def script_requirements(repo_dir: Path) -> list[str]:
+    """读打包目录里插件的脚本依赖清单，去掉空行和注释；没有清单时返回空列表。"""
+    path = repo_dir / SCRIPT_REQUIREMENTS
+    if not path.is_file():
+        return []
+    lines = path.read_text(encoding="utf-8").splitlines()
+    return [line.strip() for line in lines if line.strip() and not line.lstrip().startswith("#")]
+
+
+def warm_script_wheels(repo_dir: Path, cache: Path, python: Path, env: dict[str, str]) -> int:
+    """把套件脚本依赖的安装包放进将随安装包发出的 uv 缓存，返回依赖条数。
+
+    安装版在每个账号里用 pm.ensure_environment 建脚本环境；缓存里有这些安装包，就只需查一下版本信息，
+    不用下载大文件。做法是用打包机器上同一个 PM 在临时目录建一次同样的环境，建完删掉，只留下缓存。
+    要在核心依赖裁剪（prune_uv_cache_to_lock）之后调用，否则会被当成锁文件以外的包删掉。
+    建不成只打警告：安装版联网时照样能装，只是第一次要下载。
+    """
+    requirements = script_requirements(repo_dir)
+    if not requirements:
+        return 0
+    if not (repo_dir / TARGET / "plugins").is_dir():
+        # 这次没带内置套件（来源是 off 或没配置），也就没有要跑的脚本，安装包不必多带这些库。
+        print("==> Kit script dependencies: skipped (the build carries no bundled kits)", flush=True)
+        return 0
+    import json
+
+    import pm
+
+    try:
+        with tempfile.TemporaryDirectory(prefix="uniwork-scripts-") as temp:
+            project = Path(temp) / "project"
+            project.mkdir()
+            lines = [
+                "[project]",
+                'name = "uniwork-kits-scripts"',
+                'version = "0"',
+                'requires-python = ">=3.11"',
+                f"dependencies = {json.dumps(requirements)}",
+                "[tool.uv]",
+                "package = false",
+            ]
+            (project / "pyproject.toml").write_text("\n".join(lines) + "\n", encoding="utf-8")
+            pm.build_environment(source=project, out=Path(temp) / "venv", python=python, cache=cache, env=env,
+                                 frozen=False, explicit=True, timeout=30 * 60)
+    except (pm.InstallError, OSError) as exc:
+        print(f"WARNING: could not cache the kit script dependencies ({exc}); installs will download them", flush=True)
+        return 0
+    print(f"==> Kit script dependencies cached for offline installs ({len(requirements)} requirement(s))", flush=True)
+    return len(requirements)

@@ -15,7 +15,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from . import deck_check, delivery, image_landing, media_slot, turns
+from . import deck_check, delivery, image_landing, media_slot, script_python, turns
 
 logger = logging.getLogger(__name__)
 
@@ -67,16 +67,18 @@ def picture_rules(platform: str) -> str:
 
 def on_pre_tool_call(
     tool_name: str = "", args: Any = None, session_id: str = "", turn_id: str = "", task_id: str = "", **_: Any,
-) -> Optional[Dict[str, str]]:
-    """同一轮里重复的、或超出次数的搜图，直接给出答复，不再调用 MCP。"""
+) -> Optional[Dict[str, Any]]:
+    """工具调用前的两件事：终端跑套件脚本时换成带依赖的解释器；同一轮里重复的或超出次数的搜图直接答复，不再调用 MCP。"""
     try:
+        if tool_name == "terminal":
+            return script_python.on_pre_tool_call(tool_name=tool_name, args=args, task_id=task_id)
         if not image_landing.is_image_search(tool_name):
             return None
         turn = turns.current(session_id, turn_id, task_id)
         answer = image_landing.before_search(turn, args)
         return {"action": "block", "message": answer} if answer else None
     except Exception:
-        logger.warning("[uniwork-kits] image search budget failed", exc_info=True)
+        logger.warning("[uniwork-kits] pre_tool_call hook failed", exc_info=True)
         return None
 
 

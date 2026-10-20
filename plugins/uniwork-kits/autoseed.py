@@ -30,7 +30,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from . import store
+from . import script_python, store
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +100,10 @@ def _set(**changes: Any) -> None:
 
 
 def _run(root: Path, directory: Path) -> None:
-    """后台安装的主体：拿到锁后调用 seed，记下装了哪些、哪些没变、哪些失败，并更新「装过哪些内置包」的记录。"""
+    """后台安装的主体：拿到锁后调用 seed，记下装了哪些、哪些没变、哪些失败，并更新「装过哪些内置包」的记录。
+
+    装完再建好脚本运行环境（script_python），第一次跑专家脚本时就不用等；它有自己的锁，不占着安装锁。
+    """
     lock = store.imported_root(root) / LOCK_NAME
     if not _acquire(lock):
         logger.info("[uniwork-kits] another backend is installing the bundled kits; skipped")
@@ -132,6 +135,7 @@ def _run(root: Path, directory: Path) -> None:
     finally:
         _set(running=False, name="")
         _release(lock)
+    script_python.prepare(root)
 
 
 def _load_seeded(record: Path) -> set[str]:

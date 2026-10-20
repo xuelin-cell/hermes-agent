@@ -77,3 +77,63 @@ def test_the_desktop_build_defaults_to_the_gitcode_source_and_keeps_a_chosen_one
     assert identity_environment(request, "bundled", {})["UNIWORK_BUNDLED_PLUGINS"] == DEFAULT_SOURCE
     chosen = {"UNIWORK_BUNDLED_PLUGINS": "off"}
     assert identity_environment(request, "bundled", chosen)["UNIWORK_BUNDLED_PLUGINS"] == "off"
+
+
+def _staged_repo(tmp_path: Path) -> Path:
+    """打包目录里带上和仓库里同一份的套件脚本依赖清单。"""
+    from scripts.bundles.uniwork_bundled import SCRIPT_REQUIREMENTS
+
+    repo_dir = tmp_path / "hermes-agent"
+    (repo_dir / SCRIPT_REQUIREMENTS).parent.mkdir(parents=True)
+    source = Path(__file__).resolve().parents[2] / SCRIPT_REQUIREMENTS
+    (repo_dir / SCRIPT_REQUIREMENTS).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    (repo_dir / TARGET / "plugins").mkdir(parents=True)  # 这次打包带了内置套件
+    return repo_dir
+
+
+def test_the_kit_script_dependencies_are_built_into_the_shipped_cache(tmp_path, monkeypatch, capsys):
+    """打包时用插件的同一份依赖清单、要发出去的缓存目录和打包用的 Python 建一次环境，安装包就带上这些库。"""
+    import pm
+
+    from scripts.bundles.uniwork_bundled import script_requirements, warm_script_wheels
+
+    repo_dir = _staged_repo(tmp_path)
+    calls = []
+
+    def build(**kwargs):
+        """替身：记下 PM 收到的参数和项目里写的依赖。"""
+        calls.append({**kwargs, "pyproject": (kwargs["source"] / "pyproject.toml").read_text(encoding="utf-8")})
+        return kwargs["out"]
+
+    monkeypatch.setattr(pm, "build_environment", build)
+    cache, python = tmp_path / "uv-cache", tmp_path / "python.exe"
+    count = warm_script_wheels(repo_dir, cache, python, {"UV_CACHE_DIR": "elsewhere"})
+
+    requirements = script_requirements(repo_dir)
+    assert count == len(requirements) > 0
+    [call] = calls
+    assert call["cache"] == cache and call["python"] == python and call["frozen"] is False
+    assert json.dumps(requirements) in call["pyproject"]
+    assert "cached for offline installs" in capsys.readouterr().out
+
+
+def test_a_failed_warm_up_only_warns_and_a_tree_without_the_list_skips(tmp_path, monkeypatch, capsys):
+    """缓存没建成只打警告、打包继续；没有依赖清单、或这次没带内置套件时什么都不做。"""
+    import pm
+
+    from scripts.bundles.uniwork_bundled import warm_script_wheels
+
+    def fail(**_kwargs):
+        """替身：模拟打包机器拉不到安装包。"""
+        raise pm.InstallError("venv", "network down")
+
+    monkeypatch.setattr(pm, "build_environment", fail)
+    assert warm_script_wheels(_staged_repo(tmp_path / "a"), tmp_path / "cache", tmp_path / "py", {}) == 0
+    assert "WARNING: could not cache the kit script dependencies" in capsys.readouterr().out
+    assert warm_script_wheels(tmp_path / "empty", tmp_path / "cache", tmp_path / "py", {}) == 0
+
+    # 没带内置套件的打包不预热，也就不会去联网。
+    no_kits = _staged_repo(tmp_path / "b")
+    (no_kits / TARGET / "plugins").rmdir()
+    assert warm_script_wheels(no_kits, tmp_path / "cache", tmp_path / "py", {}) == 0
+    assert "skipped (the build carries no bundled kits)" in capsys.readouterr().out

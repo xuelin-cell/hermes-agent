@@ -55,6 +55,9 @@ def autoseed(kits, monkeypatch, tmp_path):
     monkeypatch.setattr(module, "_started", set())
     # A developer checkout may carry real packages in bundled/; tests use their own.
     monkeypatch.setattr(module, "BUNDLED_DIR", tmp_path / "no-bundled-dir")
+    # 真的建脚本环境要联网，测试里只记下有没有被叫到。
+    module.prepared = []
+    monkeypatch.setattr(module.script_python, "prepare", lambda home, wait=None: module.prepared.append(Path(home)))
     return module
 
 
@@ -67,6 +70,8 @@ def test_a_new_account_gets_the_bundled_kits_and_experts_once(kits, autoseed, pr
     plugins = kits.store.load_index(profile_env)["plugins"]
     assert plugins["demo-kit"]["kind"] == "kit" and plugins["demo-expert"]["kind"] == "expert"
     assert not (kits.store.imported_root(profile_env) / autoseed.LOCK_NAME).exists()
+    # 装完接着准备套件脚本的运行环境，第一次跑专家脚本时不用等。
+    assert autoseed.prepared == [profile_env]
 
     # Once per process for a home.
     assert autoseed.start(profile_env) is False
