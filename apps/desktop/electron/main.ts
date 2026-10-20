@@ -697,7 +697,8 @@ installAccountIpc(
   path.join(ACCOUNT_RUNTIME.desktopState, 'cloud-drive-preview'),
   ACCOUNT_DRIVE_CLIENT,
   profile => ACCOUNT_DRIVE_MCP.available(profile),
-  ACCOUNT_DRIVE_ARTIFACT
+  ACCOUNT_DRIVE_ARTIFACT,
+  url => openExternalUrl(url)
 )
 
 installOfficePreviewIpc(

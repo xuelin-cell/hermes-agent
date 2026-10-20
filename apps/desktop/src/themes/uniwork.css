@@ -227,8 +227,10 @@
 }
 
 :root[data-hermes-theme='uniwork'] {
-  --account-avatar-background: #430d0d;
+  --dt-primary-deep: #430d0d;
+  --account-avatar-background: var(--dt-primary-deep);
 }
 :root[data-hermes-theme='uniwork'].dark {
-  --account-avatar-background: #693127;
+  --dt-primary-deep: #693127;
+  --account-avatar-background: var(--dt-primary-deep);
 }

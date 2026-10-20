@@ -1,7 +1,16 @@
 import { expect, it, vi } from 'vitest'
 
-const { handle, fromWebContents } = vi.hoisted(() => ({ handle: vi.fn(), fromWebContents: vi.fn() }))
-vi.mock('electron', () => ({ app: { once: vi.fn() }, ipcMain: { handle }, BrowserWindow: { fromWebContents } }))
+const { handle, fromWebContents, netFetch } = vi.hoisted(() => ({
+  handle: vi.fn(),
+  fromWebContents: vi.fn(),
+  netFetch: vi.fn()
+}))
+vi.mock('electron', () => ({
+  app: { once: vi.fn() },
+  ipcMain: { handle },
+  BrowserWindow: { fromWebContents },
+  net: { fetch: netFetch }
+}))
 
 import { installAccountIpc } from './account-ipc'
 
@@ -212,4 +221,80 @@ it('语音身份保持第六个参数，办公模板和云盘传输在同一次�
   await expect(handlers.get('hermes:maas-drive:transfer')!({ sender, senderFrame: {} }, {})).rejects.toThrow('请求无效')
   active = false
   await expect(handlers.get('hermes:uniwork-welcome:catalog')!(event, 'zh-CN')).rejects.toThrow('请重新登录')
+})
+
+it('订阅只读取主进程身份，拒绝额外参数并在主进程拼接市场地址', async () => {
+  const partition = {}
+  const frame = { url: 'http://127.0.0.1:5174/#/chat' }
+  const sender = { mainFrame: frame, session: partition }
+  fromWebContents.mockReturnValue({ isDestroyed: () => false, webContents: sender })
+  const identity: {
+    uid: string
+    token: string
+    phone?: string
+    maskedPhone: string
+    expiresAt: number
+  } = {
+    uid: 'a',
+    token: 'secret-token',
+    phone: '13800000000',
+    maskedPhone: '138****0000',
+    expiresAt: Date.now() + 60_000
+  }
+  const openExternal = vi.fn(async (_url: string) => ({ ok: true }))
+  netFetch.mockReset()
+  netFetch.mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        ticket: 'ticket-1',
+        customerId: 'customer-1',
+        timestamp: '1700000000',
+        number: 'order-1'
+      }),
+      { status: 200 }
+    )
+  )
+  installAccountIpc(
+    partition as never,
+    () => 'http://127.0.0.1:5174/#/chat',
+    () => identity,
+    undefined,
+    () => identity,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    openExternal
+  )
+  const invoke = handle.mock.calls.findLast(call => call[0] === 'hermes:maas-account:subscribe')![1]
+  const event = { sender, senderFrame: frame }
+  expect(await invoke({ sender, senderFrame: {} }, 'forged')).toEqual({ status: 'failed' })
+  sender.session = {}
+  expect(await invoke(event)).toEqual({ status: 'failed' })
+  sender.session = partition
+  frame.url = 'https://untrusted.example/'
+  expect(await invoke(event)).toEqual({ status: 'failed' })
+  expect(netFetch).not.toHaveBeenCalled()
+  expect(openExternal).not.toHaveBeenCalled()
+
+  frame.url = 'http://127.0.0.1:5174/#/chat'
+  expect(await invoke(event)).toEqual({ status: 'opened' })
+  expect(netFetch).toHaveBeenCalledTimes(1)
+  expect(netFetch).toHaveBeenCalledWith(
+    'https://maas.ai-yuanjing.com/app/gateway/uniwork/market-ticket',
+    expect.objectContaining({ headers: { Accept: 'application/json', Authorization: 'Bearer secret-token' } })
+  )
+  expect(openExternal).toHaveBeenCalledTimes(1)
+  const url = openExternal.mock.calls[0]![0] as string
+  expect(url).toContain('ticket=ticket-1')
+  expect(url).toContain('customerid=customer-1')
+  expect(url).toContain('single=1')
+  expect(url).not.toContain('secret-token')
+  expect(url).not.toContain('13800000000')
+
+  identity.phone = undefined
+  expect(await invoke(event)).toEqual({ status: 'failed', reason: 'missing-phone' })
+  expect(netFetch).toHaveBeenCalledTimes(1)
+  expect(openExternal).toHaveBeenCalledTimes(1)
 })

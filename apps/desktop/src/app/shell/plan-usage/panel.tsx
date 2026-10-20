@@ -14,9 +14,19 @@ import { Codicon } from '@/components/ui/codicon'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useI18n } from '@/i18n'
 import { isPlanUsageHidden } from '@/lib/browser-shell'
+import { notify } from '@/store/notifications'
 
 import type { LoginAccount } from '../../../../electron/login/contract'
 import type { PlanUsage } from '../../../../electron/uniwork-usage/contract'
+
+import {
+  formatPlanExpiryDate,
+  formatTokenQuotaCompact,
+  formatTokenQuotaExact,
+  formatTokenQuotaPercent,
+  formatUsagePercentage,
+  formatUsageResetTime
+} from './format'
 
 /** 直接渲染随包编译的可信 SVG，避免 file 协议下外部遮罩加载失败；不接收远端 SVG。 */
 function AccountIcon({ src }: { src: string }) {
@@ -30,7 +40,7 @@ interface PlanUsagePanelProps {
 }
 
 /** 共享可访问进度条，数值来自主进程校验结果，颜色沿用当前主题。 */
-function UsageMeter({ label, value }: { label: string; value: number }) {
+function UsageMeter({ label, value, valueText }: { label: string; value: number; valueText?: string }) {
   return (
     <div
       className="plan-usage-meter"
@@ -39,6 +49,7 @@ function UsageMeter({ label, value }: { label: string; value: number }) {
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={value}
+      aria-valuetext={valueText}
     >
       <span style={{ width: `${value}%` }} />
     </div>
@@ -46,74 +57,93 @@ function UsageMeter({ label, value }: { label: string; value: number }) {
 }
 
 /** 只展示当前套餐对应的数据，缺失不冒充零用量，重置时间锚定上游查询时间。 */
-function UsageDetails({ data }: { data: PlanUsage }) {
+function UsageDetails({ data, showPlan = true }: { data: PlanUsage; showPlan?: boolean }) {
   const { t, locale } = useI18n()
   const c = t.desktopLogin.planUsage
-  const number = new Intl.NumberFormat(locale, { maximumFractionDigits: 2 })
-  const dates = new Intl.DateTimeFormat(locale, {
-    month: 'numeric',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
+  const now = Date.now()
+  const expiry = formatPlanExpiryDate(data.endTime, locale)
   const labels = { 'five-hour': c.fiveHour, week: c.week, month: c.month }
   const hasUsage = data.kind === 'coding_plan' ? data.windows.length > 0 : data.quota !== null
+  const unit = data.quota?.unit ?? ''
+  const exact = data.quota
+    ? c.tokenExact(
+        formatTokenQuotaExact(data.quota.remaining, locale),
+        formatTokenQuotaExact(data.quota.used, locale),
+        formatTokenQuotaExact(data.quota.total, locale),
+        unit
+      )
+    : ''
   return (
     <>
-      <div className="plan-usage-product">
-        <strong>{data.productName || c.unnamed}</strong>
-        {data.expired && <span>{c.expired}</span>}
-      </div>
-      {data.endTime && (
-        <p className="plan-usage-meta">
-          {c.expires}：{data.endTime}
-        </p>
+      {showPlan && (
+        <>
+          <div className="plan-usage-product">
+            <strong>{data.productName || c.unnamed}</strong>
+            {data.expired && <span>{c.expired}</span>}
+          </div>
+          <p className="plan-usage-meta">
+            {c.expires}：{expiry ?? '—'}
+          </p>
+        </>
       )}
       {!hasUsage && (
         <p role="status" className="plan-usage-meta">
           {c.empty}
         </p>
       )}
-      {data.windows.map(window => (
-        <div className="plan-usage-window" key={window.name}>
-          <div className="plan-usage-summary">
-            <span>{labels[window.name]}</span>
-            <strong>
-              {c.used} {number.format(window.usedPercent)}%
-            </strong>
+      {data.windows.map(window => {
+        const used = formatUsagePercentage(window.usedPercent, locale)
+        return (
+          <div className="plan-usage-window" key={window.name}>
+            <div className="plan-usage-summary">
+              <span>{labels[window.name]}</span>
+              <strong>
+                {c.used} {used}%
+              </strong>
+            </div>
+            <UsageMeter
+              label={labels[window.name]}
+              value={window.usedPercent}
+              valueText={`${c.used} ${used}%`}
+            />
+            <p className="plan-usage-meta">
+              {window.notStarted
+                ? c.notStarted
+                : window.resetAt === null
+                  ? '—'
+                  : window.resetAt <= now
+                    ? c.resetDue
+                    : c.resetsAt(formatUsageResetTime(window.resetAt, now, locale))}
+            </p>
           </div>
-          <UsageMeter label={labels[window.name]} value={window.usedPercent} />
-          <p className="plan-usage-meta">
-            {window.notStarted
-              ? c.notStarted
-              : window.resetAt === null
-                ? '—'
-                : window.resetAt <= Date.now()
-                  ? c.resetDue
-                  : `${c.reset}：${dates.format(window.resetAt)}`}
-          </p>
-        </div>
-      ))}
+        )
+      })}
       {data.quota && (
-        <div className="plan-usage-window">
-          <div className="plan-usage-summary">
-            <span>{c.used}</span>
-            <strong>{number.format(data.quota.usedPercent)}%</strong>
+        <div className="plan-usage-window" title={exact}>
+          <div className="plan-usage-summary plan-usage-token-summary">
+            <span>{c.tokenUsed}</span>
+            <strong>{formatTokenQuotaPercent(data.quota.usedPercent, locale)}%</strong>
           </div>
-          <UsageMeter label={c.used} value={data.quota.usedPercent} />
-          <p className="plan-usage-meta">
-            {number.format(data.quota.used)} / {number.format(data.quota.total)} {data.quota.unit ?? ''}
-          </p>
-          <p>
-            {c.remaining}：{number.format(data.quota.remaining)} {data.quota.unit ?? ''}
-          </p>
+          <UsageMeter label={exact} value={data.quota.usedPercent} valueText={exact} />
+          <div className="plan-usage-quota">
+            <span>
+              <strong className="plan-usage-quota-number">
+                {formatTokenQuotaCompact(data.quota.used, locale)}
+              </strong>
+              <span className="plan-usage-quota-separator"> / </span>
+              <span className="plan-usage-quota-total">
+                {formatTokenQuotaCompact(data.quota.total, locale)} {unit}
+              </span>
+            </span>
+            <span className="plan-usage-quota-remaining">
+              {c.remaining}：
+              <strong className="plan-usage-quota-number">
+                {formatTokenQuotaCompact(data.quota.remaining, locale)}
+              </strong>{' '}
+              {unit}
+            </span>
+          </div>
         </div>
-      )}
-      {data.concurrency && (
-        <p className="plan-usage-meta">
-          {c.concurrency}：{data.concurrency.current === null ? '—' : number.format(data.concurrency.current)} /{' '}
-          {number.format(data.concurrency.limit)}
-        </p>
       )}
     </>
   )
@@ -125,29 +155,44 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
   const c = t.desktopLogin.planUsage
   const [open, setOpen] = useState(false)
   const [details, setDetails] = useState(false)
-  const [retry, setRetry] = useState(0)
+  const [refreshRequest, setRefreshRequest] = useState({ nonce: 0, force: false })
   const [data, setData] = useState<PlanUsage | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<'auth' | 'failed' | 'restart' | null>(null)
+  const [subscribing, setSubscribing] = useState(false)
 
   useEffect(() => {
-    if (!open || isPlanUsageHidden()) return
+    if (!open || isPlanUsageHidden()) {
+      return
+    }
     let live = true
     let sequence = 0
     let timer: ReturnType<typeof setTimeout> | undefined
     /** 主进程身份与当前显示账号同时匹配才接收结果，失败保留同账号的上次结果。 */
-    async function refresh(): Promise<void> {
+    async function refresh(force = false): Promise<void> {
       const request = ++sequence
       clearTimeout(timer)
       setLoading(true)
       try {
-        if (!window.hermesDesktop?.getPlanUsage) {
+        const bridge = force
+          ? (window.hermesDesktop?.refreshPlanUsage ?? window.hermesDesktop?.getPlanUsage)
+          : window.hermesDesktop?.getPlanUsage
+
+        if (!bridge) {
           setData(null)
           setError('restart')
+          if (force) {
+            notify({ id: 'maas-plan-refresh-failed', kind: 'error', message: c.restart })
+          }
           return
         }
-        const result = await window.hermesDesktop.getPlanUsage()
-        if (!live || request !== sequence) return
+
+        const result = await bridge()
+
+        if (!live || request !== sequence) {
+          return
+        }
+
         if (
           result?.status === 'available' &&
           result.account.maskedPhone === account.maskedPhone &&
@@ -155,12 +200,28 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
         ) {
           setData(result.data)
           setError(null)
+          if (force) {
+            notify({ id: 'maas-plan-refreshed', kind: 'success', message: c.refreshed, placement: 'bottom-right' })
+          }
         } else if (result?.status === 'available' || result?.reason === 'auth') {
           setData(null)
           setError('auth')
-        } else setError('failed')
+          if (force) {
+            notify({ id: 'maas-plan-refresh-failed', kind: 'error', message: c.auth })
+          }
+        } else {
+          setError('failed')
+          if (force) {
+            notify({ id: 'maas-plan-refresh-failed', kind: 'error', message: c.refreshFailed })
+          }
+        }
       } catch {
-        if (live && request === sequence) setError('failed')
+        if (live && request === sequence) {
+          setError('failed')
+          if (force) {
+            notify({ id: 'maas-plan-refresh-failed', kind: 'error', message: c.refreshFailed })
+          }
+        }
       } finally {
         if (live && request === sequence) {
           setLoading(false)
@@ -172,17 +233,91 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
     function onFocus(): void {
       void refresh()
     }
-    void refresh()
+    void refresh(refreshRequest.force)
     window.addEventListener('focus', onFocus)
     return () => {
       live = false
       clearTimeout(timer)
       window.removeEventListener('focus', onFocus)
     }
-  }, [open, retry, account.maskedPhone, account.expiresAt])
+  }, [open, refreshRequest.nonce, refreshRequest.force, account.maskedPhone, account.expiresAt, c])
+
+  /** 手动刷新绕过主进程 30 秒缓存；定时与聚焦仍走常规查询。 */
+  function requestRefresh(): void {
+    setRefreshRequest(value => ({ nonce: value.nonce + 1, force: true }))
+  }
+
+  /** 关闭后清除强制标记，下次打开仍按 30 秒缓存查询。 */
+  function onOpenChange(next: boolean): void {
+    setOpen(next)
+    if (!next) {
+      setRefreshRequest(value => (value.force ? { ...value, force: false } : value))
+    }
+  }
+
+  /** 订阅只读取主进程身份；失败只提示分类结果，不回传 URL、手机号或 ticket。 */
+  async function subscribe(): Promise<void> {
+    if (subscribing) {
+      return
+    }
+
+    setSubscribing(true)
+
+    try {
+      if (!window.hermesDesktop?.subscribeMaasPlan) {
+        notify({ id: 'maas-plan-subscribe', kind: 'error', message: c.subscribeRestart })
+        return
+      }
+
+      const result = await window.hermesDesktop.subscribeMaasPlan()
+
+      if (result?.status === 'opened') {
+        return
+      }
+
+      notify({
+        id: 'maas-plan-subscribe',
+        kind: 'error',
+        message:
+          result?.reason === 'missing-phone'
+            ? c.subscribeMissingPhone
+            : result?.reason === 'auth'
+              ? c.subscribeAuth
+              : c.subscribeFailed
+      })
+    } catch {
+      notify({ id: 'maas-plan-subscribe', kind: 'error', message: c.subscribeFailed })
+    } finally {
+      setSubscribing(false)
+    }
+  }
+
+  const planLabels = { 'five-hour': c.fiveHour, week: c.week, month: c.month }
+  const usageSummary = data?.quota
+    ? `${c.tokenUsed} ${formatTokenQuotaPercent(data.quota.usedPercent, locale)}%`
+    : data?.kind === 'coding_plan' && data.windows.length
+      ? `${c.used} ${formatUsagePercentage(data.windows[0].usedPercent, locale)}% · ${planLabels[data.windows[0].name]}`
+      : loading
+        ? '—'
+        : c.empty
+  const expiryDate = formatPlanExpiryDate(data?.endTime, locale)
+  const expirySummary = expiryDate
+    ? data?.expired
+      ? `${expiryDate} · ${c.expired}`
+      : c.expiryText(expiryDate)
+    : '—'
+  const errorText = error
+    ? error === 'restart'
+      ? c.restart
+      : error === 'auth'
+        ? c.auth
+        : data
+          ? c.stale
+          : c.failed
+    : null
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
         {trigger ?? (
           <Button className="w-full justify-start" size="sm" variant="ghost" type="button">
@@ -203,35 +338,66 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
             <>
               <div className="account-card-row account-card-plan" hidden={isPlanUsageHidden()}>
                 <AccountIcon src={planIcon} />
-                <span>{data?.productName || (loading ? c.loading : c.unnamed)}</span>
+                <span className="account-card-plan-name">
+                  {data?.productName || (loading ? c.loading : c.unnamed)}
+                </span>
+                <button
+                  aria-label={c.refreshPlan}
+                  className="account-card-refresh"
+                  disabled={loading}
+                  onClick={requestRefresh}
+                  title={c.refreshPlan}
+                  type="button"
+                >
+                  <Codicon className={loading ? 'animate-spin' : undefined} name="refresh" size="0.875rem" />
+                </button>
+                <button
+                  aria-busy={subscribing}
+                  className="account-card-subscribe"
+                  disabled={subscribing}
+                  onClick={() => void subscribe()}
+                  type="button"
+                >
+                  {subscribing ? c.subscribeBusy : c.subscribe}
+                </button>
               </div>
               <button
-                type="button"
-                className="account-card-row"
                 aria-expanded={details}
+                className="account-card-row"
                 hidden={isPlanUsageHidden()}
                 onClick={() => setDetails(value => !value)}
+                type="button"
               >
                 <AccountIcon src={usageIcon} />
                 <span>{c.actualUsage}</span>
-                <span className="account-card-summary">
-                  {data?.quota
-                    ? `${c.remaining}${new Intl.NumberFormat(locale).format(data.quota.remaining)} ${data.quota.unit ?? ''}`
-                    : data?.kind === 'coding_plan' && data.windows.length
-                      ? `${c.used} ${new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(data.windows[0].usedPercent)}% · ${{ 'five-hour': c.fiveHour, week: c.week, month: c.month }[data.windows[0].name]}`
-                      : loading
-                        ? '—'
-                        : c.empty}
-                </span>
-                <span className="account-card-details">{c.details}</span>
+                {details ? (
+                  <Codicon className="account-card-chevron" name="chevron-down" size="0.875rem" />
+                ) : (
+                  <>
+                    <span className="account-card-summary">{usageSummary}</span>
+                    <span className="account-card-details">{c.details}</span>
+                  </>
+                )}
               </button>
+              {details && (
+                <div className="account-card-expanded account-card-details-inline">
+                  {data && <UsageDetails data={data} showPlan={false} />}
+                  {loading && !data && (
+                    <p className="plan-usage-meta" role="status">
+                      {c.loading}
+                    </p>
+                  )}
+                  {errorText && (
+                    <p className="plan-usage-error" role="status">
+                      {errorText}
+                    </p>
+                  )}
+                </div>
+              )}
               <div className="account-card-row" hidden={isPlanUsageHidden()}>
                 <AccountIcon src={deadlineIcon} />
                 <span>{c.expires}</span>
-                <span className="account-card-summary">
-                  {data?.endTime ?? '—'}
-                  {data?.expired ? ` · ${c.expired}` : ''}
-                </span>
+                <span className="account-card-summary">{expirySummary}</span>
               </div>
               <Link className="account-card-row" to="/settings" onClick={() => setOpen(false)}>
                 <AccountIcon src={settingsIcon} />
@@ -251,7 +417,7 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
               </button>
             </>
           )}
-          {(!trigger || details) && (
+          {!trigger && (
             <div className="account-card-expanded">
               <div className="plan-usage-heading">
                 <h3>{c.title}</h3>
@@ -259,7 +425,7 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
                   variant="text"
                   size="micro"
                   disabled={loading}
-                  onClick={() => setRetry(value => value + 1)}
+                  onClick={requestRefresh}
                   type="button"
                 >
                   {c.refresh}
@@ -268,22 +434,22 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
               {data && <UsageDetails data={data} />}
             </div>
           )}
-          {loading && !data && (
+          {loading && !data && (!trigger || !details) && (
             <p role="status" className="plan-usage-meta">
               {c.loading}
             </p>
           )}
-          {error && (
+          {errorText && (!trigger || !details) && (
             <p role="status" className="plan-usage-error">
-              {error === 'restart' ? c.restart : error === 'auth' ? c.auth : data ? c.stale : c.failed}
+              {errorText}
             </p>
           )}
-          {trigger && error && !details && (
+          {trigger && errorText && !details && (
             <Button
               variant="text"
               size="micro"
               disabled={loading}
-              onClick={() => setRetry(value => value + 1)}
+              onClick={requestRefresh}
               type="button"
             >
               {c.refresh}

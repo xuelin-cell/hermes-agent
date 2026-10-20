@@ -19,7 +19,7 @@ import type { HermesNotification } from '../electron/notification-types'
 import type { PoolLimits } from '../electron/pool-limits'
 import type { PreviewExport, PreviewExportResult } from '../electron/preview-export'
 import type { UniworkAsrBridge } from '../electron/uniwork-asr/contract'
-import type { PlanUsageResult } from '../electron/uniwork-usage/contract'
+import type { PlanSubscriptionResult, PlanUsageResult } from '../electron/uniwork-usage/contract'
 import type { WelcomeCategory, WelcomeLocale } from '../electron/uniwork-welcome/catalog'
 import type { GrowRequest } from '../electron/window-growth'
 
@@ -42,6 +42,8 @@ declare global {
       /** 只读本次已准备账号的脱敏信息，运行中到期仍返回原期限。 */
       /** 仅返回当前账号套餐展示信息，不接受页面身份参数。 */
       getPlanUsage?: () => Promise<PlanUsageResult>
+      refreshPlanUsage?: () => Promise<PlanUsageResult>
+      subscribeMaasPlan?: () => Promise<PlanSubscriptionResult>
       getMaasAccount: () => Promise<LoginAccount | null>
       messagingSetup: (input: MessagingSetupRequest) => Promise<MessagingSetupResult>
       messagingStatus: () => Promise<MessagingOperationStatus>

@@ -181,6 +181,7 @@ renderer and Electron's first window paint.
 | `--ui-widget-surface-background` | fill for inline chat widgets (`WIDGET_SHELL_CLASS`) |
 | `--chrome-action-hover` | hover fill for quiet controls |
 | `--theme-primary`, `--ui-accent` | brand/accent |
+| `--dt-primary-deep` | deepest accent fill (UniWork design maroon `#430D0D` / dark `#693127`); other themes fall back to `--dt-primary-solid` |
 
 Never hardcode `border-gray-*`, `bg-white`, `text-black`, etc. The two tiles in
 `BrandMark` (white in light mode, `#0d1117` in dark) are the sanctioned literals
@@ -638,15 +639,24 @@ The detailed state contract lives in the scoped
 ## 套餐用量
 
 点击侧栏头像打开账号卡片（MasterGo 24:09213），宽 363px、圆角 24px、内边距 8px，
-依次显示真实套餐、套餐实际用量、截止日期、设置及安全退出。用量行展开详情，
-设置进入现有设置页；未接入购买流程时不显示订阅按钮。图标取自原设计 SVG，
+依次显示真实套餐、套餐实际用量、截止日期、设置及安全退出。用量行展开的详情紧跟该行，
+不重复套餐名与截止日期；设置进入现有设置页；套餐行提供刷新与订阅按钮。订阅由主进程以当前身份换取一次性
+market ticket，拼接含完整手机号的市场地址后交系统浏览器打开；失败只提示分类原因，
+手机号、ticket 与原始响应不跨 IPC，也不缓存。刷新按钮绕过 30 秒缓存并合并并发，
+定时与焦点恢复仍走缓存。图标取自原设计 SVG，
 缺失截止日期显示破折号，不用登录令牌有效期冒充套餐截止日期。面板使用主题前景色、朱红进度条、
-浅灰轨道与辅助文字，不引入独立品牌颜色。仅展开时查询，焦点恢复与每分钟更新，
-主进程对同一账号合并并发查询并缓存 30 秒。失败保留同账号的旧结果并标记刷新失败，
-登录失效或账号不匹配则清空。Coding 与 Token 载荷按服务端 planType 选择，缺失值
+浅灰轨道与辅助文字，不引入设计系统外的品牌颜色；订阅为设计稿深绛红的实心胶囊，
+查看详情用同色文字（`--dt-primary-deep`）。
+仅展开时查询，焦点恢复与每分钟更新，主进程对同一账号合并并发查询并缓存 30 秒。
+失败保留同账号的旧结果并标记刷新失败，登录失效或账号不匹配则清空。Coding 与 Token 载荷按服务端 planType 选择，缺失值
 显示暂无数据，不补造零用量。凭据、模型地址与原始响应不跨 IPC，不持久化用量。
 源功能参考 `hexagent/libs/hexagent_demo/frontend/src/uniclawUsage.ts` 与 `components/Sidebar.tsx`。
 
 账号卡片图标直接内嵌随包编译的 SVG，不通过外部 CSS 遮罩加载。
-Coding 套餐摘要展示服务端存在的首个周期及已用百分比，Token 套餐展示剩余额度；
-无用量时明确显示暂无数据。旧主进程缺少用量桥接时提示完全重启，查询失败时可直接重试。
+Coding 套餐摘要展示服务端存在的首个周期及已用百分比，Token 套餐展示已用百分比；
+折叠时摘要与“查看详情”同排，展开后替换为居右的展开箭头，避免与下方详情重复。
+截止日期按本地日期格式展示（`xxxx年x月x日 到期`，已到期只保留“已到期”标记），
+已用量/总量与右对齐的剩余用量同排展示，已用量与剩余数值同色加深，不展示并发数据；
+Token 已使用百分比紧随“已使用”标签。额度使用紧凑值与精确值提示，百分比固定两位小数，
+重置时间按当天、48 小时内和更远分级。无用量时明确显示暂无数据。
+旧主进程缺少用量桥接时提示完全重启，查询失败时可直接重试。

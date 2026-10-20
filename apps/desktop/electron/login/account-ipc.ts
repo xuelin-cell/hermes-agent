@@ -4,7 +4,12 @@ import { isDesktopRendererSender } from '../desktop-renderer-sender'
 import { ASR_CHANNEL, type AsrIdentity } from '../uniwork-asr/contract'
 import { createUniworkAsrHandler } from '../uniwork-asr/ipc'
 import { PlanUsageClient } from '../uniwork-usage/client'
-import { PLAN_USAGE_CHANNEL } from '../uniwork-usage/contract'
+import {
+  PLAN_SUBSCRIPTION_CHANNEL,
+  PLAN_USAGE_CHANNEL,
+  PLAN_USAGE_REFRESH_CHANNEL
+} from '../uniwork-usage/contract'
+import { PlanSubscriptionClient } from '../uniwork-usage/subscription'
 import { WELCOME_CATALOG_CHANNEL } from '../uniwork-welcome/catalog'
 import { WelcomeCatalogClient } from '../uniwork-welcome/client'
 
@@ -25,7 +30,8 @@ export function installAccountIpc(
   transferCacheRoot?: string,
   sharedDrive?: CloudDriveClient,
   driveAgentReady?: (profile: string) => boolean,
-  resolveArtifact?: ResolveDriveArtifact
+  resolveArtifact?: ResolveDriveArtifact,
+  openExternal?: (url: string) => Promise<unknown>
 ): void {
   /** 展示与退出共用来源校验，不接收 UID、路径或进程号。 */
   function trusted(event: IpcMainInvokeEvent, args: unknown[]): boolean {
@@ -68,6 +74,10 @@ export function installAccountIpc(
       if (!trusted(event, args)) return { status: 'failed' }
       return usage.load()
     })
+    ipcMain.handle(PLAN_USAGE_REFRESH_CHANNEL, (event, ...args) => {
+      if (!trusted(event, args)) return { status: 'failed' }
+      return usage.load(true)
+    })
     const catalog = new WelcomeCatalogClient(readIdentity)
     ipcMain.handle(WELCOME_CATALOG_CHANNEL, async (event, ...args) => {
       if (!trusted(event, []) || args.length !== 1 || !['zh-CN', 'en'].includes(args[0])) {
@@ -103,6 +113,14 @@ export function installAccountIpc(
             : '个人云盘请求失败，请重试'
         )
       }
+    })
+  }
+
+  if (readIdentity && openExternal) {
+    const subscription = new PlanSubscriptionClient(readIdentity, openExternal)
+    ipcMain.handle(PLAN_SUBSCRIPTION_CHANNEL, (event, ...args) => {
+      if (!trusted(event, args)) return { status: 'failed' }
+      return subscription.open()
     })
   }
 

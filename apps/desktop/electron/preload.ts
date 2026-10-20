@@ -8,7 +8,7 @@ import type { HudModifierApi, HudModifierStatus } from './hud-modifier-types'
 import type { CloudDriveRequest, CloudDriveTransferProgress, CloudDriveTransferRequest } from './login/contract'
 import { maskMcpSecrets, restoreMcpSecrets } from './mcp-secrets'
 import { ASR_CHANNEL } from './uniwork-asr/contract'
-import { PLAN_USAGE_CHANNEL } from './uniwork-usage/contract'
+import { PLAN_SUBSCRIPTION_CHANNEL, PLAN_USAGE_CHANNEL, PLAN_USAGE_REFRESH_CHANNEL } from './uniwork-usage/contract'
 import { WELCOME_CATALOG_CHANNEL } from './uniwork-welcome/catalog'
 import { customWindowControlsEnabled } from './window-controls'
 
@@ -34,6 +34,9 @@ const localSkin = ipcRenderer.sendSync('hermes:skin:local')
 contextBridge.exposeInMainWorld('hermesDesktop', {
   // 只读脱敏账号信息，页面不能传入身份或账号路径。
   getPlanUsage: () => ipcRenderer.invoke(PLAN_USAGE_CHANNEL),
+  refreshPlanUsage: () => ipcRenderer.invoke(PLAN_USAGE_REFRESH_CHANNEL),
+  /** 主进程换取一次性市场凭证并打开系统浏览器，页面不接触手机号或 ticket。 */
+  subscribeMaasPlan: () => ipcRenderer.invoke(PLAN_SUBSCRIPTION_CHANNEL),
   getMaasAccount: () => ipcRenderer.invoke('hermes:maas-account:get'),
   messagingSetup: input => ipcRenderer.invoke('hermes:messaging:setup', input),
   /** 补取当前账号脱敏进度，不会启动或重启网关。 */

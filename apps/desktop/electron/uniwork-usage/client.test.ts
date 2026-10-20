@@ -78,10 +78,20 @@ it('真实 HTTP 查询白名单字段、合并请求、隔离账号缓存并拒�
     await client.load()
     release?.()
     expect(await late).toEqual({ status: 'failed', reason: 'auth' })
+    hold = false
     identity = { ...accountA, expiresAt: Date.now() - 1 }
     const before = calls
     expect(await client.load()).toEqual({ status: 'failed', reason: 'auth' })
     expect(calls).toBe(before)
+
+    identity = { ...accountA }
+    expect((await client.load()).status).toBe('available')
+    const cachedCalls = calls
+    expect((await client.load()).status).toBe('available')
+    expect(calls).toBe(cachedCalls)
+    expect((await client.load(true)).status).toBe('available')
+    expect(calls).toBe(cachedCalls + 1)
+
     expect(normalizePlanUsage({ planType: 'token_plan', tokenPlanUsage: {} }, Date.now()).quota).toBeNull()
     expect(
       normalizePlanUsage({ planType: 'other', tokenPlanUsage: { totalQuota: 100, usedQuota: 0 } }, Date.now()).quota

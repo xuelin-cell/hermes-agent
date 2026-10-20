@@ -16,8 +16,8 @@ export class PlanUsageClient {
     private readonly request: typeof fetch = (input, options) => net.fetch(input, options)
   ) {}
 
-  /** 账号变化或过期立即清除缓存，成功结果只在内存复用三十秒。 */
-  async load(): Promise<PlanUsageResult> {
+  /** 账号变化或过期立即清除缓存，成功结果只在内存复用三十秒；手动刷新可绕过缓存。 */
+  async load(force = false): Promise<PlanUsageResult> {
     const identity = this.identity()
     const key = identity && identity.expiresAt > Date.now() ? `${identity.uid}\0${identity.token}` : ''
     if (key !== this.key) {
@@ -27,7 +27,7 @@ export class PlanUsageClient {
       this.cachedUntil = 0
     }
     if (!identity || !key) return { status: 'failed', reason: 'auth' }
-    if (this.cached && Date.now() < this.cachedUntil) return this.cached
+    if (!force && this.cached && Date.now() < this.cachedUntil) return this.cached
     if (this.pending) return this.pending
     const pending = this.fetch(identity)
       .then(result => {

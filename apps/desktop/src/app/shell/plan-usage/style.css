@@ -51,6 +51,30 @@
   border-radius: inherit;
   background: var(--theme-primary);
 }
+/* Token 百分比紧跟“已使用”，不再推到行尾。 */
+.plan-usage-token-summary {
+  justify-content: flex-start;
+  gap: 5px;
+}
+.plan-usage-token-summary strong {
+  font-size: 15px;
+}
+.plan-usage-quota {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+  color: var(--ui-text-tertiary);
+  font-size: 12px;
+  line-height: 20px;
+  white-space: nowrap;
+}
+/* 已用量与剩余用量同色加深，总量、分隔符与单位保持辅助色。 */
+.plan-usage-quota-number {
+  color: var(--ui-text-primary);
+  font-weight: 600;
+}
 .plan-usage-error {
   font-size: 12px;
   color: var(--dt-destructive);
@@ -95,6 +119,57 @@ a.account-card-row:hover {
 .account-card-plan {
   min-height: 40px;
 }
+.account-card-plan-name {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 设计稿套餐行：刷新图标紧跟套餐名，订阅为设计稿深绛红胶囊。 */
+.account-card-refresh {
+  display: inline-flex;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 8px;
+  color: var(--ui-text-tertiary);
+}
+.account-card-refresh:hover:not(:disabled) {
+  background: var(--dt-secondary);
+  color: var(--ui-text-primary);
+}
+.account-card-refresh:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.account-card-refresh:focus-visible,
+.account-card-subscribe:focus-visible {
+  outline: 2px solid var(--theme-primary);
+  outline-offset: 2px;
+}
+.account-card-subscribe {
+  flex: none;
+  margin-left: 2px;
+  padding: 2px 12px;
+  border-radius: 999px;
+  background: var(--dt-primary-deep);
+  color: var(--dt-primary-solid-foreground);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 20px;
+  white-space: nowrap;
+}
+.account-card-subscribe:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--dt-primary-deep) 92%, black);
+}
+.account-card-subscribe:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
 .account-card-icon {
   flex: 0 0 16px;
   width: 16px;
@@ -111,9 +186,15 @@ a.account-card-row:hover {
   overflow-wrap: anywhere;
 }
 .account-card-details {
-  color: var(--ui-text-secondary);
+  color: var(--dt-primary-deep);
   font-size: 12px;
   white-space: nowrap;
+}
+/* 展开后箭头居右替代摘要与“查看详情”，信息只由下方详情承载。 */
+.account-card-chevron {
+  flex: none;
+  margin-left: auto;
+  color: var(--ui-text-tertiary);
 }
 .account-card-divider {
   height: 1px;
@@ -126,6 +207,13 @@ a.account-card-row:hover {
 }
 .account-card-expanded {
   padding: 16px;
+}
+/* 卡片内详情紧跟用量行，套餐名与截止日期已在上方行展示，不再重复。 */
+.account-card-details-inline {
+  padding: 0 16px 12px;
+}
+.account-card-details-inline .plan-usage-window:first-child {
+  margin-top: 0;
 }
 
 .account-card-icon > svg {
