@@ -29,7 +29,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from . import delivery, media_slot, naming, store, turns
+from . import deck_check, delivery, media_slot, naming, store, turns
 
 logger = logging.getLogger(__name__)
 
@@ -346,8 +346,10 @@ def on_pre_llm_call(**kwargs: Any) -> Optional[Dict[str, str]]:
             hint = build_hint(text, catalog)
             if hint:
                 parts.append(hint)
-        if _pictures_enabled() and deck:
-            parts.append(media_slot.picture_rules(delivery=delivery.deck_line(platform)))
+        if deck:
+            parts.append(deck_check.BUILD_RULES)
+            if _pictures_enabled():
+                parts.append(media_slot.picture_rules(delivery=delivery.deck_line(platform)))
             turn.rules_shown = True
         elif _pictures_enabled():
             parts.append(media_slot.picture_request_hint(text))

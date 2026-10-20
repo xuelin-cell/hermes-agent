@@ -24,7 +24,20 @@ from typing import Any, List, Optional, Tuple
 
 from . import deck_geometry, delivery, turns
 
+# 做 PPT 时附给模型的写法规则：一次调用写出 20 页的整份脚本，生成十来分钟后会超时作废（2026-10-20 实测
+# 白等了 597 秒），退回修改时也容易整份重写。分份写，每份两三分钟，改哪页只动哪一份。
+BUILD_RULES = (
+    "PPT 生成脚本分几份写，不要在一次调用里写出整份：\n"
+    "1. 先写一个公共文件（例如 theme.js）：配色、字体、页面尺寸，以及封面、章节页、正文页这类反复用到的版式函数。\n"
+    "2. 再按章节每 4～5 页写一个文件（slides_1.js、slides_2.js……），每个文件导出一个函数，往同一个演示文稿里加页。\n"
+    "3. 最后写一个很短的 build.js，依次调用它们、保存 .pptx，然后运行它。\n"
+    "单次输出太长会超时作废；分开写每份只要两三分钟，被退回时也只改出问题的那一份。"
+)
+
 MAX_BOUNCES = 2
+# 这一轮开始前就写好、之后没再动过的 PPT 不查：模型列目录或读旧脚本时会提到工作区里以前的文件，
+# 查它们既白占退回次数，又把模型引去改不相干的文件。留两分钟余量给时钟误差和刚交付的上一轮。
+STALE_BEFORE_TURN_S = 120
 _MAX_DECK_BYTES = 80 * 1024 * 1024
 _PROMPT_SHOWN_CHARS = 60
 _PROMPTS_LISTED = 8
@@ -114,6 +127,8 @@ def annotate(tool_name: str, args: object, result: str, turn: Optional[turns.Tur
         signature = _signature(path)
         if signature is None or turn.measured.get(key) == signature:
             continue  # unchanged since the last report: nothing new to say
+        if turn.started and signature[1] / 1e9 < turn.started - STALE_BEFORE_TURN_S:
+            continue  # an older deck this request only mentioned, not one it wrote
         turn.measured[key] = signature
         if signature[0] > _MAX_DECK_BYTES:
             continue

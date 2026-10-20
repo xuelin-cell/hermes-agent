@@ -14,7 +14,7 @@ import struct
 import zipfile
 from dataclasses import dataclass
 from io import BytesIO
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from . import deck_integrity
 
@@ -34,6 +34,10 @@ _CARD_MAX_SHARE = 0.6
 _CARD_MIN_ALPHA = 5000
 _CARD_TOLERANCE_IN = 0.05
 _SPILL_MIN_IN = 0.02
+# 图形挡字：不透明度至少 50%，盖住一行字至少三成高度，且图形至少一成半面积落在字上。
+_COVER_MIN_ALPHA = 50000
+_COVER_TEXT_SHARE = 0.3
+_COVER_SHAPE_SHARE = 0.15
 _EDGE_IN = 0.05
 _DEFAULT_SIDE_IN = 91440 / EMU
 _DEFAULT_TOP_IN = 45720 / EMU
@@ -56,6 +60,8 @@ _RUNAWAY_RE = re.compile(r'\b(?:cx|cy|x|y|blurRad)="(-?\d{12,}(?:\.\d+)?|-?\d+(?
 _TEXT_RE = re.compile(r"<a:t>([^<]*)</a:t>")
 _SIZED_RE = re.compile(r'<a:(?:rPr|endParaRPr)\b[^>]*\bsz="\d+"')
 _FILL_RE = re.compile(r"<a:(?:solidFill|gradFill)>")
+# 线条自己的颜色不算形状的填充。
+_LINE_RE = re.compile(r"<a:ln\b[^>]*/>|<a:ln\b[^>]*>.*?</a:ln>", re.DOTALL)
 _XFRM_RE = re.compile(
     r'<a:xfrm([^>]*)>\s*<a:off x="(-?\d+)" y="(-?\d+)"/>\s*<a:ext cx="(-?\d+)" cy="(-?\d+)"/>'
 )
@@ -86,6 +92,10 @@ _FIX = {
         "（10×5.625 是 LAYOUT_16x9），要么把所有坐标按页面比例放大重排。"
     ),
     "crowded": "把挤在一起的文字拉开：挪位置、缩短文字或调小字号。页码、页脚、图注不要和正文叠在一起。",
+    "covered_text": (
+        "图形压在了字上：把图形挪开或缩小，给标题和下面的元素之间留够空间；"
+        "图标放进卡片里或卡片旁边，不要和标题、正文叠在一起。"
+    ),
     "cropped": (
         "画框比例跟着图走：竖图配竖框、横图配横框；版式不好改时用 sizing type 'contain' 完整放下；"
         "确实要裁就按主体位置裁，cover 只裁正中间。"
@@ -336,6 +346,40 @@ def _spills(xml: str, page_w: float, page_h: float) -> List[Tuple[str, float]]:
     return spills
 
 
+def _covered(xml: str) -> List[Tuple[str, int]]:
+    """找出被后画的图形压住的文字，返回（示例文字, 压住它的图形个数）。
+
+    按绘制顺序看：后画的在上面。有填充（不透明度 50% 以上）的形状或图片，盖住某段文字至少三成高度、
+    且自身至少一成半面积落在字上，就算挡字。字下面先画的卡片、只有边框的框线、半透明的装饰不算。
+    模型看不到画面，纯图形（例如用小形状拼的图标）压到标题上时，只有这里能发现。
+    """
+    texts: List[_Block] = []
+    hits: Dict[str, int] = {}
+    for match in _SHAPE_RE.finditer(xml):
+        shape = match.group(0)
+        if "".join(_TEXT_RE.findall(shape)).strip():
+            texts.extend(_blocks(shape))
+            continue
+        box = _BOX_RE.search(shape)
+        if not box or not texts:
+            continue
+        geometry = _LINE_RE.sub("", shape.split("<p:txBody>", 1)[0])
+        alphas = [int(v) for v in _ALPHA_RE.findall(geometry)]
+        filled = match.group(1) == "pic" or bool(_FILL_RE.search(geometry))
+        if not filled or (alphas and max(alphas) < _COVER_MIN_ALPHA):
+            continue
+        x, y, w, h = (int(v) / EMU for v in box.groups())
+        if w <= 0 or h <= 0:
+            continue
+        for block in texts:
+            across = min(x + w, block.right) - max(x, block.left)
+            down = min(y + h, block.bottom) - max(y, block.top)
+            if across > 0 and down >= _COVER_TEXT_SHARE * (block.bottom - block.top) and across * down >= _COVER_SHAPE_SHARE * w * h:
+                hits[block.sample] = hits.get(block.sample, 0) + 1
+                break
+    return list(hits.items())
+
+
 def _extent(xml: str, page_w: float, page_h: float) -> Tuple[float, float]:
     """一页里元素最远伸到哪里（右边和下边），铺满整页的背景不算。"""
     right = bottom = 0.0
@@ -419,6 +463,8 @@ def measure(data: bytes) -> DeckReport:
                 problems.append(Problem(
                     number, "text_out_of_card", f"「{sample}」的文字超出了所在卡片的边（估计超出 {past:.2f} 英寸）",
                 ))
+        for sample, count in _covered(xml):
+            problems.append(Problem(number, "covered_text", f"「{sample}」被后画的 {count} 个图形压住了"))
         empty = sum(
             1 for shape in _SP_RE.findall(xml)
             if "<p:txBody>" in shape and "<p:ph" not in shape
