@@ -5,6 +5,15 @@ import { defineLocale } from './define-locale'
 import { introZh } from './intro-zh'
 
 export const zh = defineLocale({
+  workspaceEditor: {
+    title: '编辑器',
+    capabilities: '技能与工具',
+    openProject: '请先打开项目中的会话，再浏览和编辑文件。',
+    selectFile: '选择一个文件开始编辑。',
+    unsupported: '无法编辑二进制、截断或过大的文件。',
+    refresh: '刷新',
+    save: '保存'
+  },
   conversationShare: {
     sessionShare: '分享会话',
     responseShare: '分享回复',

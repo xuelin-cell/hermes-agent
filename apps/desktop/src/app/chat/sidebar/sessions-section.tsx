@@ -29,6 +29,7 @@ import {
 } from '@/store/layout'
 import { sessionPinId } from '@/store/session'
 import { $sessionDotStateById, hasLiveTurn } from '@/store/session-dot-state'
+import { $selectedWorkspaceMode } from '@/store/workspace-category'
 
 import { SidebarDateDivider, SidebarSectionMeta } from './chrome'
 import { GatewayProfileGroups } from './gateway-groups'
@@ -41,6 +42,7 @@ import {
   SidebarWorkspaceGroup,
   type SidebarWorkspaceTree
 } from './projects'
+import { CodeProjectGroup } from './projects/code-project-group'
 import { WorkspaceAddButton } from './projects/workspace-header'
 import { ReorderableList, useSortableBindings } from './reorderable-list'
 import { SidebarSessionSkeletons } from './section-states'
@@ -242,6 +244,7 @@ export function SidebarSessionsSection({
   card = false
 }: SidebarSessionsSectionProps) {
   const { t } = useI18n()
+  const codeProjects = useStore($selectedWorkspaceMode) === 'codex'
   const showAllSessions = useStore($sidebarShowAllSessions)
   const dividerLabels = t.sidebar.dateDivider
   const statusDividerLabels = t.sidebar.statusDivider
@@ -519,8 +522,8 @@ export function SidebarSessionsSection({
     // wired — Home stays outside the sortable list, it's a fixture.
     const home = projectOverview[0]?.isNoProject ? projectOverview[0] : undefined
     const sortableProjects = home ? projectOverview.slice(1) : projectOverview
-    const projectsDraggable = sortableProjects.length > 1 && !!onReorderProjects
-    const Row = projectsDraggable ? SortableProjectOverviewRow : ProjectOverviewRow
+    const projectsDraggable = !codeProjects && sortableProjects.length > 1 && !!onReorderProjects
+    const Row = codeProjects ? CodeProjectGroup : projectsDraggable ? SortableProjectOverviewRow : ProjectOverviewRow
 
     const projectRow = (project: SidebarProjectTree, Component: typeof ProjectOverviewRow) => (
       <Component
@@ -537,7 +540,7 @@ export function SidebarSessionsSection({
         // preview rows instead of the live overlay.
         previewSessions={projectOverviewPreviews?.[project.id]}
         project={project}
-        renderRows={showAllSessions ? items => renderPreviewRows(items, project.id) : renderRows}
+        renderRows={!codeProjects && showAllSessions ? items => renderPreviewRows(items, project.id) : renderRows}
       />
     )
 
@@ -545,7 +548,7 @@ export function SidebarSessionsSection({
 
     inner = (
       <>
-        {home && projectRow(home, ProjectOverviewRow)}
+        {home && projectRow(home, codeProjects ? CodeProjectGroup : ProjectOverviewRow)}
         {projectsDraggable && onReorderProjects ? (
           <ReorderableList
             ids={sortableProjects.map(project => project.id)}

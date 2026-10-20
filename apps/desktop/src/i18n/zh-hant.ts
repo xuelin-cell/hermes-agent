@@ -29,6 +29,15 @@ export const zhHant = defineLocale({
       untested: '尚未測試連線'
     }
   },
+  workspaceEditor: {
+    title: '編輯器',
+    capabilities: '技能與工具',
+    openProject: '請先開啟專案中的對話，再瀏覽及編輯檔案。',
+    selectFile: '選擇檔案開始編輯。',
+    unsupported: '無法編輯二進位、截斷或過大的檔案。',
+    refresh: '重新整理',
+    save: '儲存'
+  },
   conversationShare: {
     sessionShare: '分享對話',
     responseShare: '分享回覆',

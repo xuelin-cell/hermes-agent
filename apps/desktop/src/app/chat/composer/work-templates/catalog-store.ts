@@ -1,4 +1,4 @@
-import { atom } from 'nanostores'
+import { atom, computed } from 'nanostores'
 
 import { readKey, writeKey } from '@/lib/storage'
 
@@ -12,31 +12,41 @@ import english from './catalog.en.json'
 import chinese from './catalog.zh-CN.json'
 
 interface CatalogState {
-  modules: WelcomeModule[]
+  modules: WelcomeModule[] | null
   status: 'loading' | 'ready' | 'cached'
+  version?: string
 }
 
 // v1 could cache the old main process's category array as top-level modules.
-const KEY = 'uniwork.welcome.modules.v2.'
+const KEY = 'uniwork.welcome.modules.v3.'
 
 /** 磁盘缓存损坏时使用随应用提供的完整目录，不阻塞新对话。 */
 function initial(locale: WelcomeLocale): CatalogState {
-  let modules: WelcomeModule[]
-
   try {
     const saved = readKey(KEY + locale)
-    modules = normalizeWelcomeCatalog(saved ? JSON.parse(saved) : locale === 'zh-CN' ? chinese : english)
-  } catch {
-    modules = normalizeWelcomeCatalog(locale === 'zh-CN' ? chinese : english)
-  }
+    const payload = saved ? JSON.parse(saved) : locale === 'zh-CN' ? chinese : english
 
-  return { modules, status: 'cached' }
+    return { modules: normalizeWelcomeCatalog(payload), version: payload.version, status: 'cached' }
+  } catch {
+    return { modules: normalizeWelcomeCatalog(locale === 'zh-CN' ? chinese : english), status: 'cached' }
+  }
 }
 
 export const $welcomeCatalog = atom<Record<WelcomeLocale, CatalogState>>({
   'zh-CN': initial('zh-CN'),
   en: initial('en')
 })
+
+function resolvedCatalog(locale: WelcomeLocale) {
+  const fallback = locale === 'zh-CN' ? 'en' : 'zh-CN'
+
+  return computed($welcomeCatalog, catalog => ({
+    ...(catalog[locale].modules == null ? catalog[fallback] : catalog[locale]),
+    modules: catalog[locale].modules ?? catalog[fallback].modules ?? []
+  }))
+}
+
+export const $resolvedWelcomeCatalog = { 'zh-CN': resolvedCatalog('zh-CN'), en: resolvedCatalog('en') }
 const pending = new Map<WelcomeLocale, Promise<void>>()
 const updated = new Map<WelcomeLocale, number>()
 
@@ -64,8 +74,26 @@ export function loadWelcomeCatalog(locale: WelcomeLocale, force = false): Promis
     try {
       const raw = await request(locale)
       const modules = normalizeWelcomeCatalog(raw)
-      writeKey(KEY + locale, JSON.stringify(raw))
-      $welcomeCatalog.set({ ...$welcomeCatalog.get(), [locale]: { modules, status: 'ready' } })
+
+      if (!modules.length) {
+        throw new Error('欢迎配置没有可用模块')
+      }
+
+      const previous = $welcomeCatalog.get()[locale]
+      const unchanged = !!raw.version && raw.version === previous.version
+
+      if (!unchanged) {
+        writeKey(KEY + locale, JSON.stringify(raw))
+      }
+
+      $welcomeCatalog.set({
+        ...$welcomeCatalog.get(),
+        [locale]: {
+          modules: unchanged ? previous.modules : modules,
+          version: raw.version,
+          status: 'ready'
+        }
+      })
     } catch {
       $welcomeCatalog.set({
         ...$welcomeCatalog.get(),

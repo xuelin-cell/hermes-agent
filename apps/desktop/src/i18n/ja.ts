@@ -5,6 +5,15 @@ import { defineLocale } from './define-locale'
 import { introJa } from './intro-ja'
 
 export const ja = defineLocale({
+  workspaceEditor: {
+    title: 'エディター',
+    capabilities: 'スキルとツール',
+    openProject: 'プロジェクトの会話を開いてファイルを参照してください。',
+    selectFile: '編集するファイルを選択してください。',
+    unsupported: 'バイナリ、省略された大きなファイルは編集できません。',
+    refresh: '更新',
+    save: '保存'
+  },
   conversationShare: {
     sessionShare: '会話を共有',
     responseShare: '回答を共有',

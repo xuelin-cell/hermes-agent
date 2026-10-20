@@ -4,6 +4,15 @@ import { FIELD_DESCRIPTIONS, FIELD_LABELS } from '@/app/settings/constants'
 import type { Translations } from './types'
 
 export const en: Translations = {
+  workspaceEditor: {
+    title: 'Editor',
+    capabilities: 'Skills & tools',
+    openProject: 'Open a project conversation to browse its files.',
+    selectFile: 'Select a file to edit.',
+    unsupported: 'Binary, truncated, or large files cannot be edited here.',
+    refresh: 'Refresh',
+    save: 'Save'
+  },
   conversationShare: {
     sessionShare: 'Share conversation',
     responseShare: 'Share response',

@@ -49,13 +49,13 @@ export function installAccountIpc(
     })
   }
 
-  const catalog = new WelcomeCatalogClient()
+  const catalog = new WelcomeCatalogClient(undefined, readIdentity)
   ipcMain.handle(WELCOME_CATALOG_CHANNEL, async (event, ...args) => {
     if (!trusted(event, []) || args.length !== 1 || !['zh-CN', 'en'].includes(args[0])) {
       throw new Error('办公模板请求无效。')
     }
 
-    return { modules: await catalog.load(args[0]) }
+    return catalog.load(args[0])
   })
 
   const drive = sharedDrive ?? (readIdentity ? new CloudDriveClient(readIdentity) : null)

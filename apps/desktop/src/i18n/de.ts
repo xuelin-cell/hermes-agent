@@ -5,6 +5,15 @@ import { defineLocale, type TranslationOverrides } from './define-locale'
 import { introDe } from './intro-de'
 
 export const deOverrides = {
+  workspaceEditor: {
+    title: 'Editor',
+    capabilities: 'Fähigkeiten und Werkzeuge',
+    openProject: 'Öffnen Sie eine Projektunterhaltung, um Dateien zu durchsuchen.',
+    selectFile: 'Wählen Sie eine Datei zum Bearbeiten.',
+    unsupported: 'Binäre, gekürzte oder große Dateien können hier nicht bearbeitet werden.',
+    refresh: 'Aktualisieren',
+    save: 'Speichern'
+  },
   conversationShare: {
     sessionShare: 'Unterhaltung teilen',
     responseShare: 'Antwort teilen',

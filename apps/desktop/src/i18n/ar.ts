@@ -2,6 +2,15 @@ import { messagingConnectionCopy } from './messaging-connection'
 import { defineLocale } from './define-locale'
 
 export const ar = defineLocale({
+  workspaceEditor: {
+    title: 'المحرر',
+    capabilities: 'المهارات والأدوات',
+    openProject: 'افتح محادثة مشروع لتصفح ملفاته.',
+    selectFile: 'اختر ملفًا لتحريره.',
+    unsupported: 'لا يمكن تحرير الملفات الثنائية أو المقتطعة أو الكبيرة هنا.',
+    refresh: 'تحديث',
+    save: 'حفظ'
+  },
   conversationShare: {
     sessionShare: 'مشاركة المحادثة',
     responseShare: 'مشاركة الرد',
