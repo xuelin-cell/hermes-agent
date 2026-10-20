@@ -251,14 +251,23 @@ def _file_metadata(resolved: str) -> tuple | None:
 
 
 def _file_version(resolved: str) -> tuple | None:
-    """A byte snapshot, not just mtime (editors/copy tools can preserve that)."""
+    """A byte snapshot, not just mtime (editors/copy tools can preserve that).
+
+    Metadata comes from ``os.stat`` of the path both times, the same call
+    ``_file_metadata`` makes; the opened handle only has to be that file (dev/ino).
+    Windows reports a different ``st_ctime_ns`` from ``fstat`` than from ``stat`` of
+    the same file, so comparing the two never matched there and no read or write
+    baseline was ever recorded: every overwrite of a file the task had just written
+    or fully read was refused.
+    """
     try:
-        if not stat.S_ISREG(os.stat(resolved).st_mode):
+        before = os.stat(resolved)
+        if not stat.S_ISREG(before.st_mode):
             return None
         fd = os.open(resolved, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0))
         with os.fdopen(fd, "rb") as stream:
-            before = os.fstat(stream.fileno())
-            if not stat.S_ISREG(before.st_mode):
+            handle = os.fstat(stream.fileno())
+            if not stat.S_ISREG(handle.st_mode) or (handle.st_dev, handle.st_ino) != (before.st_dev, before.st_ino):
                 return None
             digest = hashlib.file_digest(stream, "sha256").digest()
             after = os.stat(resolved)
