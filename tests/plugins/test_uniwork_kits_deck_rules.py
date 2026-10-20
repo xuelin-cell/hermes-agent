@@ -52,6 +52,19 @@ def test_a_shape_drawn_over_a_title_is_sent_back_but_a_card_under_text_is_not(ki
     assert not any(item.kind == "covered_text" for item in report.problems), report.as_text()
 
 
+def test_program_values_left_on_a_slide_are_sent_back_but_prose_is_not(kits, tmp_path):
+    """页面上留着 [object Object]、或中文里夹着 NaN：脚本取数据写错了，必须改；英文正文里正常出现 undefined 不算。"""
+    for text in ("[object Object],[object Object]", "同比增长NaN%"):
+        deck = tmp_path / "bad.pptx"
+        _deck_with(deck, slide_extra=_line(11, 1.0, text))
+        report = kits.deck_geometry.measure(deck.read_bytes())
+        assert any(item.kind == "bad_text" for item in report.problems), text
+
+    prose = tmp_path / "prose.pptx"
+    _deck_with(prose, slide_extra=_line(11, 1.0, "Avoid undefined behavior in C"))
+    assert not any(item.kind == "bad_text" for item in kits.deck_geometry.measure(prose.read_bytes()).problems)
+
+
 def test_an_old_deck_this_request_only_mentions_is_not_checked(kits, tmp_path):
     """工作区里以前的 PPT 只是被提到、没被改：不检查，不占退回次数；这一轮重写之后照常检查。"""
     kits.turns.clear()

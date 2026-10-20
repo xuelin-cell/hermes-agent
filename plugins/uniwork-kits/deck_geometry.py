@@ -58,6 +58,10 @@ _FRACTIONAL_RE = re.compile(r'\b(?:cx|cy|x|y)="-?\d+\.\d+"')
 _NEGATIVE_RE = re.compile(r'<a:(?:ext|chExt)\b[^>]*\b(cx|cy)="(-\d+)"')
 _RUNAWAY_RE = re.compile(r'\b(?:cx|cy|x|y|blurRad)="(-?\d{12,}(?:\.\d+)?|-?\d+(?:\.\d+)?[eE]\+\d+)"')
 _TEXT_RE = re.compile(r"<a:t>([^<]*)</a:t>")
+# 脚本把程序的值原样写进了页面：对象、未定义、算不出的数。「[object Object]」在哪都是错；
+# undefined / NaN 只在一段文字就是它、或者紧挨着中文时算，英文正文里正常出现的这个词不算。
+_OBJECT_TEXT_RE = re.compile(r"\[object [A-Za-z]+\]")
+_BARE_VALUE_RE = re.compile(r"^\s*(?:undefined|NaN|null|Infinity)\s*$|(?<=[\u4e00-\u9fff%])(?:undefined|NaN)|(?:undefined|NaN)(?=[\u4e00-\u9fff%])")
 _SIZED_RE = re.compile(r'<a:(?:rPr|endParaRPr)\b[^>]*\bsz="\d+"')
 _FILL_RE = re.compile(r"<a:(?:solidFill|gradFill)>")
 # 线条自己的颜色不算形状的填充。
@@ -105,6 +109,10 @@ _FIX = {
         "卡片高度按文字实际行数留够（中文每行字数 ≈ 框宽英寸 × 72 ÷ 字号）。"
     ),
     "empty_text": "空文字框多半是取文字的变量名或数组下标写错了，对照数据改好，生成后核对这些框有字。",
+    "bad_text": (
+        "页面上出现了程序的值：[object Object] 是把对象或数组当成文字传了进去，要取它的字段（如 item.title）"
+        "或把数组逐条拼成文字；undefined / NaN 是变量名、字段名或下标写错，或者拿空值算数。对照数据改好再生成。"
+    ),
     "fractional_emu": "坐标用英寸，让 pptxgenjs 自己换算。不要把英寸乘 96，小数 EMU 会让 PowerPoint 拒绝打开。",
     "negative_size": "宽高不能是负数：往上斜的线把 y 设在下端、h 写正数并加 flipV: true，往左斜的加 flipH: true。",
     "runaway_number": (
@@ -472,6 +480,9 @@ def measure(data: bytes) -> DeckReport:
         )
         if empty:
             problems.append(Problem(number, "empty_text", f"有 {empty} 个文字框是空的：设了字号，却一个字都没有"))
+        bad = [text for text in _TEXT_RE.findall(xml) if _OBJECT_TEXT_RE.search(text) or _BARE_VALUE_RE.search(text)]
+        if bad:
+            problems.append(Problem(number, "bad_text", f"有 {len(bad)} 处文字是程序的值，例如「{bad[0].strip()[:30]}」"))
         rel_map = dict(_REL_RE.findall(rels))
         for match in _SHAPE_RE.finditer(xml):
             shape = match.group(0)
