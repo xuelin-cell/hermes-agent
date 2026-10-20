@@ -32,7 +32,7 @@ UID 原文不成为路径组件。主进程只接受有效 `LoginSession` 的身
 - 8 个定向组件文件、29 项通过，覆盖数据根、A→B→A 文件隔离、完整身份校验、目录联接拒绝、桌面状态／分区、会话工作目录及长路径报错。改名前新断言实际失败 2 项，改后通过。
 - 隔离原生检查最终 3 项通过：默认 `userData` 与 `sessionData` 都位于 `appData/uniworker`；P14 跨进程 A→B→A 准备、失败退出及重开；G04 完整桌面与原版后端状态接口可用。MaaS 响应受控，不调用真实短信或付费模型。命令为桌面目录下 `node --test --test-name-pattern="真实未登录入口|P14 真实登录入口" scripts/login-bootstrap.native.mjs` 和 `node --test --test-name-pattern="G04 原生桌面" scripts/messaging-restore.native.mjs`；P14 最后单独复测通过。
 - 原生夹具补入当前随包分享插件资源，并将两处图片定位明确为验证码。补齐后 P14 合组仍出现一次调试连接的 `Resulting promise was garbage collected`，单独复测原断言通过；不记为首次整组全绿。G04 退出时仍打印迟到请求的 `Hermes Desktop is quitting`，不宣称日志无告警。
-- 修改的 TS 文件 ESLint 零警告，相关格式、四个脚本语法、启动脚本语法及 `git diff --check` 通过。Electron 全量类型检查仍被既有 `migrate-old-uniwork.test.ts:27` 的 TS2345 阻断，本次不修改该模块。
+- 修改的 TS 文件 ESLint 零警告，相关格式、四个脚本语法、启动脚本语法及 `git diff --check` 通过。Electron 类型检查初次被既有 `migrate-old-uniwork.test.ts:27` 的 TS2345 阻断，后续已补齐测试辅助函数类型和缺失的夹具目录，迁移业务逻辑未变。修复后迁移测试 9 项、完整 `npm run typecheck`、开发启动所用 `tsc --build tsconfig.electron.json` 及隔离目录中的开发主进程／preload 打包均通过。
 - 未重做 Python 冷下载／解压、专家首次安装、真实 IM 网关、真实账号聊天和安装包验收；路径缩短与组件通过不代替这些场景。旧数据未搬动或删除。
 
 ## P12 · MaaS 模型配置

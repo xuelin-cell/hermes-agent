@@ -6,21 +6,21 @@ import * as path from 'node:path'
 import { test } from 'vitest'
 
 import {
-  MIGRATE_SUBDIRS,
-  MIGRATION_COMPLETED_MARKER,
-  MIGRATION_LOG_FILE,
-  MIGRATION_TARGET_DIR,
   copyTreeNoOverwrite,
   detectOldUniworkUserData,
-  migrateOldUniworkData
+  MIGRATE_SUBDIRS,
+  migrateOldUniworkData,
+  MIGRATION_COMPLETED_MARKER,
+  MIGRATION_LOG_FILE,
+  MIGRATION_TARGET_DIR
 } from './migrate-old-uniwork.mjs'
 
-const WIN_ENV = { APPDATA: 'C:\\Users\\test\\AppData\\Roaming' }
-
-async function makeTree(root, structure) {
+/** 在临时根目录创建测试文件树，并补齐每个文件的父目录。 */
+async function makeTree(root: string, structure: Record<string, string>): Promise<void> {
   for (const [rel, content] of Object.entries(structure)) {
     const full = path.join(root, rel)
     await fs.mkdir(path.dirname(full), { recursive: true })
+
     if (content === 'dir') {
       await fs.mkdir(full, { recursive: true })
     } else {
@@ -39,6 +39,7 @@ test('detectOldUniworkUserData returns null when APPDATA unset', async () => {
 
 test('detectOldUniworkUserData returns path when dir exists on win32', async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'uniwork-src-'))
+  await fs.mkdir(path.join(dir, 'uniwork'))
   const detected = await detectOldUniworkUserData({ APPDATA: dir }, 'win32')
   assert.equal(detected, path.join(dir, 'uniwork'))
 })
@@ -66,6 +67,7 @@ test('migrateOldUniworkData copies all four subdirs and writes marker + log', as
   })
 
   const newApp = await fs.mkdtemp(path.join(os.tmpdir(), 'newapp-'))
+
   const result = await migrateOldUniworkData(newApp, {
     env: { APPDATA: appdataRoot },
     platform: 'win32'
@@ -80,6 +82,7 @@ test('migrateOldUniworkData copies all four subdirs and writes marker + log', as
     const stat = await fs.stat(path.join(target, sub))
     assert.equal(stat.isDirectory(), true, `${sub} should be a directory`)
   }
+
   // Out-of-scope config.json must not exist in target.
   await assert.rejects(() => fs.stat(path.join(target, 'config.json')))
 
@@ -94,8 +97,7 @@ test('migrateOldUniworkData copies all four subdirs and writes marker + log', as
 test('migrateOldUniworkData skips when .migration_completed already exists', async () => {
   const appdataRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'appdata-'))
   const oldUserData = path.join(appdataRoot, 'uniwork')
-  await fs.mkdir(oldUserData, { recursive: true })
-  await fs.writeFile(path.join(oldUserData, 'uploads', 'u.txt'), 'upload\n', 'utf8')
+  await makeTree(oldUserData, { [path.join('uploads', 'u.txt')]: 'upload\n' })
 
   const newApp = await fs.mkdtemp(path.join(os.tmpdir(), 'newapp-'))
   const target = path.join(newApp, MIGRATION_TARGET_DIR)
@@ -118,10 +120,10 @@ test('migrateOldUniworkData skips missing source subdirs without erroring', asyn
   // Only create one of the four subdirs; the others are absent.
   const appdataRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'appdata-'))
   const oldUserData = path.join(appdataRoot, 'uniwork')
-  await fs.mkdir(oldUserData, { recursive: true })
-  await fs.writeFile(path.join(oldUserData, 'shares', 'sh.json'), '{}\n', 'utf8')
+  await makeTree(oldUserData, { [path.join('shares', 'sh.json')]: '{}\n' })
 
   const newApp = await fs.mkdtemp(path.join(os.tmpdir(), 'newapp-'))
+
   const result = await migrateOldUniworkData(newApp, {
     env: { APPDATA: appdataRoot },
     platform: 'win32'
@@ -149,20 +151,17 @@ test('copyTreeNoOverwrite does not overwrite existing target files', async () =>
   assert.equal(content, 'DST\n')
 })
 
-test('migrateOldUniworkData marks complete even when a subdir fails', async () => {
+test('migrateOldUniworkData skips source files and completes valid subdirectory copies', async () => {
   const appdataRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'appdata-'))
   const oldUserData = path.join(appdataRoot, 'uniwork')
-  await fs.mkdir(oldUserData, { recursive: true })
-  // Create a source file whose name collides with a directory we will place in
-  // the target — forcing copyTreeNoOverwrite's copyFile path to fail against
-  // an existing directory entry of the wrong type is hard, so instead we
-  // inject a failure by pointing env.APPDATA at a tree and then removing read
-  // perms. Simpler: make one subdir a regular file (stat.isDirectory() false)
-  // → copyTreeNoOverwrite will throw on fs.readdir.
-  await fs.writeFile(path.join(oldUserData, 'conversations'), 'not-a-dir\n', 'utf8')
-  await fs.writeFile(path.join(oldUserData, 'uploads', 'u.txt'), 'upload\n', 'utf8')
+  // conversations 是普通文件，应被跳过；有效 uploads 目录仍应正常复制。
+  await makeTree(oldUserData, {
+    conversations: 'not-a-dir\n',
+    [path.join('uploads', 'u.txt')]: 'upload\n'
+  })
 
   const newApp = await fs.mkdtemp(path.join(os.tmpdir(), 'newapp-'))
+
   const result = await migrateOldUniworkData(newApp, {
     env: { APPDATA: appdataRoot },
     platform: 'win32'
