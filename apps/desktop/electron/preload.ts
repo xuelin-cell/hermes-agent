@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   // 只读脱敏账号信息，页面不能传入身份或账号路径。
   getPlanUsage: () => ipcRenderer.invoke(PLAN_USAGE_CHANNEL),
   getMaasAccount: () => ipcRenderer.invoke('hermes:maas-account:get'),
+  reconnectUniAgentGate: (profile?: string) => ipcRenderer.invoke('hermes:uniagentgate:reconnect', profile),
   cloudDriveRequest: (input: CloudDriveRequest) => ipcRenderer.invoke('hermes:maas-drive:request', input),
   /** 仅读取固定语言的办公模板目录，不接收请求地址或凭据。 */
   getWelcomeCatalog: locale => ipcRenderer.invoke(WELCOME_CATALOG_CHANNEL, locale),

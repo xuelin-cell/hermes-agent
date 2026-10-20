@@ -42,6 +42,7 @@ declare global {
       /** 仅返回当前账号套餐展示信息，不接受页面身份参数。 */
       getPlanUsage?: () => Promise<PlanUsageResult>
       getMaasAccount: () => Promise<LoginAccount | null>
+      reconnectUniAgentGate?: (profile?: string) => Promise<import('../electron/entry_local/uniagentgate-contract').UniAgentGateReconnectResult>
       conversationShare: ConversationShareApi
       artifactShare: {
         inspect: (key: string) => Promise<{ key: string; shareId: string; url: string; title: string; hash: string; version: number; updatedAt: string } | null>

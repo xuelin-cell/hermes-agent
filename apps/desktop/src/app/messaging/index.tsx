@@ -21,7 +21,7 @@ import { PAGE_INSET_X } from '../layout-constants'
 import { PageSearchShell } from '../page-search-shell'
 import type { SetStatusbarItemGroup } from '../shell/statusbar-controls'
 
-import { CREDENTIAL_KEYS, PLATFORM_IDS, PlatformCard, type PlatformId } from './platform-card'
+import { CREDENTIAL_KEYS, DISPLAY_PLATFORM_IDS, PlatformCard, type PlatformId } from './platform-card'
 import { PlatformConfigDialog } from './platform-config-dialog'
 import { WeixinQrSetup } from './weixin-qr-setup'
 
@@ -44,6 +44,7 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
   const [query, setQuery] = useState('')
   const [loadError, setLoadError] = useState(false)
   const [restartNeeded, setRestartNeeded] = useState(false)
+  const [rcsReconnecting, setRcsReconnecting] = useState(false)
   const [configuring, setConfiguring] = useState<Exclude<PlatformId, 'weixin'> | null>(null)
   const [disconnecting, setDisconnecting] = useState<MessagingPlatformInfo | null>(null)
   const gatewayRestarting = useStore($gatewayRestarting)
@@ -63,7 +64,7 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
         return
       }
 
-      setPlatforms(result.platforms.filter(platform => PLATFORM_IDS.includes(platform.id as PlatformId)))
+      setPlatforms(result.platforms.filter(platform => DISPLAY_PLATFORM_IDS.some(id => id === platform.id)))
       setLoadError(false)
     } catch {
       if (revision === revisionRef.current) {
@@ -203,6 +204,48 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
   }
 
   const selected = platforms?.find(platform => platform.id === configuring)
+
+  /** 只请求当前账号的 5G 连接恢复，不用整网关重启代替单平台重连。 */
+  async function reconnectRcs() {
+    if (rcsReconnecting) {
+      return
+    }
+
+    setRcsReconnecting(true)
+
+    try {
+      const result = await window.hermesDesktop?.reconnectUniAgentGate?.(scopeProfile)
+
+      if ($settingsRequestProfile.get() !== scopeProfile) {
+        return
+      }
+
+      const status = result?.status ?? 'restart_required'
+
+      const messages = {
+        connected: m.cards.reconnected,
+        connecting: m.connectingLive,
+        busy: m.cards.reconnectBusy,
+        unbound: m.cards.personalBindingMissing,
+        failed: m.cards.reconnectFailed,
+        unavailable: m.cards.reconnectFailed,
+        stopped: m.cards.reconnectFailed,
+        restart_required: m.cards.reconnectRestartRequired
+      }
+
+      notify({
+        kind: status === 'connected' || status === 'connecting' ? 'success' : 'error',
+        title: m.cards.titles.uniagentgate,
+        message: messages[status]
+      })
+      await refresh()
+    } catch {
+      notify({ kind: 'error', title: m.cards.titles.uniagentgate, message: m.cards.reconnectFailed })
+    } finally {
+      setRcsReconnecting(false)
+    }
+  }
+
   const search = query.trim().toLocaleLowerCase()
 
   return (
@@ -239,55 +282,69 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
           {!platforms && !loadError ? (
             <PageLoader label={m.loading} />
           ) : (
-            [...PLATFORM_IDS, 'uniagentgate' as const]
-              .filter(
-                id =>
-                  !search || (m.cards.titles[id] + ' ' + m.cards.descriptions[id]).toLocaleLowerCase().includes(search)
-              )
-              .map(id => {
-                const platform = platforms?.find(row => row.id === id)
+            DISPLAY_PLATFORM_IDS.filter(
+              id =>
+                !search || (m.cards.titles[id] + ' ' + m.cards.descriptions[id]).toLocaleLowerCase().includes(search)
+            ).map(id => {
+              const platform = platforms?.find(row => row.id === id)
 
-                if (id === 'weixin' && platform) {
-                  return (
-                    <WeixinQrSetup
-                      key={id}
-                      onSaved={result => void settleWeixin(result, platform.name)}
-                      onUnbound={result => void settleWeixin(result, platform.name, true)}
-                      platform={platform}
-                      scopeProfile={scopeProfile}
-                    />
-                  )
-                }
+              const rcsRetryAllowed = platform?.configured && platform.enabled &&
+                (!platform.gateway_running || ['fatal', 'startup_failed', 'error', 'stopped', 'disconnected', 'paused']
+                  .includes(platform.state ?? ''))
 
+              if (id === 'weixin' && platform) {
                 return (
-                  <PlatformCard
-                    actions={
-                      id !== 'uniagentgate' && (
-                        <>
-                          <Button
-                            disabled={!platform}
-                            onClick={() => setConfiguring(id as Exclude<PlatformId, 'weixin'>)}
-                            size="sm"
-                            variant="outline"
-                          >
-                            {m.cards.configure}
-                          </Button>
-                          {platform?.configured && (
-                            <Button onClick={() => setDisconnecting(platform)} size="sm" variant="outline">
-                              {m.cards.unbind}
-                            </Button>
-                          )}
-                        </>
-                      )
-                    }
-                    id={id}
+                  <WeixinQrSetup
                     key={id}
+                    onSaved={result => void settleWeixin(result, platform.name)}
+                    onUnbound={result => void settleWeixin(result, platform.name, true)}
                     platform={platform}
-                  >
-                    {platform?.error_message && <ErrorBanner className="mt-3">{platform.error_message}</ErrorBanner>}
-                  </PlatformCard>
+                    scopeProfile={scopeProfile}
+                  />
                 )
-              })
+              }
+
+              return (
+                <PlatformCard
+                  actions={
+                    id === 'uniagentgate' ? (
+                      rcsRetryAllowed ? (
+                        <Button disabled={rcsReconnecting ||
+                          (scopeProfile !== undefined && scopeProfile !== 'default')}
+                          onClick={() => void reconnectRcs()} size="sm" variant="outline">
+                          {rcsReconnecting ? m.cards.reconnecting : m.cards.reconnect}
+                        </Button>
+                      ) : (
+                        <Button disabled size="sm" variant="outline">
+                          {m.cards.unbind}
+                        </Button>
+                      )
+                    ) : (
+                      <>
+                        <Button
+                          disabled={!platform}
+                          onClick={() => setConfiguring(id as Exclude<PlatformId, 'weixin'>)}
+                          size="sm"
+                          variant="outline"
+                        >
+                          {m.cards.configure}
+                        </Button>
+                        {platform?.configured && (
+                          <Button onClick={() => setDisconnecting(platform)} size="sm" variant="outline">
+                            {m.cards.unbind}
+                          </Button>
+                        )}
+                      </>
+                    )
+                  }
+                  id={id}
+                  key={id}
+                  platform={platform}
+                >
+                  {platform?.error_message && <ErrorBanner className="mt-3">{platform.error_message}</ErrorBanner>}
+                </PlatformCard>
+              )
+            })
           )}
         </div>
       </div>

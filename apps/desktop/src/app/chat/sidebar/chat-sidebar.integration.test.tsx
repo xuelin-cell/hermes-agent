@@ -167,7 +167,7 @@ describe('ChatSidebar navigation activity', () => {
     for (const [pathname, currentView, label] of [
       ['/capabilities', 'capabilities', 'Capabilities'],
       ['/messaging', 'messaging', 'Messaging'],
-      ['/artifacts', 'artifacts', 'Artifacts'],
+      ['/artifacts', 'artifacts', 'Library'],
       ['/cron', 'cron', 'Scheduled jobs']
     ] as const) {
       cleanup()
@@ -413,6 +413,25 @@ describe('ChatSidebar empty-profile sections', () => {
 
     expect(container.textContent).toContain('No sessions yet')
     expect(screen.queryByPlaceholderText('Search sessions…')).toBeNull()
+  })
+
+  it('shows RCS history in its own collapsible platform section beside local chats and WeChat', () => {
+    $sessions.set([makeSessionInfo({ id: 'local-chat', source: 'desktop', title: 'Local conversation' })])
+    $messagingSessions.set([
+      makeSessionInfo({ id: 'rcs-history', connection_id: 'local', profile: 'default', source: 'uniagentgate', title: 'RCS history' }),
+      makeSessionInfo({ id: 'wechat-history', connection_id: 'local', profile: 'default', source: 'weixin', title: 'WeChat history' })
+    ])
+    $sidebarMessagingOpenIds.set(['uniagentgate', 'weixin'])
+    renderSidebar('/', 'chat')
+    const section = screen.getByText('5G 消息').closest('[data-slot="sidebar-group"]')!
+    expect(within(section as HTMLElement).getByText('RCS history')).toBeTruthy()
+    expect(within(section as HTMLElement).queryByText('Local conversation')).toBeNull()
+    expect(within(section as HTMLElement).queryByText('WeChat history')).toBeNull()
+    expect(screen.getAllByText('WeChat').length).toBeGreaterThan(0)
+    expect(screen.getByText('Local conversation')).toBeTruthy()
+    fireEvent.click(within(section as HTMLElement).getByRole('button', { name: '5G 消息' }))
+    expect(within(section as HTMLElement).queryByText('RCS history')).toBeNull()
+    expect(screen.getByText('WeChat history')).toBeTruthy()
   })
 })
 

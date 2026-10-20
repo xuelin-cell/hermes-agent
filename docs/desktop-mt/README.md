@@ -45,6 +45,8 @@
 
 ## 文档
 
+- [5G 消息迁移进度](uniagentgate-migration-progress.md)（协议、登录绑定、网关启动、附件媒体和单平台重连，以及验证限制与剩余任务）
+- [5G 消息完整迁移方案](uniagentgate-migration-plan.md)（UniClaw 来源清单、Hermes 接入点与分阶段范围）
 - [消息平台界面：阶段一](09-messaging-ui.md)（卡片、必要凭据弹窗和微信内联扫码；自动恢复网关与重启优化不在本轮范围）
 - [连接器 MCP 适配实施计划](06-mcp-connectors-plan.md)（M01～M05 实现完成；M06 模拟回归与文档收尾完成，真实元景连接和模型调用待人工验收）
 - [聊天区工作目录选择](07-chat-workdir.md)（已实现，定向检查通过；真实账号使用待人工验收）
