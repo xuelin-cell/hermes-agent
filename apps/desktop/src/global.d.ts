@@ -20,7 +20,7 @@ import type { PoolLimits } from '../electron/pool-limits'
 import type { PreviewExport, PreviewExportResult } from '../electron/preview-export'
 import type { UniworkAsrBridge } from '../electron/uniwork-asr/contract'
 import type { PlanSubscriptionResult, PlanUsageResult } from '../electron/uniwork-usage/contract'
-import type { WelcomeCategory, WelcomeLocale } from '../electron/uniwork-welcome/catalog'
+import type { WelcomeModule, WelcomeLocale } from '../electron/uniwork-welcome/catalog'
 import type { GrowRequest } from '../electron/window-growth'
 
 import type { WakeIndicatorState } from './lib/wake-indicator'
@@ -59,7 +59,7 @@ declare global {
       }
       cloudDriveRequest: (input: CloudDriveRequest) => Promise<unknown>
       /** 取得完整办公目录；主进程负责认证和校验配置。 */
-      getWelcomeCatalog?: (locale: WelcomeLocale) => Promise<WelcomeCategory[]>
+      getWelcomeCatalog?: (locale: WelcomeLocale) => Promise<{ modules: WelcomeModule[] }>
       uniworkAsr?: UniworkAsrBridge
       cloudDriveAgentReady: (profile: string) => Promise<boolean>
       cloudDriveTransfer: (input: CloudDriveTransferRequest) => Promise<CloudDriveTransferResult>

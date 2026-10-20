@@ -195,7 +195,7 @@ it('办公目录仅允许当前桌面主框架选择固定语言，不接受地�
   await expect(invoke({ sender, senderFrame: frame }, 'zh-CN', 'forged-key')).rejects.toThrow('请求无效')
   await expect(invoke({ sender, senderFrame: frame }, 'https://untrusted.example/')).rejects.toThrow('请求无效')
   expect(identity).not.toHaveBeenCalled()
-  await expect(invoke({ sender, senderFrame: frame }, 'zh-CN')).rejects.toThrow('请重新登录')
+  await expect(invoke({ sender, senderFrame: frame }, 'zh-CN')).rejects.toThrow('更新失败')
 })
 
 it('语音身份保持第六个参数，办公模板和云盘传输在同一次安装中同时可用', async () => {
@@ -220,7 +220,7 @@ it('语音身份保持第六个参数，办公模板和云盘传输在同一次�
   expect(readAsrIdentity).toHaveBeenCalledOnce()
   await expect(handlers.get('hermes:maas-drive:transfer')!({ sender, senderFrame: {} }, {})).rejects.toThrow('请求无效')
   active = false
-  await expect(handlers.get('hermes:uniwork-welcome:catalog')!(event, 'zh-CN')).rejects.toThrow('请重新登录')
+  await expect(handlers.get('hermes:uniwork-welcome:catalog')!(event, 'zh-CN')).rejects.toThrow('更新失败')
 })
 
 it('订阅只读取主进程身份，拒绝额外参数并在主进程拼接市场地址', async () => {
