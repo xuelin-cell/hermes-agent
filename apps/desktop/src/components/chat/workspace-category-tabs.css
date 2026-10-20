@@ -1,0 +1,74 @@
+.workspace-category-nav {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  flex-shrink: 0;
+  padding: 16px;
+  pointer-events: auto;
+}
+
+.workspace-category-tabs {
+  display: flex;
+  overflow-x: auto;
+  scrollbar-width: none;
+  min-width: 0;
+  width: min(100%, 524px);
+  height: 40px;
+  padding: 4px;
+  gap: 12px;
+  border-radius: 36px;
+  background: var(--ui-bg-elevated);
+  box-shadow: 0 2px 8px 0 rgba(16, 18, 25, 0.102);
+}
+
+.workspace-category-tabs button {
+  display: flex;
+  flex: 1 0 0;
+  min-width: max-content;
+  white-space: nowrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 36px;
+  background: transparent;
+  color: var(--ui-text-secondary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.workspace-category-tabs button:hover {
+  background: var(--ui-control-hover-background);
+}
+
+.workspace-category-tabs button[aria-selected='true'] {
+  background: var(--workspace-category-selected-bg, var(--ui-text-secondary));
+  color: var(--workspace-category-selected-fg, var(--ui-bg-elevated));
+}
+
+[data-slot='aui_intro'] .workspace-category-nav {
+  padding-top: 28px;
+  padding-bottom: 0;
+}
+
+.workspace-category-tabs button:focus-visible {
+  outline: 2px solid var(--ui-text-primary);
+  outline-offset: 2px;
+}
+
+.workspace-category-tabs svg {
+  flex-shrink: 0;
+}
+
+@media (max-width: 480px) {
+  .workspace-category-tabs {
+    gap: 4px;
+  }
+  .workspace-category-tabs button {
+    gap: 4px;
+    font-size: 12px;
+  }
+}

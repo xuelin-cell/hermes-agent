@@ -13,6 +13,7 @@ import {
   Archive,
   BarChart3,
   Bell,
+  Cpu,
   Download,
   Globe,
   Info,
@@ -49,6 +50,8 @@ import { SECTIONS } from './constants'
 import { GatewaySettings } from './gateway-settings'
 import { KeybindSettings } from './keybind-settings'
 import { KEYS_VIEWS, KeysSettings, type KeysView } from './keys-settings'
+import { useModelsCopy } from './models-mt/copy'
+import { ModelsSettings } from './models-mt/models-settings'
 import { movedSettingsTabRedirect } from './moved-tabs'
 import { NotificationsSettings } from './notifications-settings'
 import { SettingsBreadcrumbContext } from './primitives'
@@ -62,6 +65,7 @@ import { settingsViewVisible } from './visibility'
 
 const SETTINGS_VIEWS: readonly SettingsViewId[] = [
   ...SECTIONS.map(s => `config:${s.id}` as SettingsViewId),
+  'models',
   'providers',
   'gateway',
   // Legacy alias: the Connections page merged into Gateways. Kept in the enum
@@ -80,6 +84,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
   const scopeProfile = useStore($settingsScopeProfile)
   const activeConnectionId = useStore($activeConnectionId)
   const { t } = useI18n()
+  const modelsCopy = useModelsCopy()
   const navigate = useNavigate()
   const developerMode = useStore($developerMode)
   const { hash, pathname, search } = useLocation()
@@ -304,6 +309,14 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
             onSelect: () => setActiveView('billing')
           },
           {
+            active: activeView === 'models',
+            gapBefore: true,
+            icon: Cpu,
+            id: 'models',
+            label: modelsCopy('nav'),
+            onSelect: () => setActiveView('models')
+          },
+          {
             active: activeView === 'providers',
             children: [
               {
@@ -389,6 +402,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
       providerView,
       subpage,
       t,
+      modelsCopy,
       setActiveView,
       openProviderView,
       openSettingsPage,
@@ -501,6 +515,8 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
         onMainModelChanged={onMainModelChanged}
         subpage={subpage}
       />
+    ) : activeView === 'models' ? (
+      <ModelsSettings key={scopeProfile} onConfigSaved={onConfigSaved} onMainModelChanged={onMainModelChanged} />
     ) : activeView === 'providers' ? (
       <ProvidersSettings
         key={scopeProfile}

@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useI18n } from '@/i18n'
 import { BarChart3, FileText, type IconComponent, iconSize, Search, X } from '@/lib/icons'
+import { $selectedWelcomeModules } from '@/store/workspace-category'
 
 import type { WelcomeCategory } from '../../../../../electron/uniwork-welcome/catalog'
 
@@ -63,56 +64,60 @@ export function WorkTemplatePicker({ scope, disabled, onReplaceText, selectionCo
   const { locale, t } = useI18n()
   const language = locale.startsWith('zh') ? 'zh-CN' : 'en'
   const catalog = useStore($welcomeCatalog)[language]
+  const module = useStore($selectedWelcomeModules[language])
+  const categories = module?.tags ?? []
 
   const [templatesOpen, setTemplatesOpen] = useState(false)
+
   const [selection, setSelection] = useState({
     scope,
     language,
+    moduleId: module?.id,
     category: null as string | null,
     template: null as string | null
   })
 
   const category =
-    selection.scope === scope && selection.language === language
-      ? (catalog.categories.find(item => item.id === selection.category) ?? null)
+    selection.scope === scope && selection.language === language && selection.moduleId === module?.id
+      ? (categories.find(item => item.id === selection.category) ?? null)
       : null
 
   useEffect(() => {
     void loadWelcomeCatalog(language)
   }, [language])
   useEffect(() => {
-    setSelection({ scope, language, category: null, template: null })
+    setSelection({ scope, language, moduleId: module?.id, category: null, template: null })
     setTemplatesOpen(false)
-  }, [scope, language])
+  }, [scope, language, module?.id])
 
-  if (!catalog.categories.length) {
+  if (!categories.length) {
     return null
   }
 
   const selectedChip = category && (
     <div data-slot="work-selected-category">
-      <Popover open={templatesOpen} onOpenChange={setTemplatesOpen}>
+      <Popover onOpenChange={setTemplatesOpen} open={templatesOpen}>
         <PopoverTrigger asChild>
           <Button disabled={disabled} size="micro" type="button" variant="ghost">
             {category.name}
           </Button>
         </PopoverTrigger>
-        <PopoverContent align="start" variant="menu" className="max-h-72 max-w-[calc(100vw-2rem)] overflow-y-auto">
+        <PopoverContent align="start" className="max-h-72 max-w-[calc(100vw-2rem)] overflow-y-auto" variant="menu">
           <div className="flex flex-col gap-1">
             {category.templates.map(template => (
               <Button
-                key={template.id}
                 aria-pressed={selection.template === template.id}
+                className="justify-start whitespace-normal text-left"
                 disabled={disabled}
+                key={template.id}
                 onClick={() => {
-                  setSelection({ scope, language, category: category.id, template: template.id })
+                  setSelection({ scope, language, moduleId: module?.id, category: category.id, template: template.id })
                   onReplaceText(template.prompt)
                   setTemplatesOpen(false)
                 }}
                 size="sm"
                 type="button"
                 variant="ghost"
-                className="justify-start whitespace-normal text-left"
               >
                 {template.name}
                 <IconArrowDownRight className={iconSize.sm} />
@@ -125,7 +130,7 @@ export function WorkTemplatePicker({ scope, disabled, onReplaceText, selectionCo
         aria-label={t.composer.workClearCategory}
         disabled={disabled}
         onClick={() => {
-          setSelection({ scope, language, category: null, template: null })
+          setSelection({ scope, language, moduleId: module?.id, category: null, template: null })
           setTemplatesOpen(false)
         }}
         size="icon-xs"
@@ -138,20 +143,20 @@ export function WorkTemplatePicker({ scope, disabled, onReplaceText, selectionCo
   )
 
   return (
-    <section data-slot="work-template-picker" aria-label={t.composer.workTemplates} className="mb-2 min-w-0 px-[5px]">
+    <section aria-label={t.composer.workTemplates} className="mb-2 min-w-0 px-[5px]" data-slot="work-template-picker">
       <HorizontalRow
-        contentKey={catalog.categories.map(item => item.id).join('|')}
+        contentKey={`${module?.id}:${categories.map(item => item.id).join('|')}`}
         leftLabel={t.composer.workScrollLeft}
         rightLabel={t.composer.workScrollRight}
       >
-        {catalog.categories.map(item => (
+        {categories.map(item => (
           <Button
             aria-pressed={category?.id === item.id}
             className="rounded-full"
             disabled={disabled}
             key={item.id}
             onClick={() => {
-              setSelection({ scope, language, category: item.id, template: null })
+              setSelection({ scope, language, moduleId: module?.id, category: item.id, template: null })
               onReplaceText('')
               setTemplatesOpen(true)
             }}

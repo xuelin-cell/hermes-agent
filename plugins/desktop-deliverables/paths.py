@@ -85,15 +85,15 @@ def resolve_path(value, cwd):
         return None
 
 
-def shown_paths(text, cwd):
-    """复用原版 MEDIA 与示例屏蔽规则；独立行交给追加选择后处理。"""
-    from gateway.platforms.base import MEDIA_TAG_CLEANUP_RE, _mask_media_scan_text
+def shown_paths(masked, cwd):
+    """在已屏蔽示例的回复中找已展示文件；独立行交给追加选择后处理。"""
+    from gateway.platforms.base import MEDIA_TAG_CLEANUP_RE
 
-    text = MEDIA.sub("", _mask_media_scan_text(text))
+    text = MEDIA.sub("", masked)
+    # 链接目标去掉 MEDIA: 前缀再解析，相对路径也算已展示；括号截断的值解析不到，
+    # 由下面的原版扫描器补上完整路径。
     values = [
-        match.group(1)
-        for match in LINKS.finditer(text)
-        if not match.group(1).lstrip().startswith("MEDIA:")
+        re.sub(r"^\s*MEDIA:\s*", "", match.group(1)) for match in LINKS.finditer(text)
     ]
     # Markdown 尖括号是包装，原版扫描器以空白识别同一个路径终点。
     values += [
@@ -104,11 +104,9 @@ def shown_paths(text, cwd):
     return {path for value in values if (path := resolve_path(value, cwd)) is not None}
 
 
-def remove_media_lines(text, cwd, moved):
-    """只收拢被移走行附近的空白；代码、引用及其它段落不作全局压缩。"""
-    from gateway.platforms.base import _mask_media_scan_text
-
-    matches = list(MEDIA.finditer(_mask_media_scan_text(text)))
+def remove_media_lines(text, masked, cwd, moved):
+    """按屏蔽后的位置移走独立行，只收拢附近空白；代码、引用及其它段落不压缩。"""
+    matches = list(MEDIA.finditer(masked))
     for match in reversed(matches):
         if resolve_path(match.group(1), cwd) not in moved:
             continue
@@ -126,15 +124,29 @@ def remove_media_lines(text, cwd, moved):
     return text
 
 
-def is_link(path):
-    """使用 3.11 已有的 lstat 识别符号链接和 Windows 目录联接；新目录可尚不存在。"""
-    try:
-        info = os.lstat(path)
-    except FileNotFoundError:
-        return False
+def linked(info):
+    """按 lstat 结果判断符号链接或 Windows 目录联接，3.11 也可用。"""
     return stat.S_ISLNK(info.st_mode) or getattr(
         info, "st_reparse_tag", None
     ) == getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", -1)
+
+
+def is_link(path):
+    """新目录可尚不存在；读不到属性时当作链接，宁可不用也不跟进未知位置。"""
+    try:
+        return linked(os.lstat(path))
+    except FileNotFoundError:
+        return False
+    except (OSError, ValueError):
+        return True
+
+
+def is_dir(path):
+    """3.11 的 is_dir 遇到无权限会抛错，这里统一视为不是目录。"""
+    try:
+        return path.is_dir()
+    except (OSError, ValueError):
+        return False
 
 
 def named_paths(text, cwd):
@@ -157,7 +169,7 @@ def named_paths(text, cwd):
     ]
     folders = [cwd]
     for path in paths:
-        if path and path.is_dir() and path not in folders:
+        if path and is_dir(path) and path not in folders:
             folders.append(path)
     paths += [resolve_path(match.group(), cwd) for match in _ABSOLUTE.finditer(text)]
     paths += [
@@ -196,41 +208,57 @@ def snapshot(root, budget=None):
     budget = budget if budget is not None else [time.monotonic(), 0]
     result = {}
 
-    def walk_error(error):
-        """仅尚未创建的观察根可视为空，其它遍历失败使整份快照失效。"""
-        if not (
-            isinstance(error, FileNotFoundError)
-            and error.filename
-            and Path(error.filename) == root
-        ):
-            raise error
+    def unreadable(error):
+        """读不到或中途消失的目录记为 None，比较时整棵子树不参与。"""
+        if error.filename and Path(error.filename) != root:
+            result[Path(error.filename)] = None
 
-    try:
-        for folder, directories, files in os.walk(
-            root, followlinks=False, onerror=walk_error
-        ):
-            budget[1] += len(directories) + len(files)
-            if budget[1] > 3000 or time.monotonic() - budget[0] > 0.5:
+    for folder, directories, files in os.walk(
+        root, followlinks=False, onerror=unreadable
+    ):
+        budget[1] += len(directories) + len(files)
+        if budget[1] > 3000 or time.monotonic() - budget[0] > 0.5:
+            return None
+        kept = []
+        for name in directories:
+            path = Path(folder) / name
+            if (
+                name.startswith(".")
+                or name.lower() in EXCLUDED
+                or len(path.relative_to(root).parts) >= 4
+            ):
+                continue
+            try:
+                if not linked(os.lstat(path)):
+                    kept.append(name)
+            except (OSError, ValueError):
+                result[path] = None
+        directories[:] = kept
+        for name in files:
+            if time.monotonic() - budget[0] > 0.5:
                 return None
-            directories[:] = [
-                name
-                for name in directories
-                if not name.startswith(".")
-                and name.lower() not in EXCLUDED
-                and len((Path(folder) / name).relative_to(root).parts) < 4
-                and not is_link(Path(folder) / name)
-            ]
-            for name in files:
-                if time.monotonic() - budget[0] > 0.5:
-                    return None
-                path = Path(folder) / name
-                if eligible(path) and not is_link(path):
+            path = Path(folder) / name
+            if not eligible(path):
+                continue
+            try:
+                if not linked(os.lstat(path)):
                     info = path.stat()
                     result[path.resolve()] = (info.st_mtime_ns, info.st_size)
-    except OSError:
-        # 包含 lstat 的权限错误：不能把漏读文件的部分结果当成完整基线。
-        return None
+            except (OSError, RuntimeError, ValueError):
+                result[path] = None
     return result
+
+
+def changed(before, after):
+    """比较两次快照；任一次读不到的目录或文件不参与，避免把读漏当成新增。"""
+    skipped = [path for path, info in (*before.items(), *after.items()) if info is None]
+    return [
+        path
+        for path, info in after.items()
+        if info is not None
+        and before.get(path) != info
+        and not any(path.is_relative_to(place) for place in skipped)
+    ]
 
 
 def known_folders():
@@ -281,7 +309,7 @@ def requested_roots(text, cwd):
     for raw in candidates[:64]:
         path = resolve_path(raw, cwd)
         directory = path and (
-            path.is_dir()
+            is_dir(path)
             or (
                 not path.exists()
                 and Path(raw).expanduser().is_absolute()

@@ -5,28 +5,16 @@ import type { AddressInfo } from 'node:net'
 import path from 'node:path'
 
 import { isCurrentDriveMcpConfig, prepareDriveMcpConfig } from '../entry_local/drive-mcp-config'
+import { resolveReadableFileForIpc } from '../hardening'
 
 import type { CloudDriveClient } from './cloud-drive'
+import { CloudDriveOperationError } from './cloud-drive'
+import { driveFileName, executeDriveMcpAction } from './cloud-drive-mcp-actions'
+import { DRIVE_MCP_TOOLS, type DriveMcpInput, parseDriveMcpInput } from './cloud-drive-mcp-tools'
 import { CloudDriveTransfers } from './cloud-drive-transfers'
-import { DRIVE_MCP_SERVER, DRIVE_MCP_TOOL } from './drive-mcp-contract'
+import { DRIVE_MCP_SERVER } from './drive-mcp-contract'
 
 const VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05']
-
-const TOOL = {
-  name: DRIVE_MCP_TOOL,
-  description:
-    '下载当前 UniWork 桌面账号的云盘文件。用户消息包含云盘文件 ID 时，先调用此工具，再读取返回的本机 path；不要猜测内容或把桌面预览路径当成远程路径。仅适用于与桌面同机的 Hermes。',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      asset_id: { type: 'string', minLength: 1, maxLength: 512 },
-      name: { type: 'string', minLength: 1, maxLength: 255 }
-    },
-    required: ['asset_id', 'name'],
-    additionalProperties: false
-  },
-  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }
-}
 
 /** MCP 服务只监听回环，独立随机凭证仅授权当前账号云盘，不暴露 MaaS 凭据。 */
 export class CloudDriveMcp {
@@ -36,7 +24,7 @@ export class CloudDriveMcp {
   private closed = false
   private endpoint = ''
   private nextOwner = -1
-  private running = 0
+  private readonly calls = new Set<AbortController>()
   private readonly transfers: CloudDriveTransfers
 
   /** 目录由可信账号运行时提供，工具参数不能选择写入目录或下载 URL。 */
@@ -97,9 +85,14 @@ export class CloudDriveMcp {
     return this.starting
   }
 
-  /** 退出时停止所有下载和连接，磁盘上的短期 MCP 凭证随服务关闭失效。 */
+  /** 退出时停止在途操作和连接，磁盘上的短期 MCP 凭证随服务关闭失效。 */
   async close(): Promise<void> {
     this.closed = true
+
+    for (const call of this.calls) {
+      call.abort()
+    }
+
     this.transfers.cancelAll()
     const server = this.server
 
@@ -161,7 +154,7 @@ export class CloudDriveMcp {
       for await (const chunk of request) {
         size += chunk.length
 
-        if (size > 8192) {
+        if (size > 256 * 1024) {
           this.reply(response, 413)
 
           return
@@ -212,13 +205,9 @@ export class CloudDriveMcp {
       } else if (message.method === 'ping') {
         result = {}
       } else if (message.method === 'tools/list') {
-        result = { tools: [TOOL] }
+        result = { tools: DRIVE_MCP_TOOLS }
       } else if (message.method === 'tools/call') {
-        if (message.params?.name !== DRIVE_MCP_TOOL || this.running >= 4) {
-          result = this.failure('TOOL_UNAVAILABLE')
-        } else {
-          result = await this.download(message.params.arguments, response)
-        }
+        result = await this.call(message.params?.name, message.params?.arguments ?? {}, response)
       } else {
         this.reply(response, 200, { ...envelope, error: { code: -32601, message: 'Method not found' } })
 
@@ -232,37 +221,82 @@ export class CloudDriveMcp {
   }
 
   /** 业务失败作为 MCP 工具结果返回，模型不能将失败误读为已下载文件。 */
-  private failure(code: string) {
-    return { isError: true, content: [{ type: 'text', text: JSON.stringify({ ok: false, code }) }] }
+  private failure(code: string, status = 'failed') {
+    return this.result({ ok: false, status, code }, true)
   }
 
-  /** 下载到当前账号工作区的独占目录，只有完整成功才向 Agent 返回可读取路径。 */
-  private async download(args: unknown, response: ServerResponse) {
-    const input = args as { asset_id?: unknown; name?: unknown } | null
+  /** 工具返回业务数据；上游部分成功和结果未知始终保留为错误状态。 */
+  private result(data: unknown, isError = false) {
+    return { ...(isError ? { isError: true } : {}), content: [{ type: 'text', text: JSON.stringify(data) }] }
+  }
 
-    if (
-      !input ||
-      typeof input.asset_id !== 'string' ||
-      !input.asset_id ||
-      input.asset_id.length > 512 ||
-      typeof input.name !== 'string' ||
-      !input.name ||
-      input.name.length > 255 ||
-      path.basename(input.name) !== input.name ||
-      /[\\/:]/.test(input.name) ||
-      Object.keys(input).some(key => !['asset_id', 'name'].includes(key))
-    ) {
+  /** 并发、取消与身份检查覆盖所有工具，切换账号后不再继续轮询或发送文件。 */
+  private async call(name: unknown, args: unknown, response: ServerResponse) {
+    if (typeof name !== 'string' || !DRIVE_MCP_TOOLS.some(tool => tool.name === name) || this.calls.size >= 4) {
+      return this.failure('TOOL_UNAVAILABLE')
+    }
+
+    const input = parseDriveMcpInput(name, args)
+
+    if (!input) {
       return this.failure('INVALID_ARGUMENT')
     }
 
+    const controller = new AbortController()
+    const cancel = () => controller.abort()
+    const check = this.drive.guardIdentity()
+
+    const monitor = setInterval(() => {
+      try {
+        check()
+      } catch {
+        cancel()
+      }
+    }, 250)
+
+    this.calls.add(controller)
+    response.once('close', cancel)
+
+    try {
+      check()
+      controller.signal.throwIfAborted()
+
+      const transfers: Record<string, () => Promise<ReturnType<CloudDriveMcp['result']>>> = {
+        download: () => this.download(input, controller.signal),
+        upload: () => this.upload(input, controller.signal)
+      }
+
+      if (Object.hasOwn(transfers, name)) {
+        return await transfers[name]()
+      }
+
+      const data = await executeDriveMcpAction(this.drive, name, input, controller.signal)
+      check()
+      const failed = !!data && typeof data === 'object' && 'ok' in data && data.ok === false
+
+      return this.result(failed ? data : { ok: true, data }, failed)
+    } catch (error) {
+      if (error instanceof CloudDriveOperationError) {
+        return this.result(error.result, true)
+      }
+
+      return this.failure(controller.signal.aborted ? 'CANCELLED' : 'TOOL_FAILED')
+    } finally {
+      clearInterval(monitor)
+      response.removeListener('close', cancel)
+      this.calls.delete(controller)
+    }
+  }
+
+  /** 下载到当前账号工作区的独占目录，只有完整成功才向 Agent 返回可读取路径。 */
+  private async download(input: DriveMcpInput, signal: AbortSignal) {
     const owner = this.nextOwner--
     const id = randomUUID()
     const cancel = () => this.transfers.cancel(owner, id)
     const check = this.drive.guardIdentity()
     let directory: string | undefined
     let saved = false
-    this.running++
-    response.once('close', cancel)
+    signal.addEventListener('abort', cancel, { once: true })
 
     try {
       check()
@@ -271,6 +305,30 @@ export class CloudDriveMcp {
       if (!workspace.isDirectory() || workspace.isSymbolicLink()) {
         return this.failure('INVALID_WORKSPACE')
       }
+
+      const name =
+        input.name ??
+        driveFileName(
+          await this.drive.execute(
+            { route: '/unicom/FileDetails', method: 'POST', body: { fileId: input.asset_id } },
+            signal
+          )
+        )
+
+      if (
+        typeof name !== 'string' ||
+        !name.trim() ||
+        name.length > 255 ||
+        name === '.' ||
+        name === '..' ||
+        /[\\/:]/.test(name) ||
+        Array.from(name).some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)
+      ) {
+        return this.failure('INVALID_NAME')
+      }
+
+      check()
+      signal.throwIfAborted()
 
       const root = path.join(this.workspace, '.uniwork-drive')
       await mkdir(root, { recursive: true, mode: 0o700 })
@@ -281,24 +339,24 @@ export class CloudDriveMcp {
       }
 
       directory = await mkdtemp(path.join(root, 'file-'))
-      const destination = path.join(directory, input.name)
+      const destination = path.join(directory, name)
 
       const result = await this.transfers.run(
         owner,
-        { id, operation: 'download', assetId: input.asset_id, name: input.name },
+        { id, operation: 'download', assetId: String(input.asset_id), name },
         {
           selectUpload: async () => null,
           selectDownload: async () => {
             check()
 
-            return response.destroyed ? null : destination
+            return signal.aborted ? null : destination
           },
           progress: () => {}
         }
       )
 
       if (result.status !== 'succeeded') {
-        return this.failure('code' in result ? result.code : 'CANCELLED')
+        return 'code' in result ? this.result(result, true) : this.failure('CANCELLED')
       }
 
       check()
@@ -308,19 +366,72 @@ export class CloudDriveMcp {
         content: [
           {
             type: 'text',
-            text: JSON.stringify({ ok: true, asset_id: input.asset_id, name: input.name, path: destination })
+            text: JSON.stringify({ ok: true, asset_id: input.asset_id, name, path: destination })
           }
         ]
       }
-    } catch {
-      return this.failure('DOWNLOAD_FAILED')
     } finally {
-      response.removeListener('close', cancel)
-      this.running--
+      signal.removeEventListener('abort', cancel)
 
       if (directory && !saved) {
         await rm(directory, { recursive: true, force: true }).catch(() => {})
       }
+    }
+  }
+
+  /** 上传复用原生分片传输和敏感文件策略，文件替换由已授权快照校验。 */
+  private async upload(input: DriveMcpInput, signal: AbortSignal) {
+    const check = this.drive.guardIdentity()
+    let file
+
+    try {
+      file = await resolveReadableFileForIpc(String(input.source_path), {
+        baseDir: this.workspace,
+        purpose: 'Cloud drive upload'
+      })
+    } catch {
+      return this.failure('LOCAL_FILE_READ_FAILED')
+    }
+
+    check()
+    signal.throwIfAborted()
+    const owner = this.nextOwner--
+    const id = randomUUID()
+    const cancel = () => this.transfers.cancel(owner, id)
+    signal.addEventListener('abort', cancel, { once: true })
+
+    try {
+      const { dev, ino, size, mtimeMs, ctimeMs } = file.stat
+
+      const result = await this.transfers.run(
+        owner,
+        { id, operation: 'upload', parentAssetId: String(input.parent_asset_id) },
+        {
+          selectUpload: async () => {
+            check()
+
+            return signal.aborted
+              ? null
+              : {
+                  path: file.realPath,
+                  name: path.basename(file.realPath),
+                  snapshot: { dev, ino, size, mtimeMs, ctimeMs }
+                }
+          },
+          selectDownload: async () => null,
+          progress: () => {}
+        }
+      )
+
+      check()
+
+      return result.status === 'succeeded'
+        ? this.result({ ok: true, status: result.status, name: result.name, parent_asset_id: input.parent_asset_id })
+        : 'code' in result
+          ? this.result(result, true)
+          : this.failure('CANCELLED')
+    } finally {
+      signal.removeEventListener('abort', cancel)
     }
   }
 }

@@ -3,33 +3,34 @@ import { atom } from 'nanostores'
 import { readKey, writeKey } from '@/lib/storage'
 
 import {
-  normalizeOfficeCatalog,
-  type WelcomeCategory,
-  type WelcomeLocale
+  normalizeWelcomeCatalog,
+  type WelcomeLocale,
+  type WelcomeModule
 } from '../../../../../electron/uniwork-welcome/catalog'
 
 import english from './catalog.en.json'
 import chinese from './catalog.zh-CN.json'
 
 interface CatalogState {
-  categories: WelcomeCategory[]
+  modules: WelcomeModule[]
   status: 'loading' | 'ready' | 'cached'
 }
 
-const KEY = 'uniwork.welcome.office.v1.'
+// v1 could cache the old main process's category array as top-level modules.
+const KEY = 'uniwork.welcome.modules.v2.'
 
 /** 磁盘缓存损坏时使用随应用提供的完整目录，不阻塞新对话。 */
 function initial(locale: WelcomeLocale): CatalogState {
-  let categories: WelcomeCategory[]
+  let modules: WelcomeModule[]
 
   try {
     const saved = readKey(KEY + locale)
-    categories = normalizeOfficeCatalog(saved ? JSON.parse(saved) : locale === 'zh-CN' ? chinese : english)
+    modules = normalizeWelcomeCatalog(saved ? JSON.parse(saved) : locale === 'zh-CN' ? chinese : english)
   } catch {
-    categories = normalizeOfficeCatalog(locale === 'zh-CN' ? chinese : english)
+    modules = normalizeWelcomeCatalog(locale === 'zh-CN' ? chinese : english)
   }
 
-  return { categories, status: 'cached' }
+  return { modules, status: 'cached' }
 }
 
 export const $welcomeCatalog = atom<Record<WelcomeLocale, CatalogState>>({
@@ -62,10 +63,9 @@ export function loadWelcomeCatalog(locale: WelcomeLocale, force = false): Promis
   const task = Promise.resolve().then(async () => {
     try {
       const raw = await request(locale)
-      const payload = { modules: [{ id: 'office', enabled: true, tags: raw }] }
-      const categories = normalizeOfficeCatalog(payload)
-      writeKey(KEY + locale, JSON.stringify({ modules: [{ id: 'office', enabled: true, tags: categories }] }))
-      $welcomeCatalog.set({ ...$welcomeCatalog.get(), [locale]: { categories, status: 'ready' } })
+      const modules = normalizeWelcomeCatalog(raw)
+      writeKey(KEY + locale, JSON.stringify(raw))
+      $welcomeCatalog.set({ ...$welcomeCatalog.get(), [locale]: { modules, status: 'ready' } })
     } catch {
       $welcomeCatalog.set({
         ...$welcomeCatalog.get(),

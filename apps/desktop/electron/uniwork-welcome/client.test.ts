@@ -6,7 +6,7 @@ import { expect, it, vi } from 'vitest'
 vi.mock('electron', () => ({ net: { fetch } }))
 import { WelcomeCatalogClient } from './client'
 
-it('真实HTTP路径校验固定地址和凭据，解包配置且不返回登录token', async () => {
+it('匿名读取固定uniwork配置地址，解包modules并保留对应的tags和templates', async () => {
   let authorization: string | undefined
 
   const server = createServer((request, response) => {
@@ -17,7 +17,8 @@ it('真实HTTP路径校验固定地址和凭据，解包配置且不返回登录
         configValue: JSON.stringify({
           modules: [
             {
-              id: 'office',
+              id: 'arbitrary',
+              name: 'Configured office',
               enabled: true,
               tags: [
                 {
@@ -45,22 +46,17 @@ it('真实HTTP路径校验固定地址和凭据，解包配置且不返回登录
       throw new Error('本地HTTP端口不可用')
     }
 
-    const identity = { uid: 'test', token: 'private-token', maskedPhone: '138****0000', expiresAt: Date.now() + 60_000 }
+    const client = new WelcomeCatalogClient(async (input, options) => {
+      expect(String(input)).toBe(
+        'https://maas.ai-yuanjing.com/app/gateway/uniwork/system-config?key=welcome_config_codex_zh-CN'
+      )
 
-    const client = new WelcomeCatalogClient(
-      () => identity,
-      async (input, options) => {
-        expect(String(input)).toBe(
-          'https://maas.ai-yuanjing.com/app/gateway/uniclaw/system-config?key=welcome_config_codex_zh-CN'
-        )
-
-        return fetch(`http://127.0.0.1:${address.port}`, options)
-      }
-    )
+      return fetch(`http://127.0.0.1:${address.port}`, options)
+    })
 
     const result = await client.load('zh-CN')
-    expect(authorization).toBe('Bearer private-token')
-    expect(result[0].templates[0].prompt).toBe('Create a report')
+    expect(authorization).toBeUndefined()
+    expect(result[0].tags[0].templates[0].prompt).toBe('Create a report')
     expect(JSON.stringify(result)).not.toContain('private-token')
     await expect(client.load('forged' as never)).rejects.toThrow('语言无效')
   } finally {

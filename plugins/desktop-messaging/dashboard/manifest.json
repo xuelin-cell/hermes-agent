@@ -1,0 +1,8 @@
+{
+  "name": "desktop-messaging",
+  "label": "Desktop messaging",
+  "description": "Account-scoped messaging setup and credential validation",
+  "version": "1.0.0",
+  "tab": { "hidden": true },
+  "api": "plugin_api.py"
+}

@@ -222,6 +222,8 @@ import {
 import { preReadyDockLaunchSteps } from './dock-launch-order'
 import { installEmbedReferer } from './embed-referer'
 import { accountBrowserPartition } from './entry_local/browser-partition'
+// desktop-mt: 未选目录的新对话在账号工作区下建专属文件夹。
+import { createConversationFolders, installConversationFolderIpc } from './entry_local/conversation-folder'
 import { accountSourceBackend } from './entry_local/desktop-environment'
 import { enableDesktopPlugins } from './entry_local/desktop-plugins-config'
 import { accountDesktopStatePaths } from './entry_local/desktop-state'
@@ -234,6 +236,7 @@ import {
   stopLogoutProcesses
 } from './entry_local/logout-processes'
 import { createAccountExitWindows, retryLogout } from './entry_local/logout-window'
+import { DesktopMessaging, MessagingBotIndex } from './entry_local/messaging'
 import { LocalStartupError, showLocalStartupFailure } from './entry_local/startup-failure'
 import { createAmbientClaimArbiter } from './event-dedupe'
 import { openExternalUrl as externalOpen, type ExternalOpenDeps, reportPreOpenStatFailure } from './external-open'
@@ -707,6 +710,13 @@ installPreviewExportIpc(
   ACCOUNT_SESSION,
   () => DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString(),
   () => currentDesktopLocalContext() === ACCOUNT_RUNTIME
+)
+// desktop-mt: 每个对话一个工作文件夹，只在当前账号工作区内创建。
+installConversationFolderIpc(
+  ACCOUNT_SESSION,
+  () => DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString(),
+  () => currentDesktopLocalContext() === ACCOUNT_RUNTIME,
+  createConversationFolders(ACCOUNT_RUNTIME.workspace)
 )
 
 // Device-local preference: block F12 from opening DevTools.
@@ -12052,6 +12062,7 @@ const accountLogout = createAccountLogout({
   userData: app.getPath('userData'),
   account: ACCOUNT_RUNTIME.id,
   seal: mode => {
+    desktopMessaging.seal()
     sealDesktopAccount()
     primaryRecoverySuppressed = true
     logoutChildren = localBackendLifecycle.ownedChildren()
@@ -12061,6 +12072,8 @@ const accountLogout = createAccountLogout({
     accountExitWindows.seal(mode)
   },
   snapshot: async () => {
+    await desktopMessaging.settle()
+
     const roots = [
       ...logoutTerminals,
       ...logoutChildren
@@ -17206,6 +17219,37 @@ function assertArtifactShareWindow(event: Electron.IpcMainInvokeEvent): void {
   }
 }
 
+const desktopMessaging = new DesktopMessaging({
+  account: ACCOUNT_RUNTIME.id,
+  index: new MessagingBotIndex(app.getPath('userData')),
+  request: (profile, requestPath, method, body) => handleHermesApiRequest({
+    connectionId: 'local', profile, path: requestPath, method, body, timeoutMs: 30_000
+  }),
+  onState: state => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (artifactShareWindows.has(win) && !win.isDestroyed()) {
+        win.webContents.send('hermes:messaging:status', state)
+      }
+    }
+  }
+})
+
+ipcMain.handle('hermes:messaging:setup', (event, input) => {
+  assertArtifactShareWindow(event)
+
+  if (!currentDesktopLocalContext()) {
+    throw new Error('messaging_account_closed')
+  }
+
+  return desktopMessaging.submit(input)
+})
+
+ipcMain.handle('hermes:messaging:status', event => {
+  assertArtifactShareWindow(event)
+
+  return desktopMessaging.status()
+})
+
 installConversationShareIpc(ipcMain, assertArtifactShareWindow, {
   identity: () => {
     const identity = currentDesktopIdentity()
@@ -17845,7 +17889,8 @@ ipcMain.handle('hermes:openPreviewInBrowser', async (_event, url) => {
 // session spawn (no app restart needed).
 ipcMain.handle('hermes:setting:defaultProjectDir:get', async () => ({
   dir: readDefaultProjectDir(),
-  defaultLabel: app.getPath('home'),
+  // desktop-mt: 未设置时实际使用账号工作区（见 resolveHermesCwd），不是系统用户目录。
+  defaultLabel: ACCOUNT_RUNTIME.workspace,
   resolvedCwd: resolveHermesCwd()
 }))
 
@@ -17871,7 +17916,8 @@ ipcMain.handle('hermes:setting:defaultProjectDir:pick', async () => {
   const result = await dialog.showOpenDialog({
     title: 'Choose default project directory',
     properties: ['openDirectory', 'createDirectory'],
-    defaultPath: readDefaultProjectDir() || app.getPath('home')
+    // desktop-mt: 选择窗口从账号工作区打开，与未设置时的实际目录一致。
+    defaultPath: readDefaultProjectDir() || ACCOUNT_RUNTIME.workspace
   })
 
   if (result.canceled || result.filePaths.length === 0) {
@@ -18718,6 +18764,12 @@ const desktopStartup = app.whenReady().then(() => {
   // its worker waits for the install marker to clear, then reopens every scope
   // captured by the original transaction before removing the journal entry.
   void resumeManagedSshRecoveries()
+  // 与桌面后端并行准备消息连接；失败只在消息页面展示，不阻塞首窗或聊天。
+  void desktopMessaging.restore()
+    .then(result => {
+      if (result.actionFailed) {rememberLog('[messaging] account gateway restore failed: platforms not ready')}
+    })
+    .catch(error => rememberLog(`[messaging] account gateway restore failed: ${redactSecrets(String(error?.message || error))}`))
   installApplicationMenuAfterFirstWindow({
     isMac: IS_MAC,
     buildMenu: buildApplicationMenu,

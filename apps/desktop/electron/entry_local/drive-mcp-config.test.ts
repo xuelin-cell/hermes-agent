@@ -31,12 +31,17 @@ it('仅维护内置云盘条目，保留用户设置、开关与过滤，账号�
 
   const text = fs
     .readFileSync(file, 'utf8')
-    .replace('    timeout: 600', '    timeout: 600\n    enabled: false\n    tools: {exclude: [download]}')
+    .replace('    timeout: 720', '    timeout: 123\n    enabled: false\n    tools: {exclude: [download]}')
 
   fs.writeFileSync(file, text)
   expect(prepareDriveMcpConfig(home, 'default', 'http://127.0.0.1:1235/mcp', 'next-run-capability')).toBe(false)
   const next = parse(fs.readFileSync(file, 'utf8')).mcp_servers[DRIVE_MCP_SERVER]
-  expect(next).toMatchObject({ enabled: false, tools: { exclude: ['download'] }, url: 'http://127.0.0.1:1235/mcp' })
+  expect(next).toMatchObject({
+    enabled: false,
+    timeout: 123,
+    tools: { exclude: ['download'] },
+    url: 'http://127.0.0.1:1235/mcp'
+  })
   expect(fs.readFileSync(file, 'utf8')).toContain('# 用户说明')
 
   if (process.platform !== 'win32') {

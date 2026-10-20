@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useI18n } from '@/i18n'
 import { desktopFsCacheKey } from '@/lib/desktop-fs'
+import { cn } from '@/lib/utils'
 import { notifyError } from '@/store/notifications'
 import { openPreview } from '@/store/preview'
 
@@ -260,63 +261,62 @@ export function CloudLibrary({ onDraftReady }: CloudLibraryProps = {}) {
         />
       ) : (
         <>
-          <CloudLocationBar
-            leading={
-              <Checkbox
-                aria-label={copy.selectAll}
-                checked={
-                  rows.length > 0 && selection.chosen.length === rows.length
-                    ? true
-                    : selection.chosen.length
-                      ? 'indeterminate'
-                      : false
-                }
-                disabled={!rows.length || busy}
-                onCheckedChange={checked => selection.selectAll(checked === true)}
-              />
-            }
-          >
-            <div className="flex min-w-0 flex-1 items-center gap-4">
-              <div
-                className={
-                  selection.chosen.length
-                    ? 'min-w-24 flex-1 overflow-x-auto'
-                    : 'min-w-0 flex-[0_1_28rem] overflow-x-auto @max-[42rem]/drive:flex-1'
-                }
-              >
-                <DriveBreadcrumbs
-                  disabled={busy}
-                  onNavigate={navigate}
-                  path={folders}
-                  root={space?.root_asset_id || ''}
+          <div className="relative shrink-0">
+            <CloudLocationBar
+              leading={
+                <Checkbox
+                  aria-label={copy.selectAll}
+                  checked={
+                    rows.length > 0 && selection.chosen.length === rows.length
+                      ? true
+                      : selection.chosen.length
+                        ? 'indeterminate'
+                        : false
+                  }
+                  disabled={!rows.length || busy}
+                  onCheckedChange={checked => selection.selectAll(checked === true)}
                 />
-              </div>
-              {space && <CloudFileListHeader disabled={busy} onSort={changeSort} sort={sort} />}
-            </div>
-            {space && !selection.chosen.length && (
-              <span aria-hidden="true" className="w-40 shrink-0 @max-[42rem]/drive:w-6" />
-            )}
-            <CloudSelectionActions
-              assets={selection.chosen}
-              busy={busy}
-              canMove={!snapshot.scanning && !snapshot.error}
-              capabilities={capabilities}
-              onAdd={() => void draft.add(selection.chosen)}
-              onClear={selection.clear}
-              onDownload={() =>
-                void transfer.start({
-                  operation: 'download-many',
-                  assets: selection.chosen.map(asset => ({
-                    assetId: asset.asset_id,
-                    name: asset.name,
-                    size: asset.size_bytes
-                  }))
-                })
               }
-              onMove={() => setMoving([...selection.chosen])}
-              onTrash={() => void deletion.trash(selection.chosen)}
-            />
-          </CloudLocationBar>
+            >
+              <div className="flex min-w-0 flex-1 items-center gap-4">
+                <div className="min-w-0 flex-[0_1_28rem] @max-[42rem]/drive:relative @max-[42rem]/drive:flex-1">
+                  <div className={cn('overflow-x-auto', selection.chosen.length > 0 && '@max-[42rem]/drive:invisible')}>
+                    <DriveBreadcrumbs
+                      disabled={busy}
+                      onNavigate={navigate}
+                      path={folders}
+                      root={space?.root_asset_id || ''}
+                    />
+                  </div>
+                  {/* 多选栏脱离列宽计算；窄屏占用面包屑区域，避免覆盖元数据。 */}
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 @max-[42rem]/drive:left-0 @max-[42rem]/drive:right-auto">
+                    <CloudSelectionActions
+                      assets={selection.chosen}
+                      busy={busy}
+                      canMove={!snapshot.scanning && !snapshot.error}
+                      capabilities={capabilities}
+                      onAdd={() => void draft.add(selection.chosen)}
+                      onClear={selection.clear}
+                      onDownload={() =>
+                        void transfer.start({
+                          operation: 'download-many',
+                          assets: selection.chosen.map(asset => ({
+                            assetId: asset.asset_id,
+                            name: asset.name,
+                            size: asset.size_bytes
+                          }))
+                        })
+                      }
+                      onMove={() => setMoving([...selection.chosen])}
+                      onTrash={() => void deletion.trash(selection.chosen)}
+                    />
+                  </div>
+                </div>
+                {space && <CloudFileListHeader disabled={busy} onSort={changeSort} sort={sort} />}
+              </div>
+              {space && <span aria-hidden="true" className="w-40 shrink-0 @max-[42rem]/drive:w-6" />}
+            </CloudLocationBar>
+          </div>
           {draft.message && (
             <p className="px-4 py-2 text-sm" role="status">
               {draft.message}

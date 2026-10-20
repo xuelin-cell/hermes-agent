@@ -11,7 +11,7 @@ export interface LoginRequest {
 
 export interface CloudDriveRequest {
   route: string
-  method?: 'GET' | 'POST' | 'PATCH'
+  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE'
   body?: Record<string, unknown>
 }
 
@@ -63,7 +63,10 @@ export function isCloudDriveReadOperation(input: CloudDriveRequest): boolean {
   return (
     (input.method ?? 'GET') === 'GET' ||
     (input.method === 'POST' &&
-      ['/assets/download', '/unicom/FileDetails', '/unicom/QueryRecycleData'].includes(input.route.split('?')[0]))
+      ['/assets/download', '/assets/search', '/unicom/FileDetails', '/unicom/QueryRecycleData'].includes(
+        input.route.split('?')[0]
+      )) ||
+    (input.method === 'DELETE' && /^\/assets\/search\/[a-f0-9]{32}$/.test(input.route))
   )
 }
 

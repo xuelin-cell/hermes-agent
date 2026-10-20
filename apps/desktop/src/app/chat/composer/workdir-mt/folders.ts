@@ -66,10 +66,11 @@ export function workdirName(path: string): string {
   return parts.at(-1) ?? path.trim()
 }
 
-/** 从已有会话中整理最近用过的目录：按最近活动排序、去重，并排除默认工作区。 */
+/** 从已有会话中整理最近用过的目录：按最近活动排序、去重，并排除默认工作区和 `skip` 认出的目录。 */
 export function recentWorkdirs(
   sessions: readonly Pick<SessionInfo, 'cwd' | 'last_active'>[],
-  exclude: readonly string[] = []
+  exclude: readonly string[] = [],
+  skip: (path: string) => boolean = () => false
 ): string[] {
   const seen = new Set(exclude.map(workdirKey).filter(Boolean))
   const result: string[] = []
@@ -78,7 +79,7 @@ export function recentWorkdirs(
     const cwd = session.cwd?.trim()
     const key = cwd ? workdirKey(cwd) : ''
 
-    if (!cwd || seen.has(key)) {
+    if (!cwd || seen.has(key) || skip(cwd)) {
       continue
     }
 

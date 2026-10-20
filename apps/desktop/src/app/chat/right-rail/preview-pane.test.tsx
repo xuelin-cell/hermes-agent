@@ -857,11 +857,16 @@ describe('PreviewPane local HTML Render|Source toggle', () => {
     expect(readFileText).not.toHaveBeenCalled()
     await waitFor(() => expect((rendered.getByRole('button', { name: 'Share artifact' }) as HTMLButtonElement).disabled).toBe(false))
     fireEvent.click(rendered.getByRole('button', { name: 'Share artifact' }))
+    await waitFor(() => expect((rendered.getByRole('button', { name: 'Create public link' }) as HTMLButtonElement).disabled).toBe(false))
+    expect(publish).not.toHaveBeenCalled()
+    fireEvent.click(rendered.getByRole('button', { name: 'Create public link' }))
     await waitFor(() => expect(publish).toHaveBeenCalledWith({
       key: 'file:session-1:/work/hello world.html', html: '<p>x</p>', title: 'hello world.html',
       source: expect.objectContaining({ sessionId: 'session-1', path: '/work/hello world.html', hash: expect.any(String) })
     }))
     expect(readFileText).toHaveBeenCalledWith(generated.path)
+    await waitFor(() => expect(rendered.getByRole('button', { name: 'Close' })).toBeTruthy())
+    fireEvent.click(rendered.getByRole('button', { name: 'Close' }))
 
     const webview = rendered.container.querySelector('webview')!
 

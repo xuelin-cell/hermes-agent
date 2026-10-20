@@ -9,6 +9,7 @@ import { type StatusbarItem } from '@/app/shell/statusbar-controls'
 import { AskDirective } from '@/components/assistant-ui/ask-directive'
 import { InlinePreviewDirective } from '@/components/assistant-ui/inline-preview-directive'
 import { ConversationShareDialog } from '@/components/conversation-share/dialog'
+import { ConversationSessionShareButton } from '@/components/conversation-share/session-button'
 import { IdleMount } from '@/components/idle-mount'
 import { OnboardingChatDirective } from '@/components/onboarding-chat/directive'
 import { $layoutEditMode, toggleLayoutEditMode } from '@/components/pane-shell/edit-mode'
@@ -533,6 +534,7 @@ const syncWorkspaceTitle = () => {
       // fresh draft has no session to key by, which IS its status: the dot
       // resolves to `draft` and marks the tab rather than leaving a hole.
       tabLead: () => <SessionStatusDot session={stored} storedSessionId={selected} />,
+      headerActions: () => <ConversationSessionShareButton />,
       // A draft's name lives in its composer, not in any session row, so the
       // label subscribes to it directly — typing renames the tab without
       // re-registering the pane.

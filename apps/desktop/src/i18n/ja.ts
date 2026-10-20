@@ -1,3 +1,4 @@
+import { messagingConnectionCopy } from './messaging-connection'
 import { defineFieldCopy } from '@/app/settings/field-copy'
 
 import { defineLocale } from './define-locale'
@@ -1988,6 +1989,7 @@ export const ja = defineLocale({
   },
 
   messaging: {
+    connection: messagingConnectionCopy["ja"],
     cards: {
       heading: 'チャットアプリ',
       description: 'WeChat、DingTalk、Feishu などに接続し、スマートフォンでメッセージを送受信します。',
@@ -2523,6 +2525,13 @@ export const ja = defineLocale({
   },
 
   artifactShare: {
+    disclosure: "リンクを知っている人はこの成果物を閲覧できます。他のファイルや会話は共有されません。",
+    checking: "共有状態を確認中…",
+    createLink: "公開リンクを作成",
+    linkReady: "公開リンクを作成しました",
+    changedNotice: "内容が変更されています。リンクには以前に公開した版が表示されます。",
+    confirmUpdate: "公開済みの内容を現在の版で上書きしますか？リンクは変わりません。",
+    confirmRevoke: "公開リンクを取り消しますか？取り消すとリンクから閲覧できなくなります。",
     originRequired: '生成元を確認できたモデルの成果物のみ共有できます。アップロード、派生ファイル、生成元不明のファイルは共有できません。',
     share: '共有',
     shareArtifact: '成果物を共有',
@@ -3636,7 +3645,7 @@ export const ja = defineLocale({
   preview: {
     copyAll: '全文をコピー',
     saveAs: '名前を付けて保存',
-    exportFailed: 'エクスポートできませんでした。プレビューと画像の読み込みを確認してください。',
+    exportFailed: 'プレビューをエクスポートできませんでした。もう一度お試しください。',
     exportFormats: { md: 'Markdown (.md)', pdf: 'PDF (.pdf)', docx: 'Word (.docx)' },
     tab: 'プレビュー',
     closePane: 'プレビューペインを閉じる',

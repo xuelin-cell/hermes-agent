@@ -27,12 +27,11 @@ import {
   PaneTabStrip
 } from '@/components/ui/pane-tab'
 import { ContribBoundary, ContribRender } from '@/contrib/react/boundary'
-import { $developerMode } from '@/store/developer-mode'
-
 import { useContributions } from '@/contrib/react/use-contributions'
 import { useI18n } from '@/i18n'
 import { useKeybindHint } from '@/lib/keybinds/use-keybind-hint'
 import { cn } from '@/lib/utils'
+import { $developerMode } from '@/store/developer-mode'
 import { closeAllOpenSessionTiles, setZoneParkedTiles } from '@/store/session-states'
 
 import { $layoutEditMode, $layoutEditRevealsHidden } from '../../edit-mode'
@@ -304,6 +303,7 @@ export function TreeGroup({
   const tabsBelowControls = topEdge && (sidebarGroup || measuredBelowControls)
   const tabsInTitlebar = topEdge && !tabsBelowControls
   const pageHeader = paneChrome(active).headerContent
+  const headerActions = paneChrome(active).headerActions
 
   // What the strip's "+" makes. The pane you are LOOKING AT answers first (a
   // Browser tab makes another Browser, even stacked into the chat strip), then
@@ -596,6 +596,14 @@ export function TreeGroup({
                 titlebar={tabsInTitlebar}
                 trailing={
                   <>
+                    {!node.minimized && headerActions && (
+                      <span
+                        className="flex shrink-0 items-center self-center [-webkit-app-region:no-drag]"
+                        onPointerDown={event => event.stopPropagation()}
+                      >
+                        {headerActions()}
+                      </span>
+                    )}
                     {minimizable && (
                       <button
                         aria-label={node.minimized ? t.zones.restore : minimizeLabel}

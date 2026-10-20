@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { strFromU8, unzipSync } from 'fflate'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -108,6 +109,7 @@ it.each(['md', 'pdf', 'docx'])('保存 %s 使用原生选择的路径，原文�
 
   if (format === 'pdf') {
     expect(bytes.subarray(0, 5).toString()).toBe('%PDF-')
+    expect(mock.print).toHaveBeenCalledWith(expect.objectContaining({ preferCSSPageSize: true, printBackground: true }))
   }
 
   if (format === 'docx') {
@@ -148,6 +150,17 @@ it('保存框返回时账号已退出，不再转换或覆盖目标文件', asyn
 })
 
 it('PDF 使用禁脚本隔离窗，拒绝网络和本机资源，打印失败也销毁并清理', async () => {
+  let temporaryFile = ''
+  mock.load.mockImplementation(async url => {
+    temporaryFile = fileURLToPath(url)
+    expect(await fs.readFile(temporaryFile, 'utf8')).toContain('Content-Security-Policy')
+    const callback = vi.fn()
+    const requests = mock.requests.mock.calls[0][0]
+    requests({ url, resourceType: 'mainFrame' }, callback)
+    expect(callback).toHaveBeenLastCalledWith({ cancel: false })
+    requests({ url, resourceType: 'image' }, callback)
+    expect(callback).toHaveBeenLastCalledWith({ cancel: true })
+  })
   mock.print.mockRejectedValueOnce(new Error('print failure'))
   await expect(previewPdf('<script>bad()</script>')).rejects.toThrow('print failure')
   expect(mock.created.mock.calls[0][0]).toMatchObject({
@@ -164,4 +177,5 @@ it('PDF 使用禁脚本隔离窗，拒绝网络和本机资源，打印失败也
 
   expect(mock.destroy).toHaveBeenCalledOnce()
   expect(mock.clear).toHaveBeenCalledOnce()
+  await expect(fs.stat(temporaryFile)).rejects.toMatchObject({ code: 'ENOENT' })
 })

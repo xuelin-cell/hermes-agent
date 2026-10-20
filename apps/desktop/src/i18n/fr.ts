@@ -1,3 +1,4 @@
+import { messagingConnectionCopy } from './messaging-connection'
 import { defineFieldCopy } from '@/app/settings/field-copy'
 
 import { defineLocale, type TranslationOverrides } from './define-locale'
@@ -3312,6 +3313,7 @@ export const frOverrides = {
     }
   },
   messaging: {
+    connection: messagingConnectionCopy["fr"],
     cards: {
       heading: 'Applications de messagerie',
       description:
@@ -3993,6 +3995,13 @@ export const frOverrides = {
     open: 'Ouvrir'
   },
   artifactShare: {
+    disclosure: "Toute personne disposant du lien peut consulter ce fichier. Les autres fichiers et conversations ne sont pas partagés.",
+    checking: "Vérification du partage…",
+    createLink: "Créer un lien public",
+    linkReady: "Le lien public est prêt",
+    changedNotice: "Le contenu a changé. Le lien affiche encore la version précédemment publiée.",
+    confirmUpdate: "Remplacer le contenu publié par cette version ? Le lien restera identique.",
+    confirmRevoke: "Révoquer ce lien public ? Les personnes qui le possèdent ne pourront plus y accéder.",
     originRequired: 'Seuls les résultats vérifiés du modèle peuvent être partagés. Les fichiers importés, dérivés ou de source inconnue sont bloqués.',
     share: 'Partager',
     shareArtifact: 'Partager le contenu',
@@ -5326,7 +5335,7 @@ export const frOverrides = {
   preview: {
     copyAll: 'Copier tout le texte',
     saveAs: 'Enregistrer sous',
-    exportFailed: 'Échec de l’exportation. Vérifiez que le contenu et les images sont chargés.',
+    exportFailed: 'Impossible d’exporter cet aperçu. Veuillez réessayer.',
     exportFormats: { md: 'Markdown (.md)', pdf: 'PDF (.pdf)', docx: 'Word (.docx)' },
     tab: 'Aperçu',
     closePane: "Fermer le panneau d'aperçu",

@@ -1,3 +1,4 @@
+import { messagingConnectionCopy } from './messaging-connection'
 import { FIELD_DESCRIPTIONS, FIELD_LABELS } from '@/app/settings/constants'
 
 import type { Translations } from './types'
@@ -3148,6 +3149,7 @@ export const en: Translations = {
   },
 
   messaging: {
+    connection: messagingConnectionCopy["en"],
     cards: {
       heading: 'Chat apps',
       description: 'Connect WeChat, DingTalk and other chat apps to receive and reply to messages from your phone.',
@@ -3849,6 +3851,13 @@ export const en: Translations = {
   },
 
   artifactShare: {
+    disclosure: "Anyone with the link can view this artifact. Your other files and conversations are not shared.",
+    checking: "Checking share status…",
+    createLink: "Create public link",
+    linkReady: "Public link is ready",
+    changedNotice: "The content has changed. The link still shows the previously published version.",
+    confirmUpdate: "Replace the published content with this version? The link will stay the same.",
+    confirmRevoke: "Revoke this public link? People with the link will no longer be able to open it.",
     originRequired: 'Only verified model artifacts can be shared. Uploads, derived files and unknown sources are blocked.',
     share: 'Share',
     shareArtifact: 'Share artifact',
@@ -5165,7 +5174,7 @@ export const en: Translations = {
   preview: {
     copyAll: 'Copy full text',
     saveAs: 'Save as',
-    exportFailed: 'Could not export this preview. Check that its content and images are ready.',
+    exportFailed: 'Could not export this preview. Please try again.',
     exportFormats: { md: 'Markdown (.md)', pdf: 'PDF (.pdf)', docx: 'Word (.docx)' },
     tab: 'Preview',
     closePane: 'Close preview pane',

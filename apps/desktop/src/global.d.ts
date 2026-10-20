@@ -5,6 +5,7 @@ import type { HermesSkin } from '@hermes/shared/skin'
 import type { TranslucencyState } from '@hermes/shared/translucency'
 
 import type { ScreenshotApi } from '../electron/command-screenshot-types'
+import type { MessagingOperationStatus, MessagingSetupRequest, MessagingSetupResult } from '../electron/entry_local/messaging-contract'
 import type { HudModifierApi } from '../electron/hud-modifier-types'
 import type {
   CloudDriveRequest,
@@ -19,7 +20,7 @@ import type { PoolLimits } from '../electron/pool-limits'
 import type { PreviewExport, PreviewExportResult } from '../electron/preview-export'
 import type { UniworkAsrBridge } from '../electron/uniwork-asr/contract'
 import type { PlanUsageResult } from '../electron/uniwork-usage/contract'
-import type { WelcomeCategory, WelcomeLocale } from '../electron/uniwork-welcome/catalog'
+import type { WelcomeModule, WelcomeLocale } from '../electron/uniwork-welcome/catalog'
 import type { GrowRequest } from '../electron/window-growth'
 
 import type { WakeIndicatorState } from './lib/wake-indicator'
@@ -42,6 +43,9 @@ declare global {
       /** 仅返回当前账号套餐展示信息，不接受页面身份参数。 */
       getPlanUsage?: () => Promise<PlanUsageResult>
       getMaasAccount: () => Promise<LoginAccount | null>
+      messagingSetup: (input: MessagingSetupRequest) => Promise<MessagingSetupResult>
+      messagingStatus: () => Promise<MessagingOperationStatus>
+      onMessagingStatus: (callback: (status: MessagingOperationStatus) => void) => () => void
       conversationShare: ConversationShareApi
       artifactShare: {
         inspect: (key: string) => Promise<{ key: string; shareId: string; url: string; title: string; hash: string; version: number; updatedAt: string } | null>
@@ -53,7 +57,7 @@ declare global {
       }
       cloudDriveRequest: (input: CloudDriveRequest) => Promise<unknown>
       /** 取得完整办公目录；主进程负责认证和校验配置。 */
-      getWelcomeCatalog?: (locale: WelcomeLocale) => Promise<WelcomeCategory[]>
+      getWelcomeCatalog?: (locale: WelcomeLocale) => Promise<{ modules: WelcomeModule[] }>
       uniworkAsr?: UniworkAsrBridge
       cloudDriveAgentReady: (profile: string) => Promise<boolean>
       cloudDriveTransfer: (input: CloudDriveTransferRequest) => Promise<CloudDriveTransferResult>
@@ -327,6 +331,10 @@ declare global {
       prepareOfficePreview: (filePath: string, requestId: string) => Promise<void>
       /** 只另存当前预览内容，不接受页面指定的写入路径。 */
       exportPreview: (input: PreviewExport) => Promise<PreviewExportResult>
+      /** 默认目录是账号工作区时新建对话专属文件夹；其它情况返回 null。 */
+      createConversationFolder?: (defaultCwd: string) => Promise<null | string>
+      /** 删除刚建且仍为空的对话文件夹，用于创建会话失败时收尾。 */
+      discardConversationFolder?: (folder: string) => Promise<void>
       /** 页面离开时取消自己的转换请求；排队中没人等的转换会被跳过。 */
       cancelOfficePreview: (requestId: string) => Promise<void>
       /** Remote non-image attach: higher dedicated cap than preview/Settings default. */
