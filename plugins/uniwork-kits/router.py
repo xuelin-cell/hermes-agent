@@ -347,7 +347,8 @@ def on_pre_llm_call(**kwargs: Any) -> Optional[Dict[str, str]]:
             if hint:
                 parts.append(hint)
         if deck:
-            parts.append(deck_check.BUILD_RULES)
+            if not turn.subagent:  # 子任务只写父任务交代的那一份，整份 PPT 的写法规则会让它去写公共文件
+                parts.append(deck_check.BUILD_RULES)
             if _pictures_enabled():
                 parts.append(media_slot.picture_rules(delivery=delivery.deck_line(platform)))
             turn.rules_shown = True

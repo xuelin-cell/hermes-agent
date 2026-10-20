@@ -110,7 +110,9 @@ def on_transform_tool_result(
             text = image_landing.after_search(turn, args, text) or text
         if ppt_skill and kit_side and not turn.rules_shown:
             turn.rules_shown = True
-            rules = [deck_check.BUILD_RULES] + ([picture_rules(turn.platform)] if _pictures_enabled() else [])
+            rules = ([] if turn.subagent else [deck_check.BUILD_RULES]) + (
+                [picture_rules(turn.platform)] if _pictures_enabled() else []
+            )
             text = text.rstrip() + "\n\n" + "\n\n".join(rules)
         checked = deck_check.annotate(tool_name, args, text, turn)
         if checked is not None:

@@ -68,10 +68,16 @@ def test_an_old_deck_this_request_only_mentions_is_not_checked(kits, tmp_path):
     assert "没有交付" in kits.deck_check.annotate("write_file", {"path": str(old)}, "ok", turn)
 
 
-def test_a_deck_request_asks_for_the_script_in_parts(kits, profile_env):
-    """要做 PPT 的那一轮，模型拿到的说明里带着分份写脚本的规则。"""
+def test_a_deck_request_asks_for_the_script_in_parts_but_its_subagents_only_write_their_part(kits, profile_env):
+    """要做 PPT 的那一轮带着分份写脚本的规则；父任务派出的子任务只写自己那一份，不收这套规则，配图规则照给。"""
     context = kits.router.on_pre_llm_call(user_message="帮我做一份 20 页的幻灯片", platform="desktop")["context"]
     assert kits.deck_check.BUILD_RULES in context
+
+    child = kits.router.on_pre_llm_call(
+        user_message="写这份幻灯片第 5～9 页的分页文件 slides_2.js", platform="desktop",
+        session_id="child-1", turn_id="t1", parent_session_id="parent-1",
+    )["context"]
+    assert kits.deck_check.BUILD_RULES not in child and "PPT 配图原则" in child
 
 
 def test_the_uniai_watermark_stands_in_for_the_ai_label_but_other_generators_still_need_one(kits):
