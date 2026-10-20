@@ -8,8 +8,11 @@
  */
 
 import {
+  CAPABILITY_SCOPE_AREA,
+  type CapabilityScopeContribution,
   COMPOSER_AREAS,
   type HermesPlugin,
+  type PluginContext,
   type RouteContribution,
   ROUTES_AREA,
   SIDEBAR_NAV_AREA,
@@ -19,11 +22,33 @@ import {
 import { bindApi, bindOpener } from './api'
 import { watchBundled } from './bundled'
 import { ExpertBar } from './expert-bar'
-import { loadExperts } from './experts-store'
+import { $expertDirectory, loadExperts } from './experts-store'
 import { KITS_LOCALES } from './i18n'
 import { KitsPage } from './page'
 import { summonSendGuard } from './summon'
 import { SummonPicker } from './summon-picker'
+
+/**
+ * 专家是装成独立档案的，模型、密钥和连接器都从通用助手同步；在「技能与工具」里单独改它们会破坏专家
+ * （例如关掉本插件、装进别的技能），所以把专家档案声明为本插件托管，不出现在「正在配置」下拉框里。名单随装卸专家更新。
+ */
+function hideExpertProfiles(ctx: PluginContext): void {
+  let release = () => {}
+
+  const stop = $expertDirectory.subscribe(directory => {
+    release()
+    release = ctx.register({
+      area: CAPABILITY_SCOPE_AREA,
+      data: { hideProfiles: directory.experts.map(expert => expert.profile) } satisfies CapabilityScopeContribution,
+      id: 'managed-profiles'
+    })
+  })
+
+  ctx.onDispose(() => {
+    stop()
+    release()
+  })
+}
 
 const plugin: HermesPlugin = {
   id: 'uniwork-kits',
@@ -36,6 +61,7 @@ const plugin: HermesPlugin = {
     bindApi(ctx.rest)
     bindOpener(url => ctx.os.openExternal(url))
     void loadExperts()
+    hideExpertProfiles(ctx)
     // A new account gets the bundled kits and experts from the backend itself.
     void watchBundled()
     ctx.registerMany([
