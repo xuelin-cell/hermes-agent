@@ -287,13 +287,24 @@ export class ArtifactShareService {
 
     return this.exclusive(identity, input.key, async () => {
       new ArtifactOriginStore(identity.home).assertPublishable(input.source, input.html)
+      const sourceHash = input.source.path ? input.source.hash : undefined
       const existing = await this.read(identity, input.key)
 
       const now = this.now()
       const active = existing && artifactShareActive(existing, now) ? existing : null
       const requestedDeadline = input.ttlDays === undefined ? undefined : artifactShareDeadline(input.ttlDays, now)
 
-      if (active?.hash === hash && requestedDeadline === undefined) {return active}
+      if (active && requestedDeadline === undefined &&
+          (active.hash === hash || (sourceHash && active.sourceHash === sourceHash))) {
+        // An identical legacy snapshot proves the source version without another upload.
+        if (sourceHash && active.sourceHash !== sourceHash) {
+          const recovered = { ...active, sourceHash }
+          await this.write(identity, recovered)
+          this.deps.changed?.(input.key)
+          return recovered
+        }
+        return active
+      }
       if (existing && !active) {
         if (!existing.deletedAt) {await this.deleteExpired(identity, existing)}
         await fs.copyFile(this.recordPath(identity, input.key), path.join(identity.home, 'desktop-artifact-shares', `archive-${existing.shareId}.json`))
@@ -317,6 +328,7 @@ export class ArtifactShareService {
 
       const record: ArtifactShareRecord = {
         key: input.key, shareId, url, title: input.title.slice(0, 200), hash,
+        ...(sourceHash ? { sourceHash } : {}),
         version: (active?.version ?? 0) + 1, updatedAt: new Date(this.now()).toISOString(), expiresAt
       }
 

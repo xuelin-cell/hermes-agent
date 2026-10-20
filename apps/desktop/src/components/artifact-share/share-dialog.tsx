@@ -265,7 +265,8 @@ export function ArtifactShareDialog({
   return (
     <ArtifactShareDialogView
       busy={busy}
-      changed={!!record && artifactShareActive(record) && !!prepared && record.hash !== prepared.hash}
+      changed={!!record && artifactShareActive(record) && !!prepared &&
+        (path && record.sourceHash ? record.sourceHash !== prepared.sourceHash : record.hash !== prepared.hash)}
       error={error}
       loading={loading}
       onClose={onClose}

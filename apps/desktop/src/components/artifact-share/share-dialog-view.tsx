@@ -73,7 +73,9 @@ export function ArtifactShareDialogView({
   }, [record?.url, record?.hash, active])
 
   useEffect(() => {
-    if (!loading && active && changed && !dismissed) {
+    if (!changed) {
+      setPending(value => value === 'revoke' ? value : null)
+    } else if (!loading && active && !dismissed) {
       setPending('update')
     }
   }, [loading, active, changed, dismissed])
@@ -153,11 +155,21 @@ export function ArtifactShareDialogView({
                 <DialogDescription className="break-all">{title}</DialogDescription>
               </DialogHeader>
               <p className="text-sm text-muted-foreground">{copy.disclosure}</p>
-              {record && !loading && <ShareExpiryStatus expired={expired} record={record} />}
-              {!loading && !pending && record && !record.deletedAt && (
-                <Button disabled={busy} onClick={() => setEditingExpiry(true)} size="sm" variant="text">
-                  {copy.editValidity}
-                </Button>
+              {record && !loading && (
+                <div className="flex items-baseline justify-between gap-3">
+                  <ShareExpiryStatus expired={expired} record={record} />
+                  {!pending && !record.deletedAt && (
+                    <Button
+                      className="shrink-0"
+                      disabled={busy}
+                      onClick={() => setEditingExpiry(true)}
+                      size="micro"
+                      variant="text"
+                    >
+                      {copy.editValidity}
+                    </Button>
+                  )}
+                </div>
               )}
               {loading ? (
                 <p className="text-sm text-muted-foreground" role="status">
@@ -218,10 +230,12 @@ export function ArtifactShareDialogView({
                       <Trash2 aria-hidden="true" />
                       {copy.revokeShared}
                     </Button>
-                    <Button disabled={busy || !publishable || !changed} onClick={() => setPending('update')}>
-                      <RefreshCw aria-hidden="true" />
-                      {copy.updateShared}
-                    </Button>
+                    {changed && (
+                      <Button disabled={busy || !publishable} onClick={() => setPending('update')}>
+                        <RefreshCw aria-hidden="true" />
+                        {copy.updateShared}
+                      </Button>
+                    )}
                   </DialogFooter>
                 </>
               ) : (

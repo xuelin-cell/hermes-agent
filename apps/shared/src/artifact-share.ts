@@ -31,6 +31,8 @@ export interface ArtifactShareRecord {
   url: string
   title: string
   hash: string
+  /** Verified file bytes, independent of the Markdown renderer used to publish. */
+  sourceHash?: string
   version: number
   updatedAt: string
   /** Older records have no deadline until the user explicitly sets one. */
