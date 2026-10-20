@@ -133,8 +133,8 @@ def test_line_spacing_written_in_points_below_the_font_size_is_sent_back(kits, t
     assert not any(item.kind == "tight_spacing" for item in kits.deck_geometry.measure(normal.read_bytes()).problems)
 
 
-def _chart_deck(path, label_format: str) -> None:
-    """一页带柱状图的 PPT：数值 18.6、21.3，数据标签显示数值、格式为 label_format。"""
+def _chart_deck(path, label_format: str, kind: str = "barChart") -> None:
+    """一页带图表的 PPT：数值 18.6、21.3，数据标签显示数值、格式为 label_format；kind 为空时只有坐标轴没有图表。"""
     rels = (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
@@ -143,12 +143,17 @@ def _chart_deck(path, label_format: str) -> None:
         '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" '
         'Target="../charts/chart1.xml"/></Relationships>'
     )
-    chart = (
-        '<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart><c:plotArea><c:barChart>'
+    series = (
         '<c:ser><c:dLbls>'
         f'<c:numFmt formatCode="{label_format}" sourceLinked="0"/><c:showVal val="1"/></c:dLbls>'
         '<c:val><c:numRef><c:numCache><c:pt idx="0"><c:v>18.6</c:v></c:pt><c:pt idx="1"><c:v>21.3</c:v></c:pt>'
-        '</c:numCache></c:numRef></c:val></c:ser></c:barChart></c:plotArea></c:chart></c:chartSpace>'
+        '</c:numCache></c:numRef></c:val></c:ser>'
+    )
+    body = f"<c:{kind}>{series}</c:{kind}>" if kind else ""
+    chart = (
+        '<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart><c:plotArea>'
+        f'{body}<c:catAx><c:axId val="1"/></c:catAx><c:valAx><c:axId val="2"/></c:valAx>'
+        '</c:plotArea></c:chart></c:chartSpace>'
     )
     _deck_with(path, parts={"ppt/slides/_rels/slide1.xml.rels": rels, "ppt/charts/chart1.xml": chart})
 
@@ -163,6 +168,18 @@ def test_a_chart_whose_decimals_are_labelled_as_whole_numbers_is_sent_back(kits,
     exact = tmp_path / "exact.pptx"
     _chart_deck(exact, "0.0")
     assert not any(item.kind == "chart_rounding" for item in kits.deck_geometry.measure(exact.read_bytes()).problems)
+
+
+def test_a_chart_with_axes_but_no_chart_is_refused_as_unopenable(kits, tmp_path):
+    """类型名写错（如 'donut'）时 pptxgenjs 只写出坐标轴，PowerPoint 打不开整个文件：要退回；正常的柱状图不算。"""
+    empty = tmp_path / "empty.pptx"
+    _chart_deck(empty, "0.0", kind="")
+    report = kits.deck_geometry.measure(empty.read_bytes())
+    assert any(item.kind == "broken_chart" for item in report.problems), report.as_text()
+
+    bar = tmp_path / "bar.pptx"
+    _chart_deck(bar, "0.0")
+    assert not any(item.kind == "broken_chart" for item in kits.deck_geometry.measure(bar.read_bytes()).problems)
 
 
 def test_a_bounce_points_at_the_script_line_that_wrote_the_text(kits, tmp_path):

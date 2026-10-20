@@ -40,6 +40,10 @@ _PRESET_CLASS_RE = re.compile(r'\bpresetClass="([^"]*)"')
 _MEDIA_NODE_RE = re.compile(r"<p:(video|audio)\b[^>]*>(.*?)</p:\1>", re.DOTALL)
 _EMPTY_CHILDREN_RE = re.compile(r"<p:childTnLst\s*/>|<p:childTnLst>\s*</p:childTnLst>")
 _ANIM_EFFECT_RE = re.compile(r"<p:animEffect\b[^>]*?(?:/>|>(.*?)</p:animEffect>)", re.DOTALL)
+# 规范里 plotArea 可以放的全部图表类型；一个都没有的图表 PowerPoint 打不开。
+_CHART_GROUP_RE = re.compile(
+    r"<c:(?:area|area3D|line|line3D|stock|radar|scatter|pie|pie3D|doughnut|bar|bar3D|ofPie|surface|surface3D|bubble)Chart\b"
+)
 
 # ECMA-376 ST_PresetLineDashVal and ST_TLTimeNodePresetClassType.
 _DASHES = frozenset({
@@ -107,6 +111,11 @@ FIX_HINTS: Dict[str, str] = {
     # One fix only, and it does not touch notesMasterIdLst: a model told both
     # "move it" and "validate.py's complaint about it is harmless" read the pair
     # as a contradiction and left the deck broken (青禾, 2026-10-09).
+    "broken_chart": (
+        "图表类型名写错了：pptxgenjs 不认识的类型不报错，只写出坐标轴、不写图表本身，PowerPoint 就打不开。"
+        "类型只能是 bar、bar3D、line、area、pie、doughnut、scatter、bubble、radar（环形图是 doughnut，不是 donut），"
+        "用 pptx.ChartType 的常量，不要手写字符串。"
+    ),
     "notes_master": (
         "给备注母版单独一份主题：把它现在用的主题文件复制一份新名字（例如 theme1.xml → theme2.xml），"
         "把备注母版 .rels 里指向旧主题的 Target 改成新文件，再在 [Content_Types].xml 里给新文件加一条 "
@@ -194,6 +203,26 @@ def _animation_findings(part: str, xml: str) -> List[Tuple[int, str, str]]:
     return [(slide, "broken_animation", "；".join(phrases) + _FATAL)] if phrases else []
 
 
+def _chart_findings(archive: zipfile.ZipFile, part: str, names: Set[str]) -> List[Tuple[int, str, str]]:
+    """查一页引用的图表里有没有图表本身：只有坐标轴、没有任何 xxxChart 的图表会让 PowerPoint 打不开整个文件。
+
+    pptxgenjs 遇到不认识的类型名（如 'donut'）不报错，照样写出坐标轴（2026-10-21 实测一份 10 页 PPT 因此打不开）。
+    """
+    found: List[Tuple[int, str, str]] = []
+    for rel in _rels(archive, part):
+        if not rel.get("Type", "").endswith("/chart") or "Target" not in rel:
+            continue
+        chart = _resolve(part, rel["Target"])
+        if chart not in names:
+            continue
+        if not _CHART_GROUP_RE.search(archive.read(chart).decode("utf-8", "ignore")):
+            found.append((
+                _slide_number(part), "broken_chart",
+                f"图表 {chart.rsplit('/', 1)[-1]} 里只有坐标轴、没有图表本身，多半是图表类型名写错了{_FATAL}",
+            ))
+    return found
+
+
 def _notes_master_finding(archive: zipfile.ZipFile, presentation: str, names: Set[str]) -> List[Tuple[int, str, str]]:
     """查备注母版和幻灯片母版共用同一个主题；PowerPoint 遇到会拒绝打开，并给出具体改法。"""
     notes_at = presentation.find("<p:notesMasterIdLst")
@@ -239,6 +268,7 @@ def problems(archive: zipfile.ZipFile, presentation: str) -> List[Tuple[int, str
         found.extend(_value_findings(part, xml))
         if _SLIDE_PART_RE.fullmatch(part):
             found.extend(_animation_findings(part, xml))
+            found.extend(_chart_findings(archive, part, names))
     found = _notes_master_finding(archive, presentation, names) + found
     if len(found) > MAX_LISTED:
         rest = len(found) - MAX_LISTED
