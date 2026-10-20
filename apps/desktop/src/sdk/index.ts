@@ -1663,6 +1663,9 @@ export { CapabilitiesView } from '@/app/capabilities'
  *  dialog); pass a live `gateway` (see `host.getGateway()`) and the `profile`
  *  to scope it to one bot. */
 export { ConnectorsTab } from '@/app/capabilities/connectors/connectors-tab'
+/** 「技能与工具」页「正在配置」下拉框：插件声明自己托管的档案（`data.hideProfiles`），
+ *  这些档案不出现在下拉框里；多个插件取并集，默认档案永远不隐藏。重新登记同一个 id 即可更新名单。 */
+export { CAPABILITY_SCOPE_AREA, type CapabilityScopeContribution } from '@/app/capabilities/scope-contrib'
 // Every contribution surface, plugin-reachable: register keybinds, palette
 // commands, routes, themes, panes, composer extensions, and bar items with
 // the same area ids + payload types core uses.
