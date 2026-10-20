@@ -5,7 +5,7 @@ import path from 'node:path'
 import { expect, it } from 'vitest'
 import { parse } from 'yaml'
 
-import { connectorHome, prepareConnectorConfig } from './config'
+import { connectorHome, prepareAgentMailConfig, prepareConnectorConfig } from './config'
 
 it('refreshes only owned endpoints in A → B → A, preserving disabled state, filters and unrelated settings', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-connector-config-'))
@@ -95,6 +95,34 @@ it('rejects a non-map MCP section without changing the config', async () => {
       'Cannot read connector MCP configuration'
     )
     expect(fs.readFileSync(file, 'utf8')).toBe(original)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+it('creates and later disables the owned hidden Agent Mail entry', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-agent-mail-config-'))
+  const file = path.join(root, 'config.yaml')
+  fs.writeFileSync(file, 'model: user-model\n')
+
+  try {
+    const config = async () => ({
+      url: 'http://127.0.0.1/wo-mail',
+      headers: { Authorization: 'Bearer runtime' },
+      timeout: 600
+    })
+
+    await prepareAgentMailConfig(root, true, config)
+    expect(parse(fs.readFileSync(file, 'utf8')).mcp_servers.connector_wo_mail).toEqual({
+      url: 'http://127.0.0.1/wo-mail',
+      headers: { Authorization: 'Bearer runtime' },
+      timeout: 600,
+      desktop_agent_mail: true,
+      enabled: true
+    })
+
+    await prepareAgentMailConfig(root, true, config, false)
+    expect(parse(fs.readFileSync(file, 'utf8')).mcp_servers.connector_wo_mail.enabled).toBe(false)
   } finally {
     fs.rmSync(root, { recursive: true, force: true })
   }

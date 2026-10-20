@@ -130,7 +130,8 @@ export async function prepareConnectorConfig(
 export async function prepareAgentMailConfig(
   home: string,
   connected: boolean,
-  config: () => Promise<Record<string, unknown>>
+  config: () => Promise<Record<string, unknown>>,
+  enabled = true
 ): Promise<void> {
   const file = path.join(home, 'config.yaml')
   const stat = fs.lstatSync(file, { throwIfNoEntry: false })
@@ -151,16 +152,45 @@ export async function prepareAgentMailConfig(
 
   const serversNode = doc.get('mcp_servers')
 
-  if (!isMap(serversNode)) {
-    return
+  let servers: YAMLMap
+
+  if (serversNode === undefined || serversNode === null) {
+    const created = doc.createNode({})
+
+    if (!isMap(created)) {
+      throw new Error('Cannot create Agent Mail MCP configuration')
+    }
+
+    servers = created
+    doc.set('mcp_servers', servers)
+  } else if (!isMap(serversNode)) {
+    throw new Error('Cannot read Agent Mail MCP configuration')
+  } else {
+    servers = serversNode
   }
 
-  const entry = serversNode.get('connector_wo_mail')
+  const entry = servers.get('connector_wo_mail')
+
+  if (entry === undefined) {
+    const next = await config()
+
+    if (fs.readFileSync(file, 'utf8') !== original) {
+      throw new Error('Connector config changed during startup')
+    }
+
+    servers.set(
+      'connector_wo_mail',
+      doc.createNode({ ...next, desktop_agent_mail: true, enabled })
+    )
+    writeSecretFileAtomic(file, doc.toString({ lineWidth: 0 }), { encoding: 'utf8' })
+
+    return
+  }
 
   if (!isMap(entry) || entry.get('desktop_agent_mail') !== true) {
     return
   }
-  if (serversNode.anchor || entry.anchor || entry.has('<<')) {
+  if (servers.anchor || entry.anchor || entry.has('<<')) {
     throw new Error('Shared connector YAML nodes are not supported')
   }
 
@@ -172,5 +202,6 @@ export async function prepareAgentMailConfig(
 
   entry.set('url', next.url)
   entry.set('headers', doc.createNode(next.headers))
+  entry.set('enabled', enabled)
   writeSecretFileAtomic(file, doc.toString({ lineWidth: 0 }), { encoding: 'utf8' })
 }
