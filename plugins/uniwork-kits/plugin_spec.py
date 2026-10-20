@@ -1,7 +1,11 @@
 # Vendored verbatim from UniClaw libs/hexagent_demo/backend/hexagent_api/plugin_spec.py
 # (feat/plugin @ 14314c7f). Pure stdlib + PyYAML; keep in sync by re-copying,
-# not by editing here. One Hermes-side change: import yaml reads
-# yaml_compat so the module also runs where Hermes ships ruamel instead.
+# not by editing here. Hermes-side changes to carry over when re-copying:
+# - import yaml reads yaml_compat so the module also runs where Hermes ships
+#   ruamel instead;
+# - _split_command_frontmatter keeps the whole body. Upstream kept only the
+#   text after a second ``---`` line, so a command whose body has a Markdown
+#   rule lost everything before it (ppt-writer's create-ppt lost its steps).
 """Plugin manifest (``plugin.json``) parsing and validation.
 
 A plugin is a zip package that aggregates existing primitives — skills
@@ -480,12 +484,13 @@ def _split_command_frontmatter(raw: str) -> tuple[dict, str]:
     """
     if not raw.startswith("---"):
         return {}, raw
-    # ``---\n<yaml>\n---\n<body>`` → 3 parts; an unterminated block yields 1.
-    parts = raw.split("\n---", 2)
+    # ``---\n<yaml>\n---\n<body>``: the head ends at the first ``\n---``; an
+    # unterminated block yields 1 part. A later ``---`` line belongs to the body.
+    parts = raw.split("\n---", 1)
     if len(parts) < 2:
         return {}, raw
     head = parts[0][3:]
-    body = parts[-1].lstrip("\n")
+    body = parts[1].lstrip("\n")
     try:
         loaded = yaml.safe_load(head)
     except yaml.YAMLError:

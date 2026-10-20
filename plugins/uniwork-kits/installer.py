@@ -38,6 +38,9 @@ _TEXT_SUFFIXES = (".md", ".txt")
 _CJK_RE = re.compile(r"[一-鿿]")
 _DOC_SUFFIXES = (".md", ".txt", ".json", ".yaml", ".yml")
 _RESERVED_PROFILE_NAMES = frozenset({"default", "hermes", "test", "tmp", "root", "sudo", "custom"})
+# 命令转成技能的写法版本，记在安装记录里。转换逻辑改了就加一，seed 会把按旧写法装的、含命令的包重装一次。
+# 2：正文里有 --- 分隔线时不再丢掉它前面的内容（ppt-writer 的 create-ppt 曾丢了全部步骤）。
+COMMAND_FORMAT = 2
 
 
 class KitError(Exception):
@@ -185,6 +188,11 @@ def _has_real_env(path: Path) -> bool:
 
 
 _BUILTIN_NAMES: Optional[Set[str]] = None
+
+
+def commands_current(entry: Dict[str, Any]) -> bool:
+    """这个包的命令技能是不是按当前写法转换的；没有命令技能的包不受写法影响。"""
+    return not entry.get("command_skill_names") or int(entry.get("command_format") or 1) >= COMMAND_FORMAT
 
 
 def builtin_skill_names() -> Set[str]:
@@ -735,6 +743,7 @@ def install_into_home(
         "source_dir": retained.relative_to(home).as_posix(),
         "skill_names": skill_names,
         "command_skill_names": command_names,
+        "command_format": COMMAND_FORMAT,
         "agent_skill_names": agent_names,
         "mcp_keys": mcp_keys,
         "env_keys": env_keys,

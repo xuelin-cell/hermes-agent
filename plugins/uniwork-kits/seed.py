@@ -87,7 +87,7 @@ def seed(
     progress: Optional[Callable[[str, int, int], None]] = None,
     removed: Collection[str] = (),
 ) -> List[SeedItem]:
-    """安装新的或字节变了的包，字节相同的不动，也从不卸载。
+    """安装新的或字节变了的包，字节相同的不动，也从不卸载；命令按旧写法转换的包例外，重装一次。
 
     启用开关、.env 里的值、用户手改过的专家 SOUL.md 都按 installer.install 的规则保留。触发词默认用插件自带的已校验表，新账号装这些包不调模型。progress 在每装一个包前收到（名字, 已完成, 总数）。removed 里的包如果已经不在了就不再装回（用户卸载过）；还装着的照常更新。
     """
@@ -99,8 +99,9 @@ def seed(
     index = store.load_index(home).get("plugins") or {}
     # A zip's digest is the hash of its bytes, so an installed one is known
     # without unpacking it — this keeps the check on every start under a second.
+    # 命令按旧写法转换的不算「已装好」，要重装一次（installer.COMMAND_FORMAT）。
     installed = {str(entry["digest"]): name for name, entry in index.items()
-                 if isinstance(entry, dict) and entry.get("digest")}
+                 if isinstance(entry, dict) and entry.get("digest") and installer.commands_current(entry)}
     items: List[SeedItem] = []
     identified: List[tuple[Path, str, str, str]] = []
     for archive in archives:
@@ -122,7 +123,7 @@ def seed(
         if kind == "broken":
             return "unreadable"
         previous = index.get(name)
-        if isinstance(previous, dict) and previous.get("digest") == digest:
+        if isinstance(previous, dict) and previous.get("digest") == digest and installer.commands_current(previous):
             return "unchanged"
         if name in removed and not isinstance(previous, dict):
             return "removed"
