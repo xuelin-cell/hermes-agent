@@ -42,7 +42,10 @@ vi.mock('@/store/starmap', () => ({ resetStarmapGraph }))
 
 const {
   $activeGatewayProfile,
+  $gatewaySwapTarget,
+  $newChatProfile,
   $profiles,
+  $quietNewChatProfile,
   ensureGatewayProfile,
   invalidateProfileListFetches,
   newSessionInProfile,
@@ -427,5 +430,63 @@ describe("profile switch leaves the previous profile's project (#54990)", () => 
     newSessionInProfile('default')
 
     expect(resolveNewSessionCwd()).toBe('/work/app1')
+  })
+})
+
+describe('a new chat a plugin opens quietly (newSessionInProfile quiet / onError)', () => {
+  afterEach(() => {
+    $newChatProfile.set(null)
+    ensureGatewayForProfile.mockImplementation(async () => undefined)
+  })
+
+  /** 记下这次切换里全屏「正在唤醒」遮罩出现过的目标。 */
+  async function overlayTargets(open: () => void): Promise<(null | string)[]> {
+    const seen: (null | string)[] = []
+    const stop = $gatewaySwapTarget.listen(value => void seen.push(value))
+
+    open()
+    await vi.waitFor(() => expect(ensureGatewayForProfile).toHaveBeenCalled())
+    await new Promise(resolve => setTimeout(resolve, 0))
+    stop()
+
+    return seen
+  }
+
+  it('skips the full-screen waking overlay only when the caller asks to be quiet', async () => {
+    getConnection.mockResolvedValue(localConn({ profile: 'fund-diagnostician' }))
+
+    expect(await overlayTargets(() => newSessionInProfile('fund-diagnostician'))).toContain('fund-diagnostician')
+
+    $activeGatewayProfile.set('default')
+    ensureGatewayForProfile.mockClear()
+
+    expect(await overlayTargets(() => newSessionInProfile('fund-diagnostician', { quiet: true }))).not.toContain(
+      'fund-diagnostician'
+    )
+  })
+
+  it('marks the quiet draft until the next new chat points somewhere else', () => {
+    newSessionInProfile('fund-diagnostician', { quiet: true })
+    expect($quietNewChatProfile.get()).toBe('fund-diagnostician')
+
+    // Ctrl+N clears the pinned profile: the next draft is the general one again.
+    $newChatProfile.set(null)
+    expect($quietNewChatProfile.get()).toBeNull()
+
+    newSessionInProfile('fund-diagnostician', { quiet: true })
+    newSessionInProfile('fund-diagnostician')
+    expect($quietNewChatProfile.get()).toBeNull()
+  })
+
+  it('hands a failed backend switch to onError instead of the desktop toast', async () => {
+    const failure = new Error('Backend for "fund-diagnostician" was retired; open it explicitly to reconnect.')
+    const onError = vi.fn()
+
+    ensureGatewayForProfile.mockImplementation(async () => {
+      throw failure
+    })
+    newSessionInProfile('fund-diagnostician', { onError, quiet: true })
+
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith(failure))
   })
 })

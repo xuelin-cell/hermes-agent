@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { expertForProfile, openingPrompt, pickerGroups, quickPrompts } from './summon-model'
+import { expertForProfile, openingPrompt, pickerGroups, quickPrompts, searchExperts } from './summon-model'
 import type { ExpertCard, ExpertDirectory } from './types'
 
 function card(name: string, extra: Partial<ExpertCard> = {}): ExpertCard {
@@ -28,6 +28,22 @@ describe('summon picker', () => {
 
     expect(recent.map(expert => expert.name)).toEqual(['c', 'a'])
     expect(rest.map(expert => expert.name)).toEqual(['b'])
+  })
+
+  it('searches every expert by name, profession or description, and ignores a blank query', () => {
+    const found = searchExperts(
+      {
+        experts: [
+          card('fund', { display_name: '基金诊断专家', profession: '东方财富妙想', description: '看一只基金' }),
+          card('xhs', { display_name: '小红书运营专家', description: '写笔记' })
+        ],
+        recent: []
+      },
+      ' 基金 '
+    )
+
+    expect(found.map(expert => expert.name)).toEqual(['fund'])
+    expect(searchExperts(directory, '   ')).toEqual([])
   })
 
   it('finds the expert a chat belongs to by its profile, and nothing for ordinary profiles', () => {

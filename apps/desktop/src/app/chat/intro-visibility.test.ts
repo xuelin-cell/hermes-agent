@@ -45,4 +45,8 @@ describe('shouldShowIntro', () => {
     expect(shouldShowIntro({ ...showing, activeSessionId: 'session-1' })).toBe(false)
     expect(shouldShowIntro({ ...showing, messagesEmpty: false })).toBe(false)
   })
+
+  it('hides the general splash on a draft a caller opened quietly', () => {
+    expect(shouldShowIntro({ ...showing, quietDraft: true })).toBe(false)
+  })
 })

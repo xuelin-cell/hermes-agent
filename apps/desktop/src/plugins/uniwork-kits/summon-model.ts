@@ -17,6 +17,23 @@ export function pickerGroups(directory: ExpertDirectory): { recent: ExpertCard[]
   return { recent, rest }
 }
 
+/** 按名字、职业、简介或标签在全部专家里找。空查询不返回列表。 */
+export function searchExperts(directory: ExpertDirectory, query: string): ExpertCard[] {
+  const needle = query.trim().toLocaleLowerCase()
+
+  if (!needle) {
+    return []
+  }
+
+  return directory.experts
+    .filter(expert =>
+      [expert.display_name, expert.profession, expert.description, expert.profile, ...expert.tags].some(field =>
+        field.toLocaleLowerCase().includes(needle)
+      )
+    )
+    .sort((a, b) => a.display_name.localeCompare(b.display_name, 'zh'))
+}
+
 /** The expert whose profile *profile* is, or null for an ordinary profile. */
 export function expertForProfile(directory: ExpertDirectory, profile: null | string | undefined): ExpertCard | null {
   const key = String(profile ?? '').trim()

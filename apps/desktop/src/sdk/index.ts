@@ -421,6 +421,10 @@ export interface PluginOpenSessionOptions {
 export interface PluginNewChatOptions {
   workspaceMode?: WorkspaceMode
   workspaceOwnerKey?: string
+  /** 调用方自己显示准备进度：不盖全屏「正在唤醒」，这条新草稿上也不显示通用欢迎大标题。 */
+  quiet?: boolean
+  /** 后端没有切过去时交给调用方处理，不再弹桌面的错误提示。 */
+  onError?: (error: unknown) => void
 }
 
 // Raise the "Syncing…" affordance for a paint-first wake (#89843) and tear it
@@ -1391,7 +1395,10 @@ export const host = {
     if (profile && typeof profile !== 'string') {
       newSessionInAgent({ ...profile })
     } else {
-      newSessionInProfile((profile ?? '').trim() || $activeGatewayProfile.get())
+      newSessionInProfile((profile ?? '').trim() || $activeGatewayProfile.get(), {
+        quiet: options.quiet === true,
+        onError: options.onError
+      })
     }
 
     window.location.hash = '#/'

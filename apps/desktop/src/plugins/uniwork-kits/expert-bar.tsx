@@ -14,17 +14,24 @@ import { ExpertFace } from './expert-face'
 import { $expertDirectory } from './experts-store'
 import { fillPrompt, leaveExpert } from './summon'
 import { expertForProfile, quickPrompts } from './summon-model'
+import { $expertSummon } from './summon-state'
 
 export function ExpertBar() {
   const t = usePluginI18n('uniwork-kits')
   const directory = useValue($expertDirectory)
+  const summon = useValue($expertSummon)
   const profile = useValue(host.state.focusedSessionProfile)
   const sessionId = useValue(host.state.focusedSessionId)
-  const expert = expertForProfile(directory, profile)
+  const summoned = summon ? expertForProfile(directory, summon.profile) : null
+  const expert = summoned ?? expertForProfile(directory, profile)
 
   if (!expert) {
     return null
   }
+
+  const preparing = summon?.profile === expert.profile && summon.phase === 'preparing'
+  const failed = summon?.profile === expert.profile && summon.phase === 'failed'
+  const showWelcome = !sessionId || preparing || failed
 
   const leave = (
     <button
@@ -36,7 +43,7 @@ export function ExpertBar() {
     </button>
   )
 
-  if (sessionId) {
+  if (sessionId && !showWelcome) {
     return (
       <div
         className="flex items-center gap-2 px-3 pt-1.5 pb-0.5 text-xs text-(--ui-text-tertiary)"
@@ -80,6 +87,13 @@ export function ExpertBar() {
         </div>
         {leave}
       </div>
+      {preparing ? (
+        <p className="m-0 mt-2 text-xs text-(--ui-text-tertiary)">
+          {t('preparingExpert')}
+          {expert.display_name}
+        </p>
+      ) : null}
+      {failed ? <p className="m-0 mt-2 text-xs text-(--ui-text-tertiary)">{summon?.error}</p> : null}
       {prompts.length ? (
         <div className="mt-2">
           <p className="m-0 mb-1 text-[0.7rem] text-(--ui-text-tertiary)">{t('tryAsking')}</p>

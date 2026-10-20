@@ -307,6 +307,18 @@ export const $activeGatewayProfile = atom<string>('default')
 // Profile for the NEXT new chat (chosen via the new-chat picker). null = primary
 // / default, so single-profile users are unaffected.
 export const $newChatProfile = atom<string | null>(null)
+
+/** 用 quiet 打开的新草稿属于哪个档案：调用方自己画这条草稿的准备状态，核心不显示通用欢迎大标题。
+ *  草稿一换到别的档案就清掉，免得留到以后的新对话上。 */
+export const $quietNewChatProfile = atom<string | null>(null)
+
+$newChatProfile.subscribe(profile => {
+  const quiet = $quietNewChatProfile.get()
+
+  if (quiet !== null && normalizeProfileKey(profile) !== quiet) {
+    $quietNewChatProfile.set(null)
+  }
+})
 /** The draft's exact owner — the same shape every session-scoped surface
  *  routes by (store/session-request-router SessionOwnerRoute). */
 export type AgentProfileRoute = SessionOwnerRoute
@@ -590,7 +602,7 @@ async function resolveConnectionForProfile(profile: string): Promise<HermesConne
 // chat stays put; single-profile users never leave the primary).
 export async function ensureGatewayProfile(
   profile: string | null | undefined,
-  { forceLegacyRoute = false }: { forceLegacyRoute?: boolean } = {}
+  { forceLegacyRoute = false, quiet = false }: { forceLegacyRoute?: boolean; quiet?: boolean } = {}
 ): Promise<void> {
   if (profile == null || !String(profile).trim()) {
     // "No explicit profile" = use the current gateway. But if an explicit swap
@@ -659,7 +671,11 @@ export async function ensureGatewayProfile(
     return
   }
 
-  $gatewaySwapTarget.set(target)
+  // quiet：调用方自己显示准备进度，不盖全屏「正在唤醒」。
+  if (!quiet) {
+    $gatewaySwapTarget.set(target)
+  }
+
   gatewaySwitch = (async () => {
     // ensureGatewayForProfile opens (or reuses) the target's socket and points
     // the active gateway at it — without closing the profile you came from.
@@ -797,6 +813,8 @@ export interface EnsureGatewayAgentOptions {
   beforeActivate?: () => boolean
   /** Revokes this caller's right to activate or publish after async work. */
   signal?: AbortSignal
+  /** 调用方自己显示准备进度，不盖全屏「正在唤醒」。 */
+  quiet?: boolean
 }
 
 function releaseWhenAborted(promise: Promise<void>, signal?: AbortSignal): Promise<void> {
@@ -830,7 +848,7 @@ function releaseWhenAborted(promise: Promise<void>, signal?: AbortSignal): Promi
 export async function ensureGatewayAgent(
   connectionId: null | string,
   profile: string,
-  { beforeActivate, signal }: EnsureGatewayAgentOptions = {}
+  { beforeActivate, signal, quiet = false }: EnsureGatewayAgentOptions = {}
 ): Promise<void> {
   const target = normalizeProfileKey(profile)
   const connection = (connectionId ?? '').trim() || null
@@ -851,7 +869,9 @@ export async function ensureGatewayAgent(
     return
   }
 
-  $gatewaySwapTarget.set(target)
+  if (!quiet) {
+    $gatewaySwapTarget.set(target)
+  }
 
   const activationWork = (async () => {
     if (signal?.aborted) {
@@ -1028,10 +1048,12 @@ async function isLocalDesktopProfile(target: string): Promise<boolean> {
 // profile-only path so the main process can resolve a per-profile remote
 // override before falling back to a local backend. Default on `local` stays
 // on that source — see profilePickConnectionId.
-function activateOnCurrentSource(target: string): Promise<void> {
+function activateOnCurrentSource(target: string, options?: { quiet?: boolean }): Promise<void> {
   const connectionId = profilePickConnectionId(target)
 
-  return connectionId ? ensureGatewayAgent(connectionId, target) : ensureGatewayProfile(target)
+  return connectionId
+    ? ensureGatewayAgent(connectionId, target, { quiet: options?.quiet })
+    : ensureGatewayProfile(target, options)
 }
 
 // A project id names a row in ONE backend's projects.db. A draft headed for
@@ -1056,18 +1078,33 @@ export function pinNewChatProfile(name: string): string {
   return target
 }
 
+/** 新草稿的打开方式，给插件召唤这类自己显示准备状态的入口用。 */
+export interface NewSessionOptions {
+  /** 调用方自己显示准备进度：不盖全屏「正在唤醒」，这条新草稿上也不显示通用欢迎大标题。 */
+  quiet?: boolean
+  /** 后端没有切过去时交给调用方处理，不再弹桌面的错误提示。 */
+  onError?: (error: unknown) => void
+}
+
 // Start a fresh session in `name` WITHOUT collapsing the "All profiles" browse
 // view. Unlike selectProfile, it leaves $showAllProfiles untouched, so the
 // unified sidebar stays put — used by the per-profile "+" in the all-profiles
 // session list, where switching scope would throw away the browse state the user
 // is in. Points new chats at the profile and opens its backend so the next
 // message lands in the right place.
-export function newSessionInProfile(name: string): void {
+export function newSessionInProfile(name: string, options: NewSessionOptions = {}): void {
   const target = pinNewChatProfile(name)
+  $quietNewChatProfile.set(options.quiet ? target : null)
   leaveForeignProjectScope(target)
   requestFreshSession()
   // #81094: surface the failed dial instead of failing silently.
-  void activateOnCurrentSource(target).catch((error: unknown) => {
+  void activateOnCurrentSource(target, { quiet: options.quiet }).catch((error: unknown) => {
+    if (options.onError) {
+      options.onError(error)
+
+      return
+    }
+
     if (!notifyRemoteOverrideAuthFailure(target, error)) {
       notifyError(error, `Failed to open profile "${target}"`)
     }

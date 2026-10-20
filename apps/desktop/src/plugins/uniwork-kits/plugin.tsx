@@ -22,6 +22,7 @@ import { ExpertBar } from './expert-bar'
 import { loadExperts } from './experts-store'
 import { KITS_LOCALES } from './i18n'
 import { KitsPage } from './page'
+import { summonSendGuard } from './summon'
 import { SummonPicker } from './summon-picker'
 
 const plugin: HermesPlugin = {
@@ -60,6 +61,12 @@ const plugin: HermesPlugin = {
         area: COMPOSER_AREAS.top,
         order: 20,
         render: () => <ExpertBar />
+      },
+      {
+        // 专家还没准备好时，召唤出来的新草稿不能发送。
+        id: 'summon-send-guard',
+        area: COMPOSER_AREAS.middleware,
+        data: summonSendGuard
       }
     ])
   }

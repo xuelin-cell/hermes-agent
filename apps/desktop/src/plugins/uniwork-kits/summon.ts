@@ -8,13 +8,25 @@
  * with the general assistant: a conversation keeps the profile and system
  * prompt it started with, so switching inside one would break prompt caching
  * and profile isolation.
+ *
+ * The card appears immediately. The backend may still be starting; sending
+ * stays closed until this profile is the focused one, or for 30 seconds.
  */
 
-import { host } from '@hermes/plugin-sdk'
+import { type ComposerMiddleware, host } from '@hermes/plugin-sdk'
 
 import { recordSummon } from './api'
 import { $expertDirectory } from './experts-store'
 import { openingPrompt } from './summon-model'
+import {
+  $expertSummon,
+  beginExpertSummon,
+  clearExpertSummon,
+  EXPERT_SUMMON_FAILED,
+  expertSummonBlocksSend,
+  finishExpertSummon,
+  noteExpertSummonFailure
+} from './summon-state'
 import type { ExpertCard } from './types'
 
 // An expert whose backend is not running yet starts on the first summon, which
@@ -24,6 +36,12 @@ const READY_TIMEOUT_MS = 30_000
 // box; a second write covers that. Both only fill an empty box, so a draft the
 // user carried over or started typing is never overwritten.
 const SETTLE_MS = [150, 700]
+let summonTicket = 0
+
+interface QuietChatHost {
+  newChat: (profile: string, options?: { quiet?: boolean; onError?: (error: unknown) => void }) => void
+  warmProfile?: (profile: string) => void
+}
 
 /** The two composer doors desktops have shipped: newer ones expose
  *  `host.composer` (draft read/write by session address, `'new'` = the draft
@@ -38,7 +56,7 @@ interface HostComposerDoors {
   setComposerText?: (text: string, options?: { ifEmpty?: boolean }) => void
 }
 
-/** Put *text* in the new chat's input box; with *ifEmpty*, only when the box is empty. */
+/** 把开场白放进新对话的输入框。ifEmpty 时，框里已有字就不覆盖。 */
 async function putPrompt(text: string, ifEmpty: boolean): Promise<void> {
   const doors = host as unknown as HostComposerDoors
 
@@ -55,7 +73,7 @@ async function putPrompt(text: string, ifEmpty: boolean): Promise<void> {
   doors.setComposerText?.(text, { ifEmpty })
 }
 
-/** Fill *text* once the focused chat is a draft in *profile*. */
+/** 等焦点落到该专家的空草稿后，再写入开场白。 */
 function prefillWhenReady(profile: string, text: string): void {
   const ready = () => host.state.focusedSessionProfile.get() === profile && !host.state.focusedSessionId.get()
 
@@ -88,25 +106,97 @@ function prefillWhenReady(profile: string, text: string): void {
   timer = setTimeout(stop, READY_TIMEOUT_MS)
 }
 
+/** 点专家后立刻显示卡片，并在后台把后端拉起来。 */
 export function summonExpert(expert: ExpertCard): void {
+  const ticket = ++summonTicket
+
+  beginExpertSummon(expert.profile, expert.display_name)
   void recordSummon(expert.name)
     .then(result => $expertDirectory.set({ ...$expertDirectory.get(), recent: result.recent ?? [] }))
     .catch(() => undefined)
-  host.newChat(expert.profile)
+
+  const quietHost = host as unknown as QuietChatHost
+
+  quietHost.warmProfile?.(expert.profile)
+  quietHost.newChat(expert.profile, {
+    quiet: true,
+    onError: error => {
+      if (ticket === summonTicket) {
+        noteExpertSummonFailure(error instanceof Error ? error.message : String(error ?? ''))
+      }
+    }
+  })
 
   const prompt = openingPrompt(expert)
 
   if (prompt) {
     prefillWhenReady(expert.profile, prompt)
   }
+
+  const stop = host.state.focusedSessionProfile.listen(() => {
+    if (ticket !== summonTicket) {
+      stop()
+
+      return
+    }
+
+    if (host.state.focusedSessionProfile.get() === expert.profile) {
+      stop()
+      window.clearTimeout(timer)
+      finishExpertSummon(expert.profile)
+    }
+  })
+
+  const timer = window.setTimeout(() => {
+    stop()
+
+    if (ticket !== summonTicket) {
+      return
+    }
+
+    if (host.state.focusedSessionProfile.get() === expert.profile) {
+      finishExpertSummon(expert.profile)
+
+      return
+    }
+
+    const current = $expertSummon.get()
+
+    if (current?.profile === expert.profile && current.phase === 'preparing') {
+      $expertSummon.set({
+        profile: expert.profile,
+        displayName: expert.display_name,
+        phase: 'failed',
+        error: EXPERT_SUMMON_FAILED
+      })
+    }
+  }, READY_TIMEOUT_MS)
+
+  if (host.state.focusedSessionProfile.get() === expert.profile) {
+    stop()
+    window.clearTimeout(timer)
+    finishExpertSummon(expert.profile)
+  }
 }
 
-/** Put a quick prompt in the chat on screen. */
+/** 把一条建议问题放进当前输入框。 */
 export function fillPrompt(text: string): void {
   void putPrompt(text, false).catch(() => undefined)
 }
 
-/** Back to the general assistant: a new chat in the default profile. */
+/** 回到通用助手：默认 profile 里开一条新对话。 */
 export function leaveExpert(): void {
+  summonTicket += 1
+  clearExpertSummon()
   host.newChat('default')
+}
+
+/** 鼠标停在专家上时先把后端热起来，点下去就不用从零启动。 */
+export function warmExpert(profile: string): void {
+  ;(host as unknown as QuietChatHost).warmProfile?.(profile)
+}
+
+/** 专家还在准备或没有连上时，召唤出来的那条新草稿不能发送，消息留在输入框里。已有的对话不受影响。 */
+export const summonSendGuard: ComposerMiddleware = {
+  handler: draft => (expertSummonBlocksSend(host.state.focusedSessionId.get()) ? null : draft)
 }
