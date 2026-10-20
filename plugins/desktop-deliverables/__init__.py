@@ -248,10 +248,12 @@ def after_tool(
             after = snapshot(pending[0])
             if after is not None:
                 candidates += changed(pending[1], after)
+        # 素材目录名只在这些工作目录里面判断，目录本身叫什么不影响。
+        roots = {*turn.roots, turn.cwd, root}
         for path in candidates:
             if len(turn.paths) >= 256:
                 break
-            if path not in turn.uploads and fresh(path, turn.started):
+            if path not in turn.uploads and fresh(path, turn.started, roots):
                 turn.paths[path] = None
 
 
@@ -275,9 +277,12 @@ def transform(*, response_text="", session_id="", turn_id="", platform="", **kwa
                         turn.paths.setdefault(path, None)
         _turns.pop(key, None)
     cwd = local_cwd(turn.task_id) or turn.cwd
+    roots = {*turn.roots, turn.cwd, cwd}
     paths = dict.fromkeys([*turn.paths, *named_paths(response_text, cwd)])
     paths = [
-        path for path in paths if path not in turn.uploads and fresh(path, turn.started)
+        path
+        for path in paths
+        if path not in turn.uploads and fresh(path, turn.started, roots)
     ]
     if not paths:
         return None

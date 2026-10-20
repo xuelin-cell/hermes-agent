@@ -178,23 +178,31 @@ def named_paths(text, cwd):
     return list(dict.fromkeys(path for path in paths if path is not None))
 
 
-def eligible(path):
-    """只认交付白名单，排除隐藏文件、Office 锁文件及工具素材目录。"""
+def eligible(path, roots=()):
+    """只认交付白名单，排除隐藏文件、Office 锁文件及工具素材目录。
+
+    素材目录名只在文件所属的工作目录里面判断：用户选的目录本身或它的上级叫
+    templates、assets 也照常出卡片。不在任何工作目录里的文件仍按完整路径保守判断。
+    """
+    owner = max(
+        (root for root in roots if path.is_relative_to(root)),
+        key=lambda root: len(root.parts),
+        default=None,
+    )
+    parts = path.relative_to(owner).parts if owner else path.parts
     return (
         path.suffix.lower().lstrip(".") in EXTENSIONS
         and not path.name.startswith("~$")
-        and not any(
-            part.startswith(".") or part.lower() in EXCLUDED for part in path.parts
-        )
+        and not any(part.startswith(".") or part.lower() in EXCLUDED for part in parts)
     )
 
 
-def fresh(path, since):
+def fresh(path, since, roots=()):
     """交付必须存在、非空且在本轮创建或修改；时间只容忍两秒时钟偏差。"""
     try:
         stat = path.stat()
         return (
-            eligible(path)
+            eligible(path, roots)
             and path.is_file()
             and stat.st_size > 0
             and max(stat.st_mtime, getattr(stat, "st_birthtime", 0)) >= since - 2
@@ -238,7 +246,7 @@ def snapshot(root, budget=None):
             if time.monotonic() - budget[0] > 0.5:
                 return None
             path = Path(folder) / name
-            if not eligible(path):
+            if not eligible(path, (root,)):
                 continue
             try:
                 if not linked(os.lstat(path)):
