@@ -2,6 +2,8 @@
 
 宿主自带的 PPT 版式库：选一套风格，每页调用一个版式函数填内容。坐标、字号（按字数自动缩放）、图片比例、页码都由库算好，不要再自己写版式函数。只依赖 pptxgenjs。
 
+这份说明列的就是全部接口，不用去读 uniwork-deck.js 的源码。
+
 ## 用法
 
 ```js
@@ -51,7 +53,7 @@ module.exports = function (deck) {
 | `bullets` | points（1～8）, image?, source? | 要点；有图时左文右图 |
 | `cards` | cards（2～6，`{ head, text, badge? }`） | 并列卡片，自动排一行或两行 |
 | `stats` | stats（2～4，`{ value, label, note }`）, points?（1～4） | 大数字指标 |
-| `chart` | type（bar / line / pie / doughnut）, categories, series（`[{ name, values }]`）, note?, points?（1～5） | 图表，values 必须是数字 |
+| `chart` | type（bar / line / pie / doughnut）, categories, series（`[{ name, values }]`）, note?, points?（1～5） | 图表，values 必须是数字；单位写进系列名，如「老年人口（亿人）」 |
 | `table` | header（2～8 列）, rows（1～12 行，二维字符串数组）, note? | 表格 |
 | `timeline` | steps（2～6，`{ time, head, text }`） | 时间线 |
 | `process` | steps（2～6，`{ head, text }`） | 流程步骤 |

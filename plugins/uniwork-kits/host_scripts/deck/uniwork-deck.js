@@ -41,16 +41,20 @@ function emWidth(text) {
   for (const ch of String(text)) {
     const code = ch.codePointAt(0)
     if (code > 0x2e7f) width += 1
-    else if (ch === ' ') width += 0.3
+    else if (ch === ' ') width += 0.5
     else if (/[A-Z0-9%]/.test(ch)) width += 0.62
     else width += 0.52
   }
   return width
 }
 
+// 一行按能放下的字数打九三折估算：刚好卡在一行边上的文字，PowerPoint 常因标点不能放行首而折行，
+// 宿主的版面检查（西文统一按半个字宽算）也会判成两行；不留余量，卡片就会少留一行高度而被退回（2026-10-20 实测）。
+const WRAP_SLACK = 0.93
+
 /** 文字在给定宽度（英寸）、字号（磅）下要占几行。 */
 function lineCount(text, boxW, pt) {
-  const perLine = Math.max(1, (boxW * 72) / pt)
+  const perLine = Math.max(1, ((boxW * 72) / pt) * WRAP_SLACK)
   return String(text)
     .split('\n')
     .reduce((n, para) => n + Math.max(1, Math.ceil(emWidth(para) / perLine)), 0)
@@ -460,11 +464,18 @@ function createDeck(PptxGenJS, options = {}) {
       const cw = extra.length ? 7.4 : area.w
       const ch = area.h - (note ? 0.4 : 0)
       const round = type === 'pie' || type === 'doughnut'
+      // 数据标签按数据本身的小数位显示（最多两位）：默认格式会把 1.78 标成 2（2026-10-20 实测）
+      const decimals = Math.min(2, Math.max(0, ...data.flatMap(s => s.values).map(v => (String(v).split('.')[1] || '').length)))
+      // 只有一个系列的柱状图、折线图用一种颜色：给多种颜色时 pptxgenjs 会每根柱子换一种色，浅色那根几乎看不见
+      const palette = [theme.accent, theme.accent2, theme.primary, theme.muted, theme.line, theme.dark]
       slide.addChart(kinds[type], data, {
         x: area.x, y: area.y, w: cw, h: ch,
-        chartColors: [theme.accent, theme.accent2, theme.primary, theme.muted, theme.line, theme.dark],
+        chartColors: round || data.length > 1 ? palette : [theme.accent],
         barDir: 'col', barGapWidthPct: 60,
-        showLegend: data.length > 1 || round, legendPos: 'b', legendFontFace: FONT, legendFontSize: 11,
+        // 图例总是显示：单位常写在系列名里（如「老年人口（亿人）」），藏掉图例单位就没了
+        showLegend: true, legendPos: 'b', legendFontFace: FONT, legendFontSize: 11,
+        // 饼图、环形图标的是百分比，沿用 pptxgenjs 默认的百分比格式
+        ...(round ? {} : { dataLabelFormatCode: decimals ? `#,##0.${'0'.repeat(decimals)}` : '#,##0' }),
         showValue: !round, showPercent: round, dataLabelFontFace: FONT, dataLabelFontSize: 10, dataLabelColor: theme.text,
         catAxisLabelFontFace: FONT, catAxisLabelFontSize: 11, catAxisLabelColor: theme.muted,
         valAxisLabelFontFace: FONT, valAxisLabelFontSize: 10, valAxisLabelColor: theme.muted,
