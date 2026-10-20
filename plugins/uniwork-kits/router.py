@@ -324,7 +324,7 @@ def on_pre_llm_call(**kwargs: Any) -> Optional[Dict[str, str]]:
             from . import eastmoney_slot, xiaohongshu
 
             home = Path(get_hermes_home())
-            xiaohongshu.ensure_running(home)
+            xiaohongshu.ensure_builtin(home)
             extras = [
                 delivery.stale_rule_correction(home, str(kwargs.get("session_id") or ""), platform),
                 xiaohongshu.turn_context(home, text),

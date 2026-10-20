@@ -1274,7 +1274,8 @@ def test_xiaohongshu_download_start_and_login_prompt_use_the_slot(kits, profile_
         profile_env,
         {"plugins": {xhs.EXPERT_NAME: {"kind": "expert", "self": True, "display_name": "种草草"}}},
     )
-    assert "clarify" in xhs.turn_context(profile_env, "请扫码登录")
+    login = xhs.turn_context(profile_env, "请扫码登录")
+    assert "clarify" not in login and "check_login_status" in login and "不要询问" in login
     xhs.set_consent(profile_env, "accept")
     path = xhs.install_binary(profile_env, fetch=lambda url: b"fake-binary")
     assert Path(path).is_file()
@@ -1538,14 +1539,14 @@ def test_capabilities_installed_without_generation_get_phrases_later(kits, profi
 
 
 def test_xiaohongshu_login_is_asked_in_chat_then_prepared_and_kept_running(kits, profile_env):
-    """数字员工's flow: ask in chat, then the host downloads, starts and connects; restarts after a reboot."""
+    """种草草自带小红书程序：不问是否同意，备好后自己启动并在重启后拉起来。"""
     xhs = kits.xiaohongshu
     kits.store.save_index(
         profile_env,
         {"plugins": {xhs.EXPERT_NAME: {"kind": "expert", "self": True, "display_name": "种草草"}}},
     )
     asking = xhs.turn_context(profile_env, "帮我扫码登录小红书", listening=lambda: False)
-    assert "clarify" in asking and "kit xiaohongshu prepare" in asking and "setup_mcp" in asking
+    assert "clarify" not in asking and "不要询问" in asking and "setup_mcp" in asking
     assert "MEDIA:" in asking
     assert xhs.turn_context(profile_env, "帮我想几个选题", listening=lambda: False) == ""
 
@@ -1573,7 +1574,9 @@ def test_xiaohongshu_login_is_asked_in_chat_then_prepared_and_kept_running(kits,
     started.clear()
     assert xhs.ensure_running(profile_env, popen=lambda args, **kw: started.append(args) or Proc(), listening=lambda: False)
     assert started
-    assert not xhs.ensure_running(profile_env, popen=lambda args, **kw: started.append(args), listening=lambda: True)
+    started.clear()
+    assert xhs.ensure_running(profile_env, popen=lambda args, **kw: started.append(args) or Proc(), listening=lambda: True)
+    assert started == []
 
 
 def test_eastmoney_connector_is_recognized_only_by_the_agreed_shape(kits):
