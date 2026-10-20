@@ -5,6 +5,8 @@
   --uniwork-text-muted: #868d9c;
   --uniwork-row-active: #e6e6e6;
   --uniwork-row-hover: #f0f0f0;
+  --workspace-category-selected-bg: #32374a;
+  --workspace-category-selected-fg: #fff;
   --uniwork-title-font: 'Alimama ShuHeiTi', 'PingFang SC', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
   --ui-bg-chrome: var(--theme-background-seed);
   --ui-bg-sidebar: var(--theme-sidebar-seed);
