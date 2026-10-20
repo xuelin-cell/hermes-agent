@@ -51,6 +51,15 @@ describe('recentWorkdirs', () => {
 
     expect(recentWorkdirs(sessions)).toHaveLength(RECENT_WORKDIR_LIMIT)
   })
+
+  it('跳过的目录不占最近列表的名额', () => {
+    const sessions = [
+      ...Array.from({ length: RECENT_WORKDIR_LIMIT }, (_, i) => ({ cwd: `C:\\ws\\auto${i}`, last_active: 100 + i })),
+      { cwd: 'D:\\kept', last_active: 1 }
+    ]
+
+    expect(recentWorkdirs(sessions, [], dir => dir.includes('auto'))).toEqual(['D:\\kept'])
+  })
 })
 
 describe('path helpers', () => {

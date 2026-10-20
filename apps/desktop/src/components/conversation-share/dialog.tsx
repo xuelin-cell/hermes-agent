@@ -2,14 +2,7 @@ import type { ConversationShareRecord, PreparedConversationShare } from '@hermes
 import { useStore } from '@nanostores/react'
 import { useEffect, useState } from 'react'
 
-import { TooltipIconButton } from '@/components/assistant-ui/tooltip-icon-button'
-import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
-import { CopyButton } from '@/components/ui/copy-button'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useI18n } from '@/i18n'
-import { openExternalLink } from '@/lib/external-link'
-import { ExternalLink, Trash2 } from '@/lib/icons'
 import {
   $conversationShareTarget,
   closeConversationShare,
@@ -17,6 +10,7 @@ import {
 } from '@/store/conversation-share'
 
 import { waitForPreparation } from './preparation-wait'
+import { ConversationShareView } from './share-view'
 
 /** 所有会话和回复入口共用单个窗口，关闭时清除预览并取消发布票据。 */
 export function ConversationShareDialog() {
@@ -145,7 +139,13 @@ function ShareWindow({ target }: ShareWindowProps) {
     setError('')
 
     try {
-      await api.publish(prepared.ticket, html)
+      const published = await api.publish(prepared.ticket, html)
+
+      if ($conversationShareTarget.get() !== target) {
+        return
+      }
+
+      setRecords(items => [published, ...items.filter(item => item.key !== published.key)])
       const next = await api.list(target.owner, target.request.sessionId)
 
       if ($conversationShareTarget.get() === target) {
@@ -189,81 +189,31 @@ function ShareWindow({ target }: ShareWindowProps) {
     }
   }
 
+  const record =
+    records.find(
+      item =>
+        item.state === 'published' &&
+        item.scope === target.request.scope &&
+        item.snapshotId === prepared?.document.snapshotId &&
+        item.url
+    ) ?? null
+
   return (
-    <Dialog
-      onOpenChange={open => {
-        if (!open) {
-          closeConversationShare()
-        }
-      }}
-      open
-    >
-      <DialogContent bodyClassName="flex flex-col gap-3 overflow-y-auto" className="max-h-[90vh] max-w-4xl">
-        <DialogHeader>
-          <DialogTitle>{target.request.scope === 'session' ? copy.sessionShare : copy.responseShare}</DialogTitle>
-          <DialogDescription>{copy.disclosure}</DialogDescription>
-        </DialogHeader>
-        <label className="flex items-center gap-2 text-sm">
-          <Checkbox checked={process} disabled={busy} onCheckedChange={value => setProcess(value === true)} />
-          {copy.includeProcess}
-        </label>
-        {error && (
-          <p className="text-sm text-destructive" role="alert">
-            {error}
-          </p>
-        )}
-        {html ? (
-          <iframe
-            className="h-[40vh] min-h-64 shrink-0 w-full bg-background"
-            referrerPolicy="no-referrer"
-            sandbox=""
-            srcDoc={html}
-            title={copy.preview}
-          />
-        ) : !error ? (
-          <p className="py-8 text-sm text-muted-foreground" role="status">
-            {copy.preparing}
-          </p>
-        ) : null}
-        <div className="flex justify-end gap-2">
-          <Button disabled={busy} onClick={() => setRetry(value => value + 1)} variant="ghost">
-            {copy.retry}
-          </Button>
-          <Button disabled={!html || !prepared || busy} onClick={() => void publish()}>
-            {busy ? copy.working : copy.publish}
-          </Button>
-        </div>
-        <section aria-label={copy.history} className="max-h-44 overflow-auto">
-          <h3 className="text-sm font-medium">{copy.history}</h3>
-          {!records.length && <p className="py-2 text-sm text-muted-foreground">{copy.empty}</p>}
-          {records.map(record => (
-            <div className="flex items-center gap-2 py-2 text-sm" key={record.key}>
-              <div className="min-w-0 flex-1">
-                <p className="truncate">{record.title}</p>
-                <p className="text-xs text-muted-foreground">
-                  {new Date(record.createdAt).toLocaleString(locale)} · {copy[record.state]}
-                </p>
-              </div>
-              {record.state === 'published' && record.url && (
-                <>
-                  <CopyButton appearance="icon" label={copy.copyLink} text={record.url} />
-                  <TooltipIconButton onClick={() => void openExternalLink(record.url!)} tooltip={copy.openLink}>
-                    <ExternalLink className="size-3.5" />
-                  </TooltipIconButton>
-                </>
-              )}
-              {record.state !== 'revoked' && (
-                <TooltipIconButton disabled={busy} onClick={() => void revoke(record.key)} tooltip={copy.revoke}>
-                  <Trash2 className="size-3.5" />
-                </TooltipIconButton>
-              )}
-            </div>
-          ))}
-        </section>
-        <Button onClick={closeConversationShare} variant="ghost">
-          {t.common.close}
-        </Button>
-      </DialogContent>
-    </Dialog>
+    <ConversationShareView
+      busy={busy}
+      error={error}
+      html={html}
+      onClose={closeConversationShare}
+      onProcessChange={setProcess}
+      onPublish={publish}
+      onRetry={() => setRetry(value => value + 1)}
+      onRevoke={revoke}
+      prepared={!!prepared}
+      process={process}
+      record={record}
+      records={records}
+      scope={target.request.scope}
+      title={prepared?.document.title || ''}
+    />
   )
 }

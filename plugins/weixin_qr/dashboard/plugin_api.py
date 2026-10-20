@@ -101,6 +101,8 @@ def _apply(profile: Optional[str], creds: dict[str, str]) -> None:
     from hermes_cli.web_server_profiles import _profile_scope
     from hermes_constants import get_hermes_home
 
+    if not creds.get("user_id"):
+        raise ValueError("WeChat scanner identity is missing")
     with _profile_scope(profile):
         wx.save_weixin_account(str(get_hermes_home()), **creds)
         user_id = creds.get("user_id", "")
@@ -113,11 +115,7 @@ def _apply(profile: Optional[str], creds: dict[str, str]) -> None:
             "WEIXIN_GROUP_POLICY": "disabled",
             "WEIXIN_GROUP_ALLOWED_USERS": "",
         }
-        if user_id:
-            values.update(WEIXIN_DM_POLICY="allowlist", WEIXIN_ALLOWED_USERS=user_id, WEIXIN_HOME_CHANNEL=user_id)
-        else:
-            # 没拿到扫码人 ID 时无法建名单，退回终端版推荐的配对审批。
-            values.update(WEIXIN_DM_POLICY="pairing", WEIXIN_ALLOWED_USERS="")
+        values.update(WEIXIN_DM_POLICY="allowlist", WEIXIN_ALLOWED_USERS=user_id, WEIXIN_HOME_CHANNEL=user_id)
         for key, value in values.items():
             save_env_value(key, value)
         _write_platform_enabled(PLATFORM_ID, True)
@@ -185,7 +183,7 @@ async def _watch(login: _Login) -> None:
                     return
                 elif status == "confirmed":
                     creds = _credentials(resp)
-                    if not creds["account_id"] or not creds["token"]:
+                    if not creds["account_id"] or not creds["token"] or not creds["user_id"]:
                         _finish(login, "error", "WeChat confirmed the login but returned incomplete credentials.")
                         return
                     try:
@@ -251,5 +249,5 @@ async def unbind(profile: Optional[str] = None) -> dict[str, Any]:
     except Exception as exc:
         _log.exception("weixin-qr: unbind failed")
         raise HTTPException(status_code=500, detail="Could not remove the WeChat connection.") from exc
-    restart = await asyncio.to_thread(_restart, profile)
-    return {"ok": True, **restart, "needs_restart": not restart.get("restart_started", False)}
+    # 桌面按全部平台剩余配置决定重启或停止，避免解绑最后一个平台后启动空网关。
+    return {"ok": True, "needs_restart": True, "restart_started": False}

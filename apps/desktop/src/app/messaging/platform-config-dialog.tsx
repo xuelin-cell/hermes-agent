@@ -26,7 +26,7 @@ export function PlatformConfigDialog({
 }: {
   platform: MessagingPlatformInfo
   onClose: () => void
-  onSave: (env: Record<string, string>) => Promise<void>
+  onSave: (env: Record<string, string>) => Promise<void | boolean>
 }) {
   const { t } = useI18n()
   const m = t.messaging
@@ -57,7 +57,12 @@ export function PlatformConfigDialog({
           .filter(([, value]) => value)
       )
 
-      await onSave(env)
+      if ((await onSave(env)) === false) {
+        setSaving(false)
+
+        return
+      }
+
       onClose()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : m.failedSave(platform.name))

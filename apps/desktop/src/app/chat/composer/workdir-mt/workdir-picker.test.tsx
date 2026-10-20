@@ -98,6 +98,33 @@ describe('WorkdirPicker on a new conversation', () => {
     expect($currentCwdExplicit.get()).toBe(false)
   })
 
+  it('最近使用不列出默认工作区下自动建的对话文件夹，说明随是否自动建而变', async () => {
+    const { gateway } = fakeGateway()
+    window.hermesDesktop = { createConversationFolder: vi.fn() } as never
+    $sessions.set([session(`${DEFAULT}\\20261019-103015`, 9), session(`${DEFAULT}\\报告`, 5)])
+
+    try {
+      render(<WorkdirPicker cwd="" gateway={gateway} sessionId={null} />)
+      await waitFor(() => expect(gateway.request).toHaveBeenCalled())
+      openMenu()
+
+      await waitFor(() => expect(screen.getByRole('menuitem', { name: /报告/ })).toBeTruthy())
+      expect(screen.queryByRole('menuitem', { name: /20261019-103015/ })).toBeNull()
+      expect(screen.getByText(/Each new conversation gets its own folder/)).toBeTruthy()
+    } finally {
+      window.hermesDesktop = undefined as never
+    }
+  })
+
+  it('没有自动建文件夹的接口时沿用原说明', () => {
+    const { gateway } = fakeGateway()
+
+    render(<WorkdirPicker cwd="" gateway={gateway} sessionId={null} />)
+    openMenu()
+
+    expect(screen.getByText(/The agent reads and writes files in this folder/)).toBeTruthy()
+  })
+
   it('refuses a home folder and leaves the draft unchanged', async () => {
     const { gateway } = fakeGateway()
     vi.mocked(selectDesktopPaths).mockResolvedValue(['C:\\Users\\stan'])
@@ -141,6 +168,17 @@ describe('WorkdirPicker on a started conversation', () => {
     expect(screen.getByText(/start a new conversation/)).toBeTruthy()
     expect(screen.queryAllByRole('menuitem')).toHaveLength(0)
     expect(request).not.toHaveBeenCalledWith('session.cwd.set', expect.anything())
+  })
+
+  it('自动建的对话文件夹显示文件夹名，点开看完整路径', async () => {
+    const { gateway } = fakeGateway()
+    const folder = `${DEFAULT}\\20261019-103015`
+
+    render(<WorkdirPicker cwd={folder} gateway={gateway} sessionId="runtime-1" />)
+    await waitFor(() => expect(screen.getByTestId('workdir-picker').textContent).toBe('20261019-103015'))
+
+    fireEvent.click(screen.getByTestId('workdir-picker'))
+    expect(await screen.findByText(folder)).toBeTruthy()
   })
 
   it('names the account workspace as the default workspace', async () => {

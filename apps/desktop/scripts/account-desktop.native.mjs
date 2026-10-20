@@ -275,7 +275,7 @@ test(expiry ? 'P22 真实短期限：任务跨到期继续，手动退出有效�
 }
 
 /** 使用正式入口和原版主进程；只有 MaaS 响应受控，账号文件和 Hermes 子进程均真实。 */
-async function prepareFixture(url) {
+export async function prepareFixture(url) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'hermes-mt-desktop-'))
   const renderer = await prepareLoginRenderer()
   const userData = path.join(root, 'user-data')

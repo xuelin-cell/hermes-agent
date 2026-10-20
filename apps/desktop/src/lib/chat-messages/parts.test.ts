@@ -17,6 +17,21 @@ describe('MEDIA 作为 Markdown 链接目标', () => {
     const content = '见 MEDIA:/tmp/first.pdf\nMEDIA:/tmp/second.pdf\n[文件](MEDIA:/tmp/third.pdf)'
     expect(mediaTagValues(content)).toEqual(['/tmp/first.pdf', '/tmp/second.pdf', '/tmp/third.pdf'])
   })
+  it('同一行连写多个 MEDIA 时各自成卡，带空格的路径不吞下一个标记', () => {
+    expect(mediaTagValues('MEDIA:/tmp/a.png MEDIA:/tmp/b.png')).toEqual(['/tmp/a.png', '/tmp/b.png'])
+    expect(renderMediaTags('MEDIA:/tmp/a.png MEDIA:/tmp/b.png')).toBe(
+      `${renderMediaTags('MEDIA:/tmp/a.png')} ${renderMediaTags('MEDIA:/tmp/b.png')}`
+    )
+    expect(mediaTagValues('MEDIA:/tmp/My Report.docx MEDIA:/tmp/b.pdf')).toEqual(['/tmp/My Report.docx', '/tmp/b.pdf'])
+  })
+  it('链接后面同一行的裸标记按行内规则识别，不吞后文也不吃掉空格', () => {
+    const line = 'See [x](MEDIA:/tmp/c.pdf) MEDIA:/tmp/a.pdf and b.pdf\nnext'
+    expect(mediaTagValues(line)).toEqual(['/tmp/c.pdf', '/tmp/a.pdf'])
+    expect(mediaTagValues(line)).toEqual(mediaTagValues(line.replace('[x](MEDIA:/tmp/c.pdf)', 'MEDIA:/tmp/c.pdf')))
+    expect(renderMediaTags('Hello [a](MEDIA:/tmp/x.pdf) MEDIA:/tmp/y.pdf')).toBe(
+      `Hello ${renderMediaTags('MEDIA:/tmp/x.pdf')} ${renderMediaTags('MEDIA:/tmp/y.pdf')}`
+    )
+  })
   it.each([
     ['![小狗](MEDIA:/C:/a/b.png)', '/C:/a/b.png'],
     ['![小狗](MEDIA:/C:\\a\\b.png)', '/C:\\a\\b.png'],

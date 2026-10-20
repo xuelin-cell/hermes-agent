@@ -35,6 +35,16 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   // 只读脱敏账号信息，页面不能传入身份或账号路径。
   getPlanUsage: () => ipcRenderer.invoke(PLAN_USAGE_CHANNEL),
   getMaasAccount: () => ipcRenderer.invoke('hermes:maas-account:get'),
+  messagingSetup: input => ipcRenderer.invoke('hermes:messaging:setup', input),
+  /** 补取当前账号脱敏进度，不会启动或重启网关。 */
+  messagingStatus: () => ipcRenderer.invoke('hermes:messaging:status'),
+  /** 只转发操作状态；页面卸载后注销同一订阅。 */
+  onMessagingStatus: callback => {
+    const listener = (_event, status) => callback(status)
+    ipcRenderer.on('hermes:messaging:status', listener)
+
+    return () => ipcRenderer.removeListener('hermes:messaging:status', listener)
+  },
   cloudDriveRequest: (input: CloudDriveRequest) => ipcRenderer.invoke('hermes:maas-drive:request', input),
   /** 仅读取固定语言的办公模板目录，不接收请求地址或凭据。 */
   getWelcomeCatalog: locale => ipcRenderer.invoke(WELCOME_CATALOG_CHANNEL, locale),
@@ -411,6 +421,9 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   cancelOfficePreview: requestId => ipcRenderer.invoke('hermes:office-preview:cancel', requestId),
   // 显式另存为交给账号受限接口，位置由原生保存框选择。
   exportPreview: input => ipcRenderer.invoke('hermes:preview:export', input),
+  // 新对话的专属文件夹由主进程命名和创建，页面只提交查到的默认目录。
+  createConversationFolder: defaultCwd => ipcRenderer.invoke('hermes:conversation-folder:create', defaultCwd),
+  discardConversationFolder: folder => ipcRenderer.invoke('hermes:conversation-folder:discard', folder),
   readFileDataUrlForAttach: filePath => ipcRenderer.invoke('hermes:readFileDataUrlForAttach', filePath),
   dataUrlReadMax: {
     get: () => ipcRenderer.invoke('hermes:data-url-read-max:get'),

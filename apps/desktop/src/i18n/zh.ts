@@ -1,3 +1,4 @@
+import { messagingConnectionCopy } from './messaging-connection'
 import { defineFieldCopy } from '@/app/settings/field-copy'
 
 import { defineLocale } from './define-locale'
@@ -2945,6 +2946,7 @@ export const zh = defineLocale({
   },
 
   messaging: {
+    connection: messagingConnectionCopy["zh"],
     cards: {
       heading: '聊天应用',
       description: '接入微信、钉钉、飞书等聊天应用，从手机上接收和回复消息。',
@@ -3622,6 +3624,13 @@ export const zh = defineLocale({
   },
 
   artifactShare: {
+    disclosure: "获得链接的人都可以查看此产物，不会分享其他文件或对话。",
+    checking: "正在检查分享状态…",
+    createLink: "生成公开链接",
+    linkReady: "公开链接已生成",
+    changedNotice: "内容已变化，链接目前仍展示上次发布的版本。",
+    confirmUpdate: "是否用当前版本覆盖已发布内容？链接地址保持不变。",
+    confirmRevoke: "确认取消分享？取消后，获得链接的人将无法再访问。",
     originRequired: '仅支持来源已确认的模型产物；上传文件、派生产物和来源未知的文件不能分享。',
     share: '分享',
     shareArtifact: '分享产物',
@@ -4861,7 +4870,7 @@ export const zh = defineLocale({
   preview: {
     copyAll: '复制全文',
     saveAs: '另存为',
-    exportFailed: '导出失败，请确认预览内容和图片已准备好。',
+    exportFailed: '导出预览失败，请重试。',
     exportFormats: { md: 'Markdown（.md）', pdf: 'PDF（.pdf）', docx: 'Word（.docx）' },
     tab: '预览',
     closePane: '关闭预览面板',

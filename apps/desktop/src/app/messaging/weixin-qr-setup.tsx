@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from 'react'
 import {
   getWeixinQrLogin,
   startWeixinQrLogin,
-  unbindWeixin,
   type WeixinQrLogin,
   type WeixinRestartOutcome
 } from '@/api/weixin-qr'
@@ -28,13 +27,15 @@ async function renderQr(payload: string): Promise<string> {
 
 export interface WeixinQrSetupProps {
   onSaved: (result: WeixinRestartOutcome) => void
-  onUnbound: (result: WeixinRestartOutcome) => void
+  onUnbind: () => Promise<void>
+  busy?: boolean
+  pending?: boolean
   platform: MessagingPlatformInfo
   scopeProfile: string | undefined
 }
 
 /** 微信卡片复用既有扫码、保存和解绑接口，不显示或编辑底层 token。 */
-export function WeixinQrSetup({ onSaved, onUnbound, platform, scopeProfile }: WeixinQrSetupProps) {
+export function WeixinQrSetup({ onSaved, onUnbind, busy = false, pending, platform, scopeProfile }: WeixinQrSetupProps) {
   const { t } = useI18n()
   const q = t.messaging.weixinQr
   const [login, setLogin] = useState<WeixinQrLogin | null>(null)
@@ -180,11 +181,10 @@ export function WeixinQrSetup({ onSaved, onUnbound, platform, scopeProfile }: We
     setError('')
   }
 
-  /** 解绑仍需确认，并由原插件清理凭据和处理网关重启。 */
+  /** 确认后提交后台解绑；关闭弹窗不等待网关停止或重启。 */
   async function unbind() {
-    const result = await unbindWeixin(scopeProfile)
+    await onUnbind()
     close()
-    onUnbound(result)
   }
 
   const finished = !!login && !active
@@ -208,7 +208,7 @@ export function WeixinQrSetup({ onSaved, onUnbound, platform, scopeProfile }: We
           <>
             <Button
               aria-label={platform.configured ? q.rescan : q.connect}
-              disabled={starting}
+              disabled={starting || busy}
               onClick={() => (panelOpen ? close() : void start())}
               size="sm"
               variant="outline"
@@ -216,13 +216,14 @@ export function WeixinQrSetup({ onSaved, onUnbound, platform, scopeProfile }: We
               {platform.configured ? q.rescan : t.messaging.cards.configure}
             </Button>
             {platform.configured && (
-              <Button disabled={starting} onClick={() => setConfirmUnbind(true)} size="sm" variant="outline">
+              <Button disabled={starting || busy} onClick={() => setConfirmUnbind(true)} size="sm" variant="outline">
                 {q.unbind}
               </Button>
             )}
           </>
         }
         id="weixin"
+        pending={pending}
         platform={platform}
       >
         {platform.error_message && <ErrorBanner className="mt-3">{platform.error_message}</ErrorBanner>}
@@ -273,6 +274,7 @@ export function WeixinQrSetup({ onSaved, onUnbound, platform, scopeProfile }: We
         confirmLabel={q.unbind}
         description={q.unbindDesc}
         destructive
+        dismissOnConfirm
         onClose={() => setConfirmUnbind(false)}
         onConfirm={unbind}
         open={confirmUnbind}

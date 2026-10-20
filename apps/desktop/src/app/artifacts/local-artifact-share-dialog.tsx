@@ -1,32 +1,34 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { MarkdownPreview } from '@/app/chat/right-rail/preview-file'
 import { markdownShareSnapshot } from '@/components/artifact-share/markdown-snapshot'
-import { ShareControls } from '@/components/artifact-share/share-controls'
+import { ArtifactShareDialog } from '@/components/artifact-share/share-dialog'
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useI18n } from '@/i18n'
 import { readDesktopFileText } from '@/lib/desktop-fs'
-import { notifyError } from '@/store/notifications'
 
 import type { LocalArtifact } from './local-artifact-model'
 
-interface LocalArtifactShareToolbarProps {
+interface LocalArtifactShareDialogProps {
   file: LocalArtifact
-  onOpen: () => void
   onClose: () => void
 }
 
-/** 列表点击先读取原文件，未发布时只发布，已有链接才显示操作工具栏。 */
-export function LocalArtifactShareToolbar({ file, onOpen, onClose }: LocalArtifactShareToolbarProps) {
+/** 列表分享读取原文件后进入统一对话框，准备阶段不会上传或发布。 */
+export function LocalArtifactShareDialog({ file, onClose }: LocalArtifactShareDialogProps) {
   const { t } = useI18n()
   const [loaded, setLoaded] = useState<{ text: string } | null>(null)
+  const [error, setError] = useState('')
+  const [retry, setRetry] = useState(0)
   const root = useRef<HTMLDivElement>(null)
   const markdown = /\.(mdx?|markdown)$/i.test(file.label)
   const path = file.resolvedPath!
-  const listAction = useMemo(() => ({ onOpen, onClose }), [onOpen, onClose])
 
   useEffect(() => {
     let active = true
     setLoaded(null)
+    setError('')
     void readDesktopFileText(path)
       .then(result => {
         if (active) {
@@ -36,8 +38,7 @@ export function LocalArtifactShareToolbar({ file, onOpen, onClose }: LocalArtifa
             (result.byteSize ?? 0) > 2 * 1024 * 1024 ||
             typeof result.text !== 'string'
           ) {
-            notifyError(new Error(t.localArtifacts.fileUnavailable), t.artifactShare.shareFailed)
-            onClose()
+            setError(t.localArtifacts.fileUnavailable)
           } else {
             setLoaded({ text: result.text })
           }
@@ -45,15 +46,14 @@ export function LocalArtifactShareToolbar({ file, onOpen, onClose }: LocalArtifa
       })
       .catch(error => {
         if (active) {
-          notifyError(error, t.artifactShare.shareFailed)
-          onClose()
+          setError(error instanceof Error ? error.message : String(error))
         }
       })
 
     return () => {
       active = false
     }
-  }, [path, onClose, t.localArtifacts.fileUnavailable, t.artifactShare.shareFailed])
+  }, [path, retry, t.localArtifacts.fileUnavailable])
 
   /** Markdown 使用与右侧预览相同的渲染器及快照函数，HTML 保留原始完整字节。 */
   function snapshot(): string {
@@ -67,14 +67,42 @@ export function LocalArtifactShareToolbar({ file, onOpen, onClose }: LocalArtifa
           <MarkdownPreview filePath={path} text={loaded.text} />
         </div>
       )}
-      <ShareControls
+      <ArtifactShareDialog
         artifactKey={`file:${file.sessionId}:${path}`}
         html={snapshot}
-        listAction={listAction}
+        onClose={onClose}
         source={{ sessionId: file.sessionId, path }}
         sourceText={loaded.text}
         title={file.label}
       />
     </>
-  ) : null
+  ) : (
+    <Dialog
+      onOpenChange={open => {
+        if (!open) {
+          onClose()
+        }
+      }}
+      open
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t.artifactShare.shareArtifact}</DialogTitle>
+          <DialogDescription>{file.label}</DialogDescription>
+        </DialogHeader>
+        {error ? (
+          <>
+            <p className="text-sm text-destructive" role="alert">
+              {error}
+            </p>
+            <Button onClick={() => setRetry(value => value + 1)}>{t.common.retry}</Button>
+          </>
+        ) : (
+          <p className="text-sm text-muted-foreground" role="status">
+            {t.artifactShare.checking}
+          </p>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
 }

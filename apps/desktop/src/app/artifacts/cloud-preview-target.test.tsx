@@ -116,6 +116,7 @@ it('云盘 PPT 原文件由既有转换入口处理并显示原放映界面，�
   const pages = {
     pages: [{ width: 100, height: 60 }],
     renderPage: vi.fn().mockResolvedValue('data:image/png;base64,aGVsbG8='),
+    cachedPage: vi.fn(() => undefined),
     dispose
   }
 
