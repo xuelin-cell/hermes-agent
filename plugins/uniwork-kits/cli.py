@@ -11,6 +11,7 @@ from . import installer
 
 
 def _add_profile(parser: argparse.ArgumentParser) -> None:
+    """给子命令加 --profile 参数；专家始终装成自己的档案，这个参数只影响套件。"""
     parser.add_argument(
         "--profile",
         help="目标 profile（默认是当前 profile）。专家总是装成独立的 profile，这个选项只影响套件。",
@@ -18,6 +19,7 @@ def _add_profile(parser: argparse.ArgumentParser) -> None:
 
 
 def setup(parser: argparse.ArgumentParser) -> None:
+    """注册 hermes kit 的全部子命令和参数。"""
     sub = parser.add_subparsers(dest="kit_command")
 
     p = sub.add_parser("inspect", help="只解析包、打印检查结果，不写任何文件")
@@ -91,6 +93,7 @@ def setup(parser: argparse.ArgumentParser) -> None:
 
 
 def _home(args: argparse.Namespace) -> Path:
+    """按 --profile 找到要操作的 home，没给就用当前档案；档案不存在时报错。"""
     from hermes_constants import get_hermes_home
 
     if getattr(args, "profile", None):
@@ -103,6 +106,7 @@ def _home(args: argparse.Namespace) -> Path:
 
 
 def _pairs(values: List[str]) -> List[Tuple[str, str]]:
+    """把 --set KEY=VALUE 解析成键值对，格式不对时报错。"""
     out = []
     for raw in values:
         if "=" not in raw:
@@ -113,6 +117,7 @@ def _pairs(values: List[str]) -> List[Tuple[str, str]]:
 
 
 def _print(text: str) -> None:
+    """打印结果；控制台编码打不出中文时改用 UTF-8 直接写字节，避免整条命令失败。"""
     try:
         print(text)
     except UnicodeEncodeError:
@@ -120,6 +125,7 @@ def _print(text: str) -> None:
 
 
 def handle(args: argparse.Namespace) -> None:
+    """执行 hermes kit 的子命令，出错时打印中文原因并以非零退出。"""
     from . import package
     from .xiaohongshu import XiaohongshuError
 

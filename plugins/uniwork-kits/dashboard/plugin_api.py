@@ -21,6 +21,7 @@ from hermes_constants import get_hermes_home
 
 
 def _ensure_plugin() -> None:
+    """后端挂载这个接口文件时，插件包可能还没被插件系统导入；按插件系统的方式先把它导入，后面的模块才能引用。"""
     name = "hermes_plugins.uniwork_kits"
     if name in sys.modules:
         return
@@ -62,12 +63,12 @@ except Exception:  # a failed start must not keep the API from mounting
 
 
 def _home() -> Path:
-    # Whichever profile serves the call, the page and the summon picker speak
-    # for the default profile, where kits and experts are installed.
+    """不管哪个档案的后端收到请求，套件页和召唤名单都按默认档案说话，套件和专家都装在那里。"""
     return store.root_home(Path(get_hermes_home()))
 
 
 def _fail(exc: Exception) -> HTTPException:
+    """把安装器的错误转成 400 返回给页面，错误文字原样带上。"""
     return HTTPException(status_code=400, detail=str(exc))
 
 
@@ -98,15 +99,18 @@ class RecentBody(BaseModel):
 @router.get("")
 @router.get("/")
 def list_installed() -> Dict[str, Any]:
+    """套件页的全部卡片。"""
     return catalog.describe(_home())
 
 
 @router.post("/install")
 async def install_zip(file: UploadFile = File(...)) -> Dict[str, Any]:
+    """接收上传的 zip，存好后在后台安装，立刻返回任务号供页面轮询。"""
     data = await file.read()
     filename = file.filename or "package.zip"
 
     def _run() -> Dict[str, object]:
+        """在线程里保存上传文件并启动安装任务，避免阻塞接口。"""
         path = jobs.save_upload(_home(), filename, data)
         return jobs.start(_home(), ["install", str(path)])
 
@@ -119,6 +123,7 @@ async def install_zip(file: UploadFile = File(...)) -> Dict[str, Any]:
 
 @router.post("/toggle")
 def toggle(body: ToggleBody) -> Dict[str, Any]:
+    """启用或停用一个套件或专家。"""
     try:
         entry = installer.set_enabled(_home(), body.name.strip(), body.enabled)
     except installer.KitError as exc:
@@ -128,6 +133,7 @@ def toggle(body: ToggleBody) -> Dict[str, Any]:
 
 @router.post("/uninstall")
 def uninstall(body: UninstallBody) -> Dict[str, Any]:
+    """卸载一个包；专家要明确带上 delete_profile 才会连档案一起删。"""
     name = body.name.strip()
     try:
         notes = installer.uninstall(_home(), name, delete_profile=body.delete_profile)
@@ -138,6 +144,7 @@ def uninstall(body: UninstallBody) -> Dict[str, Any]:
 
 @router.post("/config")
 def write_config(body: ConfigBody) -> Dict[str, Any]:
+    """把用户在页面上填的配置项写进对应档案的 .env。"""
     name = body.name.strip()
     pairs = [(key.strip(), value) for key, value in body.values.items() if key.strip()]
     if not name or not pairs:
@@ -151,6 +158,7 @@ def write_config(body: ConfigBody) -> Dict[str, Any]:
 
 @router.post("/triggers")
 async def refresh_triggers(body: TriggersBody) -> Dict[str, Any]:
+    """在后台重新生成或补齐一个套件的触发词，只有套件有触发词。"""
     name = body.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="要写明套件名")
@@ -168,23 +176,25 @@ async def refresh_triggers(body: TriggersBody) -> Dict[str, Any]:
 
 @router.get("/bundled")
 def bundled_status() -> Dict[str, Any]:
-    """Whether the bundled kits and experts are still going in, for the page's status line."""
+    """内置套件和专家是否还在安装，给套件页的进度条用。"""
     return autoseed.status()
 
 
 @router.get("/experts")
 def expert_directory() -> Dict[str, Any]:
-    """What the summon picker lists: every installed expert and the recent five."""
+    """召唤名单：全部已装专家和最近召唤的几位。"""
     return experts.directory(_home())
 
 
 @router.get("/experts/{name}/avatar")
 def expert_avatar(name: str) -> Dict[str, str]:
+    """某位专家的头像（data URL），没有则为空字符串。"""
     return {"data_url": experts.avatar_data_url(_home(), name)}
 
 
 @router.post("/experts/recent")
 def summoned(body: RecentBody) -> Dict[str, Any]:
+    """记一次召唤，把这位专家挪到「最近召唤」最前面。"""
     try:
         return {"recent": experts.record_recent(_home(), body.name.strip())}
     except installer.KitError as exc:
@@ -193,6 +203,7 @@ def summoned(body: RecentBody) -> Dict[str, Any]:
 
 @router.get("/receipts/{name}")
 def receipt(name: str) -> Dict[str, str]:
+    """某个包最近一次安装记录的全文。"""
     text = catalog.receipt_text(_home(), name)
     if text is None:
         raise HTTPException(status_code=404, detail=f"没有装 {name}")
@@ -201,6 +212,7 @@ def receipt(name: str) -> Dict[str, str]:
 
 @router.get("/jobs/{job_id}")
 def job(job_id: str) -> Dict[str, Any]:
+    """后台任务的状态和日志尾巴。"""
     found: Optional[Dict[str, Any]] = jobs.status(_home(), job_id)
     if found is None:
         raise HTTPException(status_code=404, detail="没有这个任务")

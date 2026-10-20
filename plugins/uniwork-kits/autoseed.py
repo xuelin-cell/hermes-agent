@@ -49,7 +49,7 @@ _state: Dict[str, Any] = {
 
 
 def bundled_dir(home: Path) -> Optional[Path]:
-    """Where the bundled packages are: the configured directory, else ``bundled/``."""
+    """内置包放在哪：默认档案 config.yaml 里配置的 uniwork_kits.bundled_dir，否则用插件旁边的 bundled/。"""
     try:
         with store.scoped_home(home):
             from hermes_cli.config import load_config_readonly
@@ -65,17 +65,15 @@ def bundled_dir(home: Path) -> Optional[Path]:
 
 
 def status() -> Dict[str, Any]:
-    """What the kits page shows while the bundled packages go in."""
+    """套件页轮询的安装进度；返回副本，避免调用方改到共享状态。"""
     with _lock:
         return {**_state, "failed": list(_state["failed"])}
 
 
 def start(home: Path) -> bool:
-    """Seed the bundled packages into *home*'s default profile on a background thread.
+    """在后台线程把内置包装进 home 所在账号的默认档案，返回是否真的开始了。
 
-    Returns whether a run was started. Nothing happens in an expert's own
-    backend (*home* is a named profile), without a bundled directory, or when
-    this process already ran for that home.
+    专家自己的后端（home 是某个专家档案）、没有内置目录、或这个进程已经为该 home 跑过时都不做。
     """
     root = store.root_home(Path(home))
     if root.resolve() != Path(home).resolve():
@@ -96,11 +94,13 @@ def start(home: Path) -> bool:
 
 
 def _set(**changes: Any) -> None:
+    """加锁更新安装进度，后台线程和接口线程会同时读写。"""
     with _lock:
         _state.update(changes)
 
 
 def _run(root: Path, directory: Path) -> None:
+    """后台安装的主体：拿到锁后调用 seed，记下装了哪些、哪些没变、哪些失败，并更新「装过哪些内置包」的记录。"""
     lock = store.imported_root(root) / LOCK_NAME
     if not _acquire(lock):
         logger.info("[uniwork-kits] another backend is installing the bundled kits; skipped")
@@ -110,6 +110,7 @@ def _run(root: Path, directory: Path) -> None:
         from . import seed
 
         def progress(name: str, done: int, total: int) -> None:
+            """seed 每装一个包前回调，更新页面上的「第几个、正在装哪个」。"""
             _set(name=name, done=done, total=total)
 
         record = store.imported_root(root) / SEEDED_NAME
@@ -134,6 +135,7 @@ def _run(root: Path, directory: Path) -> None:
 
 
 def _load_seeded(record: Path) -> set[str]:
+    """读出这个账号装过的内置包名单；文件缺失或损坏就当没装过。"""
     try:
         names = json.loads(record.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -142,12 +144,14 @@ def _load_seeded(record: Path) -> set[str]:
 
 
 def _save_seeded(record: Path, names: set[str]) -> None:
+    """先写临时文件再替换，保存装过的内置包名单，写到一半断电也不会留下坏文件。"""
     temp = record.with_suffix(".tmp")
     temp.write_text(json.dumps(sorted(names), ensure_ascii=False, indent=1), encoding="utf-8")
     os.replace(temp, record)
 
 
 def _acquire(lock: Path) -> bool:
+    """用独占创建锁文件防止两个进程同时安装；超过 15 分钟的锁视为进程已死，先删掉。"""
     lock.parent.mkdir(parents=True, exist_ok=True)
     try:
         if time.time() - lock.stat().st_mtime > STALE_LOCK_S:
@@ -164,6 +168,7 @@ def _acquire(lock: Path) -> bool:
 
 
 def _release(lock: Path) -> None:
+    """安装结束后删掉锁文件；已经不在就算了。"""
     try:
         lock.unlink()
     except OSError:

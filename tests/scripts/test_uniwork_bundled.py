@@ -11,6 +11,7 @@ from scripts.bundles.uniwork_bundled import TARGET, stage_bundled_plugins
 
 
 def _config_repo(root: Path) -> Path:
+    """在临时目录里做一个配置仓库：一个能装的包，外加没有清单的 zip、LFS 指针文件和头像。"""
     bundle = root / "plugins" / "uniwork-bundled"
     (bundle / "plugins").mkdir(parents=True)
     with zipfile.ZipFile(bundle / "plugins" / "good-kit.zip", "w") as zf:
@@ -26,6 +27,7 @@ def _config_repo(root: Path) -> Path:
 
 
 def test_a_local_config_checkout_is_staged_with_only_installable_zips(tmp_path, capsys):
+    """本地配置仓库只拷能装的 zip 和头像，坏包在日志里点名跳过。"""
     repo_dir = tmp_path / "hermes-agent"
     source = _config_repo(tmp_path / "config")
     assert stage_bundled_plugins(repo_dir, {"UNIWORK_BUNDLED_PLUGINS": str(source)}) == 1
@@ -37,6 +39,7 @@ def test_a_local_config_checkout_is_staged_with_only_installable_zips(tmp_path, 
 
 
 def test_a_git_source_is_fetched_at_the_requested_revision(tmp_path):
+    """git 来源按指定的提交拉取，而不是最新的。"""
     source = _config_repo(tmp_path / "config")
     git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"]
     subprocess.run([*git, "init", "-q"], cwd=source, check=True)
@@ -52,6 +55,7 @@ def test_a_git_source_is_fetched_at_the_requested_revision(tmp_path):
 
 
 def test_off_unset_or_an_unreachable_source_builds_without_bundled_kits(tmp_path, capsys):
+    """关掉、没配置或拉不到时都只打警告，打包照常继续，不留下半截目录。"""
     repo_dir = tmp_path / "hermes-agent"
     assert stage_bundled_plugins(repo_dir, {"UNIWORK_BUNDLED_PLUGINS": "off"}) == 0
     assert stage_bundled_plugins(repo_dir, {}) == 0
@@ -62,6 +66,7 @@ def test_off_unset_or_an_unreachable_source_builds_without_bundled_kits(tmp_path
 
 
 def test_the_desktop_build_defaults_to_the_gitcode_source_and_keeps_a_chosen_one():
+    """正式打包的环境默认指向 gitcode，打包人自己指定的来源不被覆盖。"""
     from types import SimpleNamespace
 
     from scripts.bundles.desktop_inputs import identity_environment

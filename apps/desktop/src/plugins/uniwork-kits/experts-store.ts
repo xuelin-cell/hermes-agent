@@ -11,6 +11,7 @@ export const $expertAvatars = atom<Record<string, string>>({})
 
 let inflight: null | Promise<void> = null
 
+/** 从后端取召唤名单放进 $expertDirectory；同时只发一个请求，失败时保留原来的名单。 */
 export function loadExperts(): Promise<void> {
   inflight ??= fetchExperts()
     .then(directory => {
@@ -24,6 +25,7 @@ export function loadExperts(): Promise<void> {
   return inflight
 }
 
+/** 按需取一位专家的头像，每位只取一次；取不到时记为空，避免反复请求。 */
 export function loadAvatar(name: string): void {
   if (!name || name in $expertAvatars.get()) {
     return

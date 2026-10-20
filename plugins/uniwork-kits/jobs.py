@@ -32,12 +32,14 @@ class _Job:
 
 
 def _log_dir(home: Path) -> Path:
+    """后台任务日志目录，不存在就建。"""
     path = store.imported_root(home) / "jobs"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
 
 def _tail(path: Path) -> str:
+    """读日志最后若干行给页面显示；读不到返回空字符串。"""
     try:
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
@@ -46,7 +48,7 @@ def _tail(path: Path) -> str:
 
 
 def start(home: Path, kit_args: List[str]) -> Dict[str, object]:
-    """Spawn ``hermes kit <kit_args>`` against *home* and return ``{id, running}``."""
+    """在后台对 home 运行 hermes kit <参数>（只允许安装和刷新触发词），返回 {id, running}。"""
     if not kit_args or kit_args[0] not in {"install", "triggers"}:
         raise ValueError("只有安装和刷新触发词放到后台")
     home = Path(home).resolve()
@@ -84,7 +86,7 @@ def start(home: Path, kit_args: List[str]) -> Dict[str, object]:
 
 
 def status(home: Path, job_id: str) -> Optional[Dict[str, object]]:
-    """Running flag, exit code, and the log tail. ``None`` when the id is unknown here."""
+    """任务是否还在跑、退出码和日志尾巴；id 不认识或不属于这个 home 时返回 None。"""
     job = _JOBS.get(job_id)
     if job is None or job.home != Path(home).resolve():
         return None
@@ -98,7 +100,7 @@ def status(home: Path, job_id: str) -> Optional[Dict[str, object]]:
 
 
 def save_upload(home: Path, filename: str, data: bytes, *, limit: int = 100 * 1024 * 1024) -> Path:
-    """Store an uploaded zip beside the job logs. The name is not trusted as a path."""
+    """把上传的 zip 存到任务日志旁边；文件名只当名字用，不当路径，防止写到别处。"""
     from .installer import KitError
 
     if not data or len(data) > limit:

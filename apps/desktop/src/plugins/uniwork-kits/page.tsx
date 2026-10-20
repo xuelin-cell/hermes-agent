@@ -77,7 +77,7 @@ const CARD_ACCENTS = [
 
 const CARD_PHRASES = 4
 
-/** The last non-empty line of a job log, for the one-line status. */
+/** 任务日志的最后一行非空内容，用作一行状态。 */
 export function lastLine(tail: string): string {
   const lines = tail
     .split(/\r?\n/)
@@ -87,7 +87,7 @@ export function lastLine(tail: string): string {
   return lines.at(-1) ?? ''
 }
 
-/** One status line for a background job; the full log only on request. */
+/** 后台任务的一行状态；需要时才展开完整日志。 */
 function JobStatus({ job }: { job: JobState }) {
   const t = usePluginI18n('uniwork-kits')
   const [open, setOpen] = useState(false)
@@ -117,12 +117,14 @@ function JobStatus({ job }: { job: JobState }) {
   )
 }
 
+/** 读出用户选的 zip 文件内容，准备上传。 */
 async function readFile(file: File): Promise<{ bytes: ArrayBuffer; filename: string }> {
   const bytes = await file.arrayBuffer()
 
   return { bytes, filename: file.name }
 }
 
+/** 卡片上「技能 N · 子代理 N · MCP N」这一行统计。 */
 function countsText(row: KitRow, t: Translate): string {
   return [
     `${t('skills')} ${row.skill_count}`,
@@ -133,7 +135,7 @@ function countsText(row: KitRow, t: Translate): string {
     .join(' · ')
 }
 
-/** A quiet chip, in the look of the catalog's tag chips. Cards cut long text; details wrap it. */
+/** 安静的小标签，样式和技能目录里的标签一致；卡片上截断长文字，详情里换行显示。 */
 function Chip({ children, wrap = false }: { children: ReactNode; wrap?: boolean }) {
   return (
     <span className="inline-flex max-w-full items-center rounded-md bg-(--ui-bg-quaternary) px-2 py-0.5 text-[0.6875rem] leading-4 text-(--ui-text-primary)">
@@ -142,6 +144,7 @@ function Chip({ children, wrap = false }: { children: ReactNode; wrap?: boolean 
   )
 }
 
+/** 找到卡片对应的专家资料；召唤名单里还没有时，用卡片自己的字段临时拼一份。 */
 function expertFor(row: KitRow, experts: ExpertCard[]): ExpertCard {
   return (
     experts.find(card => card.name === row.name) ?? {
@@ -166,7 +169,7 @@ interface CardShellProps {
   onOpen: () => void
 }
 
-/** The catalog card frame: the title opens the details; the whole card is its click area. */
+/** 技能目录风格的卡片外框：点标题打开详情，整张卡片都可以点。 */
 function CardShell({ accent, action, children, heading, label, onOpen }: CardShellProps) {
   return (
     <article
@@ -196,6 +199,7 @@ function CardShell({ accent, action, children, heading, label, onOpen }: CardShe
   )
 }
 
+/** 套件卡片：名字、简介、触发词示例、统计和启用开关。 */
 function KitTile({
   accent,
   onOpen,
@@ -257,6 +261,7 @@ function KitTile({
   )
 }
 
+/** 专家卡片：头像、名字、职业、简介和「召唤」按钮。 */
 function ExpertTile({
   accent,
   expert,
@@ -316,6 +321,7 @@ function ExpertTile({
   )
 }
 
+/** 包声明的配置项表单，保存后写进对应档案的 .env；敏感项用密码框。 */
 function ConfigForm({ name, fields, onSaved }: { fields: UserField[]; name: string; onSaved: () => void }) {
   const t = usePluginI18n('uniwork-kits')
   const [values, setValues] = useState<Record<string, string>>({})
@@ -366,6 +372,7 @@ function ConfigForm({ name, fields, onSaved }: { fields: UserField[]; name: stri
   )
 }
 
+/** MCP 的授权按钮：在浏览器里打开授权页，并轮询直到授权完成或超时。 */
 function Authorize({ profile, serverKey }: { profile?: string; serverKey: string }) {
   const t = usePluginI18n('uniwork-kits')
   const [note, setNote] = useState('')
@@ -410,6 +417,7 @@ function Authorize({ profile, serverKey }: { profile?: string; serverKey: string
 
               let tries = 0
 
+              /** 每隔一段时间查一次授权结果，最多 30 次；页面关掉后停止。 */
               const poll = async () => {
                 if (!alive.current || tries > 30) {
                   return
@@ -455,6 +463,7 @@ function Authorize({ profile, serverKey }: { profile?: string; serverKey: string
   )
 }
 
+/** 详情页里带标题的一节。 */
 function DetailSection({ children, title }: { children: ReactNode; title: string }) {
   return (
     <section className="grid gap-1.5">
@@ -464,7 +473,7 @@ function DetailSection({ children, title }: { children: ReactNode; title: string
   )
 }
 
-/** Everything a card does not show: settings, authorization, triggers, receipt, uninstall. */
+/** 卡片上放不下的内容：配置、授权、触发词、安装记录和卸载。 */
 function KitDetail({
   expert,
   onChange,
@@ -621,6 +630,7 @@ function KitDetail({
 
 type Shelf = 'experts' | 'kits'
 
+/** 套件页：上传安装、搜索、套件和专家两个书架、内置包安装进度和后台任务状态。 */
 export function KitsPage() {
   const t = usePluginI18n('uniwork-kits')
   const job = useValue($job)
@@ -655,6 +665,7 @@ export function KitsPage() {
     let stopped = false
     let timer = 0
 
+    /** 每 1.5 秒查一次当前后台任务；结束后刷新目录、专家名单和机器人名单。 */
     const tick = () => {
       void fetchJob(job.id)
         .then(view => {
@@ -686,6 +697,7 @@ export function KitsPage() {
     }
   }, [job?.id, reloadCatalog])
 
+  /** 重新取目录和专家名单（装完、卸载、改设置之后调用）。 */
   const refresh = () => {
     void catalog.refetch()
     void loadExperts()

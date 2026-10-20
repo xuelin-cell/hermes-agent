@@ -72,6 +72,7 @@ class SkillItem:
 
     @property
     def description(self) -> str:
+        """技能 frontmatter 里的说明文字。"""
         return str(self.frontmatter.get("description") or "").strip()
 
 
@@ -84,6 +85,7 @@ _HEADING_RE = re.compile(r"^#{1,6}\s+(.*)$")
 
 
 def _looks_like_usage(text: str) -> bool:
+    """一段说明是不是只写了用法（空的、以 ` 或 / 开头、或者是很短的 <参数> 格式），而不是真正的介绍。"""
     text = text.strip()
     return (
         not text
@@ -93,7 +95,7 @@ def _looks_like_usage(text: str) -> bool:
 
 
 def _prose(lines: List[str]) -> str:
-    """First prose paragraph, skipping usage lines, lists, quotes and code."""
+    """取第一段正文，跳过用法行、列表、引用和代码块。"""
     out: List[str] = []
     in_fence = False
     for line in lines:
@@ -116,7 +118,7 @@ def _prose(lines: List[str]) -> str:
 
 
 def command_summary(raw: str) -> str:
-    """What a ``commands/*.md`` does, when its own description is only a usage line."""
+    """commands/*.md 自己的说明只是一行用法时，从正文里找出它实际做什么。"""
     _, body = spec._split_command_frontmatter(raw)
     sections: List[tuple[str, List[str]]] = [("", [])]
     for line in body.splitlines():
@@ -160,13 +162,16 @@ class Plan:
 
     @property
     def name(self) -> str:
+        """包名（来自清单）。"""
         return self.manifest.name
 
     @property
     def version(self) -> str:
+        """包的版本号（来自清单）。"""
         return self.manifest.version
 
     def display_name(self) -> str:
+        """卡片上显示的名字：专家用定好的名字，套件按中文优先取清单里的显示名。"""
         from .expert_cards import card_name
         from .host_rules import localized
 
@@ -218,6 +223,7 @@ DISPLAY_TITLES: Dict[str, str] = {
 
 
 def _digest_file(path: Path) -> str:
+    """文件内容的 SHA-256 指纹，按 1MB 分块读，大文件也不占内存。"""
     h = hashlib.sha256()
     with path.open("rb") as fh:
         for chunk in iter(lambda: fh.read(1 << 20), b""):
@@ -226,6 +232,7 @@ def _digest_file(path: Path) -> str:
 
 
 def _digest_dir(path: Path) -> str:
+    """目录的指纹：按相对路径排序，把每个文件的路径和内容指纹一起算进去。"""
     h = hashlib.sha256()
     for f in sorted(p for p in path.rglob("*") if p.is_file()):
         h.update(f.relative_to(path).as_posix().encode("utf-8"))
@@ -234,6 +241,7 @@ def _digest_dir(path: Path) -> str:
 
 
 def _safe_extract(archive: Path, dest: Path) -> None:
+    """解压 zip 前检查每个条目，拒绝绝对路径、.. 和盘符，防止写到解压目录外面。"""
     with zipfile.ZipFile(archive) as zf:
         for member in zf.infolist():
             name = member.filename.replace("\\", "/")
@@ -244,7 +252,7 @@ def _safe_extract(archive: Path, dest: Path) -> None:
 
 
 def _unwrap(root: Path) -> Path:
-    """Descend through a single wrapper folder (``pkg.zip`` → ``pkg/…``)."""
+    """包外面多套了一层同名文件夹时往里走一层（最多两层），找到真正的包根。"""
     current = root
     for _ in range(2):
         entries = [e for e in current.iterdir() if e.name not in ("__MACOSX",)]
@@ -257,7 +265,7 @@ def _unwrap(root: Path) -> Path:
 
 @contextmanager
 def open_package(path: Path) -> Iterator[tuple[Path, Path, str]]:
-    """Yield ``(pristine_dir, work_dir, digest)`` for a zip or a directory."""
+    """把 zip 或目录准备成两份：原样副本和可修改的工作副本，并给出指纹，用完自动清理。"""
     path = Path(path)
     if not path.exists():
         raise PackageError(f"找不到：{path}")
@@ -282,6 +290,7 @@ def open_package(path: Path) -> Iterator[tuple[Path, Path, str]]:
 
 
 def _looks_like_manifest(path: Path) -> bool:
+    """这个 plugin.json 看起来是不是包清单（带清单该有的键）。"""
     try:
         data = json.loads(spec.read_pkg_text(path))
     except (OSError, ValueError):
@@ -290,6 +299,7 @@ def _looks_like_manifest(path: Path) -> bool:
 
 
 def _manifest_rank(source: Path, path: Path) -> tuple:
+    """多个候选清单时的排序依据：厂商目录（xxx-plugin）里的优先，其次是包根下的、层级浅的、写了 name 的。"""
     rel = path.relative_to(source).parts
     depth = len(rel) - 1
     parent = rel[-2].lower() if len(rel) >= 2 else ""
@@ -303,6 +313,7 @@ def _manifest_rank(source: Path, path: Path) -> tuple:
 
 
 def _manifest_candidates(source: Path) -> List[Path]:
+    """在包里限定深度内找出所有像清单的 plugin.json，按优先级排好。"""
     found: List[Path] = []
     for root_str, dirs, files in os.walk(source):
         root = Path(root_str)
@@ -315,6 +326,7 @@ def _manifest_candidates(source: Path) -> List[Path]:
 
 
 def resolve_manifest(source: Path) -> Path:
+    """确定用哪个 plugin.json；找不到或有两个同样像的都报错，请用户一次只装一个包。"""
     cands = _manifest_candidates(source)
     if not cands:
         raise PackageError("没有清单：包里找不到 plugin.json（也不在 .codebuddy-plugin/ 等目录下）")
@@ -328,6 +340,7 @@ def resolve_manifest(source: Path) -> Path:
 
 
 def package_root_for(manifest: Path) -> Path:
+    """清单所在的包根：清单在 xxx-plugin 目录里时，包根是它的上一层。"""
     parent = manifest.parent
     return parent.parent if parent.name.lower().endswith("-plugin") else parent
 
@@ -336,6 +349,7 @@ def package_root_for(manifest: Path) -> Path:
 
 
 def _find_skill_md(directory: Path) -> Optional[Path]:
+    """在目录里找 SKILL.md（大小写几种写法都认），没有返回 None。"""
     for name in ("SKILL.md", "skill.md", "Skill.md"):
         if (directory / name).is_file():
             return directory / name
@@ -343,6 +357,7 @@ def _find_skill_md(directory: Path) -> Optional[Path]:
 
 
 def _split_frontmatter(text: str) -> tuple[Dict[str, Any], str]:
+    """用 Hermes 自己的解析器拆出技能的 frontmatter 和正文。"""
     from agent.skill_utils import parse_frontmatter
 
     fm, body = parse_frontmatter(text)
@@ -350,6 +365,10 @@ def _split_frontmatter(text: str) -> tuple[Dict[str, Any], str]:
 
 
 def _collect_skills(plan: Plan, converted: set[str]) -> None:
+    """收集包里的技能：skills/ 下每个目录一个，包根本身就是技能时只有一个。
+
+    名字不合法、重名、读不出来的跳过并记警告；中文名会让斜杠命令重名，改用目录名并把原名放在说明开头；由命令转成的技能，说明只是用法时换成命令正文里的介绍。
+    """
     root = plan.root
     skills_root = root / "skills"
     dirs = (
@@ -421,13 +440,9 @@ _ASCII_SLUG_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
 
 def _usable_bare(name: str, directory: str) -> str:
-    """A skill name Hermes can turn into a slash command.
+    """给技能找一个 Hermes 能生成斜杠命令的名字。
 
-    Hermes keeps only ``[a-z0-9-]`` of a skill name for its ``/command``, so
-    ``PPT视觉设计`` and ``PPT内容生成`` in one package both became ``/ppt-writer-ppt``
-    and the second lost its command. Such a skill is registered under its
-    directory name instead (``ppt-design``); the package's own name leads its
-    description and still resolves ``<plugin>:<name>`` references.
+    Hermes 生成 /命令 时只保留名字里的 [a-z0-9-]，所以同一个包里的「PPT视觉设计」和「PPT内容生成」都会变成 /ppt-writer-ppt，后一个就没有命令了。这类技能改用目录名（如 ppt-design）注册；包里原来的名字放在说明开头，「包名:原名」的引用照样能对上。
     """
     if name.isascii() or not _ASCII_SLUG_RE.fullmatch(directory or ""):
         return name
@@ -435,6 +450,10 @@ def _usable_bare(name: str, directory: str) -> str:
 
 
 def _collect_mcp(plan: Plan) -> None:
+    """收集包声明的 MCP：清单里的、包根 .mcp.json、清单 mcpServers 指向的文件；指向包外的忽略，重复的只留第一处。
+
+    WorkBuddy 把需要 OAuth 的服务标在厂商字段 x-workbuddy.auth.type 里，通用解析会丢掉它，这里单独读出来，否则 Hermes 连上去也不会发起登录。
+    """
     servers: List[Dict[str, Any]] = list(plan.manifest.mcp_servers)
     plan.mcp_skipped.extend(plan.manifest.mcp_skipped)
     paths: List[Path] = []
@@ -498,10 +517,12 @@ def _collect_mcp(plan: Plan) -> None:
 
 
 def _is_lead(agent: spec.PluginAgentSpec, agent_name: str) -> bool:
+    """这个子代理是不是清单里 agentName 指定的主人格（按名字或文件名认）。"""
     return agent.name == agent_name or Path(agent.source_file).stem == agent_name
 
 
 def _classify(plan: Plan, agents: List[spec.PluginAgentSpec]) -> None:
+    """判断包的类型：专家（有主人格）、团队、普通套件，或缺东西的残包，并记下原因。"""
     kind = plan.manifest.expert_type
     raw_kind = str(plan.raw_manifest.get("expertType") or "").strip()
     if kind == "agent":
@@ -531,7 +552,7 @@ def _classify(plan: Plan, agents: List[spec.PluginAgentSpec]) -> None:
 
 
 def build_plan(pristine: Path, work: Path, digest: str) -> Plan:
-    """Classify the package in *work* and list what it contributes."""
+    """识别工作副本里的包，列出它要装的技能、子代理、MCP 和配置项。"""
     manifest_path = resolve_manifest(work)
     root = package_root_for(manifest_path)
     raw_text = spec.read_pkg_text(manifest_path)
@@ -579,14 +600,11 @@ def build_plan(pristine: Path, work: Path, digest: str) -> Plan:
 
 
 def root_skill_ignore(root: Path):
-    """``copytree`` filter for a package whose root *is* its only skill.
-
-    Drops the vendor / component folders at the package root only; a skill's
-    own ``references/agents.md`` deeper down is kept.
-    """
+    """包根本身就是唯一一个技能时，复制用的过滤器：只在包根这一层去掉厂商和组件目录，技能更深处自己的 references/agents.md 照样保留。"""
     root = Path(root).resolve()
 
     def _ignore(src: str, names: List[str]) -> List[str]:
+        """copytree 回调：在包根这一层返回要跳过的条目，其他层不跳过。"""
         if Path(src).resolve() != root:
             return []
         return [n for n in names if n in _NON_SKILL_ROOT_ENTRIES]

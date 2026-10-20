@@ -23,6 +23,7 @@ class SeedItem:
     detail: str = ""
 
     def line(self) -> str:
+        """一行中文结果，给 hermes kit seed 的输出用。"""
         label = {
             "empty": "没有包",
             "unchanged": "未变化",
@@ -39,14 +40,9 @@ class SeedItem:
 
 
 def iter_archives(directory: Path) -> List[Path]:
-    """Zips at the directory, under ``plugins/``, or one marketplace level down.
+    """找出目录里的 zip：目录本身、plugins/ 下，或往下一层市场目录里，不再更深。
 
-    Covered layouts, and nothing deeper:
-
-    * ``<dir>/*.zip``
-    * ``<dir>/plugins/*.zip``
-    * ``<dir>/<marketplace>/plugins/*.zip``
-    * ``<dir>/plugins/<marketplace>/plugins/*.zip``
+    支持的结构：<dir>/*.zip、<dir>/plugins/*.zip、<dir>/<市场>/plugins/*.zip、<dir>/plugins/<市场>/plugins/*.zip；同一个文件只算一次。
     """
     directory = Path(directory)
     if not directory.is_dir():
@@ -67,7 +63,7 @@ def iter_archives(directory: Path) -> List[Path]:
 
 
 def avatars_beside(archive: Path) -> Optional[Path]:
-    """``.../plugins/<name>.zip`` → ``.../avatars`` when that directory exists."""
+    """zip 放在 .../plugins/ 下时，取旁边的 .../avatars 作为头像目录；没有就返回 None。"""
     if archive.parent.name != "plugins":
         return None
     candidate = archive.parent.parent / "avatars"
@@ -75,7 +71,7 @@ def avatars_beside(archive: Path) -> Optional[Path]:
 
 
 def _identity(path: Path) -> tuple[str, str, str]:
-    """``(name, digest, kind)`` of a package, or raise :class:`PackageError`."""
+    """解开包得到（名字、指纹、类型）；读不出来时抛 PackageError。"""
     with package.open_package(path) as (pristine, work, digest):
         plan = package.build_plan(pristine, work, digest)
         return plan.name, digest, plan.kind
@@ -91,15 +87,9 @@ def seed(
     progress: Optional[Callable[[str, int, int], None]] = None,
     removed: Collection[str] = (),
 ) -> List[SeedItem]:
-    """Install new or changed archives. Same bytes are left alone.
+    """安装新的或字节变了的包，字节相同的不动，也从不卸载。
 
-    Enable flags, ``.env`` values, and a hand-edited expert ``SOUL.md`` stay
-    as ``installer.install`` already keeps them. This function never uninstalls.
-    Trigger phrases default to the verified table shipped with the plugin
-    (:func:`installer.bundled_triggers`), so a fresh home spends no model calls
-    on the packages that table covers. *progress* hears ``(name, done, total)``
-    before each install. Packages named in *removed* are left out unless they
-    are still installed (then they update as usual).
+    启用开关、.env 里的值、用户手改过的专家 SOUL.md 都按 installer.install 的规则保留。触发词默认用插件自带的已校验表，新账号装这些包不调模型。progress 在每装一个包前收到（名字, 已完成, 总数）。removed 里的包如果已经不在了就不再装回（用户卸载过）；还装着的照常更新。
     """
     archives = iter_archives(directory)
     if not archives:
@@ -128,6 +118,7 @@ def seed(
     identified.sort(key=lambda item: item[3] == "expert")
 
     def verdict(name: str, digest: str, kind: str) -> str:
+        """决定一个包怎么处理：残包、没变化、用户卸载过不装回，还是要装。"""
         if kind == "broken":
             return "unreadable"
         previous = index.get(name)

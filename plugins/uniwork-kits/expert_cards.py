@@ -45,13 +45,14 @@ _MAKER_SEPARATORS = ("-", "－", "—")
 
 
 def _localized(value: object) -> str:
+    """取中文优先的文本（转给 host_rules.localized）。"""
     from .host_rules import localized
 
     return localized(value)
 
 
 def card_name(plugin: str, persona: Mapping[str, Any]) -> Tuple[str, str]:
-    """``(name, subtitle)`` an installed expert is shown and addressed by."""
+    """已装专家显示和称呼用的（名字, 副标题）：有专门定好的名字就用它，否则按职业或包里的显示名。"""
     card = CARDS.get(plugin, {})
     if card.get("name"):
         return str(card["name"]), str(card.get("subtitle") or "")
@@ -66,17 +67,19 @@ def card_name(plugin: str, persona: Mapping[str, Any]) -> Tuple[str, str]:
 
 
 def intro(plugin: str, persona: Mapping[str, Any]) -> Dict[str, Any]:
-    """What summoning shows: description, opening prompt, quick prompts, tags (Chinese first)."""
+    """召唤时展示的内容：简介、开场白、建议问题和标签，中文优先，并套用这个专家的文字替换。"""
 
     card = CARDS.get(plugin, {})
     replace: Mapping[str, str] = card.get("replace") or {}
 
     def patched(text: str) -> str:
+        """套用这个专家定好的文字替换（例如把旧称呼换成新名字）。"""
         for old, new in replace.items():
             text = text.replace(old, new)
         return text
 
     def texts(value: Any) -> List[str]:
+        """把一组多语言条目转成中文文本列表，并套用文字替换，空的丢掉。"""
         items = value if isinstance(value, list) else []
         return [patched(text) for text in (_localized(item) for item in items) if text]
 

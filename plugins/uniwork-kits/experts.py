@@ -21,10 +21,12 @@ MAX_RECENT = 5
 
 
 def _recent_path(home: Path) -> Path:
+    """「最近召唤」名单的文件位置。"""
     return store.imported_root(home) / RECENT_FILE
 
 
 def _installed(home: Path) -> Dict[str, Dict[str, Any]]:
+    """已装、并且对应档案还存在的专家（不含专家档案里自己的那条）。"""
     from hermes_cli.profiles import profile_exists
 
     out: Dict[str, Dict[str, Any]] = {}
@@ -38,6 +40,7 @@ def _installed(home: Path) -> Dict[str, Dict[str, Any]]:
 
 
 def _row(name: str, entry: Dict[str, Any]) -> Dict[str, Any]:
+    """召唤名单里一位专家需要的字段。"""
     intro = entry.get("intro") if isinstance(entry.get("intro"), dict) else {}
     return {
         "name": name,
@@ -52,6 +55,7 @@ def _row(name: str, entry: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _read_recent(home: Path) -> List[str]:
+    """读出最近召唤的专家名；文件缺失或损坏时当作没有。"""
     try:
         data = json.loads(_recent_path(home).read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -60,7 +64,7 @@ def _read_recent(home: Path) -> List[str]:
 
 
 def directory(home: Path) -> Dict[str, Any]:
-    """``{experts: [...], recent: [names]}`` — only experts still installed."""
+    """召唤名单：全部仍然装着的专家，加上最近召唤的几位。"""
     installed = _installed(home)
     recent = [name for name in _read_recent(home) if name in installed][:MAX_RECENT]
     return {"experts": [_row(name, entry) for name, entry in installed.items()], "recent": recent}
@@ -70,10 +74,9 @@ _AVATAR_MIME = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "
 
 
 def avatar_data_url(home: Path, name: str) -> str:
-    """The expert's face as a data URL, the way the Bots list draws it; ``""`` when it has none.
+    """专家头像转成 data URL，和机器人名单的画法一致；没有头像返回空字符串。
 
-    A raster sits in the profile's ``assets/``; a small SVG rides in
-    ``profile.yaml`` ``ui_meta['hermes-bots'].image`` (see the installer).
+    位图在档案的 assets/ 里；小的 SVG 存在 profile.yaml 的 ui_meta['hermes-bots'].image 里（见安装器）。
     """
     import base64
 
@@ -99,7 +102,7 @@ def avatar_data_url(home: Path, name: str) -> str:
 
 
 def record_recent(home: Path, name: str) -> List[str]:
-    """Move *name* to the front of the recent list. Unknown names are refused."""
+    """把这位专家挪到「最近召唤」的最前面；不认识的名字直接拒绝。"""
     from .installer import KitError
 
     if name not in _installed(home):

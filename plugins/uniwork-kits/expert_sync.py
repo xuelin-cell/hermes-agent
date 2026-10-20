@@ -50,7 +50,7 @@ _KEEP_FROM_EXPERT = ("enabled", "tools")
 
 
 def _read(home: Path) -> Tuple[Dict[str, Any], Dict[str, str]]:
-    """``(raw config, .env)`` of *home*, exactly as written."""
+    """原样读出 home 的配置和 .env，不合并默认值。"""
     with store.scoped_home(home):
         from hermes_cli.config import load_env, read_user_config_raw
 
@@ -60,6 +60,7 @@ def _read(home: Path) -> Tuple[Dict[str, Any], Dict[str, str]]:
 
 
 def _managed_providers(raw: Mapping[str, Any]) -> Dict[str, Any]:
+    """配置里由桌面统一管理的模型提供方（名字带固定前缀的那些）。"""
     providers = raw.get("providers")
     if not isinstance(providers, Mapping):
         return {}
@@ -67,6 +68,7 @@ def _managed_providers(raw: Mapping[str, Any]) -> Dict[str, Any]:
 
 
 def _referenced_keys(providers: Mapping[str, Any], mcp_entry: Optional[Mapping[str, Any]]) -> Set[str]:
+    """模型提供方和 MCP 配置里引用到的环境变量名，同步时这些密钥要一起带过去。"""
     keys: Set[str] = set()
     for entry in providers.values():
         if isinstance(entry, Mapping):
@@ -77,6 +79,7 @@ def _referenced_keys(providers: Mapping[str, Any], mcp_entry: Optional[Mapping[s
 
 
 def _own_keys(entry: Mapping[str, Any]) -> Set[str]:
+    """专家自己的密钥名（包声明的和用户配置项），同步时不能被默认档案覆盖。"""
     own = {str(k) for k in entry.get("env_keys") or []}
     for field in entry.get("user_config") or []:
         if isinstance(field, Mapping) and field.get("env"):
@@ -85,6 +88,7 @@ def _own_keys(entry: Mapping[str, Any]) -> Set[str]:
 
 
 def _expert_homes(default_home: Path) -> List[Tuple[str, Path]]:
+    """已装、并且档案还存在的专家：（包名, 档案 home）列表。"""
     from hermes_cli.profiles import get_profile_dir, profile_exists
 
     out: List[Tuple[str, Path]] = []
@@ -134,7 +138,7 @@ def _plan_config(
     record: Mapping[str, Any],
     plugin: str,
 ) -> Tuple[Dict[str, Any], Dict[str, Any], List[str]]:
-    """``(new raw config, new sync record, what changed)`` for one expert."""
+    """算出一位专家同步后的配置、新的同步记录，以及改了哪些（只计算，不写文件）。"""
     raw = copy.deepcopy(expert_raw)
     changes: List[str] = []
     new_record: Dict[str, Any] = {}
@@ -182,7 +186,7 @@ def _plan_config(
 
 
 def sync_expert(default_home: Path, expert_home: Path) -> List[str]:
-    """Bring one expert in line with *default_home*. Returns what changed."""
+    """让一位专家跟上默认档案（模型、密钥、要跟随的 MCP），返回改了哪些。"""
     default_raw, default_env = _read(default_home)
     expert_raw, expert_env = _read(expert_home)
     index = store.load_index(expert_home)
@@ -224,7 +228,7 @@ def sync_expert(default_home: Path, expert_home: Path) -> List[str]:
 
 
 def sync_all(default_home: Path) -> List[str]:
-    """Sync every installed expert. One line per expert that changed."""
+    """同步全部已装专家，每个有变化的专家一行说明。"""
     lines: List[str] = []
     for name, home in _expert_homes(default_home):
         try:
@@ -242,7 +246,7 @@ _synced_homes: Set[str] = set()
 
 
 def sync_on_load(home: Path) -> None:
-    """Once per process, when *home* is a default profile that lists experts."""
+    """插件加载时，如果 home 是装了专家的默认档案，就同步一次；每个进程只做一次。"""
     key = str(home)
     if key in _synced_homes:
         return

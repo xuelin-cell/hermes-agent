@@ -37,7 +37,7 @@ export const $bundledFinished = atom(0)
 
 let watching = false
 
-/** Poll while the backend is installing; refresh experts and the roster when it finishes. */
+/** 后端还在安装内置包时每 2 秒查一次进度；装完后刷新专家名单和机器人名单。同一时间只跑一个轮询。 */
 export async function watchBundled(): Promise<void> {
   if (watching) {
     return

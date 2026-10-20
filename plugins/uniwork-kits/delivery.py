@@ -18,7 +18,7 @@ MEDIA_PLATFORMS = frozenset({"desktop"})
 
 
 def instruction(platform: str) -> str:
-    """The delivery line for *platform*, said in the host's words."""
+    """按平台给出「怎么把文件交给用户」的一行说明，用宿主自己的说法。"""
     if platform in MEDIA_PLATFORMS:
         return (
             "- 交付文件写好后，在回复里每个文件单独一行写 `MEDIA:<绝对路径>`（例：`MEDIA:C:/Users/me/报告.docx`），"
@@ -40,10 +40,9 @@ _frozen: dict = {}
 
 
 def frozen_prompt_contains(home: Path, session_id: str, needle: str) -> bool:
-    """Whether *session_id*'s stored system prompt in *home* contains *needle*.
+    """看某个会话存下的系统提示里有没有某段文字。
 
-    Read-only; remembered per session because a stored prompt never changes.
-    A session not written yet reads as ``False`` and is asked again next turn.
+    只读；系统提示一旦存下不会再变，所以每个会话只查一次。还没写入的会话当作没有，下一轮再查。
     """
     key = (str(home), str(session_id), needle)
     if not session_id:
@@ -74,7 +73,7 @@ def frozen_prompt_contains(home: Path, session_id: str, needle: str) -> bool:
 
 
 def stale_rule_correction(home: Path, session_id: str, platform: str) -> str:
-    """The per-turn correction for a desktop chat whose prompt still says no cards."""
+    """旧会话的系统提示还写着「不出文件卡片」时，每一轮附上一句更正，让模型改用 MEDIA 交付。"""
     if platform not in MEDIA_PLATFORMS or not frozen_prompt_contains(home, session_id, _OLD_RULE_MARK):
         return ""
     return (
@@ -84,7 +83,7 @@ def stale_rule_correction(home: Path, session_id: str, platform: str) -> str:
 
 
 def deck_line(platform: str) -> str:
-    """The short version the PPT rules and the deck check end with."""
+    """PPT 规则和交付检查末尾用的简短交付说明。"""
     if platform in MEDIA_PLATFORMS:
         return "做完把 .pptx 交给用户：回复里单独一行写 `MEDIA:<pptx 绝对路径>`，对话里会出现可预览、可下载的文件卡片。"
     return "做完在回复里写出 .pptx 的完整路径。"
