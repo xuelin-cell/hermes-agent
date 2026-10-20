@@ -93,14 +93,6 @@ def test_a_deck_request_asks_for_the_script_in_parts_but_its_subagents_only_writ
     assert kits.deck_check.BUILD_RULES not in child and "PPT 配图原则" in child
 
 
-def test_the_deck_rules_point_at_a_layout_library_that_ships_with_the_plugin(kits):
-    """做 PPT 的规则让模型 require 版式库、先读它的说明：两个路径都得是插件里真实存在的文件，移动了库就会在这里失败。"""
-    rules = kits.deck_check.BUILD_RULES
-    for path in (kits.deck_check.DECK_LIBRARY, kits.deck_check.DECK_LIBRARY_GUIDE):
-        assert path in rules
-        assert os.path.isfile(path), path
-
-
 def test_the_uniai_watermark_stands_in_for_the_ai_label_but_other_generators_still_need_one(kits):
     """UniAI 生成的图自带水印：规则和交付前核对都不再要求另加「AI 生成」，改为别裁掉、别盖住水印；换成别的生图工具仍要加。"""
     ms = kits.media_slot

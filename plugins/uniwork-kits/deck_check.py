@@ -29,24 +29,17 @@ from . import deck_geometry, delivery, media_slot, turns
 # 限的是每份的大小，不是公共部分的内容：公共版式写不下就拆成几份，否则模型会在各页里各写一套版式，风格散掉。
 # 推理强度「中」时，动手前的长思考加上大段输出仍会超时（同日实测公共文件又白等 595 秒），所以要求直接写文件。
 # 10 页以上把分页交给几个子代理同时写（delegate_task 的 tasks 批量是并行的），写分页的时间按份数缩短。
-# 公共版式改由宿主自带的版式库提供（host_scripts/deck/）：同日实测父任务光写公共文件就用了半小时，
-# 还常出形状名写错、图片拉伸、文字溢出；用库后模型只写每页的内容。库在本机插件目录里，终端不在本机时
-# require 不到，才退回自己写公共文件。
-DECK_LIBRARY = (Path(__file__).resolve().parent / "host_scripts" / "deck" / "uniwork-deck.js").as_posix()
-DECK_LIBRARY_GUIDE = (Path(__file__).resolve().parent / "host_scripts" / "deck" / "README.md").as_posix()
 BUILD_RULES = (
-    "PPT 用宿主自带的版式库写，不要自己写配色、字体和版式函数：\n"
-    f"1. 先读版式库说明 {DECK_LIBRARY_GUIDE}（用法、10 套风格、各版式函数的参数），按主题和听众选一套风格，"
-    "再定大纲：每页用哪个版式函数、标题和要点、配哪张图。\n"
-    "2. 分页按章节每 4～5 页一个文件（slides_1.js、slides_2.js……），每个文件导出 function (deck)，依次调用版式函数加页。\n"
-    f"3. 最后写一个很短的 build.js：用 require('{DECK_LIBRARY}') 得到 createDeck，"
-    "createDeck(require('pptxgenjs'), { theme, title }) 之后依次调用各分页文件，await deck.save(输出的绝对路径)，然后运行它。\n"
+    "PPT 生成脚本分几份写，不要在一次调用里写出整份：\n"
+    "1. 公共部分先写：配色、字体、页面尺寸放 theme.js，封面、章节页、正文页这类版式函数放 layouts.js，"
+    "图标放 icons.js。哪一份写不下就再拆一份，不要为了变短删减版式。\n"
+    "2. 分页按章节每 4～5 页一个文件（slides_1.js、slides_2.js……），每个文件导出一个函数，往同一个演示文稿里加页。\n"
+    "3. 最后写一个很短的 build.js，依次调用它们、保存 .pptx，然后运行它。\n"
     "每个文件控制在约 200 行、8KB 以内，直接写进文件，不要先在思考里把整份代码打一遍草稿：单次输出太长会超时作废。\n"
-    "4. 10 页以上的 PPT：大纲定好后，用 delegate_task 一次派出几个子任务（tasks 列表，每项一个分页文件），"
-    "它们会同时写。每个子任务的 goal 写清：先读版式库说明（给出路径）、负责第几页到第几页、每页用哪个版式函数、"
-    "标题和要点、要用的图片（绝对路径）、要写的文件名，并说明只写这一份文件、不要运行 build。"
-    "子任务都完成后，你写 build.js、运行，再按宿主的检查结果改。\n"
-    "版式库 require 不到时（终端不在本机），才自己写公共文件：配色字体放 theme.js、版式函数放 layouts.js，同样分份写。"
+    "4. 10 页以上的 PPT：公共文件和每页大纲定好后，用 delegate_task 一次派出几个子任务（tasks 列表，每项一个分页文件），"
+    "它们会同时写。每个子任务的 goal 写清：负责第几页到第几页、每页的标题和要点、要用的图片（绝对路径）、"
+    "公共文件的路径和能调用的函数、要写的文件名和导出的函数名，并说明只写这一份文件、不要运行 build。"
+    "子任务都完成后，你写 build.js、运行，再按宿主的检查结果改。"
 )
 
 MAX_BOUNCES = 2
