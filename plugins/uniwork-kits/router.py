@@ -56,7 +56,7 @@ class Candidate:
 
 
 def author_phrases(description: str) -> List[str]:
-    """Trigger phrases a package author wrote into a description (``触发词：a、b``)."""
+    """包作者写在描述里的触发词（「触发词：a、b」这种写法），只留 2 到 16 个字的。"""
     match = _AUTHOR_TRIGGER_RE.search(description or "")
     if not match:
         return []
@@ -69,7 +69,7 @@ def author_phrases(description: str) -> List[str]:
 
 
 def catalog_from_index(index: Dict[str, Any]) -> Tuple[Candidate, ...]:
-    """Every enabled kit capability with its phrases, from one home's registry."""
+    """一个档案的安装记录里所有启用中的套件能力（技能、派工技能、MCP），连同各自的触发词。"""
     out: List[Candidate] = []
     for name, entry in sorted((index.get("plugins") or {}).items()):
         if not isinstance(entry, dict) or entry.get("kind") not in ("kit", "team") or not entry.get("enabled", True):
@@ -85,6 +85,7 @@ def catalog_from_index(index: Dict[str, Any]) -> Tuple[Candidate, ...]:
 
 
 def _bigrams(text: str) -> set:
+    """文本里所有相邻两个字组成的片段，用来算触发词和用户消息的重合度。"""
     return {text[i : i + 2] for i in range(len(text) - 1)}
 
 
@@ -119,6 +120,7 @@ _LATIN_RE = re.compile(r"[A-Za-z0-9]")
 
 
 def core_term(phrase: str) -> str:
+    """去掉触发词首尾的口语垫词（帮我、看看、今日……）和语气词，剩下的核心词。"""
     core = phrase.strip()
     changed = True
     while changed and core:
@@ -132,15 +134,17 @@ def core_term(phrase: str) -> str:
 
 
 def _specific(core: str) -> bool:
+    """核心词够具体，单独出现就能算命中：至少 3 个字，或者 2 个字但含字母或数字（如 K线、PPT）。两个汉字的核心词（如「代码」）太常见，不单独算。"""
     return len(core) >= 3 or (len(core) >= 2 and bool(_LATIN_RE.search(core)))
 
 
 def _core_covered(core: str, lowered: str) -> bool:
-    """Every character of a specific core occurs in the message."""
+    """核心词够具体，而且它的每个字都在用户消息里出现过。"""
     return _specific(core) and all(ch.lower() in lowered for ch in core)
 
 
 def score(candidate: Candidate, text: str, lowered: str) -> int:
+    """一个候选能力和这条消息的匹配分：原文出现或核心词出现算强命中；两字片段重合度高、核心词的字都在算强命中；两条不同触发词各自重合过半也算强命中；技能名本身出现在消息里也算。"""
     best = 0
     grams_text = _bigrams(text)
     near_misses = 0
@@ -178,6 +182,7 @@ def score(candidate: Candidate, text: str, lowered: str) -> int:
 
 
 def _line(candidate: Candidate) -> str:
+    """提示里一个候选能力的那一行，写清该用哪个工具去加载或调用。"""
     kind = _KIND_LABEL.get(candidate.kind, candidate.kind)
     if candidate.kind == "skill":
         return f"- {kind} `{candidate.label}` → 用 `skill_view` 加载"
@@ -191,6 +196,7 @@ def _line(candidate: Candidate) -> str:
 
 
 def build_hint(text: str, catalog: Iterable[Candidate]) -> Optional[str]:
+    """按匹配分挑出最多 3 个达到门槛的能力，拼成本轮附带的提示；一个都没有时返回 None，不附任何东西。"""
     if not text:
         return None
     lowered = text.lower()
@@ -220,7 +226,7 @@ _memo: Dict[str, Tuple[int, Tuple[Candidate, ...], bool]] = {}
 
 
 def _load(home: Path) -> Tuple[Tuple[Candidate, ...], bool]:
-    """``(catalog, is_expert_profile)`` for *home*, memoised on the index mtime."""
+    """这个档案的（候选能力目录, 是否专家档案），按安装记录文件的修改时间缓存，记录没变就不重读。"""
     path = store.index_path(home)
     try:
         mtime = path.stat().st_mtime_ns
@@ -236,7 +242,7 @@ def _load(home: Path) -> Tuple[Tuple[Candidate, ...], bool]:
 
 
 def is_expert_home(home: Path) -> bool:
-    """Whether *home* is a profile an expert was installed as."""
+    """这个档案是不是装成专家的那种。"""
     return _load(home)[1]
 
 
@@ -247,11 +253,12 @@ _PPT_INTENT_RE = re.compile(
 
 
 def names_a_deck(text: str) -> bool:
-    """Whether *text* says the deliverable is a slide deck."""
+    """这段话是否点名要幻灯片 / PPT 这类成品。"""
     return bool(text) and _PPT_INTENT_RE.search(text) is not None
 
 
 def _user_text(message: Any) -> str:
+    """从一条历史消息里取出用户写的文字；不是用户消息时返回空字符串。"""
     if isinstance(message, str):
         return message
     if not isinstance(message, dict) or message.get("role") not in (None, "user"):
@@ -265,7 +272,7 @@ def _user_text(message: Any) -> str:
 
 
 def deck_requested(user_message: str, history: Any) -> bool:
-    """A deck named in this turn, or earlier in the same conversation."""
+    """本轮或同一会话之前的用户消息里点名要过幻灯片。"""
     if names_a_deck(user_message):
         return True
     if not isinstance(history, list):
@@ -274,10 +281,12 @@ def deck_requested(user_message: str, history: Any) -> bool:
 
 
 def pictures_enabled() -> bool:
+    """配图功能是否打开，给 host_hooks 用的公开入口。"""
     return _pictures_enabled()
 
 
 def _pictures_enabled() -> bool:
+    """读 config.yaml 的 uniwork_kits.pictures，默认打开；读不出配置时也当作打开。"""
     try:
         from hermes_cli.config import load_config_readonly
 
@@ -288,6 +297,7 @@ def _pictures_enabled() -> bool:
 
 
 def _router_enabled() -> bool:
+    """读 config.yaml 的 uniwork_kits.router，默认打开；读不出配置时也当作打开。"""
     try:
         from hermes_cli.config import load_config_readonly
 
@@ -298,11 +308,9 @@ def _router_enabled() -> bool:
 
 
 def on_pre_llm_call(**kwargs: Any) -> Optional[Dict[str, str]]:
-    """Suggest kit skills, and attach PPT picture rules when this turn is a deck.
+    """每轮调用模型前：普通档案附上可能用到的套件能力，做 PPT 时附上配图规则；专家档案改附专家自己的本轮说明（交付规则更正、小红书登录、配图、东方财富取数）。
 
-    Picture rules name whatever :func:`media_slot.load_slot` currently says.
-    An expert profile gets neither: it routes itself. Either way this opens
-    the session's request (:mod:`turns`) for the tool hooks that follow.
+    不管哪种情况，都先为这轮请求开一条记录（turns），给后面的工具钩子用。这里出错只记日志，不能打断用户这一轮。
     """
     try:
         from hermes_constants import get_hermes_home

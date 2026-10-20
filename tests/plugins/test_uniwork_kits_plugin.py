@@ -24,6 +24,7 @@ PLUGIN_DIR = Path(__file__).resolve().parents[2] / "plugins" / "uniwork-kits"
 
 @pytest.fixture
 def profile_env(tmp_path, monkeypatch):
+    """临时的默认档案：HERMES_HOME 和用户主目录都指向临时目录，带一个模型配置和一个 GLM 密钥。"""
     home = tmp_path / ".hermes"
     home.mkdir()
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
@@ -35,7 +36,7 @@ def profile_env(tmp_path, monkeypatch):
 
 @pytest.fixture
 def kits():
-    """The plugin package, imported the way the PluginManager imports it."""
+    """按 Hermes 插件管理器的方式导入插件包（hermes_plugins.uniwork_kits），每次都重新导入，各模块挂在返回对象上。"""
     if "hermes_plugins" not in sys.modules:
         ns = types.ModuleType("hermes_plugins")
         ns.__path__ = []
@@ -64,12 +65,14 @@ def kits():
 
 
 def _write(path: Path, text: str) -> None:
+    """写文本文件，父目录不在就先建。"""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
 
 
 @pytest.fixture
 def kit_pkg(tmp_path):
+    """一个演示套件包：技能、命令、子代理、规则、包钩子、用户配置项，以及一条 HTTP 和一条不支持的 ws MCP。"""
     root = tmp_path / "pkgs" / "demo-kit"
     _write(root / "plugin.json", json.dumps({
         "name": "demo-kit",
@@ -103,6 +106,7 @@ def kit_pkg(tmp_path):
 
 
 def _expert_pkg(tmp_path, avatar_name="face.png", avatar_bytes=b"\x89PNG\r\n\x1a\n" + b"0" * 32, name="demo-expert"):
+    """造一个演示专家包：主人设、助手、自己的技能和头像；name 和头像可换，给别的测试造东方财富专家等。"""
     root = tmp_path / "pkgs" / name
     _write(root / ".codebuddy-plugin" / "plugin.json", json.dumps({
         "name": name,
@@ -128,11 +132,13 @@ def _expert_pkg(tmp_path, avatar_name="face.png", avatar_bytes=b"\x89PNG\r\n\x1a
 
 @pytest.fixture
 def expert_pkg(tmp_path):
+    """默认的演示专家包。"""
     return _expert_pkg(tmp_path)
 
 
 @pytest.fixture
 def triggers(tmp_path):
+    """一份数字员工格式的触发词表，只给 demo-kit 的 alpha-probe 两个触发词。"""
     path = tmp_path / "plugin_index.json"
     path.write_text(json.dumps({"plugins": {"demo-kit": {"triggers": {"skill:alpha-probe": ["阿尔法探测", "做阿尔法分析"]}}}},
                                ensure_ascii=False), encoding="utf-8")
@@ -140,6 +146,7 @@ def triggers(tmp_path):
 
 
 def _index_text(home: Path) -> str:
+    """用 Hermes 真实的技能索引构建函数生成这个档案的技能列表文本（先清缓存）。"""
     import agent.prompt_builder as pb
 
     pb._SKILLS_PROMPT_CACHE.clear()
@@ -147,20 +154,24 @@ def _index_text(home: Path) -> str:
 
 
 def _config(home: Path) -> dict:
+    """读档案的 config.yaml。"""
     return yaml.safe_load((home / "config.yaml").read_text(encoding="utf-8")) or {}
 
 
 def _skill_md(home: Path, plugin: str, rel: str) -> str:
+    """读装好的某个套件技能的 SKILL.md。"""
     return (home / "skills" / "kits" / plugin / "skills" / rel / "SKILL.md").read_text(encoding="utf-8")
 
 
 def _expert_home():
+    """演示专家档案的目录。"""
     from hermes_cli.profiles import get_profile_dir
 
     return Path(get_profile_dir("demo-expert"))
 
 
 def test_inspect_writes_nothing(kits, profile_env, kit_pkg):
+    """inspect 只读包、报告会装什么，不往档案里写任何文件。"""
     receipt = kits.installer.inspect(kit_pkg, triggers={})
     assert receipt.kind == "kit" and receipt.ok
     assert "demo-kit--alpha-probe" in receipt.skills
@@ -169,6 +180,7 @@ def test_inspect_writes_nothing(kits, profile_env, kit_pkg):
 
 
 def test_kit_install_is_visible_and_recorded(kits, profile_env, kit_pkg, triggers):
+    """装好的套件在 Hermes 的技能索引里看得见；路径占位符改成保留目录；MCP 密钥改成环境变量引用；装不了的 MCP、规则如实写进回执；包钩子和用户配置项记进安装记录。"""
     receipt = kits.installer.install(kit_pkg, profile_env, triggers=kits.installer.load_triggers(triggers))
     assert receipt.ok, receipt.render()
 
@@ -209,6 +221,7 @@ def test_kit_install_is_visible_and_recorded(kits, profile_env, kit_pkg, trigger
 
 
 def test_install_records_user_config_defaults(kits, profile_env, tmp_path):
+    """用户配置项的标题、是否敏感、是否必填、默认值和对应的环境变量名都记进安装记录。"""
     root = tmp_path / "pkgs" / "cfg-kit"
     _write(root / "plugin.json", json.dumps({
         "name": "cfg-kit",
@@ -232,6 +245,7 @@ def test_install_records_user_config_defaults(kits, profile_env, tmp_path):
 
 
 def test_slash_commands_keep_the_package_boundary(kits, profile_env, kit_pkg, monkeypatch):
+    """套件技能的斜杠命令是 /<包名>-<技能名>，包名和技能名之间不会粘在一起。"""
     kits.installer.install(kit_pkg, profile_env, triggers={})
     import agent.skill_commands as sc
     import tools.skills_tool as st
@@ -244,6 +258,7 @@ def test_slash_commands_keep_the_package_boundary(kits, profile_env, kit_pkg, mo
 
 
 def test_own_namespace_references_point_at_installed_names(kits, profile_env, kit_pkg, expert_pkg):
+    """包内 包名:技能名 的引用改成装好后的名字，套件技能和专家人设里都一样。"""
     kits.installer.install(kit_pkg, profile_env, triggers={})
     assert "`demo-kit--launch-probe`" in _skill_md(profile_env, "demo-kit", "alpha-probe")
 
@@ -253,6 +268,7 @@ def test_own_namespace_references_point_at_installed_names(kits, profile_env, ki
 
 
 def test_usage_only_commands_get_a_real_description(kits, profile_env, kit_pkg):
+    """只有 Usage 段的命令，用「Your Role」那段当描述，正文里写上实际的斜杠命令。"""
     kits.installer.install(kit_pkg, profile_env, triggers={})
     text = _skill_md(profile_env, "demo-kit", "review-probe")
     from agent.skill_utils import parse_frontmatter
@@ -263,6 +279,7 @@ def test_usage_only_commands_get_a_real_description(kits, profile_env, kit_pkg):
 
 
 def test_root_level_skill_is_installed_once(kits, profile_env, tmp_path):
+    """根目录只有一个 SKILL.md 的包，技能只装一份（包名--包名），旁边的文件照样带上。"""
     root = tmp_path / "pkgs" / "solo-kit"
     _write(root / "plugin.json", json.dumps({"name": "solo-kit", "version": "1.0.0", "description": "单技能套件"},
                                             ensure_ascii=False))
@@ -278,6 +295,7 @@ def test_root_level_skill_is_installed_once(kits, profile_env, tmp_path):
 
 
 def test_tagged_descriptions_still_lead_with_triggers(kits, profile_env, kit_pkg, tmp_path):
+    """带「[工作流]」标签的描述，触发词仍然放在标签后面最前的位置。"""
     path = tmp_path / "idx.json"
     path.write_text(json.dumps({"plugins": {"demo-kit": {"triggers": {"skill:review-probe": ["代码评审", "帮我审代码"]}}}},
                                ensure_ascii=False), encoding="utf-8")
@@ -298,12 +316,14 @@ def test_tagged_descriptions_still_lead_with_triggers(kits, profile_env, kit_pkg
     (("制作幻灯片",), "帮我制作幻灯片", True),
 ])
 def test_router_scoring(kits, phrases, message, fires):
+    """触发词打分：几种该命中和不该命中的说法（两条近似相加、核心词、共享尾巴、两字核心词等）。"""
     candidate = kits.router.Candidate("p", "skill", "p--s", tuple(phrases))
     hint = kits.router.build_hint(message, [candidate])
     assert (hint is not None) is fires
 
 
 def test_shared_tail_does_not_outrank_the_review_skill(kits):
+    """只是尾巴相同的触发词，排不到真正对得上的审查技能前面。"""
     review = kits.router.Candidate(
         "development-essentials", "skill", "development-essentials--review", ("代码审查",),
     )
@@ -317,10 +337,11 @@ def test_shared_tail_does_not_outrank_the_review_skill(kits):
 
 
 def _fake_llm(kits, score=lambda phrase: 0 if phrase.startswith("坏词") else 2, answer_verify=True):
-    """A stand-in for ctx.llm: writes one good and one bad phrase per component, then scores them."""
+    """替代 ctx.llm：生成时每个能力给一个好词一个坏词，复核时按 score 打分；answer_verify=False 时复核不回答。"""
     calls = {"generate": 0, "verify": 0}
 
     def complete(messages, **_):
+        """按提示开头分辨是生成还是复核，返回对应的 JSON 答案，并记下各调了几次。"""
         prompt = messages[0]["content"]
         if prompt.startswith("你在审核"):
             calls["verify"] += 1
@@ -343,10 +364,12 @@ def _fake_llm(kits, score=lambda phrase: 0 if phrase.startswith("坏词") else 2
 
 
 def _state(kits, home):
+    """demo-kit 安装记录里的触发词生成状态。"""
     return kits.store.load_index(home)["plugins"]["demo-kit"]["trigger_state"]
 
 
 def test_generated_triggers_are_verified_before_use(kits, profile_env, kit_pkg):
+    """模型生成的触发词复核过才用，低分的剔除；同一个包再装一次不再问模型。"""
     calls = _fake_llm(kits)
     receipt = kits.installer.install(kit_pkg, profile_env, triggers={})
     assert calls["generate"] == 1 and calls["verify"] >= 1
@@ -364,6 +387,7 @@ def test_generated_triggers_are_verified_before_use(kits, profile_env, kit_pkg):
 
 
 def test_unverified_phrases_stay_unused_until_verified(kits, profile_env, kit_pkg):
+    """复核没回答时，触发词先不用；之后刷新只重试复核，通过后才进路由和技能索引。"""
     _fake_llm(kits, answer_verify=False)
     receipt = kits.installer.install(kit_pkg, profile_env, triggers={})
     assert _state(kits, profile_env)["unverified"]
@@ -381,6 +405,7 @@ def test_unverified_phrases_stay_unused_until_verified(kits, profile_env, kit_pk
 
 
 def test_rejected_components_are_retried_at_most_three_times(kits, profile_env, kit_pkg):
+    """一直被复核否掉的能力最多重新生成 MAX_ATTEMPTS 次；指定 regenerate 时可以再来。"""
     calls = _fake_llm(kits, score=lambda phrase: 0)
     kits.installer.install(kit_pkg, profile_env, triggers={})
     assert _state(kits, profile_env)["pending"] and _state(kits, profile_env)["attempts"] == 1
@@ -396,6 +421,7 @@ def test_rejected_components_are_retried_at_most_three_times(kits, profile_env, 
 
 
 def test_disable_enable_roundtrip(kits, profile_env, kit_pkg):
+    """停用后套件技能从索引消失、MCP 关掉；重新启用后都回来，也不留在 skills.disabled 里。"""
     kits.installer.install(kit_pkg, profile_env, triggers={})
     kits.installer.set_enabled(profile_env, "demo-kit", False)
     assert "demo-kit--" not in _index_text(profile_env)
@@ -407,6 +433,7 @@ def test_disable_enable_roundtrip(kits, profile_env, kit_pkg):
 
 
 def test_uninstall_removes_package_files(kits, profile_env, kit_pkg):
+    """卸载套件时，技能、保留目录、MCP、它的密钥和安装记录一起删掉。"""
     kits.installer.install(kit_pkg, profile_env, triggers={})
     kits.installer.set_config(profile_env, "demo-kit", [("API_KEY", "secret")])
     assert "DEMO_KIT_API_KEY=secret" in (profile_env / ".env").read_text(encoding="utf-8")
@@ -421,6 +448,7 @@ def test_uninstall_removes_package_files(kits, profile_env, kit_pkg):
 
 
 def test_expert_becomes_its_own_profile(kits, profile_env, kit_pkg, expert_pkg, monkeypatch):
+    """专家装成独立档案：人设写进 SOUL.md 并换好工具名，带头像、密钥和插件开关；自己的技能、助手和指定的伴随技能可见，别的套件技能和主人设不进技能列表，也不漏到普通对话。"""
     monkeypatch.setitem(kits.host_rules.COMPANION_SKILLS, "demo-expert", ("demo-kit--alpha-probe",))
     kits.installer.install(kit_pkg, profile_env, triggers={})
     receipt = kits.installer.install(expert_pkg, profile_env, triggers={})
@@ -448,6 +476,7 @@ def test_expert_becomes_its_own_profile(kits, profile_env, kit_pkg, expert_pkg, 
 
 
 def test_svg_avatar_rides_ui_meta(kits, profile_env, tmp_path):
+    """SVG 头像写成 data URL 放进 profile.yaml 的 ui_meta，不另存文件。"""
     svg = b'<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><rect width="8" height="8"/></svg>'
     pkg = _expert_pkg(tmp_path, avatar_name="face.svg", avatar_bytes=svg)
     receipt = kits.installer.install(pkg, profile_env, triggers={})
@@ -458,6 +487,7 @@ def test_svg_avatar_rides_ui_meta(kits, profile_env, tmp_path):
 
 
 def test_reinstall_keeps_bot_protocol_and_user_edits(kits, profile_env, expert_pkg):
+    """重装时保留 SOUL.md 后面追加的机器人互发协议；用户改过人设就不覆盖，回执里提醒一句。"""
     kits.installer.install(expert_pkg, profile_env, triggers={})
     soul_path = _expert_home() / "SOUL.md"
     protocol = "## Messaging other agents\n\nrun hermes -p <agent> chat ...\n"
@@ -475,6 +505,7 @@ def test_reinstall_keeps_bot_protocol_and_user_edits(kits, profile_env, expert_p
 
 
 def test_expert_uninstall_requires_explicit_profile_deletion(kits, profile_env, expert_pkg):
+    """专家不能用普通卸载删掉，档案得由用户明确删除。"""
     kits.installer.install(expert_pkg, profile_env, triggers={})
     with pytest.raises(kits.installer.KitError):
         kits.installer.uninstall(profile_env, "demo-expert")
@@ -484,6 +515,7 @@ def test_expert_uninstall_requires_explicit_profile_deletion(kits, profile_env, 
 
 
 def test_broken_expert_installs_nothing(kits, profile_env, tmp_path):
+    """缺主人设的残包什么都不装，也不建档案。"""
     root = tmp_path / "pkgs" / "half-expert"
     _write(root / "plugin.json", json.dumps({"name": "half-expert", "version": "1.0.0", "description": "x",
                                               "expertType": "agent", "agentName": "missing"}))
@@ -495,6 +527,7 @@ def test_broken_expert_installs_nothing(kits, profile_env, tmp_path):
 
 
 def test_prompt_sections_only_render_for_experts(kits, profile_env, expert_pkg, monkeypatch):
+    """系统提示段只在专家档案里有内容；没有专属说明的专家也有名字和通用守则。"""
     kits.installer.install(expert_pkg, profile_env, triggers={})
     for _, render in kits.host_rules.SECTIONS:
         assert render({"profile_name": "default"}) == ""
@@ -510,7 +543,7 @@ def test_prompt_sections_only_render_for_experts(kits, profile_env, expert_pkg, 
 
 
 def test_expert_rules_fit_hermes_section_budgets(kits, profile_env, monkeypatch):
-    """Every known expert's rules must fit Hermes' per-section and total caps, or they are dropped."""
+    """每个已知专家的提示段都要在 Hermes 单段和总长度上限以内，否则会被丢掉。"""
     from hermes_cli.plugins import MAX_SYSTEM_PROMPT_SECTION_CHARS, MAX_SYSTEM_PROMPT_SECTIONS_TOTAL_CHARS
 
     for plugin in kits.host_rules.HOST_NOTES:
@@ -522,6 +555,7 @@ def test_expert_rules_fit_hermes_section_budgets(kits, profile_env, monkeypatch)
 
 
 def test_router_hints_kits_in_ordinary_profiles_only(kits, profile_env, kit_pkg, expert_pkg, triggers, monkeypatch):
+    """普通档案里说到触发词才提示套件技能；专家档案里不提示。"""
     kits.installer.install(kit_pkg, profile_env, triggers=kits.installer.load_triggers(triggers))
     kits.installer.install(expert_pkg, profile_env, triggers={})
 
@@ -534,7 +568,7 @@ def test_router_hints_kits_in_ordinary_profiles_only(kits, profile_env, kit_pkg,
 
 
 def test_router_follows_the_per_session_home_override(kits, profile_env, kit_pkg, expert_pkg, triggers):
-    """The desktop backend scopes HERMES_HOME per turn with an override; the hook must follow it."""
+    """桌面后端每轮用覆盖值切换 HERMES_HOME，路由钩子要跟着它判断是不是专家档案。"""
     from hermes_constants import reset_hermes_home_override, set_hermes_home_override
 
     kits.installer.install(kit_pkg, profile_env, triggers=kits.installer.load_triggers(triggers))
@@ -549,16 +583,20 @@ def test_router_follows_the_per_session_home_override(kits, profile_env, kit_pkg
 
 
 def test_register_wires_cli_sections_and_hook(kits):
+    """register 注册了 kit 命令、合法的系统提示段和各个钩子，没有注册 transform_llm_output。"""
     calls = {"cli": [], "sections": [], "hooks": []}
 
     class Ctx:
         def register_cli_command(self, name, help, setup_fn, handler_fn=None, description=""):
+            """记下注册的命令名。"""
             calls["cli"].append(name)
 
         def register_system_prompt_section(self, id, content, *, position="after_memory", max_chars=4000):
+            """记下注册的提示段 id。"""
             calls["sections"].append(id)
 
         def register_hook(self, name, callback):
+            """记下注册的钩子名。"""
             calls["hooks"].append(name)
 
     kits.root.register(Ctx())
@@ -578,6 +616,7 @@ def test_register_wires_cli_sections_and_hook(kits):
 
 
 def _zip_dir(src: Path, dest: Path) -> None:
+    """把一个目录打成 zip，条目用相对路径。"""
     import zipfile
 
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -587,6 +626,7 @@ def _zip_dir(src: Path, dest: Path) -> None:
 
 
 def _mod(name: str):
+    """取插件包里的某个子模块。"""
     import importlib
 
     return importlib.import_module(f"hermes_plugins.uniwork_kits.{name}")
@@ -594,15 +634,18 @@ def _mod(name: str):
 
 class _Stopped:
     def __init__(self, cmd, **kwargs):
+        """假进程：记下命令和参数，进程号固定为 17。"""
         self.cmd = cmd
         self.pid = 17
         self.kwargs = kwargs
 
     def poll(self):
+        """一启动就已经退出，退出码 0。"""
         return 0
 
 
 def test_seed_skips_unchanged_zips_and_keeps_switch_and_secret(kits, profile_env, kit_pkg, monkeypatch):
+    """内置包没变时跳过不重装；包变了才重装，用户的启用开关和密钥都保留，也从不卸载。"""
     seed = _mod("seed")
     directory = profile_env / "seed" / "uniwork-bundled"
     archive = directory / "plugins" / "demo-kit.zip"
@@ -612,11 +655,13 @@ def test_seed_skips_unchanged_zips_and_keeps_switch_and_secret(kits, profile_env
     real_install = kits.installer.install
 
     def wrapped(path, home, **kwargs):
+        """包一层真实安装，数装了几次、记下传入的头像目录。"""
         seen["installs"] += 1
         seen["avatars"] = kwargs.get("avatars_dir")
         return real_install(path, home, **kwargs)
 
     def refuse_uninstall(*_args, **_kwargs):
+        """seed 不允许卸载任何东西。"""
         raise AssertionError("seed must not uninstall")
 
     monkeypatch.setattr(seed.installer, "install", wrapped)
@@ -646,6 +691,7 @@ def test_seed_skips_unchanged_zips_and_keeps_switch_and_secret(kits, profile_env
 
 
 def test_seed_unreadable_or_empty_directory_leaves_installed_kits(kits, profile_env, kit_pkg):
+    """内置目录是空的或包读不出来时，已装的套件原样保留。"""
     seed = _mod("seed")
     kits.installer.install(kit_pkg, profile_env, triggers={})
     empty_dir = profile_env / "empty-seed"
@@ -663,7 +709,7 @@ def test_seed_unreadable_or_empty_directory_leaves_installed_kits(kits, profile_
 
 
 def test_seed_installs_kits_before_the_experts_that_borrow_from_them(kits, profile_env, kit_pkg, expert_pkg, monkeypatch):
-    """demo-expert sorts before demo-kit; its companion skill must still be found."""
+    """先装套件再装借用它技能的专家，即使专家的名字排在前面。"""
     seed = _mod("seed")
     monkeypatch.setitem(kits.host_rules.COMPANION_SKILLS, "demo-expert", ("demo-kit--alpha-probe",))
     directory = profile_env / "seed" / "uniwork-bundled"
@@ -678,6 +724,7 @@ def test_seed_installs_kits_before_the_experts_that_borrow_from_them(kits, profi
 
 
 def test_seed_uses_the_shipped_trigger_table(kits, profile_env, kit_pkg, monkeypatch, tmp_path):
+    """seed 用插件自带的触发词表。"""
     seed = _mod("seed")
     table = tmp_path / "bundled_triggers.json"
     table.write_text(json.dumps({"plugins": {"demo-kit": {"triggers": {"skill:alpha-probe": ["阿尔法探测"]}}}},
@@ -692,6 +739,7 @@ def test_seed_uses_the_shipped_trigger_table(kits, profile_env, kit_pkg, monkeyp
 
 
 def test_shipped_trigger_table_is_well_formed(kits):
+    """插件自带的触发词表格式正确：键是 skill / agent / mcp 开头，每条都有非空的词。"""
     table = kits.installer.bundled_triggers()
     assert table, "the plugin ships a trigger table"
     for plugin, entry in table.items():
@@ -702,6 +750,7 @@ def test_shipped_trigger_table_is_well_formed(kits):
 
 
 def test_picture_requests_in_ordinary_chats_point_at_the_uniai_tools(kits):
+    """普通对话里要找图或生图时指向 UniAI 的对应工具；画架构图、看图、问天气等不提示；没有工具包时什么都不说。"""
     servers = {"UniAI-Toolkit": {"url": "https://maas.ai-yuanjing.com/app/mcp-server/mcp?key=x"}}
     slot = kits.media_slot.load_slot(raw={}, servers=servers)
     hint = kits.media_slot.picture_request_hint
@@ -717,6 +766,7 @@ def test_picture_requests_in_ordinary_chats_point_at_the_uniai_tools(kits):
 
 
 def test_seed_command_is_registered(kits, tmp_path):
+    """hermes kit seed 命令和 --no-generate-triggers 参数注册好了。"""
     import argparse
 
     parser = argparse.ArgumentParser()
@@ -727,6 +777,7 @@ def test_seed_command_is_registered(kits, tmp_path):
 
 
 def test_api_lists_toggles_config_and_background_install(kits, profile_env, kit_pkg, monkeypatch):
+    """后端接口走一遍：列出套件（含描述和触发词）、保存密钥（不回显）、开关、后台安装、读回执、卸载。"""
     import importlib.util
 
     from fastapi import FastAPI
@@ -775,6 +826,7 @@ def test_api_lists_toggles_config_and_background_install(kits, profile_env, kit_
     spawned = {}
 
     def fake_popen(cmd, **kwargs):
+        """假的后台安装进程，只记下命令。"""
         spawned["cmd"] = list(cmd)
         return _Stopped(cmd, **kwargs)
 
@@ -805,6 +857,7 @@ def test_api_lists_toggles_config_and_background_install(kits, profile_env, kit_
 
 
 def test_api_only_manifest_is_mounted():
+    """只有接口没有页面的插件清单也会被仪表盘挂上 /api/plugins/uniwork-kits。"""
     from hermes_cli.web_server import _get_dashboard_plugins, app
 
     found = next(row for row in _get_dashboard_plugins(force_rescan=True) if row.get("name") == "uniwork-kits")
@@ -815,6 +868,7 @@ def test_api_only_manifest_is_mounted():
 
 
 def test_media_slot_rewrites_only_tools_a_colleague_has_named(kits):
+    """人设里的 ImageGen / VideoGen 只在接上了对应工具时才换名，没接上的列为未对应。"""
     bare = kits.media_slot.MediaSlot("", "", "")
     text, _changes, unmapped = kits.host_rules.rewrite_persona("调用 ImageGen 和 VideoGen", bare)
     assert "ImageGen" in unmapped and "VideoGen" in unmapped
@@ -830,6 +884,7 @@ def test_media_slot_rewrites_only_tools_a_colleague_has_named(kits):
 
 
 def test_picture_rules_follow_a_deck_and_name_the_open_slot(kits, profile_env, monkeypatch):
+    """这轮或之前说过要做幻灯片才附配图规则；桌面上带 MEDIA: 交付说明；接上 UniAI 后写出真实工具名。"""
     deck = kits.router.on_pre_llm_call(user_message="帮我做一份幻灯片", platform="desktop")
     assert deck and "PPT 配图原则" in deck["context"]
     assert "搜图工具还没有接入" in deck["context"] and "Wikimedia" in deck["context"]
@@ -850,6 +905,7 @@ def test_picture_rules_follow_a_deck_and_name_the_open_slot(kits, profile_env, m
 
 
 def test_media_slot_finds_the_uniai_toolkit_by_name_or_address(kits):
+    """按键名或地址都能认出 UniAI 工具包；关掉的不算；配置里清空搜图工具时只用生图。"""
     slot = kits.media_slot.load_slot({}, {"yuanjing": {"url": "https://maas/app/mcp-server/mcp?key=${K}"}})
     assert slot.search_tool == "mcp__yuanjing__image_search" and slot.image_tool == "mcp__yuanjing__txt2img_generate"
     renamed = kits.media_slot.load_slot(
@@ -864,6 +920,7 @@ def test_media_slot_finds_the_uniai_toolkit_by_name_or_address(kits):
 
 
 def test_media_connect_writes_a_key_reference_and_never_the_key(kits, profile_env, capsys):
+    """接入 UniAI 时配置里只写密钥的变量引用；用户关掉的保持关掉；状态输出里不出现密钥值。"""
     note = kits.media_slot.connect_uniai(profile_env)
     assert "DESKTOP_MT_MAAS_API_KEY" in note
     cfg = yaml.safe_load((profile_env / "config.yaml").read_text(encoding="utf-8"))
@@ -887,6 +944,7 @@ def test_media_connect_writes_a_key_reference_and_never_the_key(kits, profile_en
 
 
 def test_xiaohongshu_attach_writes_only_that_experts_profile_and_does_not_download(kits, profile_env):
+    """小红书 MCP 只写进种草草自己的档案；程序不在时写成停用，也不去下载。"""
     xhs = kits.xiaohongshu
     found = xhs.status(profile_env)
     assert found["present"] is False
@@ -914,10 +972,12 @@ def test_xiaohongshu_attach_writes_only_that_experts_profile_and_does_not_downlo
 
 
 def _png(width: int, height: int) -> bytes:
+    """生成一张指定宽高的纯黑 PNG。"""
     import struct
     import zlib
 
     def chunk(tag: bytes, data: bytes) -> bytes:
+        """拼一个带长度和 CRC 的 PNG 数据块。"""
         return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
 
     raw = b"".join(b"\x00" + b"\x00\x00\x00" * width for _ in range(height))
@@ -926,6 +986,7 @@ def _png(width: int, height: int) -> bytes:
 
 
 def _pptx(path: Path, png: bytes, box: tuple | None, origin: tuple = (0, 0)) -> None:
+    """造一个只有一页的最小 PPTX；box 给出图片的大小，origin 给出位置，box 为 None 时不放图。"""
     import zipfile
 
     cx, cy = box or (0, 0)
@@ -972,6 +1033,7 @@ def _pptx(path: Path, png: bytes, box: tuple | None, origin: tuple = (0, 0)) -> 
 
 
 def test_builtin_office_skill_is_installed_under_the_kit_name(kits, profile_env, tmp_path):
+    """套件里和内置技能同名的 docx 技能装成 套件名--docx，不被跳过。"""
     root = tmp_path / "pkgs" / "office-kit"
     _write(root / "plugin.json", json.dumps({
         "name": "office-kit", "version": "1.0.0", "description": "办公套件",
@@ -987,11 +1049,12 @@ def test_builtin_office_skill_is_installed_under_the_kit_name(kits, profile_env,
 
 
 def _turn(kits, session="s1", turn="t1", platform="desktop", deck=True):
+    """开一条新的请求记录。"""
     return kits.turns.begin(session, turn, platform=platform, deck=deck)
 
 
 def _rewrite(path: Path, *args, **kwargs) -> None:
-    """Rewrite a deck so its size and mtime both move, the way a rerun script does."""
+    """重写幻灯片，让文件大小和修改时间都变，模拟脚本重跑一次。"""
     import os
     import time
 
@@ -1003,6 +1066,7 @@ def _rewrite(path: Path, *args, **kwargs) -> None:
 
 
 def test_broken_deck_is_sent_back_twice_per_request_then_released(kits, tmp_path):
+    """有问题的幻灯片每个请求最多退回两次，第三次放行；文件没变不重复说；新请求重新计数。"""
     kits.turns.clear()
     turn = _turn(kits)
     path = tmp_path / "bleed.pptx"
@@ -1026,6 +1090,7 @@ def test_broken_deck_is_sent_back_twice_per_request_then_released(kits, tmp_path
 
 
 def test_clean_deck_passes_with_the_desktop_delivery_line(kits, tmp_path):
+    """没问题的幻灯片直接通过；桌面上让用 MEDIA: 交付，命令行里写完整路径。"""
     kits.turns.clear()
     path = tmp_path / "ok.pptx"
     _pptx(path, _png(100, 50), (2 * 914400, 914400))
@@ -1037,12 +1102,14 @@ def test_clean_deck_passes_with_the_desktop_delivery_line(kits, tmp_path):
 
 
 def test_deck_check_flags_a_stretched_picture(kits, tmp_path):
+    """比例被拉伸的图片会被指出来。"""
     stretched = tmp_path / "stretched.pptx"
     _pptx(stretched, _png(100, 50), (2 * 914400, 2 * 914400))
     assert any("拉伸" in item for item in kits.deck_check.check_pptx(stretched))
 
 
 def _deck_with(path: Path, *, slide_extra: str = "", presentation: str = "", parts: dict | None = None) -> None:
+    """在最小 PPTX 上加一段页面内容、换演示文稿定义或加别的部件，用来造 PowerPoint 打不开的情况。"""
     import zipfile
 
     _pptx(path, _png(20, 20), None)
@@ -1067,6 +1134,7 @@ def _deck_with(path: Path, *, slide_extra: str = "", presentation: str = "", par
 
 
 def test_deck_check_names_what_powerpoint_refuses_to_open(kits, tmp_path):
+    """指出 PowerPoint 打不开的几种写法：非法的虚线和字号、规范外的形状名、指向不存在形状的动画、备注母版缺主题；顺序不规范但能打开的不报。"""
     shape = (
         '<p:sp><p:nvSpPr><p:cNvPr id="5" name="t"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>'
         '<p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/></a:xfrm>'
@@ -1081,6 +1149,7 @@ def test_deck_check_names_what_powerpoint_refuses_to_open(kits, tmp_path):
     # A preset shape name outside the schema (pptxgenjs strings like "oval") keeps
     # PowerPoint from opening the deck; the schema's own names pass.
     def shape_named(prst: str) -> str:
+        """一个用指定预设形状名的形状。"""
         return (
             '<p:sp><p:nvSpPr><p:cNvPr id="6" name="s"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>'
             '<p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/></a:xfrm>'
@@ -1136,6 +1205,7 @@ def test_deck_check_names_what_powerpoint_refuses_to_open(kits, tmp_path):
 
 
 def test_generated_pictures_are_reviewed_once_per_request(kits, profile_env, tmp_path):
+    """用了生成图的幻灯片第一次交付前要求标「AI 生成」，同一请求里只拦一次。"""
     kits.turns.clear()
     hooks = kits.host_hooks
     kits.router.on_pre_llm_call(user_message="做一份西游记幻灯片", session_id="g1", turn_id="r1", platform="desktop")
@@ -1157,6 +1227,7 @@ def test_generated_pictures_are_reviewed_once_per_request(kits, profile_env, tmp
 
 
 def test_ppt_kit_skill_brings_the_picture_rules_once(kits, profile_env, expert_pkg, monkeypatch):
+    """加载 PPT 类套件技能时附一次配图规则，同一请求不重复；别的技能和专家档案里不附。"""
     kits.turns.clear()
     hooks = kits.host_hooks
     kits.router.on_pre_llm_call(user_message="帮我看看这个", session_id="k1", turn_id="r1", platform="desktop")
@@ -1183,6 +1254,7 @@ _SEARCH_RESULT = (
 
 
 def _jpeg(width: int, height: int) -> bytes:
+    """造一个只有尺寸信息的 JPEG。"""
     import struct
 
     sof = b"\xff\xc0" + struct.pack(">HBHHB", 17, 8, height, width, 3) + b"\x01\x11\x00\x02\x11\x00\x03\x11\x00"
@@ -1190,12 +1262,14 @@ def _jpeg(width: int, height: int) -> bytes:
 
 
 def test_image_search_lands_pictures_in_a_deck_conversation_only(kits, profile_env, tmp_path, monkeypatch):
+    """只有做幻灯片的对话里，搜图结果才下载到本地并按横竖图标好来源；重复搜索被拦；次数用完时不让模型说工具不可用。"""
     kits.turns.clear()
     monkeypatch.setenv("TERMINAL_CWD", str(tmp_path))
     landing = kits.image_landing
     fetched = []
 
     def fetcher(url: str) -> bytes:
+        """假下载：a.jpg 给横图，别的给竖图，并记下下载过的地址。"""
         fetched.append(url)
         return _jpeg(1600, 900) if "a.jpg" in url else _jpeg(800, 1200)
 
@@ -1223,6 +1297,7 @@ def test_image_search_lands_pictures_in_a_deck_conversation_only(kits, profile_e
 
 
 def test_image_download_refuses_private_addresses(kits):
+    """下载图片时拒绝本机、内网、元数据地址和 file://。"""
     allowed = kits.image_landing._allowed
     assert allowed("https://img.example.com/a.jpg")
     assert not allowed("http://127.0.0.1/a.jpg")
@@ -1232,6 +1307,7 @@ def test_image_download_refuses_private_addresses(kits):
 
 
 def test_expert_rules_say_how_files_reach_the_chat(kits, profile_env, expert_pkg):
+    """专家守则在桌面上让用 MEDIA: 交付文件，在命令行里写完整路径。"""
     kits.installer.install(expert_pkg, profile_env, triggers={})
     working = kits.host_rules.SECTIONS[1][1]
     on_desktop = working({"profile_name": "demo-expert", "platform": "desktop"})
@@ -1241,12 +1317,14 @@ def test_expert_rules_say_how_files_reach_the_chat(kits, profile_env, expert_pkg
 
 
 def test_package_hook_blocks_only_on_exit_2_or_an_explicit_deny(kits, profile_env):
+    """包钩子只在退出码为 2 或明确返回 block 时拦下工具调用；别的退出码放行；不匹配的工具不跑钩子。"""
     import sys
 
     root = profile_env / "imported-plugins" / "demo-kit" / "1.0.0"
     root.mkdir(parents=True)
 
     def install(command: str) -> None:
+        """把一条 PreToolUse 命令钩子写进安装记录。"""
         kits.store.save_index(profile_env, {"plugins": {"demo-kit": {
             "kind": "kit",
             "enabled": True,
@@ -1269,6 +1347,7 @@ def test_package_hook_blocks_only_on_exit_2_or_an_explicit_deny(kits, profile_en
 
 
 def test_xiaohongshu_download_start_and_login_prompt_use_the_slot(kits, profile_env):
+    """下载、无界面启动和登录说明都对准小红书程序和 MCP；登录说明不再要求征求同意。"""
     xhs = kits.xiaohongshu
     kits.store.save_index(
         profile_env,
@@ -1285,6 +1364,7 @@ def test_xiaohongshu_download_start_and_login_prompt_use_the_slot(kits, profile_
         pid = 42
 
     def popen(args, **kwargs):
+        """假启动：记下启动参数。"""
         seen["args"] = list(args)
         return Proc()
 
@@ -1295,6 +1375,7 @@ def test_xiaohongshu_download_start_and_login_prompt_use_the_slot(kits, profile_
 
 
 def test_xiaohongshu_stop_never_kills_a_process_it_did_not_start(kits, profile_env):
+    """状态文件里的进程号不是自己启动的程序时，stop 什么都不杀。"""
     import os
 
     xhs = kits.xiaohongshu
@@ -1310,7 +1391,7 @@ def test_xiaohongshu_stop_never_kills_a_process_it_did_not_start(kits, profile_e
 
 
 def test_deep_paths_in_tool_output_do_not_stall_the_deck_check(kits, tmp_path):
-    """A `find` over node_modules once hung a conversation in the path scan (2026-10-14)."""
+    """工具输出里有大量很深的路径时，幻灯片检查也不会卡住（2026-10-14 一次 find node_modules 卡死过对话）。"""
     import time
 
     kits.turns.clear()
@@ -1326,7 +1407,7 @@ def test_deep_paths_in_tool_output_do_not_stall_the_deck_check(kits, tmp_path):
 
 
 def test_old_expert_chats_get_a_card_correction_on_the_desktop(kits, profile_env, expert_pkg, monkeypatch):
-    """A bot keeps one forever-chat whose prompt was frozen with the old 'no cards' rule."""
+    """老的专家会话系统提示里还写着「不要弹文件卡片」，桌面上每轮补一句更正；新会话和命令行里不补。"""
     from hermes_state import SessionDB
 
     kits.installer.install(expert_pkg, profile_env, triggers={})
@@ -1346,6 +1427,7 @@ def test_old_expert_chats_get_a_card_correction_on_the_desktop(kits, profile_env
 
 
 def test_deck_written_by_a_script_in_a_cd_directory_is_checked_at_once(kits, tmp_path):
+    """先 cd 再跑脚本写出的幻灯片，按 cd 后的目录找到并立即检查。"""
     kits.turns.clear()
     out = tmp_path / "ppt out"
     deck = out / "xihu.pptx"
@@ -1357,7 +1439,7 @@ def test_deck_written_by_a_script_in_a_cd_directory_is_checked_at_once(kits, tmp
 
 
 def test_experts_follow_the_default_profiles_model_key_and_uniai(kits, profile_env, tmp_path):
-    """A desktop login rewrites the default profile only; installed experts must keep up."""
+    """桌面登录只改默认档案，已装专家要跟上模型、套餐提供方、密钥和 UniAI；专家自己的密钥、用户改过的模型和关掉的工具包保留；默认档案去掉工具包后专家也去掉。"""
     root = _expert_pkg(tmp_path)
     manifest = root / ".codebuddy-plugin" / "plugin.json"
     data = json.loads(manifest.read_text(encoding="utf-8"))
@@ -1409,6 +1491,7 @@ def test_experts_follow_the_default_profiles_model_key_and_uniai(kits, profile_e
 
 
 def test_summon_directory_carries_prompts_recent_and_avatar(kits, profile_env, tmp_path):
+    """召唤名单带上描述、开场白、快捷问题、标签、最近召唤和头像；没装的专家不能记为最近召唤。"""
     root = _expert_pkg(tmp_path)
     manifest = root / ".codebuddy-plugin" / "plugin.json"
     data = json.loads(manifest.read_text(encoding="utf-8"))
@@ -1461,10 +1544,11 @@ def test_experts_are_named_by_their_job(kits, monkeypatch):
 
 
 def test_failed_first_expert_install_takes_its_new_profile_back(kits, profile_env, expert_pkg, monkeypatch):
-    """A half-made profile would make every retry refuse it as someone else's."""
+    """第一次装专家失败时把新建的档案收回，否则之后每次重试都会把它当成别人的档案拒绝。"""
     real = kits.installer.install_into_home
 
     def broken(plan, home, receipt, **kw):
+        """模拟写文件时找不到路径。"""
         raise OSError(2, "No such file or directory", str(home / "deep" / "file.md"))
 
     monkeypatch.setattr(kits.installer, "install_into_home", broken)
@@ -1480,6 +1564,7 @@ def test_failed_first_expert_install_takes_its_new_profile_back(kits, profile_en
 
 @pytest.mark.platforms("windows")
 def test_path_past_windows_limit_says_how_to_fix_it(kits, tmp_path):
+    """路径超过 Windows 260 字符时，失败说明告诉用户打开 LongPathsEnabled；普通的找不到文件仍是「安装失败」。"""
     import shutil
 
     deep = "C:\\" + "x" * 300 + r"\a.md"
@@ -1490,6 +1575,7 @@ def test_path_past_windows_limit_says_how_to_fix_it(kits, tmp_path):
 
 
 def test_summon_endpoints_over_http(kits, profile_env, expert_pkg, monkeypatch):
+    """召唤用的接口走一遍；桌面把插件请求转到专家后端时，召唤名单和套件页看到的仍是默认档案的数据。"""
     import importlib.util
 
     from fastapi import FastAPI
@@ -1528,7 +1614,7 @@ def test_summon_endpoints_over_http(kits, profile_env, expert_pkg, monkeypatch):
 
 
 def test_capabilities_installed_without_generation_get_phrases_later(kits, profile_env, kit_pkg):
-    """A seed with --no-generate-triggers must not mark its capabilities as done."""
+    """seed 时没生成触发词的能力不能记成已完成，之后刷新还会生成。"""
     kits.installer.install(kit_pkg, profile_env, triggers={}, generate_triggers=False)
     assert not (kits.store.load_index(profile_env)["plugins"]["demo-kit"].get("triggers") or {})
 
@@ -1580,6 +1666,7 @@ def test_xiaohongshu_login_is_asked_in_chat_then_prepared_and_kept_running(kits,
 
 
 def test_eastmoney_connector_is_recognized_only_by_the_agreed_shape(kits):
+    """东方财富连接器按约定键名或妙想地址认出；关掉的、只是提到东方财富的地址不算；取数说明写对工具全名和要停用的脚本。"""
     slot = kits.eastmoney_slot
     url = "https://mxapi-stg.eastmoney.com/mxds/v2/mcp"
     assert slot.server_name({}) == ""
@@ -1593,6 +1680,7 @@ def test_eastmoney_connector_is_recognized_only_by_the_agreed_shape(kits):
 
 
 def test_eastmoney_expert_keeps_scripts_until_the_connector_appears(kits, profile_env, tmp_path, monkeypatch):
+    """东方财富专家在连接器出现前不收到取数说明，继续用包里的脚本；出现后才附说明；别的专家即使有这条也不附。"""
     kits.installer.install(_expert_pkg(tmp_path, name="stock-diagnosis-expert"), profile_env, triggers={})
     kits.installer.install(_expert_pkg(tmp_path, name="demo-expert"), profile_env, triggers={})
     from hermes_cli.profiles import get_profile_dir
@@ -1626,6 +1714,7 @@ def test_eastmoney_expert_keeps_scripts_until_the_connector_appears(kits, profil
 
 
 def test_eastmoney_connector_syncs_only_onto_those_experts(kits, profile_env, tmp_path):
+    """默认档案的东方财富连接器连同它引用的密钥只同步给东方财富专家；无关的 MCP 不带；默认档案去掉后专家也去掉。"""
     kits.installer.install(_expert_pkg(tmp_path, name="stock-diagnosis-expert"), profile_env, triggers={})
     kits.installer.install(_expert_pkg(tmp_path, name="demo-expert"), profile_env, triggers={})
     entry = {"url": "https://mxapi-stg.eastmoney.com/mxds/v2/mcp", "timeout": 180}
@@ -1664,7 +1753,7 @@ def test_eastmoney_connector_syncs_only_onto_those_experts(kits, profile_env, tm
 
 
 def test_chinese_skill_names_each_keep_a_slash_command(kits, profile_env, tmp_path, monkeypatch):
-    """ppt-writer's 「PPT视觉设计」 and 「PPT内容生成」 both became /ppt-writer-ppt; one lost its command."""
+    """ppt-writer 的「PPT视觉设计」「PPT内容生成」以前都变成 /ppt-writer-ppt，丢了一个命令；现在按目录名各有各的命令，包内引用也指向新名字。"""
     root = tmp_path / "pkgs" / "zh-kit"
     _write(root / "plugin.json", json.dumps({"name": "zh-kit", "version": "1.0.0", "description": "中文套件"}))
     _write(root / "skills" / "ppt-design" / "SKILL.md",
@@ -1685,6 +1774,7 @@ def test_chinese_skill_names_each_keep_a_slash_command(kits, profile_env, tmp_pa
 
 
 def test_kit_cards_use_a_chinese_title_without_replacing_an_expert_name(kits, profile_env):
+    """套件卡片用中文标题（docx 显示成「Word 文档」），专家的名字不被替换。"""
     kits.store.save_index(profile_env, {"plugins": {
         "docx": {"kind": "kit", "display_name": "docx", "enabled": True,
                  "skill_names": [], "agent_skill_names": [], "mcp_keys": [], "user_config": []},

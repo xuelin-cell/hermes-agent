@@ -30,6 +30,7 @@ const plugin: HermesPlugin = {
   name: '套件',
   description: '安装和管理套件与专家，在对话框里召唤专家。',
   defaultEnabled: true,
+  /** 插件入口：注册语言包和后端接口，预先读一次专家名单，等后端装完内置包，再挂上套件页、侧栏入口、召唤按钮、专家栏和发送拦截。 */
   register(ctx) {
     ctx.i18n.register(KITS_LOCALES)
     bindApi(ctx.rest)

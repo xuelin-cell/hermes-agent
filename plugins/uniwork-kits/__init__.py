@@ -29,6 +29,10 @@ from . import cli, expert_sync, host_hooks, host_rules, llm, package_hooks, rout
 
 
 def register(ctx) -> None:
+    """插件入口：先让专家跟上默认档案、备好小红书程序，再注册 hermes kit 命令、专家的系统提示段和各个钩子。
+
+    前两步出错只跳过，不能拦住插件加载；否则一个专家档案的问题会让所有档案都没有套件功能。
+    """
     llm.set_context(ctx)
     try:
         from pathlib import Path

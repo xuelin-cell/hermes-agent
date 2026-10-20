@@ -75,8 +75,10 @@ async function putPrompt(text: string, ifEmpty: boolean): Promise<void> {
 
 /** 等焦点落到该专家的空草稿后，再写入开场白。 */
 function prefillWhenReady(profile: string, text: string): void {
+  /** 焦点已经在这个专家的档案上，而且还是没有会话的新草稿。 */
   const ready = () => host.state.focusedSessionProfile.get() === profile && !host.state.focusedSessionId.get()
 
+  /** 按 SETTLE_MS 的几个时间点各写一次开场白（只写进空输入框），盖住草稿刚切换过来时被清空的那一下。 */
   const fill = () => {
     for (const delay of SETTLE_MS) {
       setTimeout(() => {
