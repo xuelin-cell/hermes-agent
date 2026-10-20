@@ -108,6 +108,78 @@ def test_the_uniai_watermark_stands_in_for_the_ai_label_but_other_generators_sti
     assert "一处「AI 生成」都没有" in kits.deck_check.format_generated_review(["水墨风 孙悟空"], 0)
 
 
+def _spaced_box(spacing: str) -> str:
+    """两段 14 磅文字的文本框，行距写成 spacing（一段 lnSpc 的内层 XML）。"""
+    para = "".join(
+        f'<a:p><a:pPr><a:lnSpc>{spacing}</a:lnSpc></a:pPr><a:r><a:rPr sz="1400"/><a:t>{text}</a:t></a:r></a:p>'
+        for text in ("全球低空经济进入规模化阶段", "国内政策窗口持续打开")
+    )
+    return (
+        '<p:sp><p:nvSpPr><p:cNvPr id="11" name="t11"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>'
+        '<p:spPr><a:xfrm><a:off x="914400" y="914400"/><a:ext cx="5486400" cy="914400"/></a:xfrm></p:spPr>'
+        f'<p:txBody><a:bodyPr wrap="square" lIns="0" tIns="0" rIns="0" bIns="0"/>{para}</p:txBody></p:sp>'
+    )
+
+
+def test_line_spacing_written_in_points_below_the_font_size_is_sent_back(kits, tmp_path):
+    """lineSpacing 是磅：写成 1.2 就是 1.2 磅，比 14 磅的字还小，两行字叠成一团，要退回；按倍数写的 120% 正常。"""
+    squeezed = tmp_path / "squeezed.pptx"
+    _deck_with(squeezed, slide_extra=_spaced_box('<a:spcPts val="120"/>'))
+    report = kits.deck_geometry.measure(squeezed.read_bytes())
+    assert any(item.kind == "tight_spacing" for item in report.problems), report.as_text()
+
+    normal = tmp_path / "normal.pptx"
+    _deck_with(normal, slide_extra=_spaced_box('<a:spcPct val="120000"/>'))
+    assert not any(item.kind == "tight_spacing" for item in kits.deck_geometry.measure(normal.read_bytes()).problems)
+
+
+def _chart_deck(path, label_format: str) -> None:
+    """一页带柱状图的 PPT：数值 18.6、21.3，数据标签显示数值、格式为 label_format。"""
+    rels = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId9" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" '
+        'Target="../slideLayouts/slideLayout1.xml"/>'
+        '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" '
+        'Target="../charts/chart1.xml"/></Relationships>'
+    )
+    chart = (
+        '<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart><c:plotArea><c:barChart>'
+        '<c:ser><c:dLbls>'
+        f'<c:numFmt formatCode="{label_format}" sourceLinked="0"/><c:showVal val="1"/></c:dLbls>'
+        '<c:val><c:numRef><c:numCache><c:pt idx="0"><c:v>18.6</c:v></c:pt><c:pt idx="1"><c:v>21.3</c:v></c:pt>'
+        '</c:numCache></c:numRef></c:val></c:ser></c:barChart></c:plotArea></c:chart></c:chartSpace>'
+    )
+    _deck_with(path, parts={"ppt/slides/_rels/slide1.xml.rels": rels, "ppt/charts/chart1.xml": chart})
+
+
+def test_a_chart_whose_decimals_are_labelled_as_whole_numbers_is_sent_back(kits, tmp_path):
+    """pptxgenjs 默认的标签格式 #,##0 会把 18.6 标成 19，图和正文对不上，要退回；标签带一位小数就照实显示。"""
+    rounded = tmp_path / "rounded.pptx"
+    _chart_deck(rounded, "#,##0")
+    report = kits.deck_geometry.measure(rounded.read_bytes())
+    assert any(item.kind == "chart_rounding" for item in report.problems), report.as_text()
+
+    exact = tmp_path / "exact.pptx"
+    _chart_deck(exact, "0.0")
+    assert not any(item.kind == "chart_rounding" for item in kits.deck_geometry.measure(exact.read_bytes()).problems)
+
+
+def test_a_bounce_points_at_the_script_line_that_wrote_the_text(kits, tmp_path):
+    """退回清单里的问题文字，标出它在生成脚本里的文件和行号，模型可以直接 patch 那一行。"""
+    kits.turns.clear()
+    project = tmp_path / "proj"
+    deck = project / "deck.pptx"
+    _deck_with(deck, slide_extra=_line(11, 1.0, "第一行正文内容") + _line(12, 1.1, "第二行正文内容"))
+    _write(project / "slides_1.js", "module.exports = function (pptx) {\n  const s = pptx.addSlide()\n"
+                                    "  s.addText('第一行正文内容', { x: 1, y: 1 })\n}\n")
+    turn = _turn(kits)
+    out = kits.deck_check.annotate(
+        "terminal", {"command": f'cd "{project.as_posix()}" && node build.js'}, f"saved {deck.as_posix()}", turn,
+    )
+    assert "没有交付" in out and "slides_1.js 第 3 行" in out, out
+
+
 def test_text_that_only_sits_close_is_noted_while_overlapping_text_is_sent_back(kits, tmp_path):
     """两行字靠得近但没叠上：不退回，只在说明里提一句；真的叠上了：照旧必须改。"""
     close = tmp_path / "close.pptx"

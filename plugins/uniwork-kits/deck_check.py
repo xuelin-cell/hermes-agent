@@ -16,6 +16,7 @@ cannot be read from the file, so this asks once and then lets go.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import re
@@ -28,18 +29,20 @@ from . import deck_geometry, delivery, media_slot, turns
 # 白等了 597 秒），退回修改时也容易整份重写。分份写，每份两三分钟，改哪页只动哪一份。
 # 限的是每份的大小，不是公共部分的内容：公共版式写不下就拆成几份，否则模型会在各页里各写一套版式，风格散掉。
 # 推理强度「中」时，动手前的长思考加上大段输出仍会超时（同日实测公共文件又白等 595 秒），所以要求直接写文件。
-# 10 页以上把分页交给几个子代理同时写（delegate_task 的 tasks 批量是并行的），写分页的时间按份数缩短。
+# 曾经让 10 页以上派子代理同时写分页，2026-10-20/21 实测反而慢：父任务要把每页内容写进派活说明（1～2.5 万字、
+# 2.5～6.7 分钟），再等子任务 4～6 分钟把同样的内容改写成代码，比自己直接写分页多花 6～9 分钟，所以去掉了。
+# 行距单位和图表小数格式是 pptxgenjs 最常见的两个坑（同日实测整份 20 页文字叠成一团、图上 18.6 标成 19），
+# 宿主的版面检查会拦，但事先说一句比退回改一轮便宜。
 BUILD_RULES = (
     "PPT 生成脚本分几份写，不要在一次调用里写出整份：\n"
     "1. 公共部分先写：配色、字体、页面尺寸放 theme.js，封面、章节页、正文页这类版式函数放 layouts.js，"
     "图标放 icons.js。哪一份写不下就再拆一份，不要为了变短删减版式。\n"
     "2. 分页按章节每 4～5 页一个文件（slides_1.js、slides_2.js……），每个文件导出一个函数，往同一个演示文稿里加页。\n"
     "3. 最后写一个很短的 build.js，依次调用它们、保存 .pptx，然后运行它。\n"
-    "每个文件控制在约 200 行、8KB 以内，直接写进文件，不要先在思考里把整份代码打一遍草稿：单次输出太长会超时作废。\n"
-    "4. 10 页以上的 PPT：公共文件和每页大纲定好后，用 delegate_task 一次派出几个子任务（tasks 列表，每项一个分页文件），"
-    "它们会同时写。每个子任务的 goal 写清：负责第几页到第几页、每页的标题和要点、要用的图片（绝对路径）、"
-    "公共文件的路径和能调用的函数、要写的文件名和导出的函数名，并说明只写这一份文件、不要运行 build。"
-    "子任务都完成后，你写 build.js、运行，再按宿主的检查结果改。"
+    "每个文件控制在约 200 行、8KB 以内，直接写进文件，不要先在思考里把整份代码打一遍草稿：单次输出太长会超时作废。"
+    "分页文件自己按顺序写，不要派子任务去写。\n"
+    "pptxgenjs 两个常见的坑：行距按倍数设用 lineSpacingMultiple（lineSpacing 的单位是磅，写 1.2 会让几行字叠成一团）；"
+    "图表数值带小数时设 dataLabelFormatCode（如 '0.0'），否则图上的数字会被取整。"
 )
 
 MAX_BOUNCES = 2
@@ -60,6 +63,10 @@ _HARD_STOPS = "\"'\n\r\t<>|`*?"
 _SOFT_STOPS = " (){}[],;=:"
 _MAX_SCAN = 400_000
 _DECK_WORK_RE = re.compile(r"\.pptx\b|pptxgenjs|python-pptx|from\s+pptx\s+import", re.IGNORECASE)
+# 退回时到生成脚本里找问题文字所在的行：只看这些后缀、最多读这么多个文件。
+_QUOTED_RE = re.compile(r"「([^」]{4,})」")
+_LOCATE_SUFFIXES = (".js", ".mjs", ".cjs", ".py")
+_LOCATE_MAX_FILES = 40
 
 
 def check_pptx(path: Path) -> List[str]:
@@ -156,7 +163,9 @@ def annotate(tool_name: str, args: object, result: str, turn: Optional[turns.Tur
         labels += report.ai_labels
         if report.ok:
             passed.append(f"{path.name}\n{report.as_text()}")
-        elif turn.bounces < MAX_BOUNCES:
+            continue
+        report = _with_locations(report, _script_folders(args, result, turns.session_cwd(turn), path))
+        if turn.bounces < MAX_BOUNCES:
             refused.append(f"{path.name}\n{report.as_text()}")
         else:
             released.append(
@@ -295,6 +304,70 @@ def _scripts(text: str, bases: List[Path]) -> List[Path]:
         except OSError:
             continue
     return found
+
+
+def _script_folders(args: object, result: object, cwd: str, deck: Path) -> List[Path]:
+    """生成这份 PPT 的脚本可能在的目录：这次跑的脚本所在目录，加上 PPT 自己所在的目录。"""
+    blobs: List[str] = []
+    _walk(args, blobs)
+    blobs.append(result if isinstance(result, str) else str(result or ""))
+    bases = command_dirs(args)
+    folder = local_dir(cwd) if cwd else None
+    if folder is not None and folder not in bases:
+        bases.append(folder)
+    found: List[Path] = []
+    for blob in blobs:
+        for script in _scripts(blob, bases):
+            if script.parent not in found:
+                found.append(script.parent)
+    if deck.parent not in found:
+        found.append(deck.parent)
+    return found
+
+
+def _source_lines(folders: List[Path]) -> List[Tuple[Path, List[str]]]:
+    """这些目录里（不往子目录钻）的生成脚本，按行切好；太大的、太多的不读。"""
+    sources: List[Tuple[Path, List[str]]] = []
+    for folder in folders:
+        try:
+            entries = sorted(folder.iterdir())
+        except OSError:
+            continue
+        for path in entries:
+            if len(sources) >= _LOCATE_MAX_FILES:
+                return sources
+            try:
+                if path.suffix.lower() in _LOCATE_SUFFIXES and path.is_file() and path.stat().st_size <= 200_000:
+                    sources.append((path, path.read_text(encoding="utf-8", errors="ignore").splitlines()))
+            except OSError:
+                continue
+    return sources
+
+
+def _find_line(sample: str, sources: List[Tuple[Path, List[str]]]) -> Optional[str]:
+    """一段页面文字最早出现在哪个脚本的第几行；太短的（「图片」「形状」这类占位名）不找。"""
+    needle = sample.strip()[:12]
+    if len(needle) < 4:
+        return None
+    for path, lines in sources:
+        for number, line in enumerate(lines, 1):
+            if needle in line:
+                return f"{path.name} 第 {number} 行"
+    return None
+
+
+def _with_locations(report: "deck_geometry.DeckReport", folders: List[Path]) -> "deck_geometry.DeckReport":
+    """给退回清单里带「原文」的问题标上它在生成脚本里的文件和行号，模型直接 patch 那一行，
+    不用再把几个分页脚本重读一遍、想半天才找到位置（实测每轮修改要 1～4 分钟，大半花在找位置上）。找不到的照旧。"""
+    sources = _source_lines(folders)
+    if not sources:
+        return report
+    located = []
+    for problem in report.problems:
+        quoted = _QUOTED_RE.search(problem.detail)
+        where = _find_line(quoted.group(1), sources) if quoted else None
+        located.append(dataclasses.replace(problem, detail=f"{problem.detail}（脚本里在 {where}）") if where else problem)
+    return dataclasses.replace(report, problems=tuple(located))
 
 
 def _pptx_paths(args: object, result: str, cwd: str = "") -> List[Path]:
