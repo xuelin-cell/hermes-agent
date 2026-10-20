@@ -1482,11 +1482,11 @@ def test_failed_first_expert_install_takes_its_new_profile_back(kits, profile_en
 def test_path_past_windows_limit_says_how_to_fix_it(kits, tmp_path):
     import shutil
 
-    deep = "C:\\" + "x" * 300 + "\a.md"
-    exc = shutil.Error([("C:\src\a.md", deep, "[WinError 3] 系统找不到指定的路径。")])
+    deep = "C:\\" + "x" * 300 + r"\a.md"
+    exc = shutil.Error([(r"C:\src\a.md", deep, "[WinError 3] 系统找不到指定的路径。")])
     text = kits.installer._failure_text(exc, tmp_path)
     assert "260" in text and "LongPathsEnabled" in text
-    assert kits.installer._failure_text(OSError(2, "gone", "C:\short.md"), tmp_path).startswith("安装失败")
+    assert kits.installer._failure_text(OSError(2, "gone", r"C:\short.md"), tmp_path).startswith("安装失败")
 
 
 def test_summon_endpoints_over_http(kits, profile_env, expert_pkg, monkeypatch):
