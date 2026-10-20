@@ -433,7 +433,7 @@ describe("profile switch leaves the previous profile's project (#54990)", () => 
   })
 })
 
-describe('a new chat a plugin opens quietly (newSessionInProfile quiet / onError)', () => {
+describe('插件静默打开新对话（newSessionInProfile 的 quiet / onError）', () => {
   afterEach(() => {
     $newChatProfile.set(null)
     ensureGatewayForProfile.mockImplementation(async () => undefined)
@@ -452,7 +452,7 @@ describe('a new chat a plugin opens quietly (newSessionInProfile quiet / onError
     return seen
   }
 
-  it('skips the full-screen waking overlay only when the caller asks to be quiet', async () => {
+  it('只有调用方要求 quiet 时才不显示全屏唤醒遮罩', async () => {
     getConnection.mockResolvedValue(localConn({ profile: 'fund-diagnostician' }))
 
     expect(await overlayTargets(() => newSessionInProfile('fund-diagnostician'))).toContain('fund-diagnostician')
@@ -465,11 +465,11 @@ describe('a new chat a plugin opens quietly (newSessionInProfile quiet / onError
     )
   })
 
-  it('marks the quiet draft until the next new chat points somewhere else', () => {
+  it('标记静默打开的草稿，下一次新对话不是静默打开时就清掉', () => {
     newSessionInProfile('fund-diagnostician', { quiet: true })
     expect($quietNewChatProfile.get()).toBe('fund-diagnostician')
 
-    // Ctrl+N clears the pinned profile: the next draft is the general one again.
+    // 按 Ctrl+N 会清掉指定的档案，下一份草稿回到通用助手。
     $newChatProfile.set(null)
     expect($quietNewChatProfile.get()).toBeNull()
 
@@ -478,7 +478,7 @@ describe('a new chat a plugin opens quietly (newSessionInProfile quiet / onError
     expect($quietNewChatProfile.get()).toBeNull()
   })
 
-  it('hands a failed backend switch to onError instead of the desktop toast', async () => {
+  it('切换后端失败时交给 onError，不弹桌面的提示', async () => {
     const failure = new Error('Backend for "fund-diagnostician" was retired; open it explicitly to reconnect.')
     const onError = vi.fn()
 

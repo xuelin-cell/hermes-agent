@@ -17,20 +17,20 @@ function card(name: string, extra: Partial<ExpertCard> = {}): ExpertCard {
   }
 }
 
-describe('summon picker', () => {
+describe('召唤列表', () => {
   const directory: ExpertDirectory = {
     experts: [card('b', { display_name: '乙' }), card('a', { display_name: '甲' }), card('c', { display_name: '丙' })],
     recent: ['c', 'gone', 'a']
   }
 
-  it('puts the recently summoned first, newest first, and skips uninstalled names', () => {
+  it('最近召唤的排前面，最新的在最前，跳过已卸载的', () => {
     const { recent, rest } = pickerGroups(directory)
 
     expect(recent.map(expert => expert.name)).toEqual(['c', 'a'])
     expect(rest.map(expert => expert.name)).toEqual(['b'])
   })
 
-  it('searches every expert by name, profession or description, and ignores a blank query', () => {
+  it('按名字、职业或介绍搜索全部专家，空白搜索词不出结果', () => {
     const found = searchExperts(
       {
         experts: [
@@ -46,20 +46,20 @@ describe('summon picker', () => {
     expect(searchExperts(directory, '   ')).toEqual([])
   })
 
-  it('finds the expert a chat belongs to by its profile, and nothing for ordinary profiles', () => {
+  it('按档案找出会话所属的专家，普通档案找不到', () => {
     expect(expertForProfile(directory, 'a')?.display_name).toBe('甲')
     expect(expertForProfile(directory, 'default')).toBeNull()
     expect(expertForProfile(directory, '')).toBeNull()
   })
 })
 
-describe('summon prompts', () => {
-  it('fills the opening prompt and leaves the box empty when the package has none', () => {
+describe('召唤后的提示语', () => {
+  it('填入开场白，包里没有开场白时输入框留空', () => {
     expect(openingPrompt(card('x', { init_prompt: ' 帮我写一份首次覆盖报告 ' }))).toBe('帮我写一份首次覆盖报告')
     expect(openingPrompt(card('x'))).toBe('')
   })
 
-  it('offers quick prompts, the opening prompt first when the list lacks it', () => {
+  it('给出快捷问题，列表里没有开场白时把它放在第一个', () => {
     const expert = card('x', { init_prompt: '开场', quick_prompts: ['一', '二', '三'] })
 
     expect(quickPrompts(expert)).toEqual(['开场', '一', '二'])

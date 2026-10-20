@@ -2,15 +2,15 @@ import { describe, expect, it } from 'vitest'
 
 import { oauthStartParams } from './oauth'
 
-describe('kit oauth params', () => {
-  it('names the mcp server and the expert profile', () => {
+describe('套件授权的请求参数', () => {
+  it('写明 MCP 名字和专家所在的档案', () => {
     expect(oauthStartParams('lighthouse-ops--cloud', 'lighthouse-ops')).toEqual({
       name: 'lighthouse-ops--cloud',
       profile: 'lighthouse-ops'
     })
   })
 
-  it('omits profile for a kit on the current home', () => {
+  it('当前档案里的套件不带 profile', () => {
     expect(oauthStartParams('demo--remote')).toEqual({ name: 'demo--remote' })
   })
 })
