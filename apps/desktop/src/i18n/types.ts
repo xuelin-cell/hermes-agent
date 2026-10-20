@@ -59,6 +59,15 @@ interface AuxTaskCopy {
 }
 
 export interface Translations {
+  workspaceEditor: {
+    title: string
+    capabilities: string
+    openProject: string
+    selectFile: string
+    unsupported: string
+    refresh: string
+    save: string
+  }
   conversationShare: {
     sessionShare: string
     responseShare: string
@@ -180,6 +189,7 @@ export interface Translations {
     restoreHint: string
     recycleFailed: string
     recycleEmpty: string
+    operationVerifying: string
     operationUnknown: string
     operationPartial: string
     operationFailed: string
@@ -205,10 +215,19 @@ export interface Translations {
       restart: string
       actualUsage: string
       details: string
+      subscribe: string
+      subscribeBusy: string
+      subscribeFailed: string
+      subscribeAuth: string
+      subscribeMissingPhone: string
+      subscribeRestart: string
       logout: string
       title: string
       loading: string
       refresh: string
+      refreshPlan: string
+      refreshed: string
+      refreshFailed: string
       failed: string
       stale: string
       auth: string
@@ -217,14 +236,17 @@ export interface Translations {
       expired: string
       expires: string
       used: string
+      tokenUsed: string
       remaining: string
       fiveHour: string
       week: string
       month: string
       reset: string
+      resetsAt: (time: string) => string
+      expiryText: (date: string) => string
+      tokenExact: (remaining: string, used: string, total: string, unit: string) => string
       notStarted: string
       resetDue: string
-      concurrency: string
     }
     brand: string
     welcome: string
@@ -2693,6 +2715,7 @@ export interface Translations {
   }
 
   messaging: {
+    connection: import('./messaging-connection').MessagingConnectionCopy
     cards: {
       heading: string
       description: string
@@ -3236,6 +3259,13 @@ export interface Translations {
   }
 
   artifactShare: {
+    disclosure: string
+    checking: string
+    createLink: string
+    linkReady: string
+    changedNotice: string
+    confirmUpdate: string
+    confirmRevoke: string
     originRequired: string
     share: string
     shareArtifact: string

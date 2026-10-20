@@ -301,7 +301,7 @@ async def test_attachment_turns_and_combined_media_use_owning_profile_mcp_a_b_a(
 
 
 @pytest.mark.asyncio
-async def test_reconnect_control_recovers_only_rcs_and_preserves_other_platforms(tmp_path, gateway):
+async def test_reconnect_control_recovers_only_rcs_and_preserves_other_platforms(tmp_path, gateway, monkeypatch):
     """真实控制 socket 与注册/WS，覆盖忙碌拒绝、鉴权、终止后恢复及其它平台不变。"""
     from gateway.config import Platform, load_gateway_config
     from gateway.run import GatewayRunner
@@ -310,6 +310,7 @@ async def test_reconnect_control_recovers_only_rcs_and_preserves_other_platforms
     home = tmp_path / "control"
     install(home, url, "control-agent", "control-secret")
     fake.expected["control-agent"] = "control-secret"
+    monkeypatch.setenv("HERMES_HOME", str(home))
     with profile(home):
         runner = GatewayRunner(config=load_gateway_config())
         runner._running = True
@@ -329,6 +330,10 @@ async def test_reconnect_control_recovers_only_rcs_and_preserves_other_platforms
                 writer.close()
                 await writer.wait_closed()
         try:
+            # release 的统一恢复入口必须识别动态注册的 5G；仅 5G 配置也不能启动空网关。
+            messaging_api = importlib.import_module("plugins.desktop-messaging.dashboard.plugin_api")
+            prepared = await messaging_api.prepare()
+            assert prepared["configured"] and prepared["profiles"] == ["default"]
             assert await adapter.connect()
             assert (await request("wrong-token"))["status"] == "unauthorized"
             adapter._active_sessions["busy"] = asyncio.Event()
@@ -608,8 +613,19 @@ async def test_auth_recovery_heartbeat_takeover_and_uncertain_ack_are_bounded(tm
             assert len(fake.registered) == 2
             assert await asyncio.wait_for(fake.heartbeats.get(), 5) == "agent-A"
             assert adapter._client.health.state == "running" and len(fake.registered) == 2
+            reconnected = asyncio.Event()
+            on_health_change = adapter._client.health.on_change
+
+            def health_changed(state):
+                on_health_change(state)
+                if state == "running":
+                    reconnected.set()
+
+            adapter._client.health.on_change = health_changed
             await fake.connected["agent-A"]({"type": "websocket.close", "code": 4004})
-            await until(lambda: len(fake.registered) == 3 and adapter._client.health.state == "running")
+            # HTTP 注册已完成不代表新 WS 握手完成；等待这次握手的 running 通知。
+            await asyncio.wait_for(reconnected.wait(), 10)
+            assert len(fake.registered) == 3
             fake.ack_downlinks = False
             monkeypatch.setattr(stream, "ACK_WAIT_SECONDS", 0.05)
             result = await adapter._send_with_retry("13800000000", "one billable message")

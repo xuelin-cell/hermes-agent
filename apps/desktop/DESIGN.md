@@ -36,13 +36,27 @@ one-off at the call site.
   字体未安装时回退到微软雅黑等系统中文字体。没有捆绑未授权的商业字体。
   代码继续使用内置 JetBrains Mono，用户配置字体仍然有效。
 - 常规输入框和按钮使用 `--control-radius`（8px）、`--control-font-size`、
-  `--control-line-height`；紧凑辅助变体保留尺寸覆盖。输入区域圆角 28px，
-  分类标签为 32px 高胶囊，已选分类放在编辑区内，模板从标签弹层选择，底部工具栏独立成行；浮层保持统一边框和阴影，不给各页面另造样式。
+  `--control-line-height`；紧凑辅助变体保留尺寸覆盖。输入区域框内对标 Claude：圆角 20px，
+  细中性边框加很淡的阴影，悬停 / 聚焦只加深边框、不用强调色描边；模型名和思考强度读成一个按钮（各自菜单不变）；
+  发送按钮为 32px 圆形，空输入时灰底白箭头。
+  分类标签为 32px 高胶囊，已选分类放在编辑区内，选分类后同一推荐行切换为模板按钮，底部工具栏独立成行；浮层保持统一边框和阴影，不给各页面另造样式。
 - 设置、技能、连接器、历史、聊天和浮层共用语义令牌；主题外的品牌色不可散落到页面。
   保留现有导航、快捷键、开发者模式边界和后台行为。
-- 欢迎标题下居中显示日常办公、代码开发、学习生活三个分类；进入会话后保留顶部入口。
-  分类条为 524×40px（窄屏自适应）、36px 圆角、4px 内边距、12px 间距。
-  办公与生活复用简洁界面，代码开发复用高级界面；分类切换不修改会话或系统提示。
+- 欢迎标题为“元景数字员工，助你高效完成任务”，下方居中显示远端 modules 的名称和顺序。
+  不读取任何层级的 enabled，也不根据模块 id 路由；workspace 在前端按规范化名称派生。
+  “代码开发”“编程”“code”“programming”“code development”使用高级界面，其余使用简洁界面。
+  当前项目共用同一 agent/chat 核心，不引入 hexagent 的 Codex app-server；简洁/高级模式负责现有侧栏和开发面板。
+  代码工作区使用现有项目树，多个项目及其会话在同一侧栏内展开；项目行显示数量和新建按钮，点击只折叠/展开，不进入单项目视图。置顶会话仍保留在所属项目，对话只显示单行标题；办公/学习工作区使用原有会话视图。
+  这层展示覆盖不改写持久化的侧栏分组偏好，筛选菜单只提供当前工作区支持的分组选项。
+  优先保留显式选中的模块，再按当前执行模式匹配，最后取首个模块。
+  分类条为 524×40px、36px 圆角、4px 内边距、12px 间距；窄屏横向滚动。
+  首页外保留导航入口；工作区页面点击标签返回聊天面板，不重建会话或修改系统提示。
+  下方分类与模板只读取所选模块，缺少内容时不借用其他模块；切换模块清除分类选择但保留草稿。
+  分类选择会清空草稿，模板点击填入 prompt 并聚焦输入框，移除 chip 返回分类行并保留草稿。
+  欢迎目录 IPC 返回原始 modules 与 version，不保存前端派生字段；旧分类数组不得提升为一级模块。
+  配置来自 `/app/gateway/uniwork/system-config?key=welcome_config_v3_{locale}`：启动可匿名，登录后转发当前 Token。
+  标准解析外层 JSON 和 configValue 字符串；空模块、无效响应及请求失败保留旧配置，同版本不写缓存。
+  缓存键为 `uniwork.welcome.modules.v3.{locale}`。当前语言 modules 为 null/undefined 时回退另一语言，显式空数组不回退。
 
 ## Principles
 
@@ -181,6 +195,7 @@ renderer and Electron's first window paint.
 | `--ui-widget-surface-background` | fill for inline chat widgets (`WIDGET_SHELL_CLASS`) |
 | `--chrome-action-hover` | hover fill for quiet controls |
 | `--theme-primary`, `--ui-accent` | brand/accent |
+| `--dt-primary-deep` | deepest accent fill (UniWork design maroon `#430D0D` / dark `#693127`); other themes fall back to `--dt-primary-solid` |
 
 Never hardcode `border-gray-*`, `bg-white`, `text-black`, etc. The two tiles in
 `BrandMark` (white in light mode, `#0d1117` in dark) are the sanctioned literals
@@ -202,7 +217,8 @@ inline affordance — "Change", "Open logs").
 
 **Sizes:** `default`, `xs`, `sm`, `lg`, `inline` (flush, zero box — for buttons
 that sit inside a heading/sentence; replaces `h-auto px-0 py-0`), `micro`
-(status-stack/table-footers), and the icon family `icon` / `icon-xs` /
+(status-stack/table-footers), `compact` (12px text, 16px line height, 6px horizontal
+and 2px vertical padding for small actions with a hover background), and the icon family `icon` / `icon-xs` /
 `icon-sm` / `icon-lg` / `icon-titlebar`.
 
 **Tooltips only when hover teaches something new.** `<Tip>` is for discovery,
@@ -635,18 +651,35 @@ The detailed state contract lives in the scoped
 - [ ] Touched a primitive, token, or variant? Its named-contract entry in this
       file is updated in the same change.
 
+## 代码工作区导航与编辑器
+
+代码开发项目列表隐藏 `isNoProject` 的虚拟 Home 分组，仅显示实际项目；未归属会话仍保留，可在办公/学习会话列表或搜索中访问。代码开发只显示新建会话、编辑器、技能与工具三个导航入口；办公和学习展示完整导航（包括定时任务），继续遵循用户隐藏及排序偏好。编辑器位于 `/editor`，跟随当前会话确认归属的目录，不借用尚未完成切换的旧目录。参考 hexagent 的 WorkspaceEditor，左侧为按需展开的文件树和真实 Git 变更列表，右侧为代码编辑或差异。复用现有 CodeMirror 与本地/远程文件及 Git 适配器，不引入第二套后端协议。
+
+未保存缓冲只驻留内存，按连接、配置档、项目及文件隔离，切换文件和页面后可恢复。保存前重新读取基线；检测到外部变更时保留草稿并阻止覆盖，用户可明确放弃草稿并重新加载。二进制、截断和超限文本禁止编辑。文件与差异请求遵循最新点击，并在目录或连接切换后丢弃旧响应。
+
 ## 套餐用量
 
 点击侧栏头像打开账号卡片（MasterGo 24:09213），宽 363px、圆角 24px、内边距 8px，
-依次显示真实套餐、套餐实际用量、截止日期、设置及安全退出。用量行展开详情，
-设置进入现有设置页；未接入购买流程时不显示订阅按钮。图标取自原设计 SVG，
+依次显示真实套餐、套餐实际用量、截止日期、设置及安全退出。用量行展开的详情紧跟该行，
+不重复套餐名与截止日期；设置进入现有设置页；套餐行提供刷新与订阅按钮。订阅由主进程以当前身份换取一次性
+market ticket，拼接含完整手机号的市场地址后交系统浏览器打开；失败只提示分类原因，
+手机号、ticket 与原始响应不跨 IPC，也不缓存。刷新按钮绕过 30 秒缓存并合并并发，
+定时与焦点恢复仍走缓存。图标取自原设计 SVG，
 缺失截止日期显示破折号，不用登录令牌有效期冒充套餐截止日期。面板使用主题前景色、朱红进度条、
-浅灰轨道与辅助文字，不引入独立品牌颜色。仅展开时查询，焦点恢复与每分钟更新，
-主进程对同一账号合并并发查询并缓存 30 秒。失败保留同账号的旧结果并标记刷新失败，
-登录失效或账号不匹配则清空。Coding 与 Token 载荷按服务端 planType 选择，缺失值
+浅灰轨道与辅助文字，不引入设计系统外的品牌颜色；订阅为设计稿深绛红的实心胶囊，
+查看详情与展开区域首行的用量摘要同排居右，不单独占行，用同色文字（`--dt-primary-deep`）及外链图标，点击复用订阅的网站跳转，
+使用 `Button variant="ghost" size="compact"`，保持 12px 文字，水平内边距 6px、垂直内边距 2px，悬浮底色留出空间，不给文字或图标加下划线。
+仅发起操作的入口显示忙碌状态，另一入口的文字及按钮状态不变；两处共用防重复打开保护和失败提示，不触发用量行的展开或收起。
+仅展开时查询，焦点恢复与每分钟更新，主进程对同一账号合并并发查询并缓存 30 秒。
+失败保留同账号的旧结果并标记刷新失败，登录失效或账号不匹配则清空。Coding 与 Token 载荷按服务端 planType 选择，缺失值
 显示暂无数据，不补造零用量。凭据、模型地址与原始响应不跨 IPC，不持久化用量。
 源功能参考 `hexagent/libs/hexagent_demo/frontend/src/uniclawUsage.ts` 与 `components/Sidebar.tsx`。
 
 账号卡片图标直接内嵌随包编译的 SVG，不通过外部 CSS 遮罩加载。
-Coding 套餐摘要展示服务端存在的首个周期及已用百分比，Token 套餐展示剩余额度；
-无用量时明确显示暂无数据。旧主进程缺少用量桥接时提示完全重启，查询失败时可直接重试。
+Coding 套餐摘要展示服务端存在的首个周期及已用百分比，Token 套餐展示已用百分比；
+用量行折叠时显示摘要和向右箭头，展开时隐藏摘要，仅保留居右的向下箭头，用量由下方明细承载；整行点击只切换详情的展开状态。
+截止日期按本地日期格式展示（`xxxx年x月x日 到期`，已到期只保留“已到期”标记），
+已用量/总量与右对齐的剩余用量同排展示，已用量与剩余数值同色加深，不展示并发数据；
+Token 已使用百分比紧随“已使用”标签。额度使用紧凑值，精确值提示仅限额度数字区域，不覆盖“查看详情”；百分比固定两位小数，
+重置时间按当天、48 小时内和更远分级。无用量时明确显示暂无数据。
+旧主进程缺少用量桥接时提示完全重启，查询失败时可直接重试。

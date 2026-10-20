@@ -26,12 +26,14 @@ const GUIDES: Record<(typeof DISPLAY_PLATFORM_IDS)[number], string> = {
 }
 
 /** 状态来自现有接口；有凭据不代表网关或消息平台已经连接。 */
-export function PlatformStatus({ platform }: { platform?: MessagingPlatformInfo }) {
+export function PlatformStatus({ platform, pending = false }: { platform?: MessagingPlatformInfo; pending?: boolean }) {
   const { t } = useI18n()
   const m = t.messaging
 
   const state = !platform
     ? 'unknown'
+    : pending && platform.enabled && platform.configured && !['fatal', 'startup_failed'].includes(platform.state ?? '')
+      ? 'connecting'
     : !platform.enabled
       ? 'disabled'
       : !platform.gateway_running
@@ -56,11 +58,13 @@ export function PlatformCard({
   id,
   platform,
   actions,
+  pending: connectionPending,
   children
 }: {
   id: PlatformId | 'uniagentgate'
   platform?: MessagingPlatformInfo
   actions?: ReactNode
+  pending?: boolean
   children?: ReactNode
 }) {
   const { t } = useI18n()
@@ -82,7 +86,7 @@ export function PlatformCard({
                 {copy.unavailable}
               </Badge>
             ) : (
-              <PlatformStatus platform={platform} />
+              <PlatformStatus pending={connectionPending} platform={platform} />
             )}
           </div>
           <p className="mt-1 text-xs leading-5 text-(--ui-text-tertiary)">{copy.descriptions[id]}</p>

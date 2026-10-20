@@ -13,6 +13,7 @@ export const NEW_CHAT_ROUTE = '/'
 export const SETTINGS_ROUTE = '/settings'
 export const COMMAND_CENTER_ROUTE = '/command-center'
 export const SESSION_IMPORT_ROUTE = '/session-import'
+export const EDITOR_ROUTE = '/editor'
 export const CAPABILITIES_ROUTE = '/capabilities'
 export const MESSAGING_ROUTE = '/messaging'
 export const WEBHOOKS_ROUTE = '/webhooks'
@@ -42,6 +43,7 @@ export type AppView =
   | 'webhooks'
 
 export type AppRouteId =
+  | 'editor'
   | 'session-import'
   | 'agents'
   | 'artifacts'
@@ -62,6 +64,7 @@ export interface AppRoute {
 }
 
 export const APP_ROUTES = [
+  { id: 'editor', path: EDITOR_ROUTE, view: 'extension' },
   { id: 'session-import', path: SESSION_IMPORT_ROUTE, view: 'session-import' },
   { id: 'new', path: NEW_CHAT_ROUTE, view: 'chat' },
   { id: 'settings', path: SETTINGS_ROUTE, view: 'settings' },

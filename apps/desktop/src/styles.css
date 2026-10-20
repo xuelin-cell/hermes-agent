@@ -434,6 +434,9 @@
        primary is the closest honest guess. */
     --dt-primary-solid: var(--theme-primary);
     --dt-primary-solid-foreground: #fcfcfc;
+    /* Deepest accent fill; UniWork overrides it with the design maroon and
+       every other theme keeps the solid primary. */
+    --dt-primary-deep: var(--dt-primary-solid);
     --dt-secondary: var(--theme-secondary);
     --dt-secondary-foreground: var(--ui-text-secondary);
     --dt-accent: var(--theme-accent-soft);

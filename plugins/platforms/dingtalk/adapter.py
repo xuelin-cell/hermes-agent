@@ -127,7 +127,6 @@ _EMOTION_BG = "im_bg_1"
 _EMOTION_SDK = {recall: (f"Robot{v}EmotionRequestTextEmotion", f"Robot{v}EmotionRequest", f"Robot{v}EmotionHeaders", f"robot_{v.lower()}_emotion_with_options_async")
                 for recall, v in ((True, "Recall"), (False, "Reply"))}
 _NUMBERED_RE = re.compile(r"^\d+\.\s")
-_NO_LOCAL_UPLOAD = "DingTalk session webhook replies do not support local %s. Only markdown/text replies are supported without OpenAPI %s."
 
 
 def _csv_set(raw: Any) -> Set[str]:
@@ -548,12 +547,34 @@ class DingTalkAdapter(BasePlatformAdapter):
         return await self.send(chat_id=chat_id, content=f"{caption}\n\n{image_block}" if caption else image_block, reply_to=reply_to, metadata=metadata)
 
     async def send_image_file(self, chat_id: str, image_path: str, caption: Optional[str] = None, reply_to: Optional[str] = None, metadata=None, **kwargs) -> SendResult:
-        """Webhook replies cannot upload local images."""
-        return SendResult(success=False, error=_NO_LOCAL_UPLOAD % ("image uploads", "media upload"))
+        """通过原生机器人接口上传本地图片，不把本地路径当成远程图片链接。"""
+        return await self._send_local_file(chat_id, image_path, image=True, caption=caption, reply_to=reply_to, metadata=metadata)
 
     async def send_document(self, chat_id: str, file_path: str, caption: Optional[str] = None, file_name: Optional[str] = None, reply_to=None, metadata=None, **kwargs) -> SendResult:
-        """Webhook replies cannot upload local files."""
-        return SendResult(success=False, error=_NO_LOCAL_UPLOAD % ("file attachments", "message send"))
+        """以文件附件投递原文件，保留用户指定的显示文件名。"""
+        return await self._send_local_file(
+            chat_id, file_path, image=False, file_name=file_name, caption=caption, reply_to=reply_to, metadata=metadata)
+
+    async def _send_local_file(self, chat_id, file_path, *, image, file_name=None, caption=None, reply_to=None, metadata=None) -> SendResult:
+        """附件与说明文字分别发送；部分成功明确返回，不自动重发已投递附件。"""
+        if not self._http_client:
+            return SendResult(success=False, error="钉钉 HTTP 客户端尚未连接。")
+        # 延迟导入，保留原版在可选 HTTP 依赖缺失时仍能发现插件的行为。
+        from plugins.platforms.dingtalk.media import send_local_media
+
+        result = await send_local_media(
+            self._http_client, self._get_access_token, self._robot_code,
+            self._message_contexts.get(chat_id), chat_id, file_path, image=image, file_name=file_name)
+        if caption:
+            try:
+                text_result = await self.send(chat_id, caption, reply_to=reply_to, metadata=metadata)
+            except Exception:
+                text_result = SendResult(success=False)
+            if result.success and not text_result.success:
+                return SendResult(success=False, message_id=result.message_id,
+                                  error="附件已投递，但说明文字发送失败；请勿重复发送附件。",
+                                  raw_response={"attachment_sent": True})
+        return result
 
     async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
         """Return basic info about a DingTalk conversation."""

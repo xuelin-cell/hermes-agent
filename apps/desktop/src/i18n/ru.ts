@@ -1,3 +1,4 @@
+import { messagingConnectionCopy } from './messaging-connection'
 import { defineFieldCopy } from '@/app/settings/field-copy'
 
 import { defineLocale } from './define-locale'
@@ -24,6 +25,15 @@ const RU_NOUN = (count: number | string, one: string, few: string, many: string)
 }
 
 export const ru = defineLocale({
+  workspaceEditor: {
+    title: 'Редактор',
+    capabilities: 'Навыки и инструменты',
+    openProject: 'Откройте беседу проекта, чтобы просмотреть файлы.',
+    selectFile: 'Выберите файл для редактирования.',
+    unsupported: 'Двоичные, обрезанные и большие файлы нельзя редактировать здесь.',
+    refresh: 'Обновить',
+    save: 'Сохранить'
+  },
   conversationShare: {
     sessionShare: 'Поделиться беседой',
     responseShare: 'Поделиться ответом',
@@ -2138,6 +2148,7 @@ export const ru = defineLocale({
     }
   },
   messaging: {
+    connection: messagingConnectionCopy["ru"],
     cards: {
       heading: 'Чат-приложения',
       description: 'Подключите WeChat, DingTalk и другие приложения для обмена сообщениями с телефона.',
@@ -2725,6 +2736,13 @@ export const ru = defineLocale({
   },
 
   artifactShare: {
+    disclosure: "Любой, у кого есть ссылка, может просмотреть этот материал. Другие файлы и беседы не публикуются.",
+    checking: "Проверка состояния публикации…",
+    createLink: "Создать публичную ссылку",
+    linkReady: "Публичная ссылка готова",
+    changedNotice: "Содержимое изменилось. По ссылке пока доступна ранее опубликованная версия.",
+    confirmUpdate: "Заменить опубликованное содержимое текущей версией? Ссылка останется прежней.",
+    confirmRevoke: "Отозвать публичную ссылку? После этого материал будет недоступен по ней.",
     originRequired: 'Делиться можно только подтверждёнными результатами модели. Загруженные, производные файлы и неизвестные источники заблокированы.',
     share: 'Поделиться',
     shareArtifact: 'Поделиться артефактом',
@@ -3878,7 +3896,7 @@ export const ru = defineLocale({
   preview: {
     copyAll: 'Копировать весь текст',
     saveAs: 'Сохранить как',
-    exportFailed: 'Не удалось экспортировать. Убедитесь, что содержимое и изображения загружены.',
+    exportFailed: 'Не удалось экспортировать предпросмотр. Повторите попытку.',
     exportFormats: { md: 'Markdown (.md)', pdf: 'PDF (.pdf)', docx: 'Word (.docx)' },
     tab: 'Предпросмотр',
     closePane: 'Закрыть панель предпросмотра',

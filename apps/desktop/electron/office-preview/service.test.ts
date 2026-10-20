@@ -151,7 +151,12 @@ it('后台只准备十分钟内的新文件，旧文件有缓存仍复用，主�
   expect(fixture.com).toHaveBeenCalledTimes(2)
 })
 
-it('新复制的模板保留旧修改时间时仍提前转换，不把旧内容时间当成创建时间', async () => {
+it('新复制的模板保留旧修改时间时仍提前转换，不把旧内容时间当成创建时间', async context => {
+  // 部分 Linux 文件系统不记录创建时间（Node 返回 0），这条规则在那里无从判断。
+  if (!(await fs.stat(source)).birthtimeMs) {
+    context.skip()
+  }
+
   const fixture = setup()
   const old = new Date(Date.now() - 24 * 60 * 60_000)
   await fs.utimes(source, old, old)

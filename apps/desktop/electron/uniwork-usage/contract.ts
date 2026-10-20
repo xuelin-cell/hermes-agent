@@ -1,4 +1,6 @@
 export const PLAN_USAGE_CHANNEL = 'hermes:maas-account:usage'
+export const PLAN_USAGE_REFRESH_CHANNEL = 'hermes:maas-account:usage-refresh'
+export const PLAN_SUBSCRIPTION_CHANNEL = 'hermes:maas-account:subscribe'
 
 export interface UsageWindow {
   name: 'five-hour' | 'week' | 'month'
@@ -27,6 +29,17 @@ export interface PlanUsage {
 export type PlanUsageResult =
   | { status: 'available'; data: PlanUsage; account: { maskedPhone: string; expiresAt: number } }
   | { status: 'failed'; reason?: 'auth' }
+
+export interface MarketTicket {
+  ticket: string
+  customerId: string
+  timestamp: string
+  number: string
+}
+
+export type PlanSubscriptionResult =
+  | { status: 'opened' }
+  | { status: 'failed'; reason?: 'auth' | 'missing-phone' | 'upstream' }
 
 /** 仅接受字段对象，拒绝数组和空值。 */
 function record(value: unknown): Record<string, unknown> {

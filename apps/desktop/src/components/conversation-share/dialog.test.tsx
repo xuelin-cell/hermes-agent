@@ -24,7 +24,10 @@ const target = {
   request: { sessionId: 'session', scope: 'response' as const, responseRowId: 42 }
 }
 
-const prepared = { ticket: 'ticket-A', document: {} } as PreparedConversationShare
+const prepared = {
+  ticket: 'ticket-A',
+  document: { snapshotId: 'snapshot', title: 'Reply' }
+} as PreparedConversationShare
 
 const published: ConversationShareRecord = {
   key: 'key',
@@ -61,7 +64,7 @@ it('准备接口失败时显示实际原因，不误报插件缺失且不能发�
   render(<ConversationShareDialog />)
   await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('无法定位该回复'))
   expect(screen.queryByRole('status')).toBeNull()
-  expect((screen.getByRole('button', { name: 'Publish snapshot' }) as HTMLButtonElement).disabled).toBe(true)
+  expect((screen.getByRole('button', { name: 'Create public link' }) as HTMLButtonElement).disabled).toBe(true)
   expect(publish).not.toHaveBeenCalled()
 })
 
@@ -82,7 +85,7 @@ it('先准备预览再允许发布，窗口关闭后取消迟到票据且不会�
   } as unknown as Window['hermesDesktop']
   $conversationShareTarget.set(target)
   render(<ConversationShareDialog />)
-  expect((screen.getByRole('button', { name: 'Publish snapshot' }) as HTMLButtonElement).disabled).toBe(true)
+  expect((screen.getByRole('button', { name: 'Create public link' }) as HTMLButtonElement).disabled).toBe(true)
   expect(prepare).toHaveBeenCalledWith(
     target.owner,
     expect.objectContaining({ ...target.request, includeProcess: false })
@@ -125,33 +128,42 @@ it('准备 IPC 一直未返回时能超时退出，迟到票据被取消且不�
     await act(async () => finish?.(prepared))
     await waitFor(() => expect(cancel).toHaveBeenCalledWith(prepared.ticket))
     expect(screen.queryByTitle('Public page preview')).toBeNull()
-    expect((screen.getByRole('button', { name: 'Publish snapshot' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: 'Create public link' }) as HTMLButtonElement).disabled).toBe(true)
     expect(publish).not.toHaveBeenCalled()
   } finally {
     timeout.mockRestore()
   }
 })
 
-it('上传和撤销失败均可重试，成功后提供独立复制与打开链接入口', async () => {
-  let records: ConversationShareRecord[] = []
+it.each(['session', 'response'] as const)('%s 分享确认后进入链接结果，失败可重试且撤销需确认', async scope => {
+  const selected = { ...target, request: { ...target.request, scope } }
+  const result = { ...published, scope }
+  const writeClipboard = vi.fn(async () => undefined)
+  const openExternal = vi.fn(async () => undefined)
+
+  let records: ConversationShareRecord[] = [
+    { ...published, key: 'other-scope', scope: scope === 'session' ? 'response' : 'session' }
+  ]
 
   const publish = vi
     .fn()
     .mockRejectedValueOnce(new Error('Upload failed'))
     .mockImplementation(async () => {
-      records = [published]
+      records = [result, ...records.filter(item => item.key !== result.key)]
 
-      return published
+      return result
     })
 
   const revoke = vi
     .fn()
     .mockRejectedValueOnce(new Error('Delete failed'))
     .mockImplementation(async () => {
-      records = [{ ...published, state: 'revoked' }]
+      records = records.map(item => (item.key === result.key ? { ...item, state: 'revoked' } : item))
     })
 
   desktop.hermesDesktop = {
+    writeClipboard,
+    openExternal,
     conversationShare: {
       prepare: async () => prepared,
       cancel: async () => undefined,
@@ -160,20 +172,31 @@ it('上传和撤销失败均可重试，成功后提供独立复制与打开链�
       list: async () => records
     }
   } as unknown as Window['hermesDesktop']
-  $conversationShareTarget.set(target)
+  $conversationShareTarget.set(selected)
   render(<ConversationShareDialog />)
   await waitFor(() =>
-    expect((screen.getByRole('button', { name: 'Publish snapshot' }) as HTMLButtonElement).disabled).toBe(false)
+    expect((screen.getByRole('button', { name: 'Create public link' }) as HTMLButtonElement).disabled).toBe(false)
   )
-  fireEvent.click(screen.getByRole('button', { name: 'Publish snapshot' }))
+  expect(publish).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: 'Create public link' }))
   await screen.findByText('Upload failed')
-  fireEvent.click(screen.getByRole('button', { name: 'Publish snapshot' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Create public link' }))
   await screen.findByRole('button', { name: 'Copy share link' })
   expect(screen.getByRole('button', { name: 'Open share link' })).toBeTruthy()
   expect(publish).toHaveBeenCalledWith(prepared.ticket, expect.stringContaining('完整预览'))
+  expect(screen.queryByTitle('Public page preview')).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'Copy share link' }))
+  await waitFor(() => expect(writeClipboard).toHaveBeenCalledWith(result.url))
+  fireEvent.click(screen.getByRole('button', { name: 'Open share link' }))
+  await waitFor(() => expect(openExternal).toHaveBeenCalledWith(result.url))
+  expect(publish).toHaveBeenCalledTimes(2)
+  fireEvent.click(screen.getByRole('button', { name: 'Revoke share' }))
+  expect(revoke).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole('button', { name: 'Revoke share' }))
   await screen.findByText('Delete failed')
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
   expect(screen.getByRole('button', { name: 'Copy share link' })).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Revoke share' }))
   fireEvent.click(screen.getByRole('button', { name: 'Revoke share' }))
   await waitFor(() => expect(screen.queryByRole('button', { name: 'Copy share link' })).toBeNull())
 })

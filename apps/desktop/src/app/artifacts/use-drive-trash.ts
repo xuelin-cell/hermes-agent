@@ -3,9 +3,8 @@ import { useEffect, useRef, useState } from 'react'
 import { type DriveAsset, driveRequest } from '@/api/drive'
 import { useI18n } from '@/i18n'
 import { confirm } from '@/store/confirm'
-import { notifyError } from '@/store/notifications'
 
-import { driveMutationMessage } from './use-drive-mutation'
+import { notifyDriveMutationFailure, runVerifiedDriveMutation } from './use-drive-mutation'
 
 /** 单项和多选删除共用确认与一次性请求；只移入回收站，不开放永久删除。 */
 export function useDriveTrash(onChanged: () => void) {
@@ -53,13 +52,24 @@ export function useDriveTrash(onChanged: () => void) {
       }
 
       try {
-        await driveRequest('/assets/trash', 'POST', {
-          file_ids: [...new Set(assets.filter(asset => asset.kind === 'file').map(asset => asset.asset_id))],
-          directory_ids: [...new Set(assets.filter(asset => asset.kind === 'directory').map(asset => asset.asset_id))]
-        })
+        await runVerifiedDriveMutation(
+          verifying =>
+            driveRequest(
+              '/assets/trash',
+              'POST',
+              {
+                file_ids: [...new Set(assets.filter(asset => asset.kind === 'file').map(asset => asset.asset_id))],
+                directory_ids: [
+                  ...new Set(assets.filter(asset => asset.kind === 'directory').map(asset => asset.asset_id))
+                ]
+              },
+              verifying
+            ),
+          () => lifecycle.active
+        )
       } catch (failure) {
         if (lifecycle.active) {
-          notifyError(new Error(driveMutationMessage(failure, copy)), copy.trash)
+          notifyDriveMutationFailure(failure, copy.trash, copy)
         }
       } finally {
         if (lifecycle.active) {

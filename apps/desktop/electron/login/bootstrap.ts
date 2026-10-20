@@ -14,6 +14,7 @@ import { recoverAccountRun } from '../entry_local/recover-account'
 import { LocalRuntimeContext, type PreparedLocalContext } from '../entry_local/runtime-context'
 import { LocalStartupError, showLocalStartupFailure } from '../entry_local/startup-failure'
 import { createUniAgentGateBindingUpdate } from '../entry_local/uniagentgate-control'
+import { migrateOldUniworkData } from '../migrate-old-uniwork'
 import { createWindowOpenHandler } from '../window-open-policy'
 
 import type { LoginAccount } from './contract'
@@ -39,11 +40,14 @@ function initializeLoginShell(): void {
 
   initialized = true
   app.setName('Hermes Desktop MT')
-  // 与账号数据根同名，Local 和 Roaming 两处都是 hmt。
-  const userData = resolveDesktopUserData(path.join(app.getPath('appData'), 'hmt'))
+  // 与账号数据根同名，Local 和 Roaming 两处都是 uniworker。
+  const userData = resolveDesktopUserData(path.join(app.getPath('appData'), 'uniworker'))
   mkdirSync(userData, { recursive: true })
   app.setPath('userData', userData)
   prepareDesktopLaunch()
+
+  // 首次启动时静默迁移老版 UniWork 用户数据（Windows-only，幂等，fire-and-forget）
+  void migrateOldUniworkData(userData)
 
   if (!app.requestSingleInstanceLock()) {
     stopping = true
@@ -164,7 +168,7 @@ async function openLoginWindow(): Promise<BrowserWindow | null> {
       const context = accountRuntime!.prepare()
       enableDesktopPlugins(context.home, ['desktop-deliverables'])
       installArtifactSharePlugin(context.home, app.getAppPath())
-      desktopStarting ??= startAccountDesktop(context, () => !stopping)
+      desktopStarting ??= startAccountDesktop(context)
         .then(() => {
           if (stopping || window.isDestroyed()) {
             return

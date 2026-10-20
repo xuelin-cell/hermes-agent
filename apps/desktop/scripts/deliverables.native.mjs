@@ -24,7 +24,7 @@ if (!process.argv.includes('--run')) {
 test('交付卡片从真实持久记录重放，关闭重开与 Renderer 重载后仍能预览原文件', { timeout: 240000 }, async () => {
   const desktop = path.resolve(import.meta.dirname, '..')
   const repo = path.resolve(desktop, '../..')
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'hmt-delivery-native-'))
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'uniworker-delivery-native-'))
   console.log('交付物原生验收记录：' + root)
   const env = { ...process.env }
   for (const name of Object.keys(env)) {

@@ -225,9 +225,15 @@ export class CloudDriveMcp {
     return this.result({ ok: false, status, code }, true)
   }
 
-  /** 工具返回业务数据；上游部分成功和结果未知始终保留为错误状态。 */
+  /** 工具保留上游业务状态，无法确认与明确执行失败分开呈现。 */
   private result(data: unknown, isError = false) {
-    return { ...(isError ? { isError: true } : {}), content: [{ type: 'text', text: JSON.stringify(data) }] }
+    // 无法确认是已结束的业务结果，不渲染成工具执行失败；ok/status 仍明确禁止认作成功。
+    const unconfirmed = !!data && typeof data === 'object' && 'status' in data && data.status === 'outcome_unknown'
+
+    return {
+      ...(isError && !unconfirmed ? { isError: true } : {}),
+      content: [{ type: 'text', text: JSON.stringify(data) }]
+    }
   }
 
   /** 并发、取消与身份检查覆盖所有工具，切换账号后不再继续轮询或发送文件。 */

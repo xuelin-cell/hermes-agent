@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 
@@ -132,7 +133,7 @@ it('经过来源校验、真实网络和 IPC 数据序列化后，错误状态�
   const backend = await service()
   const partition = {}
   const frame = { url: 'http://127.0.0.1:5174/#/artifacts' }
-  const sender = { mainFrame: frame, session: partition }
+  const sender = Object.assign(new EventEmitter(), { mainFrame: frame, session: partition })
 
   try {
     vi.stubGlobal('fetch', backend.request)

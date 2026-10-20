@@ -58,3 +58,39 @@ describe('SessionsSettings unarchive', () => {
     expect($sessions.get()).toEqual([])
   })
 })
+
+describe('SessionsSettings default directory (desktop-mt)', () => {
+  const bridge = window.hermesDesktop
+  const workspace = 'C:/uniworker/acc/workspace'
+
+  /** 只提供设置页读取默认目录所需的桥接，可选是否带对话文件夹接口。 */
+  function mountBridge(withFolders: boolean) {
+    window.hermesDesktop = {
+      ...(withFolders ? { createConversationFolder: vi.fn() } : {}),
+      settings: {
+        getDefaultProjectDir: vi.fn(async () => ({ defaultLabel: workspace, dir: null, resolvedCwd: workspace }))
+      }
+    } as never
+  }
+
+  afterEach(() => {
+    window.hermesDesktop = bridge
+  })
+
+  it('账号环境说明未设置时使用账号工作区并为每个新对话建文件夹', async () => {
+    mountBridge(true)
+    render(<SessionsSettings subpage="default-directory" />)
+
+    expect(await screen.findByText(en.settings.sessions.defaultsTo(workspace))).toBeTruthy()
+    expect(screen.getByText(/each new conversation gets its own folder/)).toBeTruthy()
+    expect(screen.queryByText(en.settings.sessions.defaultDirDesc)).toBeNull()
+  })
+
+  it('没有对话文件夹接口时保留原说明', async () => {
+    mountBridge(false)
+    render(<SessionsSettings subpage="default-directory" />)
+
+    expect(await screen.findByText(en.settings.sessions.defaultsTo(workspace))).toBeTruthy()
+    expect(screen.getByText(en.settings.sessions.defaultDirDesc)).toBeTruthy()
+  })
+})

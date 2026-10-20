@@ -148,6 +148,44 @@ def test_filters_uploads_hidden_empty_assets_and_failed_tools(delivery):
     assert reply(plugin, turn="second") is None
 
 
+def test_asset_folder_names_only_count_inside_the_working_directory(
+    delivery, tmp_path, monkeypatch
+):
+    """工作目录本身或上级叫 templates、assets 或以点开头时照常出卡；目录里面的素材仍排除。"""
+    plugin, _ = delivery
+    work = tmp_path / "assets" / ".projects" / "templates"
+    (work / "scripts").mkdir(parents=True)
+    monkeypatch.setenv("TERMINAL_CWD", str(work))
+    begin(plugin)
+    output = work / "报告.docx"
+    asset = work / "scripts" / "chart.png"
+    outside = tmp_path / "assets" / "other.pdf"
+    for file in (output, asset, outside):
+        file.write_bytes(b"data")
+    text = "\n".join(f"`{file}`" for file in (output, asset, outside))
+    result = reply(plugin, text)
+    assert f"MEDIA:{output}" in result
+    assert f"MEDIA:{asset}" not in result
+    assert f"MEDIA:{outside}" not in result
+    # 命令前后的快照对比同样只看工作目录里面的目录名。
+    begin(plugin, turn="second")
+    plugin.before_tool(
+        tool_name="terminal", args={}, session_id="s", turn_id="second", tool_call_id="c"
+    )
+    made = work / "new.pdf"
+    made.write_bytes(b"pdf")
+    plugin.after_tool(
+        tool_name="terminal",
+        args={},
+        result='{"exit_code":0}',
+        status="ok",
+        session_id="s",
+        turn_id="second",
+        tool_call_id="c",
+    )
+    assert f"MEDIA:{made}" in reply(plugin, turn="second")
+
+
 def test_profile_turn_and_remote_boundaries(delivery, tmp_path, monkeypatch):
     """相同会话标识在不同账号中互不串用，旧轮迟到结果与远程模式均不观察。"""
     plugin, work = delivery
@@ -264,7 +302,9 @@ def test_terminal_workdir_is_observed_instead_of_default_workspace(delivery, tmp
     assert str(output) in reply(plugin)
 
 
-@pytest.mark.parametrize("form", ["forward", "mixed", "inline", "double", "single"])
+@pytest.mark.parametrize(
+    "form", ["forward", "mixed", "relative", "inline", "double", "single"]
+)
 def test_shown_file_is_not_appended_again(delivery, form):
     """真实回复中的 MEDIA 链接、行内标记和预览指令只保留一个展示位置。"""
     plugin, work = delivery
@@ -275,6 +315,7 @@ def test_shown_file_is_not_appended_again(delivery, form):
     forms = {
         "forward": f"![小狗](MEDIA:{target.replace(chr(92), '/')})",
         "mixed": f"![小狗](MEDIA:{target})",
+        "relative": "[小狗](MEDIA:kitten.png)",
         "inline": f"请查看 MEDIA:`{output}`，这是成品。",
         "double": f'::preview{{file="{output}"}}',
         "single": f"::preview{{file='{output}'}}",
@@ -370,31 +411,39 @@ def test_symbolic_link_is_detected(delivery):
     assert paths.is_link(link)
 
 
-@pytest.mark.parametrize("operation", ["walk", "stat"])
-def test_unreadable_tree_never_returns_partial_baseline(
-    delivery, monkeypatch, operation
-):
-    """目录遍历和文件元数据任一读失败，都不能留下可用于差异推断的部分快照。"""
+@pytest.mark.parametrize("operation", ["walk", "lstat", "stat", "vanish"])
+def test_unreadable_or_vanishing_entries_are_skipped(delivery, monkeypatch, operation):
+    """读不到或扫描中途消失的条目只跳过它自己，其余文件照常进入基线。"""
     _, work = delivery
     from delivery_test import paths
 
-    (work / "visible.pdf").write_bytes(b"visible")
+    visible = work / "visible.pdf"
+    visible.write_bytes(b"visible")
     blocked = work / "blocked"
     blocked.mkdir()
     hidden = blocked / "hidden.pdf"
     hidden.write_bytes(b"hidden")
-    original = paths.os.scandir if operation == "walk" else Path.stat
+    target = {"walk": blocked, "lstat": blocked, "stat": hidden, "vanish": blocked}
+    error = FileNotFoundError if operation == "vanish" else PermissionError
+    owner, name = {
+        "walk": (paths.os, "scandir"),
+        "vanish": (paths.os, "scandir"),
+        "lstat": (paths.os, "lstat"),
+        "stat": (Path, "stat"),
+    }[operation]
+    original = getattr(owner, name)
 
-    def deny(target, *args, **kwargs):
-        """模拟 OS 拒绝特定目录或文件，其它文件操作保持真实。"""
-        if Path(target) == (blocked if operation == "walk" else hidden):
-            raise PermissionError(13, "controlled denial", str(target))
-        return original(target, *args, **kwargs)
+    def deny(path, *args, **kwargs):
+        """只让指定目录或文件失败，其它文件操作保持真实。"""
+        if Path(path) == target[operation]:
+            raise error(13, "controlled failure", str(path))
+        return original(path, *args, **kwargs)
 
-    monkeypatch.setattr(
-        paths.os if operation == "walk" else Path,
-        "scandir" if operation == "walk" else "stat",
-        deny,
-    )
-    assert paths.snapshot(work) is None
+    with monkeypatch.context() as fault:
+        fault.setattr(owner, name, deny)
+        before = paths.snapshot(work)
+    assert before[visible.resolve()] is not None
+    assert before.get(hidden.resolve()) is None
+    # 恢复可读后，之前读漏的文件不能被当成新增。
+    assert paths.changed(before, paths.snapshot(work)) == []
     assert paths.snapshot(work / "not-created") == {}

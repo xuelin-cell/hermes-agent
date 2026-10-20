@@ -2,7 +2,9 @@ import { act, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { ConversationSessionShareButton } from '@/components/conversation-share/session-button'
 import { registry } from '@/contrib/registry'
+import { openConversationShare } from '@/store/conversation-share'
 import { $tabStripDefault, setTabStripDefault } from '@/store/tabstrip-prefs'
 import { stubResizeObserver } from '@/test/jsdom'
 
@@ -10,6 +12,8 @@ import type { GroupNode } from '../model'
 import { $treeDragging, NEW_SESSION_DRAG, SESSION_TILE_DRAG } from '../store'
 
 import { TreeGroup } from './tree-group'
+
+vi.mock('@/store/conversation-share', () => ({ openConversationShare: vi.fn() }))
 
 let root: null | Root = null
 let container: HTMLDivElement | null = null
@@ -172,6 +176,41 @@ describe('TreeGroup', () => {
       const fixed = handles.filter(handle => !handle.closest('[role="tablist"]') && handle.style.width !== '')
 
       expect(fixed.length).toBeGreaterThan(0)
+    })
+
+    it('在真实标签栏外侧显示当前活动会话的分享入口，切换后不分享旧会话', () => {
+      mountCrowdedStrip(800)
+      act(() => {
+        for (const [id, sessionId] of [
+          ['terminal', 'session-a'],
+          ['terminal-2', 'session-b']
+        ]) {
+          registry.register({
+            area: 'panes',
+            id,
+            title: sessionId,
+            data: { placement: 'main', headerActions: () => <ConversationSessionShareButton sessionId={sessionId} /> },
+            render: () => <div>{sessionId}</div>
+          })
+        }
+      })
+      const button = () => container!.querySelector<HTMLButtonElement>('button[aria-label="Share conversation"]')!
+      expect(button()).not.toBeNull()
+      expect(button().closest('[role="tablist"]')).toBeNull()
+      act(() => button().click())
+      expect(openConversationShare).toHaveBeenLastCalledWith('session-a')
+      render(
+        <TreeGroup
+          leftEdge
+          node={{ ...terminalGroup(false), panes: paneIds, active: 'terminal-2' }}
+          rightEdge
+          topEdge
+        />
+      )
+      act(() => button().click())
+      expect(openConversationShare).toHaveBeenLastCalledWith('session-b')
+      render(<TreeGroup leftEdge node={{ ...terminalGroup(true), panes: paneIds }} rightEdge topEdge />)
+      expect(button()).toBeNull()
     })
   })
 

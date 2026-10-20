@@ -1,9 +1,19 @@
+import { messagingConnectionCopy } from './messaging-connection'
 import { defineFieldCopy } from '@/app/settings/field-copy'
 
 import { defineLocale, type TranslationOverrides } from './define-locale'
 import { introDe } from './intro-de'
 
 export const deOverrides = {
+  workspaceEditor: {
+    title: 'Editor',
+    capabilities: 'Fähigkeiten und Werkzeuge',
+    openProject: 'Öffnen Sie eine Projektunterhaltung, um Dateien zu durchsuchen.',
+    selectFile: 'Wählen Sie eine Datei zum Bearbeiten.',
+    unsupported: 'Binäre, gekürzte oder große Dateien können hier nicht bearbeitet werden.',
+    refresh: 'Aktualisieren',
+    save: 'Speichern'
+  },
   conversationShare: {
     sessionShare: 'Unterhaltung teilen',
     responseShare: 'Antwort teilen',
@@ -3302,6 +3312,7 @@ export const deOverrides = {
     }
   },
   messaging: {
+    connection: messagingConnectionCopy["de"],
     cards: {
       heading: 'Chat-Apps',
       description:
@@ -3991,6 +4002,13 @@ export const deOverrides = {
     open: 'Öffnen'
   },
   artifactShare: {
+    disclosure: "Jeder mit dem Link kann dieses Artefakt ansehen. Andere Dateien und Gespräche werden nicht geteilt.",
+    checking: "Freigabestatus wird geprüft…",
+    createLink: "Öffentlichen Link erstellen",
+    linkReady: "Öffentlicher Link ist bereit",
+    changedNotice: "Der Inhalt wurde geändert. Der Link zeigt noch die zuvor veröffentlichte Version.",
+    confirmUpdate: "Den veröffentlichten Inhalt durch diese Version ersetzen? Der Link bleibt gleich.",
+    confirmRevoke: "Diesen öffentlichen Link widerrufen? Danach kann niemand mehr darüber zugreifen.",
     originRequired: 'Nur bestätigte Modellergebnisse können geteilt werden. Uploads, abgeleitete Dateien und unbekannte Quellen sind gesperrt.',
     share: 'Teilen',
     shareArtifact: 'Artefakt teilen',
@@ -5322,7 +5340,7 @@ export const deOverrides = {
   preview: {
     copyAll: 'Gesamten Text kopieren',
     saveAs: 'Speichern unter',
-    exportFailed: 'Export fehlgeschlagen. Prüfen Sie, ob Inhalt und Bilder geladen sind.',
+    exportFailed: 'Die Vorschau konnte nicht exportiert werden. Bitte versuchen Sie es erneut.',
     exportFormats: { md: 'Markdown (.md)', pdf: 'PDF (.pdf)', docx: 'Word (.docx)' },
     tab: 'Vorschau',
     closePane: 'Vorschau-Fenster schließen',

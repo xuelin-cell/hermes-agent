@@ -5,6 +5,8 @@
   --uniwork-text-muted: #868d9c;
   --uniwork-row-active: #e6e6e6;
   --uniwork-row-hover: #f0f0f0;
+  --workspace-category-selected-bg: #32374a;
+  --workspace-category-selected-fg: #fff;
   --uniwork-title-font: 'Alimama ShuHeiTi', 'PingFang SC', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
   --ui-bg-chrome: var(--theme-background-seed);
   --ui-bg-sidebar: var(--theme-sidebar-seed);
@@ -74,17 +76,62 @@
 
 :root[data-hermes-theme='uniwork'] [data-slot='composer-root'] {
   --composer-fill: var(--dt-card);
-  border-radius: 16px;
+  border-radius: 20px;
 }
 
+/* 输入框对标 Claude：细中性边框 + 很淡的大范围阴影；悬停、聚焦只把边框加深一点，不用强调色描边。 */
 :root[data-hermes-theme='uniwork'] [data-slot='composer-surface'] {
-  border-color: var(--dt-input);
-  box-shadow: 0 2px 8px rgb(16 18 25 / 10%);
+  border-color: var(--dt-border);
+  box-shadow: 0 4px 20px rgb(16 18 25 / 4%);
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+:root[data-hermes-theme='uniwork'] [data-slot='composer-surface']:hover {
+  border-color: color-mix(in srgb, var(--ui-text-primary) 14%, var(--dt-border));
 }
 
 :root[data-hermes-theme='uniwork'] [data-slot='composer-surface']:focus-within {
-  border-color: var(--dt-ring);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--dt-ring) 12%, transparent);
+  border-color: color-mix(in srgb, var(--ui-text-primary) 20%, var(--dt-border));
+  box-shadow: 0 4px 20px rgb(16 18 25 / 7%);
+}
+
+/* 模型和思考强度读成一个按钮（像 Claude 的「Opus 5.5 Extra」）：去掉模型后面的箭头，整组一起高亮，各自菜单不变。 */
+:root[data-hermes-theme='uniwork'] [data-slot='composer-model-group'] {
+  border-radius: 8px;
+}
+
+:root[data-hermes-theme='uniwork'] [data-slot='composer-model-group']:hover {
+  background: var(--chrome-action-hover);
+}
+
+:root[data-hermes-theme='uniwork'] [data-slot='composer-model-group'] > button {
+  padding-inline: 6px;
+  font-size: 0.8125rem;
+}
+
+:root[data-hermes-theme='uniwork'] [data-slot='composer-model-group'] > button:hover {
+  background: transparent;
+}
+
+:root[data-hermes-theme='uniwork'] [data-slot='composer-model-group'] > button:first-child {
+  color: var(--ui-text-secondary);
+}
+
+:root[data-hermes-theme='uniwork'] [data-slot='composer-model-group'] > button:first-child:not(:last-child) {
+  padding-right: 2px;
+}
+
+:root[data-hermes-theme='uniwork']
+  [data-slot='composer-model-group']
+  > button:first-child:not(:last-child)
+  > svg:last-child {
+  display: none;
+}
+
+:root[data-hermes-theme='uniwork'] [data-slot='composer-model-group'] > button + button {
+  padding-left: 2px;
 }
 
 :root[data-hermes-theme='uniwork'] [data-slot='composer-rich-input'] {
@@ -120,10 +167,10 @@
   min-height: 36px;
 }
 
-/* 模板和现有输入功能使用同一布局；不添加设计稿中尚未实现的模式入口。 */
+/* 首页输入框留两行高，和 Claude 首页的输入框一样矮。 */
 @media (min-width: 768px) {
   :root[data-hermes-theme='uniwork'] [data-slot='composer-root'][data-welcome] [data-slot='composer-rich-input'] {
-    min-height: 84px;
+    min-height: 52px;
   }
 }
 
@@ -187,7 +234,7 @@
 }
 
 :root[data-hermes-theme='uniwork'] [data-slot='composer-root'][data-standard-layout] {
-  border-radius: 28px;
+  border-radius: 20px;
 }
 
 :root[data-hermes-theme='uniwork'] [data-slot='work-selected-category'] [data-slot='button'] {
@@ -227,8 +274,10 @@
 }
 
 :root[data-hermes-theme='uniwork'] {
-  --account-avatar-background: #430d0d;
+  --dt-primary-deep: #430d0d;
+  --account-avatar-background: var(--dt-primary-deep);
 }
 :root[data-hermes-theme='uniwork'].dark {
-  --account-avatar-background: #693127;
+  --dt-primary-deep: #693127;
+  --account-avatar-background: var(--dt-primary-deep);
 }

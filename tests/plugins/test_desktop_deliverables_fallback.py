@@ -3,7 +3,6 @@
 import importlib.util
 from pathlib import Path
 import sys
-from threading import Event, Thread
 
 import pytest
 
@@ -197,7 +196,7 @@ def test_only_failed_writers_disable_final_scan(delivery, tool):
 
 
 def test_first_command_reuses_new_root_baseline(delivery, tmp_path, monkeypatch):
-    """首次命令的新目录只扫一遍，快照不能持有阻塞其他会话的全局锁。"""
+    """首次命令的新目录只扫一遍，登记时的基线直接作为命令前快照。"""
     plugin, _ = delivery
     begin(plugin)
     root = tmp_path / "command"
@@ -207,7 +206,7 @@ def test_first_command_reuses_new_root_baseline(delivery, tmp_path, monkeypatch)
 
     def observe(directory, budget=None):
         """记录实际快照次数和执行时的锁归属。"""
-        calls.append((directory, plugin._lock._is_owned()))
+        calls.append(directory)
         return original(directory, budget)
 
     monkeypatch.setattr(plugin, "snapshot", observe)
@@ -218,7 +217,7 @@ def test_first_command_reuses_new_root_baseline(delivery, tmp_path, monkeypatch)
         turn_id="t",
         tool_call_id="a",
     )
-    assert calls == [(root, False)]
+    assert calls == [root]
 
 
 @pytest.mark.parametrize("phase", ["begin", "before", "after", "final"])
@@ -335,145 +334,97 @@ def test_final_response_does_not_register_unobserved_cwd(
     assert str(output) in finish(plugin, "b")
 
 
-@pytest.mark.parametrize("operation", ["named_paths", "fresh"])
-def test_candidate_io_does_not_block_other_turn_and_late_results_are_discarded(
-    delivery, monkeypatch, operation
-):
-    """路径读取阻塞时其他会话仍可收尾，取消后的旧结果不能重新写入。"""
+def test_parallel_commands_in_same_turn_keep_final_scan(delivery):
+    """同一轮并行的两条命令只放弃各自差异，本轮结束扫描仍能补出产物。"""
     plugin, work = delivery
-    begin(plugin, "a")
-    entered, release, done = Event(), Event(), Event()
-    errors = []
-    original = getattr(plugin, operation)
-    output = work / "candidate.pdf"
-    output.write_bytes(b"pdf")
-
-    def delayed(*args):
-        """暂停真实候选解析以观察状态锁是否被文件 I/O 占用。"""
-        entered.set()
-        assert release.wait(10)
-        return original(*args)
-
-    def finish_tool():
-        """收集后台钩子异常，避免测试线程失败被忽略。"""
-        try:
-            plugin.after_tool(
-                tool_name="terminal",
-                result={"output": str(output)},
-                session_id="a",
-                turn_id="t",
-                tool_call_id="a",
-            )
-        except BaseException as error:
-            errors.append(error)
-
-    def cancel_turn():
-        """在候选解析尚未完成时走正式结束钩子。"""
-        plugin.end_turn(session_id="a")
-        done.set()
-
-    plugin.before_tool(
-        tool_name="terminal", session_id="a", turn_id="t", tool_call_id="a"
-    )
-    monkeypatch.setattr(plugin, operation, delayed)
-    a, b = Thread(target=finish_tool), Thread(target=cancel_turn)
-    a.start()
-    try:
-        assert entered.wait(10)
-        b.start()
-        assert done.wait(3), "候选文件 I/O 占用了状态锁"
-    finally:
-        release.set()
-        a.join(10)
-        if b.ident is not None:
-            b.join(10)
-    assert not a.is_alive() and not b.is_alive() and not errors
-    assert not plugin._turns
-
-
-@pytest.mark.parametrize("phase", ["begin", "before", "after", "final"])
-def test_interleaved_scan_cannot_claim_other_session(delivery, monkeypatch, phase):
-    """另一会话在锁外扫描期间完整执行并结束，也不能把其文件算给当前会话。"""
-    plugin, work = delivery
-    if phase != "begin":
-        begin(plugin, "a")
-    if phase == "after":
+    begin(plugin)
+    for call in ("a", "b"):
         plugin.before_tool(
-            tool_name="terminal", session_id="a", turn_id="t", tool_call_id="a"
+            tool_name="terminal", session_id="s", turn_id="t", tool_call_id=call
         )
-    scanning, release, completed = Event(), Event(), Event()
-    original = plugin.snapshot
-    errors = []
-
-    def delayed(directory, budget=None):
-        """只暂停 A 的第一次真实扫描，为另一个会话留出完整执行窗口。"""
-        if not scanning.is_set():
-            scanning.set()
-            assert release.wait(10)
-        return original(directory, budget)
-
-    def scan_a():
-        """执行被测钩子并收集线程异常，不能把线程崩溃当成通过。"""
-        try:
-            if phase == "begin":
-                begin(plugin, "a")
-            elif phase == "before":
-                plugin.before_tool(
-                    tool_name="terminal", session_id="a", turn_id="t", tool_call_id="a"
-                )
-            elif phase == "after":
-                plugin.after_tool(
-                    tool_name="terminal",
-                    result={},
-                    session_id="a",
-                    turn_id="t",
-                    tool_call_id="a",
-                )
-            else:
-                assert finish(plugin, "a") is None
-        except BaseException as error:
-            errors.append(error)
-
-    def execute_b():
-        """真实经过另一轮的命令前后钩子，结束后也要留下歧义证据。"""
-        try:
-            begin(plugin, "b")
-            plugin.before_tool(
-                tool_name="terminal", session_id="b", turn_id="t", tool_call_id="b"
-            )
-            (work / "belongs-to-b.pdf").write_bytes(b"other")
-            plugin.after_tool(
-                tool_name="terminal",
-                result={},
-                session_id="b",
-                turn_id="t",
-                tool_call_id="b",
-            )
-            assert finish(plugin, "b") is None
-        except BaseException as error:
-            errors.append(error)
-        finally:
-            completed.set()
-
-    monkeypatch.setattr(plugin, "snapshot", delayed)
-    a, b = Thread(target=scan_a), Thread(target=execute_b)
-    a.start()
-    try:
-        assert scanning.wait(10)
-        b.start()
-        assert completed.wait(3), "扫描期间其他会话被全局锁阻塞"
-    finally:
-        release.set()
-        a.join(10)
-        if b.ident is not None:
-            b.join(10)
-    assert not a.is_alive() and not b.is_alive() and not errors
-    if phase == "before":
+    output = work / "parallel.pdf"
+    output.write_bytes(b"pdf")
+    for call in ("a", "b"):
         plugin.after_tool(
             tool_name="terminal",
             result={},
-            session_id="a",
+            session_id="s",
             turn_id="t",
-            tool_call_id="a",
+            tool_call_id=call,
         )
-    assert finish(plugin, "a") is None
+    assert str(output) in finish(plugin)
+
+
+def test_oversized_command_root_does_not_disable_requested_root(delivery, tmp_path):
+    """命令目录过大只失去它自己的基线，用户指定目录的结束扫描照常。"""
+    plugin, work = delivery
+    requested = tmp_path / "交付"
+    requested.mkdir()
+    big = tmp_path / "big"
+    big.mkdir()
+    for index in range(3001):
+        (big / f"ignored-{index}.txt").touch()
+    begin(plugin, user_message=f"保存到 `{requested}`")
+    plugin.before_tool(
+        tool_name="terminal",
+        args={"workdir": str(big)},
+        session_id="s",
+        turn_id="t",
+        tool_call_id="cmd",
+    )
+    output = requested / "report.pdf"
+    output.write_bytes(b"pdf")
+    plugin.after_tool(
+        tool_name="terminal",
+        result={},
+        session_id="s",
+        turn_id="t",
+        tool_call_id="cmd",
+    )
+    assert str(output) in finish(plugin)
+
+
+def test_unreadable_path_in_tool_output_keeps_written_file(delivery, monkeypatch):
+    """工具输出里出现读不到的路径时，明确写出的文件仍要补卡且兜底不关闭。"""
+    plugin, work = delivery
+    from fallback_delivery import paths
+
+    begin(plugin)
+    denied = work / "denied"
+    output = work / "report.docx"
+    output.write_bytes(b"docx")
+    original = Path.is_dir
+
+    def is_dir(path):
+        """模拟 Python 3.11 对无权限目录抛出 PermissionError。"""
+        if path == denied:
+            raise PermissionError(13, "controlled denial", str(path))
+        return original(path)
+
+    with monkeypatch.context() as fault:
+        fault.setattr(paths.Path, "is_dir", is_dir)
+        plugin.after_tool(
+            tool_name="write_file",
+            args={"path": str(output)},
+            result={"output": f"`{denied}` 不可读"},
+            session_id="s",
+            turn_id="t",
+        )
+    later = work / "later.pdf"
+    later.write_bytes(b"pdf")
+    result = finish(plugin)
+    assert str(output) in result and str(later) in result
+
+
+def test_late_end_event_of_previous_turn_keeps_new_turn(delivery):
+    """上一轮迟到的结束事件不能清掉已经开始的新一轮。"""
+    plugin, work = delivery
+    plugin.before_turn(session_id="s", turn_id="old", task_id="s", platform="desktop")
+    begin(plugin)
+    plugin.end_turn(session_id="s", turn_id="old")
+    output = work / "new-turn.pdf"
+    output.write_bytes(b"pdf")
+    assert str(output) in finish(plugin)
+    begin(plugin)
+    plugin.end_turn(session_id="s", turn_id="t")
+    assert finish(plugin) is None

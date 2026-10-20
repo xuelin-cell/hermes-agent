@@ -31,7 +31,7 @@ const source = {
  {role:'user',blocks:[{type:'markdown',text:'请展示代码、表格、公式和流程图。'}]},
  {role:'assistant',blocks:[{type:'reasoning',text:'先检查数据，再形成结论。'},
  {type:'markdown',text:'# 完整分享示例\\n\\n中文与 **Markdown** 正文。\\n\\n| 项目 | 状态 |\\n| --- | --- |\\n| 完整历史 | 通过 |\\n\\n公式：$x^2 + y^2 = z^2$\\n\\n\`\`\`typescript\\nconst greeting = "你好";\\nconsole.log(greeting);\\n\`\`\`\\n\\n\`\`\`mermaid\\nflowchart LR\\n A[准备快照] --> B[静态预览] --> C[发布链接]\\n\`\`\`'},
- {type:'markdown',text:'![内嵌图片](figure.png)'},{type:'tool',name:'read_file'}]},
+ {type:'markdown',text:'![内嵌图片](figure.png)'},{type:'markdown',text:'MEDIA:/workspace/result.md'},{type:'tool',name:'read_file'}]},
  ...Array.from({length:30},(_,i)=>({role:'assistant',blocks:[{type:'markdown',text:'第 '+i+' 段完整历史。'}]}))]
 };
 const labels = {readonly:'只读会话快照',user:'你',assistant:'助手',process:'思考过程',resourceError:'准备失败'};
@@ -39,10 +39,10 @@ const labels = {readonly:'只读会话快照',user:'你',assistant:'助手',proc
 function ThemeControl(){
  const {setMode}=useTheme();
  useEffect(()=>{
- window.exportAgain=async (dark=false)=>{
+ window.exportAgain=async (dark=false,response=false)=>{
  flushSync(()=>setMode(dark?'dark':'light'));
  await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
- const html=await exportConversationHtml({...source,theme:dark?'dark':'light'},labels,AbortSignal.timeout(60000),async reference=>{if(reference!=='figure.png')throw Error('Unexpected image');return 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII='});
+ const html=await exportConversationHtml({...source,theme:dark?'dark':'light',...(response?{scope:'response',title:'分享的回复',messages:source.messages.filter(item=>item.role==='assistant')}:{})},labels,AbortSignal.timeout(60000),async reference=>{if(reference!=='figure.png')throw Error('Unexpected image');return 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII='});
  window.fixtureHtml=html;
  const frame=document.querySelector('iframe');frame.srcdoc=html;
  return html;
@@ -139,13 +139,37 @@ app.on('window-all-closed',()=>app.quit());
   assert.equal((await frame.locator('svg').count()) > 0, true)
   assert.equal((await frame.locator('.katex').count()) > 0, true)
   assert.equal((await frame.locator('pre code').count()) > 0, true)
-  await expect(frame.locator('img')).toHaveAttribute('src', /^data:image\/png;base64,/)
-  assert.equal(await frame.locator('img').evaluate(image => image.complete && image.naturalWidth > 0), true)
+  await expect(frame.locator('article img')).toHaveAttribute('src', /^data:image\/png;base64,/)
+  assert.equal(await frame.locator('article img').evaluate(image => image.complete && image.naturalWidth > 0), true)
   const html = await page.evaluate(() => window.fixtureHtml)
   assert.equal(/<script|blob:|file:\/\/|src="https?:/i.test(html), false)
   await writeFile(path.join(root, 'share.html'), html)
   console.log('分享页面已写入：' + root)
   assert.equal(html.includes('准备快照'), true)
+  assert.equal(html.includes('>Hermes<'), false)
+  await expect(frame.getByRole('img', { name: '元景数字员工', exact: true })).toBeVisible()
+  await expect(frame.locator('header img')).toHaveAttribute('src', /^data:image\/png;base64,/)
+  assert.equal(html.includes('MEDIA:'), false)
+  assert.equal(html.includes('/workspace/result.md'), false)
+  assert.equal(html.includes('result.md'), true)
+  // 连续助手片段只显示一个角色标识；导出的公开页保留样式且不依赖应用 CSS。
+  await expect(frame.locator('article')).toHaveCount(2)
+  await expect(frame.getByText('助手', { exact: true })).toHaveCount(1)
+  const headerBorder = await frame.locator('header').evaluate(node => getComputedStyle(node).borderBottomWidth)
+  assert.notEqual(headerBorder, '0px')
+  const tableWidth = await frame.locator('table').evaluate(node => node.getBoundingClientRect().width)
+  assert.ok(tableWidth > 500)
+  await frame
+    .locator('details')
+    .first()
+    .evaluate(node => (node.open = true))
+  await page.screenshot({ path: path.join(root, 'light.png') })
+  const responseHtml = await page.evaluate(() => window.exportAgain(false, true))
+  await expect(frame.locator('article')).toHaveCount(1)
+  await expect(frame.getByText('请展示代码、表格、公式和流程图。', { exact: true })).toHaveCount(0)
+  await writeFile(path.join(root, 'response.html'), responseHtml)
+  await page.screenshot({ path: path.join(root, 'response.png') })
+  await page.evaluate(() => window.exportAgain())
   // 主题遗留的未使用字体样式不应成为分享正文的网络依赖。
   let unusedReads = 0
   await page.route('https://unused-fonts.example/theme.css', route => {
@@ -246,12 +270,26 @@ app.on('window-all-closed',()=>app.quit());
     .evaluate(element => {
       element.open = true
     })
-  await page.screenshot({ path: path.join(root, 'light.png') })
+  // 带测试字体的页面不覆盖前面正常主题下的公开页截图。
   await page.evaluate(() => window.exportAgain(true))
   await expect(frame.locator('html')).toHaveAttribute('style', 'color-scheme:dark')
   await page.screenshot({ path: path.join(root, 'dark.png') })
   await page.setViewportSize({ width: 390, height: 844 })
   await page.screenshot({ path: path.join(root, 'narrow.png') })
+  // 从 file URL 单独打开真正交付的 HTML，确认排版不会因丢失应用样式而退化。
+  await page.goto(pathToFileURL(path.join(root, 'response.html')).href)
+  await expect(page.getByRole('img', { name: '元景数字员工', exact: true })).toBeVisible()
+  await expect(page.locator('article')).toHaveCount(1)
+  assert.ok(await page.locator('body').evaluate(node => node.scrollWidth <= innerWidth))
+  await page.screenshot({ path: path.join(root, 'response-mobile.png') })
+  await page.setViewportSize({ width: 1100, height: 900 })
+  const layout = await page.locator('main').evaluate(node => ({
+    x: node.getBoundingClientRect().x,
+    width: node.getBoundingClientRect().width,
+    viewport: document.documentElement.clientWidth
+  }))
+  assert.ok(Math.abs(layout.x - (layout.viewport - layout.width) / 2) < 2)
+  await page.screenshot({ path: path.join(root, 'response-standalone.png') })
   const font = pathToFileURL(path.resolve(desktop, '../../node_modules/katex/dist/fonts/KaTeX_Main-Regular.woff2')).href
   await writeFile(path.join(root, 'font.css'), `@font-face{font-family:Fixture;src:url(${font})}`)
   await writeFile(

@@ -1,9 +1,19 @@
+import { messagingConnectionCopy } from './messaging-connection'
 import { defineFieldCopy } from '@/app/settings/field-copy'
 
 import { defineLocale } from './define-locale'
 import { introZh } from './intro-zh'
 
 export const zh = defineLocale({
+  workspaceEditor: {
+    title: '编辑器',
+    capabilities: '技能与工具',
+    openProject: '请先打开项目中的会话，再浏览和编辑文件。',
+    selectFile: '选择一个文件开始编辑。',
+    unsupported: '无法编辑二进制、截断或过大的文件。',
+    refresh: '刷新',
+    save: '保存'
+  },
   conversationShare: {
     sessionShare: '分享会话',
     responseShare: '分享回复',
@@ -42,7 +52,7 @@ export const zh = defineLocale({
     transferNotStarted: '尚未开始',
     transferCancelled: '下载已取消',
     transferUploadStopped: '已停止发送，请刷新核对云盘结果。',
-    transferUnknown: '上传结果待确认，请勿立即重复上传。请刷新核对云盘结果。',
+    transferUnknown: '暂时无法自动确认上传结果，请刷新文件列表核对。',
     transferDownloadPartial: '部分文件已保存到本机，其余文件未完成，请查看传输记录。',
     transferStopFailed: '未能停止传输，请再试一次。',
     downloadSaved: name => `${name} 已保存到本机`,
@@ -68,8 +78,13 @@ export const zh = defineLocale({
       INVALID_RESPONSE: '服务返回的数据不完整，请稍后重试。',
       SIZE_MISMATCH: '文件未能完整保存，请重试。',
       TRANSPORT_ERROR: '网络连接异常，请检查网络。',
-      UPLOAD_INCOMPLETE: '上传结果待确认，请勿立即重复上传。请刷新核对云盘结果。',
-      UPLOAD_UNCONFIRMED: '上传结果待确认，请勿立即重复上传。请刷新核对云盘结果。',
+      OUTCOME_UNKNOWN: '暂时无法自动确认操作结果，请刷新文件列表核对。',
+      UPLOAD_CONFIRMATION_FAILED: '连续三次未在云盘文件列表中确认到该文件，本次上传失败，请重试。',
+      UPLOAD_CONFIRMATION_UNAVAILABLE: '暂时无法自动确认上传结果，请刷新文件列表核对。',
+      OPERATION_CONFIRMATION_UNAVAILABLE: '暂时无法自动确认操作结果，请刷新文件列表核对。',
+      UPLOAD_FAILED: '上传失败，请重新上传。',
+      UPLOAD_INCOMPLETE: '上传中断，请重新上传。',
+      UPLOAD_UNCONFIRMED: '暂时无法自动确认上传结果，请刷新文件列表核对。',
       IPC_ERROR: '网络连接异常，请检查网络。',
       AUTH_CHANGED: '登录状态已变化，本次传输已停止。请在当前账号下重试。',
     },
@@ -152,7 +167,8 @@ export const zh = defineLocale({
     restoreHint: '确定恢复此条目吗？文件夹中的内容也将一并恢复。',
     recycleFailed: '回收站未能完整加载，请刷新后再恢复文件。',
     recycleEmpty: '回收站为空',
-    operationUnknown: '暂时无法确认操作结果，请刷新核对后再操作。',
+    operationVerifying: '正在确认操作结果，请稍候。',
+    operationUnknown: '暂时无法自动确认操作结果，请刷新文件列表核对。',
     operationPartial: '操作仅部分完成，请刷新核对后再操作。',
     operationFailed: '操作未完成，请刷新列表，并检查登录状态或操作权限。',
     personal: '个人云盘',
@@ -177,10 +193,19 @@ export const zh = defineLocale({
       restart: '用量查询组件尚未更新，请完全退出并重新启动桌面应用。',
       actualUsage: '套餐实际用量',
       details: '查看详情',
+      subscribe: '订阅',
+      subscribeBusy: '正在打开…',
+      subscribeFailed: '获取订阅凭证失败，请稍后重试',
+      subscribeAuth: '登录状态已失效，请重新登录后订阅。',
+      subscribeMissingPhone: '请重新登录后再订阅。',
+      subscribeRestart: '订阅组件尚未更新，请完全退出并重新启动桌面应用。',
       logout: '退出登录',
       title: '套餐用量',
       loading: '正在查询套餐用量…',
       refresh: '刷新用量',
+      refreshPlan: '刷新套餐信息',
+      refreshed: '套餐信息已刷新',
+      refreshFailed: '刷新失败，请稍后重试',
       failed: '刷新失败，请重试。',
       stale: '刷新失败，当前显示上次查询结果。',
       auth: '登录状态已失效，请重新登录后查询。',
@@ -189,14 +214,20 @@ export const zh = defineLocale({
       expired: '已到期',
       expires: '截止日期',
       used: '已用',
+      tokenUsed: '已使用',
       remaining: '剩余',
       fiveHour: '5 小时额度',
       week: '每周额度',
       month: '每月额度',
       reset: '重置时间',
+      resetsAt: time => `${time}重置`,
+      expiryText: date => `${date} 到期`,
+      tokenExact: (remaining, used, total, unit) => {
+        const suffix = unit ? ` ${unit}` : ''
+        return `剩余 ${remaining}${suffix}，已用 ${used}${suffix}，总额 ${total}${suffix}`
+      },
       notStarted: '尚未开始计时',
-      resetDue: '等待重置',
-      concurrency: '当前并发'
+      resetDue: '等待重置'
     },
     brand: 'UNIWORK',
     welcome: '欢迎使用 UniWork',
@@ -2945,6 +2976,7 @@ export const zh = defineLocale({
   },
 
   messaging: {
+    connection: messagingConnectionCopy["zh"],
     cards: {
       heading: '聊天应用',
       description: '接入微信、钉钉、飞书等聊天应用，从手机上接收和回复消息。',
@@ -3629,6 +3661,13 @@ export const zh = defineLocale({
   },
 
   artifactShare: {
+    disclosure: "获得链接的人都可以查看此产物，不会分享其他文件或对话。",
+    checking: "正在检查分享状态…",
+    createLink: "生成公开链接",
+    linkReady: "公开链接已生成",
+    changedNotice: "内容已变化，链接目前仍展示上次发布的版本。",
+    confirmUpdate: "是否用当前版本覆盖已发布内容？链接地址保持不变。",
+    confirmRevoke: "确认取消分享？取消后，获得链接的人将无法再访问。",
     originRequired: '仅支持来源已确认的模型产物；上传文件、派生产物和来源未知的文件不能分享。',
     share: '分享',
     shareArtifact: '分享产物',
@@ -3880,15 +3919,7 @@ export const zh = defineLocale({
     placeholderStarting: '正在启动 Hermes…',
     placeholderReconnecting: '正在重新连接 Hermes…',
     placeholderFollowUp: '发送后续消息',
-    newSessionPlaceholders: [
-      '我们要构建什么？',
-      '给 Hermes 一个任务',
-      '你在想什么？',
-      '描述你需要什么',
-      '我们该处理什么？',
-      '随便问点什么',
-      '从一个目标开始'
-    ],
+    newSessionPlaceholders: ['今天想让我帮你做什么？'],
     followUpPlaceholders: [
       '发送后续消息',
       '补充更多上下文',
@@ -4868,7 +4899,7 @@ export const zh = defineLocale({
   preview: {
     copyAll: '复制全文',
     saveAs: '另存为',
-    exportFailed: '导出失败，请确认预览内容和图片已准备好。',
+    exportFailed: '导出预览失败，请重试。',
     exportFormats: { md: 'Markdown（.md）', pdf: 'PDF（.pdf）', docx: 'Word（.docx）' },
     tab: '预览',
     closePane: '关闭预览面板',

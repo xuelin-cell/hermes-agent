@@ -1,8 +1,18 @@
+import { messagingConnectionCopy } from './messaging-connection'
 import { FIELD_DESCRIPTIONS, FIELD_LABELS } from '@/app/settings/constants'
 
 import type { Translations } from './types'
 
 export const en: Translations = {
+  workspaceEditor: {
+    title: 'Editor',
+    capabilities: 'Skills & tools',
+    openProject: 'Open a project conversation to browse its files.',
+    selectFile: 'Select a file to edit.',
+    unsupported: 'Binary, truncated, or large files cannot be edited here.',
+    refresh: 'Refresh',
+    save: 'Save'
+  },
   conversationShare: {
     sessionShare: 'Share conversation',
     responseShare: 'Share response',
@@ -41,7 +51,7 @@ export const en: Translations = {
     transferNotStarted: 'Not started',
     transferCancelled: 'Download cancelled',
     transferUploadStopped: 'Sending stopped. Refresh to check the cloud result.',
-    transferUnknown: 'The upload result is unconfirmed. Do not upload again yet. Refresh to check the cloud result.',
+    transferUnknown: 'Unable to automatically confirm the upload. Refresh the file list to check.',
     transferDownloadPartial: 'Some files were saved locally. Other files did not complete. Check the transfer records.',
     transferStopFailed: 'Could not stop the transfer. Please try again.',
     downloadSaved: name => `${name} saved locally`,
@@ -67,8 +77,13 @@ export const en: Translations = {
       INVALID_RESPONSE: 'The service returned an incomplete response.',
       SIZE_MISMATCH: 'The file could not be saved completely. Please retry.',
       TRANSPORT_ERROR: 'Network connection failed. Check your connection.',
-      UPLOAD_INCOMPLETE: 'The upload result is unconfirmed. Do not upload again yet. Refresh to check the cloud result.',
-      UPLOAD_UNCONFIRMED: 'The upload result is unconfirmed. Do not upload again yet. Refresh to check the cloud result.',
+      OUTCOME_UNKNOWN: 'Unable to automatically confirm the operation. Refresh the file list to check.',
+      UPLOAD_CONFIRMATION_FAILED: 'The file was absent in three complete cloud checks. Upload failed. Please try again.',
+      UPLOAD_CONFIRMATION_UNAVAILABLE: 'Unable to automatically confirm the upload. Refresh the file list to check.',
+      OPERATION_CONFIRMATION_UNAVAILABLE: 'Unable to automatically confirm the operation. Refresh the file list to check.',
+      UPLOAD_FAILED: 'Upload failed. Please upload again.',
+      UPLOAD_INCOMPLETE: 'Upload interrupted. Please upload again.',
+      UPLOAD_UNCONFIRMED: 'Unable to automatically confirm the upload. Refresh the file list to check.',
       IPC_ERROR: 'Network connection failed. Check your connection.',
       AUTH_CHANGED: 'The account changed and the transfer stopped. Retry under the current account.',
     },
@@ -154,7 +169,8 @@ export const en: Translations = {
     restoreHint: 'Restore this item? Folder contents will also be restored.',
     recycleFailed: 'The recycle bin could not be fully loaded. Refresh before restoring files.',
     recycleEmpty: 'The recycle bin is empty',
-    operationUnknown: 'The result could not be confirmed. Refresh to check before trying again.',
+    operationVerifying: 'Confirming the operation result. Please wait.',
+    operationUnknown: 'Unable to automatically confirm the operation. Refresh the file list to check.',
     operationPartial: 'Only part of the operation completed. Refresh to check before trying again.',
     operationFailed: 'The operation did not complete. Refresh the list and check your sign-in or permissions.',
     personal: 'Personal drive',
@@ -181,10 +197,19 @@ export const en: Translations = {
       restart: 'Restart the desktop app completely to update the usage query component.',
       actualUsage: 'Plan usage',
       details: 'View details',
+      subscribe: 'Subscribe',
+      subscribeBusy: 'Opening…',
+      subscribeFailed: 'Could not get a subscription ticket. Try again.',
+      subscribeAuth: 'Your sign-in has expired. Sign in again to subscribe.',
+      subscribeMissingPhone: 'Sign in again to subscribe.',
+      subscribeRestart: 'Restart the desktop app completely to update the subscription component.',
       logout: 'Sign out',
       title: 'Plan usage',
       loading: 'Loading plan usage…',
       refresh: 'Refresh usage',
+      refreshPlan: 'Refresh plan',
+      refreshed: 'Plan information refreshed',
+      refreshFailed: 'Refresh failed. Try again.',
       failed: 'Could not refresh. Try again.',
       stale: 'Refresh failed. Showing the previous result.',
       auth: 'Your sign-in has expired. Sign in again to check usage.',
@@ -193,14 +218,20 @@ export const en: Translations = {
       expired: 'Expired',
       expires: 'Expires',
       used: 'Used',
+      tokenUsed: 'Used',
       remaining: 'Remaining',
       fiveHour: '5-hour quota',
       week: 'Weekly quota',
       month: 'Monthly quota',
       reset: 'Resets',
+      resetsAt: time => `Resets ${time}`,
+      expiryText: date => date,
+      tokenExact: (remaining, used, total, unit) => {
+        const suffix = unit ? ` ${unit}` : ''
+        return `Remaining ${remaining}${suffix}, used ${used}${suffix}, total ${total}${suffix}`
+      },
       notStarted: 'Not started',
-      resetDue: 'Reset pending',
-      concurrency: 'Concurrent requests'
+      resetDue: 'Reset pending'
     },
     brand: 'UNIWORK',
     welcome: 'Welcome to UniWork',
@@ -3148,6 +3179,7 @@ export const en: Translations = {
   },
 
   messaging: {
+    connection: messagingConnectionCopy["en"],
     cards: {
       heading: 'Chat apps',
       description: 'Connect WeChat, DingTalk and other chat apps to receive and reply to messages from your phone.',
@@ -3856,6 +3888,13 @@ export const en: Translations = {
   },
 
   artifactShare: {
+    disclosure: "Anyone with the link can view this artifact. Your other files and conversations are not shared.",
+    checking: "Checking share status…",
+    createLink: "Create public link",
+    linkReady: "Public link is ready",
+    changedNotice: "The content has changed. The link still shows the previously published version.",
+    confirmUpdate: "Replace the published content with this version? The link will stay the same.",
+    confirmRevoke: "Revoke this public link? People with the link will no longer be able to open it.",
     originRequired: 'Only verified model artifacts can be shared. Uploads, derived files and unknown sources are blocked.',
     share: 'Share',
     shareArtifact: 'Share artifact',
@@ -5172,7 +5211,7 @@ export const en: Translations = {
   preview: {
     copyAll: 'Copy full text',
     saveAs: 'Save as',
-    exportFailed: 'Could not export this preview. Check that its content and images are ready.',
+    exportFailed: 'Could not export this preview. Please try again.',
     exportFormats: { md: 'Markdown (.md)', pdf: 'PDF (.pdf)', docx: 'Word (.docx)' },
     tab: 'Preview',
     closePane: 'Close preview pane',

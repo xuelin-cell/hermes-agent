@@ -1,3 +1,4 @@
+import { messagingConnectionCopy } from './messaging-connection'
 import { defineFieldCopy } from '@/app/settings/field-copy'
 
 import { defineLocale } from './define-locale'
@@ -27,6 +28,15 @@ export const zhHant = defineLocale({
       testFailed: '最近一次連線測試失敗',
       untested: '尚未測試連線'
     }
+  },
+  workspaceEditor: {
+    title: '編輯器',
+    capabilities: '技能與工具',
+    openProject: '請先開啟專案中的對話，再瀏覽及編輯檔案。',
+    selectFile: '選擇檔案開始編輯。',
+    unsupported: '無法編輯二進位、截斷或過大的檔案。',
+    refresh: '重新整理',
+    save: '儲存'
   },
   conversationShare: {
     sessionShare: '分享對話',
@@ -66,7 +76,7 @@ export const zhHant = defineLocale({
     transferNotStarted: '尚未開始',
     transferCancelled: '下載已取消',
     transferUploadStopped: '已停止傳送，請重新整理以核對雲端硬碟結果。',
-    transferUnknown: '上傳結果待確認，請勿立即重複上傳。請重新整理以核對雲端硬碟結果。',
+    transferUnknown: '暫時無法自動確認上傳結果，請重新整理檔案清單核對。',
     transferDownloadPartial: '部分檔案已儲存到本機，其餘檔案未完成，請查看傳輸記錄。',
     transferStopFailed: '未能停止傳輸，請再試一次。',
     downloadSaved: name => `${name} 已儲存到本機`,
@@ -92,8 +102,13 @@ export const zhHant = defineLocale({
       INVALID_RESPONSE: '服務傳回的資料不完整，請稍後重試。',
       SIZE_MISMATCH: '檔案未能完整儲存，請重試。',
       TRANSPORT_ERROR: '網路連線異常，請檢查網路。',
-      UPLOAD_INCOMPLETE: '上傳結果待確認，請勿立即重複上傳。請重新整理以核對雲端硬碟結果。',
-      UPLOAD_UNCONFIRMED: '上傳結果待確認，請勿立即重複上傳。請重新整理以核對雲端硬碟結果。',
+      OUTCOME_UNKNOWN: '暫時無法自動確認操作結果，請重新整理檔案清單核對。',
+      UPLOAD_CONFIRMATION_FAILED: '連續三次未在雲端硬碟清單中確認到此檔案，本次上傳失敗，請重試。',
+      UPLOAD_CONFIRMATION_UNAVAILABLE: '暫時無法自動確認上傳結果，請重新整理檔案清單核對。',
+      OPERATION_CONFIRMATION_UNAVAILABLE: '暫時無法自動確認操作結果，請重新整理檔案清單核對。',
+      UPLOAD_FAILED: '上傳失敗，請重新上傳。',
+      UPLOAD_INCOMPLETE: '上傳中斷，請重新上傳。',
+      UPLOAD_UNCONFIRMED: '暫時無法自動確認上傳結果，請重新整理檔案清單核對。',
       IPC_ERROR: '網路連線異常，請檢查網路。',
       AUTH_CHANGED: '登入狀態已變更，本次傳輸已停止。請在目前帳號下重試。',
     },
@@ -176,7 +191,8 @@ export const zhHant = defineLocale({
     restoreHint: '確定還原此項目嗎？資料夾中的內容也將一併還原。',
     recycleFailed: '垃圾桶未能完整載入，請重新整理後再還原檔案。',
     recycleEmpty: '垃圾桶為空',
-    operationUnknown: '暫時無法確認操作結果，請重新整理核對後再操作。',
+    operationVerifying: '正在確認操作結果，請稍候。',
+    operationUnknown: '暫時無法自動確認操作結果，請重新整理檔案清單核對。',
     operationPartial: '操作僅部分完成，請重新整理核對後再操作。',
     operationFailed: '操作未完成，請重新整理清單，並檢查登入狀態或操作權限。',
     personal: '個人雲端硬碟',
@@ -2383,6 +2399,7 @@ export const zhHant = defineLocale({
   },
 
   messaging: {
+    connection: messagingConnectionCopy["zh-hant"],
     cards: {
       heading: '聊天應用',
       description: '接入微信、釘釘、飛書等聊天應用，從手機接收及回覆訊息。',
@@ -2967,6 +2984,13 @@ export const zhHant = defineLocale({
   },
 
   artifactShare: {
+    disclosure: "取得連結的人都可以查看此產物，不會分享其他檔案或對話。",
+    checking: "正在檢查分享狀態…",
+    createLink: "產生公開連結",
+    linkReady: "公開連結已產生",
+    changedNotice: "內容已變更，連結目前仍顯示上次發布的版本。",
+    confirmUpdate: "是否以目前版本覆蓋已發布內容？連結位址保持不變。",
+    confirmRevoke: "確認取消分享？取消後，取得連結的人將無法再存取。",
     originRequired: '僅支援來源已確認的模型產物；上傳檔案、衍生產物及來源不明的檔案無法分享。',
     share: '分享',
     shareArtifact: '分享產物',
@@ -3204,15 +3228,7 @@ export const zhHant = defineLocale({
     placeholderStarting: '正在啟動 Hermes...',
     placeholderReconnecting: '正在重新連線至 Hermes…',
     placeholderFollowUp: '傳送後續訊息',
-    newSessionPlaceholders: [
-      '我們要建立什麼？',
-      '給 Hermes 一個任務',
-      '您在想什麼？',
-      '描述您需要什麼',
-      '我們該處理什麼？',
-      '盡管問',
-      '從一個目標開始'
-    ],
+    newSessionPlaceholders: ['今天想讓我幫您做什麼？'],
     followUpPlaceholders: [
       '傳送後續訊息',
       '補充更多脈絡',
@@ -4051,7 +4067,7 @@ export const zhHant = defineLocale({
   preview: {
     copyAll: '複製全文',
     saveAs: '另存新檔',
-    exportFailed: '匯出失敗，請確認預覽內容和圖片已準備好。',
+    exportFailed: '匯出預覽失敗，請重試。',
     exportFormats: { md: 'Markdown（.md）', pdf: 'PDF（.pdf）', docx: 'Word（.docx）' },
     tab: '預覽',
     closePane: '關閉預覽窗格',

@@ -89,7 +89,8 @@ const _MEDIA_EXT_ALTERNATION = [...MEDIA_DELIVERY_EXTS].sort((a, b) => b.length 
  */
 // 未加引号的交付路径在扩展名后的中文标点处结束，后面的说明仍属于正文。
 const _MEDIA_PATH_END = '(?=[\\s`"\'*_,;:)\\]}，。；：！？、」』）】]|MEDIA:|$)'
-const _MEDIA_PATH_ANCHORED = `(?:~/|/|[A-Za-z]:[/\\\\])\\S+?(?:[^\\S\\n]+\\S+?)*?\\.(?:${_MEDIA_EXT_ALTERNATION})${_MEDIA_PATH_END}`
+// 路径可以含空格，但空格后紧跟 MEDIA: 是下一个文件，不能并进同一路径。
+const _MEDIA_PATH_ANCHORED = `(?:~/|/|[A-Za-z]:[/\\\\])\\S+?(?:[^\\S\\n]+(?!MEDIA:)\\S+?)*?\\.(?:${_MEDIA_EXT_ALTERNATION})${_MEDIA_PATH_END}`
 const _MEDIA_PATH_RELATIVE = `[^\\s\`"]+?\\.(?:${_MEDIA_EXT_ALTERNATION})${_MEDIA_PATH_END}`
 
 // Bare-word fallback for paths the anchored branch misses (relative paths,
@@ -163,16 +164,14 @@ function mediaMarkdownEnd(text: string, start: number, angled: boolean): number 
   return -1
 }
 
+// 私用区字符包住序号，作为 Markdown 包装的占位符；不含空白，不会被路径规则当作行首或行尾。
+const MEDIA_WRAPPED_RE = new RegExp(`\\uE000(\\d+)\\uE001|${MEDIA_TOKEN_RE.source}`, 'g')
+
 /** 聊天渲染和产物收集共用包装与裸标记处理，保持顺序且每个标记只消费一次。 */
 function replaceMediaTags(text: string, replace: (value: string) => string): string {
-  /** 仅处理完整 Markdown 包装以外的片段。 */
-  const bare = (part: string) =>
-    part.replace(MEDIA_TOKEN_RE, (_match, lead: string, value: string | undefined, trailer: string, inline: string) =>
-      value === undefined ? replace(inline) : `${lead}${replace(value)}${trailer}`
-    )
-
   let cursor = 0
-  const result: string[] = []
+  let masked = ''
+  const wrapped: string[] = []
 
   for (const match of text.matchAll(MEDIA_MARKDOWN_START_RE)) {
     if (match.index < cursor) {
@@ -186,12 +185,24 @@ function replaceMediaTags(text: string, replace: (value: string) => string): str
       continue
     }
 
-    const value = text.slice(start, end).replace(match[1] ? />[\t ]*$/ : /[\t ]*$/, '')
-    result.push(bare(text.slice(cursor, match.index)), replace(value))
+    wrapped.push(text.slice(start, end).replace(match[1] ? />[\t ]*$/ : /[\t ]*$/, ''))
+    masked += `${text.slice(cursor, match.index)}${wrapped.length - 1}`
     cursor = end + 1
   }
 
-  return result.join('') + bare(text.slice(cursor))
+  // 包装先换成占位符再整段识别：裸标记仍按原文判断行首行尾，替换顺序与原文一致。
+  return (masked + text.slice(cursor)).replace(
+    MEDIA_WRAPPED_RE,
+    (match, index: string | undefined, lead: string, value: string | undefined, trailer: string, inline: string) => {
+      if (index !== undefined) {
+        const target = wrapped[Number(index)]
+
+        return target === undefined ? match : replace(target)
+      }
+
+      return value === undefined ? replace(inline) : `${lead}${replace(value)}${trailer}`
+    }
+  )
 }
 
 /** 将同一解析结果转为聊天媒体卡片链接。 */
