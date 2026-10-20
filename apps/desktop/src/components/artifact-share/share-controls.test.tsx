@@ -53,7 +53,7 @@ it('点击分享只打开弹窗，生成、更新和撤销分别确认，复制�
   expect(publish).not.toHaveBeenCalled()
   fireEvent.click(create)
   await within(dialog).findByRole('button', { name: 'Copy shared link' })
-  expect(publish).toHaveBeenCalledWith({ key: 'artifact:1', html: source.content, title: 'Report', source })
+  expect(publish).toHaveBeenCalledWith({ key: 'artifact:1', html: source.content, title: 'Report', source, ttlDays: 1 })
   expect($notifications.get().some(item => item.title === 'Published successfully')).toBe(true)
   fireEvent.click(within(dialog).getByRole('button', { name: 'Copy shared link' }))
   await waitFor(() => expect(writeClipboard).toHaveBeenCalledWith(record!.url))
@@ -79,7 +79,7 @@ it('点击分享只打开弹窗，生成、更新和撤销分别确认，复制�
   await within(dialog).findByText('Revoke this public link? People with the link will no longer be able to open it.')
   fireEvent.click(within(dialog).getByRole('button', { name: 'Revoke shared link' }))
   await within(dialog).findByRole('button', { name: 'Create public link' })
-  expect(revoke).toHaveBeenCalledWith('artifact:1')
+  expect(revoke).toHaveBeenCalledWith('artifact:1', 'id')
 })
 
 it('关闭正在准备的分享弹窗不发布，也不将迟到快照带入后续窗口', async () => {

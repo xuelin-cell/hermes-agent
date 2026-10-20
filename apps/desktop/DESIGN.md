@@ -413,6 +413,15 @@ so glass and message-bubble transparency do not reveal scrolling text.
   from `src/store/confirm.ts`, which renders this same primitive through the
   single `ConfirmHost` at the shell — the way `notify()` backs notifications.
 
+## Artifact share lifetime
+
+HTML/Markdown 产物分享弹窗默认 1 天，支持 1/3/7 天或自定义 1～7 天。
+修改有效期独立于内容更新，从保存时重新计算；更新内容默认保留原期限。
+会话内分享卡片与预览入口共用原生记录，并显示到期时间、到期状态和撤销入口。
+历史无期限链接保留原状态，用户可主动设置。过期后重新发布生成新链接。
+公司网关目前不接收期限，主进程启动补清理并每 5 分钟重试删除；删除失败时
+保留记录，界面明确提示公网链接可能暂时仍可访问。应用关闭期间延迟至下次启动。
+
 ## Chat, tools & boot surfaces
 
 - The transcript and composer are built on `@assistant-ui/react`. Extend the

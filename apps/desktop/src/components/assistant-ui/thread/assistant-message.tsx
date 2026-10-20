@@ -16,6 +16,7 @@ import { requestModelMenuToggle } from '@/app/chat/composer/focus'
 import { useComposerScope } from '@/app/chat/composer/scope'
 import { useSessionView } from '@/app/chat/session-view'
 import { SETTINGS_ROUTE } from '@/app/routes'
+import { AssistantPublishedArtifacts } from '@/components/artifact-share/published-artifacts'
 import { dispatchedTo } from '@/components/assistant-ui/thread/agent-delivery'
 import { ChangedFilesCard } from '@/components/assistant-ui/thread/changed-files-card'
 import {
@@ -315,6 +316,7 @@ const AssistantMessageBody: FC<AssistantMessageProps & { collapsedNotice?: null 
             {MESSAGE_PARTS}
             <AssistantStatusSlot />
             <AssistantPreviewEmbeds />
+            <AssistantPublishedArtifacts />
             <MessagePrimitive.Error>
               <ErrorPrimitive.Root
                 className="mt-1.5 flex flex-col gap-1.5 rounded-lg border border-[color-mix(in_srgb,var(--dt-destructive)_35%,transparent)] bg-[color-mix(in_srgb,var(--dt-destructive)_7%,transparent)] px-3 py-2 text-[0.78rem] leading-5 text-[color-mix(in_srgb,var(--dt-destructive)_78%,var(--ui-text-secondary))]"

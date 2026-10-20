@@ -3252,6 +3252,19 @@ export interface Translations {
   }
 
   artifactShare: {
+    validity: string
+    days: (count: number) => string
+    customValidity: string
+    editValidity: string
+    saveValidity: string
+    expiresAt: (date: string) => string
+    noExpiry: string
+    expired: string
+    cleanupPending: string
+    expiryNotice: string
+    invalidValidity: string
+    inactive: string
+    statusUnavailable: string
     disclosure: string
     checking: string
     createLink: string

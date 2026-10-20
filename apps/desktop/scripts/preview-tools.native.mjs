@@ -46,6 +46,8 @@ test('Markdown 三种另存为、全文复制、SVG 切换和 PDF 文件卡片',
     import {MaasAccountSidebar} from ${source('src/app/shell/maas-account-status.tsx')}
     import {FormatPreview} from ${source('src/app/chat/right-rail/formats/format-preview.tsx')}
     import {PreviewAttachment} from ${source('src/components/chat/preview-attachment.tsx')}
+    import {AssistantRuntimeProvider,ThreadPrimitive,useExternalStoreRuntime} from ${JSON.stringify(resolve('@assistant-ui/react'))}
+    import {AssistantPublishedArtifacts} from ${source('src/components/artifact-share/published-artifacts.tsx')}
     import {ShareControls} from ${source('src/components/artifact-share/share-controls.tsx')}
     import {ConversationShareDialog} from ${source('src/components/conversation-share/dialog.tsx')}
     import {ConversationSessionShareButton} from ${source('src/components/conversation-share/session-button.tsx')}
@@ -59,11 +61,17 @@ test('Markdown 三种另存为、全文复制、SVG 切换和 PDF 文件卡片',
     setSessionOwnerHint('fixture',{connectionId:'local',profile:'fixture'})
     window.fixtureTarget=()=>$conversationShareTarget.get()
     registry.register({id:'session-header-fixture',area:'panes',title:'Session header fixture',data:{placement:'main',headerActions:()=> <ConversationSessionShareButton sessionId="fixture"/>},render:()=> <div/>})
+    const shareMessages=[{id:'artifact-reply',role:'assistant',content:[{type:'tool-call',toolCallId:'publish',toolName:'publish_artifact',args:{path:'report.md'},argsText:'',result:{share_id:'native-artifact-share-1234',url:'https://ignored.example'}}],status:{type:'complete',reason:'stop'},createdAt:new Date(),metadata:{unstable_state:null,unstable_annotations:[],unstable_data:[],steps:[],custom:{}}}]
+    function PublishedFixture(){
+      const runtime=useExternalStoreRuntime({messages:shareMessages,isRunning:false,onNew:async()=>{}})
+      return <AssistantRuntimeProvider runtime={runtime}><ThreadPrimitive.Root><ThreadPrimitive.Messages components={{AssistantMessage:AssistantPublishedArtifacts}}/></ThreadPrimitive.Root></AssistantRuntimeProvider>
+    }
     function Fixture(){
+      const [showArtifact,setShowArtifact]=useState(false);window.fixtureArtifact=()=>setShowArtifact(true)
       const [file,setFile]=useState(${JSON.stringify(md)}); window.fixtureOpen=setFile
       const target={kind:'file',source:file,path:file,label:file.split(/[/\\\\]/).at(-1),url:'file://'+file,previewKind:file.endsWith('.svg')?'image':file.endsWith('.pdf')?'pdf':'text'}
       return <I18nProvider configClient={null} initialLocale="en"><MemoryRouter><div style={{display:'flex',height:'100vh'}}>
-        <aside style={{width:340,flexShrink:0}}><div style={{height:80,position:'relative'}}><TreeGroup node={{type:'group',id:'header-zone',active:'session-header-fixture',panes:['session-header-fixture'],tabStrip:'always'}} topEdge/></div><button onClick={()=>setFile(${JSON.stringify(md)})}>Markdown fixture</button><button onClick={()=>setFile(${JSON.stringify(svg)})}>SVG fixture</button><ShareControls artifactKey="fixture-share" html="<h1>Preview export</h1>" title="report.md" source={{sessionId:'fixture',content:'<h1>Preview export</h1>'}}/><PreviewAttachment target=${JSON.stringify(pdf)}/><MaasAccountSidebar/></aside>
+        <aside style={{width:340,flexShrink:0}}><div style={{height:80,position:'relative'}}><TreeGroup node={{type:'group',id:'header-zone',active:'session-header-fixture',panes:['session-header-fixture'],tabStrip:'always'}} topEdge/></div><button onClick={()=>setFile(${JSON.stringify(md)})}>Markdown fixture</button><button onClick={()=>setFile(${JSON.stringify(svg)})}>SVG fixture</button><ShareControls artifactKey="fixture-share" html="<h1>Preview export</h1>" title="report.md" source={{sessionId:'fixture',content:'<h1>Preview export</h1>'}}/><PreviewAttachment target=${JSON.stringify(pdf)}/><MaasAccountSidebar/>{showArtifact&&<PublishedFixture/>}</aside>
         <main style={{position:'relative',flex:1,minHeight:0,minWidth:0}}><FormatPreview key={file} reloadKey={0} target={target}/></main><ConversationShareDialog/>
       </div></MemoryRouter></I18nProvider>
     }createRoot(document.getElementById('root')).render(<Fixture/>);
@@ -115,7 +123,14 @@ test('Markdown 三种另存为、全文复制、SVG 切换和 PDF 文件卡片',
     // 分享仅替换为本机响应，弹窗与 preload 仍走正式组件，绝不上传测试内容。
     ipcMain.handle('hermes:artifact-share:eligibility',()=>({publishable:true}))
     ipcMain.handle('hermes:artifact-share:inspect',()=>globalThis.shareRecord)
-    ipcMain.handle('hermes:artifact-share:publish',(_event,input)=>{globalThis.sharePublications++;return globalThis.shareRecord={key:input.key,shareId:'fixture',url:'https://share.example.test/fixture',hash:createHash('sha256').update(input.html).digest('hex'),version:1}})
+    ipcMain.handle('hermes:artifact-share:publish',(_event,input)=>{globalThis.sharePublications++;return globalThis.shareRecord={key:input.key,shareId:'fixture',title:input.title,expiresAt:new Date(Date.now()+(input.ttlDays??1)*86400000).toISOString(),url:'https://share.example.test/fixture',hash:createHash('sha256').update(input.html).digest('hex'),version:1}})
+    ipcMain.handle('hermes:artifact-share:expiration',(_event,key,shareId,days)=>{
+      if(globalThis.expiryFails)throw new Error('expiry save failed')
+      if(!globalThis.shareRecord||globalThis.shareRecord.key!==key||globalThis.shareRecord.shareId!==shareId)throw new Error('share changed')
+      globalThis.shareRecord={...globalThis.shareRecord,expiresAt:new Date(Date.now()+days*86400000).toISOString()}
+      for(const window of BrowserWindow.getAllWindows())window.webContents.send('hermes:artifact-share:changed',key)
+      return globalThis.shareRecord
+    })
     ipcMain.handle('hermes:artifact-share:revoke',()=>{globalThis.shareRevocations++;globalThis.shareRecord=null})
     globalThis.conversationRecords=[];globalThis.conversationPublications=0;globalThis.conversationRevocations=0
     const documents=new Map()
@@ -210,9 +225,29 @@ test('Markdown 三种另存为、全文复制、SVG 切换和 PDF 文件卡片',
     await expect(share.getByRole('button', { name: 'Create public link' })).toBeEnabled()
     assert.equal(await app.evaluate(() => globalThis.sharePublications), 0)
     await page.screenshot({ path: path.join(root, 'share-confirm.png') })
+    await share.getByRole('combobox',{name:'Link lifetime'}).click()
+    await page.getByRole('option',{name:'3 days',exact:true}).click()
     await share.getByRole('button', { name: 'Create public link' }).click()
     await expect(share.getByRole('button', { name: 'Copy shared link' })).toBeVisible()
     await page.screenshot({ path: path.join(root, 'share-link.png') })
+    assert.ok(await app.evaluate(()=>Date.parse(globalThis.shareRecord.expiresAt)-Date.now())>2.9*86400000)
+    await share.getByRole('button',{name:'Change lifetime'}).click()
+    const expiryDialog=page.getByRole('dialog',{name:'Change lifetime'})
+    await expiryDialog.getByRole('combobox',{name:'Link lifetime'}).click()
+    await page.getByRole('option',{name:'Custom days',exact:true}).click()
+    await expiryDialog.getByRole('spinbutton',{name:'Custom days'}).fill('8')
+    await expect(expiryDialog.getByRole('button',{name:'Save lifetime'})).toBeDisabled()
+    await expiryDialog.getByRole('spinbutton',{name:'Custom days'}).fill('2')
+    await app.evaluate(()=>{globalThis.expiryFails=true})
+    await expiryDialog.getByRole('button',{name:'Save lifetime'}).click()
+    await expect(expiryDialog.getByRole('alert')).toContainText('expiry save failed')
+    await app.evaluate(()=>{globalThis.expiryFails=false})
+    await page.screenshot({path:path.join(root,'share-expiry.png')})
+    await expiryDialog.getByRole('button',{name:'Save lifetime'}).click()
+    await expect(expiryDialog).toHaveCount(0)
+    assert.ok(await app.evaluate(()=>Date.parse(globalThis.shareRecord.expiresAt)-Date.now())>1.9*86400000)
+    assert.equal(await app.evaluate(()=>globalThis.sharePublications),1)
+    await expect(share.getByRole('button',{name:'Copy shared link'})).toBeEnabled()
     await share.getByRole('button', { name: 'Revoke shared link' }).click()
     assert.equal(await app.evaluate(() => globalThis.shareRevocations), 0)
     await share.getByRole('button', { name: 'Revoke shared link' }).click()
@@ -221,6 +256,27 @@ test('Markdown 三种另存为、全文复制、SVG 切换和 PDF 文件卡片',
     assert.equal(await app.evaluate(() => globalThis.shareRevocations), 1)
     await share.getByRole('button', { name: 'Cancel' }).click()
     await expect(share).toHaveCount(0)
+    await app.evaluate(() => {globalThis.shareRecord={key:'fixture-share',shareId:'native-artifact-share-1234',title:'report.md',url:'https://share.example.test/native-artifact',version:1,hash:'snapshot'}})
+    await page.evaluate(() => window.fixtureArtifact())
+    const artifactCard=page.getByRole('region',{name:'Share artifact'})
+    await expect(artifactCard.getByText('report.md',{exact:true})).toBeVisible()
+    await artifactCard.getByRole('button',{name:'Copy shared link'}).click()
+    assert.equal(await app.evaluate(({clipboard})=>clipboard.readText()),'https://share.example.test/native-artifact')
+    await page.screenshot({path:path.join(root,'chat-artifact-share.png')})
+    await artifactCard.getByRole('button',{name:'Revoke shared link'}).click()
+    const revokeArtifact=page.getByRole('dialog',{name:'Revoke shared link'})
+    assert.equal(await app.evaluate(()=>globalThis.shareRevocations),1)
+    await revokeArtifact.getByRole('button',{name:'Revoke shared link'}).click()
+    await expect(artifactCard.getByText('Sharing was revoked or this link is no longer available.')).toBeVisible()
+    assert.equal(await app.evaluate(()=>globalThis.shareRevocations),2)
+    await expect(revokeArtifact).toHaveCount(0)
+    await app.evaluate(({BrowserWindow})=>{
+      globalThis.shareRecord={key:'fixture-share',shareId:'native-artifact-share-1234',title:'report.md',url:'https://share.example.test/native-artifact',version:1,hash:'snapshot',expiresAt:new Date(Date.now()-1000).toISOString()}
+      for(const window of BrowserWindow.getAllWindows())window.webContents.send('hermes:artifact-share:changed','fixture-share')
+    })
+    await expect(artifactCard.getByText('Expired; cleanup is pending. The public link may still be accessible.')).toBeVisible()
+    await expect(artifactCard.getByRole('button',{name:'Copy shared link'})).toHaveCount(0)
+    await page.screenshot({path:path.join(root,'chat-artifact-expired.png')})
     await expect(page.getByText('sample.pdf', { exact: true })).toBeVisible({ timeout: 30000 })
     await expect(page.getByRole('img', { name: 'sample.pdf' })).toHaveCount(0)
     await page.getByRole('button', { name: 'Copy full text' }).click()

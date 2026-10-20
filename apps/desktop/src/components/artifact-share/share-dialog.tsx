@@ -1,4 +1,4 @@
-import type { ArtifactShareSource } from '@hermes/shared/artifact-share'
+import { artifactShareActive, type ArtifactShareRecord, type ArtifactShareSource } from '@hermes/shared/artifact-share'
 import { useStore } from '@nanostores/react'
 import { useEffect, useRef, useState } from 'react'
 
@@ -15,14 +15,6 @@ export interface ArtifactShareTarget {
   title: string
   source: ArtifactShareSource
   sourceText?: string
-}
-
-export interface ArtifactShareRecord {
-  key: string
-  hash: string
-  shareId: string
-  url: string
-  version: number
 }
 
 interface ArtifactShareDialogProps extends ArtifactShareTarget {
@@ -146,7 +138,7 @@ export function ArtifactShareDialog({
   }, [artifactKey, sessionId, path, content, sourceText, literalHtml, scope, bridge, retry, onClose])
 
   /** 仅把已确认的快照交给原生发布服务；失败留在弹窗内，允许原位重试。 */
-  async function publish(): Promise<boolean> {
+  async function publish(ttlDays?: number): Promise<boolean> {
     const generation = owner.current.generation
 
     if (!prepared || owner.current.busy || !current(generation)) {
@@ -160,6 +152,7 @@ export function ArtifactShareDialog({
     try {
       const next = await bridge.artifactShare.publish({
         key: artifactKey,
+        ...(ttlDays === undefined ? {} : { ttlDays }),
         html: prepared.html,
         title,
         source: { sessionId, path, content, ...(path ? { hash: prepared.sourceHash } : {}) }
@@ -208,7 +201,7 @@ export function ArtifactShareDialog({
 
       setRecord(found)
 
-      if (!found) {
+      if (!found || !artifactShareActive(found)) {
         return false
       }
 
@@ -237,7 +230,7 @@ export function ArtifactShareDialog({
   async function revoke(): Promise<boolean> {
     const generation = owner.current.generation
 
-    if (owner.current.busy || !current(generation)) {
+    if (!record || owner.current.busy || !current(generation)) {
       return false
     }
 
@@ -246,7 +239,7 @@ export function ArtifactShareDialog({
     setError('')
 
     try {
-      await bridge.artifactShare.revoke(artifactKey)
+      await bridge.artifactShare.revoke(artifactKey, record.shareId)
 
       if (!current(generation)) {
         return false
@@ -272,7 +265,7 @@ export function ArtifactShareDialog({
   return (
     <ArtifactShareDialogView
       busy={busy}
-      changed={!!record && !!prepared && record.hash !== prepared.hash}
+      changed={!!record && artifactShareActive(record) && !!prepared && record.hash !== prepared.hash}
       error={error}
       loading={loading}
       onClose={onClose}

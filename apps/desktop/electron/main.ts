@@ -55,6 +55,8 @@ import {
 import { runAppInstallerChecker } from './appinstaller-checker'
 import { installApplicationMenuAfterFirstWindow } from './application-menu-startup'
 import { type ArtifactShareBridge, startArtifactShareBridge } from './artifact-share/bridge'
+import { startArtifactShareCleanup } from './artifact-share/expiry-cleanup'
+import { registerArtifactShareIpc } from './artifact-share/ipc'
 import { ArtifactShareService } from './artifact-share/service'
 import { stopBackendChild as stopBackendChildImpl, waitForBackendExit } from './backend-child'
 import {
@@ -17202,11 +17204,14 @@ const artifactShareService = new ArtifactShareService({
   }
 })
 
+const stopArtifactShareCleanup = startArtifactShareCleanup(artifactShareService, error => rememberLog(`[artifact-share] cleanup: ${String(error)}`))
+
 let artifactShareBridge: Promise<ArtifactShareBridge> | null = null
 
 /** 每个桌面进程仅启动一条本机分享桥，凭证只交给本进程创建的后端子进程。 */
 async function artifactShareBridgeEnv(): Promise<ArtifactShareBridge['env']> {
   artifactShareBridge ??= startArtifactShareBridge(artifactShareService)
+  void artifactShareService.cleanupExpired().catch(error => rememberLog(`[artifact-share] startup cleanup: ${String(error)}`))
 
   return (await artifactShareBridge).env
 }
@@ -17266,33 +17271,7 @@ installConversationShareIpc(ipcMain, assertArtifactShareWindow, {
   })
 })
 
-ipcMain.handle('hermes:artifact-share:inspect', async (event, key) => {
-  assertArtifactShareWindow(event)
-
-  return artifactShareService.inspect(key)
-})
-
-ipcMain.handle('hermes:artifact-share:eligibility', (event, source) => {
-  assertArtifactShareWindow(event)
-
-  return artifactShareService.eligibility(source)
-})
-
-ipcMain.handle('hermes:artifact-share:markUploaded', (event, sessionId) => {
-  assertArtifactShareWindow(event)
-  artifactShareService.markUploaded(sessionId)
-})
-
-ipcMain.handle('hermes:artifact-share:publish', async (event, input) => {
-  assertArtifactShareWindow(event)
-
-  return artifactShareService.publish(input)
-})
-
-ipcMain.handle('hermes:artifact-share:revoke', async (event, key) => {
-  assertArtifactShareWindow(event)
-  await artifactShareService.revoke(key)
-})
+registerArtifactShareIpc(ipcMain, artifactShareService, assertArtifactShareWindow)
 
 ipcMain.handle('hermes:readFileText', async (_event, filePath) => {
   const { resolvedPath, stat } = await resolveReadableFileForIpc(resolveIpcFileReadPath(filePath), {
@@ -17612,6 +17591,7 @@ app.on('before-quit', () => {
 // Close the pooled keep-alive sockets on quit so lingering connections can't
 // hold the event loop open or leak FDs past app teardown.
 app.on('will-quit', () => {
+  stopArtifactShareCleanup()
   stopDriveCredentialRenewal?.()
   void ACCOUNT_DRIVE_MCP.close()
   sshIsolatedKeepalives.stopAll()

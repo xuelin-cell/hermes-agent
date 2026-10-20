@@ -19,6 +19,7 @@ it('真实 preload 同时保留模板、语音、分享和云盘，并分别解�
     uniworkAsr: UniworkAsrBridge
     artifactShare: {
       inspect: (key: string) => Promise<unknown>
+      setExpiration: (key: string, shareId: string, days: number) => Promise<unknown>
       onChanged: (callback: (key: string) => void) => () => void
     }
     cloudDriveRequest: (request: CloudDriveRequest) => Promise<unknown>
@@ -33,6 +34,8 @@ it('真实 preload 同时保留模板、语音、分享和云盘，并分别解�
   expect(host.invoke).toHaveBeenLastCalledWith('hermes:uniwork-asr', { operation: 'start', language: 'zh' })
   await bridge.artifactShare.inspect('share-key')
   expect(host.invoke).toHaveBeenLastCalledWith('hermes:artifact-share:inspect', 'share-key')
+  await bridge.artifactShare.setExpiration('share-key', 'share-id', 3)
+  expect(host.invoke).toHaveBeenLastCalledWith('hermes:artifact-share:expiration', 'share-key', 'share-id', 3)
   await bridge.cloudDriveRequest({ route: '/asset-spaces' })
   expect(host.invoke).toHaveBeenLastCalledWith('hermes:maas-drive:request', { route: '/asset-spaces' })
   await bridge.cloudDriveAgentReady('work')

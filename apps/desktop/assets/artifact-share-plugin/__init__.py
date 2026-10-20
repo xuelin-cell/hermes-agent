@@ -19,11 +19,14 @@ SCHEMA = {
         "working directory (including subdirectories); no outputs folder or copy is required. "
         "Only origin-verified model files are eligible. User uploads, derived files and unknown "
         "files cannot be published; copying or renaming them does not remove this restriction. "
-        "A successful result includes the real public URL."
+        "New links expire after one day by default. Set ttl_days only when the user explicitly asks for a different lifetime (1 to 7 days). A successful result includes the real public URL and expiration."
     ),
     "parameters": {
         "type": "object",
-        "properties": {"path": {"type": "string", "description": "Path to a generated .html, .htm or .md file"}},
+        "properties": {
+            "path": {"type": "string", "description": "Path to a generated .html, .htm or .md file"},
+            "ttl_days": {"type": "integer", "minimum": 1, "maximum": 7, "description": "Lifetime in days; omit to use the default or preserve an existing link's expiration."},
+        },
         "required": ["path"],
     },
 }
@@ -69,6 +72,9 @@ def _handle_publish(args: dict, *, task_id: str | None = None, session_id: str |
     """按当前会话工作目录读取产物，并请求桌面主进程执行发布。"""
     if not task_id or not session_id:
         return json.dumps({"error": "无法确定当前会话，未发布产物。"}, ensure_ascii=False)
+    ttl_days = args.get("ttl_days")
+    if ttl_days is not None and (isinstance(ttl_days, bool) or not isinstance(ttl_days, int) or not 1 <= ttl_days <= 7):
+        return json.dumps({"error": "有效期必须为 1～7 天的整数。"}, ensure_ascii=False)
     raw_path = args.get("path")
     if not isinstance(raw_path, str) or not raw_path.strip():
         return json.dumps({"error": "请指定产物文件路径。"}, ensure_ascii=False)
@@ -103,10 +109,10 @@ def _handle_publish(args: dict, *, task_id: str | None = None, session_id: str |
 
     key = f"file:{session_id}:{candidate}"
     try:
-        record = call_bridge("/publish", {"key": key, "html": document, "title": candidate.name, "source": origin_source}, timeout=35)
+        record = call_bridge("/publish", {"key": key, "html": document, "title": candidate.name, "source": origin_source, **({"ttlDays": ttl_days} if ttl_days is not None else {})}, timeout=95)
     except Exception as error:
         return json.dumps({"error": f"分享失败：{error}"}, ensure_ascii=False)
-    return json.dumps({"share_id": record["shareId"], "url": record["url"], "version": record["version"]}, ensure_ascii=False)
+    return json.dumps({"share_id": record["shareId"], "url": record["url"], "version": record["version"], "expires_at": record.get("expiresAt")}, ensure_ascii=False)
 
 
 def register(ctx) -> None:

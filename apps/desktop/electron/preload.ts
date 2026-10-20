@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, webFrame, webUtils } from 'electron'
 
-import type { ArtifactShareSource } from '../../shared/src/artifact-share'
+import type { ArtifactSharePublishInput, ArtifactShareSource } from '../../shared/src/artifact-share'
 import type { ConversationShareApi } from '../../shared/src/conversation-share'
 
 import type { DesktopProfileRoute } from './desktop-profile'
@@ -73,11 +73,12 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     revoke: key => ipcRenderer.invoke('hermes:conversation-share:revoke', key)
   } satisfies ConversationShareApi,
   artifactShare: {
-    inspect: (key: string) => ipcRenderer.invoke('hermes:artifact-share:inspect', key),
-    publish: (input: { key: string; html: string; title: string; source: ArtifactShareSource }) => ipcRenderer.invoke('hermes:artifact-share:publish', input),
+    inspect: (query: string | { shareId: string }) => ipcRenderer.invoke('hermes:artifact-share:inspect', query),
+    publish: (input: ArtifactSharePublishInput) => ipcRenderer.invoke('hermes:artifact-share:publish', input),
+    setExpiration: (key: string, shareId: string, ttlDays: number) => ipcRenderer.invoke('hermes:artifact-share:expiration', key, shareId, ttlDays),
     eligibility: (source: ArtifactShareSource) => ipcRenderer.invoke('hermes:artifact-share:eligibility', source),
     markUploaded: (sessionId: string) => ipcRenderer.invoke('hermes:artifact-share:markUploaded', sessionId),
-    revoke: (key: string) => ipcRenderer.invoke('hermes:artifact-share:revoke', key),
+    revoke: (key: string, expectedShareId?: string) => ipcRenderer.invoke('hermes:artifact-share:revoke', key, expectedShareId),
     onChanged: (callback: (key: string) => void) => {
       // 转发主进程的分享状态变化，并在取消订阅时移除同一个监听器。
       const listener = (_event: Electron.IpcRendererEvent, key: string) => callback(key)

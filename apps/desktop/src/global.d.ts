@@ -1,5 +1,5 @@
 import type { GatewayWsUrlResult, OfficePreviewResult } from '@hermes/shared'
-import type { ArtifactShareEligibility, ArtifactShareSource } from '@hermes/shared/artifact-share'
+import type { ArtifactShareEligibility, ArtifactSharePublishInput, ArtifactShareRecord, ArtifactShareSource } from '@hermes/shared/artifact-share'
 import type { ConversationShareApi } from '@hermes/shared/conversation-share'
 import type { HermesSkin } from '@hermes/shared/skin'
 import type { TranslucencyState } from '@hermes/shared/translucency'
@@ -51,11 +51,12 @@ declare global {
       onMessagingStatus: (callback: (status: MessagingOperationStatus) => void) => () => void
       conversationShare: ConversationShareApi
       artifactShare: {
-        inspect: (key: string) => Promise<{ key: string; shareId: string; url: string; title: string; hash: string; version: number; updatedAt: string } | null>
-        publish: (input: { key: string; html: string; title: string; source: ArtifactShareSource }) => Promise<{ key: string; shareId: string; url: string; title: string; hash: string; version: number; updatedAt: string }>
+        inspect: (query: string | { shareId: string }) => Promise<ArtifactShareRecord | null>
+        publish: (input: ArtifactSharePublishInput) => Promise<ArtifactShareRecord>
+        setExpiration: (key: string, shareId: string, ttlDays: number) => Promise<ArtifactShareRecord>
         eligibility: (source: ArtifactShareSource) => Promise<ArtifactShareEligibility>
         markUploaded: (sessionId: string) => Promise<void>
-        revoke: (key: string) => Promise<void>
+        revoke: (key: string, expectedShareId?: string) => Promise<void>
         onChanged: (callback: (key: string) => void) => () => void
       }
       onCloudDriveMutationProgress?: (listener: (progress: CloudDriveMutationProgress) => void) => () => void
