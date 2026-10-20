@@ -26,8 +26,8 @@ function row(partial: Partial<KitRow> & Pick<KitRow, 'kind' | 'name'>): KitRow {
   }
 }
 
-describe('kit shelves', () => {
-  it('puts expert stubs on the expert shelf and kits on the kit shelf', () => {
+describe('套件页的分栏', () => {
+  it('专家放进专家栏，套件和团队放进套件栏', () => {
     const shelves = partition([
       row({ kind: 'kit', name: 'pptx' }),
       row({ kind: 'expert', name: 'equity-research', profile: 'equity-research' }),
@@ -38,7 +38,7 @@ describe('kit shelves', () => {
     expect(shelves.experts.map(item => item.name)).toEqual(['equity-research'])
   })
 
-  it('keeps an expert profile’s own row with the kits of that home', () => {
+  it('专家档案里自己的那一行留在该档案的套件栏', () => {
     const shelves = partition([row({ kind: 'expert', name: 'equity-research', self: true })])
 
     expect(shelves.kits.map(item => item.name)).toEqual(['equity-research'])
@@ -46,7 +46,7 @@ describe('kit shelves', () => {
   })
 })
 
-describe('kit search', () => {
+describe('搜索套件', () => {
   const kit = row({
     description: '用 pptxgenjs 生成演示文稿',
     display_name: 'PPT 写作',
@@ -55,19 +55,19 @@ describe('kit search', () => {
     phrases: ['做个PPT', '写幻灯片']
   })
 
-  it('matches the name, description and trigger phrases, ignoring case', () => {
+  it('按名字、描述和触发词搜索，不分大小写', () => {
     for (const query of ['', 'PPT-writer', '演示文稿', '幻灯片', 'ppt 写作']) {
       expect(matchesQuery(kit, query)).toBe(true)
     }
   })
 
-  it('needs every word to match', () => {
+  it('每个词都要对得上', () => {
     expect(matchesQuery(kit, 'ppt 基金')).toBe(false)
   })
 })
 
-describe('catalog rows from an older backend', () => {
-  it('get empty description, subtitle and phrases instead of undefined', () => {
+describe('旧版后端返回的目录行', () => {
+  it('缺的描述、副标题和触发词补成空值，不是 undefined', () => {
     const { description, phrases, profession, ...old } = row({ kind: 'kit', name: 'pptx' })
     const filled = normalizeRow(old as KitRow)
 
