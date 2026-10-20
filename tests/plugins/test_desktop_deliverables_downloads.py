@@ -48,7 +48,7 @@ def call(plugin, name, result, **kwargs):
 def test_generated_media_is_downloaded_and_carded_without_reply_path(
     delivery, monkeypatch, tool, extension
 ):
-    """图片、视频和语音都由真实下载落盘，不需要结束语声明产物。"""
+    """图片、视频和语音都由真实下载落盘；只有图片保留链接给后续工具，其余成品去掉链接。"""
     plugin, work = delivery
     monkeypatch.setattr("tools.url_safety._global_allow_private_urls", lambda: True)
     begin(plugin)
@@ -58,12 +58,17 @@ def test_generated_media_is_downloaded_and_carded_without_reply_path(
         result = call(plugin, "mcp__server__" + tool, original)
         assert result is not None
         data = json.loads(result)
-        assert data["url"] == url and data["metadata"] == "keep"
+        assert data["metadata"] == "keep" and "本机副本" in data["desktop_note"]
+        if tool == "txt2img_generate":
+            assert data["url"] == url
+        else:
+            assert "url" not in data and "signature=private" not in result
         output = Path(data["desktop_deliverables"][0])
         assert output.parent == work / "outputs"
-        assert output.suffix == "." + extension and output.read_bytes().startswith(
-            b"file-content"
-        )
+        # 没有描述参数时按工具起名，不再使用随机码。
+        names = {"png": "生成图片", "mp4": "生成视频", "wav": "语音"}
+        assert output.name == names[extension] + "." + extension
+        assert output.read_bytes().startswith(b"file-content")
         assert str(output) in finish(plugin)
         assert len(requests) == 1
 
@@ -77,7 +82,11 @@ def test_budget_duplicates_search_and_ssrf_boundaries(delivery, monkeypatch, cap
         for name in ("image_search", "web_search", "not_txt2img_generate"):
             assert call(plugin, name, text) is None
         assert not requests
-        assert call(plugin, "txt2img_generate", text) is None
+        # 内网链接被拒时不下载，但要说明没有本机副本，链接原样保留。
+        refused = json.loads(call(plugin, "txt2img_generate", text))
+        assert refused["url"].endswith("signature=private")
+        assert "没有本机副本" in refused["desktop_note"]
+        assert "desktop_deliverables" not in refused
         assert not requests
         assert "signature=private" not in caplog.text
         begin(plugin)
@@ -110,7 +119,8 @@ def test_failures_preserve_links_and_remove_partial_files(delivery, monkeypatch)
         ):
             begin(plugin)
             original = base + f"/{endpoint}.png?signature=keep-original"
-            assert call(plugin, "txt2img_generate", original) is None
+            failed = call(plugin, "txt2img_generate", original)
+            assert failed.startswith(original) and "没有本机副本" in failed
             assert finish(plugin) is None
             assert not list((work / "outputs").iterdir())
         # 正常跳转仍可用，失败后的下一轮也不受影响。
@@ -118,12 +128,12 @@ def test_failures_preserve_links_and_remove_partial_files(delivery, monkeypatch)
         monkeypatch.setattr(downloads, "TIMEOUT", 20)
         assert call(plugin, "txt2img_generate", base + "/redirect.png")
     begin(plugin)
-    assert call(plugin, "txt2img_generate", base + "/offline.png") is None
+    assert "没有本机副本" in call(plugin, "txt2img_generate", base + "/offline.png")
     assert finish(plugin) is None
 
 
 def test_trusted_generator_storage_matches_only_its_own_paths(delivery):
-    """可信范围只认对象存储域名、https 和各工具的成品目录，其它一律照常检查。"""
+    """可信范围只认对象存储域名、各工具实际使用的协议和成品目录，其它一律照常检查。"""
     from fallback_delivery.downloads import trusted
 
     host = "https://obs-nmhhht6.cucloud.cn"
@@ -135,6 +145,11 @@ def test_trusted_generator_storage_matches_only_its_own_paths(delivery):
     assert trusted("img2vid_generate", video)
     assert trusted("tts_synthesize", host + "/app-agent-prod/temp/a.wav")
     assert trusted("doc_translate", host + "/app-agent-prod/translate/a.pdf")
+    # 元景生图的成品链接是 http，只对生图放行，且限默认端口。
+    plain = image.replace("https://", "http://")
+    assert trusted("txt2img_generate", plain)
+    assert trusted("txt2img_generate", plain.replace(".cn/", ".cn:80/"))
+    assert not trusted("txt2img_generate", plain.replace(".cn/", ".cn:443/"))
     for name, url in [
         ("txt2img_generate", video),
         ("txt2vid_generate", image),
@@ -167,18 +182,19 @@ def test_trusted_storage_skips_private_check_but_not_redirect_limits(
     with serving() as (base, requests):
         begin(plugin)
         result = call(plugin, "txt2vid_generate", base + "/video.mp4?signature=x")
-        # 非 JSON 结果在原文后追加“已下载到本机”和本地路径。
+        # 非 JSON 结果去掉已下载的视频链接，末尾写明本机副本路径。
+        assert "signature=x" not in result and "本机副本" in result
         output = Path(result.rsplit("\n", 1)[-1])
         assert output.parent == work / "outputs" and output.read_bytes()
         assert len(requests) == 1
 
         begin(plugin)
-        assert call(plugin, "txt2vid_generate", base + "/redirect.mp4") is None
+        assert "没有本机副本" in call(plugin, "txt2vid_generate", base + "/redirect.mp4")
         assert requests[-1].startswith("/redirect")
         assert len(list((work / "outputs").iterdir())) == 1
 
         begin(plugin)
-        assert call(plugin, "txt2vid_generate", base + "/other.mp4") is None
+        assert "没有本机副本" in call(plugin, "txt2vid_generate", base + "/other.mp4")
         assert len(requests) == 2
 
 
@@ -200,7 +216,7 @@ def test_linked_outputs_directory_is_not_written(delivery, tmp_path, monkeypatch
     monkeypatch.setattr("tools.url_safety._global_allow_private_urls", lambda: True)
     begin(plugin)
     with serving() as (base, requests):
-        assert call(plugin, "txt2img_generate", base + "/image.png") is None
+        assert "没有本机副本" in call(plugin, "txt2img_generate", base + "/image.png")
         assert not requests
     assert not list(outside.iterdir())
 
@@ -247,3 +263,57 @@ def test_failed_mcp_result_never_downloads_the_link(delivery, monkeypatch):
         })
         assert call(plugin, "txt2img_generate", result) is None
         assert not requests
+
+
+def test_downloads_are_named_after_the_generation_prompt(delivery, monkeypatch):
+    """按描述起名：去掉非法字符并限长，同名加序号不覆盖，临时文件不留下。"""
+    plugin, work = delivery
+    monkeypatch.setattr("tools.url_safety._global_allow_private_urls", lambda: True)
+    prompt = '一只在草原上奔跑的豹子: "黄昏"/逆光\n高清写实风格，电影感构图，超长描述'
+    with serving() as (base, requests):
+        names = []
+        for _ in range(2):
+            begin(plugin)
+            data = json.loads(
+                call(
+                    plugin,
+                    "txt2img_generate",
+                    json.dumps({"url": base + "/a.png"}),
+                    args={"prompt": prompt},
+                )
+            )
+            names.append(Path(data["desktop_deliverables"][0]).name)
+    # 冒号、引号、斜杠去掉，换行并成空格，取前 24 个字。
+    stem = "一只在草原上奔跑的豹子 黄昏逆光 高清写实风格，"
+    assert names == [stem + ".png", stem + "-2.png"]
+    assert sorted(path.name for path in (work / "outputs").iterdir()) == sorted(names)
+
+
+def test_output_names_cover_translation_and_unsafe_prompts(delivery):
+    """翻译沿用原文件名并标明译本；设备保留名和空描述退回工具名称。"""
+    from fallback_delivery.downloads import output_stem
+
+    host = "https://obs-nmhhht6.cucloud.cn/app-agent-prod/translate/"
+    assert (
+        output_stem("doc_translate", host + "0123456789abcdef0123_季度报告_mono.pdf", {})
+        == "季度报告_翻译版"
+    )
+    assert (
+        output_stem("doc_translate", host + "x_dual.pdf", {"file_name": "C:/资料/方案.docx"})
+        == "方案_中英对照版"
+    )
+    assert output_stem("doc_translate", host + "abc.pdf", {}) == "翻译结果"
+    assert output_stem("mcp__1__txt2img_generate", "", {"prompt": "CON"}) == "生成图片"
+    assert output_stem("tts_synthesize", "", {"text": "  ...  "}) == "语音"
+    assert output_stem("tts_synthesize", "", {"text": "欢迎收听今天的节目"}) == "欢迎收听今天的节目"
+
+
+def test_downloaded_links_are_removed_from_text_without_touching_other_lines(delivery):
+    """去掉已下载链接时，只删除变成空标签的行，其它说明原样保留。"""
+    from fallback_delivery.downloads import strip_data, strip_links
+
+    url = "https://obs-nmhhht6.cucloud.cn/app-agent-prod/videos/a.mp4?sig=1"
+    text = f"视频已生成，时长 5 秒。\n视频下载链接：{url}\n[点击下载]({url})\n备注：其它链接 https://example.com 不动"
+    assert strip_links(text, [url]) == "视频已生成，时长 5 秒。\n点击下载\n备注：其它链接 https://example.com 不动"
+    data = {"content": [{"type": "text", "text": url}, {"type": "text", "text": "完成"}], "url": url, "n": 1}
+    assert strip_data(data, [url]) == {"content": [{"type": "text"}, {"type": "text", "text": "完成"}], "n": 1}

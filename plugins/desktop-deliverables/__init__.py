@@ -336,8 +336,8 @@ async def download_result(
     turn_id="",
     **kwargs,
 ):
-    """原结果保留，成功下载才向模型补本地路径；每轮最多四次，网络不占状态锁。"""
-    from .downloads import fetch, generator_urls
+    """下载成品并写明本机副本；未能保存的成品保留链接并说明交付方式。每轮最多四次，网络不占状态锁。"""
+    from .downloads import annotate, fetch, generator_urls
 
     try:
         data = json.loads(result) if isinstance(result, str) else result
@@ -358,28 +358,24 @@ async def download_result(
         ]
         turn.downloads.update(dict.fromkeys(wanted))
     root = local_cwd(turn.task_id) or turn.cwd
-    # 同批最多四个并行，避免顺序等待突破原生钩子的三十秒上限。
-    saved = await asyncio.gather(*(fetch(url, root, tool_name) for url in wanted))
+    # 同批最多四个并行，避免顺序等待突破原生钩子的三十秒上限；描述参数用于起文件名。
+    fetched = await asyncio.gather(
+        *(fetch(url, root, tool_name, args) for url in wanted)
+    )
     with _lock:
         active = current(key, turn_id) is turn
         if active:
-            turn.downloads.update(zip(wanted, saved))
-            paths = [turn.downloads[url] for url in urls if turn.downloads.get(url)]
-            for path in paths:
+            turn.downloads.update(zip(wanted, fetched))
+            saved = {url: turn.downloads[url] for url in urls if turn.downloads.get(url)}
+            for path in saved.values():
                 turn.paths[path] = None
     if not active:
-        for path in saved:
+        for path in fetched:
             if path:
                 path.unlink(missing_ok=True)
         return None
-    if not paths:
-        return None
-    if isinstance(data, dict):
-        return json.dumps(
-            {**data, "desktop_deliverables": [str(path) for path in paths]},
-            ensure_ascii=False,
-        )
-    return str(result) + "\n\n已下载到本机：\n" + "\n".join(str(path) for path in paths)
+    missing = [url for url in urls if url not in saved]
+    return annotate(tool_name, result, data, root, saved, missing)
 
 
 def end_turn(*, session_id="", turn_id="", **kwargs):
