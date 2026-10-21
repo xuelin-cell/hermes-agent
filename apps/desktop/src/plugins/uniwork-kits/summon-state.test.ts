@@ -6,7 +6,8 @@ import {
   clearExpertSummon,
   expertSummonBlocksSend,
   finishExpertSummon,
-  noteExpertSummonFailure
+  noteExpertSummonFailure,
+  slotWaitingMessage
 } from './summon-state'
 
 describe('召唤专家期间发送消息', () => {
@@ -38,6 +39,15 @@ describe('召唤专家期间发送消息', () => {
       '同时进行的专家已到上限（3 个）。等一位专家结束，再点一次。'
     )
     expect(expertSummonBlocksSend(null)).toBe(true)
+  })
+
+  it('名额已满时准备阶段就说明在等空位，连接超时也算名额用尽', () => {
+    beginExpertSummon('fund-diagnostician', '基金诊断专家', true)
+    expect($expertSummon.get()?.poolFull).toBe(true)
+    expect(slotWaitingMessage()).toBe('同时进行的专家已到上限（3 个），正在等空位。')
+
+    noteExpertSummonFailure('Timed out connecting to profile "fund-diagnostician"')
+    expect($expertSummon.get()?.error).toBe('同时进行的专家已到上限（3 个）。等一位专家结束，再点一次。')
   })
 
   it('已经存在的会话从不拦', () => {

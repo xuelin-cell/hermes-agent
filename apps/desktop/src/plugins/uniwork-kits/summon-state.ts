@@ -8,6 +8,8 @@ export interface ExpertSummon {
   displayName: string
   phase: 'preparing' | 'failed'
   error?: string
+  /** 点下去时专家名额已满。准备过程中就说明在等空位，失败时用上限文案，而不是「正在准备」或「后端没连上」。 */
+  poolFull?: boolean
 }
 
 export const $expertSummon = atom<ExpertSummon | null>(null)
@@ -21,9 +23,14 @@ function slotFullMessage(): string {
   return `同时进行的专家已到上限（${$poolLimits.get().maxBackends} 个）。等一位专家结束，再点一次。`
 }
 
-/** 开始一次召唤。同一时间只保留最后一次。 */
-export function beginExpertSummon(profile: string, displayName: string): void {
-  $expertSummon.set({ profile, displayName, phase: 'preparing' })
+/** 名额已满、召唤还在等空位时，卡片上替换「正在准备」。 */
+export function slotWaitingMessage(): string {
+  return `同时进行的专家已到上限（${$poolLimits.get().maxBackends} 个），正在等空位。`
+}
+
+/** 开始一次召唤。同一时间只保留最后一次。`poolFull` 为真时准备阶段就提示名额。 */
+export function beginExpertSummon(profile: string, displayName: string, poolFull = false): void {
+  $expertSummon.set({ profile, displayName, phase: 'preparing', poolFull })
 }
 
 /** 后端已经切到这位专家，准备状态结束。 */
@@ -48,11 +55,14 @@ export function noteExpertSummonFailure(message: string): void {
     return
   }
 
-  const readable = message.includes(SLOT_WAIT)
-    ? slotFullMessage()
-    : /timed out|retired|failed to open/i.test(message)
-      ? FAILED
-      : message.trim() || FAILED
+  // 渲染器等连接的超时原文是 “Timed out connecting”，不含 “waiting for a free slot”。
+  // 点下去时名额已满的，这次超时就是名额，不是后端没起来。
+  const readable =
+    message.includes(SLOT_WAIT) || (current.poolFull && /timed out/i.test(message))
+      ? slotFullMessage()
+      : /timed out|retired|failed to open/i.test(message)
+        ? FAILED
+        : message.trim() || FAILED
 
   $expertSummon.set({ ...current, phase: 'failed', error: readable })
 }

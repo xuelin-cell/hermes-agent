@@ -15,7 +15,7 @@ import { ExpertFace } from './expert-face'
 import { $expertDirectory } from './experts-store'
 import { fillPrompt, leaveExpert } from './summon'
 import { expertForProfile, tryAskingPrompts } from './summon-model'
-import { $expertSummon } from './summon-state'
+import { $expertSummon, slotWaitingMessage } from './summon-state'
 
 /** 输入框上方的专家栏：已在和专家对话时显示一行「正在和谁对话」；新草稿、准备中或准备失败时显示欢迎卡片，带准备进度和可以直接点的开场问题。 */
 export function ExpertBar() {
@@ -91,8 +91,14 @@ export function ExpertBar() {
       </div>
       {preparing ? (
         <p className="m-0 mt-2 text-xs text-(--ui-text-tertiary)">
-          {t('preparingExpert')}
-          {expert.display_name}
+          {summon?.poolFull ? (
+            slotWaitingMessage()
+          ) : (
+            <>
+              {t('preparingExpert')}
+              {expert.display_name}
+            </>
+          )}
         </p>
       ) : null}
       {failed ? <p className="m-0 mt-2 text-xs text-(--ui-text-tertiary)">{summon?.error}</p> : null}

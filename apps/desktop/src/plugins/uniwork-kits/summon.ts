@@ -15,6 +15,9 @@
 
 import { type ComposerMiddleware, host } from '@hermes/plugin-sdk'
 
+import { openPooledProfileCount } from '@/store/gateway'
+import { $poolLimits } from '@/store/pool-limits'
+
 import { recordSummon } from './api'
 import { connectorLoginBlocksSend, dismissConnectorLogin, offerConnectorLogin } from './connector-login'
 import { $expertDirectory } from './experts-store'
@@ -23,7 +26,6 @@ import {
   $expertSummon,
   beginExpertSummon,
   clearExpertSummon,
-  EXPERT_SUMMON_FAILED,
   expertSummonBlocksSend,
   finishExpertSummon,
   noteExpertSummonFailure
@@ -113,7 +115,9 @@ function prefillWhenReady(profile: string, text: string): void {
 export function summonExpert(expert: ExpertCard): void {
   const ticket = ++summonTicket
 
-  beginExpertSummon(expert.profile, expert.display_name)
+  const poolFull = openPooledProfileCount() >= $poolLimits.get().maxBackends
+
+  beginExpertSummon(expert.profile, expert.display_name, poolFull)
   // 取数要靠连接器、而通用助手还没连上时，先弹窗问要不要去连接（见 ./connector-login）。
   void offerConnectorLogin(expert)
   void recordSummon(expert.name)
@@ -168,12 +172,7 @@ export function summonExpert(expert: ExpertCard): void {
     const current = $expertSummon.get()
 
     if (current?.profile === expert.profile && current.phase === 'preparing') {
-      $expertSummon.set({
-        profile: expert.profile,
-        displayName: expert.display_name,
-        phase: 'failed',
-        error: EXPERT_SUMMON_FAILED
-      })
+      noteExpertSummonFailure(current.poolFull ? 'timed out while waiting for a free slot' : 'timed out')
     }
   }, READY_TIMEOUT_MS)
 
