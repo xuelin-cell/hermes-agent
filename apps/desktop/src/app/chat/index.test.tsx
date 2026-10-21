@@ -41,6 +41,9 @@ vi.mock('@/components/Backdrop', async () => {
 })
 
 vi.mock('@/components/prompt-overlays', () => ({ PromptOverlays: () => null }))
+vi.mock('@/components/chat/workspace-category-tabs', () => ({
+  WorkspaceCategoryTabs: () => <div role="tablist" aria-label="Workspace categories" />
+}))
 vi.mock('@/components/chat/vibe-hearts', () => ({ COMPOSER_HEART_CONFIG: {}, HeartField: () => null }))
 vi.mock('@/lib/model-options', () => ({
   currentModelCapabilities: () => undefined,
@@ -152,6 +155,7 @@ describe('ChatView render isolation', () => {
     }
 
     render(<ParentTickHarness />)
+    expect(screen.queryByRole('tablist', { name: 'Workspace categories' })).toBeNull()
 
     expect(screen.getByTestId('thread')).toBeTruthy()
     expect(threadRenderCount.current).toBe(1)
