@@ -312,7 +312,12 @@ def build_title_input(user_message: str, title_preview: str | None = None) -> st
     Keep enough of a separately typed request to preserve a useful instruction,
     then spend the remaining title budget on the beginning of the pasted topic.
     """
-    message = _summarize_user_message(user_message)
+    from agent.title_attachment_input import title_request_text
+
+    # desktop-mt: 两阶段命名共用净化输入，附件路径前缀不能抢占用户问题。
+    message = title_request_text(
+        _summarize_user_message(user_message), _CONTEXT_REFERENCE_TOKEN_RE, _CONTEXT_FOOTER_RE,
+    )
     preview = title_preview.strip() if isinstance(title_preview, str) else ""
     if not preview:
         return message[:MAX_TITLE_INPUT_CHARS]
