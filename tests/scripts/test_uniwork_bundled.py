@@ -79,6 +79,70 @@ def test_the_desktop_build_defaults_to_the_gitcode_source_and_keeps_a_chosen_one
     assert identity_environment(request, "bundled", chosen)["UNIWORK_BUNDLED_PLUGINS"] == "off"
 
 
+def test_a_required_build_fails_instead_of_shipping_without_kits(tmp_path):
+    """正式打包要求带内置包：拉不到、没配置、有坏包都让打包失败；明确写 off 仍然放行。"""
+    import pytest
+
+    from scripts.bundles.uniwork_bundled import REQUIRED_ENV, BundledPluginsError
+
+    repo_dir = tmp_path / "hermes-agent"
+    missing = (tmp_path / "nowhere").resolve().as_uri()
+    with pytest.raises(BundledPluginsError, match="could not fetch"):
+        stage_bundled_plugins(repo_dir, {"UNIWORK_BUNDLED_PLUGINS": missing, REQUIRED_ENV: "1"})
+    with pytest.raises(BundledPluginsError, match="no bundled plugins source"):
+        stage_bundled_plugins(repo_dir, {REQUIRED_ENV: "1"})
+    source = _config_repo(tmp_path / "config")
+    with pytest.raises(BundledPluginsError, match="lfs-pointer.zip, no-manifest.zip"):
+        stage_bundled_plugins(repo_dir, {"UNIWORK_BUNDLED_PLUGINS": str(source), REQUIRED_ENV: "1"})
+    assert not (repo_dir / TARGET).exists()
+    assert stage_bundled_plugins(repo_dir, {"UNIWORK_BUNDLED_PLUGINS": "off", REQUIRED_ENV: "1"}) == 0
+
+
+def test_the_staged_kits_record_their_source_and_config_commit(tmp_path, capsys):
+    """内置包旁边记下来源和配置仓库的提交号，日志里也打出来，安装包检查读的就是这份。"""
+    source = _config_repo(tmp_path / "config")
+    for broken in ("no-manifest.zip", "lfs-pointer.zip"):
+        (source / "plugins" / "uniwork-bundled" / "plugins" / broken).unlink()
+    git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"]
+    subprocess.run([*git, "init", "-q"], cwd=source, check=True)
+    subprocess.run([*git, "add", "-A"], cwd=source, check=True)
+    subprocess.run([*git, "commit", "-q", "-m", "bundle"], cwd=source, check=True)
+    commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=source, text=True).strip()
+
+    from scripts.bundles.uniwork_bundled import REQUIRED_ENV, SOURCE_RECORD
+
+    repo_dir = tmp_path / "hermes-agent"
+    url = source.resolve().as_uri()
+    assert stage_bundled_plugins(repo_dir, {"UNIWORK_BUNDLED_PLUGINS": url, REQUIRED_ENV: "1"}) == 1
+    record = json.loads((repo_dir / TARGET / SOURCE_RECORD).read_text(encoding="utf-8"))
+    assert record == {"source": url, "ref": "", "commit": commit, "plugins": ["good-kit.zip"], "skipped": []}
+    assert f"config commit {commit[:12]}" in capsys.readouterr().out
+
+
+def test_credentials_in_the_source_never_reach_the_log_or_the_installer():
+    """地址里带账号口令时，日志和安装包里只留主机和路径。"""
+    from scripts.bundles.uniwork_bundled import _public_source
+
+    assert _public_source("https://user:secret@gitcode.com/uni-ai/config.git") == "https://gitcode.com/uni-ai/config.git"
+    assert _public_source("git@gitcode.com:uni-ai/config.git") == "git@gitcode.com:uni-ai/config.git"
+    assert _public_source("D:\\work\\config") == "D:\\work\\config"
+
+
+def test_the_desktop_build_requires_the_kits_and_a_fixed_identity_unless_told_otherwise():
+    """正式打包默认要求带内置包、用固定身份；打包人显式设的值不被覆盖。"""
+    from types import SimpleNamespace
+
+    from scripts.bundles.desktop_inputs import identity_environment
+    from scripts.bundles.uniwork_bundled import REQUIRED_ENV
+
+    request = SimpleNamespace(validate_channel=lambda: None, channel_request=None, commit="a" * 40,
+                              version="1.0.0", bundle_env={}, release_epoch=None, tag=None)
+    env = identity_environment(request, "bundled", {})
+    assert env[REQUIRED_ENV] == "1" and env["UNIWORK_FIXED_IDENTITY"] == "1"
+    chosen = identity_environment(request, "bundled", {REQUIRED_ENV: "0", "UNIWORK_FIXED_IDENTITY": "0"})
+    assert chosen[REQUIRED_ENV] == "0" and chosen["UNIWORK_FIXED_IDENTITY"] == "0"
+
+
 def _staged_repo(tmp_path: Path) -> Path:
     """打包目录里带上和仓库里同一份的套件脚本依赖清单。"""
     from scripts.bundles.uniwork_bundled import SCRIPT_REQUIREMENTS

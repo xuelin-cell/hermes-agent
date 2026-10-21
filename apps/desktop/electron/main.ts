@@ -1374,7 +1374,8 @@ app.setName(APP_NAME)
 // need this, so gate it on Windows. (Fixes: desktop approval/turn notifications
 // never firing on Windows.)
 if (IS_WINDOWS) {
-  app.setAppUserModelId('com.xuelin.hermes.desktop.mt')
+  // desktop-mt: 安装版用安装程序写进快捷方式的同一个 AUMID（构建身份里的 appId），对不上就不弹通知；开发模式沿用原值。
+  app.setAppUserModelId(IS_PACKAGED ? PRODUCT_IDENTITY.appId : 'com.xuelin.hermes.desktop.mt')
 }
 
 // Seed the native About panel with the best-known Hermes version. This is

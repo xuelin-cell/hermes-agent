@@ -76,6 +76,10 @@ try {
         throw "Build completed but no EXE installer was found under $release."
     }
 
+    # Check identity, bundled kits, the bundled Python and path lengths before anyone hands the installer out.
+    & (Join-Path $sourceRoot 'scripts\bundles\check-windows-installer.ps1') `
+        -Installer $installer.FullName -Commit $commit -Scratch $buildTemp
+
     $sizeMiB = [math]::Round($installer.Length / 1MB, 1)
     Write-Host ''
     Write-Host 'Windows installer completed.' -ForegroundColor Green

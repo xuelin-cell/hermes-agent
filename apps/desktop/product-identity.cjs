@@ -42,18 +42,28 @@ const name = variants[store ? 'bundled' : (variant || '')]
 // never overwrite the stable feed file, and vice versa.
 const canary = /\+canary\.20\d{6}T\d{6}Z$/.test(process.env.HERMES_PAYLOAD_TAG || '')
 
+// desktop-mt: 我们的 Windows 安装包（bundled）用固定身份：名字、appId、exe 和安装目录都不带提交号，
+// 装新包就覆盖旧包。上游提交版带提交号是为了并存，可 MT 登录壳把数据目录和单实例锁统一成了 uniworker，
+// 并存的两版只会互抢。打包入口（scripts/bundles/desktop_inputs.py）默认设 UNIWORK_FIXED_IDENTITY=1；
+// 提交号照样记进构建信息，更新源也照样按提交版处理（不配）。
+const fixedIdentity = variant === 'bundled' && process.env.UNIWORK_FIXED_IDENTITY === '1'
+// 不用老 UniWork 的 com.uniwork.app：NSIS 按 appId 认旧版，会把老 UniWork 当成本应用的旧版本去卸载。
+const UNIWORK_APP_ID = 'com.uniwork.desktop'
+
 // Nonstable installs own their package family and local desktop state. The
 // seven-character commit suffix also names the CLI and fits MSIX's name cap.
 const buildCommitEnv = process.env.HERMES_BUILD_COMMIT || ''
 const buildCommit = /^[a-f0-9]{40}$/.test(buildCommitEnv) ? buildCommitEnv.slice(0, 7) : null
-const displayName = buildCommit
-  ? `${name.display} ${buildCommit}`
-  : canary
+const nameCommit = fixedIdentity ? null : buildCommit
+const nameCanary = !fixedIdentity && canary
+const displayName = nameCommit
+  ? `${name.display} ${nameCommit}`
+  : nameCanary
     ? `${name.display} Canary`
     : name.display
 
-const kebabSuffix = buildCommit ? `-${buildCommit}` : canary ? '-canary' : ''
-const pascalSuffix = buildCommit ? `Commit${buildCommit}` : canary ? 'Canary' : ''
+const kebabSuffix = nameCommit ? `-${nameCommit}` : nameCanary ? '-canary' : ''
+const pascalSuffix = nameCommit ? `Commit${nameCommit}` : nameCanary ? 'Canary' : ''
 const cliName = `${light ? 'hermes-light' : 'hermes'}${kebabSuffix}`
 if (store && (canary || buildCommit)) {
   throw new Error('Store packaging is only eligible for stable releases')
@@ -66,7 +76,7 @@ const identity = {
   store,
   light,
   displayName,
-  appId: `com.nousresearch.${name.kebab}${kebabSuffix}`,
+  appId: fixedIdentity ? UNIWORK_APP_ID : `com.nousresearch.${name.kebab}${kebabSuffix}`,
   // Store and commit builds do not publish a release feed.
   channel: store || buildCommit ? null : light ? (canary ? 'light-canary' : 'light') : (canary ? 'canary' : 'latest'),
   appNamePascal: `${name.pascal}${pascalSuffix}`,
