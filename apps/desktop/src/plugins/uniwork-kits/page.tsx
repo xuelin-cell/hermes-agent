@@ -254,7 +254,7 @@ function KitTile({
   )
 }
 
-/** 专家卡片：头像、名字、职业、简介和「召唤」按钮。 */
+/** 专家卡片：头像、名字、职业、简介和「召唤」按钮；专家包里的短问法不放（和召唤卡片一致）。 */
 function ExpertTile({
   accent,
   expert,
@@ -301,13 +301,6 @@ function ExpertTile({
       {row.description ? (
         <span className="line-clamp-3 text-[length:var(--conversation-caption-font-size)] leading-relaxed text-(--ui-text-secondary)">
           {row.description}
-        </span>
-      ) : null}
-      {expert.quick_prompts.length > 0 ? (
-        <span className="mt-auto flex flex-wrap items-center gap-1 pt-1">
-          {expert.quick_prompts.slice(1, 3).map(prompt => (
-            <Chip key={prompt}>{prompt}</Chip>
-          ))}
         </span>
       ) : null}
     </CardShell>
