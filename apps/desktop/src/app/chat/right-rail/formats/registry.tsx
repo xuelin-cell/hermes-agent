@@ -22,7 +22,7 @@ const LOADERS: Record<PreviewFormat, readonly RendererLoader[]> = {
   delimited: [() => import('./delimited-preview')],
   pdf: [pdf],
   sheet: [() => import('./sheet-preview'), pdf],
-  slides: [() => import('./slides-preview')],
+  slides: [() => import('./slides-preview'), () => import('./pptx-preview')],
   tiff: [() => import('./tiff-preview')],
   video: [media],
   word: [pdf, () => import('./docx-preview')]
@@ -38,15 +38,25 @@ for (const kind of Object.keys(LOADERS) as PreviewFormat[]) {
   FORMAT_RENDERERS[kind] = LOADERS[kind].map(load => lazy(load))
 }
 
+// 本机解析的 Word／PPT 候选只认新版格式，其它扩展名只走转换。
+const LOCAL_ONLY: Partial<Record<PreviewFormat, RegExp>> = { word: /\.docx$/i, slides: /\.pptx$/i }
+
+/** 本机解析不支持这个扩展名时只留第一个候选（转换）。 */
+function convertOnly(kind: PreviewFormat, path: string) {
+  const local = LOCAL_ONLY[kind]
+
+  return Boolean(local && !local.test(path))
+}
+
 /** 空闲时只预载卡片对应格式的代码；失败仍交给正式打开时的原有错误出口。 */
 export async function preloadFormat(kind: PreviewFormat, path: string): Promise<void> {
-  const loaders = kind === 'word' && !/\.docx$/i.test(path) ? LOADERS[kind].slice(0, 1) : LOADERS[kind]
+  const loaders = convertOnly(kind, path) ? LOADERS[kind].slice(0, 1) : LOADERS[kind]
   await Promise.all(loaders.map(load => load()))
 }
 
-/** 前端 Word 候选仅支持 docx；其它 Word 格式保留原转换失败原因与出口。 */
+/** 本机解析不支持的格式保留原转换失败原因与出口。 */
 export function formatRenderers(kind: PreviewFormat, path: string) {
   const renderers = FORMAT_RENDERERS[kind]
 
-  return kind === 'word' && !/\.docx$/i.test(path) ? renderers.slice(0, 1) : renderers
+  return convertOnly(kind, path) ? renderers.slice(0, 1) : renderers
 }
