@@ -140,7 +140,7 @@ export const zhHant = defineLocale({
   },
   workspaceEditor: {
     title: '編輯器',
-    capabilities: '技能與工具',
+    capabilities: '擴充功能',
     openProject: '請先開啟專案中的對話，再瀏覽及編輯檔案。',
     selectFile: '選擇檔案開始編輯。',
     unsupported: '無法編輯二進位、截斷或過大的檔案。',
@@ -3188,7 +3188,7 @@ export const zhHant = defineLocale({
     },
     nav: {
       'new-session': '新工作階段',
-      capabilities: '技能與工具',
+      capabilities: '擴充功能',
       messaging: '訊息平台',
       artifacts: '資料庫',
       cron: '排程工作'

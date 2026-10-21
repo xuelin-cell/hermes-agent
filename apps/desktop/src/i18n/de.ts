@@ -7,7 +7,7 @@ import { introDe } from './intro-de'
 export const deOverrides = {
   workspaceEditor: {
     title: 'Editor',
-    capabilities: 'Fähigkeiten und Werkzeuge',
+    capabilities: 'Erweiterungen',
     openProject: 'Öffnen Sie eine Projektunterhaltung, um Dateien zu durchsuchen.',
     selectFile: 'Wählen Sie eine Datei zum Bearbeiten.',
     unsupported: 'Binäre, gekürzte oder große Dateien können hier nicht bearbeitet werden.',
@@ -4093,7 +4093,7 @@ export const deOverrides = {
     profileRail: 'Profil-Leiste',
     nav: {
       'new-session': 'Neue Session',
-      capabilities: 'Fähigkeiten',
+      capabilities: 'Erweiterungen',
       messaging: 'Messaging',
       artifacts: 'Artefakte',
       cron: 'Geplante Jobs'

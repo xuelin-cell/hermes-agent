@@ -27,7 +27,7 @@ const RU_NOUN = (count: number | string, one: string, few: string, many: string)
 export const ru = defineLocale({
   workspaceEditor: {
     title: 'Редактор',
-    capabilities: 'Навыки и инструменты',
+    capabilities: 'Расширения',
     openProject: 'Откройте беседу проекта, чтобы просмотреть файлы.',
     selectFile: 'Выберите файл для редактирования.',
     unsupported: 'Двоичные, обрезанные и большие файлы нельзя редактировать здесь.',
@@ -2827,7 +2827,7 @@ export const ru = defineLocale({
     },
     nav: {
       'new-session': 'Новый сеанс',
-      capabilities: 'Возможности',
+      capabilities: 'Расширения',
       messaging: 'Сообщения',
       artifacts: 'Артефакты',
       cron: 'Запланированные задачи'

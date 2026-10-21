@@ -4,7 +4,7 @@ import { defineLocale } from './define-locale'
 export const ar = defineLocale({
   workspaceEditor: {
     title: 'المحرر',
-    capabilities: 'المهارات والأدوات',
+    capabilities: 'الإضافات',
     openProject: 'افتح محادثة مشروع لتصفح ملفاته.',
     selectFile: 'اختر ملفًا لتحريره.',
     unsupported: 'لا يمكن تحرير الملفات الثنائية أو المقتطعة أو الكبيرة هنا.',
@@ -2256,7 +2256,7 @@ export const ar = defineLocale({
     },
     nav: {
       'new-session': 'جلسة جديدة',
-      capabilities: 'المهارات',
+      capabilities: 'الإضافات',
       messaging: 'المراسلة',
       artifacts: 'العناصر',
       cron: 'المهام المجدولة'

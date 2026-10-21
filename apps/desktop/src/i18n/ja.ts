@@ -7,7 +7,7 @@ import { introJa } from './intro-ja'
 export const ja = defineLocale({
   workspaceEditor: {
     title: 'エディター',
-    capabilities: 'スキルとツール',
+    capabilities: '拡張機能',
     openProject: 'プロジェクトの会話を開いてファイルを参照してください。',
     selectFile: '編集するファイルを選択してください。',
     unsupported: 'バイナリ、省略された大きなファイルは編集できません。',
@@ -2634,7 +2634,7 @@ export const ja = defineLocale({
     },
     nav: {
       'new-session': '新しいセッション',
-      capabilities: 'スキルとツール',
+      capabilities: '拡張機能',
       messaging: 'メッセージング',
       artifacts: 'アーティファクト',
       cron: 'スケジュール済みジョブ'

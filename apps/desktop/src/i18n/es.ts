@@ -7,7 +7,7 @@ import { introEs } from './intro-es'
 export const esOverrides = {
   workspaceEditor: {
     title: 'Editor',
-    capabilities: 'Habilidades y herramientas',
+    capabilities: 'Extensiones',
     openProject: 'Abre una conversación del proyecto para explorar sus archivos.',
     selectFile: 'Selecciona un archivo para editar.',
     unsupported: 'Los archivos binarios, truncados o grandes no se pueden editar aquí.',
@@ -4081,7 +4081,7 @@ export const esOverrides = {
     profileRail: 'Barra de perfiles',
     nav: {
       'new-session': 'Nueva sesión',
-      capabilities: 'Capacidades',
+      capabilities: 'Extensiones',
       messaging: 'Mensajería',
       artifacts: 'Artefactos',
       cron: 'Tareas programadas'

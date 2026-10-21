@@ -6,7 +6,7 @@ import type { Translations } from './types'
 export const en: Translations = {
   workspaceEditor: {
     title: 'Editor',
-    capabilities: 'Skills & tools',
+    capabilities: 'Extensions',
     openProject: 'Open a project conversation to browse its files.',
     selectFile: 'Select a file to edit.',
     unsupported: 'Binary, truncated, or large files cannot be edited here.',
@@ -4203,7 +4203,7 @@ export const en: Translations = {
     profileRail: 'Profile rail',
     nav: {
       'new-session': 'New session',
-      capabilities: 'Capabilities',
+      capabilities: 'Extensions',
       messaging: 'Messaging',
       artifacts: 'Library',
       cron: 'Scheduled jobs'

@@ -7,7 +7,7 @@ import { introZh } from './intro-zh'
 export const zh = defineLocale({
   workspaceEditor: {
     title: '编辑器',
-    capabilities: '技能与工具',
+    capabilities: '扩展',
     openProject: '请先打开项目中的会话，再浏览和编辑文件。',
     selectFile: '选择一个文件开始编辑。',
     unsupported: '无法编辑二进制、截断或过大的文件。',
@@ -3963,7 +3963,7 @@ export const zh = defineLocale({
     },
     nav: {
       'new-session': '新建会话',
-      capabilities: '技能与工具',
+      capabilities: '扩展',
       messaging: '消息平台',
       artifacts: '资料库',
       cron: '定时任务'

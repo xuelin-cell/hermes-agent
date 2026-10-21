@@ -7,7 +7,7 @@ import { introFr } from './intro-fr'
 export const frOverrides = {
   workspaceEditor: {
     title: 'Éditeur',
-    capabilities: 'Compétences et outils',
+    capabilities: 'Extensions',
     openProject: 'Ouvrez une conversation du projet pour parcourir ses fichiers.',
     selectFile: 'Sélectionnez un fichier à modifier.',
     unsupported: 'Les fichiers binaires, tronqués ou volumineux ne peuvent pas être modifiés ici.',
@@ -4102,7 +4102,7 @@ export const frOverrides = {
     profileRail: 'Barre des profils',
     nav: {
       'new-session': 'Nouvelle session',
-      capabilities: 'Capacités',
+      capabilities: 'Extensions',
       messaging: 'Messagerie',
       artifacts: 'Artefacts',
       cron: 'Tâches planifiées'
