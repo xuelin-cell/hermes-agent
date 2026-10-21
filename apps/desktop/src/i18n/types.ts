@@ -388,6 +388,38 @@ export interface Translations {
     required: string
   }
   connectorsPage: {
+    recommended: {
+      qrHint: string
+      qrExpired: string
+      qrRefresh: string
+      connect: (name: string) => string
+      connectAction: string
+      connected: string
+      disconnect: string
+      tryIt: string
+      brand: string
+      credentials: string
+      credentialsHint: string
+      waiting: string
+      cancel: string
+      localOnly: string
+      nextSession: string
+      needAuth: string
+      saveAndConnect: string
+      saving: string
+      openChat: string
+      fields: Record<string, string>
+      placeholders: Record<string, string>
+      hints: Record<string, string>
+      guides: Record<string, { title: string; steps: string[]; link: string }>
+      tab: string
+      search: string
+      details: (name: string) => string
+      unavailable: string
+      unavailableHint: string
+      noMatches: string
+      catalog: Record<string, { name: string; description: string; provider: string }>
+    }
     mcpLocal: {
       hint: string
       profile: string

@@ -124,6 +124,11 @@ module.exports = {
   ...(process.platform === 'darwin' ? { afterSign: 'scripts/notarize.mjs' } : {}),
   extraResources: [
     {
+      from: 'services/open-connector',
+      to: 'open-connector',
+      filter: ['src/**', 'catalog/**', 'migrations/**', 'node_modules/**', 'desktop-entry.mjs', 'package.json', 'LICENSE.txt', 'NOTICE.md', 'README.desktop.md']
+    },
+    {
       from: 'build/install-stamp.json',
       to: 'install-stamp.json'
     },

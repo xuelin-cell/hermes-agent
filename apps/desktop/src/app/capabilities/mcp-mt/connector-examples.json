@@ -1,0 +1,150 @@
+{
+  "zh-CN": {
+    "generic": "介绍一下「{{name}}」能做什么，并帮我选择一个适合开始的使用场景。",
+    "mail": {
+      "today": "用「{{name}}」查看今天的重要邮件，列出发件人和内容摘要。",
+      "unread": "帮我汇总「{{name}}」中最近的未读邮件。",
+      "meetings": "从「{{name}}」的邮件中整理下周的会议安排，列出时间和地点。",
+      "search": "在「{{name}}」中搜索最近 7 天与“发票”有关的邮件。",
+      "followUp": "帮我找出「{{name}}」中需要回复或跟进的邮件，并列出待办事项。"
+    },
+    "amap": {
+      "weather": "用高德地图查询杭州今天的天气。",
+      "places": "用高德地图查找上海静安寺附近的咖啡店。",
+      "driving": "用高德地图规划从北京南站到天安门的驾车路线。",
+      "address": "用高德地图查询上海虹桥站的详细地址和经纬度。",
+      "transit": "用高德地图查询从杭州东站到西湖的公共交通路线。"
+    },
+    "wps": {
+      "list": "列出 WPS 云文档根目录下的文件和文件夹。",
+      "details": "查看根目录中第一个文件或文件夹的详细信息。",
+      "read": "读取根目录中第一份可以读取的文档，并概括主要内容。",
+      "folder": "在 WPS 云盘根目录创建一个名为“项目资料”的文件夹。",
+      "search": "在 WPS 中搜索包含“项目”的文件和文件夹。"
+    },
+    "youdao": {
+      "overview": "帮我列出有道云笔记根目录的笔记和文件夹，再查看当前未完成的待办事项。",
+      "search": "在有道云笔记中搜索包含“项目计划”的笔记，并总结搜索结果。",
+      "create": "在有道云笔记中创建一篇名为“项目记录”的笔记，内容为“项目启动时间：今天”。",
+      "read": "列出有道云笔记根目录；如果只有文件夹，继续打开第一个文件夹，并读取找到的第一篇笔记。",
+      "folder": "在有道云笔记根目录创建一个名为“项目资料”的文件夹。",
+      "todos": "查看有道云笔记中的待办事项，并按完成状态整理。"
+    },
+    "ima": {
+      "notebooks": "查看腾讯 ima 中的笔记文件夹；如果没有文件夹，告诉我当前没有笔记文件夹。",
+      "notes": "列出腾讯 ima 中的笔记。",
+      "readFirst": "如果当前有笔记，读取第一篇笔记并概括主要内容。",
+      "createNote": "在腾讯 ima 中创建一篇名为“项目记录”的笔记，内容为“项目启动时间：今天”。",
+      "knowledgeBases": "列出当前可以访问的腾讯 ima 知识库。"
+    },
+    "qcc": {
+      "company": "用企查查查询“面壁智能”的企业基本信息，并整理注册资本、成立时间和法定代表人。",
+      "shareholders": "用企查查查询“面壁智能”的股东和出资结构，并按持股比例整理。",
+      "risk": "用企查查查看这家公司近期是否有经营风险、司法风险或行政处罚记录。",
+      "ipr": "用企查查查询这家公司名下的商标、专利和软件著作权情况。",
+      "executives": "用企查查整理这家公司的董监高和主要人员信息。"
+    },
+    "eastmoney": {
+      "market": "用东方财富查询贵州茅台最近 5 个交易日的行情表现，并整理成交量和关键波动。",
+      "screener": "用东方财富筛选净利润同比增长且市盈率最低的 50 只股票。",
+      "news": "用东方财富检索 AI 硬件板块近期券商观点和重要资讯。",
+      "macro": "用东方财富查询中国最新 CPI、PPI 和 M2 数据，并总结趋势。",
+      "tools": "查看东方财富 MCP 当前可用的工具，并说明各自适合什么场景。"
+    },
+    "ifind": {
+      "finance": "用同花顺 iFinD 查询贵州茅台最近一年的股价走势，并总结关键波动。",
+      "fundamentals": "用同花顺 iFinD 查询比亚迪的最新财务指标和估值水平。",
+      "enterprise": "用同花顺 iFinD 查询宁德时代的企业工商信息和主要股东。",
+      "law": "用同花顺 iFinD 检索与新公司法股东出资责任相关的法条和案例。",
+      "tools": "查看同花顺 iFinD 当前可用的工具，并说明各自适合什么场景。"
+    },
+    "aminer": {
+      "paperSearch": "用 AMiner 搜索最近两年与大模型推理相关的高被引论文，并按年份整理。",
+      "scholar": "用 AMiner 查询一位学者的研究方向、代表论文和主要统计指标。",
+      "organization": "用 AMiner 查询清华大学人工智能相关机构的论文和学者。",
+      "patent": "用 AMiner 搜索与多模态大模型相关的专利，并整理申请人和发明人。",
+      "recommend": "用 AMiner 按“AI Agent”和“强化学习”主题推荐 10 篇论文。"
+    },
+    "wecom": {
+      "members": "查看企业微信通讯录中的成员。",
+      "scheduleToday": "查看今天的企业微信日程。",
+      "meetingsToday": "查看今天的企业微信会议。",
+      "todos": "查看企业微信中我最近的待办，按截止时间整理成清单。",
+      "createDoc": "创建一个名为“项目记录”的企业微信文档，写入项目目标、当前进展和下一步计划。"
+    }
+  },
+  "en": {
+    "generic": "Explain what {{name}} can do and help me choose a use case to start with.",
+    "mail": {
+      "today": "Use {{name}} to list today’s important emails with senders and summaries.",
+      "unread": "Summarize the recent unread emails in {{name}}.",
+      "meetings": "Use emails in {{name}} to list next week’s meetings, including times and locations.",
+      "search": "Search {{name}} for emails about invoices from the last 7 days.",
+      "followUp": "Find emails in {{name}} that need a reply or follow-up and list the action items."
+    },
+    "amap": {
+      "weather": "Use Amap to check today’s weather in Hangzhou.",
+      "places": "Use Amap to find cafés near Jing’an Temple in Shanghai.",
+      "driving": "Use Amap to plan a driving route from Beijing South Railway Station to Tiananmen.",
+      "address": "Use Amap to find the address and coordinates of Shanghai Hongqiao Railway Station.",
+      "transit": "Use Amap to find a public transit route from Hangzhou East Railway Station to West Lake."
+    },
+    "wps": {
+      "list": "List the files and folders in the WPS cloud document root.",
+      "details": "Show details for the first file or folder in the root directory.",
+      "read": "Read the first readable document in the root directory and summarize its main content.",
+      "folder": "Create a folder named “Project Materials” in the WPS cloud-drive root.",
+      "search": "Search WPS for files and folders containing “project”."
+    },
+    "youdao": {
+      "overview": "List the notes and folders in the Youdao Note root directory, then show the currently unfinished todos.",
+      "search": "Search Youdao Note for notes containing “project plan” and summarize the results.",
+      "create": "Create a Youdao note named “Project Log” with the content “Project start date: today”.",
+      "read": "List the Youdao Note root directory; if it only contains folders, open the first folder and read the first note found.",
+      "folder": "Create a folder named “Project Materials” in the Youdao Note root directory.",
+      "todos": "Review the todos in Youdao Note and organize them by completion status."
+    },
+    "ima": {
+      "notebooks": "Show the note folders in Tencent ima; if there are none, tell me that no note folders exist.",
+      "notes": "List the notes in Tencent ima.",
+      "readFirst": "If any notes exist, read the first one and summarize its main content.",
+      "createNote": "Create a Tencent ima note named “Project Log” with the content “Project start date: today”.",
+      "knowledgeBases": "List the Tencent ima knowledge bases I can currently access."
+    },
+    "qcc": {
+      "company": "Use Qichacha to look up basic company information for \"Mianbi Intelligence\", including registered capital, founding date, and legal representative.",
+      "shareholders": "Use Qichacha to look up the shareholders and ownership structure of \"Mianbi Intelligence\", sorted by ownership ratio.",
+      "risk": "Use Qichacha to check whether this company has recent business, litigation, or administrative penalty risks.",
+      "ipr": "Use Qichacha to look up this company's trademarks, patents, and software copyrights.",
+      "executives": "Use Qichacha to summarize this company's directors, supervisors, executives, and key personnel."
+    },
+    "eastmoney": {
+      "market": "Use Eastmoney to summarize Kweichow Moutai's price action over the last 5 trading days, including volume and key moves.",
+      "screener": "Use Eastmoney to screen the 50 lowest-PE stocks with positive year-over-year profit growth.",
+      "news": "Use Eastmoney to search recent brokerage views and major news about the AI hardware sector.",
+      "macro": "Use Eastmoney to query China's latest CPI, PPI, and M2 data and summarize the trend.",
+      "tools": "Show the tools currently available through Eastmoney MCP and explain when to use each one."
+    },
+    "ifind": {
+      "finance": "Use iFinD to look up the past year of price movement for Kweichow Moutai and summarize the key swings.",
+      "fundamentals": "Use iFinD to fetch BYD's latest financial ratios and valuation levels.",
+      "enterprise": "Use iFinD to look up the business registration and major shareholders for CATL.",
+      "law": "Use iFinD to search statutes and cases on shareholder capital-contribution liability under the new Company Law.",
+      "tools": "Show the tools currently available through iFinD and explain when to use each one."
+    },
+    "aminer": {
+      "paperSearch": "Use AMiner to find highly cited papers from the past two years on large-model reasoning, organized by year.",
+      "scholar": "Use AMiner to summarize a scholar's research interests, representative papers, and key metrics.",
+      "organization": "Use AMiner to find AI-related scholars and papers associated with Tsinghua University.",
+      "patent": "Use AMiner to search for multimodal large-model patents and summarize applicants and inventors.",
+      "recommend": "Use AMiner to recommend 10 papers about AI agents and reinforcement learning."
+    },
+    "wecom": {
+      "members": "Show the members in the WeCom contact directory.",
+      "scheduleToday": "Show today's WeCom schedule.",
+      "meetingsToday": "Show today's WeCom meetings.",
+      "todos": "Review my recent WeCom todos and organize them by due date.",
+      "createDoc": "Create a WeCom document named “Project Log” with sections for goals, current progress, and next steps."
+    }
+  }
+}

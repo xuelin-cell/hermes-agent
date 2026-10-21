@@ -337,6 +337,8 @@ import { createLocalBackendLifecycle, waitForTeardown } from './local-backend-li
 import { resolveIpcFileReadPath, resolveMediaStreamFile, resolvePreviewTargetPath } from './local-read-path'
 import { localSkinProfileKey, readLocalSkinPayload } from './local-skin'
 import { ACTIVE_LOG_POLL_MS, planLogRotation, reclaimActiveLogIfOversized } from './log-rotation'
+import { AgentMailCloudStateClient } from './agent-mail/cloud-state'
+import { AGENT_MAIL_CHANNEL } from './agent-mail/contract'
 import { installAccountIpc } from './login/account-ipc'
 import { currentDesktopAccount, currentDesktopAsrIdentity, currentDesktopIdentity, currentDesktopLocalContext, sealDesktopAccount } from './login/bootstrap'
 import { CloudDriveClient } from './login/cloud-drive'
@@ -344,6 +346,8 @@ import { createDriveArtifactResolver } from './login/cloud-drive-artifact-source
 import { CloudDriveMcp } from './login/cloud-drive-mcp'
 import { installDriveCredentialRenewal } from './login/cloud-drive-renewal'
 import { CloudDriveTokenStore } from './login/cloud-drive-token-store'
+import { CONNECTOR_CHANNEL } from './open-connector/contract'
+import { ConnectorManager } from './open-connector/manager'
 import { registerMachineProfile } from './machine-profile'
 import { createMainProcessLagWatchdog } from './main-process-lag-watchdog'
 import { ensureMainWindow } from './main-window-lifecycle'
@@ -681,6 +685,23 @@ const ACCOUNT_OFFICE_PREVIEW = createOfficePreviewService(ACCOUNT_RUNTIME.deskto
 })
 
 const ACCOUNT_DRIVE_MCP = new CloudDriveMcp(ACCOUNT_DRIVE_CLIENT, ACCOUNT_RUNTIME.home, ACCOUNT_RUNTIME.workspace)
+const ACCOUNT_CONNECTORS = new ConnectorManager({
+  home: ACCOUNT_RUNTIME.home,
+  runtimeDirectory: IS_PACKAGED ? path.join(process.resourcesPath, 'open-connector') : path.join(APP_ROOT, 'services', 'open-connector'),
+  executable: process.execPath,
+  active: () => currentDesktopLocalContext() === ACCOUNT_RUNTIME,
+  identity: currentDesktopIdentity,
+  cloudState: new AgentMailCloudStateClient(currentDesktopIdentity, electronNet.fetch),
+  encrypt: value => {
+    if (!safeStorage.isEncryptionAvailable() || (process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text')) {
+      throw new Error('请先解锁系统密钥环，再连接服务。')
+    }
+    return safeStorage.encryptString(value)
+  },
+  decrypt: value => safeStorage.decryptString(value),
+  api: request => handleHermesApiRequest(request),
+  openExternal: url => shell.openExternal(url)
+})
 
 const ACCOUNT_DRIVE_ARTIFACT = createDriveArtifactResolver({
   workspace: ACCOUNT_RUNTIME.workspace,
@@ -693,6 +714,7 @@ installAccountIpc(
   () => DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString(),
   currentDesktopAccount,
   async () => {
+    await ACCOUNT_CONNECTORS.close()
     await ACCOUNT_DRIVE_MCP.close()
     await logoutDesktopAccount()
   },
@@ -11783,6 +11805,7 @@ async function runPoolBackendStart(
   installArtifactSharePlugin(profile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', profile), app.getAppPath())
 
   // desktop-mt: 仅在本地后端启动前维护对应 Profile 的内置 MCP 记录。
+  await ACCOUNT_CONNECTORS.prepare(profile).catch(() => console.warn('[connectors] Runtime unavailable; open Connectors to retry.'))
   await ACCOUNT_DRIVE_MCP.prepare(profile)
   assertPoolEntryStillOwned(poolKey, entry, backendPool, localBackendLifecycle.signal)
 
@@ -12800,6 +12823,7 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
     const parentIdentityEnv = parentWatchdogEnv(process.pid, parentStartMarker, backendNonce)
 
     // desktop-mt: 账号云盘工具由 Electron 监听回环，Agent 沿用原生 MCP 发现和调用。
+    await ACCOUNT_CONNECTORS.prepare(profile).catch(() => console.warn('[connectors] Runtime unavailable; open Connectors to retry.'))
     await ACCOUNT_DRIVE_MCP.prepare(profile)
     backendConnectionState.assertCurrentAttempt(connectionAttempt)
 
@@ -17264,6 +17288,16 @@ ipcMain.handle('hermes:messaging:status', event => {
   return desktopMessaging.status()
 })
 
+ipcMain.handle(CONNECTOR_CHANNEL, async (event, input) => {
+  assertArtifactShareWindow(event)
+  return ACCOUNT_CONNECTORS.request(input)
+})
+
+ipcMain.handle(AGENT_MAIL_CHANNEL, async (event, input) => {
+  assertArtifactShareWindow(event)
+  return ACCOUNT_CONNECTORS.agentMail(input)
+})
+
 installConversationShareIpc(ipcMain, assertArtifactShareWindow, {
   identity: () => {
     const identity = currentDesktopIdentity()
@@ -17601,6 +17635,7 @@ app.on('before-quit', () => {
 app.on('will-quit', () => {
   stopArtifactShareCleanup()
   stopDriveCredentialRenewal?.()
+  void ACCOUNT_CONNECTORS.close()
   void ACCOUNT_DRIVE_MCP.close()
   sshIsolatedKeepalives.stopAll()
   destroyKeepaliveAgents()

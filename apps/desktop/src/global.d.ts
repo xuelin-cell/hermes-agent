@@ -4,6 +4,7 @@ import type { ConversationShareApi } from '@hermes/shared/conversation-share'
 import type { HermesSkin } from '@hermes/shared/skin'
 import type { TranslucencyState } from '@hermes/shared/translucency'
 
+import type { AgentMailRequest, AgentMailResult } from '../electron/agent-mail/contract'
 import type { ScreenshotApi } from '../electron/command-screenshot-types'
 import type { MessagingOperationStatus, MessagingSetupRequest, MessagingSetupResult } from '../electron/entry_local/messaging-contract'
 import type { UniAgentGateReconnectResult } from '../electron/entry_local/uniagentgate-contract'
@@ -17,6 +18,7 @@ import type {
   LoginAccount
 } from '../electron/login/contract'
 import type { MachineProfile } from '../electron/machine-profile'
+import type { LocalConnectorRequest, LocalConnectorResult } from '../electron/open-connector/contract'
 import type { HermesNotification } from '../electron/notification-types'
 import type { PoolLimits } from '../electron/pool-limits'
 import type { PreviewExport, PreviewExportResult } from '../electron/preview-export'
@@ -41,6 +43,7 @@ export type DesktopMachineProfile = MachineProfile
 declare global {
   interface Window {
     hermesDesktop: {
+      agentMail: (input: AgentMailRequest) => Promise<AgentMailResult>
       /** 只读本次已准备账号的脱敏信息，运行中到期仍返回原期限。 */
       /** 仅返回当前账号套餐展示信息，不接受页面身份参数。 */
       getPlanUsage?: () => Promise<PlanUsageResult>
@@ -63,6 +66,7 @@ declare global {
       }
       onCloudDriveMutationProgress?: (listener: (progress: CloudDriveMutationProgress) => void) => () => void
       cloudDriveRequest: (input: CloudDriveRequest) => Promise<unknown>
+      localConnectors: (input: LocalConnectorRequest) => Promise<LocalConnectorResult>
       /** 取得完整办公目录；主进程负责认证和校验配置。 */
       getWelcomeCatalog?: (locale: WelcomeLocale) => Promise<WelcomePayload>
       uniworkAsr?: UniworkAsrBridge

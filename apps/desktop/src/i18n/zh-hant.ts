@@ -11,6 +11,91 @@ export const zhHant = defineLocale({
     }
   },
   connectorsPage: {
+    recommended: {
+      qrHint: '使用企業微信掃碼建立並授權機器人，也可在下方手動填寫 Bot ID / Secret。',
+      qrExpired: '二維碼已過期，請重新整理後重試。',
+      qrRefresh: '重新整理二維碼',
+      connect: (name: string) => `連接 ${name}`,
+      connectAction: '連接',
+      connected: '已連接',
+      disconnect: '中斷連接',
+      tryIt: '試試這樣用',
+      brand: '元景數字員工',
+      credentials: '填寫連接資訊',
+      credentialsHint: '憑證在本機加密儲存。郵箱請填寫開啟 IMAP/SMTP 後產生的授權碼，而不是登入密碼。',
+      waiting: '請在瀏覽器完成授權，此頁面會自動更新。',
+      cancel: '取消',
+      localOnly: '推薦連接器僅支援本機桌面後端。遠端 MCP 服務請在 MCP 分頁管理。',
+      nextSession: '已就緒，可在新聊天使用；現有對話保持原工具集。',
+      fields: {
+        email: '郵箱地址',
+        authorizationCode: '授權碼',
+        apiKey: 'API Key',
+        clientId: 'Client ID',
+        botId: 'Bot ID',
+        secret: 'Secret'
+      },
+      tab: '推薦',
+      search: '搜尋連接器',
+      details: (name: string) => `查看${name}`,
+      unavailable: '暫未開放連線',
+      unavailableHint: '連接器授權服務尚未接入。已有 MCP 服務可在 MCP 分頁中新增和管理。',
+      noMatches: '沒有相符的連接器',
+      catalog: {
+        qq_mail: {
+          name: 'QQ 郵箱',
+          description: '收發、搜尋和整理 QQ 郵件。連接後可讓 Agent 讀取郵件內容、彙整郵件線索、處理郵件資訊。',
+          provider: 'Tencent'
+        },
+        netease_mail: {
+          name: '網易郵箱',
+          description:
+            '收發、搜尋和整理網易郵箱（163 / 126 / yeah.net）郵件。連接後可讓 Agent 讀取郵件內容、彙整郵件線索、處理郵件資訊。',
+          provider: 'NetEase'
+        },
+        amap: { name: '高德地圖', description: '地點搜尋、地址解析、天氣查詢和路線規劃。', provider: '高德' },
+        wps_mcp: {
+          name: 'WPS',
+          description: '搜尋、讀取、整理和建立 WPS 雲端文件、試算表及資料夾，讓 Agent 直接處理你的 WPS 內容。',
+          provider: '金山辦公'
+        },
+        youdao_note: {
+          name: '有道雲筆記',
+          description: '搜尋、讀取、建立和整理有道雲筆記及待辦，讓 Agent 幫你管理個人知識與資料。',
+          provider: '網易有道'
+        },
+        ima: {
+          name: '騰訊 ima 知識庫',
+          description: '搜尋、讀取、建立和整理騰訊 ima 筆記與知識庫內容，讓 Agent 幫你管理資料和知識庫。',
+          provider: '騰訊'
+        },
+        qcc_mcp: {
+          name: '企查查',
+          description: '連接企查查企業資訊、風險、智慧財產權、經營和董監高服務，讓 Agent 查詢企業資料。',
+          provider: '企查查'
+        },
+        eastmoney_mcp: {
+          name: '東方財富',
+          description: '連接東方財富 Choice 資料 MCP，查詢行情、公告、總體經濟指標、證券篩選和研究資訊。',
+          provider: '東方財富'
+        },
+        ifind_mcp: {
+          name: '同花順 iFinD',
+          description: '查詢同花順 iFinD 金融資料、企業工商資訊與法律內容，讓 Agent 檢索行情、財務、企業與法規資料。',
+          provider: '同花順'
+        },
+        aminer: {
+          name: 'AMiner 學術',
+          description: '搜尋和查詢 AMiner 的論文、學者、機構、專利及期刊會議資料。',
+          provider: '智譜'
+        },
+        wecom_bot: {
+          name: '企業微信',
+          description: '使用企業微信掃碼授權智慧機器人，連接文件、日程、待辦、通訊錄和訊息等辦公能力。',
+          provider: '企業微信'
+        }
+      }
+    },
     mcpLocal: {
       hint: '設定智慧體可以連線的 MCP 服務。開啟前會先測試連線；修改設定後服務會自動關閉，需要重新開啟。',
       profile: '目前 Profile',
@@ -105,7 +190,8 @@ export const zhHant = defineLocale({
     transferStopFailed: '未能停止傳輸，請再試一次。',
     downloadSaved: name => `${name} 已儲存到本機`,
     uploadSaved: name => `「${name}」已上傳到雲端硬碟`,
-    downloadsSaved: (saved, skipped) => skipped ? `已將 ${saved} 個檔案儲存到本機，${skipped} 個下載已取消。` : `已將 ${saved} 個檔案儲存到本機。`,
+    downloadsSaved: (saved, skipped) =>
+      skipped ? `已將 ${saved} 個檔案儲存到本機，${skipped} 個下載已取消。` : `已將 ${saved} 個檔案儲存到本機。`,
     transferErrors: {
       AUTH_REQUIRED: 'UniWork 登入已失效，請重新登入 UniWork 後再試。',
       DRIVE_AUTH_EXPIRED: '雲端硬碟連線已失效，請點擊重新整理以重新連線；若仍無法恢復，請重新登入 UniWork。',
@@ -134,7 +220,7 @@ export const zhHant = defineLocale({
       UPLOAD_INCOMPLETE: '上傳中斷，請重新上傳。',
       UPLOAD_UNCONFIRMED: '暫時無法自動確認上傳結果，請重新整理檔案清單核對。',
       IPC_ERROR: '網路連線異常，請檢查網路。',
-      AUTH_CHANGED: '登入狀態已變更，本次傳輸已停止。請在目前帳號下重試。',
+      AUTH_CHANGED: '登入狀態已變更，本次傳輸已停止。請在目前帳號下重試。'
     },
     emptyRecycle: '清空資源回收筒',
     permanentDelete: '徹底刪除',
@@ -3039,7 +3125,7 @@ export const zhHant = defineLocale({
     shareFailed: '分享失敗',
     revokeFailed: '取消分享失敗',
     previewNotReady: 'Markdown 預覽尚未完成。',
-    imageNotEmbedded: 'Markdown 包含未內嵌的圖片，請先整理為自包含內容。',
+    imageNotEmbedded: 'Markdown 包含未內嵌的圖片，請先整理為自包含內容。'
   },
 
   artifactPreview: {

@@ -59,6 +59,15 @@ describe('desktop i18n runtime translator', () => {
     }
   })
 
+  it('fills new connector copy from English for partial locales', () => {
+    expect(TRANSLATIONS.fr.connectorsPage.recommended.needAuth).toBe(
+      TRANSLATIONS.en.connectorsPage.recommended.needAuth
+    )
+    expect(TRANSLATIONS.ja.connectorsPage.recommended.guides.netease_mail.title).toBe(
+      TRANSLATIONS.en.connectorsPage.recommended.guides.netease_mail.title
+    )
+  })
+
   it('returns the key when no locale can resolve a path', () => {
     setRuntimeI18nLocale('zh')
 

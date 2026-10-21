@@ -15,6 +15,7 @@
     "node": "^22.22.0 || ^24.11.0 || >=26.0.0"
   },
   "scripts": {
+    "connectors:install": "npm ci --prefix services/open-connector --omit=dev --workspaces=false --ignore-scripts",
     "clean": "npm run clean:e2e && npm run clean:renderer && npm run clean:electron",
     "clean:e2e": "tsc --build tsconfig.e2e.json --clean",
     "clean:renderer": "tsc --build tsconfig.json --clean ",

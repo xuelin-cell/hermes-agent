@@ -1,0 +1,478 @@
+import { assertPublicHttpUrl, classifyIpAddress, isEgressTrustedHost, isIpAddress, isIpv4Address } from "./request.ts";
+
+/**
+ * Single resolved address returned by a DNS lookup, mirroring the shape of
+ * `node:dns` `lookup(hostname, { all: true })` entries.
+ */
+export interface ResolvedAddress {
+  address: string;
+  family: number;
+}
+
+/**
+ * DNS resolver used to validate the addresses a hostname resolves to before a
+ * request is issued.
+ */
+export type GuardedFetchDnsLookup = (hostname: string) => Promise<ResolvedAddress[]>;
+
+export interface GuardedFetchOptions {
+  /**
+   * Base transport issuing the actual requests. Defaults to the global fetch,
+   * resolved per call so test stubs installed later still apply.
+   */
+  fetch?: typeof fetch;
+  /**
+   * Allow RFC 1918, shared-address-space, and private targets for this fetch
+   * while retaining reserved/loopback/link-local/metadata guards. A function is
+   * re-evaluated on every request so deployment flags configured after module
+   * load are honored.
+   */
+  allowPrivateNetwork?: boolean | (() => boolean);
+  /** Error factory for guard violations. Defaults to TypeError. */
+  createError?: (message: string) => Error;
+  /** Maximum redirect hops followed before the request fails. */
+  maxRedirects?: number;
+  /**
+   * DNS lookup override: `null` disables resolved-address validation for this
+   * fetch, `undefined` uses the module default (`node:dns` when available).
+   */
+  lookup?: GuardedFetchDnsLookup | null;
+  /**
+   * Skip the DNS resolved-address check (the URL and redirect-`Location` guards
+   * still run). Only safe when the request host is fixed/code-controlled, never
+   * derived from user or credential input — there the check is redundant and
+   * only adds a per-request lookup. On by default.
+   */
+  skipDnsValidation?: boolean;
+  /**
+   * Additional credential-bearing headers to drop when a redirect crosses
+   * origins. Kept for compatibility with callers that name their auth header
+   * explicitly; it is now a no-op, because a cross-origin hop already drops
+   * every header outside this module's cross-origin safe list.
+   */
+  additionalSensitiveHeaders?: readonly string[];
+  /** Transform errors thrown by the underlying transport before they escape the guarded fetch. */
+  mapTransportError?: (error: unknown) => unknown;
+}
+
+// Match the platform default for `redirect: "follow"` (undici/browsers follow up
+// to 20 hops) so wrapping the transport does not fail legitimate long redirect
+// chains that previously succeeded.
+const defaultMaxRedirects = 20;
+const redirectStatuses = new Set([301, 302, 303, 307, 308]);
+/**
+ * The only request headers kept when a redirect crosses origins; every other
+ * header is dropped before the next hop is issued.
+ *
+ * This is deny-by-default on purpose. The previous rule dropped names on an
+ * explicit credential list, which silently forwarded any provider credential
+ * whose header name nobody had added to it, and provider egress here sends over
+ * a hundred distinct custom auth header names. A redirect target is a different
+ * party from the one the credential was issued for, so the safe direction is to
+ * keep only headers whose value is fixed by the request itself and cannot carry
+ * a secret:
+ *
+ * - content negotiation and client hints: `accept`, `accept-charset`,
+ *   `accept-encoding`, `accept-language`, `dnt`.
+ * - body descriptors: `content-type`, `content-length`, `content-language`,
+ *   `content-encoding`, `content-range`, `content-disposition`, `content-md5`.
+ *   They must survive a 307/308 hop or the replayed body arrives undescribed.
+ *   `content-range` earns its place twice over: a chunked upload that loses it
+ *   reaches the target as a well-formed full object instead of failing loudly.
+ *   Every value here is fixed by the body already being sent - a media type, a
+ *   length, a byte range, a file name, a digest - so none can carry a secret.
+ * - caching, conditional and partial fetching: `cache-control`, `range`,
+ *   `if-match`, `if-none-match`, `if-modified-since`, `if-unmodified-since`.
+ *   Their values are directives, byte offsets, dates, and ETags the target
+ *   itself issued. `range` matters because a download handed off to a CDN is
+ *   the common cross-origin hop.
+ * - request identity for logs, tracing and replay safety: `user-agent`,
+ *   `idempotency-key`, `x-request-id`, `x-correlation-id`, `x-trace`. They name
+ *   a request; they grant nothing.
+ *
+ * `referer` and `content-location` are deliberately absent: both carry a URL,
+ * and many providers here authenticate by putting the key in the query string,
+ * so forwarding either would leak the credential this rule exists to hold back.
+ * That is also why browsers downgrade `referer` cross-origin. `content-location`
+ * appears in the POST-to-GET body-header list below because the fetch spec drops
+ * it there, not because it survives an origin change; nothing in this repo sets
+ * it. A provider that legitimately redirects cross-origin and needs some other
+ * header gets a 4xx from the target, never a leak; add the header here once such
+ * a case is proven.
+ *
+ * Exported read-only so the tests can pin the list itself: widening it is the
+ * one edit that silently re-opens this hole, so the suite makes it an explicit
+ * two-place change.
+ */
+export const crossOriginSafeHeaders: ReadonlySet<string> = new Set([
+  "accept",
+  "accept-charset",
+  "accept-encoding",
+  "accept-language",
+  "cache-control",
+  "content-disposition",
+  "content-encoding",
+  "content-language",
+  "content-length",
+  "content-md5",
+  "content-range",
+  "content-type",
+  "dnt",
+  "idempotency-key",
+  "if-match",
+  "if-modified-since",
+  "if-none-match",
+  "if-unmodified-since",
+  "range",
+  "user-agent",
+  "x-correlation-id",
+  "x-request-id",
+  "x-trace",
+]);
+/** Body-describing headers dropped when a redirect rewrites the method to GET, mirroring the fetch spec. */
+const bodyHeaders = ["content-encoding", "content-language", "content-length", "content-location", "content-type"];
+
+/** Base transport behind each guarded fetch (undefined = global fetch) so re-wrapping never stacks guards. */
+const guardedFetchBases = new WeakMap<typeof fetch, typeof fetch | undefined>();
+
+let defaultLookupOverridden = false;
+let defaultLookupOverride: GuardedFetchDnsLookup | null = null;
+let nodeDnsLookupPromise: Promise<GuardedFetchDnsLookup | undefined> | undefined;
+
+/**
+ * Override the module-default DNS lookup used by guarded fetches that do not
+ * set their own `lookup` option: a function replaces it, `null` disables
+ * resolved-address validation, and `undefined` restores the automatic
+ * `node:dns` default. Tests use `null` so unit suites never touch real DNS.
+ */
+export function setDefaultGuardedFetchDnsLookup(lookup: GuardedFetchDnsLookup | null | undefined): void {
+  defaultLookupOverridden = lookup !== undefined;
+  defaultLookupOverride = lookup ?? null;
+}
+
+/**
+ * Return the raw transport behind a fetch produced by {@link createGuardedFetch}
+ * (undefined when it wraps the global fetch), or the input itself when it is
+ * not guarded. Lets callers re-wrap with a different policy without stacking
+ * two guards, e.g. Dokploy re-guarding a shared fetcher with its
+ * private-network opt-in.
+ */
+export function unwrapGuardedFetch(fetcher: typeof fetch | undefined): typeof fetch | undefined {
+  if (fetcher !== undefined && guardedFetchBases.has(fetcher)) {
+    return guardedFetchBases.get(fetcher);
+  }
+  return fetcher;
+}
+
+/**
+ * Create a fetch-compatible function that enforces the shared SSRF policy on
+ * every network hop instead of only on the caller-supplied URL:
+ *
+ * - The request URL and every redirect `Location` are validated with
+ *   {@link assertPublicHttpUrl}, so a public URL cannot redirect provider
+ *   egress into loopback/link-local/metadata/private targets.
+ * - Redirects are followed manually (bounded by `maxRedirects`) with
+ *   spec-equivalent method/body rewrites, and credential-bearing headers are
+ *   dropped on cross-origin hops.
+ * - When a DNS lookup is available, hostnames are resolved before each hop and
+ *   requests to names resolving to blocked addresses are rejected, closing the
+ *   static DNS name→private-IP bypass. Lookup failures fail closed (the request
+ *   is rejected) so a forced-failure or split resolver cannot skip address
+ *   validation. (True time-of-check/time-of-use DNS rebinding with low-TTL
+ *   records remains possible because the transport re-resolves; full connection
+ *   pinning is not expressible over the fetch API.) The default lookup uses
+ *   `node:dns`, which
+ *   Cloudflare Workers also provides under `nodejs_compat` (resolving over DoH),
+ *   so this layer applies there too. Only on a runtime without `node:dns` does it
+ *   degrade to a no-op, leaving the URL-literal and redirect-`Location` checks.
+ *
+ * Callers that pass `redirect: "manual"` or `redirect: "error"` keep native
+ * semantics: the first response (or native redirect error) is returned after
+ * the initial URL and its resolved addresses are validated.
+ */
+export function createGuardedFetch(options: GuardedFetchOptions = {}): typeof fetch {
+  const baseFetch = unwrapGuardedFetch(options.fetch);
+  const createError = options.createError ?? ((message: string) => new TypeError(message));
+  const maxRedirects = options.maxRedirects ?? defaultMaxRedirects;
+  const guardedFetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const transport = baseFetch ?? globalThis.fetch;
+    const fetchTransport = async (
+      transportInput: RequestInfo | URL,
+      transportInit?: RequestInit,
+    ): Promise<Response> => {
+      try {
+        return await transport(transportInput, transportInit);
+      } catch (error) {
+        throw options.mapTransportError?.(error) ?? error;
+      }
+    };
+    const allowPrivateNetwork =
+      typeof options.allowPrivateNetwork === "function"
+        ? options.allowPrivateNetwork()
+        : options.allowPrivateNetwork === true;
+    const lookup = options.skipDnsValidation
+      ? null
+      : options.lookup === undefined
+        ? await resolveDefaultLookup()
+        : options.lookup;
+    const guardHop = (value: string, fieldName: string): Promise<URL> =>
+      assertGuardedEgressUrl(value, { fieldName, createError, allowPrivateNetwork, lookup });
+
+    const request = input instanceof Request ? input : undefined;
+    let url = await guardHop(request?.url ?? (input instanceof URL ? input.href : String(input)), "request URL");
+
+    const redirectMode = init?.redirect ?? request?.redirect ?? "follow";
+    if (redirectMode !== "follow") {
+      return fetchTransport(input, init);
+    }
+
+    let method = (init?.method ?? request?.method ?? "GET").toUpperCase();
+    const headers = new Headers(init?.headers ?? request?.headers);
+    let body: BodyInit | null | undefined = init?.body !== undefined ? init.body : request?.body;
+
+    for (let redirects = 0; ; redirects++) {
+      const response =
+        redirects === 0
+          ? request
+            ? await fetchTransport(new Request(request, { ...init, redirect: "manual" }))
+            : await fetchTransport(url.toString(), { ...init, redirect: "manual" })
+          : await fetchTransport(url.toString(), {
+              ...init,
+              method,
+              // Clone per hop: later hops mutate `headers`, and a transport that
+              // captures the reference (rather than snapshotting) must not see
+              // those later edits on an already-issued request.
+              headers: new Headers(headers),
+              body: body ?? undefined,
+              redirect: "manual",
+              signal: init?.signal ?? request?.signal ?? null,
+            });
+
+      if (!redirectStatuses.has(response.status)) {
+        return response;
+      }
+      const location = response.headers.get("location");
+      if (location === null) {
+        return response;
+      }
+      await cancelResponseBody(response);
+      if (redirects >= maxRedirects) {
+        throw createError("request was redirected too many times");
+      }
+
+      let nextUrl: URL;
+      try {
+        nextUrl = new URL(location, url);
+      } catch {
+        throw createError("redirect location must be a valid URL");
+      }
+      const guardedNext = await guardHop(nextUrl.toString(), "redirect location");
+
+      if (response.status === 303 || ((response.status === 301 || response.status === 302) && method === "POST")) {
+        if (method !== "GET" && method !== "HEAD") {
+          method = "GET";
+        }
+        body = undefined;
+        for (const name of bodyHeaders) {
+          headers.delete(name);
+        }
+      } else if (body !== undefined && body !== null && !isReplayableBody(body)) {
+        throw createError("redirect cannot be followed because the request body is not replayable");
+      }
+      if (guardedNext.origin !== url.origin) {
+        for (const name of [...headers.keys()]) {
+          if (!crossOriginSafeHeaders.has(name)) {
+            headers.delete(name);
+          }
+        }
+      }
+      url = guardedNext;
+    }
+  }) as typeof fetch;
+
+  guardedFetchBases.set(guardedFetch, baseFetch);
+  return guardedFetch;
+}
+
+export interface GuardedEgressUrlOptions {
+  /** Field name used in guard violation messages, e.g. `"request URL"`. */
+  fieldName: string;
+  /** Error factory for guard violations. */
+  createError: (message: string) => Error;
+  /** Error factory for DNS resolution failures. Defaults to {@link createError}. */
+  createResolutionError?: (message: string) => Error;
+  /** Allow RFC 1918 and other private targets while retaining reserved-target guards. */
+  allowPrivateNetwork?: boolean;
+  /**
+   * DNS lookup used to validate resolved addresses: `null` disables the check,
+   * `undefined` uses the module default (`node:dns` where available).
+   */
+  lookup?: GuardedFetchDnsLookup | null;
+}
+
+/** Normalized URL and DNS answers accepted by the shared provider egress policy. */
+export interface GuardedEgressTarget {
+  url: URL;
+  addresses: ResolvedAddress[];
+}
+
+/**
+ * Apply the shared SSRF egress policy to one URL: validate the literal with
+ * {@link assertPublicHttpUrl}, then validate the addresses its hostname
+ * resolves to, and return the normalized URL.
+ *
+ * This is the single hop check behind {@link createGuardedFetch} (which applies
+ * it to the request URL and every redirect `Location`). It is exported so
+ * non-fetch egress transports that cannot reuse the fetch wrapper — currently
+ * {@link ../core/guarded-websocket.ts openGuardedWebSocket} — enforce exactly
+ * the same policy instead of growing a second, drifting implementation.
+ */
+export async function assertGuardedEgressUrl(value: string, options: GuardedEgressUrlOptions): Promise<URL> {
+  return (await resolveGuardedEgressTarget(value, options)).url;
+}
+
+/**
+ * Apply the shared SSRF policy and return the screened DNS results for a
+ * transport that must pin the connection without resolving the hostname again.
+ */
+export async function resolveGuardedEgressTarget(
+  value: string,
+  options: GuardedEgressUrlOptions,
+): Promise<GuardedEgressTarget> {
+  const allowPrivateNetwork = options.allowPrivateNetwork === true;
+  const lookup = options.lookup === undefined ? await resolveDefaultLookup() : options.lookup;
+  const url = assertPublicHttpUrl(value, {
+    fieldName: options.fieldName,
+    createError: options.createError,
+    allowPrivateNetwork,
+  });
+  const addresses = await assertResolvedAddressesAllowed(url.hostname, options.fieldName, {
+    allowPrivateNetwork,
+    createError: options.createError,
+    createResolutionError: options.createResolutionError ?? options.createError,
+    lookup,
+  });
+  return { url, addresses };
+}
+
+interface ResolvedAddressPolicy {
+  allowPrivateNetwork: boolean;
+  createError: (message: string) => Error;
+  createResolutionError: (message: string) => Error;
+  lookup: GuardedFetchDnsLookup | null | undefined;
+}
+
+async function assertResolvedAddressesAllowed(
+  hostname: string,
+  fieldName: string,
+  policy: ResolvedAddressPolicy,
+): Promise<ResolvedAddress[]> {
+  // Skip resolution only for canonical IPv4 literals, which assertPublicHttpUrl
+  // has already address-validated. Looser numeric forms (octal, out-of-range)
+  // that it did not recognize as an IP must go through DNS validation, since a
+  // resolver may still interpret them as a reserved address.
+  if (isIpv4Address(hostname)) {
+    return [{ address: hostname, family: 4 }];
+  }
+  if (!policy.lookup) {
+    return [];
+  }
+
+  let results: ResolvedAddress[];
+  try {
+    results = await policy.lookup(hostname);
+  } catch {
+    // Fail closed: once a lookup is enabled, a resolution failure must not
+    // silently skip address validation, or a forced-failure / split-resolver
+    // could bypass the guard. A genuinely unresolvable host fails here instead
+    // of at the transport, with the same net outcome (the request is rejected).
+    throw policy.createResolutionError(`${fieldName} could not be resolved for validation`);
+  }
+  if (!Array.isArray(results)) {
+    throw policy.createResolutionError(`${fieldName} could not be resolved for validation`);
+  }
+  if (results.length === 0) {
+    throw policy.createResolutionError(`${fieldName} could not be resolved for validation`);
+  }
+  // Deployment-level trusted-host setting, resolved per request so a bootstrap that
+  // configures it after module load is honored. It may open private and
+  // VPN-mapped results, while unsafe special-use targets remain blocked.
+  const trustedHost = isEgressTrustedHost(hostname);
+  for (const entry of results) {
+    if (entry && typeof entry.address === "string") {
+      const addressClass = classifyIpAddress(entry.address);
+      if (addressClass === "always-blocked") {
+        throw policy.createError(`${fieldName} must not resolve to private or reserved IP addresses`);
+      }
+      if (addressClass === "public" || (addressClass === "private" && policy.allowPrivateNetwork)) {
+        continue;
+      }
+      if (trustedHost) {
+        continue;
+      }
+      // Name the way out. This rejection happens before any packet leaves the
+      // process, so on its own it is indistinguishable from a network failure:
+      // the caller sees a sub-100ms error with nothing pointing at DNS, at this
+      // guard, or at the fact that an operator-level opt-out exists. The
+      // resolved address is deliberately NOT included — for hosts that come from
+      // tenant input (mail credentials, self-hosted base URLs) echoing it back
+      // would turn the guard into a DNS/internal-range probe oracle, a property
+      // src/mail/imap-smtp/host-pinning.test.ts asserts.
+      throw policy.createError(
+        `${fieldName} must not resolve to private or reserved IP addresses ` +
+          `(if this host is reached through a corporate VPN or split DNS, add it to ` +
+          `OOMOL_CONNECT_EGRESS_TRUSTED_HOSTS)`,
+      );
+    }
+  }
+  return results;
+}
+
+async function resolveDefaultLookup(): Promise<GuardedFetchDnsLookup | null | undefined> {
+  if (defaultLookupOverridden) {
+    return defaultLookupOverride;
+  }
+  nodeDnsLookupPromise ??= import("node:dns/promises").then(
+    ({ lookup }) =>
+      async (hostname: string) => {
+        const results = await lookup(hostname, { all: true });
+        // Keep only real addresses. workerd's node:dns resolves over DoH and maps
+        // every answer record into an entry without filtering by record type, so a
+        // CNAME answer arrives as { address: "target.example.com.", family: 4 }.
+        // classifyIpAddress treats unparseable input as blocked, which would
+        // reject every CNAME'd host (api.tailscale.com, graph.microsoft.com, ...).
+        // The real A/AAAA records are present alongside, so dropping non-addresses
+        // keeps the resolved-address check intact rather than disabling it.
+        const addresses = results.filter((entry) => isIpAddress(entry.address));
+        if (addresses.length === 0) {
+          // Nothing left to validate. Fail closed like a lookup rejection does:
+          // returning an empty list would let the check pass vacuously, so a
+          // resolver coaxed into answering with only CNAMEs could skip validation
+          // while the transport resolves the name to a blocked address itself.
+          throw new Error(`${hostname} did not resolve to any IP address`);
+        }
+        return addresses;
+      },
+    () => undefined,
+  );
+  return nodeDnsLookupPromise;
+}
+
+function isReplayableBody(body: BodyInit): boolean {
+  return (
+    typeof body === "string" ||
+    body instanceof URLSearchParams ||
+    body instanceof FormData ||
+    body instanceof Blob ||
+    body instanceof ArrayBuffer ||
+    ArrayBuffer.isView(body)
+  );
+}
+
+async function cancelResponseBody(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // Ignore cancellation failures; the body is abandoned either way.
+  }
+}
