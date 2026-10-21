@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from . import store
+from .expert_try_asking import try_asking
 
 RECENT_FILE = "expert_recent.json"
 MAX_RECENT = 5
@@ -50,6 +51,8 @@ def _row(name: str, entry: Dict[str, Any]) -> Dict[str, Any]:
         "description": str(intro.get("description") or ""),
         "init_prompt": str(intro.get("init_prompt") or ""),
         "quick_prompts": [str(p) for p in intro.get("quick_prompts") or [] if str(p).strip()],
+        # 宿主写的那一条推荐问法，读名单时按插件名现查，已装的专家不用重装就能用上
+        "try_asking": try_asking(name),
         "tags": [str(t) for t in intro.get("tags") or [] if str(t).strip()],
     }
 

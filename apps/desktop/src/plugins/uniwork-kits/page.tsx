@@ -155,6 +155,7 @@ function expertFor(row: KitRow, experts: ExpertCard[]): ExpertCard {
       description: row.description,
       init_prompt: '',
       quick_prompts: [],
+      try_asking: '',
       tags: []
     }
   )

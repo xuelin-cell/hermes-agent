@@ -54,7 +54,7 @@ def kits():
         "installer", "host_rules", "router", "store", "naming", "llm", "triggers",
         "media_slot", "xiaohongshu", "deck_check", "package_hooks", "turns", "delivery", "expert_sync", "experts",
         "eastmoney_slot", "script_swaps",
-        "host_hooks", "image_landing", "deck_geometry", "expert_cards", "catalog",
+        "host_hooks", "image_landing", "deck_geometry", "expert_cards", "catalog", "expert_try_asking",
     )
     for part in parts:
         importlib.import_module(f"{name}.{part}")
@@ -1519,6 +1519,28 @@ def test_summon_directory_carries_prompts_recent_and_avatar(kits, profile_env, t
 
     assert kits.experts.avatar_data_url(profile_env, "demo-expert").startswith("data:image/png;base64,")
     assert kits.experts.avatar_data_url(profile_env, "not-installed") == ""
+
+
+def test_summon_card_offers_the_host_written_try_asking_not_the_package_shorts(kits, profile_env, tmp_path):
+    """召唤卡片下方的「试试这样问」和数字员工一致：取宿主为这位专家写的那一条，按名字现查，不用重装；宿主没写的专家没有这一条。"""
+    for name in ("douyin-strategist", "demo-expert"):
+        kits.installer.install(_expert_pkg(tmp_path, name=name), profile_env, triggers={})
+    rows = {row["name"]: row for row in kits.experts.directory(profile_env)["experts"]}
+    assert rows["douyin-strategist"]["try_asking"] == kits.expert_try_asking.TRY_ASKING["douyin-strategist"]
+    assert rows["demo-expert"]["try_asking"] == ""
+
+
+def test_every_host_try_asking_is_a_bundled_expert_and_differs_from_its_opening(kits):
+    """宿主写的「试试这样问」只给内置专家，而且每一条都和这位专家召唤时填进输入框的开场白不同（否则前端不显示）。"""
+    import zipfile
+
+    bundled = PLUGIN_DIR / "bundled" / "uniwork-bundled" / "plugins"
+    for name, prompt in kits.expert_try_asking.TRY_ASKING.items():
+        with zipfile.ZipFile(bundled / f"{name}.zip") as archive:
+            manifest = min(n for n in archive.namelist() if n.endswith(".codebuddy-plugin/plugin.json"))
+            persona = json.loads(archive.read(manifest).decode("utf-8"))
+        opening = kits.expert_cards.intro(name, persona)["init_prompt"]
+        assert prompt.strip() and prompt.strip() != opening.strip(), name
 
 
 def test_experts_are_named_by_their_job(kits, monkeypatch):

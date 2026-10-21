@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { expertForProfile, openingPrompt, pickerGroups, quickPrompts, searchExperts } from './summon-model'
+import { expertForProfile, openingPrompt, pickerGroups, searchExperts, tryAskingPrompts } from './summon-model'
 import type { ExpertCard, ExpertDirectory } from './types'
 
 function card(name: string, extra: Partial<ExpertCard> = {}): ExpertCard {
@@ -12,6 +12,7 @@ function card(name: string, extra: Partial<ExpertCard> = {}): ExpertCard {
     description: '',
     init_prompt: '',
     quick_prompts: [],
+    try_asking: '',
     tags: [],
     ...extra
   }
@@ -59,10 +60,17 @@ describe('召唤后的提示语', () => {
     expect(openingPrompt(card('x'))).toBe('')
   })
 
-  it('给出快捷问题，列表里没有开场白时把它放在第一个', () => {
-    const expert = card('x', { init_prompt: '开场', quick_prompts: ['一', '二', '三'] })
+  it('「试试这样问」只放宿主写的那一条，不用专家包的短问法，和开场白相同时不放', () => {
+    const expert = card('x', { init_prompt: '开场', quick_prompts: ['一', '二', '三'], try_asking: ' 另一份完整需求 ' })
 
-    expect(quickPrompts(expert)).toEqual(['开场', '一', '二'])
-    expect(quickPrompts(card('y', { init_prompt: '一', quick_prompts: ['一', '二'] }))).toEqual(['一', '二'])
+    expect(tryAskingPrompts(expert)).toEqual(['另一份完整需求'])
+    expect(tryAskingPrompts(card('y', { init_prompt: '一', quick_prompts: ['一', '二'] }))).toEqual([])
+    expect(tryAskingPrompts(card('z', { init_prompt: '同一句', try_asking: '同一句' }))).toEqual([])
+  })
+
+  it('旧版后端的名单没有「试试这样问」字段时不出错，只是不显示', () => {
+    const legacy = { ...card('old', { init_prompt: '开场' }), try_asking: undefined } as unknown as ExpertCard
+
+    expect(tryAskingPrompts(legacy)).toEqual([])
   })
 })

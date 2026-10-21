@@ -49,6 +49,8 @@ export interface ExpertCard {
   description: string
   init_prompt: string
   quick_prompts: string[]
+  /** 宿主为这位专家写的那一条「试试这样问」（和数字员工一致）；没有时为空。 */
+  try_asking: string
   tags: string[]
 }
 
