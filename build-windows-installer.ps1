@@ -52,6 +52,23 @@ try {
         throw 'The source tree has uncommitted tracked changes. Commit them before packaging.'
     }
 
+    # Open Connector ships its own node_modules (electron-builder extraResources) and the packaging hook
+    # refuses to run without them, so install them from its lock file before the long build starts.
+    $npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
+    if ($null -eq $npm) {
+        throw 'npm was not found. Install Node.js, then rerun this script (Open Connector needs npm ci).'
+    }
+    Write-Host 'Installing Open Connector dependencies' -ForegroundColor DarkGray
+    Push-Location (Join-Path $sourceRoot 'apps\desktop')
+    try {
+        & $npm.Source run connectors:install
+        if ($LASTEXITCODE -ne 0) {
+            throw "npm run connectors:install failed with exit code $LASTEXITCODE."
+        }
+    } finally {
+        Pop-Location
+    }
+
     Write-Host "Building Windows installer from $commit" -ForegroundColor Cyan
     Write-Host "Persistent cache: $cacheRoot" -ForegroundColor DarkGray
     Write-Host "Installer compression: $Compression" -ForegroundColor DarkGray

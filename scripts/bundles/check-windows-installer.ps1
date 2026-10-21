@@ -66,14 +66,19 @@ try {
     $facts.Add("Commit: $($stamp.commit)")
     $repoDir = Join-Path $payload $stamp.runtime.repoDir
 
-    # Built-in kits and experts, and which config-repo commit they came from.
-    $kits = Join-Path $repoDir 'plugins\uniwork-kits\bundled\uniwork-bundled'
+    # Built-in kits and experts, where the backend looks for them: the installed app discovers plugins in
+    # resources\python-plugins (older installers read the payload snapshot), and autoseed looks next to uniwork-kits.
+    $pluginRoot = Join-Path $Unpacked 'resources\python-plugins'
+    if (-not (Test-Path -LiteralPath $pluginRoot -PathType Container)) {
+        $pluginRoot = Join-Path $repoDir 'plugins'
+    }
+    $kits = Join-Path $pluginRoot 'uniwork-kits\bundled\uniwork-bundled'
     $kitCount = @(Get-ChildItem -LiteralPath (Join-Path $kits 'plugins') -Filter '*.zip' -File -ErrorAction SilentlyContinue).Count
     $kitsOptional = ($env:UNIWORK_BUNDLED_PLUGINS -eq 'off') -or ($env:UNIWORK_BUNDLED_PLUGINS_REQUIRED -eq '0')
     if ($kitCount -eq 0 -and -not $kitsOptional) {
         $problems.Add('The installer carries no bundled kits or experts.')
     }
-    $kitFact = "Kits: $kitCount package(s)"
+    $kitFact = "Kits: $kitCount package(s) in $($pluginRoot.Substring($Unpacked.Length + 1))"
     $record = Join-Path $kits 'source.json'
     if (Test-Path -LiteralPath $record -PathType Leaf) {
         $source = Get-Content -LiteralPath $record -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -83,6 +88,14 @@ try {
         }
     }
     $facts.Add($kitFact)
+
+    # Open Connector runs from resources with its own node_modules.
+    $connector = Join-Path $Unpacked 'resources\open-connector'
+    if (Test-Path -LiteralPath $connector -PathType Container) {
+        if (-not (Test-Path -LiteralPath (Join-Path $connector 'node_modules\hono\package.json') -PathType Leaf)) {
+            $problems.Add('Open Connector ships without its node_modules (npm run connectors:install was not run).')
+        }
+    }
 
     # The bundled interpreter must load the agent the way the app starts its backend.
     $saved = @{}
