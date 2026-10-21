@@ -50,14 +50,13 @@ export function openingPrompt(expert: ExpertCard): string {
   return expert.init_prompt.trim()
 }
 
-/** 空对话里展示的快捷问题，最多 limit 个；包里没把开场白列进去时，把它放在第一个。 */
-export function quickPrompts(expert: ExpertCard, limit = 3): string[] {
-  const prompts = expert.quick_prompts.map(prompt => prompt.trim()).filter(Boolean)
-  const opening = openingPrompt(expert)
+/**
+ * 召唤后输入框下方「试试这样问」的卡片，和数字员工一致：只放宿主为这位专家写的那一条，
+ * 它和已经填进输入框的开场白相同时不放；专家包里的短问法不用在这里。
+ */
+export function tryAskingPrompts(expert: ExpertCard): string[] {
+  // 旧版后端给的专家名单没有这个字段（桌面端可能连着没升级的后端），缺了就当没有
+  const prompt = (expert.try_asking ?? '').trim()
 
-  if (opening && !prompts.includes(opening)) {
-    prompts.unshift(opening)
-  }
-
-  return prompts.slice(0, limit)
+  return prompt && prompt !== openingPrompt(expert) ? [prompt] : []
 }
