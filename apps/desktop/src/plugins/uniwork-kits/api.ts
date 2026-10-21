@@ -63,29 +63,14 @@ export function fetchJob(id: string): Promise<JobView> {
   return api<JobView>(`/jobs/${id}`)
 }
 
-/** 取一个包最近一次安装记录的全文。 */
-export function fetchReceipt(name: string): Promise<{ name: string; text: string }> {
-  return api(`/receipts/${encodeURIComponent(name)}`)
-}
-
 /** 启用或停用一个套件。 */
 export function toggleKit(name: string, enabled: boolean): Promise<unknown> {
   return api('/toggle', { body: { enabled, name }, method: 'POST' })
 }
 
-/** 卸载一个包；专家要明确传 deleteProfile 才会连档案一起删。 */
-export function uninstallKit(name: string, deleteProfile: boolean): Promise<unknown> {
-  return api('/uninstall', { body: { delete_profile: deleteProfile, name }, method: 'POST' })
-}
-
 /** 把用户填的配置项写进对应档案的 .env。 */
 export function writeConfig(name: string, values: Record<string, string>): Promise<{ written: string[] }> {
   return api('/config', { body: { name, values }, method: 'POST' })
-}
-
-/** 在后台补齐一个套件的触发词，返回任务号。 */
-export function refreshTriggers(name: string): Promise<{ job: { id: string } }> {
-  return api('/triggers', { body: { name, regenerate: false }, method: 'POST' })
 }
 
 /** 上传 zip 并在后台安装，返回任务号。 */
