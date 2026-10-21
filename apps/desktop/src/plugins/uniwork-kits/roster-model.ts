@@ -19,6 +19,7 @@ interface RosterCache {
   profiles?: RosterProfile[]
 }
 
+/** 从套件页目录里挑出已装的专家（不含专家档案里自己的那条），给机器人名单用。 */
 export function installedExperts(
   rows: Array<{ display_name?: string; kind?: string; profile?: string; self?: boolean }>
 ): InstalledExpert[] {
@@ -40,7 +41,7 @@ export function installedExperts(
   return experts
 }
 
-/** Append experts the roster snapshot has not listed yet. */
+/** 把机器人名单快照里还没有的专家追加进去；全都在时原样返回，不触发重绘。 */
 export function withInstalledExperts<T extends RosterCache>(
   snapshot: T | undefined,
   experts: InstalledExpert[]

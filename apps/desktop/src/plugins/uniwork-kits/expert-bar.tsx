@@ -2,8 +2,9 @@
  * Above the composer, while the chat on screen belongs to an expert.
  *
  * A fresh chat (a summon, or "+" in the expert's profile) gets 数字员工's
- * welcome: face, name, what it does and its quick prompts — clicking one puts
- * it in the input box. Once the chat exists it shrinks to one line naming the
+ * welcome: face, name, what it does and one 「试试这样问」 card — the
+ * host-written second brief, as 数字员工 shows it; clicking it puts it in the
+ * input box. Once the chat exists it shrinks to one line naming the
  * expert, which stands in for 数字员工's per-reply signature. Either way the
  * user can go back to the general assistant (a new chat; see ./summon).
  */
@@ -13,18 +14,26 @@ import { host, Tip, usePluginI18n, useValue } from '@hermes/plugin-sdk'
 import { ExpertFace } from './expert-face'
 import { $expertDirectory } from './experts-store'
 import { fillPrompt, leaveExpert } from './summon'
-import { expertForProfile, quickPrompts } from './summon-model'
+import { expertForProfile, tryAskingPrompts } from './summon-model'
+import { $expertSummon } from './summon-state'
 
+/** 输入框上方的专家栏：已在和专家对话时显示一行「正在和谁对话」；新草稿、准备中或准备失败时显示欢迎卡片，带准备进度和可以直接点的开场问题。 */
 export function ExpertBar() {
   const t = usePluginI18n('uniwork-kits')
   const directory = useValue($expertDirectory)
+  const summon = useValue($expertSummon)
   const profile = useValue(host.state.focusedSessionProfile)
   const sessionId = useValue(host.state.focusedSessionId)
-  const expert = expertForProfile(directory, profile)
+  const summoned = summon ? expertForProfile(directory, summon.profile) : null
+  const expert = summoned ?? expertForProfile(directory, profile)
 
   if (!expert) {
     return null
   }
+
+  const preparing = summon?.profile === expert.profile && summon.phase === 'preparing'
+  const failed = summon?.profile === expert.profile && summon.phase === 'failed'
+  const showWelcome = !sessionId || preparing || failed
 
   const leave = (
     <button
@@ -36,7 +45,7 @@ export function ExpertBar() {
     </button>
   )
 
-  if (sessionId) {
+  if (sessionId && !showWelcome) {
     return (
       <div
         className="flex items-center gap-2 px-3 pt-1.5 pb-0.5 text-xs text-(--ui-text-tertiary)"
@@ -53,7 +62,7 @@ export function ExpertBar() {
     )
   }
 
-  const prompts = quickPrompts(expert)
+  const prompts = tryAskingPrompts(expert)
 
   return (
     <div
@@ -80,14 +89,21 @@ export function ExpertBar() {
         </div>
         {leave}
       </div>
+      {preparing ? (
+        <p className="m-0 mt-2 text-xs text-(--ui-text-tertiary)">
+          {t('preparingExpert')}
+          {expert.display_name}
+        </p>
+      ) : null}
+      {failed ? <p className="m-0 mt-2 text-xs text-(--ui-text-tertiary)">{summon?.error}</p> : null}
       {prompts.length ? (
         <div className="mt-2">
           <p className="m-0 mb-1 text-[0.7rem] text-(--ui-text-tertiary)">{t('tryAsking')}</p>
-          <div className="grid gap-1.5 sm:grid-cols-3">
+          <div className="grid gap-1.5">
             {prompts.map(prompt => (
               <Tip key={prompt} label={prompt}>
                 <button
-                  className="line-clamp-2 rounded-md border border-(--ui-stroke-secondary) px-2 py-1.5 text-left text-xs leading-5 text-(--ui-text-secondary) hover:bg-(--ui-bg-tertiary)"
+                  className="line-clamp-3 rounded-md border border-(--ui-stroke-secondary) px-2.5 py-1.5 text-left text-xs leading-5 text-(--ui-text-secondary) hover:bg-(--ui-bg-tertiary)"
                   onClick={() => fillPrompt(prompt)}
                   type="button"
                 >

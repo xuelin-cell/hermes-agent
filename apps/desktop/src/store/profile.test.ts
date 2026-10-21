@@ -42,7 +42,10 @@ vi.mock('@/store/starmap', () => ({ resetStarmapGraph }))
 
 const {
   $activeGatewayProfile,
+  $gatewaySwapTarget,
+  $newChatProfile,
   $profiles,
+  $quietNewChatProfile,
   ensureGatewayProfile,
   invalidateProfileListFetches,
   newSessionInProfile,
@@ -427,5 +430,63 @@ describe("profile switch leaves the previous profile's project (#54990)", () => 
     newSessionInProfile('default')
 
     expect(resolveNewSessionCwd()).toBe('/work/app1')
+  })
+})
+
+describe('插件静默打开新对话（newSessionInProfile 的 quiet / onError）', () => {
+  afterEach(() => {
+    $newChatProfile.set(null)
+    ensureGatewayForProfile.mockImplementation(async () => undefined)
+  })
+
+  /** 记下这次切换里全屏「正在唤醒」遮罩出现过的目标。 */
+  async function overlayTargets(open: () => void): Promise<(null | string)[]> {
+    const seen: (null | string)[] = []
+    const stop = $gatewaySwapTarget.listen(value => void seen.push(value))
+
+    open()
+    await vi.waitFor(() => expect(ensureGatewayForProfile).toHaveBeenCalled())
+    await new Promise(resolve => setTimeout(resolve, 0))
+    stop()
+
+    return seen
+  }
+
+  it('只有调用方要求 quiet 时才不显示全屏唤醒遮罩', async () => {
+    getConnection.mockResolvedValue(localConn({ profile: 'fund-diagnostician' }))
+
+    expect(await overlayTargets(() => newSessionInProfile('fund-diagnostician'))).toContain('fund-diagnostician')
+
+    $activeGatewayProfile.set('default')
+    ensureGatewayForProfile.mockClear()
+
+    expect(await overlayTargets(() => newSessionInProfile('fund-diagnostician', { quiet: true }))).not.toContain(
+      'fund-diagnostician'
+    )
+  })
+
+  it('标记静默打开的草稿，下一次新对话不是静默打开时就清掉', () => {
+    newSessionInProfile('fund-diagnostician', { quiet: true })
+    expect($quietNewChatProfile.get()).toBe('fund-diagnostician')
+
+    // 按 Ctrl+N 会清掉指定的档案，下一份草稿回到通用助手。
+    $newChatProfile.set(null)
+    expect($quietNewChatProfile.get()).toBeNull()
+
+    newSessionInProfile('fund-diagnostician', { quiet: true })
+    newSessionInProfile('fund-diagnostician')
+    expect($quietNewChatProfile.get()).toBeNull()
+  })
+
+  it('切换后端失败时交给 onError，不弹桌面的提示', async () => {
+    const failure = new Error('Backend for "fund-diagnostician" was retired; open it explicitly to reconnect.')
+    const onError = vi.fn()
+
+    ensureGatewayForProfile.mockImplementation(async () => {
+      throw failure
+    })
+    newSessionInProfile('fund-diagnostician', { onError, quiet: true })
+
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith(failure))
   })
 })

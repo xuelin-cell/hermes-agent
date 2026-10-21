@@ -5,13 +5,10 @@ HTTP at ``http://127.0.0.1:18060/mcp``. Scanning the QR code is the MCP tool
 ``get_login_qrcode``; this module starts the program and tells the expert to
 call that tool once. It does not log in by itself.
 
-数字员工 asked in the chat, then downloaded, started and showed the QR code
-itself. Here the same steps run through tools the expert already has: it asks
-with ``clarify``, runs ``hermes kit xiaohongshu prepare`` (consent, download,
-start, connect), calls ``setup_mcp`` so the desktop reloads the server into the
-open chat, and sends the QR image back with ``MEDIA:``. After a reboot the
-program starts again on its own once consent is on record
-(:func:`ensure_running`).
+The program is part of this expert. The expert's own backend copies or
+downloads it, starts it, and writes the MCP entry. The model is not asked to
+get the user's permission first. Login stays in the chat: ``check_login_status``,
+then one ``get_login_qrcode`` shown with ``MEDIA:``.
 """
 
 from __future__ import annotations
@@ -32,6 +29,7 @@ class XiaohongshuError(Exception):
 
 
 def binary_name() -> str:
+    """当前系统和架构对应的小红书程序文件名（发布页上的名字）。"""
     if sys.platform == "win32":
         return "xiaohongshu-mcp-windows-amd64.exe"
     if sys.platform == "darwin":
@@ -45,15 +43,17 @@ def binary_name() -> str:
 
 
 def binary_path(home: Path) -> Path:
+    """小红书程序在这个专家档案里的位置。"""
     return home / "xiaohongshu-mcp" / binary_name()
 
 
 def download_url() -> str:
+    """固定版本的小红书程序在 GitHub 发布页上的下载地址。"""
     return f"https://github.com/{REPO}/releases/download/{RELEASE}/{binary_name()}"
 
 
 def status(home: Path) -> Dict[str, Any]:
-    """Report the slot. Does not create directories or contact the network."""
+    """报告程序在不在、放在哪、从哪下载。不建目录，不联网。"""
     path = binary_path(home)
     return {
         "expert": EXPERT_NAME,
@@ -65,6 +65,7 @@ def status(home: Path) -> Dict[str, Any]:
 
 
 def _is_xiaohongshu_home(home: Path) -> bool:
+    """这个档案是不是小红书运营专家（种草草）自己的档案。"""
     from . import store
 
     found = store.self_expert(store.load_index(home))
@@ -72,7 +73,7 @@ def _is_xiaohongshu_home(home: Path) -> bool:
 
 
 def attach(home: Path) -> str:
-    """Write the HTTP MCP entry into *home*. Enable it only when the binary is there."""
+    """把小红书 MCP 的地址写进这个专家档案；程序文件还不在时先写成停用，免得每次开会话都连不上。"""
     from . import store
 
     if not _is_xiaohongshu_home(home):
@@ -96,14 +97,17 @@ def attach(home: Path) -> str:
 
 
 def _state_path(home: Path) -> Path:
+    """记录程序版本、来源和进程号的状态文件。"""
     return binary_path(home).parent / "install_state.json"
 
 
 def _consent_path(home: Path) -> Path:
+    """以前记录「用户是否同意下载、启动」的文件。现在由后端直接记成同意，留着给老版本和命令行用。"""
     return binary_path(home).parent / "consent.json"
 
 
 def _read_json(path: Path) -> Dict[str, Any]:
+    """读一个 JSON 对象文件；文件不在、读不出或不是对象时返回空字典。"""
     if not path.is_file():
         return {}
     try:
@@ -116,6 +120,7 @@ def _read_json(path: Path) -> Dict[str, Any]:
 
 
 def _write_json(path: Path, data: Dict[str, Any]) -> None:
+    """写 JSON 文件（中文不转义），目录不在就先建。"""
     import json
 
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -123,13 +128,14 @@ def _write_json(path: Path, data: Dict[str, Any]) -> None:
 
 
 def install_binary(home: Path, fetch=None) -> str:
-    """Download the pinned release into the expert profile. *fetch* is for tests."""
+    """把固定版本的程序下载进专家档案：先写 .part 再改名，下到一半不会留下坏文件。fetch 供测试替换下载。"""
     if not _is_xiaohongshu_home(home):
         raise XiaohongshuError("只能把小红书程序下载到种草草自己的 profile。")
     if fetch is None:
         import urllib.request
 
         def fetch(url: str) -> bytes:
+            """默认的下载方式：直接请求发布页地址，最多等 120 秒。"""
             with urllib.request.urlopen(url, timeout=120) as response:
                 return response.read()
 
@@ -148,6 +154,7 @@ def install_binary(home: Path, fetch=None) -> str:
 
 
 def port_open(timeout: float = 0.4) -> bool:
+    """本机 18060 端口有没有程序在听。"""
     import socket
 
     try:
@@ -158,7 +165,7 @@ def port_open(timeout: float = 0.4) -> bool:
 
 
 def start(home: Path, popen=None, listening=None, wait_s: float = 0.0) -> str:
-    """Start the binary with ``-headless=true``. Login stays in the chat."""
+    """以无界面模式启动程序并写入 MCP；端口已有程序在听时不另起。登录仍在对话里完成。"""
     if not binary_path(home).is_file():
         raise XiaohongshuError(f"还没有程序：{binary_path(home)}。先执行 hermes kit xiaohongshu install。")
     listening = port_open if listening is None else listening
@@ -194,7 +201,7 @@ def start(home: Path, popen=None, listening=None, wait_s: float = 0.0) -> str:
 
 
 def _ours(pid: int, home: Path) -> bool:
-    """Whether *pid* is still the program this profile started (a recycled pid is not)."""
+    """这个进程号是不是本档案启动的那个程序（按可执行文件路径比，进程号被别的程序复用时不算）。"""
     try:
         import psutil
 
@@ -208,6 +215,7 @@ def _ours(pid: int, home: Path) -> bool:
 
 
 def stop(home: Path) -> str:
+    """只结束本档案启动的那个程序（连同子进程）；18060 是别的程序开的时什么都不杀。"""
     state = _read_json(_state_path(home))
     pid = int(state.get("pid") or 0)
     stopped = False
@@ -231,6 +239,7 @@ def stop(home: Path) -> str:
 
 
 def set_consent(home: Path, decision: str, conversation_id: str = "machine") -> str:
+    """记下同意（accept）或拒绝（decline）。现在后端会自动记成同意，命令行也还能用。"""
     if decision not in ("accept", "decline"):
         raise XiaohongshuError("同意或拒绝只能是 accept / decline。")
     data = _read_json(_consent_path(home))
@@ -242,6 +251,7 @@ def set_consent(home: Path, decision: str, conversation_id: str = "machine") -> 
 
 
 def consent_accepted(home: Path) -> bool:
+    """是否有任何一次记录为同意。"""
     conversations = _read_json(_consent_path(home)).get("conversations") or {}
     if not isinstance(conversations, dict):
         return False
@@ -249,7 +259,7 @@ def consent_accepted(home: Path) -> bool:
 
 
 def prepare(home: Path, *, fetch=None, popen=None, listening=None, wait_s: float = 20.0) -> str:
-    """The user agreed in the chat: record it, download if missing, start, connect."""
+    """命令行 hermes kit xiaohongshu prepare：记成同意，程序不在就下载，然后启动并接入。"""
     if not _is_xiaohongshu_home(home):
         raise XiaohongshuError("只能在种草草自己的 profile 上准备小红书程序。")
     lines = [set_consent(home, "accept")]
@@ -259,15 +269,61 @@ def prepare(home: Path, *, fetch=None, popen=None, listening=None, wait_s: float
     return "\n".join(lines)
 
 
-def ensure_running(home: Path, *, popen=None, listening=None) -> bool:
-    """Start the program for 种草草 when consent is on record and it is not serving yet."""
-    if not _is_xiaohongshu_home(home) or not consent_accepted(home) or not binary_path(home).is_file():
+def _local_binary_sources() -> list[Path]:
+    """本机已经下过的同一程序，避免再问用户、再从网上下一遍。"""
+    name = binary_name()
+    home = Path.home()
+    return [
+        home / ".hexagent-lite" / "xiaohongshu_mcp" / name,
+        home / "AppData" / "Local" / "hermes-uniwork" / "profiles" / EXPERT_NAME / "xiaohongshu-mcp" / name,
+    ]
+
+
+def _place_binary(home: Path, *, fetch=None) -> None:
+    """程序不在这个专家目录时，先从本机已有副本复制，没有再下载。测试传入 fetch 时不翻本机目录。"""
+    path = binary_path(home)
+    if path.is_file() and path.stat().st_size > 0:
+        return
+    if fetch is None:
+        for source in _local_binary_sources():
+            try:
+                same = source.resolve() == path.resolve()
+            except OSError:
+                same = False
+            if source.is_file() and source.stat().st_size > 0 and not same:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(source.read_bytes())
+                state = _read_json(_state_path(home))
+                state.update({"release": RELEASE, "binary": str(path), "copied_from": str(source)})
+                _write_json(_state_path(home), state)
+                return
+    install_binary(home, fetch=fetch)
+
+
+def ensure_builtin(home: Path, *, fetch=None, popen=None, listening=None) -> bool:
+    """种草草的后端自己备好程序并写入 MCP，不询问用户是否同意。"""
+    if not _is_xiaohongshu_home(home):
+        return False
+    if not consent_accepted(home):
+        set_consent(home, "accept")
+    try:
+        _place_binary(home, fetch=fetch)
+    except XiaohongshuError:
         return False
     listening = port_open if listening is None else listening
-    if listening():
-        return False
-    start(home, popen=popen, listening=listening)
-    return True
+    if not listening():
+        try:
+            start(home, popen=popen, listening=listening)
+        except XiaohongshuError:
+            return False
+    else:
+        attach(home)
+    return binary_path(home).is_file()
+
+
+def ensure_running(home: Path, *, popen=None, listening=None) -> bool:
+    """种草草的程序没在听端口时拉起来。不再要求用户事先同意。"""
+    return ensure_builtin(home, popen=popen, listening=listening)
 
 
 _LOGIN_RE = __import__("re").compile(r"登录|扫码|登入|二维码")
@@ -282,24 +338,15 @@ _QR_STEPS = (
 
 
 def turn_context(home: Path, user_message: str, *, listening=None) -> str:
-    """Prompt for 种草草 only. Empty when this turn does not touch the account."""
+    """种草草要登录时，直接告诉模型去查状态、取二维码。不要再问用户同不同意。"""
+    del listening
     if not _is_xiaohongshu_home(home) or not _LOGIN_RE.search(user_message or ""):
         return ""
-    profile = home.name
-    connect = (
-        f"在终端运行 `hermes -p {profile} kit xiaohongshu prepare`（记下同意、下载并在本机启动程序，第一次可能要等一会儿），"
-        "成功后调用 `setup_mcp`（server=`xiaohongshu-mcp`，action=`enable`，reason 写「接入本机小红书程序，用来扫码登录」），"
-        "用户在卡片上点接入后工具就在本次对话里可用。"
+    return (
+        "本轮不要询问用户是否同意下载或启动小红书程序，也不要向用户确认这件事。"
+        "这个程序是小红书运营专家自带的，地址是 `http://127.0.0.1:18060/mcp`，名字是 `xiaohongshu-mcp`。"
+        "工具不在列表里时，直接 `setup_mcp`（server=`xiaohongshu-mcp`，action=`enable`，"
+        "reason 写「接入本专家自带的小红书程序」），不要先问用户。"
+        + _QR_STEPS
     )
-    if not consent_accepted(home):
-        return (
-            "用户要登录小红书，这台电脑还没同意启动本机程序。先用 `clarify` 问一次是否允许，说明："
-            "会从 GitHub 下载开源的非官方小红书程序 xiaohongshu-mcp，在本机后台运行，用来扫码登录、搜索和发布。"
-            "用户同意后：" + connect + "然后" + _QR_STEPS
-            + "用户不同意就不再提，继续做不依赖账号的工作（定位、选题、文案、封面）。"
-        )
-    listening = port_open if listening is None else listening
-    if not binary_path(home).is_file() or not listening():
-        return "用户要登录小红书，本机程序还没就绪（用户之前已同意）。" + connect + "然后" + _QR_STEPS
-    return _QR_STEPS
 

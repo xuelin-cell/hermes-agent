@@ -21,11 +21,13 @@ from tests.plugins.test_uniwork_kits_plugin import (  # noqa: F401 - fixtures
 
 
 def _part(name: str):
+    """按插件系统导入后的模块名取插件里的一个子模块。"""
     return importlib.import_module(f"hermes_plugins.uniwork_kits.{name}")
 
 
 @pytest.fixture
 def bundle(profile_env, kit_pkg, expert_pkg):
+    """在临时目录里做一套内置包（一个套件、一个专家），并在默认档案配置里指向它。"""
     directory = profile_env.parent / "bundle" / "uniwork-bundled"
     _zip_dir(kit_pkg, directory / "plugins" / "demo-kit.zip")
     _zip_dir(expert_pkg, directory / "plugins" / "demo-expert.zip")
@@ -38,6 +40,7 @@ def bundle(profile_env, kit_pkg, expert_pkg):
 
 
 def _wait(autoseed, timeout=60.0):
+    """等后台安装线程结束，并确认状态已经不是「安装中」。"""
     thread = autoseed._thread
     assert thread is not None
     thread.join(timeout)
@@ -47,14 +50,19 @@ def _wait(autoseed, timeout=60.0):
 
 @pytest.fixture
 def autoseed(kits, monkeypatch, tmp_path):
+    """每个测试都从「这个进程还没装过」开始；开发机 bundled/ 里可能有真实的包，测试一律用自己的。"""
     module = _part("autoseed")
     monkeypatch.setattr(module, "_started", set())
     # A developer checkout may carry real packages in bundled/; tests use their own.
     monkeypatch.setattr(module, "BUNDLED_DIR", tmp_path / "no-bundled-dir")
+    # 真的建脚本环境要联网，测试里只记下有没有被叫到。
+    module.prepared = []
+    monkeypatch.setattr(module.script_python, "prepare", lambda home, wait=None: module.prepared.append(Path(home)))
     return module
 
 
 def test_a_new_account_gets_the_bundled_kits_and_experts_once(kits, autoseed, profile_env, bundle):
+    """新账号启动时自动装上内置套件和专家，同一进程里不会再装第二次，装完锁文件被删掉。"""
     assert autoseed.start(profile_env) is True
     _wait(autoseed)
     status = autoseed.status()
@@ -62,6 +70,8 @@ def test_a_new_account_gets_the_bundled_kits_and_experts_once(kits, autoseed, pr
     plugins = kits.store.load_index(profile_env)["plugins"]
     assert plugins["demo-kit"]["kind"] == "kit" and plugins["demo-expert"]["kind"] == "expert"
     assert not (kits.store.imported_root(profile_env) / autoseed.LOCK_NAME).exists()
+    # 装完接着准备套件脚本的运行环境，第一次跑专家脚本时不用等。
+    assert autoseed.prepared == [profile_env]
 
     # Once per process for a home.
     assert autoseed.start(profile_env) is False
@@ -70,6 +80,7 @@ def test_a_new_account_gets_the_bundled_kits_and_experts_once(kits, autoseed, pr
 def test_a_kit_the_user_uninstalled_stays_out_while_new_built_ins_still_arrive(
     kits, autoseed, profile_env, bundle, tmp_path, monkeypatch
 ):
+    """用户卸载过的内置套件下次启动不会被装回，而应用更新新增的内置包照样装上。"""
     assert autoseed.start(profile_env) is True
     _wait(autoseed)
     kits.installer.uninstall(profile_env, "demo-kit")
@@ -94,6 +105,7 @@ def test_a_kit_the_user_uninstalled_stays_out_while_new_built_ins_still_arrive(
 
 
 def test_an_expert_backend_and_a_home_without_a_bundle_do_nothing(kits, autoseed, profile_env, bundle, tmp_path):
+    """专家自己的后端、以及找不到内置目录的档案都不安装。"""
     expert_home = profile_env / "profiles" / "someone"
     expert_home.mkdir(parents=True)
     assert autoseed.start(expert_home) is False
@@ -104,6 +116,7 @@ def test_an_expert_backend_and_a_home_without_a_bundle_do_nothing(kits, autoseed
 
 
 def test_a_backend_that_finds_another_one_installing_skips(kits, autoseed, profile_env, bundle):
+    """另一个后端正在安装（锁文件在）时跳过，并且不动别人的锁。"""
     lock = kits.store.imported_root(profile_env) / autoseed.LOCK_NAME
     lock.parent.mkdir(parents=True, exist_ok=True)
     lock.write_text("{}", encoding="utf-8")
@@ -114,11 +127,13 @@ def test_a_backend_that_finds_another_one_installing_skips(kits, autoseed, profi
 
 
 def test_later_starts_recognise_installed_zips_without_unpacking(kits, profile_env, bundle, monkeypatch):
+    """以后的启动按文件指纹认出已装的 zip，完全不解包，所以每次启动都很快。"""
     seed = _part("seed")
     first = seed.seed(profile_env, bundle, generate_triggers=False)
     assert {item.status for item in first} == {"installed"}, [(i.name, i.status, i.detail) for i in first]
 
     def no_unpacking(path):
+        """替身：一旦被调用就说明解包了，测试失败。"""
         raise AssertionError(f"unpacked {path.name} although its bytes were already installed")
 
     monkeypatch.setattr(seed, "_identity", no_unpacking)
@@ -127,6 +142,7 @@ def test_later_starts_recognise_installed_zips_without_unpacking(kits, profile_e
 
 
 def test_progress_is_reported_before_each_install(kits, profile_env, bundle):
+    """每装一个包之前都报一次进度，套件先于专家，总数一致。"""
     seen = []
     _part("seed").seed(profile_env, bundle, generate_triggers=False, progress=lambda *args: seen.append(args))
     assert [name for name, _done, _total in seen] == ["demo-kit", "demo-expert"]
@@ -134,6 +150,7 @@ def test_progress_is_reported_before_each_install(kits, profile_env, bundle):
 
 
 def test_status_route_reports_the_bundled_install(kits, profile_env):
+    """后端接口 /bundled 返回套件页需要的全部状态字段。"""
     import importlib.util
 
     from fastapi import FastAPI

@@ -14,6 +14,7 @@ from . import installer, store
 
 
 def _config_home(home: Path, entry: Dict[str, Any]) -> Path:
+    """这个包的配置写在哪个 home：专家写在它自己的档案里，套件和专家本身的那份写在当前 home。"""
     if entry.get("kind") == "expert" and not entry.get("self"):
         from hermes_cli.profiles import get_profile_dir, profile_exists
 
@@ -24,6 +25,7 @@ def _config_home(home: Path, entry: Dict[str, Any]) -> Path:
 
 
 def _oauth_servers(target: Path, entry: Dict[str, Any]) -> List[Dict[str, str]]:
+    """这个包带的 MCP 里哪些要走 OAuth 登录，套件页据此显示「登录」按钮。"""
     keys = [str(key) for key in (entry.get("mcp_keys") or [])]
     if not keys:
         return []
@@ -42,6 +44,7 @@ def _oauth_servers(target: Path, entry: Dict[str, Any]) -> List[Dict[str, str]]:
 
 
 def _missing(target: Path, entry: Dict[str, Any]) -> List[str]:
+    """必填的用户配置里，哪些还没在 .env 里填值。"""
     missing: List[str] = []
     for field in entry.get("user_config") or []:
         if not isinstance(field, dict) or not field.get("required"):
@@ -56,10 +59,9 @@ _MANIFEST_SPOTS = ("plugin.json", ".codebuddy-plugin/plugin.json", ".claude-plug
 
 
 def _description(home: Path, entry: Dict[str, Any]) -> str:
-    """What the card says the package does: the expert's intro, else the manifest's own line.
+    """卡片上「这个包做什么」：优先用专家的介绍，否则用包清单自己的一句话。
 
-    Entries installed before the description was recorded read it from the
-    retained package copy.
+    记录描述之前装的旧条目，从保留的原包副本里读。
     """
     intro = entry.get("intro") if isinstance(entry.get("intro"), dict) else {}
     text = str(intro.get("description") or entry.get("description") or "")
@@ -82,7 +84,7 @@ _CARD_PHRASES = 8
 
 
 def _phrases(entry: Dict[str, Any]) -> List[str]:
-    """A few of the package's Chinese trigger phrases — what a user can say to use it."""
+    """取几条这个包的中文触发词，告诉用户可以怎么说来用它。"""
     out: List[str] = []
     table = entry.get("triggers") if isinstance(entry.get("triggers"), dict) else {}
     for phrases in table.values():
@@ -110,6 +112,7 @@ def _display_name(name: str, entry: Dict[str, Any]) -> str:
 
 
 def _row(home: Path, name: str, entry: Dict[str, Any]) -> Dict[str, Any]:
+    """把索引里的一条整理成套件页卡片需要的字段。"""
     target = _config_home(home, entry)
     state = entry.get("trigger_state") if isinstance(entry.get("trigger_state"), dict) else {}
     kind = str(entry.get("kind") or "")
@@ -137,11 +140,13 @@ def _row(home: Path, name: str, entry: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def describe(home: Path) -> Dict[str, Any]:
+    """套件页的全部卡片：已装的套件和专家。"""
     plugins = [_row(home, name, entry) for name, entry in installer.list_entries(home)]
     return {"plugins": plugins}
 
 
 def receipt_text(home: Path, name: str) -> Optional[str]:
+    """某个包最近一次安装记录的全文；没装或没有记录时返回 None。"""
     entry = (store.load_index(home).get("plugins") or {}).get(name)
     if not isinstance(entry, dict):
         return None

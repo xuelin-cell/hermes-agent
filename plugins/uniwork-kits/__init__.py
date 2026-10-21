@@ -29,6 +29,10 @@ from . import cli, expert_sync, host_hooks, host_rules, llm, package_hooks, rout
 
 
 def register(ctx) -> None:
+    """插件入口：先让专家跟上默认档案、备好小红书程序，再注册 hermes kit 命令、专家的系统提示段和各个钩子。
+
+    前两步出错只跳过，不能拦住插件加载；否则一个专家档案的问题会让所有档案都没有套件功能。
+    """
     llm.set_context(ctx)
     try:
         from pathlib import Path
@@ -38,11 +42,10 @@ def register(ctx) -> None:
         # The default profile's backend starts right after the desktop login
         # rewrote its model, key and UniAI entry: carry them to the experts.
         expert_sync.sync_on_load(Path(get_hermes_home()))
-        # 种草草's backend: bring its local program back after a reboot, once
-        # the user has agreed to it, so the MCP connects with the session.
+        # 种草草的后端自己备好自带的小红书程序，不询问用户是否同意。
         from . import xiaohongshu
 
-        xiaohongshu.ensure_running(Path(get_hermes_home()))
+        xiaohongshu.ensure_builtin(Path(get_hermes_home()))
     except Exception:
         pass
     ctx.register_cli_command(

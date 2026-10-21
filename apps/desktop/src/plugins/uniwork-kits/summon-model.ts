@@ -1,6 +1,6 @@
 import type { ExpertCard, ExpertDirectory } from './types'
 
-/** The picker's two groups: the recently summoned (newest first), then everyone else by name. */
+/** 召唤列表分两组：最近召唤过的（最新的在前），其余按名字排。 */
 export function pickerGroups(directory: ExpertDirectory): { recent: ExpertCard[]; rest: ExpertCard[] } {
   const byName = new Map(directory.experts.map(expert => [expert.name, expert]))
 
@@ -17,7 +17,24 @@ export function pickerGroups(directory: ExpertDirectory): { recent: ExpertCard[]
   return { recent, rest }
 }
 
-/** The expert whose profile *profile* is, or null for an ordinary profile. */
+/** 按名字、职业、简介或标签在全部专家里找。空查询不返回列表。 */
+export function searchExperts(directory: ExpertDirectory, query: string): ExpertCard[] {
+  const needle = query.trim().toLocaleLowerCase()
+
+  if (!needle) {
+    return []
+  }
+
+  return directory.experts
+    .filter(expert =>
+      [expert.display_name, expert.profession, expert.description, expert.profile, ...expert.tags].some(field =>
+        field.toLocaleLowerCase().includes(needle)
+      )
+    )
+    .sort((a, b) => a.display_name.localeCompare(b.display_name, 'zh'))
+}
+
+/** 这个档案对应的专家；普通档案返回 null。 */
 export function expertForProfile(directory: ExpertDirectory, profile: null | string | undefined): ExpertCard | null {
   const key = String(profile ?? '').trim()
 
@@ -33,14 +50,13 @@ export function openingPrompt(expert: ExpertCard): string {
   return expert.init_prompt.trim()
 }
 
-/** Quick prompts for the empty chat, the opening prompt first when the package left it out. */
-export function quickPrompts(expert: ExpertCard, limit = 3): string[] {
-  const prompts = expert.quick_prompts.map(prompt => prompt.trim()).filter(Boolean)
-  const opening = openingPrompt(expert)
+/**
+ * 召唤后输入框下方「试试这样问」的卡片，和数字员工一致：只放宿主为这位专家写的那一条，
+ * 它和已经填进输入框的开场白相同时不放；专家包里的短问法不用在这里。
+ */
+export function tryAskingPrompts(expert: ExpertCard): string[] {
+  // 旧版后端给的专家名单没有这个字段（桌面端可能连着没升级的后端），缺了就当没有
+  const prompt = (expert.try_asking ?? '').trim()
 
-  if (opening && !prompts.includes(opening)) {
-    prompts.unshift(opening)
-  }
-
-  return prompts.slice(0, limit)
+  return prompt && prompt !== openingPrompt(expert) ? [prompt] : []
 }

@@ -113,6 +113,7 @@ class Problem:
     detail: str
 
     def __str__(self) -> str:
+        """问题的一行文字，带上第几页（整份文件的问题不写页码）。"""
         return f"第{self.slide}页 {self.detail}" if self.slide else self.detail
 
 
@@ -127,9 +128,11 @@ class DeckReport:
 
     @property
     def ok(self) -> bool:
+        """没有发现任何问题。"""
         return not self.problems
 
     def as_text(self) -> str:
+        """给模型看的自检结论：页数、页面尺寸、图片数，有问题时逐条列出并附上对应改法。"""
         head = (
             f"版面自检：{self.slides} 页，页面 {self.page_inches[0]:.2f}×{self.page_inches[1]:.2f} 英寸，"
             f"图片 {self.pictures} 张。"
@@ -146,7 +149,7 @@ class DeckReport:
 
 
 def image_pixels(data: bytes) -> Optional[Tuple[int, int]]:
-    """Width and height of a PNG, JPEG, or GIF, or ``None`` when unknown."""
+    """读出 PNG、JPEG、GIF 的宽高；读不出返回 None。"""
     if data.startswith(b"\x89PNG\r\n\x1a\n") and len(data) >= 24:
         return struct.unpack(">II", data[16:24])
     if data[:6] in (b"GIF87a", b"GIF89a") and len(data) >= 10:
@@ -168,15 +171,18 @@ def image_pixels(data: bytes) -> Optional[Tuple[int, int]]:
 
 
 def _attr(attrs: str, name: str) -> Optional[str]:
+    """从一段 XML 属性文本里取某个属性的值，没有返回 None。"""
     match = re.search(rf'\b{name}="([^"]*)"', attrs)
     return match.group(1) if match else None
 
 
 def _text_width(text: str) -> float:
+    """粗略估算一段文字的宽度（以字号为单位）：中文按 1 个字宽，西文按 0.55。"""
     return sum(1.0 if ord(ch) > 0x2E80 else 0.55 for ch in text)
 
 
 def _needed_height(shape: str, width_in: float) -> Tuple[float, str]:
+    """估算文本框按当前字号、行距和边距排下全部文字需要的高度（英寸），并返回第一段文字作示例。"""
     insets = {key: int(value) / EMU for key, value in _INSET_RE.findall(shape)}
     usable = width_in - insets.get("lIns", _DEFAULT_SIDE_IN) - insets.get("rIns", _DEFAULT_SIDE_IN)
     if usable <= 0:
@@ -218,6 +224,7 @@ class _Block:
 
 
 def _blocks(xml: str) -> List[_Block]:
+    """找出一页里横排、未旋转、不透明的文字块，估算文字实际占的位置，供判断文字挤在一起。"""
     found: List[_Block] = []
     for shape in _SP_RE.findall(xml):
         text = "".join(_TEXT_RE.findall(shape)).strip()
@@ -277,6 +284,7 @@ def _blocks(xml: str) -> List[_Block]:
 
 
 def _crowded(xml: str) -> List[Tuple[str, str, float]]:
+    """找出上下贴得太近或叠在一起的文字块对。"""
     blocks = _blocks(xml)
     pairs: List[Tuple[str, str, float]] = []
     for index, first in enumerate(blocks):
@@ -292,6 +300,7 @@ def _crowded(xml: str) -> List[Tuple[str, str, float]]:
 
 
 def _spills(xml: str, page_w: float, page_h: float) -> List[Tuple[str, float]]:
+    """找出文字超出它所在卡片（有填色的底框）的情况，返回（示例文字, 超出多少英寸）。"""
     cards: List[Tuple[float, float, float, float]] = []
     texts: List[Tuple[str, float, float, float, float]] = []
     for shape in _SP_RE.findall(xml):
@@ -328,6 +337,7 @@ def _spills(xml: str, page_w: float, page_h: float) -> List[Tuple[str, float]]:
 
 
 def _extent(xml: str, page_w: float, page_h: float) -> Tuple[float, float]:
+    """一页里元素最远伸到哪里（右边和下边），铺满整页的背景不算。"""
     right = bottom = 0.0
     for match in _BOX_RE.finditer(xml):
         x, y, cx, cy = (int(v) / EMU for v in match.groups())
@@ -338,6 +348,7 @@ def _extent(xml: str, page_w: float, page_h: float) -> Tuple[float, float]:
 
 
 def _crop(shape: str) -> dict:
+    """图片的裁切比例（上下左右各裁掉多少），没有裁切返回空字典。"""
     match = _SRC_RECT_RE.search(shape)
     if not match:
         return {}
@@ -345,12 +356,13 @@ def _crop(shape: str) -> dict:
 
 
 def _orientation(width: float, height: float) -> str:
+    """按宽高比判断横、竖还是方。"""
     ratio = width / height if height else 1.0
     return "横" if ratio > 1.15 else ("竖" if ratio < 0.87 else "方")
 
 
 def measure(data: bytes) -> DeckReport:
-    """Read geometry from *data*. An unreadable file is one problem, not an exception."""
+    """测量一份 PPT 的版面并给出问题清单；文件读不开也只算一条问题，不抛异常。"""
     try:
         archive = zipfile.ZipFile(BytesIO(data))
         presentation = archive.read("ppt/presentation.xml").decode("utf-8", "ignore")

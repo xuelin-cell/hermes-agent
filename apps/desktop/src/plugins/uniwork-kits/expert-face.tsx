@@ -9,7 +9,7 @@ interface ExpertFaceProps {
   size?: number
 }
 
-/** The expert's avatar as the Bots list shows it, else its first character. */
+/** 专家头像，和机器人名单的画法一致；没有头像时显示名字的第一个字。 */
 export function ExpertFace({ expert, size = 28 }: ExpertFaceProps) {
   const avatars = useValue($expertAvatars)
   const image = avatars[expert.name]

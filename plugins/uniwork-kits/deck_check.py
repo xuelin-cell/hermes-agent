@@ -42,7 +42,7 @@ _DECK_WORK_RE = re.compile(r"\.pptx\b|pptxgenjs|python-pptx|from\s+pptx\s+import
 
 
 def check_pptx(path: Path) -> List[str]:
-    """Problems in *path*. An unreadable file yields one problem, not an exception."""
+    """检查一份 PPT 的问题清单；文件读不开时也只算一条问题，不抛异常。"""
     try:
         data = Path(path).read_bytes()
     except OSError as exc:
@@ -51,7 +51,7 @@ def check_pptx(path: Path) -> List[str]:
 
 
 def is_deck_work(args: object) -> bool:
-    """Whether a tool call builds or edits a deck (.pptx / pptxgenjs / python-pptx)."""
+    """这次工具调用是不是在生成或修改 PPT（提到 .pptx、pptxgenjs 或 python-pptx）。"""
     try:
         flat = args if isinstance(args, str) else json.dumps(args, ensure_ascii=False)
     except (TypeError, ValueError):
@@ -60,7 +60,7 @@ def is_deck_work(args: object) -> bool:
 
 
 def format_generated_review(prompts: List[str], ai_labels: int) -> str:
-    """One-time check of this request's generated pictures."""
+    """交付前对本次请求生成的配图做一次核对提示：列出生成时的提示词，说明成品里有几处「AI 生成」标注。"""
     shown = [
         f"  {i}. {p[:_PROMPT_SHOWN_CHARS]}{'…' if len(p) > _PROMPT_SHOWN_CHARS else ''}"
         for i, p in enumerate(prompts[:_PROMPTS_LISTED], 1)
@@ -82,6 +82,7 @@ def format_generated_review(prompts: List[str], ai_labels: int) -> str:
 
 
 def _signature(path: Path) -> Optional[Tuple[int, int]]:
+    """文件的（大小, 修改时间），用来判断上次检查之后有没有变；读不到返回 None。"""
     try:
         stat = path.stat()
     except OSError:
@@ -90,6 +91,7 @@ def _signature(path: Path) -> Optional[Tuple[int, int]]:
 
 
 def _key(path: Path) -> str:
+    """同一个文件的统一写法（真实路径、Windows 下不分大小写），用作记录的键。"""
     try:
         return os.path.normcase(str(path.resolve()))
     except OSError:
@@ -97,7 +99,10 @@ def _key(path: Path) -> str:
 
 
 def annotate(tool_name: str, args: object, result: str, turn: Optional[turns.Turn] = None) -> Optional[str]:
-    """Report on decks this call wrote. ``None`` leaves the tool result alone."""
+    """检查这次调用写出的 PPT，把结论接在工具结果后面；返回 None 表示原样不动。
+
+    每次请求最多退回两次，之后连同问题一起放行，因为能把对话卡死的检查比问题本身更糟。字节没变的文件不重复检查。
+    """
     turn = turn or turns.Turn(session_id="")
     paths = _pptx_paths(args, result if isinstance(result, str) else str(result or ""), turns.session_cwd(turn))
     refused: List[str] = []
@@ -150,6 +155,7 @@ def annotate(tool_name: str, args: object, result: str, turn: Optional[turns.Tur
 
 
 def _walk(value: Any, found: List[str]) -> None:
+    """把参数里的所有字符串（包括嵌套的字典和列表）收集出来。"""
     if isinstance(value, str):
         found.append(value)
     elif isinstance(value, dict):
@@ -161,11 +167,9 @@ def _walk(value: Any, found: List[str]) -> None:
 
 
 def candidates(text: str, suffix_re: "re.Pattern[str]") -> List[str]:
-    """Strings ending in a suffix *suffix_re* finds, read back to a delimiter.
+    """找出以指定后缀结尾的字符串，往回读到分隔符为止。
 
-    Each hit yields the span back to the last quote-like character (a path with
-    spaces) and the span back to the last space or bracket (a bare path).
-    Linear in the text; nothing here can backtrack.
+    每处命中给出两个候选：读到引号类字符（带空格的路径），和读到空格或括号（不带空格的路径）。只做一遍线性扫描，不会回溯；以前的正则在很长的路径上会指数级回溯，把对话卡死过。
     """
     text = (text or "")[:_MAX_SCAN]
     out: List[str] = []
@@ -192,7 +196,7 @@ _GIT_BASH_DRIVE_RE = re.compile(r"^/([A-Za-z])(/|$)")
 
 
 def local_dir(raw: str) -> Optional[Path]:
-    """A directory named in a command, with env vars expanded and ``/c/…`` read as ``C:/…``."""
+    """命令里写的目录：展开环境变量，Git Bash 的 /c/... 换成 C:/...；不是已存在的目录返回 None。"""
     text = os.path.expandvars(raw.strip().strip('"').strip("'"))
     if os.name == "nt":
         text = _GIT_BASH_DRIVE_RE.sub(lambda m: f"{m.group(1).upper()}:/", text)
@@ -204,7 +208,7 @@ def local_dir(raw: str) -> Optional[Path]:
 
 
 def command_dirs(args: object) -> List[Path]:
-    """Directories a shell command ``cd``s into, in order."""
+    """一条命令按顺序 cd 进过的目录。"""
     blobs: List[str] = []
     _walk(args, blobs)
     found: List[Path] = []
@@ -217,6 +221,7 @@ def command_dirs(args: object) -> List[Path]:
 
 
 def _existing(token: str, bases: List[Path]) -> Optional[Path]:
+    """把一个路径片段当成文件找：绝对路径直接看，相对路径在各候选目录下找。"""
     text = os.path.expandvars(token)
     if os.name == "nt":
         text = _GIT_BASH_DRIVE_RE.sub(lambda m: f"{m.group(1).upper()}:/", text)
@@ -232,6 +237,7 @@ def _existing(token: str, bases: List[Path]) -> Optional[Path]:
 
 
 def _from_text(text: str, bases: List[Path]) -> List[Path]:
+    """从一段文字里找出真实存在的 .pptx 文件。"""
     found: List[Path] = []
     for token in candidates(text, _DECK_SUFFIX_RE):
         path = _existing(token, bases)
@@ -241,6 +247,7 @@ def _from_text(text: str, bases: List[Path]) -> List[Path]:
 
 
 def _scripts(text: str, bases: List[Path]) -> List[Path]:
+    """从一段文字里找出跑过的脚本（js、py），太大的不读。"""
     found: List[Path] = []
     for token in candidates(text, _SCRIPT_SUFFIX_RE):
         path = _existing(token, bases)
@@ -253,11 +260,9 @@ def _scripts(text: str, bases: List[Path]) -> List[Path]:
 
 
 def _pptx_paths(args: object, result: str, cwd: str = "") -> List[Path]:
-    """Decks the call names: in its arguments, its output, or a script it ran.
+    """这次调用提到的 PPT：参数里、输出里，或它跑的脚本里写的。
 
-    Relative names are read against the directories the command ``cd``s into
-    and the session's working directory — a model that ran
-    ``cd out && node gen.js`` and printed ``xihu.pptx`` was missed otherwise.
+    相对路径按命令 cd 进的目录和会话工作目录去找。模型跑 cd out && node gen.js 后只打印 xihu.pptx 的情况，以前会漏掉。
     """
     blobs: List[str] = []
     _walk(args, blobs)

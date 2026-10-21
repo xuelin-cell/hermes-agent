@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 
-from . import expert_cards, host_rules, llm, naming, package, router, store
+from . import expert_cards, host_rules, llm, naming, package, router, script_swaps, store
 from . import plugin_spec as spec
 from . import triggers as triggers_mod
 from . import yaml_compat as yaml
@@ -38,6 +38,9 @@ _TEXT_SUFFIXES = (".md", ".txt")
 _CJK_RE = re.compile(r"[一-鿿]")
 _DOC_SUFFIXES = (".md", ".txt", ".json", ".yaml", ".yml")
 _RESERVED_PROFILE_NAMES = frozenset({"default", "hermes", "test", "tmp", "root", "sudo", "custom"})
+# 命令转成技能的写法版本，记在安装记录里。转换逻辑改了就加一，seed 会把按旧写法装的、含命令的包重装一次。
+# 2：正文里有 --- 分隔线时不再丢掉它前面的内容（ppt-writer 的 create-ppt 曾丢了全部步骤）。
+COMMAND_FORMAT = 2
 
 
 class KitError(Exception):
@@ -82,6 +85,7 @@ class Receipt:
     profile: str = ""
 
     def render(self) -> str:
+        """把安装结果整理成给人看的回执文字：判定、装到哪里、装了什么、跳过什么、要用户补什么。"""
         head = "检查结果（只解析，没有写入任何文件）" if self.dry_run else "安装回执"
         lines = [f"{head} · {self.plugin} {self.version}".rstrip()]
         if self.display_name and self.display_name != self.plugin:
@@ -93,6 +97,7 @@ class Receipt:
             lines.append(f"失败：{self.error}")
 
         def block(title: str, items: Iterable[str]) -> None:
+            """有内容时追加一段带标题和条数的列表。"""
             items = list(items)
             if items:
                 lines.append(f"{title}（{len(items)}）：")
@@ -126,15 +131,17 @@ class Receipt:
 
 
 def _now() -> str:
+    """当前本地时间的字符串，记进索引。"""
     return time.strftime("%Y-%m-%dT%H:%M:%S")
 
 
 def env_name(plugin: str, key: str) -> str:
+    """包里某个用户配置项对应的环境变量名（包名_键名，大写，特殊字符换成下划线）。"""
     return re.sub(r"[^A-Za-z0-9]+", "_", f"{plugin}_{key}").strip("_").upper()
 
 
 def stored_user_config(plugin: str, fields: List[dict]) -> List[Dict[str, Any]]:
-    """The form spec persisted on an index entry (titles and flags, never values)."""
+    """存进索引的配置项表单定义（标题、是否敏感、是否必填、默认值），从不存用户填的值。"""
     out: List[Dict[str, Any]] = []
     for field in fields or []:
         if not isinstance(field, dict):
@@ -155,6 +162,7 @@ def stored_user_config(plugin: str, fields: List[dict]) -> List[Dict[str, Any]]:
 
 
 def _env_file_value(home: Path, name: str) -> Optional[str]:
+    """从 home 的 .env 里读一个变量的值；没有或读不到返回 None。"""
     try:
         for line in (home / ".env").read_text(encoding="utf-8", errors="replace").splitlines():
             stripped = line.strip()
@@ -169,6 +177,7 @@ def _env_file_value(home: Path, name: str) -> Optional[str]:
 
 
 def _has_real_env(path: Path) -> bool:
+    """.env 里有没有真正的变量行（只有注释的空模板不算）。"""
     try:
         return any(
             line.strip() and not line.strip().startswith("#")
@@ -181,8 +190,13 @@ def _has_real_env(path: Path) -> bool:
 _BUILTIN_NAMES: Optional[Set[str]] = None
 
 
+def commands_current(entry: Dict[str, Any]) -> bool:
+    """这个包的命令技能是不是按当前写法转换的；没有命令技能的包不受写法影响。"""
+    return not entry.get("command_skill_names") or int(entry.get("command_format") or 1) >= COMMAND_FORMAT
+
+
 def builtin_skill_names() -> Set[str]:
-    """Names of the skills that ship in the Hermes tree (``<repo>/skills``)."""
+    """Hermes 自带技能（仓库 skills/ 下）的名字，用来避免套件技能和它们重名；结果缓存在进程里。"""
     global _BUILTIN_NAMES
     if _BUILTIN_NAMES is None:
         names: Set[str] = set()
@@ -209,12 +223,9 @@ BUNDLED_TRIGGERS = Path(__file__).with_name("bundled_triggers.json")
 
 
 def bundled_triggers() -> Dict[str, Any]:
-    """Verified Chinese trigger phrases for the bundled kits, in plugin_index.json form.
+    """内置套件已经校验过的中文触发词，格式和 plugin_index.json 相同。
 
-    Exported from a home where every phrase had passed model review, so
-    installing the bundled packages costs no model calls. A package that
-    changed keeps whatever keys still match; new capabilities fall back to
-    generation. Missing or unreadable file: no phrases, never an error.
+    从一个所有词都通过模型复核的账号导出，装内置包时不再调模型。包变了的，还对得上的能力照用，新能力再去生成。文件缺失或读不懂时返回空，不报错。
     """
     try:
         return load_triggers(BUNDLED_TRIGGERS) if BUNDLED_TRIGGERS.is_file() else {}
@@ -223,7 +234,7 @@ def bundled_triggers() -> Dict[str, Any]:
 
 
 def load_triggers(path: Optional[Path]) -> Dict[str, Any]:
-    """A UniClaw ``plugin_index.json`` (``{"plugins": {name: {"triggers": {...}}}}``)."""
+    """读数字员工（UniClaw）的 plugin_index.json 触发词文件；读不了时报中文错误。"""
     if not path:
         return {}
     try:
@@ -235,6 +246,7 @@ def load_triggers(path: Optional[Path]) -> Dict[str, Any]:
 
 
 def _phrases(triggers: Dict[str, Any], plugin: str, key: str, description: str) -> List[str]:
+    """一个能力现成的触发词：导入的表里有的，加上作者在说明里写的，去重。"""
     entry = triggers.get(plugin) if isinstance(triggers.get(plugin), dict) else {}
     table = entry.get("triggers") if isinstance(entry.get("triggers"), dict) else {}
     out: List[str] = []
@@ -248,6 +260,7 @@ _TAG_RE = re.compile(r"^(\[[^\]]{1,8}\]\s*)")
 
 
 def _trigger_note(plugin: str, state: "triggers_mod.TriggerState", total: int) -> str:
+    """回执里关于触发词的一行：几个能力已生成并复核、剔除了多少、还有多少没做完。"""
     note = f"中文触发词：{len(state.triggers)}/{total} 个能力的触发词已由模型生成并复核"
     rejected = state.stats.get("rejected", 0)
     if rejected:
@@ -261,10 +274,9 @@ def _trigger_note(plugin: str, state: "triggers_mod.TriggerState", total: int) -
 
 
 def index_description(original: str, phrases: List[str]) -> str:
-    """Hermes shows 60 characters of a description; lead with Chinese triggers when needed.
+    """Hermes 的技能列表只显示说明的前 60 个字；前 60 个字里没有中文时，在前面加上几个中文触发词。
 
-    A ``[工作流]`` / ``[子代理]`` tag is kept in front and does not count as
-    Chinese content — otherwise every converted command would look covered.
+    开头的「[工作流]」「[子代理]」标签保留在最前面，而且不算中文内容，否则每个由命令转来的技能都会被当成已经有中文。
     """
     from agent.skill_utils import SKILL_PROMPT_DESC_LIMIT
 
@@ -279,11 +291,13 @@ def index_description(original: str, phrases: List[str]) -> str:
 
 
 def _dump_skill_md(frontmatter: Dict[str, Any], body: str) -> str:
+    """把 frontmatter 和正文拼回 SKILL.md 文本，中文不转义、不折行。"""
     head = yaml.safe_dump(frontmatter, allow_unicode=True, sort_keys=False, width=10**6).strip()
     return f"---\n{head}\n---\n\n{body.lstrip()}"
 
 
 def _substitute_root(directory: Path, root_posix: str) -> int:
+    """把文本文件里的包根占位符（${CLAUDE_PLUGIN_ROOT} 等）换成原包副本的真实路径，返回替换次数。"""
     count = 0
     for f in directory.rglob("*"):
         if f.is_file() and f.suffix.lower() in _TEXT_SUFFIXES:
@@ -306,6 +320,7 @@ _NOT_A_DOC = frozenset({"skill.md", "description.md"})
 
 
 def _copy_root_docs(src: Path, dest: Path) -> None:
+    """把包根的说明文档复制到技能旁边，供技能引用；根目录的 SKILL.md、DESCRIPTION.md 不复制，免得被重复索引或变成多余的分类标题。"""
     dest.mkdir(parents=True, exist_ok=True)
     for f in src.iterdir():
         if (
@@ -318,6 +333,7 @@ def _copy_root_docs(src: Path, dest: Path) -> None:
 
 
 def _write_category_description(path: Path, display: str, description: str, phrases: List[str]) -> None:
+    """写套件这一类技能的分类说明（名字、简介、几个触发词），技能列表里按它分组。"""
     text = display
     if description:
         clipped = description if len(description) <= 120 else description[:117] + "..."
@@ -329,11 +345,12 @@ def _write_category_description(path: Path, display: str, description: str, phra
 
 
 def agent_dir_name(agent_name: str) -> str:
+    """子代理转成派发技能后的目录名（agent-<名字>）。"""
     return "agent-" + re.sub(r"[^A-Za-z0-9_-]+", "-", agent_name).strip("-")
 
 
 def agent_skill_names(plan: package.Plan) -> Dict[str, str]:
-    """``{agent name: dispatch-skill full name}``, deterministic for a package."""
+    """{子代理名: 派发技能的完整名}，同一个包每次算出来都一样。"""
     taken = {item.full_name for item in plan.skills}
     out: Dict[str, str] = {}
     for agent in plan.agents:
@@ -344,13 +361,14 @@ def agent_skill_names(plan: package.Plan) -> Dict[str, str]:
 
 
 def ref_mapping(plan: package.Plan) -> Dict[str, str]:
-    """``{name a package text may use after "<plugin>:": installed full name}``."""
+    """包里文字在「包名:」后面可能写的各种名字，到安装后完整名字的对照表。"""
     skills = [(i.bare_name, i.full_name) for i in plan.skills] + [(i.rel_dir, i.full_name) for i in plan.skills]
     skills += [(i.alias, i.full_name) for i in plan.skills if i.alias]
     return naming.ref_mapping(plan.name, skills, agent_skill_names(plan).items())
 
 
 def _rewrite_refs_in_dir(directory: Path, plugin: str, mapping: Dict[str, str]) -> int:
+    """把目录里文本文件中的「包名:旧名」引用都改成安装后的完整名字，返回改了几处。"""
     total = 0
     for f in directory.rglob("*"):
         if f.is_file() and f.suffix.lower() in _TEXT_SUFFIXES:
@@ -366,7 +384,7 @@ def _rewrite_refs_in_dir(directory: Path, plugin: str, mapping: Dict[str, str]) 
 
 
 def hermes_command_preamble(body: str, plugin: str, command: str, full_name: str) -> str:
-    """Replace UniClaw's "no slash entry point" preamble: in Hermes every skill is a command."""
+    """替换数字员工写在命令开头的「没有斜杠入口」说明：在 Hermes 里每个技能都是一个命令。"""
     lines = body.lstrip("\n").splitlines(keepends=True)
     if not lines or not lines[0].startswith("> **来源**"):
         return body
@@ -384,6 +402,10 @@ def hermes_command_preamble(body: str, plugin: str, command: str, full_name: str
 def _dispatch_skill_md(
     plugin: str, full_name: str, agent: spec.PluginAgentSpec, phrases: Optional[List[str]] = None
 ) -> str:
+    """把一个子代理写成派发技能：说明什么时候用 delegate_task 派给它、怎么写 goal 和 context，并附上原人设和原定义里的限制。
+
+    Hermes 不会替原定义强制执行工具和轮数限制，所以写进说明让模型在 goal 里写明。
+    """
     limits = []
     if agent.tools:
         limits.append(f"- 原定义允许的工具：{', '.join(agent.tools)}")
@@ -417,6 +439,7 @@ def _dispatch_skill_md(
 
 
 def _resolve_command(command: str, retained: Path) -> Optional[str]:
+    """MCP 的启动命令：绝对路径要存在；相对路径在原包副本里找，不能跑到包外；其他按命令名原样交给系统查找。"""
     if not command:
         return None
     if os.path.isabs(command):
@@ -432,7 +455,10 @@ def _resolve_command(command: str, retained: Path) -> Optional[str]:
 def hermes_mcp_config(
     plugin: str, server: Dict[str, Any], retained: Path, data_dir: Path
 ) -> Tuple[Optional[Dict[str, Any]], str, Dict[str, str]]:
-    """``(config, failure_reason, {user_config_key: env_var})`` for one server."""
+    """把包里一条 MCP 声明转成 Hermes 的 mcp_servers 配置，返回（配置, 不能用的原因, {配置项: 环境变量名}）。
+
+    用户配置的值不写进配置，只留 ${变量名}，Hermes 加载时从 .env 展开。
+    """
     refs = {k: env_name(plugin, k) for k in spec.referenced_user_config_keys(server)}
     ctx = {
         "plugin_root": retained.resolve().as_posix(),
@@ -479,7 +505,7 @@ def hermes_mcp_config(
 
 
 def _plan_env(plan: package.Plan, refs: Dict[str, str], home: Path, receipt: Receipt, *, write: bool) -> List[str]:
-    """Declared user config → env var names; write non-secret defaults, list what is missing."""
+    """整理包声明的用户配置：对应到环境变量名，把不敏感的默认值写进 .env，列出还缺的项。"""
     declared = {f["key"]: f for f in plan.manifest.user_config}
     names: Dict[str, str] = dict(refs)
     for key in declared:
@@ -506,6 +532,7 @@ def _plan_env(plan: package.Plan, refs: Dict[str, str], home: Path, receipt: Rec
 
 
 def _remove_package_files(home: Path, plugin: str, entry: Dict[str, Any], *, drop_env: bool) -> None:
+    """删掉一个包装过的东西：套件技能目录、技能开关里的名字、它的 MCP；drop_env 时连它的 .env 变量一起删。"""
     store.safe_rmtree(store.kit_root(home, plugin), home)
     names = set(entry.get("skill_names") or []) | set(entry.get("agent_skill_names") or [])
     with store.scoped_home(home):
@@ -539,6 +566,10 @@ def install_into_home(
     regenerate_triggers: bool = False,
     extra: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
+    """把包里的技能、子代理、MCP、配置项和触发词装进一个 home，并更新索引。
+
+    已装过同名包时先清掉旧文件再装（类型不同直接拒绝）；原包整份保留一份副本，技能里的占位符和互相引用都改成安装后的路径和名字。触发词按导入表、作者写的、模型生成并复核的顺序取。
+    """
     index = store.load_index(home)
     previous = index["plugins"].get(plan.name)
     enabled = bool(previous.get("enabled", True)) if isinstance(previous, dict) else True
@@ -661,6 +692,7 @@ def install_into_home(
         receipt.rewrites.append("子代理改成了派工技能；原定义的 tools / model / maxTurns 只写成文字，Hermes 不强制")
     if ref_count:
         receipt.rewrites.append(f"包内 {ref_count} 处「{plan.name}:技能名」引用改成了 Hermes 里的技能名（{naming.SEP} 分隔）")
+    receipt.rewrites.extend(script_swaps.apply(home, plan.name))
 
     if skill_names or agent_names:
         _copy_root_docs(retained, kroot)
@@ -711,6 +743,7 @@ def install_into_home(
         "source_dir": retained.relative_to(home).as_posix(),
         "skill_names": skill_names,
         "command_skill_names": command_names,
+        "command_format": COMMAND_FORMAT,
         "agent_skill_names": agent_names,
         "mcp_keys": mcp_keys,
         "env_keys": env_keys,
@@ -739,6 +772,7 @@ def install_into_home(
 
 
 def profile_name_for(plugin: str) -> str:
+    """专家对应的档案名：只留小写字母数字和 - _，最长 64，开头不是字母数字或撞上保留名时加前后缀。"""
     name = re.sub(r"[^a-z0-9_-]+", "-", plugin.lower()).strip("-_")[:64]
     if not name or not name[0].isalnum():
         name = f"expert-{name}".strip("-")[:64]
@@ -748,7 +782,7 @@ def profile_name_for(plugin: str) -> str:
 
 
 def _mirror_credentials(src_home: Path, dst_home: Path) -> bool:
-    """Same rule as the desktop ``profiles.create``: copy .env over a comment-only stub."""
+    """和桌面新建档案同一条规则：新档案的 .env 只是注释模板时，复制默认档案的 .env 过去，并收紧权限。"""
     src, dst = src_home / ".env", dst_home / ".env"
     if src.is_file() and _has_real_env(src) and not _has_real_env(dst):
         shutil.copy2(src, dst)
@@ -761,7 +795,7 @@ def _mirror_credentials(src_home: Path, dst_home: Path) -> bool:
 
 
 def _avatar_source(plan: package.Plan, avatars_dir: Optional[Path]) -> Tuple[Optional[Path], str]:
-    """A raster from the host avatar dir first (UniClaw's drawn avatars), then the package's own."""
+    """专家头像从哪来：先找宿主头像目录里画好的图（数字员工的头像），再用包自己的。"""
     if avatars_dir:
         for suffix in (*_AVATAR_EXTS, ".svg"):
             candidate = Path(avatars_dir) / f"{plan.name}{suffix}"
@@ -779,6 +813,7 @@ def _avatar_source(plan: package.Plan, avatars_dir: Optional[Path]) -> Tuple[Opt
 
 
 def _apply_bot_identity(home: Path, title: str, avatar: Optional[Path]) -> None:
+    """把专家的名字和头像写进档案的 profile.yaml，机器人名单就按它显示。"""
     from utils import atomic_yaml_write
 
     meta_path = home / "profile.yaml"
@@ -817,6 +852,7 @@ def _apply_bot_identity(home: Path, title: str, avatar: Optional[Path]) -> None:
 
 
 def _enable_self_in(home: Path) -> None:
+    """在专家自己的档案里也启用本插件，专家对话才有宿主规则和钩子。"""
     with store.scoped_home(home):
         from hermes_cli.config import load_config, save_config
 
@@ -831,6 +867,7 @@ def _enable_self_in(home: Path) -> None:
 
 
 def _sha(text: str) -> str:
+    """文本的 SHA-256，用来判断 SOUL.md 有没有被用户改过。"""
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
@@ -839,7 +876,7 @@ _BOT_PROTOCOL_HEADING = "## Messaging other agents"
 
 
 def _split_soul(text: str) -> Tuple[str, str]:
-    """``(persona, appended Bot Mode protocol)`` of an installed SOUL.md."""
+    """把已装的 SOUL.md 拆成（人设, 桌面后来追加的机器人模式协议），重装时保留协议部分。"""
     marker = f"\n{_BOT_PROTOCOL_HEADING}"
     idx = text.find(marker)
     if idx < 0:
@@ -856,6 +893,10 @@ def install_expert(
     avatars_dir: Optional[Path],
     market_id: str = "",
 ) -> None:
+    """把专家装成一个独立档案：建档案、写人设（SOUL.md）、名字和头像，把技能和 MCP 装进去，再在默认档案的索引里记一笔。
+
+    用户手改过的 SOUL.md 和桌面追加的机器人协议都保留；新档案的模型和密钥跟默认档案一致。
+    """
     from hermes_cli.profiles import (
         create_profile,
         get_profile_dir,
@@ -986,6 +1027,7 @@ def install_expert(
 
 
 def inspect(path: Path, *, triggers: Dict[str, Any], allow_overlap: bool = False) -> Receipt:
+    """只解析包、列出会装什么，不写任何文件（hermes kit inspect）。"""
     with package.open_package(path) as (pristine, work, digest):
         plan = package.build_plan(pristine, work, digest)
         receipt = Receipt(plugin=plan.name, version=plan.version, display_name=plan.display_name(),
@@ -1046,6 +1088,10 @@ def install(
     generate_triggers: bool = True,
     market_id: str = "",
 ) -> Receipt:
+    """安装一个包（套件装进 home，专家装成独立档案），返回回执；任何失败都写进回执，不往外抛。
+
+    这次安装新建的专家档案在失败时会删掉，重试时不会被当成别人的档案拒绝。
+    """
     with package.open_package(path) as (pristine, work, digest):
         plan = package.build_plan(pristine, work, digest)
         receipt = Receipt(plugin=plan.name, version=plan.version, display_name=plan.display_name(), kind=plan.kind)
@@ -1083,7 +1129,7 @@ def install(
 
 
 def _profile_to_create(plan: package.Plan) -> str:
-    """The expert profile this install is about to create, or ``""`` when it already exists."""
+    """这次安装将要新建的专家档案名；档案已经存在或不是专家时返回空字符串。"""
     if plan.kind != "expert":
         return ""
     from hermes_cli.profiles import profile_exists
@@ -1096,7 +1142,7 @@ _WINDOWS_MAX_PATH = 260
 
 
 def _failure_text(exc: Exception, home: Path) -> str:
-    """The receipt's error line; a path past Windows' 260-character limit says what to do."""
+    """回执里的错误一行；路径超过 Windows 260 字符上限时说明原因和怎么办。"""
     if isinstance(exc, KitError):
         return str(exc)
     if os.name != "nt" or max(map(len, _error_paths(exc)), default=0) < _WINDOWS_MAX_PATH:
@@ -1109,7 +1155,7 @@ def _failure_text(exc: Exception, home: Path) -> str:
 
 
 def _error_paths(exc: BaseException) -> List[str]:
-    """Paths an ``OSError`` (or ``shutil.Error``'s per-file list) failed on."""
+    """从 OSError（或 shutil.Error 的逐个文件列表）里取出出错的路径。"""
     found = [getattr(exc, "filename", None), getattr(exc, "filename2", None)]
     if isinstance(exc, shutil.Error) and exc.args and isinstance(exc.args[0], list):
         for item in exc.args[0]:
@@ -1122,13 +1168,13 @@ _EXTENDED_PREFIX = "\\\\?\\"
 
 
 def _extended(path: Path) -> str:
-    """*path* in Windows' extended-length form, which is not bound by the 260-character limit."""
+    """Windows 上把路径换成扩展长路径写法（带固定前缀），不受 260 字符上限限制。"""
     text = str(path.resolve())
     return text if os.name != "nt" or text.startswith(_EXTENDED_PREFIX) else _EXTENDED_PREFIX + text
 
 
 def _discard_new_profile(profile: str, receipt: Receipt) -> None:
-    """Undo a profile this install created before failing, so a retry is not refused as someone else's."""
+    """撤销这次安装失败前新建的档案，免得重试时被当成别人的档案拒绝。"""
     import contextlib
     import io
 
@@ -1152,18 +1198,21 @@ def _discard_new_profile(profile: str, receipt: Receipt) -> None:
 
 
 def receipt_home(receipt: Receipt) -> str:
+    """专家回执写在专家自己的档案里，这里给出那个档案的目录。"""
     from hermes_cli.profiles import get_profile_dir
 
     return str(get_profile_dir(receipt.profile))
 
 
 def _write_receipt(home: Path, plugin: str, receipt: Receipt) -> None:
+    """把回执写成文本文件，套件页的「查看记录」读它。"""
     path = store.receipt_path(home, plugin)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(receipt.render() + "\n", encoding="utf-8")
 
 
 def set_enabled(home: Path, plugin: str, enabled: bool) -> Dict[str, Any]:
+    """启用或停用一个套件（技能开关、MCP 开关一起改）；专家是独立档案，没有开关。"""
     index = store.load_index(home)
     entry = index["plugins"].get(plugin)
     if not isinstance(entry, dict):
@@ -1190,6 +1239,7 @@ def set_enabled(home: Path, plugin: str, enabled: bool) -> Dict[str, Any]:
 
 
 def uninstall(home: Path, plugin: str, *, delete_profile: bool = False) -> List[str]:
+    """卸载一个包：套件删掉技能、MCP、它的 .env 变量和原包副本；专家要明确 delete_profile 才删整个档案（含对话和记忆）。"""
     index = store.load_index(home)
     entry = index["plugins"].get(plugin)
     if not isinstance(entry, dict):
@@ -1221,7 +1271,7 @@ def uninstall(home: Path, plugin: str, *, delete_profile: bool = False) -> List[
 
 
 def set_config(home: Path, plugin: str, pairs: List[Tuple[str, str]]) -> List[str]:
-    """Write user-config values for *plugin* into *home*'s ``.env``."""
+    """把用户填的配置值写进 .env；专家的写进它自己的档案。"""
     index = store.load_index(home)
     entry = index["plugins"].get(plugin)
     if not isinstance(entry, dict):
@@ -1245,7 +1295,7 @@ def set_config(home: Path, plugin: str, pairs: List[Tuple[str, str]]) -> List[st
 
 
 def refresh_triggers(home: Path, plugin: str, *, regenerate: bool = False) -> Receipt:
-    """Retry pending / unverified trigger phrases of an installed kit (or start over)."""
+    """给已装套件补做没生成或没复核完的触发词，regenerate 时全部重来；只有套件有触发词。"""
     entry = store.load_index(home)["plugins"].get(plugin)
     if not isinstance(entry, dict):
         raise KitError(f"{home} 里没有装 {plugin}")
@@ -1269,4 +1319,5 @@ def refresh_triggers(home: Path, plugin: str, *, regenerate: bool = False) -> Re
 
 
 def list_entries(home: Path) -> List[Tuple[str, Dict[str, Any]]]:
+    """按名字排序的全部已装条目。"""
     return sorted((store.load_index(home).get("plugins") or {}).items())

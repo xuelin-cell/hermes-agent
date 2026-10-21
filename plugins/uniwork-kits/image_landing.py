@@ -82,6 +82,7 @@ PLACEMENT = (
 
 
 def is_image_search(tool_name: str) -> bool:
+    """这次调用是不是元景工具箱的搜图工具（MCP 的 image_search）。"""
     return media_slot.leaf(tool_name) == LEAF and str(tool_name or "").startswith("mcp__")
 
 
@@ -107,16 +108,19 @@ class Saved:
 
     @property
     def pixels(self) -> str:
+        """图片尺寸的文字写法（宽×高），读不出尺寸时为空。"""
         return f"{self.width}×{self.height}" if self.width and self.height else ""
 
     @property
     def credit(self) -> str:
+        """图下标注用的来源名：搜索结果给了来源名就用它，否则用来源网址的域名。"""
         if self.source_name:
             return self.source_name
         return (urlsplit(self.source_page or self.source_url).hostname or "").removeprefix("www.")
 
     @property
     def shape(self) -> str:
+        """横图、竖图还是方图，帮模型挑适合画框的图；读不出尺寸时为空。"""
         if not (self.width and self.height):
             return ""
         ratio = self.width / self.height
@@ -124,15 +128,17 @@ class Saved:
 
 
 def _clean_url(url: str) -> str:
+    """去掉网址里转义的换行和末尾多余的标点。"""
     return url.replace("\\n", "").replace("\\r", "").rstrip(_URL_TRAILING + "\r\n")
 
 
 def parse_hits(text: str) -> List[Hit]:
-    """Split an ``image_search`` result into its numbered entries."""
+    """把搜图结果拆成一条条命中（标题、原图、缩略图、来源）。"""
     hits: List[Hit] = []
     current: Optional[Dict[str, str]] = None
 
     def close() -> None:
+        """当前这条有原图或缩略图时收进结果，然后开始下一条。"""
         if current and (current.get("original") or current.get("thumbnail")):
             hits.append(Hit(
                 title=current.get("title", ""),
@@ -165,7 +171,7 @@ def parse_hits(text: str) -> List[Hit]:
 
 
 def candidate_urls(hits: List[Hit]) -> List[str]:
-    """Originals first, then thumbnails. Never a source page."""
+    """按先原图、后缩略图的顺序列出要尝试下载的地址，去重；从不下载来源网页本身。"""
     ordered: List[str] = []
     for url in [h.original for h in hits] + [h.thumbnail for h in hits]:
         if url and url not in ordered:
@@ -174,6 +180,7 @@ def candidate_urls(hits: List[Hit]) -> List[str]:
 
 
 def image_extension(data: bytes) -> Optional[str]:
+    """按文件头判断图片格式，返回扩展名；不是认识的图片格式返回 None。"""
     if data.startswith(b"\xff\xd8\xff"):
         return ".jpg"
     if data.startswith(b"\x89PNG\r\n\x1a\n"):
@@ -189,6 +196,7 @@ _JPEG_SOF = frozenset({0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xC
 
 
 def image_dimensions(data: bytes) -> Optional[Tuple[int, int]]:
+    """从 JPEG、PNG、GIF 的文件头读出宽高，不需要图像库；读不出返回 None。"""
     if data.startswith(b"\xff\xd8"):
         index, end = 2, len(data) - 9
         while index < end:
@@ -214,11 +222,9 @@ def image_dimensions(data: bytes) -> Optional[Tuple[int, int]]:
 
 
 def _allowed(url: str) -> bool:
-    """http(s) only, no private address literals, never the metadata floor.
+    """只下载 http(s) 地址，拒绝内网、本机地址和云服务元数据地址。
 
-    Hostnames are not resolved here on purpose: 数字员工 found corporate DNS
-    mapping image CDNs (pinimg, huaban) to cache addresses in private ranges,
-    and the same URLs downloaded fine.
+    故意不在这里解析域名：数字员工遇到过公司 DNS 把图片 CDN（pinimg、花瓣）解析到内网缓存地址的情况，这些地址其实能正常下载。
     """
     parts = urlsplit(url)
     if parts.scheme not in ("http", "https") or not parts.hostname:
@@ -242,7 +248,7 @@ def _allowed(url: str) -> bool:
 
 
 def fetch(url: str, *, timeout: float = 20.0) -> bytes:
-    """GET with every redirect hop checked and a size cap."""
+    """下载一个地址：每一跳重定向都重新检查是否允许，并限制文件大小。"""
     import httpx
 
     current = url
@@ -280,7 +286,7 @@ def download(
     fetcher: Callable[[str], bytes] = fetch,
     max_save: int = MAX_SAVE,
 ) -> List[Saved]:
-    """Download up to *max_save* real pictures, wide enough ones first."""
+    """最多保存 max_save 张真图，宽度够的优先；同一张图只存一份，并写一份来源清单。"""
     candidates: List[Tuple[str, bytes, str, Tuple[int, int]]] = []
     seen: set = set()
     for url in urls[:_MAX_TRY]:
@@ -324,6 +330,7 @@ def download(
 
 
 def _file_line(item: Saved) -> str:
+    """已下载图片在说明里的一行：路径、大小、像素、横竖、来源。"""
     details = [f"{item.size} 字节"] + [value for value in (item.pixels and f"{item.pixels} 像素", item.shape) if value]
     line = f"- {item.path.as_posix()}  （{'，'.join(details)}）"
     if item.credit:
@@ -332,6 +339,7 @@ def _file_line(item: Saved) -> str:
 
 
 def landing_footer(saved: List[Saved], *, where: str, left: int, reuse: bool = False) -> str:
+    """接在搜图结果后面的说明：哪些图已经下到本机、还能搜几次、怎么挑图和摆放、找不到真图怎么办。"""
     budget = f"这次请求还可以再搜 {left} 次（每次换个关键词）。" if left > 0 else "这次请求的搜图额度已经用完，不能再搜了。"
     if not saved:
         return "【宿主落地】这批搜图链接没有下成真图。" + budget + ELSEWHERE + "真实存在的产品、地标、人物不要用生成图顶替。"
@@ -352,6 +360,7 @@ def landing_footer(saved: List[Saved], *, where: str, left: int, reuse: bool = F
 
 
 def exhausted_notice(done: List[Tuple[str, List[Saved], str]]) -> str:
+    """本次请求搜图次数用完时的答复：列出已经下载的全部图片，告诉模型接下来怎么办，并说明搜图工具本身是正常的。"""
     lines = [
         CREDIT_LINE,
         f"【宿主】这次请求的搜图额度（{MAX_SEARCHES} 次）已经用完，这一次没有去搜；再搜也只会收到这段话。"
@@ -371,12 +380,16 @@ def exhausted_notice(done: List[Tuple[str, List[Saved], str]]) -> str:
 
 
 def _query(args: Any) -> str:
+    """把搜图关键词规整成小写、单空格，用来判断是不是重复搜索。"""
     query = args.get("query") if isinstance(args, Mapping) else None
     return " ".join(str(query or "").split()).lower()
 
 
 def before_search(turn: turns.Turn, args: Any) -> Optional[str]:
-    """What to answer instead of searching, or ``None`` to let the search run."""
+    """搜图前先看：同一个关键词刚搜过就直接给上次的结果，次数用完就给用完的说明；返回 None 表示照常去搜。
+
+    只在做 PPT 时生效。
+    """
     if not turn.deck:
         return None
     query = _query(args)
@@ -397,7 +410,7 @@ def after_search(
     *,
     fetcher: Callable[[str], bytes] = fetch,
 ) -> Optional[str]:
-    """Land the hits and return the result with the footer, or ``None`` to leave it."""
+    """搜图返回后把图下载到会话目录，在结果后面接上说明；不是做 PPT 或没有可下载的地址时返回 None。"""
     if not turn.deck:
         return None
     turn.in_flight = max(0, turn.in_flight - 1)

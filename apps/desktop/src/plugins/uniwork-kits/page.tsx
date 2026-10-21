@@ -1,11 +1,12 @@
 /**
  * Kits — a standalone desktop page over `/api/plugins/uniwork-kits`, laid out
  * like the Skills catalog (技能与工具): tabs with counts, a search box, and a
- * card grid. A card opens its details — settings, authorization, triggers,
- * receipt and uninstall live there.
+ * card grid. A card opens its details — settings and authorization live there.
+ * A kit, like a skill, is only switched on or off (the switch sits beside its
+ * title); the bundled kits and experts cannot be uninstalled.
  *
- * Experts are installed and removed here. An expert's forever-chat stays on
- * the Bots list; 「召唤」 opens a new chat with it, like the composer picker.
+ * An expert's forever-chat stays on the Bots list; 「召唤」 opens a new chat
+ * with it, like the composer picker.
  */
 
 import './kits.css'
@@ -32,17 +33,7 @@ import {
 } from '@hermes/plugin-sdk'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 
-import {
-  fetchCatalog,
-  fetchJob,
-  fetchReceipt,
-  installZip,
-  openAuthorization,
-  refreshTriggers,
-  toggleKit,
-  uninstallKit,
-  writeConfig
-} from './api'
+import { fetchCatalog, fetchJob, installZip, openAuthorization, toggleKit, writeConfig } from './api'
 import { $bundled, $bundledFinished, watchBundled } from './bundled'
 import { ExpertFace } from './expert-face'
 import { $expertDirectory, loadExperts } from './experts-store'
@@ -51,6 +42,7 @@ import { matchesQuery, partition } from './partition'
 import { publishInstalledExperts } from './roster'
 import { installedExperts } from './roster-model'
 import { summonExpert } from './summon'
+import { tryAskingPrompts } from './summon-model'
 import type { ExpertCard, KitRow, UserField } from './types'
 
 interface JobState {
@@ -77,7 +69,7 @@ const CARD_ACCENTS = [
 
 const CARD_PHRASES = 4
 
-/** The last non-empty line of a job log, for the one-line status. */
+/** 任务日志的最后一行非空内容，用作一行状态。 */
 export function lastLine(tail: string): string {
   const lines = tail
     .split(/\r?\n/)
@@ -87,7 +79,7 @@ export function lastLine(tail: string): string {
   return lines.at(-1) ?? ''
 }
 
-/** One status line for a background job; the full log only on request. */
+/** 后台任务的一行状态；需要时才展开完整日志。 */
 function JobStatus({ job }: { job: JobState }) {
   const t = usePluginI18n('uniwork-kits')
   const [open, setOpen] = useState(false)
@@ -117,12 +109,14 @@ function JobStatus({ job }: { job: JobState }) {
   )
 }
 
+/** 读出用户选的 zip 文件内容，准备上传。 */
 async function readFile(file: File): Promise<{ bytes: ArrayBuffer; filename: string }> {
   const bytes = await file.arrayBuffer()
 
   return { bytes, filename: file.name }
 }
 
+/** 卡片上「技能 N · 子代理 N · MCP N」这一行统计。 */
 function countsText(row: KitRow, t: Translate): string {
   return [
     `${t('skills')} ${row.skill_count}`,
@@ -133,7 +127,7 @@ function countsText(row: KitRow, t: Translate): string {
     .join(' · ')
 }
 
-/** A quiet chip, in the look of the catalog's tag chips. Cards cut long text; details wrap it. */
+/** 安静的小标签，样式和技能目录里的标签一致；卡片上截断长文字，详情里换行显示。 */
 function Chip({ children, wrap = false }: { children: ReactNode; wrap?: boolean }) {
   return (
     <span className="inline-flex max-w-full items-center rounded-md bg-(--ui-bg-quaternary) px-2 py-0.5 text-[0.6875rem] leading-4 text-(--ui-text-primary)">
@@ -142,6 +136,7 @@ function Chip({ children, wrap = false }: { children: ReactNode; wrap?: boolean 
   )
 }
 
+/** 找到卡片对应的专家资料；召唤名单里还没有时，用卡片自己的字段临时拼一份。 */
 function expertFor(row: KitRow, experts: ExpertCard[]): ExpertCard {
   return (
     experts.find(card => card.name === row.name) ?? {
@@ -152,6 +147,7 @@ function expertFor(row: KitRow, experts: ExpertCard[]): ExpertCard {
       description: row.description,
       init_prompt: '',
       quick_prompts: [],
+      try_asking: '',
       tags: []
     }
   )
@@ -166,7 +162,7 @@ interface CardShellProps {
   onOpen: () => void
 }
 
-/** The catalog card frame: the title opens the details; the whole card is its click area. */
+/** 技能目录风格的卡片外框：点标题打开详情，整张卡片都可以点。 */
 function CardShell({ accent, action, children, heading, label, onOpen }: CardShellProps) {
   return (
     <article
@@ -196,6 +192,7 @@ function CardShell({ accent, action, children, heading, label, onOpen }: CardShe
   )
 }
 
+/** 套件卡片：名字、简介、触发词示例、统计和启用开关。 */
 function KitTile({
   accent,
   onOpen,
@@ -257,6 +254,7 @@ function KitTile({
   )
 }
 
+/** 专家卡片：头像、名字、职业、简介和「召唤」按钮；专家包里的短问法不放（和召唤卡片一致）。 */
 function ExpertTile({
   accent,
   expert,
@@ -305,17 +303,11 @@ function ExpertTile({
           {row.description}
         </span>
       ) : null}
-      {expert.quick_prompts.length > 0 ? (
-        <span className="mt-auto flex flex-wrap items-center gap-1 pt-1">
-          {expert.quick_prompts.slice(1, 3).map(prompt => (
-            <Chip key={prompt}>{prompt}</Chip>
-          ))}
-        </span>
-      ) : null}
     </CardShell>
   )
 }
 
+/** 包声明的配置项表单，保存后写进对应档案的 .env；敏感项用密码框。 */
 function ConfigForm({ name, fields, onSaved }: { fields: UserField[]; name: string; onSaved: () => void }) {
   const t = usePluginI18n('uniwork-kits')
   const [values, setValues] = useState<Record<string, string>>({})
@@ -366,6 +358,7 @@ function ConfigForm({ name, fields, onSaved }: { fields: UserField[]; name: stri
   )
 }
 
+/** MCP 的授权按钮：在浏览器里打开授权页，并轮询直到授权完成或超时。 */
 function Authorize({ profile, serverKey }: { profile?: string; serverKey: string }) {
   const t = usePluginI18n('uniwork-kits')
   const [note, setNote] = useState('')
@@ -410,6 +403,7 @@ function Authorize({ profile, serverKey }: { profile?: string; serverKey: string
 
               let tries = 0
 
+              /** 每隔一段时间查一次授权结果，最多 30 次；页面关掉后停止。 */
               const poll = async () => {
                 if (!alive.current || tries > 30) {
                   return
@@ -455,6 +449,7 @@ function Authorize({ profile, serverKey }: { profile?: string; serverKey: string
   )
 }
 
+/** 详情页里带标题的一节。 */
 function DetailSection({ children, title }: { children: ReactNode; title: string }) {
   return (
     <section className="grid gap-1.5">
@@ -464,7 +459,10 @@ function DetailSection({ children, title }: { children: ReactNode; title: string
   )
 }
 
-/** Everything a card does not show: settings, authorization, triggers, receipt, uninstall. */
+/**
+ * 卡片上放不下的内容：配置和授权。套件和技能页一样只能开关（开关在标题行右侧），
+ * 专家只能召唤；内置的套件和专家都不给卸载，也不再有刷新触发词和查看安装记录。
+ */
 function KitDetail({
   expert,
   onChange,
@@ -477,21 +475,33 @@ function KitDetail({
   row: KitRow
 }) {
   const t = usePluginI18n('uniwork-kits')
-  const [confirm, setConfirm] = useState(false)
-  const [receipt, setReceipt] = useState('')
   const isExpert = Boolean(expert)
+  const prompts = expert ? tryAskingPrompts(expert) : []
 
   return (
     <DialogContent className="max-w-xl">
       <DialogHeader>
-        <DialogTitle className="flex items-center gap-2.5">
+        {/* 右侧留出关闭按钮的位置，开关和技能页一样跟在标题后面 */}
+        <DialogTitle className="flex items-center gap-2.5 pr-7">
           {expert ? <ExpertFace expert={expert} size={32} /> : null}
-          <span className="min-w-0 truncate">{row.display_name}</span>
+          <span className="min-w-0 flex-1 truncate">{row.display_name}</span>
           {row.version ? (
             <Badge size="xs" variant="muted">
               v{row.version}
             </Badge>
           ) : null}
+          {isExpert ? null : (
+            <Switch
+              aria-label={t('enable')}
+              checked={row.enabled !== false}
+              onCheckedChange={checked => {
+                void toggleKit(row.name, checked)
+                  .then(onChange)
+                  .catch(err => host.notify({ kind: 'error', message: String(err) }))
+              }}
+              size="xs"
+            />
+          )}
         </DialogTitle>
         <DialogDescription>{row.description || (isExpert ? `@${row.profile}` : countsText(row, t))}</DialogDescription>
       </DialogHeader>
@@ -499,10 +509,10 @@ function KitDetail({
         <span className="text-xs text-(--ui-text-tertiary)">
           {isExpert ? [row.profession, `@${row.profile}`].filter(Boolean).join(' · ') : countsText(row, t)}
         </span>
-        {expert && expert.quick_prompts.length > 0 ? (
+        {prompts.length > 0 ? (
           <DetailSection title={t('tryAsking')}>
             <span className="flex flex-wrap gap-1">
-              {expert.quick_prompts.map(prompt => (
+              {prompts.map(prompt => (
                 <Chip key={prompt} wrap>
                   {prompt}
                 </Chip>
@@ -540,70 +550,9 @@ function KitDetail({
             </span>
           </DetailSection>
         ) : null}
-        {receipt ? (
-          <DetailSection title={t('receipt')}>
-            <pre className="max-h-56 overflow-auto rounded-md bg-(--ui-bg-quinary) p-2 text-xs whitespace-pre-wrap">
-              {receipt}
-            </pre>
-          </DetailSection>
-        ) : null}
-        {confirm ? <p className="m-0 text-xs text-(--ui-red)">{t('confirmExpert')}</p> : null}
       </div>
-      <DialogFooter className="flex-wrap gap-2 sm:justify-between">
-        <span className="flex flex-wrap gap-2">
-          {isExpert ? null : (
-            <Button
-              onClick={() => {
-                void refreshTriggers(row.name)
-                  .then(result => $job.set({ id: result.job.id, tail: '' }))
-                  .catch(err => host.notify({ kind: 'error', message: String(err) }))
-              }}
-              size="sm"
-              variant="outline"
-            >
-              {t('refresh')}
-            </Button>
-          )}
-          <Button
-            onClick={() => {
-              if (receipt) {
-                setReceipt('')
-
-                return
-              }
-
-              void fetchReceipt(row.name)
-                .then(body => setReceipt(body.text || t('noReceipt')))
-                .catch(err => setReceipt(String(err)))
-            }}
-            size="sm"
-            variant="outline"
-          >
-            {receipt ? t('hideReceipt') : t('receipt')}
-          </Button>
-          <Button
-            onClick={() => {
-              if (isExpert && !confirm) {
-                setConfirm(true)
-
-                return
-              }
-
-              void uninstallKit(row.name, isExpert)
-                .then(() => {
-                  setConfirm(false)
-                  onClose()
-                  onChange()
-                })
-                .catch(err => host.notify({ kind: 'error', message: String(err) }))
-            }}
-            size="sm"
-            variant="destructive"
-          >
-            {confirm ? t('confirmUninstall') : t('uninstall')}
-          </Button>
-        </span>
-        {expert ? (
+      {expert ? (
+        <DialogFooter>
           <Button
             onClick={() => {
               onClose()
@@ -613,14 +562,15 @@ function KitDetail({
           >
             {t('summonButton')}
           </Button>
-        ) : null}
-      </DialogFooter>
+        </DialogFooter>
+      ) : null}
     </DialogContent>
   )
 }
 
 type Shelf = 'experts' | 'kits'
 
+/** 套件页：上传安装、搜索、套件和专家两个书架、内置包安装进度和后台任务状态。 */
 export function KitsPage() {
   const t = usePluginI18n('uniwork-kits')
   const job = useValue($job)
@@ -655,6 +605,7 @@ export function KitsPage() {
     let stopped = false
     let timer = 0
 
+    /** 每 1.5 秒查一次当前后台任务；结束后刷新目录、专家名单和机器人名单。 */
     const tick = () => {
       void fetchJob(job.id)
         .then(view => {
@@ -686,6 +637,7 @@ export function KitsPage() {
     }
   }, [job?.id, reloadCatalog])
 
+  /** 重新取目录和专家名单（装完、卸载、改设置之后调用）。 */
   const refresh = () => {
     void catalog.refetch()
     void loadExperts()

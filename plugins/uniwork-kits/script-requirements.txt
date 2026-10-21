@@ -1,0 +1,27 @@
+# 内置套件和专家里的 Python 脚本要用的第三方库。
+#
+# 装进每个账号自己的独立环境（script_python.py），不进 Hermes 主环境；
+# 打包时同一份清单的安装包会放进安装包自带的离线缓存（scripts/bundles/uniwork_bundled.py）。
+# 每一项都要写上限（根目录 AGENTS.md 的依赖规则）。
+#
+# 不装 pdf2image：它要 poppler 程序，Hermes 不带。PDF 转图片用 pypdfium2（pdfplumber 的依赖），
+# pdf 套件的 convert_pdf_to_images.py 装好后换成了用它的版本（script_swaps.py）。
+# google-genai 要用户自己的谷歌密钥才能生图。
+
+pandas>=2.3.3,<3
+numpy>=2.3.3,<3
+lxml>=6.0.2,<7
+openpyxl>=3.1.5,<4
+pypdf>=6.0,<7
+pdfplumber>=0.11.7,<0.13
+PyMuPDF>=1.26.5,<2
+PyYAML>=6.0.3,<7
+Pillow>=11.3,<13
+httpx>=0.28.1,<0.30
+requests>=2.32.4,<3
+defusedxml>=0.7.1,<0.9
+# finance-research 的技术分析脚本：谐波形态、聪明钱概念
+pyharmonics>=1.5,<2
+smartmoneyconcepts>=0.0.26,<0.1
+# hot-skills 里用 Gemini 生图的脚本
+google-genai>=2.0,<3

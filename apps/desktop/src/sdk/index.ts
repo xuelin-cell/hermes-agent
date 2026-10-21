@@ -421,6 +421,10 @@ export interface PluginOpenSessionOptions {
 export interface PluginNewChatOptions {
   workspaceMode?: WorkspaceMode
   workspaceOwnerKey?: string
+  /** 调用方自己显示准备进度：不盖全屏「正在唤醒」，这条新草稿上也不显示通用欢迎大标题。 */
+  quiet?: boolean
+  /** 后端没有切过去时交给调用方处理，不再弹桌面的错误提示。 */
+  onError?: (error: unknown) => void
 }
 
 // Raise the "Syncing…" affordance for a paint-first wake (#89843) and tear it
@@ -1391,7 +1395,10 @@ export const host = {
     if (profile && typeof profile !== 'string') {
       newSessionInAgent({ ...profile })
     } else {
-      newSessionInProfile((profile ?? '').trim() || $activeGatewayProfile.get())
+      newSessionInProfile((profile ?? '').trim() || $activeGatewayProfile.get(), {
+        quiet: options.quiet === true,
+        onError: options.onError
+      })
     }
 
     window.location.hash = '#/'
@@ -1656,6 +1663,9 @@ export { CapabilitiesView } from '@/app/capabilities'
  *  dialog); pass a live `gateway` (see `host.getGateway()`) and the `profile`
  *  to scope it to one bot. */
 export { ConnectorsTab } from '@/app/capabilities/connectors/connectors-tab'
+/** 「技能与工具」页「正在配置」下拉框：插件声明自己托管的档案（`data.hideProfiles`），
+ *  这些档案不出现在下拉框里；多个插件取并集，默认档案永远不隐藏。重新登记同一个 id 即可更新名单。 */
+export { CAPABILITY_SCOPE_AREA, type CapabilityScopeContribution } from '@/app/capabilities/scope-contrib'
 // Every contribution surface, plugin-reachable: register keybinds, palette
 // commands, routes, themes, panes, composer extensions, and bar items with
 // the same area ids + payload types core uses.

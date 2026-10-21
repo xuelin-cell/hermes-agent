@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { useContributions } from '@/contrib/react/use-contributions'
 import type { DesktopRosterAgent } from '@/global'
 import { getProfiles, type ProfileScope, profileScopeKey } from '@/hermes'
 import { useI18n } from '@/i18n'
@@ -11,6 +12,8 @@ import { activeGatewayConnectionId } from '@/store/gateway'
 import { $activeGatewayProfile, normalizeProfileKey } from '@/store/profile'
 
 import { useOnProfileSwitch } from '../hooks/use-on-profile-switch'
+
+import { CAPABILITY_SCOPE_AREA, hiddenScopeProfiles } from './scope-contrib'
 
 interface ScopeOption {
   key: string
@@ -53,6 +56,12 @@ export function useCapabilityScope({
 }): CapabilityScope {
   const activeProfile = useStore($activeGatewayProfile)
   const [scopeOverride, setScopeOverride] = useState<null | string | { connectionId: string; profile: string }>(null)
+  const scopeContributions = useContributions(CAPABILITY_SCOPE_AREA)
+  const hiddenProfiles = useMemo(() => hiddenScopeProfiles(scopeContributions), [scopeContributions])
+
+  // 插件托管的档案（例如专家）不在这里配置：从这种档案的对话打开时，默认改为配置通用助手。
+  const ambientProfile =
+    activeProfile && hiddenProfiles.has(normalizeProfileKey(activeProfile)) ? 'default' : activeProfile
 
   const scopeProfile: ProfileScope = useMemo(
     () =>
@@ -60,8 +69,8 @@ export function useCapabilityScope({
         ? fixedConnection
           ? { connectionId: fixedConnection, profile: fixedProfile }
           : fixedProfile
-        : (scopeOverride ?? activeProfile ?? null),
-    [activeProfile, fixedConnection, fixedProfile, scopeOverride]
+        : (scopeOverride ?? ambientProfile ?? null),
+    [ambientProfile, fixedConnection, fixedProfile, scopeOverride]
   )
 
   const scopeKey = profileScopeKey(scopeProfile)
@@ -114,22 +123,26 @@ export function useCapabilityScope({
     if (multiConnection && rosterData?.agents?.length) {
       const activeId = activeGatewayConnectionId() ?? 'local'
 
-      return rosterData.agents.map((agent: DesktopRosterAgent) => ({
-        key: `${agent.connectionId}::${agent.profile}`,
-        label:
-          agent.connectionId === activeId
-            ? `${agent.profile} — ${agent.connectionLabel} (current)`
-            : `${agent.profile} — ${agent.connectionLabel}`,
-        value: `${agent.connectionId}::${agent.profile}`
-      }))
+      return rosterData.agents
+        .filter((agent: DesktopRosterAgent) => !hiddenProfiles.has(agent.profile))
+        .map((agent: DesktopRosterAgent) => ({
+          key: `${agent.connectionId}::${agent.profile}`,
+          label:
+            agent.connectionId === activeId
+              ? `${agent.profile} — ${agent.connectionLabel} (current)`
+              : `${agent.profile} — ${agent.connectionLabel}`,
+          value: `${agent.connectionId}::${agent.profile}`
+        }))
     }
 
-    return (profilesData?.profiles ?? []).map(p => ({
-      key: p.name,
-      label: p.is_default ? 'Hermes (default)' : p.name,
-      value: p.name
-    }))
-  }, [multiConnection, profilesData, rosterData])
+    return (profilesData?.profiles ?? [])
+      .filter(p => !hiddenProfiles.has(p.name))
+      .map(p => ({
+        key: p.name,
+        label: p.is_default ? 'Hermes (default)' : p.name,
+        value: p.name
+      }))
+  }, [hiddenProfiles, multiConnection, profilesData, rosterData])
 
   // The selector's current value must match one option's value exactly. On the
   // roster path an ambient (non-override) scope is the active gateway's

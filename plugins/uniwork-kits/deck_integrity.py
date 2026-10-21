@@ -117,6 +117,7 @@ FIX_HINTS: Dict[str, str] = {
 
 
 def _rels(archive: zipfile.ZipFile, part: str) -> List[Dict[str, str]]:
+    """读出某个部件的 .rels 关系列表；没有就返回空。"""
     folder, name = part.rsplit("/", 1)
     try:
         xml = archive.read(f"{folder}/_rels/{name}.rels").decode("utf-8", "ignore")
@@ -126,6 +127,7 @@ def _rels(archive: zipfile.ZipFile, part: str) -> List[Dict[str, str]]:
 
 
 def _resolve(part: str, target: str) -> str:
+    """把关系里的相对路径换算成包内的绝对部件名。"""
     if target.startswith("/"):
         return target.lstrip("/")
     parts = part.rsplit("/", 1)[0].split("/")
@@ -138,11 +140,13 @@ def _resolve(part: str, target: str) -> str:
 
 
 def _slide_number(part: str) -> int:
+    """部件是第几页幻灯片；不是幻灯片返回 0。"""
     match = _SLIDE_PART_RE.fullmatch(part)
     return int(match.group(1)) if match else 0
 
 
 def _value_findings(part: str, xml: str) -> List[Tuple[int, str, str]]:
+    """查字号、虚线类型、图形预设名这类超出规范的取值，任何一处都会让 PowerPoint 打不开。"""
     found: List[Tuple[int, str, str]] = []
     slide = _slide_number(part)
     sizes = [(tag, int(value)) for tag, value in _FONT_SIZE_RE.findall(xml)]
@@ -164,6 +168,7 @@ def _value_findings(part: str, xml: str) -> List[Tuple[int, str, str]]:
 
 
 def _animation_findings(part: str, xml: str) -> List[Tuple[int, str, str]]:
+    """查一页里坏掉的动画：指向不存在的形状、缺必需子节点、空列表、非法 presetClass。"""
     timing = _TIMING_RE.search(xml)
     if not timing:
         return []
@@ -190,12 +195,14 @@ def _animation_findings(part: str, xml: str) -> List[Tuple[int, str, str]]:
 
 
 def _notes_master_finding(archive: zipfile.ZipFile, presentation: str, names: Set[str]) -> List[Tuple[int, str, str]]:
+    """查备注母版和幻灯片母版共用同一个主题；PowerPoint 遇到会拒绝打开，并给出具体改法。"""
     notes_at = presentation.find("<p:notesMasterIdLst")
     slides_at = presentation.find("<p:sldIdLst")
     if notes_at < 0 or not (slides_at < 0 or notes_at < slides_at):
         return []  # out of schema order: PowerPoint skips the notes master and opens the deck
 
     def themes(folder: str) -> Set[str]:
+        """某类母版用到的全部主题文件。"""
         out: Set[str] = set()
         for name in names:
             if re.fullmatch(rf"ppt/{folder}/[^/]+\.xml", name):
@@ -220,7 +227,7 @@ def _notes_master_finding(archive: zipfile.ZipFile, presentation: str, names: Se
 
 
 def problems(archive: zipfile.ZipFile, presentation: str) -> List[Tuple[int, str, str]]:
-    """``(slide, kind, detail)`` for everything that keeps PowerPoint from opening the file."""
+    """找出所有会让 PowerPoint 打不开文件的问题，每条是（第几页, 类别, 说明），太多时只列前几条。"""
     names = set(archive.namelist())
     found: List[Tuple[int, str, str]] = []
     for part in sorted(names, key=lambda name: (_slide_number(name) or 10**6, name)):

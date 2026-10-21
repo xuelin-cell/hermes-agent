@@ -42,25 +42,27 @@ class MediaSlot:
 
     @property
     def via_mcp(self) -> bool:
+        """这几个工具里是否有 MCP 工具（名字以 mcp__ 开头），有的话要提示模型怎么调用。"""
         return any(name.startswith("mcp__") for name in (self.image_tool, self.video_tool, self.search_tool))
 
 
 def mcp_tool(server: str, leaf: str) -> str:
-    """The name Hermes registers an MCP tool under (``tools.mcp_tool``)."""
+    """Hermes 注册 MCP 工具时用的全名：mcp__<服务器名>__<工具名>，服务器名里的特殊字符换成下划线。"""
     return f"mcp__{re.sub(r'[^A-Za-z0-9_]', '_', server)}__{leaf}"
 
 
 def leaf(tool_name: str) -> str:
-    """``image_search`` for ``mcp__UniAI_Toolkit__image_search``; plain names stay."""
+    """去掉 MCP 前缀，只留工具本名（如 mcp__UniAI_Toolkit__image_search → image_search）；普通名字原样返回。"""
     return str(tool_name or "").rsplit("__", 1)[-1]
 
 
 def _is_off(entry: Mapping[str, Any]) -> bool:
+    """这条 MCP 配置是否被关掉了（enabled 为 false 或类似写法）。"""
     return entry.get("enabled") is False or str(entry.get("enabled")).strip().lower() in {"false", "0", "no", "off"}
 
 
 def uniai_server(servers: Any) -> str:
-    """The enabled ``mcp_servers`` key that is the UniAI toolkit, or ``""``."""
+    """mcp_servers 里哪一条是已启用的元景（UniAI）工具箱，按名字或地址认；没有返回空字符串。"""
     if not isinstance(servers, Mapping):
         return ""
     for name, entry in servers.items():
@@ -73,6 +75,7 @@ def uniai_server(servers: Any) -> str:
 
 
 def _text(raw: Mapping[str, object], key: str, default: str) -> str:
+    """从手写配置里取一个工具名：没写用默认值，写了空字符串表示明确「未接入」。"""
     if key not in raw:
         return default
     value = raw.get(key)
@@ -80,6 +83,7 @@ def _text(raw: Mapping[str, object], key: str, default: str) -> str:
 
 
 def _config() -> Mapping[str, Any]:
+    """读当前档案的配置；读失败当作空配置。"""
     try:
         from hermes_cli.config import load_config_readonly
 
@@ -89,7 +93,7 @@ def _config() -> Mapping[str, Any]:
 
 
 def _builtin_image_ready() -> bool:
-    """Whether Hermes' own ``image_generate`` has a backend in this profile."""
+    """Hermes 自带的 image_generate 在这个档案里有没有可用的后端。"""
     try:
         from tools.registry import registry
 
@@ -101,12 +105,9 @@ def _builtin_image_ready() -> bool:
 
 
 def load_slot(raw: Optional[Mapping[str, object]] = None, servers: Any = None) -> MediaSlot:
-    """Resolve the slot.
+    """决定生图、生视频、搜图各用哪个工具。
 
-    Tests pass *raw* (``uniwork_kits.media``) and *servers* (``mcp_servers``).
-    Otherwise both come from the active profile's config. A hand-written name
-    wins; then the UniAI toolkit; Hermes' ``image_generate`` only when it has a
-    backend, because naming a generator that fails sends the model in circles.
+    测试时传入 raw（uniwork_kits.media）和 servers（mcp_servers），否则从当前档案配置读。优先级：手写的名字 > 元景工具箱 > Hermes 自带的 image_generate（只有它有后端时才用，指一个调不通的生图工具会让模型来回绕圈）。
     """
     if raw is None or servers is None:
         cfg = _config()
@@ -139,14 +140,15 @@ DEFAULT_KEY_ENV = "DESKTOP_MT_MAAS_API_KEY"
 
 
 def uniai_entry(key_env: str) -> dict:
-    """The ``mcp_servers`` entry the web and desktop builds write for the toolkit.
+    """网页版和桌面版给元景工具箱写的那条 mcp_servers 配置。
 
-    The key stays in ``.env``: Hermes expands ``${VAR}`` when it connects.
+    密钥留在 .env 里，地址里只写 ${变量名}，Hermes 连接时才展开。
     """
     return {"url": f"{UNIAI_URL}?key=${{{key_env}}}&client_id={UNIAI_CLIENT_ID}", "timeout": UNIAI_TIMEOUT_S}
 
 
 def _env_names(home) -> set:
+    """home 的 .env 里写了哪些变量名（只读名字，不读值）。"""
     from pathlib import Path
 
     path = Path(home) / ".env"
@@ -158,7 +160,7 @@ def _env_names(home) -> set:
 
 
 def status_lines(home) -> list:
-    """What *home* has for pictures, said for a person. Never prints a key."""
+    """用人话说明这个档案的生图、搜图接入情况；绝不打印密钥。"""
     from . import store
 
     with store.scoped_home(home):
@@ -185,7 +187,7 @@ def status_lines(home) -> list:
 
 
 def connect_uniai(home, *, key_env: str = DEFAULT_KEY_ENV, name: str = "UniAI-Toolkit") -> str:
-    """Write the toolkit entry into *home*'s config. The key itself goes in ``.env`` by hand."""
+    """把元景工具箱写进 home 的配置，保留用户已有的启用开关和工具筛选；密钥要用户自己写进 .env。"""
     from . import store
 
     if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key_env or ""):
@@ -213,7 +215,7 @@ def connect_uniai(home, *, key_env: str = DEFAULT_KEY_ENV, name: str = "UniAI-To
 
 
 def call_hint(slot: MediaSlot) -> str:
-    """How to reach MCP tools that Tool Search keeps out of the tool list."""
+    """MCP 工具被 Tool Search 收起来、不在工具列表里时，告诉模型怎么找到并调用。"""
     if not slot.via_mcp:
         return ""
     return (
@@ -236,7 +238,10 @@ _MAKE_PICTURE = re.compile(rf"(?:生成|画|绘制|创作|设计|做)[^，。,.!
 
 
 def picture_request_hint(text: str, slot: Optional[MediaSlot] = None) -> str:
-    """Point a picture request in an ordinary chat at the search / generation tools."""
+    """普通对话里用户要找图或生成图时，指向搜图或生图工具，避免模型改用网页搜索和终端下载。
+
+    流程图、图表、截图这类用代码画或看图的请求不提示。
+    """
     if not text or _DRAWN_BY_CODE.search(text):
         return ""
     wants_found = bool(_FIND_PICTURE.search(text))
@@ -257,7 +262,7 @@ def picture_request_hint(text: str, slot: Optional[MediaSlot] = None) -> str:
 
 
 def media_note(slot: Optional[MediaSlot] = None) -> str:
-    """One host-note line. Tool names come from the slot, never from a package."""
+    """给专家的一行宿主说明：包里提到的生图、生视频按当前接入的工具处理；工具名来自配置，不来自包。"""
     slot = slot or load_slot()
     image = f"生图工具是 `{slot.image_tool}`。" if slot.image_tool else "生图还没有接入。"
     video = f"生视频工具是 `{slot.video_tool}`。" if slot.video_tool else "生视频还没有接入。"
@@ -278,10 +283,9 @@ _ELSEWHERE = (
 
 
 def picture_rules(slot: Optional[MediaSlot] = None, *, delivery: str = "") -> str:
-    """Decision procedure for a deck (数字员工 ``image_companion``, Hermes tool names).
+    """做 PPT 时每张配图的判断顺序（来自数字员工的 image_companion，换成 Hermes 的工具名）。
 
-    Does not claim a picture was produced. *delivery* is the platform's
-    file-delivery line, appended last.
+    不声称已经生成了图片。delivery 是该平台的文件交付说明，放在最后。
     """
     slot = slot or load_slot()
     if slot.search_tool:

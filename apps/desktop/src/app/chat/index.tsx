@@ -33,7 +33,13 @@ import { $pinnedSessionIds } from '@/store/layout'
 import { $guideOpening, $onboardingGate } from '@/store/onboarding-gate'
 import { $petActive } from '@/store/pet'
 import { $petOverlayActive } from '@/store/pet-overlay'
-import { $activeGatewayProfile, $gatewaySwapTarget, $hydrationSyncProfile, $profiles } from '@/store/profile'
+import {
+  $activeGatewayProfile,
+  $gatewaySwapTarget,
+  $hydrationSyncProfile,
+  $profiles,
+  $quietNewChatProfile
+} from '@/store/profile'
 import {
   $connection,
   $contextSuggestions,
@@ -628,6 +634,9 @@ const ChatViewContent = memo(function ChatViewContent({
       })
     : false
 
+  // 用 quiet 打开的新草稿由调用方自己画空白状态（见 newSessionInProfile），不显示通用欢迎大标题。
+  const quietDraft = useStore($quietNewChatProfile) !== null
+
   // The compact new-session pop-out skips the wordmark/tagline intro — it's a
   // scratch window, not the full-height empty state. The Appearance toggle
   // turns it off everywhere else.
@@ -638,6 +647,7 @@ const ChatViewContent = memo(function ChatViewContent({
     freshDraftReady,
     messagesEmpty,
     primary: isPrimary,
+    quietDraft,
     routedSessionView: isRoutedSessionView,
     selectedSessionId
   })

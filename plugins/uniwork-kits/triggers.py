@@ -66,10 +66,15 @@ class Component:
 
 
 def _excerpt(text: str) -> str:
+    """把说明压成一行并截断，放进给模型的提示里。"""
     return re.sub(r"\s+", " ", text or "").strip()[:_DESC_EXCERPT]
 
 
 def build_prompt(plugin: str, plugin_desc: str, batch: List[Component]) -> str:
+    """让模型为一批能力写中文触发词的提示。
+
+    比数字员工多了第 4 条「不要带具体公司、人名做例子」：2026-10-12 实测，没有这条时模型会写「看看腾讯的K线」，用户问别的公司时就匹配不上。
+    """
     header = f"插件：{plugin}" + (f"（{_excerpt(plugin_desc)}）" if plugin_desc.strip() else "")
     lines = [
         "你在为一个中文 AI 助手整理插件能力的「中文触发词」。用户会用中文口语提需求，助手要据此判断该调用哪个能力。",
@@ -94,6 +99,7 @@ def build_prompt(plugin: str, plugin_desc: str, batch: List[Component]) -> str:
 
 
 def _json_object(text: str) -> Optional[Dict[str, Any]]:
+    """从模型回答里取出 JSON 对象；整体解析失败时按条目逐个抢救。"""
     start, end = text.find("{"), text.rfind("}")
     if start >= 0 and end > start:
         try:
@@ -112,6 +118,7 @@ def _json_object(text: str) -> Optional[Dict[str, Any]]:
 
 
 def clean_phrases(raw: List[object]) -> List[str]:
+    """整理一组触发词：拆开、去空白、必须含中文、长度合适、去重，最多保留几条。"""
     out: List[str] = []
     for item in raw:
         if not isinstance(item, str):
@@ -129,6 +136,7 @@ def clean_phrases(raw: List[object]) -> List[str]:
 
 
 def parse_phrases(text: str, count: int) -> Dict[int, List[str]]:
+    """把模型回答解析成 {能力编号: 触发词}，编号越界或内容不合格的丢掉。"""
     data = _json_object(text or "")
     if data is None:
         return {}
@@ -146,6 +154,7 @@ def parse_phrases(text: str, count: int) -> Dict[int, List[str]]:
 
 
 def apply_gates(phrases_by_key: Dict[str, List[str]]) -> Dict[str, List[str]]:
+    """去掉太泛的触发词，以及同一个包里被太多能力共用的词，免得一句话命中一堆能力。"""
     specific = {k: [p for p in v if p not in GENERIC_PHRASES] for k, v in phrases_by_key.items()}
     shared = Counter(p for phrases in specific.values() for p in set(phrases))
     out: Dict[str, List[str]] = {}
@@ -157,6 +166,7 @@ def apply_gates(phrases_by_key: Dict[str, List[str]]) -> Dict[str, List[str]]:
 
 
 def _ask(invoke: Invoke, prompt: str) -> Optional[str]:
+    """调一次模型，出错时返回 None 而不是抛异常。"""
     try:
         return invoke(prompt)
     except Exception:
@@ -164,7 +174,7 @@ def _ask(invoke: Invoke, prompt: str) -> Optional[str]:
 
 
 def generate(plugin: str, plugin_desc: str, components: List[Component], invoke: Invoke) -> Tuple[Dict[str, List[str]], bool]:
-    """``({component key: phrases}, answered)`` — raw, ungated. Never raises."""
+    """按批让模型生成触发词，返回（{能力: 触发词}, 模型是否回答过）；结果未经筛选，从不抛异常。"""
     raw: Dict[str, List[str]] = {}
     answered = False
     for start in range(0, len(components), _BATCH):
@@ -189,6 +199,7 @@ _VERIFY_HEAD = (
 
 
 def build_verify_prompt(plugin: str, plugin_desc: str, items: List[Tuple[Component, List[str]]]) -> str:
+    """让模型逐个给候选触发词打分（0 不对、1 勉强、2 准确）的提示。"""
     header = f"插件：{plugin}" + (f"（{_excerpt(plugin_desc)}）" if plugin_desc.strip() else "")
     lines = [_VERIFY_HEAD, header, ""]
     for i, (c, phrases) in enumerate(items, 1):
@@ -200,7 +211,7 @@ def build_verify_prompt(plugin: str, plugin_desc: str, items: List[Tuple[Compone
 
 
 def parse_verdicts(text: str, items: List[Tuple[Component, List[str]]]) -> Dict[str, List[int]]:
-    """Scores per component key; an entry whose length does not match its candidates is ignored."""
+    """把打分回答解析成 {能力: 分数列表}；分数个数和候选对不上的那条忽略。"""
     data = _json_object(text or "")
     if data is None:
         return {}
@@ -224,7 +235,7 @@ def parse_verdicts(text: str, items: List[Tuple[Component, List[str]]]) -> Dict[
 
 def verify(plugin: str, plugin_desc: str, items: List[Tuple[Component, List[str]]],
            invoke: Invoke) -> Tuple[Dict[str, List[str]], bool]:
-    """``({key: kept phrases}, answered)``; a key absent was not checked."""
+    """按批打分并只留下分数够的触发词，返回（{能力: 留下的词}, 模型是否回答过）；不在结果里的能力表示这次没审到。"""
     kept: Dict[str, List[str]] = {}
     answered = False
     for start in range(0, len(items), _VERIFY_BATCH):
@@ -251,9 +262,11 @@ class TriggerState:
 
     @classmethod
     def from_dict(cls, data: Any) -> "TriggerState":
+        """从索引里存的字典恢复触发词状态，脏数据按空处理。"""
         data = data if isinstance(data, dict) else {}
 
         def phrases(value: Any) -> Dict[str, List[str]]:
+            """把 {能力: 词列表} 清理成只含字符串的结构。"""
             return {str(k): [p for p in v if isinstance(p, str)] for k, v in (value or {}).items() if isinstance(v, list)}
 
         return cls(
@@ -265,6 +278,7 @@ class TriggerState:
         )
 
     def to_dict(self) -> Dict[str, Any]:
+        """转成可以写进索引的字典。"""
         return {
             "triggers": self.triggers,
             "unverified": self.unverified,
@@ -275,6 +289,7 @@ class TriggerState:
 
     @property
     def open(self) -> bool:
+        """还有没生成或没审核完的触发词，下次需要接着做。"""
         return bool(self.pending or self.unverified)
 
 
@@ -287,11 +302,9 @@ def refresh(
     previous: Optional[TriggerState] = None,
     verify_invoke: Optional[Invoke] = None,
 ) -> Tuple[TriggerState, bool]:
-    """Bring the model-made phrases for *components* up to date.
+    """把这些能力的模型触发词补到最新。
 
-    *previous* is the state recorded for the **same package digest**; pass
-    ``None`` for a new or changed package (or to force regeneration). Returns
-    ``(state, called_model)``.
+    previous 是同一个包指纹下记录的状态；新包、包变了或要强制重新生成时传 None。返回（状态, 是否调用了模型）。
     """
     by_key = {c.key: c for c in components}
     order = {c.key: i for i, c in enumerate(components)}

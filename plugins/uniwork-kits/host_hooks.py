@@ -15,7 +15,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from . import deck_check, delivery, image_landing, media_slot, turns
+from . import deck_check, delivery, image_landing, media_slot, script_python, turns
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ _GENERATOR_LEAVES = frozenset({media_slot.UNIAI_IMAGE, media_slot.DEFAULT_IMAGE_
 
 
 def is_ppt_skill(tool_name: str, args: Any) -> bool:
-    """``skill_view`` of a skill from a PPT kit (``pptx--pptx``, ``ppt-writer--create-ppt`` …)."""
+    """这次调用是不是在打开 PPT 套件里的技能（如 pptx--pptx、ppt-writer--create-ppt）。"""
     if tool_name != "skill_view" or not isinstance(args, dict):
         return False
     name = str(args.get("name") or args.get("skill") or "")
@@ -32,6 +32,7 @@ def is_ppt_skill(tool_name: str, args: Any) -> bool:
 
 
 def _is_expert_home() -> bool:
+    """当前档案是不是专家；出错时按不是处理。"""
     try:
         from hermes_constants import get_hermes_home
 
@@ -43,12 +44,14 @@ def _is_expert_home() -> bool:
 
 
 def _pictures_enabled() -> bool:
+    """生图、搜图是否可用（由 router 判断）。"""
     from . import router
 
     return router.pictures_enabled()
 
 
 def _generated_prompt(tool_name: str, args: Any, result: str) -> Optional[str]:
+    """生图工具成功出图时取它用的提示词，供后面检查配图；失败或不是生图工具返回 None。"""
     if media_slot.leaf(tool_name) not in _GENERATOR_LEAVES or not isinstance(args, dict):
         return None
     lowered = result.lower()
@@ -58,21 +61,24 @@ def _generated_prompt(tool_name: str, args: Any, result: str) -> Optional[str]:
 
 
 def picture_rules(platform: str) -> str:
+    """PPT 配图规则全文，末尾带上该平台的交付说明。"""
     return media_slot.picture_rules(delivery=delivery.deck_line(platform))
 
 
 def on_pre_tool_call(
     tool_name: str = "", args: Any = None, session_id: str = "", turn_id: str = "", task_id: str = "", **_: Any,
-) -> Optional[Dict[str, str]]:
-    """Answer a repeated or over-budget image search without calling the MCP."""
+) -> Optional[Dict[str, Any]]:
+    """工具调用前的两件事：终端跑套件脚本时换成带依赖的解释器；同一轮里重复的或超出次数的搜图直接答复，不再调用 MCP。"""
     try:
+        if tool_name == "terminal":
+            return script_python.on_pre_tool_call(tool_name=tool_name, args=args, task_id=task_id)
         if not image_landing.is_image_search(tool_name):
             return None
         turn = turns.current(session_id, turn_id, task_id)
         answer = image_landing.before_search(turn, args)
         return {"action": "block", "message": answer} if answer else None
     except Exception:
-        logger.warning("[uniwork-kits] image search budget failed", exc_info=True)
+        logger.warning("[uniwork-kits] pre_tool_call hook failed", exc_info=True)
         return None
 
 
@@ -85,7 +91,10 @@ def on_transform_tool_result(
     task_id: str = "",
     **_: Any,
 ) -> Optional[str]:
-    """Add what the host knows to a tool result. ``None`` leaves it alone."""
+    """在工具结果后面补上宿主知道的信息：PPT 配图规则、搜图落盘结果、幻灯片检查结论。返回 None 表示原样不动。
+
+    这些只对套件生效，专家档案不加（和数字员工一致）。
+    """
     try:
         turn = turns.current(session_id, turn_id, task_id)
         original = result if isinstance(result, str) else str(result or "")

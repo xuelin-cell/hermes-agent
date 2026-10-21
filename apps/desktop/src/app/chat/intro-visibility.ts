@@ -8,6 +8,9 @@
  *
  * `enabled` is the user's Appearance toggle and outranks every other clause:
  * turning the splash off never depends on which window asks.
+ * `quietDraft` hides it on a draft a caller opened with `quiet`: that caller
+ * draws its own empty state, including the seconds before the profile's
+ * backend finishes starting.
  */
 export function shouldShowIntro(input: {
   activeSessionId: null | string
@@ -16,6 +19,7 @@ export function shouldShowIntro(input: {
   freshDraftReady: boolean
   messagesEmpty: boolean
   primary: boolean
+  quietDraft?: boolean
   routedSessionView: boolean
   selectedSessionId: null | string
 }): boolean {
@@ -24,6 +28,7 @@ export function shouldShowIntro(input: {
     input.primary &&
     !input.auxiliaryWindow &&
     input.freshDraftReady &&
+    !input.quietDraft &&
     !input.routedSessionView &&
     !input.selectedSessionId &&
     !input.activeSessionId &&

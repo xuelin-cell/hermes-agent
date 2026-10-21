@@ -40,7 +40,7 @@ BLOCK_EXIT = 2
 
 
 def load_declared(root: Path, raw: Dict[str, Any]) -> Dict[str, Any]:
-    """The hooks object from plugin.json, or from the JSON file it points at."""
+    """读出包里声明的钩子：plugin.json 里直接写的，或它指向的 JSON 文件里的。"""
     hooks = raw.get("hooks")
     if isinstance(hooks, str) and hooks.strip():
         path = root / hooks
@@ -57,6 +57,7 @@ def load_declared(root: Path, raw: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _commands(group: Any) -> List[Dict[str, Any]]:
+    """把一组钩子声明展开成命令列表（匹配规则、命令、超时），两种写法都认。"""
     if not isinstance(group, list):
         return []
     found: List[Dict[str, Any]] = []
@@ -75,6 +76,7 @@ def _commands(group: Any) -> List[Dict[str, Any]]:
 
 
 def _matches(matcher: str, tool_name: str) -> bool:
+    """钩子的匹配规则是否命中这个工具名（也用 WorkBuddy 里的同名工具名去比）；规则写错时不命中。"""
     if not matcher:
         return True
     alias = _TOOL_ALIAS.get(tool_name, "")
@@ -86,6 +88,7 @@ def _matches(matcher: str, tool_name: str) -> bool:
 
 
 def _installed(home: Path) -> List[tuple]:
+    """已启用、并且声明了钩子的包：（包目录, 钩子）列表。"""
     index = store.load_index(home)
     rows = []
     for name, entry in (index.get("plugins") or {}).items():
@@ -99,6 +102,7 @@ def _installed(home: Path) -> List[tuple]:
 
 
 def _payload(event: str, tool_name: str, args: Any, session_id: str) -> bytes:
+    """按 WorkBuddy 的格式拼出传给钩子命令的 JSON 输入。"""
     data: Dict[str, Any] = {
         "hook_event_name": _EVENT.get(event, event),
         "session_id": session_id,
@@ -113,7 +117,10 @@ def _payload(event: str, tool_name: str, args: Any, session_id: str) -> bytes:
 def run_matching(
     home: Path, event: str, tool_name: str = "", args: Any = None, session_id: str = "",
 ) -> List[subprocess.CompletedProcess]:
-    """Run matching command hooks. The caller decides what an exit code means."""
+    """运行所有命中的命令钩子，返回每个命令的结果；退出码代表什么由调用方决定。
+
+    每个命令最多跑 30 秒，超时或启动失败记成退出码 124。
+    """
     package_event = _EVENT.get(event)
     if not package_event:
         return []
@@ -148,7 +155,7 @@ def run_matching(
 
 
 def _denial(result: subprocess.CompletedProcess) -> Optional[str]:
-    """The block message a hook asked for, or ``None``."""
+    """钩子要求拦下这次调用时返回拦截原因，否则返回 None（支持退出码和 JSON 两种表达）。"""
     stderr = (result.stderr or b"").decode("utf-8", "replace").strip()
     stdout = (result.stdout or b"").decode("utf-8", "replace").strip()
     if result.returncode == BLOCK_EXIT:
@@ -168,6 +175,7 @@ def _denial(result: subprocess.CompletedProcess) -> Optional[str]:
 
 
 def on_pre_tool_call(tool_name: str = "", args: Any = None, session_id: str = "", **_: Any) -> Optional[Dict[str, str]]:
+    """工具调用前跑包里的钩子，有钩子要求拦截就拦下并说明原因。"""
     from hermes_constants import get_hermes_home
 
     home = Path(get_hermes_home())
@@ -179,6 +187,7 @@ def on_pre_tool_call(tool_name: str = "", args: Any = None, session_id: str = ""
 
 
 def on_observed(event: str, tool_name: str = "", **kwargs: Any) -> None:
+    """把其他事件（调用后、会话开始结束）转给包里的钩子，只运行不拦截。"""
     from hermes_constants import get_hermes_home
 
     run_matching(Path(get_hermes_home()), event, tool_name, kwargs.get("args"), str(kwargs.get("session_id") or ""))

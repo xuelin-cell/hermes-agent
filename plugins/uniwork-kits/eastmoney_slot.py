@@ -1,20 +1,25 @@
-"""东方财富连接器还没接上时留下的缺口。
+"""9 个东方财富专家改走同事的东方财富连接器（OpenConnector）取数。
 
-数字员工里这 9 个专家的取数走同事的连接器（服务名 ``eastmoney_mcp``），
-工具是 ``execute_action``。Hermes 这边那个连接器还没放进来，专家包里仍是
-跑 ``scripts/get_data.py`` 的旧写法。
+数字员工里这 9 个专家的取数走连接器（服务名 ``eastmoney_mcp``，工具 ``execute_action``）；
+专家包里仍是跑 ``scripts/get_data.py`` 的旧写法。
 
-本模块不实现登录，也不往配置里写 MCP。它只看当前 profile 的
-``mcp_servers``：键名是 ``eastmoney_mcp``、``connector_eastmoney_mcp``、
-``connector-eastmoney-mcp``，或者地址里同时有 ``eastmoney.com`` 和
-``mcp`` / ``mxds``。没有这条记录时什么都不说，专家继续按技能包里的脚本取数。
-记录一出现，下一轮用户消息就改口：只用这条连接器，不再跑脚本，也不再碰
-``~/.mx-skills/em_api_key``。
+同事的实现（desktop ``electron/open-connector``，2026-10 ``hermes-sub`` 分支）：用户在「连接器」页面
+授权东方财富后，Electron 在**那个档案**的 ``config.yaml`` 写一条 ``mcp_servers.connector_eastmoney_mcp``：
+本机 OpenConnector 的地址（``http://127.0.0.1:<端口>/mcp``）、运行令牌，以及
+``X-OpenConnector-Allowed-Services: eastmoney_mcp`` 请求头，并带 ``desktop_connector: eastmoney_mcp``。
+每个档案各起一个自己的 OpenConnector，各自授权；档案后端启动前，带 ``desktop_connector`` 标记的条目
+会被改写成该档案自己那份的地址和令牌。工具是 ``execute_action``，``actionId`` 用
+``eastmoney_mcp.list_tools`` / ``eastmoney_mcp.call_tool``。
 
-说明附在当轮用户消息上，不改系统提示，所以已经打开的专家会话不用重开。
-同事把连接器写进默认配置档案后，``expert_sync`` 会把它同步到这 9 个专家
-自己的 profile。工具形态要和数字员工一致：一个 ``execute_action``，
-``actionId`` 用 ``eastmoney_mcp.list_tools`` 再 ``eastmoney_mcp.call_tool``。
+用户通常在默认档案（通用助手）里授权。``expert_sync`` 把默认档案那条同步给这 9 个专家时用键名
+``MIRROR_NAME``，并去掉 ``desktop_connector``：带着它，专家后端启动时会被改写成专家自己那份还没授权的
+连接器；同名还会挡住用户以后在专家档案里自己授权。专家档案里有自己授权的那条时优先用它。
+
+本模块不实现登录，也不写配置。它看当前档案的 ``mcp_servers``，按下面任一条认出东方财富连接器：
+``desktop_connector`` 是 ``eastmoney_mcp``；请求头限定的服务是 ``eastmoney_mcp``；键名是约定的几个之一；
+地址是妙想 MCP。没有这条记录时什么都不说，专家继续按技能包里的脚本取数；有了，下一轮用户消息就改口：
+只用这条连接器，不再跑脚本，也不再碰 ``~/.mx-skills/em_api_key``。说明附在当轮用户消息上，不改系统提示，
+已经打开的专家会话不用重开。
 """
 
 from __future__ import annotations
@@ -41,7 +46,11 @@ EXPERTS = frozenset({
     "stock-research-expert",
 })
 
-# 同事接入时优先用这些键名。地址对得上时，别的键名也能认出来。
+SERVICE = "eastmoney_mcp"
+# 同步到专家档案时用的键名：不能是 connector_eastmoney_mcp，见模块说明。
+MIRROR_NAME = "eastmoney_mcp"
+
+# 约定的键名。连接器标记、请求头或地址对得上时，别的键名也能认出来。
 SERVER_NAMES = frozenset({
     "eastmoney_mcp",
     "connector_eastmoney_mcp",
@@ -60,6 +69,20 @@ def _named(key: str) -> bool:
     return key in SERVER_NAMES or folded in {name.replace("-", "_") for name in SERVER_NAMES}
 
 
+def owned_by_desktop(entry: Mapping[str, Any]) -> bool:
+    """这条是桌面连接器页面为本档案写的东方财富连接（带 desktop_connector 标记）。"""
+    return str(entry.get("desktop_connector") or "").strip() == SERVICE
+
+
+def _service_header(entry: Mapping[str, Any]) -> bool:
+    """请求头把这条连接限定在东方财富服务上（OpenConnector 的 X-OpenConnector-Allowed-Services）。"""
+    headers = entry.get("headers")
+    if not isinstance(headers, Mapping):
+        return False
+    allowed = next((str(v) for k, v in headers.items() if str(k).lower() == "x-openconnector-allowed-services"), "")
+    return SERVICE in {part.strip() for part in allowed.split(",")}
+
+
 def _url_matches(url: str) -> bool:
     """地址是妙想 MCP，而不是随便提到东方财富的页面。"""
     text = url.lower()
@@ -67,19 +90,24 @@ def _url_matches(url: str) -> bool:
 
 
 def server_name(servers: Any) -> str:
-    """已启用的东方财富连接器在 ``mcp_servers`` 里的键；没有则空字符串。"""
+    """已启用的东方财富连接器在 ``mcp_servers`` 里的键；没有则空字符串。
+
+    同时有好几条时，本档案自己授权的（带 desktop_connector）优先，其次是约定键名或请求头，最后才看地址。
+    """
     if not isinstance(servers, Mapping):
         return ""
-    by_url = ""
+    ranked = []
     for name, entry in servers.items():
         if not isinstance(entry, Mapping) or _off(entry):
             continue
         key = str(name)
-        if _named(key):
-            return key
-        if not by_url and _url_matches(str(entry.get("url") or "")):
-            by_url = key
-    return by_url
+        if owned_by_desktop(entry):
+            ranked.append((0, key))
+        elif _named(key) or _service_header(entry):
+            ranked.append((1, key))
+        elif _url_matches(str(entry.get("url") or "")):
+            ranked.append((2, key))
+    return min(ranked)[1] if ranked else ""
 
 
 def data_note(server: str) -> str:
@@ -98,7 +126,7 @@ def data_note(server: str) -> str:
         "- 某一字段返回 `invalid_input`、`rate_limited`，或结果被截断、明显缺段时，"
         "把该字段标「材料未提供」，用已经拿到的数据继续写。不要换参数重查，也不要改走脚本。\n"
         "- 工具列表里没有这个全名、调用超时或返回未登录 / 401 时，告诉用户东方财富连接器这一轮还不能用，"
-        "请稍后再发一次同一个问题。不要自己改妙想地址，也不要注册 OAuth 客户端。\n"
+        "请到「连接器」页面重新连接东方财富后再问一次。不要自己改连接地址，也不要注册 OAuth 客户端。\n"
     )
 
 

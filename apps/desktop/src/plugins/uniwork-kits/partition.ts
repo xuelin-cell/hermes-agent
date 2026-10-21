@@ -5,7 +5,7 @@ export interface KitShelves {
   kits: KitRow[]
 }
 
-/** Fill what an older backend's catalog leaves out, so the page renders against either. */
+/** 补齐旧版后端目录里缺的字段，页面对新旧后端都能正常显示。 */
 export function normalizeRow(row: KitRow): KitRow {
   return {
     ...row,
@@ -18,7 +18,7 @@ export function normalizeRow(row: KitRow): KitRow {
   }
 }
 
-/** Parent-profile rows: expert stubs go on the expert shelf; everything else is a kit. */
+/** 把默认档案的条目分到两个书架：专家条目放专家书架，其余都是套件。 */
 export function partition(rows: KitRow[]): KitShelves {
   const kits: KitRow[] = []
   const experts: KitRow[] = []
@@ -34,7 +34,7 @@ export function partition(rows: KitRow[]): KitShelves {
   return { kits, experts }
 }
 
-/** Whether *row* matches a search: every word must appear in its name, description or phrases. */
+/** 搜索时判断一张卡片是否命中：输入的每个词都要出现在名字、简介或触发词里。 */
 export function matchesQuery(row: KitRow, query: string): boolean {
   const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean)
 

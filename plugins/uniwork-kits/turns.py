@@ -41,6 +41,7 @@ class Turn:
     measured: Dict[str, Tuple[int, int]] = field(default_factory=dict)
 
     def reset_request(self, turn_id: str) -> None:
+        """新一轮请求开始：清掉上一轮的计数和记录，会话级的 PPT 测量结果保留。"""
         self.turn_id = turn_id
         self.started = time.time()
         self.rules_shown = False
@@ -52,6 +53,7 @@ class Turn:
 
 
 def _get(session_id: str) -> Turn:
+    """取会话的状态，没有就新建；最多保留 256 个会话，最久没用的先丢。"""
     key = str(session_id or "")
     turn = _sessions.get(key)
     if turn is None:
@@ -72,7 +74,7 @@ def begin(
     deck: bool = False,
     parent_session_id: str = "",
 ) -> Turn:
-    """Open a request. Called from ``pre_llm_call``."""
+    """在 pre_llm_call 里开一轮新请求；子代理的会话沿用父会话的平台和「在做 PPT」标记。"""
     with _lock:
         turn = _get(session_id)
         turn.reset_request(str(turn_id or ""))
@@ -83,7 +85,7 @@ def begin(
 
 
 def current(session_id: str, turn_id: str = "", task_id: str = "") -> Turn:
-    """The session's request, starting a fresh one when *turn_id* moved on."""
+    """取会话当前这一轮；turn_id 变了说明进入下一轮，重新开始计数。"""
     with _lock:
         turn = _get(session_id)
         if turn_id and turn.turn_id != turn_id:
@@ -94,18 +96,19 @@ def current(session_id: str, turn_id: str = "", task_id: str = "") -> Turn:
 
 
 def peek(session_id: str) -> Optional[Turn]:
+    """只看会话的状态，不新建。"""
     with _lock:
         return _sessions.get(str(session_id or ""))
 
 
 def clear() -> None:
-    """Forget everything. Tests use this."""
+    """清空全部会话状态，测试用。"""
     with _lock:
         _sessions.clear()
 
 
 def session_cwd(turn: Optional[Turn]) -> str:
-    """Where the session's terminal works: its recorded cwd, else the process default."""
+    """这个会话的终端在哪个目录工作：有记录用记录的，否则用进程默认目录。"""
     if turn is not None and turn.task_id:
         try:
             from tools.terminal_tool import get_session_cwd
