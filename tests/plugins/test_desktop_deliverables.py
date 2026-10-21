@@ -195,6 +195,8 @@ def test_profile_turn_and_remote_boundaries(delivery, tmp_path, monkeypatch):
     plugin, work = delivery
     original = os.environ["HERMES_HOME"]
     begin(plugin)
+    plugin.background.remember_child(parent_session_id='s', child_session_id='child')
+    assert plugin.background.child_root('child') == work
     output = work / "A.pdf"
     output.write_bytes(b"a")
     plugin.after_tool(
@@ -205,9 +207,11 @@ def test_profile_turn_and_remote_boundaries(delivery, tmp_path, monkeypatch):
         turn_id="t",
     )
     monkeypatch.setenv("HERMES_HOME", str(tmp_path / "B"))
+    assert plugin.background.child_root('child') is None
     begin(plugin)
     assert reply(plugin) is None
     monkeypatch.setenv("HERMES_HOME", original)
+    assert plugin.background.child_root('child') == work
     assert str(output) in reply(plugin)
     begin(plugin, turn="new")
     plugin.after_tool(
@@ -518,3 +522,22 @@ def test_unreadable_or_vanishing_entries_are_skipped(delivery, monkeypatch, oper
     # 恢复可读后，之前读漏的文件不能被当成新增。
     assert paths.changed(before, paths.snapshot(work)) == []
     assert paths.snapshot(work / "not-created") == {}
+
+
+@pytest.mark.parametrize("completed", [False, True])
+def test_video_notification_owns_delivery_even_during_another_foreground_turn(delivery, completed):
+    """后台下载文件不能混进天气回复；完成通知显式交付的卡片仍保留。"""
+    import json
+
+    plugin, work = delivery
+    begin(plugin)
+    video = work / "电影.mp4"
+    video.write_bytes(b"partial-or-finished-video")
+    video.with_suffix('.meta.json').write_text(json.dumps({
+        "managed": True, "out": str(video), "completed": completed,
+    }))
+    assert reply(plugin, '杭州今天有雨。') is None
+    begin(plugin, turn='completion')
+    text = f'下载完成。\nMEDIA:{video}'
+    result = reply(plugin, text, turn='completion')
+    assert (result or text).count('MEDIA:') == 1

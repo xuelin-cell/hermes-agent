@@ -10,6 +10,7 @@ import re
 from threading import RLock
 import time
 
+from . import background
 from .paths import (
     changed,
     DOCUMENTS,
@@ -46,6 +47,7 @@ class Turn:
     scans: dict = field(default_factory=dict)
     roots: set = field(default_factory=set)
     ambiguous: set = field(default_factory=set)
+    background: bool = False
     guess: bool = True
     downloads: dict = field(default_factory=dict)
 
@@ -119,9 +121,12 @@ def before_turn(
     *, session_id="", turn_id="", task_id="", platform="", user_message=None, **kwargs
 ):
     """本轮开始时固定本机目录和附件排除表，缺少桌面身份则不观察。"""
-    if not session_id or platform != "desktop":
+    if not session_id or platform not in {"desktop", "subagent"}:
         return
-    cwd = local_cwd(task_id)
+    child_root = background.child_root(session_id) if platform == "subagent" else None
+    if platform == "subagent" and child_root is None:
+        return
+    cwd = child_root or local_cwd(task_id)
     if cwd is None:
         return
     with _lock:
@@ -132,9 +137,13 @@ def before_turn(
             time.time(),
             task_id=task_id,
             uploads=attachment_paths(user_message, cwd),
+            background=platform == "subagent",
+            guess=platform != "subagent",
         )
         _turns.move_to_end(key)
         turn = _turns[key]
+        if turn.background:
+            return
         budget = [time.monotonic(), 0]
         for root in requested_roots(as_text(user_message), cwd):
             watch_root(turn, root, budget)
@@ -186,7 +195,7 @@ def before_tool(
         return
     with _lock:
         turn = current(scope(session_id), turn_id)
-        if not turn or len(turn.pending) >= 64:
+        if not turn or turn.background or len(turn.pending) >= 64:
             return
         root = local_cwd(kwargs.get("task_id") or turn.task_id) or turn.cwd
         if tool_name == "terminal" and (args or {}).get("workdir"):
@@ -225,7 +234,7 @@ def after_tool(
     """合并写入参数、工具输出和执行差异，失败或后台任务不冒充已完成交付。"""
     with _lock:
         turn = current(scope(session_id), turn_id)
-        if turn is None:
+        if turn is None or turn.background:
             return
         pending = turn.pending.pop(tool_call_id, None)
         try:
@@ -261,12 +270,12 @@ def after_tool(
 
 def transform(*, response_text="", session_id="", turn_id="", platform="", **kwargs):
     """只改本轮尚未存储的回复，统一排序、去重和最多八张交付卡。"""
-    if platform != "desktop" or not isinstance(response_text, str):
+    if platform not in {"desktop", "subagent"} or not isinstance(response_text, str):
         return None
     key = scope(session_id)
     with _lock:
         turn = current(key, turn_id)
-        if not turn:
+        if not turn or (platform == "subagent" and not turn.background):
             return None
         budget = [time.monotonic(), 0]
         if turn.guess:
@@ -278,13 +287,18 @@ def transform(*, response_text="", session_id="", turn_id="", platform="", **kwa
                     for path in changed(before, after):
                         turn.paths.setdefault(path, None)
         _turns.pop(key, None)
-    cwd = local_cwd(turn.task_id) or turn.cwd
+    cwd = turn.cwd if turn.background else local_cwd(turn.task_id) or turn.cwd
     roots = {*turn.roots, turn.cwd, cwd}
-    paths = dict.fromkeys([*turn.paths, *named_paths(response_text, cwd)])
+    # 子代理只交付两项工具已缓存的成品，其他子代理的普通回复不新增卡片。
+    paths = dict.fromkeys(
+        turn.paths if turn.background else [*turn.paths, *named_paths(response_text, cwd)]
+    )
     paths = [
         path
         for path in paths
-        if path not in turn.uploads and fresh(path, turn.started, roots)
+        if path not in turn.uploads
+        and not background.managed_video(path)
+        and fresh(path, turn.started, roots)
     ]
     if not paths:
         return None
@@ -373,11 +387,13 @@ async def download_result(
         turn = current(key, turn_id)
         if turn is None:
             return None
+        if turn.background and tool_name.rsplit("__", 1)[-1] not in background.TOOLS:
+            return None
         wanted = [url for url in urls if url not in turn.downloads][
             : max(0, 4 - len(turn.downloads))
         ]
         turn.downloads.update(dict.fromkeys(wanted))
-    root = local_cwd(turn.task_id) or turn.cwd
+    root = turn.cwd if turn.background else local_cwd(turn.task_id) or turn.cwd
     # 同批最多四个并行，避免顺序等待突破原生钩子的三十秒上限；描述参数用于起文件名。
     fetched = await asyncio.gather(
         *(fetch(url, root, tool_name, args) for url in wanted)
@@ -406,6 +422,7 @@ async def download_result(
 
 def end_turn(*, session_id="", turn_id="", **kwargs):
     """取消、失败和会话结束都清除观察状态；迟到的旧轮结束事件不能清掉新一轮。"""
+    background.forget_child(session_id)
     key = scope(session_id)
     with _lock:
         turn = _turns.get(key)
@@ -426,6 +443,7 @@ def register(ctx):
         ("post_tool_call", after_tool),
         ("transform_tool_result", download_result),
         ("transform_llm_output", transform),
+        ("subagent_start", background.remember_child),
         ("on_session_end", end_turn),
     ]:
         ctx.register_hook(name, handler)

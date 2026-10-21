@@ -1,9 +1,12 @@
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { createClientSessionState } from '@/lib/chat-runtime'
 import { $sidebarShowArchived } from '@/store/layout'
 import { $changeEventsAvailable, $cronChangeTick, $sessionsChangeTick } from '@/store/live-sync'
+import { $onBattery } from '@/store/power'
 import { $activeSessionId } from '@/store/session'
+import { $sessionStates, clearAllSessionStates, noteSessionEvent, publishSessionState } from '@/store/session-states'
 import { loadArchivedSessions } from '@/store/sidebar-archive'
 
 import { useBackgroundSync } from './use-background-sync'
@@ -58,6 +61,37 @@ describe('useBackgroundSync profile-scoped session refresh', () => {
   afterEach(() => {
     cleanup()
     vi.useRealTimers()
+  })
+
+  it.each([false, true])('keeps quiet live work healthy while unfocused (battery=%s)', async onBattery => {
+    const focus = vi.spyOn(window.document, 'hasFocus').mockReturnValue(false)
+    $onBattery.set(onBattery)
+    publishSessionState('rt-video', {
+      ...createClientSessionState('stored-video'),
+      busy: true,
+      turnLive: true,
+      sawAssistantPayload: true
+    })
+
+    const request = vi.fn(async () => ({
+      sessions: [{ id: 'rt-video', session_key: 'stored-video', status: 'working' }]
+    }))
+
+    try {
+      render('default', 'local', async () => undefined, request)
+      await act(async () => undefined)
+      noteSessionEvent('rt-video')
+      await act(async () => vi.advanceTimersByTimeAsync(180_000))
+      const current = $sessionStates.get()['rt-video']
+      expect(current?.busy).toBe(true)
+      expect(current?.messages.some(message => message.errorSurface?.code === 'stream_drop')).toBe(false)
+      expect(request.mock.calls.length).toBeGreaterThan(1)
+    } finally {
+      cleanup()
+      clearAllSessionStates()
+      $onBattery.set(false)
+      focus.mockRestore()
+    }
   })
 
   it('coalesces change ticks while the live status request is pending', async () => {

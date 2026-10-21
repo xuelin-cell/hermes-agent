@@ -28,6 +28,9 @@ def run_scenario(root, kind="fallback", media_dir=None):
         "video": ("txt2vid_generate", "mp4"),
         "audio": ("tts_synthesize", "wav"),
         "offline": ("txt2img_generate", "png"),
+        "background-translation": ("doc_translate", "docx"),
+        "background-podcast": ("ai_podcast_generate", "wav"),
+        "background-other": ("tts_synthesize", "wav"),
     }
     leaf, extension = names.get(kind, ("fixture_write", "md"))
     output = work / "fallback报告.md"
@@ -57,6 +60,21 @@ def run_scenario(root, kind="fallback", media_dir=None):
             if kind == "fallback"
             else ""
         )
+        def background_reply(request):
+            """按父子会话各自的上下文响应，避免异步请求抢占同一脚本序列。"""
+            messages = request['body']['messages']
+            user = next(row['content'] for row in reversed(messages) if row['role'] == 'user')
+            if 'ASYNC DELEGATION' in user and 'COMPLETE' in user:
+                media = next((line for line in user.splitlines() if line.startswith('MEDIA:')), '')
+                return Text('生成完成。\n' + media)
+            if '生成测试产物' in user:
+                if any(row['role'] == 'tool' for row in messages):
+                    return Text('生成完成。')
+                return ToolCall('tool_call', {'calls': [{'name': name, 'arguments': {}}]})
+            if any(row['role'] == 'tool' for row in messages):
+                return Text('已提交后台任务。')
+            return ToolCall('delegate_task', {'tasks': [{'goal': '生成测试产物'}]})
+
         with (
             patch.dict(
                 os.environ,
@@ -66,7 +84,7 @@ def run_scenario(root, kind="fallback", media_dir=None):
                     "TERMINAL_CWD": str(work),
                 },
             ),
-            FakeLLMServer([
+            FakeLLMServer(background_reply if kind.startswith('background-') else [
                 ToolCall("tool_call", {"calls": [{"name": name, "arguments": {}}]}),
                 Text(final),
             ]) as server,
@@ -113,8 +131,9 @@ def run_scenario(root, kind="fallback", media_dir=None):
                 session_db=database,
                 session_id="generated-delivery",
                 platform="desktop",
-                enabled_toolsets=["delivery_fixture"],
+                enabled_toolsets=["delivery_fixture", "delegation"],
                 quiet_mode=True,
+                max_iterations=6,
                 skip_memory=True,
                 skip_context_files=True,
             )
@@ -122,6 +141,18 @@ def run_scenario(root, kind="fallback", media_dir=None):
                 result = agent.run_conversation(
                     "生成文件。", task_id="generated-delivery"
                 )
+                if kind.startswith('background-'):
+                    from tools.process_registry import process_registry
+                    from tools.process_registry_notifications import format_process_notification
+
+                    assert 'MEDIA:' not in result['final_response']
+                    event = process_registry.completion_queue.get(timeout=30)
+                    assert event['type'] == 'async_delegation'
+                    notice = format_process_notification(event)
+                    assert ('MEDIA:' in notice) == (kind != 'background-other')
+                    result = agent.run_conversation(
+                        notice, conversation_history=result['messages'], task_id='generated-delivery',
+                    )
                 expected = result["final_response"]
                 tool_results = [
                     row
@@ -133,7 +164,11 @@ def run_scenario(root, kind="fallback", media_dir=None):
                 assert all(
                     "does not exist" not in row["content"] for row in tool_results
                 ), tool_results
-                if kind == "offline":
+                if kind == "background-other":
+                    assert 'MEDIA:' not in expected
+                    assert not requests
+                    assert all('desktop_deliverables' not in row['content'] for row in tool_results)
+                elif kind == "offline":
                     assert url in expected and "MEDIA:" not in expected
                     assert all(
                         "desktop_deliverables" not in row["content"]
