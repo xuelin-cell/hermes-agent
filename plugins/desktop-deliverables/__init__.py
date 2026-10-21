@@ -14,8 +14,10 @@ from .paths import (
     changed,
     DOCUMENTS,
     IMAGES,
+    embedded,
     fresh,
     is_dir,
+    mask_examples,
     media_line,
     named_paths,
     remove_media_lines,
@@ -286,16 +288,28 @@ def transform(*, response_text="", session_id="", turn_id="", platform="", **kwa
     ]
     if not paths:
         return None
-    from gateway.platforms.base import _mask_media_scan_text
-
-    # 代码和引用里的示例只屏蔽一次，两处识别共用同一份结果。
-    masked = _mask_media_scan_text(response_text)
+    # 代码里的示例只屏蔽一次，两处识别共用同一份结果。
+    masked = mask_examples(response_text)
     managed = set(paths)
     shown = shown_paths(masked, cwd)
-    if any(path.suffix.lower().lstrip(".") in DOCUMENTS for path in paths):
-        paths = [
-            path for path in paths if path.suffix.lower().lstrip(".") not in IMAGES
+    # 有文档时图片多是文档的素材；网页和 Markdown 报告只去掉它引用到的图片。
+    # 元景生成的图片是成品本身，结果里已没有链接，不出卡用户就看不到。
+    suffixes = {path.suffix.lower().lstrip(".") for path in paths}
+    generated = {path for path in turn.downloads.values() if path}
+    if suffixes & DOCUMENTS:
+        materials = set(paths)
+    else:
+        reports = [
+            path for path in paths if path.suffix.lower() in {".md", ".html", ".htm"}
         ]
+        materials = set().union(*map(embedded, reports)) if suffixes & IMAGES else set()
+    paths = [
+        path
+        for path in paths
+        if path.suffix.lower().lstrip(".") not in IMAGES
+        or path not in materials
+        or path in generated
+    ]
     from .paths import priority
 
     appended = [path for path in sorted(paths, key=priority) if path not in shown][:8]
@@ -372,7 +386,9 @@ async def download_result(
         active = current(key, turn_id) is turn
         if active:
             turn.downloads.update(zip(wanted, fetched))
-            saved = {url: turn.downloads[url] for url in urls if turn.downloads.get(url)}
+            saved = {
+                url: turn.downloads[url] for url in urls if turn.downloads.get(url)
+            }
             for path in saved.values():
                 turn.paths[path] = None
     if not active:

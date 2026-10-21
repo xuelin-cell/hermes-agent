@@ -77,4 +77,9 @@ describe('draftWorkdir', () => {
     expect(draftWorkdir(' D:\\picked ', NO_PROJECT_ID, 'D:\\live')).toBe('D:\\picked')
     expect(draftWorkdir(undefined, 'project-1', 'D:\\live')).toBe('D:\\live')
   })
+
+  it('日常办公不沿用带过来的目录，只认这次选的', () => {
+    expect(draftWorkdir(undefined, 'project-1', 'D:\\live', false)).toBe('')
+    expect(draftWorkdir('D:\\picked', 'project-1', 'D:\\live', false)).toBe('D:\\picked')
+  })
 })

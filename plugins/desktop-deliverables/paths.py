@@ -85,6 +85,52 @@ def resolve_path(value, cwd):
         return None
 
 
+def mask_examples(text):
+    """按桌面显示规则屏蔽示例，位置不变：围栏代码整段只显示文字；行内代码只有整段
+    就是 MEDIA 标记时桌面才出卡。不用原版屏蔽：它要先核对路径，/C:/ 写法核对不过就
+    当示例屏蔽，桌面却照常出卡，插件会再补一张。"""
+    from gateway.platforms.base import _FENCED_CODE_RE, _INLINE_CODE_RE, _blank_spans
+
+    text = _blank_spans(
+        text, [match.span() for match in _FENCED_CODE_RE.finditer(text)]
+    )
+    return _blank_spans(
+        text,
+        [
+            match.span()
+            for match in _INLINE_CODE_RE.finditer(text)
+            if not match.group()[1:-1].strip().startswith("MEDIA:")
+            and not re.search(
+                r"MEDIA:\s*$", text[max(0, match.start() - 20) : match.start()]
+            )
+        ],
+    )
+
+
+_EMBEDS = re.compile(
+    r"!\[[^\]\n]*\]\(\s*(?:<([^>\n]+)>|([^)\s]+))|\bsrc\s*=\s*[\"']([^\"'\n]+)[\"']",
+    re.I,
+)
+
+
+def embedded(report):
+    """网页和 Markdown 报告引用的本机图片属于报告本身；只读前 2 MB，读不到当作没有引用。"""
+    try:
+        with report.open(encoding="utf-8", errors="ignore") as file:
+            text = file.read(2_000_000)
+    except (OSError, ValueError):
+        return set()
+    values = (
+        next(value for value in match.groups() if value)
+        for match in _EMBEDS.finditer(text)
+    )
+    return {
+        path
+        for value in values
+        if (path := resolve_path(unquote(value), report.parent)) is not None
+    }
+
+
 def shown_paths(masked, cwd):
     """在已屏蔽示例的回复中找已展示文件；独立行交给追加选择后处理。"""
     from gateway.platforms.base import MEDIA_TAG_CLEANUP_RE

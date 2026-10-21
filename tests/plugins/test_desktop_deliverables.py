@@ -170,7 +170,11 @@ def test_asset_folder_names_only_count_inside_the_working_directory(
     # 命令前后的快照对比同样只看工作目录里面的目录名。
     begin(plugin, turn="second")
     plugin.before_tool(
-        tool_name="terminal", args={}, session_id="s", turn_id="second", tool_call_id="c"
+        tool_name="terminal",
+        args={},
+        session_id="s",
+        turn_id="second",
+        tool_call_id="c",
     )
     made = work / "new.pdf"
     made.write_bytes(b"pdf")
@@ -303,7 +307,18 @@ def test_terminal_workdir_is_observed_instead_of_default_workspace(delivery, tmp
 
 
 @pytest.mark.parametrize(
-    "form", ["forward", "mixed", "relative", "inline", "double", "single"]
+    "form",
+    [
+        "forward",
+        "mixed",
+        "relative",
+        "inline",
+        "double",
+        "single",
+        "code",
+        "quote",
+        "quoted",
+    ],
 )
 def test_shown_file_is_not_appended_again(delivery, form):
     """真实回复中的 MEDIA 链接、行内标记和预览指令只保留一个展示位置。"""
@@ -319,6 +334,10 @@ def test_shown_file_is_not_appended_again(delivery, form):
         "inline": f"请查看 MEDIA:`{output}`，这是成品。",
         "double": f'::preview{{file="{output}"}}',
         "single": f"::preview{{file='{output}'}}",
+        # 桌面对行内代码、引用块和引号包着的标记照样出卡；/C:/ 写法原版核对不过。
+        "code": f"- 成品：`MEDIA:{target}`",
+        "quote": f"> MEDIA:{output}",
+        "quoted": f'成品："MEDIA:{output}"',
     }
     original = forms[form] + f"\nMEDIA:{output}\n结束。"
     result = reply(plugin, original) or original
@@ -343,18 +362,70 @@ def test_moving_media_only_removes_its_own_line(delivery, newline, below):
     "example",
     [
         "```text\nMEDIA:{path}\n```",
-        "> MEDIA:{path}",
         "```text\n见 MEDIA:{path} 示例\n```",
     ],
 )
 def test_example_is_preserved_but_does_not_suppress_real_delivery(delivery, example):
-    """原版屏蔽的代码和引用示例不算已展示，也不能被移走独立行。"""
+    """围栏代码里的示例桌面只显示文字，不算已展示，也不能被移走独立行。"""
     plugin, work = delivery
     begin(plugin)
     output = work / "example.pdf"
     output.write_bytes(b"pdf")
     original = example.format(path=output)
     assert reply(plugin, original) == original + f"\n\nMEDIA:{output}"
+
+
+def test_generated_image_is_carded_next_to_document(delivery):
+    """有文档时同轮图片按素材处理，但元景生成并下载的图片是成品本身，照样出卡。"""
+    plugin, work = delivery
+    begin(plugin)
+    picture, material, output = (
+        work / "海报.png",
+        work / "chart.png",
+        work / "说明.docx",
+    )
+    for file in (picture, material, output):
+        file.write_bytes(b"deliverable")
+        plugin.after_tool(
+            tool_name="write_file",
+            args={"path": str(file)},
+            result="{}",
+            status="ok",
+            session_id="s",
+            turn_id="t",
+        )
+    plugin._turns[plugin.scope("s")].downloads["https://example.test/a.png"] = picture
+    result = reply(plugin)
+    assert f"MEDIA:{output}" in result and f"MEDIA:{picture}" in result
+    assert str(material) not in result
+
+
+def test_images_embedded_in_report_are_not_carded_separately(delivery):
+    """网页和 Markdown 报告引用的配图不单独出卡，没被引用的图片照常出卡。"""
+    plugin, work = delivery
+    begin(plugin)
+    (work / "charts").mkdir()
+    embedded = [work / "charts/趋势 图.png", work / "pie.png"]
+    alone = work / "封面.png"
+    page = work / "report.html"
+    notes = work / "notes.md"
+    page.write_text(
+        '<img src="charts/%E8%B6%8B%E5%8A%BF%20%E5%9B%BE.png">', encoding="utf-8"
+    )
+    notes.write_text('![饼图](<pie.png> "标题")', encoding="utf-8")
+    for file in (*embedded, alone):
+        file.write_bytes(b"image")
+    plugin.after_tool(
+        tool_name="custom_tool",
+        args={},
+        result={"output": "\n".join(map(str, (*embedded, alone, page, notes)))},
+        status="ok",
+        session_id="s",
+        turn_id="t",
+    )
+    result = reply(plugin)
+    assert all(str(file) in result for file in (alone, page, notes))
+    assert not any(str(file) in result for file in embedded)
 
 
 @pytest.mark.parametrize("kind", ["document-and-image", "nine"])

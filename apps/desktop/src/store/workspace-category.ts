@@ -9,6 +9,12 @@ const $selectedKeys = atom<Partial<Record<WelcomeLocale, string>>>({})
 
 export const $selectedWorkspaceMode = atom<'work' | 'codex' | null>(null)
 
+/** 当前是否为代码开发；页签还没选过时按界面模式推断，与页签的默认选择一致。 */
+export const $codeWorkspace = computed(
+  [$selectedWorkspaceMode, $interfaceMode],
+  (selected, mode) => (selected ?? (mode === 'advanced' ? 'codex' : 'work')) === 'codex'
+)
+
 function selectedModule(locale: WelcomeLocale) {
   return computed([$resolvedWelcomeCatalog[locale], $interfaceMode, $selectedKeys], (catalog, mode, keys) => {
     const modules = catalog.modules

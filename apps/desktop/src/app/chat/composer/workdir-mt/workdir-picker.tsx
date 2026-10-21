@@ -30,6 +30,7 @@ import {
   setCurrentCwdTransient,
   setNewChatWorkspaceTarget
 } from '@/store/session'
+import { $codeWorkspace } from '@/store/workspace-category'
 
 import { isConversationFolder } from './conversation-folder'
 import { useWorkdirCopy } from './copy'
@@ -53,9 +54,17 @@ export interface WorkdirPickerProps {
   sessionId?: null | string
 }
 
-/** 新对话发送时实际使用的目录，规则与 use-session-actions 创建会话时一致；空字符串表示默认工作区。 */
-export function draftWorkdir(target: NewChatWorkspaceTarget, projectScope: string, liveCwd: string): string {
-  if (target === null || (target === undefined && projectScope === NO_PROJECT_ID)) {
+/**
+ * 新对话发送时实际使用的目录，规则与 use-session-actions 创建会话及 applyConversationFolder 一致；
+ * 空字符串表示默认工作区。inherit 为 false 时（日常办公和学习会自动建文件夹）带过来的目录不算。
+ */
+export function draftWorkdir(
+  target: NewChatWorkspaceTarget,
+  projectScope: string,
+  liveCwd: string,
+  inherit = true
+): string {
+  if (target === null || (target === undefined && (projectScope === NO_PROJECT_ID || !inherit))) {
     return ''
   }
 
@@ -93,6 +102,7 @@ export function WorkdirPicker({ cwd, gateway, sessionId }: WorkdirPickerProps) {
   const target = useStore($newChatWorkspaceTarget)
   const projectScope = useStore($projectScope)
   const sessions = useStore($sessions)
+  const codeWorkspace = useStore($codeWorkspace)
   const [defaultCwd, refreshDefault] = useDefaultWorkdir(gateway)
   const [open, setOpen] = useState(false)
   // 本机账号环境才会给未选目录的新对话自动建文件夹。
@@ -108,7 +118,9 @@ export function WorkdirPicker({ cwd, gateway, sessionId }: WorkdirPickerProps) {
   })
 
   const locked = Boolean(sessionId)
-  const shown = locked ? (cwd ?? '').trim() : draftWorkdir(target, projectScope, cwd ?? '')
+  // 日常办公和学习会自动建文件夹，带过来的目录不显示，与发送时一致。
+  const inherit = !autoFolders || codeWorkspace
+  const shown = locked ? (cwd ?? '').trim() : draftWorkdir(target, projectScope, cwd ?? '', inherit)
   const isDefault = !shown || (defaultCwd !== '' && sameWorkdir(shown, defaultCwd))
   const label = isDefault ? t('defaultName') : workdirName(shown)
   const fullPath = shown || defaultCwd
@@ -224,7 +236,12 @@ export function WorkdirPicker({ cwd, gateway, sessionId }: WorkdirPickerProps) {
             <DropdownMenuSeparator />
             <DropdownMenuLabel className={MENU_LABEL}>{t('recent')}</DropdownMenuLabel>
             {recent.map(dir => (
-              <WorkdirItem checked={!isDefault && sameWorkdir(dir, shown)} hint={dir} key={dir} onSelect={() => choose(dir)}>
+              <WorkdirItem
+                checked={!isDefault && sameWorkdir(dir, shown)}
+                hint={dir}
+                key={dir}
+                onSelect={() => choose(dir)}
+              >
                 {workdirName(dir)}
               </WorkdirItem>
             ))}
