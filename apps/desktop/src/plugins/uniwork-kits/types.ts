@@ -74,10 +74,3 @@ export interface BundledStatus {
   failed: string[]
   error: string
 }
-
-export interface JobView {
-  id: string
-  running: boolean
-  exit_code: number | null
-  tail: string
-}

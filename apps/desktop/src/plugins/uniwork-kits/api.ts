@@ -1,7 +1,7 @@
 import { type PluginRestOptions } from '@hermes/plugin-sdk'
 
 import { normalizeRow } from './partition'
-import type { BundledStatus, Catalog, ExpertDirectory, JobView } from './types'
+import type { BundledStatus, Catalog, ExpertDirectory } from './types'
 
 type Rest = <T>(path: string, opts?: PluginRestOptions) => Promise<T>
 
@@ -58,11 +58,6 @@ export function recordSummon(name: string): Promise<{ recent: string[] }> {
   return api('/experts/recent', { body: { name }, method: 'POST' })
 }
 
-/** 取后台安装或刷新任务的状态和日志尾巴。 */
-export function fetchJob(id: string): Promise<JobView> {
-  return api<JobView>(`/jobs/${id}`)
-}
-
 /** 启用或停用一个套件。 */
 export function toggleKit(name: string, enabled: boolean): Promise<unknown> {
   return api('/toggle', { body: { enabled, name }, method: 'POST' })
@@ -71,13 +66,4 @@ export function toggleKit(name: string, enabled: boolean): Promise<unknown> {
 /** 把用户填的配置项写进对应档案的 .env。 */
 export function writeConfig(name: string, values: Record<string, string>): Promise<{ written: string[] }> {
   return api('/config', { body: { name, values }, method: 'POST' })
-}
-
-/** 上传 zip 并在后台安装，返回任务号。 */
-export function installZip(file: { bytes: ArrayBuffer; filename: string }): Promise<{ job: { id: string } }> {
-  return api('/install', {
-    method: 'POST',
-    timeoutMs: 60_000,
-    upload: { bytes: file.bytes, contentType: 'application/zip', filename: file.filename }
-  })
 }
