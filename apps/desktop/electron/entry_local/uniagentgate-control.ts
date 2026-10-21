@@ -114,9 +114,10 @@ export function createUniAgentGateReconnect(readContext: () => PreparedLocalCont
           return { status: 'failed' }
         }
 
-        // 旧版账号插件没有控制入口；重复 gateway run 不会升级已运行的插件。
+        // 启动已准备的共享插件；重复 gateway run 不会升级旧的运行中进程。
         try {
-          await fs.access(path.join(context.home, 'plugins', 'uniagentgate', 'control.py'))
+          if (!process.env.HERMES_BUNDLED_PLUGINS) {return { status: 'restart_required' }}
+          await fs.access(path.join(process.env.HERMES_BUNDLED_PLUGINS, 'uniagentgate', 'control.py'))
         } catch (error) {
           return { status: (error as NodeJS.ErrnoException).code === 'ENOENT' ? 'restart_required' : 'failed' }
         }

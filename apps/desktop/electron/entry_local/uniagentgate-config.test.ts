@@ -9,7 +9,6 @@ import { parse } from 'yaml'
 import { LoginSession } from '../login/session'
 
 import { prepareLocalEnvironment } from './prepare-account'
-import { installUniAgentGatePlugin } from './uniagentgate-config'
 
 const input = { phone: '13800000000', smsCode: '123456' }
 
@@ -66,15 +65,7 @@ it('真实登录到账号准备 A→B→A：个人凭据自动绑定并轮换，
       expect(config.plugins.enabled).toContain('uniagentgate')
       expect(fs.readFileSync(file, 'utf8')).not.toContain(secret)
       expect(parseEnv(fs.readFileSync(path.join(account.home, '.env'), 'utf8')).UNIAGENTGATE_AGENT_SK).toBe(secret)
-      expect(installUniAgentGatePlugin(account.home, path.resolve(import.meta.dirname, '../..'))).toBe(true)
-      expect(fs.statSync(path.join(account.home, 'plugins/uniagentgate/plugin.yaml')).isFile()).toBe(true)
-      const installed = path.join(account.home, 'plugins/uniagentgate')
-      fs.writeFileSync(path.join(installed, 'plugin.yaml'), 'name: uniagentgate\nversion: 0.1.0\n')
-      fs.unlinkSync(path.join(installed, 'control.py'))
-      expect(installUniAgentGatePlugin(account.home, path.resolve(import.meta.dirname, '../..'))).toBe(true)
-      expect(fs.readFileSync(path.join(installed, 'control.py'), 'utf8')).toBe(
-        fs.readFileSync(path.resolve(import.meta.dirname, '../../assets/uniagentgate-plugin/control.py'), 'utf8')
-      )
+      expect(fs.existsSync(path.join(account.home, 'plugins/uniagentgate'))).toBe(false)
       const snapshot = session.currentUniAgentGate()
 
       if (snapshot.status === 'available') {
@@ -141,7 +132,6 @@ it('套餐缺失/错误字段保留绑定，显式 null 停用且清 SK，无套
       PERSONAL_KEY: 'keep-me',
       UNIAGENTGATE_AGENT_SK: ''
     })
-    expect(installUniAgentGatePlugin(account.home, path.resolve(import.meta.dirname, '../..'))).toBe(false)
     session.dispose()
     expect(session.currentUniAgentGate()).toEqual({ status: 'missing' })
   } finally {

@@ -1,4 +1,4 @@
-"""UniWork distribution platform; installed into the owning account's plugin tree."""
+"""Shared UniWork platform code; registration and connection state belong to each account."""
 
 
 def register(ctx):

@@ -9,7 +9,7 @@ import sys
 import psutil
 import pytest
 
-from tests.apps.desktop.test_uniagentgate import gateway, install, until  # noqa: F401
+from tests.apps.desktop.test_uniagentgate import bundled_plugins, bundled_tree, gateway, install, until  # noqa: F401
 
 
 async def reap_child(child):

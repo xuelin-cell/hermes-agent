@@ -1,18 +1,19 @@
 import { app } from 'electron'
 
 import { accountDesktopEnvironment } from './desktop-environment'
+import { desktopPythonPluginsRoot, retireAccountUniAgentGatePlugin } from './desktop-python-plugins'
 import { ensureDevExtras } from './dev-extras'
 import { recordAccountRun } from './logout'
 import type { PreparedLocalContext } from './runtime-context'
-import { installUniAgentGatePlugin } from './uniagentgate-config'
 
 /** 绑定可信账号后才加载原版桌面；不接受页面传入的账号、路径或连接。 */
 export async function startAccountDesktop(context: PreparedLocalContext): Promise<void> {
   recordAccountRun(app.getPath('userData'), context.id)
   const env = accountDesktopEnvironment(context)
+  env.HERMES_BUNDLED_PLUGINS = desktopPythonPluginsRoot(app.getAppPath(), app.isPackaged ? process.resourcesPath : undefined)
+  retireAccountUniAgentGatePlugin(context.home, env.HERMES_BUNDLED_PLUGINS)
   // 后端启动前装好开发模式缺的组件，免得用到时才报缺依赖。
   await ensureDevExtras(context, env)
-  installUniAgentGatePlugin(context.home, app.getAppPath())
 
   for (const name of Object.keys(process.env)) {
     if (!(name in env)) {

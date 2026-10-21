@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { isMap, isScalar, isSeq, type Node, parseDocument } from 'yaml'
+import { isMap, isScalar, type Node, parseDocument } from 'yaml'
 
 import { writeSecretFileAtomic } from '../hardening'
 import type { UniAgentGateUpdate } from '../login/uniagentgate'
@@ -99,50 +99,4 @@ export function updateUniAgentGateConfig(home: string, update: UniAgentGateUpdat
   if (update.status === 'available') {
     enableDesktopPlugins(home, ['uniagentgate'])
   }
-}
-
-/** 安装发行包自带插件；只写当前账号目录，Python 不从 asar 内导入。 */
-export function installUniAgentGatePlugin(home: string, appRoot: string): boolean {
-  const config = path.join(home, 'config.yaml')
-
-  if (!fs.existsSync(config)) {
-    return false
-  }
-
-  const doc = parseDocument(fs.readFileSync(config, 'utf8'), OPTIONS)
-
-  if (doc.errors.length || doc.warnings.length) {
-    throw new Error('5G 账号配置无效。')
-  }
-
-  if (!doc.hasIn(['platforms', 'uniagentgate'])) {
-    return false
-  }
-
-  const source = path.join(appRoot, 'assets', 'uniagentgate-plugin')
-  const destination = path.join(home, 'plugins', 'uniagentgate')
-  const parent = path.dirname(destination)
-
-  for (const directory of [parent, destination]) {
-    const item = fs.lstatSync(directory, { throwIfNoEntry: false })
-
-    if (item && (!item.isDirectory() || item.isSymbolicLink())) {
-      throw new Error('5G 插件目录无效。')
-    }
-  }
-
-  if (!fs.statSync(path.join(source, 'plugin.yaml')).isFile()) {
-    throw new Error('发行包缺少 5G 消息插件。')
-  }
-
-  fs.mkdirSync(parent, { recursive: true, mode: 0o700 })
-  fs.cpSync(source, destination, { recursive: true, force: true })
-
-  const enabled = doc.getIn(['plugins', 'enabled'])
-  const disabled = doc.getIn(['plugins', 'disabled'])
-
-  const includes = (value: unknown) =>
-    isSeq(value) && value.items.some(item => isScalar(item) && item.value === 'uniagentgate')
-
-  return doc.getIn(['platforms', 'uniagentgate', 'enabled']) === true && includes(enabled) && !includes(disabled)
 }

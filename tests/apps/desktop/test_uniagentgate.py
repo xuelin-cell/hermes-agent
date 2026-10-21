@@ -9,8 +9,8 @@ import importlib
 import json
 import logging
 from pathlib import Path
-import shutil
 import socket
+import subprocess
 
 import pytest
 import pytest_asyncio
@@ -23,7 +23,20 @@ from agent.secret_scope import (
 from hermes_constants import get_hermes_home, reset_hermes_home_override, set_hermes_home_override
 
 
-PLUGIN = Path(__file__).resolve().parents[3] / "apps/desktop/assets/uniagentgate-plugin"
+ROOT = Path(__file__).resolve().parents[3]
+
+
+@pytest.fixture(scope="module")
+def bundled_tree(tmp_path_factory):
+    out = tmp_path_factory.mktemp("desktop-plugin-build")
+    subprocess.run(["node", str(ROOT / "apps/desktop/scripts/stage-python-plugins.mjs"),
+                    "--source", str(ROOT), "--out", str(out)], check=True, capture_output=True, timeout=60)
+    return out / "python-plugins"
+
+
+@pytest.fixture(autouse=True)
+def bundled_plugins(bundled_tree, monkeypatch):
+    monkeypatch.setenv("HERMES_BUNDLED_PLUGINS", str(bundled_tree))
 
 
 @contextmanager
@@ -189,7 +202,9 @@ async def gateway():
     listener.listen()
     port = listener.getsockname()[1]
     listener.setblocking(False)
-    server = uvicorn.Server(uvicorn.Config(fake, lifespan="off", access_log=False, log_config=None))
+    # 只关闭本夹具的服务；MCP/故障测试的遗留连接不能无限阻塞退出。
+    server = uvicorn.Server(uvicorn.Config(fake, lifespan="off", access_log=False, log_config=None,
+                                         timeout_graceful_shutdown=2))
     task = asyncio.create_task(server.serve(sockets=[listener]))
     await until(lambda: server.started)
     try:
@@ -201,8 +216,8 @@ async def gateway():
 
 
 def install(home, url, agent, secret):
-    (home / "plugins").mkdir(parents=True, exist_ok=True)
-    shutil.copytree(PLUGIN, home / "plugins/uniagentgate", dirs_exist_ok=True)
+    home.mkdir(parents=True, exist_ok=True)
+    assert not (home / "plugins/uniagentgate").exists()
     (home / ".env").write_text(f'UNIAGENTGATE_AGENT_SK="{secret}"\n', encoding="utf-8")
     (home / "config.yaml").write_text(json.dumps({
         "plugins": {"enabled": ["uniagentgate"]},
@@ -214,11 +229,16 @@ def install(home, url, agent, secret):
 def adapter_from_config():
     from gateway.config import Platform, load_gateway_config
     from gateway.platform_registry import platform_registry
-    from hermes_cli.plugins import discover_plugins
+    from hermes_cli.plugins import discover_plugins, get_plugin_manager
     discover_plugins()
     config = load_gateway_config()
     adapter = platform_registry.create_adapter("uniagentgate", config.platforms[Platform("uniagentgate")])
     assert adapter is not None
+    loaded = get_plugin_manager()._plugins["uniagentgate"]
+    assert loaded.manifest.source == "bundled"
+    from hermes_cli.plugins import get_bundled_plugins_dir
+    assert Path(importlib.import_module(adapter.__module__).__file__).resolve().parent == (
+        get_bundled_plugins_dir() / "uniagentgate").resolve()
     return adapter
 
 

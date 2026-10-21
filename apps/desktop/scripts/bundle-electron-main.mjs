@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
 import { isMain, workspaceTool } from '../../../scripts/build/frontend-common.mjs'
 import { environmentDefaultsBanner } from './bundle-env.mjs'
+import { stagePythonPlugins } from './stage-python-plugins.mjs'
 
 const repoRoot = resolve(import.meta.dirname, '../../..')
 
@@ -45,6 +46,7 @@ export async function bundleElectronMain({ source, out, stamp, dev = false }) {
     define.__HERMES_PRODUCT_IDENTITY__ = productIdentity(source, metadata)
   }
   mkdirSync(out, { recursive: true })
+  stagePythonPlugins({ source, out })
   // 账号退出辅助脚本随 dist 解包，供安装包内的 Python 直接执行。
   copyFileSync(join(source, 'apps/desktop/electron/entry_local/gateway-logout.py'), join(out, 'gateway-logout.py'))
   const common = {

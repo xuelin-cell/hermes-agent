@@ -133,9 +133,10 @@ it('rejects foreign scopes and does not retry a reconnect whose result is unknow
   }
 })
 
-it('identifies an installed old plugin without launching a duplicate gateway', async () => {
+it('requires prepared bundled plugin resources before launching a missing gateway', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'hermes-rcs-upgrade-'))
   const context = { home: root } as PreparedLocalContext
+  vi.stubEnv('HERMES_BUNDLED_PLUGINS', path.join(root, 'missing-resources'))
 
   try {
     const plugin = path.join(root, 'plugins', 'uniagentgate')
@@ -144,6 +145,7 @@ it('identifies an installed old plugin without launching a duplicate gateway', a
     expect(await createUniAgentGateReconnect(() => context)()).toEqual({ status: 'restart_required' })
     expect(mocks.start).not.toHaveBeenCalled()
   } finally {
+    vi.unstubAllEnvs()
     await fs.rm(root, { recursive: true, force: true })
   }
 })

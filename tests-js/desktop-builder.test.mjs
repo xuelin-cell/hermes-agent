@@ -30,6 +30,10 @@ function fixture() {
   roots.push(root)
   const source = join(root, 'source')
   const app = join(source, 'apps/desktop')
+  put(join(source, 'plugins/fixture-official/plugin.yaml'), 'name: fixture-official\n')
+  cpSync(join(repo, 'apps/desktop/assets/uniagentgate-plugin'), join(app, 'assets/uniagentgate-plugin'), {
+    recursive: true, filter: file => !file.includes('__pycache__') && !file.endsWith('.pyc'),
+  })
   put(join(app, 'package.json'), '{"type":"module"}')
   put(join(app, 'vite.config.mjs'), 'export default { base: "./", build: { minify: false } }')
   put(join(app, 'index.html'), '<html><div id="app"></div><script type="module" src="/src/index.js"></script></html>')
@@ -80,7 +84,9 @@ test('desktop compiler consumes explicit immutable inputs, replaces variants, an
   const { productCurrent } = await import('../scripts/build/freshness.mjs')
   expect(productCurrent({ ...input, product: 'desktop' })).toBe(true)
   for (const file of [join(input.icons, 'apps/desktop/public/apple-touch-icon.png'), input.stamp,
-    join(input.nativeDeps, 'node-pty/package.json'), join(input.nativeDeps, 'native/helper-fixture')]) {
+    join(input.nativeDeps, 'node-pty/package.json'), join(input.nativeDeps, 'native/helper-fixture'),
+    join(input.source, 'plugins/fixture-official/plugin.yaml'),
+    join(input.source, 'apps/desktop/assets/uniagentgate-plugin/plugin.yaml')]) {
     const original = readFileSync(file)
     put(file, 'changed prepared input')
     expect(productCurrent({ ...input, product: 'desktop' }), file).toBe(false)
@@ -96,6 +102,10 @@ test('desktop compiler consumes explicit immutable inputs, replaces variants, an
   expect(existsSync(join(input.out, 'assets'))).toBe(true)
   expect(existsSync(join(input.out, 'electron-preload.js'))).toBe(true)
   expect(existsSync(join(input.out, 'login-preload.js'))).toBe(true)
+  expect(readFileSync(join(input.out, 'python-plugins/fixture-official/plugin.yaml'), 'utf8'))
+    .toBe(readFileSync(join(input.source, 'plugins/fixture-official/plugin.yaml'), 'utf8'))
+  expect(readFileSync(join(input.out, 'python-plugins/uniagentgate/plugin.yaml'), 'utf8'))
+    .toBe(readFileSync(join(input.source, 'apps/desktop/assets/uniagentgate-plugin/plugin.yaml'), 'utf8'))
   expect(execFileSync(process.execPath, ['-e', 'require(process.argv[1]); process.stdout.write(globalThis.fixtureLoginPreload)',
     join(input.out, 'login-preload.js')], { cwd: tmpdir(), encoding: 'utf8' })).toBe('compiled login preload')
   expect(readFileSync(join(input.out, 'native/helper-fixture'), 'utf8')).toBe('prepared executable resource')

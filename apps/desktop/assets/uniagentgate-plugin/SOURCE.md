@@ -9,7 +9,14 @@ Original changes include `ef0feece` (initial connector), `559a6f05` (binding),
 were authored by lijiyang. This port retains the source protocol/client structure;
 the Hermes adapter, health observer and account integration are new.
 
-This distribution installs the plugin into each account's own Hermes home.
+The desktop build combines the official bundled plugins and this plugin in
+`dist/python-plugins`. Packaging places that complete tree in `resources/python-plugins`,
+outside Electron's `app.asar`, and the desktop sets the existing
+`HERMES_BUNDLED_PLUGINS` discovery root before starting the backend. Accounts do not
+copy or link plugin code. Config, secrets, caches, connections and the control socket
+record remain scoped to each account's Hermes home. Legacy account-local copies or
+directory links are moved to `plugin-backups/`, outside discovery, before startup so
+they cannot shadow the bundled plugin. Fresh accounts need no migration or backups.
 Inbound file staging and outbound native-media/link rules are adapted from the same
 source commit's `libs/hexagent_demo/backend/hexagent_api/channels/runtime.py`
 (`_stage_uniagentgate_attachment`, `_build_uniagentgate_media`). The Hermes media cache,
@@ -17,5 +24,6 @@ source commit's `libs/hexagent_demo/backend/hexagent_api/channels/runtime.py`
 old Claw conversation, VM downloader and pre-upload singleton.
 
 This distribution supports text, inbound attachments, combined final text/media replies
-and account-scoped manual reconnect. Multi-agent routing and complete FIFO parity remain
-separate migration work.
+and account-scoped manual reconnect and live binding updates. Multiple independently
+bound Agents are outside this distribution's single-personal-binding scope; busy input
+continues to use Hermes's configured processing policy.
