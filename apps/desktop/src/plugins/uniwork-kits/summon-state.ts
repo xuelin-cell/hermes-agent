@@ -1,5 +1,7 @@
 import { atom } from 'nanostores'
 
+import { $poolLimits } from '@/store/pool-limits'
+
 /** 对话框里正在召唤的专家。准备好或离开后清空。 */
 export interface ExpertSummon {
   profile: string
@@ -11,6 +13,13 @@ export interface ExpertSummon {
 export const $expertSummon = atom<ExpertSummon | null>(null)
 
 const FAILED = '这位专家的后端没有连上，请再点一次。'
+
+/** 池子名额用尽时的原文（主进程 pool-spawn-coordinator）。 */
+const SLOT_WAIT = 'waiting for a free slot'
+
+function slotFullMessage(): string {
+  return `同时进行的专家已到上限（${$poolLimits.get().maxBackends} 个）。等一位专家结束，再点一次。`
+}
 
 /** 开始一次召唤。同一时间只保留最后一次。 */
 export function beginExpertSummon(profile: string, displayName: string): void {
@@ -39,7 +48,11 @@ export function noteExpertSummonFailure(message: string): void {
     return
   }
 
-  const readable = /timed out|retired|failed to open/i.test(message) ? FAILED : message.trim() || FAILED
+  const readable = message.includes(SLOT_WAIT)
+    ? slotFullMessage()
+    : /timed out|retired|failed to open/i.test(message)
+      ? FAILED
+      : message.trim() || FAILED
 
   $expertSummon.set({ ...current, phase: 'failed', error: readable })
 }

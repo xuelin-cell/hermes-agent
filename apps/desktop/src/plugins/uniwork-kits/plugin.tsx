@@ -21,6 +21,7 @@ import {
 
 import { bindApi, bindOpener } from './api'
 import { watchBundled } from './bundled'
+import { ConnectorLoginDialog } from './connector-login-dialog'
 import { ExpertBar } from './expert-bar'
 import { $expertDirectory, loadExperts } from './experts-store'
 import { KITS_LOCALES } from './i18n'
@@ -88,6 +89,13 @@ const plugin: HermesPlugin = {
         area: COMPOSER_AREAS.top,
         order: 20,
         render: () => <ExpertBar />
+      },
+      {
+        // 召唤东方财富专家而连接器还没连上时的提示框（只在有要问的时候弹出）。
+        id: 'connector-login',
+        area: COMPOSER_AREAS.top,
+        order: 21,
+        render: () => <ConnectorLoginDialog />
       },
       {
         // 专家还没准备好时，召唤出来的新草稿不能发送。

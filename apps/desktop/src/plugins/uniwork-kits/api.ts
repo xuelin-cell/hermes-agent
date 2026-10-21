@@ -58,6 +58,11 @@ export function recordSummon(name: string): Promise<{ recent: string[] }> {
   return api('/experts/recent', { body: { name }, method: 'POST' })
 }
 
+/** 让一位专家马上跟上通用助手的配置（例如刚连上的东方财富连接器）；返回改了哪些，没变化时为空。 */
+export function syncExpert(name: string): Promise<{ changes: string[] }> {
+  return api('/experts/sync', { body: { name }, method: 'POST' })
+}
+
 /** 启用或停用一个套件。 */
 export function toggleKit(name: string, enabled: boolean): Promise<unknown> {
   return api('/toggle', { body: { enabled, name }, method: 'POST' })

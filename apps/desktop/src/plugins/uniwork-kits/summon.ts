@@ -16,6 +16,7 @@
 import { type ComposerMiddleware, host } from '@hermes/plugin-sdk'
 
 import { recordSummon } from './api'
+import { connectorLoginBlocksSend, dismissConnectorLogin, offerConnectorLogin } from './connector-login'
 import { $expertDirectory } from './experts-store'
 import { openingPrompt } from './summon-model'
 import {
@@ -113,6 +114,8 @@ export function summonExpert(expert: ExpertCard): void {
   const ticket = ++summonTicket
 
   beginExpertSummon(expert.profile, expert.display_name)
+  // 取数要靠连接器、而通用助手还没连上时，先弹窗问要不要去连接（见 ./connector-login）。
+  void offerConnectorLogin(expert)
   void recordSummon(expert.name)
     .then(result => $expertDirectory.set({ ...$expertDirectory.get(), recent: result.recent ?? [] }))
     .catch(() => undefined)
@@ -190,6 +193,7 @@ export function fillPrompt(text: string): void {
 export function leaveExpert(): void {
   summonTicket += 1
   clearExpertSummon()
+  dismissConnectorLogin()
   host.newChat('default')
 }
 
@@ -198,7 +202,11 @@ export function warmExpert(profile: string): void {
   ;(host as unknown as QuietChatHost).warmProfile?.(profile)
 }
 
-/** 专家还在准备或没有连上时，召唤出来的那条新草稿不能发送，消息留在输入框里。已有的对话不受影响。 */
+/** 专家还在准备、没有连上，或者连接器提示还没答复时，召唤出来的那条新草稿不能发送，消息留在输入框里。已有的对话不受影响。 */
 export const summonSendGuard: ComposerMiddleware = {
-  handler: draft => (expertSummonBlocksSend(host.state.focusedSessionId.get()) ? null : draft)
+  handler: draft => {
+    const focused = host.state.focusedSessionId.get()
+
+    return expertSummonBlocksSend(focused) || (!focused && connectorLoginBlocksSend()) ? null : draft
+  }
 }

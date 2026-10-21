@@ -20,6 +20,7 @@ interface ConnectorManagerOptions extends Omit<ConnectorRuntimeOptions, 'directo
     path: string
     method?: string
     body?: unknown
+    priority?: 'foreground' | 'background'
   }) => Promise<any>
   openExternal: (url: string) => Promise<void>
   identity: () => LoginIdentity | null
@@ -35,6 +36,22 @@ const AGENT_MAIL_ACTIONS: ReadonlySet<AgentMailAction> = new Set([
   'mark_email_read',
   'search_emails'
 ])
+
+// 后端被收掉、正在重启或排队等名额时 main 给的几种英文报错。
+const BACKEND_UNAVAILABLE = /was retired|failed to start|free local slot|waiting for a free slot|was cancelled while queued/i
+
+/** 写配置时档案后端不在：换成用户看得懂的中文，不把进程池的英文原样显示在连接器卡片上。其他错误返回 null。 */
+export function backendUnavailable(error: unknown, profile: string): Error | null {
+  const message = error instanceof Error ? error.message : String(error ?? '')
+
+  if (!BACKEND_UNAVAILABLE.test(message)) {
+    return null
+  }
+
+  const who = profile === 'default' ? '通用助手' : '这个助手'
+
+  return new Error(`${who}的后台正在重新打开，请稍后再点一次。`)
+}
 
 /** Credentials stay in OpenConnector; Hermes owns the corresponding MCP settings. */
 export class ConnectorManager {
@@ -410,8 +427,17 @@ export class ConnectorManager {
     const { profile, operation, id } = input
     const runtime = this.runtime(profile)
 
-    const api = (method: string, route: string, body?: unknown) =>
-      this.options.api({ connectionId: 'local', profile, method, path: route, body })
+    // 「连接」「授权」「启用」「断开」是用户点的，要马上写配置：按前台去开这个档案的后端，刚被收掉也会重新拉起来。
+    // 连接器页每隔一会儿的 list 只是看状态，按后台走，不跟用户正在打开的专家抢名额。
+    const priority = operation === 'list' ? 'background' : 'foreground'
+
+    const api = async (method: string, route: string, body?: unknown) => {
+      try {
+        return await this.options.api({ connectionId: 'local', profile, method, path: route, body, priority })
+      } catch (error) {
+        throw backendUnavailable(error, profile) ?? error
+      }
+    }
 
     if (operation !== 'list' && (!id || !Object.hasOwn(CONNECTOR_SPECS, id))) {
       throw new Error('Unknown connector')

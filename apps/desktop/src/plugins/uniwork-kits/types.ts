@@ -52,6 +52,8 @@ export interface ExpertCard {
   /** 宿主为这位专家写的那一条「试试这样问」（和数字员工一致）；没有时为空。 */
   try_asking: string
   tags: string[]
+  /** 取数要靠的连接器（如 eastmoney_mcp），召唤时没连上先弹窗问；旧版后端没有这个字段。 */
+  required_connector?: string
 }
 
 export interface ExpertDirectory {

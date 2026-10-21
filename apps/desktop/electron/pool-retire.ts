@@ -16,6 +16,8 @@ export interface PoolRetirerDeps<E extends PoolRetireEntry> {
   stopBackend: (key: string) => Promise<void>
   onRetiring?: (key: string) => void
   log?: (message: string) => void
+  /** 永远不收的键（通用助手，见 pool-touch-scope 的 isPoolAnchor）：腾名额、闲置回收、调小上限都跳过它。 */
+  pinned?: (key: string) => boolean
 }
 
 export function selectRetirementCandidates<K, E extends PoolRetireEntry>(
@@ -51,7 +53,8 @@ export function createPoolRetirer<E extends PoolRetireEntry>(deps: PoolRetirerDe
     !disposed && deps.coordinator.foregroundWaiters.size > 0 && deps.coordinator.activeCount >= deps.coordinator.limit
 
   async function retire(key: string, entry: E, needed: () => boolean): Promise<boolean> {
-    const eligible = () => !disposed && deps.pool.get(key) === entry && entry.activeTurn !== true && needed()
+    const eligible = () =>
+      !disposed && !deps.pinned?.(key) && deps.pool.get(key) === entry && entry.activeTurn !== true && needed()
 
     if (!entry.process || !eligible()) {
       return false
@@ -156,7 +159,10 @@ export function createPoolRetirer<E extends PoolRetireEntry>(deps: PoolRetirerDe
     evictTo: (keep: number, freshMs: number) =>
       enqueue(async () => {
         const retired: string[] = []
-        const overCap = () => [...deps.pool.values()].filter(entry => entry.process).length > Math.max(0, keep)
+
+        const overCap = () =>
+          [...deps.pool.entries()].filter(([key, entry]) => entry.process && !deps.pinned?.(key)).length >
+          Math.max(0, keep)
 
         for (const [key, entry] of selectRetirementCandidates(deps.pool, deps.coordinator.foregroundWaiters)) {
           if (await retire(key, entry, () => overCap() && Date.now() - (entry.lastActiveAt || 0) > freshMs)) {

@@ -34,7 +34,12 @@ const en = {
   noRecentExperts: 'No recent experts. Search to find one.',
   leaveExpert: 'Back to the assistant',
   talkingTo: 'Expert: ',
-  tryAsking: 'Try asking'
+  tryAsking: 'Try asking',
+  connectorLoginTitle: 'Connect East Money to query data',
+  connectorLoginBody:
+    " needs the East Money connector before it can query quotes and financials. Next you'll open East Money in Connectors. Click Connect there to authorize; you'll be brought back to this chat afterwards.",
+  connectorLoginLater: 'Later',
+  connectorLoginConfirm: 'Open connector'
 }
 
 const zh = {
@@ -71,7 +76,12 @@ const zh = {
   noRecentExperts: '还没有最近召唤。输入名字可以搜索全部专家。',
   leaveExpert: '回到通用助手',
   talkingTo: '当前专家：',
-  tryAsking: '试试这样问'
+  tryAsking: '试试这样问',
+  connectorLoginTitle: '连接东方财富后即可查询',
+  connectorLoginBody:
+    '的行情与财务数据需要先连接东方财富。下一步打开连接器里的东方财富页面，请在那里点击「连接」完成授权。授权完成后会自动回到这里，再发送问题。',
+  connectorLoginLater: '稍后',
+  connectorLoginConfirm: '去连接'
 }
 
 export const KITS_LOCALES: PluginLocaleBundles = { en, zh }

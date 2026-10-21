@@ -213,12 +213,16 @@ export class LocalBackendSpawnCoordinator {
     }
   }
 
-  constructor(limit: number) {
+  #exempt: (key: string) => boolean
+
+  /** `exempt`：不占名额的键（通用助手，见 pool-touch-scope 的 isPoolAnchor），申请时直接放行、不计数。 */
+  constructor(limit: number, options: { exempt?: (key: string) => boolean } = {}) {
     if (!Number.isInteger(limit) || limit < 1) {
       throw new RangeError('Local backend spawn limit must be a positive integer.')
     }
 
     this.#limit = limit
+    this.#exempt = options.exempt ?? (() => false)
   }
 
   get activeCount(): number {
@@ -257,6 +261,10 @@ export class LocalBackendSpawnCoordinator {
     }
 
     const priority: LocalBackendSpawnPriority = options.priority === 'background' ? 'background' : 'foreground'
+
+    if (this.#exempt(key)) {
+      return { acquired: Promise.resolve(() => undefined), cancel: () => false, promote: () => false, queued: false }
+    }
 
     if (this.#queue.length === 0 && this.#canGrant(priority)) {
       return {

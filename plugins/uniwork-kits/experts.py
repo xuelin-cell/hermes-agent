@@ -14,7 +14,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
-from . import store
+from . import eastmoney_slot, store
 from .expert_try_asking import try_asking
 
 RECENT_FILE = "expert_recent.json"
@@ -53,6 +53,8 @@ def _row(name: str, entry: Dict[str, Any]) -> Dict[str, Any]:
         "quick_prompts": [str(p) for p in intro.get("quick_prompts") or [] if str(p).strip()],
         # 宿主写的那一条推荐问法，读名单时按插件名现查，已装的专家不用重装就能用上
         "try_asking": try_asking(name),
+        # 取数要靠哪个连接器（桌面召唤时没连上就先弹窗问）；不靠连接器的专家为空
+        "required_connector": eastmoney_slot.SERVICE if name in eastmoney_slot.EXPERTS else "",
         "tags": [str(t) for t in intro.get("tags") or [] if str(t).strip()],
     }
 

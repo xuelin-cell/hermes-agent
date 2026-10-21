@@ -433,7 +433,7 @@ import {
   releaseLocalBackendSlotAfterExit
 } from './pool-spawn-coordinator'
 import { createPoolStopper } from './pool-stop'
-import { poolTouchKeys } from './pool-touch-scope'
+import { isPoolAnchor, poolTouchKeys } from './pool-touch-scope'
 import { createPortalSession } from './portal-session'
 import { createKeepAwake } from './power-save'
 import { readPreUpdateBackupEnabled } from './pre-update-backup-config'
@@ -1570,7 +1570,7 @@ let poolLimits = readPersistedPoolLimits()
 // Hard cap on local backends that are starting OR running (the LRU eviction
 // above is soft — it spares keepalive-fresh entries). Follows the live
 // preference: setPoolLimits() pushes a new max into the coordinator.
-const localBackendSpawnCoordinator = new LocalBackendSpawnCoordinator(poolLimits.maxBackends)
+const localBackendSpawnCoordinator = new LocalBackendSpawnCoordinator(poolLimits.maxBackends, { exempt: isPoolAnchor })
 const backgroundSlotRetryBackoff = new BackgroundSlotRetryBackoff()
 // How long a spawn may wait for a free local slot. Must stay under the
 // renderer's BACKEND_BOOT_WAIT_TIMEOUT_MS (45s, src/lib/with-timeout.ts) so
@@ -12026,7 +12026,8 @@ const poolRetirer = createPoolRetirer({
   ...createPoolRetirementClient(fetchJson),
   stopBackend: stopPoolBackend,
   onRetiring: broadcastPoolBackendRetiring,
-  log: rememberLog
+  log: rememberLog,
+  pinned: isPoolAnchor
 })
 
 localBackendLifecycle.signal.addEventListener('abort', poolRetirer.dispose, { once: true })
