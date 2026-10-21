@@ -5,6 +5,8 @@ import { isMap, isSeq, parseDocument } from 'yaml'
 
 import { writeSecretFileAtomic } from '../hardening'
 
+import { copyAppTree } from './copy-app-tree'
+
 const NAME = 'desktop-artifact-share'
 
 /** 账号后端启动前安装定制发行附带的分享插件并启用其工具。 */
@@ -24,7 +26,7 @@ export function installArtifactSharePlugin(home: string, appRoot: string): void 
   }
 
   fs.mkdirSync(path.dirname(destination), { recursive: true, mode: 0o700 })
-  fs.cpSync(source, destination, { recursive: true, force: true })
+  copyAppTree(source, destination)
 
   const config = path.join(home, 'config.yaml')
   const existing = fs.lstatSync(config, { throwIfNoEntry: false })
