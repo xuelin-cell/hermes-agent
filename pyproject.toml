@@ -576,7 +576,10 @@ hermes-acp = "acp_adapter.entry:main"
 # build with --all-extras and pass --no-extra for each of these, so their
 # closures never ship. KittenTTS pulls torch, transformers and spaCy through
 # misaki[en]: installed when the user picks it, not preinstalled.
-opt-in-extras = ["kittentts"]
+# desktop-mt: elevenlabs (tts-premium) and mistralai (mistral) ship SDK-generated file
+# names so long that the Windows installer exceeds MAX_PATH and NSIS cannot install
+# them; both need the user's own third-party key, so install them when picked.
+opt-in-extras = ["kittentts", "tts-premium", "mistral"]
 
 # Per-extra platform gates (settled 2026-09-02): an extra listed here is
 # only installable on platforms matching the marker. pm consults this
