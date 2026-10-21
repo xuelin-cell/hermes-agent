@@ -550,11 +550,7 @@ export class ConnectorManager {
 
       const next = {
         ...(row.connected ? await runtime.config(row.id) : {}),
-        ...(!row.connected ? { enabled: false } : {})
-      }
-
-      if (row.id === id && row.connected && (operation === 'connect' || operation === 'enable')) {
-        Object.assign(next, { enabled: true })
+        ...(row.connected ? { enabled: true } : { enabled: false })
       }
 
       if (Object.entries(next).some(([key, value]) => JSON.stringify(entry?.[key]) !== JSON.stringify(value))) {

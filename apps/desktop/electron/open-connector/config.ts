@@ -119,6 +119,10 @@ export async function prepareConnectorConfig(
 
     entry.set('url', next.url)
     entry.set('headers', doc.createNode(next.headers))
+
+    if (connectedIds.has(id)) {
+      entry.set('enabled', true)
+    }
   }
 
   if (updates.length) {

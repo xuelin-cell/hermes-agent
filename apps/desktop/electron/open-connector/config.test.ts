@@ -84,6 +84,25 @@ it('creates and enables a missing owned MCP entry for a persisted connection', a
   }
 })
 
+it('re-enables an owned MCP entry when its OpenConnector account is connected', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-connector-enable-'))
+  const file = path.join(root, 'config.yaml')
+  fs.writeFileSync(
+    file,
+    'mcp_servers:\n  connector_qcc_mcp:\n    desktop_connector: qcc_mcp\n    url: old\n    enabled: false\n'
+  )
+
+  try {
+    await prepareConnectorConfig(root, ['qcc_mcp'], async () => ({
+      url: 'http://127.0.0.1/qcc_mcp',
+      headers: { Authorization: 'Bearer runtime' }
+    }))
+    expect(parse(fs.readFileSync(file, 'utf8')).mcp_servers.connector_qcc_mcp.enabled).toBe(true)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
 it('rejects a non-map MCP section without changing the config', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-connector-invalid-'))
   const file = path.join(root, 'config.yaml')
