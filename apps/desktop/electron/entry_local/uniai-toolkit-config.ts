@@ -54,6 +54,35 @@ function hideBuiltinVision(doc: Document): void {
   doc.setIn(['agent', 'disabled_toolsets'], doc.createNode(single ? [single, 'vision'] : ['vision']))
 }
 
+/** 只为翻译与播客留足 MCP 的 600 秒等待期；保留用户已配置的单工具上限。 */
+function configureBackgroundTimeouts(doc: Document): void {
+  const keys = ['timeouts', 'tools', 'sequential_calls']
+
+  for (let depth = 1; depth <= keys.length; depth++) {
+    const currentPath = keys.slice(0, depth)
+
+    if (doc.hasIn(currentPath) && !isIndependentMap(doc.getIn(currentPath))) {
+      return
+    }
+  }
+
+  for (let depth = 1; depth <= keys.length; depth++) {
+    const currentPath = keys.slice(0, depth)
+
+    if (!doc.hasIn(currentPath)) {
+      doc.setIn(currentPath, doc.createNode({}))
+    }
+  }
+
+  for (const name of ['doc_translate', 'ai_podcast_generate']) {
+    const key = [...keys, `mcp__UniAI_Toolkit__${name}`]
+
+    if (!doc.hasIn(key)) {
+      doc.setIn(key, 630)
+    }
+  }
+}
+
 /** 后端启动前按套餐维护默认 Home 的内置记录，只更新地址与超时，不接触其他服务。 */
 export function updateUniaiToolkitConfig(home: string, status: FetchedPlan['status']): void {
   if (status === 'failed') {
@@ -109,6 +138,7 @@ export function updateUniaiToolkitConfig(home: string, status: FetchedPlan['stat
     const timeout = isMap(entry) ? entry.get('timeout') : undefined
 
     hideBuiltinVision(doc)
+    configureBackgroundTimeouts(doc)
 
     if (!doc.has('mcp_servers')) {
       doc.set('mcp_servers', doc.createNode({}))

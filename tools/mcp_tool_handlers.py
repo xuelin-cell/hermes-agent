@@ -338,7 +338,8 @@ def _dispatch(server_name: str, server: Any, op: str, call, tool_timeout: float,
         result = call_once()
         return _record_call_outcome(server_name, result) if record_outcome else result
     except InterruptedError:
-        return tool_error("MCP call interrupted: user sent a new message")
+        # desktop-mt: 中断不等于新消息；停止按钮和父任务结束也会走此路径。
+        return tool_error("MCP call interrupted: tool execution cancelled; remote task outcome unknown")
     except Exception as exc:
         for recover in recoverers:
             recovered = recover(server_name, exc, call_once, op)

@@ -1177,6 +1177,7 @@ export function ChatBar({
       minimal={minimal}
       onDictate={dictate}
       onQueue={queueDraft}
+      onStop={() => submitDraft('stop')}
       onToggleAutoSpeak={handleToggleAutoSpeak}
       state={state}
       voiceStatus={voiceStatus}

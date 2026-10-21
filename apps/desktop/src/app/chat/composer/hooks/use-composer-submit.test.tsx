@@ -438,17 +438,22 @@ describe('useComposerSubmit busy-turn routing', () => {
     expect(onCancel).not.toHaveBeenCalled()
   })
 
-  it('stops an active turn only with an empty composer', () => {
-    const { hook, onCancel, onSteer, onSubmit, queueCurrentDraft } = renderSubmitHook({ busy: true })
+  it('never turns a duplicate submit after clearing the draft into a stop', () => {
+    const { hook, onCancel, onSteer } = renderSubmitHook({ busy: true, text: '天气怎么样' })
 
     act(() => {
       hook.result.current.submitDraft()
+      hook.result.current.submitDraft()
     })
 
+    expect(onSteer).toHaveBeenCalledTimes(1)
+    expect(onCancel).not.toHaveBeenCalled()
+  })
+
+  it('honors an explicit stop with an empty composer', () => {
+    const { hook, onCancel } = renderSubmitHook({ busy: true })
+    act(() => hook.result.current.submitDraft('stop'))
     expect(onCancel).toHaveBeenCalledTimes(1)
-    expect(onSteer).not.toHaveBeenCalled()
-    expect(onSubmit).not.toHaveBeenCalled()
-    expect(queueCurrentDraft).not.toHaveBeenCalled()
   })
 
   it('submits a normal turn while idle', async () => {
@@ -526,7 +531,7 @@ describe('useComposerSubmit with a clarify parked on the session', () => {
     expect(respond).toHaveBeenCalledWith({ answer: '' })
   })
 
-  it('leaves the question alone for an empty Enter (Stop, not an answer)', () => {
+  it('leaves the question and running task alone for an empty submit', () => {
     parkClarify('runtime-session')
     const { hook, onCancel } = renderSubmitHook({ busy: true })
 
@@ -537,7 +542,7 @@ describe('useComposerSubmit with a clarify parked on the session', () => {
     expect(respond).not.toHaveBeenCalled()
     expect(hasOpenServerRequest('req-runtime-session')).toBe(true)
     expect($clarifyRequests.get()['runtime-session']).toBeDefined()
-    expect(onCancel).toHaveBeenCalledTimes(1)
+    expect(onCancel).not.toHaveBeenCalled()
   })
 
   it("leaves another session's question alone", async () => {

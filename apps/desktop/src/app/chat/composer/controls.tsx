@@ -53,6 +53,7 @@ export function ComposerControls({
   voiceStatus,
   onDictate,
   onQueue,
+  onStop,
   onToggleAutoSpeak
 }: {
   asr?: { status: 'idle' | 'connecting' | 'recording' | 'finishing'; toggle: () => void }
@@ -71,6 +72,7 @@ export function ComposerControls({
   voiceStatus: VoiceStatus
   onDictate: () => void
   onQueue: () => void
+  onStop: () => void
   onToggleAutoSpeak: () => void
 }) {
   const { t } = useI18n()
@@ -171,7 +173,8 @@ export function ComposerControls({
             aria-label={showStop ? c.stop : c.send}
             className={PRIMARY_ICON_BTN}
             disabled={disabled || !canSubmit}
-            type="submit"
+            onClick={showStop ? onStop : undefined}
+            type={showStop ? 'button' : 'submit'}
           >
             {showStop ? (
               <span className="block size-2.5 rounded-[0.1875rem] bg-current" />

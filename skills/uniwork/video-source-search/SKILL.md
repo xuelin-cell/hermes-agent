@@ -16,7 +16,7 @@ tags: [影视, 搜索, 下载]
 
 - **绝不 `cd` 进技能目录**，调技能脚本一律用绝对路径：`python <技能根>/scripts/xxx.py`。下文命令都这么写，照抄时别省掉 `<技能根>/`。
 - **所有产物写用户工作目录**：下载的视频（`--out`）、日志、临时清单，一个都不进技能目录。视频动辄几百 MB，写进技能安装目录会被技能更新连锅端。
-- 开工前 `pwd` 确认自己在哪；下载前执行 `python -c "import os; print(os.path.abspath(r'{文件名}.mp4'))"` 得到当前执行环境认可的绝对路径，`--out`、后台登记和最终附件交付都使用这一条路径。
+- 开工前 `pwd` 确认自己在哪；下载前执行 `python -c "import os; print(os.path.abspath(r'{文件名}.mp4'))"` 得到当前执行环境认可的绝对路径，`--out`、后台命令和最终文件交付都使用这一条路径。
 
 
 ## Quick Workflow
@@ -27,7 +27,7 @@ tags: [影视, 搜索, 下载]
 4. 连续 empty/timeout 就换兜底搜索，别在 mcp-vods 上反复重试。见 [fallback-search](references/fallback-search.md)。
 5. 按 [output-rules](references/output-rules.md) 过滤付费墙、聚合页、非影视站、错误片名。
 6. `probe_media.py` 验证时长、清晰度、可播性。见 [media-verify](references/media-verify.md)。
-7. 要下载就 `download_media.py start`；启动成功后立即调用 `VideoDownloadJob` 登记后台监控，然后结束当前轮次。见 [download-progress](references/download-progress.md)。
+7. 要下载就通过 `terminal(background=true, notify_on_complete=true)` 执行 `download_media.py run`；取得进程句柄后结束当前轮次。见 [download-progress](references/download-progress.md)。
 8. 输出结果，连续剧优先给全集链表。
 9.下载如果一直进度为0证明这个片源下载不了，这个时候你对这个视频任务重新换源再重新下载。
 
@@ -60,7 +60,7 @@ https://obs-nmhhht6.cucloud.cn/app-agent-prod/video-search/ffmpeg-9.0-essentials
 
 缺工具时故障会伪装成别的问题——uvx 不在 PATH 看着像"片源引擎连接失败"，ffprobe 缺失看着像"这个源不可播"。所以先体检。需要 sudo 的安装命令 preflight 只打印不执行（agent 里会卡在密码提示），转给用户跑。
 
-冷启动要建 mcp-vods 环境（~89 个包，1–5 分钟），**可能超过 Bash 工具默认 120 秒超时**。被打断是正常的，依赖断点续装，加大超时重跑即可——**不要据此判定引擎不可用而转兜底**，这是本 skill 最常见的误判。
+冷启动要建 mcp-vods 环境（~89 个包，1–5 分钟），**可能超过 `terminal` 前台工具的默认超时**。被打断是正常的，依赖断点续装，加大超时重跑即可——**不要据此判定引擎不可用而转兜底**，这是本 skill 最常见的误判。
 
 ## Scripts
 
@@ -77,17 +77,17 @@ python scripts/mcp_vods.py doctor                      # mcp 链路分层诊断
 python scripts/probe_media.py "{m3u8|mp4}" [--expect movie|tv] [--expect-minutes 120] \
     [--referer "{播放页}"] [--sample] [--json]
 
-# 下载：start 立即返回；成功后必须调用 VideoDownloadJob.register，
-# 由后端在当前轮次结束后继续监控并把最终结果送回本会话。
-# HLS master 清单会在 start 内自动下钻到最高码率分片清单，不用手动传 probe 的 variant_url；
+# 下载：将下列 run 命令交给 terminal，设置 background=true 和 notify_on_complete=true。
+# run 一直执行到下载完成或失败，原生通知对应真实下载终态。
+# HLS master 清单会在 run 内自动下钻到最高码率分片清单，不用手动传 probe 的 variant_url；
 # 已是分片清单或 non-HLS 不受影响；解析失败自动回退原 URL（--no-resolve 可关）。
-python scripts/download_media.py start --url "{m3u8}" --out "{文件.mp4}" \
+python <技能根>/scripts/download_media.py run --url "{m3u8}" --out "{文件.mp4}" \
     --duration {秒} [--est-size-mb {probe 给的}] [--referer "{播放页}"]
 python scripts/download_media.py status --out "{文件.mp4}"
 python scripts/download_media.py stop   --out "{文件.mp4}"
 ```
 
-`probe_media.py --json` 的 `est_size_mb` 可直接喂给 `download start --est-size-mb`。
+`probe_media.py --json` 的 `est_size_mb` 可直接喂给 `download_media.py run --est-size-mb`。
 
 ## When To Read References
 
@@ -100,17 +100,21 @@ python scripts/download_media.py stop   --out "{文件.mp4}"
 
 ## Background Download
 
-`download_media.py start` 会让实际下载进程独立运行并立即返回。启动成功后必须：
+使用 `terminal` 后台运行下载，参数示意：
 
-1. 使用下载文件和脚本的绝对路径调用 `VideoDownloadJob`：
-   `{"action":"register","title":"{片名/集数}","output_path":"{输出文件绝对路径}","status_script":"<技能根>/scripts/download_media.py"}`。
-2. 只有工具返回 `success=true` 和 `job_id` 后，才能回复用户“下载已开始，可继续处理其他问题”，然后结束当前轮次。
-3. 不创建 CronJob，不在当前轮次调用 `wait-status` 等待完成，也不通过伪造用户提问续接一轮对话。
-4. 后端会静默记录进度；完成、失败或取消后，在原会话追加独立的后台任务结果卡片。该卡片不是普通 Assistant transcript 消息。
-5. `VideoDownloadJob.register` 失败时，立即执行 `download_media.py stop`，并明确说明后台监控未启动；不得留下无人监控的下载进程。
+```json
+{
+  "command": "python <技能根>/scripts/download_media.py run --url \"<已核实的媒体地址>\" --out \"<工作目录中的绝对输出路径>\" --duration <探测秒数>",
+  "background": true,
+  "notify_on_complete": true
+}
+```
 
-查询或取消时先调用 `VideoDownloadJob` 的 `list` 找到当前会话任务，再使用 `status` 或 `cancel`，不要创建定时任务。页面暂时断开不等于用户取消，后台监控会继续运行。
+用实际路径和参数替换示例，命令按当前终端正确引用。`run` 负责真实下载、等待与成品检查，主 Agent 收到原生进程句柄后确认一次已开始，再结束当前轮次。健康的 `run` 退出码为 0 且输出 `MEDIA:` 文件引用；失败返回非零。若返回通知不受支持，明确说明不能承诺自动回推。
 
+不要使用旧 `start` 模式冒充完整后台任务，不调用 UniClaw 的 `VideoDownloadJob`，不创建定时任务，也不在主会话循环等待。完成后由 Hermes 原生通知回到发起会话，按真实输出交付文件，不伪造完成或附件。
+
+只有用户问进度时，通过原生 `process` 操作查询句柄，或用 `terminal` 执行 `status --out` 查看进度；取消使用原生 `process` 停止对应后台进程。远程执行环境的文件沿用已有产物读取能力，不能当成本机路径。
 
 ## Critical Rules
 
@@ -121,8 +125,8 @@ python scripts/download_media.py stop   --out "{文件.mp4}"
 - 正版平台有授权版本时一并给出入口，不挤占免费结果。
 - 播放地址必须是 Markdown 可点击链接，不能是纯文本或反引号 URL。
 - 不伪造链接：URL 必须来自搜索、页面、接口或探测输出。
-- 下载启动后必须调用 `VideoDownloadJob.register`；登记成功即可结束当前轮次，让用户继续聊天。禁止创建 CronJob 或在本轮循环等待。
-- 后台管理器负责验证成品、复制 VM/云端文件并生成附件卡片；Skill 不得在登记成功后继续等待并重复交付。
+- 下载仅使用 `terminal(background=true, notify_on_complete=true)` 运行 `run`；取得句柄即可结束当前轮次，禁止循环等待。
+- 只有下载脚本真实成功才交付产物；遵循原执行环境的文件展示方式，不承诺自动复制远程文件。
 - 防盗链源站给 probe/download 传 `--referer`（UA 已默认带）。探测失败先怀疑缺 Referer。
 
 
@@ -133,6 +137,6 @@ python scripts/download_media.py stop   --out "{文件.mp4}"
 - 搜"狂飙"会混进几十条同名短剧。脚本已按相关度预排序，但仍要用年份（2023）和集数（39）复核，别把 60–100 集的短剧当正剧。
 - mcp-vods 两次 empty：走兜底，不直接回"无结果"。
 - `我想看流浪地球`：用 `--expect movie --expect-minutes` 排掉时长不对的候选。
-- `下载狂飙第1集`：启动并登记后台任务后结束本轮；用户可继续聊天，完成后原会话出现结果和附件卡片。
+- `下载狂飙第1集`：取得原生后台进程句柄后结束本轮；用户可继续聊天，完成后原会话收到结果和真实文件引用。
 - 结果表里播放地址是 `[播放链接](https://...)` 形式。
 - `推荐几部好看的刑侦剧`：不触发本 skill。

@@ -25,7 +25,7 @@ Enable with ``hermes plugins enable uniwork-kits``. Expert profiles created by
 
 from __future__ import annotations
 
-from . import cli, expert_sync, host_hooks, host_rules, llm, package_hooks, router
+from . import background_rules, cli, expert_sync, host_hooks, host_rules, llm, package_hooks, router
 
 
 def register(ctx) -> None:
@@ -57,6 +57,7 @@ def register(ctx) -> None:
     )
     for section_id, render in host_rules.SECTIONS:
         ctx.register_system_prompt_section(section_id, render, max_chars=4000)
+    ctx.register_system_prompt_section("uniwork.background-tasks", background_rules.section, max_chars=1600)
     ctx.register_hook("pre_llm_call", router.on_pre_llm_call)
     ctx.register_hook("pre_tool_call", host_hooks.on_pre_tool_call)
     ctx.register_hook("pre_tool_call", package_hooks.on_pre_tool_call)

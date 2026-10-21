@@ -40,6 +40,7 @@ function renderControls(overrides: Partial<React.ComponentProps<typeof ComposerC
         hasComposerPayload={true}
         onDictate={vi.fn()}
         onQueue={vi.fn()}
+        onStop={vi.fn()}
         onToggleAutoSpeak={vi.fn()}
         state={state}
         voiceStatus="idle"
@@ -241,4 +242,14 @@ it('实时识别录音时保留停止入口，不能发送未完成的草稿', (
   fireEvent.click(stop)
   expect(toggle).toHaveBeenCalledOnce()
   expect(screen.getByRole('button', { name: 'Send' })).toHaveProperty('disabled', true)
+})
+
+// 停止只走明确的点击回调，不经通用表单提交。
+it('keeps explicit stop separate from form submission', () => {
+  const onStop = vi.fn()
+  renderControls({ busy: true, hasComposerPayload: false, onStop })
+  const button = screen.getByRole('button', { name: 'Stop' })
+  expect(button.getAttribute('type')).toBe('button')
+  fireEvent.click(button)
+  expect(onStop).toHaveBeenCalledTimes(1)
 })

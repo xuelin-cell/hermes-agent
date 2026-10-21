@@ -168,7 +168,8 @@ def _run_on_mcp_loop(coro_or_factory, timeout: float = 30):
     while True:
         if is_interrupted():
             future.cancel()
-            raise InterruptedError("User sent a new message")
+            # desktop-mt: 这里只能确认收到中断，不能将停止或父任务取消误报为新消息。
+            raise InterruptedError("tool execution cancelled")
         remaining = 0.1 if deadline is None else deadline - time.monotonic()
         if remaining <= 0:
             future.cancel()
