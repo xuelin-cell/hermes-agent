@@ -19,6 +19,7 @@ const state: ChatBarState = {
 
 function renderControls(overrides: Partial<React.ComponentProps<typeof ComposerControls>> = {}, developerMode = true) {
   $developerMode.set(developerMode)
+
   return render(
     <I18nProvider configClient={null} initialLocale="en">
       <ComposerControls
@@ -40,6 +41,7 @@ function renderControls(overrides: Partial<React.ComponentProps<typeof ComposerC
         hasComposerPayload={true}
         onDictate={vi.fn()}
         onQueue={vi.fn()}
+        onStop={vi.fn()}
         onToggleAutoSpeak={vi.fn()}
         state={state}
         voiceStatus="idle"
@@ -62,6 +64,24 @@ afterEach(() => {
   cleanup()
   $hudMode.set(false)
   $developerMode.set(false)
+})
+
+it('普通和开发者模式均在模型组前显示传入的圆环', () => {
+  for (const developerMode of [false, true]) {
+    const { container, unmount } = renderControls(
+      { contextRing: <span data-testid="context-ring">用量</span> },
+      developerMode
+    )
+
+    const ring = screen.getByTestId('context-ring')
+    expect(ring.nextElementSibling).toBe(container.querySelector('[data-slot="composer-model-group"]'))
+    unmount()
+  }
+})
+
+it.each(['compactModelPill', 'minimal', 'hideModelPill'] as const)('%s 布局隐藏上下文圆环', key => {
+  renderControls({ [key]: true, contextRing: <span data-testid="context-ring">用量</span> })
+  expect(screen.queryByTestId('context-ring')).toBeNull()
 })
 
 // The HUD is a Spotlight bar a few hundred pixels wide: the voice controls
@@ -241,4 +261,14 @@ it('实时识别录音时保留停止入口，不能发送未完成的草稿', (
   fireEvent.click(stop)
   expect(toggle).toHaveBeenCalledOnce()
   expect(screen.getByRole('button', { name: 'Send' })).toHaveProperty('disabled', true)
+})
+
+// 停止只走明确的点击回调，不经通用表单提交。
+it('keeps explicit stop separate from form submission', () => {
+  const onStop = vi.fn()
+  renderControls({ busy: true, hasComposerPayload: false, onStop })
+  const button = screen.getByRole('button', { name: 'Stop' })
+  expect(button.getAttribute('type')).toBe('button')
+  fireEvent.click(button)
+  expect(onStop).toHaveBeenCalledTimes(1)
 })

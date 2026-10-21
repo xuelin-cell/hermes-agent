@@ -37,6 +37,8 @@ vi.mock('../routes', () => ({
 vi.mock('./latest-actions', () => ({ latestChatActions: () => ({}), latestSidebarActions: () => ({}) }))
 vi.mock('./panes', () => ({ setStatusbarItemGroup: vi.fn(), useStatusbarContributions: () => [] }))
 vi.mock('../shell/model-menu-panel', () => ({ ModelMenuPanel: () => null }))
+// desktop-mt: 路由夹具同时隔离普通菜单与开发者菜单，不改变路由断言。
+vi.mock('../chat/composer/model-mt/model-list', () => ({ ComposerModelList: () => null }))
 vi.mock('../shell/reasoning-menu-panel', () => ({ ReasoningMenuPanel: () => null }))
 
 afterEach(() => {

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """m3u8/mp4 下载 + 聊天可见进度（跨平台）。
 
-    python3 scripts/download_media.py start --url "https://.../index.m3u8" \
+    python3 scripts/download_media.py run --url "https://.../index.m3u8" \
         --out "狂飙E01.mp4" --duration 2625 [--referer PAGE] [--est-size-mb 900]
     python3 scripts/download_media.py status --out "狂飙E01.mp4"
     python3 scripts/download_media.py wait-status --out "狂飙E01.mp4" --notify-after 600
@@ -9,8 +9,8 @@
 
 设计要点：
 
-  * start 立刻返回 —— ffmpeg 脱离工具调用运行；agent 在当前轮次用 wait-status
-    静默等待提醒节点或最终结果，避免频繁进度消息。
+  * run 等待真实下载结束，由 Hermes terminal(background=true, notify_on_complete=true)
+    跟踪整棵进程树；start 保留旧版 detached 行为，不用于 Hermes 完成通知。
   * status 直接吐一句能贴给用户的中文进度 —— 进度文件是 ffmpeg 的 key=value 流，
     每轮让 agent 自己解析既费 token 又容易把 out_time_ms（实际是微秒，ffmpeg 的
     历史遗留坑）算错 1000 倍。
@@ -110,7 +110,15 @@ def concurrency_ok(out: str, limit: int) -> tuple[bool, int]:
 
 
 def cmd_start(a) -> int:
+    a.out = os.path.abspath(a.out)
     sc = sidecars(a.out)
+
+    if a.cmd == "run" and os.path.isfile(sc["pid_file"]):
+        with open(sc["pid_file"], encoding="utf-8") as recorded:
+            old_pid = int(recorded.read().strip())
+        if is_alive(old_pid):
+            print("该输出路径已有下载进程，请先查询或停止原任务。")
+            return 2
 
     if a.max_concurrent > 0:
         ok, alive = concurrency_ok(a.out, a.max_concurrent)
@@ -192,6 +200,16 @@ def cmd_start(a) -> int:
         argv = [require("ffmpeg"), "-hide_banner", "-nostats", "-loglevel", "error",
                 "-y", *in_args, "-i", feed_url, *out_args]
         proc_name = "ffmpeg"
+
+    if a.cmd == "run":
+        from _managed import run_download
+
+        wall = a.max_wall if a.max_wall > 0 else int(a.duration * 4 + 900) if a.duration > 0 else 7200
+        return run_download(
+            argv, out=a.out, sidecars=sc,
+            metadata={"duration": a.duration, "engine": engine, "proc_name": proc_name},
+            max_wall=wall, stall_after=a.stall_after,
+        )
 
     # stderr 落盘：原来 detach 后 ffmpeg 的报错随隐藏窗口一起丢了，下载失败时
     # 完全无从查起（防盗链？分片 404？编码不兼容？），现在 status 能直接回读。
@@ -312,7 +330,8 @@ def cmd_status(a) -> int:
     done_time = parse_out_time(p)
     size_mb = int(p.get("total_size", 0) or 0) / 1024 / 1024
     speed = p.get("speed", "").rstrip("x")
-    finished = p.get("progress") == "end"
+    managed = meta.get("managed", False)
+    finished = bool(meta.get("completed")) and not running if managed else p.get("progress") == "end"
     out_exists = os.path.exists(a.out)
     segs_done, segs_total = p.get("segs_done"), p.get("segs_total")
 
@@ -328,10 +347,13 @@ def cmd_status(a) -> int:
         print(json.dumps(st, ensure_ascii=False))
         return 0
 
-    if finished or (not running and out_exists and done_time > 0):
+    if finished or (not managed and not running and out_exists and done_time > 0):
         real = os.path.getsize(a.out) / 1024 / 1024 if out_exists else size_mb
         print(f"下载完成：{a.out}，共 {hms(done_time)}，{real:.1f} MB")
         return 0
+    if managed and not running:
+        print(f"下载未完成：{meta.get('error') or read_log_tail(sc['log_file']) or '下载进程已退出。'}")
+        return 1
     if not running and not done_time:
         # exit-watcher 已把"为什么退出"写进 meta，比现场读日志更完整（退出到查
         # status 之间可能又刷了几百行）。给出可执行的下一步，而不是干巴巴报"没进度"。
@@ -560,7 +582,7 @@ def main() -> int:
     p = argparse.ArgumentParser(description="下载 m3u8/mp4 并提供可见进度")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    s = sub.add_parser("start")
+    s = sub.add_parser("start", aliases=["run"])
     s.add_argument("--url", required=True)
     s.add_argument("--out", required=True)
     s.add_argument("--duration", type=float, default=0, help="ffprobe 探到的秒数，用于算百分比和安全帽")
@@ -575,6 +597,7 @@ def main() -> int:
     s.add_argument("--min-free-mb", type=int, default=5120, help="下完后至少保留，0=关预检")
     s.add_argument("--skip-disk-check", action="store_true")
     s.add_argument("--no-watchdog", action="store_true")
+    s.add_argument("--stall-after", type=int, default=120, help="run 模式无进度上限（秒），0=关闭")
     s.add_argument("--no-resolve", action="store_true",
                    help="跳过 HLS master→分片清单自动下钻（默认开启；已是分片清单时 "
                         "不会误伤，仅在解析失败时回退原 URL）")
@@ -626,7 +649,7 @@ def main() -> int:
     g.add_argument("--progress-file", required=True)
 
     a = p.parse_args()
-    return {"start": cmd_start, "status": cmd_status,
+    return {"start": cmd_start, "run": cmd_start, "status": cmd_status,
             "wait-status": cmd_wait_status,
             "stop": cmd_stop, "_watchdog": cmd_watchdog,
             "_exitwatcher": cmd_exitwatcher,

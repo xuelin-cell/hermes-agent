@@ -189,7 +189,8 @@ export function useComposerSubmit({
     [activeQueueSessionKeyRef, inputDisabled, paneVisible, scope.target, sessionId, surfaceId]
   )
 
-  const submitDraft = () => {
+  // 停止必须来自明确的按钮动作，重复提交空草稿不能取消后台任务。
+  const submitDraft = (intent: 'send' | 'stop' = 'send') => {
     if (disabled) {
       return
     }
@@ -273,9 +274,7 @@ export function useComposerSubmit({
         // an approval/sudo/secret prompt: a steer can't reach the model while
         // the tool batch is blocked, so the message runs as the next turn.
         queueCurrentDraft()
-      } else {
-        // Stop button (the only way to reach here while busy with an empty
-        // composer — empty Enter is short-circuited in the keydown handler).
+      } else if (intent === 'stop') {
         triggerHaptic('cancel')
         void Promise.resolve(onCancel())
       }

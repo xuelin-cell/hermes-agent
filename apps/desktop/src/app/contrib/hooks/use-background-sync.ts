@@ -1,6 +1,7 @@
 import { useStore } from '@nanostores/react'
 import { type MutableRefObject, useCallback, useEffect, useRef } from 'react'
 
+import { useResetComposerModelOnNewChat } from '@/app/chat/composer/model-mt/new-chat-model'
 import {
   extendRefreshPageToOverlap,
   graftRefreshedTailOntoBackfill,
@@ -1092,10 +1093,24 @@ export function useBackgroundSync({
 
     const unsubscribe = $sessionsChangeTick.listen(() => void refreshLiveStatuses())
 
+    // 活跃会话的健康检查必须快于 45 秒失联判定，不能因失焦或电池省电而暂停。
+    const hasLiveTurns = () =>
+      Object.values($sessionStates.get()).some(state => state.busy || state.awaitingResponse || state.turnLive)
+
     const dispose = visiblePoll(
       changeEventsAvailable ? LIVE_SESSION_STATUS_BACKSTOP_INTERVAL_MS : LIVE_SESSION_STATUS_POLL_INTERVAL_MS,
-      () => void refreshLiveStatuses()
+      () => {
+        if (!hasLiveTurns()) {
+          void refreshLiveStatuses()
+        }
+      }
     )
+
+    const healthTimer = window.setInterval(() => {
+      if (hasLiveTurns()) {
+        void refreshLiveStatuses()
+      }
+    }, LIVE_SESSION_STATUS_BACKSTOP_INTERVAL_MS)
 
     void refreshLiveStatuses()
 
@@ -1103,6 +1118,7 @@ export function useBackgroundSync({
       cancelled = true
       unsubscribe()
       dispose()
+      window.clearInterval(healthTimer)
     }
     // Keep the in-flight guard alive across change ticks; a slow response must
     // not create a new request (and invalidate the old result) on every tick.
@@ -1304,6 +1320,9 @@ export function useBackgroundSync({
 
     return visiblePoll(MESSAGING_POLL_INTERVAL_MS, () => void refreshMessagingSessions())
   }, [changeEventsAvailable, gatewayState, refreshMessagingSessions])
+
+  // desktop-mt: 先解除手选标记，再由下方原版刷新读回默认模型。
+  useResetComposerModelOnNewChat(activeSessionId, freshDraftReady)
 
   // A fresh new-session draft (gateway open, no active session) re-pulls the
   // model + config so the composer pill reflects the profile default.

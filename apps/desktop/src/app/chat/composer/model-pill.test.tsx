@@ -1,13 +1,14 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { atom } from 'nanostores'
 import { useContext } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ChatBarState } from '@/app/chat/composer/types'
 import { type SessionView, SessionViewProvider } from '@/app/chat/session-view'
 import { ModelMenuCloseContext } from '@/app/shell/model-menu-panel'
 import { registry } from '@/contrib/registry'
 import { formatModelPillLabel } from '@/lib/model-status-label'
+import { $developerMode } from '@/store/developer-mode'
 import { $activeSessionId, $currentModel, setCurrentModel, setCurrentModelSource } from '@/store/session'
 
 import { COMPOSER_AREAS, type ComposerModelPillContext, type ComposerModelPillProvider } from './contrib'
@@ -24,6 +25,7 @@ const modelState = (over: Partial<ChatBarState['model']> = {}): ChatBarState['mo
 
 afterEach(() => {
   cleanup()
+  $developerMode.set(false)
   $activeSessionId.set(null)
   setCurrentModel('')
   setCurrentModelSource('')
@@ -32,6 +34,7 @@ afterEach(() => {
 // #62055: a manual composer pick is sticky and silently overrides the
 // Settings → Model default for every NEW chat. The pill must say so.
 describe('ModelPill pinned-override badge', () => {
+  beforeEach(() => $developerMode.set(true))
   it('shows the pin dot on a draft running a manual pick', () => {
     setCurrentModel('deepseek/deepseek-v4-flash')
     setCurrentModelSource('manual')
@@ -87,6 +90,16 @@ describe('ModelPill pinned-override badge', () => {
   })
 })
 
+it('普通模式隐藏手选钉点且无模型时显示加载文字', () => {
+  $developerMode.set(false)
+  setCurrentModelSource('manual')
+  const { rerender } = render(<ModelPill disabled={false} model={modelState()} />)
+  expect(screen.queryByTestId('model-pinned-dot')).toBeNull()
+  setCurrentModel('')
+  rerender(<ModelPill disabled={false} model={modelState({ model: '' })} />)
+  expect(screen.getByText('Loading models…')).toBeTruthy()
+})
+
 function MenuChoice() {
   const close = useContext(ModelMenuCloseContext)
 
@@ -94,15 +107,15 @@ function MenuChoice() {
 }
 
 it('returns to the exact caret or backward selection after the model menu closes', async () => {
-  const surface = document.createElement('div')
+  const surface = window.document.createElement('div')
   surface.dataset.composerTarget = 'main'
-  const editor = document.createElement('div')
+  const editor = window.document.createElement('div')
   editor.dataset.slot = RICH_INPUT_SLOT
   editor.contentEditable = 'true'
   editor.tabIndex = 0
   editor.textContent = 'before and after'
   surface.append(editor)
-  document.body.append(surface)
+  window.document.body.append(surface)
 
   try {
     render(<ModelPill disabled={false} model={modelState({ modelMenuContent: <MenuChoice /> })} />)
@@ -121,7 +134,7 @@ it('returns to the exact caret or backward selection after the model menu closes
       choice.focus()
       window.getSelection()!.removeAllRanges()
       fireEvent.click(choice)
-      await waitFor(() => expect(document.activeElement).toBe(editor))
+      await waitFor(() => expect(window.document.activeElement).toBe(editor))
       expect(window.getSelection()!.anchorOffset).toBe(anchor)
       expect(window.getSelection()!.focusOffset).toBe(focus)
     }

@@ -14,10 +14,12 @@ import { useI18n } from '@/i18n'
 import { ChevronDown } from '@/lib/icons'
 import { formatModelPillLabel, providerDisplayName } from '@/lib/model-status-label'
 import { cn } from '@/lib/utils'
+import { $developerMode } from '@/store/developer-mode'
 import { $currentModelSource, setModelPickerOpen } from '@/store/session'
 
 import { useComposerModelPillLabel } from './contrib'
 import { onComposerModelMenuRequest } from './focus'
+import { useComposerModelCopy } from './model-mt/copy'
 import { RICH_INPUT_SLOT } from './rich-editor'
 import { useComposerScope } from './scope'
 import type { ChatBarState } from './types'
@@ -48,6 +50,9 @@ export function ModelPill({
   model: ChatBarState['model']
 }) {
   const copy = useI18n().t.shell.statusbar
+  // desktop-mt: 普通模式用加载文字且不显示手选钉点。
+  const developerMode = useStore($developerMode)
+  const modelCopy = useComposerModelCopy()
   // Two return branches below, one handle: only ever one of them mounts.
   const tourMarker = useTourMarker('model-pill')
   const view = useSessionView()
@@ -121,7 +126,7 @@ export function ModelPill({
   // live session's footer reflects that session's model, so no badge there.
   // Tiles always have a runtime — pin badge is primary-draft only.
   const pinnedOverride =
-    view.kind === 'primary' && !runtimeId && modelSource === 'manual' && Boolean(currentModel.trim())
+    developerMode && view.kind === 'primary' && !runtimeId && modelSource === 'manual' && Boolean(currentModel.trim())
 
   // The model resolves a beat after the gateway/session comes up. Rather than
   // flash a literal "No model", show a quiet loader (inherits the pill text
@@ -138,8 +143,10 @@ export function ModelPill({
     <>
       {currentModel.trim() ? (
         <span className="truncate">{pillLabel ?? formatModelPillLabel(currentModel, { fastMode })}</span>
-      ) : (
+      ) : developerMode ? (
         <GlyphSpinner className="opacity-50" spinner="braille" />
+      ) : (
+        <span className="truncate">{modelCopy('loading')}</span>
       )}
       {pinnedOverride && (
         <span

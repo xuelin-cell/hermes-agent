@@ -347,3 +347,49 @@ def test_sequential_timeout_does_not_cut_clarify_human_wait(
     assert "timed out" not in messages[0]["content"]
     assert messages[1]["content"] == "second result"
     assert not any(event.get("error_type") == "tool_timeout" for event in terminal_events)
+
+
+def test_per_tool_deadlines_follow_profile_without_changing_other_tools(tmp_path, monkeypatch):
+    """单工具上限经过真实执行器，切换 A→B→A 时不泄漏到其他工具或 profile。"""
+    import agent.tool_executor as executor
+    from hermes_constants import reset_hermes_home_override, set_hermes_home_override
+
+    homes = [tmp_path / name for name in ('a', 'b')]
+    for home, timeout in zip(homes, (8, 12)):
+        home.mkdir()
+        (home / 'config.yaml').write_text(
+            f'timeouts:\n  tools:\n    sequential_call: 3\n    sequential_calls:\n      web_extract: {timeout}\n'
+        )
+    real_poll = executor._poll_sequential_future
+    release = threading.Event()
+    observed = []
+
+    def poll(agent, future, name, deadline, started, gate):
+        """记录真实解析后的等待预算，并释放受控工具而不依赖计时竞争。"""
+        observed.append((name, deadline - started))
+        release.set()
+        return real_poll(agent, future, name, deadline, started, gate)
+
+    def dispatch(*args, **kwargs):
+        """让工具等执行器开始轮询后返回。"""
+        assert release.wait(10)
+        return 'completed'
+
+    monkeypatch.setattr(executor, '_poll_sequential_future', poll)
+    with patch('model_tools.handle_function_call', side_effect=dispatch):
+        for home, expected in ((homes[0], 8), (homes[1], 12), (homes[0], 8)):
+            token = set_hermes_home_override(home)
+            try:
+                agent = _make_agent(home)
+                for name, limit in (('web_extract', expected), ('web_search', 3)):
+                    release.clear()
+                    call = _tool_call(f'{home.name}-{name}')
+                    call.function.name = name
+                    messages = []
+                    execute_tool_calls_sequential(agent, SimpleNamespace(tool_calls=[call]), messages, 'task')
+                    assert observed[-1][0] == name
+                    assert observed[-1][1] == pytest.approx(limit, abs=0.1)
+                    assert messages[-1]['content'] == 'completed'
+            finally:
+                release.set()
+                reset_hermes_home_override(token)

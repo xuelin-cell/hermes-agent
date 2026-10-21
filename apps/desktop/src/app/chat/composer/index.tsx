@@ -75,14 +75,16 @@ import { triggerKeyUpHandler, useComposerTrigger } from './hooks/use-composer-tr
 import { useComposerUndo } from './hooks/use-composer-undo'
 import { useComposerUrlDialog } from './hooks/use-composer-url-dialog'
 import { useComposerVoice } from './hooks/use-composer-voice'
-import { useUniworkAsr } from './hooks/use-uniwork-asr'
 import { useEmojiCompletions } from './hooks/use-emoji-completions'
 import { useComposerMicroActions } from './hooks/use-micro-actions'
 import { useSlashCompletions } from './hooks/use-slash-completions'
 import { useStatusDrawer } from './hooks/use-status-drawer'
 import { useSessionStatusPresence } from './hooks/use-status-presence'
+import { useUniworkAsr } from './hooks/use-uniwork-asr'
 import { shouldConvertPasteToAttachment } from './large-paste'
 import { ActionBadges } from './micro-actions'
+// desktop-mt: 当前窗格独立读取上下文用量。
+import { ComposerContextRing } from './model-mt/context-ring'
 import { chipTypedPathOnSpace, pathifyRefs } from './path-refs'
 import { QueuePanel } from './queue-panel'
 import { RestoredDraftNotice } from './restored-draft-notice'
@@ -166,6 +168,7 @@ export function ChatBar({
       if (asrBusyRef.current) {
         return false
       }
+
       // Bare stop phrase typed while the voice conversation is live: end the
       // conversation (mic off, pill dismissed) instead of sending "stop" to
       // the agent. Spoken transcripts are already stop-checked inside
@@ -1149,6 +1152,7 @@ export function ChatBar({
     readText: () => syncDraftFromEditor(),
     replaceText: text => replaceText(text, false)
   })
+
   const asrActive = asr.status !== 'idle'
   asrBusyRef.current = asrActive
 
@@ -1160,6 +1164,7 @@ export function ChatBar({
       busyAction={busyAction}
       canSubmit={canSubmit && !asrActive}
       compactModelPill={poppedOut || compactPill}
+      contextRing={<ComposerContextRing busy={busy} gateway={gateway ?? null} sessionId={sessionId ?? null} />}
       conversation={{
         active: voiceConversationActive,
         level: conversation.level,
@@ -1177,6 +1182,7 @@ export function ChatBar({
       minimal={minimal}
       onDictate={dictate}
       onQueue={queueDraft}
+      onStop={() => submitDraft('stop')}
       onToggleAutoSpeak={handleToggleAutoSpeak}
       state={state}
       voiceStatus={voiceStatus}
@@ -1345,10 +1351,10 @@ export function ChatBar({
         >
           {showWelcomeTemplates && !guidedChat && !botChat && !hudMode && !poppedOut && (
             <WorkTemplatePicker
-              selectionContainer={welcomeSelectionContainer}
-              scope={activeQueueSessionKey}
               disabled={inputDisabled || busy || asrActive}
               onReplaceText={text => replaceText(text)}
+              scope={activeQueueSessionKey}
+              selectionContainer={welcomeSelectionContainer}
             />
           )}
           {/* Aligned to the composer SURFACE, which sits inside the composer's
@@ -1412,11 +1418,11 @@ export function ChatBar({
             data-popped-out={poppedOut ? '' : undefined}
             data-slot="composer-root"
             data-standard-layout={!hudMode && !poppedOut ? '' : undefined}
-            data-welcome={showWelcomeTemplates && !guidedChat && !botChat && !hudMode && !poppedOut ? '' : undefined}
             data-status-stack={statusStackVisible && !statusDrawerCollapsed ? '' : undefined}
             data-thread-scrolled-up={scrolledUp ? '' : undefined}
             data-tip-region=""
             data-tour={composerTourMarker}
+            data-welcome={showWelcomeTemplates && !guidedChat && !botChat && !hudMode && !poppedOut ? '' : undefined}
             onDragEnter={handleDragEnter}
             onDragLeave={handleDragLeave}
             onDragOver={handleDragOver}
@@ -1557,17 +1563,17 @@ export function ChatBar({
                   )}
                   {attachments.length > 0 && <AttachmentList attachments={attachments} onRemove={onRemoveAttachment} />}
                   <div
-                    data-slot="composer-layout"
                     className={cn(
                       'grid w-full',
                       stacked
                         ? 'grid-cols-[auto_1fr] gap-(--composer-row-gap) [grid-template-areas:"input_input"_"menu_controls"]'
                         : 'grid-cols-[auto_1fr_auto] items-center gap-(--composer-control-gap) [grid-template-areas:"menu_input_controls"]'
                     )}
+                    data-slot="composer-layout"
                   >
                     <div
-                      data-slot="composer-leading"
                       className="flex translate-y-[3px] items-start gap-(--composer-control-gap) self-start [grid-area:menu]"
+                      data-slot="composer-leading"
                     >
                       {contextMenu}
                       {!botChat && !guidedChat && <WorkdirPicker cwd={cwd} gateway={gateway} sessionId={sessionId} />}
@@ -1580,8 +1586,8 @@ export function ChatBar({
                       row's free space and pins a contributed action to the row
                       start, detached from the cluster (#116332). */}
                     <div
-                      data-slot="composer-controls"
                       className="flex min-w-0 items-center justify-end gap-(--composer-control-gap) [grid-area:controls]"
+                      data-slot="composer-controls"
                     >
                       <ContribSlot area={COMPOSER_AREAS.actions} />
                       {controls}

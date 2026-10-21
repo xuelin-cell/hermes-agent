@@ -121,3 +121,29 @@ it('有套餐时隐藏 Hermes 自带的看图工具组，保留用户已停用�
     fs.rmSync(home, { recursive: true, force: true })
   }
 })
+
+it('只补充翻译和播客的外层等待预算，保留其他工具和用户覆盖，重复更新不写盘', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-background-timeouts-'))
+  const file = path.join(home, 'config.yaml')
+
+  try {
+    fs.writeFileSync(file, 'timeouts:\n  tools:\n    sequential_call: 90\n    sequential_calls:\n      custom: 42\n      mcp__UniAI_Toolkit__doc_translate: 720\n')
+    updateUniaiToolkitConfig(home, 'available')
+    const saved = fs.readFileSync(file, 'utf8')
+    expect(parse(saved).timeouts.tools).toEqual({
+      sequential_call: 90,
+      sequential_calls: {
+        custom: 42,
+        mcp__UniAI_Toolkit__doc_translate: 720,
+        mcp__UniAI_Toolkit__ai_podcast_generate: 630
+      }
+    })
+    updateUniaiToolkitConfig(home, 'available')
+    expect(fs.readFileSync(file, 'utf8')).toBe(saved)
+    fs.writeFileSync(file, 'base: &t {tools: {sequential_call: 90}}\ntimeouts: *t\n')
+    updateUniaiToolkitConfig(home, 'available')
+    expect(parse(fs.readFileSync(file, 'utf8')).timeouts).toEqual({ tools: { sequential_call: 90 } })
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})

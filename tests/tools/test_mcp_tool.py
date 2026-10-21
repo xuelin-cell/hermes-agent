@@ -910,8 +910,17 @@ class TestRunOnMCPLoopInterrupts:
         interrupter.start()
 
         try:
-            with pytest.raises(InterruptedError):
+            with pytest.raises(InterruptedError) as interrupted:
                 _mcp_loop._run_on_mcp_loop(_slow_call(), timeout=10)
+            assert "new message" not in str(interrupted.value).lower()
+
+            from tools.mcp_tool_handlers import _dispatch
+            # 同一真实中断经过 MCP 结果包装，不再归咎新消息或假定远端已停止。
+            result = json.loads(_dispatch(
+                "test", object(), "tool", _slow_call, 10, [], lambda exc: None,
+            ))
+            assert "new message" not in result["error"].lower()
+            assert "outcome unknown" in result["error"]
 
             deadline = time.time() + 2
             while time.time() < deadline and not cancelled.is_set():

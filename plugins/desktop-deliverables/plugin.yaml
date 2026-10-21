@@ -7,4 +7,5 @@ hooks:
   - post_tool_call
   - transform_tool_result
   - transform_llm_output
+  - subagent_start
   - on_session_end

@@ -19,6 +19,11 @@ import type { ChatBarState } from './types'
 
 import { ChatBar } from './index'
 
+// desktop-mt: 剪贴板夹具不查询模型配置；圆环的真实用量链路另有定向测试。
+vi.mock('./model-mt/model-meta', () => ({
+  useComposerModelMeta: () => ({ rows: [], find: () => undefined, loading: false, error: false })
+}))
+
 afterEach(() => {
   cleanup()
   mainComposerScope.clear()

@@ -6,7 +6,15 @@ import type * as DesktopFs from '@/lib/desktop-fs'
 import { selectDesktopPaths } from '@/lib/desktop-fs'
 import type * as Notifications from '@/store/notifications'
 import { notify } from '@/store/notifications'
-import { $currentCwd, $currentCwdExplicit, $newChatWorkspaceTarget, $sessions, setNewChatWorkspaceTarget } from '@/store/session'
+import { $projectScope } from '@/store/project-scope'
+import {
+  $currentCwd,
+  $currentCwdExplicit,
+  $newChatWorkspaceTarget,
+  $sessions,
+  setNewChatWorkspaceTarget
+} from '@/store/session'
+import { $selectedWorkspaceMode } from '@/store/workspace-category'
 import type { SessionInfo } from '@/types/hermes'
 
 import { WorkdirPicker } from './workdir-picker'
@@ -86,7 +94,9 @@ describe('WorkdirPicker on a new conversation', () => {
 
     await waitFor(() => expect(screen.queryAllByRole('menuitem', { name: /workspace/ })).toHaveLength(1))
     const names = screen.getAllByRole('menuitem').map(item => item.textContent)
-    expect(names.findIndex(name => name?.startsWith('gamma'))).toBeLessThan(names.findIndex(name => name?.startsWith('beta')))
+    expect(names.findIndex(name => name?.startsWith('gamma'))).toBeLessThan(
+      names.findIndex(name => name?.startsWith('beta'))
+    )
 
     fireEvent.click(screen.getByRole('menuitem', { name: /beta/ }))
     await waitFor(() => expect($newChatWorkspaceTarget.get()).toBe('D:\\work\\beta'))
@@ -113,6 +123,27 @@ describe('WorkdirPicker on a new conversation', () => {
       expect(screen.getByText(/Each new conversation gets its own folder/)).toBeTruthy()
     } finally {
       window.hermesDesktop = undefined as never
+    }
+  })
+
+  it('日常办公里带过来的目录显示为默认工作区，代码开发照旧显示该目录', () => {
+    const { gateway } = fakeGateway()
+    const scope = $projectScope.get()
+    window.hermesDesktop = { createConversationFolder: vi.fn() } as never
+    setNewChatWorkspaceTarget(undefined)
+    $projectScope.set('project-1')
+
+    try {
+      $selectedWorkspaceMode.set('work')
+      render(<WorkdirPicker cwd="D:\\old\\20261020-052645" gateway={gateway} sessionId={null} />)
+      expect(screen.getByTestId('workdir-picker').textContent).toContain('Default workspace')
+
+      act(() => $selectedWorkspaceMode.set('codex'))
+      expect(screen.getByTestId('workdir-picker').textContent).toContain('20261020-052645')
+    } finally {
+      window.hermesDesktop = undefined as never
+      $projectScope.set(scope)
+      $selectedWorkspaceMode.set(null)
     }
   })
 

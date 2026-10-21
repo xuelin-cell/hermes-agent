@@ -128,6 +128,38 @@ def test_credentials_in_the_source_never_reach_the_log_or_the_installer():
     assert _public_source("D:\\work\\config") == "D:\\work\\config"
 
 
+def test_the_build_remembers_the_builders_home_before_isolating_it(tmp_path):
+    """打包环境把 HOME 换成隔离目录前记下打包人自己的目录；套进第二层隔离也不丢。"""
+    from scripts.bundles.desktop_toolchain import bootstrap_environment
+    from scripts.bundles.uniwork_bundled import BUILDER_HOME_ENV
+
+    home = tmp_path / "builder"
+    source, work, cache = tmp_path / "source", tmp_path / "work", tmp_path / "cache"
+    env = bootstrap_environment(source, work, cache, {"HOME": str(home), "USERPROFILE": str(home)})
+    assert env[BUILDER_HOME_ENV] == str(home)
+    assert Path(env["USERPROFILE"]).is_relative_to(work)
+    assert bootstrap_environment(source, work, cache, env)[BUILDER_HOME_ENV] == str(home)
+
+
+def test_the_kits_fetch_reads_ssh_and_git_settings_from_the_builders_home(tmp_path, monkeypatch):
+    """拉 GitCode 的 git 用打包人自己的 ~/.ssh（known_hosts、密钥），不用隔离出来的空 HOME。"""
+    import scripts.bundles.uniwork_bundled as bundled
+
+    seen = []
+
+    def run(argv, **kwargs):
+        """替身：记下 git 拿到的环境，然后像拉不到一样失败。"""
+        seen.append(kwargs["env"])
+        raise subprocess.CalledProcessError(128, argv)
+
+    monkeypatch.setattr(bundled.subprocess, "run", run)
+    builder = str(tmp_path / "builder")
+    env = {"UNIWORK_BUNDLED_PLUGINS": "git@gitcode.example:config.git", bundled.BUILDER_HOME_ENV: builder}
+    assert stage_bundled_plugins(tmp_path / "hermes-agent", env) == 0
+    assert seen[0]["HOME"] == seen[0]["USERPROFILE"] == builder
+    assert seen[0]["GIT_TERMINAL_PROMPT"] == "0"
+
+
 def test_the_desktop_build_requires_the_kits_and_a_fixed_identity_unless_told_otherwise():
     """正式打包默认要求带内置包、用固定身份；打包人显式设的值不被覆盖。"""
     from types import SimpleNamespace

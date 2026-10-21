@@ -24,6 +24,64 @@ function readConfig(file: string) {
   return parseDocument(fs.readFileSync(file, 'utf8'), { version: '1.1', intAsBigInt: true }).toJS()
 }
 
+it('套餐托管上限和看图能力，保留其他选项及未声明的看图设置，重复写入字节不变', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-model-meta-'))
+  const file = path.join(home, 'config.yaml')
+
+  try {
+    const next = {
+      ...catalog,
+      models: catalog.models.map(model => ({ ...model, contextWindow: 300000, vision: true }))
+    }
+
+    mergeMaasModelConfig(home, next)
+    let config = readConfig(file)
+    expect(config.auth).toEqual({ adopt_external_logins: false })
+    const id = Object.keys(config.providers)[0]
+    expect(config.providers[id].models['shared-name']).toEqual({ context_length: 300000n, supports_vision: true })
+    const doc = parseDocument(fs.readFileSync(file, 'utf8'))
+    doc.setIn(['providers', id, 'models', 'shared-name', 'extra'], 'keep')
+    fs.writeFileSync(file, doc.toString())
+    mergeMaasModelConfig(home, catalog)
+    config = readConfig(file)
+    expect(config.providers[id].models['shared-name']).toEqual({ supports_vision: true, extra: 'keep' })
+    mergeMaasModelConfig(home, { ...next, models: next.models.map(model => ({ ...model, vision: false })) })
+    expect(readConfig(file).providers[id].models['shared-name']).toEqual({ context_length: 300000n, extra: 'keep' })
+    const before = fs.readFileSync(file, 'utf8')
+    mergeMaasModelConfig(home, { ...next, models: next.models.map(model => ({ ...model, vision: false })) })
+    expect(fs.readFileSync(file, 'utf8')).toBe(before)
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+it('旧配置默认关闭外部登录借用，但显式值和非普通 auth 节点保持原样', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-model-auth-'))
+  const file = path.join(home, 'config.yaml')
+
+  try {
+    for (const [original, expected] of [
+      ['model: {default: personal}\n', { adopt_external_logins: false }],
+      ['auth: {custom: keep}\n', { custom: 'keep', adopt_external_logins: false }],
+      ['auth: {adopt_external_logins: true}\n', { adopt_external_logins: true }],
+      ['auth: {adopt_external_logins: false}\n', { adopt_external_logins: false }],
+      ['auth: custom\n', 'custom'],
+      ['auth: [custom]\n', ['custom']],
+      ['auth: null\n', null],
+      ['shared: &auth {custom: keep}\nauth: *auth\n', { custom: 'keep' }]
+    ] as const) {
+      fs.writeFileSync(file, original)
+      mergeMaasModelConfig(home, catalog)
+      expect(readConfig(file).auth).toEqual(expected)
+      const before = fs.readFileSync(file, 'utf8')
+      mergeMaasModelConfig(home, catalog)
+      expect(fs.readFileSync(file, 'utf8')).toBe(before)
+    }
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
 it('首次按端点合并模型，固定默认引用；重排重复准备不增加 provider，不落盘模型 Key', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-model-new-'))
   const file = path.join(home, 'config.yaml')
@@ -111,7 +169,7 @@ future_counter: 900719925474099312345
     config = readConfig(file)
     expect(Object.keys(config.providers)).toEqual(['personal', id])
     expect(config.providers[id].models).toEqual({
-      'shared-name': { context_length: 16384n, extra_option: 'keep' },
+      'shared-name': { extra_option: 'keep' },
       'new-model': {}
     })
     expect(config.providers[id].default_model).toBe('other-model')
@@ -138,7 +196,10 @@ it('原版端点保存后的等价地址和协议可再次合并，保留默认�
   try {
     mergeMaasModelConfig(home, catalog)
     const original = readConfig(file)
-    const activeId = Object.keys(original.providers).find(id => original.providers[id].api === catalog.models[0].baseUrl)!
+
+    const activeId = Object.keys(original.providers).find(
+      id => original.providers[id].api === catalog.models[0].baseUrl
+    )!
 
     for (const trailingSlash of ['', '/']) {
       const saved = readConfig(file)
@@ -156,7 +217,7 @@ it('原版端点保存后的等价地址和协议可再次合并，保留默认�
       mergeMaasModelConfig(home, catalog)
       const refreshed = readConfig(file)
       expect(refreshed.model).toEqual(saved.model)
-      expect(refreshed.providers[activeId].models['other-model']).toEqual({ context_length: 16384n, extra_option: 'keep' })
+      expect(refreshed.providers[activeId].models['other-model']).toEqual({ extra_option: 'keep' })
 
       for (const entry of Object.values(refreshed.providers) as any[]) {
         expect(entry.transport).toBe('chat_completions')

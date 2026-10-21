@@ -124,9 +124,13 @@ module.exports = {
   ...(process.platform === 'darwin' ? { afterSign: 'scripts/notarize.mjs' } : {}),
   extraResources: [
     {
-      from: 'services/open-connector',
-      to: 'open-connector',
+      // desktop-mt: electron-builder always drops node_modules at the root of an
+      // extraResources source (app-builder-lib util/filter.js), so copy from the
+      // parent: the dependencies then sit one level down and reach resources/open-connector.
+      from: 'services',
+      to: '.',
       filter: ['src/**', 'catalog/**', 'migrations/**', 'node_modules/**', 'desktop-entry.mjs', 'package.json', 'LICENSE.txt', 'NOTICE.md', 'README.desktop.md']
+        .map(pattern => `open-connector/${pattern}`)
     },
     {
       from: 'dist/python-plugins',
