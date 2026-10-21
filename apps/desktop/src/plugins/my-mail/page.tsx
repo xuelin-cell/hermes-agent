@@ -1,7 +1,7 @@
 import { host, useValue } from '@hermes/plugin-sdk'
 import DOMPurify from 'dompurify'
 import { Mail, RefreshCw, Search, Send, Trash2 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { AgentMailStatus } from '../../../electron/agent-mail/contract'
 import { Button } from '@/components/ui/button'
@@ -64,6 +64,7 @@ export function MyMailPage() {
   const [error, setError] = useState('')
   const [detail, setDetail] = useState<MailDetail | null>(null)
   const [confirmDisable, setConfirmDisable] = useState(false)
+  const statusRequest = useRef(0)
   const folderMap = useMemo(() => resolveMailFolders(folders), [folders])
   const folder = folderMap[tab]
 
@@ -89,21 +90,46 @@ export function MyMailPage() {
 
   useEffect(() => {
     let active = true
+    const requestId = ++statusRequest.current
+
     setLoading(true)
     void mailStatus(profile)
       .then(async result => {
-        if (!active) return
+        if (!active || requestId !== statusRequest.current) return
         setStatus(result.status)
         if (result.status.enabled) {
           const listed = await listFolders(profile)
-          if (active) setFolders(listed.folders)
+          if (active && requestId === statusRequest.current) setFolders(listed.folders)
         }
       })
-      .catch(cause => active && setError(errorText(cause, text.error)))
+      .catch(cause => {
+        if (active && requestId === statusRequest.current) setError(errorText(cause, text.error))
+      })
       .finally(() => active && setLoading(false))
 
     return () => {
       active = false
+    }
+  }, [profile, text.error])
+
+  useEffect(() => {
+    let active = true
+    const refreshStatus = () => {
+      const requestId = ++statusRequest.current
+
+      void mailStatus(profile)
+        .then(result => {
+          if (active && requestId === statusRequest.current) setStatus(result.status)
+        })
+        .catch(cause => {
+          if (active && requestId === statusRequest.current) setError(errorText(cause, text.error))
+        })
+    }
+
+    window.addEventListener('focus', refreshStatus)
+    return () => {
+      active = false
+      window.removeEventListener('focus', refreshStatus)
     }
   }, [profile, text.error])
 
@@ -121,13 +147,43 @@ export function MyMailPage() {
   }
 
   const enable = async () => {
+    const requestId = ++statusRequest.current
+
     setBusy(true)
     setError('')
     try {
       const result = await enableMail(profile)
-      setStatus(result.status)
-      setFolders((await listFolders(profile)).folders)
+
+      if (requestId === statusRequest.current) {
+        setStatus(result.status)
+        const listed = await listFolders(profile)
+
+        if (requestId === statusRequest.current) setFolders(listed.folders)
+      }
     } catch (cause) {
+      const result = await mailStatus(profile).catch(() => null)
+
+      if (result && requestId === statusRequest.current) setStatus(result.status)
+      setError(errorText(cause, text.error))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const disable = async () => {
+    const requestId = ++statusRequest.current
+
+    setBusy(true)
+    setError('')
+    try {
+      const result = await disableMail(profile)
+
+      if (requestId === statusRequest.current) setStatus(result.status)
+      setConfirmDisable(false)
+    } catch (cause) {
+      const result = await mailStatus(profile).catch(() => null)
+
+      if (result && requestId === statusRequest.current) setStatus(result.status)
       setError(errorText(cause, text.error))
     } finally {
       setBusy(false)
@@ -361,16 +417,7 @@ export function MyMailPage() {
             </Button>
             <Button
               variant="destructive"
-              onClick={() => {
-                setBusy(true)
-                void disableMail(profile)
-                  .then(result => {
-                    setStatus(result.status)
-                    setConfirmDisable(false)
-                  })
-                  .catch(cause => setError(errorText(cause, text.error)))
-                  .finally(() => setBusy(false))
-              }}
+              onClick={() => void disable()}
             >
               {text.disable}
             </Button>

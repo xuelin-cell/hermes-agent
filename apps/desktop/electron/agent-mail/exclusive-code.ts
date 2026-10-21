@@ -12,7 +12,7 @@ function encryptedMobile(phone: string): string {
   return Buffer.concat([cipher.update(phone, 'utf8'), cipher.final()]).toString('base64')
 }
 
-export async function fetchWoMailExclusiveCode(phone: string): Promise<string> {
+export async function fetchWoMailExclusiveCode(phone: string, request: typeof fetch = fetch): Promise<string> {
   if (!/^1\d{10}$/.test(phone)) {
     throw new Error('请先登录有效的手机号账号。')
   }
@@ -21,10 +21,12 @@ export async function fetchWoMailExclusiveCode(phone: string): Promise<string> {
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const timestamp = String(Math.floor(Date.now() / 1000))
+
     const sign = createHash('md5')
       .update(`appId=${APP_ID}&body=${body}&secretKey=${SECRET_KEY}&timestamp=${timestamp}`)
       .digest('hex')
-    const response = await fetch(`${EXCLUSIVE_URL}?appId=${APP_ID}`, {
+
+    const response = await request(`${EXCLUSIVE_URL}?appId=${APP_ID}`, {
       body,
       headers: { 'Content-Type': 'application/json', sign, timestamp },
       method: 'POST',
@@ -36,7 +38,20 @@ export async function fetchWoMailExclusiveCode(phone: string): Promise<string> {
     }
 
     const data = (await response.json().catch(() => null)) as null | Record<string, unknown>
-    const code = data && typeof data.exclusiveCode === 'string' ? data.exclusiveCode.trim() : ''
+
+    if (data && data.code !== undefined && data.code !== '200' && data.code !== 200) {
+      throw new Error(typeof data.message === 'string' && data.message.trim() ? data.message : '沃邮箱授权失败。')
+    }
+
+    const payload = data?.data
+
+    const code =
+      payload &&
+      typeof payload === 'object' &&
+      !Array.isArray(payload) &&
+      typeof (payload as Record<string, unknown>).exclusiveCode === 'string'
+        ? String((payload as Record<string, unknown>).exclusiveCode).trim()
+        : ''
 
     if (code) {
       return code

@@ -330,6 +330,7 @@ import { createLocalBackendLifecycle, waitForTeardown } from './local-backend-li
 import { resolveIpcFileReadPath, resolveMediaStreamFile, resolvePreviewTargetPath } from './local-read-path'
 import { localSkinProfileKey, readLocalSkinPayload } from './local-skin'
 import { ACTIVE_LOG_POLL_MS, planLogRotation, reclaimActiveLogIfOversized } from './log-rotation'
+import { AgentMailCloudStateClient } from './agent-mail/cloud-state'
 import { AGENT_MAIL_CHANNEL } from './agent-mail/contract'
 import { installAccountIpc } from './login/account-ipc'
 import { currentDesktopAccount, currentDesktopAsrIdentity, currentDesktopIdentity, currentDesktopLocalContext, sealDesktopAccount } from './login/bootstrap'
@@ -682,6 +683,8 @@ const ACCOUNT_CONNECTORS = new ConnectorManager({
   runtimeDirectory: IS_PACKAGED ? path.join(process.resourcesPath, 'open-connector') : path.join(APP_ROOT, 'services', 'open-connector'),
   executable: process.execPath,
   active: () => currentDesktopLocalContext() === ACCOUNT_RUNTIME,
+  identity: currentDesktopIdentity,
+  cloudState: new AgentMailCloudStateClient(currentDesktopIdentity, electronNet.fetch),
   encrypt: value => {
     if (!safeStorage.isEncryptionAvailable() || (process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text')) {
       throw new Error('请先解锁系统密钥环，再连接服务。')
@@ -17234,7 +17237,7 @@ ipcMain.handle(CONNECTOR_CHANNEL, async (event, input) => {
 
 ipcMain.handle(AGENT_MAIL_CHANNEL, async (event, input) => {
   assertArtifactShareWindow(event)
-  return ACCOUNT_CONNECTORS.agentMail(input, currentDesktopIdentity()?.phone ?? '')
+  return ACCOUNT_CONNECTORS.agentMail(input)
 })
 
 installConversationShareIpc(ipcMain, assertArtifactShareWindow, {

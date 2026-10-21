@@ -4,8 +4,11 @@ import path from 'node:path'
 
 import { afterEach, expect, it, vi } from 'vitest'
 
-import { ConnectorManager } from './manager'
+import type { AgentMailCloudStateClient } from '../agent-mail/cloud-state'
+import type { LoginIdentity } from '../login/session'
+
 import { CONNECTOR_SPECS } from './contract'
+import { ConnectorManager } from './manager'
 import { ConnectorRuntime } from './runtime'
 
 afterEach(() => {
@@ -13,7 +16,16 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-function makeManager(home: string, saved: Record<string, any>, writes: unknown[]) {
+function makeManager(
+  home: string,
+  saved: Record<string, any>,
+  writes: unknown[],
+  overrides: {
+    cloudState?: Pick<AgentMailCloudStateClient, 'read' | 'write'>
+    exclusiveCode?: (phone: string) => Promise<string>
+    identity?: () => LoginIdentity | null
+  } = {}
+) {
   return new ConnectorManager({
     home,
     active: () => true,
@@ -25,6 +37,20 @@ function makeManager(home: string, saved: Record<string, any>, writes: unknown[]
       return saved
     },
     openExternal: vi.fn(async () => undefined),
+    identity:
+      overrides.identity ??
+      (() => ({
+        uid: 'account-a',
+        token: 'token-a',
+        phone: '13800000000',
+        maskedPhone: '138****0000',
+        expiresAt: Date.now() + 60_000
+      })),
+    cloudState: overrides.cloudState ?? {
+      read: vi.fn(async () => ({ status: 'available' as const, exists: true, state: { enabled: true } })),
+      write: vi.fn(async () => ({ status: 'available' as const }))
+    },
+    exclusiveCode: overrides.exclusiveCode,
     runtimeDirectory: 'unused',
     executable: 'unused',
     encrypt: value => Buffer.from(value),
@@ -76,6 +102,159 @@ it('mounts an OAuth connector after browser authorization completes', async () =
   }
 })
 
+it('automatically provisions Agent Mail for a newly logged-in phone account', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-agent-mail-auto-'))
+  fs.writeFileSync(path.join(home, 'config.yaml'), '{}\n')
+  const writes: unknown[] = []
+  const request = vi.spyOn(ConnectorRuntime.prototype, 'request').mockResolvedValue({})
+  vi.spyOn(ConnectorRuntime.prototype, 'rows').mockResolvedValue([])
+  vi.spyOn(ConnectorRuntime.prototype, 'connection')
+    .mockResolvedValueOnce(null)
+    .mockResolvedValueOnce({ configured: true, displayName: '13800000000@wo.cn' })
+  vi.spyOn(ConnectorRuntime.prototype, 'config').mockResolvedValue({
+    url: 'http://127.0.0.1:1234/mcp',
+    headers: { Authorization: 'Bearer runtime' }
+  })
+  vi.spyOn(ConnectorRuntime.prototype, 'close').mockResolvedValue()
+
+  const cloudState = {
+    read: vi.fn(async () => ({ status: 'available' as const, exists: false, state: null })),
+    write: vi.fn(async () => ({ status: 'available' as const }))
+  }
+
+  const exclusiveCode = vi.fn(async () => 'mail-code')
+  const manager = makeManager(home, { mcp_servers: {} }, writes, { cloudState, exclusiveCode })
+
+  try {
+    await manager.prepare('default')
+
+    expect(exclusiveCode).toHaveBeenCalledWith('13800000000')
+    expect(request).toHaveBeenCalledWith('/api/connections/wo_mail', 'PUT', {
+      authType: 'custom_credential',
+      connectionName: 'default',
+      values: { authorizationCode: 'mail-code', email: '13800000000@wo.cn' }
+    })
+    expect(fs.readFileSync(path.join(home, 'config.yaml'), 'utf8')).toMatch(
+      /connector_wo_mail:[\s\S]*desktop_agent_mail: true[\s\S]*enabled: true/
+    )
+    expect(cloudState.write).toHaveBeenCalledWith(
+      expect.objectContaining({ uid: 'account-a', phone: '13800000000' }),
+      expect.objectContaining({ enabled: true, email: '13800000000@wo.cn', phone: '13800000000' })
+    )
+  } finally {
+    await manager.close()
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+it('restores a disabled cloud state without requesting a new mailbox password', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-agent-mail-disabled-'))
+  fs.writeFileSync(
+    path.join(home, 'config.yaml'),
+    'mcp_servers:\n  connector_wo_mail:\n    desktop_agent_mail: true\n    enabled: true\n'
+  )
+  const writes: unknown[] = []
+  vi.spyOn(ConnectorRuntime.prototype, 'rows').mockResolvedValue([])
+  vi.spyOn(ConnectorRuntime.prototype, 'connection').mockResolvedValue({
+    configured: true,
+    displayName: '13800000000@wo.cn'
+  })
+  vi.spyOn(ConnectorRuntime.prototype, 'config').mockResolvedValue({
+    url: 'http://127.0.0.1:1234/mcp',
+    headers: { Authorization: 'Bearer runtime' }
+  })
+  vi.spyOn(ConnectorRuntime.prototype, 'close').mockResolvedValue()
+
+  const cloudState = {
+    read: vi.fn(async () => ({ status: 'available' as const, exists: true, state: { enabled: false } })),
+    write: vi.fn(async () => ({ status: 'available' as const }))
+  }
+
+  const exclusiveCode = vi.fn(async () => 'unused')
+  const manager = makeManager(home, { mcp_servers: {} }, writes, { cloudState, exclusiveCode })
+
+  try {
+    await manager.prepare('default')
+
+    expect(exclusiveCode).not.toHaveBeenCalled()
+    expect(fs.readFileSync(path.join(home, 'config.yaml'), 'utf8')).toMatch(/connector_wo_mail:[\s\S]*enabled: false/)
+  } finally {
+    await manager.close()
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+it('reuses a restored same-phone mailbox without requesting another exclusive code', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-agent-mail-restored-'))
+  fs.writeFileSync(path.join(home, 'config.yaml'), '{}\n')
+  const writes: unknown[] = []
+  const request = vi.spyOn(ConnectorRuntime.prototype, 'request').mockResolvedValue({})
+  vi.spyOn(ConnectorRuntime.prototype, 'rows').mockResolvedValue([])
+  vi.spyOn(ConnectorRuntime.prototype, 'connection').mockResolvedValue({
+    configured: true,
+    displayName: '13800000000@wo.cn'
+  })
+  vi.spyOn(ConnectorRuntime.prototype, 'config').mockResolvedValue({
+    url: 'http://127.0.0.1:1234/mcp',
+    headers: { Authorization: 'Bearer runtime' }
+  })
+  vi.spyOn(ConnectorRuntime.prototype, 'close').mockResolvedValue()
+  const exclusiveCode = vi.fn(async () => 'unused')
+  const manager = makeManager(home, { mcp_servers: {} }, writes, { exclusiveCode })
+
+  try {
+    await manager.prepare('default')
+
+    expect(exclusiveCode).not.toHaveBeenCalled()
+    expect(request).not.toHaveBeenCalledWith('/api/connections/wo_mail', 'PUT', expect.anything())
+    expect(fs.readFileSync(path.join(home, 'config.yaml'), 'utf8')).toMatch(
+      /connector_wo_mail:[\s\S]*desktop_agent_mail: true[\s\S]*enabled: true/
+    )
+  } finally {
+    await manager.close()
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+it('removes a mailbox connection that belongs to the previous phone account', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-agent-mail-switch-'))
+  fs.writeFileSync(
+    path.join(home, 'config.yaml'),
+    'mcp_servers:\n  connector_wo_mail:\n    desktop_agent_mail: true\n    enabled: true\n'
+  )
+  const writes: unknown[] = []
+  const request = vi.spyOn(ConnectorRuntime.prototype, 'request').mockResolvedValue({})
+  vi.spyOn(ConnectorRuntime.prototype, 'rows').mockResolvedValue([])
+  vi.spyOn(ConnectorRuntime.prototype, 'connection').mockResolvedValue({
+    configured: true,
+    displayName: '13900000000@wo.cn'
+  })
+  vi.spyOn(ConnectorRuntime.prototype, 'config').mockResolvedValue({
+    url: 'http://127.0.0.1:1234/mcp',
+    headers: { Authorization: 'Bearer runtime' }
+  })
+  vi.spyOn(ConnectorRuntime.prototype, 'close').mockResolvedValue()
+
+  const cloudState = {
+    read: vi.fn(async () => ({ status: 'available' as const, exists: true, state: { enabled: false } })),
+    write: vi.fn(async () => ({ status: 'available' as const }))
+  }
+
+  const exclusiveCode = vi.fn(async () => 'unused')
+  const manager = makeManager(home, { mcp_servers: {} }, writes, { cloudState, exclusiveCode })
+
+  try {
+    await manager.prepare('default')
+
+    expect(request).toHaveBeenCalledWith('/api/connections/wo_mail', 'DELETE')
+    expect(exclusiveCode).not.toHaveBeenCalled()
+    expect(fs.readFileSync(path.join(home, 'config.yaml'), 'utf8')).toMatch(/connector_wo_mail:[\s\S]*enabled: false/)
+  } finally {
+    await manager.close()
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
 it('does not overwrite a user-owned MCP name claimed while OAuth is open', async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-connector-collision-'))
   const writes: unknown[] = []
@@ -106,10 +285,12 @@ it('keeps Wo Mail out of the connector catalogue while serving it through Agent 
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-agent-mail-'))
   const writes: unknown[] = []
   const saved = { mcp_servers: { connector_wo_mail: { desktop_agent_mail: true, enabled: true } } }
+
   const request = vi.spyOn(ConnectorRuntime.prototype, 'request').mockResolvedValue({
     success: true,
     data: { folders: [{ path: 'INBOX', specialUse: '\\Inbox' }] }
   })
+
   vi.spyOn(ConnectorRuntime.prototype, 'connection').mockResolvedValue({
     configured: true,
     displayName: '13800000000@wo.cn'
@@ -120,7 +301,7 @@ it('keeps Wo Mail out of the connector catalogue while serving it through Agent 
   try {
     expect(Object.hasOwn(CONNECTOR_SPECS, 'wo_mail')).toBe(false)
     await expect(
-      manager.agentMail({ operation: 'action', profile: 'default', action: 'list_folders', input: {} }, '13800000000')
+      manager.agentMail({ operation: 'action', profile: 'default', action: 'list_folders', input: {} })
     ).resolves.toMatchObject({
       data: { folders: [{ path: 'INBOX', specialUse: '\\Inbox' }] },
       status: { email: '13800000000@wo.cn', enabled: true }

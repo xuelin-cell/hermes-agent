@@ -1,7 +1,10 @@
 import path from 'node:path'
 
+import type { AgentMailCloudStateClient } from '../agent-mail/cloud-state'
 import type { AgentMailAction, AgentMailRequest, AgentMailResult, AgentMailStatus } from '../agent-mail/contract'
 import { fetchWoMailExclusiveCode } from '../agent-mail/exclusive-code'
+import { readAgentMailQuotaStatus } from '../agent-mail/quota-status'
+import type { LoginIdentity } from '../login/session'
 
 import { connectorHome, prepareAgentMailConfig, prepareConnectorConfig } from './config'
 import { CONNECTOR_SPECS, type LocalConnectorRequest, type LocalConnectorResult } from './contract'
@@ -19,6 +22,9 @@ interface ConnectorManagerOptions extends Omit<ConnectorRuntimeOptions, 'directo
     body?: unknown
   }) => Promise<any>
   openExternal: (url: string) => Promise<void>
+  identity: () => LoginIdentity | null
+  cloudState: Pick<AgentMailCloudStateClient, 'read' | 'write'>
+  exclusiveCode?: (phone: string) => Promise<string>
 }
 
 const AGENT_MAIL_ACTIONS: ReadonlySet<AgentMailAction> = new Set([
@@ -40,6 +46,18 @@ export class ConnectorManager {
   private qr = new WecomQrSessions()
 
   constructor(private readonly options: ConnectorManagerOptions) {}
+
+  private isCurrentIdentity(expected: LoginIdentity): boolean {
+    const current = this.options.identity()
+
+    return Boolean(
+      current &&
+        current.uid === expected.uid &&
+        current.token === expected.token &&
+        current.phone === expected.phone &&
+        current.expiresAt > Date.now()
+    )
+  }
 
   private runtime(profile: string): ConnectorRuntime {
     if (this.closed || !this.options.active()) {
@@ -66,7 +84,79 @@ export class ConnectorManager {
       rows.filter(row => row.connected).map(row => row.id),
       id => runtime.config(id)
     )
-    await prepareAgentMailConfig(home, Boolean(await runtime.connection('wo_mail')), () => runtime.config('wo_mail'))
+    await this.syncAgentMail(home, runtime)
+  }
+
+  private async syncAgentMail(home: string, runtime: ConnectorRuntime): Promise<void> {
+    const identity = this.options.identity()
+    const phone = identity?.phone?.trim() ?? ''
+
+    if (!identity || !/^1\d{10}$/.test(phone)) {
+      return
+    }
+
+    let connection = await runtime.connection('wo_mail')
+    const expectedEmail = `${phone}@wo.cn`
+
+    if (connection && connection.displayName.trim().toLowerCase() !== expectedEmail.toLowerCase()) {
+      await runtime.request('/api/connections/wo_mail', 'DELETE')
+      connection = null
+      await prepareAgentMailConfig(home, true, () => runtime.config('wo_mail'), false)
+    }
+
+    const cloud = await this.options.cloudState.read(identity)
+
+    if (!this.isCurrentIdentity(identity)) {
+      return
+    }
+
+    if (cloud.status !== 'available') {
+      if (connection) {
+        await prepareAgentMailConfig(home, true, () => runtime.config('wo_mail'))
+      }
+
+      return
+    }
+
+    const shouldEnable = !cloud.exists || cloud.state?.enabled === true
+
+    if (!shouldEnable) {
+      if (connection) {
+        await prepareAgentMailConfig(home, true, () => runtime.config('wo_mail'), false)
+      }
+
+      return
+    }
+
+    if (!connection) {
+      const authorizationCode = await (this.options.exclusiveCode ?? fetchWoMailExclusiveCode)(phone)
+
+      if (!this.isCurrentIdentity(identity)) {
+        return
+      }
+
+      await runtime.request('/api/connections/wo_mail', 'PUT', {
+        authType: 'custom_credential',
+        connectionName: 'default',
+        values: { authorizationCode, email: expectedEmail }
+      })
+      connection = await runtime.connection('wo_mail')
+
+      if (!connection) {
+        throw new Error('沃邮箱连接没有保存成功。')
+      }
+    }
+
+    await prepareAgentMailConfig(home, true, () => runtime.config('wo_mail'), true)
+
+    if (!cloud.exists) {
+      await this.options.cloudState.write(identity, {
+        enabled: true,
+        email: expectedEmail,
+        phone,
+        updatedAt: new Date().toISOString()
+      })
+    }
   }
 
   private authorizationKey(profile: string, id: string): string {
@@ -159,7 +249,7 @@ export class ConnectorManager {
     return run
   }
 
-  agentMail(input: AgentMailRequest, phone: string): Promise<AgentMailResult> {
+  agentMail(input: AgentMailRequest): Promise<AgentMailResult> {
     if (
       !input ||
       typeof input.profile !== 'string' ||
@@ -170,7 +260,7 @@ export class ConnectorManager {
 
     const run = (this.queues.get(input.profile) ?? Promise.resolve())
       .catch(() => undefined)
-      .then(() => this.executeAgentMail(input, phone))
+      .then(() => this.executeAgentMail(input))
 
     this.queues.set(input.profile, run)
     void run
@@ -184,19 +274,32 @@ export class ConnectorManager {
     return run
   }
 
-  private async executeAgentMail(input: AgentMailRequest, phone: string): Promise<AgentMailResult> {
+  private async executeAgentMail(input: AgentMailRequest): Promise<AgentMailResult> {
     const runtime = this.runtime(input.profile)
+    const identity = this.options.identity()
+    const phone = identity?.phone?.trim() ?? ''
+
     const api = (method: string, route: string, body?: unknown) =>
       this.options.api({ connectionId: 'local', profile: input.profile, method, path: route, body })
+
     const saved = await api('GET', '/api/config?include_defaults=false')
     const entry = saved.mcp_servers?.connector_wo_mail
-    const connection = await runtime.connection('wo_mail')
+    let connection = await runtime.connection('wo_mail')
+    const expectedEmail = /^1\d{10}$/.test(phone) ? `${phone}@wo.cn` : ''
+
+    if (!expectedEmail || (connection && connection.displayName.trim().toLowerCase() !== expectedEmail.toLowerCase())) {
+      connection = null
+    }
+
     const ownsEntry = entry?.desktop_agent_mail === true
+
     const status = (): AgentMailStatus => ({
-      dailyQuota: 50,
+      ...readAgentMailQuotaStatus(
+        path.join(connectorHome(this.options.home, input.profile), 'open-connector'),
+        connection?.displayName ?? expectedEmail
+      ),
       email: connection?.displayName ?? '',
-      enabled: Boolean(connection && ownsEntry && entry.enabled !== false),
-      todaySent: 0
+      enabled: Boolean(connection && ownsEntry && entry.enabled !== false)
     })
 
     if (input.operation === 'status') {
@@ -207,9 +310,11 @@ export class ConnectorManager {
       if (!connection || !ownsEntry || entry.enabled === false) {
         throw new Error('请先开通智能体邮箱。')
       }
+
       if (!input.action || !AGENT_MAIL_ACTIONS.has(input.action)) {
         throw new Error('Unknown Agent Mail action')
       }
+
       if (!input.input || typeof input.input !== 'object' || Array.isArray(input.input)) {
         throw new Error('Invalid Agent Mail action input')
       }
@@ -235,14 +340,36 @@ export class ConnectorManager {
         await api('PUT', '/api/config', { config: { mcp_servers: { connector_wo_mail: { enabled: false } } } })
       }
 
+      if (identity && /^1\d{10}$/.test(phone)) {
+        const synced = await this.options.cloudState.write(identity, {
+          enabled: false,
+          email: connection?.displayName ?? expectedEmail,
+          phone,
+          updatedAt: new Date().toISOString()
+        })
+
+        if (synced.status !== 'available') {
+          throw new Error('邮箱已在本机停用，但账号状态同步失败，请稍后重试。')
+        }
+      }
+
       return { status: { ...status(), enabled: false } }
     }
 
     let activeConnection = connection
 
     if (!activeConnection) {
-      const authorizationCode = await fetchWoMailExclusiveCode(phone)
+      if (!identity || !/^1\d{10}$/.test(phone)) {
+        throw new Error('请先登录有效的手机号账号。')
+      }
+
+      const authorizationCode = await (this.options.exclusiveCode ?? fetchWoMailExclusiveCode)(phone)
       const email = `${phone}@wo.cn`
+
+      if (!this.isCurrentIdentity(identity)) {
+        throw new Error('登录账号已经变更，请重试。')
+      }
+
       await runtime.request('/api/connections/wo_mail', 'PUT', {
         authType: 'custom_credential',
         connectionName: 'default',
@@ -254,12 +381,27 @@ export class ConnectorManager {
     const next = { ...(await runtime.config('wo_mail')), desktop_agent_mail: true, enabled: true }
     await api('PUT', '/api/config', { config: { mcp_servers: { connector_wo_mail: next } } })
 
+    if (identity) {
+      const synced = await this.options.cloudState.write(identity, {
+        enabled: true,
+        email: activeConnection?.displayName ?? expectedEmail,
+        phone,
+        updatedAt: new Date().toISOString()
+      })
+
+      if (synced.status !== 'available') {
+        throw new Error('邮箱已在本机开通，但账号状态同步失败，请稍后重试。')
+      }
+    }
+
     return {
       status: {
-        dailyQuota: 50,
+        ...readAgentMailQuotaStatus(
+          path.join(connectorHome(this.options.home, input.profile), 'open-connector'),
+          activeConnection?.displayName ?? expectedEmail
+        ),
         email: activeConnection?.displayName ?? `${phone}@wo.cn`,
-        enabled: true,
-        todaySent: 0
+        enabled: true
       }
     }
   }

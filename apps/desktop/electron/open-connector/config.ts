@@ -131,7 +131,7 @@ export async function prepareAgentMailConfig(
   home: string,
   connected: boolean,
   config: () => Promise<Record<string, unknown>>,
-  enabled = true
+  enabled?: boolean
 ): Promise<void> {
   const file = path.join(home, 'config.yaml')
   const stat = fs.lstatSync(file, { throwIfNoEntry: false })
@@ -139,6 +139,7 @@ export async function prepareAgentMailConfig(
   if (!stat || !connected) {
     return
   }
+
   if (!stat.isFile() || stat.isSymbolicLink()) {
     throw new Error('Invalid connector config file')
   }
@@ -178,10 +179,7 @@ export async function prepareAgentMailConfig(
       throw new Error('Connector config changed during startup')
     }
 
-    servers.set(
-      'connector_wo_mail',
-      doc.createNode({ ...next, desktop_agent_mail: true, enabled })
-    )
+    servers.set('connector_wo_mail', doc.createNode({ ...next, desktop_agent_mail: true, enabled: enabled ?? true }))
     writeSecretFileAtomic(file, doc.toString({ lineWidth: 0 }), { encoding: 'utf8' })
 
     return
@@ -190,6 +188,7 @@ export async function prepareAgentMailConfig(
   if (!isMap(entry) || entry.get('desktop_agent_mail') !== true) {
     return
   }
+
   if (servers.anchor || entry.anchor || entry.has('<<')) {
     throw new Error('Shared connector YAML nodes are not supported')
   }
@@ -202,6 +201,10 @@ export async function prepareAgentMailConfig(
 
   entry.set('url', next.url)
   entry.set('headers', doc.createNode(next.headers))
-  entry.set('enabled', enabled)
+
+  if (enabled !== undefined) {
+    entry.set('enabled', enabled)
+  }
+
   writeSecretFileAtomic(file, doc.toString({ lineWidth: 0 }), { encoding: 'utf8' })
 }
