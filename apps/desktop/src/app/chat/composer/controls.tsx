@@ -1,4 +1,5 @@
 import { useStore } from '@nanostores/react'
+import type { ReactNode } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
@@ -43,6 +44,7 @@ export function ComposerControls({
   busyAction,
   canSubmit,
   compactModelPill = false,
+  contextRing,
   conversation,
   disabled,
   foldVoice = false,
@@ -62,6 +64,8 @@ export function ComposerControls({
   busyAction: 'steer' | 'queue' | 'stop'
   canSubmit: boolean
   compactModelPill?: boolean
+  // desktop-mt: 用量随输入框布局收拢，不影响模型和思考按钮。
+  contextRing?: ReactNode
   conversation: ConversationProps
   disabled: boolean
   foldVoice?: boolean
@@ -124,10 +128,13 @@ export function ComposerControls({
       {minimal ? null : (
         <>
           {hideModelPill ? null : (
-            <span className="flex min-w-0 shrink items-center" data-slot="composer-model-group">
-              <ModelPill compact={compactModelPill} disabled={disabled} model={state.model} />
-              {compactModelPill ? null : <ReasoningPill disabled={disabled} model={state.model} />}
-            </span>
+            <>
+              {compactModelPill ? null : contextRing}
+              <span className="flex min-w-0 shrink items-center" data-slot="composer-model-group">
+                <ModelPill compact={compactModelPill} disabled={disabled} model={state.model} />
+                {compactModelPill ? null : <ReasoningPill disabled={disabled} model={state.model} />}
+              </span>
+            </>
           )}
           {asr ? (
             <UniworkAsrButton

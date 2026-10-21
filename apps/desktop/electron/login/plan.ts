@@ -4,6 +4,19 @@ export interface MaasModel {
   id: string
   name: string
   baseUrl: string
+  contextWindow?: number
+  vision?: boolean
+}
+
+const CONTEXT_WINDOWS: Record<string, number> = { 'deepseek-v4-flash': 300_000, 'glm-5.2': 240_000 }
+
+/** 固定模型策略优先；其余只接受套餐声明的安全正整数。 */
+function contextWindowOf(name: string, value: unknown): number | undefined {
+  const key = name.toLowerCase()
+  const fixed = Object.hasOwn(CONTEXT_WINDOWS, key) ? CONTEXT_WINDOWS[key] : undefined
+  const parsed = typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : value
+
+  return fixed ?? (typeof parsed === 'number' && Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined)
 }
 
 export interface MaasPlan {
@@ -84,7 +97,15 @@ function parsePlan(body: unknown): FetchedPlan {
       throw new Error('模型地址无效。')
     }
 
-    return { id, name, baseUrl: base.endsWith('/v1') ? base : `${base}/v1` }
+    const contextWindow = contextWindowOf(name, row.context_window)
+
+    return {
+      id,
+      name,
+      baseUrl: base.endsWith('/v1') ? base : `${base}/v1`,
+      ...(contextWindow === undefined ? {} : { contextWindow }),
+      ...(Array.isArray(row.supported_modalities) ? { vision: row.supported_modalities.includes('image') } : {})
+    }
   })
 
   const mainModelIndex = mainId ? models.findIndex(model => model.id === mainId) : -1

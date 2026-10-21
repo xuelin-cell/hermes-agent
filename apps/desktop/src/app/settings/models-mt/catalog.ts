@@ -11,6 +11,20 @@ import { prettifyModelId } from './model-name'
 export const PLAN_KEY_ENV = 'DESKTOP_MT_MAAS_API_KEY'
 const PLAN_PROVIDER_PREFIX = 'desktop-mt-maas-'
 const PLAN_KEY_REF = `\${${PLAN_KEY_ENV}}`
+export const ORDER_KEY = 'uniwork.desktop.models.order.v1'
+
+/** 列表顺序按 Profile 保存在本账号浏览器分区，读取失败时使用自然顺序。 */
+export function readOrder(profile: string | undefined): string[] {
+  try {
+    const raw = window.localStorage.getItem(`${ORDER_KEY}:${profile ?? ''}`)
+    const parsed: unknown = raw ? JSON.parse(raw) : []
+
+    return Array.isArray(parsed) ? parsed.filter((key): key is string => typeof key === 'string') : []
+  } catch {
+    return []
+  }
+}
+
 /** 没有套餐提供方可参照时的元景地址；套餐 Key 只在 my-plan 给的端点有效，优先用套餐的。 */
 export const YUANJING_FALLBACK_URL = 'https://maas-api.ai-yuanjing.com/openapi/compatible-mode/v1'
 
@@ -148,7 +162,7 @@ export function rowsFromEndpoints(endpoints: readonly CustomEndpoint[], provider
 }
 
 /** `model.provider` 可能写成 `custom:<id>` 或裸 id，统一后比较。 */
-function providerIdOf(provider: string): string {
+export function providerIdOf(provider: string): string {
   return provider
     .trim()
     .replace(/^custom:/i, '')

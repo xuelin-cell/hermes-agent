@@ -11,6 +11,36 @@ const catalog = {
   ]
 }
 
+it('套餐上限遵循固定策略，其余接受正整数和纯数字字符串；看图只信任声明数组', async () => {
+  const rows = [
+    { model: 'DeepSeek-V4-Flash', context_window: 100000, supported_modalities: ['text'] },
+    { model: 'glm-5.2', context_window: 1 },
+    { model: 'deepseek-v4.1-flash', context_window: 300000, supported_modalities: ['text', 'image'] },
+    { model: 'numeric-string', context_window: '240000' },
+    ...[undefined, 0, -1, 1.5, '0', '-1', '1.5', '12x', '1e5', ' 120 ', true, Number.MAX_SAFE_INTEGER + 1].map(
+      (context_window, i) => ({ model: `invalid-${i}`, context_window, supported_modalities: 'image' })
+    )
+  ].map((row, i) => ({ ...row, id: String(i), base_url: 'https://models.invalid/v1' }))
+
+  const request = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ apiKey: 'key', models: { models: rows } }))
+  const result = await fetchPlan(request, 'token', new AbortController().signal)
+  expect(result.status).toBe('available')
+
+  if (result.status !== 'available') {
+    throw new Error('套餐解析失败')
+  }
+
+  expect(result.plan.models.slice(0, 4).map(row => row.contextWindow)).toEqual([300000, 240000, 300000, 240000])
+  expect(result.plan.models[0].vision).toBe(false)
+  expect(result.plan.models[2].vision).toBe(true)
+  expect(result.plan.models[1]).not.toHaveProperty('vision')
+
+  for (const row of result.plan.models.slice(4)) {
+    expect(row).not.toHaveProperty('contextWindow')
+    expect(row).not.toHaveProperty('vision')
+  }
+})
+
 it('带登录 token 查询固定套餐地址，解析对象或字符串目录并保留同名不同端点和主模型', async () => {
   const request = vi.fn<typeof fetch>()
   const cancellation = new AbortController()

@@ -35,12 +35,14 @@ import {
   type ModelRow,
   newDraft,
   newEndpointId,
+  ORDER_KEY,
   orderRows,
   PLAN_KEY_ENV,
   presetBaseUrl,
   PROVIDER_KINDS,
   PROVIDER_LABEL,
   type ProviderKind,
+  readOrder,
   rowsFromEndpoints
 } from './catalog'
 import { useModelsCopy } from './copy'
@@ -55,20 +57,6 @@ interface Loaded {
   defaultKey: null | string
   order: string[]
   planUrl?: string
-}
-
-const ORDER_KEY = 'uniwork.desktop.models.order.v1'
-
-/** 列表顺序只是展示偏好，按 Profile 存在本账号的浏览器分区里；读不到就按默认顺序。 */
-function readOrder(profile: string | undefined): string[] {
-  try {
-    const raw = window.localStorage.getItem(`${ORDER_KEY}:${profile ?? ''}`)
-    const parsed: unknown = raw ? JSON.parse(raw) : []
-
-    return Array.isArray(parsed) ? parsed.filter((key): key is string => typeof key === 'string') : []
-  } catch {
-    return []
-  }
 }
 
 function writeOrder(profile: string | undefined, keys: readonly string[]): void {

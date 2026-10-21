@@ -46,17 +46,9 @@ function isManaged(id: string, entry: unknown): entry is YAMLMap {
     (!entry.has('base_url') ||
       (typeof baseUrl === 'string' && baseUrl.replace(/\/+$/, '') === api.replace(/\/+$/, ''))) &&
     (!entry.has('api_mode') || entry.get('api_mode') === 'chat_completions') &&
-    ![
-      'api_key',
-      'key_cmd',
-      'api_key_env',
-      'keyEnv',
-      'apiKey',
-      'apiKeyEnv',
-      'url',
-      'baseUrl',
-      'apiMode'
-    ].some(field => entry.has(field))
+    !['api_key', 'key_cmd', 'api_key_env', 'keyEnv', 'apiKey', 'apiKeyEnv', 'url', 'baseUrl', 'apiMode'].some(field =>
+      entry.has(field)
+    )
   )
 }
 
@@ -157,9 +149,30 @@ export function mergeMaasModelConfig(home: string, catalog: Pick<MaasPlan, 'mode
     )
 
     for (const model of models) {
-      if (!modelOptions.has(model.name)) {
-        modelOptions.set(model.name, doc.createNode({}))
+      const previousOptions = modelOptions.get(model.name)
+
+      if (
+        isAlias(previousOptions) ||
+        (isMap(previousOptions) && (previousOptions.anchor || hasMerge(previousOptions)))
+      ) {
+        throw new Error('MaaS 模型选项不能使用共享引用或 YAML 合并，请展开配置后重试。')
       }
+
+      const options = isMap(previousOptions) ? previousOptions : new YAMLMap(doc.schema)
+
+      if (model.contextWindow === undefined) {
+        options.delete('context_length')
+      } else {
+        options.set('context_length', model.contextWindow)
+      }
+
+      if (model.vision === true) {
+        options.set('supports_vision', true)
+      } else if (model.vision === false) {
+        options.delete('supports_vision')
+      }
+
+      modelOptions.set(model.name, options)
     }
 
     entry.set('name', `MaaS · ${models[0].name} · ${id.slice(-8)}`)
@@ -191,6 +204,15 @@ export function mergeMaasModelConfig(home: string, catalog: Pick<MaasPlan, 'mode
 
   if (!existing) {
     doc.set('model', { provider: `custom:${providerId(main.baseUrl)}`, default: main.name })
+  }
+
+  // 默认不借用本机其他应用的登录；用户显式配置和共享节点保持原样。
+  const auth = doc.get('auth')
+
+  if (!doc.has('auth')) {
+    doc.set('auth', { adopt_external_logins: false })
+  } else if (isMap(auth) && !auth.anchor && !hasMerge(auth) && !auth.has('adopt_external_logins')) {
+    auth.set('adopt_external_logins', false)
   }
 
   const next = doc.toString({ lineWidth: 0 })

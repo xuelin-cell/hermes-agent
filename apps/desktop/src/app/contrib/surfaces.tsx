@@ -15,12 +15,14 @@ import { WorkspacePageNav } from '@/components/chat/workspace-page-nav'
 import { ContribBoundary, ContribRender } from '@/contrib/react/boundary'
 import { useContributions } from '@/contrib/react/use-contributions'
 import { $activeConnectionId } from '@/store/connections'
+import { $developerMode } from '@/store/developer-mode'
 import { $gateway } from '@/store/gateway'
 import { $guideOpening } from '@/store/onboarding-gate'
 import { $activeGatewayProfile } from '@/store/profile'
 import { $freshDraftReady, $gatewayState } from '@/store/session'
 
 import { ChatView } from '../chat'
+import { ComposerModelList } from '../chat/composer/model-mt/model-list'
 import { ChatSidebar } from '../chat/sidebar'
 import { TerminalPaneChrome } from '../right-sidebar/terminal/chrome'
 import { contributedRoutes, NEW_CHAT_ROUTE, ROUTES_AREA, sessionRoute } from '../routes'
@@ -128,11 +130,13 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
   const gatewayState = useStore($gatewayState)
   const routeSnapshot = useContributions(ROUTES_AREA)
   const routeContributions = contributedRoutes(routeSnapshot)
+  // desktop-mt: 普通模式只展示配置模型，开发者模式保留原菜单。
+  const ModelMenu = useStore($developerMode) ? ModelMenuPanel : ComposerModelList
 
   const modelMenuContent = useMemo(
     () =>
       gatewayState === 'open' ? (
-        <ModelMenuPanel
+        <ModelMenu
           gateway={gateway || undefined}
           onFollowDefaultModel={actions.followDefaultModel}
           onSelectModel={actions.selectModel}
@@ -141,7 +145,7 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
           requestGateway={actions.requestGateway}
         />
       ) : null,
-    [actions, activeConnectionId, activeGatewayProfile, gateway, gatewayState]
+    [actions, activeConnectionId, activeGatewayProfile, gateway, gatewayState, ModelMenu]
   )
 
   const reasoningMenuContent = useMemo(

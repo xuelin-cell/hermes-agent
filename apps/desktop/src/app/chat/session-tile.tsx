@@ -43,6 +43,7 @@ import type { ChatMessage } from '@/lib/chat-messages'
 import { NEW_SESSION_TITLE, sessionTitle } from '@/lib/chat-runtime'
 import { transcribeAudioClientDirect } from '@/lib/voice-client-direct'
 import { createComposerAttachmentScope, draftTitleFor } from '@/store/composer'
+import { $developerMode } from '@/store/developer-mode'
 import { $pinnedSessionIds, pinSession, unpinSession } from '@/store/layout'
 import { $activeGatewayProfile } from '@/store/profile'
 import { $projectTree } from '@/store/projects'
@@ -73,6 +74,7 @@ import {
 import type { SessionInfo } from '@/types/hermes'
 
 import type { SessionDragPayload } from './composer/inline-refs'
+import { ComposerModelList } from './composer/model-mt/model-list'
 import { type ComposerScope, ComposerScopeProvider } from './composer/scope'
 import { useComposerActions } from './hooks/use-composer-actions'
 import { paneMirror } from './pane-mirror'
@@ -361,10 +363,13 @@ function TileChat({
 
   // Per-tile model menu — rendered under this tile's SessionView so the pill
   // + switch target THIS runtime, not the primary (which may be mid-turn).
+  // desktop-mt: 并排窗格与主窗使用相同模式，但仍选自己的会话模型。
+  const ModelMenu = useStore($developerMode) ? ModelMenuPanel : ComposerModelList
+
   const modelMenuContent = useMemo(
     () =>
       gatewayOpen ? (
-        <ModelMenuPanel
+        <ModelMenu
           onSelectModel={selectModel}
           ownerConnectionId={ownerRoute?.connectionId || undefined}
           profile={ownerRoute?.targetProfile || ownerRoute?.profile || activeGatewayProfile}
@@ -373,6 +378,7 @@ function TileChat({
       ) : null,
     [
       activeGatewayProfile,
+      ModelMenu,
       gatewayOpen,
       ownerRoute?.connectionId,
       ownerRoute?.profile,

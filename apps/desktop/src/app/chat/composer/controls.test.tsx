@@ -19,6 +19,7 @@ const state: ChatBarState = {
 
 function renderControls(overrides: Partial<React.ComponentProps<typeof ComposerControls>> = {}, developerMode = true) {
   $developerMode.set(developerMode)
+
   return render(
     <I18nProvider configClient={null} initialLocale="en">
       <ComposerControls
@@ -63,6 +64,24 @@ afterEach(() => {
   cleanup()
   $hudMode.set(false)
   $developerMode.set(false)
+})
+
+it('普通和开发者模式均在模型组前显示传入的圆环', () => {
+  for (const developerMode of [false, true]) {
+    const { container, unmount } = renderControls(
+      { contextRing: <span data-testid="context-ring">用量</span> },
+      developerMode
+    )
+
+    const ring = screen.getByTestId('context-ring')
+    expect(ring.nextElementSibling).toBe(container.querySelector('[data-slot="composer-model-group"]'))
+    unmount()
+  }
+})
+
+it.each(['compactModelPill', 'minimal', 'hideModelPill'] as const)('%s 布局隐藏上下文圆环', key => {
+  renderControls({ [key]: true, contextRing: <span data-testid="context-ring">用量</span> })
+  expect(screen.queryByTestId('context-ring')).toBeNull()
 })
 
 // The HUD is a Spotlight bar a few hundred pixels wide: the voice controls
