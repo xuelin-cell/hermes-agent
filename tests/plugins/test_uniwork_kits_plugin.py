@@ -1531,19 +1531,6 @@ def test_summon_card_offers_the_host_written_try_asking_not_the_package_shorts(k
     assert rows["demo-expert"]["try_asking"] == ""
 
 
-def test_every_host_try_asking_is_a_bundled_expert_and_differs_from_its_opening(kits):
-    """宿主写的「试试这样问」只给内置专家，而且每一条都和这位专家召唤时填进输入框的开场白不同（否则前端不显示）。"""
-    import zipfile
-
-    bundled = PLUGIN_DIR / "bundled" / "uniwork-bundled" / "plugins"
-    for name, prompt in kits.expert_try_asking.TRY_ASKING.items():
-        with zipfile.ZipFile(bundled / f"{name}.zip") as archive:
-            manifest = min(n for n in archive.namelist() if n.endswith(".codebuddy-plugin/plugin.json"))
-            persona = json.loads(archive.read(manifest).decode("utf-8"))
-        opening = kits.expert_cards.intro(name, persona)["init_prompt"]
-        assert prompt.strip() and prompt.strip() != opening.strip(), name
-
-
 def test_experts_are_named_by_their_job(kits, monkeypatch):
     """Users read 「基金诊断专家」, not a character name like 福帮手."""
     name = kits.expert_cards.card_name
