@@ -1,11 +1,12 @@
 /**
  * Kits — a standalone desktop page over `/api/plugins/uniwork-kits`, laid out
  * like the Skills catalog (技能与工具): tabs with counts, a search box, and a
- * card grid. A card opens its details — settings, authorization, triggers,
- * receipt and uninstall live there.
+ * card grid. A card opens its details — settings and authorization live there.
+ * A kit, like a skill, is only switched on or off (the switch sits beside its
+ * title); the bundled kits and experts cannot be uninstalled.
  *
- * Experts are installed and removed here. An expert's forever-chat stays on
- * the Bots list; 「召唤」 opens a new chat with it, like the composer picker.
+ * An expert's forever-chat stays on the Bots list; 「召唤」 opens a new chat
+ * with it, like the composer picker.
  */
 
 import './kits.css'
@@ -32,17 +33,7 @@ import {
 } from '@hermes/plugin-sdk'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 
-import {
-  fetchCatalog,
-  fetchJob,
-  fetchReceipt,
-  installZip,
-  openAuthorization,
-  refreshTriggers,
-  toggleKit,
-  uninstallKit,
-  writeConfig
-} from './api'
+import { fetchCatalog, fetchJob, installZip, openAuthorization, toggleKit, writeConfig } from './api'
 import { $bundled, $bundledFinished, watchBundled } from './bundled'
 import { ExpertFace } from './expert-face'
 import { $expertDirectory, loadExperts } from './experts-store'
@@ -51,6 +42,7 @@ import { matchesQuery, partition } from './partition'
 import { publishInstalledExperts } from './roster'
 import { installedExperts } from './roster-model'
 import { summonExpert } from './summon'
+import { tryAskingPrompts } from './summon-model'
 import type { ExpertCard, KitRow, UserField } from './types'
 
 interface JobState {
@@ -474,7 +466,10 @@ function DetailSection({ children, title }: { children: ReactNode; title: string
   )
 }
 
-/** 卡片上放不下的内容：配置、授权、触发词、安装记录和卸载。 */
+/**
+ * 卡片上放不下的内容：配置和授权。套件和技能页一样只能开关（开关在标题行右侧），
+ * 专家只能召唤；内置的套件和专家都不给卸载，也不再有刷新触发词和查看安装记录。
+ */
 function KitDetail({
   expert,
   onChange,
@@ -487,21 +482,33 @@ function KitDetail({
   row: KitRow
 }) {
   const t = usePluginI18n('uniwork-kits')
-  const [confirm, setConfirm] = useState(false)
-  const [receipt, setReceipt] = useState('')
   const isExpert = Boolean(expert)
+  const prompts = expert ? tryAskingPrompts(expert) : []
 
   return (
     <DialogContent className="max-w-xl">
       <DialogHeader>
-        <DialogTitle className="flex items-center gap-2.5">
+        {/* 右侧留出关闭按钮的位置，开关和技能页一样跟在标题后面 */}
+        <DialogTitle className="flex items-center gap-2.5 pr-7">
           {expert ? <ExpertFace expert={expert} size={32} /> : null}
-          <span className="min-w-0 truncate">{row.display_name}</span>
+          <span className="min-w-0 flex-1 truncate">{row.display_name}</span>
           {row.version ? (
             <Badge size="xs" variant="muted">
               v{row.version}
             </Badge>
           ) : null}
+          {isExpert ? null : (
+            <Switch
+              aria-label={t('enable')}
+              checked={row.enabled !== false}
+              onCheckedChange={checked => {
+                void toggleKit(row.name, checked)
+                  .then(onChange)
+                  .catch(err => host.notify({ kind: 'error', message: String(err) }))
+              }}
+              size="xs"
+            />
+          )}
         </DialogTitle>
         <DialogDescription>{row.description || (isExpert ? `@${row.profile}` : countsText(row, t))}</DialogDescription>
       </DialogHeader>
@@ -509,10 +516,10 @@ function KitDetail({
         <span className="text-xs text-(--ui-text-tertiary)">
           {isExpert ? [row.profession, `@${row.profile}`].filter(Boolean).join(' · ') : countsText(row, t)}
         </span>
-        {expert && expert.quick_prompts.length > 0 ? (
+        {prompts.length > 0 ? (
           <DetailSection title={t('tryAsking')}>
             <span className="flex flex-wrap gap-1">
-              {expert.quick_prompts.map(prompt => (
+              {prompts.map(prompt => (
                 <Chip key={prompt} wrap>
                   {prompt}
                 </Chip>
@@ -550,70 +557,9 @@ function KitDetail({
             </span>
           </DetailSection>
         ) : null}
-        {receipt ? (
-          <DetailSection title={t('receipt')}>
-            <pre className="max-h-56 overflow-auto rounded-md bg-(--ui-bg-quinary) p-2 text-xs whitespace-pre-wrap">
-              {receipt}
-            </pre>
-          </DetailSection>
-        ) : null}
-        {confirm ? <p className="m-0 text-xs text-(--ui-red)">{t('confirmExpert')}</p> : null}
       </div>
-      <DialogFooter className="flex-wrap gap-2 sm:justify-between">
-        <span className="flex flex-wrap gap-2">
-          {isExpert ? null : (
-            <Button
-              onClick={() => {
-                void refreshTriggers(row.name)
-                  .then(result => $job.set({ id: result.job.id, tail: '' }))
-                  .catch(err => host.notify({ kind: 'error', message: String(err) }))
-              }}
-              size="sm"
-              variant="outline"
-            >
-              {t('refresh')}
-            </Button>
-          )}
-          <Button
-            onClick={() => {
-              if (receipt) {
-                setReceipt('')
-
-                return
-              }
-
-              void fetchReceipt(row.name)
-                .then(body => setReceipt(body.text || t('noReceipt')))
-                .catch(err => setReceipt(String(err)))
-            }}
-            size="sm"
-            variant="outline"
-          >
-            {receipt ? t('hideReceipt') : t('receipt')}
-          </Button>
-          <Button
-            onClick={() => {
-              if (isExpert && !confirm) {
-                setConfirm(true)
-
-                return
-              }
-
-              void uninstallKit(row.name, isExpert)
-                .then(() => {
-                  setConfirm(false)
-                  onClose()
-                  onChange()
-                })
-                .catch(err => host.notify({ kind: 'error', message: String(err) }))
-            }}
-            size="sm"
-            variant="destructive"
-          >
-            {confirm ? t('confirmUninstall') : t('uninstall')}
-          </Button>
-        </span>
-        {expert ? (
+      {expert ? (
+        <DialogFooter>
           <Button
             onClick={() => {
               onClose()
@@ -623,8 +569,8 @@ function KitDetail({
           >
             {t('summonButton')}
           </Button>
-        ) : null}
-      </DialogFooter>
+        </DialogFooter>
+      ) : null}
     </DialogContent>
   )
 }
