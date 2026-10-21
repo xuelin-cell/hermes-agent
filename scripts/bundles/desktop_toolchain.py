@@ -39,6 +39,9 @@ def bootstrap_environment(source: Path, work: Path, cache: Path,
     original_home = Path(canonical.get("HERMES_REAL_HOME") or canonical.get(home_key) or Path.home())
     for key, directory in (("CARGO_HOME", ".cargo"), ("RUSTUP_HOME", ".rustup")):
         result[key] = canonical.get(key) or str(original_home / directory)
+    # desktop-mt: 拉 GitCode 内置套件的 git 走 SSH，要用打包人自己的 ~/.ssh（known_hosts、密钥）；
+    # 只有 scripts/bundles/uniwork_bundled.py 读它，其余步骤仍在隔离的 HOME 里。
+    result["UNIWORK_BUILDER_HOME"] = canonical.get("UNIWORK_BUILDER_HOME") or str(original_home)
     home = work / "home"
     result.update({
         "HOME": str(home), "USERPROFILE": str(home),

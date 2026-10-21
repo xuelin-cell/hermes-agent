@@ -42,6 +42,8 @@ from pathlib import Path
 DEFAULT_SOURCE = "git@gitcode.com:uni-ai/uniclawwork-local-config.git"
 TARGET = Path("plugins/uniwork-kits/bundled/uniwork-bundled")
 REQUIRED_ENV = "UNIWORK_BUNDLED_PLUGINS_REQUIRED"
+# 打包人自己的用户目录，desktop_toolchain.bootstrap_environment 隔离 HOME 前记下的。
+BUILDER_HOME_ENV = "UNIWORK_BUILDER_HOME"
 # 记下这次带的是哪份配置仓库；套件安装只认 zip，不会把它当成包。
 SOURCE_RECORD = "source.json"
 # 套件和专家脚本的依赖清单，插件运行时（script_python.py）读的是同一份。
@@ -72,16 +74,19 @@ def usable(archive: Path) -> bool:
 FETCH_TIMEOUT_S = 300
 
 
-def _fetch(url: str, ref: str, into: Path) -> None:
+def _fetch(url: str, ref: str, into: Path, builder_home: str = "") -> None:
     """浅拉取配置仓库的一个分支、标签或提交到 *into*。
 
-    绝不等输入：没有 gitcode 权限的打包机器要立刻失败、不带内置包继续打包，而不是卡住。
+    绝不等输入：没有 gitcode 权限的打包机器要立刻失败，而不是卡住。打包环境把 HOME 换成了隔离目录，
+    给了 *builder_home*（打包人自己的用户目录）时，git 和 SSH 从那里读 ~/.ssh 和 ~/.gitconfig。
     """
     env = {
         **os.environ,
         "GIT_TERMINAL_PROMPT": "0",
         "GIT_SSH_COMMAND": os.environ.get("GIT_SSH_COMMAND") or "ssh -o BatchMode=yes -o ConnectTimeout=20",
     }
+    if builder_home:
+        env.update(HOME=builder_home, USERPROFILE=builder_home)
     run = {"check": True, "env": env, "timeout": FETCH_TIMEOUT_S, "stdin": subprocess.DEVNULL}
     subprocess.run(["git", "init", "-q", str(into)], **run)
     subprocess.run(["git", "fetch", "-q", "--depth", "1", url, ref or "HEAD"], cwd=into, **run)
@@ -149,9 +154,10 @@ def stage_bundled_plugins(repo_dir: Path, env: dict[str, str] | None = None) -> 
         if not local.is_dir():
             local = Path(temp) / "config"
             try:
-                _fetch(source, ref, local)
+                _fetch(source, ref, local, (env.get(BUILDER_HOME_ENV) or "").strip())
             except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
-                _problem(required, f"could not fetch bundled plugins from {shown} ({_fetch_error(exc)}); "
+                _problem(required, f"could not fetch bundled plugins from {shown} ({_fetch_error(exc)}; "
+                                   f"check that `git ls-remote {shown} HEAD` works for this user); "
                                    "building without them")
                 return 0
         bundle = _bundle_root(local)
