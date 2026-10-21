@@ -4,15 +4,21 @@ import { isDesktopRendererSender } from '../desktop-renderer-sender'
 import { ASR_CHANNEL, type AsrIdentity } from '../uniwork-asr/contract'
 import { createUniworkAsrHandler } from '../uniwork-asr/ipc'
 import { PlanUsageClient } from '../uniwork-usage/client'
-import { PLAN_USAGE_CHANNEL } from '../uniwork-usage/contract'
+import {
+  PLAN_SUBSCRIPTION_CHANNEL,
+  PLAN_USAGE_CHANNEL,
+  PLAN_USAGE_REFRESH_CHANNEL
+} from '../uniwork-usage/contract'
+import { PlanSubscriptionClient } from '../uniwork-usage/subscription'
 import { WELCOME_CATALOG_CHANNEL } from '../uniwork-welcome/catalog'
 import { WelcomeCatalogClient } from '../uniwork-welcome/client'
 
 import { CloudDriveClient, CloudDriveOperationError } from './cloud-drive'
 import type { ResolveDriveArtifact } from './cloud-drive-artifact-source'
 import { installCloudDriveTransferIpc } from './cloud-drive-transfer-ipc'
-import type { LoginAccount } from './contract'
+import type { CloudDriveMutationProgress, LoginAccount } from './contract'
 import type { LoginIdentity } from './session'
+import type { UniAgentGateUpdate } from './uniagentgate'
 
 /** 仅向当前账号桌面的主框架提供只读展示信息，不接受页面身份参数。 */
 export function installAccountIpc(
@@ -25,7 +31,9 @@ export function installAccountIpc(
   transferCacheRoot?: string,
   sharedDrive?: CloudDriveClient,
   driveAgentReady?: (profile: string) => boolean,
-  resolveArtifact?: ResolveDriveArtifact
+  resolveArtifact?: ResolveDriveArtifact,
+  openExternal?: (url: string) => Promise<unknown>,
+  applyBinding?: (update: UniAgentGateUpdate) => Promise<void>
 ): void {
   /** 展示与退出共用来源校验，不接收 UID、路径或进程号。 */
   function trusted(event: IpcMainInvokeEvent, args: unknown[]): boolean {
@@ -43,13 +51,13 @@ export function installAccountIpc(
     })
   }
 
-  const catalog = new WelcomeCatalogClient()
+  const catalog = new WelcomeCatalogClient(undefined, readIdentity)
   ipcMain.handle(WELCOME_CATALOG_CHANNEL, async (event, ...args) => {
     if (!trusted(event, []) || args.length !== 1 || !['zh-CN', 'en'].includes(args[0])) {
       throw new Error('办公模板请求无效。')
     }
 
-    return { modules: await catalog.load(args[0]) }
+    return catalog.load(args[0])
   })
 
   const drive = sharedDrive ?? (readIdentity ? new CloudDriveClient(readIdentity) : null)
@@ -72,13 +80,18 @@ export function installAccountIpc(
   }
 
   if (readIdentity && drive) {
-    const usage = new PlanUsageClient(readIdentity)
+    const usage = new PlanUsageClient(readIdentity, undefined, applyBinding)
     ipcMain.handle(PLAN_USAGE_CHANNEL, (event, ...args) => {
       if (!trusted(event, args)) {
         return { status: 'failed' }
       }
 
       return usage.load()
+    })
+    ipcMain.handle(PLAN_USAGE_REFRESH_CHANNEL, (event, ...args) => {
+      if (!trusted(event, args)) {return { status: 'failed' }}
+
+      return usage.load(true)
     })
     ipcMain.handle('hermes:maas-drive:agent-ready', (event, ...args): boolean => {
       return (
@@ -94,8 +107,31 @@ export function installAccountIpc(
         throw new Error('云盘请求无效')
       }
 
+      const id =
+        typeof args[0]?.requestId === 'string' && /^[a-zA-Z0-9-]{1,80}$/.test(args[0].requestId)
+          ? args[0].requestId
+          : undefined
+
+      const controller = new AbortController()
+      const stop = () => controller.abort()
+
+      const navigate = (_event: unknown, _url: string, inPlace: boolean, mainFrame: boolean) => {
+        if (mainFrame && !inPlace) {
+          stop()
+        }
+      }
+
+      event.sender.once('destroyed', stop)
+      event.sender.on('did-start-navigation', navigate)
+
+      const progress = (phase: CloudDriveMutationProgress['phase']) => {
+        if (id && !controller.signal.aborted && trusted(event, [])) {
+          event.sender.send('hermes:maas-drive:mutation-progress', { id, phase } satisfies CloudDriveMutationProgress)
+        }
+      }
+
       try {
-        return await drive.execute(args[0])
+        return await drive.execute(args[0], controller.signal, () => progress('verifying'))
       } catch (error) {
         if (error instanceof CloudDriveOperationError) {
           return error.result
@@ -106,7 +142,19 @@ export function installAccountIpc(
             ? error.message
             : '个人云盘请求失败，请重试'
         )
+      } finally {
+        event.sender.removeListener('destroyed', stop)
+        event.sender.removeListener('did-start-navigation', navigate)
       }
+    })
+  }
+
+  if (readIdentity && openExternal) {
+    const subscription = new PlanSubscriptionClient(readIdentity, openExternal)
+    ipcMain.handle(PLAN_SUBSCRIPTION_CHANNEL, (event, ...args) => {
+      if (!trusted(event, args)) {return { status: 'failed' }}
+
+      return subscription.open()
     })
   }
 

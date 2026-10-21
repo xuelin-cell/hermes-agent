@@ -113,15 +113,21 @@ def test_publish_uses_workspace_file_without_copy_and_rejects_escape(tmp_path, m
         if route == "/eligibility":
             return {"publishable": True}
         sent.append(payload)
-        return {"shareId": "test-id", "url": "https://share.example/test", "version": 1}
+        return {"shareId": "test-id", "url": "https://share.example/test", "version": 1, "expiresAt": "2030-01-02T00:00:00Z"}
 
     monkeypatch.setattr(plugin, "call_bridge", upload)
     for name in ("hello-world.html", "outputs/report.html"):
         (workspace / name).write_text("<p>hello</p>", encoding="utf-8")
-        result = json.loads(plugin._handle_publish({"path": name}, task_id="task", session_id="session"))
+        result = json.loads(plugin._handle_publish({"path": name, **({"ttl_days": 3} if name.startswith("outputs/") else {})}, task_id="task", session_id="session"))
         assert result["url"] == "https://share.example/test"
+        assert result["expires_at"] == "2030-01-02T00:00:00Z"
+        assert sent[-1].get("ttlDays") == (3 if name.startswith("outputs/") else None)
         assert sent[-1]["key"] == f"file:session:{(workspace / name).resolve()}"
 
+    for invalid in (0, 8, 1.5, True):
+        result = json.loads(plugin._handle_publish({"path": "hello-world.html", "ttl_days": invalid}, task_id="task", session_id="session"))
+        assert "error" in result
+    assert len(sent) == 2
     (tmp_path / "outside.html").write_text("<p>private</p>", encoding="utf-8")
     result = json.loads(plugin._handle_publish({"path": "../outside.html"}, task_id="task", session_id="session"))
     assert "error" in result

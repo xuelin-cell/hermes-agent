@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { isMap, isScalar, type Node, parseDocument, type YAMLMap } from 'yaml'
+import { type Document, isMap, isScalar, isSeq, type Node, parseDocument, type YAMLMap } from 'yaml'
 
 import { writeSecretFileAtomic } from '../hardening'
 import type { FetchedPlan } from '../login/plan'
@@ -17,6 +17,41 @@ function isIndependentMap(value: unknown): value is YAMLMap {
   return (
     isMap(value) && !value.anchor && !value.items.some(pair => isScalar(pair.key) && typeof pair.key.value === 'symbol')
   )
+}
+
+/**
+ * 有元景套餐时隐藏 Hermes 自带的看图工具组：它用主模型看图，主模型不支持时每次报错，
+ * 模型还会先试它再绕回工具箱的 analyze_image。已在列表里或配置是共享引用时不动。
+ */
+function hideBuiltinVision(doc: Document): void {
+  const agent = doc.get('agent')
+
+  if (doc.has('agent') && !isIndependentMap(agent)) {
+    return
+  }
+
+  const current = isMap(agent) ? agent.get('disabled_toolsets', true) : undefined
+
+  if (isSeq(current)) {
+    if (!current.anchor && !current.items.some(item => isScalar(item) && item.value === 'vision')) {
+      current.add(doc.createNode('vision'))
+    }
+
+    return
+  }
+
+  // Hermes 也接受只写一个名字的写法，保留原来的名字再加上 vision。
+  const single = isScalar(current) ? current.value : current
+
+  if (single === 'vision' || (single != null && single !== '' && typeof single !== 'string')) {
+    return
+  }
+
+  if (!doc.has('agent')) {
+    doc.set('agent', doc.createNode({}))
+  }
+
+  doc.setIn(['agent', 'disabled_toolsets'], doc.createNode(single ? [single, 'vision'] : ['vision']))
 }
 
 /** 后端启动前按套餐维护默认 Home 的内置记录，只更新地址与超时，不接触其他服务。 */
@@ -73,9 +108,7 @@ export function updateUniaiToolkitConfig(home: string, status: FetchedPlan['stat
   } else {
     const timeout = isMap(entry) ? entry.get('timeout') : undefined
 
-    if (isMap(entry) && entry.get('url') === SERVER_URL && (timeout === 600 || timeout === 600n)) {
-      return
-    }
+    hideBuiltinVision(doc)
 
     if (!doc.has('mcp_servers')) {
       doc.set('mcp_servers', doc.createNode({}))

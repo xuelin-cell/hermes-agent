@@ -3,13 +3,17 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { $welcomeCatalog } from '@/app/chat/composer/work-templates/catalog-store'
+import { WorkspaceCategoryTabs } from '@/components/chat/workspace-category-tabs'
 import { group, split } from '@/components/pane-shell/tree/model'
 import { $layoutTree, noteActiveTreeGroup } from '@/components/pane-shell/tree/store'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { registry } from '@/contrib/registry'
+import { TRANSLATIONS } from '@/i18n'
 import { $connectionsRegistry } from '@/store/connection-registry-state'
 import { $developerMode } from '@/store/developer-mode'
-import { $sidebarMessagingOpenIds, setSidebarAgentsGrouped, setSidebarGrouping } from '@/store/layout'
+import { setInterfaceMode } from '@/store/interface-mode'
+import { $sidebarGrouping, $sidebarMessagingOpenIds, setSidebarAgentsGrouped, setSidebarGrouping } from '@/store/layout'
 import { $activeGatewayProfile, $profiles, setShowAllProfiles } from '@/store/profile'
 import { $profileRailVisible } from '@/store/profile-rail-prefs'
 import { $projectScope, ALL_PROJECTS } from '@/store/project-scope'
@@ -26,8 +30,10 @@ import {
 } from '@/store/session'
 import { $removedSessionIds } from '@/store/session-removal'
 import { SIDEBAR_NAV_PREFS_AREA } from '@/store/sidebar-nav'
+import { $selectedWorkspaceMode } from '@/store/workspace-category'
 import { makeSessionInfo } from '@/test/session-info'
 
+import { normalizeWelcomeCatalog } from '../../../../electron/uniwork-welcome/catalog'
 import { type AppView, ROUTES_AREA, SIDEBAR_NAV_AREA } from '../../routes'
 
 import { $gatewayGroupCollapsed } from './gateway-group-preferences'
@@ -43,10 +49,16 @@ const sessionRows = [
   makeSessionInfo({ id: 'tile-two', last_active: 2, profile: 'default', started_at: 1, title: 'Tile two' })
 ]
 
-const renderSidebar = (pathname: string, currentView: AppView, onRetrySessions: () => Promise<void> = noopAsync) =>
+const renderSidebar = (
+  pathname: string,
+  currentView: AppView,
+  onRetrySessions: () => Promise<void> = noopAsync,
+  workspaceTabs = false
+) =>
   render(
     <MemoryRouter initialEntries={[pathname]}>
       <SidebarProvider>
+        {workspaceTabs && <WorkspaceCategoryTabs />}
         <ChatSidebar
           currentView={currentView}
           onArchiveSession={noop}
@@ -90,6 +102,77 @@ const focus = (groupId: null | string) => act(() => noteActiveTreeGroup(groupId)
 describe('ChatSidebar navigation activity', () => {
   let disposeContributions: () => void
 
+  it('switches the real sidebar with named workspace tabs while keeping session history', () => {
+    setSidebarGrouping('date')
+    $projectTree.set([
+      {
+        id: '__no_project__',
+        label: 'Home',
+        path: null,
+        repos: [],
+        sessionCount: 1,
+        isNoProject: true,
+        previewSessions: [sessionRows[1]]
+      },
+      {
+        id: 'example',
+        label: 'workspace-project',
+        path: '/repos/example',
+        repos: [],
+        sessionCount: 1,
+        previewSessions: [makeSessionInfo({ ...sessionRows[0], cwd: '/repos/example', pinned: true })]
+      }
+    ])
+    $sessions.set([makeSessionInfo({ ...sessionRows[0], cwd: '/repos/example', pinned: true }), sessionRows[1]])
+    $welcomeCatalog.set({
+      ...$welcomeCatalog.get(),
+      en: {
+        status: 'ready',
+        modules: normalizeWelcomeCatalog({
+          modules: [{ name: '日常办公' }, { name: '代码开发', workspace: 'work', enabled: false }, { name: '学习生活' }]
+        })
+      }
+    })
+    const view = renderSidebar('/', 'chat', noopAsync, true)
+    fireEvent.click(screen.getByRole('tab', { name: '日常办公' }))
+    expect(screen.queryByText('workspace-project')).toBeNull()
+    expect(screen.getByRole('button', { name: TRANSLATIONS.en.sidebar.nav.artifacts })).toBeTruthy()
+    fireEvent.click(screen.getByRole('tab', { name: '代码开发' }))
+    expect(screen.getByText('workspace-project')).toBeTruthy()
+    expect(screen.getByText('Projects')).toBeTruthy()
+    expect(view.container.querySelector('[data-code-project="__no_project__"]')).toBeNull()
+    expect(screen.queryByText('Tile two')).toBeNull()
+    const projectGroup = screen.getByText('workspace-project').closest('[data-code-project]') as HTMLElement
+    expect(within(projectGroup).getByText('Tile one')).toBeTruthy()
+    expect(screen.getAllByText('Tile one')).toHaveLength(1)
+    fireEvent.click(within(projectGroup).getByRole('button', { expanded: true }))
+    expect(screen.queryByText('Tile one')).toBeNull()
+    fireEvent.click(within(projectGroup).getByRole('button', { expanded: false }))
+    expect(within(projectGroup).getByText('Tile one')).toBeTruthy()
+    expect($sidebarGrouping.get()).toBe('date')
+    expect(screen.queryByRole('button', { name: TRANSLATIONS.en.sidebar.nav.artifacts })).toBeNull()
+    expect(screen.queryByRole('button', { name: TRANSLATIONS.en.sidebar.nav.cron })).toBeNull()
+    expect([...view.container.querySelectorAll('[data-tour^="sidebar-nav-"]')].map(node => node.textContent)).toEqual([
+      TRANSLATIONS.en.sidebar.nav['new-session'],
+      TRANSLATIONS.en.workspaceEditor.title,
+      TRANSLATIONS.en.workspaceEditor.capabilities
+    ])
+    const tree = $projectTree.get()
+    act(() => $projectTree.set(tree.filter(project => project.isNoProject)))
+    expect(view.container.querySelector('[data-code-project]')).toBeNull()
+    expect(screen.queryByText('Tile two')).toBeNull()
+    act(() => $projectTree.set(tree))
+    fireEvent.click(screen.getByRole('tab', { name: '学习生活' }))
+    expect(screen.queryByText('workspace-project')).toBeNull()
+    expect($sidebarGrouping.get()).toBe('date')
+    expect(screen.getByRole('button', { name: TRANSLATIONS.en.sidebar.nav.artifacts })).toBeTruthy()
+    expect(screen.getByText('Tile one')).toBeTruthy()
+    expect(screen.getByText('Tile two')).toBeTruthy()
+    expect(screen.getByRole('button', { name: TRANSLATIONS.en.sidebar.nav.cron })).toBeTruthy()
+    cleanup()
+    setInterfaceMode('advanced')
+  })
+
   beforeEach(() => {
     $developerMode.set(false)
     disposeContributions = registry.registerMany([
@@ -113,6 +196,9 @@ describe('ChatSidebar navigation activity', () => {
 
   afterEach(() => {
     cleanup()
+    $selectedWorkspaceMode.set(null)
+    $projectTree.set([])
+    setInterfaceMode('advanced')
     disposeContributions()
     $selectedStoredSessionId.set(null)
     $sessions.set([])
@@ -165,9 +251,9 @@ describe('ChatSidebar navigation activity', () => {
     })
 
     for (const [pathname, currentView, label] of [
-      ['/capabilities', 'capabilities', 'Capabilities'],
+      ['/capabilities', 'capabilities', TRANSLATIONS.en.sidebar.nav.capabilities],
       ['/messaging', 'messaging', 'Messaging'],
-      ['/artifacts', 'artifacts', 'Artifacts'],
+      ['/artifacts', 'artifacts', TRANSLATIONS.en.sidebar.nav.artifacts],
       ['/cron', 'cron', 'Scheduled jobs']
     ] as const) {
       cleanup()
@@ -220,6 +306,7 @@ describe('ChatSidebar navigation activity', () => {
 describe('ChatSidebar cold-start load failure', () => {
   afterEach(() => {
     cleanup()
+    setInterfaceMode('advanced')
     $sessions.set([])
     $sessionsLoading.set(true)
     $sessionsLoadError.set(false)
@@ -261,6 +348,7 @@ describe('ChatSidebar project entry', () => {
 
   afterEach(() => {
     cleanup()
+    setInterfaceMode('advanced')
     $projectScope.set(ALL_PROJECTS)
     $projectTree.set([])
     setSidebarAgentsGrouped(false)
@@ -318,6 +406,7 @@ describe('ChatSidebar section labels', () => {
 
   afterEach(() => {
     cleanup()
+    setInterfaceMode('advanced')
     $projectScope.set(ALL_PROJECTS)
     $projectTree.set([])
     setSidebarAgentsGrouped(false)
@@ -386,6 +475,7 @@ describe('ChatSidebar empty-profile sections', () => {
 
   afterEach(() => {
     cleanup()
+    setInterfaceMode('advanced')
     $messagingSessions.set([])
     $sidebarMessagingOpenIds.set([])
     $sessions.set([])
@@ -413,6 +503,25 @@ describe('ChatSidebar empty-profile sections', () => {
 
     expect(container.textContent).toContain('No sessions yet')
     expect(screen.queryByPlaceholderText('Search sessions…')).toBeNull()
+  })
+
+  it('shows RCS history in its own collapsible platform section beside local chats and WeChat', () => {
+    $sessions.set([makeSessionInfo({ id: 'local-chat', source: 'desktop', title: 'Local conversation' })])
+    $messagingSessions.set([
+      makeSessionInfo({ id: 'rcs-history', connection_id: 'local', profile: 'default', source: 'uniagentgate', title: 'RCS history' }),
+      makeSessionInfo({ id: 'wechat-history', connection_id: 'local', profile: 'default', source: 'weixin', title: 'WeChat history' })
+    ])
+    $sidebarMessagingOpenIds.set(['uniagentgate', 'weixin'])
+    renderSidebar('/', 'chat')
+    const section = screen.getByText('5G 消息').closest('[data-slot="sidebar-group"]')!
+    expect(within(section as HTMLElement).getByText('RCS history')).toBeTruthy()
+    expect(within(section as HTMLElement).queryByText('Local conversation')).toBeNull()
+    expect(within(section as HTMLElement).queryByText('WeChat history')).toBeNull()
+    expect(screen.getAllByText('WeChat').length).toBeGreaterThan(0)
+    expect(screen.getByText('Local conversation')).toBeTruthy()
+    fireEvent.click(within(section as HTMLElement).getByRole('button', { name: '5G 消息' }))
+    expect(within(section as HTMLElement).queryByText('RCS history')).toBeNull()
+    expect(screen.getByText('WeChat history')).toBeTruthy()
   })
 })
 
@@ -464,6 +573,7 @@ describe('ChatSidebar messaging owners', () => {
 
   afterEach(() => {
     cleanup()
+    setInterfaceMode('advanced')
     setSidebarGrouping('date')
     setShowAllProfiles(false)
     $activeGatewayProfile.set('default')

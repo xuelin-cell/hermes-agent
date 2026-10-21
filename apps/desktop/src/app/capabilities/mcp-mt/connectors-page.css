@@ -1,0 +1,496 @@
+/* HexAgent 推荐目录的轻量卡片布局；颜色跟随 Hermes 语义主题。 */
+.mt-connectors-page {
+  container-type: inline-size;
+}
+
+.mt-connectors-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding-top: 16px;
+  border-bottom: 1px solid var(--stroke-nous);
+}
+
+.mt-connectors-tabs {
+  display: flex;
+  align-self: stretch;
+  gap: 32px;
+}
+
+.mt-connectors-tabs button {
+  position: relative;
+  min-height: 52px;
+  padding: 0 2px 16px;
+  color: var(--ui-text-tertiary);
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mt-connectors-tabs button[aria-selected='true'] {
+  color: var(--ui-text-primary);
+}
+
+.mt-connectors-tabs button[aria-selected='true']::after {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--dt-primary);
+  content: '';
+}
+
+.mt-connectors-search {
+  width: min(340px, 100%);
+  margin-bottom: 16px;
+}
+
+.mt-connectors-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.mt-connector-card {
+  display: flex;
+  min-width: 0;
+  min-height: 174px;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid var(--stroke-nous);
+  border-radius: 14px;
+  background: var(--ui-bg-sidebar);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 140ms,
+    background-color 140ms;
+}
+
+.mt-connector-card:hover {
+  border-color: var(--ui-text-tertiary);
+  background: var(--ui-row-hover-background);
+  box-shadow: var(--shadow-md);
+}
+
+.mt-connector-card:focus-visible,
+.mt-connectors-tabs button:focus-visible {
+  outline: 2px solid var(--dt-primary);
+  outline-offset: 3px;
+}
+
+.mt-connector-card-top {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 18px;
+}
+
+.mt-connector-icon {
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  object-fit: contain;
+}
+
+.mt-connector-name {
+  min-width: 0;
+  flex: 1;
+  color: var(--ui-text-primary);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.mt-connector-card-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 12px;
+}
+
+.mt-connector-add {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  place-items: center;
+  border: 1px solid var(--stroke-nous);
+  border-radius: 10px;
+  color: var(--ui-text-tertiary);
+  background: var(--ui-chat-surface-background);
+}
+
+.mt-connector-add svg {
+  width: 24px;
+  height: 24px;
+  stroke-width: 1.8;
+}
+
+.mt-connector-description {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--ui-text-secondary);
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.mt-connector-provider {
+  margin-top: auto;
+  margin-bottom: 0;
+  color: var(--ui-text-tertiary);
+  font-size: 13px;
+}
+
+.mt-connector-status {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 13px;
+  border-radius: 999px;
+  background: #ff8a00;
+}
+
+.mt-connector-status-connected {
+  background: var(--success, #18b66a);
+}
+
+.mt-connector-dialog {
+  width: min(720px, calc(100vw - 36px));
+  max-width: none;
+  border-radius: 28px;
+}
+
+.mt-connector-dialog-overlay {
+  background: rgb(0 0 0 / 56%);
+  backdrop-filter: none;
+}
+
+.mt-connector-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 48px 52px 42px;
+  text-align: center;
+}
+
+.mt-connector-hero-icon {
+  display: grid;
+  width: 84px;
+  height: 84px;
+  flex: 0 0 84px;
+  place-items: center;
+  border-radius: 24px;
+}
+
+.mt-connector-hero-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.mt-connector-auth-heading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  margin: 2px 0 28px;
+}
+
+.mt-connector-auth-heading .mt-connector-hero-icon {
+  margin-right: 86px;
+}
+
+.mt-connector-dialog-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  margin: 16px auto 18px;
+  color: var(--ui-text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.mt-connector-auth-heading .mt-connector-dialog-status {
+  margin: 0;
+}
+
+.mt-connector-dialog > div > .mt-connector-hero-icon {
+  margin: 0 auto 22px;
+}
+
+.mt-connector-dialog-title {
+  color: var(--ui-text-primary);
+  font-size: 28px;
+  line-height: 1.25;
+  font-weight: 800;
+}
+
+.mt-connector-dialog-provider {
+  margin: 10px 0 0;
+  color: var(--ui-text-tertiary);
+  font-size: 16px;
+}
+
+.mt-connector-dialog-description {
+  max-width: 620px;
+  margin: 28px auto 0;
+  color: var(--ui-text-primary);
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+.mt-connector-inline-notice,
+.mt-connector-error {
+  margin: 18px auto 0;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.mt-connector-inline-notice {
+  color: var(--ui-text-tertiary);
+}
+
+.mt-connector-error {
+  color: var(--destructive);
+}
+
+.mt-connector-dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 28px;
+}
+
+.mt-connector-examples {
+  margin-top: 36px;
+  text-align: left;
+}
+
+.mt-connector-examples h3 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 16px;
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.mt-connector-examples h3 svg,
+.mt-connector-examples button svg {
+  width: 20px;
+  flex-shrink: 0;
+}
+
+.mt-connector-examples ul {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mt-connector-examples button {
+  display: flex;
+  width: 100%;
+  min-height: 56px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: var(--ui-bg-quaternary);
+  color: var(--ui-text-secondary);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.55;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mt-connector-examples button:hover {
+  background: var(--chrome-action-hover);
+  color: var(--ui-text-primary);
+}
+
+.mt-connector-guide {
+  margin-top: 24px;
+  text-align: left;
+}
+
+.mt-connector-guide > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--dt-primary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.mt-connector-guide > button svg {
+  width: 17px;
+  transition: transform 140ms ease;
+}
+
+.mt-connector-guide > button[aria-expanded='true'] svg {
+  transform: rotate(180deg);
+}
+
+.mt-connector-guide-panel {
+  margin-top: 12px;
+  padding: 16px 18px;
+  border: 1px solid var(--stroke-nous);
+  border-radius: 12px;
+  background: var(--ui-bg-quaternary);
+  color: var(--ui-text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.mt-connector-guide-panel ol {
+  margin: 0 0 12px;
+  padding-left: 20px;
+}
+
+.mt-connector-guide-panel li + li {
+  margin-top: 5px;
+}
+
+.mt-connector-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 24px;
+  padding: 24px;
+  border: 1px solid var(--stroke-nous);
+  border-radius: 18px;
+  background: var(--ui-bg-quaternary);
+  text-align: left;
+}
+
+.mt-connector-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--ui-text-primary);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.mt-connector-form input {
+  width: 100%;
+  height: 48px;
+  padding: 0 14px;
+  border: 1px solid var(--stroke-nous);
+  border-radius: 10px;
+  outline: none;
+  background: var(--ui-chat-bubble-background);
+  color: var(--ui-text-primary);
+  font-size: 15px;
+}
+
+.mt-connector-form input:focus {
+  border-color: var(--dt-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dt-primary) 16%, transparent);
+}
+
+.mt-connector-form-hint {
+  margin: -4px 0 0;
+  color: var(--ui-text-tertiary);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.mt-connector-qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.mt-connector-qr img {
+  padding: 10px;
+  border: 1px solid var(--stroke-nous);
+  border-radius: 16px;
+  background: white;
+}
+
+.mt-connector-qr p {
+  margin: 0;
+  color: var(--ui-text-tertiary);
+  font-size: 13px;
+}
+
+@container (max-width: 1000px) {
+  .mt-connectors-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container (max-width: 640px) {
+  .mt-connectors-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mt-connectors-toolbar {
+    gap: 12px;
+  }
+  .mt-connectors-search {
+    order: -1;
+    width: 100%;
+    margin-bottom: 0;
+  }
+  .mt-connectors-tabs {
+    width: 100%;
+  }
+  .mt-connector-card {
+    min-height: 174px;
+    padding: 20px;
+  }
+
+  .mt-connector-dialog-body {
+    padding: 48px 20px 28px;
+  }
+
+  .mt-connector-dialog-actions {
+    flex-wrap: wrap;
+  }
+
+  .mt-connector-auth-heading {
+    gap: 18px;
+  }
+
+  .mt-connector-auth-heading .mt-connector-hero-icon {
+    margin-right: 72px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mt-connector-card {
+    transition: none;
+  }
+
+  .mt-connector-guide > button svg {
+    transition: none;
+  }
+}

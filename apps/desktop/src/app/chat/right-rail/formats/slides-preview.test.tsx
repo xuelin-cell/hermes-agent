@@ -8,8 +8,9 @@ import { FormatPreview } from './format-preview'
 import type { PdfPages } from './pdf-pages'
 import { currentSlide } from './slides-preview'
 
-const mock = vi.hoisted(() => ({ open: vi.fn() }))
+const mock = vi.hoisted(() => ({ open: vi.fn(), local: vi.fn() }))
 vi.mock('./pdf-pages', () => ({ openPdfPages: mock.open }))
+vi.mock('./pptx-pages', () => ({ openPptxPages: mock.local }))
 vi.mock('@/hooks/use-resize-observer', () => ({
   // jsdom 没有布局；固定为窄而高的面板，确认预绘制按高度而非宽度计算。
   useResizeObserver: (callback: () => void, ref: { current: HTMLElement | null }) => {
@@ -96,10 +97,12 @@ beforeEach(() => {
     dispose
   }
   mock.open.mockReset().mockResolvedValue(book)
+  mock.local.mockReset().mockResolvedValue(book)
   convert.mockReset().mockResolvedValue({ ok: true, pdf: new Uint8Array([1, 2]), version: 'fixture', converter: 'wps' })
   window.hermesDesktop = {
     convertOfficePreview: convert,
     cancelOfficePreview: vi.fn(async () => undefined),
+    readFileDataUrl: vi.fn(async () => 'data:application/octet-stream;base64,UEsDBA=='),
     revealPath: vi.fn(),
     saveGatewayFile: vi.fn(async () => ({ saved: false, canceled: true }))
   } as never
@@ -356,9 +359,30 @@ it('某一页画不出来只在该页显示说明，其它页照常，整份不�
   expect(dispose).toHaveBeenCalled()
 })
 
-it('本机不可用提示安装，远程不调用本机转换并保留原连接下载', async () => {
+it('pptx 没有转换软件时改在本机解析，沿用同一查看器并在关闭时释放', async () => {
   convert.mockResolvedValue({ ok: false, code: 'unavailable' })
   const view = render(<FormatPreview reloadKey={0} target={target()} />)
+  await screen.findByAltText('Slide 1')
+  expect(mock.open).not.toHaveBeenCalled()
+  expect(new Uint8Array(mock.local.mock.calls[0][0])).toEqual(new Uint8Array([0x50, 0x4b, 3, 4]))
+  expect(screen.queryByText('If no conversion software is available, install LibreOffice and try again.')).toBeNull()
+  view.unmount()
+  expect(dispose).toHaveBeenCalled()
+})
+
+it('pptx 本机也解析不了时仍提示安装转换软件', async () => {
+  convert.mockResolvedValue({ ok: false, code: 'unavailable' })
+  mock.local.mockRejectedValue({ code: 'unavailable' })
+  render(<FormatPreview reloadKey={0} target={target()} />)
+  expect(
+    await screen.findByText('If no conversion software is available, install LibreOffice and try again.')
+  ).toBeTruthy()
+})
+
+it('本机不可用提示安装，远程不调用本机转换并保留原连接下载', async () => {
+  convert.mockResolvedValue({ ok: false, code: 'unavailable' })
+  // 旧版 ppt 本机解析不了，只走转换。
+  const view = render(<FormatPreview reloadKey={0} target={target('ppt')} />)
   expect(
     await screen.findByText('If no conversion software is available, install LibreOffice and try again.')
   ).toBeTruthy()
@@ -367,11 +391,12 @@ it('本机不可用提示安装，远程不调用本机转换并保留原连接�
   expect(window.hermesDesktop.saveGatewayFile).toHaveBeenCalledWith({
     connectionId: 'slides-remote',
     profile: 'team',
-    path: target().path,
-    suggestedName: target().label
+    path: target('ppt').path,
+    suggestedName: target('ppt').label
   })
   expect(convert).toHaveBeenCalledTimes(1)
   expect(mock.open).not.toHaveBeenCalled()
+  expect(mock.local).not.toHaveBeenCalled()
   expect(screen.queryByText('If no conversion software is available, install LibreOffice and try again.')).toBeNull()
   view.unmount()
 })

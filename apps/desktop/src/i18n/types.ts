@@ -59,6 +59,15 @@ interface AuxTaskCopy {
 }
 
 export interface Translations {
+  workspaceEditor: {
+    title: string
+    capabilities: string
+    openProject: string
+    selectFile: string
+    unsupported: string
+    refresh: string
+    save: string
+  }
   conversationShare: {
     sessionShare: string
     responseShare: string
@@ -180,6 +189,7 @@ export interface Translations {
     restoreHint: string
     recycleFailed: string
     recycleEmpty: string
+    operationVerifying: string
     operationUnknown: string
     operationPartial: string
     operationFailed: string
@@ -205,10 +215,19 @@ export interface Translations {
       restart: string
       actualUsage: string
       details: string
+      subscribe: string
+      subscribeBusy: string
+      subscribeFailed: string
+      subscribeAuth: string
+      subscribeMissingPhone: string
+      subscribeRestart: string
       logout: string
       title: string
       loading: string
       refresh: string
+      refreshPlan: string
+      refreshed: string
+      refreshFailed: string
       failed: string
       stale: string
       auth: string
@@ -217,14 +236,17 @@ export interface Translations {
       expired: string
       expires: string
       used: string
+      tokenUsed: string
       remaining: string
       fiveHour: string
       week: string
       month: string
       reset: string
+      resetsAt: (time: string) => string
+      expiryText: (date: string) => string
+      tokenExact: (remaining: string, used: string, total: string, unit: string) => string
       notStarted: string
       resetDue: string
-      concurrency: string
     }
     brand: string
     welcome: string
@@ -366,22 +388,78 @@ export interface Translations {
     required: string
   }
   connectorsPage: {
-    mcpLocal: {
-      addCustom: string
-      custom: string
-      plugins: string
-      profile: string
+    recommended: {
+      qrHint: string
+      qrExpired: string
+      qrRefresh: string
+      connect: (name: string) => string
+      connectAction: string
+      connected: string
+      disconnect: string
+      tryIt: string
+      brand: string
+      credentials: string
+      credentialsHint: string
+      waiting: string
+      cancel: string
+      localOnly: string
+      nextSession: string
+      needAuth: string
+      saveAndConnect: string
+      saving: string
+      openChat: string
+      fields: Record<string, string>
+      placeholders: Record<string, string>
+      hints: Record<string, string>
+      guides: Record<string, { title: string; steps: string[]; link: string }>
+      tab: string
       search: string
-      empty: string
+      details: (name: string) => string
+      unavailable: string
+      unavailableHint: string
       noMatches: string
+      catalog: Record<string, { name: string; description: string; provider: string }>
+    }
+    mcpLocal: {
+      hint: string
+      profile: string
+      builtIn: string
+      builtInTag: string
+      custom: string
+      customHint: string
+      empty: string
+      addServer: string
+      chooseTransport: string
+      plugins: string
+      openPlugins: string
       loadFailed: string
       pluginsFailed: string
-      configuration: string
-      enabled: string
-      testing: string
-      testPassed: string
-      testFailed: string
-      untested: string
+      untitled: string
+      noUrl: string
+      noCommand: string
+      connecting: string
+      toolsAvailable: (count: number) => string
+      failed: string
+      type: string
+      name: string
+      namePlaceholder: string
+      url: string
+      headers: string
+      command: string
+      args: string
+      env: string
+      addRow: string
+      removeRow: string
+      showValue: string
+      hideValue: string
+      uniAiToolkitSummary: string
+      formErrors: {
+        argsQuote: string
+        commandRequired: string
+        nameRequired: string
+        nameTaken: string
+        urlRequired: string
+      }
     }
     title: string
     searchPlaceholder: (count: number) => string
@@ -2701,6 +2779,13 @@ export interface Translations {
       guide: string
       save: string
       comingSoon: string
+      personalBindingMissing: string
+      reconnect: string
+      reconnecting: string
+      reconnected: string
+      reconnectBusy: string
+      reconnectFailed: string
+      reconnectRestartRequired: string
       unavailable: string
       notConnected: string
       unbind: string
@@ -3230,6 +3315,19 @@ export interface Translations {
   }
 
   artifactShare: {
+    validity: string
+    days: (count: number) => string
+    customValidity: string
+    editValidity: string
+    saveValidity: string
+    expiresAt: (date: string) => string
+    noExpiry: string
+    expired: string
+    cleanupPending: string
+    expiryNotice: string
+    invalidValidity: string
+    inactive: string
+    statusUnavailable: string
     disclosure: string
     checking: string
     createLink: string

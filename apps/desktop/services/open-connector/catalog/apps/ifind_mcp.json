@@ -1,0 +1,201 @@
+{
+  "service": "ifind_mcp",
+  "displayName": "同花顺 iFinD",
+  "categories": [
+    "Finance",
+    "Data"
+  ],
+  "authTypes": [
+    "oauth2"
+  ],
+  "auth": [
+    {
+      "type": "oauth2",
+      "authorizationUrl": "https://upass.10jqka.com.cn/oidc/ifcwb/authorize",
+      "tokenUrl": "https://upass.10jqka.com.cn/oidc/ifcwb/token",
+      "refreshTokenUrl": "https://upass.10jqka.com.cn/oidc/ifcwb/token",
+      "scopes": [
+        "openid",
+        "base_userinfo",
+        "offline_access",
+        "ca:goods.ver.r"
+      ],
+      "tokenEndpointAuthMethod": "none",
+      "pkce": {
+        "method": "S256"
+      },
+      "defaultClientConfig": {
+        "clientId": "upoc_f572ssz_ltif_prod"
+      },
+      "authorizationParams": {
+        "resource": "https://api-mcp.51ifind.com:8643/ds-mcp-servers/hexin-ifind-financial-mcp"
+      },
+      "tokenParams": {
+        "resource": "https://api-mcp.51ifind.com:8643/ds-mcp-servers/hexin-ifind-financial-mcp"
+      },
+      "clientSetup": {
+        "docsUrl": "https://upass.10jqka.com.cn/oidc/ifcwb/.well-known/oauth-authorization-server",
+        "steps": [
+          "iFinD uses the Yuanjing Digital Employee OAuth public client for this local runtime.",
+          "The client allows loopback callback URLs (http://127.0.0.1:<port>/oauth/callback); the port may change on every launch.",
+          "After signing in, one grant covers the iFinD MCP resource."
+        ]
+      }
+    }
+  ],
+  "homepageUrl": "https://mcp.51ifind.com/",
+  "actions": [
+    {
+      "id": "ifind_mcp.call_tool",
+      "service": "ifind_mcp",
+      "name": "call_tool",
+      "description": "Call a current iFinD MCP tool with JSON arguments after checking its live schema with list_tools.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "serverType": {
+            "type": "string",
+            "enum": [
+              "finance",
+              "enterprise",
+              "law"
+            ],
+            "description": "The iFinD MCP service that owns the requested tool."
+          },
+          "toolName": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The exact tool name returned by list_tools."
+          },
+          "arguments": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": true,
+            "description": "JSON arguments matching the inputSchema returned for the selected tool; serialized arguments must not exceed 1000000 bytes."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "serverType",
+          "toolName"
+        ],
+        "description": "Input for invoking one current iFinD MCP tool."
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "result": {
+            "description": "The tool result. Structured MCP content is returned directly; otherwise the MCP content envelope is preserved."
+          }
+        },
+        "additionalProperties": false,
+        "description": "The normalized result returned by the iFinD MCP tool."
+      },
+      "followUpActions": [
+        "ifind_mcp.list_tools"
+      ]
+    },
+    {
+      "id": "ifind_mcp.list_tools",
+      "service": "ifind_mcp",
+      "name": "list_tools",
+      "description": "Discover the current iFinD tools and their live input schemas for financial data, enterprise information, or legal content.",
+      "requiredScopes": [],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "serverType": {
+            "type": "string",
+            "enum": [
+              "finance",
+              "enterprise",
+              "law"
+            ],
+            "description": "The iFinD MCP service that owns the requested tool."
+          }
+        },
+        "additionalProperties": false,
+        "description": "The iFinD MCP service whose tools should be discovered."
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "serverType": {
+            "type": "string",
+            "enum": [
+              "finance",
+              "enterprise",
+              "law"
+            ],
+            "description": "The iFinD MCP service that owns the requested tool."
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "The exact iFinD MCP tool name to pass to call_tool."
+                },
+                "description": {
+                  "type": "string",
+                  "description": "The current tool description supplied by iFinD MCP."
+                },
+                "annotations": {
+                  "type": "object",
+                  "properties": {
+                    "title": {
+                      "type": "string",
+                      "description": "A human-readable title for the tool."
+                    },
+                    "readOnlyHint": {
+                      "type": "boolean",
+                      "description": "Whether the tool is expected not to modify data."
+                    },
+                    "destructiveHint": {
+                      "type": "boolean",
+                      "description": "Whether the tool may perform destructive operations."
+                    },
+                    "idempotentHint": {
+                      "type": "boolean",
+                      "description": "Whether repeated calls with the same arguments are expected to be idempotent."
+                    },
+                    "openWorldHint": {
+                      "type": "boolean",
+                      "description": "Whether the tool may interact with entities outside iFinD."
+                    }
+                  },
+                  "additionalProperties": true,
+                  "description": "MCP behavior hints supplied by iFinD."
+                },
+                "inputSchema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": true,
+                  "description": "The current JSON Schema for the tool arguments, supplied by iFinD MCP."
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "name",
+                "inputSchema"
+              ],
+              "description": "A tool currently exposed by one iFinD MCP service."
+            },
+            "description": "Tools currently exposed by the selected iFinD MCP service."
+          }
+        },
+        "additionalProperties": false,
+        "description": "The current tool catalog for one iFinD MCP service."
+      },
+      "followUpActions": [
+        "ifind_mcp.call_tool"
+      ]
+    }
+  ]
+}

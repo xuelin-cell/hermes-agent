@@ -5,6 +5,15 @@ import { defineLocale } from './define-locale'
 import { introJa } from './intro-ja'
 
 export const ja = defineLocale({
+  workspaceEditor: {
+    title: 'エディター',
+    capabilities: '拡張機能',
+    openProject: 'プロジェクトの会話を開いてファイルを参照してください。',
+    selectFile: '編集するファイルを選択してください。',
+    unsupported: 'バイナリ、省略された大きなファイルは編集できません。',
+    refresh: '更新',
+    save: '保存'
+  },
   conversationShare: {
     sessionShare: '会話を共有',
     responseShare: '回答を共有',
@@ -1997,6 +2006,13 @@ export const ja = defineLocale({
       guide: '設定ガイド',
       save: '保存して有効化',
       comingSoon: '連携準備中',
+      personalBindingMissing: '個人連携を確認できません。ログアウトし、SMS で再ログインしてください。',
+      reconnect: '再接続',
+      reconnecting: '再接続中…',
+      reconnected: '5G メッセージに再接続しました。',
+      reconnectBusy: 'メッセージの処理中です。完了後に再接続してください。',
+      reconnectFailed: '5G の再接続に失敗しました。ログを確認し、アプリを完全に終了して再起動してください。',
+      reconnectRestartRequired: "5G コンポーネントの更新が未適用です。トレイを含めアプリを完全に終了してから再起動してください。",
       unavailable: 'メッセージ機能を利用できません',
       notConnected: '未接続',
       unbind: '連携解除',
@@ -2525,6 +2541,19 @@ export const ja = defineLocale({
   },
 
   artifactShare: {
+    validity: "有効期間",
+    days: count => `${count} 日`,
+    customValidity: "日数を指定",
+    editValidity: "有効期間を変更",
+    saveValidity: "有効期間を保存",
+    expiresAt: date => `有効期限：${date}`,
+    noExpiry: "この既存リンクには有効期限がありません。",
+    expired: "共有の期限切れ",
+    cleanupPending: "期限切れ、削除待ちです。公開リンクにまだアクセスできる場合があります。",
+    expiryNotice: "新規リンクは既定で1日、1～7日を選択できます。変更は保存時から適用されます。アプリ終了中の期限切れは次回起動時に削除します。",
+    invalidValidity: "1～7の整数を入力してください。",
+    inactive: "共有が取り消されたか、リンクは利用できません。",
+    statusUnavailable: "共有状態を確認できません。アプリを完全に終了して再試行してください。",
     disclosure: "リンクを知っている人はこの成果物を閲覧できます。他のファイルや会話は共有されません。",
     checking: "共有状態を確認中…",
     createLink: "公開リンクを作成",
@@ -2605,7 +2634,7 @@ export const ja = defineLocale({
     },
     nav: {
       'new-session': '新しいセッション',
-      capabilities: 'スキルとツール',
+      capabilities: '拡張機能',
       messaging: 'メッセージング',
       artifacts: 'アーティファクト',
       cron: 'スケジュール済みジョブ'

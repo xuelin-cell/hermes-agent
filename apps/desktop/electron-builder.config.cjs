@@ -109,7 +109,7 @@ module.exports = {
   directories: {
     output: 'release'
   },
-  files: ['dist/**', 'assets/**', 'public/**', 'package.json'],
+  files: ['dist/**', '!dist/python-plugins/**', 'assets/**', '!assets/uniagentgate-plugin/**', 'public/**', 'package.json'],
   beforeBuild: channelRequest ? async () => {
     await require(path.join(__dirname, 'scripts/before-build.mjs')).default()
     stageChannelManifest(__dirname, channelRequest)
@@ -123,6 +123,16 @@ module.exports = {
   afterPack: 'scripts/after-pack.mjs',
   ...(process.platform === 'darwin' ? { afterSign: 'scripts/notarize.mjs' } : {}),
   extraResources: [
+    {
+      from: 'services/open-connector',
+      to: 'open-connector',
+      filter: ['src/**', 'catalog/**', 'migrations/**', 'node_modules/**', 'desktop-entry.mjs', 'package.json', 'LICENSE.txt', 'NOTICE.md', 'README.desktop.md']
+    },
+    {
+      from: 'dist/python-plugins',
+      to: 'python-plugins',
+      filter: ['**/*', '!**/__pycache__/**', '!**/*.pyc']
+    },
     {
       from: 'build/install-stamp.json',
       to: 'install-stamp.json'

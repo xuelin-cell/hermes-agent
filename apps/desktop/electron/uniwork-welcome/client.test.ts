@@ -4,35 +4,40 @@ import { createServer } from 'node:http'
 import { expect, it, vi } from 'vitest'
 
 vi.mock('electron', () => ({ net: { fetch } }))
+import { normalizeWelcomeCatalog } from './catalog'
 import { WelcomeCatalogClient } from './client'
 
-it('匿名读取固定uniwork配置地址，解包modules并保留对应的tags和templates', async () => {
+it('requires the current login token for V3 and rejects unusable or extra-escaped payloads', async () => {
   let authorization: string | undefined
+  let envelopeOverride: unknown
 
   const server = createServer((request, response) => {
     authorization = request.headers.authorization
     response.setHeader('Content-Type', 'application/json')
     response.end(
-      JSON.stringify({
-        configValue: JSON.stringify({
-          modules: [
-            {
-              id: 'arbitrary',
-              name: 'Configured office',
-              enabled: true,
-              tags: [
-                {
-                  id: 'docs',
-                  name: 'Docs',
-                  sort: 10,
-                  enabled: true,
-                  templates: [{ id: 'one', name: 'One', prompt: 'Create a report', sort: 10, enabled: true }]
-                }
-              ]
-            }
-          ]
-        })
-      })
+      JSON.stringify(
+        envelopeOverride ?? {
+          version: ' version-1 ',
+          configValue: JSON.stringify({
+            modules: [
+              {
+                id: 'arbitrary',
+                name: 'Configured office',
+                enabled: true,
+                tags: [
+                  {
+                    id: 'docs',
+                    name: 'Docs',
+                    sort: 10,
+                    enabled: true,
+                    templates: [{ id: 'one', name: 'One', prompt: 'Create a report', sort: 10, enabled: true }]
+                  }
+                ]
+              }
+            ]
+          })
+        }
+      )
     )
   })
 
@@ -46,18 +51,36 @@ it('匿名读取固定uniwork配置地址，解包modules并保留对应的tags�
       throw new Error('本地HTTP端口不可用')
     }
 
-    const client = new WelcomeCatalogClient(async (input, options) => {
-      expect(String(input)).toBe(
-        'https://maas.ai-yuanjing.com/app/gateway/uniwork/system-config?key=welcome_config_codex_zh-CN'
-      )
+    let signedIn = false
+    const identity = { uid: 'test', token: 'private-token', maskedPhone: '138****0000', expiresAt: Date.now() + 60_000 }
 
-      return fetch(`http://127.0.0.1:${address.port}`, options)
-    })
+    const client = new WelcomeCatalogClient(
+      async (input, options) => {
+        expect(String(input)).toBe(
+          'https://maas.ai-yuanjing.com/app/gateway/uniwork/system-config?key=welcome_config_v3_zh-CN'
+        )
 
-    const result = await client.load('zh-CN')
+        return fetch(`http://127.0.0.1:${address.port}`, options)
+      },
+      () => (signedIn ? identity : null)
+    )
+
+    await expect(client.load('zh-CN')).rejects.toThrow('更新失败')
     expect(authorization).toBeUndefined()
-    expect(result[0].tags[0].templates[0].prompt).toBe('Create a report')
+    signedIn = true
+    const result = await client.load('zh-CN')
+    expect(authorization).toBe('Bearer private-token')
+    expect(normalizeWelcomeCatalog(result)[0].tags[0].templates[0].prompt).toBe('Create a report')
+    expect(result.version).toBe('version-1')
     expect(JSON.stringify(result)).not.toContain('private-token')
+    expect(result.modules[0]).not.toHaveProperty('workspace')
+    signedIn = true
+    await client.load('zh-CN')
+    expect(authorization).toBe('Bearer private-token')
+    envelopeOverride = { configValue: JSON.stringify(JSON.stringify({ modules: [{ name: 'code' }] })) }
+    await expect(client.load('zh-CN')).rejects.toThrow('更新失败')
+    envelopeOverride = { configValue: JSON.stringify({ modules: [] }) }
+    await expect(client.load('zh-CN')).rejects.toThrow('更新失败')
     await expect(client.load('forged' as never)).rejects.toThrow('语言无效')
   } finally {
     server.closeAllConnections()

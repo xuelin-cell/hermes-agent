@@ -12,7 +12,9 @@ import type { CloudDriveClient } from './cloud-drive'
 import { CloudDriveOperationError } from './cloud-drive'
 import type { AuthorizedArtifactFile } from './cloud-drive-artifact-source'
 import { CLOUD_DRIVE_PREVIEW_BYTES as PREVIEW_BYTES } from './cloud-drive-preview'
+import { confirmDriveState, snapshotUpload, verifyUpload } from './cloud-drive-verification'
 import type {
+  CloudDriveRequest,
   CloudDriveTransferFileResult,
   CloudDriveTransferProgress,
   CloudDriveTransferRequest,
@@ -81,7 +83,10 @@ function transferFailure(
   controller: AbortController,
   upload: boolean
 ): Exclude<CloudDriveTransferResult, { status: 'succeeded' }> {
-  if (error instanceof CloudDriveOperationError && error.result.status !== 'failed') {
+  if (
+    error instanceof CloudDriveOperationError &&
+    (error.result.status !== 'failed' || error.result.code === 'UPLOAD_CONFIRMATION_FAILED')
+  ) {
     return error.result
   }
 
@@ -109,7 +114,7 @@ function transferFailure(
 
 /** 大文件使用顺序分片和流式落盘；实际路径只取自主进程核对结果或原生选择框。 */
 export class CloudDriveTransfers {
-  private readonly active = new Map<number, { id: string; controller: AbortController }>()
+  private readonly active = new Map<number, { id: string; controller: AbortController; lifetime: AbortController }>()
   private readonly previews = new Map<number, Set<string>>()
   private previewRootReady: Promise<void> | undefined
   private readonly previewCleanups = new Set<Promise<unknown>>()
@@ -126,6 +131,10 @@ export class CloudDriveTransfers {
 
     if (transfer && (id === undefined || transfer.id === id)) {
       transfer.controller.abort()
+
+      if (id === undefined) {
+        transfer.lifetime.abort()
+      }
     }
   }
 
@@ -133,6 +142,7 @@ export class CloudDriveTransfers {
   cancelAll(): void {
     for (const transfer of this.active.values()) {
       transfer.controller.abort()
+      transfer.lifetime.abort()
     }
 
     void this.clearPreviews()
@@ -187,7 +197,13 @@ export class CloudDriveTransfers {
     }
 
     const controller = new AbortController()
-    const checkIdentity = this.drive.guardIdentity()
+    const lifetime = new AbortController()
+    const identityGuard = this.drive.guardIdentity()
+
+    const checkIdentity = () => {
+      lifetime.signal.throwIfAborted()
+      identityGuard()
+    }
 
     const check = () => {
       controller.signal.throwIfAborted()
@@ -199,10 +215,11 @@ export class CloudDriveTransfers {
         checkIdentity()
       } catch {
         controller.abort(new CloudDriveOperationError('failed', 'AUTH_CHANGED'))
+        lifetime.abort()
       }
     }, 250)
 
-    this.active.set(owner, { id: input.id, controller })
+    this.active.set(owner, { id: input.id, controller, lifetime })
 
     try {
       check()
@@ -212,7 +229,7 @@ export class CloudDriveTransfers {
       }
 
       return input.operation === 'upload'
-        ? await this.upload(input, host, controller.signal, check)
+        ? await this.upload(input, host, controller.signal, check, checkIdentity, lifetime.signal)
         : await this.download(input, host, controller, check, owner)
     } catch (error) {
       return transferFailure(error, controller, input.operation === 'upload')
@@ -295,7 +312,9 @@ export class CloudDriveTransfers {
     input: Extract<CloudDriveTransferRequest, { operation: 'upload' }>,
     host: TransferHost,
     signal: AbortSignal,
-    check: () => void
+    check: () => void,
+    checkIdentity: () => void,
+    lifetime: AbortSignal
   ): Promise<CloudDriveTransferResult> {
     const selected = await host.selectUpload(signal)
     check()
@@ -347,73 +366,142 @@ export class CloudDriveTransfers {
         throw new CloudDriveOperationError('failed', 'FILE_TOO_LARGE')
       }
 
-      const totalPart = Math.max(1, Math.ceil(snapshot.size / PART_BYTES))
-      const uniqueId = randomUUID().replaceAll('-', '')
-      host.progress({ id: input.id, name, completed: 0, total: snapshot.size })
+      // 相同目标和签名串行读取新基线，避免两个并发上传互相认领对方的文件。
+      return await this.drive.withUploadLock(
+        JSON.stringify([input.parentAssetId, name, snapshot.size]),
+        signal,
+        async () => {
+          check()
 
-      for (let index = 0; index < totalPart; index++) {
-        check()
+          const read = async (request: CloudDriveRequest, scope: AbortSignal) => {
+            checkIdentity()
+            const value = await this.drive.execute(request, AbortSignal.any([scope, lifetime]))
+            checkIdentity()
 
-        const current = await file.stat()
-
-        if (
-          current.size !== snapshot.size ||
-          current.mtimeMs !== snapshot.mtimeMs ||
-          current.ctimeMs !== snapshot.ctimeMs
-        ) {
-          throw new CloudDriveOperationError('failed', 'FILE_CHANGED')
-        }
-
-        const position = index * PART_BYTES
-        const bytes = Buffer.alloc(Math.min(PART_BYTES, snapshot.size - position))
-        const { bytesRead } = await file.read(bytes, 0, bytes.length, position)
-
-        const afterRead = await file.stat()
-
-        if (
-          bytesRead !== bytes.length ||
-          afterRead.size !== snapshot.size ||
-          afterRead.mtimeMs !== snapshot.mtimeMs ||
-          afterRead.ctimeMs !== snapshot.ctimeMs
-        ) {
-          throw new CloudDriveOperationError('failed', 'FILE_CHANGED')
-        }
-
-        check()
-
-        if (index + 1 === totalPart) {
-          host.progress({ id: input.id, name, completed: position, total: snapshot.size, phase: 'verifying' })
-        }
-
-        try {
-          await this.drive.uploadPart(
-            {
-              uniqueId,
-              fileName: name,
-              fileSize: snapshot.size,
-              totalPart,
-              partIndex: index + 1,
-              directoryId: input.parentAssetId
-            },
-            bytes,
-            signal
-          )
-        } catch (error) {
-          if (
-            index + 1 < totalPart &&
-            error instanceof CloudDriveOperationError &&
-            error.result.status === 'outcome_unknown'
-          ) {
-            throw new CloudDriveOperationError('failed', 'UPLOAD_INCOMPLETE')
+            return value
           }
 
-          throw error
+          let baseline: Awaited<ReturnType<typeof snapshotUpload>> | undefined
+
+          try {
+            baseline = await snapshotUpload(
+              read,
+              input.parentAssetId,
+              name,
+              snapshot.size,
+              AbortSignal.any([signal, AbortSignal.timeout(8000)])
+            )
+          } catch {
+            // 没有完整快照时不伪装成已启动自动核验。
+          }
+
+          check()
+          const totalPart = Math.max(1, Math.ceil(snapshot.size / PART_BYTES))
+          const uniqueId = randomUUID().replaceAll('-', '')
+          host.progress({ id: input.id, name, completed: 0, total: snapshot.size })
+
+          for (let index = 0; index < totalPart; index++) {
+            check()
+
+            const current = await file.stat()
+
+            if (
+              current.size !== snapshot.size ||
+              current.mtimeMs !== snapshot.mtimeMs ||
+              current.ctimeMs !== snapshot.ctimeMs
+            ) {
+              throw new CloudDriveOperationError('failed', 'FILE_CHANGED')
+            }
+
+            const position = index * PART_BYTES
+            const bytes = Buffer.alloc(Math.min(PART_BYTES, snapshot.size - position))
+            const { bytesRead } = await file.read(bytes, 0, bytes.length, position)
+
+            const afterRead = await file.stat()
+
+            if (
+              bytesRead !== bytes.length ||
+              afterRead.size !== snapshot.size ||
+              afterRead.mtimeMs !== snapshot.mtimeMs ||
+              afterRead.ctimeMs !== snapshot.ctimeMs
+            ) {
+              throw new CloudDriveOperationError('failed', 'FILE_CHANGED')
+            }
+
+            check()
+
+            try {
+              await this.drive.uploadPart(
+                {
+                  uniqueId,
+                  fileName: name,
+                  fileSize: snapshot.size,
+                  totalPart,
+                  partIndex: index + 1,
+                  directoryId: input.parentAssetId
+                },
+                bytes,
+                signal
+              )
+            } catch (error) {
+              if (
+                index + 1 < totalPart &&
+                error instanceof CloudDriveOperationError &&
+                error.result.status !== 'failed'
+              ) {
+                throw new CloudDriveOperationError('failed', 'UPLOAD_INCOMPLETE')
+              }
+
+              if (
+                index + 1 === totalPart &&
+                error instanceof CloudDriveOperationError &&
+                error.result.status !== 'failed'
+              ) {
+                if (!baseline) {
+                  throw new CloudDriveOperationError('outcome_unknown', 'UPLOAD_CONFIRMATION_UNAVAILABLE')
+                }
+
+                // 用户停止末片后仍确认已发送的数据；退出账号/窗口销毁由生命周期信号中止。
+                const confirmation = AbortSignal.any([lifetime, AbortSignal.timeout(45000)])
+
+                try {
+                  checkIdentity()
+                  host.progress({ id: input.id, name, completed: position, total: snapshot.size, phase: 'verifying' })
+
+                  const verdict = await confirmDriveState(
+                    () => verifyUpload(read, baseline!, confirmation),
+                    confirmation,
+                    checkIdentity
+                  )
+
+                  if (verdict === 'confirmed') {
+                    return { status: 'succeeded', name }
+                  }
+
+                  if (verdict === 'absent') {
+                    throw new CloudDriveOperationError('failed', 'UPLOAD_CONFIRMATION_FAILED')
+                  }
+                } catch (confirmationError) {
+                  if (
+                    confirmationError instanceof CloudDriveOperationError &&
+                    confirmationError.result.code === 'UPLOAD_CONFIRMATION_FAILED'
+                  ) {
+                    throw confirmationError
+                  }
+                }
+
+                throw new CloudDriveOperationError('outcome_unknown', 'UPLOAD_CONFIRMATION_UNAVAILABLE')
+              }
+
+              throw error
+            }
+
+            host.progress({ id: input.id, name, completed: position + bytes.length, total: snapshot.size })
+          }
+
+          return { status: 'succeeded', name }
         }
-
-        host.progress({ id: input.id, name, completed: position + bytes.length, total: snapshot.size })
-      }
-
-      return { status: 'succeeded', name }
+      )
     } finally {
       // 关闭只读句柄失败不能把服务已确认的上传改报为可重试失败。
       await file.close().catch(() => {})

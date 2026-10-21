@@ -9,6 +9,7 @@ import { CheckCircle2, Loader2 } from '@/lib/icons'
 
 export const PLATFORM_IDS = ['weixin', 'dingtalk', 'feishu', 'wecom'] as const
 export type PlatformId = (typeof PLATFORM_IDS)[number]
+export const DISPLAY_PLATFORM_IDS = [...PLATFORM_IDS, 'uniagentgate'] as const
 
 export const CREDENTIAL_KEYS: Record<Exclude<PlatformId, 'weixin'>, readonly string[]> = {
   dingtalk: ['DINGTALK_CLIENT_ID', 'DINGTALK_CLIENT_SECRET'],
@@ -16,11 +17,12 @@ export const CREDENTIAL_KEYS: Record<Exclude<PlatformId, 'weixin'>, readonly str
   wecom: ['WECOM_BOT_ID', 'WECOM_SECRET']
 }
 
-const GUIDES: Record<PlatformId, string> = {
+const GUIDES: Record<(typeof DISPLAY_PLATFORM_IDS)[number], string> = {
   weixin: 'https://docs.qq.com/aio/DZkhpemVoTGNmVXJR',
   dingtalk: 'https://docs.qq.com/aio/DZmJuVGNjaWd5RnhK',
   feishu: 'https://docs.qq.com/aio/DZm1hV2tEb3JBaE5y',
-  wecom: 'https://docs.qq.com/aio/DZkdEVW1CcG9VUFZa'
+  wecom: 'https://docs.qq.com/aio/DZkdEVW1CcG9VUFZa',
+  uniagentgate: 'https://docs.qq.com/doc/DZmdiTERIT2VjZHJB'
 }
 
 /** 状态来自现有接口；有凭据不代表网关或消息平台已经连接。 */
@@ -51,7 +53,7 @@ export function PlatformStatus({ platform, pending = false }: { platform?: Messa
   )
 }
 
-/** 消息平台的统一卡片；5G 仅展示待接入状态，不发起任何业务请求。 */
+/** 消息平台状态统一来自后台；个人 5G 凭据由登录流程维护。 */
 export function PlatformCard({
   id,
   platform,
@@ -67,7 +69,7 @@ export function PlatformCard({
 }) {
   const { t } = useI18n()
   const copy = t.messaging.cards
-  const pending = id === 'uniagentgate'
+  const automatic = id === 'uniagentgate'
 
   return (
     <article
@@ -79,24 +81,20 @@ export function PlatformCard({
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-sm font-semibold leading-5">{copy.titles[id]}</h3>
             {id === 'weixin' && <Badge>{t.messaging.recommended}</Badge>}
-            {pending ? <Badge variant="muted">{copy.comingSoon}</Badge> : <PlatformStatus pending={connectionPending} platform={platform} />}
+            {automatic && !platform ? (
+              <Badge role="status" variant="muted">
+                {copy.unavailable}
+              </Badge>
+            ) : (
+              <PlatformStatus pending={connectionPending} platform={platform} />
+            )}
           </div>
           <p className="mt-1 text-xs leading-5 text-(--ui-text-tertiary)">{copy.descriptions[id]}</p>
-          {!pending && (
-            <Button className="mt-1" onClick={() => openExternalLink(GUIDES[id])} size="inline" variant="link">
-              {copy.guide}
-            </Button>
-          )}
+          <Button className="mt-1" onClick={() => openExternalLink(GUIDES[id])} size="inline" variant="link">
+            {copy.guide}
+          </Button>
         </div>
-        <div className="flex shrink-0 flex-wrap justify-end gap-2">
-          {pending ? (
-            <Button disabled size="sm" variant="outline">
-              {copy.configure}
-            </Button>
-          ) : (
-            actions
-          )}
-        </div>
+        <div className="flex shrink-0 flex-wrap justify-end gap-2">{actions}</div>
       </div>
       {children}
     </article>

@@ -61,16 +61,31 @@ export function listDriveDirectory(spaceId: string, parent: string, page: number
 export async function driveRequest<T>(
   route: string,
   method: 'GET' | 'POST' | 'PATCH' = 'GET',
-  body?: Record<string, unknown>
+  body?: Record<string, unknown>,
+  onVerifying?: () => void
 ): Promise<T> {
   if (!window.hermesDesktop?.cloudDriveRequest) {
     throw new Error('请使用新版桌面端打开个人云盘')
   }
 
   let result: CloudDriveFailure | T
+  const requestId = onVerifying ? crypto.randomUUID() : undefined
+
+  const dispose = onVerifying
+    ? window.hermesDesktop.onCloudDriveMutationProgress?.(value => {
+        if (value.id === requestId && value.phase === 'verifying') {
+          onVerifying()
+        }
+      })
+    : undefined
 
   try {
-    result = (await window.hermesDesktop.cloudDriveRequest({ route, method, body })) as CloudDriveFailure | T
+    result = (await window.hermesDesktop.cloudDriveRequest({
+      route,
+      method,
+      body,
+      ...(requestId ? { requestId } : {})
+    })) as CloudDriveFailure | T
   } catch (error) {
     if (!isCloudDriveReadOperation({ route, method })) {
       // IPC 中断时主进程可能已完成写入，页面不能把它当作可直接重试的失败。
@@ -78,6 +93,8 @@ export async function driveRequest<T>(
     }
 
     throw error
+  } finally {
+    dispose?.()
   }
 
   if (

@@ -61,7 +61,7 @@ describe('SessionsSettings unarchive', () => {
 
 describe('SessionsSettings default directory (desktop-mt)', () => {
   const bridge = window.hermesDesktop
-  const workspace = 'C:/hmt/acc/workspace'
+  const workspace = 'C:/uniworker/acc/workspace'
 
   /** 只提供设置页读取默认目录所需的桥接，可选是否带对话文件夹接口。 */
   function mountBridge(withFolders: boolean) {

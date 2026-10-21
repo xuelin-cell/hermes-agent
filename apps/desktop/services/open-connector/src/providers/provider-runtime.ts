@@ -1,0 +1,1245 @@
+import type {
+  ActionExecutor,
+  ExecutionContext,
+  ExecutionResult,
+  ProviderExecutors,
+  ProviderProxyExecutor,
+  ProxyExecutionResult,
+  ProxyRequestInput,
+  ProxyResponse,
+  ResolvedCredential,
+  TransitFileWriter,
+} from "../core/types.ts";
+import type { ProviderActionNames } from "./action-contracts.generated.ts";
+
+import { Buffer } from "node:buffer";
+import {
+  CastError,
+  optionalRecord,
+  optionalScalarString,
+  optionalString,
+  requiredRecord,
+  requiredString,
+} from "../core/cast.ts";
+import { createGuardedFetch } from "../core/guarded-fetch.ts";
+import { readBoundedResponseBytes } from "../core/request.ts";
+
+/**
+ * Fetch-compatible function accepted by provider runtime helpers and tests.
+ */
+export type ProviderFetch = typeof fetch;
+
+export interface ProviderFetchOptions {
+  /** Base transport; defaults to the global fetch. A guarded fetch is unwrapped so guards never stack. */
+  fetch?: ProviderFetch;
+  /** Allow private-network targets for this provider's egress (see `assertPublicHttpUrl`); default public-only. */
+  allowPrivateNetwork?: () => boolean;
+  /**
+   * Skip the DNS resolved-address check (URL and redirect guards still apply).
+   * Only pass for providers whose egress host is a hardcoded literal, never
+   * derived from user/credential input. See {@link GuardedFetchOptions.skipDnsValidation}.
+   */
+  skipDnsValidation?: boolean;
+  /** Additional credential-bearing headers to strip from cross-origin redirects. */
+  additionalSensitiveHeaders?: readonly string[];
+}
+
+/**
+ * Create the SSRF-guarded fetch used for all provider egress: the request URL,
+ * every redirect hop, and (when DNS is available) every resolved address are
+ * validated against the shared public-URL policy, so a provider-reachable URL
+ * cannot redirect or resolve into loopback/link-local/metadata/private targets.
+ */
+export function createProviderFetch(options: ProviderFetchOptions = {}): ProviderFetch {
+  return createGuardedFetch({
+    fetch: options.fetch,
+    allowPrivateNetwork: options.allowPrivateNetwork,
+    skipDnsValidation: options.skipDnsValidation,
+    additionalSensitiveHeaders: options.additionalSensitiveHeaders,
+    mapTransportError: (error) =>
+      error instanceof TypeError
+        ? new ProviderRequestError(502, `provider network request failed${describeTransportCauseCode(error)}`)
+        : error,
+    createError: (message) => new ProviderRequestError(502, message),
+  });
+}
+
+/**
+ * Shared public-only SSRF-guarded fetch for provider egress. Providers that
+ * issue their own requests (custom proxy executors, context builders) must use
+ * this instead of the global fetch.
+ *
+ * It is also receiver-safe: provider runtimes commonly store the fetcher on a
+ * context object and call `context.fetcher(...)`, which would forward the
+ * context as `this` to the Workers-native fetch and trigger an Illegal
+ * invocation error. This wrapper closes over the platform call lexically, so
+ * the native fetch is always invoked without a stray receiver.
+ */
+export const providerFetch: ProviderFetch = createProviderFetch();
+
+/**
+ * Default User-Agent sent by local provider executors.
+ */
+export const providerUserAgent = "oomol-connect/0.1";
+
+/**
+ * Provider-native handler shape. The provider owns `TContext`; the shared
+ * runtime only adapts it to the action executor contract.
+ */
+export type ProviderRuntimeHandler<TContext> = (input: Record<string, unknown>, context: TContext) => Promise<unknown>;
+
+export type ProviderActionName<TService extends keyof ProviderActionNames> = ProviderActionNames[TService];
+
+export type ProviderActionHandlers<TService extends keyof ProviderActionNames, THandler> = Record<
+  ProviderActionName<TService>,
+  THandler
+>;
+
+export type ProviderActionHandlerSubset<TService extends keyof ProviderActionNames, THandler> = Partial<
+  ProviderActionHandlers<TService, THandler>
+>;
+
+export type ProviderActionSources<TService extends keyof ProviderActionNames, TSource> = Record<
+  ProviderActionName<TService>,
+  TSource
+>;
+
+interface NamedActionSource {
+  name: string;
+}
+
+/**
+ * Build handlers from the same complete source list used to define a provider's actions.
+ */
+export function mapProviderActionHandlers<
+  const TService extends keyof ProviderActionNames,
+  TSource extends NamedActionSource,
+  THandler,
+>(
+  _service: TService,
+  sources: readonly TSource[],
+  createHandler: (source: TSource, name: ProviderActionName<TService>) => THandler,
+): ProviderActionHandlers<TService, THandler> {
+  return Object.fromEntries(
+    sources.map((source) => [source.name, createHandler(source, source.name as ProviderActionName<TService>)]),
+  ) as ProviderActionHandlers<TService, THandler>;
+}
+
+/**
+ * Build handlers from the complete action-name list used by a provider definition.
+ */
+export function mapProviderActionNames<const TService extends keyof ProviderActionNames, THandler>(
+  _service: TService,
+  names: readonly string[],
+  createHandler: (name: ProviderActionName<TService>) => THandler,
+): ProviderActionHandlers<TService, THandler> {
+  return Object.fromEntries(
+    names.map((name) => [name, createHandler(name as ProviderActionName<TService>)]),
+  ) as ProviderActionHandlers<TService, THandler>;
+}
+
+/**
+ * Build handlers from an action-keyed source record checked against the generated contract.
+ */
+export function mapProviderActionSources<
+  const TService extends keyof ProviderActionNames,
+  TSources extends ProviderActionSources<TService, unknown>,
+  THandler,
+>(
+  _service: TService,
+  sources: TSources,
+  createHandler: (name: ProviderActionName<TService>, source: TSources[ProviderActionName<TService>]) => THandler,
+): ProviderActionHandlers<TService, THandler> {
+  return Object.fromEntries(
+    Object.entries(sources).map(([name, source]) => [
+      name,
+      createHandler(name as ProviderActionName<TService>, source as TSources[ProviderActionName<TService>]),
+    ]),
+  ) as ProviderActionHandlers<TService, THandler>;
+}
+
+/** Combine handler fragments whose completeness is checked by the final generated contract. */
+export function combineProviderActionHandlers<const TService extends keyof ProviderActionNames, THandler>(
+  _service: TService,
+  ...parts: readonly ProviderActionHandlerSubset<TService, THandler>[]
+): ProviderActionHandlers<TService, THandler> {
+  return Object.assign({}, ...parts) as ProviderActionHandlers<TService, THandler>;
+}
+
+/** Look up a generated-contract handler at a runtime string boundary. */
+export function getProviderActionHandler<THandlers extends object>(
+  handlers: THandlers,
+  name: string,
+): THandlers[keyof THandlers] | undefined {
+  return handlers[name as keyof THandlers];
+}
+
+/**
+ * Runtime context factory used before invoking one provider-native handler.
+ */
+export type ProviderRuntimeContextFactory<TContext> = (
+  context: ExecutionContext,
+  fetcher: ProviderFetch,
+) => Promise<TContext> | TContext;
+
+export interface ProviderExecutorDefinition<TContext> {
+  service: string;
+  handlers: Record<string, ProviderRuntimeHandler<TContext>>;
+  createContext: ProviderRuntimeContextFactory<TContext>;
+  fallbackMessage?: string;
+  /** Override the standard execution-error mapping when the provider exposes stable native error codes. */
+  mapError?: (error: unknown) => ExecutionResult;
+  /** Deployment-gated private-network opt-in applied to this provider's egress fetch (currently Dokploy). */
+  allowPrivateNetwork?: () => boolean;
+  /** Skip the redundant DNS resolved-address check; only for hardcoded-host providers. */
+  skipDnsValidation?: boolean;
+}
+
+export interface BearerCredential {
+  tokenType: string;
+  accessToken: string;
+}
+
+export interface ApiKeyProviderContext {
+  apiKey: string;
+  fetcher: ProviderFetch;
+  transitFiles?: TransitFileWriter;
+  signal?: AbortSignal;
+}
+
+/**
+ * Request an API-key provider action handler receives: the resolved key, the
+ * provider-local action name, the schema-validated action input, the full
+ * credential field map (`values` also carries `apiKey`) and the runtime
+ * metadata the credential validator stored on the connection. Executors pass
+ * every field; the optional markers only let provider-local helpers accept a
+ * narrower request.
+ */
+export interface ApiKeyActionRequest {
+  apiKey: string;
+  actionName: string;
+  input: Record<string, unknown>;
+  providerMetadata?: Record<string, unknown>;
+  values?: Record<string, string>;
+}
+
+export interface OAuthProviderContext {
+  accessToken: string;
+  tokenType?: string;
+  accountId?: string;
+  providerSecret?: Record<string, unknown>;
+  fetcher: ProviderFetch;
+  transitFiles?: TransitFileWriter;
+  signal?: AbortSignal;
+}
+
+export interface BearerProviderContext {
+  accessToken: string;
+  tokenType?: string;
+  fetcher: ProviderFetch;
+  transitFiles?: TransitFileWriter;
+  signal?: AbortSignal;
+}
+
+export interface ProviderTransitFile {
+  fileId: string;
+  downloadUrl: string;
+  sizeBytes: number;
+  name: string;
+  mimeType: string;
+}
+
+export interface ProviderInputFile {
+  fileId: string;
+  file: File;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+}
+
+/**
+ * Error raised for provider API responses and mapped to stable execution errors.
+ */
+export class ProviderRequestError extends Error {
+  readonly status: number;
+  readonly details?: unknown;
+  readonly code?: string;
+
+  constructor(status: number, message: string, details?: unknown, code?: string) {
+    super(message);
+    this.status = status;
+    this.details = details;
+    this.code = code;
+  }
+}
+
+/**
+ * Return the 400 error providers throw for invalid action input or credentials.
+ * The message is surfaced verbatim as the `invalid_input` execution error.
+ */
+export function providerInputError(message: string): ProviderRequestError {
+  return new ProviderRequestError(400, message);
+}
+
+/**
+ * Return the 502 error providers throw for an upstream response they cannot
+ * use. The message is surfaced verbatim as the `provider_error` execution error.
+ */
+export function providerResponseError(message: string): ProviderRequestError {
+  return new ProviderRequestError(502, message);
+}
+
+/**
+ * Read a required string action input, raising the 400 error providers map
+ * missing or blank fields to. Example: `requiredInputString(" x ", "name") => "x"`;
+ * `requiredInputString("", "name")` throws `name is required.`.
+ */
+export function requiredInputString(value: unknown, fieldName: string): string {
+  return requiredString(value, fieldName, providerInputError);
+}
+
+/**
+ * Read a record out of an upstream response, raising the 502 error providers
+ * map malformed payloads to. Example: `requiredResponseRecord([], "payload")`
+ * throws `payload must be an object`.
+ */
+export function requiredResponseRecord(value: unknown, label: string): Record<string, unknown> {
+  return requiredRecord(value, label, providerResponseError);
+}
+
+export interface ProviderTimeout {
+  signal: AbortSignal;
+  didTimeout(): boolean;
+  cleanup(): void;
+}
+
+export type ProviderProxyAuth =
+  | { type: "none" }
+  | { type: "bearer" }
+  | { type: "oauth_bearer" }
+  | { type: "api_key_header"; name: string }
+  | { type: "api_key_query"; name: string }
+  | { type: "api_key_basic"; suffix?: string }
+  | { type: "api_key_authorization"; prefix: string; suffix?: string };
+
+export type ProviderProxyBaseUrlResolver = (context: ExecutionContext, service: string) => Promise<string> | string;
+export type ProviderProxyBaseUrl = string | ProviderProxyBaseUrlResolver;
+
+export interface ProviderProxyRequestCustomizationInput {
+  context: ExecutionContext;
+  service: string;
+  endpoint: string;
+  url: URL;
+  headers: Headers;
+  credential?: ResolvedCredential;
+  /** Guarded fetcher used by the proxy for provider-owned auxiliary requests such as token exchange. */
+  fetcher: typeof fetch;
+}
+
+export interface ProviderProxyDefinition {
+  service: string;
+  baseUrl: ProviderProxyBaseUrl;
+  auth: ProviderProxyAuth;
+  allowedEndpoint?: (endpoint: string) => boolean;
+  customizeRequest?: (input: ProviderProxyRequestCustomizationInput) => Promise<void> | void;
+  /** Exact code-controlled origins that `customizeRequest` may select in addition to the resolved base origin. */
+  allowedOrigins?: readonly string[];
+  /** Deployment-gated private-network opt-in applied to this proxy's egress fetch (currently Dokploy). */
+  allowPrivateNetwork?: () => boolean;
+  /** Skip the redundant DNS resolved-address check; only for hardcoded-base-URL proxies. */
+  skipDnsValidation?: boolean;
+}
+
+const blockedProxyRequestHeaders = new Set([
+  "authorization",
+  "connection",
+  "content-length",
+  "host",
+  "transfer-encoding",
+]);
+const defaultProviderProxyMaxResponseBytes = 20 * 1024 * 1024;
+const defaultProviderJsonMaxResponseBytes = 20 * 1024 * 1024;
+const defaultProviderErrorMaxResponseBytes = 64 * 1024;
+const defaultProviderRequestTimeoutMs = 30_000;
+
+export function createProviderProxyUrl(baseUrl: string, endpointInput: unknown, queryInput?: unknown): URL {
+  const endpoint = normalizeProviderProxyEndpoint(endpointInput);
+  const base = new URL(baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`);
+  const url = new URL(`./${endpoint.slice(1)}`, base);
+  if (url.origin !== base.origin) {
+    throw new ProviderRequestError(400, "endpoint must stay on the provider origin");
+  }
+  for (const [key, value] of Object.entries(normalizeProviderProxyQuery(queryInput))) {
+    url.searchParams.set(key, value);
+  }
+  return url;
+}
+
+export function normalizeProviderProxyEndpoint(endpointInput: unknown): string {
+  const endpoint = requiredString(endpointInput, "endpoint", (message) => new ProviderRequestError(400, message));
+  if (!endpoint.startsWith("/") || endpoint.startsWith("//")) {
+    throw new ProviderRequestError(400, "endpoint must be a relative path starting with /");
+  }
+  try {
+    const url = new URL(endpoint.slice(1));
+    if (url.protocol === "http:" || url.protocol === "https:") {
+      throw new ProviderRequestError(400, "endpoint must be a relative path");
+    }
+  } catch (error) {
+    if (error instanceof ProviderRequestError) {
+      throw error;
+    }
+  }
+  if (endpoint.includes("\\") || hasPathTraversalSegment(endpoint)) {
+    throw new ProviderRequestError(400, "endpoint must not contain path traversal segments");
+  }
+  return endpoint;
+}
+
+function hasPathTraversalSegment(endpoint: string): boolean {
+  const path = endpoint.split(/[?#]/u)[0]!;
+  for (const segment of path.split("/")) {
+    try {
+      if (decodeURIComponent(segment) === "..") {
+        return true;
+      }
+    } catch {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function normalizeProviderProxyQuery(queryInput: unknown): Record<string, string> {
+  const query = optionalRecord(queryInput);
+  if (!query) {
+    return {};
+  }
+
+  const output: Record<string, string> = {};
+  for (const [key, value] of Object.entries(query)) {
+    const scalar = optionalScalarString(value);
+    if (scalar !== undefined) {
+      output[key] = scalar;
+    }
+  }
+  return output;
+}
+
+export function normalizeProviderProxyHeaders(headersInput: unknown): Headers {
+  const headers = new Headers();
+  const input = optionalRecord(headersInput);
+  if (!input) {
+    return headers;
+  }
+
+  for (const [name, value] of Object.entries(input)) {
+    const normalizedName = name.toLowerCase();
+    const headerValue = optionalString(value);
+    if (headerValue && !blockedProxyRequestHeaders.has(normalizedName)) {
+      headers.set(normalizedName, headerValue);
+    }
+  }
+  return headers;
+}
+
+/**
+ * Build an HTTP Basic `authorization` header value from an already composed
+ * credential, usually `user:password` but also a bare API key or a key with a
+ * provider-specific suffix. RFC 7617 encodes the credential from its UTF-8
+ * bytes, so this is the only correct way to build the header: `btoa` understands
+ * Latin-1 only, which silently sends the wrong bytes for accented credentials
+ * and throws on anything outside Latin-1.
+ */
+export function basicAuthorizationHeader(value: string): string {
+  return `Basic ${Buffer.from(value, "utf8").toString("base64")}`;
+}
+
+export interface ReadProviderProxyResponseOptions {
+  maxBytes?: number;
+}
+
+export async function readProviderProxyResponse(
+  response: Response,
+  options: ReadProviderProxyResponseOptions = {},
+): Promise<ProxyResponse> {
+  const headers = Object.fromEntries(response.headers.entries());
+  const bytes = await readBoundedResponseBytes(response, {
+    maxBytes: options.maxBytes ?? defaultProviderProxyMaxResponseBytes,
+    fieldName: "proxy response",
+    createError: (message) => new ProviderRequestError(413, message),
+  });
+  const contentType = response.headers.get("content-type") ?? "";
+  const normalizedContentType = contentType.toLowerCase();
+  if (bytes.byteLength === 0) {
+    return {
+      status: response.status,
+      headers,
+      data: null,
+    };
+  }
+  if (normalizedContentType.includes("json")) {
+    return {
+      status: response.status,
+      headers,
+      data: JSON.parse(new TextDecoder().decode(bytes)),
+    };
+  }
+  if (isTextProxyContentType(normalizedContentType)) {
+    return {
+      status: response.status,
+      headers,
+      data: new TextDecoder().decode(bytes),
+    };
+  }
+  return {
+    status: response.status,
+    headers,
+    bodyEncoding: "base64",
+    data: Buffer.from(bytes).toString("base64"),
+  };
+}
+
+export async function readProviderProxyErrorMessage(response: Response, fallbackMessage: string): Promise<string> {
+  const bytes = await readBoundedResponseBytes(response, {
+    maxBytes: defaultProviderProxyMaxResponseBytes,
+    fieldName: "proxy error response",
+    createError: (message) => new ProviderRequestError(413, message),
+  });
+  return bytes.byteLength === 0 ? fallbackMessage : new TextDecoder().decode(bytes) || fallbackMessage;
+}
+
+function isTextProxyContentType(contentType: string): boolean {
+  const normalized = contentType.toLowerCase();
+  return (
+    normalized.startsWith("text/") ||
+    normalized.includes("xml") ||
+    normalized.includes("javascript") ||
+    normalized.includes("x-www-form-urlencoded")
+  );
+}
+
+export function toProviderProxyError(error: unknown, fallbackMessage: string): ProxyExecutionResult {
+  const result = toProviderExecutionError(error, fallbackMessage);
+  if (result.ok) {
+    return {
+      ok: false,
+      error: {
+        code: "provider_error",
+        message: fallbackMessage,
+      },
+    };
+  }
+  return {
+    ok: false,
+    error: result.error!,
+  };
+}
+
+export function defineProviderProxy(input: ProviderProxyDefinition): ProviderProxyExecutor {
+  const allowedOrigins = new Set(input.allowedOrigins?.map((value) => new URL(value).origin));
+  const additionalSensitiveHeaders = input.auth.type === "api_key_header" ? [input.auth.name] : undefined;
+  const egressFetch = createProviderFetch({
+    allowPrivateNetwork: input.allowPrivateNetwork,
+    skipDnsValidation: input.skipDnsValidation,
+    additionalSensitiveHeaders,
+  });
+  return async (proxyInput: ProxyRequestInput, context: ExecutionContext): Promise<ProxyExecutionResult> => {
+    try {
+      const endpoint = normalizeProviderProxyEndpoint(proxyInput.endpoint);
+      if (input.allowedEndpoint && !input.allowedEndpoint(endpoint)) {
+        throw new ProviderRequestError(400, "endpoint is not supported for this provider");
+      }
+
+      const url = createProviderProxyUrl(
+        await resolveProviderProxyBaseUrl(input.baseUrl, context, input.service),
+        endpoint,
+        proxyInput.query,
+      );
+      const providerOrigin = url.origin;
+      const headers = normalizeProviderProxyHeaders(proxyInput.headers);
+      headers.set("user-agent", providerUserAgent);
+      const credential = await applyProviderProxyAuth(input, context, url, headers);
+      await input.customizeRequest?.({
+        context,
+        service: input.service,
+        endpoint,
+        url,
+        headers,
+        credential,
+        fetcher: egressFetch,
+      });
+      if (url.origin !== providerOrigin && !allowedOrigins.has(url.origin)) {
+        throw new ProviderRequestError(400, "endpoint must stay on the provider origin");
+      }
+
+      const timeout = createProviderTimeout(context.signal);
+      try {
+        const init: RequestInit = {
+          method: proxyInput.method,
+          headers,
+          signal: timeout.signal,
+        };
+        if (proxyInput.body !== undefined) {
+          init.body = typeof proxyInput.body === "string" ? proxyInput.body : JSON.stringify(proxyInput.body);
+          if (!headers.has("content-type") && typeof proxyInput.body !== "string") {
+            headers.set("content-type", "application/json");
+          }
+        }
+
+        const response = await egressFetch(url, init);
+        if (!response.ok) {
+          throw new ProviderRequestError(
+            response.status,
+            await readProviderProxyErrorMessage(response, `provider request failed with HTTP ${response.status}`),
+          );
+        }
+
+        return {
+          ok: true,
+          response: await readProviderProxyResponse(response),
+        };
+      } catch (error) {
+        // Only the local budget becomes the shared 504 timeout; a caller abort stays an abort.
+        if (error instanceof ProviderRequestError || !timeout.didTimeout()) {
+          throw error;
+        }
+        throw new ProviderRequestError(504, `${input.service} request timed out`);
+      } finally {
+        timeout.cleanup();
+      }
+    } catch (error) {
+      return toProviderProxyError(error, "provider request failed");
+    }
+  };
+}
+
+/** Match a normalized provider proxy endpoint against one or more path prefixes. */
+export function providerProxyEndpointPrefixes(...prefixes: string[]): (endpoint: string) => boolean {
+  return (endpoint) =>
+    prefixes.some((prefix) => endpoint === prefix || endpoint.startsWith(prefix.endsWith("/") ? prefix : `${prefix}/`));
+}
+
+export function credentialProviderProxyBaseUrl(...fields: string[]): ProviderProxyBaseUrlResolver {
+  return async (context: ExecutionContext, service: string): Promise<string> => {
+    const credential = await context.getCredential(service);
+    if (!credential || credential.authType === "no_auth") {
+      throw new ProviderRequestError(401, `Configure ${service} credentials first.`);
+    }
+
+    for (const field of fields) {
+      const metadataValue = optionalString(credential.metadata[field]);
+      if (metadataValue) {
+        return metadataValue;
+      }
+      if ("values" in credential) {
+        const value = optionalString(credential.values[field]);
+        if (value) {
+          return value;
+        }
+      }
+    }
+
+    throw new ProviderRequestError(400, `credential metadata is missing ${fields.join(", ")}`);
+  };
+}
+
+async function resolveProviderProxyBaseUrl(
+  baseUrl: ProviderProxyBaseUrl,
+  context: ExecutionContext,
+  service: string,
+): Promise<string> {
+  return typeof baseUrl === "string" ? baseUrl : await baseUrl(context, service);
+}
+
+async function applyProviderProxyAuth(
+  input: ProviderProxyDefinition,
+  context: ExecutionContext,
+  url: URL,
+  headers: Headers,
+): Promise<ResolvedCredential | undefined> {
+  switch (input.auth.type) {
+    case "none":
+      return undefined;
+    case "bearer": {
+      const credential = await requireBearerCredential(context, input.service);
+      headers.set("authorization", `${credential.tokenType} ${credential.accessToken}`);
+      return undefined;
+    }
+    case "oauth_bearer": {
+      const credential = await requireOAuthCredential(context, input.service);
+      headers.set("authorization", `${credential.tokenType} ${credential.accessToken}`);
+      return credential;
+    }
+    case "api_key_header": {
+      const credential = await requireApiKeyCredential(context, input.service);
+      headers.set(input.auth.name, credential.apiKey);
+      return credential;
+    }
+    case "api_key_query": {
+      const credential = await requireApiKeyCredential(context, input.service);
+      url.searchParams.set(input.auth.name, credential.apiKey);
+      return credential;
+    }
+    case "api_key_basic": {
+      const credential = await requireApiKeyCredential(context, input.service);
+      headers.set("authorization", basicAuthorizationHeader(`${credential.apiKey}${input.auth.suffix ?? ""}`));
+      return credential;
+    }
+    case "api_key_authorization": {
+      const credential = await requireApiKeyCredential(context, input.service);
+      headers.set("authorization", `${input.auth.prefix}${credential.apiKey}${input.auth.suffix ?? ""}`);
+      return credential;
+    }
+  }
+}
+
+/**
+ * Return an abort signal that fires when either the parent signal aborts or the
+ * provider-local timeout expires. The timeout defaults to 30 seconds, the value
+ * almost every provider request uses; pass `timeoutMs` only for endpoints that
+ * genuinely need a different budget.
+ */
+export function createProviderTimeout(
+  parentSignal: AbortSignal | undefined,
+  timeoutMs: number = defaultProviderRequestTimeoutMs,
+): ProviderTimeout {
+  const controller = new AbortController();
+  let timeoutReached = false;
+  const timeoutId = setTimeout(() => {
+    timeoutReached = true;
+    controller.abort();
+  }, timeoutMs);
+  const abortFromParent = (): void => controller.abort(parentSignal?.reason);
+  if (parentSignal?.aborted) {
+    abortFromParent();
+  } else {
+    parentSignal?.addEventListener("abort", abortFromParent, { once: true });
+  }
+  return {
+    signal: controller.signal,
+    didTimeout: () => timeoutReached,
+    cleanup() {
+      clearTimeout(timeoutId);
+      parentSignal?.removeEventListener("abort", abortFromParent);
+    },
+  };
+}
+
+/**
+ * Return whether a caught error represents a fetch abort: the `AbortError`
+ * raised by an aborted controller or the `TimeoutError` raised by
+ * `AbortSignal.timeout()`.
+ */
+export function isAbortLikeError(error: unknown): boolean {
+  return error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError");
+}
+
+/**
+ * Return whether an error came from a specific aborted signal, counting the
+ * signal's own abort reason regardless of the name it carries.
+ */
+export function isAbortSignalError(signal: AbortSignal | undefined, error: unknown): boolean {
+  return signal?.aborted === true && (isAbortLikeError(error) || error === signal.reason);
+}
+
+/**
+ * Options for {@link runProviderRequest}.
+ */
+export interface ProviderRequestOptions {
+  /** Caller signal, usually the execution context's; aborting it aborts the request. */
+  signal?: AbortSignal;
+  /** Provider-local budget for the whole request; defaults to 30 seconds. */
+  timeoutMs?: number;
+  /** Provider name used in the timeout and failure messages, e.g. `"Skio"`. */
+  label: string;
+}
+
+/**
+ * Run a provider request under the shared timeout and error mapping.
+ *
+ * `request` receives the combined abort signal and should perform the fetch and
+ * read the body. A `ProviderRequestError` thrown inside passes through
+ * untouched; a timeout or abort becomes `504 "<label> request timed out"`; any
+ * other failure becomes `502 "<label> request failed[: <message>]"`. The
+ * timeout is always cleaned up.
+ */
+export async function runProviderRequest<T>(
+  options: ProviderRequestOptions,
+  request: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const timeout = createProviderTimeout(options.signal, options.timeoutMs);
+  try {
+    return await request(timeout.signal);
+  } catch (error) {
+    if (error instanceof ProviderRequestError) {
+      throw error;
+    }
+    if (timeout.didTimeout() || isAbortLikeError(error) || isAbortSignalError(timeout.signal, error)) {
+      throw new ProviderRequestError(504, `${options.label} request timed out`);
+    }
+    throw new ProviderRequestError(
+      502,
+      error instanceof Error ? `${options.label} request failed: ${error.message}` : `${options.label} request failed`,
+    );
+  } finally {
+    timeout.cleanup();
+  }
+}
+
+/**
+ * Set defined query parameters on a URL.
+ */
+export function setSearchParams(url: URL, query: Record<string, string | undefined>): void {
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined) {
+      url.searchParams.set(key, value);
+    }
+  }
+}
+
+/**
+ * Read a bounded provider error response body as text.
+ */
+export async function readProviderErrorTextBody(response: Response, fieldName: string): Promise<string> {
+  try {
+    return await readProviderTextBody(response, fieldName, defaultProviderErrorMaxResponseBytes);
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Read a JSON provider response or raise a structured provider request error.
+ */
+export async function readProviderJson<T>(response: Response, source: string): Promise<T> {
+  if (response.ok) {
+    return response.json() as Promise<T>;
+  }
+
+  const text = await readProviderErrorTextBody(response, `${source} error response`);
+  throw new ProviderRequestError(response.status, text || `${source} request failed`);
+}
+
+export interface ReadProviderJsonBodyOptions {
+  emptyBody: unknown;
+  invalidJsonMessage: string;
+  invalidJsonStatus?: number;
+  invalidJsonFallback?: (text: string, error: unknown) => unknown;
+  maxBytes?: number;
+  trimEmptyBody?: boolean;
+}
+
+/**
+ * Read a bounded provider response body as text.
+ */
+export async function readProviderTextBody(
+  response: Response,
+  fieldName: string,
+  maxBytes: number = defaultProviderJsonMaxResponseBytes,
+): Promise<string> {
+  const bytes = await readBoundedResponseBytes(response, {
+    maxBytes,
+    fieldName,
+    createError: (message) => new ProviderRequestError(413, message),
+  });
+  return new TextDecoder().decode(bytes);
+}
+
+/**
+ * Read a bounded provider response body as JSON.
+ */
+export async function readProviderJsonBody(response: Response, options: ReadProviderJsonBodyOptions): Promise<unknown> {
+  const text = await readProviderTextBody(response, "provider JSON response", options.maxBytes);
+  return parseProviderJsonBodyText(text, options);
+}
+
+/**
+ * Parse an already-read provider response body as JSON.
+ */
+export function parseProviderJsonBodyText(text: string, options: ReadProviderJsonBodyOptions): unknown {
+  const isEmpty = options.trimEmptyBody === false ? text === "" : text.trim() === "";
+  if (isEmpty) {
+    return options.emptyBody;
+  }
+
+  try {
+    return JSON.parse(text) as unknown;
+  } catch (error) {
+    const fallback = options.invalidJsonFallback?.(text, error);
+    if (fallback !== undefined) {
+      return fallback;
+    }
+    throw new ProviderRequestError(options.invalidJsonStatus ?? 502, options.invalidJsonMessage, error);
+  }
+}
+
+/**
+ * Store a provider-hosted file in the local transit file service when enabled.
+ */
+export async function uploadProviderUrlToTransitFile(
+  input: {
+    url: string;
+    name: string;
+    source: string;
+  },
+  context: Pick<ApiKeyProviderContext, "fetcher" | "transitFiles" | "signal">,
+): Promise<ProviderTransitFile | null> {
+  if (!context.transitFiles) {
+    return null;
+  }
+
+  let response: Response;
+  try {
+    response = await context.fetcher(input.url, {
+      headers: {
+        accept: "*/*",
+        "user-agent": providerUserAgent,
+      },
+      signal: context.signal,
+    });
+  } catch (error) {
+    throw new ProviderRequestError(
+      502,
+      error instanceof Error
+        ? `${input.source} transit download failed: ${error.message}`
+        : `${input.source} transit download failed`,
+    );
+  }
+  if (!response.ok) {
+    const text = await readProviderErrorTextBody(response, `${input.source} error response`);
+    throw new ProviderRequestError(
+      response.status >= 500 ? 502 : response.status,
+      text || `${input.source} transit download failed with HTTP ${response.status}`,
+    );
+  }
+
+  const mimeType = response.headers.get("content-type") ?? "application/octet-stream";
+  const bytes = await readBoundedResponseBytes(response, {
+    maxBytes: context.transitFiles.maxBytes,
+    fieldName: input.name,
+    createError: (message) => new ProviderRequestError(413, message),
+  });
+  const upload = await context.transitFiles.create(new File([Uint8Array.from(bytes)], input.name, { type: mimeType }));
+  return {
+    fileId: upload.fileId,
+    downloadUrl: upload.downloadUrl,
+    sizeBytes: upload.sizeBytes,
+    name: input.name,
+    mimeType,
+  };
+}
+
+/**
+ * Read a user-uploaded transit file reference from action input.
+ */
+export async function readTransitFileInput(
+  input: unknown,
+  context: Pick<ApiKeyProviderContext, "transitFiles">,
+): Promise<ProviderInputFile> {
+  if (!context.transitFiles) {
+    throw new ProviderRequestError(400, "Transit file storage is not enabled.");
+  }
+
+  const reference = optionalRecord(input);
+  if (!reference) {
+    throw new ProviderRequestError(400, "file must be a transit file reference.");
+  }
+
+  const fileId = requiredString(reference.fileId, "file.fileId", (message) => new ProviderRequestError(400, message));
+  const stored = await context.transitFiles.read(fileId);
+  const name = optionalString(reference.name) ?? stored.name;
+  const mimeType = optionalString(reference.mimeType) ?? stored.mimeType;
+  const file =
+    name === stored.file.name && mimeType === stored.file.type
+      ? stored.file
+      : new File([await stored.file.arrayBuffer()], name, { type: mimeType });
+
+  return {
+    fileId,
+    file,
+    name,
+    mimeType,
+    sizeBytes: stored.sizeBytes,
+  };
+}
+
+/**
+ * Map provider runtime failures to the standard action execution result.
+ */
+export function toProviderExecutionError(error: unknown, fallbackMessage: string): ExecutionResult {
+  if (error instanceof ProviderRequestError) {
+    return {
+      ok: false,
+      error: {
+        code:
+          error.code ??
+          (error.status === 401 || error.status === 403
+            ? "authorization_failed"
+            : error.status === 429
+              ? "rate_limited"
+              : error.status < 500
+                ? "invalid_input"
+                : "provider_error"),
+        message: error.message,
+        details: {
+          status: error.status,
+          details: error.details,
+        },
+      },
+    };
+  }
+  if (error instanceof CastError) {
+    return {
+      ok: false,
+      error: {
+        code: "invalid_input",
+        message: error.message,
+      },
+    };
+  }
+
+  return {
+    ok: false,
+    error: {
+      code: "internal_error",
+      message: fallbackMessage,
+    },
+  };
+}
+
+/**
+ * Adapt a provider-native handler map to full action-id executors.
+ *
+ * Provider modules should keep action handlers keyed by provider-local action
+ * names. The runtime adds the service prefix and returns `undefined` through
+ * `ProviderLoader` when a catalog action has no local executor.
+ */
+export function defineProviderExecutors<TContext>(input: ProviderExecutorDefinition<TContext>): ProviderExecutors {
+  const executors: ProviderExecutors = {};
+  const fallbackMessage = input.fallbackMessage ?? "provider request failed";
+  const egressFetch =
+    input.allowPrivateNetwork || input.skipDnsValidation
+      ? createProviderFetch({
+          allowPrivateNetwork: input.allowPrivateNetwork,
+          skipDnsValidation: input.skipDnsValidation,
+        })
+      : providerFetch;
+  for (const [name, handler] of Object.entries(input.handlers)) {
+    executors[`${input.service}.${name}`] = async (actionInput, executionContext): Promise<ExecutionResult> => {
+      try {
+        return {
+          ok: true,
+          output: await handler(
+            actionInput as Record<string, unknown>,
+            await input.createContext(executionContext, egressFetch),
+          ),
+        };
+      } catch (error) {
+        return input.mapError?.(error) ?? toProviderExecutionError(error, fallbackMessage);
+      }
+    };
+  }
+
+  return executors;
+}
+
+/** Egress-guard options shared by the credential-typed executor helpers. */
+export interface ProviderExecutorEgressOptions {
+  /** Deployment-gated private-network opt-in (see {@link ProviderExecutorDefinition.allowPrivateNetwork}). */
+  allowPrivateNetwork?: () => boolean;
+  /** Skip the redundant DNS resolved-address check; only for hardcoded-host providers. */
+  skipDnsValidation?: boolean;
+}
+
+/**
+ * Define executors for providers that use the built-in API key credential.
+ */
+export function defineApiKeyProviderExecutors(
+  service: string,
+  handlers: Record<string, ProviderRuntimeHandler<ApiKeyProviderContext>>,
+  options: ProviderExecutorEgressOptions = {},
+): ProviderExecutors {
+  return defineProviderExecutors<ApiKeyProviderContext>({
+    service,
+    handlers,
+    allowPrivateNetwork: options.allowPrivateNetwork,
+    skipDnsValidation: options.skipDnsValidation,
+    async createContext(context, fetcher): Promise<ApiKeyProviderContext> {
+      const credential = await requireApiKeyCredential(context, service);
+      const providerContext: ApiKeyProviderContext = {
+        apiKey: credential.apiKey,
+        fetcher,
+        signal: context.signal,
+      };
+      if (context.transitFiles) {
+        providerContext.transitFiles = context.transitFiles;
+      }
+      return providerContext;
+    },
+  });
+}
+
+/**
+ * Define executors for providers that require OAuth access tokens.
+ */
+export function defineOAuthProviderExecutors(
+  service: string,
+  handlers: Record<string, ProviderRuntimeHandler<OAuthProviderContext>>,
+  options: ProviderExecutorEgressOptions = {},
+): ProviderExecutors {
+  return defineProviderExecutors<OAuthProviderContext>({
+    service,
+    handlers,
+    allowPrivateNetwork: options.allowPrivateNetwork,
+    skipDnsValidation: options.skipDnsValidation,
+    async createContext(context, fetcher): Promise<OAuthProviderContext> {
+      const credential = await requireOAuthCredential(context, service);
+      const providerContext: OAuthProviderContext = {
+        accessToken: credential.accessToken,
+        tokenType: credential.tokenType,
+        accountId: credential.profile.accountId,
+        providerSecret: credential.providerSecret,
+        fetcher,
+        signal: context.signal,
+      };
+      if (context.transitFiles) {
+        providerContext.transitFiles = context.transitFiles;
+      }
+      return providerContext;
+    },
+  });
+}
+
+/**
+ * Define executors for providers that can use either OAuth or API key bearer credentials.
+ */
+export function defineBearerProviderExecutors(
+  service: string,
+  handlers: Record<string, ProviderRuntimeHandler<BearerProviderContext>>,
+  options: ProviderExecutorEgressOptions = {},
+): ProviderExecutors {
+  return defineProviderExecutors<BearerProviderContext>({
+    service,
+    handlers,
+    allowPrivateNetwork: options.allowPrivateNetwork,
+    skipDnsValidation: options.skipDnsValidation,
+    async createContext(context, fetcher): Promise<BearerProviderContext> {
+      const credential = await requireBearerCredential(context, service);
+      const providerContext: BearerProviderContext = {
+        accessToken: credential.accessToken,
+        tokenType: credential.tokenType,
+        fetcher,
+        signal: context.signal,
+      };
+      if (context.transitFiles) {
+        providerContext.transitFiles = context.transitFiles;
+      }
+      return providerContext;
+    },
+  });
+}
+
+/**
+ * Attach the provider display name to a loaded executor so generic provider
+ * errors can use catalog metadata without duplicating it in executor modules.
+ */
+export function withProviderFallbackMessage(executor: ActionExecutor, displayName: string): ActionExecutor {
+  return async (input, context): Promise<ExecutionResult> => {
+    const result = await executor(input, context);
+    if (result.ok || !result.error || result.error.message !== "provider request failed") {
+      return result;
+    }
+
+    return {
+      ...result,
+      error: {
+        ...result.error,
+        message: `${displayName} request failed.`,
+      },
+    };
+  };
+}
+
+/**
+ * Return a configured API key credential for a provider or throw an execution
+ * error before making provider API calls.
+ */
+export async function requireApiKeyCredential(
+  context: ExecutionContext,
+  service: string,
+): Promise<Extract<ResolvedCredential, { authType: "api_key" }>> {
+  const credential = await context.getCredential(service);
+  if (credential?.authType === "api_key") {
+    return credential;
+  }
+
+  throw new ProviderRequestError(401, `Configure ${service} API key credentials first.`);
+}
+
+/**
+ * Return a configured OAuth credential for a provider or throw an execution
+ * error before making provider API calls.
+ */
+export async function requireOAuthCredential(
+  context: ExecutionContext,
+  service: string,
+): Promise<Extract<ResolvedCredential, { authType: "oauth2" }>> {
+  const credential = await context.getCredential(service);
+  if (credential?.authType === "oauth2") {
+    return credential;
+  }
+
+  throw new ProviderRequestError(401, `Connect ${service} with OAuth first.`);
+}
+
+/**
+ * Return configured custom credential values for a provider.
+ */
+export async function requireCustomCredential(
+  context: ExecutionContext,
+  service: string,
+): Promise<Extract<ResolvedCredential, { authType: "custom_credential" }>> {
+  const credential = await context.getCredential(service);
+  if (credential?.authType === "custom_credential") {
+    return credential;
+  }
+
+  throw new ProviderRequestError(401, `Configure ${service} custom credentials first.`);
+}
+
+/**
+ * Return a bearer token from either OAuth or API key credentials.
+ */
+export async function requireBearerCredential(context: ExecutionContext, service: string): Promise<BearerCredential> {
+  const credential = await context.getCredential(service);
+  if (credential?.authType === "oauth2") {
+    return {
+      tokenType: credential.tokenType,
+      accessToken: credential.accessToken,
+    };
+  }
+  if (credential?.authType === "api_key") {
+    return {
+      tokenType: "Bearer",
+      accessToken: credential.apiKey,
+    };
+  }
+
+  throw new ProviderRequestError(401, `Configure ${service} credentials first.`);
+}
+
+/**
+ * The platform error code behind a transport failure (`ENOTFOUND`,
+ * `ECONNREFUSED`, `CERT_HAS_EXPIRED`, ...), formatted for appending to a
+ * provider-visible message, or `""` when there is none.
+ *
+ * Only the code — never `cause.message`, which on undici embeds the target host
+ * (`getaddrinfo ENOTFOUND secret.internal`). That host is exactly what the
+ * transport-error mapping exists to keep out of provider-visible errors; the
+ * code is an enum-like token that identifies the failure without naming it.
+ */
+function describeTransportCauseCode(error: unknown): string {
+  const code = optionalString(optionalRecord(optionalRecord(error)?.cause)?.code);
+  return code ? ` (${code})` : "";
+}

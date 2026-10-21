@@ -13,6 +13,7 @@ import { useI18n } from '@/i18n'
 import { AlertTriangle, CheckCircle2, Loader2, MessageCircle, RefreshCw } from '@/lib/icons'
 import { confirm } from '@/store/confirm'
 import { $platformsChangeTick } from '@/store/live-sync'
+import { notify } from '@/store/notifications'
 import { $settingsRequestProfile } from '@/store/settings-scope'
 
 import { useRefreshHotkey } from '../hooks/use-refresh-hotkey'
@@ -21,7 +22,7 @@ import { PageSearchShell } from '../page-search-shell'
 import type { SetStatusbarItemGroup } from '../shell/statusbar-controls'
 
 import { $messagingOperation } from './operation-store'
-import { PLATFORM_IDS, PlatformCard, type PlatformId } from './platform-card'
+import { DISPLAY_PLATFORM_IDS, PLATFORM_IDS, PlatformCard, type PlatformId } from './platform-card'
 import { PlatformConfigDialog } from './platform-config-dialog'
 import { WeixinQrSetup } from './weixin-qr-setup'
 
@@ -50,6 +51,7 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
   const [query, setQuery] = useState('')
   const [loadError, setLoadError] = useState(false)
   const [requestFailed, setRequestFailed] = useState(false)
+  const [rcsReconnecting, setRcsReconnecting] = useState(false)
   const [configuring, setConfiguring] = useState<Exclude<PlatformId, 'weixin'> | null>(null)
   const [disconnecting, setDisconnecting] = useState<MessagingPlatformInfo | null>(null)
   const operation = useStore($messagingOperation)
@@ -59,7 +61,7 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
     ? 'checking' : operation.phase
 
   const applying = ['saving', 'applying', 'restarting', 'stopping', 'checking'].includes(phase)
-  const gatewayChanging = ['restarting', 'stopping', 'checking'].includes(phase)
+  const gatewayChanging = ['applying', 'restarting', 'stopping', 'checking'].includes(phase)
   const platformsTick = useStore($platformsChangeTick)
   const revisionRef = useRef(0)
   const activeRef = useRef(true)
@@ -81,7 +83,7 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
       }
 
       setSnapshot({
-        platforms: result.platforms.filter(platform => PLATFORM_IDS.includes(platform.id as PlatformId)),
+        platforms: result.platforms.filter(platform => DISPLAY_PLATFORM_IDS.some(id => id === platform.id)),
         operationRevision
       })
       setLoadError(false)
@@ -222,7 +224,7 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
   }
 
   const operationFailed = operation.phase === 'failed' || requestFailed
-  const activePlatforms = platforms?.filter(platform => platform.enabled && platform.configured) ?? []
+  const activePlatforms = platforms?.filter(platform => PLATFORM_IDS.includes(platform.id as PlatformId) && platform.enabled && platform.configured) ?? []
 
   const disconnected = !applying && activePlatforms.some(platform => !platform.gateway_running ||
     ['fatal', 'startup_failed', 'disconnected', 'stopped', 'pending_restart'].includes(platform.state ?? ''))
@@ -247,6 +249,48 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
     : disconnected ? m.connection.disconnected : reconnecting ? m.connection.reconnecting : phaseMessages[phase]
 
   const selected = platforms?.find(platform => platform.id === configuring)
+
+  /** 只请求当前账号的 5G 连接恢复，不用整网关重启代替单平台重连。 */
+  async function reconnectRcs() {
+    if (rcsReconnecting) {
+      return
+    }
+
+    setRcsReconnecting(true)
+
+    try {
+      const result = await window.hermesDesktop?.reconnectUniAgentGate?.(scopeProfile)
+
+      if ($settingsRequestProfile.get() !== scopeProfile) {
+        return
+      }
+
+      const status = result?.status ?? 'restart_required'
+
+      const messages = {
+        connected: m.cards.reconnected,
+        connecting: m.connectingLive,
+        busy: m.cards.reconnectBusy,
+        unbound: m.cards.personalBindingMissing,
+        failed: m.cards.reconnectFailed,
+        unavailable: m.cards.reconnectFailed,
+        stopped: m.cards.reconnectFailed,
+        restart_required: m.cards.reconnectRestartRequired
+      }
+
+      notify({
+        kind: status === 'connected' || status === 'connecting' ? 'success' : 'error',
+        title: m.cards.titles.uniagentgate,
+        message: messages[status]
+      })
+      await refresh()
+    } catch {
+      notify({ kind: 'error', title: m.cards.titles.uniagentgate, message: m.cards.reconnectFailed })
+    } finally {
+      setRcsReconnecting(false)
+    }
+  }
+
   const search = query.trim().toLocaleLowerCase()
 
   return (
@@ -289,13 +333,17 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
           {!platforms && !loadError ? (
             <PageLoader label={m.loading} />
           ) : (
-            [...PLATFORM_IDS, 'uniagentgate' as const]
+            DISPLAY_PLATFORM_IDS
               .filter(
                 id =>
                   !search || (m.cards.titles[id] + ' ' + m.cards.descriptions[id]).toLocaleLowerCase().includes(search)
               )
               .map(id => {
                 const platform = platforms?.find(row => row.id === id)
+
+                const rcsRetryAllowed = platform?.configured && platform.enabled &&
+                  (!platform.gateway_running || ['fatal', 'startup_failed', 'error', 'stopped', 'disconnected', 'paused']
+                    .includes(platform.state ?? ''))
 
                 if (id === 'weixin' && platform) {
                   return (
@@ -314,7 +362,17 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
                 return (
                   <PlatformCard
                     actions={
-                      id !== 'uniagentgate' && (
+                      id === 'uniagentgate' ? (
+                        rcsRetryAllowed ? (
+                          <Button disabled={applying || rcsReconnecting ||
+                            (scopeProfile !== undefined && scopeProfile !== 'default')}
+                            onClick={() => void reconnectRcs()} size="sm" variant="outline">
+                            {rcsReconnecting ? m.cards.reconnecting : m.cards.reconnect}
+                          </Button>
+                        ) : (
+                          <Button disabled size="sm" variant="outline">{m.cards.unbind}</Button>
+                        )
+                      ) : (
                         <>
                           <Button
                             disabled={!platform || applying}

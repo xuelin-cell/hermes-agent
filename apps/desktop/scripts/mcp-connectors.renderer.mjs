@@ -17,6 +17,7 @@ const rpcId = '\0mcp-renderer-rpc'
 
 /** 重绘后取得非空图像，避免隐藏窗口刚调整尺寸时产生零字节截图。 */
 async function capturePng(instance, page) {
+  await page.evaluate(() => Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => undefined))))
   await instance.evaluate(({BrowserWindow}) => BrowserWindow.getAllWindows()[0].webContents.invalidate())
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
   const deadline = Date.now() + 10000
@@ -49,18 +50,17 @@ function fixturePlugin() {
         export const setMcpBearerToken=async()=>({ok:true});
       `
       if (id === controllerId) return `
-        import {useRef} from 'react';
         // 仅返回本轮受控配置，真实后端行为另由 M01 验证。
         export function useMcpServers() {
-          const editorApi=useRef(null);
-          return {servers:{'test-reader':{command:'node',args:[]},'test-http':{url:'https://example.invalid/mcp',enabled:false}},
-            statuses:{'test-reader':'ok','test-http':'off'},
-            probes:{'test-reader':{ok:true,tools:[{name:'read_document',description:'Read a test document'}]}},
-            toolCounts:{},usageByServer:{},catalog:[],blocks:[],draft:'{}',docVersion:0,editorApi,
-            profilePending:false,configLoading:false,configFailed:false,saving:false,
-            runProbe:async()=>{},setServerEnabled:async()=>{},setServerTools:async()=>true,
-            removeServer:async()=>true,addServerEntry:async()=>true,resetDraft:()=>{},
-            setDraft:()=>{},setCursor:()=>{},saveDoc:async()=>{},refetchConfig:()=>{},authing:null};
+          return {servers:{'UniAI-Toolkit':{url:'https://example.invalid/mcp?key=sk-••••••TAIL',timeout:600},
+              'test-reader':{command:'node',args:['reader.js','--root','C:/docs']},
+              'test-http':{url:'https://example.invalid/mcp',headers:{'X-Team':'docs'},enabled:false}},
+            statuses:{'UniAI-Toolkit':'ok','test-reader':'ok','test-http':'off'},
+            probes:{'UniAI-Toolkit':{ok:true,tools:[{name:'text_to_image',description:''},{name:'asr',description:''}]},
+              'test-reader':{ok:true,tools:[{name:'read_document',description:'Read a test document'}]}},
+            toolCounts:{},profilePending:false,configLoading:false,configFailed:false,saving:false,authing:null,
+            runProbe:async()=>null,replaceServers:async()=>true,removeServer:async()=>true,
+            authenticate:async()=>{},refetchConfig:()=>{}};
         }
       `
       if (id === moduleId) return `
@@ -70,14 +70,17 @@ function fixturePlugin() {
         import {MemoryRouter} from 'react-router';
         import {I18nProvider} from '/src/i18n/context';
         import {ThemeProvider,useTheme} from '/src/themes/context';
-        import {McpConnectorsTab} from '/src/app/capabilities/mcp-mt/connectors-tab';
+        import {ConnectorsPage} from '/src/app/capabilities/mcp-mt/connectors-page';
         import '/src/styles.css';
+        window.hermesDesktop={...window.hermesDesktop,
+          getConnectionConfig:async()=>({mode:'local'}),
+          localConnectors:async(input)=>({connectors:[{id:'qq_mail',connected:input.operation==='connect'}]})};
         // 使用产品原生主题切换，避免只改部分颜色导致错误的明暗截图。
         function FixtureTheme() {
           const {setMode}=useTheme();
           useEffect(()=>{window.fixtureSetMode=setMode},[setMode]);
           return React.createElement(MemoryRouter,null,
-            React.createElement(McpConnectorsTab,{gateway:null,profile:'work',scopeLabel:'work'}));
+            React.createElement(ConnectorsPage,{gateway:null,profile:'work',scopeLabel:'work'}));
         }
         createRoot(document.getElementById('root')).render(React.createElement(ThemeProvider,null,
           React.createElement(I18nProvider,
@@ -115,10 +118,9 @@ try {
   instance = await electron.launch({executablePath:electronPath,args:[main],env,timeout:45000})
   const page = await instance.firstWindow()
   page.on('pageerror', error => errors.push(error.message))
-  await page.getByRole('heading',{name:'自定义 MCP'}).waitFor({timeout:60000})
-  await page.getByRole('button',{name:'test-reader',exact:true}).click()
+  await page.getByRole('tab',{name:'推荐'}).waitFor({timeout:60000})
   for (const dark of [false,true]) {
-    for (const width of [1000,460]) {
+    for (const width of [1400,1000,460]) {
       await instance.evaluate(({BrowserWindow},size)=>BrowserWindow.getAllWindows()[0].setContentSize(size,760),width)
       await page.evaluate(value => window.fixtureSetMode(value ? 'dark' : 'light'),dark)
       await page.waitForFunction(value => document.documentElement.dataset.hermesMode === value,dark?'dark':'light')
@@ -128,10 +130,32 @@ try {
       await writeFile(path.join(root,`${dark?'dark':'light'}-${width}.png`),png)
       const fits = await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth)
       assert.ok(fits,`页面不得横向溢出：${width}`)
+      assert.equal(await page.locator('.mt-connector-icon').evaluateAll(images=>images.every(image=>image.complete&&image.naturalWidth>0)),true,'推荐图标必须全部正常加载')
     }
   }
+  await page.getByRole('button',{name:'查看QQ 邮箱',exact:true}).click()
+  await page.getByRole('dialog').getByText('试试这样用').waitFor()
+  await writeFile(path.join(root,'detail-dark-460.png'),await capturePng(instance,page))
+  await instance.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setContentSize(1400,960))
+  await page.evaluate(()=>window.fixtureSetMode('light'))
+  await page.waitForFunction(()=>document.documentElement.dataset.hermesMode === 'light')
+  await page.waitForFunction(()=>window.innerWidth === 1400 && document.querySelector('[role="dialog"]').getBoundingClientRect().width >= 770)
+  console.log('Dialog layout', await page.getByRole('dialog').evaluate(el => ({width:el.getBoundingClientRect().width, background:getComputedStyle(el).backgroundColor})))
+  await writeFile(path.join(root,'detail-light-1400.png'),await capturePng(instance,page))
+  await page.getByRole('dialog').getByRole('button',{name:'连接',exact:true}).click()
+  await page.getByLabel('邮箱地址').fill('fixture@qq.com')
+  await page.getByLabel('授权码').fill('fixture-only-not-a-real-key')
+  await writeFile(path.join(root,'credentials-light-1400.png'),await capturePng(instance,page))
+  await page.getByRole('dialog').getByRole('button',{name:'连接',exact:true}).click()
+  await page.getByRole('dialog').getByText('已就绪，可在新聊天中使用；现有会话保持原工具集。').waitFor()
+  await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click()
+  await page.getByRole('tab',{name:'MCP',exact:true}).click()
+  await page.getByRole('heading',{name:'自定义 MCP'}).waitFor()
+  await page.getByRole('button',{name:'test-reader',exact:true}).click()
+  await writeFile(path.join(root,'mcp-dark-460.png'),await capturePng(instance,page))
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth),'MCP 页面不得横向溢出')
   assert.deepEqual(errors,[])
-  console.log(`M02 受控 Renderer：4 个主题／尺寸组合通过；截图 ${root}`)
+  console.log(`连接器受控 Renderer：6 个主题／尺寸组合、详情和原生 MCP 入口通过；截图 ${root}`)
 } finally {
   await instance?.close()
   await server.close()

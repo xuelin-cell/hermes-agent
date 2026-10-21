@@ -5,6 +5,15 @@ import { defineLocale, type TranslationOverrides } from './define-locale'
 import { introDe } from './intro-de'
 
 export const deOverrides = {
+  workspaceEditor: {
+    title: 'Editor',
+    capabilities: 'Erweiterungen',
+    openProject: 'Öffnen Sie eine Projektunterhaltung, um Dateien zu durchsuchen.',
+    selectFile: 'Wählen Sie eine Datei zum Bearbeiten.',
+    unsupported: 'Binäre, gekürzte oder große Dateien können hier nicht bearbeitet werden.',
+    refresh: 'Aktualisieren',
+    save: 'Speichern'
+  },
   conversationShare: {
     sessionShare: 'Unterhaltung teilen',
     responseShare: 'Antwort teilen',
@@ -3312,6 +3321,13 @@ export const deOverrides = {
       guide: 'Einrichtungsanleitung',
       save: 'Speichern und aktivieren',
       comingSoon: 'Noch nicht angebunden',
+      personalBindingMissing: 'Persönliche Verknüpfung nicht bestätigt. Abmelden und erneut per SMS anmelden.',
+      reconnect: "Neu verbinden",
+      reconnecting: "Verbindung wird hergestellt…",
+      reconnected: "5G-Nachrichten wieder verbunden.",
+      reconnectBusy: "Eine Nachricht wird verarbeitet. Danach erneut verbinden.",
+      reconnectFailed: "5G-Verbindung fehlgeschlagen. Protokolle prüfen; bei gestopptem Gateway die App vollständig beenden und öffnen.",
+      reconnectRestartRequired: "Das 5G-Update ist noch nicht aktiv. Die App einschließlich Infobereich vollständig beenden und erneut öffnen.",
       unavailable: 'Nachrichtenkomponente nicht verfügbar',
       notConnected: 'Nicht verbunden',
       unbind: 'Trennen',
@@ -3986,6 +4002,19 @@ export const deOverrides = {
     open: 'Öffnen'
   },
   artifactShare: {
+    validity: "Gültigkeitsdauer",
+    days: count => `${count} Tage`,
+    customValidity: "Eigene Dauer",
+    editValidity: "Gültigkeit ändern",
+    saveValidity: "Gültigkeit speichern",
+    expiresAt: date => `Läuft ab: ${date}`,
+    noExpiry: "Für diesen älteren Link ist kein Ablaufdatum festgelegt.",
+    expired: "Freigabe abgelaufen",
+    cleanupPending: "Abgelaufen; Löschung ausstehend. Der Link ist möglicherweise noch erreichbar.",
+    expiryNotice: "Neue Links gelten standardmäßig 1 Tag; wählbar sind 1–7 Tage. Änderungen gelten ab dem Speichern. Die Bereinigung läuft bei geöffneter App oder beim nächsten Start.",
+    invalidValidity: "Geben Sie eine ganze Zahl von 1 bis 7 ein.",
+    inactive: "Die Freigabe wurde widerrufen oder der Link ist nicht mehr verfügbar.",
+    statusUnavailable: "Der Freigabestatus ist nicht verfügbar. Beenden Sie die App vollständig und versuchen Sie es erneut.",
     disclosure: "Jeder mit dem Link kann dieses Artefakt ansehen. Andere Dateien und Gespräche werden nicht geteilt.",
     checking: "Freigabestatus wird geprüft…",
     createLink: "Öffentlichen Link erstellen",
@@ -4064,7 +4093,7 @@ export const deOverrides = {
     profileRail: 'Profil-Leiste',
     nav: {
       'new-session': 'Neue Session',
-      capabilities: 'Fähigkeiten',
+      capabilities: 'Erweiterungen',
       messaging: 'Messaging',
       artifacts: 'Artefakte',
       cron: 'Geplante Jobs'

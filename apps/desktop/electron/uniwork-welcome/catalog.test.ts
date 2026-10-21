@@ -7,7 +7,7 @@ function template(id: string, sort = 10) {
   return { id, name: id, prompt: `prompt-${id}`, sort, enabled: true }
 }
 
-it('过滤停用、重复和损坏条目，稳定排序并保留完整提示词', () => {
+it('忽略enabled但过滤重复和损坏条目，稳定排序并保留完整提示词', () => {
   const modules = normalizeWelcomeCatalog({
     modules: [
       {
@@ -33,15 +33,15 @@ it('过滤停用、重复和损坏条目，稳定排序并保留完整提示词'
 
   const tags = modules[0].tags
 
-  expect(tags.map(item => item.id)).toEqual(['first', 'later'])
-  expect(tags[1].templates.map(item => item.prompt)).toEqual(['prompt-a', 'prompt-b'])
+  expect(tags.map(item => item.id)).toEqual(['first', 'later', 'off'])
+  expect(tags[1].templates.map(item => item.prompt)).toEqual(['prompt-a', 'prompt-off', 'prompt-b'])
 })
 
 it('配置决定名称顺序和路由，重复或缺失业务ID不丢失模块，空配置不生成标签', () => {
   const modules = normalizeWelcomeCatalog({
     modules: [
       { id: 'same', name: 'Learning', sort: 30, tags: [] },
-      { id: 'same', name: 'Development', workspace: 'codex', sort: 20 },
+      { id: 'same', name: '  CODE   Development ', workspace: 'work', sort: 20 },
       { name: 'Office', workspace: 'work', sort: 10 },
       { name: 'Disabled', enabled: false, sort: 0 },
       { name: ' ' }
@@ -49,8 +49,9 @@ it('配置决定名称顺序和路由，重复或缺失业务ID不丢失模块�
   })
 
   expect(modules.map(({ name, workspace }) => ({ name, workspace }))).toEqual([
+    { name: 'Disabled', workspace: 'work' },
     { name: 'Office', workspace: 'work' },
-    { name: 'Development', workspace: 'codex' },
+    { name: '  CODE   Development ', workspace: 'codex' },
     { name: 'Learning', workspace: 'work' }
   ])
   expect(new Set(modules.map(module => module.id)).size).toBe(modules.length)

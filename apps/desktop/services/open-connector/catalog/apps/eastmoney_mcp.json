@@ -1,0 +1,176 @@
+{
+  "service": "eastmoney_mcp",
+  "displayName": "东方财富",
+  "description": "连接东方财富妙想 MCP，基于 Choice 数据查询 A 股、基金、债券、指数、宏观、资讯公告和证券筛选等金融研究数据。",
+  "categories": [
+    "Finance",
+    "Data"
+  ],
+  "authTypes": [
+    "oauth2"
+  ],
+  "auth": [
+    {
+      "type": "oauth2",
+      "authorizationUrl": "https://mkcs.dfcfs.com/oauth/authorize",
+      "tokenUrl": "https://mkcs.dfcfs.com/oauth/token",
+      "refreshTokenUrl": "https://mkcs.dfcfs.com/oauth/token",
+      "scopes": [
+        "mcp:tools"
+      ],
+      "tokenEndpointAuthMethod": "none",
+      "pkce": {
+        "method": "S256"
+      },
+      "authorizationParams": {
+        "resource": "https://mxapi-stg.eastmoney.com/mxds/v2/mcp"
+      },
+      "tokenParams": {
+        "resource": "https://mxapi-stg.eastmoney.com/mxds/v2/mcp"
+      },
+      "dynamicClientRegistration": {
+        "registrationUrl": "https://mkcs.dfcfs.com/oauth/register",
+        "clientName": "联通元景数字员工",
+        "tokenEndpointAuthMethod": "none"
+      },
+      "clientSetup": {
+        "docsUrl": "https://mkcs.dfcfs.com/.well-known/oauth-authorization-server",
+        "steps": [
+          "Eastmoney supports OAuth 2.0 with PKCE S256 for this local runtime.",
+          "The runtime opens the Eastmoney authorization page and stores the returned credential locally.",
+          "After signing in, the grant can call the Eastmoney Choice-data MCP endpoint."
+        ]
+      }
+    }
+  ],
+  "homepageUrl": "https://ai.eastmoney.com/mxmcp",
+  "actions": [
+    {
+      "id": "eastmoney_mcp.call_tool",
+      "service": "eastmoney_mcp",
+      "name": "call_tool",
+      "description": "Call a current Eastmoney MCP tool with JSON arguments. Discover the live schema first, then call the matching tool.",
+      "requiredScopes": [
+        "eastmoney_mcp.tools"
+      ],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "toolName": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The exact tool name returned by Eastmoney MCP discovery."
+          },
+          "arguments": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": true,
+            "description": "JSON arguments matching the current inputSchema for the selected Eastmoney MCP tool."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "toolName"
+        ],
+        "description": "Input for invoking one current Eastmoney MCP tool."
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "result": {
+            "description": "The current Eastmoney MCP result after standard MCP content normalization."
+          }
+        },
+        "additionalProperties": false,
+        "description": "The normalized result returned by the Eastmoney MCP tool."
+      },
+      "followUpActions": [
+        "eastmoney_mcp.list_tools"
+      ]
+    },
+    {
+      "id": "eastmoney_mcp.list_tools",
+      "service": "eastmoney_mcp",
+      "name": "list_tools",
+      "description": "List the current tool catalog and live input schemas exposed by Eastmoney Choice-data MCP.",
+      "requiredScopes": [
+        "eastmoney_mcp.tools"
+      ],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false,
+        "description": "Input for discovering Eastmoney MCP tools."
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "The exact Eastmoney MCP tool name to pass to call_tool."
+                },
+                "description": {
+                  "type": "string",
+                  "description": "The current tool description supplied by Eastmoney."
+                },
+                "annotations": {
+                  "type": "object",
+                  "properties": {
+                    "title": {
+                      "type": "string",
+                      "description": "A human-readable title for the tool."
+                    },
+                    "readOnlyHint": {
+                      "type": "boolean",
+                      "description": "Whether Eastmoney expects the tool not to modify data."
+                    },
+                    "destructiveHint": {
+                      "type": "boolean",
+                      "description": "Whether Eastmoney indicates that the tool may be destructive."
+                    },
+                    "idempotentHint": {
+                      "type": "boolean",
+                      "description": "Whether repeated calls with the same arguments are idempotent."
+                    },
+                    "openWorldHint": {
+                      "type": "boolean",
+                      "description": "Whether the tool may interact with external entities."
+                    }
+                  },
+                  "additionalProperties": true,
+                  "description": "MCP behavior hints supplied by Eastmoney for a tool."
+                },
+                "inputSchema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": true,
+                  "description": "The current JSON Schema for the tool arguments, supplied by Eastmoney MCP."
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "name",
+                "inputSchema"
+              ],
+              "description": "A tool currently exposed by Eastmoney MCP."
+            },
+            "description": "Tools currently exposed by Eastmoney MCP."
+          }
+        },
+        "additionalProperties": false,
+        "description": "The current Eastmoney MCP tool catalog."
+      },
+      "followUpActions": [
+        "eastmoney_mcp.call_tool"
+      ]
+    }
+  ]
+}

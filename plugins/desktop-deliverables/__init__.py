@@ -248,10 +248,12 @@ def after_tool(
             after = snapshot(pending[0])
             if after is not None:
                 candidates += changed(pending[1], after)
+        # 素材目录名只在这些工作目录里面判断，目录本身叫什么不影响。
+        roots = {*turn.roots, turn.cwd, root}
         for path in candidates:
             if len(turn.paths) >= 256:
                 break
-            if path not in turn.uploads and fresh(path, turn.started):
+            if path not in turn.uploads and fresh(path, turn.started, roots):
                 turn.paths[path] = None
 
 
@@ -275,9 +277,12 @@ def transform(*, response_text="", session_id="", turn_id="", platform="", **kwa
                         turn.paths.setdefault(path, None)
         _turns.pop(key, None)
     cwd = local_cwd(turn.task_id) or turn.cwd
+    roots = {*turn.roots, turn.cwd, cwd}
     paths = dict.fromkeys([*turn.paths, *named_paths(response_text, cwd)])
     paths = [
-        path for path in paths if path not in turn.uploads and fresh(path, turn.started)
+        path
+        for path in paths
+        if path not in turn.uploads and fresh(path, turn.started, roots)
     ]
     if not paths:
         return None
@@ -336,8 +341,9 @@ async def download_result(
     turn_id="",
     **kwargs,
 ):
-    """原结果保留，成功下载才向模型补本地路径；每轮最多四次，网络不占状态锁。"""
-    from .downloads import fetch, generator_urls
+    """下载成品并写明本机副本；未能保存的成品保留链接并说明交付方式。每轮最多四次，网络不占状态锁。"""
+    from .downloads import annotate, fetch, generator_urls
+    from .uploads import remember_download
 
     try:
         data = json.loads(result) if isinstance(result, str) else result
@@ -358,28 +364,28 @@ async def download_result(
         ]
         turn.downloads.update(dict.fromkeys(wanted))
     root = local_cwd(turn.task_id) or turn.cwd
-    # 同批最多四个并行，避免顺序等待突破原生钩子的三十秒上限。
-    saved = await asyncio.gather(*(fetch(url, root, tool_name) for url in wanted))
+    # 同批最多四个并行，避免顺序等待突破原生钩子的三十秒上限；描述参数用于起文件名。
+    fetched = await asyncio.gather(
+        *(fetch(url, root, tool_name, args) for url in wanted)
+    )
     with _lock:
         active = current(key, turn_id) is turn
         if active:
-            turn.downloads.update(zip(wanted, saved))
-            paths = [turn.downloads[url] for url in urls if turn.downloads.get(url)]
-            for path in paths:
+            turn.downloads.update(zip(wanted, fetched))
+            saved = {url: turn.downloads[url] for url in urls if turn.downloads.get(url)}
+            for path in saved.values():
                 turn.paths[path] = None
     if not active:
-        for path in saved:
+        for path in fetched:
             if path:
                 path.unlink(missing_ok=True)
         return None
-    if not paths:
-        return None
-    if isinstance(data, dict):
-        return json.dumps(
-            {**data, "desktop_deliverables": [str(path) for path in paths]},
-            ensure_ascii=False,
-        )
-    return str(result) + "\n\n已下载到本机：\n" + "\n".join(str(path) for path in paths)
+    # 结果里不再给链接；模型之后把本机副本交给元景工具时，上传钩子据此换回原链接。
+    for url, path in zip(wanted, fetched):
+        if path:
+            remember_download(path, url)
+    missing = [url for url in urls if url not in saved]
+    return annotate(result, data, root, saved, missing)
 
 
 def end_turn(*, session_id="", turn_id="", **kwargs):
@@ -393,9 +399,14 @@ def end_turn(*, session_id="", turn_id="", **kwargs):
 
 def register(ctx):
     """只使用现有原生钩子，不增加模型工具或修改 Hermes 核心。"""
+    from .uploads import before_call, remember_session
+
     for name, handler in [
         ("pre_llm_call", before_turn),
+        # 元景工具读不到本机文件：调用前替模型上传并换成 ossPath。
+        ("pre_llm_call", remember_session),
         ("pre_tool_call", before_tool),
+        ("pre_tool_call", before_call),
         ("post_tool_call", after_tool),
         ("transform_tool_result", download_result),
         ("transform_llm_output", transform),

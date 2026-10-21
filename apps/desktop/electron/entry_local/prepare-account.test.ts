@@ -68,6 +68,10 @@ it('真实账号准备只消费最新成功套餐；失败保留 Key，空套餐
     expect(session.currentPlan()).toEqual({ status: 'failed' })
     session.restore()
     const account = prepareLocalEnvironment(session, roots)
+    const soulFile = path.join(account.home, 'SOUL.md')
+    expect(fs.readFileSync(soulFile, 'utf8')).toContain('我是元景数字员工')
+    const customSoul = '用户自定义身份：项目助手'
+    fs.writeFileSync(soulFile, customSoul)
     const file = path.join(account.home, 'config.yaml')
     const envFile = path.join(account.home, '.env')
     expect(fs.existsSync(file)).toBe(false)
@@ -88,6 +92,7 @@ it('真实账号准备只消费最新成功套餐；失败保留 Key，空套餐
     }
 
     expect(prepareLocalEnvironment(session, roots)).toEqual(account)
+    expect(fs.readFileSync(soulFile, 'utf8')).toBe(customSoul)
     const saved = fs.readFileSync(file, 'utf8')
     expect(saved).toContain('model-a')
     expect(saved).not.toContain('private-model-key')

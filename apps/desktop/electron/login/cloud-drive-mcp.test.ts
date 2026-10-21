@@ -288,7 +288,7 @@ it('发现的云盘动作走真实 MCP 和账号客户端，写入参数与上�
     })
   ).result
 
-  expect(purged.isError).toBe(true)
+  expect(purged.isError).not.toBe(true)
   expect(JSON.parse(purged.content[0].text)).toMatchObject({
     ok: false,
     status: 'outcome_unknown',

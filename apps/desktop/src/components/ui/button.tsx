@@ -55,6 +55,8 @@ const buttonVariants = cva(
         // Status-stack headers, table footers — 12px text actions beside a label.
         micro:
           "h-auto gap-0.5 px-1 py-0 text-xs leading-4 font-normal has-[>svg]:px-0.5 [&_svg:not([class*='size-'])]:size-3",
+        // Small text actions with room for a hover background around the label.
+        compact: "gap-1 px-1.5 py-0.5 text-xs leading-4 font-normal [&_svg:not([class*='size-'])]:size-3",
         icon: 'size-9 rounded-[4px]',
         'icon-xs': "size-6 rounded-[4px] [&_svg:not([class*='size-'])]:size-3",
         'icon-sm': 'size-8 rounded-[4px]',

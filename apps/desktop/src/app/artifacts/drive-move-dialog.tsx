@@ -62,7 +62,7 @@ export function DriveMoveDialog({ asset, space, items, complete, onClose, onChan
     }
 
     void run(
-      () => moveDriveFile(asset, parent),
+      verifying => moveDriveFile(asset, parent, verifying),
       () => {
         onChanged()
         onClose()
@@ -93,7 +93,7 @@ export function DriveMoveDialog({ asset, space, items, complete, onClose, onChan
           path={path}
           root={space.root_asset_id}
         />
-        {failure !== null && <p role="alert">{driveMutationMessage(failure, copy)}</p>}
+        {failure !== null && <p role={uncertain ? 'status' : 'alert'}>{driveMutationMessage(failure, copy)}</p>}
         <DialogFooter>
           <Button disabled={busy} onClick={close} variant="ghost">
             {t.common.cancel}

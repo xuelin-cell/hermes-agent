@@ -1,0 +1,9 @@
+name: uniagentgate
+kind: platform
+version: 0.3.0
+description: UniWork personal 5G RCS text, files and media through uniAgentGate.
+author: UniWork (protocol client ported from UniClaw contributors)
+requires_env:
+  - name: UNIAGENTGATE_AGENT_SK
+    description: Personal Agent secret issued by UniWork login
+    password: true

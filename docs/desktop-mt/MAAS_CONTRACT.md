@@ -53,6 +53,14 @@ HTTP 429 和有效 `Retry-After` 使用响应期限；429 无有效期限时等�
 
 完整目录和模型 Key 由主进程交给账号环境准备；新增 IPC 仅返回状态、模型名称与默认标记。落盘规则见[账号环境](02-local-environment.md#p13--专用模型-key)。
 
+## 个人 5G 绑定
+
+登录 `data.plan` 中的 `ipUrl`、`agentIdPersonal`、`agentKeyPersonal` 由主进程单独解析，cloud 字段不参与个人绑定。my-plan 同时兼容 `uniagentgate: {gateway_url, agent_id, agent_sk}`。合法绑定不依赖模型目录完整；绑定解析失败不使合法登录失败。
+
+缺失或非法字段保留原绑定；显式 nested `uniagentgate: null` 停用通道并清除 SK。模型空套餐不代表 5G 撤销。绑定地址与 ID 存账号 YAML，SK 存所属账号 `.env`，不与登录 token、模型 Key 或 WS session token 互换。Renderer 不接收这些新增凭据。
+
+构建时将官方插件和 5G 插件合并进安装资源的完整内置插件目录，启动时通过 Hermes 原有发现入口加载，并按账号有效绑定启用；账号不保存代码副本或目录链接。旧账号的副本或链接一次性移出发现目录备份，新账号无需迁移。凭据、配置、会话及控制记录仍各归所属账号。个人 SK 注册、WebSocket 首帧及每条消息的 Agent ID 共同约束上行归属；网关可能提供 `sa_…` 外部会话标识，因此不将该标识与登录手机号白名单比较。适配器使用 Hermes 既有的上游鉴权委托，仅在自身已认证连接运行时生效，且拒绝来自其他连接的回调；未修改全局或其他消息平台的授权。当前实现及待验收边界见 [5G 第一阶段迁移记录](uniagentgate-migration-progress.md)。
+
 ## 凭据与期限边界
 
 登录 token 用于登录后的平台请求，`my-plan.apiKey` 用于模型调用，二者不可互换。套餐结果不验证登录身份，空套餐和 HTTP 200 不证明 token 有效。

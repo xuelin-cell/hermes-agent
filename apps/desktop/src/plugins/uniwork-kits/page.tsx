@@ -12,7 +12,6 @@
 import './kits.css'
 
 import {
-  atom,
   Badge,
   Button,
   cn,
@@ -33,26 +32,15 @@ import {
 } from '@hermes/plugin-sdk'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 
-import { fetchCatalog, fetchJob, installZip, openAuthorization, toggleKit, writeConfig } from './api'
+import { fetchCatalog, openAuthorization, toggleKit, writeConfig } from './api'
 import { $bundled, $bundledFinished, watchBundled } from './bundled'
 import { ExpertFace } from './expert-face'
 import { $expertDirectory, loadExperts } from './experts-store'
 import { oauthStartParams } from './oauth'
 import { matchesQuery, partition } from './partition'
-import { publishInstalledExperts } from './roster'
-import { installedExperts } from './roster-model'
 import { summonExpert } from './summon'
 import { tryAskingPrompts } from './summon-model'
 import type { ExpertCard, KitRow, UserField } from './types'
-
-interface JobState {
-  id: string
-  tail: string
-  running?: boolean
-  exitCode?: null | number
-}
-
-export const $job = atom<JobState | null>(null)
 
 type Translate = (key: string) => string
 
@@ -68,53 +56,6 @@ const CARD_ACCENTS = [
 ]
 
 const CARD_PHRASES = 4
-
-/** 任务日志的最后一行非空内容，用作一行状态。 */
-export function lastLine(tail: string): string {
-  const lines = tail
-    .split(/\r?\n/)
-    .map(line => line.trim())
-    .filter(Boolean)
-
-  return lines.at(-1) ?? ''
-}
-
-/** 后台任务的一行状态；需要时才展开完整日志。 */
-function JobStatus({ job }: { job: JobState }) {
-  const t = usePluginI18n('uniwork-kits')
-  const [open, setOpen] = useState(false)
-  const done = job.running === false
-  const ok = done && job.exitCode === 0
-  const label = !done ? t('job') : ok ? t('jobDone') : t('failed')
-
-  return (
-    <div className="mb-3 rounded-lg border border-(--ui-stroke-secondary) bg-(--ui-bg-quinary) px-3 py-2 text-xs">
-      <div className="flex items-center gap-3">
-        <Codicon className="shrink-0" name={!done ? 'loading' : ok ? 'check' : 'error'} spinning={!done} />
-        <span className="shrink-0 font-medium">{label}</span>
-        <span className="min-w-0 flex-1 truncate text-(--ui-text-tertiary)">{lastLine(job.tail)}</span>
-        {job.tail ? (
-          <Button onClick={() => setOpen(value => !value)} size="xs" variant="ghost">
-            {open ? t('hideDetails') : t('details')}
-          </Button>
-        ) : null}
-        {done ? (
-          <Button onClick={() => $job.set(null)} size="xs" variant="ghost">
-            {t('close')}
-          </Button>
-        ) : null}
-      </div>
-      {open ? <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap">{job.tail}</pre> : null}
-    </div>
-  )
-}
-
-/** 读出用户选的 zip 文件内容，准备上传。 */
-async function readFile(file: File): Promise<{ bytes: ArrayBuffer; filename: string }> {
-  const bytes = await file.arrayBuffer()
-
-  return { bytes, filename: file.name }
-}
 
 /** 卡片上「技能 N · 子代理 N · MCP N」这一行统计。 */
 function countsText(row: KitRow, t: Translate): string {
@@ -570,10 +511,9 @@ function KitDetail({
 
 type Shelf = 'experts' | 'kits'
 
-/** 套件页：上传安装、搜索、套件和专家两个书架、内置包安装进度和后台任务状态。 */
+/** 套件页：搜索、套件和专家两个书架、内置包安装进度。现在不支持从 zip 安装，没有上传入口。 */
 export function KitsPage() {
   const t = usePluginI18n('uniwork-kits')
-  const job = useValue($job)
   const directory = useValue($expertDirectory)
   const catalog = useQuery({ queryFn: fetchCatalog, queryKey: ['uniwork-kits', 'catalog'] })
   const shelves = partition(catalog.data?.plugins ?? [])
@@ -581,7 +521,6 @@ export function KitsPage() {
   const [shelf, setShelf] = useState<Shelf>('kits')
   const [query, setQuery] = useState('')
   const [opened, setOpened] = useState('')
-  const fileInput = useRef<HTMLInputElement | null>(null)
   const bundled = useValue($bundled)
   const bundledFinished = useValue($bundledFinished)
 
@@ -597,47 +536,7 @@ export function KitsPage() {
     }
   }, [bundledFinished, reloadCatalog])
 
-  useEffect(() => {
-    if (!job?.id) {
-      return
-    }
-
-    let stopped = false
-    let timer = 0
-
-    /** 每 1.5 秒查一次当前后台任务；结束后刷新目录、专家名单和机器人名单。 */
-    const tick = () => {
-      void fetchJob(job.id)
-        .then(view => {
-          if (stopped) {
-            return
-          }
-
-          $job.set({ exitCode: view.exit_code, id: view.id, running: view.running, tail: view.tail })
-
-          if (!view.running) {
-            void reloadCatalog().then(next => {
-              void publishInstalledExperts(installedExperts(next.data?.plugins ?? []))
-            })
-            void loadExperts()
-
-            return
-          }
-
-          timer = window.setTimeout(tick, 1500)
-        })
-        .catch(() => undefined)
-    }
-
-    tick()
-
-    return () => {
-      stopped = true
-      window.clearTimeout(timer)
-    }
-  }, [job?.id, reloadCatalog])
-
-  /** 重新取目录和专家名单（装完、卸载、改设置之后调用）。 */
+  /** 重新取目录和专家名单（开关、改设置之后调用）。 */
   const refresh = () => {
     void catalog.refetch()
     void loadExperts()
@@ -683,30 +582,6 @@ export function KitsPage() {
               value={query}
             />
           </label>
-          <Button onClick={() => fileInput.current?.click()} size="sm" variant="outline">
-            <Codicon name="cloud-upload" />
-            {t('installZip')}
-          </Button>
-          <input
-            accept=".zip,application/zip"
-            className="hidden"
-            onChange={event => {
-              const file = event.target.files?.[0]
-
-              event.target.value = ''
-
-              if (!file) {
-                return
-              }
-
-              void readFile(file)
-                .then(payload => installZip(payload))
-                .then(result => $job.set({ id: result.job.id, tail: '' }))
-                .catch(err => host.notify({ kind: 'error', message: String(err) }))
-            }}
-            ref={fileInput}
-            type="file"
-          />
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-auto px-5 py-4">
@@ -722,7 +597,6 @@ export function KitsPage() {
             ) : null}
           </div>
         ) : null}
-        {job ? <JobStatus job={job} /> : null}
         {rows.length === 0 ? (
           <p className="py-10 text-center text-sm text-(--ui-text-tertiary)">
             {query ? t('noMatch') : shelf === 'kits' ? t('emptyKits') : t('emptyExperts')}

@@ -5,6 +5,15 @@ import { defineLocale, type TranslationOverrides } from './define-locale'
 import { introFr } from './intro-fr'
 
 export const frOverrides = {
+  workspaceEditor: {
+    title: 'Éditeur',
+    capabilities: 'Extensions',
+    openProject: 'Ouvrez une conversation du projet pour parcourir ses fichiers.',
+    selectFile: 'Sélectionnez un fichier à modifier.',
+    unsupported: 'Les fichiers binaires, tronqués ou volumineux ne peuvent pas être modifiés ici.',
+    refresh: 'Actualiser',
+    save: 'Enregistrer'
+  },
   conversationShare: {
     sessionShare: 'Partager la conversation',
     responseShare: 'Partager la réponse',
@@ -3322,6 +3331,13 @@ export const frOverrides = {
       guide: 'Guide de configuration',
       save: 'Enregistrer et activer',
       comingSoon: 'Intégration à venir',
+      personalBindingMissing: 'Liaison personnelle non confirmée. Déconnectez-vous, puis reconnectez-vous par SMS.',
+      reconnect: "Reconnecter",
+      reconnecting: "Reconnexion…",
+      reconnected: "Messagerie 5G reconnectée.",
+      reconnectBusy: "Un message est en cours de traitement. Reconnectez-vous après sa fin.",
+      reconnectFailed: "Échec de la reconnexion 5G. Consultez les journaux ; si la passerelle est arrêtée, quittez complètement puis rouvrez l’application.",
+      reconnectRestartRequired: "La mise à jour 5G n’est pas encore active. Quittez complètement l’application, y compris la zone de notification, puis rouvrez-la.",
       unavailable: 'Composant de messagerie indisponible',
       notConnected: 'Non connecté',
       unbind: 'Dissocier',
@@ -3995,6 +4011,19 @@ export const frOverrides = {
     open: 'Ouvrir'
   },
   artifactShare: {
+    validity: "Durée de validité",
+    days: count => `${count} jours`,
+    customValidity: "Durée personnalisée",
+    editValidity: "Modifier la durée",
+    saveValidity: "Enregistrer la durée",
+    expiresAt: date => `Expiration : ${date}`,
+    noExpiry: "Ce lien ancien n’a pas de date d’expiration.",
+    expired: "Partage expiré",
+    cleanupPending: "Expiré, suppression en attente. Le lien peut rester accessible temporairement.",
+    expiryNotice: "Les nouveaux liens durent 1 jour par défaut ; choisissez 1 à 7 jours. La durée démarre à l’enregistrement. Le nettoyage se fait dans l’application ouverte ou au prochain lancement.",
+    invalidValidity: "Saisissez un entier entre 1 et 7.",
+    inactive: "Le partage a été révoqué ou ce lien est indisponible.",
+    statusUnavailable: "Le statut du partage est indisponible. Quittez complètement l’application et réessayez.",
     disclosure: "Toute personne disposant du lien peut consulter ce fichier. Les autres fichiers et conversations ne sont pas partagés.",
     checking: "Vérification du partage…",
     createLink: "Créer un lien public",
@@ -4073,7 +4102,7 @@ export const frOverrides = {
     profileRail: 'Barre des profils',
     nav: {
       'new-session': 'Nouvelle session',
-      capabilities: 'Capacités',
+      capabilities: 'Extensions',
       messaging: 'Messagerie',
       artifacts: 'Artefacts',
       cron: 'Tâches planifiées'

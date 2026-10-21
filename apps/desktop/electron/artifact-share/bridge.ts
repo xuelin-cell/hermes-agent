@@ -1,10 +1,10 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import http from 'node:http'
 
-import type { ArtifactShareSource } from '../../../shared/src/artifact-share'
+import type { ArtifactSharePublishInput, ArtifactShareSource } from '../../../shared/src/artifact-share'
 
 import type { OriginEvent } from './origins'
-import type { ArtifactShareService, ShareInput } from './service'
+import type { ArtifactShareService } from './service'
 
 const MAX_REQUEST_BYTES = 2 * 1024 * 1024 + 8192
 
@@ -56,7 +56,7 @@ export async function startArtifactShareBridge(service: ArtifactShareService): P
       } else if (request.url === '/eligibility') {
         result = service.eligibility(input as ArtifactShareSource)
       } else {
-        result = await service.publish(input as ShareInput)
+        result = await service.publish(input as ArtifactSharePublishInput)
       }
 
       response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(result))

@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="100%" height="100%" role="img">
+          <defs>
+            <linearGradient id="eastmoney-leaf-green" x1="55" y1="150" x2="145" y2="69" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#27df77" />
+              <stop offset="0.72" stop-color="#dfffea" />
+            </linearGradient>
+            <linearGradient id="eastmoney-leaf-purple" x1="110" y1="30" x2="158" y2="134" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#6b00ff" />
+              <stop offset="1" stop-color="#eef4ff" />
+            </linearGradient>
+            <linearGradient id="eastmoney-leaf-blue" x1="119" y1="125" x2="229" y2="108" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#e7f7ff" />
+              <stop offset="0.55" stop-color="#0aa0ff" />
+              <stop offset="1" stop-color="#006ee9" />
+            </linearGradient>
+          </defs>
+          <rect width="256" height="256" rx="58" fill="#fff" />
+          <path d="M0 198c66-13 142-20 256-8v66H0z" fill="#0066ff" />
+          <path d="M53 137c24-39 57-58 100-54-35 13-61 38-79 72z" fill="url(#eastmoney-leaf-green)" />
+          <path d="M107 32c34-7 50 9 51 43 1 25-11 45-30 62 15-42 8-75-21-105z" fill="url(#eastmoney-leaf-purple)" />
+          <path d="M126 128c25 25 59 28 104 9-10 29-35 43-71 43-25 0-46-13-62-34z" fill="url(#eastmoney-leaf-blue)" />
+          <text
+            x="128"
+            y="235"
+            text-anchor="middle"
+            font-family="Arial, Helvetica, sans-serif"
+            font-size="50"
+            font-style="italic"
+            fill="#fff"
+          >
+            MCP
+          </text>
+        </svg>

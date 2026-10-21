@@ -27,7 +27,7 @@ vi.mock('@/store/gateway', async original => ({
   retainGatewayForAgent: vi.fn(async () => () => undefined)
 }))
 
-const WORKSPACE = 'C:\\hmt\\acc\\workspace'
+const WORKSPACE = 'C:\\uniworker\\acc\\workspace'
 const FOLDER = `${WORKSPACE}\\20261019-103015`
 
 const bridge = {
@@ -137,7 +137,7 @@ describe('未选目录的新对话使用专属文件夹', () => {
   })
 
   it('当前目录就是默认工作区（未主动选）时同样建', async () => {
-    setCurrentCwdTransient('c:/hmt/acc/workspace/')
+    setCurrentCwdTransient('c:/uniworker/acc/workspace/')
     const { result, requestGateway } = mountActions()
 
     await act(() => result.current.createBackendSessionForSend('你好'))

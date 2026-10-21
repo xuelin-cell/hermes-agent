@@ -17,16 +17,22 @@ Source, from the environment of the build:
   packaging tests do — stages nothing and goes to no network.
 * ``UNIWORK_BUNDLED_PLUGINS_REF`` — branch, tag or commit (default: the
   repository's default branch).
+* ``UNIWORK_BUNDLED_PLUGINS_REQUIRED`` — ``1`` (the desktop build's default)
+  turns every problem below into a failed build, so an installer never ships
+  without its kits by accident; ``off`` as the source still builds without them.
 
-Like 数字员工, a source that cannot be fetched is a warning, not a failed
-build; the log says which source was used and how many packages went in. Only
-zips that open and carry a ``plugin.json`` are copied: a broken or LFS-pointer
-zip is named in the log and left out.
+Otherwise, like 数字员工, a source that cannot be fetched is a warning, not a
+failed build. The log says which source and config-repo commit were used and
+how many packages went in; ``source.json`` next to the packages records the
+same for the installer check. Only zips that open and carry a ``plugin.json``
+are copied: a broken or LFS-pointer zip is named in the log and left out.
 """
 
 from __future__ import annotations
 
+import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -35,6 +41,9 @@ from pathlib import Path
 
 DEFAULT_SOURCE = "git@gitcode.com:uni-ai/uniclawwork-local-config.git"
 TARGET = Path("plugins/uniwork-kits/bundled/uniwork-bundled")
+REQUIRED_ENV = "UNIWORK_BUNDLED_PLUGINS_REQUIRED"
+# 记下这次带的是哪份配置仓库；套件安装只认 zip，不会把它当成包。
+SOURCE_RECORD = "source.json"
 # 套件和专家脚本的依赖清单，插件运行时（script_python.py）读的是同一份。
 SCRIPT_REQUIREMENTS = Path("plugins/uniwork-kits/script-requirements.txt")
 MANIFEST_MAX_DEPTH = 2
@@ -79,14 +88,62 @@ def _fetch(url: str, ref: str, into: Path) -> None:
     subprocess.run(["git", "checkout", "-q", "FETCH_HEAD"], cwd=into, **run)
 
 
+class BundledPluginsError(RuntimeError):
+    """正式打包要求带上内置套件和专家，却没拉到或者包不完整。"""
+
+
+def _problem(required: bool, message: str) -> None:
+    """正式打包（要求带内置包）时报错让打包失败，否则只打警告。"""
+    if required:
+        raise BundledPluginsError(
+            f"{message}. The desktop build must carry the bundled kits and experts: fix the source, or set "
+            f"UNIWORK_BUNDLED_PLUGINS=off (or {REQUIRED_ENV}=0) to build without them on purpose")
+    print(f"WARNING: {message}", flush=True)
+
+
+def _public_source(source: str) -> str:
+    """写进日志和安装包的来源：去掉地址里的账号口令（https://user:token@host/... 只留 https://host/...）。"""
+    return re.sub(r"^([A-Za-z][A-Za-z0-9+.-]*://)[^/@]*@", r"\1", source)
+
+
+def _fetch_error(exc: Exception) -> str:
+    """拉取失败的简短原因；不带命令行，免得把地址里的口令打进日志（git 自己的报错已经在上面）。"""
+    if isinstance(exc, subprocess.CalledProcessError):
+        return f"git exited with {exc.returncode}"
+    if isinstance(exc, subprocess.TimeoutExpired):
+        return f"timed out after {exc.timeout:g}s"
+    return str(exc)
+
+
+def _revision(checkout: Path) -> str:
+    """配置仓库当前的提交号；不是 git 目录时返回空串。"""
+    try:
+        result = subprocess.run(["git", "rev-parse", "HEAD"], cwd=checkout, capture_output=True, text=True,
+                                timeout=30, stdin=subprocess.DEVNULL, check=True)
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return ""
+    return result.stdout.strip()
+
+
 def stage_bundled_plugins(repo_dir: Path, env: dict[str, str] | None = None) -> int:
-    """把内置套件和专家拷进打包目录 *repo_dir*，返回拷了几个包。"""
+    """把内置套件和专家拷进打包目录 *repo_dir*，返回拷了几个包。
+
+    环境里 UNIWORK_BUNDLED_PLUGINS_REQUIRED=1（正式打包的默认）时，没配置来源、拉不到、
+    一个能装的包都没有、或者有坏包，都直接报错；来源写 off 仍然放行。
+    """
     env = os.environ if env is None else env
     source = (env.get("UNIWORK_BUNDLED_PLUGINS") or "").strip()
-    if not source or source.lower() == "off":
-        print(f"==> Bundled plugins: {'off' if source else 'not configured'} (UNIWORK_BUNDLED_PLUGINS)", flush=True)
+    required = (env.get(REQUIRED_ENV) or "").strip() == "1"
+    if source.lower() == "off":
+        print("==> Bundled plugins: off (UNIWORK_BUNDLED_PLUGINS)", flush=True)
+        return 0
+    if not source:
+        if required:
+            _problem(required, "no bundled plugins source is configured (UNIWORK_BUNDLED_PLUGINS)")
+        print("==> Bundled plugins: not configured (UNIWORK_BUNDLED_PLUGINS)", flush=True)
         return 0
     ref = (env.get("UNIWORK_BUNDLED_PLUGINS_REF") or "").strip()
+    shown = _public_source(source)
     with tempfile.TemporaryDirectory(prefix="uniwork-bundled-") as temp:
         local = Path(source)
         if not local.is_dir():
@@ -94,18 +151,23 @@ def stage_bundled_plugins(repo_dir: Path, env: dict[str, str] | None = None) -> 
             try:
                 _fetch(source, ref, local)
             except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
-                print(f"WARNING: could not fetch bundled plugins from {source} ({exc}); building without them",
-                      flush=True)
+                _problem(required, f"could not fetch bundled plugins from {shown} ({_fetch_error(exc)}); "
+                                   "building without them")
                 return 0
         bundle = _bundle_root(local)
         if bundle is None:
-            print(f"WARNING: no plugins/uniwork-bundled under {source}; building without bundled plugins", flush=True)
+            _problem(required, f"no plugins/uniwork-bundled under {shown}; building without bundled plugins")
             return 0
         archives = sorted((bundle / "plugins").glob("*.zip"))
         good = [archive for archive in archives if usable(archive)]
-        for archive in archives:
-            if archive not in good:
-                print(f"WARNING: skipped bundled plugin {archive.name}: not a zip with a plugin.json", flush=True)
+        skipped = [archive.name for archive in archives if archive not in good]
+        for name in skipped:
+            print(f"WARNING: skipped bundled plugin {name}: not a zip with a plugin.json", flush=True)
+        if required and not good:
+            _problem(required, f"no installable bundled plugin under {shown}")
+        if required and skipped:
+            _problem(required, f"unusable bundled plugin archive(s) under {shown}: {', '.join(skipped)}")
+        commit = _revision(local)
         target = repo_dir / TARGET
         if target.exists():
             shutil.rmtree(target)
@@ -115,7 +177,12 @@ def stage_bundled_plugins(repo_dir: Path, env: dict[str, str] | None = None) -> 
         avatars = bundle / "avatars"
         if avatars.is_dir():
             shutil.copytree(avatars, target / "avatars")
-    print(f"==> Bundled plugins source: {source}{'@' + ref if ref else ''} ({len(good)} plugin archive(s))", flush=True)
+        record = {"source": shown, "ref": ref, "commit": commit,
+                  "plugins": [archive.name for archive in good], "skipped": skipped}
+        (target / SOURCE_RECORD).write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    revision = f" (config commit {commit[:12]})" if commit else ""
+    print(f"==> Bundled plugins source: {shown}{'@' + ref if ref else ''}{revision} "
+          f"({len(good)} plugin archive(s))", flush=True)
     if not good:
         print("WARNING: the build carries no bundled kits or experts", flush=True)
     return len(good)

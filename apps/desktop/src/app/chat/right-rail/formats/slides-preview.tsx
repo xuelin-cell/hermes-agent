@@ -37,17 +37,38 @@ export function currentSlide(slides: readonly Span[], view: Span, atEnd: boolean
   return current
 }
 
+/** 转换后按 PDF 分页显示。 */
+function openConvertedPages(path: string, signal: AbortSignal) {
+  return readOfficePreviewPdf(path, signal).then(bytes => (signal.aborted ? null : openPdfPages(bytes)))
+}
+
 /** 转换仍走唯一来源模块；迟到的解析器也必须关闭，不能留住 Worker 和缓存。 */
-export default function SlidesPreview({ onFailure, path, reloadKey, target }: FormatRendererProps) {
+export default function SlidesPreview(props: FormatRendererProps) {
   const { t } = useI18n()
+  const source = useSlidePages(openConvertedPages, props)
+
+  return source ? (
+    <SlidesViewer label={props.target.label} source={source} />
+  ) : (
+    <div className="flex h-full flex-col items-center justify-center gap-3 p-3">
+      <PageLoader className="h-auto" label={t.preview.office.converting} />
+      <p className="text-xs text-muted-foreground">{t.preview.office.firstOpen}</p>
+    </div>
+  )
+}
+
+/** 打开一份分页来源并负责关闭；刷新或卸载后迟到的结果立即释放，失败交给降级流程。 */
+export function useSlidePages(
+  open: (path: string, signal: AbortSignal) => Promise<PdfPages | null>,
+  { onFailure, path, reloadKey }: Pick<FormatRendererProps, 'onFailure' | 'path' | 'reloadKey'>
+) {
   const [source, setSource] = useState<PdfPages | null>(null)
   useEffect(() => {
     let active = true
     let owned: PdfPages | null = null
     const request = new AbortController()
     setSource(null)
-    void readOfficePreviewPdf(path, request.signal)
-      .then(bytes => (active ? openPdfPages(bytes) : null))
+    void open(path, request.signal)
       .then(next => {
         owned = next
 
@@ -68,16 +89,9 @@ export default function SlidesPreview({ onFailure, path, reloadKey, target }: Fo
       request.abort()
       void owned?.dispose()
     }
-  }, [onFailure, path, reloadKey])
+  }, [onFailure, open, path, reloadKey])
 
-  return source ? (
-    <SlidesViewer label={target.label} source={source} />
-  ) : (
-    <div className="flex h-full flex-col items-center justify-center gap-3 p-3">
-      <PageLoader className="h-auto" label={t.preview.office.converting} />
-      <p className="text-xs text-muted-foreground">{t.preview.office.firstOpen}</p>
-    </div>
-  )
+  return source
 }
 
 interface ViewerProps {

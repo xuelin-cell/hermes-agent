@@ -1,15 +1,17 @@
 import { atom, computed } from 'nanostores'
 
-import { $welcomeCatalog } from '@/app/chat/composer/work-templates/catalog-store'
+import { $resolvedWelcomeCatalog } from '@/app/chat/composer/work-templates/catalog-store'
 import { $interfaceMode, setInterfaceMode } from '@/store/interface-mode'
 
 import type { WelcomeLocale, WelcomeModule } from '../../electron/uniwork-welcome/catalog'
 
 const $selectedKeys = atom<Partial<Record<WelcomeLocale, string>>>({})
 
+export const $selectedWorkspaceMode = atom<'work' | 'codex' | null>(null)
+
 function selectedModule(locale: WelcomeLocale) {
-  return computed([$welcomeCatalog, $interfaceMode, $selectedKeys], (catalog, mode, keys) => {
-    const modules = catalog[locale].modules
+  return computed([$resolvedWelcomeCatalog[locale], $interfaceMode, $selectedKeys], (catalog, mode, keys) => {
+    const modules = catalog.modules
     const workspace = mode === 'advanced' ? 'codex' : 'work'
 
     return (
@@ -27,6 +29,8 @@ export const $selectedWelcomeModules = {
 }
 
 export function selectWorkspaceModule(locale: WelcomeLocale, module: WelcomeModule) {
+  $selectedWorkspaceMode.set(module.workspace)
+
   if ($selectedKeys.get()[locale] !== module.id) {
     $selectedKeys.set({ ...$selectedKeys.get(), [locale]: module.id })
   }

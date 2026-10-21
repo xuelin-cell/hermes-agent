@@ -24,3 +24,43 @@ export function composeArtifactHtml(content: string): string {
     '</body></html>'
   ].join('\n')
 }
+
+export interface ArtifactShareRecord {
+  key: string
+  shareId: string
+  url: string
+  title: string
+  hash: string
+  /** Verified file bytes, independent of the Markdown renderer used to publish. */
+  sourceHash?: string
+  version: number
+  updatedAt: string
+  /** Older records have no deadline until the user explicitly sets one. */
+  expiresAt?: string | null
+  deletedAt?: string
+  cleanupError?: string
+}
+
+export interface ArtifactSharePublishInput {
+  key: string
+  html: string
+  title: string
+  source: ArtifactShareSource
+  ttlDays?: number
+}
+
+export function artifactShareExpired(record: Pick<ArtifactShareRecord, 'expiresAt'>, now = Date.now()): boolean {
+  return !!record.expiresAt && new Date(record.expiresAt).getTime() <= now
+}
+
+export function artifactShareActive(record: ArtifactShareRecord, now = Date.now()): boolean {
+  return !record.deletedAt && !artifactShareExpired(record, now)
+}
+
+export function artifactShareDeadline(ttlDays: number, now: number): string {
+  if (!Number.isInteger(ttlDays) || ttlDays < 1 || ttlDays > 7) {
+    throw new Error('有效期必须为 1～7 天的整数。')
+  }
+
+  return new Date(now + ttlDays * 24 * 60 * 60 * 1000).toISOString()
+}

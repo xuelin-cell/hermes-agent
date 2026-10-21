@@ -22,10 +22,11 @@ import type { SetStatusbarItemGroup } from '../shell/statusbar-controls'
 
 import { prefetchCatalogWhenIdle } from './catalog/catalog-data'
 import { isManagedKitSkill } from './kit-skills'
-import { McpConnectorsTab } from './mcp-mt/connectors-tab'
+import { ConnectorsPage } from './mcp-mt/connectors-page'
 import { PluginsTab } from './plugins/plugins-tab'
 import { CapabilityScopeSelector, useCapabilityScope } from './scope-selector'
 import { SkillMarket } from './skill-market'
+import { CapabilitiesPage } from './skills-mt/capabilities-page'
 import { SKILLS_QUERY_KEY, skillSearchTerms, useSkillsQuery } from './skills/skills-data'
 import { SkillsTab } from './skills/skills-tab'
 import { refreshToolCalls } from './toolsets/tool-calls'
@@ -158,7 +159,7 @@ export function CapabilitiesView({
     // ACTIVE gateway's socket — for a scope pinned to a different backend that
     // (config edits still apply on that backend's next session).
     connectors: () => (
-      <McpConnectorsTab
+      <ConnectorsPage
         gateway={scope.crossBackend ? null : gateway}
         key={`connectors-${scope.key}`}
         profile={scope.profile}
@@ -210,6 +211,28 @@ export function CapabilitiesView({
       <ToolsetsTab key={`toolsets-${scope.key}`} profile={scope.profile} query={query} toolsets={toolsets ?? []} />
     )
   } satisfies Record<CapabilityMode, () => React.ReactNode>
+
+  // 普通用户：对照 UniWork 的扩展页（专家 | 技能 | 连接器），见 skills-mt/。开发者模式和嵌入视图保持原样。
+  if (!developerMode && !embedded) {
+    return (
+      <CapabilitiesPage
+        {...props}
+        connectors={tabContent.connectors()}
+        mode={mode === 'connectors' ? 'connectors' : 'skills'}
+        onModeChange={setMode}
+        scopeSelector={<CapabilityScopeSelector scope={scope} />}
+        skills={{
+          hiddenKitSkills,
+          installedError: skillsError,
+          installedNames: installedSkillNames,
+          installedPending: !skills || skillsFailed,
+          onRefresh: () => void refreshCapabilities(),
+          profile: scope.profile,
+          skills: manageableSkills
+        }}
+      />
+    )
+  }
 
   return (
     <PageSearchShell

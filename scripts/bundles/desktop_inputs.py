@@ -73,8 +73,12 @@ def identity_environment(request: BuildRequest, variant: str, inherited: Mapping
         env["HERMES_PAYLOAD_TAG"] = request.tag
         env["GITHUB_REF_NAME"] = request.tag
     # desktop-mt: 正式打包默认带上 gitcode 配置仓库里的内置套件和专家；单独调用 prepare_native（如单元测试）不联网。
-    from scripts.bundles.uniwork_bundled import DEFAULT_SOURCE
+    from scripts.bundles.uniwork_bundled import DEFAULT_SOURCE, REQUIRED_ENV
     env.setdefault("UNIWORK_BUNDLED_PLUGINS", DEFAULT_SOURCE)
+    # 拉不到或有坏包就让打包失败，不再静默打出没有套件的安装包；打包人可以显式设 0 放行。
+    env.setdefault(REQUIRED_ENV, "1")
+    # 名字、appId、exe 和安装目录不带提交号，装新包覆盖旧包（见 apps/desktop/product-identity.cjs）。
+    env.setdefault("UNIWORK_FIXED_IDENTITY", "1")
     return env
 
 

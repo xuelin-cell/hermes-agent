@@ -4,6 +4,15 @@ import { FIELD_DESCRIPTIONS, FIELD_LABELS } from '@/app/settings/constants'
 import type { Translations } from './types'
 
 export const en: Translations = {
+  workspaceEditor: {
+    title: 'Editor',
+    capabilities: 'Extensions',
+    openProject: 'Open a project conversation to browse its files.',
+    selectFile: 'Select a file to edit.',
+    unsupported: 'Binary, truncated, or large files cannot be edited here.',
+    refresh: 'Refresh',
+    save: 'Save'
+  },
   conversationShare: {
     sessionShare: 'Share conversation',
     responseShare: 'Share response',
@@ -42,15 +51,17 @@ export const en: Translations = {
     transferNotStarted: 'Not started',
     transferCancelled: 'Download cancelled',
     transferUploadStopped: 'Sending stopped. Refresh to check the cloud result.',
-    transferUnknown: 'The upload result is unconfirmed. Do not upload again yet. Refresh to check the cloud result.',
+    transferUnknown: 'Unable to automatically confirm the upload. Refresh the file list to check.',
     transferDownloadPartial: 'Some files were saved locally. Other files did not complete. Check the transfer records.',
     transferStopFailed: 'Could not stop the transfer. Please try again.',
     downloadSaved: name => `${name} saved locally`,
     uploadSaved: name => `“${name}” uploaded to cloud`,
-    downloadsSaved: (saved, skipped) => skipped ? `${saved} files saved locally; ${skipped} downloads cancelled.` : `${saved} files saved locally.`,
+    downloadsSaved: (saved, skipped) =>
+      skipped ? `${saved} files saved locally; ${skipped} downloads cancelled.` : `${saved} files saved locally.`,
     transferErrors: {
       AUTH_REQUIRED: 'Your UniWork session has expired. Sign in to UniWork again and retry.',
-      DRIVE_AUTH_EXPIRED: 'Your drive session has expired. Refresh to reconnect. If it still fails, sign in to UniWork again.',
+      DRIVE_AUTH_EXPIRED:
+        'Your drive session has expired. Refresh to reconnect. If it still fails, sign in to UniWork again.',
       PERMISSION_DENIED: 'You do not have permission for this operation.',
       REQUEST_TIMEOUT: 'The request timed out and the operation did not complete. Please try again later.',
       NETWORK_ERROR: 'Network connection failed. Check your connection.',
@@ -64,19 +75,27 @@ export const en: Translations = {
       LOCAL_FILE_READ_FAILED: 'Could not read the local file. Check the file and retry.',
       UPLOAD_NOT_ALLOWED: 'Uploads are not available for this drive.',
       UPSTREAM_UNAVAILABLE: 'The cloud drive is temporarily unavailable.',
-      SERVER_UPGRADE_REQUIRED: 'The cloud drive transfer service needs an update. Go to Settings → Feedback and upload logs to report the issue.',
+      SERVER_UPGRADE_REQUIRED:
+        'The cloud drive transfer service needs an update. Go to Settings → Feedback and upload logs to report the issue.',
       INVALID_RESPONSE: 'The service returned an incomplete response.',
       SIZE_MISMATCH: 'The file could not be saved completely. Please retry.',
       TRANSPORT_ERROR: 'Network connection failed. Check your connection.',
-      UPLOAD_INCOMPLETE: 'The upload result is unconfirmed. Do not upload again yet. Refresh to check the cloud result.',
-      UPLOAD_UNCONFIRMED: 'The upload result is unconfirmed. Do not upload again yet. Refresh to check the cloud result.',
+      OUTCOME_UNKNOWN: 'Unable to automatically confirm the operation. Refresh the file list to check.',
+      UPLOAD_CONFIRMATION_FAILED: 'The file was absent in three complete cloud checks. Upload failed. Please try again.',
+      UPLOAD_CONFIRMATION_UNAVAILABLE: 'Unable to automatically confirm the upload. Refresh the file list to check.',
+      OPERATION_CONFIRMATION_UNAVAILABLE: 'Unable to automatically confirm the operation. Refresh the file list to check.',
+      UPLOAD_FAILED: 'Upload failed. Please upload again.',
+      UPLOAD_INCOMPLETE: 'Upload interrupted. Please upload again.',
+      UPLOAD_UNCONFIRMED: 'Unable to automatically confirm the upload. Refresh the file list to check.',
       IPC_ERROR: 'Network connection failed. Check your connection.',
-      AUTH_CHANGED: 'The account changed and the transfer stopped. Retry under the current account.',
+      AUTH_CHANGED: 'The account changed and the transfer stopped. Retry under the current account.'
     },
     emptyRecycle: 'Empty recycle bin',
     permanentDelete: 'Delete permanently',
-    permanentDeleteHint: 'Permanently delete this item? It cannot be recovered. Deleting a folder also permanently deletes its contents.',
-    emptyRecycleHint: 'Permanently delete all files and folders in your personal cloud drive recycle bin? This cannot be undone.',
+    permanentDeleteHint:
+      'Permanently delete this item? It cannot be recovered. Deleting a folder also permanently deletes its contents.',
+    emptyRecycleHint:
+      'Permanently delete all files and folders in your personal cloud drive recycle bin? This cannot be undone.',
     filter: 'File type',
     fileName: 'File name',
     fileSize: 'Size',
@@ -155,7 +174,8 @@ export const en: Translations = {
     restoreHint: 'Restore this item? Folder contents will also be restored.',
     recycleFailed: 'The recycle bin could not be fully loaded. Refresh before restoring files.',
     recycleEmpty: 'The recycle bin is empty',
-    operationUnknown: 'The result could not be confirmed. Refresh to check before trying again.',
+    operationVerifying: 'Confirming the operation result. Please wait.',
+    operationUnknown: 'Unable to automatically confirm the operation. Refresh the file list to check.',
     operationPartial: 'Only part of the operation completed. Refresh to check before trying again.',
     operationFailed: 'The operation did not complete. Refresh the list and check your sign-in or permissions.',
     personal: 'Personal drive',
@@ -182,10 +202,19 @@ export const en: Translations = {
       restart: 'Restart the desktop app completely to update the usage query component.',
       actualUsage: 'Plan usage',
       details: 'View details',
+      subscribe: 'Subscribe',
+      subscribeBusy: 'Opening…',
+      subscribeFailed: 'Could not get a subscription ticket. Try again.',
+      subscribeAuth: 'Your sign-in has expired. Sign in again to subscribe.',
+      subscribeMissingPhone: 'Sign in again to subscribe.',
+      subscribeRestart: 'Restart the desktop app completely to update the subscription component.',
       logout: 'Sign out',
       title: 'Plan usage',
       loading: 'Loading plan usage…',
       refresh: 'Refresh usage',
+      refreshPlan: 'Refresh plan',
+      refreshed: 'Plan information refreshed',
+      refreshFailed: 'Refresh failed. Try again.',
       failed: 'Could not refresh. Try again.',
       stale: 'Refresh failed. Showing the previous result.',
       auth: 'Your sign-in has expired. Sign in again to check usage.',
@@ -194,14 +223,20 @@ export const en: Translations = {
       expired: 'Expired',
       expires: 'Expires',
       used: 'Used',
+      tokenUsed: 'Used',
       remaining: 'Remaining',
       fiveHour: '5-hour quota',
       week: 'Weekly quota',
       month: 'Monthly quota',
       reset: 'Resets',
+      resetsAt: time => `Resets ${time}`,
+      expiryText: date => date,
+      tokenExact: (remaining, used, total, unit) => {
+        const suffix = unit ? ` ${unit}` : ''
+        return `Remaining ${remaining}${suffix}, used ${used}${suffix}, total ${total}${suffix}`
+      },
       notStarted: 'Not started',
-      resetDue: 'Reset pending',
-      concurrency: 'Concurrent requests'
+      resetDue: 'Reset pending'
     },
     brand: 'UNIWORK',
     welcome: 'Welcome to UniWork',
@@ -344,22 +379,239 @@ export const en: Translations = {
 
   // `connectors.*` above stays the onboarding and chat vocabulary; these are the page's own, and the two are not shared.
   connectorsPage: {
+    recommended: {
+      qrHint: 'Scan with WeCom to create and authorize the bot.',
+      qrExpired: 'The QR code expired. Refresh it and try again.',
+      qrRefresh: 'Refresh QR code',
+      connect: (name: string) => `Connect ${name}`,
+      connectAction: 'Connect',
+      connected: 'Connected',
+      disconnect: 'Disconnect',
+      tryIt: 'Try it like this',
+      brand: 'Hermes',
+      credentials: 'Enter connection details',
+      credentialsHint:
+        'Credentials are encrypted and stored locally. For mail, use an app authorization code rather than your sign-in password.',
+      waiting: 'Finish authorization in your browser. This page will update automatically.',
+      cancel: 'Cancel',
+      localOnly:
+        'Recommended connectors are available with a local desktop backend. Manage remote MCP services in the MCP tab.',
+      nextSession: 'Ready for new chats. Existing conversations keep their current tool set.',
+      needAuth: 'Authorization required',
+      saveAndConnect: 'Save and connect',
+      saving: 'Saving connection…',
+      openChat: 'Open connector chat',
+      fields: {
+        email: 'Email address',
+        authorizationCode: 'Authorization code',
+        apiKey: 'API Key',
+        clientId: 'Client ID',
+        botId: 'Bot ID',
+        secret: 'Secret'
+      },
+      placeholders: {
+        email: 'user@example.com',
+        authorizationCode: '16-character code',
+        apiKey: 'Paste API Key',
+        clientId: 'Paste Client ID',
+        botId: 'Paste Bot ID',
+        secret: 'Paste Secret'
+      },
+      hints: {
+        qq_mail: 'Use the authorization code created after enabling POP3/IMAP/SMTP in QQ Mail, not your mail password.',
+        netease_mail:
+          'Use the 16-character client authorization code created after enabling IMAP/SMTP or POP3/SMTP in NetEase Mail, not your mail password.',
+        amap: 'Use a Web Service API Key created in the Amap developer console.',
+        wps_mcp: 'Create an Agent API Key from the Agent Identity page in WPS User Center.',
+        youdao_note: 'Bind a phone number to Youdao Note, then create an API Key in the NetEase developer platform.',
+        ima: 'Get the Client ID and API Key from the Tencent ima Agent Interface page.',
+        aminer: 'Request an Auth Token in the AMiner Open Platform console; paste the token without a Bearer prefix.',
+        wecom_bot: 'Scan with WeCom and confirm creation of the intelligent bot.'
+      },
+      guides: {
+        qq_mail: {
+          title: 'How do I get a QQ Mail authorization code?',
+          steps: [
+            'Sign in to QQ Mail on the web.',
+            'Open Account & Security in Settings.',
+            'Enable IMAP/SMTP or POP3/SMTP and complete verification.',
+            'Copy the generated authorization code and paste it here.'
+          ],
+          link: 'View QQ Mail instructions'
+        },
+        netease_mail: {
+          title: 'How do I get a NetEase Mail authorization code?',
+          steps: [
+            'Sign in to your 163, 126, or yeah.net mailbox.',
+            'Open Settings and find POP3/SMTP/IMAP services.',
+            'Enable IMAP/SMTP or POP3/SMTP.',
+            'Complete the requested security verification and create a client authorization code.',
+            'Copy the 16-character code and paste it here.'
+          ],
+          link: 'View NetEase Mail instructions'
+        },
+        amap: {
+          title: 'How do I get an Amap API Key?',
+          steps: [
+            'Sign in to the Amap developer console.',
+            'Complete developer verification.',
+            'Create an application and add a Web Service Key.',
+            'Copy the Key and paste it here.'
+          ],
+          link: 'Open the Amap console'
+        },
+        wps_mcp: {
+          title: 'How do I get a WPS Agent API Key?',
+          steps: [
+            'Sign in to WPS User Center.',
+            'Open Agent Identity.',
+            'Create an AI assistant and copy the one-time Key.',
+            'Paste the Key here.'
+          ],
+          link: 'Open WPS Agent Identity'
+        },
+        youdao_note: {
+          title: 'How do I get a Youdao Note API Key?',
+          steps: [
+            'Make sure your Youdao Note account has a phone number.',
+            'Sign in to the NetEase developer platform.',
+            'Open API Management and create a Key.',
+            'Copy the Key and paste it here.'
+          ],
+          link: 'Open the NetEase developer platform'
+        },
+        ima: {
+          title: 'How do I get Tencent ima credentials?',
+          steps: [
+            'Open the ima Agent Interface page.',
+            'Follow the page to obtain an API Key.',
+            'Copy both the Client ID and API Key.',
+            'Paste both values here.'
+          ],
+          link: 'Open the ima Agent Interface'
+        },
+        aminer: {
+          title: 'How do I get an AMiner Auth Token?',
+          steps: [
+            'Sign in to the AMiner Open Platform console.',
+            'Choose Apply for Auth Token.',
+            'Copy the complete token without adding Bearer.',
+            'Paste the token here.'
+          ],
+          link: 'Open the AMiner console'
+        }
+      },
+      tab: 'Recommended',
+      search: 'Search connectors',
+      details: (name: string) => `View ${name}`,
+      unavailable: 'Connection coming soon',
+      unavailableHint: 'Connector sign-in is not available yet. You can add an existing MCP service in the MCP tab.',
+      noMatches: 'No matching connectors',
+      catalog: {
+        qq_mail: {
+          name: 'QQ Mail',
+          description:
+            'Send, search, and organize QQ Mail. After connecting, Agent can read email content, summarize mail threads, and process mail information.',
+          provider: 'Tencent'
+        },
+        netease_mail: {
+          name: 'NetEase Mail',
+          description:
+            'Send, search, and organize NetEase Mail (163 / 126 / yeah.net). After connecting, Agent can read email content, summarize mail threads, and process mail information.',
+          provider: 'NetEase'
+        },
+        amap: {
+          name: 'Amap',
+          description: 'Search places, resolve addresses, check weather, and plan routes.',
+          provider: 'Amap'
+        },
+        wps_mcp: {
+          name: 'WPS',
+          description: 'Search, read, organize, and create WPS cloud documents, spreadsheets, and folders with Agent.',
+          provider: 'Kingsoft Office'
+        },
+        youdao_note: {
+          name: 'Youdao Note',
+          description: 'Search, read, create, and organize Youdao notes and todos with Agent.',
+          provider: 'NetEase Youdao'
+        },
+        ima: {
+          name: 'Tencent ima Knowledge Base',
+          description: 'Search, read, create, and organize Tencent ima notes and knowledge-base content with Agent.',
+          provider: 'Tencent'
+        },
+        qcc_mcp: {
+          name: 'Qichacha',
+          description:
+            'Connect Qichacha company, risk, intellectual property, operation, and executive services for enterprise data queries.',
+          provider: 'Qichacha'
+        },
+        eastmoney_mcp: {
+          name: 'Eastmoney',
+          description:
+            'Connect Eastmoney Choice-data MCP for financial market data, notices, macro indicators, securities screening, and research news.',
+          provider: 'Eastmoney'
+        },
+        ifind_mcp: {
+          name: 'iFinD (Tonghuashun)',
+          description:
+            'Query Tonghuashun iFinD financial data, enterprise registration, and legal content, letting Agent retrieve quotes, financials, company, and regulation data.',
+          provider: 'Tonghuashun'
+        },
+        aminer: {
+          name: 'AMiner Academic',
+          description: 'Search and query AMiner papers, scholars, organizations, patents, journals, and conferences.',
+          provider: 'Zhipu'
+        },
+        wecom_bot: {
+          name: 'WeCom',
+          description:
+            'Scan a QR code in WeCom to authorize an intelligent bot and connect documents, schedules, todos, contacts, and messaging capabilities.',
+          provider: 'WeCom'
+        }
+      }
+    },
     mcpLocal: {
-      addCustom: 'Add custom MCP',
-      custom: 'Custom MCP',
-      plugins: 'MCP from plugins',
+      hint: 'MCP servers the agent can connect to. A server is tested before it turns on; editing a server turns it off until you turn it on again.',
       profile: 'Current profile',
-      search: 'Search MCP servers',
-      empty: 'No custom MCP servers',
-      noMatches: 'No matching MCP servers',
+      builtIn: 'Built-in MCP',
+      builtInTag: 'Built-in',
+      custom: 'Custom MCP Servers',
+      customHint: 'Add HTTP or stdio MCP servers here and configure them field by field.',
+      empty: 'No custom MCP servers yet',
+      addServer: 'Add MCP Server',
+      chooseTransport: 'Choose transport type:',
+      plugins: 'MCP from plugins',
+      openPlugins: 'Manage plugins',
       loadFailed: 'Could not load MCP configuration',
       pluginsFailed: 'Could not load plugin MCP servers',
-      configuration: 'Configuration (JSON)',
-      enabled: 'Enabled',
-      testing: 'Testing connection…',
-      testPassed: 'Last connection test passed',
-      testFailed: 'Last connection test failed',
-      untested: 'Connection not tested'
+      untitled: 'Untitled server',
+      noUrl: 'No URL configured',
+      noCommand: 'No command configured',
+      connecting: 'Connecting…',
+      toolsAvailable: count => `${count} tool${count === 1 ? '' : 's'} available`,
+      failed: 'Failed',
+      type: 'Type',
+      name: 'Name',
+      namePlaceholder: 'e.g. context7',
+      url: 'URL',
+      headers: 'Headers',
+      command: 'Command',
+      args: 'Arguments (space-separated)',
+      env: 'Environment Variables',
+      addRow: 'Add',
+      removeRow: 'Remove row',
+      showValue: 'Show value',
+      hideValue: 'Hide value',
+      uniAiToolkitSummary:
+        'Plug-and-play multimodal services — image generation, visual QA, speech transcription, AI podcasting, and paper translation.',
+      formErrors: {
+        argsQuote: 'A quote in the arguments is not closed',
+        commandRequired: 'Enter a command',
+        nameRequired: 'Enter a name',
+        nameTaken: 'Another server already uses this name',
+        urlRequired: 'Enter a URL'
+      }
     },
     title: 'Connectors',
     searchPlaceholder: (count: number) => `Search ${count} apps`,
@@ -3157,6 +3409,13 @@ export const en: Translations = {
       guide: 'Setup guide',
       save: 'Save and enable',
       comingSoon: 'Not integrated yet',
+      personalBindingMissing: 'Personal binding is not confirmed. Sign out and sign in again by SMS.',
+      reconnect: "Reconnect",
+      reconnecting: "Reconnecting…",
+      reconnected: "5G messaging reconnected.",
+      reconnectBusy: "A message is being processed. Reconnect after it finishes.",
+      reconnectFailed: "5G reconnect failed. Check the logs; if the gateway is stopped, fully quit and reopen the app.",
+      reconnectRestartRequired: "The 5G component update is not active yet. Fully quit the app, including the tray, then reopen it.",
       unavailable: 'Messaging component unavailable',
       notConnected: 'Not connected',
       unbind: 'Disconnect',
@@ -3851,6 +4110,19 @@ export const en: Translations = {
   },
 
   artifactShare: {
+    validity: "Link lifetime",
+    days: count => count === 1 ? '1 day' : `${count} days`,
+    customValidity: "Custom days",
+    editValidity: "Change lifetime",
+    saveValidity: "Save lifetime",
+    expiresAt: date => `Expires: ${date}`,
+    noExpiry: "This older link has no expiration set.",
+    expired: "Share expired",
+    cleanupPending: "Expired; cleanup is pending. The public link may still be accessible.",
+    expiryNotice: "New links default to 1 day; choose 1–7 days. Changes start from saving. Expired links are cleaned up while the app runs, or on its next launch.",
+    invalidValidity: "Enter a whole number from 1 to 7.",
+    inactive: "Sharing was revoked or this link is no longer available.",
+    statusUnavailable: "Sharing status is unavailable. Fully quit the app and retry.",
     disclosure: "Anyone with the link can view this artifact. Your other files and conversations are not shared.",
     checking: "Checking share status…",
     createLink: "Create public link",
@@ -3869,7 +4141,7 @@ export const en: Translations = {
     shareFailed: 'Could not share artifact',
     revokeFailed: 'Could not revoke link',
     previewNotReady: 'Markdown preview is not ready.',
-    imageNotEmbedded: 'Markdown contains an image that is not embedded. Make the page self-contained first.',
+    imageNotEmbedded: 'Markdown contains an image that is not embedded. Make the page self-contained first.'
   },
 
   artifactPreview: {
@@ -3931,7 +4203,7 @@ export const en: Translations = {
     profileRail: 'Profile rail',
     nav: {
       'new-session': 'New session',
-      capabilities: 'Capabilities',
+      capabilities: 'Extensions',
       messaging: 'Messaging',
       artifacts: 'Library',
       cron: 'Scheduled jobs'

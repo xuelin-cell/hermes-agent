@@ -5,6 +5,15 @@ import { defineLocale } from './define-locale'
 import { introZh } from './intro-zh'
 
 export const zh = defineLocale({
+  workspaceEditor: {
+    title: '编辑器',
+    capabilities: '扩展',
+    openProject: '请先打开项目中的会话，再浏览和编辑文件。',
+    selectFile: '选择一个文件开始编辑。',
+    unsupported: '无法编辑二进制、截断或过大的文件。',
+    refresh: '刷新',
+    save: '保存'
+  },
   conversationShare: {
     sessionShare: '分享会话',
     responseShare: '分享回复',
@@ -43,12 +52,13 @@ export const zh = defineLocale({
     transferNotStarted: '尚未开始',
     transferCancelled: '下载已取消',
     transferUploadStopped: '已停止发送，请刷新核对云盘结果。',
-    transferUnknown: '上传结果待确认，请勿立即重复上传。请刷新核对云盘结果。',
+    transferUnknown: '暂时无法自动确认上传结果，请刷新文件列表核对。',
     transferDownloadPartial: '部分文件已保存到本机，其余文件未完成，请查看传输记录。',
     transferStopFailed: '未能停止传输，请再试一次。',
     downloadSaved: name => `${name} 已保存到本机`,
     uploadSaved: name => `“${name}”已上传到云盘`,
-    downloadsSaved: (saved, skipped) => skipped ? `已将 ${saved} 个文件保存到本机，${skipped} 个下载已取消。` : `已将 ${saved} 个文件保存到本机。`,
+    downloadsSaved: (saved, skipped) =>
+      skipped ? `已将 ${saved} 个文件保存到本机，${skipped} 个下载已取消。` : `已将 ${saved} 个文件保存到本机。`,
     transferErrors: {
       AUTH_REQUIRED: 'UniWork 登录已失效，请重新登录 UniWork 后再试。',
       DRIVE_AUTH_EXPIRED: '云盘连接已失效，请点击刷新重新连接；若仍无法恢复，请重新登录 UniWork。',
@@ -69,10 +79,15 @@ export const zh = defineLocale({
       INVALID_RESPONSE: '服务返回的数据不完整，请稍后重试。',
       SIZE_MISMATCH: '文件未能完整保存，请重试。',
       TRANSPORT_ERROR: '网络连接异常，请检查网络。',
-      UPLOAD_INCOMPLETE: '上传结果待确认，请勿立即重复上传。请刷新核对云盘结果。',
-      UPLOAD_UNCONFIRMED: '上传结果待确认，请勿立即重复上传。请刷新核对云盘结果。',
+      OUTCOME_UNKNOWN: '暂时无法自动确认操作结果，请刷新文件列表核对。',
+      UPLOAD_CONFIRMATION_FAILED: '连续三次未在云盘文件列表中确认到该文件，本次上传失败，请重试。',
+      UPLOAD_CONFIRMATION_UNAVAILABLE: '暂时无法自动确认上传结果，请刷新文件列表核对。',
+      OPERATION_CONFIRMATION_UNAVAILABLE: '暂时无法自动确认操作结果，请刷新文件列表核对。',
+      UPLOAD_FAILED: '上传失败，请重新上传。',
+      UPLOAD_INCOMPLETE: '上传中断，请重新上传。',
+      UPLOAD_UNCONFIRMED: '暂时无法自动确认上传结果，请刷新文件列表核对。',
       IPC_ERROR: '网络连接异常，请检查网络。',
-      AUTH_CHANGED: '登录状态已变化，本次传输已停止。请在当前账号下重试。',
+      AUTH_CHANGED: '登录状态已变化，本次传输已停止。请在当前账号下重试。'
     },
     emptyRecycle: '清空回收站',
     permanentDelete: '彻底删除',
@@ -153,7 +168,8 @@ export const zh = defineLocale({
     restoreHint: '确定恢复此条目吗？文件夹中的内容也将一并恢复。',
     recycleFailed: '回收站未能完整加载，请刷新后再恢复文件。',
     recycleEmpty: '回收站为空',
-    operationUnknown: '暂时无法确认操作结果，请刷新核对后再操作。',
+    operationVerifying: '正在确认操作结果，请稍候。',
+    operationUnknown: '暂时无法自动确认操作结果，请刷新文件列表核对。',
     operationPartial: '操作仅部分完成，请刷新核对后再操作。',
     operationFailed: '操作未完成，请刷新列表，并检查登录状态或操作权限。',
     personal: '个人云盘',
@@ -178,10 +194,19 @@ export const zh = defineLocale({
       restart: '用量查询组件尚未更新，请完全退出并重新启动桌面应用。',
       actualUsage: '套餐实际用量',
       details: '查看详情',
+      subscribe: '订阅',
+      subscribeBusy: '正在打开…',
+      subscribeFailed: '获取订阅凭证失败，请稍后重试',
+      subscribeAuth: '登录状态已失效，请重新登录后订阅。',
+      subscribeMissingPhone: '请重新登录后再订阅。',
+      subscribeRestart: '订阅组件尚未更新，请完全退出并重新启动桌面应用。',
       logout: '退出登录',
       title: '套餐用量',
       loading: '正在查询套餐用量…',
       refresh: '刷新用量',
+      refreshPlan: '刷新套餐信息',
+      refreshed: '套餐信息已刷新',
+      refreshFailed: '刷新失败，请稍后重试',
       failed: '刷新失败，请重试。',
       stale: '刷新失败，当前显示上次查询结果。',
       auth: '登录状态已失效，请重新登录后查询。',
@@ -190,14 +215,20 @@ export const zh = defineLocale({
       expired: '已到期',
       expires: '截止日期',
       used: '已用',
+      tokenUsed: '已使用',
       remaining: '剩余',
       fiveHour: '5 小时额度',
       week: '每周额度',
       month: '每月额度',
       reset: '重置时间',
+      resetsAt: time => `${time}重置`,
+      expiryText: date => `${date} 到期`,
+      tokenExact: (remaining, used, total, unit) => {
+        const suffix = unit ? ` ${unit}` : ''
+        return `剩余 ${remaining}${suffix}，已用 ${used}${suffix}，总额 ${total}${suffix}`
+      },
       notStarted: '尚未开始计时',
-      resetDue: '等待重置',
-      concurrency: '当前并发'
+      resetDue: '等待重置'
     },
     brand: 'UNIWORK',
     welcome: '欢迎使用 UniWork',
@@ -331,22 +362,231 @@ export const zh = defineLocale({
     required: '必填'
   },
   connectorsPage: {
+    recommended: {
+      qrHint: '请使用企业微信扫描二维码，创建并授权智能机器人。',
+      qrExpired: '二维码已过期，请刷新后重试。',
+      qrRefresh: '重新生成二维码',
+      connect: (name: string) => `连接 ${name}`,
+      connectAction: '连接',
+      connected: '已连接',
+      disconnect: '解绑',
+      tryIt: '试试这样用',
+      brand: 'Hermes',
+      credentials: '填写连接信息',
+      credentialsHint: '凭据会在本机加密存储。邮箱请填写开启 IMAP/SMTP 后生成的授权码，而不是登录密码。',
+      waiting: '请在浏览器完成授权，此页面会自动更新。',
+      cancel: '取消',
+      localOnly: '推荐连接器仅支持本机桌面后端。远程 MCP 服务请在 MCP 标签中管理。',
+      nextSession: '已就绪，可在新聊天中使用；现有会话保持原工具集。',
+      needAuth: '需要授权',
+      saveAndConnect: '保存并连接',
+      saving: '正在保存连接…',
+      openChat: '打开连接器对话',
+      fields: {
+        email: '邮箱地址',
+        authorizationCode: '授权码',
+        apiKey: 'API Key',
+        clientId: 'Client ID',
+        botId: 'Bot ID',
+        secret: 'Secret'
+      },
+      placeholders: {
+        email: 'user@example.com',
+        authorizationCode: '16-character code',
+        apiKey: '粘贴 API Key',
+        clientId: '粘贴 Client ID',
+        botId: '粘贴 Bot ID',
+        secret: '粘贴 Secret'
+      },
+      hints: {
+        qq_mail: '请使用 QQ 邮箱网页设置中开启 POP3/IMAP/SMTP 服务后生成的授权码，不要填写邮箱登录密码。',
+        netease_mail:
+          '请使用网易邮箱开启 IMAP/SMTP 或 POP3/SMTP 服务后生成的 16 位客户端授权码，不要填写邮箱登录密码。',
+        amap: '请使用高德开放平台控制台中创建的 Web 服务 API Key。',
+        wps_mcp: '请使用 WPS 用户中心「Agent 身份」页面生成的 Agent API Key。',
+        youdao_note: '请先为有道云笔记账号绑定手机号，再登录网易智能开发者平台创建 API Key。',
+        ima: '请在腾讯 ima 的 Agent 接口页面获取 Client ID 和 API Key。',
+        aminer: '请在 AMiner 开放平台控制台申请 Auth Token；这里填写 Token 原文，无需添加 Bearer 前缀。',
+        wecom_bot: '扫码后按提示确认创建并绑定机器人。'
+      },
+      guides: {
+        qq_mail: {
+          title: '如何获取 QQ 邮箱授权码？',
+          steps: [
+            '打开 QQ 邮箱网页版并登录当前邮箱账号。',
+            '进入设置中的账号与安全，找到 POP3/IMAP/SMTP 服务。',
+            '按页面提示开启 IMAP/SMTP 或 POP3/SMTP 服务，并完成安全验证。',
+            '复制生成的授权码，返回 Hermes 填入授权码输入框。'
+          ],
+          link: '查看 QQ 邮箱授权码说明'
+        },
+        netease_mail: {
+          title: '如何获取网易邮箱授权码？',
+          steps: [
+            '打开网易邮箱网页版，登录需要连接的 163、126 或 yeah.net 邮箱。',
+            '进入“设置”，找到 POP3/SMTP/IMAP 服务相关设置。',
+            '开启 IMAP/SMTP 或 POP3/SMTP 服务。',
+            '按照网易邮箱提示完成手机短信等安全验证，并创建客户端授权码。',
+            '复制生成的 16 位授权码，返回 Hermes 填入授权码输入框。'
+          ],
+          link: '查看网易邮箱官方获取说明'
+        },
+        amap: {
+          title: '如何获取高德地图 API Key？',
+          steps: [
+            '打开高德开放平台控制台并登录开发者账号。',
+            '按平台提示完成开发者认证。',
+            '创建应用并添加服务平台为“Web 服务”的 Key。',
+            '复制生成的 Key，返回 Hermes 粘贴到下方输入框。'
+          ],
+          link: '前往高德开放平台'
+        },
+        wps_mcp: {
+          title: '如何获取 WPS Agent API Key？',
+          steps: [
+            '打开 WPS 用户中心并登录。',
+            '进入“Agent 身份”页面。',
+            '创建 AI 助理并复制只显示一次的 Key。',
+            '返回 Hermes 粘贴 Key。'
+          ],
+          link: '前往 WPS Agent 身份'
+        },
+        youdao_note: {
+          title: '如何获取有道云笔记 API Key？',
+          steps: [
+            '确认有道云笔记账号已绑定手机号。',
+            '登录网易智能开发者平台。',
+            '进入“API 管理”并创建 API Key。',
+            '复制 API Key，返回 Hermes 粘贴。'
+          ],
+          link: '前往网易开发者平台'
+        },
+        ima: {
+          title: '如何获取腾讯 ima Client ID 和 API Key？',
+          steps: [
+            '打开腾讯 ima Agent 接口页面。',
+            '按页面提示获取 API Key。',
+            '分别复制 Client ID 和 API Key。',
+            '返回 Hermes 填写两项凭据。'
+          ],
+          link: '前往 ima Agent 接口'
+        },
+        aminer: {
+          title: '如何获取 AMiner Auth Token？',
+          steps: [
+            '打开 AMiner 开放平台控制台并登录。',
+            '点击“申请 Auth Token”。',
+            '复制平台下发的完整 Token，请勿添加 Bearer 前缀。',
+            '返回 Hermes 粘贴 Token。'
+          ],
+          link: '前往 AMiner 开放平台控制台'
+        }
+      },
+      tab: '推荐',
+      search: '搜索连接器',
+      details: (name: string) => `查看${name}`,
+      unavailable: '暂未开放连接',
+      unavailableHint: '连接器授权服务尚未接入。已有 MCP 服务可在 MCP 标签中添加和管理。',
+      noMatches: '没有匹配的连接器',
+      catalog: {
+        qq_mail: {
+          name: 'QQ 邮箱',
+          description: '收发、搜索和整理 QQ 邮件。连接后可让 Agent 读取邮件内容、汇总邮件线索、处理邮件信息。',
+          provider: 'Tencent'
+        },
+        netease_mail: {
+          name: '网易邮箱',
+          description:
+            '收发、搜索和整理网易邮箱（163 / 126 / yeah.net）邮件。连接后可让 Agent 读取邮件内容、汇总邮件线索、处理邮件信息。',
+          provider: 'NetEase'
+        },
+        amap: {
+          name: '高德地图',
+          description: '地点搜索、地址解析、天气查询和路线规划。',
+          provider: '高德'
+        },
+        wps_mcp: {
+          name: 'WPS',
+          description: '搜索、读取、整理和创建 WPS 云文档、表格及文件夹，让 Agent 直接处理你的 WPS 内容。',
+          provider: '金山办公'
+        },
+        youdao_note: {
+          name: '有道云笔记',
+          description: '搜索、读取、创建和整理有道云笔记及待办，让 Agent 帮你管理个人知识与资料。',
+          provider: '网易有道'
+        },
+        ima: {
+          name: '腾讯 ima 知识库',
+          description: '搜索、读取、创建和整理腾讯 ima 笔记与知识库内容，让 Agent 帮你管理资料和知识库。',
+          provider: '腾讯'
+        },
+        qcc_mcp: {
+          name: '企查查',
+          description: '连接企查查企业信息、风险、知识产权、经营和董监高服务，让 Agent 查询企业数据。',
+          provider: '企查查'
+        },
+        eastmoney_mcp: {
+          name: '东方财富',
+          description: '连接东方财富 Choice 数据 MCP，查询行情、公告、宏观指标、证券筛选和研究资讯。',
+          provider: '东方财富'
+        },
+        ifind_mcp: {
+          name: '同花顺 iFinD',
+          description: '查询同花顺 iFinD 金融数据、企业工商信息与法律内容，让 Agent 检索行情、财务、企业与法规数据。',
+          provider: '同花顺'
+        },
+        aminer: {
+          name: 'AMiner学术',
+          description: '搜索和查询 AMiner 的论文、学者、机构、专利及期刊会议数据。',
+          provider: '智谱'
+        },
+        wecom_bot: {
+          name: '企业微信',
+          description: '使用企业微信扫码授权智能机器人，连接文档、日程、待办、通讯录和消息等办公能力。',
+          provider: '企业微信'
+        }
+      }
+    },
     mcpLocal: {
-      addCustom: '添加自定义 MCP',
-      custom: '自定义 MCP',
-      plugins: '插件提供的 MCP',
+      hint: '配置智能体可以连接的 MCP 服务。开启前会先测试连接；修改配置后服务会自动关闭，需要重新开启。',
       profile: '当前 Profile',
-      search: '搜索 MCP 服务',
-      empty: '尚未添加自定义 MCP',
-      noMatches: '没有匹配的 MCP 服务',
+      builtIn: '内置 MCP',
+      builtInTag: '内置',
+      custom: '自定义 MCP 服务',
+      customHint: '在这里添加 HTTP 或 stdio MCP 服务，按字段填写配置。',
+      empty: '暂未添加自定义 MCP 服务',
+      addServer: '添加 MCP 服务器',
+      chooseTransport: '选择传输类型：',
+      plugins: '插件提供的 MCP',
+      openPlugins: '管理插件',
       loadFailed: '无法读取 MCP 配置',
       pluginsFailed: '无法读取插件 MCP',
-      configuration: '配置（JSON）',
-      enabled: '已启用',
-      testing: '正在测试连接…',
-      testPassed: '最近一次连接测试通过',
-      testFailed: '最近一次连接测试失败',
-      untested: '尚未测试连接'
+      untitled: '未命名服务器',
+      noUrl: '未配置 URL',
+      noCommand: '未配置命令',
+      connecting: '连接中…',
+      toolsAvailable: count => `${count} 个工具可用`,
+      failed: '失败',
+      type: '类型',
+      name: '名称',
+      namePlaceholder: '例如 context7',
+      url: '地址',
+      headers: '请求头',
+      command: '命令',
+      args: '参数（空格分隔）',
+      env: '环境变量',
+      addRow: '添加',
+      removeRow: '删除此行',
+      showValue: '显示值',
+      hideValue: '隐藏值',
+      uniAiToolkitSummary: '提供文生图、图文问答、语音转写、AI播客生成、论文翻译等能力，即插即用，扩展智能体多模态工具生态。',
+      formErrors: {
+        argsQuote: '参数中的引号没有闭合',
+        commandRequired: '请填写命令',
+        nameRequired: '请填写名称',
+        nameTaken: '已有其他服务使用这个名称',
+        urlRequired: '请填写地址'
+      }
     },
     title: '连接器'
   },
@@ -2954,6 +3194,13 @@ export const zh = defineLocale({
       guide: '配置指南',
       save: '保存并启用',
       comingSoon: '待接入',
+      personalBindingMissing: '尚未确认个人绑定，请退出账号后重新短信登录。',
+      reconnect: "重连",
+      reconnecting: "重连中…",
+      reconnected: "5G 消息已重新连接。",
+      reconnectBusy: "正在处理消息，请完成后再重连。",
+      reconnectFailed: "5G 重连失败，请查看日志；如网关未启动，请完整退出应用后重新打开。",
+      reconnectRestartRequired: "5G 组件更新尚未生效，请完整退出应用（含托盘）后重新启动。",
       unavailable: '消息平台组件未就绪',
       notConnected: '未连接',
       unbind: '解绑',
@@ -3167,8 +3414,7 @@ export const zh = defineLocale({
       feishu: '创建飞书 / Lark 应用，配置机器人能力，复制 App ID、App secret 和事件加密密钥。',
       wecom: '在企业微信中添加群机器人，复制其 webhook key 作为 WECOM_BOT_ID。仅可发送——双向请用企业微信 (应用) 选项。',
       wecom_callback: '设置一个企业微信自建应用，暴露其回调 URL，并提供 corp ID、secret、agent ID 和 AES key。',
-      weixin:
-        '点击上方“扫码连接”，用个人微信扫码并确认即可。Hermes 通过腾讯 iLink Bot API 连接，凭据只保存在本机。',
+      weixin: '点击上方“扫码连接”，用个人微信扫码并确认即可。Hermes 通过腾讯 iLink Bot API 连接，凭据只保存在本机。',
       qqbot: '在 QQ 开放平台 (q.qq.com) 注册一个应用，复制 App ID 和 Client Secret。',
       api_server:
         '把 Hermes 暴露为兼容 OpenAI 的 API。设置一个鉴权密钥，然后把 Open WebUI / LobeChat 等指向 host:port。',
@@ -3624,6 +3870,19 @@ export const zh = defineLocale({
   },
 
   artifactShare: {
+    validity: "有效期",
+    days: count => `${count} 天`,
+    customValidity: "自定义天数",
+    editValidity: "修改有效期",
+    saveValidity: "保存有效期",
+    expiresAt: date => `到期时间：${date}`,
+    noExpiry: "此历史链接尚未设置有效期。",
+    expired: "分享已到期",
+    cleanupPending: "已到期，等待清理；公网链接可能暂时仍可访问。",
+    expiryNotice: "默认有效期 1 天，可设为 1～7 天。到期自动清理，应用关闭时延后处理。",
+    invalidValidity: "请输入 1～7 天的整数。",
+    inactive: "已取消分享或链接已不可用。",
+    statusUnavailable: "暂时无法查询分享状态，请完全退出应用后重试。",
     disclosure: "获得链接的人都可以查看此产物，不会分享其他文件或对话。",
     checking: "正在检查分享状态…",
     createLink: "生成公开链接",
@@ -3642,7 +3901,7 @@ export const zh = defineLocale({
     shareFailed: '分享失败',
     revokeFailed: '取消分享失败',
     previewNotReady: 'Markdown 预览尚未完成。',
-    imageNotEmbedded: 'Markdown 包含未内嵌的图片，请先整理为自包含内容。',
+    imageNotEmbedded: 'Markdown 包含未内嵌的图片，请先整理为自包含内容。'
   },
 
   artifactPreview: {
@@ -3704,7 +3963,7 @@ export const zh = defineLocale({
     },
     nav: {
       'new-session': '新建会话',
-      capabilities: '技能与工具',
+      capabilities: '扩展',
       messaging: '消息平台',
       artifacts: '资料库',
       cron: '定时任务'
@@ -3882,15 +4141,7 @@ export const zh = defineLocale({
     placeholderStarting: '正在启动 Hermes…',
     placeholderReconnecting: '正在重新连接 Hermes…',
     placeholderFollowUp: '发送后续消息',
-    newSessionPlaceholders: [
-      '我们要构建什么？',
-      '给 Hermes 一个任务',
-      '你在想什么？',
-      '描述你需要什么',
-      '我们该处理什么？',
-      '随便问点什么',
-      '从一个目标开始'
-    ],
+    newSessionPlaceholders: ['今天想让我帮你做什么？'],
     followUpPlaceholders: [
       '发送后续消息',
       '补充更多上下文',

@@ -13,6 +13,8 @@ import { installArtifactSharePlugin } from '../entry_local/install-artifact-shar
 import { recoverAccountRun } from '../entry_local/recover-account'
 import { LocalRuntimeContext, type PreparedLocalContext } from '../entry_local/runtime-context'
 import { LocalStartupError, showLocalStartupFailure } from '../entry_local/startup-failure'
+import { createUniAgentGateBindingUpdate } from '../entry_local/uniagentgate-control'
+import { migrateOldUniworkData } from '../migrate-old-uniwork'
 import { createWindowOpenHandler } from '../window-open-policy'
 
 import type { LoginAccount } from './contract'
@@ -38,11 +40,14 @@ function initializeLoginShell(): void {
 
   initialized = true
   app.setName('Hermes Desktop MT')
-  // 与账号数据根同名，Local 和 Roaming 两处都是 hmt。
-  const userData = resolveDesktopUserData(path.join(app.getPath('appData'), 'hmt'))
+  // 与账号数据根同名，Local 和 Roaming 两处都是 uniworker。
+  const userData = resolveDesktopUserData(path.join(app.getPath('appData'), 'uniworker'))
   mkdirSync(userData, { recursive: true })
   app.setPath('userData', userData)
   prepareDesktopLaunch()
+
+  // 首次启动时静默迁移老版 UniWork 用户数据（Windows-only，幂等，fire-and-forget）
+  void migrateOldUniworkData(userData)
 
   if (!app.requestSingleInstanceLock()) {
     stopping = true
@@ -63,18 +68,17 @@ function initializeLoginShell(): void {
     .catch(error => {
       stopping = true
 
-      const advice = (error as NodeJS.ErrnoException)?.code === 'ETIMEDOUT'
-        ? 'Windows 进程状态查询超时，请稍后重新启动应用。'
-        : '上次账号工作未能安全收尾，请寻求支持。'
+      const advice =
+        (error as NodeJS.ErrnoException)?.code === 'ETIMEDOUT'
+          ? 'Windows 进程状态查询超时，请稍后重新启动应用。'
+          : '上次账号工作未能安全收尾，请寻求支持。'
 
-      dialog.showErrorBox(
-        'Hermes Desktop MT',
-        `${advice}已阻止恢复登录，账号记录和历史已保留。`
-      )
+      dialog.showErrorBox('Hermes Desktop MT', `${advice}已阻止恢复登录，账号记录和历史已保留。`)
       app.quit()
     })
   accountRuntime = new LocalRuntimeContext(
-    new LoginSession(net.fetch, new CredentialStore(userData)),
+    new LoginSession(net.fetch, new CredentialStore(userData),
+      createUniAgentGateBindingUpdate(currentDesktopLocalContext)),
     roots,
     installationRoot,
     process.env.HERMES_DESKTOP_PYTHON

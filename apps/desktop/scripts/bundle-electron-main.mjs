@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
 import { isMain, workspaceTool } from '../../../scripts/build/frontend-common.mjs'
 import { environmentDefaultsBanner } from './bundle-env.mjs'
+import { payloadBundledKits, stagePythonPlugins } from './stage-python-plugins.mjs'
 
 const repoRoot = resolve(import.meta.dirname, '../../..')
 
@@ -36,6 +37,7 @@ export async function bundleElectronMain({ source, out, stamp, dev = false }) {
   // Dev bundles leave the environment alone so source-tree resolution keeps working.
   const envBanner = dev ? '' : environmentDefaultsBanner(process.env.HERMES_BUNDLE_ENV_JSON || '{}')
   const define = {}
+  let bundledKits = null
   if (!dev) {
     if (!stamp) throw new Error('A prepared install stamp is required')
     const raw = readFileSync(stamp, 'utf8')
@@ -43,8 +45,10 @@ export async function bundleElectronMain({ source, out, stamp, dev = false }) {
     define['process.env.HERMES_DESKTOP_IS_PACKAGED'] = JSON.stringify(true)
     define.__HERMES_INSTALL_STAMP__ = raw
     define.__HERMES_PRODUCT_IDENTITY__ = productIdentity(source, metadata)
+    bundledKits = payloadBundledKits(stamp, metadata)
   }
   mkdirSync(out, { recursive: true })
+  stagePythonPlugins({ source, out, bundledKits })
   // 账号退出辅助脚本随 dist 解包，供安装包内的 Python 直接执行。
   copyFileSync(join(source, 'apps/desktop/electron/entry_local/gateway-logout.py'), join(out, 'gateway-logout.py'))
   const common = {

@@ -26,7 +26,6 @@ import { $showsAdvancedChrome } from '@/store/interface-mode'
 import {
   $sidebarCardRows,
   $sidebarFiltersActive,
-  $sidebarGrouping,
   $sidebarListGroupIds,
   $sidebarOrdering,
   $sidebarPrFilter,
@@ -69,6 +68,8 @@ import type { PullRequestBucket } from '@/store/pull-requests'
 import { $unreadFinishedSessionIds, markAllSessionsRead } from '@/store/session'
 import type { SessionStatusBucket } from '@/store/session-dot-state'
 import { $sessionsHaveCost } from '@/store/sidebar-archive'
+import { $selectedWorkspaceMode } from '@/store/workspace-category'
+import { $workspaceSidebarGrouping as $sidebarGrouping } from '@/store/workspace-sidebar'
 
 interface Option<T extends string = string> {
   /** A status dot's full className, from the row's own vocabulary. */
@@ -162,6 +163,7 @@ export function SidebarFilterMenu({ className }: { className?: string }) {
   ]
 
   const grouping = useStore($sidebarGrouping)
+  const workspaceMode = useStore($selectedWorkspaceMode)
   const ordering = useStore($sidebarOrdering)
   const rowMeta = useStore($sidebarRowMeta)
   const cardRows = useStore($sidebarCardRows)
@@ -202,9 +204,9 @@ export function SidebarFilterMenu({ className }: { className?: string }) {
 
   const foldCollapsed = foldIds.length > 0 && foldIds.every(id => nodeOpen[id] === false)
 
-  const groupings = GROUPINGS.map(option =>
-    option.id === 'profile' ? { ...option, label: t.sidebar.gatewayGroups.grouping } : option
-  )
+  const groupings = GROUPINGS.filter(option =>
+    workspaceMode === 'codex' ? option.id === 'project' : workspaceMode === 'work' ? option.id !== 'project' : true
+  ).map(option => (option.id === 'profile' ? { ...option, label: t.sidebar.gatewayGroups.grouping } : option))
 
   const groupingLabel = groupings.find(option => option.id === grouping)?.label
 

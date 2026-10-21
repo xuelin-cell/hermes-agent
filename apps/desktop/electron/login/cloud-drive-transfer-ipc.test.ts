@@ -54,6 +54,8 @@ it('本地产物通过真实会话 HTTP、来源核对和 IPC 上传，Profile A
         : { id: 'same-session', profile, cwd: path.join(root, profile) }
     } else if (route.pathname.endsWith('/access-token')) {
       payload = { meta: { code: '' }, result: { accessToken: 'cloud-only' } }
+    } else if (route.pathname.endsWith('/assets')) {
+      payload = { ok: true, data: { items: [], page: { has_more: false } } }
     } else if (route.pathname.endsWith('/drive/capabilities')) {
       payload = { ok: true, data: { upload: true } }
     } else {

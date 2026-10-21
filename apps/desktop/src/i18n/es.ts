@@ -5,6 +5,15 @@ import { defineLocale, type TranslationOverrides } from './define-locale'
 import { introEs } from './intro-es'
 
 export const esOverrides = {
+  workspaceEditor: {
+    title: 'Editor',
+    capabilities: 'Extensiones',
+    openProject: 'Abre una conversación del proyecto para explorar sus archivos.',
+    selectFile: 'Selecciona un archivo para editar.',
+    unsupported: 'Los archivos binarios, truncados o grandes no se pueden editar aquí.',
+    refresh: 'Actualizar',
+    save: 'Guardar'
+  },
   conversationShare: {
     sessionShare: 'Compartir conversación',
     responseShare: 'Compartir respuesta',
@@ -3303,6 +3312,13 @@ export const esOverrides = {
       guide: 'Guía de configuración',
       save: 'Guardar y activar',
       comingSoon: 'Integración pendiente',
+      personalBindingMissing: 'Vinculación personal sin confirmar. Cierra sesión y vuelve a entrar por SMS.',
+      reconnect: "Reconectar",
+      reconnecting: "Reconectando…",
+      reconnected: "Mensajería 5G reconectada.",
+      reconnectBusy: "Se está procesando un mensaje. Reconecta cuando termine.",
+      reconnectFailed: "No se pudo reconectar 5G. Revisa los registros; si la puerta de enlace está detenida, cierra y vuelve a abrir la aplicación.",
+      reconnectRestartRequired: "La actualización de 5G aún no está activa. Cierra la aplicación por completo, incluida la bandeja, y vuelve a abrirla.",
       unavailable: 'Componente de mensajería no disponible',
       notConnected: 'Sin conexión',
       unbind: 'Desvincular',
@@ -3974,6 +3990,19 @@ export const esOverrides = {
     open: 'Abrir'
   },
   artifactShare: {
+    validity: "Vigencia",
+    days: count => `${count} días`,
+    customValidity: "Días personalizados",
+    editValidity: "Cambiar vigencia",
+    saveValidity: "Guardar vigencia",
+    expiresAt: date => `Caduca: ${date}`,
+    noExpiry: "Este enlace anterior no tiene fecha de caducidad.",
+    expired: "Enlace caducado",
+    cleanupPending: "Caducado; eliminación pendiente. El enlace público aún podría ser accesible.",
+    expiryNotice: "Los enlaces nuevos duran 1 día; elige de 1 a 7 días. Los cambios cuentan desde que se guardan. La limpieza se realiza con la aplicación abierta o al volver a iniciarla.",
+    invalidValidity: "Introduce un número entero entre 1 y 7.",
+    inactive: "Se revocó el enlace o ya no está disponible.",
+    statusUnavailable: "El estado del enlace no está disponible. Cierra la aplicación por completo e inténtalo de nuevo.",
     disclosure: "Cualquier persona con el enlace puede ver este archivo. No se comparten otros archivos ni conversaciones.",
     checking: "Comprobando el estado del enlace…",
     createLink: "Crear enlace público",
@@ -4052,7 +4081,7 @@ export const esOverrides = {
     profileRail: 'Barra de perfiles',
     nav: {
       'new-session': 'Nueva sesión',
-      capabilities: 'Capacidades',
+      capabilities: 'Extensiones',
       messaging: 'Mensajería',
       artifacts: 'Artefactos',
       cron: 'Tareas programadas'

@@ -11,23 +11,141 @@ export const zhHant = defineLocale({
     }
   },
   connectorsPage: {
+    recommended: {
+      qrHint: '使用企業微信掃碼建立並授權機器人，也可在下方手動填寫 Bot ID / Secret。',
+      qrExpired: '二維碼已過期，請重新整理後重試。',
+      qrRefresh: '重新整理二維碼',
+      connect: (name: string) => `連接 ${name}`,
+      connectAction: '連接',
+      connected: '已連接',
+      disconnect: '中斷連接',
+      tryIt: '試試這樣用',
+      brand: '元景數字員工',
+      credentials: '填寫連接資訊',
+      credentialsHint: '憑證在本機加密儲存。郵箱請填寫開啟 IMAP/SMTP 後產生的授權碼，而不是登入密碼。',
+      waiting: '請在瀏覽器完成授權，此頁面會自動更新。',
+      cancel: '取消',
+      localOnly: '推薦連接器僅支援本機桌面後端。遠端 MCP 服務請在 MCP 分頁管理。',
+      nextSession: '已就緒，可在新聊天使用；現有對話保持原工具集。',
+      fields: {
+        email: '郵箱地址',
+        authorizationCode: '授權碼',
+        apiKey: 'API Key',
+        clientId: 'Client ID',
+        botId: 'Bot ID',
+        secret: 'Secret'
+      },
+      tab: '推薦',
+      search: '搜尋連接器',
+      details: (name: string) => `查看${name}`,
+      unavailable: '暫未開放連線',
+      unavailableHint: '連接器授權服務尚未接入。已有 MCP 服務可在 MCP 分頁中新增和管理。',
+      noMatches: '沒有相符的連接器',
+      catalog: {
+        qq_mail: {
+          name: 'QQ 郵箱',
+          description: '收發、搜尋和整理 QQ 郵件。連接後可讓 Agent 讀取郵件內容、彙整郵件線索、處理郵件資訊。',
+          provider: 'Tencent'
+        },
+        netease_mail: {
+          name: '網易郵箱',
+          description:
+            '收發、搜尋和整理網易郵箱（163 / 126 / yeah.net）郵件。連接後可讓 Agent 讀取郵件內容、彙整郵件線索、處理郵件資訊。',
+          provider: 'NetEase'
+        },
+        amap: { name: '高德地圖', description: '地點搜尋、地址解析、天氣查詢和路線規劃。', provider: '高德' },
+        wps_mcp: {
+          name: 'WPS',
+          description: '搜尋、讀取、整理和建立 WPS 雲端文件、試算表及資料夾，讓 Agent 直接處理你的 WPS 內容。',
+          provider: '金山辦公'
+        },
+        youdao_note: {
+          name: '有道雲筆記',
+          description: '搜尋、讀取、建立和整理有道雲筆記及待辦，讓 Agent 幫你管理個人知識與資料。',
+          provider: '網易有道'
+        },
+        ima: {
+          name: '騰訊 ima 知識庫',
+          description: '搜尋、讀取、建立和整理騰訊 ima 筆記與知識庫內容，讓 Agent 幫你管理資料和知識庫。',
+          provider: '騰訊'
+        },
+        qcc_mcp: {
+          name: '企查查',
+          description: '連接企查查企業資訊、風險、智慧財產權、經營和董監高服務，讓 Agent 查詢企業資料。',
+          provider: '企查查'
+        },
+        eastmoney_mcp: {
+          name: '東方財富',
+          description: '連接東方財富 Choice 資料 MCP，查詢行情、公告、總體經濟指標、證券篩選和研究資訊。',
+          provider: '東方財富'
+        },
+        ifind_mcp: {
+          name: '同花順 iFinD',
+          description: '查詢同花順 iFinD 金融資料、企業工商資訊與法律內容，讓 Agent 檢索行情、財務、企業與法規資料。',
+          provider: '同花順'
+        },
+        aminer: {
+          name: 'AMiner 學術',
+          description: '搜尋和查詢 AMiner 的論文、學者、機構、專利及期刊會議資料。',
+          provider: '智譜'
+        },
+        wecom_bot: {
+          name: '企業微信',
+          description: '使用企業微信掃碼授權智慧機器人，連接文件、日程、待辦、通訊錄和訊息等辦公能力。',
+          provider: '企業微信'
+        }
+      }
+    },
     mcpLocal: {
-      addCustom: '新增自訂 MCP',
-      custom: '自訂 MCP',
-      plugins: '外掛提供的 MCP',
+      hint: '設定智慧體可以連線的 MCP 服務。開啟前會先測試連線；修改設定後服務會自動關閉，需要重新開啟。',
       profile: '目前 Profile',
-      search: '搜尋 MCP 服務',
-      empty: '尚未新增自訂 MCP',
-      noMatches: '沒有相符的 MCP 服務',
+      builtIn: '內建 MCP',
+      builtInTag: '內建',
+      custom: '自訂 MCP 服務',
+      customHint: '在這裡新增 HTTP 或 stdio MCP 服務，依欄位填寫設定。',
+      empty: '尚未新增自訂 MCP 服務',
+      addServer: '新增 MCP 伺服器',
+      chooseTransport: '選擇傳輸類型：',
+      plugins: '外掛提供的 MCP',
+      openPlugins: '管理外掛',
       loadFailed: '無法讀取 MCP 設定',
       pluginsFailed: '無法讀取外掛 MCP',
-      configuration: '設定（JSON）',
-      enabled: '已啟用',
-      testing: '正在測試連線…',
-      testPassed: '最近一次連線測試通過',
-      testFailed: '最近一次連線測試失敗',
-      untested: '尚未測試連線'
+      untitled: '未命名伺服器',
+      noUrl: '未設定 URL',
+      noCommand: '未設定命令',
+      connecting: '連線中…',
+      toolsAvailable: count => `${count} 個工具可用`,
+      failed: '失敗',
+      type: '類型',
+      name: '名稱',
+      namePlaceholder: '例如 context7',
+      url: '位址',
+      headers: '請求標頭',
+      command: '命令',
+      args: '參數（以空格分隔）',
+      env: '環境變數',
+      addRow: '新增',
+      removeRow: '刪除此列',
+      showValue: '顯示值',
+      hideValue: '隱藏值',
+      uniAiToolkitSummary: '提供文生圖、圖文問答、語音轉寫、AI 播客生成、論文翻譯等能力，即插即用，擴充智慧體多模態工具生態。',
+      formErrors: {
+        argsQuote: '參數中的引號沒有閉合',
+        commandRequired: '請填寫命令',
+        nameRequired: '請填寫名稱',
+        nameTaken: '已有其他服務使用這個名稱',
+        urlRequired: '請填寫位址'
+      }
     }
+  },
+  workspaceEditor: {
+    title: '編輯器',
+    capabilities: '擴充功能',
+    openProject: '請先開啟專案中的對話，再瀏覽及編輯檔案。',
+    selectFile: '選擇檔案開始編輯。',
+    unsupported: '無法編輯二進位、截斷或過大的檔案。',
+    refresh: '重新整理',
+    save: '儲存'
   },
   conversationShare: {
     sessionShare: '分享對話',
@@ -67,12 +185,13 @@ export const zhHant = defineLocale({
     transferNotStarted: '尚未開始',
     transferCancelled: '下載已取消',
     transferUploadStopped: '已停止傳送，請重新整理以核對雲端硬碟結果。',
-    transferUnknown: '上傳結果待確認，請勿立即重複上傳。請重新整理以核對雲端硬碟結果。',
+    transferUnknown: '暫時無法自動確認上傳結果，請重新整理檔案清單核對。',
     transferDownloadPartial: '部分檔案已儲存到本機，其餘檔案未完成，請查看傳輸記錄。',
     transferStopFailed: '未能停止傳輸，請再試一次。',
     downloadSaved: name => `${name} 已儲存到本機`,
     uploadSaved: name => `「${name}」已上傳到雲端硬碟`,
-    downloadsSaved: (saved, skipped) => skipped ? `已將 ${saved} 個檔案儲存到本機，${skipped} 個下載已取消。` : `已將 ${saved} 個檔案儲存到本機。`,
+    downloadsSaved: (saved, skipped) =>
+      skipped ? `已將 ${saved} 個檔案儲存到本機，${skipped} 個下載已取消。` : `已將 ${saved} 個檔案儲存到本機。`,
     transferErrors: {
       AUTH_REQUIRED: 'UniWork 登入已失效，請重新登入 UniWork 後再試。',
       DRIVE_AUTH_EXPIRED: '雲端硬碟連線已失效，請點擊重新整理以重新連線；若仍無法恢復，請重新登入 UniWork。',
@@ -93,10 +212,15 @@ export const zhHant = defineLocale({
       INVALID_RESPONSE: '服務傳回的資料不完整，請稍後重試。',
       SIZE_MISMATCH: '檔案未能完整儲存，請重試。',
       TRANSPORT_ERROR: '網路連線異常，請檢查網路。',
-      UPLOAD_INCOMPLETE: '上傳結果待確認，請勿立即重複上傳。請重新整理以核對雲端硬碟結果。',
-      UPLOAD_UNCONFIRMED: '上傳結果待確認，請勿立即重複上傳。請重新整理以核對雲端硬碟結果。',
+      OUTCOME_UNKNOWN: '暫時無法自動確認操作結果，請重新整理檔案清單核對。',
+      UPLOAD_CONFIRMATION_FAILED: '連續三次未在雲端硬碟清單中確認到此檔案，本次上傳失敗，請重試。',
+      UPLOAD_CONFIRMATION_UNAVAILABLE: '暫時無法自動確認上傳結果，請重新整理檔案清單核對。',
+      OPERATION_CONFIRMATION_UNAVAILABLE: '暫時無法自動確認操作結果，請重新整理檔案清單核對。',
+      UPLOAD_FAILED: '上傳失敗，請重新上傳。',
+      UPLOAD_INCOMPLETE: '上傳中斷，請重新上傳。',
+      UPLOAD_UNCONFIRMED: '暫時無法自動確認上傳結果，請重新整理檔案清單核對。',
       IPC_ERROR: '網路連線異常，請檢查網路。',
-      AUTH_CHANGED: '登入狀態已變更，本次傳輸已停止。請在目前帳號下重試。',
+      AUTH_CHANGED: '登入狀態已變更，本次傳輸已停止。請在目前帳號下重試。'
     },
     emptyRecycle: '清空資源回收筒',
     permanentDelete: '徹底刪除',
@@ -177,7 +301,8 @@ export const zhHant = defineLocale({
     restoreHint: '確定還原此項目嗎？資料夾中的內容也將一併還原。',
     recycleFailed: '垃圾桶未能完整載入，請重新整理後再還原檔案。',
     recycleEmpty: '垃圾桶為空',
-    operationUnknown: '暫時無法確認操作結果，請重新整理核對後再操作。',
+    operationVerifying: '正在確認操作結果，請稍候。',
+    operationUnknown: '暫時無法自動確認操作結果，請重新整理檔案清單核對。',
     operationPartial: '操作僅部分完成，請重新整理核對後再操作。',
     operationFailed: '操作未完成，請重新整理清單，並檢查登入狀態或操作權限。',
     personal: '個人雲端硬碟',
@@ -2392,6 +2517,13 @@ export const zhHant = defineLocale({
       guide: '設定指南',
       save: '儲存並啟用',
       comingSoon: '待接入',
+      personalBindingMissing: '尚未確認個人綁定，請登出帳號後重新以簡訊登入。',
+      reconnect: "重新連線",
+      reconnecting: "重新連線中…",
+      reconnected: "5G 訊息已重新連線。",
+      reconnectBusy: "正在處理訊息，請完成後再重新連線。",
+      reconnectFailed: "5G 重新連線失敗，請查看日誌；若閘道未啟動，請完整結束應用後重新開啟。",
+      reconnectRestartRequired: "5G 元件更新尚未生效，請完整結束應用（含系統匣）後重新啟動。",
       unavailable: '訊息平台元件尚未就緒',
       notConnected: '未連線',
       unbind: '解除綁定',
@@ -2962,6 +3094,19 @@ export const zhHant = defineLocale({
   },
 
   artifactShare: {
+    validity: "有效期限",
+    days: count => `${count} 天`,
+    customValidity: "自訂天數",
+    editValidity: "修改有效期限",
+    saveValidity: "儲存有效期限",
+    expiresAt: date => `到期時間：${date}`,
+    noExpiry: "此歷史連結尚未設定有效期限。",
+    expired: "分享已到期",
+    cleanupPending: "已到期，等待清理；公開連結可能暫時仍可存取。",
+    expiryNotice: "預設有效期限 1 天，可設為 1～7 天。到期自動清理，應用程式關閉時延後處理。",
+    invalidValidity: "請輸入 1～7 天的整數。",
+    inactive: "已取消分享或連結已無法使用。",
+    statusUnavailable: "暫時無法查詢分享狀態，請完全退出應用程式後重試。",
     disclosure: "取得連結的人都可以查看此產物，不會分享其他檔案或對話。",
     checking: "正在檢查分享狀態…",
     createLink: "產生公開連結",
@@ -2980,7 +3125,7 @@ export const zhHant = defineLocale({
     shareFailed: '分享失敗',
     revokeFailed: '取消分享失敗',
     previewNotReady: 'Markdown 預覽尚未完成。',
-    imageNotEmbedded: 'Markdown 包含未內嵌的圖片，請先整理為自包含內容。',
+    imageNotEmbedded: 'Markdown 包含未內嵌的圖片，請先整理為自包含內容。'
   },
 
   artifactPreview: {
@@ -3043,7 +3188,7 @@ export const zhHant = defineLocale({
     },
     nav: {
       'new-session': '新工作階段',
-      capabilities: '技能與工具',
+      capabilities: '擴充功能',
       messaging: '訊息平台',
       artifacts: '資料庫',
       cron: '排程工作'
@@ -3206,15 +3351,7 @@ export const zhHant = defineLocale({
     placeholderStarting: '正在啟動 Hermes...',
     placeholderReconnecting: '正在重新連線至 Hermes…',
     placeholderFollowUp: '傳送後續訊息',
-    newSessionPlaceholders: [
-      '我們要建立什麼？',
-      '給 Hermes 一個任務',
-      '您在想什麼？',
-      '描述您需要什麼',
-      '我們該處理什麼？',
-      '盡管問',
-      '從一個目標開始'
-    ],
+    newSessionPlaceholders: ['今天想讓我幫您做什麼？'],
     followUpPlaceholders: [
       '傳送後續訊息',
       '補充更多脈絡',

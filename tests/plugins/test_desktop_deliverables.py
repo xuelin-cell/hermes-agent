@@ -148,6 +148,44 @@ def test_filters_uploads_hidden_empty_assets_and_failed_tools(delivery):
     assert reply(plugin, turn="second") is None
 
 
+def test_asset_folder_names_only_count_inside_the_working_directory(
+    delivery, tmp_path, monkeypatch
+):
+    """工作目录本身或上级叫 templates、assets 或以点开头时照常出卡；目录里面的素材仍排除。"""
+    plugin, _ = delivery
+    work = tmp_path / "assets" / ".projects" / "templates"
+    (work / "scripts").mkdir(parents=True)
+    monkeypatch.setenv("TERMINAL_CWD", str(work))
+    begin(plugin)
+    output = work / "报告.docx"
+    asset = work / "scripts" / "chart.png"
+    outside = tmp_path / "assets" / "other.pdf"
+    for file in (output, asset, outside):
+        file.write_bytes(b"data")
+    text = "\n".join(f"`{file}`" for file in (output, asset, outside))
+    result = reply(plugin, text)
+    assert f"MEDIA:{output}" in result
+    assert f"MEDIA:{asset}" not in result
+    assert f"MEDIA:{outside}" not in result
+    # 命令前后的快照对比同样只看工作目录里面的目录名。
+    begin(plugin, turn="second")
+    plugin.before_tool(
+        tool_name="terminal", args={}, session_id="s", turn_id="second", tool_call_id="c"
+    )
+    made = work / "new.pdf"
+    made.write_bytes(b"pdf")
+    plugin.after_tool(
+        tool_name="terminal",
+        args={},
+        result='{"exit_code":0}',
+        status="ok",
+        session_id="s",
+        turn_id="second",
+        tool_call_id="c",
+    )
+    assert f"MEDIA:{made}" in reply(plugin, turn="second")
+
+
 def test_profile_turn_and_remote_boundaries(delivery, tmp_path, monkeypatch):
     """相同会话标识在不同账号中互不串用，旧轮迟到结果与远程模式均不观察。"""
     plugin, work = delivery

@@ -1,14 +1,16 @@
 import { contextBridge, ipcRenderer, webFrame, webUtils } from 'electron'
 
-import type { ArtifactShareSource } from '../../shared/src/artifact-share'
+import type { ArtifactSharePublishInput, ArtifactShareSource } from '../../shared/src/artifact-share'
 import type { ConversationShareApi } from '../../shared/src/conversation-share'
 
+import { AGENT_MAIL_CHANNEL, type AgentMailRequest } from './agent-mail/contract'
 import type { DesktopProfileRoute } from './desktop-profile'
 import type { HudModifierApi, HudModifierStatus } from './hud-modifier-types'
-import type { CloudDriveRequest, CloudDriveTransferProgress, CloudDriveTransferRequest } from './login/contract'
+import type { CloudDriveMutationProgress, CloudDriveRequest, CloudDriveTransferProgress, CloudDriveTransferRequest } from './login/contract'
 import { maskMcpSecrets, restoreMcpSecrets } from './mcp-secrets'
+import { CONNECTOR_CHANNEL, type LocalConnectorRequest } from './open-connector/contract'
 import { ASR_CHANNEL } from './uniwork-asr/contract'
-import { PLAN_USAGE_CHANNEL } from './uniwork-usage/contract'
+import { PLAN_SUBSCRIPTION_CHANNEL, PLAN_USAGE_CHANNEL, PLAN_USAGE_REFRESH_CHANNEL } from './uniwork-usage/contract'
 import { WELCOME_CATALOG_CHANNEL } from './uniwork-welcome/catalog'
 import { customWindowControlsEnabled } from './window-controls'
 
@@ -32,9 +34,15 @@ const launchFlags: { localModels?: boolean; guestOnboarding?: boolean; skipIntro
 const localSkin = ipcRenderer.sendSync('hermes:skin:local')
 
 contextBridge.exposeInMainWorld('hermesDesktop', {
+  agentMail: (input: AgentMailRequest) => ipcRenderer.invoke(AGENT_MAIL_CHANNEL, input),
+  localConnectors: (input: LocalConnectorRequest) => ipcRenderer.invoke(CONNECTOR_CHANNEL, input),
   // 只读脱敏账号信息，页面不能传入身份或账号路径。
   getPlanUsage: () => ipcRenderer.invoke(PLAN_USAGE_CHANNEL),
+  refreshPlanUsage: () => ipcRenderer.invoke(PLAN_USAGE_REFRESH_CHANNEL),
+  /** 主进程换取一次性市场凭证并打开系统浏览器，页面不接触手机号或 ticket。 */
+  subscribeMaasPlan: () => ipcRenderer.invoke(PLAN_SUBSCRIPTION_CHANNEL),
   getMaasAccount: () => ipcRenderer.invoke('hermes:maas-account:get'),
+  reconnectUniAgentGate: (profile?: string) => ipcRenderer.invoke('hermes:uniagentgate:reconnect', profile),
   messagingSetup: input => ipcRenderer.invoke('hermes:messaging:setup', input),
   /** 补取当前账号脱敏进度，不会启动或重启网关。 */
   messagingStatus: () => ipcRenderer.invoke('hermes:messaging:status'),
@@ -44,6 +52,12 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     ipcRenderer.on('hermes:messaging:status', listener)
 
     return () => ipcRenderer.removeListener('hermes:messaging:status', listener)
+  },
+  onCloudDriveMutationProgress: (listener: (progress: CloudDriveMutationProgress) => void) => {
+    const handle = (_event: Electron.IpcRendererEvent, progress: CloudDriveMutationProgress) => listener(progress)
+    ipcRenderer.on('hermes:maas-drive:mutation-progress', handle)
+
+    return () => ipcRenderer.removeListener('hermes:maas-drive:mutation-progress', handle)
   },
   cloudDriveRequest: (input: CloudDriveRequest) => ipcRenderer.invoke('hermes:maas-drive:request', input),
   /** 仅读取固定语言的办公模板目录，不接收请求地址或凭据。 */
@@ -64,11 +78,12 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     revoke: key => ipcRenderer.invoke('hermes:conversation-share:revoke', key)
   } satisfies ConversationShareApi,
   artifactShare: {
-    inspect: (key: string) => ipcRenderer.invoke('hermes:artifact-share:inspect', key),
-    publish: (input: { key: string; html: string; title: string; source: ArtifactShareSource }) => ipcRenderer.invoke('hermes:artifact-share:publish', input),
+    inspect: (query: string | { shareId: string }) => ipcRenderer.invoke('hermes:artifact-share:inspect', query),
+    publish: (input: ArtifactSharePublishInput) => ipcRenderer.invoke('hermes:artifact-share:publish', input),
+    setExpiration: (key: string, shareId: string, ttlDays: number) => ipcRenderer.invoke('hermes:artifact-share:expiration', key, shareId, ttlDays),
     eligibility: (source: ArtifactShareSource) => ipcRenderer.invoke('hermes:artifact-share:eligibility', source),
     markUploaded: (sessionId: string) => ipcRenderer.invoke('hermes:artifact-share:markUploaded', sessionId),
-    revoke: (key: string) => ipcRenderer.invoke('hermes:artifact-share:revoke', key),
+    revoke: (key: string, expectedShareId?: string) => ipcRenderer.invoke('hermes:artifact-share:revoke', key, expectedShareId),
     onChanged: (callback: (key: string) => void) => {
       // 转发主进程的分享状态变化，并在取消订阅时移除同一个监听器。
       const listener = (_event: Electron.IpcRendererEvent, key: string) => callback(key)

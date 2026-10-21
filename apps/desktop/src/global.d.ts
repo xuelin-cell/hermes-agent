@@ -1,13 +1,16 @@
 import type { GatewayWsUrlResult, OfficePreviewResult } from '@hermes/shared'
-import type { ArtifactShareEligibility, ArtifactShareSource } from '@hermes/shared/artifact-share'
+import type { ArtifactShareEligibility, ArtifactSharePublishInput, ArtifactShareRecord, ArtifactShareSource } from '@hermes/shared/artifact-share'
 import type { ConversationShareApi } from '@hermes/shared/conversation-share'
 import type { HermesSkin } from '@hermes/shared/skin'
 import type { TranslucencyState } from '@hermes/shared/translucency'
 
+import type { AgentMailRequest, AgentMailResult } from '../electron/agent-mail/contract'
 import type { ScreenshotApi } from '../electron/command-screenshot-types'
 import type { MessagingOperationStatus, MessagingSetupRequest, MessagingSetupResult } from '../electron/entry_local/messaging-contract'
+import type { UniAgentGateReconnectResult } from '../electron/entry_local/uniagentgate-contract'
 import type { HudModifierApi } from '../electron/hud-modifier-types'
 import type {
+  CloudDriveMutationProgress,
   CloudDriveRequest,
   CloudDriveTransferProgress,
   CloudDriveTransferRequest,
@@ -15,12 +18,13 @@ import type {
   LoginAccount
 } from '../electron/login/contract'
 import type { MachineProfile } from '../electron/machine-profile'
+import type { LocalConnectorRequest, LocalConnectorResult } from '../electron/open-connector/contract'
 import type { HermesNotification } from '../electron/notification-types'
 import type { PoolLimits } from '../electron/pool-limits'
 import type { PreviewExport, PreviewExportResult } from '../electron/preview-export'
 import type { UniworkAsrBridge } from '../electron/uniwork-asr/contract'
-import type { PlanUsageResult } from '../electron/uniwork-usage/contract'
-import type { WelcomeModule, WelcomeLocale } from '../electron/uniwork-welcome/catalog'
+import type { PlanSubscriptionResult, PlanUsageResult } from '../electron/uniwork-usage/contract'
+import type { WelcomeLocale, WelcomePayload } from '../electron/uniwork-welcome/catalog'
 import type { GrowRequest } from '../electron/window-growth'
 
 import type { WakeIndicatorState } from './lib/wake-indicator'
@@ -39,25 +43,32 @@ export type DesktopMachineProfile = MachineProfile
 declare global {
   interface Window {
     hermesDesktop: {
+      agentMail: (input: AgentMailRequest) => Promise<AgentMailResult>
       /** 只读本次已准备账号的脱敏信息，运行中到期仍返回原期限。 */
       /** 仅返回当前账号套餐展示信息，不接受页面身份参数。 */
       getPlanUsage?: () => Promise<PlanUsageResult>
+      refreshPlanUsage?: () => Promise<PlanUsageResult>
+      subscribeMaasPlan?: () => Promise<PlanSubscriptionResult>
       getMaasAccount: () => Promise<LoginAccount | null>
+      reconnectUniAgentGate?: (profile?: string) => Promise<UniAgentGateReconnectResult>
       messagingSetup: (input: MessagingSetupRequest) => Promise<MessagingSetupResult>
       messagingStatus: () => Promise<MessagingOperationStatus>
       onMessagingStatus: (callback: (status: MessagingOperationStatus) => void) => () => void
       conversationShare: ConversationShareApi
       artifactShare: {
-        inspect: (key: string) => Promise<{ key: string; shareId: string; url: string; title: string; hash: string; version: number; updatedAt: string } | null>
-        publish: (input: { key: string; html: string; title: string; source: ArtifactShareSource }) => Promise<{ key: string; shareId: string; url: string; title: string; hash: string; version: number; updatedAt: string }>
+        inspect: (query: string | { shareId: string }) => Promise<ArtifactShareRecord | null>
+        publish: (input: ArtifactSharePublishInput) => Promise<ArtifactShareRecord>
+        setExpiration: (key: string, shareId: string, ttlDays: number) => Promise<ArtifactShareRecord>
         eligibility: (source: ArtifactShareSource) => Promise<ArtifactShareEligibility>
         markUploaded: (sessionId: string) => Promise<void>
-        revoke: (key: string) => Promise<void>
+        revoke: (key: string, expectedShareId?: string) => Promise<void>
         onChanged: (callback: (key: string) => void) => () => void
       }
+      onCloudDriveMutationProgress?: (listener: (progress: CloudDriveMutationProgress) => void) => () => void
       cloudDriveRequest: (input: CloudDriveRequest) => Promise<unknown>
+      localConnectors: (input: LocalConnectorRequest) => Promise<LocalConnectorResult>
       /** 取得完整办公目录；主进程负责认证和校验配置。 */
-      getWelcomeCatalog?: (locale: WelcomeLocale) => Promise<{ modules: WelcomeModule[] }>
+      getWelcomeCatalog?: (locale: WelcomeLocale) => Promise<WelcomePayload>
       uniworkAsr?: UniworkAsrBridge
       cloudDriveAgentReady: (profile: string) => Promise<boolean>
       cloudDriveTransfer: (input: CloudDriveTransferRequest) => Promise<CloudDriveTransferResult>
