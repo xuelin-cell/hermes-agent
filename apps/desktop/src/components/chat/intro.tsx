@@ -176,13 +176,13 @@ export function Intro({ personality, seed }: IntroProps) {
       data-slot="aui_intro"
     >
       <div className="w-full min-w-0">
-        <h1 className="mx-auto mb-3 flex max-w-xl flex-col items-center font-sans text-[clamp(2rem,4vw,3.75rem)] font-semibold leading-[1.12] tracking-tight text-foreground">
+        <h1 className="mx-auto mb-0 flex max-w-xl flex-col items-center font-sans text-[clamp(2rem,4vw,3.75rem)] font-semibold leading-[1.12] tracking-tight text-foreground">
           {HERO_TITLE.map(line => (
             <span key={line}>{line}</span>
           ))}
         </h1>
 
-        <p className="m-0 text-center leading-normal tracking-tight">{body}</p>
+        <p hidden>{body}</p>
       </div>
       <WorkspaceCategoryTabs />
     </div>
