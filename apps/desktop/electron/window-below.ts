@@ -157,7 +157,7 @@ const describeError = (error: unknown): string =>
  * `path.join`, which on Windows yields backslashes; same regex as main.ts.
  */
 export const resolveOutsideAsar = (specifier: string): string =>
-  specifier.replace(/app\.asar(?=$|[\\/])/, 'app.asar.unpacked')
+  specifier.replace(/app(?:-(?:arm64|x64))?\.asar(?=$|[\\/])/, '$&.unpacked')
 
 let getWindowsModule: Promise<GetWindowsModule | EnumerationFailure> | null = null
 

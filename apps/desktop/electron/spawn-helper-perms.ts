@@ -23,7 +23,7 @@ const EXEC_BITS = 0o111
 // chmod cannot mutate it (ENOTDIR). Native node-pty helpers belong in the
 // writable app.asar.unpacked tree; leave an already-unpacked path unchanged.
 export function writableNodePtyRoot(nodePtyRoot: string): string {
-  return nodePtyRoot.replace(/app\.asar(?!\.unpacked)/, 'app.asar.unpacked')
+  return nodePtyRoot.replace(/app(?:-(?:arm64|x64))?\.asar(?!\.unpacked)/, '$&.unpacked')
 }
 
 export interface SpawnHelperFs {

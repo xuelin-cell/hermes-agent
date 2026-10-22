@@ -47,8 +47,8 @@ export function validatePreparedBuilderArgs(args, inputs) {
     if (arg === '--dir' || arg === '--publish=never' || arg === '--') continue
     // 压缩级别只影响产物大小与耗时，不改变已准备的工具及目标。
     if (/^(?:-c|--config)\.compression=(?:store|normal|maximum)$/.test(arg)) continue
-    // macOS 入口只允许关闭签名或要求签名，不放行任意签名模块及其他构建覆盖。
-    if (inputs.target.startsWith('darwin-') && /^(?:-c|--config)\.(?:mac\.sign=null|forceCodeSigning=true)$/.test(arg)) continue
+    // macOS 入口只允许固定内部测试配置或要求证书签名，不放行任意模块。
+    if (inputs.target.startsWith('darwin-') && (arg === '--internal-test-signing' || /^(?:-c|--config)\.forceCodeSigning=true$/.test(arg))) continue
     if (/^(?:-c|--config)\.(?:extraMetadata\.(?:version|shortVersion|shortVersionWindows)|directories\.output)=/.test(arg)) continue
     if (!arg.startsWith('-') && inputs.formats.includes(arg)) continue
     throw preparationRequired(`Argument is not admitted by prepared packaging: ${arg}`)
@@ -148,8 +148,9 @@ export function runElectronBuilder(args, { spawn = spawnSync } = {}) {
     HERMES_PREPARED_NATIVE_DEPS: nativeDeps, HERMES_PREPARED_TARGET: inputs.target }
   if (inputs.dmgbuild) env.CUSTOM_DMGBUILD_PATH = inputs.dmgbuild
   if (inputs.windows?.dotnetRoot) env.DOTNET_ROOT = inputs.windows.dotnetRoot
-  const result = spawn(process.execPath, [...preloads, path.join(builder, bin), ...args,
-    '--config', 'electron-builder.config.cjs', '--publish', 'never', `-c.electronDist=${inputs.electron}`,
+  const internalTest = args.includes('--internal-test-signing')
+  const result = spawn(process.execPath, [...preloads, path.join(builder, bin), ...args.filter(arg => arg !== '--internal-test-signing'),
+    '--config', internalTest ? 'electron-builder.adhoc.cjs' : 'electron-builder.config.cjs', '--publish', 'never', `-c.electronDist=${inputs.electron}`,
     ...toolsetArguments(inputs)], { cwd: app, stdio: 'inherit', env })
   if (result.error) throw result.error
   return result.status ?? 1

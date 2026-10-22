@@ -266,7 +266,7 @@ export function buildStampPayload(stamp, env = process.env, platform = process.p
     updateMechanism: commitBuild ? 'external' : updateMechanism,
     tag: channelBuild?.receiverCandidate ? channelBuild.releaseTag : env.HERMES_PAYLOAD_TAG || null,
     ...(bundleEnv ? { bundleEnv } : {}),
-    ...(bundled ? { runtime: payload.runtime } : {})
+    ...(bundled ? { runtime: payload.runtime, desktopRuntimeLayout: 1 } : {})
   }
 }
 
