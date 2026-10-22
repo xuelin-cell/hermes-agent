@@ -9,6 +9,7 @@ import {
   getMcpCatalog,
   getSkillContent,
   getSkills,
+  getStatus,
   getToolsets,
   getUsageAnalytics,
   installSkillFromHub,
@@ -112,6 +113,11 @@ describe('capability helpers are connection-scoped', () => {
 
     void getMessagingPlatforms('coder')
     expect(last()).toMatchObject({ profile: 'coder', priority: 'foreground' })
+
+    for (const profile of ['account-a', 'account-b', 'account-a']) {
+      void getStatus(profile)
+      expect(last()).toMatchObject({ path: '/api/status', profile, priority: 'foreground' })
+    }
 
     // `null` deliberately targets the primary — that backend is always warm,
     // so it stays untagged like the ambient path.

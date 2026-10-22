@@ -244,6 +244,48 @@ def adapter_from_config():
     return adapter
 
 
+def test_status_retains_channel_diagnosis_for_desktop_a_b_a(tmp_path, monkeypatch):
+    """真实双接口读取证明：详情接口保留渠道归属，上游列表的整体兜底不变。"""
+    from fastapi.testclient import TestClient
+    from hermes_cli.profiles import create_profile
+    from hermes_cli.web_server import app, _SESSION_HEADER_NAME, _SESSION_TOKEN
+
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    for name in ("diagnosis-a", "diagnosis-b"):
+        home = create_profile(name)
+        install(home, "http://127.0.0.1:1", name, f"fixture-secret-{name}")
+        with (home / ".env").open("a", encoding="utf-8") as env_file:
+            env_file.write(f"WEIXIN_ACCOUNT_ID={name}\nWEIXIN_TOKEN=fixture-token\n")
+        config = json.loads((home / "config.yaml").read_text())
+        config["platforms"]["weixin"] = {"enabled": True}
+        (home / "config.yaml").write_text(json.dumps(config), encoding="utf-8")
+        with profile(home):
+            adapter_from_config()
+        message = f"{name}: registration rejected"
+        (home / "gateway_state.json").write_text(json.dumps({
+            "kind": "gateway", "pid": 999_999_999, "start_time": 1.0,
+            "gateway_state": "startup_failed", "desired_state": "running",
+            "exit_reason": message, "platforms": {"uniagentgate": {
+                "state": "fatal", "error_code": "connection_failed", "error_message": message,
+                "writer_pid": 999_999_999, "writer_start_time": 1.0,
+            }},
+        }), encoding="utf-8")
+
+    with TestClient(app) as client:
+        client.headers[_SESSION_HEADER_NAME] = _SESSION_TOKEN
+        for name in ("diagnosis-a", "diagnosis-b", "diagnosis-a"):
+            messaging = client.get("/api/messaging/platforms", params={"profile": name})
+            status = client.get("/api/status", params={"profile": name})
+            assert messaging.status_code == status.status_code == 200
+            rows = {row["id"]: row for row in messaging.json()["platforms"]}
+            assert rows["weixin"]["error_message"] == f"{name}: registration rejected"
+            diagnosis = status.json()
+            assert diagnosis["gateway_running"] is False
+            assert diagnosis["gateway_state"] == "startup_failed"
+            assert "weixin" not in diagnosis["gateway_platforms"]
+            assert diagnosis["gateway_platforms"]["uniagentgate"]["error_message"] == f"{name}: registration rejected"
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(("hermes_version", "expected_version"), [
     ("0.0.0", "1.0.0"),

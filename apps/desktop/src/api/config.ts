@@ -84,9 +84,9 @@ export function resolveConfigWriteScope(
   return capabilityScoped(requestScope)
 }
 
-export function getStatus(): Promise<StatusResponse> {
+export function getStatus(profile?: null | string): Promise<StatusResponse> {
   return hermesApi<StatusResponse>({
-    ...profileScoped(),
+    ...profileScoped(profile),
     path: '/api/status'
   })
 }

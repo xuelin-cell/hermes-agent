@@ -20,6 +20,7 @@ import { MessagingView } from './index'
 // the mocks still apply.
 
 const getMessagingPlatforms = vi.fn()
+const getStatus = vi.fn()
 const updateMessagingPlatform = vi.fn()
 const getPairing = vi.fn()
 const approvePairing = vi.fn()
@@ -50,6 +51,7 @@ vi.mock('@/hermes', () => ({
   approvePairing: (platformId: string, requestId: string, profile?: null | string) =>
     approvePairing(platformId, requestId, profile),
   getMessagingPlatforms: (profile?: null | string) => getMessagingPlatforms(profile),
+  getStatus: (profile?: null | string) => getStatus(profile),
   getPairing: (profile?: null | string) => getPairing(profile),
   getProfiles: vi.fn(async () => ({ profiles: [] })),
   revokePairing: (platformId: string, userId: string, profile?: null | string) =>
@@ -131,6 +133,7 @@ beforeEach(() => {
     }
   } as typeof window.hermesDesktop
   messagingSetup.mockResolvedValue({ accepted: true })
+  getStatus.mockResolvedValue({ gateway_running: false, gateway_state: 'stopped', gateway_platforms: {} })
   updateMessagingPlatform.mockResolvedValue({ ok: true, platform: 'teams' })
   getPairing.mockResolvedValue({ approved: [], pending: [] })
   runGatewayRestart.mockResolvedValue(true)
@@ -177,6 +180,77 @@ describe('MessagingView profile scope', () => {
     // rather than left to the ambient fallback.
     await waitFor(() => expect(getMessagingPlatforms).toHaveBeenCalledWith('default'))
   })
+})
+
+describe('MessagingView gateway error ownership', () => {
+  it.each([
+    { reason: 'uniagentgate: registration rejected', diagnosis: true, unavailable: false },
+    { reason: 'Registration rejected without a platform prefix', diagnosis: true, unavailable: false },
+    { reason: 'Port 8642 already in use', diagnosis: false, unavailable: false },
+    { reason: 'Status temporarily unavailable', diagnosis: false, unavailable: true }
+  ])(
+    'shows only an owned channel diagnosis and keeps the existing recovery banner: $reason',
+    async ({ reason, diagnosis, unavailable }) => {
+      $settingsScopeOverride.set(null)
+      publishOperation({ phase: 'failed', operation: 'restore', saved: true })
+
+      const rows = ['weixin', 'uniagentgate'].map(id => platform({
+        id, enabled: true, configured: true, gateway_running: false,
+        state: 'startup_failed', error_code: 'startup_failed', error_message: reason
+      }))
+
+      getMessagingPlatforms.mockResolvedValue({ platforms: rows })
+
+      if (unavailable) {
+        getStatus.mockRejectedValue(new Error('status unavailable'))
+      } else {
+        getStatus.mockResolvedValue({
+          gateway_running: false, gateway_state: 'startup_failed',
+          gateway_platforms: diagnosis ? { uniagentgate: {
+            state: 'fatal', error_code: 'connection_failed', error_message: reason
+          } } : {}
+        })
+      }
+
+      await renderMessaging()
+      const weixin = await screen.findByRole('article', { name: /WeChat/ })
+      const rcs = await screen.findByRole('article', { name: /5G/ })
+      expect(within(weixin).queryByText(reason)).toBeNull()
+      expect(!!within(rcs).queryByText(reason)).toBe(diagnosis)
+      expect(screen.queryByText('Last messaging gateway startup failed')).toBeNull()
+      expect(screen.getByText(/Messaging could not be restored/)).toBeTruthy()
+      expect(getStatus).toHaveBeenCalledWith('default')
+      expect(messagingSetup).not.toHaveBeenCalled()
+
+      if (diagnosis) {
+        getStatus.mockResolvedValue({ gateway_running: true, gateway_state: 'running', gateway_platforms: {
+          uniagentgate: { state: 'fatal', error_message: reason }
+        } })
+        await act(async () => { publishOperation({ phase: 'checking' }) })
+        await waitFor(() => expect(within(rcs).queryByText(reason)).toBeNull())
+      }
+
+      getMessagingPlatforms.mockResolvedValue({ platforms: rows.map(row => ({
+        ...row, gateway_running: true, state: 'connected', error_code: null, error_message: null
+      })) })
+      await act(async () => { publishOperation({ phase: 'completed' }) })
+      await waitFor(() => expect(within(weixin).getByRole('status').textContent).toBe('Connected'))
+      expect(screen.queryByText(reason)).toBeNull()
+      expect(getStatus.mock.calls.every(([profile]) => profile === 'default')).toBe(true)
+      expect(rows.every(row => row.error_message === reason)).toBe(true)
+
+      for (const state of ['fatal', 'retrying', 'startup_failed']) {
+        getMessagingPlatforms.mockResolvedValue({ platforms: [
+          { ...rows[0], gateway_running: true, state: 'connected', error_message: null },
+          { ...rows[1], gateway_running: true, state, error_message: reason }
+        ] })
+        await act(async () => { publishOperation({ phase: 'completed' }) })
+        await waitFor(() => expect(within(rcs).getByText(reason)).toBeTruthy())
+        expect(within(weixin).queryByText(reason)).toBeNull()
+        expect(screen.queryByText('Last messaging gateway startup failed')).toBeNull()
+      }
+    }
+  )
 })
 
 describe('MessagingView WeChat QR setup', () => {
@@ -357,6 +431,57 @@ function dingtalk(patch: Partial<MessagingPlatformInfo> = {}) {
 }
 
 describe('Messaging cards and native configuration', () => {
+  it.each([{ ids: ['weixin', 'uniagentgate'] }, { ids: ['uniagentgate'] }])(
+    'clears a historical restore failure when current configured channels recover: $ids',
+    async ({ ids }) => {
+      $settingsScopeOverride.set(null)
+      publishOperation({ phase: 'failed', operation: 'restore', profile: 'default', saved: true, error: 'apply_failed' })
+
+      const rows = ids.map(id => platform({
+        id, enabled: true, configured: true, state: id === 'uniagentgate' ? 'retrying' : 'connected'
+      }))
+
+      const unconfigured = platform({ id: 'dingtalk' })
+      getMessagingPlatforms.mockResolvedValue({ platforms: [...rows, unconfigured] })
+      const view = await renderMessaging()
+      expect(await screen.findByText(/Messaging could not be restored/)).toBeTruthy()
+
+      getMessagingPlatforms.mockResolvedValue({ platforms: [
+        ...rows.map(row => ({ ...row, state: 'connected' })), unconfigured
+      ] })
+      await act(async () => { window.document.dispatchEvent(new Event('visibilitychange')) })
+      await waitFor(() => expect(screen.queryByText(/Messaging could not be restored/)).toBeNull())
+      expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
+      expect(currentStatus).toMatchObject({ phase: 'failed', operation: 'restore' })
+      expect(messagingSetup).not.toHaveBeenCalled()
+
+      view.rerender(<MemoryRouter><div>Desktop chat</div></MemoryRouter>)
+      view.rerender(<MemoryRouter><MessagingView /></MemoryRouter>)
+      await waitFor(() => expect(within(screen.getByRole('article', { name: /5G/ }))
+        .getByRole('status').textContent).toBe('Connected'))
+      expect(screen.queryByText(/Messaging could not be restored/)).toBeNull()
+    }
+  )
+
+  it.each([
+    { operation: 'save' as const, error: 'credentials_rejected', saved: false, profile: 'default',
+      message: 'ID or Secret was rejected.' },
+    { operation: 'restore' as const, error: 'gateway_identity_unverified', saved: true, profile: 'default',
+      message: 'The existing gateway’s ownership could not be verified. No new gateway was started. Open logs for details.' },
+    { operation: 'restore' as const, error: 'apply_failed', saved: true, profile: 'another-profile',
+      message: 'Messaging could not be restored. Desktop chat is available. Retry the connection or open logs.' }
+  ])('keeps $error for $profile visible when the saved channel is connected', async ({ operation, error, saved, profile, message }) => {
+    $settingsScopeOverride.set(null)
+    publishOperation({ phase: 'failed', operation, profile, saved, error })
+    getMessagingPlatforms.mockResolvedValue({ platforms: [
+      dingtalk({ configured: true, enabled: true, state: 'connected' })
+    ] })
+    await renderMessaging()
+    expect(await screen.findByText(message)).toBeTruthy()
+    await act(async () => { window.document.dispatchEvent(new Event('visibilitychange')) })
+    expect(screen.getByText(message)).toBeTruthy()
+  })
+
   it.each(['retrying', 'fatal'])('运行期 %s 保留原版原因并提供恢复入口，不自行重启网关', async state => {
     const detail = state === 'fatal' ? 'Authentication rejected' : 'Network temporarily unavailable'
     getMessagingPlatforms.mockResolvedValue({ platforms: [dingtalk({ configured: true, enabled: true, state, error_message: detail })] })
