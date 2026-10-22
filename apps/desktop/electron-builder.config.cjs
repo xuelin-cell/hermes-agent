@@ -239,7 +239,9 @@ module.exports = {
     oneClick: false,
     perMachine: true,
     allowElevation: true,
-    allowToChangeInstallationDirectory: true
+    allowToChangeInstallationDirectory: true,
+    // desktop-mt: 直接解到安装目录，省掉先解到临时目录再复制的那一遍（见 nsis/installer.nsh）。
+    include: 'nsis/installer.nsh'
   },
   msix: {
     // A store build uses the Partner Center packaging identity (the Store

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { DRIVE_RECYCLE_PAGE_SIZE, type DriveRecycleItem, listDriveRecycle } from '@/api/drive-file-management'
+import { type DriveRecycleItem, listDriveRecycle } from '@/api/drive-file-management'
 import { PanelEmpty } from '@/app/overlays/panel'
 import { Button } from '@/components/ui/button'
 import { Tip } from '@/components/ui/tooltip'
@@ -86,7 +86,8 @@ export function CloudRecycleBin({
 
         added.forEach(item => seen.current.add(item.deleteNo))
         setRows(previous => (page === 1 ? added : [...previous, ...added]))
-        setMore(items.length >= DRIVE_RECYCLE_PAGE_SIZE)
+        // 上游可能限制实际页长，短页仍保留下一页入口，直到明确读到空页。
+        setMore(items.length > 0)
       })
       .catch(() => {
         if (!cancelled) {

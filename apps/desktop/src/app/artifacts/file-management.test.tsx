@@ -124,7 +124,7 @@ it('回收站先确认再恢复，使用删除编号并刷新列表，损坏响�
   await screen.findByRole('button', { name: '报告.pdf' })
   fireEvent.click(screen.getByRole('button', { name: '回收站' }))
   const row = await screen.findByRole('group', { name: '报告.pdf' })
-  expect(screen.queryByRole('button', { name: '显示更多' })).toBeNull()
+  expect(screen.getByRole('button', { name: '显示更多' })).toBeTruthy()
   expect(screen.queryByRole('textbox', { name: '搜索文件和文件夹' })).toBeNull()
   expect(screen.queryByRole('button', { name: '上传文件' })).toBeNull()
   expect(screen.queryByRole('button', { name: '新建文件夹' })).toBeNull()
@@ -150,13 +150,13 @@ it('回收站先确认再恢复，使用删除编号并刷新列表，损坏响�
   expect(screen.queryByText('回收站为空')).toBeNull()
 })
 
-it('回收站仅在当前页满额时显示更多，下一页不足额后隐藏入口并保留已加载记录', async () => {
+it('回收站短页仍可继续加载，空页后才隐藏入口并保留已加载记录', async () => {
   const pages = vi.fn(async ({ route, body }: { route: string; body?: { pageNo?: number; pageSize?: number } }) => {
     if (route !== '/unicom/QueryRecycleData') {
       return listing(route)
     }
 
-    const count = body?.pageNo === 1 ? body.pageSize! : 1
+    const count = body?.pageNo && body.pageNo <= 2 ? 1 : 0
 
     return Array.from({ length: count }, (_, index) => ({
       deleteNo: `${body?.pageNo}-${index}`,
@@ -176,8 +176,11 @@ it('回收站仅在当前页满额时显示更多，下一页不足额后隐藏�
   fireEvent.click(await screen.findByRole('button', { name: '显示更多' }))
   expect(await screen.findByRole('group', { name: '旧文件-2-0.txt' })).toBeTruthy()
   expect(screen.getByRole('group', { name: '旧文件-1-0.txt' })).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: '显示更多' }))
   await waitFor(() => expect(screen.queryByRole('button', { name: '显示更多' })).toBeNull())
-  expect(pages.mock.calls.filter(([input]) => input.route === '/unicom/QueryRecycleData')).toHaveLength(2)
+  expect(screen.getByRole('group', { name: '旧文件-1-0.txt' })).toBeTruthy()
+  expect(screen.getByRole('group', { name: '旧文件-2-0.txt' })).toBeTruthy()
+  expect(pages.mock.calls.filter(([input]) => input.route === '/unicom/QueryRecycleData')).toHaveLength(3)
 })
 
 it('彻底删除使用删除操作号，取消不写入；清空需明确确认，未知结果只能刷新不重发', async () => {

@@ -47,7 +47,9 @@ export function validatePreparedBuilderArgs(args, inputs) {
     if (arg === '--dir' || arg === '--publish=never' || arg === '--') continue
     // 压缩级别只影响产物大小与耗时，不改变已准备的工具及目标。
     if (/^(?:-c|--config)\.compression=(?:store|normal|maximum)$/.test(arg)) continue
-    if (/^(?:-c|--config)\.(?:extraMetadata\.(?:version|shortVersion|shortVersionWindows)|directories\.output|mac\.identity)=/.test(arg)) continue
+    // macOS 入口只允许关闭签名或要求签名，不放行任意签名模块及其他构建覆盖。
+    if (inputs.target.startsWith('darwin-') && /^(?:-c|--config)\.(?:mac\.sign=null|forceCodeSigning=true)$/.test(arg)) continue
+    if (/^(?:-c|--config)\.(?:extraMetadata\.(?:version|shortVersion|shortVersionWindows)|directories\.output)=/.test(arg)) continue
     if (!arg.startsWith('-') && inputs.formats.includes(arg)) continue
     throw preparationRequired(`Argument is not admitted by prepared packaging: ${arg}`)
   }

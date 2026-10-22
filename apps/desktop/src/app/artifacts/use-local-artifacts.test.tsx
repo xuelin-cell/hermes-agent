@@ -60,3 +60,36 @@ it('Profile A→B→A 的迟到扫描不串目录，再入页面同步展示缓�
   expect(view.result.current.scanning).toBe(true)
   expect(backend.messages).toHaveBeenCalledTimes(3)
 })
+
+it('预览布局重挂载时保留活跃会话的已加载文件，后台仍重新读取并更新', async () => {
+  $connection.set({ mode: 'local', profile: 'a' } as never)
+  $apiRequestScope.set({ connectionId: 'local', profile: 'a' })
+  vi.stubGlobal('hermesDesktop', {
+    normalizePreviewTarget: vi.fn(async (value: string) => ({ kind: 'file', path: value, byteSize: 3 }))
+  })
+
+  const sessions = [
+    { id: 'active', profile: 'a', connection_id: 'local', cwd: '/', last_active: 1, message_count: 1, is_active: true }
+  ]
+
+  backend.list.mockResolvedValue({ sessions })
+  backend.messages.mockResolvedValue({ messages: [{ role: 'assistant', content: 'MEDIA:/first.md' }] })
+  let view = renderHook(useLocalArtifacts)
+  await waitFor(() => expect(view.result.current.scanning).toBe(false))
+  expect(view.result.current.groups[0].files[0].label).toBe('first.md')
+  view.unmount()
+
+  let finishListing: (value: unknown) => void = () => {}
+  backend.list.mockReturnValueOnce(
+    new Promise(resolve => {
+      finishListing = resolve
+    })
+  )
+  backend.messages.mockResolvedValue({ messages: [{ role: 'assistant', content: 'MEDIA:/latest.md' }] })
+  view = renderHook(useLocalArtifacts)
+  expect(view.result.current.groups[0]?.files[0]?.label).toBe('first.md')
+  expect(view.result.current.scanning).toBe(true)
+  await act(async () => finishListing({ sessions }))
+  await waitFor(() => expect(view.result.current.groups[0]?.files[0]?.label).toBe('latest.md'))
+  expect(backend.messages).toHaveBeenCalledTimes(2)
+})

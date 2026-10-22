@@ -151,3 +151,69 @@ it('取消会清理自己的搜索，账号 A→B→A 不跨身份轮询、取�
   expect(posts.at(-1)!.driveToken).not.toBe(posts[0].driveToken)
   expect(requests.filter(call => call.method === 'DELETE').at(-1)!.authorization).toBe('Bearer login-A-new')
 }, 15_000)
+
+it('MCP 单页列表和回收站对短页继续提示翻页，空页才结束；错误响应及页码超限不能伪装成完整目录', async () => {
+  const assets = [
+    { asset_id: 'one', name: 'one.txt', kind: 'file' },
+    { asset_id: 'two', name: 'two.txt', kind: 'file' }
+  ]
+
+  let malformed = false
+
+  respond = route => {
+    const url = new URL(route, 'http://local')
+
+    const page =
+      url.pathname === '/assets'
+        ? Number(url.searchParams.get('page_no'))
+        : Number((requests.at(-1)?.body as { pageNo: number }).pageNo)
+
+    const rows = assets.slice(page - 1, page)
+
+    return {
+      ok: true,
+      data: malformed
+        ? { page: { has_more: false } }
+        : url.pathname === '/assets'
+          ? { items: rows, page: { has_more: false } }
+          : rows.map(row => ({ deleteNo: `deleted-${row.asset_id}`, name: row.name, type: '1' }))
+    }
+  }
+
+  for (const name of ['list_files', 'list_recycle_bin']) {
+    const collected: unknown[] = []
+
+    for (const page of [1, 2, 3]) {
+      const result = (await executeDriveMcpAction(
+        drive,
+        name,
+        { page_no: page, page_size: 50, space_id: 'personal', parent_asset_id: '0' },
+        new AbortController().signal
+      )) as { items: unknown[]; page: Record<string, unknown> }
+
+      collected.push(...result.items)
+      expect(result.page).toMatchObject({
+        page_no: page,
+        page_size: 50,
+        has_more: page < 3,
+        end_reached: page === 3,
+        next_page_no: page < 3 ? page + 1 : null
+      })
+    }
+
+    expect(collected).toHaveLength(2)
+  }
+
+  malformed = true
+  await expect(
+    executeDriveMcpAction(drive, 'list_files', { page_no: 1 }, new AbortController().signal)
+  ).rejects.toMatchObject({ result: { code: 'INVALID_RESPONSE' } })
+  respond = () => ({ ok: true, data: { items: [], page: { has_more: true } } })
+  await expect(
+    executeDriveMcpAction(drive, 'list_files', { page_no: 1 }, new AbortController().signal)
+  ).rejects.toMatchObject({ result: { code: 'INCOMPLETE_LISTING' } })
+  respond = () => ({ ok: true, data: { items: assets, page: { has_more: false } } })
+  await expect(
+    executeDriveMcpAction(drive, 'list_files', { page_no: 1_000_000 }, new AbortController().signal)
+  ).rejects.toMatchObject({ result: { code: 'INCOMPLETE_LISTING' } })
+})

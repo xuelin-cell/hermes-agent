@@ -44,7 +44,7 @@ function tool(
 export const DRIVE_MCP_TOOLS = [
   tool(
     'list_files',
-    '列出个人云盘指定目录的文件和文件夹，根目录 ID 为 0。',
+    '仅返回个人云盘指定目录的一页直属文件和文件夹，不含子目录内容，根目录 ID 为 0。非空页按 next_page_no 继续翻页，直到空页 end_reached=true；has_more 是保守翻页提示。保持相同 page_size 和 sort；重复页或查询失败时应说明列表不完整，不能据此判断文件不存在。查看全部文件还需进入子目录。',
     {
       space_id: { type: 'string', enum: ['personal'], default: 'personal' },
       parent_asset_id: parent,
@@ -88,7 +88,12 @@ export const DRIVE_MCP_TOOLS = [
     true
   ),
   tool('get_file_info', '获取云盘文件名称、大小、父目录和时间等详情。', { asset_id: id }, ['asset_id']),
-  tool('list_recycle_bin', '列出个人回收站，delete_no 用于恢复或彻底删除。', page, []),
+  tool(
+    'list_recycle_bin',
+    '返回个人回收站的一页记录，delete_no 用于恢复或彻底删除。非空页按 next_page_no 继续翻页直到空页 end_reached=true，不能因短页停止；重复页或查询失败时不能声称已列完。',
+    page,
+    []
+  ),
   tool('restore_files', '按回收站 delete_no 恢复文件或文件夹到原位置。', { delete_nos: ids }, ['delete_nos'], false),
   tool('get_capacity', '查询个人云盘总容量和已用容量。', {}, []),
   tool(
