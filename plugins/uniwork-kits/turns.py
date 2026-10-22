@@ -30,6 +30,8 @@ class Turn:
     started: float = 0.0
     platform: str = ""
     deck: bool = False
+    # 子代理（delegate_task 派出的子任务）的会话：只按父任务交代的写自己那一份，不收整份 PPT 的写法规则。
+    subagent: bool = False
     task_id: str = ""
     rules_shown: bool = False
     bounces: int = 0
@@ -81,6 +83,7 @@ def begin(
         parent = _sessions.get(str(parent_session_id or "")) if parent_session_id else None
         turn.platform = str(platform or (parent.platform if parent else "") or "")
         turn.deck = bool(deck or (parent is not None and parent.deck))
+        turn.subagent = bool(parent_session_id)
         return turn
 
 

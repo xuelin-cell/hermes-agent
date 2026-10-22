@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { capabilityScoped, type ProfileScope } from '@/api/client'
+import { inlineErrorMessage } from '@/app/session/hooks/use-prompt-actions/utils'
 
 import type {
   ConnectorId,
@@ -76,7 +77,7 @@ export function useRecommendedConnections(scope: ProfileScope) {
         }
       } catch (reason) {
         if (!stopped && generation.current === epoch) {
-          setError(String(reason instanceof Error ? reason.message : reason))
+          setError(inlineErrorMessage(reason, ''))
         }
       }
     }
@@ -126,7 +127,7 @@ export function useRecommendedConnections(scope: ProfileScope) {
       return true
     } catch (reason) {
       if (generation.current === epoch) {
-        setError(String(reason instanceof Error ? reason.message : reason))
+        setError(inlineErrorMessage(reason, ''))
       }
 
       return false

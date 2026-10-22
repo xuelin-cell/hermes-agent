@@ -1058,7 +1058,8 @@ def _rewrite(path: Path, *args, **kwargs) -> None:
     import os
     import time
 
-    before = path.stat().st_mtime_ns if path.exists() else 0
+    # 从现在起算：从 0 起算会把新文件的修改时间写成 1970 年，被当成本轮之前的旧文件跳过。
+    before = max(path.stat().st_mtime_ns if path.exists() else 0, time.time_ns())
     _pptx(path, *args, **kwargs)
     with path.open("ab") as handle:
         handle.write(b"\0" * (int(time.time_ns()) % 7 + 1))

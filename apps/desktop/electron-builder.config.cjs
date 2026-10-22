@@ -237,8 +237,8 @@ module.exports = {
   },
   nsis: {
     oneClick: false,
-    perMachine: false,
-    allowElevation: false,
+    perMachine: true,
+    allowElevation: true,
     allowToChangeInstallationDirectory: true
   },
   msix: {

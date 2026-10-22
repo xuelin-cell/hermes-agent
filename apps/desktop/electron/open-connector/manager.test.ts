@@ -73,7 +73,12 @@ it('mounts an OAuth connector after browser authorization completes', async () =
     timeout: 600
   })
   vi.spyOn(ConnectorRuntime.prototype, 'close').mockResolvedValue()
-  const manager = makeManager(home, { mcp_servers: {} }, writes)
+
+  const manager = makeManager(
+    home,
+    { mcp_servers: { connector_qcc_mcp: { desktop_connector: 'qcc_mcp', enabled: false } } },
+    writes
+  )
 
   try {
     vi.useFakeTimers()

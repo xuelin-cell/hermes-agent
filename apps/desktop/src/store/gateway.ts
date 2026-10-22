@@ -2158,6 +2158,19 @@ export function openSecondaryCount(): number {
   return count
 }
 
+/** 已连上的专家后端数量。通用助手不占名额；启动时的主后端不在这张表里。 */
+export function openPooledProfileCount(): number {
+  let count = 0
+
+  for (const entry of g.secondaries.values()) {
+    if (isOpen(entry.gateway) && normKey(entry.profile) !== 'default') {
+      count += 1
+    }
+  }
+
+  return count
+}
+
 // Keep the idle reaper from killing a backend we still need: ping every live
 // secondary. The active one is pinged separately (touchActiveGatewayBackend).
 // "Live" means the socket is OPEN: a wantOpen entry stuck in its reconnect

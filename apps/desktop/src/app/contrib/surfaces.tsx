@@ -11,7 +11,6 @@ import { useStore } from '@nanostores/react'
 import { type ComponentProps, lazy, memo, type ReactNode, Suspense, useMemo } from 'react'
 import { Navigate, Route, Routes, useParams } from 'react-router'
 
-import { WorkspacePageNav } from '@/components/chat/workspace-page-nav'
 import { ContribBoundary, ContribRender } from '@/contrib/react/boundary'
 import { useContributions } from '@/contrib/react/use-contributions'
 import { $activeConnectionId } from '@/store/connections'
@@ -183,9 +182,9 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
   // that used to ride this wrapper gated a body double-click toggle that no
   // longer exists, and nothing has read it since.
   const page = (view: ReactNode) => (
-    <WorkspacePageNav>
+    <div className="relative h-full min-h-0">
       <Suspense fallback={null}>{view}</Suspense>
-    </WorkspacePageNav>
+    </div>
   )
 
   return (

@@ -265,6 +265,18 @@ def sync_all(default_home: Path) -> List[str]:
     return lines
 
 
+def sync_named(default_home: Path, name: str) -> List[str]:
+    """只同步一位专家（按包名），返回改了哪些；没装这位专家时返回空。
+
+    加载时的同步每个进程只做一次。用户召唤专家后才在通用助手里连上东方财富时，专家后端已经在跑，
+    由桌面点名补这一次。
+    """
+    for plugin, home in _expert_homes(default_home):
+        if plugin == name:
+            return sync_expert(default_home, home)
+    return []
+
+
 _synced_homes: Set[str] = set()
 
 

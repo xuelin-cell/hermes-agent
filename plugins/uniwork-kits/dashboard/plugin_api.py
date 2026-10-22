@@ -44,6 +44,7 @@ _ensure_plugin()
 
 catalog = importlib.import_module("hermes_plugins.uniwork_kits.catalog")
 experts = importlib.import_module("hermes_plugins.uniwork_kits.experts")
+expert_sync = importlib.import_module("hermes_plugins.uniwork_kits.expert_sync")
 installer = importlib.import_module("hermes_plugins.uniwork_kits.installer")
 jobs = importlib.import_module("hermes_plugins.uniwork_kits.jobs")
 store = importlib.import_module("hermes_plugins.uniwork_kits.store")
@@ -199,6 +200,12 @@ def summoned(body: RecentBody) -> Dict[str, Any]:
         return {"recent": experts.record_recent(_home(), body.name.strip())}
     except installer.KitError as exc:
         raise _fail(exc) from exc
+
+
+@router.post("/experts/sync")
+def sync_one(body: RecentBody) -> Dict[str, Any]:
+    """让一位专家马上跟上通用助手的配置（例如刚连上的东方财富连接器），返回改了哪些。"""
+    return {"changes": expert_sync.sync_named(_home(), body.name.strip())}
 
 
 @router.get("/receipts/{name}")

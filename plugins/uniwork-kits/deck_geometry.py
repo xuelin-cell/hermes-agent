@@ -9,12 +9,13 @@ the file is decided here. This module does not call a model.
 
 from __future__ import annotations
 
+import html
 import re
 import struct
 import zipfile
 from dataclasses import dataclass
 from io import BytesIO
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from . import deck_integrity
 
@@ -30,10 +31,15 @@ CROWD_MIN_GAP_EM = 0.15
 _CROWD_MAX_PT = 48.0
 _CROWD_MAX_LISTED = 6
 _PT_PER_INCH = 72.0
+_SINGLE_LINE = 1.2
 _CARD_MAX_SHARE = 0.6
 _CARD_MIN_ALPHA = 5000
 _CARD_TOLERANCE_IN = 0.05
 _SPILL_MIN_IN = 0.02
+# 图形挡字：不透明度至少 50%，盖住一行字至少三成高度，且图形至少一成半面积落在字上。
+_COVER_MIN_ALPHA = 50000
+_COVER_TEXT_SHARE = 0.3
+_COVER_SHAPE_SHARE = 0.15
 _EDGE_IN = 0.05
 _DEFAULT_SIDE_IN = 91440 / EMU
 _DEFAULT_TOP_IN = 45720 / EMU
@@ -54,8 +60,14 @@ _FRACTIONAL_RE = re.compile(r'\b(?:cx|cy|x|y)="-?\d+\.\d+"')
 _NEGATIVE_RE = re.compile(r'<a:(?:ext|chExt)\b[^>]*\b(cx|cy)="(-\d+)"')
 _RUNAWAY_RE = re.compile(r'\b(?:cx|cy|x|y|blurRad)="(-?\d{12,}(?:\.\d+)?|-?\d+(?:\.\d+)?[eE]\+\d+)"')
 _TEXT_RE = re.compile(r"<a:t>([^<]*)</a:t>")
+# 脚本把程序的值原样写进了页面：对象、未定义、算不出的数。「[object Object]」在哪都是错；
+# undefined / NaN 只在一段文字就是它、或者紧挨着中文时算，英文正文里正常出现的这个词不算。
+_OBJECT_TEXT_RE = re.compile(r"\[object [A-Za-z]+\]")
+_BARE_VALUE_RE = re.compile(r"^\s*(?:undefined|NaN|null|Infinity)\s*$|(?<=[\u4e00-\u9fff%])(?:undefined|NaN)|(?:undefined|NaN)(?=[\u4e00-\u9fff%])")
 _SIZED_RE = re.compile(r'<a:(?:rPr|endParaRPr)\b[^>]*\bsz="\d+"')
 _FILL_RE = re.compile(r"<a:(?:solidFill|gradFill)>")
+# 线条自己的颜色不算形状的填充。
+_LINE_RE = re.compile(r"<a:ln\b[^>]*/>|<a:ln\b[^>]*>.*?</a:ln>", re.DOTALL)
 _XFRM_RE = re.compile(
     r'<a:xfrm([^>]*)>\s*<a:off x="(-?\d+)" y="(-?\d+)"/>\s*<a:ext cx="(-?\d+)" cy="(-?\d+)"/>'
 )
@@ -66,6 +78,14 @@ _PARA_RE = re.compile(r"<a:p>.*?</a:p>", re.DOTALL)
 _RUN_RE = re.compile(r"<a:r>.*?</a:r>", re.DOTALL)
 _SZ_RE = re.compile(r'sz="(\d+)"')
 _LINE_SPACING_RE = re.compile(r'<a:lnSpc><a:spcPct val="(\d+)"/>')
+_LINE_POINTS_RE = re.compile(r'<a:lnSpc><a:spcPts val="(\d+)"/>')
+# 按磅写的行距比字号的这个比例还小，就当作几行字叠在一起（正常的固定行距至少和字号一样大）。
+_TIGHT_SPACING_SHARE = 0.8
+_CHART_REL_RE = re.compile(r'Target="(?:\.\./charts/|/ppt/charts/)(chart\d+\.xml)"')
+_DATA_LABELS_RE = re.compile(r"<c:dLbls>.*?</c:dLbls>", re.DOTALL)
+_NUM_FORMAT_RE = re.compile(r'<c:numFmt formatCode="([^"]*)"')
+_CHART_VALUES_RE = re.compile(r"<c:val>.*?</c:val>", re.DOTALL)
+_CHART_POINT_RE = re.compile(r"<c:v>([^<]*)</c:v>")
 _INSET_RE = re.compile(r'(tIns|bIns|lIns|rIns)="(-?\d+)"')
 _LAYOUT_REL_RE = re.compile(r"slideLayout")
 _CREDIT_WORDS = ("图片来源", "图源", "来源：", "来源:", "摄影", "Source", "source", "credit")
@@ -86,6 +106,10 @@ _FIX = {
         "（10×5.625 是 LAYOUT_16x9），要么把所有坐标按页面比例放大重排。"
     ),
     "crowded": "把挤在一起的文字拉开：挪位置、缩短文字或调小字号。页码、页脚、图注不要和正文叠在一起。",
+    "covered_text": (
+        "图形压在了字上：把图形挪开或缩小，给标题和下面的元素之间留够空间；"
+        "图标放进卡片里或卡片旁边，不要和标题、正文叠在一起。"
+    ),
     "cropped": (
         "画框比例跟着图走：竖图配竖框、横图配横框；版式不好改时用 sizing type 'contain' 完整放下；"
         "确实要裁就按主体位置裁，cover 只裁正中间。"
@@ -95,6 +119,10 @@ _FIX = {
         "卡片高度按文字实际行数留够（中文每行字数 ≈ 框宽英寸 × 72 ÷ 字号）。"
     ),
     "empty_text": "空文字框多半是取文字的变量名或数组下标写错了，对照数据改好，生成后核对这些框有字。",
+    "bad_text": (
+        "页面上出现了程序的值：[object Object] 是把对象或数组当成文字传了进去，要取它的字段（如 item.title）"
+        "或把数组逐条拼成文字；undefined / NaN 是变量名、字段名或下标写错，或者拿空值算数。对照数据改好再生成。"
+    ),
     "fractional_emu": "坐标用英寸，让 pptxgenjs 自己换算。不要把英寸乘 96，小数 EMU 会让 PowerPoint 拒绝打开。",
     "negative_size": "宽高不能是负数：往上斜的线把 y 设在下端、h 写正数并加 flipV: true，往左斜的加 flipH: true。",
     "runaway_number": (
@@ -102,6 +130,14 @@ _FIX = {
         "每个形状单独写一个新对象。"
     ),
     "no_layout": "每一页都要有 ppt/slides/_rels/slideN.xml.rels，里面至少一条指向 slideLayout 的关系。",
+    "tight_spacing": (
+        "行距按磅写成了比字号还小的数：pptxgenjs 的 lineSpacing 单位是磅，写 1.2 就是 1.2 磅，几行字会叠成一团。"
+        "按倍数设行距改用 lineSpacingMultiple（如 1.2），或者去掉 lineSpacing。"
+    ),
+    "chart_rounding": (
+        "图表数值带小数时，数据标签要用带小数的格式：pptxgenjs 写 dataLabelFormatCode: '0.0'"
+        "（两位小数写 '0.00'），否则图上的数字会被四舍五入成整数，和正文对不上。"
+    ),
     **deck_integrity.FIX_HINTS,
 }
 
@@ -181,14 +217,20 @@ def _text_width(text: str) -> float:
     return sum(1.0 if ord(ch) > 0x2E80 else 0.55 for ch in text)
 
 
+def _line_height(shape: str) -> float:
+    """一行字占的高度（以字号为单位）。行距倍数（lnSpc 的 spcPct）是乘在单倍行距上的，单倍约为字号的 1.2 倍；
+    以前把倍数直接当行高，设了行距倍数的文本框会被算矮，实际装不下或叠在一起的字查不出来。"""
+    match = _LINE_SPACING_RE.search(shape)
+    return _SINGLE_LINE * (int(match.group(1)) / 100000 if match else 1.0)
+
+
 def _needed_height(shape: str, width_in: float) -> Tuple[float, str]:
     """估算文本框按当前字号、行距和边距排下全部文字需要的高度（英寸），并返回第一段文字作示例。"""
     insets = {key: int(value) / EMU for key, value in _INSET_RE.findall(shape)}
     usable = width_in - insets.get("lIns", _DEFAULT_SIDE_IN) - insets.get("rIns", _DEFAULT_SIDE_IN)
     if usable <= 0:
         return 0.0, ""
-    spacing_match = _LINE_SPACING_RE.search(shape)
-    spacing = int(spacing_match.group(1)) / 100000 if spacing_match else 1.2
+    spacing = _line_height(shape)
     total = 0.0
     sample = ""
     for para in _PARA_RE.findall(shape):
@@ -259,8 +301,7 @@ def _blocks(xml: str) -> List[_Block]:
             top = y + h - bottom_in - text_h
         else:
             top = y + top_in
-        spacing_match = _LINE_SPACING_RE.search(shape)
-        spacing = int(spacing_match.group(1)) / 100000 if spacing_match else 1.2
+        spacing = _line_height(shape)
         lead = (spacing - 1) * size_pt / _PT_PER_INCH / 2
         usable_w = w - left_in - right_in
         widest = 0.0
@@ -336,6 +377,100 @@ def _spills(xml: str, page_w: float, page_h: float) -> List[Tuple[str, float]]:
     return spills
 
 
+def _covered(xml: str) -> List[Tuple[str, int]]:
+    """找出被后画的图形压住的文字，返回（示例文字, 压住它的图形个数）。
+
+    按绘制顺序看：后画的在上面。有填充（不透明度 50% 以上）的形状或图片，盖住某段文字至少三成高度、
+    且自身至少一成半面积落在字上，就算挡字。字下面先画的卡片、只有边框的框线、半透明的装饰不算。
+    模型看不到画面，纯图形（例如用小形状拼的图标）压到标题上时，只有这里能发现。
+    """
+    texts: List[_Block] = []
+    hits: Dict[str, int] = {}
+    for match in _SHAPE_RE.finditer(xml):
+        shape = match.group(0)
+        if "".join(_TEXT_RE.findall(shape)).strip():
+            texts.extend(_blocks(shape))
+            continue
+        box = _BOX_RE.search(shape)
+        if not box or not texts:
+            continue
+        geometry = _LINE_RE.sub("", shape.split("<p:txBody>", 1)[0])
+        alphas = [int(v) for v in _ALPHA_RE.findall(geometry)]
+        filled = match.group(1) == "pic" or bool(_FILL_RE.search(geometry))
+        if not filled or (alphas and max(alphas) < _COVER_MIN_ALPHA):
+            continue
+        x, y, w, h = (int(v) / EMU for v in box.groups())
+        if w <= 0 or h <= 0:
+            continue
+        for block in texts:
+            across = min(x + w, block.right) - max(x, block.left)
+            down = min(y + h, block.bottom) - max(y, block.top)
+            if across > 0 and down >= _COVER_TEXT_SHARE * (block.bottom - block.top) and across * down >= _COVER_SHAPE_SHARE * w * h:
+                hits[block.sample] = hits.get(block.sample, 0) + 1
+                break
+    return list(hits.items())
+
+
+def _tight_spacing(xml: str) -> List[Tuple[str, float, float]]:
+    """找出行距按磅写、却比字号还小的文字框：(文字开头, 行距磅数, 字号)。
+
+    只算会排成两行以上的框：一行字的框行距再小也叠不到别的字上。
+    """
+    found: List[Tuple[str, float, float]] = []
+    for shape in _SP_RE.findall(xml):
+        xfrm, body = _XFRM_RE.search(shape), _BODY_PR_RE.search(shape)
+        if not xfrm or not body:
+            continue
+        insets = {key: int(value) / EMU for key, value in _INSET_RE.findall(body.group(1))}
+        usable = int(xfrm.group(4)) / EMU - insets.get("lIns", _DEFAULT_SIDE_IN) - insets.get("rIns", _DEFAULT_SIDE_IN)
+        if usable <= 0:
+            continue
+        lines = 0
+        worst: Optional[Tuple[str, float, float]] = None
+        for para in _PARA_RE.findall(shape):
+            text = "".join(_TEXT_RE.findall(para)).strip()
+            sizes = [int(v) / 100 for v in _SZ_RE.findall(para)]
+            if not text or not sizes:
+                continue
+            size = max(sizes)
+            lines += max(1, int(_text_width(text) * size / _PT_PER_INCH / usable + 0.999))
+            points = _LINE_POINTS_RE.search(para)
+            if worst is None and points and int(points.group(1)) / 100 < _TIGHT_SPACING_SHARE * size:
+                worst = (html.unescape(text)[:14], int(points.group(1)) / 100, size)
+        if worst and lines >= 2:
+            found.append(worst)
+    return found
+
+
+def _rounded_labels(chart: str) -> Optional[Tuple[str, str]]:
+    """图表数值带小数、数据标签却按整数格式显示时，返回 (带小数的一个数值, 标签格式)；没有这种情况返回 None。
+
+    pptxgenjs 默认的标签格式是 #,##0，传 18.6 图上就标 19。百分比格式和「常规」格式会照实显示小数，不算。
+    """
+    sample = None
+    for block in _CHART_VALUES_RE.findall(chart):
+        for value in _CHART_POINT_RE.findall(block):
+            try:
+                number = float(value)
+            except ValueError:
+                continue
+            if number != round(number):
+                sample = value
+                break
+        if sample:
+            break
+    if sample is None:
+        return None
+    for labels in _DATA_LABELS_RE.findall(chart):
+        if '<c:showVal val="1"/>' not in labels:
+            continue
+        found = _NUM_FORMAT_RE.search(labels)
+        code = found.group(1) if found else "General"
+        if "." not in code and "%" not in code and code.lower() != "general":
+            return sample, code
+    return None
+
+
 def _extent(xml: str, page_w: float, page_h: float) -> Tuple[float, float]:
     """一页里元素最远伸到哪里（右边和下边），铺满整页的背景不算。"""
     right = bottom = 0.0
@@ -383,7 +518,9 @@ def measure(data: bytes) -> DeckReport:
     all_text: List[str] = []
     tight: List[str] = []
     crowded: List[Problem] = []
+    close: List[str] = []
     shrunk: List[Tuple[float, float]] = []
+    spacing: List[Tuple[int, int, Tuple[str, float, float]]] = []
 
     for name in names:
         number = int(_SLIDE_RE.fullmatch(name).group(1))  # type: ignore[union-attr]
@@ -408,13 +545,18 @@ def measure(data: bytes) -> DeckReport:
         if right and page_w and page_h and right <= UNDERFILL_RATIO * page_w and bottom <= UNDERFILL_RATIO * page_h:
             shrunk.append((right, bottom))
         for first, second, overlap in _crowded(xml):
-            how = f"重叠 {overlap:.2f} 英寸" if overlap > 0 else "几乎没有间距"
-            crowded.append(Problem(number, "crowded", f"「{first}」和「{second}」挤在一起（{how}）"))
+            # 估算的文字区（已扣掉内边距和行距）叠上了才退回；只是间距小，字没有碰到，只提示。
+            if overlap > 0:
+                crowded.append(Problem(number, "crowded", f"「{first}」和「{second}」挤在一起（重叠 {overlap:.2f} 英寸）"))
+            else:
+                close.append(f"第{number}页「{first}」和「{second}」")
         if page_w and page_h:
             for sample, past in _spills(xml, page_w, page_h):
                 problems.append(Problem(
                     number, "text_out_of_card", f"「{sample}」的文字超出了所在卡片的边（估计超出 {past:.2f} 英寸）",
                 ))
+        for sample, count in _covered(xml):
+            problems.append(Problem(number, "covered_text", f"「{sample}」被后画的 {count} 个图形压住了"))
         empty = sum(
             1 for shape in _SP_RE.findall(xml)
             if "<p:txBody>" in shape and "<p:ph" not in shape
@@ -422,6 +564,23 @@ def measure(data: bytes) -> DeckReport:
         )
         if empty:
             problems.append(Problem(number, "empty_text", f"有 {empty} 个文字框是空的：设了字号，却一个字都没有"))
+        bad = [text for text in _TEXT_RE.findall(xml) if _OBJECT_TEXT_RE.search(text) or _BARE_VALUE_RE.search(text)]
+        if bad:
+            problems.append(Problem(number, "bad_text", f"有 {len(bad)} 处文字是程序的值，例如「{bad[0].strip()[:30]}」"))
+        squeezed = _tight_spacing(xml)
+        if squeezed:
+            spacing.append((number, len(squeezed), squeezed[0]))
+        for chart_name in dict.fromkeys(_CHART_REL_RE.findall(rels)):
+            try:
+                chart = archive.read(f"ppt/charts/{chart_name}").decode("utf-8", "ignore")
+            except KeyError:
+                continue
+            rounded = _rounded_labels(chart)
+            if rounded:
+                problems.append(Problem(
+                    number, "chart_rounding",
+                    f"图表的数值带小数（如 {rounded[0]}），数据标签却按整数格式（{rounded[1]}）显示，图上会被四舍五入",
+                ))
         rel_map = dict(_REL_RE.findall(rels))
         for match in _SHAPE_RE.finditer(xml):
             shape = match.group(0)
@@ -505,6 +664,21 @@ def measure(data: bytes) -> DeckReport:
             f"{len(shrunk)}/{len(names)} 页的内容都缩在左上角：最右大约到 {rights[len(rights) // 2]:.2f}、"
             f"最下大约到 {bottoms[len(bottoms) // 2]:.2f} 英寸，而页面是 {page_w:.2f}×{page_h:.2f} 英寸",
         ))
+    # 行距写错通常整份都错（一个公共版式函数用到每一页），页数多时合成一条，免得退回清单被它刷满。
+    if len(spacing) > 3:
+        total = sum(count for _number, count, _first in spacing)
+        sample, points, size = spacing[0][2]
+        problems.append(Problem(
+            0, "tight_spacing",
+            f"第 {'、'.join(str(number) for number, _count, _first in spacing)} 页共 {total} 处文字的行距比字号还小，"
+            f"几行字会叠在一起，例如第{spacing[0][0]}页「{sample}」：行距 {points:g} 磅，字号 {size:g} 磅",
+        ))
+    else:
+        for number, count, (sample, points, size) in spacing:
+            problems.append(Problem(
+                number, "tight_spacing",
+                f"{count} 处文字的行距比字号还小，几行字会叠在一起，例如「{sample}」：行距 {points:g} 磅，字号 {size:g} 磅",
+            ))
     problems.extend(crowded[:_CROWD_MAX_LISTED])
     if len(crowded) > _CROWD_MAX_LISTED:
         problems.append(Problem(0, "crowded", f"另有 {len(crowded) - _CROWD_MAX_LISTED} 处文字挤在一起，改法相同"))
@@ -512,6 +686,8 @@ def measure(data: bytes) -> DeckReport:
     notes: List[str] = []
     if tight:
         notes.append("另外，这些文字框可能装不下（估算，不拦交付）：" + "；".join(tight[:4]))
+    if close:
+        notes.append("另外，这些文字靠得很近，但没有叠在一起（不拦交付，顺手能拉开就拉开）：" + "；".join(close[:4]))
     body = "".join(all_text)
     if pictures and not any(word in body for word in _CREDIT_WORDS):
         notes.append(f"另外：{pictures} 张图片都没有标注来源。图下方加一行小字，不清楚就写「图片来源：网络」。这一条不拦交付。")

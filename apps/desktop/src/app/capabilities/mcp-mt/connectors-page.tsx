@@ -44,6 +44,25 @@ export function ConnectorsPage(props: McpConnectorsTabProps) {
   // 切换账号或 Profile 后不保留上一个范围打开的详情。
   useEffect(() => setSelectedId(null), [connections.scopeKey])
 
+  // 推荐连接器的深链（召唤东方财富专家时的「去连接」）：打开那张卡片的详情，再把参数从地址里去掉。
+  // 不用 connector 参数，那个留给 MCP 页展开已保存的服务。
+  useEffect(() => {
+    const nextParams = new URLSearchParams(location.search)
+    const target = nextParams.get('recommended')
+
+    if (!target) {
+      return
+    }
+
+    if (RECOMMENDED_CONNECTORS.some(entry => entry.id === target)) {
+      setDetailMode('overview')
+      setSelectedId(target)
+    }
+
+    nextParams.delete('recommended')
+    navigate({ ...location, search: nextParams.toString() ? `?${nextParams.toString()}` : '' }, { replace: true })
+  }, [location, navigate])
+
   // 首次打开后保留原生编辑器，切换推荐页不丢失尚未保存的 MCP 草稿。
   useEffect(() => {
     if (view === 'mcp') {

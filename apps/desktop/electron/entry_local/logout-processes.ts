@@ -53,16 +53,25 @@ function listDarwinLogoutProcesses(): LogoutProcess[] {
     })
 }
 
-/** 重新读取单个 macOS PID 的启动秒数，防止信号发给已复用的 PID。 */
+/** 重新核对 macOS 活进程的启动时间；僵尸已停止执行，不再等待父进程回收。 */
 function darwinProcessStarted(pid: number): string | null {
   try {
-    const output = execFileSync('ps', ['-p', String(pid), '-o', 'lstart='], {
+    const output = execFileSync('ps', ['-p', String(pid), '-o', 'stat=,lstart='], {
       encoding: 'utf8',
       timeout: 5_000,
       env: { ...process.env, LC_ALL: 'C', TZ: 'UTC' }
     })
 
-    return output.trim() ? darwinStarted(output) : null
+    if (!output.trim()) {
+      return null
+    }
+
+    const match = /^\s*(\S+)\s+(.+?)\s*$/.exec(output)
+    if (!match) {
+      throw new Error('无法确认账号进程状态。')
+    }
+
+    return match[1].startsWith('Z') ? null : darwinStarted(match[2])
   } catch (error) {
     if ((error as NodeJS.ErrnoException & { status?: number }).status === 1) {
       return null

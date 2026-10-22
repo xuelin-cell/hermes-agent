@@ -220,18 +220,30 @@ export function MyMailPage() {
 
   if (!loading && status && !status.enabled) {
     return (
-      <main className="flex h-full items-center justify-center bg-(--ui-panel-background) p-8">
-        <section className="w-full max-w-xl rounded-3xl border border-border/70 bg-background p-10 text-center shadow-sm">
-          <span className="mx-auto flex size-20 items-center justify-center rounded-full bg-emerald-500 text-white">
-            <Mail size={38} />
-          </span>
-          <h1 className="mt-6 text-2xl font-semibold">{text.title}</h1>
-          <p className="mt-2 text-sm text-muted-foreground">{text.enableHint}</p>
-          {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
-          <Button className="mt-7 rounded-xl px-6" disabled={busy} onClick={() => void enable()}>
-            {busy ? text.enabling : text.enable}
-          </Button>
-        </section>
+      <main className="h-full overflow-y-auto bg-[#f6f6f6] dark:bg-[#1a1a1e]">
+        <div className="px-[34px] py-5">
+          <header className="mb-6">
+            <h1 className="-mt-2 text-[17px] leading-tight font-bold text-foreground">{text.title}</h1>
+            <p className="mt-2.5 text-[13px] leading-snug text-muted-foreground">{text.subtitle}</p>
+          </header>
+          <section className="flex items-center gap-5 rounded-xl bg-background p-6 shadow-sm">
+            <span className="flex size-14 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
+              <Mail size={28} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-[17px] leading-snug font-semibold text-foreground">{text.enableTitle}</h2>
+              <p className="mt-1.5 text-[13px] leading-normal text-muted-foreground">{text.enableDescription}</p>
+            </div>
+            <Button
+              className="h-9 shrink-0 rounded-lg bg-slate-900 px-[18px] text-sm font-medium text-white hover:bg-slate-700"
+              disabled={busy}
+              onClick={() => void enable()}
+            >
+              {busy ? text.enabling : text.enable}
+            </Button>
+          </section>
+          {error && <p className="mt-3 text-[13px] leading-normal text-destructive">{error}</p>}
+        </div>
       </main>
     )
   }

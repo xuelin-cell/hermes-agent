@@ -17,6 +17,9 @@ vi.mock('@/store/session', () => ({
   $gatewayState: atom('open')
 }))
 vi.mock('../chat', () => ({ ChatView: () => <div data-testid="chat-view" /> }))
+vi.mock('@/components/chat/workspace-category-tabs', () => ({
+  WorkspaceCategoryTabs: () => <div role="tablist" aria-label="Workspace categories" />
+}))
 vi.mock('../capabilities', () => ({ CapabilitiesView: () => null }))
 vi.mock('../messaging', () => ({ MessagingView: () => null }))
 vi.mock('../artifacts', () => ({ ArtifactsView: () => null }))
@@ -54,5 +57,6 @@ describe('ChatRoutesSurface and APP_ROUTES', () => {
     )
 
     expect(screen.queryByTestId('chat-view')).toBeNull()
+    expect(screen.queryByRole('tablist', { name: 'Workspace categories' })).toBeNull()
   })
 })
