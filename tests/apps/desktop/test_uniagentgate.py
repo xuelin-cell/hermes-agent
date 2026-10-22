@@ -61,6 +61,7 @@ class Gateway:
     def __init__(self):
         self.expected = {}
         self.registered = []
+        self.http_requests = []
         self.connected = {}
         self.downlinks = asyncio.Queue()
         self.heartbeats = asyncio.Queue()
@@ -84,6 +85,7 @@ class Gateway:
             if scope["path"].startswith(("/files/", "/mcp")):
                 await self.media_http(scope, body, send)
                 return
+            self.http_requests.append((scope["path"], headers, json.loads(body)))
             if scope["path"].endswith("/register"):
                 assert headers["authorization"] == f"Bearer {self.expected[agent]}"
                 assert headers["x-request-id"] and headers["x-agent-version"] and headers["x-request-timestamp"]
@@ -240,6 +242,52 @@ def adapter_from_config():
     assert Path(importlib.import_module(adapter.__module__).__file__).resolve().parent == (
         get_bundled_plugins_dir() / "uniagentgate").resolve()
     return adapter
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("hermes_version", "expected_version"), [
+    ("0.0.0", "1.0.0"),
+    ("0.22.2", "1.0.0"),
+    ("unknown", "1.0.0"),
+    ("", "1.0.0"),
+    (None, "1.0.0"),
+    ("invalid", "1.0.0"),
+    ("1.0.0rc1", "1.0.0"),
+    ("1.0.0", "1.0.0"),
+    ("1.2.3", "1.2.3"),
+    ("1.10.0", "1.10.0"),
+    ("2.0.0", "2.0.0"),
+])
+async def test_gateway_version_preserves_release_with_minimum_for_development_builds(
+    tmp_path, gateway, monkeypatch, hermes_version, expected_version,
+):
+    from hermes_cli import version_info
+
+    stamp = tmp_path / "install-stamp.json"
+    stamp.write_text(json.dumps({"commit": "a" * 40, "baseVersion": hermes_version,
+                                 "updateMechanism": "electron-updater", "payload": "bundled"}), encoding="utf-8")
+    monkeypatch.setattr(version_info, "_resolve_stamp_file", lambda: stamp)
+    monkeypatch.setattr(version_info, "_cached_version_info", None)
+    assert version_info.get_version_info().base_version == (hermes_version or "unknown")
+
+    fake, url = gateway
+    home = tmp_path / "account"
+    install(home, url, "version-agent", "version-secret")
+    fake.expected["version-agent"] = "version-secret"
+    with profile(home):
+        adapter = adapter_from_config()
+        auth = importlib.import_module(adapter.__module__.rsplit(".", 1)[0] + ".auth")
+        session = await auth.register(url, "version-agent", "version-secret")
+        await auth.validate_credentials(url, "version-agent", "version-secret")
+        # The fixture rejects heartbeats; verify the real request despite the response.
+        with pytest.raises(auth.UniAgentGateAuthError, match="session_expired"):
+            await auth.heartbeat(url, session.session_token, session.agent_id)
+
+    assert len(fake.http_requests) == 3
+    for path, headers, body in fake.http_requests:
+        assert headers["x-agent-version"] == expected_version
+        if path.endswith("/register"):
+            assert body["version"] == auth.CONNECTOR_VERSION
 
 
 @pytest.mark.asyncio
