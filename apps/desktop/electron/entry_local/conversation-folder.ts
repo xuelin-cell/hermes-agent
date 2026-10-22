@@ -8,10 +8,13 @@ import { isDesktopRendererSender } from '../desktop-renderer-sender'
 /** 同一秒内最多尝试的重名后缀，超过即放弃，不会无限循环。 */
 const MAX_SUFFIX = 99
 
+/** 中间文件目录：交付插件提醒模型把草稿、脚本等放这里，点开头的目录不补交付卡片。 */
+export const SCRATCH_DIR = '.tmp'
+
 export interface ConversationFolders {
-  /** 默认目录就是账号工作区时建一个新文件夹并返回路径；否则返回 null，保持原行为。 */
+  /** 默认目录就是账号工作区时建一个新文件夹（含空的 .tmp）并返回路径；否则返回 null，保持原行为。 */
   create(defaultCwd: string): Promise<null | string>
-  /** 只删除本进程刚建、仍为空的文件夹；其它路径一律忽略。 */
+  /** 只删除本进程刚建、仍为空（或只剩空 .tmp）的文件夹；其它路径一律忽略。 */
   discard(folder: string): Promise<void>
 }
 
@@ -61,6 +64,8 @@ export function createConversationFolders(workspace: string, now: () => Date = (
           // 不带 recursive 的 mkdir 是独占创建：已存在就失败，不会复用别人的文件夹。
           await fs.mkdir(folder)
           created.add(folder)
+          // 中间文件目录建不成不影响对话，模型按提醒需要时自己建。
+          await fs.mkdir(path.join(folder, SCRATCH_DIR)).catch(() => undefined)
 
           return folder
         } catch (error) {
@@ -81,6 +86,14 @@ export function createConversationFolders(workspace: string, now: () => Date = (
       }
 
       created.delete(match)
+
+      // 只剩自动建的中间文件目录时先删它；它也只按空目录删，里面有文件就整个保留。
+      const entries = await fs.readdir(match).catch(() => [])
+
+      if (entries.length === 1 && entries[0] === SCRATCH_DIR) {
+        await fs.rmdir(path.join(match, SCRATCH_DIR)).catch(() => undefined)
+      }
+
       // rmdir 只删空目录；AI 已写入文件时失败并保留文件夹。
       await fs.rmdir(match).catch(() => undefined)
     }

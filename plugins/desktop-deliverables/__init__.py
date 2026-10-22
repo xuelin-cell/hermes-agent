@@ -117,10 +117,21 @@ def attachment_paths(value, cwd):
     return set()
 
 
+def scratch_reminder(cwd):
+    """每轮提醒模型把中间文件放进工作目录下的 .tmp；点开头的目录不补交付卡片。"""
+    scratch = cwd / ".tmp"
+    return (
+        f"本轮工作目录：{cwd}。草稿、数据、脚本、下载的素材、临时图片等中间文件放到 {scratch}"
+        "（没有就新建），装依赖也在这里装。只有交给用户的成品放在工作目录或用户指定的位置，"
+        "每个成品在回复里单独一行写 `MEDIA:<绝对路径>`。"
+        "如果技能要求脚本和成品放在同一目录，就在 .tmp 里做完，再把成品复制到工作目录。"
+    )
+
+
 def before_turn(
     *, session_id="", turn_id="", task_id="", platform="", user_message=None, **kwargs
 ):
-    """本轮开始时固定本机目录和附件排除表，缺少桌面身份则不观察。"""
+    """本轮开始时固定本机目录和附件排除表，并提醒中间文件放哪；缺少桌面身份则不观察。"""
     if not session_id or platform not in {"desktop", "subagent"}:
         return
     child_root = background.child_root(session_id) if platform == "subagent" else None
@@ -149,6 +160,8 @@ def before_turn(
             watch_root(turn, root, budget)
         while len(_turns) > 128:
             _turns.popitem(last=False)
+    # 后台子任务只交付缓存成品，不加提醒；用户自选目录也提醒，.tmp 由模型按需新建。
+    return {"context": scratch_reminder(cwd)}
 
 
 def current(key, turn_id):

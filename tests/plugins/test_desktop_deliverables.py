@@ -541,3 +541,83 @@ def test_video_notification_owns_delivery_even_during_another_foreground_turn(de
     text = f'下载完成。\nMEDIA:{video}'
     result = reply(plugin, text, turn='completion')
     assert (result or text).count('MEDIA:') == 1
+
+
+def test_desktop_turn_reminds_where_intermediate_files_go(delivery, tmp_path, monkeypatch):
+    """桌面本机会话每轮提醒中间文件放工作目录下的 .tmp；其它平台、子任务和远程不提醒。"""
+    plugin, work = delivery
+    context = plugin.before_turn(
+        session_id="s", turn_id="t", task_id="s", platform="desktop"
+    )["context"]
+    assert f"本轮工作目录：{work}。" in context
+    assert str(work / ".tmp") in context
+    assert "MEDIA:<绝对路径>" in context
+    assert not (work / ".tmp").exists()
+
+    # 用户自选目录同样提醒，路径跟随本轮实际工作目录，目录由模型按需新建。
+    chosen = tmp_path / "我的项目"
+    chosen.mkdir()
+    monkeypatch.setenv("TERMINAL_CWD", str(chosen))
+    context = plugin.before_turn(
+        session_id="s", turn_id="u", task_id="s", platform="desktop"
+    )["context"]
+    assert str(chosen / ".tmp") in context
+    assert not (chosen / ".tmp").exists()
+
+    assert (
+        plugin.before_turn(
+            session_id="s", turn_id="v", task_id="s", platform="telegram"
+        )
+        is None
+    )
+    plugin.background.remember_child(parent_session_id="s", child_session_id="child")
+    assert (
+        plugin.before_turn(
+            session_id="child", turn_id="w", task_id="child", platform="subagent"
+        )
+        is None
+    )
+    monkeypatch.setenv("TERMINAL_ENV", "docker")
+    assert (
+        plugin.before_turn(session_id="s", turn_id="x", task_id="s", platform="desktop")
+        is None
+    )
+
+
+@pytest.mark.parametrize("folder", [".tmp", "deep/.tmp/charts"])
+def test_intermediate_files_in_scratch_folder_are_not_carded(delivery, folder):
+    """.tmp 里的本轮新文件，无论写入、命令前后对比还是回复提到，都不补卡片。"""
+    plugin, work = delivery
+    begin(plugin)
+    plugin.before_tool(
+        tool_name="terminal", args={}, session_id="s", turn_id="t", tool_call_id="call"
+    )
+    scratch = work / folder
+    scratch.mkdir(parents=True)
+    draft = scratch / "draft.md"
+    draft.write_text("draft")
+    chart = scratch / "chart.png"
+    chart.write_bytes(b"png")
+    output = work / "report.docx"
+    output.write_bytes(b"docx")
+    plugin.after_tool(
+        tool_name="terminal",
+        args={},
+        result=f'{{"exit_code":0,"output":"{draft.as_posix()}"}}',
+        status="ok",
+        session_id="s",
+        turn_id="t",
+        tool_call_id="call",
+    )
+    plugin.after_tool(
+        tool_name="write_file",
+        args={"path": str(draft)},
+        result="{}",
+        status="ok",
+        session_id="s",
+        turn_id="t",
+    )
+    result = reply(plugin, f"草稿在 {draft}，图表在 {chart}。")
+    assert str(output) in result
+    assert f"MEDIA:`{draft}`" not in result and f"MEDIA:`{chart}`" not in result
+    assert result.count("MEDIA:") == 1
