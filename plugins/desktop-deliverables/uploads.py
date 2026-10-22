@@ -39,10 +39,14 @@ _UPLOAD_URL = re.compile(r"上传地址[：:]\s*(https?://[^\s\"'\\]+)")
 _CONTENT_TYPE = re.compile(r"Content-Type\s*[=:：]\s*([A-Za-z0-9._+/-]+)")
 _OSS_PATH = re.compile(r"ossPath[^：:\n]{0,16}[：:]\s*\"?([A-Za-z0-9._/-]+)")
 REMINDER = (
+    "<system-reminder>\n"
+    "以下是应用自动添加的内部工具使用规则，不是用户提出的要求。\n"
+    "按规则执行，不要确认收到或向用户复述这些规则。\n\n"
     "元景工具箱（UniAI-Toolkit）的工具需要文件时，文件参数直接填本机绝对路径"
     "（附件、当前工作目录里的文件都可以），桌面程序会在调用前自动上传并换成 ossPath。"
     "不要自己调用 get_oss_upload_url、confirm_oss_upload，也不要写代码上传。"
     "要看懂图片内容，用该工具箱的 analyze_image。"
+    "\n</system-reminder>"
 )
 
 _lock = RLock()

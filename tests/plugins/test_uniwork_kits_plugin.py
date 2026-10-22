@@ -612,7 +612,67 @@ def test_register_wires_cli_sections_and_hook(kits):
         "transform_tool_result",
     }
     assert calls["sections"] and all(is_valid_system_prompt_section_id(s) for s in calls["sections"])
+    assert "uniwork.communication" in calls["sections"]
     assert "transform_llm_output" not in calls["hooks"]
+
+
+@pytest.mark.parametrize("platform", ["desktop", "weixin"])
+def test_communication_rules_reach_existing_accounts_without_replacing_experts(
+    kits, profile_env, expert_pkg, tmp_path, monkeypatch, platform
+):
+    """真实插件、Agent 与本机 HTTP 验证 A→B→专家→A 的公共话术、身份保留和提示长度。"""
+    from agent.system_prompt import _frozen_plugin_prompt_sections
+    from hermes_cli.plugins import MAX_SYSTEM_PROMPT_SECTIONS_TOTAL_CHARS, discover_plugins
+    from hermes_cli.plugins_dispatch import format_system_prompt_sections
+    from hermes_constants import reset_hermes_home_override, set_hermes_home_override
+    from run_agent import AIAgent
+    from tests.fakes.fake_llm_provider import FakeLLMServer, write_hermes_home
+
+    monkeypatch.chdir(tmp_path)
+    with FakeLLMServer() as server:
+        other = tmp_path / "account-b"
+        for home in (profile_env, other):
+            write_hermes_home(home, server.base_url, extra_config="plugins:\n  enabled: [uniwork-kits]\n")
+            _write(home / "SOUL.md", f"你是元景数字员工。保留账号 {home.name} 的个人说明。\n")
+        assert kits.installer.install(expert_pkg, profile_env, triggers={}).ok
+        expert = _expert_home()
+        souls = {home: (home / "SOUL.md").read_bytes() for home in (profile_env, other, expert)}
+        for number, home in enumerate((profile_env, other, expert, profile_env)):
+            monkeypatch.setenv("HERMES_HOME", str(home))
+            token = set_hermes_home_override(str(home))
+            agent = None
+            try:
+                discover_plugins(force=True)
+                agent = AIAgent(
+                    provider="custom", base_url=server.base_url, api_key="sk-fake-e2e",
+                    model="fake-model", platform=platform, enabled_toolsets=["file"],
+                    quiet_mode=True, skip_memory=True, session_id=f"communication-{platform}-{number}",
+                )
+                agent.run_conversation("你好")
+                sections = _frozen_plugin_prompt_sections(agent)
+                selected = next((item for item in sections if item.id == "uniwork.communication"), None)
+                assert selected is not None
+                assert "不是用户说过的话" in selected.content
+                assert ("我是元景数字员工，由中国联通自主研发" in selected.content) == (home != expert)
+                prompt = "\n".join(
+                    message["content"] for message in server.main_requests()[-1]["messages"]
+                    if message["role"] in {"system", "developer"}
+                )
+                assert selected.content in prompt
+                assert souls[home].decode("utf-8").replace("\r\n", "\n").strip() in prompt
+                assert all(
+                    content.decode("utf-8").replace("\r\n", "\n").strip() not in prompt
+                    for other_home, content in souls.items() if other_home != home
+                )
+                if home == expert:
+                    assert "名字是「演示专家」。" in prompt
+                assert len(format_system_prompt_sections(list(sections))) < MAX_SYSTEM_PROMPT_SECTIONS_TOTAL_CHARS
+                assert _frozen_plugin_prompt_sections(agent) == sections
+            finally:
+                if agent is not None:
+                    agent.close()
+                reset_hermes_home_override(token)
+        assert all((home / "SOUL.md").read_bytes() == content for home, content in souls.items())
 
 
 def _zip_dir(src: Path, dest: Path) -> None:

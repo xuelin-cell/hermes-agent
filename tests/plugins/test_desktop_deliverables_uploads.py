@@ -5,6 +5,7 @@ import json
 import os
 import time
 from types import SimpleNamespace
+from xml.etree import ElementTree
 
 import httpx
 import pytest
@@ -93,6 +94,27 @@ def before(env, tool, args, session="s"):
         for handler in env.hooks["pre_tool_call"]
     ]
     return next((result for result in results if result), None)
+
+
+@pytest.mark.parametrize("platform", ["desktop", "weixin"])
+def test_tool_reminder_is_marked_as_internal_without_changing_user_text(uploads, platform):
+    """真实钩子与原生消息拼接保留问候，并把上传、看图规则放在内部提醒边界中。"""
+    from agent.turn_context import compose_user_api_content
+
+    result = uploads.hooks["pre_llm_call"][-1](
+        session_id="greeting", platform=platform, user_message="你好"
+    )
+    reminder = ElementTree.fromstring(result["context"])
+    assert reminder.tag == "system-reminder"
+    assert "不是用户提出的要求" in reminder.text
+    assert "不要确认收到或向用户复述" in reminder.text
+    assert all(name in reminder.text for name in (
+        "本机绝对路径", "get_oss_upload_url", "confirm_oss_upload", "analyze_image"
+    ))
+    assert compose_user_api_content("你好", "", result["context"]) == "你好\n\n" + result["context"]
+    uploads.state.tools.clear()
+    assert uploads.hooks["pre_llm_call"][-1](session_id="greeting", user_message="你好") is None
+    assert not uploads.calls and not uploads.puts
 
 
 def test_attachment_is_uploaded_once_and_replaced_with_oss_path(uploads):
