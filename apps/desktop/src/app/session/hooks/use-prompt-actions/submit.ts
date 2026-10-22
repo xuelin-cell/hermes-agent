@@ -1,6 +1,8 @@
 import type { PromptSubmitResult } from '@hermes/shared'
 import { type MutableRefObject, useCallback } from 'react'
 
+// desktop-mt: 新对话发出后又开了新对话时，建好的会话按后台会话继续发送（见 detached-create-mt.ts）。
+import { pendingNewChatSubmitLockKey, takeDetachedCreate } from '@/app/session/detached-create-mt'
 import { PROMPT_SUBMIT_REQUEST_TIMEOUT_MS } from '@/hermes'
 import type { Translations } from '@/i18n'
 import { type ChatMessage, textPart } from '@/lib/chat-messages'
@@ -393,13 +395,17 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
       // stalled turn can't stack the same prompt into multiple real turns. The
       // foreground ChatBar and background drainers can briefly overlap during a
       // session switch; this per-session lock makes that safe.
-      const submitLockKey = targetStoredSessionId || sessionId || startingActiveSessionId || '__pending_new__'
+      const submitLockKey =
+        targetStoredSessionId || sessionId || startingActiveSessionId || pendingNewChatSubmitLockKey() // desktop-mt
 
       if (!acquireSubmitInFlight(submitLockKey)) {
         return false
       }
 
       let submitLockReleased = false
+      // desktop-mt: 建好的会话已转后台（用户在另一个新对话里）。之后失败也不把文字退回输入框——
+      // 那里是另一个新对话的草稿；失败气泡留在后台会话里，另弹提示。
+      let detachedFromView = false
 
       const releaseSubmitLock = () => {
         if (!submitLockReleased) {
@@ -536,11 +542,11 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
         )
       }
 
-      const abortForSessionSwitch = (optimisticSessionId: null | string): false => {
+      const abortForSessionSwitch = (optimisticSessionId: null | string): boolean => {
         dropOptimistic(optimisticSessionId)
         releaseBusy()
 
-        return false
+        return detachedFromView // desktop-mt
       }
 
       // Foreground-only state: a background queue drain must never write the
@@ -773,13 +779,21 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
         // active ref instead: every switch path re-nulls or retargets it
         // synchronously, so it only still equals the id create returned when
         // nobody re-homed since.
-        if (activeSessionIdRef.current !== sessionId) {
+        // desktop-mt: 转后台的会话不在当前视图，按后台会话发送：不当成用户切走，目标钉到它自己的 stored id。
+        const detachedStoredId = takeDetachedCreate(sessionId)
+
+        if (detachedStoredId) {
+          detachedFromView = true
+          targetStartedInCurrentView = false
+        }
+
+        if (!detachedStoredId && activeSessionIdRef.current !== sessionId) {
           return abortForSessionSwitch(sessionId)
         }
 
         // Re-pin the baseline to the created chat for the rest of the
         // pipeline; the closures (seedOptimistic et al) see the new value.
-        startingStoredSessionId = selectedStoredSessionIdRef.current
+        startingStoredSessionId = detachedStoredId ?? selectedStoredSessionIdRef.current
         startingSelectedStoredSessionId = selectedStoredSessionIdRef.current
         startingRouteToken = getRouteToken()
         // The target too: it was captured BEFORE the create (null for a fresh
@@ -790,7 +804,7 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
         // translate the runtime id to the stored id, never saw the session's
         // tile route / owner hint / row, probed REST by a runtime id, and fell
         // to the ambient socket — the fresh-chat owner loss behind #94071.
-        targetStoredSessionId = selectedStoredSessionIdRef.current
+        targetStoredSessionId = detachedStoredId ?? selectedStoredSessionIdRef.current
 
         seedOptimistic(sessionId)
       }
@@ -868,7 +882,7 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
 
             releaseBusy()
 
-            return false
+            return detachedFromView // desktop-mt
           }
         }
 
@@ -1040,11 +1054,11 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
           return false
         }
 
-        if (targetIsCurrentView()) {
+        if (targetIsCurrentView() || detachedFromView) {
           notifyError(err, copy.promptFailed)
         }
 
-        return false
+        return detachedFromView // desktop-mt
       }
     },
     [

@@ -10,6 +10,13 @@ import {
   graftRefreshedTailOntoBackfill,
   olderPageReader
 } from '@/app/chat/transcript-backfill'
+// desktop-mt: 新对话发出后又开了新对话时，建好的会话转后台（见 detached-create-mt.ts）。
+import {
+  bumpFreshDraftEpoch,
+  currentFreshDraftEpoch,
+  markDetachedCreate,
+  shouldDetachCreate
+} from '@/app/session/detached-create-mt'
 import { defaultNewSessionTarget, prepareDefaultNewSession } from '@/app/session/new-session-route'
 import { revealTreePane } from '@/components/pane-shell/tree/store'
 import { setWorkspaceScope } from '@/components/pane-shell/workspace-scope'
@@ -577,6 +584,8 @@ export function useSessionActions({
       // rebind race, so leaving the old id here could revive it on a very fast
       // New Chat -> Enter sequence.
       onFreshDraftRouteIntent?.()
+      // desktop-mt: 记一次新对话；还在建会话的上一个新对话据此转后台。
+      bumpFreshDraftEpoch()
 
       if (!preserveRoute) {
         navigate(NEW_CHAT_ROUTE, { replace: replaceRoute })
@@ -646,6 +655,10 @@ export function useSessionActions({
     ): Promise<string | null> => {
       const startingStoredSessionId = selectedStoredSessionIdRef.current
       const startingRouteToken = getRouteToken()
+      // desktop-mt: 发送时的新对话代次、连接和 YOLO，会话建好前用户又开了新对话时用来转后台。
+      const startingFreshDraftEpoch = currentFreshDraftEpoch()
+      const startingConnection = $connection.get()?.baseUrl
+      const yoloAtSend = $yoloActive.get()
 
       creatingSessionRef.current = true
 
@@ -786,6 +799,40 @@ export function useSessionActions({
           }
 
           return null
+        }
+
+        // desktop-mt: 建好时用户已在另一个新对话里（两次都是 '/'，上面的漂移检查看不出来）。
+        // 会话转后台：照常进侧栏、记状态、发第一条消息，但不跳页面，也不把它的目录、模型、YOLO 推给当前输入框。
+        if (
+          stored &&
+          shouldDetachCreate({
+            startEpoch: startingFreshDraftEpoch,
+            stored,
+            createdWithOverrides: Boolean(createOverrides || seedMessages?.length),
+            startConnection: startingConnection,
+            nowConnection: $connection.get()?.baseUrl,
+            startProfile: capturedProfile,
+            nowProfile: $newChatProfile.get() || normalizeProfileKey($activeGatewayProfile.get()),
+            switching: $gatewaySwitching.get()
+          })
+        ) {
+          ensureSessionState(created.session_id, stored)
+          createdThisRun.add(stored)
+          upsertOptimisticSession(created, stored, null, preview?.trim() || null, null, undefined, capturedRoute)
+          broadcastSessionsChanged()
+          const detachedInfo = applyRuntimeInfo(created.info, { foreground: false })
+          updateSessionState(
+            created.session_id,
+            state => ({ ...state, ...(detachedInfo ?? {}), runtimeStartedAt: Date.now() }),
+            stored
+          )
+          markDetachedCreate(created.session_id, stored)
+
+          if (yoloAtSend) {
+            await setSessionYolo(requestGateway, created.session_id, true).catch(() => undefined)
+          }
+
+          return created.session_id
         }
 
         resetViewSync()
