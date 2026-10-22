@@ -337,33 +337,43 @@ def convert(prefix, value, session_id, cwd):
     return oss_path
 
 
-def before_call(*, tool_name="", args=None, session_id="", task_id="", **_):
-    """元景工具调用前把参数里的本机文件换成 ossPath；上传不了就拦下并说明原因。"""
+def uploaded_args(tool_name, args, session_id, task_id):
+    """元景工具参数里的本机文件换成 ossPath，返回要替换的参数；不用换时返回 None，上传不了抛 Refusal。"""
+    if not tool_name.startswith("mcp__") or not isinstance(args, dict):
+        return None
+    prefix, _, leaf = tool_name.rpartition("__")
+    prefix += "__"
+    # 只管带上传工具的远程服务器；本机 MCP 本来就能读本机路径，不能替换。
+    if leaf in OSS_TOOLS or prefix == "mcp__" or not has_tool(prefix + UPLOADER):
+        return None
+    cwd = working_folder(task_id)
+    changed = {}
+    for name, value in args.items():
+        if isinstance(value, list):
+            items = [convert(prefix, item, session_id, cwd) for item in value[:16]]
+            if any(items):
+                changed[name] = [
+                    new or old for new, old in zip(items, value)
+                ] + value[16:]
+        else:
+            new = convert(prefix, value, session_id, cwd)
+            if new:
+                changed[name] = new
+    return changed or None
+
+
+def around_call(*, tool_name="", args=None, next_call, session_id="", task_id="", **_):
+    """工具执行中间件：先上传再调用；上传不了就不调用，直接返回原因。
+
+    放在执行阶段而不是 pre_tool_call 钩子：元景工具箱同一时间只处理一个调用，别的会话占着时
+    上传要排队，钩子 30 秒就会超时并让所有工具停用 60 秒；这里只受这次调用自己的等待上限约束。
+    """
     try:
-        if not tool_name.startswith("mcp__") or not isinstance(args, dict):
-            return None
-        prefix, _, leaf = tool_name.rpartition("__")
-        prefix += "__"
-        # 只管带上传工具的远程服务器；本机 MCP 本来就能读本机路径，不能替换。
-        if leaf in OSS_TOOLS or prefix == "mcp__" or not has_tool(prefix + UPLOADER):
-            return None
-        cwd = working_folder(task_id)
-        changed = {}
-        for name, value in args.items():
-            if isinstance(value, list):
-                items = [convert(prefix, item, session_id, cwd) for item in value[:16]]
-                if any(items):
-                    changed[name] = [
-                        new or old for new, old in zip(items, value)
-                    ] + value[16:]
-            else:
-                new = convert(prefix, value, session_id, cwd)
-                if new:
-                    changed[name] = new
-        return {"action": "modify", "args": changed} if changed else None
+        changed = uploaded_args(tool_name, args, session_id, task_id)
     except Refusal as refusal:
-        return {"action": "block", "message": str(refusal)}
+        return json.dumps({"error": str(refusal)}, ensure_ascii=False)
     except Exception:
         # 自身出错不拦调用，退回原来的做法。
         logger.warning("Local file upload skipped", exc_info=True)
-        return None
+        changed = None
+    return next_call({**args, **changed} if changed else args)
