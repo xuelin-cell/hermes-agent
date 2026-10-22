@@ -29,6 +29,9 @@ const ATTACHED_CONTEXT_MARKER_RE = /(?:^|\n)--- Attached Context ---\s*\n/
 // one that types those rows `display_kind=hidden`. It is model scaffolding,
 // not something the user wrote, so it never paints as a bubble.
 const LEGACY_HEARTBEAT_ROW_RE = /^\[Background process \S+ heartbeat #\d+ /
+// desktop-mt: Hermes 催模型继续时存下的 `[System: …]` 用户行没有类型，REST 记录又不像 session.resume 那样滤掉，
+// 会显示成用户气泡。上游 b287651e2d 在后端标成 hidden；后端暂不同步，桌面版先按同一规则隐藏，有类型的提示照常显示。
+const UNTYPED_SYSTEM_ROW_PREFIX = '[System:'
 // The warnings block runs to the end of the prompt text, but when the gateway
 // persists an image turn it appends the `@image:` directive lines AFTER it
 // (`_build_persist_message_with_image_refs`). Stop at the first such line so a
@@ -153,6 +156,10 @@ function transcriptContent(
   content: string
 ): string | null {
   if (displayKind === 'hidden') {
+    return null
+  }
+
+  if (role === 'user' && !displayKind && content.trimStart().startsWith(UNTYPED_SYSTEM_ROW_PREFIX)) {
     return null
   }
 

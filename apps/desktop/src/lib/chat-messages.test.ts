@@ -530,6 +530,27 @@ describe('toChatMessages', () => {
     ])
   })
 
+  it('desktop-mt: 不把 Hermes 催模型继续的 [System: …] 无类型行显示成用户气泡', () => {
+    const nudge =
+      '[System: Continue now. Execute the required tool calls and only send your final answer after completing the task.]'
+
+    const messages = toChatMessages([
+      { role: 'user', content: '做一个飞机大战的html游戏', timestamp: 1 },
+      { role: 'assistant', content: '', reasoning: 'Let me create the todo list.', timestamp: 2 },
+      { role: 'user', content: nudge, timestamp: 3 },
+      { role: 'assistant', content: '', reasoning: 'Let me start.', timestamp: 4 },
+      { role: 'user', content: `  ${nudge}`, timestamp: 5 },
+      { role: 'assistant', content: '游戏已完成。', timestamp: 6 },
+      { role: 'user', content: '为什么界面上会出现 [System: Continue now] 这句？', timestamp: 7 }
+    ])
+
+    expect(messages.filter(message => message.role === 'user').map(chatMessageText)).toEqual([
+      '做一个飞机大战的html游戏',
+      '为什么界面上会出现 [System: Continue now] 这句？'
+    ])
+    expect(messages.some(message => chatMessageText(message).includes('Execute the required tool calls'))).toBe(false)
+  })
+
   // Hermes closes a failed turn with an assistant-role row (agent/turn_failure_copy.py);
   // painted as the model's reply it read as the assistant refusing the request.
   it('renders the failed-turn boundary as a Hermes notice, not a model reply', () => {
