@@ -281,6 +281,8 @@ function loadPersistedDraftTexts(): [string, SessionDraft][] {
 }
 
 const draftsBySession = new Map<string, SessionDraft>(loadPersistedDraftTexts())
+// desktop-mt: 每个草稿位置被写过几次（见 clearSessionDraftIfUnchanged）。
+const draftRevisions = new Map<string, number>()
 
 /**
  * Patch one asynchronous attachment occurrence wherever the main composer owns
@@ -454,6 +456,7 @@ function persistDraftTexts() {
 
 export function stashSessionDraft(scope: string | null | undefined, text: string, attachments: ComposerAttachment[]) {
   const key = draftKey(scope)
+  draftRevisions.set(key, (draftRevisions.get(key) ?? 0) + 1) // desktop-mt
 
   // Delete-then-set keeps MRU order for MAX_PERSISTED_DRAFTS eviction.
   draftsBySession.delete(key)
@@ -477,6 +480,17 @@ export function takeSessionDraft(scope: string | null | undefined): SessionDraft
 }
 
 export const clearSessionDraft = (scope: string | null | undefined) => stashSessionDraft(scope, '', [])
+
+// desktop-mt: 两个新对话共用 '__new__'。第一条消息被接受时，只有发送后这里没人再写过才清，
+// 免得清掉第二个新对话刚写的草稿。
+export const sessionDraftRevision = (scope: string | null | undefined): number =>
+  draftRevisions.get(draftKey(scope)) ?? 0
+
+export function clearSessionDraftIfUnchanged(scope: string | null | undefined, revision: number): void {
+  if (sessionDraftRevision(scope) === revision) {
+    clearSessionDraft(scope)
+  }
+}
 
 /**
  * Move a stashed composer draft from one session key onto another.

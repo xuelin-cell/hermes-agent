@@ -4553,6 +4553,11 @@ export const zhHant = defineLocale({
     approval: {
       gatewayDisconnected: 'Hermes 閘道未連線',
       sendFailed: '無法傳送核准回應',
+      reconnect: '重新連線',
+      timedOutSystemLine:
+        '等待核准逾時，該指令未執行。請讓元景數字員工重試，或前往「設定 → 安全 → 核准逾時」延長等待時間。',
+      openSafetySettings: '開啟安全設定',
+      commandDetails: '指令詳情',
       run: '執行',
       command: '指令',
       moreOptions: '更多核准選項',

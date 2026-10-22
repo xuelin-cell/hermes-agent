@@ -5479,6 +5479,11 @@ export const zh = defineLocale({
     approval: {
       gatewayDisconnected: 'Hermes 网关未连接',
       sendFailed: '无法发送审批响应',
+      reconnect: '重新连接',
+      timedOutSystemLine:
+        '等待审批超时，该命令未执行。请让元景数字员工重试，或前往「设置 → 安全 → 审批超时」延长等待时间。',
+      openSafetySettings: '打开安全设置',
+      commandDetails: '命令详情',
       run: '运行',
       command: '命令',
       moreOptions: '更多审批选项',

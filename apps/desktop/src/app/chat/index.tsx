@@ -636,21 +636,6 @@ const ChatViewContent = memo(function ChatViewContent({
   // 用 quiet 打开的新草稿由调用方自己画空白状态（见 newSessionInProfile），不显示通用欢迎大标题。
   const quietDraft = useStore($quietNewChatProfile) !== null
 
-  // The compact new-session pop-out skips the wordmark/tagline intro — it's a
-  // scratch window, not the full-height empty state. The Appearance toggle
-  // turns it off everywhere else.
-  const showIntro = shouldShowIntro({
-    activeSessionId,
-    auxiliaryWindow: isAuxiliaryWindow(),
-    enabled: introSplash,
-    freshDraftReady,
-    messagesEmpty,
-    primary: isPrimary,
-    quietDraft,
-    routedSessionView: isRoutedSessionView,
-    selectedSessionId
-  })
-
   // Session is still loading if the route references a session we haven't
   // resumed yet. Brand-new routed drafts are empty on purpose once a runtime
   // is bound. A session the list already knows has history must keep the
@@ -680,6 +665,20 @@ const ChatViewContent = memo(function ChatViewContent({
   })
 
   const threadLoading = threadLoadingState(loadingSession, busy, awaitingResponse, lastVisibleIsUser)
+  const showIntro = shouldShowIntro({
+    activeSessionId,
+    auxiliaryWindow: isAuxiliaryWindow(),
+    enabled: introSplash,
+    freshDraftReady,
+    messagesEmpty,
+    primary: isPrimary,
+    quietDraft: isPrimary && quietDraft,
+    routedSessionView: isRoutedSessionView,
+    selectedSessionId,
+    loading: loadingSession || routeSessionMismatch || resumeExhausted,
+    hasHistory: routedHasHistory,
+    running: busy || awaitingResponse
+  })
   // Hide the composer in the exhausted error state too: there's no live runtime
   // to send to until a retry rebinds one. Watch windows are pure spectators of a
   // subagent run driven elsewhere — no composer, transcript is read-only.
