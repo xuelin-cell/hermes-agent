@@ -1,9 +1,9 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { safeStorage } from 'electron'
-
+import { getAppSecretStorage } from '../app-secret-storage'
 import { writeSecretFileAtomic } from '../hardening'
+import type { AppSecretStorage } from '../local-secret-storage'
 
 import type { DriveTokenRecord, DriveTokenStorage } from './cloud-drive-credentials'
 
@@ -14,7 +14,7 @@ export class CloudDriveTokenStore implements DriveTokenStorage {
   private readonly directory: string
 
   /** 根目录由主进程账号运行时确定，不接受页面指定路径。 */
-  constructor(desktopState: string) {
+  constructor(desktopState: string, private readonly storage: AppSecretStorage = getAppSecretStorage()) {
     this.directory = path.join(desktopState, 'cloud-drive-tokens')
   }
 
@@ -22,8 +22,8 @@ export class CloudDriveTokenStore implements DriveTokenStorage {
   private file(owner: string): string {
     if (
       !/^[a-f0-9]{64}$/.test(owner) ||
-      !safeStorage.isEncryptionAvailable() ||
-      safeStorage.getSelectedStorageBackend?.() === 'basic_text'
+      !this.storage.isEncryptionAvailable() ||
+      this.storage.getSelectedStorageBackend?.() === 'basic_text'
     ) {
       throw new Error('个人云盘凭据无法安全存储')
     }
@@ -36,7 +36,7 @@ export class CloudDriveTokenStore implements DriveTokenStorage {
     const file = this.file(owner)
 
     try {
-      const value = JSON.parse(safeStorage.decryptString(fs.readFileSync(file)))
+      const value = JSON.parse(this.storage.decryptString(fs.readFileSync(file)))
 
       if (
         value.namespace !== NAMESPACE ||
@@ -63,7 +63,7 @@ export class CloudDriveTokenStore implements DriveTokenStorage {
   save(owner: string, record: DriveTokenRecord): void {
     try {
       const file = this.file(owner)
-      const encrypted = safeStorage.encryptString(JSON.stringify({ ...record, owner, namespace: NAMESPACE }))
+      const encrypted = this.storage.encryptString(JSON.stringify({ ...record, owner, namespace: NAMESPACE }))
       fs.mkdirSync(this.directory, { recursive: true, mode: 0o700 })
       writeSecretFileAtomic(file, encrypted)
     } catch {

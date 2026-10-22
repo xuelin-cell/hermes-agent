@@ -92,7 +92,7 @@ async function fixture() {
   const request: typeof fetch = (url, options) =>
     fetch(`http://127.0.0.1:${port}${new URL(String(url)).pathname}`, options)
 
-  const store = new CloudDriveTokenStore(path.join(root, 'desktop-a'))
+  const store = new CloudDriveTokenStore(path.join(root, 'desktop-a'), encryption)
   const create = () => new CloudDriveClient(() => identity, request, { store, now: () => now })
 
   return {
@@ -165,7 +165,7 @@ it('密文跨重启复用，七天到期续期；A→B→A 不串令牌，另一
     expect(fs.readFileSync(originalFile)).toEqual(original)
     rename.mockRestore()
 
-    expect(new CloudDriveTokenStore(path.join(f.root, 'desktop-b')).load(files[0].slice(0, -4))).toBeNull()
+    expect(new CloudDriveTokenStore(path.join(f.root, 'desktop-b'), encryption).load(files[0].slice(0, -4))).toBeNull()
     encryption.getSelectedStorageBackend.mockReturnValue('basic_text')
     expect(() => f.store.load(files[0].slice(0, -4))).toThrow('安全存储')
     encryption.getSelectedStorageBackend.mockReturnValue('unknown')

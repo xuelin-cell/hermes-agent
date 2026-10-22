@@ -1,9 +1,9 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { safeStorage } from 'electron'
-
+import { getAppSecretStorage } from '../app-secret-storage'
 import { writeSecretFileAtomic } from '../hardening'
+import type { AppSecretStorage } from '../local-secret-storage'
 
 import type { LoginIdentity } from './session'
 
@@ -54,7 +54,7 @@ function parseRecord(value: unknown): StoredLoginIdentity {
 }
 
 /** 要求真实系统密钥存储，拒绝原版可选的明文和 Linux basic 后端。 */
-function requireEncryption(): void {
+function requireEncryption(safeStorage: AppSecretStorage): void {
   if (
     !safeStorage.isEncryptionAvailable() ||
     (process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text')
@@ -68,7 +68,7 @@ export class CredentialStore {
   private readonly file: string
 
   /** 目录由主进程选择，页面不能指定文件位置。 */
-  constructor(userData: string) {
+  constructor(userData: string, private readonly storage: AppSecretStorage = getAppSecretStorage()) {
     this.file = path.join(userData, 'maas-login.enc')
   }
 
@@ -81,8 +81,8 @@ export class CredentialStore {
   save(identity: LoginIdentity): void {
     try {
       const record = parseRecord({ ...identity, namespace: MAAS_IDENTITY_NAMESPACE })
-      requireEncryption()
-      const encrypted = safeStorage.encryptString(JSON.stringify(record))
+      requireEncryption(this.storage)
+      const encrypted = this.storage.encryptString(JSON.stringify(record))
       writeSecretFileAtomic(this.file, encrypted)
     } catch {
       throw new Error('无法安全保存登录记录。')
@@ -104,9 +104,9 @@ export class CredentialStore {
     }
 
     try {
-      requireEncryption()
+      requireEncryption(this.storage)
 
-      return parseRecord(JSON.parse(safeStorage.decryptString(encrypted)))
+      return parseRecord(JSON.parse(this.storage.decryptString(encrypted)))
     } catch {
       throw new Error('无法解密或校验登录记录。')
     }

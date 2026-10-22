@@ -87,6 +87,7 @@ export const ja = defineLocale({
     phoneError: '1 で始まる 11 桁の電話番号を入力してください。',
     captchaError: '画像認証コードを入力してください（最大 6 文字）。',
     smsError: '6 桁の SMS 認証コードを入力してください。',
+    storageError: 'ログイン情報を安全に保存できません。ローカルストレージの権限を確認してください。',
     requestError: 'ログインに失敗しました。再試行してください。'
   },
   externalOpenFailed: {

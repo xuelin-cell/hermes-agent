@@ -262,6 +262,7 @@ export const zh = defineLocale({
     captchaError: '请输入图形验证码（最多 6 位）。',
     captchaLoadError: '图形验证码获取失败，请点击刷新图片重试。',
     smsError: '请输入 6 位数字短信验证码。',
+    storageError: '无法安全保存登录记录，请检查本地存储权限后重试。',
     requestError: '登录失败，请重试。'
   },
   externalOpenFailed: {

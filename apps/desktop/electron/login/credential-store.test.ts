@@ -34,7 +34,7 @@ function fixture(): { store: CredentialStore; file: string } {
   storage.isEncryptionAvailable.mockReturnValue(true)
   storage.getSelectedStorageBackend.mockReturnValue('unknown')
 
-  return { store: new CredentialStore(root), file: path.join(root, 'maas-login.enc') }
+  return { store: new CredentialStore(root, storage), file: path.join(root, 'maas-login.enc') }
 }
 
 afterEach(() => {
@@ -57,7 +57,7 @@ it('整份身份加密后原子替换；加密和替换失败不损坏原文件�
   expect(fs.readFileSync(file)).toEqual(cipher)
   expect(fs.existsSync(`${file}.tmp`)).toBe(false)
   storage.decryptString.mockReturnValue(JSON.stringify(record))
-  expect(new CredentialStore(path.dirname(file)).load()).toEqual(record)
+  expect(new CredentialStore(path.dirname(file), storage).load()).toEqual(record)
   storage.isEncryptionAvailable.mockReturnValue(false)
   expect(() => store.save(identity)).toThrow()
   expect(() => store.load()).toThrow()

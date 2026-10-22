@@ -107,7 +107,7 @@ it('并发只消费一次验证码；有效身份复用、过期清除，关闭�
   expect(await session.login(input)).toEqual({ ok: false })
 })
 
-it('持久化失败不完成登录，不暴露存储错误；再次提交成功后才建立身份', async () => {
+it('持久化失败不完成登录，仅返回存储类别；再次提交成功后才建立身份', async () => {
   const payload = { uid: 'fixture-uid', token: 'private-token', expireIn: 60 }
   const request = vi.fn<typeof fetch>().mockImplementation(async () => Response.json({ code: 0, data: payload }))
 
@@ -116,7 +116,7 @@ it('持久化失败不完成登录，不暴露存储错误；再次提交成功�
   })
 
   const session = new LoginSession(request, { save, load: vi.fn() })
-  expect(await session.login(input)).toEqual({ ok: false })
+  expect(await session.login(input)).toEqual({ ok: false, reason: 'storage' })
   expect(session.currentIdentity()).toBeNull()
   expect((await session.login(input)).ok).toBe(true)
   expect(save).toHaveBeenCalledTimes(2)

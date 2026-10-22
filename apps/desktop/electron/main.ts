@@ -25,7 +25,6 @@ import {
   nativeTheme,
   powerMonitor,
   powerSaveBlocker,
-  safeStorage,
   screen,
   session,
   shell,
@@ -45,6 +44,7 @@ import {
 } from './api-transport'
 import { appIconCandidates, resolveAppIcon, shouldOverrideDockIcon } from './app-icon'
 import { stageAppInstallerFile } from './app-installer-file'
+import { appSecretStorage as safeStorage } from './app-secret-storage'
 import {
   appVersionInfo,
   type AppVersionInfo,
@@ -694,7 +694,7 @@ const ACCOUNT_CONNECTORS = new ConnectorManager({
   cloudState: new AgentMailCloudStateClient(currentDesktopIdentity, electronNet.fetch),
   encrypt: value => {
     if (!safeStorage.isEncryptionAvailable() || (process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text')) {
-      throw new Error('请先解锁系统密钥环，再连接服务。')
+      throw new Error('请检查本地凭据存储权限，再连接服务。')
     }
     return safeStorage.encryptString(value)
   },

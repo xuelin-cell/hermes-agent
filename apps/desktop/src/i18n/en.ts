@@ -271,6 +271,7 @@ export const en: Translations = {
     phoneError: 'Enter an 11-digit phone number starting with 1.',
     captchaError: 'Enter the image code (up to 6 characters).',
     smsError: 'Enter the 6-digit SMS code.',
+    storageError: 'Could not securely save your sign-in. Check local storage permissions and try again.',
     requestError: 'Sign-in failed. Please try again.'
   },
   externalOpenFailed: {

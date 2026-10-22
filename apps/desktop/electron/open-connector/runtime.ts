@@ -5,14 +5,16 @@ import { createServer } from 'node:net'
 import path from 'node:path'
 
 import { writeSecretFileAtomic } from '../hardening'
+import { LegacySecretFormatError } from '../local-secret-storage'
 
 import {
   CONNECTOR_SPECS,
-  HIDDEN_CONNECTOR_SERVICES,
   type ConnectorId,
   type ConnectorService,
+  HIDDEN_CONNECTOR_SERVICES,
   type LocalConnectorRow
 } from './contract'
+import { preserveLegacyConnector } from './legacy-secrets'
 
 interface RuntimeSecrets {
   encryption: string
@@ -67,6 +69,7 @@ export class ConnectorRuntime {
   /** 系统加密保存密钥，数据库和账号授权不从 HexAgent 复制。 */
   private readSecrets(): RuntimeSecrets {
     fs.mkdirSync(this.options.directory, { recursive: true, mode: 0o700 })
+    preserveLegacyConnector(this.options.directory)
 
     for (const name of ['secrets.enc', 'connect.sqlite', 'connect.sqlite-wal', 'connect.sqlite-shm']) {
       const stat = fs.lstatSync(path.join(this.options.directory, name), { throwIfNoEntry: false })
@@ -79,7 +82,16 @@ export class ConnectorRuntime {
     const file = path.join(this.options.directory, 'secrets.enc')
 
     if (fs.existsSync(file)) {
-      const value = JSON.parse(this.options.decrypt(fs.readFileSync(file))) as RuntimeSecrets
+      let plaintext: string
+
+      try { plaintext = this.options.decrypt(fs.readFileSync(file)) } catch (error) {
+        if (!(error instanceof LegacySecretFormatError)) {throw error}
+        preserveLegacyConnector(this.options.directory, true)
+
+        return this.readSecrets()
+      }
+
+      const value = JSON.parse(plaintext) as RuntimeSecrets
 
       if (
         ![value.encryption, value.admin, value.runtime].every(
@@ -298,18 +310,24 @@ export class ConnectorRuntime {
         clearTimeout(timeout)
         child.removeListener('exit', onExit)
         child.removeListener('error', onError)
+
         if (error) { reject(error) } else { resolve() }
       }
+
       /** 以退出事件确认停止，发送信号成功不代表进程已经结束。 */
       const onExit = (): void => finish()
       /** 无法发送信号时拒绝退出，不丢弃尚未确认停止的连接器。 */
       const onError = (): void => finish(new Error('连接器进程尚未停止，请重试退出。'))
+
       let timeout = setTimeout(() => {
         timeout = setTimeout(onError, 5000)
+
         try { child.kill('SIGKILL') } catch { onError() }
       }, 5000)
+
       child.once('exit', onExit)
       child.once('error', onError)
+
       try { child.kill('SIGTERM') } catch { onError() }
     })
   }

@@ -89,6 +89,7 @@ export const esOverrides = {
     phoneError: 'Introduce un número de 11 dígitos que empiece por 1.',
     captchaError: 'Introduce el código de imagen (máximo 6 caracteres).',
     smsError: 'Introduce el código SMS de 6 dígitos.',
+    storageError: 'No se pudo guardar el inicio de sesión de forma segura. Comprueba los permisos de almacenamiento local.',
     requestError: 'Error al iniciar sesión. Inténtalo de nuevo.'
   },
   intro: introEs,

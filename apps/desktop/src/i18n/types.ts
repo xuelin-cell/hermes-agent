@@ -280,6 +280,7 @@ export interface Translations {
     captchaPlaceholder: string
     smsPlaceholder: string
     smsError: string
+    storageError: string
     requestError: string
   }
   externalOpenFailed: {
