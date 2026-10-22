@@ -1,6 +1,6 @@
 // desktop-mt: 安装包直接解到安装目录（apps/desktop/nsis）靠 electron-builder NSIS 模板里的几个宏名接进去。
 // 模板升级后宏改名时，direct-extract.nsh 的 !ifmacrodef 会悄悄跳过、退回先解到临时目录再复制，
-// 所以这里同时核对我们的文件互相能找到，以及模板仍然提供这些宏。
+// 所以这里同时核对我们的文件互相能找到，以及模板仍然提供这些宏；另外核对安装目录名（同在 installer.nsh）。
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { createRequire } from 'node:module'
@@ -41,6 +41,17 @@ test('模板仍提供换解压方式要用的宏和钩子', () => {
   const section = read(path.join(templates, 'installSection.nsh'))
   assert.ok(section.indexOf('!include installer.nsh') < section.indexOf('!insertmacro CHECK_APP_RUNNING'))
   assert.ok(section.indexOf('!insertmacro CHECK_APP_RUNNING') < section.indexOf('!insertmacro installApplicationFiles'))
+})
+
+test('安装目录不叫 UniWork，检查脚本读得到同一个名字', () => {
+  // 老 UniWork 按机器装在 %ProgramFiles%\UniWork；同一个目录会混装、卸一个删两个。
+  const define = /^\s*!define APP_FILENAME "([^"]+)"/m.exec(read(path.join(nsisDir, 'installer.nsh')))
+  assert.ok(define, 'installer.nsh 没有 !define APP_FILENAME')
+  assert.notEqual(define[1].toLowerCase(), 'uniwork')
+
+  const checker = read(path.resolve(desktop, '../../scripts/bundles/check-windows-installer.ps1'))
+  assert.ok(checker.includes(String.raw`apps\desktop\nsis\installer.nsh`))
+  assert.ok(checker.includes(String.raw`'^\s*!define APP_FILENAME "([^"]+)"'`))
 })
 
 test('direct-extract.nsh 换成直接解压到输出目录', () => {
