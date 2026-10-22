@@ -227,6 +227,41 @@ def test_profile_turn_and_remote_boundaries(delivery, tmp_path, monkeypatch):
     assert reply(plugin, str(output)) is None
 
 
+def test_message_child_ownership_follows_multiplex_profile_without_scanning_messages(delivery, tmp_path):
+    """真实 A→B→A 运行域隔离消息子任务，同名会话不串文件，也不登记普通消息的扫描。"""
+    import json
+    from agent.secret_scope import set_multiplex_active
+    from gateway.run import _profile_runtime_scope
+
+    plugin, _ = delivery
+    homes = [tmp_path / "account-a", tmp_path / "account-b"]
+    for home in homes:
+        home.mkdir()
+        (home / "config.yaml").write_text(json.dumps({"terminal": {"env_type": "local", "cwd": str(home)}}))
+    set_multiplex_active(True)
+    try:
+        for home in homes:
+            with _profile_runtime_scope(home, {}):
+                assert plugin.background.child_root("child") is None
+                plugin.background.remember_message_parent(session_id="parent", task_id="parent", platform="weixin")
+                assert plugin.scope("parent") not in plugin._turns
+                plugin.background.remember_child(parent_session_id="parent", child_session_id="child")
+                assert plugin.background.child_root("child") == home
+                assert plugin.background.message_child("child")
+                plugin.before_turn(session_id="child", turn_id="t", platform="subagent")
+                plugin.background.remember_child(parent_session_id="child", child_session_id="nested")
+                assert plugin.background.child_root("nested") is None
+        with _profile_runtime_scope(homes[0], {}):
+            assert plugin.background.child_root("child") == homes[0]
+            plugin.end_turn(session_id="parent")
+            plugin.background.remember_child(parent_session_id="parent", child_session_id="later")
+            assert plugin.background.child_root("later") is None
+            # 父轮结束不撤销已经启动的后台子任务。
+            assert plugin.background.child_root("child") == homes[0]
+    finally:
+        set_multiplex_active(False)
+
+
 def test_overlapping_commands_do_not_claim_each_others_files(delivery):
     """同一目录的命令观察窗口重叠时不以快照差异认领其它会话产物。"""
     plugin, work = delivery

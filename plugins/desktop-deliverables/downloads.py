@@ -269,9 +269,15 @@ def strip_data(value, urls):
     return value
 
 
-def saved_note(root, paths, missing):
+def saved_note(root, paths, missing, *, messaging=False):
     """用陈述事实的方式告诉模型本机副本在哪、哪些没存下；结果在不可信包装内，不写成命令。"""
     parts = []
+    if messaging:
+        if paths:
+            parts.append("已保存本机副本，可通过原消息会话回复中的 MEDIA:<本机绝对路径> 交给平台发送附件；原链接保留备用，不承诺桌面预览卡片。")
+        if missing:
+            parts.append(f"有 {len(missing)} 个成品没有本机副本，保留原链接交付，不生成不存在文件的 MEDIA 引用，也不另建下载任务。")
+        return "".join(parts)
     if paths:
         # 链接一律移除，模型无法把远程地址贴进回复；再交给元景工具时由上传钩子换回原链接。
         parts.append(
@@ -287,16 +293,16 @@ def saved_note(root, paths, missing):
     return "".join(parts)
 
 
-def annotate(result, data, root, saved, missing):
-    """返回改写后的工具结果：已下载的成品去掉链接，并写明本机副本与未保存的成品。"""
+def annotate(result, data, root, saved, missing, *, messaging=False):
+    """标明本机副本与下载失败；桌面移除已缓存链接，消息渠道保留附件兜底链接。"""
     paths = [str(path) for path in saved.values()]
-    removed = list(saved)
-    note = saved_note(root, paths, missing)
+    removed = [] if messaging else list(saved)
+    note = saved_note(root, paths, missing, messaging=messaging)
     if isinstance(data, dict):
         rewritten = strip_data(data, removed)
         if paths:
-            rewritten["desktop_deliverables"] = paths
-        rewritten["desktop_note"] = note
+            rewritten["deliverables" if messaging else "desktop_deliverables"] = paths
+        rewritten["delivery_note" if messaging else "desktop_note"] = note
         return json.dumps(rewritten, ensure_ascii=False)
     text = strip_links(str(result), removed).rstrip() if removed else str(result)
     return "\n\n".join(part for part in [text, note, "\n".join(paths)] if part)

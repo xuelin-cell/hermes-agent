@@ -1,4 +1,4 @@
-"""只观察本机桌面产物，通过原生输出钩子把卡片和回复一同持久化。"""
+"""观察本机桌面及已登记后台产物，通过原生输出钩子持久化文件引用。"""
 
 from collections import OrderedDict
 import asyncio
@@ -48,6 +48,7 @@ class Turn:
     roots: set = field(default_factory=set)
     ambiguous: set = field(default_factory=set)
     background: bool = False
+    messaging: bool = False
     guess: bool = True
     downloads: dict = field(default_factory=dict)
 
@@ -149,6 +150,7 @@ def before_turn(
             task_id=task_id,
             uploads=attachment_paths(user_message, cwd),
             background=platform == "subagent",
+            messaging=platform == "subagent" and background.message_child(session_id),
             guess=platform != "subagent",
         )
         _turns.move_to_end(key)
@@ -400,7 +402,8 @@ async def download_result(
         turn = current(key, turn_id)
         if turn is None:
             return None
-        if turn.background and tool_name.rsplit("__", 1)[-1] not in background.TOOLS:
+        allowed = background.MESSAGE_TOOLS if turn.messaging else background.TOOLS
+        if turn.background and tool_name.rsplit("__", 1)[-1] not in allowed:
             return None
         wanted = [url for url in urls if url not in turn.downloads][
             : max(0, 4 - len(turn.downloads))
@@ -425,12 +428,12 @@ async def download_result(
             if path:
                 path.unlink(missing_ok=True)
         return None
-    # 结果里不再给链接；模型之后把本机副本交给元景工具时，上传钩子据此换回原链接。
+    # 桌面结果移除链接，消息结果留作附件兜底；再调用元景工具时可换回原链接。
     for url, path in zip(wanted, fetched):
         if path:
             remember_download(path, url)
     missing = [url for url in urls if url not in saved]
-    return annotate(result, data, root, saved, missing)
+    return annotate(result, data, root, saved, missing, messaging=turn.messaging)
 
 
 def end_turn(*, session_id="", turn_id="", **kwargs):
@@ -451,6 +454,7 @@ def register(ctx):
     ctx.register_middleware("tool_execution", around_call)
     for name, handler in [
         ("pre_llm_call", before_turn),
+        ("pre_llm_call", background.remember_message_parent),
         ("pre_llm_call", remember_session),
         ("pre_tool_call", before_tool),
         ("post_tool_call", after_tool),
