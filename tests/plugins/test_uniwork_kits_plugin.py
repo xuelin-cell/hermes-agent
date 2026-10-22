@@ -613,6 +613,7 @@ def test_register_wires_cli_sections_and_hook(kits):
     }
     assert calls["sections"] and all(is_valid_system_prompt_section_id(s) for s in calls["sections"])
     assert "uniwork.communication" in calls["sections"]
+    assert "uniwork.tool-call" in calls["sections"]
     assert "transform_llm_output" not in calls["hooks"]
 
 
