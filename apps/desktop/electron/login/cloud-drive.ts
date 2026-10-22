@@ -502,27 +502,71 @@ export class CloudDriveClient {
 
     check()
     const identity = this.identity()!
-    const token = await this.credentials.get()
-    check()
-    signal.throwIfAborted()
 
-    const response = await this.request(url.href, {
-      redirect: 'error',
-      signal,
-      headers: {
-        Authorization: `Bearer ${identity.token}`,
-        'X-Drive-Access-Token': token,
-        'Accept-Encoding': 'identity'
-      }
-    })
-
-    try {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const token = await this.credentials.get()
       check()
-    } catch (error) {
-      await response.body?.cancel()
-      throw error
+      signal.throwIfAborted()
+
+      const response = await this.request(url.href, {
+        redirect: 'error',
+        signal,
+        headers: {
+          Authorization: `Bearer ${identity.token}`,
+          'X-Drive-Access-Token': token,
+          'Accept-Encoding': 'identity'
+        }
+      })
+
+      try {
+        check()
+        signal.throwIfAborted()
+      } catch (error) {
+        await response.body?.cancel()
+        throw error
+      }
+
+      // 成功文件流不解析、不缓冲；只有错误 JSON 明确报告云盘过期时恢复，普通 401/403 不续期。
+      if (!response.ok && response.headers.get('content-type')?.includes('application/json')) {
+        let payload
+
+        try {
+          payload = await response
+            .clone()
+            .json()
+            .catch(() => null)
+          check()
+          signal.throwIfAborted()
+        } catch (error) {
+          await response.body?.cancel()
+          throw error
+        }
+
+        if (payload?.error?.code === 'DRIVE_AUTH_EXPIRED' || String(payload?.error?.provider_code ?? '') === '9999') {
+          await response.body?.cancel()
+
+          if (attempt === 0) {
+            try {
+              await this.credentials.recover(token)
+            } catch {
+              check()
+              signal.throwIfAborted()
+              throw new CloudDriveOperationError('failed', 'DRIVE_AUTH_EXPIRED')
+            }
+
+            check()
+            signal.throwIfAborted()
+
+            continue
+          }
+
+          throw new CloudDriveOperationError('failed', 'DRIVE_AUTH_EXPIRED')
+        }
+      }
+
+      return response
     }
 
-    return response
+    throw new CloudDriveOperationError('failed', 'DRIVE_AUTH_EXPIRED')
   }
 }

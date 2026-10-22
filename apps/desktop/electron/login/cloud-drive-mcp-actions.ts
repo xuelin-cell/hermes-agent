@@ -10,6 +10,43 @@ function record(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
 }
 
+/** 只返回单页；非空页保守提示继续翻页，不沿用上游以短页推断的结束标记。 */
+function singlePage(input: DriveMcpInput, count: number) {
+  const pageNo = Number(input.page_no ?? 1)
+
+  if (count > 0 && pageNo >= 1_000_000) {
+    throw new CloudDriveOperationError('failed', 'INCOMPLETE_LISTING')
+  }
+
+  return {
+    page_no: pageNo,
+    page_size: Number(input.page_size ?? 50),
+    has_more: count > 0,
+    next_page_no: count > 0 ? pageNo + 1 : null,
+    end_reached: count === 0
+  }
+}
+
+/** MCP 不把一页当完整目录；缺失 items 或异常结束标记必须显式失败。 */
+async function listFiles(drive: CloudDriveClient, input: DriveMcpInput, signal: AbortSignal) {
+  const result = record(
+    await drive.execute(
+      { route: `/assets?${new URLSearchParams(Object.entries(input).map(([key, value]) => [key, String(value)]))}` },
+      signal
+    )
+  )
+
+  if (!Array.isArray(result.items)) {
+    throw new CloudDriveOperationError('failed', 'INVALID_RESPONSE')
+  }
+
+  if (!result.items.length && record(result.page).has_more === true) {
+    throw new CloudDriveOperationError('failed', 'INCOMPLETE_LISTING')
+  }
+
+  return { ...result, page: { ...record(result.page), ...singlePage(input, result.items.length) } }
+}
+
 /** 名称可位于详情主体、数组或 items/files 包装中，兼容现有服务返回值。 */
 export function driveFileName(value: unknown): string | null {
   const container = record(value)
@@ -72,7 +109,7 @@ async function recycle(drive: CloudDriveClient, input: DriveMcpInput, signal: Ab
 
   return {
     items,
-    page: { page_no: input.page_no, page_size: input.page_size, has_more: items.length >= Number(input.page_size) }
+    page: singlePage(input, items.length)
   }
 }
 
@@ -179,8 +216,7 @@ export async function executeDriveMcpAction(
     drive.execute({ route, method, body }, signal)
 
   const handlers: Record<string, () => Promise<unknown>> = {
-    list_files: () =>
-      request(`/assets?${new URLSearchParams(Object.entries(input).map(([key, value]) => [key, String(value)]))}`),
+    list_files: () => listFiles(drive, input, signal),
     filesearch: () => search(drive, input, signal),
     make_dir: () => request('/folders', 'POST', input),
     rename_file: () =>

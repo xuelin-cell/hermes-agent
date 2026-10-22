@@ -1,5 +1,6 @@
 import { useStore } from '@nanostores/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { useNavigate } from 'react-router'
 
 import { $apiRequestScope } from '@/api/client'
@@ -63,13 +64,17 @@ export function LocalArtifactLibrary() {
   const [wide, setWide] = useState(false)
 
   /** 只观察列表容器，侧栏或预览占用空间后同步切换操作布局。 */
-  const measureActions = useCallback((entries: readonly ResizeObserverEntry[]) => {
-    const width = entries[0]?.contentRect.width
+  const measureActions = useCallback(
+    (entries: readonly ResizeObserverEntry[]) => {
+      const width = entries[0]?.contentRect.width
 
-    if (width !== undefined) {
-      setWide(width > 672)
-    }
-  }, [])
+      if (width !== undefined && width > 672 !== wide) {
+        // ResizeObserver 在绘制前回调；只在跨过断点时同步提交，避免先画出旧工具栏。
+        flushSync(() => setWide(width > 672))
+      }
+    },
+    [wide]
+  )
 
   useResizeObserver(measureActions, listRef)
   const lifecycle = useRef({ active: true, generation: 0, busy: false })
