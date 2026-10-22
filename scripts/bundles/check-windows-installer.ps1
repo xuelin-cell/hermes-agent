@@ -50,7 +50,7 @@ try {
     # NSIS names the install folder after the app executable, not the display name.
     $appExe = @(Get-ChildItem -LiteralPath $Unpacked -Filter '*.exe' -File | Where-Object { $_.Name -notmatch '^(elevate|uninstall)' })
     $installName = if ($appExe.Count -eq 1) { $appExe[0].BaseName } else { $product }
-    $facts.Add("Product: $product (installs to %LOCALAPPDATA%\Programs\$installName)")
+    $facts.Add("Product: $product (administrator installation to %ProgramFiles%\$installName)")
 
     $stampPath = Join-Path $Unpacked 'resources\install-stamp.json'
     if (-not (Test-Path -LiteralPath $stampPath -PathType Leaf)) {
@@ -129,7 +129,7 @@ try {
     }
 
     # NSIS works within MAX_PATH (259 usable characters): it unpacks under %TEMP%\nsXXXXX.tmp\7z-out\
-    # first, then copies into the install directory. Only the user name varies in those prefixes.
+    # first, then copies into Program Files. Only the extraction prefix contains a user name.
     $longest = 0
     $longestPath = ''
     foreach ($file in [System.IO.Directory]::EnumerateFiles($Unpacked, '*', [System.IO.SearchOption]::AllDirectories)) {
@@ -139,15 +139,17 @@ try {
             $longestPath = $file.Substring($Unpacked.Length + 1)
         }
     }
-    $prefix = [math]::Max('C:\Users\\AppData\Local\Temp\nsXXXXX.tmp\7z-out\'.Length,
-        ('C:\Users\\AppData\Local\Programs\' + $installName + '\').Length)
-    $userBudget = 259 - $prefix - $longest
+    $installPrefix = Join-Path $env:ProgramFiles $installName
+    if (($installPrefix.Length + 1 + $longest) -gt 259) {
+        $problems.Add("The longest path ($longestPath) exceeds MAX_PATH under $installPrefix.")
+    }
+    $userBudget = 259 - 'C:\Users\\AppData\Local\Temp\nsXXXXX.tmp\7z-out\'.Length - $longest
     if ($userBudget -lt 1) {
         $problems.Add("The longest path ($longest characters: $longestPath) cannot be installed within MAX_PATH.")
     } elseif ($userBudget -lt 20) {
         $warnings.Add("Installing fails for user names longer than $userBudget characters; shorten: $longestPath")
     }
-    $facts.Add("Paths: longest $longest characters; the default install fits user names up to $userBudget characters")
+    $facts.Add("Paths: longest $longest characters; installer extraction fits user names up to $userBudget characters")
 } finally {
     if ($ownScratch) {
         Remove-Item -LiteralPath $Scratch -Recurse -Force -ErrorAction SilentlyContinue
