@@ -132,7 +132,12 @@ it('扫描取消后不发布和写缓存；活跃会话及失败读取在下一�
   await scanLocalArtifacts([session('a', true)], cache, () => true, publish)
   await scanLocalArtifacts([session('a', true)], cache, () => true, publish)
   expect(api.messages).toHaveBeenCalledTimes(4)
-  expect(cache.size).toBe(0)
+  expect(cache.size).toBe(1)
+  // 会话结束时即使消息计数和时间戳未变，也须重新提取最终交付；随后才能复用。
+  await scanLocalArtifacts([session('a')], cache, () => true, publish)
+  expect(api.messages).toHaveBeenCalledTimes(5)
+  await scanLocalArtifacts([session('a')], cache, () => true, publish)
+  expect(api.messages).toHaveBeenCalledTimes(5)
 })
 
 it('补齐聚合窗口之外的本机会话，远程来源不冒充本机文件', async () => {

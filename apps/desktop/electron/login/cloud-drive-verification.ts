@@ -14,13 +14,13 @@ export interface VerificationAsset {
 export type DriveRead = (input: CloudDriveRequest, signal: AbortSignal) => Promise<unknown>
 export type VerificationVerdict = 'confirmed' | 'absent' | 'inconclusive'
 
-/** 核验必须读取完整分页，缺页或错误响应都不能当作“没有找到”。 */
-export async function readDriveFolder(
+/** 联通可能限制实际页长；只有空页证明结束，短页和 has_more=false 均不能证明完整。 */
+async function* readDriveFolderPages(
   read: DriveRead,
   parent: string,
   signal: AbortSignal
-): Promise<VerificationAsset[]> {
-  const found = new Map<string, VerificationAsset>()
+): AsyncGenerator<VerificationAsset[]> {
+  const found = new Set<string>()
 
   for (let page = 1; page <= 100; page++) {
     signal.throwIfAborted()
@@ -38,8 +38,18 @@ export async function readDriveFolder(
       page?: { has_more?: boolean }
     }
 
-    if (!Array.isArray(value?.items) || typeof value.page?.has_more !== 'boolean') {
+    signal.throwIfAborted()
+
+    if (!Array.isArray(value?.items)) {
       throw new Error('Incomplete directory')
+    }
+
+    if (!value.items.length) {
+      if (value.page?.has_more === true) {
+        throw new Error('Inconsistent directory page')
+      }
+
+      return
     }
 
     const previous = found.size
@@ -56,19 +66,32 @@ export async function readDriveFolder(
         throw new Error('Invalid directory item')
       }
 
-      found.set(item.asset_id, item)
-    }
-
-    if (!value.page.has_more) {
-      return [...found.values()]
+      found.add(item.asset_id)
     }
 
     if (previous === found.size) {
       throw new Error('Repeated directory page')
     }
+
+    yield value.items
   }
 
   throw new Error('Incomplete directory')
+}
+
+/** 基线、唯一候选和“不存在”判断必须完整读完，异常时不能返回部分列表。 */
+export async function readDriveFolder(
+  read: DriveRead,
+  parent: string,
+  signal: AbortSignal
+): Promise<VerificationAsset[]> {
+  const found = new Map<string, VerificationAsset>()
+
+  for await (const rows of readDriveFolderPages(read, parent, signal)) {
+    rows.forEach(row => found.set(row.asset_id, row))
+  }
+
+  return [...found.values()]
 }
 
 /** 回收站也逐页读完；deleteNo 是操作号，不能冒充原文件 ID。 */
@@ -76,10 +99,14 @@ async function readRecycle(read: DriveRead, signal: AbortSignal): Promise<Record
   const found = new Map<string, Record<string, unknown>>()
 
   for (let page = 1; page <= 100; page++) {
+    signal.throwIfAborted()
+
     const rows = await read(
       { route: '/unicom/QueryRecycleData', method: 'POST', body: { pageNo: page, pageSize: 50, sortRule: '0' } },
       signal
     )
+
+    signal.throwIfAborted()
 
     if (!Array.isArray(rows)) {
       throw new Error('Invalid recycle response')
@@ -95,7 +122,7 @@ async function readRecycle(read: DriveRead, signal: AbortSignal): Promise<Record
       found.set(row.deleteNo, row)
     }
 
-    if (rows.length < 50) {
+    if (!rows.length) {
       return [...found.values()]
     }
 
@@ -151,25 +178,27 @@ async function* walkAssets(read: DriveRead, signal: AbortSignal): AsyncGenerator
     }
 
     visited.add(parent)
-    const rows = await readDriveFolder(read, parent, signal)
-    yield rows
-    pending.push(...rows.filter(row => row.kind === 'directory').map(row => row.asset_id))
+
+    for await (const rows of readDriveFolderPages(read, parent, signal)) {
+      yield rows
+      pending.push(...rows.filter(row => row.kind === 'directory').map(row => row.asset_id))
+    }
   }
 }
 
 /** 查找目标 ID，证明缺失必须遍历完整棵树，避免把移动当作删除。 */
 async function findAssets(read: DriveRead, ids: Set<string>, signal: AbortSignal): Promise<VerificationAsset[]> {
-  const matches: VerificationAsset[] = []
+  const matches = new Map<string, VerificationAsset>()
 
   for await (const rows of walkAssets(read, signal)) {
-    matches.push(...rows.filter(row => ids.has(row.asset_id)))
+    rows.filter(row => ids.has(row.asset_id)).forEach(row => matches.set(row.asset_id, row))
 
-    if (matches.length === ids.size) {
-      return matches
+    if (matches.size === ids.size) {
+      return [...matches.values()]
     }
   }
 
-  return matches
+  return [...matches.values()]
 }
 
 /** 三次有效查询无新上传才可判失败；查询失败或多个候选始终保留为无法自动确认。 */
@@ -294,12 +323,15 @@ async function prepareRename({ read, input, signal }: MutationContext): Promise<
     throw new Error('Missing rename baseline')
   }
 
-  return async scope =>
-    mutationVerdict(
-      (await readDriveFolder(read, source.parent_asset_id, scope)).some(
-        row => row.asset_id === id && row.kind === source.kind && row.name === body.new_name
-      )
-    )
+  return async scope => {
+    for await (const rows of readDriveFolderPages(read, source.parent_asset_id, scope)) {
+      if (rows.some(row => row.asset_id === id && row.kind === source.kind && row.name === body.new_name)) {
+        return 'confirmed'
+      }
+    }
+
+    return 'inconclusive'
+  }
 }
 
 /** 移动和移入回收站共用写入前身份快照，不接受缺失的目标。 */
@@ -330,9 +362,17 @@ async function prepareMove(context: MutationContext): Promise<MutationQuery> {
   }
 
   return async scope => {
-    const after = await readDriveFolder(read, destination, scope)
+    const matched = new Set<string>()
 
-    return mutationVerdict(targets.every(item => hasAsset(after, item.id, item.kind)))
+    for await (const rows of readDriveFolderPages(read, destination, scope)) {
+      targets.filter(item => hasAsset(rows, item.id, item.kind)).forEach(item => matched.add(item.id))
+
+      if (targets.every(item => matched.has(item.id))) {
+        return 'confirmed'
+      }
+    }
+
+    return 'inconclusive'
   }
 }
 
