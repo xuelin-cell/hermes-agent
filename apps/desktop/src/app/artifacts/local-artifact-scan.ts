@@ -152,7 +152,14 @@ export async function scanLocalArtifacts(
     }
 
     const key = localSessionKey(session)
-    const stamp = JSON.stringify([session.last_active, session.message_count, session.archived, session.cwd])
+
+    const stamp = JSON.stringify([
+      session.last_active,
+      session.message_count,
+      session.archived,
+      session.cwd,
+      session.is_active
+    ])
 
     try {
       let group = !session.is_active && cache.get(key)?.stamp === stamp ? cache.get(key)!.group : undefined
@@ -212,11 +219,8 @@ export async function scanLocalArtifacts(
 
       group = { session, files }
 
-      if (!session.is_active) {
-        cache.set(key, { extractionVersion: EXTRACTION_VERSION, stamp, group })
-      } else {
-        cache.delete(key)
-      }
+      // 活跃会话也保留已加载列表供分屏重挂载时展示；上面的复用条件仍强制重新读取活跃会话。
+      cache.set(key, { extractionVersion: EXTRACTION_VERSION, stamp, group })
 
       if (files.length) {
         results.set(key, group)

@@ -108,12 +108,46 @@ async function fixture() {
 
       const items = rows.filter(row => row.parent_asset_id === url.searchParams.get('parent_asset_id'))
 
-      if (mode === 'paged') {
-        const page = Number(url.searchParams.get('page_no'))
-        ok({ items: page === 1 ? items.slice(0, 1) : items.slice(1), page: { has_more: page === 1 } })
-      } else {
-        ok({ items, page: { has_more: false } })
+      const page = Number(url.searchParams.get('page_no'))
+      const short = mode.startsWith('short-')
+      const size = short || mode === 'paged' ? 1 : 100
+
+      if (writes && page > 1) {
+        if (mode === 'short-read-error') {
+          response.destroy()
+
+          return
+        }
+
+        if (mode === 'short-repeat') {
+          ok({ items: items.slice(0, 1), page: { has_more: false } })
+
+          return
+        }
+
+        if (mode === 'short-limit') {
+          ok({ items: [asset(`page-${page}`)], page: { has_more: false } })
+
+          return
+        }
+
+        if (mode === 'short-invalid') {
+          ok({ page: { has_more: false } })
+
+          return
+        }
+
+        if (mode === 'short-inconsistent') {
+          ok({ items: [], page: { has_more: true } })
+
+          return
+        }
       }
+
+      ok({
+        items: items.slice((page - 1) * size, page * size),
+        page: { has_more: !short && page * size < items.length }
+      })
 
       return
     }
@@ -125,7 +159,9 @@ async function fixture() {
     }
 
     if (route === '/unicom/QueryRecycleData') {
-      ok(recycled)
+      const size = mode.startsWith('short-') ? 1 : 50
+      const page = Number(body.pageNo)
+      ok(recycled.slice((page - 1) * size, page * size))
 
       return
     }
@@ -154,7 +190,7 @@ async function fixture() {
           rows.at(-1)!.size_bytes = null
         }
 
-        if (mode === 'ambiguous') {
+        if (mode === 'ambiguous' || mode === 'short-ambiguous') {
           rows.push(asset(`extra-${uploaded}`, metadata.fileName))
         }
       }
@@ -349,17 +385,17 @@ it('上传只有末片不确定才核验，完整读取、唯一新 ID 和三次
 
   try {
     for (const [mode, status, code, count] of [
-      ['stored', 'succeeded', undefined, 2],
-      ['paged', 'succeeded', undefined, 4],
-      ['absent', 'failed', 'UPLOAD_CONFIRMATION_FAILED', 4],
-      ['read-error', 'outcome_unknown', 'UPLOAD_CONFIRMATION_UNAVAILABLE', 4],
-      ['mixed-read-error', 'outcome_unknown', 'UPLOAD_CONFIRMATION_UNAVAILABLE', 4],
-      ['missing-size', 'outcome_unknown', 'UPLOAD_CONFIRMATION_UNAVAILABLE', 4],
-      ['failed-network', 'succeeded', undefined, 2],
-      ['ambiguous', 'outcome_unknown', 'UPLOAD_CONFIRMATION_UNAVAILABLE', 4],
+      ['stored', 'succeeded', undefined, 4],
+      ['paged', 'succeeded', undefined, 5],
+      ['absent', 'failed', 'UPLOAD_CONFIRMATION_FAILED', 8],
+      ['read-error', 'outcome_unknown', 'UPLOAD_CONFIRMATION_UNAVAILABLE', 5],
+      ['mixed-read-error', 'outcome_unknown', 'UPLOAD_CONFIRMATION_UNAVAILABLE', 7],
+      ['missing-size', 'outcome_unknown', 'UPLOAD_CONFIRMATION_UNAVAILABLE', 8],
+      ['failed-network', 'succeeded', undefined, 4],
+      ['ambiguous', 'outcome_unknown', 'UPLOAD_CONFIRMATION_UNAVAILABLE', 8],
       ['no-baseline', 'outcome_unknown', 'UPLOAD_CONFIRMATION_UNAVAILABLE', 1],
-      ['denied', 'failed', 'PERMISSION_DENIED', 1],
-      ['ack', 'succeeded', undefined, 1]
+      ['denied', 'failed', 'PERMISSION_DENIED', 2],
+      ['ack', 'succeeded', undefined, 2]
     ] as const) {
       f.reset(mode)
       const result = await f.upload()
@@ -383,7 +419,7 @@ it('上传只有末片不确定才核验，完整读取、唯一新 ID 和三次
     expect(results.map(result => result.status)).toEqual(['succeeded', 'succeeded'])
     expect(
       f.calls.filter(call => call.path === '/assets' || call.path === '/drive/upload-part').map(call => call.method)
-    ).toEqual(['GET', 'POST', 'GET', 'GET', 'POST', 'GET'])
+    ).toEqual(['GET', 'GET', 'POST', 'GET', 'GET', 'GET', 'GET', 'POST', 'GET', 'GET'])
     f.reset('stored')
     f.onUpload(() => f.transfers.cancel(1, 'upload-1'))
     expect(await f.upload()).toMatchObject({ status: 'succeeded' })
@@ -395,11 +431,11 @@ it('上传只有末片不确定才核验，完整读取、唯一新 ID 和三次
       }
     })
     expect(await f.upload()).toMatchObject({ status: 'outcome_unknown' })
-    expect(f.stats()).toEqual({ writes: 1, reads: 1 })
+    expect(f.stats()).toEqual({ writes: 1, reads: 2 })
     f.reset('intermediate')
     await writeFile(path.join(f.root, 'sample.txt'), Buffer.alloc(8 * 1024 * 1024 + 1))
     expect(await f.upload()).toMatchObject({ status: 'failed', code: 'UPLOAD_INCOMPLETE' })
-    expect(f.stats()).toEqual({ writes: 1, reads: 1 })
+    expect(f.stats()).toEqual({ writes: 1, reads: 2 })
     expect(f.progress.some(value => value.phase === 'verifying')).toBe(false)
   } finally {
     await f.close()
@@ -587,6 +623,78 @@ it('文件夹 fid=0 不作为身份，正式成功回执直接保留；响应丢
       await expect(f.client.execute(request)).rejects.toMatchObject({ result: { status: 'outcome_unknown' } })
       expect(f.stats().writes).toBe(1)
     }
+  } finally {
+    await f.close()
+  }
+})
+
+it('短页及错误结束标记不截断上传和写操作核验，回收站也完整分页且每个写请求只发送一次', async () => {
+  const f = await fixture()
+
+  try {
+    f.reset('short-stored')
+    expect(await f.upload()).toMatchObject({ status: 'succeeded' })
+    expect(f.stats().writes).toBe(1)
+
+    const requests: CloudDriveRequest[] = [
+      { route: '/folders', method: 'POST', body: { name: 'new-folder', parent_asset_id: '0' } },
+      { route: '/assets/old', method: 'PATCH', body: { new_name: 'renamed.txt', kind: 'file' } },
+      { route: '/assets/move', method: 'POST', body: { file_ids: ['old'], target_parent_asset_id: 'destination' } },
+      { route: '/assets/trash', method: 'POST', body: { file_ids: ['old'], directory_ids: [] } },
+      { route: '/unicom/ReductionRecycleData', method: 'POST', body: { deleteNos: ['delete-old'] } },
+      { route: '/unicom/DeleteRecycleData', method: 'POST', body: { deleteNos: ['delete-old'] } }
+    ]
+
+    const recycled = [
+      { deleteNo: 'foreign', fid: 'fid-foreign', type: '1' },
+      { deleteNo: 'delete-old', fid: 'fid-old', type: '1' }
+    ]
+
+    for (const request of requests) {
+      const inRecycle = request.route.startsWith('/unicom/')
+      f.reset('short-stored', inRecycle ? [] : [asset('foreign'), asset('old')], inRecycle ? recycled : [])
+      expect(await f.client.execute(request), request.route).toMatchObject({ verified: true })
+      expect(f.stats().writes, request.route).toBe(1)
+    }
+  } finally {
+    await f.close()
+  }
+})
+
+it('未读完整或存在多个新候选时不能把上传判成功或失败；固定 ID 已找到时不受后续页失败影响', async () => {
+  const f = await fixture()
+
+  try {
+    for (const mode of [
+      'short-read-error',
+      'short-repeat',
+      'short-limit',
+      'short-invalid',
+      'short-inconsistent',
+      'short-ambiguous'
+    ]) {
+      f.reset(mode)
+      expect(await f.upload(), mode).toMatchObject({
+        status: 'outcome_unknown',
+        code: 'UPLOAD_CONFIRMATION_UNAVAILABLE'
+      })
+      expect(f.stats().writes, mode).toBe(1)
+    }
+
+    f.reset('short-read-error')
+    expect(
+      await f.client.execute({ route: '/assets/old', method: 'PATCH', body: { new_name: 'renamed.txt', kind: 'file' } })
+    ).toMatchObject({ verified: true })
+    expect(f.stats()).toEqual({ writes: 1, reads: 2 })
+    f.reset('short-read-error')
+    expect(
+      await f.client.execute({
+        route: '/assets/move',
+        method: 'POST',
+        body: { file_ids: ['old'], target_parent_asset_id: 'destination' }
+      })
+    ).toMatchObject({ verified: true })
+    expect(f.stats()).toEqual({ writes: 1, reads: 2 })
   } finally {
     await f.close()
   }

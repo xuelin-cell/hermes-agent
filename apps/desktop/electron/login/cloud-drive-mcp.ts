@@ -15,6 +15,8 @@ import { CloudDriveTransfers } from './cloud-drive-transfers'
 import { DRIVE_MCP_SERVER } from './drive-mcp-contract'
 
 const VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05']
+// 空间和 capabilities 只返回本地元数据；必须实际读取联通目录才能发现提前作废的令牌。
+const CREDENTIAL_PROBE = '/assets?space_id=personal&parent_asset_id=0&page_no=1&page_size=1'
 
 /** MCP 服务只监听回环，独立随机凭证仅授权当前账号云盘，不暴露 MaaS 凭据。 */
 export class CloudDriveMcp {
@@ -267,6 +269,13 @@ export class CloudDriveMcp {
       check()
       controller.signal.throwIfAborted()
 
+      if (['make_dir', 'rename_file', 'move_files', 'delete_files', 'restore_files'].includes(name)) {
+        // GUI 先加载目录，MCP 可直接写入；先用同一只读入口恢复被提前作废的凭据，不重放写请求。
+        await this.drive.execute({ route: CREDENTIAL_PROBE }, controller.signal)
+        check()
+        controller.signal.throwIfAborted()
+      }
+
       const transfers: Record<string, () => Promise<ReturnType<CloudDriveMcp['result']>>> = {
         download: () => this.download(input, controller.signal),
         upload: () => this.upload(input, controller.signal)
@@ -399,6 +408,10 @@ export class CloudDriveMcp {
       return this.failure('LOCAL_FILE_READ_FAILED')
     }
 
+    check()
+    signal.throwIfAborted()
+    // 本地文件通过原有授权检查后，再用只读请求恢复凭据；无效或敏感文件不发起网络请求。
+    await this.drive.execute({ route: CREDENTIAL_PROBE }, signal)
     check()
     signal.throwIfAborted()
     const owner = this.nextOwner--

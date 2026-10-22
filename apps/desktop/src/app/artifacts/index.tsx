@@ -56,6 +56,8 @@ import {
 import { CloudDriveTab } from './cloud-drive-tab'
 import { LocalArtifactLibrary } from './local-artifact-library'
 
+const LIBRARY_TABS = ['cloud', 'local'] as const
+
 function formatArtifactTime(timestamp: number): string {
   return fmtDayTime.format(new Date(timestamp))
 }
@@ -428,8 +430,8 @@ export function ArtifactsView(props: ArtifactsViewProps) {
   const connection = useStore($connection)
   const navigate = useNavigate()
   const { t } = useI18n()
-  // Browser build: opens on the instance's artifacts, the cloud drive is not connected yet.
-  const [libraryTab, setLibraryTab] = useState<'cloud' | 'local'>(isBrowserShell() ? 'local' : 'cloud')
+  // 预览分屏会重新挂载页面；标签属于路由状态，不能随组件生命周期恢复默认值。
+  const [libraryTab, setLibraryTab] = useRouteEnumParam('library', LIBRARY_TABS, isBrowserShell() ? 'local' : 'cloud')
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-background">
