@@ -1,9 +1,9 @@
-"""仅把桌面委派的翻译和播客结果接入现有本机预览交付。"""
+"""仅把桌面委派的翻译、播客和视频生成结果接入现有本机预览交付。"""
 
 from collections import OrderedDict
 import json
 
-TOOLS = frozenset({"doc_translate", "ai_podcast_generate"})
+TOOLS = frozenset({"doc_translate", "ai_podcast_generate", "txt2vid_generate", "img2vid_generate"})
 _children = OrderedDict()
 
 

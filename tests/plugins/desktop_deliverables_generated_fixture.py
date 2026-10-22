@@ -30,6 +30,8 @@ def run_scenario(root, kind="fallback", media_dir=None):
         "offline": ("txt2img_generate", "png"),
         "background-translation": ("doc_translate", "docx"),
         "background-podcast": ("ai_podcast_generate", "wav"),
+        "background-video": ("txt2vid_generate", "mp4"),
+        "background-image-video": ("img2vid_generate", "mp4"),
         "background-other": ("tts_synthesize", "wav"),
     }
     leaf, extension = names.get(kind, ("fixture_write", "md"))

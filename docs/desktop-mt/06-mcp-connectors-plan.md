@@ -72,8 +72,17 @@
 mcp_servers:
   UniAI-Toolkit:
     url: https://maas.ai-yuanjing.com/app/mcp-server/mcp?key=${DESKTOP_MT_MAAS_API_KEY}&client_id=UniWork
-    timeout: 600
+    timeout: 1000
+timeouts:
+  tools:
+    sequential_calls:
+      mcp__UniAI_Toolkit__doc_translate: 1030
+      mcp__UniAI_Toolkit__ai_podcast_generate: 930
+      mcp__UniAI_Toolkit__txt2vid_generate: 390
+      mcp__UniAI_Toolkit__img2vid_generate: 390
 ```
+
+整体 `timeout` 和单工具上限对齐 UniWork（翻译 1000、播客 900、视频 360 秒，单工具再加 30 秒让工具箱自己的超时先返回）；其他元景工具沿用 Hermes 默认上限。单工具上限只在缺失时补写，旧版写入的 630 秒升级为新值，用户改过的值保留；已装专家由 `uniwork-kits` 的专家同步抄过去。
 
 | 套餐状态 | 处理 |
 | --- | --- |

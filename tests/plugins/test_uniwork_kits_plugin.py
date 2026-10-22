@@ -1551,6 +1551,41 @@ def test_experts_follow_the_default_profiles_model_key_and_uniai(kits, profile_e
     assert "UniAI-Toolkit" not in (_config(home).get("mcp_servers") or {})
 
 
+def test_experts_follow_the_uniai_tool_wait_limits(kits, profile_env, tmp_path):
+    """默认档案给元景耗时工具写的等待上限抄给专家并跟随升级；其他工具的上限和专家自己的设置不动。"""
+    kits.installer.install(_expert_pkg(tmp_path), profile_env, triggers={})
+    home = _expert_home()
+    cfg = _config(home)
+    cfg["timeouts"] = {"tools": {"sequential_calls": {"custom": 42}}}
+    _write(home / "config.yaml", yaml.safe_dump(cfg))
+
+    uniai = "https://maas.ai-yuanjing.com/app/mcp-server/mcp?key=${DESKTOP_MT_MAAS_API_KEY}&client_id=UniWork"
+    limits = {
+        "mcp__UniAI_Toolkit__doc_translate": 1030,
+        "mcp__UniAI_Toolkit__txt2vid_generate": 390,
+        "terminal": 50,
+    }
+    _write(profile_env / "config.yaml", yaml.safe_dump({
+        "mcp_servers": {"UniAI-Toolkit": {"url": uniai, "timeout": 1000}},
+        "timeouts": {"tools": {"sequential_calls": limits}},
+    }))
+    assert kits.expert_sync.sync_all(profile_env)
+    assert _config(home)["timeouts"]["tools"]["sequential_calls"] == {
+        "custom": 42,
+        "mcp__UniAI_Toolkit__doc_translate": 1030,
+        "mcp__UniAI_Toolkit__txt2vid_generate": 390,
+    }
+    assert kits.expert_sync.sync_all(profile_env) == []
+
+    limits["mcp__UniAI_Toolkit__doc_translate"] = 1100
+    _write(profile_env / "config.yaml", yaml.safe_dump({
+        "mcp_servers": {"UniAI-Toolkit": {"url": uniai, "timeout": 1000}},
+        "timeouts": {"tools": {"sequential_calls": limits}},
+    }))
+    kits.expert_sync.sync_all(profile_env)
+    assert _config(home)["timeouts"]["tools"]["sequential_calls"]["mcp__UniAI_Toolkit__doc_translate"] == 1100
+
+
 def test_summon_directory_carries_prompts_recent_and_avatar(kits, profile_env, tmp_path):
     """召唤名单带上描述、开场白、快捷问题、标签、最近召唤和头像；没装的专家不能记为最近召唤。"""
     root = _expert_pkg(tmp_path)

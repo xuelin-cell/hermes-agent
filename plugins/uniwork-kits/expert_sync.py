@@ -21,6 +21,9 @@ So the default profile pushes these across, and nothing else:
   expert since the last sync.
 * the UniAI toolkit entry: mirrored, keeping the expert's own ``enabled`` flag
   and tool filter; removed again when the default no longer has it.
+* the UniAI toolkit's per-tool wait limits (``timeouts.tools.sequential_calls``
+  keys for that server, written by the desktop for translation, podcast and
+  video): mirrored so a slow tool in an expert gets the same budget.
 * the 东方财富 connector (the desktop's OpenConnector ``connector_eastmoney_mcp``),
   and only onto the nine Eastmoney experts: same mirror rules, but stored under
   ``eastmoney_slot.MIRROR_NAME`` without ``desktop_connector`` — the desktop
@@ -155,6 +158,45 @@ def _mirror_mcp_entry(
         changes.append(f"同步 {target}（{label}）")
 
 
+def _mirror_tool_timeouts(
+    raw: Dict[str, Any],
+    default_raw: Mapping[str, Any],
+    uniai: Optional[str],
+    changes: List[str],
+) -> None:
+    """把默认档案给元景工具写的单工具等待上限（翻译、播客、视频）抄进专家档案。
+
+    只抄 ``timeouts.tools.sequential_calls`` 里以元景工具前缀开头的键；专家的其他上限不动。
+    任何一层不是普通映射（例如用户写成了引用）就跳过，不改写用户结构。
+    """
+    if not uniai:
+        return
+    try:
+        from tools.mcp_tool_schema import sanitize_mcp_name_component
+
+        prefix = f"mcp__{sanitize_mcp_name_component(uniai)}__"
+    except Exception:
+        prefix = "mcp__" + re.sub(r"[^A-Za-z0-9_]", "_", uniai) + "__"
+    source = default_raw
+    for key in ("timeouts", "tools", "sequential_calls"):
+        source = source.get(key) if isinstance(source, Mapping) else None
+    if not isinstance(source, Mapping):
+        return
+    wanted = {str(k): v for k, v in source.items() if str(k).startswith(prefix)}
+    if not wanted:
+        return
+    node: Any = raw
+    for key in ("timeouts", "tools", "sequential_calls"):
+        if key not in node:
+            node[key] = {}
+        node = node[key]
+        if not isinstance(node, dict):
+            return
+    if any(node.get(k) != v for k, v in wanted.items()):
+        node.update(copy.deepcopy(wanted))
+        changes.append("同步元景耗时工具的等待上限")
+
+
 def _plan_config(
     expert_raw: Dict[str, Any],
     default_raw: Mapping[str, Any],
@@ -200,6 +242,7 @@ def _plan_config(
         changes.append(f"移除 {stale}（默认配置档案已经没有，或已改用新的键名）")
     for source, target, label in wanted:
         _mirror_mcp_entry(servers, default_servers, source, target, label, changes)
+    _mirror_tool_timeouts(raw, default_raw, media_slot.uniai_server(default_servers), changes)
     if servers:
         raw["mcp_servers"] = servers
     else:
