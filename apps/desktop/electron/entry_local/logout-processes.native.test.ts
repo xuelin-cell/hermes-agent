@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { once } from 'node:events'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -10,6 +10,7 @@ import { expect, it } from 'vitest'
 import { waitForBackendExit } from '../backend-child'
 
 import { listLogoutProcesses, logoutProcessTree, stopLogoutProcesses } from './logout-processes'
+import { createAccountGatewayLogout } from './gateway-logout'
 
 it.skipIf(process.platform !== 'win32')('真实 Windows 进程子树停止且无关进程存活，不依赖模拟 taskkill', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(),'hermes-logout-tree-'))
@@ -46,3 +47,44 @@ it.skipIf(process.platform !== 'win32')('真实 Windows 进程子树停止且无
     fs.rmSync(root,{recursive:true,force:true})
   }
 },60_000)
+
+it.runIf(process.platform === 'darwin')('macOS 已结束但尚未回收的进程不阻塞网关与账号退出验证', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-logout-zombie-'))
+  const source = path.resolve(import.meta.dirname, '../../../..')
+  const python = path.join(source, '.venv/bin/python')
+  const marker = path.join(root, 'child.json')
+  const script = `import subprocess, sys, pathlib, json, time, psutil
+child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(120)'])
+pathlib.Path(sys.argv[1]).write_text(json.dumps({'pid': child.pid, 'created': psutil.Process(child.pid).create_time()}))
+time.sleep(120)
+`
+  const parent = spawn(python, ['-c', script, marker], { stdio: 'ignore' })
+  const gateway = createAccountGatewayLogout({
+    id: 'test-account', home: root, workspace: root, desktopState: root, installationRoot: source, python
+  })
+
+  try {
+    const deadline = Date.now() + 10_000
+    while (!fs.existsSync(marker) && Date.now() < deadline) { await delay(50) }
+    const child = JSON.parse(fs.readFileSync(marker, 'utf8'))
+    const owned = listLogoutProcesses().find(row => row.pid === child.pid)!
+    expect(owned).toBeDefined()
+    process.kill(child.pid, 'SIGKILL')
+    while (!execFileSync('ps', ['-p', String(child.pid), '-o', 'stat='], { encoding: 'utf8' }).trim().startsWith('Z') && Date.now() < deadline) {
+      await delay(50)
+    }
+    expect(execFileSync('ps', ['-p', String(child.pid), '-o', 'stat='], { encoding: 'utf8' }).trim()).toMatch(/^Z/)
+    expect(() => stopLogoutProcesses([owned])).not.toThrow()
+    await gateway.run('stop', [{ ...child, home: root, launcher: false, external: false }])
+    await gateway.run('check')
+    process.kill(parent.pid!, 0)
+  } finally {
+    await gateway.dispose()
+    if (parent.exitCode === null && parent.signalCode === null) {
+      const closed = once(parent, 'close')
+      parent.kill()
+      await closed
+    }
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+}, 60_000)

@@ -35,7 +35,7 @@ it('macOS 快照将 ps 创建时间规范为 UTC 秒并只返回进程归属字�
 it('macOS 不会向启动时间不同的复用 PID 发送停止信号', () => {
   setPlatform('darwin')
   const kill = vi.spyOn(process, 'kill').mockReturnValue(true)
-  exec.mockReturnValue('Wed Oct 15 09:43:41 2026\n')
+  exec.mockReturnValue('S Wed Oct 15 09:43:41 2026\n')
 
   stopLogoutProcesses([{ pid: 123, parent: 1, started: '1792057420' }])
 
