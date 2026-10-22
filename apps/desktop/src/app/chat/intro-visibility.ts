@@ -1,10 +1,9 @@
 /**
  * Whether the empty-chat intro splash renders.
  *
- * The splash is the full-height empty state of the primary chat: it belongs to
- * a fresh draft in the main window and nothing else. Auxiliary and non-primary
- * windows are scratch surfaces, a routed or active session already owns the
- * view, and any transcript at all means the conversation started.
+ * Fresh drafts and ready empty sessions share the welcome state, including
+ * sessions created in tabs and split panes. A loading historical transcript
+ * must never look like a new conversation.
  *
  * `enabled` is the user's Appearance toggle and outranks every other clause:
  * turning the splash off never depends on which window asks.
@@ -22,16 +21,25 @@ export function shouldShowIntro(input: {
   quietDraft?: boolean
   routedSessionView: boolean
   selectedSessionId: null | string
+  loading?: boolean
+  hasHistory?: boolean
+  running?: boolean
 }): boolean {
+  const readyDraft =
+    input.primary &&
+    input.freshDraftReady &&
+    !input.activeSessionId &&
+    !input.selectedSessionId &&
+    !input.routedSessionView
+
   return (
     input.enabled &&
-    input.primary &&
     !input.auxiliaryWindow &&
-    input.freshDraftReady &&
+    (readyDraft || Boolean(input.activeSessionId)) &&
     !input.quietDraft &&
-    !input.routedSessionView &&
-    !input.selectedSessionId &&
-    !input.activeSessionId &&
+    !input.loading &&
+    !input.hasHistory &&
+    !input.running &&
     input.messagesEmpty
   )
 }
