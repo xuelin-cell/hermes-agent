@@ -1,3 +1,4 @@
+import { currentWorkspaceCategory, rememberSessionWorkspace } from '@/store/workspace-sessions'
 import { useStore } from '@nanostores/react'
 import { type MutableRefObject, useCallback, useEffect, useRef } from 'react'
 import type { NavigateFunction } from 'react-router'
@@ -653,6 +654,7 @@ export function useSessionActions({
       // ambient RPC follows.
       createOverrides?: SessionCreateOverrides
     ): Promise<string | null> => {
+      const creationWorkspace = currentWorkspaceCategory()
       const startingStoredSessionId = selectedStoredSessionIdRef.current
       const startingRouteToken = getRouteToken()
       // desktop-mt: 发送时的新对话代次、连接和 YOLO，会话建好前用户又开了新对话时用来转后台。
@@ -738,6 +740,13 @@ export function useSessionActions({
             : await requestGateway<SessionCreateResponse>('session.create', params)
 
           stored = created.stored_session_id ?? null
+          if (stored)
+            rememberSessionWorkspace(
+              stored,
+              creationWorkspace,
+              capturedRoute?.connectionId,
+              capturedRoute?.profile ?? capturedProfile
+            )
 
           // Record the EXACT owner the moment a routed create returns a stored
           // id — before the drift check, the optimistic row, navigation, or any
@@ -939,6 +948,7 @@ export function useSessionActions({
         workspaceScope?: SessionTileWorkspaceScope
       }
     ) => {
+      const creationWorkspace = currentWorkspaceCategory()
       const listed = options?.listed ?? true
 
       try {
@@ -1048,6 +1058,13 @@ export function useSessionActions({
             : await requestGateway<SessionCreateResponse>('session.create', params)
 
           stored = created.stored_session_id
+          if (stored)
+            rememberSessionWorkspace(
+              stored,
+              creationWorkspace,
+              capturedRoute?.connectionId,
+              capturedRoute?.profile ?? requestedProfile ?? undefined
+            )
 
           if (stored && capturedRoute) {
             // Same ownership transition as createBackendSessionForSend: the

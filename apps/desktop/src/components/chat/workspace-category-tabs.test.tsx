@@ -1,4 +1,6 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { GraduationCap, Monitor, Terminal } from 'lucide-react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, expect, it, vi } from 'vitest'
 
 import { $welcomeCatalog, loadWelcomeCatalog } from '@/app/chat/composer/work-templates/catalog-store'
@@ -20,6 +22,7 @@ const modules = normalizeWelcomeCatalog({
     {
       id: 'duplicate',
       name: '研习',
+      icon: 'graduation-cap',
       sort: 30,
       tags: [
         {
@@ -30,9 +33,10 @@ const modules = normalizeWelcomeCatalog({
         }
       ]
     },
-    { id: 'duplicate', name: '代码开发', workspace: 'work', sort: 20, tags: [] },
+    { id: 'duplicate', name: '代码开发', icon: 'terminal', workspace: 'work', sort: 20, tags: [] },
     {
       name: '事务',
+      icon: 'monitor',
       sort: 10,
       tags: [
         {
@@ -58,9 +62,25 @@ it('uses fetched module names and routing and switches templates without carryin
   )
 
   expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual(modules.map(module => module.name))
+  await waitFor(() => {
+    for (const [name, Icon] of [
+      ['事务', Monitor],
+      ['代码开发', Terminal],
+      ['研习', GraduationCap]
+    ] as const) {
+      const expected = document.createElement('div')
+      expected.innerHTML = renderToStaticMarkup(<Icon />)
+      expect(screen.getByRole('tab', { name }).querySelector('svg')?.innerHTML).toBe(
+        expected.querySelector('svg')?.innerHTML
+      )
+    }
+  })
   fireEvent.click(screen.getByRole('tab', { name: '事务' }))
   expect($interfaceMode.get()).toBe('simple')
   fireEvent.click(screen.getByRole('button', { name: '办公分类' }))
+  await waitFor(() =>
+    expect((screen.getByRole('button', { name: '办公模板' }) as HTMLButtonElement).disabled).toBe(false)
+  )
   fireEvent.click(screen.getByRole('button', { name: '办公模板' }))
   expect(replace).toHaveBeenLastCalledWith('办公提示词')
 
@@ -70,6 +90,9 @@ it('uses fetched module names and routing and switches templates without carryin
   expect(screen.queryByRole('button', { name: '取消所选分类' })).toBeNull()
   expect(replace).toHaveBeenLastCalledWith('办公提示词')
   fireEvent.click(screen.getByRole('button', { name: '学习分类' }))
+  await waitFor(() =>
+    expect((screen.getByRole('button', { name: '学习模板' }) as HTMLButtonElement).disabled).toBe(false)
+  )
   fireEvent.click(screen.getByRole('button', { name: '学习模板' }))
   expect(replace).toHaveBeenLastCalledWith('学习提示词')
 
