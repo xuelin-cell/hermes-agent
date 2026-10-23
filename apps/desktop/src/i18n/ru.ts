@@ -165,7 +165,7 @@ export const ru = defineLocale({
     retry: 'Попробовать снова',
     more: 'Показать ещё',
     pinned: 'Проверенный коммит',
-    snapshotHint: 'Из каталога Hermes. При просмотре нет обращений к исходным репозиториям.',
+    snapshotHint: 'Из каталога UniWork. При просмотре нет обращений к исходным репозиториям.',
     installHint: 'Проверьте исходный код перед установкой. Изменения применяются к новым сессиям.',
     results: (count: number) =>
       `${count.toLocaleString('ru')} ${RU_PLURAL(count, 'результат', 'результата', 'результатов')}`,
@@ -173,7 +173,7 @@ export const ru = defineLocale({
   },
   sessionImport: {
     title: 'Продолжить из другого приложения',
-    subtitle: 'Перенесите разговор в Hermes и продолжите с того места, где остановились.',
+    subtitle: 'Перенесите разговор в UniWork и продолжите с того места, где остановились.',
     action: 'Импортировать сессию',
     readingFrom: 'Читаем с',
     connectedComputer: 'подключённого компьютера',
@@ -191,18 +191,18 @@ export const ru = defineLocale({
     more: 'Загрузить ещё сессии',
     messages: 'сообщений',
     choose: 'Разговор, который стоит продолжить',
-    chooseHelp: 'Выберите сессию, чтобы прочитать историю перед импортом в Hermes.',
+    chooseHelp: 'Выберите сессию, чтобы прочитать историю перед импортом в UniWork.',
     previewLoading: 'Открываем просмотр',
     previewError: 'Просмотр недоступен',
     previewHelp: 'Исходный файл мог переместиться или измениться. Обновите список и повторите попытку.',
     previewLimit: 'Просмотр сокращён для удобства чтения. Импортируется весь разговор.',
     you: 'Вы',
-    snapshot: 'Этот разговор уже есть в Hermes. Откройте существующую копию, чтобы продолжить.',
+    snapshot: 'Этот разговор уже есть в UniWork. Откройте существующую копию, чтобы продолжить.',
     copyNotice:
       'Копируется текст разговора. Исходные файлы не меняются. Вывод инструментов и рассуждения не переносятся.',
     importing: 'Импорт…',
-    open: 'Открыть в Hermes',
-    continue: 'Продолжить в Hermes',
+    open: 'Открыть в UniWork',
+    continue: 'Продолжить в UniWork',
     importError: 'Не удалось импортировать разговор.'
   },
   common: {
@@ -267,19 +267,19 @@ export const ru = defineLocale({
     revealMissing: 'Этой папки нет на этом компьютере'
   },
   boot: {
-    ready: 'Hermes Desktop готов',
+    ready: 'UniWork Desktop готов',
     desktopBootFailedWithMessage: message => `Не удалось запустить приложение: ${message}`,
     steps: {
       connectingGateway: 'Подключение к шлюзу',
-      loadingSettings: 'Загрузка настроек Hermes',
+      loadingSettings: 'Загрузка настроек UniWork',
       loadingSessions: 'Загрузка последних сеансов',
-      retryingRemoteBackend: 'Переподключение к удалённому бэкенду Hermes…',
+      retryingRemoteBackend: 'Переподключение к удалённому бэкенду UniWork…',
       startingDesktopConnection: 'Запуск подключения приложения',
-      startingHermesDesktop: 'Запуск Hermes Desktop…'
+      startingHermesDesktop: 'Запуск UniWork Desktop…'
     },
     errors: {
-      backgroundExited: 'Фоновый процесс Hermes завершён.',
-      backgroundExitedDuringStartup: 'Фоновый процесс Hermes завершился при запуске.',
+      backgroundExited: 'Фоновый процесс UniWork завершён.',
+      backgroundExitedDuringStartup: 'Фоновый процесс UniWork завершился при запуске.',
       backendStopped: 'Бэкенд остановлен',
       desktopBootFailed: 'Не удалось запустить приложение',
       gatewayConnectionLost: 'Соединение с шлюзом потеряно',
@@ -287,7 +287,7 @@ export const ru = defineLocale({
       ipcBridgeUnavailable: 'IPC-мост приложения недоступен.'
     },
     failure: {
-      title: 'Hermes не удалось запустить',
+      title: 'UniWork не удалось запустить',
       description:
         'Фоновый шлюз не запустился. Попробуйте один из шагов восстановления ниже. Ничто из этого не удаляет ваши чаты и настройки.',
       remoteTitle: 'Требуется вход в удалённый шлюз',
@@ -318,7 +318,7 @@ export const ru = defineLocale({
   },
   notifications: {
     sharedProfileWarning:
-      'Другая установка Hermes использует этот профиль. Обе установки используют общие настройки и данные, поэтому изменения могут конфликтовать. Можно продолжить работу или закрыть другую установку перед внесением изменений.',
+      'Другая установка UniWork использует этот профиль. Обе установки используют общие настройки и данные, поэтому изменения могут конфликтовать. Можно продолжить работу или закрыть другую установку перед внесением изменений.',
     region: 'Уведомления',
     hide: 'Скрыть',
     show: 'Показать',
@@ -331,13 +331,13 @@ export const ru = defineLocale({
     copyDetailFailed: 'Не удалось скопировать подробность уведомления',
     backendOutOfDateTitle: 'Устаревший бэкенд',
     backendOutOfDateMessage:
-      'Ваш бэкенд Hermes старше этой сборки приложения и может работать некорректно. Обновите их, чтобы они совпали.',
+      'Ваш бэкенд UniWork старше этой сборки приложения и может работать некорректно. Обновите их, чтобы они совпали.',
     desktopOutOfDateTitle: 'Устаревшее приложение',
     desktopOutOfDateMessage:
-      'Это приложение Hermes старше подключённого бэкенда и может работать некорректно. Обновите приложение, чтобы они совпали.',
+      'Это приложение UniWork старше подключённого бэкенда и может работать некорректно. Обновите приложение, чтобы они совпали.',
     updateDesktopApp: 'Обновить приложение',
     installMethodUnsupportedTitle: 'Неподдерживаемый способ установки',
-    updateHermes: 'Обновить Hermes',
+    updateHermes: 'Обновить UniWork',
     updateReadyTitle: 'Обновление готово',
     updateReadyMessage: count =>
       `Доступно ${count} ${count % 10 === 1 && count % 100 !== 11 ? 'новое изменение' : count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 12 || count % 100 > 14) ? 'новых изменения' : 'новых изменений'}.`,
@@ -360,7 +360,7 @@ export const ru = defineLocale({
       diskFull: 'Диск заполнен — освободите место и повторите.',
       gatewayAuthFailed: 'Аутентификация шлюза не удалась — проверьте API_SERVER_KEY.',
       methodNotAllowed:
-        'Бэкенд приложения отклонил запрос (405 Method Not Allowed). Попробуйте перезапустить Hermes Desktop.',
+        'Бэкенд приложения отклонил запрос (405 Method Not Allowed). Попробуйте перезапустить UniWork Desktop.',
       microphonePermission: 'Доступ к микрофону запрещён.',
       openaiRejectedApiKey: 'OpenAI отклонил API-ключ.',
       openaiTtsNeedsKey: 'Для TTS OpenAI нужен VOICE_TOOLS_OPENAI_KEY или OPENAI_API_KEY.'
@@ -392,8 +392,8 @@ export const ru = defineLocale({
       rejectAction: 'Отклонить',
       inputTitle: 'Требуется ввод',
       inputTitleNamed: session => `Требуется ввод — ${session}`,
-      inputBody: 'Hermes ожидает ваш ответ.',
-      turnDoneTitle: 'Hermes завершил',
+      inputBody: 'UniWork ожидает ваш ответ.',
+      turnDoneTitle: 'UniWork завершил',
       turnDoneBody: '',
       turnErrorTitle: 'Ход не удался',
       backgroundDoneTitle: 'Фоновая задача завершена',
@@ -622,7 +622,7 @@ export const ru = defineLocale({
     exportConfig: 'Экспорт конфигурации',
     importConfig: 'Импорт конфигурации',
     resetToDefaults: 'Сбросить к значениям по умолчанию',
-    resetConfirm: 'Сбросить все настройки к значениям Hermes по умолчанию?',
+    resetConfirm: 'Сбросить все настройки к значениям UniWork по умолчанию?',
     exportFailed: 'Не удалось экспортировать',
     resetFailed: 'Не удалось сбросить',
     nav: {
@@ -692,7 +692,7 @@ export const ru = defineLocale({
         desktopSuccess: name => `Плагин приложения ${name} установлен`,
         agentFailed: 'Не удалось установить плагин агента',
         installUncertain:
-          'Hermes перестал ждать результат установки, но плагин может всё ещё устанавливаться. Закройте это окно и обновите список плагинов перед повторной установкой.',
+          'UniWork перестал ждать результат установки, но плагин может всё ещё устанавливаться. Закройте это окно и обновите список плагинов перед повторной установкой.',
         desktopFailed: 'Не удалось установить плагин приложения',
         missingEnv: (_name, vars) => `Не хватает переменных окружения: ${vars}. Добавьте их в Настройки → Ключи.`,
         toolsConnected: n => `Подключено инструментов: ${n}`,
@@ -706,7 +706,7 @@ export const ru = defineLocale({
       intro: 'Системные уведомления (не всплывающие внутри приложения). Настраивается для каждого устройства.',
       enableAll: 'Включить уведомления',
       enableAllDesc: 'Если выключено — все уведомления ниже будут заглушены.',
-      focusedHint: 'Оповещения о завершении срабатывают только пока Hermes в фоне.',
+      focusedHint: 'Оповещения о завершении срабатывают только пока UniWork в фоне.',
       kinds: {
         approval: {
           label: 'Нужно одобрение',
@@ -714,11 +714,11 @@ export const ru = defineLocale({
         },
         input: {
           label: 'Нужен ввод',
-          description: 'Hermes задал вопрос или требует пароль/секрет.'
+          description: 'UniWork задал вопрос или требует пароль/секрет.'
         },
         turnDone: {
           label: 'Ответ готов',
-          description: 'Ход завершился, пока Hermes был в фоне.'
+          description: 'Ход завершился, пока UniWork был в фоне.'
         },
         turnError: {
           label: 'Ход не удался',
@@ -734,11 +734,11 @@ export const ru = defineLocale({
         },
         plugin: {
           label: 'Уведомления плагинов',
-          description: 'Плагин приложения отправил уведомление, пока Hermes был в фоне.'
+          description: 'Плагин приложения отправил уведомление, пока UniWork был в фоне.'
         }
       },
       test: 'Отправить тестовое уведомление',
-      testTitle: 'Hermes',
+      testTitle: 'UniWork',
       testBody: 'Уведомления работают.',
       testSent:
         'Тест отправлен. Если ничего не появилось, проверьте разрешения на уведомления в системе и режим «Не беспокоить».',
@@ -758,7 +758,7 @@ export const ru = defineLocale({
       advanced: 'Дополнительно'
     },
     searchPlaceholder: {
-      about: 'О Hermes Desktop',
+      about: 'О UniWork Desktop',
       config: 'Поиск настроек…',
       gateway: 'Подключение шлюза…',
       keys: 'Поиск API-ключей…',
@@ -774,7 +774,7 @@ export const ru = defineLocale({
       title: 'Внешний вид',
       intro: 'Только для приложения. Режим — это яркость, тема — палитра и оформление чата.',
       colorMode: 'Цветовой режим',
-      colorModeDesc: 'Выберите фиксированный режим или позвольте Hermes следовать настройкам системы.',
+      colorModeDesc: 'Выберите фиксированный режим или позвольте UniWork следовать настройкам системы.',
       toolViewTitle: 'Отображение вызовов инструментов',
       toolViewDesc: 'Режим «Продукт» скрывает сырые данные инструментов, «Технический» показывает полный вход/выход.',
       hideCodeDiffsTitle: 'Скрывать изменения кода',
@@ -848,7 +848,7 @@ export const ru = defineLocale({
       introSplashTitle: 'Экран приветствия',
       introSplashDesc: 'Логотип и подсказка, показываемые на пустом чате.',
       reactionsTitle: 'Реакции на сообщения',
-      reactionsDesc: 'Эмодзи-тапбеки в стиле iMessage — реагируйте на сообщения, и Hermes сможет реагировать на ваши.',
+      reactionsDesc: 'Эмодзи-тапбеки в стиле iMessage — реагируйте на сообщения, и UniWork сможет реагировать на ваши.',
       composerPopoutTitle: 'Плавающий композер',
       composerPopoutDesc:
         'Позволяет вытягивать композер из его док-зоны. Когда выключено, он остаётся закреплённым внизу.',
@@ -886,9 +886,9 @@ export const ru = defineLocale({
       pet: {
         title: 'Питомец',
         intro:
-          'Заберите анимированного питомца из petdex, который парит над приложением и реагирует на действия Hermes — «бегает», пока выполняются инструменты, радуется успеху и хмурится при ошибках.',
+          'Заберите анимированного питомца из petdex, который парит над приложением и реагирует на действия UniWork — «бегает», пока выполняются инструменты, радуется успеху и хмурится при ошибках.',
         restartHint:
-          'Питомцам нужен быстрый перезапуск — текущее приложение запустилось до появления этой функции. Выйдите из Hermes и откройте снова, затем вернитесь сюда.',
+          'Питомцам нужен быстрый перезапуск — текущее приложение запустилось до появления этой функции. Выйдите из UniWork и откройте снова, затем вернитесь сюда.',
         scaleTitle: 'Размер',
         scaleDesc: 'Меняет размер парящего питомца. Применяется мгновенно везде.',
         roamTitle: 'Блуждание',
@@ -1111,7 +1111,7 @@ export const ru = defineLocale({
       timezone: 'Идентификатор часового пояса IANA. Пустое значение — системный часовой пояс.',
       agent: {
         imageInputMode: 'Управляет тем, как вложения изображений отправляются модели.',
-        maxTurns: 'Верхний предел ходов с вызовами инструментов, после которого Hermes останавливает запуск.'
+        maxTurns: 'Верхний предел ходов с вызовами инструментов, после которого UniWork останавливает запуск.'
       },
       terminal: {
         cwd: 'Папка проекта по умолчанию для инструментов и терминала.',
@@ -1125,9 +1125,9 @@ export const ru = defineLocale({
       codeExecution: {
         mode: 'Насколько строго выполнение кода ограничено текущим проектом.'
       },
-      fileReadMaxChars: 'Максимальное число символов, которые Hermes может прочитать из одного запроса к файлу.',
+      fileReadMaxChars: 'Максимальное число символов, которые UniWork может прочитать из одного запроса к файлу.',
       approvals: {
-        mode: 'Как Hermes обрабатывает команды, требующие явного подтверждения.',
+        mode: 'Как UniWork обрабатывает команды, требующие явного подтверждения.',
         timeout: 'Как долго запросы подтверждения ждут перед тайм-аутом.'
       },
       security: {
@@ -1181,7 +1181,7 @@ export const ru = defineLocale({
       },
       updates: {
         nonInteractiveLocalChanges:
-          'Когда Hermes обновляет себя из приложения (без запроса в терминале), сохранять локальные правки исходников (stash) или выбрасывать (discard). Обновления из терминала всегда спрашивают.'
+          'Когда UniWork обновляет себя из приложения (без запроса в терминале), сохранять локальные правки исходников (stash) или выбрасывать (discard). Обновления из терминала всегда спрашивают.'
       }
     }),
     about: {
@@ -1190,7 +1190,7 @@ export const ru = defineLocale({
     config: {
       minimizeToTrayTitle: 'Сворачивать в трей',
       minimizeToTrayDesc:
-        'Сворачивание окон или закрытие главного окна скрывает их в системном трее (строке меню macOS), оставляя Hermes работать. Для выхода выберите «Выйти из Hermes» в меню трея или нажмите Cmd+Q. По умолчанию выключено; действует только на этом устройстве.',
+        'Сворачивание окон или закрытие главного окна скрывает их в системном трее (строке меню macOS), оставляя UniWork работать. Для выхода выберите «Выйти из UniWork» в меню трея или нажмите Cmd+Q. По умолчанию выключено; действует только на этом устройстве.',
       minimizeToTrayUnavailable:
         'Системный трей недоступен. Окна будут сворачиваться и закрываться как обычно. Выключите и снова включите настройку, чтобы повторить попытку.',
       none: 'Нет',
@@ -1201,7 +1201,7 @@ export const ru = defineLocale({
       searchPlaceholder: 'Поиск…',
       noResults: 'Ничего не найдено',
       systemDefault: 'Системное по умолчанию',
-      loading: 'Загрузка конфигурации Hermes…',
+      loading: 'Загрузка конфигурации UniWork…',
       emptyTitle: 'Настраивать нечего',
       emptyDesc: 'В этом разделе нет настраиваемых параметров.',
       failedLoad: 'Не удалось загрузить настройки',
@@ -1233,27 +1233,27 @@ export const ru = defineLocale({
       description:
         'Нажмите и отпустите ⌘ + Option на Mac или Ctrl + Alt на Windows/Linux, чтобы вызвать HUD из любого приложения. По умолчанию выключено; действует только на этом устройстве.',
       permission:
-        'Разрешите Hermes в Системных настройках → Конфиденциальность и безопасность → Мониторинг ввода, затем повторите попытку. Жест не записывает нажатия клавиш и не снимает экран.',
+        'Разрешите UniWork в Системных настройках → Конфиденциальность и безопасность → Мониторинг ввода, затем повторите попытку. Жест не записывает нажатия клавиш и не снимает экран.',
       unavailable:
-        'Вспомогательная программа жеста HUD не запустилась или неожиданно остановилась. Повторите попытку или перезапустите Hermes. Обычное сочетание HUD по-прежнему работает внутри Hermes.',
+        'Вспомогательная программа жеста HUD не запустилась или неожиданно остановилась. Повторите попытку или перезапустите UniWork. Обычное сочетание HUD по-прежнему работает внутри UniWork.',
       missingHelper:
-        'В этой установке Hermes отсутствует вспомогательная программа жеста HUD. Обновите или переустановите Hermes и повторите попытку.',
+        'В этой установке UniWork отсутствует вспомогательная программа жеста HUD. Обновите или переустановите UniWork и повторите попытку.',
       unsupportedSession:
         'Этот сеанс рабочего стола не поддерживает глобальные нажатия модификаторов. В Linux требуется X11; Wayland не поддерживается.'
     },
     screenshot: {
       enabledTitle: 'Сочетание клавиш для снимка окна',
       enabledDesc:
-        'Нажмите обе клавиши Command одновременно в любом приложении, чтобы снять его переднее окно и прикрепить снимок к текущему черновику Hermes. Автоматической отправки нет. По умолчанию выключено; действует только на этом Mac. Окно может содержать конфиденциальные данные — проверьте вложение перед отправкой.',
+        'Нажмите обе клавиши Command одновременно в любом приложении, чтобы снять его переднее окно и прикрепить снимок к текущему черновику UniWork. Автоматической отправки нет. По умолчанию выключено; действует только на этом Mac. Окно может содержать конфиденциальные данные — проверьте вложение перед отправкой.',
       statusTitle: 'Состояние сочетания для снимка окна',
       checking: 'Проверка сочетания для снимка окна…',
       disabled: 'Сочетание для снимка окна выключено.',
       starting: 'Запускается отслеживание сочетания. Оно пока не готово.',
       ready: 'Сочетание готово. Снимки прикрепляются к текущему черновику без отправки.',
       inputPermission:
-        'Разрешение на мониторинг ввода позволяет Hermes распознавать обе клавиши Command, когда активно другое приложение. Разрешите Hermes доступ в Системных настройках → Конфиденциальность и безопасность → Мониторинг ввода, затем вернитесь сюда и повторите попытку.',
+        'Разрешение на мониторинг ввода позволяет UniWork распознавать обе клавиши Command, когда активно другое приложение. Разрешите UniWork доступ в Системных настройках → Конфиденциальность и безопасность → Мониторинг ввода, затем вернитесь сюда и повторите попытку.',
       screenPermission:
-        'Разрешение на запись экрана позволяет Hermes снимать переднее окно приложения при использовании этого сочетания. Разрешите Hermes доступ в Системных настройках → Конфиденциальность и безопасность → Запись экрана, затем вернитесь сюда и повторите попытку. Перезапустите Hermes, если macOS попросит.',
+        'Разрешение на запись экрана позволяет UniWork снимать переднее окно приложения при использовании этого сочетания. Разрешите UniWork доступ в Системных настройках → Конфиденциальность и безопасность → Запись экрана, затем вернитесь сюда и повторите попытку. Перезапустите UniWork, если macOS попросит.',
       openSettings: 'Открыть Системные настройки',
       retry: 'Повторить',
       unavailable: 'Сочетание для снимка окна недоступно. Повторите попытку или выключите его.',
@@ -1268,7 +1268,7 @@ export const ru = defineLocale({
     quickEntry: {
       enabledTitle: 'Быстрый ввод',
       enabledDesc:
-        'Глобальным горячим ключом вызывайте маленький композер откуда угодно и отправляйте запрос, не открывая Hermes.',
+        'Глобальным горячим ключом вызывайте маленький композер откуда угодно и отправляйте запрос, не открывая UniWork.',
       shortcutTitle: 'Горячий ключ быстрого ввода',
       shortcutDesc: 'Нужен хотя бы один модификатор, например CommandOrControl+Shift+Space.',
       active: 'Горячий ключ активен.',
@@ -1299,7 +1299,7 @@ export const ru = defineLocale({
     connections: {
       title: 'Зарегистрированные шлюзы',
       intro:
-        'Управляйте этим устройством и всеми шлюзами Hermes, до которых можно дотянуться через удалённые, SSH или Cloud-соединения.',
+        'Управляйте этим устройством и всеми шлюзами UniWork, до которых можно дотянуться через удалённые, SSH или Cloud-соединения.',
       stagedNote:
         'Переключайтесь между шлюзами из раздела «Сеансы». Профили, чаты, мессенджеры и cron-задачи остаются за своим шлюзом; работа на других шлюзах продолжается.',
       launchModeTitle: 'При запуске возвращаться к «Сеансам» на последнем шлюзе',
@@ -1326,15 +1326,15 @@ export const ru = defineLocale({
       updateAllRunning: 'Обновление всех инстансов…',
       updateAllDone: 'Обновления разосланы',
       updateAllFailed: 'Не удалось разослать обновления',
-      updateSkippedCloud: 'Управляется Hermes Cloud',
+      updateSkippedCloud: 'Управляется UniWork Cloud',
       kindLocal: 'Локальный',
       kindRemote: 'Удалённый шлюз',
-      kindCloud: 'Hermes Cloud',
+      kindCloud: 'UniWork Cloud',
       kindSsh: 'SSH',
-      kindLocalDesc: 'Рантайм Hermes, которым управляет это приложение.',
-      kindRemoteDesc: 'Шлюз Hermes, доступный по HTTP(S) — LAN, Tailscale или интернет.',
-      kindCloudDesc: 'Хостинговая инстанция, обнаруженная через ваш аккаунт Hermes Cloud.',
-      kindSshDesc: 'Установка Hermes, доступная по SSH.',
+      kindLocalDesc: 'Рантайм UniWork, которым управляет это приложение.',
+      kindRemoteDesc: 'Шлюз UniWork, доступный по HTTP(S) — LAN, Tailscale или интернет.',
+      kindCloudDesc: 'Хостинговая инстанция, обнаруженная через ваш аккаунт UniWork Cloud.',
+      kindSshDesc: 'Установка UniWork, доступная по SSH.',
       labelTitle: 'Имя',
       labelDesc:
         'Обязательно. Показывается везде, где фигурирует эта инстанция; должно быть уникальным (напр. «Домашняя лаборатория», «Рабочий ноутбук»).',
@@ -1343,7 +1343,7 @@ export const ru = defineLocale({
       sshHostTitle: 'SSH-хост',
       headersTitle: 'Дополнительные заголовки шлюза',
       headersDesc:
-        'Отправляются с каждым HTTP- и WebSocket-запросом к этому шлюзу — например, для прокси доступа вроде Cloudflare Access (CF-Access-Client-Id / CF-Access-Client-Secret). Значения хранятся зашифрованными. Заголовки, которыми управляет Hermes (Authorization, Cookie, Host…), игнорируются.',
+        'Отправляются с каждым HTTP- и WebSocket-запросом к этому шлюзу — например, для прокси доступа вроде Cloudflare Access (CF-Access-Client-Id / CF-Access-Client-Secret). Значения хранятся зашифрованными. Заголовки, которыми управляет UniWork (Authorization, Cookie, Host…), игнорируются.',
       headerValuePlaceholder: 'Значение',
       headerValueSaved: 'Сохранено — оставьте пустым, чтобы не менять',
       headerAdd: 'Добавить заголовок',
@@ -1354,7 +1354,7 @@ export const ru = defineLocale({
       sameBackendHint: label => `Тот же бэкенд, что и «${label}»`,
       localAddHint: 'Локальное недоступно: управляемое локальное соединение уже существует (их всегда только одно).',
       cloudAddHint:
-        'Подсказка: вход в Hermes Cloud выше автоматически обнаруживает ваших агентов — эту форму используйте только для ручной регистрации известного URL инстанса.',
+        'Подсказка: вход в UniWork Cloud выше автоматически обнаруживает ваших агентов — эту форму используйте только для ручной регистрации известного URL инстанса.',
       save: 'Сохранить соединение',
       saving: 'Сохранение…',
       cancel: 'Отмена',
@@ -1367,23 +1367,23 @@ export const ru = defineLocale({
       title: 'Подключение шлюза',
       envOverride: 'переопределение переменными окружения',
       intro:
-        'По умолчанию — локальный. Используйте удалённый, когда приложение должно управлять бэкендом Hermes в другом месте. Соединения шлюзов — на уровне машины; профили обнаруживаются из подключённых шлюзов.',
+        'По умолчанию — локальный. Используйте удалённый, когда приложение должно управлять бэкендом UniWork в другом месте. Соединения шлюзов — на уровне машины; профили обнаруживаются из подключённых шлюзов.',
       envOverrideTitle: 'Переменные окружения управляют этой сессией приложения.',
       envOverrideDesc:
         'Сбросьте HERMES_DESKTOP_REMOTE_URL и HERMES_DESKTOP_REMOTE_TOKEN, чтобы использовать сохранённую настройку ниже.',
       modeTitle: 'Режим подключения',
       localTitle: 'Локальный шлюз',
-      localDesc: 'Запускает приватный бэкенд Hermes на localhost. Это значение по умолчанию, работает офлайн.',
+      localDesc: 'Запускает приватный бэкенд UniWork на localhost. Это значение по умолчанию, работает офлайн.',
       remoteTitle: 'Удалённый шлюз',
-      remoteDesc: 'Подключает это приложение к удалённому бэкенду Hermes.',
+      remoteDesc: 'Подключает это приложение к удалённому бэкенду UniWork.',
       remoteAuthHint:
         'Хостинговые шлюзы используют OAuth или логин/пароль; самохостинговые могут использовать токен сессии.',
-      cloudTitle: 'Hermes Cloud',
-      cloudDesc: 'Войдите в Hermes Cloud один раз и выбирайте агентов из своего аккаунта — без вставки URL.',
-      cloudSignInTitle: 'Hermes Cloud',
-      cloudSignIn: 'Войти в Hermes Cloud',
-      cloudSignedIn: 'Вы вошли в Hermes Cloud',
-      cloudNeedsSignIn: 'Войдите в Hermes Cloud, чтобы обнаружить агентов в вашем аккаунте.',
+      cloudTitle: 'UniWork Cloud',
+      cloudDesc: 'Войдите в UniWork Cloud один раз и выбирайте агентов из своего аккаунта — без вставки URL.',
+      cloudSignInTitle: 'UniWork Cloud',
+      cloudSignIn: 'Войти в UniWork Cloud',
+      cloudSignedIn: 'Вы вошли в UniWork Cloud',
+      cloudNeedsSignIn: 'Войдите в UniWork Cloud, чтобы обнаружить агентов в вашем аккаунте.',
       cloudSignedInDesc: 'Вы вошли. Выберите агента ниже; сессия обновляется автоматически.',
       cloudAgentsTitle: 'Ваши агенты',
       cloudOrgPickerTitle: 'Выберите организацию',
@@ -1404,11 +1404,11 @@ export const ru = defineLocale({
       cloudUseSaved: 'Использовать шлюз',
       cloudActive: 'Активен в этом окне',
       cloudConnecting: 'Подключение…',
-      cloudDiscoverFailed: 'Не удалось загрузить агентов Hermes Cloud',
+      cloudDiscoverFailed: 'Не удалось загрузить агентов UniWork Cloud',
       cloudConnectFailed: 'Не удалось подключиться к этому агенту',
-      cloudSignInFailed: 'Не удалось войти в Hermes Cloud',
-      cloudSignedOutTitle: 'Выход из Hermes Cloud',
-      cloudSignedOutMessage: 'Сессия Hermes Cloud сброшена.',
+      cloudSignInFailed: 'Не удалось войти в UniWork Cloud',
+      cloudSignedOutTitle: 'Выход из UniWork Cloud',
+      cloudSignedOutMessage: 'Сессия UniWork Cloud сброшена.',
       cloudConnectedTitle: 'Подключено',
       cloudConnectedPill: 'Подключено',
       cloudConnectedTo: name => `Подключено к ${name}.`,
@@ -1456,9 +1456,9 @@ export const ru = defineLocale({
       enterUrlFirst: 'Сначала введите удалённый URL.',
       restartingTitle: 'Перезапуск соединения шлюза',
       savedTitle: 'Настройки шлюза сохранены',
-      restartingMessage: 'Hermes Desktop переподключится с сохранёнными настройками — оболочка останется открытой.',
+      restartingMessage: 'UniWork Desktop переподключится с сохранёнными настройками — оболочка останется открытой.',
       savedMessage: 'Сохранено для следующего перезапуска.',
-      connectedTo: (baseUrl, version) => `Подключено к ${baseUrl}${version ? ` · Hermes ${version}` : ''}`,
+      connectedTo: (baseUrl, version) => `Подключено к ${baseUrl}${version ? ` · UniWork ${version}` : ''}`,
       reachableTitle: 'Удалённый шлюз доступен',
       signedOutTitle: 'Вы вышли',
       signedOutMessage: 'Сессия удалённого шлюза сброшена.',
@@ -1470,7 +1470,7 @@ export const ru = defineLocale({
       saveFailed: 'Не удалось сохранить настройки шлюза',
       sshTitle: 'Подключение по SSH',
       sshDesc:
-        'Hermes запускается на удалённой машине по SSH и туннелируется в это приложение — ничего не нужно запускать или открывать самим. Требуется рабочая SSH-аутентификация по ключу на хост.',
+        'UniWork запускается на удалённой машине по SSH и туннелируется в это приложение — ничего не нужно запускать или открывать самим. Требуется рабочая SSH-аутентификация по ключу на хост.',
       sshTrustHint:
         'Первый предъявленный ключ хоста доверяется и фиксируется; последующие изменения приведут к отказу.',
       sshHostTitle: 'Хост',
@@ -1486,25 +1486,25 @@ export const ru = defineLocale({
       sshPortDesc: 'Пусто = 22 или порт из ~/.ssh/config.',
       sshKeyTitle: 'Файл ключа',
       sshKeyDesc: 'Путь к закрытому ключу. Пусто = ssh-agent или ~/.ssh/config.',
-      sshHermesPathTitle: 'Путь к Hermes (необязательно)',
+      sshHermesPathTitle: 'Путь к UniWork (необязательно)',
       sshHermesPathDesc: 'Полный путь к бинарнику hermes на удалённой машине. Пусто = автоопределение.',
       sshHermesPathPlaceholder: 'автоопределение',
       sshTestConnection: 'Проверить SSH',
       sshConnect: 'Подключиться',
       sshButtonsHint: '«Сохранить» применится при следующем запуске. «Подключиться» переподключится сейчас.',
-      sshReachable: (host, platform) => `Доступен: ${host} (${platform}) — Hermes найден`,
+      sshReachable: (host, platform) => `Доступен: ${host} (${platform}) — UniWork найден`,
       sshIncompleteHost: 'Введите SSH-хост перед подключением.',
       sshErrUnreachable: 'Не удалось достичь этого хоста по SSH. Проверьте хост, порт и сеть.',
       sshErrAuth:
-        'SSH-аутентификация не удалась. Загрузите ключ в ssh-agent (ssh-add) или задайте IdentityFile в ~/.ssh/config — Hermes запускает ssh в неинтерактивном режиме.',
+        'SSH-аутентификация не удалась. Загрузите ключ в ssh-agent (ssh-add) или задайте IdentityFile в ~/.ssh/config — UniWork запускает ssh в неинтерактивном режиме.',
       sshErrHostKey:
         'Ключ хоста ИЗМЕНИЛСЯ с последнего подключения. Убедитесь, что это ожидаемо, затем выполните ssh-keygen -R <host> и переподключитесь.',
       sshErrNotInstalled:
-        'Hermes не установлен на удалённой машине. Установите его там (curl -fsSL https://hermes-agent.nousresearch.com/install.sh | sh) или задайте путь к Hermes.',
+        'UniWork не установлен на удалённой машине. Установите его там (curl -fsSL https://hermes-agent.nousresearch.com/install.sh | sh) или задайте путь к UniWork.',
       sshErrPlatform:
-        'Неподдерживаемая удалённая платформа. SSH-режим Hermes Desktop поддерживает удалённые хосты Linux, macOS и Windows.',
+        'Неподдерживаемая удалённая платформа. SSH-режим UniWork Desktop поддерживает удалённые хосты Linux, macOS и Windows.',
       sshErrTimeout: 'SSH-соединение истекло. Хост может быть недоступен или «спит».',
-      sshErrUpdateRequired: 'Перед подключением через SSH обновите Hermes на удалённой машине.',
+      sshErrUpdateRequired: 'Перед подключением через SSH обновите UniWork на удалённой машине.',
       sshErrUnknown: 'SSH-соединение не удалось.'
     },
     keys: {
@@ -1552,7 +1552,7 @@ export const ru = defineLocale({
       noOutput: 'Вывода пока нет.',
       deepLinkTitle: 'Добавить MCP-сервер?',
       deepLinkDescription:
-        'Ссылка запросила добавить этот MCP-сервер в Hermes. Проверьте конфигурацию ниже — она пришла из ссылки, а не из Hermes.',
+        'Ссылка запросила добавить этот MCP-сервер в UniWork. Проверьте конфигурацию ниже — она пришла из ссылки, а не из UniWork.',
       deepLinkStdioWarning:
         'Этот сервер запускает локальный процесс на вашей машине командой, показанной ниже. Продолжайте только если доверяете источнику.',
       deepLinkConfirm: 'Добавить сервер',
@@ -1625,7 +1625,7 @@ export const ru = defineLocale({
       connectAccount: 'Подключить аккаунт',
       haveApiKey: 'Ввести API-ключ вместо этого?',
       intro:
-        'Войдите по подписке — копировать API-ключ не нужно. Hermes проведёт вход в браузере прямо здесь, в приложении.',
+        'Войдите по подписке — копировать API-ключ не нужно. UniWork проведёт вход в браузере прямо здесь, в приложении.',
       connected: 'Подключено',
       collapse: 'Свернуть',
       connectAnother: 'Подключить другой провайдер',
@@ -1646,7 +1646,7 @@ export const ru = defineLocale({
       noKeysMatch: 'Провайдеры, подходящие под поиск, не найдены.',
       localEndpoint: {
         title: 'Локальный / свой эндпоинт',
-        description: 'Направьте Hermes на любой OpenAI-совместимый эндпоинт (Zyphra, vLLM, llama.cpp, Ollama и т. д.).'
+        description: 'Направьте UniWork на любой OpenAI-совместимый эндпоинт (Zyphra, vLLM, llama.cpp, Ollama и т. д.).'
       },
       loading: 'Загрузка провайдеров…'
     },
@@ -1898,7 +1898,7 @@ export const ru = defineLocale({
     loadFailed: 'Не удалось загрузить граф памяти',
     loading: 'Загрузка…',
     emptyTitle: 'Пока ничего не изучено',
-    emptyDesc: 'По мере того как Hermes создаёт навыки и память для вашей работы, они появятся здесь.',
+    emptyDesc: 'По мере того как UniWork создаёт навыки и память для вашей работы, они появятся здесь.',
     share: 'Поделиться картой',
     shareHint:
       'Скопируйте код, чтобы поделиться этой картой, или вставьте код для загрузки. Включает только раскладку, а не вашу память или текст навыков.',
@@ -1979,7 +1979,7 @@ export const ru = defineLocale({
       placeholder: 'Поиск питомцев…',
       loading: 'Загрузка галереи petdex…',
       error: 'Не удалось подключиться к галерее petdex.',
-      staleBackend: 'Перезапустите Hermes, чтобы использовать питомцев — бэкенд старше этой функции.',
+      staleBackend: 'Перезапустите UniWork, чтобы использовать питомцев — бэкенд старше этой функции.',
       empty: 'Совпадающих питомцев нет.',
       turnOff: 'Отключить',
       turnOn: 'Включить',
@@ -2006,8 +2006,8 @@ export const ru = defineLocale({
       hatchComposing: 'Собираем по частям…',
       hatchSaving: 'Почти готово…',
       namePlaceholder: 'Имя для вашего питомца',
-      staleBackend: 'Обновите Hermes, чтобы генерировать питомцев.',
-      backgroundHint: 'Можно закрыть — Hermes уведомит, когда будет готово.',
+      staleBackend: 'Обновите UniWork, чтобы генерировать питомцев.',
+      backgroundHint: 'Можно закрыть — UniWork уведомит, когда будет готово.',
       slowProviderHint: 'Это может занять несколько минут',
       remix: 'Ремикс',
       remixConfirmTitle: 'Сделать ремикс из этого облика?',
@@ -2043,7 +2043,7 @@ export const ru = defineLocale({
     },
     nav: {
       newChat: { title: 'Новый сеанс', detail: 'Начать новый сеанс' },
-      settings: { title: 'Настройки', detail: 'Настройка Hermes desktop' },
+      settings: { title: 'Настройки', detail: 'Настройка UniWork desktop' },
       capabilities: { title: 'Возможности', detail: 'Навыки, инструменты и MCP-серверы' },
       messaging: { title: 'Сообщения', detail: 'Настройка Telegram, Slack, Discord и других' },
       artifacts: { title: 'Артефакты', detail: 'Просмотр сгенерированных результатов' }
@@ -2065,7 +2065,7 @@ export const ru = defineLocale({
     noSessions: 'Сеансов пока нет.',
     gatewayRunning: 'Шлюз сообщений работает',
     gatewayStopped: 'Шлюз сообщений остановлен',
-    hermesActiveSessions: (version, count) => `Hermes ${version} · Активные сеансы: ${count}`,
+    hermesActiveSessions: (version, count) => `UniWork ${version} · Активные сеансы: ${count}`,
     restartGateway: 'Перезапустить шлюз',
     openBrowser: 'Открыть браузер',
     gatewayRestartFailed: 'Не удалось перезапустить шлюз.',
@@ -2073,7 +2073,7 @@ export const ru = defineLocale({
     sharedGatewayRestartDescription: bots => `Все боты на этом устройстве переподключатся: ${bots}`,
     sharedGatewayRestartConfirm: 'Перезапустить все',
     sharedGatewayRestarted: count => `Общий шлюз перезапущен (ботов: ${count})`,
-    updateHermes: 'Обновить Hermes',
+    updateHermes: 'Обновить UniWork',
     reloadWindow: 'Перезагрузить окно',
     actionRunning: 'выполняется',
     actionDone: 'готово',
@@ -2260,11 +2260,11 @@ export const ru = defineLocale({
     telegramQr: {
       title: 'Выберите способ подключения Telegram-бота',
       subtitle:
-        'Оба способа подключают бота под вашим контролем и сохраняют его данные только в этой установке Hermes.',
+        'Оба способа подключают бота под вашим контролем и сохраняют его данные только в этой установке UniWork.',
       quickSetup: 'Быстрая настройка',
       recommended: 'Рекомендуется',
       quickHelp:
-        'Отсканируйте QR-код и подтвердите в Telegram. Hermes создаст бота и определит ваш Telegram ID автоматически.',
+        'Отсканируйте QR-код и подтвердите в Telegram. UniWork создаст бота и определит ваш Telegram ID автоматически.',
       createWithQr: 'Создать по QR',
       starting: 'Запуск…',
       replaceWarning:
@@ -2465,13 +2465,13 @@ export const ru = defineLocale({
     manageProfiles: 'Управлять профилями…',
     connectGateway: 'Управлять шлюзами…',
     fleet: {
-      localDevice: 'Это устройство (локальный бэкенд — установит Hermes, если его нет, иначе откроет новую сессию)',
+      localDevice: 'Это устройство (локальный бэкенд — установит UniWork, если его нет, иначе откроет новую сессию)',
       switchDeviceTitle: 'Переключиться на это устройство?',
       switchDeviceDesc: 'Откроется новая сессия на этом компьютере. Текущий разговор останется на другом шлюзе.',
       switchDeviceConfirm: 'Переключить',
       installDeviceTitle: 'Переключиться на это устройство?',
       installDeviceDesc:
-        'Hermes будет установлен локально, затем откроется новая сессия на этом компьютере. Установка не начнётся, пока вы не подтвердите.',
+        'UniWork будет установлен локально, затем откроется новая сессия на этом компьютере. Установка не начнётся, пока вы не подтвердите.',
       installDeviceConfirm: 'Установить локально',
       connectExistingInstead: 'Вместо этого подключить существующий'
     },
@@ -2482,7 +2482,7 @@ export const ru = defineLocale({
     setAsDefault: 'Сделать по умолчанию',
     defaultProfile: 'Профиль по умолчанию',
     defaultSet: name => `${name} теперь используется по умолчанию`,
-    defaultDescription: 'Используется при запуске Hermes и для новых чатов. Профили существующих сессий не меняются.',
+    defaultDescription: 'Используется при запуске UniWork и для новых чатов. Профили существующих сессий не меняются.',
     failedSetDefault: 'Не удалось установить профиль по умолчанию',
     setColor: color => `Установить цвет ${color}`,
     autoColor: 'Авто',
@@ -2520,7 +2520,7 @@ export const ru = defineLocale({
     deleteDescMid: ' и сотрёт его ',
     deleteDescSuffix: ' каталог. Это действие необратимо.',
     deleting: 'Удаление...',
-    createDesc: 'Профили — это независимые среды Hermes: отдельные настройки, навыки и SOUL.md.',
+    createDesc: 'Профили — это независимые среды UniWork: отдельные настройки, навыки и SOUL.md.',
     nameLabel: 'Имя',
     cloneFrom: 'Клонировать из',
     cloneFromNone: 'Нет (пустой)',
@@ -2554,7 +2554,7 @@ export const ru = defineLocale({
     failedRename: 'Не удалось переименовать профиль'
   },
   modelAssignment: {
-    saveFailed: 'Hermes не сохранил это изменение модели.'
+    saveFailed: 'UniWork не сохранил это изменение модели.'
   },
 
   cron: {
@@ -2616,7 +2616,7 @@ export const ru = defineLocale({
     everyHourAt: minute => `Каждый час на :${minute}`,
     newCron: 'Новый cron',
     emptyDescNew:
-      'Запланируйте промпт, который будет выполняться по cron-выражению. Hermes выполнит его и доставит результаты в выбранное вами место.',
+      'Запланируйте промпт, который будет выполняться по cron-выражению. UniWork выполнит его и доставит результаты в выбранное вами место.',
     emptyDescSearch: 'Попробуйте более широкий запрос.',
     emptyTitleNew: 'Запланированных задач пока нет',
     emptyTitleSearch: 'Нет совпадений',
@@ -2896,8 +2896,8 @@ export const ru = defineLocale({
       removeFromSidebar: 'Скрыть из боковой панели',
       createFailed: 'Не удалось создать проект',
       staleBackend:
-        'Обновите бэкенд Hermes, чтобы создавать проекты — ваш бэкенд старше этого desktop-приложения (Настройки → Обновления → Бэкенд).',
-      deleteConfirm: 'Это удалит сохранённый проект из Hermes. Файлы, git-репозитории и worktrees не пострадают.',
+        'Обновите бэкенд UniWork, чтобы создавать проекты — ваш бэкенд старше этого desktop-приложения (Настройки → Обновления → Бэкенд).',
+      deleteConfirm: 'Это удалит сохранённый проект из UniWork. Файлы, git-репозитории и worktrees не пострадают.',
       startWork: 'Новый worktree',
       newWorktreeTitle: 'Новый worktree',
       newWorktreeDesc: 'Назовите ветку для этого worktree.',
@@ -2907,7 +2907,7 @@ export const ru = defineLocale({
       baseBranchNone: 'Ветки не найдены',
       startWorkFailed: 'Не удалось создать worktree',
       worktreeStaleBackend:
-        'Обновите бэкенд Hermes, чтобы создавать worktrees по этому удалённому соединению — он старше git worktree API.',
+        'Обновите бэкенд UniWork, чтобы создавать worktrees по этому удалённому соединению — он старше git worktree API.',
       worktreeProjectLabel: 'Проект',
       worktreeProjectPlaceholder: 'Поиск проектов…',
       worktreeProjectNone: 'Нет проектов с папкой',
@@ -3003,12 +3003,12 @@ export const ru = defineLocale({
   composer: {
     message: 'Сообщение',
     wakingProfile: profile => `Пробуждаем ${profile}…`,
-    placeholderStarting: 'Запуск Hermes...',
-    placeholderReconnecting: 'Переподключение к Hermes…',
+    placeholderStarting: 'Запуск UniWork...',
+    placeholderReconnecting: 'Переподключение к UniWork…',
     placeholderFollowUp: 'Отправить продолжение',
     newSessionPlaceholders: [
       'Что будем делать?',
-      'Дайте Hermes задачу',
+      'Дайте UniWork задачу',
       'О чём вы думаете?',
       'Опишите, что нужно',
       'Что обсудим?',
@@ -3096,7 +3096,7 @@ export const ru = defineLocale({
       '/journey': 'Открыть граф памяти — навыки и воспоминания во времени',
       '/queue': 'Добавить, просмотреть, изменить, удалить, переместить или очистить запросы в очереди',
       '/steer': 'Добавить сообщение после следующего вызова инструмента без прерывания',
-      '/goal': 'Задать постоянную цель, над которой Hermes работает до завершения',
+      '/goal': 'Задать постоянную цель, над которой UniWork работает до завершения',
       '/heartbeat': 'Задать повторяющийся запрос для этого сеанса в состоянии простоя',
       '/refine': 'Проанализировать беседу и сохранить выводы в памяти или навыках',
       '/review': 'Запустить независимого субагента для проверки обсуждаемой работы',
@@ -3108,7 +3108,7 @@ export const ru = defineLocale({
       '/egress': 'Показать состояние исходящего прокси Docker',
       '/context': 'Показать использование контекста, категории, статистику сжатия и скорость обработки',
       '/whoami': 'Показать права доступа к слеш-командам',
-      '/profile': 'Переключить активный профиль Hermes',
+      '/profile': 'Переключить активный профиль UniWork',
       '/codex-runtime': 'Переключить среду Codex app-server для моделей OpenAI/Codex',
       '/personality': 'Выбрать готовую личность',
       '/battery': 'Переключить цветной индикатор батареи в строке состояния',
@@ -3135,7 +3135,7 @@ export const ru = defineLocale({
       '/subscription': 'Показать план Nous и изменить его в браузере',
       '/topup': 'Показать баланс Nous и управлять оплатой',
       '/platform': 'Приостановить, возобновить или перечислить сбоящие платформы шлюза',
-      '/version': 'Показать версию Hermes Agent',
+      '/version': 'Показать версию UniWork Agent',
       '/debug': 'Загрузить отчёт отладки с данными системы и журналами и получить ссылку',
       '/model': 'Переключить модель для этого сеанса'
     },
@@ -3150,7 +3150,7 @@ export const ru = defineLocale({
       'composer.history': 'переключать поповер / историю'
     },
     attachUrlTitle: 'Прикрепить URL',
-    attachUrlDesc: 'Hermes загрузит страницу и добавит её как контекст для этого хода.',
+    attachUrlDesc: 'UniWork загрузит страницу и добавит её как контекст для этого хода.',
     urlPlaceholder: 'https://example.com/post',
     urlHintPre: 'Укажите полный URL, например ',
     attach: 'Прикрепить',
@@ -3400,7 +3400,7 @@ export const ru = defineLocale({
       createPr: 'Создать PR',
       openPr: 'Открыть PR',
       ghMissing: 'Установите GitHub CLI (gh) и войдите, чтобы открывать PR',
-      agentShip: 'Попросить Hermes открыть PR',
+      agentShip: 'Попросить UniWork открыть PR',
       agentShipUnavailable: 'Чат, которому принадлежат эти изменения, не на экране.',
       agentShipPrompt:
         'Проверьте текущие изменения, закоммитьте их с ясным conventional-commit сообщением, запушьте ветку и создайте pull request.',
@@ -3412,23 +3412,23 @@ export const ru = defineLocale({
     }
   },
   updates: {
-    discontinuedTitle: 'Эта сборка Hermes больше не поддерживается',
+    discontinuedTitle: 'Эта сборка UniWork больше не поддерживается',
     discontinuedBody:
-      'Эта сборка Hermes больше не поддерживается и может перестать работать — удалите её. Ваши данные останутся на диске.',
+      'Эта сборка UniWork больше не поддерживается и может перестать работать — удалите её. Ваши данные останутся на диске.',
     channels: { stable: 'Стабильный', canary: 'Тестовый' },
     bundleSwapPending: 'Перезапустите, чтобы завершить обновление',
     bundleSwapPendingDesc:
-      'Обновлённое приложение уже установлено — достаточно перезапустить Hermes, чтобы загрузить его. Чаты и настройки не пострадают.',
-    bundleSwapPendingAction: 'Перезапустить Hermes',
+      'Обновлённое приложение уже установлено — достаточно перезапустить UniWork, чтобы загрузить его. Чаты и настройки не пострадают.',
+    bundleSwapPendingAction: 'Перезапустить UniWork',
     stages: {
       idle: 'Готовимся…',
       prepare: 'Готовимся…',
       fetch: 'Скачиваем…',
       pull: 'Почти готово…',
       pydeps: 'Завершаем…',
-      update: 'Обновляем Hermes…',
+      update: 'Обновляем UniWork…',
       rebuild: 'Пересобираем desktop-приложение…',
-      restart: 'Перезапускаем Hermes…',
+      restart: 'Перезапускаем UniWork…',
       done: 'Обновление завершено',
       manual: 'Обновление из терминала',
       guiSkew: 'Обновите desktop-приложение',
@@ -3438,17 +3438,17 @@ export const ru = defineLocale({
     checkFailedTitle: 'Не удалось проверить обновления',
     tryAgain: 'Попробовать снова',
     notAvailableTitle: 'Обновление недоступно',
-    unsupportedMessage: 'Эта версия Hermes не может обновлять себя из приложения.',
+    unsupportedMessage: 'Эта версия UniWork не может обновлять себя из приложения.',
     connectionRetry: 'Проверьте соединение и попробуйте снова.',
-    gitUnusable: 'Hermes не удалось запустить Git на этом компьютере, поэтому проверить обновления не получилось.',
+    gitUnusable: 'UniWork не удалось запустить Git на этом компьютере, поэтому проверить обновления не получилось.',
     latestBody: 'У вас последняя версия.',
     versionDetailsDistributionStore: 'Microsoft Store',
     latestBodyBackend: 'Бэкенд работает на последней версии.',
     allSetTitle: 'Всё готово',
     availableTitle: 'Доступно новое обновление',
-    availableBody: 'Новая версия Hermes готова к установке.',
+    availableBody: 'Новая версия UniWork готова к установке.',
     availableTitleBackend: 'Доступно обновление бэкенда',
-    availableBodyBackend: 'Новая версия подключённого бэкенда Hermes готова к установке.',
+    availableBodyBackend: 'Новая версия подключённого бэкенда UniWork готова к установке.',
     availableBodyNoChangelog: 'Новая версия готова. Заметки о выпуске недоступны для этого типа установки.',
     updateNow: 'Обновить сейчас',
     maybeLater: 'Возможно позже',
@@ -3456,31 +3456,31 @@ export const ru = defineLocale({
     manualTitle: 'Обновление из терминала',
     manualUnavailableTitle: 'Обновление здесь недоступно',
     manualBody:
-      'Hermes установлен из командной строки, поэтому обновления тоже выполняются там. Вставьте это в терминал:',
-    manualPickedUp: 'Hermes подхватит новую версию при следующем запуске.',
-    manualBodyBackend: 'Бэкенд Hermes управляется вне этого приложения. Выполните это на сервере, где он размещён:',
+      'UniWork установлен из командной строки, поэтому обновления тоже выполняются там. Вставьте это в терминал:',
+    manualPickedUp: 'UniWork подхватит новую версию при следующем запуске.',
+    manualBodyBackend: 'Бэкенд UniWork управляется вне этого приложения. Выполните это на сервере, где он размещён:',
     manualPickedUpBackend: 'Бэкенд загрузит новую версию после завершения обновления.',
     guiSkewTitle: 'Обновите desktop-приложение',
     guiSkewBody:
-      'Бэкенд обновлён, но пакет этого desktop-приложения не изменился. Обновите или переустановите desktop-приложение Hermes (ваш AppImage / .deb / .rpm), чтобы версии совпали.',
+      'Бэкенд обновлён, но пакет этого desktop-приложения не изменился. Обновите или переустановите desktop-приложение UniWork (ваш AppImage / .deb / .rpm), чтобы версии совпали.',
     copy: 'Копировать',
     copied: 'Скопировано',
     done: 'Готово',
     applyingBody:
-      'Обновлятор Hermes возьмёт процесс на себя в своём окне и автоматически перезапустит Hermes, когда закончит. Пожалуйста, не открывайте Hermes вручную во время обновления.',
+      'Обновлятор UniWork возьмёт процесс на себя в своём окне и автоматически перезапустит UniWork, когда закончит. Пожалуйста, не открывайте UniWork вручную во время обновления.',
     applyingBodyBackend:
-      'Удалённый бэкенд применяет обновление и перезапустится. Hermes переподключится автоматически, когда он снова заработает.',
-    applyingClose: 'Это окно закроется во время обновления, затем Hermes откроется сам.',
+      'Удалённый бэкенд применяет обновление и перезапустится. UniWork переподключится автоматически, когда он снова заработает.',
+    applyingClose: 'Это окно закроется во время обновления, затем UniWork откроется сам.',
     errorTitle: 'Обновление не завершилось',
     errorBody: 'Не переживайте — ничего не потеряно. Можно попробовать снова прямо сейчас.',
-    blockerTitle: 'Закрыть локальные предпросмотры, чтобы обновить Hermes?',
+    blockerTitle: 'Закрыть локальные предпросмотры, чтобы обновить UniWork?',
     blockerBody:
-      'Hermes нужно остановить эти локальные предпросмотры перед обновлением. Ваши файлы не будут изменены или удалены.',
-    foreignBlockerTitle: 'Закрыть другие процессы, чтобы обновить Hermes',
+      'UniWork нужно остановить эти локальные предпросмотры перед обновлением. Ваши файлы не будут изменены или удалены.',
+    foreignBlockerTitle: 'Закрыть другие процессы, чтобы обновить UniWork',
     foreignBlockerBody:
-      'Hermes не может безопасно закрыть эти процессы автоматически. Закройте приложение, терминал или службу, которой принадлежит каждый из них, и повторите обновление.',
+      'UniWork не может безопасно закрыть эти процессы автоматически. Закройте приложение, терминал или службу, которой принадлежит каждый из них, и повторите обновление.',
     mixedBlockerBody:
-      'Hermes может закрыть локальные предпросмотры, перечисленные ниже. Остальные процессы нужно закрыть вручную, прежде чем обновление сможет продолжиться.',
+      'UniWork может закрыть локальные предпросмотры, перечисленные ниже. Остальные процессы нужно закрыть вручную, прежде чем обновление сможет продолжиться.',
     closePreviewsAndUpdate: 'Закрыть предпросмотры и обновить',
     closePreviewsAndCheckAgain: 'Закрыть предпросмотры и проверить снова',
     localPreview: 'Локальный предпросмотр',
@@ -3533,12 +3533,12 @@ export const ru = defineLocale({
     justNowSuffix: ' · только что',
     bundleOutOfSync: 'Сборка приложения устарела',
     bundleOutOfSyncDesc:
-      'Рантайм Hermes обновлён, но само приложение — ещё старая сборка: новые функции интерфейса (например, Bot Mode) не появятся до обновления. Запустите обновление ниже, чтобы пересобрать приложение. Если предупреждение не исчезнет, переустановите с последнего установщика.',
+      'Рантайм UniWork обновлён, но само приложение — ещё старая сборка: новые функции интерфейса (например, Bot Mode) не появятся до обновления. Запустите обновление ниже, чтобы пересобрать приложение. Если предупреждение не исчезнет, переустановите с последнего установщика.',
     bundleOutOfSyncAction: 'Скачать установщик',
     checkingShort: 'Проверка…'
   },
   guidedGreeting: {
-    line: 'Заходите. Я Hermes. Дайте мне пару минут — обустрою тут всё под вас, а потом займёмся тем, что вам правда нужно.\n\nДля начала: как к вам обращаться?',
+    line: 'Заходите. Я UniWork. Дайте мне пару минут — обустрою тут всё под вас, а потом займёмся тем, что вам правда нужно.\n\nДля начала: как к вам обращаться?',
     nameSuggestion: (name: string) => `(Могу звать вас просто ${name}, если так удобнее.)`
   },
   install: {
@@ -3549,7 +3549,7 @@ export const ru = defineLocale({
       skipped: 'Пропущено',
       failed: 'Ошибка'
     },
-    oneTimeTitle: 'Hermes требует одноразовой установки',
+    oneTimeTitle: 'UniWork требует одноразовой установки',
     unsupportedDesc: platform =>
       `Автоматическая установка при первом запуске пока недоступна на ${platform}. Откройте Терминал и выполните команду ниже, затем перезапустите это приложение. При следующих запусках этот шаг будет пропущен.`,
     installCommand: 'Команда установки',
@@ -3557,23 +3557,23 @@ export const ru = defineLocale({
     viewDocs: 'Открыть документацию по установке',
     installTo: 'Будет установлено в',
     retryAfterRun: 'Я выполнил — попробовать снова',
-    setupChoiceTitle: 'Настройка Hermes Desktop',
+    setupChoiceTitle: 'Настройка UniWork Desktop',
     setupChoiceDesc:
-      'Подключите это приложение к уже работающему шлюзу Hermes или установите Hermes локально на этот компьютер.',
-    connectExistingTitle: 'Подключиться к существующему Hermes',
+      'Подключите это приложение к уже работающему шлюзу UniWork или установите UniWork локально на этот компьютер.',
+    connectExistingTitle: 'Подключиться к существующему UniWork',
     connectExistingShort: 'Подключить существующий',
     connectExistingDesc:
       'Используйте удалённый бэкенд с сессионным токеном или входом через браузер. Локальная установка не начнётся.',
-    installLocalTitle: 'Установить Hermes локально',
-    installLocalDesc: 'Скачайте Hermes, создайте его Python-окружение и запустите бэкенд на этом компьютере.',
-    localStartUnavailable: 'Не удалось начать локальную установку. Перезапустите Hermes Desktop и попробуйте снова.',
-    remoteSetupTitle: 'Подключиться к существующему Hermes',
-    remoteSetupDesc: 'Введите URL вашего шлюза. Hermes Desktop определит, нужен токен или вход через браузер.',
+    installLocalTitle: 'Установить UniWork локально',
+    installLocalDesc: 'Скачайте UniWork, создайте его Python-окружение и запустите бэкенд на этом компьютере.',
+    localStartUnavailable: 'Не удалось начать локальную установку. Перезапустите UniWork Desktop и попробуйте снова.',
+    remoteSetupTitle: 'Подключиться к существующему UniWork',
+    remoteSetupDesc: 'Введите URL вашего шлюза. UniWork Desktop определит, нужен токен или вход через браузер.',
     remoteUrlTitle: 'URL шлюза',
-    remoteUrlDesc: 'Используйте базовый URL шлюза Hermes, включая https:// для удалённых.',
+    remoteUrlDesc: 'Используйте базовый URL шлюза UniWork, включая https:// для удалённых.',
     remoteUrlPlaceholder: 'https://gateway.example.com/hermes',
     probing: 'Определяем аутентификацию шлюза...',
-    probeError: 'Не удалось подключиться к этому шлюзу Hermes.',
+    probeError: 'Не удалось подключиться к этому шлюзу UniWork.',
     identityProvider: 'ваш провайдер аутентификации',
     authTitle: 'Аутентификация',
     authNeedsOauth: provider => `Сначала войдите через ${provider}, чтобы проверить этот шлюз.`,
@@ -3593,12 +3593,12 @@ export const ru = defineLocale({
     applyRemote: 'Применить и переподключиться',
     backToSetup: 'Назад',
     failedTitle: 'Установка не удалась',
-    settingUpTitle: 'Настройка Hermes Agent',
+    settingUpTitle: 'Настройка UniWork Agent',
     finishingTitle: 'Завершаем',
     failedDesc:
-      'Один из шагов установки завершился ошибкой. На Windows это может произойти, если запущена другая инстанция Hermes CLI или desktop. Остановите все работающие инстанции Hermes и повторите. Подробности — ниже или в журнале desktop.',
+      'Один из шагов установки завершился ошибкой. На Windows это может произойти, если запущена другая инстанция UniWork CLI или desktop. Остановите все работающие инстанции UniWork и повторите. Подробности — ниже или в журнале desktop.',
     activeDesc:
-      'Это одноразовая настройка. Установщик Hermes скачивает зависимости и настраивает вашу машину. При следующих запусках этот шаг будет пропущен.',
+      'Это одноразовая настройка. Установщик UniWork скачивает зависимости и настраивает вашу машину. При следующих запусках этот шаг будет пропущен.',
     progress: (completed, total) => `Выполнено ${completed} из ${total} шагов`,
     currentStage: stage => ` — сейчас: ${stage}`,
     fetchingManifest: 'Загружаем манифест установщика...',
@@ -3615,10 +3615,10 @@ export const ru = defineLocale({
     reloadRetry: 'Перезагрузить и повторить'
   },
   onboarding: {
-    headerTitle: 'Настроим для вас Hermes Agent',
+    headerTitle: 'Настроим для вас UniWork Agent',
     headerDesc: 'Подключите провайдера модели, чтобы начать общение. Большинство вариантов — в один клик.',
-    preparingInstall: 'Hermes завершает установку. Обычно это занимает меньше минуты при первом запуске.',
-    starting: 'Запускаем Hermes…',
+    preparingInstall: 'UniWork завершает установку. Обычно это занимает меньше минуты при первом запуске.',
+    starting: 'Запускаем UniWork…',
     lookingUpProviders: 'Ищем провайдеров...',
     collapse: 'Свернуть',
     otherProviders: 'Другие провайдеры',
@@ -3626,7 +3626,7 @@ export const ru = defineLocale({
     chooseLater: 'Выберу провайдера позже',
     recommended: 'Рекомендуется',
     connected: 'Подключено',
-    featuredPitch: 'Одна подписка, 300+ передовых моделей — рекомендуемый способ запускать Hermes',
+    featuredPitch: 'Одна подписка, 300+ передовых моделей — рекомендуемый способ запускать UniWork',
     fireworksPitch: 'Прямой API моделей — передовые модели на хостинге Fireworks',
     openRouterPitch: 'Один ключ, сотни моделей — надёжный вариант по умолчанию',
     apiKeyOptions: {
@@ -3644,7 +3644,7 @@ export const ru = defineLocale({
       local: {
         short: 'self-hosted',
         description:
-          'Укажите Hermes локальный или self-hosted OpenAI-совместимый endpoint (vLLM, llama.cpp, Ollama и т.д.).'
+          'Укажите UniWork локальный или self-hosted OpenAI-совместимый endpoint (vLLM, llama.cpp, Ollama и т.д.).'
       }
     },
     backToSignIn: 'Назад ко входу',
@@ -3657,7 +3657,7 @@ export const ru = defineLocale({
     update: 'Обновить',
     flowSubtitles: {
       pkce: 'Откроет браузер для входа, затем продолжит здесь',
-      device_code: 'Откроет страницу подтверждения в браузере — Hermes подключится автоматически',
+      device_code: 'Откроет страницу подтверждения в браузере — UniWork подключится автоматически',
       external: 'Войдите один раз в терминале, затем вернитесь в чат'
     },
     startingSignIn: provider => `Начинаем вход для ${provider}...`,
@@ -3668,12 +3668,12 @@ export const ru = defineLocale({
     pickDifferentProvider: 'Выбрать другого провайдера',
     signInWith: provider => `Войти через ${provider}`,
     openedBrowser: provider => `Мы открыли ${provider} в вашем браузере.`,
-    authorizeThere: 'Авторизуйте Hermes там.',
+    authorizeThere: 'Авторизуйте UniWork там.',
     copyAuthCode: 'Скопируйте код авторизации и вставьте его ниже.',
     pasteAuthCode: 'Вставьте код авторизации',
     reopenAuthPage: 'Открыть страницу авторизации снова',
     autoBrowser: provider =>
-      `Мы открыли ${provider} в вашем браузере. Авторизуйте Hermes там, и подключение произойдёт автоматически — ничего копировать и вставлять не нужно.`,
+      `Мы открыли ${provider} в вашем браузере. Авторизуйте UniWork там, и подключение произойдёт автоматически — ничего копировать и вставлять не нужно.`,
     reopenSignInPage: 'Открыть страницу входа снова',
     waitingAuthorize: 'Ждём вашей авторизации...',
     externalPending: provider =>
@@ -3780,13 +3780,13 @@ export const ru = defineLocale({
       update: 'обновление',
       updateInProgress: 'Обновление выполняется',
       commitsBehind: (count, branch) => `${count} ${RU_NOUN(count, 'коммит', 'коммита', 'коммитов')} позади ${branch}`,
-      desktopVersion: version => `Hermes Desktop v${version}`,
+      desktopVersion: version => `UniWork Desktop v${version}`,
       backendVersion: version => `Бэкенд v${version}`,
       clientLabel: version => `клиент v${version}`,
       connectionSsh: host => `SSH: ${host}`,
       connectionRemote: host => `Удалённый: ${host}`,
       connectionCloud: host => `Облако: ${host}`,
-      connectionCloudTooltip: host => `Hermes Cloud · ${host}`,
+      connectionCloudTooltip: host => `UniWork Cloud · ${host}`,
       connectionSshTooltip: host => `SSH · ${host}`,
       connectionRemoteTooltip: host => `Удалённый · ${host}`,
       backendLabel: version => `бэкенд v${version}`,
@@ -3932,7 +3932,7 @@ export const ru = defineLocale({
     binaryTitle: 'Похоже на бинарный файл',
     binaryBody: label => `Предпросмотр ${label} может показать нечитаемый текст.`,
     largeTitle: 'Этот файл большой',
-    largeBody: (label, size) => `${label} — ${size}. Hermes покажет только первые 512 КБ.`,
+    largeBody: (label, size) => `${label} — ${size}. UniWork покажет только первые 512 КБ.`,
     previewAnyway: 'Предпросмотр всё равно',
     truncated: 'Показаны первые 512 КБ.',
     noInlineTitle: 'Нет inline-предпросмотра',
@@ -4005,11 +4005,11 @@ export const ru = defineLocale({
         'Этот адрес указывает на машину, на которой работает ваш агент, а не на эту. Панель браузера загружает страницы локально, поэтому для удалённого dev-сервера нужен порт-форвардинг или доступный hostname.',
       failedToLoad: 'Не удалось загрузить предпросмотр',
       tryAgain: 'Попробовать снова',
-      restarting: 'Hermes перезапускается...',
-      askRestart: 'Попросить Hermes перезапустить сервер',
-      lookingRestart: taskId => `Hermes ищет сервер предпросмотра для перезапуска (${taskId})`,
+      restarting: 'UniWork перезапускается...',
+      askRestart: 'Попросить UniWork перезапустить сервер',
+      lookingRestart: taskId => `UniWork ищет сервер предпросмотра для перезапуска (${taskId})`,
       restartingTitle: 'Перезапуск сервера предпросмотра',
-      restartingMessage: 'Hermes работает в фоне. Следите за прогрессом в консоли предпросмотра.',
+      restartingMessage: 'UniWork работает в фоне. Следите за прогрессом в консоли предпросмотра.',
       startRestartFailed: message => `Не удалось запустить перезапуск сервера: ${message}`,
       restartFailed: 'Перезапуск сервера не удался',
       hideConsole: 'Скрыть консоль предпросмотра',
@@ -4021,16 +4021,16 @@ export const ru = defineLocale({
       reload: 'Перезагрузить страницу',
       address: 'Адрес',
       addressPlaceholder: 'Введите адрес',
-      blankPageBody: 'Введите адрес выше, чтобы просматривать, или попросите Hermes открыть страницу.',
-      finishedRestarting: message => `Hermes завершил перезапуск сервера предпросмотра${message ? `: ${message}` : ''}`,
+      blankPageBody: 'Введите адрес выше, чтобы просматривать, или попросите UniWork открыть страницу.',
+      finishedRestarting: message => `UniWork завершил перезапуск сервера предпросмотра${message ? `: ${message}` : ''}`,
       failedRestarting: message => `Перезапуск сервера не удался: ${message}`,
       unknownError: 'неизвестная ошибка',
       restartedTitle: 'Сервер предпросмотра перезапущен',
       reloadingNow: 'Перезагружаем предпросмотр.',
       restartFailedTitle: 'Перезапуск предпросмотра не удался',
-      restartFailedMessage: 'Hermes не смог перезапустить сервер.',
+      restartFailedMessage: 'UniWork не смог перезапустить сервер.',
       stillWorking:
-        'Hermes всё ещё работает, но результата перезапуска пока нет. Команда сервера может выполняться в foreground.',
+        'UniWork всё ещё работает, но результата перезапуска пока нет. Команда сервера может выполняться в foreground.',
       workspaceReloading: 'Рабочее пространство изменилось, перезагружаем предпросмотр',
       fileChanged: url => `Файл изменился, перезагружаем предпросмотр: ${url}`,
       filesChanged: (count, url) =>
@@ -4046,12 +4046,12 @@ export const ru = defineLocale({
   },
   interfaceMode: {
     title: 'Режим интерфейса',
-    hint: 'Меняет то, что показано, а не то, что умеет Hermes.',
+    hint: 'Меняет то, что показано, а не то, что умеет UniWork.',
     sessionNote:
       'Задано простым режимом. Изменение здесь действует до конца сеанса; переключитесь в расширенный, чтобы сделать его своим.',
     simple: {
       label: 'Простой',
-      description: 'Для общения с Hermes. Боковая панель и чат; без терминала, файлов и панелей diff.'
+      description: 'Для общения с UniWork. Боковая панель и чат; без терминала, файлов и панелей diff.'
     },
     advanced: {
       label: 'Расширенный',
@@ -4136,7 +4136,7 @@ export const ru = defineLocale({
         'MaaS отклонил учётные данные модели. Выйдите и войдите снова, чтобы заново получить тариф. Если ошибка повторится, проверьте учётные данные и тариф в MaaS.',
       loadingSession: 'Загрузка сеанса',
       showEarlier: 'Показать ранние сообщения',
-      loadingResponse: 'Hermes загружает ответ',
+      loadingResponse: 'UniWork загружает ответ',
       resumeWhenBackgroundDone: count =>
         count === 1
           ? 'Продолжится, когда фоновая задача завершится'
@@ -4178,7 +4178,7 @@ export const ru = defineLocale({
       attachingFile: 'Прикрепление…'
     },
     approval: {
-      gatewayDisconnected: 'Шлюз Hermes не подключён',
+      gatewayDisconnected: 'Шлюз UniWork не подключён',
       sendFailed: 'Не удалось отправить ответ на подтверждение',
       run: 'Выполнить',
       command: 'Команда',
@@ -4189,12 +4189,12 @@ export const ru = defineLocale({
       reject: 'Отклонить',
       alwaysTitle: 'Всегда разрешать эту команду?',
       alwaysDescription: pattern =>
-        `Это добавит паттерн «${pattern}» в ваш постоянный список разрешений (~/.hermes/config.yaml). Hermes больше не будет спрашивать о подобных командах — ни в этом сеансе, ни в будущем.`,
+        `Это добавит паттерн «${pattern}» в ваш постоянный список разрешений (~/.hermes/config.yaml). UniWork больше не будет спрашивать о подобных командах — ни в этом сеансе, ни в будущем.`,
       alwaysAllow: 'Всегда разрешать'
     },
     clarify: {
       notReady: 'Запрос уточнения ещё не готов',
-      gatewayDisconnected: 'Шлюз Hermes не подключён',
+      gatewayDisconnected: 'Шлюз UniWork не подключён',
       sendFailed: 'Не удалось отправить ответ на уточнение',
       loadingQuestion: 'Загрузка вопроса…',
       other: 'Другое (введите ответ)',
@@ -4249,7 +4249,7 @@ export const ru = defineLocale({
       envRequired: 'Сначала заполните обязательные учётные данные',
       sendFailed: 'Не удалось отправить ответ на настройку MCP',
       reloadFailed: 'Сервер сохранён, но перезагрузка MCP-инструментов не удалась — они загрузятся в следующем сеансе',
-      gatewayDisconnected: 'Шлюз Hermes не подключён'
+      gatewayDisconnected: 'Шлюз UniWork не подключён'
     },
     tool: {
       copyCode: 'Копировать код',
@@ -4368,7 +4368,7 @@ export const ru = defineLocale({
     }
   },
   prompts: {
-    gatewayDisconnected: 'Шлюз Hermes не подключён',
+    gatewayDisconnected: 'Шлюз UniWork не подключён',
     sudoSendFailed: 'Не удалось отправить пароль sudo',
     secretSendFailed: 'Не удалось отправить секрет',
     sudoTitle: 'Пароль администратора',
@@ -4376,10 +4376,10 @@ export const ru = defineLocale({
       'Проверьте команду перед вводом пароля sudo. Пароль отправляется агенту, который её выполняет, и кэшируется на время сеанса.',
     sudoCommandUnavailable: 'Агент не предоставил команду. Отмените запрос, если не можете проверить её в разговоре.',
     sudoInstallDesc:
-      'Hermes нужен ваш пароль sudo, чтобы установить пакеты Bot Screen (TigerVNC + Xfce) на хосте шлюза. Он отправляется только на этот хост.',
+      'UniWork нужен ваш пароль sudo, чтобы установить пакеты Bot Screen (TigerVNC + Xfce) на хосте шлюза. Он отправляется только на этот хост.',
     sudoPlaceholder: 'пароль sudo',
     secretTitle: 'Требуется секрет',
-    secretDesc: 'Hermes нужны учётные данные, чтобы продолжить.',
+    secretDesc: 'UniWork нужны учётные данные, чтобы продолжить.',
     secretPlaceholder: 'значение секрета'
   },
   desktop: {
@@ -4446,8 +4446,8 @@ export const ru = defineLocale({
     sessionExportFailed: 'Не удалось экспортировать сеанс',
     imageSaved: 'Изображение сохранено',
     downloadStarted: 'Загрузка началась',
-    restartToUseSaveImage: 'Перезапустите Hermes Desktop, чтобы использовать «Сохранить изображение».',
-    restartToSaveImages: 'Перезапустите Hermes Desktop, чтобы сохранять изображения',
+    restartToUseSaveImage: 'Перезапустите UniWork Desktop, чтобы использовать «Сохранить изображение».',
+    restartToSaveImages: 'Перезапустите UniWork Desktop, чтобы сохранять изображения',
     imageDownloadFailed: 'Загрузка изображения не удалась',
     openImage: 'Открыть изображение',
     openAudioFile: 'Открыть аудиофайл',
