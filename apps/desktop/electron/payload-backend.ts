@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import path from 'node:path'
 
 import { INSTALL_STAMP, type InstallStamp, type PayloadRuntime } from './install-stamp'
+import { packagedResourceRoot } from './universal-resources'
 
 export interface PayloadInfo extends PayloadRuntime {
   root: string
@@ -20,7 +21,7 @@ export function bundledPayload(
   // The builder validates these paths before baking the stamp. There is no
   // discovery, filesystem validation or alternative payload at runtime.
   const runtime = stamp.runtime!
-  const root = path.join(resourcesPath, 'agent-payload')
+  const root = packagedResourceRoot(resourcesPath, 'agent-payload', stamp)
 
   const commands = Object.fromEntries(
     Object.entries(runtime.commands).map(([name, relative]) => [name, path.join(root, relative)])

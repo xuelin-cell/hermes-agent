@@ -271,6 +271,7 @@ export const en: Translations = {
     phoneError: 'Enter an 11-digit phone number starting with 1.',
     captchaError: 'Enter the image code (up to 6 characters).',
     smsError: 'Enter the 6-digit SMS code.',
+    storageError: 'Could not securely save your sign-in. Check local storage permissions and try again.',
     requestError: 'Sign-in failed. Please try again.'
   },
   externalOpenFailed: {
@@ -6013,6 +6014,7 @@ export const en: Translations = {
       copyPath: 'Copy path',
       failedCalls: (count: number) => `${count} tool call${count === 1 ? '' : 's'} failed`,
       skillActivity: {
+        waiting: 'Execution finished, waiting for other tools',
         loading: 'Loading skill',
         loaded: 'Loaded skill',
         loadFailed: 'Failed to load skill',

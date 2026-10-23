@@ -108,6 +108,7 @@ export const ru = defineLocale({
     phoneError: 'Введите номер из 11 цифр, начинающийся с 1.',
     captchaError: 'Введите код с картинки (до 6 символов).',
     smsError: 'Введите 6-значный код из SMS.',
+    storageError: 'Не удалось безопасно сохранить данные входа. Проверьте разрешения локального хранилища.',
     requestError: 'Не удалось войти. Повторите попытку.'
   },
   catalog: {
@@ -4263,6 +4264,7 @@ export const ru = defineLocale({
       copyPath: 'Копировать путь',
       failedCalls: (count: number) => `Вызовов с ошибкой: ${count}`,
       skillActivity: {
+        waiting: 'Выполнение завершено, ожидание других инструментов',
         loading: 'Загружается скилл',
         loaded: 'Загружен скилл',
         loadFailed: 'Не удалось загрузить скилл',

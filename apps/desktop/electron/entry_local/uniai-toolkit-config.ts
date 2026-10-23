@@ -54,7 +54,30 @@ function hideBuiltinVision(doc: Document): void {
   doc.setIn(['agent', 'disabled_toolsets'], doc.createNode(single ? [single, 'vision'] : ['vision']))
 }
 
-/** 只为翻译与播客留足 MCP 的 600 秒等待期；保留用户已配置的单工具上限。 */
+/** 元景工具箱整体的 MCP 等待上限，取单工具里最长的翻译预算（对齐 UniWork）。 */
+const SERVER_TIMEOUT = 1000
+
+/**
+ * 耗时工具的外层等待上限：UniWork 的单工具预算（翻译 1000、播客 900、视频 360）再加 30 秒，
+ * 让工具箱自己的超时先返回。其他元景工具不单列，沿用 Hermes 的默认上限。
+ */
+const TOOL_TIMEOUTS: Record<string, number> = {
+  doc_translate: 1030,
+  ai_podcast_generate: 930,
+  txt2vid_generate: 390,
+  img2vid_generate: 390
+}
+
+/** 早先版本给翻译和播客写入的默认值；仍是这个值说明用户没改过，升级为新预算。 */
+const PREVIOUS_TOOL_TIMEOUT = 630
+const PREVIOUS_TOOLS = new Set(['doc_translate', 'ai_podcast_generate'])
+
+/** 判断 YAML 读出的数值（开启了 intAsBigInt）是否等于给定整数。 */
+function isNumber(value: unknown, expected: number): boolean {
+  return value === expected || value === BigInt(expected)
+}
+
+/** 为耗时元景工具写入外层等待上限；保留用户已配置的单工具上限，只升级旧版默认值。 */
 function configureBackgroundTimeouts(doc: Document): void {
   const keys = ['timeouts', 'tools', 'sequential_calls']
 
@@ -74,11 +97,12 @@ function configureBackgroundTimeouts(doc: Document): void {
     }
   }
 
-  for (const name of ['doc_translate', 'ai_podcast_generate']) {
+  for (const [name, seconds] of Object.entries(TOOL_TIMEOUTS)) {
     const key = [...keys, `mcp__UniAI_Toolkit__${name}`]
+    const upgrade = PREVIOUS_TOOLS.has(name) && isNumber(doc.getIn(key), PREVIOUS_TOOL_TIMEOUT)
 
-    if (!doc.hasIn(key)) {
-      doc.setIn(key, 630)
+    if (!doc.hasIn(key) || upgrade) {
+      doc.setIn(key, seconds)
     }
   }
 }
@@ -152,8 +176,8 @@ export function updateUniaiToolkitConfig(home: string, status: FetchedPlan['stat
       doc.setIn(['mcp_servers', SERVER, 'url'], SERVER_URL)
     }
 
-    if (timeout !== 600 && timeout !== 600n) {
-      doc.setIn(['mcp_servers', SERVER, 'timeout'], 600)
+    if (!isNumber(timeout, SERVER_TIMEOUT)) {
+      doc.setIn(['mcp_servers', SERVER, 'timeout'], SERVER_TIMEOUT)
     }
   }
 

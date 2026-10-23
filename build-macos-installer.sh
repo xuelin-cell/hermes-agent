@@ -8,7 +8,7 @@ usage() {
 用法：./build-macos-installer.sh [选项]
   --proxy URL           本次构建使用的 HTTP/HTTPS 代理
   --compression LEVEL   store / normal / maximum，默认 normal
-  --signed              使用现有 Apple 签名配置；默认未签名测试包
+  --signed              使用现有 Apple 签名配置；默认临时签名内部测试包
   --dry-run             检查环境并显示构建命令，不安装依赖或构建
   -h, --help            显示帮助
 
@@ -77,11 +77,11 @@ builder_args=("-c.compression=$compression" --publish never)
 if [[ "$signed" == true ]]; then
     builder_args+=('-c.forceCodeSigning=true')
 else
-    # 未签名模式不读取证书或触发 Apple 公证；只影响本脚本及其子进程。
+    # 内部测试不读取证书或触发 Apple 公证；只影响本脚本及其子进程。
     export CSC_IDENTITY_AUTO_DISCOVERY=false
     unset CSC_LINK CSC_KEY_PASSWORD CSC_NAME APPLE_NOTARY_PROFILE APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER
-    # electron-builder 27 将签名配置合并到 mac.sign；null 关闭整个签名入口。
-    builder_args+=('-c.mac.sign=null')
+    # 使用固定的临时签名配置，签署内置组件并验证整个应用。
+    builder_args+=('--internal-test-signing')
 fi
 command_args=("$python" scripts/bundles/desktop.py --commit "$commit" --variant bundled
     --work "$work_root" --cache "$cache_root" -- "${builder_args[@]}")

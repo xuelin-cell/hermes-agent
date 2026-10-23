@@ -273,7 +273,12 @@ export class LoginSession {
         return { ok: false }
       }
 
-      this.credentials.save(identity)
+      try {
+        this.credentials.save(identity)
+      } catch {
+        return { ok: false, reason: 'storage' }
+      }
+
       this.identity = identity
       const payload = isRecord(body) && body.data !== undefined ? body.data : body
       this.binding = parseUniAgentGate(isRecord(payload) ? payload.plan : undefined)

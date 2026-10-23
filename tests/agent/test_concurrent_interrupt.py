@@ -96,6 +96,74 @@ class _FakeAssistantMsg:
         self.tool_calls = tool_calls
 
 
+def test_execution_finished_does_not_commit_before_parallel_sibling(monkeypatch):
+    """单工具结束及时反馈，但慢工具返回前不得提交结果或宣布最终完成。"""
+    from tui_gateway import server
+
+    agent = _make_agent(monkeypatch)
+    release = threading.Event()
+    observed = threading.Event()
+    messages = []
+    progress = []
+    completed = []
+    agent._tool_guardrails = MagicMock()
+    agent._tool_guardrails.before_call.return_value.allows_execution = True
+    agent._append_guardrail_observation = lambda name, args, result, **kw: result
+    agent._record_file_mutation_result = MagicMock()
+    agent._tool_result_content_for_active_model = lambda name, result: result
+    agent._subdirectory_hints.check_tool_call.return_value = ""
+    agent._flush_messages_to_session_db = MagicMock(return_value=True)
+    monkeypatch.setitem(server._sessions, "progress-test", {
+        "tool_started_at": {"skill": time.time(), "search": time.time()},
+    })
+    monkeypatch.setattr(server, "_tool_progress_enabled", lambda sid: True)
+
+    def emit(event, sid, payload):
+        """通过真实网关投影确认客户端能收到不含结果的状态事件。"""
+        if event == "tool.execution_finished" and payload["tool_id"] == "skill":
+            progress.append(payload)
+            observed.set()
+
+    monkeypatch.setattr(server, "_emit", emit)
+
+    def invoke(name, *args, **kwargs):
+        """用事件控制搜索结束，避免依赖机器执行速度。"""
+        if name == "web_search":
+            assert release.wait(10)
+        return '{"ok": true}'
+
+    def on_progress(event, name, preview=None, *args, **kwargs):
+        """记录技能的执行结束通知，供主测试线程同步。"""
+        if event == "tool.execution_finished" and name == "skill_view":
+            server._on_tool_progress("progress-test", event, name, preview, **kwargs)
+
+    agent._invoke_tool.side_effect = invoke
+    agent.tool_progress_callback = on_progress
+    agent.tool_complete_callback = lambda *args: completed.append(args)
+    calls = [_FakeToolCall("skill_view", call_id="skill"), _FakeToolCall("web_search", call_id="search")]
+    from agent.tool_executor import execute_tool_calls_concurrent
+    thread = threading.Thread(
+        target=execute_tool_calls_concurrent,
+        args=(agent, _FakeAssistantMsg(calls), messages, "test"), kwargs={"finalize": False},
+    )
+    thread.start()
+    try:
+        assert observed.wait(5), "技能结束后不应等待同批搜索才能反馈"
+        assert thread.is_alive()
+        assert messages == []
+        assert completed == []
+        agent._flush_messages_to_session_db.assert_not_called()
+        assert progress[0]["tool_id"] == "skill"
+        assert "result" not in progress[0]
+    finally:
+        release.set()
+        thread.join(10)
+    assert not thread.is_alive()
+    assert [message["tool_call_id"] for message in messages] == ["skill", "search"]
+    assert len(completed) == 2
+    assert agent._flush_messages_to_session_db.call_count == 2
+
+
 
 
 def test_concurrent_preflight_interrupt_skips_all(monkeypatch):

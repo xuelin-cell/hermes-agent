@@ -90,6 +90,7 @@ export const deOverrides = {
     phoneError: 'Geben Sie eine elfstellige Nummer ein, die mit 1 beginnt.',
     captchaError: 'Geben Sie den Bildcode ein (maximal 6 Zeichen).',
     smsError: 'Geben Sie den sechsstelligen SMS-Code ein.',
+    storageError: 'Die Anmeldung konnte nicht sicher gespeichert werden. Prüfen Sie die lokalen Speicherberechtigungen.',
     requestError: 'Anmeldung fehlgeschlagen. Bitte erneut versuchen.'
   },
   intro: introDe,
@@ -5937,6 +5938,7 @@ export const deOverrides = {
       copyPath: 'Pfad kopieren',
       failedCalls: count => `${count} Tool-Aufruf${count === 1 ? '' : 'e'} fehlgeschlagen`,
       skillActivity: {
+        waiting: 'Ausführung beendet, warte auf andere Werkzeuge',
         loading: 'Skill wird geladen',
         loaded: 'Skill geladen',
         loadFailed: 'Skill konnte nicht geladen werden',

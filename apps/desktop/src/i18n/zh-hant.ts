@@ -355,6 +355,7 @@ export const zhHant = defineLocale({
     phoneError: '請輸入以 1 開頭的 11 位手機號碼。',
     captchaError: '請輸入圖片驗證碼（最多 6 位）。',
     smsError: '請輸入 6 位數字簡訊驗證碼。',
+    storageError: '無法安全儲存登入記錄，請檢查本機儲存權限後重試。',
     requestError: '登入失敗，請重試。'
   },
   externalOpenFailed: {
@@ -4601,6 +4602,7 @@ export const zhHant = defineLocale({
       copyPath: '複製路徑',
       failedCalls: (count: number) => `${count} 次工具呼叫失敗`,
       skillActivity: {
+        waiting: '執行已結束，等待其他工具',
         loading: '正在載入技能',
         loaded: '已載入技能',
         loadFailed: '技能載入失敗',

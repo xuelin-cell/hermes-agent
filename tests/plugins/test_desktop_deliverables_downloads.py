@@ -24,6 +24,9 @@ def call(plugin, name, result, **kwargs):
             """与原生上下文一样保存具名钩子。"""
             hooks[name] = handler
 
+        def register_middleware(self, kind, handler):
+            """这里只测下载，上传中间件不用。"""
+
     plugin.register(Context())
     handler = hooks.get("transform_tool_result")
     return (

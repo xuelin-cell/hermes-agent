@@ -20,7 +20,7 @@ it('按套餐新建和更新内置记录，保留停用、工具过滤和其他�
     const created = parse(fs.readFileSync(file, 'utf8')).mcp_servers['UniAI-Toolkit']
     expect(created).toEqual({
       url: `https://maas.ai-yuanjing.com/app/mcp-server/mcp?key=\${${MAAS_MODEL_KEY_ENV}}&client_id=UniWork`,
-      timeout: 600
+      timeout: 1000
     })
 
     const original =
@@ -122,7 +122,7 @@ it('有套餐时隐藏 Hermes 自带的看图工具组，保留用户已停用�
   }
 })
 
-it('只补充翻译和播客的外层等待预算，保留其他工具和用户覆盖，重复更新不写盘', () => {
+it('为翻译、播客和视频补充外层等待预算，保留其他工具和用户覆盖，重复更新不写盘', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-background-timeouts-'))
   const file = path.join(home, 'config.yaml')
 
@@ -135,7 +135,9 @@ it('只补充翻译和播客的外层等待预算，保留其他工具和用户�
       sequential_calls: {
         custom: 42,
         mcp__UniAI_Toolkit__doc_translate: 720,
-        mcp__UniAI_Toolkit__ai_podcast_generate: 630
+        mcp__UniAI_Toolkit__ai_podcast_generate: 930,
+        mcp__UniAI_Toolkit__txt2vid_generate: 390,
+        mcp__UniAI_Toolkit__img2vid_generate: 390
       }
     })
     updateUniaiToolkitConfig(home, 'available')
@@ -143,6 +145,33 @@ it('只补充翻译和播客的外层等待预算，保留其他工具和用户�
     fs.writeFileSync(file, 'base: &t {tools: {sequential_call: 90}}\ntimeouts: *t\n')
     updateUniaiToolkitConfig(home, 'available')
     expect(parse(fs.readFileSync(file, 'utf8')).timeouts).toEqual({ tools: { sequential_call: 90 } })
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+it('旧版写入的 630 秒和 600 秒升级为对齐 UniWork 的预算，视频上用户写的 630 保留', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-background-upgrade-'))
+  const file = path.join(home, 'config.yaml')
+
+  try {
+    fs.writeFileSync(
+      file,
+      'mcp_servers:\n  UniAI-Toolkit:\n    url: https://old.invalid\n    timeout: 600\n' +
+        'timeouts:\n  tools:\n    sequential_calls:\n' +
+        '      mcp__UniAI_Toolkit__doc_translate: 630\n' +
+        '      mcp__UniAI_Toolkit__ai_podcast_generate: 630\n' +
+        '      mcp__UniAI_Toolkit__txt2vid_generate: 630\n'
+    )
+    updateUniaiToolkitConfig(home, 'available')
+    const config = parse(fs.readFileSync(file, 'utf8'))
+    expect(config.mcp_servers['UniAI-Toolkit'].timeout).toBe(1000)
+    expect(config.timeouts.tools.sequential_calls).toEqual({
+      mcp__UniAI_Toolkit__doc_translate: 1030,
+      mcp__UniAI_Toolkit__ai_podcast_generate: 930,
+      mcp__UniAI_Toolkit__txt2vid_generate: 630,
+      mcp__UniAI_Toolkit__img2vid_generate: 390
+    })
   } finally {
     fs.rmSync(home, { recursive: true, force: true })
   }

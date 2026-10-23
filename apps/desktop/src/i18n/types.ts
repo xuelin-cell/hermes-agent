@@ -280,6 +280,7 @@ export interface Translations {
     captchaPlaceholder: string
     smsPlaceholder: string
     smsError: string
+    storageError: string
     requestError: string
   }
   externalOpenFailed: {
@@ -4899,6 +4900,7 @@ export interface Translations {
       copyPath: string
       failedCalls: (count: number) => string
       skillActivity: {
+        waiting: string
         loading: string
         loaded: string
         loadFailed: string

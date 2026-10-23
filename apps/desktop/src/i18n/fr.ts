@@ -89,6 +89,7 @@ export const frOverrides = {
     phoneError: 'Saisissez un numéro à 11 chiffres commençant par 1.',
     captchaError: 'Saisissez le code de l’image (6 caractères maximum).',
     smsError: 'Saisissez le code SMS à 6 chiffres.',
+    storageError: 'Impossible de conserver la connexion en toute sécurité. Vérifiez les autorisations de stockage local.',
     requestError: 'Échec de la connexion. Réessayez.'
   },
   intro: introFr,
@@ -5948,6 +5949,7 @@ export const frOverrides = {
       copyPath: 'Copier le chemin',
       failedCalls: count => `${count} appel${count === 1 ? '' : 's'} d'outil en échec`,
       skillActivity: {
+        waiting: 'Exécution terminée, en attente des autres outils',
         loading: 'Chargement du skill',
         loaded: 'Skill chargé',
         loadFailed: 'Échec du chargement du skill',

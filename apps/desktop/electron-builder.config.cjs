@@ -10,7 +10,6 @@
 // @ts-check
 'use strict'
 
-const fs = require('node:fs')
 const path = require('node:path')
 const feedContract = require('./update-feed.cjs')
 const { createMacSigner } = require('./scripts/mac-sign.mjs')
@@ -183,21 +182,7 @@ module.exports = {
       NSAppleEventsUsageDescription: `${displayName} uses Apple Events to automate apps you explicitly ask it to control.`
     },
     target: ['dmg', 'zip'],
-    sign: createMacSigner({
-      entitlements: path.join(__dirname, 'electron/entitlements.mac.plist'),
-      entitlementsInherit: path.join(__dirname, 'electron/entitlements.mac.inherit.plist'),
-      hardenedRuntime: true,
-      ignore: (/** @type {string} */ file) => {
-        try {
-          if (fs.lstatSync(file).isDirectory()) {
-            return false
-          }
-          return !isMachO(file)
-        } catch {
-          return true
-        }
-      }
-    })
+    sign: createMacSigner(require('./scripts/mac-sign-policy.cjs'))
   },
   dmg: {
     // Avoid the failing optional APFS shrink pass; keep compressed conversion.
@@ -315,28 +300,6 @@ if (channelRequest) {
 // signature is all Windows install validation checks; inner Authenticode
 // covers SmartScreen/WDAC tree scans. See batch-sign-binaries.mjs for the
 // ordering contract.
-const MACHO_MAGICS = new Set([
-  0xfeedface,
-  0xcefaedfe,
-  0xfeedfacf,
-  0xcffaedfe,
-  0xcafebabe,
-  0xbebafeca
-])
-
-/** @param {string} file */
-function isMachO(file) {
-  const buf = Buffer.alloc(4)
-  const fd = fs.openSync(file, 'r')
-  try {
-    if (fs.readSync(fd, buf, 0, 4, 0) !== 4) {
-      return false
-    }
-  } finally {
-    fs.closeSync(fd)
-  }
-  return MACHO_MAGICS.has(buf.readUInt32BE(0))
-}
 
 function windowsSigning() {
   if (!process.env.AZURE_SIGN_ENDPOINT || !process.env.AZURE_CLIENT_ID) {

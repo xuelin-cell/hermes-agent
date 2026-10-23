@@ -25,7 +25,6 @@ import {
   nativeTheme,
   powerMonitor,
   powerSaveBlocker,
-  safeStorage,
   screen,
   session,
   shell,
@@ -45,6 +44,7 @@ import {
 } from './api-transport'
 import { appIconCandidates, resolveAppIcon, shouldOverrideDockIcon } from './app-icon'
 import { stageAppInstallerFile } from './app-installer-file'
+import { appSecretStorage as safeStorage } from './app-secret-storage'
 import {
   appVersionInfo,
   type AppVersionInfo,
@@ -553,6 +553,7 @@ import {
   windowOpacityFor,
   windowOpacityOptions
 } from './translucency'
+import { packagedResourceRoot } from './universal-resources'
 import { waitForUpdateClearance } from './update-gate'
 import { readLiveUpdateMarker, updateHandoffConflict, writeUpdateMarker } from './update-marker'
 import {
@@ -687,14 +688,14 @@ const ACCOUNT_OFFICE_PREVIEW = createOfficePreviewService(ACCOUNT_RUNTIME.deskto
 const ACCOUNT_DRIVE_MCP = new CloudDriveMcp(ACCOUNT_DRIVE_CLIENT, ACCOUNT_RUNTIME.home, ACCOUNT_RUNTIME.workspace)
 const ACCOUNT_CONNECTORS = new ConnectorManager({
   home: ACCOUNT_RUNTIME.home,
-  runtimeDirectory: IS_PACKAGED ? path.join(process.resourcesPath, 'open-connector') : path.join(APP_ROOT, 'services', 'open-connector'),
+  runtimeDirectory: IS_PACKAGED ? packagedResourceRoot(process.resourcesPath, 'open-connector') : path.join(APP_ROOT, 'services', 'open-connector'),
   executable: process.execPath,
   active: () => currentDesktopLocalContext() === ACCOUNT_RUNTIME,
   identity: currentDesktopIdentity,
   cloudState: new AgentMailCloudStateClient(currentDesktopIdentity, electronNet.fetch),
   encrypt: value => {
     if (!safeStorage.isEncryptionAvailable() || (process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text')) {
-      throw new Error('请先解锁系统密钥环，再连接服务。')
+      throw new Error('请检查本地凭据存储权限，再连接服务。')
     }
     return safeStorage.encryptString(value)
   },
@@ -2625,7 +2626,7 @@ async function waitForUpdateToFinish() {
 }
 
 function unpackedPathFor(filePath) {
-  return filePath.replace(/app\.asar(?=$|[\\/])/, 'app.asar.unpacked')
+  return filePath.replace(/app(?:-(?:arm64|x64))?\.asar(?=$|[\\/])/, '$&.unpacked')
 }
 
 function findOnPath(command) {
@@ -4561,7 +4562,7 @@ function resolveWebDist() {
   const fallback = path.join(APP_ROOT, 'dist')
 
   // existsSync, not directoryExists: a stat inside app.asar constructs the deprecated fs.Stats (#96857).
-  if (IS_PACKAGED && /app\.asar(?=$|[\\/])/.test(fallback) && !fs.existsSync(fallback)) {
+  if (IS_PACKAGED && /app(?:-(?:arm64|x64))?\.asar(?=$|[\\/])/.test(fallback) && !fs.existsSync(fallback)) {
     rememberLog(
       `[web-dist] dashboard frontend dir resolved to an asar-internal path that ` +
         `is not a real directory: ${fallback}. Static routes will 404. ` +

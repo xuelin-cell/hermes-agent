@@ -84,6 +84,7 @@ export const ar = defineLocale({
     phoneError: 'أدخل رقم هاتف من 11 رقمًا يبدأ بالرقم 1.',
     captchaError: 'أدخل رمز الصورة (6 أحرف كحد أقصى).',
     smsError: 'أدخل رمز الرسالة النصية المكوّن من 6 أرقام.',
+    storageError: 'تعذر حفظ بيانات تسجيل الدخول بأمان. تحقق من أذونات التخزين المحلي.',
     requestError: 'فشل تسجيل الدخول. حاول مجددًا.'
   },
   externalOpenFailed: {
@@ -3524,6 +3525,7 @@ export const ar = defineLocale({
       copyPath: 'نسخ المسار',
       failedCalls: (count: number) => `عدد استدعاءات الأدوات الفاشلة: ${count}`,
       skillActivity: {
+        waiting: 'انتهى التنفيذ، بانتظار الأدوات الأخرى',
         loading: 'جارٍ تحميل المهارة',
         loaded: 'تم تحميل المهارة',
         loadFailed: 'تعذر تحميل المهارة',

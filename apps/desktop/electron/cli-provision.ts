@@ -82,13 +82,18 @@ export function provisionCliLinks(
 
       const destination = io.readlinkSync(target)
       const bin = path.dirname(destination)
+      const payload = path.dirname(bin)
+
+      // 同时认领原生包和 Universal 架构目录下由本应用创建的 CLI 链接。
+      const bundledParent = path.basename(payload) === 'agent-payload' ||
+        (/^darwin-(?:arm64|x64)$/.test(path.basename(payload)) && path.basename(path.dirname(payload)) === 'agent-payload')
 
       // Only bundled CLI links have this absolute destination shape.
       if (
         !path.isAbsolute(destination) ||
         path.basename(destination) !== name ||
         path.basename(bin) !== 'bin' ||
-        path.basename(path.dirname(bin)) !== 'agent-payload'
+        !bundledParent
       ) {
         continue
       }
