@@ -24,11 +24,11 @@ _GENERATOR_LEAVES = frozenset({media_slot.UNIAI_IMAGE, media_slot.DEFAULT_IMAGE_
 
 
 def is_ppt_skill(tool_name: str, args: Any) -> bool:
-    """这次调用是不是在打开 PPT 套件里的技能（如 pptx--pptx、ppt-writer--create-ppt）。"""
+    """识别 PPT 套件技能的声明名或明确路径，路径转换后仍保留配图规则。"""
     if tool_name != "skill_view" or not isinstance(args, dict):
         return False
     name = str(args.get("name") or args.get("skill") or "")
-    return any(name.startswith(f"{kit}--") for kit in PPT_KITS)
+    return any(name == f"kits/{kit}" or name.startswith((f"{kit}--", f"kits/{kit}/")) for kit in PPT_KITS)
 
 
 def _is_expert_home() -> bool:
