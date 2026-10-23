@@ -4900,6 +4900,7 @@ export interface Translations {
       copyPath: string
       failedCalls: (count: number) => string
       skillActivity: {
+        waiting: string
         loading: string
         loaded: string
         loadFailed: string

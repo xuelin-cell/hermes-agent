@@ -4264,6 +4264,7 @@ export const ru = defineLocale({
       copyPath: 'Копировать путь',
       failedCalls: (count: number) => `Вызовов с ошибкой: ${count}`,
       skillActivity: {
+        waiting: 'Выполнение завершено, ожидание других инструментов',
         loading: 'Загружается скилл',
         loaded: 'Загружен скилл',
         loadFailed: 'Не удалось загрузить скилл',

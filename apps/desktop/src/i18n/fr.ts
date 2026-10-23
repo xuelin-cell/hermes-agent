@@ -5949,6 +5949,7 @@ export const frOverrides = {
       copyPath: 'Copier le chemin',
       failedCalls: count => `${count} appel${count === 1 ? '' : 's'} d'outil en échec`,
       skillActivity: {
+        waiting: 'Exécution terminée, en attente des autres outils',
         loading: 'Chargement du skill',
         loaded: 'Skill chargé',
         loadFailed: 'Échec du chargement du skill',

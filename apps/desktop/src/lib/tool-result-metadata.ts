@@ -1,6 +1,8 @@
 /** Gateway display hints are not the tool's result. Keep them off the raw
  * payload so summaries cannot overwrite evidence, including false/null/"". */
 export interface ToolResultMetadata {
+  /** 执行返回的时间，只供状态展示，不是结果已保存的凭证。 */
+  execution_finished_at?: number
   duration_s?: number
   error?: string | boolean
   inline_diff?: string

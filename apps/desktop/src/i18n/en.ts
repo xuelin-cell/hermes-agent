@@ -6014,6 +6014,7 @@ export const en: Translations = {
       copyPath: 'Copy path',
       failedCalls: (count: number) => `${count} tool call${count === 1 ? '' : 's'} failed`,
       skillActivity: {
+        waiting: 'Execution finished, waiting for other tools',
         loading: 'Loading skill',
         loaded: 'Loaded skill',
         loadFailed: 'Failed to load skill',

@@ -5927,6 +5927,7 @@ export const esOverrides = {
       failedCalls: (count: number) =>
         `${count} ${count === 1 ? 'llamada a herramienta falló' : 'llamadas a herramientas fallaron'}`,
       skillActivity: {
+        waiting: 'Ejecución terminada, esperando otras herramientas',
         loading: 'Cargando skill',
         loaded: 'Skill cargada',
         loadFailed: 'No se pudo cargar la skill',

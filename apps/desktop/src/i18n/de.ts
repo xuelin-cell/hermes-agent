@@ -5938,6 +5938,7 @@ export const deOverrides = {
       copyPath: 'Pfad kopieren',
       failedCalls: count => `${count} Tool-Aufruf${count === 1 ? '' : 'e'} fehlgeschlagen`,
       skillActivity: {
+        waiting: 'Ausführung beendet, warte auf andere Werkzeuge',
         loading: 'Skill wird geladen',
         loaded: 'Skill geladen',
         loadFailed: 'Skill konnte nicht geladen werden',

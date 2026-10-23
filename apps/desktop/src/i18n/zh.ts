@@ -5568,6 +5568,7 @@ export const zh = defineLocale({
       copyPath: '复制路径',
       failedCalls: (count: number) => `${count} 次工具调用失败`,
       skillActivity: {
+        waiting: '执行已结束，等待其他工具',
         loading: '正在加载技能',
         loaded: '已加载技能',
         loadFailed: '技能加载失败',

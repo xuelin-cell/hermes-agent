@@ -4102,6 +4102,7 @@ export const ja = defineLocale({
       copyPath: 'パスをコピー',
       failedCalls: (count: number) => `失敗したツール呼び出し: ${count}`,
       skillActivity: {
+        waiting: '実行終了、他のツールを待機中',
         loading: 'スキルを読み込み中',
         loaded: 'スキルを読み込みました',
         loadFailed: 'スキルの読み込みに失敗しました',

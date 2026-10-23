@@ -4602,6 +4602,7 @@ export const zhHant = defineLocale({
       copyPath: '複製路徑',
       failedCalls: (count: number) => `${count} 次工具呼叫失敗`,
       skillActivity: {
+        waiting: '執行已結束，等待其他工具',
         loading: '正在載入技能',
         loaded: '已載入技能',
         loadFailed: '技能載入失敗',

@@ -3525,6 +3525,7 @@ export const ar = defineLocale({
       copyPath: 'نسخ المسار',
       failedCalls: (count: number) => `عدد استدعاءات الأدوات الفاشلة: ${count}`,
       skillActivity: {
+        waiting: 'انتهى التنفيذ، بانتظار الأدوات الأخرى',
         loading: 'جارٍ تحميل المهارة',
         loaded: 'تم تحميل المهارة',
         loadFailed: 'تعذر تحميل المهارة',

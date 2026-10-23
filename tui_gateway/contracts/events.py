@@ -272,6 +272,17 @@ class ToolStartPayload(Payload):
 event("tool.start", ToolStartPayload, doc="A tool call began (stable id + full args).")
 
 
+class ToolExecutionFinishedPayload(Payload):
+    """单工具执行已返回；结果尚待整批持久化，不代表最终成功。"""
+
+    tool_id: str
+    name: str
+    duration_s: float
+
+
+event("tool.execution_finished", ToolExecutionFinishedPayload, doc="Execution returned; waiting for batch result commit, not a success receipt.")
+
+
 class ToolCompletePayload(Payload):
     """``tool_progress._on_tool_complete``; ``todos``/``revision`` merged in for the todo tools."""
 
