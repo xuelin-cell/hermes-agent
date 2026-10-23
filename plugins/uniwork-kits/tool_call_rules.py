@@ -9,11 +9,13 @@ from . import media_slot
 
 RULES = (
     "元景工具箱等 MCP 工具不在工具列表里时，用 tool_call 调用：一个 tool_call 只放一项，"
-    "要调用多次就发多个 tool_call；calls 写成数组、arguments 写成对象，不要包成字符串。"
+    "要调用多次就发多个 tool_call；calls 直接填写数组、arguments 直接填写对象，不要包成字符串，"
+    "也不要先序列化成 JSON 字符串再填入。"
     "每项必须有 name，且与 arguments 同级；业务参数全部放在 arguments 内。"
     '结构示例：{"calls":[{"name":"工具完整名","arguments":{}}]}\n'
     "name 使用 tool_search 或 tool_describe 返回的完整工具名，arguments 按 tool_describe 的定义填全。"
     "看图（analyze_image）必须填 prompt；格式报错后按此结构重写调用。"
+    "遇到 calls is not valid JSON，重新构造数组，不再修补原 JSON 字符串。"
 )
 
 
