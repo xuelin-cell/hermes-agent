@@ -45,9 +45,13 @@ REMINDER = (
     "元景工具箱（UniAI-Toolkit）的工具需要文件时，文件参数直接填本机绝对路径"
     "（附件、当前工作目录里的文件都可以），桌面程序会在调用前自动上传并换成 ossPath。"
     "不要自己调用 get_oss_upload_url、confirm_oss_upload，也不要写代码上传。"
-    "要看懂图片内容，用该工具箱的 analyze_image。"
+    "{look}"
     "\n</system-reminder>"
 )
+# 看图怎么做按主模型分开：看不到图的走元景；能看图的直接看消息里附的图，与 UniWork 一致。
+LOOK_TOOL = "要看懂图片内容，用该工具箱的 analyze_image。"
+LOOK_NATIVE = "消息里附带的图片你能直接看到，直接看，不要再调用工具看图。"
+LOOK_NATIVE_PATH = "只给了路径、消息里看不到的图片，才用该工具箱的 analyze_image。"
 
 _lock = RLock()
 # (账号 Home, 会话) -> 会话里用户贴过的文件；(账号 Home, 路径, 修改时间, 大小) -> (ossPath, 时间)；
@@ -123,8 +127,19 @@ def referenced_files(text):
     return found
 
 
+def look_rule(model=""):
+    """看图规则：主模型看不到图时用元景；能看图时直接看附图，vision 工具组被关掉时只给路径的图才用元景。"""
+    from . import image_hints
+
+    if not image_hints.main_model_sees(model):
+        return LOOK_TOOL
+    if image_hints.vision_disabled(image_hints.settings()):
+        return LOOK_NATIVE + LOOK_NATIVE_PATH
+    return LOOK_NATIVE
+
+
 def remember_session(
-    *, session_id="", user_message=None, conversation_history=None, **_
+    *, session_id="", user_message=None, conversation_history=None, model="", **_
 ):
     """每轮开始时从本轮消息和会话历史收集贴过的文件，元景已连上时给模型加一句提醒。"""
     try:
@@ -144,7 +159,7 @@ def remember_session(
             while len(_sessions) > 64:
                 _sessions.popitem(last=False)
         if any(has_tool(f"mcp__{server}__{UPLOADER}") for server in SERVERS):
-            return {"context": REMINDER}
+            return {"context": REMINDER.format(look=look_rule(model))}
     except Exception:
         logger.warning("Upload reminder skipped", exc_info=True)
     return None
