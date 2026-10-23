@@ -242,6 +242,13 @@ module.exports = {
   nsis: {
     oneClick: false,
     perMachine: true,
+    // `perMachine` + `oneClick: false` is the one pair NsisTarget does not
+    // flag `isAdminRightsRequired` for unless this is explicitly set, and that
+    // flag is what makes electron-updater elevate through resources\elevate.exe.
+    // Without it the non-elevated app spawns the admin-manifested installer,
+    // CreateProcess fails with ERROR_ELEVATION_REQUIRED, and the update
+    // silently never installs — the app relaunches on the old version.
+    packElevateHelper: true,
     allowElevation: true,
     allowToChangeInstallationDirectory: true,
     // desktop-mt: 直接解到安装目录，省掉先解到临时目录再复制的那一遍（见 nsis/installer.nsh）。
