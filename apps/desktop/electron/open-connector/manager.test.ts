@@ -4,7 +4,7 @@ import path from 'node:path'
 
 import { afterEach, expect, it, vi } from 'vitest'
 
-import type { AgentMailCloudStateClient } from '../agent-mail/cloud-state'
+import type { AgentMailLocalStateStore } from '../agent-mail/local-state'
 import type { LoginIdentity } from '../login/session'
 
 import { CONNECTOR_SPECS } from './contract'
@@ -21,7 +21,7 @@ function makeManager(
   saved: Record<string, any>,
   writes: unknown[],
   overrides: {
-    cloudState?: Pick<AgentMailCloudStateClient, 'read' | 'write'>
+    mailState?: Pick<AgentMailLocalStateStore, 'get' | 'save'>
     exclusiveCode?: (phone: string) => Promise<string>
     identity?: () => LoginIdentity | null
   } = {}
@@ -37,6 +37,7 @@ function makeManager(
       return saved
     },
     openExternal: vi.fn(async () => undefined),
+    log: vi.fn(),
     identity:
       overrides.identity ??
       (() => ({
@@ -46,10 +47,7 @@ function makeManager(
         maskedPhone: '138****0000',
         expiresAt: Date.now() + 60_000
       })),
-    cloudState: overrides.cloudState ?? {
-      read: vi.fn(async () => ({ status: 'available' as const, exists: true, state: { enabled: true } })),
-      write: vi.fn(async () => ({ status: 'available' as const }))
-    },
+    mailState: overrides.mailState ?? { get: vi.fn(() => null), save: vi.fn() },
     exclusiveCode: overrides.exclusiveCode,
     runtimeDirectory: 'unused',
     executable: 'unused',
@@ -122,13 +120,10 @@ it('automatically provisions Agent Mail for a newly logged-in phone account', as
   })
   vi.spyOn(ConnectorRuntime.prototype, 'close').mockResolvedValue()
 
-  const cloudState = {
-    read: vi.fn(async () => ({ status: 'available' as const, exists: false, state: null })),
-    write: vi.fn(async () => ({ status: 'available' as const }))
-  }
+  const mailState = { get: vi.fn(() => null), save: vi.fn() }
 
   const exclusiveCode = vi.fn(async () => 'mail-code')
-  const manager = makeManager(home, { mcp_servers: {} }, writes, { cloudState, exclusiveCode })
+  const manager = makeManager(home, { mcp_servers: {} }, writes, { mailState, exclusiveCode })
 
   try {
     await manager.prepare('default')
@@ -142,9 +137,9 @@ it('automatically provisions Agent Mail for a newly logged-in phone account', as
     expect(fs.readFileSync(path.join(home, 'config.yaml'), 'utf8')).toMatch(
       /connector_wo_mail:[\s\S]*desktop_agent_mail: true[\s\S]*enabled: true/
     )
-    expect(cloudState.write).toHaveBeenCalledWith(
+    expect(mailState.save).toHaveBeenCalledWith(
       expect.objectContaining({ uid: 'account-a', phone: '13800000000' }),
-      expect.objectContaining({ enabled: true, email: '13800000000@wo.cn', phone: '13800000000' })
+      expect.objectContaining({ authorizationCode: 'mail-code', enabled: true, email: '13800000000@wo.cn' })
     )
   } finally {
     await manager.close()
@@ -152,7 +147,7 @@ it('automatically provisions Agent Mail for a newly logged-in phone account', as
   }
 })
 
-it('restores a disabled cloud state without requesting a new mailbox password', async () => {
+it('restores a disabled local state without requesting a new mailbox password', async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-agent-mail-disabled-'))
   fs.writeFileSync(
     path.join(home, 'config.yaml'),
@@ -170,13 +165,10 @@ it('restores a disabled cloud state without requesting a new mailbox password', 
   })
   vi.spyOn(ConnectorRuntime.prototype, 'close').mockResolvedValue()
 
-  const cloudState = {
-    read: vi.fn(async () => ({ status: 'available' as const, exists: true, state: { enabled: false } })),
-    write: vi.fn(async () => ({ status: 'available' as const }))
-  }
+  const mailState = { get: vi.fn(() => ({ email: '13800000000@wo.cn', enabled: false })), save: vi.fn() }
 
   const exclusiveCode = vi.fn(async () => 'unused')
-  const manager = makeManager(home, { mcp_servers: {} }, writes, { cloudState, exclusiveCode })
+  const manager = makeManager(home, { mcp_servers: {} }, writes, { mailState, exclusiveCode })
 
   try {
     await manager.prepare('default')
@@ -221,6 +213,44 @@ it('reuses a restored same-phone mailbox without requesting another exclusive co
   }
 })
 
+it('rebuilds a missing mailbox connection from local state without contacting Wo Mail', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-agent-mail-local-restore-'))
+  fs.writeFileSync(path.join(home, 'config.yaml'), '{}\n')
+  const writes: unknown[] = []
+  const request = vi.spyOn(ConnectorRuntime.prototype, 'request').mockResolvedValue({})
+  vi.spyOn(ConnectorRuntime.prototype, 'rows').mockResolvedValue([])
+  vi.spyOn(ConnectorRuntime.prototype, 'connection')
+    .mockResolvedValueOnce(null)
+    .mockResolvedValueOnce({ configured: true, displayName: '13800000000@wo.cn' })
+  vi.spyOn(ConnectorRuntime.prototype, 'config').mockResolvedValue({
+    url: 'http://127.0.0.1:1234/mcp',
+    headers: { Authorization: 'Bearer runtime' }
+  })
+  vi.spyOn(ConnectorRuntime.prototype, 'close').mockResolvedValue()
+
+  const mailState = {
+    get: vi.fn(() => ({ authorizationCode: 'saved-mail-code', email: '13800000000@wo.cn', enabled: true })),
+    save: vi.fn()
+  }
+
+  const exclusiveCode = vi.fn(async () => 'should-not-be-requested')
+  const manager = makeManager(home, { mcp_servers: {} }, writes, { mailState, exclusiveCode })
+
+  try {
+    await manager.prepare('default')
+
+    expect(exclusiveCode).not.toHaveBeenCalled()
+    expect(request).toHaveBeenCalledWith('/api/connections/wo_mail', 'PUT', {
+      authType: 'custom_credential',
+      connectionName: 'default',
+      values: { authorizationCode: 'saved-mail-code', email: '13800000000@wo.cn' }
+    })
+  } finally {
+    await manager.close()
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
 it('removes a mailbox connection that belongs to the previous phone account', async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-agent-mail-switch-'))
   fs.writeFileSync(
@@ -240,13 +270,10 @@ it('removes a mailbox connection that belongs to the previous phone account', as
   })
   vi.spyOn(ConnectorRuntime.prototype, 'close').mockResolvedValue()
 
-  const cloudState = {
-    read: vi.fn(async () => ({ status: 'available' as const, exists: true, state: { enabled: false } })),
-    write: vi.fn(async () => ({ status: 'available' as const }))
-  }
+  const mailState = { get: vi.fn(() => ({ email: '13800000000@wo.cn', enabled: false })), save: vi.fn() }
 
   const exclusiveCode = vi.fn(async () => 'unused')
-  const manager = makeManager(home, { mcp_servers: {} }, writes, { cloudState, exclusiveCode })
+  const manager = makeManager(home, { mcp_servers: {} }, writes, { mailState, exclusiveCode })
 
   try {
     await manager.prepare('default')
