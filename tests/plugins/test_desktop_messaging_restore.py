@@ -31,7 +31,8 @@ def test_restore_scans_real_accounts_a_b_a_and_preserves_parked_profiles(tmp_pat
     def spawn(command, name, *, env_overrides):
         """只替换网关动作，配置和受管 Profile 枚举保持真实。"""
         actions.append((os.environ["HERMES_HOME"], command, name))
-        assert env_overrides == {"HERMES_GATEWAY_INSTALL_START_ON_LOGIN": "0"}
+        assert env_overrides == {"HERMES_GATEWAY_INSTALL_START_ON_LOGIN": "0",
+                                 "HERMES_GATEWAY_BUSY_ACK_ENABLED": "false"}
         return SimpleNamespace(pid=123)
 
     monkeypatch.setattr(web_server_gateway, "_spawn_hermes_action", spawn)
@@ -168,7 +169,7 @@ def test_owned_gateway_reuses_real_runtime_and_rejects_live_foreign_home(tmp_pat
                 pass
             time.sleep(0.2)
         else:
-            pytest.fail("isolated gateway health timed out")
+            pytest.fail("isolated gateway health timed out\n" + log.read_text(encoding="utf-8", errors="replace")[-6000:])
         assert api._owned_gateway()
         identity = json.loads((home / "gateway.pid").read_text())
         assert asyncio.run(api.restore_gateway())["name"] is None

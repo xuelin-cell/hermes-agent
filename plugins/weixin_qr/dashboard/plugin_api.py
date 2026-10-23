@@ -158,6 +158,8 @@ def _apply(profile: Optional[str], creds: dict[str, str]) -> None:
         for key, value in values.items():
             save_env_value(key, value)
         _write_platform_enabled(PLATFORM_ID, True)
+        from importlib import import_module
+        import_module("plugins.desktop-messaging.dashboard.presentation").prepare_presentation({PLATFORM_ID})
 
 
 def _unbind(profile: Optional[str]) -> None:
@@ -177,10 +179,8 @@ def _unbind(profile: Optional[str]) -> None:
 
 
 def _restart(profile: Optional[str]) -> dict[str, Any]:
-    """保存后尽力重启消息网关；失败只报告，由页面提示手动重启。"""
-    from hermes_cli.web_server_gateway import _restart_gateway_after
-
-    return _restart_gateway_after(profile, what="Weixin QR login", label="Weixin QR login")
+    """交给桌面已有的串行恢复流程，统一准备所有受管平台后再重启。"""
+    return {"restart_started": False}
 
 
 def _credentials(resp: dict[str, Any]) -> dict[str, str]:

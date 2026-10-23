@@ -1,0 +1,5 @@
+name: desktop-weixin-presentation
+label: Weixin
+kind: platform
+version: 1.0.0
+description: Reuse the native Weixin adapter with desktop interaction presentation.

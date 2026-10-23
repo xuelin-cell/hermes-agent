@@ -15,6 +15,7 @@ from hermes_cli.web_server_messaging import _messaging_platform_catalog, _write_
 from hermes_cli.web_server_profiles import _config_profile_scope
 
 validate_credentials = import_module("plugins.desktop-messaging.dashboard.validation").validate_credentials
+presentation = import_module("plugins.desktop-messaging.dashboard.presentation")
 router = APIRouter()
 KEYS = {
     "dingtalk": ("DINGTALK_CLIENT_ID", "DINGTALK_CLIENT_SECRET"),
@@ -144,6 +145,7 @@ async def save_platform(platform: Literal["dingtalk", "feishu", "wecom"], body: 
                     if env.get(key) != value:
                         save_env_value(key, value)
                 changed = _write_policies(platform) or changed
+                changed = presentation.prepare_presentation({platform}) or changed
             else:
                 for key in keys:
                     if env.get(key):
@@ -162,20 +164,38 @@ async def prepare() -> dict:
     configured = False
     changed = False
     configured_profiles = []
-    for profile, _ in profiles:
-        with _config_profile_scope(profile):
-            from hermes_cli.web_routers.messaging import _platform_enablement
+    active_platforms = set()
+    for profile, home in profiles:
+        async with _locks.setdefault(str(home), asyncio.Lock()):
+            with _config_profile_scope(profile):
+                from hermes_cli.web_routers.messaging import _platform_enablement
 
-            env = load_env()
-            for entry in _messaging_platform_catalog():
-                enabled, complete, _ = _platform_enablement(entry["id"], entry, env, True)
-                if enabled and complete:
-                    configured = True
-                    if profile not in configured_profiles:
-                        configured_profiles.append(profile)
-                    if entry["id"] in POLICIES:
-                        changed = _write_policies(entry["id"]) or changed
-    return {"configured": configured, "changed": changed, "profiles": configured_profiles}
+                env = load_env()
+                targets = set()
+                for entry in _messaging_platform_catalog():
+                    enabled, complete, _ = _platform_enablement(entry["id"], entry, env, True)
+                    if enabled and complete:
+                        active_platforms.add(entry["id"])
+                        targets.add(entry["id"])
+                        configured = True
+                        if profile not in configured_profiles:
+                            configured_profiles.append(profile)
+                        if entry["id"] in POLICIES:
+                            changed = _write_policies(entry["id"]) or changed
+                changed = presentation.prepare_presentation(targets) or changed
+    # 原版停机广播读取宿主配置；子 Profile 独有的平台也要在宿主关掉广播。
+    with _config_profile_scope("default"):
+        changed = presentation.prepare_presentation(active_platforms, host_only=True) or changed
+    return {"configured": configured, "changed": changed, "profiles": configured_profiles,
+            "quiet_busy_ack": bool(active_platforms) and active_platforms <= presentation.PLATFORMS}
+
+
+def _gateway_environment(state: dict) -> dict[str, str]:
+    """只对纯四平台受管网关关闭全局回执，混用其它平台时不改变其行为。"""
+    env = {"HERMES_GATEWAY_INSTALL_START_ON_LOGIN": "0"}
+    if state["quiet_busy_ack"]:
+        env["HERMES_GATEWAY_BUSY_ACK_ENABLED"] = "false"
+    return env
 
 
 @router.post("/restore")
@@ -198,7 +218,7 @@ async def restore_gateway(restart: bool = False) -> dict:
         verb = "stop" if running else "run"
         name = "gateway-stop" if running else "gateway-start"
         await asyncio.to_thread(_spawn_hermes_action, _gateway_subcommand("default", verb), name,
-                                env_overrides={"HERMES_GATEWAY_INSTALL_START_ON_LOGIN": "0"})
+                                env_overrides=_gateway_environment(state))
         return {**state, "name": name}
 
 
@@ -212,5 +232,5 @@ async def apply_gateway() -> dict:
         verb = "restart" if state["configured"] else "stop"
         name = f"gateway-{verb}"
         proc = await asyncio.to_thread(_spawn_hermes_action, _gateway_subcommand("default", verb), name,
-                                       env_overrides={"HERMES_GATEWAY_INSTALL_START_ON_LOGIN": "0"})
+                                       env_overrides=_gateway_environment(state))
         return {"ok": True, "name": name, "pid": proc.pid}

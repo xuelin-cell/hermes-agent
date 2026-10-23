@@ -55,6 +55,7 @@ from gateway.platforms._shared import (
     extra_or_secret as _extra_or_secret, get_scoped_secret as _get_scoped_secret, send_error
 )
 from plugins.platforms.dingtalk.inbound import collect_download_codes, extract_media, extract_text
+from plugins.platforms.desktop_presentation import DesktopPresentationMixin
 
 
 logger = logging.getLogger(__name__)
@@ -187,7 +188,7 @@ def check_dingtalk_requirements() -> bool:
     return ensure_dingtalk_deps() and all(_credentials(None))
 
 
-class DingTalkAdapter(BasePlatformAdapter):
+class DingTalkAdapter(DesktopPresentationMixin, BasePlatformAdapter):
     """Stream Mode adapter: the SDK keeps a long-lived WebSocket and messages arrive via a ChatbotHandler
     callback; replies go through the message's session_webhook (httpx) or, with ``card_template_id``, AI Cards."""
 
