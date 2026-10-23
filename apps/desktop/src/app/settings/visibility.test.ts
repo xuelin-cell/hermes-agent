@@ -18,6 +18,8 @@ describe('settingsViewVisible', () => {
     expect(settingsViewVisible('providers', false)).toBe(false)
     expect(settingsViewVisible('providers', true)).toBe(true)
     expect(settingsViewVisible('models', false)).toBe(true)
+    expect(settingsViewVisible('keybinds', false)).toBe(false)
+    expect(settingsViewVisible('keybinds', true)).toBe(true)
   })
 
   // The settings nav, the command palette's settings rows and its settings search all ask this:

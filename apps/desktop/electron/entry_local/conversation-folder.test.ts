@@ -96,6 +96,48 @@ describe('主进程建对话文件夹', () => {
 
     expect((await fs.readdir(workspace)).sort()).toEqual([`${NAME}-2`, 'user-folder'])
   })
+
+  it('新文件夹里带一个空的 .tmp 中间文件目录', async () => {
+    const folder = (await createConversationFolders(workspace, () => NOW).create(workspace))!
+
+    expect(await fs.readdir(folder)).toEqual(['.tmp'])
+    expect(await fs.readdir(path.join(folder, '.tmp'))).toEqual([])
+  })
+
+  it('.tmp 建不成时文件夹照常返回', async () => {
+    const mkdir = fs.mkdir.bind(fs)
+
+    const spy = vi.spyOn(fs, 'mkdir').mockImplementation(async (target, options) => {
+      if (path.basename(String(target)) === '.tmp') {
+        throw Object.assign(new Error('denied'), { code: 'EPERM' })
+      }
+
+      return mkdir(target, options)
+    })
+
+    const folder = await createConversationFolders(workspace, () => NOW).create(workspace)
+    spy.mockRestore()
+
+    expect(folder).toBe(path.join(workspace, NAME))
+    expect(await fs.readdir(folder!)).toEqual([])
+  })
+
+  it('丢弃时连同空 .tmp 一起删；.tmp 或文件夹里有文件就整个保留', async () => {
+    const folders = createConversationFolders(workspace, () => NOW)
+    const empty = (await folders.create(workspace))!
+    const scratchUsed = (await folders.create(workspace))!
+    const folderUsed = (await folders.create(workspace))!
+    await fs.writeFile(path.join(scratchUsed, '.tmp', 'draft.md'), 'x')
+    await fs.writeFile(path.join(folderUsed, 'report.docx'), 'x')
+
+    await folders.discard(empty)
+    await folders.discard(scratchUsed)
+    await folders.discard(folderUsed)
+
+    expect((await fs.readdir(workspace)).sort()).toEqual([`${NAME}-2`, `${NAME}-3`])
+    expect(await fs.readdir(path.join(scratchUsed, '.tmp'))).toEqual(['draft.md'])
+    expect((await fs.readdir(folderUsed)).sort()).toEqual(['.tmp', 'report.docx'])
+  })
 })
 
 describe('对话文件夹 IPC', () => {

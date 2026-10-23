@@ -143,7 +143,7 @@ def load_slot(raw: Optional[Mapping[str, object]] = None, servers: Any = None) -
 
 UNIAI_URL = "https://maas.ai-yuanjing.com/app/mcp-server/mcp"
 UNIAI_CLIENT_ID = "UniWork"  # on the toolkit's allow-list; others are billed to the user's own key (1004)
-UNIAI_TIMEOUT_S = 600
+UNIAI_TIMEOUT_S = 1000  # 与桌面端写入的元景工具箱整体上限一致（对齐 UniWork 的翻译预算）
 DEFAULT_KEY_ENV = "DESKTOP_MT_MAAS_API_KEY"
 
 

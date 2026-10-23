@@ -89,6 +89,8 @@ export interface InstallStamp {
   payload: ArtifactKind
   /** Present on bundled artifacts. Validated at build time, never discovered at boot. */
   runtime?: PayloadRuntime
+  /** 桌面入口支持按执行架构选择独立载荷和 ASAR。 */
+  desktopRuntimeLayout?: 1
   /** Complete channel inputs, absent on legacy releases and one-off builds. */
   channelBuild?: Readonly<ChannelBuildRequest>
   /** Cross-application receiver shipped in this artifact, absent on older builds. */

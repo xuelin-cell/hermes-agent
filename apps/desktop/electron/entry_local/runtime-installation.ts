@@ -22,7 +22,7 @@ export function resolveAccountInstallation(
   if (payload) {
     // dist 已由 electron-builder 解包，Python 无法读取 app.asar 内的脚本。
     const directory = path.dirname(fileURLToPath(import.meta.url)).replace(
-      /([\\/])app\.asar([\\/])/, '$1app.asar.unpacked$2'
+      /([\\/])(app(?:-(?:arm64|x64))?\.asar)([\\/])/, '$1$2.unpacked$3'
     )
 
     return {

@@ -49,7 +49,7 @@ test('repairs owned dangling CLI links without changing foreign or live entries'
   const target = path.join(binDir, 'hermes')
 
   try {
-    const oldSource = path.join(root, 'old', 'agent-payload', 'bin', 'hermes')
+    const oldSource = path.join(root, 'old', 'agent-payload', 'darwin-arm64', 'bin', 'hermes')
 
     try {
       fs.symlinkSync(oldSource, target)

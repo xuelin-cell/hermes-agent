@@ -10,6 +10,7 @@ const DEVELOPER_SETTINGS = new Set<string>([
   'gateway',
   'connections',
   'billing',
+  'keybinds',
   // 普通用户改用「模型」页（models-mt），提供方的完整管理留给开发者模式。
   'providers'
 ])

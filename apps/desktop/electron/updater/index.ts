@@ -34,7 +34,12 @@ export interface MechanismFacts {
  * packaged app into a checkout, and Light needs no payload to update itself.
  */
 export function resolveUpdaterMechanism(facts: MechanismFacts): UpdaterMechanism {
-  if (facts.source === 'commit-build') {
+  // A one-off commit build has no update owner. The self-managed NSIS package
+  // is the exception: it is produced as a commit build but declares
+  // electron-updater in its stamp and serves its own feed.
+  const selfManagedNsis = facts.platform === 'win32' && facts.updateMechanism === 'electron-updater'
+
+  if (facts.source === 'commit-build' && !selfManagedNsis) {
     return 'external'
   }
 

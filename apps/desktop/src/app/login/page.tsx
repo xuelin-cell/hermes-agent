@@ -29,7 +29,7 @@ export function LoginPage() {
   const sms = useSms(bridge)
   const [fields, setFields] = useState<LoginFields>({ phone: '', captchaCode: '', smsCode: '' })
 
-  const [error, setError] = useState<'phoneError' | 'captchaError' | 'smsError' | 'requestError' | 'expired' | null>(
+  const [error, setError] = useState<'phoneError' | 'captchaError' | 'smsError' | 'requestError' | 'storageError' | 'expired' | null>(
     null
   )
 
@@ -166,7 +166,7 @@ export function LoginPage() {
       const result = await window.hermesLogin.login({ phone: values.phone, smsCode: values.smsCode })
 
       if (!result.ok) {
-        setError('requestError')
+        setError(result.reason === 'storage' ? 'storageError' : 'requestError')
 
         return
       }

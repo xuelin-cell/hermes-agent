@@ -1,5 +1,6 @@
 import { translateNow } from '@/i18n'
 import { firstStringField } from '@/lib/text'
+import type { ToolResultMetadata } from '@/lib/tool-result-metadata'
 
 import { parseMaybeObject, toolCallFailed } from './fallback-model/format'
 
@@ -9,6 +10,7 @@ interface SkillCall {
   isError?: boolean
   result?: unknown
   toolName: string
+  toolResultMetadata?: ToolResultMetadata
 }
 
 /** Loading instructions is not the same action as reading a skill resource,
@@ -33,7 +35,8 @@ export function skillActivityTitle(part: SkillCall, live = true): string | undef
         ? { pending: 'readingResource', done: 'readResource', failed: 'resourceFailed' }
         : { pending: 'loading', done: 'loaded', failed: 'loadFailed' }
 
-  const key = failed ? keys.failed : missing ? 'unavailable' : pending ? keys.pending : keys.done
+  const waiting = pending && part.toolResultMetadata?.execution_finished_at !== undefined
+  const key = failed ? keys.failed : waiting ? 'waiting' : missing ? 'unavailable' : pending ? keys.pending : keys.done
   const label = translateNow(`assistant.tool.skillActivity.${key}`)
 
   return target ? `${label}: ${target}` : label

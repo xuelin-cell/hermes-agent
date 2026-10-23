@@ -47,10 +47,21 @@ try {
     } elseif ($product.Contains($Commit.Substring(0, 7)) -and $env:UNIWORK_FIXED_IDENTITY -ne '0') {
         $problems.Add("The product name '$product' carries the commit, so every build would install as another app.")
     }
-    # NSIS names the install folder after the app executable, not the display name.
-    $appExe = @(Get-ChildItem -LiteralPath $Unpacked -Filter '*.exe' -File | Where-Object { $_.Name -notmatch '^(elevate|uninstall)' })
-    $installName = if ($appExe.Count -eq 1) { $appExe[0].BaseName } else { $product }
-    $facts.Add("Product: $product (installs to %LOCALAPPDATA%\Programs\$installName)")
+    # apps/desktop/nsis/installer.nsh names the install folder (APP_FILENAME). It must not be UniWork:
+    # the earlier UniWork app installs to %ProgramFiles%\UniWork, and sharing it mixes and uninstalls both apps.
+    $nsisInclude = Join-Path $PSScriptRoot '..\..\apps\desktop\nsis\installer.nsh'
+    $installName = ''
+    if (Test-Path -LiteralPath $nsisInclude -PathType Leaf) {
+        $define = Select-String -LiteralPath $nsisInclude -Pattern '^\s*!define APP_FILENAME "([^"]+)"' | Select-Object -First 1
+        if ($null -ne $define) { $installName = $define.Matches[0].Groups[1].Value }
+    }
+    if ([string]::IsNullOrWhiteSpace($installName)) {
+        $problems.Add("Cannot read the install folder name (!define APP_FILENAME) from $nsisInclude.")
+        $installName = $product
+    } elseif ($installName -eq 'UniWork') {
+        $problems.Add('The install folder is UniWork, which the earlier UniWork app also uses.')
+    }
+    $facts.Add("Product: $product (administrator installation to %ProgramFiles%\$installName)")
 
     $stampPath = Join-Path $Unpacked 'resources\install-stamp.json'
     if (-not (Test-Path -LiteralPath $stampPath -PathType Leaf)) {
@@ -128,8 +139,8 @@ try {
         }
     }
 
-    # NSIS works within MAX_PATH (259 usable characters): it unpacks under %TEMP%\nsXXXXX.tmp\7z-out\
-    # first, then copies into the install directory. Only the user name varies in those prefixes.
+    # NSIS works within MAX_PATH (259 usable characters). It extracts straight into the install folder
+    # (apps/desktop/nsis/direct-extract.nsh), so only the install folder path limits the file paths.
     $longest = 0
     $longestPath = ''
     foreach ($file in [System.IO.Directory]::EnumerateFiles($Unpacked, '*', [System.IO.SearchOption]::AllDirectories)) {
@@ -139,15 +150,16 @@ try {
             $longestPath = $file.Substring($Unpacked.Length + 1)
         }
     }
-    $prefix = [math]::Max('C:\Users\\AppData\Local\Temp\nsXXXXX.tmp\7z-out\'.Length,
-        ('C:\Users\\AppData\Local\Programs\' + $installName + '\').Length)
-    $userBudget = 259 - $prefix - $longest
-    if ($userBudget -lt 1) {
-        $problems.Add("The longest path ($longest characters: $longestPath) cannot be installed within MAX_PATH.")
-    } elseif ($userBudget -lt 20) {
-        $warnings.Add("Installing fails for user names longer than $userBudget characters; shorten: $longestPath")
+    $installPrefix = Join-Path $env:ProgramFiles $installName
+    if (($installPrefix.Length + 1 + $longest) -gt 259) {
+        $problems.Add("The longest path ($longestPath) exceeds MAX_PATH under $installPrefix.")
     }
-    $facts.Add("Paths: longest $longest characters; the default install fits user names up to $userBudget characters")
+    # Users may pick another folder; report the longest one that still fits.
+    $folderBudget = 259 - 1 - $longest
+    if ($folderBudget -lt 40) {
+        $warnings.Add("Only install folders up to $folderBudget characters fit; shorten: $longestPath")
+    }
+    $facts.Add("Paths: longest $longest characters; install folders up to $folderBudget characters fit (default $installPrefix)")
 } finally {
     if ($ownScratch) {
         Remove-Item -LiteralPath $Scratch -Recurse -Force -ErrorAction SilentlyContinue

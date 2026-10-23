@@ -20,7 +20,15 @@ MAX_ARCHIVE_BYTES = 20 * 1024 * 1024
 MAX_EXTRACTED_BYTES = 80 * 1024 * 1024
 MAX_ARCHIVE_FILES = 500
 MAX_DOWNLOAD_REDIRECTS = 3
-PACKAGE_HOSTS = frozenset({"maas.ai-yuanjing.com", "wry-manatee-359.convex.site", "clawhub.ai"})
+# 技能市场目录里的包分别放在：maas 推荐包、ClawHub（convex 下载跳转到 clawhub.ai）、
+# SkillHub 的腾讯云 COS 存储桶、元景 SkillHub 站点。只放行这几个确切主机，不放开整个 myqcloud.com。
+PACKAGE_HOSTS = frozenset({
+    "maas.ai-yuanjing.com",
+    "wry-manatee-359.convex.site",
+    "clawhub.ai",
+    "skillhub-1388575217.cos.accelerate.myqcloud.com",
+    "skillhub.ai-yuanjing.com",
+})
 
 
 class MarketSkillInstallError(ValueError):

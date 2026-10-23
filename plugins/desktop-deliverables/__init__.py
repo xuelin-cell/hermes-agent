@@ -1,4 +1,4 @@
-"""只观察本机桌面产物，通过原生输出钩子把卡片和回复一同持久化。"""
+"""观察本机桌面及已登记后台产物，通过原生输出钩子持久化文件引用。"""
 
 from collections import OrderedDict
 import asyncio
@@ -48,6 +48,7 @@ class Turn:
     roots: set = field(default_factory=set)
     ambiguous: set = field(default_factory=set)
     background: bool = False
+    messaging: bool = False
     guess: bool = True
     downloads: dict = field(default_factory=dict)
 
@@ -117,10 +118,21 @@ def attachment_paths(value, cwd):
     return set()
 
 
+def scratch_reminder(cwd):
+    """每轮提醒模型把中间文件放进工作目录下的 .tmp；点开头的目录不补交付卡片。"""
+    scratch = cwd / ".tmp"
+    return (
+        f"本轮工作目录：{cwd}。草稿、数据、脚本、下载的素材、临时图片等中间文件放到 {scratch}"
+        "（没有就新建），装依赖也在这里装。只有交给用户的成品放在工作目录或用户指定的位置，"
+        "每个成品在回复里单独一行写 `MEDIA:<绝对路径>`。"
+        "如果技能要求脚本和成品放在同一目录，就在 .tmp 里做完，再把成品复制到工作目录。"
+    )
+
+
 def before_turn(
     *, session_id="", turn_id="", task_id="", platform="", user_message=None, **kwargs
 ):
-    """本轮开始时固定本机目录和附件排除表，缺少桌面身份则不观察。"""
+    """本轮开始时固定本机目录和附件排除表，并提醒中间文件放哪；缺少桌面身份则不观察。"""
     if not session_id or platform not in {"desktop", "subagent"}:
         return
     child_root = background.child_root(session_id) if platform == "subagent" else None
@@ -138,6 +150,7 @@ def before_turn(
             task_id=task_id,
             uploads=attachment_paths(user_message, cwd),
             background=platform == "subagent",
+            messaging=platform == "subagent" and background.message_child(session_id),
             guess=platform != "subagent",
         )
         _turns.move_to_end(key)
@@ -149,6 +162,8 @@ def before_turn(
             watch_root(turn, root, budget)
         while len(_turns) > 128:
             _turns.popitem(last=False)
+    # 后台子任务只交付缓存成品，不加提醒；用户自选目录也提醒，.tmp 由模型按需新建。
+    return {"context": scratch_reminder(cwd)}
 
 
 def current(key, turn_id):
@@ -387,7 +402,8 @@ async def download_result(
         turn = current(key, turn_id)
         if turn is None:
             return None
-        if turn.background and tool_name.rsplit("__", 1)[-1] not in background.TOOLS:
+        allowed = background.MESSAGE_TOOLS if turn.messaging else background.TOOLS
+        if turn.background and tool_name.rsplit("__", 1)[-1] not in allowed:
             return None
         wanted = [url for url in urls if url not in turn.downloads][
             : max(0, 4 - len(turn.downloads))
@@ -412,12 +428,12 @@ async def download_result(
             if path:
                 path.unlink(missing_ok=True)
         return None
-    # 结果里不再给链接；模型之后把本机副本交给元景工具时，上传钩子据此换回原链接。
+    # 桌面结果移除链接，消息结果留作附件兜底；再调用元景工具时可换回原链接。
     for url, path in zip(wanted, fetched):
         if path:
             remember_download(path, url)
     missing = [url for url in urls if url not in saved]
-    return annotate(result, data, root, saved, missing)
+    return annotate(result, data, root, saved, missing, messaging=turn.messaging)
 
 
 def end_turn(*, session_id="", turn_id="", **kwargs):
@@ -431,15 +447,19 @@ def end_turn(*, session_id="", turn_id="", **kwargs):
 
 
 def register(ctx):
-    """只使用现有原生钩子，不增加模型工具或修改 Hermes 核心。"""
-    from .uploads import before_call, remember_session
+    """只使用现有原生钩子和中间件，不增加模型工具或修改 Hermes 核心。"""
+    from .image_hints import rewrite_request
+    from .uploads import around_call, remember_session
 
+    # 元景工具读不到本机文件：执行时替模型上传并换成 ossPath。
+    ctx.register_middleware("tool_execution", around_call)
+    # 看不到图的主模型：Hermes 的 vision_analyze 看图提示换成元景 analyze_image 的写法。
+    ctx.register_middleware("llm_request", rewrite_request)
     for name, handler in [
         ("pre_llm_call", before_turn),
-        # 元景工具读不到本机文件：调用前替模型上传并换成 ossPath。
+        ("pre_llm_call", background.remember_message_parent),
         ("pre_llm_call", remember_session),
         ("pre_tool_call", before_tool),
-        ("pre_tool_call", before_call),
         ("post_tool_call", after_tool),
         ("transform_tool_result", download_result),
         ("transform_llm_output", transform),

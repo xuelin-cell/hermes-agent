@@ -4,7 +4,7 @@ import { type RefObject, useLayoutEffect, useRef } from 'react'
 import { usePaneVisible } from '@/components/pane-shell/pane-visibility'
 import { triggerHaptic } from '@/lib/haptics'
 import { hasClarifyRequest, skipClarifyRequest } from '@/store/clarify'
-import { clearSessionDraft, type ComposerAttachment } from '@/store/composer'
+import { clearSessionDraftIfUnchanged, type ComposerAttachment, sessionDraftRevision } from '@/store/composer'
 import { resetBrowseState } from '@/store/composer-input-history'
 import { enqueueQueuedPrompt, type QueuedPromptEntry } from '@/store/composer-queue'
 import { hasConnectionRequest, skipConnectionRequest } from '@/store/connection-request'
@@ -88,6 +88,8 @@ export function useComposerSubmit({
   const dispatchSubmit = (text: string, attachments?: ComposerAttachment[], displayKind?: 'hidden') => {
     const submittedScope = activeQueueSessionKeyRef.current
     const submittedAttachments = attachments ?? []
+    // desktop-mt: 记下发送时草稿被写过几次；被接受时这里若已是更新的草稿（例如另一个新对话的）就不清。
+    const submittedDraftRevision = sessionDraftRevision(submittedScope)
 
     const restore = () => {
       loadIntoComposer(text, submittedAttachments)
@@ -107,7 +109,10 @@ export function useComposerSubmit({
         ? onSubmit(text, { attachments, composerScope: submittedScope, ...(displayKind ? { displayKind } : {}) })
         : onSubmit(text, { composerScope: submittedScope, ...(displayKind ? { displayKind } : {}) })
     )
-      .then(accepted => void (accepted === false ? rejected() : clearSessionDraft(submittedScope)))
+      .then(
+        accepted =>
+          void (accepted === false ? rejected() : clearSessionDraftIfUnchanged(submittedScope, submittedDraftRevision))
+      )
       .catch(rejected)
   }
 

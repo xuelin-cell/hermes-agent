@@ -5,14 +5,16 @@ import { createServer } from 'node:net'
 import path from 'node:path'
 
 import { writeSecretFileAtomic } from '../hardening'
+import { LegacySecretFormatError } from '../local-secret-storage'
 
 import {
   CONNECTOR_SPECS,
-  HIDDEN_CONNECTOR_SERVICES,
   type ConnectorId,
   type ConnectorService,
+  HIDDEN_CONNECTOR_SERVICES,
   type LocalConnectorRow
 } from './contract'
+import { preserveLegacyConnector } from './legacy-secrets'
 
 interface RuntimeSecrets {
   encryption: string
@@ -31,6 +33,7 @@ export interface ConnectorRuntimeOptions {
 export class ConnectorRuntime {
   private child: ChildProcess | null = null
   private starting: Promise<void> | null = null
+  private stopping: Promise<void> | null = null
   private origin = ''
   private secrets: RuntimeSecrets | null = null
   private closed = false
@@ -66,6 +69,7 @@ export class ConnectorRuntime {
   /** 系统加密保存密钥，数据库和账号授权不从 HexAgent 复制。 */
   private readSecrets(): RuntimeSecrets {
     fs.mkdirSync(this.options.directory, { recursive: true, mode: 0o700 })
+    preserveLegacyConnector(this.options.directory)
 
     for (const name of ['secrets.enc', 'connect.sqlite', 'connect.sqlite-wal', 'connect.sqlite-shm']) {
       const stat = fs.lstatSync(path.join(this.options.directory, name), { throwIfNoEntry: false })
@@ -78,7 +82,16 @@ export class ConnectorRuntime {
     const file = path.join(this.options.directory, 'secrets.enc')
 
     if (fs.existsSync(file)) {
-      const value = JSON.parse(this.options.decrypt(fs.readFileSync(file))) as RuntimeSecrets
+      let plaintext: string
+
+      try { plaintext = this.options.decrypt(fs.readFileSync(file)) } catch (error) {
+        if (!(error instanceof LegacySecretFormatError)) {throw error}
+        preserveLegacyConnector(this.options.directory, true)
+
+        return this.readSecrets()
+      }
+
+      const value = JSON.parse(plaintext) as RuntimeSecrets
 
       if (
         ![value.encryption, value.admin, value.runtime].every(
@@ -269,22 +282,53 @@ export class ConnectorRuntime {
   }
 
   /** 正常退出和账号退出都撤销服务进程，不删除持久授权。 */
-  async close(): Promise<void> {
+  close(): Promise<void> {
     this.closed = true
-    const child = this.child
-    this.child = null
 
-    if (!child || child.exitCode !== null || child.signalCode !== null) {
-      return
+    if (this.stopping) {
+      return this.stopping
     }
 
-    await new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('Connector process did not exit')), 5000)
-      child.once('exit', () => {
+    const child = this.child
+
+    if (!child || child.exitCode !== null || child.signalCode !== null) {
+      return Promise.resolve()
+    }
+
+    this.stopping = this.stopChild(child).finally(() => {
+      this.stopping = null
+    })
+
+    return this.stopping
+  }
+
+  /** 正常停止超时后只强停自己持有的句柄；失败保留引用，重试仍须确认真实退出。 */
+  private stopChild(child: ChildProcess): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      /** 收尾时清除本次监听与计时器，避免重试累积或误报超时。 */
+      const finish = (error?: Error): void => {
         clearTimeout(timeout)
-        resolve()
-      })
-      child.kill()
+        child.removeListener('exit', onExit)
+        child.removeListener('error', onError)
+
+        if (error) { reject(error) } else { resolve() }
+      }
+
+      /** 以退出事件确认停止，发送信号成功不代表进程已经结束。 */
+      const onExit = (): void => finish()
+      /** 无法发送信号时拒绝退出，不丢弃尚未确认停止的连接器。 */
+      const onError = (): void => finish(new Error('连接器进程尚未停止，请重试退出。'))
+
+      let timeout = setTimeout(() => {
+        timeout = setTimeout(onError, 5000)
+
+        try { child.kill('SIGKILL') } catch { onError() }
+      }, 5000)
+
+      child.once('exit', onExit)
+      child.once('error', onError)
+
+      try { child.kill('SIGTERM') } catch { onError() }
     })
   }
 }

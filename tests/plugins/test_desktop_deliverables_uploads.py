@@ -5,6 +5,7 @@ import json
 import os
 import time
 from types import SimpleNamespace
+from xml.etree import ElementTree
 
 import httpx
 import pytest
@@ -29,18 +30,22 @@ def upload_answer(name):
 
 @pytest.fixture
 def uploads(delivery, monkeypatch):  # noqa: F811
-    """注册真实钩子；元景工具与对象存储都换成本地记录，不连网络。"""
+    """注册真实钩子和中间件；元景工具与对象存储都换成本地记录，不连网络。"""
     plugin, work = delivery
     from fallback_delivery import uploads as module
 
-    hooks = {}
+    hooks, middleware = {}, {}
 
     class Context:
-        """只收集插件公开注册的钩子。"""
+        """只收集插件公开注册的钩子和中间件。"""
 
         def register_hook(self, name, handler):
             """同名钩子按注册顺序保存。"""
             hooks.setdefault(name, []).append(handler)
+
+        def register_middleware(self, kind, handler):
+            """同类中间件按注册顺序保存。"""
+            middleware.setdefault(kind, []).append(handler)
 
     plugin.register(Context())
     calls, puts = [], []
@@ -76,6 +81,7 @@ def uploads(delivery, monkeypatch):  # noqa: F811
         plugin=plugin,
         module=module,
         hooks=hooks,
+        middleware=middleware,
         work=work,
         home=home,
         calls=calls,
@@ -85,14 +91,46 @@ def uploads(delivery, monkeypatch):  # noqa: F811
 
 
 def before(env, tool, args, session="s"):
-    """按原生顺序运行全部 pre_tool_call 钩子，返回上传钩子的结果。"""
-    results = [
-        handler(
-            tool_name=tool, args=args, session_id=session, task_id=session, turn_id="t"
-        )
-        for handler in env.hooks["pre_tool_call"]
-    ]
-    return next((result for result in results if result), None)
+    """经上传中间件执行一次调用，结果写成改了哪些参数或拦下的原因，没动参数时返回 None。"""
+    (around,) = env.middleware["tool_execution"]
+    sent = []
+
+    def next_call(next_args):
+        """记录真正交给工具的参数。"""
+        sent.append(next_args)
+        return "ok"
+
+    result = around(
+        tool_name=tool, args=args, next_call=next_call,
+        original_args=args, session_id=session, task_id=session, turn_id="t",
+    )
+    if not sent:
+        return {"action": "block", "message": json.loads(result)["error"]}
+    assert result == "ok"
+    changed = {key: value for key, value in sent[0].items() if args.get(key) != value}
+    assert sent[0] == {**args, **changed}
+    return {"action": "modify", "args": changed} if changed else None
+
+
+@pytest.mark.parametrize("platform", ["desktop", "weixin"])
+def test_tool_reminder_is_marked_as_internal_without_changing_user_text(uploads, platform):
+    """真实钩子与原生消息拼接保留问候，并把上传、看图规则放在内部提醒边界中。"""
+    from agent.turn_context import compose_user_api_content
+
+    result = uploads.hooks["pre_llm_call"][-1](
+        session_id="greeting", platform=platform, user_message="你好"
+    )
+    reminder = ElementTree.fromstring(result["context"])
+    assert reminder.tag == "system-reminder"
+    assert "不是用户提出的要求" in reminder.text
+    assert "不要确认收到或向用户复述" in reminder.text
+    assert all(name in reminder.text for name in (
+        "本机绝对路径", "get_oss_upload_url", "confirm_oss_upload", "analyze_image"
+    ))
+    assert compose_user_api_content("你好", "", result["context"]) == "你好\n\n" + result["context"]
+    uploads.state.tools.clear()
+    assert uploads.hooks["pre_llm_call"][-1](session_id="greeting", user_message="你好") is None
+    assert not uploads.calls and not uploads.puts
 
 
 def test_attachment_is_uploaded_once_and_replaced_with_oss_path(uploads):
@@ -337,3 +375,44 @@ def test_tool_output_downloaded_by_the_plugin_is_reused_without_upload(
         "args": {"image_url": url},
     }
     assert not uploads.calls and not uploads.puts
+
+
+def test_slow_upload_does_not_hold_up_other_tools(uploads, monkeypatch):
+    """元景工具箱被别的会话占着、上传超过 30 秒时，只有这次调用在等；pre_tool_call 里已没有上传，
+    别的工具不会被钩子超时拦下（原生钩子超时 30 秒后会让所有工具停用 60 秒）。"""
+    import threading
+
+    image = uploads.home / "a.png"
+    image.write_bytes(b"png")
+    started, release = threading.Event(), threading.Event()
+    real_call = uploads.module.call_tool
+
+    def busy_toolbox(name, args):
+        """模拟工具箱正忙：上传排队到放行为止。"""
+        started.set()
+        release.wait(5)
+        return real_call(name, args)
+
+    monkeypatch.setattr(uploads.module, "call_tool", busy_toolbox)
+    results = []
+    worker = threading.Thread(
+        target=lambda: results.append(
+            before(uploads, "mcp__UniAI_Toolkit__analyze_image", {"image": str(image)})
+        )
+    )
+    worker.start()
+    assert started.wait(5)
+    # 上传还在排队时，所有 pre_tool_call 钩子都立即返回，且不会改元景工具的参数。
+    for tool, args in [("terminal", {"command": "ls"}), ("mcp__UniAI_Toolkit__x", {"f": str(image)})]:
+        began = time.monotonic()
+        replies = [
+            handler(tool_name=tool, args=args, session_id="s2", task_id="s2", turn_id="t")
+            for handler in uploads.hooks["pre_tool_call"]
+        ]
+        assert time.monotonic() - began < 1
+        assert not any(isinstance(reply, dict) and reply.get("action") for reply in replies)
+    release.set()
+    worker.join(5)
+    assert results == [
+        {"action": "modify", "args": {"image": "app-agent-prod/temp/obj1.png"}}
+    ]

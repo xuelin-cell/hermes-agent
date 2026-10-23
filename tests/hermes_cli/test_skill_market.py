@@ -58,6 +58,27 @@ def test_install_refuses_insecure_url():
         assert result.status_code == 400
 
 
+def test_package_url_accepts_market_storage_hosts():
+    """技能市场里 SkillHub 的包放在 COS 存储桶和元景 SkillHub 站点，这两个主机能装，相近的主机仍然拒绝。"""
+    import pytest
+    from hermes_cli.skill_market_install import MarketSkillInstallError, validate_package_url
+
+    for url in [
+        "https://skillhub-1388575217.cos.accelerate.myqcloud.com/skills/fixture/1.0.2.zip",
+        "https://skillhub.ai-yuanjing.com:8081/api/skills/download?id=fixture",
+    ]:
+        assert validate_package_url(url) == url
+
+    for url in [
+        "https://other-bucket.cos.accelerate.myqcloud.com/skills/fixture.zip",
+        "https://cos.accelerate.myqcloud.com/skills/fixture.zip",
+        "http://skillhub-1388575217.cos.accelerate.myqcloud.com/skills/fixture.zip",
+        "https://user:pass@skillhub.ai-yuanjing.com/skills/fixture.zip",
+    ]:
+        with pytest.raises(MarketSkillInstallError, match="HTTPS 服务"):
+            validate_package_url(url)
+
+
 def _skill_zip(files):
     """创建内存 ZIP，供安装链测试使用。"""
     output = io.BytesIO()

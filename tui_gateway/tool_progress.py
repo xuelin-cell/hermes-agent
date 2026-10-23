@@ -288,6 +288,8 @@ def _on_tool_start(sid: str, tool_call_id: str, name: str, args: dict):
         # A preview prepared for an earlier call whose completion never fired (failed
         # flush) must not attach to a provider that reuses the same call id.
         session.setdefault("tool_result_metadata", {}).pop(tool_call_id, None)
+        # desktop-mt: 工具 ID 被重用时不能继承上一次执行耗时。
+        session.setdefault("tool_execution_durations", {}).pop(tool_call_id, None)
     if (_process_tool_chrome_enabled(sid) or _tool_lifecycle_required_for_ui(name)
             or _connector_tool_lifecycle(name, args)):
         payload: dict[str, object] = {"tool_id": tool_call_id, "name": name, "context": _tool_ctx(name, args)}
@@ -338,6 +340,9 @@ def _on_tool_complete(sid: str, tool_call_id: str, name: str, args: dict, result
     payload.update(metadata)
     started_at = session.setdefault("tool_started_at", {}).pop(tool_call_id, None) if session is not None else None
     duration_s = time.time() - started_at if started_at else None
+    # desktop-mt: 并行工具使用自身执行耗时，避免把等待同批工具的时间算进去。
+    if session is not None:
+        duration_s = session.setdefault("tool_execution_durations", {}).pop(tool_call_id, duration_s)
     if duration_s is not None:
         payload["duration_s"] = duration_s
     try:
@@ -369,6 +374,18 @@ def _on_tool_complete(sid: str, tool_call_id: str, name: str, args: dict, result
 # ── _on_tool_progress dispatch: each handler takes (sid, name, preview, kw) ─────────────────────
 # `tool.started` is dropped on purpose: _on_tool_start already emits the authoritative tool.start with
 # the stable id and args; an id-less duplicate row makes the desktop live view diverge from history.
+
+def _progress_execution_finished(sid, name, preview, kw):
+    """只反馈执行耗时，不提前发布尚未保存的结果或成功状态。"""
+    session = _sessions.get(sid)
+    tool_id = str(kw.get("tool_call_id") or "")
+    if session is None or tool_id not in session.get("tool_started_at", {}):
+        return
+    session.setdefault("tool_execution_durations", {})[tool_id] = float(kw["duration_seconds"])
+    _emit("tool.execution_finished", sid, {
+        "tool_id": tool_id, "name": str(name), "duration_s": float(kw["duration_seconds"]),
+    })
+
 
 def _progress_output_risk(sid, name, preview, kw):
     metadata = kw.get("risk_metadata")
@@ -474,6 +491,8 @@ def _progress_subagent(sid: str, name: str, preview, kw, event_type):
 # event_type -> (handler, requires): `requires` names the arg that must be truthy for the row to be
 # emitted at all ("name" / "preview" / None).
 _PROGRESS_HANDLERS = {
+    # desktop-mt: 独立投影执行结束状态，保持 tool.complete 的持久化语义。
+    "tool.execution_finished": (_progress_execution_finished, "name"),
     "tool.output_risk": (_progress_output_risk, "name"), "reasoning.available": (_progress_reasoning, "preview"),
     "moa.reference": (_progress_moa_reference, "name"),
     # Answer-only drops MoA content (references, progress/phase lines that land in the reasoning

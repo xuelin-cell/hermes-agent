@@ -2,14 +2,16 @@
 param(
     [string]$ProxyUrl = '',
     [ValidateSet('store', 'normal', 'maximum')]
-    [string]$Compression = 'normal'
+    [string]$Compression = 'normal',
+    [switch]$NoAutoUpdate
 )
 
 $ErrorActionPreference = 'Stop'
 $previousEnvironment = @{}
 foreach ($name in @('TEMP', 'TMP', 'ELECTRON_BUILDER_CACHE', 'UV_CONCURRENT_INSTALLS',
                     'ELECTRON_BUILDER_COMPRESSION_LEVEL', 'HTTP_PROXY', 'HTTPS_PROXY',
-                    'NO_PROXY', 'NODE_USE_ENV_PROXY', 'ELECTRON_GET_USE_PROXY')) {
+                    'NO_PROXY', 'NODE_USE_ENV_PROXY', 'ELECTRON_GET_USE_PROXY',
+                    'HERMES_WINDOWS_UPDATE')) {
     $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
 }
 $sourceRoot = $PSScriptRoot
@@ -36,6 +38,12 @@ if (-not [string]::IsNullOrWhiteSpace($ProxyUrl)) {
 $python = Join-Path $sourceRoot '.venv\Scripts\python.exe'
 if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
     throw "Build Python not found: $python. Run '. .\activate.ps1' once, then rerun this script."
+}
+
+# NSIS 包由 electron-updater 自管更新：安装后从 OSS 拉 stable.yml + blockmap
+# 做差量下载，静默安装后重启。打一次性交付包时加 -NoAutoUpdate 关闭。
+if (-not $NoAutoUpdate) {
+    $env:HERMES_WINDOWS_UPDATE = 'electron-updater'
 }
 
 Push-Location $sourceRoot

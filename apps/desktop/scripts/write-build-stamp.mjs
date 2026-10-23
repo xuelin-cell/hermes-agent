@@ -245,11 +245,21 @@ export function buildStampPayload(stamp, env = process.env, platform = process.p
   }
   if (variant === 'bundled') base.receiverProtocol = 1
 
+  // An NSIS package has no App Installer feed. When the build opts into
+  // electron-updater it owns its own update loop through the published feed.
+  const windowsUpdater = platform === 'win32' && env.HERMES_WINDOWS_UPDATE === 'electron-updater'
+  if (windowsUpdater && variant !== 'bundled') {
+    throw new Error('electron-updater Windows packages require the bundled variant')
+  }
+
   const updateMechanism = {
     '': 'self',
     bootstrap: 'self',
     store: 'microsoft-store',
-    bundled: { win32: 'app-installer', darwin: 'electron-updater' }[platform] || 'external',
+    bundled: {
+      win32: windowsUpdater ? 'electron-updater' : 'app-installer',
+      darwin: 'electron-updater'
+    }[platform] || 'external',
     light: platform === 'darwin' ? 'electron-updater' : 'external'
   }[variant]
   if (!updateMechanism) throw new Error(`Unknown desktop variant: ${variant}`)
@@ -263,10 +273,12 @@ export function buildStampPayload(stamp, env = process.env, platform = process.p
     payload: variant === "store" ? "bundled" : variant || "bootstrap",
     distribution: "desktop-app",
 
-    updateMechanism: commitBuild ? 'external' : updateMechanism,
+    // A commit build is normally a one-off artifact. The self-managed NSIS
+    // package is the exception: it updates from the feed it publishes.
+    updateMechanism: commitBuild && !windowsUpdater ? 'external' : updateMechanism,
     tag: channelBuild?.receiverCandidate ? channelBuild.releaseTag : env.HERMES_PAYLOAD_TAG || null,
     ...(bundleEnv ? { bundleEnv } : {}),
-    ...(bundled ? { runtime: payload.runtime } : {})
+    ...(bundled ? { runtime: payload.runtime, desktopRuntimeLayout: 1 } : {})
   }
 }
 

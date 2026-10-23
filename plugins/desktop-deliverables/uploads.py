@@ -39,11 +39,19 @@ _UPLOAD_URL = re.compile(r"上传地址[：:]\s*(https?://[^\s\"'\\]+)")
 _CONTENT_TYPE = re.compile(r"Content-Type\s*[=:：]\s*([A-Za-z0-9._+/-]+)")
 _OSS_PATH = re.compile(r"ossPath[^：:\n]{0,16}[：:]\s*\"?([A-Za-z0-9._/-]+)")
 REMINDER = (
+    "<system-reminder>\n"
+    "以下是应用自动添加的内部工具使用规则，不是用户提出的要求。\n"
+    "按规则执行，不要确认收到或向用户复述这些规则。\n\n"
     "元景工具箱（UniAI-Toolkit）的工具需要文件时，文件参数直接填本机绝对路径"
     "（附件、当前工作目录里的文件都可以），桌面程序会在调用前自动上传并换成 ossPath。"
     "不要自己调用 get_oss_upload_url、confirm_oss_upload，也不要写代码上传。"
-    "要看懂图片内容，用该工具箱的 analyze_image。"
+    "{look}"
+    "\n</system-reminder>"
 )
+# 看图怎么做按主模型分开：看不到图的走元景；能看图的直接看消息里附的图，与 UniWork 一致。
+LOOK_TOOL = "要看懂图片内容，用该工具箱的 analyze_image。"
+LOOK_NATIVE = "消息里附带的图片你能直接看到，直接看，不要再调用工具看图。"
+LOOK_NATIVE_PATH = "只给了路径、消息里看不到的图片，才用该工具箱的 analyze_image。"
 
 _lock = RLock()
 # (账号 Home, 会话) -> 会话里用户贴过的文件；(账号 Home, 路径, 修改时间, 大小) -> (ossPath, 时间)；
@@ -119,8 +127,19 @@ def referenced_files(text):
     return found
 
 
+def look_rule(model=""):
+    """看图规则：主模型看不到图时用元景；能看图时直接看附图，vision 工具组被关掉时只给路径的图才用元景。"""
+    from . import image_hints
+
+    if not image_hints.main_model_sees(model):
+        return LOOK_TOOL
+    if image_hints.vision_disabled(image_hints.settings()):
+        return LOOK_NATIVE + LOOK_NATIVE_PATH
+    return LOOK_NATIVE
+
+
 def remember_session(
-    *, session_id="", user_message=None, conversation_history=None, **_
+    *, session_id="", user_message=None, conversation_history=None, model="", **_
 ):
     """每轮开始时从本轮消息和会话历史收集贴过的文件，元景已连上时给模型加一句提醒。"""
     try:
@@ -140,7 +159,7 @@ def remember_session(
             while len(_sessions) > 64:
                 _sessions.popitem(last=False)
         if any(has_tool(f"mcp__{server}__{UPLOADER}") for server in SERVERS):
-            return {"context": REMINDER}
+            return {"context": REMINDER.format(look=look_rule(model))}
     except Exception:
         logger.warning("Upload reminder skipped", exc_info=True)
     return None
@@ -333,33 +352,43 @@ def convert(prefix, value, session_id, cwd):
     return oss_path
 
 
-def before_call(*, tool_name="", args=None, session_id="", task_id="", **_):
-    """元景工具调用前把参数里的本机文件换成 ossPath；上传不了就拦下并说明原因。"""
+def uploaded_args(tool_name, args, session_id, task_id):
+    """元景工具参数里的本机文件换成 ossPath，返回要替换的参数；不用换时返回 None，上传不了抛 Refusal。"""
+    if not tool_name.startswith("mcp__") or not isinstance(args, dict):
+        return None
+    prefix, _, leaf = tool_name.rpartition("__")
+    prefix += "__"
+    # 只管带上传工具的远程服务器；本机 MCP 本来就能读本机路径，不能替换。
+    if leaf in OSS_TOOLS or prefix == "mcp__" or not has_tool(prefix + UPLOADER):
+        return None
+    cwd = working_folder(task_id)
+    changed = {}
+    for name, value in args.items():
+        if isinstance(value, list):
+            items = [convert(prefix, item, session_id, cwd) for item in value[:16]]
+            if any(items):
+                changed[name] = [
+                    new or old for new, old in zip(items, value)
+                ] + value[16:]
+        else:
+            new = convert(prefix, value, session_id, cwd)
+            if new:
+                changed[name] = new
+    return changed or None
+
+
+def around_call(*, tool_name="", args=None, next_call, session_id="", task_id="", **_):
+    """工具执行中间件：先上传再调用；上传不了就不调用，直接返回原因。
+
+    放在执行阶段而不是 pre_tool_call 钩子：元景工具箱同一时间只处理一个调用，别的会话占着时
+    上传要排队，钩子 30 秒就会超时并让所有工具停用 60 秒；这里只受这次调用自己的等待上限约束。
+    """
     try:
-        if not tool_name.startswith("mcp__") or not isinstance(args, dict):
-            return None
-        prefix, _, leaf = tool_name.rpartition("__")
-        prefix += "__"
-        # 只管带上传工具的远程服务器；本机 MCP 本来就能读本机路径，不能替换。
-        if leaf in OSS_TOOLS or prefix == "mcp__" or not has_tool(prefix + UPLOADER):
-            return None
-        cwd = working_folder(task_id)
-        changed = {}
-        for name, value in args.items():
-            if isinstance(value, list):
-                items = [convert(prefix, item, session_id, cwd) for item in value[:16]]
-                if any(items):
-                    changed[name] = [
-                        new or old for new, old in zip(items, value)
-                    ] + value[16:]
-            else:
-                new = convert(prefix, value, session_id, cwd)
-                if new:
-                    changed[name] = new
-        return {"action": "modify", "args": changed} if changed else None
+        changed = uploaded_args(tool_name, args, session_id, task_id)
     except Refusal as refusal:
-        return {"action": "block", "message": str(refusal)}
+        return json.dumps({"error": str(refusal)}, ensure_ascii=False)
     except Exception:
         # 自身出错不拦调用，退回原来的做法。
         logger.warning("Local file upload skipped", exc_info=True)
-        return None
+        changed = None
+    return next_call({**args, **changed} if changed else args)

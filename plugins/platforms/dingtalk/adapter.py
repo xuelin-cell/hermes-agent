@@ -244,12 +244,33 @@ class DingTalkAdapter(BasePlatformAdapter):
             self._stream_client.register_callback_handler(dingtalk_stream.ChatbotMessage.TOPIC, _IncomingHandler(self, asyncio.get_running_loop()))
             self._stream_task = asyncio.create_task(self._run_stream())
             self._mark_connected()
-            logger.info("[%s] Connected via Stream Mode", self.name)
+            logger.info("[%s] Stream Mode started; waiting for websocket handshake", self.name)
             self._wire_plugin_handlers(self._stream_client)  # plugin-registered native handlers
             return True
         except Exception as e:
             logger.error("[%s] Failed to connect: %s", self.name, e)
             return False
+
+    @property
+    def send_path_degraded(self) -> bool:
+        """SDK 完成握手且套接字仍打开才算连通，客户端对象存在不代表连接成功。"""
+        from websockets.protocol import State
+
+        websocket = getattr(self._stream_client, "websocket", None)
+        return websocket is None or getattr(websocket, "state", None) != State.OPEN
+
+    async def _observe_stream(self) -> None:
+        """只在套接字状态变化时发布结果，不干预 SDK 自带重连。"""
+        degraded = True
+        while self._running:
+            current = self.send_path_degraded
+            if current != degraded:
+                if current:
+                    self._mark_degraded()
+                else:
+                    self._mark_connected()
+                degraded = current
+            await asyncio.sleep(0.5)
 
     async def _run_stream(self) -> None:
         """Run the SDK stream client with auto-reconnection.
@@ -270,9 +291,12 @@ class DingTalkAdapter(BasePlatformAdapter):
             sdk_logger = logging.getLogger("dingtalk_stream.client")
         guard = _SdkLogGuard(self._on_sdk_error)
         sdk_logger.addFilter(guard)
+        observer = asyncio.create_task(self._observe_stream())
         try:
             await self._run_stream_loop()
         finally:
+            observer.cancel()
+            await asyncio.gather(observer, return_exceptions=True)
             sdk_logger.removeFilter(guard)
 
     async def _run_stream_loop(self) -> None:

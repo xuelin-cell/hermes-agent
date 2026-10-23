@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from hermes_cli.version_info import get_version_info
 
 import httpx
+from packaging.version import InvalidVersion, Version
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +63,12 @@ def _base_url(gateway_url: str) -> str:
 
 def _agent_version() -> str:
     version = get_version_info().base_version
-    return version if version and version != "unknown" else "1.0.0"
+    # Migration builds can report 0.0.0; the gateway requires at least 1.0.0.
+    minimum = "1.0.0"
+    try:
+        return version if Version(version or "") >= Version(minimum) else minimum
+    except InvalidVersion:
+        return minimum
 
 
 def _request_headers(token: str, agent_id: str) -> dict[str, str]:

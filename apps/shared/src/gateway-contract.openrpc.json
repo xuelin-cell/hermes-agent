@@ -34456,6 +34456,31 @@
         "title": "ToolCompletePayload",
         "type": "object"
       },
+      "ToolExecutionFinishedPayload": {
+        "additionalProperties": false,
+        "description": "\u5355\u5de5\u5177\u6267\u884c\u5df2\u8fd4\u56de\uff1b\u7ed3\u679c\u5c1a\u5f85\u6574\u6279\u6301\u4e45\u5316\uff0c\u4e0d\u4ee3\u8868\u6700\u7ec8\u6210\u529f\u3002",
+        "properties": {
+          "tool_id": {
+            "title": "Tool Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "duration_s": {
+            "title": "Duration S",
+            "type": "number"
+          }
+        },
+        "required": [
+          "tool_id",
+          "name",
+          "duration_s"
+        ],
+        "title": "ToolExecutionFinishedPayload",
+        "type": "object"
+      },
       "ToolGeneratingPayload": {
         "additionalProperties": false,
         "description": "``agent_callbacks`` tool_gen_callback.",
@@ -38681,6 +38706,18 @@
           "name": "payload",
           "schema": {
             "$ref": "#/components/schemas/ToolCompletePayload"
+          }
+        }
+      ]
+    },
+    {
+      "name": "tool.execution_finished",
+      "summary": "Execution returned; waiting for batch result commit, not a success receipt.",
+      "params": [
+        {
+          "name": "payload",
+          "schema": {
+            "$ref": "#/components/schemas/ToolExecutionFinishedPayload"
           }
         }
       ]

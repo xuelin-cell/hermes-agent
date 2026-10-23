@@ -1,6 +1,7 @@
 import { isPreviewableTarget, toolPreviewOutcome } from '@/components/assistant-ui/tool/fallback-model'
 import { reportFirstBuildToolComplete } from '@/components/onboarding-chat/first-build'
 import { toolCallOwnerMessageId } from '@/lib/chat-messages'
+import { markToolExecutionFinished } from '@/lib/chat-messages/tool-execution-progress'
 import { invalidateSlashCompletions } from '@/lib/slash-completion-cache'
 import { refreshBackgroundProcesses } from '@/store/composer-status'
 import { flashPetActivity, setPetActivity } from '@/store/pet'
@@ -66,6 +67,17 @@ export function handleToolEvent(ctx: GatewayEventContext): boolean {
       setPetActivity({ reasoning: false, toolRunning: true })
     }
 
+    return true
+  }
+
+  if (event.type === 'tool.execution_finished') {
+    if (sessionId && payload?.tool_id && !sessionInterrupted(sessionId)) {
+      flushQueuedDeltas(sessionId)
+      updateSessionState(sessionId, state => {
+        const messages = markToolExecutionFinished(state.messages, payload.tool_id!, occurredAt)
+        return messages === state.messages ? state : { ...state, messages }
+      })
+    }
     return true
   }
 

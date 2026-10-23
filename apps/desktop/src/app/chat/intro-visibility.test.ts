@@ -42,11 +42,26 @@ describe('shouldShowIntro', () => {
     expect(shouldShowIntro({ ...showing, freshDraftReady: false })).toBe(false)
     expect(shouldShowIntro({ ...showing, routedSessionView: true })).toBe(false)
     expect(shouldShowIntro({ ...showing, selectedSessionId: 'session-1' })).toBe(false)
-    expect(shouldShowIntro({ ...showing, activeSessionId: 'session-1' })).toBe(false)
     expect(shouldShowIntro({ ...showing, messagesEmpty: false })).toBe(false)
   })
 
   it('hides the general splash on a draft a caller opened quietly', () => {
     expect(shouldShowIntro({ ...showing, quietDraft: true })).toBe(false)
+  })
+
+  it('shows ready empty sessions created in the primary view, tabs and splits', () => {
+    for (const primary of [true, false]) {
+      expect(shouldShowIntro({
+        ...showing, primary, freshDraftReady: false, activeSessionId: 'runtime-1',
+        selectedSessionId: 'stored-1', routedSessionView: true
+      })).toBe(true)
+    }
+  })
+
+  it('hides ready-session welcomes during loading, execution or historical hydration', () => {
+    const session = { ...showing, primary: false, activeSessionId: 'runtime-1', selectedSessionId: 'stored-1' }
+    for (const blocked of [{ loading: true }, { hasHistory: true }, { running: true }, { messagesEmpty: false }]) {
+      expect(shouldShowIntro({ ...session, ...blocked })).toBe(false)
+    }
   })
 })

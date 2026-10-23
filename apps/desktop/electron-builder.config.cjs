@@ -10,7 +10,6 @@
 // @ts-check
 'use strict'
 
-const fs = require('node:fs')
 const path = require('node:path')
 const feedContract = require('./update-feed.cjs')
 const { createMacSigner } = require('./scripts/mac-sign.mjs')
@@ -66,7 +65,20 @@ if (!/^\d+\.\d+\.\d+$/.test(electronVersion)) {
 }
 
 const macFeed = channelRequest ? null : feedContract.darwinFeed(channel === 'canary' || channel === 'light-canary' ? 'canary' : 'stable', light)
-const publicUrl = feedContract.feedBaseUrl(process.env.CLOUDFLARE_R2_PUBLIC_URL)
+// The public update origin. CLOUDFLARE_R2_PUBLIC_URL still wins so a fork or
+// a CI lane can point at its own bucket; the default is the Unicom OBS tree
+// the Windows installer and the desktop clients are documented against.
+const DEFAULT_PUBLIC_URL = 'https://obs-nmhhht6.cucloud.cn/model-extend-public/installer/unihermes'
+const publicUrl = feedContract.feedBaseUrl(process.env.CLOUDFLARE_R2_PUBLIC_URL) ?? feedContract.feedBaseUrl(DEFAULT_PUBLIC_URL)
+
+// A self-managed NSIS build updates through electron-updater, so it publishes
+// a feed at the same `releases/win32/...` layout the MSIX descriptor uses.
+// desktop.py derives HERMES_WINDOWS_FORMAT and injects it into this process.
+const windowsUpdater = process.env.HERMES_WINDOWS_UPDATE === 'electron-updater'
+const windowsFormat = process.env.HERMES_WINDOWS_FORMAT || (appInstallerManaged ? 'msix' : 'nsis')
+const winFeed = channel && windowsUpdater
+  ? feedContract.win32Feed(channel === 'canary' || channel === 'light-canary' ? 'canary' : 'stable', light)
+  : null
 
 /** @satisfies {Configuration} */
 module.exports = {
@@ -183,21 +195,7 @@ module.exports = {
       NSAppleEventsUsageDescription: `${displayName} uses Apple Events to automate apps you explicitly ask it to control.`
     },
     target: ['dmg', 'zip'],
-    sign: createMacSigner({
-      entitlements: path.join(__dirname, 'electron/entitlements.mac.plist'),
-      entitlementsInherit: path.join(__dirname, 'electron/entitlements.mac.inherit.plist'),
-      hardenedRuntime: true,
-      ignore: (/** @type {string} */ file) => {
-        try {
-          if (fs.lstatSync(file).isDirectory()) {
-            return false
-          }
-          return !isMachO(file)
-        } catch {
-          return true
-        }
-      }
-    })
+    sign: createMacSigner(require('./scripts/mac-sign-policy.cjs'))
   },
   dmg: {
     // Avoid the failing optional APFS shrink pass; keep compressed conversion.
@@ -232,14 +230,22 @@ module.exports = {
   win: {
     executableName: windowsExecutableName,
     legalTrademarks: displayName,
-    target: appInstallerManaged ? ['msix'] : ['nsis'],
+    target: windowsFormat === 'msix' ? ['msix'] : ['nsis'],
+    // electron-updater reads this baked copy for the feed origin. Only the
+    // self-managed NSIS build publishes one; an MSIX install is updated by
+    // the App Installer descriptor instead.
+    ...(winFeed && publicUrl
+      ? { publish: [{ provider: 'generic', url: `${publicUrl}/${winFeed.directory}/`, channel: winFeed.channel }] }
+      : {}),
     ...windowsSigning()
   },
   nsis: {
     oneClick: false,
-    perMachine: false,
-    allowElevation: false,
-    allowToChangeInstallationDirectory: true
+    perMachine: true,
+    allowElevation: true,
+    allowToChangeInstallationDirectory: true,
+    // desktop-mt: 直接解到安装目录，省掉先解到临时目录再复制的那一遍（见 nsis/installer.nsh）。
+    include: 'nsis/installer.nsh'
   },
   msix: {
     // A store build uses the Partner Center packaging identity (the Store
@@ -313,28 +319,6 @@ if (channelRequest) {
 // signature is all Windows install validation checks; inner Authenticode
 // covers SmartScreen/WDAC tree scans. See batch-sign-binaries.mjs for the
 // ordering contract.
-const MACHO_MAGICS = new Set([
-  0xfeedface,
-  0xcefaedfe,
-  0xfeedfacf,
-  0xcffaedfe,
-  0xcafebabe,
-  0xbebafeca
-])
-
-/** @param {string} file */
-function isMachO(file) {
-  const buf = Buffer.alloc(4)
-  const fd = fs.openSync(file, 'r')
-  try {
-    if (fs.readSync(fd, buf, 0, 4, 0) !== 4) {
-      return false
-    }
-  } finally {
-    fs.closeSync(fd)
-  }
-  return MACHO_MAGICS.has(buf.readUInt32BE(0))
-}
 
 function windowsSigning() {
   if (!process.env.AZURE_SIGN_ENDPOINT || !process.env.AZURE_CLIENT_ID) {

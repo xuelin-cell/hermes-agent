@@ -8,6 +8,8 @@ them into what Hermes already has — skills, ``mcp_servers``, profiles and
   uninstall / triggers / config / media (see :mod:`.cli`);
 * cache-safe system prompt sections carrying each expert's host rules
   (:mod:`.host_rules`), empty for every profile that is not an expert;
+* shared reply rules and the ordinary assistant's introduction template
+  (:mod:`.communication_rules`), without rewriting account personas;
 * a ``pre_llm_call`` hook suggesting matching kit skills in ordinary
   conversations, and PPT picture rules that name the media slot
   (:mod:`.router`, :mod:`.media_slot`); the nine Eastmoney experts stay on
@@ -25,7 +27,7 @@ Enable with ``hermes plugins enable uniwork-kits``. Expert profiles created by
 
 from __future__ import annotations
 
-from . import background_rules, cli, expert_sync, host_hooks, host_rules, llm, package_hooks, router
+from . import background_rules, cli, communication_rules, expert_sync, host_hooks, host_rules, llm, package_hooks, router, skill_paths, tool_call_rules
 
 
 def register(ctx) -> None:
@@ -58,7 +60,10 @@ def register(ctx) -> None:
     for section_id, render in host_rules.SECTIONS:
         ctx.register_system_prompt_section(section_id, render, max_chars=4000)
     ctx.register_system_prompt_section("uniwork.background-tasks", background_rules.section, max_chars=1600)
+    ctx.register_system_prompt_section("uniwork.communication", communication_rules.section, max_chars=1600)
+    ctx.register_system_prompt_section("uniwork.tool-call", tool_call_rules.section, max_chars=2000)
     ctx.register_hook("pre_llm_call", router.on_pre_llm_call)
+    ctx.register_hook("pre_tool_call", skill_paths.on_pre_tool_call)
     ctx.register_hook("pre_tool_call", host_hooks.on_pre_tool_call)
     ctx.register_hook("pre_tool_call", package_hooks.on_pre_tool_call)
     ctx.register_hook("post_tool_call", lambda tool_name="", **kw: package_hooks.on_observed("post_tool_call", tool_name, **kw))

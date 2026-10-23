@@ -3,6 +3,7 @@ import type { BillingBlock } from '@hermes/shared'
 import { burstVibeHearts } from '@/components/chat/vibe-hearts'
 import { reportFirstBuildTurnComplete } from '@/components/onboarding-chat/first-build'
 import { translateNow } from '@/i18n'
+import { withoutVerifierFooter } from '@/lib/chat-messages/verifier-footer'
 import { coerceGatewayText, coerceThinkingText } from '@/lib/chat-runtime'
 import { playCompletionSound } from '@/lib/completion-sound'
 import { parseErrorSurface } from '@/lib/error-surface'
@@ -350,7 +351,8 @@ export function handleMessageStreamEvent(ctx: GatewayEventContext): boolean {
     // Keyed by session so only one window beeps when several are open.
     playCompletionSound(sessionId)
 
-    const finalText = coerceGatewayText(payload?.text) || coerceGatewayText(payload?.rendered)
+    // desktop-mt: 去掉只随直播送达的英文改文件核对提醒，与重开后的记录保持一致。
+    const finalText = withoutVerifierFooter(coerceGatewayText(payload?.text) || coerceGatewayText(payload?.rendered))
 
     // Terminal error frames (status "error") carry the failure in
     // structured fields: `error` is the message, `partial` marks

@@ -530,6 +530,65 @@ describe('toChatMessages', () => {
     ])
   })
 
+  it('desktop-mt: 不把 Hermes 催模型继续的 [System: …] 无类型行显示成用户气泡', () => {
+    const nudge =
+      '[System: Continue now. Execute the required tool calls and only send your final answer after completing the task.]'
+
+    const messages = toChatMessages([
+      { role: 'user', content: '做一个飞机大战的html游戏', timestamp: 1 },
+      { role: 'assistant', content: '', reasoning: 'Let me create the todo list.', timestamp: 2 },
+      { role: 'user', content: nudge, timestamp: 3 },
+      { role: 'assistant', content: '', reasoning: 'Let me start.', timestamp: 4 },
+      { role: 'user', content: `  ${nudge}`, timestamp: 5 },
+      { role: 'assistant', content: '游戏已完成。', timestamp: 6 },
+      { role: 'user', content: '为什么界面上会出现 [System: Continue now] 这句？', timestamp: 7 }
+    ])
+
+    expect(messages.filter(message => message.role === 'user').map(chatMessageText)).toEqual([
+      '做一个飞机大战的html游戏',
+      '为什么界面上会出现 [System: Continue now] 这句？'
+    ])
+    expect(messages.some(message => chatMessageText(message).includes('Execute the required tool calls'))).toBe(false)
+  })
+
+  describe('desktop-mt: 能看图的模型存下的附图消息还原成用户写的内容', () => {
+    // Hermes 存档的样子：文字段（用户文字 + 空行 + 每张图一行说明）、每张图一个 [screenshot]、再接插件附加内容。
+    const stored = (caption: string, paths: string[]) =>
+      [
+        `${caption}\n\n${paths.map(path => `[Image attached at: ${path}]`).join('\n')}`,
+        ...paths.map(() => '[screenshot]'),
+        '本轮工作目录：C:\\work\\20261023。\n\n<system-reminder>\n以下是应用自动添加的内部工具使用规则。\n</system-reminder>'
+      ].join('\n')
+
+    const user = (content: string) => toChatMessages([{ role: 'user', content, timestamp: 1 }])[0]
+
+    it('与看不到图的模型存下的样子显示得一样，附加内容不显示', () => {
+      const path = 'C:\\Users\\stan\\composer-images\\a.png'
+      const message = user(stored('分析图片内容', [path]))
+      const textOnly = user(`分析图片内容\n@image:${path}`)
+
+      expect(chatMessageText(message)).toBe(chatMessageText(textOnly))
+      expect(chatMessageText(message).trim()).toBe('分析图片内容')
+      expect(message.attachmentRefs).toEqual([`@image:${path}`])
+    })
+
+    it('多张图、路径带空格都还原；只发图时去掉 Hermes 自己补的问句', () => {
+      const message = user(stored('What do you see in this image?', ['C:\\a b\\1.png', 'C:\\pics\\2.png']))
+
+      expect(chatMessageText(message).trim()).toBe('')
+      expect(message.attachmentRefs).toEqual(['@image:`C:\\a b\\1.png`', '@image:C:\\pics\\2.png'])
+    })
+
+    it('格式对不上的消息原样显示', () => {
+      const typed = '我手动写了 [Image attached at: C:\\x.png] 这几个字'
+      const mismatched = 'hi\n\n[Image attached at: C:\\x.png]\n[Image attached at: C:\\y.png]\n[screenshot]\n其余'
+
+      expect(chatMessageText(user(typed))).toBe(typed)
+      expect(chatMessageText(user(mismatched))).toBe(mismatched)
+      expect(chatMessageText(user('分析图片内容\n@image:C:\\x.png')).trim()).toBe('分析图片内容')
+    })
+  })
+
   // Hermes closes a failed turn with an assistant-role row (agent/turn_failure_copy.py);
   // painted as the model's reply it read as the assistant refusing the request.
   it('renders the failed-turn boundary as a Hermes notice, not a model reply', () => {

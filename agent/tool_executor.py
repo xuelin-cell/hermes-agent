@@ -1374,6 +1374,13 @@ class _ConcurrentBatch:
                 outcome = self._dispatch_worker(index, pc.ref(self.effective_task_id), pc.scope_block, start_gate)
                 if outcome is not None:
                     self.results[index] = outcome
+                    # desktop-mt: 执行结束单独反馈；最终完成仍须经过整批结果的持久化屏障。
+                    if not self.gate.abandoned.is_set() and not agent._interrupt_requested:
+                        _safe_callback(
+                            agent.tool_progress_callback, "Tool execution progress",
+                            "tool.execution_finished", outcome.ref.name, None,
+                            tool_call_id=outcome.ref.call_id, duration_seconds=outcome.duration,
+                        )
             finally:
                 with contextlib.suppress(_BatchAbandoned):
                     start_gate.advance()  # keep later-ordered workers moving

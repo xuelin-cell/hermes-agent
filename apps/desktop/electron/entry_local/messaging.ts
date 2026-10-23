@@ -244,7 +244,7 @@ export class DesktopMessaging {
 
     // gateway-start 是原版常驻 run 进程，不能等待它退出才判断启动完成。
     const ok = await this.checkPlatforms(input, false, state.profiles)
-    this.publish(input, ok ? 'completed' : 'failed', true, ok ? undefined : 'apply_failed')
+    this.publish(input, ok ? 'completed' : 'failed', true, ok ? undefined : 'connection_timeout')
 
     return { actionFailed: !ok }
   }
@@ -277,8 +277,9 @@ export class DesktopMessaging {
 
     if (input.operation === 'watch') {
       this.publish(input, 'restarting', true)
-      const ok = await this.watch(profile, 'gateway-restart') && await this.checkPlatforms(input)
-      this.publish(input, ok ? 'completed' : 'failed', true, ok ? undefined : 'apply_failed')
+      const applied = await this.watch(profile, 'gateway-restart')
+      const ok = applied && await this.checkPlatforms(input)
+      this.publish(input, ok ? 'completed' : 'failed', true, ok ? undefined : applied ? 'connection_timeout' : 'apply_failed')
 
       return { actionFailed: !ok }
     }
@@ -314,7 +315,7 @@ export class DesktopMessaging {
     try {
       this.deps.index.remember(this.deps.account, profile, platform, input.operation === 'disconnect' ? null : id)
     } catch {
-      this.publish(input, 'failed', true, 'apply_failed')
+      this.publish(input, 'failed', true, 'index_failed')
 
       return { saved: true, changed: result.changed, actionFailed: true }
     }
@@ -328,6 +329,7 @@ export class DesktopMessaging {
   private async apply(input: MessagingSetupRequest): Promise<boolean> {
     this.publish(input, 'applying', true)
     let ok = false
+    let applied = false
 
     try {
       if (this.closed) {
@@ -336,13 +338,14 @@ export class DesktopMessaging {
 
       const action = await this.deps.request('default', `${BASE}/apply`, 'POST', {})
       this.publish(input, action.name === 'gateway-stop' ? 'stopping' : 'restarting', true)
-      ok = await this.watch('default', action.name) && await this.checkPlatforms(input, action.name === 'gateway-stop')
+      applied = await this.watch('default', action.name)
+      ok = applied && await this.checkPlatforms(input, action.name === 'gateway-stop')
 
       return ok
     } catch {
       return false
     } finally {
-      this.publish(input, ok ? 'completed' : 'failed', true, ok ? undefined : 'apply_failed')
+      this.publish(input, ok ? 'completed' : 'failed', true, ok ? undefined : applied ? 'connection_timeout' : 'apply_failed')
     }
   }
 
@@ -354,7 +357,7 @@ export class DesktopMessaging {
     for (let attempt = 0; attempt < 30 && Date.now() < deadline && !this.closed; attempt++) {
       try {
         const results = await Promise.allSettled(profiles.map(profile =>
-          this.deps.request(profile, `/api/messaging/platforms?profile=${encodeURIComponent(profile)}`, 'GET')))
+          this.deps.request(profile, `${BASE}/platforms?profile=${encodeURIComponent(profile)}`, 'GET')))
 
         if (results.every(result => {
           if (result.status !== 'fulfilled') {return false}
@@ -368,8 +371,8 @@ export class DesktopMessaging {
           return rows.length && targetReady && (stopped
             ? rows.every(row => row && row.gateway_running === false)
             : rows.some(row => row?.gateway_running === true) && rows
-              .filter(row => row && ['weixin', 'uniagentgate', ...Object.keys(IDS)].includes(row.id) && row.enabled && row.configured)
-              .every(row => row.gateway_running === true && row.state === 'connected'))
+              .filter(row => row && ['weixin', 'uniagentgate', ...Object.keys(IDS)].includes(row.id) && row.enabled)
+              .every(row => row.configured && row.gateway_running === true && row.state === 'connected'))
         })) {
           return true
         }

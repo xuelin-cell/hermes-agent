@@ -9,6 +9,11 @@ Original changes include `ef0feece` (initial connector), `559a6f05` (binding),
 were authored by lijiyang. This port retains the source protocol/client structure;
 the Hermes adapter, health observer and account integration are new.
 
+`X-Agent-Version` reports Hermes's base release version when it is at least
+`1.0.0`. Older migration builds (including `0.0.0`) and unknown or invalid
+versions send `1.0.0` to satisfy the gateway's minimum; newer versions are
+preserved. The registration body's `version` remains the connector version.
+
 The desktop build combines the official bundled plugins and this plugin in
 `dist/python-plugins`. Packaging places that complete tree in `resources/python-plugins`,
 outside Electron's `app.asar`, and the desktop sets the existing

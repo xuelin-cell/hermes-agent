@@ -203,9 +203,11 @@ ConvertTo-Json -Compress -InputObject @($owned)
 
 
 def still_same(row):
-    """PID 重用不算原网关存活，无法读取创建时间则拒绝放行。"""
+    """核对原网关身份；macOS 僵尸已结束执行，未知状态仍拒绝放行。"""
     try:
-        return abs(psutil.Process(row["pid"]).create_time() - row["created"]) < 0.001
+        process = psutil.Process(row["pid"])
+        return (abs(process.create_time() - row["created"]) < 0.001
+                and (sys.platform != "darwin" or process.status() != psutil.STATUS_ZOMBIE))
     except psutil.NoSuchProcess:
         return False
 
@@ -236,7 +238,15 @@ def stop_gateways(homes, saved):
         if not runtime:
             continue
         # Windows venv 启动器与真正 Python 可能同名同参数；只向原版确认的网关写标记。
-        record = json.loads((home / "gateway.pid").read_text(encoding="utf-8"))
+        try:
+            record = json.loads((home / "gateway.pid").read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            # 启动未完成或退出中已移除 PID 文件；只清理本轮重新核对过 Home、命令和创建时间的网关。
+            for row in runtime:
+                if row not in current:
+                    raise RuntimeError("无法重新确认账号网关归属") from None
+                force_stop(row)
+            continue
         if Path(record["hermes_home"]).resolve() != home:
             raise RuntimeError("网关 PID 记录归属不符")
         target = status._live_pid_from_record(record)

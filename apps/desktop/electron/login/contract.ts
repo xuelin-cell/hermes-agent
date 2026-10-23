@@ -83,7 +83,7 @@ export interface LoginAccount {
   planAuthRejected?: true
 }
 
-export type LoginResult = { ok: true; account: LoginAccount } | { ok: false }
+export type LoginResult = { ok: true; account: LoginAccount } | { ok: false; reason?: 'storage' }
 
 export interface PlanModel {
   name: string

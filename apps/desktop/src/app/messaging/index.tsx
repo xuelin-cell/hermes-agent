@@ -8,7 +8,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ErrorBanner } from '@/components/ui/error-state'
-import { getMessagingPlatforms, type MessagingPlatformInfo } from '@/hermes'
+import { getMessagingPlatforms, getStatus, type MessagingPlatformInfo } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { AlertTriangle, CheckCircle2, Loader2, MessageCircle, RefreshCw } from '@/lib/icons'
 import { confirm } from '@/store/confirm'
@@ -24,6 +24,7 @@ import type { SetStatusbarItemGroup } from '../shell/statusbar-controls'
 import { $messagingOperation } from './operation-store'
 import { DISPLAY_PLATFORM_IDS, PLATFORM_IDS, PlatformCard, type PlatformId } from './platform-card'
 import { PlatformConfigDialog } from './platform-config-dialog'
+import { restorePlatformErrors } from './platform-errors'
 import { WeixinQrSetup } from './weixin-qr-setup'
 
 interface MessagingViewProps extends ComponentProps<'section'> {
@@ -55,9 +56,24 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
   const [configuring, setConfiguring] = useState<Exclude<PlatformId, 'weixin'> | null>(null)
   const [disconnecting, setDisconnecting] = useState<MessagingPlatformInfo | null>(null)
   const operation = useStore($messagingOperation)
+  const enabledPlatforms = platforms?.filter(platform => platform.enabled) ?? []
+
+  const target = platforms?.find(platform => platform.id === operation.platform)
+
+  const targetRecovered = !operation.platform || !!target && (operation.operation === 'disconnect'
+    ? !target.enabled : target.enabled && target.configured && target.gateway_running && target.state === 'connected')
+
+  // 连接超时是历史结果；新快照须确认本次目标及其它已配置渠道恢复，不能掩盖保存或归属错误。
+  const connectionRecovered = operation.phase === 'failed' && operation.saved && targetRecovered &&
+    operation.error === 'connection_timeout' && (operation.profile ?? 'default') === (scopeProfile ?? 'default') &&
+    !loadError && snapshot?.operationRevision === operation.revision &&
+    (enabledPlatforms.length > 0
+      ? enabledPlatforms.every(platform => platform.configured && platform.gateway_running && platform.state === 'connected')
+      : operation.operation === 'disconnect' && !!platforms?.length && platforms.every(platform => !platform.gateway_running))
 
   // 成功提示与卡片共用同一轮操作后的读取，不能先成功再显示旧的停机状态。
-  const phase = operation.phase === 'completed' && snapshot?.operationRevision !== operation.revision
+  const phase = connectionRecovered ? 'idle'
+    : operation.phase === 'completed' && snapshot?.operationRevision !== operation.revision
     ? 'checking' : operation.phase
 
   const applying = ['saving', 'applying', 'restarting', 'stopping', 'checking'].includes(phase)
@@ -76,14 +92,19 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
     const operationRevision = $messagingOperation.get().revision
 
     try {
-      const result = await getMessagingPlatforms(scopeProfile)
+      // 同轮读取同一 Profile；诊断接口暂不可用时，也不能把整体退出原因当成渠道详情。
+      const [result, status] = await Promise.all([
+        getMessagingPlatforms(scopeProfile),
+        getStatus(scopeProfile).catch(() => null)
+      ])
 
       if (!activeRef.current || revision !== revisionRef.current) {
         return
       }
 
       setSnapshot({
-        platforms: result.platforms.filter(platform => DISPLAY_PLATFORM_IDS.some(id => id === platform.id)),
+        platforms: restorePlatformErrors(result.platforms, status)
+          .filter(platform => DISPLAY_PLATFORM_IDS.some(id => id === platform.id)),
         operationRevision
       })
       setLoadError(false)
@@ -223,8 +244,8 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
     bot_conflict: m.connection.duplicateDescription
   }
 
-  const operationFailed = operation.phase === 'failed' || requestFailed
-  const activePlatforms = platforms?.filter(platform => PLATFORM_IDS.includes(platform.id as PlatformId) && platform.enabled && platform.configured) ?? []
+  const operationFailed = phase === 'failed' || requestFailed
+  const activePlatforms = enabledPlatforms.filter(platform => platform.configured && PLATFORM_IDS.includes(platform.id as PlatformId))
 
   const disconnected = !applying && activePlatforms.some(platform => !platform.gateway_running ||
     ['fatal', 'startup_failed', 'disconnected', 'stopped', 'pending_restart'].includes(platform.state ?? ''))
@@ -245,7 +266,7 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
       : operation.saved ? m.connection.savedFailed : errors[operation.error || ''] || m.connection.saveFailed
   }
 
-  const message = requestFailed ? m.connection.savedFailed : operation.phase === 'failed' ? phaseMessages.failed
+  const message = requestFailed ? m.connection.savedFailed : phase === 'failed' ? phaseMessages.failed
     : disconnected ? m.connection.disconnected : reconnecting ? m.connection.reconnecting : phaseMessages[phase]
 
   const selected = platforms?.find(platform => platform.id === configuring)

@@ -69,6 +69,12 @@ if (store && (canary || buildCommit)) {
   throw new Error('Store packaging is only eligible for stable releases')
 }
 
+// A self-managed NSIS build consumes and publishes its own electron-updater
+// feed. It is still a commit build (that is how the Windows installer is
+// produced locally), so it is the one combination that must not suppress
+// the feed channel.
+const windowsUpdater = process.env.HERMES_WINDOWS_UPDATE === 'electron-updater'
+
 /** @typedef {import("./product-identity.d.cts")} ProductIdentity */
 
 /** @type {ProductIdentity} */
@@ -77,8 +83,13 @@ const identity = {
   light,
   displayName,
   appId: fixedIdentity ? UNIWORK_APP_ID : `com.nousresearch.${name.kebab}${kebabSuffix}`,
-  // Store and commit builds do not publish a release feed.
-  channel: store || buildCommit ? null : light ? (canary ? 'light-canary' : 'light') : (canary ? 'canary' : 'latest'),
+  // Store builds never publish a feed. Commit builds do not either, unless
+  // they are the self-managed NSIS package that updates through it.
+  channel: store || (buildCommit && !windowsUpdater)
+    ? null
+    : light
+      ? (canary ? 'light-canary' : 'light')
+      : (canary ? 'canary' : 'latest'),
   appNamePascal: `${name.pascal}${pascalSuffix}`,
   artifactNamePascal: name.pascal,
   windowsExecutableName: kebabSuffix ? cliName : displayName,

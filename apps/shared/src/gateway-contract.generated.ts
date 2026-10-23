@@ -4457,6 +4457,12 @@ export interface ToolStartPayload {
   preview?: string | null
   labels?: ToolLabel[] | null
 }
+/** 单工具执行已返回；结果尚待整批持久化，不代表最终成功。 */
+export interface ToolExecutionFinishedPayload {
+  tool_id: string
+  name: string
+  duration_s: number
+}
 /** ``tool_progress._on_tool_complete``; ``todos``/``revision`` merged in for the todo tools. */
 export interface ToolCompletePayload {
   tool_id: string
@@ -5597,6 +5603,8 @@ export interface BackendGatewayEventMap {
   'todo.updated': TodoUpdatedPayload
   /** A tool call finished: parsed result, summary, optional diff / todo snapshot. */
   'tool.complete': ToolCompletePayload
+  /** Execution returned; waiting for batch result commit, not a success receipt. */
+  'tool.execution_finished': ToolExecutionFinishedPayload
   /** The model is emitting a tool call's arguments. */
   'tool.generating': ToolGeneratingPayload
   /** Tool output was classified as risky (prompt-injection / secret findings). */
@@ -5681,6 +5689,7 @@ export const GATEWAY_EVENT_TYPES = [
   'tip.show',
   'todo.updated',
   'tool.complete',
+  'tool.execution_finished',
   'tool.generating',
   'tool.output_risk',
   'tool.start',

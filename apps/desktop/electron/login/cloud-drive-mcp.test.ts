@@ -32,11 +32,13 @@ beforeEach(async () => {
   request = vi.fn<typeof fetch>(async source =>
     String(source).endsWith('access-token')
       ? Response.json({ meta: { code: '' }, result: { accessToken: 'private-drive' } })
-      : String(source).endsWith('/unicom/FileDetails')
-        ? Response.json({ ok: true, data: { fid: 'one', fileName: '报告.txt' } })
-        : String(source).endsWith('/assets/download')
-          ? Response.json({ ok: true, data: { download_path: '/drive/content?fid=one' } })
-          : new Response('hello')
+      : new URL(String(source)).pathname.endsWith('/assets')
+        ? Response.json({ ok: true, data: { items: [] } })
+        : String(source).endsWith('/unicom/FileDetails')
+          ? Response.json({ ok: true, data: { fid: 'one', fileName: '报告.txt' } })
+          : String(source).endsWith('/assets/download')
+            ? Response.json({ ok: true, data: { download_path: '/drive/content?fid=one' } })
+            : new Response('hello')
   )
   mcp = new CloudDriveMcp(new CloudDriveClient(() => identity, request), root, workspace)
   expect(await mcp.prepare('default')).toBe(true)
@@ -191,7 +193,11 @@ it('发现的云盘动作走真实 MCP 和账号客户端，写入参数与上�
       /\/(assets|folders|usage|ReductionRecycleData|DeleteRecycleData|move|trash)$/.test(route) ||
       options?.method === 'PATCH'
     ) {
-      return Response.json({ ok: true, status: 'succeeded', data: { saved: true } })
+      return Response.json({
+        ok: true,
+        status: 'succeeded',
+        data: route.endsWith('/assets') ? { items: [] } : { saved: true }
+      })
     }
 
     return original(source, options)

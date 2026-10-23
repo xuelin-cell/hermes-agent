@@ -1,5 +1,6 @@
 import { skillInvocationText } from '@hermes/shared'
 
+import { formatRefValue } from '@/components/assistant-ui/directive-text'
 import { splitLeadingAttachmentRefs } from '@/components/assistant-ui/reference-kinds'
 import { extractImageRefs } from '@/lib/embedded-images'
 import { dedupeGeneratedImageEchoesInParts } from '@/lib/generated-images'
@@ -29,6 +30,9 @@ const ATTACHED_CONTEXT_MARKER_RE = /(?:^|\n)--- Attached Context ---\s*\n/
 // one that types those rows `display_kind=hidden`. It is model scaffolding,
 // not something the user wrote, so it never paints as a bubble.
 const LEGACY_HEARTBEAT_ROW_RE = /^\[Background process \S+ heartbeat #\d+ /
+// desktop-mt: Hermes 催模型继续时存下的 `[System: …]` 用户行没有类型，REST 记录又不像 session.resume 那样滤掉，
+// 会显示成用户气泡。上游 b287651e2d 在后端标成 hidden；后端暂不同步，桌面版先按同一规则隐藏，有类型的提示照常显示。
+const UNTYPED_SYSTEM_ROW_PREFIX = '[System:'
 // The warnings block runs to the end of the prompt text, but when the gateway
 // persists an image turn it appends the `@image:` directive lines AFTER it
 // (`_build_persist_message_with_image_refs`). Stop at the first such line so a
@@ -36,6 +40,37 @@ const LEGACY_HEARTBEAT_ROW_RE = /^\[Background process \S+ heartbeat #\d+ /
 // on resume instead of losing it with the warnings.
 const CONTEXT_WARNINGS_MARKER_RE = /(?:^|\n)--- Context Warnings ---[\s\S]*?(?=\n@image:|$)/
 const CONTEXT_REF_RE = /@(file|folder|url|image|tool|terminal):(?:"[^"\n]+"|'[^'\n]+'|`[^`\n]+`|\S+)/g
+// desktop-mt: 能看图的模型收到附图时，Hermes 把图片说明和插件附加内容（工作目录、内部提醒等）拼进这条用户消息
+// 一起存档（agent/turn_context.py::_append_multimodal_context），存成“文字 + [Image attached at: 路径] +
+// [screenshot] + 附加内容”。显示前还原成看不到图的模型那样的“文字 + @image:路径”，附加内容不显示；存档和模型续聊不变。
+const NATIVE_IMAGE_TURN_RE = /^([\s\S]*?)\n\n((?:\[Image attached(?: at)?: [^\n]+\]\n)+)((?:\[screenshot\](?:\n|$))+)/
+const NATIVE_IMAGE_HINT_RE = /^\[Image attached(?: at)?: ([^\n]+)\]$/
+// 只发图不写字时 Hermes 自己补的问句（agent/image_routing.py::build_native_content_parts），不是用户写的。
+const NATIVE_IMAGE_DEFAULT_CAPTION = 'What do you see in this image?'
+
+/** 还原能看图模型存下的附图用户消息；格式对不上时原样返回。 */
+function nativeImageTurnText(text: string): string {
+  const match = text.match(NATIVE_IMAGE_TURN_RE)
+
+  if (!match) {
+    return text
+  }
+
+  const paths = match[2]
+    .trimEnd()
+    .split('\n')
+    .map(line => line.match(NATIVE_IMAGE_HINT_RE)?.[1] ?? '')
+    .filter(Boolean)
+
+  // 每张图对应一个 [screenshot]；数目对不上就不是 Hermes 存的这种格式。
+  if (!paths.length || (match[3].match(/\[screenshot\]/g)?.length ?? 0) !== paths.length) {
+    return text
+  }
+
+  const caption = match[1].trim() === NATIVE_IMAGE_DEFAULT_CAPTION ? '' : match[1].trim()
+
+  return [caption, ...paths.map(path => `@image:${formatRefValue(path)}`)].filter(Boolean).join('\n')
+}
 
 // Gateway routing note for Discord turns (gateway/run_inbound.py::discord_triggering_note).
 // Current gateways persist the authored text; this heals rows written before that fix. Only
@@ -118,7 +153,7 @@ function displayContentForMessage(role: SessionMessage['role'], content: unknown
     return rawText
   }
 
-  const textContent = rawText.replace(DISCORD_TRIGGERING_NOTE_RE, '$1')
+  const textContent = nativeImageTurnText(rawText.replace(DISCORD_TRIGGERING_NOTE_RE, '$1'))
 
   // A `/skill` turn is stored expanded (the whole skill body). Current
   // gateways project it to the invocation before it ever reaches us; this is
@@ -153,6 +188,10 @@ function transcriptContent(
   content: string
 ): string | null {
   if (displayKind === 'hidden') {
+    return null
+  }
+
+  if (role === 'user' && !displayKind && content.trimStart().startsWith(UNTYPED_SYSTEM_ROW_PREFIX)) {
     return null
   }
 

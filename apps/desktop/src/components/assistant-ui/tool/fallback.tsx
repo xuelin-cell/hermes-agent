@@ -395,7 +395,8 @@ function ToolEntry({ part }: ToolEntryProps) {
   // so they paint statically without a settle cascade. The wrapping group
   // handles its own enter animation, so embedded children skip it.
   const enterRef = useEnterAnimation(messageRunning && !embedded, `tool-entry:${disclosureId}`)
-  const elapsed = useElapsedSeconds(isPending, `tool:${disclosureId}`)
+  const executionFinishedAt = toolResultMetadata?.execution_finished_at
+  const elapsed = useElapsedSeconds(isPending && executionFinishedAt === undefined, `tool:${disclosureId}`)
 
   // A stopped turn is not evidence that an unobserved tool succeeded. Use a
   // presentation-only completion marker, never manufacture a result.
@@ -522,7 +523,11 @@ function ToolEntry({ part }: ToolEntryProps) {
   // top-right, where it can't fight the caret for the right edge.
   const trailing = !embedded ? (
     <span className="flex shrink-0 items-center gap-1.5">
-      <TimelineTimestamp className={SCAFFOLD_META_CLASS} completedAt={completedAt} timestamp={timestamp} />
+      <TimelineTimestamp
+        className={SCAFFOLD_META_CLASS}
+        completedAt={executionFinishedAt ?? completedAt}
+        timestamp={timestamp}
+      />
       {isPending && <ActivityTimerText className={SCAFFOLD_META_CLASS} seconds={elapsed} />}
     </span>
   ) : undefined
@@ -916,6 +921,7 @@ function useToolRun(startIndex: number, endIndex: number): ToolRunState {
         return (
           tool.args === previous.args &&
           tool.result === previous.result &&
+          tool.toolResultMetadata === previous.toolResultMetadata &&
           tool.toolName === previous.toolName &&
           tool.isError === previous.isError
         )

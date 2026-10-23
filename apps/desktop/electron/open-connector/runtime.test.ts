@@ -5,18 +5,25 @@ import path from 'node:path'
 
 import { expect, it } from 'vitest'
 
+import { createLocalSecretStorage } from '../local-secret-storage'
+
 import { ConnectorRuntime } from './runtime'
 
 it('runs isolated services A → B → A with authenticated, service-filtered MCP discovery', async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-connectors-'))
+
+  const storage = createLocalSecretStorage(path.join(directory, 'app-secret.key'))
+  fs.mkdirSync(path.join(directory, 'A'))
+  fs.writeFileSync(path.join(directory, 'A', 'secrets.enc'), 'legacy-keychain-ciphertext')
+  fs.writeFileSync(path.join(directory, 'A', 'connect.sqlite'), 'legacy-db')
 
   const make = (profile: string) =>
     new ConnectorRuntime({
       directory: path.join(directory, profile),
       runtimeDirectory: path.resolve('services/open-connector'),
       executable: createRequire(import.meta.url)('electron'),
-      encrypt: value => Buffer.from(value),
-      decrypt: value => value.toString()
+      encrypt: value => storage.encryptString(value),
+      decrypt: value => storage.decryptString(value)
     })
 
   const a = make('A'),
@@ -26,6 +33,7 @@ it('runs isolated services A → B → A with authenticated, service-filtered MC
 
   try {
     const first = await a.config('amap')
+    expect(fs.readFileSync(path.join(directory, 'A', 'legacy-keychain-backup', 'connect.sqlite'), 'utf8')).toBe('legacy-db')
     endpoint = first.url as string
     const second = await b.config('qq_mail')
     expect(first.url).not.toBe(second.url)
