@@ -15,10 +15,11 @@ import type {
 
 import { hermesApi, profileScoped } from './client'
 
+/** 读取桌面消息插件的配置与真实网关状态，避免以后端插件注册情况代替连接状态。 */
 export function getMessagingPlatforms(profile?: null | string): Promise<MessagingPlatformsResponse> {
   return hermesApi<MessagingPlatformsResponse>({
     ...profileScoped(profile),
-    path: '/api/messaging/platforms'
+    path: '/api/plugins/desktop-messaging/platforms'
   })
 }
 

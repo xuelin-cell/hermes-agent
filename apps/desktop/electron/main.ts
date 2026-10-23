@@ -33,6 +33,8 @@ import {
 import type { Session } from 'electron'
 
 import { type ActiveRuntimeState, classifyActiveRuntime } from './active-runtime-state'
+import { AGENT_MAIL_CHANNEL } from './agent-mail/contract'
+import { AgentMailLocalStateStore } from './agent-mail/local-state'
 import {
   destroyKeepaliveAgents,
   htmlResponseError,
@@ -240,6 +242,8 @@ import {
 import { createAccountExitWindows, retryLogout } from './entry_local/logout-window'
 import { DesktopMessaging, MessagingBotIndex } from './entry_local/messaging'
 import { LocalStartupError, showLocalStartupFailure } from './entry_local/startup-failure'
+import { createUniAgentGateBindingUpdate } from './entry_local/uniagentgate-control'
+import { installUniAgentGateIpc } from './entry_local/uniagentgate-ipc'
 import { createAmbientClaimArbiter } from './event-dedupe'
 import { openExternalUrl as externalOpen, type ExternalOpenDeps, reportPreOpenStatFailure } from './external-open'
 import {
@@ -260,8 +264,6 @@ import {
 } from './find-in-page'
 import { createFirstRunSetupGate } from './first-run-setup-gate'
 import { registerFsIpc } from './fs-ipc'
-import { createUniAgentGateBindingUpdate } from './entry_local/uniagentgate-control'
-import { installUniAgentGateIpc } from './entry_local/uniagentgate-ipc'
 import type {
   GatewayFileSaveContext,
   GatewayFileSaveDeps,
@@ -337,8 +339,6 @@ import { createLocalBackendLifecycle, waitForTeardown } from './local-backend-li
 import { resolveIpcFileReadPath, resolveMediaStreamFile, resolvePreviewTargetPath } from './local-read-path'
 import { localSkinProfileKey, readLocalSkinPayload } from './local-skin'
 import { ACTIVE_LOG_POLL_MS, planLogRotation, reclaimActiveLogIfOversized } from './log-rotation'
-import { AgentMailCloudStateClient } from './agent-mail/cloud-state'
-import { AGENT_MAIL_CHANNEL } from './agent-mail/contract'
 import { installAccountIpc } from './login/account-ipc'
 import { currentDesktopAccount, currentDesktopAsrIdentity, currentDesktopIdentity, currentDesktopLocalContext, sealDesktopAccount } from './login/bootstrap'
 import { CloudDriveClient } from './login/cloud-drive'
@@ -346,8 +346,6 @@ import { createDriveArtifactResolver } from './login/cloud-drive-artifact-source
 import { CloudDriveMcp } from './login/cloud-drive-mcp'
 import { installDriveCredentialRenewal } from './login/cloud-drive-renewal'
 import { CloudDriveTokenStore } from './login/cloud-drive-token-store'
-import { CONNECTOR_CHANNEL } from './open-connector/contract'
-import { ConnectorManager } from './open-connector/manager'
 import { registerMachineProfile } from './machine-profile'
 import { createMainProcessLagWatchdog } from './main-process-lag-watchdog'
 import { ensureMainWindow } from './main-window-lifecycle'
@@ -402,6 +400,8 @@ import {
 import { wireOauthSessionResponse } from './oauth-session-response'
 import { installOfficePreviewIpc } from './office-preview/ipc'
 import { createOfficePreviewService } from './office-preview/service'
+import { CONNECTOR_CHANNEL } from './open-connector/contract'
+import { ConnectorManager } from './open-connector/manager'
 import { listWindowsProcesses, reapPackageRootedProcesses } from './package-process-reap'
 import { createParentStartMarkerResolver, parentWatchdogEnv } from './parent-process-identity'
 import { bundledPayload, installIdForRoot, type PayloadInfo } from './payload-backend'
@@ -591,6 +591,7 @@ import {
 import { startRelaunchWaiter } from './updater/relaunch-waiter'
 import { preflightStateDb } from './updater/state-db-preflight'
 import { createStoreStrategy } from './updater/store-client'
+import { createWindowsStrategy } from './updater/windows-client'
 import { isExternalVenvHolder, isHermesOwnedVenvDaemon } from './venv-holder-select'
 import { fetchMarketplaceThemes, searchMarketplaceThemes } from './vscode-marketplace'
 import { createWakeIndicatorWindowController } from './wake-indicator-window'
@@ -686,17 +687,30 @@ const ACCOUNT_OFFICE_PREVIEW = createOfficePreviewService(ACCOUNT_RUNTIME.deskto
 })
 
 const ACCOUNT_DRIVE_MCP = new CloudDriveMcp(ACCOUNT_DRIVE_CLIENT, ACCOUNT_RUNTIME.home, ACCOUNT_RUNTIME.workspace)
+
 const ACCOUNT_CONNECTORS = new ConnectorManager({
   home: ACCOUNT_RUNTIME.home,
   runtimeDirectory: IS_PACKAGED ? packagedResourceRoot(process.resourcesPath, 'open-connector') : path.join(APP_ROOT, 'services', 'open-connector'),
   executable: process.execPath,
   active: () => currentDesktopLocalContext() === ACCOUNT_RUNTIME,
+  log: rememberLog,
   identity: currentDesktopIdentity,
-  cloudState: new AgentMailCloudStateClient(currentDesktopIdentity, electronNet.fetch),
+  mailState: new AgentMailLocalStateStore(
+    path.join(ACCOUNT_RUNTIME.desktopState, 'agent-mail'),
+    value => {
+      if (!safeStorage.isEncryptionAvailable() || (process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text')) {
+        throw new Error('请先解锁系统密钥环，再使用智能体邮箱。')
+      }
+
+      return safeStorage.encryptString(value)
+    },
+    value => safeStorage.decryptString(value)
+  ),
   encrypt: value => {
     if (!safeStorage.isEncryptionAvailable() || (process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text')) {
       throw new Error('请检查本地凭据存储权限，再连接服务。')
     }
+
     return safeStorage.encryptString(value)
   },
   decrypt: value => safeStorage.decryptString(value),
@@ -3319,6 +3333,13 @@ function createNativePackagedStrategy(
       emitProgress: emitUpdateProgress,
       beforeInstall: teardownBundledBackend,
       onInstallFailure: restoreBundledBackend
+    }
+
+    // A self-managed NSIS package reads its generic feed through NsisUpdater.
+    // The macOS arm wraps Squirrel and has no Windows equivalent, so the two
+    // only share this handoff shape, not the client.
+    if (process.platform === 'win32') {
+      return createWindowsStrategy(deps)
     }
 
     return target ? createChannelMacStrategy(deps, target) : createMacStrategy(deps)
@@ -11807,7 +11828,9 @@ async function runPoolBackendStart(
   installArtifactSharePlugin(profile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', profile), app.getAppPath())
 
   // desktop-mt: 仅在本地后端启动前维护对应 Profile 的内置 MCP 记录。
-  await ACCOUNT_CONNECTORS.prepare(profile).catch(() => console.warn('[connectors] Runtime unavailable; open Connectors to retry.'))
+  await ACCOUNT_CONNECTORS.prepare(profile).catch(error => {
+    rememberLog(`[agent-mail] connector preparation failed profile=${profile}: ${error instanceof Error ? error.message : String(error)}`)
+  })
   await ACCOUNT_DRIVE_MCP.prepare(profile)
   assertPoolEntryStillOwned(poolKey, entry, backendPool, localBackendLifecycle.signal)
 
@@ -12826,7 +12849,9 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
     const parentIdentityEnv = parentWatchdogEnv(process.pid, parentStartMarker, backendNonce)
 
     // desktop-mt: 账号云盘工具由 Electron 监听回环，Agent 沿用原生 MCP 发现和调用。
-    await ACCOUNT_CONNECTORS.prepare(profile).catch(() => console.warn('[connectors] Runtime unavailable; open Connectors to retry.'))
+    await ACCOUNT_CONNECTORS.prepare(profile).catch(error => {
+      rememberLog(`[agent-mail] connector preparation failed profile=${profile}: ${error instanceof Error ? error.message : String(error)}`)
+    })
     await ACCOUNT_DRIVE_MCP.prepare(profile)
     backendConnectionState.assertCurrentAttempt(connectionAttempt)
 
@@ -17293,11 +17318,13 @@ ipcMain.handle('hermes:messaging:status', event => {
 
 ipcMain.handle(CONNECTOR_CHANNEL, async (event, input) => {
   assertArtifactShareWindow(event)
+
   return ACCOUNT_CONNECTORS.request(input)
 })
 
 ipcMain.handle(AGENT_MAIL_CHANNEL, async (event, input) => {
   assertArtifactShareWindow(event)
+
   return ACCOUNT_CONNECTORS.agentMail(input)
 })
 

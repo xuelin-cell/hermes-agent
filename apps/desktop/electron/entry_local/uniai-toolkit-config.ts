@@ -10,6 +10,8 @@ import { MAAS_MODEL_KEY_ENV } from './model-config'
 
 const SERVER = 'UniAI-Toolkit'
 const SERVER_URL = `https://maas.ai-yuanjing.com/app/mcp-server/mcp?key=\${${MAAS_MODEL_KEY_ENV}}&client_id=UniWork`
+const ARXIV_SERVER = 'arXiv-mcp'
+const ARXIV_SERVER_URL = 'https://arxiv.caseyjhand.com/mcp'
 const OPTIONS = { version: '1.1' as const, intAsBigInt: true, prettyErrors: false, logLevel: 'silent' as const }
 
 /** 共享映射和合并键不改写，避免影响用户引用的其他配置。 */
@@ -116,10 +118,6 @@ export function updateUniaiToolkitConfig(home: string, status: FetchedPlan['stat
   const file = path.join(home, 'config.yaml')
   const existing = fs.lstatSync(file, { throwIfNoEntry: false })
 
-  if (!existing && status === 'empty') {
-    return
-  }
-
   if (existing && (!existing.isFile() || existing.isSymbolicLink())) {
     throw new Error('账号 MCP 配置必须是可读的普通文件。')
   }
@@ -143,21 +141,22 @@ export function updateUniaiToolkitConfig(home: string, status: FetchedPlan['stat
 
   const servers = doc.get('mcp_servers')
   const entry = isMap(servers) ? servers.get(SERVER) : undefined
+  const arxivEntry = isMap(servers) ? servers.get(ARXIV_SERVER) : undefined
 
   if (
     !isIndependentMap(doc.contents) ||
     (doc.has('mcp_servers') && !isIndependentMap(servers)) ||
-    (isMap(servers) && servers.has(SERVER) && !isIndependentMap(entry))
+    (isMap(servers) &&
+      ((servers.has(SERVER) && !isIndependentMap(entry)) ||
+        (servers.has(ARXIV_SERVER) && !isIndependentMap(arxivEntry))))
   ) {
     return
   }
 
   if (status === 'empty') {
-    if (!isMap(servers) || !servers.has(SERVER)) {
-      return
+    if (isMap(servers) && servers.has(SERVER)) {
+      servers.delete(SERVER)
     }
-
-    servers.delete(SERVER)
   } else {
     const timeout = isMap(entry) ? entry.get('timeout') : undefined
 
@@ -179,6 +178,19 @@ export function updateUniaiToolkitConfig(home: string, status: FetchedPlan['stat
     if (!isNumber(timeout, SERVER_TIMEOUT)) {
       doc.setIn(['mcp_servers', SERVER, 'timeout'], SERVER_TIMEOUT)
     }
+  }
+
+  // arXiv 是独立于 MaaS 套餐的桌面内置项；保留用户开关和工具过滤，但修正受管地址。
+  if (!doc.has('mcp_servers')) {
+    doc.set('mcp_servers', doc.createNode({}))
+  }
+
+  if (!isMap(arxivEntry)) {
+    doc.setIn(['mcp_servers', ARXIV_SERVER], doc.createNode({}))
+  }
+
+  if (!isMap(arxivEntry) || arxivEntry.get('url') !== ARXIV_SERVER_URL) {
+    doc.setIn(['mcp_servers', ARXIV_SERVER, 'url'], ARXIV_SERVER_URL)
   }
 
   const next = doc.toString({ lineWidth: 0 })

@@ -15,12 +15,17 @@ it('按套餐新建和更新内置记录，保留停用、工具过滤和其他�
 
   try {
     updateUniaiToolkitConfig(home, 'empty')
-    expect(fs.existsSync(file)).toBe(false)
+    expect(parse(fs.readFileSync(file, 'utf8')).mcp_servers).toEqual({
+      'arXiv-mcp': { url: 'https://arxiv.caseyjhand.com/mcp' }
+    })
     updateUniaiToolkitConfig(home, 'available')
     const created = parse(fs.readFileSync(file, 'utf8')).mcp_servers['UniAI-Toolkit']
     expect(created).toEqual({
       url: `https://maas.ai-yuanjing.com/app/mcp-server/mcp?key=\${${MAAS_MODEL_KEY_ENV}}&client_id=UniWork`,
       timeout: 1000
+    })
+    expect(parse(fs.readFileSync(file, 'utf8')).mcp_servers['arXiv-mcp']).toEqual({
+      url: 'https://arxiv.caseyjhand.com/mcp'
     })
 
     const original =
@@ -43,9 +48,34 @@ it('按套餐新建和更新内置记录，保留停用、工具过滤和其他�
     expect(rename).not.toHaveBeenCalled()
     expect(fs.readFileSync(file, 'utf8')).toBe(saved)
     updateUniaiToolkitConfig(home, 'empty')
-    expect(parse(fs.readFileSync(file, 'utf8')).mcp_servers).toEqual({ custom: { command: 'node' } })
+    expect(parse(fs.readFileSync(file, 'utf8')).mcp_servers).toEqual({
+      custom: { command: 'node' },
+      'arXiv-mcp': { url: 'https://arxiv.caseyjhand.com/mcp' }
+    })
   } finally {
     vi.restoreAllMocks()
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+it('keeps arXiv available without a MaaS plan and preserves its user controls', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-arxiv-config-'))
+  const file = path.join(home, 'config.yaml')
+
+  try {
+    fs.writeFileSync(
+      file,
+      'mcp_servers:\n  arXiv-mcp:\n    url: https://old.invalid/mcp\n    enabled: false\n    tools: {exclude: [download_pdf]}\n'
+    )
+    updateUniaiToolkitConfig(home, 'empty')
+    expect(parse(fs.readFileSync(file, 'utf8')).mcp_servers).toEqual({
+      'arXiv-mcp': {
+        url: 'https://arxiv.caseyjhand.com/mcp',
+        enabled: false,
+        tools: { exclude: ['download_pdf'] }
+      }
+    })
+  } finally {
     fs.rmSync(home, { recursive: true, force: true })
   }
 })
@@ -112,7 +142,10 @@ it('有套餐时隐藏 Hermes 自带的看图工具组，保留用户已停用�
     const noPlan = 'model: {provider: x}\n'
     fs.writeFileSync(file, noPlan)
     updateUniaiToolkitConfig(home, 'empty')
-    expect(fs.readFileSync(file, 'utf8')).toBe(noPlan)
+    expect(parse(fs.readFileSync(file, 'utf8'))).toEqual({
+      model: { provider: 'x' },
+      mcp_servers: { 'arXiv-mcp': { url: 'https://arxiv.caseyjhand.com/mcp' } }
+    })
     fs.writeFileSync(file, 'base: &a {max_turns: 3}\nagent: *a\n')
     updateUniaiToolkitConfig(home, 'available')
     expect(parse(fs.readFileSync(file, 'utf8')).agent).toEqual({ max_turns: 3 })

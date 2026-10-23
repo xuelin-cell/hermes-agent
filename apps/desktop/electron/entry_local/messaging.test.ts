@@ -27,7 +27,7 @@ function fixture(account = 'account-a') {
   const index = new MessagingBotIndex(root)
 
   const request = vi.fn(async (_profile: string, url: string): Promise<any> => {
-    if (url.startsWith('/api/messaging/platforms')) {return platformStatus()}
+    if (url.startsWith('/api/plugins/desktop-messaging/platforms?')) {return platformStatus()}
 
     if (url.includes('/platforms/')) {
       return { changed: true }
@@ -102,7 +102,7 @@ it('提交立即返回，状态独立跟踪后台重启，快照不包含凭据'
   const { request, service } = fixture()
   let finish!: (result: { running: boolean; exit_code: number }) => void
   request.mockImplementation(async (_profile, url) => {
-    if (url.startsWith('/api/messaging/platforms')) {return platformStatus()}
+    if (url.startsWith('/api/plugins/desktop-messaging/platforms?')) {return platformStatus()}
 
     if (url.includes('/platforms/')) {return { changed: true }}
 
@@ -179,7 +179,7 @@ it('动作退出不等于平台就绪；重启、扫码和解绑等待真实状�
     let finish!: (value: ReturnType<typeof platformStatus>) => void
     let reads = 0
     request.mockImplementation(async (_profile, url) => {
-      if (url.startsWith('/api/messaging/platforms')) {
+      if (url.startsWith('/api/plugins/desktop-messaging/platforms?')) {
         reads += 1
 
         return await new Promise(resolve => { finish = resolve })
@@ -209,7 +209,7 @@ it('动作退出不等于平台就绪；重启、扫码和解绑等待真实状�
     finish(ready)
     await service.settle()
     expect(service.status()).toMatchObject({ phase: 'completed', saved: true })
-    expect(request).toHaveBeenCalledWith('worker', '/api/messaging/platforms?profile=worker', 'GET')
+    expect(request).toHaveBeenCalledWith('worker', '/api/plugins/desktop-messaging/platforms?profile=worker', 'GET')
     expect(request.mock.calls.filter(([, url]) => url.endsWith('/apply'))).toHaveLength(operation === 'watch' ? 0 : 1)
   }
 
@@ -218,7 +218,7 @@ it('动作退出不等于平台就绪；重启、扫码和解绑等待真实状�
   request.mockImplementation(async (_profile, url) => {
     if (url.endsWith('/apply')) {return { name: 'gateway-stop' }}
 
-    if (url.startsWith('/api/messaging/platforms')) {
+    if (url.startsWith('/api/plugins/desktop-messaging/platforms?')) {
       const snapshot = platformStatus('disabled', ++reads === 1)
       snapshot.platforms.forEach(row => { row.enabled = false })
 
@@ -236,7 +236,7 @@ it('动作退出不等于平台就绪；重启、扫码和解绑等待真实状�
   request.mockImplementation(async (_profile, url) => {
     if (url.endsWith('/apply')) {return { name: 'gateway-restart' }}
 
-    if (url.startsWith('/api/messaging/platforms')) {
+    if (url.startsWith('/api/plugins/desktop-messaging/platforms?')) {
       reads += 1
 
       return platformStatus('pending_restart')
@@ -248,5 +248,14 @@ it('动作退出不等于平台就绪；重启、扫码和解绑等待真实状�
   await service.settle()
   expect(reads).toBeGreaterThan(1)
   expect(reads).toBeLessThanOrEqual(30)
-  expect(service.status()).toMatchObject({ phase: 'failed', saved: true, error: 'apply_failed' })
+  expect(service.status()).toMatchObject({ phase: 'failed', saved: true, error: 'connection_timeout' })
+})
+
+it('索引写入失败与连接超时分开，不允许正常连接掩盖保存错误', async () => {
+  const { index, service, request } = fixture()
+  vi.spyOn(index, 'remember').mockImplementation(() => { throw new Error('fixture disk failure') })
+  await service.submit({ operation: 'save', platform: 'dingtalk' })
+  await service.settle()
+  expect(service.status()).toMatchObject({ phase: 'failed', saved: true, error: 'index_failed' })
+  expect(request.mock.calls.some(([, url]) => url.endsWith('/apply'))).toBe(false)
 })

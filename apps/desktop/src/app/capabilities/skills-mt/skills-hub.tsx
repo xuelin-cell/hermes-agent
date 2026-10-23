@@ -36,6 +36,7 @@ import { useSkillsCopy } from './copy'
 import { CatalogCard, InstalledCard } from './skill-cards'
 import { SkillDetailDialog } from './skill-detail-dialog'
 import { trySkillInNewChat } from './try-skill'
+import { useCatalogInstalled } from './use-catalog-installed'
 
 const MARKET_HUB_URL = 'https://skillhub.ai-yuanjing.com:8081/skill-square/'
 
@@ -110,6 +111,13 @@ export function SkillsHub({
   const catalog = tab === 'market' ? market : recommended
   const categories = tab === 'market' ? marketCategories.data : recommendedCategories.data
 
+  // 没有从市场 / 技能库装过的技能就不用查安装记录。
+  const catalogInstalled = useCatalogInstalled(
+    profile,
+    installedNames,
+    tab !== 'installed' && skills.some(skill => skill.provenance === 'hub')
+  )
+
   const visibleCategories = useMemo(
     () =>
       (categories ?? []).filter(item => {
@@ -149,7 +157,8 @@ export function SkillsHub({
   }
 
   async function install(skill: CatalogSkill) {
-    if (installedNames.has(skill.name)) {
+    // 已安装列表还没加载出来时先不装，免得把装过的再下载一遍。
+    if (catalogInstalled.isInstalled(skill) || (installedPending && !installedError)) {
       return
     }
 
@@ -164,6 +173,8 @@ export function SkillsHub({
 
     setInstalling(skill.id)
 
+    const scope = catalogInstalled.scopeKey
+
     try {
       if (skill.package_download_path || skill.download_url) {
         const result = await installUniWorkSkill(skill, profile)
@@ -172,6 +183,7 @@ export function SkillsHub({
           throw new Error(t('incomplete'))
         }
 
+        catalogInstalled.remember(scope, skill.id, result.name)
         await queryClient.invalidateQueries({ queryKey: SKILLS_QUERY_KEY })
       } else if (skill.clawhub_url) {
         await installHubSkill(skill.clawhub_url, profile)
@@ -354,7 +366,7 @@ export function SkillsHub({
                   description={skill.description}
                   iconUrl={skill.icon_url}
                   installable={Boolean(skill.package_download_path || skill.download_url || skill.clawhub_url)}
-                  installed={installedNames.has(skill.name)}
+                  installed={catalogInstalled.isInstalled(skill)}
                   installing={installing === skill.id}
                   key={skill.id}
                   name={skill.name}

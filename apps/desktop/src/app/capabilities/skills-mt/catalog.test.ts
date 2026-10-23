@@ -4,11 +4,13 @@ import type { SkillInfo } from '@/types/hermes'
 
 import {
   canUninstall,
+  catalogNameGuesses,
   exampleKeyFor,
   filterCatalog,
   filterInstalled,
   installedBadge,
   installedCounts,
+  isCatalogInstalled,
   skillColor,
   skillInitials,
   skillSlug,
@@ -76,6 +78,72 @@ describe('catalog filter', () => {
     expect(filterCatalog(items, 'AI Agent', '').map(s => s.name)).toEqual(['Autotask'])
     expect(filterCatalog(items, '7', '').map(s => s.name)).toEqual(['law-skills'])
     expect(filterCatalog(items, 'all', '律师').map(s => s.name)).toEqual(['law-skills'])
+  })
+})
+
+describe('catalog installed state', () => {
+  // 真实目录数据的样子：市场 id 是短名、显示名「中文（短名）」；推荐 id 是 UUID、带包名。
+  const market = (id: string, name = `显示名（${id}）`) => ({ id, name, download_url: `https://x/${id}.zip` })
+
+  const recommended = (packageFile: string, name = '中文显示名') => ({
+    id: '04267514-133a-4e19-ad44-cf492b158c6e',
+    name,
+    package_download_path: '/uniwork/skills/04267514-133a-4e19-ad44-cf492b158c6e/package',
+    package_file_name: packageFile
+  })
+
+  const installed = (...names: string[]) => new Set(names)
+
+  it('trusts the install record over the display name, and only while that skill is still installed', () => {
+    const entry = market('apple-mail-search-safe', '苹果邮件搜索（apple-mail-search-safe）')
+
+    expect(isCatalogInstalled(entry, installed('apple-mail-search'), 'apple-mail-search')).toBe(true)
+    // 卸载后记录可能还在一会儿：名字不在已安装列表里就是「+」，也不再退回去猜。
+    expect(isCatalogInstalled(entry, installed('apple-mail-search-safe'), 'apple-mail-search')).toBe(false)
+  })
+
+  it('guesses a market entry by its id, never by the name in brackets', () => {
+    expect(
+      isCatalogInstalled(market('tushare-finance', '中国金融行情数据（tushare-finance）'), installed('tushare-finance'))
+    ).toBe(true)
+    // 括号里的英文名和 id 不一致时可能是另一个条目的 id。
+    expect(
+      isCatalogInstalled(
+        market('jvs-wechat-article-publisher', '公众号（wechat-article-publisher）'),
+        installed('wechat-article-publisher')
+      )
+    ).toBe(false)
+    expect(isCatalogInstalled(market('brainstorming-v2'), installed('brainstorming'))).toBe(false)
+  })
+
+  it('guesses a recommended entry by its package name, never by the UUID or a Chinese display name', () => {
+    expect(isCatalogInstalled(recommended('humanizer.zip'), installed('humanizer'))).toBe(true)
+    expect(isCatalogInstalled(recommended('prd-to-design-doc__skillhub.zip'), installed('prd-to-design-doc'))).toBe(
+      true
+    )
+    expect(isCatalogInstalled(recommended('Stock-Diagnosis.ZIP'), installed('Stock-Diagnosis'))).toBe(true)
+    expect(
+      isCatalogInstalled(recommended('superpowers-skill__skillhub.zip', 'superpowers'), installed('superpowers'))
+    ).toBe(true)
+    expect(
+      isCatalogInstalled(
+        recommended('ffmpeg-media-processing-agent-skill.zip', 'FFmpeg 音视频处理'),
+        installed('ffmpeg-media-processing')
+      )
+    ).toBe(false)
+    expect(catalogNameGuesses(recommended('oo-autotask.zip'))).not.toContain('04267514-133a-4e19-ad44-cf492b158c6e')
+  })
+
+  it('compares against the 64-character name the skill list returns', () => {
+    const long = 'a'.repeat(70)
+
+    expect(isCatalogInstalled(market('x'), installed(long.slice(0, 64)), long)).toBe(true)
+    expect(isCatalogInstalled(market(long), installed(long.slice(0, 64)))).toBe(true)
+  })
+
+  it('stays a plus when nothing matches', () => {
+    expect(isCatalogInstalled(market('tushare-finance'), installed())).toBe(false)
+    expect(isCatalogInstalled(recommended(''), installed(''))).toBe(false)
   })
 })
 

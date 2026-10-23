@@ -16,6 +16,7 @@ const TRANSPORTS = [
 ] as const satisfies readonly { id: FormTransport; label: string }[]
 
 export interface ServerFormFieldsProps {
+  autoFocusName?: boolean
   error: FormError | null
   form: ServerForm
   onChange: (form: ServerForm) => void
@@ -23,7 +24,7 @@ export interface ServerFormFieldsProps {
 }
 
 /** UniWork 同款表单：类型、名称，HTTP 填地址和请求头，Stdio 填命令、参数和环境变量。 */
-export function ServerFormFields({ error, form, onChange, readOnly }: ServerFormFieldsProps) {
+export function ServerFormFields({ autoFocusName = false, error, form, onChange, readOnly }: ServerFormFieldsProps) {
   const { t } = useI18n()
   const copy = t.connectorsPage.mcpLocal
   const id = useId()
@@ -43,6 +44,7 @@ export function ServerFormFields({ error, form, onChange, readOnly }: ServerForm
       </Field>
       <Field htmlFor={`${id}-name`} label={copy.name}>
         <Input
+          autoFocus={autoFocusName}
           id={`${id}-name`}
           onChange={event => set('name', event.target.value)}
           placeholder={copy.namePlaceholder}

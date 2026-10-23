@@ -606,6 +606,7 @@ export const en: Translations = {
       hideValue: 'Hide value',
       uniAiToolkitSummary:
         'Plug-and-play multimodal services — image generation, visual QA, speech transcription, AI podcasting, and paper translation.',
+      arxivSummary: 'Search and retrieve arXiv papers for research and literature review.',
       formErrors: {
         argsQuote: 'A quote in the arguments is not closed',
         commandRequired: 'Enter a command',

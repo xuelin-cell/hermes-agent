@@ -65,7 +65,20 @@ if (!/^\d+\.\d+\.\d+$/.test(electronVersion)) {
 }
 
 const macFeed = channelRequest ? null : feedContract.darwinFeed(channel === 'canary' || channel === 'light-canary' ? 'canary' : 'stable', light)
-const publicUrl = feedContract.feedBaseUrl(process.env.CLOUDFLARE_R2_PUBLIC_URL)
+// The public update origin. CLOUDFLARE_R2_PUBLIC_URL still wins so a fork or
+// a CI lane can point at its own bucket; the default is the Unicom OBS tree
+// the Windows installer and the desktop clients are documented against.
+const DEFAULT_PUBLIC_URL = 'https://obs-nmhhht6.cucloud.cn/model-extend-public/installer/unihermes'
+const publicUrl = feedContract.feedBaseUrl(process.env.CLOUDFLARE_R2_PUBLIC_URL) ?? feedContract.feedBaseUrl(DEFAULT_PUBLIC_URL)
+
+// A self-managed NSIS build updates through electron-updater, so it publishes
+// a feed at the same `releases/win32/...` layout the MSIX descriptor uses.
+// desktop.py derives HERMES_WINDOWS_FORMAT and injects it into this process.
+const windowsUpdater = process.env.HERMES_WINDOWS_UPDATE === 'electron-updater'
+const windowsFormat = process.env.HERMES_WINDOWS_FORMAT || (appInstallerManaged ? 'msix' : 'nsis')
+const winFeed = channel && windowsUpdater
+  ? feedContract.win32Feed(channel === 'canary' || channel === 'light-canary' ? 'canary' : 'stable', light)
+  : null
 
 /** @satisfies {Configuration} */
 module.exports = {
@@ -217,7 +230,13 @@ module.exports = {
   win: {
     executableName: windowsExecutableName,
     legalTrademarks: displayName,
-    target: appInstallerManaged ? ['msix'] : ['nsis'],
+    target: windowsFormat === 'msix' ? ['msix'] : ['nsis'],
+    // electron-updater reads this baked copy for the feed origin. Only the
+    // self-managed NSIS build publishes one; an MSIX install is updated by
+    // the App Installer descriptor instead.
+    ...(winFeed && publicUrl
+      ? { publish: [{ provider: 'generic', url: `${publicUrl}/${winFeed.directory}/`, channel: winFeed.channel }] }
+      : {}),
     ...windowsSigning()
   },
   nsis: {

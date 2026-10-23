@@ -8,6 +8,14 @@ import { type McpServerEntry, type McpServers, serverEnabled } from '@/lib/mcp-s
 
 /** Electron writes this entry for MaaS plans (`electron/entry_local/uniai-toolkit-config.ts`). */
 export const BUILT_IN_SERVER = 'UniAI-Toolkit'
+export const ARXIV_BUILT_IN_SERVER = 'arXiv-mcp'
+
+const BUILT_IN_SUMMARIES = {
+  [BUILT_IN_SERVER]: 'uniAiToolkitSummary',
+  [ARXIV_BUILT_IN_SERVER]: 'arxivSummary'
+} as const
+
+export type BuiltInServerSummary = (typeof BUILT_IN_SUMMARIES)[keyof typeof BUILT_IN_SUMMARIES]
 
 export type FormTransport = 'http' | 'stdio'
 
@@ -32,7 +40,15 @@ const HTTP_FIELDS = ['url', 'headers'] as const
 const STDIO_FIELDS = ['command', 'args', 'env', 'cwd'] as const
 
 /** 内置服务只读：只能开关，不能编辑或删除。 */
-export const isBuiltInServer = (name: string | null): boolean => name === BUILT_IN_SERVER
+export const isBuiltInServer = (name: string | null): name is keyof typeof BUILT_IN_SUMMARIES =>
+  name !== null && Object.hasOwn(BUILT_IN_SUMMARIES, name)
+
+/** Electron 写入的连接器桥接服务由连接器页管理，不属于用户自定义 MCP。 */
+export const isDesktopConnectorServer = (entry: McpServerEntry | undefined): boolean =>
+  typeof entry?.desktop_connector === 'string' || entry?.desktop_agent_mail === true
+
+export const builtInServerSummary = (name: string | null): BuiltInServerSummary | null =>
+  isBuiltInServer(name) ? BUILT_IN_SUMMARIES[name] : null
 
 /** 有 `url` 即按 HTTP 处理，与运行时选择传输方式的依据一致。 */
 export const transportOf = (entry: McpServerEntry): FormTransport => (typeof entry.url === 'string' ? 'http' : 'stdio')
