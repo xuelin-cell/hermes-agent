@@ -15,6 +15,24 @@ function darwinFeed(channel, light = false) {
   }
 }
 
+// The NSIS electron-updater feed dir for a channel. A self-managed Windows
+// install publishes `<channel>.yml` here and resolves the artifact paths in
+// it relative to this directory, so the feed tree stays parallel to the
+// macOS one and a canary build can never overwrite the stable feed.
+/** @param {string} channel @param {boolean} light */
+function win32Feed(channel, light = false) {
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(channel) || channel.length > 32 ||
+      /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/.test(channel)) {
+    throw new TypeError('Invalid channel name')
+  }
+  return {
+    directory: `releases/win32/${light ? 'light/' : ''}${channel}`,
+    channel,
+    fileName: `${channel}.yml`,
+    allowPrerelease: channel !== 'stable'
+  }
+}
+
 // The feed origin is baked into app-update.yml and trusted by every
 // installed client for the life of the build, so the CI var must be a
 // canonical https base: no credentials, query, or fragment, spelled exactly
@@ -37,4 +55,4 @@ function feedBaseUrl(raw) {
   return canonical
 }
 
-module.exports = { darwinFeed, feedBaseUrl }
+module.exports = { darwinFeed, win32Feed, feedBaseUrl }
