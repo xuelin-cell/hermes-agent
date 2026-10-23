@@ -17,7 +17,7 @@ import {
   resolveDesktopCommand
 } from '@/lib/desktop-slash-commands'
 import { isMissingRpcMethod } from '@/lib/gateway-rpc'
-import { applyReasoningSlashResult, reasoningSlashParams } from '@/lib/reasoning-slash'
+import { applyReasoningSlashResult, reasoningSlashParams, reasoningSlashSetsEffort } from '@/lib/reasoning-slash'
 import { setSessionYolo } from '@/lib/yolo-session'
 import { openCommandPalettePage } from '@/store/command-palette'
 import { markCompressDeferred } from '@/store/compaction'
@@ -852,7 +852,14 @@ export function useSlashCommand(deps: SlashCommandDeps) {
                 session_id: sessionId
               })
 
-              renderSlashOutput(`reasoning: ${current.value || 'medium'} · display ${current.display || 'hide'}`)
+              // desktop-mt: 思考深度固定用服务器默认，不再显示 Hermes 记下的档位。
+              renderSlashOutput(`思考深度：服务器默认 · display ${current.display || 'hide'}`)
+
+              return
+            }
+
+            if (reasoningSlashSetsEffort(params)) {
+              renderSlashOutput('思考深度固定使用服务器默认，不支持调整。/reasoning show 或 hide 可切换是否显示思考过程。')
 
               return
             }

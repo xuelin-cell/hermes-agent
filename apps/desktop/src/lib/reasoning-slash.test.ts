@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { resolveDesktopCommand } from '@/lib/desktop-slash-commands'
-import { applyReasoningSlashResult, reasoningSlashParams } from '@/lib/reasoning-slash'
+import { applyReasoningSlashResult, reasoningSlashParams, reasoningSlashSetsEffort } from '@/lib/reasoning-slash'
 import { $showReasoning, setShowReasoningFromConfig } from '@/store/reasoning-disclosure'
 
 // `/reasoning hide` typed into the Desktop composer must gate Thinking blocks
@@ -32,5 +32,16 @@ describe('/reasoning slash command', () => {
     expect($showReasoning.get()).toBe(false)
     applyReasoningSlashResult('show')
     expect($showReasoning.get()).toBe(true)
+  })
+
+  // desktop-mt: 思考深度固定用服务器默认，/reasoning 只能切换显示。
+  it('treats only the display words as allowed and anything else as an effort change', () => {
+    for (const arg of ['show', 'HIDE', 'full --global', 'clamp']) {
+      expect(reasoningSlashSetsEffort(reasoningSlashParams(arg, 's1')!)).toBe(false)
+    }
+
+    for (const arg of ['high', 'none', 'show high', '50']) {
+      expect(reasoningSlashSetsEffort(reasoningSlashParams(arg, 's1')!)).toBe(true)
+    }
   })
 })
