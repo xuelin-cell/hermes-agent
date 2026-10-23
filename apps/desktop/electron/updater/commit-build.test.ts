@@ -19,10 +19,23 @@ describe('one-commit artifacts', (): void => {
         'microsoft-store',
         'external'
       ] as const) {
+        // The self-managed NSIS package is the declared exception (below).
+        if (platform === 'win32' && updateMechanism === 'electron-updater') {
+          continue
+        }
+
         expect(resolveUpdaterMechanism({ platform, updateMechanism, source: 'commit-build' })).toBe('external')
       }
     }
   )
+
+  it('lets the self-managed NSIS package own its updater on win32 only', (): void => {
+    const stamp = { updateMechanism: 'electron-updater', source: 'commit-build' } as const
+    expect(resolveUpdaterMechanism({ platform: 'win32', ...stamp })).toBe('electron-updater')
+    // The same declaration elsewhere is still a one-off artifact.
+    expect(resolveUpdaterMechanism({ platform: 'darwin', ...stamp })).toBe('external')
+    expect(resolveUpdaterMechanism({ platform: 'linux', ...stamp })).toBe('external')
+  })
 
   it('refuses both checks and apply with no manual-update escape', async (): Promise<void> => {
     const stamp: InstallStamp = { source: 'commit-build' } as InstallStamp

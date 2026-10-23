@@ -591,6 +591,7 @@ import {
 import { startRelaunchWaiter } from './updater/relaunch-waiter'
 import { preflightStateDb } from './updater/state-db-preflight'
 import { createStoreStrategy } from './updater/store-client'
+import { createWindowsStrategy } from './updater/windows-client'
 import { isExternalVenvHolder, isHermesOwnedVenvDaemon } from './venv-holder-select'
 import { fetchMarketplaceThemes, searchMarketplaceThemes } from './vscode-marketplace'
 import { createWakeIndicatorWindowController } from './wake-indicator-window'
@@ -3319,6 +3320,13 @@ function createNativePackagedStrategy(
       emitProgress: emitUpdateProgress,
       beforeInstall: teardownBundledBackend,
       onInstallFailure: restoreBundledBackend
+    }
+
+    // A self-managed NSIS package reads its generic feed through NsisUpdater.
+    // The macOS arm wraps Squirrel and has no Windows equivalent, so the two
+    // only share this handoff shape, not the client.
+    if (process.platform === 'win32') {
+      return createWindowsStrategy(deps)
     }
 
     return target ? createChannelMacStrategy(deps, target) : createMacStrategy(deps)

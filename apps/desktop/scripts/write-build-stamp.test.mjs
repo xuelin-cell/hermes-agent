@@ -139,3 +139,18 @@ test('commit builds retain exact provenance without entering an update channel',
   }
 })
 
+test('the self-managed NSIS build is the one commit build that keeps an electron-updater feed', () => {
+  const env = { HERMES_DESKTOP_VARIANT: 'bundled', HERMES_BUILD_COMMIT: baseStamp.commit }
+  const managed = buildStampPayload(baseStamp, { ...env, HERMES_WINDOWS_UPDATE: 'electron-updater' }, 'win32', { runtime })
+  assert.equal(managed.source, 'commit-build')
+  assert.equal(managed.updateMechanism, 'electron-updater')
+  // The switch names a Windows update owner; it cannot leak onto macOS.
+  assert.equal(buildStampPayload(baseStamp, { ...env, HERMES_WINDOWS_UPDATE: 'electron-updater' }, 'darwin', { runtime }).updateMechanism, 'external')
+  // Without the switch the NSIS package keeps the upstream one-off shape.
+  assert.equal(buildStampPayload(baseStamp, env, 'win32', { runtime }).updateMechanism, 'external')
+  assert.throws(
+    () => buildStampPayload(baseStamp, { HERMES_DESKTOP_VARIANT: 'light', HERMES_WINDOWS_UPDATE: 'electron-updater' }, 'win32'),
+    /bundled/
+  )
+})
+
