@@ -581,6 +581,7 @@ export const zh = defineLocale({
       showValue: '显示值',
       hideValue: '隐藏值',
       uniAiToolkitSummary: '提供文生图、图文问答、语音转写、AI播客生成、论文翻译等能力，即插即用，扩展智能体多模态工具生态。',
+      arxivSummary: '检索和获取 arXiv 论文，支持科研与文献调研。',
       formErrors: {
         argsQuote: '参数中的引号没有闭合',
         commandRequired: '请填写命令',

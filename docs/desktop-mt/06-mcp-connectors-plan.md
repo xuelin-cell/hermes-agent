@@ -19,7 +19,7 @@
 | 项目 | 原因 |
 | --- | --- |
 | Playwright | 浏览器操作已由 Hermes 内置工具提供（`browser_exec` 等），不再另装浏览器 MCP |
-| arXiv | 由 Hermes 原版 `arxiv` 技能提供，是否随发行包保留另行决定 |
+| arXiv | 作为桌面端内置 MCP 提供；由 Electron 维护 `arXiv-mcp` 的受管地址，保留用户的开关和工具过滤设置 |
 | 推荐连接器、OpenConnector、小红书 | 独立待办 |
 | 本地文件上传（UniWork 的附件预上传或技能引导） | 与 Web 版一致不做：远程服务读不到本机文件，需要文件的工具只能使用已有的远程地址 |
 | `oss_mode=internal` | 只用于云端内网，桌面版不带 |
