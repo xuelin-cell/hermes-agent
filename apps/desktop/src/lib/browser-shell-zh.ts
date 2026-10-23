@@ -43,7 +43,7 @@ export const CLOUD_ZH: TranslationOverrides = {
       kindCatalog: 'MCP · 目录',
       kindCustom: 'MCP · 自定义',
       kindPlugin: plugin => `MCP · 插件 ${plugin}`,
-      inCatalog: '在 Hermes 目录里',
+      inCatalog: '在 UniWork 目录里',
       hostedTwin: '有托管版本可用',
       alsoLocal: '实例里也有一份在运行',
       open: name => `打开 ${name}`,
@@ -139,23 +139,23 @@ export const CLOUD_ZH: TranslationOverrides = {
     dialog: {
       disconnect: '断开',
       disconnectTitle: name => `断开 ${name}？`,
-      disconnectBody: 'Hermes 将不再以这个账号操作。之后随时可以重新连接。',
+      disconnectBody: 'UniWork 将不再以这个账号操作。之后随时可以重新连接。',
       menuRefreshTools: '刷新工具',
       moreActions: '更多操作',
       removeServerTitle: name => `移除 ${name}？`,
       removeServerBody: '只会从实例的 mcp.json 里删掉这一条，别的都不会删。',
-      appSwitch: name => `允许 Hermes 使用 ${name}`,
+      appSwitch: name => `允许 UniWork 使用 ${name}`,
       waysTitle: name => `${name} 在哪里运行`,
       wayNotConnected: name => `还没连接。请在浏览器里登录 ${name}。`,
       wayHosted: '托管',
-      bothOn: name => `两边都开着，Hermes 会把每个 ${name} 工具看到两次。`,
+      bothOn: name => `两边都开着，UniWork 会把每个 ${name} 工具看到两次。`,
       turnOffLocal: '关闭实例里的服务器',
       providedByPlugin: plugin => `由插件 ${plugin} 提供`,
       openPlugins: '打开插件页',
       nousLine: 'Nous 应用跟着账号走，不跟着配置档。',
       rulesReadOnly: '现在不能修改规则。',
       rulesAppOff: name => `先开启 ${name}，才能修改它的工具。`,
-      rulesSignIn: '登录后才能修改 Hermes 在这里能做什么。',
+      rulesSignIn: '登录后才能修改 UniWork 在这里能做什么。',
       orgNote: count => `你的组织关闭了 ${count} 个工具。`,
       orgLink: '打开连接器管理后台',
       connectEnded: '登录没有完成。',
@@ -168,8 +168,8 @@ export const CLOUD_ZH: TranslationOverrides = {
     tools: {
       title: '工具',
       notInstalledBody: '安装后才能看到它带来的工具。',
-      summaryTitle: name => `Hermes 可以用 ${name} 做什么`,
-      summaryPreviewTitle: name => `连接后 Hermes 可以用 ${name} 做什么`,
+      summaryTitle: name => `UniWork 可以用 ${name} 做什么`,
+      summaryPreviewTitle: name => `连接后 UniWork 可以用 ${name} 做什么`,
       summaryCount: count => `${count} 个工具`,
       summaryAllTools: '全部工具',
       summaryOther: '其他',
@@ -201,7 +201,7 @@ export const CLOUD_ZH: TranslationOverrides = {
       needsAuthBody: '登录信息只保存在实例里，不会外传。',
       retry: '重试',
       goneTitle: name => `${name} 已从目录中移除。`,
-      goneBody: 'Hermes 不能再调用它。这一行会一直保留到你移除为止，不会凭空消失。',
+      goneBody: 'UniWork 不能再调用它。这一行会一直保留到你移除为止，不会凭空消失。',
       remove: '移除',
       offTitle: name => `${name} 已关闭。`,
       offBody: '用上面的开关开启后，才能读取它带来的工具。',
@@ -242,12 +242,12 @@ export const CLOUD_ZH: TranslationOverrides = {
   notifications: {
     compressDeferredDone: '上下文压缩完成',
     errors: {
-      storageFailure: 'Hermes 无法写入它的数据目录。',
+      storageFailure: 'UniWork 无法写入它的数据目录。',
       rpcOutOfSync: '页面和后端的版本不一致，需要两边都更新。',
-      restartHermesFailed: '无法重启 Hermes'
+      restartHermesFailed: '无法重启 UniWork'
     },
     actions: {
-      restartHermes: '重启 Hermes',
+      restartHermes: '重启 UniWork',
       openKeys: '打开密钥设置',
       openGateways: '打开网关设置',
       openMaintenance: '打开维护'
@@ -285,7 +285,7 @@ export const CLOUD_ZH: TranslationOverrides = {
       terminalBackend: {
         unavailableTitle: '无法运行终端命令',
         unavailableMessage: backend =>
-          `Hermes 现在无法运行命令：${backend} 还没就绪。可以改用本地运行，或者把 ${backend} 配置好后再试。`,
+          `UniWork 现在无法运行命令：${backend} 还没就绪。可以改用本地运行，或者把 ${backend} 配置好后再试。`,
         openBackendSettings: '打开终端设置',
         useLocal: '改用本地',
         switchedToLocal: '终端命令改为在本地运行，新会话生效。'
@@ -321,8 +321,8 @@ export const CLOUD_ZH: TranslationOverrides = {
   sidebar: {
     storageCorrupt: {
       title: '会话数据库已损坏',
-      body: profiles => `Hermes 读不全 ${profiles} 的会话记录。列表里缺的对话没有被删除，是存放它们的文件损坏了。`,
-      action: '先退出这个配置档上的 Hermes，在不修改文件的前提下检查它，或者恢复一个快照：',
+      body: profiles => `UniWork 读不全 ${profiles} 的会话记录。列表里缺的对话没有被删除，是存放它们的文件损坏了。`,
+      action: '先退出这个配置档上的 UniWork，在不修改文件的前提下检查它，或者恢复一个快照：',
       guide: '恢复指南'
     }
   },
@@ -337,9 +337,9 @@ export const CLOUD_ZH: TranslationOverrides = {
       errorLayerBodies: {
         auth: 'AI 服务拒绝了你的登录凭据。请检查这个提供方的凭据，然后重新发送消息。',
         billing: '你在这个提供方的余额已用完。请充值或换一个提供方，然后重新发送。',
-        disk: '磁盘已满，Hermes 无法保存这次对话。请清理一些空间后重试。',
-        gateway: 'Hermes 在开始回复时遇到内部问题。请重新发送消息；如果反复出现，请发送诊断信息。',
-        runtime: 'Hermes 在开始回复时遇到内部问题。请重新发送消息；如果反复出现，请发送诊断信息。'
+        disk: '磁盘已满，UniWork 无法保存这次对话。请清理一些空间后重试。',
+        gateway: 'UniWork 在开始回复时遇到内部问题。请重新发送消息；如果反复出现，请发送诊断信息。',
+        runtime: 'UniWork 在开始回复时遇到内部问题。请重新发送消息；如果反复出现，请发送诊断信息。'
       },
       errorCodes: {
         auth: {
@@ -380,19 +380,19 @@ export const CLOUD_ZH: TranslationOverrides = {
           body: '模型在回复完成之前就停下了。点「重试」获取完整回复。'
         },
         loop_error: {
-          title: 'Hermes 陷入了循环',
-          body: '回复一直在重复相同的步骤，Hermes 已经把它停下。请重试；如果再次出现，请新开一个对话。'
+          title: 'UniWork 陷入了循环',
+          body: '回复一直在重复相同的步骤，UniWork 已经把它停下。请重试；如果再次出现，请新开一个对话。'
         },
         SESSION_NOT_OWNED: {
           title: '这个对话在别处打开着',
-          body: '这个对话正在另一个 Hermes 窗口或终端里打开。请先在那边关掉再重新发送，或者在这里新开一个对话。'
+          body: '这个对话正在另一个 UniWork 窗口或终端里打开。请先在那边关掉再重新发送，或者在这里新开一个对话。'
         },
         disk_full: {
           title: '磁盘已满',
-          body: '磁盘已满，Hermes 无法保存这次对话。请清理一些空间后重试。'
+          body: '磁盘已满，UniWork 无法保存这次对话。请清理一些空间后重试。'
         },
         free_tier_disabled: {
-          title: '暂时不能在未登录的情况下使用 Hermes',
+          title: '暂时不能在未登录的情况下使用 UniWork',
           body: '用 Nous 账号登录就能继续聊，免费。'
         },
         free_tier_rate_limited: {
@@ -405,10 +405,10 @@ export const CLOUD_ZH: TranslationOverrides = {
         },
         free_tier_model_not_free: {
           title: '这个模型需要登录才能用',
-          body: 'Hermes 暂时使用免费模型。用 Nous 账号登录可以使用更多模型，免费。'
+          body: 'UniWork 暂时使用免费模型。用 Nous 账号登录可以使用更多模型，免费。'
         },
         free_tier_route: {
-          title: 'Hermes 在这条线路上连不到免费模型',
+          title: 'UniWork 在这条线路上连不到免费模型',
           body: '用 Nous 账号登录（免费），或者检查 NOUS_INFERENCE_BASE_URL 设置。'
         },
         free_tier_outage: {
@@ -416,7 +416,7 @@ export const CLOUD_ZH: TranslationOverrides = {
           body: '请过一分钟再发送一次。'
         },
         free_tier_refused: {
-          title: 'Hermes 无法在未登录的情况下发送',
+          title: 'UniWork 无法在未登录的情况下发送',
           body: '用 Nous 账号登录是免费的。'
         }
       },
@@ -430,18 +430,18 @@ export const CLOUD_ZH: TranslationOverrides = {
         }
       },
       errorDetails: '详情',
-      errorToastTitle: 'Hermes 没能完成回复',
+      errorToastTitle: 'UniWork 没能完成回复',
       errorChooseModel: '选择模型',
       errorCompressConversation: '压缩对话',
       errorCompressFailed: '无法压缩对话',
-      errorOpenHermesFolder: '打开 Hermes 文件夹',
-      errorOpenHermesFolderFailed: '无法打开 Hermes 文件夹',
+      errorOpenHermesFolder: '打开 UniWork 文件夹',
+      errorOpenHermesFolderFailed: '无法打开 UniWork 文件夹',
       errorUpdateApiKey: '更新 API 密钥',
       errorSignInFreeTier: '用 Nous 账号登录'
     },
     approval: {
       reconnect: '重新连接',
-      timedOutSystemLine: '审批超时，命令没有执行。可以让 Hermes 再试一次，或者在 设置 → 安全 → 审批超时 里调大时限。',
+      timedOutSystemLine: '审批超时，命令没有执行。可以让 UniWork 再试一次，或者在 设置 → 安全 → 审批超时 里调大时限。',
       openSafetySettings: '打开安全设置',
       commandDetails: '命令详情'
     }

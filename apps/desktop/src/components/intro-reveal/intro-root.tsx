@@ -12,7 +12,7 @@ export function mountIntroReveal(): void {
     return
   }
 
-  document.title = 'Hermes'
+  document.title = 'UniWork'
   // Every intro measure is in rem, so this one root size scales the whole
   // composition. The app's default 16 px root is sized for a working window, which
   // is too small on a display the user sits back from.
