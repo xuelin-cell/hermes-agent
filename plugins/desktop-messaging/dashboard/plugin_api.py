@@ -30,6 +30,21 @@ _locks: dict[str, asyncio.Lock] = {}
 _gateway_lock = asyncio.Lock()
 
 
+@router.get("/platforms")
+def platform_status(profile: str | None = None) -> dict:
+    """钉钉配置按账号文件判断，连接状态仍复用原版进程存活与多 Profile 投影。"""
+    from hermes_cli.web_routers.messaging import _platform_payloads
+    from hermes_constants import get_hermes_home
+
+    with _config_profile_scope(profile) as scoped:
+        entries = _messaging_platform_catalog()
+        # 当前后端的插件注册失败不等于网关进程未连接；其它平台保持原版判断。
+        rows = _platform_payloads(scoped, [entry for entry in entries if entry["id"] != "dingtalk"])
+        rows += _platform_payloads(get_hermes_home(), [entry for entry in entries if entry["id"] == "dingtalk"])
+        by_id = {row["id"]: row for row in rows}
+        return {"platforms": [by_id[entry["id"]] for entry in entries]}
+
+
 def _managed_profiles() -> list:
     """沿用原版受管范围，拒绝链接到其它账号的 Profile。"""
     from hermes_cli.profiles import profiles_to_serve

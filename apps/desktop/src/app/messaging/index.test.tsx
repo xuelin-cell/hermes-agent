@@ -431,11 +431,34 @@ function dingtalk(patch: Partial<MessagingPlatformInfo> = {}) {
 }
 
 describe('Messaging cards and native configuration', () => {
+  it.each(['save', 'retry', 'watch'] as const)('clears a historical %s connection timeout only after fresh recovery', async operation => {
+    publishOperation({ phase: 'failed', operation, platform: 'dingtalk', profile: 'default', saved: true, error: 'connection_timeout' })
+    const row = dingtalk({ configured: true, enabled: true, state: 'retrying' })
+    getMessagingPlatforms.mockResolvedValue({ platforms: [row] })
+    await renderMessaging()
+    expect(await screen.findByText(/Settings saved, but the messaging connection/)).toBeTruthy()
+    getMessagingPlatforms.mockResolvedValue({ platforms: [{ ...row, state: 'connected' }] })
+    await act(async () => { window.document.dispatchEvent(new Event('visibilitychange')) })
+    await waitFor(() => expect(screen.queryByText(/Settings saved, but the messaging connection/)).toBeNull())
+    expect(messagingSetup).not.toHaveBeenCalled()
+    expect(currentStatus.phase).toBe('failed')
+  })
+
+  it('does not hide a saved target failure because another platform is healthy', async () => {
+    publishOperation({ phase: 'failed', operation: 'save', platform: 'dingtalk', profile: 'default', saved: true, error: 'connection_timeout' })
+    getMessagingPlatforms.mockResolvedValue({ platforms: [
+      dingtalk({ enabled: true, configured: false }),
+      platform({ id: 'weixin', enabled: true, configured: true, state: 'connected' })
+    ] })
+    await renderMessaging()
+    expect(await screen.findByText(/Settings saved, but the messaging connection/)).toBeTruthy()
+  })
+
   it.each([{ ids: ['weixin', 'uniagentgate'] }, { ids: ['uniagentgate'] }])(
     'clears a historical restore failure when current configured channels recover: $ids',
     async ({ ids }) => {
       $settingsScopeOverride.set(null)
-      publishOperation({ phase: 'failed', operation: 'restore', profile: 'default', saved: true, error: 'apply_failed' })
+      publishOperation({ phase: 'failed', operation: 'restore', profile: 'default', saved: true, error: 'connection_timeout' })
 
       const rows = ids.map(id => platform({
         id, enabled: true, configured: true, state: id === 'uniagentgate' ? 'retrying' : 'connected'
@@ -464,11 +487,15 @@ describe('Messaging cards and native configuration', () => {
   )
 
   it.each([
+    { operation: 'save' as const, error: 'apply_failed', saved: true, profile: 'default',
+      message: 'Settings saved, but the messaging connection could not be restored. Retry the connection.' },
+    { operation: 'save' as const, error: 'index_failed', saved: true, profile: 'default',
+      message: 'Settings saved, but the messaging connection could not be restored. Retry the connection.' },
     { operation: 'save' as const, error: 'credentials_rejected', saved: false, profile: 'default',
       message: 'ID or Secret was rejected.' },
     { operation: 'restore' as const, error: 'gateway_identity_unverified', saved: true, profile: 'default',
       message: 'The existing gateway’s ownership could not be verified. No new gateway was started. Open logs for details.' },
-    { operation: 'restore' as const, error: 'apply_failed', saved: true, profile: 'another-profile',
+    { operation: 'restore' as const, error: 'connection_timeout', saved: true, profile: 'another-profile',
       message: 'Messaging could not be restored. Desktop chat is available. Retry the connection or open logs.' }
   ])('keeps $error for $profile visible when the saved channel is connected', async ({ operation, error, saved, profile, message }) => {
     $settingsScopeOverride.set(null)
@@ -554,6 +581,7 @@ describe('Messaging cards and native configuration', () => {
     expect(within(screen.getByRole('article', { name: 'DingTalk bot integration' })).queryByText('Connected')).toBeNull()
 
     view.rerender(<MemoryRouter><div>Other page</div></MemoryRouter>)
+    getMessagingPlatforms.mockResolvedValue({ platforms: [dingtalk({ configured: true, enabled: true, state: 'retrying' })] })
     await act(async () => { publishOperation({ phase: 'failed', saved: true, error: 'apply_failed' }) })
     expect(screen.getByText('Other page')).toBeTruthy()
     expect(screen.queryByText(/Settings saved, but/)).toBeNull()

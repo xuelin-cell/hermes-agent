@@ -56,16 +56,23 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
   const [configuring, setConfiguring] = useState<Exclude<PlatformId, 'weixin'> | null>(null)
   const [disconnecting, setDisconnecting] = useState<MessagingPlatformInfo | null>(null)
   const operation = useStore($messagingOperation)
-  const configuredPlatforms = platforms?.filter(platform => platform.enabled && platform.configured) ?? []
+  const enabledPlatforms = platforms?.filter(platform => platform.enabled) ?? []
 
-  // 自动恢复超时是历史结果；同一 Profile 的新快照确认全部恢复后，不再提示这次失败。
-  const restorationRecovered = operation.phase === 'failed' && operation.operation === 'restore' &&
-    operation.error === 'apply_failed' && (operation.profile ?? 'default') === (scopeProfile ?? 'default') &&
-    !loadError && snapshot?.operationRevision === operation.revision && configuredPlatforms.length > 0 &&
-    configuredPlatforms.every(platform => platform.gateway_running && platform.state === 'connected')
+  const target = platforms?.find(platform => platform.id === operation.platform)
+
+  const targetRecovered = !operation.platform || !!target && (operation.operation === 'disconnect'
+    ? !target.enabled : target.enabled && target.configured && target.gateway_running && target.state === 'connected')
+
+  // 连接超时是历史结果；新快照须确认本次目标及其它已配置渠道恢复，不能掩盖保存或归属错误。
+  const connectionRecovered = operation.phase === 'failed' && operation.saved && targetRecovered &&
+    operation.error === 'connection_timeout' && (operation.profile ?? 'default') === (scopeProfile ?? 'default') &&
+    !loadError && snapshot?.operationRevision === operation.revision &&
+    (enabledPlatforms.length > 0
+      ? enabledPlatforms.every(platform => platform.configured && platform.gateway_running && platform.state === 'connected')
+      : operation.operation === 'disconnect' && !!platforms?.length && platforms.every(platform => !platform.gateway_running))
 
   // 成功提示与卡片共用同一轮操作后的读取，不能先成功再显示旧的停机状态。
-  const phase = restorationRecovered ? 'idle'
+  const phase = connectionRecovered ? 'idle'
     : operation.phase === 'completed' && snapshot?.operationRevision !== operation.revision
     ? 'checking' : operation.phase
 
@@ -238,7 +245,7 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
   }
 
   const operationFailed = phase === 'failed' || requestFailed
-  const activePlatforms = configuredPlatforms.filter(platform => PLATFORM_IDS.includes(platform.id as PlatformId))
+  const activePlatforms = enabledPlatforms.filter(platform => platform.configured && PLATFORM_IDS.includes(platform.id as PlatformId))
 
   const disconnected = !applying && activePlatforms.some(platform => !platform.gateway_running ||
     ['fatal', 'startup_failed', 'disconnected', 'stopped', 'pending_restart'].includes(platform.state ?? ''))

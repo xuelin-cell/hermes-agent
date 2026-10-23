@@ -13,6 +13,77 @@ api = import_module("plugins.desktop-messaging.dashboard.plugin_api")
 validation = import_module("plugins.desktop-messaging.dashboard.validation")
 
 
+@pytest.mark.parametrize("alive,state,credentials,enabled,expected", [
+    (True, "connected", True, True, "connected"),
+    (False, "connected", True, True, "gateway_stopped"),
+    (True, "fatal", True, True, "fatal"),
+    (True, None, True, True, "pending_restart"),
+    (True, "connected", False, True, "not_configured"),
+    (True, "connected", True, False, "disabled"),
+])
+def test_desktop_status_does_not_depend_on_backend_adapter_registration(
+    monkeypatch, alive, state, credentials, enabled, expected,
+):
+    """配置由本账号文件确认，连通仍必须通过原版存活检查和渠道状态。"""
+    from types import SimpleNamespace
+    from hermes_cli.web_routers import messaging
+    from hermes_constants import get_hermes_home
+
+    if credentials:
+        save_env_value("DINGTALK_CLIENT_ID", "fixture-id")
+        save_env_value("DINGTALK_CLIENT_SECRET", "fixture-secret")
+    api._write_platform_enabled("dingtalk", enabled)
+    runtime = {"platforms": {"dingtalk": {"state": state}}, "state": "running"}
+    monkeypatch.setattr(messaging, "read_runtime_status", lambda **_: runtime)
+    monkeypatch.setattr(messaging, "get_runtime_status_running_pid", lambda *a, **k: 123)
+    probes = []
+
+    def liveness(**kwargs):
+        """记录显式 Home，模拟原版进程归属与存活检查结果。"""
+        probes.append(kwargs["profile_dir"])
+        return SimpleNamespace(running=alive)
+
+    original = messaging._platform_enablement
+
+    def registration_missing(platform, entry, env, scoped):
+        """模拟桌面进程插件未注册，网关进程仍独立运行。"""
+        return original(platform, entry, env, scoped) if scoped else (enabled, False, None)
+
+    monkeypatch.setattr(messaging, "resolve_gateway_liveness", liveness)
+    monkeypatch.setattr(messaging, "_platform_enablement", registration_missing)
+    app = FastAPI()
+    app.include_router(api.router)
+    with TestClient(app) as client:
+        response = client.get("/platforms")
+    assert response.status_code == 200
+    row = next(p for p in response.json()["platforms"] if p["id"] == "dingtalk")
+    assert row["configured"] is credentials
+    assert row["state"] == expected
+    assert get_hermes_home() in probes
+    assert "fixture-secret" not in response.text
+
+
+@pytest.mark.parametrize("pooled", [False, True])
+def test_desktop_status_reads_named_profile_not_root_credentials(monkeypatch, pooled):
+    """同时核对同进程 Profile 和独立 Profile 后端，不借用默认账号凭据。"""
+    from hermes_cli.profiles import create_profile
+    from hermes_cli.web_routers import messaging
+    from hermes_constants import get_hermes_home
+
+    home = get_hermes_home()
+    create_profile("worker")
+    save_env_value("DINGTALK_CLIENT_ID", "root-id")
+    save_env_value("DINGTALK_CLIENT_SECRET", "root-secret")
+    monkeypatch.setattr(messaging, "read_runtime_status", lambda **_: None)
+    monkeypatch.setattr(messaging, "multiplexer_liveness_for_profile", lambda *a: None)
+    if pooled:
+        monkeypatch.setenv("HERMES_HOME", str(home / "profiles" / "worker"))
+    result = api.platform_status(None if pooled else "worker")
+    row = next(p for p in result["platforms"] if p["id"] == "dingtalk")
+    assert row["configured"] is False
+    assert not any(p["is_set"] for p in row["env_vars"] if p["required"])
+
+
 @pytest.mark.parametrize("platform", ["dingtalk", "feishu", "wecom"])
 def test_credentials_validate_before_writes_and_unchanged_save_skips_probe(platform, monkeypatch):
     """错误和超时不覆盖旧值；成功落盘后同值保存不重复认证。"""
