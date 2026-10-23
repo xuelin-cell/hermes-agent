@@ -46,6 +46,49 @@ it('启用但缺少配置的渠道不能被过滤后冒充全部恢复', async (
   expect(service.status()).toMatchObject({ error: 'connection_timeout' })
 })
 
+it('启动恢复比日常操作多等一会儿：慢到 40 次读取后才连上也算恢复成功', async () => {
+  const { service, request } = fixture()
+  let reads = 0
+  request.mockImplementation(async (_profile, url) => {
+    if (url.endsWith('/restore')) {return { configured: true, name: 'gateway-start', profiles: ['default'] }}
+
+    reads++
+
+    return { platforms: [{ ...connection(), state: reads < 40 ? 'connecting' : 'connected' }] }
+  })
+  expect(await service.restore()).toEqual({ actionFailed: false })
+  expect(reads).toBe(40)
+  expect(service.status()).toMatchObject({ phase: 'completed', operation: 'restore' })
+})
+
+it('启动恢复始终连不上时，读满 75 次后记为连接超时', async () => {
+  const { service, request } = fixture()
+  let reads = 0
+  request.mockImplementation(async (_profile, url) => {
+    if (url.endsWith('/restore')) {return { configured: true, name: 'gateway-start', profiles: ['default'] }}
+
+    reads++
+
+    return { platforms: [{ ...connection(), state: 'connecting' }] }
+  })
+  expect(await service.restore()).toEqual({ actionFailed: true })
+  expect(reads).toBe(75)
+  expect(service.status()).toMatchObject({ phase: 'failed', operation: 'restore', error: 'connection_timeout' })
+})
+
+it('等待期间账号退出不算连接失败：不留失败记录，也不报失败', async () => {
+  const { service, request } = fixture()
+  request.mockImplementation(async (_profile, url) => {
+    if (url.endsWith('/restore')) {return { configured: true, name: 'gateway-start', profiles: ['default'] }}
+
+    service.seal()
+
+    return { platforms: [{ ...connection(), state: 'connecting' }] }
+  })
+  expect(await service.restore()).toEqual({})
+  expect(service.status().phase).not.toBe('failed')
+})
+
 it('5G-only restoration waits for the real connection and uses the same single startup queue', async () => {
   const { service, request } = fixture()
   let reads = 0
