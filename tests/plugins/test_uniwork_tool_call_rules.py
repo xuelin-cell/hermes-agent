@@ -1,5 +1,7 @@
 """元景工具被折叠时，系统提示里带上 tool_call 的用法规则。"""
 
+import json
+
 import pytest
 
 from tests.plugins.test_uniwork_kits_plugin import kits, profile_env  # noqa: F401 - fixtures
@@ -17,14 +19,21 @@ def _config(home, extra=""):
 
 @pytest.mark.parametrize("platform", ["desktop", "subagent"])
 def test_rules_are_short_and_cover_the_rejected_forms(kits, profile_env, platform):  # noqa: F811
-    """主会话和子代理都加：一项一个 tool_call、不包成字符串、看图填 prompt，整段保持简短。"""
+    """主会话和子代理的简短示例须能被原生解析器接受，避免只描述字段却遗漏层级。"""
+    from tools.tool_search_validation import normalize_tool_call_entries
+
     _config(profile_env)
     text = kits.root.tool_call_rules.section({"platform": platform})
     assert "一个 tool_call 只放一项" in text
     assert "不要包成字符串" in text
     assert "analyze_image）必须填 prompt" in text
     assert "get_oss_upload_url" not in text
-    assert len(text) < 200
+    example = json.loads(text.split("结构示例：", 1)[1].split("\n", 1)[0])
+    entries, error = normalize_tool_call_entries(example)
+    assert error is None
+    assert len(entries) == 1 and entries[0]["name"]
+    assert isinstance(entries[0]["arguments"], dict)
+    assert len(text) < 400
 
 
 @pytest.mark.parametrize(
