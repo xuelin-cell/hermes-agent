@@ -454,6 +454,7 @@ export interface Translations {
       showValue: string
       hideValue: string
       uniAiToolkitSummary: string
+      arxivSummary: string
       formErrors: {
         argsQuote: string
         commandRequired: string

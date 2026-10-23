@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -16,6 +16,7 @@ import type { McpServersController } from '../mcp/use-mcp-servers'
 import { ServerFormFields } from './server-form'
 import {
   blankForm,
+  builtInServerSummary,
   formatArgs,
   formFromEntry,
   type FormTransport,
@@ -53,6 +54,7 @@ export function McpServerRow({
   const { t } = useI18n()
   const copy = t.connectorsPage.mcpLocal
   const panelId = useId()
+  const panelRef = useRef<HTMLDivElement>(null)
   const entry = name ? controller.servers[name] : undefined
   const builtIn = isBuiltInServer(name)
   const enabled = entry ? serverEnabled(entry) : false
@@ -62,6 +64,13 @@ export function McpServerRow({
   const status = rowStatus()
   const title = name || copy.untitled
   const transport = entry ? transportOf(entry) : newTransport
+
+  // 选中传输类型后，新建行可能落在当前视口下方；让最近的滚动容器主动揭示完整表单。
+  useEffect(() => {
+    if (expanded) {
+      panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [expanded])
 
   /** 状态与 UniWork 相同：开启验证中、启用后的测试结果，或刚才开启失败。 */
   function rowStatus(): RowStatus {
@@ -95,7 +104,9 @@ export function McpServerRow({
   /** 折叠时的一行摘要：内置服务显示简介，其余显示地址或命令。 */
   function summary(): string {
     if (builtIn) {
-      return copy.uniAiToolkitSummary
+      const summary = builtInServerSummary(name)
+
+      return summary ? copy[summary] : ''
     }
 
     if (!entry) {
@@ -159,7 +170,11 @@ export function McpServerRow({
         </div>
       </div>
       {expanded && (
-        <div className="grid gap-3 pb-4" id={panelId}>
+        <div
+          className="grid gap-3 rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-bg-quaternary) p-4 pb-5 sm:p-5"
+          id={panelId}
+          ref={panelRef}
+        >
           <RowEditor
             controller={controller}
             edits={edits}
@@ -236,7 +251,15 @@ function RowEditor({ controller, edits, id, name, readOnly, transport }: RowEdit
     edits.edit(id, next)
   }
 
-  return <ServerFormFields error={edits.errors[id] ?? null} form={form} onChange={change} readOnly={readOnly} />
+  return (
+    <ServerFormFields
+      autoFocusName={name === null && !readOnly}
+      error={edits.errors[id] ?? null}
+      form={form}
+      onChange={change}
+      readOnly={readOnly}
+    />
+  )
 }
 
 /** UniWork 同款状态标签：连接中、N 个工具可用、失败。 */

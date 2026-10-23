@@ -24,6 +24,7 @@ export interface WelcomeCategory {
 export interface WelcomeModule {
   id: string
   name: string
+  icon?: string
   workspace: 'work' | 'codex'
   sort: number
   tags: WelcomeCategory[]
@@ -68,6 +69,7 @@ export function normalizeWelcomeCatalog(value: unknown): WelcomeModule[] {
         {
           id: `configured-module-${index}`,
           name: item.name,
+          ...(text(item.icon, 128) ? { icon: item.icon.trim() } : {}),
           workspace: workspaceForModuleName(item.name),
           sort: order(item.sort),
           tags: normalizeWelcomeCategories(item.tags)

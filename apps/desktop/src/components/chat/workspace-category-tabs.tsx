@@ -1,7 +1,7 @@
 import './workspace-category-tabs.css'
 
 import { useStore } from '@nanostores/react'
-import { BookOpen, SquareCode } from 'lucide-react'
+import { DynamicIcon, type IconName, iconNames } from 'lucide-react/dynamic'
 import { useEffect, useRef } from 'react'
 
 import { $resolvedWelcomeCatalog, loadWelcomeCatalog } from '@/app/chat/composer/work-templates/catalog-store'
@@ -14,6 +14,8 @@ import { workspaceCategoryCopy } from './workspace-category-copy'
 interface WorkspaceCategoryTabsProps {
   onSelect?: () => void
 }
+
+const SUPPORTED_ICONS = new Set<string>(iconNames)
 
 export function WorkspaceCategoryTabs({ onSelect }: WorkspaceCategoryTabsProps = {}) {
   const { locale } = useI18n()
@@ -41,8 +43,6 @@ export function WorkspaceCategoryTabs({ onSelect }: WorkspaceCategoryTabsProps =
     <div className="workspace-category-nav">
       <div aria-label={copy.label} className="workspace-category-tabs" ref={ref} role="tablist">
         {modules.map((module, index) => {
-          const Icon = module.workspace === 'codex' ? SquareCode : BookOpen
-
           return (
             <button
               aria-selected={selected?.id === module.id}
@@ -85,7 +85,9 @@ export function WorkspaceCategoryTabs({ onSelect }: WorkspaceCategoryTabsProps =
               tabIndex={selected?.id === module.id ? 0 : -1}
               type="button"
             >
-              <Icon aria-hidden="true" size={18} />
+              {module.icon && SUPPORTED_ICONS.has(module.icon) && (
+                <DynamicIcon aria-hidden="true" fallback={() => null} name={module.icon as IconName} size={18} />
+              )}
               <span>{module.name}</span>
             </button>
           )

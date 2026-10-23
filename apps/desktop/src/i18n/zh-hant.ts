@@ -129,6 +129,7 @@ export const zhHant = defineLocale({
       showValue: '顯示值',
       hideValue: '隱藏值',
       uniAiToolkitSummary: '提供文生圖、圖文問答、語音轉寫、AI 播客生成、論文翻譯等能力，即插即用，擴充智慧體多模態工具生態。',
+      arxivSummary: '檢索和取得 arXiv 論文，支援研究與文獻調研。',
       formErrors: {
         argsQuote: '參數中的引號沒有閉合',
         commandRequired: '請填寫命令',

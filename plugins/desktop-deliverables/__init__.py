@@ -446,15 +446,36 @@ def end_turn(*, session_id="", turn_id="", **kwargs):
             _turns.pop(key)
 
 
+def rewrite_llm_request(*, request=None, **context):
+    """llm_request 中间件：先改看图提示，再去掉思考深度档位。
+
+    Hermes 给每个请求中间件的都是原始请求，后一个的结果会盖掉前一个，所以两步合在这里依次做。
+    """
+    from .image_hints import rewrite_request
+    from .reasoning import strip_reasoning_levels
+
+    reasons = []
+    hinted = rewrite_request(request=request, **context)
+    if hinted:
+        request = hinted["request"]
+        reasons.append(hinted.get("reason") or "image-hint")
+    stripped = strip_reasoning_levels(request)
+    if stripped is not None:
+        request = stripped
+        reasons.append("reasoning-default")
+    if not reasons:
+        return None
+    return {"request": request, "source": "desktop-deliverables", "reason": "+".join(reasons)}
+
+
 def register(ctx):
     """只使用现有原生钩子和中间件，不增加模型工具或修改 Hermes 核心。"""
-    from .image_hints import rewrite_request
     from .uploads import around_call, remember_session
 
     # 元景工具读不到本机文件：执行时替模型上传并换成 ossPath。
     ctx.register_middleware("tool_execution", around_call)
-    # 看不到图的主模型：Hermes 的 vision_analyze 看图提示换成元景 analyze_image 的写法。
-    ctx.register_middleware("llm_request", rewrite_request)
+    # 看不到图的主模型：看图提示换成元景写法；所有模型的思考深度交给服务器默认。
+    ctx.register_middleware("llm_request", rewrite_llm_request)
     for name, handler in [
         ("pre_llm_call", before_turn),
         ("pre_llm_call", background.remember_message_parent),
