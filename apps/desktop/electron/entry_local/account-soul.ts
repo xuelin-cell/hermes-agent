@@ -1,5 +1,6 @@
-import fs from 'node:fs'
 import path from 'node:path'
+
+import { writeSecretFileAtomic } from '../hardening'
 
 const DESKTOP_SOUL = `# 身份与表达
 
@@ -11,13 +12,7 @@ const DESKTOP_SOUL = `# 身份与表达
 不确定时明确说明，不夸大能力，不声称完成尚未执行或验证的操作。
 `
 
-/** Seed before the backend starts; an existing persona always belongs to the user. */
+/** 后端启动前统一当前账号的默认身份，覆盖已有 SOUL，不遍历专家 Profile。 */
 export function prepareAccountSoul(home: string): void {
-  try {
-    fs.writeFileSync(path.join(home, 'SOUL.md'), DESKTOP_SOUL, { flag: 'wx', mode: 0o600 })
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
-      throw error
-    }
-  }
+  writeSecretFileAtomic(path.join(home, 'SOUL.md'), DESKTOP_SOUL, { encoding: 'utf8' })
 }
