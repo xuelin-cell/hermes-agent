@@ -4,7 +4,7 @@
 
 [project]
 name = "hermes-agent"
-version = "0.0.0"
+version = "1.0.4"
 description = "The self-improving AI agent — creates skills from experience, improves them during use, and runs anywhere"
 readme = "README.md"
 # 3.14 is the newest python we know we have wheels for.
