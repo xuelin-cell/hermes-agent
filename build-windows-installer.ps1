@@ -3,7 +3,12 @@ param(
     [string]$ProxyUrl = '',
     [ValidateSet('store', 'normal', 'maximum')]
     [string]$Compression = 'normal',
-    [switch]$NoAutoUpdate
+    [switch]$NoAutoUpdate,
+    # The web installer publishes a small bootstrapper plus a .7z payload whose
+    # embedded blockmap lets electron-updater download updates differentially.
+    # The default full NSIS package stays offline-installable but always updates
+    # in full.
+    [switch]$WebInstaller
 )
 
 $ErrorActionPreference = 'Stop'
@@ -11,7 +16,7 @@ $previousEnvironment = @{}
 foreach ($name in @('TEMP', 'TMP', 'ELECTRON_BUILDER_CACHE', 'UV_CONCURRENT_INSTALLS',
                     'ELECTRON_BUILDER_COMPRESSION_LEVEL', 'HTTP_PROXY', 'HTTPS_PROXY',
                     'NO_PROXY', 'NODE_USE_ENV_PROXY', 'ELECTRON_GET_USE_PROXY',
-                    'HERMES_WINDOWS_UPDATE')) {
+                    'HERMES_WINDOWS_UPDATE', 'HERMES_WINDOWS_FORMAT')) {
     $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
 }
 $sourceRoot = $PSScriptRoot
@@ -44,6 +49,12 @@ if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
 # 做差量下载，静默安装后重启。打一次性交付包时加 -NoAutoUpdate 关闭。
 if (-not $NoAutoUpdate) {
     $env:HERMES_WINDOWS_UPDATE = 'electron-updater'
+}
+if ($WebInstaller -and $NoAutoUpdate) {
+    throw 'A web installer needs the update feed; drop -NoAutoUpdate or -WebInstaller.'
+}
+if ($WebInstaller) {
+    $env:HERMES_WINDOWS_FORMAT = 'nsis-web'
 }
 
 Push-Location $sourceRoot
@@ -110,6 +121,17 @@ try {
     Write-Host 'Windows installer completed.' -ForegroundColor Green
     Write-Host "Path: $($installer.FullName)"
     Write-Host "Size: $sizeMiB MiB"
+    if ($WebInstaller) {
+        $payload = Get-ChildItem -LiteralPath $release -Filter '*.7z' -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.LastWriteTime -ge $buildStarted } |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+        if ($null -eq $payload) {
+            throw 'Web installer build produced no .7z payload.'
+        }
+        Write-Host "Payload: $($payload.FullName)" -ForegroundColor Cyan
+        Write-Host 'Publish the .exe, the .7z and stable.yml together; the client downloads the .7z differentially.'
+    }
     Write-Host ("Total time: " + ((Get-Date) - $buildStarted).ToString('hh\:mm\:ss'))
 } finally {
     Pop-Location

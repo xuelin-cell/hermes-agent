@@ -117,7 +117,17 @@ const cases: SelectionCase[] = [
     roots: [null, TOOLS_ROOT],
     killed: [10]
   },
-  { name: 'unreadable path', processes: [proc(10, null)], killed: [] }
+  { name: 'unreadable path', processes: [proc(10, null)], killed: [] },
+  {
+    name: 'updater elevation helper survives the quit reap',
+    // quitAndInstall spawns resources\elevate.exe, then app.quit() runs this
+    // reap. Killing it cancels the update before the installer starts.
+    processes: [
+      proc(20, `${ROOT}\\resources\\elevate.exe`, 'elevate.exe UniWorkBundled-1.0.2-win-x64.exe --updated --force-run'),
+      proc(21, GPG_AGENT)
+    ],
+    killed: [21]
+  }
 ]
 
 it.each(cases)(
