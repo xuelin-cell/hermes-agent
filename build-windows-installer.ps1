@@ -104,17 +104,21 @@ try {
     }
 
     $release = Join-Path $sourceRoot 'apps\desktop\release'
-    $installer = Get-ChildItem -LiteralPath $release -Filter '*.exe' -File |
+    # nsis-web keeps its bootstrapper and .7z payload in release\nsis-web;
+    # the full nsis target writes straight into release.
+    $artifactDir = if ($WebInstaller) { Join-Path $release 'nsis-web' } else { $release }
+    $installer = Get-ChildItem -LiteralPath $artifactDir -Filter '*.exe' -File |
         Where-Object { $_.Name -notmatch 'uninstall' -and $_.LastWriteTime -ge $buildStarted } |
         Sort-Object LastWriteTime -Descending |
         Select-Object -First 1
     if ($null -eq $installer) {
-        throw "Build completed but no EXE installer was found under $release."
+        throw "Build completed but no EXE installer was found under $artifactDir."
     }
 
     # Check identity, bundled kits, the bundled Python and path lengths before anyone hands the installer out.
     & (Join-Path $sourceRoot 'scripts\bundles\check-windows-installer.ps1') `
-        -Installer $installer.FullName -Commit $commit -Scratch $buildTemp
+        -Installer $installer.FullName -Commit $commit -Scratch $buildTemp `
+        -Unpacked (Join-Path $release 'win-unpacked')
 
     $sizeMiB = [math]::Round($installer.Length / 1MB, 1)
     Write-Host ''
@@ -122,7 +126,7 @@ try {
     Write-Host "Path: $($installer.FullName)"
     Write-Host "Size: $sizeMiB MiB"
     if ($WebInstaller) {
-        $payload = Get-ChildItem -LiteralPath $release -Filter '*.7z' -File -ErrorAction SilentlyContinue |
+        $payload = Get-ChildItem -LiteralPath $artifactDir -Filter '*.7z' -File -ErrorAction SilentlyContinue |
             Where-Object { $_.LastWriteTime -ge $buildStarted } |
             Sort-Object LastWriteTime -Descending |
             Select-Object -First 1
