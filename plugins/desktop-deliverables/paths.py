@@ -224,14 +224,31 @@ def named_paths(text, cwd):
     return list(dict.fromkeys(path for path in paths if path is not None))
 
 
+def hidden(parts):
+    """路径片段里有点开头的目录或素材目录名，就不算交付位置。"""
+    return any(part.startswith(".") or part.lower() in EXCLUDED for part in parts)
+
+
 def eligible(path, roots=()):
     """只认交付白名单，排除隐藏文件、Office 锁文件及工具素材目录。
 
     素材目录名只在文件所属的工作目录里面判断：用户选的目录本身或它的上级叫
     templates、assets 也照常出卡片。不在任何工作目录里的文件仍按完整路径保守判断。
     """
+    # 终端 cd 进 .tmp 后它也会被记成工作目录；藏在另一工作目录里的位置不能当归属，
+    # 否则里面的中间文件相对它就不再算隐藏。
+    places = [
+        root
+        for root in roots
+        if not any(
+            root != other
+            and root.is_relative_to(other)
+            and hidden(root.relative_to(other).parts)
+            for other in roots
+        )
+    ]
     owner = max(
-        (root for root in roots if path.is_relative_to(root)),
+        (root for root in places if path.is_relative_to(root)),
         key=lambda root: len(root.parts),
         default=None,
     )
@@ -239,7 +256,7 @@ def eligible(path, roots=()):
     return (
         path.suffix.lower().lstrip(".") in EXTENSIONS
         and not path.name.startswith("~$")
-        and not any(part.startswith(".") or part.lower() in EXCLUDED for part in parts)
+        and not hidden(parts)
     )
 
 

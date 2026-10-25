@@ -656,3 +656,53 @@ def test_intermediate_files_in_scratch_folder_are_not_carded(delivery, folder):
     assert str(output) in result
     assert f"MEDIA:`{draft}`" not in result and f"MEDIA:`{chart}`" not in result
     assert result.count("MEDIA:") == 1
+
+
+def test_scratch_files_stay_hidden_after_terminal_cd_into_scratch(delivery, monkeypatch):
+    """模型 cd 进 .tmp 后终端目录停在那里，.tmp 里的文件仍不出卡，下一轮也以对话目录为准。"""
+    from tools import terminal_tool
+
+    plugin, work = delivery
+    monkeypatch.setattr(terminal_tool, "_task_env_overrides", {})
+    monkeypatch.setattr(terminal_tool, "_session_cwd", {})
+    terminal_tool.register_task_env_overrides("s", {"cwd": str(work)})
+    scratch = work / ".tmp"
+    scratch.mkdir()
+
+    def run(turn, call, made):
+        """模拟一次终端命令：命令前后取快照，命令里写出 made 中的文件。"""
+        plugin.before_tool(
+            tool_name="terminal", args={}, session_id="s", turn_id=turn, tool_call_id=call
+        )
+        for file in made:
+            file.write_text("data")
+        plugin.after_tool(
+            tool_name="terminal",
+            args={},
+            result='{"exit_code":0}',
+            status="ok",
+            session_id="s",
+            turn_id=turn,
+            tool_call_id=call,
+        )
+
+    begin(plugin)
+    # 照真实会话：`cd .tmp && ...` 之后终端目录一直停在 .tmp。
+    terminal_tool.record_session_cwd("s", str(scratch))
+    tables = [scratch / f"table-{index}.csv" for index in range(9)]
+    run("t", "data", tables)
+    report = work / "report.html"
+    run("t", "report", [report])
+    result = reply(plugin, "\n".join(map(str, tables)))
+    assert f"MEDIA:{report}" in result
+    assert result.count("MEDIA:") == 1
+
+    # 下一轮开始时终端仍在 .tmp：提醒和观察都用对话目录，不出现 .tmp\.tmp。
+    context = plugin.before_turn(
+        session_id="s", turn_id="u", task_id="s", platform="desktop"
+    )["context"]
+    assert f"本轮工作目录：{work}。" in context
+    assert str(scratch / ".tmp") not in context
+    draft = scratch / "next.md"
+    run("u", "next", [draft])
+    assert reply(plugin, str(draft), turn="u") is None

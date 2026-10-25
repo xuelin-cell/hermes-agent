@@ -72,6 +72,18 @@ def local_cwd(task_id):
     return root if root and is_dir(root) else None
 
 
+def workspace(task_id):
+    """对话登记的工作目录；模型 cd 进 .tmp 后终端目录会变，它不变。没登记时用终端目录。"""
+    root = local_cwd(task_id)
+    if root is None:
+        return None
+    from tools.terminal_tool import resolve_task_overrides
+
+    raw = resolve_task_overrides(task_id).get("cwd")
+    chosen = resolve_path(raw, root) if isinstance(raw, str) and raw.strip() else None
+    return chosen if chosen and is_dir(chosen) else root
+
+
 def as_text(value, depth=0):
     """工具结构只提取受限文本用作路径证据，不保存完整输出。"""
     if isinstance(value, str):
@@ -138,7 +150,7 @@ def before_turn(
     child_root = background.child_root(session_id) if platform == "subagent" else None
     if platform == "subagent" and child_root is None:
         return
-    cwd = child_root or local_cwd(task_id)
+    cwd = child_root or workspace(task_id)
     if cwd is None:
         return
     with _lock:
@@ -409,7 +421,8 @@ async def download_result(
             : max(0, 4 - len(turn.downloads))
         ]
         turn.downloads.update(dict.fromkeys(wanted))
-    root = turn.cwd if turn.background else local_cwd(turn.task_id) or turn.cwd
+    # 成品存进对话目录，不跟着终端 cd 进 .tmp，否则下载的图片视频不出卡。
+    root = turn.cwd if turn.background else workspace(turn.task_id) or turn.cwd
     # 同批最多四个并行，避免顺序等待突破原生钩子的三十秒上限；描述参数用于起文件名。
     fetched = await asyncio.gather(
         *(fetch(url, root, tool_name, args) for url in wanted)

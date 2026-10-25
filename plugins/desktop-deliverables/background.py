@@ -12,7 +12,7 @@ _message_parents = OrderedDict()
 def remember_message_parent(*, session_id="", task_id="", platform="", **kwargs):
     """仅记消息父会话的本机目录，不观察普通消息工具或注入桌面文件提醒。"""
     from gateway.config import Platform
-    from . import _lock, local_cwd, scope
+    from . import _lock, scope, workspace
 
     try:
         source = Platform(platform)
@@ -20,7 +20,7 @@ def remember_message_parent(*, session_id="", task_id="", platform="", **kwargs)
         return
     if not session_id or source in {Platform.LOCAL, Platform.API_SERVER, Platform.WEBHOOK}:
         return
-    cwd = local_cwd(task_id)
+    cwd = workspace(task_id)
     if cwd is None:
         return
     with _lock:
