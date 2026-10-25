@@ -24,6 +24,7 @@ QUIET_DISPLAY = {
 }
 # 记录桌面已代为设置过语言；之后用户改成任何语言都不再覆盖。
 LANGUAGE_MARKER = "desktop_language_set"
+MEMORY_MARKER = "memory_notifications_initialized"
 _config_locks: dict[str, threading.RLock] = {}
 _config_locks_guard = threading.Lock()
 
@@ -44,11 +45,12 @@ def _section(parent: dict, key: str) -> dict:
     return parent[key]
 
 
-def _shares_target_sections(config: dict) -> bool:
-    """只有 display／platforms 内的容器被别处共用时才有串写风险，其它节的 YAML 复用不受影响。"""
+def _shares_target_sections(config: dict, sections=("display", "platforms")) -> bool:
+    """只检查待写配置节的容器复用，避免串写其它配置。"""
     counts: Counter = Counter()
 
     def count(value):
+        """统计容器引用次数，递归别名只遍历一次。"""
         if isinstance(value, (dict, list)):
             counts[id(value)] += 1
             if counts[id(value)] == 1:
@@ -56,6 +58,7 @@ def _shares_target_sections(config: dict) -> bool:
                     count(child)
 
     def shared(value, seen: set) -> bool:
+        """检查目标节内是否存在共享或递归容器。"""
         if not isinstance(value, (dict, list)):
             return False
         if counts[id(value)] > 1 or id(value) in seen:
@@ -64,28 +67,48 @@ def _shares_target_sections(config: dict) -> bool:
         return any(shared(child, seen) for child in (value.values() if isinstance(value, dict) else value))
 
     count(config)
-    return any(shared(config.get(key), set()) for key in ("display", "platforms"))
+    return any(shared(config.get(key), set()) for key in sections)
 
 
-def prepare_presentation(
-    platforms: set[str], *, host_only: bool = False, quiet_busy_ack: bool = False
-) -> bool:
+def prepare_memory_notifications() -> None:
+    """一次性关闭默认记忆通知；后续用户选择保留，失败不阻断账号启动。"""
+    try:
+        with config_lock():
+            path = get_config_path()
+            config = require_readable_config_before_write(path)
+            if _shares_target_sections(config, ("display", "plugins")):
+                raise ValueError("记忆展示配置不能含共享或递归的 YAML 别名")
+            entries = _section(_section(config, "plugins"), "entries")
+            settings = _section(_section(entries, "desktop-messaging"), "settings")
+            if settings.get(MEMORY_MARKER) is True:
+                return
+            display = _section(config, "display")
+            value = display.get("memory_notifications")
+            if value is None or value is True or value == "on":
+                display["memory_notifications"] = "off"
+            settings[MEMORY_MARKER] = True
+            atomic_config_write(path, config)
+    except Exception as exc:
+        _log.warning("desktop-messaging: 跳过记忆通知配置：%s", exc)
+
+
+def prepare_presentation(platforms: set[str], *, host_only: bool = False) -> bool:
     """原子补写本 Profile 展示；配置异常只记日志并跳过，不阻断保存和启动。
 
-    宿主模式只关闭托管渠道广播，不启用渠道；纯四平台网关再移除宿主旧的显式忙碌回执开关。
+    宿主模式关闭托管渠道广播并移除旧的显式忙碌回执开关，不启用渠道。
     """
     targets = platforms & PLATFORMS
-    if not targets:
+    if not targets and not (host_only and platforms):
         return False
     try:
         with config_lock():
-            return _prepare(targets, host_only, quiet_busy_ack)
+            return _prepare(targets, host_only)
     except Exception as exc:
         _log.warning("desktop-messaging: 跳过消息展示配置：%s", exc)
         return False
 
 
-def _prepare(targets: set[str], host_only: bool, quiet_busy_ack: bool) -> bool:
+def _prepare(targets: set[str], host_only: bool) -> bool:
     """在锁内读改写；任何异常交给调用方记录。"""
     path = get_config_path()
     config = require_readable_config_before_write(path)
@@ -94,11 +117,11 @@ def _prepare(targets: set[str], host_only: bool, quiet_busy_ack: bool) -> bool:
     from copy import deepcopy
 
     original = deepcopy(config)
-    channels = _section(config, "platforms")
+    channels = _section(config, "platforms") if targets else {}
     if host_only:
         display = config.get("display")
         # 网关会把宿主 display.busy_ack_enabled 覆盖到子进程环境，旧的显式开启会盖过桌面关闭。
-        if quiet_busy_ack and isinstance(display, dict) and display.get("busy_ack_enabled"):
+        if isinstance(display, dict) and display.get("busy_ack_enabled"):
             del display["busy_ack_enabled"]
     else:
         display = _section(config, "display")

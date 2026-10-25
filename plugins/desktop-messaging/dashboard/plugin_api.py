@@ -174,6 +174,8 @@ async def prepare() -> dict:
             with _config_profile_scope(profile):
                 from hermes_cli.web_routers.messaging import _platform_enablement
 
+                # 每个受管环境均准备记忆展示，不因这项变更重启网关。
+                presentation.prepare_memory_notifications()
                 env = load_env()
                 targets = set()
                 for entry in _messaging_platform_catalog():
@@ -187,22 +189,20 @@ async def prepare() -> dict:
                         if entry["id"] in POLICIES:
                             changed = _write_policies(entry["id"]) or changed
                 changed = presentation.prepare_presentation(targets) or changed
-    quiet_busy_ack = bool(active_platforms) and active_platforms <= presentation.PLATFORMS
     # 原版停机广播读取宿主配置；子 Profile 独有的平台也要在宿主关掉广播。
     with _config_profile_scope("default"):
         default_home = str(get_hermes_home())
     async with _locks.setdefault(default_home, asyncio.Lock()):
         with _config_profile_scope("default"):
             changed = presentation.prepare_presentation(
-                active_platforms, host_only=True, quiet_busy_ack=quiet_busy_ack) or changed
-    return {"configured": configured, "changed": changed, "profiles": configured_profiles,
-            "quiet_busy_ack": quiet_busy_ack}
+                active_platforms, host_only=True) or changed
+    return {"configured": configured, "changed": changed, "profiles": configured_profiles}
 
 
 def _gateway_environment(state: dict) -> dict[str, str]:
-    """只对纯四平台受管网关关闭全局回执，混用其它平台时不改变其行为。"""
+    """受管网关统一关闭忙碌回执，包含混用或只有 5G 的情况。"""
     env = {"HERMES_GATEWAY_INSTALL_START_ON_LOGIN": "0"}
-    if state["quiet_busy_ack"]:
+    if state["configured"]:
         env["HERMES_GATEWAY_BUSY_ACK_ENABLED"] = "false"
         # 默认模板的顶层 display.busy_steer_ack_enabled 会被转成环境变量并盖过平台设置；进程环境优先。
         env["HERMES_GATEWAY_BUSY_STEER_ACK_ENABLED"] = "false"

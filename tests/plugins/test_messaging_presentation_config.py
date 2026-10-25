@@ -108,13 +108,13 @@ def test_language_is_set_once_and_user_choice_is_kept():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("mixed", [False, True])
-async def test_host_explicit_busy_ack_is_cleared_only_for_quiet_gateway(monkeypatch, mixed):
-    """宿主旧的 busy_ack_enabled: true 会盖过子进程环境；纯四平台才移除，混用时保留。"""
+@pytest.mark.parametrize("channels", ["four", "mixed", "5g"])
+async def test_host_explicit_busy_ack_is_cleared_for_managed_gateway(monkeypatch, channels):
+    """宿主旧开关不能覆盖受管网关静默；混用和只有 5G 时也要生效。"""
     from hermes_cli.config import save_env_value
 
-    catalog = [{"id": "feishu", "required_env": ("FEISHU_APP_ID", "FEISHU_APP_SECRET")}]
-    if mixed:
+    catalog = [] if channels == "5g" else [{"id": "feishu", "required_env": ("FEISHU_APP_ID", "FEISHU_APP_SECRET")}]
+    if channels != "four":
         catalog.append({"id": "uniagentgate", "required_env": ("FIXTURE_5G_SECRET",)})
         save_env_value("FIXTURE_5G_SECRET", "fixture")
     monkeypatch.setattr(api, "_messaging_platform_catalog", lambda: catalog)
@@ -126,9 +126,10 @@ async def test_host_explicit_busy_ack_is_cleared_only_for_quiet_gateway(monkeypa
     state = await api.prepare()
     display = require_readable_config_before_write()["display"]
     assert display["busy_input_mode"] == "queue"
-    assert ("busy_ack_enabled" in display) is mixed
+    assert "busy_ack_enabled" not in display
     env = api._gateway_environment(state)
-    assert ("HERMES_GATEWAY_BUSY_STEER_ACK_ENABLED" in env) is not mixed
+    assert env["HERMES_GATEWAY_BUSY_ACK_ENABLED"] == "false"
+    assert env["HERMES_GATEWAY_BUSY_STEER_ACK_ENABLED"] == "false"
 
 
 def test_config_lock_is_shared_per_profile_and_reentrant(tmp_path, monkeypatch):
@@ -175,8 +176,8 @@ def test_real_accounts_and_profiles_keep_scoped_language_and_native_stream(
 
 
 @pytest.mark.asyncio
-async def test_mixed_gateway_does_not_disable_other_platform_busy_ack(monkeypatch):
-    """共用进程含范围外平台时不使用全局静默，纯四平台才设置。"""
+async def test_mixed_gateway_keeps_busy_ack_disabled(monkeypatch):
+    """增加 5G 后仍保留受管网关静默，平台配置本身保持不变。"""
     from hermes_cli.config import save_env_value
 
     monkeypatch.setattr(
@@ -193,7 +194,7 @@ async def test_mixed_gateway_does_not_disable_other_platform_busy_ack(monkeypatc
     assert api._gateway_environment(state)["HERMES_GATEWAY_BUSY_ACK_ENABLED"] == "false"
     save_env_value("FIXTURE_5G_SECRET", "fixture")
     state = await api.prepare()
-    assert "HERMES_GATEWAY_BUSY_ACK_ENABLED" not in api._gateway_environment(state)
+    assert api._gateway_environment(state)["HERMES_GATEWAY_BUSY_ACK_ENABLED"] == "false"
 
 
 QR_CREDS = {
@@ -275,7 +276,7 @@ async def test_secondary_only_platform_suppresses_host_shutdown_notice_without_e
         save_env_value("FEISHU_APP_SECRET", "fixture")
     await api.prepare()
     config = require_readable_config_before_write()
-    assert "display" not in config
+    assert config["display"] == {"memory_notifications": "off"}
     assert config["platforms"]["feishu"] == {"gateway_restart_notification": False}
     gateway = load_gateway_config()
     assert not gateway.platforms[Platform.FEISHU].enabled

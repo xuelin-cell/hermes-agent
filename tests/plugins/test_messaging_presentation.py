@@ -330,3 +330,74 @@ def test_weixin_registration_does_not_enable_unconfigured_profile(monkeypatch):
     assert not (config.platforms.get(Platform.WEIXIN) and config.platforms[Platform.WEIXIN].enabled)
     assert not _is_connected(PlatformConfig(extra={"account_id": "fixture"}))
     assert _is_connected(PlatformConfig(token="fixture", extra={"account_id": "fixture"}))
+
+
+@pytest.fixture
+def feishu_callback_sdk():
+    """实际加载延迟导入的 SDK 卡片类型，不连接平台。"""
+    from plugins.platforms.feishu.adapter import _load_lark_oapi
+
+    assert _load_lark_oapi()
+
+
+@pytest.mark.parametrize("quiet", [True, False])
+@pytest.mark.parametrize("choice,label", [("once", "已允许（仅本次）"), ("session", "已允许（本会话）"),
+                                          ("always", "已允许（始终）"), ("deny", "已拒绝")])
+def test_feishu_approval_result_uses_platform_language(quiet, choice, label, monkeypatch, feishu_callback_sdk):
+    """真实卡片回调按平台开关选择文案，保留动作与校验，不提前修改审批状态。"""
+    adapter = FeishuAdapter(PlatformConfig(extra={"desktop_quiet": quiet}))
+    adapter._approval_state[1] = {"session_key": "session", "chat_id": "chat"}
+    adapter._sender_name_cache["user"] = ("测试用户", float("inf"))
+    event = SimpleNamespace(operator=SimpleNamespace(open_id="user"), context=SimpleNamespace(open_chat_id="chat"))
+    calls = []
+
+    def submit(loop, coro):
+        """仅收下协程，不运行权限结果写入；原回调的选择与展示仍实际执行。"""
+        calls.append(coro)
+        coro.close()
+        return True
+
+    monkeypatch.setattr(adapter, "_submit_on_loop", submit)
+    action = {"once": "approve_once", "session": "approve_session", "always": "approve_always", "deny": "deny"}[choice]
+    response = adapter._handle_approval_card_action(event=event, action_value={"approval_id": 1, "hermes_action": action}, loop=None)
+    card = response.card.data
+    english = {"once": "Approved once", "session": "Approved for session", "always": "Approved permanently", "deny": "Denied"}
+    assert (label if quiet else english[choice]) in card["header"]["title"]["content"]
+    assert ("由 测试用户 处理" if quiet else "by 测试用户") in card["elements"][0]["content"]
+    assert len(calls) == 1 and 1 in adapter._approval_state
+
+
+@pytest.mark.parametrize("quiet", [True, False])
+@pytest.mark.parametrize("answer", ["y", "n"])
+def test_feishu_update_result_uses_platform_language(quiet, answer, monkeypatch, feishu_callback_sdk):
+    """更新答复只改结果卡片语言，调用入口仍核对账号和聊天归属。"""
+    adapter = FeishuAdapter(PlatformConfig(extra={"desktop_quiet": quiet}))
+    adapter._update_prompt_state[2] = {"chat_id": "chat"}
+    event = SimpleNamespace(operator=SimpleNamespace(open_id="user"), context=SimpleNamespace(open_chat_id="chat"))
+
+    def submit(loop, coro):
+        """关闭未执行协程，避免本测试写更新答复文件。"""
+        coro.close()
+        return True
+
+    monkeypatch.setattr(adapter, "_submit_on_loop", submit)
+    response = adapter._handle_update_prompt_card_action(
+        event=event, action_value={"update_prompt_id": 2, "hermes_update_prompt_action": answer}, loop=None)
+    card = response.card.data
+    title = ("已选择：是" if answer == "y" else "已选择：否") if quiet else f"Update prompt answered: {'Yes' if answer == 'y' else 'No'}"
+    assert title in card["header"]["title"]["content"]
+    assert ("由 **user** 处理" if quiet else "Answered by **user**") in card["elements"][0]["content"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("quiet", [True, False])
+async def test_feishu_expired_approval_still_reports_not_run(quiet, monkeypatch):
+    """真实过期审批查找后告知未执行，中文化不把过期批准变成有效批准。"""
+    adapter = FeishuAdapter(PlatformConfig(extra={"desktop_quiet": quiet}))
+    adapter._approval_state[1] = {"session_key": "fixture-no-pending", "chat_id": "chat"}
+    adapter.send = AsyncMock(return_value=SendResult(success=True))
+    await adapter._resolve_approval(1, "once", "用户", open_id="user", chat_id="chat")
+    text = adapter.send.await_args.args[1]
+    assert ("未执行" if quiet else "was not run") in text
+    assert ("审批已过期" if quiet else "already expired") in text
+    assert 1 not in adapter._approval_state
