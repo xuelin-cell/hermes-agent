@@ -51,7 +51,10 @@ def ilink(monkeypatch):
     monkeypatch.setattr(qr, "POLL_INTERVAL_S", 0)
     monkeypatch.setattr(qr.wx, "_new_session", lambda **_: _FakeSession())
     monkeypatch.setattr(qr.wx, "check_weixin_requirements", lambda: True)
-    monkeypatch.setattr(qr, "_restart", lambda profile: {"restart_started": False, "restart_error": "no supervisor"})
+    async def no_restart():
+        return {"restart_started": False, "restart_error": "no supervisor"}
+
+    monkeypatch.setattr(qr, "_restart", no_restart)
 
     def install(statuses, qrs=None):
         fake = _FakeIlink(statuses, qrs)

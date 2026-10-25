@@ -152,7 +152,9 @@ async def save_platform(platform: Literal["dingtalk", "feishu", "wecom"], body: 
                         remove_env_value(key)
                         changed = True
             if enabled != body.enabled:
-                _write_platform_enabled(platform, body.enabled)
+                # 与扫码线程共用 config.yaml 锁，避免整文件回写互相覆盖。
+                with presentation.config_lock():
+                    _write_platform_enabled(platform, body.enabled)
                 changed = True
         return {"ok": True, "changed": changed}
 
@@ -160,6 +162,8 @@ async def save_platform(platform: Literal["dingtalk", "feishu", "wecom"], body: 
 @router.post("/prepare")
 async def prepare() -> dict:
     """检查本账号受管环境并补写已启用平台规则，供启动及解绑后选择动作。"""
+    from hermes_constants import get_hermes_home
+
     profiles = await asyncio.to_thread(_managed_profiles)
     configured = False
     changed = False
@@ -183,11 +187,16 @@ async def prepare() -> dict:
                         if entry["id"] in POLICIES:
                             changed = _write_policies(entry["id"]) or changed
                 changed = presentation.prepare_presentation(targets) or changed
+    quiet_busy_ack = bool(active_platforms) and active_platforms <= presentation.PLATFORMS
     # 原版停机广播读取宿主配置；子 Profile 独有的平台也要在宿主关掉广播。
     with _config_profile_scope("default"):
-        changed = presentation.prepare_presentation(active_platforms, host_only=True) or changed
+        default_home = str(get_hermes_home())
+    async with _locks.setdefault(default_home, asyncio.Lock()):
+        with _config_profile_scope("default"):
+            changed = presentation.prepare_presentation(
+                active_platforms, host_only=True, quiet_busy_ack=quiet_busy_ack) or changed
     return {"configured": configured, "changed": changed, "profiles": configured_profiles,
-            "quiet_busy_ack": bool(active_platforms) and active_platforms <= presentation.PLATFORMS}
+            "quiet_busy_ack": quiet_busy_ack}
 
 
 def _gateway_environment(state: dict) -> dict[str, str]:
@@ -195,6 +204,8 @@ def _gateway_environment(state: dict) -> dict[str, str]:
     env = {"HERMES_GATEWAY_INSTALL_START_ON_LOGIN": "0"}
     if state["quiet_busy_ack"]:
         env["HERMES_GATEWAY_BUSY_ACK_ENABLED"] = "false"
+        # 默认模板的顶层 display.busy_steer_ack_enabled 会被转成环境变量并盖过平台设置；进程环境优先。
+        env["HERMES_GATEWAY_BUSY_STEER_ACK_ENABLED"] = "false"
     return env
 
 

@@ -32,7 +32,8 @@ def test_restore_scans_real_accounts_a_b_a_and_preserves_parked_profiles(tmp_pat
         """只替换网关动作，配置和受管 Profile 枚举保持真实。"""
         actions.append((os.environ["HERMES_HOME"], command, name))
         assert env_overrides == {"HERMES_GATEWAY_INSTALL_START_ON_LOGIN": "0",
-                                 "HERMES_GATEWAY_BUSY_ACK_ENABLED": "false"}
+                                 "HERMES_GATEWAY_BUSY_ACK_ENABLED": "false",
+            "HERMES_GATEWAY_BUSY_STEER_ACK_ENABLED": "false"}
         return SimpleNamespace(pid=123)
 
     monkeypatch.setattr(web_server_gateway, "_spawn_hermes_action", spawn)

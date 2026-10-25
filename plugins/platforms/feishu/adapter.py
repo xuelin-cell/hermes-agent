@@ -1750,6 +1750,8 @@ class FeishuAdapter(DesktopPresentationMixin, BasePlatformAdapter):
     # header carries the title, so the text core starts at the code fence.
     _EA_HEADER = ""
     _EA_REASON_LABEL = f"**{EA_REASON_LABEL_TEXT}:** "
+    _DESKTOP_EA_HEADER = ""
+    _DESKTOP_EA_REASON_LABEL = "**需要确认的原因：** "
     _EA_SMART_DENY_LINE = "\n\n**Smart DENY:** owner override applies to this one operation only."
     _EA_CMD_BUDGET = 3000
 

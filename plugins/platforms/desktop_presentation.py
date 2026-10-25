@@ -1,10 +1,16 @@
 """桌面受管平台的展示策略，只使用适配器专用交互接口。"""
 
+from dataclasses import replace
+
 from gateway.platforms.base import SendResult
 
 
 class DesktopPresentationMixin:
     """普通发送和媒体路径不变，只收敛配置通知与专用交互。"""
+
+    # 审批文字的标题与原因标签；飞书卡片自带标题、标签用粗体，由飞书适配器覆盖。
+    _DESKTOP_EA_HEADER = "⚠️ 需要你确认才能执行命令\n\n"
+    _DESKTOP_EA_REASON_LABEL = "需要确认的原因："
 
     def _desktop_quiet(self) -> bool:
         """按本适配器的配置判断，不读取其它账号或全局环境。"""
@@ -39,16 +45,13 @@ class DesktopPresentationMixin:
             return await super().send_clarify(
                 chat_id, question, choices, clarify_id, session_key, metadata
             )
-        from tools.clarify_gateway import get_pending_for_session, mark_awaiting_text
+        from tools import clarify_gateway as clarify
 
         text = f"❓ {question}"
         if choices:
-            entry = get_pending_for_session(session_key, include_choice_prompts=True)
-            multi = (
-                entry is not None
-                and entry.clarify_id == clarify_id
-                and entry.multi_select
-            )
+            # 与原版一致按本条编号取登记，同会话有更早未答的问题时也不会取错。
+            with clarify._lock:
+                multi = bool(getattr(clarify._entries.get(clarify_id), "multi_select", False))
             hint = "请回复序号、选项文字，或直接输入你的回答。"
             if multi:
                 hint = "可多选，请用逗号或空格分隔序号（如 1, 3），也可以回复选项文字或自己的回答。"
@@ -58,7 +61,7 @@ class DesktopPresentationMixin:
                 + "\n\n"
                 + hint
             )
-            mark_awaiting_text(clarify_id)
+            clarify.mark_awaiting_text(clarify_id)
         return await self.send(chat_id=chat_id, content=text, metadata=metadata)
 
     async def send_slash_confirm(
@@ -108,9 +111,9 @@ class DesktopPresentationMixin:
         )
         reason = "危险命令" if description == "dangerous command" else description
         text = (
-            "⚠️ 需要你确认才能执行命令\n\n"
+            f"{self._DESKTOP_EA_HEADER}"
             f"{self._EA_CODE_OPEN}{self._ea_escape(preview)}{self._EA_CODE_CLOSE}"
-            f"需要确认的原因：{self._ea_escape(str(reason or ''))}\n\n"
+            f"{self._DESKTOP_EA_REASON_LABEL}{self._ea_escape(str(reason or ''))}\n\n"
             f"{approval_timeout_seconds()} 秒内未确认则不会执行。"
         )
         return text + (
@@ -139,20 +142,41 @@ class DesktopPresentationMixin:
         )
 
     async def _send_exec_approval_prompt(self, prompt):
-        """无原生按钮的平台用原版文本批准命令，发送失败仍走原版失败路径。"""
-        if not self._desktop_quiet():
-            return await super()._send_exec_approval_prompt(prompt)
-        commands = {
-            "once": "/approve",
-            "session": "/approve session",
-            "always": "/approve always",
-            "deny": "/deny",
-        }
-        options = "\n".join(
-            f"{label}：{commands[choice]}" for label, choice, _ in prompt.actions
+        """无原生按钮的平台用原版文本批准命令，发送失败仍走原版失败路径。
+
+        覆盖本方法会让原版把这些平台当作“支持按钮”，所以非安静模式在这里发出与原版
+        文字回退相同的内容，而不是先返回失败、打警告再回退。
+        """
+        from gateway.run import _format_exec_approval_fallback, _interim_metadata
+
+        prefix = getattr(self, "typed_command_prefix", "/")
+        if self._desktop_quiet():
+            commands = {
+                "once": f"{prefix}approve",
+                "session": f"{prefix}approve session",
+                "always": f"{prefix}approve always",
+                "deny": f"{prefix}deny",
+            }
+            options = "\n".join(
+                f"{label}：{commands[choice]}" for label, choice, _ in prompt.actions
+            )
+            content = f"{prompt.text}\n\n{options}"
+        else:
+            choices = {choice for _, choice, _ in prompt.actions}
+            content = _format_exec_approval_fallback(
+                prompt.command,
+                prompt.description,
+                prefix,
+                allow_permanent="always" in choices,
+                allow_session="session" in choices,
+                smart_denied=prompt.smart_denied,
+            )
+        # 与原版文字回退一致：企微走控制通道，并标为中途消息，不封住正在进行的最终流。
+        metadata = _interim_metadata(
+            {**(prompt.metadata or {}), "is_approval_prompt": True}
         )
-        return await self.send(
-            chat_id=prompt.chat_id,
-            content=f"{prompt.text}\n\n{options}",
-            metadata=prompt.metadata,
+        result = await self.send(
+            chat_id=prompt.chat_id, content=content, metadata=metadata
         )
+        # 文字提示没有按钮可撤，超时说明应另发一条，不改写这条提问记录。
+        return replace(result, message_id=None) if result.success else result
