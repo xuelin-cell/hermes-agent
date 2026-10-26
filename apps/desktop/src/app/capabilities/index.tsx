@@ -13,6 +13,7 @@ import { useStoreSelector } from '@/lib/use-session-slice'
 import { $developerMode } from '@/store/developer-mode'
 import { $gateway } from '@/store/gateway'
 import { OFFICIAL_SKILLS_KEY } from '@/store/hub-actions'
+import { $codeWorkspace } from '@/store/workspace-category'
 
 import { useRefreshHotkey } from '../hooks/use-refresh-hotkey'
 import { useRouteEnumParam } from '../hooks/use-route-enum-param'
@@ -72,13 +73,14 @@ export function CapabilitiesView({
   const { t } = useI18n()
   const navigate = useNavigate()
   const developerMode = useStore($developerMode)
+  const codeWorkspace = useStore($codeWorkspace)
   // Both hooks run unconditionally (rules of hooks); embedded picks the local
   // one so tab clicks inside a dialog don't rewrite the page URL.
   const routeTab = useRouteEnumParam('tab', CAPABILITY_MODES, 'skills')
   const localTab = useState<CapabilityMode>('skills')
   const [requestedMode, setMode] = embedded ? localTab : routeTab
-  // Browser build: Plugins (a community catalog) is developer mode's too, like Toolsets.
-  const developerTab = requestedMode === 'toolsets' || (requestedMode === 'plugins' && hideForUsers())
+  // Code workspaces expose Plugins; other browser workspaces keep the developer gate.
+  const developerTab = requestedMode === 'toolsets' || (requestedMode === 'plugins' && !codeWorkspace && hideForUsers())
   const mode = !developerMode && developerTab ? 'skills' : requestedMode
 
   // 立即阻止隐藏页挂载，同时清理旧链接和嵌入视图的选中状态。
@@ -158,12 +160,13 @@ export function CapabilitiesView({
     // The gateway instance backs ONLY the live `reload.mcp` RPC, and it is the
     // ACTIVE gateway's socket — for a scope pinned to a different backend that
     // (config edits still apply on that backend's next session).
-    connectors: () => (
+    connectors: (searchContainer?: HTMLDivElement | null) => (
       <ConnectorsPage
         gateway={scope.crossBackend ? null : gateway}
         key={`connectors-${scope.key}`}
         profile={scope.profile}
         scopeLabel={scope.label}
+        searchContainer={searchContainer}
       />
     ),
     // Agent plugins for the scoped profile and app-level desktop plugins.
@@ -212,14 +215,15 @@ export function CapabilitiesView({
     )
   } satisfies Record<CapabilityMode, () => React.ReactNode>
 
-  // 普通用户：对照 UniWork 的扩展页（专家 | 技能 | 连接器），见 skills-mt/。开发者模式和嵌入视图保持原样。
+  // 普通用户的扩展页按工作区显示标题；开发者模式和嵌入视图保持原样。
   if (!developerMode && !embedded) {
     return (
       <CapabilitiesPage
         {...props}
-        connectors={tabContent.connectors()}
-        mode={mode === 'connectors' ? 'connectors' : 'skills'}
+        connectors={searchContainer => tabContent.connectors(searchContainer)}
+        mode={mode === 'connectors' || (codeWorkspace && mode === 'plugins') ? mode : 'skills'}
         onModeChange={setMode}
+        plugins={mode === 'plugins' ? tabContent.plugins() : null}
         scopeSelector={<CapabilityScopeSelector scope={scope} />}
         skills={{
           hiddenKitSkills,
