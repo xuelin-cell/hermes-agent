@@ -1717,6 +1717,9 @@ export const deOverrides = {
       updates: 'Updates'
     },
     config: {
+      agentLibraryAccessTitle: 'Agenten die Verwaltung der Bibliothek erlauben',
+      agentLibraryAccessDesc:
+        'Dem Agenten erlauben, Dateien im persönlichen Cloud-Laufwerk nach Ihren Anweisungen zu lesen und zu schreiben.',
       minimizeToTrayTitle: 'In den Infobereich minimieren',
       minimizeToTrayDesc:
         'Beim Minimieren von Fenstern oder Schließen des Hauptfensters werden diese im Infobereich (Menüleiste unter macOS) ausgeblendet und UniWork läuft weiter. Beenden Sie über „UniWork beenden“ im Infobereich-Menü oder mit Cmd+Q. Standardmäßig aus; gilt nur für dieses Gerät.',

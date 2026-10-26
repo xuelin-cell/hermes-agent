@@ -1021,6 +1021,8 @@ export const ar = defineLocale({
     },
 
     config: {
+      agentLibraryAccessTitle: 'السماح للوكيل بإدارة المكتبة',
+      agentLibraryAccessDesc: 'السماح للوكيل بقراءة ملفات محرك الأقراص السحابي الشخصي وكتابتها وفق تعليماتك.',
       minimizeToTrayTitle: 'التصغير إلى علبة النظام',
       minimizeToTrayDesc:
         'تصغير النوافذ أو إغلاق النافذة الرئيسية يخفيها في علبة النظام (شريط القوائم على macOS) مع استمرار UniWork في العمل. استخدم إنهاء UniWork من قائمة العلبة أو Cmd+Q للخروج. معطّل افتراضيًا ويُطبّق على هذا الجهاز فقط.',

@@ -1715,6 +1715,9 @@ export const esOverrides = {
       updates: 'Actualizaciones'
     },
     config: {
+      agentLibraryAccessTitle: 'Permitir que el agente gestione la biblioteca',
+      agentLibraryAccessDesc:
+        'Permitir al agente leer y escribir archivos de la unidad en la nube personal siguiendo tus instrucciones.',
       minimizeToTrayTitle: 'Minimizar a la bandeja',
       minimizeToTrayDesc:
         'Al minimizar las ventanas o cerrar la ventana principal, se ocultan en la bandeja del sistema (barra de menús en macOS) y UniWork sigue ejecutándose. Usa Salir de UniWork en el menú de la bandeja o Cmd+Q para salir. Desactivado por defecto; se aplica solo a este dispositivo.',

@@ -149,6 +149,17 @@ export const SETTINGS_MANIFEST = {
       copy: t => ({ label: t.settings.config.attachmentSizeTitle, description: t.settings.config.attachmentSizeDesc })
     }
   },
+  safety: {
+    agentLibraryAccess: {
+      subpage: 'approvals',
+      keywords: ['cloud drive', 'library', 'agent', 'permission', 'MCP', '云盘', '资料库', '权限'],
+      available: () => Boolean(window.hermesDesktop?.cloudDriveAgentReady),
+      copy: t => ({
+        label: t.settings.config.agentLibraryAccessTitle,
+        description: t.settings.config.agentLibraryAccessDesc
+      })
+    }
+  },
   advanced: {
     keepAwake: {
       subpage: 'desktop',
@@ -264,7 +275,7 @@ export const SETTINGS_MANIFEST = {
 export type ManifestViewKey = keyof typeof SETTINGS_MANIFEST
 
 /** Manifest keys that are config sections route as `config:<key>`; the rest are views of their own. */
-const CONFIG_SECTION_KEYS: readonly ManifestViewKey[] = ['appearance', 'chat', 'advanced']
+const CONFIG_SECTION_KEYS: readonly ManifestViewKey[] = ['appearance', 'chat', 'safety', 'advanced']
 
 export const manifestView = (key: ManifestViewKey): SettingsView =>
   CONFIG_SECTION_KEYS.includes(key) ? `config:${key}` : (key as SettingsView)

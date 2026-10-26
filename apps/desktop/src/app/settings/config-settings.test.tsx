@@ -8,6 +8,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import type * as ConfigApi from '@/api/config'
 import { $settingsRequestProfile } from '@/store/settings-scope'
 
+import { DRIVE_MCP_MANAGED, DRIVE_MCP_SERVER } from '../../../electron/login/drive-mcp-contract'
+
 import type { ConfigSettings as ConfigSettingsType } from './config-settings'
 
 // The vi.mock factory below replaces the computed (read-only) atom with a
@@ -80,14 +82,14 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-function renderConfigSettings(activeSectionId = 'safety') {
+function renderConfigSettings(activeSectionId = 'safety', subpage?: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const importInputRef = createRef<HTMLInputElement>()
 
   render(
     <MemoryRouter>
       <QueryClientProvider client={client}>
-        <ConfigSettings activeSectionId={activeSectionId} importInputRef={importInputRef} />
+        <ConfigSettings activeSectionId={activeSectionId} importInputRef={importInputRef} subpage={subpage} />
       </QueryClientProvider>
     </MemoryRouter>
   )
@@ -151,4 +153,50 @@ describe('ConfigSettings autosave', () => {
       vi.useRealTimers()
     }
   })
+})
+
+it('审批中的资料库权限默认开启，沿用 Profile 保存链路，只改 enabled 并保留服务配置', async () => {
+  scopeProfileMock.set('work')
+
+  const entry = {
+    uniwork_managed: DRIVE_MCP_MANAGED,
+    url: 'http://127.0.0.1:12345/mcp',
+    headers: { Authorization: 'Bearer local-test' },
+    tools: ['list_files']
+  }
+
+  getHermesConfigRecord.mockResolvedValue({ mcp_servers: { [DRIVE_MCP_SERVER]: entry, custom: { command: 'node' } } })
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+
+  try {
+    renderConfigSettings('safety', 'approvals')
+    const toggle = await screen.findByRole('switch', { name: 'Allow the agent to manage the library' })
+    expect(toggle.getAttribute('aria-checked')).toBe('true')
+    toggle.click()
+    await vi.advanceTimersByTimeAsync(700)
+    await vi.waitFor(() =>
+      expect(saveHermesConfig).toHaveBeenCalledWith({ mcp_servers: { [DRIVE_MCP_SERVER]: { enabled: false } } }, 'work')
+    )
+    expect(toggle.getAttribute('aria-checked')).toBe('false')
+    toggle.click()
+    await vi.advanceTimersByTimeAsync(700)
+    await vi.waitFor(() =>
+      expect(saveHermesConfig).toHaveBeenLastCalledWith(
+        { mcp_servers: { [DRIVE_MCP_SERVER]: { enabled: true } } },
+        'work'
+      )
+    )
+    expect(entry).not.toHaveProperty('enabled')
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+it('不把同名自定义 MCP 接管为资料库权限', async () => {
+  getHermesConfigRecord.mockResolvedValue({
+    mcp_servers: { [DRIVE_MCP_SERVER]: { url: 'https://custom.invalid/mcp' } }
+  })
+  renderConfigSettings('safety', 'approvals')
+  await vi.waitFor(() => expect(getHermesConfigRecord).toHaveBeenCalled())
+  expect(screen.queryByRole('switch', { name: 'Allow the agent to manage the library' })).toBeNull()
 })

@@ -1721,6 +1721,9 @@ export const frOverrides = {
       updates: 'Mises à jour'
     },
     config: {
+      agentLibraryAccessTitle: 'Autoriser l’agent à gérer la bibliothèque',
+      agentLibraryAccessDesc:
+        'Autoriser l’agent à lire et écrire des fichiers du disque cloud personnel selon vos instructions.',
       minimizeToTrayTitle: 'Réduire dans la barre d’état',
       minimizeToTrayDesc:
         'Réduire les fenêtres ou fermer la fenêtre principale les masque dans la zone de notification (barre des menus sur macOS) et UniWork continue de s’exécuter. Utilisez Quitter UniWork dans le menu de la zone de notification ou Cmd+Q pour quitter. Désactivé par défaut ; s’applique uniquement à cet appareil.',

@@ -1136,6 +1136,8 @@ export const ja = defineLocale({
       updates: '更新'
     },
     config: {
+      agentLibraryAccessTitle: 'エージェントによるライブラリ操作を許可',
+      agentLibraryAccessDesc: '指示に基づき、エージェントが個人クラウドドライブのファイルを読み書きできます。',
       minimizeToTrayTitle: 'トレイに最小化',
       minimizeToTrayDesc:
         'ウィンドウの最小化やメインウィンドウを閉じる操作でシステムトレイ（macOS ではメニューバー）に隠し、UniWork を実行し続けます。終了するにはトレイメニューの「UniWork を終了」または Cmd+Q を使います。初期設定はオフで、このデバイスにのみ適用されます。',
