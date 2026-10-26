@@ -46,7 +46,10 @@ def test_background_rules_are_surface_scoped_and_frozen(tmp_path, monkeypatch, p
                     assert "原消息会话" in text and "不广播" in text
                     assert "MEDIA" in text and "发送附件" in text
                     assert "宿主在子任务内缓存" not in text
-                    assert "txt2vid_generate" not in text and "img2vid_generate" not in text
+                    # 微信、飞书、企微的视频也交后台并以附件发回；钉钉发不了视频，其他平台保持原样。
+                    video = platform in {"weixin", "feishu", "wecom"}
+                    assert ("txt2vid_generate" in text) == video and ("img2vid_generate" in text) == video
+                    assert ("超过 20MB" in text) == (platform in {"weixin", "feishu", "wecom", "dingtalk"})
             # 身份之后变化不能让同一会话前缀随之重写。
             agent.platform = "cli" if platform == "desktop" else "desktop"
             assert _frozen_plugin_prompt_sections(agent) == sections

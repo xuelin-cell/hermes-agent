@@ -63,16 +63,23 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
   const targetRecovered = !operation.platform || !!target && (operation.operation === 'disconnect'
     ? !target.enabled : target.enabled && target.configured && target.gateway_running && target.state === 'connected')
 
+  const sameProfile = (operation.profile ?? 'default') === (scopeProfile ?? 'default')
+
   // 连接超时是历史结果；新快照须确认本次目标及其它已配置渠道恢复，不能掩盖保存或归属错误。
   const connectionRecovered = operation.phase === 'failed' && operation.saved && targetRecovered &&
-    operation.error === 'connection_timeout' && (operation.profile ?? 'default') === (scopeProfile ?? 'default') &&
+    operation.error === 'connection_timeout' && sameProfile &&
     !loadError && snapshot?.operationRevision === operation.revision &&
     (enabledPlatforms.length > 0
       ? enabledPlatforms.every(platform => platform.configured && platform.gateway_running && platform.state === 'connected')
       : operation.operation === 'disconnect' && !!platforms?.length && platforms.every(platform => !platform.gateway_running))
 
+  // 刚进入页面时还没读到最新平台状态；历史上的连接超时只是旧记录，此时不能当结论展示，
+  // 否则平台其实早已连上，也会先闪一下“连接失败”。读取失败时无法核对，仍按记录显示。
+  const verifying = operation.phase === 'failed' && operation.error === 'connection_timeout' &&
+    !loadError && snapshot?.operationRevision !== operation.revision
+
   // 成功提示与卡片共用同一轮操作后的读取，不能先成功再显示旧的停机状态。
-  const phase = connectionRecovered ? 'idle'
+  const phase = connectionRecovered || verifying ? 'idle'
     : operation.phase === 'completed' && snapshot?.operationRevision !== operation.revision
     ? 'checking' : operation.phase
 
@@ -244,13 +251,18 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
     bot_conflict: m.connection.duplicateDescription
   }
 
-  const operationFailed = phase === 'failed' || requestFailed
   const activePlatforms = enabledPlatforms.filter(platform => platform.configured && PLATFORM_IDS.includes(platform.id as PlatformId))
 
   const disconnected = !applying && activePlatforms.some(platform => !platform.gateway_running ||
     ['fatal', 'startup_failed', 'disconnected', 'stopped', 'pending_restart'].includes(platform.state ?? ''))
 
   const reconnecting = !applying && activePlatforms.some(platform => ['retrying', 'connecting'].includes(platform.state ?? ''))
+
+  // 启动恢复超时只是历史结果；当前账号的平台仍在按原版策略连接时，按“正在重连”展示，不当作失败。
+  const slowRestore = phase === 'failed' && operation.operation === 'restore' &&
+    operation.error === 'connection_timeout' && sameProfile && reconnecting
+
+  const operationFailed = (phase === 'failed' && !slowRestore) || requestFailed
   const failed = operationFailed || disconnected
   const progress = applying || (!failed && reconnecting)
   const recovery = operationFailed || disconnected || reconnecting
@@ -266,7 +278,7 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
       : operation.saved ? m.connection.savedFailed : errors[operation.error || ''] || m.connection.saveFailed
   }
 
-  const message = requestFailed ? m.connection.savedFailed : phase === 'failed' ? phaseMessages.failed
+  const message = requestFailed ? m.connection.savedFailed : phase === 'failed' && !slowRestore ? phaseMessages.failed
     : disconnected ? m.connection.disconnected : reconnecting ? m.connection.reconnecting : phaseMessages[phase]
 
   const selected = platforms?.find(platform => platform.id === configuring)

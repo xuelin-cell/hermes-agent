@@ -22,7 +22,7 @@ const CREDENTIAL_PROBE = '/assets?space_id=personal&parent_asset_id=0&page_no=1&
 export class CloudDriveMcp {
   private server: Server | null = null
   private starting: Promise<string> | null = null
-  private readonly token = randomBytes(32).toString('base64url')
+  private readonly profileTokens = new Map<string, string>()
   private closed = false
   private endpoint = ''
   private nextOwner = -1
@@ -40,6 +40,12 @@ export class CloudDriveMcp {
 
   /** 每个本地 Profile 后端启动前安装记录；配置异常不阻断聊天启动。 */
   async prepare(profile: string): Promise<boolean> {
+    profile = profile || 'default'
+
+    if (profile !== 'default' && !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(profile)) {
+      return false
+    }
+
     try {
       const url = await this.start()
 
@@ -47,7 +53,10 @@ export class CloudDriveMcp {
         return false
       }
 
-      return prepareDriveMcpConfig(this.home, profile || 'default', url, this.token)
+      const token = this.profileTokens.get(profile) ?? randomBytes(32).toString('base64url')
+      this.profileTokens.set(profile, token)
+
+      return prepareDriveMcpConfig(this.home, profile, url, token)
     } catch {
       return false
     }
@@ -55,10 +64,11 @@ export class CloudDriveMcp {
 
   /** 页面只得到可用性，不得到端口、短期 MCP 密钥或账号凭据。 */
   available(profile: string): boolean {
+    profile = profile || 'default'
+    const token = this.profileTokens.get(profile)
+
     return (
-      !this.closed &&
-      !!this.endpoint &&
-      isCurrentDriveMcpConfig(this.home, profile || 'default', this.endpoint, this.token)
+      !this.closed && !!this.endpoint && !!token && isCurrentDriveMcpConfig(this.home, profile, this.endpoint, token)
     )
   }
 
@@ -122,7 +132,12 @@ export class CloudDriveMcp {
     try {
       const address = this.server?.address() as AddressInfo | null
       const supplied = Buffer.from(request.headers.authorization || '')
-      const expected = Buffer.from(`Bearer ${this.token}`)
+
+      const profile = [...this.profileTokens].find(([, token]) => {
+        const expected = Buffer.from(`Bearer ${token}`)
+
+        return supplied.length === expected.length && timingSafeEqual(supplied, expected)
+      })?.[0]
 
       if (
         this.closed ||
@@ -130,8 +145,7 @@ export class CloudDriveMcp {
         request.url !== '/mcp' ||
         request.headers.host !== `127.0.0.1:${address.port}` ||
         request.headers.origin ||
-        supplied.length !== expected.length ||
-        !timingSafeEqual(supplied, expected)
+        profile === undefined
       ) {
         this.reply(response, 403)
 
@@ -207,9 +221,9 @@ export class CloudDriveMcp {
       } else if (message.method === 'ping') {
         result = {}
       } else if (message.method === 'tools/list') {
-        result = { tools: DRIVE_MCP_TOOLS }
+        result = { tools: this.available(profile) ? DRIVE_MCP_TOOLS : [] }
       } else if (message.method === 'tools/call') {
-        result = await this.call(message.params?.name, message.params?.arguments ?? {}, response)
+        result = await this.call(message.params?.name, message.params?.arguments ?? {}, response, profile)
       } else {
         this.reply(response, 200, { ...envelope, error: { code: -32601, message: 'Method not found' } })
 
@@ -227,6 +241,20 @@ export class CloudDriveMcp {
     return this.result({ ok: false, status, code }, true)
   }
 
+  /** 旧会话仍可能持有工具定义，拒绝时明确说明权限来源，不把它误报成空云盘或断线。 */
+  private accessDenied() {
+    return this.result(
+      {
+        ok: false,
+        status: 'failed',
+        code: 'DRIVE_ACCESS_DISABLED',
+        message:
+          '未授权访问个人云盘。请在「设置 → 安全 → 审批」中开启「允许智能体操控资料库」。用户仍可在「资料库 → 个人云盘」手动操作。不要通过其他 MCP、HTTP 或本地文件搜索绕过此权限；百度网盘及其他连接器不受此开关影响。'
+      },
+      true
+    )
+  }
+
   /** 工具保留上游业务状态，无法确认与明确执行失败分开呈现。 */
   private result(data: unknown, isError = false) {
     // 无法确认是已结束的业务结果，不渲染成工具执行失败；ok/status 仍明确禁止认作成功。
@@ -239,7 +267,11 @@ export class CloudDriveMcp {
   }
 
   /** 并发、取消与身份检查覆盖所有工具，切换账号后不再继续轮询或发送文件。 */
-  private async call(name: unknown, args: unknown, response: ServerResponse) {
+  private async call(name: unknown, args: unknown, response: ServerResponse, profile: string) {
+    if (!this.available(profile)) {
+      return this.accessDenied()
+    }
+
     if (typeof name !== 'string' || !DRIVE_MCP_TOOLS.some(tool => tool.name === name) || this.calls.size >= 4) {
       return this.failure('TOOL_UNAVAILABLE')
     }
@@ -250,9 +282,18 @@ export class CloudDriveMcp {
       return this.failure('INVALID_ARGUMENT')
     }
 
+    const mutation = ['make_dir', 'rename_file', 'move_files', 'delete_files', 'restore_files'].includes(name)
     const controller = new AbortController()
     const cancel = () => controller.abort()
-    const check = this.drive.guardIdentity()
+    const identityCheck = this.drive.guardIdentity()
+
+    const check = () => {
+      identityCheck()
+
+      if (!this.available(profile)) {
+        throw new CloudDriveOperationError('failed', 'DRIVE_ACCESS_DISABLED')
+      }
+    }
 
     const monitor = setInterval(() => {
       try {
@@ -264,12 +305,13 @@ export class CloudDriveMcp {
 
     this.calls.add(controller)
     response.once('close', cancel)
+    let executing = false
 
     try {
       check()
       controller.signal.throwIfAborted()
 
-      if (['make_dir', 'rename_file', 'move_files', 'delete_files', 'restore_files'].includes(name)) {
+      if (mutation) {
         // GUI 先加载目录，MCP 可直接写入；先用同一只读入口恢复被提前作废的凭据，不重放写请求。
         await this.drive.execute({ route: CREDENTIAL_PROBE }, controller.signal)
         check()
@@ -285,12 +327,30 @@ export class CloudDriveMcp {
         return await transfers[name]()
       }
 
+      executing = true
       const data = await executeDriveMcpAction(this.drive, name, input, controller.signal)
-      check()
+
+      // 写入回执由账号客户端判定；关闭权限不能覆盖已发出请求的真实结果，账号隔离仍保留。
+      if (mutation) {
+        identityCheck()
+      } else {
+        check()
+      }
+
       const failed = !!data && typeof data === 'object' && 'ok' in data && data.ok === false
 
       return this.result(failed ? data : { ok: true, data }, failed)
     } catch (error) {
+      const writeOutcome =
+        mutation &&
+        executing &&
+        error instanceof CloudDriveOperationError &&
+        error.result.code !== 'DRIVE_ACCESS_DISABLED'
+
+      if (!this.available(profile) && !writeOutcome) {
+        return this.accessDenied()
+      }
+
       if (error instanceof CloudDriveOperationError) {
         return this.result(error.result, true)
       }

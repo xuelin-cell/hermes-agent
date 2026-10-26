@@ -486,6 +486,32 @@ describe('Messaging cards and native configuration', () => {
     }
   )
 
+  it('进入页面读取平台状态期间，不先闪出历史启动恢复失败', async () => {
+    $settingsScopeOverride.set(null)
+    publishOperation({ phase: 'failed', operation: 'restore', profile: 'default', saved: true, error: 'connection_timeout' })
+    const row = dingtalk({ configured: true, enabled: true, state: 'connected' })
+    let release!: (value: { platforms: MessagingPlatformInfo[] }) => void
+    getMessagingPlatforms.mockReturnValue(new Promise(resolve => { release = resolve }))
+    await renderMessaging()
+    await act(async () => undefined)
+    expect(screen.queryByText(/Messaging could not be restored/)).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
+    await act(async () => { release({ platforms: [row] }) })
+    await waitFor(() => expect(within(screen.getByRole('article', { name: 'DingTalk bot integration' }))
+      .getByRole('status').textContent).toBe('Connected'))
+    expect(screen.queryByText(/Messaging could not be restored/)).toBeNull()
+  })
+
+  it('启动恢复超时但平台仍在连接时，按正在重连展示，不当作失败', async () => {
+    $settingsScopeOverride.set(null)
+    publishOperation({ phase: 'failed', operation: 'restore', profile: 'default', saved: true, error: 'connection_timeout' })
+    getMessagingPlatforms.mockResolvedValue({ platforms: [dingtalk({ configured: true, enabled: true, state: 'retrying' })] })
+    await renderMessaging()
+    expect(await screen.findByText(/reconnecting using its built-in policy/)).toBeTruthy()
+    expect(screen.queryByText(/Messaging could not be restored/)).toBeNull()
+    expect(messagingSetup).not.toHaveBeenCalled()
+  })
+
   it.each([
     { operation: 'save' as const, error: 'apply_failed', saved: true, profile: 'default',
       message: 'Settings saved, but the messaging connection could not be restored. Retry the connection.' },

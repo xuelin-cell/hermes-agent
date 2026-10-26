@@ -3,10 +3,13 @@ import { afterEach, expect, it, vi } from 'vitest'
 
 import { I18nProvider } from '@/i18n'
 
+import { normalizeWelcomeCatalog } from '../../../../../electron/uniwork-welcome/catalog'
+
 import { $welcomeCatalog, loadWelcomeCatalog } from './catalog-store'
+import fixture from './catalog.zh-CN.json'
 import { WorkTemplatePicker } from './picker'
 
-const modules = $welcomeCatalog.get()['zh-CN'].modules!
+const modules = normalizeWelcomeCatalog(fixture)
 const defaults = modules[0].tags
 afterEach(() => {
   cleanup()
@@ -15,7 +18,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-/** 用真实内置目录走分类与模板交互，填写仅进入草稿回调。 */
+/** 用目录样例作为云端响应走分类与模板交互，填写仅进入草稿回调。 */
 function view(scope = 'draft-a', disabled = false, replace = vi.fn()) {
   return {
     replace,
@@ -73,8 +76,10 @@ it('完整分类可进入模板，填写完整提示词，取消保留草稿且�
 })
 
 it('更新失败保留可用目录并支持重试；录音或禁用时不能覆盖草稿', async () => {
-  const request = vi.fn().mockRejectedValue(new Error('offline'))
+  const request = vi.fn().mockResolvedValue({ modules })
   vi.stubGlobal('hermesDesktop', { getWelcomeCatalog: request })
+  await loadWelcomeCatalog('zh-CN', true)
+  request.mockRejectedValue(new Error('offline'))
   await loadWelcomeCatalog('zh-CN', true)
   const v = view('draft-a', true)
   const ui = render(v.element)

@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { GraduationCap, Monitor, Terminal } from 'lucide-react'
+import { GraduationCap } from 'lucide-react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, expect, it, vi } from 'vitest'
 
@@ -28,22 +28,25 @@ const modules = normalizeWelcomeCatalog({
         {
           id: 'shared',
           name: '学习分类',
+          icon: 'not-a-lucide-icon',
           enabled: false,
           templates: [{ id: 'same', name: '学习模板', prompt: '学习提示词', enabled: false }]
         }
       ]
     },
-    { id: 'duplicate', name: '代码开发', icon: 'terminal', workspace: 'work', sort: 20, tags: [] },
+    { id: 'duplicate', name: '云端研发', workspace: 'codex', icon: 'terminal', sort: 20, tags: [] },
+    { name: '第四个模块', icon: 'presentation', sort: 5 },
     {
       name: '事务',
-      icon: 'monitor',
+      icon: 'briefcase',
       sort: 10,
       tags: [
         {
           id: 'shared',
           name: '办公分类',
+          icon: 'presentation',
           enabled: false,
-          templates: [{ id: 'same', name: '办公模板', prompt: '办公提示词', enabled: false }]
+          templates: [{ id: 'same', name: '办公模板', icon: 'file-text', prompt: '办公提示词', enabled: false }]
         }
       ]
     }
@@ -62,25 +65,25 @@ it('uses fetched module names and routing and switches templates without carryin
   )
 
   expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual(modules.map(module => module.name))
+  expect(screen.getAllByRole('tab')).toHaveLength(4)
+  await waitFor(() => expect(screen.getByRole('tab', { name: '第四个模块' }).querySelector('svg')).toBeTruthy())
   await waitFor(() => {
-    for (const [name, Icon] of [
-      ['事务', Monitor],
-      ['代码开发', Terminal],
-      ['研习', GraduationCap]
-    ] as const) {
-      const expected = document.createElement('div')
-      expected.innerHTML = renderToStaticMarkup(<Icon />)
-      expect(screen.getByRole('tab', { name }).querySelector('svg')?.innerHTML).toBe(
-        expected.querySelector('svg')?.innerHTML
-      )
-    }
+    const tab = screen.getByRole('tab', { name: '研习' })
+    const expected = tab.ownerDocument.createElement('div')
+    expected.innerHTML = renderToStaticMarkup(<GraduationCap />)
+    expect(tab.querySelector('svg')?.innerHTML).toBe(expected.querySelector('svg')?.innerHTML)
   })
   fireEvent.click(screen.getByRole('tab', { name: '事务' }))
+  await waitFor(() => expect(screen.getByRole('button', { name: '办公分类' }).querySelector('svg')).toBeTruthy())
+  const configuredIcon = screen.getByRole('tab', { name: '第四个模块' }).querySelector('svg')!.innerHTML
+  expect(screen.getByRole('button', { name: '办公分类' }).querySelector('svg')!.innerHTML).toBe(configuredIcon)
   expect($interfaceMode.get()).toBe('simple')
-  fireEvent.click(screen.getByRole('button', { name: '办公分类' }))
-  await waitFor(() =>
-    expect((screen.getByRole('button', { name: '办公模板' }) as HTMLButtonElement).disabled).toBe(false)
-  )
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: '办公分类' }))
+  })
+  await waitFor(() => expect(screen.getByRole('button', { name: '办公模板' }).querySelector('svg')).toBeTruthy())
+  expect(screen.getByRole('button', { name: '办公模板' }).querySelector('svg')!.innerHTML).not.toBe(configuredIcon)
+  await waitFor(() => expect((screen.getByRole('button', { name: '办公模板' }) as HTMLButtonElement).disabled).toBe(false))
   fireEvent.click(screen.getByRole('button', { name: '办公模板' }))
   expect(replace).toHaveBeenLastCalledWith('办公提示词')
 
@@ -88,11 +91,12 @@ it('uses fetched module names and routing and switches templates without carryin
   expect($interfaceMode.get()).toBe('simple')
   expect(screen.queryByRole('button', { name: '办公分类' })).toBeNull()
   expect(screen.queryByRole('button', { name: '取消所选分类' })).toBeNull()
+  expect(screen.getByRole('button', { name: '学习分类' }).querySelector('svg')).toBeNull()
   expect(replace).toHaveBeenLastCalledWith('办公提示词')
-  fireEvent.click(screen.getByRole('button', { name: '学习分类' }))
-  await waitFor(() =>
-    expect((screen.getByRole('button', { name: '学习模板' }) as HTMLButtonElement).disabled).toBe(false)
-  )
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: '学习分类' }))
+  })
+  await waitFor(() => expect((screen.getByRole('button', { name: '学习模板' }) as HTMLButtonElement).disabled).toBe(false))
   fireEvent.click(screen.getByRole('button', { name: '学习模板' }))
   expect(replace).toHaveBeenLastCalledWith('学习提示词')
 
@@ -101,13 +105,14 @@ it('uses fetched module names and routing and switches templates without carryin
   expect(screen.getByRole('tab', { name: '研习' }).getAttribute('aria-selected')).toBe('true')
   expect($interfaceMode.get()).toBe('simple')
 
-  fireEvent.click(screen.getByRole('tab', { name: '代码开发' }))
+  fireEvent.click(screen.getByRole('tab', { name: '云端研发' }))
   expect($interfaceMode.get()).toBe('advanced')
   expect(screen.queryByRole('button', { name: '学习分类' })).toBeNull()
 })
 
 it('navigates only configured tabs with the keyboard and removes tabs and templates for an empty refresh', async () => {
-  const request = vi.fn().mockResolvedValue({ modules })
+  $welcomeCatalog.set({ 'zh-CN': { status: 'cached', modules: null }, en: { status: 'cached', modules: null } })
+  const request = vi.fn().mockRejectedValue(new Error('offline'))
   vi.stubGlobal('hermesDesktop', { getWelcomeCatalog: request })
   await loadWelcomeCatalog('zh-CN', true)
 
@@ -118,10 +123,17 @@ it('navigates only configured tabs with the keyboard and removes tabs and templa
     </I18nProvider>
   )
 
+  expect(screen.queryByRole('tab')).toBeNull()
+  request.mockResolvedValue({ modules })
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: '刷新模板' }))
+  })
+  expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual(modules.map(module => module.name))
+
   fireEvent.keyDown(screen.getByRole('tab', { name: '事务' }), { key: 'End' })
   expect(container.ownerDocument.activeElement).toBe(screen.getByRole('tab', { name: '研习' }))
   fireEvent.keyDown(screen.getByRole('tab', { name: '研习' }), { key: 'ArrowLeft' })
-  expect(container.ownerDocument.activeElement).toBe(screen.getByRole('tab', { name: '代码开发' }))
+  expect(container.ownerDocument.activeElement).toBe(screen.getByRole('tab', { name: '云端研发' }))
   expect($interfaceMode.get()).toBe('advanced')
 
   // A renderer hot reload may still talk to an older main process returning tags.

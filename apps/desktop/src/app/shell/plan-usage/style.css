@@ -188,6 +188,9 @@ a.account-card-row:hover {
 .account-card-details {
   color: var(--dt-primary-deep);
 }
+.dark .account-card-details {
+  color: var(--theme-primary);
+}
 /* 展开后由明细承载用量，收起箭头仍保持居右。 */
 .account-card-chevron {
   flex: none;

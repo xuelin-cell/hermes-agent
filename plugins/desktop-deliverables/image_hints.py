@@ -10,21 +10,33 @@ import logging
 import re
 
 from . import uploads
+from .background import DELIVERY_PLATFORMS
 
 logger = logging.getLogger(__name__)
 LEAF = "analyze_image"
-# Hermes 原文：桌面附图的提示（tui_gateway/session_history.py），以及会话中途换成看不到图的模型后，
-# 历史图片转成文字时补的一句（agent/vision_message_prep.py）。
+# Hermes 原文：桌面附图的提示（tui_gateway/session_history.py），会话中途换成看不到图的模型后，
+# 历史图片转成文字时补的一句（agent/vision_message_prep.py），以及消息网关预先看图后附的三种写法
+# （gateway/run_inbound.py：看清了的路径后面多一个“ ~”，看不清和出错时让模型自己看）。
 _HINTS = (
     (
         re.compile(r"\[Examine it with the vision_analyze tool using image_url: ([^\n]+?)\](?=\n|$)"),
         "[看这张图请用元景的 {tool}：image_url_or_oss_path 填 {path}，prompt 写要问的问题]",
     ),
     (
-        re.compile(r"\[If you need a closer look, use vision_analyze with image_url: ([^\n]+?)\](?=\n|$)"),
+        re.compile(r"\[If you need a closer look, use vision_analyze with image_url: ([^\n]+?)(?: ~)?\](?=\n|$)"),
         "[需要细看时用元景的 {tool}：image_url_or_oss_path 填 {path}，prompt 写要问的问题]",
     ),
+    (
+        re.compile(
+            r"\[The user sent an image but (?:I couldn't quite see it this time \(>_<\) You can try looking at it"
+            r"|something went wrong when I tried to look at it~ You can try examining it) yourself"
+            r" with vision_analyze using image_url: ([^\n]+?)\](?=\n|$)"
+        ),
+        "[用户发来一张图片，还没能看到内容。看这张图请用元景的 {tool}：image_url_or_oss_path 填 {path}，prompt 写要问的问题]",
+    ),
 )
+# 桌面和接通本机成品交付的消息平台改写；其他平台保持原样。
+PLATFORMS = frozenset({"desktop", *DELIVERY_PLATFORMS})
 
 
 def settings():
@@ -107,13 +119,13 @@ def _rewrite_message(message, tool):
 
 
 def rewrite_request(*, request=None, platform="", **_):
-    """llm_request 中间件：桌面会话发请求前改写看图提示。
+    """llm_request 中间件：桌面和四个消息平台的会话发请求前改写看图提示。
 
     只在主模型看不到图（Hermes 加了这行提示）、vision_analyze 看不了图、且接了元景看图工具时改；
     每次改出的文字相同，不影响提示缓存。
     """
     try:
-        if platform != "desktop" or not isinstance(request, dict):
+        if platform not in PLATFORMS or not isinstance(request, dict):
             return None
         key = "messages" if isinstance(request.get("messages"), list) else "input"
         messages = request.get(key)

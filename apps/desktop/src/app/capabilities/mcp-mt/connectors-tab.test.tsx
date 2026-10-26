@@ -7,6 +7,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { McpTestResult } from '@/hermes'
 import type { McpServers } from '@/lib/mcp-servers'
 
+import { DRIVE_MCP_MANAGED, DRIVE_MCP_SERVER } from '../../../../electron/login/drive-mcp-contract'
 import type { McpServersController } from '../mcp/use-mcp-servers'
 
 const { readController, listServers, readStatus } = vi.hoisted(() => ({
@@ -218,4 +219,18 @@ it('confirms before deleting and reports configuration failures', async () => {
   expect(screen.getByText('Could not load MCP configuration')).toBeTruthy()
   expect(screen.queryByRole('button', { name: 'Add MCP Server' })).toBeNull()
   expect(await screen.findByText('Could not load plugin MCP servers')).toBeTruthy()
+})
+
+it('受管网盘从 MCP 页面隐藏，同名自定义 MCP 和其他连接器仍可操作', () => {
+  saved[DRIVE_MCP_SERVER] = { url: 'http://127.0.0.1:12345/mcp', uniwork_managed: DRIVE_MCP_MANAGED }
+  renderTab()
+  expect(screen.queryByRole('article', { name: DRIVE_MCP_SERVER })).toBeNull()
+  expect(saved[DRIVE_MCP_SERVER].uniwork_managed).toBe(DRIVE_MCP_MANAGED)
+  expect(within(row('alpha')).getByRole('switch')).toBeTruthy()
+  cleanup()
+  saved[DRIVE_MCP_SERVER] = { url: 'https://custom.invalid/mcp' }
+  renderTab()
+  expect(within(row(DRIVE_MCP_SERVER)).getByRole('switch')).toBeTruthy()
+  expect(saves).toEqual([])
+  expect(removeServer).not.toHaveBeenCalled()
 })

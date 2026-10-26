@@ -158,7 +158,7 @@ export const en: Translations = {
     draftChanged: 'The conversation changed. Select the file again to add it.',
     draftNotReady: 'The conversation input is unavailable. Open the target conversation before adding the file.',
     draftUnavailable:
-      'The cloud download tool is unavailable or disabled. Restart Desktop and check this profile’s MCP settings.',
+      'The cloud-drive tool is unavailable or disabled. Check this profile’s library access in Settings → Safety → Approvals, then try a new chat.',
     upload: 'Upload file',
     transferring: 'Transferring…',
     transferFailed: 'Transfer incomplete. Check your network, login and file permissions before retrying.',
@@ -1882,6 +1882,9 @@ export const en: Translations = {
       updates: 'Updates'
     },
     config: {
+      agentLibraryAccessTitle: 'Allow the agent to manage the library',
+      agentLibraryAccessDesc:
+        'Allow the agent to read and write Personal Cloud Drive files based on your instructions.',
       minimizeToTrayTitle: 'Minimize to tray',
       minimizeToTrayDesc:
         'Minimize windows or close the main window to hide them in the system tray (menu bar on macOS) and keep UniWork running. Use Quit UniWork from the tray menu or Cmd+Q to exit. Off by default; applies only to this device.',

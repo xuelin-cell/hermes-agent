@@ -232,7 +232,9 @@ def test_prepare_and_apply_stop_empty_gateway_and_restart_configured_profiles(mo
     def spawn(command, name, *, env_overrides):
         """捕获原版动作边界，防止测试影响真实用户网关。"""
         actions.append((command, name))
-        assert env_overrides == {"HERMES_GATEWAY_INSTALL_START_ON_LOGIN": "0"}
+        assert env_overrides == ({"HERMES_GATEWAY_INSTALL_START_ON_LOGIN": "0"} if name == "gateway-stop" else {
+            "HERMES_GATEWAY_INSTALL_START_ON_LOGIN": "0", "HERMES_GATEWAY_BUSY_ACK_ENABLED": "false",
+            "HERMES_GATEWAY_BUSY_STEER_ACK_ENABLED": "false"})
         return SimpleNamespace(pid=123)
 
     monkeypatch.setattr(web_server_gateway, "_spawn_hermes_action", spawn)

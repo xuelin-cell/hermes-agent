@@ -286,7 +286,7 @@ export const zhHant = defineLocale({
     draftRemote: '目前會話連接到遠端 UniWork，暫不支援新增雲端硬碟檔案。',
     draftChanged: '會話已切換，未新增檔案，請重新選擇。',
     draftNotReady: '會話輸入框暫不可用，請先開啟目標會話後再新增。',
-    draftUnavailable: '雲端硬碟下載工具尚未就緒或已關閉，請重新啟動桌面端並檢查目前 Profile 的 MCP 設定。',
+    draftUnavailable: '雲端硬碟工具尚未就緒或未獲授權，請在「設定 → 安全 → 審批」檢查目前 Profile 的資料庫存取權限，再開啟新對話重試。',
     upload: '上傳檔案',
     transferring: '正在傳輸…',
     transferFailed: '傳輸未完成，請檢查網路、登入狀態和檔案權限後重試。',
@@ -1461,6 +1461,8 @@ export const zhHant = defineLocale({
       updates: '更新'
     },
     config: {
+      agentLibraryAccessTitle: '允許智慧體操作資料庫',
+      agentLibraryAccessDesc: '允許智慧體依據你的指令讀寫個人雲端硬碟檔案。',
       minimizeToTrayTitle: '最小化至系統匣',
       minimizeToTrayDesc:
         '最小化視窗或關閉主視窗時，將其隱藏至系統匣（macOS 上為選單列），讓 UniWork 繼續執行。透過系統匣選單中的「結束 UniWork」或 Cmd+Q 結束。預設關閉，僅適用於此裝置。',

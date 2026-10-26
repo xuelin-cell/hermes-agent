@@ -10,15 +10,19 @@ from __future__ import annotations
 import asyncio
 import logging
 import secrets
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
+from importlib import import_module
 from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException
 
 from gateway.platforms import weixin as wx
+
+presentation = import_module("plugins.desktop-messaging.dashboard.presentation")
 
 _log = logging.getLogger(__name__)
 
@@ -80,10 +84,7 @@ def _save_current(login: _Login, creds: dict[str, str]) -> bool:
         if _current.get(login.home) != login.id:
             return False
         _apply(login.profile, creds)
-        if _current.get(login.home) != login.id:
-            return False
-        login.restart = _restart(login.profile)
-        return True
+        return _current.get(login.home) == login.id
 
 
 def _remove_current(home: str, request_id: str, profile: Optional[str]) -> None:
@@ -157,7 +158,10 @@ def _apply(profile: Optional[str], creds: dict[str, str]) -> None:
         values.update(WEIXIN_DM_POLICY="allowlist", WEIXIN_ALLOWED_USERS=user_id, WEIXIN_HOME_CHANNEL=user_id)
         for key, value in values.items():
             save_env_value(key, value)
-        _write_platform_enabled(PLATFORM_ID, True)
+        # 与桌面准备共用 config.yaml 锁；展示配置失败只记日志，不影响已保存的连接。
+        with presentation.config_lock():
+            _write_platform_enabled(PLATFORM_ID, True)
+            presentation.prepare_presentation({PLATFORM_ID})
 
 
 def _unbind(profile: Optional[str]) -> None:
@@ -176,11 +180,24 @@ def _unbind(profile: Optional[str]) -> None:
             path.unlink(missing_ok=True)
 
 
-def _restart(profile: Optional[str]) -> dict[str, Any]:
-    """保存后尽力重启消息网关；失败只报告，由页面提示手动重启。"""
-    from hermes_cli.web_server_gateway import _restart_gateway_after
+# 仪表盘按插件名加载接口文件；只取已加载的那份，避免另建一份锁不同的模块。
+_DESKTOP_MESSAGING_MODULES = (
+    "hermes_dashboard_plugin_desktop-messaging", "plugins.desktop-messaging.dashboard.plugin_api")
 
-    return _restart_gateway_after(profile, what="Weixin QR login", label="Weixin QR login")
+
+async def _restart() -> dict[str, Any]:
+    """后端直接走桌面消息的统一准备与重启，不依赖页面仍然打开；失败时由页面回退到重试。"""
+    api = next((sys.modules[name] for name in _DESKTOP_MESSAGING_MODULES if name in sys.modules), None)
+    if api is None:
+        return {"restart_started": False}
+    try:
+        action = await api.apply_gateway()
+    except Exception as exc:
+        _log.warning("weixin-qr: gateway restart after login failed: %s", exc)
+        return {"restart_started": False, "restart_error": str(exc)}
+    if action.get("name") != "gateway-restart":
+        return {"restart_started": False}
+    return {"restart_started": True, "restart_action": "gateway-restart", "restart_pid": action.get("pid")}
 
 
 def _credentials(resp: dict[str, Any]) -> dict[str, str]:
@@ -231,6 +248,8 @@ async def _watch(login: _Login) -> None:
                         _log.exception("weixin-qr: saving credentials failed")
                         _finish(login, "error", "Could not save the WeChat connection.")
                         return
+                    if saved and _current.get(login.home) == login.id:
+                        login.restart = await _restart()
                     _finish(login, "confirmed" if saved and _current.get(login.home) == login.id else "cancelled")
                     return
                 await asyncio.sleep(POLL_INTERVAL_S)

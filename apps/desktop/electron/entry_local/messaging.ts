@@ -10,6 +10,12 @@ const IDS = { dingtalk: 'DINGTALK_CLIENT_ID', feishu: 'FEISHU_APP_ID', wecom: 'W
 const SECRETS = { dingtalk: 'DINGTALK_CLIENT_SECRET', feishu: 'FEISHU_APP_SECRET', wecom: 'WECOM_SECRET' }
 const BASE = '/api/plugins/desktop-messaging'
 
+/** 保存、解绑等日常操作的确认上限：最多读 30 次，总计约 36 秒。 */
+const CHECK_PATIENCE = { attempts: 30, ms: 36_000 }
+
+/** 启动恢复要等网关进程和各平台依次握手，机器慢时 36 秒不够，放宽到约 90 秒。 */
+const RESTORE_PATIENCE = { attempts: 75, ms: 90_000 }
+
 interface MessagingTask extends Omit<MessagingSetupRequest, 'operation'> {
   operation: NonNullable<MessagingOperationStatus['operation']>
 }
@@ -243,7 +249,13 @@ export class DesktopMessaging {
     if (state.name && state.name !== 'gateway-start') {throw new Error('restore_response_invalid')}
 
     // gateway-start 是原版常驻 run 进程，不能等待它退出才判断启动完成。
-    const ok = await this.checkPlatforms(input, false, state.profiles)
+    const ok = await this.checkPlatforms(input, false, state.profiles, RESTORE_PATIENCE)
+
+    // 账号退出会中断等待，这不是连接失败：不留下失败记录，也不让调用方写失败日志。
+    if (!ok && this.closed) {
+      return {}
+    }
+
     this.publish(input, ok ? 'completed' : 'failed', true, ok ? undefined : 'connection_timeout')
 
     return { actionFailed: !ok }
@@ -350,11 +362,16 @@ export class DesktopMessaging {
   }
 
   /** 在原 Profile 有界确认可见平台已连接或网关已停止；只读状态，不再次启停。 */
-  private async checkPlatforms(input: MessagingTask, stopped = false, profiles = [input.profile || 'default']): Promise<boolean> {
+  private async checkPlatforms(
+    input: MessagingTask,
+    stopped = false,
+    profiles = [input.profile || 'default'],
+    patience = CHECK_PATIENCE
+  ): Promise<boolean> {
     this.publish(input, 'checking', true)
-    const deadline = Date.now() + 36_000
+    const deadline = Date.now() + patience.ms
 
-    for (let attempt = 0; attempt < 30 && Date.now() < deadline && !this.closed; attempt++) {
+    for (let attempt = 0; attempt < patience.attempts && Date.now() < deadline && !this.closed; attempt++) {
       try {
         const results = await Promise.allSettled(profiles.map(profile =>
           this.deps.request(profile, `${BASE}/platforms?profile=${encodeURIComponent(profile)}`, 'GET')))
@@ -380,7 +397,7 @@ export class DesktopMessaging {
         // 读取失败不当作就绪；仍受总期限和次数上限约束。
       }
 
-      if (attempt < 29 && !this.closed && Date.now() < deadline) {
+      if (attempt < patience.attempts - 1 && !this.closed && Date.now() < deadline) {
         await (this.deps.sleep ?? (ms => new Promise(resolve => setTimeout(resolve, ms))))(1200)
       }
     }

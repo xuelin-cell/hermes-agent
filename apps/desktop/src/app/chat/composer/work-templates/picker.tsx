@@ -1,68 +1,15 @@
 import { useStore } from '@nanostores/react'
-import {
-  IconArrowDownRight,
-  IconBuildingBank,
-  IconClipboardList,
-  IconMoodSmile,
-  IconPencil,
-  IconPresentation,
-  IconSparkles,
-  IconTelescope,
-  IconVideo
-} from '@tabler/icons-react'
-import { DynamicIcon, type IconName, iconNames } from 'lucide-react/dynamic'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 
+import { WelcomeIcon } from '@/components/chat/welcome-icon'
 import { Button } from '@/components/ui/button'
 import { useI18n } from '@/i18n'
-import { BarChart3, FileText, type IconComponent, iconSize, Search, X } from '@/lib/icons'
+import { iconSize, X } from '@/lib/icons'
 import { $selectedWelcomeModules } from '@/store/workspace-category'
-
-import type { WelcomeCategory } from '../../../../../electron/uniwork-welcome/catalog'
 
 import { $resolvedWelcomeCatalog, loadWelcomeCatalog } from './catalog-store'
 import { HorizontalRow } from './horizontal-row'
-
-const ICONS: Record<string, IconComponent> = {
-  'document-processing': FileText,
-  presentations: IconPresentation,
-  copywriting: IconPencil,
-  'data-analysis': BarChart3,
-  'meeting-minutes': IconClipboardList,
-  'deep-research': IconTelescope,
-  'video-search': Search,
-  'financial-planning': IconBuildingBank,
-  'lifestyle-entertainment': IconMoodSmile,
-  'file-text': FileText,
-  presentation: IconPresentation,
-  'pen-line': IconPencil,
-  'bar-chart-3': BarChart3,
-  'clipboard-list': IconClipboardList,
-  telescope: IconTelescope,
-  landmark: IconBuildingBank,
-  smile: IconMoodSmile,
-  video: IconVideo
-}
-
-const SUPPORTED_ICONS = new Set<string>(iconNames)
-
-/** 图标名称只解析为本地 Lucide 图标，不执行远端代码。 */
-function CategoryIcon({ category }: { category: WelcomeCategory }) {
-  const Icon = (category.icon && ICONS[category.icon]) || ICONS[category.id] || IconSparkles
-
-  if (category.icon && SUPPORTED_ICONS.has(category.icon)) {
-    return (
-      <DynamicIcon
-        className={iconSize.md}
-        fallback={() => <Icon className={iconSize.md} />}
-        name={category.icon as IconName}
-      />
-    )
-  }
-
-  return <Icon className={iconSize.md} />
-}
 
 interface WorkTemplatePickerProps {
   selectionContainer?: HTMLElement | null
@@ -145,8 +92,8 @@ export function WorkTemplatePicker({ scope, disabled, onReplaceText, selectionCo
                 type="button"
                 variant="chip"
               >
+                <WelcomeIcon className={iconSize.md} name={template.icon} />
                 {template.name}
-                <IconArrowDownRight className={iconSize.sm} />
               </Button>
             ))
           : categories.map(item => (
@@ -163,7 +110,7 @@ export function WorkTemplatePicker({ scope, disabled, onReplaceText, selectionCo
                 type="button"
                 variant="chip"
               >
-                <CategoryIcon category={item} />
+                <WelcomeIcon className={iconSize.md} name={item.icon} />
                 {item.name}
               </Button>
             ))}

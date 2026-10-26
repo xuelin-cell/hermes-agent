@@ -13,6 +13,7 @@ import httpx
 
 from tools.url_safety import async_is_safe_url, create_ssrf_safe_async_client
 
+from .background import DELIVERY_PLATFORMS
 from .paths import EXTENSIONS, is_link
 
 logger = logging.getLogger(__name__)
@@ -27,6 +28,8 @@ GENERATORS = {
     "music_generate",
 }
 MAX_BYTES = 32 * 1024 * 1024
+# 企业微信文件、钉钉附件的上限；消息平台超过它的成品可能发不出去，保留原链接兜底。
+ATTACH_BYTES = 20 * 1024 * 1024
 TIMEOUT = 20
 # 与 UniWork 相同：生成成品放在固定的对象存储，本机代理（fake-ip）会把它解析成保留地址。
 # 只对这个域名下各工具自己的成品目录免去内网检查；其它链接和跳转照常检查。
@@ -269,11 +272,18 @@ def strip_data(value, urls):
     return value
 
 
-def saved_note(root, paths, missing, *, messaging=False):
+def saved_note(root, paths, missing, *, platform="desktop", kept=0):
     """用陈述事实的方式告诉模型本机副本在哪、哪些没存下；结果在不可信包装内，不写成命令。"""
     parts = []
-    if messaging:
-        if paths:
+    if platform != "desktop":
+        if paths and platform in DELIVERY_PLATFORMS:
+            parts.append(
+                "已保存本机副本，宿主会在回复末尾把它们作为附件发给用户，回复里不用再写本机路径。"
+                "要再交给图生视频、图片编辑等元景工具，文件参数直接填这个本机路径。"
+            )
+            if kept:
+                parts.append(f"其中 {kept} 个超过 20MB，平台可能发不出附件，原链接保留在结果中，回复时一并给出。")
+        elif paths:
             parts.append("已保存本机副本，可通过原消息会话回复中的 MEDIA:<本机绝对路径> 交给平台发送附件；原链接保留备用，不承诺桌面预览卡片。")
         if missing:
             parts.append(f"有 {len(missing)} 个成品没有本机副本，保留原链接交付，不生成不存在文件的 MEDIA 引用，也不另建下载任务。")
@@ -293,11 +303,29 @@ def saved_note(root, paths, missing, *, messaging=False):
     return "".join(parts)
 
 
-def annotate(result, data, root, saved, missing, *, messaging=False):
-    """标明本机副本与下载失败；桌面移除已缓存链接，消息渠道保留附件兜底链接。"""
+def kept_links(saved, platform):
+    """哪些已下载成品的链接要留下：桌面一律不留；四个附件平台只留超过 20MB 的；其他消息平台照旧全留。"""
+    if platform == "desktop":
+        return []
+    if platform not in DELIVERY_PLATFORMS:
+        return list(saved)
+    large = []
+    for url, path in saved.items():
+        try:
+            if path.stat().st_size > ATTACH_BYTES:
+                large.append(url)
+        except OSError:
+            large.append(url)
+    return large
+
+
+def annotate(result, data, root, saved, missing, *, platform="desktop"):
+    """标明本机副本与下载失败；能作为卡片或附件交付的移除链接，可能发不出的保留链接兜底。"""
+    messaging = platform != "desktop"
     paths = [str(path) for path in saved.values()]
-    removed = [] if messaging else list(saved)
-    note = saved_note(root, paths, missing, messaging=messaging)
+    kept = kept_links(saved, platform)
+    removed = [url for url in saved if url not in kept]
+    note = saved_note(root, paths, missing, platform=platform, kept=len(kept))
     if isinstance(data, dict):
         rewritten = strip_data(data, removed)
         if paths:

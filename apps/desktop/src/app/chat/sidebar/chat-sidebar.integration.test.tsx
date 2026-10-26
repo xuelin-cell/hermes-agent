@@ -134,7 +134,7 @@ describe('ChatSidebar navigation activity', () => {
       en: {
         status: 'ready',
         modules: normalizeWelcomeCatalog({
-          modules: [{ name: '日常办公' }, { name: '代码开发', workspace: 'work', enabled: false }, { name: '学习生活' }]
+          modules: [{ name: '日常办公' }, { name: '代码开发', workspace: 'codex', enabled: false }, { name: '学习生活' }]
         })
       }
     })

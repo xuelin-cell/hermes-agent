@@ -15,6 +15,7 @@ from hermes_cli.web_server_messaging import _messaging_platform_catalog, _write_
 from hermes_cli.web_server_profiles import _config_profile_scope
 
 validate_credentials = import_module("plugins.desktop-messaging.dashboard.validation").validate_credentials
+presentation = import_module("plugins.desktop-messaging.dashboard.presentation")
 router = APIRouter()
 KEYS = {
     "dingtalk": ("DINGTALK_CLIENT_ID", "DINGTALK_CLIENT_SECRET"),
@@ -144,13 +145,16 @@ async def save_platform(platform: Literal["dingtalk", "feishu", "wecom"], body: 
                     if env.get(key) != value:
                         save_env_value(key, value)
                 changed = _write_policies(platform) or changed
+                changed = presentation.prepare_presentation({platform}) or changed
             else:
                 for key in keys:
                     if env.get(key):
                         remove_env_value(key)
                         changed = True
             if enabled != body.enabled:
-                _write_platform_enabled(platform, body.enabled)
+                # 与扫码线程共用 config.yaml 锁，避免整文件回写互相覆盖。
+                with presentation.config_lock():
+                    _write_platform_enabled(platform, body.enabled)
                 changed = True
         return {"ok": True, "changed": changed}
 
@@ -158,24 +162,51 @@ async def save_platform(platform: Literal["dingtalk", "feishu", "wecom"], body: 
 @router.post("/prepare")
 async def prepare() -> dict:
     """检查本账号受管环境并补写已启用平台规则，供启动及解绑后选择动作。"""
+    from hermes_constants import get_hermes_home
+
     profiles = await asyncio.to_thread(_managed_profiles)
     configured = False
     changed = False
     configured_profiles = []
-    for profile, _ in profiles:
-        with _config_profile_scope(profile):
-            from hermes_cli.web_routers.messaging import _platform_enablement
+    active_platforms = set()
+    for profile, home in profiles:
+        async with _locks.setdefault(str(home), asyncio.Lock()):
+            with _config_profile_scope(profile):
+                from hermes_cli.web_routers.messaging import _platform_enablement
 
-            env = load_env()
-            for entry in _messaging_platform_catalog():
-                enabled, complete, _ = _platform_enablement(entry["id"], entry, env, True)
-                if enabled and complete:
-                    configured = True
-                    if profile not in configured_profiles:
-                        configured_profiles.append(profile)
-                    if entry["id"] in POLICIES:
-                        changed = _write_policies(entry["id"]) or changed
+                # 每个受管环境均准备记忆展示，不因这项变更重启网关。
+                presentation.prepare_memory_notifications()
+                env = load_env()
+                targets = set()
+                for entry in _messaging_platform_catalog():
+                    enabled, complete, _ = _platform_enablement(entry["id"], entry, env, True)
+                    if enabled and complete:
+                        active_platforms.add(entry["id"])
+                        targets.add(entry["id"])
+                        configured = True
+                        if profile not in configured_profiles:
+                            configured_profiles.append(profile)
+                        if entry["id"] in POLICIES:
+                            changed = _write_policies(entry["id"]) or changed
+                changed = presentation.prepare_presentation(targets) or changed
+    # 原版停机广播读取宿主配置；子 Profile 独有的平台也要在宿主关掉广播。
+    with _config_profile_scope("default"):
+        default_home = str(get_hermes_home())
+    async with _locks.setdefault(default_home, asyncio.Lock()):
+        with _config_profile_scope("default"):
+            changed = presentation.prepare_presentation(
+                active_platforms, host_only=True) or changed
     return {"configured": configured, "changed": changed, "profiles": configured_profiles}
+
+
+def _gateway_environment(state: dict) -> dict[str, str]:
+    """受管网关统一关闭忙碌回执，包含混用或只有 5G 的情况。"""
+    env = {"HERMES_GATEWAY_INSTALL_START_ON_LOGIN": "0"}
+    if state["configured"]:
+        env["HERMES_GATEWAY_BUSY_ACK_ENABLED"] = "false"
+        # 默认模板的顶层 display.busy_steer_ack_enabled 会被转成环境变量并盖过平台设置；进程环境优先。
+        env["HERMES_GATEWAY_BUSY_STEER_ACK_ENABLED"] = "false"
+    return env
 
 
 @router.post("/restore")
@@ -198,7 +229,7 @@ async def restore_gateway(restart: bool = False) -> dict:
         verb = "stop" if running else "run"
         name = "gateway-stop" if running else "gateway-start"
         await asyncio.to_thread(_spawn_hermes_action, _gateway_subcommand("default", verb), name,
-                                env_overrides={"HERMES_GATEWAY_INSTALL_START_ON_LOGIN": "0"})
+                                env_overrides=_gateway_environment(state))
         return {**state, "name": name}
 
 
@@ -212,5 +243,5 @@ async def apply_gateway() -> dict:
         verb = "restart" if state["configured"] else "stop"
         name = f"gateway-{verb}"
         proc = await asyncio.to_thread(_spawn_hermes_action, _gateway_subcommand("default", verb), name,
-                                       env_overrides={"HERMES_GATEWAY_INSTALL_START_ON_LOGIN": "0"})
+                                       env_overrides=_gateway_environment(state))
         return {"ok": True, "name": name, "pid": proc.pid}
