@@ -21,7 +21,7 @@ export interface PlanUsage {
     used: number
     remaining: number
     usedPercent: number
-    unit: 'tokens' | 'credits' | null
+    unit: string | null
   } | null
   concurrency: { current: number | null; limit: number } | null
 }
@@ -99,7 +99,7 @@ export function normalizePlanUsage(body: unknown, fetchedAt: number): PlanUsage 
             used,
             remaining: Math.max(0, total - used),
             usedPercent: Math.min(100, (used / total) * 100),
-            unit: token.quotaUnit === 'tokens' || token.quotaUnit === 'credits' ? token.quotaUnit : null
+            unit: typeof token.quotaUnit === 'string' ? token.quotaUnit : null
           }
         : null,
     concurrency:
