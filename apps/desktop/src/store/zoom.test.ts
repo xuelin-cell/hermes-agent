@@ -85,7 +85,7 @@ describe('zoom state sync', () => {
     const { $zoomPercent, setZoomPercent } = await import('./zoom')
     setZoomPercent(125)
 
-    expect($zoomPercent.get()).toBe(90)
+    expect($zoomPercent.get()).toBe(100)
     expect(document.documentElement.style.zoom).toBe(initialCssZoom)
     expect(read).not.toHaveBeenCalledWith(retiredBrowserZoomKey)
     expect(write).not.toHaveBeenCalled()

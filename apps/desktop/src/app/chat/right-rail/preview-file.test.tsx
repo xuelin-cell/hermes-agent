@@ -117,3 +117,18 @@ describe('MarkdownPreview', () => {
     expect($previewTabs.get()).toEqual([])
   })
 })
+
+it('preserves unlabelled code whitespace and document structure across nested lists and small headings', () => {
+  const source =
+    '##### Small heading\n\n###### Subheading\n\n- parent\n  - child\n\n```\n  first line\n    indented line\n```'
+  const { container } = render(<MarkdownPreview text={source} />)
+  expect(container.querySelector('h5')?.textContent).toBe('Small heading')
+  expect(container.querySelector('h6')?.textContent).toBe('Subheading')
+  expect(container.querySelector('ul li ul li')?.textContent).toBe('child')
+  expect(container.querySelector('pre code')?.textContent).toBe('  first line\n    indented line\n')
+})
+
+it('preserves external link descriptions for readers', () => {
+  render(<MarkdownPreview text={'[Documentation](https://example.com/docs "API reference")'} />)
+  expect(screen.getByRole('link', { name: 'Documentation' }).getAttribute('title')).toBe('API reference')
+})

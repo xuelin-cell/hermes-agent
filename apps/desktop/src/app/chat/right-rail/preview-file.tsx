@@ -274,15 +274,17 @@ const MD_TAG_CLASSES = {
   h2: 'mb-2.5 mt-5 text-2xl font-semibold leading-snug tracking-tight first:mt-0',
   h3: 'mb-2 mt-4 text-xl font-semibold leading-snug first:mt-0',
   h4: 'mb-2 mt-3 text-base font-semibold leading-snug first:mt-0',
-  p: 'mb-4 leading-relaxed text-foreground last:mb-0',
+  h5: 'mb-2 mt-3 text-sm font-semibold leading-7 first:mt-0',
+  h6: 'mb-2 mt-3 text-sm font-semibold leading-7 text-muted-foreground first:mt-0',
+  p: 'mb-4 leading-7 text-foreground last:mb-0',
   ul: 'mb-4 list-disc pl-6 marker:text-muted-foreground/70 last:mb-0',
   ol: 'mb-4 list-decimal pl-6 marker:text-muted-foreground/70 last:mb-0',
-  li: 'mt-1 leading-relaxed',
+  li: 'mt-1 leading-7 [&>p]:mb-2 [&>ul]:mb-2 [&>ol]:mb-2',
   blockquote: 'mb-4 border-l-2 border-border pl-3 text-muted-foreground italic last:mb-0',
-  pre: 'mb-4 overflow-hidden rounded-lg border border-border bg-card font-mono text-xs leading-relaxed last:mb-0 [&_pre]:m-0 [&_pre]:overflow-x-auto [&_pre]:bg-transparent! [&_pre]:p-3 [&_pre]:font-mono',
+  pre: 'mb-4 max-w-full overflow-x-auto rounded-lg border border-border bg-card font-mono text-xs leading-relaxed last:mb-0 [&>code]:block [&>code]:bg-transparent [&>code]:p-3 [&>code]:text-foreground [&>code]:whitespace-pre [&_pre]:m-0 [&_pre]:overflow-x-auto [&_pre]:bg-transparent! [&_pre]:p-3 [&_pre]:font-mono',
   hr: 'my-6 border-border',
-  th: 'px-3 py-2 text-left text-sm font-semibold text-foreground',
-  td: 'px-3 py-2 align-top text-sm leading-relaxed',
+  th: 'border border-border px-4 py-3 text-left text-sm font-semibold leading-7 text-foreground',
+  td: 'border border-border px-4 py-3 align-top text-sm leading-7',
   thead: 'bg-muted/35 text-muted-foreground'
 } as const
 
@@ -328,14 +330,8 @@ function MarkdownCode({ className, children, ...props }: ComponentProps<'code'>)
 
 function MarkdownTable({ className, ...rest }: ComponentProps<'table'>) {
   return (
-    <div className="mb-4 w-full overflow-x-auto rounded-lg border border-border last:mb-0">
-      <table
-        className={cn(
-          'm-0 w-full min-w-[18rem] border-collapse [&_tr]:border-b [&_tr]:border-border last:[&_tr]:border-0',
-          className
-        )}
-        {...rest}
-      />
+    <div className="mb-4 w-full overflow-x-auto last:mb-0" data-preview-table="">
+      <table className={cn('m-0 w-full min-w-[18rem] border-collapse', className)} {...rest} />
     </div>
   )
 }
@@ -344,7 +340,7 @@ function MarkdownImage({ alt, src, ...rest }: ComponentProps<'img'>) {
   return (
     <img
       alt={alt ?? ''}
-      className="my-3 max-h-96 w-auto max-w-full rounded-lg border border-border object-contain shadow-sm"
+      className="my-3 h-auto w-auto max-w-full rounded-lg border border-border object-contain shadow-sm"
       src={src}
       {...rest}
     />
@@ -353,7 +349,8 @@ function MarkdownImage({ alt, src, ...rest }: ComponentProps<'img'>) {
 
 const PreviewNoteContext = createContext<string | undefined>(undefined)
 
-const MARKDOWN_LINK_CLASS = 'text-foreground underline underline-offset-2 hover:text-primary'
+const MARKDOWN_LINK_CLASS =
+  'break-words text-blue-600 underline underline-offset-2 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300'
 
 async function openLinkedNote(target: string, filePath?: string) {
   const preview = await normalizeOrLocalPreviewTarget(target, noteDirectory(filePath))
@@ -378,7 +375,7 @@ function MarkdownLink({ children, className, href, node: _node, ...rest }: Compo
 
   if (!fileTarget && !raw.startsWith('#')) {
     return (
-      <ExternalLink className={linkClass} href={raw}>
+      <ExternalLink className={linkClass} href={raw} title={rest.title}>
         {children}
       </ExternalLink>
     )
@@ -417,6 +414,8 @@ const MARKDOWN_COMPONENTS = {
   h2: tagged('h2'),
   h3: tagged('h3'),
   h4: tagged('h4'),
+  h5: tagged('h5'),
+  h6: tagged('h6'),
   p: tagged('p'),
   ul: tagged('ul'),
   ol: tagged('ol'),
@@ -443,7 +442,7 @@ export function MarkdownPreview({ filePath, text }: { filePath?: string; text: s
   return (
     <PreviewNoteContext.Provider value={filePath}>
       <div
-        className="preview-markdown mx-auto max-w-3xl px-4 py-3 text-sm text-foreground"
+        className="preview-markdown mx-auto w-full min-w-0 max-w-3xl px-4 py-3 text-sm text-foreground [overflow-wrap:anywhere] [&_pre]:[overflow-wrap:normal]"
         data-preview-markdown=""
         data-selectable-text="true"
       >
@@ -736,7 +735,8 @@ export function LocalFilePreview({
   const activeSessionId = useStore($activeSessionId)
   const storedSessionId = useStore($selectedStoredSessionId)
   const resolvedShareSource = shareSource === undefined ? previewShareSource(target, connection) : shareSource
-  const shareSessionId = resolvedShareSource === undefined ? storedSessionId || activeSessionId : resolvedShareSource?.sessionId
+  const shareSessionId =
+    resolvedShareSource === undefined ? storedSessionId || activeSessionId : resolvedShareSource?.sessionId
   const currentCwd = useStore($currentCwd)
   const fsCacheKey = desktopFsCacheKey(connection)
   const filePath = filePathForTarget(target)
@@ -863,7 +863,13 @@ export function LocalFilePreview({
   // Editing is only offered for whole, readable text — never images, binaries,
   // or files we only loaded the first 512 KB of (saving would drop the tail).
   const canEdit =
-    !target.source.startsWith('cloud-drive:') && isText && !isImage && !blockedByTarget && state.text !== undefined && !state.truncated && !state.binary
+    !target.source.startsWith('cloud-drive:') &&
+    isText &&
+    !isImage &&
+    !blockedByTarget &&
+    state.text !== undefined &&
+    !state.truncated &&
+    !state.binary
 
   // Per-keystroke: update the draft ref (no render) and only set `dirty` when it
   // actually changes — React bails on an identical value, so a long typing run
@@ -1083,10 +1089,16 @@ export function LocalFilePreview({
   if (isText && state.text !== undefined) {
     const isMarkdown = (state.language || target.language) === 'markdown'
 
-    const sharePath = resolvedShareSource === undefined ? artifactShareFilePath(filePath, currentCwd) : resolvedShareSource?.path
+    const sharePath =
+      resolvedShareSource === undefined ? artifactShareFilePath(filePath, currentCwd) : resolvedShareSource?.path
 
-    const shareableFile = connection?.mode === 'local' && !state.truncated && shareSessionId && sharePath &&
-      (isMarkdown || /\.html?$/i.test(filePath)) && window.hermesDesktop?.artifactShare
+    const shareableFile =
+      connection?.mode === 'local' &&
+      !state.truncated &&
+      shareSessionId &&
+      sharePath &&
+      (isMarkdown || /\.html?$/i.test(filePath)) &&
+      window.hermesDesktop?.artifactShare
 
     /** 与资料库分享工具栏共用同一 Markdown 快照及图片校验。 */
     const markdownSnapshot = () => markdownShareSnapshot(shareSnapshotRef.current, t.artifactShare)

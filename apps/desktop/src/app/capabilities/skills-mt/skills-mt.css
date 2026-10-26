@@ -187,7 +187,7 @@
   --mt-skills-category-active: #f0f0f0;
   display: flex;
   flex-wrap: wrap;
-  gap: 12px 24px;
+  gap: 8px;
 }
 
 .dark .mt-skills-cats {
@@ -197,7 +197,7 @@
 .mt-skills-cat {
   flex-shrink: 0;
   height: 32px;
-  padding: 5px 16px;
+  padding: 5px 12px;
   border: 0;
   border-radius: 16px;
   background: transparent;
