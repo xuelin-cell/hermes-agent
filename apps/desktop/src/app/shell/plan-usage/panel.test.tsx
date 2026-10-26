@@ -17,11 +17,12 @@ afterEach(() => {
 
 it('从展开到重试使用真实归一化数据，失败保留旧值而账号不匹配时清除', async () => {
   const account = { maskedPhone: '138****0001', expiresAt: Date.now() + 60_000 }
+  const quotaUnit = '元景积分'
   const data = normalizePlanUsage(
     {
       planType: 'token_plan',
       productName: '专业套餐',
-      tokenPlanUsage: { totalQuota: 1000, usedQuota: 250, quotaUnit: 'tokens', concurrencyLimit: 3 }
+      tokenPlanUsage: { totalQuota: 1000, usedQuota: 250, quotaUnit, concurrencyLimit: 3 }
     },
     Date.now()
   )
@@ -41,7 +42,10 @@ it('从展开到重试使用真实归一化数据，失败保留旧值而账号�
   expect(usedAmount.className).toContain('plan-usage-quota-number')
   expect(remainingAmount.className).toBe(usedAmount.className)
   expect(remainingAmount.parentElement?.className).toBe('plan-usage-quota-remaining')
-  expect(remainingAmount.parentElement?.textContent?.replace(/\s+/g, '')).toBe('剩余：750tokens')
+  expect(remainingAmount.parentElement?.textContent?.replace(/\s+/g, '')).toBe(`剩余：750${quotaUnit}`)
+  expect(usedAmount.closest('[title]')?.querySelector('.plan-usage-quota-total')?.textContent).toContain(quotaUnit)
+  expect(usedAmount.closest('[title]')?.getAttribute('title')).toContain(quotaUnit)
+  expect(screen.getByRole('progressbar').getAttribute('aria-valuetext')).toContain(quotaUnit)
   expect(usedAmount.closest('[title]')?.contains(remainingAmount)).toBe(true)
   expect(screen.getByText('25.00%').previousElementSibling?.textContent).toBe('已使用')
   expect(screen.queryByText(/当前并发/)).toBeNull()
