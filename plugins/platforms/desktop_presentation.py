@@ -1,12 +1,15 @@
 """桌面受管平台的展示策略，只使用适配器专用交互接口。"""
 
 from dataclasses import replace
+import logging
 
 from gateway.platforms.base import SendResult
 
+_log = logging.getLogger(__name__)
+
 
 class DesktopPresentationMixin:
-    """普通发送和媒体路径不变，只收敛配置通知与专用交互。"""
+    """只调整专用展示入口，普通回复、媒体上传和执行规则不变。"""
 
     # 审批文字的标题与原因标签；飞书卡片自带标题、标签用粗体，由飞书适配器覆盖。
     _DESKTOP_EA_HEADER = "⚠️ 需要你确认才能执行命令\n\n"
@@ -15,6 +18,36 @@ class DesktopPresentationMixin:
     def _desktop_quiet(self) -> bool:
         """按本适配器的配置判断，不读取其它账号或全局环境。"""
         return self.config.extra.get("desktop_quiet") is True
+
+    async def send_or_update_status(
+        self, chat_id, status_key, content, metadata=None
+    ):
+        """使用原版状态专用接口静默过程通知，不检查或改写普通消息内容。"""
+        if self._desktop_quiet():
+            return SendResult(
+                success=True, raw_response={"suppressed_notice": "agent_status"}
+            )
+        # 四个平台原本没有状态气泡实现，继续使用网关原有的普通发送行为。
+        return await self.send(chat_id, content, metadata=metadata)
+
+    async def _notify_media_delivery_failure(
+        self, chat_id, media_path, *, is_voice=False, metadata=None
+    ):
+        """附件分发已返回失败时保留中文提醒，不因关闭诊断通知而静默丢件。"""
+        if not self._desktop_quiet():
+            return await super()._notify_media_delivery_failure(
+                chat_id, media_path, is_voice=is_voice, metadata=metadata
+            )
+        # 失败结果仍由原版分发登记；这里不返回文字送达回执冒充附件成功。
+        try:
+            result = await self.send(
+                chat_id, "⚠️ 附件未能发送，请稍后重试。", metadata=metadata
+            )
+            if not result.success:
+                _log.warning("[%s] 附件失败提示未能送达", self.name)
+        except Exception:
+            # 通知通道也可能故障；与原版一样不阻断下一份附件的处理。
+            _log.warning("[%s] 附件失败提示发送异常", self.name, exc_info=True)
 
     async def send_private_notice(
         self, chat_id, user_id, content, reply_to=None, metadata=None
