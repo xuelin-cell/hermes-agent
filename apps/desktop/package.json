@@ -2,7 +2,7 @@
   "name": "hermes",
   "productName": "UniWork",
   "private": true,
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Native desktop shell for UniWork Agent.",
   "author": "Nous Research",
   "repository": {
