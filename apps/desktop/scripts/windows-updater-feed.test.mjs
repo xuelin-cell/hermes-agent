@@ -56,6 +56,25 @@ test('the self-managed NSIS build bakes its feed at the OSS origin', () => {
   assert.equal(mirror.win.publish[0].url, 'https://mirror.example.com/hermes/releases/win32/stable/')
 })
 
+test('the per-machine NSIS build asks electron-updater to elevate', () => {
+  // NsisTarget only writes `isAdminRightsRequired` into the channel yml for
+  // `perMachine && (oneClick || packElevateHelper)`. This is an assisted
+  // (oneClick: false) per-machine install, so without the explicit opt-in the
+  // updater spawns the admin-manifested installer from a non-elevated app:
+  // CreateProcess fails with ERROR_ELEVATION_REQUIRED, no files are written,
+  // and the app relaunches on the old version.
+  const config = fresh({
+    HERMES_DESKTOP_VARIANT: 'bundled',
+    HERMES_BUILD_COMMIT: COMMIT,
+    HERMES_WINDOWS_UPDATE: 'electron-updater',
+    HERMES_WINDOWS_FORMAT: 'nsis'
+  })
+
+  assert.equal(config.nsis.perMachine, true)
+  assert.equal(config.nsis.oneClick, false)
+  assert.equal(config.nsis.packElevateHelper, true)
+})
+
 test('without the switch Windows packages carry no electron-updater feed', () => {
   const oneoff = fresh({ HERMES_DESKTOP_VARIANT: 'bundled', HERMES_BUILD_COMMIT: COMMIT, HERMES_WINDOWS_FORMAT: 'nsis' })
   assert.deepEqual(oneoff.win.target, ['nsis'])
