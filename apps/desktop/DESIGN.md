@@ -43,8 +43,8 @@ one-off at the call site.
 - 设置、技能、连接器、历史、聊天和浮层共用语义令牌；主题外的品牌色不可散落到页面。
   保留现有导航、快捷键、开发者模式边界和后台行为。
 - 欢迎标题为“元景数字员工，助你高效完成任务”，下方居中显示远端 modules 的名称和顺序。
-  不读取任何层级的 enabled，也不根据模块 id 路由；workspace 在前端按规范化名称派生。
-  “代码开发”“编程”“code”“programming”“code development”使用高级界面，其余使用简洁界面。
+  不读取任何层级的 enabled，也不根据模块 id 或名称路由；使用云端 workspace 字段，`codex` 使用高级界面，`work` 或未提供时使用简洁界面。
+  一级模块、分类和模板的图标统一读取各自的 `icon` 字段（Lucide 名称，如 `presentation`、`file-text`），不按标签 ID、名称或工作区补图标。未提供、不支持或加载失败时只显示文字。标签 ID 仅用于渲染和临时选中状态，不作为本地业务映射表。
   当前项目共用同一 agent/chat 核心，不引入 hexagent 的 Codex app-server；简洁/高级模式负责现有侧栏和开发面板。
   代码工作区使用现有项目树，多个项目及其会话在同一侧栏内展开；项目行显示数量和新建按钮，点击只折叠/展开，不进入单项目视图。置顶会话仍保留在所属项目，对话只显示单行标题；办公/学习工作区使用原有会话视图。
   这层展示覆盖不改写持久化的侧栏分组偏好，筛选菜单只提供当前工作区支持的分组选项。
@@ -54,7 +54,7 @@ one-off at the call site.
   下方分类与模板只读取所选模块，缺少内容时不借用其他模块；切换模块清除分类选择但保留草稿。
   分类选择会清空草稿，模板点击填入 prompt 并聚焦输入框，移除 chip 返回分类行并保留草稿。
   欢迎目录 IPC 返回原始 modules 与 version，不保存前端派生字段；旧分类数组不得提升为一级模块。
-  配置来自 `/app/gateway/uniwork/system-config?key=welcome_config_v3_{locale}`：必须携带当前有效登录用户的 Token；无身份或过期时不发送匿名请求，保留本地目录，响应返回后再核对身份。
+  配置仅来自 `/app/gateway/uniwork/system-config?key=welcome_config_v3_{locale}`，不使用内置 JSON 默认目录：必须携带当前有效登录用户的 Token；无身份或过期时不发送匿名请求，保留上次成功获取的云端缓存，响应返回后再核对身份。首次启动或缓存损坏时不显示默认标签；请求失败且没有缓存时提供刷新入口。
   标准解析外层 JSON 和 configValue 字符串；空模块、无效响应及请求失败保留旧配置，比较实际模块内容，版本号相同但 prompt 等内容更新时也刷新缓存。
   缓存键为 `uniwork.welcome.modules.v3.{locale}`。当前语言 modules 为 null/undefined 时回退另一语言，显式空数组不回退。
 

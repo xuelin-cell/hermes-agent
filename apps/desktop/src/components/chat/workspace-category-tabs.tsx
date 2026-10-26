@@ -1,14 +1,15 @@
 import './workspace-category-tabs.css'
 
 import { useStore } from '@nanostores/react'
-import { BookOpen, SquareCode } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 
 import { $resolvedWelcomeCatalog, loadWelcomeCatalog } from '@/app/chat/composer/work-templates/catalog-store'
+import { Button } from '@/components/ui/button'
 import { useI18n } from '@/i18n'
 import { $interfaceMode } from '@/store/interface-mode'
 import { $selectedWelcomeModules, selectWorkspaceModule } from '@/store/workspace-category'
 
+import { WelcomeIcon } from './welcome-icon'
 import { workspaceCategoryCopy } from './workspace-category-copy'
 
 interface WorkspaceCategoryTabsProps {
@@ -16,9 +17,9 @@ interface WorkspaceCategoryTabsProps {
 }
 
 export function WorkspaceCategoryTabs({ onSelect }: WorkspaceCategoryTabsProps = {}) {
-  const { locale } = useI18n()
+  const { locale, t } = useI18n()
   const language = locale.startsWith('zh') ? 'zh-CN' : 'en'
-  const { modules } = useStore($resolvedWelcomeCatalog[language])
+  const { modules, status } = useStore($resolvedWelcomeCatalog[language])
   const selected = useStore($selectedWelcomeModules[language])
   const mode = useStore($interfaceMode)
   const copy = workspaceCategoryCopy[locale]
@@ -34,15 +35,19 @@ export function WorkspaceCategoryTabs({ onSelect }: WorkspaceCategoryTabsProps =
   }, [language, selected, mode])
 
   if (!modules.length) {
-    return null
+    return status === 'loading' ? null : (
+      <div className="workspace-category-nav">
+        <Button onClick={() => void loadWelcomeCatalog(language, true)} size="sm" type="button" variant="text">
+          {t.composer.workRetry}
+        </Button>
+      </div>
+    )
   }
 
   return (
     <div className="workspace-category-nav">
       <div aria-label={copy.label} className="workspace-category-tabs" ref={ref} role="tablist">
         {modules.map((module, index) => {
-          const Icon = module.workspace === 'codex' ? SquareCode : BookOpen
-
           return (
             <button
               aria-selected={selected?.id === module.id}
@@ -85,7 +90,7 @@ export function WorkspaceCategoryTabs({ onSelect }: WorkspaceCategoryTabsProps =
               tabIndex={selected?.id === module.id ? 0 : -1}
               type="button"
             >
-              <Icon aria-hidden="true" size={18} />
+              <WelcomeIcon name={module.icon} size={18} />
               <span>{module.name}</span>
             </button>
           )
