@@ -44,6 +44,18 @@ FROM ${BASE_IMAGE}
 
 USER root
 
+# ---- Debian 软件源 -----------------------------------------------------------
+# 部署机连 Debian 官方源只有几十 KB/s（实测 deb.debian.org 36 KB/s，阿里云约 1 MB/s），
+# 下一段的 LibreOffice、chromium、字体要下载几百 MB，走官方源要一个多小时，所以换成国内镜像。
+# 安全更新源（deb.debian.org/debian-security）同一个主机名，一起换。
+# 要用官方源就传 --build-arg APT_MIRROR=（留空）。
+ARG APT_MIRROR=mirrors.aliyun.com
+RUN if [ -n "$APT_MIRROR" ]; then \
+        for f in /etc/apt/sources.list.d/debian.sources /etc/apt/sources.list; do \
+            if [ -f "$f" ]; then sed -i "s|deb.debian.org|${APT_MIRROR}|g" "$f"; fi; \
+        done; \
+    fi
+
 # ---- 办公文档与系统浏览器 ---------------------------------------------------
 # 在基础镜像上补齐文件预览和内置技能要用的系统程序：
 #   - LibreOffice headless：文件面板的 Word / Excel / PPT 预览先转成 PDF（seed/mtuser.py），
