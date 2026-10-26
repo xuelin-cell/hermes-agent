@@ -49,6 +49,7 @@
 - [5G 消息完整迁移方案](uniagentgate-migration-plan.md)（UniClaw 来源清单、Hermes 接入点与分阶段范围）
 - [消息平台界面：阶段一](09-messaging-ui.md)（卡片、必要凭据弹窗和微信内联扫码；自动恢复网关与重启优化不在本轮范围）
 - [消息平台接入对齐](12-messaging-integration-plan.md)（保存后后台连接、启动恢复与退出协调；实际平台收发待人工验收，钉钉媒体阶段待实施）
+- [消息会话复用本机成品交付](15-messaging-local-deliverables-plan.md)（已实现，定向测试通过；微信、飞书、企微、钉钉真实收发待人工验收）
 - [连接器 MCP 适配实施计划](06-mcp-connectors-plan.md)（M01～M05 实现完成；M06 模拟回归与文档收尾完成，真实元景连接和模型调用待人工验收）
 - [聊天区工作目录选择](07-chat-workdir.md)（已实现，定向检查通过；真实账号使用待人工验收）
 - [每个对话独立工作文件夹](13-conversation-folders-plan.md)（对齐 UniWork；第一步桌面新对话已实现，实机检查待验收；第二步待消息接入合并后再做）

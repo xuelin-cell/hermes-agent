@@ -1,16 +1,31 @@
-"""为桌面四项生成任务及消息渠道的翻译、播客交付本机成品。"""
+"""为桌面四项生成任务及消息渠道的后台生成交付本机成品。"""
 
 from collections import OrderedDict
 import json
 
 TOOLS = frozenset({"doc_translate", "ai_podcast_generate", "txt2vid_generate", "img2vid_generate"})
 MESSAGE_TOOLS = frozenset({"doc_translate", "ai_podcast_generate"})
+VIDEO_TOOLS = frozenset({"txt2vid_generate", "img2vid_generate"})
+# 与桌面一样下载成品、以附件交付的消息平台；企业微信只含机器人模式（回调模式是 wecom_callback）。
+# 其他平台保持原样：只缓存后台翻译、播客，链接保留。
+DELIVERY_PLATFORMS = frozenset({"weixin", "feishu", "wecom", "dingtalk"})
 _children = OrderedDict()
 _message_parents = OrderedDict()
+# (账号 Home, 父会话) -> {成品路径: 完成通知是否已带回}；补进回复后才删，每轮结束不清。
+_results = OrderedDict()
+
+
+def handles(platform, tool, child):
+    """来源平台的这个生成工具是否由插件下载：钉钉没有发视频的接口，视频保持原样；子任务只管后台业务。"""
+    if platform == "dingtalk" and tool in VIDEO_TOOLS:
+        return False
+    if not child:
+        return True
+    return tool in (TOOLS if platform == "desktop" or platform in DELIVERY_PLATFORMS else MESSAGE_TOOLS)
 
 
 def remember_message_parent(*, session_id="", task_id="", platform="", **kwargs):
-    """仅记消息父会话的本机目录，不观察普通消息工具或注入桌面文件提醒。"""
+    """仅记消息父会话的本机目录和来源，不观察普通消息工具或注入桌面文件提醒。"""
     from gateway.config import Platform
     from . import _lock, scope, workspace
 
@@ -25,49 +40,94 @@ def remember_message_parent(*, session_id="", task_id="", platform="", **kwargs)
         return
     with _lock:
         key = scope(session_id)
-        _message_parents[key] = cwd
+        _message_parents[key] = (cwd, platform)
         _message_parents.move_to_end(key)
         while len(_message_parents) > 128:
             _message_parents.popitem(last=False)
 
 
 def remember_child(*, parent_session_id="", child_session_id="", **kwargs):
-    """创建子代理时继承已登记父会话的目录与交付方式，不允许子代理递归认领。"""
+    """创建子代理时继承父会话的目录、来源平台和会话，不允许子代理递归认领。"""
     from . import _lock, _turns, scope
 
     with _lock:
         key = scope(parent_session_id)
         parent = _turns.get(key)
-        message_root = _message_parents.get(key)
         if not child_session_id or (parent is not None and parent.background):
             return
-        if parent is None and message_root is None:
+        origin = (parent.cwd, parent.platform) if parent else _message_parents.get(key)
+        if origin is None:
             return
-        _children[scope(child_session_id)] = (parent.cwd if parent else message_root, parent is None)
+        _children[scope(child_session_id)] = (*origin, key)
         while len(_children) > 128:
             _children.popitem(last=False)
 
 
 def child_root(session_id):
     """只返回已登记父会话授权的子任务目录。"""
+    origin = child_origin(session_id)
+    return origin[0] if origin else None
+
+
+def child_origin(session_id):
+    """已登记父会话授权的子任务：(目录, 来源平台, 父会话键)，没有时为 None。"""
+    from . import _lock, scope
+
+    with _lock:
+        return _children.get(scope(session_id))
+
+
+def remember_results(session_id, paths):
+    """子任务下载成功后记到父会话名下，由父会话回复时补出；其他消息平台保持原样不记。"""
     from . import _lock, scope
 
     with _lock:
         origin = _children.get(scope(session_id))
-        return origin[0] if origin else None
+        if not origin or not paths or (origin[1] != "desktop" and origin[1] not in DELIVERY_PLATFORMS):
+            return
+        pending = _results.setdefault(origin[2], {})
+        for path in paths:
+            pending.setdefault(path, False)
+        _results.move_to_end(origin[2])
+        while len(_results) > 128:
+            _results.popitem(last=False)
 
 
-def message_child(session_id):
-    """区分消息子任务与桌面预览，避免给消息渠道承诺桌面卡片。"""
-    from . import _lock, scope
+def mark_returned(key, text):
+    """父会话收到的消息里出现成品路径（后台完成通知）才标记可补；没带回的不提前补，免得与完成那轮重复。"""
+    from . import _lock
 
     with _lock:
-        origin = _children.get(scope(session_id))
-        return bool(origin and origin[1])
+        pending = _results.get(key) or {}
+        for path in pending:
+            if str(path) in text or path.as_posix() in text:
+                pending[path] = True
+
+
+def returned_results(key):
+    """已带回、尚未补出且文件仍在的成品。"""
+    from . import _lock
+
+    with _lock:
+        return [path for path, ready in (_results.get(key) or {}).items() if ready and path.is_file()]
+
+
+def forget_results(key, paths):
+    """成品已补进回复，或文件已经不在，就删掉记录。"""
+    from . import _lock
+
+    with _lock:
+        pending = _results.get(key)
+        if pending is None:
+            return
+        for path in [*paths, *(path for path in pending if not path.is_file())]:
+            pending.pop(path, None)
+        if not pending:
+            _results.pop(key, None)
 
 
 def forget_child(session_id):
-    """按账号和会话清理子代理交付权限。"""
+    """按账号和会话清理子代理交付权限；父会话的待补成品不在这里清（每轮结束都会调用）。"""
     from . import _lock, scope
 
     with _lock:
