@@ -48,7 +48,8 @@ class Turn:
     roots: set = field(default_factory=set)
     ambiguous: set = field(default_factory=set)
     background: bool = False
-    messaging: bool = False
+    # 成品交给谁：desktop 出卡片，消息平台发附件；子任务沿用父会话的来源。
+    platform: str = "desktop"
     guess: bool = True
     downloads: dict = field(default_factory=dict)
 
@@ -144,13 +145,14 @@ def scratch_reminder(cwd):
 def before_turn(
     *, session_id="", turn_id="", task_id="", platform="", user_message=None, **kwargs
 ):
-    """本轮开始时固定本机目录和附件排除表，并提醒中间文件放哪；缺少桌面身份则不观察。"""
-    if not session_id or platform not in {"desktop", "subagent"}:
+    """本轮开始时固定本机目录和附件排除表，并提醒中间文件放哪；消息平台只登记下载，不观察目录。"""
+    message = platform in background.DELIVERY_PLATFORMS
+    if not session_id or not (message or platform in {"desktop", "subagent"}):
         return
-    child_root = background.child_root(session_id) if platform == "subagent" else None
-    if platform == "subagent" and child_root is None:
+    origin = background.child_origin(session_id) if platform == "subagent" else None
+    if platform == "subagent" and origin is None:
         return
-    cwd = child_root or workspace(task_id)
+    cwd = origin[0] if origin else workspace(task_id)
     if cwd is None:
         return
     with _lock:
@@ -162,18 +164,22 @@ def before_turn(
             task_id=task_id,
             uploads=attachment_paths(user_message, cwd),
             background=platform == "subagent",
-            messaging=platform == "subagent" and background.message_child(session_id),
-            guess=platform != "subagent",
+            platform=origin[1] if origin else platform,
+            guess=platform == "desktop",
         )
         _turns.move_to_end(key)
         turn = _turns[key]
+        while len(_turns) > 128:
+            _turns.popitem(last=False)
         if turn.background:
+            return
+        # 后台完成通知带回的成品在本轮回复时补出；被打断就留到下一轮。
+        background.mark_returned(key, as_text(user_message))
+        if message:
             return
         budget = [time.monotonic(), 0]
         for root in requested_roots(as_text(user_message), cwd):
             watch_root(turn, root, budget)
-        while len(_turns) > 128:
-            _turns.popitem(last=False)
     # 后台子任务只交付缓存成品，不加提醒；用户自选目录也提醒，.tmp 由模型按需新建。
     return {"context": scratch_reminder(cwd)}
 
@@ -222,7 +228,8 @@ def before_tool(
         return
     with _lock:
         turn = current(scope(session_id), turn_id)
-        if not turn or turn.background or len(turn.pending) >= 64:
+        # 消息会话不扫描目录，也就不会和桌面会话的目录重叠而作废桌面卡片。
+        if not turn or turn.background or turn.platform != "desktop" or len(turn.pending) >= 64:
             return
         root = local_cwd(kwargs.get("task_id") or turn.task_id) or turn.cwd
         if tool_name == "terminal" and (args or {}).get("workdir"):
@@ -261,7 +268,7 @@ def after_tool(
     """合并写入参数、工具输出和执行差异，失败或后台任务不冒充已完成交付。"""
     with _lock:
         turn = current(scope(session_id), turn_id)
-        if turn is None or turn.background:
+        if turn is None or turn.background or turn.platform != "desktop":
             return
         pending = turn.pending.pop(tool_call_id, None)
         try:
@@ -297,7 +304,10 @@ def after_tool(
 
 def transform(*, response_text="", session_id="", turn_id="", platform="", **kwargs):
     """只改本轮尚未存储的回复，统一排序、去重和最多八张交付卡。"""
-    if platform not in {"desktop", "subagent"} or not isinstance(response_text, str):
+    if (
+        platform not in {"desktop", "subagent", *background.DELIVERY_PLATFORMS}
+        or not isinstance(response_text, str)
+    ):
         return None
     key = scope(session_id)
     with _lock:
@@ -314,6 +324,9 @@ def transform(*, response_text="", session_id="", turn_id="", platform="", **kwa
                     for path in changed(before, after):
                         turn.paths.setdefault(path, None)
         _turns.pop(key, None)
+    returned = [] if turn.background else background.returned_results(key)
+    if turn.platform != "desktop" and not turn.background:
+        return attach(key, turn, response_text, returned)
     cwd = turn.cwd if turn.background else local_cwd(turn.task_id) or turn.cwd
     roots = {*turn.roots, turn.cwd, cwd}
     # 子代理只交付两项工具已缓存的成品，其他子代理的普通回复不新增卡片。
@@ -327,6 +340,8 @@ def transform(*, response_text="", session_id="", turn_id="", platform="", **kwa
         and not background.managed_video(path)
         and fresh(path, turn.started, roots)
     ]
+    # 后台带回的成品早于本轮生成，不按“本轮新建”判断。
+    paths += [path for path in returned if path not in paths]
     if not paths:
         return None
     # 代码里的示例只屏蔽一次，两处识别共用同一份结果。
@@ -336,7 +351,7 @@ def transform(*, response_text="", session_id="", turn_id="", platform="", **kwa
     # 有文档时图片多是文档的素材；网页和 Markdown 报告只去掉它引用到的图片。
     # 元景生成的图片是成品本身，结果里已没有链接，不出卡用户就看不到。
     suffixes = {path.suffix.lower().lstrip(".") for path in paths}
-    generated = {path for path in turn.downloads.values() if path}
+    generated = {path for path in turn.downloads.values() if path} | set(returned)
     if suffixes & DOCUMENTS:
         materials = set(paths)
     else:
@@ -354,9 +369,15 @@ def transform(*, response_text="", session_id="", turn_id="", platform="", **kwa
     from .paths import priority
 
     appended = [path for path in sorted(paths, key=priority) if path not in shown][:8]
+    background.forget_results(key, [path for path in returned if path in appended or path in shown])
     moved = set(appended) | (managed & shown)
     # 只移走将追加或已有另一展示位置的独立行，未选中卡片不能被误删。
     text = remove_media_lines(response_text, masked, cwd, moved)
+    return appended_reply(response_text, text, appended)
+
+
+def appended_reply(response_text, text, appended):
+    """把选中的成品逐行追加到回复末尾；与原回复相同时返回 None，表示不改。"""
     rewritten = (
         "\n\n".join(
             part
@@ -367,6 +388,33 @@ def transform(*, response_text="", session_id="", turn_id="", platform="", **kwa
         else text
     )
     return rewritten if rewritten != response_text else None
+
+
+def attach(key, turn, response_text, returned):
+    """消息平台只补本轮下载和后台带回的成品，由网关作为附件发出；不猜目录里的其他文件。"""
+    from gateway.platforms.base import MEDIA_TAG_CLEANUP_RE
+    from .paths import MEDIA, priority
+
+    paths = [
+        path
+        for path in dict.fromkeys([*filter(None, turn.downloads.values()), *returned])
+        if path.is_file()
+    ]
+    if not paths:
+        return None
+    masked = mask_examples(response_text)
+    # 句中的 MEDIA 标记网关也会照发；Markdown 链接在聊天里只是文字，不算已发送。
+    inline = {
+        resolve_path(match.group("path"), turn.cwd)
+        for match in MEDIA_TAG_CLEANUP_RE.finditer(MEDIA.sub("", masked).replace(">", " "))
+    }
+    appended = [path for path in sorted(paths, key=priority) if path not in inline][:8]
+    background.forget_results(key, [path for path in returned if path in appended or path in inline])
+    # 模型自己写的独立行挪到末尾统一列出，同一文件不发两次。
+    text = remove_media_lines(
+        response_text, masked, turn.cwd, set(appended) | (set(paths) & inline)
+    )
+    return appended_reply(response_text, text, appended)
 
 
 def completed(data, status, args):
@@ -412,10 +460,9 @@ async def download_result(
     key = scope(session_id)
     with _lock:
         turn = current(key, turn_id)
-        if turn is None:
-            return None
-        allowed = background.MESSAGE_TOOLS if turn.messaging else background.TOOLS
-        if turn.background and tool_name.rsplit("__", 1)[-1] not in allowed:
+        if turn is None or not background.handles(
+            turn.platform, tool_name.rsplit("__", 1)[-1], turn.background
+        ):
             return None
         wanted = [url for url in urls if url not in turn.downloads][
             : max(0, 4 - len(turn.downloads))
@@ -441,12 +488,14 @@ async def download_result(
             if path:
                 path.unlink(missing_ok=True)
         return None
-    # 桌面结果移除链接，消息结果留作附件兜底；再调用元景工具时可换回原链接。
+    # 再调用元景工具时可换回原链接；子任务的成品记到父会话，完成后由父会话补出。
     for url, path in zip(wanted, fetched):
         if path:
             remember_download(path, url)
+    if turn.background:
+        background.remember_results(session_id, list(saved.values()))
     missing = [url for url in urls if url not in saved]
-    return annotate(result, data, root, saved, missing, messaging=turn.messaging)
+    return annotate(result, data, root, saved, missing, platform=turn.platform)
 
 
 def end_turn(*, session_id="", turn_id="", **kwargs):

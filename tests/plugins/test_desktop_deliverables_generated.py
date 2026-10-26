@@ -32,13 +32,22 @@ def test_native_subagent_caches_deliverable_before_parent_receives_result(tmp_pa
     ("weixin", "background-other", True),
     ("weixin", "background-video", True),
     ("weixin", "background-image-video", True),
+    ("feishu", "background-video", True),
+    ("wecom", "background-image-video", True),
+    ("weixin", "background-video", False),
+    ("dingtalk", "background-video", True),
+    ("telegram", "background-video", True),
 ])
 def test_message_background_delivers_only_cached_business_artifacts(tmp_path, platform, kind, available):
-    """消息父会话沿原生子代理链路缓存两项成品，失败保留链接且其他工具不下载。"""
+    """消息父会话沿原生子代理链路缓存后台成品；钉钉和其他平台的视频、其他工具不下载，失败保留链接。"""
     from pathlib import Path
 
     receipt = run_scenario(tmp_path, kind, platform=platform, download_available=available)
-    expected = available and kind in {"background-podcast", "background-translation"}
+    videos = {"background-video", "background-image-video"}
+    expected = available and (
+        kind in {"background-podcast", "background-translation"}
+        or (kind in videos and platform in {"weixin", "feishu", "wecom"})
+    )
     assert receipt["text"].count("MEDIA:") == int(expected)
     if expected:
         assert Path(receipt["path"]).is_file()

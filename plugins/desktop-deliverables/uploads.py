@@ -93,6 +93,21 @@ def attachments_folder():
     return get_hermes_home().resolve() / "attachments"
 
 
+def received_folders():
+    """本账号消息平台收到的图片、语音、视频、文档缓存目录：都是用户自己发来的文件，与桌面附件同性质。"""
+    from hermes_constants import get_hermes_dir
+
+    return [
+        get_hermes_dir(new, old).resolve()
+        for new, old in (
+            ("cache/images", "image_cache"),
+            ("cache/audio", "audio_cache"),
+            ("cache/videos", "video_cache"),
+            ("cache/documents", "document_cache"),
+        )
+    ]
+
+
 def working_folder(task_id):
     """本机终端的当前工作目录；容器或远程后端返回 None。"""
     from . import local_cwd
@@ -166,8 +181,8 @@ def remember_session(
 
 
 def allowed(path, session_id, cwd):
-    """只自动上传附件、当前工作目录里的文件，以及本会话里用户贴过的文件。"""
-    roots = [attachments_folder()] + ([cwd] if cwd else [])
+    """只自动上传附件、消息平台收到的文件、当前工作目录里的文件，以及本会话里用户贴过的文件。"""
+    roots = [attachments_folder(), *received_folders()] + ([cwd] if cwd else [])
     if any(path.is_relative_to(root) for root in roots):
         return True
     with _lock:
