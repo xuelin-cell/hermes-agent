@@ -205,6 +205,7 @@ class Cube:
         template: str = "",
         allow_internet: bool = True,
         private_traffic: bool = False,
+        allow_out: list[str] | None = None,
     ) -> str:
         """建一个实例，返回平台下发的 sandbox_id。
 
@@ -217,6 +218,9 @@ class Cube:
         平台返回一个流量令牌，之后数据面上每个请求都要带它，否则 403。令牌登记在
         本客户端里（``traffic_token(sandbox_id)``），调用方要把它存进 PG，
         因为查询接口不会再返回它。出网策略不在这里设：平台默认已挡内网。
+
+        ``allow_out``：额外放行的出网地址段（如企业管理平台在内网时它的 IP/32）。平台的优先级是
+        allowOut > denyOut > 默认，这样就能在默认挡住的私网里开一个口子。不给就不带这一项，和以前一样。
         """
         payload: dict[str, Any] = {
             "templateID": template or self.template,
@@ -232,6 +236,8 @@ class Cube:
         }
         if private_traffic:
             payload["network"]["allowPublicTraffic"] = False
+        if allow_out:
+            payload["network"]["allowOut"] = list(allow_out)
         if metadata:
             payload["metadata"] = metadata
         _, body = await self._req("POST", "/sandboxes", json_body=payload, timeout_s=180)

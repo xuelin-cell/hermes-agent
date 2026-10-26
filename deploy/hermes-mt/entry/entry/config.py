@@ -137,12 +137,25 @@ class Settings:
     yuanjing_mcp_client_id: str = _env("MT_YUANJING_MCP_CLIENT_ID", "UniWork")
     yuanjing_mcp_oss_mode: str = _env("MT_YUANJING_MCP_OSS_MODE", "internal")
 
+    # 企业模式：UNIWORK 企业管理平台的地址（如 http://192.168.0.50:11220）。填了，登录改由平台代办（平台替入口
+    # 调元景短信登录，并发设备令牌），模型和元景 MCP 都经平台转发、记在企业账上；留空就是个人套餐模式。
+    # 入口和用户实例都用这个地址连平台。图形验证码和发短信照旧由入口调 MaaS。见 docs/企业版对接。
+    uniwork_server: str = _env("MT_UNIWORK_SERVER", "").rstrip("/")
+    # 沙箱默认不许实例连私网地址（10/8、172.16/12、192.168/16 等）。额外放行的地址段，逗号分隔（如 10.1.2.3/32）；
+    # 平台地址本身是私网 IP 时会自动放行，不用写在这里。只对新建的实例生效。
+    cube_allow_out: str = _env("MT_CUBE_ALLOW_OUT", "")
+
     # 开发模式：不走短信登录，任意用户名直接进；模型 key 用 MT_DEV_API_KEY。生产必须关。
     dev_login: bool = _env("MT_DEV_LOGIN", "0") == "1"
     dev_api_key: str = _env("MT_DEV_API_KEY", "")
 
     def path(self, suffix: str) -> str:
         return f"{self.base_path}{suffix}"
+
+    @property
+    def enterprise(self) -> bool:
+        """企业模式（配了 MT_UNIWORK_SERVER）。"""
+        return bool(self.uniwork_server)
 
     @property
     def backup_enabled(self) -> bool:

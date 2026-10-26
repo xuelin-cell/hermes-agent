@@ -66,6 +66,21 @@
   .dev { margin-top: 24px; font-size: 12px; line-height: 16px; color: rgba(255, 255, 255, .42); }
   .dev summary { cursor: pointer; }
   .dev .row { margin-top: 12px; }
+  /* 企业模式（入口配了 MT_UNIWORK_SERVER）：选企业 / 按编号加入 / 拦截说明 */
+  .optional { color: rgba(255, 255, 255, .3); }
+  .choices { display: flex; flex-direction: column; gap: 8px; margin: 24px 0 0; }
+  .choice { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 52px; padding: 8px 14px; border: 0; border-radius: 2.5px; background: rgba(255, 255, 255, .04); box-shadow: inset 0 0 0 1px rgba(116, 160, 251, .11); text-align: left; }
+  .choice:hover:not(:disabled) { background: rgba(255, 255, 255, .08); }
+  .choice small { color: rgba(255, 255, 255, .42); font-size: 12px; white-space: nowrap; }
+  .join { margin-top: 24px; }
+  .join .ghost { min-width: 88px; }
+  .link { margin-top: 20px; padding: 0; border: 0; background: none; color: rgba(255, 255, 255, .55); font-size: 12px; }
+  .link:hover { color: #fff; }
+  .org { margin: 0 0 8px; font-size: 13px; color: rgba(83, 234, 253, .8); }
+  .actions { display: flex; flex-direction: column; gap: 10px; margin-top: 28px; }
+  .actions .submit { margin-top: 0; }
+  .actions .ghost { width: 100%; }
+  .meta { margin: 12px 0 0; font-size: 12px; color: rgba(255, 255, 255, .3); }
 
   @media (min-width: 640px) { .card { padding: 40px; } }
   @media (min-width: 1024px) { .intro { display: flex; } .side { width: 46%; } .card > .mark { display: none; } }
@@ -90,9 +105,10 @@
   <section class="side">
     <div class="card">
       <span class="mark"></span>
+      <div id="loginView">
       <p class="eyebrow">WELCOME</p>
       <h2>登录你的工作空间</h2>
-      <p class="sub">使用元景 MaaS 手机号继续</p>
+      <p class="sub" id="loginSub">使用元景 MaaS 手机号继续</p>
 
       <form id="sms" novalidate>
         <label class="field">
@@ -117,6 +133,10 @@
             <button type="button" class="ghost" id="sendBtn">获取验证码</button>
           </span>
         </label>
+        <label class="field" id="tenantCodeField" hidden>
+          <span class="label">企业编号 <span class="optional">（选填，只属于一个企业时不用填）</span></span>
+          <input id="tenantCode" autocomplete="organization" maxlength="32" placeholder="例如 T100001">
+        </label>
         <p class="notice" id="notice" aria-live="polite" hidden></p>
         <button type="submit" class="submit" id="loginBtn">
           <svg class="icon" id="loginIcon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6"/><path d="M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0"/><path d="M8 11v-4a4 4 0 1 1 8 0v4"/></svg>
@@ -132,6 +152,38 @@
           <button type="button" class="ghost" id="devBtn">直接进入</button>
         </span>
       </details>
+      </div>
+
+      <!-- 企业模式：登录后还要选企业，或这个手机号还没加入企业 -->
+      <section class="panel" id="tenantView" hidden>
+        <p class="eyebrow">ENTERPRISE</p>
+        <h2 id="tenantTitle">选择企业</h2>
+        <p class="sub" id="tenantSub"></p>
+        <div class="choices" id="tenantList"></div>
+        <div class="join">
+          <span class="label" id="joinLabel">企业编号</span>
+          <span class="row">
+            <input id="joinCode" maxlength="32" placeholder="填写企业管理员给你的企业编号">
+            <button type="button" class="ghost" id="joinBtn">加入</button>
+          </span>
+        </div>
+        <p class="notice" id="tenantNotice" aria-live="polite" hidden style="margin-top: 16px"></p>
+        <button type="button" class="link" id="tenantBack">← 返回登录</button>
+      </section>
+
+      <!-- 企业模式：登录了，但企业暂时不让用（待审批、停用、没席位……） -->
+      <section class="panel" id="gateView" hidden>
+        <p class="eyebrow">ENTERPRISE</p>
+        <p class="org" id="gateOrg" hidden></p>
+        <h2 id="gateTitle"></h2>
+        <p class="sub" id="gateBody"></p>
+        <p class="meta" id="gateMeta" hidden></p>
+        <p class="notice err" id="gateNotice" aria-live="polite" hidden style="margin-top: 16px"></p>
+        <div class="actions">
+          <button type="button" class="submit" id="gateCheck">重新检查</button>
+          <button type="button" class="ghost" id="gateLogout">退出登录</button>
+        </div>
+      </section>
     </div>
   </section>
 </main>
@@ -145,12 +197,24 @@
   var captchaId = '';
   var captchaFailed = false;
 
-  // 提示条：kind 为 'err' 是红色报错、'info' 是普通提示；text 为空就收起
-  function notice(text, kind) {
-    var n = $('notice');
+  var enterpriseMode = false;
+  var pending = '';      // 企业模式选企业时，入口封好的登录票据
+  var gateTimer = 0;     // 拦截页每 15 秒复查一次
+
+  // 提示条：kind 为 'err' 是红色报错、'info' 是普通提示；text 为空就收起。id 默认是登录表单里那一条
+  function notice(text, kind, id) {
+    var n = $(id || 'notice');
     n.textContent = text || '';
     n.className = 'notice ' + (kind || '');
     n.hidden = !text;
+  }
+
+  // 卡片里三选一：登录表单 / 选企业 / 拦截说明
+  function view(name) {
+    $('loginView').hidden = name !== 'login';
+    $('tenantView').hidden = name !== 'tenant';
+    $('gateView').hidden = name !== 'gate';
+    if (name !== 'gate' && gateTimer) { clearInterval(gateTimer); gateTimer = 0; }
   }
 
   function digitsOnly(input) {
@@ -163,7 +227,11 @@
   async function postJSON(url, body) {
     var r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), credentials: 'same-origin' });
     var data = null; try { data = await r.json(); } catch (e) {}
-    if (!r.ok) throw new Error((data && (data.error || data.msg)) || ('HTTP ' + r.status));
+    if (!r.ok) {
+      var err = new Error((data && (data.error || data.msg)) || ('HTTP ' + r.status));
+      err.status = r.status;
+      throw err;
+    }
     if (data && data.code !== undefined && data.code !== 0 && data.code !== '0') throw new Error(data.msg || ('上游错误 ' + data.code));
     return data;
   }
@@ -231,14 +299,123 @@
     ev.preventDefault();
     var phone = $('phone').value.trim();
     var smsCode = $('smsCode').value.trim();
-    if (!PHONE_RE.test(phone)) return notice('请输入有效的中国大陆手机号', 'err');
+    // 企业模式只要求 11 位 1 开头：平台的免短信测试号（100…）也要能登，号码真不真由平台和元景判断
+    if (!(enterpriseMode ? /^1\d{10}$/ : PHONE_RE).test(phone)) return notice('请输入有效的中国大陆手机号', 'err');
     if (!smsCode) return notice('请输入短信验证码', 'err');
+    var body = { phone: phone, smsCode: smsCode };
+    if (enterpriseMode && $('tenantCode').value.trim()) body.tenantCode = $('tenantCode').value.trim();
     try {
       loginBusy(true); notice('');
-      var data = await postJSON(api('/login'), { phone: phone, smsCode: smsCode });
+      var data = await postJSON(api('/login'), body);
+      if (data.enterprise && !data.ok) { loginBusy(false); return showTenants(data.enterprise); }
+      if (data.enterprise && !data.enterprise.allowed) { loginBusy(false); return showGate(data.enterprise); }
       notice(data.has_key ? '登录成功，正在准备你的工作空间…' : '登录成功（该账号没有可用套餐 key，模型将不可用）', 'info');
       location.href = data.redirect || (base + '/');
     } catch (e) { loginBusy(false); notice('登录失败：' + e.message, 'err'); }
+  });
+
+  // ---- 企业模式 ----
+
+  var TENANT_COPY = {
+    choose_tenant: ['选择企业', '这个手机号属于多个企业，选一个进入。', '或者填写企业编号，加入其他企业'],
+    tenant_required: ['加入企业', '这个手机号还没有加入任何企业。填写企业管理员给你的企业编号，提交加入申请。', '企业编号'],
+    tenant_not_found: ['企业编号不存在', '', '企业编号']
+  };
+  var MEMBER_STATUS = { '在职': '', '待审核': '待审批', '已停用': '已停用', '已拒绝': '未通过' };
+
+  function showTenants(ent) {
+    pending = ent.pending || '';
+    var copy = TENANT_COPY[ent.status] || TENANT_COPY.tenant_required;
+    $('tenantTitle').textContent = copy[0];
+    $('tenantSub').textContent = ent.status === 'tenant_not_found'
+      ? '找不到企业编号「' + (ent.tenantCode || '') + '」，请向企业管理员确认后重新填写。' : copy[1];
+    $('joinLabel').textContent = copy[2];
+    $('joinCode').value = '';
+    var list = $('tenantList');
+    list.textContent = '';
+    (ent.tenants || []).forEach(function (t) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'choice';
+      var name = document.createElement('span');
+      name.textContent = (t.tenantName || t.tenantCode) + (t.tenantCode ? '（' + t.tenantCode + '）' : '');
+      var state = document.createElement('small');
+      state.textContent = MEMBER_STATUS[t.memberStatus] !== undefined ? MEMBER_STATUS[t.memberStatus] : (t.memberStatus || '');
+      b.appendChild(name); b.appendChild(state);
+      b.addEventListener('click', function () { selectTenant({ tenantId: t.tenantId }); });
+      list.appendChild(b);
+    });
+    list.hidden = !(ent.tenants || []).length;
+    notice('', '', 'tenantNotice');
+    view('tenant');
+  }
+
+  async function selectTenant(choice) {
+    var buttons = document.querySelectorAll('#tenantView button');
+    buttons.forEach(function (b) { b.disabled = true; });
+    notice('正在进入…', 'info', 'tenantNotice');
+    try {
+      var data = await postJSON(api('/select-tenant'), Object.assign({ pending: pending }, choice));
+      if (data.enterprise && !data.enterprise.allowed) return showGate(data.enterprise);
+      location.href = data.redirect || (base + '/');
+    } catch (e) {
+      if (e.status === 401) { view('login'); notice(e.message, 'err'); refreshCaptcha(); return; }
+      notice(e.message, 'err', 'tenantNotice');   // 编号不对：票据还能用，换个编号再试
+    } finally { buttons.forEach(function (b) { b.disabled = false; }); }
+  }
+
+  $('joinBtn').addEventListener('click', function () {
+    var code = $('joinCode').value.trim();
+    if (!code) return notice('请填写企业编号', 'err', 'tenantNotice');
+    selectTenant({ tenantCode: code });
+  });
+  $('tenantBack').addEventListener('click', function () { view('login'); refreshCaptcha(); });
+
+  // 拦截说明：文案照桌面端企业版的 EnterpriseGate.tsx
+  var GATE_COPY = {
+    pending: ['加入申请已提交', '管理员审批通过并分配席位后即可使用，本页会自动刷新。'],
+    not_member: ['加入申请已提交', '管理员审批通过并分配席位后即可使用，本页会自动刷新。'],
+    rejected: ['加入申请未通过', '如有疑问请联系企业管理员。重新登录会再次提交申请。'],
+    disabled: ['账号已被停用', '你的企业账号已被管理员停用，请联系企业管理员。'],
+    no_seat: ['尚未分配席位', '你已是企业成员，但还没有分配客户端席位。管理员分配后即可使用。'],
+    tenant_suspended: ['企业服务已停用', '企业的 UNIWORK 服务已停用，请联系企业管理员。'],
+    unbound: ['企业登录已失效', '设备与企业的绑定已失效（可能已在别处退出登录，或被管理员重置），请重新登录。']
+  };
+
+  function showGate(ent) {
+    if (ent.allowed) { location.href = base + '/'; return; }
+    var status = GATE_COPY[ent.status] ? ent.status : 'unbound';
+    $('gateTitle').textContent = GATE_COPY[status][0];
+    $('gateBody').textContent = GATE_COPY[status][1];
+    $('gateOrg').textContent = ent.tenantName || '';
+    $('gateOrg').hidden = !ent.tenantName;
+    $('gateMeta').textContent = ent.memberName ? '成员 ' + ent.memberName : '';
+    $('gateMeta').hidden = !ent.memberName;
+    $('gateCheck').hidden = status === 'unbound';
+    $('gateLogout').textContent = status === 'unbound' ? '重新登录' : '退出登录';
+    $('gateLogout').className = status === 'unbound' ? 'submit' : 'ghost';
+    notice('', '', 'gateNotice');
+    view('gate');
+    if (status !== 'unbound' && !gateTimer) gateTimer = setInterval(function () { recheck(false); }, 15000);
+  }
+
+  // 问入口（入口再问平台）现在能不能用：放行了就进工作空间
+  async function recheck(manual) {
+    var btn = $('gateCheck');
+    if (manual) { btn.disabled = true; btn.textContent = '正在检查…'; }
+    try {
+      var r = await fetch(api('/enterprise'), { credentials: 'same-origin' });
+      var data = null; try { data = await r.json(); } catch (e) {}
+      if (r.status === 401) { view('login'); return; }
+      if (!r.ok || !data) throw new Error((data && data.error) || ('HTTP ' + r.status));
+      showGate(data);
+    } catch (e) { notice('检查失败：' + e.message, 'err', 'gateNotice'); }
+    finally { if (manual) { btn.disabled = false; btn.textContent = '重新检查'; } }
+  }
+
+  $('gateCheck').addEventListener('click', function () { recheck(true); });
+  $('gateLogout').addEventListener('click', async function () {
+    try { await postJSON(api('/logout'), {}); } catch (e) {}
+    view('login'); notice(''); refreshCaptcha();
   });
 
   $('devBtn').addEventListener('click', async function () {
@@ -251,6 +428,15 @@
 
   fetch(api('/config'), { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (c) {
     if (c && c.dev) { $('devBox').hidden = false; $('devBox').open = true; }
+    if (c && c.enterprise) {
+      enterpriseMode = true;
+      $('tenantCodeField').hidden = false;
+      $('loginSub').textContent = '使用元景 MaaS 手机号登录企业工作空间';
+      // 已登录但被企业拦住的人会被送到这里：直接显示拦截说明（没登录是 401，留在登录表单）
+      return fetch(api('/enterprise'), { credentials: 'same-origin' }).then(function (r) {
+        return r.ok ? r.json().then(showGate) : null;
+      });
+    }
   }).catch(function () {});
   refreshCaptcha();
 })();

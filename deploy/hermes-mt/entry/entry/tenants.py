@@ -17,6 +17,7 @@ import asyncio
 import contextlib
 import hashlib
 import io
+import ipaddress
 import json
 import logging
 import re
@@ -27,7 +28,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 import aiohttp
 
@@ -71,6 +72,24 @@ def parse_reasoning_defaults(text: str) -> dict[str, str]:
         model, sep, effort = item.partition("=")
         if sep and model.strip() and effort.strip():
             out[model.strip()] = effort.strip()
+    return out
+
+
+def cube_allow_out(settings: Settings) -> list[str]:
+    """建实例时额外放行的出网地址段。沙箱默认挡所有私网地址，企业平台在内网时实例连不上它的 /v1 和元景中转，
+    所以平台地址是私网 IP 就自动放行这一个地址；再加上 MT_CUBE_ALLOW_OUT 里写的。"""
+    out: list[str] = []
+    host = (urlsplit(settings.uniwork_server).hostname or "") if settings.enterprise else ""
+    try:
+        address = ipaddress.ip_address(host) if host else None
+    except ValueError:
+        address = None  # 域名：沙箱放行公网，内网域名要自己写进 MT_CUBE_ALLOW_OUT
+    if address is not None and address.version == 4 and address.is_private and not address.is_loopback:
+        out.append(f"{address}/32")
+    for item in settings.cube_allow_out.split(","):
+        item = item.strip()
+        if item and item not in out:
+            out.append(item)
     return out
 
 
@@ -501,10 +520,15 @@ class TenantManager:
         key 不写明文：地址里写 ``${<key 的变量名>}``，hermes 连接时从 .env 取 —— 就是 .env 里模型用的那把
         套餐 key，换 key 只动 .env。没有 key 的用户（没套餐）不给这一条：连上去只会 401。
         ``oss_mode`` 让工具给内网链接（用户的浏览器在内网），见 config.py。
+
+        企业模式下 key 是设备令牌，地址换成平台的元景中转：平台验过成员身份和额度，换上企业的 key 再转给元景，
+        用量记在企业账上。其余参数照旧。
         """
         url = self.s.yuanjing_mcp_url.strip()
         if not url or not api_key:
             return {YUANJING_MCP_NAME: None}
+        if self.s.enterprise:
+            url = f"{self.s.uniwork_server}/api/client/yj/app/mcp-server/mcp"
         params = [f"key=${{{self.s.key_env_name}}}"]
         if self.s.yuanjing_mcp_client_id:
             params.append("client_id=" + quote(self.s.yuanjing_mcp_client_id, safe=""))
@@ -744,6 +768,7 @@ class TenantManager:
         port = self.s.forward_port
         rt = await self.store.get_runtime(user_id)
         await self.store.set_tenant_state(user_id, "starting")
+        allow_out = cube_allow_out(self.s)
         for attempt in (1, 2):
             epoch = await self.store.next_epoch(user_id)
             sandbox_id = await self.cube.create_sandbox(
@@ -751,6 +776,7 @@ class TenantManager:
                 workspace_path=self.s.cube_volume_mount,
                 metadata={"hermes.mt": "tenant", "hermes.mt.slug": slug},
                 private_traffic=self.s.cube_private_traffic,
+                **({"allow_out": allow_out} if allow_out else {}),
             )
             # ★ 先落库再引导：引导可能超时，但实例已经真实存在了。
             #   不先记下来的话，下一次请求会再建一个，旧的成为没人管的孤儿。

@@ -21,6 +21,24 @@ class Session:
     sid: str
     user_id: str
     expires_at: int
+    # 企业模式下这个用户在平台上的状态（enterprise_binding.access_status）；没有绑定是空串。
+    enterprise_status: str = ""
+
+
+@dataclass(frozen=True)
+class EnterpriseBinding:
+    """企业模式：用户在 UNIWORK 企业管理平台上的成员身份（设备令牌在 tenant_credentials 里）。"""
+
+    tenant_id: str
+    tenant_code: str
+    tenant_name: str
+    uid: str
+    device_id: str
+    member_id: str
+    member_name: str
+    access_status: str
+    policy_revision: str = ""
+    checked_at: int = 0
 
 
 @dataclass(frozen=True)
@@ -143,6 +161,78 @@ class Store:
                 catalog.append((model_name, base_url))
         return catalog
 
+    @classmethod
+    async def _upsert_model_config(
+        cls,
+        connection,
+        user_id: str,
+        endpoint: tuple[str, str] | None,
+        catalog: list[tuple[str, str]] | None,
+        limits: dict[str, int] | None,
+    ) -> None:
+        """写入套餐（或企业策略）给的端点和模型清单；空值不清除已有的有效值。"""
+        if not ((endpoint and endpoint[0]) or catalog):
+            return
+        base_url, model_name = endpoint or ("", "")
+        await connection.execute(
+            """
+            INSERT INTO tenant_model_config(
+                user_id, default_base_url, default_model, model_catalog, synced_at
+            ) VALUES($1, $2, $3, COALESCE($4::jsonb, '[]'::jsonb), now())
+            ON CONFLICT(user_id) DO UPDATE SET
+                default_base_url = COALESCE(
+                    EXCLUDED.default_base_url,
+                    tenant_model_config.default_base_url
+                ),
+                default_model = COALESCE(
+                    EXCLUDED.default_model,
+                    tenant_model_config.default_model
+                ),
+                model_catalog = CASE
+                    WHEN $5 THEN EXCLUDED.model_catalog
+                    ELSE tenant_model_config.model_catalog
+                END,
+                synced_at = now()
+            """,
+            user_id,
+            base_url or None,
+            model_name or None,
+            cls._catalog_json(catalog, limits) if catalog else None,
+            bool(catalog),
+        )
+
+    @staticmethod
+    async def _upsert_binding(connection, user_id: str, binding: EnterpriseBinding) -> None:
+        await connection.execute(
+            """
+            INSERT INTO enterprise_binding(
+                user_id, tenant_id, tenant_code, tenant_name, uid, device_id,
+                member_id, member_name, access_status, policy_revision, checked_at
+            ) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
+            ON CONFLICT(user_id) DO UPDATE SET
+                tenant_id = EXCLUDED.tenant_id,
+                tenant_code = EXCLUDED.tenant_code,
+                tenant_name = EXCLUDED.tenant_name,
+                uid = EXCLUDED.uid,
+                device_id = EXCLUDED.device_id,
+                member_id = EXCLUDED.member_id,
+                member_name = EXCLUDED.member_name,
+                access_status = EXCLUDED.access_status,
+                policy_revision = EXCLUDED.policy_revision,
+                checked_at = now()
+            """,
+            user_id,
+            binding.tenant_id,
+            binding.tenant_code,
+            binding.tenant_name,
+            binding.uid,
+            binding.device_id,
+            binding.member_id,
+            binding.member_name,
+            binding.access_status,
+            binding.policy_revision,
+        )
+
     async def finish_login(
         self,
         *,
@@ -155,8 +245,9 @@ class Store:
         upstream_expires_at_ms: int | None,
         login_method: str,
         limits: dict[str, int] | None = None,
+        enterprise: EnterpriseBinding | None = None,
     ) -> LoginState:
-        """原子保存登录相关平台状态，空套餐值不会清除已有有效值。"""
+        """原子保存登录相关平台状态，空套餐值不会清除已有有效值。企业模式下同时写入平台绑定。"""
         now = _utc_now()
         expires_at = now + timedelta(seconds=ttl_s)
         upstream_expires_at: datetime | None = None
@@ -185,34 +276,9 @@ class Store:
                     masked_phone,
                     now,
                 )
-                if (endpoint and endpoint[0]) or catalog:
-                    base_url, model_name = endpoint or ("", "")
-                    await connection.execute(
-                        """
-                        INSERT INTO tenant_model_config(
-                            user_id, default_base_url, default_model, model_catalog, synced_at
-                        ) VALUES($1, $2, $3, COALESCE($4::jsonb, '[]'::jsonb), now())
-                        ON CONFLICT(user_id) DO UPDATE SET
-                            default_base_url = COALESCE(
-                                EXCLUDED.default_base_url,
-                                tenant_model_config.default_base_url
-                            ),
-                            default_model = COALESCE(
-                                EXCLUDED.default_model,
-                                tenant_model_config.default_model
-                            ),
-                            model_catalog = CASE
-                                WHEN $5 THEN EXCLUDED.model_catalog
-                                ELSE tenant_model_config.model_catalog
-                            END,
-                            synced_at = now()
-                        """,
-                        user_id,
-                        base_url or None,
-                        model_name or None,
-                        self._catalog_json(catalog, limits) if catalog else None,
-                        bool(catalog),
-                    )
+                await self._upsert_model_config(connection, user_id, endpoint, catalog, limits)
+                if enterprise is not None:
+                    await self._upsert_binding(connection, user_id, enterprise)
                 if api_key:
                     await connection.execute(
                         """
@@ -263,9 +329,10 @@ class Store:
         async with self.database.acquire() as connection:
             row = await connection.fetchrow(
                 """
-                SELECT s.user_id, s.expires_at
+                SELECT s.user_id, s.expires_at, b.access_status
                 FROM auth_sessions AS s
                 JOIN users AS u ON u.user_id = s.user_id
+                LEFT JOIN enterprise_binding AS b ON b.user_id = s.user_id
                 WHERE s.session_token_hash = $1
                   AND s.expires_at > now()
                   AND u.status = 'active'
@@ -274,7 +341,12 @@ class Store:
             )
         if row is None:
             return None
-        return Session(sid=sid, user_id=row["user_id"], expires_at=int(row["expires_at"].timestamp()))
+        return Session(
+            sid=sid,
+            user_id=row["user_id"],
+            expires_at=int(row["expires_at"].timestamp()),
+            enterprise_status=str(row["access_status"] or ""),
+        )
 
     async def delete_session(self, sid: str) -> None:
         if not sid:
@@ -284,6 +356,66 @@ class Store:
                 "DELETE FROM auth_sessions WHERE session_token_hash = $1",
                 self._session_hash(sid),
             )
+
+    # ---- 企业模式：平台绑定 -------------------------------------------------------
+
+    async def get_enterprise_binding(self, user_id: str) -> EnterpriseBinding | None:
+        async with self.database.acquire() as connection:
+            row = await connection.fetchrow(
+                """
+                SELECT tenant_id, tenant_code, tenant_name, uid, device_id, member_id, member_name,
+                       access_status, policy_revision, checked_at
+                FROM enterprise_binding WHERE user_id = $1
+                """,
+                user_id,
+            )
+        if row is None:
+            return None
+        return EnterpriseBinding(
+            tenant_id=row["tenant_id"],
+            tenant_code=row["tenant_code"],
+            tenant_name=row["tenant_name"],
+            uid=row["uid"],
+            device_id=row["device_id"],
+            member_id=row["member_id"],
+            member_name=row["member_name"],
+            access_status=row["access_status"],
+            policy_revision=row["policy_revision"],
+            checked_at=int(row["checked_at"].timestamp()),
+        )
+
+    async def update_enterprise_access(
+        self,
+        user_id: str,
+        access_status: str,
+        *,
+        policy_revision: str | None = None,
+        member_name: str | None = None,
+        tenant_name: str | None = None,
+        endpoint: tuple[str, str] | None = None,
+        catalog: list[tuple[str, str]] | None = None,
+        limits: dict[str, int] | None = None,
+    ) -> None:
+        """复查平台后更新绑定状态；放行了就顺带换上策略里的模型清单（空值不清除已有的）。"""
+        async with self.database.acquire() as connection:
+            async with connection.transaction():
+                await connection.execute(
+                    """
+                    UPDATE enterprise_binding SET
+                        access_status = $2,
+                        policy_revision = COALESCE($3, policy_revision),
+                        member_name = COALESCE($4, member_name),
+                        tenant_name = COALESCE(NULLIF($5, ''), tenant_name),
+                        checked_at = now()
+                    WHERE user_id = $1
+                    """,
+                    user_id,
+                    access_status,
+                    policy_revision,
+                    member_name,
+                    tenant_name,
+                )
+                await self._upsert_model_config(connection, user_id, endpoint, catalog, limits)
 
     async def purge_expired_sessions(self) -> int:
         async with self.database.acquire() as connection:
@@ -638,6 +770,11 @@ class Store:
                 WHERE u.status = 'active' AND r.state = 'stopped' AND r.lifecycle = ''
                   AND r.next_cron_at IS NOT NULL AND r.next_cron_at <= $1
                   AND r.cron_woken_for IS DISTINCT FROM r.next_cron_at
+                  -- 企业模式下被平台拦住（或已退出）的用户：叫醒了模型也调不通
+                  AND NOT EXISTS (
+                      SELECT 1 FROM enterprise_binding AS b
+                      WHERE b.user_id = r.user_id AND b.access_status <> 'active'
+                  )
                 ORDER BY r.next_cron_at
                 """,
                 cutoff,

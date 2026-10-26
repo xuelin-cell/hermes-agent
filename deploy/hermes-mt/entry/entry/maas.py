@@ -115,6 +115,30 @@ class Plan:
         return f"models={len(self.models)} main={model or '?'} base_url={base or '?'} catalog=[{listed}]"
 
 
+def parse_login(payload: dict) -> LoginResult:
+    """元景 smsLogin 成功结果里的 ``data``：取 uid、token 和有效期。
+
+    企业模式下平台替入口调元景，返回值里的 ``data`` 就是这一段原样，所以两边共用。
+    """
+    uid = str(payload.get("uid") or "").strip()
+    token = str(payload.get("token") or "").strip()
+    if not uid or not token:
+        raise MaasError("登录响应缺少 uid/token", status=502)
+    now_ms = int(time.time() * 1000)
+    expires_at = payload.get("expiresAt")
+    if isinstance(expires_at, (int, float)) and expires_at > 0:
+        expires_at_ms = int(expires_at)
+    else:
+        expire_in = payload.get("expireIn", payload.get("expires_in"))
+        if isinstance(expire_in, (int, float)) and expire_in > 0:
+            expires_at_ms = now_ms + int(expire_in) * 1000
+        else:
+            raise MaasError("登录响应缺少有效期", status=502)
+    if expires_at_ms <= now_ms:
+        raise MaasError("登录 token 已过期", status=502)
+    return LoginResult(uid=uid, token=token, expires_at_ms=expires_at_ms, raw=payload)
+
+
 class Maas:
     def __init__(self, settings: Settings, session: aiohttp.ClientSession):
         self.s = settings
@@ -162,23 +186,7 @@ class Maas:
             # 业务失败（验证码错等）原样透传给前端
             raise MaasError(str(data.get("msg") or "登录失败"), status=401, payload=data)
         payload = data.get("data") if isinstance(data.get("data"), dict) else data
-        uid = str(payload.get("uid") or "").strip()
-        token = str(payload.get("token") or "").strip()
-        if not uid or not token:
-            raise MaasError("登录响应缺少 uid/token", status=502)
-        now_ms = int(time.time() * 1000)
-        expires_at = payload.get("expiresAt")
-        if isinstance(expires_at, (int, float)) and expires_at > 0:
-            expires_at_ms = int(expires_at)
-        else:
-            expire_in = payload.get("expireIn", payload.get("expires_in"))
-            if isinstance(expire_in, (int, float)) and expire_in > 0:
-                expires_at_ms = now_ms + int(expire_in) * 1000
-            else:
-                raise MaasError("登录响应缺少有效期", status=502)
-        if expires_at_ms <= now_ms:
-            raise MaasError("登录 token 已过期", status=502)
-        return LoginResult(uid=uid, token=token, expires_at_ms=expires_at_ms, raw=payload)
+        return parse_login(payload)
 
     async def my_plan(self, token: str) -> Plan | None:
         """拿这个用户自己的模型 key。没套餐 = 真没凭据，返回 None，不用平台 key 兜底。"""
