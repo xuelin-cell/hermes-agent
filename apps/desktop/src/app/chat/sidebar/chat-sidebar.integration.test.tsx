@@ -120,10 +120,15 @@ describe('ChatSidebar navigation activity', () => {
         path: '/repos/example',
         repos: [],
         sessionCount: 1,
-        previewSessions: [makeSessionInfo({ ...sessionRows[0], cwd: '/repos/example', pinned: true })]
+        previewSessions: [
+          makeSessionInfo({ ...sessionRows[0], cwd: '/repos/example', git_repo_root: '/repos/example', pinned: true })
+        ]
       }
     ])
-    $sessions.set([makeSessionInfo({ ...sessionRows[0], cwd: '/repos/example', pinned: true }), sessionRows[1]])
+    $sessions.set([
+      makeSessionInfo({ ...sessionRows[0], cwd: '/repos/example', git_repo_root: '/repos/example', pinned: true }),
+      sessionRows[1]
+    ])
     $welcomeCatalog.set({
       ...$welcomeCatalog.get(),
       en: {
@@ -166,7 +171,7 @@ describe('ChatSidebar navigation activity', () => {
     expect(screen.queryByText('workspace-project')).toBeNull()
     expect($sidebarGrouping.get()).toBe('date')
     expect(screen.getByRole('button', { name: TRANSLATIONS.en.sidebar.nav.artifacts })).toBeTruthy()
-    expect(screen.getByText('Tile one')).toBeTruthy()
+    expect(screen.queryByText('Tile one')).toBeNull()
     expect(screen.getByText('Tile two')).toBeTruthy()
     expect(screen.getByRole('button', { name: TRANSLATIONS.en.sidebar.nav.cron })).toBeTruthy()
     cleanup()
@@ -508,8 +513,20 @@ describe('ChatSidebar empty-profile sections', () => {
   it('shows RCS history in its own collapsible platform section beside local chats and WeChat', () => {
     $sessions.set([makeSessionInfo({ id: 'local-chat', source: 'desktop', title: 'Local conversation' })])
     $messagingSessions.set([
-      makeSessionInfo({ id: 'rcs-history', connection_id: 'local', profile: 'default', source: 'uniagentgate', title: 'RCS history' }),
-      makeSessionInfo({ id: 'wechat-history', connection_id: 'local', profile: 'default', source: 'weixin', title: 'WeChat history' })
+      makeSessionInfo({
+        id: 'rcs-history',
+        connection_id: 'local',
+        profile: 'default',
+        source: 'uniagentgate',
+        title: 'RCS history'
+      }),
+      makeSessionInfo({
+        id: 'wechat-history',
+        connection_id: 'local',
+        profile: 'default',
+        source: 'weixin',
+        title: 'WeChat history'
+      })
     ])
     $sidebarMessagingOpenIds.set(['uniagentgate', 'weixin'])
     renderSidebar('/', 'chat')

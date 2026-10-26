@@ -10,14 +10,19 @@ from __future__ import annotations
 import asyncio
 import logging
 import secrets
+import sys
+import threading
 import time
 from dataclasses import dataclass, field
+from importlib import import_module
 from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException
 
 from gateway.platforms import weixin as wx
+
+presentation = import_module("plugins.desktop-messaging.dashboard.presentation")
 
 _log = logging.getLogger(__name__)
 
@@ -44,6 +49,7 @@ class _Login:
     profile: Optional[str]
     qrcode: str
     qr_content: str
+    home: str
     state: str = "wait"
     message: str = ""
     restart: dict[str, Any] = field(default_factory=dict)
@@ -52,6 +58,40 @@ class _Login:
 
 
 _logins: dict[str, _Login] = {}
+_current: dict[str, str] = {}
+_write_locks: dict[str, threading.Lock] = {}
+
+
+def _begin(profile: Optional[str]) -> tuple[str, str]:
+    """按真实 Home 作废旧请求，取码尚未返回时也能被下一次操作覆盖。"""
+    from hermes_cli.web_server_profiles import _config_profile_scope
+    from hermes_constants import get_hermes_home
+
+    with _config_profile_scope(profile):
+        home = str(get_hermes_home().resolve())
+    request_id = secrets.token_urlsafe(12)
+    _current[home] = request_id
+    _write_locks.setdefault(home, threading.Lock())
+    for login in list(_logins.values()):
+        if login.home == home:
+            _cancel(login)
+    return home, request_id
+
+
+def _save_current(login: _Login, creds: dict[str, str]) -> bool:
+    """写盘线程与解绑串行；协程取消后，旧线程也不能越过新操作回写。"""
+    with _write_locks[login.home]:
+        if _current.get(login.home) != login.id:
+            return False
+        _apply(login.profile, creds)
+        return _current.get(login.home) == login.id
+
+
+def _remove_current(home: str, request_id: str, profile: Optional[str]) -> None:
+    """等待在途写盘结束后解绑，已被更新请求替代的解绑不删除新凭据。"""
+    with _write_locks[home]:
+        if _current.get(home) == request_id:
+            _unbind(profile)
 
 
 def _payload(login: _Login) -> dict[str, Any]:
@@ -118,7 +158,10 @@ def _apply(profile: Optional[str], creds: dict[str, str]) -> None:
         values.update(WEIXIN_DM_POLICY="allowlist", WEIXIN_ALLOWED_USERS=user_id, WEIXIN_HOME_CHANNEL=user_id)
         for key, value in values.items():
             save_env_value(key, value)
-        _write_platform_enabled(PLATFORM_ID, True)
+        # 与桌面准备共用 config.yaml 锁；展示配置失败只记日志，不影响已保存的连接。
+        with presentation.config_lock():
+            _write_platform_enabled(PLATFORM_ID, True)
+            presentation.prepare_presentation({PLATFORM_ID})
 
 
 def _unbind(profile: Optional[str]) -> None:
@@ -137,11 +180,24 @@ def _unbind(profile: Optional[str]) -> None:
             path.unlink(missing_ok=True)
 
 
-def _restart(profile: Optional[str]) -> dict[str, Any]:
-    """保存后尽力重启消息网关；失败只报告，由页面提示手动重启。"""
-    from hermes_cli.web_server_gateway import _restart_gateway_after
+# 仪表盘按插件名加载接口文件；只取已加载的那份，避免另建一份锁不同的模块。
+_DESKTOP_MESSAGING_MODULES = (
+    "hermes_dashboard_plugin_desktop-messaging", "plugins.desktop-messaging.dashboard.plugin_api")
 
-    return _restart_gateway_after(profile, what="Weixin QR login", label="Weixin QR login")
+
+async def _restart() -> dict[str, Any]:
+    """后端直接走桌面消息的统一准备与重启，不依赖页面仍然打开；失败时由页面回退到重试。"""
+    api = next((sys.modules[name] for name in _DESKTOP_MESSAGING_MODULES if name in sys.modules), None)
+    if api is None:
+        return {"restart_started": False}
+    try:
+        action = await api.apply_gateway()
+    except Exception as exc:
+        _log.warning("weixin-qr: gateway restart after login failed: %s", exc)
+        return {"restart_started": False, "restart_error": str(exc)}
+    if action.get("name") != "gateway-restart":
+        return {"restart_started": False}
+    return {"restart_started": True, "restart_action": "gateway-restart", "restart_pid": action.get("pid")}
 
 
 def _credentials(resp: dict[str, Any]) -> dict[str, str]:
@@ -187,13 +243,14 @@ async def _watch(login: _Login) -> None:
                         _finish(login, "error", "WeChat confirmed the login but returned incomplete credentials.")
                         return
                     try:
-                        await asyncio.to_thread(_apply, login.profile, creds)
+                        saved = await asyncio.to_thread(_save_current, login, creds)
                     except Exception:
                         _log.exception("weixin-qr: saving credentials failed")
                         _finish(login, "error", "Could not save the WeChat connection.")
                         return
-                    login.restart = await asyncio.to_thread(_restart, login.profile)
-                    _finish(login, "confirmed")
+                    if saved and _current.get(login.home) == login.id:
+                        login.restart = await _restart()
+                    _finish(login, "confirmed" if saved and _current.get(login.home) == login.id else "cancelled")
                     return
                 await asyncio.sleep(POLL_INTERVAL_S)
         _finish(login, "expired")
@@ -212,9 +269,7 @@ async def start_login(profile: Optional[str] = None) -> dict[str, Any]:
     if not wx.check_weixin_requirements():
         raise HTTPException(status_code=503, detail="Weixin needs aiohttp and cryptography.")
     _prune()
-    for login in list(_logins.values()):
-        if login.profile == profile:
-            _cancel(login)
+    home, request_id = _begin(profile)
     try:
         async with wx._new_session() as session:
             qrcode, qr_content = await wx._fetch_qr(session, BOT_TYPE)
@@ -223,9 +278,12 @@ async def start_login(profile: Optional[str] = None) -> dict[str, Any]:
         raise HTTPException(status_code=502, detail="Could not get a QR code from WeChat.") from exc
     if not qrcode:
         raise HTTPException(status_code=502, detail="WeChat returned an empty QR code.")
-    login = _Login(id=secrets.token_urlsafe(12), profile=profile, qrcode=qrcode, qr_content=qr_content or qrcode)
+    login = _Login(id=request_id, profile=profile, home=home, qrcode=qrcode, qr_content=qr_content or qrcode)
     _logins[login.id] = login
-    login.task = asyncio.create_task(_watch(login))
+    if _current.get(home) == request_id:
+        login.task = asyncio.create_task(_watch(login))
+    else:
+        _finish(login, "cancelled")
     return _payload(login)
 
 
@@ -241,11 +299,9 @@ async def login_status(session_id: str) -> dict[str, Any]:
 @router.post("/unbind")
 async def unbind(profile: Optional[str] = None) -> dict[str, Any]:
     """解绑微信：清除凭据、关闭微信通道并重启消息网关。"""
-    for login in list(_logins.values()):
-        if login.profile == profile:
-            _cancel(login)
+    home, request_id = _begin(profile)
     try:
-        await asyncio.to_thread(_unbind, profile)
+        await asyncio.to_thread(_remove_current, home, request_id, profile)
     except Exception as exc:
         _log.exception("weixin-qr: unbind failed")
         raise HTTPException(status_code=500, detail="Could not remove the WeChat connection.") from exc

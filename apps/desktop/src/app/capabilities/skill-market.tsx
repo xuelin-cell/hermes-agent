@@ -22,6 +22,8 @@ import { installHubSkill } from '@/store/hub-actions'
 import { notify, notifyError } from '@/store/notifications'
 
 import { CARD_ACCENTS } from './catalog/catalog-card'
+// desktop-mt: 显示名不是装好后的技能名，「已安装」按安装记录判断。
+import { useCatalogInstalled } from './skills-mt/use-catalog-installed'
 import { SKILLS_QUERY_KEY } from './skills/skills-data'
 
 type MarketTab = 'recommended' | 'market' | 'installed'
@@ -75,6 +77,7 @@ export function SkillMarket({ installed, installedCount, installedNames, profile
 
   const skills = tab === 'market' ? marketSkills.data : recommendedSkills.data
   const categories = tab === 'market' ? marketCategories.data : recommendedCategories.data
+  const catalogInstalled = useCatalogInstalled(profile, installedNames, tab !== 'installed') // desktop-mt
 
   const visible = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase()
@@ -101,7 +104,8 @@ export function SkillMarket({ installed, installedCount, installedNames, profile
   )
 
   async function install(skill: UniWorkSkill) {
-    if (installedNames.has(skill.name)) {
+    // desktop-mt: 按安装记录判断，显示名对不上装好后的技能名。
+    if (catalogInstalled.isInstalled(skill)) {
       return
     }
 
@@ -115,6 +119,7 @@ export function SkillMarket({ installed, installedCount, installedNames, profile
     }
 
     setInstalling(skill.id)
+    const scope = catalogInstalled.scopeKey // desktop-mt
 
     try {
       if (skill.package_download_path || skill.download_url) {
@@ -122,6 +127,8 @@ export function SkillMarket({ installed, installedCount, installedNames, profile
         if (!result.ok || !result.name || !result.install_path) {
           throw new Error(zh ? '技能安装未完成，请重试' : 'Skill installation did not complete. Please retry.')
         }
+
+        catalogInstalled.remember(scope, skill.id, result.name) // desktop-mt
         await queryClient.invalidateQueries({ queryKey: SKILLS_QUERY_KEY })
       } else if (skill.clawhub_url) {
         await installHubSkill(skill.clawhub_url, profile)
@@ -224,7 +231,7 @@ export function SkillMarket({ installed, installedCount, installedNames, profile
           ) : (
             <Masonry data-catalog-hover-group>
               {visible.map((skill, index) => {
-                const installedSkill = installedNames.has(skill.name)
+                const installedSkill = catalogInstalled.isInstalled(skill) // desktop-mt
 
                 return (
                   <MarketSkillCard

@@ -79,7 +79,23 @@ def _build_prepared(prepared, builder_args: list[str], variant: str | None) -> N
         if request.release_epoch is not None:
             env["HERMES_RELEASE_EPOCH"] = str(request.release_epoch)
         desktop = repo / "apps/desktop"
-        windows_format = "nsis" if variant == "bundled" and request.tag is None and request.channel_request is None else "msix"
+        windows_update = os.environ.get("HERMES_WINDOWS_UPDATE", "").strip().lower()
+        if windows_update not in ("", "electron-updater"):
+            raise ValueError(f"unsupported HERMES_WINDOWS_UPDATE: {windows_update}")
+        if sys.platform != "win32":
+            windows_format = "msix"
+        elif windows_update == "electron-updater":
+            # electron-updater swaps an NSIS package itself; an MSIX install
+            # is owned by the OS App Installer descriptor instead.
+            if variant != "bundled":
+                raise ValueError("electron-updater packaging requires the bundled variant")
+            windows_format = "nsis"
+        else:
+            windows_format = "nsis" if variant == "bundled" and request.tag is None and request.channel_request is None else "msix"
+        # The stamp writer and electron-builder both read this, so the declared
+        # update owner can never disagree with the package format produced.
+        if sys.platform == "win32":
+            env["HERMES_WINDOWS_FORMAT"] = windows_format
         targets = {"win32": ["--win", windows_format], "darwin": ["--mac", "dmg", "zip"], "linux": ["--linux", "AppImage"]}[sys.platform]
         package_args = ["--prepared", str(prepared.packager), "--native-deps", str(prepared.native),
                         *targets, f"-c.extraMetadata.version={request.version}"]

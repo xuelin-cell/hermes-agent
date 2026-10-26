@@ -10,6 +10,12 @@ const IDS = { dingtalk: 'DINGTALK_CLIENT_ID', feishu: 'FEISHU_APP_ID', wecom: 'W
 const SECRETS = { dingtalk: 'DINGTALK_CLIENT_SECRET', feishu: 'FEISHU_APP_SECRET', wecom: 'WECOM_SECRET' }
 const BASE = '/api/plugins/desktop-messaging'
 
+/** 保存、解绑等日常操作的确认上限：最多读 30 次，总计约 36 秒。 */
+const CHECK_PATIENCE = { attempts: 30, ms: 36_000 }
+
+/** 启动恢复要等网关进程和各平台依次握手，机器慢时 36 秒不够，放宽到约 90 秒。 */
+const RESTORE_PATIENCE = { attempts: 75, ms: 90_000 }
+
 interface MessagingTask extends Omit<MessagingSetupRequest, 'operation'> {
   operation: NonNullable<MessagingOperationStatus['operation']>
 }
@@ -243,8 +249,14 @@ export class DesktopMessaging {
     if (state.name && state.name !== 'gateway-start') {throw new Error('restore_response_invalid')}
 
     // gateway-start 是原版常驻 run 进程，不能等待它退出才判断启动完成。
-    const ok = await this.checkPlatforms(input, false, state.profiles)
-    this.publish(input, ok ? 'completed' : 'failed', true, ok ? undefined : 'apply_failed')
+    const ok = await this.checkPlatforms(input, false, state.profiles, RESTORE_PATIENCE)
+
+    // 账号退出会中断等待，这不是连接失败：不留下失败记录，也不让调用方写失败日志。
+    if (!ok && this.closed) {
+      return {}
+    }
+
+    this.publish(input, ok ? 'completed' : 'failed', true, ok ? undefined : 'connection_timeout')
 
     return { actionFailed: !ok }
   }
@@ -277,8 +289,9 @@ export class DesktopMessaging {
 
     if (input.operation === 'watch') {
       this.publish(input, 'restarting', true)
-      const ok = await this.watch(profile, 'gateway-restart') && await this.checkPlatforms(input)
-      this.publish(input, ok ? 'completed' : 'failed', true, ok ? undefined : 'apply_failed')
+      const applied = await this.watch(profile, 'gateway-restart')
+      const ok = applied && await this.checkPlatforms(input)
+      this.publish(input, ok ? 'completed' : 'failed', true, ok ? undefined : applied ? 'connection_timeout' : 'apply_failed')
 
       return { actionFailed: !ok }
     }
@@ -314,7 +327,7 @@ export class DesktopMessaging {
     try {
       this.deps.index.remember(this.deps.account, profile, platform, input.operation === 'disconnect' ? null : id)
     } catch {
-      this.publish(input, 'failed', true, 'apply_failed')
+      this.publish(input, 'failed', true, 'index_failed')
 
       return { saved: true, changed: result.changed, actionFailed: true }
     }
@@ -328,6 +341,7 @@ export class DesktopMessaging {
   private async apply(input: MessagingSetupRequest): Promise<boolean> {
     this.publish(input, 'applying', true)
     let ok = false
+    let applied = false
 
     try {
       if (this.closed) {
@@ -336,25 +350,31 @@ export class DesktopMessaging {
 
       const action = await this.deps.request('default', `${BASE}/apply`, 'POST', {})
       this.publish(input, action.name === 'gateway-stop' ? 'stopping' : 'restarting', true)
-      ok = await this.watch('default', action.name) && await this.checkPlatforms(input, action.name === 'gateway-stop')
+      applied = await this.watch('default', action.name)
+      ok = applied && await this.checkPlatforms(input, action.name === 'gateway-stop')
 
       return ok
     } catch {
       return false
     } finally {
-      this.publish(input, ok ? 'completed' : 'failed', true, ok ? undefined : 'apply_failed')
+      this.publish(input, ok ? 'completed' : 'failed', true, ok ? undefined : applied ? 'connection_timeout' : 'apply_failed')
     }
   }
 
   /** 在原 Profile 有界确认可见平台已连接或网关已停止；只读状态，不再次启停。 */
-  private async checkPlatforms(input: MessagingTask, stopped = false, profiles = [input.profile || 'default']): Promise<boolean> {
+  private async checkPlatforms(
+    input: MessagingTask,
+    stopped = false,
+    profiles = [input.profile || 'default'],
+    patience = CHECK_PATIENCE
+  ): Promise<boolean> {
     this.publish(input, 'checking', true)
-    const deadline = Date.now() + 36_000
+    const deadline = Date.now() + patience.ms
 
-    for (let attempt = 0; attempt < 30 && Date.now() < deadline && !this.closed; attempt++) {
+    for (let attempt = 0; attempt < patience.attempts && Date.now() < deadline && !this.closed; attempt++) {
       try {
         const results = await Promise.allSettled(profiles.map(profile =>
-          this.deps.request(profile, `/api/messaging/platforms?profile=${encodeURIComponent(profile)}`, 'GET')))
+          this.deps.request(profile, `${BASE}/platforms?profile=${encodeURIComponent(profile)}`, 'GET')))
 
         if (results.every(result => {
           if (result.status !== 'fulfilled') {return false}
@@ -368,8 +388,8 @@ export class DesktopMessaging {
           return rows.length && targetReady && (stopped
             ? rows.every(row => row && row.gateway_running === false)
             : rows.some(row => row?.gateway_running === true) && rows
-              .filter(row => row && ['weixin', 'uniagentgate', ...Object.keys(IDS)].includes(row.id) && row.enabled && row.configured)
-              .every(row => row.gateway_running === true && row.state === 'connected'))
+              .filter(row => row && ['weixin', 'uniagentgate', ...Object.keys(IDS)].includes(row.id) && row.enabled)
+              .every(row => row.configured && row.gateway_running === true && row.state === 'connected'))
         })) {
           return true
         }
@@ -377,7 +397,7 @@ export class DesktopMessaging {
         // 读取失败不当作就绪；仍受总期限和次数上限约束。
       }
 
-      if (attempt < 29 && !this.closed && Date.now() < deadline) {
+      if (attempt < patience.attempts - 1 && !this.closed && Date.now() < deadline) {
         await (this.deps.sleep ?? (ms => new Promise(resolve => setTimeout(resolve, ms))))(1200)
       }
     }

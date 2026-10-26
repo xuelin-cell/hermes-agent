@@ -1,3 +1,4 @@
+import { $workspaceSessionCategories, sessionWorkspaceCategory } from '@/store/workspace-sessions'
 import { KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { useStore } from '@nanostores/react'
@@ -443,6 +444,7 @@ export function ChatSidebar({
 
   const workspaceMode = useStore($selectedWorkspaceMode)
   const interfaceMode = useStore($interfaceMode)
+  const workspaceCategories = useStore($workspaceSessionCategories)
   const showsAdvancedChrome = useStore($showsAdvancedChrome)
   const developerMode = useStore($developerMode)
 
@@ -624,11 +626,17 @@ export function ChatSidebar({
   // Archived rows are excluded from the sessions query, so Archived is a view of
   // its own set rather than a filter over this one — a flat list of archived
   // rows, no project tree, no date or status dividers.
+  const matchesWorkspace = useCallback(
+    (session: SessionInfo) =>
+      workspaceMode === null || sessionWorkspaceCategory(session, activeConnectionId || undefined) === workspaceMode,
+    [workspaceMode, interfaceMode, activeConnectionId, workspaceCategories]
+  )
+
   const scopedSessions = useMemo(() => {
     const pool = showArchived ? archivedSessions : sessions
 
-    return filterSessionsByProfileScope(pool, profileScope)
-  }, [sessions, archivedSessions, showArchived, profileScope])
+    return filterSessionsByProfileScope(pool, profileScope).filter(matchesWorkspace)
+  }, [sessions, archivedSessions, showArchived, profileScope, matchesWorkspace])
 
   // One predicate for the status/project filters, so the flat list and the
   // project lanes narrow by the same rule. A project lane holds rows the loaded
@@ -637,6 +645,7 @@ export function ChatSidebar({
   // (same rule as the overview overlay), so filtering to Home keeps Home's rows.
   const sessionMatchesFilters = useCallback(
     (session: SessionInfo) => {
+      if (!matchesWorkspace(session)) return false
       if (statusFilter.length && !statusFilter.includes(sessionStatusBucket(dotStates[session.id]))) {
         return false
       }
@@ -669,7 +678,8 @@ export function ChatSidebar({
       pullRequests,
       projects,
       projectOwners,
-      dotStates
+      dotStates,
+      matchesWorkspace
     ]
   )
 
@@ -694,13 +704,13 @@ export function ChatSidebar({
   )
 
   const visibleCronSessions = useMemo(
-    () => filterSessionsByProfileScope(cronSessions, profileScope),
-    [cronSessions, profileScope]
+    () => filterSessionsByProfileScope(cronSessions, profileScope).filter(matchesWorkspace),
+    [cronSessions, profileScope, matchesWorkspace]
   )
 
   const visibleMessagingSessions = useMemo(
-    () => filterSessionsByProfileScope(messagingSessions, profileScope),
-    [messagingSessions, profileScope]
+    () => filterSessionsByProfileScope(messagingSessions, profileScope).filter(matchesWorkspace),
+    [messagingSessions, profileScope, matchesWorkspace]
   )
 
   // Index sessions by every id a pin might be stored under — recents, cron,
@@ -760,8 +770,10 @@ export function ChatSidebar({
   // views show pins in a separate section. All views share the same filters.
   const isHiddenFromProjects = useCallback(
     (session: SessionInfo) =>
-      (workspaceMode !== 'codex' && isPinnedSession(session)) || (filtersNarrow && !sessionMatchesFilters(session)),
-    [workspaceMode, isPinnedSession, filtersNarrow, sessionMatchesFilters]
+      !matchesWorkspace(session) ||
+      (workspaceMode !== 'codex' && isPinnedSession(session)) ||
+      (filtersNarrow && !sessionMatchesFilters(session)),
+    [workspaceMode, isPinnedSession, filtersNarrow, sessionMatchesFilters, matchesWorkspace]
   )
 
   // Full-text search across *all* sessions (not just the loaded page) so 699
@@ -801,8 +813,11 @@ export function ChatSidebar({
   }, [trimmedQuery])
 
   const searchResults = useMemo(
-    () => mergeSearchResults(sortedSessions, trimmedQuery, serverMatches, sessionByAnyId, searchPending),
-    [sortedSessions, trimmedQuery, serverMatches, sessionByAnyId, searchPending]
+    () =>
+      mergeSearchResults(sortedSessions, trimmedQuery, serverMatches, sessionByAnyId, searchPending).filter(
+        matchesWorkspace
+      ),
+    [sortedSessions, trimmedQuery, serverMatches, sessionByAnyId, searchPending, matchesWorkspace]
   )
 
   const unpinnedAgentSessions = useMemo(
@@ -1058,7 +1073,8 @@ export function ChatSidebar({
             },
             isHiddenFromProjects
           )
-        ),
+        )
+        .filter(project => !project.isAuto || project.isNoProject || project.sessionCount > 0),
       activeProjectId
     )
 

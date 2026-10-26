@@ -7,6 +7,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { McpTestResult } from '@/hermes'
 import type { McpServers } from '@/lib/mcp-servers'
 
+import { DRIVE_MCP_MANAGED, DRIVE_MCP_SERVER } from '../../../../electron/login/drive-mcp-contract'
 import type { McpServersController } from '../mcp/use-mcp-servers'
 
 const { readController, listServers, readStatus } = vi.hoisted(() => ({
@@ -27,6 +28,7 @@ let saves: { next: McpServers; reload: boolean }[]
 let probe: ReturnType<typeof vi.fn<(name: string) => Promise<McpTestResult | null>>>
 let removeServer: ReturnType<typeof vi.fn<(name: string) => Promise<boolean>>>
 let overrides: Partial<McpServersController>
+const scrollIntoView = vi.fn()
 
 /** 受控的原生控制器替身：保存真的改写配置，便于观察页面写了什么。 */
 function useFakeController(): McpServersController {
@@ -71,10 +73,15 @@ function useFakeController(): McpServersController {
 }
 
 beforeEach(() => {
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: scrollIntoView })
+  scrollIntoView.mockReset()
   saved = {
     'UniAI-Toolkit': { url: TOOLKIT_URL, timeout: 600 },
+    'arXiv-mcp': { url: 'https://arxiv.caseyjhand.com/mcp' },
     alpha: { command: 'node', args: ['server.js'], timeout: 90 },
-    beta: { url: 'https://example.invalid/beta', enabled: false }
+    beta: { url: 'https://example.invalid/beta', enabled: false },
+    connector_qcc_mcp: { desktop_connector: 'qcc_mcp', url: 'http://127.0.0.1:54190/mcp' },
+    connector_wo_mail: { desktop_agent_mail: true, url: 'http://127.0.0.1:54887/mcp' }
   }
   saves = []
   overrides = {}
@@ -115,6 +122,9 @@ it('lays out built-in, custom and plugin servers the UniWork way', async () => {
   expect(within(toolkit).queryByRole('button', { name: 'Remove UniAI-Toolkit?' })).toBeNull()
   fireEvent.click(within(toolkit).getByRole('button', { name: /^UniAI-Toolkit/ }))
   expect((within(toolkit).getByLabelText('URL') as HTMLInputElement).readOnly).toBe(true)
+  const arxiv = within(builtIn).getByRole('article', { name: 'arXiv-mcp' })
+  expect(within(arxiv).getByText('Built-in')).toBeTruthy()
+  expect(within(arxiv).getByText('Search and retrieve arXiv papers for research and literature review.')).toBeTruthy()
 
   const custom = screen.getByRole('region', { name: 'Custom MCP Servers' })
   const alpha = within(custom).getByRole('article', { name: 'alpha' })
@@ -122,6 +132,8 @@ it('lays out built-in, custom and plugin servers the UniWork way', async () => {
   expect(within(alpha).getByText('node server.js')).toBeTruthy()
   expect(within(alpha).getByText('2 tools available')).toBeTruthy()
   expect(within(custom).getByRole('article', { name: 'beta' })).toBeTruthy()
+  expect(within(custom).queryByRole('article', { name: 'connector_qcc_mcp' })).toBeNull()
+  expect(within(custom).queryByRole('article', { name: 'connector_wo_mail' })).toBeNull()
 
   const plugin = await screen.findByRole('article', { name: 'helper__docs' })
   expect(within(plugin).queryByRole('switch')).toBeNull()
@@ -163,7 +175,14 @@ it('turns an edited server off at once, then saves the form without losing hidde
   expect(saves.at(-1)?.reload).toBe(false)
 
   fireEvent.change(within(alpha).getByLabelText('Name'), { target: { value: 'renamed' } })
-  await waitFor(() => expect(Object.keys(saved)).toEqual(['UniAI-Toolkit', 'renamed', 'beta']))
+  await waitFor(() => expect(Object.keys(saved)).toEqual([
+    'UniAI-Toolkit',
+    'arXiv-mcp',
+    'renamed',
+    'beta',
+    'connector_qcc_mcp',
+    'connector_wo_mail'
+  ]))
   expect(within(row('renamed')).getByLabelText('Name')).toBeTruthy()
 })
 
@@ -172,7 +191,10 @@ it('adds a blank server that is only written once its name and address are fille
   fireEvent.click(screen.getByRole('button', { name: 'Add MCP Server' }))
   fireEvent.click(screen.getByRole('button', { name: 'HTTP' }))
   const draft = row('Untitled server')
-  fireEvent.change(within(draft).getByLabelText('Name'), { target: { value: 'beta' } })
+  const name = within(draft).getByLabelText('Name')
+  expect(name).toBe(document.activeElement)
+  expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
+  fireEvent.change(name, { target: { value: 'beta' } })
   expect(within(draft).getByText('Another server already uses this name')).toBeTruthy()
   fireEvent.change(within(draft).getByLabelText('Name'), { target: { value: 'gamma' } })
   expect(within(draft).getByText('Enter a URL')).toBeTruthy()
@@ -197,4 +219,18 @@ it('confirms before deleting and reports configuration failures', async () => {
   expect(screen.getByText('Could not load MCP configuration')).toBeTruthy()
   expect(screen.queryByRole('button', { name: 'Add MCP Server' })).toBeNull()
   expect(await screen.findByText('Could not load plugin MCP servers')).toBeTruthy()
+})
+
+it('受管网盘从 MCP 页面隐藏，同名自定义 MCP 和其他连接器仍可操作', () => {
+  saved[DRIVE_MCP_SERVER] = { url: 'http://127.0.0.1:12345/mcp', uniwork_managed: DRIVE_MCP_MANAGED }
+  renderTab()
+  expect(screen.queryByRole('article', { name: DRIVE_MCP_SERVER })).toBeNull()
+  expect(saved[DRIVE_MCP_SERVER].uniwork_managed).toBe(DRIVE_MCP_MANAGED)
+  expect(within(row('alpha')).getByRole('switch')).toBeTruthy()
+  cleanup()
+  saved[DRIVE_MCP_SERVER] = { url: 'https://custom.invalid/mcp' }
+  renderTab()
+  expect(within(row(DRIVE_MCP_SERVER)).getByRole('switch')).toBeTruthy()
+  expect(saves).toEqual([])
+  expect(removeServer).not.toHaveBeenCalled()
 })

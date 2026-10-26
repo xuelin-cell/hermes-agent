@@ -12,13 +12,14 @@ import type { HermesGateway, ProfileScope } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { cn } from '@/lib/utils'
 
+import { isManagedDriveServer } from '../../../../electron/login/drive-mcp-contract'
 import { pluginServerRows } from '../connectors/data/join'
 import { PLUGIN_SERVERS_STALE_TIME, pluginServersQueryKey } from '../connectors/data/keys'
 import { listMcpServers, mcpServerStatus } from '../connectors/data/rpc'
 import { useMcpServers } from '../mcp/use-mcp-servers'
 
 import type { FormTransport } from './server-form-model'
-import { isBuiltInServer } from './server-form-model'
+import { isBuiltInServer, isDesktopConnectorServer } from './server-form-model'
 import { McpServerRow, PluginServerRow } from './server-row'
 import { useServerEdits } from './use-server-edits'
 
@@ -51,9 +52,9 @@ export function McpConnectorsTab({ gateway, profile, scopeLabel }: McpConnectors
     staleTime: PLUGIN_SERVERS_STALE_TIME
   })
 
-  const names = Object.keys(mcp.servers)
+  const names = Object.keys(mcp.servers).filter(name => !isManagedDriveServer(name, mcp.servers[name]))
   const builtIn = names.filter(isBuiltInServer)
-  const custom = names.filter(name => !isBuiltInServer(name))
+  const custom = names.filter(name => !isBuiltInServer(name) && !isDesktopConnectorServer(mcp.servers[name]))
   const profileName = scopeLabel ?? (typeof profile === 'object' ? profile?.profile : profile) ?? 'default'
   const ready = !mcp.configLoading && !mcp.configFailed
 
@@ -62,7 +63,7 @@ export function McpConnectorsTab({ gateway, profile, scopeLabel }: McpConnectors
     const params = new URLSearchParams(location.search)
     const target = params.get('server') ?? params.get('connector')
 
-    if (!target || !(target in mcp.servers)) {
+    if (!target || !(target in mcp.servers) || isManagedDriveServer(target, mcp.servers[target])) {
       return
     }
 
@@ -111,7 +112,9 @@ export function McpConnectorsTab({ gateway, profile, scopeLabel }: McpConnectors
   }
 
   return (
-    <div className={cn('flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto py-4', PAGE_INSET_X)}>
+    <div
+      className={cn('flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto overscroll-contain py-4 pb-10', PAGE_INSET_X)}
+    >
       <div className="grid gap-1">
         <p className="text-xs text-(--ui-text-secondary)">{copy.hint}</p>
         <p className="text-xs text-(--ui-text-tertiary)">

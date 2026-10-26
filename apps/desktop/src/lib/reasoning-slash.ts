@@ -51,3 +51,14 @@ export function applyReasoningSlashResult(value: unknown): void {
     setShowReasoningFromConfig(true)
   }
 }
+
+// desktop-mt: 思考深度一律用服务器默认，/reasoning 只保留这几个显示用的词。
+const DISPLAY_WORDS = new Set(['show', 'hide', 'full', 'clamp'])
+
+/** 这次 /reasoning 是否想改思考深度（含显示词以外的内容）；桌面版拒绝这类调整。 */
+export function reasoningSlashSetsEffort(params: ReasoningSlashParams): boolean {
+  return params.value
+    .split(/\s+/)
+    .filter(Boolean)
+    .some(word => !DISPLAY_WORDS.has(word.toLowerCase()))
+}

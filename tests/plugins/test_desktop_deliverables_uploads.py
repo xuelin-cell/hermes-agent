@@ -416,3 +416,25 @@ def test_slow_upload_does_not_hold_up_other_tools(uploads, monkeypatch):
     assert results == [
         {"action": "modify", "args": {"image": "app-agent-prod/temp/obj1.png"}}
     ]
+
+
+def test_files_received_on_message_platforms_are_uploaded_but_other_accounts_are_not(uploads, tmp_path):
+    """消息平台收到的图片、文档存在本账号媒体缓存里，自动上传；别的账号的缓存仍拦下。"""
+    home = uploads.home.parent
+    received = {
+        "image_url": home / "cache" / "images" / "img_微信.png",
+        "file_url": home / "cache" / "documents" / "doc_合同.pdf",
+    }
+    for path in received.values():
+        path.parent.mkdir(parents=True)
+        path.write_bytes(b"received")
+    args = {name: str(path) for name, path in received.items()}
+    result = before(uploads, "mcp__UniAI_Toolkit__img2vid_generate", args)
+    assert result["action"] == "modify" and set(result["args"]) == set(received)
+    assert len(uploads.puts) == 2
+    other = tmp_path / "other-account" / "cache" / "images" / "img_别人.png"
+    other.parent.mkdir(parents=True)
+    other.write_bytes(b"other")
+    blocked = before(uploads, "mcp__UniAI_Toolkit__img2vid_generate", {"image_url": str(other)})
+    assert blocked["action"] == "block" and "没有自动上传" in blocked["message"]
+    assert len(uploads.puts) == 2

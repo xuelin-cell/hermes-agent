@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from pathlib import Path
 
 import pytest
@@ -50,7 +51,10 @@ def ilink(monkeypatch):
     monkeypatch.setattr(qr, "POLL_INTERVAL_S", 0)
     monkeypatch.setattr(qr.wx, "_new_session", lambda **_: _FakeSession())
     monkeypatch.setattr(qr.wx, "check_weixin_requirements", lambda: True)
-    monkeypatch.setattr(qr, "_restart", lambda profile: {"restart_started": False, "restart_error": "no supervisor"})
+    async def no_restart():
+        return {"restart_started": False, "restart_error": "no supervisor"}
+
+    monkeypatch.setattr(qr, "_restart", no_restart)
 
     def install(statuses, qrs=None):
         fake = _FakeIlink(statuses, qrs)
@@ -208,3 +212,110 @@ def test_start_reports_unavailable_qr_service(ilink, monkeypatch):
 
     assert caught.value.status_code == 502
     assert qr._logins == {}
+
+
+def test_concurrent_qr_requests_keep_only_latest_home_binding(ilink, monkeypatch):
+    """同一 Home 的别名并发取码，迟到响应不能重新激活旧二维码。"""
+    ilink([{"status": "wait"}] * 1000)
+
+    async def scenario():
+        """让第一个请求晚于第二个请求返回。"""
+        entered, release = asyncio.Event(), asyncio.Event()
+
+        async def fetch(session, bot_type):
+            """固定取码响应乱序，不访问微信。"""
+            if not entered.is_set():
+                entered.set()
+                await release.wait()
+                return "old", "old"
+            return "new", "new"
+
+        monkeypatch.setattr(qr.wx, "_fetch_qr", fetch)
+        first = asyncio.create_task(qr.start_login(None))
+        await entered.wait()
+        second = await qr.start_login("default")
+        release.set()
+        old = await first
+        assert old["state"] == "cancelled"
+        assert second["state"] == "wait"
+        for login in qr._logins.values():
+            qr._cancel(login)
+        await asyncio.gather(*(x.task for x in qr._logins.values() if x.task), return_exceptions=True)
+
+    asyncio.run(scenario())
+
+
+def test_unbind_waits_for_inflight_save_and_remains_unbound(ilink, monkeypatch):
+    """取消协程不能取消写盘线程；解绑必须排在在途写入之后。"""
+    ilink([CONFIRMED])
+    entered, release = threading.Event(), threading.Event()
+    original = qr._apply
+    restarts = []
+
+    def delayed(profile, creds):
+        """暂停真实写盘，稳定复现解绑竞争窗口。"""
+        entered.set()
+        assert release.wait(10)
+        original(profile, creds)
+
+    monkeypatch.setattr(qr, "_apply", delayed)
+    monkeypatch.setattr(qr, "_restart", lambda profile: restarts.append(profile) or {})
+
+    async def scenario():
+        """放行旧线程后核对最终凭据与平台开关。"""
+        started = await qr.start_login(None)
+        login = qr._logins[started["session_id"]]
+        try:
+            assert await asyncio.to_thread(entered.wait, 10)
+            removing = asyncio.create_task(qr.unbind("default"))
+            await asyncio.sleep(0.05)
+            release.set()
+            await removing
+            await asyncio.gather(login.task, return_exceptions=True)
+            assert not load_env().get("WEIXIN_TOKEN")
+            assert load_config()["platforms"]["weixin"]["enabled"] is False
+            assert login.state == "cancelled"
+            assert not restarts
+        finally:
+            release.set()
+
+    asyncio.run(scenario())
+
+
+def test_unbind_invalidates_pending_qr_fetch_without_affecting_other_profile(ilink, monkeypatch):
+    """解绑发生在取码期间，迟到二维码失效，其它 Profile 的二维码仍可用。"""
+    from hermes_cli.profiles import create_profile
+
+    create_profile("other")
+    ilink([{"status": "wait"}] * 1000)
+
+    async def scenario():
+        """以屏障控制取码，不触碰任何真实凭据。"""
+        entered, release = asyncio.Event(), asyncio.Event()
+
+        async def fetch(session, bot_type):
+            """仅第一个取码请求等待解绑。"""
+            if not entered.is_set():
+                entered.set()
+                await release.wait()
+            return "fixture", "fixture"
+
+        async def poll(*args, **kwargs):
+            """保持未扫码，不让零等待夹具耗尽响应而自行结束。"""
+            await asyncio.Event().wait()
+
+        monkeypatch.setattr(qr.wx, "_fetch_qr", fetch)
+        monkeypatch.setattr(qr.wx, "_api_get", poll)
+        pending = asyncio.create_task(qr.start_login(None))
+        await entered.wait()
+        other = await qr.start_login("other")
+        await qr.unbind("default")
+        release.set()
+        assert (await pending)["state"] == "cancelled"
+        assert qr._logins[other["session_id"]].state == "wait"
+        tasks = [login.task for login in qr._logins.values() if login.task]
+        for login in qr._logins.values():
+            qr._cancel(login)
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    asyncio.run(scenario())

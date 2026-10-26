@@ -1,4 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { GraduationCap } from 'lucide-react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, expect, it, vi } from 'vitest'
 
 import { $welcomeCatalog, loadWelcomeCatalog } from '@/app/chat/composer/work-templates/catalog-store'
@@ -20,6 +22,7 @@ const modules = normalizeWelcomeCatalog({
     {
       id: 'duplicate',
       name: '研习',
+      icon: 'graduation-cap',
       sort: 30,
       tags: [
         {
@@ -64,7 +67,12 @@ it('uses fetched module names and routing and switches templates without carryin
   expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual(modules.map(module => module.name))
   expect(screen.getAllByRole('tab')).toHaveLength(4)
   await waitFor(() => expect(screen.getByRole('tab', { name: '第四个模块' }).querySelector('svg')).toBeTruthy())
-  expect(screen.getByRole('tab', { name: '研习' }).querySelector('svg')).toBeNull()
+  await waitFor(() => {
+    const tab = screen.getByRole('tab', { name: '研习' })
+    const expected = tab.ownerDocument.createElement('div')
+    expected.innerHTML = renderToStaticMarkup(<GraduationCap />)
+    expect(tab.querySelector('svg')?.innerHTML).toBe(expected.querySelector('svg')?.innerHTML)
+  })
   fireEvent.click(screen.getByRole('tab', { name: '事务' }))
   await waitFor(() => expect(screen.getByRole('button', { name: '办公分类' }).querySelector('svg')).toBeTruthy())
   const configuredIcon = screen.getByRole('tab', { name: '第四个模块' }).querySelector('svg')!.innerHTML
@@ -75,6 +83,7 @@ it('uses fetched module names and routing and switches templates without carryin
   })
   await waitFor(() => expect(screen.getByRole('button', { name: '办公模板' }).querySelector('svg')).toBeTruthy())
   expect(screen.getByRole('button', { name: '办公模板' }).querySelector('svg')!.innerHTML).not.toBe(configuredIcon)
+  await waitFor(() => expect((screen.getByRole('button', { name: '办公模板' }) as HTMLButtonElement).disabled).toBe(false))
   fireEvent.click(screen.getByRole('button', { name: '办公模板' }))
   expect(replace).toHaveBeenLastCalledWith('办公提示词')
 
@@ -87,6 +96,7 @@ it('uses fetched module names and routing and switches templates without carryin
   await act(async () => {
     fireEvent.click(screen.getByRole('button', { name: '学习分类' }))
   })
+  await waitFor(() => expect((screen.getByRole('button', { name: '学习模板' }) as HTMLButtonElement).disabled).toBe(false))
   fireEvent.click(screen.getByRole('button', { name: '学习模板' }))
   expect(replace).toHaveBeenLastCalledWith('学习提示词')
 

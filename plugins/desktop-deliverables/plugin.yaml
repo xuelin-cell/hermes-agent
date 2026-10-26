@@ -1,6 +1,6 @@
 name: desktop-deliverables
 version: "0.1.0"
-description: "Observe local desktop output files and persist preview cards with the reply."
+description: "Observe local desktop output files and persist preview cards with the reply; leave reasoning depth to the server default."
 hooks:
   - pre_llm_call
   - pre_tool_call

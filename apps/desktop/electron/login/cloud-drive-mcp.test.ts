@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { parse } from 'yaml'
+import { parse, stringify } from 'yaml'
 
 import { CloudDriveClient } from './cloud-drive'
 import { CloudDriveMcp } from './cloud-drive-mcp'
@@ -13,6 +13,7 @@ import { DRIVE_MCP_SERVER } from './drive-mcp-contract'
 
 let root: string
 let mcp: CloudDriveMcp
+let client: CloudDriveClient
 let url: string
 let authorization: string
 let identity: { uid: string; token: string; phone: string; maskedPhone: string; expiresAt: number } | null
@@ -40,7 +41,8 @@ beforeEach(async () => {
             ? Response.json({ ok: true, data: { download_path: '/drive/content?fid=one' } })
             : new Response('hello')
   )
-  mcp = new CloudDriveMcp(new CloudDriveClient(() => identity, request), root, workspace)
+  client = new CloudDriveClient(() => identity, request)
+  mcp = new CloudDriveMcp(client, root, workspace)
   expect(await mcp.prepare('default')).toBe(true)
   const config = parse(await readFile(path.join(root, 'config.yaml'), 'utf8')).mcp_servers[DRIVE_MCP_SERVER]
   url = config.url
@@ -377,3 +379,63 @@ asyncio.run(main())`
   },
   15_000
 )
+
+/** 修改真实 Profile 配置，不模拟 available 或 MCP 调用入口。 */
+async function setDriveEnabled(profile: string, enabled: boolean) {
+  const file = path.join(root, ...(profile === 'default' ? [] : ['profiles', profile]), 'config.yaml')
+  const config = parse(await readFile(file, 'utf8'))
+  config.mcp_servers[DRIVE_MCP_SERVER].enabled = enabled
+  await writeFile(file, stringify(config))
+}
+
+it('关闭后缓存的所有网盘工具立即被拒绝，手动资料库仍可访问，重启准备不覆盖关闭状态', async () => {
+  const cached = (await rpc('tools/list')).result.tools as { name: string }[]
+  expect(cached.length).toBeGreaterThan(0)
+  await setDriveEnabled('default', false)
+  expect((await rpc('tools/list')).result.tools).toEqual([])
+
+  for (const tool of cached) {
+    const result = (await rpc('tools/call', { name: tool.name, arguments: {} })).result
+    expect(result.isError).toBe(true)
+    expect(JSON.parse(result.content[0].text)).toMatchObject({
+      ok: false,
+      code: 'DRIVE_ACCESS_DISABLED',
+      message: expect.stringContaining('设置 → 安全 → 审批')
+    })
+  }
+
+  expect(request).not.toHaveBeenCalled()
+  expect(await mcp.prepare('default')).toBe(false)
+  expect(mcp.available('default')).toBe(false)
+  await client.execute({ route: '/assets?space_id=personal&parent_asset_id=0&page_no=1&page_size=1' })
+  expect(request).toHaveBeenCalled()
+  request.mockClear()
+  await setDriveEnabled('default', true)
+  expect((await rpc('tools/list')).result.tools.map((tool: { name: string }) => tool.name)).toEqual(
+    cached.map(tool => tool.name)
+  )
+  expect((await rpc('tools/call', { name: 'list_files', arguments: {} })).result.isError).not.toBe(true)
+  expect(request).toHaveBeenCalled()
+})
+
+it('A→B→A 交替使用独立凭证与实时权限，不继承或串用另一个 Profile 的开关', async () => {
+  await mkdir(path.join(root, 'profiles', 'work'), { recursive: true })
+  expect(await mcp.prepare('work')).toBe(true)
+
+  const work = parse(await readFile(path.join(root, 'profiles', 'work', 'config.yaml'), 'utf8')).mcp_servers[
+    DRIVE_MCP_SERVER
+  ]
+
+  const defaultAuthorization = authorization
+  expect(work.headers.Authorization).not.toBe(defaultAuthorization)
+  await setDriveEnabled('default', false)
+  expect((await rpc('tools/list')).result.tools).toEqual([])
+  authorization = work.headers.Authorization
+  expect((await rpc('tools/list')).result.tools.length).toBeGreaterThan(0)
+  await setDriveEnabled('work', false)
+  await setDriveEnabled('default', true)
+  expect((await rpc('tools/list')).result.tools).toEqual([])
+  authorization = defaultAuthorization
+  expect((await rpc('tools/list')).result.tools.length).toBeGreaterThan(0)
+  expect(request).not.toHaveBeenCalled()
+})

@@ -454,6 +454,7 @@ export interface Translations {
       showValue: string
       hideValue: string
       uniAiToolkitSummary: string
+      arxivSummary: string
       formErrors: {
         argsQuote: string
         commandRequired: string
@@ -1464,6 +1465,8 @@ export interface Translations {
       disableF12Desc: string
       alwaysExternalLinksTitle: string
       alwaysExternalLinksDesc: string
+      agentLibraryAccessTitle: string
+      agentLibraryAccessDesc: string
       attachmentSizeTitle: string
       attachmentSizeDesc: string
       attachmentSizeUnit: string

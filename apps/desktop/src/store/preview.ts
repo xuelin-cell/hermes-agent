@@ -7,7 +7,9 @@ import { normalize } from '@/lib/text'
 import { $rightRailActiveTabId, type RightRailTabId, selectRightRailTab } from './layout'
 import { clearExplicitPreviewOpen, noteExplicitPreviewOpen } from './preview-explicit'
 import { normalizeProfileKey } from './profile'
-import { canOpenBrowserWindow, openBrowserInNewWindow } from './windows'
+import { canOpenBrowserWindow, isBrowserWindow, openBrowserInNewWindow } from './windows'
+import { $selectedWorkspaceMode } from './workspace-scope'
+import { modeLayout } from './interface-mode'
 
 /**
  * PREVIEW RAIL — one list of tabs, one way in.
@@ -221,7 +223,23 @@ function persistTabs() {
 // Which bucket the atom mirrors. A RENAME moves the view without the scope
 // changing, so this has to follow the rename or the persist subscriber below
 // would resurrect the bucket the rename just deleted.
-let viewKey = 'default'
+let viewKey = workspacePreviewKey('default')
+let profileScope = 'default'
+const WORKSPACE_SELECTION_KEY = 'uniwork.desktop.previewSelectionByWorkspace.v1'
+const activeTabsByScope = new Map<string, RightRailTabId | null>(
+  Object.entries(readJson<Record<string, RightRailTabId | null>>(WORKSPACE_SELECTION_KEY) ?? {})
+)
+activeTabsByScope.set(viewKey, $rightRailActiveTabId.get())
+$rightRailActiveTabId.listen(id => {
+  if (!modeLayout.restoring) {
+    activeTabsByScope.set(viewKey, id)
+    writeKey(WORKSPACE_SELECTION_KEY, JSON.stringify(Object.fromEntries(activeTabsByScope)))
+  }
+})
+
+function workspacePreviewKey(profile: string): string {
+  return $selectedWorkspaceMode.get() === 'codex' ? `${profile}::codex` : profile
+}
 
 export const $previewTabs = atom<PreviewTab[]>([])
 
@@ -256,7 +274,8 @@ adoptingStoredTabs = false
  *  `session-states.ts` whenever the focused session (or its resolved owner)
  *  changes; the previous agent's tabs must not leak into the next one. */
 export function setPreviewScope(scope: string) {
-  const next = normalizeProfileKey(scope) || 'default'
+  profileScope = normalizeProfileKey(scope) || 'default'
+  const next = workspacePreviewKey(profileScope)
 
   if (next === viewKey) {
     return
@@ -278,8 +297,12 @@ function applyPreviewScope(next: string) {
   }
 
   viewKey = next
+  const previous = activeTabsByScope.get(next)
   $previewTabs.set(tabsByProfile[next] ?? [])
+  selectRightRailTab($previewTabs.get().find(tab => tab.id === previous)?.id ?? $previewTabs.get()[0]?.id ?? null)
 }
+
+$selectedWorkspaceMode.listen(() => setPreviewScope(profileScope))
 
 /** Profile 改名或删除时同步显式分享来源，保留文件标签但不留下失效的会话归属。 */
 function updatePreviewShareOrigins(from: string, to: string | null): boolean {
@@ -307,10 +330,11 @@ export function dropPreviewTabsForProfile(profile: string) {
   const key = normalizeProfileKey(profile)
 
   delete tabsByProfile[key]
+  delete tabsByProfile[`${key}::codex`]
   const originChanged = updatePreviewShareOrigins(key, null)
   persistTabs()
 
-  if (key === viewKey || originChanged) {
+  if (key === viewKey || `${key}::codex` === viewKey || originChanged) {
     $previewTabs.set(tabsByProfile[viewKey] ?? [])
   }
 }
@@ -327,6 +351,12 @@ export function migratePreviewTabsForProfile(oldProfile: string, newProfile: str
   }
 
   const originChanged = updatePreviewShareOrigins(from, to)
+  const codeKey = `${from}::codex`
+  if (tabsByProfile[codeKey]) {
+    tabsByProfile[`${to}::codex`] = [...(tabsByProfile[`${to}::codex`] ?? []), ...tabsByProfile[codeKey]]
+    delete tabsByProfile[codeKey]
+  }
+  if (profileScope === from) profileScope = to
   const moved = tabsByProfile[from]
 
   if (moved) {
@@ -337,10 +367,10 @@ export function migratePreviewTabsForProfile(oldProfile: string, newProfile: str
   // The view belongs to the renamed profile; only its NAME changed. Re-point it
   // BEFORE the atom is set, so the persist subscriber writes the new bucket
   // rather than resurrecting the one just deleted.
-  const wasInView = from === viewKey
+  const wasInView = from === viewKey || codeKey === viewKey
 
   if (wasInView) {
-    viewKey = to
+    viewKey = viewKey === codeKey ? `${to}::codex` : to
   }
 
   persistTabs()
@@ -500,6 +530,11 @@ export function adoptPersistedBrowserTab(tabId: string) {
 
     for (const [key, tabs] of buckets) {
       if (tabs.some(tab => tab.id === tabId)) {
+        // A pop-out closing must not pull another workspace's file into the
+        // main window. A dedicated browser window still adopts its own owner.
+        if (!isBrowserWindow() && key.endsWith('::codex') !== ($selectedWorkspaceMode.get() === 'codex')) {
+          return
+        }
         applyPreviewScope(key || 'default')
 
         return

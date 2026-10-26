@@ -1,8 +1,8 @@
 import path from 'node:path'
 
-import type { AgentMailCloudStateClient } from '../agent-mail/cloud-state'
 import type { AgentMailAction, AgentMailRequest, AgentMailResult, AgentMailStatus } from '../agent-mail/contract'
 import { fetchWoMailExclusiveCode } from '../agent-mail/exclusive-code'
+import type { AgentMailLocalStateStore } from '../agent-mail/local-state'
 import { readAgentMailQuotaStatus } from '../agent-mail/quota-status'
 import type { LoginIdentity } from '../login/session'
 
@@ -23,8 +23,9 @@ interface ConnectorManagerOptions extends Omit<ConnectorRuntimeOptions, 'directo
     priority?: 'foreground' | 'background'
   }) => Promise<any>
   openExternal: (url: string) => Promise<void>
+  log: (message: string) => void
   identity: () => LoginIdentity | null
-  cloudState: Pick<AgentMailCloudStateClient, 'read' | 'write'>
+  mailState: Pick<AgentMailLocalStateStore, 'get' | 'save'>
   exclusiveCode?: (phone: string) => Promise<string>
 }
 
@@ -63,6 +64,10 @@ export class ConnectorManager {
   private qr = new WecomQrSessions()
 
   constructor(private readonly options: ConnectorManagerOptions) {}
+
+  private logAgentMail(message: string): void {
+    this.options.log(`[agent-mail] ${message}`)
+  }
 
   private isCurrentIdentity(expected: LoginIdentity): boolean {
     const current = this.options.identity()
@@ -109,35 +114,26 @@ export class ConnectorManager {
     const phone = identity?.phone?.trim() ?? ''
 
     if (!identity || !/^1\d{10}$/.test(phone)) {
+      this.logAgentMail('startup sync skipped because no valid phone identity is available')
       return
     }
 
+    this.logAgentMail(`startup sync started profile=${home === this.options.home ? 'default' : 'named-profile'}`)
     let connection = await runtime.connection('wo_mail')
     const expectedEmail = `${phone}@wo.cn`
 
     if (connection && connection.displayName.trim().toLowerCase() !== expectedEmail.toLowerCase()) {
+      this.logAgentMail('startup sync removed a connection owned by a different phone')
       await runtime.request('/api/connections/wo_mail', 'DELETE')
       connection = null
       await prepareAgentMailConfig(home, true, () => runtime.config('wo_mail'), false)
     }
 
-    const cloud = await this.options.cloudState.read(identity)
+    const saved = this.options.mailState.get(identity)
+    this.logAgentMail(`local state ${saved ? `found enabled=${saved.enabled} authorization-code=${Boolean(saved.authorizationCode)}` : 'not found'}`)
 
-    if (!this.isCurrentIdentity(identity)) {
-      return
-    }
-
-    if (cloud.status !== 'available') {
-      if (connection) {
-        await prepareAgentMailConfig(home, true, () => runtime.config('wo_mail'))
-      }
-
-      return
-    }
-
-    const shouldEnable = !cloud.exists || cloud.state?.enabled === true
-
-    if (!shouldEnable) {
+    if (saved && !saved.enabled) {
+      this.logAgentMail('startup sync kept the mailbox disabled by local preference')
       if (connection) {
         await prepareAgentMailConfig(home, true, () => runtime.config('wo_mail'), false)
       }
@@ -146,7 +142,12 @@ export class ConnectorManager {
     }
 
     if (!connection) {
-      const authorizationCode = await (this.options.exclusiveCode ?? fetchWoMailExclusiveCode)(phone)
+      const authorizationCode = saved?.authorizationCode
+      const code = authorizationCode
+        ? authorizationCode
+        : await this.fetchAgentMailCode(phone)
+
+      this.logAgentMail(`creating local Wo Mail connection authorization-source=${authorizationCode ? 'local-state' : 'Wo-Mail'}`)
 
       if (!this.isCurrentIdentity(identity)) {
         return
@@ -155,25 +156,29 @@ export class ConnectorManager {
       await runtime.request('/api/connections/wo_mail', 'PUT', {
         authType: 'custom_credential',
         connectionName: 'default',
-        values: { authorizationCode, email: expectedEmail }
+        values: { authorizationCode: code, email: expectedEmail }
       })
       connection = await runtime.connection('wo_mail')
 
       if (!connection) {
         throw new Error('沃邮箱连接没有保存成功。')
       }
+
+      this.options.mailState.save(identity, { authorizationCode: code, email: expectedEmail, enabled: true })
+      this.logAgentMail('local Wo Mail connection saved and authorization code persisted')
     }
 
     await prepareAgentMailConfig(home, true, () => runtime.config('wo_mail'), true)
+    this.logAgentMail('startup sync completed with mailbox enabled')
+  }
 
-    if (!cloud.exists) {
-      await this.options.cloudState.write(identity, {
-        enabled: true,
-        email: expectedEmail,
-        phone,
-        updatedAt: new Date().toISOString()
-      })
+  private fetchAgentMailCode(phone: string): Promise<string> {
+    if (this.options.exclusiveCode) {
+      this.logAgentMail('requesting a new exclusive code through the configured test/provider callback')
+      return this.options.exclusiveCode(phone)
     }
+
+    return fetchWoMailExclusiveCode(phone, fetch, message => this.options.log(message))
   }
 
   private authorizationKey(profile: string, id: string): string {
@@ -295,6 +300,7 @@ export class ConnectorManager {
     const runtime = this.runtime(input.profile)
     const identity = this.options.identity()
     const phone = identity?.phone?.trim() ?? ''
+    this.logAgentMail(`IPC operation started operation=${input.operation}${input.action ? ` action=${input.action}` : ''}`)
 
     const api = (method: string, route: string, body?: unknown) =>
       this.options.api({ connectionId: 'local', profile: input.profile, method, path: route, body })
@@ -320,6 +326,7 @@ export class ConnectorManager {
     })
 
     if (input.operation === 'status') {
+      this.logAgentMail(`IPC status completed enabled=${status().enabled}`)
       return { status: status() }
     }
 
@@ -345,6 +352,7 @@ export class ConnectorManager {
         throw new Error('沃邮箱返回了无效结果。')
       }
 
+      this.logAgentMail(`IPC mailbox action completed action=${input.action}`)
       return { data: result.data, status: status() }
     }
 
@@ -358,16 +366,13 @@ export class ConnectorManager {
       }
 
       if (identity && /^1\d{10}$/.test(phone)) {
-        const synced = await this.options.cloudState.write(identity, {
-          enabled: false,
-          email: connection?.displayName ?? expectedEmail,
-          phone,
-          updatedAt: new Date().toISOString()
+        const saved = this.options.mailState.get(identity)
+        this.options.mailState.save(identity, {
+          ...(saved?.authorizationCode ? { authorizationCode: saved.authorizationCode } : {}),
+          email: connection?.displayName ?? saved?.email ?? expectedEmail,
+          enabled: false
         })
-
-        if (synced.status !== 'available') {
-          throw new Error('邮箱已在本机停用，但账号状态同步失败，请稍后重试。')
-        }
+        this.logAgentMail('IPC disable persisted the local disabled preference')
       }
 
       return { status: { ...status(), enabled: false } }
@@ -380,8 +385,10 @@ export class ConnectorManager {
         throw new Error('请先登录有效的手机号账号。')
       }
 
-      const authorizationCode = await (this.options.exclusiveCode ?? fetchWoMailExclusiveCode)(phone)
+      const saved = this.options.mailState.get(identity)
+      const authorizationCode = saved?.authorizationCode || await this.fetchAgentMailCode(phone)
       const email = `${phone}@wo.cn`
+      this.logAgentMail(`IPC enable is creating a connection authorization-source=${saved?.authorizationCode ? 'local-state' : 'Wo-Mail'}`)
 
       if (!this.isCurrentIdentity(identity)) {
         throw new Error('登录账号已经变更，请重试。')
@@ -393,22 +400,26 @@ export class ConnectorManager {
         values: { authorizationCode, email }
       })
       activeConnection = await runtime.connection('wo_mail')
+
+      if (!activeConnection) {
+        throw new Error('沃邮箱连接没有保存成功。')
+      }
+
+      this.options.mailState.save(identity, { authorizationCode, email, enabled: true })
+      this.logAgentMail('IPC enable persisted the local authorization code')
     }
 
     const next = { ...(await runtime.config('wo_mail')), desktop_agent_mail: true, enabled: true }
     await api('PUT', '/api/config', { config: { mcp_servers: { connector_wo_mail: next } } })
 
-    if (identity) {
-      const synced = await this.options.cloudState.write(identity, {
-        enabled: true,
+    if (identity && /^1\d{10}$/.test(phone)) {
+      const saved = this.options.mailState.get(identity)
+      this.options.mailState.save(identity, {
+        ...(saved?.authorizationCode ? { authorizationCode: saved.authorizationCode } : {}),
         email: activeConnection?.displayName ?? expectedEmail,
-        phone,
-        updatedAt: new Date().toISOString()
+        enabled: true
       })
-
-      if (synced.status !== 'available') {
-        throw new Error('邮箱已在本机开通，但账号状态同步失败，请稍后重试。')
-      }
+      this.logAgentMail('IPC enable persisted the local enabled preference')
     }
 
     return {

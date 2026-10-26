@@ -1,0 +1,403 @@
+"""消息展示边界：真实通知入口与平台方法，不连接外部平台。"""
+
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+import pytest
+
+from gateway.config import GatewayConfig, Platform, PlatformConfig
+from gateway.platforms.base import SendResult
+from gateway.run_notifications import GatewayNotificationsMixin
+from gateway.run_turn import GatewayTurnMixin
+from plugins.platforms.dingtalk.adapter import DingTalkAdapter
+from plugins.platforms.feishu.adapter import FeishuAdapter
+from plugins.platforms.wecom.adapter import WeComAdapter
+from plugins.platforms.weixin import DesktopWeixinAdapter
+
+ADAPTERS = [
+    (Platform.DINGTALK, DingTalkAdapter),
+    (Platform.FEISHU, FeishuAdapter),
+    (Platform.WECOM, WeComAdapter),
+]
+ALL_ADAPTERS = ADAPTERS + [(Platform.WEIXIN, DesktopWeixinAdapter)]
+
+
+def home_notice(platform):
+    """构造当前核心发送的完整教程，避免宽泛关键词过滤。"""
+    return (
+        f"📬 No home channel is set for {platform.value.title()}. "
+        "A home channel is where Hermes delivers cron job results and cross-platform "
+        "messages.\n\nType /sethome to make this chat your home channel, or ignore to skip."
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform,adapter_type", ADAPTERS)
+async def test_home_notice_uses_dedicated_interface_without_filtering_normal_replies(
+    platform, adapter_type
+):
+    """经真实网关通知入口隐藏教程；普通回复即使逐字引用教程也照常发送。"""
+    adapter = adapter_type(
+        PlatformConfig(extra={"desktop_quiet": True, "notice_delivery": "private"})
+    )
+    adapter.send = AsyncMock(return_value=SendResult(success=True))
+    source = SimpleNamespace(
+        platform=platform, chat_id="fixture-chat", user_id="fixture-user"
+    )
+    metadata = {"thread_id": "fixture-thread"}
+    runner = SimpleNamespace(
+        _delivery_adapter_for=lambda _: adapter,
+        _thread_metadata_for_source=lambda _: metadata,
+        config=GatewayConfig(),
+        async_session_store=SimpleNamespace(
+            has_any_sessions=AsyncMock(return_value=True)
+        ),
+    )
+    runner._deliver_platform_notice = (
+        GatewayNotificationsMixin._deliver_platform_notice.__get__(runner)
+    )
+    tutorial = home_notice(platform)
+    await GatewayTurnMixin._hmwa_first_contact_notes(runner, source, [], [])
+    adapter.send.assert_not_awaited()
+    await adapter.send(source.chat_id, tutorial, metadata=metadata)
+    adapter.send.assert_awaited_once_with(source.chat_id, tutorial, metadata=metadata)
+    adapter.send.reset_mock()
+    failure = "⚠️ Something went wrong. Use /retry."
+    await GatewayNotificationsMixin._deliver_platform_notice(runner, source, failure)
+    assert adapter.send.await_args.kwargs["content"] == failure
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform,adapter_type", ADAPTERS)
+async def test_non_desktop_notice_and_near_match_are_not_hidden(platform, adapter_type):
+    """未启用桌面策略的适配器与非目标通知继续沿用原发送方法。"""
+    adapter = adapter_type(PlatformConfig())
+    adapter.send = AsyncMock(return_value=SendResult(success=True))
+    await adapter.send_private_notice("chat", "user", home_notice(platform))
+    adapter.send.assert_awaited_once()
+    adapter.send.reset_mock()
+    adapter.config.extra["desktop_quiet"] = True
+    await adapter.send_private_notice(
+        "chat", "user", "用户引用：" + home_notice(platform)
+    )
+    assert adapter.send.await_args.kwargs["content"].startswith("用户引用：")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform,adapter_type", ALL_ADAPTERS)
+async def test_chinese_clarify_preserves_real_multiselect_and_typed_resolution(
+    platform, adapter_type
+):
+    """真实澄清注册、中文多选说明及文本作答不改变问题内容和原版解析。"""
+    from tools import clarify_gateway as clarify
+
+    adapter = adapter_type(PlatformConfig(extra={"desktop_quiet": True}))
+    adapter.send = AsyncMock(return_value=SendResult(success=True))
+    entry = clarify.register(
+        "fixture-clarify",
+        f"fixture-{platform.value}",
+        "Choose English code",
+        ["A", "B"],
+        True,
+    )
+    try:
+        await adapter.send_clarify(
+            "chat", entry.question, entry.choices, entry.clarify_id, entry.session_key
+        )
+        text = adapter.send.await_args.kwargs["content"]
+        assert "可多选" in text and "Choose English code" in text and "1. A" in text
+        clarify.resolve_text_response_for_session(entry.session_key, "1, 2")
+        assert entry.event.is_set() and entry.response == '["A", "B"]'
+    finally:
+        clarify.wait_for_response(entry.clarify_id, 0.01)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform,adapter_type", ALL_ADAPTERS)
+@pytest.mark.parametrize("choice", ["once", "always", "cancel"])
+async def test_chinese_reset_confirm_uses_registered_core_actions(
+    platform, adapter_type, choice
+):
+    """不自动批准，中文说明仍驱动原登记的动作；重复回答不会再次执行。"""
+    from tools import slash_confirm
+
+    adapter = adapter_type(PlatformConfig(extra={"desktop_quiet": True}))
+    adapter.send = AsyncMock(return_value=SendResult(success=True))
+    handler = AsyncMock(return_value="original-result")
+    key = f"fixture-{platform.value}"
+    slash_confirm.register(key, "fixture-confirm", "new", handler)
+    result = await adapter.send_slash_confirm(
+        "chat", "Confirm", "original prompt", key, "fixture-confirm"
+    )
+    assert result.success and handler.await_count == 0
+    text = adapter.send.await_args.kwargs["content"]
+    assert "请确认 /new" in text and all(
+        command in text for command in ["/approve", "/always", "/cancel"]
+    )
+    assert (
+        await slash_confirm.resolve(key, "fixture-confirm", choice) == "original-result"
+    )
+    handler.assert_awaited_once_with(choice)
+    assert await slash_confirm.resolve(key, "fixture-confirm", choice) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform,adapter_type", ALL_ADAPTERS)
+async def test_approval_choices_preserve_safety_and_native_feishu_card(
+    platform, adapter_type
+):
+    """受限选项不增加权限；原生命令、按钮动作和飞书审批登记沿用原版。"""
+    adapter = adapter_type(PlatformConfig(extra={"desktop_quiet": True}))
+    adapter.send = AsyncMock(return_value=SendResult(success=True))
+    if platform == Platform.FEISHU:
+        adapter._client = object()
+        adapter._send_interactive_card = AsyncMock(
+            return_value=SendResult(success=True)
+        )
+    assert adapter._exec_approval_actions(
+        allow_permanent=True, allow_session=False, smart_denied=False
+    ) == [("仅本次允许", "once", "primary"), ("拒绝", "deny", "danger")]
+    assert [
+        a[1]
+        for a in adapter._exec_approval_actions(
+            allow_permanent=True, allow_session=True, smart_denied=True
+        )
+    ] == ["once", "deny"]
+    result = await adapter.send_exec_approval(
+        "chat", "echo 'English 用户引用'", "session", allow_session=False
+    )
+    assert result.success
+    if platform == Platform.FEISHU:
+        card = adapter._send_interactive_card.await_args.args[1]
+        assert (
+            "需要你确认" in str(card)
+            and "approve_once" in str(card)
+            and "approve_always" not in str(card)
+        )
+        assert (
+            adapter._send_interactive_card.await_args.kwargs["state_map"]
+            is adapter._approval_state
+        )
+    else:
+        text = adapter.send.await_args.kwargs["content"]
+        assert "echo 'English 用户引用'" in text and "秒内未确认则不会执行" in text
+        assert "/approve always" not in text and "/deny" in text
+
+
+def test_weixin_real_discovery_and_reload_preserve_native_protocol_and_dependencies():
+    """真实发现、延迟注册和重载微信；协议、媒体、typing 与依赖探测不替换。"""
+    from gateway.platform_registry import platform_registry
+    from gateway.platforms.weixin import WeixinAdapter, check_weixin_requirements
+    from hermes_cli.plugins import PluginManager
+
+    manager = PluginManager()
+    for force in [False, True]:
+        manager.discover_and_load(force=force)
+        entry = platform_registry.get("weixin")
+        assert entry and entry.check_fn is check_weixin_requirements
+        adapter = platform_registry.create_adapter(
+            "weixin", PlatformConfig(token="fixture", extra={"account_id": "fixture"})
+        )
+        assert isinstance(adapter, DesktopWeixinAdapter)
+        for method in [
+            "connect",
+            "disconnect",
+            "send",
+            "send_image_file",
+            "send_document",
+            "send_typing",
+            "stop_typing",
+        ]:
+            assert getattr(type(adapter), method) is getattr(WeixinAdapter, method)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform,adapter_type", ALL_ADAPTERS)
+@pytest.mark.parametrize("mode", ["steer", "interrupt", "queue"])
+async def test_busy_ack_off_still_processes_input_without_replaying_successful_steer(
+    platform, adapter_type, mode, monkeypatch
+):
+    """走真实忙碌入口，静默只影响回执；追加、打断与队列输入仍按原规则处理。"""
+    from unittest.mock import MagicMock
+    from gateway.platforms.base import SessionSource, build_session_key
+    from gateway.platforms.event import MessageEvent, MessageType
+    from tests.gateway.test_busy_session_ack import _make_adapter, _make_runner
+
+    runner, _ = _make_runner()
+    runner._busy_input_mode = mode
+    source = SessionSource(
+        platform=platform,
+        chat_id="fixture-chat",
+        chat_type="dm",
+        user_id="fixture-user",
+    )
+    event = MessageEvent(
+        text="补充要求 English", source=source, message_type=MessageType.TEXT
+    )
+    key = build_session_key(source)
+    adapter = _make_adapter(platform.value)
+    runner.adapters[platform] = adapter
+    agent = MagicMock()
+    agent.steer.return_value = True
+    runner._running_agents[key] = agent
+    monkeypatch.setenv("HERMES_GATEWAY_BUSY_ACK_ENABLED", "false")
+    assert await runner._handle_active_session_busy_message(event, key)
+    adapter._send_with_retry.assert_not_awaited()
+    if mode == "steer":
+        assert agent.steer.call_args.args[0].endswith(event.text)
+        assert key not in adapter._pending_messages
+    else:
+        assert adapter._pending_messages[key].text == event.text
+        if mode == "interrupt":
+            agent.interrupt.assert_called_once_with(event.text)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform,adapter_type", ALL_ADAPTERS)
+async def test_multiselect_hint_uses_this_clarify_not_older_pending(platform, adapter_type):
+    """同会话还有更早未答的单选题时，新多选题仍提示可多选。"""
+    from tools import clarify_gateway as clarify
+
+    adapter = adapter_type(PlatformConfig(extra={"desktop_quiet": True}))
+    adapter.send = AsyncMock(return_value=SendResult(success=True))
+    key = f"fixture-older-{platform.value}"
+    older = clarify.register("fixture-older", key, "Old", ["X", "Y"], False)
+    newer = clarify.register("fixture-newer", key, "New", ["A", "B"], True)
+    try:
+        await adapter.send_clarify("chat", "New", ["A", "B"], newer.clarify_id, key)
+        assert "可多选" in adapter.send.await_args.kwargs["content"]
+    finally:
+        clarify.wait_for_response(older.clarify_id, 0.01)
+        clarify.wait_for_response(newer.clarify_id, 0.01)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("quiet", [True, False])
+@pytest.mark.parametrize(
+    "platform,adapter_type", [row for row in ALL_ADAPTERS if row[0] != Platform.FEISHU]
+)
+async def test_text_approval_marks_control_lane_and_matches_native_fallback(
+    platform, adapter_type, quiet
+):
+    """文字审批与原版回退一致：带控制通道和中途标记，非安静模式内容与原版完全相同。"""
+    from gateway.run import _format_exec_approval_fallback
+
+    extra = {"desktop_quiet": True} if quiet else {}
+    adapter = adapter_type(PlatformConfig(extra=extra))
+    adapter.send = AsyncMock(return_value=SendResult(success=True, message_id="m1"))
+    result = await adapter.send_exec_approval(
+        "chat", "rm -rf build", "session", metadata={"thread_id": "t"}, allow_permanent=False
+    )
+    assert result.success and result.message_id is None
+    kwargs = adapter.send.await_args.kwargs
+    assert kwargs["metadata"]["is_approval_prompt"] is True
+    assert kwargs["metadata"]["_interim_send"] is True
+    assert kwargs["metadata"]["thread_id"] == "t"
+    if quiet:
+        assert "需要你确认才能执行命令" in kwargs["content"]
+    else:
+        assert kwargs["content"] == _format_exec_approval_fallback(
+            "rm -rf build", "dangerous command", "/", allow_permanent=False, allow_session=True
+        )
+
+
+@pytest.mark.asyncio
+async def test_feishu_quiet_card_has_single_heading_and_bold_reason():
+    """飞书卡片标题已含提示，正文不再重复，原因标签保持飞书粗体。"""
+    adapter = FeishuAdapter(PlatformConfig(extra={"desktop_quiet": True}))
+    adapter._client = object()
+    adapter._send_interactive_card = AsyncMock(return_value=SendResult(success=True))
+    await adapter.send_exec_approval("chat", "echo hi", "session")
+    card = str(adapter._send_interactive_card.await_args.args[1])
+    assert card.count("需要你确认才能执行命令") == 1
+    assert "**需要确认的原因：**" in card
+
+
+def test_weixin_registration_does_not_enable_unconfigured_profile(monkeypatch):
+    """未扫码的 Profile 不会被插件注册自动启用微信；凭据齐全才算已配置。"""
+    from gateway.config_env import _enable_plugin_platform
+    from gateway.platform_registry import platform_registry
+    from hermes_cli.plugins import PluginManager
+    from plugins.platforms.weixin.adapter import _is_connected
+
+    for key in ["WEIXIN_TOKEN", "WEIXIN_ACCOUNT_ID"]:
+        monkeypatch.delenv(key, raising=False)
+    PluginManager().discover_and_load(force=True)
+    entry = platform_registry.get("weixin")
+    assert entry.is_connected is _is_connected
+    config = GatewayConfig()
+    _enable_plugin_platform(config, entry)
+    assert not (config.platforms.get(Platform.WEIXIN) and config.platforms[Platform.WEIXIN].enabled)
+    assert not _is_connected(PlatformConfig(extra={"account_id": "fixture"}))
+    assert _is_connected(PlatformConfig(token="fixture", extra={"account_id": "fixture"}))
+
+
+@pytest.fixture
+def feishu_callback_sdk():
+    """实际加载延迟导入的 SDK 卡片类型，不连接平台。"""
+    from plugins.platforms.feishu.adapter import _load_lark_oapi
+
+    assert _load_lark_oapi()
+
+
+@pytest.mark.parametrize("quiet", [True, False])
+@pytest.mark.parametrize("choice,label", [("once", "已允许（仅本次）"), ("session", "已允许（本会话）"),
+                                          ("always", "已允许（始终）"), ("deny", "已拒绝")])
+def test_feishu_approval_result_uses_platform_language(quiet, choice, label, monkeypatch, feishu_callback_sdk):
+    """真实卡片回调按平台开关选择文案，保留动作与校验，不提前修改审批状态。"""
+    adapter = FeishuAdapter(PlatformConfig(extra={"desktop_quiet": quiet}))
+    adapter._approval_state[1] = {"session_key": "session", "chat_id": "chat"}
+    adapter._sender_name_cache["user"] = ("测试用户", float("inf"))
+    event = SimpleNamespace(operator=SimpleNamespace(open_id="user"), context=SimpleNamespace(open_chat_id="chat"))
+    calls = []
+
+    def submit(loop, coro):
+        """仅收下协程，不运行权限结果写入；原回调的选择与展示仍实际执行。"""
+        calls.append(coro)
+        coro.close()
+        return True
+
+    monkeypatch.setattr(adapter, "_submit_on_loop", submit)
+    action = {"once": "approve_once", "session": "approve_session", "always": "approve_always", "deny": "deny"}[choice]
+    response = adapter._handle_approval_card_action(event=event, action_value={"approval_id": 1, "hermes_action": action}, loop=None)
+    card = response.card.data
+    english = {"once": "Approved once", "session": "Approved for session", "always": "Approved permanently", "deny": "Denied"}
+    assert (label if quiet else english[choice]) in card["header"]["title"]["content"]
+    assert ("由 测试用户 处理" if quiet else "by 测试用户") in card["elements"][0]["content"]
+    assert len(calls) == 1 and 1 in adapter._approval_state
+
+
+@pytest.mark.parametrize("quiet", [True, False])
+@pytest.mark.parametrize("answer", ["y", "n"])
+def test_feishu_update_result_uses_platform_language(quiet, answer, monkeypatch, feishu_callback_sdk):
+    """更新答复只改结果卡片语言，调用入口仍核对账号和聊天归属。"""
+    adapter = FeishuAdapter(PlatformConfig(extra={"desktop_quiet": quiet}))
+    adapter._update_prompt_state[2] = {"chat_id": "chat"}
+    event = SimpleNamespace(operator=SimpleNamespace(open_id="user"), context=SimpleNamespace(open_chat_id="chat"))
+
+    def submit(loop, coro):
+        """关闭未执行协程，避免本测试写更新答复文件。"""
+        coro.close()
+        return True
+
+    monkeypatch.setattr(adapter, "_submit_on_loop", submit)
+    response = adapter._handle_update_prompt_card_action(
+        event=event, action_value={"update_prompt_id": 2, "hermes_update_prompt_action": answer}, loop=None)
+    card = response.card.data
+    title = ("已选择：是" if answer == "y" else "已选择：否") if quiet else f"Update prompt answered: {'Yes' if answer == 'y' else 'No'}"
+    assert title in card["header"]["title"]["content"]
+    assert ("由 **user** 处理" if quiet else "Answered by **user**") in card["elements"][0]["content"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("quiet", [True, False])
+async def test_feishu_expired_approval_still_reports_not_run(quiet, monkeypatch):
+    """真实过期审批查找后告知未执行，中文化不把过期批准变成有效批准。"""
+    adapter = FeishuAdapter(PlatformConfig(extra={"desktop_quiet": quiet}))
+    adapter._approval_state[1] = {"session_key": "fixture-no-pending", "chat_id": "chat"}
+    adapter.send = AsyncMock(return_value=SendResult(success=True))
+    await adapter._resolve_approval(1, "once", "用户", open_id="user", chat_id="chat")
+    text = adapter.send.await_args.args[1]
+    assert ("未执行" if quiet else "was not run") in text
+    assert ("审批已过期" if quiet else "already expired") in text
+    assert 1 not in adapter._approval_state

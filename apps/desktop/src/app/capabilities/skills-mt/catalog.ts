@@ -97,6 +97,55 @@ export function filterCatalog<
   })
 }
 
+/** 推荐 / 技能市场条目里判断「装没装」要用到的字段（推荐条目才有包名）。 */
+export interface CatalogIdentity {
+  id: string
+  name: string
+  package_download_path?: string | null
+  package_file_name?: string | null
+}
+
+// /api/skills 返回的技能名最多 64 个字符（tools/skills_tool.py），安装记录里的不截。
+const SKILL_NAME_LIMIT = 64
+
+/**
+ * 没有安装记录时，猜这个条目装好后叫什么。装好后的名字取自包里 SKILL.md 的 name，
+ * 和显示名、市场 id、包名都只是大多一致，所以只用这几个精确的键，宁可漏认也不错认
+ * （错认成「已安装」，用户就点不了「+」了）。括号里的英文名不用：有的和别的条目 id 撞。
+ */
+export function catalogNameGuesses(entry: CatalogIdentity): string[] {
+  const guesses = [entry.name.trim()]
+
+  if (entry.package_download_path) {
+    // 推荐：id 是 UUID；包名去掉 .zip（有的还带 __skillhub 后缀）多半就是技能名。
+    const stem = (entry.package_file_name ?? '').trim().replace(/\.zip$/i, '')
+    guesses.push(stem, stem.replace(/__skillhub$/i, ''))
+  } else {
+    // 技能市场：id 就是英文短名。
+    guesses.push(entry.id.trim())
+  }
+
+  return [...new Set(guesses.filter(Boolean))]
+}
+
+/**
+ * 目录卡片是否显示「已安装」。recorded 是安装记录里这个条目装成的技能名（后端安装记录或刚装完的返回值）：
+ * 有记录只认记录，没有才猜；都要求这个名字现在还在已安装列表里，卸载后卡片自动变回「+」。
+ */
+export function isCatalogInstalled(
+  entry: CatalogIdentity,
+  installedNames: ReadonlySet<string>,
+  recorded?: null | string
+): boolean {
+  const has = (name: string) => installedNames.has(name) || installedNames.has(name.slice(0, SKILL_NAME_LIMIT))
+
+  if (recorded) {
+    return has(recorded)
+  }
+
+  return catalogNameGuesses(entry).some(has)
+}
+
 // 「去试试」的示例提示词：先看技能自带的使用引导（推荐技能有 skill_guide），再按关键词，
 // 再按市场分类，最后用通用说法。关键词表和文案照 UniWork 的 skillsMarket 文案。
 const EXAMPLE_KEYWORDS: ReadonlyArray<readonly [readonly string[], ExampleKey]> = [

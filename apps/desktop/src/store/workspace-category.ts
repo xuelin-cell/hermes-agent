@@ -2,12 +2,13 @@ import { atom, computed } from 'nanostores'
 
 import { $resolvedWelcomeCatalog } from '@/app/chat/composer/work-templates/catalog-store'
 import { $interfaceMode, setInterfaceMode } from '@/store/interface-mode'
+import { $selectedWorkspaceMode } from './workspace-scope'
 
 import type { WelcomeLocale, WelcomeModule } from '../../electron/uniwork-welcome/catalog'
 
 const $selectedKeys = atom<Partial<Record<WelcomeLocale, string>>>({})
 
-export const $selectedWorkspaceMode = atom<'work' | 'codex' | null>(null)
+export { $selectedWorkspaceMode } from './workspace-scope'
 
 /** 当前是否为代码开发；页签还没选过时按界面模式推断，与页签的默认选择一致。 */
 export const $codeWorkspace = computed(
@@ -35,15 +36,16 @@ export const $selectedWelcomeModules = {
 }
 
 export function selectWorkspaceModule(locale: WelcomeLocale, module: WelcomeModule) {
+  const mode = module.workspace === 'codex' ? 'advanced' : 'simple'
+
+  // Capture the outgoing layout before its preview panes are swapped out.
+  if ($interfaceMode.get() !== mode) {
+    setInterfaceMode(mode)
+  }
+
   $selectedWorkspaceMode.set(module.workspace)
 
   if ($selectedKeys.get()[locale] !== module.id) {
     $selectedKeys.set({ ...$selectedKeys.get(), [locale]: module.id })
-  }
-
-  const mode = module.workspace === 'codex' ? 'advanced' : 'simple'
-
-  if ($interfaceMode.get() !== mode) {
-    setInterfaceMode(mode)
   }
 }

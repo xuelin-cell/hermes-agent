@@ -94,6 +94,7 @@ from gateway.platforms.event import MessageEvent, MessageType, ProcessingOutcome
 from gateway.status import acquire_scoped_lock, release_scoped_lock
 from hermes_constants import get_hermes_home
 from utils import atomic_json_write, env_float, env_int
+from plugins.platforms.desktop_presentation import DesktopPresentationMixin
 
 from gateway.platforms._shared import (
     apply_yaml_bridge as _apply_yaml_bridge, extra_or_secret as _shared_extra_or_secret,
@@ -169,6 +170,9 @@ _APPROVAL_CHOICE_MAP: Dict[str, str] = {
 }
 _APPROVAL_LABEL_MAP: Dict[str, str] = {
     "once": "Approved once", "session": "Approved for session", "always": "Approved permanently", "deny": "Denied",
+}
+_APPROVAL_LABEL_MAP_ZH: Dict[str, str] = {
+    "once": "已允许（仅本次）", "session": "已允许（本会话）", "always": "已允许（始终）", "deny": "已拒绝",
 }
 
 
@@ -1280,7 +1284,7 @@ def _sdk_build(request_cls: Any, **fields: Any) -> Any:
     return builder.build()
 
 
-class FeishuAdapter(BasePlatformAdapter):
+class FeishuAdapter(DesktopPresentationMixin, BasePlatformAdapter):
     """Feishu/Lark bot adapter."""
     # Answers /p/<profile>/... on the default listener for a served secondary (shared_ingress).
     serves_profile_prefix: bool = True
@@ -1749,6 +1753,8 @@ class FeishuAdapter(BasePlatformAdapter):
     # header carries the title, so the text core starts at the code fence.
     _EA_HEADER = ""
     _EA_REASON_LABEL = f"**{EA_REASON_LABEL_TEXT}:** "
+    _DESKTOP_EA_HEADER = ""
+    _DESKTOP_EA_REASON_LABEL = "**需要确认的原因：** "
     _EA_SMART_DENY_LINE = "\n\n**Smart DENY:** owner override applies to this one operation only."
     _EA_CMD_BUDGET = 3000
 
@@ -1766,7 +1772,8 @@ class FeishuAdapter(BasePlatformAdapter):
                 _card_button(label, style or "default",
                              {"hermes_action": self._EA_CARD_ACTIONS[choice], "approval_id": approval_id})
                 for label, choice, style in prompt.actions]
-            card = _card(f"⚠️ {EA_HEADER_TEXT}", "orange", prompt.text, actions=actions)
+            title = "需要你确认才能执行命令" if self._desktop_quiet() else EA_HEADER_TEXT
+            card = _card(f"⚠️ {title}", "orange", prompt.text, actions=actions)
             return await self._send_interactive_card(
                 prompt.chat_id, card, prompt.metadata, "send_exec_approval failed",
                 state_map=self._approval_state, state_id=approval_id, session_key=prompt.session_key,
@@ -1822,17 +1829,22 @@ class FeishuAdapter(BasePlatformAdapter):
             return SendResult(success=False, error=str(exc))
 
     @staticmethod
-    def _build_resolved_approval_card(*, choice: str, user_name: str) -> Dict[str, Any]:
-        """Raw card JSON shown in place of the buttons once an approval is resolved."""
+    def _build_resolved_approval_card(*, choice: str, user_name: str, desktop_quiet: bool = False) -> Dict[str, Any]:
+        """按展示开关生成审批结果卡片，不改变审批动作。"""
         icon = "❌" if choice == "deny" else "✅"
-        label = _APPROVAL_LABEL_MAP.get(choice, "Resolved")
-        return _card(f"{icon} {label}", "red" if choice == "deny" else "green", f"{icon} **{label}** by {user_name}")
+        labels = _APPROVAL_LABEL_MAP_ZH if desktop_quiet else _APPROVAL_LABEL_MAP
+        label = labels.get(choice, "已处理" if desktop_quiet else "Resolved")
+        by = f"\n由 {user_name} 处理" if desktop_quiet else f" by {user_name}"
+        return _card(f"{icon} {label}", "red" if choice == "deny" else "green", f"{icon} **{label}**{by}")
 
     @staticmethod
-    def _build_resolved_update_prompt_card(*, answer: str, user_name: str) -> Dict[str, Any]:
+    def _build_resolved_update_prompt_card(*, answer: str, user_name: str, desktop_quiet: bool = False) -> Dict[str, Any]:
+        """更新问询结果只展示用户选择，不表示更新已经完成。"""
         yes = answer == "y"
-        title = f"{'✅' if yes else '❌'} Update prompt answered: {'Yes' if yes else 'No'}"
-        return _card(title, "green" if yes else "red", f"Answered by **{user_name}**")
+        label = f"已选择：{'是' if yes else '否'}" if desktop_quiet else f"Update prompt answered: {'Yes' if yes else 'No'}"
+        title = f"{'✅' if yes else '❌'} {label}"
+        by = f"由 **{user_name}** 处理" if desktop_quiet else f"Answered by **{user_name}**"
+        return _card(title, "green" if yes else "red", by)
 
     @staticmethod
     def _write_update_prompt_response(answer: str) -> None:
@@ -2271,7 +2283,8 @@ class FeishuAdapter(BasePlatformAdapter):
         )
         if not self._submit_on_loop(loop, coro):
             return self._card_response()
-        return self._card_response(self._build_resolved_approval_card(choice=choice, user_name=user_name))
+        return self._card_response(self._build_resolved_approval_card(
+            choice=choice, user_name=user_name, desktop_quiet=self._desktop_quiet()))
 
     def _handle_update_prompt_card_action(self, *, event: Any, action_value: Dict[str, Any], loop: Any) -> Any:
         """Schedule update prompt resolution and build the synchronous callback response."""
@@ -2294,7 +2307,8 @@ class FeishuAdapter(BasePlatformAdapter):
         coro = self._resolve_update_prompt(prompt_id, answer, user_name, open_id=open_id, chat_id=chat_id)
         if not self._submit_on_loop(loop, coro):
             return self._card_response()
-        return self._card_response(self._build_resolved_update_prompt_card(answer=answer, user_name=user_name))
+        return self._card_response(self._build_resolved_update_prompt_card(
+            answer=answer, user_name=user_name, desktop_quiet=self._desktop_quiet()))
 
     def _pop_validated_prompt_state(
         self, *, states: Dict[int, Dict[str, str]], ident: Any, label: str, open_id: str, chat_id: str,
@@ -2344,6 +2358,7 @@ class FeishuAdapter(BasePlatformAdapter):
                     try:
                         await self.send(
                             _chat,
+                            "⌛ 此审批已过期或已在其它位置处理，本次点击未执行命令。" if self._desktop_quiet() else
                             "⌛ That approval had already expired — the command "
                             "was not run (it timed out or was resolved elsewhere).",
                         )

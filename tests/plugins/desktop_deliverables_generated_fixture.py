@@ -18,8 +18,8 @@ from tests.fakes.fake_llm_provider import (
 from tests.plugins.desktop_deliverables_http_fixture import serving
 
 
-def run_scenario(root, kind="fallback", media_dir=None, *, platform="desktop", download_available=True):
-    """使用独立 Home 和正式插件发现，真实工具执行后关闭重开两种历史投影。"""
+def run_scenario(root, kind="fallback", media_dir=None, *, platform="desktop", download_available=True, echo=True):
+    """使用独立 Home 和正式插件发现，真实工具执行后关闭重开两种历史投影；echo=False 时父会话不抄 MEDIA。"""
     work, home = root / "workspace", root / "home"
     assert not work.exists() and not home.exists(), "拒绝覆盖已有测试数据"
     work.mkdir(parents=True)
@@ -35,8 +35,14 @@ def run_scenario(root, kind="fallback", media_dir=None, *, platform="desktop", d
         "background-other": ("tts_synthesize", "wav"),
     }
     leaf, extension = names.get(kind, ("fixture_write", "md"))
-    uncached = kind == "background-other" or (
-        platform != "desktop" and kind in {"background-video", "background-image-video"}
+    videos = {"video", "background-video", "background-image-video"}
+    # 四个附件平台与桌面一样下载（钉钉视频除外）；其他消息平台只缓存后台翻译、播客。
+    delivered = platform == "desktop" or (
+        platform in {"weixin", "feishu", "wecom", "dingtalk"}
+        and not (platform == "dingtalk" and kind in videos)
+    )
+    uncached = kind == "background-other" or not (
+        delivered or kind in {"background-translation", "background-podcast"}
     )
     output = work / "fallback报告.md"
     payload = b"controlled-video-container"
@@ -71,7 +77,7 @@ def run_scenario(root, kind="fallback", media_dir=None, *, platform="desktop", d
             user = next(row['content'] for row in reversed(messages) if row['role'] == 'user')
             if 'ASYNC DELEGATION' in user and 'COMPLETE' in user:
                 media = next((line for line in user.splitlines() if line.startswith('MEDIA:')), '')
-                return Text('生成完成。\n' + (media or url))
+                return Text('生成完成。\n' + (media or url) if echo or not media else '生成完成。')
             if '生成测试产物' in user:
                 if any(row['role'] == 'tool' for row in messages):
                     return Text('生成完成。' if download_available else '下载失败，结果链接：' + url)
@@ -173,6 +179,7 @@ def run_scenario(root, kind="fallback", media_dir=None, *, platform="desktop", d
                     assert 'MEDIA:' not in expected
                     assert not requests
                     assert all('desktop_deliverables' not in row['content'] for row in tool_results)
+                    assert any(url in row['content'] for row in tool_results)
                 elif kind == "offline" or not download_available:
                     assert url in expected and "MEDIA:" not in expected
                     assert all(
@@ -190,7 +197,9 @@ def run_scenario(root, kind="fallback", media_dir=None, *, platform="desktop", d
                             for row in tool_results
                         )
                         assert len(requests) == 1
-                    assert f"MEDIA:{output}" in expected
+                        # 桌面和四个附件平台下载成功即去掉链接；其他消息平台照旧保留。
+                        assert any(url in row["content"] for row in tool_results) == (not delivered)
+                    assert expected.count(f"MEDIA:{output}") == 1
             finally:
                 agent.close()
                 database.close()

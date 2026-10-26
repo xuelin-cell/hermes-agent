@@ -31,7 +31,9 @@ def test_restore_scans_real_accounts_a_b_a_and_preserves_parked_profiles(tmp_pat
     def spawn(command, name, *, env_overrides):
         """只替换网关动作，配置和受管 Profile 枚举保持真实。"""
         actions.append((os.environ["HERMES_HOME"], command, name))
-        assert env_overrides == {"HERMES_GATEWAY_INSTALL_START_ON_LOGIN": "0"}
+        assert env_overrides == {"HERMES_GATEWAY_INSTALL_START_ON_LOGIN": "0",
+                                 "HERMES_GATEWAY_BUSY_ACK_ENABLED": "false",
+            "HERMES_GATEWAY_BUSY_STEER_ACK_ENABLED": "false"}
         return SimpleNamespace(pid=123)
 
     monkeypatch.setattr(web_server_gateway, "_spawn_hermes_action", spawn)
@@ -135,9 +137,11 @@ def test_profile_junction_cannot_write_another_account_policies(tmp_path):
 @pytest.mark.platforms("windows")
 @pytest.mark.live_system_guard_bypass
 def test_owned_gateway_reuses_real_runtime_and_rejects_live_foreign_home(tmp_path, monkeypatch):
-    """实际恢复路由启动原版网关，仅探测本机健康并核对进程归属与复用。"""
+    """实际 run／restart 均将静默开关传入网关，核对归属、健康与复用。"""
     from hermes_cli import web_server_gateway
+    import psutil
 
+    monkeypatch.setenv("PYTHONUNBUFFERED", "1")
     home = Path(os.environ["HERMES_HOME"])
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
@@ -156,30 +160,57 @@ def test_owned_gateway_reuses_real_runtime_and_rejects_live_foreign_home(tmp_pat
     assert asyncio.run(api.restore_gateway())["name"] == "gateway-start"
     proc = web_server_gateway._ACTION_PROCS["gateway-start"]
     log = action_logs / web_server_gateway._ACTION_LOG_FILES["gateway-start"]
-    try:
-        deadline = time.monotonic() + 60
+    actions = [proc]
+
+    def wait_gateway(previous_pid=None):
+        """等待临时 Home 的新网关就绪，检查实际进程而非动作包装器的环境。"""
+        # Windows restart 还要完成排空、系统启动项检查及再次启动，给完整动作独立预算。
+        deadline = time.monotonic() + (120 if previous_pid is not None else 60)
         while time.monotonic() < deadline:
-            assert proc.poll() is None, log.read_text(encoding="utf-8", errors="replace")[-4000:]
             try:
-                with urlopen(f"http://127.0.0.1:{port}/health", timeout=1) as response:
-                    if response.status == 200:
-                        break
-            except OSError:
+                identity = json.loads((home / "gateway.pid").read_text())
+                state = json.loads((home / "gateway_state.json").read_text())
+                if identity["pid"] != previous_pid and state.get("gateway_state") == "running" and api._owned_gateway():
+                    process = psutil.Process(identity["pid"])
+                    env = process.environ()
+                    assert Path(env["HERMES_HOME"]).resolve() == home.resolve()
+                    assert env["HERMES_GATEWAY_BUSY_ACK_ENABLED"] == "false"
+                    assert env["HERMES_GATEWAY_BUSY_STEER_ACK_ENABLED"] == "false"
+                    with urlopen(f"http://127.0.0.1:{port}/health", timeout=1) as response:
+                        if response.status == 200:
+                            return identity
+            except (OSError, ValueError, psutil.NoSuchProcess):
                 pass
             time.sleep(0.2)
-        else:
-            pytest.fail("isolated gateway health timed out")
-        assert api._owned_gateway()
-        identity = json.loads((home / "gateway.pid").read_text())
+        logs = [log, home / "logs/gateway-stdio.log", home / "logs/gateway.log"]
+        detail = "\n".join(f"{p.name}:\n{p.read_text(encoding='utf-8', errors='replace')[-4000:]}" for p in logs if p.exists())
+        detail += f"\naction exit codes: {[p.poll() for p in actions]}"
+        pytest.fail("isolated gateway health timed out\n" + detail)
+
+    try:
+        identity = wait_gateway()
         assert asyncio.run(api.restore_gateway())["name"] is None
         assert json.loads((home / "gateway.pid").read_text())["pid"] == identity["pid"]
+        assert asyncio.run(api.apply_gateway())["name"] == "gateway-restart"
+        actions.append(web_server_gateway._ACTION_PROCS["gateway-restart"])
+        log = action_logs / web_server_gateway._ACTION_LOG_FILES["gateway-restart"]
+        identity = wait_gateway(identity["pid"])
         # 真实进程仍活着，但请求的账号根已不同，不能借用它的状态。
         other = tmp_path / "other-account"
         other.mkdir()
         monkeypatch.setenv("HERMES_HOME", str(other))
         assert not api._owned_gateway()
-        assert proc.poll() is None
+        assert psutil.pid_exists(identity["pid"])
     finally:
-        if proc.poll() is None:
-            subprocess.run(["taskkill.exe", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, timeout=15, check=False)
-        proc.wait(timeout=15)
+        monkeypatch.setenv("HERMES_HOME", str(home))
+        # restart 可能另起脱离动作包装器的进程，只清理已确认归属本测试 Home 的网关。
+        if api._owned_gateway():
+            pid = json.loads((home / "gateway.pid").read_text())["pid"]
+            isolated = psutil.Process(pid)
+            assert Path(isolated.environ()["HERMES_HOME"]).resolve() == home.resolve()
+            if isolated.is_running():
+                subprocess.run(["taskkill.exe", "/PID", str(pid), "/T", "/F"], capture_output=True, timeout=15, check=False)
+        for action in actions:
+            if action.poll() is None:
+                subprocess.run(["taskkill.exe", "/PID", str(action.pid), "/T", "/F"], capture_output=True, timeout=15, check=False)
+            action.wait(timeout=15)
