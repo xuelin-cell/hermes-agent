@@ -251,7 +251,7 @@ export function SkillsHub({
             type="button"
           >
             {item.label}
-            {item.count !== undefined ? <span className="mt-skills-count">{item.count}</span> : null}
+            {item.count !== undefined ? <span className="mt-skills-count">({item.count})</span> : null}
           </button>
         ))}
       </div>

@@ -1,12 +1,13 @@
 /* 技能页（推荐 / 技能市场 / 已安装）照 UniWork 的 .skills-* 样式：尺寸照搬，颜色走本应用主题。 */
 
 .mt-skills-page {
+  --mt-skills-surface: var(--ui-bg-chrome);
   display: flex;
   height: 100%;
   min-width: 0;
   flex-direction: column;
   overflow: hidden;
-  background: var(--ui-chat-surface-background);
+  background: var(--mt-skills-surface);
 }
 
 .mt-skills-head {
@@ -21,26 +22,52 @@
 .mt-skills-titles {
   display: flex;
   align-items: center;
-  gap: 28px;
+  gap: 12px;
 }
 
+/* MasterGo 99:8258 · CN Heading/大标题-一般强调 */
 .mt-skills-title {
   display: inline-flex;
+  flex-shrink: 0;
   align-items: center;
-  gap: 8px;
-  padding: 0;
+  gap: 4px;
+  height: 32px;
+  padding: 4px 10px;
   border: 0;
-  background: none;
-  color: var(--ui-text-quaternary, var(--ui-text-tertiary));
-  font-size: 1.25rem;
-  font-weight: 700;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ui-text-secondary);
+  font-family: 'DFPKingGothicGB-Semibold', var(--font-sans);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 20px;
+  white-space: nowrap;
   cursor: pointer;
-  transition: color 150ms ease;
+  transition:
+    color 150ms ease,
+    background-color 150ms ease;
 }
 
-.mt-skills-title:hover,
+.mt-skills-title:hover {
+  background: var(--ui-control-hover-background);
+}
+
 .mt-skills-title[aria-current='page'] {
-  color: var(--ui-text-primary);
+  background: var(--ui-text-secondary);
+  color: var(--ui-bg-elevated);
+}
+
+.mt-skills-title-icon {
+  display: block;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.mt-skills-title-icon > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .mt-skills-search {
@@ -72,34 +99,64 @@
 }
 
 .mt-skills-body {
+  --mt-skills-gutter: 32px;
   display: flex;
   min-height: 0;
   flex: 1;
   flex-direction: column;
   overflow-y: auto;
-  padding: 16px 32px 44px;
+  padding: 16px var(--mt-skills-gutter) 44px;
 }
 
+/* MasterGo 99:4055 · Fill/灰色背景@fill2，分隔选项卡 */
 .mt-skills-tabs {
+  --mt-skills-tab-fill: #f7f8fa;
+  --mt-skills-tab-border: #f0f0f0;
+  position: relative;
+  isolation: isolate;
   display: flex;
-  gap: 24px;
-  margin-bottom: 18px;
-  border-bottom: 1px solid var(--ui-stroke-secondary);
+  align-items: flex-end;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.mt-skills-tabs::before {
+  position: absolute;
+  right: calc(-1 * var(--mt-skills-gutter));
+  bottom: 0;
+  left: calc(-1 * var(--mt-skills-gutter));
+  height: 1px;
+  background: var(--mt-skills-tab-border);
+  content: '';
+}
+
+.dark .mt-skills-tabs {
+  --mt-skills-tab-fill: var(--dt-secondary);
+  --mt-skills-tab-border: var(--ui-stroke-secondary);
 }
 
 .mt-skills-tab {
   position: relative;
-  padding: 10px 2px;
-  border: 0;
-  background: none;
+  flex-shrink: 0;
+  height: 32px;
+  padding: 4px 15px;
+  border: 1px solid var(--mt-skills-tab-border);
+  border-radius: 6px 6px 0 0;
+  background: var(--mt-skills-tab-fill);
   color: var(--ui-text-tertiary);
-  font-size: 0.875rem;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+  white-space: nowrap;
   cursor: pointer;
 }
 
 .mt-skills-tab[aria-selected='true'] {
+  z-index: 1;
+  border-bottom-color: transparent;
+  background: var(--mt-skills-surface);
   color: var(--ui-text-primary);
+  font-weight: 600;
 }
 
 .mt-skills-tab[aria-selected='true']::after {
@@ -108,20 +165,13 @@
   bottom: -1px;
   left: 0;
   height: 2px;
-  border-radius: 2px;
-  background: var(--ui-accent);
+  background: var(--mt-skills-surface);
   content: '';
 }
 
 .mt-skills-count {
-  display: inline-block;
-  margin-left: 6px;
-  padding: 1px 7px;
-  border-radius: 9px;
-  background: var(--dt-secondary);
-  color: var(--ui-text-tertiary);
-  font-size: 0.75rem;
-  font-weight: 500;
+  font: inherit;
+  color: inherit;
 }
 
 .mt-skills-filters {
@@ -132,33 +182,40 @@
   margin-bottom: 18px;
 }
 
+/* MasterGo 99:3973 · 圆角分类标签 */
 .mt-skills-cats {
+  --mt-skills-category-active: #f0f0f0;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 12px 24px;
+}
+
+.dark .mt-skills-cats {
+  --mt-skills-category-active: var(--dt-secondary);
 }
 
 .mt-skills-cat {
-  padding: 5px 12px;
+  flex-shrink: 0;
+  height: 32px;
+  padding: 5px 16px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 16px;
   background: transparent;
-  color: var(--ui-text-secondary);
-  font-size: 0.75rem;
+  color: var(--ui-text-tertiary);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+  white-space: nowrap;
   cursor: pointer;
   transition:
     background 150ms ease,
     color 150ms ease;
 }
 
-.mt-skills-cat:hover {
-  background: var(--chrome-action-hover);
-  color: var(--ui-text-primary);
-}
-
+.mt-skills-cat:hover,
 .mt-skills-cat[aria-pressed='true'] {
-  background: color-mix(in srgb, var(--ui-accent) 10%, transparent);
-  color: var(--ui-accent);
+  background: var(--mt-skills-category-active);
+  color: var(--ui-text-secondary);
   font-weight: 600;
 }
 
@@ -418,6 +475,10 @@
 }
 
 @media (max-width: 720px) {
+  .mt-skills-body {
+    --mt-skills-gutter: 16px;
+  }
+
   .mt-skills-head,
   .mt-skills-body {
     padding-right: 16px;

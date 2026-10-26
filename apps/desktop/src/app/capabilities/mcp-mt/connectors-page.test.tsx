@@ -37,11 +37,15 @@ function RouteLocation() {
 }
 
 /** 使用真实目录、弹窗与路由，不访问账号、凭据或远程连接器。 */
-function renderPage(route = '/capabilities?tab=connectors') {
+function renderPage(route = '/capabilities?tab=connectors', searchContainer?: HTMLDivElement) {
   return render(
     <I18nProvider configClient={null} initialLocale="zh">
       <MemoryRouter initialEntries={[route]}>
-        <ConnectorsPage gateway={null} profile={{ connectionId: 'local', profile: 'work' }} />
+        <ConnectorsPage
+          gateway={null}
+          profile={{ connectionId: 'local', profile: 'work' }}
+          searchContainer={searchContainer}
+        />
         <RouteLocation />
       </MemoryRouter>
     </I18nProvider>
@@ -102,4 +106,25 @@ it('MCP 深链直接打开原生管理，键盘切换标签后保留未保存草
   expect((screen.getByRole('textbox', { name: 'MCP draft' }) as HTMLInputElement).value).toBe('unsaved config')
   expect(screen.getByTestId('location').textContent).toContain('scope=work')
   expect(screen.getByTestId('location').textContent).toContain('connectorView=mcp')
+})
+
+it('标题栏搜索在切换标签时保留占位与输入，MCP 页退出交互和无障碍树', () => {
+  const header = window.document.createElement('div')
+  window.document.body.append(header)
+  renderPage(undefined, header)
+  const search = screen.getByRole('textbox', { name: '搜索连接器' })
+  fireEvent.change(search, { target: { value: 'Tencent' } })
+  expect(header.contains(search)).toBe(true)
+  const slot = search.closest('.mt-connectors-search-slot')!
+  fireEvent.click(screen.getByRole('tab', { name: 'MCP' }))
+  expect(slot.isConnected).toBe(true)
+  expect(slot.getAttribute('aria-hidden')).toBe('true')
+  expect(slot.hasAttribute('inert')).toBe(true)
+  expect(screen.queryByRole('textbox', { name: '搜索连接器' })).toBeNull()
+  fireEvent.click(screen.getByRole('tab', { name: '推荐' }))
+  expect(screen.getByRole('textbox', { name: '搜索连接器' })).toBe(search)
+  expect((search as HTMLInputElement).value).toBe('Tencent')
+  expect(slot.hasAttribute('inert')).toBe(false)
+  cleanup()
+  header.remove()
 })

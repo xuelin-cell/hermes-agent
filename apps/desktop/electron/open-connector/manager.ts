@@ -31,6 +31,7 @@ interface ConnectorManagerOptions extends Omit<ConnectorRuntimeOptions, 'directo
 
 const AGENT_MAIL_ACTIONS: ReadonlySet<AgentMailAction> = new Set([
   'delete_email',
+  'download_attachment',
   'get_email',
   'get_folder_status',
   'list_folders',

@@ -1,6 +1,6 @@
 import { host, useValue } from '@hermes/plugin-sdk'
 import DOMPurify from 'dompurify'
-import { Mail, RefreshCw, Search, Send, Trash2 } from 'lucide-react'
+import { Download, Mail, RefreshCw, Search, Send, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { AgentMailStatus } from '../../../electron/agent-mail/contract'
@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input'
 
 import {
   deleteMessage,
+  downloadAttachment,
   disableMail,
   enableMail,
   getMessage,
@@ -218,6 +219,27 @@ export function MyMailPage() {
     }
   }
 
+  const download = async (attachmentId: string) => {
+    if (!detail) {
+      return
+    }
+    setBusy(true)
+    setError('')
+    try {
+      const result = await downloadAttachment(profile, detail.folder, detail.uid, attachmentId)
+      const url = result.file?.downloadUrl
+
+      if (!url || !window.hermesDesktop?.openExternal) {
+        throw new Error(text.error)
+      }
+      await window.hermesDesktop.openExternal(url)
+    } catch (cause) {
+      setError(errorText(cause, text.error))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   if (!loading && status && !status.enabled) {
     return (
       <main className="h-full overflow-y-auto bg-[#f6f6f6] dark:bg-[#1a1a1e]">
@@ -389,11 +411,34 @@ export function MyMailPage() {
             </DialogDescription>
           </DialogHeader>
           {detail && (
-            <div className="max-h-[55vh] overflow-y-auto rounded-xl border p-5 text-sm leading-7">
-              {detail.html ? (
-                <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(detail.html) }} />
-              ) : (
-                <div className="whitespace-pre-wrap">{detail.text}</div>
+            <div className="max-h-[55vh] space-y-4 overflow-y-auto">
+              <div className="rounded-xl border p-5 text-sm leading-7">
+                {detail.html ? (
+                  <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(detail.html) }} />
+                ) : (
+                  <div className="whitespace-pre-wrap">{detail.text}</div>
+                )}
+              </div>
+              {detail.attachments?.length > 0 && (
+                <section className="rounded-xl border p-4">
+                  <h3 className="mb-3 text-sm font-medium">{text.attachments}</h3>
+                  <div className="space-y-2">
+                    {detail.attachments.map(attachment => (
+                      <div className="flex items-center justify-between gap-3" key={attachment.attachmentId}>
+                        <span className="min-w-0 truncate text-sm">{attachment.filename || attachment.attachmentId}</span>
+                        <Button
+                          disabled={busy}
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void download(attachment.attachmentId)}
+                        >
+                          <Download className="mr-1.5 size-3.5" />
+                          {text.download}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </section>
               )}
             </div>
           )}

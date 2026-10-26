@@ -170,8 +170,8 @@ export function InstalledCard({
         aria-label={enabled ? t('turnOff') : t('turnOn')}
         checked={enabled}
         className="mx-1"
-        disabled={busy}
         onCheckedChange={onToggle}
+        pending={busy}
         title={enabled ? t('turnOff') : t('turnOn')}
       />
       <DropdownMenu>
