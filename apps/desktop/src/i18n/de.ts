@@ -442,7 +442,7 @@ export const deOverrides = {
     connect: 'Verbinden',
     connecting: 'Verbindung wird hergestellt…',
     continue: 'Weiter',
-    bots: 'Bots',
+    bots: 'Digitale Mitarbeiter',
     copied: 'Kopiert',
     copy: 'Kopieren',
     copyFailed: 'Kopieren fehlgeschlagen',

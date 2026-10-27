@@ -444,7 +444,7 @@ export const esOverrides = {
     connect: 'Conectar',
     connecting: 'Conectando',
     continue: 'Continuar',
-    bots: 'Bots',
+    bots: 'Empleados digitales',
     copied: 'Copiado',
     copy: 'Copiar',
     copyFailed: 'No se pudo copiar',

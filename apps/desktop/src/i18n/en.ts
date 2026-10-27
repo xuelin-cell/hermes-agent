@@ -905,7 +905,7 @@ export const en: Translations = {
     connect: 'Connect',
     connecting: 'Connecting',
     continue: 'Continue',
-    bots: 'Bots',
+    bots: 'Digital employees',
     copied: 'Copied',
     copy: 'Copy',
     copyFailed: 'Copy failed',

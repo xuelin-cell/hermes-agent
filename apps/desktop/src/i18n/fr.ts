@@ -442,7 +442,7 @@ export const frOverrides = {
     connect: 'Connecter',
     connecting: 'Connexion',
     continue: 'Continuer',
-    bots: 'Bots',
+    bots: 'Employés numériques',
     copied: 'Copié',
     copy: 'Copier',
     copyFailed: 'Échec de la copie',

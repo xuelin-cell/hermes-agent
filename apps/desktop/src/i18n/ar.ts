@@ -223,7 +223,7 @@ export const ar = defineLocale({
     connect: 'اتصال',
     connecting: 'جار الاتصال',
     continue: 'متابعة',
-    bots: 'الروبوتات',
+    bots: 'الموظفون الرقميون',
     copied: 'تم النسخ',
     copy: 'نسخ',
     copyFailed: 'فشل النسخ',
