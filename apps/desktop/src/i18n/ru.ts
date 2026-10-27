@@ -614,6 +614,7 @@ export const ru = defineLocale({
       vaultCredentials: 'Сохранённые учётные данные',
       vaultSources: 'Менеджеры паролей',
       appUpdates: 'Версия и обновления',
+      legal: 'Приватность и условия',
       uninstall: 'Удаление',
       billingOverview: 'Обзор',
       billingPlans: 'Тарифы'
@@ -1186,6 +1187,19 @@ export const ru = defineLocale({
     }),
     about: {
       updates: 'Обновления'
+    },
+    legal: {
+      title: 'Приватность и условия',
+      description: 'Соглашения, политики и уведомления, регулирующие использование UniWork.',
+      items: {
+        userAgreement: 'Условия использования',
+        privacyPolicy: 'Политика конфиденциальности',
+        informationCollection: 'Уведомление о сборе информации',
+        accountCancellation: 'Уведомление об удалении аккаунта',
+        deliveryAgreement: 'Условия оплаты',
+        childrenPrivacy: 'Политика конфиденциальности детей и уведомление для опекунов',
+        openSourceTerms: 'Уведомления об открытом исходном коде'
+      }
     },
     config: {
       agentLibraryAccessTitle: 'Разрешить агенту управлять библиотекой',

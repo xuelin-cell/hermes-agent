@@ -545,6 +545,7 @@ export const ja = defineLocale({
       vaultCredentials: '保存済みの認証情報',
       vaultSources: 'パスワードマネージャー',
       appUpdates: 'バージョンと更新',
+      legal: 'プライバシーと規約',
       uninstall: 'アンインストール',
       billingOverview: '概要',
       billingPlans: 'プラン'
@@ -1134,6 +1135,19 @@ export const ja = defineLocale({
     }),
     about: {
       updates: '更新'
+    },
+    legal: {
+      title: 'プライバシーと規約',
+      description: 'UniWork のご利用に適用される規約、ポリシー、通知です。',
+      items: {
+        userAgreement: '利用規約',
+        privacyPolicy: 'プライバシーポリシー',
+        informationCollection: '個人情報の収集に関する通知',
+        accountCancellation: 'アカウント削除に関する通知',
+        deliveryAgreement: '支払い条件',
+        childrenPrivacy: '児童のプライバシーポリシーおよび保護者向け通知',
+        openSourceTerms: 'オープンソースに関する通知'
+      }
     },
     config: {
       agentLibraryAccessTitle: 'エージェントによるライブラリ操作を許可',

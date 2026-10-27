@@ -2,6 +2,7 @@ import { atom } from 'nanostores'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { HermesConnection } from '@/global'
+import { BACKEND_BOOT_WAIT_TIMEOUT_MS } from '@/lib/with-timeout'
 
 import { deferred } from '../test/deferred'
 
@@ -96,7 +97,7 @@ describe('ensureGatewayAgent → $connection / $activeGatewayProfile sync', () =
     await ensureGatewayAgent('homelab', 'research')
 
     expect(ensureGatewayForAgent).toHaveBeenCalledWith('homelab', 'research')
-    expect(getConnectionFor).toHaveBeenCalledWith({ connectionId: 'homelab', profile: 'research' })
+    expect(getConnectionFor).toHaveBeenCalledWith({ connectionId: 'homelab', profile: 'research', priority: 'foreground' })
     expect($activeGatewayProfile.get()).toBe('research')
     expect($connection.get()?.mode).toBe('remote')
     expect($connection.get()?.profile).toBe('research')
@@ -204,7 +205,7 @@ describe('ensureGatewayAgent → $connection / $activeGatewayProfile sync', () =
 
     expect(ensureGatewayForAgent).toHaveBeenCalledWith('local', 'research')
     expect(ensureGatewayForProfile).not.toHaveBeenCalled()
-    expect(getConnectionFor).toHaveBeenCalledWith({ connectionId: 'local', profile: 'research' })
+    expect(getConnectionFor).toHaveBeenCalledWith({ connectionId: 'local', profile: 'research', priority: 'foreground' })
   })
 })
 
@@ -395,7 +396,7 @@ describe('ensureGatewayAgent commit hook (beforeActivate) — the Sessions switc
       getConnectionFor.mockImplementationOnce(() => new Promise<HermesConnection>(() => undefined))
 
       const activation = ensureGatewayAgent('homelab', 'research')
-      await vi.advanceTimersByTimeAsync(20_000)
+      await vi.advanceTimersByTimeAsync(BACKEND_BOOT_WAIT_TIMEOUT_MS)
       await activation
 
       // Activated; the previous descriptor is kept (fail open), not nulled.

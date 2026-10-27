@@ -163,20 +163,24 @@ function sessionsToKeep(scope?: string): Set<string> {
 
 interface UseSessionListActionsArgs {
   profileScope: string
+  /** 聊天历史的浏览范围独立于当前执行档案，不影响消息平台和定时任务。 */
+  recentsProfileScope?: string
 }
 
 /** Owns the sidebar's session-list fetching + paging: recents, cron runs/jobs,
  *  and the per-platform messaging slices. Returns the callbacks the controller
  *  wires into the sidebar and refresh effects. */
-export function useSessionListActions({ profileScope }: UseSessionListActionsArgs) {
+export function useSessionListActions({ profileScope, recentsProfileScope = profileScope }: UseSessionListActionsArgs) {
   const profileScopeRef = useRef(profileScope)
+  const recentsProfileScopeRef = useRef(recentsProfileScope)
   const loadMoreMessagingRequestRef = useRef<Record<string, number>>({})
   const refreshMessagingSessionsRequestRef = useRef(0)
   const refreshSessionsRequestRef = useRef(0)
 
   useLayoutEffect(() => {
     profileScopeRef.current = profileScope
-  }, [profileScope])
+    recentsProfileScopeRef.current = recentsProfileScope
+  }, [profileScope, recentsProfileScope])
 
   /** Refresh the active profile's messaging-platform sidebar slice. */
   const refreshMessagingSessions = useCallback(async () => {
@@ -325,8 +329,13 @@ export function useSessionListActions({ profileScope }: UseSessionListActionsArg
   const refreshSessions = useCallback(
     async (shouldPublish: () => boolean = () => true) => {
       const sessionProfile = sidebarProfileForScope(profileScope)
+      const recentsProfile = sidebarProfileForScope(recentsProfileScope)
 
-      if (!shouldPublish() || sidebarProfileForScope(profileScopeRef.current) !== sessionProfile) {
+      if (
+        !shouldPublish() ||
+        sidebarProfileForScope(profileScopeRef.current) !== sessionProfile ||
+        sidebarProfileForScope(recentsProfileScopeRef.current) !== recentsProfile
+      ) {
         return
       }
 
@@ -346,7 +355,8 @@ export function useSessionListActions({ profileScope }: UseSessionListActionsArg
       const owns = () =>
         shouldPublish() &&
         refreshSessionsRequestRef.current === requestId &&
-        sidebarProfileForScope(profileScopeRef.current) === sessionProfile
+        sidebarProfileForScope(profileScopeRef.current) === sessionProfile &&
+        sidebarProfileForScope(recentsProfileScopeRef.current) === recentsProfile
 
       // Snapshot the removal lifecycle BEFORE the first read: a page read
       // pre-archive-commit can land post-prune, and only the generation
@@ -362,22 +372,34 @@ export function useSessionListActions({ profileScope }: UseSessionListActionsArg
         // Unified cross-profile list (served read-only off each profile's
         // state.db; no per-profile backend is spawned). Single-profile users get
         // the same rows tagged profile="default".
-        // Scope every sidebar slice to the active profile (not always 'all') so a profile
-        // with few recent sessions isn't windowed out of the cross-profile
-        // recency page and never inherits another profile's cron or messaging
-        // sections. ALL_PROFILES remains the explicit unified view.
-        // Batched: one request opens each profile DB once and returns all three
-        // source-scoped slices, instead of three separate listAllProfileSessions
-        // calls that each reopened + re-counted every profile DB per refresh.
-        const fetchPage = () =>
-          listSidebarSessions({
+        // 沿用原版列表接口：聊天可浏览全部档案，其余分区保留当前档案的完整窗口。
+        const fetchPage = async () => {
+          const request = {
             recentsProfile: sessionProfile,
             recentsLimit: limit,
             recentsExclude: SIDEBAR_EXCLUDED_SOURCES,
             cronLimit: CRON_SECTION_LIMIT,
             messagingLimit: MESSAGING_SECTION_LIMIT,
             messagingExclude: MESSAGING_EXCLUDED_SOURCES
-          })
+          }
+
+          const [scoped, history] = await Promise.all([
+            listSidebarSessions(request),
+            recentsProfile === sessionProfile ? null : listSidebarSessions({ ...request, recentsProfile })
+          ])
+
+          return history
+            ? {
+                ...scoped,
+                recents: {
+                  ...history.recents,
+                  errors: history.recents.errors ?? history.errors ?? [],
+                  profiles_failed: history.recents.profiles_failed ?? history.profiles_failed
+                },
+                storage: { ...scoped.storage, ...history.storage }
+              }
+            : scoped
+        }
 
         let activationEpoch = gatewayActivationEpoch()
         let result = await fetchPage()
@@ -401,8 +423,8 @@ export function useSessionListActions({ profileScope }: UseSessionListActionsArg
 
           const scopedRetry =
             recents.retry === true ||
-            (sessionProfile !== 'all' && recents.profiles_failed?.[sessionProfile]?.retry === true) ||
-            result.profiles_failed?.[sessionProfile]?.retry === true
+            (recentsProfile !== 'all' && recents.profiles_failed?.[recentsProfile]?.retry === true) ||
+            (recentsProfile === sessionProfile && result.profiles_failed?.[sessionProfile]?.retry === true)
 
           setCorruptSessionStores(result.storage)
           // A damaged store already has its own notice; Retry can't repair it.
@@ -517,7 +539,7 @@ export function useSessionListActions({ profileScope }: UseSessionListActionsArg
         void refreshCronJobs()
       }
     },
-    [profileScope, refreshCronJobs]
+    [profileScope, recentsProfileScope, refreshCronJobs]
   )
 
   const loadMoreSessions = useCallback(async () => {

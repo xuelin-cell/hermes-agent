@@ -268,6 +268,11 @@ export const SETTINGS_MANIFEST = {
       subpage: 'updates',
       keywords: ['update', 'auto update', 'download', 'release', 'version'],
       copy: t => ({ label: t.settings.about.updates })
+    },
+    legal: {
+      subpage: 'legal',
+      keywords: ['legal', 'privacy', 'terms', 'licenses', 'agreement', '用户协议', '隐私政策', '开源'],
+      copy: t => ({ label: t.settings.legal.title, description: t.settings.legal.description })
     }
   }
 } as const satisfies Record<string, Record<string, SettingDefinition>>

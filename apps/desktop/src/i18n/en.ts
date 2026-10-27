@@ -1389,6 +1389,7 @@ export const en: Translations = {
       vaultCredentials: 'Saved credentials',
       vaultSources: 'Password managers',
       appUpdates: 'Version & updates',
+      legal: 'Privacy & terms',
       uninstall: 'Uninstall',
       billingOverview: 'Overview',
       billingPlans: 'Plans'
@@ -1880,6 +1881,19 @@ export const en: Translations = {
     },
     about: {
       updates: 'Updates'
+    },
+    legal: {
+      title: 'Privacy & terms',
+      description: 'The agreements, policies, and notices that govern your use of UniWork.',
+      items: {
+        userAgreement: 'Terms of Service',
+        privacyPolicy: 'Privacy Policy',
+        informationCollection: 'Information Collection Notice',
+        accountCancellation: 'Account Deletion Notice',
+        deliveryAgreement: 'Payment Terms',
+        childrenPrivacy: "Children's Privacy Policy & Guardian Notice",
+        openSourceTerms: 'Open Source Notices'
+      }
     },
     config: {
       agentLibraryAccessTitle: 'Allow the agent to manage the library',
