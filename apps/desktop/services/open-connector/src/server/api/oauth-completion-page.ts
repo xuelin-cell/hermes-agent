@@ -8,34 +8,26 @@ const oauthCompletionStrings = {
   en: {
     badge: "Connected",
     title: "Connection complete",
-    body: "Close this window to continue where you started.",
-    closeButton: "Close window",
-    autoClose: "Automatically closing in %N% seconds.",
-    manualClose: "You can now close this window.",
+    body: "Close this tab to continue where you started.",
+    closeInstruction: "You can now close this tab.",
   },
   "zh-CN": {
     badge: "已连接",
     title: "连接完成",
-    body: "关闭此窗口，然后回到刚才的应用继续。",
-    closeButton: "关闭窗口",
-    autoClose: "%N% 秒后自动关闭。",
-    manualClose: "现在可以手动关闭此窗口。",
+    body: "请关闭此标签页，然后回到刚才的应用继续。",
+    closeInstruction: "现在可以手动关闭此标签页。",
   },
   "zh-TW": {
     badge: "已連線",
     title: "連線完成",
-    body: "關閉此視窗，然後回到剛才的應用繼續。",
-    closeButton: "關閉視窗",
-    autoClose: "%N% 秒後自動關閉。",
-    manualClose: "現在可以手動關閉此視窗。",
+    body: "請關閉此分頁，然後回到剛才的應用繼續。",
+    closeInstruction: "現在可以手動關閉此分頁。",
   },
   ja: {
     badge: "接続済み",
     title: "接続が完了しました",
-    body: "このウィンドウを閉じて、元のアプリに戻って続行してください。",
-    closeButton: "ウィンドウを閉じる",
-    autoClose: "%N% 秒後に自動的に閉じます。",
-    manualClose: "このウィンドウを閉じても問題ありません。",
+    body: "このタブを閉じて、元のアプリに戻って続行してください。",
+    closeInstruction: "このタブを閉じても問題ありません。",
   },
 };
 
@@ -126,30 +118,10 @@ code {
 .actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
   flex-wrap: wrap;
   margin-top: 24px;
-}
-.button {
-  appearance: none;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--card);
-  color: var(--foreground);
-  padding: 8px 14px;
-  font: inherit;
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 20px;
-  cursor: pointer;
-}
-.button:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
-.button:hover {
-  background: var(--muted);
 }
 .close-note {
   font-size: 12px;
@@ -165,8 +137,7 @@ code {
     <p data-t="body">Close this window to continue where you started.</p>
   </div>
   <div class="actions">
-    <button class="button" type="button" data-t="closeButton">Close window</button>
-    <p class="close-note" data-close-note>Automatically closing in 5 seconds.</p>
+    <p class="close-note" data-t="closeInstruction">You can now close this tab.</p>
   </div>
 </main>
 <script>(()=>{
@@ -177,16 +148,6 @@ const t=STR[pick()]||STR.en;
 document.documentElement.lang=pick();
 for(const el of document.querySelectorAll("[data-t]")){const key=el.getAttribute("data-t");if(t[key]!=null)el.textContent=t[key];}
 if(t.title)document.title=t.title;
-const note=document.querySelector("[data-close-note]");
-const button=document.querySelector("[data-t=closeButton]");
-const showManual=()=>{if(note)note.textContent=t.manualClose;};
-// window.close() only works for script-opened windows; on a tab the user
-// navigated to it is a no-op. Attempt it, then fall back to a manual hint.
-const tryClose=()=>{window.close();setTimeout(showManual,300);};
-if(button)button.addEventListener("click",tryClose);
-let remaining=5;
-const tick=()=>{if(remaining<=0){tryClose();return;}if(note)note.textContent=t.autoClose.replace("%N%",String(remaining));remaining-=1;setTimeout(tick,1000);};
-tick();
 })();</script>
 </body>
 </html>`;
