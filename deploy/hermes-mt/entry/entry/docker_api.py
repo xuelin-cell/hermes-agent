@@ -154,6 +154,14 @@ class Docker:
             if exc.status != 404:
                 raise
 
+    async def remove_volume(self, name: str) -> None:
+        """删卷不可恢复，只在删平台的运行环境时调。"""
+        try:
+            await self._req("DELETE", f"/volumes/{name}")
+        except DockerError as exc:
+            if exc.status != 404:
+                raise
+
     async def ensure_volume(self, name: str, labels: dict) -> bool:
         """返回 True 表示这次新建（首次建卷要 seed），False 表示已存在。"""
         try:

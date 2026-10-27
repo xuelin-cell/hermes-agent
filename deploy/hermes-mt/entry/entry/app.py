@@ -21,6 +21,7 @@ from .maas import Maas, MaasError
 from .proxy import proxy_http, proxy_ws
 from .backup import BackupJob
 from .s3lite import S3Lite
+from .service import ServiceApi
 from .store import EnterpriseBinding, Session, Store
 from .tenants import CredentialSyncError, TenantManager
 from .uniwork import (
@@ -767,6 +768,18 @@ def build_app(settings: Settings = SETTINGS) -> web.Application:
     # 要在下面那条「其余全部转给实例」之前注册：路由按注册顺序匹配。
     app.router.add_get(path("/__hermes_backend/__mt_user/terminal"), entry.terminal)
     app.router.add_route("*", path("/__hermes_backend/{tail:.*}"), entry.backend)
+    # 平台调用云端运行智能体（docs/企业版对接/15）；没配 MT_UNIWORK_SERVICE_SECRET 时整组回 404
+    svc = ServiceApi(entry)
+    runtimes = path("/__entry/service/v1/runtimes")
+    app.router.add_get(runtimes, svc.list_runtimes)
+    app.router.add_put(runtimes + "/{key}", svc.put_runtime)
+    app.router.add_delete(runtimes + "/{key}", svc.delete_runtime)
+    app.router.add_post(runtimes + "/{key}/restart", svc.restart_runtime)
+    app.router.add_post(runtimes + "/{key}/runs", svc.start_run)
+    app.router.add_get(runtimes + "/{key}/runs/{run_id}", svc.run_status)
+    app.router.add_get(runtimes + "/{key}/runs/{run_id}/events", svc.run_events)
+    app.router.add_post(runtimes + "/{key}/runs/{run_id}/stop", svc.stop_run)
+    app.router.add_post(runtimes + "/{key}/runs/{run_id}/approval", svc.run_approval)
     app.on_startup.append(entry.on_startup)
     app.on_cleanup.append(entry.on_cleanup)
     return app

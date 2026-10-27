@@ -23,6 +23,7 @@ class FakePlatform:
         self.revoked: set[str] = set()
         self.tickets: dict[str, str] = {}  # 票据 → 手机号
         self.requests: list[tuple[str, dict]] = []
+        self.runtime_tokens: dict[str, dict] = {}  # 运行环境的设备令牌 → agentProfile（平台调用云端，见 15）
         self.server: TestServer | None = None
 
     @property
@@ -139,7 +140,27 @@ class FakePlatform:
         return web.json_response({"code": 0, "msg": "ok", "data": self._login_data(phone),
                                   "enterprise": self._enroll(phone, code, body["deviceId"])})
 
+    def issue_runtime_token(self, profile: dict) -> str:
+        """平台给运行环境发的设备令牌；它的策略只带模型和 agentProfile。"""
+        token = "uwd_" + secrets.token_hex(12)
+        self.runtime_tokens[token] = profile
+        return token
+
     async def policy(self, request: web.Request) -> web.Response:
+        auth = request.headers.get("Authorization", "")
+        profile = self.runtime_tokens.get(auth[7:] if auth.startswith("Bearer ") else "")
+        if profile is not None:
+            policy = self.build_policy("runtime", "T1")
+            policy["access"] = {"allowed": True, "reason": ""}
+            policy["models"] = {
+                "models": [{"id": "uniwork-ds", "display_name": "DeepSeek", "api_key": "", "base_url": f"{self.url}/v1",
+                            "model": "deepseek-v4-flash", "context_window": 300000}],
+                "main_model_id": "uniwork-ds", "fast_model_id": "",
+            }
+            policy["agentProfile"] = profile
+            policy["runtime"] = {"key": "agent-x", "kind": "agent", "label": "Agent"}
+            policy["revision"] = "rev-runtime-" + str(abs(hash(str(profile))) % 10**6)
+            return web.json_response(policy)
         phone, code, _ = self._token(request)
         return web.json_response(self.build_policy(phone, code))
 

@@ -383,8 +383,11 @@ class Cube:
         files: list[dict],
         ready_timeout_s: int = 240,
         state: dict | None = None,
+        api_server: bool = False,
     ) -> dict:
         """把会话令牌和种子文件送进容器，并让它把 hermes 拉起来。
+
+        ``api_server``：平台的运行环境（docs/企业版对接/15）要另开 gateway 的 API 服务，见 seed/forward.py。
 
         这是绕开平台时序限制的那条通道：平台下发创建时环境变量是在容器进程
         已经起来之后，而 hermes 缺了令牌会直接退出、导致实例根本建不起来。
@@ -408,6 +411,8 @@ class Cube:
         payload: dict[str, Any] = {"token": token, "files": files, "ready_timeout_s": ready_timeout_s}
         if state:
             payload["state"] = state
+        if api_server:
+            payload["api_server"] = True
         deadline = time.monotonic() + BOOTSTRAP_RETRY_S
         while True:
             try:

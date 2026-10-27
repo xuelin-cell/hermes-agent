@@ -59,6 +59,29 @@ class TenantContext:
     catalog: list[tuple[str, str]]
     # 套餐给的每个模型的上下文长度 {模型名: context_window}；10-09 之前登录的用户没有，重新登录后才有。
     limits: dict[str, int] = field(default_factory=dict)
+    # 平台的运行环境（svc: 用户，见 service_runtime 表）：实例要另开 API 服务，人设按平台的写
+    service: bool = False
+    persona: str = ""
+
+
+@dataclass(frozen=True)
+class ServiceRuntime:
+    """平台调用云端运行智能体的一个运行环境（docs/企业版对接/15），连同它的实例状态。"""
+
+    user_id: str
+    tenant_id: str
+    tenant_code: str
+    runtime_key: str
+    kind: str
+    label: str
+    spec_sha256: str
+    current_run_id: str
+    run_started_at: datetime | None
+    created_at: datetime
+    last_active_at: datetime
+    state: str = ""
+    sandbox_id: str = ""
+    template_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -478,10 +501,13 @@ class Store:
                     m.default_model,
                     m.model_catalog,
                     c.api_key_ciphertext,
-                    c.container_token_ciphertext
+                    c.container_token_ciphertext,
+                    s.user_id IS NOT NULL AS service,
+                    s.persona
                 FROM users AS u
                 LEFT JOIN tenant_model_config AS m ON m.user_id = u.user_id
                 LEFT JOIN tenant_credentials AS c ON c.user_id = u.user_id
+                LEFT JOIN service_runtime AS s ON s.user_id = u.user_id
                 WHERE u.user_id = $1
                 """,
                 user_id,
@@ -507,7 +533,155 @@ class Store:
             endpoint=endpoint,
             catalog=self._decode_catalog(row["model_catalog"]),
             limits=self._decode_limits(row["model_catalog"]),
+            service=bool(row["service"]),
+            persona=str(row["persona"] or ""),
         )
+
+    # ---- 平台的运行环境（svc: 用户，docs/企业版对接/15） ------------------------------------------
+
+    async def upsert_service_runtime(
+        self,
+        *,
+        user_id: str,
+        tenant_id: str,
+        tenant_code: str,
+        runtime_key: str,
+        kind: str,
+        label: str,
+        device_token: str,
+        endpoint: tuple[str, str] | None,
+        catalog: list[tuple[str, str]] | None,
+        limits: dict[str, int] | None,
+        persona: str,
+    ) -> None:
+        """建或更新一个运行环境：用户、平台给的设备令牌、模型配置、人设一次写完。"""
+        now = _utc_now()
+        async with self.database.acquire() as connection:
+            async with connection.transaction():
+                await connection.execute(
+                    """
+                    INSERT INTO users(user_id, masked_phone, last_login_at) VALUES($1, NULL, $2)
+                    ON CONFLICT(user_id) DO UPDATE SET last_login_at = EXCLUDED.last_login_at
+                    """,
+                    user_id,
+                    now,
+                )
+                await self._upsert_model_config(connection, user_id, endpoint, catalog, limits)
+                await connection.execute(
+                    """
+                    INSERT INTO tenant_credentials(user_id, api_key_ciphertext) VALUES($1, $2)
+                    ON CONFLICT(user_id) DO UPDATE SET
+                        api_key_ciphertext = EXCLUDED.api_key_ciphertext,
+                        updated_at = now()
+                    """,
+                    user_id,
+                    self.cipher.encrypt(device_token),
+                )
+                await connection.execute(
+                    """
+                    INSERT INTO service_runtime(
+                        user_id, tenant_id, tenant_code, runtime_key, kind, label, persona
+                    ) VALUES($1, $2, $3, $4, $5, $6, $7)
+                    ON CONFLICT(user_id) DO UPDATE SET
+                        tenant_code = EXCLUDED.tenant_code,
+                        kind = EXCLUDED.kind,
+                        label = EXCLUDED.label,
+                        persona = EXCLUDED.persona,
+                        last_active_at = now()
+                    """,
+                    user_id,
+                    tenant_id,
+                    tenant_code,
+                    runtime_key,
+                    kind,
+                    label,
+                    persona,
+                )
+
+    _SERVICE_SELECT = """
+        SELECT s.user_id, s.tenant_id, s.tenant_code, s.runtime_key, s.kind, s.label, s.spec_sha256,
+               s.current_run_id, s.run_started_at, s.created_at, s.last_active_at,
+               r.state, r.sandbox_id, r.template_id
+        FROM service_runtime AS s
+        LEFT JOIN tenant_runtime AS r ON r.user_id = s.user_id
+    """
+
+    @staticmethod
+    def _service_row(row) -> ServiceRuntime:
+        return ServiceRuntime(
+            user_id=row["user_id"],
+            tenant_id=row["tenant_id"],
+            tenant_code=row["tenant_code"],
+            runtime_key=row["runtime_key"],
+            kind=row["kind"],
+            label=row["label"],
+            spec_sha256=row["spec_sha256"],
+            current_run_id=row["current_run_id"] or "",
+            run_started_at=row["run_started_at"],
+            created_at=row["created_at"],
+            last_active_at=row["last_active_at"],
+            state=row["state"] or "",
+            sandbox_id=row["sandbox_id"] or "",
+            template_id=row["template_id"] or "",
+        )
+
+    async def find_service_runtimes(self, runtime_key: str, tenant_id: str = "") -> list[ServiceRuntime]:
+        """按运行环境 key 找；带了企业 ID 就只在这个企业里找（平台的 key 跨企业会重名）。"""
+        async with self.database.acquire() as connection:
+            if tenant_id:
+                rows = await connection.fetch(
+                    self._SERVICE_SELECT + " WHERE s.tenant_id = $1 AND s.runtime_key = $2",
+                    tenant_id,
+                    runtime_key,
+                )
+            else:
+                rows = await connection.fetch(self._SERVICE_SELECT + " WHERE s.runtime_key = $1", runtime_key)
+        return [self._service_row(row) for row in rows]
+
+    async def list_service_runtimes(self, tenant_id: str) -> list[ServiceRuntime]:
+        async with self.database.acquire() as connection:
+            rows = await connection.fetch(
+                self._SERVICE_SELECT + " WHERE s.tenant_id = $1 ORDER BY s.created_at", tenant_id)
+        return [self._service_row(row) for row in rows]
+
+    async def set_service_spec(self, user_id: str, digest: str) -> None:
+        async with self.database.acquire() as connection:
+            await connection.execute(
+                "UPDATE service_runtime SET spec_sha256 = $2 WHERE user_id = $1", user_id, digest)
+
+    async def begin_service_run(self, user_id: str, run_id: str) -> None:
+        async with self.database.acquire() as connection:
+            await connection.execute(
+                """
+                UPDATE service_runtime
+                SET current_run_id = $2, run_started_at = now(), last_active_at = now()
+                WHERE user_id = $1
+                """,
+                user_id,
+                run_id,
+            )
+
+    async def end_service_run(self, user_id: str, run_id: str) -> None:
+        """只清掉这一次：期间若已经换成别的运行，不动。"""
+        async with self.database.acquire() as connection:
+            await connection.execute(
+                """
+                UPDATE service_runtime SET current_run_id = NULL, last_active_at = now()
+                WHERE user_id = $1 AND current_run_id = $2
+                """,
+                user_id,
+                run_id,
+            )
+
+    async def touch_service_runtime(self, user_id: str) -> None:
+        async with self.database.acquire() as connection:
+            await connection.execute(
+                "UPDATE service_runtime SET last_active_at = now() WHERE user_id = $1", user_id)
+
+    async def delete_user(self, user_id: str) -> None:
+        """连同运行态、凭据、模型配置、运行环境记录一起删（外键都是级联）。只给删运行环境用。"""
+        async with self.database.acquire() as connection:
+            await connection.execute("DELETE FROM users WHERE user_id = $1", user_id)
 
     async def set_tenant_state(self, user_id: str, state: str) -> None:
         async with self.database.acquire() as connection:

@@ -443,8 +443,11 @@ class TenantManager:
                     await self.docker.remove_container(cname)
                     info = None
             if info is None:
-                await self._create(cname, nname, vname, labels, token)
+                await self._create(cname, nname, vname, labels, token,
+                                   api_server=bool(getattr(context, "service", False)))
                 seed = self._render_seed(api_key, endpoint, catalog, getattr(context, "limits", None))
+                if persona := self._persona_of(context):
+                    seed["SOUL.md"] = persona.encode("utf-8")
                 if not fresh_volume:
                     # 卷已有数据：只刷新转发器，不碰用户的 .env / config.yaml
                     seed = {k: v for k, v in seed.items() if k.startswith(".mt/")}
@@ -575,8 +578,11 @@ class TenantManager:
         endpoint: tuple[str, str] | None,
         catalog: list[tuple[str, str]] | None,
         limits: dict[str, int] | None = None,
+        persona: str | None = None,
     ) -> list[dict]:
         """渲染引导接口要的种子文件。
+
+        ``persona`` 只有平台的运行环境才给（平台策略的 agentProfile）：人设归平台管，每次都覆盖。
 
         与 Docker 那边 ``_render_seed`` 的两点差异：
 
@@ -609,6 +615,10 @@ class TenantManager:
                 "overwrite": "upsert-lines",
             },
             {
+                "path": "SOUL.md",
+                "content": persona,
+                "overwrite": True,
+            } if persona else {
                 # 默认人设：盘上那份还是镜像首启种的 hermes 默认人设才换成平台的；
                 # 用户在「管理配置档案」里改过的不动（同样按镜像里的示例逐字节比对）。
                 "path": "SOUL.md",
@@ -616,6 +626,11 @@ class TenantManager:
                 "overwrite": "if-pristine",
             },
         ]
+
+    @staticmethod
+    def _persona_of(context) -> str | None:
+        """平台的运行环境才有平台下发的人设；成员的人设归他自己。"""
+        return (getattr(context, "persona", "") or None) if getattr(context, "service", False) else None
 
     def _template_id(self) -> str:
         """配置里的模板值只在它是 ID（tpl-…）时参与「模板不一致就重建」的比对；别名比不了。"""
@@ -823,9 +838,12 @@ class TenantManager:
             self.s.forward_port,
             token=token,
             files=self._cube_seed_files(
-                context.api_key, context.endpoint, context.catalog, getattr(context, "limits", None)),
+                context.api_key, context.endpoint, context.catalog, getattr(context, "limits", None),
+                persona=self._persona_of(context)),
             ready_timeout_s=self.s.ready_timeout_s,
             state=self._state_block(sandbox_id, epoch, restore_from),
+            # 平台的运行环境才另开 API 服务；成员实例的引导请求不变
+            **({"api_server": True} if getattr(context, "service", False) else {}),
         )
         if body.get("already"):
             await self._adopt_bootstrapped(user_id, slug, sandbox_id)
@@ -1160,7 +1178,7 @@ class TenantManager:
             body = await self.cube.reload(
                 sandbox_id, self.s.forward_port, token,
                 files=self._cube_seed_files(api_key, context.endpoint, context.catalog,
-                                            getattr(context, "limits", None)),
+                                            getattr(context, "limits", None), persona=self._persona_of(context)),
                 ready_timeout_s=self.s.ready_timeout_s,
             )
         except CubeError as exc:
@@ -1203,11 +1221,14 @@ class TenantManager:
             raise CredentialSyncError(f"Hermes 凭据接口不可达: {type(exc).__name__}") from exc
         self._synced_key_digests[tenant.user_id] = digest
 
-    async def _create(self, cname: str, nname: str, vname: str, labels: dict, token: str) -> None:
+    async def _create(self, cname: str, nname: str, vname: str, labels: dict, token: str,
+                      api_server: bool = False) -> None:
         cmd = (
             "python3 /opt/data/.mt/forward.py & "
             f"exec hermes serve --host 127.0.0.1 --port {self.s.hermes_port} --skip-build"
         )
+        # 平台的运行环境：转发器另起 gateway 的 API 服务（沙箱路径靠引导载荷，这里靠环境变量）
+        extra_env = ["MT_API_SERVER=1"] if api_server else []
         spec = {
             "Image": self.s.image,
             "Env": [
@@ -1220,6 +1241,7 @@ class TenantManager:
                 f"HERMES_DASHBOARD_FILES_ROOT={self.s.files_root}",
                 f"MT_FWD_PORT={self.s.forward_port}",
                 f"MT_HERMES_PORT={self.s.hermes_port}",
+                *extra_env,
             ],
             "Cmd": ["sh", "-c", cmd],
             "Labels": labels,
@@ -1253,6 +1275,106 @@ class TenantManager:
                 last_err = type(exc).__name__
             await asyncio.sleep(1.0)
         raise TimeoutError(f"租户容器 {self.s.ready_timeout_s}s 内没就绪: {last_err}")
+
+    # ---- 平台的运行环境（svc: 用户，docs/企业版对接/15） ------------------------------------------
+
+    def service_digest(self, context) -> str:
+        """实例里该生效的人设 + 模型；Docker 路径连令牌一起算（沙箱路径换令牌由 _reload_if_key_changed 管）。"""
+        h = hashlib.sha256()
+        for part in (context.persona, json.dumps(context.endpoint), json.dumps(context.catalog),
+                     json.dumps(getattr(context, "limits", None) or {}, sort_keys=True)):
+            h.update(part.encode("utf-8"))
+            h.update(b"\0")
+        if not self.use_cube:
+            h.update(context.api_key.encode("utf-8"))
+        return h.hexdigest()
+
+    async def apply_service_spec(self, user_id: str, applied_sha256: str) -> bool:
+        """平台改了运行环境的人设或模型：重写实例里的文件并重启 hermes 和 gateway。返回 True 表示重新加载过。
+
+        调用前实例要已经由 ensure_running 拉起来；正在跑运行时由调用方决定不调。
+        """
+        context = await self.store.get_tenant_context(user_id)
+        want = self.service_digest(context)
+        if want == applied_sha256:
+            return False
+        slug = tenant_slug(user_id)
+        if self.use_cube:
+            assert self.cube is not None
+            rt = await self.store.get_runtime(user_id)
+            token = await self.store.ensure_tenant_token(user_id)
+            await self.cube.reload(
+                rt.sandbox_id, self.s.forward_port, token,
+                files=self._cube_seed_files(context.api_key, context.endpoint, context.catalog,
+                                            getattr(context, "limits", None), persona=self._persona_of(context)),
+                ready_timeout_s=self.s.ready_timeout_s,
+            )
+            await self._remember_hermes_key(user_id, rt.sandbox_id, context.api_key)
+            self._synced_key_digests[user_id] = hashlib.sha256(context.api_key.encode("utf-8")).digest()
+        else:
+            # Docker 路径：卷是这个运行环境专用的，三份文件整份重写，重启容器让 hermes 和 gateway 都重读
+            files = self._render_user_files(context.api_key, context.endpoint, context.catalog,
+                                            getattr(context, "limits", None))
+            if persona := self._persona_of(context):
+                files["SOUL.md"] = persona.encode("utf-8")
+            cname = self.container_name(slug)
+            async with self._lock(slug):
+                await self.docker.put_archive(cname, "/opt/data", _tar_bytes(files))
+                await self.docker.stop_container(cname)
+            await self.ensure_running(user_id)
+        await self.store.set_service_spec(user_id, want)
+        await self.store.write_audit(user_id, "service.reload", {"reason": "spec"})
+        log.info("service %s: 平台改了人设或模型，实例已重新加载", slug)
+        return True
+
+    async def restart_service(self, user_id: str) -> None:
+        """平台的「重启」：不删卷，重写配置后重启 hermes 和 gateway。"""
+        slug = tenant_slug(user_id)
+        if self.use_cube:
+            assert self.cube is not None
+            await self.ensure_running(user_id)
+            context = await self.store.get_tenant_context(user_id)
+            rt = await self.store.get_runtime(user_id)
+            token = await self.store.ensure_tenant_token(user_id)
+            await self.cube.reload(
+                rt.sandbox_id, self.s.forward_port, token,
+                files=self._cube_seed_files(context.api_key, context.endpoint, context.catalog,
+                                            getattr(context, "limits", None), persona=self._persona_of(context)),
+                ready_timeout_s=self.s.ready_timeout_s,
+            )
+        else:
+            async with self._lock(slug):
+                info = await self.docker.inspect_container(self.container_name(slug))
+                if info and info.get("State", {}).get("Running"):
+                    await self.docker.stop_container(self.container_name(slug))
+            await self.ensure_running(user_id)
+        await self.store.write_audit(user_id, "service.restart", {})
+
+    async def delete_service(self, user_id: str) -> None:
+        """平台删了 Agent：删实例和卷，再删入口里的记录。实例删不掉就抛出，记录留着下次再删。"""
+        slug = tenant_slug(user_id)
+        if self.use_cube:
+            assert self.cube is not None
+            async with self._lock(slug):
+                async with self._pg_lock(user_id):
+                    rt = await self.store.get_runtime(user_id)
+                    if rt.sandbox_id:
+                        token = await self.store.ensure_tenant_token(user_id)
+                        if not await self._drain_and_delete(user_id, rt.sandbox_id, token, "service_delete"):
+                            raise RuntimeError("实例没能删除")
+                    await self.cube.remove_volume(self.cube_volume_name(user_id))
+        else:
+            async with self._lock(slug):
+                await self.docker.remove_container(self.container_name(slug))
+                await self.docker.remove_volume(self.volume_name(slug))
+                try:
+                    await self.docker.remove_network(self.network_name(slug))
+                except DockerError as exc:  # 入口自己还连在这张网上时删不掉，留着不影响什么
+                    log.info("service %s: 网络没删掉（%s），留着", slug, exc)
+        self._hermes_keys.pop(user_id, None)
+        self._synced_key_digests.pop(user_id, None)
+        await self.store.delete_user(user_id)
+        log.info("service %s: 运行环境已删除（实例和卷）", slug)
 
     async def stop(self, user_id: str, reason: str = "") -> None:
         if self.use_cube:

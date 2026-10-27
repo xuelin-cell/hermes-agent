@@ -22,6 +22,11 @@
    这两个接口和 ``/__mt/status`` 都附带「忙不忙」（定时任务、对话回合，见 mtstate.activity）：
    入口据此决定这轮回收要不要暂停，并在实例停着时按下一个定时任务的时间把它叫起来。
 
+服务实例（平台调用云端运行智能体，见 docs/企业版对接/15）另外起一个 ``hermes gateway``，只开它的 API 服务
+（``/v1/runs`` 只在 gateway 里有，``hermes serve`` 没有），只听实例内回环。沙箱路径由引导载荷的
+``api_server`` 打开，Docker 路径由容器环境变量 ``MT_API_SERVER=1`` 打开。入口经 ``/__mt/api/*`` 访问它：要实例令牌，
+转发时换成实例里随机生成的 API key，事件流照样逐字节对拷。
+
 ``/__mt_user/*`` 是给用户用的（命令行通道、回收站、重命名、Office 文件预览：转 PDF、幻灯片按页出图，见 mtuser.py）：浏览器经入口的
 ``/__hermes_backend/__mt_user/…`` 转进来，带的是和 hermes 一样的会话令牌。入口照常校验登录后放行；
 ``/__mt/*`` 这组管理接口入口不放行，用户碰不到。
@@ -41,6 +46,7 @@ import asyncio
 import hmac
 import json
 import os
+import secrets
 import signal
 import sys
 import time
@@ -53,6 +59,8 @@ import mtuser  # noqa: E402
 
 LISTEN_PORT = int(os.environ.get("MT_FWD_PORT", "9121"))
 TARGET_PORT = int(os.environ.get("MT_HERMES_PORT", "9120"))
+API_PORT = int(os.environ.get("MT_API_PORT", "8642"))  # 服务实例里 gateway 的 API 服务（只听回环）
+API_PREFIX = "/__mt/api/"
 HERMES_HOME = Path(os.environ.get("HERMES_HOME", "/opt/data"))
 # 文件面板的根（沙箱镜像里是 /opt/data/workspace，指向卷上的工作区）。回收站和重命名只动这里面的东西。
 WORKSPACE = Path(os.environ.get("HERMES_DASHBOARD_FILES_ROOT") or HERMES_HOME / "workspace")
@@ -96,15 +104,18 @@ _drained: dict | None = None
 _hermes_restarts = 0
 _reloading = False  # /__mt/reload 正在重启 hermes：守护循环别跟着拉起
 _reload_lock: asyncio.Lock | None = None
+_api_enabled = False  # 服务实例：另起 gateway 的 API 服务
+_api_key = ""  # 只在这台实例里用，每次启动重新生成；不进日志
+_gateway_proc: asyncio.subprocess.Process | None = None
+_gateway_task: asyncio.Task | None = None
 
 
 # ---------------------------------------------------------------- 工具
 
-async def _hermes_alive() -> bool:
-    """hermes 端口能不能连上。"""
+async def _port_alive(port: int) -> bool:
     try:
         _, writer = await asyncio.wait_for(
-            asyncio.open_connection("127.0.0.1", TARGET_PORT), timeout=1.0
+            asyncio.open_connection("127.0.0.1", port), timeout=1.0
         )
     except Exception:  # noqa: BLE001
         return False
@@ -114,6 +125,16 @@ async def _hermes_alive() -> bool:
     except Exception:  # noqa: BLE001
         pass
     return True
+
+
+async def _hermes_alive() -> bool:
+    """hermes 端口能不能连上。"""
+    return await _port_alive(TARGET_PORT)
+
+
+async def _ready() -> bool:
+    """hermes 起来了；服务实例还要 gateway 的 API 服务也起来。"""
+    return await _hermes_alive() and (not _api_enabled or await _port_alive(API_PORT))
 
 
 def _reply(writer: asyncio.StreamWriter, status: int, payload: dict) -> None:
@@ -332,6 +353,93 @@ async def _supervise() -> None:
             await asyncio.sleep(backoff)
 
 
+def _enable_api_server() -> None:
+    """服务实例才开：API key 写进 ``.env``。
+
+    gateway 跑起来以后读平台密钥走 profile 的 secret scope，只认 ``HERMES_HOME/.env``，
+    不认进程环境变量（10-27 实测：只放环境变量会报 No messaging platforms enabled）。
+    """
+    global _api_enabled, _api_key
+    if not _api_key:
+        _api_key = secrets.token_hex(32)
+    env_file = HERMES_HOME / ".env"
+    mtstate.env_upsert(env_file, [
+        f"API_SERVER_KEY={_api_key}", "API_SERVER_HOST=127.0.0.1", f"API_SERVER_PORT={API_PORT}",
+    ])
+    if hasattr(os, "geteuid") and os.geteuid() == 0:
+        # Docker 路径转发器可能是 root：.env 要还给 hermes 的用户，不然它读不了自己的模型 key
+        home = HERMES_HOME.stat()
+        os.chown(env_file, home.st_uid, home.st_gid)
+    _api_enabled = True
+
+
+async def _spawn_gateway() -> None:
+    global _gateway_proc
+    env = dict(os.environ)
+    env.update(_hermes_env)
+    # 镜像带 s6：不加这个，gateway run 会把自己交给 s6 托管后立刻退出，这里的守护循环就会反复拉起、打断运行
+    env["HERMES_GATEWAY_NO_SUPERVISE"] = "1"
+    _gateway_proc = await asyncio.create_subprocess_exec("hermes", "gateway", "run", env=env)
+
+
+async def _stop_gateway(grace_s: float = 30.0) -> None:
+    proc = _gateway_proc
+    if proc is None or proc.returncode is not None:
+        return
+    try:
+        proc.send_signal(signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    try:
+        await asyncio.wait_for(proc.wait(), timeout=grace_s)
+    except asyncio.TimeoutError:
+        try:
+            proc.kill()
+        except ProcessLookupError:
+            return
+        await proc.wait()
+
+
+async def _supervise_gateway() -> None:
+    """服务实例里的 gateway 意外退出就带退避拉起来；drain 期间不管，reload 由 _reload 自己拉起。"""
+    backoff = 1.0
+    while True:
+        proc = _gateway_proc
+        if proc is None:
+            await asyncio.sleep(1.0)
+            continue
+        started = time.monotonic()
+        await proc.wait()
+        if _draining:
+            return
+        if _reloading or proc is not _gateway_proc:
+            await asyncio.sleep(0.5)
+            continue
+        if time.monotonic() - started > 60:
+            backoff = 1.0
+        _log(f"gateway 退出（码 {proc.returncode}），{backoff:.0f}s 后拉起")
+        await asyncio.sleep(backoff)
+        backoff = min(backoff * 2, 60.0)
+        if _draining:
+            return
+        try:
+            await _spawn_gateway()
+        except Exception as exc:  # noqa: BLE001
+            _log(f"拉起 gateway 失败: {type(exc).__name__}: {exc}")
+            await asyncio.sleep(backoff)
+
+
+async def _start_api_server() -> None:
+    """打开 API 服务并拉起 gateway（重复调用只补拉没在跑的那部分）。"""
+    global _gateway_task
+    if not _api_enabled:
+        _enable_api_server()
+    if _gateway_proc is None or _gateway_proc.returncode is not None:
+        await _spawn_gateway()
+    if _gateway_task is None or _gateway_task.done():
+        _gateway_task = asyncio.create_task(_supervise_gateway())
+
+
 async def _archiver(interval_s: int) -> None:
     """定时归档循环。真正的打包在线程里跑，不占转发流量的事件循环。"""
     await asyncio.sleep(min(60, interval_s))  # 等 hermes 把技能同步、首次建库做完
@@ -360,6 +468,7 @@ async def _fence() -> None:
     _draining = True
     await mtuser.close_all_terminals()
     await _stop_hermes()
+    await _stop_gateway()
 
 
 def _check_token(headers: dict[str, str]) -> bool:
@@ -473,6 +582,8 @@ async def _bootstrap(writer: asyncio.StreamWriter, body: bytes) -> None:
         _hermes_token = token
         try:
             await _spawn_hermes(token)
+            if payload.get("api_server"):
+                await _start_api_server()
         except Exception as exc:  # noqa: BLE001
             _reply(writer, 500,
                    {"ok": False, "error": f"拉起 hermes 失败: {type(exc).__name__}: {exc}"})
@@ -487,8 +598,10 @@ async def _bootstrap(writer: asyncio.StreamWriter, body: bytes) -> None:
     # 等 hermes 真正开始监听，好让入口一收到 200 就能直接转发。
     deadline = time.monotonic() + float(payload.get("ready_timeout_s", 180))
     while time.monotonic() < deadline:
-        if await _hermes_alive():
+        if await _ready():
             reply = {"ok": True, "hermes": True, "written": written, "state": report}
+            if _api_enabled:
+                reply["api"] = True
             if skills is not None:
                 reply["skills"] = skills
             _reply(writer, 200, reply)
@@ -540,6 +653,7 @@ async def _drain(writer: asyncio.StreamWriter) -> None:
         _archiver_task.cancel()
     await mtuser.close_all_terminals()
     await _stop_hermes()
+    await _stop_gateway()
     try:
         summary = await _do_archive(force=True)
     except mtstate.OwnerLost as exc:
@@ -586,7 +700,10 @@ async def _reload(writer: asyncio.StreamWriter, body: bytes) -> None:
         _reloading = True
         try:
             await _stop_hermes()
+            await _stop_gateway()
             await _spawn_hermes(_hermes_token)
+            if _api_enabled:
+                await _spawn_gateway()
         except Exception as exc:  # noqa: BLE001
             _reply(writer, 500, {"ok": False, "error": f"重启 hermes 失败: {type(exc).__name__}: {exc}",
                                  "written": written})
@@ -596,8 +713,9 @@ async def _reload(writer: asyncio.StreamWriter, body: bytes) -> None:
     _log(f"按入口的要求重新加载：写了 {written or '（无变化）'}，hermes 已重启")
     deadline = time.monotonic() + float(payload.get("ready_timeout_s", 120))
     while time.monotonic() < deadline:
-        if await _hermes_alive():
-            _reply(writer, 200, {"ok": True, "hermes": True, "written": written})
+        if await _ready():
+            _reply(writer, 200, {"ok": True, "hermes": True, "written": written,
+                                 **({"api": True} if _api_enabled else {})})
             return
         if _hermes_proc is not None and _hermes_proc.returncode is not None:
             _reply(writer, 500, {"ok": False, "error": f"hermes 重启后立刻退出，退出码 {_hermes_proc.returncode}",
@@ -623,6 +741,12 @@ async def _resume(writer: asyncio.StreamWriter) -> None:
             await _spawn_hermes(_hermes_token)
         except Exception as exc:  # noqa: BLE001
             _reply(writer, 500, {"ok": False, "error": f"拉起 hermes 失败: {type(exc).__name__}: {exc}"})
+            return
+    if _api_enabled:
+        try:
+            await _start_api_server()
+        except Exception as exc:  # noqa: BLE001
+            _reply(writer, 500, {"ok": False, "error": f"拉起 gateway 失败: {type(exc).__name__}: {exc}"})
             return
     if _supervisor_task is None or _supervisor_task.done():
         _supervisor_task = asyncio.create_task(_supervise())
@@ -710,6 +834,7 @@ async def _handle_mt(
         _reply(writer, 200, {
             "ok": True,
             "hermes": await _hermes_alive(),
+            "api": (await _port_alive(API_PORT)) if _api_enabled else None,
             "bootstrapped": _bootstrapped,
             "draining": _draining,
             "hermes_restarts": _hermes_restarts,
@@ -919,6 +1044,50 @@ async def _pipe(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> N
             pass
 
 
+def _api_head(head: bytes) -> bytes:
+    """``/__mt/api/v1/runs…`` 改成 ``/v1/runs…``；去掉实例令牌和调用方自己的鉴权，换成实例里的 API key。"""
+    raw_head, _, rest = head.partition(b"\r\n\r\n")
+    lines = raw_head.split(b"\r\n")
+    method, target, version = lines[0].split(b" ", 2)
+    target = b"/" + target[len(API_PREFIX):]
+    drop = (b"connection", b"keep-alive", b"x-mt-token", b"authorization", b"host")
+    kept = [b" ".join((method, target, version))] + [
+        line for line in lines[1:] if line.split(b":", 1)[0].strip().lower() not in drop
+    ]
+    kept += [f"Host: 127.0.0.1:{API_PORT}".encode(), f"Authorization: Bearer {_api_key}".encode(),
+             b"Connection: close"]
+    return b"\r\n".join(kept) + b"\r\n\r\n" + rest
+
+
+async def _proxy_api(headers: dict[str, str], head: bytes, client_r: asyncio.StreamReader,
+                     client_w: asyncio.StreamWriter) -> None:
+    """``/__mt/api/*`` —— 服务实例里 gateway 的 API 服务，只给入口用（要实例令牌）。"""
+    expected = _session_token()
+    given = headers.get("x-mt-token", "")
+    if not (expected and hmac.compare_digest(given.encode("utf-8"), expected.encode("utf-8"))):
+        status, payload = 403, {"ok": False, "error": "缺少或错误的实例令牌"}
+    elif not _api_enabled:
+        status, payload = 404, {"ok": False, "error": "这台实例没有开 API 服务"}
+    elif _draining:
+        status, payload = 503, {"ok": False, "error": "实例正在排空", "draining": True}
+    else:
+        try:
+            target_r, target_w = await asyncio.open_connection("127.0.0.1", API_PORT)
+        except Exception:  # noqa: BLE001 — gateway 还没起来
+            status, payload = 503, {"ok": False, "error": "API 服务尚未就绪"}
+        else:
+            target_w.write(_api_head(head))
+            await target_w.drain()
+            await asyncio.gather(_pipe(client_r, target_w), _pipe(target_r, client_w))
+            return
+    _reply(client_w, status, payload)
+    try:
+        await client_w.drain()
+    except Exception:  # noqa: BLE001
+        pass
+    client_w.close()
+
+
 async def _handle(client_r: asyncio.StreamReader, client_w: asyncio.StreamWriter) -> None:
     try:
         head = await _read_head(client_r)
@@ -927,6 +1096,9 @@ async def _handle(client_r: asyncio.StreamReader, client_w: asyncio.StreamWriter
             return
 
         method, path, headers, rest = _parse(head)
+        if path.startswith(API_PREFIX):
+            await _proxy_api(headers, head, client_r, client_w)
+            return
         if path.startswith("/__mt/") or path.startswith(USER_PREFIX):
             handler = _handle_mt if path.startswith("/__mt/") else _handle_user
             try:
@@ -977,6 +1149,12 @@ async def _handle(client_r: asyncio.StreamReader, client_w: asyncio.StreamWriter
 async def main() -> None:
     server = await asyncio.start_server(_handle, "0.0.0.0", LISTEN_PORT)
     janitor = asyncio.create_task(_trash_janitor())
+    if os.environ.get("MT_API_SERVER") == "1":
+        # Docker 路径的服务实例：没有引导这一步，hermes 由容器 CMD 拉起，gateway 由这里拉起
+        try:
+            await _start_api_server()
+        except Exception as exc:  # noqa: BLE001
+            _log(f"拉起 gateway 失败: {type(exc).__name__}: {exc}")
     async with server:
         try:
             await server.serve_forever()

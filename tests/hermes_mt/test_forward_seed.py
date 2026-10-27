@@ -288,3 +288,46 @@ async def test_supervisor_does_not_respawn_hermes_during_a_reload(forward, monke
     await asyncio.sleep(1.6)
     task.cancel()
     assert spawned == []
+
+
+class _ClosingWriter(_Writer):
+    def __init__(self) -> None:
+        super().__init__()
+        self.closed = False
+
+    async def drain(self) -> None:
+        pass
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def test_api_head_rewrites_path_and_swaps_credentials(forward, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(forward, "_api_key", "k" * 64)
+    head = (b"POST /__mt/api/v1/runs?x=1 HTTP/1.1\r\nHost: cube\r\nX-MT-Token: inst\r\n"
+            b"Authorization: Bearer platform\r\nContent-Length: 2\r\n\r\n{}")
+    out = forward._api_head(head)
+    assert out.startswith(b"POST /v1/runs?x=1 HTTP/1.1\r\n")
+    assert b"X-MT-Token" not in out and b"platform" not in out and b"Host: cube" not in out
+    assert b"Authorization: Bearer " + b"k" * 64 in out
+    assert out.endswith(b"Connection: close\r\n\r\n{}")
+
+
+@pytest.mark.asyncio
+async def test_api_proxy_needs_instance_token_and_an_enabled_api(forward, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(forward, "_hermes_token", "inst")
+    writer = _ClosingWriter()
+    await forward._proxy_api({"x-mt-token": "wrong"}, b"", None, writer)
+    assert writer.data.startswith(b"HTTP/1.1 403") and writer.closed
+    writer = _ClosingWriter()
+    await forward._proxy_api({"x-mt-token": "inst"}, b"", None, writer)
+    assert writer.data.startswith(b"HTTP/1.1 404")  # 成员实例没开 API 服务
+
+
+def test_enable_api_server_writes_key_into_env_file(forward, tmp_path: Path) -> None:
+    (tmp_path / ".env").write_text("YUANJING_KEY=mine\n", encoding="utf-8")
+    forward._enable_api_server()
+    env = (tmp_path / ".env").read_text(encoding="utf-8")
+    assert "YUANJING_KEY=mine" in env  # 用户自己的行不动
+    assert f"API_SERVER_KEY={forward._api_key}" in env and len(forward._api_key) == 64
+    assert "API_SERVER_HOST=127.0.0.1" in env and forward._api_enabled is True

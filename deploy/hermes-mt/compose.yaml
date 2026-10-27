@@ -60,6 +60,8 @@ services:
     restart: unless-stopped
     ports:
       - "${MT_HTTP_PORT:-18081}:8081"
+      # 平台调用云端的服务接口专用监听（只转那一组路径，见 nginx/hermes-mt.conf）；不配就只绑本机回环
+      - "${MT_SERVICE_HTTP_PORT:-127.0.0.1:18082}:8082"
     depends_on:
       entry:
         condition: service_healthy

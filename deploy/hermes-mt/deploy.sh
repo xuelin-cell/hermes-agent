@@ -127,6 +127,7 @@ load_cfg() {
     CUBE_PROXY="$(cfg MT_CUBE_PROXY)"
     BACKEND="$(cfg MT_BACKEND docker)"
     HTTP_PORT="$(cfg MT_HTTP_PORT 18081)"
+    SERVICE_PORT="$(cfg MT_SERVICE_HTTP_PORT)"
     DEV_LOGIN="$(cfg MT_DEV_LOGIN 0)"
     TEMPLATE="$(cfg MT_CUBE_TEMPLATE)"
     local api_host
@@ -366,6 +367,14 @@ cmd_check() {
     [ "$BACKEND" = cube ] && ok "后端 cube" || die "MT_BACKEND=$BACKEND，本脚本只管沙箱后端"
     printf '%s' "$HTTP_PORT" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+$' \
         && ok "页面只绑 $HTTP_PORT" || die "MT_HTTP_PORT=$HTTP_PORT 没带 IP，会绑到所有网卡；写成 IP:端口"
+    if [ -n "$SERVICE_PORT" ]; then
+        # 平台调用云端的服务接口另开的监听：只许带 IP，而且密钥和来源地址都得配上，缺一个就不部署
+        printf '%s' "$SERVICE_PORT" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+$' \
+            || die "MT_SERVICE_HTTP_PORT=$SERVICE_PORT 没带 IP，会绑到所有网卡；写成 IP:端口"
+        [ -n "$(cfg MT_UNIWORK_SERVICE_SECRET)" ] || die "开了 MT_SERVICE_HTTP_PORT 却没配 MT_UNIWORK_SERVICE_SECRET"
+        [ -n "$(cfg MT_UNIWORK_SERVICE_ALLOW)" ] || die "开了 MT_SERVICE_HTTP_PORT 却没配 MT_UNIWORK_SERVICE_ALLOW（只放行平台地址）"
+        ok "服务接口另绑 $SERVICE_PORT，只放行 $(cfg MT_UNIWORK_SERVICE_ALLOW)"
+    fi
     [ "$DEV_LOGIN" = 0 ] && ok "开发登录已关" || die "MT_DEV_LOGIN=$DEV_LOGIN，生产必须是 0"
     [ -n "$CUBE_API" ] && [ -n "$CUBE_PROXY" ] || die "MT_CUBE_API / MT_CUBE_PROXY 没配"
     [ -f "$OVERRIDE" ] && grep -q '!reset' "$OVERRIDE" && ok "compose.override.yaml 去掉了 docker.sock" || warn "没有 compose.override.yaml，起容器前会自动生成"
