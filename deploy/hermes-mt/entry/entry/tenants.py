@@ -349,7 +349,7 @@ class TenantManager:
         """
         files = self._render_user_files(api_key, endpoint, catalog, limits)
         # 转发器要从自己所在目录导入状态管家和用户接口，三个文件一起放。
-        for name in ("forward.py", "mtstate.py", "mtuser.py"):
+        for name in ("forward.py", "mtstate.py", "mtuser.py", "mtent.py"):
             files[f".mt/{name}"] = (SEED_DIR / name).read_bytes()
         return files
 
@@ -1349,6 +1349,17 @@ class TenantManager:
                     await self.docker.stop_container(self.container_name(slug))
             await self.ensure_running(user_id)
         await self.store.write_audit(user_id, "service.restart", {})
+
+    async def restart_container(self, user_id: str) -> Tenant:
+        """Docker 路径：重启这个用户的容器（hermes 是容器的主进程，转发器重启不了它），等它重新就绪。
+
+        企业资源第一次装出 Agent 的 profile、或 MCP 变了时用：hermes 要重新启动才按托管多个 profile 启动、重连 MCP。"""
+        slug = tenant_slug(user_id)
+        async with self._lock(slug):
+            info = await self.docker.inspect_container(self.container_name(slug))
+            if info and info.get("State", {}).get("Running"):
+                await self.docker.stop_container(self.container_name(slug))
+        return await self.ensure_running(user_id)
 
     async def delete_service(self, user_id: str) -> None:
         """平台删了 Agent：删实例和卷，再删入口里的记录。实例删不掉就抛出，记录留着下次再删。"""

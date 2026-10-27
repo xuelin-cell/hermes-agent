@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import json
+import os
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -331,3 +334,103 @@ def test_enable_api_server_writes_key_into_env_file(forward, tmp_path: Path) -> 
     assert "YUANJING_KEY=mine" in env  # 用户自己的行不动
     assert f"API_SERVER_KEY={forward._api_key}" in env and len(forward._api_key) == 64
     assert "API_SERVER_HOST=127.0.0.1" in env and forward._api_enabled is True
+
+
+def _enterprise_spec() -> dict:
+    return {"v": 1, "tenant": "tid-1", "server": "http://platform.test", "token_env": "KEY",
+            "config": {"template": "model:\n  default: m\n", "provider_key": "uniwork", "model": "m", "models": ["m"]},
+            "default": {}, "agents": [{"id": "a1", "name": "助手", "instructions": "先写结论。", "model": "m",
+                                       "models": ["m"], "memory": "session", "approval": "smart"}]}
+
+
+@pytest.mark.asyncio
+async def test_enterprise_needs_the_session_token_on_both_paths(forward, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Docker 路径没有引导、没有 _hermes_token：用容器环境变量里的会话令牌核对。"""
+    monkeypatch.setenv("HERMES_DASHBOARD_SESSION_TOKEN", "sess")
+    headers, body = _post({"spec": _enterprise_spec()}, token="wrong")
+    writer = _Writer()
+    await forward._handle_mt("POST", "/__mt/enterprise", headers, body, None, writer)
+    assert b" 403 " in writer.data.split(b"\r\n", 1)[0]
+    assert not (tmp_path / "profiles").exists()
+
+    monkeypatch.setattr(forward, "_boot_homes", 1)
+    headers, body = _post({"spec": _enterprise_spec(), "restart": True}, token="sess")
+    writer = _Writer()
+    await forward._handle_mt("POST", "/__mt/enterprise", headers, body, None, writer)
+    reply = writer.body()
+    assert reply["ok"] and reply["report"]["profiles"]["uw-a1"]
+    # 第一次装出 Agent 的 profile：hermes 要重新启动；Docker 路径这里重启不了，交给入口
+    assert reply["restart_needed"] is True and reply["restarted"] is False
+    assert (tmp_path / "profiles" / "uw-a1" / "SOUL.md").read_text(encoding="utf-8").startswith("# 助手")
+
+
+@pytest.mark.asyncio
+async def test_enterprise_restarts_hermes_once_when_idle(forward, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    order: list[str] = []
+
+    async def stop(grace_s: float = 30.0):
+        order.append("stop")
+
+    async def spawn(token):
+        order.append(f"spawn:{token}")
+        forward._note_boot_homes()
+
+    async def alive():
+        return True
+
+    busy = {"turns": [{"session": "s1"}]}
+    idle: dict = {"turns": []}
+    state = {"activity": busy}
+
+    async def activity():
+        return state["activity"]
+
+    monkeypatch.setattr(forward, "_hermes_token", "tok")
+    monkeypatch.setattr(forward, "_bootstrapped", True)
+    monkeypatch.setattr(forward, "_boot_homes", 1)
+    monkeypatch.setattr(forward, "_restart_pending", False)
+    monkeypatch.setattr(forward, "_stop_hermes", stop)
+    monkeypatch.setattr(forward, "_spawn_hermes", spawn)
+    monkeypatch.setattr(forward, "_hermes_alive", alive)
+    monkeypatch.setattr(forward, "_activity", activity)
+
+    headers, body = _post({"spec": _enterprise_spec(), "restart": True})
+    writer = _Writer()
+    await forward._handle_mt("POST", "/__mt/enterprise", headers, body, None, writer)
+    assert writer.body()["restart_needed"] is True and order == []  # 有对话在跑：先不重启
+
+    state["activity"] = idle
+    writer = _Writer()
+    await forward._handle_mt("POST", "/__mt/enterprise", headers, body, None, writer)
+    reply = writer.body()
+    assert reply["restarted"] is True and reply["restart_needed"] is False
+    assert order == ["stop", "spawn:tok"] and forward._boot_homes == 2
+
+    writer = _Writer()
+    await forward._handle_mt("POST", "/__mt/enterprise", headers, body, None, writer)
+    assert writer.body()["restarted"] is False and order == ["stop", "spawn:tok"]  # 没变化不再重启
+
+
+@pytest.mark.asyncio
+async def test_token_follower_reacts_to_a_new_default_token(forward, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """重新登录换了令牌：默认 profile 的 .env 一变，Agent 的托管 profile 几秒内跟上，不等每分钟的兜底。"""
+    monkeypatch.setenv("HERMES_DASHBOARD_SESSION_TOKEN", "sess")
+    (tmp_path / ".env").write_text("KEY=old\n", encoding="utf-8")
+    headers, body = _post({"spec": _enterprise_spec()}, token="sess")
+    await forward._handle_mt("POST", "/__mt/enterprise", headers, body, None, _Writer())
+    agent_env = tmp_path / "profiles" / "uw-a1" / ".env"
+    assert "KEY=old" in agent_env.read_text(encoding="utf-8")
+    monkeypatch.setattr(forward, "TOKEN_WATCH_INTERVAL_S", 0.01)
+    monkeypatch.setattr(forward, "TOKEN_SYNC_INTERVAL_S", 3600)
+    task = asyncio.create_task(forward._token_follower())
+    try:
+        await asyncio.sleep(0.05)
+        (tmp_path / ".env").write_text("KEY=new\n", encoding="utf-8")
+        os.utime(tmp_path / ".env", (time.time() + 5, time.time() + 5))
+        for _ in range(100):
+            if "KEY=new" in agent_env.read_text(encoding="utf-8"):
+                break
+            await asyncio.sleep(0.02)
+        assert "KEY=new" in agent_env.read_text(encoding="utf-8")
+    finally:
+        task.cancel()

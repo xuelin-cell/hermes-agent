@@ -29,6 +29,7 @@ import {
 import { ContribBoundary, ContribRender } from '@/contrib/react/boundary'
 import { useContributions } from '@/contrib/react/use-contributions'
 import { useI18n } from '@/i18n'
+import { showsBotsForEveryone } from '@/lib/browser-shell'
 import { useKeybindHint } from '@/lib/keybinds/use-keybind-hint'
 import { cn } from '@/lib/utils'
 import { $developerMode } from '@/store/developer-mode'
@@ -285,7 +286,7 @@ export function TreeGroup({
   // rearranged (mirrors tree-split's paneGone) — restores itself on exit.
   // 开发者入口只影响当前显示，不写入用户布局或删除机器人档案。
   const paneShown = (id: string) =>
-    (developerMode || id !== 'hermes-bots:pane') &&
+    (developerMode || showsBotsForEveryone() || id !== 'hermes-bots:pane') && // desktop-mt: cloud shows BOTS to all
     Boolean(paneFor(id)) &&
     (revealsHidden || !hiddenPanes.has(id)) &&
     !(narrow && paneChrome(paneFor(id)).collapsible)

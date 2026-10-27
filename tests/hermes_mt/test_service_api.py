@@ -18,7 +18,8 @@ from cryptography.fernet import Fernet
 from entry import service
 from entry.app import Entry, build_app
 from entry.config import Settings
-from entry.tenants import Tenant
+from entry.enterprise import EnterpriseSync
+from entry.tenants import Tenant, TenantManager
 from entry.uniwork import Uniwork
 from uniwork_fake import FakePlatform
 
@@ -36,6 +37,7 @@ class FakeInstance:
         self.posted: list[dict] = []
         self.last_event_ids: list[str] = []
         self.calls: list[str] = []
+        self.enterprise: list[dict] = []  # 送进来的企业资源清单
         self.server: TestServer | None = None
 
     async def start(self) -> "FakeInstance":
@@ -46,6 +48,7 @@ class FakeInstance:
         app.router.add_get("/__mt/api/v1/runs/{run_id}/events", self.events)
         app.router.add_post("/__mt/api/v1/runs/{run_id}/stop", self.stop)
         app.router.add_post("/__mt/api/v1/runs/{run_id}/approval", self.approval)
+        app.router.add_post("/__mt/enterprise", self.install)
         self.server = TestServer(app)
         await self.server.start_server()
         return self
@@ -105,12 +108,23 @@ class FakeInstance:
         self.calls.append("approval:" + (await request.json()).get("choice", ""))
         return web.json_response({"ok": True})
 
+    async def install(self, request: web.Request) -> web.Response:
+        self._check(request)
+        body = await request.json()
+        self.enterprise.append(body["spec"])
+        self.calls.append("enterprise")
+        return web.json_response({"ok": True, "report": {"installed": ["x"], "errors": []}, "restarted": False,
+                                  "busy": False, "restart_needed": False})
+
 
 class FakeTenants:
     """实例管理的假货：拉起即指向假实例，其余只记账。"""
 
-    def __init__(self, instance: FakeInstance, store) -> None:
+    use_cube = True
+
+    def __init__(self, instance: FakeInstance, store, settings: Settings | None = None) -> None:
         self.instance, self.store = instance, store
+        self.real = TenantManager(settings or Settings(), None, None, None)  # type: ignore[arg-type]
         self.started: list[str] = []
         self.applied: list[tuple[str, str]] = []
         self.restarted: list[str] = []
@@ -131,6 +145,9 @@ class FakeTenants:
         self.deleted.append(user_id)
         await self.store.delete_user(user_id)
 
+    def _config_patch_spec(self, *args, **kwargs) -> dict:
+        return {"template": "model:\n  default: m\n", "provider_key": "uniwork", "mcp_servers": {}}
+
 
 class Harness:
     def __init__(self, entry, tenants: FakeTenants, platform: FakePlatform, instance: FakeInstance, client):
@@ -148,7 +165,7 @@ class Harness:
         return response.status, await response.json()
 
 
-async def _harness(database_url: str, **overrides):
+async def _harness(database_url: str, ent: bool = False, **overrides):
     platform = await FakePlatform().start()
     instance = await FakeInstance().start()
     settings = Settings(base_path="/hermes", database_url=database_url, credential_key=Fernet.generate_key().decode(),
@@ -156,13 +173,15 @@ async def _harness(database_url: str, **overrides):
     app = build_app(settings)
     hook = next(h for h in app.on_startup if isinstance(getattr(h, "__self__", None), Entry))
     entry = hook.__self__
-    tenants = FakeTenants(instance, entry.store)
+    tenants = FakeTenants(instance, entry.store, settings)
 
     async def startup(_app) -> None:
         await entry.database.connect()
         entry.http = aiohttp.ClientSession()
         entry.uniwork = Uniwork(settings, entry.http)
         entry.tenants = tenants
+        if ent:
+            entry.ent = EnterpriseSync(entry)
 
     app.on_startup.remove(hook)
     app.on_startup.append(startup)
@@ -325,6 +344,12 @@ async def test_delete_removes_runtime_and_is_idempotent(harness: Harness) -> Non
 
 def test_persona_comes_from_agent_profile() -> None:
     assert service.persona_of({"agentProfile": {"name": "A", "instructions": "做事"}}) == "# A\n\n做事\n"
+    # 企业经验里 inline 的事实接在后面，和员工实例里 Agent 的人设同一种写法
+    layered = {"agentProfile": {"name": "A", "instructions": "做事"},
+               "sharedLayers": [{"facts": {"inline": True, "items": [{"title": "口径", "content": "保留一位小数"}]}}]}
+    assert service.persona_of(layered) == ("# A\n\n做事\n\n## 企业事实\n"
+                                           "以下是企业统一的口径、规则和术语，经企业审核发布。回答相关问题时必须遵守：\n"
+                                           "- **口径**：保留一位小数\n")
     assert service.persona_of({"agentProfile": {"instructions": " "}}) == ""
     assert service.persona_of({}) == ""
 
@@ -340,3 +365,33 @@ async def test_run_id_that_could_escape_the_runs_path_is_rejected(harness: Harne
             assert (await response.json())["code"] == "invalid_run_id"
     bad = await harness.client.get(f"{BASE}/agent-a1/runs/run.1", params=q, headers=AUTH)
     assert bad.status == 400 and (await bad.json())["code"] == "invalid_run_id"
+
+
+@pytest.mark.asyncio
+async def test_put_installs_the_runtimes_skills_and_connectors_before_ready(postgres_database_url: str) -> None:
+    """15 的验收 2：准备运行环境时，把策略里的技能、连接器、企业经验整份送进实例的默认 profile，装完才回 ready。"""
+    h = await _harness(postgres_database_url, ent=True)
+    try:
+        extra = {
+            "skills": [{"id": "f1", "name": "sales-margin", "sha256": "a" * 64,
+                        "url": f"{h.platform.url}/api/client/files/f1"}],
+            "connectors": [{"id": "demo-sales", "name": "销售演示库", "url": "http://192.168.0.50:11231/mcp",
+                            "transport": "http", "timeout": 20,
+                            "relay": f"{h.platform.url}/api/client/connectors/demo-sales/mcp"}],
+            "experts": [{"key": "agent:other", "kind": "agent", "id": "other"}],  # 管理员自己能看到的，不装
+        }
+        token = h.platform.issue_runtime_token(PROFILE, extra)
+        status, body = await h.put("agent-a1", token)
+        assert status == 200 and body["status"] == "ready"
+        [spec] = h.instance.enterprise
+        assert spec["agents"] == [] and spec["tenant"] == "tid-1"
+        assert [s["id"] for s in spec["default"]["skills"]] == ["f1"]
+        assert spec["default"]["connectors"][0]["relay"] == f"{h.platform.url}/api/client/connectors/demo-sales/mcp"
+        assert h.instance.calls.index("enterprise") < h.instance.calls.index("health")  # 装完才等 API、回 ready
+        # 策略没变：再准备一次不再送
+        status, _ = await h.put("agent-a1", token)
+        assert status == 200 and len(h.instance.enterprise) == 1
+    finally:
+        await h.client.close()
+        await h.platform.close()
+        await h.instance.server.close()

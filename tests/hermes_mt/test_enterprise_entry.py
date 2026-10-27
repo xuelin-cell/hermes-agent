@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 
 import aiohttp
 import pytest
@@ -303,6 +304,31 @@ async def test_recheck_marks_a_revoked_token_unbound(harness: Harness) -> None:
     check = await (await browser.get("/hermes/__entry/enterprise")).json()
     assert check["status"] == "unbound" and check["allowed"] is False
     assert (await browser.get("/hermes/__entry/auth")).status == 401
+
+
+@pytest.mark.asyncio
+async def test_a_recheck_racing_a_relogin_keeps_the_new_token(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """重新登录时平台吊销旧令牌：恰好拿旧令牌去复查（长轮询这时就会收到 401）的那一次，不能把刚登录的人记成失效。"""
+    harness.platform.members[(PHONE, "T1")] = "active"
+    browser = await harness.client()
+    await _login(browser)
+    store = harness.store
+    session_user = (await (await browser.get("/hermes/__entry/me")).json())["user_id"]
+    old = (await store.get_tenant_context(session_user)).api_key
+    await _login(browser)  # 新令牌，旧的被吊销
+    new = (await store.get_tenant_context(session_user)).api_key
+    assert old != new
+    real = store.get_tenant_context
+    calls = {"n": 0}
+
+    async def first_read_is_stale(uid: str):
+        calls["n"] += 1
+        context = await real(uid)
+        return dataclasses.replace(context, api_key=old) if calls["n"] == 1 else context
+
+    monkeypatch.setattr(store, "get_tenant_context", first_read_is_stale)
+    assert await harness.entry._refresh_enterprise(session_user) == "active"
+    assert (await store.get_enterprise_binding(session_user)).access_status == "active"
 
 
 @pytest.mark.asyncio

@@ -51,13 +51,22 @@ def _err(status: int, message: str, code: str) -> web.Response:
 
 
 def persona_of(policy: dict) -> str:
-    """平台策略的 agentProfile 换成实例的 SOUL.md；没有就空串（实例用默认人设）。"""
+    """平台策略的 agentProfile 换成实例的 SOUL.md，后面接企业经验里 inline 的事实（和员工实例里 Agent 的人设
+    同一种写法，见 seed/mtent.py 的 _soul）；没有指令就是空串（实例用默认人设）。"""
     profile = policy.get("agentProfile") if isinstance(policy.get("agentProfile"), dict) else {}
     instructions = str(profile.get("instructions") or "").strip()
     if not instructions:
         return ""
     name = str(profile.get("name") or "").strip()
-    return f"# {name}\n\n{instructions}\n" if name else f"{instructions}\n"
+    text = f"# {name}\n\n{instructions}\n" if name else f"{instructions}\n"
+    facts = [f for layer in policy.get("sharedLayers") or [] if isinstance(layer, dict)
+             for f in ((layer.get("facts") or {}).get("items") or []) if isinstance(f, dict)]
+    if facts:
+        lines = ["## 企业事实", "以下是企业统一的口径、规则和术语，经企业审核发布。回答相关问题时必须遵守："]
+        lines += [f"- **{str(f.get('title') or f.get('name') or '').strip()}**：{str(f.get('content') or '').strip()}"
+                  for f in facts]
+        text += "\n" + "\n".join(lines) + "\n"
+    return text
 
 
 def _hermes_message(body: dict) -> str:
@@ -190,6 +199,9 @@ class ServiceApi:
             limits=plan.limits(),
             persona=persona_of(policy),
         )
+        if self.e.ent is not None:
+            # 这个运行环境要的技能、专家包、连接器、企业经验：准备时装进实例（_prepare）
+            await self.e.ent.note_policy(user_id, policy, service=True)
         task = asyncio.ensure_future(self._prepare(user_id, tenant_id, key))
         try:
             rt = await asyncio.wait_for(asyncio.shield(task), PREPARE_TIMEOUT_S)
@@ -215,6 +227,10 @@ class ServiceApi:
         # 人设或模型变了就重新加载；有运行在跑就先不动，等它跑完下一次 PUT 再说
         if not rt.current_run_id and await self.e.tenants.apply_service_spec(user_id, rt.spec_sha256):
             tenant = await self.e.tenants.ensure_running(user_id)  # Docker 路径重启过容器，地址可能变了
+        if self.e.ent is not None and not rt.current_run_id:
+            # 技能、连接器装好了再回 ready：平台紧接着就发起运行（15 的验收 2：调试技能，脚本要真的执行）
+            await self.e.ent.apply_now(user_id, tenant)
+            tenant = await self.e.tenants.ensure_running(user_id)  # 装完可能重启过（Docker 路径换了容器地址）
         # 实例起来了不等于 gateway 的 API 服务起来了（它比网页后端晚几秒）：等到能用再回 ready
         await self._wait_api(tenant)
         return (await self.e.store.find_service_runtimes(key, tenant_id))[0]
@@ -282,6 +298,8 @@ class ServiceApi:
         except Exception as exc:  # noqa: BLE001
             log.exception("service %s: delete failed", rt.runtime_key)
             return _err(503, f"删除运行环境失败，请稍后重试（{type(exc).__name__}）", "delete_failed")
+        if self.e.ent is not None:
+            self.e.ent.forget(rt.user_id)
         return web.json_response({"ok": True, "deleted": True})
 
     # ---- 运行 ------------------------------------------------------------------------------

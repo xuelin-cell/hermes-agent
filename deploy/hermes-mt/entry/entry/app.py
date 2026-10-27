@@ -20,6 +20,7 @@ from .docker_api import Docker
 from .maas import Maas, MaasError
 from .proxy import proxy_http, proxy_ws
 from .backup import BackupJob
+from .enterprise import EnterpriseSync
 from .s3lite import S3Lite
 from .service import ServiceApi
 from .store import EnterpriseBinding, Session, Store
@@ -118,6 +119,7 @@ class Entry:
         self.cube: Cube | None = None
         self.maas: Maas | None = None
         self.uniwork: Uniwork | None = None  # 企业模式才有
+        self.ent: EnterpriseSync | None = None  # 企业模式：企业资源清单（Agent、技能、连接器……）送进实例
         self._last_recheck: dict[str, float] = {}  # 企业模式：每个用户上次在后台复查平台的时间
         self._rechecking: set[str] = set()
         self.tenants: TenantManager | None = None
@@ -157,7 +159,10 @@ class Entry:
         await self._touch(session.user_id)
         if self.tenants is None:
             raise RuntimeError("租户管理器尚未启动")
-        return await self.tenants.ensure_running(session.user_id)
+        tenant = await self.tenants.ensure_running(session.user_id)
+        if self.ent is not None:
+            self.ent.after_ready(session.user_id, tenant)
+        return tenant
 
     async def _finish_login(
         self,
@@ -266,7 +271,9 @@ class Entry:
         try:
             if self.tenants is None:
                 raise RuntimeError("租户管理器尚未启动")
-            await self.tenants.ensure_running(user_id)
+            tenant = await self.tenants.ensure_running(user_id)
+            if self.ent is not None:
+                self.ent.after_ready(user_id, tenant)
         except Exception as exc:  # noqa: BLE001
             log.exception("warm-up of tenant %s failed: %s", user_id, type(exc).__name__)
 
@@ -504,6 +511,10 @@ class Entry:
         except UniworkError as exc:
             if exc.status != 401:
                 raise
+            # 刚重新登录过：平台吊销了旧令牌，这次读到的却还是旧的。换了令牌就按新令牌再查一次，别把刚登录的人记成失效
+            current = (await self.store.get_tenant_context(user_id)).api_key
+            if current and current != token:
+                return await self._refresh_enterprise(user_id)
             await self.store.update_enterprise_access(user_id, UNBOUND)
             return UNBOUND
         status = access_status(policy)
@@ -524,6 +535,9 @@ class Entry:
             await self.store.write_audit(user_id, "enterprise.access", {"from": before.access_status, "to": status})
             if status == ACTIVE:
                 self._spawn(self._warm(user_id))
+        if self.ent is not None:
+            # Agent、技能、连接器、企业经验：变了就送进实例（被拦的成员策略里是空的，托管 profile 收起、数据保留）
+            await self.ent.note_policy(user_id, policy)
         return status
 
     async def _enterprise_logout(self, user_id: str) -> None:
@@ -538,6 +552,8 @@ class Entry:
             except UniworkError as exc:
                 log.warning("enterprise logout of %s: revoking device token failed: %s", user_id, exc)
         await self.store.update_enterprise_access(user_id, UNBOUND)
+        if self.ent is not None:
+            self.ent.forget(user_id)
 
     async def _end_session(self, request: web.Request) -> str:
         sid = request.cookies.get(self.s.cookie_name, "")
@@ -657,6 +673,7 @@ class Entry:
             self.maas = Maas(self.s, self.http)
             if self.s.enterprise:
                 self.uniwork = Uniwork(self.s, self.http)
+                self.ent = EnterpriseSync(self)
             # 按后端只建需要的那个客户端：跑沙箱后端时不该去碰 docker.sock
             # （入口容器很可能根本没挂它），反之亦然。
             if self.s.backend == "cube":

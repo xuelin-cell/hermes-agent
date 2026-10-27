@@ -1132,6 +1132,15 @@ export function isDefaultBot(bot: Partial<RosterRow> | null | undefined): boolea
   )
 }
 
+// desktop-mt: an Agent the enterprise platform installs (ui_meta.uniwork.managed, written by
+// deploy/hermes-mt/seed/mtent.py). The platform owns its definition and rewrites it on every
+// sync, so the roster offers no edit, duplicate or delete for it.
+export function isManagedBot(bot: Partial<RosterRow> | null | undefined): boolean {
+  const uniwork = bot?.ui_meta?.uniwork
+
+  return typeof uniwork === 'object' && uniwork !== null && (uniwork as { managed?: unknown }).managed === true
+}
+
 export function newBotChat(bot: RosterRow) {
   if (typeof host.newChat !== 'function') {
     host.notify?.({

@@ -21,6 +21,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urlencode
 
 import aiohttp
 
@@ -236,6 +237,11 @@ class Uniwork:
 
     async def policy(self, token: str) -> dict:
         return await self._call("GET", "/api/client/policy", token=token)
+
+    async def events(self, token: str, since: str, wait_s: float) -> dict:
+        """长轮询：策略版本和 ``since`` 不同就马上回 ``{"changed": true, "revision"}``，否则等到 ``wait_s`` 秒回 changed=false。"""
+        query = urlencode({"since": since, "wait": int(wait_s)})
+        return await self._call("GET", f"/api/client/events?{query}", token=token, timeout_s=wait_s + 15)
 
     async def logout(self, token: str) -> None:
         """吊销设备令牌。令牌本来就失效了（401）也算成功。"""

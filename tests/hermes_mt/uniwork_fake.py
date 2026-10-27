@@ -24,6 +24,7 @@ class FakePlatform:
         self.tickets: dict[str, str] = {}  # 票据 → 手机号
         self.requests: list[tuple[str, dict]] = []
         self.runtime_tokens: dict[str, dict] = {}  # 运行环境的设备令牌 → agentProfile（平台调用云端，见 15）
+        self.runtime_extra: dict[str, dict] = {}  # 运行环境的设备令牌 → 策略里另外的段（技能、连接器、企业经验）
         self.server: TestServer | None = None
 
     @property
@@ -140,10 +141,12 @@ class FakePlatform:
         return web.json_response({"code": 0, "msg": "ok", "data": self._login_data(phone),
                                   "enterprise": self._enroll(phone, code, body["deviceId"])})
 
-    def issue_runtime_token(self, profile: dict) -> str:
-        """平台给运行环境发的设备令牌；它的策略只带模型和 agentProfile。"""
+    def issue_runtime_token(self, profile: dict, extra: dict | None = None) -> str:
+        """平台给运行环境发的设备令牌；它的策略带模型和 agentProfile，``extra`` 是另外的段（技能、连接器……）。"""
         token = "uwd_" + secrets.token_hex(12)
         self.runtime_tokens[token] = profile
+        if extra:
+            self.runtime_extra[token] = extra
         return token
 
     async def policy(self, request: web.Request) -> web.Response:
@@ -158,6 +161,7 @@ class FakePlatform:
                 "main_model_id": "uniwork-ds", "fast_model_id": "",
             }
             policy["agentProfile"] = profile
+            policy.update(self.runtime_extra.get(auth[7:], {}))
             policy["runtime"] = {"key": "agent-x", "kind": "agent", "label": "Agent"}
             policy["revision"] = "rev-runtime-" + str(abs(hash(str(profile))) % 10**6)
             return web.json_response(policy)

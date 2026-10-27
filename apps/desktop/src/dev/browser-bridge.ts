@@ -18,6 +18,7 @@ import {
 
 import type { LoginAccount } from '../../electron/login/contract'
 
+import { agentRoster, connectionForProfile, profileRoutes, withProfileQuery } from './browser-profiles-mt'
 import { maskMcpSecrets, restoreMcpSecrets } from './mcp-secrets'
 
 const noopOff = () => () => undefined
@@ -85,7 +86,7 @@ function credentials(): RequestCredentials {
   return productionBrowserBuild ? 'same-origin' : 'omit'
 }
 
-async function api<T>({ body, method = 'GET', path, upload }: HermesApiRequest): Promise<T> {
+async function api<T>({ body, method = 'GET', path, profile, upload }: HermesApiRequest): Promise<T> {
   const headers = authHeaders()
   let requestBody: BodyInit | undefined
 
@@ -98,7 +99,8 @@ async function api<T>({ body, method = 'GET', path, upload }: HermesApiRequest):
     requestBody = JSON.stringify(restoreMcpSecrets(method, path, body))
   }
 
-  const response = await fetch(`${apiPrefix()}${path}`, {
+  // desktop-mt: one serve hosts every profile; REST names the one it means (browser-profiles-mt.ts)
+  const response = await fetch(`${apiPrefix()}${withProfileQuery(path, profile)}`, {
     body: requestBody,
     credentials: credentials(),
     headers,
@@ -1273,7 +1275,8 @@ export function installBrowserDevelopmentBridge(): boolean {
       onChanged: noopOff,
       setLastUsed: asyncOk
     },
-    getAgentRoster: async () => ({ agents: [] }),
+    // desktop-mt: Bot Mode — every agent is a profile on the instance's one serve (browser-profiles-mt.ts)
+    getAgentRoster: () => agentRoster(api),
     getBootProgress: async () => ({
       error: null,
       fakeMode: false,
@@ -1295,8 +1298,9 @@ export function installBrowserDevelopmentBridge(): boolean {
       setupChoice: null,
       unsupportedPlatform: null
     }),
-    getConnection: async () => conn,
-    getConnectionFor: async () => conn,
+    getConnection: async (profile?: null | string) => connectionForProfile(conn, profile),
+    getConnectionFor: async (payload?: { connectionId?: null | string; profile?: null | string }) =>
+      connectionForProfile(conn, payload?.profile, payload?.connectionId),
     getGatewayWsUrl: async () => ({ ok: true, wsUrl: conn.wsUrl }),
     getGatewayWsUrlFor: async () => ({ ok: true, wsUrl: conn.wsUrl }),
     getMaasAccount,
@@ -1315,7 +1319,7 @@ export function installBrowserDevelopmentBridge(): boolean {
     }),
     getOnBattery: async () => false,
     getPathForFile: (file: File) => registerVirtualFile(file, file.name),
-    getProfileRoutes: async () => [],
+    getProfileRoutes: () => profileRoutes(api),
     getRecentLogs: async () => ({ path: '', lines: [] }),
     logoutMaasAccount,
     notify: async () => false,

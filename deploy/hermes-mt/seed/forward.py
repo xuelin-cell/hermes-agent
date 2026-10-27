@@ -27,6 +27,10 @@
 ``api_server`` 打开，Docker 路径由容器环境变量 ``MT_API_SERVER=1`` 打开。入口经 ``/__mt/api/*`` 访问它：要实例令牌，
 转发时换成实例里随机生成的 API key，事件流照样逐字节对拷。
 
+企业模式下，入口按企业管理平台的策略算一份「企业资源清单」，经 ``POST /__mt/enterprise`` 送进来（两条路径都用，
+要实例令牌）：平台定义的 Agent 各装成一个托管 profile，企业技能、专家包、连接器、企业经验按清单装进对应的 profile，
+细节见 mtent.py。托管 profile 的设备令牌由这里定时跟上默认 profile（换令牌后最多晚一个周期）。
+
 ``/__mt_user/*`` 是给用户用的（命令行通道、回收站、重命名、Office 文件预览：转 PDF、幻灯片按页出图，见 mtuser.py）：浏览器经入口的
 ``/__hermes_backend/__mt_user/…`` 转进来，带的是和 hermes 一样的会话令牌。入口照常校验登录后放行；
 ``/__mt/*`` 这组管理接口入口不放行，用户碰不到。
@@ -54,6 +58,7 @@ from pathlib import Path
 from urllib.parse import parse_qs
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import mtent  # noqa: E402
 import mtstate  # noqa: E402
 import mtuser  # noqa: E402
 
@@ -108,6 +113,15 @@ _api_enabled = False  # 服务实例：另起 gateway 的 API 服务
 _api_key = ""  # 只在这台实例里用，每次启动重新生成；不进日志
 _gateway_proc: asyncio.subprocess.Process | None = None
 _gateway_task: asyncio.Task | None = None
+_enterprise_lock: asyncio.Lock | None = None
+# 托管 profile 跟上默认 profile 的设备令牌（见 mtent.sync_tokens）：每 2 秒看一眼默认 profile 的 .env 变没变，
+# 变了马上同步（重新登录后紧接着就会用 Agent 聊天）；另外每分钟兜底同步一次
+TOKEN_WATCH_INTERVAL_S = 2
+TOKEN_SYNC_INTERVAL_S = 60
+# hermes 启动时数过的 profile home 个数：两个以上它才按「一个进程托管多个 profile」启动
+# （tui_gateway/launch_profile_policy.activate_multi_profile_hosting_eagerly），MCP 也只在启动时连。
+_boot_homes = 0
+_restart_pending = False  # 企业资源要重启 hermes 才完全生效，但上次赶上它在忙：下次送清单时再重启
 
 
 # ---------------------------------------------------------------- 工具
@@ -293,6 +307,7 @@ async def _spawn_hermes(token: str) -> None:
     # 永远停在「已排期」。它的其余作用逐个核过：清理桌面遗留的随机端口 serve（我们是固定端口，
     # 碰不到）、父进程看门狗（要 HERMES_PARENT_PID，我们不设）、新会话的来源记为 desktop。
     env["HERMES_DESKTOP"] = "1"
+    _note_boot_homes()
     _hermes_proc = await asyncio.create_subprocess_exec(
         "hermes", "serve",
         "--host", "127.0.0.1",
@@ -697,6 +712,8 @@ async def _reload(writer: asyncio.StreamWriter, body: bytes) -> None:
         except Exception as exc:  # noqa: BLE001
             _reply(writer, 400, {"ok": False, "error": f"写种子文件失败: {exc}"})
             return
+        # 换了设备令牌：Agent 的托管 profile 也一起换（它们各有一份 .env）
+        await asyncio.to_thread(_sync_tokens_quietly)
         _reloading = True
         try:
             await _stop_hermes()
@@ -723,6 +740,106 @@ async def _reload(writer: asyncio.StreamWriter, body: bytes) -> None:
             return
         await asyncio.sleep(0.5)
     _reply(writer, 503, {"ok": False, "error": "hermes 未在超时内就绪", "written": written})
+
+
+def _note_boot_homes() -> None:
+    global _boot_homes
+    try:
+        _boot_homes = len(mtstate.hermes_homes(HERMES_HOME))
+    except Exception:  # noqa: BLE001
+        _boot_homes = 0
+
+
+def _sync_tokens_quietly() -> list[str]:
+    try:
+        return mtent.sync_tokens(HERMES_HOME, mtent.token_env_of(HERMES_HOME))
+    except Exception as exc:  # noqa: BLE001
+        _log(f"同步托管 profile 的令牌失败: {type(exc).__name__}: {exc}")
+        return []
+
+
+def _env_mtime() -> float:
+    try:
+        return (HERMES_HOME / ".env").stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+async def _token_follower() -> None:
+    """把默认 profile 的设备令牌同步给其他 profile（Agent 的托管 profile、员工自建的机器人）。
+
+    Docker 路径换令牌走 hermes 的 /api/env，只改默认 profile 的 .env；沙箱路径换令牌走 /__mt/reload，那里会当场同步。
+    这里看着默认 profile 的 .env：一变就同步，重新登录后紧接着用 Agent 聊天也不会拿旧令牌；另外每分钟兜底一次。"""
+    seen = _env_mtime()
+    since_full = 0.0
+    while True:
+        await asyncio.sleep(TOKEN_WATCH_INTERVAL_S)
+        since_full += TOKEN_WATCH_INTERVAL_S
+        mtime = _env_mtime()
+        if mtime == seen and since_full < TOKEN_SYNC_INTERVAL_S:
+            continue
+        seen, since_full = mtime, 0.0
+        changed = await asyncio.to_thread(_sync_tokens_quietly)
+        if changed:
+            _log(f"其他 profile 的设备令牌已跟上：{', '.join(changed)}")
+
+
+async def _enterprise(writer: asyncio.StreamWriter, body: bytes) -> None:
+    """``POST /__mt/enterprise`` —— 按入口算好的清单装企业资源（Agent 的托管 profile、技能、连接器、企业经验）。
+
+    载荷 ``{"spec": {...}, "restart": bool}``，格式见 mtent.apply。要下载的包由这里用设备令牌从企业管理平台取。
+    人设、技能、模型这些 hermes 下一轮对话就会读到；有两种情况要重启 hermes 才完全生效：
+    第一次装出 Agent 的 profile（hermes 启动时只有一个 profile，没按托管多个 profile 启动），以及 MCP 变了（只在启动时连）。
+    ``restart`` 为真、实例又不忙（没有对话回合、定时任务在跑）时，沙箱路径就地重启；忙就记下，下次送清单时再重启。
+    Docker 路径的 hermes 是容器的主进程，这里重启不了，回 ``restart_needed`` 由入口重启容器。
+    """
+    global _enterprise_lock, _restart_pending, _reloading
+    try:
+        payload = json.loads(body.decode("utf-8") or "{}")
+        spec = payload.get("spec")
+        if not isinstance(spec, dict):
+            raise ValueError("缺少 spec")
+    except Exception as exc:  # noqa: BLE001
+        _reply(writer, 400, {"ok": False, "error": f"载荷不合法: {exc}"})
+        return
+    if _enterprise_lock is None:
+        _enterprise_lock = asyncio.Lock()
+    async with _enterprise_lock:
+        try:
+            report = await asyncio.to_thread(mtent.apply, HERMES_HOME, spec)
+        except mtent.EnterpriseError as exc:
+            _reply(writer, 400, {"ok": False, "error": str(exc)})
+            return
+        except Exception as exc:  # noqa: BLE001
+            _reply(writer, 500, {"ok": False, "error": f"安装企业资源失败: {type(exc).__name__}: {exc}"})
+            return
+        homes = len(await asyncio.to_thread(mtstate.hermes_homes, HERMES_HOME))
+        if report.get("mcp_changed") or (homes >= 2 and _boot_homes < 2):
+            _restart_pending = True
+        activity = await _activity()
+        busy = bool(activity.get("turns") or activity.get("cron_running"))
+        restarted = False
+        if _restart_pending and payload.get("restart") and not busy and _bootstrapped and not _draining:
+            _reloading = True
+            try:
+                await _stop_hermes()
+                await _stop_gateway()
+                await _spawn_hermes(_hermes_token)
+                if _api_enabled:
+                    await _spawn_gateway()
+            finally:
+                _reloading = False
+            _restart_pending = False
+            restarted = True
+            _log("企业资源有变化，hermes 已重启")
+    if report.get("errors"):
+        _log(f"企业资源有 {len(report['errors'])} 项没装上：{'; '.join(report['errors'])[:500]}")
+    if restarted:
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline and not await _ready():
+            await asyncio.sleep(0.5)
+    _reply(writer, 200, {"ok": True, "report": report, "restarted": restarted, "busy": busy,
+                         "restart_needed": _restart_pending})
 
 
 async def _resume(writer: asyncio.StreamWriter) -> None:
@@ -868,6 +985,26 @@ async def _handle_mt(
             _reply(writer, 400, {"ok": False, "error": "Content-Length 非法或载荷过大"})
             return
         await _reload(writer, body)
+        return
+
+    if route == "/__mt/enterprise":
+        # 两条路径都要能用：沙箱路径的令牌是引导时送来的，Docker 路径没有引导，令牌在容器环境变量里
+        expected = _session_token()
+        given = headers.get("x-mt-token", "")
+        if method != "POST":
+            _reply(writer, 400, {"ok": False, "error": "只接受 POST"})
+            return
+        if not expected or not hmac.compare_digest(given.encode("utf-8"), expected.encode("utf-8")):
+            _reply(writer, 403, {"ok": False, "error": "缺少或错误的实例令牌"})
+            return
+        if _draining:
+            _reply(writer, 409, {"ok": False, "error": "实例正在排空"})
+            return
+        body = await _read_body(headers, rest, reader)
+        if body is None:
+            _reply(writer, 400, {"ok": False, "error": "Content-Length 非法或载荷过大"})
+            return
+        await _enterprise(writer, body)
         return
 
     if route in ("/__mt/sync", "/__mt/drain", "/__mt/resume"):
@@ -1149,6 +1286,8 @@ async def _handle(client_r: asyncio.StreamReader, client_w: asyncio.StreamWriter
 async def main() -> None:
     server = await asyncio.start_server(_handle, "0.0.0.0", LISTEN_PORT)
     janitor = asyncio.create_task(_trash_janitor())
+    follower = asyncio.create_task(_token_follower())
+    _note_boot_homes()  # Docker 路径：hermes 和本文件由容器 CMD 同时拉起，这时的个数就是它启动时的
     if os.environ.get("MT_API_SERVER") == "1":
         # Docker 路径的服务实例：没有引导这一步，hermes 由容器 CMD 拉起，gateway 由这里拉起
         try:
@@ -1160,6 +1299,7 @@ async def main() -> None:
             await server.serve_forever()
         finally:
             janitor.cancel()
+            follower.cancel()
 
 
 if __name__ == "__main__":

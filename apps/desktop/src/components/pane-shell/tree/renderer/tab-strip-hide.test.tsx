@@ -151,3 +151,34 @@ it('机器人选项卡仅在开发者模式显示，退出后回退到对话且�
   expect(queryByText('对话内容')).toBeTruthy()
   expect(($layoutTree.get() as GroupNode).panes).toContain('hermes-bots:pane')
 })
+
+it('云版里机器人选项卡对所有人显示：平台下发的 Agent 和员工自建的 agent 都在那里', () => {
+  globalThis.document.documentElement.dataset.hermesBrowser = 'production'
+
+  try {
+    disposers.push(
+      registry.register({
+        area: 'panes',
+        data: { placement: 'left', hideOnly: true },
+        id: 'hermes-bots:pane',
+        render: () => <div>机器人内容</div>,
+        title: '机器人'
+      })
+    )
+    disposers.push(
+      registry.register({
+        area: 'panes',
+        data: { placement: 'left', hideOnly: true },
+        id: 'sessions',
+        render: () => <div>对话内容</div>,
+        title: '对话'
+      })
+    )
+    $layoutTree.set(group(['sessions', 'hermes-bots:pane'], { active: 'sessions', id: 'side' }))
+    render(<LiveTreeGroup />)
+    expect($developerMode.get()).toBe(false)
+    expect(globalThis.document.querySelector('[data-tree-tab="hermes-bots:pane"]')).toBeTruthy()
+  } finally {
+    delete globalThis.document.documentElement.dataset.hermesBrowser
+  }
+})

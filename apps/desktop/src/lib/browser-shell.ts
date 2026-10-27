@@ -55,8 +55,8 @@ import { storedBoolean } from '@/lib/storage'
  *   app/shell/model-catalog-menu.tsx                   * no "add custom model" or "edit models" in the model menus
  *   app/shell/plan-usage/panel.tsx                     * the account card without the plan's name, usage and expiry
  *   components/conversation-share/reply-button.tsx     * no "share reply" under answers
- *   contrib/plugins.ts                                 * no Bot Mode (the BOTS tab), no kits and experts: their plugins
- *                                                      are not started
+ *   contrib/plugins.ts                                 * no kits and experts: the plugin is not started (Bot Mode is:
+ *                                                      the instance's one serve hosts every agent, dev/browser-profiles-mt.ts)
  *   i18n/catalog.ts                                    Chinese supplement and original cloud artifact names, see `lib/browser-shell-{zh,artifacts}.ts`
  *   i18n/profile-provider.tsx                          the interface starts in Chinese, before the instance's config answers
  *   lib/chat-runtime.ts                                a session with no title yet is 新建会话, not "New session"
@@ -460,15 +460,23 @@ export function withoutHiddenNavItems<T extends { id: string }>(items: T[]): T[]
   return hideForUsers() ? items.filter(item => !SIDEBAR_NAV_HIDDEN.has(item.id)) : items
 }
 
-const BUNDLED_PLUGINS_HIDDEN = new Set(['hermes-bots', 'uniwork-kits'])
+const BUNDLED_PLUGINS_HIDDEN = new Set(['uniwork-kits'])
 
-/** Bundled plugins that are not started for regular users. Bot Mode (the
- * SESSIONS | BOTS tabs, Routines, @bot mentions) is one agent per profile, and
- * the browser build has only the default profile. So is every expert of kits and
- * experts (the 套件 page, the composer's 专家 picker), and the built-in kits are
- * copied into the desktop installer when it is packaged, not into the instance. */
+/** Bundled plugins that are not started for regular users. Kits and experts (the
+ * 套件 page, the composer's 专家 picker): the built-in kits are copied into the
+ * desktop installer when it is packaged, not into the instance. Bot Mode (the
+ * SESSIONS | BOTS tabs, Routines, @bot mentions) runs: every agent is a profile
+ * on the instance's one serve, including the Agents the enterprise platform
+ * installs (dev/browser-profiles-mt.ts, deploy/hermes-mt/seed/mtent.py). */
 export function isBundledPluginHidden(id: string): boolean {
   return hideForUsers() && BUNDLED_PLUGINS_HIDDEN.has(id)
+}
+
+/** The sidebar's BOTS tab for every user, not only in developer mode (the desktop
+ * app keeps it there, a8ff60ab84): in the cloud the Agents the enterprise platform
+ * installs are bots, and employees build their own agents there too. */
+export function showsBotsForEveryone(): boolean {
+  return isBrowserShell()
 }
 
 /** Sharing a conversation or a reply (components/conversation-share): the desktop

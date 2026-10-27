@@ -151,7 +151,8 @@ RUN mkdir -p /opt/mt /mnt/u
 COPY seed/forward.py /opt/mt/forward.py
 COPY seed/mtstate.py /opt/mt/mtstate.py
 COPY seed/mtuser.py /opt/mt/mtuser.py
-RUN chmod 0644 /opt/mt/forward.py /opt/mt/mtstate.py /opt/mt/mtuser.py
+COPY seed/mtent.py /opt/mt/mtent.py
+RUN chmod 0644 /opt/mt/forward.py /opt/mt/mtstate.py /opt/mt/mtuser.py /opt/mt/mtent.py
 
 # ---- 本分支对 hermes 源码的改动（overlay.list） -------------------------------
 # 基础镜像就是用本仓库构建的，hermes 源码（含 skills/uniwork 内置技能）已在里面，所以清单现在是空的。

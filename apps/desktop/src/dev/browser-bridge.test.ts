@@ -193,7 +193,9 @@ describe('browser development bridge', () => {
     await expect(window.hermesDesktop.readFileDataUrl('/opt/data/workspace/chart.png')).resolves.toBe(
       'data:image/png;base64,QUJD'
     )
-    expect(calls[0]).toBe('/__hermes_backend/api/fs/read-data-url?path=%2Fopt%2Fdata%2Fworkspace%2Fchart.png')
+    expect(calls[0]).toBe(
+      '/__hermes_backend/api/fs/read-data-url?path=%2Fopt%2Fdata%2Fworkspace%2Fchart.png&profile=default'
+    )
 
     const listing = await window.hermesDesktop.readDir('/opt/data/workspace')
 
@@ -548,6 +550,50 @@ describe('browser bridge: rename and the recycle bin', () => {
       url: '/__hermes_backend/__mt_user/files/rename'
     })
     expect(closeRightRailTab.mock.calls).toEqual([['file:0']])
+  })
+})
+
+describe('browser bridge: several agents on the instance’s one serve', () => {
+  it('rides one connection for every profile and names the profile on REST calls', async () => {
+    await installFresh()
+    const calls: string[] = []
+
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      calls.push(url)
+
+      if (url.includes('/api/profiles')) {
+        return jsonResponse({ profiles: [{ name: 'default' }, { name: 'uw-agent_e2e_data' }] })
+      }
+
+      return jsonResponse({ ok: true })
+    }) as typeof fetch
+
+    const primary = await window.hermesDesktop.getConnection()
+    const agent = await window.hermesDesktop.getConnection('uw-agent_e2e_data')
+
+    expect(primary.sharedPrimary).toBeUndefined()
+    expect(agent).toMatchObject({ profile: 'uw-agent_e2e_data', sharedPrimary: true, wsUrl: primary.wsUrl })
+    await expect(window.hermesDesktop.getConnectionFor?.({ connectionId: 'laptop', profile: 'x' })).rejects.toThrow(
+      'No connection with id "laptop".'
+    )
+
+    await window.hermesDesktop.api({ path: '/api/config' })
+    await window.hermesDesktop.api({ path: '/api/config', profile: 'uw-agent_e2e_data' })
+    expect(calls).toEqual([
+      '/__hermes_backend/api/config?profile=default',
+      '/__hermes_backend/api/config?profile=uw-agent_e2e_data'
+    ])
+
+    const roster = await window.hermesDesktop.getAgentRoster?.()
+
+    expect(roster?.agents.map(a => a.profile)).toEqual(['default', 'uw-agent_e2e_data'])
+    expect(roster?.sources[0]).toMatchObject({ connectionId: 'local', reachable: true })
+    expect((await window.hermesDesktop.getProfileRoutes(['default'])).map(r => r.profile)).toEqual([
+      'default',
+      'uw-agent_e2e_data'
+    ])
   })
 })
 

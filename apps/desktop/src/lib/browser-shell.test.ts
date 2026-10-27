@@ -31,6 +31,7 @@ import {
   previewsPdfInViewer,
   remoteHtmlFrameDocument,
   remoteHtmlFrameSandbox,
+  showsBotsForEveryone,
   signOutDescription,
   skillMarketInstallPending,
   visibleModelOptions,
@@ -198,13 +199,21 @@ describe('browser shell', () => {
     expect(withoutHiddenNavItems(nav).map(item => item.id)).toEqual(['new-session', 'skills', 'artifacts'])
   })
 
-  it('does not start Bot Mode or kits and experts for regular users', () => {
+  it('shows the BOTS tab to every cloud user, not only in developer mode', () => {
+    expect(showsBotsForEveryone()).toBe(false)
+
+    document.documentElement.dataset.hermesBrowser = 'production'
+
+    expect(showsBotsForEveryone()).toBe(true)
+  })
+
+  it('does not start kits and experts for regular users, but runs Bot Mode', () => {
     expect(isBundledPluginHidden('hermes-bots')).toBe(false)
     expect(isBundledPluginHidden('uniwork-kits')).toBe(false)
 
     document.documentElement.dataset.hermesBrowser = 'production'
 
-    expect(isBundledPluginHidden('hermes-bots')).toBe(true)
+    expect(isBundledPluginHidden('hermes-bots')).toBe(false)
     expect(isBundledPluginHidden('uniwork-kits')).toBe(true)
     expect(isBundledPluginHidden('kanban')).toBe(false)
 

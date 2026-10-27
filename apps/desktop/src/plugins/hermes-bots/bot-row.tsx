@@ -53,6 +53,7 @@ import {
   botSelectionKey,
   botSourceStatus,
   isDefaultBot,
+  isManagedBot,
   newBotChat,
   ROSTER_KEY,
   saveBotMeta
@@ -399,6 +400,7 @@ export function BotRow({ bot, onDelete, onEdit, onGroup, onNewSection, showHandl
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem
+          disabled={isManagedBot(bot)} // desktop-mt: the platform's Agents are read-only (isManagedBot)
           onSelect={() =>
             void ensureBotMetadata(bot)
               .then(() => onEdit(bot))
@@ -417,6 +419,7 @@ export function BotRow({ bot, onDelete, onEdit, onGroup, onNewSection, showHandl
           {groups.length ? b.bot.groupsMenu(groups.join(', ')) : b.bot.manageGroups}
         </ContextMenuItem>
         <ContextMenuItem
+          disabled={isManagedBot(bot)} // desktop-mt
           onSelect={() => {
             host.notify({
               kind: 'info',
@@ -483,8 +486,8 @@ export function BotRow({ bot, onDelete, onEdit, onGroup, onNewSection, showHandl
             ) : null}
           </ContextMenuSubContent>
         </ContextMenuSub>
-        {isDefaultBot(bot) ? null : <ContextMenuSeparator />}
-        {isDefaultBot(bot) ? null : (
+        {isDefaultBot(bot) || isManagedBot(bot) ? null : <ContextMenuSeparator />}
+        {isDefaultBot(bot) || isManagedBot(bot) ? null : (
           <ContextMenuItem onSelect={() => onDelete(bot)} variant="destructive">
             {t.common.delete}
           </ContextMenuItem>
