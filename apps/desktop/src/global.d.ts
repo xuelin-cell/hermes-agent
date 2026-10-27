@@ -859,6 +859,16 @@ export interface DesktopUpdateCommit {
   at: number
 }
 
+/** One authored changelog group; `label` is the publisher's copy, not an i18n key. */
+export interface DesktopReleaseNotesGroup {
+  id: string
+  label: string
+  items: string[]
+}
+
+/** Authored notes keyed by locale; the renderer picks the reader's locale. */
+export type DesktopReleaseNotesByLocale = { [locale: string]: DesktopReleaseNotesGroup[] }
+
 export type UpdaterMechanismClient =
   'app-installer' | 'electron-updater' | 'external' | 'microsoft-store' | 'windows-handoff' | 'posix-handoff' | 'manual'
 
@@ -891,6 +901,9 @@ export interface DesktopUpdateStatus {
   latestTag?: string | null
   targetSha?: string
   commits?: DesktopUpdateCommit[]
+  /** Copy published beside the update feed for the offered version. Absent on
+   *  feeds that ship none — the overlay then renders its own fallback. */
+  releaseNotes?: DesktopReleaseNotesByLocale | null
   dirty?: boolean
   fetchedAt?: number
 }

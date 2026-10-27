@@ -69,6 +69,25 @@ describe('Windows NSIS strategy', () => {
     expect(emitter.listenerCount('download-progress')).toBe(0)
   })
 
+  // The notes are publisher copy, never a precondition: a feed object that is
+  // missing, unreachable or empty must leave the update decision untouched.
+  it('attaches authored notes and never fails the check over them', async () => {
+    const { deps } = fixture()
+
+    deps.releaseNotes = vi.fn(async () => ({ zh: [{ id: 'new', label: '新增', items: ['导出会话'] }] }))
+    expect(await new WindowsStrategy(deps).check()).toMatchObject({
+      updateAvailable: true,
+      releaseNotes: { zh: [{ id: 'new', label: '新增', items: ['导出会话'] }] }
+    })
+
+    deps.releaseNotes = vi.fn(async () => {
+      throw new Error('offline')
+    })
+    const failed = await new WindowsStrategy(deps).check()
+    expect(failed).toMatchObject({ updateAvailable: true, latestTag: 'v1.1.0' })
+    expect(failed).not.toHaveProperty('releaseNotes')
+  })
+
   it('leaves the backend running when the provider reports no newer release', async () => {
     const { deps, strategy, events } = fixture()
     const info = { version: '1.0.0', files: [], releaseDate: '', path: '', sha512: '' }
