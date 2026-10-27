@@ -112,7 +112,7 @@ describe('ensureGatewayProfile → $connection sync (#46651)', () => {
     await ensureGatewayProfile('vps-remote')
 
     expect(ensureGatewayForProfile).toHaveBeenCalledWith('vps-remote')
-    expect(getConnection).toHaveBeenCalledWith('vps-remote')
+    expect(getConnection).toHaveBeenCalledWith('vps-remote', { priority: 'foreground' })
     expect($connection.get()?.mode).toBe('remote')
     expect($connection.get()?.profile).toBe('vps-remote')
   })
@@ -124,7 +124,7 @@ describe('ensureGatewayProfile → $connection sync (#46651)', () => {
 
     await ensureGatewayProfile('default')
 
-    expect(getConnection).toHaveBeenCalledWith('default')
+    expect(getConnection).toHaveBeenCalledWith('default', { priority: 'foreground' })
     expect($connection.get()?.mode).toBe('local')
   })
 

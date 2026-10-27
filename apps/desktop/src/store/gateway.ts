@@ -19,7 +19,12 @@ import {
   LIVENESS_REPROBE_DELAY_MS
 } from '@/lib/gateway-liveness-policy'
 import { isMissingRpcMethod } from '@/lib/gateway-rpc'
-import { isTimeoutError, RECONNECT_ATTEMPT_TIMEOUT_MS, withTimeout } from '@/lib/with-timeout'
+import {
+  BACKEND_BOOT_WAIT_TIMEOUT_MS,
+  isTimeoutError,
+  RECONNECT_ATTEMPT_TIMEOUT_MS,
+  withTimeout
+} from '@/lib/with-timeout'
 import { notifyError, RECOVERY_ACTIONS } from '@/store/notifications'
 import { markNativeNotifyBaseline } from '@/store/notify-baseline'
 import { setConnection, setGatewayState } from '@/store/session'
@@ -132,6 +137,7 @@ interface Secondary {
   openedAt: null | number
   activeRequests: number
   connectPromise: Promise<void> | null
+  connectPriority: SpawnPriority | null
   offEvent: () => void
   offRequest: () => void
   offState: () => void
@@ -489,7 +495,7 @@ async function ridesPrimaryBackend(
   try {
     const conn = await withTimeout(
       desktop.getConnectionFor({ connectionId: id, profile: key, ...dialPriority(spawnPriority) }),
-      RECONNECT_ATTEMPT_TIMEOUT_MS,
+      spawnPriority === 'foreground' ? BACKEND_BOOT_WAIT_TIMEOUT_MS : RECONNECT_ATTEMPT_TIMEOUT_MS,
       `Timed out resolving the backend route for "${key}"`
     )
 
@@ -706,6 +712,9 @@ async function openSecondary(entry: Secondary, spawnPriority: SpawnPriority = 'b
   }
 
   if (entry.connectPromise) {
+    const pending = entry.connectPromise
+    const promoted = spawnPriority === 'foreground' && entry.connectPriority !== 'foreground'
+
     if (spawnPriority === 'foreground') {
       // Hydration may already own this dial as a background slot wait. Kick a
       // foreground IPC so main can promote it onto the reserved slot.
@@ -720,7 +729,21 @@ async function openSecondary(entry: Secondary, spawnPriority: SpawnPriority = 'b
       ).catch(() => undefined)
     }
 
-    await entry.connectPromise
+    try {
+      await pending
+    } catch (error) {
+      // A user click must not inherit the failed background attempt it promoted.
+      if (!promoted || !entry.wantOpen || g.secondaries.get(entry.scope) !== entry || isGatewayReauthRequired(error)) {
+        throw error
+      }
+
+      if (entry.connectPromise === pending) {
+        entry.connectPromise = null
+        entry.connectPriority = null
+      }
+
+      await openSecondary(entry, 'foreground')
+    }
 
     return
   }
@@ -780,12 +803,12 @@ async function openSecondary(entry: Secondary, spawnPriority: SpawnPriority = 'b
               profile: entry.profile,
               ...dialPriority(spawnPriority)
             }),
-            RECONNECT_ATTEMPT_TIMEOUT_MS,
+            spawnPriority === 'foreground' ? BACKEND_BOOT_WAIT_TIMEOUT_MS : RECONNECT_ATTEMPT_TIMEOUT_MS,
             `Timed out connecting to profile "${entry.profile}"`
           )
         : await withTimeout(
             dialProfile(desktop, entry.profile, spawnPriority),
-            RECONNECT_ATTEMPT_TIMEOUT_MS,
+            spawnPriority === 'foreground' ? BACKEND_BOOT_WAIT_TIMEOUT_MS : RECONNECT_ATTEMPT_TIMEOUT_MS,
             `Timed out connecting to profile "${entry.profile}"`
           )
 
@@ -845,6 +868,7 @@ async function openSecondary(entry: Secondary, spawnPriority: SpawnPriority = 'b
   })()
 
   entry.connectPromise = pending
+  entry.connectPriority = spawnPriority
 
   try {
     await pending
@@ -859,6 +883,7 @@ async function openSecondary(entry: Secondary, spawnPriority: SpawnPriority = 'b
   } finally {
     if (entry.connectPromise === pending) {
       entry.connectPromise = null
+      entry.connectPriority = null
     }
   }
 }
@@ -1010,6 +1035,7 @@ function createSecondary(profile: string, connectionId: null | string = null): S
     openedAt: null,
     activeRequests: 0,
     connectPromise: null,
+    connectPriority: null,
     offEvent: () => {},
     offRequest: () => {},
     offState: () => {},
@@ -1096,7 +1122,7 @@ async function sharedPrimaryRoute(profile: string, spawnPriority: SpawnPriority 
     // background and the click waits out this probe before being promoted.
     const conn = await withTimeout(
       dialProfile(desktop, profile, spawnPriority),
-      RECONNECT_ATTEMPT_TIMEOUT_MS,
+      spawnPriority === 'foreground' ? BACKEND_BOOT_WAIT_TIMEOUT_MS : RECONNECT_ATTEMPT_TIMEOUT_MS,
       `Timed out resolving the shared-primary route for profile "${profile}"`
     )
 
