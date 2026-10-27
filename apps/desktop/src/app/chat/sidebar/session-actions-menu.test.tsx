@@ -1,12 +1,16 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { atom } from 'nanostores'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { openConversationShare } from '@/store/conversation-share'
+import { $developerMode } from '@/store/developer-mode'
 
 import { SessionActionsMenu, SessionContextMenu } from './session-actions-menu'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  $developerMode.set(false)
+})
 
 // Exercises the real SessionActionsMenu end-to-end (no DropdownMenu mock) so
 // a broken asChild composition on the kebab trigger fails here — the menu
@@ -58,6 +62,7 @@ vi.mock('@/i18n', () => ({
           export: 'Export',
           hideTabBar: 'Hide tab bar',
           markRead: 'Mark as read',
+          openInTerminal: 'Open in terminal',
           pin: 'Pin',
           rename: 'Rename',
           renameDesc: 'Leave empty to clear.',
@@ -109,7 +114,7 @@ vi.mock('@/store/session-states', () => ({
   openSessionTile: vi.fn()
 }))
 vi.mock('@/store/windows', () => ({
-  canOpenSessionInTerminal: () => false,
+  canOpenSessionInTerminal: () => true,
   canOpenSessionWindow: () => false,
   isBrowserWindow: () => false,
   isSecondaryWindow: () => false,
@@ -325,6 +330,24 @@ describe('SessionActionsMenu', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
     expect(await screen.findByText('Session deleted')).toBeTruthy()
     expect(onDelete).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows Open in terminal in the context menu only while developer mode is enabled', async () => {
+    $developerMode.set(false)
+    render(
+      <SessionContextMenu sessionId="s1" title="My session">
+        <button aria-label="Session row" type="button">
+          Row
+        </button>
+      </SessionContextMenu>
+    )
+
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Session row' }))
+    await screen.findByRole('menu')
+    expect(screen.queryByRole('menuitem', { name: 'Open in terminal' })).toBeNull()
+
+    act(() => $developerMode.set(true))
+    expect(await screen.findByRole('menuitem', { name: 'Open in terminal' })).toBeTruthy()
   })
 
   // A canonical Bot Chat tab must not offer Rename: the write can never reach
