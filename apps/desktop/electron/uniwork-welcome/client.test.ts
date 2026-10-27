@@ -23,14 +23,16 @@ it('requires the current login token for V3 and rejects unusable or extra-escape
               {
                 id: 'arbitrary',
                 name: 'Configured office',
+                icon: 'presentation',
                 enabled: true,
                 tags: [
                   {
                     id: 'docs',
                     name: 'Docs',
+                    icon: 'file-text',
                     sort: 10,
                     enabled: true,
-                    templates: [{ id: 'one', name: 'One', prompt: 'Create a report', sort: 10, enabled: true }]
+                    templates: [{ id: 'one', name: 'One', icon: 'sparkles', prompt: 'Create a report', sort: 10, enabled: true }]
                   }
                 ]
               }
@@ -71,6 +73,10 @@ it('requires the current login token for V3 and rejects unusable or extra-escape
     const result = await client.load('zh-CN')
     expect(authorization).toBe('Bearer private-token')
     expect(normalizeWelcomeCatalog(result)[0].tags[0].templates[0].prompt).toBe('Create a report')
+    const module = normalizeWelcomeCatalog(result)[0]
+    expect([module.icon, module.tags[0].icon, module.tags[0].templates[0].icon]).toEqual([
+      'presentation', 'file-text', 'sparkles'
+    ])
     expect(result.version).toBe('version-1')
     expect(JSON.stringify(result)).not.toContain('private-token')
     expect(result.modules[0]).not.toHaveProperty('workspace')

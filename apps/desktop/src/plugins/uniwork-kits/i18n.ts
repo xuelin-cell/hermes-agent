@@ -1,7 +1,7 @@
 import { type PluginLocaleBundles } from '@hermes/plugin-sdk'
 
 const en = {
-  title: 'Kits',
+  title: 'Experts and kits',
   kits: 'Kits',
   experts: 'Experts',
   emptyKits: 'No kits installed yet.',
@@ -25,7 +25,7 @@ const en = {
   summon: 'Experts',
   summonHint: 'Summon an expert into a new chat',
   summonButton: 'Summon',
-  noExperts: 'No experts installed yet. Install them on the Kits page.',
+  noExperts: 'No experts installed yet. Find them in Extensions → Experts.',
   preparingExperts: 'The built-in experts are being prepared, about twenty seconds…',
   preparingKits: 'Preparing the built-in kits and experts…',
   preparingExpert: 'Preparing ',
@@ -43,7 +43,7 @@ const en = {
 }
 
 const zh = {
-  title: '套件',
+  title: '专家和套件',
   kits: '套件',
   experts: '专家',
   emptyKits: '还没有安装套件。',
@@ -67,7 +67,7 @@ const zh = {
   summon: '专家',
   summonHint: '召唤一位专家，开一个新对话',
   summonButton: '召唤',
-  noExperts: '还没有安装专家，先到「套件」页安装。',
+  noExperts: '还没有安装专家，请到「扩展 → 专家」查看。',
   preparingExperts: '正在准备内置专家，大约二十秒…',
   preparingKits: '正在准备内置套件和专家…',
   preparingExpert: '正在准备',

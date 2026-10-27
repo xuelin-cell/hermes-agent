@@ -1796,6 +1796,20 @@ body.guest-pointer-lock :is(webview, iframe) {
   line-height: var(--human-msg-line-height);
 }
 
+/* Keep the sticky row full-width; only the human bubble occupies the right lane. */
+[data-slot='aui_user-bubble-actions'] {
+  width: fit-content;
+  max-width: 85%;
+  margin-left: auto;
+}
+
+[data-slot='aui_user-attachments'] {
+  width: fit-content;
+  max-width: 85%;
+  margin-left: auto;
+  justify-content: flex-end;
+}
+
 [data-slot='aui_edit-composer-root'] [data-slot='composer-rich-input'] {
   line-height: var(--human-msg-line-height);
 }

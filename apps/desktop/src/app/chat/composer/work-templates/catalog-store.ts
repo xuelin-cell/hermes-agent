@@ -8,9 +8,6 @@ import {
   type WelcomeModule
 } from '../../../../../electron/uniwork-welcome/catalog'
 
-import english from './catalog.en.json'
-import chinese from './catalog.zh-CN.json'
-
 interface CatalogState {
   modules: WelcomeModule[] | null
   status: 'loading' | 'ready' | 'cached'
@@ -20,15 +17,20 @@ interface CatalogState {
 // v1 could cache the old main process's category array as top-level modules.
 const KEY = 'uniwork.welcome.modules.v3.'
 
-/** 磁盘缓存损坏时使用随应用提供的完整目录，不阻塞新对话。 */
+/** 仅恢复上次成功获取的云端目录；首次启动或缓存损坏时等待云端。 */
 function initial(locale: WelcomeLocale): CatalogState {
   try {
     const saved = readKey(KEY + locale)
-    const payload = saved ? JSON.parse(saved) : locale === 'zh-CN' ? chinese : english
+
+    if (!saved) {
+      return { modules: null, status: 'cached' }
+    }
+
+    const payload = JSON.parse(saved)
 
     return { modules: normalizeWelcomeCatalog(payload), version: payload.version, status: 'cached' }
   } catch {
-    return { modules: normalizeWelcomeCatalog(locale === 'zh-CN' ? chinese : english), status: 'cached' }
+    return { modules: null, status: 'cached' }
   }
 }
 

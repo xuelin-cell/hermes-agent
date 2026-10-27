@@ -74,6 +74,16 @@ function isSharedRuntime(imagePath: string): boolean {
   return /^(?:pythonw?(?:[0-9.]+)?|node|hermes(?:-agent|-acp)?)(?:\.exe|\.cmd)?$/.test(image)
 }
 
+/** electron-updater's elevation helper owns the install handoff: quitAndInstall
+ * spawns it, then app.quit() runs this reap. Killing it cancels the update
+ * before the installer starts, so it is never a straggler to sweep.
+ */
+function isUpdaterHandoff(imagePath: string): boolean {
+  const image = imagePath.replace(/^.*[\\/]/, '').toLowerCase()
+
+  return image === 'elevate.exe' || image === 'old-uninstaller.exe'
+}
+
 /**
  * Enumerate running processes with image path, parent pid and command line,
  * via PowerShell's Win32_Process query (Get-Process does not carry the
@@ -278,6 +288,10 @@ export function reapPackageRootedProcesses(deps: ReapPackageRootedProcessesDeps)
     }
 
     if (!isUnderInstallRoot(candidate.path, roots)) {
+      continue
+    }
+
+    if (isUpdaterHandoff(candidate.path)) {
       continue
     }
 

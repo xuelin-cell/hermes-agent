@@ -1,6 +1,6 @@
 import type { DesktopTheme, DesktopThemeColors } from './types'
 
-// MasterGo 204500798093134 / 24:09019：白底、石墨文字、朱红强调。
+// MasterGo 204500798093134 / 24:09019：白底、石墨文字、橙黄强调。
 const light: DesktopThemeColors = {
   background: '#ffffff',
   foreground: '#101219',
@@ -10,7 +10,7 @@ const light: DesktopThemeColors = {
   mutedForeground: '#686f82',
   popover: '#ffffff',
   popoverForeground: '#101219',
-  primary: '#e1401d',
+  primary: '#f5765a',
   primaryForeground: '#ffffff',
   secondary: '#f0f0f0',
   secondaryForeground: '#32374a',
@@ -18,9 +18,9 @@ const light: DesktopThemeColors = {
   accentForeground: '#b52e13',
   border: '#e6e9ed',
   input: '#e6e9ed',
-  ring: '#e1401d',
-  midground: '#e1401d',
-  composerRing: '#e1401d',
+  ring: '#f5765a',
+  midground: '#f5765a',
+  composerRing: '#f5765a',
   destructive: '#c52b20',
   destructiveForeground: '#ffffff',
   sidebarBackground: '#f7f7f7',
@@ -32,7 +32,7 @@ const light: DesktopThemeColors = {
 export const uniworkTheme: DesktopTheme = {
   name: 'uniwork',
   label: '元景 · UniWork',
-  description: '元景数字员工 · 白底朱红，清晰轻盈',
+  description: '元景数字员工 · 白底橙黄，清晰轻盈',
   colors: light,
   darkColors: {
     ...light,
@@ -44,7 +44,7 @@ export const uniworkTheme: DesktopTheme = {
     mutedForeground: '#a5aaba',
     popover: '#24262c',
     popoverForeground: '#edeef2',
-    primary: '#f0785d',
+    primary: '#f5765a',
     primaryForeground: '#17181c',
     secondary: '#2b2d34',
     secondaryForeground: '#d8dbe4',
@@ -52,9 +52,9 @@ export const uniworkTheme: DesktopTheme = {
     accentForeground: '#ffb4a1',
     border: '#363941',
     input: '#363941',
-    ring: '#f0785d',
-    midground: '#f0785d',
-    composerRing: '#f0785d',
+    ring: '#f5765a',
+    midground: '#f5765a',
+    composerRing: '#f5765a',
     destructive: '#f38d83',
     destructiveForeground: '#17181c',
     sidebarBackground: '#1d1e23',

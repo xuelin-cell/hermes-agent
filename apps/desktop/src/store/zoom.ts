@@ -10,9 +10,9 @@
 
 import { atom } from 'nanostores'
 
-// Mirror DEFAULT_ZOOM_LEVEL (90%) so Appearance doesn't flash 100% before
+// Mirror DEFAULT_ZOOM_LEVEL (100%) so Appearance matches the native default before
 // the main-process zoom.get() resolves. Keep in sync with electron/zoom.ts.
-const DEFAULT_ZOOM_PERCENT = 90
+const DEFAULT_ZOOM_PERCENT = 100
 
 const desktopZoom = typeof window === 'undefined' ? undefined : window.hermesDesktop?.zoom
 

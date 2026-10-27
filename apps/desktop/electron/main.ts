@@ -1030,10 +1030,10 @@ function readPersistedThemeSource() {
       return parsed.themeSource
     }
   } catch {
-    // Missing / malformed → follow the OS like a fresh install.
+    // Missing / malformed → use the shipped light appearance.
   }
 
-  return 'system'
+  return 'light'
 }
 
 function writePersistedThemeSource(mode) {
@@ -13326,6 +13326,7 @@ function installPreviewGuestPreload() {
 const sessionWindows = createSessionWindowRegistry()
 
 const minimizeToTray = createMinimizeToTray({
+  closeToTray: true,
   preferencesPath: path.join(app.getPath('userData'), 'minimize-to-tray.json'),
   getIconPath: getAppIconPath,
   restoreMainWindow: () => ensureMainWindow(mainWindow, { isReady: app.isReady(), createWindow, focusWindow }),

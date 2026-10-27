@@ -115,13 +115,14 @@ beforeEach(() => {
 })
 afterEach(() => fs.rmSync(home, { recursive: true, force: true }))
 
-function setup() {
+function setup(closeToTray = false) {
   const main = new Window()
   const peer = new Window()
   native.windows.push(main, peer)
   let handoff = false
 
   const controller = createMinimizeToTray({
+    closeToTray,
     preferencesPath: path.join(home, 'minimize-to-tray.json'),
     getIconPath: () => 'icon.png',
     restoreMainWindow: () => main.showInactive(),
@@ -302,4 +303,35 @@ test('persistence, disabling, failed tray creation, and handoff never strand hid
   expect(await disabled.controller.start()).toEqual({ enabled: false, available: false })
   disabled.main.close()
   expect(disabled.main.destroyed).toBe(true)
+})
+
+test('primary close stays in the tray independently of the minimize preference; tray restores and quits', async () => {
+  const { controller, main } = setup(true)
+  await controller.start()
+  await controller.setEnabled(false)
+  expect(controller.status()).toEqual({ enabled: false, available: true })
+  main.minimize()
+  await flushDeferredHide()
+  expect(main.visible).toBe(true)
+  main.restore()
+  expect(main.close().preventDefault).toHaveBeenCalled()
+  expect(main.visible).toBe(false)
+  expect(main.destroyed).toBe(false)
+  expect(native.app.quit).not.toHaveBeenCalled()
+  native.trays[0].menu[0].click()
+  expect(main.visible).toBe(true)
+  native.trays[0].menu[2].click()
+  expect(native.app.quit).toHaveBeenCalledOnce()
+  controller.beginQuit()
+  expect(main.close().preventDefault).not.toHaveBeenCalled()
+  expect(main.destroyed).toBe(true)
+})
+
+test('primary close retains normal fallback if the recovery tray cannot be created', async () => {
+  native.fail = true
+  const { controller, main } = setup(true)
+  await controller.start()
+  expect(controller.status().available).toBe(false)
+  expect(main.close().preventDefault).not.toHaveBeenCalled()
+  expect(main.visible).toBe(true)
 })

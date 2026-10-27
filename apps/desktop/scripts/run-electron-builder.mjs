@@ -159,7 +159,7 @@ export function runElectronBuilder(args, { spawn = spawnSync } = {}) {
 /** @param {string[]} args @returns {string[]} */
 function sourceFormats(args) {
   if (args.includes('--dir')) return ['dir']
-  const formats = args.filter(arg => ['dmg', 'zip', 'msix', 'nsis', 'AppImage', 'deb', 'rpm'].includes(arg))
+  const formats = args.filter(arg => ['dmg', 'zip', 'msix', 'nsis', 'nsis-web', 'AppImage', 'deb', 'rpm'].includes(arg))
   const platform = selectedPlatform(args)
   return formats.length ? formats : platform === 'darwin' ? ['dmg', 'zip'] : platform === 'win32' ? ['nsis'] : ['AppImage']
 }

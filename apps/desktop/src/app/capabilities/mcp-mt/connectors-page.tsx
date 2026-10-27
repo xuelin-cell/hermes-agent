@@ -1,12 +1,14 @@
 import './connectors-page.css'
+import '../skills-mt/skills-mt.css'
 
 import { useEffect, useId, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from 'react-router'
 
 import { PAGE_INSET_X } from '@/app/layout-constants'
 import { EmptyState } from '@/components/ui/empty-state'
-import { SearchField } from '@/components/ui/search-field'
 import { useI18n } from '@/i18n'
+import { Search } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 
 import { CONNECTOR_SPECS, type ConnectorId } from '../../../../electron/open-connector/contract'
@@ -17,7 +19,11 @@ import { RecommendedConnectorCard, RecommendedConnectorDetail } from './recommen
 import { useRecommendedConnections } from './use-recommended-connections'
 
 /** 推荐目录只负责展示，MCP 页继续使用原生管理；深链始终优先打开 MCP。 */
-export function ConnectorsPage(props: McpConnectorsTabProps) {
+interface ConnectorsPageProps extends McpConnectorsTabProps {
+  searchContainer?: HTMLDivElement | null
+}
+
+export function ConnectorsPage({ searchContainer, ...props }: ConnectorsPageProps) {
   const { t } = useI18n()
   const copy = t.connectorsPage.recommended
   const location = useLocation()
@@ -120,9 +126,32 @@ export function ConnectorsPage(props: McpConnectorsTabProps) {
     navigate('/')
   }
 
+  const searchField = (
+    <div
+      aria-hidden={view !== 'recommended' || undefined}
+      className={cn('mt-connectors-search-slot', searchContainer !== undefined && 'mt-connectors-search-header')}
+      inert={view !== 'recommended'}
+    >
+      <label className="mt-skills-search">
+        <Search className="size-4 shrink-0" />
+        <input
+          aria-label={copy.search}
+          onChange={event => setQuery(event.target.value)}
+          placeholder={copy.search}
+          value={query}
+        />
+      </label>
+    </div>
+  )
+
   return (
     <div className="mt-connectors-page flex h-full min-h-0 flex-col">
-      <div className={cn('mt-connectors-toolbar', PAGE_INSET_X)}>
+      <div
+        className={cn(
+          'mt-connectors-toolbar',
+          searchContainer !== undefined ? 'mt-connectors-toolbar-header' : PAGE_INSET_X
+        )}
+      >
         <div aria-label={t.connectorsPage.title} className="mt-connectors-tabs" role="tablist">
           <button
             aria-controls={`${panelId}-recommended`}
@@ -161,16 +190,11 @@ export function ConnectorsPage(props: McpConnectorsTabProps) {
             MCP
           </button>
         </div>
-        {view === 'recommended' && (
-          <SearchField
-            aria-label={copy.search}
-            containerClassName="mt-connectors-search"
-            onChange={setQuery}
-            placeholder={copy.search}
-            value={query}
-            variant="box"
-          />
-        )}
+        {searchContainer === undefined
+          ? searchField
+          : searchContainer
+            ? createPortal(searchField, searchContainer)
+            : null}
       </div>
       <div
         aria-labelledby={`${panelId}-recommended-tab`}

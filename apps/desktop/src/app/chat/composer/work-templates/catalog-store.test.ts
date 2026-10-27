@@ -27,7 +27,7 @@ it('keeps source-position selection keys and raw versioned data, retaining a goo
     'configured-module-1',
     'configured-module-0'
   ])
-  expect(modules[1].workspace).toBe('codex')
+  expect(modules[1].workspace).toBe('work')
   expect(JSON.parse(localStorage.getItem('uniwork.welcome.modules.v3.zh-CN')!)).toEqual(first)
   await loadWelcomeCatalog('zh-CN', true)
   expect($welcomeCatalog.get()['zh-CN'].modules).toBe(modules)
@@ -51,10 +51,22 @@ it('keeps source-position selection keys and raw versioned data, retaining a goo
   await loadWelcomeCatalog('zh-CN', true)
   expect($welcomeCatalog.get()['zh-CN'].modules).toBe(refreshed)
   expect($welcomeCatalog.get()['zh-CN'].status).toBe('cached')
+  vi.resetModules()
+  const restored = await import('./catalog-store')
+  expect(restored.$welcomeCatalog.get()['zh-CN'].modules).toEqual(refreshed)
 })
 
-it('falls back only for absent locale modules, keeping an explicit empty locale empty', async () => {
-  const { $welcomeCatalog, $resolvedWelcomeCatalog } = await import('./catalog-store')
+it('starts without hardcoded modules, retries cloud failures and restores only cloud locale data', async () => {
+  localStorage.setItem('uniwork.welcome.modules.v3.zh-CN', 'broken cache')
+  const { $welcomeCatalog, $resolvedWelcomeCatalog, loadWelcomeCatalog } = await import('./catalog-store')
+  expect($resolvedWelcomeCatalog['zh-CN'].get().modules).toEqual([])
+  expect($resolvedWelcomeCatalog.en.get().modules).toEqual([])
+  const request = vi.fn().mockRejectedValue(new Error('offline'))
+  vi.stubGlobal('hermesDesktop', { getWelcomeCatalog: request })
+  await loadWelcomeCatalog('zh-CN', true)
+  expect($resolvedWelcomeCatalog['zh-CN'].get().modules).toEqual([])
+  request.mockResolvedValue({ modules: [{ name: 'Cloud module' }] })
+  await loadWelcomeCatalog('en', true)
   const english = $welcomeCatalog.get().en
   $welcomeCatalog.set({ en: english, 'zh-CN': { status: 'cached', modules: null } })
   expect($resolvedWelcomeCatalog['zh-CN'].get().modules).toBe(english.modules)

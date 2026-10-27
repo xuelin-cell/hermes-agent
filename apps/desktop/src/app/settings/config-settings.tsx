@@ -11,6 +11,7 @@ import { useI18n } from '@/i18n'
 import { hideForUsers } from '@/lib/browser-shell'
 import { triggerHaptic } from '@/lib/haptics'
 import { isSubmitEnter } from '@/lib/ime'
+import { getServers, serverEnabled } from '@/lib/mcp-servers'
 import { confirm } from '@/store/confirm'
 import {
   $dataUrlReadMaxMb,
@@ -31,6 +32,7 @@ import { repoDiscoveryPolicyFromConfig, repoDiscoveryPolicySignature, scanAndRec
 import { $settingsRequestProfile } from '@/store/settings-scope'
 import type { ConfigFieldSchema, HermesConfigRecord } from '@/types/hermes'
 
+import { DRIVE_MCP_SERVER, isManagedDriveServer } from '../../../electron/login/drive-mcp-contract'
 import { hermesConfigCacheWriter, useHermesConfigRecord } from '../hooks/use-config-record'
 import { useOnProfileSwitch } from '../hooks/use-on-profile-switch'
 import { PanelEmpty } from '../overlays/panel'
@@ -312,6 +314,13 @@ function ConfigSettingsInner({
   const showAttachments =
     developerMode && activeSectionId === 'chat' && (subpage === undefined || subpage === 'attachments')
 
+  const driveServer = getServers(config)[DRIVE_MCP_SERVER]
+
+  const showDriveAccess =
+    activeSectionId === 'safety' &&
+    (subpage === undefined || subpage === 'approvals') &&
+    isManagedDriveServer(DRIVE_MCP_SERVER, driveServer)
+
   // Deep-link target from the command palette (?field=<key>): scroll the row
   // into view and flash it, then drop the param so it doesn't re-fire.
   const [searchParams, setSearchParams] = useSearchParams()
@@ -441,12 +450,27 @@ function ConfigSettingsInner({
 
   const showEmptyState =
     visibleFields.length === 0 &&
+    !showDriveAccess &&
     (subpage === undefined
       ? activeSectionId !== 'chat'
       : !showModelSettings && !showDesktopSettings && !showAttachments)
 
   return renderPage(
     <>
+      {showDriveAccess && (
+        <ToggleRow
+          checked={serverEnabled(driveServer)}
+          description={c.agentLibraryAccessDesc}
+          id={settingElementId(SETTING_IDS.safety.agentLibraryAccess)}
+          label={c.agentLibraryAccessTitle}
+          onChange={enabled =>
+            updateConfig({
+              ...config,
+              mcp_servers: { ...getServers(config), [DRIVE_MCP_SERVER]: { ...driveServer, enabled } }
+            })
+          }
+        />
+      )}
       {/* Device-local desktop prefs (not config.yaml) — they live here since
           keeping the machine awake and the global Quick Entry chord are both
           power-user, this-computer-only knobs. */}

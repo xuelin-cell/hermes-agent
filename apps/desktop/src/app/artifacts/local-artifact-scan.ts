@@ -214,7 +214,14 @@ export async function scanLocalArtifacts(
         }
 
         seen.add(metadata.path)
-        files.push({ ...file, id: `${key}:${metadata.path}`, resolvedPath: metadata.path, byteSize: metadata.byteSize })
+        // 使用原生文件名，既还原 file URL 的中文，也保留真实名称中的字面 %，不再二次解码。
+        files.push({
+          ...file,
+          id: `${key}:${metadata.path}`,
+          label: metadata.label,
+          resolvedPath: metadata.path,
+          byteSize: metadata.byteSize
+        })
       }
 
       group = { session, files }

@@ -1,4 +1,3 @@
-import { $workspaceSessionCategories, sessionWorkspaceCategory } from '@/store/workspace-sessions'
 import { KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { useStore } from '@nanostores/react'
@@ -6,6 +5,7 @@ import type * as React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router'
 
+import { useSkillsCopy } from '@/app/capabilities/skills-mt/copy'
 import { PlatformAvatar } from '@/app/messaging/platform-icon'
 import { MaasAccountSidebar } from '@/app/shell/maas-account-status'
 import { Button } from '@/components/ui/button'
@@ -139,6 +139,7 @@ import { $archivedSessions, loadArchivedSessions } from '@/store/sidebar-archive
 import { applySidebarNavPrefs, SIDEBAR_NAV_PREFS_AREA } from '@/store/sidebar-nav'
 import { $sidebarSessionRankIds } from '@/store/sidebar-sort'
 import { $selectedWorkspaceMode } from '@/store/workspace-category'
+import { $workspaceSessionCategories, sessionWorkspaceCategory } from '@/store/workspace-sessions'
 import { $workspaceSidebarGrouping as $sidebarGrouping } from '@/store/workspace-sidebar'
 
 import {
@@ -442,7 +443,15 @@ export function ChatSidebar({
     [navContributions]
   )
 
+  const skillsCopy = useSkillsCopy()
   const workspaceMode = useStore($selectedWorkspaceMode)
+
+  const capabilitiesLabel = (
+    workspaceMode === 'codex'
+      ? [t.skills.tabSkills, t.skills.tabPlugins, t.connectorsPage.title]
+      : [skillsCopy('experts'), t.skills.tabSkills, t.connectorsPage.title]
+  ).join(' · ')
+
   const interfaceMode = useStore($interfaceMode)
   const workspaceCategories = useStore($workspaceSessionCategories)
   const showsAdvancedChrome = useStore($showsAdvancedChrome)
@@ -464,17 +473,17 @@ export function ChatSidebar({
           route: EDITOR_ROUTE,
           icon: (props: { className?: string }) => <Codicon name="file-code" {...props} />
         },
-        { ...SIDEBAR_NAV[1], label: t.workspaceEditor.capabilities }
+        { ...SIDEBAR_NAV[1], label: capabilitiesLabel }
       ]
     }
 
     return applySidebarNavPrefs(
-      withoutHiddenNavItems([...SIDEBAR_NAV, ...contributedNav]).filter(
-        workspaceMode === 'work' ? () => true : shownInMode(interfaceMode)
-      ),
+      withoutHiddenNavItems([...SIDEBAR_NAV, ...contributedNav])
+        .map(item => (item.id === 'capabilities' ? { ...item, label: capabilitiesLabel } : item))
+        .filter(workspaceMode === 'work' ? () => true : shownInMode(interfaceMode)),
       navPrefs
     )
-  }, [contributedNav, interfaceMode, navPrefs, workspaceMode, t.workspaceEditor])
+  }, [capabilitiesLabel, contributedNav, interfaceMode, navPrefs, workspaceMode, t.workspaceEditor])
 
   const panesFlipped = useStore($panesFlipped)
   const grouping = useStore($sidebarGrouping)
@@ -640,7 +649,10 @@ export function ChatSidebar({
   // (same rule as the overview overlay), so filtering to Home keeps Home's rows.
   const sessionMatchesFilters = useCallback(
     (session: SessionInfo) => {
-      if (!matchesWorkspace(session)) return false
+      if (!matchesWorkspace(session)) {
+        return false
+      }
+
       if (statusFilter.length && !statusFilter.includes(sessionStatusBucket(dotStates[session.id]))) {
         return false
       }
@@ -1701,7 +1713,9 @@ export function ChatSidebar({
                               <TipKeybindLabel actionId={item.keybindActionId} text={item.label || s.nav[item.id]} />
                             )
                           }
-                        : (s.nav[item.id] ?? item.label)
+                        : item.id === 'capabilities'
+                          ? capabilitiesLabel
+                          : (s.nav[item.id] ?? item.label)
                     }
                     type="button"
                   >

@@ -19,7 +19,12 @@ it('Profile A→B→A 的迟到扫描不串目录，再入页面同步展示缓�
   $connection.set({ mode: 'local', profile: 'a' } as never)
   $apiRequestScope.set({ connectionId: 'local', profile: 'a' })
   vi.stubGlobal('hermesDesktop', {
-    normalizePreviewTarget: vi.fn(async (value: string) => ({ kind: 'file', path: value, byteSize: 3 }))
+    normalizePreviewTarget: vi.fn(async (value: string) => ({
+      kind: 'file',
+      path: value,
+      label: value.split(/[\\/]/).pop(),
+      byteSize: 3
+    }))
   })
   backend.list.mockImplementation(async () => ({
     sessions: [
@@ -65,7 +70,12 @@ it('预览布局重挂载时保留活跃会话的已加载文件，后台仍重�
   $connection.set({ mode: 'local', profile: 'a' } as never)
   $apiRequestScope.set({ connectionId: 'local', profile: 'a' })
   vi.stubGlobal('hermesDesktop', {
-    normalizePreviewTarget: vi.fn(async (value: string) => ({ kind: 'file', path: value, byteSize: 3 }))
+    normalizePreviewTarget: vi.fn(async (value: string) => ({
+      kind: 'file',
+      path: value,
+      label: value.split(/[\\/]/).pop(),
+      byteSize: 3
+    }))
   })
 
   const sessions = [
