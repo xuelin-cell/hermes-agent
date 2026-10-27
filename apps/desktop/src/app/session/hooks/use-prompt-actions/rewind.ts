@@ -635,6 +635,13 @@ export interface EditPlan {
   truncateRowId?: number
 }
 
+/** 编辑重发保留原文档引用；只沿用已有附件路径，不重新上传或修改文件。 */
+function filePromptText(source: ChatMessage, text: string): string {
+  const refs = (source.attachmentRefs ?? []).filter(ref => ref.startsWith('@file:'))
+
+  return [refs.join('\n'), text].filter(Boolean).join('\n\n')
+}
+
 /** Resolve the edited user turn, or null when nothing changed / invalid. */
 export function planEdit(messages: ChatMessage[], edited: AppendMessage): EditPlan | null {
   const sourceId = edited.sourceId || edited.parentId
@@ -659,8 +666,8 @@ export function planEdit(messages: ChatMessage[], edited: AppendMessage): EditPl
     editedMessage: { ...source, parts: [textPart(text)] },
     isFailedTurn,
     sourceIndex,
-    sourceText: chatMessageText(source).trim(),
-    text,
+    sourceText: filePromptText(source, chatMessageText(source).trim()),
+    text: filePromptText(source, text),
     truncateOrdinal: isFailedTurn ? undefined : visibleUserOrdinal(messages, sourceIndex),
     truncateMessageId: isFailedTurn ? undefined : source.id,
     truncateRowId: isFailedTurn ? undefined : source.rowId

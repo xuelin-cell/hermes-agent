@@ -26,6 +26,32 @@ const row = (id: string, role: ChatMessage['role'], text: string, extra: Partial
   ...extra
 })
 
+describe('文档消息的文字编辑', () => {
+  it.each(['原说明', ''])('保留附件引用和原始定位文本，显示正文只保留新文字：%s', caption => {
+    const refs = ['@file:`C:\\Docs\\项目周报 (1).md`', '@file:attachments/report.pdf']
+    const source = row('user-file', 'user', caption, { attachmentRefs: refs, rowId: 42 })
+    const before = JSON.stringify(source)
+
+    const plan = planEdit([source], {
+      sourceId: source.id,
+      parentId: null,
+      role: 'user',
+      content: [{ type: 'text', text: '新说明' }],
+      attachments: [],
+      createdAt: new Date(0),
+      metadata: { custom: {} },
+      runConfig: {}
+    })
+
+    expect(plan?.text).toBe(`${refs.join('\n')}\n\n新说明`)
+    expect(plan?.sourceText).toBe([refs.join('\n'), caption].filter(Boolean).join('\n\n'))
+    expect(plan?.editedMessage.parts).toEqual([textPart('新说明')])
+    expect(plan?.editedMessage.attachmentRefs).toBe(refs)
+    expect(plan?.truncateRowId).toBe(42)
+    expect(JSON.stringify(source)).toBe(before)
+  })
+})
+
 type MidTurnState = { interimBoundaryPending: boolean; messages: ChatMessage[]; streamId: null | string }
 
 describe('appendMidTurnUserMessage', () => {
