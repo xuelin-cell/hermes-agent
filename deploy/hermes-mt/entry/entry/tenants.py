@@ -57,6 +57,7 @@ PLATFORM_POLICY = {
     # 我们的模型清单来自套餐，用不上它。
     "model_catalog": {"enabled": False},
     "cloud_sharing": {"enabled": True},
+    "cloud_drive": {"enabled": True},
     # 用到时才从 PyPI 装的依赖：页面一打开就会往每台实例的可写层下 392MB 语音依赖。
     "security": {"allow_lazy_installs": False},
     # 用户第一条消息时，hermes 默认让 agent 提出「建用户画像」（征得同意后联网查用户的公开信息、记进记忆）。
@@ -356,22 +357,21 @@ class TenantManager:
         就永远卡在旧地址上，症状是网关回 1004 而不是任何看得懂的错误。
         """
         base_url, model_name = endpoint or ("", "")
-        if not base_url:
-            return False
         names = [n for n, _ in (catalog or [])]
-        want = _stamp_bytes((base_url, model_name), names)
         try:
-            stamp_tar = await self.docker.get_archive(cname, "/opt/data/.mt/endpoint.stamp")
-            if stamp_tar and self._from_tar(stamp_tar, "endpoint.stamp") == want:
-                return False
             cfg_tar = await self.docker.get_archive(cname, "/opt/data/config.yaml")
             if not cfg_tar:
+                return False
+            spec = self._config_patch_spec(endpoint, catalog, limits)
+            want = hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest().encode()
+            stamp_tar = await self.docker.get_archive(cname, "/opt/data/.mt/endpoint.stamp")
+            if stamp_tar and self._from_tar(stamp_tar, "endpoint.stamp") == want:
                 return False
             raw = self._from_tar(cfg_tar, "config.yaml")
             if raw is None:
                 return False
             patched, notes = _mtstate().patch_config_text(
-                raw.decode("utf-8"), self._config_patch_spec(endpoint, catalog, limits))
+                raw.decode("utf-8"), spec)
             files = {".mt/endpoint.stamp": want}
             if notes:
                 files["config.yaml"] = patched.encode("utf-8")
@@ -496,6 +496,12 @@ class TenantManager:
             return PLATFORM_POLICY
         return {**PLATFORM_POLICY, "agent": {"reasoning_effort": effort}}
 
+    @staticmethod
+    def _drive_mcp() -> dict:
+        return {"UniWork-Drive": {"url": "http://127.0.0.1:9120/api/plugins/cloud-drive/mcp", "timeout": 720,
+                 "execution_metadata": True, "strict_redirect_headers": True, "uniwork_managed": "uniwork.desktop.drive.v1",
+                 "headers": {"X-Hermes-Session-Token": "${HERMES_DASHBOARD_SESSION_TOKEN}"}}}
+
     def _mcp_servers(self, api_key: str) -> dict:
         """平台内置的 MCP 服务，{名字: 配置}；配置为 None = 平台不提供，实例里有这一条就删掉。
 
@@ -504,15 +510,16 @@ class TenantManager:
         ``oss_mode`` 让工具给内网链接（用户的浏览器在内网），见 config.py。
         """
         url = self.s.yuanjing_mcp_url.strip()
+        drive = self._drive_mcp()
         if not url or not api_key:
-            return {YUANJING_MCP_NAME: None}
+            return {**drive, YUANJING_MCP_NAME: None}
         params = [f"key=${{{self.s.key_env_name}}}"]
         if self.s.yuanjing_mcp_client_id:
             params.append("client_id=" + quote(self.s.yuanjing_mcp_client_id, safe=""))
         if self.s.yuanjing_mcp_oss_mode:
             params.append("oss_mode=" + quote(self.s.yuanjing_mcp_oss_mode, safe=""))
         sep = "&" if "?" in url else "?"
-        return {YUANJING_MCP_NAME: {"url": url + sep + "&".join(params), "timeout": YUANJING_MCP_TIMEOUT_S}}
+        return {**drive, YUANJING_MCP_NAME: {"url": url + sep + "&".join(params), "timeout": YUANJING_MCP_TIMEOUT_S}}
 
     def _config_patch_spec(
         self,
@@ -524,7 +531,7 @@ class TenantManager:
         """patch-model 的内容：平台块四项 + 套餐清单 + 每个模型的上下文长度 + 平台策略 + 推理强度预设，
         外加一份渲染好的模板（文件坏到救不回来时按它重建）。见 seed/mtstate.py 的 apply_platform_block。
 
-        给了 ``api_key``（沙箱路径的引导）才带内置 MCP；Docker 路径不传，实例里的 MCP 配置不动。"""
+        给了 ``api_key``（沙箱路径的引导）才带内置 MCP；Docker 路径只维护实例本地云盘 MCP，不改元景 MCP。"""
         base_url, model_name = endpoint or ("", "")
         model = model_name or self.s.model_name
         names = [n for n, _ in (catalog or [])]
@@ -539,8 +546,7 @@ class TenantManager:
             "reasoning_defaults": parse_reasoning_defaults(self.s.reasoning_defaults),
             "template": self._render_user_files("", endpoint, catalog, limits)["config.yaml"].decode("utf-8"),
         }
-        if api_key is not None:
-            spec["mcp_servers"] = self._mcp_servers(api_key)
+        spec["mcp_servers"] = self._mcp_servers(api_key) if api_key is not None else self._drive_mcp()
         return spec
 
     def _cube_seed_files(

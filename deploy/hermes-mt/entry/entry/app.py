@@ -13,6 +13,7 @@ from aiohttp import web
 
 from .config import SETTINGS, Settings
 from .browser_auth import BrowserAuth, BrowserIdentity
+from .drive_routes import DriveRoutes
 from .crypto import CredentialCipher
 from .cube_api import Cube
 from .db import Database, DatabaseUnavailable
@@ -103,6 +104,7 @@ class Entry:
         )
         self.browser_auth = BrowserAuth(self.store.cipher)
         self.share_routes = ShareRoutes(self)
+        self.drive_routes = DriveRoutes(self)
         self.shares: Shares | None = None
         # aiohttp 客户端必须在事件循环中创建，因此在 on_startup 里赋值。
         self.http: aiohttp.ClientSession | None = None
@@ -181,7 +183,7 @@ class Entry:
         proof = ""
         if maas_token and upstream_expires_ms:
             proof, payload["maas_auth"] = self.browser_auth.issue(
-                login.session, maas_token, upstream_expires_ms,
+                login.session, maas_token, upstream_expires_ms, phone,
             )
         response = web.json_response(payload, headers={"Cache-Control": "no-store"})
         self._set_cookie(response, login.session)
@@ -336,6 +338,7 @@ class Entry:
             return ""
         session = await self.store.get_session(sid)
         await self.store.delete_session(sid)
+        await self.drive_routes.logout(sid)
         if session:
             await self.store.write_audit(session.user_id, "logout")
             return session.user_id
@@ -404,12 +407,22 @@ class Entry:
     # 用户经代理打不到的路径：转发器的管理接口（能让自己的实例排空），
     # 以及 hermes 的「导入备份」（它会在库打开时替换 state.db，归档和真实库会分叉）。
     # 注意 ``__mt_user/``（回收站、重命名、命令行）不在其中：那是给用户用的，转发器自己核对会话令牌。
-    _BLOCKED_TAILS = ("__mt/", "api/ops/import")
+    _BLOCKED_TAILS = ("__mt/", "api/ops/import", "api/plugins/cloud-drive/internal/", "api/plugins/cloud-drive/mcp")
 
     async def backend(self, request: web.Request) -> web.StreamResponse:
         session = await self._require(request)
         tail = request.match_info.get("tail", "").lstrip("/")
-        normalized = tail.replace("//", "/")
+        import posixpath
+        from urllib.parse import unquote
+        normalized = tail
+        for _ in range(4):
+            decoded = unquote(normalized)
+            if decoded == normalized:
+                break
+            normalized = decoded
+        normalized = posixpath.normpath(normalized).lstrip('/')
+        if "\\" in normalized:
+            raise web.HTTPNotFound()
         if normalized.startswith(self._BLOCKED_TAILS) or normalized in self._BLOCKED_TAILS:
             raise web.HTTPNotFound()
         try:
@@ -493,6 +506,7 @@ class Entry:
             log.exception("reconcile failed: %s", type(exc).__name__)
 
     async def on_cleanup(self, app: web.Application) -> None:
+        await self.drive_routes.close()
         for task in self._bg:
             task.cancel()
         if self._bg:
@@ -538,6 +552,9 @@ def build_app(settings: Settings = SETTINGS) -> web.Application:
     app.router.add_get(path("/__entry/browser-auth.js"), entry.browser_auth_script)
     app.router.add_post(path("/__entry/maas-auth"), entry.maas_auth_status)
     app.router.add_post(path("/__entry/{kind:conversation|artifact}-shares/{operation}"), entry.share_routes.handle)
+    app.router.add_post(path("/__entry/drive/part/{id}"), entry.drive_routes.part)
+    app.router.add_get(path("/__entry/drive/files/{id}"), entry.drive_routes.download)
+    app.router.add_post(path("/__entry/drive/{operation}"), entry.drive_routes.handle)
     app.router.add_get(path("/__entry/config"), entry.config)
     app.router.add_get(path("/__entry/health"), entry.health)
     app.router.add_get(path("/__entry/auth"), entry.auth)

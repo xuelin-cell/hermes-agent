@@ -42,3 +42,15 @@ onboarding:
 
 cloud_sharing:
   enabled: true
+cloud_drive:
+  enabled: true
+
+mcp_servers:
+  UniWork-Drive:
+    url: "http://127.0.0.1:9120/api/plugins/cloud-drive/mcp"
+    timeout: 720
+    execution_metadata: true
+    strict_redirect_headers: true
+    uniwork_managed: "uniwork.desktop.drive.v1"
+    headers:
+      X-Hermes-Session-Token: "${HERMES_DASHBOARD_SESSION_TOKEN}"

@@ -94,6 +94,7 @@ async def test_tenant_start_failure_restores_stopped_state() -> None:
         ensure_network=AsyncMock(),
         connect_network=AsyncMock(),
         ensure_volume=AsyncMock(return_value=False),
+        get_archive=AsyncMock(return_value=None),
         inspect_container=AsyncMock(
             return_value={"Config": {"Image": settings.image}, "State": {"Running": False}}
         ),

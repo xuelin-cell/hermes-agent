@@ -1,0 +1,8 @@
+{
+  "name": "cloud-drive",
+  "label": "Cloud drive backend",
+  "version": "1.0.0",
+  "description": "Instance-local file transport and MCP for cloud accounts.",
+  "api": "plugin_api.py",
+  "tab": { "hidden": true }
+}

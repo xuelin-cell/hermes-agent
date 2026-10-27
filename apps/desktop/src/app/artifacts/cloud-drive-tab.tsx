@@ -9,7 +9,7 @@ interface CloudDriveTabProps {
 
 /** 桌面云盘加入草稿后由外层导航；浏览器继续显示占位，不调用原生云盘接口。 */
 export function CloudDriveTab({ onDraftReady }: CloudDriveTabProps) {
-  if (!isBrowserShell()) {
+  if (!isBrowserShell() || window.hermesDesktop?.prepareCloudDriveTurn) {
     return <CloudLibrary onDraftReady={onDraftReady} />
   }
 

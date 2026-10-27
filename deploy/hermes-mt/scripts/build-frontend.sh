@@ -54,6 +54,7 @@ docker run --rm \
             printf "%s\n" "${deps_hash}" > "${deps_stamp}"
         fi
         cd /workspace/apps/desktop
+        node scripts/build-cloud-drive.mjs
         VITE_HERMES_BROWSER_BUILD=1 node /workspace/node_modules/vite/bin/vite.js build --base=/hermes/ --outDir=dist-browser
     '
 

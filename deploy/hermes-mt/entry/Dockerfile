@@ -1,6 +1,9 @@
 # 入口服务镜像。构建上下文是 deploy/hermes-mt（需要同时拿到 entry/ 和 seed/）：
 #   docker build -f entry/Dockerfile -t hermes-mt-entry:dev .
-FROM python:3.13-slim
+FROM node:22-bookworm-slim AS node-runtime
+FROM python:3.13-slim-bookworm
+COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
+RUN apt-get update && apt-get install -y --no-install-recommends libstdc++6 libatomic1 && rm -rf /var/lib/apt/lists/*
 ARG PIP_INDEX_URL=https://pypi.org/simple
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PIP_INDEX_URL=${PIP_INDEX_URL}
 WORKDIR /app

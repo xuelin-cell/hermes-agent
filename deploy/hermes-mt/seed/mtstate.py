@@ -851,6 +851,9 @@ def _apply_mcp_servers(cfg, servers: dict) -> None:
             continue
         section = _section(cfg, "mcp_servers")
         entry = section.get(name)
+        managed = conf.get("uniwork_managed")
+        if managed and isinstance(entry, dict) and entry.get("uniwork_managed") != managed:
+            continue  # A same-named user server is not owned by this deployment.
         if not isinstance(entry, dict):
             entry = {}
             section[name] = entry

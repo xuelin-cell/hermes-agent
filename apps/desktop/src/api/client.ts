@@ -29,6 +29,23 @@ export const PROMPT_SUBMIT_REQUEST_TIMEOUT_MS = 1_800_000
 export const GATEWAY_NOT_CONNECTED_MESSAGE = 'Hermes gateway is not connected'
 
 export class HermesGateway extends JsonRpcGatewayClient {
+  override async request<T>(
+    method: string,
+    params: Record<string, unknown> = {},
+    timeoutMs?: number,
+    signal?: AbortSignal
+  ): Promise<T> {
+    const prepare = typeof window !== 'undefined' ? window.hermesDesktop?.prepareCloudDriveTurn : undefined
+
+    if (method === 'prompt.submit' && prepare && typeof params.session_id === 'string') {
+      const metadata = await prepare(params.session_id)
+
+      if (metadata) {params = { ...params, execution_metadata: metadata }}
+    }
+
+    return super.request<T>(method, params, timeoutMs, signal)
+  }
+
   constructor() {
     super({
       closedErrorMessage: 'Hermes gateway connection closed',

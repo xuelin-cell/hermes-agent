@@ -28,8 +28,8 @@ import { useCloudTransfer } from './use-cloud-transfer'
 /** 本机产物才开放上传入口，网络图片、链接和其他连接的路径不冒充本机文件。 */
 export function canUploadArtifact(artifact: ArtifactRecord, mode?: string): boolean {
   return (
-    !isBrowserShell() &&
-    mode === 'local' &&
+    ((!isBrowserShell() && mode === 'local') || (isBrowserShell() && !!window.hermesDesktop?.prepareCloudDriveTurn)) &&
+    (!isBrowserShell() || !artifact.profile || artifact.profile === 'default') &&
     (!artifact.connectionId || artifact.connectionId === 'local') &&
     artifact.kind !== 'link' &&
     (isArtifactFilePath(artifact.value) || /^file:\/\//i.test(artifact.value))

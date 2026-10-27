@@ -176,9 +176,9 @@ MCP_URL = ("https://maas.ai-yuanjing.com/app/mcp-server/mcp"
 def test_builtin_mcp_names_the_key_variable_not_the_key(monkeypatch: pytest.MonkeyPatch) -> None:
     """地址里只有变量名，hermes 连接时从 .env 取；没套餐 key 的用户不给（连上去只会 401）。"""
     mgr = _manager(monkeypatch)
-    assert mgr._mcp_servers("sk-secret") == {YUANJING_MCP_NAME: {"url": MCP_URL, "timeout": 600}}
-    assert mgr._mcp_servers("") == {YUANJING_MCP_NAME: None}
-    assert _manager(monkeypatch, yuanjing_mcp_url="")._mcp_servers("sk-secret") == {YUANJING_MCP_NAME: None}
+    assert mgr._mcp_servers("sk-secret")[YUANJING_MCP_NAME] == {"url": MCP_URL, "timeout": 600}
+    assert mgr._mcp_servers("")[YUANJING_MCP_NAME] is None
+    assert _manager(monkeypatch, yuanjing_mcp_url="")._mcp_servers("sk-secret")[YUANJING_MCP_NAME] is None
     other = _manager(monkeypatch, yuanjing_mcp_url="https://mcp.example/mcp?v=2", yuanjing_mcp_client_id="",
                      yuanjing_mcp_oss_mode="", key_env_name="K")
     assert other._mcp_servers("sk-secret")[YUANJING_MCP_NAME]["url"] == "https://mcp.example/mcp?v=2&key=${K}"
@@ -199,8 +199,8 @@ def test_the_bootstrap_patch_carries_the_builtin_mcp_and_the_docker_path_does_no
         monkeypatch: pytest.MonkeyPatch) -> None:
     mgr = _manager(monkeypatch)
     endpoint, catalog = ("http://plan/v1", "m1"), [("m1", "")]
-    assert "mcp_servers" not in mgr._config_patch_spec(endpoint, catalog)  # Docker 路径：不碰
-    assert mgr._config_patch_spec(endpoint, catalog, api_key="")["mcp_servers"] == {YUANJING_MCP_NAME: None}
+    assert YUANJING_MCP_NAME not in mgr._config_patch_spec(endpoint, catalog)["mcp_servers"]  # Docker 不接管元景
+    assert mgr._config_patch_spec(endpoint, catalog, api_key="")["mcp_servers"][YUANJING_MCP_NAME] is None
     files = mgr._cube_seed_files("sk-secret", endpoint, catalog)
     patch = next(f for f in files if f["overwrite"] == "patch-model")
     assert json.loads(patch["content"])["mcp_servers"][YUANJING_MCP_NAME]["url"] == MCP_URL

@@ -1,5 +1,3 @@
-import { browserAuthKey, clearBrowserAuth, readBrowserAuth, requestEntryMaas } from '../../../shared/src/browser-maas-auth.js'
-
 import type {
   HermesApiRequest,
   HermesConnection,
@@ -18,10 +16,17 @@ import {
   type PdfDocumentSource
 } from '@/lib/browser-shell'
 
+import {
+  browserAuthKey,
+  clearBrowserAuth,
+  readBrowserAuth,
+  requestEntryMaas
+} from '../../../shared/src/browser-maas-auth.js'
 import type { LoginAccount } from '../../electron/login/contract'
 
-import { maskMcpSecrets, restoreMcpSecrets } from './mcp-secrets'
+import { browserDrive } from './browser-drive'
 import { browserShares } from './browser-shares'
+import { maskMcpSecrets, restoreMcpSecrets } from './mcp-secrets'
 
 const noopOff = () => () => undefined
 const productionBrowserBuild = import.meta.env.VITE_HERMES_BROWSER_BUILD === '1'
@@ -790,7 +795,7 @@ async function getMaasAccount(): Promise<LoginAccount | null> {
   const login = productionBrowserBuild ? readBrowserAuth(base) : null
   const response = await fetch(`${base}__entry/me`, { credentials: 'same-origin' })
 
-  if (response.status === 401 && login) clearBrowserAuth(base, login.loginId)
+  if (response.status === 401 && login) {clearBrowserAuth(base, login.loginId)}
 
   if (!response.ok || !(response.headers.get('content-type') ?? '').includes('json')) {
     return null
@@ -805,7 +810,8 @@ async function getMaasAccount(): Promise<LoginAccount | null> {
   }
 
   const me = (await response.json()) as EntryMe
-  if (login && readBrowserAuth(base)?.loginId !== login.loginId) return null
+
+  if (login && readBrowserAuth(base)?.loginId !== login.loginId) {return null}
   const maskedPhone = me.display || me.user_id
 
   if (!maskedPhone) {
@@ -1276,7 +1282,10 @@ export function installBrowserDevelopmentBridge(): boolean {
 
   if (productionBrowserBuild) {
     window.addEventListener('storage', event => {
-      if (event.key === null || (event.key === browserAuthKey(browserBasePath()) && event.oldValue !== event.newValue)) {
+      if (
+        event.key === null ||
+        (event.key === browserAuthKey(browserBasePath()) && event.oldValue !== event.newValue)
+      ) {
         window.location.reload()
       }
     })
@@ -1404,7 +1413,9 @@ export function installBrowserDevelopmentBridge(): boolean {
     glassSupported: false,
     writeClipboard,
     // The instance's shell lives behind the entry; a dev server has no forwarder to give one.
-    ...(productionBrowserBuild ? { terminal: instanceTerminal, ...browserShares(browserBasePath()) } : {})
+    ...(productionBrowserBuild
+      ? { terminal: instanceTerminal, ...browserShares(browserBasePath()), ...browserDrive(browserBasePath()) }
+      : {})
   }
 
   Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: bridge })

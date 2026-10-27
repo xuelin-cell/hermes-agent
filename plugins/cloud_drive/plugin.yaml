@@ -1,0 +1,5 @@
+name: cloud-drive
+version: 1.0.0
+description: Instance-local drive MCP and scoped file transport for Hermes Cloud.
+author: desktop-mt
+kind: backend

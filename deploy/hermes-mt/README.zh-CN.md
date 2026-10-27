@@ -235,3 +235,23 @@ Entry 平台表只采用以下约定：`users.masked_phone` 保存脱敏手机�
 - `entry.env` 不进 git；数据库密码和 `MT_CREDENTIAL_KEY` 只能放在环境变量中。
 - 模型 Key 和租户容器令牌在 PostgreSQL 中只保存认证密文，日志、健康接口和审计不得输出明文或密文。
 - PostgreSQL 本地端口只绑定 `127.0.0.1`；云端部署时应改为私有网络并配置独立备份与访问控制。
+
+
+## 云盘迁移（cloud-adaptation）
+
+生产浏览器构建复用桌面资料库，支持文件管理、电脑文件上传下载、实例产物上传、预览和主动对话中的网盘工具。
+MaaS token 仍在浏览器 localStorage；入口认证加密的 HttpOnly 证明补充可信手机号，网盘 token 仅在入口内存中缓存。
+旧登录需要重新短信登录才能使用云盘，开发登录没有真实网盘授权。
+
+入口通过私有 Node stdio worker 复用桌面网盘协议，不启动 Electron；实例在现有 HTTP 后端内挂载本地 MCP，
+由入口主动处理实例工具请求。不会给每个用户增加另一套网盘系统或公网端口。
+
+- 配套部署前端、入口和新实例模板；提交所有新增文件后执行 `deploy.sh all`。
+- 手工构建前，仓库根目录运行 `node apps/desktop/scripts/build-cloud-drive.mjs`；服务器前端构建脚本已包含该步骤。
+- `008_drive_operations.sql` 自动迁移，只保存用户隔离的非敏感回执，完整 MaaS token 不进入 PG。
+- 单文件最多 512 MiB，预览 20 MiB，浏览器分片 8 MiB，上游限制更小时取更小值；文件使用有界暂存，不承诺断点续传。
+- Agent 授权每轮最多 15 分钟，默认 Profile、单入口；任务结束、取消、退出、到期或入口重启后不继续获得账号权限。
+- “设置 → 安全 → 审批 → 允许智能体操控资料库”只限制 agent，页面手动管理保持可用。
+- 浏览器下载只报告交付下载请求，不能声称已保存到用户磁盘。Office 预览仍需 Cube 镜像的 LibreOffice。
+
+实现与验收说明见 [云盘迁移方案](docs/cloud-drive-migration-plan.md)。本地协议替身验证不替代真实账号和 Cube 环境联调。

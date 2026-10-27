@@ -25,6 +25,7 @@ class BrowserIdentity:
     expires_at: int  # milliseconds, matching the browser login response
     token: str = field(repr=False)
     session_sid: str = field(default="", repr=False)
+    phone: str = field(default="", repr=False)
 
 
 class BrowserAuth:
@@ -33,13 +34,14 @@ class BrowserAuth:
     def __init__(self, cipher: CredentialCipher):
         self.cipher = cipher
 
-    def issue(self, session: Session, token: str, expires_at: int) -> tuple[str, dict]:
+    def issue(self, session: Session, token: str, expires_at: int, phone: str = "") -> tuple[str, dict]:
         expires_at = min(expires_at, session.expires_at * 1000)
         login_id = secrets.token_urlsafe(18)
         proof = self.cipher.encrypt(json.dumps({
             "purpose": "browser-maas-v1", "session": _digest(session.sid),
             "user": session.user_id, "token": _digest(token),
             "login": login_id, "expires": expires_at,
+            "phone": phone,
         }))
         return proof.decode("ascii"), {"token": token, "expiresAt": expires_at, "loginId": login_id}
 
@@ -64,4 +66,5 @@ class BrowserAuth:
             valid = False
         if not valid:
             raise web.HTTPUnauthorized(text="maas_auth_required")
-        return BrowserIdentity(session.user_id, claims["login"], claims["expires"], token, session.sid)
+        return BrowserIdentity(session.user_id, claims["login"], claims["expires"], token, session.sid,
+                               claims.get("phone", ""))

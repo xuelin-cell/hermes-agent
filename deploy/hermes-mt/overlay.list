@@ -8,3 +8,10 @@
 # Cloud sharing API and provenance hooks require a new instance template.
 plugins/conversation_share
 apps/desktop/assets/artifact-share-plugin
+plugins/cloud_drive
+tools/execution_metadata.py
+tools/mcp_tool_handlers.py
+tui_gateway/prompt_turn.py
+tui_gateway/methods_prompt.py
+tui_gateway/session_auto_continue.py
+tui_gateway/contracts/prompt_voice.py
