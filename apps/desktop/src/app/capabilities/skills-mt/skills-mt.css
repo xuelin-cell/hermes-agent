@@ -108,6 +108,14 @@
   padding: 16px var(--mt-skills-gutter) 44px;
 }
 
+.mt-experts-body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  padding: 16px var(--mt-skills-gutter) 0;
+}
+
 /* MasterGo 99:4055 · Fill/灰色背景@fill2，分隔选项卡 */
 .mt-skills-tabs {
   --mt-skills-tab-fill: #f7f8fa;

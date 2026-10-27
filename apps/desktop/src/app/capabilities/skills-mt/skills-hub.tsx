@@ -269,7 +269,11 @@ export function SkillsHub({
             </div>
           </div>
           {hiddenKitSkills > 0 ? (
-            <button className="mt-skills-note" onClick={() => navigate('/kits')} type="button">
+            <button
+              className="mt-skills-note"
+              onClick={() => navigate('/capabilities?tab=experts&shelf=kits')}
+              type="button"
+            >
               {t('kitSkillsNote')}
             </button>
           ) : null}

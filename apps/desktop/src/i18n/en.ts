@@ -2931,7 +2931,7 @@ export const en: Translations = {
 
   skills: {
     tabSkills: 'Skills',
-    kitSkillsNote: 'Kit skills are managed on the Kits page.',
+    kitSkillsNote: 'Manage kit skills in Extensions → Experts → Kits.',
     tabToolsets: 'Tools',
     configuringProfile: 'Configuring:',
     all: 'All',
