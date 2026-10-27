@@ -8,6 +8,7 @@ import { RefreshCw } from '@/lib/icons'
 import { $connection } from '@/store/session'
 import { $desktopVersion, checkBackendUpdates, refreshDesktopVersion } from '@/store/updates'
 
+import { LegalSettings } from './legal-settings'
 import { SectionHeading, SettingsContent } from './primitives'
 import { SETTING_IDS, settingElementId } from './settings-manifest'
 import { UninstallSection } from './uninstall-section'
@@ -19,6 +20,10 @@ interface AboutSettingsProps {
 
 export function AboutSettings({ subpage }: AboutSettingsProps = {}): ReactElement {
   useSettingDeepLink('about', page => subpage === undefined || page === subpage)
+
+  if (subpage === 'legal') {
+    return <LegalSettings />
+  }
 
   if (subpage === 'uninstall') {
     return (

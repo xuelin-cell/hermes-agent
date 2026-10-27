@@ -577,6 +577,7 @@ export const ar = defineLocale({
       vaultCredentials: 'بيانات الاعتماد المحفوظة',
       vaultSources: 'مديرو كلمات المرور',
       appUpdates: 'الإصدار والتحديثات',
+      legal: 'الخصوصية والشروط',
       uninstall: 'إلغاء التثبيت',
       billingOverview: 'نظرة عامة',
       billingPlans: 'الخطط'
@@ -1018,6 +1019,19 @@ export const ar = defineLocale({
     },
     about: {
       updates: 'التحديثات'
+    },
+    legal: {
+      title: 'الخصوصية والشروط',
+      description: 'الاتفاقيات والسياسات والإشعارات التي تنظم استخدامك لـ UniWork.',
+      items: {
+        userAgreement: 'شروط الخدمة',
+        privacyPolicy: 'سياسة الخصوصية',
+        informationCollection: 'إشعار جمع المعلومات',
+        accountCancellation: 'إشعار حذف الحساب',
+        deliveryAgreement: 'شروط الدفع',
+        childrenPrivacy: 'سياسة خصوصية الأطفال وإشعار ولي الأمر',
+        openSourceTerms: 'إشعارات المصادر المفتوحة'
+      }
     },
 
     config: {
