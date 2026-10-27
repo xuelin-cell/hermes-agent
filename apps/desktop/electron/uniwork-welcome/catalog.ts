@@ -41,7 +41,21 @@ function order(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : Number.MAX_SAFE_INTEGER
 }
 
-/** 图标和执行模式均读取云端字段，不从模块业务 ID 或名称推断。 */
+// Published v3 catalogs predating workspace routing omit this field. Keep their
+// established code module working until the server supplies explicit routing.
+const LEGACY_CODE_MODULE_NAMES = new Set(['代码开发', '编程', 'code', 'programming', 'code development'])
+
+function moduleWorkspace(item: Record<string, unknown>): WelcomeModule['workspace'] {
+  if (item.workspace === 'codex' || item.workspace === 'work') {
+    return item.workspace
+  }
+
+  const legacyName = String(item.name).trim().toLowerCase().replace(/\s+/g, ' ')
+
+  return LEGACY_CODE_MODULE_NAMES.has(legacyName) ? 'codex' : 'work'
+}
+
+/** Explicit workspace routing wins; legacy catalogs retain their code module. */
 export function normalizeWelcomeCatalog(value: unknown): WelcomeModule[] {
   if (!value || typeof value !== 'object' || !Array.isArray((value as { modules?: unknown }).modules)) {
     throw new Error('办公模板目录格式无效。')
@@ -64,7 +78,7 @@ export function normalizeWelcomeCatalog(value: unknown): WelcomeModule[] {
         {
           id: `configured-module-${index}`,
           name: item.name,
-          workspace: item.workspace === 'codex' ? 'codex' : 'work',
+          workspace: moduleWorkspace(item),
           ...(text(item.icon, 128) ? { icon: item.icon.trim() } : {}),
           sort: order(item.sort),
           tags: normalizeWelcomeCategories(item.tags)
