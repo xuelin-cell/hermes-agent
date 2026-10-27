@@ -471,11 +471,9 @@ export function isBundledPluginHidden(id: string): boolean {
   return hideForUsers() && BUNDLED_PLUGINS_HIDDEN.has(id)
 }
 
-/** Sharing a conversation or a reply (components/conversation-share): the desktop
- * app renders the page and publishes it through its own share service, which the
- * bridge does not offer, so the dialog could only say that sharing is unavailable. */
+/** Both shells render the same snapshot page; Entry implements the browser share contract. */
 export function isConversationShareHidden(): boolean {
-  return hideForUsers()
+  return hideForUsers() && !window.hermesDesktop?.conversationShare
 }
 
 // The key app/chat/sidebar/session-actions-menu.tsx gives its "share session" row.
@@ -744,4 +742,10 @@ export function signOutDescription(locale?: string): null | string {
  * rather than report an install that never lands. Null where installing goes on. */
 export function skillMarketInstallPending(locale?: string): null | string {
   return isBrowserShell() ? browserShellCopy(locale).skillInstallPending : null
+}
+
+
+/** Instance files can be shared through the production browser bridge too. */
+export function supportsArtifactSharing(connection: { mode?: string } | null | undefined): boolean {
+  return connection?.mode === 'local' || (isBrowserShell() && !!window.hermesDesktop?.artifactShare)
 }

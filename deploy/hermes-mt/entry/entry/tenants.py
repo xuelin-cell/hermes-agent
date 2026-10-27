@@ -56,6 +56,7 @@ PLATFORM_POLICY = {
     # 在线模型目录（OpenRouter / Nous 的推荐清单）：集群里访问慢，超时会把模型下拉卡住；
     # 我们的模型清单来自套餐，用不上它。
     "model_catalog": {"enabled": False},
+    "cloud_sharing": {"enabled": True},
     # 用到时才从 PyPI 装的依赖：页面一打开就会往每台实例的可写层下 392MB 语音依赖。
     "security": {"allow_lazy_installs": False},
     # 用户第一条消息时，hermes 默认让 agent 提出「建用户画像」（征得同意后联网查用户的公开信息、记进记忆）。

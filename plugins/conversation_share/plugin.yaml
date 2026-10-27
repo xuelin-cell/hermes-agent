@@ -1,0 +1,5 @@
+name: cloud-share-provenance
+version: 1.0.0
+description: Persist model artifact provenance inside cloud instances.
+author: desktop-mt
+kind: backend

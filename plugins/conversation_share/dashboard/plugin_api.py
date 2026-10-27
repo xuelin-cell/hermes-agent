@@ -48,3 +48,46 @@ async def snapshot(request: SnapshotRequest, profile: str | None = None):
         return await asyncio.to_thread(read_snapshot, request, profile)
     except SnapshotError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+class ArtifactSource(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    sessionId: str = Field(min_length=1, max_length=256)
+    path: str | None = Field(default=None, max_length=4096)
+    content: str | None = Field(default=None, max_length=2 * 1024 * 1024)
+    hash: str | None = Field(default=None, max_length=64)
+
+
+class ArtifactVerification(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source: ArtifactSource
+    html: str = Field(min_length=1, max_length=2 * 1024 * 1024)
+
+
+def cloud_origins():
+    from hermes_cli.config import load_config
+    from plugins.conversation_share.origins import current
+    if not load_config().get("cloud_sharing", {}).get("enabled"):
+        raise HTTPException(status_code=404, detail="Cloud sharing is not enabled")
+    return current()
+
+
+@router.post("/artifact/eligibility")
+async def artifact_eligibility(source: ArtifactSource):
+    return await asyncio.to_thread(lambda: cloud_origins().eligibility(source.model_dump(exclude_none=True)))
+
+
+@router.post("/artifact/verify")
+async def artifact_verify(request: ArtifactVerification):
+    return await asyncio.to_thread(lambda: cloud_origins().verify(request.source.model_dump(exclude_none=True), request.html))
+
+
+@router.post("/artifact/mark-uploaded")
+async def artifact_mark_uploaded(source: ArtifactSource):
+    await asyncio.to_thread(lambda: cloud_origins().mark_uploaded(source.sessionId))
+    return {"ok": True}
+
+
+@router.post("/artifact/revision")
+async def artifact_revision():
+    return {"revision": await asyncio.to_thread(lambda: cloud_origins().revision())}

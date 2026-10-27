@@ -1,3 +1,4 @@
+import { supportsArtifactSharing } from '@/lib/browser-shell'
 import type { HermesConnection } from '@/global'
 import { previewArtifactKey } from '@/lib/preview-targets'
 import type { PreviewTarget } from '@/store/preview'
@@ -22,7 +23,7 @@ export function previewShareSource(
   if (
     !origin ||
     target.kind !== 'file' ||
-    connection?.mode !== 'local' ||
+    !connection || !supportsArtifactSharing(connection) ||
     origin.connectionId !== 'local' ||
     origin.profile !== (connection.profile || 'default') ||
     typeof origin.sessionId !== 'string' ||

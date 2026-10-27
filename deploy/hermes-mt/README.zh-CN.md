@@ -33,6 +33,32 @@
 | `entry.env.example` | 入口的环境变量样例；复制成 `entry.env`（已 gitignore） |
 | `deploy.sh` | 沙箱后端的一键部署 / 升级脚本（见下「一键部署」）；`seed/mtstate.py` 是实例里的状态管家，负责把用户状态归档到卷、重建时恢复 |
 
+## 浏览器 MaaS 凭据基础
+
+登录成功后，独立登录页把 `maas_auth` 保存到按 base_path 隔离的 localStorage。入口继续用原有
+HttpOnly session cookie 认证，并额外签发只含摘要的认证加密关联 cookie；不在 PG 保存 MaaS token 或其哈希。
+`POST /__entry/maas-auth` 校验当前 cookie 与 Bearer token 的绑定及期限，不请求上游、不返回 token。
+
+登录页与 renderer 共用源码 `apps/shared/src/browser-maas-auth.js`，部署构建会生成入口 static 副本。后续分享/网盘的页面请求使用
+`requestEntryMaas`，入口业务路由使用 `_require_maas`。通用实例代理移除 Authorization，避免凭据透传。
+旧 session 使用新业务前需重新登录；部署时前端与入口同步更新。页面分享已接入，网盘及 agent 授权通道仍待接入。
+完整设计和当前验收结果见 [实施方案](docs/cloud-browser-token-sharing-drive-plan.md#14-本轮已实现的基础能力2026-10-26)。
+
+## 云端分享
+
+会话/单条回复和产物分享复用桌面页面，通过 `/__entry/conversation-shares/*` 和
+`/__entry/artifact-shares/*` 调用固定 MaaS 分享网关。入口从当前浏览器请求取得 token，
+PG 只保存分享归属、快照与待确认操作（迁移 `007_shares.sql`），不保存 MaaS token。
+
+实例使用 `cloud_sharing.enabled: true` 开启来源记录；由现有平台策略在引导时写入，
+复用桌面 provenance 钩子，记录保存在所属 home 的 `cloud-artifact-origins.db`。
+本轮之前的产物没有可信来源记录时仍不能发布，需要在新实例配置下生成新的产物。
+更新时必须同时发布入口、浏览器前端和含 overlay 的实例模板；旧实例需走模板换代引导。
+
+默认产物期限为一天，可选 1～7 天。到期删除在用户持有效凭据再次查看分享时尝试，
+并保留失败状态供重试；当前网关没有原生 TTL，不能保证到期瞬间公网链接失效。
+agent 自动发布和云盘不包含在本次页面分享接入中。
+
 ## 一键部署（沙箱后端，推荐）
 
 改一项配置（例如打开长期空闲删实例）：`./deploy.sh set MT_IDLE_DELETE_HOURS=24 && ./deploy.sh up`。

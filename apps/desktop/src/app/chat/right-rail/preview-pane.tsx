@@ -1,3 +1,4 @@
+import { supportsArtifactSharing } from '@/lib/browser-shell'
 // Side-effect import: watches the turn edge so the overlay keeps a pulse while
 // the model reasons. Lives here because the pane is what makes it reachable.
 import './preview-mind'
@@ -329,14 +330,15 @@ export function PreviewPane({
     target.previewKind === 'html' &&
     (!target.transient || Boolean(target.dataUrl))
 
-  const shareSource = previewShareSource(target, connection, currentUrl)
+  const shareVisiblePath = isRemoteHtmlTarget ? target.path || target.source : currentUrl
+  const shareSource = previewShareSource(target, connection, shareVisiblePath)
   const shareSessionId = shareSource === undefined ? selectedStoredSessionId || activeSessionId : shareSource?.sessionId
 
-  const shareFilePath = /^file:/i.test(currentUrl)
-    ? shareSource === undefined ? artifactShareFilePath(currentUrl, currentCwd) : shareSource?.path
+  const shareFilePath = isRemoteHtmlTarget || /^file:/i.test(currentUrl)
+    ? shareSource === undefined ? artifactShareFilePath(shareVisiblePath, currentCwd) : shareSource?.path
     : null
 
-  const shareableRenderedHtml = isWebPreview && connection?.mode === 'local' && shareSessionId &&
+  const shareableRenderedHtml = isWebPreview && supportsArtifactSharing(connection) && shareSessionId &&
     shareFilePath && /\.html?$/i.test(shareFilePath) && window.hermesDesktop?.artifactShare
 
   /** 点击分享时重新读取文件，发布与当前预览目标对应的完整 HTML。 */
@@ -1411,6 +1413,15 @@ export function PreviewPane({
           />
         )}
 
+        {isWebPreview && isRemoteHtml && shareableRenderedHtml && (
+          <ShareControls
+            artifactKey={`file:${shareSessionId}:${shareFilePath}`}
+            html={htmlShareSnapshot}
+            key={shareFilePath}
+            source={{ sessionId: shareSessionId!, path: shareFilePath }}
+            title={shareFilePath.split(/[\\/]/).pop() || target.label}
+          />
+        )}
         {isWebPreview && !isRemoteHtml && (
           <PreviewBrowserBar
             actions={shareableRenderedHtml ? (

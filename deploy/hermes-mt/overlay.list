@@ -4,3 +4,7 @@
 #
 # 现在是空的：基础镜像用本仓库构建，技能市场接口（hermes_cli/web_routers/skills.py）和
 # 内置技能（skills/uniwork）都已在基础镜像里。只在不重建基础镜像、先改几个 hermes 文件时往这里加。
+
+# Cloud sharing API and provenance hooks require a new instance template.
+plugins/conversation_share
+apps/desktop/assets/artifact-share-plugin

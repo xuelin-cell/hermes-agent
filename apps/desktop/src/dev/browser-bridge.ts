@@ -1,3 +1,5 @@
+import { browserAuthKey, clearBrowserAuth, readBrowserAuth, requestEntryMaas } from '../../../shared/src/browser-maas-auth.js'
+
 import type {
   HermesApiRequest,
   HermesConnection,
@@ -19,6 +21,7 @@ import {
 import type { LoginAccount } from '../../electron/login/contract'
 
 import { maskMcpSecrets, restoreMcpSecrets } from './mcp-secrets'
+import { browserShares } from './browser-shares'
 
 const noopOff = () => () => undefined
 const productionBrowserBuild = import.meta.env.VITE_HERMES_BROWSER_BUILD === '1'
@@ -783,13 +786,26 @@ interface EntryMe {
 /** Who is signed in, from the entry's `/__entry/me`. Null where nothing answers it with JSON (the
  *  dev server, the test bench): the statusbar then shows no account. */
 async function getMaasAccount(): Promise<LoginAccount | null> {
-  const response = await fetch(`${browserBasePath()}__entry/me`, { credentials: 'same-origin' })
+  const base = browserBasePath()
+  const login = productionBrowserBuild ? readBrowserAuth(base) : null
+  const response = await fetch(`${base}__entry/me`, { credentials: 'same-origin' })
+
+  if (response.status === 401 && login) clearBrowserAuth(base, login.loginId)
 
   if (!response.ok || !(response.headers.get('content-type') ?? '').includes('json')) {
     return null
   }
 
+  if (login) {
+    try {
+      await requestEntryMaas(base, 'maas-auth')
+    } catch {
+      // Credential errors do not hide an otherwise valid Entry session.
+    }
+  }
+
   const me = (await response.json()) as EntryMe
+  if (login && readBrowserAuth(base)?.loginId !== login.loginId) return null
   const maskedPhone = me.display || me.user_id
 
   if (!maskedPhone) {
@@ -802,6 +818,7 @@ async function getMaasAccount(): Promise<LoginAccount | null> {
 
 /** Signing out is the entry's: `/logout` ends the session and returns to the sign-in page. */
 async function logoutMaasAccount(): Promise<void> {
+  clearBrowserAuth(browserBasePath())
   window.location.assign(`${browserBasePath()}logout`)
 }
 
@@ -1257,6 +1274,14 @@ export function installBrowserDevelopmentBridge(): boolean {
 
   ensureRandomUUID()
 
+  if (productionBrowserBuild) {
+    window.addEventListener('storage', event => {
+      if (event.key === null || (event.key === browserAuthKey(browserBasePath()) && event.oldValue !== event.newValue)) {
+        window.location.reload()
+      }
+    })
+  }
+
   const conn = connection()
   const asyncOk = async () => ({ ok: true })
 
@@ -1379,7 +1404,7 @@ export function installBrowserDevelopmentBridge(): boolean {
     glassSupported: false,
     writeClipboard,
     // The instance's shell lives behind the entry; a dev server has no forwarder to give one.
-    ...(productionBrowserBuild ? { terminal: instanceTerminal } : {})
+    ...(productionBrowserBuild ? { terminal: instanceTerminal, ...browserShares(browserBasePath()) } : {})
   }
 
   Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: bridge })

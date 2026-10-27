@@ -16,7 +16,7 @@ BUILD_CPUS="${BUILD_CPUS:-4}"
 BUILD_MEMORY="${BUILD_MEMORY:-8g}"
 NPM_REGISTRY="${NPM_REGISTRY:-https://registry.npmmirror.com}"
 
-# 前端指纹 = 决定产物的那些仓库内容：apps/ 全部、根目录的依赖声明、本脚本、预置的 npm 包。
+# 前端指纹也包含登录页与 renderer 共用的浏览器凭据模块。
 # 只看已提交的（部署机上 pull 是 reset --hard，工作区就是 HEAD）。部署机的 git 是 1.8，不用 -C。
 fingerprint() {
     (cd "$REPO" && git ls-tree HEAD apps package.json package-lock.json .npmrc \
@@ -26,6 +26,10 @@ if [ "${1:-}" = --fingerprint ]; then
     fingerprint
     exit 0
 fi
+
+# Distribute the canonical browser auth module to the standalone Entry login page.
+{ printf '%s\n' '// Generated from apps/shared/src/browser-maas-auth.js by build-frontend.sh.';
+  cat "$REPO/apps/shared/src/browser-maas-auth.js"; } > "$REPO/deploy/hermes-mt/entry/entry/static/browser-auth.js"
 FINGERPRINT="$(fingerprint)"
 
 docker run --rm \

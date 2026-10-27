@@ -135,9 +135,12 @@
     </div>
   </section>
 </main>
-<script>
+<script type="module">
+import { clearBrowserAuth, readBrowserAuth, storeBrowserLogin } from './__entry/browser-auth.js';
 (function () {
   var base = location.pathname.replace(/\/login\/?$/, '');
+  if (new URLSearchParams(location.search).get('signed_out') === '1') clearBrowserAuth(base);
+  else readBrowserAuth(base);
   var api = function (p) { return base + '/__entry' + p; };
   var $ = function (id) { return document.getElementById(id); };
   var PHONE_RE = /^1[3-9]\d{9}$/;
@@ -236,6 +239,7 @@
     try {
       loginBusy(true); notice('');
       var data = await postJSON(api('/login'), { phone: phone, smsCode: smsCode });
+      storeBrowserLogin(base, data);
       notice(data.has_key ? '登录成功，正在准备你的工作空间…' : '登录成功（该账号没有可用套餐 key，模型将不可用）', 'info');
       location.href = data.redirect || (base + '/');
     } catch (e) { loginBusy(false); notice('登录失败：' + e.message, 'err'); }
@@ -245,6 +249,7 @@
     try {
       notice('开发模式登录中…', 'info');
       var data = await postJSON(api('/dev-login'), { user: $('devUser').value.trim() });
+      storeBrowserLogin(base, data);
       location.href = data.redirect || (base + '/');
     } catch (e) { notice('失败：' + e.message, 'err'); }
   });

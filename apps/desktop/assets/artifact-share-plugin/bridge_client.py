@@ -17,6 +17,16 @@ if _ADDRESS and _TOKEN:
 
 def call_bridge(route: str, payload: dict, *, timeout: float = 3) -> dict:
     """通过桌面启动时交付的本机凭证调用固定接口。"""
+    from hermes_cli.config import load_config
+    if load_config().get("cloud_sharing", {}).get("enabled"):
+        from plugins.conversation_share.origins import current
+        origins = current()
+        if route == "/origin":
+            origins.record(payload)
+            return {"ok": True}
+        if route == "/eligibility":
+            return origins.eligibility(payload)
+        raise RuntimeError("云端产物请在页面中确认分享。")
     address = getattr(_TRANSPORT, "address", "")
     token = getattr(_TRANSPORT, "token", "")
     if not address.startswith("http://127.0.0.1:") or not token:

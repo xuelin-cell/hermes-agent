@@ -12,6 +12,7 @@ import aiohttp
 from aiohttp import web
 
 from .config import SETTINGS, Settings
+from .browser_auth import BrowserAuth, BrowserIdentity
 from .crypto import CredentialCipher
 from .cube_api import Cube
 from .db import Database, DatabaseUnavailable
@@ -21,6 +22,10 @@ from .proxy import proxy_http, proxy_ws
 from .backup import BackupJob
 from .s3lite import S3Lite
 from .store import Session, Store
+from .share_store import ShareStore
+from .share_gateway import ShareGateway
+from .share_routes import ShareRoutes
+from .shares import Shares
 from .tenants import CredentialSyncError, TenantManager
 
 log = logging.getLogger("entry.app")
@@ -96,6 +101,9 @@ class Entry:
             self.database,
             CredentialCipher(settings.credential_key),
         )
+        self.browser_auth = BrowserAuth(self.store.cipher)
+        self.share_routes = ShareRoutes(self)
+        self.shares: Shares | None = None
         # aiohttp 客户端必须在事件循环中创建，因此在 on_startup 里赋值。
         self.http: aiohttp.ClientSession | None = None
         self.docker: Docker | None = None
@@ -149,6 +157,7 @@ class Entry:
         endpoint: tuple[str, str] | None = None,
         catalog: list[tuple[str, str]] | None = None,
         limits: dict[str, int] | None = None,
+        maas_token: str = "",
     ) -> web.Response:
         login = await self.store.finish_login(
             user_id=user_id,
@@ -163,15 +172,28 @@ class Entry:
         )
         # 登录事务提交后后台预热；预热失败不撤销已经建立的平台登录。
         self._bg.append(asyncio.create_task(self._warm(user_id)))
-        response = web.json_response(
-            {
-                "ok": True,
-                "redirect": self.s.base_path + "/",
-                "user_id": user_id,
-                "has_key": login.has_api_key,
-            }
-        )
+        payload = {
+            "ok": True,
+            "redirect": self.s.base_path + "/",
+            "user_id": user_id,
+            "has_key": login.has_api_key,
+        }
+        proof = ""
+        if maas_token and upstream_expires_ms:
+            proof, payload["maas_auth"] = self.browser_auth.issue(
+                login.session, maas_token, upstream_expires_ms,
+            )
+        response = web.json_response(payload, headers={"Cache-Control": "no-store"})
         self._set_cookie(response, login.session)
+        if proof:
+            response.set_cookie(
+                self.s.cookie_name + "_maas", proof,
+                max_age=max(0, login.session.expires_at - int(time.time())),
+                path=self.s.base_path + "/", httponly=True,
+                secure=self.s.cookie_secure, samesite="Lax",
+            )
+        else:
+            response.del_cookie(self.s.cookie_name + "_maas", path=self.s.base_path + "/")
         return response
 
     async def _warm(self, user_id: str) -> None:
@@ -185,6 +207,27 @@ class Entry:
     async def login_page(self, request: web.Request) -> web.Response:
         html = (STATIC_DIR / "login.html").read_text(encoding="utf-8")
         return web.Response(text=html, content_type="text/html")
+
+    async def browser_auth_script(self, request: web.Request) -> web.Response:
+        return web.Response(
+            text=(STATIC_DIR / "browser-auth.js").read_text(encoding="utf-8"),
+            content_type="application/javascript", headers={"Cache-Control": "no-store"},
+        )
+
+    async def _require_maas(self, request: web.Request) -> BrowserIdentity:
+        session = await self._require(request)
+        return self.browser_auth.require(
+            session, request.cookies.get(self.s.cookie_name + "_maas", ""),
+            request.headers.get("Authorization", ""),
+        )
+
+    async def maas_auth_status(self, request: web.Request) -> web.Response:
+        """Confirm the browser credential binding without returning the bearer."""
+        identity = await self._require_maas(request)
+        return web.json_response({
+            "user_id": identity.user_id, "login_id": identity.login_id,
+            "expires_at": identity.expires_at,
+        }, headers={"Cache-Control": "no-store"})
 
     async def config(self, request: web.Request) -> web.Response:
         return web.json_response({"dev": self.s.dev_login, "base": self.s.base_path})
@@ -275,6 +318,7 @@ class Entry:
             endpoint=endpoint,
             catalog=catalog,
             limits=limits,
+            maas_token=result.token,
         )
 
     async def dev_login(self, request: web.Request) -> web.Response:
@@ -301,12 +345,14 @@ class Entry:
         await self._end_session(request)
         response = web.json_response({"ok": True})
         response.del_cookie(self.s.cookie_name, path=self.s.base_path + "/")
+        response.del_cookie(self.s.cookie_name + "_maas", path=self.s.base_path + "/")
         return response
 
     async def logout_page(self, request: web.Request) -> web.Response:
         await self._end_session(request)
-        response = web.HTTPFound(self.s.path("/login"))
+        response = web.HTTPFound(self.s.path("/login") + "?signed_out=1")
         response.del_cookie(self.s.cookie_name, path=self.s.base_path + "/")
+        response.del_cookie(self.s.cookie_name + "_maas", path=self.s.base_path + "/")
         return response
 
     async def ws(self, request: web.Request) -> web.StreamResponse:
@@ -394,6 +440,7 @@ class Entry:
         try:
             self.http = aiohttp.ClientSession()
             self.maas = Maas(self.s, self.http)
+            self.shares = Shares(ShareStore(self.database), ShareGateway(self.http), self.share_routes.instance, self.share_routes.authorize)
             # 按后端只建需要的那个客户端：跑沙箱后端时不该去碰 docker.sock
             # （入口容器很可能根本没挂它），反之亦然。
             if self.s.backend == "cube":
@@ -488,6 +535,9 @@ def build_app(settings: Settings = SETTINGS) -> web.Application:
     )
     path = settings.path
     app.router.add_get(path("/login"), entry.login_page)
+    app.router.add_get(path("/__entry/browser-auth.js"), entry.browser_auth_script)
+    app.router.add_post(path("/__entry/maas-auth"), entry.maas_auth_status)
+    app.router.add_post(path("/__entry/{kind:conversation|artifact}-shares/{operation}"), entry.share_routes.handle)
     app.router.add_get(path("/__entry/config"), entry.config)
     app.router.add_get(path("/__entry/health"), entry.health)
     app.router.add_get(path("/__entry/auth"), entry.auth)
