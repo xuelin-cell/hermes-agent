@@ -1,5 +1,6 @@
 import { NO_PROJECT_ID } from '@/app/chat/sidebar/projects/workspace-groups'
 import { $defaultProfileRoute } from '@/store/default-profile'
+import { activeGatewayConnectionId } from '@/store/gateway'
 import { notifyError } from '@/store/notifications'
 import {
   $newChatProfile,
@@ -18,9 +19,20 @@ import {
   windowProfileOverride
 } from '@/store/windows'
 
+import { contributedNewSessionDefault } from './new-session-contrib'
+
 /** Only generic New Session actions consult this preference. Explicit profile,
  * agent, project and existing-session actions keep their captured owner. */
 export function defaultNewSessionTarget(): { profile: string; route: AgentProfileRoute | null } | null {
+  const managed = contributedNewSessionDefault()
+
+  if (managed) {
+    const connectionId = activeGatewayConnectionId()
+    const profile = managed.targetProfile
+
+    return { profile, route: connectionId ? { connectionId, profile } : null }
+  }
+
   const project = $projectScope.get()
 
   if (project !== ALL_PROJECTS && project !== NO_PROJECT_ID) {
@@ -51,6 +63,8 @@ export function prepareDefaultNewSession(): void {
   if (!target) {
     return
   }
+
+  contributedNewSessionDefault()?.prepare()
 
   if (target.route) {
     $newChatProfile.set(target.profile)

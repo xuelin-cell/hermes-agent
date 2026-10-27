@@ -1666,6 +1666,8 @@ export { ConnectorsTab } from '@/app/capabilities/connectors/connectors-tab'
 /** 「技能与工具」页「正在配置」下拉框：插件声明自己托管的档案（`data.hideProfiles`），
  *  这些档案不出现在下拉框里；多个插件取并集，默认档案永远不隐藏。重新登记同一个 id 即可更新名单。 */
 export { CAPABILITY_SCOPE_AREA, type CapabilityScopeContribution } from '@/app/capabilities/scope-contrib'
+export { NEW_SESSION_DEFAULT_AREA, type NewSessionDefaultContribution } from '@/app/session/new-session-contrib'
+export { BACKEND_BOOT_WAIT_TIMEOUT_MS } from '@/lib/with-timeout'
 // Every contribution surface, plugin-reachable: register keybinds, palette
 // commands, routes, themes, panes, composer extensions, and bar items with
 // the same area ids + payload types core uses.

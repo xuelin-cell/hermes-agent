@@ -206,7 +206,7 @@ export const ja = defineLocale({
     connect: '接続',
     connecting: '接続中',
     continue: '続ける',
-    bots: 'ボット',
+    bots: 'デジタル従業員',
     copied: 'コピーしました',
     copy: 'コピー',
     copyFailed: 'コピーに失敗しました',
@@ -4382,7 +4382,7 @@ export const ja = defineLocale({
       },
       messaging: {
         title: 'デスクを離れても UniWork',
-        text: 'Telegram、Discord、Slack などに接続。同じエージェント、同じ記憶のままです。'
+        text: 'DingTalk、WeChat、Feishu に接続。同じエージェント、同じ記憶のままです。'
       },
       artifacts: {
         title: 'UniWork が作ったものすべて',

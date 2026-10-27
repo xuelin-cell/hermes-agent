@@ -12,6 +12,8 @@ import {
   type CapabilityScopeContribution,
   COMPOSER_AREAS,
   type HermesPlugin,
+  NEW_SESSION_DEFAULT_AREA,
+  type NewSessionDefaultContribution,
   type PluginContext,
   type RouteContribution,
   ROUTES_AREA
@@ -24,7 +26,7 @@ import { ExpertBar } from './expert-bar'
 import { $expertDirectory, loadExperts } from './experts-store'
 import { KITS_LOCALES } from './i18n'
 import { KitsPage } from './page'
-import { summonSendGuard } from './summon'
+import { resetExpertDraft, summonSendGuard } from './summon'
 import { SummonPicker } from './summon-picker'
 
 /**
@@ -36,11 +38,22 @@ function hideExpertProfiles(ctx: PluginContext): void {
 
   const stop = $expertDirectory.subscribe(directory => {
     release()
-    release = ctx.register({
-      area: CAPABILITY_SCOPE_AREA,
-      data: { hideProfiles: directory.experts.map(expert => expert.profile) } satisfies CapabilityScopeContribution,
-      id: 'managed-profiles'
-    })
+    release = ctx.registerMany([
+      {
+        area: CAPABILITY_SCOPE_AREA,
+        data: { hideProfiles: directory.experts.map(expert => expert.profile) } satisfies CapabilityScopeContribution,
+        id: 'managed-profiles'
+      },
+      {
+        area: NEW_SESSION_DEFAULT_AREA,
+        data: {
+          profiles: directory.experts.map(expert => expert.profile),
+          targetProfile: 'default',
+          prepare: resetExpertDraft
+        } satisfies NewSessionDefaultContribution,
+        id: 'new-session-default'
+      }
+    ])
   })
 
   ctx.onDispose(() => {

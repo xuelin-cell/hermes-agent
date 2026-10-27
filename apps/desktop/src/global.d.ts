@@ -346,6 +346,11 @@ declare global {
       createConversationFolder?: (defaultCwd: string) => Promise<null | string>
       /** 删除刚建且仍为空的对话文件夹，用于创建会话失败时收尾。 */
       discardConversationFolder?: (folder: string) => Promise<void>
+      /** 程序被关掉时中断的回答：列出仍可点 ▶ 继续的会话，或在用户处理后删掉记录。 */
+      interruptedTurns?: {
+        list: () => Promise<{ detectedAt: number; prompt: string; sessionId: string }[]>
+        dismiss: (sessionId: string) => Promise<void>
+      }
       /** 页面离开时取消自己的转换请求；排队中没人等的转换会被跳过。 */
       cancelOfficePreview: (requestId: string) => Promise<void>
       /** Remote non-image attach: higher dedicated cap than preview/Settings default. */

@@ -10,7 +10,7 @@ import re
 from threading import RLock
 import time
 
-from . import background
+from . import background, interrupted
 from .paths import (
     changed,
     DOCUMENTS,
@@ -181,7 +181,9 @@ def before_turn(
         for root in requested_roots(as_text(user_message), cwd):
             watch_root(turn, root, budget)
     # 后台子任务只交付缓存成品，不加提醒；用户自选目录也提醒，.tmp 由模型按需新建。
-    return {"context": scratch_reminder(cwd)}
+    # 上一轮被关掉、用户这次发的是新消息时，先提醒模型别自行接着做旧任务。
+    note = interrupted.begin(session_id, turn_id, user_message)
+    return {"context": "\n\n".join(filter(None, [note, scratch_reminder(cwd)]))}
 
 
 def current(key, turn_id):
@@ -501,6 +503,7 @@ async def download_result(
 def end_turn(*, session_id="", turn_id="", **kwargs):
     """取消、失败和会话结束都清除观察状态；迟到的旧轮结束事件不能清掉新一轮。"""
     background.forget_child(session_id)
+    interrupted.finish(session_id, turn_id)
     key = scope(session_id)
     with _lock:
         turn = _turns.get(key)

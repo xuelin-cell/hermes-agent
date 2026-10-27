@@ -220,7 +220,7 @@ export const ru = defineLocale({
     connect: 'Подключить',
     connecting: 'Подключение',
     continue: 'Продолжить',
-    bots: 'Боты',
+    bots: 'Цифровые сотрудники',
     copied: 'Скопировано',
     copy: 'Копировать',
     copyFailed: 'Не удалось скопировать',

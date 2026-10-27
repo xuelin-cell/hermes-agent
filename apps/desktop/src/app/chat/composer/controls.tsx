@@ -14,6 +14,8 @@ import { $wakeWord, toggleWakeWord } from '@/store/wake-word'
 
 import { ACTIVE_ICON_BTN, GHOST_ICON_BTN, PRIMARY_ICON_BTN } from './control-classes'
 import type { ConversationStatus } from './hooks/use-voice-conversation'
+// desktop-mt: 程序被关掉中断的回答可续跑时，发送键换成 ▶。
+import { ContinueInterruptedButton } from './interrupted-mt/continue-button'
 import { ModelPill } from './model-pill'
 import { StartVoiceButton } from './start-voice-button'
 import type { ChatBarState, VoiceStatus } from './types'
@@ -52,6 +54,7 @@ export function ComposerControls({
   minimal = false,
   state,
   voiceStatus,
+  onContinueInterrupted,
   onDictate,
   onQueue,
   onStop,
@@ -73,6 +76,8 @@ export function ComposerControls({
   minimal?: boolean
   state: ChatBarState
   voiceStatus: VoiceStatus
+  /** desktop-mt: 有可续跑的中断回答时传入；输入框空着就显示 ▶。 */
+  onContinueInterrupted?: () => void
   onDictate: () => void
   onQueue: () => void
   onStop: () => void
@@ -92,6 +97,8 @@ export function ComposerControls({
   // only when the composer is empty and a turn is running.
   const showStop = busy && !hasComposerPayload
   const showQueueButton = busyAction !== 'stop' && hasComposerPayload
+  // desktop-mt: 一打字就变回发送键，发出去的只是新消息。
+  const showContinue = Boolean(onContinueInterrupted) && !busy && !hasComposerPayload
   // The HUD is a Spotlight bar a few hundred pixels wide, so the four separate
   // voice toggles fold into one menu there and leave the row to the input. A
   // narrow tile hits the same wall from the other direction and folds for the
@@ -162,7 +169,9 @@ export function ComposerControls({
           </Button>
         </Tip>
       ) : null}
-      {showVoicePrimary ? (
+      {showContinue && onContinueInterrupted ? (
+        <ContinueInterruptedButton disabled={disabled} onContinue={onContinueInterrupted} />
+      ) : showVoicePrimary ? (
         <StartVoiceButton disabled={disabled} label={c.startVoice} onStart={conversation.onStart} />
       ) : (
         <Tip

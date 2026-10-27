@@ -640,7 +640,7 @@ export const zh = defineLocale({
     connect: '连接',
     connecting: '连接中',
     continue: '继续',
-    bots: '机器人',
+    bots: '数字员工',
     copied: '已复制',
     copy: '复制',
     copyFailed: '复制失败',
@@ -5810,7 +5810,7 @@ export const zh = defineLocale({
       },
       messaging: {
         title: '离开电脑也能用',
-        text: '接入 Telegram、Discord、Slack 等 — 同一个智能体，同一份记忆。'
+        text: '接入钉钉、微信、飞书 — 同一个智能体，同一份记忆。'
       },
       artifacts: {
         title: 'UniWork 做过的一切',

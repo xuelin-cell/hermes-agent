@@ -473,7 +473,7 @@ export const zhHant = defineLocale({
     connect: '連線',
     connecting: '連線中',
     continue: '繼續',
-    bots: '機器人',
+    bots: '數位員工',
     copied: '已複製',
     copy: '複製',
     copyFailed: '複製失敗',
@@ -4856,7 +4856,7 @@ export const zhHant = defineLocale({
       },
       messaging: {
         title: '離開電腦也能用',
-        text: '接上 Telegram、Discord、Slack 等 — 同一個代理，同一份記憶。'
+        text: '接入釘釘、微信、飛書 — 同一個代理，同一份記憶。'
       },
       artifacts: {
         title: 'UniWork 做過的一切',

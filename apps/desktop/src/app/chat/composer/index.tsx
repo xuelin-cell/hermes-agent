@@ -81,6 +81,8 @@ import { useSlashCompletions } from './hooks/use-slash-completions'
 import { useStatusDrawer } from './hooks/use-status-drawer'
 import { useSessionStatusPresence } from './hooks/use-status-presence'
 import { useUniworkAsr } from './hooks/use-uniwork-asr'
+// desktop-mt: 程序被关掉中断的回答，15 分钟内可点 ▶ 继续。
+import { useInterruptedComposer } from './interrupted-mt/use-interrupted-composer'
 import { shouldConvertPasteToAttachment } from './large-paste'
 import { ActionBadges } from './micro-actions'
 // desktop-mt: 当前窗格独立读取上下文用量。
@@ -475,7 +477,10 @@ export function ChatBar({
 
   // Resting / reconnecting / starting placeholder text, re-rolled only on a real
   // conversation change.
-  const placeholder = useComposerPlaceholder({ disabled, reconnecting, sessionId })
+  const restingPlaceholder = useComposerPlaceholder({ disabled, reconnecting, sessionId })
+  // desktop-mt: 有可续跑的中断回答时，提示文字换成续跑说明，发送键换成 ▶。
+  const interrupted = useInterruptedComposer({ busy, connected: !disabled, onSubmit })
+  const placeholder = interrupted.placeholder ?? restingPlaceholder
 
   // Trigger / completion engine: @// detection, the adapter-driven item list,
   // popover selection, and chip insertion. The keydown nav block below consumes
@@ -1180,6 +1185,7 @@ export function ChatBar({
       hasComposerPayload={hasComposerPayload}
       hideModelPill={guidedChat}
       minimal={minimal}
+      onContinueInterrupted={interrupted.onContinue}
       onDictate={dictate}
       onQueue={queueDraft}
       onStop={() => submitDraft('stop')}
