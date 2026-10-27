@@ -930,8 +930,11 @@ function collectBodyParts(bodyStructure: unknown): BodyPart[] {
   const childNodes = record.childNodes;
   const childParts = Array.isArray(childNodes) ? childNodes.flatMap(collectBodyParts) : [];
   const type = readString(record.type)?.toLowerCase();
-  const part = readString(record.part);
-  if (!type || !part || !type.startsWith("text/") || isAttachment(record)) {
+  // IMAP omits a part number for a single-part message's root node. Its body
+  // is addressed as BODY[TEXT], rather than a numbered MIME part. This is the
+  // shape produced by simple plain-text messages saved into Sent.
+  const part = readString(record.part) ?? "TEXT";
+  if (!type || !type.startsWith("text/") || isAttachment(record)) {
     return childParts;
   }
 
