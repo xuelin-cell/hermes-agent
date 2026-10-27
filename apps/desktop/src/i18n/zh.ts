@@ -5810,7 +5810,7 @@ export const zh = defineLocale({
       },
       messaging: {
         title: '离开电脑也能用',
-        text: '接入 Telegram、Discord、Slack 等 — 同一个智能体，同一份记忆。'
+        text: '接入钉钉、微信、飞书 — 同一个智能体，同一份记忆。'
       },
       artifacts: {
         title: 'UniWork 做过的一切',

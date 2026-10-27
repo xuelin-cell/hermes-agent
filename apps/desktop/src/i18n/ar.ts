@@ -3865,7 +3865,7 @@ export const ar = defineLocale({
       },
       messaging: {
         title: 'UniWork بعيدًا عن مكتبك',
-        text: 'اربطه بـ Telegram وDiscord وSlack وغيرها — الوكيل نفسه والذاكرة نفسها.'
+        text: 'اربطه بـ DingTalk وWeChat وFeishu — الوكيل نفسه والذاكرة نفسها.'
       },
       artifacts: {
         title: 'كل ما صنعه UniWork',

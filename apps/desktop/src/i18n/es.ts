@@ -6267,7 +6267,7 @@ export const esOverrides = {
       },
       messaging: {
         title: 'UniWork lejos de tu escritorio',
-        text: 'Conecta Telegram, Discord, Slack y más: el mismo agente, la misma memoria.'
+        text: 'Conecta DingTalk, WeChat y Feishu: el mismo agente, la misma memoria.'
       },
       artifacts: {
         title: 'Todo lo que ha creado UniWork',

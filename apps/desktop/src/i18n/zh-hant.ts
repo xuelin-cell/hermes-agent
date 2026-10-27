@@ -4856,7 +4856,7 @@ export const zhHant = defineLocale({
       },
       messaging: {
         title: '離開電腦也能用',
-        text: '接上 Telegram、Discord、Slack 等 — 同一個代理，同一份記憶。'
+        text: '接入釘釘、微信、飛書 — 同一個代理，同一份記憶。'
       },
       artifacts: {
         title: 'UniWork 做過的一切',

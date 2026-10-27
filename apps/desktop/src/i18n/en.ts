@@ -6278,7 +6278,7 @@ export const en: Translations = {
       },
       messaging: {
         title: 'UniWork away from your desk',
-        text: 'Connect Telegram, Discord, Slack and more — same agent, same memory.'
+        text: 'Connect DingTalk, WeChat and Feishu — same agent, same memory.'
       },
       artifacts: {
         title: 'Everything UniWork made',

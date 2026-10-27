@@ -6279,7 +6279,7 @@ export const deOverrides = {
       },
       messaging: {
         title: 'UniWork abseits Ihres Schreibtischs',
-        text: 'Verbinden Sie Telegram, Discord, Slack und mehr – derselbe Agent, dasselbe Gedächtnis.'
+        text: 'Verbinden Sie DingTalk, WeChat und Feishu – derselbe Agent, dasselbe Gedächtnis.'
       },
       artifacts: {
         title: 'Alles, was UniWork gemacht hat',

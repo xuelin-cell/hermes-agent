@@ -4382,7 +4382,7 @@ export const ja = defineLocale({
       },
       messaging: {
         title: 'デスクを離れても UniWork',
-        text: 'Telegram、Discord、Slack などに接続。同じエージェント、同じ記憶のままです。'
+        text: 'DingTalk、WeChat、Feishu に接続。同じエージェント、同じ記憶のままです。'
       },
       artifacts: {
         title: 'UniWork が作ったものすべて',

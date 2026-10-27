@@ -6290,7 +6290,7 @@ export const frOverrides = {
       },
       messaging: {
         title: 'UniWork loin de votre bureau',
-        text: 'Connectez Telegram, Discord, Slack et plus encore : même agent, même mémoire.'
+        text: 'Connectez DingTalk, WeChat et Feishu : même agent, même mémoire.'
       },
       artifacts: {
         title: 'Tout ce que UniWork a créé',
