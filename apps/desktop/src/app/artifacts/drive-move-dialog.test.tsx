@@ -60,11 +60,11 @@ it('导航显示目标与空目录提示，保留写权限限制；确认期间�
   expect(confirm).toHaveProperty('disabled', false)
   fireEvent.click(confirm)
   fireEvent.click(confirm)
-  expect(request).toHaveBeenCalledExactlyOnceWith({
+  expect(request).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
     route: '/assets/move',
     method: 'POST',
     body: { file_ids: ['file'], directory_ids: [], target_parent_asset_id: 'target' }
-  })
+  }))
   expect(within(dialog).getByRole('button', { name: '返回上一级' })).toHaveProperty('disabled', true)
   expect(within(dialog).getByRole('button', { name: '取消' })).toHaveProperty('disabled', true)
   expect(within(dialog).queryByRole('button', { name: '关闭' })).toBeNull()

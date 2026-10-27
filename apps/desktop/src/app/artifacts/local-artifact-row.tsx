@@ -4,7 +4,7 @@ import { ActionsMenu, renderActionItem } from '@/components/ui/actions-menu'
 import { Button } from '@/components/ui/button'
 import { Tip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
-import { FileImage, FileText, FolderOpen, MessageCirclePlus, MoreHorizontal, Share2, Star, Upload } from '@/lib/icons'
+import { Download, FileImage, FileText, FolderOpen, MessageCirclePlus, MoreHorizontal, Share2, Star, Upload } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 
 import { type LocalArtifact, localArtifactSize, localArtifactType } from './local-artifact-model'
@@ -17,6 +17,7 @@ interface LocalArtifactRowProps {
   uploaded: boolean
   busy: boolean
   canShare: boolean
+  download?: boolean
   shareOpen?: boolean
   onShareClose?: () => void
   wide?: boolean
@@ -35,6 +36,7 @@ export function LocalArtifactRow({
   uploaded,
   busy,
   canShare,
+  download = false,
   shareOpen = false,
   onShareClose = () => undefined,
   wide = false,
@@ -45,7 +47,7 @@ export function LocalArtifactRow({
   onFolder,
   onShare
 }: LocalArtifactRowProps) {
-  const { localArtifacts: copy, cloudLibrary, rightSidebar } = useI18n().t
+  const { localArtifacts: copy, cloudLibrary, rightSidebar, fileMenu } = useI18n().t
   const [menuOpen, setMenuOpen] = useState(false)
   const publishable = useLocalArtifactShare(file, wide || menuOpen || shareOpen, canShare)
   const icon = localArtifactType(file) === 'image' ? FileImage : FileText
@@ -69,8 +71,8 @@ export function LocalArtifactRow({
       disabled: !file.resolvedPath || busy || uploaded
     },
     {
-      label: rightSidebar.openFolder,
-      iconNode: <FolderOpen />,
+      label: download ? fileMenu.download : rightSidebar.openFolder,
+      iconNode: download ? <Download /> : <FolderOpen />,
       onSelect: onFolder,
       disabled: busy || !file.resolvedPath
     }

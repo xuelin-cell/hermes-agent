@@ -19,9 +19,10 @@ import { storedBoolean } from '@/lib/storage'
  * this module are listed too.
  *
  *   api/models.ts                                      * model pickers: the platform's providers only
- *   app/artifacts/cloud-drive-tab.tsx                  the personal cloud drive tab says it is in development
- *   app/artifacts/artifact-upload.tsx                  no native desktop upload action in the browser
- *   app/artifacts/index.tsx                            the library opens on local artifacts, without a native upload dialog
+ *   app/artifacts/cloud-drive-tab.tsx                  the production instance bridge reuses the personal cloud drive
+ *   app/artifacts/artifact-upload.tsx                  instance artifacts upload through the entry drive adapter
+ *   app/artifacts/index.tsx                            the library opens on instance artifacts using the shared grouped view
+ *   app/artifacts/local-artifact-platform.ts           instance metadata and login-scoped favorites, without native folder actions
  *   app/capabilities/index.tsx                         * no Plugins tab (a community catalog), like Toolsets
  *   app/capabilities/plugins/plugins-tab.tsx           * no desktop (local) plugins, no "open plugins folder"
  *   app/capabilities/skill-market.tsx                  installing from the market says it is in development

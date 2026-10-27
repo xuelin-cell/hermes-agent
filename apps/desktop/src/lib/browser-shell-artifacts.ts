@@ -61,10 +61,17 @@ export function withBrowserShareLabels(locale: Locale, translations: Translation
     ru: 'Запрос на скачивание передан браузеру'
   }
 
+  const instanceArtifacts: Record<Locale, string> = {
+    en: 'Instance artifacts', zh: '实例产物', 'zh-hant': '執行個體產物',
+    ja: 'インスタンスの成果物', ar: 'ملفات المثيل', de: 'Instanzdateien',
+    es: 'Archivos de la instancia', fr: 'Fichiers de l’instance', ru: 'Файлы экземпляра'
+  }
+
   return import.meta.env.VITE_HERMES_BROWSER_BUILD === '1'
     ? mergeTranslations<Translations>(translations, {
         artifactShare: { expiryNotice: BROWSER_SHARE_EXPIRY[locale] },
         cloudLibrary: {
+          local: instanceArtifacts[locale],
           downloadSaved: name => `${handoff[locale]}: ${name}`,
           downloadsSaved: (saved, skipped) => `${handoff[locale]} (${saved}; ${skipped})`
         }

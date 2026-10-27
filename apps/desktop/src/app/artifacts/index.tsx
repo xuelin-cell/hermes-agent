@@ -55,6 +55,7 @@ import {
 } from './artifact-utils'
 import { CloudDriveTab } from './cloud-drive-tab'
 import { LocalArtifactLibrary } from './local-artifact-library'
+import { usesInstanceArtifactLibrary } from './local-artifact-platform'
 
 const LIBRARY_TABS = ['cloud', 'local'] as const
 
@@ -360,7 +361,7 @@ function LocalArtifactsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...
         { id: 'link', label: a.tabLinks, meta: artifacts ? counts.link : null }
       ]}
     >
-      {!isBrowserShell() && uploadArtifact && (
+      {uploadArtifact && (
         <ArtifactUploadDialog artifact={uploadArtifact} onClose={() => setUploadArtifact(null)} />
       )}
       {!artifacts ? (
@@ -464,7 +465,7 @@ export function ArtifactsView(props: ArtifactsViewProps) {
       <div className="min-h-0 flex-1">
         {libraryTab === 'cloud' ? (
           <CloudDriveTab onDraftReady={navigate} />
-        ) : !isBrowserShell() && connection?.mode === 'local' ? (
+        ) : usesInstanceArtifactLibrary() || (!isBrowserShell() && connection?.mode === 'local') ? (
           <LocalArtifactLibrary />
         ) : (
           <LocalArtifactsView {...props} />

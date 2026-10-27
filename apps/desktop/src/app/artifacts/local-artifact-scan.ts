@@ -9,6 +9,7 @@ import {
   localArtifactPath,
   localSessionKey
 } from './local-artifact-model'
+import { artifactFileResolver, usesInstanceArtifactLibrary } from './local-artifact-platform'
 
 export interface LocalArtifactScan {
   groups: LocalArtifactGroup[]
@@ -44,13 +45,18 @@ export async function listLocalArtifactSessions(isCurrent: () => boolean): Promi
 
   const sessions = new Map(
     first.sessions
-      .filter(row => !row.connection_id || row.connection_id === 'local')
+      .filter(row => (!row.connection_id || row.connection_id === 'local') &&
+        (!usesInstanceArtifactLibrary() || !row.profile || row.profile === 'default'))
       .map(row => [localSessionKey(row), { ...row, connection_id: 'local' }])
   )
 
   let failures = first.errors?.length || 0
 
   for (const [profile, total] of Object.entries(first.profile_totals || {})) {
+    if (usesInstanceArtifactLibrary() && profile !== 'default') {
+      continue
+    }
+
     let offset = [...sessions.values()].filter(row => (row.profile || 'default') === profile).length
 
     if (offset >= total) {
@@ -117,6 +123,7 @@ export async function scanLocalArtifacts(
   publish: (scan: LocalArtifactScan) => void,
   initialFailures = 0
 ): Promise<void> {
+  const resolveFile = artifactFileResolver()
   const valid = new Set(sessions.map(localSessionKey))
 
   for (const [key, entry] of cache) {
@@ -200,10 +207,14 @@ export async function scanLocalArtifacts(
           continue
         }
 
-        // 原生预览规范化包含路径策略、文件存在性和有界元信息读取，不搬运文件字节。
-        const metadata = await window.hermesDesktop
-          .normalizePreviewTarget(candidate, session.cwd || undefined)
-          .catch(() => null)
+        // 文件边界核对路径和存在性；云端目录读取失败进入降级提示，不能当成空资料库。
+        const metadata = await resolveFile(candidate, session.cwd || undefined).catch(error => {
+          if (usesInstanceArtifactLibrary()) {
+            throw error
+          }
+
+          return null
+        })
 
         if (!isCurrent()) {
           return
@@ -217,6 +228,7 @@ export async function scanLocalArtifacts(
         // 使用原生文件名，既还原 file URL 的中文，也保留真实名称中的字面 %，不再二次解码。
         files.push({
           ...file,
+          value: usesInstanceArtifactLibrary() ? metadata.path : file.value,
           id: `${key}:${metadata.path}`,
           label: metadata.label,
           resolvedPath: metadata.path,

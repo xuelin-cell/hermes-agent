@@ -2,6 +2,7 @@ import { readKey, writeKey } from '@/lib/storage'
 import type { SessionInfo } from '@/types/hermes'
 
 import type { ArtifactRecord } from './artifact-utils'
+import { artifactLibraryIdentity, usesInstanceArtifactLibrary } from './local-artifact-platform'
 
 export const LOCAL_ARTIFACT_TYPES = [
   'all',
@@ -60,7 +61,15 @@ const EXTENSIONS: Partial<Record<LocalArtifactType, readonly string[]>> = {
 }
 
 // 收藏属于原生账号分区中的本机物理文件，不属于 Profile；重命名 Profile 不改变收藏。
-const FAVORITES_KEY = 'hermes.desktop.localArtifactFavorites.v1'
+function favoritesStorageKey(): string | undefined {
+  if (!usesInstanceArtifactLibrary()) {
+    return 'hermes.desktop.localArtifactFavorites.v1'
+  }
+
+  const identity = artifactLibraryIdentity()
+
+  return identity ? `hermes.cloud.artifactFavorites.v1:${identity}` : undefined
+}
 
 /** 分享页是发布入口的链接，不是新产物；匹配专用路径，不按随机文件名猜测。 */
 export function isPublishedArtifactLink(value: string): boolean {
@@ -108,13 +117,18 @@ export function localSessionKey(session: SessionInfo): string {
 
 /** 收藏用已解析的本机绝对路径标识，无法解析和外部链接不写入收藏。 */
 export function localFavoriteKey(file: LocalArtifact): string | undefined {
-  return file.resolvedPath ? JSON.stringify(['local', file.resolvedPath]) : undefined
+  return file.resolvedPath
+    ? JSON.stringify(usesInstanceArtifactLibrary()
+      ? ['instance', artifactLibraryIdentity(), file.profile || 'default', file.resolvedPath]
+      : ['local', file.resolvedPath])
+    : undefined
 }
 
 /** 只接受合法的字符串集合，损坏或过期存储不会中断资料库。 */
 export function readLocalFavorites(): Set<string> {
   try {
-    const parsed: unknown = JSON.parse(readKey(FAVORITES_KEY) || '[]')
+    const key = favoritesStorageKey()
+    const parsed: unknown = JSON.parse((key && readKey(key)) || '[]')
 
     return new Set(Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [])
   } catch {
@@ -124,10 +138,16 @@ export function readLocalFavorites(): Set<string> {
 
 /** 保存后回读核对，存储失败时不显示虚假的收藏成功状态。 */
 export function writeLocalFavorites(favorites: ReadonlySet<string>): boolean {
-  const encoded = JSON.stringify([...favorites])
-  writeKey(FAVORITES_KEY, encoded)
+  const key = favoritesStorageKey()
 
-  return readKey(FAVORITES_KEY) === encoded
+  if (!key) {
+    return false
+  }
+
+  const encoded = JSON.stringify([...favorites])
+  writeKey(key, encoded)
+
+  return readKey(key) === encoded
 }
 
 /** 类型、收藏和搜索组合过滤；会话标题命中时保留该会话中的合格文件。 */
