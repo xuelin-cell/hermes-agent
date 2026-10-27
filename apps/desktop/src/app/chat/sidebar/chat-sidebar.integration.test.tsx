@@ -134,7 +134,11 @@ describe('ChatSidebar navigation activity', () => {
       en: {
         status: 'ready',
         modules: normalizeWelcomeCatalog({
-          modules: [{ name: '日常办公' }, { name: '代码开发', workspace: 'codex', enabled: false }, { name: '学习生活' }]
+          modules: [
+            { name: '日常办公' },
+            { name: '代码开发', workspace: 'codex', enabled: false },
+            { name: '学习生活' }
+          ]
         })
       }
     })
@@ -160,7 +164,9 @@ describe('ChatSidebar navigation activity', () => {
     expect([...view.container.querySelectorAll('[data-tour^="sidebar-nav-"]')].map(node => node.textContent)).toEqual([
       TRANSLATIONS.en.sidebar.nav['new-session'],
       TRANSLATIONS.en.workspaceEditor.title,
-      TRANSLATIONS.en.workspaceEditor.capabilities
+      [TRANSLATIONS.en.skills.tabSkills, TRANSLATIONS.en.skills.tabPlugins, TRANSLATIONS.en.connectorsPage.title].join(
+        ' · '
+      )
     ])
     const tree = $projectTree.get()
     act(() => $projectTree.set(tree.filter(project => project.isNoProject)))
@@ -256,7 +262,11 @@ describe('ChatSidebar navigation activity', () => {
     })
 
     for (const [pathname, currentView, label] of [
-      ['/capabilities', 'capabilities', TRANSLATIONS.en.sidebar.nav.capabilities],
+      [
+        '/capabilities',
+        'capabilities',
+        ['Experts', TRANSLATIONS.en.skills.tabSkills, TRANSLATIONS.en.connectorsPage.title].join(' · ')
+      ],
       ['/messaging', 'messaging', 'Messaging'],
       ['/artifacts', 'artifacts', TRANSLATIONS.en.sidebar.nav.artifacts],
       ['/cron', 'cron', 'Scheduled jobs']

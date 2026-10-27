@@ -427,7 +427,7 @@ export const UserMessage: FC<{
           // where the sticky-prompt clip hides its top even at rest. Image refs
           // render as thumbnails, file refs as chips; no border.
           attachmentRefs.length > 0 && !chipOnlyTurn ? (
-            <div className="mb-2 flex flex-wrap gap-1">
+            <div className="mb-2 flex flex-wrap gap-1" data-slot="aui_user-attachments">
               <DirectiveContent text={attachmentRefs.join(' ')} />
             </div>
           ) : null
