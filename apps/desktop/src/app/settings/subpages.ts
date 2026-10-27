@@ -86,6 +86,7 @@ const SUBPAGE_ICONS: Record<string, IconComponent> = {
   vaultCredentials: KeyRound,
   vaultSources: Lock,
   appUpdates: Download,
+  legal: FileText,
   uninstall: Trash2
 }
 

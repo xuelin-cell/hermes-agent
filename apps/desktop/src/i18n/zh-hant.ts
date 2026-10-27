@@ -770,6 +770,7 @@ export const zhHant = defineLocale({
       vaultCredentials: '已儲存的憑證',
       vaultSources: '密碼管理員',
       appUpdates: '版本與更新',
+      legal: '隱私與條款',
       uninstall: '解除安裝',
       billingOverview: '概覽',
       billingPlans: '方案'
@@ -1459,6 +1460,19 @@ export const zhHant = defineLocale({
     },
     about: {
       updates: '更新'
+    },
+    legal: {
+      title: '隱私與條款',
+      description: '查看適用於 UniWork 的協議、政策與聲明。',
+      items: {
+        userAgreement: '用戶協議',
+        privacyPolicy: '隱私政策',
+        informationCollection: '收集用戶資訊說明',
+        accountCancellation: '帳號註銷須知',
+        deliveryAgreement: '產品支付協議',
+        childrenPrivacy: '兒童資訊保護政策及監護人須知',
+        openSourceTerms: '開源條款'
+      }
     },
     config: {
       agentLibraryAccessTitle: '允許智慧體操作資料庫',

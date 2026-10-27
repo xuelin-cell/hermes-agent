@@ -1066,6 +1066,7 @@ export const zh = defineLocale({
       vaultCredentials: '已保存的凭据',
       vaultSources: '密码管理器',
       appUpdates: '版本与更新',
+      legal: '隐私与条款',
       uninstall: '卸载',
       billingOverview: '概览',
       billingPlans: '套餐'
@@ -1811,6 +1812,19 @@ export const zh = defineLocale({
     },
     about: {
       updates: '更新'
+    },
+    legal: {
+      title: '隐私与条款',
+      description: '查看适用于 UniWork 的协议、政策与声明。',
+      items: {
+        userAgreement: '用户协议',
+        privacyPolicy: '隐私政策',
+        informationCollection: '收集用户信息说明',
+        accountCancellation: '账号注销须知',
+        deliveryAgreement: '产品支付协议',
+        childrenPrivacy: '儿童信息保护政策及监护人须知',
+        openSourceTerms: '开源条款'
+      }
     },
     config: {
       agentLibraryAccessTitle: '允许智能体操控资料库',
