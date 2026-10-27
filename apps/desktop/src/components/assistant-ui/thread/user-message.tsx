@@ -444,6 +444,7 @@ export const UserMessage: FC<{
             >
               <div
                 className="relative w-full"
+                data-slot="aui_user-bubble-frame"
                 // The app context menu skips PLAIN right-clicks here (the
                 // attr below) so this handler keeps the picker gesture; a
                 // link/image/selection inside the bubble still gets the app

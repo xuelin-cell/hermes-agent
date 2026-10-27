@@ -542,7 +542,11 @@ export function TreeGroup({
                     side={railSide}
                     vertical
                   >
-                    <PaneTabLabel>{tabLabel(paneId)}</PaneTabLabel>
+                    <PaneTabLabel
+                      className={isSessionStripPane(paneId) ? 'text-sm tracking-normal normal-case' : undefined}
+                    >
+                      {tabLabel(paneId)}
+                    </PaneTabLabel>
                   </PaneTab>
                 )
               })}
@@ -724,7 +728,11 @@ export function TreeGroup({
                           </TabKeyHint>
                         </span>
                       ) : null}
-                      <PaneTabLabel>{tabLabel(paneId)}</PaneTabLabel>
+                      <PaneTabLabel
+                        className={isSessionStripPane(paneId) ? 'text-sm tracking-normal normal-case' : undefined}
+                      >
+                        {tabLabel(paneId)}
+                      </PaneTabLabel>
                     </PaneTab>
                   )
 
