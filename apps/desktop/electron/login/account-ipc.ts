@@ -51,7 +51,7 @@ export function installAccountIpc(
     })
   }
 
-  const catalog = new WelcomeCatalogClient(undefined, readIdentity)
+  const catalog = new WelcomeCatalogClient((input, options) => net.fetch(input, options), readIdentity)
   ipcMain.handle(WELCOME_CATALOG_CHANNEL, async (event, ...args) => {
     if (!trusted(event, []) || args.length !== 1 || !['zh-CN', 'en'].includes(args[0])) {
       throw new Error('办公模板请求无效。')

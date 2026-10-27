@@ -15,6 +15,7 @@ from .config import SETTINGS, Settings
 from .browser_auth import BrowserAuth, BrowserIdentity
 from .drive_routes import DriveRoutes
 from .plan_routes import PlanRoutes
+from .welcome_routes import WelcomeRoutes
 from .crypto import CredentialCipher
 from .cube_api import Cube
 from .db import Database, DatabaseUnavailable
@@ -107,6 +108,7 @@ class Entry:
         self.share_routes = ShareRoutes(self)
         self.drive_routes = DriveRoutes(self)
         self.plan_routes = PlanRoutes(self)
+        self.welcome_routes = WelcomeRoutes(self)
         self.shares: Shares | None = None
         # aiohttp 客户端必须在事件循环中创建，因此在 on_startup 里赋值。
         self.http: aiohttp.ClientSession | None = None
@@ -554,6 +556,7 @@ def build_app(settings: Settings = SETTINGS) -> web.Application:
     app.router.add_get(path("/__entry/browser-auth.js"), entry.browser_auth_script)
     app.router.add_post(path("/__entry/maas-auth"), entry.maas_auth_status)
     app.router.add_post(path("/__entry/{kind:conversation|artifact}-shares/{operation}"), entry.share_routes.handle)
+    app.router.add_post(path("/__entry/welcome/{locale}"), entry.welcome_routes.handle)
     app.router.add_post(path("/__entry/plan/{operation}"), entry.plan_routes.handle)
     app.router.add_post(path("/__entry/drive/part/{id}"), entry.drive_routes.part)
     app.router.add_get(path("/__entry/drive/files/{id}"), entry.drive_routes.download)

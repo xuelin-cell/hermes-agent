@@ -36,6 +36,11 @@ async def stack(tmp_path, database_url):
             await release.wait()
         if mode['fail']:
             return web.json_response({'apiKey': 'do-not-expose-upstream'}, status=502)
+        if request.path.endswith('system-config'):
+            assert set(request.query) == {'key'}
+            key = request.query['key']
+            assert key in {'welcome_config_v3_zh-CN', 'welcome_config_v3_en'}
+            return web.json_response({'version': 'v3', 'configValue': json.dumps({'modules': [{'name': request.headers['Authorization'][-4:] + '-' + key}]})})
         if request.path.endswith('market-ticket'):
             return web.json_response({'ticket': 'signed-ticket', 'customerId': 'customer', 'timestamp': '123', 'number': '456'})
         phone = request.headers['Authorization'].removeprefix('Bearer maas-')
@@ -50,7 +55,7 @@ async def stack(tmp_path, database_url):
     async with TestServer(upstream_app) as service:
         script = tmp_path / 'worker.mjs'
         script.write_text('import { startDriveWorker } from ' + json.dumps((ROOT / 'deploy/hermes-mt/entry/entry/static/cloud-drive-worker.mjs').as_uri()) + ';\n' +
-            'startDriveWorker((url, options) => { const u = new URL(url); if (u.origin !== "https://maas.ai-yuanjing.com") throw new Error("Wrong origin"); return fetch(' + json.dumps(str(service.make_url('')).rstrip('/')) + ' + u.pathname, options); });')
+            'startDriveWorker((url, options) => { const u = new URL(url); if (u.origin !== "https://maas.ai-yuanjing.com") throw new Error("Wrong origin"); return fetch(' + json.dumps(str(service.make_url('')).rstrip('/')) + ' + u.pathname + u.search, options); });')
         app = build_app(Settings(database_url=database_url, credential_key=Fernet.generate_key().decode()))
         entry = next(route.handler.__self__ for route in app.router.routes() if route.handler.__name__ == 'login')
         app.on_startup.clear()
@@ -136,3 +141,23 @@ async def test_subscription_uses_trusted_phone_single_use_ticket_and_never_retur
         mode['fail'] = True
         assert (await call(a, 'subscribe'))[1] == {'status': 'failed', 'reason': 'upstream'}
         assert (await call({**a, 'headers': {'Authorization': 'Bearer forged'}}, 'subscribe'))[0].status == 401
+
+
+@pytest.mark.asyncio
+async def test_welcome_v3_uses_fixed_locale_and_the_current_bound_account(tmp_path, postgres_database_url):
+    async with stack(tmp_path, postgres_database_url) as (client, entry, auth, call, calls, mode, started, release):
+        a, b = await auth('13811111111'), await auth('13822222222')
+        for identity, suffix in [(a, '1111'), (b, '2222'), (a, '1111')]:
+            response = await client.post('/hermes/__entry/welcome/zh-CN', **identity)
+            data = await response.json()
+            assert response.status == 200 and response.headers['Cache-Control'] == 'no-store'
+            assert data['version'] == 'v3' and data['modules'][0]['name'] == suffix + '-welcome_config_v3_zh-CN'
+            assert not any(secret in json.dumps(data) for secret in ['maas-', 'private-', 'Authorization'])
+        assert (await client.post('/hermes/__entry/welcome/en', **a)).status == 200
+        count = len(calls)
+        assert (await client.post('/hermes/__entry/welcome/fr', **a)).status == 400
+        assert (await client.post('/hermes/__entry/welcome/en', cookies=a['cookies'], headers=b['headers'])).status == 401
+        assert len(calls) == count
+        mode['fail'] = True
+        response = await client.post('/hermes/__entry/welcome/en', **a)
+        assert response.status == 503 and 'do-not-expose' not in await response.text()

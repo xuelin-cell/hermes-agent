@@ -48,7 +48,8 @@ from urllib.parse import parse_qs
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import mtstate  # noqa: E402
-import mtuser  # noqa: E402
+import mtuser
+import mtexport  # noqa: E402
 
 LISTEN_PORT = int(os.environ.get("MT_FWD_PORT", "9121"))
 TARGET_PORT = int(os.environ.get("MT_HERMES_PORT", "9120"))
@@ -619,12 +620,13 @@ def _parse(head: bytes) -> tuple[str, str, dict[str, str], bytes]:
     return method, path, headers, rest
 
 
-async def _read_body(headers: dict[str, str], rest: bytes, reader: asyncio.StreamReader) -> bytes | None:
+async def _read_body(headers: dict[str, str], rest: bytes, reader: asyncio.StreamReader,
+                     max_bytes: int = MAX_BODY) -> bytes | None:
     try:
         length = int(headers.get("content-length", "0"))
     except ValueError:
         return None
-    if length > MAX_BODY:
+    if length < 0 or length > max_bytes or len(rest) > length:
         return None
     body = bytearray(rest)
     while len(body) < length:
@@ -702,6 +704,7 @@ _FILE_OPS = {
 }
 
 _office: mtuser.OfficePreview | None = None
+_export_lock: asyncio.Lock | None = None
 _OFFICE_ROUTES = (
     "/__mt_user/office-pdf", "/__mt_user/office-preview", "/__mt_user/office-preview/page",
     "/__mt_user/office-sheet", "/__mt_user/office-sheet/image",
@@ -756,6 +759,28 @@ async def _handle_user(
 
     if route == "/__mt_user/terminal":
         await mtuser.serve_terminal(reader, writer, headers, query, WORKSPACE)
+        return
+
+    if route == "/__mt_user/preview-export":
+        global _export_lock
+        if method != 'POST' or not headers.get('content-type', '').lower().startswith('application/json'):
+            _reply(writer, 415, {'ok': False, 'code': 'invalid_export'})
+            return
+        if _export_lock is None:
+            _export_lock = asyncio.Lock()
+        if _export_lock.locked():
+            _reply(writer, 429, {'ok': False, 'code': 'export_busy'})
+            return
+        async with _export_lock:
+            try:
+                raw = await asyncio.wait_for(_read_body(headers, rest, reader, 10 * 1024 * 1024), 15)
+                data = json.loads(raw.decode('utf-8')) if raw is not None else None
+                if not isinstance(data, dict) or not isinstance(data.get('content'), str):
+                    raise ValueError()
+                async with mtexport.pdf(data['content'], HERMES_PYTHON) as output:
+                    await _send_file(writer, output, 'application/pdf')
+            except (ValueError, UnicodeError, mtexport.ExportError, OSError, asyncio.TimeoutError):
+                _reply(writer, 422, {'ok': False, 'code': 'export_failed'})
         return
 
     files = mtuser.Files(WORKSPACE)

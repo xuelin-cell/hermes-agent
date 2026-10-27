@@ -1,7 +1,9 @@
 import { atom, computed } from 'nanostores'
 
+import { isBrowserShell } from '@/lib/browser-shell'
 import { readKey, writeKey } from '@/lib/storage'
 
+import { readBrowserAuth } from '../../../../../../shared/src/browser-maas-auth.js'
 import {
   normalizeWelcomeCatalog,
   type WelcomeLocale,
@@ -17,10 +19,20 @@ interface CatalogState {
 // v1 could cache the old main process's category array as top-level modules.
 const KEY = 'uniwork.welcome.modules.v3.'
 
+function accountScope(): string {
+  if (!isBrowserShell()) {return ''}
+
+  try {return `cloud:${readBrowserAuth(import.meta.env.BASE_URL || '/')?.loginId || 'signed-out'}:`}
+  catch {return 'cloud:signed-out:'}
+}
+
+let scope = accountScope()
+const cacheKey = (locale: WelcomeLocale) => KEY + scope + locale
+
 /** 仅恢复上次成功获取的云端目录；首次启动或缓存损坏时等待云端。 */
 function initial(locale: WelcomeLocale): CatalogState {
   try {
-    const saved = readKey(KEY + locale)
+    const saved = readKey(cacheKey(locale))
 
     if (!saved) {
       return { modules: null, status: 'cached' }
@@ -54,6 +66,16 @@ const updated = new Map<WelcomeLocale, number>()
 
 /** 同语言请求合并并短期复用；失败只保留旧目录，不清空用户正在编辑的提示词。 */
 export function loadWelcomeCatalog(locale: WelcomeLocale, force = false): Promise<void> {
+  const currentScope = accountScope()
+
+  if (currentScope !== scope) {
+    scope = currentScope
+    pending.clear()
+    updated.clear()
+    $welcomeCatalog.set({ 'zh-CN': initial('zh-CN'), en: initial('en') })
+  }
+
+  const capturedScope = scope
   const inFlight = pending.get(locale)
 
   if (inFlight) {
@@ -75,6 +97,8 @@ export function loadWelcomeCatalog(locale: WelcomeLocale, force = false): Promis
   const task = Promise.resolve().then(async () => {
     try {
       const raw = await request(locale)
+
+      if (capturedScope !== accountScope()) {return}
       const modules = normalizeWelcomeCatalog(raw)
 
       if (!modules.length) {
@@ -84,8 +108,8 @@ export function loadWelcomeCatalog(locale: WelcomeLocale, force = false): Promis
       const previous = $welcomeCatalog.get()[locale]
       const unchanged = JSON.stringify(modules) === JSON.stringify(previous.modules)
 
-      if (!unchanged || raw.version !== previous.version || !readKey(KEY + locale)) {
-        writeKey(KEY + locale, JSON.stringify(raw))
+      if (!unchanged || raw.version !== previous.version || !readKey(cacheKey(locale))) {
+        writeKey(cacheKey(locale), JSON.stringify(raw))
       }
 
       $welcomeCatalog.set({
@@ -97,13 +121,16 @@ export function loadWelcomeCatalog(locale: WelcomeLocale, force = false): Promis
         }
       })
     } catch {
+      if (capturedScope !== accountScope()) {return}
       $welcomeCatalog.set({
         ...$welcomeCatalog.get(),
         [locale]: { ...$welcomeCatalog.get()[locale], status: 'cached' }
       })
     } finally {
-      updated.set(locale, Date.now())
-      pending.delete(locale)
+      if (pending.get(locale) === task) {
+        updated.set(locale, Date.now())
+        pending.delete(locale)
+      }
     }
   })
 

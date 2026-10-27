@@ -23,8 +23,10 @@ import {
   requestEntryMaas
 } from '../../../shared/src/browser-maas-auth.js'
 import type { LoginAccount } from '../../electron/login/contract'
+import type { WelcomeLocale, WelcomePayload } from '../../electron/uniwork-welcome/catalog'
 
 import { browserDrive } from './browser-drive'
+import { browserExport } from './browser-export'
 import { browserPlan } from './browser-plan'
 import { browserShares } from './browser-shares'
 import { maskMcpSecrets, restoreMcpSecrets } from './mcp-secrets'
@@ -1415,7 +1417,12 @@ export function installBrowserDevelopmentBridge(): boolean {
     writeClipboard,
     // The instance's shell lives behind the entry; a dev server has no forwarder to give one.
     ...(productionBrowserBuild
-      ? { terminal: instanceTerminal, ...browserShares(browserBasePath()), ...browserDrive(browserBasePath()), ...browserPlan(browserBasePath()) }
+      ? { terminal: instanceTerminal, ...browserShares(browserBasePath()), ...browserDrive(browserBasePath()), ...browserPlan(browserBasePath()), exportPreview: browserExport(browserBasePath(), apiPrefix()),
+          getWelcomeCatalog: (locale: WelcomeLocale) => {
+            if (!['zh-CN', 'en'].includes(locale)) {return Promise.reject(new Error('Invalid locale'))}
+
+            return requestEntryMaas<WelcomePayload>(browserBasePath(), `welcome/${locale}`)
+          } }
       : {})
   }
 

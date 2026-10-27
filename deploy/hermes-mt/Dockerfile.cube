@@ -137,6 +137,7 @@ RUN chmod 0755 /usr/bin/envd /usr/local/bin/cube-entrypoint.sh
 # 把整个卷打进可写层。工作区、附件、图片由状态管家做成指向卷内的目录链接。
 RUN mkdir -p /opt/mt /mnt/u
 COPY seed/forward.py /opt/mt/forward.py
+COPY seed/mtexport.py /opt/mt/mtexport.py
 COPY seed/mtstate.py /opt/mt/mtstate.py
 COPY seed/mtuser.py /opt/mt/mtuser.py
 RUN chmod 0644 /opt/mt/forward.py /opt/mt/mtstate.py /opt/mt/mtuser.py

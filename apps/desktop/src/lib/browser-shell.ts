@@ -18,6 +18,7 @@ import { storedBoolean } from '@/lib/storage'
  * developer mode or not. Files of the UniWork rebrand (not upstream) that ask
  * this module are listed too.
  *
+ *   app/chat/composer/work-templates/catalog-store.ts  cloud welcome cache follows the current login and language
  *   api/models.ts                                      * model pickers: the platform's providers only
  *   app/artifacts/cloud-drive-tab.tsx                  the production instance bridge reuses the personal cloud drive
  *   app/artifacts/artifact-upload.tsx                  instance artifacts upload through the entry drive adapter

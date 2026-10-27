@@ -4,6 +4,127 @@ import path2 from "node:path";
 import { createInterface } from "node:readline";
 import { pathToFileURL } from "node:url";
 
+// apps/desktop/electron/uniwork-welcome/catalog.ts
+function text(value, limit = 256) {
+  return typeof value === "string" && value.trim().length > 0 && value.length <= limit;
+}
+function order(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : Number.MAX_SAFE_INTEGER;
+}
+function normalizeWelcomeCatalog(value) {
+  if (!value || typeof value !== "object" || !Array.isArray(value.modules)) {
+    throw new Error("\u529E\u516C\u6A21\u677F\u76EE\u5F55\u683C\u5F0F\u65E0\u6548\u3002");
+  }
+  return value.modules.slice(0, 100).flatMap((raw, index) => {
+    if (!raw || typeof raw !== "object") {
+      return [];
+    }
+    const item = raw;
+    if (!text(item.name)) {
+      return [];
+    }
+    return [
+      {
+        id: `configured-module-${index}`,
+        name: item.name,
+        workspace: item.workspace === "codex" ? "codex" : "work",
+        ...text(item.icon, 128) ? { icon: item.icon.trim() } : {},
+        sort: order(item.sort),
+        tags: normalizeWelcomeCategories(item.tags)
+      }
+    ];
+  }).sort((a, b) => a.sort - b.sort);
+}
+function normalizeWelcomeCategories(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const seen = /* @__PURE__ */ new Set();
+  const categories = [];
+  for (const row of value.slice(0, 100)) {
+    if (!row || !text(row.id) || !text(row.name) || seen.has(row.id) || !Array.isArray(row.templates)) {
+      continue;
+    }
+    const ids2 = /* @__PURE__ */ new Set();
+    const templates = [];
+    for (const item of row.templates.slice(0, 100)) {
+      if (!item || !text(item.id) || !text(item.name) || !text(item.prompt, 32768) || ids2.has(item.id)) {
+        continue;
+      }
+      ids2.add(item.id);
+      templates.push({
+        id: item.id,
+        name: item.name,
+        prompt: item.prompt,
+        sort: order(item.sort),
+        ...text(item.icon, 128) ? { icon: item.icon.trim() } : {}
+      });
+    }
+    if (!templates.length) {
+      continue;
+    }
+    seen.add(row.id);
+    categories.push({
+      id: row.id,
+      name: row.name,
+      sort: order(row.sort),
+      ...text(row.icon, 128) ? { icon: row.icon.trim() } : {},
+      templates: templates.sort((a, b) => a.sort - b.sort)
+    });
+  }
+  return categories.sort((a, b) => a.sort - b.sort);
+}
+
+// apps/desktop/electron/uniwork-welcome/client.ts
+var WelcomeCatalogClient = class {
+  /** 网络可注入以验证真实 HTTP 路径，业务调用始终使用 Electron 的网络会话。 */
+  constructor(request, identity) {
+    this.request = request;
+    this.identity = identity;
+  }
+  request;
+  identity;
+  /** 解析失败保留页面已缓存的完整目录。 */
+  async load(locale) {
+    if (!["zh-CN", "en"].includes(locale)) {
+      throw new Error("\u529E\u516C\u6A21\u677F\u8BED\u8A00\u65E0\u6548\u3002");
+    }
+    const key = `welcome_config_v3_${locale}`;
+    const identity = this.identity?.();
+    const token = identity && identity.expiresAt > Date.now() ? identity.token : null;
+    try {
+      if (!token) {
+        throw new Error("\u6807\u7B7E\u914D\u7F6E\u9700\u8981\u5F53\u524D\u767B\u5F55\u8EAB\u4EFD");
+      }
+      const response = await this.request(`https://maas.ai-yuanjing.com/app/gateway/uniwork/system-config?key=${key}`, {
+        headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(8e3),
+        redirect: "error",
+        credentials: "omit",
+        cache: "no-store"
+      });
+      if (!response.ok) {
+        throw new Error();
+      }
+      const envelope = await response.json();
+      if (typeof envelope?.configValue !== "string" || envelope.configValue.length > 2e6) {
+        throw new Error();
+      }
+      const payload = JSON.parse(envelope.configValue);
+      const current = this.identity?.();
+      if (!normalizeWelcomeCatalog(payload).length || current?.token !== token || current.expiresAt <= Date.now()) {
+        throw new Error();
+      }
+      return {
+        modules: payload.modules,
+        ...typeof envelope.version === "string" && envelope.version.trim() ? { version: envelope.version.trim() } : {}
+      };
+    } catch {
+      throw new Error("\u529E\u516C\u6A21\u677F\u66F4\u65B0\u5931\u8D25\uFF0C\u5DF2\u4FDD\u7559\u672C\u5730\u6A21\u677F\u3002");
+    }
+  }
+};
+
 // apps/desktop/electron/login/uniagentgate.ts
 function record(value) {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -57,13 +178,10 @@ function amount(value) {
 }
 function normalizePlanUsage(body, fetchedAt) {
   const envelope = record2(body);
-  if (!Object.keys(envelope).length || envelope.code !== void 0 && envelope.code !== 0 && envelope.code !== "0") {
+  if (!Object.keys(envelope).length || envelope.code !== void 0 && envelope.code !== 0 && envelope.code !== "0")
     throw new Error("Invalid plan response");
-  }
   const data = record2(envelope.data === void 0 ? body : envelope.data);
-  if (!Object.keys(data).length) {
-    throw new Error("Missing plan response");
-  }
+  if (!Object.keys(data).length) throw new Error("Missing plan response");
   const kind = data.planType === "coding_plan" || data.planType === "token_plan" ? data.planType : "unknown";
   const coding = record2(data.codingPlanUsage), token = record2(data.tokenPlanUsage);
   const windows = [];
@@ -72,19 +190,17 @@ function normalizePlanUsage(body, fetchedAt) {
     ["week", "week", "weekTtl"],
     ["month", "month", "monthTtl"]
   ];
-  if (kind === "coding_plan") {
+  if (kind === "coding_plan")
     for (const [name2, key, ttlKey] of names) {
       const used2 = amount(coding[key]), ttl = typeof coding[ttlKey] === "number" && Number.isFinite(coding[ttlKey]) ? Math.max(0, coding[ttlKey]) : null;
-      if (used2 !== null) {
+      if (used2 !== null)
         windows.push({
           name: name2,
           usedPercent: Math.min(100, used2),
           resetAt: ttl !== null && ttl > 0 ? Math.min(864e13, fetchedAt + ttl * 1e3) : null,
           notStarted: ttl === 0
         });
-      }
     }
-  }
   const total = amount(token.totalQuota), used = amount(token.usedQuota), limit = amount(token.concurrencyLimit);
   return {
     kind,
@@ -1916,6 +2032,7 @@ async function handle(input) {
       return action === "parse" ? parsed : executeDriveMcpAction(context.drive, input.name, parsed, scope);
     };
     const handlers = {
+      welcome: () => new WelcomeCatalogClient(limitedRequest, () => context.identity).load(input.locale),
       "plan-usage": () => context.usage.load(input.force === true),
       "plan-subscription": async () => {
         let url = "";

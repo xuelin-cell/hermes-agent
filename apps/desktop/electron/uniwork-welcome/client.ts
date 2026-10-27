@@ -1,5 +1,3 @@
-import { net } from 'electron'
-
 import type { LoginIdentity } from '../login/session'
 
 import { normalizeWelcomeCatalog, type WelcomeLocale, type WelcomePayload } from './catalog'
@@ -8,7 +6,7 @@ import { normalizeWelcomeCatalog, type WelcomeLocale, type WelcomePayload } from
 export class WelcomeCatalogClient {
   /** 网络可注入以验证真实 HTTP 路径，业务调用始终使用 Electron 的网络会话。 */
   constructor(
-    private readonly request: typeof fetch = (input, options) => net.fetch(input, options),
+    private readonly request: typeof fetch,
     private readonly identity?: () => LoginIdentity | null
   ) {}
 

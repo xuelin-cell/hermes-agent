@@ -329,7 +329,7 @@ class TenantManager:
         """
         files = self._render_user_files(api_key, endpoint, catalog, limits)
         # 转发器要从自己所在目录导入状态管家和用户接口，三个文件一起放。
-        for name in ("forward.py", "mtstate.py", "mtuser.py"):
+        for name in ("forward.py", "mtstate.py", "mtuser.py", "mtexport.py"):
             files[f".mt/{name}"] = (SEED_DIR / name).read_bytes()
         return files
 
