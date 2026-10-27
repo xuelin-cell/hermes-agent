@@ -1,6 +1,7 @@
 import type { AppUpdater } from 'electron-updater'
 
 import { applyPackagedHandoff } from './packaged-handoff'
+import type { ReleaseNotesByLocale } from './release-notes'
 
 import type { UpdaterApplyResultWire, UpdaterStatusWire, UpdaterStrategy } from './index'
 
@@ -15,6 +16,8 @@ export interface MacStrategyDeps {
   beforeInstall: () => Promise<void>
   onInstallFailure: () => Promise<void>
   emitProgress: (payload: { stage: string; message: string; percent: number | null }) => void
+  /** Authored notes for the offered version. A failure is never a failed check. */
+  releaseNotes?: (version: string) => Promise<ReleaseNotesByLocale | null>
 }
 
 export class MacStrategy implements UpdaterStrategy {
@@ -28,7 +31,17 @@ export class MacStrategy implements UpdaterStrategy {
       throw new Error('An update is already in progress.')
     }
 
-    return this.checkRelease()
+    const status: UpdaterStatusWire = await this.checkRelease()
+
+    if (!status.updateAvailable || !status.latestTag || !this.deps.releaseNotes) {
+      return status
+    }
+
+    const notes: ReleaseNotesByLocale | null = await this.deps
+      .releaseNotes(status.latestTag.replace(/^v/, ''))
+      .catch((): null => null)
+
+    return notes ? { ...status, releaseNotes: notes } : status
   }
 
   private async checkRelease(): Promise<UpdaterStatusWire> {

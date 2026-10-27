@@ -3338,6 +3338,7 @@ function createNativePackagedStrategy(
       channel: resolveUpdaterChannelFromStamp(),
       light: isLightVariant(),
       feedBaseUrl: resolveDesktopFeedBaseUrl(),
+      appUpdatePath: resolveAppUpdateDescriptorPath(),
       appVersion: app.getVersion(),
       log: rememberLog,
       emitProgress: emitUpdateProgress,
@@ -3539,6 +3540,14 @@ function resolveCheckoutUpdateStrategy(): UpdaterStrategy {
  */
 function resolveDesktopFeedBaseUrl(): string {
   return resolveFeedBaseUrl(readUpdatesFeedBaseFromConfig(path.join(HERMES_HOME, 'config.yaml')))
+}
+
+/**
+ * The descriptor electron-updater itself reads: the baked generic feed origin.
+ * `null` in development, where no packaged descriptor exists.
+ */
+function resolveAppUpdateDescriptorPath(): string | null {
+  return app.isPackaged ? path.join(process.resourcesPath, 'app-update.yml') : null
 }
 
 /** The updater channel from the baked install stamp ('canary' vs 'stable'). */

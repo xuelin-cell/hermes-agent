@@ -8,12 +8,16 @@ import type { ChannelTarget } from './channel'
 import { verifyChannelDownload } from './channel-native'
 import { channelPublicBase } from './channel-protocol'
 import { MacStrategy, type MacStrategyDeps, prepareMacInstall } from './mac'
+import { fetchReleaseNotes, readBakedFeedUrl, resolveReleaseNotesUrl } from './release-notes'
+import type { ReleaseNotesByLocale } from './release-notes'
 
 export interface MacClientDeps extends Omit<MacStrategyDeps, 'updater' | 'prepareInstall'> {
   light: boolean
   feedBaseUrl: string
   /** Exact per-build metadata, not a moving channel directory. */
   feed?: { url: string; channel: string }
+  /** The baked generic descriptor electron-updater reads; null in development. */
+  appUpdatePath?: string | null
   log: (message: string) => void
 }
 
@@ -73,5 +77,25 @@ export function createMacStrategy(deps: MacClientDeps): MacStrategy {
     updater.setFeedURL({ provider: 'generic', url: `${base}/${legacy.directory}/`, channel })
   }
 
-  return new MacStrategy({ ...deps, updater, prepareInstall: () => prepareMacInstall(nativeUpdater) })
+  return new MacStrategy({
+    ...deps,
+    updater,
+    prepareInstall: () => prepareMacInstall(nativeUpdater),
+    releaseNotes: releaseNotesReader(deps, legacy.directory)
+  })
+}
+
+/** Authored copy beside the same feed the updater reads; unset when this install
+ *  has no feed, so the overlay keeps its fallback. */
+function releaseNotesReader(
+  deps: MacClientDeps,
+  feedDirectory: string
+): ((version: string) => Promise<ReleaseNotesByLocale | null>) | undefined {
+  const url: string | null = resolveReleaseNotesUrl({
+    configuredBase: deps.feedBaseUrl,
+    feedDirectory,
+    descriptorUrl: deps.feed?.url ?? readBakedFeedUrl(deps.appUpdatePath)
+  })
+
+  return url ? (version: string) => fetchReleaseNotes(url, version, deps.log) : undefined
 }

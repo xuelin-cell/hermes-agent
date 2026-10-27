@@ -25,8 +25,9 @@ import type {
   UpdaterMechanismClient
 } from '@/global'
 import { useI18n } from '@/i18n'
-import { buildCommitChangelog, type CommitGroup } from '@/lib/commit-changelog'
+import { buildCommitChangelog } from '@/lib/commit-changelog'
 import { AlertCircle, Check, Copy, Terminal } from '@/lib/icons'
+import { type ReleaseNoteGroup, selectReleaseNotes } from '@/lib/release-notes'
 import { resolveUpdateCopy, type UpdateTarget } from '@/lib/update-copy'
 import { cn } from '@/lib/utils'
 import {
@@ -51,7 +52,7 @@ import {
 
 import { DiscontinuedNotice } from './retirement-view'
 
-function totalItems(groups: readonly CommitGroup[]) {
+function totalItems(groups: readonly ReleaseNoteGroup[]) {
   return groups.reduce((sum, g) => sum + g.items.length, 0)
 }
 
@@ -193,7 +194,7 @@ function IdleView({
   updateAvailable: boolean
   version: DesktopVersionInfo | null
 }) {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const u = t.updates
 
   if (!status && checking) {
@@ -267,16 +268,21 @@ function IdleView({
     )
   }
 
-  const groups = buildCommitChangelog(commits, {
-    labels: {
-      new: u.changeLogNew,
-      fixed: u.changeLogFixed,
-      faster: u.changeLogFaster,
-      improved: u.changeLogImproved,
-      other: u.changeLogOther
-    },
-    fallback: { label: u.changeLogFallbackLabel, item: u.changeLogFallbackItem }
-  })
+  // Authored copy published beside the feed wins: the publisher decides the
+  // wording, and the row-by-row commit changelog stays the source-install and
+  // fallback path.
+  const groups: readonly ReleaseNoteGroup[] =
+    selectReleaseNotes(status?.releaseNotes, locale) ??
+    buildCommitChangelog(commits, {
+      labels: {
+        new: u.changeLogNew,
+        fixed: u.changeLogFixed,
+        faster: u.changeLogFaster,
+        improved: u.changeLogImproved,
+        other: u.changeLogOther
+      },
+      fallback: { label: u.changeLogFallbackLabel, item: u.changeLogFallbackItem }
+    })
 
   const shownItems = totalItems(groups)
   const remaining = Math.max(0, behind - shownItems)
@@ -309,8 +315,8 @@ function IdleView({
           <div key={group.id}>
             <p className="text-[0.625rem] font-semibold text-muted-foreground">{group.label}</p>
             <ul className="mt-1.5 grid gap-1.5 text-xs text-foreground">
-              {group.items.map(item => (
-                <li className="flex items-start gap-2" key={item}>
+              {group.items.map((item, index) => (
+                <li className="flex items-start gap-2" key={`${group.id}-${index}`}>
                   <span aria-hidden className="mt-1.5 inline-block size-1 shrink-0 rounded-full bg-primary" />
                   <span className="leading-snug">{item}</span>
                 </li>
