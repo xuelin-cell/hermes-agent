@@ -35,12 +35,15 @@ export class HermesGateway extends JsonRpcGatewayClient {
     timeoutMs?: number,
     signal?: AbortSignal
   ): Promise<T> {
-    const prepare = typeof window !== 'undefined' ? window.hermesDesktop?.prepareCloudDriveTurn : undefined
+    const bridge = typeof window !== 'undefined' ? window.hermesDesktop : undefined
+    const preparations = [bridge?.prepareCloudDriveTurn, bridge?.prepareCloudShareTurn].filter(fn => fn !== undefined)
 
-    if (method === 'prompt.submit' && prepare && typeof params.session_id === 'string') {
-      const metadata = await prepare(params.session_id)
+    if (method === 'prompt.submit' && preparations.length && typeof params.session_id === 'string') {
+      const sessionId = params.session_id
+      const results = await Promise.allSettled(preparations.map(prepare => prepare(sessionId)))
+      const metadata = Object.assign({}, ...results.map(result => result.status === 'fulfilled' ? result.value : null))
 
-      if (metadata) {params = { ...params, execution_metadata: metadata }}
+      if (Object.keys(metadata).length) {params = { ...params, execution_metadata: metadata }}
     }
 
     return super.request<T>(method, params, timeoutMs, signal)

@@ -9,6 +9,8 @@ from typing import Literal
 from plugins.conversation_share.snapshot import SnapshotError, build_snapshot
 
 router = APIRouter()
+from plugins.conversation_share.agent import router as agent_router
+router.include_router(agent_router, prefix="/internal")
 
 
 class SnapshotRequest(BaseModel):

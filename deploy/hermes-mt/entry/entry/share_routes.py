@@ -10,6 +10,8 @@ from aiohttp import web
 class ShareRoutes:
     def __init__(self, entry):
         self.entry = entry
+        from .agent_share import AgentSharing
+        self.agent = AgentSharing(self)
 
     async def handle(self, request):
         identity = await self.entry._require_maas(request)
@@ -17,7 +19,10 @@ class ShareRoutes:
             raise web.HTTPServiceUnavailable(text='分享服务尚未就绪。')
         try:
             data = await request.json()
-            result = await self.entry.shares.dispatch(identity, request.match_info['kind'], request.match_info['operation'], data)
+            if request.match_info['kind'] == 'artifact' and request.match_info['operation'] == 'grant':
+                result = await self.agent.grant(identity, data)
+            else:
+                result = await self.entry.shares.dispatch(identity, request.match_info['kind'], request.match_info['operation'], data)
             return web.json_response(result, headers={'Cache-Control': 'no-store'})
         except web.HTTPException as error:
             return web.json_response({'error': error.text}, status=error.status, headers={'Cache-Control': 'no-store'})

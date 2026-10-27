@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { createHash } from 'node:crypto'
 import { afterEach, expect, it, vi } from 'vitest'
 
 import { $notifications, clearNotifications } from '@/store/notifications'
@@ -12,16 +13,16 @@ afterEach(() => {
 })
 
 it('点击分享只打开弹窗，生成、更新和撤销分别确认，复制打开不会重复发布', async () => {
+  vi.stubGlobal('crypto', {}) // Internal HTTP deployments have no SubtleCrypto.
   let record: { key: string; shareId: string; url: string; hash: string; version: number } | null = null
   const inspect = vi.fn(async () => record)
   const publish = vi.fn(async (input: { key: string; html: string }) => {
-    const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input.html))
     record = {
       key: input.key,
       shareId: 'id',
       url: 'https://share.example/id',
       version: (record?.version ?? 0) + 1,
-      hash: Array.from(new Uint8Array(bytes), byte => byte.toString(16).padStart(2, '0')).join('')
+      hash: createHash('sha256').update(input.html).digest('hex')
     }
 
     return record

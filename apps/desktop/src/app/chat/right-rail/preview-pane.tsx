@@ -1410,16 +1410,15 @@ export function PreviewPane({
             active="rendered"
             modes={['rendered', 'source']}
             onSelect={mode => selectRenderMode(mode === 'source' ? 'source' : 'preview')}
-          />
-        )}
-
-        {isWebPreview && isRemoteHtml && shareableRenderedHtml && (
-          <ShareControls
-            artifactKey={`file:${shareSessionId}:${shareFilePath}`}
-            html={htmlShareSnapshot}
-            key={shareFilePath}
-            source={{ sessionId: shareSessionId!, path: shareFilePath }}
-            title={shareFilePath.split(/[\\/]/).pop() || target.label}
+            trailing={isRemoteHtml && shareableRenderedHtml ? (
+              <ShareControls
+                artifactKey={`file:${shareSessionId}:${shareFilePath}`}
+                html={htmlShareSnapshot}
+                key={shareFilePath}
+                source={{ sessionId: shareSessionId!, path: shareFilePath }}
+                title={shareFilePath.split(/[\\/]/).pop() || target.label}
+              />
+            ) : undefined}
           />
         )}
         {isWebPreview && !isRemoteHtml && (

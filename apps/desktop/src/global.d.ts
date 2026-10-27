@@ -76,6 +76,7 @@ declare global {
       }
       onCloudDriveMutationProgress?: (listener: (progress: CloudDriveMutationProgress) => void) => () => void
       prepareCloudDriveTurn?: (sessionId: string) => Promise<Record<string, string> | null>
+      prepareCloudShareTurn?: (sessionId: string) => Promise<Record<string, string> | null>
       cloudDriveRequest: (input: CloudDriveRequest) => Promise<unknown>
       localConnectors: (input: LocalConnectorRequest) => Promise<LocalConnectorResult>
       /** 取得完整办公目录；主进程负责认证和校验配置。 */

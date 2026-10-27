@@ -344,6 +344,7 @@ class Entry:
             return ""
         session = await self.store.get_session(sid)
         await self.store.delete_session(sid)
+        await self.share_routes.agent.logout(sid)
         await self.drive_routes.logout(sid)
         if session:
             await self.store.write_audit(session.user_id, "logout")
@@ -413,7 +414,7 @@ class Entry:
     # 用户经代理打不到的路径：转发器的管理接口（能让自己的实例排空），
     # 以及 hermes 的「导入备份」（它会在库打开时替换 state.db，归档和真实库会分叉）。
     # 注意 ``__mt_user/``（回收站、重命名、命令行）不在其中：那是给用户用的，转发器自己核对会话令牌。
-    _BLOCKED_TAILS = ("__mt/", "api/ops/import", "api/plugins/cloud-drive/internal/", "api/plugins/cloud-drive/mcp")
+    _BLOCKED_TAILS = ("__mt/", "api/ops/import", "api/plugins/conversation-share/internal/", "api/plugins/cloud-drive/internal/", "api/plugins/cloud-drive/mcp")
 
     async def backend(self, request: web.Request) -> web.StreamResponse:
         session = await self._require(request)
@@ -514,6 +515,7 @@ class Entry:
             log.exception("reconcile failed: %s", type(exc).__name__)
 
     async def on_cleanup(self, app: web.Application) -> None:
+        await self.share_routes.agent.close()
         await self.skill_routes.close()
         await self.drive_routes.close()
         for task in self._bg:

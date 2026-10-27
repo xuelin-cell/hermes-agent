@@ -1,7 +1,7 @@
 import type { ArtifactShareRecord, ArtifactSharePublishInput, ArtifactShareSource } from '@hermes/shared/artifact-share'
 import type { ConversationShareApi } from '@hermes/shared/conversation-share'
 
-import { requestEntryMaas } from '../../../shared/src/browser-maas-auth.js'
+import { readBrowserAuth, requestEntryMaas } from '../../../shared/src/browser-maas-auth.js'
 
 /** The renderer retains the desktop contracts; only the trusted transport changes. */
 export function browserShares(base: string) {
@@ -59,5 +59,16 @@ export function browserShares(base: string) {
       }
     }
   }
-  return { conversationShare, artifactShare }
+  return {
+    conversationShare, artifactShare,
+    prepareCloudShareTurn: async (sessionId: string): Promise<Record<string, string> | null> => {
+      if (!readBrowserAuth(base)) return null
+      try {
+        return await call('artifact', 'grant', { sessionId })
+      } catch {
+        // A temporary sharing outage must not prevent an ordinary chat turn.
+        return null
+      }
+    }
+  }
 }

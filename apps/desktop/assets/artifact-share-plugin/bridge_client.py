@@ -26,6 +26,9 @@ def call_bridge(route: str, payload: dict, *, timeout: float = 3) -> dict:
             return {"ok": True}
         if route == "/eligibility":
             return origins.eligibility(payload)
+        if route == "/publish":
+            from plugins.conversation_share.agent import publish
+            return publish(payload, timeout=timeout)
         raise RuntimeError("云端产物请在页面中确认分享。")
     address = getattr(_TRANSPORT, "address", "")
     token = getattr(_TRANSPORT, "token", "")

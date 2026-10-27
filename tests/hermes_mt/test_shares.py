@@ -34,14 +34,48 @@ async def instance_processes(homes):
     # Separate processes exercise the actual launch-home resolver, as production instances do.
     processes, ports = [], {}
     script = """
-import sys
-from fastapi import FastAPI
+import sys, asyncio
+from fastapi import FastAPI, Request
 from plugins.conversation_share.dashboard.plugin_api import router
 from hermes_cli.web_routers.files import router as files_router
+from tools.execution_metadata import execution_scope
+from tui_gateway import server
 import uvicorn
 app = FastAPI()
 app.include_router(router, prefix='/api/plugins/conversation-share')
 app.include_router(files_router)
+server._sessions['runtime'] = {'profile_name': 'default', 'session_key': 'chat'}
+@app.middleware('http')
+async def credentials(request, next):
+    assert request.headers.get('Authorization') is None
+    return await next(request)
+@app.post('/test/publish')
+async def publish(request: Request):
+    data = await request.json()
+    def run():
+        import json
+        import hermes_cli.plugins as plugins
+        from hermes_cli.lifecycle import invoke_hook
+        from hermes_constants import get_hermes_home
+        from tools.terminal_tool import record_session_cwd
+        from tools.registry import registry
+        plugins.discover_plugins(force=True)
+        tool = registry.get_entry('publish_artifact')
+        assert tool and tool.toolset == 'desktop_ui'
+        workspace = get_hermes_home() / 'workspace'
+        record_session_cwd('task', str(workspace))
+        invoke_hook('pre_llm_call', session_id='chat', platform='desktop', is_first_turn=True)
+        file = workspace / 'report.md'
+        file.write_text('# 你好\\n正式分享')
+        invoke_hook('post_tool_call', tool_name='write_file', session_id='chat', task_id='task', status='ok',
+            args={'path': str(file), 'content': file.read_text()}, result={'resolved_path': str(file)})
+        if data.get('uploaded'):
+            from plugins.conversation_share.origins import current
+            current().mark_uploaded('chat')
+        with execution_scope({'cloud_share': data.get('grant', '')}, 'runtime'):
+            result = registry.dispatch('publish_artifact', {'path': str(file)}, task_id='task', session_id='chat')
+        return json.loads(result) if isinstance(result, str) else result
+    return await asyncio.to_thread(run)
 @app.get('/health')
 def health(): return {'ok': True}
 uvicorn.run(app, fd=int(sys.argv[1]), log_level='error')
@@ -150,11 +184,46 @@ async def stack(tmp_path, database_url):
                     return result
                 try:
                     yield SimpleNamespace(call=call, reset=reset, homes=homes, received=received,
-                        failures=failures, objects=objects, entry=entry, credentials=credentials, client=client)
+                        failures=failures, objects=objects, entry=entry, credentials=credentials, client=client, ports=ports, http=http)
                 finally:
+                    await entry.share_routes.agent.close()
                     for task in entry._bg:
                         await task
                     await entry.database.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.platforms('posix')
+async def test_agent_publishes_through_entry_with_turn_and_login_bound_authority(tmp_path, postgres_database_url):
+    async with stack(tmp_path, postgres_database_url) as env:
+        async def tool(owner, **data):
+            async with env.http.post(f'http://127.0.0.1:{env.ports[owner]}/test/publish', json=data) as response:
+                assert response.status == 200, await response.text()
+                return await response.json()
+
+        assert 'error' in await tool('alice')
+        assert not env.received
+        grant = (await env.call('alice', 'artifact', 'grant', {'sessionId': 'runtime'}))['cloud_share']
+        assert 'error' in await tool('bob', grant=grant)
+        result = await tool('alice', grant=grant)
+        assert result['url'] == f'https://share.test/{result["share_id"]}'
+        assert result['expires_at'] and result['version'] == 1
+        assert env.received[-1][2] == 'Bearer maas-alice'
+        assert '你好'.encode() in env.received[-1][3]
+        records = await env.call('alice', 'artifact', 'inspect', {'query': {'shareId': result['share_id']}})
+        assert records['url'] == result['url']
+        count = len(env.received)
+        assert 'error' in await tool('alice', grant=grant)  # A completed turn cannot lend its authority.
+        assert len(env.received) == count
+        revoked = (await env.call('alice', 'artifact', 'grant', {'sessionId': 'runtime'}))['cloud_share']
+        blocked = await env.client.post('/hermes/api/plugins/conversation-share/internal/grant',
+            json={}, cookies=env.credentials['alice'])
+        assert blocked.status == 404
+        await env.client.post('/hermes/__entry/logout', cookies=env.credentials['alice'])
+        assert 'error' in await tool('alice', grant=revoked)
+        bob = (await env.call('bob', 'artifact', 'grant', {'sessionId': 'runtime'}))['cloud_share']
+        assert 'error' in await tool('bob', grant=bob, uploaded=True)
+        assert len(env.received) == count
 
 
 @pytest.mark.asyncio

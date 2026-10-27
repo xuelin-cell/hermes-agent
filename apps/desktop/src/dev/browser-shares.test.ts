@@ -46,6 +46,12 @@ it('preserves conversation contracts over authenticated entry transport without 
   expect(requests[0].body).toEqual({ owner, request })
   expect(requests[2].body).toEqual({ ticket: 'ticket', html: '<html>snapshot</html>' })
   expect(requests[4].body).toEqual({ owner, sessionId: 'chat' })
+  await browserShares('/hermes/').prepareCloudShareTurn('runtime')
+  expect(requests.at(-1)).toEqual({ path: '/hermes/__entry/artifact-shares/grant', body: { sessionId: 'runtime' } })
+  localStorage.clear()
+  const count = requests.length
+  expect(await browserShares('/hermes/').prepareCloudShareTurn('runtime')).toBeNull()
+  expect(requests).toHaveLength(count)
 })
 
 it('notifies artifact consumers across tabs while preserving source hashes and expected share IDs', async () => {
