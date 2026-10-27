@@ -725,6 +725,40 @@ describe('refreshSessions identity + loading hygiene', () => {
 })
 
 describe('refreshSessions batches slices into one request', () => {
+  it('切换专家时保留全部聊天历史，消息和定时任务仍按原档案查询', async () => {
+    const history = [
+      row('assistant'),
+      row('expert-a-chat', { profile: 'expert-a' }),
+      row('expert-b-chat', { profile: 'expert-b' })
+    ]
+
+    listSidebarSessions.mockImplementation(async ({ recentsProfile }: { recentsProfile: string }) =>
+      sidebar(
+        {
+          sessions: recentsProfile === 'all' ? history : history.filter(session => session.profile === recentsProfile)
+        },
+        [row(`${recentsProfile}-cron`, { profile: recentsProfile, source: 'cron' })],
+        [row(`${recentsProfile}-signal`, { profile: recentsProfile, source: 'signal' })]
+      )
+    )
+
+    const { rerender, result } = renderHook(
+      ({ profileScope }) => useSessionListActions({ profileScope, recentsProfileScope: '__all__' }),
+      { initialProps: { profileScope: 'default' } }
+    )
+
+    for (const profileScope of ['default', 'expert-a', 'expert-b', 'default']) {
+      rerender({ profileScope })
+      await act(async () => {
+        await result.current.refreshSessions()
+      })
+      expect($sessions.get().map(session => session.id)).toEqual(history.map(session => session.id))
+      expect($cronSessions.get().map(session => session.id)).toEqual([`${profileScope}-cron`])
+      expect($messagingSessions.get().map(session => session.id)).toEqual([`${profileScope}-signal`])
+      expect(getCronJobs).toHaveBeenLastCalledWith(profileScope)
+    }
+  })
+
   it('forwards the active profile scope + section limits to the batched call', async () => {
     listSidebarSessions.mockResolvedValue(sidebar({ sessions: [] }))
     const { result } = renderHook(() => useSessionListActions({ profileScope: 'work' }))
