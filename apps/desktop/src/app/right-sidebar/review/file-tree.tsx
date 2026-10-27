@@ -38,6 +38,7 @@ import {
   $reviewScopeCwd,
   $reviewSelectedPath,
   $reviewTreeMode,
+  $reviewTurnFiles,
   requestRevert,
   reviewRepoCwd,
   selectReviewFile,
@@ -313,6 +314,7 @@ function ReviewFileRow({ node, depth }: { node: ReviewTreeNode; depth: number })
   const { t } = useI18n()
   const c = t.statusStack.coding
   const selectedPath = useStore($reviewSelectedPath)
+  const readOnly = useStore($reviewTurnFiles) !== null
   const file = node.file!
   const selected = file.path === selectedPath
   const glyph = STATUS_GLYPH[file.status] ?? STATUS_GLYPH.M
@@ -420,40 +422,42 @@ function ReviewFileRow({ node, depth }: { node: ReviewTreeNode; depth: number })
           )}
         </span>
 
-        <span className="hidden shrink-0 items-center gap-0.5 group-hover/review-row:flex">
-          <Tip label={file.staged ? c.unstage : c.stage}>
-            <Button
-              aria-label={file.staged ? c.unstage : c.stage}
-              className="size-4 rounded text-muted-foreground/70 hover:text-foreground"
-              onClick={event => {
-                event.stopPropagation()
-                void (file.staged ? unstageReviewFile(file.path) : stageReviewFile(file.path))
-              }}
-              size="icon-xs"
-              variant="ghost"
-            >
-              <Codicon name={file.staged ? 'remove' : 'add'} size="0.7rem" />
-            </Button>
-          </Tip>
-          <Tip label={c.revert}>
-            <Button
-              aria-label={c.revert}
-              className="size-4 rounded text-muted-foreground/70 hover:text-(--ui-red)"
-              onClick={event => {
-                event.stopPropagation()
-                requestRevert(file.path)
-              }}
-              size="icon-xs"
-              variant="ghost"
-            >
-              <Codicon name="discard" size="0.7rem" />
-            </Button>
-          </Tip>
-        </span>
+        {!readOnly && (
+          <span className="hidden shrink-0 items-center gap-0.5 group-hover/review-row:flex">
+            <Tip label={file.staged ? c.unstage : c.stage}>
+              <Button
+                aria-label={file.staged ? c.unstage : c.stage}
+                className="size-4 rounded text-muted-foreground/70 hover:text-foreground"
+                onClick={event => {
+                  event.stopPropagation()
+                  void (file.staged ? unstageReviewFile(file.path) : stageReviewFile(file.path))
+                }}
+                size="icon-xs"
+                variant="ghost"
+              >
+                <Codicon name={file.staged ? 'remove' : 'add'} size="0.7rem" />
+              </Button>
+            </Tip>
+            <Tip label={c.revert}>
+              <Button
+                aria-label={c.revert}
+                className="size-4 rounded text-muted-foreground/70 hover:text-(--ui-red)"
+                onClick={event => {
+                  event.stopPropagation()
+                  requestRevert(file.path)
+                }}
+                size="icon-xs"
+                variant="ghost"
+              >
+                <Codicon name="discard" size="0.7rem" />
+              </Button>
+            </Tip>
+          </span>
+        )}
 
         <DiffCount
           added={node.added}
-          className="text-[0.64rem] leading-4 group-hover/review-row:hidden"
+          className={cn('text-[0.64rem] leading-4', !readOnly && 'group-hover/review-row:hidden')}
           removed={node.removed}
         />
         {file.staged && (
@@ -487,6 +491,7 @@ function ReviewFileContextMenu({
   const c = t.statusStack.coding
   const m = t.fileMenu
   const localFs = !isDesktopFsRemoteMode()
+  const readOnly = useStore($reviewTurnFiles) !== null
 
   return (
     <ContextMenu>
@@ -494,19 +499,23 @@ function ReviewFileContextMenu({
       <ContextMenuContent>
         <ContextMenuItem onSelect={onOpenChanges}>{c.openChanges}</ContextMenuItem>
         <ContextMenuItem onSelect={onOpenFile}>{c.openFile}</ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem
-          onSelect={() =>
-            void (file.staged ? unstageReviewFile(file.path) : stageReviewFile(file.path)).catch(err =>
-              notifyError(err, file.staged ? c.unstage : c.stage)
-            )
-          }
-        >
-          {file.staged ? c.unstage : c.stage}
-        </ContextMenuItem>
-        <ContextMenuItem onSelect={() => requestRevert(file.path)} variant="destructive">
-          {c.revert}
-        </ContextMenuItem>
+        {!readOnly && (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              onSelect={() =>
+                void (file.staged ? unstageReviewFile(file.path) : stageReviewFile(file.path)).catch(err =>
+                  notifyError(err, file.staged ? c.unstage : c.stage)
+                )
+              }
+            >
+              {file.staged ? c.unstage : c.stage}
+            </ContextMenuItem>
+            <ContextMenuItem onSelect={() => requestRevert(file.path)} variant="destructive">
+              {c.revert}
+            </ContextMenuItem>
+          </>
+        )}
         <ContextMenuSeparator />
         <ContextMenuItem onSelect={() => revealFileInTree(dragPath)}>{m.revealInSidebar}</ContextMenuItem>
         {localFs && (
