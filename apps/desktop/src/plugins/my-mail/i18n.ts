@@ -27,7 +27,11 @@ const en = {
   earlier: 'Earlier',
   reply: 'Reply with Agent',
   forward: 'Forward with Agent',
+  addToConversation: 'Add email to conversation',
   attachments: 'Attachments',
+  sender: 'From',
+  recipient: 'To',
+  sentAt: 'Time',
   download: 'Download',
   close: 'Close',
   confirmDisable: 'Disable Agent Mail? The saved Wo Mail authorization remains on this device for quick re-enable.',
@@ -36,6 +40,10 @@ const en = {
 }
 
 const zh = {
+  addToConversation: '\u6dfb\u52a0\u90ae\u4ef6\u5230\u5bf9\u8bdd',
+  sender: '\u53d1\u4ef6\u4eba',
+  recipient: '\u6536\u4ef6\u4eba',
+  sentAt: '\u65f6\u95f4',
   nav: '我的邮箱',
   title: '我的邮箱',
   subtitle: '安全高效地使用 元景数字员工 收发邮件 · 由 Agent Mail 提供服务',

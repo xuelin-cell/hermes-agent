@@ -31,6 +31,10 @@ vi.mock('./api', () => ({
 
 vi.mock('./i18n', () => ({
   useMailText: () => ({
+    addToConversation: '\u6dfb\u52a0\u90ae\u4ef6\u5230\u5bf9\u8bdd',
+    sender: '\u53d1\u4ef6\u4eba',
+    recipient: '\u6536\u4ef6\u4eba',
+    sentAt: '\u65f6\u95f4',
     cancel: '取消',
     attachments: '附件',
     close: '关闭',
@@ -103,7 +107,7 @@ describe('MyMailPage disabled state', () => {
       cc: [], date: '2026-10-23T08:30:00Z', flags: [], folder: 'INBOX', from: null, hasAttachments: true,
       html: null, seen: false, subject: 'Report', text: 'Attached.', to: [], uid: 8
     })
-    downloadAttachment.mockResolvedValue({ file: { downloadUrl: 'http://127.0.0.1:8787/files/x' } })
+    downloadAttachment.mockResolvedValue({ canceled: false, saved: true })
     const openExternal = vi.fn().mockResolvedValue(undefined)
     Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: { openExternal } })
     const { MyMailPage } = await import('./page')
@@ -111,10 +115,11 @@ describe('MyMailPage disabled state', () => {
     render(<MyMailPage />)
     fireEvent.click(await screen.findByText('Report'))
     expect(await screen.findByText('report.txt')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '添加邮件到对话' })).toBeTruthy()
     expect(downloadAttachment).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole('button', { name: '下载' }))
     await waitFor(() => expect(downloadAttachment).toHaveBeenCalledWith('default', 'INBOX', 8, '2'))
-    expect(openExternal).toHaveBeenCalledWith('http://127.0.0.1:8787/files/x')
+    expect(openExternal).not.toHaveBeenCalled()
   })
 })

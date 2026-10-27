@@ -24,6 +24,7 @@ function makeManager(
     mailState?: Pick<AgentMailLocalStateStore, 'get' | 'save'>
     exclusiveCode?: (phone: string) => Promise<string>
     identity?: () => LoginIdentity | null
+    saveAttachment?: (name: string, download: () => Promise<Response>) => Promise<{ canceled: boolean; saved: boolean }>
   } = {}
 ) {
   return new ConnectorManager({
@@ -37,6 +38,7 @@ function makeManager(
       return saved
     },
     openExternal: vi.fn(async () => undefined),
+    saveAttachment: overrides.saveAttachment ?? vi.fn(async () => ({ canceled: false, saved: true })),
     log: vi.fn(),
     identity:
       overrides.identity ??
@@ -343,6 +345,44 @@ it('keeps Wo Mail out of the connector catalogue while serving it through Agent 
       input: {}
     })
     expect(writes).toEqual([])
+  } finally {
+    await manager.close()
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+it('keeps attachment download URLs in the main process and delegates the save to the native owner', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-agent-mail-save-'))
+  const writes: unknown[] = []
+  const saved = { mcp_servers: { connector_wo_mail: { desktop_agent_mail: true, enabled: true } } }
+  const saveAttachment = vi.fn(async (_name: string, download: () => Promise<Response>) => {
+    const response = await download()
+    expect(await response.text()).toBe('attachment body')
+    return { canceled: false, saved: true }
+  })
+
+  vi.spyOn(ConnectorRuntime.prototype, 'request').mockResolvedValue({
+    success: true,
+    data: { file: { downloadUrl: 'http://127.0.0.1:1234/api/files/a', name: 'report.md' } }
+  })
+  vi.spyOn(ConnectorRuntime.prototype, 'download').mockResolvedValue(new Response('attachment body'))
+  vi.spyOn(ConnectorRuntime.prototype, 'connection').mockResolvedValue({
+    configured: true,
+    displayName: '13800000000@wo.cn'
+  })
+  vi.spyOn(ConnectorRuntime.prototype, 'close').mockResolvedValue()
+  const manager = makeManager(home, saved, writes, { saveAttachment })
+
+  try {
+    await expect(
+      manager.agentMail({
+        operation: 'action',
+        profile: 'default',
+        action: 'download_attachment',
+        input: { attachmentId: '2', folder: 'INBOX', uid: 8 }
+      })
+    ).resolves.toMatchObject({ data: { canceled: false, saved: true } })
+    expect(saveAttachment).toHaveBeenCalledWith('report.md', expect.any(Function))
   } finally {
     await manager.close()
     fs.rmSync(home, { recursive: true, force: true })
