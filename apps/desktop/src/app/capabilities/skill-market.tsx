@@ -12,8 +12,7 @@ import {
   getUniWorkMarketCategories,
   getUniWorkMarketSkills,
   getUniWorkRecommendedCategories,
-  getUniWorkRecommendedSkills,
-  installUniWorkSkill
+  getUniWorkRecommendedSkills
 } from '@/hermes'
 import { skillMarketInstallPending } from '@/lib/browser-shell'
 import { Loader2, Plus, Search } from '@/lib/icons'
@@ -22,6 +21,8 @@ import { installHubSkill } from '@/store/hub-actions'
 import { notify, notifyError } from '@/store/notifications'
 
 import { CARD_ACCENTS } from './catalog/catalog-card'
+import { useSkillsCopy } from './skills-mt/copy'
+import { installMarketSkillWithApproval } from './skills-mt/market-install'
 // desktop-mt: 显示名不是装好后的技能名，「已安装」按安装记录判断。
 import { useCatalogInstalled } from './skills-mt/use-catalog-installed'
 import { SKILLS_QUERY_KEY } from './skills/skills-data'
@@ -38,6 +39,7 @@ interface SkillMarketProps extends React.ComponentProps<'section'> {
 const isChinese = () => typeof navigator !== 'undefined' && /^zh\b/i.test(navigator.language)
 
 export function SkillMarket({ installed, installedCount, installedNames, profile, className }: SkillMarketProps) {
+  const riskCopy = useSkillsCopy()
   const zh = isChinese()
   const queryClient = useQueryClient()
   // Preserve the former Skills-page landing behavior: management opens first;
@@ -123,7 +125,12 @@ export function SkillMarket({ installed, installedCount, installedNames, profile
 
     try {
       if (skill.package_download_path || skill.download_url) {
-        const result = await installUniWorkSkill(skill, profile)
+        const result = await installMarketSkillWithApproval(skill, profile, riskCopy)
+
+        if (!result) {
+          return
+        }
+
         if (!result.ok || !result.name || !result.install_path) {
           throw new Error(zh ? '技能安装未完成，请重试' : 'Skill installation did not complete. Please retry.')
         }

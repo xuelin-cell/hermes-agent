@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from hermes_cli.skill_market_install import (
     MarketSkillInstallError,
     install_market_skill,
+    MarketSkillApprovalRequired,
     validate_package_url,
 )
 
@@ -64,6 +65,7 @@ class SkillInstall(BaseModel):
     id: str
     name: Optional[str] = None
     download_url: str
+    approved_hash: Optional[str] = None
 
 
 @router.post("/api/skills/market/install")
@@ -81,6 +83,9 @@ async def install_skill(body: SkillInstall, profile: Optional[str] = None):
         raise HTTPException(400, "技能名称不能为空")
     import asyncio
     try:
-        return await asyncio.to_thread(install_market_skill, url, body.id, profile)
+        approval = {"approved_hash": body.approved_hash} if body.approved_hash else {}
+        return await asyncio.to_thread(install_market_skill, url, body.id, profile, **approval)
+    except MarketSkillApprovalRequired as exc:
+        return {"ok": False, "requires_confirmation": True, "package_hash": exc.package_hash, "report": exc.report}
     except MarketSkillInstallError as exc:
         raise HTTPException(400, str(exc)) from exc

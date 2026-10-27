@@ -43,6 +43,12 @@ const ZH_EXAMPLES: Record<ExampleKey, (name: string) => string> = {
 
 registerPluginLocales(SCOPE, {
   en: {
+    riskTitle: 'Install a flagged skill?',
+    riskBody: (name: string) =>
+      `“${name}” was flagged as dangerous. It may expose files or credentials or run unsafe commands. Review the report before approving this package only.`,
+    riskReport: 'Scan report',
+    riskInstall: 'Accept risk and install',
+    riskChanged: 'The package changed after approval. Review it again before installing.',
     experts: 'Experts',
     searchExperts: 'Search experts',
     searchKits: 'Search kits',
@@ -98,6 +104,12 @@ registerPluginLocales(SCOPE, {
       `I'd like to try the “${name}” skill. Briefly explain what it can do and walk me through one concrete example.`
   },
   zh: {
+    riskTitle: '确认安装风险技能',
+    riskBody: (name: string) =>
+      `「${name}」被扫描器判定为危险，可能涉及文件或凭据泄露、执行不安全命令等风险。请核对扫描报告；确认仅放行本次技能包，不会关闭全局安全扫描。`,
+    riskReport: '扫描报告',
+    riskInstall: '接受风险并安装',
+    riskChanged: '确认后技能包内容发生变化，请重新检查后再安装。',
     experts: '专家',
     searchExperts: '搜索专家',
     searchKits: '搜索套件',
@@ -152,6 +164,12 @@ registerPluginLocales(SCOPE, {
     example: (key: ExampleKey, name: string) => ZH_EXAMPLES[key](name)
   },
   'zh-hant': {
+    riskTitle: '確認安裝風險技能',
+    riskBody: (name: string) =>
+      `「${name}」被掃描器判定為危險，可能洩露檔案或憑證、執行不安全命令。請核對報告；確認僅放行本次技能包，不會關閉全域掃描。`,
+    riskReport: '掃描報告',
+    riskInstall: '接受風險並安裝',
+    riskChanged: '確認後技能包內容已變更，請重新檢查再安裝。',
     experts: '專家',
     searchExperts: '搜尋專家',
     searchKits: '搜尋套件',

@@ -1282,10 +1282,13 @@ describe('useGatewayBoot remote reconnect loop (real hook, fake socket)', () => 
     const staleRefresh = deferred<void>()
     const publications: string[] = []
     let switchRefresh = 0
+    let initialRefresh = true
 
     const refreshSessions = vi.fn(async (shouldPublish?: () => boolean) => {
-      // Initial boot remains a compatible zero-argument caller.
-      if (!shouldPublish) {
+      // The first read belongs to boot; this test holds the subsequent switch.
+      if (initialRefresh || !shouldPublish) {
+        initialRefresh = false
+
         return
       }
 
@@ -2042,14 +2045,18 @@ describe('useGatewayBoot remote reconnect loop (real hook, fake socket)', () => 
     // or a transient read error). That must NOT reject boot() into
     // failDesktopBoot's "Hermes couldn't start" overlay — the socket is open
     // and the app is fully usable with an empty sidebar.
+    let listStartedBeforeSocketOpen = false
+
     const refreshSessions = vi.fn(async () => {
+      listStartedBeforeSocketOpen = !FakeWebSocket.instances.some(socket => socket.readyState === FakeWebSocket.OPEN)
       throw new Error('404: {"detail":"No such API endpoint: /api/profiles/sessions/sidebar"}')
     })
 
     render(<Harness refreshSessions={refreshSessions} />)
     await flushAsync()
 
-    expect(refreshSessions).toHaveBeenCalled()
+    expect(refreshSessions).toHaveBeenCalledOnce()
+    expect(listStartedBeforeSocketOpen).toBe(true)
     expect($gatewayState.get()).toBe('open')
     // Boot completed: no error, overlay dismissed.
     expect($desktopBoot.get().error).toBeNull()
