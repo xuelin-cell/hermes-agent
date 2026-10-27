@@ -220,6 +220,9 @@ class TenantManager:
         self._cron_woken: dict[str, float] = {}
         self._wake_failures: dict[tuple[str, datetime], int] = {}
         self._busy_seen: dict[str, str] = {}
+        # 每个用户实例里的 hermes 是用哪把 key 起的（sha256），省得每个请求都查库；以库里的为准
+        self._hermes_keys: dict[str, str] = {}
+        self._reload_tried: dict[str, float] = {}
 
     @property
     def use_cube(self) -> bool:
@@ -703,6 +706,7 @@ class TenantManager:
             await self.store.set_tenant_state(user_id, "running")
             if touch:
                 await self.store.touch_tenant(user_id)
+            await self._reload_if_key_changed(user_id, slug, sandbox_id, token, context)
             await self._sync_api_key(tenant, context.api_key)
             return tenant
 
@@ -832,6 +836,7 @@ class TenantManager:
             user_id, sandbox_id, str(report.get("archive") or ""),
             {"restored_from": report.get("restored_from", ""), "counts": report.get("counts") or {}},
         )
+        await self._remember_hermes_key(user_id, sandbox_id, context.api_key)
         await self.store.write_audit(user_id, "tenant.restore", {
             "sandbox": sandbox_id,
             "restored_from": report.get("restored_from", ""),
@@ -1104,6 +1109,70 @@ class TenantManager:
                 await self.store.set_tenant_state(user_id, "stopped")
                 fixed += 1
         log.info("reconcile(cube): %d 个有实例的用户，校正 %d 条，平台实例未动", len(rows), fixed)
+
+    # ---- 换了 key 要重启 hermes ----------------------------------------------------
+    #
+    # 企业模式每次登录都会换设备令牌（平台对同一设备只留一个有效令牌，旧的吊销）。_sync_api_key 经 /api/env
+    # 换掉的环境变量，模型调用每次现读，够用；元景 MCP 不够：hermes 连接时把地址里的 ${KEY} 展开成了当时的
+    # 令牌，旧令牌一吊销，元景工具全部 401。所以 key 变了就让转发器重写配置、重启 hermes（/__mt/reload）。
+
+    RELOAD_RETRY_S = 30.0
+
+    async def _remember_hermes_key(self, user_id: str, sandbox_id: str, api_key: str) -> None:
+        if not api_key:
+            return
+        digest = hashlib.sha256(api_key.encode("utf-8")).hexdigest()
+        await self.store.set_hermes_key(user_id, sandbox_id, digest)
+        self._hermes_keys[user_id] = digest
+
+    async def _reload_if_key_changed(self, user_id: str, slug: str, sandbox_id: str, token: str, context) -> None:
+        """实例里的 hermes 是用旧 key 起的：让转发器重写配置并重启 hermes。
+
+        对话回合、定时任务正在跑就这次不动，过 RELOAD_RETRY_S 秒后下一个请求再看。
+        不知道它是用哪把 key 起的（入口升级前建的实例）就不动；重新加载失败只记日志，不影响这次请求。
+        """
+        assert self.cube is not None
+        api_key = context.api_key
+        if not api_key:
+            return
+        want = hashlib.sha256(api_key.encode("utf-8")).hexdigest()
+        unknown = f"?{sandbox_id}"  # 这台实例记不得是用哪把 key 起的：之后的请求也不用再查库
+        if self._hermes_keys.get(user_id) in (want, unknown):
+            return
+        rt = await self.store.get_runtime(user_id)
+        if rt.sandbox_id != sandbox_id:
+            return
+        if not rt.hermes_key_sha256:
+            self._hermes_keys[user_id] = unknown
+            return
+        if rt.hermes_key_sha256 == want:
+            self._hermes_keys[user_id] = want
+            return
+        now = time.monotonic()
+        if now - self._reload_tried.get(user_id, -1e9) < self.RELOAD_RETRY_S:
+            return
+        self._reload_tried[user_id] = now
+        reason = busy_reason(await self._status_activity(sandbox_id), time.time(), 0)
+        if reason:
+            log.info("tenant %s: 模型 key 换了，但实例在忙（%s），稍后再重新加载", slug, reason)
+            return
+        try:
+            body = await self.cube.reload(
+                sandbox_id, self.s.forward_port, token,
+                files=self._cube_seed_files(api_key, context.endpoint, context.catalog,
+                                            getattr(context, "limits", None)),
+                ready_timeout_s=self.s.ready_timeout_s,
+            )
+        except CubeError as exc:
+            log.warning("tenant %s: 重新加载实例 %s 失败: %s", slug, sandbox_id[:12], exc)
+            return
+        await self._remember_hermes_key(user_id, sandbox_id, api_key)
+        self._reload_tried.pop(user_id, None)
+        # 新的 .env 已经写进去、hermes 已经按它重启：不用再经 /api/env 送一遍
+        self._synced_key_digests[user_id] = hashlib.sha256(api_key.encode("utf-8")).digest()
+        await self.store.write_audit(user_id, "tenant.reload",
+                                     {"sandbox": sandbox_id, "reason": "model_key", "written": body.get("written", [])})
+        log.info("tenant %s: 模型 key 换了，实例 %s 已重新加载（hermes 已重启）", slug, sandbox_id[:12])
 
     async def _sync_api_key(self, tenant: Tenant, api_key: str) -> None:
         """通过 Hermes 既有接口更新 Key；只有成功后才记录内存摘要。"""

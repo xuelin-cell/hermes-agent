@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -28,12 +28,18 @@ class FakeStore:
     calls: list = field(default_factory=list)
     epoch: int = 0
     cron_due: list = field(default_factory=list)   # cron_due_tenants 返回的 (user_id, 到点时间)
+    api_key: str = "k"                             # 现在的模型 key（企业模式每次登录都换）
 
     async def ensure_tenant_token(self, user_id):
         return "tok"
 
     async def get_tenant_context(self, user_id):
-        return TenantContext(api_key="k", container_token="tok", endpoint=("http://plan/v1", "m1"), catalog=[("m1", ""), ("m2", "")])
+        return TenantContext(api_key=self.api_key, container_token="tok", endpoint=("http://plan/v1", "m1"),
+                             catalog=[("m1", ""), ("m2", "")])
+
+    async def set_hermes_key(self, user_id, sandbox_id, key_sha256):
+        if self.runtime.sandbox_id == sandbox_id:
+            self.runtime = replace(self.runtime, hermes_key_sha256=key_sha256)
 
     async def get_runtime(self, user_id):
         return self.runtime
@@ -70,8 +76,8 @@ class FakeStore:
 
     async def set_state_owner(self, user_id, owner, archive, manifest):
         self.calls.append(("set_state_owner", owner, archive))
-        self.runtime = Runtime(self.runtime.state, self.runtime.sandbox_id, self.runtime.template_id,
-                               self.runtime.state_epoch, owner, archive or self.runtime.state_archive, self.runtime.lifecycle)
+        # 和真的一样只改这两列，别的（流量令牌、hermes 用的 key）留着
+        self.runtime = replace(self.runtime, state_owner=owner, state_archive=archive or self.runtime.state_archive)
 
     async def set_state_archive(self, user_id, archive, manifest):
         self.calls.append(("set_state_archive", archive))
@@ -84,8 +90,7 @@ class FakeStore:
 
     async def set_tenant_state(self, user_id, state):
         self.calls.append(("state", state))
-        self.runtime = Runtime(state, self.runtime.sandbox_id, self.runtime.template_id, self.runtime.state_epoch,
-                               self.runtime.state_owner, self.runtime.state_archive, self.runtime.lifecycle)
+        self.runtime = replace(self.runtime, state=state)
 
     async def touch_tenant(self, user_id):
         self.calls.append(("touch",))
@@ -227,6 +232,14 @@ class FakeCube:
     async def pause_sandbox(self, sandbox_id):
         self.calls.append(("pause", sandbox_id))
         self.sandboxes[sandbox_id]["state"] = "paused"
+
+    reload_error: CubeError | None = None
+
+    async def reload(self, sandbox_id, port, token, *, files, ready_timeout_s=120):
+        self.calls.append(("reload", sandbox_id, next(f["content"] for f in files if f["path"] == ".env")))
+        if self.reload_error is not None:
+            raise self.reload_error
+        return {"ok": True, "hermes": True, "written": [".env"]}
 
 
 def _manager(store, cube, **overrides) -> TenantManager:
@@ -730,3 +743,79 @@ async def test_wake_disabled_when_lead_is_zero() -> None:
     cube = FakeCube()
     await _manager(store, cube, cron_wake_lead_s=0).wake_due_cron()
     assert cube.calls == [] and store.calls == []
+
+
+# ---------------------------------------------------------------- 换了模型 key：重新加载（/__mt/reload）
+
+def _sha(key: str) -> str:
+    import hashlib
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()
+
+
+@pytest.mark.asyncio
+async def test_changed_key_reloads_the_running_instance_once(monkeypatch) -> None:
+    """企业模式每次登录都换设备令牌：hermes 连元景 MCP 时展开的是旧令牌，要重写配置并重启 hermes。"""
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    store, cube = FakeStore(), FakeCube()
+    manager = _manager(store, cube)
+    await manager.ensure_running("u")
+    assert store.runtime.hermes_key_sha256 == _sha("k")   # 引导时记下 hermes 用的是哪把 key
+    await manager.ensure_running("u")
+    assert not any(c[0] == "reload" for c in cube.calls)   # key 没变：不动
+
+    store.api_key = "k2"                                     # 重新登录，平台发了新令牌
+    await manager.ensure_running("u")
+    reloads = [c for c in cube.calls if c[0] == "reload"]
+    assert len(reloads) == 1 and reloads[0][1] == "sb1" and "=k2" in reloads[0][2]
+    assert store.runtime.hermes_key_sha256 == _sha("k2")
+    assert ("audit", "tenant.reload") in store.calls
+    await manager.ensure_running("u")
+    assert len([c for c in cube.calls if c[0] == "reload"]) == 1   # 只重新加载一次
+
+
+@pytest.mark.asyncio
+async def test_busy_instance_reloads_later(monkeypatch) -> None:
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    store, cube = FakeStore(), FakeCube()
+    manager = _manager(store, cube)
+    await manager.ensure_running("u")
+    store.api_key = "k2"
+    cube.activity = {"turns": 1, "cron_running": 0}             # 对话回合在跑：先不重启
+    await manager.ensure_running("u")
+    assert not any(c[0] == "reload" for c in cube.calls)
+    cube.activity = {"turns": 0, "cron_running": 0}
+    await manager.ensure_running("u")
+    assert not any(c[0] == "reload" for c in cube.calls)       # 刚问过：RELOAD_RETRY_S 内不再问
+    monkeypatch.setattr(TenantManager, "RELOAD_RETRY_S", 0.0)
+    await manager.ensure_running("u")
+    assert [c[1] for c in cube.calls if c[0] == "reload"] == ["sb1"]
+
+
+@pytest.mark.asyncio
+async def test_instance_without_a_recorded_key_is_left_alone(monkeypatch) -> None:
+    """入口升级前建的实例记不得用的是哪把 key：不去重启它（模板一换它就换代了）。"""
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    store = FakeStore(runtime=Runtime("running", "sb9", "tpl-new", 3, "sb9", "a.tar.gz", ""))
+    cube = FakeCube({"sb9": {"sandboxID": "sb9", "templateID": "tpl-new", "state": "running"}})
+    manager = _manager(store, cube)
+    store.api_key = "k2"
+    await manager.ensure_running("u")
+    await manager.ensure_running("u")
+    assert not any(c[0] in ("reload", "status") for c in cube.calls)
+
+
+@pytest.mark.asyncio
+async def test_failed_reload_does_not_fail_the_request(monkeypatch) -> None:
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    monkeypatch.setattr(TenantManager, "RELOAD_RETRY_S", 0.0)
+    store, cube = FakeStore(), FakeCube()
+    manager = _manager(store, cube)
+    await manager.ensure_running("u")
+    store.api_key = "k2"
+    cube.reload_error = CubeError(400, "未知接口 /__mt/reload")
+    tenant = await manager.ensure_running("u")
+    assert tenant.sandbox_id == "sb1"
+    assert store.runtime.hermes_key_sha256 == _sha("k")         # 没成：还记着旧的，下次再试
+    cube.reload_error = None
+    await manager.ensure_running("u")
+    assert store.runtime.hermes_key_sha256 == _sha("k2")

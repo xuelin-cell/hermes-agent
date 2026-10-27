@@ -342,3 +342,22 @@ async def test_cron_due_query_wakes_each_time_point_once(postgres_database_url: 
     await store.set_next_cron("u-due", None)
     assert [u for u, _ in await store.cron_due_tenants(24 * 3600 + 120)] == ["u-later"]
     await database.close()
+
+
+@pytest.mark.asyncio
+async def test_hermes_key_is_kept_per_instance_and_cleared_by_a_new_one(postgres_database_url: str) -> None:
+    """实例里的 hermes 用哪把 key 起的：只记给当前这台实例，换一台实例就清空。"""
+    database, store = await _store(postgres_database_url)
+    await _user_with_runtime(store, "user-k")
+    epoch = await store.next_epoch("user-k")
+    await store.record_sandbox("user-k", "sb-1", "tpl-x", epoch)
+    assert (await store.get_runtime("user-k")).hermes_key_sha256 == ""
+
+    await store.set_hermes_key("user-k", "sb-1", "a" * 64)
+    assert (await store.get_runtime("user-k")).hermes_key_sha256 == "a" * 64
+    await store.set_hermes_key("user-k", "sb-old", "b" * 64)          # 实例已经换了：不记
+    assert (await store.get_runtime("user-k")).hermes_key_sha256 == "a" * 64
+
+    await store.record_sandbox("user-k", "sb-2", "tpl-x", epoch + 1)
+    assert (await store.get_runtime("user-k")).hermes_key_sha256 == ""
+    await database.close()

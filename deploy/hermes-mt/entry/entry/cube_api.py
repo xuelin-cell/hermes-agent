@@ -449,6 +449,19 @@ class Cube:
         )
         return body if isinstance(body, dict) else {}
 
+    async def reload(self, sandbox_id: str, port: int, token: str, *, files: list[dict],
+                     ready_timeout_s: int = 120) -> dict:
+        """按种子文件重写配置并重启 hermes，等它重新就绪（见 seed/forward.py 的 _reload）。
+
+        老转发器没有这个接口，回 400「未知接口」：调用方当作做不了。
+        """
+        _, body = await self._tenant_req(
+            "POST", sandbox_id, port, "/__mt/reload",
+            json_body={"files": files, "ready_timeout_s": ready_timeout_s},
+            timeout_s=ready_timeout_s + 30, extra_headers={"X-MT-Token": token},
+        )
+        return body if isinstance(body, dict) else {}
+
     async def wait_hermes(self, sandbox_id: str, port: int, timeout_s: float = 240) -> None:
         """等 hermes 真的能应答业务请求。
 

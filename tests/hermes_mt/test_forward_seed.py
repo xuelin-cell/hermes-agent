@@ -206,3 +206,85 @@ async def test_bootstrap_syncs_skills_before_hermes_starts(forward, monkeypatch:
     assert order == ["sync", "spawn"]
     body = writer.body()
     assert body["ok"] is True and body["skills"] == {"ok": True, "retired_pristine": ["excel"]}
+
+
+# ---------------------------------------------------------------- /__mt/reload：重写配置并重启 hermes
+
+def _post(payload: dict, token: str = "tok") -> tuple[dict, bytes]:
+    body = json.dumps(payload).encode("utf-8")
+    headers = {"content-length": str(len(body))}
+    if token:
+        headers["x-mt-token"] = token
+    return headers, body
+
+
+@pytest.mark.asyncio
+async def test_reload_needs_the_instance_token_and_a_bootstrapped_instance(forward, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(forward, "_hermes_token", "tok")
+    headers, body = _post({"files": []}, token="wrong")
+    writer = _Writer()
+    await forward._handle_mt("POST", "/__mt/reload", headers, body, None, writer)
+    assert b" 403 " in writer.data.split(b"\r\n", 1)[0]
+
+    headers, body = _post({"files": []})
+    writer = _Writer()
+    await forward._handle_mt("POST", "/__mt/reload", headers, body, None, writer)
+    assert b" 409 " in writer.data.split(b"\r\n", 1)[0]          # 还没引导过
+
+
+@pytest.mark.asyncio
+async def test_reload_rewrites_seed_files_then_restarts_hermes(forward, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    order: list[str] = []
+    (tmp_path / ".env").write_text("USER_KEY=mine\nHERMES_CUSTOM_YUANJING_API_KEY=old\n", encoding="utf-8")
+
+    async def stop(grace_s: float = 30.0):
+        order.append("stop")
+        assert forward._reloading is True                       # 守护循环看到这个就不跟着拉起
+
+    async def spawn(token):
+        order.append(f"spawn:{token}")
+        assert "=new" in (tmp_path / ".env").read_text(encoding="utf-8")   # 先写好文件再起
+
+    async def alive():
+        return True
+
+    monkeypatch.setattr(forward, "_hermes_token", "tok")
+    monkeypatch.setattr(forward, "_bootstrapped", True)
+    monkeypatch.setattr(forward, "_stop_hermes", stop)
+    monkeypatch.setattr(forward, "_spawn_hermes", spawn)
+    monkeypatch.setattr(forward, "_hermes_alive", alive)
+    headers, body = _post({"files": [
+        {"path": ".env", "content": "HERMES_CUSTOM_YUANJING_API_KEY=new\n", "overwrite": "upsert-lines"},
+    ]})
+    writer = _Writer()
+    await forward._handle_mt("POST", "/__mt/reload", headers, body, None, writer)
+
+    assert order == ["stop", "spawn:tok"]
+    assert writer.body() == {"ok": True, "hermes": True, "written": [".env"]}
+    assert (tmp_path / ".env").read_text(encoding="utf-8") == "USER_KEY=mine\nHERMES_CUSTOM_YUANJING_API_KEY=new\n"
+    assert forward._reloading is False
+
+
+@pytest.mark.asyncio
+async def test_supervisor_does_not_respawn_hermes_during_a_reload(forward, monkeypatch: pytest.MonkeyPatch) -> None:
+    """重新加载停掉旧进程时，守护循环不能也去拉起一个：两个 hermes 会抢同一个端口。"""
+    import asyncio
+
+    class _Exited:
+        returncode = 0
+
+        async def wait(self):
+            return 0
+
+    spawned: list[str] = []
+
+    async def spawn(token):
+        spawned.append(token)
+
+    monkeypatch.setattr(forward, "_spawn_hermes", spawn)
+    monkeypatch.setattr(forward, "_hermes_proc", _Exited())
+    monkeypatch.setattr(forward, "_reloading", True)
+    task = asyncio.create_task(forward._supervise())
+    await asyncio.sleep(1.6)
+    task.cancel()
+    assert spawned == []

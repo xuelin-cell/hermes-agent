@@ -73,6 +73,7 @@ class Runtime:
     state_archive: str
     lifecycle: str
     traffic_token: str = ""   # 数据面流量令牌（已解密）；实例是公开访问的就是空串
+    hermes_key_sha256: str = ""  # 实例里的 hermes 是用哪把模型 key 起的（sha256）；不知道就是空串
 
 
 def advisory_key(user_id: str) -> int:
@@ -585,7 +586,7 @@ class Store:
             row = await connection.fetchrow(
                 """
                 SELECT state, sandbox_id, template_id, state_epoch, state_owner, state_archive, lifecycle,
-                       traffic_token_ciphertext
+                       traffic_token_ciphertext, hermes_key_sha256
                 FROM tenant_runtime WHERE user_id = $1
                 """,
                 user_id,
@@ -605,6 +606,7 @@ class Store:
                 if row["traffic_token_ciphertext"] is not None
                 else ""
             ),
+            hermes_key_sha256=str(row["hermes_key_sha256"] or ""),
         )
 
     async def next_epoch(self, user_id: str) -> int:
@@ -627,7 +629,8 @@ class Store:
                 await connection.execute(
                     """
                     UPDATE tenant_runtime
-                    SET sandbox_id = $2, template_id = $3, lifecycle = '', traffic_token_ciphertext = $4
+                    SET sandbox_id = $2, template_id = $3, lifecycle = '', traffic_token_ciphertext = $4,
+                        hermes_key_sha256 = NULL
                     WHERE user_id = $1
                     """,
                     user_id,
@@ -646,6 +649,16 @@ class Store:
                     template_id or None,
                     epoch,
                 )
+
+    async def set_hermes_key(self, user_id: str, sandbox_id: str, key_sha256: str) -> None:
+        """记下这台实例里的 hermes 是用哪把 key 起的。实例已经换了（sandbox_id 对不上）就不记。"""
+        async with self.database.acquire() as connection:
+            await connection.execute(
+                "UPDATE tenant_runtime SET hermes_key_sha256 = $3 WHERE user_id = $1 AND sandbox_id = $2",
+                user_id,
+                sandbox_id,
+                key_sha256,
+            )
 
     async def set_state_owner(self, user_id: str, owner: str, archive: str, manifest: dict | None) -> None:
         """新实例恢复完成：它成为当前主人；顺手记下它恢复时用的那份归档。"""

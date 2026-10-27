@@ -17,7 +17,8 @@
 
    引导载荷若带 ``state`` 段，就先由状态管家（mtstate.py）把上一代实例留在卷上的归档恢复到
    本地盘、校验、写主人标记、建目录链接，再拉起 hermes；之后定时把本地状态归档回卷。
-   入口在暂停前调 ``/__mt/sync``、删实例前调 ``/__mt/drain``。这些接口要带实例令牌。
+   入口在暂停前调 ``/__mt/sync``、删实例前调 ``/__mt/drain``；模型 key 换了（企业模式每次登录都换）
+   就调 ``/__mt/reload``：重写配置并重启 hermes。这些接口要带实例令牌。
    这两个接口和 ``/__mt/status`` 都附带「忙不忙」（定时任务、对话回合，见 mtstate.activity）：
    入口据此决定这轮回收要不要暂停，并在实例停着时按下一个定时任务的时间把它叫起来。
 
@@ -93,6 +94,8 @@ _supervisor_task: asyncio.Task | None = None
 _draining = False
 _drained: dict | None = None
 _hermes_restarts = 0
+_reloading = False  # /__mt/reload 正在重启 hermes：守护循环别跟着拉起
+_reload_lock: asyncio.Lock | None = None
 
 
 # ---------------------------------------------------------------- 工具
@@ -310,6 +313,10 @@ async def _supervise() -> None:
         await proc.wait()
         if _draining:
             return
+        if _reloading or proc is not _hermes_proc:
+            # /__mt/reload 停掉了它，新进程由 _reload 自己拉起；等它换上来再接着看
+            await asyncio.sleep(0.5)
+            continue
         if time.monotonic() - started > 60:
             backoff = 1.0  # 稳定跑过一分钟，退避从头算
         _hermes_restarts += 1
@@ -550,6 +557,56 @@ async def _drain(writer: asyncio.StreamWriter) -> None:
     _reply(writer, 200, _drained)
 
 
+async def _reload(writer: asyncio.StreamWriter, body: bytes) -> None:
+    """``POST /__mt/reload`` —— 按入口送来的种子文件重写配置，再重启 hermes。
+
+    hermes 只在启动时读 config.yaml，连 MCP 时把地址里的 ``${KEY}`` 展开成当时的值：换了 key
+    （企业模式每次登录都换设备令牌）或平台下发的模型、MCP 变了，只改文件、只换环境变量都不够，
+    要重启 hermes 才生效。种子文件和引导时同一种格式（见 _write_seed）。
+    对话回合、定时任务在跑时要不要等，由入口先问 /__mt/status 再决定；这里不判断。
+    """
+    global _reloading, _reload_lock
+    if not _bootstrapped or _draining:
+        _reply(writer, 409, {"ok": False, "error": "实例没有引导过，或正在排空"})
+        return
+    try:
+        payload = json.loads(body.decode("utf-8") or "{}")
+        files = list(payload.get("files") or [])
+    except Exception as exc:  # noqa: BLE001
+        _reply(writer, 400, {"ok": False, "error": f"载荷不是合法 JSON: {exc}"})
+        return
+    if _reload_lock is None:
+        _reload_lock = asyncio.Lock()
+    async with _reload_lock:
+        try:
+            written = _write_seed(files)
+        except Exception as exc:  # noqa: BLE001
+            _reply(writer, 400, {"ok": False, "error": f"写种子文件失败: {exc}"})
+            return
+        _reloading = True
+        try:
+            await _stop_hermes()
+            await _spawn_hermes(_hermes_token)
+        except Exception as exc:  # noqa: BLE001
+            _reply(writer, 500, {"ok": False, "error": f"重启 hermes 失败: {type(exc).__name__}: {exc}",
+                                 "written": written})
+            return
+        finally:
+            _reloading = False
+    _log(f"按入口的要求重新加载：写了 {written or '（无变化）'}，hermes 已重启")
+    deadline = time.monotonic() + float(payload.get("ready_timeout_s", 120))
+    while time.monotonic() < deadline:
+        if await _hermes_alive():
+            _reply(writer, 200, {"ok": True, "hermes": True, "written": written})
+            return
+        if _hermes_proc is not None and _hermes_proc.returncode is not None:
+            _reply(writer, 500, {"ok": False, "error": f"hermes 重启后立刻退出，退出码 {_hermes_proc.returncode}",
+                                 "written": written})
+            return
+        await asyncio.sleep(0.5)
+    _reply(writer, 503, {"ok": False, "error": "hermes 未在超时内就绪", "written": written})
+
+
 async def _resume(writer: asyncio.StreamWriter) -> None:
     """``POST /__mt/resume`` —— 撤回 drain：重新拉起 hermes 和归档循环。"""
     global _draining, _drained, _archiver_task, _supervisor_task
@@ -672,6 +729,20 @@ async def _handle_mt(
             _reply(writer, 400, {"ok": False, "error": "Content-Length 非法或载荷过大"})
             return
         await _bootstrap(writer, body)
+        return
+
+    if route == "/__mt/reload":
+        if method != "POST":
+            _reply(writer, 400, {"ok": False, "error": "只接受 POST"})
+            return
+        if not _check_token(headers):
+            _reply(writer, 403, {"ok": False, "error": "缺少或错误的实例令牌"})
+            return
+        body = await _read_body(headers, rest, reader)
+        if body is None:
+            _reply(writer, 400, {"ok": False, "error": "Content-Length 非法或载荷过大"})
+            return
+        await _reload(writer, body)
         return
 
     if route in ("/__mt/sync", "/__mt/drain", "/__mt/resume"):
