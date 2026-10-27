@@ -55,6 +55,7 @@ declare global {
       agentMail: (input: AgentMailRequest) => Promise<AgentMailResult>
       /** 只读本次已准备账号的脱敏信息，运行中到期仍返回原期限。 */
       /** 仅返回当前账号套餐展示信息，不接受页面身份参数。 */
+      cloudSkillOperations?: { mutate: <T>(request: HermesApiRequest) => Promise<T> }
       getPlanUsage?: () => Promise<PlanUsageResult>
       refreshPlanUsage?: () => Promise<PlanUsageResult>
       subscribeMaasPlan?: () => Promise<PlanSubscriptionResult>

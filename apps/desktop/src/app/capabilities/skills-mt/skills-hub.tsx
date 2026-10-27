@@ -162,7 +162,7 @@ export function SkillsHub({
       return
     }
 
-    // 浏览器构建（云端）里市场安装还在开发中，见 lib/browser-shell。
+    // 云端入口只有在能确认保存时才开放安装。
     const pending = skillMarketInstallPending(locale.startsWith('zh') ? 'zh' : 'en')
 
     if (pending) {

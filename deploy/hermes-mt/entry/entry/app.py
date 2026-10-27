@@ -16,6 +16,7 @@ from .browser_auth import BrowserAuth, BrowserIdentity
 from .drive_routes import DriveRoutes
 from .plan_routes import PlanRoutes
 from .welcome_routes import WelcomeRoutes
+from .skill_routes import SkillRoutes, MUTATIONS as SKILL_MUTATIONS
 from .crypto import CredentialCipher
 from .cube_api import Cube
 from .db import Database, DatabaseUnavailable
@@ -109,6 +110,7 @@ class Entry:
         self.drive_routes = DriveRoutes(self)
         self.plan_routes = PlanRoutes(self)
         self.welcome_routes = WelcomeRoutes(self)
+        self.skill_routes = SkillRoutes(self)
         self.shares: Shares | None = None
         # aiohttp 客户端必须在事件循环中创建，因此在 on_startup 里赋值。
         self.http: aiohttp.ClientSession | None = None
@@ -427,6 +429,8 @@ class Entry:
         normalized = posixpath.normpath(normalized).lstrip('/')
         if "\\" in normalized:
             raise web.HTTPNotFound()
+        if (request.method, normalized) in SKILL_MUTATIONS:
+            raise web.HTTPConflict(text='请使用云端技能操作入口，以确认保存后再返回成功。')
         if normalized.startswith(self._BLOCKED_TAILS) or normalized in self._BLOCKED_TAILS:
             raise web.HTTPNotFound()
         try:
@@ -510,6 +514,7 @@ class Entry:
             log.exception("reconcile failed: %s", type(exc).__name__)
 
     async def on_cleanup(self, app: web.Application) -> None:
+        await self.skill_routes.close()
         await self.drive_routes.close()
         for task in self._bg:
             task.cancel()
@@ -529,7 +534,7 @@ class Entry:
             try:
                 await self.store.purge_expired_sessions()
                 if self.tenants is not None:
-                    await self.tenants.reap_idle(keep=set(self._live_ws))
+                    await self.tenants.reap_idle(keep=set(self._live_ws) | self.skill_routes.active_users)
             except Exception as exc:  # noqa: BLE001
                 # idle_tenants 失败发生在任何 stop 前，因此数据库故障只会跳过本轮回收。
                 log.warning("reaper tick skipped: %s", type(exc).__name__)
@@ -556,6 +561,7 @@ def build_app(settings: Settings = SETTINGS) -> web.Application:
     app.router.add_get(path("/__entry/browser-auth.js"), entry.browser_auth_script)
     app.router.add_post(path("/__entry/maas-auth"), entry.maas_auth_status)
     app.router.add_post(path("/__entry/{kind:conversation|artifact}-shares/{operation}"), entry.share_routes.handle)
+    app.router.add_post(path("/__entry/skills/{operation}"), entry.skill_routes.handle)
     app.router.add_post(path("/__entry/welcome/{locale}"), entry.welcome_routes.handle)
     app.router.add_post(path("/__entry/plan/{operation}"), entry.plan_routes.handle)
     app.router.add_post(path("/__entry/drive/part/{id}"), entry.drive_routes.part)

@@ -109,7 +109,7 @@ export function SkillMarket({ installed, installedCount, installedNames, profile
       return
     }
 
-    // Browser build: installing a market skill is in development (see lib/browser-shell).
+    // Only a persistence-aware cloud bridge may enable instance installs.
     const pending = skillMarketInstallPending(zh ? 'zh' : 'en')
 
     if (pending) {

@@ -374,13 +374,18 @@ describe('browser shell', () => {
     expect(visibleModelOptions(options)).toBe(options)
   })
 
-  it('says installing from the skill market is in development, in the browser build only', () => {
+  it('only allows browser market installation with a persistence-aware bridge', () => {
     expect(skillMarketInstallPending('zh')).toBeNull()
 
     document.documentElement.dataset.hermesBrowser = 'production'
 
     expect(skillMarketInstallPending('zh')).toBe('功能开发中')
     expect(skillMarketInstallPending('en')).toMatch(/in development/)
+    const previous = window.hermesDesktop
+    try {
+      window.hermesDesktop = { cloudSkillOperations: { mutate: vi.fn() } } as never
+      expect(skillMarketInstallPending('zh')).toBeNull()
+    } finally {window.hermesDesktop = previous}
   })
 
   it('says signing out keeps the instance, in the browser build only', () => {

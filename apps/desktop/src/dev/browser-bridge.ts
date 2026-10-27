@@ -29,6 +29,7 @@ import { browserDrive } from './browser-drive'
 import { browserExport } from './browser-export'
 import { browserPlan } from './browser-plan'
 import { browserShares } from './browser-shares'
+import { browserSkills, isCloudSkillMutation } from './browser-skills'
 import { maskMcpSecrets, restoreMcpSecrets } from './mcp-secrets'
 
 const noopOff = () => () => undefined
@@ -96,7 +97,15 @@ function credentials(): RequestCredentials {
   return productionBrowserBuild ? 'same-origin' : 'omit'
 }
 
-async function api<T>({ body, method = 'GET', path, upload }: HermesApiRequest): Promise<T> {
+const cloudSkillOperations = browserSkills(browserBasePath())
+
+async function api<T>(request: HermesApiRequest): Promise<T> {
+  const { body, method = 'GET', path, upload } = request
+
+  if (productionBrowserBuild && isCloudSkillMutation(method, path)) {
+    return cloudSkillOperations.mutate<T>(request)
+  }
+
   const headers = authHeaders()
   let requestBody: BodyInit | undefined
 
@@ -1417,7 +1426,7 @@ export function installBrowserDevelopmentBridge(): boolean {
     writeClipboard,
     // The instance's shell lives behind the entry; a dev server has no forwarder to give one.
     ...(productionBrowserBuild
-      ? { terminal: instanceTerminal, ...browserShares(browserBasePath()), ...browserDrive(browserBasePath()), ...browserPlan(browserBasePath()), exportPreview: browserExport(browserBasePath(), apiPrefix()),
+      ? { terminal: instanceTerminal, cloudSkillOperations, ...browserShares(browserBasePath()), ...browserDrive(browserBasePath()), ...browserPlan(browserBasePath()), exportPreview: browserExport(browserBasePath(), apiPrefix()),
           getWelcomeCatalog: (locale: WelcomeLocale) => {
             if (!['zh-CN', 'en'].includes(locale)) {return Promise.reject(new Error('Invalid locale'))}
 

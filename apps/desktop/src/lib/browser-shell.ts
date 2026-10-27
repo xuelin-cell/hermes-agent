@@ -26,7 +26,7 @@ import { storedBoolean } from '@/lib/storage'
  *   app/artifacts/local-artifact-platform.ts           instance metadata and login-scoped favorites, without native folder actions
  *   app/capabilities/index.tsx                         * no Plugins tab (a community catalog), like Toolsets
  *   app/capabilities/plugins/plugins-tab.tsx           * no desktop (local) plugins, no "open plugins folder"
- *   app/capabilities/skill-market.tsx                  installing from the market says it is in development
+ *   app/capabilities/skill-market.tsx                  cloud installs require the persistence-aware instance bridge
  *   app/chat/composer/trigger-popover.tsx              the backend's English hints of `@` completions in Chinese
  *   app/chat/right-rail/office-sheet.tsx              (ours) the sheet viewer: spreadsheets the instance turns into tables
  *   app/chat/right-rail/office-slides.tsx              (ours) the page viewer: decks and documents the instance renders page by page
@@ -736,12 +736,9 @@ export function signOutDescription(locale?: string): null | string {
   return isBrowserShell() ? browserShellCopy(locale).signOutBody : null
 }
 
-/** The skill market's install button (app/skills/skill-market.tsx). A market
- * skill comes as a zip package, which Hermes' install-from-URL does not take (it
- * wants a SKILL.md URL), so the browser build says the feature is in development
- * rather than report an install that never lands. Null where installing goes on. */
+/** Only the production bridge can acknowledge durable skill installation in a user instance. */
 export function skillMarketInstallPending(locale?: string): null | string {
-  return isBrowserShell() ? browserShellCopy(locale).skillInstallPending : null
+  return isBrowserShell() && !window.hermesDesktop?.cloudSkillOperations ? browserShellCopy(locale).skillInstallPending : null
 }
 
 

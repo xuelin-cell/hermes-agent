@@ -43,8 +43,8 @@ export function useCatalogInstalled(profile: ProfileScope, installedNames: Reado
   const records = useQuery({
     queryKey: [...SKILLS_QUERY_KEY, 'mt-catalog-installed', scopeKey],
     queryFn: () => getInstalledRecords(profile),
-    // 浏览器构建（云端）里市场安装还在开发中，没有记录可读。
-    enabled: active && !isBrowserShell() && Boolean(window.hermesDesktop?.api),
+    // 云端已安装记录来自当前用户实例；开发占位桥不查询。
+    enabled: active && (!isBrowserShell() || !!window.hermesDesktop?.cloudSkillOperations) && Boolean(window.hermesDesktop?.api),
     staleTime: 30_000,
     retry: false,
     refetchOnWindowFocus: false

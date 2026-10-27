@@ -145,7 +145,7 @@ describe('skill market installed state', () => {
     expect(installUniWorkSkill).not.toHaveBeenCalled()
   })
 
-  it('skips the record lookup without market installs and in the browser build', async () => {
+  it('only queries instance install records when the cloud persistence bridge is available', async () => {
     renderHub([{ ...hubSkill('pdf'), provenance: 'bundled' }])
     await marketCard('中国金融行情数据（tushare-finance）')
     expect(api).not.toHaveBeenCalled()
@@ -155,6 +155,12 @@ describe('skill market installed state', () => {
     renderHub([hubSkill('tushare-finance')])
     await marketCard('中国金融行情数据（tushare-finance）')
     expect(api).not.toHaveBeenCalled()
+    cleanup()
+    Object.assign(window.hermesDesktop, { cloudSkillOperations: { mutate: vi.fn() } })
+    api.mockResolvedValue(records({ 'tushare-finance': 'tushare-finance' }))
+    renderHub([hubSkill('tushare-finance')])
+    await marketCard('中国金融行情数据（tushare-finance）')
+    await waitFor(() => expect(api).toHaveBeenCalled())
   })
 
   it('uses the same check on the developer-mode market page', async () => {
