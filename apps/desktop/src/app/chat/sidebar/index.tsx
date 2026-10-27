@@ -139,7 +139,11 @@ import { $archivedSessions, loadArchivedSessions } from '@/store/sidebar-archive
 import { applySidebarNavPrefs, SIDEBAR_NAV_PREFS_AREA } from '@/store/sidebar-nav'
 import { $sidebarSessionRankIds } from '@/store/sidebar-sort'
 import { $selectedWorkspaceMode } from '@/store/workspace-category'
-import { $workspaceSessionCategories, sessionWorkspaceCategory } from '@/store/workspace-sessions'
+import {
+  $workspaceSessionCategories,
+  projectBelongsToWorkspace,
+  sessionWorkspaceCategory
+} from '@/store/workspace-sessions'
 import { $workspaceSidebarGrouping as $sidebarGrouping } from '@/store/workspace-sidebar'
 
 import {
@@ -453,6 +457,7 @@ export function ChatSidebar({
   ).join(' · ')
 
   const interfaceMode = useStore($interfaceMode)
+  const activeWorkspaceCategory = workspaceMode ?? (interfaceMode === 'advanced' ? 'codex' : 'work')
   const workspaceCategories = useStore($workspaceSessionCategories)
   const showsAdvancedChrome = useStore($showsAdvancedChrome)
   const developerMode = useStore($developerMode)
@@ -1065,7 +1070,11 @@ export function ChatSidebar({
   // overview sort. Membership is the backend tree's — never re-derived here.
   const projectModel = useMemo<SidebarProjectTree[]>(() => {
     const sorted = sortProjectsForOverview(
-      filterToSessionBearingProjects(filterVisibleProjects(projectTree, dismissedAutoProjects))
+      filterToSessionBearingProjects(
+        filterVisibleProjects(projectTree, dismissedAutoProjects).filter(project =>
+          projectBelongsToWorkspace(project, activeWorkspaceCategory, activeConnectionId || undefined)
+        )
+      )
         // A filtered-out project drops its whole lane, header included — hiding
         // only its rows would leave a row of empty folders behind.
         .filter(project => !projectFilter.length || projectFilter.includes(project.id))
@@ -1092,6 +1101,8 @@ export function ChatSidebar({
   }, [
     projectTree,
     dismissedAutoProjects,
+    activeConnectionId,
+    activeWorkspaceCategory,
     orderRepos,
     activeProjectId,
     projectFilter,
