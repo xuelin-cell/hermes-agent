@@ -18,13 +18,14 @@ export interface LegalLink {
   url: string
 }
 
-/** Rendered in this order on the Privacy & terms page. */
+/** Rendered in this order on the Privacy & terms page. Every document's file
+ *  name carries the product prefix (`uniwork-`); the bare names 404. */
 export const LEGAL_LINKS: readonly LegalLink[] = [
-  { id: 'userAgreement', url: `${LEGAL_BASE}/service.html` },
-  { id: 'privacyPolicy', url: `${LEGAL_BASE}/privacy.html` },
-  { id: 'informationCollection', url: `${LEGAL_BASE}/data-collection.html` },
-  { id: 'accountCancellation', url: `${LEGAL_BASE}/account-cancellation.html` },
-  { id: 'deliveryAgreement', url: `${LEGAL_BASE}/delivery.html` },
-  { id: 'childrenPrivacy', url: `${LEGAL_BASE}/children-privacy.html` },
-  { id: 'openSourceTerms', url: `${LEGAL_BASE}/open-source.html` }
+  { id: 'userAgreement', url: `${LEGAL_BASE}/uniwork-service.html` },
+  { id: 'privacyPolicy', url: `${LEGAL_BASE}/uniwork-privacy.html` },
+  { id: 'informationCollection', url: `${LEGAL_BASE}/uniwork-data-collection.html` },
+  { id: 'accountCancellation', url: `${LEGAL_BASE}/uniwork-account-cancellation.html` },
+  { id: 'deliveryAgreement', url: `${LEGAL_BASE}/uniwork-delivery.html` },
+  { id: 'childrenPrivacy', url: `${LEGAL_BASE}/uniwork-children-privacy.html` },
+  { id: 'openSourceTerms', url: `${LEGAL_BASE}/uniwork-open-source.html` }
 ]
