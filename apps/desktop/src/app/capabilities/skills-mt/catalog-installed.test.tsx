@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type * as HermesApi from '@/hermes'
+import { $confirmRequest, settleConfirm } from '@/store/confirm'
 import type { SkillInfo } from '@/types/hermes'
 
 // 真实目录的样子：显示名「中文（短名）」；装好后的技能名取自 SKILL.md，可能和短名不同。
@@ -179,4 +180,36 @@ describe('skill market installed state', () => {
       ).getByRole('button', { name: 'Install' })
     ).toBeTruthy()
   })
+})
+
+it('keeps flagged skills uninstalled until the user approves the exact scanned package', async () => {
+  api.mockResolvedValue(records({}))
+  const blocked = {
+    ok: false,
+    requires_confirmation: true,
+    package_hash: 'sha256:reviewed',
+    report: 'CRITICAL test finding'
+  }
+  installUniWorkSkill.mockResolvedValue(blocked)
+  const view = renderHub([])
+  const card = await marketCard('头脑风暴（brainstorming-v2）')
+  fireEvent.click(within(card).getByRole('button', { name: 'Add to my skills' }))
+  await waitFor(() => expect($confirmRequest.get()?.details?.[0].value).toBe(blocked.report))
+  act(() => settleConfirm(false))
+  await waitFor(() =>
+    expect(within(card).getByRole('button', { name: 'Add to my skills' }).hasAttribute('disabled')).toBe(false)
+  )
+  expect(installUniWorkSkill).toHaveBeenCalledTimes(1)
+  fireEvent.click(within(card).getByRole('button', { name: 'Add to my skills' }))
+  await waitFor(() => expect($confirmRequest.get()).not.toBeNull())
+  installUniWorkSkill.mockResolvedValue({ ok: true, name: 'brainstorming', install_path: 'brainstorming' })
+  act(() => settleConfirm(true))
+  await waitFor(() => expect(installUniWorkSkill).toHaveBeenCalledTimes(3))
+  view.rerenderWith([hubSkill('brainstorming')])
+  await waitFor(() => expect(within(card).getByRole('button', { name: 'Try it' })).toBeTruthy())
+  expect(installUniWorkSkill).toHaveBeenLastCalledWith(
+    expect.objectContaining({ id: 'brainstorming-v2' }),
+    undefined,
+    blocked.package_hash
+  )
 })

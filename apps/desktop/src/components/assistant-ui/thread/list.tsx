@@ -725,9 +725,7 @@ const ThreadMessageListInner: FC<ThreadMessageListProps> = ({
   // traffic lights.
   const secondaryTitlebarGap = 'calc(var(--titlebar-height) + 0.75rem)'
 
-  const threadContentTopPad = secondaryWindow
-    ? 'pt-[calc(var(--titlebar-height)+0.75rem)]'
-    : 'pt-[calc(var(--titlebar-height)-0.5rem)]'
+  const threadContentTopPad = 'pt-[calc(var(--titlebar-height)+1.5rem)]'
 
   const surfaceId = useComposerSurfaceId()
   const scrollSessionId = sessionId ?? surfaceId

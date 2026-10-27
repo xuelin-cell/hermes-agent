@@ -346,6 +346,11 @@ declare global {
       createConversationFolder?: (defaultCwd: string) => Promise<null | string>
       /** 删除刚建且仍为空的对话文件夹，用于创建会话失败时收尾。 */
       discardConversationFolder?: (folder: string) => Promise<void>
+      /** 程序被关掉时中断的回答：列出仍可点 ▶ 继续的会话，或在用户处理后删掉记录。 */
+      interruptedTurns?: {
+        list: () => Promise<{ detectedAt: number; prompt: string; sessionId: string }[]>
+        dismiss: (sessionId: string) => Promise<void>
+      }
       /** 页面离开时取消自己的转换请求；排队中没人等的转换会被跳过。 */
       cancelOfficePreview: (requestId: string) => Promise<void>
       /** Remote non-image attach: higher dedicated cap than preview/Settings default. */
@@ -859,6 +864,16 @@ export interface DesktopUpdateCommit {
   at: number
 }
 
+/** One authored changelog group; `label` is the publisher's copy, not an i18n key. */
+export interface DesktopReleaseNotesGroup {
+  id: string
+  label: string
+  items: string[]
+}
+
+/** Authored notes keyed by locale; the renderer picks the reader's locale. */
+export type DesktopReleaseNotesByLocale = { [locale: string]: DesktopReleaseNotesGroup[] }
+
 export type UpdaterMechanismClient =
   'app-installer' | 'electron-updater' | 'external' | 'microsoft-store' | 'windows-handoff' | 'posix-handoff' | 'manual'
 
@@ -891,6 +906,9 @@ export interface DesktopUpdateStatus {
   latestTag?: string | null
   targetSha?: string
   commits?: DesktopUpdateCommit[]
+  /** Copy published beside the update feed for the offered version. Absent on
+   *  feeds that ship none — the overlay then renders its own fallback. */
+  releaseNotes?: DesktopReleaseNotesByLocale | null
   dirty?: boolean
   fetchedAt?: number
 }

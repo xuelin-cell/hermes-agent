@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router'
 
 import { PageLoader } from '@/components/page-loader'
 import { Button } from '@/components/ui/button'
+import { useContributions } from '@/contrib/react/use-contributions'
 import { useI18n } from '@/i18n'
 import { hideForUsers } from '@/lib/browser-shell'
 import { queryClient } from '@/lib/query-client'
@@ -19,6 +20,7 @@ import { useRefreshHotkey } from '../hooks/use-refresh-hotkey'
 import { useRouteEnumParam } from '../hooks/use-route-enum-param'
 import { PanelEmpty } from '../overlays/panel'
 import { PageSearchShell } from '../page-search-shell'
+import { contributedRoutes, ROUTES_AREA } from '../routes'
 import type { SetStatusbarItemGroup } from '../shell/statusbar-controls'
 
 import { prefetchCatalogWhenIdle } from './catalog/catalog-data'
@@ -28,6 +30,7 @@ import { PluginsTab } from './plugins/plugins-tab'
 import { CapabilityScopeSelector, useCapabilityScope } from './scope-selector'
 import { SkillMarket } from './skill-market'
 import { CapabilitiesPage } from './skills-mt/capabilities-page'
+import { useSkillsCopy } from './skills-mt/copy'
 import { SKILLS_QUERY_KEY, skillSearchTerms, useSkillsQuery } from './skills/skills-data'
 import { SkillsTab } from './skills/skills-tab'
 import { refreshToolCalls } from './toolsets/tool-calls'
@@ -36,7 +39,7 @@ import { ToolsetsTab } from './toolsets/toolsets-tab'
 
 // Skills Hub browsing lives inside the Skills tab. Legacy `?tab=hub`
 // links fall back to 'skills' via useRouteEnumParam.
-const CAPABILITY_MODES = ['skills', 'toolsets', 'connectors', 'plugins'] as const
+const CAPABILITY_MODES = ['experts', 'skills', 'toolsets', 'connectors', 'plugins'] as const
 
 type CapabilityMode = (typeof CAPABILITY_MODES)[number]
 
@@ -71,9 +74,12 @@ export function CapabilitiesView({
   ...props
 }: CapabilitiesViewProps) {
   const { t } = useI18n()
+  const extensionsCopy = useSkillsCopy()
   const navigate = useNavigate()
   const developerMode = useStore($developerMode)
   const codeWorkspace = useStore($codeWorkspace)
+  const routes = useContributions(ROUTES_AREA)
+  const expertsRoute = embedded ? undefined : contributedRoutes(routes).find(route => route.path === '/kits')
   // Both hooks run unconditionally (rules of hooks); embedded picks the local
   // one so tab clicks inside a dialog don't rewrite the page URL.
   const routeTab = useRouteEnumParam('tab', CAPABILITY_MODES, 'skills')
@@ -81,7 +87,9 @@ export function CapabilitiesView({
   const [requestedMode, setMode] = embedded ? localTab : routeTab
   // Code workspaces expose Plugins; other browser workspaces keep the developer gate.
   const developerTab = requestedMode === 'toolsets' || (requestedMode === 'plugins' && !codeWorkspace && hideForUsers())
-  const mode = !developerMode && developerTab ? 'skills' : requestedMode
+
+  const mode =
+    (!developerMode && developerTab) || (requestedMode === 'experts' && !expertsRoute) ? 'skills' : requestedMode
 
   // 立即阻止隐藏页挂载，同时清理旧链接和嵌入视图的选中状态。
   useEffect(() => {
@@ -157,6 +165,7 @@ export function CapabilitiesView({
   )
 
   const tabContent = {
+    experts: () => expertsRoute?.render(),
     // The gateway instance backs ONLY the live `reload.mcp` RPC, and it is the
     // ACTIVE gateway's socket — for a scope pinned to a different backend that
     // (config edits still apply on that backend's next session).
@@ -187,7 +196,7 @@ export function CapabilitiesView({
             {hiddenKitSkills > 0 ? (
               <button
                 className="mx-3 mt-2 rounded-md border border-(--ui-stroke-secondary) px-3 py-2 text-left text-xs text-(--ui-text-secondary)"
-                onClick={() => navigate('/kits')}
+                onClick={() => navigate('/capabilities?tab=experts&shelf=kits')}
                 type="button"
               >
                 {t.skills.kitSkillsNote}
@@ -221,10 +230,11 @@ export function CapabilitiesView({
       <CapabilitiesPage
         {...props}
         connectors={searchContainer => tabContent.connectors(searchContainer)}
-        mode={mode === 'connectors' || (codeWorkspace && mode === 'plugins') ? mode : 'skills'}
+        experts={expertsRoute ? tabContent.experts() : undefined}
+        mode={mode === 'experts' || mode === 'connectors' || (codeWorkspace && mode === 'plugins') ? mode : 'skills'}
         onModeChange={setMode}
         plugins={mode === 'plugins' ? tabContent.plugins() : null}
-        scopeSelector={<CapabilityScopeSelector scope={scope} />}
+        scopeSelector={mode === 'experts' ? undefined : <CapabilityScopeSelector scope={scope} />}
         skills={{
           hiddenKitSkills,
           installedError: skillsError,
@@ -256,6 +266,7 @@ export function CapabilitiesView({
       }
       searchValue={query}
       tabs={[
+        ...(expertsRoute ? [{ id: 'experts', label: extensionsCopy('experts') }] : []),
         { id: 'skills', label: t.skills.tabSkills, meta: skills ? manageableSkills.length : null },
         ...(developerMode
           ? [{ id: 'toolsets', label: t.skills.tabToolsets, meta: toolsets ? visibleToolsetCount(toolsets) : null }]
@@ -265,7 +276,7 @@ export function CapabilitiesView({
       ]}
     >
       <div className="flex h-full flex-col">
-        {mode !== 'plugins' && <CapabilityScopeSelector scope={scope} />}
+        {mode !== 'plugins' && mode !== 'experts' && <CapabilityScopeSelector scope={scope} />}
         <div className="flex min-h-0 flex-1 flex-col">{loadGate ?? tabContent[mode]()}</div>
       </div>
     </PageSearchShell>

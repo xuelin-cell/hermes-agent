@@ -439,6 +439,11 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   // 新对话的专属文件夹由主进程命名和创建，页面只提交查到的默认目录。
   createConversationFolder: defaultCwd => ipcRenderer.invoke('hermes:conversation-folder:create', defaultCwd),
   discardConversationFolder: folder => ipcRenderer.invoke('hermes:conversation-folder:discard', folder),
+  // 程序被关掉中断的回答：主进程在后端启动前接手记录，页面据此显示 ▶ 继续。
+  interruptedTurns: {
+    list: () => ipcRenderer.invoke('hermes:interrupted-turns:list'),
+    dismiss: sessionId => ipcRenderer.invoke('hermes:interrupted-turns:dismiss', sessionId)
+  },
   readFileDataUrlForAttach: filePath => ipcRenderer.invoke('hermes:readFileDataUrlForAttach', filePath),
   dataUrlReadMax: {
     get: () => ipcRenderer.invoke('hermes:data-url-read-max:get'),

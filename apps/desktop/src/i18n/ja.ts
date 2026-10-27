@@ -206,7 +206,7 @@ export const ja = defineLocale({
     connect: '接続',
     connecting: '接続中',
     continue: '続ける',
-    bots: 'ボット',
+    bots: 'デジタル従業員',
     copied: 'コピーしました',
     copy: 'コピー',
     copyFailed: 'コピーに失敗しました',
@@ -545,6 +545,7 @@ export const ja = defineLocale({
       vaultCredentials: '保存済みの認証情報',
       vaultSources: 'パスワードマネージャー',
       appUpdates: 'バージョンと更新',
+      legal: 'プライバシーと規約',
       uninstall: 'アンインストール',
       billingOverview: '概要',
       billingPlans: 'プラン'
@@ -1134,6 +1135,19 @@ export const ja = defineLocale({
     }),
     about: {
       updates: '更新'
+    },
+    legal: {
+      title: 'プライバシーと規約',
+      description: 'UniWork のご利用に適用される規約、ポリシー、通知です。',
+      items: {
+        userAgreement: '利用規約',
+        privacyPolicy: 'プライバシーポリシー',
+        informationCollection: '個人情報の収集に関する通知',
+        accountCancellation: 'アカウント削除に関する通知',
+        deliveryAgreement: '支払い条件',
+        childrenPrivacy: '児童のプライバシーポリシーおよび保護者向け通知',
+        openSourceTerms: 'オープンソースに関する通知'
+      }
     },
     config: {
       agentLibraryAccessTitle: 'エージェントによるライブラリ操作を許可',
@@ -1745,7 +1759,7 @@ export const ja = defineLocale({
       pickerHint: 'スキルの「+ Add to this Agent」を押すと、インストールされて上の一覧に表示されます。'
     },
     tabSkills: 'スキル',
-    kitSkillsNote: 'キットのスキルはキットページで管理します。',
+    kitSkillsNote: 'キットのスキルは「拡張機能 → エキスパート → キット」で管理します。',
     tabToolsets: 'ツールセット',
     all: 'すべて',
     searchSkills: 'スキルを検索...',
@@ -4368,7 +4382,7 @@ export const ja = defineLocale({
       },
       messaging: {
         title: 'デスクを離れても UniWork',
-        text: 'Telegram、Discord、Slack などに接続。同じエージェント、同じ記憶のままです。'
+        text: 'DingTalk、WeChat、Feishu に接続。同じエージェント、同じ記憶のままです。'
       },
       artifacts: {
         title: 'UniWork が作ったものすべて',

@@ -2343,7 +2343,7 @@ wheels = [
 
 [[package]]
 name = "hermes-agent"
-version = "1.0.5"
+version = "0.0.1"
 source = { editable = "." }
 dependencies = [
     { name = "browser-harness" },

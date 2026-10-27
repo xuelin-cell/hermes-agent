@@ -640,7 +640,7 @@ export const zh = defineLocale({
     connect: '连接',
     connecting: '连接中',
     continue: '继续',
-    bots: '机器人',
+    bots: '数字员工',
     copied: '已复制',
     copy: '复制',
     copyFailed: '复制失败',
@@ -1066,6 +1066,7 @@ export const zh = defineLocale({
       vaultCredentials: '已保存的凭据',
       vaultSources: '密码管理器',
       appUpdates: '版本与更新',
+      legal: '隐私与条款',
       uninstall: '卸载',
       billingOverview: '概览',
       billingPlans: '套餐'
@@ -1811,6 +1812,19 @@ export const zh = defineLocale({
     },
     about: {
       updates: '更新'
+    },
+    legal: {
+      title: '隐私与条款',
+      description: '查看适用于 UniWork 的协议、政策与声明。',
+      items: {
+        userAgreement: '用户协议',
+        privacyPolicy: '隐私政策',
+        informationCollection: '收集用户信息说明',
+        accountCancellation: '账号注销须知',
+        deliveryAgreement: '产品支付协议',
+        childrenPrivacy: '儿童信息保护政策及监护人须知',
+        openSourceTerms: '开源条款'
+      }
     },
     config: {
       agentLibraryAccessTitle: '允许智能体操控资料库',
@@ -2757,7 +2771,7 @@ export const zh = defineLocale({
 
   skills: {
     tabSkills: '技能',
-    kitSkillsNote: '套件技能在「套件」页管理。',
+    kitSkillsNote: '套件技能在「扩展 → 专家 → 套件」里管理。',
     tabToolsets: '工具集',
     configuringProfile: '正在配置：',
     all: '全部',
@@ -5796,7 +5810,7 @@ export const zh = defineLocale({
       },
       messaging: {
         title: '离开电脑也能用',
-        text: '接入 Telegram、Discord、Slack 等 — 同一个智能体，同一份记忆。'
+        text: '接入钉钉、微信、飞书 — 同一个智能体，同一份记忆。'
       },
       artifacts: {
         title: 'UniWork 做过的一切',

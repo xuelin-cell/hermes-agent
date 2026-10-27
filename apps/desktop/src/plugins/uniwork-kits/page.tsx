@@ -1,5 +1,5 @@
 /**
- * Kits — a standalone desktop page over `/api/plugins/uniwork-kits`, laid out
+ * Experts / Kits — the Extensions catalog over `/api/plugins/uniwork-kits`, laid out
  * like the Skills catalog (技能与工具): tabs with counts, a search box, and a
  * card grid. A card opens its details — settings and authorization live there.
  * A kit, like a skill, is only switched on or off (the switch sits beside its
@@ -30,12 +30,14 @@ import {
   useQuery,
   useValue
 } from '@hermes/plugin-sdk'
-import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
+import { Navigate, useLocation, useSearchParams } from 'react-router'
 
 import { fetchCatalog, openAuthorization, toggleKit, writeConfig } from './api'
 import { $bundled, $bundledFinished, watchBundled } from './bundled'
 import { ExpertFace } from './expert-face'
 import { $expertDirectory, loadExperts } from './experts-store'
+import { KITS_PATH } from './navigation'
 import { oauthStartParams } from './oauth'
 import { matchesQuery, partition } from './partition'
 import { summonExpert } from './summon'
@@ -511,15 +513,23 @@ function KitDetail({
 
 type Shelf = 'experts' | 'kits'
 
-/** 套件页：搜索、套件和专家两个书架、内置包安装进度。现在不支持从 zip 安装，没有上传入口。 */
+/** 旧套件链接转到扩展；扩展正文复用同一份专家与套件目录。 */
 export function KitsPage() {
+  const { pathname } = useLocation()
+
+  return pathname === '/kits' ? <Navigate replace to={KITS_PATH} /> : <KitsCatalog />
+}
+
+function KitsCatalog() {
   const t = usePluginI18n('uniwork-kits')
+  const [params, setParams] = useSearchParams()
+  const panelId = useId()
   const directory = useValue($expertDirectory)
   const catalog = useQuery({ queryFn: fetchCatalog, queryKey: ['uniwork-kits', 'catalog'] })
   const shelves = partition(catalog.data?.plugins ?? [])
   const reloadCatalog = catalog.refetch
-  const [shelf, setShelf] = useState<Shelf>('kits')
-  const [query, setQuery] = useState('')
+  const shelf: Shelf = params.get('shelf') === 'kits' ? 'kits' : 'experts'
+  const query = params.get('q') ?? ''
   const [opened, setOpened] = useState('')
   const bundled = useValue($bundled)
   const bundledFinished = useValue($bundledFinished)
@@ -547,23 +557,69 @@ export function KitsPage() {
   const openedIsExpert = Boolean(openedRow && shelves.experts.includes(openedRow))
 
   const tabs: Array<{ id: Shelf; label: string; count: number }> = [
-    { id: 'kits', label: t('kits'), count: shelves.kits.length },
-    { id: 'experts', label: t('experts'), count: shelves.experts.length }
+    { id: 'experts', label: t('experts'), count: shelves.experts.length },
+    { id: 'kits', label: t('kits'), count: shelves.kits.length }
   ]
+
+  const selectShelf = (nextShelf: Shelf) => {
+    setParams(
+      current => {
+        const next = new URLSearchParams(current)
+
+        if (nextShelf === 'kits') {
+          next.set('shelf', nextShelf)
+        } else {
+          next.delete('shelf')
+        }
+
+        next.delete('q')
+
+        return next
+      },
+      { replace: true }
+    )
+  }
 
   return (
     <section className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="flex shrink-0 items-end justify-between gap-4 border-b border-(--ui-stroke-secondary) px-5 pt-2">
-        <div className="flex gap-7">
+      <div className="flex shrink-0 border-b border-(--ui-stroke-secondary)">
+        <div aria-label={t('title')} className="flex gap-7" role="tablist">
           {tabs.map(item => (
             <button
+              aria-controls={panelId}
+              aria-selected={shelf === item.id}
               className={cn(
                 'relative pb-2 text-sm font-semibold text-(--ui-text-tertiary)',
                 shelf === item.id &&
                   'text-(--ui-text-primary) after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-full after:bg-(--color-primary)'
               )}
+              id={panelId + '-' + item.id}
               key={item.id}
-              onClick={() => setShelf(item.id)}
+              onClick={() => selectShelf(item.id)}
+              onKeyDown={event => {
+                const other: Shelf = item.id === 'experts' ? 'kits' : 'experts'
+
+                const targets: Record<string, Shelf> = {
+                  ArrowLeft: other,
+                  ArrowRight: other,
+                  Home: 'experts',
+                  End: 'kits'
+                }
+
+                const target = targets[event.key]
+
+                if (!target) {
+                  return
+                }
+
+                event.preventDefault()
+                selectShelf(target)
+                event.currentTarget.parentElement
+                  ?.querySelector<HTMLButtonElement>('[id="' + panelId + '-' + target + '"]')
+                  ?.focus()
+              }}
+              role="tab"
+              tabIndex={shelf === item.id ? 0 : -1}
               type="button"
             >
               {item.label}
@@ -571,20 +627,13 @@ export function KitsPage() {
             </button>
           ))}
         </div>
-        <div className="mb-2 flex items-center gap-2">
-          <label className="flex w-72 items-center gap-2 rounded-full border border-(--ui-stroke-tertiary) bg-(--ui-bg-quinary) px-3.5 py-1.5 focus-within:border-(--ui-stroke-secondary) hover:border-(--ui-stroke-secondary)">
-            <Codicon className="text-(--ui-text-tertiary)" name="search" />
-            <input
-              aria-label={shelf === 'kits' ? t('searchKits') : t('searchExperts')}
-              className="min-w-0 flex-1 bg-transparent text-sm outline-none"
-              onChange={event => setQuery(event.target.value)}
-              placeholder={shelf === 'kits' ? t('searchKits') : t('searchExperts')}
-              value={query}
-            />
-          </label>
-        </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-auto px-5 py-4">
+      <div
+        aria-labelledby={panelId + '-' + shelf}
+        className="min-h-0 flex-1 overflow-auto py-5"
+        id={panelId}
+        role="tabpanel"
+      >
         {bundled.running ? (
           <div className="mb-3 flex items-center gap-2 rounded-lg border border-(--ui-stroke-secondary) bg-(--ui-bg-quinary) px-3 py-2 text-xs">
             <Codicon className="shrink-0" name="loading" spinning />

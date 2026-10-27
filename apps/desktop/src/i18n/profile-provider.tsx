@@ -6,6 +6,7 @@ import { $activeGatewayProfile } from '@/store/profile'
 import { $connection } from '@/store/session'
 
 import { I18nProvider } from './context'
+import { DEFAULT_INITIAL_LOCALE } from './languages'
 
 /** Keep gateway/store imports outside the shared i18n context's import graph. */
 export function ProfileI18nProvider({ children }: { children: ReactNode }) {
@@ -23,7 +24,7 @@ export function ProfileI18nProvider({ children }: { children: ReactNode }) {
   ])
 
   return (
-    <I18nProvider initialLocale={browserInitialLocale()} scopeKey={scopeKey}>
+    <I18nProvider initialLocale={browserInitialLocale() ?? DEFAULT_INITIAL_LOCALE} scopeKey={scopeKey}>
       {children}
     </I18nProvider>
   )

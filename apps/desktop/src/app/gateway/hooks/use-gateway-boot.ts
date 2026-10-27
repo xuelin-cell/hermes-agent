@@ -1381,6 +1381,20 @@ export function useGatewayBoot({
         publish(conn)
         setPrimaryGatewayConnection(conn)
 
+        // The sidebar reads REST, not the live socket. Bind its profile first,
+        // then overlap the read with cwd seeding and the WebSocket handshake.
+        if (!(await adoptPrimaryProfile(conn, () => !cancelled)) || cancelled) {
+          return
+        }
+
+        const sessionsReady = callbacksRef.current
+          .refreshSessions(() => !cancelled)
+          .catch(() => {
+            if (!cancelled) {
+              setSessionsLoading(false)
+            }
+          })
+
         // Seed the workspace BEFORE the gateway opens: every session-restore
         // path is gated on gatewayState === 'open', so nothing can be active yet
         // and ensureDefaultWorkspaceCwd's live-session guard passes. The
@@ -1452,13 +1466,6 @@ export function useGatewayBoot({
           return
         }
 
-        // Profile adoption must land first: refreshSessions scopes its fetch by
-        // $profileScope ← $activeGatewayProfile. The remaining three fetches
-        // (cwd seed, config, sessions) are independent REST calls — running
-        // them serially added their sum to time-to-populated-sidebar when only
-        // the max is needed.
-        await adoptPrimaryProfile(conn)
-
         setDesktopBootStep({
           phase: 'renderer.config',
           message: translateNow('boot.steps.loadingSettings'),
@@ -1471,15 +1478,7 @@ export function useGatewayBoot({
           // failed sync must not abort boot (the remembered cwd remains).
           seedDefaultCwd().catch(err => console.warn('Failed to sync default workspace cwd post-connect', err)),
           callbacksRef.current.refreshHermesConfig(),
-          // Session-list population is never boot-fatal. The gateway WS is
-          // already open by this point — a failed sidebar fetch (transient
-          // blip, or an endpoint the fallback couldn't cover) must leave the
-          // app usable with an empty sidebar (the reconnect/turn refreshes
-          // retry it), not brick boot behind the "Hermes couldn't start"
-          // overlay. Matches the reconnect + softSwitch call sites.
-          callbacksRef.current.refreshSessions().catch(() => {
-            setSessionsLoading(false)
-          })
+          sessionsReady
         ])
 
         if (cancelled) {

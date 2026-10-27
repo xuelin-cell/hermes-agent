@@ -442,7 +442,7 @@ export const frOverrides = {
     connect: 'Connecter',
     connecting: 'Connexion',
     continue: 'Continuer',
-    bots: 'Bots',
+    bots: 'Employés numériques',
     copied: 'Copié',
     copy: 'Copier',
     copyFailed: 'Échec de la copie',
@@ -908,6 +908,7 @@ export const frOverrides = {
       vaultCredentials: 'Identifiants enregistrés',
       vaultSources: 'Gestionnaires de mots de passe',
       appUpdates: 'Version et mises à jour',
+      legal: 'Confidentialité et conditions',
       uninstall: 'Désinstaller',
       billingOverview: "Vue d'ensemble",
       billingPlans: 'Forfaits'
@@ -1719,6 +1720,19 @@ export const frOverrides = {
     },
     about: {
       updates: 'Mises à jour'
+    },
+    legal: {
+      title: 'Confidentialité et conditions',
+      description: 'Les accords, politiques et avis qui encadrent votre utilisation d’UniWork.',
+      items: {
+        userAgreement: "Conditions d'utilisation",
+        privacyPolicy: 'Politique de confidentialité',
+        informationCollection: 'Avis sur la collecte d’informations',
+        accountCancellation: 'Avis de suppression de compte',
+        deliveryAgreement: 'Conditions de paiement',
+        childrenPrivacy: 'Politique de confidentialité des enfants et avis au tuteur',
+        openSourceTerms: 'Mentions relatives aux logiciels libres'
+      }
     },
     config: {
       agentLibraryAccessTitle: 'Autoriser l’agent à gérer la bibliothèque',
@@ -6276,7 +6290,7 @@ export const frOverrides = {
       },
       messaging: {
         title: 'UniWork loin de votre bureau',
-        text: 'Connectez Telegram, Discord, Slack et plus encore : même agent, même mémoire.'
+        text: 'Connectez DingTalk, WeChat et Feishu : même agent, même mémoire.'
       },
       artifacts: {
         title: 'Tout ce que UniWork a créé',

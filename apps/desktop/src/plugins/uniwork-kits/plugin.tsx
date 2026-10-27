@@ -1,8 +1,8 @@
 /**
  * Kits & experts — the desktop side of the `uniwork-kits` Python plugin.
  *
- * A standalone page (`#/kits`, sidebar 「套件」) installs and manages kits and
- * experts. Summoning an expert lives in the composer: a 「专家」 picker beside
+ * Extensions embeds the registered catalog with Experts / Kits shelves.
+ * Summoning an expert lives in the composer: a 「专家」 picker beside
  * the "+" and, while the chat belongs to an expert, a welcome / name bar above
  * the input.
  */
@@ -12,11 +12,11 @@ import {
   type CapabilityScopeContribution,
   COMPOSER_AREAS,
   type HermesPlugin,
+  NEW_SESSION_DEFAULT_AREA,
+  type NewSessionDefaultContribution,
   type PluginContext,
   type RouteContribution,
-  ROUTES_AREA,
-  SIDEBAR_NAV_AREA,
-  type SidebarNavContribution
+  ROUTES_AREA
 } from '@hermes/plugin-sdk'
 
 import { bindApi, bindOpener } from './api'
@@ -26,7 +26,7 @@ import { ExpertBar } from './expert-bar'
 import { $expertDirectory, loadExperts } from './experts-store'
 import { KITS_LOCALES } from './i18n'
 import { KitsPage } from './page'
-import { summonSendGuard } from './summon'
+import { resetExpertDraft, summonSendGuard } from './summon'
 import { SummonPicker } from './summon-picker'
 
 /**
@@ -38,11 +38,22 @@ function hideExpertProfiles(ctx: PluginContext): void {
 
   const stop = $expertDirectory.subscribe(directory => {
     release()
-    release = ctx.register({
-      area: CAPABILITY_SCOPE_AREA,
-      data: { hideProfiles: directory.experts.map(expert => expert.profile) } satisfies CapabilityScopeContribution,
-      id: 'managed-profiles'
-    })
+    release = ctx.registerMany([
+      {
+        area: CAPABILITY_SCOPE_AREA,
+        data: { hideProfiles: directory.experts.map(expert => expert.profile) } satisfies CapabilityScopeContribution,
+        id: 'managed-profiles'
+      },
+      {
+        area: NEW_SESSION_DEFAULT_AREA,
+        data: {
+          profiles: directory.experts.map(expert => expert.profile),
+          targetProfile: 'default',
+          prepare: resetExpertDraft
+        } satisfies NewSessionDefaultContribution,
+        id: 'new-session-default'
+      }
+    ])
   })
 
   ctx.onDispose(() => {
@@ -56,7 +67,7 @@ const plugin: HermesPlugin = {
   name: '套件',
   description: '安装和管理套件与专家，在对话框里召唤专家。',
   defaultEnabled: true,
-  /** 插件入口：注册语言包和后端接口，预先读一次专家名单，等后端装完内置包，再挂上套件页、侧栏入口、召唤按钮、专家栏和发送拦截。 */
+  /** 注册扩展里的目录、召唤按钮、专家栏和发送拦截。 */
   register(ctx) {
     ctx.i18n.register(KITS_LOCALES)
     bindApi(ctx.rest)
@@ -71,12 +82,6 @@ const plugin: HermesPlugin = {
         area: ROUTES_AREA,
         data: { path: '/kits' } satisfies RouteContribution,
         render: () => <KitsPage />
-      },
-      {
-        id: 'nav',
-        area: SIDEBAR_NAV_AREA,
-        order: 40,
-        data: { codicon: 'package', label: '套件', path: '/kits' } satisfies SidebarNavContribution
       },
       {
         id: 'summon',

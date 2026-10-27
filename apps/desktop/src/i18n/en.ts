@@ -905,7 +905,7 @@ export const en: Translations = {
     connect: 'Connect',
     connecting: 'Connecting',
     continue: 'Continue',
-    bots: 'Bots',
+    bots: 'Digital employees',
     copied: 'Copied',
     copy: 'Copy',
     copyFailed: 'Copy failed',
@@ -1389,6 +1389,7 @@ export const en: Translations = {
       vaultCredentials: 'Saved credentials',
       vaultSources: 'Password managers',
       appUpdates: 'Version & updates',
+      legal: 'Privacy & terms',
       uninstall: 'Uninstall',
       billingOverview: 'Overview',
       billingPlans: 'Plans'
@@ -1880,6 +1881,19 @@ export const en: Translations = {
     },
     about: {
       updates: 'Updates'
+    },
+    legal: {
+      title: 'Privacy & terms',
+      description: 'The agreements, policies, and notices that govern your use of UniWork.',
+      items: {
+        userAgreement: 'Terms of Service',
+        privacyPolicy: 'Privacy Policy',
+        informationCollection: 'Information Collection Notice',
+        accountCancellation: 'Account Deletion Notice',
+        deliveryAgreement: 'Payment Terms',
+        childrenPrivacy: "Children's Privacy Policy & Guardian Notice",
+        openSourceTerms: 'Open Source Notices'
+      }
     },
     config: {
       agentLibraryAccessTitle: 'Allow the agent to manage the library',
@@ -2931,7 +2945,7 @@ export const en: Translations = {
 
   skills: {
     tabSkills: 'Skills',
-    kitSkillsNote: 'Kit skills are managed on the Kits page.',
+    kitSkillsNote: 'Manage kit skills in Extensions → Experts → Kits.',
     tabToolsets: 'Tools',
     configuringProfile: 'Configuring:',
     all: 'All',
@@ -6264,7 +6278,7 @@ export const en: Translations = {
       },
       messaging: {
         title: 'UniWork away from your desk',
-        text: 'Connect Telegram, Discord, Slack and more — same agent, same memory.'
+        text: 'Connect DingTalk, WeChat and Feishu — same agent, same memory.'
       },
       artifacts: {
         title: 'Everything UniWork made',

@@ -15,7 +15,7 @@ import {
   storedStringArray,
   storedStringRecord
 } from '@/lib/storage'
-import { withTimeout } from '@/lib/with-timeout'
+import { BACKEND_BOOT_WAIT_TIMEOUT_MS, withTimeout } from '@/lib/with-timeout'
 import { registryConnectionKind } from '@/store/connection-registry-state'
 import {
   $gateway,
@@ -558,7 +558,7 @@ let gatewaySwitch: Promise<void> | null = null
 // gatewaySwitch mutex — and, through it, every later profile/source switch
 // and the switch barrier — so they are bounded and fail open like any other
 // lookup failure.
-const DESCRIPTOR_LOOKUP_TIMEOUT_MS = 20_000
+const DESCRIPTOR_LOOKUP_TIMEOUT_MS = BACKEND_BOOT_WAIT_TIMEOUT_MS
 
 // The target profile's connection descriptor (mode / baseUrl / …), resolved
 // CONCURRENTLY with the socket work so the switch can publish the profile
@@ -584,7 +584,7 @@ async function resolveConnectionForProfile(profile: string): Promise<HermesConne
 
   try {
     return await withTimeout(
-      getConnection(profile),
+      getConnection(profile, { priority: 'foreground' }),
       DESCRIPTOR_LOOKUP_TIMEOUT_MS,
       `Timed out resolving the connection descriptor for profile "${profile}"`
     )
@@ -749,7 +749,7 @@ async function resolveConnectionForAgent(connectionId: string, profile: string):
 
   try {
     return await withTimeout(
-      getConnectionFor({ connectionId, profile }),
+      getConnectionFor({ connectionId, profile, priority: 'foreground' }),
       DESCRIPTOR_LOOKUP_TIMEOUT_MS,
       `Timed out resolving the connection descriptor for agent "${connectionId}:${profile}"`
     )

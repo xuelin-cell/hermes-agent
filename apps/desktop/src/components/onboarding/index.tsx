@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
 import { getGlobalModelOptions } from '@/hermes'
 import { useI18n } from '@/i18n'
+import { TRANSLATIONS } from '@/i18n/catalog'
 import { Check, ChevronDown, ChevronLeft, KeyRound, Loader2 } from '@/lib/icons'
 import { isSubmitEnter } from '@/lib/ime'
 import { isProviderSetupErrorMessage } from '@/lib/provider-setup-errors'
@@ -435,7 +436,7 @@ export function DesktopOnboardingOverlay({
             : 'translate-y-0 scale-100 opacity-100 blur-0'
         )}
       >
-        {showPicker || !ready ? <Header /> : null}
+        {showPicker || !ready ? <Header starting={!ready} /> : null}
         {onboarding.manual ? (
           <Button
             aria-label={t.common.close}
@@ -543,7 +544,7 @@ function ReasonNotice({ reason }: { reason: string }) {
 }
 
 function Preparing({ boot }: { boot: DesktopBootState }) {
-  const { t } = useI18n()
+  const t = TRANSLATIONS.zh
   const progress = Math.max(2, Math.min(100, Math.round(boot.progress)))
   const hasError = Boolean(boot.error)
   const installing = boot.phase.startsWith('runtime.')
@@ -560,7 +561,9 @@ function Preparing({ boot }: { boot: DesktopBootState }) {
         value={progress / 100}
       />
       <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-        <span className="truncate">{boot.message}</span>
+        <span className="truncate">
+          {installing ? t.onboarding.preparingInstall : t.boot.steps.startingHermesDesktop}
+        </span>
         <span>{progress}%</span>
       </div>
       {hasError ? <p className="text-xs text-destructive">{boot.error}</p> : null}
@@ -568,8 +571,9 @@ function Preparing({ boot }: { boot: DesktopBootState }) {
   )
 }
 
-function Header() {
-  const { t } = useI18n()
+function Header({ starting = false }: { starting?: boolean }) {
+  const { t: activeTranslations } = useI18n()
+  const t = starting ? TRANSLATIONS.zh : activeTranslations
 
   return (
     <div className="bg-(--ui-chat-bubble-background) px-5 pt-5 pb-1">

@@ -22,7 +22,12 @@ it('忽略enabled但过滤重复和损坏条目，稳定排序并保留完整提
             enabled: true,
             sort: 20,
             icon: ' presentation ',
-            templates: [template('b', 20), { ...template('a'), icon: ' file-text ' }, template('a'), { ...template('off'), enabled: false }]
+            templates: [
+              template('b', 20),
+              { ...template('a'), icon: ' file-text ' },
+              template('a'),
+              { ...template('off'), enabled: false }
+            ]
           },
           { id: 'first', name: 'First', enabled: true, sort: 10, templates: [template('first')] },
           { id: 'first', name: 'Duplicate', enabled: true, templates: [template('wrong')] },
@@ -66,4 +71,16 @@ it('配置决定名称顺序和路由，重复或缺失业务ID不丢失模块�
   ])
   expect(normalizeWelcomeCatalog({ modules: [] })).toEqual([])
   expect(() => normalizeWelcomeCatalog({})).toThrow('目录格式无效')
+})
+
+it('legacy published modules keep their workspace while explicit routing overrides the old names', () => {
+  const names = ['日常办公', '学习生活', '代码开发', 'Code Development']
+  const legacy = normalizeWelcomeCatalog({ modules: names.map(name => ({ name, tags: [] })) })
+  expect(legacy.map(module => module.workspace)).toEqual(['work', 'work', 'codex', 'codex'])
+
+  const explicit = normalizeWelcomeCatalog({
+    modules: names.map((name, index) => ({ name, workspace: index < 2 ? 'codex' : 'work', tags: [] }))
+  })
+
+  expect(explicit.map(module => module.workspace)).toEqual(['codex', 'codex', 'work', 'work'])
 })

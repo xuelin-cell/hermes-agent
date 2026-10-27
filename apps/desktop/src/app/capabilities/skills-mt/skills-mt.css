@@ -108,6 +108,14 @@
   padding: 16px var(--mt-skills-gutter) 44px;
 }
 
+.mt-experts-body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  padding: 16px var(--mt-skills-gutter) 0;
+}
+
 /* MasterGo 99:4055 · Fill/灰色背景@fill2，分隔选项卡 */
 .mt-skills-tabs {
   --mt-skills-tab-fill: #f7f8fa;
@@ -187,7 +195,7 @@
   --mt-skills-category-active: #f0f0f0;
   display: flex;
   flex-wrap: wrap;
-  gap: 12px 24px;
+  gap: 8px;
 }
 
 .dark .mt-skills-cats {
@@ -197,7 +205,7 @@
 .mt-skills-cat {
   flex-shrink: 0;
   height: 32px;
-  padding: 5px 16px;
+  padding: 5px 12px;
   border: 0;
   border-radius: 16px;
   background: transparent;

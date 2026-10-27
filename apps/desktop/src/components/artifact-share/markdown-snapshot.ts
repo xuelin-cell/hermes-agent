@@ -18,9 +18,9 @@ export function markdownShareSnapshot(root: HTMLElement | null, copy: Translatio
 
   return (
     '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
-    '<style>body{font:16px/1.65 system-ui,sans-serif;max-width:800px;margin:40px auto;padding:0 24px;color:#202124}' +
-    'pre{overflow:auto;padding:16px;background:#f5f5f5}img{max-width:100%}table{border-collapse:collapse}' +
-    'td,th{border:1px solid #ccc;padding:6px}</style></head><body>' +
+    '<style>body{font:16px/1.75 system-ui,sans-serif;max-width:800px;margin:40px auto;padding:0 24px;color:#202124;overflow-wrap:anywhere}' +
+    'pre{overflow:auto;white-space:pre;overflow-wrap:normal;padding:16px;background:#f5f5f5}img{max-width:100%;height:auto}table{border-collapse:collapse;width:100%}' +
+    'td,th{border:1px solid #ccc;padding:12px 16px;line-height:1.75}a{color:#2563eb;text-decoration:underline}h1,h2,h3,h4,h5,h6{line-height:1.4}blockquote{margin-left:0;padding-left:16px;border-left:3px solid #ccc}li>p{margin-bottom:8px}[data-preview-table]{overflow-x:auto;max-width:100%}</style></head><body>' +
     clone.outerHTML +
     '</body></html>'
   )

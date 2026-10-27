@@ -1,4 +1,3 @@
-import { $workspaceSessionCategories, sessionWorkspaceCategory } from '@/store/workspace-sessions'
 import { KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { useStore } from '@nanostores/react'
@@ -6,6 +5,7 @@ import type * as React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router'
 
+import { useSkillsCopy } from '@/app/capabilities/skills-mt/copy'
 import { PlatformAvatar } from '@/app/messaging/platform-icon'
 import { MaasAccountSidebar } from '@/app/shell/maas-account-status'
 import { Button } from '@/components/ui/button'
@@ -139,6 +139,11 @@ import { $archivedSessions, loadArchivedSessions } from '@/store/sidebar-archive
 import { applySidebarNavPrefs, SIDEBAR_NAV_PREFS_AREA } from '@/store/sidebar-nav'
 import { $sidebarSessionRankIds } from '@/store/sidebar-sort'
 import { $selectedWorkspaceMode } from '@/store/workspace-category'
+import {
+  $workspaceSessionCategories,
+  projectBelongsToWorkspace,
+  sessionWorkspaceCategory
+} from '@/store/workspace-sessions'
 import { $workspaceSidebarGrouping as $sidebarGrouping } from '@/store/workspace-sidebar'
 
 import {
@@ -442,8 +447,17 @@ export function ChatSidebar({
     [navContributions]
   )
 
+  const skillsCopy = useSkillsCopy()
   const workspaceMode = useStore($selectedWorkspaceMode)
+
+  const capabilitiesLabel = (
+    workspaceMode === 'codex'
+      ? [t.skills.tabSkills, t.skills.tabPlugins, t.connectorsPage.title]
+      : [skillsCopy('experts'), t.skills.tabSkills, t.connectorsPage.title]
+  ).join(' · ')
+
   const interfaceMode = useStore($interfaceMode)
+  const activeWorkspaceCategory = workspaceMode ?? (interfaceMode === 'advanced' ? 'codex' : 'work')
   const workspaceCategories = useStore($workspaceSessionCategories)
   const showsAdvancedChrome = useStore($showsAdvancedChrome)
   const developerMode = useStore($developerMode)
@@ -464,17 +478,17 @@ export function ChatSidebar({
           route: EDITOR_ROUTE,
           icon: (props: { className?: string }) => <Codicon name="file-code" {...props} />
         },
-        { ...SIDEBAR_NAV[1], label: t.workspaceEditor.capabilities }
+        { ...SIDEBAR_NAV[1], label: capabilitiesLabel }
       ]
     }
 
     return applySidebarNavPrefs(
-      withoutHiddenNavItems([...SIDEBAR_NAV, ...contributedNav]).filter(
-        workspaceMode === 'work' ? () => true : shownInMode(interfaceMode)
-      ),
+      withoutHiddenNavItems([...SIDEBAR_NAV, ...contributedNav])
+        .map(item => (item.id === 'capabilities' ? { ...item, label: capabilitiesLabel } : item))
+        .filter(workspaceMode === 'work' ? () => true : shownInMode(interfaceMode)),
       navPrefs
     )
-  }, [contributedNav, interfaceMode, navPrefs, workspaceMode, t.workspaceEditor])
+  }, [capabilitiesLabel, contributedNav, interfaceMode, navPrefs, workspaceMode, t.workspaceEditor])
 
   const panesFlipped = useStore($panesFlipped)
   const grouping = useStore($sidebarGrouping)
@@ -616,13 +630,8 @@ export function ChatSidebar({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
-  // Profile scope = the "workspace switcher" context. Concrete scope shows only
-  // that profile's sessions (clean rows, no per-row tags); ALL fans every
-  // profile in. Grouped rendering stays gated on `showAllProfiles` (multi-profile
-  // + ALL) so a single-profile user is never stranded in a grouped view with no
-  // rail — but the *data* still has to fan in when the persisted scope is ALL
-  // (Grouping → Profile). Filtering that pool against the `__all__` sentinel
-  // matches nothing and empties recents + pins.
+  // 聊天历史跨当前账号的全部档案；当前执行档案只约束消息平台、Cron 和原有项目上下文。
+  // 工作模式、归档和其他用户筛选仍在原位置应用，不切换全局 Profile 范围。
   // Archived rows are excluded from the sessions query, so Archived is a view of
   // its own set rather than a filter over this one — a flat list of archived
   // rows, no project tree, no date or status dividers.
@@ -635,8 +644,8 @@ export function ChatSidebar({
   const scopedSessions = useMemo(() => {
     const pool = showArchived ? archivedSessions : sessions
 
-    return filterSessionsByProfileScope(pool, profileScope).filter(matchesWorkspace)
-  }, [sessions, archivedSessions, showArchived, profileScope, matchesWorkspace])
+    return pool.filter(matchesWorkspace)
+  }, [sessions, archivedSessions, showArchived, matchesWorkspace])
 
   // One predicate for the status/project filters, so the flat list and the
   // project lanes narrow by the same rule. A project lane holds rows the loaded
@@ -645,7 +654,10 @@ export function ChatSidebar({
   // (same rule as the overview overlay), so filtering to Home keeps Home's rows.
   const sessionMatchesFilters = useCallback(
     (session: SessionInfo) => {
-      if (!matchesWorkspace(session)) return false
+      if (!matchesWorkspace(session)) {
+        return false
+      }
+
       if (statusFilter.length && !statusFilter.includes(sessionStatusBucket(dotStates[session.id]))) {
         return false
       }
@@ -1058,7 +1070,11 @@ export function ChatSidebar({
   // overview sort. Membership is the backend tree's — never re-derived here.
   const projectModel = useMemo<SidebarProjectTree[]>(() => {
     const sorted = sortProjectsForOverview(
-      filterToSessionBearingProjects(filterVisibleProjects(projectTree, dismissedAutoProjects))
+      filterToSessionBearingProjects(
+        filterVisibleProjects(projectTree, dismissedAutoProjects).filter(project =>
+          projectBelongsToWorkspace(project, activeWorkspaceCategory, activeConnectionId || undefined)
+        )
+      )
         // A filtered-out project drops its whole lane, header included — hiding
         // only its rows would leave a row of empty folders behind.
         .filter(project => !projectFilter.length || projectFilter.includes(project.id))
@@ -1085,6 +1101,8 @@ export function ChatSidebar({
   }, [
     projectTree,
     dismissedAutoProjects,
+    activeConnectionId,
+    activeWorkspaceCategory,
     orderRepos,
     activeProjectId,
     projectFilter,
@@ -1445,20 +1463,12 @@ export function ChatSidebar({
   // parallel grouped view, not a filter on this one — nothing is hidden here.
   const displayAgentSessions = agentSessions
 
-  // Pagination is scope-aware. In "All profiles" mode it tracks the global
-  // unified set; scoped to one profile it tracks that profile's own truncation
-  // flag — otherwise a huge default profile keeps "Load more" stuck on while
-  // you browse a small one. The backend reports whether its page was capped
-  // rather than an exact count, so no COUNT(*) runs per refresh.
-  const loadedSessionCount = showAllProfiles ? sessions.length : scopedSessions.length
+  // 历史分页跟随全部聊天的窗口，不能因当前专家没有下一页而隐藏其他档案的历史。
+  const loadedSessionCount = sessions.length
 
   // The archived view is its own (single, capped) query — paging the live
   // sessions list from under it would just fold un-archived rows back in.
-  const hasMoreSessions =
-    !showArchived &&
-    (showAllProfiles
-      ? Object.values(sessionProfilesTruncated).some(Boolean)
-      : Boolean(sessionProfilesTruncated[profileScope]))
+  const hasMoreSessions = !showArchived && Object.values(sessionProfilesTruncated).some(Boolean)
 
   const displayRecentsCountRef = useRef(0)
   const loadedRecentsCountRef = useRef(0)
@@ -1714,7 +1724,9 @@ export function ChatSidebar({
                               <TipKeybindLabel actionId={item.keybindActionId} text={item.label || s.nav[item.id]} />
                             )
                           }
-                        : (s.nav[item.id] ?? item.label)
+                        : item.id === 'capabilities'
+                          ? capabilitiesLabel
+                          : (s.nav[item.id] ?? item.label)
                     }
                     type="button"
                   >
