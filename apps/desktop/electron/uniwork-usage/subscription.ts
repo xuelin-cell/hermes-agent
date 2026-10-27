@@ -1,5 +1,3 @@
-import { net } from 'electron'
-
 import type { LoginIdentity } from '../login/session'
 
 import type { MarketTicket, PlanSubscriptionResult } from './contract'
@@ -27,11 +25,15 @@ function parseMarketTicket(body: unknown): MarketTicket | null {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return null
   }
+
   const data = body as Record<string, unknown>
+
   const value = (key: string): string | null => {
     const field = data[key]
+
     return typeof field === 'string' && field.trim() && field.length <= 4096 ? field : null
   }
+
   const ticket = value('ticket')
   const customerId = value('customerId')
   const timestamp = value('timestamp')
@@ -45,7 +47,7 @@ export class PlanSubscriptionClient {
   constructor(
     private readonly identity: () => LoginIdentity | null,
     private readonly openExternal: (url: string) => Promise<unknown>,
-    private readonly request: typeof fetch = (input, options) => net.fetch(input, options)
+    private readonly request: typeof fetch
   ) {}
 
   async open(): Promise<PlanSubscriptionResult> {

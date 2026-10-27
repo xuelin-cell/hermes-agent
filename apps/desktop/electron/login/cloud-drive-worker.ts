@@ -4,6 +4,9 @@ import path from 'node:path'
 import { createInterface } from 'node:readline'
 import { pathToFileURL } from 'node:url'
 
+import { PlanUsageClient } from '../uniwork-usage/client'
+import { PlanSubscriptionClient } from '../uniwork-usage/subscription'
+
 import { CloudDriveClient, CloudDriveOperationError } from './cloud-drive'
 import { driveFileName, executeDriveMcpAction } from './cloud-drive-mcp-actions'
 import { DRIVE_MCP_TOOLS, parseDriveMcpInput } from './cloud-drive-mcp-tools'
@@ -49,7 +52,7 @@ const limitedRequest: typeof fetch = async (url, options) => {
 
 const contexts = new Map<
   string,
-  { identity: LoginIdentity | null; drive: CloudDriveClient; transfers: CloudDriveTransfers; active: number }
+  { identity: LoginIdentity | null; drive: CloudDriveClient; transfers: CloudDriveTransfers; usage: PlanUsageClient; active: number }
 >()
 
 const running = new Map<string, AbortController>()
@@ -134,9 +137,10 @@ async function handle(input: any) {
         contexts.delete(idle[0])
       }
 
-      context = { identity: input.identity, drive: null!, transfers: null!, active: 0 }
+      context = { identity: input.identity, drive: null!, transfers: null!, usage: null!, active: 0 }
       const captured = context
       context.drive = new CloudDriveClient(() => captured.identity, limitedRequest)
+      context.usage = new PlanUsageClient(() => captured.identity, limitedRequest)
       context.transfers = new CloudDriveTransfers(context.drive, path.join(input.root, 'previews'))
       contexts.set(input.key, context)
     }
@@ -160,6 +164,26 @@ async function handle(input: any) {
     }
 
     const handlers: Record<string, () => Promise<unknown>> = {
+      'plan-usage': () => context.usage.load(input.force === true),
+      'plan-subscription': async () => {
+        let url = ''
+
+        const subscription = new PlanSubscriptionClient(
+          () => context.identity,
+          async value => { url = value },
+          limitedRequest
+        )
+
+        const result = await subscription.open()
+
+        if (result.status === 'opened') {
+          context.usage = new PlanUsageClient(() => context.identity, limitedRequest)
+
+          return { status: 'ready', url }
+        }
+
+        return result
+      },
       request: async () => {
         const route = new URL(input.request.route, 'https://drive.invalid')
 

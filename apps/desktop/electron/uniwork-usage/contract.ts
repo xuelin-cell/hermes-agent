@@ -39,7 +39,7 @@ export interface MarketTicket {
 
 export type PlanSubscriptionResult =
   | { status: 'opened' }
-  | { status: 'failed'; reason?: 'auth' | 'missing-phone' | 'upstream' }
+  | { status: 'failed'; reason?: 'auth' | 'missing-phone' | 'upstream' | 'popup-blocked' }
 
 /** 仅接受字段对象，拒绝数组和空值。 */
 function record(value: unknown): Record<string, unknown> {

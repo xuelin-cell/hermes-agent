@@ -54,7 +54,7 @@ import { storedBoolean } from '@/lib/storage'
  *   app/shell/gateway-menu-panel.tsx                   * no gateway restart
  *   app/shell/maas-account-status.tsx                  signing out keeps the instance: the confirmation says so
  *   app/shell/model-catalog-menu.tsx                   * no "add custom model" or "edit models" in the model menus
- *   app/shell/plan-usage/panel.tsx                     * the account card without the plan's name, usage and expiry
+ *   app/shell/plan-usage/panel.tsx                     * the account card uses the browser plan bridge when available
  *   components/conversation-share/reply-button.tsx     * no "share reply" under answers
  *   contrib/plugins.ts                                 * no Bot Mode (the BOTS tab), no kits and experts: their plugins
  *                                                      are not started
@@ -485,11 +485,9 @@ export function withoutConversationShare<T extends { key?: string }>(items: T[])
   return isConversationShareHidden() ? items.filter(item => item.key !== CONVERSATION_SHARE_ITEM) : items
 }
 
-/** The account card (app/shell/plan-usage/panel.tsx) without the plan's name, usage
- * and expiry: the desktop app asks MaaS for them with the user's login, which the
- * entry uses once, at sign-in, and does not keep. Settings and signing out stay. */
+/** Only expose plan actions when the browser bridge actually supports account queries. */
 export function isPlanUsageHidden(): boolean {
-  return hideForUsers()
+  return isBrowserShell() && !window.hermesDesktop?.getPlanUsage
 }
 
 const NO_DESKTOP_PLUGINS = {}

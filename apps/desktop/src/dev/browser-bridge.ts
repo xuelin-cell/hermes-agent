@@ -25,6 +25,7 @@ import {
 import type { LoginAccount } from '../../electron/login/contract'
 
 import { browserDrive } from './browser-drive'
+import { browserPlan } from './browser-plan'
 import { browserShares } from './browser-shares'
 import { maskMcpSecrets, restoreMcpSecrets } from './mcp-secrets'
 
@@ -1414,7 +1415,7 @@ export function installBrowserDevelopmentBridge(): boolean {
     writeClipboard,
     // The instance's shell lives behind the entry; a dev server has no forwarder to give one.
     ...(productionBrowserBuild
-      ? { terminal: instanceTerminal, ...browserShares(browserBasePath()), ...browserDrive(browserBasePath()) }
+      ? { terminal: instanceTerminal, ...browserShares(browserBasePath()), ...browserDrive(browserBasePath()), ...browserPlan(browserBasePath()) }
       : {})
   }
 

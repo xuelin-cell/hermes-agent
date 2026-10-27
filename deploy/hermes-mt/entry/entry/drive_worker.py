@@ -5,6 +5,7 @@ import asyncio
 import json
 import os
 import secrets
+import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -22,6 +23,7 @@ class DriveWorker:
         self.lock = asyncio.Lock()
         self.writer_lock = asyncio.Lock()
         self.reader = None
+        self.logins = {}
 
     async def start(self):
         async with self.lock:
@@ -69,6 +71,12 @@ class DriveWorker:
         root.mkdir(mode=0o700, exist_ok=True)
         data = {'id': secrets.token_hex(16), 'key': key, 'root': str(root), 'action': action, **values}
         if identity:
+            for sid, (_, expires) in list(self.logins.items()):
+                if expires <= time.time():
+                    self.logins.pop(sid, None)
+            if len(self.logins) >= 512 and identity.session_sid not in self.logins:
+                self.logins.pop(next(iter(self.logins)))
+            self.logins[identity.session_sid] = (identity.login_id, identity.expires_at / 1000)
             data['identity'] = {'uid': identity.user_id, 'phone': identity.phone,
                                 'token': identity.token, 'expiresAt': identity.expires_at}
         future = asyncio.get_running_loop().create_future()
@@ -85,6 +93,11 @@ class DriveWorker:
             raise
         finally:
             self.pending.pop(data['id'], None)
+
+    async def logout(self, sid):
+        login = self.logins.pop(sid, None)
+        if login and self.process and self.process.returncode is None:
+            await self.call('logout', key=login[0])
 
     async def close(self):
         if self.process and self.process.returncode is None:

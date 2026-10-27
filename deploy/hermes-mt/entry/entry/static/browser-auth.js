@@ -44,7 +44,7 @@ export function storeBrowserLogin(basePath, response) {
 
 export async function requestEntryMaas(basePath, path, options = {}) {
   // A business path, never an arbitrary URL or the general instance proxy.
-  if (!/^(maas-auth|conversation-shares|artifact-shares|drive)(\/[A-Za-z0-9_-]+)*$/.test(path)) {
+  if (!/^(maas-auth|conversation-shares|artifact-shares|drive|plan)(\/[A-Za-z0-9_-]+)*$/.test(path)) {
     throw new Error('不支持的账号业务接口。');
   }
   const base = new URL(`${basePath.replace(/\/$/, '')}/__entry/`, location.origin);

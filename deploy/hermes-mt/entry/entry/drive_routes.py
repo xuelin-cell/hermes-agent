@@ -72,19 +72,12 @@ class DriveRoutes:
         self.grants: dict[str, tuple[object, asyncio.Task]] = {}
         self.limit = asyncio.Semaphore(4)
         self.reaper = None
-        self.logins = {}
         self.last_purge = 0
 
     async def identity(self, request):
         identity = await self.entry._require_maas(request)
         if not re.fullmatch(r'1\d{10}', identity.phone):
             raise web.HTTPConflict(text='请退出并重新短信登录一次，以启用个人云盘。')
-        for sid, (_, expires) in list(self.logins.items()):
-            if expires <= time.time():
-                self.logins.pop(sid, None)
-        if len(self.logins) >= 512 and identity.session_sid not in self.logins:
-            self.logins.pop(next(iter(self.logins)))
-        self.logins[identity.session_sid] = (identity.login_id, identity.expires_at / 1000)
         return identity
 
     def reserve(self, operation, size):
@@ -476,9 +469,7 @@ class DriveRoutes:
                     log.warning('Drive receipt retention deferred: database unavailable')
 
     async def logout(self, sid):
-        login = self.logins.pop(sid, None)
-        if login and self.worker.process:
-            await self.worker.call('logout', key=login[0])
+        await self.worker.logout(sid)
         for key, (identity, task) in list(self.grants.items()):
             if identity.session_sid == sid:
                 task.cancel()

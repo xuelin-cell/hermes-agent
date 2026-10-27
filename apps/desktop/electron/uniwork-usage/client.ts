@@ -1,5 +1,3 @@
-import { net } from 'electron'
-
 import type { LoginIdentity } from '../login/session'
 import { parseUniAgentGate, type UniAgentGateUpdate } from '../login/uniagentgate'
 
@@ -15,7 +13,7 @@ export class PlanUsageClient {
   /** 注入身份与网络，生产走 Electron 会话，测试可验证实际 HTTP。 */
   constructor(
     private readonly identity: () => LoginIdentity | null,
-    private readonly request: typeof fetch = (input, options) => net.fetch(input, options),
+    private readonly request: typeof fetch,
     private readonly applyBinding?: (update: UniAgentGateUpdate) => Promise<void>
   ) {}
 

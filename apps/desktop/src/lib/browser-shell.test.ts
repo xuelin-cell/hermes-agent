@@ -214,7 +214,7 @@ describe('browser shell', () => {
     expect(isBundledPluginHidden('uniwork-kits')).toBe(false)
   })
 
-  it('hides sharing conversations and the plan on the account card from regular users', () => {
+  it('filters sharing by availability and only exposes plans with a working browser bridge', () => {
     const items = [{ key: 'conversation-share', label: 'Share' }, { label: 'Rename' }]
 
     expect(isConversationShareHidden()).toBe(false)
@@ -230,7 +230,14 @@ describe('browser shell', () => {
     localStorage.setItem(DEVELOPER_MODE_KEY, 'true')
 
     expect(withoutConversationShare(items)).toBe(items)
-    expect(isPlanUsageHidden()).toBe(false)
+    expect(isPlanUsageHidden()).toBe(true)
+    const previous = window.hermesDesktop
+    try {
+      window.hermesDesktop = { getPlanUsage: vi.fn() } as never
+      expect(isPlanUsageHidden()).toBe(false)
+    } finally {
+      window.hermesDesktop = previous
+    }
     // The session menu marks its "share session" row with the key the filter drops.
     expect(sessionMenuSource).toContain("key: 'conversation-share'")
   })

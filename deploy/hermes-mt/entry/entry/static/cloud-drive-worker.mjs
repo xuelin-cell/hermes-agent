@@ -1,10 +1,275 @@
-// electron/login/cloud-drive-worker.ts
+// apps/desktop/electron/login/cloud-drive-worker.ts
 import { once } from "node:events";
 import path2 from "node:path";
 import { createInterface } from "node:readline";
 import { pathToFileURL } from "node:url";
 
-// electron/login/cloud-drive-credentials.ts
+// apps/desktop/electron/login/uniagentgate.ts
+function record(value) {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+function parseUniAgentGate(value) {
+  if (!record(value)) {
+    return { status: "missing" };
+  }
+  const legacy = Object.hasOwn(value, "uniagentgate");
+  const fields = ["ipUrl", "agentIdPersonal", "agentKeyPersonal"];
+  if (!legacy && !fields.some((name2) => Object.hasOwn(value, name2))) {
+    return { status: "missing" };
+  }
+  const raw = legacy ? value.uniagentgate : {
+    gateway_url: value.ipUrl,
+    agent_id: value.agentIdPersonal,
+    agent_sk: value.agentKeyPersonal
+  };
+  if (raw === null) {
+    return { status: "clear" };
+  }
+  if (!record(raw) || ["gateway_url", "agent_id", "agent_sk"].some(
+    (name2) => typeof raw[name2] !== "string" || !raw[name2].trim() || /[^\x20-\x7e]/.test(raw[name2])
+  )) {
+    return { status: "invalid" };
+  }
+  try {
+    const url = new URL(raw.gateway_url);
+    if (!["https:", "http:"].includes(url.protocol) || url.username || url.password || url.search || url.hash || raw.agent_sk.includes("${")) {
+      return { status: "invalid" };
+    }
+    return {
+      status: "available",
+      binding: {
+        gatewayUrl: url.href.replace(/\/+$/, ""),
+        agentId: raw.agent_id.trim(),
+        agentSk: raw.agent_sk.trim()
+      }
+    };
+  } catch {
+    return { status: "invalid" };
+  }
+}
+
+// apps/desktop/electron/uniwork-usage/contract.ts
+function record2(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+function amount(value) {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+}
+function normalizePlanUsage(body, fetchedAt) {
+  const envelope = record2(body);
+  if (!Object.keys(envelope).length || envelope.code !== void 0 && envelope.code !== 0 && envelope.code !== "0") {
+    throw new Error("Invalid plan response");
+  }
+  const data = record2(envelope.data === void 0 ? body : envelope.data);
+  if (!Object.keys(data).length) {
+    throw new Error("Missing plan response");
+  }
+  const kind = data.planType === "coding_plan" || data.planType === "token_plan" ? data.planType : "unknown";
+  const coding = record2(data.codingPlanUsage), token = record2(data.tokenPlanUsage);
+  const windows = [];
+  const names = [
+    ["five-hour", "second", "secondTtl"],
+    ["week", "week", "weekTtl"],
+    ["month", "month", "monthTtl"]
+  ];
+  if (kind === "coding_plan") {
+    for (const [name2, key, ttlKey] of names) {
+      const used2 = amount(coding[key]), ttl = typeof coding[ttlKey] === "number" && Number.isFinite(coding[ttlKey]) ? Math.max(0, coding[ttlKey]) : null;
+      if (used2 !== null) {
+        windows.push({
+          name: name2,
+          usedPercent: Math.min(100, used2),
+          resetAt: ttl !== null && ttl > 0 ? Math.min(864e13, fetchedAt + ttl * 1e3) : null,
+          notStarted: ttl === 0
+        });
+      }
+    }
+  }
+  const total = amount(token.totalQuota), used = amount(token.usedQuota), limit = amount(token.concurrencyLimit);
+  return {
+    kind,
+    productName: typeof data.productName === "string" ? data.productName.slice(0, 120) : "",
+    endTime: typeof data.endTime === "string" ? data.endTime.slice(0, 64) : null,
+    expired: data.status === "invalid",
+    fetchedAt,
+    windows,
+    quota: kind === "token_plan" && total !== null && total > 0 && used !== null ? {
+      total,
+      used,
+      remaining: Math.max(0, total - used),
+      usedPercent: Math.min(100, used / total * 100),
+      unit: typeof token.quotaUnit === "string" ? token.quotaUnit : null
+    } : null,
+    concurrency: kind === "token_plan" && limit !== null && limit > 0 ? { current: amount(token.currentConcurrency), limit } : null
+  };
+}
+
+// apps/desktop/electron/uniwork-usage/client.ts
+var PlanUsageClient = class {
+  /** 注入身份与网络，生产走 Electron 会话，测试可验证实际 HTTP。 */
+  constructor(identity, request, applyBinding) {
+    this.identity = identity;
+    this.request = request;
+    this.applyBinding = applyBinding;
+  }
+  identity;
+  request;
+  applyBinding;
+  key = "";
+  pending = null;
+  cached = null;
+  cachedUntil = 0;
+  /** 账号变化或过期立即清除缓存，成功结果只在内存复用三十秒；手动刷新可绕过缓存。 */
+  async load(force = false) {
+    const identity = this.identity();
+    const key = identity && identity.expiresAt > Date.now() ? `${identity.uid}\0${identity.token}` : "";
+    if (key !== this.key) {
+      this.key = key;
+      this.pending = null;
+      this.cached = null;
+      this.cachedUntil = 0;
+    }
+    if (!identity || !key) {
+      return { status: "failed", reason: "auth" };
+    }
+    if (!force && this.cached && Date.now() < this.cachedUntil) {
+      return this.cached;
+    }
+    if (this.pending) {
+      return this.pending;
+    }
+    const pending = this.fetch(identity).then((result) => {
+      if (this.key === key && this.identity()?.token === identity.token && identity.expiresAt > Date.now() && result.status === "available") {
+        this.cached = result;
+        this.cachedUntil = Date.now() + 3e4;
+      }
+      return result;
+    }).finally(() => {
+      if (this.pending === pending) {
+        this.pending = null;
+      }
+    });
+    this.pending = pending;
+    return pending;
+  }
+  /** 固定上游并拒绝重定向，迟到响应不能跨账号，错误不透出服务端原文。 */
+  async fetch(identity) {
+    try {
+      const response = await this.request("https://maas.ai-yuanjing.com/app/gateway/uniwork/my-plan", {
+        headers: { Accept: "application/json", Authorization: `Bearer ${identity.token}` },
+        signal: AbortSignal.timeout(15e3),
+        redirect: "error",
+        credentials: "omit",
+        cache: "no-store"
+      });
+      if (response.status === 401 || response.status === 403) {
+        return { status: "failed", reason: "auth" };
+      }
+      if (!response.ok) {
+        return { status: "failed" };
+      }
+      const body = await response.json();
+      const data = normalizePlanUsage(body, Date.now());
+      const current = this.identity();
+      if (!current || current.uid !== identity.uid || current.token !== identity.token || current.expiresAt <= Date.now()) {
+        return { status: "failed", reason: "auth" };
+      }
+      if (body && typeof body === "object" && !Array.isArray(body)) {
+        const envelope = body;
+        const update = parseUniAgentGate(envelope.data === void 0 ? body : envelope.data);
+        if (update.status === "available" || update.status === "clear") {
+          try {
+            await this.applyBinding?.(update);
+          } catch {
+            console.warn("[desktop-mt] 5G \u7ED1\u5B9A\u66F4\u65B0\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u8D26\u53F7\u914D\u7F6E\uFF1B\u5957\u9910\u7528\u91CF\u4ECD\u53EF\u67E5\u770B\u3002");
+          }
+        }
+      }
+      if (this.identity()?.token !== identity.token || identity.expiresAt <= Date.now()) {
+        return { status: "failed", reason: "auth" };
+      }
+      return {
+        status: "available",
+        data,
+        account: { maskedPhone: identity.maskedPhone, expiresAt: identity.expiresAt }
+      };
+    } catch {
+      return { status: "failed" };
+    }
+  }
+};
+
+// apps/desktop/electron/uniwork-usage/subscription.ts
+var MARKET_TICKET_URL = "https://maas.ai-yuanjing.com/app/gateway/uniwork/market-ticket";
+var SUBSCRIPTION_MARKET_URL = "https://market.ai-yuanjing.com/#/active";
+var PAYMENT_CALLBACK_URL = "https://maas.ai-yuanjing.com/app/gateway/op/payment/callback";
+function buildSubscriptionMarketUrl(phone, ticket) {
+  return SUBSCRIPTION_MARKET_URL + `?u=${Buffer.from(phone, "utf8").toString("base64")}&callback_url=${Buffer.from(PAYMENT_CALLBACK_URL, "utf8").toString("base64")}&single=1&ticket=${encodeURIComponent(ticket.ticket)}&customerid=${encodeURIComponent(ticket.customerId)}&timestamp=${encodeURIComponent(ticket.timestamp)}&number=${encodeURIComponent(ticket.number)}`;
+}
+function parseMarketTicket(body) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return null;
+  }
+  const data = body;
+  const value = (key) => {
+    const field = data[key];
+    return typeof field === "string" && field.trim() && field.length <= 4096 ? field : null;
+  };
+  const ticket = value("ticket");
+  const customerId = value("customerId");
+  const timestamp = value("timestamp");
+  const number = value("number");
+  return ticket && customerId && timestamp && number ? { ticket, customerId, timestamp, number } : null;
+}
+var PlanSubscriptionClient = class {
+  constructor(identity, openExternal, request) {
+    this.identity = identity;
+    this.openExternal = openExternal;
+    this.request = request;
+  }
+  identity;
+  openExternal;
+  request;
+  async open() {
+    const identity = this.identity();
+    if (!identity || identity.expiresAt <= Date.now()) {
+      return { status: "failed", reason: "auth" };
+    }
+    const phone = identity.phone?.trim() ?? "";
+    if (!/^1\d{10}$/.test(phone)) {
+      return { status: "failed", reason: "missing-phone" };
+    }
+    try {
+      const response = await this.request(MARKET_TICKET_URL, {
+        headers: { Accept: "application/json", Authorization: `Bearer ${identity.token}` },
+        signal: AbortSignal.timeout(15e3),
+        redirect: "error",
+        credentials: "omit",
+        cache: "no-store"
+      });
+      if (response.status === 401 || response.status === 403) {
+        return { status: "failed", reason: "auth" };
+      }
+      if (!response.ok) {
+        return { status: "failed", reason: "upstream" };
+      }
+      const ticket = parseMarketTicket(await response.json());
+      if (!ticket) {
+        return { status: "failed", reason: "upstream" };
+      }
+      const current = this.identity();
+      if (!current || current.uid !== identity.uid || current.token !== identity.token || current.expiresAt <= Date.now()) {
+        return { status: "failed", reason: "auth" };
+      }
+      await this.openExternal(buildSubscriptionMarketUrl(phone, ticket));
+      return { status: "opened" };
+    } catch {
+      return { status: "failed", reason: "upstream" };
+    }
+  }
+};
+
+// apps/desktop/electron/login/cloud-drive-credentials.ts
 import { createHash } from "node:crypto";
 var CloudDriveCredentials = class {
   /** 网络和密文存储由主进程注入，测试使用临时目录和可控时间。 */
@@ -47,9 +312,9 @@ var CloudDriveCredentials = class {
     const pending = (async () => {
       const token = await this.acquire(context.identity);
       this.check(context);
-      const record2 = { token, expiresAt: requestedAt + 7 * 24 * 60 * 60 * 1e3 };
-      this.options.store?.save(context.owner, record2);
-      context.record = record2;
+      const record4 = { token, expiresAt: requestedAt + 7 * 24 * 60 * 60 * 1e3 };
+      this.options.store?.save(context.owner, record4);
+      context.record = record4;
       return token;
     })();
     context.pending = pending;
@@ -102,7 +367,7 @@ var CloudDriveCredentials = class {
   }
 };
 
-// electron/login/cloud-drive-verification.ts
+// apps/desktop/electron/login/cloud-drive-verification.ts
 import { setTimeout as delay } from "node:timers/promises";
 async function* readDriveFolderPages(read, parent2, signal) {
   const found = /* @__PURE__ */ new Set();
@@ -414,14 +679,14 @@ async function prepareMutationVerification(read, input, signal) {
   return prepare({ read, input, signal });
 }
 
-// electron/login/contract.ts
+// apps/desktop/electron/login/contract.ts
 function isCloudDriveReadOperation(input) {
   return (input.method ?? "GET") === "GET" || input.method === "POST" && ["/assets/download", "/assets/search", "/unicom/FileDetails", "/unicom/QueryRecycleData"].includes(
     input.route.split("?")[0]
   ) || input.method === "DELETE" && /^\/assets\/search\/[a-f0-9]{32}$/.test(input.route);
 }
 
-// electron/login/cloud-drive.ts
+// apps/desktop/electron/login/cloud-drive.ts
 var BASE = "https://maas.ai-yuanjing.com/app/uniwork/general_uniclaw/clouddrive/v1";
 var AUTH = "https://www.yjworker.10010.com/app/gateway/uniwork-yunpan/access-token";
 var CloudDriveOperationError = class extends Error {
@@ -798,9 +1063,9 @@ var CloudDriveClient = class {
   }
 };
 
-// electron/login/cloud-drive-mcp-actions.ts
+// apps/desktop/electron/login/cloud-drive-mcp-actions.ts
 import { setTimeout as delay2 } from "node:timers/promises";
-function record(value) {
+function record3(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 function singlePage(input, count) {
@@ -817,7 +1082,7 @@ function singlePage(input, count) {
   };
 }
 async function listFiles(drive, input, signal) {
-  const result = record(
+  const result = record3(
     await drive.execute(
       { route: `/assets?${new URLSearchParams(Object.entries(input).map(([key, value]) => [key, String(value)]))}` },
       signal
@@ -826,14 +1091,14 @@ async function listFiles(drive, input, signal) {
   if (!Array.isArray(result.items)) {
     throw new CloudDriveOperationError("failed", "INVALID_RESPONSE");
   }
-  if (!result.items.length && record(result.page).has_more === true) {
+  if (!result.items.length && record3(result.page).has_more === true) {
     throw new CloudDriveOperationError("failed", "INCOMPLETE_LISTING");
   }
-  return { ...result, page: { ...record(result.page), ...singlePage(input, result.items.length) } };
+  return { ...result, page: { ...record3(result.page), ...singlePage(input, result.items.length) } };
 }
 function driveFileName(value) {
-  const container = record(value);
-  const row = record(
+  const container = record3(value);
+  const row = record3(
     Array.isArray(value) ? value[0] : Array.isArray(container.items) ? container.items[0] : Array.isArray(container.files) ? container.files[0] : value
   );
   return [row.fileName, row.file_name, row.name].find((name2) => typeof name2 === "string" && !!name2.trim()) ?? null;
@@ -851,12 +1116,12 @@ async function recycle(drive, input, signal) {
     },
     signal
   );
-  const rows = Array.isArray(raw) ? raw : record(raw).items ?? record(raw).list;
+  const rows = Array.isArray(raw) ? raw : record3(raw).items ?? record3(raw).list;
   if (!Array.isArray(rows)) {
     throw new CloudDriveOperationError("failed", "INVALID_RESPONSE");
   }
   const items = rows.map((value) => {
-    const row = record(value);
+    const row = record3(value);
     if (typeof row.deleteNo !== "string" || !row.deleteNo) {
       throw new CloudDriveOperationError("failed", "INVALID_RESPONSE");
     }
@@ -883,8 +1148,8 @@ async function search(drive, input, caller) {
   let completed = false;
   try {
     let result = await drive.execute({ route: "/assets/search", method: "POST", body: input }, signal);
-    while (record(result).state === "running") {
-      const id2 = record(result).search_id;
+    while (record3(result).state === "running") {
+      const id2 = record3(result).search_id;
       if (typeof id2 !== "string" || !/^[a-f0-9]{32}$/.test(id2) || searchId && id2 !== searchId) {
         throw new CloudDriveOperationError("failed", "INVALID_SEARCH_JOB");
       }
@@ -893,7 +1158,7 @@ async function search(drive, input, caller) {
       check();
       result = await drive.execute({ route: `/assets/search/${searchId}?${page2}` }, signal);
     }
-    if (!Array.isArray(record(result).items) || !record(result).page || typeof record(result).page !== "object") {
+    if (!Array.isArray(record3(result).items) || !record3(result).page || typeof record3(result).page !== "object") {
       throw new CloudDriveOperationError("failed", "INVALID_RESPONSE");
     }
     completed = true;
@@ -977,7 +1242,7 @@ async function executeDriveMcpAction(drive, name2, input, signal) {
   return handler();
 }
 
-// electron/login/cloud-drive-mcp-tools.ts
+// apps/desktop/electron/login/cloud-drive-mcp-tools.ts
 var id = { type: "string", minLength: 1, maxLength: 512 };
 var name = { type: "string", minLength: 1, maxLength: 255 };
 var ids = { type: "array", items: id, minItems: 1, maxItems: 100 };
@@ -1104,7 +1369,7 @@ function parseDriveMcpInput(name2, args) {
   return result;
 }
 
-// electron/login/cloud-drive-transfers.ts
+// apps/desktop/electron/login/cloud-drive-transfers.ts
 import { randomUUID } from "node:crypto";
 import { constants, createWriteStream } from "node:fs";
 import { lstat, mkdir, mkdtemp, open, rename, rm } from "node:fs/promises";
@@ -1112,7 +1377,7 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
-// ../shared/src/office-preview.ts
+// apps/shared/src/office-preview.ts
 var OFFICE_EXTENSIONS = {
   word: ["docx", "doc", "odt"],
   slides: ["pptx", "ppt", "odp"],
@@ -1126,10 +1391,10 @@ var KIND_BY_EXTENSION = new Map(
   )
 );
 
-// electron/login/cloud-drive-preview.ts
+// apps/desktop/electron/login/cloud-drive-preview.ts
 var CLOUD_DRIVE_PREVIEW_BYTES = 20 * 1024 * 1024;
 
-// electron/login/cloud-drive-transfers.ts
+// apps/desktop/electron/login/cloud-drive-transfers.ts
 var PART_BYTES = 8 * 1024 * 1024;
 var IMAGE_MIME = {
   ".png": "image/png",
@@ -1540,7 +1805,7 @@ var CloudDriveTransfers = class {
   }
 };
 
-// electron/login/cloud-drive-worker.ts
+// apps/desktop/electron/login/cloud-drive-worker.ts
 var upstreamRequest = fetch;
 var limitedRequest = async (url, options) => {
   const response = await upstreamRequest(url, options);
@@ -1630,9 +1895,10 @@ async function handle(input) {
         idle[1].transfers.cancelAll();
         contexts.delete(idle[0]);
       }
-      context = { identity: input.identity, drive: null, transfers: null, active: 0 };
+      context = { identity: input.identity, drive: null, transfers: null, usage: null, active: 0 };
       const captured = context;
       context.drive = new CloudDriveClient(() => captured.identity, limitedRequest);
+      context.usage = new PlanUsageClient(() => captured.identity, limitedRequest);
       context.transfers = new CloudDriveTransfers(context.drive, path2.join(input.root, "previews"));
       contexts.set(input.key, context);
     }
@@ -1650,6 +1916,23 @@ async function handle(input) {
       return action === "parse" ? parsed : executeDriveMcpAction(context.drive, input.name, parsed, scope);
     };
     const handlers = {
+      "plan-usage": () => context.usage.load(input.force === true),
+      "plan-subscription": async () => {
+        let url = "";
+        const subscription = new PlanSubscriptionClient(
+          () => context.identity,
+          async (value) => {
+            url = value;
+          },
+          limitedRequest
+        );
+        const result2 = await subscription.open();
+        if (result2.status === "opened") {
+          context.usage = new PlanUsageClient(() => context.identity, limitedRequest);
+          return { status: "ready", url };
+        }
+        return result2;
+      },
       request: async () => {
         const route = new URL(input.request.route, "https://drive.invalid");
         if (route.searchParams.has("space_id") && route.searchParams.get("space_id") !== "personal" || input.request.body?.space_id && input.request.body.space_id !== "personal") {
