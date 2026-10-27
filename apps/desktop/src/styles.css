@@ -1844,23 +1844,11 @@ body.guest-pointer-lock :is(webview, iframe) {
 
 [data-slot='aui_user-bubble-frame'] > .composer-human-message {
   border-color: transparent;
-  border-radius: 20px 20px 4px 20px;
+  border-radius: 20px 20px 0 20px;
   background: var(--human-bubble-background);
   padding: 12px 36px 12px 16px;
   box-shadow: none;
   backdrop-filter: none;
-}
-
-[data-slot='aui_user-bubble-frame']::after {
-  position: absolute;
-  right: -6px;
-  bottom: 0;
-  width: 10px;
-  height: 10px;
-  background: var(--human-bubble-background);
-  clip-path: polygon(0 0, 0 100%, 100% 100%);
-  pointer-events: none;
-  content: '';
 }
 
 [data-slot='aui_thread-content'] .composer-human-ai-pair-container {
