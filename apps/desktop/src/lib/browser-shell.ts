@@ -59,7 +59,7 @@ import { storedBoolean } from '@/lib/storage'
  *   components/conversation-share/reply-button.tsx     * no "share reply" under answers
  *   contrib/plugins.ts                                 * no Bot Mode (the BOTS tab), no kits and experts: their plugins
  *                                                      are not started
- *   i18n/catalog.ts                                    Chinese supplement and original cloud artifact names, see `lib/browser-shell-{zh,artifacts}.ts`
+ *   i18n/catalog.ts                                    Chinese supplement and cloud sharing copy, see `lib/browser-shell-{zh,artifacts}.ts`
  *   i18n/profile-provider.tsx                          the interface starts in Chinese, before the instance's config answers
  *   lib/chat-runtime.ts                                a session with no title yet is 新建会话, not "New session"
  *   lib/local-preview.ts                               Office files (pptx, docx, xlsx …) are previews, never read as text

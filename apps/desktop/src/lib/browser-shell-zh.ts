@@ -438,12 +438,6 @@ export const CLOUD_ZH: TranslationOverrides = {
       errorOpenHermesFolderFailed: '无法打开 UniWork 文件夹',
       errorUpdateApiKey: '更新 API 密钥',
       errorSignInFreeTier: '用 Nous 账号登录'
-    },
-    approval: {
-      reconnect: '重新连接',
-      timedOutSystemLine: '审批超时，命令没有执行。可以让 UniWork 再试一次，或者在 设置 → 安全 → 审批超时 里调大时限。',
-      openSafetySettings: '打开安全设置',
-      commandDetails: '命令详情'
     }
   },
 
