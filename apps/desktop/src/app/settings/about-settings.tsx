@@ -11,7 +11,6 @@ import { $desktopVersion, checkBackendUpdates, refreshDesktopVersion } from '@/s
 import { LegalSettings } from './legal-settings'
 import { SectionHeading, SettingsContent } from './primitives'
 import { SETTING_IDS, settingElementId } from './settings-manifest'
-import { UninstallSection } from './uninstall-section'
 import { useSettingDeepLink } from './use-setting-deep-link'
 
 interface AboutSettingsProps {
@@ -25,22 +24,10 @@ export function AboutSettings({ subpage }: AboutSettingsProps = {}): ReactElemen
     return <LegalSettings />
   }
 
-  if (subpage === 'uninstall') {
-    return (
-      <SettingsContent>
-        <UninstallSection />
-      </SettingsContent>
-    )
-  }
-
-  return <AppUpdatesSettings includeUninstall={subpage === undefined} />
+  return <AppUpdatesSettings />
 }
 
-interface AppUpdatesSettingsProps {
-  includeUninstall: boolean
-}
-
-function AppUpdatesSettings({ includeUninstall }: AppUpdatesSettingsProps): ReactElement {
+function AppUpdatesSettings(): ReactElement {
   const { t } = useI18n()
   const version = useStore($desktopVersion)
   const connection = useStore($connection)
@@ -66,7 +53,6 @@ function AppUpdatesSettings({ includeUninstall }: AppUpdatesSettingsProps): Reac
           {remote && <UpdateStatusCard showReleaseNotes={false} target="backend" />}
         </div>
         {version && <VersionDetails version={version} />}
-        {includeUninstall && <UninstallSection />}
       </div>
     </SettingsContent>
   )
