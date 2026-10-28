@@ -5,6 +5,7 @@ from contextvars import ContextVar
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 import math
+import threading
 import time
 
 
@@ -17,6 +18,9 @@ _ACCESS_MARKERS = (
     "api key is required", "missing api key",
 )
 _POLICY_MARKERS = ("blocked_by_policy", "blocked by website policy", "scrape_prompt_injection_detected", "unsupported_site")
+_Ticket = tuple[tuple[str, str], object | None]
+_cooldowns: dict[tuple[str, str], tuple[float, object | None]] = {}
+_cooldown_lock = threading.Lock()
 
 
 class SearchFailure(RuntimeError):
@@ -95,9 +99,9 @@ def failed_result(result: dict, exc: Exception, *, rate_limited: bool = False) -
     import httpx
     import requests
 
-    failure = None
+    failure = SearchFailure("Blocked by website policy") if any(marker in str(exc).lower() for marker in _POLICY_MARKERS) else None
     current = exc
-    while current is not None:
+    while current is not None and failure is None:
         if isinstance(current, SearchFailure):
             failure = current
             break
@@ -115,3 +119,36 @@ def failed_result(result: dict, exc: Exception, *, rate_limited: bool = False) -
         result["error"] = str(failure)
         result["_keyless_failure"] = (failure.category, failure.retry_after)
     return result
+
+
+def claim_service(vendor: str) -> _Ticket | None:
+    """按当前 Home 暂避故障服务；到期只允许一个请求探测恢复。"""
+    from hermes_constants import hermes_home_key
+
+    key = (hermes_home_key(), vendor)
+    now = time.monotonic()
+    with _cooldown_lock:
+        for old_key, (until, probe) in list(_cooldowns.items()):
+            if probe is None and now > until + 300:
+                del _cooldowns[old_key]
+        current = _cooldowns.get(key)
+        if current is None:
+            return key, None
+        until, probe = current
+        if now < until or probe is not None:
+            return None
+        probe = object()
+        _cooldowns[key] = (until, probe)
+        return key, probe
+
+
+def finish_service(ticket: _Ticket, retry_after: float | None) -> None:
+    """故障更新暂避；仅本次恢复探测可清理状态，迟到成功不覆盖新故障。"""
+    key, probe = ticket
+    with _cooldown_lock:
+        current = _cooldowns.get(key)
+        if retry_after is not None:
+            until = time.monotonic() + retry_after
+            _cooldowns[key] = (max(current[0], until) if current else until, None)
+        elif probe is not None and current is not None and current[1] is probe:
+            del _cooldowns[key]

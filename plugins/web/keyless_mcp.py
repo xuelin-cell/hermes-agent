@@ -390,8 +390,18 @@ def search_with_failover(name: str, query: str, limit: int = 5) -> Dict[str, Any
             if _search_policy.budget_expired():
                 failures.append("search time budget exhausted")
                 break
-            result = _KEYLESS_SEARCHERS[vendor](query, limit)
-            category, _delay = result.pop("_keyless_failure", ("rate_limit", 60.0) if _is_rate_limitish(result.get("error", "")) else ("", 0.0))
+            ticket = _search_policy.claim_service(vendor)
+            if ticket is None:
+                failures.append(f"{vendor}: temporarily unavailable (cooldown)")
+                continue
+            delay = None
+            try:
+                result = _KEYLESS_SEARCHERS[vendor](query, limit)
+                category, retry_after = result.pop("_keyless_failure", ("rate_limit", 60.0) if _is_rate_limitish(result.get("error", "")) else ("", 0.0))
+                if category and not result.get("success") and not is_interrupted():
+                    delay = retry_after
+            finally:
+                _search_policy.finish_service(ticket, delay)
             if is_interrupted():
                 return search_fail("Interrupted")
             if result.get("success"):
