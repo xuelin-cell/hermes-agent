@@ -14,6 +14,8 @@ export interface ComposerModelMeta {
   model: string
   name: string
   contextWindow?: number
+  thinking?: 'auto' | 'on' | 'off'
+  modalities?: string[]
   vision: boolean
   plan: boolean
 }
@@ -45,11 +47,13 @@ export function buildComposerModelMeta(
       key: row.key,
       endpointId: row.endpointId,
       provider: `custom:${row.endpointId}`,
-      model: row.draft.model,
+      model: row.draft.displayName.trim() || prettifyModelId(row.draft.model),
       name: row.plan
         ? prettifyModelId(row.draft.model)
         : row.draft.displayName.trim() || prettifyModelId(row.draft.model),
       contextWindow: positiveInteger(options.context_length) ?? positiveInteger(endpoint.context_length),
+      thinking: row.draft.thinking,
+      modalities: row.draft.modalities,
       vision: row.draft.vision,
       plan: row.plan
     }

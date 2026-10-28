@@ -55,6 +55,7 @@ import {
 } from './composer-utils'
 import { ContextMenu } from './context-menu'
 import { COMPOSER_AREAS, runComposerMiddleware } from './contrib'
+import { ApprovalModePicker } from './approval-mode-picker'
 import { ComposerControls } from './controls'
 import { ComposerDirectiveActions } from './directive-actions'
 import { COMPOSER_DROP_ACTIVE_CLASS, COMPOSER_DROP_FADE_CLASS } from './drop-affordance'
@@ -1582,6 +1583,7 @@ export function ChatBar({
                       data-slot="composer-leading"
                     >
                       {contextMenu}
+                      {!guidedChat && <ApprovalModePicker gateway={gateway} sessionId={sessionId} />}
                       {!botChat && !guidedChat && <WorkdirPicker cwd={cwd} gateway={gateway} sessionId={sessionId} />}
                       <ContribSlot area={COMPOSER_AREAS.leading} />
                     </div>

@@ -22,13 +22,20 @@
 import { atom } from 'nanostores'
 
 import { setSessionUnreadRemote } from '@/hermes'
+import type { SessionInfo } from '@/types/hermes'
 
 import { $sessions, setSessions } from './session'
 
 export const UNREAD_WRITE_GUARD_MS = 10_000
 
 /** id -> the value we wrote and when. Guarded rows outrank list pages. */
-export const $unreadWriteGuard = atom<Map<string, { at: number; value: boolean }>>(new Map())
+interface UnreadWrite {
+  at: number
+  value: boolean
+  profile?: null | string
+  pending?: boolean
+}
+export const $unreadWriteGuard = atom<Map<string, UnreadWrite>>(new Map())
 
 function rowFor(storedId: string) {
   return $sessions.get().find(row => row.id === storedId)
@@ -45,19 +52,28 @@ export async function markSessionUnread(storedId: string, unread: boolean): Prom
   }
 
   const guard = new Map($unreadWriteGuard.get())
-  guard.set(storedId, { at: Date.now(), value: unread })
+  const write: UnreadWrite = { at: Date.now(), value: unread, profile: row.profile, pending: true }
+  guard.set(storedId, write)
   $unreadWriteGuard.set(guard)
 
   setSessions(rows => rows.map(r => (r.id === storedId ? { ...r, unread } : r)))
 
   try {
     await setSessionUnreadRemote(storedId, unread, row.profile)
+
+    if ($unreadWriteGuard.get().get(storedId) === write) {
+      write.pending = false
+    }
   } catch (err) {
-    // Roll back visibly: the backend kept the old value.
+    if ($unreadWriteGuard.get().get(storedId) !== write) {
+      throw err
+    }
+
+    // Only this write may roll back its optimistic state.
     const guard2 = new Map($unreadWriteGuard.get())
     guard2.delete(storedId)
     $unreadWriteGuard.set(guard2)
-    setSessions(rows => rows.map(r => (r.id === storedId ? { ...r, unread: !unread } : r)))
+    setSessions(rows => rows.map(r => (r.id === storedId ? { ...r, unread: row.unread } : r)))
     throw err
   }
 }
@@ -78,24 +94,26 @@ export async function clearUnreadOnOpen(storedId: string): Promise<void> {
   }
 }
 
-/** Release guard entries once a list page confirms the value we wrote. Call
- *  once at boot, next to watchSessionPins(). */
-export function watchUnreadWriteGuard(): void {
-  $sessions.listen(rows => {
-    const guard = $unreadWriteGuard.get()
-    let changed = false
+/** Only backend-returned rows may confirm a write; local optimistic updates
+ * and unrelated title/activity edits are not server acknowledgements. */
+export function confirmUnreadWrites(rows: readonly SessionInfo[]): void {
+  const guard = $unreadWriteGuard.get()
+  const next = new Map(guard)
 
-    for (const [id, entry] of guard) {
-      const row = rows.find(r => r.id === id)
+  for (const row of rows) {
+    const entry = guard.get(row.id)
 
-      if (row && row.unread === entry.value) {
-        guard.delete(id)
-        changed = true
-      }
+    if (
+      entry &&
+      !entry.pending &&
+      (entry.profile || 'default') === (row.profile || 'default') &&
+      row.unread === entry.value
+    ) {
+      next.delete(row.id)
     }
+  }
 
-    if (changed) {
-      $unreadWriteGuard.set(new Map(guard))
-    }
-  })
+  if (next.size !== guard.size) {
+    $unreadWriteGuard.set(next)
+  }
 }

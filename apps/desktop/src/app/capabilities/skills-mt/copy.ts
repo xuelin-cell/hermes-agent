@@ -47,6 +47,7 @@ registerPluginLocales(SCOPE, {
     riskBody: (name: string) =>
       `“${name}” was flagged as dangerous. It may expose files or credentials or run unsafe commands. Review the report before approving this package only.`,
     riskReport: 'Scan report',
+    riskDetails: 'View details',
     riskInstall: 'Accept risk and install',
     riskChanged: 'The package changed after approval. Review it again before installing.',
     experts: 'Experts',
@@ -108,6 +109,7 @@ registerPluginLocales(SCOPE, {
     riskBody: (name: string) =>
       `「${name}」被扫描器判定为危险，可能涉及文件或凭据泄露、执行不安全命令等风险。请核对扫描报告；确认仅放行本次技能包，不会关闭全局安全扫描。`,
     riskReport: '扫描报告',
+    riskDetails: '查看详情',
     riskInstall: '接受风险并安装',
     riskChanged: '确认后技能包内容发生变化，请重新检查后再安装。',
     experts: '专家',
@@ -168,6 +170,7 @@ registerPluginLocales(SCOPE, {
     riskBody: (name: string) =>
       `「${name}」被掃描器判定為危險，可能洩露檔案或憑證、執行不安全命令。請核對報告；確認僅放行本次技能包，不會關閉全域掃描。`,
     riskReport: '掃描報告',
+    riskDetails: '查看詳情',
     riskInstall: '接受風險並安裝',
     riskChanged: '確認後技能包內容已變更，請重新檢查再安裝。',
     experts: '專家',
