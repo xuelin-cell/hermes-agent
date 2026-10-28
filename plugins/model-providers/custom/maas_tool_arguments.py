@@ -5,7 +5,7 @@ import logging
 from urllib.parse import urlsplit
 
 from openai import OpenAI, Stream
-from openai.types.chat import ChatCompletion
+from openai.types.chat import ChatCompletion, ChatCompletionChunk
 from openai.types.chat.chat_completion_chunk import (
     ChoiceDelta,
     ChoiceDeltaToolCall,
@@ -55,7 +55,6 @@ def _normalize_stream(source):
     identities = {}
     templates = {}
     for chunk in source:
-        choices = []
         for choice in chunk.choices or []:
             arguments = pending.setdefault(choice.index, {})
             deltas = []
@@ -79,13 +78,7 @@ def _normalize_stream(source):
                 ):
                     arguments.setdefault(tool.index, []).append(tool.function.arguments)
                     templates[choice.index] = (chunk, choice)
-                    tool = tool.model_copy(
-                        update={
-                            "function": tool.function.model_copy(
-                                update={"arguments": ""}
-                            )
-                        }
-                    )
+                    tool.function.arguments = ""
                 deltas.append(tool)
             if choice.finish_reason:
                 deltas.extend(
@@ -96,16 +89,8 @@ def _normalize_stream(source):
                     for index, parts in arguments.items()
                 )
                 pending.pop(choice.index, None)
-            choices.append(
-                choice.model_copy(
-                    update={
-                        "delta": choice.delta.model_copy(
-                            update={"tool_calls": deltas or None}
-                        ),
-                    }
-                )
-            )
-        yield chunk.model_copy(update={"choices": choices})
+            choice.delta.tool_calls = deltas or None
+        yield chunk
     # 缺少结束信号时只补回原参数，不把断流伪装成正常完成。
     for index, arguments in pending.items():
         if not arguments:
@@ -132,35 +117,17 @@ def _normalize_stream(source):
         )
 
 
-class _MaaSStream:
-    """保留 SDK 响应和关闭语义的单请求流包装。"""
+class _MaaSStream(Stream[ChatCompletionChunk]):
+    """复用 SDK 的响应、迭代和上下文管理，只扩展参数处理。"""
 
-    def __init__(self, source):
-        """每个请求独立保存参数，避免跨账号或跨轮次共享状态。"""
-        self.response = source.response
-        self._source = source
-        self._iterator = _normalize_stream(source)
-
-    def __iter__(self):
-        """复用同一迭代位置，不重复消费服务端响应。"""
-        return self
-
-    def __next__(self):
-        """继续读取 SDK 流，网络和协议异常照常向上传递。"""
-        return next(self._iterator)
+    def __stream__(self):
+        """逐片处理本请求独占的 SDK 对象，无需复制正文和思考片段。"""
+        yield from _normalize_stream(super().__stream__())
 
     def close(self):
         """提前结束或取消时释放参数缓存及 HTTP 响应。"""
         self._iterator.close()
-        self._source.close()
-
-    def __enter__(self):
-        """支持原版请求的上下文管理。"""
-        return self
-
-    def __exit__(self, *_exc):
-        """正常完成和异常退出均关闭流。"""
-        self.close()
+        super().close()
 
 
 class _MaaSClient(OpenAI):
@@ -168,18 +135,17 @@ class _MaaSClient(OpenAI):
 
     def request(self, cast_to, options, *, stream=False, stream_cls=None):
         """复用 SDK 请求、超时与连接管理，仅包装已定位的模型响应。"""
+        enabled = (
+            _is_maas_endpoint(self.base_url)
+            and options.url == "/chat/completions"
+            and isinstance(options.json_data, dict)
+            and (options.extra_json or {}).get("model", options.json_data.get("model"))
+            == "deepseek-v4-flash"
+        )
+        if enabled and stream:
+            stream_cls = _MaaSStream
         result = super().request(cast_to, options, stream=stream, stream_cls=stream_cls)
-        if (
-            not _is_maas_endpoint(self.base_url)
-            or options.url != "/chat/completions"
-            or not isinstance(options.json_data, dict)
-            or (options.extra_json or {}).get("model", options.json_data.get("model"))
-            != "deepseek-v4-flash"
-        ):
-            return result
-        if isinstance(result, Stream):
-            return _MaaSStream(result)
-        if not isinstance(result, ChatCompletion):
+        if not enabled or not isinstance(result, ChatCompletion):
             return result
         for choice in result.choices:
             for tool in choice.message.tool_calls or []:
