@@ -11,6 +11,7 @@ import logging
 from pathlib import Path
 import socket
 import subprocess
+from urllib.parse import quote
 
 import pytest
 import pytest_asyncio
@@ -165,10 +166,12 @@ class Gateway:
                         self.oss_calls.append((dict(scope["headers"]).get(b"x-profile-owner"), params))
                         if params["name"] == "get_oss_upload_url":
                             name = params["arguments"]["fileName"]
-                            output = f"上传地址：{base}/files/{name}\nossPath：{name}\nContent-Type=application/octet-stream"
+                            # 对象标识独立于中文展示名，和实际 OSS 路径契约一致。
+                            output = (f"上传地址：{base}/files/{quote(name)}\nossPath：fixture/{name.encode().hex()}"
+                                      "\nContent-Type=application/octet-stream")
                         else:
-                            name = params["arguments"]["ossPath"]
-                            output = f"下载链接：{base}/files/{name}"
+                            name = bytes.fromhex(params["arguments"]["ossPath"].removeprefix("fixture/")).decode()
+                            output = f"下载链接：{base}/files/{quote(name)}"
                         result = {"content": [{"type": "text", "text": output}]}
                     data = json.dumps({"jsonrpc": "2.0", "id": request["id"], "result": result}).encode()
         elif scope["method"] == "PUT":
@@ -397,6 +400,8 @@ async def test_attachment_turns_and_combined_media_use_owning_profile_mcp_a_b_a(
                     assert len(sent["payload"]["media"]) == 1
                     assert sent["payload"]["media"][0]["kind"] == "image"
                     assert "broken.pdf" not in sent["payload"]["text"]
+                    assert "部分附件未能发送（2 个）" in sent["payload"]["text"]
+                    assert "上传失败" in sent["payload"]["text"] and "大小超限" in sent["payload"]["text"]
                     assert fake.downlinks.empty()
                     assert fake.uploads["/files/answer.png"] == image
                     assert fake.uploads["/files/report.pdf"] == b"%PDF-output"
@@ -408,6 +413,116 @@ async def test_attachment_turns_and_combined_media_use_owning_profile_mcp_a_b_a(
     finally:
         await asyncio.to_thread(shutdown_mcp_servers)
         set_multiplex_active(active)
+
+
+@pytest.mark.asyncio
+async def test_generated_results_download_and_send_in_owning_5g_account(tmp_path, gateway):
+    """真实生成钩子、落盘、历史恢复及 MCP 上传后，A→B→A 只向原 5G 会话发送本账号文件。"""
+    from tests.plugins.desktop_deliverables_generated_fixture import run_scenario
+    from tools.mcp_tool_discovery import discover_mcp_tools
+    from tools.mcp_tool_lifecycle import shutdown_mcp_servers
+
+    fake, url = gateway
+    receipts = {}
+    active = is_multiplex_active()
+    try:
+        for name, kind in (("A", "image"), ("B", "background-translation")):
+            receipts[name] = await asyncio.to_thread(run_scenario, tmp_path / name, kind, platform="uniagentgate", echo=False)
+        offline = await asyncio.to_thread(run_scenario, tmp_path / "offline", "offline", platform="uniagentgate")
+        assert "MEDIA:" not in offline["text"] and offline["url"] in offline["text"]
+        for name in receipts:
+            home = tmp_path / name / "home"
+            fake.expected[name] = f"secret-{name}"
+            install(home, url, name, f"secret-{name}")
+            config = json.loads((home / "config.yaml").read_text())
+            config["mcp_servers"] = {"UniAI-Toolkit": {"url": f"{url}/mcp?scope={name}",
+                                      "headers": {"X-Profile-Owner": name}}}
+            (home / "config.yaml").write_text(json.dumps(config), encoding="utf-8")
+        set_multiplex_active(True)
+        for index, name in enumerate(("A", "B", "A")):
+            with profile(tmp_path / name / "home"):
+                adapter = adapter_from_config()
+                assert await asyncio.to_thread(discover_mcp_tools)
+                before = len(fake.oss_calls)
+
+                async def handle(event):
+                    """只返回本账号真实生成并持久化的回复。"""
+                    return receipts[name]["text"]
+
+                adapter.set_message_handler(handle)
+                try:
+                    assert await adapter.connect()
+                    await fake.request(name, f"generated-{index}")
+                    sent = await asyncio.wait_for(fake.downlinks.get(), 30)
+                    await until(lambda: not adapter._active_sessions)
+                    path = Path(receipts[name]["path"])
+                    assert path.is_file() and path.parent == tmp_path / name / "workspace" / "outputs"
+                    assert fake.uploads[f"/files/{path.name}"] == path.read_bytes()
+                    assert sent["turn_id"] == f"remote-turn-generated-{index}"
+                    assert sent["session_id"] == f"remote-session-generated-{index}"
+                    assert str(path) not in sent["payload"]["text"] and "MEDIA:" not in sent["payload"]["text"]
+                    if name == "A":
+                        assert sent["payload"].get("media"), sent["payload"]
+                        assert sent["payload"]["media"][0]["kind"] == "image"
+                    else:
+                        assert "下载链接" in sent["payload"]["text"]
+                    assert fake.oss_calls[before:] and all(owner == name.encode() for owner, _ in fake.oss_calls[before:])
+                    assert fake.downlinks.empty()
+                finally:
+                    await adapter.disconnect()
+    finally:
+        await asyncio.to_thread(shutdown_mcp_servers)
+        set_multiplex_active(active)
+
+
+@pytest.mark.asyncio
+async def test_failed_attachment_is_reported_once_without_claiming_success(tmp_path, gateway):
+    """全部上传失败仍发一条明确通知；有附文的直接发送也返回失败且不丢失已确认的下行身份。"""
+    from tools.mcp_tool_discovery import discover_mcp_tools
+    from tools.mcp_tool_lifecycle import shutdown_mcp_servers
+
+    fake, url = gateway
+    home = tmp_path / "failed-media"
+    fake.expected["failed-media"] = "secret"
+    fake.fail_uploads.add("/files/broken.pdf")
+    install(home, url, "failed-media", "secret")
+    config = json.loads((home / "config.yaml").read_text())
+    config["mcp_servers"] = {"UniAI-Toolkit": {"url": f"{url}/mcp", "headers": {"X-Profile-Owner": "failed-media"}}}
+    (home / "config.yaml").write_text(json.dumps(config), encoding="utf-8")
+    broken = home / "broken.pdf"
+    broken.write_bytes(b"%PDF-fixture")
+    with profile(home):
+        adapter = adapter_from_config()
+        outcomes = []
+
+        async def completed(event, outcome):
+            """记录正式投递流程报告的整轮状态。"""
+            outcomes.append(outcome)
+
+        adapter.on_processing_complete = completed
+
+        async def handle(event):
+            """模型只返回附件引用，没有文字可掩盖失败。"""
+            return f"MEDIA:{broken}"
+
+        adapter.set_message_handler(handle)
+        try:
+            assert await asyncio.to_thread(discover_mcp_tools)
+            assert await adapter.connect()
+            await fake.request("failed-media", "failed")
+            sent = await asyncio.wait_for(fake.downlinks.get(), 30)
+            await until(lambda: not adapter._active_sessions)
+            assert "附件未能发送（1 个）" in sent["payload"]["text"] and "上传失败" in sent["payload"]["text"]
+            assert outcomes and outcomes[-1].value == "failure"
+            result = await adapter.send_document("13800000000", str(broken), caption="附带文字", reply_to="failed")
+            second = await asyncio.wait_for(fake.downlinks.get(), 10)
+            assert not result.success and result.message_id and "附件未能发送" in result.error
+            assert "附带文字" in second["payload"]["text"] and "上传失败" in second["payload"]["text"]
+            assert not result.retryable and fake.downlinks.empty() and broken.is_file()
+            assert str(home) not in second["payload"]["text"]
+        finally:
+            await adapter.disconnect()
+            await asyncio.to_thread(shutdown_mcp_servers)
 
 
 @pytest.mark.asyncio
@@ -538,7 +653,7 @@ async def test_real_wav_transcode_is_uploaded_as_mp3_and_bad_audio_does_not_drop
         (home / "report.docx").write_bytes(b"document fixture")
         try:
             assert await asyncio.to_thread(discover_mcp_tools)
-            delivered, links = await media.build_media([str(home / name) for name in
+            delivered, links, failures = await media.build_media([str(home / name) for name in
                                                        ("voice.wav", "broken.wav", "report.docx")])
             assert len(delivered) == 1
             assert delivered[0]["kind"] == "audio" and delivered[0]["mime_type"] == "audio/mpeg"
@@ -546,6 +661,7 @@ async def test_real_wav_transcode_is_uploaded_as_mp3_and_bad_audio_does_not_drop
             assert fake.uploads["/files/voice.mp3"].startswith(b"ID3")
             assert len(links) == 1 and "report.docx" in links[0]
             assert "/files/broken.mp3" not in fake.uploads
+            assert failures == ["音频转换失败"]
         finally:
             await asyncio.to_thread(shutdown_mcp_servers)
 
