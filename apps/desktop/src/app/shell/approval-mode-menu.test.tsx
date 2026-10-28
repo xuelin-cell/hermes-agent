@@ -39,12 +39,26 @@ describe('approval mode statusbar item', () => {
     const requestGateway = vi.fn(async (_method, params) => ({ value: params?.value ?? 'smart' }))
     render(<Harness profile="work" requestGateway={requestGateway} />)
 
-    fireEvent.pointerDown(screen.getByRole('button', { name: /smart/i }), { button: 0 })
-    fireEvent.click(await screen.findByRole('menuitemradio', { name: /manual/i }))
+    fireEvent.pointerDown(screen.getByRole('button', { name: /help me approve/i }), { button: 0 })
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: /^request approval/i }))
 
     await waitFor(() => {
       expect(requestGateway).toHaveBeenCalledWith('config.set', { key: 'approvals.mode', value: 'manual' })
-      expect(screen.getByRole('button', { name: /manual/i })).toBeTruthy()
+      expect(screen.getByRole('button', { name: /^request approval/i })).toBeTruthy()
     })
   })
+})
+
+
+it('shows three exclusive modes and explains their behavior without leaving the menu', async () => {
+  const requestGateway = vi.fn(async (_method, params) => ({ value: params?.value ?? 'off' }))
+  render(<Harness requestGateway={requestGateway} />)
+  await screen.findByRole('button', { name: /full access/i })
+  fireEvent.pointerDown(screen.getByRole('button', { name: /full access/i }), { button: 0 })
+  const modes = await screen.findAllByRole('menuitemradio')
+  expect(modes).toHaveLength(3)
+  expect(screen.getByRole('menuitemradio', { name: /full access/i }).getAttribute('aria-checked')).toBe('true')
+  fireEvent.click(screen.getByRole('button', { name: 'Learn more' }))
+  expect(screen.getByText(/available file and network access still follows/)).toBeTruthy()
+  expect(screen.getAllByRole('menuitemradio')).toHaveLength(3)
 })
