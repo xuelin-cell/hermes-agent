@@ -230,7 +230,7 @@ module.exports = {
   win: {
     executableName: windowsExecutableName,
     legalTrademarks: displayName,
-    target: windowsFormat === 'msix' ? ['msix'] : ['nsis'],
+    target: windowsFormat === 'msix' ? ['msix'] : windowsFormat === 'nsis-web' ? ['nsis-web'] : ['nsis'],
     // electron-updater reads this baked copy for the feed origin. Only the
     // self-managed NSIS build publishes one; an MSIX install is updated by
     // the App Installer descriptor instead.
@@ -253,6 +253,13 @@ module.exports = {
     allowToChangeInstallationDirectory: true,
     // desktop-mt: 直接解到安装目录，省掉先解到临时目录再复制的那一遍（见 nsis/installer.nsh）。
     include: 'nsis/installer.nsh'
+  },
+  nsisWeb: {
+    // Only the web installer embeds a blockmap: its .exe is a small bootstrapper
+    // and the app payload is a separately published .7z carrying the block index.
+    // That is the only NSIS shape electron-updater can download differentially;
+    // a full nsis .exe ships a standalone .blockmap that NsisUpdater never reads.
+    // It inherits nsis.* (oneClick/perMachine/packElevateHelper/include).
   },
   msix: {
     // A store build uses the Partner Center packaging identity (the Store

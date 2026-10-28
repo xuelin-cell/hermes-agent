@@ -10,7 +10,6 @@ import {
   getUniWorkMarketSkills,
   getUniWorkRecommendedCategories,
   getUniWorkRecommendedSkills,
-  installUniWorkSkill,
   setSkillEnabled
 } from '@/hermes'
 import { useI18n } from '@/i18n'
@@ -33,6 +32,7 @@ import {
   tryPrompt
 } from './catalog'
 import { useSkillsCopy } from './copy'
+import { installMarketSkillWithApproval } from './market-install'
 import { CatalogCard, InstalledCard } from './skill-cards'
 import { SkillDetailDialog } from './skill-detail-dialog'
 import { trySkillInNewChat } from './try-skill'
@@ -177,7 +177,11 @@ export function SkillsHub({
 
     try {
       if (skill.package_download_path || skill.download_url) {
-        const result = await installUniWorkSkill(skill, profile)
+        const result = await installMarketSkillWithApproval(skill, profile, t)
+
+        if (!result) {
+          return
+        }
 
         if (!result.ok || !result.name || !result.install_path) {
           throw new Error(t('incomplete'))
@@ -251,7 +255,7 @@ export function SkillsHub({
             type="button"
           >
             {item.label}
-            {item.count !== undefined ? <span className="mt-skills-count">{item.count}</span> : null}
+            {item.count !== undefined ? <span className="mt-skills-count">({item.count})</span> : null}
           </button>
         ))}
       </div>
@@ -269,7 +273,11 @@ export function SkillsHub({
             </div>
           </div>
           {hiddenKitSkills > 0 ? (
-            <button className="mt-skills-note" onClick={() => navigate('/kits')} type="button">
+            <button
+              className="mt-skills-note"
+              onClick={() => navigate('/capabilities?tab=experts&shelf=kits')}
+              type="button"
+            >
               {t('kitSkillsNote')}
             </button>
           ) : null}

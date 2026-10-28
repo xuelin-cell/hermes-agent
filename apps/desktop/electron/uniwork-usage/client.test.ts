@@ -10,6 +10,7 @@ import { normalizePlanUsage } from './contract'
 it('真实 HTTP 查询白名单字段、合并请求、隔离账号缓存并拒绝迟到响应', async () => {
   let identity = { uid: 'a', token: 'token-a', maskedPhone: '138****0001', expiresAt: Date.now() + 60_000 }
   let calls = 0
+  const quotaUnit = '元景积分'
   let hold = false
   let release: (() => void) | undefined
   let started: (() => void) | undefined
@@ -40,7 +41,7 @@ it('真实 HTTP 查询白名单字段、合并请求、隔离账号缓存并拒�
           tokenPlanUsage: {
             totalQuota: 1000,
             usedQuota: 250,
-            quotaUnit: 'credits',
+            quotaUnit,
             concurrencyLimit: 3,
             currentConcurrency: 1
           }
@@ -84,6 +85,7 @@ it('真实 HTTP 查询白名单字段、合并请求、隔离账号缓存并拒�
 
     if (token.status !== 'available') {throw new Error('Missing token usage')}
     expect(token.data.quota?.remaining).toBe(750)
+    expect(token.data.quota?.unit).toBe(quotaUnit)
     expect(token.data.windows).toEqual([])
     identity = { ...accountA }
     hold = true

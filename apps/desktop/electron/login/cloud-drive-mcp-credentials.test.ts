@@ -1,11 +1,11 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { createServer, type Server } from 'node:http'
+import { createServer, type Server, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 import { afterEach, beforeEach, expect, it } from 'vitest'
-import { parse } from 'yaml'
+import { parse, stringify } from 'yaml'
 
 import { CloudDriveClient } from './cloud-drive'
 import { CloudDriveMcp } from './cloud-drive-mcp'
@@ -25,6 +25,8 @@ let contentMode: 'valid' | 'expire-once' | 'expired' | 'forbidden'
 let rejectWrites: boolean
 let rejectProbes: boolean
 let calls: Array<{ route: string; token: string; authorization: string }>
+let onRequest: ((route: string, response: ServerResponse) => boolean) | undefined
+let onResponse: ((route: string, response: Response) => Promise<Response>) | undefined
 
 beforeEach(async () => {
   root = await mkdtemp(path.join(tmpdir(), 'drive-mcp-credentials-'))
@@ -43,6 +45,8 @@ beforeEach(async () => {
   rejectWrites = false
   rejectProbes = false
   calls = []
+  onRequest = undefined
+  onResponse = undefined
   upstream = createServer(async (request, response) => {
     // Consume write bytes too, so retry assertions count actual HTTP requests.
     for await (const _chunk of request) {
@@ -93,6 +97,10 @@ beforeEach(async () => {
       return
     }
 
+    if (onRequest?.(route, response)) {
+      return
+    }
+
     response.setHeader('Content-Type', 'application/json')
 
     const data =
@@ -110,15 +118,13 @@ beforeEach(async () => {
   const base = `http://127.0.0.1:${(upstream.address() as AddressInfo).port}`
   drive = new CloudDriveClient(
     () => identity,
-    (source, options) => {
+    async (source, options) => {
       const url = new URL(String(source))
+      const route = url.pathname.endsWith('/access-token') ? '/access-token' : url.pathname.split('/clouddrive/v1')[1]
 
-      return fetch(
-        base +
-          (url.pathname.endsWith('/access-token') ? '/access-token' : url.pathname.split('/clouddrive/v1')[1]) +
-          url.search,
-        options
-      )
+      const response = await fetch(base + route + url.search, options)
+
+      return onResponse ? onResponse(route, response) : response
     }
   )
   mcp = new CloudDriveMcp(drive, root, path.join(root, 'workspace'))
@@ -146,6 +152,13 @@ async function call(name: string, args = {}) {
   const { result } = await response.json()
 
   return { ...result, data: JSON.parse(result.content[0].text) }
+}
+
+async function setDriveEnabled(enabled: boolean) {
+  const file = path.join(root, 'config.yaml')
+  const config = parse(await readFile(file, 'utf8'))
+  config.mcp_servers[DRIVE_MCP_SERVER].enabled = enabled
+  await writeFile(file, stringify(config))
 }
 
 it('GUI 与 MCP 共用恢复后的凭据；直接写入先只读续期，并发工具只获取一次新令牌', async () => {
@@ -257,4 +270,172 @@ it('文件流续期期间切换账号后停止下载，不拿新账号身份重�
   expect(result.data).not.toHaveProperty('path')
   expect(calls.filter(c => c.route === '/drive/content')).toHaveLength(1)
   expect(calls.some(c => c.authorization === 'Bearer login-b')).toBe(false)
+})
+
+it('关闭权限保留已收到的真实写入回执和批量部分成功，不重放写请求', async () => {
+  await writeFile(path.join(root, 'workspace', 'upload.txt'), 'upload bytes')
+
+  for (const [name, args, target, receipt] of [
+    ['make_dir', { name: 'folder' }, '/folders', 'success'],
+    ['rename_file', { asset_id: 'one', new_name: 'new.txt', kind: 'file' }, '/assets/one', 'success'],
+    ['move_files', { file_ids: ['one'], target_parent_asset_id: 'folder' }, '/assets/move', 'success'],
+    ['delete_files', { file_ids: ['one'] }, '/assets/trash', 'success'],
+    ['restore_files', { delete_nos: ['deleted-one'] }, '/unicom/ReductionRecycleData', 'success'],
+    ['upload', { source_path: 'upload.txt' }, '/drive/upload-part', 'success'],
+    ['make_dir', { name: 'denied' }, '/folders', 'failed'],
+    [
+      'delete_files',
+      { mode: 'purge', delete_nos: ['confirmed', 'denied', 'untouched'] },
+      '/unicom/DeleteRecycleData',
+      'partial'
+    ]
+  ] as const) {
+    await setDriveEnabled(true)
+    calls = []
+    const expectedWrites = receipt === 'partial' ? 2 : 1
+    const writes = () => calls.filter(c => c.route === target).length
+
+    onRequest = (route, response) => {
+      if (route !== target || receipt === 'success' || writes() !== expectedWrites) {
+        return false
+      }
+
+      response.setHeader('Content-Type', 'application/json')
+      response.end(
+        JSON.stringify({
+          ok: false,
+          status: 'failed',
+          error: { code: 'PERMISSION_DENIED' }
+        })
+      )
+
+      return true
+    }
+
+    onResponse = async (route, response) => {
+      if (route !== target || writes() !== expectedWrites) {
+        return response
+      }
+
+      // 已通过真实 HTTP 收完回执；随后关闭权限，模拟回执交付与配置更新相邻发生。
+      const bytes = await response.arrayBuffer()
+      await setDriveEnabled(false)
+
+      return new Response(bytes, {
+        status: response.status,
+        headers: response.headers
+      })
+    }
+
+    const result = await call(name, args)
+    expect(mcp.available('default')).toBe(false)
+    expect(writes()).toBe(expectedWrites)
+
+    if (receipt === 'success') {
+      expect(result.isError).not.toBe(true)
+      expect(result.data).toMatchObject({ ok: true })
+
+      if (name === 'upload') {
+        expect(result.data).toMatchObject({
+          status: 'succeeded',
+          name: 'upload.txt'
+        })
+      } else {
+        expect(result.data.data).toEqual({ items: [] })
+      }
+    } else {
+      expect(result.isError).toBe(true)
+      expect(result.data).toMatchObject({
+        ok: false,
+        status: receipt === 'partial' ? 'partial_success' : 'failed',
+        code: 'PERMISSION_DENIED'
+      })
+
+      if (receipt === 'partial') {
+        expect(result.data.item_results).toEqual([
+          { delete_no: 'confirmed', status: 'succeeded' },
+          { delete_no: 'denied', status: 'failed', code: 'PERMISSION_DENIED' },
+          { delete_no: 'untouched', status: 'not_started' }
+        ])
+      }
+    }
+
+    const count = calls.length
+    expect((await call('make_dir', { name: 'blocked' })).data.code).toBe('DRIVE_ACCESS_DISABLED')
+    expect(calls).toHaveLength(count)
+  }
+})
+
+it('关闭权限拒绝预检和读取，在途写入保留无法确认结果及批量进度，不重试剩余写入', async () => {
+  for (const [name, args, target, expectedWrites, phase] of [
+    ['make_dir', { name: 'preflight' }, '/assets', 1, 'preflight'],
+    ['list_files', {}, '/assets', 1, 'read'],
+    ['make_dir', { name: 'pending' }, '/folders', 1, 'write'],
+    [
+      'delete_files',
+      { mode: 'purge', delete_nos: ['confirmed', 'pending', 'untouched'] },
+      '/unicom/DeleteRecycleData',
+      2,
+      'write'
+    ]
+  ] as const) {
+    await setDriveEnabled(true)
+    calls = []
+    let sent!: () => void
+
+    const arrived = new Promise<void>(resolve => {
+      sent = resolve
+    })
+
+    onRequest = route => {
+      if (route !== target || calls.filter(c => c.route === target).length !== expectedWrites) {
+        return false
+      }
+
+      // 请求已到真实上游；保持连接，等待权限监视器取消，不生成虚假的失败回执。
+      sent()
+
+      return true
+    }
+
+    const pending = call(name, args)
+    await arrived
+    await setDriveEnabled(false)
+    const result = await pending
+
+    if (phase === 'write') {
+      expect(result.isError).not.toBe(true)
+      expect(result.data).toMatchObject({
+        ok: false,
+        status: 'outcome_unknown'
+      })
+      expect(result.data.code).not.toBe('DRIVE_ACCESS_DISABLED')
+    } else {
+      expect(result.isError).toBe(true)
+      expect(result.data).toMatchObject({
+        ok: false,
+        code: 'DRIVE_ACCESS_DISABLED'
+      })
+      expect(calls.some(c => c.route === '/folders')).toBe(false)
+    }
+
+    expect(calls.filter(c => c.route === target)).toHaveLength(expectedWrites)
+
+    if (name === 'delete_files') {
+      expect(result.data.item_results).toEqual([
+        { delete_no: 'confirmed', status: 'succeeded' },
+        {
+          delete_no: 'pending',
+          status: 'outcome_unknown',
+          code: 'OPERATION_CONFIRMATION_UNAVAILABLE'
+        },
+        { delete_no: 'untouched', status: 'not_started' }
+      ])
+      expect(result.data.summary).toEqual({ succeeded: 1, total: 3 })
+    }
+
+    const count = calls.length
+    expect((await call('make_dir', { name: 'blocked' })).data.code).toBe('DRIVE_ACCESS_DISABLED')
+    expect(calls).toHaveLength(count)
+  }
 })

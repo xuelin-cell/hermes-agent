@@ -82,6 +82,7 @@ def _build_prepared(prepared, builder_args: list[str], variant: str | None) -> N
         windows_update = os.environ.get("HERMES_WINDOWS_UPDATE", "").strip().lower()
         if windows_update not in ("", "electron-updater"):
             raise ValueError(f"unsupported HERMES_WINDOWS_UPDATE: {windows_update}")
+        windows_format_override = os.environ.get("HERMES_WINDOWS_FORMAT", "").strip().lower()
         if sys.platform != "win32":
             windows_format = "msix"
         elif windows_update == "electron-updater":
@@ -89,7 +90,15 @@ def _build_prepared(prepared, builder_args: list[str], variant: str | None) -> N
             # is owned by the OS App Installer descriptor instead.
             if variant != "bundled":
                 raise ValueError("electron-updater packaging requires the bundled variant")
-            windows_format = "nsis"
+            # The web installer embeds the payload blockmap and is the only NSIS
+            # shape electron-updater can update differentially; a full nsis
+            # package keeps working offline but always downloads in full.
+            if windows_format_override == "nsis-web":
+                windows_format = "nsis-web"
+            elif windows_format_override in ("", "nsis"):
+                windows_format = "nsis"
+            else:
+                raise ValueError(f"unsupported HERMES_WINDOWS_FORMAT: {windows_format_override}")
         else:
             windows_format = "nsis" if variant == "bundled" and request.tag is None and request.channel_request is None else "msix"
         # The stamp writer and electron-builder both read this, so the declared

@@ -1,4 +1,5 @@
 import { cva, type VariantProps } from 'class-variance-authority'
+import { Check, Clock } from 'lucide-react'
 import { Switch as SwitchPrimitive } from 'radix-ui'
 import * as React from 'react'
 
@@ -37,11 +38,22 @@ const switchThumbVariants = cva(
 function Switch({
   className,
   size,
+  pending = false,
+  disabled,
   ...props
-}: React.ComponentProps<typeof SwitchPrimitive.Root> & VariantProps<typeof switchVariants>) {
+}: React.ComponentProps<typeof SwitchPrimitive.Root> & VariantProps<typeof switchVariants> & { pending?: boolean }) {
   return (
-    <SwitchPrimitive.Root className={cn(switchVariants({ size }), className)} data-slot="switch" {...props}>
-      <SwitchPrimitive.Thumb className={switchThumbVariants({ size })} data-slot="switch-thumb" />
+    <SwitchPrimitive.Root
+      {...props}
+      aria-busy={pending || undefined}
+      className={cn(switchVariants({ size }), className)}
+      data-pending={pending || undefined}
+      data-slot="switch"
+      disabled={disabled || pending}
+    >
+      <SwitchPrimitive.Thumb className={switchThumbVariants({ size })} data-slot="switch-thumb">
+        {pending ? <Clock aria-hidden className="switch-pending-icon" /> : <Check aria-hidden className="switch-check-icon" />}
+      </SwitchPrimitive.Thumb>
     </SwitchPrimitive.Root>
   )
 }

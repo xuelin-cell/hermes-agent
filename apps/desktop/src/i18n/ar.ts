@@ -223,7 +223,7 @@ export const ar = defineLocale({
     connect: 'اتصال',
     connecting: 'جار الاتصال',
     continue: 'متابعة',
-    bots: 'الروبوتات',
+    bots: 'الموظفون الرقميون',
     copied: 'تم النسخ',
     copy: 'نسخ',
     copyFailed: 'فشل النسخ',
@@ -577,6 +577,7 @@ export const ar = defineLocale({
       vaultCredentials: 'بيانات الاعتماد المحفوظة',
       vaultSources: 'مديرو كلمات المرور',
       appUpdates: 'الإصدار والتحديثات',
+      legal: 'الخصوصية والشروط',
       uninstall: 'إلغاء التثبيت',
       billingOverview: 'نظرة عامة',
       billingPlans: 'الخطط'
@@ -1019,8 +1020,23 @@ export const ar = defineLocale({
     about: {
       updates: 'التحديثات'
     },
+    legal: {
+      title: 'الخصوصية والشروط',
+      description: 'الاتفاقيات والسياسات والإشعارات التي تنظم استخدامك لـ UniWork.',
+      items: {
+        userAgreement: 'شروط الخدمة',
+        privacyPolicy: 'سياسة الخصوصية',
+        informationCollection: 'إشعار جمع المعلومات',
+        accountCancellation: 'إشعار حذف الحساب',
+        deliveryAgreement: 'شروط الدفع',
+        childrenPrivacy: 'سياسة خصوصية الأطفال وإشعار ولي الأمر',
+        openSourceTerms: 'إشعارات المصادر المفتوحة'
+      }
+    },
 
     config: {
+      agentLibraryAccessTitle: 'السماح للوكيل بإدارة المكتبة',
+      agentLibraryAccessDesc: 'السماح للوكيل بقراءة ملفات محرك الأقراص السحابي الشخصي وكتابتها وفق تعليماتك.',
       minimizeToTrayTitle: 'التصغير إلى علبة النظام',
       minimizeToTrayDesc:
         'تصغير النوافذ أو إغلاق النافذة الرئيسية يخفيها في علبة النظام (شريط القوائم على macOS) مع استمرار UniWork في العمل. استخدم إنهاء UniWork من قائمة العلبة أو Cmd+Q للخروج. معطّل افتراضيًا ويُطبّق على هذا الجهاز فقط.',
@@ -1392,7 +1408,7 @@ export const ar = defineLocale({
       pageBlurb: 'يمكن للإضافة توسيع هذا التطبيق أو الوكيل أو كليهما — ولكل جزء مفتاح تشغيل مستقل.'
     },
     tabSkills: 'المهارات',
-    kitSkillsNote: 'تُدار مهارات الحزم من صفحة الحزم.',
+    kitSkillsNote: 'تُدار مهارات الحزم من الإضافات ← الخبراء ← الحزم.',
     tabToolsets: 'مجموعات الأدوات',
     all: 'الكل',
     searchSkills: 'البحث في المهارات',
@@ -3849,7 +3865,7 @@ export const ar = defineLocale({
       },
       messaging: {
         title: 'UniWork بعيدًا عن مكتبك',
-        text: 'اربطه بـ Telegram وDiscord وSlack وغيرها — الوكيل نفسه والذاكرة نفسها.'
+        text: 'اربطه بـ DingTalk وWeChat وFeishu — الوكيل نفسه والذاكرة نفسها.'
       },
       artifacts: {
         title: 'كل ما صنعه UniWork',

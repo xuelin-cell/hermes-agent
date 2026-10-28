@@ -18,6 +18,7 @@
 import type { InstallStamp } from '../install-stamp'
 
 import type { ChannelRetirementStatus } from './channel-strategy'
+import type { ReleaseNotesByLocale } from './release-notes'
 
 export type UpdaterMechanism =
   'app-installer' | 'electron-updater' | 'external' | 'microsoft-store' | 'windows-handoff' | 'posix-handoff' | 'manual'
@@ -69,6 +70,9 @@ export interface UpdaterStatusWire {
   latestTag?: string | null
   targetSha?: string
   commits?: { sha: string; summary: string; author: string; at: number }[]
+  /** Authored copy for the offered version, keyed by locale. Absent on feeds
+   *  that publish none — the overlay then keeps its existing fallback. */
+  releaseNotes?: ReleaseNotesByLocale | null
   dirty?: boolean
   hermesRoot?: string
   fetchedAt?: number

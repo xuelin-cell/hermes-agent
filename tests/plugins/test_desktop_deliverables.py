@@ -247,7 +247,7 @@ def test_message_child_ownership_follows_multiplex_profile_without_scanning_mess
                 assert plugin.scope("parent") not in plugin._turns
                 plugin.background.remember_child(parent_session_id="parent", child_session_id="child")
                 assert plugin.background.child_root("child") == home
-                assert plugin.background.message_child("child")
+                assert plugin.background.child_origin("child")[1] == "weixin"
                 plugin.before_turn(session_id="child", turn_id="t", platform="subagent")
                 plugin.background.remember_child(parent_session_id="child", child_session_id="nested")
                 assert plugin.background.child_root("nested") is None

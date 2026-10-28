@@ -84,6 +84,7 @@ import {
 } from './fallback-model'
 import { isToolCallPart, summarizeToolRun } from './run-summary'
 import { ToolRunTicker } from './run-ticker'
+import { useToolTurnStillRunning } from './turn-still-running'
 
 // `true` when a ToolEntry is rendered inside an embedding wrapper that owns
 // the per-row chrome (timer / preview). The flat ToolGroupSlot sets this
@@ -381,7 +382,9 @@ function ToolEntry({ part }: ToolEntryProps) {
 
   const disclosureId = toolEntryDisclosureId(messageId, stablePart)
   const dismissed = useStore($toolRowDismissed(disclosureId))
-  const isPending = messageRunning && result === undefined && completedAt === undefined
+  // desktop-mt: 存档重读带回的半截工具行，所在消息不是进行中，但这一轮还在跑就仍算进行中。
+  const turnRunning = useToolTurnStillRunning()
+  const isPending = (messageRunning || turnRunning) && result === undefined && completedAt === undefined
   // Subscribe to this tool's diff only, so a live patch for one tool doesn't
   // re-render every mounted tool row (the factory caches a per-id atom).
   const sideDiff = useStore($toolInlineDiff(toolCallId ?? ''))
@@ -887,6 +890,7 @@ interface ToolRunState {
 function useToolRun(startIndex: number, endIndex: number): ToolRunState {
   const { locale } = useI18n()
   const cache = useRef<null | { signature: string; tools: readonly ToolPart[]; value: ToolRunState }>(null)
+  const turnRunning = useToolTurnStillRunning()
 
   return useAuiState(state => {
     const parts = state.message.parts
@@ -901,7 +905,15 @@ function useToolRun(startIndex: number, endIndex: number): ToolRunState {
     //
     // The tail bound is what keeps this honest — a turn that ends, or an agent
     // that moves on to later parts, leaves the run settled and collapsible.
-    const live = selectMessageRunning(state) && endIndex >= parts.length - 1
+    // desktop-mt: 存档重读带回的半截工具（所在消息不是进行中），这一轮还在跑时整组也按进行中叙述；
+    // 进行中的消息仍按原规则，模型已接着做别的事时照旧算已结束。
+    const messageRunning = selectMessageRunning(state)
+
+    const live =
+      (messageRunning && endIndex >= parts.length - 1) ||
+      (!messageRunning &&
+        turnRunning &&
+        timelineTools.some(tool => tool.result === undefined && tool.completedAt === undefined))
 
     const signature = timelineTools
       .map(

@@ -23,9 +23,18 @@ export interface MailMessage {
 }
 
 export interface MailDetail extends MailMessage {
+  attachments: MailAttachment[]
   cc: MailAddress[]
   html: null | string
   text: null | string
+}
+
+export interface MailAttachment {
+  attachmentId: string
+  contentId: null | string
+  contentType: null | string
+  filename: null | string
+  size: null | number
 }
 
 export function resolveMailFolders(folders: readonly MailFolder[]): { inbox: string; sent: string } {

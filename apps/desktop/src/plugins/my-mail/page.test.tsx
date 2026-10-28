@@ -1,7 +1,14 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { enableMail, mailStatus } = vi.hoisted(() => ({ enableMail: vi.fn(), mailStatus: vi.fn() }))
+const { downloadAttachment, enableMail, getMessage, listFolders, listMessages, mailStatus } = vi.hoisted(() => ({
+  downloadAttachment: vi.fn(),
+  enableMail: vi.fn(),
+  getMessage: vi.fn(),
+  listFolders: vi.fn(),
+  listMessages: vi.fn(),
+  mailStatus: vi.fn()
+}))
 
 vi.mock('@hermes/plugin-sdk', () => ({
   host: { state: { profile: {} } },
@@ -11,11 +18,12 @@ vi.mock('@hermes/plugin-sdk', () => ({
 
 vi.mock('./api', () => ({
   deleteMessage: vi.fn(),
+  downloadAttachment,
   disableMail: vi.fn(),
   enableMail,
-  getMessage: vi.fn(),
-  listFolders: vi.fn(),
-  listMessages: vi.fn(),
+  getMessage,
+  listFolders,
+  listMessages,
   mailStatus,
   markRead: vi.fn(),
   searchMessages: vi.fn()
@@ -23,12 +31,18 @@ vi.mock('./api', () => ({
 
 vi.mock('./i18n', () => ({
   useMailText: () => ({
+    addToConversation: '\u6dfb\u52a0\u90ae\u4ef6\u5230\u5bf9\u8bdd',
+    sender: '\u53d1\u4ef6\u4eba',
+    recipient: '\u6536\u4ef6\u4eba',
+    sentAt: '\u65f6\u95f4',
     cancel: '取消',
+    attachments: '附件',
     close: '关闭',
     compose: '发邮件',
     confirmDisable: '',
     delete: '删除',
     disable: '停用',
+    download: '下载',
     earlier: '更早',
     empty: '暂无邮件',
     enable: '确认开通',
@@ -79,5 +93,33 @@ describe('MyMailPage disabled state', () => {
     fireEvent.click(await screen.findByRole('button', { name: '确认开通' }))
 
     await waitFor(() => expect(enableMail).toHaveBeenCalledWith('default'))
+  })
+
+  it('shows fetched attachment metadata and downloads only after an explicit click', async () => {
+    mailStatus.mockResolvedValue({ status: { dailyQuota: 50, email: '13800138000@wo.cn', enabled: true, todaySent: 0 } })
+    listFolders.mockResolvedValue({ folders: [{ flags: [], name: 'Inbox', path: 'INBOX', specialUse: '\\Inbox' }] })
+    listMessages.mockResolvedValue({
+      emails: [{ date: '2026-10-23T08:30:00Z', folder: 'INBOX', from: null, hasAttachments: true, seen: false, subject: 'Report', to: [], uid: 8 }],
+      nextBeforeUid: null
+    })
+    getMessage.mockResolvedValue({
+      attachments: [{ attachmentId: '2', contentId: null, contentType: 'text/plain', filename: 'report.txt', size: 12 }],
+      cc: [], date: '2026-10-23T08:30:00Z', flags: [], folder: 'INBOX', from: null, hasAttachments: true,
+      html: null, seen: false, subject: 'Report', text: 'Attached.', to: [], uid: 8
+    })
+    downloadAttachment.mockResolvedValue({ canceled: false, saved: true })
+    const openExternal = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: { openExternal } })
+    const { MyMailPage } = await import('./page')
+
+    render(<MyMailPage />)
+    fireEvent.click(await screen.findByText('Report'))
+    expect(await screen.findByText('report.txt')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '添加邮件到对话' })).toBeTruthy()
+    expect(downloadAttachment).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: '下载' }))
+    await waitFor(() => expect(downloadAttachment).toHaveBeenCalledWith('default', 'INBOX', 8, '2'))
+    expect(openExternal).not.toHaveBeenCalled()
   })
 })

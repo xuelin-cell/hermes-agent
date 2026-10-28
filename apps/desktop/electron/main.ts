@@ -233,6 +233,8 @@ import { enableDesktopPlugins } from './entry_local/desktop-plugins-config'
 import { accountDesktopStatePaths } from './entry_local/desktop-state'
 import { type AccountGateway, createAccountGatewayLogout, gatewayLogoutRoots } from './entry_local/gateway-logout'
 import { installArtifactSharePlugin } from './entry_local/install-artifact-share'
+// desktop-mt: 程序被关掉中断的回答不自动续跑，改由用户点 ▶ 继续。
+import { createInterruptedTurns, installInterruptedTurnIpc } from './entry_local/interrupted-turns'
 import { createAccountLogout } from './entry_local/logout'
 import {
   type LogoutProcess,
@@ -715,7 +717,22 @@ const ACCOUNT_CONNECTORS = new ConnectorManager({
   },
   decrypt: value => safeStorage.decryptString(value),
   api: request => handleHermesApiRequest(request),
-  openExternal: url => shell.openExternal(url)
+  openExternal: url => shell.openExternal(url),
+  saveAttachment: async (name, download) => {
+    const result = await dialog.showSaveDialog(mainWindow, {
+      defaultPath: path.basename(name) || 'attachment',
+      title: '保存附件'
+    })
+
+    if (result.canceled || !result.filePath) {
+      return { canceled: true, saved: false }
+    }
+
+    const response = await download()
+    const data = Buffer.from(await response.arrayBuffer())
+    await fs.promises.writeFile(result.filePath, data)
+    return { canceled: false, saved: true }
+  }
 })
 
 const ACCOUNT_DRIVE_ARTIFACT = createDriveArtifactResolver({
@@ -765,6 +782,14 @@ installConversationFolderIpc(
   () => DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString(),
   () => currentDesktopLocalContext() === ACCOUNT_RUNTIME,
   createConversationFolders(ACCOUNT_RUNTIME.workspace)
+)
+// desktop-mt: 后端启动前接手中断记录，页面据此显示 ▶ 继续。
+const INTERRUPTED_TURNS = createInterruptedTurns(message => rememberLog(message))
+installInterruptedTurnIpc(
+  ACCOUNT_SESSION,
+  () => DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString(),
+  () => currentDesktopLocalContext() === ACCOUNT_RUNTIME,
+  INTERRUPTED_TURNS
 )
 
 // Device-local preference: block F12 from opening DevTools.
@@ -1030,10 +1055,10 @@ function readPersistedThemeSource() {
       return parsed.themeSource
     }
   } catch {
-    // Missing / malformed → follow the OS like a fresh install.
+    // Missing / malformed → use the shipped light appearance.
   }
 
-  return 'system'
+  return 'light'
 }
 
 function writePersistedThemeSource(mode) {
@@ -3328,6 +3353,7 @@ function createNativePackagedStrategy(
       channel: resolveUpdaterChannelFromStamp(),
       light: isLightVariant(),
       feedBaseUrl: resolveDesktopFeedBaseUrl(),
+      appUpdatePath: resolveAppUpdateDescriptorPath(),
       appVersion: app.getVersion(),
       log: rememberLog,
       emitProgress: emitUpdateProgress,
@@ -3529,6 +3555,14 @@ function resolveCheckoutUpdateStrategy(): UpdaterStrategy {
  */
 function resolveDesktopFeedBaseUrl(): string {
   return resolveFeedBaseUrl(readUpdatesFeedBaseFromConfig(path.join(HERMES_HOME, 'config.yaml')))
+}
+
+/**
+ * The descriptor electron-updater itself reads: the baked generic feed origin.
+ * `null` in development, where no packaged descriptor exists.
+ */
+function resolveAppUpdateDescriptorPath(): string | null {
+  return app.isPackaged ? path.join(process.resourcesPath, 'app-update.yml') : null
 }
 
 /** The updater channel from the baked install stamp ('canary' vs 'stable'). */
@@ -11825,6 +11859,7 @@ async function runPoolBackendStart(
   const parentIdentityEnv = parentWatchdogEnv(process.pid, parentStartMarker, backendNonce)
   assertPoolEntryStillOwned(poolKey, entry, backendPool, localBackendLifecycle.signal)
   enableDesktopPlugins(profile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', profile), ['desktop-deliverables'])
+  INTERRUPTED_TURNS.claim(profile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', profile))
   installArtifactSharePlugin(profile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', profile), app.getAppPath())
 
   // desktop-mt: 仅在本地后端启动前维护对应 Profile 的内置 MCP 记录。
@@ -12827,6 +12862,7 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
 
     // Local WSL backend — paths are bridgeable.
     enableDesktopPlugins(primaryProfile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', primaryProfile), ['desktop-deliverables'])
+    INTERRUPTED_TURNS.claim(primaryProfile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', primaryProfile))
     installArtifactSharePlugin(primaryProfile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', primaryProfile), app.getAppPath())
     setWslBridgeProfileState(primaryProfile, true)
 
@@ -13326,6 +13362,7 @@ function installPreviewGuestPreload() {
 const sessionWindows = createSessionWindowRegistry()
 
 const minimizeToTray = createMinimizeToTray({
+  closeToTray: true,
   preferencesPath: path.join(app.getPath('userData'), 'minimize-to-tray.json'),
   getIconPath: getAppIconPath,
   restoreMainWindow: () => ensureMainWindow(mainWindow, { isReady: app.isReady(), createWindow, focusWindow }),

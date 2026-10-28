@@ -220,7 +220,7 @@ export const ru = defineLocale({
     connect: 'Подключить',
     connecting: 'Подключение',
     continue: 'Продолжить',
-    bots: 'Боты',
+    bots: 'Цифровые сотрудники',
     copied: 'Скопировано',
     copy: 'Копировать',
     copyFailed: 'Не удалось скопировать',
@@ -614,6 +614,7 @@ export const ru = defineLocale({
       vaultCredentials: 'Сохранённые учётные данные',
       vaultSources: 'Менеджеры паролей',
       appUpdates: 'Версия и обновления',
+      legal: 'Приватность и условия',
       uninstall: 'Удаление',
       billingOverview: 'Обзор',
       billingPlans: 'Тарифы'
@@ -1187,7 +1188,22 @@ export const ru = defineLocale({
     about: {
       updates: 'Обновления'
     },
+    legal: {
+      title: 'Приватность и условия',
+      description: 'Соглашения, политики и уведомления, регулирующие использование UniWork.',
+      items: {
+        userAgreement: 'Условия использования',
+        privacyPolicy: 'Политика конфиденциальности',
+        informationCollection: 'Уведомление о сборе информации',
+        accountCancellation: 'Уведомление об удалении аккаунта',
+        deliveryAgreement: 'Условия оплаты',
+        childrenPrivacy: 'Политика конфиденциальности детей и уведомление для опекунов',
+        openSourceTerms: 'Уведомления об открытом исходном коде'
+      }
+    },
     config: {
+      agentLibraryAccessTitle: 'Разрешить агенту управлять библиотекой',
+      agentLibraryAccessDesc: 'Разрешить агенту читать и записывать файлы личного облачного диска по вашим указаниям.',
       minimizeToTrayTitle: 'Сворачивать в трей',
       minimizeToTrayDesc:
         'Сворачивание окон или закрытие главного окна скрывает их в системном трее (строке меню macOS), оставляя UniWork работать. Для выхода выберите «Выйти из UniWork» в меню трея или нажмите Cmd+Q. По умолчанию выключено; действует только на этом устройстве.',

@@ -527,7 +527,7 @@ describe('CapabilitiesView toolset management', { timeout: 60_000 }, () => {
     )
   })
 
-  it('hides kit skills and points at the kits page', async () => {
+  it('hides duplicate kit skills and opens their shelf in Extensions', async () => {
     getSkills.mockResolvedValue([
       { name: 'web-research', description: 'Research the web', category: 'research', enabled: true },
       { name: 'pptx--pptx', description: 'Slides', category: 'kits', enabled: true }
@@ -545,7 +545,7 @@ describe('CapabilitiesView toolset management', { timeout: 60_000 }, () => {
 
     expect(await screen.findByRole('switch', { name: 'web-research' })).toBeTruthy()
     expect(screen.queryByRole('switch', { name: 'pptx--pptx' })).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: /kit skills are managed on the kits page/i }))
-    expect(navigateSpy).toHaveBeenCalledWith('/kits')
+    fireEvent.click(screen.getByRole('button', { name: /manage kit skills in extensions/i }))
+    expect(navigateSpy).toHaveBeenCalledWith('/capabilities?tab=experts&shelf=kits')
   })
 })

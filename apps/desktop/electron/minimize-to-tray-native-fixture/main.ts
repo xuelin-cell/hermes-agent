@@ -16,7 +16,7 @@ app.on('window-all-closed', () => {})
 const watchdog = setTimeout(() => {
   console.error('Native tray probe timed out')
   app.exit(1)
-}, 20_000)
+}, 60_000)
 
 async function run() {
   await app.whenReady()
@@ -24,6 +24,7 @@ async function run() {
   const peer = new BrowserWindow({ width: 440, height: 320, show: false })
 
   const controller = createMinimizeToTray({
+    closeToTray: true,
     preferencesPath: path.join(app.getPath('userData'), 'minimize-to-tray.json'),
     getIconPath: () => process.argv[3],
     restoreMainWindow: () => {
@@ -43,7 +44,15 @@ async function run() {
   await Promise.all([primary.loadURL(html), peer.loadURL(html)])
   primary.show()
   peer.show()
-  assert.deepEqual(await controller.start(), { enabled: false, available: false })
+  assert.deepEqual(await controller.start(), { enabled: false, available: true })
+  primary.close()
+  await delay(250)
+  assert.equal(primary.isDestroyed(), false)
+  assert.equal(primary.isVisible(), false)
+  assert.equal(await primary.webContents.executeJavaScript('window.draft'), 'preserved')
+  controller.restore()
+  await delay(250)
+  assert.equal(primary.isVisible(), true)
   assert.deepEqual(await controller.setEnabled(true), { enabled: true, available: true })
   const primaryMinimized = once(primary, 'minimize')
   primary.minimize()
@@ -84,12 +93,14 @@ async function run() {
   assert.equal(primary.isVisible(), false)
   assert.equal(controller.status().available, true)
   assert.equal(await primary.webContents.executeJavaScript('window.draft'), 'preserved')
+  const peerClosed = once(peer, 'closed')
   peer.close()
+  await peerClosed
   assert.equal(peer.isDestroyed(), true)
   assert.equal(primary.isDestroyed(), false)
   await controller.setEnabled(false)
   assert.equal(primary.isVisible(), true)
-  assert.equal(controller.status().available, false)
+  assert.equal(controller.status().available, true)
   await controller.setEnabled(true)
   primary.minimize()
   await delay(250)
@@ -102,7 +113,7 @@ async function run() {
         ok: true,
         platform: process.platform,
         checks: [
-          'default off',
+          'close to tray with minimize preference off',
           'native tray creation',
           'primary minimize preserves renderer',
           'visible peer retains Dock',
@@ -112,7 +123,7 @@ async function run() {
           'restore reveals all tray-hidden windows and Dock',
           'primary close hides without destroying renderer or tray',
           'peer close remains close',
-          'disable restores before destroying tray',
+          'disable minimize restores windows and keeps close recovery tray',
           'explicit quit exits'
         ]
       })

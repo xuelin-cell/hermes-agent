@@ -7,7 +7,7 @@ import {
   requestComposerSetDraft,
   requestComposerSubmit
 } from '@/app/chat/composer/focus'
-import { NEW_SESSION_DRAFT_KEY, takeSessionDraft } from '@/store/composer'
+import { clearSessionDraft, NEW_SESSION_DRAFT_KEY, requestComposerDraftSync, takeSessionDraft } from '@/store/composer'
 import { $activeSessionId, $selectedStoredSessionId } from '@/store/session'
 import { $sessionStates } from '@/store/session-states'
 
@@ -63,6 +63,15 @@ const resolveComposerAddress = (
  *  resolves to no live surface returns `null`/`false` (or is dropped, for
  *  `focus`) — it never broadcasts and never throws. */
 export const composerHost = {
+  /** Discard the pre-session draft without touching any saved conversation. */
+  clearNewDraft: (): void => {
+    clearSessionDraft(null)
+
+    if (!$activeSessionId.get() && !$selectedStoredSessionId.get()) {
+      requestComposerDraftSync('reload', 'main')
+    }
+  },
+
   /** The live draft text of one composer, or null when nothing holds it.
    *  Mounted surfaces answer with their in-DOM text (current, incl.
    *  unsaved keystrokes); an unmounted session falls back to its debounced

@@ -158,7 +158,7 @@ export const en: Translations = {
     draftChanged: 'The conversation changed. Select the file again to add it.',
     draftNotReady: 'The conversation input is unavailable. Open the target conversation before adding the file.',
     draftUnavailable:
-      'The cloud download tool is unavailable or disabled. Restart Desktop and check this profile’s MCP settings.',
+      'The cloud-drive tool is unavailable or disabled. Check this profile’s library access in Settings → Safety → Approvals, then try a new chat.',
     upload: 'Upload file',
     transferring: 'Transferring…',
     transferFailed: 'Transfer incomplete. Check your network, login and file permissions before retrying.',
@@ -905,7 +905,7 @@ export const en: Translations = {
     connect: 'Connect',
     connecting: 'Connecting',
     continue: 'Continue',
-    bots: 'Bots',
+    bots: 'Digital employees',
     copied: 'Copied',
     copy: 'Copy',
     copyFailed: 'Copy failed',
@@ -1389,6 +1389,7 @@ export const en: Translations = {
       vaultCredentials: 'Saved credentials',
       vaultSources: 'Password managers',
       appUpdates: 'Version & updates',
+      legal: 'Privacy & terms',
       uninstall: 'Uninstall',
       billingOverview: 'Overview',
       billingPlans: 'Plans'
@@ -1881,7 +1882,23 @@ export const en: Translations = {
     about: {
       updates: 'Updates'
     },
+    legal: {
+      title: 'Privacy & terms',
+      description: 'The agreements, policies, and notices that govern your use of UniWork.',
+      items: {
+        userAgreement: 'Terms of Service',
+        privacyPolicy: 'Privacy Policy',
+        informationCollection: 'Information Collection Notice',
+        accountCancellation: 'Account Deletion Notice',
+        deliveryAgreement: 'Payment Terms',
+        childrenPrivacy: "Children's Privacy Policy & Guardian Notice",
+        openSourceTerms: 'Open Source Notices'
+      }
+    },
     config: {
+      agentLibraryAccessTitle: 'Allow the agent to manage the library',
+      agentLibraryAccessDesc:
+        'Allow the agent to read and write Personal Cloud Drive files based on your instructions.',
       minimizeToTrayTitle: 'Minimize to tray',
       minimizeToTrayDesc:
         'Minimize windows or close the main window to hide them in the system tray (menu bar on macOS) and keep UniWork running. Use Quit UniWork from the tray menu or Cmd+Q to exit. Off by default; applies only to this device.',
@@ -2928,7 +2945,7 @@ export const en: Translations = {
 
   skills: {
     tabSkills: 'Skills',
-    kitSkillsNote: 'Kit skills are managed on the Kits page.',
+    kitSkillsNote: 'Manage kit skills in Extensions → Experts → Kits.',
     tabToolsets: 'Tools',
     configuringProfile: 'Configuring:',
     all: 'All',
@@ -6261,7 +6278,7 @@ export const en: Translations = {
       },
       messaging: {
         title: 'UniWork away from your desk',
-        text: 'Connect Telegram, Discord, Slack and more — same agent, same memory.'
+        text: 'Connect DingTalk, WeChat and Feishu — same agent, same memory.'
       },
       artifacts: {
         title: 'Everything UniWork made',

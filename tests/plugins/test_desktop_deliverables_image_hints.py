@@ -68,11 +68,12 @@ def test_mixed_content_and_switched_model_note_are_rewritten(hints):
 
 
 def test_hint_is_kept_when_vision_works_or_uniai_is_missing(hints):
-    """消息渠道、vision_analyze 配了看图模型能真看、或没接元景看图工具时，原样不动。"""
+    """其他消息渠道、vision_analyze 配了看图模型能真看、或没接元景看图工具时，原样不动。"""
     image = hints.home / "a.png"
     image.write_bytes(b"png")
     request = {"messages": [{"role": "user", "content": attached(image)}]}
-    assert hints.rewrite(request=request, platform="weixin") is None
+    assert hints.rewrite(request=request, platform="telegram") is None
+    assert hints.rewrite(request=request, platform="wecom_callback") is None
     hints.config["value"] = {"auxiliary": {"vision": {"provider": "openrouter", "model": "qwen-vl"}}}
     assert hints.rewrite(request=request, platform="desktop") is None
     hints.config["value"] = HIDDEN
@@ -101,3 +102,33 @@ def test_upload_reminder_look_rule_follows_the_main_model(hints, monkeypatch, se
     text = ElementTree.fromstring(result["context"]).text
     assert expected in text and absent not in text.split("不要写代码上传。")[1]
     assert seen == ["deepseek-v4.1-flash"]
+
+
+@pytest.mark.parametrize("outcome", ["seen", "unseen", "error"])
+@pytest.mark.parametrize("platform", ["weixin", "feishu", "wecom", "dingtalk"])
+def test_gateway_vision_notes_are_rewritten_for_delivery_platforms(hints, monkeypatch, platform, outcome):
+    """用网关自己的预先看图生成三种写法：都换成元景看图，路径不带看清时多出的“ ~”。"""
+    import asyncio
+    import json
+
+    import tools.vision_tools as vision
+    from gateway.run_inbound import GatewayInboundMixin
+
+    # hints.home 是附件目录，它的上一级才是账号 Home。
+    image = hints.home.parent / "cache" / "images" / "img_微信 图.jpg"
+    image.parent.mkdir(parents=True)
+    image.write_bytes(b"jpg")
+
+    async def analyze(**_):
+        """按用例返回网关预先看图的成功、看不清或直接出错。"""
+        if outcome == "error":
+            raise RuntimeError("vision down")
+        return json.dumps({"success": outcome == "seen", "analysis": "一只猫"})
+
+    monkeypatch.setattr(vision, "vision_analyze_tool", analyze)
+    text = asyncio.run(GatewayInboundMixin._enrich_message_with_vision(None, "把它做成视频", [str(image)]))
+    assert "vision_analyze" in text
+    request = {"messages": [{"role": "user", "content": text}]}
+    rewritten = hints.rewrite(request=request, platform=platform)["request"]["messages"][0]["content"]
+    assert "vision_analyze" not in rewritten and rewritten.endswith("把它做成视频")
+    assert f"image_url_or_oss_path 填 {image}，prompt" in rewritten

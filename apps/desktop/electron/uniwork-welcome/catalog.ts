@@ -9,6 +9,7 @@ export interface WelcomePayload {
 export interface WelcomeTemplate {
   id: string
   name: string
+  icon?: string
   prompt: string
   sort: number
 }
@@ -35,18 +36,26 @@ function text(value: unknown, limit = 256): value is string {
   return typeof value === 'string' && value.trim().length > 0 && value.length <= limit
 }
 
-const CODE_MODULE_NAMES = new Set(['代码开发', '编程', 'code', 'programming', 'code development'])
-
-export function workspaceForModuleName(name: string): 'work' | 'codex' {
-  return CODE_MODULE_NAMES.has(name.trim().toLowerCase().replace(/\s+/g, ' ')) ? 'codex' : 'work'
-}
-
 /** 未指定排序值的条目排在末尾，同序保持服务端原顺序。 */
 function order(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : Number.MAX_SAFE_INTEGER
 }
 
-/** 显示来自配置，执行模式由本地名称映射决定；模块业务 ID 和 enabled 均不参与处理。 */
+// Published v3 catalogs predating workspace routing omit this field. Keep their
+// established code module working until the server supplies explicit routing.
+const LEGACY_CODE_MODULE_NAMES = new Set(['代码开发', '编程', 'code', 'programming', 'code development'])
+
+function moduleWorkspace(item: Record<string, unknown>): WelcomeModule['workspace'] {
+  if (item.workspace === 'codex' || item.workspace === 'work') {
+    return item.workspace
+  }
+
+  const legacyName = String(item.name).trim().toLowerCase().replace(/\s+/g, ' ')
+
+  return LEGACY_CODE_MODULE_NAMES.has(legacyName) ? 'codex' : 'work'
+}
+
+/** Explicit workspace routing wins; legacy catalogs retain their code module. */
 export function normalizeWelcomeCatalog(value: unknown): WelcomeModule[] {
   if (!value || typeof value !== 'object' || !Array.isArray((value as { modules?: unknown }).modules)) {
     throw new Error('办公模板目录格式无效。')
@@ -69,8 +78,8 @@ export function normalizeWelcomeCatalog(value: unknown): WelcomeModule[] {
         {
           id: `configured-module-${index}`,
           name: item.name,
+          workspace: moduleWorkspace(item),
           ...(text(item.icon, 128) ? { icon: item.icon.trim() } : {}),
-          workspace: workspaceForModuleName(item.name),
           sort: order(item.sort),
           tags: normalizeWelcomeCategories(item.tags)
         }
@@ -101,7 +110,13 @@ function normalizeWelcomeCategories(value: unknown): WelcomeCategory[] {
       }
 
       ids.add(item.id)
-      templates.push({ id: item.id, name: item.name, prompt: item.prompt, sort: order(item.sort) })
+      templates.push({
+        id: item.id,
+        name: item.name,
+        prompt: item.prompt,
+        sort: order(item.sort),
+        ...(text(item.icon, 128) ? { icon: item.icon.trim() } : {})
+      })
     }
 
     if (!templates.length) {

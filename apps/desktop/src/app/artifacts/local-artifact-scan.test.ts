@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
@@ -33,11 +34,13 @@ beforeEach(async () => {
   vi.stubGlobal('hermesDesktop', {
     normalizePreviewTarget: vi.fn(async (value: string, cwd?: string) => {
       try {
-        const resolved = await fs.realpath(path.resolve(cwd || root, value))
+        const resolved = await fs.realpath(
+          /^file:/i.test(value) ? fileURLToPath(value) : path.resolve(cwd || root, value)
+        )
 
         const stat = await fs.stat(resolved)
 
-        return stat.isFile() ? { kind: 'file', path: resolved, byteSize: stat.size } : null
+        return stat.isFile() ? { kind: 'file', path: resolved, label: path.basename(resolved), byteSize: stat.size } : null
       } catch {
         return null
       }
@@ -238,4 +241,76 @@ it('只收录交付引用，忽略制作过程并按原生路径去重，不复�
   await scanLocalArtifacts([owner], cache, () => true, publish)
   expect(api.messages).toHaveBeenCalledTimes(2)
   expect(publish.mock.lastCall![0].groups).toEqual([])
+})
+
+it('文件 URL 中的中文按原生文件名展示和搜索，同一文件的媒体引用不重复收录', async () => {
+  const owner = session('a')
+  const names = ['内蒙古管子创业文档.docx', '中文 空格#100%报告.docx']
+  const paths = names.map(name => path.join(owner.cwd!, name))
+
+  for (const file of paths) {
+    await fs.writeFile(file, path.basename(file))
+  }
+
+  const urls = paths.map(file => pathToFileURL(file).href)
+  api.messages.mockResolvedValue({
+    messages: [
+      {
+        role: 'assistant',
+        content: paths
+          .map((file, index) => `[下载](<${urls[index]}>)\n[同一份](#media:${encodeURIComponent(file)})`)
+          .join('\n')
+      }
+    ]
+  })
+  const cache = new Map<string, LocalArtifactCache>()
+  const publish = vi.fn()
+  await scanLocalArtifacts([owner], cache, () => true, publish)
+  const groups = publish.mock.lastCall![0].groups
+  const files = groups[0].files
+  expect(files.map((file: { label: string }) => file.label)).toEqual(names)
+  expect(files.map((file: { value: string }) => file.value)).toEqual(urls)
+  expect(files.map((file: { resolvedPath: string }) => file.resolvedPath)).toEqual(
+    await Promise.all(paths.map(file => fs.realpath(file)))
+  )
+  expect(filterLocalArtifacts(groups, '蒙古', 'document', false, new Set())[0].files[0].label).toBe(names[0])
+  expect(await Promise.all(paths.map(file => fs.readFile(file, 'utf8')))).toEqual(names)
+})
+
+it('刷新提取缓存纠正旧显示名，保留文件名中的字面百分号及编码片段，不二次解码或改变收藏身份', async () => {
+  const owner = session('a')
+  const names = ['%E4%B8%AD%20报告100%.docx', 'broken%E5%A4.docx']
+  const paths = names.map(name => path.join(owner.cwd!, name))
+
+  for (const file of paths) {
+    await fs.writeFile(file, path.basename(file))
+  }
+
+  api.messages.mockResolvedValue({
+    messages: [{ role: 'assistant', content: paths.map(file => `[下载](<${pathToFileURL(file).href}>)`).join('\n') }]
+  })
+  const cache = new Map<string, LocalArtifactCache>()
+  const publish = vi.fn()
+  await scanLocalArtifacts([owner], cache, () => true, publish)
+  const stored = cache.get(localSessionKey(owner))!
+
+  const before = stored.group.files.map(file => ({
+    id: file.id,
+    value: file.value,
+    resolvedPath: file.resolvedPath,
+    favorite: localFavoriteKey(file)
+  }))
+
+  for (const [index, file] of stored.group.files.entries()) {
+    file.label = encodeURIComponent(names[index])
+  }
+
+  await scanLocalArtifacts([owner], cache, () => true, publish)
+  const files = cache.get(localSessionKey(owner))!.group.files
+  expect(api.messages).toHaveBeenCalledTimes(1)
+  expect(files.map(file => file.label)).toEqual(names)
+  expect(
+    files.map(file => ({ id: file.id, value: file.value, resolvedPath: file.resolvedPath, favorite: localFavoriteKey(file) }))
+  ).toEqual(before)
+  expect(await Promise.all(paths.map(file => fs.readFile(file, 'utf8')))).toEqual(names)
 })

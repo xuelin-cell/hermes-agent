@@ -1,4 +1,4 @@
-import type { AgentMailAction, AgentMailStatus } from '../../../electron/agent-mail/contract'
+import type { AgentMailAction } from '../../../electron/agent-mail/contract'
 
 import type { MailDetail, MailFolder, MailMessage } from './model'
 
@@ -34,6 +34,8 @@ export const searchMessages = (profile: string, folder: string, query: string) =
   })
 export const getMessage = (profile: string, folder: string, uid: number) =>
   action<MailDetail>(profile, 'get_email', { folder, uid })
+export const downloadAttachment = (profile: string, folder: string, uid: number, attachmentId: string) =>
+  action<{ file: { downloadUrl: string } }>(profile, 'download_attachment', { attachmentId, folder, uid })
 export const markRead = (profile: string, folder: string, uid: number) =>
   action(profile, 'mark_email_read', { folder, uid })
 export const deleteMessage = (profile: string, folder: string, uid: number) =>

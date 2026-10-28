@@ -75,6 +75,8 @@ export function dismissConnectorLogin(): void {
   generation += 1
   holding = false
   $connectorLoginPrompt.set(null)
+  watching?.abort()
+  watching = null
 }
 
 /**

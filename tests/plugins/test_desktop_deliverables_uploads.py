@@ -162,6 +162,51 @@ def test_attachment_is_uploaded_once_and_replaced_with_oss_path(uploads):
     assert len(uploads.puts) == 2
 
 
+def test_agent_mail_execute_action_uploads_and_rewrites_attachment(uploads, monkeypatch):
+    """The generic Wo Mail dispatch always gets a public URL, never a local path."""
+    source = uploads.home / "report.txt"
+    source.write_text("mail attachment", encoding="utf-8")
+
+    def oss_tool(name, args):
+        uploads.calls.append((name, args))
+        return upload_answer("mail-report.txt")
+
+    monkeypatch.setattr(uploads.module, "call_tool", oss_tool)
+
+    result = before(
+        uploads,
+        "mcp__connector_wo_mail__execute_action",
+        {
+            "actionId": "wo_mail.send_email",
+            "input": {
+                "to": ["recipient@example.com"],
+                "subject": "Report",
+                "text": "Please find the report attached.",
+                "attachments": [{"filename": "report.txt", "contentUrl": str(source)}],
+            },
+        },
+    )
+
+    assert result == {
+        "action": "modify",
+        "args": {
+            "input": {
+                "to": ["recipient@example.com"],
+                "subject": "Report",
+                "text": "Please find the report attached.",
+                "attachments": [{
+                    "filename": "report.txt",
+                    "contentUrl": f"{HOST}/app-agent-prod/temp/mail-report.txt{SIGNED}",
+                }],
+            },
+        },
+    }
+    assert uploads.calls == [
+        ("mcp__UniAI_Toolkit__get_oss_upload_url", {"fileName": "report.txt"}),
+    ]
+    assert uploads.puts[0][1:] == ("text/plain", b"mail attachment")
+
+
 def test_list_arguments_and_working_directory_files(uploads):
     """列表参数逐项处理，网络地址和 ossPath 原样保留；工作目录里的相对路径也能用。"""
     (uploads.work / "outputs").mkdir()
@@ -416,3 +461,25 @@ def test_slow_upload_does_not_hold_up_other_tools(uploads, monkeypatch):
     assert results == [
         {"action": "modify", "args": {"image": "app-agent-prod/temp/obj1.png"}}
     ]
+
+
+def test_files_received_on_message_platforms_are_uploaded_but_other_accounts_are_not(uploads, tmp_path):
+    """消息平台收到的图片、文档存在本账号媒体缓存里，自动上传；别的账号的缓存仍拦下。"""
+    home = uploads.home.parent
+    received = {
+        "image_url": home / "cache" / "images" / "img_微信.png",
+        "file_url": home / "cache" / "documents" / "doc_合同.pdf",
+    }
+    for path in received.values():
+        path.parent.mkdir(parents=True)
+        path.write_bytes(b"received")
+    args = {name: str(path) for name, path in received.items()}
+    result = before(uploads, "mcp__UniAI_Toolkit__img2vid_generate", args)
+    assert result["action"] == "modify" and set(result["args"]) == set(received)
+    assert len(uploads.puts) == 2
+    other = tmp_path / "other-account" / "cache" / "images" / "img_别人.png"
+    other.parent.mkdir(parents=True)
+    other.write_bytes(b"other")
+    blocked = before(uploads, "mcp__UniAI_Toolkit__img2vid_generate", {"image_url": str(other)})
+    assert blocked["action"] == "block" and "没有自动上传" in blocked["message"]
+    assert len(uploads.puts) == 2

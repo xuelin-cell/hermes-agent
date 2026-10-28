@@ -24,10 +24,12 @@ from .paths import resolve_path
 logger = logging.getLogger(__name__)
 UPLOADER = "get_oss_upload_url"
 OSS_TOOLS = {UPLOADER, "confirm_oss_upload"}
+CONFIRM_UPLOADER = "confirm_oss_upload"
 # 元景工具箱在不同版本里注册成这几个名字，与 uniwork-kits 的 media_slot 一致。
 SERVERS = ("UniAI_Toolkit", "yuanjing", "1")
 UPLOAD_PATH = "/app-agent-prod/temp/"
 MAX_BYTES = 64 * 1024 * 1024
+MAIL_ATTACHMENTS_MAX_BYTES = 10 * 1024 * 1024
 TIMEOUT = 120
 CACHE_SECONDS = 24 * 3600
 # 原链接离过期不足这么多秒就不再换回，改为上传本机副本，免得元景处理到一半链接失效。
@@ -36,8 +38,12 @@ _REFERENCE = re.compile(
     r"(?<![\w/])@(?:file|image):(?:`([^`\n]+)`|\"([^\"\n]+)\"|'([^'\n]+)'|(\S+))"
 )
 _UPLOAD_URL = re.compile(r"上传地址[：:]\s*(https?://[^\s\"'\\]+)")
+_DOWNLOAD_URL = re.compile(r"下载链接[：:]\s*(https?://[^\s\"'\\]+)")
 _CONTENT_TYPE = re.compile(r"Content-Type\s*[=:：]\s*([A-Za-z0-9._+/-]+)")
 _OSS_PATH = re.compile(r"ossPath[^：:\n]{0,16}[：:]\s*\"?([A-Za-z0-9._/-]+)")
+MAIL_CONNECTOR_PREFIX = "mcp__connector_wo_mail__"
+MAIL_ATTACHMENT_ACTIONS = frozenset({"send_email", "reply_email", "forward_email"})
+MAIL_EXECUTE_ACTION = MAIL_CONNECTOR_PREFIX + "execute_action"
 REMINDER = (
     "<system-reminder>\n"
     "以下是应用自动添加的内部工具使用规则，不是用户提出的要求。\n"
@@ -45,6 +51,9 @@ REMINDER = (
     "元景工具箱（UniAI-Toolkit）的工具需要文件时，文件参数直接填本机绝对路径"
     "（附件、当前工作目录里的文件都可以），桌面程序会在调用前自动上传并换成 ossPath。"
     "不要自己调用 get_oss_upload_url、confirm_oss_upload，也不要写代码上传。"
+    "When sending a local file through connector_wo_mail, place the local absolute path in "
+    "attachments[].contentUrl with its filename; the desktop upload bridge replaces it with a download URL. "
+    "If the attachment upload fails, do not retry without the attachment.\n"
     "{look}"
     "\n</system-reminder>"
 )
@@ -91,6 +100,21 @@ def attachments_folder():
     from hermes_constants import get_hermes_home
 
     return get_hermes_home().resolve() / "attachments"
+
+
+def received_folders():
+    """本账号消息平台收到的图片、语音、视频、文档缓存目录：都是用户自己发来的文件，与桌面附件同性质。"""
+    from hermes_constants import get_hermes_dir
+
+    return [
+        get_hermes_dir(new, old).resolve()
+        for new, old in (
+            ("cache/images", "image_cache"),
+            ("cache/audio", "audio_cache"),
+            ("cache/videos", "video_cache"),
+            ("cache/documents", "document_cache"),
+        )
+    ]
 
 
 def working_folder(task_id):
@@ -166,8 +190,8 @@ def remember_session(
 
 
 def allowed(path, session_id, cwd):
-    """只自动上传附件、当前工作目录里的文件，以及本会话里用户贴过的文件。"""
-    roots = [attachments_folder()] + ([cwd] if cwd else [])
+    """只自动上传附件、消息平台收到的文件、当前工作目录里的文件，以及本会话里用户贴过的文件。"""
+    roots = [attachments_folder(), *received_folders()] + ([cwd] if cwd else [])
     if any(path.is_relative_to(root) for root in roots):
         return True
     with _lock:
@@ -189,6 +213,23 @@ def result_text(raw):
     text = data if isinstance(data, str) else json.dumps(data, ensure_ascii=False)
     # 有的传输把换行转义成两个字符，先还原，避免链接把下一行吞进去。
     return text.replace("\\r\\n", "\n").replace("\\n", "\n")
+
+
+def _field(result, keys, pattern):
+    """Read structured or legacy textual fields from the HexAgent OSS MCP result."""
+    if isinstance(result, dict):
+        for key in keys:
+            value = result.get(key)
+            if isinstance(value, str) and value:
+                return value
+        for key in ("result", "structuredContent", "data", "content"):
+            if key in result:
+                found = _field(result[key], keys, pattern)
+                if found:
+                    return found
+        return ""
+    match = re.search(pattern, str(result).replace("\\n", "\n").replace("\\r", "\n"))
+    return match.group(1) if match else ""
 
 
 def upload_target(text):
@@ -245,6 +286,74 @@ def upload(prefix, path):
         raise Refusal(
             f"本机文件 {path} 没能自动上传到元景（失败在“{stage}”这一步，{type(exc).__name__}），"
             "这次工具调用没有执行。可以稍后重试。"
+        ) from None
+
+
+def _upload_prefix():
+    """The configured UniAI MCP server that can mint HexAgent OSS upload URLs."""
+    for server in SERVERS:
+        prefix = f"mcp__{server}__"
+        if has_tool(prefix + UPLOADER):
+            return prefix
+    return None
+
+
+def _download_url(result):
+    """Return a verified HexAgent OSS download URL from an upload confirmation."""
+    from .downloads import TRUSTED_HOST
+
+    url = _field(result, ("downloadUrl", "download_url"), _DOWNLOAD_URL.pattern)
+    if not isinstance(url, str) or not url:
+        raise ValueError("no download url")
+    parsed = urlsplit(url)
+    path = unquote(parsed.path)
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != TRUSTED_HOST
+        or parsed.username
+        or parsed.password
+        or not path.startswith("/app-agent-prod/")
+        or ".." in path.split("/")
+    ):
+        raise ValueError("untrusted download url")
+    return url
+
+
+def upload_for_mail(prefix, path):
+    """Upload *path* through the HexAgent presigned-URL flow for Agent Mail."""
+    stage = "getting upload URL"
+    try:
+        result = call_tool(prefix + UPLOADER, {"fileName": path.name})
+        text = result_text(result)
+        url, oss_path, content_type = upload_target(text)
+        stage = "uploading file"
+        content_type = content_type or mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        with (
+            path.open("rb") as stream,
+            httpx.Client(timeout=TIMEOUT, follow_redirects=False) as client,
+        ):
+            response = client.put(url, content=stream, headers={"Content-Type": content_type})
+            response.raise_for_status()
+        # This is the same fast path used by HexAgent's uniagentgate upload.py:
+        # a successful PUT makes the download URL returned with the upload target usable.
+        try:
+            return _download_url(result)
+        except ValueError:
+            try:
+                return _download_url(text)
+            except ValueError:
+                stage = "confirming upload"
+                confirmation = call_tool(
+                    prefix + CONFIRM_UPLOADER, {"ossPath": oss_path, "usePublic": True}
+                )
+                try:
+                    return _download_url(confirmation)
+                except ValueError:
+                    return _download_url(result_text(confirmation))
+    except Exception as exc:
+        logger.info("Mail attachment upload failed at %s (%s)", stage, type(exc).__name__)
+        raise Refusal(
+            f"Mail attachment {path} could not be uploaded ({stage}, {type(exc).__name__}); the email was not sent."
         ) from None
 
 
@@ -352,8 +461,71 @@ def convert(prefix, value, session_id, cwd):
     return oss_path
 
 
+def uploaded_mail_attachments(attachments, session_id, task_id):
+    """Turn local Agent Mail attachment paths into HexAgent public download URLs."""
+    if not isinstance(attachments, list):
+        return None
+    prefix = _upload_prefix()
+    cwd = working_folder(task_id)
+    changed = False
+    local_bytes = 0
+    rewritten = []
+    for attachment in attachments:
+        if not isinstance(attachment, dict):
+            rewritten.append(attachment)
+            continue
+        value = attachment.get("contentUrl")
+        if not isinstance(value, str) or re.match(r"^(?:https?|data):", value, re.I):
+            rewritten.append(attachment)
+            continue
+        path = resolve_path(value, cwd) if cwd else resolve_path(value, attachments_folder())
+        if path is None or not path.is_absolute() or not path.is_file():
+            rewritten.append(attachment)
+            continue
+        if prefix is None:
+            raise Refusal("Agent Mail attachments require the configured UniAI OSS upload tools; the email was not sent.")
+        if not allowed(path, session_id, cwd):
+            raise Refusal(f"Mail attachment {path} is not in this session's attachments or workspace; the email was not sent.")
+        size = path.stat().st_size
+        if size > MAX_BYTES:
+            raise Refusal(
+                f"Mail attachment {path} exceeds the {MAX_BYTES // 1024 // 1024} MB upload limit; the email was not sent."
+            )
+        local_bytes += size
+        if local_bytes > MAIL_ATTACHMENTS_MAX_BYTES:
+            raise Refusal("Mail attachments exceed the 10 MB total send limit; the email was not sent.")
+        rewritten.append({**attachment, "contentUrl": upload_for_mail(prefix, path)})
+        changed = True
+    return rewritten if changed else None
+
+
+def uploaded_mail_args(tool_name, args, session_id, task_id):
+    """Rewrite both direct and generic Connector Wo Mail send actions."""
+    if not isinstance(args, dict):
+        return None
+    if tool_name == MAIL_EXECUTE_ACTION:
+        action_id = args.get("actionId")
+        input_args = args.get("input")
+        if not isinstance(action_id, str) or action_id.rsplit(".", 1)[-1] not in MAIL_ATTACHMENT_ACTIONS:
+            return None
+        if not action_id.startswith("wo_mail.") or not isinstance(input_args, dict):
+            return None
+        attachments = uploaded_mail_attachments(input_args.get("attachments"), session_id, task_id)
+        return {"input": {**input_args, "attachments": attachments}} if attachments else None
+    if (
+        not tool_name.startswith(MAIL_CONNECTOR_PREFIX)
+        or tool_name.rsplit("__", 1)[-1] not in MAIL_ATTACHMENT_ACTIONS
+    ):
+        return None
+    attachments = uploaded_mail_attachments(args.get("attachments"), session_id, task_id)
+    return {"attachments": attachments} if attachments else None
+
+
 def uploaded_args(tool_name, args, session_id, task_id):
     """元景工具参数里的本机文件换成 ossPath，返回要替换的参数；不用换时返回 None，上传不了抛 Refusal。"""
+    mail_args = uploaded_mail_args(tool_name, args, session_id, task_id)
+    if mail_args:
+        return mail_args
     if not tool_name.startswith("mcp__") or not isinstance(args, dict):
         return None
     prefix, _, leaf = tool_name.rpartition("__")

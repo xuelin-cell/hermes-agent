@@ -5,12 +5,16 @@ import electronUpdater from 'electron-updater'
 import feedContract from '../../update-feed.cjs'
 
 import { channelPublicBase } from './channel-protocol'
+import { fetchReleaseNotes, readBakedFeedUrl, resolveReleaseNotesUrl } from './release-notes'
+import type { ReleaseNotesByLocale } from './release-notes'
 import { WindowsStrategy, type WindowsStrategyDeps } from './windows'
 
 export interface WindowsClientDeps extends Omit<WindowsStrategyDeps, 'updater'> {
   light: boolean
   /** Runtime override from config.yaml; empty keeps the baked app-update.yml. */
   feedBaseUrl: string
+  /** The baked generic descriptor electron-updater reads; null in development. */
+  appUpdatePath?: string | null
   log: (message: string) => void
 }
 
@@ -39,5 +43,24 @@ export function createWindowsStrategy(deps: WindowsClientDeps): WindowsStrategy 
     updater.setFeedURL({ provider: 'generic', url: `${base}/${feed.directory}/`, channel: feed.channel })
   }
 
-  return new WindowsStrategy({ ...deps, updater })
+  return new WindowsStrategy({
+    ...deps,
+    updater,
+    releaseNotes: releaseNotesReader(deps, feed.directory)
+  })
+}
+
+/** Authored copy beside the same feed the updater reads; unset when this install
+ *  has no feed (an external or Store build) so the overlay keeps its fallback. */
+function releaseNotesReader(
+  deps: WindowsClientDeps,
+  feedDirectory: string
+): ((version: string) => Promise<ReleaseNotesByLocale | null>) | undefined {
+  const url: string | null = resolveReleaseNotesUrl({
+    configuredBase: deps.feedBaseUrl,
+    feedDirectory,
+    descriptorUrl: readBakedFeedUrl(deps.appUpdatePath)
+  })
+
+  return url ? (version: string) => fetchReleaseNotes(url, version, deps.log) : undefined
 }

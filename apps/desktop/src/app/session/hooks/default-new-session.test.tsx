@@ -1,6 +1,8 @@
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { NEW_SESSION_DEFAULT_AREA } from '@/app/session/new-session-contrib'
+import { registry } from '@/contrib/registry'
 import type { DesktopProfileRoute } from '@/global'
 import { createClientSessionState } from '@/lib/chat-runtime'
 import { $defaultProfileRoute, setDefaultProfile } from '@/store/default-profile'
@@ -137,6 +139,50 @@ afterEach(() => {
 })
 
 describe('generic new session default routing', () => {
+  it.each(['draft', 'slash', 'tile'])('returns a managed expert to its general assistant for %s', async action => {
+    $newChatProfile.set('fund-expert')
+    $activeGatewayProfile.set('fund-expert')
+    $newChatRoute.set({ connectionId: 'previous', profile: 'fund-expert' })
+    const prepare = vi.fn()
+
+    const release = registry.register({
+      id: 'expert-new-session',
+      area: NEW_SESSION_DEFAULT_AREA,
+      data: { profiles: ['fund-expert'], targetProfile: 'default', prepare }
+    })
+
+    try {
+      const { result } = mountActions()
+
+      if (action === 'tile') {
+        await act(() => result.current.openNewSessionTile('right'))
+      } else {
+        if (action === 'slash') {
+          const slash = mountSlashCommand(result.current.startFreshSessionDraft)
+
+          await act(() => slash.result.current('/new'))
+        } else {
+          act(() => result.current.selectSidebarItem({ action: 'new-session' } as never))
+        }
+
+        expect(prepare).toHaveBeenCalledOnce()
+        expect($newChatProfile.get()).toBe('default')
+        await act(() => result.current.createBackendSessionForSend())
+      }
+
+      expect(requestGatewayForAgent).toHaveBeenCalledWith(
+        'previous',
+        'default',
+        'session.create',
+        expect.objectContaining({ profile: 'default' }),
+        ...FOREGROUND_CREATE_DIAL
+      )
+      expect(getSessionOwnerHint('created-stored')).toEqual({ connectionId: 'previous', profile: 'default' })
+    } finally {
+      release()
+    }
+  })
+
   it.each(
     [
       { name: 'primary window control', query: '/' },

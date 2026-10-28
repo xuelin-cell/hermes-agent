@@ -56,6 +56,25 @@ test('the self-managed NSIS build bakes its feed at the OSS origin', () => {
   assert.equal(mirror.win.publish[0].url, 'https://mirror.example.com/hermes/releases/win32/stable/')
 })
 
+test('the web installer target keeps the OSS feed and the per-machine elevation', () => {
+  // Only nsis-web embeds the payload blockmap, so it is the one NSIS shape
+  // electron-updater can update differentially. The feed origin and the
+  // elevation flag must survive the target switch.
+  const config = fresh({
+    HERMES_DESKTOP_VARIANT: 'bundled',
+    HERMES_BUILD_COMMIT: COMMIT,
+    HERMES_WINDOWS_UPDATE: 'electron-updater',
+    HERMES_WINDOWS_FORMAT: 'nsis-web'
+  })
+
+  assert.deepEqual(config.win.target, ['nsis-web'])
+  assert.deepEqual(config.win.publish, [
+    { provider: 'generic', url: `${OSS}/releases/win32/stable/`, channel: 'stable' }
+  ])
+  assert.equal(config.nsis.perMachine, true)
+  assert.equal(config.nsis.packElevateHelper, true)
+})
+
 test('the per-machine NSIS build asks electron-updater to elevate', () => {
   // NsisTarget only writes `isAdminRightsRequired` into the channel yml for
   // `perMachine && (oneClick || packElevateHelper)`. This is an assisted

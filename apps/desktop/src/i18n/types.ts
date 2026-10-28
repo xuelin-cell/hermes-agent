@@ -6,6 +6,7 @@
 // fall back to English while new keys remain type-checked.
 
 import type { ErrorCodeKey } from '@/lib/error-surface'
+import type { LegalLinkId } from '@/lib/legalLinks'
 import type { TipId } from '@/lib/tips/catalog'
 
 export type Locale = 'en' | 'zh' | 'zh-hant' | 'ja' | 'ar' | 'ru' | 'fr' | 'de' | 'es'
@@ -1439,6 +1440,12 @@ export interface Translations {
     about: {
       updates: string
     }
+    legal: {
+      title: string
+      description: string
+      /** One display name per hosted document; see `LEGAL_LINKS` for the URLs. */
+      items: Record<LegalLinkId, string>
+    }
     config: {
       minimizeToTrayTitle: string
       minimizeToTrayDesc: string
@@ -1465,6 +1472,8 @@ export interface Translations {
       disableF12Desc: string
       alwaysExternalLinksTitle: string
       alwaysExternalLinksDesc: string
+      agentLibraryAccessTitle: string
+      agentLibraryAccessDesc: string
       attachmentSizeTitle: string
       attachmentSizeDesc: string
       attachmentSizeUnit: string

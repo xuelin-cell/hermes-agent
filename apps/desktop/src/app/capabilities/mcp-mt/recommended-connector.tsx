@@ -55,7 +55,6 @@ export function RecommendedConnectorCard({
     >
       <div className="mt-connector-card-top">
         <img alt="" className="mt-connector-icon" draggable={false} src={entry.icon} />
-        <h3 className="mt-connector-name">{item.name}</h3>
         <div className="mt-connector-card-actions">
           {connected ? (
             <>
@@ -78,6 +77,7 @@ export function RecommendedConnectorCard({
           )}
         </div>
       </div>
+      <h3 className="mt-connector-name">{item.name}</h3>
       <p className="mt-connector-description">{item.description}</p>
       <p className="mt-connector-provider">{item.provider}</p>
     </article>

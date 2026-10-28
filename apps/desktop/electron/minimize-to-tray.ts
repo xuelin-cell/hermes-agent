@@ -10,6 +10,8 @@ export interface MinimizeToTrayStatus {
 
 interface Options {
   preferencesPath: string
+  /** Keep a recovery tray for the primary close button, independently of minimize preferences. */
+  closeToTray?: boolean
   getIconPath: () => string | undefined
   restoreMainWindow: () => void
   isQuittingForHandoff: () => boolean
@@ -138,6 +140,9 @@ export function createMinimizeToTray(options: Options) {
 
     if (!on) {
       restoreHidden()
+    }
+
+    if (!on && !options.closeToTray) {
       destroyTray()
     } else if (!status().available && !quitting) {
       try {
@@ -170,13 +175,13 @@ export function createMinimizeToTray(options: Options) {
             height: process.platform === 'darwin' ? 18 : 24
           })
         )
-        tray.setToolTip('Hermes')
+        tray.setToolTip('UniWork')
         tray.setContextMenu(
           Menu.buildFromTemplate([
-            { label: 'Show Hermes', click: restore },
+            { label: '打开 UniWork', click: restore },
             { type: 'separator' },
             // Do not bypass the ordinary active-work confirmation or teardown.
-            { label: 'Quit Hermes', click: () => app.quit() }
+            { label: '退出 UniWork', click: () => app.quit() }
           ])
         )
 
@@ -201,12 +206,17 @@ export function createMinimizeToTray(options: Options) {
   function registerWindow(win: BrowserWindow, { closeToTray = false } = {}) {
     windows.add(win)
 
-    const hide = () => {
+    const hide = (closing = false) => {
       if (win.isDestroyed()) {
         return false
       }
 
-      if (!enabled || !status().available || quitting || options.isQuittingForHandoff()) {
+      if (
+        (!enabled && !(closing && options.closeToTray)) ||
+        !status().available ||
+        quitting ||
+        options.isQuittingForHandoff()
+      ) {
         return false
       }
 
@@ -242,7 +252,7 @@ export function createMinimizeToTray(options: Options) {
 
     if (closeToTray) {
       win.on('close', event => {
-        if (hide()) {
+        if (hide(true)) {
           event.preventDefault()
         }
       })

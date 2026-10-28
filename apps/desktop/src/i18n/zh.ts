@@ -152,7 +152,7 @@ export const zh = defineLocale({
     draftRemote: '当前会话连接到远程 UniWork，暂不支持添加云盘文件。',
     draftChanged: '会话已切换，未添加文件，请重新选择。',
     draftNotReady: '会话输入框暂不可用，请先打开目标会话后再添加。',
-    draftUnavailable: '云盘下载工具尚未就绪或已关闭，请重启桌面端并检查当前 Profile 的 MCP 设置。',
+    draftUnavailable: '云盘工具尚未就绪或未获授权，请在「设置 → 安全 → 审批」检查当前 Profile 的资料库访问权限，再新建会话重试。',
     upload: '上传文件',
     transferring: '正在传输…',
     transferFailed: '传输未完成，请检查网络、登录状态和文件权限后重试。',
@@ -640,7 +640,7 @@ export const zh = defineLocale({
     connect: '连接',
     connecting: '连接中',
     continue: '继续',
-    bots: '机器人',
+    bots: '数字员工',
     copied: '已复制',
     copy: '复制',
     copyFailed: '复制失败',
@@ -1066,6 +1066,7 @@ export const zh = defineLocale({
       vaultCredentials: '已保存的凭据',
       vaultSources: '密码管理器',
       appUpdates: '版本与更新',
+      legal: '隐私与条款',
       uninstall: '卸载',
       billingOverview: '概览',
       billingPlans: '套餐'
@@ -1812,7 +1813,22 @@ export const zh = defineLocale({
     about: {
       updates: '更新'
     },
+    legal: {
+      title: '隐私与条款',
+      description: '查看适用于 UniWork 的协议、政策与声明。',
+      items: {
+        userAgreement: '用户协议',
+        privacyPolicy: '隐私政策',
+        informationCollection: '收集用户信息说明',
+        accountCancellation: '账号注销须知',
+        deliveryAgreement: '产品支付协议',
+        childrenPrivacy: '儿童信息保护政策及监护人须知',
+        openSourceTerms: '开源条款'
+      }
+    },
     config: {
+      agentLibraryAccessTitle: '允许智能体操控资料库',
+      agentLibraryAccessDesc: '允许智能体基于你的指令读写个人云盘文件。',
       minimizeToTrayTitle: '最小化到托盘',
       minimizeToTrayDesc:
         '最小化窗口或关闭主窗口时，将其隐藏到系统托盘（macOS 上为菜单栏），让 UniWork 继续运行。通过托盘菜单中的“退出 UniWork”或 Cmd+Q 退出。默认关闭，仅适用于此设备。',
@@ -2755,7 +2771,7 @@ export const zh = defineLocale({
 
   skills: {
     tabSkills: '技能',
-    kitSkillsNote: '套件技能在「套件」页管理。',
+    kitSkillsNote: '套件技能在「扩展 → 专家 → 套件」里管理。',
     tabToolsets: '工具集',
     configuringProfile: '正在配置：',
     all: '全部',
@@ -5794,7 +5810,7 @@ export const zh = defineLocale({
       },
       messaging: {
         title: '离开电脑也能用',
-        text: '接入 Telegram、Discord、Slack 等 — 同一个智能体，同一份记忆。'
+        text: '接入钉钉、微信、飞书 — 同一个智能体，同一份记忆。'
       },
       artifacts: {
         title: 'UniWork 做过的一切',

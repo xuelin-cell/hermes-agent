@@ -1,26 +1,25 @@
 import './workspace-category-tabs.css'
 
 import { useStore } from '@nanostores/react'
-import { DynamicIcon, type IconName, iconNames } from 'lucide-react/dynamic'
 import { useEffect, useRef } from 'react'
 
 import { $resolvedWelcomeCatalog, loadWelcomeCatalog } from '@/app/chat/composer/work-templates/catalog-store'
+import { Button } from '@/components/ui/button'
 import { useI18n } from '@/i18n'
 import { $interfaceMode } from '@/store/interface-mode'
 import { $selectedWelcomeModules, selectWorkspaceModule } from '@/store/workspace-category'
 
+import { WelcomeIcon } from './welcome-icon'
 import { workspaceCategoryCopy } from './workspace-category-copy'
 
 interface WorkspaceCategoryTabsProps {
   onSelect?: () => void
 }
 
-const SUPPORTED_ICONS = new Set<string>(iconNames)
-
 export function WorkspaceCategoryTabs({ onSelect }: WorkspaceCategoryTabsProps = {}) {
-  const { locale } = useI18n()
+  const { locale, t } = useI18n()
   const language = locale.startsWith('zh') ? 'zh-CN' : 'en'
-  const { modules } = useStore($resolvedWelcomeCatalog[language])
+  const { modules, status } = useStore($resolvedWelcomeCatalog[language])
   const selected = useStore($selectedWelcomeModules[language])
   const mode = useStore($interfaceMode)
   const copy = workspaceCategoryCopy[locale]
@@ -36,7 +35,13 @@ export function WorkspaceCategoryTabs({ onSelect }: WorkspaceCategoryTabsProps =
   }, [language, selected, mode])
 
   if (!modules.length) {
-    return null
+    return status === 'loading' ? null : (
+      <div className="workspace-category-nav">
+        <Button onClick={() => void loadWelcomeCatalog(language, true)} size="sm" type="button" variant="text">
+          {t.composer.workRetry}
+        </Button>
+      </div>
+    )
   }
 
   return (
@@ -85,9 +90,7 @@ export function WorkspaceCategoryTabs({ onSelect }: WorkspaceCategoryTabsProps =
               tabIndex={selected?.id === module.id ? 0 : -1}
               type="button"
             >
-              {module.icon && SUPPORTED_ICONS.has(module.icon) && (
-                <DynamicIcon aria-hidden="true" fallback={() => null} name={module.icon as IconName} size={18} />
-              )}
+              <WelcomeIcon name={module.icon} size={18} />
               <span>{module.name}</span>
             </button>
           )

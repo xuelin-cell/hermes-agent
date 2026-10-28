@@ -444,7 +444,7 @@ export const esOverrides = {
     connect: 'Conectar',
     connecting: 'Conectando',
     continue: 'Continuar',
-    bots: 'Bots',
+    bots: 'Empleados digitales',
     copied: 'Copiado',
     copy: 'Copiar',
     copyFailed: 'No se pudo copiar',
@@ -909,6 +909,7 @@ export const esOverrides = {
       vaultCredentials: 'Credenciales guardadas',
       vaultSources: 'Gestores de contraseñas',
       appUpdates: 'Versión y actualizaciones',
+      legal: 'Privacidad y términos',
       uninstall: 'Desinstalar',
       billingOverview: 'Resumen',
       billingPlans: 'Planes'
@@ -1714,7 +1715,23 @@ export const esOverrides = {
     about: {
       updates: 'Actualizaciones'
     },
+    legal: {
+      title: 'Privacidad y términos',
+      description: 'Los acuerdos, políticas y avisos que rigen el uso de UniWork.',
+      items: {
+        userAgreement: 'Términos del servicio',
+        privacyPolicy: 'Política de privacidad',
+        informationCollection: 'Aviso de recopilación de información',
+        accountCancellation: 'Aviso de eliminación de cuenta',
+        deliveryAgreement: 'Términos de pago',
+        childrenPrivacy: 'Política de privacidad infantil y aviso para tutores',
+        openSourceTerms: 'Avisos de código abierto'
+      }
+    },
     config: {
+      agentLibraryAccessTitle: 'Permitir que el agente gestione la biblioteca',
+      agentLibraryAccessDesc:
+        'Permitir al agente leer y escribir archivos de la unidad en la nube personal siguiendo tus instrucciones.',
       minimizeToTrayTitle: 'Minimizar a la bandeja',
       minimizeToTrayDesc:
         'Al minimizar las ventanas o cerrar la ventana principal, se ocultan en la bandeja del sistema (barra de menús en macOS) y UniWork sigue ejecutándose. Usa Salir de UniWork en el menú de la bandeja o Cmd+Q para salir. Desactivado por defecto; se aplica solo a este dispositivo.',
@@ -6250,7 +6267,7 @@ export const esOverrides = {
       },
       messaging: {
         title: 'UniWork lejos de tu escritorio',
-        text: 'Conecta Telegram, Discord, Slack y más: el mismo agente, la misma memoria.'
+        text: 'Conecta DingTalk, WeChat y Feishu: el mismo agente, la misma memoria.'
       },
       artifacts: {
         title: 'Todo lo que ha creado UniWork',

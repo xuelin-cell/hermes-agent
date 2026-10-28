@@ -33,6 +33,7 @@ import { isSubmitEnter } from '@/lib/ime'
 import { PROFILE_SWATCHES } from '@/lib/profile-color'
 import { exportSession } from '@/lib/session-export'
 import { openConversationShare } from '@/store/conversation-share'
+import { $developerMode } from '@/store/developer-mode'
 import { activeGateway } from '@/store/gateway'
 import { notify, notifyError } from '@/store/notifications'
 import {
@@ -233,6 +234,7 @@ function useSessionActions({
   const tiles = useStore($sessionTiles)
   const selectedStoredSessionId = useStore($selectedStoredSessionId)
   const isRemote = useStore($connection)?.mode === 'remote'
+  const developerMode = useStore($developerMode)
   // The row's finished-unread dot is cleared by opening the session (main or
   // tile) — this menu item is the explicit escape hatch for the rest.
   const isUnread = useStore($unreadFinishedSessionIds).includes(sessionId)
@@ -278,7 +280,7 @@ function useSessionActions({
     // The user's OWN terminal, not the in-app pane: resumes the session in the
     // TUI. Hidden on a remote connection — the emulator we'd open runs on this
     // machine while the session (and its runtime) lives on the remote host.
-    ...(canOpenSessionInTerminal() && !isRemote
+    ...(canOpenSessionInTerminal() && developerMode && !isRemote
       ? [
           spec({
             disabled: !sessionId,

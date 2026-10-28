@@ -442,7 +442,7 @@ export const deOverrides = {
     connect: 'Verbinden',
     connecting: 'Verbindung wird hergestellt…',
     continue: 'Weiter',
-    bots: 'Bots',
+    bots: 'Digitale Mitarbeiter',
     copied: 'Kopiert',
     copy: 'Kopieren',
     copyFailed: 'Kopieren fehlgeschlagen',
@@ -910,6 +910,7 @@ export const deOverrides = {
       vaultCredentials: 'Gespeicherte Zugangsdaten',
       vaultSources: 'Passwortmanager',
       appUpdates: 'Version & Updates',
+      legal: 'Datenschutz & Bedingungen',
       uninstall: 'Deinstallieren',
       billingOverview: 'Übersicht',
       billingPlans: 'Tarife'
@@ -1716,7 +1717,23 @@ export const deOverrides = {
     about: {
       updates: 'Updates'
     },
+    legal: {
+      title: 'Datenschutz & Bedingungen',
+      description: 'Die Vereinbarungen, Richtlinien und Hinweise für die Nutzung von UniWork.',
+      items: {
+        userAgreement: 'Nutzungsbedingungen',
+        privacyPolicy: 'Datenschutzerklärung',
+        informationCollection: 'Hinweis zur Datenerfassung',
+        accountCancellation: 'Hinweis zur Kontolöschung',
+        deliveryAgreement: 'Zahlungsbedingungen',
+        childrenPrivacy: 'Datenschutzrichtlinie für Kinder und Hinweis für Erziehungsberechtigte',
+        openSourceTerms: 'Open-Source-Hinweise'
+      }
+    },
     config: {
+      agentLibraryAccessTitle: 'Agenten die Verwaltung der Bibliothek erlauben',
+      agentLibraryAccessDesc:
+        'Dem Agenten erlauben, Dateien im persönlichen Cloud-Laufwerk nach Ihren Anweisungen zu lesen und zu schreiben.',
       minimizeToTrayTitle: 'In den Infobereich minimieren',
       minimizeToTrayDesc:
         'Beim Minimieren von Fenstern oder Schließen des Hauptfensters werden diese im Infobereich (Menüleiste unter macOS) ausgeblendet und UniWork läuft weiter. Beenden Sie über „UniWork beenden“ im Infobereich-Menü oder mit Cmd+Q. Standardmäßig aus; gilt nur für dieses Gerät.',
@@ -6262,7 +6279,7 @@ export const deOverrides = {
       },
       messaging: {
         title: 'UniWork abseits Ihres Schreibtischs',
-        text: 'Verbinden Sie Telegram, Discord, Slack und mehr – derselbe Agent, dasselbe Gedächtnis.'
+        text: 'Verbinden Sie DingTalk, WeChat und Feishu – derselbe Agent, dasselbe Gedächtnis.'
       },
       artifacts: {
         title: 'Alles, was UniWork gemacht hat',

@@ -21,6 +21,7 @@ QUIET_DISPLAY = {
     "long_running_notifications": False,
     "busy_ack_detail": False,
     "busy_steer_ack_enabled": False,
+    "suppress_warning_notifications": True,
 }
 # 记录桌面已代为设置过语言；之后用户改成任何语言都不再覆盖。
 LANGUAGE_MARKER = "desktop_language_set"
