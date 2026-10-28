@@ -10,6 +10,7 @@ plugins/conversation_share
 apps/desktop/assets/artifact-share-plugin
 plugins/cloud_drive
 plugins/cloud_mail
+plugins/cloud_messaging
 tools/execution_metadata.py
 tools/mcp_tool_handlers.py
 tui_gateway/prompt_turn.py

@@ -1,0 +1,5 @@
+name: cloud-messaging
+version: 1.0.0
+description: Durable instance execution over the existing relay adapter.
+author: desktop-mt
+kind: backend

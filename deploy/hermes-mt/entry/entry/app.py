@@ -30,6 +30,7 @@ from .share_store import ShareStore
 from .share_gateway import ShareGateway
 from .share_routes import ShareRoutes
 from .mail_routes import MailRoutes
+from .messaging_routes import MessagingRoutes
 from .shares import Shares
 from .tenants import CredentialSyncError, TenantManager
 
@@ -109,6 +110,7 @@ class Entry:
         self.browser_auth = BrowserAuth(self.store.cipher)
         self.share_routes = ShareRoutes(self)
         self.mail_routes = MailRoutes(self)
+        self.messaging_routes = MessagingRoutes(self)
         self.drive_routes = DriveRoutes(self)
         self.plan_routes = PlanRoutes(self)
         self.welcome_routes = WelcomeRoutes(self)
@@ -320,7 +322,7 @@ class Entry:
             log.info("user %s plan: %s", result.uid, plan.summary())
             if not (endpoint and endpoint[0]):
                 log.warning("user %s: my-plan did not provide a plan base URL", result.uid)
-        return await self._finish_login(
+        response = await self._finish_login(
             result.uid,
             api_key,
             result.expires_at_ms,
@@ -330,6 +332,11 @@ class Entry:
             limits=limits,
             maas_token=result.token,
         )
+        try:
+            await self.messaging_routes.apply_login(result.uid,result.raw.get('plan'))
+        except Exception as error:
+            log.warning('channel credential update deferred: %s',type(error).__name__)
+        return response
 
     async def dev_login(self, request: web.Request) -> web.Response:
         if not self.s.dev_login:
@@ -569,6 +576,9 @@ def build_app(settings: Settings = SETTINGS) -> web.Application:
     app.router.add_post(path("/__entry/welcome/{locale}"), entry.welcome_routes.handle)
     app.router.add_post(path("/__entry/plan/{operation}"), entry.plan_routes.handle)
     app.router.add_post(path("/__entry/mail"), entry.mail_routes.handle)
+    app.router.add_post(path("/__entry/messaging/wake"), entry.messaging_routes.wake)
+    app.router.add_get(path("/__entry/messaging/relay"), entry.messaging_routes.relay)
+    app.router.add_post(path("/__entry/messaging/{operation}"), entry.messaging_routes.handle)
     app.router.add_post(path("/__entry/drive/part/{id}"), entry.drive_routes.part)
     app.router.add_get(path("/__entry/drive/files/{id}"), entry.drive_routes.download)
     app.router.add_post(path("/__entry/drive/{operation}"), entry.drive_routes.handle)

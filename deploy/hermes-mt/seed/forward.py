@@ -50,6 +50,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import mtstate  # noqa: E402
 import mtuser
 import mtfolders
+import mtmessaging
 import mtexport  # noqa: E402
 
 LISTEN_PORT = int(os.environ.get("MT_FWD_PORT", "9121"))
@@ -72,6 +73,7 @@ MAX_BODY = 4 * 1024 * 1024  # 引导载荷上限
 
 # 自带技能的同步用 hermes 自己的 Python 跑 hermes 的同步函数（见 _sync_bundled_skills）。
 HERMES_PYTHON = os.environ.get("MT_HERMES_PYTHON", "/opt/hermes/.venv/bin/python")
+_messaging_gateway = mtmessaging.Gateway(HERMES_HOME,HERMES_PYTHON)
 HERMES_INSTALL = Path(os.environ.get("MT_HERMES_INSTALL", "/opt/hermes"))
 SKILLS_SYNC_TIMEOUT_S = 60.0
 # 回包只要名字和计数：删掉了哪些、归档了哪些（用户改过的）、新发了哪些。
@@ -282,6 +284,7 @@ async def _spawn_hermes(token: str) -> None:
 
 async def _stop_hermes(grace_s: float = 30.0) -> None:
     """先 SIGTERM 等它自己退，超时再 SIGKILL。"""
+    await _messaging_gateway.stop()
     proc = _hermes_proc
     if proc is None or proc.returncode is not None:
         return
@@ -643,6 +646,23 @@ async def _handle_mt(
     rest: bytes, reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
 ) -> None:
     route = path.split("?", 1)[0]
+
+    if route == '/__mt/messaging/start':
+        if method != 'POST' or not _check_token(headers) or _draining:
+            _reply(writer,403,{'ok':False})
+            return
+        try:
+            data = json.loads(await _read_body(headers,rest,reader))
+            required = ('relay_url','gateway_id','upgrade_secret','bot_id','revision')
+            if not isinstance(data,dict) or set(data) != set(required): raise ValueError()
+            env = dict(os.environ)
+            env.update(_hermes_env)
+            env['HERMES_HOME'] = str(HERMES_HOME)
+            result = await _messaging_gateway.start(data,env)
+            _reply(writer,200,result)
+        except (ValueError,TypeError,RuntimeError,OSError):
+            _reply(writer,409,{'ok':False,'error':'relay gateway start failed'})
+        return
 
     if route == "/__mt/health":
         # 平台的就绪探针打这里。转发器活着就算就绪 —— 不等 hermes，

@@ -8,7 +8,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ErrorBanner } from '@/components/ui/error-state'
-import { getMessagingPlatforms, getStatus, type MessagingPlatformInfo } from '@/hermes'
+import { getMessagingPlatforms, getStatus, updateMessagingPlatform, type MessagingPlatformInfo } from '@/hermes'
+import { isBrowserShell } from '@/lib/browser-shell'
 import { useI18n } from '@/i18n'
 import { AlertTriangle, CheckCircle2, Loader2, MessageCircle, RefreshCw } from '@/lib/icons'
 import { confirm } from '@/store/confirm'
@@ -367,6 +368,7 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
             <PageLoader label={m.loading} />
           ) : (
             DISPLAY_PLATFORM_IDS
+              .filter(id => !isBrowserShell() || id === 'uniagentgate')
               .filter(
                 id =>
                   !search || (m.cards.titles[id] + ' ' + m.cards.descriptions[id]).toLocaleLowerCase().includes(search)
@@ -374,7 +376,7 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
               .map(id => {
                 const platform = platforms?.find(row => row.id === id)
 
-                const rcsRetryAllowed = platform?.configured && platform.enabled &&
+                const rcsRetryAllowed = platform?.configured && (isBrowserShell() || platform.enabled) &&
                   (!platform.gateway_running || ['fatal', 'startup_failed', 'error', 'stopped', 'disconnected', 'paused']
                     .includes(platform.state ?? ''))
 
@@ -403,7 +405,9 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
                             {rcsReconnecting ? m.cards.reconnecting : m.cards.reconnect}
                           </Button>
                         ) : (
-                          <Button disabled size="sm" variant="outline">{m.cards.unbind}</Button>
+                          <Button disabled={!isBrowserShell() || !platform?.enabled} size="sm" variant="outline"
+                            onClick={() => void updateMessagingPlatform('uniagentgate', { enabled: false }, scopeProfile)
+                              .then(() => refresh()).catch(error => notify({ kind: 'error', message: String(error) }))}>{isBrowserShell() ? '停用' : m.cards.unbind}</Button>
                         )
                       ) : (
                         <>

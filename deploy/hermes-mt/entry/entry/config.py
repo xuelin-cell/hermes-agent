@@ -26,6 +26,10 @@ class Settings:
     # 对外路径与监听
     base_path: str = _env("MT_BASE_PATH", "/hermes").rstrip("/")
     listen_port: int = int(_env("MT_PORT", "9400"))
+    channels_key: str = _env('MT_CHANNELS_KEY')
+    channels_url: str = _env('MT_CHANNELS_URL', 'http://channels:9500').rstrip('/')
+    channels_relay_url: str = _env('MT_CHANNELS_RELAY_URL')
+    channels_gateway_origins: str = _env('MT_CHANNELS_GATEWAY_ORIGINS')
 
     # 执行后端：docker = 我们自己用 Docker 建容器；cube = 让沙箱平台建实例。
     # 两条路并存，切换只改这一个变量。默认 docker，保持既有部署不受影响。

@@ -499,8 +499,8 @@ cmd_image() {
     ok "已构建 $IMAGE_NAME:$fp"
     # 镜像里的转发器必须和仓库里的逐字节相同——这是「入口和模板一起升级」能成立的前提。
     local in_img in_repo
-    in_img="$(docker run --rm --network none --entrypoint sha256sum "$IMAGE_NAME:$fp" /opt/mt/forward.py /opt/mt/mtstate.py /opt/mt/mtuser.py /opt/mt/mtfolders.py | awk '{print $1}' | tr '\n' ' ')"
-    in_repo="$(sha256sum seed/forward.py seed/mtstate.py seed/mtuser.py seed/mtfolders.py | awk '{print $1}' | tr '\n' ' ')"
+    in_img="$(docker run --rm --network none --entrypoint sha256sum "$IMAGE_NAME:$fp" /opt/mt/forward.py /opt/mt/mtstate.py /opt/mt/mtuser.py /opt/mt/mtfolders.py /opt/mt/mtmessaging.py | awk '{print $1}' | tr '\n' ' ')"
+    in_repo="$(sha256sum seed/forward.py seed/mtstate.py seed/mtuser.py seed/mtfolders.py seed/mtmessaging.py | awk '{print $1}' | tr '\n' ' ')"
     [ "$in_img" = "$in_repo" ] && ok "镜像里的转发器与仓库一致" || die "镜像里的 forward.py/mtstate.py/mtuser.py/mtfolders.py 与仓库不一致"
     # 只发 UniWork 内置技能靠 hermes 自己的标记文件（见 README「技能」）：基础镜像太旧就没有，上游那套会露出来。
     docker run --rm --network none --entrypoint test "$IMAGE_NAME:$fp" -f /opt/hermes/skills/UNIWORK_BUNDLED_ONLY \
@@ -706,6 +706,11 @@ cmd_up() {
         ok "postgres 在跑，不动它"
     fi
     compose up -d --build --quiet-pull --no-deps entry nginx 2>&1 | sed 's/^/  /' | tail -n 12
+    if [ -n "$(cfg MT_CHANNELS_KEY '')" ]; then
+        [ -n "$(cfg MT_CHANNELS_RELAY_URL '')" ] || die "消息接入缺少 MT_CHANNELS_RELAY_URL"
+        [ -n "$(cfg MT_CHANNELS_GATEWAY_ORIGINS '')" ] || die "消息接入缺少 MT_CHANNELS_GATEWAY_ORIGINS"
+        compose --profile messaging up -d --build --no-deps --wait --wait-timeout 120 channels
+    fi
     local entry_after
     entry_after="$(docker inspect -f '{{.Id}}' "$PROJECT-entry" 2>/dev/null || true)"
     if [ "$entry_after" != "$entry_before" ]; then

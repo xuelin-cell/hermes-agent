@@ -182,7 +182,7 @@ describe('browser shell', () => {
     expect(completionHint(undefined)).toBeUndefined()
   })
 
-  it('drops the messaging platforms and session import entries from the sidebar', () => {
+  it('keeps cloud messaging and drops local session import from the sidebar', () => {
     const nav = [
       { id: 'new-session' },
       { id: 'skills' },
@@ -195,7 +195,7 @@ describe('browser shell', () => {
 
     document.documentElement.dataset.hermesBrowser = 'production'
 
-    expect(withoutHiddenNavItems(nav).map(item => item.id)).toEqual(['new-session', 'skills', 'artifacts'])
+    expect(withoutHiddenNavItems(nav).map(item => item.id)).toEqual(['new-session', 'skills', 'messaging', 'artifacts'])
   })
 
   it('does not start Bot Mode or kits and experts for regular users', () => {

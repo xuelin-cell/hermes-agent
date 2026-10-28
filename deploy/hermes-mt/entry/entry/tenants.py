@@ -922,6 +922,12 @@ class TenantManager:
             await asyncio.sleep(self.s.volume_detach_grace_s)
         return True
 
+    async def _messaging_busy(self, user_id):
+        if not self.s.channels_key:
+            return False
+        async with self.store.database.acquire() as db:
+            return bool(await db.fetchval("SELECT 1 FROM messaging_inbox i JOIN messaging_bindings b ON b.id=i.binding_id WHERE i.user_id=$1 AND b.enabled AND b.deleted_at IS NULL AND b.revision=i.binding_revision AND (i.lease_until>now() OR i.state='uncertain') LIMIT 1",user_id))
+
     async def _stop_cube(self, user_id: str, reason: str) -> None:
         """空闲回收 = 暂停，不是销毁；暂停前先让状态管家归档一次。
 
@@ -932,6 +938,8 @@ class TenantManager:
         slug = tenant_slug(user_id)
         async with self._lock(slug):
             async with self._pg_lock(user_id):
+                if await self._messaging_busy(user_id):
+                    return
                 rt = await self.store.get_runtime(user_id)
                 self._register_token(rt)
                 sandbox_id = rt.sandbox_id
@@ -1043,6 +1051,8 @@ class TenantManager:
             slug = tenant_slug(user_id)
             async with self._lock(slug):
                 async with self._pg_lock(user_id):
+                    if await self._messaging_busy(user_id):
+                        continue
                     rt = await self.store.get_runtime(user_id)
                     if not rt.sandbox_id or rt.state != "stopped":
                         continue

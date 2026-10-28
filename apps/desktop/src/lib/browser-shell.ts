@@ -452,12 +452,9 @@ export function effortShortLabels(english: Record<string, string>): Record<strin
     : english
 }
 
-const SIDEBAR_NAV_HIDDEN = new Set(['messaging', 'session-import'])
+const SIDEBAR_NAV_HIDDEN = new Set(['session-import'])
 
-/** Sidebar entries for desktop-only features: messaging platforms need an
- * always-on gateway with a public address, which a cloud instance (paused when
- * idle) does not have; session import reads other agents' session folders on
- * the backend's machine, and an instance has none. */
+/** Session import requires another agent's local files; messaging uses the cloud connector. */
 export function withoutHiddenNavItems<T extends { id: string }>(items: T[]): T[] {
   return hideForUsers() ? items.filter(item => !SIDEBAR_NAV_HIDDEN.has(item.id)) : items
 }

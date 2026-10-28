@@ -29,6 +29,7 @@ import { browserDrive } from './browser-drive'
 import { browserExport } from './browser-export'
 import { browserPlan } from './browser-plan'
 import { browserShares } from './browser-shares'
+import { browserMessaging } from './browser-messaging'
 import { browserMail, openMailAttachment } from './browser-mail'
 import { browserSkills, isCloudSkillMutation } from './browser-skills'
 import { maskMcpSecrets, restoreMcpSecrets } from './mcp-secrets'
@@ -100,7 +101,13 @@ function credentials(): RequestCredentials {
 
 const cloudSkillOperations = browserSkills(browserBasePath())
 
+const cloudMessaging = browserMessaging(browserBasePath())
+
 async function api<T>(request: HermesApiRequest): Promise<T> {
+  if (productionBrowserBuild) {
+    const result = cloudMessaging.request<T>(request)
+    if (result) { return result }
+  }
   const { body, method = 'GET', path, upload } = request
 
   if (productionBrowserBuild && isCloudSkillMutation(method, path)) {
@@ -1427,7 +1434,7 @@ export function installBrowserDevelopmentBridge(): boolean {
     writeClipboard,
     // The instance's shell lives behind the entry; a dev server has no forwarder to give one.
     ...(productionBrowserBuild
-      ? { terminal: instanceTerminal, cloudSkillOperations, ...browserMail(browserBasePath()),
+      ? { terminal: instanceTerminal, cloudSkillOperations, ...cloudMessaging, ...browserMail(browserBasePath()),
           createConversationFolder: async (defaultCwd: string) =>
             (await instanceFiles<{ path: string | null }>('conversation-create', { defaultCwd })).path,
           discardConversationFolder: async (path: string) => { await instanceFiles('conversation-discard', { path }) },
