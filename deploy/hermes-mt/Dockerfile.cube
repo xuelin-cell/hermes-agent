@@ -53,7 +53,12 @@ USER root
 #   - chromium：系统浏览器 /usr/bin/chromium，frontend-design 技能按 `command -v chromium` 找它截图。
 #     hermes 自己的浏览器工具用基础镜像里 pm 锁定的那份（/opt/hermes/tools/chromium-*）。
 #   - fonts-noto-cjk / fonts-noto-color-emoji：LibreOffice 渲染和浏览器截图里的中文、emoji 不再是方块。
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# 云端大包从国内 Debian 镜像下载；保留发行版、组件和签名校验。
+RUN sed -i \
+        -e 's|deb\.debian\.org|mirrors.tuna.tsinghua.edu.cn|g' \
+        -e 's|security\.debian\.org|mirrors.tuna.tsinghua.edu.cn|g' \
+        /etc/apt/sources.list.d/debian.sources \
+    && apt-get update && apt-get install -y --no-install-recommends \
         libreoffice-calc \
         libreoffice-writer \
         libreoffice-impress \
