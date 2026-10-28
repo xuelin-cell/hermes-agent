@@ -1,0 +1,5 @@
+name: cloud-mail
+version: 1.0.0
+description: Cloud mailbox using the shared Wo Mail provider.
+author: desktop-mt
+kind: backend

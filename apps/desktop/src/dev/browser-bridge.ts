@@ -29,6 +29,7 @@ import { browserDrive } from './browser-drive'
 import { browserExport } from './browser-export'
 import { browserPlan } from './browser-plan'
 import { browserShares } from './browser-shares'
+import { browserMail, openMailAttachment } from './browser-mail'
 import { browserSkills, isCloudSkillMutation } from './browser-skills'
 import { maskMcpSecrets, restoreMcpSecrets } from './mcp-secrets'
 
@@ -1385,7 +1386,7 @@ export function installBrowserDevelopmentBridge(): boolean {
     onPreviewFileChanged: noopOff,
     onPreviewNav: noopOff,
     onWindowStateChanged: noopOff,
-    openExternal: async (url: string) => openWebPage(url),
+    openExternal: async (url: string) => productionBrowserBuild && openMailAttachment(browserBasePath(), url) || openWebPage(url),
     openPreviewInBrowser,
     profile: {
       get: async () => ({ profile: 'default' }),
@@ -1426,7 +1427,7 @@ export function installBrowserDevelopmentBridge(): boolean {
     writeClipboard,
     // The instance's shell lives behind the entry; a dev server has no forwarder to give one.
     ...(productionBrowserBuild
-      ? { terminal: instanceTerminal, cloudSkillOperations,
+      ? { terminal: instanceTerminal, cloudSkillOperations, ...browserMail(browserBasePath()),
           createConversationFolder: async (defaultCwd: string) =>
             (await instanceFiles<{ path: string | null }>('conversation-create', { defaultCwd })).path,
           discardConversationFolder: async (path: string) => { await instanceFiles('conversation-discard', { path }) },

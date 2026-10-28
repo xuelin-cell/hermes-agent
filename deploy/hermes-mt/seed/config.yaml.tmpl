@@ -44,8 +44,17 @@ cloud_sharing:
   enabled: true
 cloud_drive:
   enabled: true
+cloud_mail:
+  enabled: true
 
 mcp_servers:
+  Agent-Mail:
+    url: "http://127.0.0.1:9120/api/plugins/cloud-mail/mcp"
+    enabled: false
+    uniwork_managed: "uniwork.cloud.mail.v1"
+    timeout: 120
+    headers:
+      X-Hermes-Session-Token: "${HERMES_DASHBOARD_SESSION_TOKEN}"
   UniWork-Drive:
     url: "http://127.0.0.1:9120/api/plugins/cloud-drive/mcp"
     timeout: 720

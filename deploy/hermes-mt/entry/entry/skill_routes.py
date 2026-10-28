@@ -160,20 +160,8 @@ class SkillRoutes:
 
     async def save(self, operation):
         try:
-            tenant = operation.tenant
-            await self.entry._touch(operation.user)
-            if self.entry.s.backend == 'cube' and not tenant.sandbox_id:
-                raise RuntimeError('missing_sandbox')
-            if tenant.sandbox_id:
-                runtime = await self.entry.store.get_runtime(operation.user)
-                if runtime.sandbox_id != tenant.sandbox_id:
-                    raise RuntimeError('instance_replaced')
-                result = await self.entry.cube.sync_state(tenant.sandbox_id, self.entry.s.forward_port, tenant.token)
-                summary = result.get('archive') or {}
-                if (result.get('ok') is not True or summary.get('owner') != tenant.sandbox_id
-                        or not summary.get('archive') or not re.fullmatch(r'[0-9a-f]{64}', summary.get('sha256', ''))):
-                    raise RuntimeError('archive_unconfirmed')
-                await self.entry.store.set_state_archive(operation.user, summary['archive'], summary)
+            from .state_checkpoint import checkpoint
+            await checkpoint(self.entry, operation.user, operation.tenant)
             # Docker's entire HERMES_HOME already lives on its persistent named volume.
             operation.phase = 'saved'
             operation.error = ''

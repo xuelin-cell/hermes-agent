@@ -4,7 +4,7 @@ import type { MailDetail, MailFolder, MailMessage } from './model'
 
 async function request(profile: string, operation: 'status' | 'enable' | 'disable') {
   if (!window.hermesDesktop?.agentMail) {
-    throw new Error('智能体邮箱仅在桌面应用中可用。')
+    throw new Error('当前环境尚未接通智能体邮箱，请更新应用后重试。')
   }
 
   return window.hermesDesktop.agentMail({ operation, profile })

@@ -29,6 +29,7 @@ from .store import Session, Store
 from .share_store import ShareStore
 from .share_gateway import ShareGateway
 from .share_routes import ShareRoutes
+from .mail_routes import MailRoutes
 from .shares import Shares
 from .tenants import CredentialSyncError, TenantManager
 
@@ -107,6 +108,7 @@ class Entry:
         )
         self.browser_auth = BrowserAuth(self.store.cipher)
         self.share_routes = ShareRoutes(self)
+        self.mail_routes = MailRoutes(self)
         self.drive_routes = DriveRoutes(self)
         self.plan_routes = PlanRoutes(self)
         self.welcome_routes = WelcomeRoutes(self)
@@ -414,7 +416,7 @@ class Entry:
     # 用户经代理打不到的路径：转发器的管理接口（能让自己的实例排空），
     # 以及 hermes 的「导入备份」（它会在库打开时替换 state.db，归档和真实库会分叉）。
     # 注意 ``__mt_user/``（回收站、重命名、命令行）不在其中：那是给用户用的，转发器自己核对会话令牌。
-    _BLOCKED_TAILS = ("__mt/", "api/ops/import", "api/plugins/conversation-share/internal/", "api/plugins/cloud-drive/internal/", "api/plugins/cloud-drive/mcp")
+    _BLOCKED_TAILS = ("__mt/", "api/ops/import", "api/plugins/cloud-mail/internal/", "api/plugins/cloud-mail/mcp", "api/plugins/conversation-share/internal/", "api/plugins/cloud-drive/internal/", "api/plugins/cloud-drive/mcp")
 
     async def backend(self, request: web.Request) -> web.StreamResponse:
         session = await self._require(request)
@@ -566,6 +568,7 @@ def build_app(settings: Settings = SETTINGS) -> web.Application:
     app.router.add_post(path("/__entry/skills/{operation}"), entry.skill_routes.handle)
     app.router.add_post(path("/__entry/welcome/{locale}"), entry.welcome_routes.handle)
     app.router.add_post(path("/__entry/plan/{operation}"), entry.plan_routes.handle)
+    app.router.add_post(path("/__entry/mail"), entry.mail_routes.handle)
     app.router.add_post(path("/__entry/drive/part/{id}"), entry.drive_routes.part)
     app.router.add_get(path("/__entry/drive/files/{id}"), entry.drive_routes.download)
     app.router.add_post(path("/__entry/drive/{operation}"), entry.drive_routes.handle)

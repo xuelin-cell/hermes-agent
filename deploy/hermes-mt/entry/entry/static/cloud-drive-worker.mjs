@@ -4,127 +4,6 @@ import path2 from "node:path";
 import { createInterface } from "node:readline";
 import { pathToFileURL } from "node:url";
 
-// apps/desktop/electron/uniwork-welcome/catalog.ts
-function text(value, limit = 256) {
-  return typeof value === "string" && value.trim().length > 0 && value.length <= limit;
-}
-function order(value) {
-  return typeof value === "number" && Number.isFinite(value) ? value : Number.MAX_SAFE_INTEGER;
-}
-function normalizeWelcomeCatalog(value) {
-  if (!value || typeof value !== "object" || !Array.isArray(value.modules)) {
-    throw new Error("\u529E\u516C\u6A21\u677F\u76EE\u5F55\u683C\u5F0F\u65E0\u6548\u3002");
-  }
-  return value.modules.slice(0, 100).flatMap((raw, index) => {
-    if (!raw || typeof raw !== "object") {
-      return [];
-    }
-    const item = raw;
-    if (!text(item.name)) {
-      return [];
-    }
-    return [
-      {
-        id: `configured-module-${index}`,
-        name: item.name,
-        workspace: item.workspace === "codex" ? "codex" : "work",
-        ...text(item.icon, 128) ? { icon: item.icon.trim() } : {},
-        sort: order(item.sort),
-        tags: normalizeWelcomeCategories(item.tags)
-      }
-    ];
-  }).sort((a, b) => a.sort - b.sort);
-}
-function normalizeWelcomeCategories(value) {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  const seen = /* @__PURE__ */ new Set();
-  const categories = [];
-  for (const row of value.slice(0, 100)) {
-    if (!row || !text(row.id) || !text(row.name) || seen.has(row.id) || !Array.isArray(row.templates)) {
-      continue;
-    }
-    const ids2 = /* @__PURE__ */ new Set();
-    const templates = [];
-    for (const item of row.templates.slice(0, 100)) {
-      if (!item || !text(item.id) || !text(item.name) || !text(item.prompt, 32768) || ids2.has(item.id)) {
-        continue;
-      }
-      ids2.add(item.id);
-      templates.push({
-        id: item.id,
-        name: item.name,
-        prompt: item.prompt,
-        sort: order(item.sort),
-        ...text(item.icon, 128) ? { icon: item.icon.trim() } : {}
-      });
-    }
-    if (!templates.length) {
-      continue;
-    }
-    seen.add(row.id);
-    categories.push({
-      id: row.id,
-      name: row.name,
-      sort: order(row.sort),
-      ...text(row.icon, 128) ? { icon: row.icon.trim() } : {},
-      templates: templates.sort((a, b) => a.sort - b.sort)
-    });
-  }
-  return categories.sort((a, b) => a.sort - b.sort);
-}
-
-// apps/desktop/electron/uniwork-welcome/client.ts
-var WelcomeCatalogClient = class {
-  /** 网络可注入以验证真实 HTTP 路径，业务调用始终使用 Electron 的网络会话。 */
-  constructor(request, identity) {
-    this.request = request;
-    this.identity = identity;
-  }
-  request;
-  identity;
-  /** 解析失败保留页面已缓存的完整目录。 */
-  async load(locale) {
-    if (!["zh-CN", "en"].includes(locale)) {
-      throw new Error("\u529E\u516C\u6A21\u677F\u8BED\u8A00\u65E0\u6548\u3002");
-    }
-    const key = `welcome_config_v3_${locale}`;
-    const identity = this.identity?.();
-    const token = identity && identity.expiresAt > Date.now() ? identity.token : null;
-    try {
-      if (!token) {
-        throw new Error("\u6807\u7B7E\u914D\u7F6E\u9700\u8981\u5F53\u524D\u767B\u5F55\u8EAB\u4EFD");
-      }
-      const response = await this.request(`https://maas.ai-yuanjing.com/app/gateway/uniwork/system-config?key=${key}`, {
-        headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
-        signal: AbortSignal.timeout(8e3),
-        redirect: "error",
-        credentials: "omit",
-        cache: "no-store"
-      });
-      if (!response.ok) {
-        throw new Error();
-      }
-      const envelope = await response.json();
-      if (typeof envelope?.configValue !== "string" || envelope.configValue.length > 2e6) {
-        throw new Error();
-      }
-      const payload = JSON.parse(envelope.configValue);
-      const current = this.identity?.();
-      if (!normalizeWelcomeCatalog(payload).length || current?.token !== token || current.expiresAt <= Date.now()) {
-        throw new Error();
-      }
-      return {
-        modules: payload.modules,
-        ...typeof envelope.version === "string" && envelope.version.trim() ? { version: envelope.version.trim() } : {}
-      };
-    } catch {
-      throw new Error("\u529E\u516C\u6A21\u677F\u66F4\u65B0\u5931\u8D25\uFF0C\u5DF2\u4FDD\u7559\u672C\u5730\u6A21\u677F\u3002");
-    }
-  }
-};
-
 // apps/desktop/electron/login/uniagentgate.ts
 function record(value) {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -385,8 +264,189 @@ var PlanSubscriptionClient = class {
   }
 };
 
+// apps/desktop/electron/uniwork-welcome/catalog.ts
+function text(value, limit = 256) {
+  return typeof value === "string" && value.trim().length > 0 && value.length <= limit;
+}
+function order(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : Number.MAX_SAFE_INTEGER;
+}
+function normalizeWelcomeCatalog(value) {
+  if (!value || typeof value !== "object" || !Array.isArray(value.modules)) {
+    throw new Error("\u529E\u516C\u6A21\u677F\u76EE\u5F55\u683C\u5F0F\u65E0\u6548\u3002");
+  }
+  return value.modules.slice(0, 100).flatMap((raw, index) => {
+    if (!raw || typeof raw !== "object") {
+      return [];
+    }
+    const item = raw;
+    if (!text(item.name)) {
+      return [];
+    }
+    return [
+      {
+        id: `configured-module-${index}`,
+        name: item.name,
+        workspace: item.workspace === "codex" ? "codex" : "work",
+        ...text(item.icon, 128) ? { icon: item.icon.trim() } : {},
+        sort: order(item.sort),
+        tags: normalizeWelcomeCategories(item.tags)
+      }
+    ];
+  }).sort((a, b) => a.sort - b.sort);
+}
+function normalizeWelcomeCategories(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const seen = /* @__PURE__ */ new Set();
+  const categories = [];
+  for (const row of value.slice(0, 100)) {
+    if (!row || !text(row.id) || !text(row.name) || seen.has(row.id) || !Array.isArray(row.templates)) {
+      continue;
+    }
+    const ids2 = /* @__PURE__ */ new Set();
+    const templates = [];
+    for (const item of row.templates.slice(0, 100)) {
+      if (!item || !text(item.id) || !text(item.name) || !text(item.prompt, 32768) || ids2.has(item.id)) {
+        continue;
+      }
+      ids2.add(item.id);
+      templates.push({
+        id: item.id,
+        name: item.name,
+        prompt: item.prompt,
+        sort: order(item.sort),
+        ...text(item.icon, 128) ? { icon: item.icon.trim() } : {}
+      });
+    }
+    if (!templates.length) {
+      continue;
+    }
+    seen.add(row.id);
+    categories.push({
+      id: row.id,
+      name: row.name,
+      sort: order(row.sort),
+      ...text(row.icon, 128) ? { icon: row.icon.trim() } : {},
+      templates: templates.sort((a, b) => a.sort - b.sort)
+    });
+  }
+  return categories.sort((a, b) => a.sort - b.sort);
+}
+
+// apps/desktop/electron/uniwork-welcome/client.ts
+var WelcomeCatalogClient = class {
+  /** 网络可注入以验证真实 HTTP 路径，业务调用始终使用 Electron 的网络会话。 */
+  constructor(request, identity) {
+    this.request = request;
+    this.identity = identity;
+  }
+  request;
+  identity;
+  /** 解析失败保留页面已缓存的完整目录。 */
+  async load(locale) {
+    if (!["zh-CN", "en"].includes(locale)) {
+      throw new Error("\u529E\u516C\u6A21\u677F\u8BED\u8A00\u65E0\u6548\u3002");
+    }
+    const key = `welcome_config_v3_${locale}`;
+    const identity = this.identity?.();
+    const token = identity && identity.expiresAt > Date.now() ? identity.token : null;
+    try {
+      if (!token) {
+        throw new Error("\u6807\u7B7E\u914D\u7F6E\u9700\u8981\u5F53\u524D\u767B\u5F55\u8EAB\u4EFD");
+      }
+      const response = await this.request(`https://maas.ai-yuanjing.com/app/gateway/uniwork/system-config?key=${key}`, {
+        headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(8e3),
+        redirect: "error",
+        credentials: "omit",
+        cache: "no-store"
+      });
+      if (!response.ok) {
+        throw new Error();
+      }
+      const envelope = await response.json();
+      if (typeof envelope?.configValue !== "string" || envelope.configValue.length > 2e6) {
+        throw new Error();
+      }
+      const payload = JSON.parse(envelope.configValue);
+      const current = this.identity?.();
+      if (!normalizeWelcomeCatalog(payload).length || current?.token !== token || current.expiresAt <= Date.now()) {
+        throw new Error();
+      }
+      return {
+        modules: payload.modules,
+        ...typeof envelope.version === "string" && envelope.version.trim() ? { version: envelope.version.trim() } : {}
+      };
+    } catch {
+      throw new Error("\u529E\u516C\u6A21\u677F\u66F4\u65B0\u5931\u8D25\uFF0C\u5DF2\u4FDD\u7559\u672C\u5730\u6A21\u677F\u3002");
+    }
+  }
+};
+
+// apps/desktop/electron/agent-mail/exclusive-code.ts
+import { createCipheriv, createHash } from "node:crypto";
+var AES_KEY = Buffer.from("pCqYxNpbUS4ykGyP", "utf8");
+var AES_IV = Buffer.from("wNSOYIB1k1DjY5lA", "utf8");
+var APP_ID = "smart-home-service";
+var SECRET_KEY = "5d53df71a3694d86908c509cb0975011";
+var EXCLUSIVE_URL = "https://zeus.mail.wo.cn/openapi/mail/exclusive/set";
+function maskedPhone(phone) {
+  return `${phone.slice(0, 3)}****${phone.slice(-4)}`;
+}
+function encryptedMobile(phone) {
+  const cipher = createCipheriv("aes-128-cbc", AES_KEY, AES_IV);
+  return Buffer.concat([cipher.update(phone, "utf8"), cipher.final()]).toString("base64");
+}
+async function fetchWoMailExclusiveCode(phone, request = fetch, log = (message) => console.info(message)) {
+  if (!/^1\d{10}$/.test(phone)) {
+    throw new Error("\u8BF7\u5148\u767B\u5F55\u6709\u6548\u7684\u624B\u673A\u53F7\u8D26\u53F7\u3002");
+  }
+  const body = JSON.stringify({ exclusiveName: "app", mobile: encryptedMobile(phone) });
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    log(`[agent-mail] exclusive-code request started phone=${maskedPhone(phone)} attempt=${attempt + 1}/3`);
+    const timestamp = String(Math.floor(Date.now() / 1e3));
+    const sign = createHash("md5").update(`appId=${APP_ID}&body=${body}&secretKey=${SECRET_KEY}&timestamp=${timestamp}`).digest("hex");
+    let response;
+    try {
+      response = await request(`${EXCLUSIVE_URL}?appId=${APP_ID}`, {
+        body,
+        headers: { "Content-Type": "application/json", sign, timestamp },
+        method: "POST",
+        signal: AbortSignal.timeout(15e3)
+      });
+    } catch (error) {
+      log(
+        `[agent-mail] exclusive-code request failed phone=${maskedPhone(phone)} attempt=${attempt + 1}/3 error=${error instanceof Error ? error.message : String(error)}`
+      );
+      throw error;
+    }
+    if (!response.ok) {
+      log(`[agent-mail] exclusive-code HTTP rejection phone=${maskedPhone(phone)} status=${response.status}`);
+      throw new Error("\u6C83\u90AE\u7BB1\u6388\u6743\u670D\u52A1\u6682\u65F6\u4E0D\u53EF\u7528\u3002");
+    }
+    const data = await response.json().catch(() => null);
+    if (data && data.code !== void 0 && data.code !== "200" && data.code !== 200) {
+      log(`[agent-mail] exclusive-code business rejection phone=${maskedPhone(phone)} code=${String(data.code)}`);
+      throw new Error(typeof data.message === "string" && data.message.trim() ? data.message : "\u6C83\u90AE\u7BB1\u6388\u6743\u5931\u8D25\u3002");
+    }
+    const payload = data?.data;
+    const code = payload && typeof payload === "object" && !Array.isArray(payload) && typeof payload.exclusiveCode === "string" ? String(payload.exclusiveCode).trim() : "";
+    if (code) {
+      log(`[agent-mail] exclusive-code request succeeded phone=${maskedPhone(phone)} attempt=${attempt + 1}/3`);
+      return code;
+    }
+    if (attempt < 2) {
+      log(`[agent-mail] exclusive-code response had no code; retrying phone=${maskedPhone(phone)} attempt=${attempt + 1}/3`);
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+    }
+  }
+  throw new Error("\u6C83\u90AE\u7BB1\u6CA1\u6709\u8FD4\u56DE\u6709\u6548\u7684\u4E13\u5C5E\u5BC6\u7801\u3002");
+}
+
 // apps/desktop/electron/login/cloud-drive-credentials.ts
-import { createHash } from "node:crypto";
+import { createHash as createHash2 } from "node:crypto";
 var CloudDriveCredentials = class {
   /** 网络和密文存储由主进程注入，测试使用临时目录和可控时间。 */
   constructor(identity, acquire, options = {}) {
@@ -406,7 +466,7 @@ var CloudDriveCredentials = class {
     if (!identity || identity.expiresAt <= this.now()) {
       throw new Error("\u767B\u5F55\u72B6\u6001\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u767B\u5F55");
     }
-    const owner2 = createHash("sha256").update(JSON.stringify([identity.uid, identity.token, identity.phone])).digest("hex");
+    const owner2 = createHash2("sha256").update(JSON.stringify([identity.uid, identity.token, identity.phone])).digest("hex");
     if (this.context?.owner !== owner2) {
       this.context = { owner: owner2, identity, record: this.options.store?.load(owner2) ?? null, pending: null };
     }
@@ -2032,6 +2092,7 @@ async function handle(input) {
       return action === "parse" ? parsed : executeDriveMcpAction(context.drive, input.name, parsed, scope);
     };
     const handlers = {
+      "mail-code": async () => ({ authorizationCode: await fetchWoMailExclusiveCode(context.identity.phone || "", limitedRequest, () => void 0) }),
       welcome: () => new WelcomeCatalogClient(limitedRequest, () => context.identity).load(input.locale),
       "plan-usage": () => context.usage.load(input.force === true),
       "plan-subscription": async () => {

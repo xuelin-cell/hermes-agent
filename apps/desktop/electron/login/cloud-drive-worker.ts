@@ -7,6 +7,7 @@ import { pathToFileURL } from 'node:url'
 import { PlanUsageClient } from '../uniwork-usage/client'
 import { PlanSubscriptionClient } from '../uniwork-usage/subscription'
 import { WelcomeCatalogClient } from '../uniwork-welcome/client'
+import { fetchWoMailExclusiveCode } from '../agent-mail/exclusive-code'
 
 import { CloudDriveClient, CloudDriveOperationError } from './cloud-drive'
 import { driveFileName, executeDriveMcpAction } from './cloud-drive-mcp-actions'
@@ -165,6 +166,7 @@ async function handle(input: any) {
     }
 
     const handlers: Record<string, () => Promise<unknown>> = {
+      'mail-code': async () => ({ authorizationCode: await fetchWoMailExclusiveCode(context.identity!.phone || '', limitedRequest, () => undefined) }),
       welcome: () => new WelcomeCatalogClient(limitedRequest, () => context.identity).load(input.locale),
       'plan-usage': () => context.usage.load(input.force === true),
       'plan-subscription': async () => {

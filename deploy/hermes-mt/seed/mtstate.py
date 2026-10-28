@@ -858,6 +858,8 @@ def _apply_mcp_servers(cfg, servers: dict) -> None:
             entry = {}
             section[name] = entry
         for key, value in conf.items():
+            if str(key) == 'enabled' and 'enabled' in entry:
+                continue  # Provisioning defaults must preserve the user's enable/disable choice.
             entry[str(key)] = value
 
 

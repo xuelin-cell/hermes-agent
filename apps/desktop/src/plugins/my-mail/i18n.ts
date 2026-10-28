@@ -1,5 +1,7 @@
 import { type PluginLocaleBundles, usePluginI18n } from '@hermes/plugin-sdk'
 import { useMemo } from 'react'
+import { isBrowserShell } from '@/lib/browser-shell'
+import { getRuntimeI18nLocale } from '@/i18n/runtime'
 
 const en = {
   nav: 'My Mail',
@@ -75,5 +77,15 @@ type Messages = typeof en
 export function useMailText(): Messages {
   const t = usePluginI18n('my-mail')
 
-  return useMemo(() => Object.fromEntries(Object.keys(en).map(key => [key, t(key)])) as unknown as Messages, [t])
+  return useMemo(() => {
+    const messages = Object.fromEntries(Object.keys(en).map(key => [key, t(key)])) as unknown as Messages
+    if (isBrowserShell()) {
+      const chinese = getRuntimeI18nLocale().startsWith('zh')
+      messages.confirmDisable = chinese
+        ? '确定停用智能体邮箱吗？授权保留在当前账号的云端实例中，方便重新启用。'
+        : 'Disable Agent Mail? Authorization stays in your cloud instance for quick re-enable.'
+      messages.enableDescription += chinese ? ' 开通后请新建会话使用邮箱工具。' : ' Start a new conversation after enabling to use mail tools.'
+    }
+    return messages
+  }, [t])
 }

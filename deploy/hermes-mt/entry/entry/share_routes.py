@@ -34,7 +34,7 @@ class ShareRoutes:
         if session is None or session.user_id != identity.user_id or identity.expires_at <= time.time() * 1000:
             raise web.HTTPUnauthorized(text='登录已失效，请重新登录。')
 
-    async def instance(self, identity, path, body):
+    async def instance(self, identity, path, body, *, capability='分享'):
         entry = self.entry
         if entry.tenants is None or entry.http is None:
             raise web.HTTPServiceUnavailable(text='用户实例尚未就绪。')
@@ -52,19 +52,19 @@ class ShareRoutes:
                     **kwargs, allow_redirects=False, timeout=aiohttp.ClientTimeout(total=60)) as response:
                 if response.status != 200:
                     if response.status == 404:
-                        raise web.HTTPConflict(text='实例缺少分享能力，请更新实例模板后重试。')
-                    raise web.HTTPConflict(text='实例无法确认分享内容，请检查会话或产物后重试。')
+                        raise web.HTTPConflict(text=f'实例缺少{capability}能力，请更新实例模板后重试。')
+                    raise web.HTTPConflict(text=f'实例无法完成{capability}操作，请检查状态后重试。')
                 chunks = []
                 size = 0
                 async for chunk in response.content.iter_chunked(65536):
                     size += len(chunk)
                     if size > 12 * 1024 * 1024:
-                        raise web.HTTPConflict(text='分享内容超过大小限制。')
+                        raise web.HTTPConflict(text=f'{capability}内容超过大小限制。')
                     chunks.append(chunk)
                 payload = b''.join(chunks)
                 result = json.loads(payload)
                 if not isinstance(result, dict):
-                    raise web.HTTPBadGateway(text='实例未返回有效的分享内容。')
+                    raise web.HTTPBadGateway(text=f'实例未返回有效的{capability}内容。')
                 return result
         except (aiohttp.ClientError, asyncio.TimeoutError):
-            raise web.HTTPBadGateway(text='读取实例分享内容失败，请重试。') from None
+            raise web.HTTPBadGateway(text=f'读取实例{capability}内容失败，请重试。') from None

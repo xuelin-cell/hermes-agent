@@ -58,6 +58,7 @@ PLATFORM_POLICY = {
     "model_catalog": {"enabled": False},
     "cloud_sharing": {"enabled": True},
     "cloud_drive": {"enabled": True},
+    "cloud_mail": {"enabled": True},
     # 用到时才从 PyPI 装的依赖：页面一打开就会往每台实例的可写层下 392MB 语音依赖。
     "security": {"allow_lazy_installs": False},
     # 用户第一条消息时，hermes 默认让 agent 提出「建用户画像」（征得同意后联网查用户的公开信息、记进记忆）。
@@ -498,7 +499,10 @@ class TenantManager:
 
     @staticmethod
     def _drive_mcp() -> dict:
-        return {"UniWork-Drive": {"url": "http://127.0.0.1:9120/api/plugins/cloud-drive/mcp", "timeout": 720,
+        return {"Agent-Mail": {"url": "http://127.0.0.1:9120/api/plugins/cloud-mail/mcp", "timeout": 120, "enabled": False,
+                 "uniwork_managed": "uniwork.cloud.mail.v1",
+                 "headers": {"X-Hermes-Session-Token": "${HERMES_DASHBOARD_SESSION_TOKEN}"}},
+                "UniWork-Drive": {"url": "http://127.0.0.1:9120/api/plugins/cloud-drive/mcp", "timeout": 720,
                  "execution_metadata": True, "strict_redirect_headers": True, "uniwork_managed": "uniwork.desktop.drive.v1",
                  "headers": {"X-Hermes-Session-Token": "${HERMES_DASHBOARD_SESSION_TOKEN}"}}}
 
