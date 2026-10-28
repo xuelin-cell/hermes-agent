@@ -25,6 +25,7 @@ function makeManager(
     exclusiveCode?: (phone: string) => Promise<string>
     identity?: () => LoginIdentity | null
     saveAttachment?: (name: string, download: () => Promise<Response>) => Promise<{ canceled: boolean; saved: boolean }>
+    stageAttachment?: (name: string, download: () => Promise<Response>) => Promise<{ name: string; path: string }>
   } = {}
 ) {
   return new ConnectorManager({
@@ -39,6 +40,7 @@ function makeManager(
     },
     openExternal: vi.fn(async () => undefined),
     saveAttachment: overrides.saveAttachment ?? vi.fn(async () => ({ canceled: false, saved: true })),
+    stageAttachment: overrides.stageAttachment ?? vi.fn(async name => ({ name, path: `/tmp/${name}` })),
     log: vi.fn(),
     identity:
       overrides.identity ??
@@ -383,6 +385,48 @@ it('keeps attachment download URLs in the main process and delegates the save to
       })
     ).resolves.toMatchObject({ data: { canceled: false, saved: true } })
     expect(saveAttachment).toHaveBeenCalledWith('report.md', expect.any(Function))
+  } finally {
+    await manager.close()
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+it('stages a mail attachment through the main-process owner for the composer', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-agent-mail-stage-'))
+  const writes: unknown[] = []
+  const saved = { mcp_servers: { connector_wo_mail: { desktop_agent_mail: true, enabled: true } } }
+  const stageAttachment = vi.fn(async (name: string, download: () => Promise<Response>) => {
+    const response = await download()
+    expect(await response.text()).toBe('attachment body')
+    return { name, path: `/tmp/${name}` }
+  })
+
+  const request = vi.spyOn(ConnectorRuntime.prototype, 'request').mockResolvedValue({
+    success: true,
+    data: { file: { downloadUrl: 'http://127.0.0.1:1234/api/files/a', name: 'report.md' } }
+  })
+  vi.spyOn(ConnectorRuntime.prototype, 'download').mockResolvedValue(new Response('attachment body'))
+  vi.spyOn(ConnectorRuntime.prototype, 'connection').mockResolvedValue({
+    configured: true,
+    displayName: '13800000000@wo.cn'
+  })
+  vi.spyOn(ConnectorRuntime.prototype, 'close').mockResolvedValue()
+  const manager = makeManager(home, saved, writes, { stageAttachment })
+
+  try {
+    await expect(
+      manager.agentMail({
+        operation: 'action',
+        profile: 'default',
+        action: 'stage_attachment',
+        input: { attachmentId: '2', folder: 'INBOX', uid: 8 }
+      })
+    ).resolves.toMatchObject({ data: { file: { name: 'report.md', path: '/tmp/report.md' } } })
+    expect(request).toHaveBeenCalledWith('/v1/actions/wo_mail.download_attachment', 'POST', {
+      connectionName: 'default',
+      input: { attachmentId: '2', folder: 'INBOX', uid: 8 }
+    })
+    expect(stageAttachment).toHaveBeenCalledWith('report.md', expect.any(Function))
   } finally {
     await manager.close()
     fs.rmSync(home, { recursive: true, force: true })
