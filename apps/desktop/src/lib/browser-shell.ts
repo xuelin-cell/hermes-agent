@@ -105,6 +105,18 @@ export function browserInitialLocale(): string | undefined {
   return isBrowserShell() ? 'zh-CN' : undefined
 }
 
+/** Where the bridge parks dropped, pasted and picked files (`dev/browser-bridge.ts`):
+ * a browser has no disk paths, so each file lives in page memory under a
+ * synthetic absolute path. */
+export const BROWSER_VIRTUAL_FILE_ROOT = '/__browser__/'
+
+/** A path that only exists in this page's memory. The instance has no such
+ * file, so an attachment on it must always be uploaded as bytes, whatever
+ * connection owns the session (`lib/attachment-upload-policy.ts`). */
+export function isBrowserVirtualPath(path: string): boolean {
+  return isBrowserShell() && path.trim().startsWith(BROWSER_VIRTUAL_FILE_ROOT)
+}
+
 // UniWork's own developer mode, the key of store/developer-mode.ts.
 const DEVELOPER_MODE_KEY = 'uniwork.desktop.developerMode.v1'
 

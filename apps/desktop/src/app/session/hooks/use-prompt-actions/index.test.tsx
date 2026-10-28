@@ -5717,6 +5717,85 @@ describe('uploadComposerAttachment preview reuse', () => {
   })
 })
 
+// desktop-mt: the browser build parks every dropped, pasted or picked file in page
+// memory under /__browser__/…; the instance never has it, whatever connection owns
+// the session (a Bot Mode chat reads as local).
+describe('uploadComposerAttachment browser-build files', () => {
+  const localSession = {
+    backendCwd: '/opt/data/workspace',
+    remote: false,
+    sessionId: RUNTIME_SESSION_ID,
+    terminalBackend: 'local'
+  }
+
+  afterEach(() => {
+    delete window.document.documentElement.dataset.hermesBrowser
+    vi.restoreAllMocks()
+  })
+
+  it('uploads the bytes of a dropped document although its session reads as local', async () => {
+    const readFileDataUrlForAttach = vi.fn(async () => 'data:application/octet-stream;base64,ZG9j')
+    Object.defineProperty(window, 'hermesDesktop', {
+      configurable: true,
+      value: { readFileDataUrlForAttach }
+    })
+
+    const requestGateway = vi.fn(async () => ({ attached: true, ref_text: '@file:report.docx' }) as never)
+    const doc = { id: 'file:report.docx', kind: 'file' as const, label: 'report.docx', path: '/__browser__/1/report.docx' }
+
+    // The desktop still sends a local path as-is: the backend reads the same disk.
+    await uploadComposerAttachment(doc, { ...localSession, requestGateway })
+    expect(readFileDataUrlForAttach).not.toHaveBeenCalled()
+    expect(requestGateway).toHaveBeenLastCalledWith('file.attach', {
+      name: 'report.docx',
+      path: '/__browser__/1/report.docx',
+      session_id: RUNTIME_SESSION_ID
+    })
+
+    window.document.documentElement.dataset.hermesBrowser = 'production'
+
+    await uploadComposerAttachment(doc, { ...localSession, requestGateway })
+    expect(readFileDataUrlForAttach).toHaveBeenCalledWith('/__browser__/1/report.docx')
+    expect(requestGateway).toHaveBeenLastCalledWith('file.attach', {
+      data_url: 'data:application/octet-stream;base64,ZG9j',
+      name: 'report.docx',
+      path: '/__browser__/1/report.docx',
+      session_id: RUNTIME_SESSION_ID
+    })
+  })
+
+  it('uploads a pasted image as bytes instead of its in-page path', async () => {
+    window.document.documentElement.dataset.hermesBrowser = 'production'
+    Object.defineProperty(window, 'hermesDesktop', {
+      configurable: true,
+      value: { readFileDataUrl: vi.fn() }
+    })
+
+    const requestGateway = vi.fn(async (method: string) =>
+      (method === 'image.attach_bytes' ? { attached: true, path: '/opt/data/workspace/pasted.png' } : {}) as never
+    )
+
+    const uploaded = await uploadComposerAttachment(
+      {
+        id: 'image:pasted.png',
+        kind: 'image',
+        label: 'pasted.png',
+        path: '/__browser__/2/pasted.png',
+        previewUrl: 'data:image/png;base64,cGFzdGVk'
+      },
+      { ...localSession, requestGateway }
+    )
+
+    expect(requestGateway).toHaveBeenCalledWith('image.attach_bytes', {
+      content_base64: 'cGFzdGVk',
+      filename: 'pasted.png',
+      session_id: RUNTIME_SESSION_ID
+    })
+    expect(requestGateway).not.toHaveBeenCalledWith('image.attach', expect.anything())
+    expect(uploaded.path).toBe('/opt/data/workspace/pasted.png')
+  })
+})
+
 // The actions bag is a STABLE ref that wiring.tsx mutates in place
 // (Object.assign), and the pane surfaces are memoized on that stable ref — so a
 // surface does NOT re-render when the active session changes and its props keep

@@ -131,6 +131,23 @@ describe('partitionDroppedFiles', () => {
   it('stages every OS drop when no staging context is given', () => {
     expect(partitionDroppedFiles([osDrop('/abs/a.pdf')]).osDrops).toHaveLength(1)
   })
+
+  it('stages a browser-build drop even on a local connection: its path is only in page memory', () => {
+    // desktop-mt: the browser bridge parks a dropped file under /__browser__/…; as
+    // an inline @file: ref it would dangle on the instance.
+    const dropped = osDrop('/__browser__/1/report.docx')
+    const staging = { backendCwd: '/opt/data/workspace', remote: false, terminalBackend: 'local' }
+
+    expect(partitionDroppedFiles([dropped], staging).inAppRefs).toEqual([dropped])
+
+    document.documentElement.dataset.hermesBrowser = 'production'
+
+    try {
+      expect(partitionDroppedFiles([dropped], staging)).toEqual({ inAppRefs: [], osDrops: [dropped] })
+    } finally {
+      delete document.documentElement.dataset.hermesBrowser
+    }
+  })
 })
 
 // Minimal DataTransfer stand-in. A real OS drop populates BOTH `items` (which

@@ -5,6 +5,7 @@
  * drift apart. Pure: takes the path and backend facts as arguments.
  */
 
+import { isBrowserVirtualPath } from '@/lib/browser-shell'
 import { isWindowsAbsolutePath } from '@/lib/path-compare'
 
 const POSIX_ABSOLUTE_PATH_RE = /^\/(?!\/)/
@@ -33,6 +34,11 @@ export function attachmentPathNeedsUpload(
   backendCwd?: null | string,
   terminalBackend?: null | string
 ): boolean {
+  // desktop-mt: the browser build's files live in page memory, never on the instance.
+  if (isBrowserVirtualPath(path)) {
+    return true
+  }
+
   if (CONTAINER_TERMINAL_BACKENDS.has((terminalBackend || '').trim().toLowerCase())) {
     return true
   }

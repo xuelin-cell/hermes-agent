@@ -110,12 +110,15 @@ describe('browser development bridge', () => {
 
   it('parks dropped and pasted files in memory and serves them back as data URLs', async () => {
     const { VIRTUAL_FILE_ROOT, virtualFileFor } = await installFresh()
+    const { isBrowserVirtualPath } = await import('@/lib/browser-shell')
     const bridge = window.hermesDesktop
 
     const dropped = new File([new TextEncoder().encode('hello')], 'notes.txt', { type: 'text/plain' })
     const droppedPath = bridge.getPathForFile(dropped)
 
     expect(droppedPath.startsWith(VIRTUAL_FILE_ROOT)).toBe(true)
+    // The upload policy must recognise it: the instance has no such file.
+    expect(isBrowserVirtualPath(droppedPath)).toBe(true)
     expect(droppedPath.endsWith('/notes.txt')).toBe(true)
     expect(virtualFileFor(droppedPath)).toBe(dropped)
     await expect(bridge.readFileDataUrl(droppedPath)).resolves.toBe('data:text/plain;base64,aGVsbG8=')
@@ -125,6 +128,7 @@ describe('browser development bridge', () => {
     const pastedPath = await bridge.saveImageBuffer(new Uint8Array([137, 80, 78, 71]), '.png')
 
     expect(pastedPath.startsWith(VIRTUAL_FILE_ROOT)).toBe(true)
+    expect(isBrowserVirtualPath(pastedPath)).toBe(true)
     expect(pastedPath.endsWith('.png')).toBe(true)
     // Pasted bytes carry no MIME; it is derived from the extension so the
     // renderer treats the data URL as an image (thumbnail + inline bubble).

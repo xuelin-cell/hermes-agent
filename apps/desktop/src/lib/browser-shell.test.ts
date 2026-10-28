@@ -4,6 +4,7 @@ import sessionMenuSource from '@/app/chat/sidebar/session-actions-menu.tsx?raw'
 import { setRuntimeI18nLocale } from '@/i18n/runtime'
 
 import {
+  BROWSER_VIRTUAL_FILE_ROOT,
   browserInitialLocale,
   browserMediaPlaybackUrl,
   browserShellCopy,
@@ -14,6 +15,7 @@ import {
   HTML_PREVIEW_SANDBOX,
   isBrowserShell,
   isBrowserTerminalPaste,
+  isBrowserVirtualPath,
   isBundledPluginHidden,
   isConversationShareHidden,
   isDeveloperMode,
@@ -197,6 +199,18 @@ describe('browser shell', () => {
     document.documentElement.dataset.hermesBrowser = 'production'
 
     expect(withoutHiddenNavItems(nav).map(item => item.id)).toEqual(['new-session', 'skills', 'artifacts'])
+  })
+
+  it('treats paths under the in-page file root as browser-only files, and only in the browser build', () => {
+    expect(BROWSER_VIRTUAL_FILE_ROOT).toBe('/__browser__/')
+    expect(isBrowserVirtualPath('/__browser__/1/report.docx')).toBe(false)
+
+    document.documentElement.dataset.hermesBrowser = 'production'
+
+    expect(isBrowserVirtualPath('/__browser__/1/report.docx')).toBe(true)
+    expect(isBrowserVirtualPath(' /__browser__/a/clipboard-1.png')).toBe(true)
+    expect(isBrowserVirtualPath('/opt/data/workspace/report.docx')).toBe(false)
+    expect(isBrowserVirtualPath('uploads/__browser__/x.txt')).toBe(false)
   })
 
   it('shows the BOTS tab to every cloud user, not only in developer mode', () => {

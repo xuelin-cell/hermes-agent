@@ -8,6 +8,7 @@ import type {
   HermesTerminalSession
 } from '@/global'
 import {
+  BROWSER_VIRTUAL_FILE_ROOT,
   browserShellCopy,
   HTML_PREVIEW_SANDBOX,
   type InstanceFileErrorCode,
@@ -127,7 +128,7 @@ async function api<T>({ body, method = 'GET', path, profile, upload }: HermesApi
 // memory under synthetic absolute paths and served back from there.
 // ---------------------------------------------------------------------------
 
-export const VIRTUAL_FILE_ROOT = '/__browser__/'
+export const VIRTUAL_FILE_ROOT = BROWSER_VIRTUAL_FILE_ROOT
 const VIRTUAL_FILE_LIMIT = 256
 const virtualFiles = new Map<string, Blob>()
 let virtualSeq = 0
