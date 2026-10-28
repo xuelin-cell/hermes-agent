@@ -85,7 +85,7 @@ def resolve_path(value, cwd):
         return None
 
 
-def mask_examples(text):
+def mask_examples(text, *, inline=True):
     """按桌面显示规则屏蔽示例，位置不变：围栏代码整段只显示文字；行内代码只有整段
     就是 MEDIA 标记时桌面才出卡。不用原版屏蔽：它要先核对路径，/C:/ 写法核对不过就
     当示例屏蔽，桌面却照常出卡，插件会再补一张。"""
@@ -94,6 +94,8 @@ def mask_examples(text):
     text = _blank_spans(
         text, [match.span() for match in _FENCED_CODE_RE.finditer(text)]
     )
+    if not inline:
+        return text
     return _blank_spans(
         text,
         [
@@ -136,11 +138,16 @@ def shown_paths(masked, cwd):
     from gateway.platforms.base import MEDIA_TAG_CLEANUP_RE
 
     text = MEDIA.sub("", masked)
-    # 链接目标去掉 MEDIA: 前缀再解析，相对路径也算已展示；括号截断的值解析不到，
-    # 由下面的原版扫描器补上完整路径。
-    values = [
-        re.sub(r"^\s*MEDIA:\s*", "", match.group(1)) for match in LINKS.finditer(text)
-    ]
+    values = []
+    for match in LINKS.finditer(text):
+        value = match.group(1).strip()
+        directive = re.match(r"^(?:MEDIA:\s*|#(?:preview[:/]|media:))", value)
+        if directive:
+            value = unquote(value[directive.end():])
+        elif not re.match(r"^(?:file:|/|~[\\/]|[A-Za-z]:[\\/]|\\\\)", value):
+            # 普通相对路径链接不会渲染文件卡片，不能阻止补齐交付入口。
+            continue
+        values.append(value)
     # Markdown 尖括号是包装，原版扫描器以空白识别同一个路径终点。
     values += [
         match.group("path")
@@ -224,12 +231,17 @@ def named_paths(text, cwd):
     return list(dict.fromkeys(path for path in paths if path is not None))
 
 
-def hidden(parts):
+def hidden(parts, *, explicit=False):
     """路径片段里有点开头的目录或素材目录名，就不算交付位置。"""
-    return any(part.startswith(".") or part.lower() in EXCLUDED for part in parts)
+    materials = {"themes", "templates", "references", "scripts", "assets", "examples"}
+    return any(
+        part.startswith(".")
+        or (part.lower() in EXCLUDED and not (explicit and part.lower() in materials))
+        for part in parts
+    )
 
 
-def eligible(path, roots=()):
+def eligible(path, roots=(), *, explicit=False):
     """只认交付白名单，排除隐藏文件、Office 锁文件及工具素材目录。
 
     素材目录名只在文件所属的工作目录里面判断：用户选的目录本身或它的上级叫
@@ -256,16 +268,23 @@ def eligible(path, roots=()):
     return (
         path.suffix.lower().lstrip(".") in EXTENSIONS
         and not path.name.startswith("~$")
-        and not hidden(parts)
+        and not hidden(
+            parts,
+            explicit=(
+                explicit
+                and owner is not None
+                and path.suffix.lower().lstrip(".") in DOCUMENTS | {"html", "htm", "md"}
+            ),
+        )
     )
 
 
-def fresh(path, since, roots=()):
+def fresh(path, since, roots=(), *, explicit=False):
     """交付必须存在、非空且在本轮创建或修改；时间只容忍两秒时钟偏差。"""
     try:
         stat = path.stat()
         return (
-            eligible(path, roots)
+            eligible(path, roots, explicit=explicit)
             and path.is_file()
             and stat.st_size > 0
             and max(stat.st_mtime, getattr(stat, "st_birthtime", 0)) >= since - 2
