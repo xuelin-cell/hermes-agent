@@ -49,6 +49,7 @@ from urllib.parse import parse_qs
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import mtstate  # noqa: E402
 import mtuser
+import mtfolders
 import mtexport  # noqa: E402
 
 LISTEN_PORT = int(os.environ.get("MT_FWD_PORT", "9121"))
@@ -697,7 +698,11 @@ async def _handle_mt(
 
 # ---------------------------------------------------------------- 给用户用的接口（/__mt_user/*）
 
+_conversation_folders = mtfolders.ConversationFolders(WORKSPACE)
+
 _FILE_OPS = {
+    "/__mt_user/files/conversation-create": lambda files, body: {"path": _conversation_folders.create(body.get("defaultCwd"))},
+    "/__mt_user/files/conversation-discard": lambda files, body: _conversation_folders.discard(body.get("path")) or {},
     "/__mt_user/files/rename": lambda files, body: files.rename(body.get("path"), body.get("new_name")),
     "/__mt_user/files/trash": lambda files, body: files.move_to_trash(body.get("path")),
     "/__mt_user/files/restore": lambda files, body: files.restore(body.get("id")),

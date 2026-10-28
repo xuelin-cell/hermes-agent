@@ -783,6 +783,21 @@ describe('browser bridge: the instance’s terminal', () => {
   it('is only offered by the production build, which has an instance behind it', async () => {
     await installFresh()
     expect(window.hermesDesktop.terminal).toBeUndefined()
+    expect(window.hermesDesktop.createConversationFolder).toBeUndefined()
+  })
+
+  it('creates and discards conversation folders through the authenticated instance proxy', async () => {
+    await installProduction()
+    const folder = '/opt/data/workspace/20261028-120000'
+    globalThis.fetch = vi.fn(async () => jsonResponse({ ok: true, path: folder })) as typeof fetch
+    expect(await window.hermesDesktop.createConversationFolder!('/opt/data/workspace')).toBe(folder)
+    expect(globalThis.fetch).toHaveBeenLastCalledWith('/__hermes_backend/__mt_user/files/conversation-create',
+      expect.objectContaining({ method: 'POST', credentials: 'same-origin', body: JSON.stringify({ defaultCwd: '/opt/data/workspace' }) }))
+    await window.hermesDesktop.discardConversationFolder!(folder)
+    expect(globalThis.fetch).toHaveBeenLastCalledWith('/__hermes_backend/__mt_user/files/conversation-discard',
+      expect.objectContaining({ method: 'POST', credentials: 'same-origin', body: JSON.stringify({ path: folder }) }))
+    globalThis.fetch = vi.fn(async () => jsonResponse({ ok: false, code: 'draining' }, 503)) as typeof fetch
+    await expect(window.hermesDesktop.createConversationFolder!('/opt/data/workspace')).rejects.toThrow()
   })
 
   it('runs a shell over one socket per tab', async () => {

@@ -690,7 +690,7 @@ function instanceFileError(error: unknown): InstanceFileError {
   return error instanceof Error ? error : new Error(message)
 }
 
-async function instanceFiles<T>(op: 'rename' | 'restore' | 'trash', body: Record<string, unknown>): Promise<T> {
+async function instanceFiles<T>(op: 'rename' | 'restore' | 'trash' | 'conversation-create' | 'conversation-discard', body: Record<string, unknown>): Promise<T> {
   try {
     return await api<T>({ body, method: 'POST', path: `/__mt_user/files/${op}` })
   } catch (error) {
@@ -1426,7 +1426,11 @@ export function installBrowserDevelopmentBridge(): boolean {
     writeClipboard,
     // The instance's shell lives behind the entry; a dev server has no forwarder to give one.
     ...(productionBrowserBuild
-      ? { terminal: instanceTerminal, cloudSkillOperations, ...browserShares(browserBasePath()), ...browserDrive(browserBasePath()), ...browserPlan(browserBasePath()), exportPreview: browserExport(browserBasePath(), apiPrefix()),
+      ? { terminal: instanceTerminal, cloudSkillOperations,
+          createConversationFolder: async (defaultCwd: string) =>
+            (await instanceFiles<{ path: string | null }>('conversation-create', { defaultCwd })).path,
+          discardConversationFolder: async (path: string) => { await instanceFiles('conversation-discard', { path }) },
+          ...browserShares(browserBasePath()), ...browserDrive(browserBasePath()), ...browserPlan(browserBasePath()), exportPreview: browserExport(browserBasePath(), apiPrefix()),
           getWelcomeCatalog: (locale: WelcomeLocale) => {
             if (!['zh-CN', 'en'].includes(locale)) {return Promise.reject(new Error('Invalid locale'))}
 

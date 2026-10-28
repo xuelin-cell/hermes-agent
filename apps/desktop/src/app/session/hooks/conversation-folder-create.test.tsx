@@ -116,6 +116,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  delete document.documentElement.dataset.hermesBrowser
   setConnection(null)
   setNewChatWorkspaceTarget(undefined)
   setCurrentCwdExplicit(false)
@@ -126,7 +127,11 @@ afterEach(() => {
 })
 
 describe('未选目录的新对话使用专属文件夹', () => {
-  it('普通发送：按档案查默认目录，建好后以“用户选定”发给后端', async () => {
+  it.each(['desktop', 'cloud'])('%s 普通发送使用新建目录作为会话 cwd', async surface => {
+    if (surface === 'cloud') {
+      document.documentElement.dataset.hermesBrowser = 'production'
+      setConnection({ mode: 'remote' } as never)
+    }
     const { result, requestGateway } = mountActions()
 
     await act(() => result.current.createBackendSessionForSend('你好'))
@@ -221,7 +226,11 @@ describe('未选目录的新对话使用专属文件夹', () => {
     expect(bridge.createConversationFolder).not.toHaveBeenCalled()
   })
 
-  it('创建会话失败时请主进程删掉刚建的文件夹', async () => {
+  it.each(['desktop', 'cloud'])('%s 创建会话失败时清理刚建的空目录', async surface => {
+    if (surface === 'cloud') {
+      document.documentElement.dataset.hermesBrowser = 'production'
+      setConnection({ mode: 'remote' } as never)
+    }
     createFails = true
     const { result } = mountActions()
 
