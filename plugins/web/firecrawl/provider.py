@@ -116,7 +116,11 @@ class _KeylessFirecrawlClient:
         self.api_url = api_url.rstrip("/")
 
     def _post(self, path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-        response = httpx.post(f"{self.api_url}{path}", json=payload, headers={"Content-Type": "application/json"}, timeout=60.0)
+        from plugins.web import keyless_search
+
+        response = httpx.post(f"{self.api_url}{path}", json=payload, headers={"Content-Type": "application/json"}, timeout=keyless_search.request_timeout(60.0))
+        if path == "/v2/search" and response.status_code >= 400:
+            raise keyless_search.response_error(response)
         response.raise_for_status()
         return response.json()
 
