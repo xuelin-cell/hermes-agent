@@ -16,7 +16,7 @@ export async function installMarketSkillWithApproval(
     const approved = await confirm({
       title: copy('riskTitle'),
       description: copy('riskBody', skill.name),
-      details: [{ label: copy('riskReport'), value: result.report ?? '' }],
+      details: [{ label: copy('riskReport'), value: result.report ?? '', expandLabel: copy('riskDetails') }],
       confirmLabel: copy('riskInstall'),
       cancelLabel: copy('cancel'),
       destructive: true
