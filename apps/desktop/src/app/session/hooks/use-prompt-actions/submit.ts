@@ -2,7 +2,11 @@ import type { PromptSubmitResult } from '@hermes/shared'
 import { type MutableRefObject, useCallback } from 'react'
 
 // desktop-mt: 新对话发出后又开了新对话时，建好的会话按后台会话继续发送（见 detached-create-mt.ts）。
-import { pendingNewChatSubmitLockKey, takeDetachedCreate } from '@/app/session/detached-create-mt'
+import {
+  currentFreshDraftEpoch,
+  pendingNewChatSubmitLockKey,
+  takeDetachedCreate
+} from '@/app/session/detached-create-mt'
 import { PROMPT_SUBMIT_REQUEST_TIMEOUT_MS } from '@/hermes'
 import type { Translations } from '@/i18n'
 import { type ChatMessage, textPart } from '@/lib/chat-messages'
@@ -23,12 +27,15 @@ import {
   revokeDiscardedAttachmentPreviews,
   terminalContextBlocksFromDraft
 } from '@/store/composer'
+import { $gatewaySwitching } from '@/store/gateway-switch'
 import { $hudMode } from '@/store/hud'
 import { clearNotifications, notify, notifyError } from '@/store/notifications'
 import { consumePendingCredentialWarning, requestDesktopOnboarding } from '@/store/onboarding'
+import { $activeGatewayProfile, $newChatProfile, normalizeProfileKey, resolveNewChatOwnerRoute } from '@/store/profile'
 import { isStoredTranscriptReadOnly } from '@/store/read-only-transcript'
 import {
   $activeSessionId,
+  $connection,
   $sessions,
   resolveComposerSessionKey,
   setActiveSessionId,
@@ -360,18 +367,24 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
 
       let startingRouteToken = getRouteToken()
 
-      // Reason string (or null) for why the session context genuinely drifted
-      // under this in-flight submit. sessionContextDrift ignores the churn a
-      // busy gateway produces (selection null-resets on a gateway/profile
-      // switch, search/hash-only route changes, background active-ref
-      // retargets) so a second-session send doesn't silently abort — it fires
-      // only on a real move to a DIFFERENT chat. Reads the live refs/route each
-      // call and measures against the (mutable) baseline, which is re-pinned to
-      // the created chat after createBackendSessionForSend. submitTargetStoredId
-      // is the stored session this submit targets, so a move ONTO it (the
-      // pipeline's own re-home) is never counted as drift.
-      const sessionDriftReason = (): string | null =>
-        targetStartedInCurrentView
+      const startingDraftEpoch = currentFreshDraftEpoch()
+      const startingConnection = resolveNewChatOwnerRoute()?.connectionId ?? $connection.get()?.baseUrl
+      const startingProfile = $newChatProfile.get() || normalizeProfileKey($activeGatewayProfile.get())
+      let createdForSubmit = false
+      let detachedFromView = false
+
+      /** 新建会话只因页面切换转后台；连接或 Profile 改变仍中止，恢复旧会话沿用原保护。 */
+      const sessionDriftReason = (): string | null => {
+        if (
+          createdForSubmit &&
+          ($gatewaySwitching.get() ||
+            startingConnection !== (resolveNewChatOwnerRoute()?.connectionId ?? $connection.get()?.baseUrl) ||
+            startingProfile !== ($newChatProfile.get() || normalizeProfileKey($activeGatewayProfile.get())))
+        ) {
+          return 'new-chat-owner-changed'
+        }
+
+        const drift = targetStartedInCurrentView
           ? sessionContextDrift({
               startRouteToken: startingRouteToken,
               nowRouteToken: getRouteToken(),
@@ -379,17 +392,27 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
               nowSelectedStoredId: selectedStoredSessionIdRef.current,
               submitTargetStoredId: startingStoredSessionId,
               composerScope: options?.composerScope,
-              // The composer keys drafts/attachments on the durable lineage
-              // root (survives auto-compression tip rotation), while
-              // startingStoredSessionId is the live tip — resolve the target
-              // into the same lineage-root domain before comparing, or every
-              // submit into a session that has ever compressed would
-              // false-positive-abort.
               submitTargetComposerScope: resolveComposerSessionKey(startingStoredSessionId, $sessions.get())
             })
           : null
 
-      const targetIsCurrentView = (): boolean => targetStartedInCurrentView && !sessionDriftReason()
+        if (
+          createdForSubmit &&
+          targetStoredSessionId &&
+          !drift?.startsWith('composer:') &&
+          (drift || startingDraftEpoch !== currentFreshDraftEpoch())
+        ) {
+          detachedFromView = true
+          targetStartedInCurrentView = false
+
+          return null
+        }
+
+        return drift
+      }
+
+      /** 先核对归属，再决定是否还能写入前台。 */
+      const targetIsCurrentView = (): boolean => !sessionDriftReason() && targetStartedInCurrentView
 
       // One submit in flight per session — drop any concurrent re-fire so a
       // stalled turn can't stack the same prompt into multiple real turns. The
@@ -403,9 +426,6 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
       }
 
       let submitLockReleased = false
-      // desktop-mt: 建好的会话已转后台（用户在另一个新对话里）。之后失败也不把文字退回输入框——
-      // 那里是另一个新对话的草稿；失败气泡留在后台会话里，另弹提示。
-      let detachedFromView = false
 
       const releaseSubmitLock = () => {
         if (!submitLockReleased) {
@@ -806,10 +826,15 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
         // to the ambient socket — the fresh-chat owner loss behind #94071.
         targetStoredSessionId = detachedStoredId ?? selectedStoredSessionIdRef.current
 
+        createdForSubmit = true
         seedOptimistic(sessionId)
       }
 
       try {
+        if (sessionDriftReason()) {
+          return abortForSessionSwitch(sessionId)
+        }
+
         // Attach runs BEFORE prompt.submit, so a stale runtime id fails there
         // first and submit's own recovery never runs — that asymmetry is why
         // plain text survived sleep/wake but images reported "session not

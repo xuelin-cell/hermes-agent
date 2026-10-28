@@ -1,4 +1,3 @@
-import { currentWorkspaceCategory, rememberSessionWorkspace } from '@/store/workspace-sessions'
 import { useStore } from '@nanostores/react'
 import { type MutableRefObject, useCallback, useEffect, useRef } from 'react'
 import type { NavigateFunction } from 'react-router'
@@ -151,6 +150,7 @@ import { $archivedSessions } from '@/store/sidebar-archive'
 import { restoreSessionTodosFromSnapshot } from '@/store/todos'
 import { dropTranscriptTail, dropTranscriptTailEverywhere, saveTranscriptTail } from '@/store/transcript-tail-cache'
 import { isWatchWindow } from '@/store/windows'
+import { currentWorkspaceCategory, rememberSessionWorkspace } from '@/store/workspace-sessions'
 import type {
   SessionCreateResponse,
   SessionMessage,
@@ -659,7 +659,7 @@ export function useSessionActions({
       const startingRouteToken = getRouteToken()
       // desktop-mt: 发送时的新对话代次、连接和 YOLO，会话建好前用户又开了新对话时用来转后台。
       const startingFreshDraftEpoch = currentFreshDraftEpoch()
-      const startingConnection = $connection.get()?.baseUrl
+      const startingConnection = resolveNewChatOwnerRoute()?.connectionId ?? $connection.get()?.baseUrl
       const yoloAtSend = $yoloActive.get()
 
       creatingSessionRef.current = true
@@ -740,13 +740,15 @@ export function useSessionActions({
             : await requestGateway<SessionCreateResponse>('session.create', params)
 
           stored = created.stored_session_id ?? null
-          if (stored)
+
+          if (stored) {
             rememberSessionWorkspace(
               stored,
               creationWorkspace,
               capturedRoute?.connectionId,
               capturedRoute?.profile ?? capturedProfile
             )
+          }
 
           // Record the EXACT owner the moment a routed create returns a stored
           // id — before the drift check, the optimistic row, navigation, or any
@@ -773,23 +775,40 @@ export function useSessionActions({
           releaseCreateLease()
         }
 
-        // Only a genuine move to a DIFFERENT chat mid-create should orphan the
-        // session we just minted. The active runtime ref is deliberately not a
-        // prong: background gateway events retarget it while other sessions
-        // stream (#47709 class), and the seconds-long session.create round-trip
-        // (server-side agent + MCP init) makes that churn near-certain — every
-        // genuine user switch retargets selection AND route synchronously
-        // anyway. submitTargetStoredId is the just-created stored session, so
-        // our own upcoming re-home onto it never reads as drift.
-        const drift = sessionContextDrift({
-          startRouteToken: startingRouteToken,
-          nowRouteToken: getRouteToken(),
-          startSelectedStoredId: startingStoredSessionId,
-          nowSelectedStoredId: selectedStoredSessionIdRef.current,
-          submitTargetStoredId: stored
-        })
+        // desktop-mt: 原会话归属固定；普通页面切换转后台，身份切换仍走原保护。
+        /** 复查异步创建及 YOLO 等待期间是否离开了原会话。 */
+        const createDrift = () =>
+          sessionContextDrift({
+            startRouteToken: startingRouteToken,
+            nowRouteToken: getRouteToken(),
+            startSelectedStoredId: startingStoredSessionId,
+            nowSelectedStoredId: selectedStoredSessionIdRef.current,
+            submitTargetStoredId: stored
+          })
 
-        if (drift) {
+        /** 仅在原连接和 Profile 内允许创建结果交给后台发送。 */
+        const canDetach = () =>
+          shouldDetachCreate({
+            viewChanged: Boolean(createDrift()),
+            startEpoch: startingFreshDraftEpoch,
+            stored,
+            createdWithOverrides: Boolean(createOverrides || seedMessages?.length),
+            startConnection: startingConnection,
+            nowConnection: resolveNewChatOwnerRoute()?.connectionId ?? $connection.get()?.baseUrl,
+            startProfile: capturedProfile,
+            nowProfile: $newChatProfile.get() || normalizeProfileKey($activeGatewayProfile.get()),
+            switching: $gatewaySwitching.get()
+          })
+
+        const drift = createDrift()
+        const detached = canDetach()
+
+        const ownerChanged =
+          startingConnection !== (resolveNewChatOwnerRoute()?.connectionId ?? $connection.get()?.baseUrl) ||
+          capturedProfile !== ($newChatProfile.get() || normalizeProfileKey($activeGatewayProfile.get())) ||
+          $gatewaySwitching.get()
+
+        if (ownerChanged || (drift && !detached)) {
           console.warn('[submit-drift-abort]', drift, { phase: 'mid-create' })
 
           // Close on the backend that minted the session: the ambient socket
@@ -810,21 +829,8 @@ export function useSessionActions({
           return null
         }
 
-        // desktop-mt: 建好时用户已在另一个新对话里（两次都是 '/'，上面的漂移检查看不出来）。
-        // 会话转后台：照常进侧栏、记状态、发第一条消息，但不跳页面，也不把它的目录、模型、YOLO 推给当前输入框。
-        if (
-          stored &&
-          shouldDetachCreate({
-            startEpoch: startingFreshDraftEpoch,
-            stored,
-            createdWithOverrides: Boolean(createOverrides || seedMessages?.length),
-            startConnection: startingConnection,
-            nowConnection: $connection.get()?.baseUrl,
-            startProfile: capturedProfile,
-            nowProfile: $newChatProfile.get() || normalizeProfileKey($activeGatewayProfile.get()),
-            switching: $gatewaySwitching.get()
-          })
-        ) {
+        // 不跳页面，也不把后台会话的目录、模型和 YOLO 推给当前输入框。
+        if (stored && detached) {
           ensureSessionState(created.session_id, stored)
           createdThisRun.add(stored)
           upsertOptimisticSession(created, stored, null, preview?.trim() || null, null, undefined, capturedRoute)
@@ -873,7 +879,6 @@ export function useSessionActions({
         setSelectedStoredSessionId(stored)
         const runtimeStartedAt = Date.now()
         setSessionStartedAt(runtimeStartedAt)
-        const yoloArmed = $yoloActive.get()
         const runtimeInfo = applyRuntimeInfo(created.info)
 
         updateSessionState(
@@ -884,8 +889,13 @@ export function useSessionActions({
 
         // User may have armed YOLO on the new-chat draft before the runtime
         // session existed — apply it to the freshly created session.
-        if (yoloArmed) {
+        if (yoloAtSend) {
           await setSessionYolo(requestGateway, created.session_id, true).catch(() => undefined)
+        }
+
+        // YOLO 写入也会让出执行权，返回前再次核对，不能丢掉刚建好的原会话。
+        if (stored && canDetach()) {
+          markDetachedCreate(created.session_id, stored)
         }
 
         return created.session_id
@@ -1058,13 +1068,15 @@ export function useSessionActions({
             : await requestGateway<SessionCreateResponse>('session.create', params)
 
           stored = created.stored_session_id
-          if (stored)
+
+          if (stored) {
             rememberSessionWorkspace(
               stored,
               creationWorkspace,
               capturedRoute?.connectionId,
               capturedRoute?.profile ?? requestedProfile ?? undefined
             )
+          }
 
           if (stored && capturedRoute) {
             // Same ownership transition as createBackendSessionForSend: the

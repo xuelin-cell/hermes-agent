@@ -5,6 +5,7 @@ import { useEffect, useRef } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { appendCloudAttachments } from '@/app/artifacts/drive-chat-reference'
+import { bumpFreshDraftEpoch } from '@/app/session/detached-create-mt'
 import { getLatestSessionMessages, getSession } from '@/hermes'
 import { textPart, toChatMessages } from '@/lib/chat-messages'
 import { createClientSessionState } from '@/lib/chat-runtime'
@@ -4825,7 +4826,7 @@ describe('usePromptActions new-chat first-send delivery (#63078)', () => {
     )
   })
 
-  it('aborts a new-session submit when sidebar navigation changes the route before its selected ref (#62562)', async () => {
+  it('侧栏先改变路由、选中项尚未更新时，首次消息仍只发送到原会话', async () => {
     const activeSessionIdRef: MutableRefObject<string | null> = { current: null }
     const selectedStoredSessionIdRef: MutableRefObject<string | null> = { current: null }
     let routeToken = '/::'
@@ -4897,99 +4898,132 @@ describe('usePromptActions new-chat first-send delivery (#63078)', () => {
     // selectSidebarItem calls navigate() first. The routed effect has not yet
     // entered resumeSession(), so the selected-session ref still points at the
     // just-created session when attachment sync settles — the route move to a
-    // DIFFERENT chat must abort on its own.
+    // DIFFERENT chat detaches this first send without retargeting it.
     routeToken = '/sidebar-target::'
     releaseAttach()
 
-    expect(await submitting).toBe(false)
+    expect(await submitting).toBe(true)
     expect(selectedStoredSessionIdRef.current).toBe(NEW_STORED_ID)
-    expect(calls.some(call => call.method === 'prompt.submit')).toBe(false)
+    expect(calls.filter(call => call.method === 'prompt.submit')).toEqual([
+      {
+        method: 'prompt.submit',
+        params: expect.objectContaining({ session_id: NEW_RUNTIME_ID, text: expect.stringContaining('first message') })
+      }
+    ])
   })
 
-  it('still aborts when the user genuinely switches chats after create, during attachment sync (#62805)', async () => {
-    // The post-create re-baseline (adopting the created chat as the pinned
-    // target) must not mask a REAL switch later in the pipeline: the user
-    // clicks a different session after createBackendSessionForSend lands but
-    // before attachment sync settles — selection AND route both move to the
-    // other chat, and the drift check at the post-attachments boundary must
-    // abort rather than deliver the text into whichever chat won the race.
-    const activeSessionIdRef: MutableRefObject<string | null> = { current: null }
-    const selectedStoredSessionIdRef: MutableRefObject<string | null> = { current: null }
-    let routeToken = '/::'
+  it.each(['existing', 'fresh', 'connection', 'refresh', 'recover'] as const)(
+    '新会话附件准备期间切换 %s：只在原连接继续发送',
+    async destination => {
+      const activeSessionIdRef: MutableRefObject<string | null> = { current: null }
+      const selectedStoredSessionIdRef: MutableRefObject<string | null> = { current: null }
+      let routeToken = '/::'
 
-    let releaseFileAttach: () => void = () => {}
+      let releaseFileAttach: () => void = () => {}
 
-    $connection.set({ mode: 'remote' } as never)
-    Object.defineProperty(window, 'hermesDesktop', {
-      configurable: true,
-      value: { readFileDataUrl: vi.fn(async () => 'data:application/pdf;base64,JVBERi0=') }
-    })
+      $connection.set({ mode: 'remote' } as never)
+      Object.defineProperty(window, 'hermesDesktop', {
+        configurable: true,
+        value: { readFileDataUrl: vi.fn(async () => 'data:application/pdf;base64,JVBERi0=') }
+      })
 
-    const createBackendSessionForSend = vi.fn(async () => {
-      activeSessionIdRef.current = NEW_RUNTIME_ID
-      selectedStoredSessionIdRef.current = NEW_STORED_ID
-      routeToken = `/${NEW_STORED_ID}::`
+      const createBackendSessionForSend = vi.fn(async () => {
+        activeSessionIdRef.current = NEW_RUNTIME_ID
+        selectedStoredSessionIdRef.current = NEW_STORED_ID
+        routeToken = `/${NEW_STORED_ID}::`
 
-      return NEW_RUNTIME_ID
-    })
+        return NEW_RUNTIME_ID
+      })
 
-    const calls: { method: string; params?: Record<string, unknown> }[] = []
+      const calls: { method: string; params?: Record<string, unknown> }[] = []
 
-    const requestGateway = vi.fn(async (method: string, params?: Record<string, unknown>) => {
-      calls.push({ method, params })
+      const requestGateway = vi.fn(async (method: string, params?: Record<string, unknown>) => {
+        calls.push({ method, params })
 
-      if (method === 'file.attach') {
-        // Block here so the user can switch sessions mid-sync.
-        await new Promise<void>(resolve => {
-          releaseFileAttach = resolve
-        })
+        if (method === 'session.resume') {
+          return { session_id: 'rt-recovered-first' } as never
+        }
 
-        return {
-          attached: true,
-          ref_text: '@file:.hermes/desktop-attachments/test.pdf',
-          uploaded: true
-        } as never
+        if (method === 'file.attach') {
+          if (params?.session_id !== 'rt-recovered-first') {
+            // Block here so the user can switch sessions mid-sync.
+            await new Promise<void>(resolve => {
+              releaseFileAttach = resolve
+            })
+
+            if (destination === 'recover') {
+              throw new Error('4007 session not found')
+            }
+          }
+
+          return {
+            attached: true,
+            ref_text: '@file:.hermes/desktop-attachments/test.pdf',
+            uploaded: true
+          } as never
+        }
+
+        return {} as never
+      })
+
+      const attachment: ComposerAttachment = {
+        id: 'file:test',
+        kind: 'file',
+        label: 'test.pdf',
+        path: '/abs/test.pdf',
+        refText: '@file:`/abs/test.pdf`'
       }
 
-      return {} as never
-    })
+      let handle: HarnessHandle | null = null
+      render(
+        <Harness
+          activeSessionId={null}
+          activeSessionIdRef={activeSessionIdRef}
+          createBackendSessionForSend={createBackendSessionForSend}
+          getRouteToken={() => routeToken}
+          onReady={h => (handle = h)}
+          refreshSessions={async () => undefined}
+          requestGateway={requestGateway}
+          selectedStoredSessionIdRef={selectedStoredSessionIdRef}
+          storedSessionId={null}
+        />
+      )
+      await waitFor(() => expect(handle).not.toBeNull())
 
-    const attachment: ComposerAttachment = {
-      id: 'file:test',
-      kind: 'file',
-      label: 'test.pdf',
-      path: '/abs/test.pdf',
-      refText: '@file:`/abs/test.pdf`'
+      const submitting = handle!.submitText('message before the switch', { attachments: [attachment] })
+      await waitFor(() => expect(calls.some(c => c.method === 'file.attach')).toBe(true))
+
+      selectedStoredSessionIdRef.current = destination === 'fresh' ? null : 'stored-other-session'
+      activeSessionIdRef.current = destination === 'fresh' ? null : 'rt-other'
+      routeToken = destination === 'fresh' ? '/::' : '/stored-other-session::'
+
+      if (destination === 'fresh') {
+        bumpFreshDraftEpoch()
+      }
+
+      if (destination === 'connection') {
+        $connection.set({ mode: 'remote', baseUrl: 'http://other' } as never)
+      }
+
+      if (destination === 'refresh') {
+        $connection.set({ mode: 'remote' } as never)
+      }
+
+      releaseFileAttach()
+
+      expect(await submitting).toBe(destination !== 'connection')
+      const submissions = calls.filter(call => call.method === 'prompt.submit')
+      expect(submissions).toHaveLength(destination === 'connection' ? 0 : 1)
+
+      if (destination !== 'connection') {
+        expect(submissions[0].params).toMatchObject({
+          session_id: destination === 'recover' ? 'rt-recovered-first' : NEW_RUNTIME_ID
+        })
+        expect(selectedStoredSessionIdRef.current).toBe(destination === 'fresh' ? null : 'stored-other-session')
+        expect(activeSessionIdRef.current).toBe(destination === 'fresh' ? null : 'rt-other')
+      }
     }
-
-    let handle: HarnessHandle | null = null
-    render(
-      <Harness
-        activeSessionId={null}
-        activeSessionIdRef={activeSessionIdRef}
-        createBackendSessionForSend={createBackendSessionForSend}
-        getRouteToken={() => routeToken}
-        onReady={h => (handle = h)}
-        refreshSessions={async () => undefined}
-        requestGateway={requestGateway}
-        selectedStoredSessionIdRef={selectedStoredSessionIdRef}
-        storedSessionId={null}
-      />
-    )
-    await waitFor(() => expect(handle).not.toBeNull())
-
-    const submitting = handle!.submitText('message before the switch', { attachments: [attachment] })
-    await waitFor(() => expect(calls.some(c => c.method === 'file.attach')).toBe(true))
-
-    // Simulate a user switching to a different session after the new session
-    // was created and the sync phase started.
-    selectedStoredSessionIdRef.current = 'stored-other-session'
-    routeToken = '/stored-other-session::'
-    releaseFileAttach()
-
-    expect(await submitting).toBe(false)
-    expect(calls.some(c => c.method === 'prompt.submit')).toBe(false)
-  })
+  )
 })
 
 describe('usePromptActions busy-gateway churn tolerance (#64327)', () => {
@@ -5590,11 +5624,19 @@ describe('uploadComposerAttachment 来源登记', () => {
     const markUploaded = vi.fn(async () => undefined)
     vi.stubGlobal('hermesDesktop', { artifactShare: { markUploaded } })
     const filename = kind === 'image' ? 'user.png' : 'user.html'
-    const requestGateway = vi.fn(async () => ({ attached: true, ref_text: `@file:${filename}`, path: `/work/${filename}` }))
+
+    const requestGateway = vi.fn(async () => ({
+      attached: true,
+      ref_text: `@file:${filename}`,
+      path: `/work/${filename}`
+    }))
 
     const options = {
-      backendCwd: '/work', remote: false, requestGateway: requestGateway as never,
-      sessionId: 'runtime', storedSessionId: 'stored'
+      backendCwd: '/work',
+      remote: false,
+      requestGateway: requestGateway as never,
+      sessionId: 'runtime',
+      storedSessionId: 'stored'
     }
 
     const attachment = { id: 'upload', kind, path: `/work/${filename}`, label: filename }
