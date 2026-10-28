@@ -91,3 +91,18 @@ def test_production_plugin_persists_actual_tool_outputs(tmp_path, kind):
 
     receipt = run_scenario(tmp_path, kind)
     assert receipt["text"].count("MEDIA:") == 1
+
+
+@pytest.mark.parametrize("filename", ["assets/report.html", "templates/report.md"])
+@pytest.mark.parametrize("answer", [
+    "完成了。",
+    "成品位于 `{path}`。",
+    "[报告]({relative})",
+    "```html\n<!doctype html><html><body>预览代码</body></html>\n```",
+])
+def test_declared_output_is_persisted_as_file_card(tmp_path, filename, answer):
+    """明确要求写出的成品不因素材目录名漏卡；走真实写文件、插件和历史重开。"""
+    from tests.plugins.desktop_deliverables_fixture import run_scenario
+
+    receipt = run_scenario(tmp_path, filename=filename, answer=answer.replace("{relative}", filename))
+    assert receipt["text"].count(f"MEDIA:{receipt['path']}") == 1

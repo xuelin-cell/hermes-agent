@@ -452,6 +452,7 @@ function InlineHtmlFrame({
           />
         </span>
       )}
+      {!streaming && <PreviewAttachment target={file} />}
     </span>
   )
 }

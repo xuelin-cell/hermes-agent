@@ -14,17 +14,20 @@ from tests.fakes.fake_llm_provider import (
 )
 
 
-def run_scenario(root, kind="workspace"):
+def run_scenario(root, kind="workspace", *, filename=None, answer=None):
     """只在新测试目录创建 Home 和产物，执行原生工具后关闭、重开数据库取得显示历史。"""
     work = root / "workspace"
     home = root / "home"
     assert not work.exists() and not home.exists(), "测试目录已有数据，拒绝覆盖"
     work.mkdir(parents=True)
     destination = (
-        work if kind in {"workspace", "terminal", "execute_code"} else root / kind
+        work if filename or kind in {"workspace", "terminal", "execute_code"} else root / kind
     )
     destination.mkdir(exist_ok=True)
-    output = destination / ("报告 (1).md" if kind == "wrapped" else kind + "报告.md")
+    output = destination / (
+        filename or ("报告 (1).md" if kind == "wrapped" else kind + "报告.md")
+    )
+    output.parent.mkdir(parents=True, exist_ok=True)
     command = f"printf '# 交付测试' > '{output.as_posix()}'"
     call = ToolCall("write_file", {"path": str(output), "content": "# 交付测试"})
     if kind == "terminal":
@@ -38,6 +41,11 @@ def run_scenario(root, kind="workspace"):
                 + ")"
             },
         )
+    response = (
+        answer.replace("{path}", str(output)) if answer is not None
+        else f"![报告](<MEDIA:{output}>)" if kind == "wrapped"
+        else "完成了。"
+    )
     with (
         patch.dict(
             os.environ,
@@ -49,7 +57,7 @@ def run_scenario(root, kind="workspace"):
         ),
         FakeLLMServer([
             call,
-            Text(f"![报告](<MEDIA:{output}>)" if kind == "wrapped" else "完成了。"),
+            Text(response),
         ]) as server,
     ):
         write_hermes_home(
