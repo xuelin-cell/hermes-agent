@@ -1,10 +1,16 @@
 import { SLASH_COMMAND_RE } from '@hermes/shared'
 import { type RefObject, useLayoutEffect, useRef } from 'react'
 
+import { currentFreshDraftEpoch } from '@/app/session/detached-create-mt'
 import { usePaneVisible } from '@/components/pane-shell/pane-visibility'
 import { triggerHaptic } from '@/lib/haptics'
 import { hasClarifyRequest, skipClarifyRequest } from '@/store/clarify'
-import { clearSessionDraftIfUnchanged, type ComposerAttachment, sessionDraftRevision } from '@/store/composer'
+import {
+  clearSessionDraftIfUnchanged,
+  type ComposerAttachment,
+  sessionDraftRevision,
+  takeSessionDraft
+} from '@/store/composer'
 import { resetBrowseState } from '@/store/composer-input-history'
 import { enqueueQueuedPrompt, type QueuedPromptEntry } from '@/store/composer-queue'
 import { hasConnectionRequest, skipConnectionRequest } from '@/store/connection-request'
@@ -90,13 +96,38 @@ export function useComposerSubmit({
     const submittedAttachments = attachments ?? []
     // desktop-mt: 记下发送时草稿被写过几次；被接受时这里若已是更新的草稿（例如另一个新对话的）就不清。
     const submittedDraftRevision = sessionDraftRevision(submittedScope)
+    const submittedDraftEpoch = currentFreshDraftEpoch()
 
+    /** 迟到的失败只恢复原草稿，不能覆盖新输入或另一个新建会话。 */
     const restore = () => {
-      loadIntoComposer(text, submittedAttachments)
-      // Use the scope captured at dispatch, not whatever session is focused
-      // now — the gateway can reject well after the user has switched away,
-      // and re-stashing into the currently-focused session would overwrite
-      // its draft with the rejected text from a different session (#54527).
+      const savedDraft = takeSessionDraft(submittedScope)
+
+      if (
+        (sessionDraftRevision(submittedScope) !== submittedDraftRevision &&
+          Boolean(savedDraft.text.trim() || savedDraft.attachments.length)) ||
+        (submittedScope === null && submittedDraftEpoch !== currentFreshDraftEpoch())
+      ) {
+        return
+      }
+
+      const sameScope = activeQueueSessionKeyRef.current === submittedScope
+
+      // 首次发送已离开无 ID 草稿时，不再写回公共新建草稿；已创建会话保留自己的消息和错误。
+      if (submittedScope === null && !sameScope) {
+        return
+      }
+
+      if (sameScope) {
+        // DOM 比草稿落盘更早更新，连尚未持久化的输入也必须保留。
+        const currentText = editorRef.current ? composerPlainText(editorRef.current) : draftRef.current
+
+        if (currentText.trim() || scope.attachments.$attachments.get().length) {
+          return
+        }
+
+        loadIntoComposer(text, submittedAttachments)
+      }
+
       stashAt(submittedScope, text, submittedAttachments)
     }
 

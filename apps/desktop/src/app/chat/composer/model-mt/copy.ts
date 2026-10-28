@@ -4,6 +4,8 @@ const SCOPE = 'desktop-mt.composer-model'
 
 registerPluginLocales(SCOPE, {
   en: {
+    custom: 'Custom models',
+    configure: 'Configure custom model',
     loading: 'Loading models…',
     empty: 'No models available',
     search: 'Search models',
@@ -13,6 +15,8 @@ registerPluginLocales(SCOPE, {
     contextChip: (size: string) => `${size} context`
   },
   zh: {
+    custom: '自定义模型',
+    configure: '配置自定义模型',
     loading: '正在加载模型…',
     empty: '暂无可用模型',
     search: '搜索模型',
@@ -22,6 +26,8 @@ registerPluginLocales(SCOPE, {
     contextChip: (size: string) => `${size} 上下文`
   },
   'zh-hant': {
+    custom: '自訂模型',
+    configure: '配置自訂模型',
     loading: '正在載入模型…',
     empty: '暫無可用模型',
     search: '搜尋模型',

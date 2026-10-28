@@ -4,12 +4,15 @@ import { useEffect, useRef, useState } from 'react'
 import { usePreparePreview } from '@/app/chat/right-rail/formats/prepare'
 import { useSessionView } from '@/app/chat/session-view'
 import { useI18n } from '@/i18n'
-import { Download, MonitorPlay } from '@/lib/icons'
+import { Download, FileText } from '@/lib/icons'
 import { normalizeOrLocalPreviewTarget } from '@/lib/local-preview'
 import { downloadGatewayMediaFile } from '@/lib/media'
 import { previewName } from '@/lib/preview-targets'
 import { notifyError } from '@/store/notifications'
 import { $previewTabSources, closePreviewForSource, openPreview } from '@/store/preview'
+
+const ACTION_CLASS =
+  'inline-flex h-8 items-center gap-1.5 rounded-lg border border-(--ui-stroke-tertiary) bg-background px-3 text-xs font-medium text-foreground/80 transition-colors hover:bg-(--chrome-action-hover) hover:text-foreground disabled:opacity-50'
 
 export function PreviewAttachment({ target }: { target: string }) {
   const { t } = useI18n()
@@ -128,31 +131,31 @@ export function PreviewAttachment({ target }: { target: string }) {
   }
 
   return (
-    <span className="flex w-full max-w-160 items-center gap-2 rounded-lg border border-(--ui-stroke-tertiary) bg-card/55 px-2.5 py-1.5 text-sm">
-      <span className="grid size-6 shrink-0 place-items-center rounded-md bg-muted/55 text-muted-foreground/85">
-        <MonitorPlay className="size-3.5" />
+    // 窄窗时操作按钮整体换到第二行，文件名保留整行宽度。
+    <span className="flex w-full max-w-160 flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-(--ui-stroke-tertiary) bg-card/55 px-3 py-2.5 text-sm">
+      <span className="flex min-w-0 flex-1 basis-48 items-center gap-3">
+        <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted/60 text-muted-foreground">
+          <FileText className="size-4.5" />
+        </span>
+        <span className="min-w-0 flex-1 truncate font-medium leading-5 text-foreground" title={target}>
+          {name}
+        </span>
       </span>
-      <span className="min-w-0 flex-1 truncate text-[0.78rem] font-medium text-foreground/90" title={target}>
-        {name}
+      <span className="ml-auto flex shrink-0 items-center gap-1.5">
+        <button
+          aria-label={t.fileMenu.download}
+          className={ACTION_CLASS}
+          disabled={downloading}
+          onClick={() => void downloadFile()}
+          type="button"
+        >
+          <Download className="size-3.5" />
+          {downloaded ? t.fileMenu.downloadSaved : t.fileMenu.download}
+        </button>
+        <button className={ACTION_CLASS} disabled={opening} onClick={() => void togglePreview()} type="button">
+          {opening ? t.preview.opening : isActive ? t.preview.hide : t.preview.openPreview}
+        </button>
       </span>
-      <button
-        aria-label={t.fileMenu.download}
-        className="flex shrink-0 items-center gap-1 rounded-md border border-(--ui-stroke-tertiary) bg-background/40 px-2 py-1 text-[0.7rem] font-medium text-muted-foreground transition-colors hover:bg-accent/55 hover:text-foreground disabled:opacity-50"
-        disabled={downloading}
-        onClick={() => void downloadFile()}
-        type="button"
-      >
-        <Download className="size-3" />
-        {downloaded ? t.fileMenu.downloadSaved : t.fileMenu.download}
-      </button>
-      <button
-        className="shrink-0 rounded-md border border-(--ui-stroke-tertiary) bg-background/40 px-2 py-1 text-[0.7rem] font-medium text-muted-foreground transition-colors hover:bg-accent/55 hover:text-foreground disabled:opacity-50"
-        disabled={opening}
-        onClick={() => void togglePreview()}
-        type="button"
-      >
-        {opening ? t.preview.opening : isActive ? t.preview.hide : t.preview.openPreview}
-      </button>
     </span>
   )
 }

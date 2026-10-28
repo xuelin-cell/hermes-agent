@@ -717,7 +717,22 @@ const ACCOUNT_CONNECTORS = new ConnectorManager({
   },
   decrypt: value => safeStorage.decryptString(value),
   api: request => handleHermesApiRequest(request),
-  openExternal: url => shell.openExternal(url)
+  openExternal: url => shell.openExternal(url),
+  saveAttachment: async (name, download) => {
+    const result = await dialog.showSaveDialog(mainWindow, {
+      defaultPath: path.basename(name) || 'attachment',
+      title: '保存附件'
+    })
+
+    if (result.canceled || !result.filePath) {
+      return { canceled: true, saved: false }
+    }
+
+    const response = await download()
+    const data = Buffer.from(await response.arrayBuffer())
+    await fs.promises.writeFile(result.filePath, data)
+    return { canceled: false, saved: true }
+  }
 })
 
 const ACCOUNT_DRIVE_ARTIFACT = createDriveArtifactResolver({

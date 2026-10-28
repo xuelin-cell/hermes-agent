@@ -244,6 +244,27 @@ export class ConnectorRuntime {
     return response.json()
   }
 
+  /** Download only a transit URL minted by this runtime; the renderer never supplies a URL. */
+  async download(url: string): Promise<Response> {
+    await this.start()
+    const target = new URL(url)
+
+    if (target.origin !== this.origin) {
+      throw new Error('Invalid connector download URL')
+    }
+
+    const response = await fetch(target, {
+      headers: { Authorization: `Bearer ${this.secrets!.runtime}` },
+      signal: AbortSignal.timeout(60_000)
+    })
+
+    if (!response.ok || !response.body) {
+      throw new Error('Connector attachment download failed')
+    }
+
+    return response
+  }
+
   /** 只返回是否已经配置，不把账号标识或凭据转发给页面。 */
   async rows(): Promise<LocalConnectorRow[]> {
     const connections = await this.request('/api/connections')

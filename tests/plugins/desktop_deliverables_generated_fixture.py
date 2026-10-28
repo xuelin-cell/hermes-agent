@@ -36,9 +36,9 @@ def run_scenario(root, kind="fallback", media_dir=None, *, platform="desktop", d
     }
     leaf, extension = names.get(kind, ("fixture_write", "md"))
     videos = {"video", "background-video", "background-image-video"}
-    # 四个附件平台与桌面一样下载（钉钉视频除外）；其他消息平台只缓存后台翻译、播客。
+    # 支持交付的平台与桌面一样下载（钉钉视频除外）；其他消息平台只缓存后台翻译、播客。
     delivered = platform == "desktop" or (
-        platform in {"weixin", "feishu", "wecom", "dingtalk"}
+        platform in {"weixin", "feishu", "wecom", "dingtalk", "uniagentgate"}
         and not (platform == "dingtalk" and kind in videos)
     )
     uncached = kind == "background-other" or not (
@@ -104,7 +104,8 @@ def run_scenario(root, kind="fallback", media_dir=None, *, platform="desktop", d
                 home,
                 server.base_url,
                 extra_config=(
-                    "plugins:\n  enabled: [desktop-deliverables, delivery-fixture, uniwork-kits]\n"
+                    "plugins:\n  enabled: [desktop-deliverables, delivery-fixture, uniwork-kits"
+                    + (", uniagentgate" if platform == "uniagentgate" else "") + "]\n"
                     "security:\n  allow_private_urls: true\n"
                     "auxiliary:\n  title_generation:\n    enabled: false\n"
                 ),
@@ -149,6 +150,12 @@ def run_scenario(root, kind="fallback", media_dir=None, *, platform="desktop", d
                 skip_context_files=True,
             )
             try:
+                if platform == "uniagentgate":
+                    from agent.system_prompt import _frozen_plugin_prompt_sections
+
+                    guidance = next(section.content for section in _frozen_plugin_prompt_sections(agent)
+                                    if section.id == "uniwork.background-tasks")
+                    assert "宿主也会自动补上" in guidance and "txt2vid_generate" not in guidance
                 result = agent.run_conversation(
                     "生成文件。", task_id="generated-delivery"
                 )

@@ -4,12 +4,12 @@ import { isBrowserShell } from '@/lib/browser-shell'
 import { readJson, writeKey } from '@/lib/storage'
 import { normalize } from '@/lib/text'
 
+import { modeLayout } from './interface-mode'
 import { $rightRailActiveTabId, type RightRailTabId, selectRightRailTab } from './layout'
 import { clearExplicitPreviewOpen, noteExplicitPreviewOpen } from './preview-explicit'
 import { normalizeProfileKey } from './profile'
 import { canOpenBrowserWindow, isBrowserWindow, openBrowserInNewWindow } from './windows'
 import { $selectedWorkspaceMode } from './workspace-scope'
-import { modeLayout } from './interface-mode'
 
 /**
  * PREVIEW RAIL — one list of tabs, one way in.
@@ -20,8 +20,8 @@ import { modeLayout } from './interface-mode'
  * a tool result, a file-browser click, and an artifact card all travel the
  * same road and behave identically once open.
  *
- * Tabs are global and outlive the session that created them, like tabs
- * anywhere else — they close when you close them.
+ * Tabs and their selection belong to the conversation on screen. Switching
+ * conversations restores that conversation’s rail instead of sharing tabs.
  */
 
 /** How an HTML file target shows: the live page, or its source. */
@@ -223,12 +223,16 @@ function persistTabs() {
 // Which bucket the atom mirrors. A RENAME moves the view without the scope
 // changing, so this has to follow the rename or the persist subscriber below
 // would resurrect the bucket the rename just deleted.
-let viewKey = workspacePreviewKey('default')
 let profileScope = 'default'
+let sessionScope: string | undefined
+let connectionScope = ''
+let viewKey = workspacePreviewKey('default')
 const WORKSPACE_SELECTION_KEY = 'uniwork.desktop.previewSelectionByWorkspace.v1'
+
 const activeTabsByScope = new Map<string, RightRailTabId | null>(
   Object.entries(readJson<Record<string, RightRailTabId | null>>(WORKSPACE_SELECTION_KEY) ?? {})
 )
+
 activeTabsByScope.set(viewKey, $rightRailActiveTabId.get())
 $rightRailActiveTabId.listen(id => {
   if (!modeLayout.restoring) {
@@ -238,7 +242,11 @@ $rightRailActiveTabId.listen(id => {
 })
 
 function workspacePreviewKey(profile: string): string {
-  return $selectedWorkspaceMode.get() === 'codex' ? `${profile}::codex` : profile
+  const workspace = $selectedWorkspaceMode.get() === 'codex' ? `${profile}::codex` : profile
+
+  return sessionScope === undefined
+    ? workspace
+    : `${workspace}::session:${encodeURIComponent(connectionScope)}:${encodeURIComponent(sessionScope)}`
 }
 
 export const $previewTabs = atom<PreviewTab[]>([])
@@ -273,7 +281,9 @@ adoptingStoredTabs = false
 /** Re-home the rail onto the profile that owns the chat on screen. Called by
  *  `session-states.ts` whenever the focused session (or its resolved owner)
  *  changes; the previous agent's tabs must not leak into the next one. */
-export function setPreviewScope(scope: string) {
+export function setPreviewScope(scope: string, sessionId?: string, connectionId = '') {
+  sessionScope = sessionId
+  connectionScope = connectionId
   profileScope = normalizeProfileKey(scope) || 'default'
   const next = workspacePreviewKey(profileScope)
 
@@ -290,19 +300,20 @@ export function setPreviewScope(scope: string) {
  *  would skip exactly that case (a fresh pop-out renderer starts on 'default'
  *  while the popped tab belongs to another profile). */
 function applyPreviewScope(next: string) {
-  if (pendingLegacyTabs) {
+  if (pendingLegacyTabs && sessionScope === undefined) {
     tabsByProfile[next] = [...(tabsByProfile[next] ?? []), ...pendingLegacyTabs]
     pendingLegacyTabs = null
     persistTabs()
   }
 
+  clearExplicitPreviewOpen()
   viewKey = next
   const previous = activeTabsByScope.get(next)
   $previewTabs.set(tabsByProfile[next] ?? [])
   selectRightRailTab($previewTabs.get().find(tab => tab.id === previous)?.id ?? $previewTabs.get()[0]?.id ?? null)
 }
 
-$selectedWorkspaceMode.listen(() => setPreviewScope(profileScope))
+$selectedWorkspaceMode.listen(() => setPreviewScope(profileScope, sessionScope, connectionScope))
 
 /** Profile 改名或删除时同步显式分享来源，保留文件标签但不留下失效的会话归属。 */
 function updatePreviewShareOrigins(from: string, to: string | null): boolean {
@@ -329,12 +340,17 @@ function updatePreviewShareOrigins(from: string, to: string | null): boolean {
 export function dropPreviewTabsForProfile(profile: string) {
   const key = normalizeProfileKey(profile)
 
-  delete tabsByProfile[key]
-  delete tabsByProfile[`${key}::codex`]
+  for (const bucket of Object.keys(tabsByProfile)) {
+    if (bucket === key || bucket.startsWith(`${key}::`)) {
+      delete tabsByProfile[bucket]
+      activeTabsByScope.delete(bucket)
+    }
+  }
+
   const originChanged = updatePreviewShareOrigins(key, null)
   persistTabs()
 
-  if (key === viewKey || `${key}::codex` === viewKey || originChanged) {
+  if (key === viewKey || viewKey.startsWith(`${key}::`) || originChanged) {
     $previewTabs.set(tabsByProfile[viewKey] ?? [])
   }
 }
@@ -351,27 +367,30 @@ export function migratePreviewTabsForProfile(oldProfile: string, newProfile: str
   }
 
   const originChanged = updatePreviewShareOrigins(from, to)
-  const codeKey = `${from}::codex`
-  if (tabsByProfile[codeKey]) {
-    tabsByProfile[`${to}::codex`] = [...(tabsByProfile[`${to}::codex`] ?? []), ...tabsByProfile[codeKey]]
-    delete tabsByProfile[codeKey]
-  }
-  if (profileScope === from) profileScope = to
-  const moved = tabsByProfile[from]
+  const wasInView = viewKey === from || viewKey.startsWith(`${from}::`)
 
-  if (moved) {
-    delete tabsByProfile[from]
-    tabsByProfile[to] = [...(tabsByProfile[to] ?? []), ...moved]
+  for (const key of Object.keys(tabsByProfile)) {
+    if (key !== from && !key.startsWith(`${from}::`)) {
+      continue
+    }
+    const next = `${to}${key.slice(from.length)}`
+    tabsByProfile[next] = [...(tabsByProfile[next] ?? []), ...tabsByProfile[key]]
+    delete tabsByProfile[key]
+
+    if (activeTabsByScope.has(key)) {
+      activeTabsByScope.set(next, activeTabsByScope.get(key) ?? null)
+      activeTabsByScope.delete(key)
+    }
   }
 
-  // The view belongs to the renamed profile; only its NAME changed. Re-point it
-  // BEFORE the atom is set, so the persist subscriber writes the new bucket
-  // rather than resurrecting the one just deleted.
-  const wasInView = from === viewKey || codeKey === viewKey
+  if (profileScope === from) {
+    profileScope = to
+  }
 
   if (wasInView) {
-    viewKey = viewKey === codeKey ? `${to}::codex` : to
+    viewKey = `${to}${viewKey.slice(from.length)}`
   }
+  writeKey(WORKSPACE_SELECTION_KEY, JSON.stringify(Object.fromEntries(activeTabsByScope)))
 
   persistTabs()
 
@@ -535,6 +554,7 @@ export function adoptPersistedBrowserTab(tabId: string) {
         if (!isBrowserWindow() && key.endsWith('::codex') !== ($selectedWorkspaceMode.get() === 'codex')) {
           return
         }
+
         applyPreviewScope(key || 'default')
 
         return

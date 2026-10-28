@@ -5,6 +5,18 @@ const SCOPE = 'desktop-mt.models'
 
 registerPluginLocales(SCOPE, {
   en: {
+    customTitle: 'Custom models',
+    editModel: 'Edit',
+    testing: 'Testing…',
+    test: 'Test connection',
+    connected: 'Connected',
+    failed: 'Connection failed',
+    thinking: 'Thinking mode',
+    auto: 'Auto',
+    on: 'On',
+    off: 'Off',
+    loading: 'Loading…',
+
     nav: 'Models',
     hint: 'Add AI models below. The first model is the default; drag to reorder.',
     defaultBadge: 'Default',
@@ -30,7 +42,7 @@ registerPluginLocales(SCOPE, {
     imageHint: 'Turn on Image only if this model can read pictures.',
     delete: 'Delete',
     deleteTitle: (name: string) => `Delete "${name}"?`,
-    deleteBody: 'This model setting will be removed after you save.',
+    deleteBody: 'Delete this model? You will need to configure its endpoint URL and API key again.',
     yuanjingKey: 'YuanJing API key',
     yuanjingKeyDesc: 'One key for all YuanJing models',
     yuanjingKeyManaged: 'Comes from your plan and refreshes when you sign in again.',
@@ -50,6 +62,18 @@ registerPluginLocales(SCOPE, {
     empty: 'No models yet. Add one below.'
   },
   zh: {
+    customTitle: '自定义模型',
+    editModel: '编辑',
+    testing: '测试中',
+    test: '测试连接',
+    connected: '连接成功',
+    failed: '连接失败',
+    thinking: '思考模式',
+    auto: '自动',
+    on: '开启',
+    off: '关闭',
+    loading: '正在加载…',
+
     nav: '模型',
     hint: '在下方添加 AI 模型。第一个模型为默认模型，拖动可调整顺序。',
     defaultBadge: '默认',
@@ -75,7 +99,7 @@ registerPluginLocales(SCOPE, {
     imageHint: '模型能看图时再打开 Image。',
     delete: '删除',
     deleteTitle: (name: string) => `删除「${name}」？`,
-    deleteBody: '保存后将删除该模型配置。',
+    deleteBody: '确定要删除该模型吗？删除后需要重新配置接口地址与 API Key。',
     yuanjingKey: 'YuanJing API 密钥',
     yuanjingKeyDesc: '统一管理所有 YuanJing 模型的密钥',
     yuanjingKeyManaged: '由套餐自动管理，重新登录后刷新。',
@@ -92,9 +116,21 @@ registerPluginLocales(SCOPE, {
     revealFailed: '无法显示密钥',
     needModel: (name: string) => `「${name}」：请填写模型 ID。`,
     needUrl: (name: string) => `「${name}」：请填写有效的接口地址（http 或 https）。`,
-    empty: '还没有模型，请在下方添加。'
+    empty: '尚未添加自定义模型'
   },
   'zh-hant': {
+    customTitle: '自訂模型',
+    editModel: '編輯',
+    testing: '測試中',
+    test: '測試連線',
+    connected: '連線成功',
+    failed: '連線失敗',
+    thinking: '思考模式',
+    auto: '自動',
+    on: '開啟',
+    off: '關閉',
+    loading: '正在載入…',
+
     nav: '模型',
     hint: '在下方新增 AI 模型。第一個模型為預設模型，拖曳可調整順序。',
     defaultBadge: '預設',

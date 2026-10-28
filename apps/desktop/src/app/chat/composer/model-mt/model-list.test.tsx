@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 import { ModelMenuCloseContext } from '@/app/shell/model-menu-panel'
@@ -41,13 +42,15 @@ function show(rows = [modelRow('a'), modelRow('b')], loading = false) {
   })
 
   return render(
-    <DropdownMenu open>
-      <DropdownMenuContent>
-        <ModelMenuCloseContext.Provider value={close}>
-          <ComposerModelList onSelectModel={vi.fn()} requestGateway={vi.fn()} />
-        </ModelMenuCloseContext.Provider>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <MemoryRouter>
+      <DropdownMenu open>
+        <DropdownMenuContent>
+          <ModelMenuCloseContext.Provider value={close}>
+            <ComposerModelList onSelectModel={vi.fn()} requestGateway={vi.fn()} />
+          </ModelMenuCloseContext.Provider>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </MemoryRouter>
   )
 }
 
@@ -87,7 +90,8 @@ afterEach(cleanup)
 it('只列配置模型而不显示目录中的 Anthropic，当前项按端点和模型打勾', () => {
   show()
   expect(screen.queryByText('Anthropic')).toBeNull()
-  expect(screen.getAllByRole('menuitem')).toHaveLength(2)
+  expect(screen.getAllByRole('menuitem')).toHaveLength(3)
+  expect(screen.getByText('Configure custom model')).toBeTruthy()
   expect(screen.getByText('模型 a').closest('[data-current="true"]')).toBeTruthy()
   expect(screen.getByText('模型 b').closest('[data-current="true"]')).toBeNull()
   expect(screen.queryByRole('textbox')).toBeNull()
@@ -123,7 +127,7 @@ it('八项不显示搜索，九项可按名字或模型标识筛选并显示无�
   unmount()
   show(Array.from({ length: 9 }, (_, i) => modelRow(String(i))))
   fireEvent.change(screen.getByRole('textbox'), { target: { value: 'model-8' } })
-  expect(screen.getAllByRole('menuitem')).toHaveLength(1)
+  expect(screen.getAllByRole('menuitem')).toHaveLength(2)
   expect(screen.getByText('模型 8')).toBeTruthy()
   fireEvent.change(screen.getByRole('textbox'), { target: { value: '不存在' } })
   expect(screen.getByText('No models found')).toBeTruthy()

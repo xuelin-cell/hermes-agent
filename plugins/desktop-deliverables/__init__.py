@@ -42,6 +42,7 @@ class Turn:
     started: float
     task_id: str = ""
     uploads: set = field(default_factory=set)
+    declared: set = field(default_factory=set)
     paths: dict = field(default_factory=dict)
     pending: dict = field(default_factory=dict)
     scans: dict = field(default_factory=dict)
@@ -163,6 +164,7 @@ def before_turn(
             time.time(),
             task_id=task_id,
             uploads=attachment_paths(user_message, cwd),
+            declared=set(named_paths(as_text(user_message), cwd)),
             background=platform == "subagent",
             platform=origin[1] if origin else platform,
             guess=platform == "desktop",
@@ -331,23 +333,25 @@ def transform(*, response_text="", session_id="", turn_id="", platform="", **kwa
         return attach(key, turn, response_text, returned)
     cwd = turn.cwd if turn.background else local_cwd(turn.task_id) or turn.cwd
     roots = {*turn.roots, turn.cwd, cwd}
+    masked = mask_examples(response_text)
+    # 用户指定或最终回复明确交付的文件，不因 assets 等素材目录名漏卡。
+    # 代码块里的路径不算交付声明；隐藏目录、附件和未完成文件仍走原有过滤。
+    declared = turn.declared | set(named_paths(mask_examples(response_text, inline=False), cwd))
     # 子代理只交付两项工具已缓存的成品，其他子代理的普通回复不新增卡片。
     paths = dict.fromkeys(
-        turn.paths if turn.background else [*turn.paths, *named_paths(response_text, cwd)]
+        turn.paths if turn.background else [*turn.paths, *declared]
     )
     paths = [
         path
         for path in paths
         if path not in turn.uploads
         and not background.managed_video(path)
-        and fresh(path, turn.started, roots)
+        and fresh(path, turn.started, roots, explicit=path in declared)
     ]
     # 后台带回的成品早于本轮生成，不按“本轮新建”判断。
     paths += [path for path in returned if path not in paths]
     if not paths:
         return None
-    # 代码里的示例只屏蔽一次，两处识别共用同一份结果。
-    masked = mask_examples(response_text)
     managed = set(paths)
     shown = shown_paths(masked, cwd)
     # 有文档时图片多是文档的素材；网页和 Markdown 报告只去掉它引用到的图片。

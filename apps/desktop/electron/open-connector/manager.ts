@@ -26,6 +26,7 @@ interface ConnectorManagerOptions extends Omit<ConnectorRuntimeOptions, 'directo
   log: (message: string) => void
   identity: () => LoginIdentity | null
   mailState: Pick<AgentMailLocalStateStore, 'get' | 'save'>
+  saveAttachment: (name: string, download: () => Promise<Response>) => Promise<{ canceled: boolean; saved: boolean }>
   exclusiveCode?: (phone: string) => Promise<string>
 }
 
@@ -351,6 +352,18 @@ export class ConnectorManager {
 
       if (!result || result.success !== true || !Object.hasOwn(result, 'data')) {
         throw new Error('沃邮箱返回了无效结果。')
+      }
+
+      if (input.action === 'download_attachment') {
+        const file = result.data?.file
+
+        if (!file || typeof file.name !== 'string' || typeof file.downloadUrl !== 'string') {
+          throw new Error('Mail attachment download response was invalid')
+        }
+
+        const saved = await this.options.saveAttachment(file.name, () => runtime.download(file.downloadUrl))
+        this.logAgentMail(`IPC mailbox attachment save completed saved=${saved.saved} cancelled=${saved.canceled}`)
+        return { data: saved, status: status() }
       }
 
       this.logAgentMail(`IPC mailbox action completed action=${input.action}`)

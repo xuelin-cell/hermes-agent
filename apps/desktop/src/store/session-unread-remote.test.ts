@@ -14,7 +14,7 @@ vi.mock('@/hermes', () => ({
 
 import { $sessions } from '@/store/session'
 
-import { $unreadWriteGuard, clearUnreadOnOpen, markSessionUnread, watchUnreadWriteGuard } from './session-unread-remote'
+import { $unreadWriteGuard, clearUnreadOnOpen, confirmUnreadWrites, markSessionUnread } from './session-unread-remote'
 
 const row = (id: string, extra: Partial<SessionInfo> = {}): SessionInfo =>
   ({ id, message_count: 1, source: 'cli', started_at: 0, title: id, ...extra }) as SessionInfo
@@ -85,29 +85,56 @@ describe('clearUnreadOnOpen', () => {
   })
 })
 
-describe('watchUnreadWriteGuard', () => {
+describe('confirmUnreadWrites', () => {
   it('drops a guard entry once a list page confirms the value we wrote', () => {
-    watchUnreadWriteGuard()
     const guard = new Map<string, { at: number; value: boolean }>()
     guard.set('a', { at: Date.now(), value: true })
     $unreadWriteGuard.set(guard)
 
     // The server caught up and echoes our value back.
-    $sessions.set([row('a', { unread: true })])
+    confirmUnreadWrites([row('a', { unread: true })])
 
     expect($unreadWriteGuard.get().has('a')).toBe(false)
   })
 
   it('keeps the guard while a page contradicts a write still in flight', () => {
-    watchUnreadWriteGuard()
     const guard = new Map<string, { at: number; value: boolean }>()
     guard.set('a', { at: Date.now(), value: true })
     $unreadWriteGuard.set(guard)
 
     // A list request issued before the PATCH still says read. Honouring it
     // would silently undo the mark the user just made.
-    $sessions.set([row('a', { unread: false })])
+    confirmUnreadWrites([row('a', { unread: false })])
 
     expect($unreadWriteGuard.get().has('a')).toBe(true)
   })
+})
+
+it('does not mistake an optimistic update for server confirmation', async () => {
+  $sessions.set([row('a', { unread: true, profile: 'work' })])
+  await markSessionUnread('a', false)
+  expect($unreadWriteGuard.get().get('a')?.value).toBe(false)
+  $sessions.set([row('a', { unread: true })])
+  expect($unreadWriteGuard.get().get('a')?.value).toBe(false)
+  confirmUnreadWrites([row('a', { unread: false, profile: 'other' })])
+  expect($unreadWriteGuard.get().has('a')).toBe(true)
+  confirmUnreadWrites([row('a', { unread: false, profile: 'work' })])
+  expect($unreadWriteGuard.get().has('a')).toBe(false)
+})
+
+it('does not roll back a newer write when an earlier request fails', async () => {
+  $sessions.set([row('a', { unread: true })])
+  let reject!: (cause: Error) => void
+  patch.mockImplementationOnce(
+    () =>
+      new Promise((_resolve, fail) => {
+        reject = fail
+      })
+  )
+  const earlier = markSessionUnread('a', false)
+  await markSessionUnread('a', true)
+  reject(new Error('offline'))
+  await expect(earlier).rejects.toThrow('offline')
+  expect($sessions.get()[0].unread).toBe(true)
+  expect($unreadWriteGuard.get().get('a')?.value).toBe(true)
 })

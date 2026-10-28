@@ -143,13 +143,14 @@ def test_message_turn_never_watches_folders_or_invalidates_desktop(delivery):  #
     assert str(output) in finish(plugin, session="desktop")
 
 
-def test_message_downloads_drop_links_unless_too_large_to_attach(delivery, monkeypatch):  # noqa: F811
+@pytest.mark.parametrize("platform", ["weixin", "uniagentgate"])
+def test_message_downloads_drop_links_unless_too_large_to_attach(delivery, monkeypatch, platform):  # noqa: F811
     """20MB 以内去掉链接只发附件；超过的保留链接兜底；两份成品都补成附件引用。"""
     plugin, work = delivery
     monkeypatch.setattr("tools.url_safety._global_allow_private_urls", lambda: True)
     from fallback_delivery import downloads
 
-    start(plugin)
+    start(plugin, platform=platform)
     with serving() as (base, _requests):
         small = base + "/图.png?signature=private"
         data = json.loads(call(plugin, "mcp__server__txt2img_generate", json.dumps({"url": small})))
@@ -160,7 +161,7 @@ def test_message_downloads_drop_links_unless_too_large_to_attach(delivery, monke
         data = json.loads(call(plugin, "mcp__server__txt2vid_generate", json.dumps({"url": large})))
         assert data["url"] == large and "超过 20MB" in data["delivery_note"]
     outputs = sorted((work / "outputs").iterdir())
-    text = reply(plugin, "都好了。")
+    text = reply(plugin, "都好了。", platform=platform)
     assert text.startswith("都好了。") and all(text.count(f"MEDIA:{path}") == 1 for path in outputs)
 
 

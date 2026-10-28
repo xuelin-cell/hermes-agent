@@ -32,6 +32,7 @@ import {
 import { $removedSessionIds } from '@/store/session-removal'
 import { SIDEBAR_NAV_PREFS_AREA } from '@/store/sidebar-nav'
 import { $selectedWorkspaceMode } from '@/store/workspace-category'
+import { $workspaceSessionCategories, rememberSessionWorkspace } from '@/store/workspace-sessions'
 import { makeSessionInfo } from '@/test/session-info'
 
 import { normalizeWelcomeCatalog } from '../../../../electron/uniwork-welcome/catalog'
@@ -185,6 +186,38 @@ describe('ChatSidebar navigation activity', () => {
     setInterfaceMode('advanced')
   })
 
+  it('does not show an office conversation folder as a code project', () => {
+    const officeSession = makeSessionInfo({
+      connection_id: 'local',
+      cwd: 'D:/workspace/20261023-141751',
+      id: 'office-folder-session',
+      profile: 'default',
+      title: 'Office conversation'
+    })
+
+    rememberSessionWorkspace(officeSession.id, 'work', 'local', 'default')
+    $selectedWorkspaceMode.set('codex')
+    setSidebarAgentsGrouped(true)
+    $projectTree.set([
+      {
+        id: officeSession.cwd!,
+        isAuto: true,
+        label: '20261023-141751',
+        path: officeSession.cwd!,
+        previewSessions: [officeSession],
+        repos: [],
+        sessionCount: 1
+      }
+    ])
+    $sessions.set([officeSession])
+
+    const view = renderSidebar('/chat', 'chat')
+
+    expect(view.container.querySelector('[data-code-project]')).toBeNull()
+    expect(screen.queryByText('20261023-141751')).toBeNull()
+    expect(screen.queryByText('Office conversation')).toBeNull()
+  })
+
   beforeEach(() => {
     $developerMode.set(false)
     disposeContributions = registry.registerMany([
@@ -211,6 +244,7 @@ describe('ChatSidebar navigation activity', () => {
     $activeGatewayProfile.set('default')
     setShowAllProfiles(false)
     $selectedWorkspaceMode.set(null)
+    $workspaceSessionCategories.set({})
     $projectTree.set([])
     setInterfaceMode('advanced')
     disposeContributions()

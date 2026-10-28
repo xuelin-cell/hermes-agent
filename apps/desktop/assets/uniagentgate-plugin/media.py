@@ -1,6 +1,7 @@
 """沿用旧版 RCS 文件类型、20 MiB 原生媒体限制和链接回退。"""
 
 import asyncio
+from collections import Counter
 import logging
 import mimetypes
 from pathlib import Path
@@ -88,8 +89,9 @@ async def build_media(paths, server="UniAI-Toolkit"):
     """仅上传本轮提取的文件；单文件失败不丢失其它产物或文字回复。"""
     from gateway.platforms.base import validate_media_delivery_path
 
-    media, links = [], []
+    media, links, failures = [], [], []
     for path in dict.fromkeys(paths):
+        stage = "文件读取或下载失败"
         try:
             parsed = urlsplit(path)
             if parsed.scheme in {"http", "https"}:
@@ -108,12 +110,13 @@ async def build_media(paths, server="UniAI-Toolkit"):
                 data, name = await asyncio.to_thread(file.read_bytes), file.name
             ext = Path(name).suffix.lower()
             if ext == ".wav":
+                stage = "音频转换失败"
                 data = await asyncio.to_thread(_convert_wav, data)
                 name, ext = f"{Path(name).stem}.mp3", ".mp3"
             kind_mime = NATIVE.get(ext)
             if kind_mime and len(data) > MAX_NATIVE_BYTES:
-                logger.warning("uniAgentGate media skipped: reason=native_media_too_large")
-                continue
+                raise ValueError("attachment_too_large")
+            stage = "上传失败"
             url = await upload_bytes(data, name, server)
             if kind_mime:
                 kind, mime = kind_mime
@@ -127,4 +130,14 @@ async def build_media(paths, server="UniAI-Toolkit"):
                      "unsafe_media_path", "attachment_too_large"}
             reason = str(exc) if str(exc) in codes else "file_processing_failed"
             logger.warning("uniAgentGate media skipped: reason=%s error_type=%s", reason, type(exc).__name__)
-    return media, links
+            failures.append({"attachment_too_large": "大小超限", "unsafe_media_path": "文件路径不可用"}.get(reason, stage))
+    return media, links, failures
+
+
+def failure_notice(failures, *, partial=False):
+    """只汇总数量和原因，不向接收端暴露本机路径、签名地址或原始异常。"""
+    if not failures:
+        return ""
+    reasons = "、".join(f"{reason} {count} 个" for reason, count in Counter(failures).items())
+    prefix = "部分附件" if partial else "附件"
+    return f"⚠️ {prefix}未能发送（{len(failures)} 个）：{reasons}。未自动重试。"
