@@ -4,6 +4,9 @@ import type { MessagingOperationStatus } from '../../../electron/entry_local/mes
 
 export const $messagingOperation = atom<MessagingOperationStatus>({ phase: 'idle', revision: -1 })
 
+/** 只记住用户关闭的操作提示；主进程失败记录和实时渠道状态保持原样。 */
+export const $dismissedMessagingFailureRevision = atom(-1)
+
 /** 页面只订阅状态，主进程继续任务；返回页面时补取快照，不重新执行操作。 */
 onMount($messagingOperation, () => {
   let active = true
