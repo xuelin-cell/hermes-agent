@@ -3,6 +3,7 @@ import { writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 const root = fileURLToPath(new URL('../../../', import.meta.url))
 await build({
+  absWorkingDir: root,
   entryPoints: [root + 'apps/desktop/electron/login/cloud-drive-worker.ts'],
   bundle: true,
   platform: 'node',
@@ -11,6 +12,7 @@ await build({
   outfile: root + 'deploy/hermes-mt/entry/entry/static/cloud-drive-worker.mjs'
 })
 const tools = await build({
+  absWorkingDir: root,
   entryPoints: [root + 'apps/desktop/electron/login/cloud-drive-mcp-tools.ts'],
   bundle: true,
   platform: 'node',
