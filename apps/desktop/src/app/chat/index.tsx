@@ -807,6 +807,7 @@ const ChatViewContent = memo(function ChatViewContent({
         className
       )}
       data-chat-surface=""
+      data-welcome-layout={showIntro && messagesEmpty && !routedHasHistory ? 'centered' : undefined}
       data-chat-unfocused={surfaceFocused || surfaceHovered ? undefined : ''}
       data-composer-surface-id={composerSurfaceId}
       data-composer-target={composerScope.target}
