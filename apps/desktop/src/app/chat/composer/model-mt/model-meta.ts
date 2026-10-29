@@ -47,7 +47,7 @@ export function buildComposerModelMeta(
       key: row.key,
       endpointId: row.endpointId,
       provider: `custom:${row.endpointId}`,
-      model: row.draft.displayName.trim() || prettifyModelId(row.draft.model),
+      model: row.draft.model,
       name: row.plan
         ? prettifyModelId(row.draft.model)
         : row.draft.displayName.trim() || prettifyModelId(row.draft.model),

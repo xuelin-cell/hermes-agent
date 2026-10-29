@@ -5,12 +5,16 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { ModelMenuCloseContext } from '@/app/shell/model-menu-panel'
 import { useModelMenuController } from '@/app/shell/use-model-menu-controller'
 import { DropdownMenu, DropdownMenuContent } from '@/components/ui/dropdown-menu'
+import type { CustomEndpointsResponse } from '@/types/hermes'
 
 import { ComposerModelList } from './model-list'
-import { type ComposerModelMeta, useComposerModelMeta } from './model-meta'
+import { buildComposerModelMeta, type ComposerModelMeta, useComposerModelMeta } from './model-meta'
 
 vi.mock('@/app/shell/use-model-menu-controller', () => ({ useModelMenuController: vi.fn() }))
-vi.mock('./model-meta', () => ({ useComposerModelMeta: vi.fn() }))
+vi.mock('./model-meta', async importOriginal => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  useComposerModelMeta: vi.fn()
+}))
 
 const select = vi.fn().mockResolvedValue(true)
 const applyPreset = vi.fn()
@@ -118,6 +122,37 @@ it('选择失败不应用预设或关闭菜单', async () => {
   await waitFor(() => expect(select).toHaveBeenCalledOnce())
   expect(applyPreset).not.toHaveBeenCalled()
   expect(close).not.toHaveBeenCalled()
+})
+
+it.each([
+  ['desktop-mt-maas-plan', 'glm-5.2', 'GLM 5.2'],
+  ['desktop-mt-maas-plan', 'deepseek-v4-flash', 'DeepSeek V4 Flash'],
+  ['desktop-mt-maas-plan', 'deepseek-v4.1-flash', 'DeepSeek V4.1 Flash'],
+  ['personal', 'my-model', '我的模型']
+])('点击 %s 的 %s 时展示 %s，提交原始模型 ID 和提供方', async (id, model, name) => {
+  const response: CustomEndpointsResponse = {
+    endpoints: [
+      {
+        id,
+        model,
+        models: [model],
+        name,
+        api_key_preview: null,
+        api_mode: 'chat_completions',
+        base_url: 'https://models.invalid/v1',
+        context_length: 100000,
+        discover_models: false,
+        has_api_key: false
+      }
+    ],
+    current: { model, provider: `custom:${id}`, base_url: 'https://models.invalid/v1' }
+  }
+
+  current.model = ''
+  show(buildComposerModelMeta(response, {}, []))
+  fireEvent.click(screen.getByText(name))
+  await waitFor(() => expect(select).toHaveBeenCalledWith(model, `custom:${id}`))
+  expect(applyPreset).toHaveBeenCalledWith(expect.anything(), { model, provider: `custom:${id}` })
 })
 
 it('八项不显示搜索，九项可按名字或模型标识筛选并显示无匹配提示', () => {
