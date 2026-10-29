@@ -74,10 +74,16 @@ cd deploy/hermes-mt
 ./deploy.sh all
 # 部署其实在后台跑：Ctrl+C、终端断开都只是不看了，部署照样跑完。重新连上后接着看（跑完了就打出结果）：
 ./deploy.sh log
-./deploy.sh status      # 看现状；./deploy.sh check 只读检查；./deploy.sh purge-old 删旧模板上的实例
+./deploy.sh status      # 看现状；./deploy.sh check 只读检查
 ```
 
 同一时间只跑一次部署：已经有一次在跑时再敲 `all`，不会起第二次，直接接着看那一次。每次的日志在 `.deploy-logs/`（`latest.log` 是最近一次）。输出重定向到文件时（`nohup ./deploy.sh all > 文件 2>&1 &` 的老写法）照常在前台跑，也能用。
+
+构建时每 30 秒显示累计耗时和最新输出；基础镜像、沙箱镜像的完整日志分别为 `.base-build.log`、`.image-build.log`。
+生成的基础镜像 Dockerfile 默认使用国内 apt 源和 npm 源，不修改根目录 Dockerfile。
+前端构建阶段设置 npm 源；运行阶段只给安装命令设置，不改变应用运行时的默认 npm 配置。
+手工构建派生 Dockerfile 时，可用 `--build-arg APT_MIRROR=` 恢复官方 apt 源、
+`--build-arg NPM_REGISTRY=https://registry.npmjs.org` 恢复官方 npm 源。已有基础镜像仍按原指纹复用，换源在下次实际构建时生效。
 
 耗时：只改了入口或配置几分钟；改了前端多 5~10 分钟；hermes 源码变了（合了上游、桌面版改了插件或内置技能）基础镜像要重建 15~45 分钟，沙箱镜像也跟着整个重建 20~40 分钟。
 

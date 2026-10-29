@@ -433,21 +433,22 @@ build_base() {
     need docker; need git; need python3; need curl
     local tag log free_g seed
     tag="$(base_tag)"
-    say "基础镜像：$tag（代码 $(head_short)；指纹只算 hermes 源码，不含前端 / 部署 / 文档 / 测试）"
+    say "基础镜像：${tag}（代码 $(head_short)；指纹只算 hermes 源码，不含前端 / 部署 / 文档 / 测试）"
     if docker image inspect "$tag" >/dev/null 2>&1; then
         ok "本机已有 $tag，不用重建"
     else
         free_g="$(df -BG --output=avail / | tail -1 | tr -dc 0-9)"
         [ "${free_g:-0}" -ge 20 ] || warn "根分区只剩 ${free_g}G，构建过程要十几 G"
         seed="$(cfg MT_DEPLOY_SEED_DIR /var/cache/hermes-mt/base-seed)"
-        say "预置构建要下载的大文件到 $seed（已备好且 sha256 对得上的不重下）"
+        say "预置构建要下载的大文件到 ${seed}（已备好且 sha256 对得上的不重下）"
         python3 "$HERE/scripts/base_seed.py" "$REPO" "$seed" || die "预置文件没备齐，看上面的输出"
         log="$HERE/.base-build.log"
-        warn "构建还要从 PyPI、npm、Debian 源下载依赖，约 15~45 分钟；完整输出在 $log"
-        # 只把步骤行打到屏幕上，免得几十分钟没动静；成败看镜像在不在。
-        (cd "$REPO" && BUILDX_BUILDER=default docker build --progress=plain -f "$seed/Dockerfile" \
+        warn "构建依赖：apt / npm 使用国内源，PyPI 沿用现有配置；每 30 秒显示耗时和最新输出，完整日志在 $log"
+        if ! (cd "$REPO" && BUILDX_BUILDER=default docker build --progress=plain -f "$seed/Dockerfile" \
             --build-context "seed=$seed" --build-arg S6_OVERLAY_BASE_URL=file:///tmp/s6-seed -t "$tag" . 2>&1) \
-            | tee "$log" | grep --line-buffered -E '^#[0-9]+ \[[^]]+\] (RUN|COPY|FROM)|ERROR' | cut -c1-110 | sed 's/^/  /' || true
+            | tee "$log" | python3 -u "$HERE/scripts/build_progress.py" --label '基础镜像'; then
+            die "基础镜像构建失败，看 $log 末尾"
+        fi
         docker image inspect "$tag" >/dev/null 2>&1 || die "基础镜像没建成，看 $log 末尾"
         ok "已构建 $tag"
     fi
@@ -493,14 +494,19 @@ ensure_frontend() {
 # ---------------------------------------------------------------- image
 
 cmd_image() {
-    local fp
+    local fp log
     ensure_frontend
     fp="$(fingerprint)"
-    say "沙箱镜像：指纹 $fp（Dockerfile.cube + seed/* + overlay.list 列的仓库文件 + 基础镜像 + 模板参数）"
+    say "沙箱镜像：指纹 ${fp}（Dockerfile.cube + seed/* + overlay.list 列的仓库文件 + 基础镜像 + 模板参数）"
     cd "$HERE"
     check_overlay
     stage_overlay
-    BUILDX_BUILDER=default docker build -f Dockerfile.cube --build-arg "BASE_IMAGE=$BASE_IMAGE" -t "$IMAGE_NAME:$fp" . 2>&1 | tail -n 4 | sed 's/^/  /'
+    log="$HERE/.image-build.log"
+    say "构建进度每 30 秒更新，完整日志在 $log"
+    if ! BUILDX_BUILDER=default docker build --progress=plain -f Dockerfile.cube --build-arg "BASE_IMAGE=$BASE_IMAGE" -t "$IMAGE_NAME:$fp" . 2>&1 \
+        | tee "$log" | python3 -u "$HERE/scripts/build_progress.py" --label '沙箱镜像'; then
+        die "沙箱镜像构建失败，看 $log 末尾"
+    fi
     ok "已构建 $IMAGE_NAME:$fp"
     # 镜像里的转发器必须和仓库里的逐字节相同——这是「入口和模板一起升级」能成立的前提。
     local in_img in_repo
@@ -933,8 +939,8 @@ cmd_all() {
     local stale
     stale="$(our_sandboxes | awk -v t="$TEMPLATE" '$3 != t' | wc -l)"
     if [ "$stale" != 0 ]; then
-        echo "  有 $stale 台实例还在旧模板上：新入口会在用户下次请求时自动排空、重建、恢复；"
-        echo "  若它们的转发器太旧（没有排空接口），用 ./deploy.sh purge-old 手工删。"
+        echo "  集群中有 $stale 台实例使用其他模板。"
+        echo "  本部署数据库记录的旧实例，由入口在用户下次请求时按原流程换代恢复。"
     fi
     echo "  验收：浏览器登录 → 发一句话 → 拖一个文件；5 分钟后 ./deploy.sh status 看 state_archive 有值。"
 }

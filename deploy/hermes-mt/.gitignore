@@ -7,6 +7,7 @@ compose.override.yaml
 .overlay/
 .connector-runtime/
 .base-build.log
+.image-build.log
 .frontend-build.log
 .deploy-logs/
 .deploy-running

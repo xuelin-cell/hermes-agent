@@ -48,6 +48,9 @@ APT_MIRROR_LINES = (
     "        done; \\\n"
     "    fi\n",
 )
+NPM_STAGES = ('frontend_build', 'runtime')
+NPM_REGISTRY_ARG = 'ARG NPM_REGISTRY=https://registry.npmmirror.com\n'
+NPM_REGISTRY_ENV = 'ENV npm_config_registry=${NPM_REGISTRY}\n'
 
 
 def say(msg):
@@ -84,22 +87,37 @@ def npmmirror(url):
 
 def derive_dockerfile(dockerfile):
     """根目录 Dockerfile 加两行 COPY：pm 的预置文件放进它的下载目录，s6 的包放到 /tmp/s6-seed；
-    每个 FROM debian: 阶段开头换 apt 镜像源。COPY 的插入点各只能出现一次、Debian 阶段至少一个，
+    Debian 阶段换 apt 源，npm 安装阶段使用构建期镜像源。COPY 的插入点各只能出现一次、Debian 阶段至少一个，
     否则说明上游改了结构，要人来看。"""
     lines = dockerfile.splitlines(True)
     if dockerfile.count(PAYLOAD_COPY) != 1 or sum(1 for line in lines if line.startswith(S6_LAST_ARG)) != 1:
         raise ValueError("根目录 Dockerfile 的结构变了，找不到插入预置文件的位置")
     if not any(line.startswith(DEBIAN_FROM) for line in lines):
         raise ValueError("根目录 Dockerfile 的结构变了，找不到换 apt 镜像源的 Debian 阶段")
+    for name in NPM_STAGES:
+        if sum(1 for line in lines if line.startswith('FROM ') and line.rstrip().endswith(' AS ' + name)) != 1:
+            raise ValueError('根目录 Dockerfile 的 npm 构建阶段变了：' + name)
     out = ["# 由 deploy/hermes-mt/scripts/base_seed.py 从根目录 Dockerfile 生成，别手改。\n"]
+    stage, runtime_installs = '', 0
     for line in lines:
+        if line.startswith('FROM '):
+            stage = line.strip().split()[-1]
+        if stage == 'runtime' and line.lstrip().startswith('npm ci '):
+            line = line.replace('npm ci ', 'npm_config_registry="${NPM_REGISTRY}" npm ci ', 1)
+            runtime_installs += 1
         out.append(line)
         if line.startswith(DEBIAN_FROM):
             out.extend(APT_MIRROR_LINES)
+        elif line.startswith('FROM ') and stage in NPM_STAGES:
+            out.append(NPM_REGISTRY_ARG)
+            if stage == 'frontend_build':
+                out.append(NPM_REGISTRY_ENV)
         elif line == PAYLOAD_COPY:
             out.append("COPY --from=seed pm/ /opt/hermes/tools/\n")
         elif line.startswith(S6_LAST_ARG):
             out.append("COPY --from=seed s6/ /tmp/s6-seed/\n")
+    if not runtime_installs:
+        raise ValueError('根目录 Dockerfile 的 runtime npm 安装步骤变了，请检查镜像源插入位置')
     return "".join(out)
 
 
