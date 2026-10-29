@@ -299,7 +299,7 @@ export const UserMessage: FC<{
     [react]
   )
 
-  // Sticky human bubbles clamp to ~2 lines with a soft fade so a long prompt
+  // Sticky human bubbles clamp long prompts without fading the visible text. A long prompt
   // doesn't dominate the viewport while the response streams underneath; the
   // clamp lifts on hover / focus (see styles.css). We measure the *unclamped*
   // inner wrapper so the ResizeObserver only fires on real content / width

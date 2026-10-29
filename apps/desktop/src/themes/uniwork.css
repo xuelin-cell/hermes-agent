@@ -393,3 +393,33 @@
 :root[data-hermes-theme='uniwork'] [data-slot='aui_assistant-message-content'] .aui-md :where(li) {
   margin-bottom: 4px;
 }
+
+/* New conversations form one centered welcome/composer cluster. The editor
+   remains mounted and returns to its dock after the first message. */
+:root[data-hermes-theme='uniwork'] [data-welcome-layout='centered'] [data-slot='composer-dock']:not([data-popped-out]) {
+  top: 50%;
+  bottom: auto;
+  width: min(880px, calc(100% - 48px));
+}
+:root[data-hermes-theme='uniwork'] [data-welcome-layout='centered'] [data-slot='aui_intro'] {
+  position: absolute;
+  top: calc(50% - 100px);
+  left: 50%;
+  width: min(880px, calc(100% - 48px));
+  padding: 0;
+  transform: translate(-50%, -100%);
+}
+@media (max-height: 640px) {
+  :root[data-hermes-theme='uniwork']
+    [data-welcome-layout='centered']
+    [data-slot='composer-dock']:not([data-popped-out]) {
+    top: auto;
+    bottom: 8px;
+    max-height: 55%;
+    overflow-y: auto;
+  }
+  :root[data-hermes-theme='uniwork'] [data-welcome-layout='centered'] [data-slot='aui_intro'] {
+    top: 24%;
+    transform: translate(-50%, -50%);
+  }
+}

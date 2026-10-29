@@ -9,7 +9,7 @@ import type { MessagingPlatformInfo } from '@/types/hermes'
 
 import type { MessagingOperationStatus } from '../../../electron/entry_local/messaging-contract'
 
-import { $messagingOperation } from './operation-store'
+import { $dismissedMessagingFailureRevision, $messagingOperation } from './operation-store'
 
 import { MessagingView } from './index'
 
@@ -124,6 +124,7 @@ function platform(patch: Partial<MessagingPlatformInfo> = {}): MessagingPlatform
 beforeEach(() => {
   currentStatus = { phase: 'idle', revision: 0 }
   $messagingOperation.set({ phase: 'idle', revision: -1 })
+  $dismissedMessagingFailureRevision.set(-1)
   window.hermesDesktop = { ...window.hermesDesktop, messagingSetup,
     messagingStatus: async () => currentStatus,
     onMessagingStatus: listener => {
@@ -431,6 +432,206 @@ function dingtalk(patch: Partial<MessagingPlatformInfo> = {}) {
 }
 
 describe('Messaging cards and native configuration', () => {
+  it('校验失败可以关闭；轮询和重进页面不重复展示，新一次失败仍显示', async () => {
+    publishOperation({ phase: 'failed', operation: 'save', platform: 'feishu', profile: 'default',
+      saved: false, error: 'validation_network' })
+    getMessagingPlatforms.mockResolvedValue({ platforms: [
+      platform({ id: 'feishu' }), dingtalk({ enabled: true, configured: true, state: 'connected' })
+    ] })
+    const failure = 'Could not reach the platform. Your saved settings are unchanged.'
+    const view = await renderMessaging()
+    expect(await screen.findByText(failure)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(screen.queryByText(failure)).toBeNull()
+    await act(async () => { window.document.dispatchEvent(new Event('visibilitychange')) })
+    expect(screen.queryByText(failure)).toBeNull()
+
+    view.rerender(<MemoryRouter><div>Desktop chat</div></MemoryRouter>)
+    view.rerender(<MemoryRouter><MessagingView /></MemoryRouter>)
+    await screen.findByRole('article', { name: 'Feishu bot integration' })
+    expect(screen.queryByText(failure)).toBeNull()
+    expect(currentStatus).toMatchObject({ phase: 'failed', saved: false, error: 'validation_network' })
+    expect(messagingSetup).not.toHaveBeenCalled()
+
+    await act(async () => { publishOperation({ phase: 'failed', error: 'validation_network' }) })
+    expect(await screen.findByText(failure)).toBeTruthy()
+  })
+
+  it('关闭一次操作错误不掩盖当前渠道故障，也不停止原版重连', async () => {
+    publishOperation({ phase: 'failed', operation: 'save', platform: 'feishu', profile: 'default',
+      saved: false, error: 'validation_timeout' })
+    const detail = 'Feishu websocket link lost; reconnecting'
+    getMessagingPlatforms.mockResolvedValue({ platforms: [
+      platform({ id: 'feishu', enabled: true, configured: true, state: 'fatal', error_message: detail })
+    ] })
+    await renderMessaging()
+    expect(await screen.findByText(/Validation timed out/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(screen.queryByText(/Validation timed out/)).toBeNull()
+    expect(screen.getByText(detail)).toBeTruthy()
+    expect(screen.getByText(/Some messaging connections are unavailable/)).toBeTruthy()
+    const card = within(screen.getByRole('article', { name: 'Feishu bot integration' }))
+    expect(card.getByRole('button', { name: 'Retry' })).toBeTruthy()
+    expect(card.getByRole('button', { name: 'Disconnect' })).toBeTruthy()
+    expect(messagingSetup).not.toHaveBeenCalled()
+  })
+
+  it('关闭提示不影响下一次操作进度、成功和执行失败的展示', async () => {
+    publishOperation({ phase: 'failed', operation: 'save', platform: 'feishu', profile: 'default',
+      saved: false, error: 'validation_network' })
+    getMessagingPlatforms.mockResolvedValue({ platforms: [platform({ id: 'feishu' })] })
+    await renderMessaging()
+    fireEvent.click(await screen.findByRole('button', { name: 'Close' }))
+    await act(async () => { publishOperation({ phase: 'saving', error: undefined }) })
+    expect(await screen.findByText('Validating and saving messaging settings…')).toBeTruthy()
+    await act(async () => { publishOperation({ phase: 'completed', saved: true }) })
+    expect(await screen.findByText('Messaging settings applied.')).toBeTruthy()
+    await act(async () => { publishOperation({ phase: 'failed', saved: true, error: 'apply_failed' }) })
+    expect(await screen.findByText(/Settings saved, but the messaging connection/)).toBeTruthy()
+  })
+
+  it('即时请求错误也可以关闭，不重发请求或更改平台配置', async () => {
+    getMessagingPlatforms.mockResolvedValue({ platforms: [
+      platform({ id: 'feishu', enabled: true, configured: true, state: 'retrying' })
+    ] })
+    messagingSetup.mockRejectedValueOnce(new Error('IPC unavailable'))
+    await renderMessaging()
+    fireEvent.click(within(await screen.findByRole('article', { name: 'Feishu bot integration' }))
+      .getByRole('button', { name: 'Retry' }))
+    expect(await screen.findByText(/Settings saved, but the messaging connection/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(screen.queryByText(/Settings saved, but the messaging connection/)).toBeNull()
+    expect(screen.getByText(/reconnecting using its built-in policy/)).toBeTruthy()
+    expect(messagingSetup).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    { enabled: true, credential: false, unbind: true },
+    { enabled: false, credential: true, unbind: true },
+    { enabled: false, credential: false, unbind: false }
+  ])('不完整配置仍可清理，完全未绑定不提供解绑：$enabled/$credential', async ({ enabled, credential, unbind }) => {
+    $settingsScopeOverride.set('worker')
+    const row = dingtalk({ id: 'feishu', enabled, error_message: 'Feishu websocket link lost; reconnecting' })
+    row.env_vars[0].key = 'FEISHU_APP_ID'
+    row.env_vars[0].is_set = credential
+    row.env_vars[1].key = 'FEISHU_APP_SECRET'
+    getMessagingPlatforms.mockResolvedValue({ platforms: [row] })
+
+    try {
+      await renderMessaging()
+      const card = within(await screen.findByRole('article', { name: 'Feishu bot integration' }))
+      expect(!!card.queryByRole('button', { name: 'Disconnect' })).toBe(unbind)
+      expect(card.queryByRole('button', { name: 'Retry' })).toBeNull()
+      expect(!!card.queryByText(row.error_message!)).toBe(enabled)
+
+      if (unbind) {
+        fireEvent.click(card.getByRole('button', { name: 'Disconnect' }))
+        expect(messagingSetup).not.toHaveBeenCalled()
+        fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Disconnect' }))
+        await waitFor(() =>
+          expect(messagingSetup).toHaveBeenCalledWith({
+            operation: 'disconnect',
+            platform: 'feishu',
+            profile: 'worker'
+          })
+        )
+      }
+    } finally {
+      $settingsScopeOverride.set(null)
+    }
+  })
+
+  it.each(['retrying', 'fatal', 'disconnected'])('飞书 %s 卡片同时提供重试和解绑，已连接渠道保持原状', async state => {
+    const feishu = platform({
+      id: 'feishu',
+      configured: true,
+      enabled: true,
+      state,
+      error_message: 'Feishu websocket link lost; reconnecting'
+    })
+
+    getMessagingPlatforms.mockResolvedValue({
+      platforms: [feishu, dingtalk({ enabled: true, configured: true, state: 'connected' })]
+    })
+    await renderMessaging()
+    const card = within(await screen.findByRole('article', { name: 'Feishu bot integration' }))
+    expect(card.getByRole('button', { name: 'Disconnect' })).toBeTruthy()
+    expect(card.getByText(feishu.error_message!)).toBeTruthy()
+    fireEvent.click(card.getByRole('button', { name: 'Retry' }))
+    await waitFor(() =>
+      expect(messagingSetup).toHaveBeenCalledWith({
+      operation: 'retry',
+        profile: 'default'
+      })
+    )
+    const dingtalkCard = within(screen.getByRole('article', { name: 'DingTalk bot integration' }))
+    expect(dingtalkCard.getByRole('status').textContent).toBe('Connected')
+    expect(dingtalkCard.queryByRole('button', { name: 'Retry' })).toBeNull()
+  })
+
+  it('解绑生效后移除飞书旧错误和超时，保留其它渠道的真实故障', async () => {
+    publishOperation({
+      phase: 'failed',
+      operation: 'disconnect',
+      platform: 'feishu',
+      profile: 'default',
+      saved: true,
+      error: 'connection_timeout'
+    })
+
+    const feishu = platform({
+      id: 'feishu',
+      configured: true,
+      enabled: true,
+      state: 'retrying',
+      error_message: 'Feishu websocket link lost; reconnecting'
+    })
+
+    const other = dingtalk({
+      enabled: true,
+      configured: true,
+      state: 'fatal',
+      error_message: 'DingTalk authentication rejected'
+    })
+
+    getMessagingPlatforms.mockResolvedValue({ platforms: [feishu, other] })
+    await renderMessaging()
+    expect(await screen.findByText(feishu.error_message!)).toBeTruthy()
+    expect(screen.getByText(/Settings saved, but the messaging connection/)).toBeTruthy()
+
+    getMessagingPlatforms.mockResolvedValue({
+      platforms: [{ ...feishu, enabled: false, configured: false, state: 'disabled' }, other]
+    })
+    await act(async () => {
+      window.document.dispatchEvent(new Event('visibilitychange'))
+    })
+    await waitFor(() => expect(screen.queryByText(feishu.error_message!)).toBeNull())
+    expect(screen.queryByText(/Settings saved, but the messaging connection/)).toBeNull()
+    expect(screen.getByText(other.error_message!)).toBeTruthy()
+    const card = within(screen.getByRole('article', { name: 'Feishu bot integration' }))
+    expect(card.queryByRole('button', { name: 'Disconnect' })).toBeNull()
+    expect(card.queryByRole('button', { name: 'Retry' })).toBeNull()
+    expect(card.getByRole('button', { name: 'Configure' })).toBeTruthy()
+    expect(messagingSetup).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { error: 'apply_failed', saved: true },
+    { error: 'index_failed', saved: true },
+    { error: 'connection_timeout', saved: false }
+  ])('解绑后的新快照不能掩盖 $error/$saved 保存或执行错误', async ({ error, saved }) => {
+    publishOperation({ phase: 'failed', operation: 'disconnect', platform: 'feishu', profile: 'default', saved, error })
+    getMessagingPlatforms.mockResolvedValue({
+      platforms: [platform({ id: 'feishu' }), dingtalk({ enabled: true, configured: true, state: 'connected' })]
+    })
+    await renderMessaging()
+    expect(
+      await screen.findByText(
+        saved ? /Settings saved, but the messaging connection/ : /Could not save messaging settings/
+      )
+    ).toBeTruthy()
+  })
+
   it.each(['save', 'retry', 'watch'] as const)('clears a historical %s connection timeout only after fresh recovery', async operation => {
     publishOperation({ phase: 'failed', operation, platform: 'dingtalk', profile: 'default', saved: true, error: 'connection_timeout' })
     const row = dingtalk({ configured: true, enabled: true, state: 'retrying' })
@@ -540,7 +741,7 @@ describe('Messaging cards and native configuration', () => {
     getMessagingPlatforms.mockResolvedValue({ platforms: [dingtalk({ configured: true, enabled: true, state, error_message: detail })] })
     await renderMessaging()
     expect(await screen.findByText(detail)).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
+    expect(within(screen.getByRole('article', { name: 'DingTalk bot integration' })).getByRole('button', { name: 'Retry' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Open logs' })).toBeTruthy()
     expect(messagingSetup).not.toHaveBeenCalled()
     expect(notify).not.toHaveBeenCalled()
@@ -566,7 +767,7 @@ describe('Messaging cards and native configuration', () => {
     expect(revealLogs).toHaveBeenCalledOnce()
     await act(async () => { publishOperation({ phase: 'failed', error: 'gateway_identity_unverified' }) })
     expect(await screen.findByText('The existing gateway’s ownership could not be verified. No new gateway was started. Open logs for details.')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Retry' })[0])
     await waitFor(() => expect(messagingSetup).toHaveBeenCalledWith({ operation: 'retry', profile: 'default' }))
   })
 
@@ -614,7 +815,7 @@ describe('Messaging cards and native configuration', () => {
     expect(notify).not.toHaveBeenCalled()
     view.rerender(<MemoryRouter><MessagingView /></MemoryRouter>)
     expect(await screen.findByText('Settings saved, but the messaging connection could not be restored. Retry the connection.')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Retry' })[0])
     await waitFor(() => expect(messagingSetup).toHaveBeenCalledWith({ operation: 'retry', profile: 'default' }))
   })
 
