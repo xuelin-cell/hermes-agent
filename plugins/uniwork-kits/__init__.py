@@ -27,7 +27,7 @@ Enable with ``hermes plugins enable uniwork-kits``. Expert profiles created by
 
 from __future__ import annotations
 
-from . import background_rules, cli, communication_rules, expert_sync, host_hooks, host_rules, llm, package_hooks, router, skill_paths, tool_call_rules
+from . import background_rules, cli, code_packages, communication_rules, expert_sync, host_hooks, host_rules, llm, package_hooks, router, skill_paths, tool_call_rules
 
 
 def register(ctx) -> None:
@@ -66,6 +66,7 @@ def register(ctx) -> None:
     ctx.register_hook("pre_tool_call", skill_paths.on_pre_tool_call)
     ctx.register_hook("pre_tool_call", host_hooks.on_pre_tool_call)
     ctx.register_hook("pre_tool_call", package_hooks.on_pre_tool_call)
+    ctx.register_hook("pre_tool_call", code_packages.on_pre_tool_call)
     ctx.register_hook("post_tool_call", lambda tool_name="", **kw: package_hooks.on_observed("post_tool_call", tool_name, **kw))
     ctx.register_hook("on_session_start", lambda **kw: package_hooks.on_observed("on_session_start", **kw))
     ctx.register_hook("on_session_end", lambda **kw: package_hooks.on_observed("on_session_end", **kw))
