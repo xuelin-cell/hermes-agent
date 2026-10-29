@@ -198,14 +198,18 @@ it('动作退出不等于平台就绪；重启、扫码和解绑等待真实状�
       expect(service.status().phase).toBe('checking')
       const snapshot = platformStatus(state, state !== 'gateway_stopped')
 
-      if (operation === 'disconnect') {snapshot.platforms[0].enabled = false}
+      if (operation === 'disconnect' && index === 2) {snapshot.platforms[0].enabled = false}
       finish(snapshot)
     }
 
     await vi.waitFor(() => expect(reads).toBe(4))
     const ready = platformStatus()
 
-    if (operation === 'disconnect') {ready.platforms[0].enabled = false}
+    if (operation === 'disconnect') {
+      ready.platforms[0].enabled = false
+      ready.platforms[0].configured = false
+    }
+
     finish(ready)
     await service.settle()
     expect(service.status()).toMatchObject({ phase: 'completed', saved: true })
@@ -220,7 +224,7 @@ it('动作退出不等于平台就绪；重启、扫码和解绑等待真实状�
 
     if (url.startsWith('/api/plugins/desktop-messaging/platforms?')) {
       const snapshot = platformStatus('disabled', ++reads === 1)
-      snapshot.platforms.forEach(row => { row.enabled = false })
+      snapshot.platforms.forEach(row => { row.enabled = false; row.configured = false })
 
       return snapshot
     }
@@ -258,4 +262,65 @@ it('索引写入失败与连接超时分开，不允许正常连接掩盖保存�
   await service.settle()
   expect(service.status()).toMatchObject({ phase: 'failed', saved: true, error: 'index_failed' })
   expect(request.mock.calls.some(([, url]) => url.endsWith('/apply'))).toBe(false)
+})
+
+it('飞书解绑确认清空凭据并完成网关动作，不等待其它渠道恢复连接', async () => {
+  const { request, service } = fixture()
+  let reads = 0
+  request.mockImplementation(async (_profile, url) => {
+    if (url.includes('/platforms/')) {
+      return { changed: true }
+    }
+
+    if (url.endsWith('/apply')) {
+      return { name: 'gateway-restart' }
+    }
+
+    if (url.startsWith('/api/plugins/desktop-messaging/platforms?')) {
+      reads += 1
+      const snapshot = platformStatus('retrying', reads !== 3)
+      const feishu = snapshot.platforms.find(row => row.id === 'feishu')!
+      feishu.enabled = false
+      feishu.configured = reads === 1
+      Object.assign(feishu, { env_vars: [{ required: true, is_set: reads === 2 }] })
+
+      return snapshot
+    }
+
+    return { running: false, exit_code: 0 }
+  })
+  await service.submit({ operation: 'disconnect', platform: 'feishu', profile: 'worker' })
+  await service.settle()
+  expect(reads).toBe(4)
+  expect(service.status()).toMatchObject({ phase: 'completed', saved: true, platform: 'feishu' })
+  expect(request).toHaveBeenCalledWith(
+    'worker',
+    '/api/plugins/desktop-messaging/platforms/feishu?profile=worker',
+    'PUT',
+    { enabled: false, env: {} }
+  )
+  expect(request.mock.calls.filter(([, url]) => url.endsWith('/apply'))).toHaveLength(1)
+})
+
+it.each(['save', 'apply'] as const)('飞书解绑 %s 失败仍明确报告，不凭旧禁用状态冒充完成', async failure => {
+  const { request, service } = fixture()
+  request.mockImplementation(async (_profile, url) => {
+    if (url.includes('/platforms/')) {
+      if (failure === 'save') {
+        throw new Error('disk failed')
+      }
+
+      return { changed: true }
+    }
+
+    if (url.endsWith('/apply')) {
+      return { name: 'gateway-restart' }
+    }
+
+    return { running: false, exit_code: 1 }
+  })
+  await service.submit({ operation: 'disconnect', platform: 'feishu' })
+  await service.settle()
+  expect(service.status()).toMatchObject({ phase: 'failed', saved: failure !== 'save' })
+  expect(request.mock.calls.some(([, url]) => url.includes('/platforms?'))).toBe(false)
 })

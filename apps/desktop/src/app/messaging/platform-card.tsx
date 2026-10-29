@@ -17,6 +17,11 @@ export const CREDENTIAL_KEYS: Record<Exclude<PlatformId, 'weixin'>, readonly str
   wecom: ['WECOM_BOT_ID', 'WECOM_SECRET']
 }
 
+/** 已启用或仍留有必要凭据的平台均可解绑，不要求连接成功或配置完整。 */
+export function hasPlatformBinding(platform: MessagingPlatformInfo): boolean {
+  return platform.enabled || platform.configured || platform.env_vars.some(field => field.required && field.is_set)
+}
+
 const GUIDES: Record<(typeof DISPLAY_PLATFORM_IDS)[number], string> = {
   weixin: 'https://docs.qq.com/aio/DZkhpemVoTGNmVXJR',
   dingtalk: 'https://docs.qq.com/aio/DZmJuVGNjaWd5RnhK',
