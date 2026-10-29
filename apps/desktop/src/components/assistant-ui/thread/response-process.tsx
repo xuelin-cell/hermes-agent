@@ -1,21 +1,35 @@
+import './response-process.css'
+
 import { ThreadPrimitive, useAuiState } from '@assistant-ui/react'
 import { useStore } from '@nanostores/react'
-import { type ComponentProps, useState } from 'react'
+import { type ComponentProps, useMemo, useState } from 'react'
 
 import { useSessionView } from '@/app/chat/session-view'
-import { formatElapsed } from '@/components/chat/activity-timer'
 import { registerPluginLocales, usePluginI18n } from '@/i18n/plugin-i18n'
-import { ChevronRight } from '@/lib/icons'
+import { ChevronRight, Clock } from '@/lib/icons'
+
+import { responseDurationParts, ResponsePresentation } from './response-presentation'
 
 const SCOPE = 'desktop-mt.response-process'
 registerPluginLocales(SCOPE, {
   en: {
     duration: (time: string) => `Worked for ${time}`,
+    time: (h: number, m: number, s: number) => (h ? `${h}h ${m}m ${s}s` : m ? `${m}m ${s}s` : `${s}s`),
     process: 'Execution steps',
     step: (n: number) => `Step ${n}`
   },
-  zh: { duration: (time: string) => `用时 ${time}`, process: '执行过程', step: (n: number) => `步骤 ${n}` },
-  'zh-hant': { duration: (time: string) => `用時 ${time}`, process: '執行過程', step: (n: number) => `步驟 ${n}` }
+  zh: {
+    time: (h: number, m: number, s: number) => (h ? `${h}小时${m}分钟${s}秒` : m ? `${m}分${s}秒` : `${s}秒`),
+    duration: (time: string) => `用时 ${time}`,
+    process: '执行过程',
+    step: (n: number) => `步骤 ${n}`
+  },
+  'zh-hant': {
+    time: (h: number, m: number, s: number) => (h ? `${h}小時${m}分鐘${s}秒` : m ? `${m}分${s}秒` : `${s}秒`),
+    duration: (time: string) => `用時 ${time}`,
+    process: '執行過程',
+    step: (n: number) => `步驟 ${n}`
+  }
 })
 interface ResponseProcessProps {
   indices: readonly number[]
@@ -58,17 +72,23 @@ export function ResponseProcess({ indices, components }: ResponseProcessProps) {
 
   const state = JSON.parse(signature) as { live: boolean; seconds?: number }
 
+  const presentation = useMemo(() => ({ expanded, live: state.live }), [expanded, state.live])
+  const duration = responseDurationParts(state.seconds ?? 0)
+
   return (
-    <>
+    <ResponsePresentation.Provider value={presentation}>
       {!state.live && (
         <button
           aria-expanded={expanded}
-          className="flex w-full items-center gap-1 border-b border-border/50 pb-3 text-left text-sm text-muted-foreground hover:text-foreground"
+          className="response-process-summary group/process flex w-fit items-center gap-2 rounded-md py-2 text-left text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
           data-slot="aui_process-summary"
           onClick={() => setExpanded(!expanded)}
           type="button"
         >
-          {state.seconds === undefined ? copy('process') : copy('duration', formatElapsed(state.seconds))}
+          <Clock aria-hidden="true" className="size-3.5" />
+          {state.seconds === undefined
+            ? copy('process')
+            : copy('duration', copy('time', duration.hours, duration.minutes, duration.seconds))}
           <ChevronRight className={`size-3.5 transition-transform ${expanded ? 'rotate-90' : ''}`} />
         </button>
       )}
@@ -77,10 +97,11 @@ export function ResponseProcess({ indices, components }: ResponseProcessProps) {
 
         return (
           <div
-            className="data-[process-settled=true]:[&_[data-slot=tool-block]]:hidden data-[process-settled=true]:[&_[data-slot=aui_thinking-disclosure]]:hidden"
+            className="response-process-entry data-[process-settled=true]:[&_[data-slot=tool-block]]:hidden data-[process-settled=true]:[&_[data-slot=aui_thinking-disclosure]]:hidden"
             data-process-settled={!state.live && !expanded ? 'true' : undefined}
             hidden={!current && !state.live && !expanded}
             key={index}
+            style={!current && !state.live && !expanded ? { display: 'none' } : undefined}
           >
             <details data-slot="aui_process-step" open={current || (!state.live && expanded)}>
               <summary className={current ? 'hidden' : 'cursor-pointer py-1 text-xs text-muted-foreground'}>
@@ -91,6 +112,6 @@ export function ResponseProcess({ indices, components }: ResponseProcessProps) {
           </div>
         )
       })}
-    </>
+    </ResponsePresentation.Provider>
   )
 }
