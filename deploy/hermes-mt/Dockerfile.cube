@@ -54,7 +54,9 @@ USER root
 #     hermes 自己的浏览器工具用基础镜像里 pm 锁定的那份（/opt/hermes/tools/chromium-*）。
 #   - fonts-noto-cjk / fonts-noto-color-emoji：LibreOffice 渲染和浏览器截图里的中文、emoji 不再是方块。
 # 云端大包从国内 Debian 镜像下载；保留发行版、组件和签名校验。
-RUN sed -i \
+RUN --mount=type=cache,id=hermes-apt-trixie,target=/var/cache/apt,sharing=locked \
+    if [ -f /etc/apt/apt.conf.d/docker-clean ]; then mv /etc/apt/apt.conf.d/docker-clean /tmp/hermes-docker-clean; fi; \
+    sed -i \
         -e 's|deb\.debian\.org|mirrors.tuna.tsinghua.edu.cn|g' \
         -e 's|security\.debian\.org|mirrors.tuna.tsinghua.edu.cn|g' \
         /etc/apt/sources.list.d/debian.sources \
@@ -67,7 +69,8 @@ RUN sed -i \
         chromium \
         fonts-noto-cjk \
         fonts-noto-color-emoji \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* && \
+    if [ -f /tmp/hermes-docker-clean ]; then mv /tmp/hermes-docker-clean /etc/apt/apt.conf.d/docker-clean; fi
 
 # ---- 内置技能要用的 Python 库，装进 hermes 的 venv -------------------------------
 # 技能脚本在实例里直接 import 这些库；venv 没有 pip，hermes 用户也装不了，所以预装（hermes 自己不用它们）。
@@ -79,10 +82,11 @@ RUN sed -i \
 #   canvas-design、webapp-testing：playwright（浏览器见下一段）
 #   Pillow、requests、aiohttp、defusedxml 已是 hermes 自己的依赖。没装的是可选功能，缺了技能会跳过：
 #   uniai-ppt 把 SVG 转 PNG 的 svglib（reportlab 新版出图还要从源码编 pycairo）、uniai-pdf 的 OCR。
-RUN set -eu; \
+RUN --mount=type=cache,id=hermes-python-uv,target=/root/.cache/uv,sharing=locked \
+    set -eu; \
     uv="$(ls /opt/hermes/tools/uv-*/uv)"; \
     "$uv" pip freeze --python /opt/hermes/.venv/bin/python --exclude-editable > /tmp/hermes-pins.txt; \
-    "$uv" pip install --no-cache --python /opt/hermes/.venv/bin/python -c /tmp/hermes-pins.txt \
+    "$uv" pip install --cache-dir /root/.cache/uv --python /opt/hermes/.venv/bin/python -c /tmp/hermes-pins.txt \
         python-docx==1.2.0 pdf2image==1.17.0 PyMuPDF==1.28.2 \
         pypdf==6.19.0 pdfplumber==0.11.10 reportlab==5.0.1 \
         openpyxl==3.1.5 pandas==3.0.6 duckdb==1.5.6 \

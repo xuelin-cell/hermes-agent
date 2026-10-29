@@ -5,7 +5,8 @@ ENV PIP_INDEX_URL=${PIP_INDEX_URL} PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 
 WORKDIR /app
 COPY deploy/hermes-mt/entry/requirements.txt /tmp/entry-requirements.txt
 COPY deploy/hermes-mt/channels/requirements.txt /tmp/channels-requirements.txt
-RUN pip install --no-cache-dir -r /tmp/entry-requirements.txt -r /tmp/channels-requirements.txt
+RUN --mount=type=cache,id=hermes-python-pip,target=/root/.cache/pip,sharing=locked \
+    pip install --cache-dir /root/.cache/pip -r /tmp/entry-requirements.txt -r /tmp/channels-requirements.txt
 COPY deploy/hermes-mt/entry/entry /app/entry
 COPY deploy/hermes-mt/entry/migrations /app/migrations
 COPY deploy/hermes-mt/channels/config.yaml /app/config.yaml

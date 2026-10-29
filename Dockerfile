@@ -7,7 +7,9 @@
 FROM debian:13.4@sha256:e2d08da6f42ef4b09b165d55528a12727aeed8240dc9edf888e3ec07e10ef9da AS sqlite_build
 ARG SQLITE_AUTOCONF_VERSION=3530400
 ARG SQLITE_SHA256=0e9483900e92cd5de8fd48d16bf9200145a61f7fd5be542a5ac81d8a9516eb9c
-RUN apt-get -o Acquire::Retries=3 update && \
+RUN --mount=type=cache,id=hermes-apt-trixie,target=/var/cache/apt,sharing=locked \
+    if [ -f /etc/apt/apt.conf.d/docker-clean ]; then mv /etc/apt/apt.conf.d/docker-clean /tmp/hermes-docker-clean; fi; \
+    apt-get -o Acquire::Retries=3 update && \
     apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
         build-essential ca-certificates curl && \
     rm -rf /var/lib/apt/lists/* && \
@@ -40,7 +42,8 @@ RUN apt-get -o Acquire::Retries=3 update && \
         -DSQLITE_MAX_VARIABLE_NUMBER=250000" \
         ./configure --prefix=/opt/sqlite-fixed --disable-static && \
     make -j"$(nproc)" && \
-    make install
+    make install && \
+    if [ -f /tmp/hermes-docker-clean ]; then mv /tmp/hermes-docker-clean /etc/apt/apt.conf.d/docker-clean; fi
 
 # Same digest as sqlite_build: the built libsqlite must match this libc.
 FROM debian:13.4@sha256:e2d08da6f42ef4b09b165d55528a12727aeed8240dc9edf888e3ec07e10ef9da AS runtime_base
@@ -60,7 +63,8 @@ ENV PYTHONDONTWRITEBYTECODE=1
 # composes tool env.
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/hermes/tools
 
-# Install system dependencies in one layer, clear APT cache.
+# Download caches stay in BuildKit, outside the image; retain the runtime apt cleanup policy.
+# Install system dependencies in one layer, clear APT lists.
 # tini was previously PID 1 to reap orphaned zombie processes (MCP stdio
 # subprocesses, git, bun, etc.) that would otherwise accumulate when hermes
 # ran as PID 1. See #15012. Phase 2 of the s6-overlay supervision plan
@@ -73,11 +77,14 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/opt/hermes/tools
 # must be declared here. The list is the `ldd ... | grep "not found"` set of
 # the pinned chrome binary in this base image, mapped to trixie package
 # names (see .hermes/plans/termux-removal-commit-spec.md).
-RUN apt-get -o Acquire::Retries=3 update && \
+RUN --mount=type=cache,id=hermes-apt-trixie,target=/var/cache/apt,sharing=locked \
+    if [ -f /etc/apt/apt.conf.d/docker-clean ]; then mv /etc/apt/apt.conf.d/docker-clean /tmp/hermes-docker-clean; fi; \
+    apt-get -o Acquire::Retries=3 update && \
     apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
     ca-certificates curl iputils-ping python3 python-is-python3 gcc g++ make cmake python3-dev python3-venv libffi-dev libolm-dev libatomic1 procps git openssh-client docker-cli xz-utils \
     libasound2t64 libatk-bridge2.0-0t64 libatk1.0-0t64 libatspi2.0-0t64 libcairo2 libcups2t64 libdbus-1-3 libgbm1 libglib2.0-0t64 libnspr4 libnss3 libpango-1.0-0 libx11-6 libxcb1 libxcomposite1 libxdamage1 libxext6 libxfixes3 libxkbcommon0 libxrandr2 && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* && \
+    if [ -f /tmp/hermes-docker-clean ]; then mv /tmp/hermes-docker-clean /etc/apt/apt.conf.d/docker-clean; fi
 
 # Bot Screen (opt-in): PACKAGES["apt"] from tools/bot_desktop/runtime.py plus apt
 # `chromium` for the restricted-userns sandbox fallback. PM already stages
@@ -90,13 +97,16 @@ RUN apt-get -o Acquire::Retries=3 update && \
 # Xvnc is a userspace X server, so the runtime user can drive it.
 #   docker build --build-arg HERMES_BOT_DESKTOP=1 .
 ARG HERMES_BOT_DESKTOP=0
-RUN if [ "$HERMES_BOT_DESKTOP" = "1" ]; then \
+RUN --mount=type=cache,id=hermes-apt-trixie,target=/var/cache/apt,sharing=locked \
+    if [ -f /etc/apt/apt.conf.d/docker-clean ]; then mv /etc/apt/apt.conf.d/docker-clean /tmp/hermes-docker-clean; fi; \
+    if [ "$HERMES_BOT_DESKTOP" = "1" ]; then \
         apt-get -o Acquire::Retries=3 update && \
         DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
         tigervnc-standalone-server xfce4-panel xfwm4 xfdesktop4 xfce4-settings xfce4-terminal \
         dbus-x11 x11-xserver-utils x11-utils x11-xkb-utils xauth fonts-dejavu-core chromium && \
         rm -rf /var/lib/apt/lists/*; \
-    fi
+    fi && \
+    if [ -f /tmp/hermes-docker-clean ]; then mv /tmp/hermes-docker-clean /etc/apt/apt.conf.d/docker-clean; fi
 
 # Prefer the fixed SQLite over Debian's vulnerable libsqlite3.so.0. Keep the
 # public library name stable so both the system interpreter and the uv-created
@@ -277,7 +287,8 @@ FROM runtime_base AS python_deps
 # Source binding is created after the source copy below.
 COPY pyproject.toml uv.lock ./
 RUN touch ./README.md
-RUN python3 -m pm.build_env --source /opt/hermes --python /usr/local/bin/python3 \
+RUN --mount=type=cache,id=hermes-python-uv,target=/root/.cache/uv,sharing=locked \
+    python3 -m pm.build_env --source /opt/hermes --python /usr/local/bin/python3 --cache /root/.cache/uv \
     --out /opt/hermes/.venv --no-install-project --sealed \
     --extra all --extra messaging --extra otlp --extra anthropic --extra bedrock \
     --extra azure-identity --extra matrix --extra google-chat
