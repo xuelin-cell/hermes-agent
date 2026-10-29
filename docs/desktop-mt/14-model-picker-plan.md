@@ -96,6 +96,7 @@
 - 新增 `src/app/chat/composer/model-mt/model-meta.ts`：
   - 纯函数 `buildComposerModelMeta(response, providers, savedOrder)` 返回有序的模型行，每行含 `key`、`endpointId`、`provider`（`custom:<endpointId>`）、`model`、`name`、`contextWindow`、`vision`、`plan`；
   - 名字：套餐行用 `prettifyModelId`；自定义行用设置里的显示名，空了再美化；
+  - 调用标识：`model` 始终保留配置中的原始模型 ID；美化结果只放在 `name`，不能用于模型请求、能力查询或思考预设键。
   - 上下文：模型级 `context_length` 优先，其次端点级。
 - Hook `useComposerModelMeta()`：
   - 用 `useQuery` 请求，`queryKey` 以 `'model-options'` 开头：`['model-options', 'desktop-mt-meta', profile]`。这样设置页保存后已有的刷新会一起刷新它；
@@ -196,7 +197,7 @@
 | 3 | `model-mt/model-meta.test.ts` | 默认排第一、其余按保存顺序；名字规则；模型级上限优先于端点级；看图 |
 | 4 | `model-mt/context-usage.test.ts` | `999`、`37.0K`、`300.0K`、`1.5M`；百分比 1 位小数；圆环封顶；没有上限不显示；新对话为 0；配置上限优先于后端；估算标记 |
 | 4 | `composer/controls.test.tsx` | 传了圆环时显示；`compactModelPill`、`minimal`、`hideModelPill` 时不显示 |
-| 5 | `model-mt/model-list.test.tsx` | `modelOptions` 里有 Anthropic 也只显示配置行；超过 8 个才有搜索；选中时收到 `custom:<id>` 和模型名；当前项打勾；加载中、空列表的文案；当前模型不在配置里时补一行 |
+| 5 | `model-mt/model-list.test.tsx` | `modelOptions` 里有 Anthropic 也只显示配置行；超过 8 个才有搜索；选中时收到 `custom:<id>` 和原始模型 ID；当前项打勾；加载中、空列表的文案；当前模型不在配置里时补一行 |
 | 5 | `composer/model-pill.test.tsx` | 普通模式没有小圆点；普通模式无模型时显示加载文字；开发者模式原有测试全部通过 |
 | 6 | `model-mt/new-chat-model.test.tsx` | 从会话进入新对话时 manual 变 default；新对话里重新渲染不重置；新对话里选了模型后重新渲染仍是 manual；进入会话不重置 |
 

@@ -38,6 +38,7 @@ describe('输入框模型元数据', () => {
       'plan:desktop-mt-maas-a:deepseek-v4-flash'
     ])
     expect(rows.map(row => row.name)).toEqual(['我的模型', 'GLM 5.2', 'DeepSeek V4 Flash'])
+    expect(rows.map(row => row.model)).toEqual(['my-model', 'glm-5.2', 'deepseek-v4-flash'])
     expect(rows[0].provider).toBe('custom:personal')
   })
 
