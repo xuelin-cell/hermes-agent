@@ -106,3 +106,17 @@ def test_declared_output_is_persisted_as_file_card(tmp_path, filename, answer):
 
     receipt = run_scenario(tmp_path, filename=filename, answer=answer.replace("{relative}", filename))
     assert receipt["text"].count(f"MEDIA:{receipt['path']}") == 1
+
+
+def test_scratch_reference_is_filtered_before_history_reopens(tmp_path):
+    """正式插件过滤临时声明后再存档，真实写文件与历史重开仍能交付正式成品。"""
+    from tests.plugins.desktop_deliverables_fixture import run_scenario
+
+    receipt = run_scenario(
+        tmp_path,
+        filename="report.md",
+        answer="草稿说明 MEDIA:.tmp/draft.pdf\n\n成品完成。\nMEDIA:{path}",
+    )
+    assert "MEDIA:.tmp" not in receipt["text"]
+    assert ".tmp/draft.pdf" in receipt["text"]
+    assert receipt["text"].count("MEDIA:") == 1

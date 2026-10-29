@@ -21,7 +21,7 @@ def run_scenario(root, kind="workspace", *, filename=None, answer=None):
     assert not work.exists() and not home.exists(), "测试目录已有数据，拒绝覆盖"
     work.mkdir(parents=True)
     destination = (
-        work if filename or kind in {"workspace", "terminal", "execute_code"} else root / kind
+        work if filename or kind in {"workspace", "terminal", "execute_code", "dedupe"} else root / kind
     )
     destination.mkdir(exist_ok=True)
     output = destination / (
@@ -46,6 +46,15 @@ def run_scenario(root, kind="workspace", *, filename=None, answer=None):
         else f"![报告](<MEDIA:{output}>)" if kind == "wrapped"
         else "完成了。"
     )
+    if kind == "dedupe":
+        scratch = work / ".tmp" / "draft.md"
+        scratch.parent.mkdir()
+        scratch.write_text("# 临时内容", encoding="utf-8")
+        response = (
+            f"MEDIA:{output}\n\n[重复说明](<{output.as_posix()}>)\n\n"
+            f"[再次说明]({output.as_uri()})\n\n"
+            f"MEDIA:{scratch}\n\n[临时说明]({scratch.as_uri()})"
+        )
     with (
         patch.dict(
             os.environ,
@@ -91,8 +100,15 @@ def run_scenario(root, kind="workspace", *, filename=None, answer=None):
                 f"把文件写到 {output}。", task_id="native-delivery"
             )
             assert output.read_text(encoding="utf-8") == "# 交付测试"
-            assert f"MEDIA:{output}" in result["final_response"]
+            if kind == "dedupe":
+                assert result["final_response"].count(output.as_uri()) == 1
+                assert f"(<{output.as_posix()}>)" in result["final_response"]
+            else:
+                assert f"MEDIA:{output}" in result["final_response"]
             expected = result["final_response"]
+            if kind == "dedupe":
+                assert expected.count("MEDIA:") == 0
+                assert scratch.read_text(encoding="utf-8") == "# 临时内容"
         finally:
             agent.close()
             database.close()
