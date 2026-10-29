@@ -15,6 +15,10 @@
 
 设备令牌在默认 profile 的 .env 里（入口告诉我们变量名）。托管 profile 各有一份 .env，每次安装、
 以及转发器定时检查时，都按默认 profile 的值同步（:func:`sync_tokens`），换令牌后托管 profile 不会掉队。
+
+企业对接插件（deploy/hermes-mt/plugin，随沙箱镜像装进 hermes 的 venv）：每次安装把清单的 ``plugin`` 段写成
+``.cache/uniwork-enterprise/plugin.json``（平台地址、令牌变量名、开关，不含令牌），插件按它决定做不做；
+转发器定时检查时，所有 profile 的 config.yaml 都确保启用了它（:func:`sync_plugins`）。
 """
 
 from __future__ import annotations
@@ -56,6 +60,9 @@ AGENT_TOOL_SWITCHES = {
 # （Docker 路径的转发器以 hermes 的用户跑，写不了入口以 root 放进来的 .mt/）
 STATE_FILE = ".cache/uniwork-enterprise/state.json"
 CACHE_DIR = ".cache/uniwork-enterprise/packages"
+# 企业对接插件的配置（插件里的 settings.py 读它）和它在 hermes 里的名字（entry/tenants.py 的 UNIWORK_PLUGIN_KEY）
+PLUGIN_FILE = ".cache/uniwork-enterprise/plugin.json"
+PLUGIN_KEY = "uniwork-enterprise"
 
 MAX_PACKAGE_BYTES = 20 * 1024 * 1024
 MAX_EXTRACTED_BYTES = 80 * 1024 * 1024
@@ -707,6 +714,51 @@ def token_env_of(home: Path) -> str:
         return ""
 
 
+def _plugin_json(spec: dict, server: str, token_env: str) -> bytes:
+    plugin = spec.get("plugin") if isinstance(spec.get("plugin"), dict) else {}
+    return json.dumps({"v": 1, "enabled": plugin.get("enabled") is True and bool(server) and bool(token_env),
+                       "server": server, "tokenEnv": token_env, "toolAudit": plugin.get("toolAudit") is not False},
+                      sort_keys=True).encode("utf-8")
+
+
+def plugin_enabled(home: Path) -> bool:
+    try:
+        return json.loads((home / PLUGIN_FILE).read_text(encoding="utf-8")).get("enabled") is True
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def sync_plugins(home: Path) -> list[str]:
+    """插件开着时，确保每个 profile（默认的、平台下发的、员工自建的）的 config.yaml 都启用了它，返回改过的 profile 名
+    （默认 profile 写成 "default"）。
+
+    默认 profile 和托管 profile 本来就由平台块写好；这里兜住两种情况：本功能上线前员工自建的 profile，以及员工
+    在界面里把它停用了。hermes 每个 profile 只在第一次用到时读一次插件清单，改了要等 hermes 下次重启才加载。
+    解析不了的 config.yaml 不碰。"""
+    if not plugin_enabled(home):
+        return []
+    load, dump = mtstate._yaml_io()  # noqa: SLF001
+    owner = _owner_of(home)
+    changed = []
+    for profile in mtstate.hermes_homes(home):
+        path = profile / "config.yaml"
+        try:
+            cfg = load(path.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001 —— 文件不在、解析不了：不碰
+            continue
+        if not isinstance(cfg, dict) or not mtstate.enable_plugins(cfg, [PLUGIN_KEY]):
+            continue
+        text = dump(cfg)
+        try:
+            mtstate._check_parses(text)  # noqa: SLF001
+        except Exception:  # noqa: BLE001 —— 写回去 hermes 读不了的不写
+            continue
+        mtstate._write_atomic(path, text.encode("utf-8"))  # noqa: SLF001
+        _chown_tree(path, owner)
+        changed.append("default" if profile == home else profile.name)
+    return changed
+
+
 # ---------------------------------------------------------------- 入口
 
 def apply(home: Path, spec: dict, fetch: Fetch | None = None) -> dict:
@@ -774,5 +826,6 @@ def apply(home: Path, spec: dict, fetch: Fetch | None = None) -> dict:
     _write(home / STATE_FILE, json.dumps({"token_env": token_env, "tenant": tenant,
                                           "revision": str(spec.get("revision") or "")}).encode("utf-8"),
            home, owner, 0o600)
+    _write(home / PLUGIN_FILE, _plugin_json(spec, server, token_env), home, owner)
     report["ok"] = not report["errors"]
     return report

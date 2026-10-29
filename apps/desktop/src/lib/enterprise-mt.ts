@@ -109,3 +109,9 @@ export function skipsTopUpPrompt(): boolean {
 export function isPlatformMcpServer(name: string): boolean {
   return $enterpriseShell.get() && (name === 'yuanjing' || name.startsWith('uniwork-'))
 }
+
+/** The enterprise plugin the cloud's sandbox image ships (deploy/hermes-mt/plugin: session headers and the
+ *  tool-call audit). The forwarder keeps it enabled in every profile, so it is never offered as a toggle. */
+export function isPlatformPlugin(name: string): boolean {
+  return name === 'uniwork-enterprise'
+}

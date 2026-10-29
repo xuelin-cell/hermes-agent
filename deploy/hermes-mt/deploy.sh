@@ -23,7 +23,8 @@
 # 入口重建后 nginx 要重启、entry.env 权限……），漏一条就是线上事故。这里把它们全部变成
 # 检查项和自动步骤，人只需要跑一条命令、看一份摘要。
 #
-# 沙箱镜像按「内容指纹」命名，不按提交号：指纹 = Dockerfile.cube + seed/* + overlay.list 列的仓库文件 + 基础镜像 ID + 模板参数。
+# 沙箱镜像按「内容指纹」命名，不按提交号：指纹 = Dockerfile.cube + seed/* + plugin/（企业对接插件）+ overlay.list 列的仓库文件
+# + 基础镜像 ID + 模板参数。
 # overlay.list 列本分支在 hermes 源码上的改动和新增（仓库路径），构建前原样拷进 .overlay/，按原路径覆盖进镜像的 /opt/hermes。
 # 只改入口代码时镜像和模板一个都不会重做；改了转发器就一定重做。入口发现实例的模板和配置里的
 # 不一致，会在用户下次请求时自动排空、删除、重建、恢复（见 seed/mtstate.py），不用手工删实例。
@@ -184,11 +185,20 @@ fingerprint() {
             case "$f" in */config.yaml.tmpl) continue ;; esac
             printf 'seed/%s\n' "$(basename "$f")"; cat "$f"
         done
+        # 企业对接插件装进镜像里 hermes 的 venv（见 Dockerfile.cube），改它要换模板。
+        for f in $(plugin_files); do
+            printf '%s\n' "$f"; cat "$HERE/$f"
+        done
         for f in $(overlay_files); do
             printf 'overlay/%s\n' "$f"; cat "$REPO/$f"
         done
         printf 'base=%s\ntpl=%s/%s/%s\n' "$base_id" "$TPL_CPU" "$TPL_MEM" "$TPL_DISK"
     } | sha256sum | cut -c1-12
+}
+
+# plugin/ 下的文件（相对 $HERE，顺序固定）：和 Dockerfile.cube 的 COPY plugin/ 同一批，只去掉 Python 的字节码缓存。
+plugin_files() {
+    (cd "$HERE" && find plugin -type f ! -path '*/__pycache__/*' ! -name '*.pyc' | LC_ALL=C sort)
 }
 
 # overlay.list 里的条目（去掉注释和空行）：仓库路径，目录表示其下全部受版本管理的文件。
@@ -500,7 +510,7 @@ ensure_frontend() {
 cmd_image() {
     local fp
     fp="$(fingerprint)"
-    say "沙箱镜像：指纹 $fp（Dockerfile.cube + seed/* + overlay.list 列的仓库文件 + 基础镜像 + 模板参数）"
+    say "沙箱镜像：指纹 $fp（Dockerfile.cube + seed/* + plugin/ + overlay.list 列的仓库文件 + 基础镜像 + 模板参数）"
     cd "$HERE"
     check_overlay
     stage_overlay
@@ -511,6 +521,15 @@ cmd_image() {
     in_img="$(docker run --rm --network none --entrypoint sha256sum "$IMAGE_NAME:$fp" /opt/mt/forward.py /opt/mt/mtstate.py /opt/mt/mtuser.py /opt/mt/mtent.py | awk '{print $1}' | tr '\n' ' ')"
     in_repo="$(sha256sum seed/forward.py seed/mtstate.py seed/mtuser.py seed/mtent.py | awk '{print $1}' | tr '\n' ' ')"
     [ "$in_img" = "$in_repo" ] && ok "镜像里的转发器与仓库一致" || die "镜像里的 forward.py/mtstate.py/mtuser.py/mtent.py 与仓库不一致"
+    # 企业对接插件同理：装进 hermes venv 的每个文件和仓库逐字节相同（hermes 认得出它，构建时已经断言过）。
+    local plugin_rel
+    plugin_rel="$(plugin_files | sed 's|^plugin/||' | tr '\n' ' ')"
+    # shellcheck disable=SC2086,SC2016
+    in_img="$(docker run --rm --network none --entrypoint /opt/hermes/.venv/bin/python "$IMAGE_NAME:$fp" -B -c 'import hashlib, os, sys, sysconfig; base = sysconfig.get_paths()["purelib"]; print("\n".join(hashlib.sha256(open(os.path.join(base, f), "rb").read()).hexdigest() for f in sys.argv[1:]))' $plugin_rel | tr '\n' ' ')"
+    # shellcheck disable=SC2086
+    in_repo="$(cd plugin && sha256sum $plugin_rel | awk '{print $1}' | tr '\n' ' ')"
+    [ "$in_img" = "$in_repo" ] && ok "镜像里的企业对接插件与仓库一致（$(plugin_files | wc -l | tr -d ' ') 个文件）" \
+        || die "镜像里 hermes venv 下的企业对接插件与仓库的 plugin/ 不一致"
     # 只发 UniWork 内置技能靠 hermes 自己的标记文件（见 README「技能」）：基础镜像太旧就没有，上游那套会露出来。
     docker run --rm --network none --entrypoint test "$IMAGE_NAME:$fp" -f /opt/hermes/skills/UNIWORK_BUNDLED_ONLY \
         && ok "镜像里的 hermes 只发 UniWork 内置技能" \

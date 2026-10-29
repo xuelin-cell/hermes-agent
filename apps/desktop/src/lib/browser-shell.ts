@@ -7,6 +7,7 @@ export {
   enterpriseErrorCard,
   enterpriseRecoveryPlan,
   isPlatformMcpServer,
+  isPlatformPlugin,
   skipsTopUpPrompt
 } from './enterprise-mt'
 
@@ -79,6 +80,7 @@ export {
  *                                                      in the preview pane's own player, formats/media-preview.tsx)
  *   lib/model-options.ts                               * model pickers: the platform's providers only
  *   lib/reasoning-effort.ts                            the reasoning-effort pill reads 高 / 中 / 低, not High / Med / Low
+ *   store/agent-plugins.ts                             the enterprise plugin of the sandbox image is not listed (no toggle)
  *   store/developer-mode.ts                            flipping UniWork's developer mode reloads the page
  *   store/mcp-health.ts                                enterprise mode: no "sign in again" nudge for the platform's MCP
  *                                                      servers (they authenticate with the device token)

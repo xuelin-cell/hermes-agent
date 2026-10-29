@@ -26,6 +26,7 @@
 | `entry/` | 入口服务（Python 3.13 + aiohttp，单进程）。`entry/entry/*.py` 见文件头注释 |
 | `seed/forward.py` | 放进每个租户卷 `/opt/data/.mt/` 的 TCP 转发器（标准库，30 行） |
 | `seed/config.yaml.tmpl` | 每个租户首次建卷时写入的 `config.yaml` 模板 |
+| `plugin/` | 企业对接插件（hermes 插件，按 entry point 加载）：发给平台的模型请求带会话头、上报工具调用。沙箱镜像把它装进 hermes 的 venv，企业模式下各 profile 在 `plugins.enabled` 里启用；配置在实例的 `.cache/uniwork-enterprise/plugin.json`，`MT_UNIWORK_PLUGIN=0` 一键停用。测试在 `tests/hermes_mt_plugin`（用仓库的 `.venv` 跑） |
 | `nginx/hermes-mt.conf` | 由 `.7` 单用户版的 Nginx 配置改来：两处 `proxy_pass` 指向入口，去掉写死的 token，静态加 `auth_request` |
 | `scripts/build-frontend.sh` | 构建浏览器版前端到 `nginx/dist-browser/`（与 `deploy-custom-web.sh` 同一条 vite 命令） |
 | `scripts/verify_isolation.sh` | 验收 27 项：登录门禁 / 两个用户各自的世界 / 网络围栏 / 文件链路与文件隔离 |
@@ -55,7 +56,7 @@ cd deploy/hermes-mt
 
 耗时：只改了入口或配置几分钟；改了前端多 5~10 分钟；hermes 源码变了（合了上游、桌面版改了插件或内置技能）基础镜像要重建 15~45 分钟，沙箱镜像也跟着整个重建 20~40 分钟。
 
-要点：沙箱镜像按内容指纹命名（`Dockerfile.cube` + `seed/*` + 基础镜像 + 模板参数），只改入口代码不会重做镜像和模板；改了转发器就一定重做，并把新模板 ID 写进 `entry.env`。**入口和沙箱模板必须一起升级**——新入口配旧转发器会把用户的 `config.yaml` 写坏，脚本保证这一点。入口发现实例的模板和配置不一致，会在用户下次请求时自动排空、删除、重建、从卷上的归档恢复。部署机的规矩（不重启 Docker、不 prune、不切换构建器、页面只绑内网 IP、不打印密钥）也都在脚本里。
+要点：沙箱镜像按内容指纹命名（`Dockerfile.cube` + `seed/*` + `plugin/` + 基础镜像 + 模板参数），只改入口代码不会重做镜像和模板；改了转发器就一定重做，并把新模板 ID 写进 `entry.env`。**入口和沙箱模板必须一起升级**——新入口配旧转发器会把用户的 `config.yaml` 写坏，脚本保证这一点。入口发现实例的模板和配置不一致，会在用户下次请求时自动排空、删除、重建、从卷上的归档恢复。部署机的规矩（不重启 Docker、不 prune、不切换构建器、页面只绑内网 IP、不打印密钥）也都在脚本里。
 
 **基础镜像**：沙箱镜像叠在基础镜像（hermes 本体）上。基础镜像用本仓库根目录的 `Dockerfile` 构建，和桌面版同一份（只补了一行它漏掉的 `COPY scripts/build/filesystem.py`），里面是 hermes 代码、内置技能（`skills/uniwork`）和 pm 锁定的 Python 3.14、Node、Chromium、ffmpeg、ripgrep（都在 `/opt/hermes/tools`；uv 不在 PATH 上）。镜像名 `hermes-custom:src-<指纹>`，指纹只算 hermes 源码（不含 `apps/`、`deploy/`、`docs/`、`tests/`、`website/`），所以只改前端或部署脚本不用重建；`./deploy.sh all` 找不到当前指纹的基础镜像会自己先建（也可以提前单独跑 `./deploy.sh base`）。部署机连 GitHub 极慢、连不上 Playwright 的 CDN，所以 `deploy.sh base` 先用 `scripts/base_seed.py` 把 pm 锁定的 7 个大文件（uv、Python、Chromium、node、npm、ffmpeg、ripgrep）和 s6-overlay 的三个包按 sha256 备好：pm 的文件来源依次是 hermes 的公开镜像、npmmirror、原地址；s6-overlay 的包公开镜像上没有，放在仓库的 `vendor/s6-overlay/` 里随代码拉下来（上游升了 s6 版本要把新包放进去，测试会提醒）；目录是 `MT_DEPLOY_SEED_DIR`（默认 `/var/cache/hermes-mt/base-seed`，备好的不重下）。然后用它生成的 Dockerfile 副本构建：副本只比原文件多两行 COPY，上游文件本身不改。构建本身只再连 PyPI、npm 和 Debian 源。以前按摘要拉的 `hermes-custom:a2007f2` 不能再用：它没有内置技能的标记文件，`deploy.sh` 会拦下。`entry.env` 里如果写了 `MT_DEPLOY_BASE_IMAGE`，就固定用它，一般不要写。
 

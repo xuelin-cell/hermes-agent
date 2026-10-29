@@ -51,6 +51,8 @@ GONE_STATES = frozenset({"deleting", "terminating", "deleted"})
 YUANJING_MCP_NAME = "yuanjing"
 # 元景 mcp-server 最慢的工具（文档翻译）要 10 分钟；hermes 默认一次工具调用最多等 300 秒。
 YUANJING_MCP_TIMEOUT_S = 600
+# 沙箱镜像自带的企业对接插件（deploy/hermes-mt/plugin）在 hermes 里的名字：企业模式下写进 plugins.enabled。
+UNIWORK_PLUGIN_KEY = "uniwork-enterprise"
 
 # 平台策略：每次引导都按这里写进用户的 config.yaml（seed/mtstate.py 的 apply_platform_block）。
 PLATFORM_POLICY = {
@@ -570,6 +572,10 @@ class TenantManager:
         }
         if api_key is not None:
             spec["mcp_servers"] = self._mcp_servers(api_key)
+        if self.s.enterprise:
+            # 企业对接插件：hermes 只加载 plugins.enabled 里有的。引导时在拉起 hermes 之前写，默认 profile 一启动就有；
+            # Agent 的托管 profile 用这份当模板，也带上。停用靠实例里的 plugin.json（MT_UNIWORK_PLUGIN），这里照写。
+            spec["plugins"] = {"enable": [UNIWORK_PLUGIN_KEY]}
         return spec
 
     def _cube_seed_files(

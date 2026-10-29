@@ -50,9 +50,11 @@ def _rewrite(url: str, announced: str, server: str) -> str:
     return url
 
 
-def build_spec(policy: dict, *, server: str, token_env: str, config: dict, service: bool = False) -> dict:
+def build_spec(policy: dict, *, server: str, token_env: str, config: dict, service: bool = False,
+               plugin: bool = True) -> dict:
     """平台策略 → 转发器的清单。``config`` 是入口给默认 profile 的配置（TenantManager._config_patch_spec），
-    Agent 的托管 profile 以它为模板；``service`` 表示平台的运行环境。"""
+    Agent 的托管 profile 以它为模板；``service`` 表示平台的运行环境；``plugin`` 是实例里企业对接插件的总开关
+    （MT_UNIWORK_PLUGIN），连同平台的工具调用记录开关一起由转发器写进实例的 plugin.json。"""
     info = policy.get("enterprise") if isinstance(policy.get("enterprise"), dict) else {}
     server = server.rstrip("/")
     announced = str(info.get("serverUrl") or "").rstrip("/")
@@ -133,9 +135,12 @@ def build_spec(policy: dict, *, server: str, token_env: str, config: dict, servi
                 # 这个版本打开的内置工具（27 号第 1 节）；没有这个字段的旧平台 = 全开
                 "tools": [str(t) for t in entry["tools"]] if isinstance(entry.get("tools"), list) else None,
             })
+    tool_audit = policy.get("toolAudit") if isinstance(policy.get("toolAudit"), dict) else {}
     return {"v": SPEC_VERSION, "tenant": str(info.get("tenantId") or ""), "server": server, "token_env": token_env,
             "revision": str(policy.get("revision") or ""), "config": base_config, "default": default,
-            "agents": agents}
+            "agents": agents,
+            # 企业对接插件（deploy/hermes-mt/plugin）：会话头总是带；工具调用记录按平台的开关，缺省为开（14 号第 14 条）
+            "plugin": {"enabled": bool(plugin), "toolAudit": tool_audit.get("enabled", True) is not False}}
 
 
 def spec_digest(spec: dict) -> str:
@@ -175,7 +180,7 @@ class EnterpriseSync:
         config = tenants._config_patch_spec(context.endpoint, context.catalog, getattr(context, "limits", None),  # noqa: SLF001
                                             api_key=context.api_key or "")
         spec = build_spec(policy, server=self.e.s.uniwork_server, token_env=self.e.s.key_env_name, config=config,
-                          service=service)
+                          service=service, plugin=self.e.s.uniwork_plugin)
         digest = spec_digest(spec)
         previous = self._specs.get(user_id)
         self._specs[user_id] = (spec, digest)

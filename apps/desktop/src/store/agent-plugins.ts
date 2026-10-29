@@ -1,5 +1,6 @@
 import { atom } from 'nanostores'
 
+import { isPlatformPlugin } from '@/lib/browser-shell'
 import { notifyError } from '@/store/notifications'
 
 /**
@@ -112,6 +113,11 @@ const HIDDEN_KEY_PREFIXES = ['dashboard_auth/', 'model-providers/', 'platforms/'
 const MANAGEABLE_BUNDLED_KEYS = new Set(['disk-cleanup', 'security-guidance'])
 
 export const isDesktopRelevantPlugin = (row: AgentPluginRow): boolean => {
+  // desktop-mt: the cloud image's enterprise plugin stays enabled, never a toggle (lib/enterprise-mt.ts)
+  if (isPlatformPlugin(row.key ?? row.name)) {
+    return false
+  }
+
   if (row.source === 'bundled') {
     return MANAGEABLE_BUNDLED_KEYS.has(row.key ?? row.name)
   }

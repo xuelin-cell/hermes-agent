@@ -149,6 +149,9 @@ class Settings:
     # （逗号分隔，IP 或 网段，如 192.168.0.50）；留空不限来源，只验密钥。来源地址取 nginx 写的 X-Real-IP。
     service_secret: str = _env("MT_UNIWORK_SERVICE_SECRET", "")
     service_allow: str = _env("MT_UNIWORK_SERVICE_ALLOW", "")
+    # 实例里的企业对接插件（deploy/hermes-mt/plugin：模型请求带会话头、上报工具调用）。设成 0 = 一键停用：
+    # 下次送企业清单时写进实例的 plugin.json，插件几秒内停手，不用换模板。只在企业模式有意义。
+    uniwork_plugin: bool = _env("MT_UNIWORK_PLUGIN", "1") != "0"
 
     # 开发模式：不走短信登录，任意用户名直接进；模型 key 用 MT_DEV_API_KEY。生产必须关。
     dev_login: bool = _env("MT_DEV_LOGIN", "0") == "1"

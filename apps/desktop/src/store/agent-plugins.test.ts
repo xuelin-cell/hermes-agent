@@ -81,6 +81,11 @@ describe('isDesktopRelevantPlugin (#98861)', () => {
     // User installs are unaffected either way.
     expect(isDesktopRelevantPlugin(row({ key: 'my-plugin', source: 'user' }))).toBe(true)
   })
+
+  it('never lists the enterprise plugin of the cloud sandbox image (it has no toggle)', () => {
+    expect(isDesktopRelevantPlugin(row({ key: 'uniwork-enterprise', source: 'entrypoint' }))).toBe(false)
+    expect(isDesktopRelevantPlugin(row({ key: 'other-tool', source: 'entrypoint' }))).toBe(true)
+  })
 })
 
 describe('saveAgentPluginSettings (#46600, #87934)', () => {

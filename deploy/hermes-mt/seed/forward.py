@@ -758,6 +758,14 @@ def _sync_tokens_quietly() -> list[str]:
         return []
 
 
+def _sync_plugins_quietly() -> list[str]:
+    try:
+        return mtent.sync_plugins(HERMES_HOME)
+    except Exception as exc:  # noqa: BLE001
+        _log(f"检查企业对接插件的启用失败: {type(exc).__name__}: {exc}")
+        return []
+
+
 def _env_mtime() -> float:
     try:
         return (HERMES_HOME / ".env").stat().st_mtime
@@ -769,7 +777,8 @@ async def _token_follower() -> None:
     """把默认 profile 的设备令牌同步给其他 profile（Agent 的托管 profile、员工自建的机器人）。
 
     Docker 路径换令牌走 hermes 的 /api/env，只改默认 profile 的 .env；沙箱路径换令牌走 /__mt/reload，那里会当场同步。
-    这里看着默认 profile 的 .env：一变就同步，重新登录后紧接着用 Agent 聊天也不会拿旧令牌；另外每分钟兜底一次。"""
+    这里看着默认 profile 的 .env：一变就同步，重新登录后紧接着用 Agent 聊天也不会拿旧令牌；另外每分钟兜底一次。
+    兜底时顺带检查各 profile 都启用了企业对接插件（mtent.sync_plugins）。"""
     seen = _env_mtime()
     since_full = 0.0
     while True:
@@ -782,6 +791,9 @@ async def _token_follower() -> None:
         changed = await asyncio.to_thread(_sync_tokens_quietly)
         if changed:
             _log(f"其他 profile 的设备令牌已跟上：{', '.join(changed)}")
+        enabled = await asyncio.to_thread(_sync_plugins_quietly)
+        if enabled:
+            _log(f"企业对接插件已在这些 profile 启用，hermes 下次重启后加载：{', '.join(enabled)}")
 
 
 async def _enterprise(writer: asyncio.StreamWriter, body: bytes) -> None:

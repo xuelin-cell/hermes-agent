@@ -154,6 +154,19 @@ COPY seed/mtuser.py /opt/mt/mtuser.py
 COPY seed/mtent.py /opt/mt/mtent.py
 RUN chmod 0644 /opt/mt/forward.py /opt/mt/mtstate.py /opt/mt/mtuser.py /opt/mt/mtent.py
 
+# ---- 企业对接插件（plugin/：模型请求带会话头、上报工具调用）--------------------------
+# 和转发器一样放在镜像层。hermes 按 entry point（hermes_agent.plugins 组）发现它，各 profile 在 config.yaml 的
+# plugins.enabled 里启用（企业模式由入口和转发器写）。venv 里没有打包工具（setuptools 之类），不走 pip 构建：
+# 包和 dist-info 直接放进 site-packages，就是安装器做的那件事。装完 import 一次，确认 hermes 认得出它。
+COPY plugin/ /tmp/uniwork-plugin/
+RUN set -eu; \
+    site="$(/opt/hermes/.venv/bin/python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"; \
+    find /tmp/uniwork-plugin -name __pycache__ -prune -exec rm -rf {} +; \
+    cp -r /tmp/uniwork-plugin/uniwork_enterprise /tmp/uniwork-plugin/uniwork_enterprise-*.dist-info "$site/"; \
+    chmod -R u=rwX,go=rX "$site/uniwork_enterprise" "$site"/uniwork_enterprise-*.dist-info; \
+    rm -rf /tmp/uniwork-plugin; \
+    /opt/hermes/.venv/bin/python -B -c 'import importlib.metadata as m, uniwork_enterprise; assert [e for e in m.entry_points(group="hermes_agent.plugins") if e.name == "uniwork-enterprise" and e.value == "uniwork_enterprise:register"]'
+
 # ---- 本分支对 hermes 源码的改动（overlay.list） -------------------------------
 # 基础镜像就是用本仓库构建的，hermes 源码（含 skills/uniwork 内置技能）已在里面，所以清单现在是空的。
 # 留着这条路给「不重建基础镜像、先改几个 hermes 文件」：/opt/hermes 是可编辑安装，且不留预编译缓存

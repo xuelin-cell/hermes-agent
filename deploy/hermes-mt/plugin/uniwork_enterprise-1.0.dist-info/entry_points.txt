@@ -1,0 +1,2 @@
+[hermes_agent.plugins]
+uniwork-enterprise = uniwork_enterprise:register

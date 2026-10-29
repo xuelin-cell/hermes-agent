@@ -1,0 +1,4 @@
+Metadata-Version: 2.1
+Name: uniwork-enterprise
+Version: 1.0
+Summary: UniWork enterprise platform hooks for the cloud instance (session headers, tool-call audit)

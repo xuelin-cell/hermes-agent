@@ -787,7 +787,7 @@ def _platform_snapshot(cfg, key: str, policy: dict | None = None) -> str:
     model = cfg.get("model") if isinstance(cfg.get("model"), dict) else {}
     providers = cfg.get("providers") if isinstance(cfg.get("providers"), dict) else {}
     agent = cfg.get("agent") if isinstance(cfg.get("agent"), dict) else {}
-    sections = {"model_catalog", "security", "mcp_servers", *(str(k) for k in (policy or {}))}
+    sections = {"model_catalog", "security", "mcp_servers", "plugins", *(str(k) for k in (policy or {}))}
     return json.dumps({
         "model": {k: model.get(k) for k in ("default", "provider", "base_url", "key_env")},
         "provider": providers.get(key),
@@ -858,6 +858,29 @@ def _apply_mcp_servers(cfg, servers: dict) -> None:
             entry[str(key)] = value
 
 
+def enable_plugins(cfg, keys: list[str]) -> bool:
+    """hermes 的插件要列在 ``plugins.enabled`` 里才加载（hermes 默认配置故意不给这个键）。只往里加，别人的不动；
+    在 ``plugins.disabled`` 里的拿掉（那个名单优先）。返回有没有改动。"""
+    keys = [str(k) for k in keys if str(k)]
+    if not keys:
+        return False
+    section = _section(cfg, "plugins")
+    enabled = section.get("enabled")
+    if not isinstance(enabled, list):
+        enabled = []
+        section["enabled"] = enabled
+    disabled = section.get("disabled")
+    changed = False
+    for key in keys:
+        if key not in enabled:
+            enabled.append(key)
+            changed = True
+        if isinstance(disabled, list) and key in disabled:
+            disabled.remove(key)
+            changed = True
+    return changed
+
+
 def _apply_reasoning_defaults(cfg, defaults: dict) -> None:
     """按模型预设推理强度：只补用户没设过的模型，用户自己写过的（任何写法）不动。"""
     defaults = {str(m).strip(): str(e).strip() for m, e in defaults.items() if str(m).strip() and str(e).strip()}
@@ -884,8 +907,8 @@ def apply_platform_block(cfg, spec: dict) -> bool:
     """把入口下发的平台块写进解析后的配置。返回有没有改动。
 
     平台归平台：model 段的 provider / base_url / key_env，providers.<key> 整块（端点、key 来源、模型清单
-    和每个模型的上下文长度），平台策略（policy，如关在线模型目录、关临时装包），以及平台内置的 MCP 服务
-    （mcp_servers，入口没给这一项就不碰）。
+    和每个模型的上下文长度），平台策略（policy，如关在线模型目录、关临时装包），平台内置的 MCP 服务
+    （mcp_servers，入口没给这一项就不碰），以及企业模式要加载的插件（plugins，只往 plugins.enabled 里加）。
     用户归用户：model.default 保留他自己选的，只要在套餐清单里；推理强度预设只补他没设过的模型；
     内置 MCP 那一条里用户停用了就保留停用；别的段一概不碰。
     """
@@ -943,6 +966,9 @@ def apply_platform_block(cfg, spec: dict) -> bool:
         _apply_mcp_servers(cfg, spec["mcp_servers"])
     if isinstance(spec.get("reasoning_defaults"), dict):
         _apply_reasoning_defaults(cfg, spec["reasoning_defaults"])
+    plugins = spec.get("plugins") if isinstance(spec.get("plugins"), dict) else {}
+    if isinstance(plugins.get("enable"), list):
+        enable_plugins(cfg, plugins["enable"])
     return _platform_snapshot(cfg, key, policy) != before
 
 
