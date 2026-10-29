@@ -6,6 +6,7 @@ import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
+import { lookup as systemLookup } from "node:dns";
 import { createWriteStream } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { connect as connectSocket } from "node:net";
@@ -632,7 +633,12 @@ async function createSmtpTransport(
     name: "Uniwork",
     ...(target.servername ? { servername: target.servername } : {}),
     port,
-    ...(target.lookup ? { getSocket: createSmtpSocketFactory(target.host, port, target.lookup, deps) } : {}),
+    // desktop-mt: always hand nodemailer a pre-opened socket. Left to itself it
+    // resolves the host with c-ares (dns.resolve4/6) before falling back to the
+    // OS resolver; under Electron on Windows c-ares can be stuck on 127.0.0.1 and
+    // hang for tens of seconds, past the 15s credential validation cap. The OS
+    // resolver is what IMAP already uses, and TLS still verifies the hostname.
+    getSocket: createSmtpSocketFactory(target.host, port, target.lookup ?? (systemLookup as LookupFunction), deps),
     // Implicit TLS is the wire convention on 465 only. Every other submission
     // port starts in cleartext and upgrades, so STARTTLS is demanded rather than
     // taken opportunistically: nodemailer then aborts instead of sending the
