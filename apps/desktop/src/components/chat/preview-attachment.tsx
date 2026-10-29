@@ -132,13 +132,16 @@ export function PreviewAttachment({ target }: { target: string }) {
 
   return (
     // 窄窗时操作按钮整体换到第二行，文件名保留整行宽度。
-    <span className="flex w-full max-w-160 flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-(--ui-stroke-tertiary) bg-card/55 px-3 py-2.5 text-sm">
+    <span className="flex w-full max-w-160 flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-(--ui-stroke-tertiary) bg-background px-3.5 py-2.5 text-sm transition-colors hover:bg-muted/50">
       <span className="flex min-w-0 flex-1 basis-48 items-center gap-3">
-        <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted/60 text-muted-foreground">
-          <FileText className="size-4.5" />
+        <span className="grid size-6 shrink-0 place-items-center text-muted-foreground">
+          <FileText className="size-5" />
         </span>
-        <span className="min-w-0 flex-1 truncate font-medium leading-5 text-foreground" title={target}>
-          {name}
+        <span className="min-w-0 flex-1" title={target}>
+          <span className="block truncate text-sm font-medium leading-5 text-foreground">{name}</span>
+          <span className="mt-0.5 block text-xs leading-4 text-muted-foreground">
+            {name.includes('.') ? name.split('.').pop()?.toUpperCase() : 'FILE'}
+          </span>
         </span>
       </span>
       <span className="ml-auto flex shrink-0 items-center gap-1.5">

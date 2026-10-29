@@ -337,3 +337,57 @@
   display: block;
   color: #d4d8e1;
 }
+
+/* 与 HexAgent 的 message-content 保持相同的正文排版。 */
+:root[data-hermes-theme='uniwork'] [data-slot='aui_assistant-message-content'] .aui-md {
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, 'Segoe UI', sans-serif;
+  font-size: 16px;
+  line-height: 1.7;
+  overflow-wrap: break-word;
+}
+:root[data-hermes-theme='uniwork'] [data-slot='aui_assistant-message-content'] .aui-md :where(p) {
+  margin-block: 0 10px;
+}
+:root[data-hermes-theme='uniwork'] [data-slot='aui_assistant-message-content'] .aui-md :where(p:last-child) {
+  margin-bottom: 0;
+}
+:root[data-hermes-theme='uniwork'] [data-slot='aui_assistant-message-content'] .aui-md :where(h1) {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.3;
+  margin-block: 24px 12px;
+}
+:root[data-hermes-theme='uniwork'] [data-slot='aui_assistant-message-content'] .aui-md :where(h2) {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.35;
+  margin-block: 20px 10px;
+}
+:root[data-hermes-theme='uniwork'] [data-slot='aui_assistant-message-content'] .aui-md :where(h3) {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.4;
+  margin-block: 16px 8px;
+}
+:root[data-hermes-theme='uniwork'] [data-slot='aui_assistant-message-content'] .aui-md :where(h4) {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.45;
+  margin-block: 14px 6px;
+}
+:root[data-hermes-theme='uniwork'] [data-slot='aui_assistant-message-content'] .aui-md :where(h5, h6) {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+  margin-block: 12px 6px;
+}
+:root[data-hermes-theme='uniwork'] [data-slot='aui_assistant-message-content'] .aui-md > :first-child {
+  margin-top: 0;
+}
+:root[data-hermes-theme='uniwork'] [data-slot='aui_assistant-message-content'] .aui-md :where(ul, ol) {
+  margin-block: 8px;
+  padding-left: 22px;
+}
+:root[data-hermes-theme='uniwork'] [data-slot='aui_assistant-message-content'] .aui-md :where(li) {
+  margin-bottom: 4px;
+}
