@@ -280,7 +280,7 @@ export function validateCustomEndpoint(
 ): Promise<CustomEndpointValidationResponse> {
   return hermesApi<CustomEndpointValidationResponse>({
     ...profileScoped(profile),
-    path: '/api/providers/custom-endpoints/validate',
+    path: '/api/plugins/desktop-models/validate',
     method: 'POST',
     body: endpoint
   })
