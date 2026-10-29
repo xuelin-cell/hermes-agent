@@ -27,7 +27,7 @@ Enable with ``hermes plugins enable uniwork-kits``. Expert profiles created by
 
 from __future__ import annotations
 
-from . import background_rules, cli, code_packages, communication_rules, expert_sync, host_hooks, host_rules, llm, package_hooks, router, skill_paths, tool_call_rules
+from . import background_rules, cli, code_packages, communication_rules, expert_sync, host_hooks, host_rules, llm, package_hooks, router, skill_paths, terminal_env, tool_call_rules
 
 
 def register(ctx) -> None:
@@ -48,6 +48,15 @@ def register(ctx) -> None:
         from . import xiaohongshu
 
         xiaohongshu.ensure_builtin(Path(get_hermes_home()))
+    except Exception:
+        pass
+    try:
+        from pathlib import Path
+
+        from hermes_constants import get_hermes_home
+
+        # 终端补上 python3 命令和 NODE_PATH（只在 Windows 上，本进程一次）。
+        terminal_env.setup(Path(get_hermes_home()))
     except Exception:
         pass
     ctx.register_cli_command(

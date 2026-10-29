@@ -122,9 +122,11 @@ def test_the_hook_only_touches_local_execute_code_with_a_built_environment(code_
     assert code_packages.on_pre_tool_call(tool_name="execute_code", args=args, task_id="t") is None
 
 
-def test_the_plugin_registers_the_hook(kits, profile_env):
+def test_the_plugin_registers_the_hook(kits, profile_env, monkeypatch):
     """插件入口把这个钩子登记在 pre_tool_call 上（档案指向临时目录，不碰真实账号）。"""
     hooks = []
+    terminal_env = importlib.import_module("hermes_plugins.uniwork_kits.terminal_env")
+    monkeypatch.setattr(terminal_env, "setup", lambda *a, **k: False)
 
     class Context:
         """只记下钩子，其余登记照单全收。"""
