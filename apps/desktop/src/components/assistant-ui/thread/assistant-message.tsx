@@ -222,7 +222,6 @@ const AssistantMessageBody: FC<AssistantMessageProps & { collapsedNotice?: null 
   const messageId = useAuiState(s => s.message.id)
   const messageRuntime = useMessageRuntime()
   const threadRuntime = useThreadRuntime()
-  const responseIds = useContext(ResponseMessageIds)
   const responseTail = responseIds.length === 0 || responseIds.at(-1) === messageId
   const { t } = useI18n()
 
@@ -1004,10 +1003,9 @@ const AssistantActionBar: FC<MessageActionProps & { durationS?: number }> = ({
           // NOTE: intentionally NOT `hideWhenRunning`. That prop unmounts the
           // bar while the thread streams, which collapses every completed
           // assistant message's footer by this bar's height and shifts the
-          // whole conversation when the turn resolves. The bar is already
-          // invisible by default (opacity-0 + pointer-events-none, reveals on
-          // hover), so keeping it mounted reserves stable layout height with
-          // no visual change during streaming.
+          // whole conversation when the turn resolves. AssistantFooter hides
+          // and disables it for the entire live turn while preserving its height;
+          // hover may reveal actions only after that turn finishes.
           'relative flex flex-row items-center justify-end gap-1.5 py-1.5 opacity-0 pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100'
         }
         data-slot="aui_msg-actions"
@@ -1145,8 +1143,22 @@ const ReadAloudButton: FC<{
 }
 
 const AssistantFooter: FC<MessageActionProps & { durationS?: number }> = ({ durationS, ...props }) => {
+  const view = useSessionView()
+  const busy = useStore(view.$busy)
+  const awaitingResponse = useStore(view.$awaitingResponse)
+  const running = useAuiState(s => s.thread.isRunning || s.message.status?.type === 'running')
+  const hidden = running || busy || awaitingResponse
+
   return (
-    <div className="flex min-h-6 flex-col items-end gap-1 pr-(--message-text-indent) pl-(--message-text-indent)">
+    <div
+      aria-hidden={hidden || undefined}
+      className={cn(
+        'flex min-h-6 flex-col items-end gap-1 pr-(--message-text-indent) pl-(--message-text-indent)',
+        hidden && 'invisible pointer-events-none'
+      )}
+      data-slot="aui_assistant-footer"
+      inert={hidden || undefined}
+    >
       <BranchPickerPrimitive.Root
         className="inline-flex h-6 items-center gap-1 text-xs text-muted-foreground"
         hideWhenSingleBranch
