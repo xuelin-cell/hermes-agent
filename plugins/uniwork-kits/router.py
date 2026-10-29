@@ -143,10 +143,14 @@ def _core_covered(core: str, lowered: str) -> bool:
     return _specific(core) and all(ch.lower() in lowered for ch in core)
 
 
-def score(candidate: Candidate, text: str, lowered: str) -> int:
-    """一个候选能力和这条消息的匹配分：原文出现或核心词出现算强命中；两字片段重合度高、核心词的字都在算强命中；两条不同触发词各自重合过半也算强命中；技能名本身出现在消息里也算。"""
+def score(candidate: Candidate, text: str, lowered: str, grams_text: Optional[set] = None) -> int:
+    """一个候选能力和这条消息的匹配分：原文出现或核心词出现算强命中；两字片段重合度高、核心词的字都在算强命中；两条不同触发词各自重合过半也算强命中；技能名本身出现在消息里也算。
+
+    grams_text 是消息的两字片段，build_hint 对整条消息只算一次传进来，不必每个候选都重切一遍。
+    """
     best = 0
-    grams_text = _bigrams(text)
+    if grams_text is None:
+        grams_text = _bigrams(text)
     near_misses = 0
     for phrase in candidate.phrases:
         if phrase in text or phrase.lower() in lowered:
@@ -200,7 +204,8 @@ def build_hint(text: str, catalog: Iterable[Candidate]) -> Optional[str]:
     if not text:
         return None
     lowered = text.lower()
-    scored = sorted(((score(c, text, lowered), c) for c in catalog), key=lambda p: (-p[0], p[1].label))
+    grams_text = _bigrams(text)
+    scored = sorted(((score(c, text, lowered, grams_text), c) for c in catalog), key=lambda p: (-p[0], p[1].label))
     hits: List[Candidate] = []
     seen: set = set()
     for value, candidate in scored:
@@ -258,16 +263,15 @@ def names_a_deck(text: str) -> bool:
 
 
 def _user_text(message: Any) -> str:
-    """从一条历史消息里取出用户写的文字；不是用户消息时返回空字符串。"""
+    """从本轮用户消息（字符串或文字加图片的内容列表）或一条历史消息里取出用户写的文字，图片数据不要；不是用户消息时返回空字符串。"""
+    if isinstance(message, dict):
+        if message.get("role") not in (None, "user"):
+            return ""
+        message = message.get("content")
     if isinstance(message, str):
         return message
-    if not isinstance(message, dict) or message.get("role") not in (None, "user"):
-        return ""
-    content = message.get("content")
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        return " ".join(str(part.get("text") or "") for part in content if isinstance(part, dict))
+    if isinstance(message, list):
+        return " ".join(str(part.get("text") or "") for part in message if isinstance(part, dict))
     return ""
 
 
@@ -315,7 +319,8 @@ def on_pre_llm_call(**kwargs: Any) -> Optional[Dict[str, str]]:
     try:
         from hermes_constants import get_hermes_home
 
-        text = str(kwargs.get("user_message") or "").strip()
+        # 主模型能看图时 user_message 是“文字 + 图片编码”的列表，只取文字；整个转成字符串会把几 MB 的图片编码拿去逐个比对，卡住整个后端
+        text = _user_text(kwargs.get("user_message")).strip()
         platform = str(kwargs.get("platform") or "")
         catalog, is_expert = _load(Path(get_hermes_home()))
         deck = not is_expert and deck_requested(text, kwargs.get("conversation_history"))

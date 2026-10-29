@@ -567,6 +567,20 @@ def test_router_hints_kits_in_ordinary_profiles_only(kits, profile_env, kit_pkg,
     assert kits.router.on_pre_llm_call(user_message="帮我做阿尔法分析") is None
 
 
+def test_router_matches_only_the_text_of_an_image_turn(kits, profile_env, kit_pkg, triggers, monkeypatch):
+    """主模型能看图时用户消息是“文字 + 图片编码”的列表：只拿文字去匹配，几 MB 的图片编码不参与，也只切一次片段。"""
+    kits.installer.install(kit_pkg, profile_env, triggers=kits.installer.load_triggers(triggers))
+    image = {"type": "image_url", "image_url": {"url": "data:image/png;base64," + "QUJD" * 500_000}}
+    sliced = []
+    real_bigrams = kits.router._bigrams
+    monkeypatch.setattr(kits.router, "_bigrams", lambda text: sliced.append(len(text)) or real_bigrams(text))
+
+    hint = kits.router.on_pre_llm_call(user_message=[{"type": "text", "text": "帮我做阿尔法分析"}, image])
+    assert hint and "demo-kit--alpha-probe" in hint["context"] and "base64" not in hint["context"]
+    assert max(sliced) < 100
+    assert kits.router.on_pre_llm_call(user_message=[{"type": "text", "text": "今天天气怎么样"}, image]) is None
+
+
 def test_router_follows_the_per_session_home_override(kits, profile_env, kit_pkg, expert_pkg, triggers):
     """桌面后端每轮用覆盖值切换 HERMES_HOME，路由钩子要跟着它判断是不是专家档案。"""
     from hermes_constants import reset_hermes_home_override, set_hermes_home_override
