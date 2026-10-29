@@ -313,9 +313,6 @@ def merge_tree(src: Path, dst: Path) -> None:
         item.replace(target)
 
 
-_digest_cache: dict[tuple[str, tuple[tuple[str, int, float], ...]], str] = {}
-
-
 def tree_digest(root: Path) -> str:
     """Deterministic sha256 over a directory tree: walk every file, sort
     by posix relpath, hash `relpath\\0<content>` per entry. No mtimes, no
@@ -344,21 +341,6 @@ def tree_digest(root: Path) -> str:
             files.append((path.relative_to(root).as_posix(), path))
     files.sort(key=lambda item: item[0])
 
-    cache_key_items = []
-    for rel, path in files:
-        try:
-            if path.is_symlink() or is_junction(path):
-                cache_key_items.append((rel, 0, 0.0))
-            else:
-                stat = path.stat()
-                cache_key_items.append((rel, stat.st_size, stat.st_mtime))
-        except OSError:
-            cache_key_items.append((rel, -1, -1.0))
-    cache_key = (str(root), tuple(cache_key_items))
-    
-    if cache_key in _digest_cache:
-        return _digest_cache[cache_key]
-
     digest = hashlib.sha256()
     for rel, path in files:
         digest.update(rel.encode("utf-8"))
@@ -369,9 +351,7 @@ def tree_digest(root: Path) -> str:
             with open(path, "rb") as f:
                 for block in iter(lambda: f.read(1024 * 1024), b""):
                     digest.update(block)
-    result = digest.hexdigest()
-    _digest_cache[cache_key] = result
-    return result
+    return digest.hexdigest()
 
 
 class Store:
