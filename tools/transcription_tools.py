@@ -58,8 +58,8 @@ def _safe_find_spec(module_name: str) -> bool:
         return module_name in globals() or module_name in os.sys.modules
 
 
-_HAS_FASTER_WHISPER, _HAS_OPENAI, _HAS_MISTRAL, _HAS_PILK = map(
-    _safe_find_spec, ("faster_whisper", "openai", "mistralai", "pilk"))
+_HAS_FASTER_WHISPER, _HAS_OPENAI, _HAS_MISTRAL = map(
+    _safe_find_spec, ("faster_whisper", "openai", "mistralai"))
 
 # Local model singleton; the lock guards check-then-load against concurrent voice messages.
 _local_model: Optional[object] = None

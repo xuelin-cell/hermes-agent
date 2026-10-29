@@ -2,8 +2,8 @@
 
 Binary discovery, the shared ffmpeg m4a encode (transcode + silence trim),
 source/format validation, WeChat .silk decoding, CAF conversion and the
-best-effort cloud pre-upload silence trim. Facade-owned state (``_HAS_PILK``,
-``_safe_find_spec``) is read lazily from ``tools.transcription_tools``.
+best-effort cloud pre-upload silence trim. Facade-owned state
+(``_safe_find_spec``) is read lazily from ``tools.transcription_tools``.
 """
 
 from __future__ import annotations
@@ -115,24 +115,23 @@ def _validate_audio_file(file_path: str, *, enforce_size_limit: bool = True) -> 
 
 def _prepare_audio_for_transcription(file_path: str) -> tuple[Optional[str], Optional[str], Optional[Dict[str, Any]]]:
     """Convert a decoder-safe .silk source to a temporary supported WAV file."""
-    from tools.transcription_tools import _HAS_PILK, _safe_find_spec
+    from tools.silk_audio import available as _silk_available, silk_to_wav
     audio_path = Path(file_path)
     if audio_path.suffix.lower() != ".silk":
         return file_path, None, None
-    if not _HAS_PILK:
-        # pilk is a tiny silk-v3 codec binding — lazy-installed on first .silk voice note.
+    if not _silk_available():
+        # The SILK codec binding is lazy-installed on first .silk voice note.
         _lazy_ensure_quietly("silk")
-        if not _safe_find_spec("pilk"):
+        if not _silk_available():
             return None, None, _error_result(
-                "Unsupported format: .silk. Install the optional 'pilk' dependency to enable WeChat voice transcription."
+                "Unsupported format: .silk. Install the optional 'silk' dependency to enable WeChat voice transcription."
             )
     temp_dir = tempfile.mkdtemp(prefix="hermes-silk-")
     converted_path = os.path.join(temp_dir, f"{audio_path.stem}.wav")
     try:
-        import pilk
-        pilk.silk_to_wav(file_path, converted_path)
+        silk_to_wav(file_path, converted_path)
         if not Path(converted_path).is_file() or Path(converted_path).stat().st_size == 0:
-            raise RuntimeError("pilk did not produce a readable WAV file")
+            raise RuntimeError("the SILK decoder did not produce a readable WAV file")
         return converted_path, temp_dir, None
     except Exception as exc:
         shutil.rmtree(temp_dir, ignore_errors=True)
