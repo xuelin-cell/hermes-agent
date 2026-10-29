@@ -582,17 +582,13 @@ function KitsCatalog() {
 
   return (
     <section className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="flex shrink-0 border-b border-(--ui-stroke-secondary)">
-        <div aria-label={t('title')} className="flex gap-7" role="tablist">
+      <div className="kits-tabs">
+        <div aria-label={t('title')} className="flex gap-2" role="tablist">
           {tabs.map(item => (
             <button
               aria-controls={panelId}
               aria-selected={shelf === item.id}
-              className={cn(
-                'relative pb-2 text-sm font-semibold text-(--ui-text-tertiary)',
-                shelf === item.id &&
-                  'text-(--ui-text-primary) after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-full after:bg-(--color-primary)'
-              )}
+              className="kits-tab"
               id={panelId + '-' + item.id}
               key={item.id}
               onClick={() => selectShelf(item.id)}
@@ -623,7 +619,7 @@ function KitsCatalog() {
               type="button"
             >
               {item.label}
-              <span className="ml-2 rounded-full bg-(--ui-bg-quaternary) px-2 py-0.5 text-xs">{item.count}</span>
+              <span className="ml-1 text-inherit">{item.count}</span>
             </button>
           ))}
         </div>

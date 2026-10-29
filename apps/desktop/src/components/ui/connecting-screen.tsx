@@ -1,8 +1,9 @@
 import './connecting-screen.css'
 
-import { BrandMark } from '@/components/brand-mark'
 import { registerPluginLocales, usePluginI18n } from '@/i18n/plugin-i18n'
 import { cn } from '@/lib/utils'
+
+import startupIcon from '../../../assets/icon.png'
 
 const SCOPE = 'desktop-mt.startup'
 registerPluginLocales(SCOPE, {
@@ -54,7 +55,7 @@ export function ConnectingScreen({ active = true, phase = 'live', label }: Conne
       role="status"
     >
       <div className="startup-brand">
-        <BrandMark className="size-8" />
+        <img alt="" aria-hidden="true" className="size-8 shrink-0 object-contain" src={startupIcon} />
         <span>{copy('brand')}</span>
       </div>
       <section

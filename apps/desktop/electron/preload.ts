@@ -10,6 +10,15 @@ import type { CloudDriveMutationProgress, CloudDriveRequest, CloudDriveTransferP
 import { maskMcpSecrets, restoreMcpSecrets } from './mcp-secrets'
 import { CONNECTOR_CHANNEL, type LocalConnectorRequest } from './open-connector/contract'
 import { ASR_CHANNEL } from './uniwork-asr/contract'
+import {
+  NTFY_EVENT_CHANNEL,
+  NTFY_REFRESH_CHANNEL,
+  NTFY_START_CHANNEL,
+  NTFY_STOP_CHANNEL,
+  type NtfyEvent,
+  type NtfyRefreshResult,
+  type NtfyStatus
+} from './uniwork-notify/contract'
 import { PLAN_SUBSCRIPTION_CHANNEL, PLAN_USAGE_CHANNEL, PLAN_USAGE_REFRESH_CHANNEL } from './uniwork-usage/contract'
 import { WELCOME_CATALOG_CHANNEL } from './uniwork-welcome/catalog'
 import { customWindowControlsEnabled } from './window-controls'
@@ -68,6 +77,18 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     poll: id => ipcRenderer.invoke(ASR_CHANNEL, { operation: 'poll', id }),
     stop: id => ipcRenderer.invoke(ASR_CHANNEL, { operation: 'stop', id }),
     cancel: id => ipcRenderer.invoke(ASR_CHANNEL, { operation: 'cancel', id })
+  },
+  /** 服务端主动通知：主进程持一条长连接，页面只收公告/指令事件，拿不到凭证。 */
+  ntfy: {
+    start: (): Promise<NtfyStatus> => ipcRenderer.invoke(NTFY_START_CHANNEL),
+    stop: (): Promise<NtfyStatus> => ipcRenderer.invoke(NTFY_STOP_CHANNEL),
+    refresh: (): Promise<NtfyRefreshResult> => ipcRenderer.invoke(NTFY_REFRESH_CHANNEL),
+    onEvent: (callback: (event: NtfyEvent) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: NtfyEvent) => callback(payload)
+      ipcRenderer.on(NTFY_EVENT_CHANNEL, listener)
+
+      return () => ipcRenderer.removeListener(NTFY_EVENT_CHANNEL, listener)
+    }
   },
   conversationShare: {
     prepare: (owner, request) => ipcRenderer.invoke('hermes:conversation-share:prepare', owner, request),

@@ -119,3 +119,45 @@ it('ends the response at a real user prompt or unrelated system event', () => {
   expect(container.querySelectorAll('[data-slot="aui_turn-pair"]')).toHaveLength(2)
   expect(container.querySelectorAll('[data-slot="aui_msg-actions"]')).toHaveLength(3)
 })
+
+it('shows only the final text of a multi-part message and restores the process on demand', async () => {
+  const messages = toChatMessages([
+    { role: 'user', content: 'Create the report', timestamp: 1 },
+    { role: 'assistant', content: 'Report completed', timestamp: 1383 }
+  ] as SessionMessage[]).map(toRuntimeMessage)
+
+  const assistant = messages[1]!
+
+  const complete = {
+    ...assistant,
+    content: [
+      { type: 'text', text: 'Preparing the report' },
+      {
+        type: 'tool-call',
+        toolCallId: 'report-tool',
+        toolName: 'terminal',
+        args: { command: 'build-report' },
+        result: 'done'
+      },
+      { type: 'text', text: 'Report completed' }
+    ],
+    metadata: { ...assistant.metadata, custom: { ...assistant.metadata.custom, durationS: 1382.3093128 } }
+  } as ThreadMessage
+
+  const { container } = render(
+    <ThreadRuntime messages={[messages[0]!, complete]}>
+      <Thread />
+    </ThreadRuntime>
+  )
+
+  await waitFor(() => expect(container.textContent).toContain('Report completed'))
+  const prose = [...container.querySelectorAll('[data-slot="aui_response-text"]')]
+  expect(prose).toHaveLength(2)
+  expect(prose[0]!.getAttribute('hidden')).not.toBeNull()
+  expect(prose[1]!.getAttribute('hidden')).toBeNull()
+  const summary = container.querySelector('[data-slot="aui_process-summary"]')!
+  expect(summary.textContent).toContain('Worked for 23m 2s')
+  expect(summary.textContent).not.toContain('3093128')
+  fireEvent.click(summary)
+  expect(prose[0]!.getAttribute('hidden')).toBeNull()
+})

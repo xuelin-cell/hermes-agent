@@ -233,6 +233,11 @@ export function currentDesktopIdentity() {
   return stopping ? null : (accountRuntime?.login.currentIdentity() ?? null)
 }
 
+/** 服务端指令要把重新拉到的套餐落盘，只用主进程里的登录会话。 */
+export function currentDesktopLogin() {
+  return stopping ? null : (accountRuntime?.login ?? null)
+}
+
 /** 实时识别只读取当前有效套餐的专用 Key，不交给页面。 */
 export function currentDesktopAsrIdentity() {
   const identity = currentDesktopIdentity()

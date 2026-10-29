@@ -712,6 +712,14 @@ export const zhHant = defineLocale({
     resetHudLayout: '重設 HUD 大小和位置'
   },
 
+  messageCenter: {
+    title: '訊息中心',
+    unreadCount: count => `${count} 則未讀通知`,
+    markAllRead: '全部已讀',
+    empty: '暫無通知',
+    untitled: '公告'
+  },
+
   language: {
     label: '語言',
     description: '選擇桌面介面的語言。',
@@ -3205,7 +3213,7 @@ export const zhHant = defineLocale({
       actions: '群組動作'
     },
     nav: {
-      'new-session': '新工作階段',
+      'new-session': '新對話',
       capabilities: '擴充功能',
       messaging: '訊息平台',
       artifacts: '資料庫',
