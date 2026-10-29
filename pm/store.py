@@ -313,7 +313,7 @@ def merge_tree(src: Path, dst: Path) -> None:
         item.replace(target)
 
 
-_digest_cache: dict[tuple[str, int, float], str] = {}
+_digest_cache: dict[tuple[str, tuple[tuple[str, int, float], ...]], str] = {}
 
 
 def tree_digest(root: Path) -> str:
@@ -329,23 +329,6 @@ def tree_digest(root: Path) -> str:
     state, not package bytes — the digest is over what pm published."""
     import hashlib
 
-    total_size = 0
-    max_mtime = 0.0
-    for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d != "__pycache__"]
-        for fname in filenames:
-            path = Path(dirpath) / fname
-            try:
-                stat = path.stat()
-                total_size += stat.st_size
-                max_mtime = max(max_mtime, stat.st_mtime)
-            except OSError:
-                pass
-
-    cache_key = (str(root), total_size, max_mtime)
-    if cache_key in _digest_cache:
-        return _digest_cache[cache_key]
-
     files: list[tuple[str, Path]] = []
     for dirpath, dirnames, filenames in os.walk(root):
         descend = []
@@ -360,6 +343,21 @@ def tree_digest(root: Path) -> str:
             path = Path(dirpath) / fname
             files.append((path.relative_to(root).as_posix(), path))
     files.sort(key=lambda item: item[0])
+
+    cache_key_items = []
+    for rel, path in files:
+        try:
+            if path.is_symlink() or is_junction(path):
+                cache_key_items.append((rel, 0, 0.0))
+            else:
+                stat = path.stat()
+                cache_key_items.append((rel, stat.st_size, stat.st_mtime))
+        except OSError:
+            cache_key_items.append((rel, -1, -1.0))
+    cache_key = (str(root), tuple(cache_key_items))
+    
+    if cache_key in _digest_cache:
+        return _digest_cache[cache_key]
 
     digest = hashlib.sha256()
     for rel, path in files:
