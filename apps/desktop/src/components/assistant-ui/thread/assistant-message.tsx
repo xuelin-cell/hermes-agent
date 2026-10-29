@@ -222,6 +222,7 @@ const AssistantMessageBody: FC<AssistantMessageProps & { collapsedNotice?: null 
   const messageId = useAuiState(s => s.message.id)
   const messageRuntime = useMessageRuntime()
   const threadRuntime = useThreadRuntime()
+  const responseIds = useContext(ResponseMessageIds)
   const responseTail = responseIds.length === 0 || responseIds.at(-1) === messageId
   const { t } = useI18n()
 
@@ -976,6 +977,7 @@ const AssistantActionBar: FC<MessageActionProps & { durationS?: number }> = ({
   const { t } = useI18n()
   const copy = t.assistant.thread
 
+  const responseIds = useContext(ResponseMessageIds)
   const [pickerOpen, setPickerOpen] = useState(false)
   const { enabled: reactionsEnabled, react, reactions: shownReactions } = useMessageReactions(messageId, 'assistant')
 
@@ -989,7 +991,7 @@ const AssistantActionBar: FC<MessageActionProps & { durationS?: number }> = ({
 
   return (
     <div className="relative flex w-full shrink-0 items-center justify-end gap-1.5">
-      {durationS !== undefined && (
+      {durationS !== undefined && responseIds.length === 0 && (
         <span
           className="mr-auto select-none px-0.5 text-[0.6875rem] leading-5 tabular-nums text-muted-foreground"
           data-slot="aui_turn-duration"

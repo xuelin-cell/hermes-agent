@@ -2,6 +2,7 @@ import { ThreadPrimitive, useAuiState } from '@assistant-ui/react'
 import { type ComponentProps, createContext, useMemo } from 'react'
 
 import { contentHasVisibleText, messageContentText, PROCESS_NOTIFICATION_RE } from './content'
+import { ResponseProcess } from './response-process'
 
 interface GroupMessage {
   role: string
@@ -93,9 +94,7 @@ export function ResponseMessages({ components, indices }: ResponseMessagesProps)
     section.response ? (
       <ResponseMessageIds.Provider key={section.key} value={section.assistantIds}>
         <div className="group flex min-w-0 flex-col gap-(--scaffold-block-gap)" data-slot="aui_response-group">
-          {section.indices.map(index => (
-            <ThreadPrimitive.MessageByIndex components={components} index={index} key={index} />
-          ))}
+          <ResponseProcess components={components} indices={section.indices} />
         </div>
       </ResponseMessageIds.Provider>
     ) : (

@@ -52,6 +52,11 @@ it('keeps background continuations in one response with one action bar and the o
     await waitFor(() => expect(container.textContent).toContain('The deployment is verified.'))
     expect(container.querySelectorAll('[data-slot="aui_turn-pair"]')).toHaveLength(1)
     expect(container.querySelectorAll('[data-slot="aui_response-group"]')).toHaveLength(1)
+    const summary = container.querySelector('[data-slot="aui_process-summary"]')!
+    expect(summary.getAttribute('aria-expanded')).toBe('false')
+    expect(container.querySelector('[data-slot="aui_process-step"]')?.hasAttribute('open')).toBe(false)
+    fireEvent.click(summary)
+    expect(summary.getAttribute('aria-expanded')).toBe('true')
     expect(container.querySelectorAll('[data-slot="aui_msg-actions"]')).toHaveLength(1)
     expect(container.querySelector('[data-role="assistant"]')).toBe(original)
     expect(
