@@ -1393,6 +1393,9 @@ export function installBrowserDevelopmentBridge(): boolean {
 
   Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: bridge })
   document.documentElement.dataset.hermesBrowser = productionBrowserBuild ? 'production' : 'development'
+  // The entry's enterprise mode comes with `/__entry/me` (lib/enterprise-mt.ts). The account item that asks for it
+  // is only mounted in the chat sidebar, and a page opened on the Bots tab never shows it: ask once at start.
+  void getMaasAccount().catch(() => null)
 
   return true
 }

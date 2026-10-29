@@ -99,6 +99,21 @@ describe('browser development bridge', () => {
     await expect(window.hermesDesktop.getMaasAccount!()).resolves.toBeNull()
   })
 
+  it('asks the entry at start, so a page opened on the Bots tab knows the enterprise mode too', async () => {
+    const calls: string[] = []
+
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      calls.push(String(input))
+
+      return jsonResponse({ display: '100****0002', enterprise: { access: 'active' } })
+    }) as typeof fetch
+    await installFresh()
+    const { $enterpriseShell } = await import('@/lib/enterprise-mt')
+
+    await vi.waitFor(() => expect($enterpriseShell.get()).toBe(true))
+    expect(calls).toEqual(['/__entry/me'])
+  })
+
   it('tells the page whether the entry runs in enterprise mode', async () => {
     await installFresh()
     const { $enterpriseShell } = await import('@/lib/enterprise-mt')
