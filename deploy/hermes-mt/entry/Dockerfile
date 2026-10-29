@@ -16,6 +16,7 @@ RUN --mount=type=cache,id=hermes-python-pip,target=/root/.cache/pip,sharing=lock
 COPY deploy/hermes-mt/entry/entry ./entry
 COPY deploy/hermes-mt/entry/migrations ./migrations
 COPY deploy/hermes-mt/seed ./seed
+COPY deploy/hermes-mt/.connector-runtime ./.connector-runtime
 EXPOSE 9400
 CMD ["python", "-m", "entry.app"]
 

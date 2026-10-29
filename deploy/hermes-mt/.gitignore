@@ -5,6 +5,7 @@ entry.env.*
 .image-fingerprint
 compose.override.yaml
 .overlay/
+.connector-runtime/
 .base-build.log
 .frontend-build.log
 .deploy-logs/

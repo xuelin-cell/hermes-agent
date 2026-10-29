@@ -151,6 +151,8 @@ COPY seed/mtstate.py /opt/mt/mtstate.py
 COPY seed/mtuser.py /opt/mt/mtuser.py
 COPY seed/mtfolders.py /opt/mt/mtfolders.py
 COPY seed/mtmessaging.py /opt/mt/mtmessaging.py
+COPY seed/mtconnectors.py /opt/mt/mtconnectors.py
+COPY .connector-runtime/ /opt/mt/connectors/
 RUN chmod 0644 /opt/mt/forward.py /opt/mt/mtstate.py /opt/mt/mtuser.py
 
 # ---- 本分支对 hermes 源码的改动（overlay.list） -------------------------------

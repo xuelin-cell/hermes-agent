@@ -143,6 +143,8 @@ def busy_reason(activity: dict | None, now: float, keepalive_s: float) -> str:
         return "cron_running"
     if activity.get("turns"):
         return "turn_running"
+    if activity.get("connectors_running"):
+        return "connector_running"
     due = activity.get("cron_next_at")
     if isinstance(due, (int, float)) and now - keepalive_s <= due <= now + keepalive_s:
         return "cron_due"
@@ -180,7 +182,7 @@ class TenantManager:
     ``cube`` 是让沙箱平台建实例。两条路的差异全部收敛在 ``_*_docker`` /
     ``_*_cube`` 这几对方法里，对 app.py 和 proxy.py 完全透明。
 
-    ★ Docker 那条路的代码一个字没动 —— 沙箱后端是加出来的，不是改出来的。
+    Docker 与沙箱均由实例转发器管理 Hermes 和连接器的进程生命周期。
     """
 
     def __init__(
@@ -330,8 +332,11 @@ class TenantManager:
         """
         files = self._render_user_files(api_key, endpoint, catalog, limits)
         # 转发器要从自己所在目录导入状态管家和用户接口，三个文件一起放。
-        for name in ("forward.py", "mtstate.py", "mtuser.py", "mtexport.py"):
+        for name in ("forward.py", "mtstate.py", "mtuser.py", "mtexport.py", "mtfolders.py", "mtmessaging.py", "mtconnectors.py"):
             files[f".mt/{name}"] = (SEED_DIR / name).read_bytes()
+        for file in sorted((SEED_DIR.parent / '.connector-runtime').rglob('*')):
+            if file.is_file():
+                files['.mt/connectors/' + file.relative_to(SEED_DIR.parent / '.connector-runtime').as_posix()] = file.read_bytes()
         return files
 
     # ---- 平台下发的模型配置：变了要同步到已有的卷 ------------------------------------
@@ -990,7 +995,25 @@ class TenantManager:
 
     async def _busy_reason(self, user_id: str) -> str:
         """回收前问一句：这台实例为什么现在不能暂停。空串 = 可以暂停（问不到也按可以，照旧回收）。"""
-        if not self.use_cube or self.cube is None:
+        if not self.use_cube:
+            if self.docker is None:
+                return ""
+            slug = tenant_slug(user_id)
+            name = self.container_name(slug)
+            info = await self.docker.inspect_container(name)
+            if not (info or {}).get('State', {}).get('Running'):
+                return ""
+            ip = await self.docker.container_ip(name, self.network_name(slug))
+            token = await self.store.ensure_tenant_token(user_id)
+            try:
+                async with self.http.get(f'http://{ip}:{self.s.forward_port}/__mt/status',
+                        headers={'X-Mt-Token': token}, timeout=aiohttp.ClientTimeout(total=3)) as response:
+                    if response.status == 200:
+                        return busy_reason((await response.json()).get('activity'), time.time(), self.s.cron_keepalive_s)
+            except (aiohttp.ClientError, asyncio.TimeoutError, ValueError):
+                log.warning('Docker activity probe failed for %s', slug)
+            return ""
+        if self.cube is None:
             return ""
         woke = self._cron_woken.get(user_id)
         if woke is not None and time.monotonic() - woke < self.s.cron_keepalive_s:
@@ -1130,10 +1153,6 @@ class TenantManager:
         self._synced_key_digests[tenant.user_id] = digest
 
     async def _create(self, cname: str, nname: str, vname: str, labels: dict, token: str) -> None:
-        cmd = (
-            "python3 /opt/data/.mt/forward.py & "
-            f"exec hermes serve --host 127.0.0.1 --port {self.s.hermes_port} --skip-build"
-        )
         spec = {
             "Image": self.s.image,
             "Env": [
@@ -1147,7 +1166,7 @@ class TenantManager:
                 f"MT_FWD_PORT={self.s.forward_port}",
                 f"MT_HERMES_PORT={self.s.hermes_port}",
             ],
-            "Cmd": ["sh", "-c", cmd],
+            "Cmd": ["python3", "/opt/data/.mt/forward.py"],
             "Labels": labels,
             "HostConfig": {
                 "Binds": [f"{vname}:/opt/data"],

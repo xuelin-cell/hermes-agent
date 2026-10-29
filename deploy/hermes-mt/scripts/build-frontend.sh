@@ -42,6 +42,7 @@ docker run --rm \
     -v "$REPO:/workspace" \
     -v hermes-custom-root-node-modules:/workspace/node_modules \
     -v hermes-custom-desktop-node-modules:/workspace/apps/desktop/node_modules \
+    -v hermes-custom-connector-node-modules:/workspace/apps/desktop/services/open-connector/node_modules \
     -v hermes-custom-npm-cache:/root/.npm \
     -w /workspace \
     node:22-bookworm \
@@ -53,8 +54,16 @@ docker run --rm \
             npm ci --workspace apps/desktop --include-workspace-root --no-audit --no-fund
             printf "%s\n" "${deps_hash}" > "${deps_stamp}"
         fi
+        connector_dir=/workspace/apps/desktop/services/open-connector
+        connector_hash="$(sha256sum "$connector_dir/package.json" "$connector_dir/package-lock.json" | sha256sum | cut -d" " -f1)"
+        connector_stamp="$connector_dir/node_modules/.hermes-connector-deps-hash"
+        if [ "$connector_hash" != "$(cat "$connector_stamp" 2>/dev/null || true)" ] || [ ! -d "$connector_dir/node_modules/hono" ]; then
+            npm ci --prefix "$connector_dir" --omit=dev --workspaces=false --ignore-scripts --no-audit --no-fund
+            printf "%s\n" "$connector_hash" > "$connector_stamp"
+        fi
         cd /workspace/apps/desktop
         node scripts/build-cloud-drive.mjs
+        node scripts/build-cloud-connectors.mjs
         VITE_HERMES_BROWSER_BUILD=1 node /workspace/node_modules/vite/bin/vite.js build --base=/hermes/ --outDir=dist-browser
     '
 

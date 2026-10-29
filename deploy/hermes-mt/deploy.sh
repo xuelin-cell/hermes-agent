@@ -186,6 +186,8 @@ fingerprint() {
         for f in $(overlay_files); do
             printf 'overlay/%s\n' "$f"; cat "$REPO/$f"
         done
+        # Connector code shares the frontend build step, but must also invalidate the instance template.
+        (cd "$REPO" && git ls-tree -r HEAD apps/desktop/services/open-connector apps/desktop/scripts/build-cloud-connectors.mjs)
         printf 'base=%s\ntpl=%s/%s/%s\n' "$base_id" "$TPL_CPU" "$TPL_MEM" "$TPL_DISK"
     } | sha256sum | cut -c1-12
 }
@@ -471,7 +473,7 @@ ensure_base() {
 ensure_frontend() {
     local want log
     want="$(frontend_want)"
-    if [ -s "$HERE/nginx/dist-browser/index.html" ] && [ "$(frontend_have)" = "$want" ]; then
+    if [ -s "$HERE/nginx/dist-browser/index.html" ] && [ "$(frontend_have)" = "$want" ] && [ -s "$HERE/.connector-runtime/src/server/storage/worker.mjs" ] && [ -s "$HERE/.connector-runtime/contract.json" ]; then
         ok "前端产物是当前代码构建的（指纹 $want），不用重建"
         return 0
     fi
@@ -484,12 +486,15 @@ ensure_frontend() {
     [ -s "$HERE/nginx/dist-browser/index.html" ] && [ "$(frontend_have)" = "$want" ] \
         || die "前端没建成，看 $log 末尾"
     ok "前端产物 $(frontend_files) 个文件（指纹 $want）"
+    [ -s "$HERE/.connector-runtime/src/server/storage/worker.mjs" ] || die "连接器运行产物缺失，看 $log"
+    [ -s "$HERE/.connector-runtime/contract.json" ] || die "连接器契约产物缺失，看 $log"
 }
 
 # ---------------------------------------------------------------- image
 
 cmd_image() {
     local fp
+    ensure_frontend
     fp="$(fingerprint)"
     say "沙箱镜像：指纹 $fp（Dockerfile.cube + seed/* + overlay.list 列的仓库文件 + 基础镜像 + 模板参数）"
     cd "$HERE"
@@ -499,8 +504,8 @@ cmd_image() {
     ok "已构建 $IMAGE_NAME:$fp"
     # 镜像里的转发器必须和仓库里的逐字节相同——这是「入口和模板一起升级」能成立的前提。
     local in_img in_repo
-    in_img="$(docker run --rm --network none --entrypoint sha256sum "$IMAGE_NAME:$fp" /opt/mt/forward.py /opt/mt/mtstate.py /opt/mt/mtuser.py /opt/mt/mtfolders.py /opt/mt/mtmessaging.py | awk '{print $1}' | tr '\n' ' ')"
-    in_repo="$(sha256sum seed/forward.py seed/mtstate.py seed/mtuser.py seed/mtfolders.py seed/mtmessaging.py | awk '{print $1}' | tr '\n' ' ')"
+    in_img="$(docker run --rm --network none --entrypoint sha256sum "$IMAGE_NAME:$fp" /opt/mt/forward.py /opt/mt/mtstate.py /opt/mt/mtuser.py /opt/mt/mtfolders.py /opt/mt/mtmessaging.py /opt/mt/mtconnectors.py | awk '{print $1}' | tr '\n' ' ')"
+    in_repo="$(sha256sum seed/forward.py seed/mtstate.py seed/mtuser.py seed/mtfolders.py seed/mtmessaging.py seed/mtconnectors.py | awk '{print $1}' | tr '\n' ' ')"
     [ "$in_img" = "$in_repo" ] && ok "镜像里的转发器与仓库一致" || die "镜像里的 forward.py/mtstate.py/mtuser.py/mtfolders.py 与仓库不一致"
     # 只发 UniWork 内置技能靠 hermes 自己的标记文件（见 README「技能」）：基础镜像太旧就没有，上游那套会露出来。
     docker run --rm --network none --entrypoint test "$IMAGE_NAME:$fp" -f /opt/hermes/skills/UNIWORK_BUNDLED_ONLY \

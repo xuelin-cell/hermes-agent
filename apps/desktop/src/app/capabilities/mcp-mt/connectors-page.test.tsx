@@ -20,8 +20,13 @@ vi.mock('./connectors-tab', () => ({
 }))
 
 import { ConnectorsPage } from './connectors-page'
+import { CLOUD_CONNECTOR_IDS } from '../../../../services/open-connector/cloud/contract'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  delete document.documentElement.dataset.hermesBrowser
+  delete window.hermesDesktop.cloudConnectorIds
+})
 const localConnectors = vi.fn()
 beforeEach(() => {
   localConnectors.mockReset()
@@ -37,13 +42,13 @@ function RouteLocation() {
 }
 
 /** 使用真实目录、弹窗与路由，不访问账号、凭据或远程连接器。 */
-function renderPage(route = '/capabilities?tab=connectors', searchContainer?: HTMLDivElement) {
+function renderPage(route = '/capabilities?tab=connectors', searchContainer?: HTMLDivElement, profile = 'work') {
   return render(
     <I18nProvider configClient={null} initialLocale="zh">
       <MemoryRouter initialEntries={[route]}>
         <ConnectorsPage
           gateway={null}
-          profile={{ connectionId: 'local', profile: 'work' }}
+          profile={{ connectionId: 'local', profile }}
           searchContainer={searchContainer}
         />
         <RouteLocation />
@@ -51,6 +56,63 @@ function renderPage(route = '/capabilities?tab=connectors', searchContainer?: HT
     </I18nProvider>
   )
 }
+
+it('云端四个连接器复用凭据表单，企业微信可手动填写而不进入桌面扫码流程', async () => {
+  document.documentElement.dataset.hermesBrowser = 'production'
+  window.hermesDesktop.cloudConnectorIds = CLOUD_CONNECTOR_IDS
+  const enabled = new Set<string>()
+  localConnectors.mockImplementation(async input => {
+    if (input.operation === 'connect') enabled.add(input.id)
+    return { connectors: CLOUD_CONNECTOR_IDS.map(id => ({ id, connected: enabled.has(id), configured: enabled.has(id), enabled: enabled.has(id) })) }
+  })
+  renderPage('/capabilities?tab=connectors', undefined, 'default')
+  await waitFor(() => expect(localConnectors).toHaveBeenCalledWith({ operation: 'list', profile: 'default' }))
+  const examples = [
+    { id: 'youdao_note', name: '有道云笔记', values: { apiKey: 'note-key' }, labels: ['API Key'] },
+    { id: 'wps_mcp', name: 'WPS', values: { apiKey: 'apik:test' }, labels: ['API Key'] },
+    { id: 'wecom_bot', name: '企业微信', values: { botId: 'bot', secret: 'secret' }, labels: ['Bot ID', 'Secret'] },
+    { id: 'ima', name: '腾讯 ima 知识库', values: { clientId: 'client', apiKey: 'ima-key' }, labels: ['Client ID', 'API Key'] }
+  ]
+  for (const item of examples) {
+    fireEvent.click(screen.getByRole('button', { name: '查看' + item.name }))
+    const dialog = screen.getByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: '连接' }))
+    for (const [index, value] of Object.values(item.values).entries()) {
+      fireEvent.change(within(dialog).getByLabelText(item.labels[index]), { target: { value } })
+    }
+    fireEvent.submit(within(dialog).getByRole('form'))
+    await waitFor(() => expect(localConnectors).toHaveBeenCalledWith({ operation: 'connect', profile: 'default', id: item.id, values: item.values }))
+    expect(localConnectors.mock.calls.some(([input]) => input.operation.startsWith('qr.'))).toBe(false)
+    fireEvent.click(within(dialog).getByRole('button', { name: '关闭' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  }
+})
+
+it('云端只开放已接入渠道，停用保留授权并可重新启用', async () => {
+  document.documentElement.dataset.hermesBrowser = 'production'
+  window.hermesDesktop.cloudConnectorIds = ['amap']
+  let enabled = false
+  localConnectors.mockImplementation(async input => {
+    if (input.operation === 'enable') enabled = true
+    if (input.operation === 'disable') { enabled = false; throw new Error('持久化未确认') }
+    return { connectors: [{ id: 'amap', configured: true, enabled, connected: enabled }] }
+  })
+  renderPage('/capabilities?tab=connectors', undefined, 'default')
+  await waitFor(() => expect(localConnectors).toHaveBeenCalledWith({ operation: 'list', profile: 'default' }))
+  expect(screen.getAllByRole('button', { name: /^查看/ })).toHaveLength(1)
+  fireEvent.click(screen.getByRole('button', { name: /^查看.*高德/ }))
+  const dialog = screen.getByRole('dialog')
+  expect(within(dialog).getByRole('status').textContent).toContain('禁用')
+  fireEvent.click(within(dialog).getByRole('button', { name: '启用' }))
+  await waitFor(() => expect(within(dialog).getByRole('button', { name: '禁用' })).toBeTruthy())
+  fireEvent.click(within(dialog).getByRole('button', { name: '禁用' }))
+  await waitFor(() => expect(within(dialog).getByText('持久化未确认')).toBeTruthy())
+  fireEvent.click(within(dialog).getByRole('button', { name: '保存' }))
+  await waitFor(() => expect(within(dialog).getByRole('button', { name: '启用' })).toBeTruthy())
+  expect(localConnectors).toHaveBeenCalledWith({ operation: 'disable', profile: 'default', id: 'amap' })
+  expect(localConnectors.mock.calls.filter(([input]) => input.operation === 'disable')).toHaveLength(1)
+  expect(localConnectors).toHaveBeenCalledWith({ operation: 'save', profile: 'default', id: 'amap' })
+})
 
 it('卡片打开参考详情；加号独立进入凭据表单，服务确认后才展示已连接', async () => {
   renderPage()

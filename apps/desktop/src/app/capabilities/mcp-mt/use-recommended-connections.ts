@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import { capabilityScoped, type ProfileScope } from '@/api/client'
 import { inlineErrorMessage } from '@/app/session/hooks/use-prompt-actions/utils'
+import { isBrowserShell } from '@/lib/browser-shell'
 
 import type {
   ConnectorId,
@@ -56,7 +57,8 @@ export function useRecommendedConnections(scope: ProfileScope) {
 
     async function load() {
       try {
-        const local = route.connectionId
+        const cloud = isBrowserShell() && !!window.hermesDesktop.cloudConnectorIds && profile === 'default' && (!route.connectionId || route.connectionId === 'local')
+        const local = isBrowserShell() && window.hermesDesktop.cloudConnectorIds ? cloud : route.connectionId
           ? route.connectionId === 'local'
           : (await window.hermesDesktop.getConnectionConfig(profile)).mode === 'local'
 

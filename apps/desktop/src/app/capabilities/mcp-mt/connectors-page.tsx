@@ -37,11 +37,12 @@ export function ConnectorsPage({ searchContainer, ...props }: ConnectorsPageProp
   const [detailMode, setDetailMode] = useState<'overview' | 'credentials'>('overview')
   const connections = useRecommendedConnections(props.profile)
   const panelId = useId()
-  const selected = RECOMMENDED_CONNECTORS.find(entry => entry.id === selectedId)
+  const supported = RECOMMENDED_CONNECTORS.filter(entry => !window.hermesDesktop.cloudConnectorIds || window.hermesDesktop.cloudConnectorIds.includes(entry.id))
+  const selected = supported.find(entry => entry.id === selectedId)
   const connected = connections.rows.some(row => row.id === selectedId && row.connected)
   const term = query.trim().toLocaleLowerCase()
 
-  const entries = RECOMMENDED_CONNECTORS.filter(entry => {
+  const entries = supported.filter(entry => {
     const item = copy.catalog[entry.id]
 
     return `${item.name} ${item.description} ${item.provider}`.toLocaleLowerCase().includes(term)
@@ -60,7 +61,7 @@ export function ConnectorsPage({ searchContainer, ...props }: ConnectorsPageProp
       return
     }
 
-    if (RECOMMENDED_CONNECTORS.some(entry => entry.id === target)) {
+    if (supported.some(entry => entry.id === target)) {
       setDetailMode('overview')
       setSelectedId(target)
     }
@@ -233,6 +234,13 @@ export function ConnectorsPage({ searchContainer, ...props }: ConnectorsPageProp
         available={connections.available}
         busy={connections.busy}
         connected={connected}
+        configured={connections.rows.some(row => row.id === selectedId && row.configured)}
+        onRetrySave={window.hermesDesktop.cloudConnectorIds && selected ? () => {
+          void connections.request('save', selected.id).then(saved => { if (saved) setDetailMode('overview') })
+        } : undefined}
+        onToggle={window.hermesDesktop.cloudConnectorIds && selected ? () => {
+          void connections.request(connected ? 'disable' : 'enable', selected.id)
+        } : undefined}
         entry={selected ?? null}
         error={connections.error}
         key={selectedId}

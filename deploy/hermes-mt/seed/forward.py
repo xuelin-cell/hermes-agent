@@ -31,7 +31,8 @@
 但入口直接连到容器的 Docker 路径、本机的复现台都会复用——不改的话，同一条连接上后面的 ``/__mt_user/…``
 会被当成普通请求整段转给 hermes（10-09 本机实测撞过）。
 
-只用标准库；由容器 CMD 以 hermes 用户启动。hermes 意外退出时由本文件带退避拉起。
+由容器 CMD 以 hermes 用户启动，连接器管理复用镜像内已有的 aiohttp 和 PyYAML。
+hermes 意外退出时由本文件带退避拉起。
 """
 
 from __future__ import annotations
@@ -51,6 +52,7 @@ import mtstate  # noqa: E402
 import mtuser
 import mtfolders
 import mtmessaging
+import mtconnectors
 import mtexport  # noqa: E402
 
 LISTEN_PORT = int(os.environ.get("MT_FWD_PORT", "9121"))
@@ -74,6 +76,7 @@ MAX_BODY = 4 * 1024 * 1024  # 引导载荷上限
 # 自带技能的同步用 hermes 自己的 Python 跑 hermes 的同步函数（见 _sync_bundled_skills）。
 HERMES_PYTHON = os.environ.get("MT_HERMES_PYTHON", "/opt/hermes/.venv/bin/python")
 _messaging_gateway = mtmessaging.Gateway(HERMES_HOME,HERMES_PYTHON)
+_connectors = mtconnectors.Connectors(HERMES_HOME, HERMES_PYTHON)
 HERMES_INSTALL = Path(os.environ.get("MT_HERMES_INSTALL", "/opt/hermes"))
 SKILLS_SYNC_TIMEOUT_S = 60.0
 # 回包只要名字和计数：删掉了哪些、归档了哪些（用户改过的）、新发了哪些。
@@ -265,6 +268,10 @@ async def _sync_bundled_skills() -> dict:
 
 async def _spawn_hermes(token: str) -> None:
     global _hermes_proc
+    try:
+        await _connectors.restore()
+    except (OSError, RuntimeError, ValueError):
+        _log('连接器尚未恢复，后台将重试；其他实例功能继续启动。')
     env = dict(os.environ)
     env.update(_hermes_env)
     env["HERMES_DASHBOARD_SESSION_TOKEN"] = token
@@ -285,6 +292,7 @@ async def _spawn_hermes(token: str) -> None:
 async def _stop_hermes(grace_s: float = 30.0) -> None:
     """先 SIGTERM 等它自己退，超时再 SIGKILL。"""
     await _messaging_gateway.stop()
+    await _connectors.close()
     proc = _hermes_proc
     if proc is None or proc.returncode is not None:
         return
@@ -356,6 +364,7 @@ async def _fence() -> None:
     """卷上的主人不是自己了：停 hermes、停归档，只留转发器应答状态。"""
     global _draining
     _draining = True
+    _connectors.draining(True)
     await mtuser.close_all_terminals()
     await _stop_hermes()
 
@@ -382,9 +391,11 @@ async def _activity() -> dict:
     读失败时没有 ``cron_next_at`` 这个键，入口就不改它记着的下次执行时间。
     """
     try:
-        return await asyncio.to_thread(mtstate.activity, HERMES_HOME)
+        result = await asyncio.to_thread(mtstate.activity, HERMES_HOME)
     except Exception as exc:  # noqa: BLE001
-        return {"errors": [f"{type(exc).__name__}: {exc}"]}
+        result = {"errors": [f"{type(exc).__name__}: {exc}"]}
+    result['connectors_running'] = _connectors.busy()
+    return result
 
 
 async def _bootstrap(writer: asyncio.StreamWriter, body: bytes) -> None:
@@ -532,6 +543,11 @@ async def _drain(writer: asyncio.StreamWriter) -> None:
     if _drained is not None:
         _reply(writer, 200, dict(_drained, already=True))
         return
+    _connectors.draining(True)
+    if _connectors.busy():
+        _connectors.draining(False)
+        _reply(writer, 409, {"ok": False, "error": "连接器调用正在进行，请等待完成后重试排空。"})
+        return
     _draining = True
     _state.phase = "draining"
     if _archiver_task is not None:
@@ -646,6 +662,18 @@ async def _handle_mt(
     rest: bytes, reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
 ) -> None:
     route = path.split("?", 1)[0]
+
+    if route == '/__mt/connectors':
+        if method != 'POST' or not _user_authorized(headers, {}) or _draining:
+            _reply(writer, 403, {'error': 'Connector management unavailable'})
+            return
+        try:
+            raw = await asyncio.wait_for(_read_body(headers, rest, reader, 32768), 15)
+            result = await _connectors.request(json.loads(raw))
+            _reply(writer, 200, result)
+        except (ValueError, TypeError, OSError, RuntimeError, asyncio.TimeoutError):
+            _reply(writer, 409, {'error': '连接器请求失败，请检查配置和状态后重试。'})
+        return
 
     if route == '/__mt/messaging/start':
         if method != 'POST' or not _check_token(headers) or _draining:
@@ -953,14 +981,42 @@ async def _handle(client_r: asyncio.StreamReader, client_w: asyncio.StreamWriter
             pass
 
 
+async def _supervise_connectors() -> None:
+    backoff = 1
+    while True:
+        if _bootstrapped and not _draining:
+            try:
+                await _connectors.recover()
+                backoff = 1
+            except (OSError, RuntimeError, ValueError):
+                _log('连接器服务恢复失败，请检查实例运行时和授权状态。')
+                backoff = min(backoff * 2, 60)
+        await asyncio.sleep(backoff)
+
+
 async def main() -> None:
+    global _bootstrapped, _hermes_token, _supervisor_task
     server = await asyncio.start_server(_handle, "0.0.0.0", LISTEN_PORT)
+    # Docker receives its token and restored Home before startup; Cube receives them via bootstrap.
+    token = os.environ.get('HERMES_DASHBOARD_SESSION_TOKEN', '')
+    if token:
+        _hermes_token = token
+        await _spawn_hermes(token)
+        _bootstrapped = True
+        _supervisor_task = asyncio.create_task(_supervise())
     janitor = asyncio.create_task(_trash_janitor())
+    connectors = asyncio.create_task(_supervise_connectors())
     async with server:
         try:
             await server.serve_forever()
         finally:
             janitor.cancel()
+            connectors.cancel()
+            await asyncio.gather(connectors, return_exceptions=True)
+            if _supervisor_task:
+                _supervisor_task.cancel()
+                await asyncio.gather(_supervisor_task, return_exceptions=True)
+            await _stop_hermes()
 
 
 if __name__ == "__main__":
