@@ -176,10 +176,35 @@ async def test_text_roundtrip_ack_loss_and_instance_receipts(tmp_path, postgres_
                 auth = await entry.store.finish_login(user_id='alice',phone='',api_key='',endpoint=None,catalog=None,ttl_s=3600,upstream_expires_at_ms=None,login_method='sms')
                 response = await client.post('/hermes/__entry/messaging/platforms',json={},headers={'Cookie':settings.cookie_name+'='+auth.session.sid})
                 info = await response.json()
-                assert [row['id'] for row in info['platforms']] == ['uniagentgate']
-                assert info['platforms'][0]['configured'] and not info['platforms'][0]['enabled']
+                assert [row['id'] for row in info['platforms']] == ['uniagentgate','dingtalk','weixin','wecom','feishu']
+                assert info['platforms'][0]['configured'] and info['platforms'][0]['enabled']
                 assert 'cloud-sk' not in json.dumps(info)
-                await service.store.set_enabled('alice',True)
+                headers={'Cookie':settings.cookie_name+'='+auth.session.sid}
+                saved=await client.post('/hermes/__entry/messaging/save',headers=headers,json={'platform':'dingtalk','env':{'DINGTALK_CLIENT_ID':'ding-app','DINGTALK_CLIENT_SECRET':'ding-private'}})
+                assert saved.status==200 and (await saved.json())['accepted']
+                ding=await service.store.binding('alice','dingtalk')
+                assert ding['enabled'] and entry.store.cipher.decrypt(ding['secret_enc'])=='ding-private'
+                listed=await client.post('/hermes/__entry/messaging/platforms',headers=headers,json={})
+                listing=await listed.json()
+                assert 'ding-private' not in json.dumps(listing)
+                stopped=await client.post('/hermes/__entry/messaging/disable',headers=headers,json={'platform':'dingtalk'})
+                assert stopped.status==200
+                assert not (await service.store.binding('alice','dingtalk'))['enabled']
+
+                saved=await client.post('/hermes/__entry/messaging/save',headers=headers,json={'platform':'wecom','env':{'WECOM_BOT_ID':'wecom-app','WECOM_SECRET':'wecom-private'}})
+                assert saved.status==200 and (await saved.json())['accepted']
+                wecom=await service.store.binding('alice','wecom')
+                assert wecom['enabled'] and entry.store.cipher.decrypt(wecom['secret_enc'])=='wecom-private'
+                listed=await client.post('/hermes/__entry/messaging/platforms',headers=headers,json={})
+                assert 'wecom-private' not in json.dumps(await listed.json())
+                assert (await client.post('/hermes/__entry/messaging/disable',headers=headers,json={'platform':'wecom'})).status==200
+
+                # Exercise central provisioning all the way through the real
+                # platform protocol, entry wake, instance relay and final reply.
+                provisioned=await client.put('/hermes/api/channels/uniagentgate/cloud-binding/alice',json={
+                    'uniagentgate':{'gateway_url':gateway,'agent_id':'cloud-bot','agent_sk':'cloud-sk'},
+                    'my_plan':{'apiKey':'sk-provisioned','models':json.dumps({'models':[{'id':'fixture','model':'fixture','base_url':'https://model.invalid/v1'}]})}})
+                assert provisioned.status==200
                 await service.reconcile()
                 ws = await asyncio.wait_for(peer.get(),10)
                 binding = await service.store.binding('alice')

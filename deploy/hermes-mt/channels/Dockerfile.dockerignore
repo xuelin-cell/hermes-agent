@@ -24,3 +24,8 @@
 !pyproject.toml
 **/__pycache__/
 **/*.pyc
+
+!plugins/
+!plugins/cloud_messaging/
+!plugins/cloud_messaging/__init__.py
+!plugins/cloud_messaging/media.py

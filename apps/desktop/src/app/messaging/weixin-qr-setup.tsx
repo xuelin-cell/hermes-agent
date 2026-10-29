@@ -14,6 +14,8 @@ import { useI18n } from '@/i18n'
 import { CheckCircle2, Loader2, QrCode, RefreshCw } from '@/lib/icons'
 
 import { PlatformCard } from './platform-card'
+import { isBrowserShell } from '@/lib/browser-shell'
+import { WeixinGroupSettings } from './weixin-group-settings'
 
 const ACTIVE_STATES = new Set(['scanned', 'wait'])
 export const WEIXIN_POLL_MS = 1500
@@ -226,6 +228,7 @@ export function WeixinQrSetup({ onSaved, onUnbind, busy = false, pending, platfo
         pending={pending}
         platform={platform}
       >
+        {isBrowserShell() && platform.configured && <WeixinGroupSettings busy={busy} />}
         {platform.error_message && <ErrorBanner className="mt-3">{platform.error_message}</ErrorBanner>}
         {panelOpen && (
           <div className="mt-4 flex flex-col items-center gap-3 border-t border-dashed border-(--ui-stroke-secondary) pt-4">

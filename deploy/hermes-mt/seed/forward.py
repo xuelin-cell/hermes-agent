@@ -654,7 +654,7 @@ async def _handle_mt(
         try:
             data = json.loads(await _read_body(headers,rest,reader))
             required = ('relay_url','gateway_id','upgrade_secret','bot_id','revision')
-            if not isinstance(data,dict) or set(data) != set(required): raise ValueError()
+            if not isinstance(data,dict) or not set(required).issubset(data) or set(data)-set(required)-{'platform','binding_id'}: raise ValueError()
             env = dict(os.environ)
             env.update(_hermes_env)
             env['HERMES_HOME'] = str(HERMES_HOME)

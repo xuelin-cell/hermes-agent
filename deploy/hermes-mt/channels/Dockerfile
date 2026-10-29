@@ -16,3 +16,5 @@ COPY hermes_platform /opt/hermes/hermes_platform
 COPY pm /opt/hermes/pm
 COPY hermes_constants.py pyproject.toml /opt/hermes/
 CMD ["python", "-m", "entry.channels_service", "/app/config.yaml"]
+
+COPY plugins/cloud_messaging/__init__.py plugins/cloud_messaging/media.py /opt/hermes/plugins/cloud_messaging/

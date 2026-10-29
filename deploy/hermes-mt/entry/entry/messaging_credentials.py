@@ -17,7 +17,7 @@ def cloud_binding(plan, allowed_origins):
     try:
         url = urlsplit(plan['ipUrl'].strip())
         origin = f'{url.scheme}://{url.netloc.lower()}'
-        if url.scheme not in {'https', 'http'} or not url.hostname or url.username or url.password or url.query or url.fragment or origin not in allowed_origins:
+        if url.scheme not in {'https', 'http'} or not url.hostname or url.username or url.password or url.query or url.fragment or (allowed_origins and origin not in allowed_origins):
             return 'invalid', None
         agent, secret = plan['agentIdCloud'].strip(), plan['agentKeyCloud'].strip()
         if len(agent) > 256 or len(secret) > 4096 or '${' in secret:

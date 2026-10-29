@@ -25,12 +25,15 @@ class Gateway:
 from hermes_cli.config import read_user_config_raw,save_config
 cfg=read_user_config_raw(); settings=json.loads(sys.stdin.read())
 platforms=cfg.setdefault('platforms',{})
-if any(name!='uniagentgate' and isinstance(value,dict) and value.get('enabled') for name,value in platforms.items()):
+platform=settings.get('platform','uniagentgate')
+if platform not in ('uniagentgate','dingtalk','weixin','wecom','feishu'): raise ValueError('Unsupported platform')
+if any(name not in ('uniagentgate','dingtalk','weixin','wecom','feishu') and isinstance(value,dict) and value.get('enabled') for name,value in platforms.items()):
  raise RuntimeError('Direct platform configuration must be removed before relay startup')
 cfg['cloud_messaging']={'enabled':True,**settings}
-platforms['uniagentgate']={'enabled':True}
-cfg.setdefault('display',{}).setdefault('platforms',{}).setdefault('uniagentgate',{})['tool_progress']='off'
-platforms['uniagentgate']['typing_indicator']=False
+for name in ('uniagentgate','dingtalk','weixin','wecom','feishu'):
+ platforms[name]={'enabled':name==platform}
+cfg.setdefault('display',{}).setdefault('platforms',{}).setdefault(platform,{})['tool_progress']='off'
+platforms[platform]['typing_indicator']=False
 save_config(cfg)
 '''
             update = await asyncio.create_subprocess_exec(self.python,'-c',script,stdin=asyncio.subprocess.PIPE,

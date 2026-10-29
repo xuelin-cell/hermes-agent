@@ -21,7 +21,8 @@ REPO = Path(__file__).resolve().parents[2]
 
 
 @pytest.mark.asyncio
-async def test_profile_owned_plugin_and_interrupted_receipts_a_b_a(tmp_path,monkeypatch):
+@pytest.mark.parametrize('secondary',['dingtalk','weixin','wecom','feishu'])
+async def test_profile_owned_plugin_and_interrupted_receipts_a_b_a(tmp_path,monkeypatch,secondary):
     monkeypatch.setattr(Path,'home',lambda:tmp_path)
     active = is_multiplex_active()
     set_multiplex_active(True)
@@ -29,15 +30,16 @@ async def test_profile_owned_plugin_and_interrupted_receipts_a_b_a(tmp_path,monk
         for name in ('a','b','a'):
             home = tmp_path / name
             home.mkdir(exist_ok=True)
-            settings = {'enabled':True,'relay_url':'ws://127.0.0.1:1/relay','gateway_id':name+'.1.1',
+            channel=secondary if name=='b' else 'uniagentgate'
+            settings = {'platform':channel,'enabled':True,'relay_url':'ws://127.0.0.1:1/relay','gateway_id':name+'.1.1',
                 'bot_id':'bot-'+name,'upgrade_secret':'scoped-'+name,'revision':1}
-            (home/'config.yaml').write_text(json.dumps({'cloud_messaging':settings,'platforms':{'uniagentgate':{'enabled':True}}}))
+            (home/'config.yaml').write_text(json.dumps({'cloud_messaging':settings,'platforms':{channel:{'enabled':True}}}))
             token = set_hermes_home_override(home)
             secret = set_secret_scope(build_profile_secret_scope(home),profile_home=str(home))
             try:
                 discover_plugins(force=True)
                 cfg = load_gateway_config()
-                adapter = platform_registry.create_adapter('uniagentgate',cfg.platforms[Platform('uniagentgate')])
+                adapter = platform_registry.create_adapter(channel,cfg.platforms[Platform(channel)])
                 assert adapter is not None
                 assert adapter.settings['bot_id'] == 'bot-'+name
                 assert adapter.ledger.path.parent == home
@@ -62,7 +64,8 @@ async def test_profile_owned_plugin_and_interrupted_receipts_a_b_a(tmp_path,monk
 
 
 @pytest.mark.asyncio
-async def test_forwarder_starts_real_gateway_without_second_cron(tmp_path,monkeypatch):
+@pytest.mark.parametrize('channel',['uniagentgate','weixin','wecom','feishu'])
+async def test_forwarder_starts_real_gateway_without_second_cron(tmp_path,monkeypatch,channel):
     spec=importlib.util.spec_from_file_location('mtmessaging',REPO/'deploy/hermes-mt/seed/mtmessaging.py')
     module=importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -81,7 +84,7 @@ async def test_forwarder_starts_real_gateway_without_second_cron(tmp_path,monkey
         async for message in ws:
             frame=json.loads(message.data)
             if frame['type']=='hello':
-                descriptor={'contract_version':1,'platform':'uniagentgate','label':'5G','max_message_length':20000,'supports_draft_streaming':False,
+                descriptor={'contract_version':1,'platform':channel,'label':channel,'max_message_length':20000,'supports_draft_streaming':False,
                     'supports_edit':False,'supports_threads':False,'markdown_dialect':'plain','len_unit':'chars','supported_ops':['send']}
                 await ws.send_str(json.dumps({'type':'descriptor','descriptor':descriptor})+'\n')
                 connected.set()
@@ -93,7 +96,7 @@ async def test_forwarder_starts_real_gateway_without_second_cron(tmp_path,monkey
     async with TestServer(app) as server:
         env={key:value for key,value in os.environ.items() if not key.startswith(('HERMES_','OPENAI_','ANTHROPIC_','MT_'))}
         env.update(HERMES_HOME=str(home),HERMES_RUNTIME_DIR=str(tmp_path/'runtime'),PYTHONPATH=str(REPO),OPENAI_API_KEY='fixture-model-key')
-        settings={'relay_url':str(server.make_url('/relay')).replace('http://','ws://'),'gateway_id':'a.1.1','upgrade_secret':'local-secret','bot_id':'local-bot','revision':1}
+        settings={'platform':channel,'relay_url':str(server.make_url('/relay')).replace('http://','ws://'),'gateway_id':'a.1.1','upgrade_secret':'local-secret','bot_id':'local-bot','revision':1}
         try:
             result=await manager.start(settings,env)
             try:

@@ -31,6 +31,7 @@ from .share_gateway import ShareGateway
 from .share_routes import ShareRoutes
 from .mail_routes import MailRoutes
 from .messaging_routes import MessagingRoutes
+from .cloud_binding_routes import CloudBindingRoutes
 from .shares import Shares
 from .tenants import CredentialSyncError, TenantManager
 
@@ -576,6 +577,10 @@ def build_app(settings: Settings = SETTINGS) -> web.Application:
     app.router.add_post(path("/__entry/welcome/{locale}"), entry.welcome_routes.handle)
     app.router.add_post(path("/__entry/plan/{operation}"), entry.plan_routes.handle)
     app.router.add_post(path("/__entry/mail"), entry.mail_routes.handle)
+    cloud_bindings = CloudBindingRoutes(entry)
+    for method in ("PUT", "GET", "DELETE"):
+        app.router.add_route(method,path("/api/channels/uniagentgate/cloud-binding/{user_id}"),cloud_bindings.handle)
+    app.router.add_get(path("/__entry/messaging/media/{id}"), entry.messaging_routes.media)
     app.router.add_post(path("/__entry/messaging/wake"), entry.messaging_routes.wake)
     app.router.add_get(path("/__entry/messaging/relay"), entry.messaging_routes.relay)
     app.router.add_post(path("/__entry/messaging/{operation}"), entry.messaging_routes.handle)

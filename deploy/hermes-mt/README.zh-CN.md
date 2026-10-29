@@ -305,3 +305,105 @@ Markdown 预览支持 Markdown、Word 和 PDF 导出：前两项由浏览器生�
 授权和启停状态随实例归档恢复，发送限额直接保存在账号工作区卷；无需把 MaaS token 交给实例。
 本轮不包含暂停期间的后台实时收信推送，恢复后再查询邮件。
 部署需同时更新入口、前端和实例模板，具体边界及验收见 [云端邮箱迁移](docs/cloud-mail-migration.md)。
+
+
+## 云端消息平台
+
+5G、钉钉、飞书、微信、企业微信复用桌面页面；账号申请、机器人权限与渠道连接步骤，
+直接查看各渠道卡片中的“配置指南”。以下仅说明云端部署和排查。
+
+### 启用常驻接入服务
+
+消息由常驻 `channels` 服务接收并写入 PG，再经入口唤醒用户实例执行；关闭网页不影响收件。
+入口启动时自动执行 `009_messaging.sql`，使用 `messaging_bindings`、`messaging_inbox`、
+`messaging_outbox` 三张表，无需手工建表。凭据加密保存；实例执行回执随已有状态归档恢复。
+
+在 `deploy/hermes-mt/entry.env` 中配置：
+
+```dotenv
+MT_BACKEND=cube
+MT_PG_LOCK=1
+MT_CHANNELS_RELAY_URL=ws://192.168.212.116:18081/hermes/__entry/messaging/relay
+MT_CHANNELS_KEY=<现场生成并保存的随机密钥>
+```
+
+`MT_CHANNELS_RELAY_URL` 填所有沙箱计算节点可达的入口地址，HTTPS 部署改为 `wss://`。
+`MT_CHANNELS_GATEWAY_ORIGINS` 是可选网关白名单，留空时使用可信登录响应或中心下发的地址。
+`MT_CHANNELS_KEY` 用于内部通信，只生成一次，入口和 channels 共用，不要在更新时重新生成。
+可在部署目录执行下列命令，补齐缺失的密钥且不打印其内容：
+
+```bash
+python3 - <<'PYKEY'
+import os, secrets
+from pathlib import Path
+p = Path('entry.env')
+lines = p.read_text().splitlines()
+if not any(line.startswith('MT_CHANNELS_KEY=') and line.split('=', 1)[1].strip() for line in lines):
+    lines = [line for line in lines if not line.startswith('MT_CHANNELS_KEY=')]
+    lines.append('MT_CHANNELS_KEY=' + secrets.token_hex(32))
+    p.write_text('\n'.join(lines) + '\n')
+    os.chmod(p, 0o600)
+PYKEY
+```
+
+执行 `bash deploy.sh all --branch cloud-adaptation`，同时更新前端、入口、channels 与实例模板。
+未配置密钥时不启动 channels。5G 可重新短信登录获取 cloud 凭据并自动绑定，也可由中心下发；
+“已保存”不代表连接成功，应确认页面实际显示已连接。同一个机器人应只由一个接入方连接。
+
+### 中心下发 5G 绑定
+
+目标 `user_id` 必须已在 Hermes 登录建立用户记录，且账号未停用；不存在的用户返回 404，不会由该接口创建登录会话。无需新增数据库表。
+
+- `PUT /api/channels/uniagentgate/cloud-binding/{user_id}`：原子保存 5G 凭据和模型配置，自动启用绑定，channels 下一轮调度建立连接。
+- `GET /api/channels/uniagentgate/cloud-binding/{user_id}`：返回 `bound`、`state`、`last_error`、`updated_at`，不返回地址或密钥。
+- `DELETE /api/channels/uniagentgate/cloud-binding/{user_id}`：解除该用户 5G 绑定，重复调用仍成功；其他平台和模型凭据保持原有配置。
+
+以上是 nginx 对外路径，同时支持 `/hermes/api/channels/uniagentgate/cloud-binding/{user_id}`。沿用 UniClaw cloud-vm-dev 的调用方式，不要求额外服务密钥或浏览器 cookie；接口的访问范围由部署网络或网关控制。中心服务直接提交请求体即可。
+
+部署只需沿用 `MT_CHANNELS_KEY` 和 `MT_CHANNELS_RELAY_URL`。前者用于入口、channels 与实例之间的内部认证，不需要提供给调用 cloud-binding 的中心服务；后者填写所有沙箱节点可达的入口 WebSocket 地址。`MT_CHANNELS_GATEWAY_ORIGINS` 可留空，网关地址来自登录响应或下发请求。
+
+PUT 请求体沿用 UniClaw 结构：
+
+```json
+{
+  "uniagentgate": {
+    "gateway_url": "https://uag.example.com",
+    "agent_id": "cloud-agent-user-id",
+    "agent_sk": "由中心服务提供的云端 Agent SK"
+  },
+  "my_plan": {
+    "apiKey": "sk-用户模型凭据",
+    "models": "{\"models\":[{\"id\":\"main\",\"model\":\"model-name\",\"base_url\":\"https://model.example.com/plan/v1\",\"provider\":\"yuanjing\"}],\"main_model_id\":\"main\"}"
+  }
+}
+```
+
+`my_plan` 沿用 Hermes 当前用户级模型凭据：`apiKey` 必填并以 `sk-` 开头，`models` 是含非空模型数组的 JSON 字符串。网关与模型凭据在同一事务中保存并加密；校验失败或机器人已属于其他用户时，不会部分覆盖配置。模型配置在实例下一次唤醒或访问时沿用已有同步链路生效，不中断当前 Agent 对话。
+
+相同 5G 凭据重试 PUT 只同步模型配置，不改变连接 revision，也不取消正在执行的任务。变更 5G 凭据会轮换 revision，旧连接在 channels 调度时关闭，旧执行按原有 uncertain/cancelled 规则处理。`ok=true` 只表示保存和启用成功，必须继续 GET 确认 state 为 running。该功能只作用于云端入口和集中接入服务。
+
+### 排查与验收
+
+```bash
+docker ps -a --filter name=hermes-mt --format 'table {{.Names}}\t{{.Status}}'
+docker logs --tail 100 hermes-mt-channels
+docker logs --tail 100 hermes-mt-entry
+```
+
+实例执行日志在该实例的 `logs/cloud-messaging.log`。排查时核对绑定连接状态、入口能否唤醒实例、
+实例能否连到 relay；避免公开业务日志。5G 媒体链接还要求网关能访问 relay 地址对应的 HTTP(S) 主机。
+共用沙箱集群时，未确认资源归属隔离前不要执行 `purge-old` 或 `purge-templates`。
+
+部署后逐个平台验证文字、图片、音频、文件进入实例，以及生成附件返回原聊天。
+再验证关闭网页后收发、实例休眠唤醒、重启恢复、重复事件不重复执行、用户隔离、解绑停止接收。
+真实账号收发尚待验收，本地协议测试及镜像构建不能替代此项。
+
+媒体上限为单文件 20 MiB、单消息/执行合计 25 MiB，图片/视频最多 10 MiB；平台更小的限制仍适用。
+图片识别和语音转写还依赖对应模型配置。微信音频返回文件附件；企微 AMR 且不超过 2 MiB
+可原生发送语音，其他音频返回文件。企微回复受原连接与 330 秒窗口限制，冷启动或排队可能耗尽窗口。
+
+飞书和钉钉群消息需 @ 机器人。微信群事件默认关闭，仅处理允许列表中的群；iLink 通常不投递
+普通微信群消息，代码适配群事件不等于普通微信群可用。
+
+未收到发送确认的消息标为 `unknown`，工具执行中崩溃标为 `uncertain`，不会自动重发或重跑，
+需核对原会话后再决定操作。单用户按顺序执行，当前使用单个活动接入服务。

@@ -368,7 +368,7 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
             <PageLoader label={m.loading} />
           ) : (
             DISPLAY_PLATFORM_IDS
-              .filter(id => !isBrowserShell() || id === 'uniagentgate')
+              .filter(id => !isBrowserShell() || ['uniagentgate', 'dingtalk', 'weixin', 'wecom', 'feishu'].includes(id))
               .filter(
                 id =>
                   !search || (m.cards.titles[id] + ' ' + m.cards.descriptions[id]).toLocaleLowerCase().includes(search)
@@ -407,7 +407,7 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
                         ) : (
                           <Button disabled={!isBrowserShell() || !platform?.enabled} size="sm" variant="outline"
                             onClick={() => void updateMessagingPlatform('uniagentgate', { enabled: false }, scopeProfile)
-                              .then(() => refresh()).catch(error => notify({ kind: 'error', message: String(error) }))}>{isBrowserShell() ? '停用' : m.cards.unbind}</Button>
+                              .then(() => refresh()).catch(error => notify({ kind: 'error', message: String(error) }))}>{isBrowserShell() ? (platform?.configured ? '停用' : '未获取配置') : m.cards.unbind}</Button>
                         )
                       ) : (
                         <>

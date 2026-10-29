@@ -1,0 +1,17 @@
+**
+!deploy/
+!deploy/hermes-mt/
+!deploy/hermes-mt/entry/
+!deploy/hermes-mt/entry/entry/
+!deploy/hermes-mt/entry/entry/**
+!deploy/hermes-mt/entry/migrations/
+!deploy/hermes-mt/entry/migrations/**
+!deploy/hermes-mt/entry/requirements.txt
+!deploy/hermes-mt/seed/
+!deploy/hermes-mt/seed/**
+!plugins/
+!plugins/cloud_messaging/
+!plugins/cloud_messaging/__init__.py
+!plugins/cloud_messaging/media.py
+**/__pycache__/
+**/*.pyc
