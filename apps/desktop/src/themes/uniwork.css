@@ -32,6 +32,8 @@
   --dt-muted-foreground: var(--ui-text-tertiary);
   --radius-scalar: 1;
   --control-radius: 8px;
+  --sidebar-row-min-height: 40px;
+  --sidebar-row-font-size: 14px;
   --control-font-size: 0.875rem;
   --control-line-height: 1.375rem;
   --conversation-text-font-size: 0.875rem;
