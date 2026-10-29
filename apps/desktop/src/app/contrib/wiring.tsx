@@ -39,6 +39,7 @@ import { TipHost } from '@/components/tips'
 import { emitGatewayEvent } from '@/contrib/events'
 import { translateNow } from '@/i18n'
 import { type ChatMessage, chatMessageText } from '@/lib/chat-messages'
+import { NTFY_CONFIG_REFRESHED_EVENT } from '@/lib/ntfy-instructions'
 import { isMessagingSource } from '@/lib/session-source'
 import { activateWakeIndicator } from '@/lib/wake-indicator'
 import { playWakeSound } from '@/lib/wake-sound'
@@ -142,6 +143,7 @@ import { startWorkspaceSession } from '../session/workspace-session-target'
 import { PluginInstallModal } from '../settings/plugin-install-modal'
 import { useOverlayRouting } from '../shell/hooks/use-overlay-routing'
 import { useWindowControlsOverlayWidth } from '../shell/hooks/use-window-controls-overlay-width'
+import { messageCenterAvailable, MessageCenterSync } from '../shell/message-center'
 import {
   TITLEBAR_CHROME_CHANGED_EVENT,
   titlebarControlsPosition,
@@ -1284,7 +1286,14 @@ export function ContribWiring({ children }: { children: ReactNode }) {
   const shownTool = shownInMode(interfaceMode)
   const paneToolCount = rightTitlebarTools.filter(tool => !tool.hidden && shownTool(tool)).length
   const leftExtraCount = leftTitlebarTools.filter(tool => !tool.hidden && shownTool(tool)).length
-  const clusters = titlebarAppActionsClusterCounts(appActionsSide, leftExtraCount, 0, interfaceMode)
+
+  const clusters = titlebarAppActionsClusterCounts(
+    appActionsSide,
+    leftExtraCount,
+    messageCenterAvailable() ? 1 : 0,
+    interfaceMode
+  )
+
   const systemToolsWidth = titlebarToolsWidthCss(clusters.right)
 
   const titlebarToolsWidth =
@@ -1296,6 +1305,19 @@ export function ContribWiring({ children }: { children: ReactNode }) {
   useEffect(() => {
     window.dispatchEvent(new CustomEvent(TITLEBAR_CHROME_CHANGED_EVENT))
   }, [controlsPos.left, controlsPos.top, titlebarToolsRight])
+
+  // 服务端指令刷新完账号配置后，本窗口重读默认模型/推理档位与模型目录。
+  useEffect(() => {
+    const reload = () => {
+      void refreshHermesConfig()
+      void refreshCurrentModel()
+      void queryClient.invalidateQueries({ queryKey: ['model-options'] })
+    }
+
+    window.addEventListener(NTFY_CONFIG_REFRESHED_EVENT, reload)
+
+    return () => window.removeEventListener(NTFY_CONFIG_REFRESHED_EVENT, reload)
+  }, [queryClient, refreshHermesConfig, refreshCurrentModel])
 
   return (
     <ContribWiringContext.Provider value={api}>
@@ -1334,6 +1356,9 @@ export function ContribWiring({ children }: { children: ReactNode }) {
 
       {/* The full real overlay set (mirrors DesktopController's `overlays`). */}
       <RemoteDisplayBanner />
+      {/* 服务端主动通知：跟随账号建立订阅，公告进消息中心，指令触发刷新。
+          辅助窗（HUD / 弹窗浏览器）共用主进程的一条连接，不重复订阅。 */}
+      {!isAuxiliaryWindow() && <MessageCenterSync />}
       {!isAuxiliaryWindow() && <DesktopInstallOverlay />}
       {!isAuxiliaryWindow() && <IntroRevealGate enabled={gatewayState === 'open'} />}
       {!isAuxiliaryWindow() && (

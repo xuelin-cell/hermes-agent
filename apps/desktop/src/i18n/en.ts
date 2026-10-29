@@ -1198,6 +1198,14 @@ export const en: Translations = {
     layoutEditorTitle: mod => `Layout editor — ${mod}-click resets the layout`
   },
 
+  messageCenter: {
+    title: 'Notifications',
+    unreadCount: count => (count === 1 ? '1 unread notification' : `${count} unread notifications`),
+    markAllRead: 'Mark all read',
+    empty: 'No notifications yet',
+    untitled: 'Announcement'
+  },
+
   keybinds: {
     title: 'Keyboard shortcuts',
     subtitle: open => `Click a shortcut to rebind it · ${open} reopens this panel.`,

@@ -342,7 +342,14 @@ import { resolveIpcFileReadPath, resolveMediaStreamFile, resolvePreviewTargetPat
 import { localSkinProfileKey, readLocalSkinPayload } from './local-skin'
 import { ACTIVE_LOG_POLL_MS, planLogRotation, reclaimActiveLogIfOversized } from './log-rotation'
 import { installAccountIpc } from './login/account-ipc'
-import { currentDesktopAccount, currentDesktopAsrIdentity, currentDesktopIdentity, currentDesktopLocalContext, sealDesktopAccount } from './login/bootstrap'
+import {
+  currentDesktopAccount,
+  currentDesktopAsrIdentity,
+  currentDesktopIdentity,
+  currentDesktopLocalContext,
+  currentDesktopLogin,
+  sealDesktopAccount
+} from './login/bootstrap'
 import { CloudDriveClient } from './login/cloud-drive'
 import { createDriveArtifactResolver } from './login/cloud-drive-artifact-source'
 import { CloudDriveMcp } from './login/cloud-drive-mcp'
@@ -556,6 +563,8 @@ import {
   windowOpacityOptions
 } from './translucency'
 import { packagedResourceRoot } from './universal-resources'
+import { installNtfyIpc } from './uniwork-notify/ipc'
+import { createPlanRefresher } from './uniwork-notify/refresher'
 import { waitForUpdateClearance } from './update-gate'
 import { readLiveUpdateMarker, updateHandoffConflict, writeUpdateMarker } from './update-marker'
 import {
@@ -778,6 +787,21 @@ installOfficePreviewIpc(
   () => DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString(),
   () => currentDesktopLocalContext() === ACCOUNT_RUNTIME,
   ACCOUNT_OFFICE_PREVIEW
+)
+// desktop-mt: 服务端主动通知（ntfy）— 主进程持一条长连接，页面只收业务事件。
+installNtfyIpc(
+  ACCOUNT_SESSION,
+  () => DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString(),
+  {
+    identity: currentDesktopIdentity,
+    // 每行日志自带 ntfy 前缀（见 uniwork-notify/subscriber.ts）。
+    log: rememberLog,
+    refresh: createPlanRefresher(
+      currentDesktopLogin,
+      () => (currentDesktopLocalContext() === ACCOUNT_RUNTIME ? ACCOUNT_RUNTIME.home : null),
+      rememberLog
+    )
+  }
 )
 installUniAgentGateIpc(
   ACCOUNT_SESSION,
