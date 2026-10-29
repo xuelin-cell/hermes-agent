@@ -3205,7 +3205,7 @@ export const zhHant = defineLocale({
       actions: '群組動作'
     },
     nav: {
-      'new-session': '新工作階段',
+      'new-session': '新對話',
       capabilities: '擴充功能',
       messaging: '訊息平台',
       artifacts: '資料庫',

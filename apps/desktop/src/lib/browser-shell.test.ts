@@ -175,7 +175,7 @@ describe('browser shell', () => {
 
     document.documentElement.dataset.hermesBrowser = 'production'
 
-    expect(newSessionTitle('New session')).toBe('新建会话')
+    expect(newSessionTitle('New session')).toBe('新对话')
     expect(effortShortLabels(english)).toMatchObject({ high: '高', low: '低', medium: '中' })
     expect(completionHint('attach file')).toBe('附加文件')
     expect(completionHint('a skill of mine')).toBe('a skill of mine')

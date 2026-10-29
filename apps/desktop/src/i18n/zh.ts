@@ -3980,7 +3980,7 @@ export const zh = defineLocale({
       actions: '分组操作'
     },
     nav: {
-      'new-session': '新建会话',
+      'new-session': '新对话',
       capabilities: '扩展',
       messaging: '消息平台',
       artifacts: '资料库',
