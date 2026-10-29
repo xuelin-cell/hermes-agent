@@ -378,6 +378,7 @@ def finish_native(prepared: Path, frontends: dict[str, Path]) -> int:
     from scripts.build.agent import assemble
     from scripts.build.inputs import AgentInputs
     from scripts.bundles.native_prepared import load_prepared, preparation_lock
+    from scripts.bundles.payload import write_payload_stamp
 
     prepared = Path(prepared).absolute()
     if not prepared.name.endswith(".prepared.json") or not prepared.is_file():
@@ -389,6 +390,9 @@ def finish_native(prepared: Path, frontends: dict[str, Path]) -> int:
         values = asdict(inputs)
         values["frontends"] = {name: Path(path).absolute() for name, path in frontends.items()}
         assemble(AgentInputs.from_dict(values), out)
+        # Written after assembly (link relocation completes there) and rewritten
+        # by `payload.py rehash` once signing has changed the shipped bytes.
+        write_payload_stamp(out)
     print(f"✓ manifest ({out / 'manifest.json'})")
     return 0
 

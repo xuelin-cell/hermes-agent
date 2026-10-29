@@ -55,6 +55,13 @@ export function validatePreparedBuilderArgs(args, inputs) {
   }
 }
 
+/** @returns {string} */
+function buildResourcesDirectory() {
+  const require = createRequire(path.join(source, 'apps/desktop/package.json'))
+  const config = require(path.join(app, 'electron-builder.config.cjs'))
+  return path.join(app, config.directories?.buildResources || 'build')
+}
+
 /**
  * Copy mutable toolsets into the build resources directory: upstream's custom
  * Windows tool contract requires containment there. Never chmod/sign the cache.
@@ -62,9 +69,7 @@ export function validatePreparedBuilderArgs(args, inputs) {
  * @returns {string[]}
  */
 function toolsetArguments(inputs) {
-  const require = createRequire(path.join(source, 'apps/desktop/package.json'))
-  const config = require(path.join(app, 'electron-builder.config.cjs'))
-  const tools = path.join(app, config.directories?.buildResources || 'build', 'prepared-packaging-tools')
+  const tools = path.join(buildResourcesDirectory(), 'prepared-packaging-tools')
   fs.mkdirSync(tools, { recursive: true })
   return Object.entries(inputs.toolsets).map(([name, directory]) => {
     const destination = path.join(tools, name)
@@ -73,6 +78,29 @@ function toolsetArguments(inputs) {
     // Upstream parses this as a literal path after slicing file:// (not URL decoding).
     return `-c.toolsets.${name}.url=file://${destination}`
   })
+}
+
+/**
+ * Stage the 7-Zip CLI the installer embeds (nsis/incremental-update.nsh) to skip
+ * unchanged payload components on upgrade. Only NSIS needs it, and a missing
+ * binary must fail the build: shipping without it silently loses incremental
+ * updates (the installer would fall back to a full extraction every time).
+ * @param {import('./prepared-packaging.mjs').PreparedPackaging} inputs
+ * @returns {string | null} the staged path, or null when this target has no NSIS
+ */
+export function stageIncrementalExtractor(inputs) {
+  if (!inputs.target.startsWith('win32-')) return null
+  if (!inputs.formats.some(format => format === 'nsis' || format === 'nsis-web')) return null
+  const toolset = inputs.toolsets.sevenZip
+  const binaries = fs.readdirSync(toolset, { recursive: true, withFileTypes: true })
+    .filter(entry => entry.isFile() && entry.name.toLowerCase() === '7za.exe')
+  // Older sevenZip layouts carry one subdirectory per architecture.
+  const binary = binaries.find(entry => /[\\/]x64$/i.test(entry.parentPath)) ?? binaries[0]
+  if (!binary) throw new Error(`The prepared sevenZip toolset has no 7za.exe: ${toolset}`)
+  const destination = path.join(buildResourcesDirectory(), 'nsis-tools', '7za.exe')
+  fs.mkdirSync(path.dirname(destination), { recursive: true })
+  fs.copyFileSync(path.join(binary.parentPath, binary.name), destination)
+  return destination
 }
 
 /**
@@ -134,6 +162,7 @@ export function runElectronBuilder(args, { spawn = spawnSync } = {}) {
   if (!nativeDeps) throw preparationRequired('--native-deps is required with --prepared')
   readNativeInputs({ source, nativeDeps, platform, arch })
   if (validateOnly) return 0
+  stageIncrementalExtractor(inputs)
   const builder = pinnedPackageRoot(source, 'electron-builder')
   pinnedPackageRoot(source, 'app-builder-lib')
   const require = createRequire(path.join(builder, 'package.json'))

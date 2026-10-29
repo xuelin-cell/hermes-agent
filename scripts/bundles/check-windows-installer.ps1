@@ -77,6 +77,43 @@ try {
     $facts.Add("Commit: $($stamp.commit)")
     $repoDir = Join-Path $payload $stamp.runtime.repoDir
 
+    # The incremental installer (apps/desktop/nsis/incremental-update.nsh) decides which runtime
+    # components to keep by reading payload-stamp.txt. A missing or malformed stamp silently
+    # disables incremental upgrades — every build must ship one that covers the whole payload.
+    $payloadStamp = Join-Path $payload 'payload-stamp.txt'
+    if (-not (Test-Path -LiteralPath $payloadStamp -PathType Leaf)) {
+        $problems.Add('The payload carries no payload-stamp.txt; incremental upgrades cannot run.')
+    } else {
+        $lines = [System.IO.File]::ReadAllLines($payloadStamp)
+        $schemaOk = $false; $targetOk = $false
+        $stampComponents = [System.Collections.Generic.HashSet[string]]::new()
+        $stampTools = [System.Collections.Generic.HashSet[string]]::new()
+        foreach ($line in $lines) {
+            if ($line -ceq 'schema 1') { $schemaOk = $true; continue }
+            if ($line -cmatch '^target ([a-z0-9-]+)$') { $targetOk = $true; continue }
+            if ($line -cmatch '^(venv|pm-runtime|uv-cache\.zip) [0-9a-f]{64}$') { $stampComponents.Add($Matches[1]) | Out-Null; continue }
+            if ($line -cmatch '^tool (\S+) (\S+) (\S+) [0-9a-f]{64}$') { $stampTools.Add($Matches[1]) | Out-Null; continue }
+            $problems.Add("payload-stamp.txt has an unexpected line: $line")
+        }
+        if (-not $schemaOk) { $problems.Add('payload-stamp.txt is missing "schema 1".') }
+        if (-not $targetOk) { $problems.Add('payload-stamp.txt is missing a "target" line.') }
+        foreach ($required in @('venv', 'pm-runtime', 'uv-cache.zip')) {
+            if (-not $stampComponents.Contains($required)) {
+                $problems.Add("payload-stamp.txt has no $required line; the incremental installer would skip it.")
+            }
+        }
+        $toolsFacts = Join-Path $payload 'tools\facts.json'
+        if (Test-Path -LiteralPath $toolsFacts -PathType Leaf) {
+            $factsJson = Get-Content -LiteralPath $toolsFacts -Raw -Encoding UTF8 | ConvertFrom-Json
+            foreach ($name in $factsJson.PSObject.Properties.Name) {
+                if ($factsJson.$name.entry -and -not $stampTools.Contains($name)) {
+                    $problems.Add("payload-stamp.txt is missing tool $name even though tools/facts.json records it.")
+                }
+            }
+        }
+        $facts.Add("Payload stamp: $($stampComponents.Count) components, $($stampTools.Count) tool(s)")
+    }
+
     # Built-in kits and experts, where the backend looks for them: the installed app discovers plugins in
     # resources\python-plugins (older installers read the payload snapshot), and autoseed looks next to uniwork-kits.
     $pluginRoot = Join-Path $Unpacked 'resources\python-plugins'

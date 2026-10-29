@@ -156,6 +156,10 @@ class Facts:
     def get(self, name: str) -> dict | None:
         return self._packages.get(name)
 
+    def entries(self) -> dict[str, dict]:
+        """Every recorded fact, including state rows that own no store entry."""
+        return deepcopy(self._packages)
+
     def refresh_digests(self, store_root: Path) -> int:
         """Publish all tool digests after packaging finishes changing their bytes."""
         from pm.store import tree_digest

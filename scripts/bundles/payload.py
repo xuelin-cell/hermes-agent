@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import subprocess
@@ -97,6 +98,63 @@ def rehash_tools(root: Path) -> int:
     return count
 
 
+STAMP_NAME = "payload-stamp.txt"
+RUNTIME_COMPONENTS = ("venv", "pm-runtime", "uv-cache.zip")
+
+
+def _stamp_digest(path: Path) -> str:
+    """Same contract as pm.store.tree_digest, one file at a time (uv-cache.zip
+    can be hundreds of MiB; nothing here may hold it in memory)."""
+    from pm.store import tree_digest
+
+    if path.is_dir():
+        return tree_digest(path)
+    digest = hashlib.sha256()
+    with open(path, "rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def write_payload_stamp(root: Path) -> Path:
+    """Record every runtime component's digest next to the payload.
+
+    An installer compares these lines with the ones the previous build left in
+    the install directory: equal digests mean the component a user already has
+    is byte-for-byte the component this build ships, so extraction may skip it.
+    Digests are recomputed here rather than read back from facts so a stamp can
+    never describe bytes other than the ones being shipped.
+    """
+    from pm.lock import Facts
+    from pm.store import current_target
+
+    root = root.resolve()
+    facts = Facts(_payload_file(root, "tools/facts.json"), strict=True)
+    lines = ["schema 1", f"target {current_target()}"]
+    for name in RUNTIME_COMPONENTS:
+        path = _payload_file(root, name)
+        if not path.exists():
+            raise ValueError(f"payload stamp: {name} is missing")
+        lines.append(f"{name} {_stamp_digest(path)}")
+    tools = 0
+    for name, fact in sorted(facts.entries().items()):
+        entry = fact.get("entry")
+        if entry is None:
+            # State rows (venv extras) share the file but own no store entry.
+            continue
+        entry_path = _payload_file(root, f"tools/{entry}")
+        if not entry_path.is_dir():
+            raise ValueError(f"payload stamp: tools/{entry} is missing")
+        lines.append(f"tool {name} {entry} {fact['version']} {_stamp_digest(entry_path)}")
+        tools += 1
+    if not tools:
+        raise ValueError(f"payload stamp: {facts.path} records no tool entries")
+    stamp = root / STAMP_NAME
+    stamp.write_bytes(("\n".join(lines) + "\n").encode("utf-8"))
+    _share_metadata(stamp)
+    return stamp
+
+
 def seal_pm_runtime(root: Path, python: Path) -> dict:
     """Record a resident PM runtime without Windows' CWD-bound redirector.
 
@@ -176,11 +234,17 @@ def _relativize_bin_links(root: Path, directory: Path) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["relocate", "rehash"])
+    parser.add_argument("action", choices=["relocate", "rehash", "stamp"])
     parser.add_argument("payload", type=Path)
     args = parser.parse_args()
     if args.action == "rehash":
-        print(f"rehashed {rehash_tools(args.payload)} payload tools")
+        # Signing rewrites tool bytes, so the stamp must be republished with
+        # the refreshed facts or an upgrade would never match what it installed.
+        count = rehash_tools(args.payload)
+        print(f"rehashed {count} payload tools")
+        print(write_payload_stamp(args.payload))
+    elif args.action == "stamp":
+        print(write_payload_stamp(args.payload))
     else:
         relativize_links(args.payload)
 
