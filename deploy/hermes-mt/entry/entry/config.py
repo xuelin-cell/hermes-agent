@@ -37,6 +37,9 @@ class Settings:
     cube_domain: str = _env("MT_CUBE_DOMAIN", "cube.app")        # 沙箱域名，拼路由 Host 用
     cube_api_key: str = _env("MT_CUBE_API_KEY", "")              # 控制面鉴权；集群没开就留空
     cube_template: str = _env("MT_CUBE_TEMPLATE", "")            # 模板 ID 或别名
+    # 多规格模板表：slug:tpl_id,slug:tpl_id。登录页按它列规格；选了某个 slug，
+    # 入口用对应 tpl_id 建实例，比老的单 MT_CUBE_TEMPLATE 灵活。空 = 退回单模板模式。
+    cube_tpl_specs: str = _env("MT_CUBE_TPL_SPECS", "")
     cube_volume_driver: str = _env("MT_CUBE_VOLUME_DRIVER", "")  # 空 = 用平台默认后端
     # 卷挂进沙箱的位置。挂在 hermes 数据目录之外：hermes 的仪表盘备份会遍历整个数据目录，
     # 卷挂在里面会被整个打进可写层。工作区、附件、图片由转发器做成指向卷内的目录链接。

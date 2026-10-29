@@ -129,6 +129,7 @@ load_cfg() {
     HTTP_PORT="$(cfg MT_HTTP_PORT 18081)"
     DEV_LOGIN="$(cfg MT_DEV_LOGIN 0)"
     TEMPLATE="$(cfg MT_CUBE_TEMPLATE)"
+    TPL_SPECS="$(cfg MT_CUBE_TPL_SPECS '')"
     local api_host
     api_host="$(printf '%s' "$CUBE_API" | sed -E 's|^[a-z]+://||; s|[:/].*$||')"
     REGISTRY="$(cfg MT_DEPLOY_REGISTRY "${api_host}:5000")"
@@ -139,6 +140,52 @@ load_cfg() {
     TPL_RETRIES="$(cfg MT_DEPLOY_TPL_RETRIES 3)"
     FWD_PORT="$(cfg MT_DEPLOY_FWD_PORT 15000)"
     BRANCH="${BRANCH_OPT:-$(cfg MT_DEPLOY_BRANCH "$(g rev-parse --abbrev-ref HEAD)")}"
+}
+
+# 多规格模板表：每行 "slug cpu mem"（cpu 毫核，mem MiB）。slug 用 p 代替小数点。
+# 可写层统一 TPL_DISK。改规格 = 改模板 ID = 走原来的「模板不一致就重建」流程。
+# 这 4 个规格是产品定下来的（就先这些规格），直接写死，不从 entry.env 读。
+spec_list() {
+    printf '0p25c0p5g 250 512\n'
+    printf '0p5c1g 500 1024\n'
+    printf '1c2g 1000 2048\n'
+    printf '2c4g 2000 4096\n'
+}
+
+# 集群上有没有「镜像 = 当前指纹」且 READY 的模板；有就打印它的 ID。
+# 多规格：模板名是 hermes-mt-<fp>-<slug>，按 slug 区分；单规格时 slug=default，名字就是 hermes-mt-<fp>。
+template_for_tag() {
+    local fp="$1" slug="$2" want_name
+    if [ "$slug" = "default" ] || [ -z "$slug" ]; then
+        want_name="hermes-mt-${fp}"
+    else
+        want_name="hermes-mt-${fp}-${slug}"
+    fi
+    api GET /templates 2>/dev/null | py '
+import json,sys
+tag = sys.argv[1]
+want = sys.argv[2]
+try: items = json.load(sys.stdin)
+except Exception: items = []
+for t in items:
+    name = t.get("name") or ""
+    if t.get("status") == "READY" and name == want and ("/%s:%s@" % (sys.argv[3], tag)) in (t.get("imageInfo") or ""):
+        print(t["templateID"]); break' "$fp" "$want_name" "$REPO_PATH" || true
+}
+
+# 当前在用的模板 ID（一行一个）。多规格从 MT_CUBE_TPL_SPECS（slug:tpl_id,...）拆出 tpl_id；
+# 单规格退回 MT_CUBE_TEMPLATE。purge / purge-templates / all 摘要用它判断「在不在当前模板上」。
+current_tpls() {
+    local specs
+    specs="$(cfg MT_CUBE_TPL_SPECS '')"
+    if [ -n "$specs" ]; then
+        printf '%s' "$specs" | tr ',' '\n' | while IFS= read -r pair; do
+            [ -n "$pair" ] || continue
+            printf '%s\n' "${pair#*:}"
+        done
+    else
+        cfg MT_CUBE_TEMPLATE
+    fi
 }
 
 compose() {
@@ -186,7 +233,7 @@ fingerprint() {
         for f in $(overlay_files); do
             printf 'overlay/%s\n' "$f"; cat "$REPO/$f"
         done
-        printf 'base=%s\ntpl=%s/%s/%s\n' "$base_id" "$TPL_CPU" "$TPL_MEM" "$TPL_DISK"
+        printf 'base=%s\n' "$base_id"
     } | sha256sum | cut -c1-12
 }
 
@@ -229,18 +276,6 @@ import json,sys
 try: tags = json.load(sys.stdin).get("tags") or []
 except Exception: tags = []
 sys.exit(0 if sys.argv[1] in tags else 1)' "$1"
-}
-
-# 集群上有没有「镜像 = 当前指纹」且 READY 的模板；有就打印它的 ID。
-template_for_tag() {
-    api GET /templates 2>/dev/null | py '
-import json,sys
-tag = sys.argv[1]
-try: items = json.load(sys.stdin)
-except Exception: items = []
-for t in items:
-    if t.get("status") == "READY" and ("/%s:%s@" % (sys.argv[2], tag)) in (t.get("imageInfo") or ""):
-        print(t["templateID"]); break' "$1" "$REPO_PATH" || true
 }
 
 our_sandboxes() {  # 每行: sandboxID state templateID node slug
@@ -400,7 +435,13 @@ cmd_check() {
     [ "${free_g:-0}" -ge 5 ] && ok "根分区剩余 ${free_g}G" || warn "根分区只剩 ${free_g}G"
     ok "别人的容器 $(foreign_containers) 个（部署后要一样）"
     ok "代码 $(head_short)  $(g log -1 --format=%s | cut -c1-50)"
-    ok "当前模板 ${TEMPLATE:-（未设置）}"
+    local cur
+    cur="$(current_tpls)"
+    if [ -n "$cur" ]; then
+        ok "当前模板 $(printf '%s' "$cur" | grep -c .) 个：$(printf '%s' "$cur" | paste -sd, -)"
+    else
+        ok "当前模板（未设置）"
+    fi
 }
 
 # ---------------------------------------------------------------- base
@@ -601,12 +642,13 @@ delete_template() {
 # 节点（Cube 源码 templatecenter/store.go、distribution.go）。10-13 晚只看 status，把还在建的节点判成失败，
 # 删不掉（409）又马上重建，连建四次，其实第三、四次都建成了。所以：构建任务结束（GET /templates/<ID>/builds/
 # <jobID>/status 不再是 building）、而且没有副本还在建，才下结论；读不到任务状态时只看 phase。
+# 参数：$1=镜像指纹 fp，$2=规格 slug，$3=cpu 毫核，$4=memory MiB。模板名带 slug 区分。
 build_template() {
-    local fp="$1" last="" s created job
+    local fp="$1" slug="$2" cpu="$3" mem="$4" last="" s created job
     created="$(api POST /templates -d "{
-      \"name\": \"hermes-mt-$fp\",
+      \"name\": \"hermes-mt-${fp}-${slug}\",
       \"image\": \"http://$REGISTRY/$REPO_PATH:$fp\",
-      \"cpu\": $TPL_CPU, \"memory\": $TPL_MEM, \"writableLayerSize\": \"$TPL_DISK\",
+      \"cpu\": $cpu, \"memory\": $mem, \"writableLayerSize\": \"$TPL_DISK\",
       \"exposedPorts\": [9121, 49983], \"probePort\": 9121, \"probePath\": \"/__mt/health\",
       \"allowInternetAccess\": true
     }" | py 'import json,sys; d=json.load(sys.stdin); print(d.get("templateID") or "", d.get("jobID") or ""); sys.stderr.write("  " + json.dumps(d)[:200] + "\n")')"
@@ -648,38 +690,54 @@ else:
 }
 
 cmd_template() {
-    local fp tpl
+    local fp
     fp="$(fingerprint)"
     registry_has_tag "$fp" || die "仓库里没有 $REPO_PATH:$fp，先跑 ./deploy.sh image"
     say "模板：镜像 $REPO_PATH:$fp"
-    tpl="$(template_for_tag "$fp")"
-    if [ -n "$tpl" ]; then
-        ok "集群上已有这个镜像的模板 $tpl，复用"
-    else
-        # 平台建模板偶发失败：某个节点做根盘时 mke2fs 报错，换节点出现，同一个镜像重建就好（10-09、10-12、10-13）。
-        # 所以有节点失败就重建一个，第一次之外最多再试 TPL_RETRIES 次。失败的模板从没被用过、没起过实例，当场删掉；
-        # 删不掉的列出来交给平台的同事。
-        local attempt=0 rc left=""
-        while :; do
-            attempt=$((attempt + 1))
-            [ "$attempt" -gt 1 ] && warn "第 $attempt 次建模板：上一次有节点失败（平台偶发），重建一个"
-            rc=0
-            build_template "$fp" || rc=$?
-            [ "$rc" = 0 ] && break
-            [ "$rc" = 2 ] && die "模板 $NEW_TPL 十分钟内没 READY（还在建，没有节点失败）；过一会儿再跑 ./deploy.sh template"
-            if delete_template "$NEW_TPL"; then ok "失败的模板 $NEW_TPL 已删掉"; else left="${left:+$left }$NEW_TPL"; fi
-            [ "$attempt" -gt "$TPL_RETRIES" ] && die "建了 $attempt 次模板都有节点失败，停下${left:+。没删掉的失败模板：$left（交给平台的同事）}"
-        done
-        tpl="$NEW_TPL"
-        ok "模板 $tpl READY（可写层 $TPL_DISK）"
-        [ -z "$left" ] || warn "没删掉的失败模板：$left（交给平台的同事）"
-    fi
-    if [ "$TEMPLATE" != "$tpl" ]; then
-        set_cfg MT_CUBE_TEMPLATE "$tpl"
-        ok "entry.env: MT_CUBE_TEMPLATE ${TEMPLATE:-（空）} -> $tpl"
-        TEMPLATE="$tpl"
-    else
-        ok "entry.env 里已是 $tpl"
+
+    local specs
+    specs="$(spec_list)"
+
+    local specs_csv=""  # slug:tpl_id,slug:tpl_id 写进 MT_CUBE_TPL_SPECS
+    local spec slug cpu mem tpl attempt rc left
+    while IFS= read -r spec; do
+        [ -n "$spec" ] || continue
+        slug="${spec%% *}"; cpu="${spec#* }"; cpu="${cpu%% *}"; mem="${spec##* }"
+        say "规格 $slug：cpu ${cpu}m / memory ${mem}MiB / 可写层 $TPL_DISK"
+        tpl="$(template_for_tag "$fp" "$slug")"
+        if [ -n "$tpl" ]; then
+            ok "集群上已有这个镜像+规格的模板 $tpl，复用"
+        else
+            # 平台建模板偶发失败：某个节点做根盘时 mke2fs 报错，换节点出现，同一个镜像重建就好
+            # （10-09、10-12、10-13）。所以有节点失败就重建一个，第一次之外最多再试 TPL_RETRIES 次。
+            # 失败的模板从没被用过、没起过实例，当场删掉；删不掉的列出来交给平台的同事。
+            attempt=0 rc=0 left=""
+            while :; do
+                attempt=$((attempt + 1))
+                [ "$attempt" -gt 1 ] && warn "第 $attempt 次建模板：上一次有节点失败（平台偶发），重建一个"
+                rc=0
+                build_template "$fp" "$slug" "$cpu" "$mem" || rc=$?
+                [ "$rc" = 0 ] && break
+                [ "$rc" = 2 ] && die "模板 $NEW_TPL 十分钟内没 READY（还在建，没有节点失败）；过一会儿再跑 ./deploy.sh template"
+                if delete_template "$NEW_TPL"; then ok "失败的模板 $NEW_TPL 已删掉"; else left="${left:+$left }$NEW_TPL"; fi
+                [ "$attempt" -gt "$TPL_RETRIES" ] && die "建了 $attempt 次模板都有节点失败，停下${left:+。没删掉的失败模板：$left（交给平台的同事）}"
+            done
+            tpl="$NEW_TPL"
+            ok "模板 $tpl READY（规格 $slug，可写层 $TPL_DISK）"
+            [ -z "$left" ] || warn "没删掉的失败模板：$left（交给平台的同事）"
+        fi
+        specs_csv="${specs_csv:+$specs_csv,}$slug:$tpl"
+    done <<< "$specs"
+
+    if [ -n "$specs_csv" ]; then
+        local old_specs
+        old_specs="$(cfg MT_CUBE_TPL_SPECS '')"
+        if [ "$old_specs" != "$specs_csv" ]; then
+            set_cfg MT_CUBE_TPL_SPECS "$specs_csv"
+            ok "entry.env: MT_CUBE_TPL_SPECS -> $specs_csv"
+        else
+            ok "entry.env 里 MT_CUBE_TPL_SPECS 已是最新"
+        fi
     fi
     grep -qE '^MT_CUBE_VOLUME_MOUNT=' "$ENV_FILE" || set_cfg MT_CUBE_VOLUME_MOUNT /mnt/u
 }
@@ -689,7 +747,7 @@ cmd_template() {
 cmd_up() {
     say "起容器"
     ensure_override
-    [ -n "$TEMPLATE" ] || die "entry.env 里 MT_CUBE_TEMPLATE 为空，先跑 ./deploy.sh template"
+    [ -n "$TPL_SPECS" ] || die "entry.env 里 MT_CUBE_TPL_SPECS 为空，先跑 ./deploy.sh template"
     # nginx 镜像在下面 up --build 时把 nginx/dist-browser/ 拷进去：先保证它是当前代码构建的。
     ensure_frontend
     chmod 600 "$ENV_FILE"
@@ -727,7 +785,7 @@ cmd_up() {
     [ "$(docker logs --since 3m "$PROJECT-entry" 2>&1 | grep -cE 'Traceback|ERROR')" = 0 ] && ok "入口日志没有报错" || warn "入口日志有报错：docker logs $PROJECT-entry"
     [ "$(docker inspect -f '{{json .Mounts}}' "$PROJECT-entry")" = "[]" ] && ok "入口没有挂载 docker.sock" || warn "入口有挂载：$(docker inspect -f '{{json .Mounts}}' "$PROJECT-entry")"
     [ "$(foreign_containers)" = "$foreign_before" ] && ok "别人的容器仍是 $foreign_before 个" || die "别人的容器数变了（$foreign_before -> $(foreign_containers)），马上查"
-    printf '%s  commit=%s  image=%s  template=%s\n' "$(date '+%F %T')" "$(head_short)" "$(cat "$HERE/.image-fingerprint" 2>/dev/null || echo -)" "$TEMPLATE" >> "$HISTORY"
+    printf '%s  commit=%s  image=%s  specs=%s\n' "$(date '+%F %T')" "$(head_short)" "$(cat "$HERE/.image-fingerprint" 2>/dev/null || echo -)" "$TPL_SPECS" >> "$HISTORY"
 }
 
 # ---------------------------------------------------------------- status / purge
@@ -774,7 +832,7 @@ print(s.get("phase") or "-", when, s.get("last_archive") or "-", "已用%s%%" % 
 
 cmd_status() {
     say "现状"
-    printf '  代码 %s  模板 %s  镜像指纹 %s\n' "$(head_short)" "${TEMPLATE:-（空）}" "$(cat "$HERE/.image-fingerprint" 2>/dev/null || echo -)"
+    printf '  代码 %s  规格 %s  镜像指纹 %s\n' "$(head_short)" "${TPL_SPECS:-（空）}" "$(cat "$HERE/.image-fingerprint" 2>/dev/null || echo -)"
     local backup_state="未配置"
     [ -n "$(cfg MT_BACKUP_S3_ENDPOINT)" ] && [ -n "$(cfg MT_BACKUP_S3_ACCESS_KEY)" ] && backup_state="已配置"
     printf '  开关：空闲删实例 %sh  限制公开访问 %s  PG锁 %s  卷外副本 %s\n' \
@@ -796,10 +854,15 @@ for t in items:
 }
 
 cmd_purge_old() {
-    [ -n "$TEMPLATE" ] || die "entry.env 里没有模板"
-    say "不在模板 $TEMPLATE 上的实例"
+    local cur
+    cur="$(current_tpls)"
+    [ -n "$cur" ] || die "entry.env 里没有模板（MT_CUBE_TPL_SPECS / MT_CUBE_TEMPLATE 都空）"
+    say "不在当前模板上的实例"
+    # our_sandboxes 每行：sandboxID state templateID node slug。把第 3 列跟当前模板集合比，不命中就是 stale。
     local list
-    list="$(our_sandboxes | awk -v t="$TEMPLATE" '$3 != t')"
+    list="$(our_sandboxes | awk -v cur="$cur" '
+        BEGIN { n = split(cur, arr, "\n"); for (i=1;i<=n;i++) want[arr[i]]=1 }
+        $3 && !want[$3] { print }')"
     [ -n "$list" ] || { ok "没有，不用删"; return 0; }
     printf '%s\n' "$list" | sed 's/^/  /'
     echo "  说明：新入口会在用户下次请求时自动排空并重建这些实例；只有旧转发器（没有排空接口）"
@@ -809,7 +872,9 @@ cmd_purge_old() {
         printf '  %s ' "$id"; curl -s -o /dev/null -w 'DELETE -> HTTP %{http_code}\n' -X DELETE -m 120 "$CUBE_API/sandboxes/$id"
     done
     sleep 3
-    ok "剩余：$(our_sandboxes | awk -v t="$TEMPLATE" '$3 != t' | wc -l) 台不在当前模板上"
+    ok "剩余：$(our_sandboxes | awk -v cur="$cur" '
+        BEGIN { n = split(cur, arr, "\n"); for (i=1;i<=n;i++) want[arr[i]]=1 }
+        $3 && !want[$3] { c++ } END { print c+0 }') 台不在当前模板上"
 }
 
 # ---------------------------------------------------------------- purge-templates
@@ -855,9 +920,8 @@ cmd_purge_templates() {
         say "清理 $CUBE_API 上我们的模板（入口没接这个集群，不分当前 / 上一版）"
     else
         say "清理 $CUBE_API 上我们的模板"
-        [ -f "$HISTORY" ] && prev="$(sed -n 's/.*template=\(tpl-[0-9a-z]*\).*/\1/p' "$HISTORY" | awk -v cur="$TEMPLATE" '$0 != cur' | tail -1)"
-        keep="$TEMPLATE $prev"
-        ok "保留当前 ${TEMPLATE:-（无）}、上一版 ${prev:-（无）}"
+        keep="$(current_tpls)"
+        ok "保留当前 $(printf '%s\n' "$keep" | grep -c .) 个模板：$(printf '%s\n' "$keep" | tr '\n' ' ')"
     fi
     list="$(our_templates)" || die "控制面 $CUBE_API 列不出模板"
     [ -n "$list" ] || { ok "集群上没有我们的模板"; return 0; }
@@ -919,10 +983,14 @@ cmd_all() {
     cmd_template
     cmd_up
     say "摘要"
+    local cur
+    cur="$(current_tpls)"
     printf '  代码 %s  镜像 %s:%s  模板 %s  页面 http://%s/hermes/\n' \
-        "$(head_short)" "$IMAGE_NAME" "$(cat "$HERE/.image-fingerprint")" "$TEMPLATE" "$HTTP_PORT"
+        "$(head_short)" "$IMAGE_NAME" "$(cat "$HERE/.image-fingerprint")" "$(printf '%s\n' "$cur" | tr '\n' ',' | sed 's/,$//')" "$HTTP_PORT"
     local stale
-    stale="$(our_sandboxes | awk -v t="$TEMPLATE" '$3 != t' | wc -l)"
+    stale="$(our_sandboxes | awk -v cur="$cur" '
+        BEGIN { n = split(cur, arr, "\n"); for (i=1;i<=n;i++) want[arr[i]]=1 }
+        $3 && !want[$3] { c++ } END { print c+0 }')"
     if [ "$stale" != 0 ]; then
         echo "  有 $stale 台实例还在旧模板上：新入口会在用户下次请求时自动排空、重建、恢复；"
         echo "  若它们的转发器太旧（没有排空接口），用 ./deploy.sh purge-old 手工删。"

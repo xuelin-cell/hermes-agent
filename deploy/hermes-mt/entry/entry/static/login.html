@@ -57,6 +57,10 @@
   .captcha img { width: 100%; height: 100%; object-fit: contain; }
   .ghost { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; min-width: 112px; height: 44px; padding: 6px 12px; border: 0; border-radius: 2.5px; background: transparent; box-shadow: inset 0 0 0 1px rgba(116, 160, 251, .11); font-size: 12px; line-height: 16px; font-weight: 500; white-space: nowrap; }
   .ghost:hover:not(:disabled) { background: rgba(255, 255, 255, .06); }
+  select { display: block; width: 100%; height: 44px; padding: 6px 10px; border: 1px solid rgba(74, 132, 254, .04); border-radius: 2.5px; background: transparent; box-shadow: inset 0 1px 1px rgba(0, 0, 0, .38); color: #fff; font: inherit; font-size: 14px; line-height: 20px; outline: none; transition: border-color .2s ease-out; appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23a0a0a0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
+  select:hover { border-color: rgba(74, 132, 254, .08); }
+  select:focus { border-color: #4a84fe; box-shadow: none; }
+  select option { background: #0a0f1a; color: #fff; }
   .notice { margin: 0 0 16px; padding: 8px 12px; border: 1px solid; border-radius: 2.4px; font-size: 12px; line-height: 16px; }
   .notice.err { border-color: rgba(255, 100, 103, .2); background: rgba(255, 100, 103, .1); color: #ffc9c9; }
   .notice.info { border-color: rgba(0, 211, 242, .2); background: rgba(0, 211, 242, .08); color: #a2f4fd; }
@@ -116,6 +120,10 @@
             <input id="smsCode" autocomplete="one-time-code" inputmode="numeric" maxlength="6" placeholder="请输入短信验证码">
             <button type="button" class="ghost" id="sendBtn">获取验证码</button>
           </span>
+        </label>
+        <label class="field" id="specField" hidden>
+          <span class="label">沙箱规格</span>
+          <select id="spec"></select>
         </label>
         <p class="notice" id="notice" aria-live="polite" hidden></p>
         <button type="submit" class="submit" id="loginBtn">
@@ -234,11 +242,12 @@ import { clearBrowserAuth, readBrowserAuth, storeBrowserLogin } from './__entry/
     ev.preventDefault();
     var phone = $('phone').value.trim();
     var smsCode = $('smsCode').value.trim();
+    var spec = $('spec').value;
     if (!PHONE_RE.test(phone)) return notice('请输入有效的中国大陆手机号', 'err');
     if (!smsCode) return notice('请输入短信验证码', 'err');
     try {
       loginBusy(true); notice('');
-      var data = await postJSON(api('/login'), { phone: phone, smsCode: smsCode });
+      var data = await postJSON(api('/login'), { phone: phone, smsCode: smsCode, spec: spec });
       storeBrowserLogin(base, data);
       notice(data.has_key ? '登录成功，正在准备你的工作空间…' : '登录成功（该账号没有可用套餐 key，模型将不可用）', 'info');
       location.href = data.redirect || (base + '/');
@@ -248,14 +257,35 @@ import { clearBrowserAuth, readBrowserAuth, storeBrowserLogin } from './__entry/
   $('devBtn').addEventListener('click', async function () {
     try {
       notice('开发模式登录中…', 'info');
-      var data = await postJSON(api('/dev-login'), { user: $('devUser').value.trim() });
+      var data = await postJSON(api('/dev-login'), { user: $('devUser').value.trim(), spec: $('spec').value });
       storeBrowserLogin(base, data);
       location.href = data.redirect || (base + '/');
     } catch (e) { notice('失败：' + e.message, 'err'); }
   });
 
+  // slug -> 人能读的标签。slug 形如 1c2g、0p25c0p5g：用 p 代表小数点。
+  function specLabel(slug) {
+    var m = /^([\dp]+)c([\dp]+)g$/i.exec(slug);
+    if (!m) return slug;
+    var cpu = m[1].replace('p', '.');
+    var mem = m[2].replace('p', '.');
+    return cpu + 'C ' + mem + 'G';
+  }
+
   fetch(api('/config'), { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (c) {
     if (c && c.dev) { $('devBox').hidden = false; $('devBox').open = true; }
+    var specs = (c && c.tpl_specs) || [];
+    if (specs.length) {
+      var sel = $('spec');
+      specs.forEach(function (s) {
+        var opt = document.createElement('option');
+        opt.value = s.slug;
+        opt.textContent = specLabel(s.slug);
+        if (s.slug === '1c2g') opt.selected = true;
+        sel.appendChild(opt);
+      });
+      $('specField').hidden = false;
+    }
   }).catch(function () {});
   refreshCaptcha();
 })();

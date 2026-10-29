@@ -34,7 +34,7 @@ import aiohttp
 from .config import Settings
 from .cube_api import Cube, CubeError, SandboxGone
 from .docker_api import Docker, DockerError
-from .store import Store
+from .store import Store, Runtime
 
 log = logging.getLogger("entry.tenants")
 
@@ -597,10 +597,30 @@ class TenantManager:
             },
         ]
 
-    def _template_id(self) -> str:
-        """配置里的模板值只在它是 ID（tpl-…）时参与「模板不一致就重建」的比对；别名比不了。"""
+    def _template_id(self, rt: Runtime | None = None) -> str:
+        """这次想要的模板 ID，用于「模板不一致就重建」的比对。
+
+        多规格（MT_CUBE_TPL_SPECS 非空）：按运行态里存的规格 slug 查对应 tpl_id。
+        单规格：退回配置里的 MT_CUBE_TEMPLATE。只在它是 ID（tpl-…）时参与比对；别名比不了。
+        """
+        specs = self._tpl_specs()
+        if specs:
+            slug = (rt.spec if rt else "") or ""
+            return specs.get(slug, "")
         value = self.s.cube_template.strip()
         return value if value.startswith("tpl-") else ""
+
+    def _tpl_specs(self) -> dict[str, str]:
+        """把 MT_CUBE_TPL_SPECS（slug:tpl_id,slug:tpl_id）拆成 {slug: tpl_id}。"""
+        result: dict[str, str] = {}
+        for pair in self.s.cube_tpl_specs.split(","):
+            pair = pair.strip()
+            if not pair or ":" not in pair:
+                continue
+            slug, tpl_id = (p.strip() for p in pair.split(":", 1))
+            if slug and tpl_id:
+                result[slug] = tpl_id
+        return result
 
     async def _ensure_running_cube(self, user_id: str, touch: bool = True) -> Tenant:
         assert self.cube is not None
@@ -693,7 +713,7 @@ class TenantManager:
         """这次请求要不要动实例（没实例 / 实例没了 / 模板变了 / 引导没完成）。"""
         if not rt.sandbox_id or sb is None or str(sb.get("state")) in GONE_STATES:
             return True
-        want = self._template_id()
+        want = self._template_id(rt)
         have = str(sb.get("templateID") or rt.template_id or "")
         if want and have and have != want:
             return True
@@ -717,7 +737,7 @@ class TenantManager:
             await self.store.set_sandbox_id(user_id, None)
             self.cube.forget_traffic_token(sandbox_id)
             return ""
-        want = self._template_id()
+        want = self._template_id(rt)
         have = str(sb.get("templateID") or rt.template_id or "")
         if want and have and have != want:
             # 模板换了（升级镜像）：先排空再删，再由调用方新建；排空失败就这次不升级。
@@ -757,12 +777,13 @@ class TenantManager:
                 volume_name=volume,
                 workspace_path=self.s.cube_volume_mount,
                 metadata={"hermes.mt": "tenant", "hermes.mt.slug": slug},
+                template=self._template_id(rt),
                 private_traffic=self.s.cube_private_traffic,
             )
             # ★ 先落库再引导：引导可能超时，但实例已经真实存在了。
             #   不先记下来的话，下一次请求会再建一个，旧的成为没人管的孤儿。
             #   流量令牌一起落库：平台只在创建时给一次，入口重启后只能从 PG 拿回来。
-            await self.store.record_sandbox(user_id, sandbox_id, self._template_id(), epoch,
+            await self.store.record_sandbox(user_id, sandbox_id, self._template_id(rt), epoch,
                                             traffic_token=self.cube.traffic_token(sandbox_id))
             await self.store.write_audit(
                 user_id, "tenant.start",

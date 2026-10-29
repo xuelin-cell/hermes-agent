@@ -90,6 +90,26 @@ def origin_middleware(enabled: bool):
     return middleware
 
 
+def _parse_tpl_specs(raw: str) -> list[dict[str, str]]:
+    """把 MT_CUBE_TPL_SPECS（slug:tpl_id,slug:tpl_id）拆成给前端的规格列表。
+
+    前端要的三个字段：slug（提交时回带）、cpu（核心数文案）、memory（内存文案）、tpl_id。
+    slug 按约定自带规格信息，这里只校验它有「数字+字母单位」的样子，免得配错没提示。
+    """
+    result: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for pair in raw.split(","):
+        pair = pair.strip()
+        if not pair or ":" not in pair:
+            continue
+        slug, tpl_id = (p.strip() for p in pair.split(":", 1))
+        if not slug or not tpl_id or slug in seen:
+            continue
+        seen.add(slug)
+        result.append({"slug": slug, "tpl_id": tpl_id})
+    return result
+
+
 class Entry:
     """协调平台数据库、MaaS、Docker 和用户 Hermes 容器。"""
 
@@ -166,6 +186,7 @@ class Entry:
         catalog: list[tuple[str, str]] | None = None,
         limits: dict[str, int] | None = None,
         maas_token: str = "",
+        spec: str = "",
     ) -> web.Response:
         login = await self.store.finish_login(
             user_id=user_id,
@@ -177,6 +198,7 @@ class Entry:
             upstream_expires_at_ms=upstream_expires_ms,
             login_method="sms" if phone else "dev",
             limits=limits,
+            spec=spec,
         )
         # 登录事务提交后后台预热；预热失败不撤销已经建立的平台登录。
         self._bg.append(asyncio.create_task(self._warm(user_id)))
@@ -238,7 +260,23 @@ class Entry:
         }, headers={"Cache-Control": "no-store"})
 
     async def config(self, request: web.Request) -> web.Response:
-        return web.json_response({"dev": self.s.dev_login, "base": self.s.base_path})
+        return web.json_response({
+            "dev": self.s.dev_login,
+            "base": self.s.base_path,
+            "tpl_specs": _parse_tpl_specs(self.s.cube_tpl_specs),
+        })
+
+    def _normalize_spec(self, spec: str) -> str:
+        """登录页提交的规格 slug：必须是配置里列出的某一个，否则按空处理（保留上次的）。
+
+        空串 = 用户没选 / 配置里没多规格 → 入口建实例时不传 template，用平台默认。
+        """
+        if not spec:
+            return ""
+        for item in _parse_tpl_specs(self.s.cube_tpl_specs):
+            if item["slug"] == spec:
+                return spec
+        return ""
 
     async def health(self, request: web.Request) -> web.Response:
         try:
@@ -301,6 +339,7 @@ class Entry:
         body = await request.json()
         phone = str(body.get("phone", "")).strip()
         code = str(body.get("smsCode", "")).strip()
+        spec = self._normalize_spec(str(body.get("spec", "")).strip())
         if not phone or not code:
             return web.json_response({"error": "缺少手机号或验证码"}, status=400)
         try:
@@ -327,6 +366,7 @@ class Entry:
             catalog=catalog,
             limits=limits,
             maas_token=result.token,
+            spec=spec,
         )
 
     async def dev_login(self, request: web.Request) -> web.Response:
@@ -334,9 +374,10 @@ class Entry:
             raise web.HTTPNotFound()
         body = await request.json()
         user = str(body.get("user", "")).strip()
+        spec = self._normalize_spec(str(body.get("spec", "")).strip())
         if not user:
             return web.json_response({"error": "缺少用户名"}, status=400)
-        return await self._finish_login(user, self.s.dev_api_key, None)
+        return await self._finish_login(user, self.s.dev_api_key, None, spec=spec)
 
     async def _end_session(self, request: web.Request) -> str:
         sid = request.cookies.get(self.s.cookie_name, "")

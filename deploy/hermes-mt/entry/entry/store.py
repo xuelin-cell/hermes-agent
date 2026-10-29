@@ -55,6 +55,7 @@ class Runtime:
     state_archive: str
     lifecycle: str
     traffic_token: str = ""   # 数据面流量令牌（已解密）；实例是公开访问的就是空串
+    spec: str = ""            # 当前规格 slug（如 1c2g）；改了 = 改模板 = 走重建流程
 
 
 def advisory_key(user_id: str) -> int:
@@ -155,6 +156,7 @@ class Store:
         upstream_expires_at_ms: int | None,
         login_method: str,
         limits: dict[str, int] | None = None,
+        spec: str = "",
     ) -> LoginState:
         """原子保存登录相关平台状态，空套餐值不会清除已有有效值。"""
         now = _utc_now()
@@ -246,6 +248,16 @@ class Store:
                     user_id,
                     json.dumps({"method": login_method}, separators=(",", ":")),
                 )
+                if spec:
+                    await connection.execute(
+                        """
+                        INSERT INTO tenant_runtime(user_id, state, spec)
+                        VALUES($1, 'stopped', $2)
+                        ON CONFLICT(user_id) DO UPDATE SET spec = EXCLUDED.spec
+                        """,
+                        user_id,
+                        spec,
+                    )
                 has_api_key = bool(
                     await connection.fetchval(
                         "SELECT api_key_ciphertext IS NOT NULL FROM tenant_credentials WHERE user_id = $1",
@@ -453,7 +465,7 @@ class Store:
             row = await connection.fetchrow(
                 """
                 SELECT state, sandbox_id, template_id, state_epoch, state_owner, state_archive, lifecycle,
-                       traffic_token_ciphertext
+                       traffic_token_ciphertext, spec
                 FROM tenant_runtime WHERE user_id = $1
                 """,
                 user_id,
@@ -473,6 +485,7 @@ class Store:
                 if row["traffic_token_ciphertext"] is not None
                 else ""
             ),
+            spec=str(row["spec"] or ""),
         )
 
     async def next_epoch(self, user_id: str) -> int:
