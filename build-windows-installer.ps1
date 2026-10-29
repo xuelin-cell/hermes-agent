@@ -16,7 +16,8 @@ $previousEnvironment = @{}
 foreach ($name in @('TEMP', 'TMP', 'ELECTRON_BUILDER_CACHE', 'UV_CONCURRENT_INSTALLS',
                     'ELECTRON_BUILDER_COMPRESSION_LEVEL', 'HTTP_PROXY', 'HTTPS_PROXY',
                     'NO_PROXY', 'NODE_USE_ENV_PROXY', 'ELECTRON_GET_USE_PROXY',
-                    'HERMES_WINDOWS_UPDATE', 'HERMES_WINDOWS_FORMAT')) {
+                    'HERMES_WINDOWS_UPDATE', 'HERMES_WINDOWS_FORMAT',
+                    'UV_INDEX_URL', 'ELECTRON_MIRROR')) {
     $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
 }
 $sourceRoot = $PSScriptRoot
@@ -38,6 +39,15 @@ if (-not [string]::IsNullOrWhiteSpace($ProxyUrl)) {
     $env:NO_PROXY = 'localhost,127.0.0.1,::1,registry.npmjs.org,files.pythonhosted.org'
     $env:NODE_USE_ENV_PROXY = '1'
     $env:ELECTRON_GET_USE_PROXY = '1'
+}
+
+# 国内镜像加速：Python 依赖走清华镜像，Electron 走 npmmirror。
+# 用户手动设置的环境变量优先（不会覆盖）。
+if (-not $env:UV_INDEX_URL) {
+    $env:UV_INDEX_URL = 'https://pypi.tuna.tsinghua.edu.cn/simple/'
+}
+if (-not $env:ELECTRON_MIRROR) {
+    $env:ELECTRON_MIRROR = 'https://npmmirror.com/mirrors/electron/'
 }
 
 $python = Join-Path $sourceRoot '.venv\Scripts\python.exe'
