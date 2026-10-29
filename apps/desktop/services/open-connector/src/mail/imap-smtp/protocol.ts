@@ -343,21 +343,10 @@ export function createMailProtocol(config: MailProtocolConfig, deps: MailProtoco
         }
 
         const message = metadata as FetchMessageObject;
-        const selectedParts = selectBodyParts(message.bodyStructure, options.maxBytes);
-        const bodyFetch =
-          selectedParts.length === 0
-            ? false
-            : await client.fetchOne(
-                uid,
-                {
-                  bodyParts: selectedParts.map(({ part, maxLength }) => ({
-                    key: part.part,
-                    maxLength,
-                  })),
-                },
-                { uid: true },
-              );
-        const parsedBody = await parseSelectedBodyParts(selectedParts, bodyFetch);
+        const source = toRecord(await client.fetchOne(uid, { source: true }, { uid: true }))?.source;
+        const parsedBody = Buffer.isBuffer(source)
+          ? await parseRawMessage(source)
+          : await fetchSelectedBodyParts(client, uid, message.bodyStructure, options.maxBytes);
 
         return {
           summary: normalizeSummary(message),
@@ -446,6 +435,29 @@ export function createMailProtocol(config: MailProtocolConfig, deps: MailProtoco
       });
     },
   };
+}
+
+async function fetchSelectedBodyParts(
+  client: RuntimeImapClient,
+  uid: number,
+  bodyStructure: MessageStructureObject | undefined,
+  maxBytes: number,
+) {
+  const selectedParts = selectBodyParts(bodyStructure, maxBytes);
+  const bodyFetch =
+    selectedParts.length === 0
+      ? false
+      : await client.fetchOne(
+          uid,
+          {
+            bodyParts: selectedParts.map(({ part, maxLength }) => ({
+              key: part.part,
+              maxLength,
+            })),
+          },
+          { uid: true },
+        );
+  return await parseSelectedBodyParts(selectedParts, bodyFetch);
 }
 
 function buildOutgoingMessage(credential: MailCredential, input: MailSendInput): Record<string, unknown> {
@@ -1075,6 +1087,20 @@ async function parseSelectedBodyParts(
   }
 
   return { text, html, truncated };
+}
+
+async function parseRawMessage(source: Buffer): Promise<{ text: string | null; html: string | null; truncated: boolean }> {
+  const parsed = await simpleParser(source, {
+    skipHtmlToText: true,
+    skipTextToHtml: true,
+    skipTextLinks: true,
+    skipImageLinks: true,
+  });
+  return {
+    text: parsed.text || null,
+    html: typeof parsed.html === "string" ? parsed.html : null,
+    truncated: false,
+  };
 }
 
 function createBodyPartSource(part: BodyPart, content: Buffer) {

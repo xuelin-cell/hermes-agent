@@ -1,10 +1,11 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { processStartMarker, REAP_PROBE_TIMEOUT_MS } from '../backend-claim'
+import { processStartMarker } from '../backend-claim'
 import { parseBackendOwnershipDetailed, serializeBackendOwnership } from '../backend-ownership'
 import { writeSecretFileAtomic } from '../hardening'
 import { electronProcessStartMarker } from '../parent-process-identity'
+import { isPidAlive } from '../update-marker'
 
 import { accountPathsById, type AccountRoots, assertAccountDirectoryOwner } from './account-paths'
 import { accountDesktopStatePaths } from './desktop-state'
@@ -121,11 +122,17 @@ export async function recoverAccountRun(
     throw new Error('后端归属记录不完整。')
   }
 
-  const rows = listLogoutProcesses()
+  // 进程表按需加载：常见情形（后端随应用退出已死，或 PID 已被无关进程复用）
+  // 根本不需要全表查询。从 Electron 冷启动 spawn PowerShell 实测可达 ~16s
+  //（#87169 的量级），一上来就跑 CIM 全表查询会在系统繁忙时吃满 30s×2
+  // 预算后仍失败，把恢复卡死在启动期并阻止登录（2026-10-29 实测两次超时即弹窗）。
+  let processTable: LogoutProcess[] | null = null
+  const table = () => (processTable ??= listLogoutProcesses())
   const backendRoots: number[] = []
 
   for (const entry of ownership.entries) {
-    if (!rows.some(row => row.pid === entry.pid)) {
+    // 零成本的原生探测先排除已死 PID，不为它们付出任何 shell 探测。
+    if (!isPidAlive(entry.pid)) {
       continue
     }
 
@@ -135,7 +142,9 @@ export async function recoverAccountRun(
     }
 
     try {
-      const currentMarker = await processStartMarker(entry.pid, REAP_PROBE_TIMEOUT_MS)
+      // 恢复的指纹核对是决定性的（跳过或清理都依赖它），用完整的默认 30s
+      // 预算；REAP 的 5s 预算面向可放弃的孤儿清扫，冷启动 spawn 本身就可能超过 5s。
+      const currentMarker = await processStartMarker(entry.pid)
       const recordedDarwinSecond = darwinMarkerSecond(entry.startMarker)
       const currentDarwinSecond = darwinMarkerSecond(currentMarker)
       const sameDarwinProcess =
@@ -150,6 +159,14 @@ export async function recoverAccountRun(
       }
 
       throw error
+    }
+
+    // 确认是同一存活实例才需要进程表来核对父进程归属与收集退出子树。
+    const rows = table()
+
+    // 探测与表加载之间进程仍可能退出；已退出的实例交由持久记录的子树兜底。
+    if (!rows.some(row => row.pid === entry.pid)) {
+      continue
     }
 
     if (
@@ -192,7 +209,7 @@ export async function recoverAccountRun(
   const context = { ...account, ...resolveAccountInstallation(installationRoot, pythonOverride) }
   const owned = new Map<string, LogoutProcess>()
 
-  for (const row of [...(pending.processes ?? []), ...logoutProcessTree(rows, backendRoots)]) {
+  for (const row of [...(pending.processes ?? []), ...logoutProcessTree(processTable ?? [], backendRoots)]) {
     owned.set(`${row.pid}:${row.started}`, row)
   }
 

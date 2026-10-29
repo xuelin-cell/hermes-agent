@@ -103,13 +103,27 @@ export async function processStartMarker(pid: number, timeoutMs: number = 30_000
       return electronMarker
     }
 
-    const ticks = await execText(
+    // Get-Process cannot read .StartTime for a PID reused by a protected
+    // process (PPL system/audio services): the process is listed but the
+    // property is null, and the old one-liner then called .ToUniversalTime()
+    // on null, exiting PowerShell with status 1. That probe error is neither
+    // ESRCH nor ENOENT, so recover-account rethrew it and permanently blocked
+    // login recovery. Fall back to CIM (the WMI service reads creation time
+    // for protected processes); when neither source yields a time the PID is
+    // gone — classify as ESRCH like the native dead-PID gate above.
+    const output = await execText(
       'powershell.exe',
       [
         '-NoProfile',
         '-NonInteractive',
         '-Command',
-        `$p = Get-Process -Id ${pid} -ErrorAction Stop; $p.StartTime.ToUniversalTime().Ticks`
+        [
+          `$p = Get-Process -Id ${pid} -ErrorAction SilentlyContinue`,
+          '$t = $null',
+          'if ($p) { try { $t = $p.StartTime } catch { $t = $null } }',
+          `if (-not $t) { $c = Get-CimInstance Win32_Process -Filter 'ProcessId=${pid}'; if ($c) { $t = $c.CreationDate } }`,
+          "if ($t) { $t.ToUniversalTime().Ticks } else { 'GONE' }"
+        ].join('; ')
       ],
       // PowerShell 5.1 cold starts routinely exceed the default 3s execText
       // budget (2.4-8s observed in #87169); give the marker probe headroom.
@@ -118,11 +132,15 @@ export async function processStartMarker(pid: number, timeoutMs: number = 30_000
       { timeout: timeoutMs }
     )
 
-    if (!/^\d+$/.test(ticks)) {
+    if (output === 'GONE') {
+      throw Object.assign(new Error(`PID ${pid} no longer exists`), { code: 'ESRCH' })
+    }
+
+    if (!/^\d+$/.test(output)) {
       throw new Error(`Invalid Windows start marker for PID ${pid}`)
     }
 
-    return `win:${ticks}`
+    return `win:${output}`
   }
 
   const started = await execText('ps', ['-p', String(pid), '-o', 'lstart='], {

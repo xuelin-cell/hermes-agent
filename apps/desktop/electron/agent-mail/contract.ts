@@ -8,6 +8,8 @@ export type AgentMailAction =
   | 'list_folders'
   | 'mark_email_read'
   | 'search_emails'
+  /** Internal-only: downloads into an app-managed temporary file for the chat composer. */
+  | 'stage_attachment'
 
 export interface AgentMailRequest {
   operation: 'status' | 'enable' | 'disable' | 'action'

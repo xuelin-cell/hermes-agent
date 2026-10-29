@@ -27,6 +27,7 @@ interface ConnectorManagerOptions extends Omit<ConnectorRuntimeOptions, 'directo
   identity: () => LoginIdentity | null
   mailState: Pick<AgentMailLocalStateStore, 'get' | 'save'>
   saveAttachment: (name: string, download: () => Promise<Response>) => Promise<{ canceled: boolean; saved: boolean }>
+  stageAttachment: (name: string, download: () => Promise<Response>) => Promise<{ name: string; path: string }>
   exclusiveCode?: (phone: string) => Promise<string>
 }
 
@@ -37,7 +38,8 @@ const AGENT_MAIL_ACTIONS: ReadonlySet<AgentMailAction> = new Set([
   'get_folder_status',
   'list_folders',
   'mark_email_read',
-  'search_emails'
+  'search_emails',
+  'stage_attachment'
 ])
 
 // 后端被收掉、正在重启或排队等名额时 main 给的几种英文报错。
@@ -345,7 +347,8 @@ export class ConnectorManager {
         throw new Error('Invalid Agent Mail action input')
       }
 
-      const result = await runtime.request(`/v1/actions/wo_mail.${input.action}`, 'POST', {
+      const connectorAction = input.action === 'stage_attachment' ? 'download_attachment' : input.action
+      const result = await runtime.request(`/v1/actions/wo_mail.${connectorAction}`, 'POST', {
         connectionName: 'default',
         input: input.input
       })
@@ -364,6 +367,18 @@ export class ConnectorManager {
         const saved = await this.options.saveAttachment(file.name, () => runtime.download(file.downloadUrl))
         this.logAgentMail(`IPC mailbox attachment save completed saved=${saved.saved} cancelled=${saved.canceled}`)
         return { data: saved, status: status() }
+      }
+
+      if (input.action === 'stage_attachment') {
+        const file = result.data?.file
+
+        if (!file || typeof file.name !== 'string' || typeof file.downloadUrl !== 'string') {
+          throw new Error('Mail attachment download response was invalid')
+        }
+
+        const staged = await this.options.stageAttachment(file.name, () => runtime.download(file.downloadUrl))
+        this.logAgentMail(`IPC mailbox attachment staged name=${staged.name}`)
+        return { data: { file: staged }, status: status() }
       }
 
       this.logAgentMail(`IPC mailbox action completed action=${input.action}`)

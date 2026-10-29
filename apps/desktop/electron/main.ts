@@ -732,6 +732,19 @@ const ACCOUNT_CONNECTORS = new ConnectorManager({
     const data = Buffer.from(await response.arrayBuffer())
     await fs.promises.writeFile(result.filePath, data)
     return { canceled: false, saved: true }
+  },
+  stageAttachment: async (name, download) => {
+    const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'hermes-mail-'))
+    const safeName = path.basename(name) || 'attachment'
+    const stagedPath = path.join(directory, safeName)
+    const response = await download()
+
+    if (!response.ok) {
+      throw new Error(`Mail attachment download failed (${response.status})`)
+    }
+
+    await fs.promises.writeFile(stagedPath, Buffer.from(await response.arrayBuffer()))
+    return { name: safeName, path: stagedPath }
   }
 })
 

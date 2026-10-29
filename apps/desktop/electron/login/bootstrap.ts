@@ -68,6 +68,14 @@ function initializeLoginShell(): void {
     .catch(error => {
       stopping = true
 
+      // 该弹窗文案是通用的；真实原因（权限/超时/探测失败）不落日志的话
+      // 现场无法事后定位，只能靠复现。
+      console.error(
+        '[account-recovery] failed:',
+        (error as NodeJS.ErrnoException)?.code ?? '',
+        error instanceof Error ? error.message : String(error)
+      )
+
       const advice =
         (error as NodeJS.ErrnoException)?.code === 'ETIMEDOUT'
           ? 'Windows 进程状态查询超时，请稍后重新启动应用。'
