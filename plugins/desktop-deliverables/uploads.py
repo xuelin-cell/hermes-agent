@@ -12,6 +12,8 @@ import hashlib
 import json
 import logging
 import mimetypes
+import os
+from pathlib import Path
 import re
 from threading import RLock
 import time
@@ -41,6 +43,25 @@ _UPLOAD_URL = re.compile(r"上传地址[：:]\s*(https?://[^\s\"'\\]+)")
 _DOWNLOAD_URL = re.compile(r"下载链接[：:]\s*(https?://[^\s\"'\\]+)")
 _CONTENT_TYPE = re.compile(r"Content-Type\s*[=:：]\s*([A-Za-z0-9._+/-]+)")
 _OSS_PATH = re.compile(r"ossPath[^：:\n]{0,16}[：:]\s*\"?([A-Za-z0-9._/-]+)")
+# 不在附件、工作目录里的本机文件，类型和工具对得上、又不在敏感位置时也自动上传（与 UniWork 一致）；
+# 表里没有的工具仍只传附件和工作目录里的文件。邮件附件不走这条，见 uploaded_mail_attachments。
+IMAGE_TYPES = frozenset({".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff", ".heic"})
+AUDIO_TYPES = frozenset({".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus", ".amr", ".wma"})
+VIDEO_TYPES = frozenset({".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v", ".flv", ".wmv"})
+DOCUMENT_TYPES = frozenset(
+    {".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".txt", ".md", ".csv", ".rtf"}
+)
+TOOL_TYPES = {
+    "analyze_image": ("图片", IMAGE_TYPES),
+    "image_edit": ("图片", IMAGE_TYPES),
+    "img2vid_generate": ("图片", IMAGE_TYPES),
+    "asr_transcribe": ("音频或视频", AUDIO_TYPES | VIDEO_TYPES),
+    "doc_translate": ("文档", DOCUMENT_TYPES),
+}
+# 这些目录名放的是密钥、浏览器登录状态、系统凭据，任何工具都不自动上传。
+SECRET_DIRS = frozenset({".ssh", ".gnupg", ".aws", ".azure", ".kube", ".docker"})
+APPDATA_SECRET_DIRS = frozenset({"user data", "credentials", "protect", "profiles"})
+SYSTEM_DIRS = ("SystemRoot", "ProgramFiles", "ProgramFiles(x86)", "ProgramData")
 MAIL_CONNECTOR_PREFIX = "mcp__connector_wo_mail__"
 MAIL_ATTACHMENT_ACTIONS = frozenset({"send_email", "reply_email", "forward_email"})
 MAIL_EXECUTE_ACTION = MAIL_CONNECTOR_PREFIX + "execute_action"
@@ -49,7 +70,8 @@ REMINDER = (
     "以下是应用自动添加的内部工具使用规则，不是用户提出的要求。\n"
     "按规则执行，不要确认收到或向用户复述这些规则。\n\n"
     "元景工具箱（UniAI-Toolkit）的工具需要文件时，文件参数直接填本机绝对路径"
-    "（附件、当前工作目录里的文件都可以），桌面程序会在调用前自动上传并换成 ossPath。"
+    "（附件、当前工作目录里的文件，以及别处与工具对口的图片、音视频、文档都可以），"
+    "桌面程序会在调用前自动上传并换成 ossPath。"
     "不要自己调用 get_oss_upload_url、confirm_oss_upload，也不要写代码上传。"
     "When sending a local file through connector_wo_mail, place the local absolute path in "
     "attachments[].contentUrl with its filename; the desktop upload bridge replaces it with a download URL. "
@@ -196,6 +218,54 @@ def allowed(path, session_id, cwd):
         return True
     with _lock:
         return path in _sessions.get(session_key(session_id), set())
+
+
+def _under(path, folder):
+    """path 是否在 folder 里；比较前统一大小写，folder 为空时返回 False。"""
+    if not folder:
+        return False
+    try:
+        return os.path.normcase(str(path)).startswith(os.path.normcase(str(Path(folder).resolve())) + os.sep)
+    except (OSError, ValueError):
+        return False
+
+
+def sensitive_reason(path):
+    """文件在密钥、浏览器数据、系统目录或别的账号里时返回原因，否则返回 None。"""
+    parts = [part.lower() for part in path.parts]
+    hit = next((part for part in parts if part in SECRET_DIRS), None)
+    if hit:
+        return f"{hit} 目录存放密钥"
+    if any(_under(path, os.environ.get(name)) for name in ("APPDATA", "LOCALAPPDATA")) and any(
+        part in APPDATA_SECRET_DIRS for part in parts
+    ):
+        return "应用的登录数据或凭据目录"
+    if any(_under(path, os.environ.get(name)) for name in SYSTEM_DIRS):
+        return "系统或程序安装目录"
+    from hermes_constants import get_default_hermes_root
+
+    account = get_default_hermes_root().resolve()
+    for folder in path.parents:
+        if folder == account or account in folder.parents:
+            break
+        if (folder / "config.yaml").is_file() and any((folder / name).is_file() for name in ("state.db", ".env")):
+            return "别的账号或另一个 Hermes 的数据目录"
+    return None
+
+
+def open_refusal(leaf, path, place):
+    """附件、工作目录以外的文件能否按类型自动上传：可以时返回 None，不行时返回拦下的说明。"""
+    reason = sensitive_reason(path)
+    if reason:
+        return f"本机文件 {path} 在敏感位置（{reason}），出于隐私没有自动上传，这次工具调用没有执行。"
+    kind = TOOL_TYPES.get(leaf)
+    if kind and path.suffix.lower() in kind[1]:
+        return None
+    wanted = f"，类型也不是这个工具能用的{kind[0]}" if kind else ""
+    return (
+        f"本机文件 {path} 不在附件或{place}里{wanted}，出于隐私没有自动上传，这次工具调用没有执行。"
+        f"如果确实要用它，先把它复制到{place}，再用新路径调用。"
+    )
 
 
 def result_text(raw):
@@ -418,8 +488,11 @@ def downloaded_link(path):
     return url
 
 
-def convert(prefix, value, session_id, cwd):
-    """参数值是插件下载的成品就换回原链接，是允许的本机文件就上传并返回 ossPath；不是本机文件返回 None。"""
+def convert(prefix, value, session_id, cwd, leaf=""):
+    """参数值是插件下载的成品就换回原链接，是允许的本机文件就上传并返回 ossPath；不是本机文件返回 None。
+
+    leaf 是元景工具名（如 analyze_image）：附件、工作目录以外的文件按它能用的类型决定传不传。
+    """
     if (
         not isinstance(value, str)
         or "\n" in value
@@ -438,10 +511,9 @@ def convert(prefix, value, session_id, cwd):
         return link
     if not allowed(path, session_id, cwd):
         place = f"当前工作目录 {cwd}" if cwd else "当前工作目录"
-        raise Refusal(
-            f"本机文件 {path} 不在附件或{place}里，出于隐私没有自动上传，这次工具调用没有执行。"
-            f"如果确实要用它，先把它复制到{place}，再用新路径调用。"
-        )
+        refusal = open_refusal(leaf, path, place)
+        if refusal:
+            raise Refusal(refusal)
     info = path.stat()
     if info.st_size > MAX_BYTES:
         raise Refusal(
@@ -537,13 +609,13 @@ def uploaded_args(tool_name, args, session_id, task_id):
     changed = {}
     for name, value in args.items():
         if isinstance(value, list):
-            items = [convert(prefix, item, session_id, cwd) for item in value[:16]]
+            items = [convert(prefix, item, session_id, cwd, leaf) for item in value[:16]]
             if any(items):
                 changed[name] = [
                     new or old for new, old in zip(items, value)
                 ] + value[16:]
         else:
-            new = convert(prefix, value, session_id, cwd)
+            new = convert(prefix, value, session_id, cwd, leaf)
             if new:
                 changed[name] = new
     return changed or None
