@@ -29,9 +29,10 @@ def test_the_dockerfile_copy_adds_the_two_seed_copies_in_place() -> None:
     original = (REPO / "Dockerfile").read_text(encoding="utf-8")
     derived = seed.derive_dockerfile(original).splitlines()
 
-    # 只多了说明行和两行 COPY，其余逐行不变
+    # 只多了说明行、两行 COPY 和每个 Debian 阶段的换源段，其余逐行不变
+    mirror = "".join(seed.APT_MIRROR_LINES).splitlines()
     added = [line for line in derived if line not in original.splitlines()]
-    assert added == [derived[0], "COPY --from=seed s6/ /tmp/s6-seed/", "COPY --from=seed pm/ /opt/hermes/tools/"]
+    assert added == [derived[0], *mirror, *mirror, "COPY --from=seed s6/ /tmp/s6-seed/", "COPY --from=seed pm/ /opt/hermes/tools/"]
     # s6 的包要在下载它们的那段 RUN 之前就位；pm 的要在 ensure 之前
     s6_copy = derived.index("COPY --from=seed s6/ /tmp/s6-seed/")
     pm_copy = derived.index("COPY --from=seed pm/ /opt/hermes/tools/")
@@ -40,6 +41,20 @@ def test_the_dockerfile_copy_adds_the_two_seed_copies_in_place() -> None:
     assert s6_copy < s6_run and pm_copy < ensure
     # 构建时 S6_OVERLAY_BASE_URL 换成 file:///tmp/s6-seed，下载那段按 ${base}/<文件名> 取
     assert re.search(r'base="\$\{S6_OVERLAY_BASE_URL\}/v\$\{S6_OVERLAY_VERSION\}"', original)
+
+
+def test_every_debian_stage_switches_the_apt_mirror_before_its_first_apt_get() -> None:
+    seed = _module()
+    original = (REPO / "Dockerfile").read_text(encoding="utf-8")
+    derived = seed.derive_dockerfile(original).splitlines()
+    stages = [i for i, line in enumerate(derived) if line.startswith("FROM ")]
+    debian = [i for i in stages if derived[i].startswith(seed.DEBIAN_FROM)]
+    assert len(debian) == 2  # sqlite_build、runtime_base；其余阶段都从它们派生，继承换好的源
+    for start in debian:
+        end = next((i for i in stages if i > start), len(derived))
+        apt = next(i for i in range(start, end) if "apt-get" in derived[i] and "update" in derived[i])
+        switch = next(i for i in range(start, end) if "s|deb.debian.org|${APT_MIRROR}|g" in derived[i])
+        assert derived[start + 1] == "ARG APT_MIRROR=mirrors.aliyun.com" and switch < apt
 
 
 def test_a_dockerfile_without_the_insertion_points_is_refused() -> None:

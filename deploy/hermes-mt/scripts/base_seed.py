@@ -36,6 +36,19 @@ S6_FILES = (("s6-overlay-noarch.tar.xz", "S6_OVERLAY_NOARCH_SHA256"),
 PAYLOAD_COPY = "COPY scripts/bundles/payload.py scripts/bundles/payload.py\n"
 S6_LAST_ARG = "ARG S6_OVERLAY_SYMLINKS_SHA256="
 
+# 部署机连 deb.debian.org 只有十几到几十 KB/s（10-29 实测：装 build-essential 一个多小时只下了 48 个包），
+# 每个 Debian 阶段开头换成国内镜像，和 Dockerfile.cube 的做法一样；安全更新源同一个主机名，一起换。
+# 要用官方源就传 --build-arg APT_MIRROR=（留空）。
+DEBIAN_FROM = "FROM debian:"
+APT_MIRROR_LINES = (
+    "ARG APT_MIRROR=mirrors.aliyun.com\n",
+    'RUN if [ -n "$APT_MIRROR" ]; then \\\n'
+    "        for f in /etc/apt/sources.list.d/debian.sources /etc/apt/sources.list; do \\\n"
+    '            if [ -f "$f" ]; then sed -i "s|deb.debian.org|${APT_MIRROR}|g" "$f"; fi; \\\n'
+    "        done; \\\n"
+    "    fi\n",
+)
+
 
 def say(msg):
     print("  " + msg, flush=True)
@@ -70,15 +83,20 @@ def npmmirror(url):
 
 
 def derive_dockerfile(dockerfile):
-    """根目录 Dockerfile 加两行 COPY：pm 的预置文件放进它的下载目录，s6 的包放到 /tmp/s6-seed。
-    插入点各只能出现一次，否则说明上游改了结构，要人来看。"""
+    """根目录 Dockerfile 加两行 COPY：pm 的预置文件放进它的下载目录，s6 的包放到 /tmp/s6-seed；
+    每个 FROM debian: 阶段开头换 apt 镜像源。COPY 的插入点各只能出现一次、Debian 阶段至少一个，
+    否则说明上游改了结构，要人来看。"""
     lines = dockerfile.splitlines(True)
     if dockerfile.count(PAYLOAD_COPY) != 1 or sum(1 for line in lines if line.startswith(S6_LAST_ARG)) != 1:
         raise ValueError("根目录 Dockerfile 的结构变了，找不到插入预置文件的位置")
+    if not any(line.startswith(DEBIAN_FROM) for line in lines):
+        raise ValueError("根目录 Dockerfile 的结构变了，找不到换 apt 镜像源的 Debian 阶段")
     out = ["# 由 deploy/hermes-mt/scripts/base_seed.py 从根目录 Dockerfile 生成，别手改。\n"]
     for line in lines:
         out.append(line)
-        if line == PAYLOAD_COPY:
+        if line.startswith(DEBIAN_FROM):
+            out.extend(APT_MIRROR_LINES)
+        elif line == PAYLOAD_COPY:
             out.append("COPY --from=seed pm/ /opt/hermes/tools/\n")
         elif line.startswith(S6_LAST_ARG):
             out.append("COPY --from=seed s6/ /tmp/s6-seed/\n")
