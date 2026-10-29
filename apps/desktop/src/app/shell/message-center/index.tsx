@@ -18,6 +18,7 @@ import {
 } from '@/store/message-center'
 
 import { titlebarButtonClass } from '../titlebar'
+import { withCountBadge } from '../titlebar-count-badge'
 
 import { useNtfySubscription } from './use-ntfy-subscription'
 
@@ -50,22 +51,14 @@ export function MessageCenterBell() {
       <PopoverTrigger asChild>
         <Button
           aria-label={unread > 0 ? copy.unreadCount(unread) : copy.title}
-          className={cn(titlebarButtonClass, 'relative bg-transparent select-none')}
+          className={cn(titlebarButtonClass, 'bg-transparent select-none')}
           data-tour="message-center"
           onPointerDown={event => event.stopPropagation()}
           size="icon-titlebar"
           type="button"
           variant="ghost"
         >
-          <Bell className="size-4" />
-          {unread > 0 && (
-            <span
-              aria-hidden
-              className="pointer-events-none absolute -top-1 -right-0.5 grid min-w-3.5 place-items-center rounded-full bg-(--dt-primary-solid) px-1 text-[0.6rem] leading-4 font-semibold text-(--dt-primary-solid-foreground)"
-            >
-              {unread > 99 ? '99+' : unread}
-            </span>
-          )}
+          {withCountBadge(<Bell className="size-4" />, unread)}
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-96 p-0" side="bottom" sideOffset={6}>
