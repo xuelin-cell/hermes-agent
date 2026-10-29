@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const { refreshSupportedSessionControlAfterTurn } = vi.hoisted(() => ({
   refreshSupportedSessionControlAfterTurn: vi.fn(async () => undefined)
@@ -7,6 +7,9 @@ const { refreshSupportedSessionControlAfterTurn } = vi.hoisted(() => ({
 vi.mock('@/store/session-control', () => ({ refreshSupportedSessionControlAfterTurn }))
 
 import type { GatewayEventName } from '@hermes/shared'
+
+import { $enterpriseShell } from '@/lib/enterprise-mt'
+import { $billingBlock, clearBillingBlock } from '@/store/billing-block'
 
 import { handleMessageStreamEvent } from './message-stream'
 import type { GatewayEventContext } from './types'
@@ -54,5 +57,38 @@ describe('handleMessageStreamEvent session-control integration', () => {
     expect(handleMessageStreamEvent(context('message.complete'))).toBe(true)
     expect(refreshSupportedSessionControlAfterTurn).toHaveBeenCalledTimes(1)
     expect(refreshSupportedSessionControlAfterTurn).toHaveBeenCalledWith('s1')
+  })
+})
+
+describe('handleMessageStreamEvent billing wall', () => {
+  const billed = (): GatewayEventContext => ({
+    ...context('message.complete'),
+    payload: {
+      billing: {
+        billing_url: '',
+        is_nous: false,
+        message: 'Custom reported that billing is exhausted.',
+        model: 'deepseek-v4-flash',
+        provider: 'custom',
+        provider_label: 'Custom'
+      },
+      text: ''
+    }
+  })
+
+  afterEach(() => {
+    $enterpriseShell.set(false)
+    clearBillingBlock()
+  })
+
+  it('raises the top-up banner for a personal provider account', () => {
+    handleMessageStreamEvent(billed())
+    expect($billingBlock.get()?.block.provider).toBe('custom')
+  })
+
+  it('leaves a quota refusal to the error card in the cloud enterprise mode', () => {
+    $enterpriseShell.set(true)
+    handleMessageStreamEvent(billed())
+    expect($billingBlock.get()).toBeNull()
   })
 })

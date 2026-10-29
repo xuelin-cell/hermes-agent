@@ -39,6 +39,7 @@ import { ConversationReplyShareButton } from '@/components/conversation-share/re
 import { Codicon } from '@/components/ui/codicon'
 import { CopyButton } from '@/components/ui/copy-button'
 import { useI18n } from '@/i18n'
+import { $enterpriseShell, enterpriseErrorCard, enterpriseRecoveryPlan } from '@/lib/browser-shell'
 import {
   errorRecoveryPlan,
   type ErrorSurface,
@@ -563,10 +564,13 @@ const useErrorText = () =>
   })
 
 const ErrorCardHeadline: FC = () => {
-  const { t } = useI18n()
+  const { locale, t } = useI18n()
   const surface = useErrorSurface()
   const errorText = useErrorText()
-  const { body, title } = errorCardText(t.assistant.thread, surface)
+  // desktop-mt: in the cloud's enterprise mode a platform refusal reads the platform's own sentence.
+  const enterprise = useStore($enterpriseShell)
+  const card = errorCardText(t.assistant.thread, surface)
+  const { body, title } = enterpriseErrorCard(card, surface, errorText, enterprise, locale)
 
   return (
     <>
@@ -810,7 +814,8 @@ const ErrorRecoveryActions: FC = () => {
   const remoteConnection = connection?.mode === 'remote'
 
   // One table decides which buttons this failure gets (lib/error-surface.ts).
-  const plan = errorRecoveryPlan(surface)
+  // desktop-mt: in the cloud's enterprise mode no "update API key" / "sign in again".
+  const plan = enterpriseRecoveryPlan(errorRecoveryPlan(surface), useStore($enterpriseShell))
 
   // An expired/revoked OAuth grant (HTTP 401 on nous / openai-codex / ...):
   // the one-click fix is re-running that provider's sign-in, which the

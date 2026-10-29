@@ -71,6 +71,10 @@ def build_spec(policy: dict, *, server: str, token_env: str, config: dict, servi
                "transport": str(item.get("transport") or ""), "timeout": item.get("timeout")}
         if item.get("relay"):
             out["relay"] = _rewrite(item.get("relay"), announced, server)
+        if item.get("auth") == "device":
+            # 配了凭证的连接器、企业知识库（27 号第 2、3 节）：地址就在平台上，调用带设备令牌
+            out["auth"] = "device"
+            out["url"] = _rewrite(item.get("url"), announced, server)
         return out
 
     def layer(entry: dict) -> dict:
@@ -126,6 +130,8 @@ def build_spec(policy: dict, *, server: str, token_env: str, config: dict, servi
                 "connectors": [connector(by_id["connectors"][str(i)]) for i in entry.get("connectors") or []
                                if str(i) in by_id["connectors"]],
                 "layers": [by_key[str(entry.get("key"))]] if str(entry.get("key")) in by_key else [],
+                # 这个版本打开的内置工具（27 号第 1 节）；没有这个字段的旧平台 = 全开
+                "tools": [str(t) for t in entry["tools"]] if isinstance(entry.get("tools"), list) else None,
             })
     return {"v": SPEC_VERSION, "tenant": str(info.get("tenantId") or ""), "server": server, "token_env": token_env,
             "revision": str(policy.get("revision") or ""), "config": base_config, "default": default,

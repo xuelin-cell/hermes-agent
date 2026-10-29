@@ -63,6 +63,8 @@ vi.mock('@/store/session', () => ({
 }))
 
 const { shouldNotify, startMcpHealthChecker, stopMcpHealthChecker } = await import('./mcp-health')
+// The same module instance mcp-health reads (a later test resets the module registry).
+const { $enterpriseShell } = await import('@/lib/enterprise-mt')
 
 type Status = 'error' | 'needs-auth' | 'ok'
 
@@ -156,6 +158,35 @@ it('shows the toast with Sign in + Disable, then stays quiet for a day and re-nu
     expect(mocks.setMcpServerEnabled).toHaveBeenCalledWith('linear', false)
   } finally {
     nowSpy.mockRestore()
+  }
+})
+
+it('in the cloud enterprise mode, leaves the platform MCP servers out of the sign-in nudge', async () => {
+  const servers = {
+    mcp_servers: {
+      linear: { url: 'https://mcp.linear.app/mcp', auth: 'oauth' },
+      'uniwork-ent-orders': { url: 'http://platform.test/api/client/connectors/orders/mcp' },
+      yuanjing: { url: 'http://platform.test/api/client/yj/app/mcp-server/mcp' }
+    }
+  }
+
+  mocks.getHermesConfigRecord.mockResolvedValue(servers)
+  mocks.testMcpServer.mockResolvedValue({ ok: false, error: 'OAuth: authorization required', tools: [] })
+  window.localStorage.clear()
+  $enterpriseShell.set(true)
+
+  try {
+    startMcpHealthChecker()
+    mocks.gatewayState.set('open')
+
+    for (let index = 0; index < 8; index += 1) {
+      await flush()
+    }
+
+    expect(mocks.testMcpServer).toHaveBeenCalledTimes(3)
+    expect(mocks.notify.mock.calls.map(([toast]) => toast.id)).toEqual(['mcp-health-default::linear'])
+  } finally {
+    $enterpriseShell.set(false)
   }
 })
 

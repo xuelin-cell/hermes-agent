@@ -5,9 +5,10 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 import aiohttp
 from aiohttp import web
@@ -633,12 +634,16 @@ class Entry:
     # 以及 hermes 的「导入备份」（它会在库打开时替换 state.db，归档和真实库会分叉）。
     # 注意 ``__mt_user/``（回收站、重命名、命令行）不在其中：那是给用户用的，转发器自己核对会话令牌。
     _BLOCKED_TAILS = ("__mt/", "api/ops/import")
+    # hermes 的「显示环境变量原值」：浏览器能借它读出 .env 里的设备令牌和别的密钥（按路径结尾挡，带 profile 前缀的也算）。
+    _BLOCKED_ENDINGS = ("api/env/reveal",)
 
     async def backend(self, request: web.Request) -> web.StreamResponse:
         session = await self._require(request)
         tail = request.match_info.get("tail", "").lstrip("/")
         normalized = tail.replace("//", "/")
-        if normalized.startswith(self._BLOCKED_TAILS) or normalized in self._BLOCKED_TAILS:
+        decoded = re.sub(r"/+", "/", unquote(tail)).rstrip("/")  # %2F 和连写的斜杠到了 hermes 那边一样会被认出来
+        if (normalized.startswith(self._BLOCKED_TAILS) or normalized in self._BLOCKED_TAILS
+                or decoded.endswith(self._BLOCKED_ENDINGS)):
             raise web.HTTPNotFound()
         reason = self._gate(session)
         if reason:

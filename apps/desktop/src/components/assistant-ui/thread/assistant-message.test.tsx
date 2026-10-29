@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { en } from '@/i18n/en'
 import type { ErrorCardCopy } from '@/i18n/types'
+import { $enterpriseShell } from '@/lib/enterprise-mt'
 import { $displayTimestamps } from '@/store/display-timestamps'
 
 import { stubThreadEnvironment } from '../test-utils'
@@ -400,6 +401,41 @@ describe('rejected API key recovery', () => {
 
     screen.getByRole('button', { name: 'Update API key' }).click()
     await waitFor(() => expect(screen.getByTestId('location').textContent).toMatch(/\?tab=keys&key=OPENAI_API_KEY$/))
+  })
+})
+
+describe('cloud enterprise mode (desktop-mt)', () => {
+  afterEach(() => $enterpriseShell.set(false))
+
+  const suspended = () =>
+    failedMessage(
+      { authKind: 'api_key', code: 'auth', layer: 'auth', provider: 'custom', retryable: false },
+      'HTTP 403: 你已被企业停用，请联系管理员'
+    )
+
+  it('shows the platform sentence for a refusal, without "Update API key"', async () => {
+    $enterpriseShell.set(true)
+    render(
+      <MemoryRouter>
+        <Harness assistant={suspended()} />
+      </MemoryRouter>
+    )
+
+    expect(await screen.findByText('你已被企业停用，请联系管理员')).toBeTruthy()
+    expect(screen.getByText('The enterprise platform refused this request')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Update API key' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
+  })
+
+  it('keeps the provider-account wording on the desktop', async () => {
+    render(
+      <MemoryRouter>
+        <Harness assistant={suspended()} />
+      </MemoryRouter>
+    )
+
+    expect(await screen.findByRole('button', { name: 'Update API key' })).toBeTruthy()
+    expect(screen.queryByText('你已被企业停用，请联系管理员')).toBeNull()
   })
 })
 

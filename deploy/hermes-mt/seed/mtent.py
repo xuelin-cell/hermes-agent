@@ -43,6 +43,15 @@ ENT_MCP_PREFIX = "uniwork-ent-"
 PLUGIN_MCP_PREFIX = "uniwork-plugin-"
 KNOWLEDGE_MCP = "uniwork-knowledge"
 AGENT_HEADER = "X-Uniwork-Agent"
+YUANJING_MCP = "yuanjing"  # 内置的元景 MCP 在 config.yaml 里的名字（entry/tenants.py 的 YUANJING_MCP_NAME）
+# Agent 版本的内置工具开关（27 号第 1 节）→ 关掉哪些 hermes 工具集、内置元景 MCP 里排除哪些同类工具。
+# LSP 在 hermes 里没有对应，忽略。hermes 的 web 工具集同时带 web_search，只关「网页读取」时联网搜索也一起关。
+AGENT_TOOL_SWITCHES = {
+    "WebSearch": (("search",), ()),
+    "WebFetch": (("web",), ()),
+    "ImageGen": (("image_gen",), ("txt2img_generate", "image_edit")),
+    "VideoGen": (("video_gen",), ("txt2vid_generate", "img2vid_generate")),
+}
 # 状态和下载缓存放 .cache/ 下：不进归档（mtstate.EXCLUDE_TOP），hermes 的用户也写得了
 # （Docker 路径的转发器以 hermes 的用户跑，写不了入口以 root 放进来的 .mt/）
 STATE_FILE = ".cache/uniwork-enterprise/state.json"
@@ -384,13 +393,21 @@ def _prune_categories(profile_home: Path, tenant: str, keep: set[str]) -> list[s
 
 # ---------------------------------------------------------------- MCP 和配置
 
-def _connector_mcp(item: dict, token_env: str) -> dict:
-    """企业连接器的 MCP 配置：有平台中转（relay）就走中转，用设备令牌鉴权；没有才连上游地址。"""
+def _connector_mcp(item: dict, token_env: str, server: str = "", agent_id: str = "") -> dict:
+    """企业连接器的 MCP 配置：经平台的（有中转地址 relay，或者 ``auth: device`` 且地址在平台上）用设备令牌鉴权，
+    为 Agent 调用时再带 ``X-Uniwork-Agent``：平台据此用这个 Agent 版本选的凭证、查它引用的知识库（27 号第 2 节）。
+    别的直连上游地址。"""
     relay = str(item.get("relay") or "")
+    url = str(item.get("url") or "")
+    if not relay and item.get("auth") == "device" and server and url.startswith(server.rstrip("/") + "/"):
+        relay = url
     if relay:
-        entry: dict = {"url": relay, "headers": {"Authorization": f"Bearer ${{{token_env}}}"}}
+        headers = {"Authorization": f"Bearer ${{{token_env}}}"}
+        if agent_id:
+            headers[AGENT_HEADER] = agent_id
+        entry: dict = {"url": relay, "headers": headers}
     else:
-        entry = {"url": str(item.get("url") or "")}
+        entry = {"url": url}
         if str(item.get("transport") or "").lower() == "sse":
             entry["transport"] = "sse"
     timeout = item.get("timeout")
@@ -452,9 +469,18 @@ def _patch_default_config(home: Path, connectors: dict, token_env: str, report: 
     report["mcp_changed"].append("default")
 
 
+def _tool_switches(tools) -> tuple[list[str], list[str]]:
+    """Agent 版本没打开的内置工具：(要关的 hermes 工具集, 内置元景 MCP 里要排除的工具)。``tools`` 不是列表 = 全开。"""
+    if not isinstance(tools, list):
+        return [], []
+    on = {str(t) for t in tools}
+    off = [switch for name, switch in AGENT_TOOL_SWITCHES.items() if name not in on]
+    return sorted({s for toolsets, _ in off for s in toolsets}), sorted({t for _, names in off for t in names})
+
+
 def _agent_config(spec: dict, agent: dict, mcp: dict) -> str:
     """托管 profile 的 config.yaml：入口给的模板（和员工默认 profile 同一份），换上这个 Agent 的模型、
-    请求头、确认方式、记忆开关和 MCP。整份由我们生成，不保留任何人的手改。"""
+    请求头、确认方式、记忆开关、内置工具开关和 MCP。整份由我们生成，不保留任何人的手改。"""
     config = copy.deepcopy(spec.get("config") or {})
     template = str(config.get("template") or "")
     if not template.strip():
@@ -484,6 +510,17 @@ def _agent_config(spec: dict, agent: dict, mcp: dict) -> str:
     servers = {}
     servers.update({k: v for k, v in (config.get("builtin_mcp") or {}).items() if isinstance(v, dict)})
     servers.update(mcp)
+    toolsets, excluded = _tool_switches(agent.get("tools"))
+    if toolsets:
+        section = mtstate._section(cfg, "agent")  # noqa: SLF001
+        have = section.get("disabled_toolsets") if isinstance(section.get("disabled_toolsets"), list) else []
+        section["disabled_toolsets"] = sorted({str(t) for t in have} | set(toolsets))
+    if excluded and isinstance(servers.get(YUANJING_MCP), dict):
+        yuanjing = copy.deepcopy(servers[YUANJING_MCP])
+        tools_filter = yuanjing.get("tools") if isinstance(yuanjing.get("tools"), dict) else {}
+        tools_filter["exclude"] = sorted({str(t) for t in tools_filter.get("exclude") or []} | set(excluded))
+        yuanjing["tools"] = tools_filter
+        servers[YUANJING_MCP] = yuanjing
     cfg["mcp_servers"] = servers
     text = dump(cfg)
     mtstate._check_parses(text)  # noqa: SLF001
@@ -598,7 +635,8 @@ def _apply_agent(home: Path, spec: dict, agent: dict, fetch: Fetch, owner, token
     _install_category(home, profile, tenant, "experience", layer_skills, server, fetch, owner, report)
     _prune_categories(profile, tenant, keep)
 
-    mcp = {f"{ENT_MCP_PREFIX}{_slug(str(c.get('id') or ''), 'connector', 40)}": _connector_mcp(c, token_env)
+    mcp = {f"{ENT_MCP_PREFIX}{_slug(str(c.get('id') or ''), 'connector', 40)}":
+           _connector_mcp(c, token_env, server, agent_id)
            for c in agent.get("connectors") or [] if isinstance(c, dict) and (c.get("relay") or c.get("url"))}
     mcp.update(plugin_mcp)
     mcp.update(_knowledge_mcp(layers, token_env))
@@ -627,7 +665,10 @@ def _apply_agent(home: Path, spec: dict, agent: dict, fetch: Fetch, owner, token
         previous = json.loads(mark.read_text(encoding="utf-8")) if mark.is_file() else {}
     except (OSError, ValueError):
         previous = {}
-    mcp_sig = hashlib.sha256(json.dumps(mcp, sort_keys=True, default=str).encode()).hexdigest()[:16]
+    # 元景 MCP 排除了哪些工具也算进来：hermes 只在启动时按它注册工具。全开时不算，签名和以前一样
+    excluded = _tool_switches(agent.get("tools"))[1]
+    signed = {"mcp": mcp, "exclude": excluded} if excluded else mcp
+    mcp_sig = hashlib.sha256(json.dumps(signed, sort_keys=True, default=str).encode()).hexdigest()[:16]
     marker = {"tenant": tenant, "agent": agent_id, "key": str(agent.get("key") or ""),
               "revision": str(agent.get("revision") or ""), "mcp": mcp_sig,
               "layers": {str(layer.get("key") or ""): str(layer.get("version") or "") for layer in layers}}
@@ -705,7 +746,7 @@ def apply(home: Path, spec: dict, fetch: Fetch | None = None) -> dict:
                           [s for layer in layers for s in layer.get("skills") or [] if isinstance(s, dict)],
                           server, fetch, owner, report)
         _prune_categories(home, tenant, keep)
-        mcp = {f"{ENT_MCP_PREFIX}{_slug(str(c.get('id') or ''), 'connector', 40)}": _connector_mcp(c, token_env)
+        mcp = {f"{ENT_MCP_PREFIX}{_slug(str(c.get('id') or ''), 'connector', 40)}": _connector_mcp(c, token_env, server)
                for c in default.get("connectors") or [] if isinstance(c, dict) and (c.get("relay") or c.get("url"))}
         mcp.update(plugin_mcp)
         mcp.update(_knowledge_mcp(layers, token_env))

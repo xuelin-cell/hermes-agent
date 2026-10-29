@@ -1,6 +1,15 @@
 import { getRuntimeI18nLocale } from '@/i18n/runtime'
 import { storedBoolean } from '@/lib/storage'
 
+// The cloud entry's enterprise mode (deploy/hermes-mt with MT_UNIWORK_SERVER): see lib/enterprise-mt.ts.
+export {
+  $enterpriseShell,
+  enterpriseErrorCard,
+  enterpriseRecoveryPlan,
+  isPlatformMcpServer,
+  skipsTopUpPrompt
+} from './enterprise-mt'
+
 /**
  * The browser build: the renderer runs in an ordinary browser tab (the cloud,
  * multi-tenant deployment) and `src/dev/browser-bridge.ts` stands in for
@@ -44,6 +53,8 @@ import { storedBoolean } from '@/lib/storage'
  *   app/profiles/index.tsx                             * no "new profile"
  *   app/right-sidebar/file-actions.tsx                 rename + delete (to the instance's recycle bin) in the menu
  *   app/right-sidebar/terminal/use-terminal-session.ts Ctrl+V / Ctrl+Shift+V paste through the browser
+ *   app/session/hooks/use-message-stream/gateway-event/message-stream.ts
+ *                                                      enterprise mode: no top-up banner or toast on a quota refusal
  *   app/settings/appearance-settings.tsx               * no theme marketplace results, no UI scale or window translucency row
  *   app/settings/config-settings.tsx                   * no Advanced ▸ Desktop settings (keep awake, F12, backend pool,
  *                                                      Quick Entry)
@@ -54,6 +65,9 @@ import { storedBoolean } from '@/lib/storage'
  *   app/shell/maas-account-status.tsx                  signing out keeps the instance: the confirmation says so
  *   app/shell/model-catalog-menu.tsx                   * no "add custom model" or "edit models" in the model menus
  *   app/shell/plan-usage/panel.tsx                     * the account card without the plan's name, usage and expiry
+ *   components/assistant-ui/thread/assistant-message.tsx
+ *                                                      enterprise mode: a platform refusal reads the platform's own
+ *                                                      sentence, without "update API key" / "sign in again"
  *   components/conversation-share/reply-button.tsx     * no "share reply" under answers
  *   contrib/plugins.ts                                 * no kits and experts: the plugin is not started (Bot Mode is:
  *                                                      the instance's one serve hosts every agent, dev/browser-profiles-mt.ts)
@@ -66,6 +80,8 @@ import { storedBoolean } from '@/lib/storage'
  *   lib/model-options.ts                               * model pickers: the platform's providers only
  *   lib/reasoning-effort.ts                            the reasoning-effort pill reads 高 / 中 / 低, not High / Med / Low
  *   store/developer-mode.ts                            flipping UniWork's developer mode reloads the page
+ *   store/mcp-health.ts                                enterprise mode: no "sign in again" nudge for the platform's MCP
+ *                                                      servers (they authenticate with the device token)
  *   store/preview.ts                                   no in-app browser: links and URL previews open in a new tab
  *   store/profile.ts                                   only the default profile
  *

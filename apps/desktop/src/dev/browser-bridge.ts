@@ -16,6 +16,7 @@ import {
   type OfficePreviewErrorCode,
   type PdfDocumentSource
 } from '@/lib/browser-shell'
+import { noteEntryAccount } from '@/lib/enterprise-mt'
 
 import type { LoginAccount } from '../../electron/login/contract'
 
@@ -779,6 +780,8 @@ async function renamePath(path: string, newName: string): Promise<{ path: string
 
 interface EntryMe {
   display?: string
+  /** Only in the entry's enterprise mode: the member's binding (lib/enterprise-mt.ts reads its presence). */
+  enterprise?: unknown
   expires_at?: number
   user_id?: string
 }
@@ -793,6 +796,7 @@ async function getMaasAccount(): Promise<LoginAccount | null> {
   }
 
   const me = (await response.json()) as EntryMe
+  noteEntryAccount(me)
   const maskedPhone = me.display || me.user_id
 
   if (!maskedPhone) {

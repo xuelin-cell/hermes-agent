@@ -99,6 +99,21 @@ describe('browser development bridge', () => {
     await expect(window.hermesDesktop.getMaasAccount!()).resolves.toBeNull()
   })
 
+  it('tells the page whether the entry runs in enterprise mode', async () => {
+    await installFresh()
+    const { $enterpriseShell } = await import('@/lib/enterprise-mt')
+
+    globalThis.fetch = vi.fn(async () =>
+      jsonResponse({ display: '100****0002', enterprise: { access: 'active' } })
+    ) as typeof fetch
+    await window.hermesDesktop.getMaasAccount!()
+    expect($enterpriseShell.get()).toBe(true)
+
+    globalThis.fetch = vi.fn(async () => jsonResponse({ display: '186****5230' })) as typeof fetch
+    await window.hermesDesktop.getMaasAccount!()
+    expect($enterpriseShell.get()).toBe(false)
+  })
+
   it('reports a remote connection so the renderer uploads attachments and reads files via the gateway', async () => {
     await installFresh()
 

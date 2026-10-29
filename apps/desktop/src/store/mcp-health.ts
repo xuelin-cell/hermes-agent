@@ -16,6 +16,7 @@
 
 import { getHermesConfigRecord, type McpTestResult, setMcpServerEnabled, testMcpServer } from '@/hermes'
 import { translateNow } from '@/i18n'
+import { isPlatformMcpServer } from '@/lib/browser-shell'
 import { classifyProbe, freshProbe, probeCache, probeKey } from '@/lib/mcp-probe-cache'
 import { getServers, serverEnabled } from '@/lib/mcp-servers'
 import { persistString, storedString } from '@/lib/storage'
@@ -123,7 +124,8 @@ function recordResult(profileKey: string, name: string, status: McpHealthStatus)
   const previous = lastStatus.get(key) ?? null
   lastStatus.set(key, status)
 
-  if (!shouldNotify(previous, status, snoozedUntil(key), Date.now())) {
+  // desktop-mt: the platform's MCP servers sign in with the device token; signing in to them is not the fix.
+  if (!shouldNotify(previous, status, snoozedUntil(key), Date.now()) || (status === 'needs-auth' && isPlatformMcpServer(name))) {
     return
   }
 

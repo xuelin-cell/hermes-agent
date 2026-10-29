@@ -204,9 +204,11 @@ def test_agent_becomes_a_managed_profile_with_its_own_resources(home: Path) -> N
     assert cfg["approvals"]["mode"] == "manual"
     assert cfg["memory"]["memory_enabled"] is True
     servers = cfg["mcp_servers"]
+    # 经平台中转的连接器：设备令牌，加上是为哪个 Agent 调的（27 号第 2 节）
     assert servers["uniwork-ent-demo-sales"] == {
         "url": f"{ENTRY_SIDE}/api/client/connectors/demo-sales/mcp",
-        "headers": {"Authorization": f"Bearer ${{{TOKEN_ENV}}}"}, "timeout": 20}
+        "headers": {"Authorization": f"Bearer ${{{TOKEN_ENV}}}", "X-Uniwork-Agent": "agent_e2e_data"}, "timeout": 20}
+    assert "disabled_toolsets" not in (cfg.get("agent") or {})  # 平台没给工具开关 = 全开
     assert servers["uniwork-plugin-uniwork-report-reviewer-review-api"] == {"url": "https://review.test/mcp"}
     assert not any("local-tool" in name for name in servers)  # stdio 的不装
     assert servers["yuanjing"]["url"].startswith(f"{ENTRY_SIDE}/api/client/yj/")  # 元景工具照常在
@@ -217,7 +219,9 @@ def test_agent_becomes_a_managed_profile_with_its_own_resources(home: Path) -> N
     assert not (home / "skills" / "_org" / "tid-1" / "enterprise" / "sales-margin").exists()
     default_cfg = yaml.safe_load((home / "config.yaml").read_text(encoding="utf-8"))
     assert default_cfg["mcp_servers"]["my-own"] == {"url": "https://mine.test/mcp"}
-    assert default_cfg["mcp_servers"]["uniwork-ent-orders"]["url"] == f"{ENTRY_SIDE}/api/client/connectors/orders/mcp"
+    assert default_cfg["mcp_servers"]["uniwork-ent-orders"] == {
+        "url": f"{ENTRY_SIDE}/api/client/connectors/orders/mcp",
+        "headers": {"Authorization": f"Bearer ${{{TOKEN_ENV}}}"}, "timeout": 30}  # 员工自己用，不带 Agent
     assert "uniwork-ent-demo-sales" not in default_cfg["mcp_servers"]
 
 
@@ -328,6 +332,91 @@ def test_unbound_member_loses_org_skills_and_enterprise_connectors(home: Path) -
     assert report["retired"] == ["uw-agent_e2e_data"]
     assert not (home / "skills" / "_org" / ".active_org").exists()
     assert "uniwork-ent-orders" not in yaml.safe_load((home / "config.yaml").read_text(encoding="utf-8"))["mcp_servers"]
+
+
+def _knowledge_connector() -> dict:
+    """平台 d79ebd7e 的 knowledge.connector_item：企业知识库是一个经平台的 MCP 连接器。"""
+    url = f"{PLATFORM}/api/client/knowledge/mcp"
+    return {"id": "uniwork-knowledge", "name": "企业知识库", "url": url, "transport": "http", "timeout": 30,
+            "permission": "", "relay": url, "auth": "device"}
+
+
+def test_platform_connectors_carry_the_agent_they_are_called_for(home: Path) -> None:
+    """配了凭证的连接器、企业知识库（27 号第 2、3 节）：Agent 的 profile 调用时带 X-Uniwork-Agent，平台据此用这个
+    Agent 版本选的凭证、查它引用的知识库；员工自己的默认 profile 不带，查的是员工看得到的库。"""
+    policy = _policy()
+    orders = policy["connectors"][0]
+    orders.update(url=orders["relay"], auth="device")  # 平台 _relay_credentialed：配了凭证的只能经中转
+    policy["connectors"].append(_knowledge_connector())
+    policy["experts"][0]["connectors"].append("uniwork-knowledge")
+    spec = _spec(policy)
+    assert spec["default"]["connectors"][0]["auth"] == "device"
+    assert spec["default"]["connectors"][0]["url"] == f"{ENTRY_SIDE}/api/client/connectors/orders/mcp"
+    report = mtent.apply(home, spec, Fetcher())
+    assert report["ok"], report["errors"]
+    bearer = {"Authorization": f"Bearer ${{{TOKEN_ENV}}}"}
+    agent = yaml.safe_load((home / "profiles" / "uw-agent_e2e_data" / "config.yaml").read_text(encoding="utf-8"))
+    assert agent["mcp_servers"]["uniwork-ent-uniwork-knowledge"] == {
+        "url": f"{ENTRY_SIDE}/api/client/knowledge/mcp", "headers": {**bearer, "X-Uniwork-Agent": "agent_e2e_data"},
+        "timeout": 30}
+    default = yaml.safe_load((home / "config.yaml").read_text(encoding="utf-8"))["mcp_servers"]
+    assert default["uniwork-ent-uniwork-knowledge"]["headers"] == bearer
+    assert default["uniwork-ent-orders"]["headers"] == bearer
+
+
+def test_device_connector_without_a_relay_gets_the_token_only_on_the_platform(home: Path) -> None:
+    """27 号第 2 节的写法（只有 url + auth: device）：地址换成入口配置的平台地址再带令牌；不在平台上的地址不带。"""
+    policy = _policy()
+    policy["connectors"] += [
+        {"id": "kb", "name": "知识库", "url": f"{PLATFORM}/api/client/knowledge/mcp", "transport": "http", "auth": "device"},
+        {"id": "elsewhere", "name": "别处", "url": "http://attacker.test/mcp", "transport": "http", "auth": "device"},
+    ]
+    report = mtent.apply(home, _spec(policy), Fetcher())
+    assert report["ok"], report["errors"]
+    servers = yaml.safe_load((home / "config.yaml").read_text(encoding="utf-8"))["mcp_servers"]
+    assert servers["uniwork-ent-kb"] == {"url": f"{ENTRY_SIDE}/api/client/knowledge/mcp",
+                                         "headers": {"Authorization": f"Bearer ${{{TOKEN_ENV}}}"}}
+    assert servers["uniwork-ent-elsewhere"] == {"url": "http://attacker.test/mcp"}
+
+
+ALL_TOOLS = ["WebFetch", "WebSearch", "LSP", "ImageGen", "VideoGen"]
+
+
+@pytest.mark.parametrize(("tools", "toolsets", "excluded"), [
+    (["WebFetch", "LSP"], ["image_gen", "search", "video_gen"],
+     ["image_edit", "img2vid_generate", "txt2img_generate", "txt2vid_generate"]),
+    (["WebSearch", "ImageGen", "VideoGen"], ["web"], []),  # hermes 的 web 工具集带着 web_search：联网搜索一起关
+    ([], ["image_gen", "search", "video_gen", "web"],
+     ["image_edit", "img2vid_generate", "txt2img_generate", "txt2vid_generate"]),
+])
+def test_agent_tool_switches_turn_hermes_toolsets_and_yuanjing_tools_off(
+        home: Path, tools: list[str], toolsets: list[str], excluded: list[str]) -> None:
+    """Agent 版本没打开的内置工具（27 号第 1 节）：关掉对应的 hermes 工具集，内置元景 MCP 里同类的工具也排除；默认 profile 不受影响。"""
+    policy = _policy()
+    policy["experts"][0]["tools"] = tools
+    spec = _spec(policy)
+    assert spec["agents"][0]["tools"] == tools
+    report = mtent.apply(home, spec, Fetcher())
+    assert report["ok"], report["errors"]
+    cfg = yaml.safe_load((home / "profiles" / "uw-agent_e2e_data" / "config.yaml").read_text(encoding="utf-8"))
+    assert cfg["agent"]["disabled_toolsets"] == toolsets
+    assert cfg["mcp_servers"]["yuanjing"].get("tools") == ({"exclude": excluded} if excluded else None)
+    default = yaml.safe_load((home / "config.yaml").read_text(encoding="utf-8"))
+    assert "disabled_toolsets" not in (default.get("agent") or {})
+
+
+def test_changing_tool_switches_restarts_mcp_only_when_yuanjing_tools_change(home: Path) -> None:
+    mtent.apply(home, _spec(), Fetcher())  # 旧平台：没有 tools 字段
+    policy = _policy()
+    policy["experts"][0]["tools"] = ALL_TOOLS
+    report = mtent.apply(home, _spec(policy), Fetcher())
+    assert report["profiles"] == {} and report["mcp_changed"] == []  # 全开和没有这个字段一样，不重写、不重启
+    policy["experts"][0]["tools"] = ["WebFetch", "WebSearch", "LSP", "VideoGen"]
+    report = mtent.apply(home, _spec(policy), Fetcher())
+    assert report["mcp_changed"] == ["uw-agent_e2e_data"]  # 元景 MCP 要按新的排除重新注册工具
+    policy["experts"][0]["tools"] = ["WebFetch", "LSP", "VideoGen"]
+    report = mtent.apply(home, _spec(policy), Fetcher())
+    assert report["profiles"] == {"uw-agent_e2e_data": ["config.yaml"]} and report["mcp_changed"] == []
 
 
 def test_profile_names_are_valid_and_distinct() -> None:

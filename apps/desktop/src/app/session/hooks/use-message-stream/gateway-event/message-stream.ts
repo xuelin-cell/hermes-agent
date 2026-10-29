@@ -3,6 +3,7 @@ import type { BillingBlock } from '@hermes/shared'
 import { burstVibeHearts } from '@/components/chat/vibe-hearts'
 import { reportFirstBuildTurnComplete } from '@/components/onboarding-chat/first-build'
 import { translateNow } from '@/i18n'
+import { skipsTopUpPrompt } from '@/lib/browser-shell'
 import { withoutVerifierFooter } from '@/lib/chat-messages/verifier-footer'
 import { coerceGatewayText, coerceThinkingText } from '@/lib/chat-runtime'
 import { playCompletionSound } from '@/lib/completion-sound'
@@ -34,7 +35,8 @@ function firstBillingLine(text: string): string {
  * (Nous → in-app Settings → Billing, other providers → their billing page).
  */
 function surfaceBillingBlock(sessionId: string, raw: unknown): void {
-  if (!raw || typeof raw !== 'object') {
+  // desktop-mt: in the cloud's enterprise mode the error card says what the platform said; no top-up prompt.
+  if (!raw || typeof raw !== 'object' || skipsTopUpPrompt()) {
     return
   }
 
