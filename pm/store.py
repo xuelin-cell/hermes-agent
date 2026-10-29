@@ -313,6 +313,9 @@ def merge_tree(src: Path, dst: Path) -> None:
         item.replace(target)
 
 
+_digest_cache: dict[tuple[str, int, float], str] = {}
+
+
 def tree_digest(root: Path) -> str:
     """Deterministic sha256 over a directory tree: walk every file, sort
     by posix relpath, hash `relpath\\0<content>` per entry. No mtimes, no
@@ -325,6 +328,23 @@ def tree_digest(root: Path) -> str:
     in a bundle build; first boot of a shipped app), so they are runtime
     state, not package bytes — the digest is over what pm published."""
     import hashlib
+
+    total_size = 0
+    max_mtime = 0.0
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d != "__pycache__"]
+        for fname in filenames:
+            path = Path(dirpath) / fname
+            try:
+                stat = path.stat()
+                total_size += stat.st_size
+                max_mtime = max(max_mtime, stat.st_mtime)
+            except OSError:
+                pass
+
+    cache_key = (str(root), total_size, max_mtime)
+    if cache_key in _digest_cache:
+        return _digest_cache[cache_key]
 
     files: list[tuple[str, Path]] = []
     for dirpath, dirnames, filenames in os.walk(root):
@@ -351,7 +371,9 @@ def tree_digest(root: Path) -> str:
             with open(path, "rb") as f:
                 for block in iter(lambda: f.read(1024 * 1024), b""):
                     digest.update(block)
-    return digest.hexdigest()
+    result = digest.hexdigest()
+    _digest_cache[cache_key] = result
+    return result
 
 
 class Store:
