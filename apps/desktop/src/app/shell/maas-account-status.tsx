@@ -145,7 +145,7 @@ export function useMaasAccount(): LoginAccount | null {
 export function MaasAccountSidebar() {
   const account = useMaasAccount()
   return account ? (
-    <div data-slot="sidebar-account" className="shrink-0 px-3 pb-3 pt-2">
+    <div data-slot="sidebar-account" className="shrink-0 px-3 pb-1.5 pt-1">
       <AccountLogout account={account} key={`${account.maskedPhone}:${account.expiresAt}`} />
     </div>
   ) : null
