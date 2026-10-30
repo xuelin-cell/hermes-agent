@@ -7,7 +7,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, WebSocket
 
-from . import cloud, expert_sync, installer, store
+from . import cloud, cloud_avatars, expert_sync, installer, store
 
 router = APIRouter()
 
@@ -31,6 +31,14 @@ def bundled():
 @router.get('/experts')
 def directory():
     return cloud.directory(cloud.home())
+
+
+@router.get('/experts/{name}/avatar')
+def avatar(name: str):
+    try:
+        return {'data_url':cloud_avatars.avatar(cloud.home(),name)}
+    except installer.KitError as exc:
+        raise HTTPException(503,str(exc)) from exc
 
 
 @router.get('/profiles')

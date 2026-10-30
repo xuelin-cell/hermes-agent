@@ -36,8 +36,9 @@ export function browserKits(base: string, primary: HermesConnection, mutate: <T>
         return (tail === '/experts/sync' ? { changes: [] } : result) as T
       }
       let target = tail === '' || tail === '/' ? '/cloud/catalog' : tail === '/experts' ? '/cloud/experts' : tail
+      if (/^\/experts\/[^/]+\/avatar$/.test(tail)) { target = '/cloud' + tail }
       if (tail === '/bundled') { target = '/cloud/bundled' }
-      if (method !== 'GET' || !(target === '/cloud/profiles' || target === '/cloud/bundled' || target === '/cloud/catalog' || target === '/cloud/experts' || /^\/experts\/[^/]+\/avatar$/.test(target))) {
+      if (method !== 'GET' || !(target === '/cloud/profiles' || target === '/cloud/bundled' || target === '/cloud/catalog' || target === '/cloud/experts' || /^\/cloud\/experts\/[^/]+\/avatar$/.test(target))) {
         throw new Error('当前云端尚不支持此套件操作。')
       }
       target += '?profile=default'

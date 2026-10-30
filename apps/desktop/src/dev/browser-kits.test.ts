@@ -25,6 +25,18 @@ describe('cloud kits', () => {
     expect(JSON.stringify(fetch.mock.calls)).not.toContain('Bearer')
   })
 
+  it('reads portraits through the current instance cloud route before installation', async () => {
+    const fetch = vi.fn(async () => Response.json({ data_url: 'data:image/png;base64,Y2F0' }))
+    vi.stubGlobal('fetch', fetch)
+    const mutate = vi.fn()
+    const kits = browserKits('/hermes/', primary, mutate as never)
+    await expect(kits.request({ path: '/api/plugins/uniwork-kits/experts/douyin-strategist/avatar' }))
+      .resolves.toEqual({ data_url: 'data:image/png;base64,Y2F0' })
+    expect(fetch).toHaveBeenCalledWith('/hermes/__hermes_backend/api/plugins/uniwork-kits/cloud/experts/douyin-strategist/avatar?profile=default',
+      { credentials: 'same-origin', redirect: 'error', cache: 'no-store' })
+    expect(mutate).not.toHaveBeenCalled()
+  })
+
   it('refuses missing experts, other connections and arbitrary install URLs', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('denied', { status: 403 })))
     const mutate = vi.fn()
