@@ -155,10 +155,10 @@ py() { python3 -c "$@"; }
 g() { (cd "$REPO" && git "$@"); }
 head_short() { g rev-parse --short=7 HEAD; }
 
-# 基础镜像（hermes 本体）按 hermes 源码指纹命名：当前提交里除前端、部署、文档、测试之外的文件。
-# 这些没变就不用重建（构建要 15~45 分钟）。git 1.8 没有排除式路径，用 ls-tree 自己滤。
+# overlay 源码在沙箱镜像末尾完整替换，不再导致基础依赖镜像换代。
+# 清单边界、依赖声明、构建器变化仍会触发基础镜像重建。
 base_tag() {
-    printf 'hermes-custom:src-%s' "$(g ls-tree -r HEAD | grep -vE $'\t(apps|deploy|docs|tests|website)/' | sha256sum | cut -c1-12)"
+    python3 "$HERE/scripts/image_overlay.py" base-tag "$REPO"
 }
 
 # 前端产物是不是当前代码构建的：比对 scripts/build-frontend.sh 算的指纹和它构建时写进产物的那份。
@@ -183,9 +183,8 @@ fingerprint() {
             case "$f" in */config.yaml.tmpl) continue ;; esac
             printf 'seed/%s\n' "$(basename "$f")"; cat "$f"
         done
-        for f in $(overlay_files); do
-            printf 'overlay/%s\n' "$f"; cat "$REPO/$f"
-        done
+        python3 "$HERE/scripts/image_overlay.py" snapshot "$REPO"
+        cat "$HERE/scripts/image_overlay.py"
         # Connector code shares the frontend build step, but must also invalidate the instance template.
         (cd "$REPO" && git ls-tree -r HEAD apps/desktop/services/open-connector apps/desktop/scripts/build-cloud-connectors.mjs)
         cat "$HERE/.kits-runtime/.fingerprint"
@@ -206,22 +205,15 @@ overlay_files() {
     done | LC_ALL=C sort -u
 }
 
-# 清单里每一项都得是仓库里受版本管理的路径，否则镜像里少东西却没人发现。
+# 校验覆盖边界和文件类型；不存在的清单项作为删除记录，清理旧基础镜像中的文件。
 check_overlay() {
-    local p n
-    [ -f "$HERE/overlay.list" ] || die "缺少 $HERE/overlay.list（覆盖进镜像的仓库路径，Dockerfile.cube 要用）"
-    for p in $(overlay_entries); do
-        [ -n "$(cd "$REPO" && git ls-files -- "$p")" ] || die "overlay.list 里的 $p 不是仓库里受版本管理的路径"
-    done
-    n="$(overlay_files | wc -l | tr -d ' ')"
-    ok "覆盖进镜像的仓库文件 $n 个（overlay.list）"
+    python3 "$HERE/scripts/image_overlay.py" snapshot "$REPO" >/dev/null
+    ok "覆盖进镜像的仓库文件 $(overlay_files | wc -l | tr -d ' ') 个（overlay.list）"
 }
 
-# 构建前把清单里的文件原样拷进 .overlay/（构建目录，不进 git），Dockerfile.cube 从那里覆盖进 /opt/hermes。
+# 每次从当前源码重新生成快照，目录整体替换，包含删除、重命名和可执行权限。
 stage_overlay() {
-    rm -rf "$HERE/.overlay"
-    mkdir -p "$HERE/.overlay"
-    (cd "$REPO" && overlay_files | tar -cf - -T -) | tar -xf - -C "$HERE/.overlay"
+    python3 "$HERE/scripts/image_overlay.py" stage "$REPO" "$HERE/.overlay" "$HERE/.kits-runtime"
 }
 
 # ---------------------------------------------------------------- 集群查询
@@ -434,7 +426,7 @@ build_base() {
     need docker; need git; need python3; need curl
     local tag log free_g seed
     tag="$(base_tag)"
-    say "基础镜像：${tag}（代码 $(head_short)；指纹只算 hermes 源码，不含前端 / 部署 / 文档 / 测试）"
+    say "基础镜像：${tag}（代码 $(head_short)；指纹排除 overlay 业务源码，保留依赖与构建输入）"
     if docker image inspect "$tag" >/dev/null 2>&1; then
         ok "本机已有 $tag，不用重建"
     else
@@ -527,19 +519,11 @@ cmd_image() {
     docker run --rm --network none --entrypoint test "$IMAGE_NAME:$fp" -f /opt/hermes/skills/UNIWORK_BUNDLED_ONLY \
         && ok "镜像里的 hermes 只发 UniWork 内置技能" \
         || die "镜像里没有 /opt/hermes/skills/UNIWORK_BUNDLED_ONLY：基础镜像太旧，要用本仓库构建的（见 README「技能」）"
-    # 覆盖进 /opt/hermes 的仓库文件同理，开一个容器一次比完。清单为空就不比（sha256sum 没参数会去读标准输入）。
-    local files
-    files="$(overlay_files | tr '\n' ' ')"
-    if [ -n "${files// /}" ]; then
-        # shellcheck disable=SC2086,SC2016
-        in_img="$(docker run --rm --network none --entrypoint sh "$IMAGE_NAME:$fp" -c 'cd /opt/hermes && sha256sum "$@"' sh $files | awk '{print $1}' | tr '\n' ' ')"
-        # shellcheck disable=SC2086
-        in_repo="$(cd "$REPO" && sha256sum $files | awk '{print $1}' | tr '\n' ' ')"
-        [ "$in_img" = "$in_repo" ] || die "镜像里 /opt/hermes 下的覆盖文件与仓库不一致（overlay.list）"
-        ok "镜像里覆盖的 $(overlay_files | wc -l | tr -d ' ') 个仓库文件与仓库一致"
-    else
-        ok "没有覆盖进 /opt/hermes 的仓库文件（overlay.list 为空）"
-    fi
+    # 从容器内核对完整文件集合、内容和权限，不能只核对还存在的文件。
+    docker run --rm -i --network none --entrypoint python3 "$IMAGE_NAME:$fp" \
+        /opt/mt/image_overlay.py verify /opt/hermes < "$HERE/.overlay/manifest.json" \
+        || die "镜像中的覆盖源码与当前快照不一致（含残留文件检查）"
+    ok "镜像中的覆盖源码与当前快照一致，没有旧文件残留"
 
     if registry_has_tag "$fp"; then
         ok "仓库 $REGISTRY 已有 $REPO_PATH:$fp，跳过推送"

@@ -1,8 +1,7 @@
 """实例镜像（deploy/hermes-mt/Dockerfile.cube）：覆盖进 /opt/hermes 的仓库文件和几条构建约束。
 
 overlay.list 里每一项是仓库里的路径（目录表示其下全部受版本管理的文件）。deploy.sh 构建前把它们原样拷进
-.overlay/、构建后核对镜像里那份；这里核对清单本身：列的路径在仓库里都有。基础镜像用本仓库构建，
-清单现在是空的。
+.overlay/、构建后核对镜像里那份；目录整体替换，不保留基础镜像中已删除的文件。
 """
 
 from __future__ import annotations
@@ -50,7 +49,8 @@ def test_every_uniwork_skill_has_a_skill_md() -> None:
 
 def test_the_image_copies_the_staged_overlay() -> None:
     dockerfile = (DEPLOY / "Dockerfile.cube").read_text(encoding="utf-8")
-    assert "COPY .overlay/ /opt/hermes/" in dockerfile
+    assert "COPY .overlay/ /tmp/hermes-overlay/" in dockerfile
+    assert "image_overlay.py apply /tmp/hermes-overlay /opt/hermes" in dockerfile
     assert ".overlay/" in (DEPLOY / ".gitignore").read_text(encoding="utf-8").splitlines()
 
 

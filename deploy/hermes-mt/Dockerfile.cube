@@ -156,12 +156,12 @@ COPY .connector-runtime/ /opt/mt/connectors/
 RUN chmod 0644 /opt/mt/forward.py /opt/mt/mtstate.py /opt/mt/mtuser.py
 
 # ---- 本分支对 hermes 源码的改动（overlay.list） -------------------------------
-# 基础镜像就是用本仓库构建的，hermes 源码（含 skills/uniwork 内置技能）已在里面，所以清单现在是空的。
-# 留着这条路给「不重建基础镜像、先改几个 hermes 文件」：/opt/hermes 是可编辑安装，且不留预编译缓存
-# （PYTHONDONTWRITEBYTECODE=1），覆盖源文件就生效。deploy.sh 构建前把清单里的文件从仓库原样拷进
-# .overlay/（构建目录，不进 git），构建后核对镜像里那份；tests/hermes_mt/test_image_overlay.py 核对清单本身。
-COPY .overlay/ /opt/hermes/
-COPY .kits-runtime/plugins/ /opt/hermes/plugins/
+# 业务源码最后替换，复用前面的依赖层。先删除清单中的旧目录/文件，再写入当前源码，
+# 避免只 COPY 时，已经删除或重命名的模块仍留在基础镜像中。
+COPY scripts/image_overlay.py /opt/mt/image_overlay.py
+COPY .overlay/ /tmp/hermes-overlay/
+RUN python3 /opt/mt/image_overlay.py apply /tmp/hermes-overlay /opt/hermes \
+    && rm -rf /tmp/hermes-overlay
 
 # ---- 所有用户相同的环境变量 -------------------------------------------------
 # 与 entry/entry/tenants.py::_create 里那份清单保持一致。缺的那个

@@ -85,13 +85,15 @@ cd deploy/hermes-mt
 生成的基础镜像 Dockerfile 默认使用国内 apt 源和 npm 源，不修改根目录 Dockerfile。
 前端构建阶段设置 npm 源；运行阶段只给安装命令设置，不改变应用运行时的默认 npm 配置。
 手工构建派生 Dockerfile 时，可用 `--build-arg APT_MIRROR=` 恢复官方 apt 源、
-`--build-arg NPM_REGISTRY=https://registry.npmjs.org` 恢复官方 npm 源。已有基础镜像仍按原指纹复用，换源在下次实际构建时生效。
+`--build-arg NPM_REGISTRY=https://registry.npmjs.org` 恢复官方 npm 源。基础镜像指纹包含 `base_seed.py`，生成规则变化会在下次部署时构建对应镜像。
 
-耗时：只改了入口或配置几分钟；改了前端多 5~10 分钟；hermes 源码变了（合了上游、桌面版改了插件或内置技能）基础镜像要重建 15~45 分钟，沙箱镜像也跟着整个重建 20~40 分钟。
+缓存范围：只改入口或配置不重建沙箱模板；只改前端按前端指纹构建。`overlay.list` 内的插件和工具源码更新，只替换沙箱末尾的源码层，复用基础镜像与前面的办公软件、Python 库等依赖层。清单之外的 Hermes 源码、依赖声明或基础构建规则变化仍会重建基础镜像，耗时取决于网络和缓存。首次使用新的指纹规则会生成一次新的基础镜像，不能保证首次更新就变快。
+
+**源码完整性**：清单中的目录必须以 `/` 结尾，部署时先清掉镜像中的对应目录，再完整复制当前受 Git 管理的文件；配置仓库的套件包也合入同一快照。构建后核对完整文件集合、SHA-256 和可执行权限，残留、缺失、内容不一致都会停止部署。整个路径删除后暂时保留清单项作为删除记录；移除清单项会改变基础镜像指纹。依赖声明即使位于覆盖目录内也会触发基础镜像换代。镜像验证通过后仍按现有流程创建/复用模板，用户旧实例通过排空、归档和重建切换到新模板。
 
 要点：沙箱镜像按内容指纹命名（`Dockerfile.cube` + `seed/*` + 基础镜像 + 模板参数），只改入口代码不会重做镜像和模板；改了转发器就一定重做，并把新模板 ID 写进 `entry.env`。**入口和沙箱模板必须一起升级**——新入口配旧转发器会把用户的 `config.yaml` 写坏，脚本保证这一点。入口发现实例的模板和配置不一致，会在用户下次请求时自动排空、删除、重建、从卷上的归档恢复。部署机的规矩（不重启 Docker、不 prune、不切换构建器、页面只绑内网 IP、不打印密钥）也都在脚本里。
 
-**基础镜像**：沙箱镜像叠在基础镜像（hermes 本体）上。基础镜像用本仓库根目录的 `Dockerfile` 构建，和桌面版同一份（只补了一行它漏掉的 `COPY scripts/build/filesystem.py`），里面是 hermes 代码、内置技能（`skills/uniwork`）和 pm 锁定的 Python 3.14、Node、Chromium、ffmpeg、ripgrep（都在 `/opt/hermes/tools`；uv 不在 PATH 上）。镜像名 `hermes-custom:src-<指纹>`，指纹只算 hermes 源码（不含 `apps/`、`deploy/`、`docs/`、`tests/`、`website/`），所以只改前端或部署脚本不用重建；`./deploy.sh all` 找不到当前指纹的基础镜像会自己先建（也可以提前单独跑 `./deploy.sh base`）。部署机连 GitHub 极慢、连不上 Playwright 的 CDN，所以 `deploy.sh base` 先用 `scripts/base_seed.py` 把 pm 锁定的 7 个大文件（uv、Python、Chromium、node、npm、ffmpeg、ripgrep）和 s6-overlay 的三个包按 sha256 备好：pm 的文件来源依次是 hermes 的公开镜像、npmmirror、原地址；s6-overlay 的包公开镜像上没有，放在仓库的 `vendor/s6-overlay/` 里随代码拉下来（上游升了 s6 版本要把新包放进去，测试会提醒）；目录是 `MT_DEPLOY_SEED_DIR`（默认 `/var/cache/hermes-mt/base-seed`，备好的不重下）。然后用它生成的 Dockerfile 副本构建：副本只比原文件多两行 COPY，上游文件本身不改。构建本身只再连 PyPI、npm 和 Debian 源。以前按摘要拉的 `hermes-custom:a2007f2` 不能再用：它没有内置技能的标记文件，`deploy.sh` 会拦下。`entry.env` 里如果写了 `MT_DEPLOY_BASE_IMAGE`，就固定用它，一般不要写。
+**基础镜像**：沙箱镜像叠在基础镜像（hermes 本体）上。基础镜像用本仓库根目录的 `Dockerfile` 构建，和桌面版同一份（只补了一行它漏掉的 `COPY scripts/build/filesystem.py`），里面是 hermes 代码、内置技能（`skills/uniwork`）和 pm 锁定的 Python 3.14、Node、Chromium、ffmpeg、ripgrep（都在 `/opt/hermes/tools`；uv 不在 PATH 上）。镜像名 `hermes-custom:src-<指纹>`，指纹排除 `overlay.list` 中的业务源码以及前端、文档、测试，但保留覆盖边界、依赖声明、`apps/shared/` 和基础构建脚本（`base_seed.py`、`image_overlay.py`）；`./deploy.sh all` 找不到当前指纹的基础镜像会自己先建（也可以提前单独跑 `./deploy.sh base`）。部署机连 GitHub 极慢、连不上 Playwright 的 CDN，所以 `deploy.sh base` 先用 `scripts/base_seed.py` 把 pm 锁定的 7 个大文件（uv、Python、Chromium、node、npm、ffmpeg、ripgrep）和 s6-overlay 的三个包按 sha256 备好：pm 的文件来源依次是 hermes 的公开镜像、npmmirror、原地址；s6-overlay 的包公开镜像上没有，放在仓库的 `vendor/s6-overlay/` 里随代码拉下来（上游升了 s6 版本要把新包放进去，测试会提醒）；目录是 `MT_DEPLOY_SEED_DIR`（默认 `/var/cache/hermes-mt/base-seed`，备好的不重下）。然后用它生成的 Dockerfile 副本构建：副本只比原文件多两行 COPY，上游文件本身不改。构建本身只再连 PyPI、npm 和 Debian 源。以前按摘要拉的 `hermes-custom:a2007f2` 不能再用：它没有内置技能的标记文件，`deploy.sh` 会拦下。`entry.env` 里如果写了 `MT_DEPLOY_BASE_IMAGE`，就固定用它，一般不要写。
 
 **前端**：浏览器版前端（`nginx/dist-browser/`）不进 git，由 `scripts/build-frontend.sh` 从本仓库构建（`apps/desktop` 加 `VITE_HERMES_BROWSER_BUILD=1`，和桌面版同一份代码）。构建时把前端指纹写进产物（`dist-browser/.source-fingerprint`，`nginx/.dockerignore` 不让它进镜像）；指纹算 `apps/`、根目录的 `package.json` / `package-lock.json` / `.npmrc`、构建脚本和 `vendor/npm/`。`./deploy.sh all` 和 `up` 比对它和当前代码的指纹，对不上就先重新构建，不会把旧前端发出去；完整输出在 `.frontend-build.log`。`bash scripts/build-frontend.sh --fingerprint` 只打印当前代码的前端指纹。
 
