@@ -8,7 +8,8 @@ const required = (key: string) => {
 }
 const host = await startConnectors({
   home: required('HERMES_HOME'), encryption: required('OOMOL_CONNECT_ENCRYPTION_KEY'),
-  admin: required('OOMOL_CONNECT_ADMIN_TOKEN'), runtime: required('OOMOL_CONNECT_RUNTIME_TOKEN'), port: Number(required('OOMOL_CONNECT_PORT'))
+  admin: required('OOMOL_CONNECT_ADMIN_TOKEN'),
+  profileToken: process.env.OOMOL_CONNECT_PROFILE_TOKEN, backendPort: Number(process.env.OOMOL_CONNECT_PROFILE_PORT ?? 9120), runtime: required('OOMOL_CONNECT_RUNTIME_TOKEN'), port: Number(required('OOMOL_CONNECT_PORT'))
 })
 let stopping = false
 const stop = () => {

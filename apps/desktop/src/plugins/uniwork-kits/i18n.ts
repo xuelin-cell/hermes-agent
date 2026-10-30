@@ -41,6 +41,7 @@ const en = {
   talkingTo: 'Expert: ',
   tryAsking: 'Try asking',
   connectorLoginTitle: 'Connect East Money to query data',
+  cloudConnectorLoginBody: ' needs its own connector authorization. Open the connector page to authorize this expert; the default assistant and other experts keep their own settings.',
   connectorLoginBody:
     " needs the East Money connector before it can query quotes and financials. Next you'll open East Money in Connectors. Click Connect there to authorize; you'll be brought back to this chat afterwards.",
   connectorLoginLater: 'Later',
@@ -88,6 +89,7 @@ const zh = {
   talkingTo: '当前专家：',
   tryAsking: '试试这样问',
   connectorLoginTitle: '连接东方财富后即可查询',
+  cloudConnectorLoginBody: '需要单独授权连接器。请前往连接器页面为这位专家授权，通用助手和其他专家的配置不受影响。',
   connectorLoginBody:
     '的行情与财务数据需要先连接东方财富。下一步打开连接器里的东方财富页面，请在那里点击「连接」完成授权。授权完成后会自动回到这里，再发送问题。',
   connectorLoginLater: '稍后',

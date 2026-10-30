@@ -19,13 +19,15 @@ it('uses cookie-only fixed routes and rejects providers/profiles that are not su
   expect(fetcher).toHaveBeenCalledWith('/hermes/__entry/connectors', expect.objectContaining({ credentials: 'same-origin', method: 'POST', redirect: 'error' }))
   expect(new Headers((fetcher.mock.calls[0] as unknown as [string, RequestInit])[1].headers).has('Authorization')).toBe(false)
   for (const input of [
-    { operation: 'connect', profile: 'other', id: 'amap' },
+    { operation: 'connect', profile: '../other', id: 'amap' },
     { operation: 'authorize', profile: 'default', id: 'amap' },
     { operation: 'qr.start', profile: 'default', id: 'wecom_bot' }
   ] as const) {
     await expect(bridge.localConnectors(input)).rejects.toThrow()
   }
-  expect(fetcher).toHaveBeenCalledTimes(8)
+  await bridge.localConnectors({ operation: 'list', profile: 'demo-expert' })
+  expect(JSON.parse((fetcher.mock.calls.at(-1) as unknown as [string, RequestInit])[1].body as string).profile).toBe('demo-expert')
+  expect(fetcher).toHaveBeenCalledTimes(9)
 })
 
 it('surfaces unconfirmed persistence without retrying the mutation', async () => {

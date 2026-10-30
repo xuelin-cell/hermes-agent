@@ -4,17 +4,18 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import secrets
-import tempfile
 from pathlib import Path
 
 import aiohttp
-import yaml
+from mtconnector_profile import ConnectorProfile, authorize_profile
 
 
-class Connectors:
-    def __init__(self, home: Path, python: str, *, worker=None, node=None, port=9122):
-        self.home, self.python = home, python
+class Connectors(ConnectorProfile):
+    def __init__(self, home: Path, python: str, *, worker=None, node=None, port=9122, profile_token='', backend_port=9120):
+        super().__init__(home, port)
+        self.python = python
+        self.profile_token, self.backend_port = profile_token, backend_port
+        self.restored = False
         self.worker = worker or str(Path(__file__).parent / 'connectors/src/server/storage/worker.mjs')
         self.node, self.port = node, port
         self.process = None
@@ -25,53 +26,6 @@ class Connectors:
     @property
     def specs(self):
         return json.loads((Path(self.worker).parents[3] / 'contract.json').read_text())
-
-    def config(self):
-        file = self.home / 'config.yaml'
-        if file.is_symlink():
-            raise ValueError('Invalid connector configuration')
-        raw = file.read_text() if file.exists() else ''
-        try:
-            config = yaml.safe_load(raw) or {}
-        except yaml.YAMLError:
-            raise ValueError('Invalid connector configuration') from None
-        if not isinstance(config, dict) or not isinstance(config.get('mcp_servers', {}), dict):
-            raise ValueError('Invalid connector configuration')
-        return file, raw, config
-
-    @staticmethod
-    def atomic(file, data):
-        fd, temporary = tempfile.mkstemp(dir=file.parent, prefix='.connector-')
-        try:
-            with os.fdopen(fd, 'w') as output:
-                output.write(data)
-                output.flush()
-                os.fsync(output.fileno())
-            os.replace(temporary, file)
-        finally:
-            if os.path.exists(temporary):
-                os.unlink(temporary)
-
-    def credentials(self):
-        directory = self.home / 'open-connector'
-        if directory.is_symlink():
-            raise ValueError('Invalid connector directory')
-        directory.mkdir(mode=0o700, parents=True, exist_ok=True)
-        directory.chmod(0o700)
-        file = directory / 'secrets.json'
-        if file.is_symlink():
-            raise ValueError('Invalid connector key file')
-        if file.exists():
-            values = json.loads(file.read_text())
-            if not isinstance(values, dict) or any(not isinstance(values.get(key), str) or len(values[key]) != 64 for key in ('encryption', 'admin', 'runtime')):
-                raise ValueError('Invalid connector keys')
-            file.chmod(0o600)
-            return values
-        if (directory / 'connect.sqlite').exists():
-            raise ValueError('Connector key missing; restore the original key before starting')
-        values = {key: secrets.token_hex(32) for key in ('encryption', 'admin', 'runtime')}
-        self.atomic(file, json.dumps(values))
-        return values
 
     async def start(self):
         if self.process and self.process.returncode is None:
@@ -88,7 +42,8 @@ class Connectors:
         env = {key: os.environ[key] for key in ('PATH', 'HOME', 'LANG', 'TZ', 'TMPDIR') if key in os.environ}
         env.update(HERMES_HOME=str(self.home), OOMOL_CONNECT_ENCRYPTION_KEY=self.values['encryption'],
             OOMOL_CONNECT_ADMIN_TOKEN=self.values['admin'], OOMOL_CONNECT_RUNTIME_TOKEN=self.values['runtime'],
-            OOMOL_CONNECT_PORT=str(self.port), NODE_ENV='production')
+            OOMOL_CONNECT_PORT=str(self.port), OOMOL_CONNECT_PROFILE_TOKEN=self.profile_token,
+            OOMOL_CONNECT_PROFILE_PORT=str(self.backend_port), NODE_ENV='production')
         self.process = await asyncio.create_subprocess_exec(node, self.worker, env=env,
             stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
         try:
@@ -118,43 +73,37 @@ class Connectors:
                     raise RuntimeError('连接器操作失败，请核对凭据或查询状态；不要自动重放写操作。')
                 return await response.json()
 
-    def saved(self, id):
-        _, _, config = self.config()
-        return config.get('mcp_servers', {}).get('connector_' + id)
-
-    def update(self, id, enabled, *, remove=False):
-        file, raw, config = self.config()
-        servers = config.setdefault('mcp_servers', {})
-        name = 'connector_' + id
-        existing = servers.get(name)
-        if existing and (not isinstance(existing, dict) or existing.get('cloud_connector') != id):
-            raise ValueError('MCP name already exists: ' + name)
-        if remove:
-            servers.pop(name, None)
-        else:
-            servers[name] = {'cloud_connector': id, 'enabled': enabled,
-                'url': f'http://127.0.0.1:{self.port}/mcp/{id}',
-                'headers': {'Authorization': 'Bearer ' + self.values['runtime']}, 'timeout': 600}
-        if (file.read_text() if file.exists() else '') != raw:
-            raise RuntimeError('Configuration changed; refresh and retry')
-        self.atomic(file, yaml.safe_dump(config, allow_unicode=True, sort_keys=False))
+    async def scoped(self, name):
+        home = await authorize_profile(self.home, name, self.profile_token, self.backend_port)
+        scope = self if name == 'default' else ConnectorProfile(home, self.port, name)
+        scope.discard_inherited()
+        scope.values = scope.credentials()
+        return scope
 
     async def restore(self):
         async with self.lock:
+            self.restored = False
             (self.home / '.mt/connectors-draining').unlink(missing_ok=True)
-            # No runtime is needed for a Home with no managed connector entries.
-            _, _, config = self.config()
-            if not any(isinstance(value, dict) and value.get('cloud_connector') and value.get('enabled') is True
-                    for value in config.get('mcp_servers', {}).values()):
-                return
-            for id in self.specs:
-                saved = self.saved(id)
-                if isinstance(saved, dict) and saved.get('cloud_connector') == id and saved.get('enabled') is True:
-                    await self.start()
-                    self.update(id, True)
+            names = ['default']
+            directory = self.home / 'profiles'
+            if directory.is_dir() and not directory.is_symlink():
+                names.extend(path.name for path in directory.iterdir()
+                             if path.is_dir() and not path.is_symlink() and (path / 'open-connector/secrets.json').is_file())
+            for name in names:
+                try:
+                    scope = await self.scoped(name)
+                except ValueError:
+                    continue  # Removed/disabled experts must never restart their tools.
+                _, _, config = scope.config()
+                for id in self.specs:
+                    saved = config.get('mcp_servers', {}).get('connector_' + id)
+                    if isinstance(saved, dict) and saved.get('cloud_connector') == id and saved.get('enabled') is True:
+                        await self.start()
+                        scope.update(id, True)
+            self.restored = True
 
     async def recover(self):
-        if not self.process or self.process.returncode is not None:
+        if not self.process or self.process.returncode is not None or not self.restored:
             await self.restore()
 
     def draining(self, enabled):
@@ -166,8 +115,9 @@ class Connectors:
             file.unlink(missing_ok=True)
 
     async def request(self, data):
-        if not isinstance(data, dict) or data.get('profile', 'default') != 'default':
-            raise ValueError('云端连接器只支持默认档案。')
+        if not isinstance(data, dict):
+            raise ValueError('无效的连接器请求。')
+        profile = data.get('profile', 'default')
         operation = data.get('operation')
         specs, id = self.specs, data.get('id')
         if operation not in {'list', 'connect', 'enable', 'disable', 'disconnect', 'save', 'authorize', 'oauth.complete'} or (operation != 'list' and id not in specs):
@@ -185,32 +135,33 @@ class Connectors:
                 raise RuntimeError('实例正在排空，请稍后重试。')
             self.managing = True
             try:
-                existing = self.saved(id) if id else None
+                scope = await self.scoped(profile)
+                existing = scope.saved(id) if id else None
                 if operation != 'list' and existing and (not isinstance(existing, dict) or existing.get('cloud_connector') != id):
                     raise ValueError('MCP name already exists: connector_' + id)
                 await self.start()
                 authorization = {}
                 if operation in {'authorize', 'oauth.complete'}:
-                    authorization = await self.call(operation, values, id=id, origin=data.get('origin'), parameters=data.get('parameters'))
+                    authorization = await self.call(operation, values, id=id, profile=profile, origin=data.get('origin'), parameters=data.get('parameters'))
                     if operation == 'oauth.complete':
-                        self.update(id, True)
+                        scope.update(id, True)
                         authorization = {}
                 elif operation == 'connect':
-                    await self.call('connect', values, id=id)
-                    self.update(id, True)
+                    await self.call('connect', values, id=id, profile=profile)
+                    scope.update(id, True)
                 elif operation in {'enable', 'disable'}:
-                    status = await self.call('list')
+                    status = await self.call('list', profile=profile)
                     if not next(row['configured'] for row in status['connectors'] if row['id'] == id):
                         raise ValueError('请先配置连接器凭据。')
-                    self.update(id, operation == 'enable')
+                    scope.update(id, operation == 'enable')
                 elif operation == 'disconnect':
-                    self.update(id, False)
-                    await self.call('disconnect', id=id)
-                    self.update(id, False, remove=True)
-                status = await self.call('list')
+                    scope.update(id, False)
+                    await self.call('disconnect', id=id, profile=profile)
+                    scope.update(id, False, remove=True)
+                status = await self.call('list', profile=profile)
                 rows = []
                 for row in status['connectors']:
-                    saved = self.saved(row['id']) or {}
+                    saved = scope.saved(row['id']) or {}
                     enabled = isinstance(saved, dict) and saved.get('cloud_connector') == row['id'] and saved.get('enabled') is True
                     rows.append({**row, 'enabled': enabled, 'connected': row['configured'] and enabled})
                 return {'connectors': rows, **authorization}

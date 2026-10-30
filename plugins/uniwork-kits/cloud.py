@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import json
 import threading
 from contextlib import contextmanager
 from pathlib import Path
@@ -44,7 +45,7 @@ def profile_home(root: Path, name: str) -> Path:
     if not isinstance(name, str) or not name or '/' in name or '\\' in name or name.startswith('.'):
         raise installer.KitError('无效的专家档案。')
     target = root / 'profiles' / name
-    if target.is_symlink() or not target.is_dir() or not store.is_within(root / 'profiles', target):
+    if (root / 'profiles').is_symlink() or target.is_symlink() or not target.is_dir() or not store.is_within(root / 'profiles', target):
         raise installer.KitError('专家档案不存在。')
     match = [(key, value) for key, value in store.load_index(root)['plugins'].items()
              if value.get('kind') == 'expert' and not value.get('self') and value.get('profile') == name]
@@ -57,6 +58,17 @@ def profile_home(root: Path, name: str) -> Path:
 def busy(root: Path) -> bool:
     from tui_gateway import server
 
+    try:
+        activity = json.loads((root / '.mt/connectors-active.json').read_text())
+        if activity.get('active', 0) > 0:
+            os.kill(int(activity['pid']), 0)
+            return True
+    except FileNotFoundError:
+        pass
+    except ProcessLookupError:
+        pass
+    except (OSError, ValueError, KeyError, TypeError):
+        return True
     return any(value.get('running', False) or (value.get('agent_ready') is not None and not value['agent_ready'].is_set())
                for value in list(server._sessions.values())
                if store.is_within(root, Path(value.get('profile_home') or root)))
@@ -135,12 +147,26 @@ def action(data: dict) -> dict:
                 raise installer.KitError('请指定启用状态。')
             installer.set_enabled(root, name, data['enabled'])
         elif operation == 'uninstall':
-            installer.uninstall(root, name, delete_profile=data.get('delete_profile') is True)
+            index = store.load_index(root)
+            entry = index['plugins'].get(name, {})
+            if entry.get('kind') == 'expert' and not entry.get('self'):
+                if data.get('delete_profile') is not True:
+                    raise installer.KitError('卸载专家会删除对话和记忆，请明确确认删除档案。')
+                # One cloud backend serves several profiles. CLI profile deletion uses
+                # the launch home, so delete only the already verified owned directory.
+                target = profile_home(root, entry.get('profile', ''))
+                store.safe_rmtree(target, root)
+                index['plugins'].pop(name)
+                store.save_index(root, index)
+            else:
+                installer.uninstall(root, name, delete_profile=data.get('delete_profile') is True)
         elif operation == 'config':
             values = data.get('values')
             if not isinstance(values, dict) or any(not isinstance(k, str) or not isinstance(v, str) for k, v in values.items()):
                 raise installer.KitError('配置字段无效。')
-            installer.set_config(root, name, list(values.items()))
+            entry = store.load_index(root)['plugins'].get(name, {})
+            target = profile_home(root, entry.get('profile', '')) if entry.get('kind') == 'expert' and not entry.get('self') else root
+            installer.set_config(target, name, list(values.items()))
         elif operation == 'sync':
             expert_sync.sync_named(root, name)
         elif operation == 'recent':

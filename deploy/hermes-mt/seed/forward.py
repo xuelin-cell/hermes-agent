@@ -76,7 +76,7 @@ MAX_BODY = 4 * 1024 * 1024  # 引导载荷上限
 # 自带技能的同步用 hermes 自己的 Python 跑 hermes 的同步函数（见 _sync_bundled_skills）。
 HERMES_PYTHON = os.environ.get("MT_HERMES_PYTHON", "/opt/hermes/.venv/bin/python")
 _messaging_gateway = mtmessaging.Gateway(HERMES_HOME,HERMES_PYTHON)
-_connectors = mtconnectors.Connectors(HERMES_HOME, HERMES_PYTHON)
+_connectors = mtconnectors.Connectors(HERMES_HOME, HERMES_PYTHON, backend_port=TARGET_PORT, profile_token=os.environ.get('HERMES_DASHBOARD_SESSION_TOKEN', ''))
 HERMES_INSTALL = Path(os.environ.get("MT_HERMES_INSTALL", "/opt/hermes"))
 SKILLS_SYNC_TIMEOUT_S = 60.0
 # 回包只要名字和计数：删掉了哪些、归档了哪些（用户改过的）、新发了哪些。
@@ -268,6 +268,7 @@ async def _sync_bundled_skills() -> dict:
 
 async def _spawn_hermes(token: str) -> None:
     global _hermes_proc
+    _connectors.profile_token = token
     try:
         await _connectors.restore()
     except (OSError, RuntimeError, ValueError):

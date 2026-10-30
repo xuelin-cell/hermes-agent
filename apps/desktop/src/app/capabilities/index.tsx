@@ -1,7 +1,7 @@
 import { useStore } from '@nanostores/react'
 import type * as React from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useLocation, useNavigate } from 'react-router'
 
 import { PageLoader } from '@/components/page-loader'
 import { Button } from '@/components/ui/button'
@@ -101,7 +101,10 @@ export function CapabilitiesView({
 
   const [query, setQuery] = useState('')
 
-  const scope = useCapabilityScope({ fixedConnection, fixedProfile })
+  const location = useLocation()
+  const cloudConnectors = mode === 'connectors' && !!window.hermesDesktop.cloudKits && !!window.hermesDesktop.cloudConnectorIds
+  const scope = useCapabilityScope({ fixedConnection, fixedProfile, includeManagedProfiles: cloudConnectors,
+    requestedProfile: cloudConnectors ? new URLSearchParams(location.search).get('connectorProfile') || undefined : undefined })
 
   // The two installed lists the tab pills count. They are fetched here, as a
   // pair, because the counts stay live for the tab the user is NOT on.

@@ -12,7 +12,7 @@ afterEach(() => {
   delete window.hermesDesktop.cloudConnectorIds
 })
 
-it('opens the cloud default scope without requiring desktop connection settings', async () => {
+it('opens cloud default and expert scopes without desktop connection settings', async () => {
   document.documentElement.dataset.hermesBrowser = 'production'
   const localConnectors = vi.fn(async (): Promise<LocalConnectorResult> => ({ connectors: [{ id: 'amap', connected: false }] }))
   const getConnectionConfig = vi.fn(() => { throw new Error('Desktop-only method') })
@@ -22,8 +22,8 @@ it('opens the cloud default scope without requiring desktop connection settings'
   expect(localConnectors).toHaveBeenCalledWith({ operation: 'list', profile: 'default' })
   expect(getConnectionConfig).not.toHaveBeenCalled()
   rerender({ profile: 'expert' })
-  await waitFor(() => expect(result.current.available).toBe(false))
-  expect(localConnectors).not.toHaveBeenCalledWith({ operation: 'list', profile: 'expert' })
+  await waitFor(() => expect(localConnectors).toHaveBeenCalledWith({ operation: 'list', profile: 'expert' }))
+  expect(result.current.available).toBe(true)
 })
 
 it('never paints a late local reply into another profile or sends local credentials to a remote route', async () => {

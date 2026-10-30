@@ -18,6 +18,7 @@ import type { ExpertCard } from './types'
 
 // 专家跟着通用助手那份连接器走，见模块说明。
 const CONNECTOR_PROFILE = 'default'
+const cloudConnectors = () => !!window.hermesDesktop?.cloudKits && !!window.hermesDesktop?.cloudConnectorIds
 // 连接器服务卡住时状态要等好几秒；过了这么久还没回来就先弹窗，别让人以为召唤没反应。
 const PROMPT_DELAY_MS = 300
 const WATCH_INTERVAL_MS = 2000
@@ -31,7 +32,7 @@ export interface ConnectorLoginPrompt {
 }
 
 /** 查连接器状态：连上为 true，没连上为 false；本机没有连接器（连的是远程后端，或桌面太旧）时为 null。 */
-export type ConnectorCheck = (id: string) => Promise<boolean | null>
+export type ConnectorCheck = (id: string, profile?: string) => Promise<boolean | null>
 
 interface LocalConnectorsDoor {
   getConnectionConfig?: (profile: string) => Promise<{ mode?: string }>
@@ -49,18 +50,18 @@ let holding = false
 let watching: AbortController | null = null
 
 /** 通用助手那份连接器连上没有（和连接器页一样，只在本机后端时才有连接器）。 */
-const connectedNow: ConnectorCheck = async id => {
+const connectedNow: ConnectorCheck = async (id, profile = CONNECTOR_PROFILE) => {
   const desktop = (window as unknown as { hermesDesktop?: LocalConnectorsDoor }).hermesDesktop
 
   if (typeof desktop?.localConnectors !== 'function') {
     return null
   }
 
-  if (desktop.getConnectionConfig && (await desktop.getConnectionConfig(CONNECTOR_PROFILE)).mode !== 'local') {
+  if (!cloudConnectors() && desktop.getConnectionConfig && (await desktop.getConnectionConfig(profile)).mode !== 'local') {
     return null
   }
 
-  const result = await desktop.localConnectors({ operation: 'list', profile: CONNECTOR_PROFILE })
+  const result = await desktop.localConnectors({ operation: 'list', profile })
 
   return result.connectors.some(row => row.id === id && row.connected)
 }
@@ -82,6 +83,7 @@ export function dismissConnectorLogin(): void {
  * （重载会让这位专家已经开着的对话下一轮重新发完整上下文，所以没变化时不做）。
  */
 export async function adoptConnector(expert: ExpertCard): Promise<void> {
+  if (cloudConnectors()) return // New conversations resolve the expert-owned tools; keep existing prompt caches.
   try {
     const { changes } = await syncExpert(expert.name)
 
@@ -121,7 +123,7 @@ export async function offerConnectorLogin(expert: ExpertCard, check: ConnectorCh
   let connected: boolean | null = false
 
   try {
-    connected = await check(id)
+    connected = cloudConnectors() ? await check(id, expert.profile) : await check(id)
   } catch {
     // 状态不明：照样问，让用户自己决定。
   }
@@ -182,8 +184,8 @@ export async function watchUntilConnected(id: string, options: ConnectorWatchOpt
 }
 
 /** 连接器页里直接打开某个推荐连接器详情的地址（连接器页认 recommended 参数）。 */
-export function connectorDetailPath(connectorId: string): string {
-  return `${CAPABILITIES_PATH}?tab=connectors&recommended=${encodeURIComponent(connectorId)}`
+export function connectorDetailPath(connectorId: string, profile?: string): string {
+  return `${CAPABILITIES_PATH}?tab=connectors&recommended=${encodeURIComponent(connectorId)}${profile ? '&connectorProfile=' + encodeURIComponent(profile) : ''}`
 }
 
 /**
@@ -199,13 +201,13 @@ export function goToConnector(onReady: (expert: ExpertCard) => void, check: Conn
   }
 
   dismissConnectorLogin()
-  host.navigate(connectorDetailPath(prompt.connectorId))
+  host.navigate(connectorDetailPath(prompt.connectorId, cloudConnectors() ? prompt.expert.profile : undefined))
 
   watching?.abort()
   const watch = new AbortController()
   watching = watch
 
-  void watchUntilConnected(prompt.connectorId, { check, signal: watch.signal }).then(connected => {
+  void watchUntilConnected(prompt.connectorId, { check: cloudConnectors() ? id => check(id, prompt.expert.profile) : check, signal: watch.signal }).then(connected => {
     if (!connected || watch.signal.aborted) {
       return
     }

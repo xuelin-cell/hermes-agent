@@ -6,7 +6,7 @@ export function browserConnectors(base: string) {
   return {
     cloudConnectorIds: CLOUD_CONNECTOR_IDS,
     localConnectors: async (input: LocalConnectorRequest): Promise<LocalConnectorResult> => {
-      if (input.profile !== 'default' || (input.operation !== 'list' && !CLOUD_CONNECTOR_IDS.some(id => id === input.id)) ||
+      if (!input.profile || input.profile.startsWith('.') || /[\\/]/.test(input.profile) || input.profile.length > 160 || (input.operation !== 'list' && !CLOUD_CONNECTOR_IDS.some(id => id === input.id)) ||
           !['list', 'connect', 'enable', 'disable', 'disconnect', 'save', 'authorize'].includes(input.operation)) {
         throw new Error('该连接器或授权方式尚未在云端开放。')
       }

@@ -58,6 +58,20 @@ def profile(name: str = 'default'):
         raise HTTPException(403, str(exc)) from exc
 
 
+@router.get('/connector-profile')
+def connector_profile(name: str = 'default'):
+    """Execution-time ownership gate; never resync config while a tool is running."""
+    try:
+        root = cloud.home()
+        with cloud._lock:
+            if (root / '.mt/kits-active.json').exists():
+                raise installer.KitError('正在修改套件，请稍后重试。')
+            cloud.profile_home(root, name)
+        return {'profile': name}
+    except installer.KitError as exc:
+        raise HTTPException(403, str(exc)) from exc
+
+
 @router.post('/action')
 async def action(data: dict):
     try:

@@ -11,11 +11,12 @@ from uuid import uuid4
 
 from aiohttp import web
 
-from tests.hermes_mt.test_connectors import REPO
+from tests.hermes_mt.test_connectors import REPO, ConnectorPlatform
 
 
 class Platform:
     def __init__(self):
+        self.other = ConnectorPlatform()
         self.grants = {}
         self.clients = {}
         self.refreshes = []
@@ -30,6 +31,8 @@ class Platform:
 
     async def handle(self, request):
         host = request.headers.get('X-Fixture-Host')
+        if host == 'ima.qq.com':
+            return await self.other.handle(request)
         body = await request.json() if 'application/json' in request.content_type else dict(await request.post())
         if request.path.endswith('/register'):
             client = uuid4().hex
@@ -66,6 +69,9 @@ class Platform:
             tools = self.tools if host == 'mcp.aminer.cn' else [{'name': 'lookup', 'inputSchema': {'type': 'object', 'properties': {}}}]
             value = {'tools': [{'name': tool['name'], 'inputSchema': tool['inputSchema']} for tool in tools]}
         elif body.get('method') == 'tools/call':
+            if body.get('params', {}).get('arguments', {}).get('title') == 'blocked':
+                self.blocked.set()
+                await self.release.wait()
             value = {'content': [{'type': 'text', 'text': json.dumps({'owner': owner})}]}
         else:
             return web.Response(status=202)

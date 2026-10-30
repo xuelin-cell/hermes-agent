@@ -152,6 +152,7 @@ COPY seed/mtuser.py /opt/mt/mtuser.py
 COPY seed/mtfolders.py /opt/mt/mtfolders.py
 COPY seed/mtmessaging.py /opt/mt/mtmessaging.py
 COPY seed/mtconnectors.py /opt/mt/mtconnectors.py
+COPY seed/mtconnector_profile.py /opt/mt/mtconnector_profile.py
 COPY .connector-runtime/ /opt/mt/connectors/
 RUN chmod 0644 /opt/mt/forward.py /opt/mt/mtstate.py /opt/mt/mtuser.py
 

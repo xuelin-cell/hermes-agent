@@ -57,7 +57,7 @@ export function useRecommendedConnections(scope: ProfileScope) {
 
     async function load() {
       try {
-        const cloud = isBrowserShell() && !!window.hermesDesktop.cloudConnectorIds && profile === 'default' && (!route.connectionId || route.connectionId === 'local')
+        const cloud = isBrowserShell() && !!window.hermesDesktop.cloudConnectorIds && (!route.connectionId || route.connectionId === 'local')
         const local = isBrowserShell() && window.hermesDesktop.cloudConnectorIds ? cloud : route.connectionId
           ? route.connectionId === 'local'
           : (await window.hermesDesktop.getConnectionConfig(profile)).mode === 'local'

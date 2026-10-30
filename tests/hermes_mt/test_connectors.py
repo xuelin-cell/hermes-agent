@@ -56,6 +56,7 @@ const executors=defineProviderExecutors({service:'amap',handlers:amapActionHandl
  createContext:async(context)=>({apiKey:(await requireApiKeyCredential(context,'amap')).apiKey,fetcher:transport,signal:context.signal})});
 const host=await startConnectors({home:process.env.HERMES_HOME,port:Number(process.env.OOMOL_CONNECT_PORT),
  encryption:process.env.OOMOL_CONNECT_ENCRYPTION_KEY,admin:process.env.OOMOL_CONNECT_ADMIN_TOKEN,runtime:process.env.OOMOL_CONNECT_RUNTIME_TOKEN,
+ profileToken:process.env.OOMOL_CONNECT_PROFILE_TOKEN,backendPort:Number(process.env.OOMOL_CONNECT_PROFILE_PORT??9120),
  providerLoader:new ProviderLoader({amap:async()=>({executors,credentialValidators:{apiKey:(input,context)=>validateAmapCredential(input,transport,context.signal)}})})});
 process.once('SIGTERM',()=>void host.close().then(()=>process.exit(0)));
 '''.replace('HOST', json.dumps(str(REPO / 'apps/desktop/services/open-connector/cloud/connectors.ts')))
@@ -72,12 +73,14 @@ dns.lookup=async()=>[{address:'1.1.1.1',family:4}]; syncBuiltinESMExports();
 const native=globalThis.fetch;
 const allowed=new Set(['agent.qcc.com','mkcs.dfcfs.com','upass.10jqka.com.cn','api-mcp.51ifind.com','mxapi-stg.eastmoney.com','mcp.aminer.cn','restapi.amap.com','open.mail.163.com','account.wps.cn','openapi.wps.cn','qyapi.weixin.qq.com','ima.qq.com']);
 globalThis.fetch=(input,options)=>{const request=input instanceof Request?input:null;const url=new URL(request?.url??String(input));
+ if(url.hostname==='127.0.0.1')return native(input,options);
  if(!allowed.has(url.hostname))throw Error('Unexpected external destination: '+url.hostname);
  const headers=new Headers(options?.headers??request?.headers);headers.set('X-Fixture-Host',url.hostname);
  const target=ORIGIN+url.pathname+url.search;
  return native(request?new Request(target,new Request(request,{...options,headers})):target,request?undefined:{...options,headers});};
 const host=await startConnectors({home:process.env.HERMES_HOME,port:Number(process.env.OOMOL_CONNECT_PORT),encryption:process.env.OOMOL_CONNECT_ENCRYPTION_KEY,
-admin:process.env.OOMOL_CONNECT_ADMIN_TOKEN,runtime:process.env.OOMOL_CONNECT_RUNTIME_TOKEN});
+admin:process.env.OOMOL_CONNECT_ADMIN_TOKEN,runtime:process.env.OOMOL_CONNECT_RUNTIME_TOKEN,
+ profileToken:process.env.OOMOL_CONNECT_PROFILE_TOKEN,backendPort:Number(process.env.OOMOL_CONNECT_PROFILE_PORT??9120)});
 process.once('SIGTERM',()=>void host.close().then(()=>process.exit(0)));
 '''.replace('HOST', json.dumps(str(REPO / 'apps/desktop/services/open-connector/cloud/connectors.ts'))).replace('ORIGIN', json.dumps(origin)))
     if mail_ports:

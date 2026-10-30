@@ -23,7 +23,10 @@ class ConnectorRoutes:
                 raise ValueError()
             operation = data.get('operation')
             specs = connector_specs()
-            if data.get('profile', 'default') != 'default' or operation not in {'list', 'connect', 'enable', 'disable', 'disconnect', 'save', 'authorize'}:
+            profile = data.get('profile', 'default')
+            if not isinstance(profile, str) or not profile or profile.startswith('.') or '/' in profile or '\\' in profile or len(profile) > 160:
+                raise ValueError()
+            if operation not in {'list', 'connect', 'enable', 'disable', 'disconnect', 'save', 'authorize'}:
                 raise ValueError()
             if operation != 'list' and data.get('id') not in specs:
                 raise ValueError()
@@ -53,12 +56,12 @@ class ConnectorRoutes:
                 payload['authorizationUrl'] = result['authorizationUrl']
             response = web.json_response(payload, headers={'Cache-Control': 'no-store'})
             if operation == 'authorize':
-                self.oauth.started(request, session, data['id'], result, response)
+                self.oauth.started(request, session, data['id'], result, response, profile)
             return response
         except web.HTTPException as error:
             return web.json_response({'error': error.text}, status=error.status, headers={'Cache-Control': 'no-store'})
         except (ValueError, TypeError, KeyError):
-            return web.json_response({'error': '请检查当前云端支持的连接器、默认档案和授权字段。'}, status=400, headers={'Cache-Control': 'no-store'})
+            return web.json_response({'error': '请检查当前云端支持的连接器、专家档案和授权字段。'}, status=400, headers={'Cache-Control': 'no-store'})
         except FileNotFoundError:
             return web.json_response({'error': '连接器运行产物缺失，请更新入口镜像和实例模板。'}, status=503)
 
