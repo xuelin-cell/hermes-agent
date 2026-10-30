@@ -163,4 +163,7 @@ def install_market_skill(url: str, identifier: str, profile: Optional[str] = Non
         except Exception:
             shutil.rmtree(quarantine_path, ignore_errors=True)
             raise
+        # Refresh discovery for future agents; existing agents retain their pinned prompt.
+        from agent.prompt_builder import clear_skills_system_prompt_cache
+        clear_skills_system_prompt_cache(clear_snapshot=True)
         return {"ok": True, "name": bundle.name, "install_path": str(install_dir)}

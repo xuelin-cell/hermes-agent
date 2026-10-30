@@ -234,3 +234,35 @@ def test_market_package_runs_real_scan_and_install_chain(tmp_path, monkeypatch):
     assert result["ok"] is True
     assert result["name"] == "office-writer"
     assert (home / "skills" / "office-writer" / "SKILL.md").is_file()
+
+
+def test_market_install_refreshes_next_session_skill_index_without_crossing_homes(tmp_path, monkeypatch):
+    from agent.prompt_builder import build_skills_system_prompt, clear_skills_system_prompt_cache
+    from hermes_cli import skill_market_install
+    from hermes_constants import set_hermes_home_override, reset_hermes_home_override
+
+    homes = [tmp_path / name for name in ("a", "b")]
+    for home in homes:
+        baseline = home / "skills/baseline/SKILL.md"
+        baseline.parent.mkdir(parents=True)
+        baseline.write_text("---\nname: baseline\ndescription: Existing skill.\n---\nWrite a draft.\n")
+    package = _skill_zip({"akshare-stock/SKILL.md":
+        "---\nname: akshare-stock\ndescription: Query stock history.\n---\nRead stock history.\n"})
+    monkeypatch.setattr(skill_market_install, "download_skill_package", lambda _url: package)
+    clear_skills_system_prompt_cache()
+
+    def index(home):
+        return build_skills_system_prompt(skills_dir_override=home / "skills")
+
+    before = [index(home) for home in homes]
+    token = set_hermes_home_override(homes[0])
+    try:
+        skill_market_install.install_market_skill("https://maas.ai-yuanjing.com/package.zip", "market-stock")
+    finally:
+        reset_hermes_home_override(token)
+
+    after_a = index(homes[0])
+    assert "akshare-stock" in after_a
+    assert index(homes[1]) == before[1]
+    assert index(homes[0]) == after_a
+    assert "akshare-stock" not in before[0]  # Already-built conversation prefixes stay unchanged.
