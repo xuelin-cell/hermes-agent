@@ -62,7 +62,7 @@ import { hermesDirectiveFormatter } from '@/components/assistant-ui/directive-te
 import { messageAttachmentRefs } from '@/components/assistant-ui/thread/content'
 import { UserAttachments } from '@/components/assistant-ui/thread/user-attachments'
 import {
-  StickyHumanMessageContainer,
+  HumanMessageContainer,
   StopGlyph,
   USER_ACTION_ICON_BUTTON_CLASS,
   USER_ACTION_ICON_SIZE,
@@ -840,7 +840,7 @@ export const UserEditComposer: FC<UserEditComposerProps> = ({ cwd, gateway, sess
 
   return (
     <ComposerPrimitive.Root className="contents" data-slot="aui_edit-composer-root">
-      <StickyHumanMessageContainer>
+      <HumanMessageContainer>
         <div
           className="composer-human-message-container human-execution-message-top relative flex w-full items-start rounded-md bg-(--ui-chat-surface-background)"
           // A raised box over the transcript field: under window glass it keeps
@@ -967,7 +967,7 @@ export const UserEditComposer: FC<UserEditComposerProps> = ({ cwd, gateway, sess
             </button>
           </div>
         </div>
-      </StickyHumanMessageContainer>
+      </HumanMessageContainer>
     </ComposerPrimitive.Root>
   )
 }
