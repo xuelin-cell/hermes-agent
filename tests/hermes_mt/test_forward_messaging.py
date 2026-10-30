@@ -1,5 +1,6 @@
 """Real PG/Entry/forwarder/relay: reconnects reconcile receipts, never repeat a turn."""
 import asyncio
+import base64
 import importlib.util
 import json
 import os
@@ -19,6 +20,7 @@ from entry.channels_service import Channels
 from entry.messaging_relay import InstanceRelays
 from gateway.config import PlatformConfig
 from plugins.cloud_messaging.adapter import CloudMessagingAdapter
+from plugins.cloud_messaging.media import unpack
 from tests.hermes_mt.test_messaging_media import context
 from tests.hermes_mt.test_messaging import wait_for
 
@@ -26,10 +28,10 @@ SEED = Path(__file__).resolve().parents[2] / 'deploy/hermes-mt/seed'
 
 
 class Environment:
-    async def start(self, tmp_path, monkeypatch, dsn, *, live=False,user='alice'):
+    async def start(self, tmp_path, monkeypatch, dsn, *, live=False,user='alice',channel='dingtalk',mcp_servers=None,completion_handler=None,tool_search=False):
         import plugins.cloud_messaging.transport as transport
         monkeypatch.setattr(transport, 'PORT', 0)
-        self.settings, self.app, self.entry, self.binding, self.epoch, self.delivery = await context(dsn,'dingtalk',user)
+        self.settings, self.app, self.entry, self.binding, self.epoch, self.delivery = await context(dsn,channel,user)
         self.service = Channels(self.settings, {})
         self.service.database = self.entry.database
         self.service.store = self.entry.messaging_routes.store
@@ -75,6 +77,7 @@ class Environment:
             import yaml
             async def completion(request):
                 body = await request.json()
+                if completion_handler: return await completion_handler(body)
                 self.executions.append((self.delivery,'dingtalk'))
                 self.started.set()
                 await self.release.wait()
@@ -94,7 +97,8 @@ class Environment:
             endpoint = str(self.model.make_url('/v1')).rstrip('/')
             (self.home/'config.yaml').write_text(yaml.safe_dump({'model':{
                 'default':'fixture','provider':'custom','base_url':endpoint,'context_length':131072},
-                'toolsets':[],'plugins':{'enabled':['cloud-messaging']}}))
+                'toolsets':[],'plugins':{'enabled':['cloud-messaging']},
+                'tools':{'tool_search':tool_search},'mcp_servers':mcp_servers or {}}))
             (self.home/'.env').write_text('OPENAI_API_KEY=fixture\nOPENAI_BASE_URL='+endpoint+'\n')
             self.runtime = tempfile.TemporaryDirectory(prefix='hm-im-',dir='/tmp')
             self.forward.HERMES_PYTHON = sys.executable
@@ -123,6 +127,13 @@ class Environment:
         async with self.entry.database.acquire() as db:
             await db.execute("UPDATE messaging_inbox SET state='dispatching',payload=$2::jsonb WHERE delivery_id=$1",
                 self.delivery,json.dumps({'event':{'text':'execute once','source':{'platform':'dingtalk','chat_id':'chat','user_id':'peer','chat_type':'dm'}}}))
+        if channel=='uniagentgate':
+            payload={'type':'agent.request','agent_id':self.binding['bot_key'],'message_id':'external',
+                'channel':{'phone_number':'13800000000'},'session_id':'5g-session','turn_id':'5g-turn',
+                'payload':{'inputs':[{'type':'text','text':'请调用 MCP 工具画一张小猫图片'}]}}
+            async with self.entry.database.acquire() as db:
+                await db.execute("UPDATE messaging_inbox SET external_chat_id='13800000000',payload=$2::jsonb WHERE delivery_id=$1",
+                    self.delivery,json.dumps(payload))
         return self
 
     async def close(self):
@@ -298,3 +309,97 @@ async def test_changed_generation_cannot_reexecute_or_accept_stale_results(tmp_p
             assert not await db.fetchval('SELECT 1 FROM messaging_outbox WHERE delivery_id=$1',env.delivery)
     finally:
         await env.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('deferred',[False,True])
+async def test_5g_draw_request_calls_authenticated_mcp_and_delivers_image(tmp_path,monkeypatch,postgres_database_url,deferred):
+    calls=[]
+    image=base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jX1kAAAAASUVORK5CYII=')
+    output=tmp_path/'home'/'workspace'/'cat.png'
+    async def mcp(request):
+        assert request.headers.get('X-Hermes-Session-Token')=='instance-token'
+        if request.method=='GET': return web.Response(status=405)
+        if request.method=='DELETE': return web.Response(status=200)
+        if not request.can_read_body: return web.Response(status=405)
+        body=await request.json()
+        method=body['method']
+        if method=='initialize':
+            result={'protocolVersion':'2025-03-26','capabilities':{'tools':{}},'serverInfo':{'name':'drawing-fixture','version':'1'}}
+        elif method=='tools/list':
+            result={'tools':[{'name':'txt2img_generate','description':'Generate a cat image using the image generation service',
+                'inputSchema':{'type':'object','properties':{'prompt':{'type':'string'}},'required':['prompt']}}]}
+        elif method=='tools/call':
+            assert body['params']['name']=='txt2img_generate'
+            calls.append(body['params']['arguments'])
+            output.parent.mkdir(parents=True,exist_ok=True)
+            output.write_bytes(image)
+            result={'content':[{'type':'text','text':f'Generated image: {output}'}]}
+        else: return web.Response(status=202)
+        return web.json_response({'jsonrpc':'2.0','id':body['id'],'result':result})
+
+    async def completion(body):
+        messages=body.get('messages',[])
+        # Auxiliary title requests are separate from the main tool-using turn.
+        if not body.get('tools'):
+            message={'role':'assistant','content':'cat drawing'}
+        elif any(item.get('role')=='tool' and 'Generated image:' in str(item.get('content')) for item in messages):
+            message={'role':'assistant','content':f'小猫图片已生成。\nMEDIA:{output}'}
+        else:
+            names=[tool['function']['name'] for tool in body['tools']]
+            target='mcp__yuanjing__txt2img_generate'
+            replies={item.get('tool_call_id'):str(item.get('content')) for item in messages if item.get('role')=='tool'}
+            if not deferred:
+                assert target in names, names
+                name,args,identity=target,{'prompt':'a small cat'},'draw-once'
+            elif 'find-cat' not in replies:
+                assert 'tool_search' in names and target not in names, names
+                name,args,identity='tool_search',{'queries':['yuanjing image generation cat']},'find-cat'
+            elif 'describe-cat' not in replies:
+                assert target in replies['find-cat'], replies['find-cat']
+                name,args,identity='tool_describe',{'names':[target]},'describe-cat'
+            else:
+                assert target in replies['describe-cat'], replies['describe-cat']
+                name,args,identity='tool_call',{'name':target,'arguments':{'prompt':'a small cat'}},'draw-once'
+            message={'role':'assistant','content':None,'tool_calls':[{'id':identity,'type':'function','function':{
+                'name':name,'arguments':json.dumps(args)}}]}
+        finish='tool_calls' if 'tool_calls' in message else 'stop'
+        base={'id':'model-fixture','created':1,'model':body['model']}
+        if body.get('stream'):
+            delta=dict(message)
+            if 'tool_calls' in delta: delta['tool_calls']=[dict(item,index=i) for i,item in enumerate(delta['tool_calls'])]
+            chunk={**base,'object':'chat.completion.chunk','choices':[{'index':0,'delta':delta,'finish_reason':None}]}
+            end={**base,'object':'chat.completion.chunk','choices':[{'index':0,'delta':{},'finish_reason':finish}]}
+            return web.Response(text='data: '+json.dumps(chunk)+'\n\ndata: '+json.dumps(end)+'\n\ndata: [DONE]\n\n',content_type='text/event-stream')
+        return web.json_response({**base,'object':'chat.completion','choices':[{'index':0,'message':message,'finish_reason':finish}]})
+
+    app=web.Application()
+    app.router.add_route('*','/mcp',mcp)
+    async with TestServer(app) as server:
+        env=await Environment().start(tmp_path,monkeypatch,postgres_database_url,live=True,channel='uniagentgate',
+            completion_handler=completion,tool_search={'enabled':'on','threshold_pct':0} if deferred else False,mcp_servers={'yuanjing':{'url':str(server.make_url('/mcp')),
+                'headers':{'X-Hermes-Session-Token':'${HERMES_DASHBOARD_SESSION_TOKEN}'}}})
+        try:
+            env.task=asyncio.create_task(env.service.deliver(dict(await env.row())))
+            async def done(): return (await env.row())['state']=='completed'
+            try: await wait_for(done,timeout=60)
+            except TimeoutError:
+                logs='\n'.join(p.read_text(errors='replace')[-14000:] for p in (env.home/'logs').glob('*.log'))
+                raise AssertionError(logs) from None
+            assert calls==[{'prompt':'a small cat'}]
+            async def attachments():
+                async with env.entry.database.acquire() as db:
+                    return await db.fetchval('SELECT count(*) FROM messaging_outbox WHERE delivery_id=$1',env.delivery)==2
+            try: await wait_for(attachments,timeout=15)
+            except TimeoutError:
+                logs='\n'.join(p.read_text(errors='replace')[-14000:] for p in (env.home/'logs').glob('*.log'))
+                raise AssertionError(logs) from None
+            async with env.entry.database.acquire() as db:
+                rows=await db.fetch('SELECT payload FROM messaging_outbox WHERE delivery_id=$1 ORDER BY part_index',env.delivery)
+            replies=[json.loads(row['payload']) for row in rows]
+            assert len(replies)==2
+            assert '小猫图片已生成' in replies[0]['content']
+            assert replies[1]['media']['kind']=='image'
+            assert unpack(replies[1]['media'])==image
+        finally:
+            await env.close()

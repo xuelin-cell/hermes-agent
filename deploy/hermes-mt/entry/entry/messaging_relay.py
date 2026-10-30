@@ -72,7 +72,7 @@ class InstanceRelays:
             headers = {'X-MT-Token': tenant.token, 'Host': tenant.host_header or f'127.0.0.1:{self.entry.s.hermes_port}'}
             if tenant.traffic_token: headers['cube-traffic-access-token'] = tenant.traffic_token
             async with self.entry.http.post(f'http://{origin}/__mt/messaging/start', json=settings, headers=headers,
-                    allow_redirects=False, timeout=aiohttp.ClientTimeout(total=90)) as response:
+                    allow_redirects=False, timeout=aiohttp.ClientTimeout(total=195)) as response:
                 if response.status != 200 or (await response.json()).get('capability') != CAPABILITY:
                     raise RuntimeError('实例模板不支持入口主动消息通道，请配套更新模板。')
             headers['Authorization'] = 'Bearer '+settings['upgrade_secret']

@@ -20,12 +20,11 @@ class Gateway:
 
     async def start(self, settings, env):
         async with self.lock:
-            if self.settings == settings and self.process and self.process.returncode is None:
-                return await self.ready(settings)
-            await self._stop()
-            # Configuration is written by the matching Hermes interpreter, preserving
-            # its normal YAML validation and profile-aware path handling.
-            script = '''import json,sys
+            if not (self.settings == settings and self.process and self.process.returncode is None):
+                await self._stop()
+                # Configuration is written by the matching Hermes interpreter, preserving
+                # its normal YAML validation and profile-aware path handling.
+                script = '''import json,sys
 from hermes_cli.config import read_user_config_raw,save_config
 cfg=read_user_config_raw(); settings=json.loads(sys.stdin.read())
 platforms=cfg.setdefault('platforms',{})
@@ -40,22 +39,24 @@ cfg.setdefault('display',{}).setdefault('platforms',{}).setdefault(platform,{})[
 platforms[platform]['typing_indicator']=False
 save_config(cfg)
 '''
-            update = await asyncio.create_subprocess_exec(self.python,'-c',script,stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.DEVNULL,stderr=asyncio.subprocess.DEVNULL,env=env)
-            await update.communicate(json.dumps(settings).encode())
-            if update.returncode != 0: raise RuntimeError('Cannot configure relay gateway')
-            child_env = dict(env)
-            child_env.pop('HERMES_DESKTOP',None)
-            await self.spawn(child_env)
-            self.settings = dict(settings)
-            self.watcher = asyncio.create_task(self.supervise(child_env))
-            return await self.ready(settings)
+                update = await asyncio.create_subprocess_exec(self.python,'-c',script,stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.DEVNULL,stderr=asyncio.subprocess.DEVNULL,env=env)
+                await update.communicate(json.dumps(settings).encode())
+                if update.returncode != 0: raise RuntimeError('Cannot configure relay gateway')
+                child_env = dict(env)
+                child_env.pop('HERMES_DESKTOP',None)
+                await self.spawn(child_env)
+                self.settings = dict(settings)
+                self.watcher = asyncio.create_task(self.supervise(child_env))
+        # Discovery can be slow; drain/stop must still acquire the lifecycle lock.
+        return await self.ready(settings)
 
     async def ready(self, settings):
         # Process existence is not readiness: the registered adapter must be listening.
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=2)) as http:
-            async with asyncio.timeout(60):
+            async with asyncio.timeout(180):
                 while self.process and self.process.returncode is None:
+                    if self.settings != settings: raise RuntimeError('Relay gateway generation changed')
                     try:
                         async with http.get(f'http://127.0.0.1:{self.port}/ready', headers={
                                 'Authorization': 'Bearer '+settings['upgrade_secret']}) as response:

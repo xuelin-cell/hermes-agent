@@ -701,6 +701,7 @@ async def _handle_mt(
             env = dict(os.environ)
             env.update(_hermes_env)
             env['HERMES_HOME'] = str(HERMES_HOME)
+            env['HERMES_DASHBOARD_SESSION_TOKEN'] = _hermes_token
             result = await _messaging_gateway.start(data,env)
             _reply(writer,200,result)
         except (ValueError,TypeError,RuntimeError,OSError,asyncio.TimeoutError):

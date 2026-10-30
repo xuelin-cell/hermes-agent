@@ -61,9 +61,20 @@ async def main():
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, lambda: asyncio.create_task(runner.stop()))
-    if not await runner.start():
-        raise RuntimeError('Messaging gateway could not start')
-    await runner.wait_for_shutdown()
+    try:
+        # Same startup discovery as `gateway run`, before a session freezes its tool catalog.
+        from gateway.run import _discover_gateway_mcp_tools
+        try:
+            await _discover_gateway_mcp_tools(runner.config)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception('Cloud messaging MCP discovery failed')
+        if not await runner.start():
+            raise RuntimeError('Messaging gateway could not start')
+        await runner.wait_for_shutdown()
+    finally:
+        from gateway.run import _shutdown_mcp_servers_nonblocking
+        await _shutdown_mcp_servers_nonblocking(config=runner.config)
 
 
 if __name__ == '__main__':
