@@ -153,3 +153,31 @@ it('keeps all response text visible while displaying whole-second duration', asy
   expect(duration.textContent).not.toContain('3093128')
   expect(container.querySelector('[data-slot="aui_process-summary"]')).toBeNull()
 })
+
+it('collapses explicit interim updates only after a successful final reply', async () => {
+  const messages = toChatMessages([
+    { role: 'user', content: 'Check the report', timestamp: 1 },
+    { role: 'assistant', content: 'Checking sources', timestamp: 2 },
+    { role: 'assistant', content: 'Full final answer', timestamp: 3 }
+  ] as SessionMessage[]).map(toRuntimeMessage)
+
+  const interim = { ...messages[1]!, metadata: { custom: { interim: true } } } as ThreadMessage
+
+  const renderThread = (status: ThreadMessage['status']) => (
+    <ThreadRuntime messages={[messages[0]!, interim, { ...messages[2]!, status } as ThreadMessage]}>
+      <Thread />
+    </ThreadRuntime>
+  )
+
+  const { container, rerender } = render(renderThread({ type: 'running' }))
+  const update = () => within(container).getByText('Checking sources')
+  await waitFor(() => expect(update().closest('[hidden]')).toBeNull())
+  rerender(renderThread({ type: 'complete', reason: 'stop' }))
+  await waitFor(() => expect(update().closest('[hidden]')).not.toBeNull())
+  expect(within(container).getByText('Full final answer').closest('[hidden]')).toBeNull()
+  fireEvent.click(container.querySelector('[data-slot="aui_process-summary"]')!)
+  await waitFor(() => expect(update().closest('[hidden]')).toBeNull())
+  fireEvent.click(container.querySelector('[data-slot="aui_process-summary"]')!)
+  rerender(renderThread({ type: 'incomplete', reason: 'error' }))
+  await waitFor(() => expect(update().closest('[hidden]')).toBeNull())
+})
