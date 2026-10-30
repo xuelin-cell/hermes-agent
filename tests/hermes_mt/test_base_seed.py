@@ -41,7 +41,7 @@ def test_the_dockerfile_copy_adds_the_two_seed_copies_in_place() -> None:
     # Remove the intentional injections; other upstream instructions survive unchanged.
     mirror = "".join(seed.APT_MIRROR_LINES).splitlines()
     restored, index = [], 1
-    extras = {seed.NPM_REGISTRY_ARG.strip(), seed.NPM_REGISTRY_ENV.strip(),
+    extras = {seed.PYTHON_TIMEOUT_ARG.strip(), seed.NPM_REGISTRY_ARG.strip(), seed.NPM_REGISTRY_ENV.strip(),
               'COPY --from=seed s6/ /tmp/s6-seed/', 'COPY --from=seed pm/ /opt/hermes/tools/'}
     while index < len(derived):
         if derived[index:index + len(mirror)] == mirror:
@@ -49,7 +49,8 @@ def test_the_dockerfile_copy_adds_the_two_seed_copies_in_place() -> None:
             continue
         line = derived[index]
         if line not in extras:
-            restored.append(line.replace('npm_config_registry="${NPM_REGISTRY}" npm ci ', 'npm ci '))
+            restored.append(line.replace('npm_config_registry="${NPM_REGISTRY}" npm ci ', 'npm ci ')
+                            .replace('--timeout ${PYTHON_BUILD_TIMEOUT} ', ''))
         index += 1
     assert restored == original.splitlines()
     # s6 的包要在下载它们的那段 RUN 之前就位；pm 的要在 ensure 之前
@@ -180,3 +181,16 @@ async def test_npm_uses_the_mirror_for_locked_official_urls_and_keeps_integrity(
     else:
         assert process.returncode == 0, (stdout + stderr).decode(errors='replace')
         assert json.loads((tmp_path / 'node_modules' / name / 'package.json').read_text())['version'] == '1.0.0'
+
+
+def test_cloud_python_timeout_changes_only_the_dependency_build_and_keeps_cache() -> None:
+    seed = _module()
+    original = (REPO / 'Dockerfile').read_text(encoding='utf-8')
+    derived = seed.derive_dockerfile(original)
+    stage = derived.split(' AS python_deps\n', 1)[1].split('\nFROM ', 1)[0]
+    assert stage.index(seed.PYTHON_TIMEOUT_ARG) < stage.index('--timeout ${PYTHON_BUILD_TIMEOUT}')
+    assert '--mount=type=cache,id=hermes-python-uv' in stage
+    assert '--cache /root/.cache/uv' in stage
+    assert derived.count('--timeout ${PYTHON_BUILD_TIMEOUT}') == 1
+    with pytest.raises(ValueError, match='Python'):
+        seed.derive_dockerfile(original.replace(seed.PYTHON_BUILD, 'python3 -m different_builder '))

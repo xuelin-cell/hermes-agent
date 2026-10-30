@@ -787,3 +787,52 @@ def test_live_apply_keeps_selection_on_failed_union(locked_project, tmp_path, mo
     assert set(generations.iterdir()) == prior_generations
     assert (source / "uv.lock").read_bytes() == source_lock
     assert env == original_env
+
+
+@pytest.mark.parametrize('seconds', [None, 7200])
+def test_build_cli_timeout_reaches_real_offline_sync(locked_project, build_worker, isolated_python,
+                                                    tmp_path, monkeypatch, seconds):
+    from pm.build_env import main
+    from tests.pm._fixtures import worker_toolchain
+
+    source, uv, env = locked_project
+    expected = 1800 if seconds is None else seconds
+    marker = tmp_path / 'sync-timeout.txt'
+    # Observe the timeout at the actual uv invocation; still install real local wheels.
+    worker_toolchain(build_worker, monkeypatch, isolated_python, injection=f'''
+import pm.environment
+_original_run = pm.environment.PythonEnvironment._run
+
+def checked_run(self, args, *, cwd, timeout):
+    if args[0] == "sync":
+        assert timeout == {expected}
+        Path({str(marker)!r}).write_text(str(timeout))
+    return _original_run(self, args, cwd=cwd, timeout=timeout)
+
+pm.environment.PythonEnvironment._run = checked_run
+''')
+    out = tmp_path / 'cli-environment'
+    args = ['--source', str(source), '--out', str(out), '--python', sys.executable,
+            '--cache', str(tmp_path / 'cache'), '--offline', '--no-install-project', '--sealed']
+    if seconds is not None:
+        args += ['--timeout', str(seconds)]
+    lock = (source / 'uv.lock').read_bytes()
+    assert main(args) == 0
+    assert marker.read_text() == str(expected)
+    from pm.environments import venv_python
+
+    assert _run([str(venv_python(out)), '-I', '-c', 'import base_dep; print(base_dep.__version__)'],
+                cwd=tmp_path, env=env) == '1.0'
+    assert (source / 'uv.lock').read_bytes() == lock
+
+
+@pytest.mark.parametrize('extra', [['--timeout', '0'], ['--timeout', '-1'],
+                                 ['--timeout', '7200', '--lock-only'],
+                                 ['--timeout', '7200', '--requirement', 'example==1']])
+def test_build_cli_rejects_invalid_or_unused_timeout(tmp_path, extra):
+    from pm.build_env import main
+
+    with pytest.raises(SystemExit) as error:
+        main(['--source', str(tmp_path), '--out', str(tmp_path / 'output'), *extra])
+    assert error.value.code == 2
+    assert not (tmp_path / 'output').exists()

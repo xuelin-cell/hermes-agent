@@ -80,6 +80,8 @@ cd deploy/hermes-mt
 同一时间只跑一次部署：已经有一次在跑时再敲 `all`，不会起第二次，直接接着看那一次。每次的日志在 `.deploy-logs/`（`latest.log` 是最近一次）。输出重定向到文件时（`nohup ./deploy.sh all > 文件 2>&1 &` 的老写法）照常在前台跑，也能用。
 
 构建时每 30 秒显示累计耗时和最新输出；基础镜像、沙箱镜像的完整日志分别为 `.base-build.log`、`.image-build.log`。
+云端派生 Dockerfile 的 Python 依赖安装总时限为 7200 秒（2 小时），保留 uv 下载缓存；这只放宽等待时间，不改变 Python 下载源。
+手工构建派生 Dockerfile 时可用 `--build-arg PYTHON_BUILD_TIMEOUT=秒数` 调整；其他项目构建仍默认 1800 秒。
 生成的基础镜像 Dockerfile 默认使用国内 apt 源和 npm 源，不修改根目录 Dockerfile。
 前端构建阶段设置 npm 源；运行阶段只给安装命令设置，不改变应用运行时的默认 npm 配置。
 手工构建派生 Dockerfile 时，可用 `--build-arg APT_MIRROR=` 恢复官方 apt 源、

@@ -48,6 +48,9 @@ APT_MIRROR_LINES = (
     "        done; \\\n"
     "    fi\n",
 )
+PYTHON_BUILD = 'python3 -m pm.build_env --source /opt/hermes '
+PYTHON_TIMEOUT_ARG = 'ARG PYTHON_BUILD_TIMEOUT=7200\n'
+
 NPM_STAGES = ('frontend_build', 'runtime')
 NPM_REGISTRY_ARG = 'ARG NPM_REGISTRY=https://registry.npmmirror.com\n'
 NPM_REGISTRY_ENV = 'ENV npm_config_registry=${NPM_REGISTRY}\n'
@@ -98,14 +101,19 @@ def derive_dockerfile(dockerfile):
         if sum(1 for line in lines if line.startswith('FROM ') and line.rstrip().endswith(' AS ' + name)) != 1:
             raise ValueError('根目录 Dockerfile 的 npm 构建阶段变了：' + name)
     out = ["# 由 deploy/hermes-mt/scripts/base_seed.py 从根目录 Dockerfile 生成，别手改。\n"]
-    stage, runtime_installs = '', 0
+    stage, runtime_installs, python_builds = '', 0, 0
     for line in lines:
         if line.startswith('FROM '):
             stage = line.strip().split()[-1]
         if stage == 'runtime' and line.lstrip().startswith('npm ci '):
             line = line.replace('npm ci ', 'npm_config_registry="${NPM_REGISTRY}" npm ci ', 1)
             runtime_installs += 1
+        if stage == 'python_deps' and PYTHON_BUILD in line:
+            line = line.replace(PYTHON_BUILD, PYTHON_BUILD + '--timeout ${PYTHON_BUILD_TIMEOUT} ', 1)
+            python_builds += 1
         out.append(line)
+        if line.startswith('FROM ') and stage == 'python_deps':
+            out.append(PYTHON_TIMEOUT_ARG)
         if line.startswith(DEBIAN_FROM):
             out.extend(APT_MIRROR_LINES)
         elif line.startswith('FROM ') and stage in NPM_STAGES:
@@ -116,6 +124,8 @@ def derive_dockerfile(dockerfile):
             out.append("COPY --from=seed pm/ /opt/hermes/tools/\n")
         elif line.startswith(S6_LAST_ARG):
             out.append("COPY --from=seed s6/ /tmp/s6-seed/\n")
+    if python_builds != 1:
+        raise ValueError('根目录 Dockerfile 的 Python 依赖构建步骤变了，请检查超时参数插入位置')
     if not runtime_installs:
         raise ValueError('根目录 Dockerfile 的 runtime npm 安装步骤变了，请检查镜像源插入位置')
     return "".join(out)
