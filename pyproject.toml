@@ -582,7 +582,9 @@ hermes-acp = "acp_adapter.entry:main"
 # desktop-mt: elevenlabs (tts-premium) and mistralai (mistral) ship SDK-generated file
 # names so long that the Windows installer exceeds MAX_PATH and NSIS cannot install
 # them; both need the user's own third-party key, so install them when picked.
-opt-in-extras = ["kittentts", "tts-premium", "mistral"]
+# daytona: its obstore closure publishes no CPython 3.14 Windows wheel, so an
+# --all-extras build falls back to the Rust sdist and needs an MSVC toolchain.
+opt-in-extras = ["kittentts", "tts-premium", "mistral", "daytona"]
 
 # Per-extra platform gates (settled 2026-09-02): an extra listed here is
 # only installable on platforms matching the marker. pm consults this
