@@ -56,7 +56,10 @@ router = APIRouter()
 # experts into a new account, or update the ones that changed, off the
 # request path. Only the default profile's backend does it (see autoseed).
 try:
-    autoseed.start(Path(get_hermes_home()))
+    from hermes_cli.config import load_config_readonly
+
+    if not (load_config_readonly().get('cloud_kits') or {}).get('enabled'):
+        autoseed.start(Path(get_hermes_home()))
 except Exception:  # a failed start must not keep the API from mounting
     import logging
 
@@ -224,3 +227,7 @@ def job(job_id: str) -> Dict[str, Any]:
     if found is None:
         raise HTTPException(status_code=404, detail="没有这个任务")
     return found
+
+
+# Cloud routes reuse this plugin; the desktop never enables cloud_kits.
+router.include_router(importlib.import_module("hermes_plugins.uniwork_kits.cloud_routes").router, prefix="/cloud")

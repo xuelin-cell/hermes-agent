@@ -1,6 +1,11 @@
 import { type PluginLocaleBundles } from '@hermes/plugin-sdk'
 
 const en = {
+  install: 'Install',
+  uninstall: 'Uninstall',
+  confirmUninstall: 'Uninstall this kit?',
+  confirmDeleteExpert: 'This will delete all conversations and memory for this expert. Continue?',
+  cloudOAuthUnavailable: 'This kit requires OAuth, which is not yet available in the cloud.',
   title: 'Experts and kits',
   kits: 'Kits',
   experts: 'Experts',
@@ -43,6 +48,11 @@ const en = {
 }
 
 const zh = {
+  install: '安装',
+  uninstall: '卸载',
+  confirmUninstall: '确定卸载这个套件？',
+  confirmDeleteExpert: '卸载将删除此专家的全部对话和记忆，确定继续？',
+  cloudOAuthUnavailable: '此套件需要 OAuth 授权，当前云端尚未开放。',
   title: '专家和套件',
   kits: '套件',
   experts: '专家',

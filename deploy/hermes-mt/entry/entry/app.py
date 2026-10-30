@@ -379,7 +379,8 @@ class Entry:
 
     async def ws(self, request: web.Request) -> web.StreamResponse:
         """聊天：hermes 自己的 /api/ws。"""
-        return await self._proxy_tenant_ws(request, "/api/ws", heartbeat=None)
+        path = "/api/plugins/uniwork-kits/cloud/ws" if request.query.get("kits") == "1" else "/api/ws"
+        return await self._proxy_tenant_ws(request, path, heartbeat=None)
 
     async def terminal(self, request: web.Request) -> web.StreamResponse:
         """右侧终端面板：实例里转发器的命令行通道。终端可能长时间没有输出，两头每 25 秒发一次心跳。"""

@@ -18,3 +18,6 @@ tui_gateway/prompt_turn.py
 tui_gateway/methods_prompt.py
 tui_gateway/session_auto_continue.py
 tui_gateway/contracts/prompt_voice.py
+
+# Kits and expert adapters ship with the same instance template.
+plugins/uniwork-kits

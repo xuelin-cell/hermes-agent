@@ -9,6 +9,8 @@
 !deploy/hermes-mt/entry/requirements.txt
 !deploy/hermes-mt/seed/
 !deploy/hermes-mt/seed/**
+!deploy/hermes-mt/.kits-runtime/
+!deploy/hermes-mt/.kits-runtime/**
 !deploy/hermes-mt/.connector-runtime/
 !deploy/hermes-mt/.connector-runtime/**
 !plugins/

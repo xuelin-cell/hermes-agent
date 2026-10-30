@@ -32,6 +32,7 @@ import { browserShares } from './browser-shares'
 import { browserMessaging } from './browser-messaging'
 import { browserMail, openMailAttachment } from './browser-mail'
 import { browserConnectors } from './browser-connectors'
+import { browserKits } from './browser-kits'
 import { browserSkills, isCloudSkillMutation } from './browser-skills'
 import { maskMcpSecrets, restoreMcpSecrets } from './mcp-secrets'
 
@@ -103,9 +104,12 @@ function credentials(): RequestCredentials {
 const cloudSkillOperations = browserSkills(browserBasePath())
 
 const cloudMessaging = browserMessaging(browserBasePath())
+const cloudKitOperations = browserSkills(browserBasePath(), 'kits')
+const cloudKits = browserKits(browserBasePath(), connection(), request => cloudKitOperations.mutate(request))
 
 async function api<T>(request: HermesApiRequest): Promise<T> {
   if (productionBrowserBuild) {
+    if (request.path.split('?')[0].startsWith('/api/plugins/uniwork-kits') || (request.path.split('?')[0] === '/api/profiles' && (!request.method || request.method === 'GET'))) { return cloudKits.request<T>(request) }
     const result = cloudMessaging.request<T>(request)
     if (result) { return result }
   }
@@ -127,7 +131,7 @@ async function api<T>(request: HermesApiRequest): Promise<T> {
     requestBody = JSON.stringify(restoreMcpSecrets(method, path, body))
   }
 
-  const response = await fetch(`${apiPrefix()}${path}`, {
+  const response = await fetch(`${apiPrefix()}${path}${request.profile ? `${path.includes('?') ? '&' : '?'}profile=${encodeURIComponent(request.profile)}` : ''}`, {
     body: requestBody,
     credentials: credentials(),
     headers,
@@ -1435,7 +1439,7 @@ export function installBrowserDevelopmentBridge(): boolean {
     writeClipboard,
     // The instance's shell lives behind the entry; a dev server has no forwarder to give one.
     ...(productionBrowserBuild
-      ? { terminal: instanceTerminal, cloudSkillOperations, ...cloudMessaging, ...browserMail(browserBasePath()), ...browserConnectors(browserBasePath()),
+      ? { ...cloudKits, terminal: instanceTerminal, cloudSkillOperations, ...cloudMessaging, ...browserMail(browserBasePath()), ...browserConnectors(browserBasePath()),
           createConversationFolder: async (defaultCwd: string) =>
             (await instanceFiles<{ path: string | null }>('conversation-create', { defaultCwd })).path,
           discardConversationFolder: async (path: string) => { await instanceFiles('conversation-discard', { path }) },

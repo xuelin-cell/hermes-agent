@@ -33,7 +33,7 @@ import {
 import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
 import { Navigate, useLocation, useSearchParams } from 'react-router'
 
-import { fetchCatalog, openAuthorization, toggleKit, writeConfig } from './api'
+import { fetchCatalog, installBundled, openAuthorization, toggleKit, uninstallKit, writeConfig } from './api'
 import { $bundled, $bundledFinished, watchBundled } from './bundled'
 import { ExpertFace } from './expert-face'
 import { $expertDirectory, loadExperts } from './experts-store'
@@ -154,7 +154,9 @@ function KitTile({
     <CardShell
       accent={accent}
       action={
-        <Switch
+        row.installed === false ? <Button size="xs" onClick={() => {
+          void installBundled(row.name).then(onChange).catch(error => host.notify({ kind: 'error', message: String(error) }))
+        }}>{t('install')}</Button> : <Switch
           aria-label={t('enable')}
           checked={enabled}
           onCheckedChange={checked => {
@@ -215,8 +217,8 @@ function ExpertTile({
     <CardShell
       accent={accent}
       action={
-        <Button onClick={() => summonExpert(expert)} size="xs" variant="secondary">
-          {t('summonButton')}
+        <Button onClick={() => row.installed === false ? onOpen() : summonExpert(expert)} size="xs" variant="secondary">
+          {row.installed === false ? t('install') : t('summonButton')}
         </Button>
       }
       heading={
@@ -433,7 +435,7 @@ function KitDetail({
               v{row.version}
             </Badge>
           ) : null}
-          {isExpert ? null : (
+          {isExpert || row.installed === false ? null : (
             <Switch
               aria-label={t('enable')}
               checked={row.enabled !== false}
@@ -487,14 +489,25 @@ function KitDetail({
         {row.oauth_servers.length > 0 ? (
           <DetailSection title={t('authorizeTitle')}>
             <span className="flex flex-wrap gap-2">
-              {row.oauth_servers.map(server => (
+              {window.hermesDesktop?.cloudKits ? <span>{t('cloudOAuthUnavailable')}</span> : row.oauth_servers.map(server => (
                 <Authorize key={server.key} profile={isExpert ? row.profile : undefined} serverKey={server.key} />
               ))}
             </span>
           </DetailSection>
         ) : null}
       </div>
-      {expert ? (
+      {window.hermesDesktop?.cloudKits ? <DialogFooter>
+        {row.installed === false ? <Button onClick={() => {
+          void installBundled(row.name).then(() => { onChange(); onClose() })
+            .catch(error => host.notify({ kind: 'error', message: String(error) }))
+        }}>{t('install')}</Button> : <Button variant="secondary" onClick={() => {
+          const message = t(isExpert ? 'confirmDeleteExpert' : 'confirmUninstall')
+          if (!window.confirm(message)) { return }
+          void uninstallKit(row.name, isExpert).then(() => { onChange(); onClose() })
+            .catch(error => host.notify({ kind: 'error', message: String(error) }))
+        }}>{t('uninstall')}</Button>}
+      </DialogFooter> : null}
+      {expert && row.installed !== false ? (
         <DialogFooter>
           <Button
             onClick={() => {

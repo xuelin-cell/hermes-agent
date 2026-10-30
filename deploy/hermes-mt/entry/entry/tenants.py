@@ -59,6 +59,7 @@ PLATFORM_POLICY = {
     "cloud_sharing": {"enabled": True},
     "cloud_drive": {"enabled": True},
     "cloud_mail": {"enabled": True},
+    "cloud_kits": {"enabled": True},
     # 用到时才从 PyPI 装的依赖：页面一打开就会往每台实例的可写层下 392MB 语音依赖。
     "security": {"allow_lazy_installs": False},
     # 用户第一条消息时，hermes 默认让 agent 提出「建用户画像」（征得同意后联网查用户的公开信息、记进记忆）。
@@ -143,6 +144,8 @@ def busy_reason(activity: dict | None, now: float, keepalive_s: float) -> str:
         return "cron_running"
     if activity.get("turns"):
         return "turn_running"
+    if activity.get("kits_running"):
+        return "kits_running"
     if activity.get("connectors_running"):
         return "connector_running"
     due = activity.get("cron_next_at")
@@ -337,6 +340,10 @@ class TenantManager:
         for file in sorted((SEED_DIR.parent / '.connector-runtime').rglob('*')):
             if file.is_file():
                 files['.mt/connectors/' + file.relative_to(SEED_DIR.parent / '.connector-runtime').as_posix()] = file.read_bytes()
+        bundled = SEED_DIR.parent / '.kits-runtime/plugins/uniwork-kits/bundled'
+        for file in sorted(bundled.rglob('*')):
+            if file.is_file():
+                files['.mt/bundled/' + file.relative_to(bundled).as_posix()] = file.read_bytes()
         return files
 
     # ---- 平台下发的模型配置：变了要同步到已有的卷 ------------------------------------

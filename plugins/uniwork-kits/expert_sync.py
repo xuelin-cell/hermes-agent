@@ -71,7 +71,12 @@ def _managed_providers(raw: Mapping[str, Any]) -> Dict[str, Any]:
     providers = raw.get("providers")
     if not isinstance(providers, Mapping):
         return {}
-    return {str(k): v for k, v in providers.items() if str(k).startswith(MANAGED_PROVIDER_PREFIX)}
+    names = {str(k) for k in providers if str(k).startswith(MANAGED_PROVIDER_PREFIX)}
+    if (raw.get('cloud_kits') or {}).get('enabled'):
+        model = raw.get('model')
+        if isinstance(model, Mapping) and isinstance(model.get('provider'), str):
+            names.add(model['provider'])
+    return {str(k): v for k, v in providers.items() if k in names}
 
 
 def _referenced_keys(providers: Mapping[str, Any], mcp_entry: Optional[Mapping[str, Any]]) -> Set[str]:
@@ -207,6 +212,19 @@ def _plan_config(
     raw = copy.deepcopy(expert_raw)
     changes: List[str] = []
     new_record: Dict[str, Any] = {}
+
+    if (default_raw.get('cloud_kits') or {}).get('enabled'):
+        # Only plugin-owned experts receive cloud host policy, not general profile inheritance.
+        if raw.get('cloud_kits') != {'enabled': True}:
+            raw['cloud_kits'] = {'enabled': True}
+            changes.append('启用云端专家运行适配')
+        for section, field in (('security', 'allow_lazy_installs'), ('model_catalog', 'enabled')):
+            current = raw.get(section)
+            current = dict(current) if isinstance(current, Mapping) else {}
+            if current.get(field) is not False:
+                current[field] = False
+                raw[section] = current
+                changes.append('同步云端运行策略 ' + section + '.' + field)
 
     providers = raw.get("providers") if isinstance(raw.get("providers"), dict) else {}
     wanted = _managed_providers(default_raw)

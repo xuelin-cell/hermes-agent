@@ -8,6 +8,7 @@ import { dismissNotification, notify, notifyError } from '@/store/notifications'
 import { readBrowserAuth } from '../../../shared/src/browser-maas-auth.js'
 
 const MUTATIONS = new Set([
+  'POST api/plugins/uniwork-kits/cloud/action',
   'POST api/skills/market/install', 'POST api/skills/hub/install',
   'POST api/skills/hub/uninstall', 'POST api/skills/hub/update', 'PUT api/skills/toggle'
 ])
@@ -24,11 +25,15 @@ interface SkillStatus {
 }
 
 /** Keep the existing REST contract, but only resolve a mutation after Entry confirms persistence. */
-export function browserSkills(base: string) {
+export function browserSkills(base: string, kind: 'skills' | 'kits' = 'skills') {
   const pending = new Map<string, { id: string; promise?: Promise<unknown> }>()
   const login = () => readBrowserAuth(base)?.loginId
 
-  const copy = () => getRuntimeI18nLocale().startsWith('zh')
+  const copy = () => kind === 'kits'
+    ? (getRuntimeI18nLocale().startsWith('zh')
+      ? { saving: '正在保存套件变更…', retry: '重试保存', saved: '套件变更已保存，新会话生效。', uncertain: '套件操作结果未确认，请先刷新检查，不要重复安装。' }
+      : { saving: 'Saving kit changes…', retry: 'Retry saving', saved: 'Kit changes saved. Available in new sessions.', uncertain: 'Kit operation could not be confirmed. Refresh and check before trying again.' })
+    : getRuntimeI18nLocale().startsWith('zh')
     ? { saving: '正在保存技能变更…', retry: '重试保存', saved: '技能变更已保存，新会话生效。', uncertain: '技能操作结果未确认，请先刷新检查，不要重复安装。' }
     : { saving: 'Saving skill changes…', retry: 'Retry saving', saved: 'Skill changes saved. Available in new sessions.', uncertain: 'Skill operation could not be confirmed. Refresh and check before trying again.' }
 

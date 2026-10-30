@@ -161,6 +161,7 @@ RUN chmod 0644 /opt/mt/forward.py /opt/mt/mtstate.py /opt/mt/mtuser.py
 # （PYTHONDONTWRITEBYTECODE=1），覆盖源文件就生效。deploy.sh 构建前把清单里的文件从仓库原样拷进
 # .overlay/（构建目录，不进 git），构建后核对镜像里那份；tests/hermes_mt/test_image_overlay.py 核对清单本身。
 COPY .overlay/ /opt/hermes/
+COPY .kits-runtime/plugins/ /opt/hermes/plugins/
 
 # ---- 所有用户相同的环境变量 -------------------------------------------------
 # 与 entry/entry/tenants.py::_create 里那份清单保持一致。缺的那个

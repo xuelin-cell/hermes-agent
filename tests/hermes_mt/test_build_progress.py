@@ -55,11 +55,12 @@ head_short() { printf test; }
 cfg() { printf '%s' "$HERE"; }
 df() { printf 'Avail\\n100G\\n'; }
 ensure_frontend() { :; }
+ensure_kits() { :; }
 fingerprint() { printf test; }
 check_overlay() { :; }
 stage_overlay() { :; }
 python3() {
-  if [ "$1" = "$HERE/scripts/base_seed.py" ]; then return 0; fi
+  if [ "$1" = "$HERE/scripts/base_seed.py" ] || [ "$1" = "$HERE/scripts/build-kits.py" ]; then return 0; fi
   PYTHON_VALUE "$@"
 }
 docker() {

@@ -14,3 +14,5 @@ compose.override.yaml
 .deploy-last-exit
 # 根目录 .gitignore 忽略 *.tgz；这里放的是部署机下载不动、按校验值核对过的前端依赖包（见 scripts/build-frontend.sh）
 !vendor/npm/*.tgz
+
+.kits-runtime/

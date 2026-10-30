@@ -123,9 +123,9 @@ export function refreshProfiles(): Promise<ProfileInfo[]> {
       try {
         const { profiles: listed } = await getProfiles()
 
-        // Browser build: one backend serves the default profile only, so the
-        // others could be listed but never switched to.
-        const profiles = isBrowserShell()
+        // Legacy browser bridges serve only default; the kits bridge returns
+        // default plus plugin-owned experts that the shared backend can serve.
+        const profiles = isBrowserShell() && !window.hermesDesktop?.cloudKits
           ? listed.filter(profile => profile.is_default || profile.name === 'default')
           : listed
 

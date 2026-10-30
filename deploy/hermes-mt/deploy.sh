@@ -188,6 +188,7 @@ fingerprint() {
         done
         # Connector code shares the frontend build step, but must also invalidate the instance template.
         (cd "$REPO" && git ls-tree -r HEAD apps/desktop/services/open-connector apps/desktop/scripts/build-cloud-connectors.mjs)
+        cat "$HERE/.kits-runtime/.fingerprint"
         printf 'base=%s\ntpl=%s/%s/%s\n' "$base_id" "$TPL_CPU" "$TPL_MEM" "$TPL_DISK"
     } | sha256sum | cut -c1-12
 }
@@ -493,9 +494,18 @@ ensure_frontend() {
 
 # ---------------------------------------------------------------- image
 
+KITS_PREPARED=0
+ensure_kits() {
+    [ "$KITS_PREPARED" = 1 ] && return 0
+    say "准备套件资源（沿用桌面配置仓库）"
+    python3 "$HERE/scripts/build-kits.py" || die "套件资源准备失败，请检查配置仓库的读取权限或指定 UNIWORK_BUNDLED_PLUGINS 本地目录"
+    KITS_PREPARED=1
+}
+
 cmd_image() {
     local fp log
     ensure_frontend
+    ensure_kits
     fp="$(fingerprint)"
     say "沙箱镜像：指纹 ${fp}（Dockerfile.cube + seed/* + overlay.list 列的仓库文件 + 基础镜像 + 模板参数）"
     cd "$HERE"
@@ -703,6 +713,7 @@ cmd_up() {
     [ -n "$TEMPLATE" ] || die "entry.env 里 MT_CUBE_TEMPLATE 为空，先跑 ./deploy.sh template"
     # nginx 镜像在下面 up --build 时把 nginx/dist-browser/ 拷进去：先保证它是当前代码构建的。
     ensure_frontend
+    [ -s "$HERE/.kits-runtime/.fingerprint" ] || die "套件资源缺失，请用 ./deploy.sh all 配套更新实例模板和入口"
     chmod 600 "$ENV_FILE"
 
     local foreign_before entry_before
@@ -926,6 +937,7 @@ cmd_all() {
         # shellcheck disable=SC2086
         exec bash "$SCRIPT" all $pass
     fi
+    ensure_kits
     plan
     ensure_base
     ensure_frontend

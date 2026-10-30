@@ -79,6 +79,7 @@ declare global {
       prepareCloudShareTurn?: (sessionId: string) => Promise<Record<string, string> | null>
       cloudDriveRequest: (input: CloudDriveRequest) => Promise<unknown>
       localConnectors: (input: LocalConnectorRequest) => Promise<LocalConnectorResult>
+      cloudKits?: boolean
       cloudConnectorIds?: readonly import('../electron/open-connector/contract').ConnectorId[]
       /** 取得完整办公目录；主进程负责认证和校验配置。 */
       getWelcomeCatalog?: (locale: WelcomeLocale) => Promise<WelcomePayload>

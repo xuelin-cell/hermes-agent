@@ -21,3 +21,5 @@ EXPOSE 9400
 CMD ["python", "-m", "entry.app"]
 
 COPY plugins/cloud_messaging/__init__.py plugins/cloud_messaging/media.py /app/plugins/cloud_messaging/
+
+COPY deploy/hermes-mt/.kits-runtime/ /app/.kits-runtime/

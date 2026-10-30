@@ -15,6 +15,7 @@ log = logging.getLogger('entry.skills')
 
 # A business operation, never an arbitrary authenticated proxy.
 MUTATIONS = {
+    ('POST', 'api/plugins/uniwork-kits/cloud/action'): False,
     ('POST', 'api/skills/market/install'): False,
     ('POST', 'api/skills/hub/install'): True,
     ('POST', 'api/skills/hub/uninstall'): True,

@@ -311,7 +311,7 @@ Markdown 预览支持 Markdown、Word 和 PDF 导出：前两项由浏览器生�
 推荐连接器页面开放高德、有道云笔记、WPS、企业微信和腾讯 ima 知识库，支持配置、工具调用、停用、重新启用和断开。
 有道和高德填写 API Key，WPS 填写 Agent API Key，ima 填写 Client ID 与 API Key；企业微信工具连接器
 手动填写 Bot ID 与 Secret，复用桌面智能机器人 API/MCP 协议，不建立消息平台的长连接。
-其他 Provider、OAuth/扫码、专家与多 Profile 尚未开放；沃邮箱继续使用“我的邮箱”的原有授权和 MCP。
+其他 Provider、OAuth/扫码和任意 Profile 的独立连接器授权尚未开放；沃邮箱继续使用“我的邮箱”的原有授权和 MCP。
 
 OpenConnector 按需运行在用户实例内，一个实例一个服务，仅监听回环地址。入口通过登录会话
 校验和固定 `/__entry/connectors` 接口管理，不需要 MaaS token，也不复用同事的共享连接器容器。
@@ -437,3 +437,21 @@ docker logs --tail 100 hermes-mt-entry
 
 未收到发送确认的消息标为 `unknown`，工具执行中崩溃标为 `uncertain`，不会自动重发或重跑，
 需核对原会话后再决定操作。单用户按顺序执行，当前使用单个活动接入服务。
+
+
+## 云端套件与专家
+
+复用桌面套件页面、安装器与专家 Profile；每个租户实例的同一个 Hermes 后端服务默认助手和已安装专家。
+Bot Mode、任意 Profile 管理、专家定时任务与 OAuth 暂不开放。套件在页面显式安装，卸载后不会因实例重建自动装回。
+卸载专家会删除它的对话和记忆，页面需明确确认；正在执行对话时拒绝变更。
+
+`deploy.sh all` 在构建沙箱镜像前沿用桌面配置仓库准备资源，默认源为
+`git@gitcode.com:uni-ai/uniclawwork-local-config.git`。部署用户须有该仓库的读取权限。
+可通过现有构建参数 `UNIWORK_BUNDLED_PLUGINS` 指定本地配置目录或其他仓库，
+`UNIWORK_BUNDLED_PLUGINS_REF` 选择分支或提交。资源写入忽略目录 `.kits-runtime/`，不改写 Git 跟踪的文件。
+资源内容纳入沙箱镜像指纹，缺失或坏包会停止部署；不从用户实例联网拉取包。
+
+安装、配置与卸载通过现有技能变更检查点，归档失败只重试保存，不重放安装或删除。
+专家的配置、技能、会话和记忆保存在当前用户的 `profiles/`，随现有 SQLite 一致快照归档恢复，无新增 PG 表。
+套件脚本复用模板内预装 Python，不在各用户首次使用时安装依赖；需要额外按需依赖的脚本会提示尚未支持。
+上线需完整执行 `bash deploy.sh all --branch cloud-adaptation`，同时更新前端、入口和实例模板。

@@ -57,8 +57,7 @@ import { storedBoolean } from '@/lib/storage'
  *   app/shell/model-catalog-menu.tsx                   * no "add custom model" or "edit models" in the model menus
  *   app/shell/plan-usage/panel.tsx                     * the account card uses the browser plan bridge when available
  *   components/conversation-share/reply-button.tsx     * no "share reply" under answers
- *   contrib/plugins.ts                                 * no Bot Mode (the BOTS tab), no kits and experts: their plugins
- *                                                      are not started
+ *   contrib/plugins.ts                                 * Bot Mode stays hidden; kits require the managed-profile cloud bridge
  *   i18n/catalog.ts                                    Chinese supplement and cloud sharing copy, see `lib/browser-shell-{zh,artifacts}.ts`
  *   i18n/profile-provider.tsx                          the interface starts in Chinese, before the instance's config answers
  *   lib/chat-runtime.ts                                a session with no title yet is 新建会话, not "New session"
@@ -461,13 +460,10 @@ export function withoutHiddenNavItems<T extends { id: string }>(items: T[]): T[]
 
 const BUNDLED_PLUGINS_HIDDEN = new Set(['hermes-bots', 'uniwork-kits'])
 
-/** Bundled plugins that are not started for regular users. Bot Mode (the
- * SESSIONS | BOTS tabs, Routines, @bot mentions) is one agent per profile, and
- * the browser build has only the default profile. So is every expert of kits and
- * experts (the 套件 page, the composer's 专家 picker), and the built-in kits are
- * copied into the desktop installer when it is packaged, not into the instance. */
+/** Bot Mode stays separate. Kits are visible only when the production bridge
+ * implements managed expert profiles and the matching template carries their resources. */
 export function isBundledPluginHidden(id: string): boolean {
-  return hideForUsers() && BUNDLED_PLUGINS_HIDDEN.has(id)
+  return hideForUsers() && BUNDLED_PLUGINS_HIDDEN.has(id) && !(id === 'uniwork-kits' && window.hermesDesktop?.cloudKits)
 }
 
 /** Both shells render the same snapshot page; Entry implements the browser share contract. */

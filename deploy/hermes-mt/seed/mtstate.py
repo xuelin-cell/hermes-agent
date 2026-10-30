@@ -1151,6 +1151,31 @@ def turn_activity(home: Path, now: float | None = None) -> dict:
     return {"running": running, "errors": errors}
 
 
+def kits_activity(home: Path) -> int:
+    """A published install operation prevents drain; a dead backend marker does not."""
+    path = home / '.mt/kits-active.json'
+    try:
+        data = json.loads(path.read_text())
+    except FileNotFoundError:
+        return 0
+    except (OSError, ValueError):
+        return 1
+    if not isinstance(data, dict):
+        return 1
+    if not data.get('running'):
+        return 0
+    try:
+        pid = int(data['pid'])
+        if pid <= 0:
+            return 1
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return 0
+    except (KeyError, TypeError, ValueError, OSError, OverflowError):
+        return 1
+    return 1
+
+
 def activity(home: Path, now: float | None = None) -> dict:
     """转发器随 /__mt/status、sync、drain 回报给入口的「忙不忙」。读不了的部分记进 errors，不抛。"""
     now = time.time() if now is None else now
@@ -1162,6 +1187,7 @@ def activity(home: Path, now: float | None = None) -> dict:
         "cron_running": cron["running"],
         "cron_jobs": cron["jobs"],
         "turns": turns["running"],
+        "kits_running": kits_activity(home),
         "errors": cron["errors"] + turns["errors"],
     }
 

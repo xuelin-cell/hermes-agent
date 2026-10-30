@@ -544,9 +544,9 @@ async def _drain(writer: asyncio.StreamWriter) -> None:
         _reply(writer, 200, dict(_drained, already=True))
         return
     _connectors.draining(True)
-    if _connectors.busy():
+    if _connectors.busy() or mtstate.kits_activity(HERMES_HOME):
         _connectors.draining(False)
-        _reply(writer, 409, {"ok": False, "error": "连接器调用正在进行，请等待完成后重试排空。"})
+        _reply(writer, 409, {"ok": False, "error": "套件安装或连接器调用正在进行，请等待完成后重试排空。"})
         return
     _draining = True
     _state.phase = "draining"
