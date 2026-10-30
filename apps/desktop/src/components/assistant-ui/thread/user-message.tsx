@@ -19,6 +19,7 @@ import { Codicon } from '@/components/ui/codicon'
 import { Tip } from '@/components/ui/tooltip'
 import { useResizeObserver } from '@/hooks/use-resize-observer'
 import { useI18n } from '@/i18n'
+import { registerPluginLocales, usePluginI18n } from '@/i18n/plugin-i18n'
 import { triggerHaptic } from '@/lib/haptics'
 import { StopFilled } from '@/lib/icons'
 import { LruCache } from '@/lib/lru-cache'
@@ -26,6 +27,13 @@ import { cn } from '@/lib/utils'
 import { $gateway } from '@/store/gateway'
 import { notifyThreadEditOpen } from '@/store/thread-scroll'
 import { isWatchWindow } from '@/store/windows'
+
+const DETAILS_SCOPE = 'desktop.user-message-details'
+registerPluginLocales(DETAILS_SCOPE, {
+  en: { expand: 'View details', collapse: 'Collapse' },
+  zh: { expand: '查看详情', collapse: '收起' },
+  'zh-hant': { expand: '查看詳情', collapse: '收起' }
+})
 
 /** True when the user has a live text highlight (drag-select / triple-click). */
 export function hasTextSelection(): boolean {
@@ -301,7 +309,7 @@ export const UserMessage: FC<{
 
   // Sticky human bubbles clamp long prompts without fading the visible text. A long prompt
   // doesn't dominate the viewport while the response streams underneath; the
-  // clamp lifts on hover / focus (see styles.css). We measure the *unclamped*
+  // clamp lifts through the explicit details control. We measure the *unclamped*
   // inner wrapper so the ResizeObserver only fires on real content / width
   // changes, not on every frame while the outer max-height animates open.
   const clampInnerRef = useRef<HTMLDivElement | null>(null)
@@ -311,10 +319,11 @@ export const UserMessage: FC<{
 
   // Watch windows spectate a subagent run driven elsewhere — prompts can't be
   // edited, restored, or stopped from here. The bubble stays a button that
-  // toggles the 2-line clamp so long prompts are still fully readable.
+  // toggles the text clamp so long prompts are still fully readable.
   const readOnly = isWatchWindow()
   const [expanded, setExpanded] = useState(false)
-  const clampActive = !(readOnly && expanded)
+  const clampActive = !expanded
+  const detailsCopy = usePluginI18n(DETAILS_SCOPE)
 
   const measureClamp = useCallback((entries: readonly ResizeObserverEntry[]) => {
     const inner = clampInnerRef.current
@@ -345,7 +354,8 @@ export const UserMessage: FC<{
     }
 
     outer.style.setProperty('--human-msg-full', `${fullHeight}px`)
-    setBodyClamped(fullHeight > lineHeightRef.current * 2 + 1)
+    const rootFontSize = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16
+    setBodyClamped(fullHeight > lineHeightRef.current * 4 + rootFontSize * 0.15 + 1)
   }, [])
 
   useResizeObserver(measureClamp, clampInnerRef)
@@ -392,7 +402,8 @@ export const UserMessage: FC<{
   const bubbleClassName = cn(
     USER_BUBBLE_BASE_CLASS,
     'cursor-pointer pr-9 text-[length:var(--conversation-text-font-size)] leading-(--dt-line-height) text-foreground/95 transition-colors',
-    'border-(--ui-stroke-tertiary) hover:border-(--ui-stroke-secondary)'
+    'border-(--ui-stroke-tertiary) hover:border-(--ui-stroke-secondary)',
+    bodyClamped && 'pb-8'
   )
 
   const bubbleContent = hasBody ? (
@@ -400,7 +411,7 @@ export const UserMessage: FC<{
     // backtick `code` and ``` fenced ``` blocks, with directive chips
     // (`@file:` etc.) still resolved inside the plain-text spans.
     <div
-      className={cn(clampActive && (!hasFiles || !readOnly) && 'sticky-human-clamp')}
+      className={cn(clampActive && 'sticky-human-clamp')}
       data-clamped={clampActive && bodyClamped ? 'true' : undefined}
     >
       {/* Match the edit composer's collapsed line box (min-h-[1.25rem]) so
@@ -523,6 +534,17 @@ export const UserMessage: FC<{
                       {bubbleContent}
                     </button>
                   </ActionBarPrimitive.Edit>
+                )}
+                {hasBody && bodyClamped && (
+                  <button
+                    aria-expanded={expanded}
+                    className="absolute bottom-2 left-3 z-10 text-xs text-muted-foreground hover:text-foreground"
+                    data-slot="aui_user-message-details"
+                    onClick={() => setExpanded(value => !value)}
+                    type="button"
+                  >
+                    {detailsCopy(expanded ? 'collapse' : 'expand')}
+                  </button>
                 )}
                 {(showStop || showRestore) && (
                   <div className="pointer-events-none absolute right-2 bottom-2 z-10 flex items-center justify-center opacity-0 transition-opacity group-hover/user-message:opacity-100 group-focus-within/user-message:opacity-100">
