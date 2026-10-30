@@ -52,11 +52,6 @@ it('keeps background continuations in one response with one action bar and the o
     await waitFor(() => expect(container.textContent).toContain('The deployment is verified.'))
     expect(container.querySelectorAll('[data-slot="aui_turn-pair"]')).toHaveLength(1)
     expect(container.querySelectorAll('[data-slot="aui_response-group"]')).toHaveLength(1)
-    const summary = container.querySelector('[data-slot="aui_process-summary"]')!
-    expect(summary.getAttribute('aria-expanded')).toBe('false')
-    expect(container.querySelector('[data-slot="aui_process-step"]')?.hasAttribute('open')).toBe(false)
-    fireEvent.click(summary)
-    expect(summary.getAttribute('aria-expanded')).toBe('true')
     expect(container.querySelectorAll('[data-slot="aui_msg-actions"]')).toHaveLength(1)
     expect(container.querySelector('[data-role="assistant"]')).toBe(original)
     expect(
@@ -120,7 +115,7 @@ it('ends the response at a real user prompt or unrelated system event', () => {
   expect(container.querySelectorAll('[data-slot="aui_msg-actions"]')).toHaveLength(3)
 })
 
-it('shows only the final text of a multi-part message and restores the process on demand', async () => {
+it('keeps all response text visible while displaying whole-second duration', async () => {
   const messages = toChatMessages([
     { role: 'user', content: 'Create the report', timestamp: 1 },
     { role: 'assistant', content: 'Report completed', timestamp: 1383 }
@@ -151,13 +146,10 @@ it('shows only the final text of a multi-part message and restores the process o
   )
 
   await waitFor(() => expect(container.textContent).toContain('Report completed'))
-  const prose = [...container.querySelectorAll('[data-slot="aui_response-text"]')]
-  expect(prose).toHaveLength(2)
-  expect(prose[0]!.getAttribute('hidden')).not.toBeNull()
-  expect(prose[1]!.getAttribute('hidden')).toBeNull()
-  const summary = container.querySelector('[data-slot="aui_process-summary"]')!
-  expect(summary.textContent).toContain('Worked for 23m 2s')
-  expect(summary.textContent).not.toContain('3093128')
-  fireEvent.click(summary)
-  expect(prose[0]!.getAttribute('hidden')).toBeNull()
+  expect(within(container).getByText('Preparing the report').closest('[hidden], [style*="display: none"]')).toBeNull()
+  expect(within(container).getByText('Report completed').closest('[hidden], [style*="display: none"]')).toBeNull()
+  const duration = container.querySelector('[data-slot="aui_turn-duration"]')!
+  expect(duration.textContent).toContain('Worked for 23m 2s')
+  expect(duration.textContent).not.toContain('3093128')
+  expect(container.querySelector('[data-slot="aui_process-summary"]')).toBeNull()
 })

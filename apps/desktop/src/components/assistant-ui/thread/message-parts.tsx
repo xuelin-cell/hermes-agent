@@ -2,13 +2,12 @@ import {
   type ReasoningMessagePartComponent,
   type TextMessagePartProps,
   type ToolCallMessagePartProps,
-  useAui,
   useAuiState,
   useMessagePartReasoning,
   useMessagePartText
 } from '@assistant-ui/react'
 import { useStore } from '@nanostores/react'
-import { type ComponentProps, type FC, type ReactNode, useContext, useEffect, useRef, useState } from 'react'
+import { type ComponentProps, type FC, type ReactNode, useEffect, useRef, useState } from 'react'
 
 import { CatalogInstallTool } from '@/components/assistant-ui/catalog-install-tool'
 import { ClarifyTool } from '@/components/assistant-ui/clarify-tool'
@@ -168,26 +167,10 @@ const ChainToolFallback: FC<TimelineToolCallProps> = props => {
 // Match the compact terminal/log viewers rather than the full thread's slack.
 const PREVIEW_RELOCK_THRESHOLD_PX = 24
 
-import { ResponsePresentation } from './response-presentation'
-
 type TimelineTextPartProps = TextMessagePartProps & { completedAt?: number; timestamp?: number }
 
 const TimelineMarkdownText: FC<TimelineTextPartProps> = ({ completedAt, timestamp }) => {
   const { text } = useMessagePartText()
-  const presentation = useContext(ResponsePresentation)
-  const selector = useAui().part.query
-
-  const current = useAuiState(s => {
-    const index = selector && 'type' in selector && selector.type === 'index' ? selector.index : -1
-
-    const last = s.message.parts.findLastIndex(part =>
-      part.type === 'text' ? Boolean(part.text.trim()) : part.type === 'tool-call'
-    )
-
-    return index === last
-  })
-
-  const hidden = presentation !== null && !presentation.expanded && !current
 
   // assistant-ui adds an empty continuation after a tool starts. It is not
   // prose yet and must not create paragraph spacing above pending approvals.
@@ -196,20 +179,10 @@ const TimelineMarkdownText: FC<TimelineTextPartProps> = ({ completedAt, timestam
   }
 
   return (
-    <div
-      data-process-text={!current || undefined}
-      data-slot="aui_response-text"
-      hidden={hidden}
-      style={hidden ? { display: 'none' } : undefined}
-    >
-      <span
-        hidden={Boolean(presentation && !presentation.expanded)}
-        style={presentation && !presentation.expanded ? { display: 'none' } : undefined}
-      >
-        <TimelineTimestamp className="mb-0.5 block" completedAt={completedAt} timestamp={timestamp} />
-      </span>
+    <>
+      <TimelineTimestamp className="mb-0.5 block" completedAt={completedAt} timestamp={timestamp} />
       <MarkdownText />
-    </div>
+    </>
   )
 }
 
@@ -364,7 +337,6 @@ const ReasoningAccordionGroup: FC<{ children?: ReactNode; endIndex: number; star
   startIndex
 }) => {
   const showReasoning = useStore($showReasoning)
-  const presentation = useContext(ResponsePresentation)
   const messageId = useAuiState(s => s.message.id)
   const messageRunning = useAuiState(s => s.message.status?.type === 'running')
   // The guide's reasoning is it reading its own runbook ("Now step 4: offer
@@ -418,20 +390,15 @@ const ReasoningAccordionGroup: FC<{ children?: ReactNode; endIndex: number; star
     // of a key the same origin, so a turn that thinks three separate times used
     // to measure the second and third blocks from the first one's start and
     // report the running total as each block's duration.
-    <div
-      hidden={Boolean(presentation && !presentation.expanded && !pending)}
-      style={presentation && !presentation.expanded && !pending ? { display: 'none' } : undefined}
+    <ThinkingDisclosure
+      completedAt={completedAt}
+      messageRunning={messageRunning}
+      pending={pending}
+      timerKey={`reasoning:${messageId}:${startIndex}`}
+      timestamp={timestamp}
     >
-      <ThinkingDisclosure
-        completedAt={completedAt}
-        messageRunning={messageRunning}
-        pending={pending}
-        timerKey={`reasoning:${messageId}:${startIndex}`}
-        timestamp={timestamp}
-      >
-        {children}
-      </ThinkingDisclosure>
-    </div>
+      {children}
+    </ThinkingDisclosure>
   )
 }
 
@@ -471,30 +438,10 @@ const ReasoningTextPart: ReasoningMessagePartComponent = () => {
 // re-render on every streaming delta. Memo invalidation alone doesn't
 // remount, but combined with the previous ToolFallback group-swap it was a
 // big chunk of the per-delta work.
-const ResponseToolGroup: FC<ComponentProps<typeof ToolGroupSlot>> = props => {
-  const presentation = useContext(ResponsePresentation)
-
-  const behindCurrent = useAuiState(
-    s =>
-      props.endIndex <
-      s.message.parts.findLastIndex(part =>
-        part.type === 'text' ? Boolean(part.text.trim()) : part.type === 'tool-call'
-      )
-  )
-
-  const hidden = Boolean(presentation && !presentation.expanded && behindCurrent)
-
-  return (
-    <div data-slot="aui_response-tools" hidden={hidden} style={hidden ? { display: 'none' } : undefined}>
-      <ToolGroupSlot {...props} />
-    </div>
-  )
-}
-
 export const MESSAGE_PARTS_COMPONENTS = {
   Reasoning: ReasoningTextPart,
   ReasoningGroup: ReasoningAccordionGroup,
   Text: TimelineMarkdownText,
-  ToolGroup: ResponseToolGroup,
+  ToolGroup: ToolGroupSlot,
   tools: { Fallback: ChainToolFallback }
 } as const
