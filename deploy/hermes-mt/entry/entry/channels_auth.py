@@ -24,3 +24,12 @@ def verify_upgrade(token, master):
         return (user, int(epoch), int(revision), binding) if binding else (user, int(epoch), int(revision))
     except (ValueError, UnicodeError):
         return None
+
+
+def upgrade_token(master, user, binding, revision, epoch):
+    """Same relay upgrade contract, minted at Entry rather than inside the instance."""
+    payload = f'{user}.{epoch}.{revision}.{binding}'
+    expires = str(int(time.time()) + 300)
+    secret = instance_secret(master, user, epoch, revision, binding)
+    signature = hmac.new(secret.encode(), f'{payload}:{expires}'.encode(), hashlib.sha256).hexdigest()
+    return base64.urlsafe_b64encode(f'{payload}:{expires}:{signature}'.encode()).decode().rstrip('=')

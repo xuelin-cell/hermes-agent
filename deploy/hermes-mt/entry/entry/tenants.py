@@ -938,7 +938,7 @@ class TenantManager:
         if not self.s.channels_key:
             return False
         async with self.store.database.acquire() as db:
-            return bool(await db.fetchval("SELECT 1 FROM messaging_inbox i JOIN messaging_bindings b ON b.id=i.binding_id WHERE i.user_id=$1 AND b.enabled AND b.deleted_at IS NULL AND b.revision=i.binding_revision AND (i.lease_until>now() OR i.state='uncertain') LIMIT 1",user_id))
+            return bool(await db.fetchval("SELECT 1 FROM messaging_inbox i JOIN messaging_bindings b ON b.id=i.binding_id WHERE i.user_id=$1 AND b.enabled AND b.deleted_at IS NULL AND b.revision=i.binding_revision AND i.lease_until>now() LIMIT 1",user_id))
 
     async def _stop_cube(self, user_id: str, reason: str) -> None:
         """空闲回收 = 暂停，不是销毁；暂停前先让状态管家归档一次。

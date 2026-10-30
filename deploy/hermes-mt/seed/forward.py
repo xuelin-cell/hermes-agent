@@ -676,20 +676,34 @@ async def _handle_mt(
             _reply(writer, 409, {'error': '连接器请求失败，请检查配置和状态后重试。'})
         return
 
+    if route == '/__mt/messaging/relay':
+        if method != 'GET' or headers.get('upgrade','').lower() != 'websocket' or not _check_token(headers) or _draining or not _messaging_gateway.settings:
+            _reply(writer,403,{'ok':False})
+            return
+        target_r, target_w = await asyncio.open_connection('127.0.0.1',_messaging_gateway.port)
+        # Fixed target only. Cookie/session-token access cannot enter this management path.
+        head = f'GET /__mt/messaging/relay HTTP/1.1\r\n' + ''.join(
+            f'{key}: {value}\r\n' for key,value in headers.items()
+            if key not in {'x-mt-token','cookie','host'}) + f'Host: 127.0.0.1:{_messaging_gateway.port}\r\n\r\n'
+        target_w.write(head.encode()+rest)
+        await target_w.drain()
+        await asyncio.gather(_pipe(reader,target_w),_pipe(target_r,writer))
+        return
+
     if route == '/__mt/messaging/start':
         if method != 'POST' or not _check_token(headers) or _draining:
             _reply(writer,403,{'ok':False})
             return
         try:
             data = json.loads(await _read_body(headers,rest,reader))
-            required = ('relay_url','gateway_id','upgrade_secret','bot_id','revision')
-            if not isinstance(data,dict) or not set(required).issubset(data) or set(data)-set(required)-{'platform','binding_id'}: raise ValueError()
+            required = ('user_id','instance_epoch','upgrade_secret','bot_id','revision','platform','binding_id','transport')
+            if not isinstance(data,dict) or not set(required).issubset(data) or set(data)-set(required) or data['transport']!='entry-forward-relay-v1': raise ValueError()
             env = dict(os.environ)
             env.update(_hermes_env)
             env['HERMES_HOME'] = str(HERMES_HOME)
             result = await _messaging_gateway.start(data,env)
             _reply(writer,200,result)
-        except (ValueError,TypeError,RuntimeError,OSError):
+        except (ValueError,TypeError,RuntimeError,OSError,asyncio.TimeoutError):
             _reply(writer,409,{'ok':False,'error':'relay gateway start failed'})
         return
 

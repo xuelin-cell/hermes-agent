@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { browserMessaging } from './browser-messaging'
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 describe('cloud messaging bridge', () => {
   it('uses cookie-only entry routes and blocks direct or unsupported platform mutations', async () => {
@@ -32,7 +32,21 @@ describe('cloud messaging bridge', () => {
     expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body))).toMatchObject({ platform: 'dingtalk', operation: 'save' })
     const snapshot = await bridge.messagingStatus()
     expect(JSON.parse(String(fetcher.mock.calls[1]?.[1]?.body))).toEqual({ platform: 'dingtalk' })
-    expect(snapshot.revision).toBe(1)
+    expect(snapshot.phase).toBe('checking')
+    expect(snapshot.revision).toBeGreaterThan(0)
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 60_001)
+    const timeout = await bridge.messagingStatus()
+    expect(timeout).toMatchObject({ phase: 'failed', saved: true, error: 'connection_timeout' })
+    expect(timeout.revision).toBeGreaterThan(snapshot.revision)
+    clock.mockRestore()
+    let finish!: (response: Response) => void
+    await bridge.messagingSetup({ operation: 'save', platform: 'wecom', env: { WECOM_BOT_ID: 'bot', WECOM_SECRET: 'secret' } })
+    fetcher.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    const stale = bridge.messagingStatus()
+    await bridge.messagingSetup({ operation: 'save', platform: 'feishu', env: { FEISHU_APP_ID: 'app', FEISHU_APP_SECRET: 'secret' } })
+    finish(new Response(JSON.stringify({ phase: 'completed', saved: true })))
+    await expect(stale).rejects.toThrow('已切换')
+    expect(await bridge.messagingStatus()).toMatchObject({ phase: 'checking', platform: 'feishu' })
   })
 
   it('does not report successful setup on an unauthorized or unconfigured entry', async () => {
@@ -40,6 +54,7 @@ describe('cloud messaging bridge', () => {
     vi.stubGlobal('fetch', fetcher)
     const bridge = browserMessaging('/hermes/')
     await expect(bridge.reconnectUniAgentGate()).rejects.toThrow('尚未部署')
+    expect(await bridge.messagingStatus()).toMatchObject({ phase: 'idle' })
     await expect(bridge.messagingSetup({ operation: 'save', platform: 'feishu', profile: 'other' })).rejects.toThrow('尚未')
     expect(fetcher).toHaveBeenCalledTimes(1)
   })

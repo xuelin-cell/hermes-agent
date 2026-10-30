@@ -10,6 +10,7 @@ import type { MessagingPlatformInfo } from '@/types/hermes'
 import type { MessagingOperationStatus } from '../../../electron/entry_local/messaging-contract'
 
 import { $messagingOperation } from './operation-store'
+import { browserMessaging } from '@/dev/browser-messaging'
 
 import { MessagingView } from './index'
 
@@ -933,4 +934,31 @@ describe('MessagingView RCS integration', () => {
   })
 
 
+})
+
+it('cloud health polling never becomes a pending setup operation or hides an uncertain execution warning', async () => {
+  $settingsScopeOverride.set(null)
+  const warning = '有执行结果未确认，已暂停后续任务；请先核对原任务。'
+  const rows = [platform({ id: 'dingtalk' }), platform({ id: 'weixin' }), platform({ id: 'feishu' }), platform({ id: 'wecom' }),
+    platform({ id: 'uniagentgate', enabled: true, configured: true, gateway_running: false, state: 'connecting', error_code: 'execution_uncertain', error_message: warning })]
+  const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => Response.json({ platforms: rows, phase: 'checking', saved: true }))
+  vi.stubGlobal('fetch', fetcher)
+  const previous = window.hermesDesktop
+  const bridge = browserMessaging('/hermes/')
+  window.hermesDesktop = { ...previous, messagingStatus: bridge.messagingStatus, onMessagingStatus: bridge.onMessagingStatus }
+  getMessagingPlatforms.mockImplementation(() => bridge.request({ path: '/api/plugins/desktop-messaging/platforms' }))
+  try {
+    await renderMessaging()
+    await screen.findByText(warning)
+    expect(screen.queryByText('Checking messaging platform status…')).toBeNull()
+    const card = screen.getByRole('article', { name: /DingTalk/ })
+    expect((within(card).getByRole('button', { name: 'Configure' }) as HTMLButtonElement).disabled).toBe(false)
+    expect(fetcher.mock.calls.every(call => !String(call[0]).endsWith('/status'))).toBe(true)
+    expect(messagingSetup).not.toHaveBeenCalled()
+  } finally {
+    cleanup()
+    window.hermesDesktop = previous
+    vi.unstubAllGlobals()
+    getMessagingPlatforms.mockReset()
+  }
 })

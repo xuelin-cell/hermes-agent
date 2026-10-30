@@ -126,9 +126,25 @@ class MessagingStore:
                 return None
             return dict(await db.fetchrow("UPDATE messaging_inbox SET state='dispatching',lease_owner=$2,lease_until=now()+$3*interval '1 second',attempts=attempts+1,updated_at=now() WHERE delivery_id=$1 RETURNING *",row['delivery_id'],owner,lease_seconds)) | {'user_id':row['user_id']}
 
+    async def claim_recovery(self, owner):
+        async with self.database.acquire() as db, db.transaction():
+            row = await db.fetchrow("""SELECT i.delivery_id,i.user_id FROM messaging_inbox i
+                JOIN messaging_bindings b ON b.id=i.binding_id JOIN users u ON u.user_id=i.user_id
+                WHERE i.state='uncertain' AND i.error_code IN('','dispatch_unconfirmed','lease_expired') AND i.next_at<=now() AND (i.lease_until IS NULL OR i.lease_until<=now())
+                AND b.enabled AND b.deleted_at IS NULL AND b.revision=i.binding_revision AND u.status='active'
+                AND NOT EXISTS(SELECT 1 FROM messaging_inbox x WHERE x.user_id=i.user_id AND x.delivery_id<>i.delivery_id
+                    AND (x.state IN('dispatching','accepted','running') OR (x.state='uncertain' AND x.lease_until>now())))
+                ORDER BY i.updated_at FOR UPDATE OF i SKIP LOCKED LIMIT 1""")
+            if not row: return None
+            from .store import advisory_key
+            if not await db.fetchval('SELECT pg_try_advisory_xact_lock($1)',advisory_key(row['user_id'])): return None
+            return dict(await db.fetchrow("""UPDATE messaging_inbox SET lease_owner=$2,attempts=attempts+1,
+                lease_until=now()+interval '90 seconds',updated_at=now() WHERE delivery_id=$1 RETURNING *""",
+                row['delivery_id'],owner))
+
     async def renew(self, delivery, owner):
         async with self.database.acquire() as db:
-            return bool(await db.fetchval("UPDATE messaging_inbox SET lease_until=now()+interval '90 seconds',updated_at=now() WHERE delivery_id=$1 AND lease_owner=$2 AND state IN('dispatching','accepted','running') AND lease_until>now() RETURNING delivery_id",delivery,owner))
+            return bool(await db.fetchval("UPDATE messaging_inbox SET lease_until=now()+interval '90 seconds',updated_at=now() WHERE delivery_id=$1 AND lease_owner=$2 AND state IN('dispatching','accepted','running','uncertain') AND lease_until>now() RETURNING delivery_id",delivery,owner))
 
     async def complete(self, delivery, owner, epoch, content):
         async with self.database.acquire() as db, db.transaction():
@@ -173,5 +189,6 @@ class MessagingStore:
         async with self.database.acquire() as db, db.transaction():
             if startup:
                 await db.execute("UPDATE messaging_outbox SET state='unknown',error_code='sender_restarted',updated_at=now() WHERE state='sending'")
-            # Active rows are queried/reconciled with the original instance; never requeue them here.
-            await db.execute("UPDATE messaging_inbox SET state='uncertain',error_code='lease_expired',lease_until=NULL,updated_at=now() WHERE state IN('dispatching','accepted','running') AND lease_until<=now()")
+            # Dispatching never crossed the durable send reservation; later states require ledger verification.
+            await db.execute("UPDATE messaging_inbox SET state='queued',lease_owner=NULL,lease_until=NULL,instance_epoch=NULL,updated_at=now() WHERE state='dispatching' AND lease_until<=now()")
+            await db.execute("UPDATE messaging_inbox SET state='uncertain',error_code='lease_expired',lease_until=NULL,next_at=now(),updated_at=now() WHERE state IN('accepted','running') AND lease_until<=now()")

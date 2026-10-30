@@ -10,14 +10,14 @@ import aiohttp
 import yaml
 from aiohttp import web
 
-from .channels_auth import verify_upgrade
+from .channels_delivery import deliver
 from .channel_dingtalk import DingTalk, ReplyRejected
 from .channel_weixin import Weixin
 from .channel_wecom import WeCom
 from .channel_feishu import Feishu
 from .channel_media import download,pack,add_inbound,MEDIA_UNAVAILABLE
-from plugins.cloud_messaging.media import MAX_WIRE_BYTES,unpack
-from .messaging_media_routes import media_link,media_response
+from plugins.cloud_messaging.media import unpack
+from .messaging_media_routes import media_link,media_response,MediaLinkUnavailable
 
 TEXT_CLIENTS = {'dingtalk': DingTalk, 'weixin': Weixin, 'wecom': WeCom, 'feishu': Feishu}
 from .config import Settings
@@ -69,7 +69,7 @@ class Channels:
                 await self.leader.fetchval('SELECT 1')
                 await self.reconcile()
                 await self.store.recover()
-                delivery = await self.store.claim(self.owner)
+                delivery = await self.store.claim_recovery(self.owner) or await self.store.claim(self.owner)
                 if delivery:
                     task = asyncio.create_task(self.deliver(delivery))
                     self.tasks.add(task)
@@ -148,55 +148,7 @@ class Channels:
                 await asyncio.sleep(20)
 
     async def deliver(self, delivery):
-        heartbeat = asyncio.create_task(self.maintain_lease(delivery['delivery_id']))
-        try:
-            async with asyncio.timeout(1800):
-                await self.dispatch(delivery, heartbeat)
-        except asyncio.CancelledError:
-            raise
-        except Exception as error:
-            log.warning('delivery requires reconciliation: %s', type(error).__name__)
-            async with self.database.acquire() as db:
-                # No inbound frame can leave before accepted is committed. A failed
-                # wake is safe to retry; loss after that boundary remains uncertain.
-                await db.execute("""UPDATE messaging_inbox SET
-                    lease_owner=CASE WHEN state='dispatching' THEN NULL ELSE lease_owner END,
-                    instance_epoch=CASE WHEN state='dispatching' THEN NULL ELSE instance_epoch END,
-                    state=CASE WHEN state='dispatching' THEN 'queued' ELSE 'uncertain' END,
-                    error_code='dispatch_unconfirmed',next_at=now()+interval '30 seconds',lease_until=NULL,updated_at=now()
-                    WHERE delivery_id=$1 AND lease_owner=$2 AND state IN('dispatching','accepted','running')""",delivery['delivery_id'],self.owner)
-        finally:
-            heartbeat.cancel()
-            await asyncio.gather(heartbeat,return_exceptions=True)
-
-    async def dispatch(self, delivery, heartbeat):
-        url = self.config['entry_url'].rstrip('/') + self.s.base_path + '/__entry/messaging/wake'
-        async with self.http.post(url, json={'delivery_id':delivery['delivery_id'],'owner':self.owner},
-                headers={'Authorization':'Bearer '+self.s.channels_key}, timeout=aiohttp.ClientTimeout(total=240)) as response:
-            if response.status != 200: raise RuntimeError('Wake rejected')
-            ready = await response.json()
-        epoch = ready['epoch']
-        async with self.database.acquire() as db:
-            row = await db.fetchrow('SELECT i.*,b.bot_key FROM messaging_inbox i JOIN messaging_bindings b ON b.id=i.binding_id WHERE delivery_id=$1',delivery['delivery_id'])
-            updated = await db.fetchval("UPDATE messaging_inbox SET state='accepted',instance_epoch=$2 WHERE delivery_id=$1 AND lease_owner=$3 AND state='dispatching' AND lease_until>now() RETURNING delivery_id",row['delivery_id'],epoch,self.owner)
-        if not updated: raise RuntimeError('Lease lost before dispatch')
-        payload=json.loads(row['payload'])
-        if row['platform'] in TEXT_CLIENTS:
-            event=payload['event']
-            event['message_id']=row['delivery_id']
-        else:
-            request=self.protocol.parse_agent_request(payload)
-            event=payload.get('_media_event') or {'text':request.text,'source':{'platform':'uniagentgate','chat_id':request.phone_number,'user_id':request.phone_number,'chat_type':'dm'}}
-            event['message_id']=row['delivery_id']
-        event['source']['scope_id']=delivery['user_id']
-        sent_socket = None
-        while not heartbeat.done():
-            socket = self.sockets.get(delivery['user_id'])
-            if socket and socket[0] == epoch and socket[1] is not sent_socket and getattr(socket[1],'binding_id',row['binding_id'])==row['binding_id']:
-                await self.send_frame(socket[1],{'type':'inbound','bufferId':row['delivery_id'],'event':event})
-                sent_socket = socket[1]
-            await asyncio.sleep(1)
-        await heartbeat
+        await deliver(self, delivery)
 
     async def send_pending(self):
         async with self.database.acquire() as db:
@@ -237,6 +189,8 @@ class Channels:
                 _, ack = await client[1].send_channel_message(phone_number=request.phone_number, text=text,media=media,session_id=request.session_id,turn_id=request.turn_id,message_id=message_id)
                 state, code = 'sent', ''
                 receipt = {'ok':True,'downlink_msg_ids':ack.downlink_msg_ids}
+        except MediaLinkUnavailable:
+            state, code, receipt = 'failed', 'media_entry_unconfigured', {'ok':False}
         except (self.stream.DownlinkRejected,ReplyRejected):
             state, code, receipt = 'failed', 'gateway_rejected', {'ok':False}
         except Exception:
@@ -254,55 +208,8 @@ class Channels:
         return media_response(json.loads(row['payload'])['media'])
 
     async def relay(self, request):
-        auth = request.headers.get('Authorization', '').removeprefix('Bearer ')
-        identity = verify_upgrade(auth, self.s.channels_key)
-        if not identity: raise web.HTTPUnauthorized()
-        user, epoch, revision = identity[:3]
-        binding_id=identity[3] if len(identity)==4 else None
-        async with self.database.acquire() as db:
-            current = await db.fetchval('SELECT state_epoch FROM tenant_runtime WHERE user_id=$1',user)
-            binding = await db.fetchrow("SELECT b.* FROM messaging_bindings b JOIN users u ON u.user_id=b.user_id WHERE b.user_id=$1 AND u.status='active' AND b.enabled AND b.deleted_at IS NULL AND (($2::text IS NOT NULL AND b.id=$2) OR ($2 IS NULL AND b.platform='uniagentgate'))",user,binding_id)
-        if current != epoch or not binding or binding['revision'] != revision: raise web.HTTPForbidden()
-        old = self.sockets.get(user)
-        if old: await old[1].close()
-        ws = web.WebSocketResponse(heartbeat=30,max_msg_size=MAX_WIRE_BYTES)
-        ws.binding_id=binding['id']
-        await ws.prepare(request)
-        self.sockets[user] = (epoch, ws, revision)
-        try:
-            async for msg in ws:
-                if msg.type != aiohttp.WSMsgType.TEXT: continue
-                frame = json.loads(msg.data)
-                if frame.get('type') == 'hello':
-                    if frame.get('platform') != binding['platform'] or frame.get('botId') != binding['bot_key']:
-                        await ws.close(code=4401); break
-                    descriptor = {'contract_version':1,'platform':binding['platform'],'label':binding['platform'],'max_message_length':20000,'supports_draft_streaming':False,'supports_edit':False,'supports_threads':False,'markdown_dialect':'plain','len_unit':'chars','supported_ops':['send','send_media'],'pii_safe':True}
-                    await self.send_frame(ws,{'type':'descriptor','descriptor':descriptor})
-                elif frame.get('type') == 'outbound':
-                    action = frame.get('action') or {}
-                    meta = action.get('metadata') or {}
-                    if action.get('op') not in {'send','send_media'} or (action.get('op')=='send' and not isinstance(action.get('content'), str)):
-                        result = {'success':False,'error':'Unsupported text operation'}
-                    else:
-                        async with self.database.acquire() as db:
-                            row = await db.fetchrow('SELECT * FROM messaging_inbox WHERE delivery_id=$1 AND user_id=$2',meta.get('delivery_id',''),user)
-                            generation = await db.fetchval('SELECT state_epoch FROM tenant_runtime WHERE user_id=$1',user)
-                        if not row or row['binding_id'] != binding['id'] or generation != epoch or meta.get('binding_revision') != revision or action.get('chat_id') != row['external_chat_id']:
-                            raise web.HTTPForbidden()
-                        if action['op']=='send_media':
-                            try: outbound=await self.store.record_media(row['delivery_id'],row['lease_owner'],epoch,action.get('media'))
-                            except ValueError:
-                                await self.send_frame(ws,{'type':'outbound_result','requestId':frame['requestId'],'result':{'success':False,'error':'Attachment is invalid or exceeds the media limit'}})
-                                continue
-                        else:
-                            outbound = await self.store.complete(row['delivery_id'], row['lease_owner'], epoch, {'content':action['content']})
-                        result = {'success':True,'message_id':outbound}
-                    await self.send_frame(ws,{'type':'outbound_result','requestId':frame['requestId'],'result':result})
-                elif frame.get('type') == 'going_idle':
-                    await self.send_frame(ws,{'type':'going_idle_ack'})
-        finally:
-            if self.sockets.get(user) == (epoch, ws, revision): self.sockets.pop(user,None)
-        return ws
+        from .channels_relay import relay
+        return await relay(self,request)
 
 
 def main():

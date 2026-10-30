@@ -529,6 +529,7 @@ class Entry:
             log.exception("reconcile failed: %s", type(exc).__name__)
 
     async def on_cleanup(self, app: web.Application) -> None:
+        await self.messaging_routes.relays.close()
         await self.share_routes.agent.close()
         await self.skill_routes.close()
         await self.drive_routes.close()
@@ -588,7 +589,6 @@ def build_app(settings: Settings = SETTINGS) -> web.Application:
         app.router.add_route(method,path("/api/channels/uniagentgate/cloud-binding/{user_id}"),cloud_bindings.handle)
     app.router.add_get(path("/__entry/messaging/media/{id}"), entry.messaging_routes.media)
     app.router.add_post(path("/__entry/messaging/wake"), entry.messaging_routes.wake)
-    app.router.add_get(path("/__entry/messaging/relay"), entry.messaging_routes.relay)
     app.router.add_post(path("/__entry/messaging/{operation}"), entry.messaging_routes.handle)
     app.router.add_post(path("/__entry/drive/part/{id}"), entry.drive_routes.part)
     app.router.add_get(path("/__entry/drive/files/{id}"), entry.drive_routes.download)

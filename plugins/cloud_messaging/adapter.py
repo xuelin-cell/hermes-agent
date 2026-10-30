@@ -9,22 +9,22 @@ from gateway.platforms.base import SendResult
 from gateway.platforms.event import ProcessingOutcome
 from gateway.relay.adapter import RelayAdapter
 from gateway.relay.descriptor import CapabilityDescriptor
-from gateway.relay.ws_transport import WebSocketRelayTransport
+from .transport import AcceptedRelayTransport
 
 from .ledger import Ledger
-from .media import pack,localize,MAX_WIRE_BYTES,MAX_MEDIA_BYTES
+from .media import pack,localize,MAX_MEDIA_BYTES
 
 
 class CloudMessagingAdapter(RelayAdapter):
     def __init__(self, config, settings, home):
         self.channel = settings.get('platform','uniagentgate')
         descriptor = CapabilityDescriptor(1,self.channel,self.channel,20000,False,False,False,'plain','chars',supported_ops=('send','send_media'))
-        transport = WebSocketRelayTransport(settings['relay_url'],self.channel,settings['bot_id'],
-            gateway_id=settings['gateway_id'],upgrade_secret=settings['upgrade_secret'],reconnect=True,max_message_bytes=MAX_WIRE_BYTES)
+        ledger = Ledger(home)
+        transport = AcceptedRelayTransport(settings, descriptor, ledger)
         super().__init__(config,descriptor,transport)
         self.platform = Platform(self.channel)
         self.settings = settings
-        self.ledger = Ledger(home)
+        self.ledger = ledger
         self._delivery = ContextVar("cloud_delivery",default=None)
         self.home=home
         self.current_delivery = None

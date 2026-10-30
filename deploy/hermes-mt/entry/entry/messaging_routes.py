@@ -6,11 +6,10 @@ from datetime import datetime, timezone
 import aiohttp
 from aiohttp import web
 
-from .channels_auth import instance_secret
+from .messaging_relay import InstanceRelays
 from .messaging_credentials import cloud_binding
 from .messaging_store import MessagingStore
 from .weixin_qr_routes import WeixinQr
-from plugins.cloud_messaging.media import MAX_WIRE_BYTES
 
 PLATFORMS = {'uniagentgate':'5G 消息','dingtalk':'钉钉','weixin':'微信','wecom':'企业微信','feishu':'飞书'}
 CREDENTIALS = {'dingtalk':('DINGTALK_CLIENT_ID','DINGTALK_CLIENT_SECRET'), 'wecom':('WECOM_BOT_ID','WECOM_SECRET'), 'feishu':('FEISHU_APP_ID','FEISHU_APP_SECRET')}
@@ -21,6 +20,7 @@ class MessagingRoutes:
         self.entry = entry
         self.store = MessagingStore(entry.database, entry.store.cipher)
         self.weixin_qr = WeixinQr(self)
+        self.relays = InstanceRelays(entry)
 
     async def apply_login(self, user, plan):
         origins = {value.strip().rstrip('/') for value in self.entry.s.channels_gateway_origins.split(',') if value.strip()}
@@ -41,7 +41,7 @@ class MessagingRoutes:
         platform=data.get('platform','uniagentgate')
         if platform not in PLATFORMS: raise web.HTTPBadRequest(text='该平台尚未接通。')
         if operation in {'save','retry','reconnect','enable','disable','disconnect','weixin-start','weixin-status','weixin-unbind','group-policy'}:
-            if not self.entry.s.channels_key or not self.entry.s.channels_relay_url or not self.entry.s.pg_lock or self.entry.s.backend!='cube':
+            if not self.entry.s.channels_key or not self.entry.s.pg_lock or self.entry.s.backend!='cube':
                 raise web.HTTPServiceUnavailable(text='集中消息接入尚未部署。')
             if operation=='group-policy':
                 return web.json_response(await self.store.groups(session.user_id,data.get('enabled'),data.get('group_ids')),headers={'Cache-Control':'no-store'})
@@ -114,42 +114,17 @@ class MessagingRoutes:
         data = await request.json()
         async with self.entry.database.acquire() as db:
             row = await db.fetchrow('''SELECT i.*,b.user_id,b.bot_key,b.enabled,b.revision,b.deleted_at FROM messaging_inbox i JOIN messaging_bindings b ON b.id=i.binding_id
-                WHERE delivery_id=$1 AND lease_owner=$2 AND lease_until>now() AND state='dispatching' ''',data['delivery_id'],data['owner'])
+                WHERE delivery_id=$1 AND lease_owner=$2 AND lease_until>now() AND state IN('dispatching','accepted','running','uncertain') ''',data['delivery_id'],data['owner'])
         if not row or not row['enabled'] or row['deleted_at'] or row['binding_revision'] != row['revision']:
             raise web.HTTPConflict(text='消息租约已失效。')
         tenant = await self.entry.tenants.ensure_running(row['user_id'],touch=False)
         runtime = await self.entry.store.get_runtime(row['user_id'])
         epoch = runtime.state_epoch
         async with self.entry.database.acquire() as db:
-            updated = await db.fetchval("UPDATE messaging_inbox SET instance_epoch=$3 WHERE delivery_id=$1 AND lease_owner=$2 AND state='dispatching' AND lease_until>now() RETURNING delivery_id",row['delivery_id'],data['owner'],epoch)
+            updated = await db.fetchval("UPDATE messaging_inbox SET instance_epoch=CASE WHEN state='dispatching' THEN $3 ELSE instance_epoch END WHERE delivery_id=$1 AND lease_owner=$2 AND state IN('dispatching','accepted','running','uncertain') AND lease_until>now() RETURNING delivery_id",row['delivery_id'],data['owner'],epoch)
         if not updated: raise web.HTTPConflict(text='消息租约已失效。')
-        settings = {'relay_url':self.entry.s.channels_relay_url,'gateway_id':f"{row['user_id']}.{epoch}.{row['revision']}.{row['binding_id']}",
-                    'upgrade_secret':instance_secret(self.entry.s.channels_key,row['user_id'],epoch,row['revision'],row['binding_id']),
-                    'bot_id':row['bot_key'],'revision':row['revision'],'platform':row['platform'],'binding_id':row['binding_id']}
-        headers = {'X-MT-Token':tenant.token,'Host':tenant.host_header or f'127.0.0.1:{self.entry.s.hermes_port}'}
-        if tenant.traffic_token: headers['cube-traffic-access-token'] = tenant.traffic_token
-        origin = tenant.origin or f'{tenant.ip}:{self.entry.s.forward_port}'
-        async with self.entry.http.post(f'http://{origin}/__mt/messaging/start',json=settings,headers=headers,
-                timeout=aiohttp.ClientTimeout(total=90),allow_redirects=False) as response:
-            if response.status != 200: raise web.HTTPBadGateway(text='实例 relay gateway 未能启动，请检查模板。')
-        return web.json_response({'epoch':epoch})
-
-    async def relay(self, request):
-        # The connector validates the per-instance HMAC. Browser cookies grant no access here.
-        authorization = request.headers.get('Authorization','')
-        if not self.entry.s.channels_key or not authorization.startswith('Bearer '): raise web.HTTPUnauthorized()
-        async with self.entry.http.ws_connect(self.entry.s.channels_url+'/relay',headers={'Authorization':authorization},heartbeat=30,max_msg_size=MAX_WIRE_BYTES) as upstream:
-            browser = web.WebSocketResponse(heartbeat=30,max_msg_size=MAX_WIRE_BYTES)
-            await browser.prepare(request)
-            async def forward(source,target):
-                async for item in source:
-                    if item.type == aiohttp.WSMsgType.TEXT: await target.send_str(item.data)
-                    elif item.type == aiohttp.WSMsgType.BINARY: await target.send_bytes(item.data)
-                    else: break
-            tasks = [asyncio.create_task(forward(browser,upstream)),asyncio.create_task(forward(upstream,browser))]
-            try: await asyncio.wait(tasks,return_when=asyncio.FIRST_COMPLETED)
-            finally:
-                for task in tasks: task.cancel()
-                await asyncio.gather(*tasks,return_exceptions=True)
-                await browser.close()
-        return browser
+        try:
+            worker = await self.relays.ensure(row,tenant,epoch)
+        except (RuntimeError, OSError, aiohttp.ClientError, asyncio.TimeoutError) as error:
+            raise web.HTTPBadGateway(text='消息执行通道未就绪，请检查入口、channels 和实例模板是否配套。') from error
+        return web.json_response({'epoch':epoch,'worker_id':worker})

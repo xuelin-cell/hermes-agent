@@ -23,17 +23,17 @@ from plugins.cloud_messaging.adapter import CloudMessagingAdapter
 from plugins.cloud_messaging.media import pack,unpack,add_inbound
 
 
-async def context(dsn,channel):
+async def context(dsn,channel,user='alice'):
     settings=Settings(database_url=dsn,credential_key=Fernet.generate_key().decode(),backend='cube',channels_key='media-master',channels_relay_url='ws://placeholder')
     app=build_app(settings)
     entry=next(route.handler.__self__ for route in app.router.routes() if route.handler.__name__=='login')
     app.on_startup.clear(); app.on_cleanup.clear()
     await entry.database.connect()
-    await entry.store.finish_login(user_id='alice',phone='',api_key='sk-fixture',endpoint=None,catalog=None,ttl_s=3600,upstream_expires_at_ms=None,login_method='sms')
-    await entry.messaging_routes.store.configure('alice','https://gateway.test','bot','secret',platform=channel,enable=True)
-    binding=await entry.messaging_routes.store.binding('alice',channel)
-    await entry.store.ensure_tenant_token('alice')
-    epoch=await entry.store.next_epoch('alice')
+    await entry.store.finish_login(user_id=user,phone='',api_key='sk-fixture',endpoint=None,catalog=None,ttl_s=3600,upstream_expires_at_ms=None,login_method='sms')
+    await entry.messaging_routes.store.configure(user,'https://gateway.test','bot' if user=='alice' else 'bot-'+user,'secret',platform=channel,enable=True)
+    binding=await entry.messaging_routes.store.binding(user,channel)
+    await entry.store.ensure_tenant_token(user)
+    epoch=await entry.store.next_epoch(user)
     delivery=await entry.messaging_routes.store.ingest(binding['id'],binding['revision'],'chat','external',{})
     await entry.messaging_routes.store.claim('lease-owner')
     async with entry.database.acquire() as db:
@@ -45,6 +45,8 @@ async def context(dsn,channel):
 @pytest.mark.parametrize('channel',['uniagentgate','dingtalk','feishu','weixin','wecom'])
 async def test_large_media_roundtrip_is_durable_and_replay_safe(tmp_path,monkeypatch,postgres_database_url,channel):
     settings,app,entry,binding,epoch,delivery=await context(postgres_database_url,channel)
+    import plugins.cloud_messaging.transport as passive
+    monkeypatch.setattr(passive,'PORT',0)
     home=tmp_path/'home'; home.mkdir()
     monkeypatch.setenv('HERMES_HOME',str(home))
     monkeypatch.setenv('HERMES_RUNTIME_DIR',str(tmp_path/'runtime'))
@@ -66,7 +68,7 @@ async def test_large_media_roundtrip_is_durable_and_replay_safe(tmp_path,monkeyp
                 'platform':channel,'relay_url':str(server.make_url('/relay')).replace('http:','ws:'),
                 'gateway_id':f'alice.{epoch}.{binding["revision"]}.{binding["id"]}',
                 'upgrade_secret':instance_secret(settings.channels_key,'alice',epoch,binding['revision'],binding['id']),
-                'bot_id':'bot','revision':binding['revision'],'binding_id':binding['id']},home)
+                'bot_id':'bot','revision':binding['revision'],'binding_id':binding['id'],'user_id':'alice','instance_epoch':epoch},home)
             async def receive(event):
                 try:
                     assert event.media_types==['text/plain']
@@ -80,6 +82,29 @@ async def test_large_media_roundtrip_is_durable_and_replay_safe(tmp_path,monkeyp
                 finally: accepted.set()
             adapter.set_message_handler(receive)
             assert await adapter.connect()
+            adapter._transport.open_admission()
+            # Entry opens BOTH sockets; the adapter never calls a remote connect.
+            class Tenant:
+                token='instance-token'; traffic_token=''; host_header=''
+                origin=''
+            async def start(request):
+                return web.json_response({'capability':passive.CAPABILITY})
+            async def relay_instance(request):
+                assert request.headers['X-MT-Token']=='instance-token'
+                return await adapter._transport.accept(request)
+            forward=web.Application()
+            forward.router.add_post('/__mt/messaging/start',start)
+            forward.router.add_get('/__mt/messaging/relay',relay_instance)
+            forward_server=TestServer(forward)
+            await forward_server.start_server()
+            http=aiohttp.ClientSession()
+            entry.http=http
+            entry.s=replace(settings,channels_url=str(server.make_url('')).rstrip('/'))
+            tenant=Tenant(); tenant.origin=str(forward_server.make_url('')).removeprefix('http://').rstrip('/')
+            row=dict(binding, binding_id=binding['id'])
+            worker=await entry.messaging_routes.relays.ensure(row,tenant,epoch)
+            async with entry.database.acquire() as db:
+                await db.execute('UPDATE messaging_inbox SET execution_ref=$2 WHERE delivery_id=$1',delivery,worker)
             event=add_inbound({'text':'read file','message_id':delivery,'source':{'platform':channel,'chat_id':'chat','user_id':'peer','scope_id':'alice','chat_type':'dm'}},[pack(data,'input.txt')])
             await service.send_frame(service.sockets['alice'][1],{'type':'inbound','bufferId':delivery,'event':event})
             await asyncio.wait_for(accepted.wait(),15)
@@ -96,6 +121,9 @@ async def test_large_media_roundtrip_is_durable_and_replay_safe(tmp_path,monkeyp
             await asyncio.wait_for(adapter.disconnect(),5)
             adapter=None
     finally:
+        await entry.messaging_routes.relays.close()
+        if 'http' in locals(): await http.close()
+        if 'forward_server' in locals(): await forward_server.close()
         if adapter:
             await asyncio.wait_for(adapter.disconnect(),5)
         await entry.database.close()

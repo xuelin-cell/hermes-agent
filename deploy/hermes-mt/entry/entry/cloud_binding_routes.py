@@ -57,7 +57,7 @@ class CloudBindingRoutes:
 
     async def put(self,request,user):
         settings=self.entry.s
-        if not settings.channels_key or not settings.channels_relay_url or not settings.pg_lock or settings.backend!='cube':
+        if not settings.channels_key or not settings.pg_lock or settings.backend!='cube':
             raise web.HTTPServiceUnavailable(text='集中消息接入尚未部署。')
         raw=await request.json()
         if not isinstance(raw,dict): raise ValueError('Invalid body')

@@ -13,9 +13,14 @@ def signature(key,identity,expires):
     return hmac.new(key.encode(),f'messaging-media:{identity}:{expires}'.encode(),hashlib.sha256).hexdigest()
 
 
+class MediaLinkUnavailable(ValueError):
+    pass
+
+
 def media_link(settings,identity):
     expires=int(time.time())+3600
-    base=settings.channels_relay_url.removesuffix('/relay').replace('wss://','https://',1).replace('ws://','http://',1)
+    base=settings.channels_media_base_url or settings.channels_relay_url.removesuffix('/relay').replace('wss://','https://',1).replace('ws://','http://',1)
+    if not base.startswith(('http://','https://')): raise MediaLinkUnavailable('5G attachments require MT_CHANNELS_MEDIA_BASE_URL')
     return f'{base}/media/{identity}?e={expires}&s='+signature(settings.channels_key,identity,expires)
 
 

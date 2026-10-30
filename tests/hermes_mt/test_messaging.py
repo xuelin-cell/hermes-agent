@@ -94,7 +94,7 @@ async def test_binding_dedupe_leases_and_immutable_outbox(postgres_database_url)
 @pytest.mark.asyncio
 async def test_text_roundtrip_ack_loss_and_instance_receipts(tmp_path, postgres_database_url, monkeypatch):
     settings = Settings(database_url=postgres_database_url,credential_key=Fernet.generate_key().decode(),
-        channels_key='test-channels-master',backend='cube',channels_relay_url='ws://placeholder')
+        channels_key='test-channels-master',backend='cube')
     app = build_app(settings)
     entry = next(route.handler.__self__ for route in app.router.routes() if route.handler.__name__ == 'login')
     app.on_startup.clear()
@@ -133,6 +133,8 @@ async def test_text_roundtrip_ack_loss_and_instance_receipts(tmp_path, postgres_
     relay = web.Application()
     relay.router.add_get('/relay',service.relay)
     adapter = None
+    import plugins.cloud_messaging.transport as passive
+    monkeypatch.setattr(passive,'PORT',0)
     async def ensure(user, touch=False):
         assert user == 'alice' and not touch
         return SimpleNamespace(token='instance-token',origin=forward_origin,host_header='',traffic_token='')
@@ -140,6 +142,9 @@ async def test_text_roundtrip_ack_loss_and_instance_receipts(tmp_path, postgres_
         nonlocal adapter
         assert request.headers['X-MT-Token'] == 'instance-token'
         data = await request.json()
+        if adapter and adapter.settings==data:
+            return web.json_response({'ok':True,'capability':passive.CAPABILITY})
+        if adapter: await adapter.disconnect()
         assert 'cloud-sk' not in json.dumps(data)
         adapter = CloudMessagingAdapter(PlatformConfig(enabled=True),data,tmp_path)
         async def handle(event):
@@ -148,9 +153,14 @@ async def test_text_roundtrip_ack_loss_and_instance_receipts(tmp_path, postgres_
             assert result.success
         adapter.set_message_handler(handle)
         assert await adapter.connect()
-        return web.json_response({'ok':True})
+        adapter._transport.open_admission()
+        return web.json_response({'ok':True,'capability':passive.CAPABILITY})
+    async def instance_relay(request):
+        assert request.headers['X-MT-Token']=='instance-token'
+        return await adapter._transport.accept(request)
     forward = web.Application()
     forward.router.add_post('/__mt/messaging/start',start_instance)
+    forward.router.add_get('/__mt/messaging/relay',instance_relay)
     async def stop_adapter(app):
         if adapter: await adapter.disconnect()
     async def stop_clients(app):
@@ -165,7 +175,7 @@ async def test_text_roundtrip_ack_loss_and_instance_receipts(tmp_path, postgres_
             entry.http, service.http = http, http
             # Frozen dataclass: replacement preserves all production defaults.
             from dataclasses import replace
-            entry.s = replace(settings,channels_relay_url=str(relay_server.make_url('/relay')).replace('http://','ws://'))
+            entry.s = replace(settings,channels_url=str(relay_server.make_url('')).rstrip('/'))
             async with TestClient(TestServer(app)) as client:
                 service.config['entry_url'] = str(client.make_url('')).rstrip('/')
                 gateway = str(upstream_server.make_url('')).rstrip('/')
@@ -261,11 +271,12 @@ async def test_text_roundtrip_ack_loss_and_instance_receipts(tmp_path, postgres_
                     retry = await db.fetchrow('SELECT state,lease_owner FROM messaging_inbox WHERE delivery_id=$1',third['delivery_id'])
                     assert dict(retry) == {'state':'queued','lease_owner':None}
                 assert len(executions) == 1
-                bad = make_upgrade_token(f'alice.{epoch}.{binding["revision"]+1}',instance_secret(settings.channels_key,'alice',epoch,binding['revision']+1))
+                bad = make_upgrade_token(f'alice.{epoch}.{binding["revision"]+1}.{binding["id"]}',instance_secret(settings.channels_key,'alice',epoch,binding['revision']+1,binding['id']))
                 assert verify_upgrade(bad,settings.channels_key)[0] == 'alice'
                 async with http.get(relay_server.make_url('/relay'),headers={'Authorization':'Bearer '+bad}) as response:
                     assert response.status == 403
     finally:
+        await entry.messaging_routes.relays.close()
         if adapter: await adapter.disconnect()
         await asyncio.gather(*(client.stop() for _,client in service.clients.values()))
         await service.database.close()

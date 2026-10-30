@@ -365,11 +365,11 @@ Provider 返回的原文件通过实例内限时签名链接交给 Agent 下载�
 ```dotenv
 MT_BACKEND=cube
 MT_PG_LOCK=1
-MT_CHANNELS_RELAY_URL=ws://192.168.212.116:18081/hermes/__entry/messaging/relay
+MT_CHANNELS_MEDIA_BASE_URL=http://192.168.212.116:18081/hermes/__entry/messaging
 MT_CHANNELS_KEY=<现场生成并保存的随机密钥>
 ```
 
-`MT_CHANNELS_RELAY_URL` 填所有沙箱计算节点可达的入口地址，HTTPS 部署改为 `wss://`。
+入口主动连接实例受保护的 WebSocket；实例无需回连入口。`MT_CHANNELS_MEDIA_BASE_URL` 仅用于 5G 附件下载，填写网关可访问的 HTTP(S) 地址；纯文本无需配置。旧 `MT_CHANNELS_RELAY_URL` 只兼容生成附件链接，不再用于回连。
 `MT_CHANNELS_GATEWAY_ORIGINS` 是可选网关白名单，留空时使用可信登录响应或中心下发的地址。
 `MT_CHANNELS_KEY` 用于内部通信，只生成一次，入口和 channels 共用，不要在更新时重新生成。
 可在部署目录执行下列命令，补齐缺失的密钥且不打印其内容：
@@ -402,7 +402,7 @@ PYKEY
 
 以上是 nginx 对外路径，同时支持 `/hermes/api/channels/uniagentgate/cloud-binding/{user_id}`。沿用 UniClaw cloud-vm-dev 的调用方式，不要求额外服务密钥或浏览器 cookie；接口的访问范围由部署网络或网关控制。中心服务直接提交请求体即可。
 
-部署只需沿用 `MT_CHANNELS_KEY` 和 `MT_CHANNELS_RELAY_URL`。前者用于入口、channels 与实例之间的内部认证，不需要提供给调用 cloud-binding 的中心服务；后者填写所有沙箱节点可达的入口 WebSocket 地址。`MT_CHANNELS_GATEWAY_ORIGINS` 可留空，网关地址来自登录响应或下发请求。
+部署保留 `MT_CHANNELS_KEY`，用于入口、channels 与实例之间的内部认证，不需要提供给调用 cloud-binding 的中心服务。发送 5G 附件时另填 `MT_CHANNELS_MEDIA_BASE_URL`（网关可访问的附件入口）。`MT_CHANNELS_GATEWAY_ORIGINS` 可留空，网关地址来自登录响应或下发请求。
 
 PUT 请求体沿用 UniClaw 结构：
 
@@ -467,3 +467,7 @@ Bot Mode、任意 Profile 管理、专家定时任务与 OAuth 暂不开放。�
 专家的配置、技能、会话和记忆保存在当前用户的 `profiles/`，随现有 SQLite 一致快照归档恢复，无新增 PG 表。
 套件脚本复用模板内预装 Python，不在各用户首次使用时安装依赖；需要额外按需依赖的脚本会提示尚未支持。
 上线需完整执行 `bash deploy.sh all --branch cloud-adaptation`，同时更新前端、入口和实例模板。
+
+### 消息执行通道升级
+
+Entry 与实例模板须一起升级：通道能力为 `entry-forward-relay-v1`，旧模板不支持时明确拒绝，不回退到实例主动回连。`deploy.sh up/all` 在替换入口前停止本机 channels 领取任务，再启动匹配版本。未结束任务保留原 delivery_id、PG 租约和实例执行账本；过期后先核对账本，无法确认的执行保持 uncertain。平台发送 unknown 不自动重发。回退也要先停 channels，再恢复匹配的入口与模板；不要清空消息表或批量重置 uncertain。内部通道不计浏览器活跃时间，不阻止正常空闲暂停；仅有效执行租约阻止任务中途回收。

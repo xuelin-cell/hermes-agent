@@ -27,6 +27,18 @@ from gateway.run import GatewayRunner
 
 
 class MessagingRunner(GatewayRunner):
+    async def _deliver_platform_notice(self, source, content):
+        # This worker has a fixed binding and does not own cron/home-channel setup.
+        # Setup notices must not freeze the one final execution receipt before the Agent replies.
+        return
+
+    async def _finish_startup_restore(self):
+        await super()._finish_startup_restore()
+        for adapter in self.adapters.values():
+            # Plugin loading uses its own module names; class identity is not stable.
+            open_admission = getattr(getattr(adapter,'_transport',None),'open_admission',None)
+            if callable(open_admission): open_admission()
+
     def _schedule_resume_pending_sessions(self, platform=None):
         # An interrupted tool may already have changed the outside world. Only a
         # fresh platform message can request another execution; receipts replay separately.
@@ -36,6 +48,8 @@ class MessagingRunner(GatewayRunner):
 async def main():
     import fcntl
     from hermes_constants import get_hermes_home
+    from hermes_logging import setup_logging
+    setup_logging(hermes_home=get_hermes_home(),mode='gateway')
     lock = (get_hermes_home() / 'cloud-messaging.lock').open('a')
     try:
         fcntl.flock(lock,fcntl.LOCK_EX | fcntl.LOCK_NB)

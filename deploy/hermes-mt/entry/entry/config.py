@@ -28,7 +28,9 @@ class Settings:
     listen_port: int = int(_env("MT_PORT", "9400"))
     channels_key: str = _env('MT_CHANNELS_KEY')
     channels_url: str = _env('MT_CHANNELS_URL', 'http://channels:9500').rstrip('/')
+    # Legacy value is read only to preserve existing attachment links, never for dialing.
     channels_relay_url: str = _env('MT_CHANNELS_RELAY_URL')
+    channels_media_base_url: str = _env('MT_CHANNELS_MEDIA_BASE_URL').rstrip('/')
     channels_gateway_origins: str = _env('MT_CHANNELS_GATEWAY_ORIGINS')
 
     # 执行后端：docker = 我们自己用 Docker 建容器；cube = 让沙箱平台建实例。

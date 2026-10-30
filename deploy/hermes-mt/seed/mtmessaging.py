@@ -3,6 +3,9 @@ import asyncio
 import json
 import os
 from pathlib import Path
+import aiohttp
+
+RELAY_PORT = 9123
 
 
 class Gateway:
@@ -11,13 +14,14 @@ class Gateway:
         self.process = None
         self.settings = None
         self.python = python
+        self.port = RELAY_PORT
         self.lock = asyncio.Lock()
         self.watcher = None
 
     async def start(self, settings, env):
         async with self.lock:
             if self.settings == settings and self.process and self.process.returncode is None:
-                return {'ok':True,'pid':self.process.pid}
+                return await self.ready(settings)
             await self._stop()
             # Configuration is written by the matching Hermes interpreter, preserving
             # its normal YAML validation and profile-aware path handling.
@@ -45,9 +49,24 @@ save_config(cfg)
             await self.spawn(child_env)
             self.settings = dict(settings)
             self.watcher = asyncio.create_task(self.supervise(child_env))
-            await asyncio.sleep(.1)
-            if self.process.returncode is not None: raise RuntimeError('Relay gateway exited')
-            return {'ok':True,'pid':self.process.pid}
+            return await self.ready(settings)
+
+    async def ready(self, settings):
+        # Process existence is not readiness: the registered adapter must be listening.
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=2)) as http:
+            async with asyncio.timeout(60):
+                while self.process and self.process.returncode is None:
+                    try:
+                        async with http.get(f'http://127.0.0.1:{self.port}/ready', headers={
+                                'Authorization': 'Bearer '+settings['upgrade_secret']}) as response:
+                            if response.status == 200:
+                                result = await response.json()
+                                if result.get('capability') == 'entry-forward-relay-v1':
+                                    return result
+                    except (aiohttp.ClientError, asyncio.TimeoutError):
+                        pass  # Startup listener is not available yet.
+                    await asyncio.sleep(.2)
+        raise RuntimeError('Relay gateway exited before readiness')
 
     async def spawn(self, env):
         logs = self.home / 'logs'

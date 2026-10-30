@@ -711,9 +711,13 @@ cmd_up() {
     else
         ok "postgres 在跑，不动它"
     fi
+    # Stop admission before replacing either side of the execution transport.
+    # Existing receipts/unknown results are retained; the new connector reconciles them.
+    if [ -n "$(cfg MT_CHANNELS_KEY '')" ]; then
+        compose --profile messaging stop channels >/dev/null
+    fi
     compose up -d --build --quiet-pull --no-deps entry nginx 2>&1 | sed 's/^/  /' | tail -n 12
     if [ -n "$(cfg MT_CHANNELS_KEY '')" ]; then
-        [ -n "$(cfg MT_CHANNELS_RELAY_URL '')" ] || die "消息接入缺少 MT_CHANNELS_RELAY_URL"
         compose --profile messaging up -d --build --no-deps --wait --wait-timeout 120 channels
     fi
     local entry_after
