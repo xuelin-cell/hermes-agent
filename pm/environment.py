@@ -268,10 +268,16 @@ class PythonEnvironment:
 
         return venv_python(self.destination)
 
-    def _run(self, args: list[str], *, cwd: Path, timeout: int) -> subprocess.CompletedProcess:
+    def _run(self, args: list[str], *, cwd: Path, timeout: int,
+             from_lock: bool = False) -> subprocess.CompletedProcess:
         # Explicit index credentials survive, but cannot redirect the project,
         # interpreter or cache selected by the operation.
         env = _base_environment(self.env)
+        if from_lock:
+            from pm.index_config import without_index_identity
+
+            # A mirror would make uv declare a correct lockfile stale.
+            env = without_index_identity(env)
         env.update(UV_PYTHON=str(self.python), UV_PROJECT_ENVIRONMENT=str(self.destination),
                    UV_CACHE_DIR=str(self.cache), UV_PYTHON_DOWNLOADS="never")
         with tempfile.TemporaryDirectory(prefix="pm-uv-config-") as config:
@@ -332,7 +338,7 @@ class PythonEnvironment:
 
     def check_lock(self, source: Path) -> None:
         result = self._run(["lock", "--check", "--python", str(self.python)],
-                           cwd=source, timeout=1800)
+                           cwd=source, timeout=1800, from_lock=True)
         if result.returncode:
             raise classify_uv_failure("lock", result.returncode, result.stderr or result.stdout)
 
@@ -344,6 +350,8 @@ class PythonEnvironment:
 
         ``frozen=False`` is reserved for the caller-owned generated workspace,
         never the original project's lock. Seed/replay policy belongs to PM.
+        ``locked=True`` validates the lockfile against the registry it records,
+        so ambient index overrides are dropped for that run.
         """
         if not frozen:
             self.lock(source, timeout=timeout)
@@ -369,7 +377,7 @@ class PythonEnvironment:
             command += ["--extra", extra]
         for group in sorted(set(groups)):
             command += ["--group", group]
-        result = self._run(command, cwd=source, timeout=timeout)
+        result = self._run(command, cwd=source, timeout=timeout, from_lock=locked)
         if result.returncode:
             raise classify_uv_failure("sync", result.returncode, result.stderr or result.stdout)
 

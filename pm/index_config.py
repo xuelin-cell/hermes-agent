@@ -29,6 +29,22 @@ FORWARDED_UV_SETTINGS = frozenset({
 
 _UV_INDEX_KNOBS = ("UV_INDEX_URL", "UV_DEFAULT_INDEX", "UV_INDEX")
 
+# A lockfile records the registry each package came from, so a mirror is a
+# different resolution identity: uv calls a correct lock stale and `--locked` /
+# `lock --check` refuse it. Operations that validate or install a lock drop these
+# so the lockfile's registry decides. Transport knobs (TLS, timeout, keyring)
+# still apply — they change nothing about what resolves.
+LOCK_IDENTITY_SETTINGS = frozenset({
+    "UV_INDEX_URL", "UV_EXTRA_INDEX_URL", "UV_DEFAULT_INDEX", "UV_INDEX",
+    "UV_FIND_LINKS", "UV_NO_INDEX",
+})
+
+
+def without_index_identity(env: Mapping[str, str]) -> dict[str, str]:
+    """*env* minus the settings that would redefine a locked resolution."""
+    return {key: value for key, value in env.items() if key not in LOCK_IDENTITY_SETTINGS}
+
+
 # pip knob → uv knob, applied only when uv has no value of its own.
 _PIP_TO_UV = (
     ("PIP_EXTRA_INDEX_URL", "UV_EXTRA_INDEX_URL"),

@@ -52,6 +52,35 @@ def test_pip_conf_is_bridged_only_when_uv_has_no_index(clean_index_env, monkeypa
     assert "UV_INDEX_URL" not in env
 
 
+def test_mirrored_networks_can_still_validate_and_install_a_lock(clean_index_env, tmp_path, monkeypatch):
+    """uv compares a lockfile against the registry it records, so an ambient
+    mirror makes `--locked` and `lock --check` reject a correct lockfile. A
+    mirrored machine must still be able to install the app's own pinned graph."""
+    monkeypatch.setenv("UV_INDEX_URL", "https://mirror.example/simple")
+    monkeypatch.setenv("UV_HTTP_TIMEOUT", "300")
+    seen: list[tuple[list[str], dict]] = []
+
+    def record(command, **kwargs):
+        seen.append((command, kwargs["env"]))
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", record)
+    environment = PythonEnvironment(uv=tmp_path / "uv", python=tmp_path / "python",
+                                    destination=tmp_path / "venv", cache=tmp_path / "cache", env=None)
+
+    environment.check_lock(tmp_path)
+    environment.sync(tmp_path, locked=True)
+    environment.sync(tmp_path, frozen=True)
+
+    (check_command, check_env), (locked_command, locked_env), (_, frozen_env) = seen
+    assert check_command[1:3] == ["lock", "--check"] and "--locked" in locked_command
+    for env in (check_env, locked_env):
+        assert "UV_INDEX_URL" not in env
+        assert env["UV_HTTP_TIMEOUT"] == "300"
+    # Resolution a caller asks for explicitly keeps the mirror.
+    assert frozen_env["UV_INDEX_URL"] == "https://mirror.example/simple"
+
+
 def test_streamed_runs_do_not_request_uv_debug_output(tmp_path, monkeypatch):
     import io
     from pm import environment
