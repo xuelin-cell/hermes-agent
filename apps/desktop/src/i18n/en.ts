@@ -391,6 +391,8 @@ export const en: Translations = {
       tryIt: 'Try it like this',
       brand: 'UniWork',
       credentials: 'Enter connection details',
+      cloudCredentialsHint: 'Credentials are encrypted in your cloud instance. For mail, enable IMAP/SMTP and use an app authorization code, not your sign-in password.',
+      cloudOAuthHint: 'Use an iFinD public client that permits the callback URL below. Register this URL with the provider, then enter its Client ID.',
       credentialsHint:
         'Credentials are encrypted and stored locally. For mail, use an app authorization code rather than your sign-in password.',
       waiting: 'Finish authorization in your browser. This page will update automatically.',

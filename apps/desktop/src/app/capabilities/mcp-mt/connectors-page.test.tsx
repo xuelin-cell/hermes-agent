@@ -57,7 +57,7 @@ function renderPage(route = '/capabilities?tab=connectors', searchContainer?: HT
   )
 }
 
-it('云端四个连接器复用凭据表单，企业微信可手动填写而不进入桌面扫码流程', async () => {
+it('云端连接器复用凭据表单，iFinD 提交登记的客户端而不沿用桌面回调', async () => {
   document.documentElement.dataset.hermesBrowser = 'production'
   window.hermesDesktop.cloudConnectorIds = CLOUD_CONNECTOR_IDS
   const enabled = new Set<string>()
@@ -71,7 +71,11 @@ it('云端四个连接器复用凭据表单，企业微信可手动填写而不�
     { id: 'youdao_note', name: '有道云笔记', values: { apiKey: 'note-key' }, labels: ['API Key'] },
     { id: 'wps_mcp', name: 'WPS', values: { apiKey: 'apik:test' }, labels: ['API Key'] },
     { id: 'wecom_bot', name: '企业微信', values: { botId: 'bot', secret: 'secret' }, labels: ['Bot ID', 'Secret'] },
-    { id: 'ima', name: '腾讯 ima 知识库', values: { clientId: 'client', apiKey: 'ima-key' }, labels: ['Client ID', 'API Key'] }
+    { id: 'ima', name: '腾讯 ima 知识库', values: { clientId: 'client', apiKey: 'ima-key' }, labels: ['Client ID', 'API Key'] },
+    { id: 'qq_mail', name: 'QQ 邮箱', values: { email: 'alice@qq.com', authorizationCode: 'alicexxxxxxxxxxx' }, labels: ['邮箱地址', '授权码'] },
+    { id: 'netease_mail', name: '网易邮箱', values: { email: 'alice@163.com', authorizationCode: 'alicexxxxxxxxxxx' }, labels: ['邮箱地址', '授权码'] },
+    { id: 'aminer', name: 'AMiner学术', values: { apiKey: 'academic-key' }, labels: ['API Key'] },
+    { id: 'ifind_mcp', name: '同花顺 iFinD', values: { clientId: 'cloud-client' }, labels: ['Client ID'] }
   ]
   for (const item of examples) {
     fireEvent.click(screen.getByRole('button', { name: '查看' + item.name }))
@@ -80,8 +84,9 @@ it('云端四个连接器复用凭据表单，企业微信可手动填写而不�
     for (const [index, value] of Object.values(item.values).entries()) {
       fireEvent.change(within(dialog).getByLabelText(item.labels[index]), { target: { value } })
     }
+    if (item.id === 'ifind_mcp') expect(within(dialog).getByText(/__entry\/connectors\/ifind_mcp\/oauth\/callback/)).toBeTruthy()
     fireEvent.submit(within(dialog).getByRole('form'))
-    await waitFor(() => expect(localConnectors).toHaveBeenCalledWith({ operation: 'connect', profile: 'default', id: item.id, values: item.values }))
+    await waitFor(() => expect(localConnectors).toHaveBeenCalledWith({ operation: item.id === 'ifind_mcp' ? 'authorize' : 'connect', profile: 'default', id: item.id, values: item.values }))
     expect(localConnectors.mock.calls.some(([input]) => input.operation.startsWith('qr.'))).toBe(false)
     fireEvent.click(within(dialog).getByRole('button', { name: '关闭' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())

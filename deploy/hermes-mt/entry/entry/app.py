@@ -18,6 +18,7 @@ from .plan_routes import PlanRoutes
 from .welcome_routes import WelcomeRoutes
 from .skill_routes import SkillRoutes, MUTATIONS as SKILL_MUTATIONS
 from .crypto import CredentialCipher
+from .connector_oauth import ConnectorAccessLogger
 from .cube_api import Cube
 from .db import Database, DatabaseUnavailable
 from .docker_api import Docker
@@ -581,6 +582,7 @@ def build_app(settings: Settings = SETTINGS) -> web.Application:
     app.router.add_post(path("/__entry/plan/{operation}"), entry.plan_routes.handle)
     app.router.add_post(path("/__entry/mail"), entry.mail_routes.handle)
     app.router.add_post(path("/__entry/connectors"), entry.connector_routes.handle)
+    app.router.add_get(path("/__entry/connectors/{provider}/oauth/callback"), entry.connector_routes.oauth.callback)
     cloud_bindings = CloudBindingRoutes(entry)
     for method in ("PUT", "GET", "DELETE"):
         app.router.add_route(method,path("/api/channels/uniagentgate/cloud-binding/{user_id}"),cloud_bindings.handle)
@@ -623,6 +625,7 @@ def main() -> None:
         host="0.0.0.0",
         port=SETTINGS.listen_port,
         access_log_format='%a "%r" %s %b %Tfs',
+        access_log_class=ConnectorAccessLogger,
     )
 
 

@@ -96,7 +96,7 @@ export function ConnectorsPage({ searchContainer, ...props }: ConnectorsPageProp
   function connect(id: ConnectorId): void {
     setSelectedId(id)
 
-    if (CONNECTOR_SPECS[id].auth === 'oauth2') {
+    if (CONNECTOR_SPECS[id].auth === 'oauth2' && !(window.hermesDesktop.cloudConnectorIds && id === 'ifind_mcp')) {
       setDetailMode('overview')
       void connections.request('authorize', id)
     } else {
@@ -261,7 +261,7 @@ export function ConnectorsPage({ searchContainer, ...props }: ConnectorsPageProp
         onExample={text => void openExample(text)}
         onQr={connections.qr}
         onSubmit={async values => {
-          if (selected && (await connections.request('connect', selected.id, values))) {
+          if (selected && (await connections.request(CONNECTOR_SPECS[selected.id].auth === 'oauth2' ? 'authorize' : 'connect', selected.id, values))) {
             setDetailMode('overview')
           }
         }}

@@ -374,6 +374,8 @@ export const zh = defineLocale({
       tryIt: '试试这样用',
       brand: 'UniWork',
       credentials: '填写连接信息',
+      cloudCredentialsHint: '凭据加密保存在你的云端实例中。邮箱请使用开启 IMAP/SMTP 后生成的授权码，而非登录密码。',
+      cloudOAuthHint: '云端需要使用允许下方回调地址的 iFinD 公共客户端。请先向平台登记该地址，再填写对应的 Client ID。',
       credentialsHint: '凭据会在本机加密存储。邮箱请填写开启 IMAP/SMTP 后生成的授权码，而不是登录密码。',
       waiting: '请在浏览器完成授权，此页面会自动更新。',
       cancel: '取消',

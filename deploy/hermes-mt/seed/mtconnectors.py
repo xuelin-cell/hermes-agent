@@ -109,11 +109,11 @@ class Connectors:
             await self.close()
             raise
 
-    async def call(self, operation, values=None, *, id=None):
+    async def call(self, operation, values=None, *, id=None, **extra):
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=45)) as http:
             async with http.post(f'http://127.0.0.1:{self.port}/__manage',
                 headers={'Authorization': 'Bearer ' + self.values['admin']},
-                json={'operation': operation, 'id': id, 'values': values}) as response:
+                json={'operation': operation, 'id': id, 'values': values, **extra}) as response:
                 if response.status != 200:
                     raise RuntimeError('连接器操作失败，请核对凭据或查询状态；不要自动重放写操作。')
                 return await response.json()
@@ -170,9 +170,13 @@ class Connectors:
             raise ValueError('云端连接器只支持默认档案。')
         operation = data.get('operation')
         specs, id = self.specs, data.get('id')
-        if operation not in {'list', 'connect', 'enable', 'disable', 'disconnect', 'save'} or (operation != 'list' and id not in specs):
+        if operation not in {'list', 'connect', 'enable', 'disable', 'disconnect', 'save', 'authorize', 'oauth.complete'} or (operation != 'list' and id not in specs):
             raise ValueError('该连接器或授权方式尚未在云端开放。')
         values = data.get('values')
+        if operation == 'connect' and specs[id]['auth'] == 'oauth2':
+            raise ValueError('该连接器需要 OAuth 授权。')
+        if operation in {'authorize', 'oauth.complete'} and specs[id]['auth'] != 'oauth2':
+            raise ValueError('该连接器使用表单凭据。')
         if operation == 'connect' and (not isinstance(values, dict) or set(values) != set(specs[id]['fields'])
                 or any(not isinstance(value, str) or not value.strip() or len(value) > 16384 for value in values.values())):
             raise ValueError('请完整填写连接器凭据。')
@@ -185,7 +189,13 @@ class Connectors:
                 if operation != 'list' and existing and (not isinstance(existing, dict) or existing.get('cloud_connector') != id):
                     raise ValueError('MCP name already exists: connector_' + id)
                 await self.start()
-                if operation == 'connect':
+                authorization = {}
+                if operation in {'authorize', 'oauth.complete'}:
+                    authorization = await self.call(operation, values, id=id, origin=data.get('origin'), parameters=data.get('parameters'))
+                    if operation == 'oauth.complete':
+                        self.update(id, True)
+                        authorization = {}
+                elif operation == 'connect':
                     await self.call('connect', values, id=id)
                     self.update(id, True)
                 elif operation in {'enable', 'disable'}:
@@ -203,7 +213,7 @@ class Connectors:
                     saved = self.saved(row['id']) or {}
                     enabled = isinstance(saved, dict) and saved.get('cloud_connector') == row['id'] and saved.get('enabled') is True
                     rows.append({**row, 'enabled': enabled, 'connected': row['configured'] and enabled})
-                return {'connectors': rows}
+                return {'connectors': rows, **authorization}
             finally:
                 self.managing = False
 

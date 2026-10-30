@@ -10,7 +10,14 @@ import youdao from '../catalog/apps/youdao_note.json'
 import wps from '../catalog/apps/wps_mcp.json'
 import wecom from '../catalog/apps/wecom_bot.json'
 import ima from '../catalog/apps/ima.json'
+import qqMail from '../catalog/apps/qq_mail.json'
+import neteaseMail from '../catalog/apps/netease_mail.json'
+import aminer from '../catalog/apps/aminer.json'
+import qcc from '../catalog/apps/qcc_mcp.json'
+import eastmoney from '../catalog/apps/eastmoney_mcp.json'
+import ifind from '../catalog/apps/ifind_mcp.json'
 import { CLOUD_CONNECTOR_IDS, CLOUD_CONNECTOR_SPECS } from './contract.ts'
+import { connectorOAuth } from './oauth.ts'
 import { ConnectorFiles } from './files.ts'
 import { createCatalogStore } from '../src/catalog-store.ts'
 import { ProviderLoader } from '../src/providers/provider-loader.ts'
@@ -35,22 +42,29 @@ export async function startConnectors(options: HostOptions) {
   const secretCodec = new AesGcmSecretCodec(options.encryption)
   const database = new SqliteRuntimeDatabase(path.join(directory, 'connect.sqlite'), { secretCodec })
   await chmod(path.join(directory, 'connect.sqlite'), 0o600)
-  const providers = [amap, youdao, wps, wecom, ima] as ProviderDefinition[]
+  const providers = [amap, youdao, wps, wecom, ima, qqMail, neteaseMail, aminer, qcc, eastmoney, ifind] as ProviderDefinition[]
   const catalog = createCatalogStore(providers, { executableActionIds: providers.flatMap(provider => provider.actions.map(action => action.id)) })
   const files = new ConnectorFiles(path.join(directory, 'files'), options.runtime)
-  const { app } = await createConnectApp({
+  const appOptions = {
     catalog, secretCodec, runtimeDatabase: database,
     providerLoader: options.providerLoader ?? new ProviderLoader({
       amap: () => import('../src/providers/amap/executors.ts'),
       youdao_note: () => import('../src/providers/youdao_note/executors.ts'),
       wps_mcp: () => import('../src/providers/wps_mcp/executors.ts'),
       wecom_bot: () => import('../src/providers/wecom_bot/executors.ts'),
-      ima: () => import('../src/providers/ima/executors.ts')
+      ima: () => import('../src/providers/ima/executors.ts'),
+      qq_mail: () => import('../src/providers/qq_mail/executors.ts'),
+      netease_mail: () => import('../src/providers/netease_mail/executors.ts'),
+      aminer: () => import('../src/providers/aminer/executors.ts'),
+      qcc_mcp: () => import('../src/providers/qcc_mcp/executors.ts'),
+      eastmoney_mcp: () => import('../src/providers/eastmoney_mcp/executors.ts'),
+      ifind_mcp: () => import('../src/providers/ifind_mcp/executors.ts')
     }),
     transitFiles: files,
     publicOrigin: 'http://127.0.0.1', adminToken: options.admin, runtimeToken: options.runtime,
     mcpAllowedServices: new Set(CLOUD_CONNECTOR_IDS)
-  })
+  }
+  const { app } = await createConnectApp(appOptions)
   let active = 0
   const activityFile = path.join(options.home, '.mt', 'connectors-active.json')
   await mkdir(path.dirname(activityFile), { recursive: true, mode: 0o700 })
@@ -69,11 +83,17 @@ export async function startConnectors(options: HostOptions) {
     if (route === '/health' && authorized(request, options.admin)) return response({ ok: true })
     if (route.startsWith('/api/files/') && request.method === 'GET') return files.download(request)
     if (route === '/__manage' && request.method === 'POST' && authorized(request, options.admin)) {
+      active++
+      activity()
       try {
-        const input = await request.json() as { operation: string; id?: string; values?: Record<string, string> }
+        if (existsSync(path.join(options.home, '.mt', 'connectors-draining'))) return response({ error: 'Instance draining' }, 503)
+        const input = await request.json() as { operation: string; id?: string; values?: Record<string, string>; origin?: string; parameters?: Record<string, string> }
         const spec = input.id && Object.hasOwn(CLOUD_CONNECTOR_SPECS, input.id) ? CLOUD_CONNECTOR_SPECS[input.id] : null
         if (input.operation !== 'list' && !spec) return response({ error: 'Unsupported connector' }, 400)
-        if (input.operation === 'connect' && (!input.values || Object.keys(input.values).length !== spec!.fields.length ||
+        if (['authorize', 'oauth.complete'].includes(input.operation)) {
+          return response(await connectorOAuth(appOptions, input, request.signal))
+        }
+        if (input.operation === 'connect' && (spec!.auth === 'oauth2' || !input.values || Object.keys(input.values).length !== spec!.fields.length ||
           spec!.fields.some(field => typeof input.values?.[field] !== 'string' || !input.values[field].trim() || input.values[field].length > 16384))) {
           return response({ error: 'Invalid connector credentials' }, 400)
         }
@@ -94,6 +114,9 @@ export async function startConnectors(options: HostOptions) {
           configured: rows.some(row => row.service === id && row.connectionName === 'default' && row.configured) })) })
       } catch {
         return response({ error: '连接器请求失败，请核对凭据或稍后查询状态。' }, 409)
+      } finally {
+        active--
+        activity()
       }
     }
     const id = route.startsWith('/mcp/') ? route.slice('/mcp/'.length) : ''

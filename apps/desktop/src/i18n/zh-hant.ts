@@ -22,6 +22,8 @@ export const zhHant = defineLocale({
       tryIt: '試試這樣用',
       brand: '元景數字員工',
       credentials: '填寫連接資訊',
+      cloudCredentialsHint: '憑證加密儲存在你的雲端實例中。郵箱請使用開啟 IMAP/SMTP 後產生的授權碼，而非登入密碼。',
+      cloudOAuthHint: '雲端需使用允許下方回呼網址的 iFinD 公開用戶端。請先向平台登記該網址，再填寫對應的 Client ID。',
       credentialsHint: '憑證在本機加密儲存。郵箱請填寫開啟 IMAP/SMTP 後產生的授權碼，而不是登入密碼。',
       waiting: '請在瀏覽器完成授權，此頁面會自動更新。',
       cancel: '取消',

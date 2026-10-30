@@ -37,7 +37,7 @@ def port():
         return listener.getsockname()[1]
 
 
-async def worker(tmp_path, origin, *, actual_providers=False):
+async def worker(tmp_path, origin, *, actual_providers=False, mail_ports=None):
     node = shutil.which('node')
     assert node, 'Node is required for connector integration tests'
     source = tmp_path / 'fixture.ts'
@@ -70,7 +70,7 @@ import dns from 'node:dns/promises';
 import {syncBuiltinESMExports} from 'node:module';
 dns.lookup=async()=>[{address:'1.1.1.1',family:4}]; syncBuiltinESMExports();
 const native=globalThis.fetch;
-const allowed=new Set(['restapi.amap.com','open.mail.163.com','account.wps.cn','openapi.wps.cn','qyapi.weixin.qq.com','ima.qq.com']);
+const allowed=new Set(['agent.qcc.com','mkcs.dfcfs.com','upass.10jqka.com.cn','api-mcp.51ifind.com','mxapi-stg.eastmoney.com','mcp.aminer.cn','restapi.amap.com','open.mail.163.com','account.wps.cn','openapi.wps.cn','qyapi.weixin.qq.com','ima.qq.com']);
 globalThis.fetch=(input,options)=>{const request=input instanceof Request?input:null;const url=new URL(request?.url??String(input));
  if(!allowed.has(url.hostname))throw Error('Unexpected external destination: '+url.hostname);
  const headers=new Headers(options?.headers??request?.headers);headers.set('X-Fixture-Host',url.hostname);
@@ -80,6 +80,14 @@ const host=await startConnectors({home:process.env.HERMES_HOME,port:Number(proce
 admin:process.env.OOMOL_CONNECT_ADMIN_TOKEN,runtime:process.env.OOMOL_CONNECT_RUNTIME_TOKEN});
 process.once('SIGTERM',()=>void host.close().then(()=>process.exit(0)));
 '''.replace('HOST', json.dumps(str(REPO / 'apps/desktop/services/open-connector/cloud/connectors.ts'))).replace('ORIGIN', json.dumps(origin)))
+    if mail_ports:
+        text = source.read_text()
+        text = text.replace("const native=globalThis.fetch;", """import tls from 'node:tls';
+const originalConnect=tls.connect;
+tls.connect=(options,...args)=>originalConnect({...options,host:'127.0.0.1',port:options.port===993?IMAP_PORT:SMTP_PORT,rejectUnauthorized:false},...args);
+syncBuiltinESMExports();
+const native=globalThis.fetch;""".replace('IMAP_PORT', str(mail_ports[0])).replace('SMTP_PORT', str(mail_ports[1])))
+        source.write_text(text)
     build = "import {build} from 'esbuild';await build({entryPoints:[process.argv[1]],outfile:process.argv[2],bundle:true,platform:'node',format:'esm',target:'node22',logLevel:'silent',banner:{js:\"import {createRequire} from 'node:module';const require=createRequire(import.meta.url);\"}})"
     process = await asyncio.create_subprocess_exec(node, '--input-type=module', '-e', build, str(source), str(output), cwd=REPO)
     assert await process.wait() == 0
@@ -357,7 +365,7 @@ async def test_entry_connector_mcp_scopes_and_archive_restore(tmp_path, postgres
                     await call('alice', 'connect', expected=409, id=id, values=invalid)
                     await call('alice', 'disable', id=id)
                     status = await call('alice', 'list')
-                    assert all(row['connected'] for row in status['connectors'] if row['id'] != id)
+                    assert all(row['connected'] for row in status['connectors'] if row['id'] in {'amap', *provider_values('alice')} - {id})
                     config = managers['alice'].saved(id)
                     response = await http.post(config['url'], headers=config['headers'], json={})
                     assert response.status == 403

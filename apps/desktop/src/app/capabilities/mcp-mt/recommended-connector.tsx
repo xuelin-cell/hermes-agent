@@ -12,6 +12,8 @@ import {
   type LocalConnectorResult
 } from '../../../../electron/open-connector/contract'
 
+import { CLOUD_CONNECTOR_SPECS } from '../../../../services/open-connector/cloud/contract'
+
 import examples from './connector-examples.json'
 import type { RECOMMENDED_CONNECTORS } from './recommended-catalog'
 import { WecomQrForm } from './wecom-qr-form'
@@ -188,7 +190,7 @@ export function RecommendedConnectorDetail(props: RecommendedConnectorDetailProp
               waiting={props.waiting}
             />
           )}
-          {props.onRetrySave && props.error && (
+          {props.onRetrySave && (props.error || (props.configured && props.mode === 'overview')) && (
             <Button disabled={props.busy} onClick={props.onRetrySave} size="lg" variant="outline">{t.common.save}</Button>
           )}
         </DialogContent>
@@ -321,7 +323,8 @@ function CredentialView({ available, busy, entry, error, item, onConnected, onQr
   const guideId = useId()
   const [guideOpen, setGuideOpen] = useState(false)
   const [values, setValues] = useState<Record<string, string>>({})
-  const fields = useMemo(() => [...CONNECTOR_SPECS[entry.id].fields], [entry.id])
+  const cloudIfind = !!window.hermesDesktop.cloudConnectorIds && entry.id === 'ifind_mcp'
+  const fields = useMemo(() => cloudIfind ? [...CLOUD_CONNECTOR_SPECS.ifind_mcp.fields] : [...CONNECTOR_SPECS[entry.id].fields], [entry.id, cloudIfind])
   const guide = copy.guides[entry.id]
   const guideUrl = GUIDE_URLS[entry.id]
   const canSubmit = available && !busy && fields.every(field => values[field]?.trim())
@@ -398,7 +401,8 @@ function CredentialView({ available, busy, entry, error, item, onConnected, onQr
                 />
               </label>
             ))}
-            <p className="mt-connector-form-hint">{entry.id === 'wecom_bot' && window.hermesDesktop.cloudConnectorIds ? copy.credentialsHint : copy.hints[entry.id] ?? copy.credentialsHint}</p>
+            {cloudIfind && <p className="mt-connector-form-hint">{copy.cloudOAuthHint}<br /><code>{new URL(`${import.meta.env.BASE_URL}__entry/connectors/ifind_mcp/oauth/callback`, window.location.origin).href}</code></p>}
+            <p className="mt-connector-form-hint">{window.hermesDesktop.cloudConnectorIds ? copy.cloudCredentialsHint : copy.hints[entry.id] ?? copy.credentialsHint}</p>
             {!available && <p className="mt-connector-inline-notice">{copy.localOnly}</p>}
             {error && (
               <p className="mt-connector-error" role="alert">
