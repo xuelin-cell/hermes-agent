@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { expect, it } from 'vitest'
-import { createServer } from 'node:net'
+import { connect, createServer } from 'node:net'
 
 it('reuses Wo Mail input validation and persistent, account-scoped sending quota', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'cloud-mail-'))
@@ -69,6 +69,7 @@ it('sends through the shared mail protocol over a real SMTP socket', async () =>
       banner: { js: "import {createRequire} from 'node:module'; const require=createRequire(import.meta.url);" } })
     const { createMailProtocol, executeMailAction, woMailRuntimeConfig, nodemailer } = await import(pathToFileURL(file).href)
     const protocol = createMailProtocol({ displayName: 'Test Mail', attachmentFallbackPrefix: 'mail', saveSentCopy: false }, {
+      connectSocket: options => connect({ ...options, host: '127.0.0.1', port: server.address().port }),
       createSmtpTransport: config => nodemailer.createTransport({ ...config, host: '127.0.0.1', port: server.address().port,
         secure: false, requireTLS: false, ignoreTLS: true })
     })

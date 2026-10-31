@@ -158,6 +158,14 @@ async def test_mail_binds_phone_and_credentials_to_tenant_and_restores_state(tmp
                 await call('alice','action',400,action='send_email',input={})
                 assert (await client.post('/hermes/__hermes_backend/api/plugins/cloud-mail/internal/request',json={},**auth['alice'])).status == 404
                 assert (await client.post('/hermes/__hermes_backend/api/plugins/cloud-mail/mcp',json={},**auth['alice'])).status == 404
+                # Stage uses the same authenticated provider download, but returns an instance path.
+                for owner in ('alice', 'bob', 'alice'):
+                    staged = await call(owner, 'action', action='stage_attachment', input={'folder':'INBOX','uid':1,'attachmentId':'2'})
+                    staged_file = staged['data']['file']
+                    target = Path(staged_file['path'])
+                    assert target.is_relative_to(homes[owner] / 'workspace/uploads/mail-attachments')
+                    assert target.read_bytes() == b'attachment' and staged_file['name'] == 'report.txt'
+                    assert 'provider-code' not in json.dumps(staged)
                 downloaded = await call('alice','action',action='download_attachment',input={'folder':'INBOX','uid':1,'attachmentId':'2'})
                 url = downloaded['data']['file']['downloadUrl']
                 assert url.startswith('/hermes/__hermes_backend/api/plugins/cloud-mail/attachments/')

@@ -72644,6 +72644,7 @@ __export(protocol_exports, {
 });
 import { Buffer as Buffer2 } from "node:buffer";
 import { randomUUID } from "node:crypto";
+import { lookup as systemLookup } from "node:dns";
 import { createWriteStream } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { connect as connectSocket } from "node:net";
@@ -72734,18 +72735,8 @@ function createMailProtocol(config, deps = {}) {
           throw new MailProtocolError("uid_not_found", "Mail message UID does not exist in the selected folder.");
         }
         const message = metadata;
-        const selectedParts = selectBodyParts(message.bodyStructure, options.maxBytes);
-        const bodyFetch = selectedParts.length === 0 ? false : await client.fetchOne(
-          uid,
-          {
-            bodyParts: selectedParts.map(({ part, maxLength }) => ({
-              key: part.part,
-              maxLength
-            }))
-          },
-          { uid: true }
-        );
-        const parsedBody = await parseSelectedBodyParts(selectedParts, bodyFetch);
+        const source = toRecord(await client.fetchOne(uid, { source: { maxLength: options.maxBytes + 1 } }, { uid: true }))?.source;
+        const parsedBody = Buffer2.isBuffer(source) && source.length <= options.maxBytes ? await parseRawMessage(source) : await fetchSelectedBodyParts(client, uid, message.bodyStructure, options.maxBytes);
         return {
           summary: normalizeSummary(message),
           references: readReferences(toRecord(message)?.headers),
@@ -72832,6 +72823,20 @@ function createMailProtocol(config, deps = {}) {
       });
     }
   };
+}
+async function fetchSelectedBodyParts(client, uid, bodyStructure, maxBytes) {
+  const selectedParts = selectBodyParts(bodyStructure, maxBytes);
+  const bodyFetch = selectedParts.length === 0 ? false : await client.fetchOne(
+    uid,
+    {
+      bodyParts: selectedParts.map(({ part, maxLength }) => ({
+        key: part.part,
+        maxLength
+      }))
+    },
+    { uid: true }
+  );
+  return await parseSelectedBodyParts(selectedParts, bodyFetch);
 }
 function buildOutgoingMessage(credential, input) {
   return {
@@ -72976,7 +72981,12 @@ async function createSmtpTransport(config, deps, credential) {
     name: "Uniwork",
     ...target.servername ? { servername: target.servername } : {},
     port,
-    ...target.lookup ? { getSocket: createSmtpSocketFactory(target.host, port, target.lookup, deps) } : {},
+    // desktop-mt: always hand nodemailer a pre-opened socket. Left to itself it
+    // resolves the host with c-ares (dns.resolve4/6) before falling back to the
+    // OS resolver; under Electron on Windows c-ares can be stuck on 127.0.0.1 and
+    // hang for tens of seconds, past the 15s credential validation cap. The OS
+    // resolver is what IMAP already uses, and TLS still verifies the hostname.
+    getSocket: createSmtpSocketFactory(target.host, port, target.lookup ?? systemLookup, deps),
     // Implicit TLS is the wire convention on 465 only. Every other submission
     // port starts in cleartext and upgrades, so STARTTLS is demanded rather than
     // taken opportunistically: nodemailer then aborts instead of sending the
@@ -73222,8 +73232,8 @@ function collectBodyParts(bodyStructure) {
   const childNodes = record.childNodes;
   const childParts = Array.isArray(childNodes) ? childNodes.flatMap(collectBodyParts) : [];
   const type = readString(record.type)?.toLowerCase();
-  const part = readString(record.part);
-  if (!type || !part || !type.startsWith("text/") || isAttachment(record)) {
+  const part = readString(record.part) ?? "TEXT";
+  if (!type || !type.startsWith("text/") || isAttachment(record)) {
     return childParts;
   }
   return [
@@ -73339,6 +73349,19 @@ async function parseSelectedBodyParts(selectedParts, bodyFetch) {
     }
   }
   return { text, html, truncated };
+}
+async function parseRawMessage(source) {
+  const parsed = await (0, import_mailparser.simpleParser)(source, {
+    skipHtmlToText: true,
+    skipTextToHtml: true,
+    skipTextLinks: true,
+    skipImageLinks: true
+  });
+  return {
+    text: parsed.text || null,
+    html: typeof parsed.html === "string" ? parsed.html : null,
+    truncated: false
+  };
 }
 function createBodyPartSource(part, content) {
   const headers = [

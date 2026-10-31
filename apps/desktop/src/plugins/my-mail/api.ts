@@ -36,6 +36,8 @@ export const getMessage = (profile: string, folder: string, uid: number) =>
   action<MailDetail>(profile, 'get_email', { folder, uid })
 export const downloadAttachment = (profile: string, folder: string, uid: number, attachmentId: string) =>
   action<{ file: { downloadUrl: string } }>(profile, 'download_attachment', { attachmentId, folder, uid })
+export const stageAttachment = (profile: string, folder: string, uid: number, attachmentId: string) =>
+  action<{ file: { name: string; path: string } }>(profile, 'stage_attachment', { attachmentId, folder, uid })
 export const markRead = (profile: string, folder: string, uid: number) =>
   action(profile, 'mark_email_read', { folder, uid })
 export const deleteMessage = (profile: string, folder: string, uid: number) =>

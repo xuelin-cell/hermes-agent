@@ -7,7 +7,7 @@ import {
   requestComposerSetDraft,
   requestComposerSubmit
 } from '@/app/chat/composer/focus'
-import { NEW_SESSION_DRAFT_KEY, takeSessionDraft } from '@/store/composer'
+import { NEW_SESSION_DRAFT_KEY, takeSessionDraft, type ComposerAttachment } from '@/store/composer'
 import { $activeSessionId, $selectedStoredSessionId } from '@/store/session'
 import { $sessionStates } from '@/store/session-states'
 
@@ -90,14 +90,21 @@ export const composerHost = {
    *  hydrate into chips exactly like an official paste (the app owns the
    *  markup). Returns false when no mounted surface answers for the
    *  address — the draft of an unmounted session is never half-written. */
-  setDraft: async (sessionId: null | string, text: string): Promise<boolean> => {
+  setDraft: async (
+    sessionId: null | string,
+    text: string,
+    opts?: { attachments?: ComposerAttachment[] }
+  ): Promise<boolean> => {
     if (typeof text !== 'string') {
       return false
     }
 
     const { ids } = resolveComposerAddress(sessionId)
 
-    return requestComposerSetDraft(ids, text, ids.length ? undefined : { active: true })
+    return requestComposerSetDraft(ids, text, {
+      ...(ids.length ? {} : { active: true }),
+      ...(opts?.attachments ? { attachments: opts.attachments } : {})
+    })
   },
 
   /** Append text to a composer's draft through the app's own insert modes

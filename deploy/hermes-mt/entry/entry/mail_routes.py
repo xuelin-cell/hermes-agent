@@ -8,7 +8,7 @@ from aiohttp import web
 
 from .state_checkpoint import checkpoint
 
-PAGE_ACTIONS = {'delete_email', 'download_attachment', 'get_email', 'get_folder_status', 'list_folders', 'mark_email_read', 'search_emails'}
+PAGE_ACTIONS = {'delete_email', 'download_attachment', 'get_email', 'get_folder_status', 'list_folders', 'mark_email_read', 'search_emails', 'stage_attachment'}
 INSTANCE = '/api/plugins/cloud-mail/internal/request'
 
 

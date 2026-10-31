@@ -4,6 +4,7 @@ import { isBrowserShell } from '@/lib/browser-shell'
 import { getRuntimeI18nLocale } from '@/i18n/runtime'
 
 const en = {
+  addToConversation: 'Add email to conversation', sender: 'From', recipient: 'To', sentAt: 'Time',
   nav: 'My Mail',
   title: 'My Mail',
   subtitle: 'Send and receive mail safely and efficiently with Yuanjing Digital Employee · powered by Agent Mail',
@@ -38,6 +39,7 @@ const en = {
 }
 
 const zh = {
+  addToConversation: '添加邮件到对话', sender: '发件人', recipient: '收件人', sentAt: '时间',
   nav: '我的邮箱',
   title: '我的邮箱',
   subtitle: '安全高效地使用 元景数字员工 收发邮件 · 由 Agent Mail 提供服务',

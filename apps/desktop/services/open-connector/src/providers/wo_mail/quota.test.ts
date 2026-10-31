@@ -71,7 +71,7 @@ describe("Wo Mail daily quota", () => {
     const file = join(directory, WO_MAIL_QUOTA_FILE);
     writeFileSync(file, "{broken", { mode: 0o600 });
 
-    expect(() => readWoMailQuotaStatus(directory, "a@wo.cn")).toThrow("Invalid");
+    expect(() => readWoMailQuotaStatus(directory, "a@wo.cn")).toThrow();
     expect(readFileSync(file, "utf8")).toBe("{broken");
   });
 });

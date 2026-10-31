@@ -11,7 +11,7 @@ from plugins.cloud_mail.runtime import MailRuntime
 
 router = APIRouter()
 TOOLS = json.loads((Path(__file__).parents[1] / 'tools.json').read_text())
-PAGE_ACTIONS = {'delete_email', 'download_attachment', 'get_email', 'get_folder_status', 'list_folders', 'mark_email_read', 'search_emails'}
+PAGE_ACTIONS = {'delete_email', 'download_attachment', 'get_email', 'get_folder_status', 'list_folders', 'mark_email_read', 'search_emails', 'stage_attachment'}
 _runtimes = {}
 
 
@@ -87,7 +87,17 @@ async def page(request: Request):
         elif operation == 'action':
             if not mail_enabled(state) or data.get('action') not in PAGE_ACTIONS:
                 raise HTTPException(403, '请先开通邮箱或检查操作。')
-            result = await service.call('action', state, name=data['action'], args=data.get('input', {}))
+            stage = data['action'] == 'stage_attachment'
+            result = await service.call('action', state, name='download_attachment' if stage else data['action'], args=data.get('input', {}))
+            if stage:
+                file = result.get('file') if isinstance(result, dict) else None
+                file_id = file.get('fileId') if isinstance(file, dict) else None
+                if not isinstance(file_id, str) or not re.fullmatch(r'[a-f0-9]{32}-[^/\\\x00-\x1f]{1,100}', file_id):
+                    raise HTTPException(502, '附件响应无效。')
+                target = service.workspace / 'uploads/mail-attachments' / file_id
+                if target.is_symlink() or not target.resolve().is_relative_to(service.workspace) or not target.is_file():
+                    raise HTTPException(502, '附件暂存失败。')
+                result = {'file': {'name': file.get('name') or file_id[33:], 'path': str(target)}}
             return {'status': await status(service, state), 'data': result}
         elif operation != 'status':
             raise HTTPException(400, 'Unknown mailbox operation')
