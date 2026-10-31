@@ -935,6 +935,7 @@ def apply_platform_block(cfg, spec: dict) -> bool:
             entry["api"] = base_url
         if key_env:
             entry["key_env"] = key_env
+        entry["managed_by"] = "hermes-cloud-plan"
         entry.setdefault("transport", "chat_completions")
         if plan_model:
             entry["default_model"] = plan_model

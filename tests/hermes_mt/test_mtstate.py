@@ -410,6 +410,7 @@ def test_patch_config_repairs_the_production_broken_file(tmp_path: Path) -> None
     assert doc["model"]["base_url"] == _URL and doc["model"]["provider"] == "yuanjing"
     assert doc["model"]["key_env"] == "HERMES_CUSTOM_YUANJING_API_KEY"
     assert doc["timezone"] == "Asia/Tokyo" and doc["terminal"]["cwd"] == "/opt/data/workspace"
+    assert doc["providers"]["yuanjing"]["managed_by"] == "hermes-cloud-plan"
     assert list(doc["providers"]["yuanjing"]["models"]) == _SPEC["models"]
     assert mtstate.patch_config_file(cfg, _SPEC) == []
 

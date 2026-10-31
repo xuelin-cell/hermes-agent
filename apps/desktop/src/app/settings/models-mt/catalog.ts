@@ -5,6 +5,8 @@ import type {
   CustomEndpointUpdate
 } from '@/types/hermes'
 
+import { isBrowserShell } from '@/lib/browser-shell'
+
 import { prettifyModelId } from './model-name'
 
 /** 套餐模型 Key 所在的环境变量，登录时由主进程按套餐重写。 */
@@ -76,15 +78,26 @@ export interface ModelRow {
   draft: ModelDraft
 }
 
-export function isPlanEndpoint(endpoint: Pick<CustomEndpoint, 'id'>): boolean {
-  return endpoint.id.startsWith(PLAN_PROVIDER_PREFIX)
+export function isPlanEndpoint(
+  endpoint: Pick<CustomEndpoint, 'id'> & Partial<Pick<CustomEndpoint, 'api_key_preview'>>,
+  providers?: unknown
+): boolean {
+  if (endpoint.id.startsWith(PLAN_PROVIDER_PREFIX)) return true
+  if (!isBrowserShell()) return false
+  const entry = providers && typeof providers === 'object'
+    ? (providers as Record<string, unknown>)[endpoint.id] : undefined
+  const managed = entry && typeof entry === 'object' &&
+    (entry as Record<string, unknown>).managed_by === 'hermes-cloud-plan'
+  // Older cloud templates have no marker but use this dedicated platform credential reference.
+  return Boolean(managed) || endpoint.api_key_preview === '${HERMES_CUSTOM_YUANJING_API_KEY}'
 }
 
 /** 按接口类型、地址和密钥引用认出服务商；认不出的归入 OpenAI-Compatible。 */
 export function endpointKind(
-  endpoint: Pick<CustomEndpoint, 'api_key_preview' | 'api_mode' | 'base_url' | 'id'>
+  endpoint: Pick<CustomEndpoint, 'api_key_preview' | 'api_mode' | 'base_url' | 'id'>,
+  providers?: unknown
 ): ProviderKind {
-  if (isPlanEndpoint(endpoint) || endpoint.api_key_preview === PLAN_KEY_REF) {
+  if (isPlanEndpoint(endpoint, providers) || endpoint.api_key_preview === PLAN_KEY_REF) {
     return 'yuanjing'
   }
 
@@ -121,17 +134,17 @@ export function rowsFromEndpoints(endpoints: readonly CustomEndpoint[], provider
   const rows: ModelRow[] = []
 
   for (const endpoint of endpoints) {
-    const kind = endpointKind(endpoint)
+    const kind = endpointKind(endpoint, providers)
 
     const base: Omit<ModelDraft, 'displayName' | 'model' | 'vision'> = {
       apiKey: '',
       baseUrl: endpoint.base_url,
       contextWindow: endpoint.context_length ? String(endpoint.context_length) : '',
-      hasOwnKey: endpoint.has_api_key && endpoint.api_key_preview !== PLAN_KEY_REF,
+      hasOwnKey: endpoint.has_api_key && !isPlanEndpoint(endpoint, providers) && endpoint.api_key_preview !== PLAN_KEY_REF,
       kind
     }
 
-    if (isPlanEndpoint(endpoint)) {
+    if (isPlanEndpoint(endpoint, providers)) {
       const models = endpoint.models.length ? endpoint.models : [endpoint.model]
 
       for (const model of models.filter(Boolean)) {

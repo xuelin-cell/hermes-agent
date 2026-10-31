@@ -115,7 +115,7 @@ export function ModelsSettings({ onConfigSaved, onMainModelChanged }: ModelsSett
       setLoaded({
         defaultKey,
         order: ordered.map(row => row.key),
-        planUrl: response.endpoints.find(isPlanEndpoint)?.base_url
+        planUrl: response.endpoints.find(endpoint => isPlanEndpoint(endpoint, (config as Record<string, unknown>).providers))?.base_url
       })
       setPlanKey({ preview: keyInfo?.redacted_value ?? '', set: Boolean(keyInfo?.is_set) })
       setRevealedKey(null)
