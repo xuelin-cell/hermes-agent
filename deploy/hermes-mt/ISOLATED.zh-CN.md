@@ -38,6 +38,20 @@ bash deploy-isolated.sh log
 基础镜像仍沿用原脚本的源码内容指纹，可复用相同内容的基础镜像。
 同机两套环境仍共享 CPU、内存和磁盘容量，构建建议错峰。
 
+宿主机的资源预置脚本兼容 Python 3.6，不需要替换系统 Python；新版 Python 由应用镜像提供。
+套件默认从配置仓库拉取。若后台部署无法交互认证，先在终端准备本地配置仓库：
+
+```bash
+git clone --depth 1 https://gitcode.com/uni-ai/uniclawwork-local-config.git /mnt/hermes-cloud-adaptation-config
+export UNIWORK_BUNDLED_PLUGINS=/mnt/hermes-cloud-adaptation-config
+bash deploy-isolated.sh all --no-pull
+```
+
+配置仓库需要对应读取权限，HTTPS 认证使用 Token。已有本地配置仓库可直接设置其路径。
+这个变量需在每次部署的终端中设置；它不会从 entry.env 自动导出。
+主代码仓库同样先在终端完成 `git pull --ff-only origin cloud-adaptation`，
+然后使用 `all --no-pull`，避免后台拉取时无法输入凭据。
+
 ## 从 .116 保留数据迁移
 
 不要使用 `init` 生成的新数据库或新密钥替代旧数据。先备份，再安全复制原 entry.env，

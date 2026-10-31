@@ -1,5 +1,4 @@
-"""Stage the same config-repository packages as the desktop, outside the Git worktree inputs."""
-from __future__ import annotations
+"""Stage desktop resources using the deployment host's Python 3.6 standard library."""
 
 import hashlib
 import os
