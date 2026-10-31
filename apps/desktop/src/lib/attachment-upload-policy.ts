@@ -33,6 +33,9 @@ export function attachmentPathNeedsUpload(
   backendCwd?: null | string,
   terminalBackend?: null | string
 ): boolean {
+  // Browser files exist only in the renderer's Blob registry, even when its owner is labelled local.
+  if (path.startsWith('/__browser__/')) return true
+
   if (CONTAINER_TERMINAL_BACKENDS.has((terminalBackend || '').trim().toLowerCase())) {
     return true
   }
