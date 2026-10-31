@@ -27,6 +27,7 @@ import stat
 import struct
 import tempfile
 import time
+import zipfile
 from html import unescape as html_unescape
 from pathlib import Path
 
@@ -802,6 +803,35 @@ def split_sheets(document: str, max_rows: int = SHEET_MAX_ROWS) -> tuple[list[di
     return sheets, images
 
 
+def _trim_office_zip_padding(source: Path) -> None:
+    """LibreOffice rejects zero padding after an OOXML ZIP; trim only the preview copy."""
+    if source.suffix.lower() not in {".xlsx", ".docx", ".pptx"}:
+        return
+    with source.open("r+b") as file:
+        file.seek(0, os.SEEK_END)
+        size = file.tell()
+        start = max(0, size - 65557)
+        file.seek(start)
+        tail = file.read()
+        offset = tail.rfind(b"PK\x05\x06")
+        if offset < 0 or offset + 22 > len(tail):
+            return
+        _, disk, directory_disk, disk_count, count, directory_size, directory_offset, comment_size = struct.unpack_from("<4s4H2IH", tail, offset)
+        end = start + offset + 22 + comment_size
+        if (disk or directory_disk or not count or count == 65535 or disk_count != count
+                or directory_offset + directory_size != start + offset
+                or end >= size or any(tail[offset + 22 + comment_size:])):
+            return
+        # Validate the central directory before touching even this disposable copy.
+        try:
+            with zipfile.ZipFile(file) as archive:
+                if len(archive.infolist()) != count or "[Content_Types].xml" not in archive.namelist():
+                    return
+        except zipfile.BadZipFile:
+            return
+        file.truncate(end)
+
+
 class OfficePreview:
     """Office 文件转 PDF、按页出图，表格转 HTML。转发器里只有一个：锁和「正在做哪些」要跨请求共用。"""
 
@@ -924,6 +954,7 @@ class OfficePreview:
                 # 文件名里的中文、空格也就不用操心它的命令行怎么解析。
                 source = work / f"source{real.suffix.lower()}"
                 await asyncio.to_thread(shutil.copyfile, real, source)
+                await asyncio.to_thread(_trim_office_zip_padding, source)
                 profile = (self.cache_dir / "profile").resolve().as_uri()
                 try:
                     code, output = await self._run(command + [
