@@ -979,3 +979,45 @@ it('shows the cloud reconnect error without suggesting a desktop restart', async
     delete document.documentElement.dataset.hermesBrowser
   }
 })
+
+it.each(['dingtalk','wecom','weixin','uniagentgate'] as const)(
+  'cloud %s operations keep other channels connected', async target => {
+    document.documentElement.dataset.hermesBrowser='1'
+    $settingsScopeOverride.set(null)
+    const previousBridge=window.hermesDesktop
+    window.hermesDesktop={...previousBridge,api:vi.fn().mockResolvedValue({enabled:false,group_ids:[]})}
+    const ids=['dingtalk','wecom','weixin','feishu','uniagentgate']
+    getMessagingPlatforms.mockResolvedValue({platforms:ids.map(id=>platform({id,configured:true,enabled:true,gateway_running:true,state:'connected'}))})
+    try {
+      await renderMessaging()
+      await act(async()=>{ publishOperation({phase:'checking',platform:target,saved:true,operation:'save',profile:'default'}) })
+      await waitFor(()=>expect(screen.getAllByRole('article')).toHaveLength(5))
+      const titles: Record<string,string>={dingtalk:'DingTalk',wecom:'WeCom',weixin:'WeChat',feishu:'Feishu',uniagentgate:'5G'}
+      for(const id of ids) {
+        const card=screen.getByRole('article',{name:new RegExp(titles[id])})
+        expect(within(card).getByRole('status').textContent).toBe(id===target?'Connecting':'Connected')
+      }
+    } finally {
+      delete document.documentElement.dataset.hermesBrowser
+      window.hermesDesktop=previousBridge
+    }
+  }
+)
+
+it('cloud timeout recovery depends on its target, not an unrelated failed channel', async()=>{
+  document.documentElement.dataset.hermesBrowser='1'
+  $settingsScopeOverride.set(null)
+  getMessagingPlatforms.mockResolvedValue({platforms:[
+    dingtalk({configured:true,enabled:true,gateway_running:true,state:'connected'}),
+    platform({id:'feishu',configured:true,enabled:true,gateway_running:true,state:'fatal',error_message:'Unrelated Feishu failure'})
+  ]})
+  try {
+    await renderMessaging()
+    await act(async()=>{publishOperation({phase:'failed',platform:'dingtalk',profile:'default',operation:'save',saved:true,error:'connection_timeout'})})
+    await screen.findByText('Unrelated Feishu failure')
+    await waitFor(()=>expect(screen.queryByText('Settings saved, but the messaging connection could not be restored. Retry the connection.')).toBeNull())
+    const card=screen.getByRole('article',{name:/DingTalk/})
+    expect(within(card).getByRole('status').textContent).toBe('Connected')
+    expect((within(card).getByRole('button',{name:'Configure'}) as HTMLButtonElement).disabled).toBe(false)
+  } finally {delete document.documentElement.dataset.hermesBrowser}
+})

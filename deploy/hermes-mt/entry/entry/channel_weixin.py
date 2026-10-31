@@ -17,6 +17,12 @@ from cryptography.hazmat.primitives.ciphers import Cipher,algorithms,modes
 BASE_URL = 'https://ilinkai.weixin.qq.com'
 
 
+class IlinkHttpError(ReplyRejected):
+    def __init__(self,status):
+        self.status=status
+        super().__init__('iLink HTTP request failed')
+
+
 class SessionExpired(ReplyRejected):
     pass
 
@@ -31,9 +37,9 @@ def trusted_origin(value):
     return value.rstrip('/')
 
 
-async def api(http, origin, endpoint, *, token=None, payload=None):
+async def api(http, origin, endpoint, *, token=None, payload=None, timeout=40):
     headers = {'iLink-App-Id':'bot','iLink-App-ClientVersion':str((2<<16)|(2<<8))}
-    options = {'headers':headers,'allow_redirects':False,'timeout':aiohttp.ClientTimeout(total=40)}
+    options = {'headers':headers,'allow_redirects':False,'timeout':aiohttp.ClientTimeout(total=timeout)}
     method = 'GET'
     if payload is not None:
         method = 'POST'
@@ -42,8 +48,11 @@ async def api(http, origin, endpoint, *, token=None, payload=None):
         if token: headers['Authorization']='Bearer '+token
         options['json'] = {**payload,'base_info':{'channel_version':'2.2.0'}}
     async with http.request(method, trusted_origin(origin)+'/'+endpoint, **options) as response:
-        if response.status != 200: raise RuntimeError('iLink request failed')
-        result = await response.json()
+        if response.status != 200: raise IlinkHttpError(response.status)
+        # iLink serves JSON with application/octet-stream (including QR responses).
+        # Relax that header only; JSON decoding and object/error validation still apply.
+        result = await response.json(content_type=None if response.content_type=='application/octet-stream' else 'application/json')
+        if not isinstance(result,dict): raise ReplyRejected('Invalid iLink response')
         if result.get('ret',0) not in (None,0) or result.get('errcode',0) not in (None,0):
             codes=(result.get('ret'),result.get('errcode'))
             stale=-14 in codes or (-2 in codes and str(result.get('errmsg') or result.get('msg') or '').lower() in {'unknown error','prepare failed'})

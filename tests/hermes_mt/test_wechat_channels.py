@@ -36,17 +36,17 @@ async def test_weixin_qr_ownership_cursor_replay_and_unbind_fence(postgres_datab
     replies=[]
     async def upstream(request):
         if request.path.endswith('get_bot_qrcode'):
-            return web.json_response({'qrcode':'qr-secret','qrcode_img_content':'https://weixin.qq.com/scan'})
+            return web.Response(text=json.dumps({'qrcode':'qr-secret','qrcode_img_content':'https://weixin.qq.com/scan'}),content_type='application/octet-stream')
         if request.path.endswith('get_qrcode_status'):
             if request.query.get('qrcode')=='qr-secret' and hold.is_set():
                 polling_started.set()
                 await release.wait()
-            return web.json_response({'status':'confirmed','ilink_bot_id':'bot','bot_token':'bot-secret','baseurl':'https://ilinkai.weixin.qq.com'})
+            return web.Response(text=json.dumps({'status':'confirmed','ilink_bot_id':'bot','bot_token':'bot-secret','baseurl':'https://ilinkai.weixin.qq.com'}),content_type='application/octet-stream')
         assert request.headers['Authorization']=='Bearer bot-secret'
         data=await request.json()
         assert data['base_info']['channel_version']=='2.2.0'
         replies.append(data)
-        return web.json_response({'ret':0})
+        return web.Response(text=json.dumps({'ret':0}),content_type='application/octet-stream')
     app=web.Application()
     app.router.add_route('*','/{path:.*}',upstream)
     server=TestServer(app)
@@ -156,3 +156,54 @@ async def test_wecom_subscription_durable_inbound_ack_and_stale_connection(postg
     finally:
         await server.close()
         await database.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('failure',['http','html','json','octets','shape','timeout'])
+async def test_cloud_qr_errors_are_actionable_and_refresh_can_recover(postgres_database_url,monkeypatch,failure):
+    from entry.app import build_app
+    from entry.config import Settings
+    from aiohttp.test_utils import TestClient
+    settings=Settings(database_url=postgres_database_url,credential_key=Fernet.generate_key().decode(),backend='cube',channels_key='fixture-key')
+    app=build_app(settings)
+    entry=next(route.handler.__self__ for route in app.router.routes() if route.handler.__name__=='login')
+    app.on_startup.clear(); app.on_cleanup.clear()
+    await entry.database.connect()
+    async def warm(user): pass
+    entry._warm=warm
+    mode=[failure]
+    async def upstream(request):
+        if mode[0]=='http': return web.Response(status=503,text='private-upstream-body')
+        if mode[0]=='octets': return web.Response(text='invalid private-upstream-body',content_type='application/octet-stream')
+        if mode[0]=='html': return web.Response(text='private-upstream-body',content_type='text/html')
+        if mode[0]=='json': return web.Response(text='{invalid private-upstream-body',content_type='application/json')
+        if mode[0]=='shape': return web.json_response(['private-upstream-body'])
+        if mode[0]=='timeout': await asyncio.sleep(.2)
+        return web.Response(text=json.dumps({'qrcode':'scan-secret','qrcode_img_content':'https://weixin.qq.com/scan'}),content_type='application/octet-stream')
+    remote=web.Application();remote.router.add_get('/qr',upstream)
+    try:
+        async with TestServer(remote) as server,aiohttp.ClientSession() as http,TestClient(TestServer(app)) as client:
+            class Wire:
+                def request(self,method,url,**kwargs):
+                    kwargs['timeout']=aiohttp.ClientTimeout(total=.05 if mode[0]=='timeout' else 5)
+                    return http.request(method,server.make_url('/qr'),**kwargs)
+            entry.http=Wire()
+            login=await entry._finish_login('alice','key',None)
+            cookies={name:value.value for name,value in login.cookies.items()}
+            response=await client.post('/hermes/__entry/messaging/weixin-start',json={},cookies=cookies)
+            text=await response.text()
+            assert response.status==(504 if failure=='timeout' else 502)
+            assert '微信二维码服务' in text and 'private-upstream-body' not in text
+            assert ('503' if failure=='http' else '超时' if failure=='timeout' else '返回异常') in text
+            assert 'alice' not in entry.messaging_routes.weixin_qr.sessions
+            mode[0]='ok'
+            retried=await client.post('/hermes/__entry/messaging/weixin-start',json={},cookies=cookies)
+            assert retried.status==200
+            result=await retried.json()
+            assert result['state']=='wait' and result['qr_content']=='https://weixin.qq.com/scan'
+            assert 'scan-secret' not in json.dumps(result)
+    finally:
+        await entry.account_routes.close()
+        await entry.drive_routes.close()
+        await asyncio.gather(*entry._bg,return_exceptions=True)
+        await entry.database.close()

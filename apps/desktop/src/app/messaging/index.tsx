@@ -66,11 +66,11 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
 
   const sameProfile = (operation.profile ?? 'default') === (scopeProfile ?? 'default')
 
-  // 连接超时是历史结果；新快照须确认本次目标及其它已配置渠道恢复，不能掩盖保存或归属错误。
+  // 云端核对本次目标；桌面共享网关的恢复还须确认其它渠道，不能掩盖保存或归属错误。
   const connectionRecovered = operation.phase === 'failed' && operation.saved && targetRecovered &&
     operation.error === 'connection_timeout' && sameProfile &&
     !loadError && snapshot?.operationRevision === operation.revision &&
-    (enabledPlatforms.length > 0
+    (isBrowserShell() && operation.platform ? targetRecovered : enabledPlatforms.length > 0
       ? enabledPlatforms.every(platform => platform.configured && platform.gateway_running && platform.state === 'connected')
       : operation.operation === 'disconnect' && !!platforms?.length && platforms.every(platform => !platform.gateway_running))
 
@@ -378,6 +378,9 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
               )
               .map(id => {
                 const platform = platforms?.find(row => row.id === id)
+                // Desktop operations may restart the shared gateway; cloud operations own one binding.
+                const channelPending = gatewayChanging && (!isBrowserShell() || (sameProfile &&
+                  (operation.platform === id || (operation.operation === 'restore' && !operation.platform))))
 
                 const rcsRetryAllowed = platform?.configured && (isBrowserShell() || platform.enabled) &&
                   (!platform.gateway_running || ['fatal', 'startup_failed', 'error', 'stopped', 'disconnected', 'paused']
@@ -390,7 +393,7 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
                       key={id}
                       onSaved={result => void settleWeixin(result)}
                       onUnbind={() => disconnectPlatform('weixin')}
-                      pending={gatewayChanging}
+                      pending={channelPending}
                       platform={platform}
                       scopeProfile={scopeProfile}
                     />
@@ -437,7 +440,7 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
                     }
                     id={id}
                     key={id}
-                    pending={gatewayChanging}
+                    pending={channelPending}
                     platform={platform}
                   >
                     {platform?.error_message && <ErrorBanner className="mt-3">{platform.error_message}</ErrorBanner>}

@@ -1,11 +1,16 @@
 """Entry-owned, cookie-scoped QR login; bot credentials never enter the browser."""
 import asyncio
+import logging
+import aiohttp
 import secrets
 import time
 from urllib.parse import quote
 
 from aiohttp import web
-from .channel_weixin import BASE_URL, api, trusted_origin
+from .channel_weixin import BASE_URL, api, trusted_origin, IlinkHttpError
+from .channel_dingtalk import ReplyRejected
+
+log=logging.getLogger(__name__)
 
 
 class WeixinQr:
@@ -15,11 +20,29 @@ class WeixinQr:
         self.locks={}
 
     async def handle(self,user,operation,data):
+        try:
+            return await self._handle(user,operation,data)
+        except web.HTTPException:
+            raise
+        except asyncio.TimeoutError:
+            log.warning('Weixin QR operation timed out: %s',operation)
+            raise web.HTTPGatewayTimeout(text='微信二维码服务响应超时，请稍后刷新重试。') from None
+        except IlinkHttpError as exc:
+            log.warning('Weixin QR upstream rejected request: operation=%s status=%s',operation,exc.status)
+            raise web.HTTPBadGateway(text=f'微信二维码服务返回 HTTP {exc.status}，请稍后重试或检查服务器网络。') from None
+        except (ReplyRejected, ValueError, aiohttp.ContentTypeError):
+            log.warning('Weixin QR response invalid: %s',operation)
+            raise web.HTTPBadGateway(text='微信二维码服务返回异常，请刷新二维码重试。') from None
+        except aiohttp.ClientError as exc:
+            log.warning('Weixin QR connection failed: operation=%s error=%s',operation,type(exc).__name__)
+            raise web.HTTPBadGateway(text='微信二维码服务连接失败，请检查服务器网络、DNS 或证书配置。') from None
+
+    async def _handle(self,user,operation,data):
         lock=self.locks.setdefault(user,asyncio.Lock())
         if operation=='weixin-start':
             async with lock:
                 self.sessions.pop(user,None)
-                result=await api(self.routes.entry.http,BASE_URL,'ilink/bot/get_bot_qrcode?bot_type=3')
+                result=await api(self.routes.entry.http,BASE_URL,'ilink/bot/get_bot_qrcode?bot_type=3',timeout=15)
                 if not result.get('qrcode') or not result.get('qrcode_img_content'):
                     raise web.HTTPBadGateway(text='微信未返回二维码，请重试。')
                 row={'session_id':secrets.token_hex(16),'state':'wait','qr_content':result['qrcode_img_content'],
@@ -39,7 +62,7 @@ class WeixinQr:
             if row['state'] in ('wait','scanned'):
                 # No lock during long poll: unbind/new QR can fence this confirmation.
                 result=await api(self.routes.entry.http,row['origin'],
-                    'ilink/bot/get_qrcode_status?qrcode='+quote(row['qrcode'],safe=''))
+                    'ilink/bot/get_qrcode_status?qrcode='+quote(row['qrcode'],safe=''),timeout=25)
                 async with lock:
                     if self.sessions.get(user) is not row:
                         raise web.HTTPConflict(text='扫码操作已取消。')

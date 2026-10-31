@@ -9,8 +9,12 @@ describe('cloud messaging bridge', () => {
     vi.stubGlobal('fetch', fetcher)
     localStorage.setItem('maas-token', 'must-not-forward')
     const bridge = browserMessaging('/hermes/')
+    const listener=vi.fn()
+    const off=bridge.onMessagingStatus(listener)
     await bridge.request({ path: '/api/plugins/desktop-messaging/platforms' })
     await bridge.reconnectUniAgentGate()
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({phase:'checking',platform:'uniagentgate'}))
+    off()
     expect(fetcher.mock.calls.map(call => call[0])).toEqual([
       '/hermes/__entry/messaging/platforms', '/hermes/__entry/messaging/reconnect'
     ])

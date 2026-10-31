@@ -52,7 +52,7 @@ export function browserMessaging(base: string) {
     const mine = ++generation
     pending = true
     deadline = Date.now() + 60_000
-    publish({ phase: 'checking', operation: kind, platform: target === 'uniagentgate' ? undefined : target as MessagingOperationStatus['platform'],
+    publish({ phase: 'checking', operation: kind, platform: target as MessagingOperationStatus['platform'],
       saved: false, error: undefined })
     try {
       const result = await call<T>(action, body)
