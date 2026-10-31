@@ -14,6 +14,8 @@ from aiohttp import web
 from .config import SETTINGS, Settings
 from .browser_auth import BrowserAuth, BrowserIdentity
 from .drive_routes import DriveRoutes
+from .messaging_notifications import MessagingNotifications
+from .account_routes import AccountRoutes
 from .plan_routes import PlanRoutes
 from .welcome_routes import WelcomeRoutes
 from .skill_routes import SkillRoutes, MUTATIONS as SKILL_MUTATIONS
@@ -116,6 +118,8 @@ class Entry:
         self.connector_routes = ConnectorRoutes(self)
         self.messaging_routes = MessagingRoutes(self)
         self.drive_routes = DriveRoutes(self)
+        self.notifications = MessagingNotifications(self)
+        self.account_routes = AccountRoutes(self)
         self.plan_routes = PlanRoutes(self)
         self.welcome_routes = WelcomeRoutes(self)
         self.skill_routes = SkillRoutes(self)
@@ -359,6 +363,7 @@ class Entry:
         await self.store.delete_session(sid)
         await self.share_routes.agent.logout(sid)
         await self.drive_routes.logout(sid)
+        await self.account_routes.worker.logout(sid)
         if session:
             await self.store.write_audit(session.user_id, "logout")
             return session.user_id
@@ -497,6 +502,8 @@ class Entry:
             raise
         self._bg.append(asyncio.create_task(self._reconcile()))
         self._bg.append(asyncio.create_task(self._reaper()))
+        if self.s.channels_key:
+            self._bg.append(asyncio.create_task(self.notifications.loop()))
         if self.s.backend == "cube" and self.s.cron_wake_lead_s > 0:
             self._bg.append(asyncio.create_task(self._cron_waker()))
         # 卷外第二份副本：四项桶配置齐了才跑；只对沙箱后端有意义（归档在卷上）。
@@ -533,6 +540,7 @@ class Entry:
         await self.share_routes.agent.close()
         await self.skill_routes.close()
         await self.drive_routes.close()
+        await self.account_routes.close()
         for task in self._bg:
             task.cancel()
         if self._bg:
@@ -581,6 +589,7 @@ def build_app(settings: Settings = SETTINGS) -> web.Application:
     app.router.add_post(path("/__entry/skills/{operation}"), entry.skill_routes.handle)
     app.router.add_post(path("/__entry/welcome/{locale}"), entry.welcome_routes.handle)
     app.router.add_post(path("/__entry/plan/{operation}"), entry.plan_routes.handle)
+    app.router.add_post(path("/__entry/account/{operation}"), entry.account_routes.handle)
     app.router.add_post(path("/__entry/mail"), entry.mail_routes.handle)
     app.router.add_post(path("/__entry/connectors"), entry.connector_routes.handle)
     app.router.add_get(path("/__entry/connectors/{provider}/oauth/callback"), entry.connector_routes.oauth.callback)

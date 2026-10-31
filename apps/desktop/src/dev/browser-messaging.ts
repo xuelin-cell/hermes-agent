@@ -108,6 +108,7 @@ export function browserMessaging(base: string) {
     },
     request<T>(request: HermesApiRequest): Promise<T> | undefined {
       const [path, query] = request.path.split('?')
+      if (path === '/api/cron/delivery-targets') return call<T>('targets').then(value => ({ targets: [{ id: 'local', name: '当前会话', home_target_set: true, home_env_var: null }, ...(value as { targets: unknown[] }).targets] }) as T)
       if (path.startsWith('/api/plugins/weixin-qr/')) {
         const profile = request.profile ?? new URLSearchParams(query).get('profile')
         if (profile && profile !== 'default') { return Promise.reject(new Error('云端消息平台只支持默认实例。')) }

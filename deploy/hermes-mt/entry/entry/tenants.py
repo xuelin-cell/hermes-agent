@@ -60,6 +60,8 @@ PLATFORM_POLICY = {
     "cloud_drive": {"enabled": True},
     "cloud_mail": {"enabled": True},
     "cloud_kits": {"enabled": True},
+    "cloud_messaging_delivery": {"enabled": True},
+    "platforms": {name: {"enabled": True} for name in ("uniagentgate", "dingtalk", "feishu", "weixin", "wecom")},
     # 用到时才从 PyPI 装的依赖：页面一打开就会往每台实例的可写层下 392MB 语音依赖。
     "security": {"allow_lazy_installs": False},
     # 用户第一条消息时，hermes 默认让 agent 提出「建用户画像」（征得同意后联网查用户的公开信息、记进记忆）。

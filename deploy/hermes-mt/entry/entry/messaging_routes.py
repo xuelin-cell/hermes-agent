@@ -35,6 +35,14 @@ class MessagingRoutes:
     async def handle(self, request):
         session=await self.entry._require(request)
         operation=request.match_info['operation']
+        if operation == 'targets':
+            async with self.entry.database.acquire() as db:
+                rows = await db.fetch('''SELECT DISTINCT i.platform,i.external_chat_id FROM messaging_inbox i
+                    JOIN messaging_bindings b ON b.id=i.binding_id WHERE b.user_id=$1 AND b.enabled
+                    AND b.deleted_at IS NULL AND b.revision=i.binding_revision LIMIT 100''', session.user_id)
+            return web.json_response({'targets':[{'id':row['platform']+':'+row['external_chat_id'],
+                'name':PLATFORMS[row['platform']]+' · '+row['external_chat_id'], 'home_target_set':True,'home_env_var':None}
+                for row in rows]}, headers={'Cache-Control':'no-store'})
         data=await request.json()
         if not isinstance(data,dict) or data.get('profile','default') not in (None,'default'):
             raise web.HTTPBadRequest(text='云端消息平台只支持默认实例。')

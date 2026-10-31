@@ -281,6 +281,14 @@ async def _spawn_hermes(token: str) -> None:
     # 永远停在「已排期」。它的其余作用逐个核过：清理桌面遗留的随机端口 serve（我们是固定端口，
     # 碰不到）、父进程看门狗（要 HERMES_PARENT_PID，我们不设）、新会话的来源记为 desktop。
     env["HERMES_DESKTOP"] = "1"
+    recovery = await asyncio.create_subprocess_exec(
+        HERMES_PYTHON, '-c',
+        "import runpy,sys; from pathlib import Path; runpy.run_path(sys.argv[1])['claim_all'](Path(sys.argv[2]))",
+        str(HERMES_INSTALL / 'plugins/uniwork-kits/cloud_recovery.py'), str(HERMES_HOME),
+        cwd=str(HERMES_INSTALL), env=env,
+    )
+    if await recovery.wait() != 0:
+        raise RuntimeError('Cloud crash recovery preparation failed')
     _hermes_proc = await asyncio.create_subprocess_exec(
         "hermes", "serve",
         "--host", "127.0.0.1",
@@ -663,6 +671,20 @@ async def _handle_mt(
     rest: bytes, reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
 ) -> None:
     route = path.split("?", 1)[0]
+
+    if route == '/__mt/refresh-plan':
+        if method != 'POST' or not _check_token(headers) or _draining:
+            _reply(writer,403,{'ok':False})
+            return
+        try:
+            data = json.loads(await _read_body(headers,rest,reader))
+            spec = data['spec']
+            if not isinstance(spec,dict): raise ValueError()
+            mtstate.patch_config_file(HERMES_HOME / 'config.yaml', spec)
+            _reply(writer,200,{'ok':True})
+        except (ValueError,KeyError,OSError):
+            _reply(writer,400,{'ok':False,'error':'Invalid plan update'})
+        return
 
     if route == '/__mt/connectors':
         if method != 'POST' or not _user_authorized(headers, {}) or _draining:

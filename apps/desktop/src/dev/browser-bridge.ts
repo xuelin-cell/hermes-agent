@@ -25,6 +25,8 @@ import {
 import type { LoginAccount } from '../../electron/login/contract'
 import type { WelcomeLocale, WelcomePayload } from '../../electron/uniwork-welcome/catalog'
 
+import { browserInterrupted } from './browser-interrupted'
+import { browserAccount } from './browser-account'
 import { browserDrive } from './browser-drive'
 import { browserExport } from './browser-export'
 import { browserPlan } from './browser-plan'
@@ -109,7 +111,7 @@ const cloudKits = browserKits(browserBasePath(), connection(), request => cloudK
 
 async function api<T>(request: HermesApiRequest): Promise<T> {
   if (productionBrowserBuild) {
-    if (request.path.split('?')[0].startsWith('/api/plugins/uniwork-kits') || (request.path.split('?')[0] === '/api/profiles' && (!request.method || request.method === 'GET'))) { return cloudKits.request<T>(request) }
+    if ((request.path.split('?')[0].startsWith('/api/plugins/uniwork-kits') && !request.path.startsWith('/api/plugins/uniwork-kits/cloud/interrupted')) || (request.path.split('?')[0] === '/api/profiles' && (!request.method || request.method === 'GET'))) { return cloudKits.request<T>(request) }
     const result = cloudMessaging.request<T>(request)
     if (result) { return result }
   }
@@ -1439,7 +1441,7 @@ export function installBrowserDevelopmentBridge(): boolean {
     writeClipboard,
     // The instance's shell lives behind the entry; a dev server has no forwarder to give one.
     ...(productionBrowserBuild
-      ? { ...cloudKits, terminal: instanceTerminal, cloudSkillOperations, ...cloudMessaging, ...browserMail(browserBasePath()), ...browserConnectors(browserBasePath()),
+      ? { ...browserInterrupted(browserBasePath(), api), ...browserAccount(browserBasePath()), ...cloudKits, terminal: instanceTerminal, cloudSkillOperations, ...cloudMessaging, ...browserMail(browserBasePath()), ...browserConnectors(browserBasePath()),
           createConversationFolder: async (defaultCwd: string) =>
             (await instanceFiles<{ path: string | null }>('conversation-create', { defaultCwd })).path,
           discardConversationFolder: async (path: string) => { await instanceFiles('conversation-discard', { path }) },

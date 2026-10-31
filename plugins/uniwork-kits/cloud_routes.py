@@ -7,7 +7,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, WebSocket
 
-from . import cloud, cloud_avatars, expert_sync, installer, store
+from . import cloud, cloud_recovery, cloud_avatars, expert_sync, installer, store
 
 router = APIRouter()
 
@@ -130,8 +130,6 @@ class ExpertSocket:
                     raise installer.KitError('套件正在变更，请完成后再开始对话。')
                 if method.startswith(('profiles.create', 'profiles.delete', 'profiles.configure', 'profiles.import')):
                     raise installer.KitError('专家档案由套件管理，请在套件页操作。')
-                if profile != 'default' and method.startswith(('cron.', 'schedule.')):
-                    raise installer.KitError('云端专家定时任务尚未开放。')
             except installer.KitError as exc:
                 await self.socket.send_json({'jsonrpc': '2.0', 'id': frame.get('id'),
                                              'error': {'code': -32602, 'message': str(exc)}})
@@ -144,3 +142,30 @@ async def socket(ws: WebSocket):
     from hermes_cli.web_routers.chat_ws import gateway_ws
 
     await gateway_ws(ExpertSocket(ws))
+
+
+@router.get('/interrupted')
+def interrupted_turns():
+    root = cloud.home()
+    names = ['default', *(row['profile'] for row in cloud.directory(root)['experts'] if row.get('installed', True))]
+    turns = []
+    for name in dict.fromkeys(names):
+        try:
+            home = cloud.profile_home(root, name)
+        except installer.KitError:
+            continue
+        turns.extend({**turn, 'profile': name} for turn in cloud_recovery.claim(home))
+    return {'turns': turns}
+
+
+@router.post('/interrupted/dismiss')
+def dismiss_interrupted(data: dict):
+    try:
+        home = cloud.profile_home(cloud.home(), data.get('profile', 'default'))
+        session = data.get('sessionId')
+        if not isinstance(session, str) or not 0 < len(session) <= 512:
+            raise installer.KitError('会话编号无效。')
+        cloud_recovery.dismiss(home, session)
+        return {'ok': True}
+    except installer.KitError as exc:
+        raise HTTPException(403, str(exc)) from exc

@@ -167,6 +167,10 @@ class Channels:
                 return
             if not await db.fetchval("UPDATE messaging_outbox SET state='sending',attempts=attempts+1,platform_message_id=$2,updated_at=now() WHERE outbound_id=$1 AND state='pending' RETURNING outbound_id",row['outbound_id'],message_id): return
         payload=json.loads(row['inbound'])
+        if payload.get('_cloud_notification') and 'reply_enc' in payload:
+            context=json.loads(self.store.cipher.decrypt(payload['reply_enc'].encode()))
+            context.update(uuid=row['outbound_id'],client_id=row['outbound_id'])
+            payload['reply_enc']=self.store.cipher.encrypt(json.dumps(context)).decode()
         request=self.protocol.parse_agent_request(payload) if row['platform']=='uniagentgate' else None
         receipt = None
         try:

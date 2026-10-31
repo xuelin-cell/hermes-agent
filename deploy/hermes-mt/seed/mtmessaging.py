@@ -34,7 +34,7 @@ if any(name not in ('uniagentgate','dingtalk','weixin','wecom','feishu') and isi
  raise RuntimeError('Direct platform configuration must be removed before relay startup')
 cfg['cloud_messaging']={'enabled':True,**settings}
 for name in ('uniagentgate','dingtalk','weixin','wecom','feishu'):
- platforms[name]={'enabled':name==platform}
+ platforms[name]={'enabled':True}
 cfg.setdefault('display',{}).setdefault('platforms',{}).setdefault(platform,{})['tool_progress']='off'
 platforms[platform]['typing_indicator']=False
 save_config(cfg)

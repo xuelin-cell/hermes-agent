@@ -115,6 +115,9 @@ async def test_wecom_encrypted_attachment_and_websocket_chunk_upload(postgres_da
             if cmd=='aibot_upload_media_init': body={'upload_id':'upload'}
             if cmd=='aibot_upload_media_chunk': uploaded.extend(base64.b64decode(frame['body']['base64_data']))
             if cmd=='aibot_upload_media_finish': body={'media_id':'media'}
+            if cmd=='aibot_send_msg':
+                assert frame['headers']['req_id']!='callback'
+                assert frame['body']=={'chatid':'group','msgtype':'image','image':{'media_id':'media'}}
             if cmd=='aibot_respond_msg':
                 assert frame['headers']['req_id']=='callback'
                 assert frame['body']=={'msgtype':'image','image':{'media_id':'media'}}
@@ -141,5 +144,10 @@ async def test_wecom_encrypted_attachment_and_websocket_chunk_upload(postgres_da
                 await asyncio.wait_for(received.wait(),5)
                 assert bytes(uploaded)==raw
                 assert [frame['cmd'] for frame in frames if frame['cmd']!='ping']==['aibot_upload_media_init','aibot_upload_media_chunk','aibot_upload_media_finish','aibot_respond_msg']
+                client.generation = 'next-connection'
+                notification = {**payload, '_cloud_notification': {'chat': 'group'}}
+                assert (await client.send_media(notification,pack(raw,'picture.png','image','image/png')))['ok']
+                assert frames[-1]['cmd']=='aibot_send_msg'
+                assert bytes(uploaded)==raw+raw
             finally: await client.stop()
     finally: await db.close()

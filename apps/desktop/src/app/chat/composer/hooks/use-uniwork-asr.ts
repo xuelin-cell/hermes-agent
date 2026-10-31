@@ -160,7 +160,7 @@ export function useUniworkAsr(options: AsrDraftOptions) {
     const bridge = window.hermesDesktop?.uniworkAsr
 
     if (!bridge || !navigator.mediaDevices?.getUserMedia) {
-      notifyError(new Error('当前环境无法使用语音识别，请在桌面应用中重试。'), '语音识别失败')
+      notifyError(new Error(window.isSecureContext ? '当前环境无法访问麦克风，请检查浏览器权限。' : '请通过 HTTPS 打开页面后使用麦克风。'), '语音识别失败')
 
       return
     }

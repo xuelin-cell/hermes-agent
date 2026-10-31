@@ -714,6 +714,14 @@ export const zhHant = defineLocale({
     resetHudLayout: '重設 HUD 大小和位置'
   },
 
+  messageCenter: {
+    title: '訊息中心',
+    unreadCount: count => `${count} 則未讀通知`,
+    markAllRead: '全部已讀',
+    empty: '暫無通知',
+    untitled: '公告'
+  },
+
   language: {
     label: '語言',
     description: '選擇桌面介面的語言。',

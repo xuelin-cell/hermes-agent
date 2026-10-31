@@ -1008,6 +1008,14 @@ export interface Translations {
     layoutEditorTitle: (modifier: string) => string
   }
 
+  messageCenter: {
+    title: string
+    unreadCount: (count: number) => string
+    markAllRead: string
+    empty: string
+    untitled: string
+  }
+
   keybinds: {
     title: string
     subtitle: (open: string) => string

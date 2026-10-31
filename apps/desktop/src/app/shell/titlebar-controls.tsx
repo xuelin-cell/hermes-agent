@@ -30,6 +30,8 @@ import {
 import { $unreadSessionCount } from '@/store/session-dot-state'
 import { $titlebarAppActionsSide, TITLEBAR_FIXED_TOOLS } from '@/store/titlebar-app-actions'
 
+import { MessageCenterBell, messageCenterAvailable } from './message-center'
+
 import { appViewForPath, hidesFixedTitlebarClusters, isOverlayView } from '../routes'
 
 import {
@@ -394,6 +396,7 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
         className={cn(titlebarToolClusterClass, 'right-(--titlebar-tools-right) top-(--titlebar-controls-top)')}
         data-titlebar-cluster="right"
       >
+        {messageCenterAvailable() && <MessageCenterBell />}
         {visibleSystemTools.map(tool => (
           <TitlebarToolButton key={tool.id} navigate={navigate} tool={tool} />
         ))}

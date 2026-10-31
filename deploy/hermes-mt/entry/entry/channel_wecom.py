@@ -111,6 +111,8 @@ class WeCom:
 
     async def send(self,payload,text):
         context=json.loads(self.store.cipher.decrypt(payload['reply_enc'].encode()))
+        if payload.get('_cloud_notification'):
+            return await self.request('aibot_send_msg', {'chatid':payload['_cloud_notification']['chat'], 'msgtype':'markdown','markdown':{'content':text}})
         if context['generation']!=self.generation or time.time()>=context['expires']:
             raise ReplyRejected('Reply window expired; send a new message')
         if len(text.encode())>20480: raise ReplyRejected('Reply exceeds WeCom text limit')
@@ -166,7 +168,7 @@ class WeCom:
 
     async def send_media(self,payload,media):
         context=json.loads(self.store.cipher.decrypt(payload['reply_enc'].encode()))
-        if context['generation']!=self.generation or time.time()>=context['expires']: raise ReplyRejected('WeCom reply window expired')
+        if not payload.get('_cloud_notification') and (context['generation']!=self.generation or time.time()>=context['expires']): raise ReplyRejected('WeCom reply window expired')
         raw=unpack(media)
         if media['kind'] in {'image','video'} and len(raw)>10*1024*1024: raise ReplyRejected('Platform image/video size limit exceeded')
         kind={'image':'image','video':'video','audio':'voice','file':'file'}[media['kind']]
@@ -180,6 +182,9 @@ class WeCom:
             await self.request('aibot_upload_media_chunk',{'upload_id':upload_id,'chunk_index':index,'base64_data':base64.b64encode(raw[start:start+size]).decode()})
         finished=await self.request('aibot_upload_media_finish',{'upload_id':upload_id})
         if not finished.get('media_id'): raise ReplyRejected('WeCom media ID missing')
-        if context['generation']!=self.generation or time.time()>=context['expires']: raise ReplyRejected('WeCom reply window expired')
-        await self.request('aibot_respond_msg',{'msgtype':kind,kind:{'media_id':finished['media_id']}},context['req_id'])
+        if not payload.get('_cloud_notification') and (context['generation']!=self.generation or time.time()>=context['expires']): raise ReplyRejected('WeCom reply window expired')
+        if payload.get('_cloud_notification'):
+            await self.request('aibot_send_msg', {'chatid':payload['_cloud_notification']['chat'],'msgtype':kind,kind:{'media_id':finished['media_id']}})
+        else:
+            await self.request('aibot_respond_msg',{'msgtype':kind,kind:{'media_id':finished['media_id']}},context['req_id'])
         return {'ok':True}

@@ -1,3 +1,4 @@
+import type { NtfyEvent, NtfyRefreshResult, NtfyStatus } from '../electron/uniwork-notify/contract'
 import type { GatewayWsUrlResult, OfficePreviewResult } from '@hermes/shared'
 import type {
   ArtifactShareEligibility,
@@ -83,6 +84,17 @@ declare global {
       cloudConnectorIds?: readonly import('../electron/open-connector/contract').ConnectorId[]
       /** 取得完整办公目录；主进程负责认证和校验配置。 */
       getWelcomeCatalog?: (locale: WelcomeLocale) => Promise<WelcomePayload>
+      interruptedTurns?: {
+        list: () => Promise<{ detectedAt: number; prompt: string; sessionId: string }[]>
+        dismiss: (sessionId: string) => Promise<void>
+      }
+      ntfy?: {
+        scope?: () => string | null
+        start: () => Promise<NtfyStatus>
+        stop: () => Promise<NtfyStatus>
+        refresh: () => Promise<NtfyRefreshResult>
+        onEvent: (callback: (event: NtfyEvent) => void) => () => void
+      }
       uniworkAsr?: UniworkAsrBridge
       cloudDriveAgentReady: (profile: string) => Promise<boolean>
       cloudDriveTransfer: (input: CloudDriveTransferRequest) => Promise<CloudDriveTransferResult>

@@ -219,6 +219,9 @@ def _plan_config(
         if raw.get('cloud_kits') != {'enabled': True}:
             raw['cloud_kits'] = {'enabled': True}
             changes.append('启用云端专家运行适配')
+        raw['cloud_messaging_delivery'] = {'enabled': True}
+        raw.setdefault('platforms', {}).update({name: {'enabled': True} for name in ('uniagentgate','dingtalk','feishu','weixin','wecom')})
+        raw.setdefault('desktop', {}).setdefault('auto_continue', {})['enabled'] = False
         for section, field in (('security', 'allow_lazy_installs'), ('model_catalog', 'enabled')):
             current = raw.get(section)
             current = dict(current) if isinstance(current, Mapping) else {}

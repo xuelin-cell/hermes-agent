@@ -97,7 +97,7 @@ class Environment:
             endpoint = str(self.model.make_url('/v1')).rstrip('/')
             (self.home/'config.yaml').write_text(yaml.safe_dump({'model':{
                 'default':'fixture','provider':'custom','base_url':endpoint,'context_length':131072},
-                'toolsets':[],'plugins':{'enabled':['cloud-messaging']},
+                'streaming':{'enabled':True},'toolsets':[],'plugins':{'enabled':['cloud-messaging']},
                 'tools':{'tool_search':tool_search},'mcp_servers':mcp_servers or {}}))
             (self.home/'.env').write_text('OPENAI_API_KEY=fixture\nOPENAI_BASE_URL='+endpoint+'\n')
             self.runtime = tempfile.TemporaryDirectory(prefix='hm-im-',dir='/tmp')
@@ -403,3 +403,20 @@ async def test_5g_draw_request_calls_authenticated_mcp_and_delivers_image(tmp_pa
             assert unpack(replies[1]['media'])==image
         finally:
             await env.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('channel',['uniagentgate','weixin','wecom','feishu'])
+async def test_all_channel_workers_start_through_entry_owned_forward_relay(tmp_path, monkeypatch, postgres_database_url, channel):
+    # All real workers share this file to serialize their fixed instance-local relay port.
+    env=await Environment().start(tmp_path, monkeypatch, postgres_database_url, live=True, channel=channel)
+    try:
+        from entry.channels_delivery import wake
+        ready = await wake(env.service, dict(await env.row()))
+        assert ready['worker_id']
+        pid=env.forward._messaging_gateway.process.pid
+        assert pid and env.forward._messaging_gateway.process.returncode is None
+        import yaml
+        assert yaml.safe_load((env.home/'config.yaml').read_text())['streaming']['enabled'] is True
+    finally:
+        await env.close()

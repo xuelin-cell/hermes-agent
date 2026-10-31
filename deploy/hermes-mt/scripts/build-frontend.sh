@@ -62,6 +62,7 @@ docker run --rm \
             printf "%s\n" "$connector_hash" > "$connector_stamp"
         fi
         cd /workspace/apps/desktop
+        node scripts/build-cloud-account.mjs
         node scripts/build-cloud-drive.mjs
         node scripts/build-cloud-connectors.mjs
         VITE_HERMES_BROWSER_BUILD=1 node /workspace/node_modules/vite/bin/vite.js build --base=/hermes/ --outDir=dist-browser

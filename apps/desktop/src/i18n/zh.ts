@@ -894,6 +894,14 @@ export const zh = defineLocale({
     layoutEditorTitle: mod => `布局编辑器 — ${mod} 点击重置布局`
   },
 
+  messageCenter: {
+    title: '消息中心',
+    unreadCount: count => `${count} 条未读消息`,
+    markAllRead: '全部已读',
+    empty: '暂无通知',
+    untitled: '公告'
+  },
+
   keybinds: {
     title: '键盘快捷键',
     subtitle: open => `点击快捷键即可重新绑定 · ${open} 可重新打开此面板。`,

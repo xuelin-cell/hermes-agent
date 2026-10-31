@@ -58,6 +58,9 @@ async def main():
     os.environ['HERMES_EXEC_ASK'] = '1'
     runner = MessagingRunner()
     runner.config.streaming.enabled = False
+    from hermes_cli.config import read_user_config_raw
+    active = read_user_config_raw()['cloud_messaging']['platform']
+    runner.config.platforms = {key: value for key, value in runner.config.platforms.items() if str(getattr(key, 'value', key)) == active}
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, lambda: asyncio.create_task(runner.stop()))

@@ -139,6 +139,21 @@ class DingTalk:
 
     async def send(self, payload, text):
         context=json.loads(self.store.cipher.decrypt(payload['reply_enc'].encode()))
+        if payload.get('_cloud_notification'):
+            token=await self.access_token()
+            if context['conversation_type']=='2':
+                endpoint='https://api.dingtalk.com/v1.0/robot/groupMessages/send'
+                target={'openConversationId':context['chat']}
+            elif context['conversation_type']=='1' and context.get('staff'):
+                endpoint='https://api.dingtalk.com/v1.0/robot/oToMessages/batchSend'
+                target={'userIds':[context['staff']]}
+            else: raise ReplyRejected('Notification recipient unavailable')
+            async with self.http.post(endpoint,headers={'x-acs-dingtalk-access-token':token},json={
+                    'robotCode':self.client_id,'msgKey':'sampleText','msgParam':json.dumps({'content':text}),**target},
+                    allow_redirects=False,timeout=aiohttp.ClientTimeout(total=15)) as response:
+                result=await response.json()
+                if response.status!=200 or result.get('code') or result.get('errcode'): raise ReplyRejected('Notification rejected')
+            return {'ok':True}
         # A known expired reply context is a failure, never a blind retry through another chat.
         if context['expires']<=int(time.time()*1000): raise ReplyRejected('reply_context_expired')
         reply_context({'sessionWebhook':context['url'],'sessionWebhookExpiredTime':context['expires']})
