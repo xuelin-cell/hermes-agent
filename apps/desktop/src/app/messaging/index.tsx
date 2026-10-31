@@ -301,15 +301,16 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
 
       const status = result?.status ?? 'restart_required'
 
+      const reconnectFailure = isBrowserShell() ? '5G 连接失败，请检查云端消息服务与账号配置。' : m.cards.reconnectFailed
       const messages = {
         connected: m.cards.reconnected,
         connecting: m.connectingLive,
         busy: m.cards.reconnectBusy,
         unbound: m.cards.personalBindingMissing,
-        failed: m.cards.reconnectFailed,
-        unavailable: m.cards.reconnectFailed,
-        stopped: m.cards.reconnectFailed,
-        restart_required: m.cards.reconnectRestartRequired
+        failed: reconnectFailure,
+        unavailable: reconnectFailure,
+        stopped: reconnectFailure,
+        restart_required: isBrowserShell() ? '云端消息服务需要恢复，请联系部署管理员检查服务状态。' : m.cards.reconnectRestartRequired
       }
 
       notify({
@@ -318,8 +319,10 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
         message: messages[status]
       })
       await refresh()
-    } catch {
-      notify({ kind: 'error', title: m.cards.titles.uniagentgate, message: m.cards.reconnectFailed })
+    } catch (error) {
+      notify({ kind: 'error', title: m.cards.titles.uniagentgate, message: isBrowserShell()
+        ? (error instanceof Error && error.message ? error.message : '5G 请求失败，请检查云端消息服务。')
+        : m.cards.reconnectFailed })
     } finally {
       setRcsReconnecting(false)
     }

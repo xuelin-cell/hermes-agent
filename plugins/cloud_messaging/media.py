@@ -7,12 +7,28 @@ from urllib.parse import quote, unquote
 
 MAX_MEDIA_BYTES=20*1024*1024
 MAX_MESSAGE_BYTES=25*1024*1024
-MAX_WIRE_BYTES=40*1024*1024
+MAX_FILE_BYTES=64*1024*1024
+MAX_RCS_MESSAGE_BYTES=96*1024*1024
+MAX_WIRE_BYTES=136*1024*1024
 KINDS={'image','audio','file','video'}
 
 
+def attachment_limit(platform, kind):
+    return MAX_FILE_BYTES if platform=='uniagentgate' and kind=='file' else MAX_MEDIA_BYTES
+
+
+def message_limit(platform):
+    return MAX_RCS_MESSAGE_BYTES if platform=='uniagentgate' else MAX_MESSAGE_BYTES
+
+
+def outbound_bytes(platform, media):
+    raw = unpack(media)
+    if len(raw)>attachment_limit(platform, media['kind']): raise ValueError('Platform attachment limit exceeded')
+    return raw
+
+
 def pack(data,filename,kind='file',mime=None):
-    if not data or len(data)>MAX_MEDIA_BYTES or kind not in KINDS:
+    if not data or len(data)>(MAX_FILE_BYTES if kind=='file' else MAX_MEDIA_BYTES) or kind not in KINDS:
         raise ValueError('Media is empty, oversized or unsupported')
     name=Path(str(filename).replace('\\','/')).name.encode('utf-8')[:180].decode('utf-8','ignore') or 'attachment.bin'
     if any(ord(char)<32 for char in name): raise ValueError('Invalid filename')
@@ -25,7 +41,7 @@ def pack(data,filename,kind='file',mime=None):
 
 
 def unpack(media):
-    if not isinstance(media,dict) or not isinstance(media.get('data'),str) or len(media['data'])>((MAX_MEDIA_BYTES+2)//3)*4:
+    if not isinstance(media,dict) or not isinstance(media.get('data'),str) or len(media['data'])>((MAX_FILE_BYTES+2)//3)*4:
         raise ValueError('Invalid media envelope')
     raw=base64.b64decode(media['data'],validate=True)
     checked=pack(raw,media.get('name','attachment.bin'),media.get('kind','file'),media.get('mime'))

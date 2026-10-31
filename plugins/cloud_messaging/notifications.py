@@ -8,7 +8,7 @@ import sqlite3
 import time
 from pathlib import Path
 
-from .media import pack, MAX_MEDIA_BYTES, MAX_MESSAGE_BYTES
+from .media import pack, attachment_limit, message_limit
 
 PLATFORMS = {'uniagentgate': '5G 消息', 'dingtalk': '钉钉', 'feishu': '飞书', 'weixin': '微信', 'wecom': '企业微信'}
 
@@ -73,12 +73,13 @@ async def send_notification(platform, pconfig, chat_id, message, *, media_files=
     for path, voice in media_files or []:
         safe = validate_media_delivery_path(path)
         if not safe: return {'error': 'Notification attachment path unavailable'}
-        with Path(safe).open('rb') as file:
-            raw = file.read(MAX_MEDIA_BYTES+1)
-        total += len(raw)
-        if total > MAX_MESSAGE_BYTES: return {'error': 'Notification attachments exceed limit'}
         mime = mimetypes.guess_type(safe)[0] or 'application/octet-stream'
         kind = 'audio' if voice else mime.split('/')[0] if mime.startswith(('image/', 'audio/', 'video/')) else 'file'
+        with Path(safe).open('rb') as file:
+            raw = file.read(attachment_limit(platform,kind)+1)
+        if len(raw)>attachment_limit(platform,kind): return {'error':'Notification attachment exceeds platform limit'}
+        total += len(raw)
+        if total > message_limit(platform): return {'error': 'Notification attachments exceed limit'}
         media.append(pack(raw, Path(safe).name, kind))
     store = Notifications(get_hermes_home())
     identifier = await asyncio.to_thread(store.enqueue, platform, str(chat_id), message, media)

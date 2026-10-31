@@ -167,7 +167,7 @@ class MessagingStore:
             return outbound
 
     async def record_media(self, delivery, owner, epoch, media):
-        from plugins.cloud_messaging.media import unpack,MAX_MESSAGE_BYTES
+        from plugins.cloud_messaging.media import unpack,outbound_bytes,message_limit
         unpack(media)
         if set(media)-{'id','name','kind','mime','data','caption'} or not isinstance(media.get('caption',''),str) or len(media.get('caption',''))>20000: raise ValueError('Invalid media fields')
         async with self.database.acquire() as db, db.transaction():
@@ -176,11 +176,12 @@ class MessagingStore:
             row=await db.fetchrow("SELECT i.*,b.enabled,b.revision,b.deleted_at FROM messaging_inbox i JOIN messaging_bindings b ON b.id=i.binding_id WHERE delivery_id=$1 FOR UPDATE OF i",delivery)
             if not row or row['lease_owner']!=owner or row['instance_epoch']!=epoch or not row['enabled'] or row['deleted_at'] or row['revision']!=row['binding_revision'] or row['state'] not in {'accepted','running','completed','uncertain'}:
                 raise web.HTTPConflict(text='Media execution ownership changed')
+            outbound_bytes(row['platform'],media)
             existing=await db.fetchval("SELECT outbound_id FROM messaging_outbox WHERE delivery_id=$1 AND payload->'media'->>'id'=$2",delivery,media['id'])
             if existing: return existing
             part=await db.fetchval('SELECT COALESCE(MAX(part_index),0)+1 FROM messaging_outbox WHERE delivery_id=$1',delivery)
             total=await db.fetchval("SELECT COALESCE(sum(octet_length(payload->'media'->>'data')),0) FROM messaging_outbox WHERE delivery_id=$1",delivery)
-            if part>20 or total+len(media['data'])>((MAX_MESSAGE_BYTES+2)//3)*4: raise ValueError('Execution attachment limit exceeded')
+            if part>20 or total+len(media['data'])>((message_limit(row['platform'])+2)//3)*4: raise ValueError('Execution attachment limit exceeded')
             outbound=secrets.token_hex(16)
             await db.execute('INSERT INTO messaging_outbox(outbound_id,delivery_id,part_index,binding_revision,payload) VALUES($1,$2,$3,$4,$5::jsonb)',outbound,delivery,part,row['binding_revision'],json.dumps({'media':media}))
             return outbound

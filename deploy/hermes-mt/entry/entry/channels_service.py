@@ -17,7 +17,9 @@ from .channel_wecom import WeCom
 from .channel_feishu import Feishu
 from .channel_media import download,pack,add_inbound,MEDIA_UNAVAILABLE
 from plugins.cloud_messaging.media import unpack
-from .messaging_media_routes import media_link,media_response,MediaLinkUnavailable
+from .messaging_media_routes import media_response
+from .messaging_oss import MessagingOss, OssUploadFailed
+from .messaging_rcs import prepare, RcsPreparationFailed
 
 TEXT_CLIENTS = {'dingtalk': DingTalk, 'weixin': Weixin, 'wecom': WeCom, 'feishu': Feishu}
 from .config import Settings
@@ -40,6 +42,7 @@ class Channels:
         self.http = None
         self.leader = None
         self.sender = None
+        self.oss = MessagingOss(self)
 
     async def start(self, app):
         await self.database.connect()
@@ -130,7 +133,7 @@ class Channels:
                     envelope['_media_event']=add_inbound({'text':media_text,'source':{'platform':'uniagentgate','chat_id':request.phone_number,'user_id':request.phone_number,'chat_type':'dm'}},attachments)
                 await self.store.ingest(binding['id'], binding['revision'], request.phone_number, request.message_id, envelope)
             async def accepted(raw, context): pass  # Admission already committed; execution is scheduled independently.
-            client = TEXT_CLIENTS[row['platform']](row['bot_key'],self.store.cipher.decrypt(row['secret_enc']),self.store,dict(row),self.http) if row['platform'] in TEXT_CLIENTS else self.stream.UniAgentGateStreamClient(json.loads(row['config'])['gateway_url'], row['bot_key'], self.store.cipher.decrypt(row['secret_enc']), accepted, persist_inbound=persist,capabilities=['text'])
+            client = TEXT_CLIENTS[row['platform']](row['bot_key'],self.store.cipher.decrypt(row['secret_enc']),self.store,dict(row),self.http) if row['platform'] in TEXT_CLIENTS else self.stream.UniAgentGateStreamClient(json.loads(row['config'])['gateway_url'], row['bot_key'], self.store.cipher.decrypt(row['secret_enc']), accepted, persist_inbound=persist,capabilities=['text','image'])
             self.clients[key] = (row['revision'], client)
             await client.start()
         for key, (revision, client) in self.clients.items():
@@ -152,7 +155,7 @@ class Channels:
 
     async def send_pending(self):
         async with self.database.acquire() as db:
-            rows = await db.fetch('''SELECT o.*,i.platform,i.binding_id,i.payload AS inbound,b.enabled,b.revision,b.deleted_at FROM messaging_outbox o
+            rows = await db.fetch('''SELECT o.*,i.user_id,i.platform,i.binding_id,i.payload AS inbound,b.enabled,b.revision,b.deleted_at FROM messaging_outbox o
                 JOIN messaging_inbox i ON i.delivery_id=o.delivery_id JOIN messaging_bindings b ON b.id=i.binding_id
                 JOIN users u ON u.user_id=b.user_id WHERE u.status='active' AND o.state='pending' AND NOT EXISTS(SELECT 1 FROM messaging_outbox previous WHERE previous.delivery_id=o.delivery_id AND previous.state IN('pending','sending') AND (previous.created_at,previous.outbound_id)<(o.created_at,o.outbound_id)) ORDER BY o.created_at LIMIT 10''')
         await asyncio.gather(*(self.send_one(row) for row in rows))
@@ -185,16 +188,21 @@ class Channels:
                 media=[]
                 text=content.get('content','')
                 if 'media' in content:
-                    item=content['media']
-                    url=media_link(self.s,row['outbound_id'])
-                    if item['kind'] in {'image','audio','video'}:
+                    try:
+                        item,native=await prepare(content['media'])
+                    except Exception:
+                        raise RcsPreparationFailed('Media preparation failed') from None
+                    url=await self.oss.public_url(row['user_id'],item)
+                    if native:
                         media=[{'url':url,'kind':item['kind'],'mime_type':item['mime'],'file_name':item['name']}]
                     else: text='📎 '+item['name']+' 下载链接：'+url
                 _, ack = await client[1].send_channel_message(phone_number=request.phone_number, text=text,media=media,session_id=request.session_id,turn_id=request.turn_id,message_id=message_id)
                 state, code = 'sent', ''
                 receipt = {'ok':True,'downlink_msg_ids':ack.downlink_msg_ids}
-        except MediaLinkUnavailable:
-            state, code, receipt = 'failed', 'media_entry_unconfigured', {'ok':False}
+        except RcsPreparationFailed:
+            state, code, receipt = 'failed', 'media_preparation_failed', {'ok':False}
+        except OssUploadFailed:
+            state, code, receipt = 'failed', 'media_oss_upload_failed', {'ok':False}
         except (self.stream.DownlinkRejected,ReplyRejected):
             state, code, receipt = 'failed', 'gateway_rejected', {'ok':False}
         except Exception:

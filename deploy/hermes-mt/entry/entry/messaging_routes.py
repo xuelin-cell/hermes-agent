@@ -100,13 +100,23 @@ class MessagingRoutes:
         fields=[] if platform not in CREDENTIALS else [{'key':key,'is_set':bool(binding),'is_password':key.endswith('SECRET'),'redacted_value':'configured' if binding else None,'advanced':False,'description':'','prompt':key,'required':True,'url':None} for key in CREDENTIALS[platform]]
         async with self.entry.database.acquire() as db:
             attention=bool(binding and await db.fetchval("SELECT 1 FROM messaging_inbox WHERE binding_id=$1 AND binding_revision=$2 AND state='uncertain' LIMIT 1",binding['id'],binding['revision']))
-            outbound=await db.fetchval("SELECT o.state FROM messaging_outbox o JOIN messaging_inbox i USING(delivery_id) WHERE i.binding_id=$1 AND o.binding_revision=$2 AND o.state IN('unknown','failed') ORDER BY o.updated_at DESC LIMIT 1",binding['id'],binding['revision']) if binding else None
+            outbound=await db.fetchrow("SELECT o.state,o.error_code FROM messaging_outbox o JOIN messaging_inbox i USING(delivery_id) WHERE i.binding_id=$1 AND o.binding_revision=$2 AND o.state IN('unknown','failed') ORDER BY o.updated_at DESC LIMIT 1",binding['id'],binding['revision']) if binding else None
+        outbound_state=outbound['state'] if outbound else ''
+        outbound_code=outbound['error_code'] if outbound else ''
+        outbound_messages={
+            'media_entry_unconfigured':'附件发送失败：旧媒体下载入口未配置。更新消息服务后可使用 OSS 公网链接发送。',
+            'media_oss_upload_failed':'附件上传 OSS 失败，请检查当前用户套餐、元景 MCP 和 OSS 网络连接。',
+            'media_preparation_failed':'附件处理失败：请检查文件格式、大小及音频转换服务。',
+            'gateway_rejected':'消息网关拒绝投递，请核对文件格式、大小及网关返回结果。',
+        }
+        outbound_message=outbound_messages.get(outbound_code,'有消息或附件投递失败，请先核对原会话再决定是否重发。')
+        if outbound_state=='unknown': outbound_message='发送结果未确认，请先核对手机和原会话，避免重复发送。'
         return {'id':platform,'name':PLATFORMS[platform],'configured':bool(binding),
             'enabled':enabled,'gateway_running':connected or (enabled and fresh and state=='failed'),
             'state':'connected' if connected else 'fatal' if enabled and state=='failed' else 'connecting' if enabled else 'disconnected',
             'description':'集中常驻接入，实例按消息唤醒。','docs_url':'','env_vars':fields,
-            'error_code':'execution_uncertain' if attention else 'outbound_unconfirmed' if outbound=='unknown' else 'outbound_failed' if outbound else '',
-            'error_message':'有执行结果未确认，已暂停后续任务；请先核对原任务。' if attention else '有消息或附件投递失败或结果未确认，请先核对原会话再决定是否重发。' if outbound else '连接失败，请核对应用凭据与机器人配置。' if state=='failed' else None}
+            'error_code':'execution_uncertain' if attention else 'outbound_unconfirmed' if outbound_state=='unknown' else (outbound_code or 'outbound_failed') if outbound else '',
+            'error_message':'有执行结果未确认，已暂停后续任务；请先核对原任务。' if attention else outbound_message if outbound else '连接失败，请核对应用凭据与机器人配置。' if state=='failed' else None}
 
     async def media(self,request):
         from .messaging_media_routes import handle

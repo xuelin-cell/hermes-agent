@@ -57,7 +57,8 @@ async def test_large_media_roundtrip_is_durable_and_replay_safe(tmp_path,monkeyp
     accepted=asyncio.Event()
     errors=[]
     data=b'bounded-media-'+b'x'*(2*1024*1024)
-    output=home/'output.txt'; output.write_bytes(data)
+    outgoing=b'x'*(31*1024*1024) if channel=='uniagentgate' else data
+    output=home/'output.txt'; output.write_bytes(outgoing)
     adapter=None
     async def stop_adapter(app):
         if adapter: await asyncio.wait_for(adapter.disconnect(),5)
@@ -114,7 +115,7 @@ async def test_large_media_roundtrip_is_durable_and_replay_safe(tmp_path,monkeyp
             assert len(rows)==2
             assert json.loads(rows[0]['payload'])=={'content':'final text'}
             media=json.loads(rows[1]['payload'])['media']
-            assert unpack(media)==data
+            assert unpack(media)==outgoing
             # Replaying the final/attachment receipts cannot create another side effect.
             assert await entry.messaging_routes.store.record_media(delivery,'lease-owner',epoch,media)==rows[1]['outbound_id']
             assert not adapter.ledger.media_pending(binding['revision'],binding['id'])
@@ -153,3 +154,115 @@ async def test_5g_file_link_is_single_attachment_expiring_and_revocable(postgres
             assert (await http.get(url)).status==404
     finally:
         await entry.database.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('extension',['png','webp','pdf'])
+async def test_5g_oss_public_links_use_owner_credentials_and_real_upload_before_downlink(postgres_database_url,extension):
+    settings,app,entry,binding,epoch,delivery=await context(postgres_database_url,'uniagentgate')
+    await entry.store.finish_login(user_id='bob',phone='',api_key='sk-bob',endpoint=None,catalog=None,ttl_s=3600,upstream_expires_at_ms=None,login_method='sms')
+    uploads=[]; confirms=[]; downlinks=[]; tools=[]
+    public_host=["obs-nmhhht6.cucloud.cn"]
+    upstream=web.Application(client_max_size=65*1024*1024)
+    async def mcp(request):
+        body=await request.json()
+        if body['method'].startswith('notifications/'):
+            return web.Response(status=202)
+        if body['method']=='initialize':
+            result={'protocolVersion':body['params']['protocolVersion'],'capabilities':{'tools':{}},'serverInfo':{'name':'oss','version':'1'}}
+        elif body['method']=='tools/list':
+            result={'tools':[{'name':name,'inputSchema':{'type':'object'}} for name in ('get_oss_upload_url','confirm_oss_upload')]}
+        else:
+            params=body['params']; tools.append((request.query['key'],params))
+            if params['name']=='get_oss_upload_url' and request.query['key']=='sk-bob':
+                result={'content':[], 'structuredContent':{'uploadUrl':'http://obs-nmhhht6-internal.cucloud.cn/app-agent-prod/test/object','ossPath':'app-agent-prod/test/object','headers':{'Content-Type':'image/png'}}}
+            elif params['name']=='get_oss_upload_url':
+                result={'content':[{'type':'text','text':'上传地址：https://obs-nmhhht6.cucloud.cn/app-agent-prod/test/object\nossPath（确认上传时需传入）：app-agent-prod/test/object\n下载链接：https://obs-nmhhht6-internal.cucloud.cn/app-agent-prod/test/object'}]}
+            else:
+                assert params['name']=='confirm_oss_upload' and params['arguments']['usePublic'] is True
+                confirms.append(request.query['key'])
+                result={'content':[{'type':'text','text':'下载链接：https://'+public_host[0]+'/app-agent-prod/test/object?X-Amz-Expires=604800'}]}
+        return web.json_response({'jsonrpc':'2.0','id':body['id'],'result':result})
+    async def put(request):
+        uploads.append(await request.read())
+        assert 'Authorization' not in request.headers
+        return web.Response(status=200)
+    async def gateway(request):
+        downlinks.append(await request.json())
+        return web.json_response({'ok':True})
+    upstream.router.add_post('/mcp',mcp)
+    upstream.router.add_put('/upload',put)
+    upstream.router.add_post('/gateway',gateway)
+    filename='cat.'+extension
+    raw=b'large-report-' + b'x'*(31*1024*1024) if extension=='pdf' else b'private-image'
+    item=pack(raw,filename,'file' if extension=='pdf' else 'image')
+    await entry.messaging_routes.store.complete(delivery,'lease-owner',epoch,{'content':'Cat ready'})
+    async with entry.database.acquire() as db:
+        await db.execute('UPDATE messaging_inbox SET payload=$2::jsonb WHERE delivery_id=$1',delivery,json.dumps({'type':'agent.request','agent_id':'bot','message_id':'external','channel':{'phone_number':'13800000000'},'session_id':'session','turn_id':'turn','payload':{'inputs':[{'type':'text','text':'draw a cat'}]}}))
+    outbound=await entry.messaging_routes.store.record_media(delivery,'lease-owner',epoch,item)
+    try:
+        async with TestServer(upstream) as server, aiohttp.ClientSession() as http:
+            service=Channels(replace(settings,yuanjing_mcp_url=str(server.make_url('/mcp')),channels_relay_url='',channels_media_base_url=''),{})
+            service.database=entry.database; service.store=entry.messaging_routes.store
+            class Wire:
+                def put(self,url,**kwargs):
+                    assert url.startswith(('https://obs-nmhhht6.cucloud.cn/','http://obs-nmhhht6-internal.cucloud.cn/'))
+                    return http.put(str(server.make_url('/upload')),**kwargs)
+            service.http=Wire()
+            class Gateway:
+                health=SimpleNamespace(state='running')
+                async def send_channel_message(self, **kwargs):
+                    async with http.post(server.make_url('/gateway'),json=kwargs) as response: assert response.status==200
+                    return None, SimpleNamespace(downlink_msg_ids=['receipt'])
+            service.clients[binding['id']]=(binding['revision'],Gateway())
+            for _ in range(2): await service.send_pending()
+            async with entry.database.acquire() as db:
+                rows=await db.fetch('SELECT state,error_code FROM messaging_outbox ORDER BY part_index')
+            assert [row['state'] for row in rows]==['sent','sent']
+            assert len(downlinks)==2 and downlinks[0]['text']=='Cat ready'
+            if extension=='png':
+                assert downlinks[1]['media'][0]['url'].endswith('X-Amz-Expires=604800')
+            else:
+                assert downlinks[1]['media']==[] and '下载链接' in downlinks[1]['text']
+            assert uploads==[raw] and confirms==['sk-fixture']
+            for user in ('bob','alice'):
+                assert 'internal' not in await service.oss.public_url(user,item)
+            assert len(uploads)==2 and confirms==['sk-fixture','sk-bob','sk-fixture']
+            assert all(params['arguments']['fileName']==filename for _,params in tools if params['name']=='get_oss_upload_url')
+            # Failure before downlink is definite, never falsely acknowledged as sent/unknown.
+            public_host[0]='obs-nmhhht6-internal.cucloud.cn'
+            async with entry.database.acquire() as db:
+                await db.execute("UPDATE messaging_outbox SET state='pending' WHERE outbound_id=$1",outbound)
+            await service.send_pending()
+            async with entry.database.acquire() as db:
+                row=await db.fetchrow('SELECT state,error_code FROM messaging_outbox WHERE outbound_id=$1',outbound)
+            assert dict(row)=={'state':'failed','error_code':'media_oss_upload_failed'}
+            assert len(downlinks)==2
+            view=await entry.messaging_routes.view('alice','uniagentgate')
+            assert view['error_code']=='media_oss_upload_failed' and 'OSS' in view['error_message']
+    finally:
+        await entry.database.close()
+
+
+@pytest.mark.asyncio
+async def test_rcs_format_policy_transcodes_real_wav_and_preserves_other_channel_limits():
+    import io
+    import wave
+    from entry.messaging_rcs import prepare
+    from plugins.cloud_messaging.media import outbound_bytes
+    buffer=io.BytesIO()
+    with wave.open(buffer,'wb') as audio:
+        audio.setnchannels(1); audio.setsampwidth(2); audio.setframerate(16000)
+        audio.writeframes(b'\0\0'*1600)
+    converted,native=await prepare(pack(buffer.getvalue(),'voice.wav','audio','audio/wav'))
+    assert native and converted['name']=='voice.mp3' and converted['mime']=='audio/mpeg'
+    assert unpack(converted)!=buffer.getvalue() and len(unpack(converted))>0
+    for name,kind in [('cat.webp','image'),('cat.gif','image'),('file.pdf','file')]:
+        item=pack(b'fixture',name,kind)
+        result,native=await prepare(item)
+        assert not native and result==item
+    large=pack(b'x'*(21*1024*1024),'report.pdf','file')
+    assert len(outbound_bytes('uniagentgate',large))>20*1024*1024
+    for channel in ('weixin','dingtalk','wecom','feishu'):
+        with pytest.raises(ValueError): outbound_bytes(channel,large)
+    with pytest.raises(ValueError): pack(b'x'*(64*1024*1024+1),'large.pdf','file')

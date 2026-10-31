@@ -9,7 +9,7 @@ import aiohttp
 import asyncpg
 from aiohttp import web
 
-from plugins.cloud_messaging.media import unpack, MAX_MESSAGE_BYTES
+from plugins.cloud_messaging.media import outbound_bytes, message_limit
 
 log = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ class MessagingNotifications:
                 or not isinstance(content, str) or len(content)>20000
                 or not isinstance(media, list) or len(media)>20):
             raise ValueError('Invalid notification')
-        if sum(len(unpack(value)) for value in media)>MAX_MESSAGE_BYTES: raise ValueError('Notification media too large')
+        if sum(len(outbound_bytes(platform,value)) for value in media)>message_limit(platform): raise ValueError('Notification media too large')
         async with self.entry.database.acquire() as db, db.transaction():
             binding = await db.fetchrow('''SELECT b.* FROM messaging_bindings b JOIN users u USING(user_id)
                 WHERE b.user_id=$1 AND b.platform=$2 AND b.enabled AND b.deleted_at IS NULL AND u.status='active' FOR SHARE OF b''', user, platform)

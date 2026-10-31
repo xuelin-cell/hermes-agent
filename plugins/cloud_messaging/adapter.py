@@ -12,7 +12,7 @@ from gateway.relay.descriptor import CapabilityDescriptor
 from .transport import AcceptedRelayTransport
 
 from .ledger import Ledger
-from .media import pack,localize,MAX_MEDIA_BYTES
+from .media import pack,localize,attachment_limit
 
 
 class CloudMessagingAdapter(RelayAdapter):
@@ -135,7 +135,7 @@ class CloudMessagingAdapter(RelayAdapter):
         row=self.ledger.get(delivery) if delivery else None
         if not safe or not row or row['chat_id']!=chat: return SendResult(success=False,error='Invalid media delivery route or path')
         try:
-            with Path(safe).open('rb') as stream: data=stream.read(MAX_MEDIA_BYTES+1)
+            with Path(safe).open('rb') as stream: data=stream.read(attachment_limit(self.channel,kind)+1)
             media=pack(data,name or Path(safe).name,kind)
             if caption: media['caption']=str(caption)[:20000]
             self.ledger.media_accept(delivery,media)

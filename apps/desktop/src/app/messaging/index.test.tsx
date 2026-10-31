@@ -962,3 +962,20 @@ it('cloud health polling never becomes a pending setup operation or hides an unc
     getMessagingPlatforms.mockReset()
   }
 })
+
+it('shows the cloud reconnect error without suggesting a desktop restart', async () => {
+  document.documentElement.dataset.hermesBrowser = '1'
+  const rcs = platform({ id:'uniagentgate', configured:true, enabled:true, gateway_running:false, state:'fatal' })
+  getMessagingPlatforms.mockResolvedValue({ platforms:[rcs] })
+  window.hermesDesktop = { ...window.hermesDesktop, reconnectUniAgentGate }
+  reconnectUniAgentGate.mockRejectedValue(new Error('集中消息接入尚未部署。'))
+  try {
+    await renderMessaging()
+    const card=await screen.findByRole('article',{name:/5G/})
+    fireEvent.click(within(card).getByRole('button',{name:'Reconnect'}))
+    await waitFor(() => expect(notify).toHaveBeenCalledWith(expect.objectContaining({kind:'error',message:'集中消息接入尚未部署。'})))
+    expect(JSON.stringify(notify.mock.calls)).not.toContain('fully quit')
+  } finally {
+    delete document.documentElement.dataset.hermesBrowser
+  }
+})
