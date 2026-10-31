@@ -14,7 +14,7 @@ import { $connectionsRegistry } from '@/store/connection-registry-state'
 import { $developerMode } from '@/store/developer-mode'
 import { setInterfaceMode } from '@/store/interface-mode'
 import { $sidebarGrouping, $sidebarMessagingOpenIds, setSidebarAgentsGrouped, setSidebarGrouping } from '@/store/layout'
-import { $activeGatewayProfile, $profiles, setShowAllProfiles } from '@/store/profile'
+import { $activeGatewayProfile, $profiles, $showAllProfiles, setShowAllProfiles } from '@/store/profile'
 import { $profileRailVisible } from '@/store/profile-rail-prefs'
 import { $projectScope, ALL_PROJECTS } from '@/store/project-scope'
 import { $projectTree } from '@/store/projects'
@@ -26,6 +26,7 @@ import {
   $sessions,
   $sessionsLoadError,
   $sessionsLoading,
+  $sessionProfilesTruncated,
   $workspaceCwdOwner
 } from '@/store/session'
 import { $removedSessionIds } from '@/store/session-removal'
@@ -53,7 +54,8 @@ const renderSidebar = (
   pathname: string,
   currentView: AppView,
   onRetrySessions: () => Promise<void> = noopAsync,
-  workspaceTabs = false
+  workspaceTabs = false,
+  onResumeSession: (sessionId: string, session?: ReturnType<typeof makeSessionInfo>) => void = noop
 ) =>
   render(
     <MemoryRouter initialEntries={[pathname]}>
@@ -69,7 +71,7 @@ const renderSidebar = (
           onNavigate={noop}
           onNewSessionInWorkspace={noop}
           onNewSessionSplit={noop}
-          onResumeSession={noop}
+          onResumeSession={onResumeSession}
           onRetrySessions={onRetrySessions}
           onTriggerCronJob={noopAsync}
         />
@@ -160,7 +162,7 @@ describe('ChatSidebar navigation activity', () => {
     expect([...view.container.querySelectorAll('[data-tour^="sidebar-nav-"]')].map(node => node.textContent)).toEqual([
       TRANSLATIONS.en.sidebar.nav['new-session'],
       TRANSLATIONS.en.workspaceEditor.title,
-      TRANSLATIONS.en.workspaceEditor.capabilities
+      [TRANSLATIONS.en.skills.tabSkills, TRANSLATIONS.en.skills.tabPlugins, TRANSLATIONS.en.connectorsPage.title].join(' · ')
     ])
     const tree = $projectTree.get()
     act(() => $projectTree.set(tree.filter(project => project.isNoProject)))
@@ -201,6 +203,9 @@ describe('ChatSidebar navigation activity', () => {
 
   afterEach(() => {
     cleanup()
+    $activeGatewayProfile.set('default')
+    setShowAllProfiles(false)
+    $sessionProfilesTruncated.set({})
     $selectedWorkspaceMode.set(null)
     $projectTree.set([])
     setInterfaceMode('advanced')
@@ -223,6 +228,44 @@ describe('ChatSidebar navigation activity', () => {
     act(() => $developerMode.set(true))
 
     expect(view.container.querySelector('[data-slot="profile-rail"]')).not.toBeNull()
+  })
+
+  it('切换专家后仍显示通用助手和其他专家历史，同时保留工作模式筛选', () => {
+    setShowAllProfiles(false)
+    setSidebarGrouping('date')
+    setSidebarAgentsGrouped(false)
+    $selectedWorkspaceMode.set('work')
+    $sessionsLoading.set(false)
+    $sessionProfilesTruncated.set({ default: false, 'expert-a': false, 'expert-b': true })
+    $sessions.set([
+      ...sessionRows,
+      makeSessionInfo({ id: 'expert-a-chat', profile: 'expert-a', title: 'Expert A history' }),
+      makeSessionInfo({ id: 'expert-b-chat', profile: 'expert-b', title: 'Expert B history' }),
+      makeSessionInfo({
+        id: 'code-chat',
+        profile: 'expert-a',
+        title: 'Code history',
+        cwd: '/repo',
+        git_repo_root: '/repo'
+      })
+    ])
+    const resume = vi.fn()
+    renderSidebar('/', 'chat', noopAsync, false, resume)
+
+    for (const profile of ['expert-a', 'expert-b', 'default']) {
+      act(() => $activeGatewayProfile.set(profile))
+      expect(screen.getByText('Tile one')).toBeTruthy()
+      expect(screen.getByText('Tile two')).toBeTruthy()
+      expect(screen.getByText('Expert A history')).toBeTruthy()
+      expect(screen.getByText('Expert B history')).toBeTruthy()
+      expect(screen.queryByText('Code history')).toBeNull()
+      expect(screen.getByRole('button', { name: TRANSLATIONS.en.sidebar.loadMore })).toBeTruthy()
+      expect($activeGatewayProfile.get()).toBe(profile)
+      expect($selectedStoredSessionId.get()).toBe('tile-one')
+      expect($showAllProfiles.get()).toBe(false)
+      fireEvent.click(screen.getByText('Expert A history'))
+      expect(resume).toHaveBeenLastCalledWith('expert-a-chat', expect.objectContaining({ profile: 'expert-a' }))
+    }
   })
 
   it('keeps navigation and session activity coherent with the focused pane', () => {
@@ -256,7 +299,7 @@ describe('ChatSidebar navigation activity', () => {
     })
 
     for (const [pathname, currentView, label] of [
-      ['/capabilities', 'capabilities', TRANSLATIONS.en.sidebar.nav.capabilities],
+      ['/capabilities', 'capabilities', ['Experts', TRANSLATIONS.en.skills.tabSkills, TRANSLATIONS.en.connectorsPage.title].join(' · ')],
       ['/messaging', 'messaging', 'Messaging'],
       ['/artifacts', 'artifacts', TRANSLATIONS.en.sidebar.nav.artifacts],
       ['/cron', 'cron', 'Scheduled jobs']
