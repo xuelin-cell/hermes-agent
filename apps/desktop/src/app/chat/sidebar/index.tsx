@@ -6,6 +6,7 @@ import type * as React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router'
 
+import { useSkillsCopy } from '@/app/capabilities/skills-mt/copy'
 import { PlatformAvatar } from '@/app/messaging/platform-icon'
 import { MaasAccountSidebar } from '@/app/shell/maas-account-status'
 import { Button } from '@/components/ui/button'
@@ -442,7 +443,13 @@ export function ChatSidebar({
     [navContributions]
   )
 
+  const skillsCopy = useSkillsCopy()
   const workspaceMode = useStore($selectedWorkspaceMode)
+  const capabilitiesLabel = (
+    workspaceMode === 'codex'
+      ? [t.skills.tabSkills, t.skills.tabPlugins, t.connectorsPage.title]
+      : [skillsCopy('experts'), t.skills.tabSkills, t.connectorsPage.title]
+  ).join(' · ')
   const interfaceMode = useStore($interfaceMode)
   const workspaceCategories = useStore($workspaceSessionCategories)
   const showsAdvancedChrome = useStore($showsAdvancedChrome)
@@ -464,17 +471,17 @@ export function ChatSidebar({
           route: EDITOR_ROUTE,
           icon: (props: { className?: string }) => <Codicon name="file-code" {...props} />
         },
-        { ...SIDEBAR_NAV[1], label: t.workspaceEditor.capabilities }
+        { ...SIDEBAR_NAV[1], label: capabilitiesLabel }
       ]
     }
 
     return applySidebarNavPrefs(
-      withoutHiddenNavItems([...SIDEBAR_NAV, ...contributedNav]).filter(
-        workspaceMode === 'work' ? () => true : shownInMode(interfaceMode)
-      ),
+      withoutHiddenNavItems([...SIDEBAR_NAV, ...contributedNav])
+        .map(item => (item.id === 'capabilities' ? { ...item, label: capabilitiesLabel } : item))
+        .filter(workspaceMode === 'work' ? () => true : shownInMode(interfaceMode)),
       navPrefs
     )
-  }, [contributedNav, interfaceMode, navPrefs, workspaceMode, t.workspaceEditor])
+  }, [capabilitiesLabel, contributedNav, interfaceMode, navPrefs, workspaceMode, t.workspaceEditor])
 
   const panesFlipped = useStore($panesFlipped)
   const grouping = useStore($sidebarGrouping)
