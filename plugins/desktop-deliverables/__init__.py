@@ -15,6 +15,7 @@ from .paths import (
     changed,
     DOCUMENTS,
     IMAGES,
+    MEDIA,
     embedded,
     fresh,
     is_dir,
@@ -26,6 +27,7 @@ from .paths import (
     requested_roots,
     shown_paths,
     snapshot,
+    suppress_scratch_media,
 )
 
 _turns = OrderedDict()
@@ -305,7 +307,7 @@ def after_tool(
 
 
 def transform(*, response_text="", session_id="", turn_id="", platform="", **kwargs):
-    """只改本轮尚未存储的回复，统一排序、去重和最多八张交付卡。"""
+    """只改本轮尚未存储的回复，统一筛选候选，最多自动补齐八张交付卡。"""
     if (
         platform not in {"desktop", "subagent", *background.DELIVERY_PLATFORMS}
         or not isinstance(response_text, str)
@@ -330,6 +332,9 @@ def transform(*, response_text="", session_id="", turn_id="", platform="", **kwa
     if turn.platform != "desktop" and not turn.background:
         return attach(key, turn, response_text, returned)
     cwd = turn.cwd if turn.background else local_cwd(turn.task_id) or turn.cwd
+    original_response = response_text
+    if turn.platform == "desktop" and not turn.background:
+        response_text = suppress_scratch_media(response_text, cwd)
     roots = {*turn.roots, turn.cwd, cwd}
     masked = mask_examples(response_text)
     # 用户指定或最终回复明确交付的文件，不因 assets 等素材目录名漏卡。
@@ -349,26 +354,34 @@ def transform(*, response_text="", session_id="", turn_id="", platform="", **kwa
     # 后台带回的成品早于本轮生成，不按“本轮新建”判断。
     paths += [path for path in returned if path not in paths]
     if not paths:
-        return None
+        return response_text if response_text != original_response else None
     managed = set(paths)
     shown = shown_paths(masked, cwd)
-    # 有文档时图片多是文档的素材；网页和 Markdown 报告只去掉它引用到的图片。
+    # 明确交付保留；报告直接引用的本机图片、图表网页不再自动补卡。
     # 元景生成的图片是成品本身，结果里已没有链接，不出卡用户就看不到。
     suffixes = {path.suffix.lower().lstrip(".") for path in paths}
     generated = {path for path in turn.downloads.values() if path} | set(returned)
+    reports = [path for path in paths if path.suffix.lower() in {".md", ".html", ".htm"}]
+    dependencies = set().union(*map(embedded, reports))
+    explicit_cards = shown | {
+        resolve_path(match.group(1), cwd)
+        for match in MEDIA.finditer(masked)
+    } | turn.declared
     if suffixes & DOCUMENTS:
         materials = set(paths)
     else:
-        reports = [
-            path for path in paths if path.suffix.lower() in {".md", ".html", ".htm"}
-        ]
-        materials = set().union(*map(embedded, reports)) if suffixes & IMAGES else set()
+        materials = dependencies
     paths = [
         path
         for path in paths
-        if path.suffix.lower().lstrip(".") not in IMAGES
+        if path in explicit_cards
+        or path.suffix.lower().lstrip(".") not in IMAGES
         or path not in materials
         or path in generated
+    ]
+    paths = [
+        path for path in paths
+        if path not in dependencies or path in explicit_cards or path in generated
     ]
     from .paths import priority
 
@@ -377,7 +390,7 @@ def transform(*, response_text="", session_id="", turn_id="", platform="", **kwa
     moved = set(appended) | (managed & shown)
     # 只移走将追加或已有另一展示位置的独立行，未选中卡片不能被误删。
     text = remove_media_lines(response_text, masked, cwd, moved)
-    return appended_reply(response_text, text, appended)
+    return appended_reply(original_response, text, appended)
 
 
 def appended_reply(response_text, text, appended):

@@ -12,7 +12,7 @@ from urllib.parse import urljoin, urlparse
 import httpx
 
 from hermes_cli.web_server_profiles import _profile_scope
-from tools.skills_guard import scan_skill_cached, should_allow_install
+from tools.skills_guard import format_scan_report, full_content_hash, scan_skill_cached, should_allow_install
 from tools.skills_hub_install import install_from_quarantine, quarantine_bundle
 from tools.skills_hub_models import SkillBundle, _parse_frontmatter, _validate_skill_name
 
@@ -33,6 +33,15 @@ PACKAGE_HOSTS = frozenset({
 
 class MarketSkillInstallError(ValueError):
     """表示可直接反馈给用户的技能市场安装失败。"""
+
+
+class MarketSkillApprovalRequired(MarketSkillInstallError):
+    """A scanned package needs explicit approval bound to these exact bytes."""
+
+    def __init__(self, package_hash: str, report: str):
+        super().__init__("该技能被判定为危险，需要确认扫描结果后才能安装")
+        self.package_hash = package_hash
+        self.report = report
 
 
 def validate_package_url(url: str) -> str:
@@ -134,7 +143,9 @@ def bundle_from_zip(package: bytes, identifier: str, source_url: str) -> SkillBu
     return SkillBundle(name, files, "uniwork", identifier, "community", {"source_url": source_url})
 
 
-def install_market_skill(url: str, identifier: str, profile: Optional[str] = None) -> dict:
+def install_market_skill(
+    url: str, identifier: str, profile: Optional[str] = None, *, approved_hash: Optional[str] = None,
+) -> dict:
     """在目标配置档中下载、隔离扫描并安装一个 UniWork 技能。"""
     with _profile_scope(profile):
         bundle = bundle_from_zip(download_skill_package(url), identifier, url)
@@ -153,17 +164,22 @@ def install_market_skill(url: str, identifier: str, profile: Optional[str] = Non
                 source_url=url,
                 cache_dir=HUB_DIR / "scan-cache",
             )
-            # 点击安装即是用户对“需注意”级市场包的明确确认；危险级社区包仍由策略硬阻止。
+            # Approval is scoped to the scanned content; a changed download must be reviewed again.
             allowed, reason = should_allow_install(result, force=True)
             if allowed is not True:
-                raise MarketSkillInstallError(f"技能未通过安全安装策略：{reason}")
+                if result.verdict != "dangerous":
+                    raise MarketSkillInstallError(f"技能未通过安全安装策略：{reason}")
+                package_hash = full_content_hash(quarantine_path)
+                if approved_hash != package_hash:
+                    raise MarketSkillApprovalRequired(package_hash, format_scan_report(result))
+                provenance = {**provenance, "user_approved_dangerous": True}
             install_dir = install_from_quarantine(
                 quarantine_path, bundle.name, "", bundle, result, scan_provenance=provenance
             )
         except Exception:
             shutil.rmtree(quarantine_path, ignore_errors=True)
             raise
-        # Refresh discovery for future agents; existing agents retain their pinned prompt.
+        # New conversations see the installed skill; existing agents keep their pinned prefix.
         from agent.prompt_builder import clear_skills_system_prompt_cache
         clear_skills_system_prompt_cache(clear_snapshot=True)
         return {"ok": True, "name": bundle.name, "install_path": str(install_dir)}

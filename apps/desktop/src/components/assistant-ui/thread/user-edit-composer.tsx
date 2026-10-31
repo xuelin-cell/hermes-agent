@@ -59,8 +59,10 @@ import {
 } from '@/app/chat/hooks/use-composer-actions'
 import { uploadComposerAttachment } from '@/app/session/hooks/use-prompt-actions'
 import { hermesDirectiveFormatter } from '@/components/assistant-ui/directive-text'
+import { messageAttachmentRefs } from '@/components/assistant-ui/thread/content'
+import { UserAttachments } from '@/components/assistant-ui/thread/user-attachments'
 import {
-  StickyHumanMessageContainer,
+  HumanMessageContainer,
   StopGlyph,
   USER_ACTION_ICON_BUTTON_CLASS,
   USER_ACTION_ICON_SIZE,
@@ -94,6 +96,8 @@ export const UserEditComposer: FC<UserEditComposerProps> = ({ cwd, gateway, sess
   const copy = t.assistant.thread
   const aui = useAui()
   const draft = useAuiState(s => s.composer.text)
+  const attachmentRefs = useAuiState(s => messageAttachmentRefs(s.message.metadata?.custom?.attachmentRefs))
+  const fileRefs = attachmentRefs.filter(ref => ref.startsWith('@file:'))
   const textDirection = useForcedTextDirection()
   const rootRef = useRef<HTMLDivElement | null>(null)
   const editorRef = useRef<HTMLDivElement | null>(null)
@@ -836,7 +840,7 @@ export const UserEditComposer: FC<UserEditComposerProps> = ({ cwd, gateway, sess
 
   return (
     <ComposerPrimitive.Root className="contents" data-slot="aui_edit-composer-root">
-      <StickyHumanMessageContainer>
+      <HumanMessageContainer>
         <div
           className="composer-human-message-container human-execution-message-top relative flex w-full items-start rounded-md bg-(--ui-chat-surface-background)"
           // A raised box over the transcript field: under window glass it keeps
@@ -869,6 +873,11 @@ export const UserEditComposer: FC<UserEditComposerProps> = ({ cwd, gateway, sess
             )}
             data-expanded={expanded ? 'true' : undefined}
           >
+            {fileRefs.length > 0 && (
+              <div className="flex max-w-full flex-wrap gap-1">
+                <UserAttachments refs={fileRefs} />
+              </div>
+            )}
             <div
               aria-label={copy.editMessage}
               autoCapitalize="off"
@@ -958,7 +967,7 @@ export const UserEditComposer: FC<UserEditComposerProps> = ({ cwd, gateway, sess
             </button>
           </div>
         </div>
-      </StickyHumanMessageContainer>
+      </HumanMessageContainer>
     </ComposerPrimitive.Root>
   )
 }

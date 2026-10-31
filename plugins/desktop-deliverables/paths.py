@@ -116,7 +116,7 @@ _EMBEDS = re.compile(
 
 
 def embedded(report):
-    """网页和 Markdown 报告引用的本机图片属于报告本身；只读前 2 MB，读不到当作没有引用。"""
+    """读取报告直接引用的本机资源；只读前 2 MB，不执行页面或递归读取依赖。"""
     try:
         with report.open(encoding="utf-8", errors="ignore") as file:
             text = file.read(2_000_000)
@@ -129,8 +129,35 @@ def embedded(report):
     return {
         path
         for value in values
-        if (path := resolve_path(unquote(value), report.parent)) is not None
+        if not re.match(r"^(?:[a-z][a-z0-9+.-]*:|//|#)", value, re.I)
+        and (path := resolve_path(unquote(re.split(r"[?#]", value, maxsplit=1)[0]), report.parent)) is not None
+        and path != report
     }
+
+
+def suppress_scratch_media(text, cwd):
+    """取消临时文件的 MEDIA 声明，保留路径说明；链接由桌面统一降为文字。"""
+    from gateway.platforms.base import MEDIA_TAG_CLEANUP_RE
+
+    masked = mask_examples(text)
+    matches = list(MEDIA_TAG_CLEANUP_RE.finditer(masked.replace(">", " ")))
+    # 原版扫描器只认绝对路径，补上以 .tmp 开头的相对交付标记。
+    matches += list(re.finditer(r"MEDIA:\s*(?P<path>\.tmp[/\\][^\s`\"<>]+)", masked))
+    edits = {}
+    for match in matches:
+        value = match.group("path")
+        path = resolve_path(value, cwd)
+        if path is None or ".tmp" not in (part.lower() for part in path.parts):
+            continue
+        # 链接保持语法完整，交给桌面统一处理；普通标记改为代码文字，避免 Windows 反斜杠被吃掉。
+        if re.search(r"\]\(\s*<?$", masked[:match.start()]):
+            continue
+        label = value.strip("`\"'")
+        fence = "`" * (max((len(run) for run in re.findall(r"`+", label)), default=0) + 1)
+        edits[match.start()] = (match.end(), f"{fence}{label}{fence}")
+    for start, (end, replacement) in sorted(edits.items(), reverse=True):
+        text = text[:start] + replacement + text[end:]
+    return text
 
 
 def shown_paths(masked, cwd):

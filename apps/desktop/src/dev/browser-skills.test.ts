@@ -76,3 +76,21 @@ it('保存失败提供仅重试保存的操作，不重复安装；账号切换�
  return json({ id: 'old', phase: 'saved', result: { ok: true } }) })
   await expect(other.mutate(input)).rejects.toThrow()
 })
+
+it('returns an uninstalled scan review and uses a fresh operation for hash approval', async () => {
+  login('alice')
+  const bridge = browserSkills('/hermes')
+  const review = { ok: false, requires_confirmation: true, package_hash: 'reviewed', report: 'DANGEROUS' }
+  const request = vi.fn(async (_url: string, options: RequestInit) => {
+    const body = JSON.parse(options.body as string)
+    return json({ id: body.id, phase: 'confirmation', result: review })
+  })
+  vi.stubGlobal('fetch', request)
+  expect(await bridge.mutate(input)).toEqual(review)
+  await bridge.mutate({ ...input, body: { ...input.body, approved_hash: 'reviewed' } })
+  const starts = request.mock.calls.filter(([url]) => url.endsWith('/start')).map(([, options]) => JSON.parse(options.body as string))
+  expect(starts).toHaveLength(2)
+  expect(starts[0].id).not.toBe(starts[1].id)
+  expect(starts[1].body.approved_hash).toBe('reviewed')
+  expect(vi.mocked(notify).mock.calls.some(([notice]) => notice.kind === 'success')).toBe(false)
+})

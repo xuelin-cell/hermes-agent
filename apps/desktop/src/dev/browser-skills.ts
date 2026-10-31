@@ -19,7 +19,7 @@ export function isCloudSkillMutation(method: string, path: string): boolean {
 
 interface SkillStatus {
   id: string
-  phase: 'changing' | 'saving' | 'saved' | 'save_failed' | 'unknown' | 'failed'
+  phase: 'changing' | 'saving' | 'saved' | 'confirmation' | 'save_failed' | 'unknown' | 'failed'
   result: unknown
   error: string
 }
@@ -61,10 +61,10 @@ export function browserSkills(base: string, kind: 'skills' | 'kits' = 'skills') 
       for (;;) {
         const status = await call('status', { id }, owner)
 
-        if (status.phase === 'saved' || status.phase === 'failed') {
+        if (status.phase === 'saved' || status.phase === 'confirmation' || status.phase === 'failed') {
           pending.delete(key)
           if (status.phase === 'failed') {throw new Error(status.error || copy().uncertain)}
-          invalidateSlashCompletions()
+          if (status.phase === 'saved') {invalidateSlashCompletions()}
 
           return status.result
         }

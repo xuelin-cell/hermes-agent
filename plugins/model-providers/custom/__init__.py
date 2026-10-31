@@ -30,6 +30,12 @@ def _looks_like_ollama_endpoint(base_url: str | None) -> bool:
 class CustomProfile(ProviderProfile):
     """Custom/Ollama local provider — think=false and num_ctx support."""
 
+    def create_client(self, **client_kwargs: Any) -> Any | None:
+        """仅为 MaaS 已确认的工具参数尾缀问题提供插件客户端。"""
+        from .maas_tool_arguments import create_maas_client
+
+        return create_maas_client(**client_kwargs)
+
     def supported_reasoning_efforts(self, model: str | None) -> tuple[str, ...]:
         """The OpenAI-compat wire set, mirroring this profile's own chat-completions clamp.
 

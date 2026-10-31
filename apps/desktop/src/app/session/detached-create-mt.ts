@@ -1,5 +1,5 @@
 /**
- * desktop-mt: 新对话发出后、会话还没建好时用户又开了新对话，建好的会话转到后台继续跑，
+ * desktop-mt: 新对话发出后用户切到其他会话或又开新对话，建好的会话转到后台继续跑，
  * 不再把页面拽回去、也不清掉新对话的草稿。
  *
  * 上游 createBackendSessionForSend 在 session.create 返回后靠路由和选中会话判断用户是否切走；
@@ -25,6 +25,8 @@ export function pendingNewChatSubmitLockKey(): string {
 }
 
 export interface DetachCreateInput {
+  /** 路由或选中项已切到其他会话。 */
+  viewChanged?: boolean
   /** 发送时的代次。 */
   startEpoch: number
   /** session.create 返回的 stored id；没有就没法在侧栏里继续，不转后台。 */
@@ -39,10 +41,10 @@ export interface DetachCreateInput {
   switching: boolean
 }
 
-/** 会话建好时是否转后台：普通发送、拿到了 stored id、发送后又开了新对话，并且后端和身份都没换。 */
+/** 普通发送切走后转后台，但不能跨连接或 Profile 继续。 */
 export function shouldDetachCreate(input: DetachCreateInput): boolean {
   return (
-    input.startEpoch !== freshDraftEpoch &&
+    (input.viewChanged || input.startEpoch !== freshDraftEpoch) &&
     Boolean(input.stored) &&
     !input.createdWithOverrides &&
     !input.switching &&

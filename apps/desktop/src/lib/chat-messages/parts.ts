@@ -1,3 +1,4 @@
+import { deliveryPathIdentity } from '@/lib/delivery-cards'
 import { mediaDisplayLabel, mediaMarkdownHref } from '@/lib/media'
 
 import type { ChatMessage, ChatMessagePart } from './types'
@@ -213,8 +214,14 @@ export function renderMediaTags(text: string): string {
 /** Raw `MEDIA:` values in `text`, quotes intact — the one parser Artifacts and chat share. */
 export function mediaTagValues(text: string): string[] {
   const values: string[] = []
+  const seen = new Set<string>()
   replaceMediaTags(text, value => {
-    values.push(value)
+    const identity = deliveryPathIdentity(unquoteMediaPath(value))
+
+    if (!identity?.scratch && !seen.has(identity?.key ?? value)) {
+      seen.add(identity?.key ?? value)
+      values.push(value)
+    }
 
     return ''
   })

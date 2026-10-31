@@ -21,9 +21,9 @@ import { useMediaImage } from '@/hooks/use-media-image'
 import { useI18n } from '@/i18n'
 import { detectArtifact } from '@/lib/artifact-detect'
 import { renderMediaTags } from '@/lib/chat-messages/parts'
+import { parseDeliveryBlocks } from '@/lib/delivery-cards'
 import { normalizeExternalUrl, openExternalLink, PrettyLink } from '@/lib/external-link'
 import { createMemoizedMathPlugin } from '@/lib/katex-memo'
-import { parseMarkdownIntoBlocksCached } from '@/lib/markdown-blocks'
 import { preprocessMarkdown } from '@/lib/markdown-preprocess'
 import {
   downloadGatewayMediaFile,
@@ -765,7 +765,7 @@ function MarkdownTextSurface({
         // parseIncompleteMarkdown stays false to avoid a second full-text
         // remend pass.
         parseIncompleteMarkdown={false}
-        parseMarkdownIntoBlocksFn={parseMarkdownIntoBlocksCached}
+        parseMarkdownIntoBlocksFn={parseDeliveryBlocks}
         plugins={plugins}
         preprocess={preprocessWithTailRepair}
         remarkPlugins={REMARK_PLUGINS}

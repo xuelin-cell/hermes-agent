@@ -78,7 +78,7 @@ class SkillRoutes:
                         raise web.HTTPTooManyRequests(text='技能操作繁忙，请稍后重试。')
                     if len(self.operations) >= 128:
                         for old_key, old in list(self.operations.items()):
-                            if old.phase in {'saved', 'unknown', 'failed'} and (not old.task or old.task.done()):
+                            if old.phase in {'saved', 'confirmation', 'unknown', 'failed'} and (not old.task or old.task.done()):
                                 self.operations.pop(old_key)
                                 break
                     if len(self.operations) >= 128:
@@ -98,7 +98,7 @@ class SkillRoutes:
                 raise web.HTTPNotFound()
             return web.json_response({
                 'id': key, 'phase': operation.phase, 'error': operation.error,
-                'result': operation.result if operation.phase == 'saved' else None,
+                'result': operation.result if operation.phase in {'saved', 'confirmation'} else None,
             }, headers={'Cache-Control': 'no-store'})
         except (ValueError, KeyError, TypeError):
             raise web.HTTPBadRequest(text='技能操作参数无效。') from None
@@ -127,6 +127,9 @@ class SkillRoutes:
             await self.entry._touch(operation.user)
             operation.result = await asyncio.wait_for(
                 self.instance(operation, operation.method, operation.path, operation.body), 610)
+            if operation.path == 'api/skills/market/install' and operation.result.get('requires_confirmation') is True:
+                operation.phase = 'confirmation'
+                return
             if MUTATIONS[(operation.method, operation.path)]:
                 name = operation.result.get('name')
                 if not isinstance(name, str) or not re.fullmatch(r'[A-Za-z0-9_.:-]{1,200}', name):

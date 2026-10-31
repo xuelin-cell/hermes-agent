@@ -535,7 +535,6 @@
        markdown block and between consecutive prose parts. Single knob; tweak
        freely. */
     --paragraph-gap: 0.7rem;
-    --sticky-human-top: 0.23rem;
     --file-tree-row-height: 1.375rem;
 
     --composer-width: 100%;
@@ -1775,16 +1774,7 @@ body.guest-pointer-lock :is(webview, iframe) {
   text-align: left;
 }
 
-[data-slot='aui_user-message-root'] {
-  --sticky-human-offset: calc(var(--sticky-human-top) + 1px);
-  top: var(--sticky-human-offset);
-}
 
-/* The sticky prompt owns no field paint. Clip only the scrolling siblings
-   behind it, including the top gap, so bubble transparency still works. */
-[data-sticky-prompt-clip] {
-  clip-path: inset(var(--sticky-prompt-clip) 0 0);
-}
 
 [data-slot='aui_user-message-root'],
 [data-slot='aui_edit-composer-root'] {
@@ -1796,23 +1786,90 @@ body.guest-pointer-lock :is(webview, iframe) {
   line-height: var(--human-msg-line-height);
 }
 
+/* Web links and file references stay recognizable independently of the accent. */
+[data-slot='aui_thread-content'] {
+  --conversation-link-color: #1565c0;
+}
+
+.dark [data-slot='aui_thread-content'] {
+  --conversation-link-color: #7db4ff;
+}
+
+[data-slot='aui_thread-content']
+  :is(
+    a.ref,
+    .aui-md a[href],
+    .ref[data-ref='url'],
+    .ref[data-ref='file'],
+    .ref[data-ref='folder'],
+    .ref[data-ref='line']
+  ) {
+  --ref-color: var(--conversation-link-color);
+  color: var(--conversation-link-color);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+[data-slot='aui_thread-content']
+  :is(
+    a.ref,
+    .aui-md a[href],
+    .ref[data-ref='url'],
+    .ref[data-ref='file'],
+    .ref[data-ref='folder'],
+    .ref[data-ref='line']
+  ):hover {
+  text-decoration: underline;
+}
+
+/* Human prompts use a neutral bubble, independent of the accent colour. */
+[data-slot='aui_thread-content'] {
+  --conversation-turn-gap: 1rem;
+  --human-bubble-background: #f2f2f2;
+}
+
+.dark [data-slot='aui_thread-content'] {
+  --human-bubble-background: #2b2d34;
+}
+
+[data-slot='aui_user-bubble-frame'] > .composer-human-message {
+  border-color: transparent;
+  border-radius: 20px 20px 0 20px;
+  background: var(--human-bubble-background);
+  padding: 12px 36px 12px 16px;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+[data-slot='aui_thread-content'] .composer-human-ai-pair-container {
+  margin-bottom: 24px;
+}
+
+/* Keep the sticky row full-width; only the human bubble occupies the right lane. */
+[data-slot='aui_user-bubble-actions'] {
+  width: fit-content;
+  max-width: 85%;
+  margin-left: auto;
+}
+
+[data-slot='aui_user-attachments'] {
+  width: fit-content;
+  max-width: 85%;
+  margin-left: auto;
+  justify-content: flex-end;
+}
+
 [data-slot='aui_edit-composer-root'] [data-slot='composer-rich-input'] {
   line-height: var(--human-msg-line-height);
 }
 
-/* Sticky human bubbles clamp to ~2 lines with a soft bottom fade so a long
-   prompt doesn't dominate the viewport. The clamp lifts only in the edit
+/* Sticky human bubbles limit long prompts without fading the visible text. The details control expands the read-only text; the clamp also lifts in the edit
    composer; expanding on read-only :focus-within ran on mousedown (before the
    swap) and fought stick-to-bottom when parked at the bottom. */
 .sticky-human-clamp {
   cursor: pointer;
   max-height: calc(4 * var(--human-msg-line-height) * var(--conversation-text-font-size) + 0.15rem);
   overflow: hidden;
-}
-
-.sticky-human-clamp[data-clamped='true'] {
-  -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent);
-  mask-image: linear-gradient(to bottom, #000 55%, transparent);
 }
 
 /* Stick-to-bottom owns scrollTop while following. Once escaped, native anchoring
@@ -3290,11 +3347,6 @@ button[data-slot='aui_msg-reactions'] svg {
 
 [data-hud-shell] [data-slot='aui_user-message-root'] {
   background: transparent !important;
-  /* Not sticky in HUD mode: the band is a short log, and a pinned bubble
-     spends a third of it on a line you already read. Static rows scroll away
-     like everything else (the app keeps its sticky behavior — this is the
-     HUD's call, not a global one). */
-  position: static !important;
 }
 
 /* User bubbles: the ONE thing in the band that paints its own opaque fill

@@ -16,13 +16,13 @@ HOST = "https://obs-nmhhht6.cucloud.cn"
 SIGNED = "?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=secret"
 
 
-def upload_answer(name):
+def upload_answer(name, content_type="image/png"):
     """与元景上传工具的真实返回同形：文字里带上传地址、请求头和下载链接。"""
     url = f"{HOST}/app-agent-prod/temp/{name}{SIGNED}"
     return json.dumps(
         {
             "result": "已生成文件上传地址，请使用 PUT 方法上传文件。\n"
-            f"上传地址：{url} 方法：PUT\n请求头：Content-Type=image/png\n下载链接：{url} PUT 成功"
+            f"上传地址：{url} 方法：PUT\n请求头：Content-Type={content_type}\n下载链接：{url} PUT 成功"
         },
         ensure_ascii=False,
     )
@@ -169,7 +169,7 @@ def test_agent_mail_execute_action_uploads_and_rewrites_attachment(uploads, monk
 
     def oss_tool(name, args):
         uploads.calls.append((name, args))
-        return upload_answer("mail-report.txt")
+        return upload_answer("mail-report.txt", "text/plain")
 
     monkeypatch.setattr(uploads.module, "call_tool", oss_tool)
 
@@ -227,9 +227,9 @@ def test_list_arguments_and_working_directory_files(uploads):
 
 
 def test_files_pasted_earlier_in_the_session_are_allowed(uploads, tmp_path):
-    """会话里贴过的图片在别的目录也能上传；其它目录的文件拦下并说明原因。"""
+    """会话里贴过的文件在别的目录也能上传；其它目录、类型又对不上的文件拦下并说明原因。"""
     pasted = tmp_path / "composer images" / "p.png"
-    other = tmp_path / "private" / "id.png"
+    other = tmp_path / "private" / "id.pdf"
     for file in (pasted, other):
         file.parent.mkdir()
         file.write_bytes(b"x")
@@ -253,12 +253,12 @@ def test_files_pasted_earlier_in_the_session_are_allowed(uploads, tmp_path):
         uploads, "mcp__UniAI_Toolkit__img2vid_generate", {"image_url": str(other)}
     )
     assert blocked["action"] == "block" and "没有自动上传" in blocked["message"]
-    assert str(uploads.work) in blocked["message"]
-    # 另一个会话看不到这个会话贴过的文件。
+    assert str(uploads.work) in blocked["message"] and "图片" in blocked["message"]
+    # 另一个会话看不到这个会话贴过的文件（用不按类型放行的工具来看）。
     assert (
         before(
             uploads,
-            "mcp__UniAI_Toolkit__img2vid_generate",
+            "mcp__UniAI_Toolkit__x",
             {"image_url": str(pasted)},
             "b",
         )["action"]
@@ -477,9 +477,85 @@ def test_files_received_on_message_platforms_are_uploaded_but_other_accounts_are
     result = before(uploads, "mcp__UniAI_Toolkit__img2vid_generate", args)
     assert result["action"] == "modify" and set(result["args"]) == set(received)
     assert len(uploads.puts) == 2
-    other = tmp_path / "other-account" / "cache" / "images" / "img_别人.png"
+    other_home = tmp_path / "other-account"
+    other = other_home / "cache" / "images" / "img_别人.png"
     other.parent.mkdir(parents=True)
     other.write_bytes(b"other")
+    (other_home / "config.yaml").write_text("model: {}\n", encoding="utf-8")
+    (other_home / "state.db").write_bytes(b"")
     blocked = before(uploads, "mcp__UniAI_Toolkit__img2vid_generate", {"image_url": str(other)})
     assert blocked["action"] == "block" and "没有自动上传" in blocked["message"]
+    assert "别的账号" in blocked["message"]
     assert len(uploads.puts) == 2
+
+
+@pytest.mark.parametrize("tool, name", [
+    ("mcp__UniAI_Toolkit__analyze_image", "桌面截图.PNG"),
+    ("mcp__UniAI_Toolkit__image_edit", "photo.jpeg"),
+    ("mcp__UniAI_Toolkit__asr_transcribe", "会议录音.m4a"),
+    ("mcp__UniAI_Toolkit__asr_transcribe", "讲座.mp4"),
+    ("mcp__UniAI_Toolkit__doc_translate", "合同.docx"),
+])
+def test_files_elsewhere_are_uploaded_when_the_type_fits_the_tool(uploads, tmp_path, tool, name):
+    """附件和工作目录以外的文件（桌面、云盘下载、浏览器截图）类型和工具对得上时照常上传，与 UniWork 一致。"""
+    path = tmp_path / "D盘桌面" / name
+    path.parent.mkdir()
+    path.write_bytes(b"x")
+    assert before(uploads, tool, {"file": str(path)}) == {
+        "action": "modify", "args": {"file": "app-agent-prod/temp/obj1.png"},
+    }
+
+
+def test_browser_screenshots_and_drive_downloads_are_no_longer_blocked(uploads, tmp_path, monkeypatch):
+    """日志里被误拦的两类程序自己的文件：浏览器工具的截图、云盘下载到 .uniwork-drive 的图片。"""
+    shot = tmp_path / "user" / ".config" / "browser-harness" / "tmp" / "shot.png"
+    drive = tmp_path / "workspace" / ".uniwork-drive" / "file-1" / "fig1.png"
+    for path in (shot, drive):
+        path.parent.mkdir(parents=True)
+        path.write_bytes(b"x")
+        assert before(uploads, "mcp__UniAI_Toolkit__analyze_image", {"image": str(path)})["action"] == "modify"
+
+
+def test_wrong_type_or_unknown_tool_keeps_the_strict_rule(uploads, tmp_path):
+    """类型对不上、或不在类型表里的工具，附件和工作目录以外的文件仍然拦下。"""
+    folder = tmp_path / "elsewhere"
+    folder.mkdir()
+    (folder / "账本.xlsx").write_bytes(b"x")
+    (folder / "a.png").write_bytes(b"x")
+    wrong = before(uploads, "mcp__UniAI_Toolkit__analyze_image", {"image": str(folder / "账本.xlsx")})
+    assert wrong["action"] == "block" and "类型也不是这个工具能用的图片" in wrong["message"]
+    unknown = before(uploads, "mcp__UniAI_Toolkit__music_generate", {"ref": str(folder / "a.png")})
+    assert unknown["action"] == "block" and "没有自动上传" in unknown["message"]
+    assert not uploads.puts
+
+
+def test_secret_browser_and_system_folders_are_never_uploaded(uploads, tmp_path, monkeypatch):
+    """密钥目录、浏览器登录数据、系统和程序目录里的文件，即使类型对得上也不传。"""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "Local"))
+    monkeypatch.setenv("ProgramFiles", str(tmp_path / "Program Files"))
+    cases = {
+        tmp_path / "me" / ".ssh" / "id.png": ".ssh",
+        tmp_path / "Local" / "Google" / "Chrome" / "User Data" / "Default" / "a.png": "登录数据",
+        tmp_path / "Program Files" / "App" / "logo.png": "程序安装目录",
+    }
+    for path, reason in cases.items():
+        path.parent.mkdir(parents=True)
+        path.write_bytes(b"x")
+        blocked = before(uploads, "mcp__UniAI_Toolkit__analyze_image", {"image": str(path)})
+        assert blocked["action"] == "block" and reason in blocked["message"], path
+        assert "敏感位置" in blocked["message"]
+    assert not uploads.puts
+
+
+def test_mail_attachments_keep_the_strict_rule(uploads, tmp_path):
+    """发邮件的附件直接发到外面，仍只认附件和工作目录，别处的图片也拦下、不发信。"""
+    path = tmp_path / "D盘桌面" / "照片.png"
+    path.parent.mkdir()
+    path.write_bytes(b"x")
+    blocked = before(
+        uploads,
+        "mcp__connector_wo_mail__send_email",
+        {"to": ["a@example.com"], "attachments": [{"filename": "照片.png", "contentUrl": str(path)}]},
+    )
+    assert blocked["action"] == "block" and "email was not sent" in blocked["message"]
+    assert not uploads.puts

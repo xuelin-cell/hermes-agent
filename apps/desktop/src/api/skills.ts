@@ -197,51 +197,80 @@ function arrayFromEnvelope<T>(value: unknown): T[] {
   if (Array.isArray(value)) {
     return value as T[]
   }
+
   if (value && typeof value === 'object') {
     const record = value as Record<string, unknown>
+
     for (const key of ['list', 'records', 'items']) {
       if (Array.isArray(record[key])) {
         return record[key] as T[]
       }
     }
   }
+
   return []
 }
 
 export async function getUniWorkMarketCategories(): Promise<UniWorkSkillCategory[]> {
   const value = await hermesApi<unknown>({ path: '/api/skills/market/categories' })
+
   return arrayFromEnvelope<UniWorkSkillCategory>(value)
 }
 
 export async function getUniWorkMarketSkills(category = 'all'): Promise<UniWorkSkill[]> {
   const params = new URLSearchParams({ category, page: '1', page_size: '100' })
   const value = await hermesApi<unknown>({ path: `/api/skills/market/list?${params}` })
+
   return arrayFromEnvelope<UniWorkSkill>(value)
 }
 
 export async function getUniWorkRecommendedCategories(): Promise<UniWorkSkillCategory[]> {
   const value = await hermesApi<unknown>({ path: '/api/skills/recommended/categories' })
+
   return arrayFromEnvelope<UniWorkSkillCategory>(value)
 }
 
 export async function getUniWorkRecommendedSkills(): Promise<UniWorkSkill[]> {
   const value = await hermesApi<unknown>({ path: '/api/skills/recommended/list' })
+
   return arrayFromEnvelope<UniWorkSkill>(value)
 }
 
 export function installUniWorkSkill(
   skill: UniWorkSkill,
-  profile?: ProfileScope
-): Promise<{ install_path: string; name: string; ok: boolean }> {
+  profile?: ProfileScope,
+  approvedHash?: string
+): Promise<{
+  install_path?: string
+  name?: string
+  ok: boolean
+  requires_confirmation?: boolean
+  package_hash?: string
+  report?: string
+}> {
   const downloadUrl = skill.download_url || skill.package_download_path
+
   if (!downloadUrl) {
     return Promise.reject(new Error('This skill has no installable package.'))
   }
-  return window.hermesDesktop.api<{ install_path: string; name: string; ok: boolean }>({
+
+  return window.hermesDesktop.api<{
+    install_path?: string
+    name?: string
+    ok: boolean
+    requires_confirmation?: boolean
+    package_hash?: string
+    report?: string
+  }>({
     ...capabilityScoped(profile),
     path: '/api/skills/market/install',
     method: 'POST',
-    body: { id: skill.id, name: skill.name, download_url: downloadUrl },
+    body: {
+      id: skill.id,
+      name: skill.name,
+      download_url: downloadUrl,
+      ...(approvedHash ? { approved_hash: approvedHash } : {})
+    },
     timeoutMs: 120_000
   })
 }

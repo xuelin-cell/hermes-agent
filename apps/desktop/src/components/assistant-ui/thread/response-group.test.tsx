@@ -114,3 +114,70 @@ it('ends the response at a real user prompt or unrelated system event', () => {
   expect(container.querySelectorAll('[data-slot="aui_turn-pair"]')).toHaveLength(2)
   expect(container.querySelectorAll('[data-slot="aui_msg-actions"]')).toHaveLength(3)
 })
+
+it('keeps all response text visible while displaying whole-second duration', async () => {
+  const messages = toChatMessages([
+    { role: 'user', content: 'Create the report', timestamp: 1 },
+    { role: 'assistant', content: 'Report completed', timestamp: 1383 }
+  ] as SessionMessage[]).map(toRuntimeMessage)
+
+  const assistant = messages[1]!
+
+  const complete = {
+    ...assistant,
+    content: [
+      { type: 'text', text: 'Preparing the report' },
+      {
+        type: 'tool-call',
+        toolCallId: 'report-tool',
+        toolName: 'terminal',
+        args: { command: 'build-report' },
+        result: 'done'
+      },
+      { type: 'text', text: 'Report completed' }
+    ],
+    metadata: { ...assistant.metadata, custom: { ...assistant.metadata.custom, durationS: 1382.3093128 } }
+  } as ThreadMessage
+
+  const { container } = render(
+    <ThreadRuntime messages={[messages[0]!, complete]}>
+      <Thread />
+    </ThreadRuntime>
+  )
+
+  await waitFor(() => expect(container.textContent).toContain('Report completed'))
+  expect(within(container).getByText('Preparing the report').closest('[hidden], [style*="display: none"]')).toBeNull()
+  expect(within(container).getByText('Report completed').closest('[hidden], [style*="display: none"]')).toBeNull()
+  const duration = container.querySelector('[data-slot="aui_turn-duration"]')!
+  expect(duration.textContent).toContain('Worked for 23m 2s')
+  expect(duration.textContent).not.toContain('3093128')
+  expect(container.querySelector('[data-slot="aui_process-summary"]')).toBeNull()
+})
+
+it('collapses explicit interim updates only after a successful final reply', async () => {
+  const messages = toChatMessages([
+    { role: 'user', content: 'Check the report', timestamp: 1 },
+    { role: 'assistant', content: 'Checking sources', timestamp: 2 },
+    { role: 'assistant', content: 'Full final answer', timestamp: 3 }
+  ] as SessionMessage[]).map(toRuntimeMessage)
+
+  const interim = { ...messages[1]!, metadata: { custom: { interim: true } } } as ThreadMessage
+
+  const renderThread = (status: ThreadMessage['status']) => (
+    <ThreadRuntime messages={[messages[0]!, interim, { ...messages[2]!, status } as ThreadMessage]}>
+      <Thread />
+    </ThreadRuntime>
+  )
+
+  const { container, rerender } = render(renderThread({ type: 'running' }))
+  const update = () => within(container).getByText('Checking sources')
+  await waitFor(() => expect(update().closest('[hidden]')).toBeNull())
+  rerender(renderThread({ type: 'complete', reason: 'stop' }))
+  await waitFor(() => expect(update().closest('[hidden]')).not.toBeNull())
+  expect(within(container).getByText('Full final answer').closest('[hidden]')).toBeNull()
+  fireEvent.click(container.querySelector('[data-slot="aui_process-summary"]')!)
+  await waitFor(() => expect(update().closest('[hidden]')).toBeNull())
+  fireEvent.click(container.querySelector('[data-slot="aui_process-summary"]')!)
+  rerender(renderThread({ type: 'incomplete', reason: 'error' }))
+  await waitFor(() => expect(update().closest('[hidden]')).toBeNull())
+})

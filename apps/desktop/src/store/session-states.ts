@@ -61,6 +61,7 @@ import {
   migrateSessionOwnerHintsForProfile,
   ownerLookupSessionRows,
   sessionMatchesStoredId,
+  sessionPinId,
   setActiveSessionStoredIdRotation,
   setAwaitingResponse,
   setBusy,
@@ -1624,10 +1625,20 @@ function railScopeForActiveSession(): string {
 
 /** Keep the rail on the chat in view, so switching agents re-homes it. */
 function syncPreviewScope() {
-  setPreviewScope(railScopeForActiveSession())
+  const runtimeId = $activeSessionId.get()
+  const storedId = runtimeId ? storedSessionIdForRuntimeId(runtimeId) ?? runtimeId : null
+  const row = storedId ? ownerLookupSessionRows().find(item => sessionMatchesStoredId(item, storedId)) : undefined
+  const owner = knownOwnerForSession(runtimeId)
+  setPreviewScope(
+    railScopeForActiveSession(),
+    row ? sessionPinId(row) : storedId ?? 'new-chat',
+    typeof owner === 'object' && owner ? owner.connectionId : ''
+  )
 }
 
 $activeSessionId.subscribe(syncPreviewScope)
+$selectedStoredSessionId.listen(syncPreviewScope)
+$activeGatewayProfile.listen(syncPreviewScope)
 syncPreviewScope()
 
 /** The mode of the backend that serves `owner`: the route's own `mode`, else
