@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 同机独立部署（Cube 后端），原 deploy.sh / compose.yaml 保持不变。
 # 每套部署必须使用独立 checkout 和 entry.env。
-# ./deploy-isolated.sh init --project hermes-adaptation --http-port 内网IP:18082 --cube-api URL --cube-proxy URL
+# ./deploy-isolated.sh init --project hermes-adaptation --subnet 未占用CIDR --http-port 内网IP:18082 --cube-api URL --cube-proxy URL
 # ./deploy-isolated.sh all [--no-pull] [--branch cloud-adaptation]
 # ./deploy-isolated.sh config|check|base|image|template|up|status|log
 # purge-old / purge-templates 永久拒绝；共用集群的旧部署也必须停用这两条命令。
@@ -24,11 +24,13 @@ FWD_REF=""
 eval "$(sed -n '/^cleanup() /,$p' "$HERE/deploy.sh" | sed '$d' | sed 's|\./deploy\.sh|./deploy-isolated.sh|g')"
 eval "$(declare -f load_cfg | sed '1s/load_cfg/legacy_load_cfg/')"
 eval "$(declare -f build_template | sed 's/hermes-mt-\$fp/${PROJECT}-\$fp/g')"
+eval "$(declare -f cmd_up | sed '1s/cmd_up/legacy_cmd_up/')"
 # 旧检查针对 override 的 !reset；新 Compose 本身已经省略 socket 挂载。
 eval "$(declare -f cmd_check | sed '/grep -q.*!reset.*OVERRIDE/c\
     ensure_override\
     ok "独立 Compose 不挂载 docker.sock"\
 ')"
+eval "$(declare -f cmd_check | sed '1s/cmd_check/legacy_cmd_check/')"
 
 PROJECT="$(cfg MT_DEPLOY_PROJECT)"
 HISTORY="$HERE/.isolated-history"
@@ -78,10 +80,26 @@ load_cfg() {
 }
 
 compose() {
+    check_network_subnet
     # 显式 -f，不加载旧 compose.override.yaml 或 COMPOSE_FILE。
-    BUILDX_BUILDER=default MT_DEPLOY_PROJECT="$PROJECT" MT_HTTP_PORT="$HTTP_PORT" \
+    BUILDX_BUILDER=default MT_DEPLOY_PROJECT="$PROJECT" MT_HTTP_PORT="$HTTP_PORT" MT_DOCKER_SUBNET="$(cfg MT_DOCKER_SUBNET)" \
         docker compose --project-directory "$HERE" --env-file "$ENV_FILE" \
         -f "$HERE/compose.isolated.yaml" -p "$PROJECT" "$@"
+}
+
+check_network_subnet() {
+    python3 "$HERE/scripts/check-network-subnet.py" "$(cfg MT_DOCKER_SUBNET)" \
+        "$HTTP_PORT" "$CUBE_API" "$CUBE_PROXY" "$REGISTRY" "$@"
+}
+
+cmd_check() {
+    check_network_subnet --host-project "$PROJECT"
+    legacy_cmd_check
+}
+
+cmd_up() {
+    check_network_subnet --host-project "$PROJECT"
+    legacy_cmd_up
 }
 
 ensure_override() {
@@ -90,11 +108,12 @@ ensure_override() {
 }
 
 cmd_init() {
-    local prefix="" http_port="" cube_api="" cube_proxy="" registry=""
+    local prefix="" http_port="" cube_api="" cube_proxy="" registry="" subnet=""
     while [ $# -gt 0 ]; do
         case "$1" in
             --project) PROJECT="${2:?缺少项目名}"; shift 2 ;;
             --prefix) prefix="${2:?缺少用户卷前缀}"; shift 2 ;;
+            --subnet) subnet="${2:?缺少独立子网}"; shift 2 ;;
             --http-port) http_port="${2:?缺少页面地址}"; shift 2 ;;
             --cube-api) cube_api="${2:?缺少控制面地址}"; shift 2 ;;
             --cube-proxy) cube_proxy="${2:?缺少数据面地址}"; shift 2 ;;
@@ -108,13 +127,14 @@ cmd_init() {
     prefix="${prefix:-$PROJECT}"
     printf '%s' "$prefix" | grep -qE '^[a-zA-Z0-9][a-zA-Z0-9_-]*$' || die '无效的用户卷前缀'
     [ "$prefix" != hermes-mt ] && [ "$prefix" != hermes ] || die '不能复用 .7 旧部署的用户卷前缀'
+    python3 "$HERE/scripts/check-network-subnet.py" "$subnet" "$http_port" "$cube_api" "$cube_proxy" "$registry"
     [ ! -e "$ENV_FILE" ] || die 'entry.env 已存在，不覆盖'
-    python3 - "$ENV_FILE" "$PROJECT" "$prefix" "$http_port" "$cube_api" "$cube_proxy" "$registry" "$(g rev-parse --abbrev-ref HEAD)" <<'PY'
+    python3 - "$ENV_FILE" "$PROJECT" "$prefix" "$http_port" "$cube_api" "$cube_proxy" "$registry" "$(g rev-parse --abbrev-ref HEAD)" "$subnet" <<'PY'
 import base64, os, secrets, sys
-path, project, prefix, http, api, proxy, registry, branch = sys.argv[1:]
+path, project, prefix, http, api, proxy, registry, branch, subnet = sys.argv[1:]
 password = secrets.token_hex(16)
 values = dict(
-    MT_DEPLOY_PROJECT=project, MT_PREFIX=prefix,
+    MT_DEPLOY_PROJECT=project, MT_PREFIX=prefix, MT_DOCKER_SUBNET=subnet,
     MT_COOKIE=project.replace("-", "_") + "_session",
     MT_HTTP_PORT=http, MT_BACKEND="cube", MT_CUBE_API=api, MT_CUBE_PROXY=proxy,
     MT_CUBE_DOMAIN="cube.app", MT_CUBE_TEMPLATE="", MT_CUBE_VOLUME_MOUNT="/mnt/u",
@@ -175,8 +195,9 @@ case "${1:-}" in
     purge-old|purge-templates) die '共享集群禁用批量清理，不会调用旧脚本的清理命令' ;;
     init) ;;
     config) load_cfg; compose config --quiet; exit ;;
-    all|base|check|image|template|up|status|set|pull|log)
-        load_cfg ;;
+    set|log) load_cfg ;;
+    all|base|check|image|template|up|status|pull)
+        load_cfg; check_network_subnet ;;
     *) sed -n '2,7p' "$SCRIPT"; exit 1 ;;
 esac
 main "$@"

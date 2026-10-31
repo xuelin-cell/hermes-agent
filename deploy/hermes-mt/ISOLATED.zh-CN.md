@@ -14,6 +14,7 @@
 ```bash
 bash deploy-isolated.sh init \
   --project hermes-adaptation \
+  --subnet 172.30.89.0/24 \
   --http-port 192.168.1.7:18082 \
   --cube-api http://CONTROL_PLANE:3000 \
   --cube-proxy http://DATA_PLANE
@@ -27,6 +28,11 @@ bash deploy-isolated.sh log
 已有文件时拒绝覆盖；真实密钥不应进入版本控制或部署日志。
 两套环境的项目名、页面 IP:端口、MT_PREFIX、MT_COOKIE 必须各不相同。
 项目名一旦开始使用便不要改动，否则会指向不同的数据库卷。
+`--subnet` 为必填项，上面的值仅作示例；须确认未被现有 Docker 网络、宿主机路由及公司网络使用。
+不能依赖 Docker 自动分配子网，例如 `192.168.208.0/20` 会覆盖测试集群 `192.168.212.23`，
+让宿主机与集群失联。初始化及配置解析会拒绝覆盖已配置 IP 地址的子网，
+`check` / `up` 还会检查宿主机 IPv4 路由与现有 Docker 网络。
+这不能替代公司网段规划；域名对应的地址和未知远端网络仍需部署方确认。
 
 新部署的容器、网络、数据库卷和服务镜像使用项目名前缀；沙箱镜像仓库为
 `hermes-isolated/<项目名>-cube`。PostgreSQL 只在各自 Docker 网络内开放，
@@ -60,6 +66,7 @@ bash deploy-isolated.sh all --no-pull
 
 ```dotenv
 MT_DEPLOY_PROJECT=hermes-adaptation
+MT_DOCKER_SUBNET=172.30.89.0/24
 MT_HTTP_PORT=192.168.1.7:18082
 MT_COOKIE=hermes_adaptation_session
 MT_DEPLOY_FWD_PORT=15001

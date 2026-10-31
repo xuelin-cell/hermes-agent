@@ -89,3 +89,6 @@ volumes:
 networks:
   isolated:
     name: ${MT_DEPLOY_PROJECT:?required}
+    ipam:
+      config:
+        - subnet: ${MT_DOCKER_SUBNET:?请在 entry.env 设置经过检查的独立子网}

@@ -20,6 +20,7 @@ def _checkout(tmp_path, name):
         shutil.copyfile(DEPLOY / file, target / file)
     (target / "scripts").mkdir()
     shutil.copyfile(DEPLOY / "scripts" / "image_overlay.py", target / "scripts" / "image_overlay.py")
+    shutil.copyfile(DEPLOY / "scripts" / "check-network-subnet.py", target / "scripts" / "check-network-subnet.py")
     shutil.copyfile(DEPLOY / "overlay.list", target / "overlay.list")
     subprocess.run(["git", "init", str(root)], check=True, capture_output=True)
     subprocess.run(["git", "-C", str(root), "add", "."], check=True, capture_output=True)
@@ -44,9 +45,10 @@ def test_two_checkouts_resolve_disjoint_resources_and_keep_secrets_local(tmp_pat
     if available.returncode:
         pytest.skip("Docker Compose is unavailable")
     configs = []
-    for name, port in (("hermes-adaptation", "18082"), ("hermes-ch", "18083")):
+    for name, port, subnet in (("hermes-adaptation", "18082", "172.30.90.0/24"),
+                               ("hermes-ch", "18083", "172.30.91.0/24")):
         target = _checkout(tmp_path, name)
-        result = _run(target, "init", "--project", name,
+        result = _run(target, "init", "--project", name, "--subnet", subnet,
                       "--http-port", f"192.168.1.7:{port}",
                       "--cube-api", "http://cube:3000", "--cube-proxy", "http://proxy")
         assert result.returncode == 0, result.stderr
@@ -56,7 +58,7 @@ def test_two_checkouts_resolve_disjoint_resources_and_keep_secrets_local(tmp_pat
         for key in ("MT_CREDENTIAL_KEY", "MT_POSTGRES_PASSWORD"):
             assert settings[key] not in result.stdout + result.stderr
         before = env_path.read_bytes()
-        assert _run(target, "init", "--project", name,
+        assert _run(target, "init", "--project", name, "--subnet", subnet,
                     "--http-port", f"192.168.1.7:{port}",
                     "--cube-api", "http://cube:3000", "--cube-proxy", "http://proxy").returncode != 0
         assert env_path.read_bytes() == before
@@ -79,6 +81,7 @@ def test_two_checkouts_resolve_disjoint_resources_and_keep_secrets_local(tmp_pat
         assert not services["entry"].get("volumes")
         assert services["entry"]["environment"]["MT_SELF_CONTAINER"] == services["entry"]["container_name"]
         assert services["nginx"]["ports"][0]["published"] == port
+        assert next(iter(config["networks"].values()))["ipam"]["config"][0]["subnet"] == subnet
         configs.append((settings, config))
     left, right = configs
     for key in ("MT_PREFIX", "MT_COOKIE", "MT_CREDENTIAL_KEY", "MT_POSTGRES_PASSWORD"):
