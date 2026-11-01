@@ -2,10 +2,10 @@ import { isRecord } from '@hermes/shared/i18n'
 import { atom } from 'nanostores'
 
 import { TRANSLATIONS } from './catalog'
-import { DEFAULT_LOCALE } from './languages'
+import { DEFAULT_INITIAL_LOCALE, DEFAULT_LOCALE } from './languages'
 import type { Locale } from './types'
 
-const $runtimeLocale = atom<Locale>(DEFAULT_LOCALE)
+const $runtimeLocale = atom<Locale>(DEFAULT_INITIAL_LOCALE)
 
 /** Walk a dot-path (`a.b.c`) into a nested message tree. */
 function resolvePath(source: unknown, key: string): unknown {

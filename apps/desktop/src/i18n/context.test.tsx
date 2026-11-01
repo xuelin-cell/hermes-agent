@@ -102,7 +102,7 @@ describe('I18nProvider', () => {
     expect(configClient.saveConfig).not.toHaveBeenCalled()
   })
 
-  it('keeps English usable when config loading fails', async () => {
+  it('keeps the initial language when config loading fails', async () => {
     const configClient: I18nConfigClient = {
       getConfig: vi.fn().mockRejectedValue(new Error('config unavailable')),
       saveConfig: vi.fn()
@@ -116,8 +116,8 @@ describe('I18nProvider', () => {
 
     await waitFor(() => expect(screen.getByTestId('loading').textContent).toBe('false'))
 
-    expect(screen.getByTestId('locale').textContent).toBe('en')
-    expect(screen.getByTestId('label').textContent).toBe('Language')
+    expect(screen.getByTestId('locale').textContent).toBe('zh')
+    expect(screen.getByTestId('label').textContent).toBe(TRANSLATIONS.zh.language.label)
     expect(configClient.saveConfig).not.toHaveBeenCalled()
   })
 
@@ -215,7 +215,7 @@ describe('I18nProvider', () => {
     const getConfig = vi
       .fn()
       .mockRejectedValueOnce(new Error('backend not ready yet'))
-      .mockResolvedValueOnce({ display: { language: 'zh-Hans' } })
+      .mockResolvedValueOnce({ display: { language: 'en' } })
 
     const configClient: I18nConfigClient = {
       getConfig,
@@ -225,21 +225,21 @@ describe('I18nProvider', () => {
     vi.useFakeTimers()
 
     render(
-      <I18nProvider configClient={configClient}>
+      <I18nProvider configClient={configClient} initialLocale="zh">
         <LanguageProbe />
       </I18nProvider>
     )
 
-    // First attempt fails → settles on English (permanent-failure contract).
+    // A temporary failure must not flash English over the initial Chinese UI.
     await act(async () => {})
     expect(screen.getByTestId('loading').textContent).toBe('false')
-    expect(screen.getByTestId('locale').textContent).toBe('en')
+    expect(screen.getByTestId('locale').textContent).toBe('zh')
 
     // The bounded retry succeeds and applies the persisted language.
     await act(async () => {
       vi.advanceTimersByTime(3_000)
     })
-    expect(screen.getByTestId('locale').textContent).toBe('zh')
+    expect(screen.getByTestId('locale').textContent).toBe('en')
     expect(getConfig).toHaveBeenCalledTimes(2)
 
     vi.useRealTimers()
@@ -260,9 +260,9 @@ describe('I18nProvider', () => {
       </I18nProvider>
     )
 
-    // Flush the initial attempt: it fails and settles on English.
+    // Flush the initial attempt: it fails and retains Chinese.
     await act(async () => {})
-    expect(screen.getByTestId('locale').textContent).toBe('en')
+    expect(screen.getByTestId('locale').textContent).toBe('zh')
     expect(getConfig).toHaveBeenCalledTimes(1)
 
     // Budget is 10 retries at 3s each; run the whole budget to completion.

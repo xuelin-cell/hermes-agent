@@ -271,6 +271,14 @@ function text(value, limit = 256) {
 function order(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : Number.MAX_SAFE_INTEGER;
 }
+var LEGACY_CODE_MODULE_NAMES = /* @__PURE__ */ new Set(["\u4EE3\u7801\u5F00\u53D1", "\u7F16\u7A0B", "code", "programming", "code development"]);
+function moduleWorkspace(item) {
+  if (item.workspace === "codex" || item.workspace === "work") {
+    return item.workspace;
+  }
+  const legacyName = String(item.name).trim().toLowerCase().replace(/\s+/g, " ");
+  return LEGACY_CODE_MODULE_NAMES.has(legacyName) ? "codex" : "work";
+}
 function normalizeWelcomeCatalog(value) {
   if (!value || typeof value !== "object" || !Array.isArray(value.modules)) {
     throw new Error("\u529E\u516C\u6A21\u677F\u76EE\u5F55\u683C\u5F0F\u65E0\u6548\u3002");
@@ -287,7 +295,7 @@ function normalizeWelcomeCatalog(value) {
       {
         id: `configured-module-${index}`,
         name: item.name,
-        workspace: item.workspace === "codex" ? "codex" : "work",
+        workspace: moduleWorkspace(item),
         ...text(item.icon, 128) ? { icon: item.icon.trim() } : {},
         sort: order(item.sort),
         tags: normalizeWelcomeCategories(item.tags)
