@@ -21,3 +21,6 @@ tui_gateway/contracts/prompt_voice.py
 
 # Kits and expert adapters ship with the same instance template.
 plugins/uniwork-kits/
+
+# Profile-scoped validation of saved custom-model credentials.
+plugins/desktop-models/
