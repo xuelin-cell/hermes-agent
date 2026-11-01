@@ -149,6 +149,10 @@ def action(data: dict) -> dict:
         elif operation == 'uninstall':
             index = store.load_index(root)
             entry = index['plugins'].get(name, {})
+            if entry:
+                from . import cloud_seed
+
+                cloud_seed.remember(root, {name})
             if entry.get('kind') == 'expert' and not entry.get('self'):
                 if data.get('delete_profile') is not True:
                     raise installer.KitError('卸载专家会删除对话和记忆，请明确确认删除档案。')

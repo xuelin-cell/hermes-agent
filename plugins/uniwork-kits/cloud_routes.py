@@ -7,7 +7,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, WebSocket
 
-from . import cloud, cloud_recovery, cloud_avatars, expert_sync, installer, store
+from . import cloud, cloud_recovery, cloud_avatars, cloud_seed, expert_sync, installer, store
 
 router = APIRouter()
 
@@ -22,10 +22,7 @@ def catalog():
 
 @router.get('/bundled')
 def bundled():
-    root = cloud.home()
-    resources = cloud.resources(root)
-    return {'ran': True, 'running': False, 'name': '', 'done': 0, 'total': len(resources),
-            'installed': len(store.load_index(root)['plugins']), 'unchanged': 0, 'failed': [], 'error': ''}
+    return cloud_seed.status(cloud.home())
 
 
 @router.get('/experts')
