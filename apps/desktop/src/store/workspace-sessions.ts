@@ -25,6 +25,7 @@ export function rememberSessionWorkspace(
   profile?: string
 ) {
   const key = sessionKey(id, connection, profile)
+
   if ($workspaceSessionCategories.get()[key] !== category) {
     $workspaceSessionCategories.set({ ...$workspaceSessionCategories.get(), [key]: category })
   }
@@ -33,13 +34,33 @@ export function rememberSessionWorkspace(
 /** Creation ownership wins over cwd, which can change during a conversation. */
 export function sessionWorkspaceCategory(session: SessionInfo, connection?: string): WorkspaceCategory {
   const categories = $workspaceSessionCategories.get()
+
   for (const id of [session.id, session._lineage_root_id, ...(session._lineage_ids ?? []), session.parent_session_id]) {
-    if (!id) continue
+    if (!id) {continue}
     const category = categories[sessionKey(id, session.connection_id || connection, session.profile)]
-    if (category === 'work' || category === 'codex') return category
+
+    if (category === 'work' || category === 'codex') {return category}
   }
+
   // Older versions did not record category. Auto-created office folders are
   // identifiable; only a proven Git repository is migrated to code development.
   const folder = session.cwd?.replace(/\\/g, '/').split('/').pop() ?? ''
+
   return !/^\d{8}-\d{6}$/.test(folder) && session.git_repo_root ? 'codex' : 'work'
+}
+
+export function projectBelongsToWorkspace(
+  project: {
+    isAuto?: boolean
+    isNoProject?: boolean
+    previewSessions?: SessionInfo[]
+  },
+  category: WorkspaceCategory,
+  connection?: string
+): boolean {
+  if (category !== 'codex' || !project.isAuto || project.isNoProject || !project.previewSessions?.length) {
+    return true
+  }
+
+  return project.previewSessions.some(session => sessionWorkspaceCategory(session, connection) === 'codex')
 }

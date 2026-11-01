@@ -1,4 +1,4 @@
-import { $workspaceSessionCategories, sessionWorkspaceCategory } from '@/store/workspace-sessions'
+import { $workspaceSessionCategories, projectBelongsToWorkspace, sessionWorkspaceCategory } from '@/store/workspace-sessions'
 import { KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { useStore } from '@nanostores/react'
@@ -451,6 +451,7 @@ export function ChatSidebar({
       : [skillsCopy('experts'), t.skills.tabSkills, t.connectorsPage.title]
   ).join(' · ')
   const interfaceMode = useStore($interfaceMode)
+  const activeWorkspaceCategory = workspaceMode ?? (interfaceMode === 'advanced' ? 'codex' : 'work')
   const workspaceCategories = useStore($workspaceSessionCategories)
   const showsAdvancedChrome = useStore($showsAdvancedChrome)
   const developerMode = useStore($developerMode)
@@ -1059,7 +1060,9 @@ export function ChatSidebar({
   // overview sort. Membership is the backend tree's — never re-derived here.
   const projectModel = useMemo<SidebarProjectTree[]>(() => {
     const sorted = sortProjectsForOverview(
-      filterToSessionBearingProjects(filterVisibleProjects(projectTree, dismissedAutoProjects))
+      filterToSessionBearingProjects(filterVisibleProjects(projectTree, dismissedAutoProjects).filter(project =>
+        projectBelongsToWorkspace(project, activeWorkspaceCategory, activeConnectionId || undefined)
+      ))
         // A filtered-out project drops its whole lane, header included — hiding
         // only its rows would leave a row of empty folders behind.
         .filter(project => !projectFilter.length || projectFilter.includes(project.id))
@@ -1086,6 +1089,8 @@ export function ChatSidebar({
   }, [
     projectTree,
     dismissedAutoProjects,
+    activeWorkspaceCategory,
+    activeConnectionId,
     orderRepos,
     activeProjectId,
     projectFilter,
