@@ -11,7 +11,7 @@ import { ErrorBanner } from '@/components/ui/error-state'
 import { getMessagingPlatforms, getStatus, updateMessagingPlatform, type MessagingPlatformInfo } from '@/hermes'
 import { isBrowserShell } from '@/lib/browser-shell'
 import { useI18n } from '@/i18n'
-import { AlertTriangle, CheckCircle2, Loader2, MessageCircle, RefreshCw } from '@/lib/icons'
+import { AlertTriangle, CheckCircle2, Loader2, MessageCircle, RefreshCw, X } from '@/lib/icons'
 import { confirm } from '@/store/confirm'
 import { $platformsChangeTick } from '@/store/live-sync'
 import { notify } from '@/store/notifications'
@@ -22,8 +22,8 @@ import { PAGE_INSET_X } from '../layout-constants'
 import { PageSearchShell } from '../page-search-shell'
 import type { SetStatusbarItemGroup } from '../shell/statusbar-controls'
 
-import { $messagingOperation } from './operation-store'
-import { DISPLAY_PLATFORM_IDS, PLATFORM_IDS, PlatformCard, type PlatformId } from './platform-card'
+import { $dismissedMessagingFailureRevision, $messagingOperation } from './operation-store'
+import { DISPLAY_PLATFORM_IDS, hasPlatformBinding, PLATFORM_IDS, PlatformCard, type PlatformId } from './platform-card'
 import { PlatformConfigDialog } from './platform-config-dialog'
 import { restorePlatformErrors } from './platform-errors'
 import { WeixinQrSetup } from './weixin-qr-setup'
@@ -57,12 +57,13 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
   const [configuring, setConfiguring] = useState<Exclude<PlatformId, 'weixin'> | null>(null)
   const [disconnecting, setDisconnecting] = useState<MessagingPlatformInfo | null>(null)
   const operation = useStore($messagingOperation)
+  const failureDismissed = useStore($dismissedMessagingFailureRevision) === operation.revision
   const enabledPlatforms = platforms?.filter(platform => platform.enabled) ?? []
 
   const target = platforms?.find(platform => platform.id === operation.platform)
 
   const targetRecovered = !operation.platform || !!target && (operation.operation === 'disconnect'
-    ? !target.enabled : target.enabled && target.configured && target.gateway_running && target.state === 'connected')
+    ? !hasPlatformBinding(target) : target.enabled && target.configured && target.gateway_running && target.state === 'connected')
 
   const sameProfile = (operation.profile ?? 'default') === (scopeProfile ?? 'default')
 
@@ -70,9 +71,12 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
   const connectionRecovered = operation.phase === 'failed' && operation.saved && targetRecovered &&
     operation.error === 'connection_timeout' && sameProfile &&
     !loadError && snapshot?.operationRevision === operation.revision &&
-    (isBrowserShell() && operation.platform ? targetRecovered : enabledPlatforms.length > 0
-      ? enabledPlatforms.every(platform => platform.configured && platform.gateway_running && platform.state === 'connected')
-      : operation.operation === 'disconnect' && !!platforms?.length && platforms.every(platform => !platform.gateway_running))
+    (isBrowserShell() && operation.platform ? targetRecovered
+      : operation.operation === 'disconnect' && operation.platform
+        ? enabledPlatforms.length > 0 ? platforms?.some(platform => platform.gateway_running)
+          : !!platforms?.length && platforms.every(platform => !platform.gateway_running)
+        : enabledPlatforms.length > 0 && enabledPlatforms.every(platform =>
+          platform.configured && platform.gateway_running && platform.state === 'connected'))
 
   // 刚进入页面时还没读到最新平台状态；历史上的连接超时只是旧记录，此时不能当结论展示，
   // 否则平台其实早已连上，也会先闪一下“连接失败”。读取失败时无法核对，仍按记录显示。
@@ -263,7 +267,7 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
   const slowRestore = phase === 'failed' && operation.operation === 'restore' &&
     operation.error === 'connection_timeout' && sameProfile && reconnecting
 
-  const operationFailed = (phase === 'failed' && !slowRestore) || requestFailed
+  const operationFailed = (phase === 'failed' && !slowRestore && !failureDismissed) || requestFailed
   const failed = operationFailed || disconnected
   const progress = applying || (!failed && reconnecting)
   const recovery = operationFailed || disconnected || reconnecting
@@ -279,8 +283,10 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
       : operation.saved ? m.connection.savedFailed : errors[operation.error || ''] || m.connection.saveFailed
   }
 
-  const message = requestFailed ? m.connection.savedFailed : phase === 'failed' && !slowRestore ? phaseMessages.failed
-    : disconnected ? m.connection.disconnected : reconnecting ? m.connection.reconnecting : phaseMessages[phase]
+  const message = requestFailed ? m.connection.savedFailed
+    : phase === 'failed' && !slowRestore && !failureDismissed ? phaseMessages.failed
+    : disconnected ? m.connection.disconnected : reconnecting ? m.connection.reconnecting
+    : phase === 'failed' ? '' : phaseMessages[phase]
 
   const selected = platforms?.find(platform => platform.id === configuring)
 
@@ -364,6 +370,14 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
                     {m.openLogs}
                   </Button>
                 )}
+                {operationFailed && (
+                  <Button aria-label={t.common.close} onClick={() => {
+                    $dismissedMessagingFailureRevision.set(operation.revision)
+                    setRequestFailed(false)
+                  }} size="icon-sm" variant="ghost">
+                    <X />
+                  </Button>
+                )}
               </AlertDescription>
             </Alert>
           )}
@@ -381,6 +395,10 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
                 // Desktop operations may restart the shared gateway; cloud operations own one binding.
                 const channelPending = gatewayChanging && (!isBrowserShell() || (sameProfile &&
                   (operation.platform === id || (operation.operation === 'restore' && !operation.platform))))
+
+                const retryAllowed = platform?.enabled && platform.configured &&
+                  (!platform.gateway_running || ['fatal', 'startup_failed', 'error', 'stopped', 'disconnected',
+                    'pending_restart', 'retrying', 'connecting'].includes(platform.state ?? ''))
 
                 const rcsRetryAllowed = platform?.configured && (isBrowserShell() || platform.enabled) &&
                   (!platform.gateway_running || ['fatal', 'startup_failed', 'error', 'stopped', 'disconnected', 'paused']
@@ -417,6 +435,12 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
                         )
                       ) : (
                         <>
+                          {retryAllowed && (
+                            <Button disabled={applying} onClick={() => void (isBrowserShell()
+                              ? updateMessagingPlatform(id, { enabled: true }, scopeProfile).then(() => refresh())
+                                .catch(error => notify({ kind: 'error', message: String(error) }))
+                              : restart())} size="sm" variant="outline">{t.common.retry}</Button>
+                          )}
                           <Button
                             disabled={!platform || applying}
                             onClick={() => setConfiguring(id as Exclude<PlatformId, 'weixin'>)}
@@ -425,7 +449,7 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
                           >
                             {m.cards.configure}
                           </Button>
-                          {platform?.configured && (
+                          {platform && hasPlatformBinding(platform) && (
                             <Button
                               disabled={applying}
                               onClick={() => setDisconnecting(platform)}
@@ -443,7 +467,7 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
                     pending={channelPending}
                     platform={platform}
                   >
-                    {platform?.error_message && <ErrorBanner className="mt-3">{platform.error_message}</ErrorBanner>}
+                    {platform?.enabled && platform.error_message && <ErrorBanner className="mt-3">{platform.error_message}</ErrorBanner>}
                   </PlatformCard>
                 )
               })
