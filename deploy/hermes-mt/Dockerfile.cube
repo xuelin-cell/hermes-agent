@@ -114,6 +114,13 @@ RUN set -eu; \
     /opt/hermes/.venv/bin/python -c 'from playwright.sync_api import sync_playwright; p = sync_playwright().start(); b = p.chromium.launch(); pg = b.new_page(); pg.set_content("<p>ok</p>"); assert pg.inner_text("p") == "ok"; b.close(); p.stop()'; \
     /opt/hermes/.venv/bin/python -c 'from pm import installed_package; gone = [n for n in ("chromium", "ffmpeg") if not installed_package(n).binary.is_file()]; assert not gone, gone'
 
+# Browser Automation needs the PM-managed CLI as well as Chromium. Provision it
+# once in the image; user profiles keep security.allow_lazy_installs disabled.
+COPY seed/check_browser.py /tmp/hermes-check-browser.py
+RUN /opt/hermes/.venv/bin/python -c 'from pm import ensure; ensure("agent-browser", explicit=True)' \
+    && /opt/hermes/.venv/bin/python -c 'import runpy; runpy.run_path("/tmp/hermes-check-browser.py", run_name="__main__")' \
+    && rm /tmp/hermes-check-browser.py
+
 # ---- 内置技能要用的 Node 包 -------------------------------------------------------
 # uniai-ppt 用 pptxgenjs 生成 PPT（agent 写的脚本里 `require("pptxgenjs")`）。hermes 用户装不了全局包，
 # 预装到 /opt/skill-node，NODE_PATH 让任何目录下的脚本都 require 得到。不装进 npm 默认的全局目录：
