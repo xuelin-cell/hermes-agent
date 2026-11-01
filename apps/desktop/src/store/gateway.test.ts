@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { BACKEND_BOOT_WAIT_TIMEOUT_MS } from '@/lib/with-timeout'
+
 // Connection lifecycle for registry-scoped secondary gateways:
 //
 //  1. Removing a connection must dispose its secondaries — remote/cloud
@@ -308,9 +310,9 @@ describe('secondary connection timeout (#93454)', () => {
 
     const pending = expect(ensureGatewayForProfile('work')).rejects.toThrow('Timed out connecting to profile "work"')
 
-    // Advance past the internal reconnect-attempt timeout (20s) — the stalled
+    // Advance past the foreground boot timeout — the stalled
     // await must reject instead of hanging forever.
-    await vi.advanceTimersByTimeAsync(20_000)
+    await vi.advanceTimersByTimeAsync(BACKEND_BOOT_WAIT_TIMEOUT_MS)
     await pending
   })
 
@@ -350,11 +352,11 @@ describe('secondary connection timeout (#93454)', () => {
 
     const pending = ensureGatewayForProfile('work')
 
-    await vi.advanceTimersByTimeAsync(20_000)
+    await vi.advanceTimersByTimeAsync(BACKEND_BOOT_WAIT_TIMEOUT_MS)
     await pending
 
     // The probe's own bound (not just openSecondary's) is what let this
-    // resolve after a single 20s timeout instead of two stacked ones.
+    // resolve after a single boot timeout instead of two stacked ones.
     expect(callCount).toBe(2)
     expect(activeGateway()).toBe(gatewayMocks.instances[0])
   })

@@ -73,6 +73,48 @@ afterEach(() => {
 })
 
 describe('user opens dial main as foreground from the first IPC (#102281)', () => {
+  it('waits through a cold backend boot that exceeds the reconnect budget', async () => {
+    vi.useFakeTimers()
+    const desktop = installDesktop()
+    desktop.getConnection.mockImplementation(async (_profile: string, options?: { priority?: string }) => {
+      if (options?.priority === 'foreground') {
+        await new Promise(resolve => setTimeout(resolve, 25_000))
+      }
+
+      return conn
+    })
+    const opening = ensureGatewayForProfile('research')
+    const settled = expect(opening).resolves.toBeUndefined()
+
+    try {
+      await vi.advanceTimersByTimeAsync(55_000)
+      await settled
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('retries a failed background dial as foreground when a user takes it over', async () => {
+    const desktop = installDesktop()
+    let backgroundCalls = 0
+    let rejectBackground!: (error: Error) => void
+    desktop.getConnection.mockImplementation(async (_profile: string, options?: { priority?: string }) => {
+      if (!options?.priority && ++backgroundCalls === 2) {
+        return new Promise((_resolve, reject) => (rejectBackground = reject))
+      }
+
+      return conn
+    })
+    const warming = openGatewayForProfile('research').catch(error => error)
+    await vi.waitFor(() => expect(rejectBackground).toBeTypeOf('function'))
+    const opening = ensureGatewayForProfile('research')
+    await vi.waitFor(() => expect(desktop.getConnection).toHaveBeenCalledWith('research', { priority: 'foreground' }))
+    rejectBackground(new Error('Backend for "research" was retired; open it explicitly to reconnect.'))
+
+    await expect(warming).resolves.toBeInstanceOf(Error)
+    await expect(opening).resolves.toBeUndefined()
+  })
+
   it('ensureGatewayForProfile tags the route probe AND the connect dial', async () => {
     const desktop = installDesktop()
 

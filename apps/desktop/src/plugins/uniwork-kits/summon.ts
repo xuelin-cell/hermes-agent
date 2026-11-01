@@ -10,10 +10,10 @@
  * and profile isolation.
  *
  * The card appears immediately. The backend may still be starting; sending
- * stays closed until this profile is the focused one, or for 30 seconds.
+ * stays closed until this profile is focused, within the backend cold-boot budget.
  */
 
-import { type ComposerMiddleware, host } from '@hermes/plugin-sdk'
+import { BACKEND_BOOT_WAIT_TIMEOUT_MS, type ComposerMiddleware, host } from '@hermes/plugin-sdk'
 
 import { openPooledProfileCount } from '@/store/gateway'
 import { $poolLimits } from '@/store/pool-limits'
@@ -34,7 +34,7 @@ import type { ExpertCard } from './types'
 
 // An expert whose backend is not running yet starts on the first summon, which
 // can take a while on a cold machine.
-const READY_TIMEOUT_MS = 30_000
+const READY_TIMEOUT_MS = BACKEND_BOOT_WAIT_TIMEOUT_MS
 // The fresh draft settles a beat after the profile switch and may clear the
 // box; a second write covers that. Both only fill an empty box, so a draft the
 // user carried over or started typing is never overwritten.
@@ -60,11 +60,15 @@ interface HostComposerDoors {
 }
 
 /** 把开场白放进新对话的输入框。ifEmpty 时，框里已有字就不覆盖。 */
-async function putPrompt(text: string, ifEmpty: boolean): Promise<void> {
+async function putPrompt(text: string, ifEmpty: boolean, isCurrent = () => true): Promise<void> {
   const doors = host as unknown as HostComposerDoors
 
   if (doors.composer) {
     if (ifEmpty && (await doors.composer.getDraft('new'))?.trim()) {
+      return
+    }
+
+    if (!isCurrent()) {
       return
     }
 
@@ -73,20 +77,26 @@ async function putPrompt(text: string, ifEmpty: boolean): Promise<void> {
     return
   }
 
-  doors.setComposerText?.(text, { ifEmpty })
+  if (isCurrent()) {
+    doors.setComposerText?.(text, { ifEmpty })
+  }
 }
 
 /** 等焦点落到该专家的空草稿后，再写入开场白。 */
-function prefillWhenReady(profile: string, text: string): void {
+function prefillWhenReady(profile: string, text: string, ticket: number): void {
   /** 焦点已经在这个专家的档案上，而且还是没有会话的新草稿。 */
-  const ready = () => host.state.focusedSessionProfile.get() === profile && !host.state.focusedSessionId.get()
+  const ready = () =>
+    ticket === summonTicket &&
+    host.state.focusedSessionProfile.get() === profile &&
+    !host.state.focusedSessionId.get() &&
+    !host.state.focusedStoredSessionId.get()
 
   /** 按 SETTLE_MS 的几个时间点各写一次开场白（只写进空输入框），盖住草稿刚切换过来时被清空的那一下。 */
   const fill = () => {
     for (const delay of SETTLE_MS) {
       setTimeout(() => {
         if (ready()) {
-          void putPrompt(text, true).catch(() => undefined)
+          void putPrompt(text, true, ready).catch(() => undefined)
         }
       }, delay)
     }
@@ -139,7 +149,7 @@ export function summonExpert(expert: ExpertCard): void {
   const prompt = openingPrompt(expert)
 
   if (prompt) {
-    prefillWhenReady(expert.profile, prompt)
+    prefillWhenReady(expert.profile, prompt, ticket)
   }
 
   const stop = host.state.focusedSessionProfile.listen(() => {
@@ -188,11 +198,17 @@ export function fillPrompt(text: string): void {
   void putPrompt(text, false).catch(() => undefined)
 }
 
-/** 回到通用助手：默认 profile 里开一条新对话。 */
-export function leaveExpert(): void {
+/** 清理专家的新草稿；已保存会话的输入和历史由原会话继续保管。 */
+export function resetExpertDraft(): void {
   summonTicket += 1
   clearExpertSummon()
   dismissConnectorLogin()
+  host.composer.clearNewDraft()
+}
+
+/** 回到通用助手：默认 profile 里开一条新对话。 */
+export function leaveExpert(): void {
+  resetExpertDraft()
   host.newChat('default')
 }
 

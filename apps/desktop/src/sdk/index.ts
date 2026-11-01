@@ -2087,3 +2087,6 @@ export { atom, computed } from 'nanostores'
 /** Markdown renderer (same pipeline core chat surfaces use) so plugins render
  *  message text as a preview instead of raw Markdown source. */
 export { Streamdown } from 'streamdown'
+
+export { NEW_SESSION_DEFAULT_AREA, type NewSessionDefaultContribution } from '@/app/session/new-session-contrib'
+export { BACKEND_BOOT_WAIT_TIMEOUT_MS } from '@/lib/with-timeout'
