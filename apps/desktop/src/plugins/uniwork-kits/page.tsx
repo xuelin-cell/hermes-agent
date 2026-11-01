@@ -632,7 +632,7 @@ function KitsCatalog() {
               type="button"
             >
               {item.label}
-              <span className="ml-2 rounded-full bg-(--ui-bg-quaternary) px-2 py-0.5 text-xs">{item.count}</span>
+              <span className="ml-1 text-inherit">{item.count}</span>
             </button>
           ))}
         </div>

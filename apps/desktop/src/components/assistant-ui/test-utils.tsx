@@ -53,10 +53,19 @@ export function stubThreadViewportSize() {
 /** Wrap a transcript subtree in a runtime driven by a fixed message list, the
  *  way the app's external store drives it: the thread is running while the tail
  *  message is. */
-export function ThreadRuntime({ children, messages }: { children: ReactNode; messages: ThreadMessage[] }) {
+export function ThreadRuntime({
+  children,
+  isRunning,
+  messages
+}: {
+  children: ReactNode
+  /** 会话是否在跑；不传时按最后一条消息的状态推断 */
+  isRunning?: boolean
+  messages: ThreadMessage[]
+}) {
   const runtime = useExternalStoreRuntime<ThreadMessage>({
     messages,
-    isRunning: messages.at(-1)?.status?.type === 'running',
+    isRunning: isRunning ?? messages.at(-1)?.status?.type === 'running',
     onNew: async () => {}
   })
 

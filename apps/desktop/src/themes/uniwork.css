@@ -32,6 +32,8 @@
   --dt-muted-foreground: var(--ui-text-tertiary);
   --radius-scalar: 1;
   --control-radius: 8px;
+  --sidebar-row-min-height: 36px;
+  --sidebar-row-font-size: 14px;
   --control-font-size: 0.875rem;
   --control-line-height: 1.375rem;
   --conversation-text-font-size: 0.875rem;
@@ -164,7 +166,7 @@
 
 :root[data-hermes-theme='uniwork'] [data-slot='sidebar-menu-button'] {
   border-radius: 8px;
-  min-height: 36px;
+  min-height: 32px;
 }
 
 /* 首页输入框留两行高，和 Claude 首页的输入框一样矮。 */
@@ -390,4 +392,34 @@
 }
 :root[data-hermes-theme='uniwork'] [data-slot='aui_assistant-message-content'] .aui-md :where(li) {
   margin-bottom: 4px;
+}
+
+/* New conversations form one centered welcome/composer cluster. The editor
+   remains mounted and returns to its dock after the first message. */
+:root[data-hermes-theme='uniwork'] [data-welcome-layout='centered'] [data-slot='composer-dock']:not([data-popped-out]) {
+  top: 50%;
+  bottom: auto;
+  width: min(880px, calc(100% - 48px));
+}
+:root[data-hermes-theme='uniwork'] [data-welcome-layout='centered'] [data-slot='aui_intro'] {
+  position: absolute;
+  top: calc(50% - 100px);
+  left: 50%;
+  width: min(880px, calc(100% - 48px));
+  padding: 0;
+  transform: translate(-50%, -100%);
+}
+@media (max-height: 640px) {
+  :root[data-hermes-theme='uniwork']
+    [data-welcome-layout='centered']
+    [data-slot='composer-dock']:not([data-popped-out]) {
+    top: auto;
+    bottom: 8px;
+    max-height: 55%;
+    overflow-y: auto;
+  }
+  :root[data-hermes-theme='uniwork'] [data-welcome-layout='centered'] [data-slot='aui_intro'] {
+    top: 24%;
+    transform: translate(-50%, -50%);
+  }
 }

@@ -13,6 +13,8 @@ import { type ToolResultMetadata, toolResultRecord } from '@/lib/tool-result-met
 
 export interface ChangedFile {
   added: number
+  /** 每次工具编辑的原始差异，按执行顺序保存，不冒充一次净变化。 */
+  diffs: string[]
   /** Basename, for the row label. */
   name: string
   /** Path exactly as the tool reported it (absolute or repo-relative). */
@@ -62,8 +64,15 @@ export function deriveChangedFiles(parts: readonly unknown[]): ChangedFile[] {
     if (existing) {
       existing.added += stats.added
       existing.removed += stats.removed
+      existing.diffs.push(diff)
     } else {
-      byPath.set(path, { added: stats.added, name: fileEditBasename(path), path, removed: stats.removed })
+      byPath.set(path, {
+        added: stats.added,
+        diffs: [diff],
+        name: fileEditBasename(path),
+        path,
+        removed: stats.removed
+      })
     }
   }
 

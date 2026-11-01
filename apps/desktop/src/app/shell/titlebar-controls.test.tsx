@@ -64,12 +64,12 @@ describe('TitlebarControls fixed clusters', () => {
     cleanup()
   })
 
-  it('matches the sidebar menu font size and bolds the product label', () => {
+  it('renders the product label as an accessible brand button', () => {
     renderControls('/')
 
     const brand = screen.getByLabelText('元景数字员工')
-    expect(brand.className).toContain('text-[0.8125rem]')
-    expect(brand.className).toContain('font-bold')
+    expect(brand.tagName).toBe('BUTTON')
+    expect(brand.textContent?.trim()).toBe('元景数字员工')
   })
 
   it('keeps the app clusters on a contributed page that mounts no titlebar chrome', () => {

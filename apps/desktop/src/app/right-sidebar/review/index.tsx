@@ -22,6 +22,7 @@ import {
   $reviewRevertTarget,
   $reviewSelectedPath,
   $reviewTreeMode,
+  $reviewTurnFiles,
   cancelRevert,
   clearReviewSelection,
   closeReview,
@@ -55,8 +56,11 @@ export function ReviewPane() {
   const diffLoading = useStore($reviewDiffLoading)
   const revertTarget = useStore($reviewRevertTarget)
   const treeMode = useStore($reviewTreeMode)
+  const turnFiles = useStore($reviewTurnFiles)
+  const readOnly = turnFiles !== null
 
   const selectedFile = files.find(file => file.path === selectedPath)
+  const selectedTurnFile = turnFiles?.find(file => file.path === selectedPath)
   const hasFiles = files.length > 0
   // `{ path: null }` → revert all; `{ path: '…' }` → revert one file.
   const revertingAll = revertTarget?.path == null
@@ -75,12 +79,14 @@ export function ReviewPane() {
           : 'border-l shadow-[inset_0.0625rem_0_0_color-mix(in_srgb,white_18%,transparent)]'
       )}
     >
-      {(loading || isRepo) && (
+      {(loading || isRepo || readOnly) && (
         <RightSidebarSectionHeader data-suppress-pane-reveal-side="">
           <div className="flex min-w-0 flex-1">
             {/* Pure self-naming label — redundant under a zone tab that already
                 says "review", so the zone header hides it (styles.css). */}
-            <SidebarPanelLabel data-pane-self-label="">{c.review}</SidebarPanelLabel>
+            <SidebarPanelLabel data-pane-self-label="">
+              {readOnly ? t.assistant.thread.filesChanged(files.length) : c.review}
+            </SidebarPanelLabel>
           </div>
           <Tip label={treeMode === 'tree' ? c.viewAsList : c.viewAsTree}>
             <Button
@@ -94,48 +100,52 @@ export function ReviewPane() {
               <Codicon name={treeMode === 'tree' ? 'list-flat' : 'list-tree'} size="0.8125rem" />
             </Button>
           </Tip>
-          <Tip label={c.stageAll}>
-            <Button
-              aria-label={c.stageAll}
-              className={ACTION_BTN}
-              disabled={!hasFiles}
-              onClick={() => void stageReviewFile(null).catch(err => notifyError(err, c.stageAll))}
-              size="icon-xs"
-              variant="ghost"
-            >
-              <Codicon name="add" size="0.8125rem" />
-            </Button>
-          </Tip>
-          <Tip label={c.revertAll}>
-            <Button
-              aria-label={c.revertAll}
-              className={ACTION_BTN}
-              disabled={!hasFiles}
-              onClick={() => requestRevert(null)}
-              size="icon-xs"
-              variant="ghost"
-            >
-              <Codicon name="discard" size="0.8125rem" />
-            </Button>
-          </Tip>
-          <Tip label={t.rightSidebar.refreshTree}>
-            <Button
-              aria-label={t.rightSidebar.refreshTree}
-              className={ACTION_BTN}
-              onClick={() => void refreshReview()}
-              size="icon-xs"
-              variant="ghost"
-            >
-              <Codicon name="refresh" size="0.8125rem" spinning={loading} />
-            </Button>
-          </Tip>
+          {!readOnly && (
+            <>
+              <Tip label={c.stageAll}>
+                <Button
+                  aria-label={c.stageAll}
+                  className={ACTION_BTN}
+                  disabled={!hasFiles}
+                  onClick={() => void stageReviewFile(null).catch(err => notifyError(err, c.stageAll))}
+                  size="icon-xs"
+                  variant="ghost"
+                >
+                  <Codicon name="add" size="0.8125rem" />
+                </Button>
+              </Tip>
+              <Tip label={c.revertAll}>
+                <Button
+                  aria-label={c.revertAll}
+                  className={ACTION_BTN}
+                  disabled={!hasFiles}
+                  onClick={() => requestRevert(null)}
+                  size="icon-xs"
+                  variant="ghost"
+                >
+                  <Codicon name="discard" size="0.8125rem" />
+                </Button>
+              </Tip>
+              <Tip label={t.rightSidebar.refreshTree}>
+                <Button
+                  aria-label={t.rightSidebar.refreshTree}
+                  className={ACTION_BTN}
+                  onClick={() => void refreshReview()}
+                  size="icon-xs"
+                  variant="ghost"
+                >
+                  <Codicon name="refresh" size="0.8125rem" spinning={loading} />
+                </Button>
+              </Tip>
+            </>
+          )}
           <Button aria-label={c.close} className={ACTION_BTN} onClick={closeReview} size="icon-xs" variant="ghost">
             <Codicon name="close" size="0.8125rem" />
           </Button>
         </RightSidebarSectionHeader>
       )}
 
-      {loading || isRepo ? (
+      {loading || isRepo || readOnly ? (
         hasFiles ? (
           <ReviewFileTree />
         ) : showTreeSkeleton ? (
@@ -161,21 +171,23 @@ export function ReviewPane() {
               {displayPath(selectedFile.path)}
             </span>
             <DiffCount added={selectedFile.added} className="text-[0.64rem] leading-4" removed={selectedFile.removed} />
-            <Tip label={selectedFile.staged ? c.unstage : c.stage}>
-              <Button
-                aria-label={selectedFile.staged ? c.unstage : c.stage}
-                className={ACTION_BTN}
-                onClick={() =>
-                  void (
-                    selectedFile.staged ? unstageReviewFile(selectedFile.path) : stageReviewFile(selectedFile.path)
-                  ).catch(err => notifyError(err, c.stage))
-                }
-                size="icon-xs"
-                variant="ghost"
-              >
-                <Codicon name={selectedFile.staged ? 'remove' : 'add'} size="0.8rem" />
-              </Button>
-            </Tip>
+            {!readOnly && (
+              <Tip label={selectedFile.staged ? c.unstage : c.stage}>
+                <Button
+                  aria-label={selectedFile.staged ? c.unstage : c.stage}
+                  className={ACTION_BTN}
+                  onClick={() =>
+                    void (
+                      selectedFile.staged ? unstageReviewFile(selectedFile.path) : stageReviewFile(selectedFile.path)
+                    ).catch(err => notifyError(err, c.stage))
+                  }
+                  size="icon-xs"
+                  variant="ghost"
+                >
+                  <Codicon name={selectedFile.staged ? 'remove' : 'add'} size="0.8rem" />
+                </Button>
+              </Tip>
+            )}
             <Button
               aria-label={c.close}
               className={ACTION_BTN}
@@ -187,7 +199,19 @@ export function ReviewPane() {
             </Button>
           </div>
           <div className="min-h-0 flex-1 overflow-auto px-1 pb-1">
-            {diffLoading ? (
+            {readOnly && selectedTurnFile?.diffs.length ? (
+              selectedTurnFile.diffs.map((change, index) => (
+                <div key={index}>
+                  {selectedTurnFile.diffs.length > 1 && (
+                    <div className="px-2.5 py-1 text-xs text-muted-foreground">
+                      {index + 1} / {selectedTurnFile.diffs.length}
+                    </div>
+                  )}
+                  {/* 虚拟化正文使用绝对定位，每次编辑需有明确高度才能显示代码。 */}
+                  <FileDiffPanel className="mx-0 mb-1 h-48" diff={change} path={selectedFile.path} virtualized />
+                </div>
+              ))
+            ) : diffLoading ? (
               showDiffSkeleton ? (
                 <DiffSkeleton />
               ) : null
@@ -200,7 +224,7 @@ export function ReviewPane() {
         </div>
       )}
 
-      <ReviewShipBar />
+      {!readOnly && <ReviewShipBar />}
 
       <ConfirmDialog
         confirmLabel={revertingAll ? c.revertAll : c.revert}
@@ -223,7 +247,7 @@ export function ReviewPane() {
         dismissOnConfirm
         onClose={cancelRevert}
         onConfirm={() => confirmRevert().catch(err => void notifyError(err, c.revert))}
-        open={revertTarget !== undefined}
+        open={!readOnly && revertTarget !== undefined}
         title={revertingAll ? c.revertAll : c.revert}
       />
     </aside>

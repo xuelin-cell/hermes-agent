@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react'
-import { type FC, useMemo } from 'react'
+import { type FC, useEffect, useMemo } from 'react'
 
 import { useComposerScope } from '@/app/chat/composer/scope'
 import { useSessionView } from '@/app/chat/session-view'
@@ -12,7 +12,7 @@ import { Tip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
 import { displayPath } from '@/lib/display-path'
 import { cn } from '@/lib/utils'
-import { openReviewForPath, revealReview } from '@/store/review'
+import { closeTurnReview, revealTurnReview } from '@/store/review'
 
 // ~5 rows. A turn that rewrites twenty files should still read as one card in
 // the transcript, not a wall the user has to scroll past to reach the composer.
@@ -30,12 +30,13 @@ export const ChangedFilesCard: FC<{ parts: readonly unknown[] }> = ({ parts }) =
   const { t } = useI18n()
   const copy = t.assistant.thread
   const files = useMemo(() => deriveChangedFiles(parts), [parts])
-  // Review THIS surface's repo: a tile transcript pins the pane to the tile's
-  // worktree; the primary passes null (follow the active session, as before).
+  // 本轮差异固定属于这张卡片；不跟随全局工作目录重新计算 Git 状态。
   const view = useSessionView()
   const viewCwd = useStore(view.$cwd)
-  const scopeCwd = view.kind === 'primary' ? null : viewCwd || null
+  const storedId = useStore(view.$storedId)
   const composerScope = useComposerScope()
+
+  useEffect(() => () => closeTurnReview(files), [files, storedId])
 
   if (files.length === 0) {
     return null
@@ -50,7 +51,7 @@ export const ChangedFilesCard: FC<{ parts: readonly unknown[] }> = ({ parts }) =
         <span className="min-w-0 flex-1 truncate text-(--ui-text-primary)">{copy.filesChanged(files.length)}</span>
         <button
           className="shrink-0 cursor-pointer text-(--ui-text-tertiary) transition-colors hover:text-(--ui-text-primary)"
-          onClick={() => revealReview(scopeCwd, composerScope.target)}
+          onClick={() => revealTurnReview(files, undefined, viewCwd || null, composerScope.target)}
           type="button"
         >
           {copy.reviewChanges}
@@ -61,7 +62,7 @@ export const ChangedFilesCard: FC<{ parts: readonly unknown[] }> = ({ parts }) =
           <Tip key={file.path} label={displayPath(file.path)}>
             <button
               className="row-hover flex shrink-0 items-center gap-2 rounded-md px-1.5 py-1 text-left"
-              onClick={() => void openReviewForPath(file.path, scopeCwd, composerScope.target)}
+              onClick={() => revealTurnReview(files, file.path, viewCwd || null, composerScope.target)}
               type="button"
             >
               <FileTypeIcon className="shrink-0 text-(--ui-text-tertiary)" path={file.path} size="0.875rem" />

@@ -1,6 +1,7 @@
 import { atom, computed } from 'nanostores'
 
 import { SIDEBAR_COLLAPSE_MEDIA_QUERY } from '@/app/layout-constants'
+import type { ChangedFile } from '@/components/assistant-ui/thread/changed-files'
 import { PANE_TOGGLE_REVEAL_EVENT } from '@/components/pane-shell'
 import { isPaneVisible, revealTreePane } from '@/components/pane-shell/tree/store'
 import type { HermesReviewFile, HermesReviewShipInfo } from '@/global'
@@ -21,7 +22,7 @@ import { $workspaceChangeTick } from './workspace-events'
 // session's cwd is the repo; the pane reads git as the source of truth, the
 // same bounded "re-probe on structural edges" model as the coding rail.
 //
-// Scope is always "uncommitted" — Hermes' flow is agent edits you review BEFORE
+// Git scope is always "uncommitted" — Hermes' flow is agent edits you review BEFORE
 // committing, so branch/last-turn scopes are almost always empty here (unlike
 // Codex, which commits per turn). We show the one view that's always populated.
 
@@ -64,6 +65,8 @@ export function toggleReviewTreeMode(): void {
 }
 
 export const $reviewFiles = atom<HermesReviewFile[]>([])
+/** 非空时只读展示工具已返回的本轮差异，不读取当前磁盘或 Git。 */
+export const $reviewTurnFiles = atom<readonly ChangedFile[] | null>(null)
 export const $reviewLoading = atom(false)
 // False when the active session isn't in a local git repo (detached/fresh chat,
 // remote backend). Lets the pane say "not a repo" instead of stranding on a
@@ -108,6 +111,7 @@ const repoCwd = reviewRepoCwd
 
 type ReviewBridge = NonNullable<NonNullable<NonNullable<Window['hermesDesktop']>['git']>['review']>
 let reviewRefreshSeq = 0
+let reviewDiffSeq = 0
 let reviewRefreshTimer: ReturnType<typeof setTimeout> | null = null
 let shipInfoSeq = 0
 let shipInfoLastCheckedAt = 0
@@ -115,6 +119,10 @@ let shipInfoLastCheckedAt = 0
 // The two things every review op needs: the repo cwd + the IPC bridge. Null when
 // either is missing (no session, remote backend), so callers bail in one line.
 function reviewCtx(): { cwd: string; review: ReviewBridge } | null {
+  if ($reviewTurnFiles.get()) {
+    return null
+  }
+
   const cwd = repoCwd()
   const review = desktopGit()?.review
 
@@ -124,6 +132,10 @@ function reviewCtx(): { cwd: string; review: ReviewBridge } | null {
 // ── Reads ────────────────────────────────────────────────────────────────────
 
 export async function refreshReview(): Promise<void> {
+  if ($reviewTurnFiles.get()) {
+    return
+  }
+
   const ctx = reviewCtx()
   const seq = (reviewRefreshSeq += 1)
 
@@ -198,7 +210,15 @@ function scheduleReviewRefresh(): void {
 }
 
 export async function selectReviewFile(file: HermesReviewFile): Promise<void> {
+  const seq = ++reviewDiffSeq
   $reviewSelectedPath.set(file.path)
+
+  if ($reviewTurnFiles.get()) {
+    $reviewDiff.set(null)
+    $reviewDiffLoading.set(false)
+
+    return
+  }
 
   const ctx = reviewCtx()
 
@@ -213,21 +233,22 @@ export async function selectReviewFile(file: HermesReviewFile): Promise<void> {
   try {
     const diff = await ctx.review.diff(ctx.cwd, file.path, 'uncommitted', null, file.staged)
 
-    if ($reviewSelectedPath.get() === file.path) {
+    if (seq === reviewDiffSeq && $reviewSelectedPath.get() === file.path && repoCwd() === ctx.cwd) {
       $reviewDiff.set(diff || '')
     }
   } catch {
-    if ($reviewSelectedPath.get() === file.path) {
+    if (seq === reviewDiffSeq && $reviewSelectedPath.get() === file.path) {
       $reviewDiff.set('')
     }
   } finally {
-    if ($reviewSelectedPath.get() === file.path) {
+    if (seq === reviewDiffSeq && $reviewSelectedPath.get() === file.path) {
       $reviewDiffLoading.set(false)
     }
   }
 }
 
 export function clearReviewSelection(): void {
+  reviewDiffSeq += 1
   $reviewSelectedPath.set(null)
   $reviewDiff.set(null)
   $reviewDiffLoading.set(false)
@@ -270,6 +291,12 @@ function refreshShipInfoIfStale(): void {
  *  session's cwd when null — see `$reviewScopeCwd`. Keep the originating
  *  composer target alongside it for agent-ship actions. */
 export function openReview(scopeCwd: null | string = null, scopeTarget = 'main'): void {
+  if ($reviewTurnFiles.get()) {
+    $reviewTurnFiles.set(null)
+    $reviewFiles.set([])
+    clearReviewSelection()
+  }
+
   $reviewScopeCwd.set(scopeCwd?.trim() || null)
   $reviewScopeTarget.set(scopeTarget.trim() || 'main')
   $reviewOpen.set(true)
@@ -278,13 +305,27 @@ export function openReview(scopeCwd: null | string = null, scopeTarget = 'main')
 }
 
 export function closeReview(): void {
+  reviewRefreshSeq += 1
+  shipInfoSeq += 1
   $reviewOpen.set(false)
+
+  if ($reviewTurnFiles.get()) {
+    $reviewTurnFiles.set(null)
+    $reviewFiles.set([])
+  }
+
   $reviewScopeCwd.set(null)
   $reviewScopeTarget.set('main')
   clearReviewSelection()
 }
 
 export function toggleReview(scopeCwd: null | string = null, scopeTarget = 'main'): void {
+  if ($reviewTurnFiles.get()) {
+    revealReview(scopeCwd, scopeTarget)
+
+    return
+  }
+
   // Narrow width: the pane is a collapsed overlay (like the sidebar under ⌘B).
   // Make sure its data is loaded, then slide it in/out via the forced-reveal pin
   // — never the docked open state, which a 0px track would render invisibly.
@@ -324,7 +365,7 @@ export function revealReview(scopeCwd: null | string = null, scopeTarget = 'main
   const wasOpen = $reviewOpen.get()
   const target = scopeTarget.trim() || 'main'
 
-  if (!wasOpen) {
+  if (!wasOpen || $reviewTurnFiles.get()) {
     openReview(scopeCwd, target)
   } else if (($reviewScopeCwd.get() ?? null) !== (scopeCwd?.trim() || null) || $reviewScopeTarget.get() !== target) {
     // Already open but on another worktree's diff — re-home it. The scope
@@ -345,6 +386,44 @@ export function revealReview(scopeCwd: null | string = null, scopeTarget = 'main
   }
 
   revealTreePane(REVIEW_PANE_ID)
+}
+
+/** 直接查看卡片对应轮次的工具差异；与 Git 审查共用面板，不混用数据源。 */
+export function revealTurnReview(
+  files: readonly ChangedFile[],
+  path?: string,
+  scopeCwd: null | string = null,
+  scopeTarget = 'main'
+): void {
+  const wasOpen = $reviewOpen.get()
+  reviewRefreshSeq += 1
+  shipInfoSeq += 1
+  cancelCommitMessage()
+  clearReviewSelection()
+  $reviewRevertTarget.set(undefined)
+  $reviewTurnFiles.set(files)
+  $reviewScopeCwd.set(scopeCwd?.trim() || null)
+  $reviewScopeTarget.set(scopeTarget)
+  $reviewFiles.set(files.map(file => ({ ...file, staged: false, status: 'M' })))
+  $reviewIsRepo.set(false)
+  $reviewLoading.set(false)
+  $reviewSelectedPath.set(files.find(file => file.path === path)?.path ?? files[0]?.path ?? null)
+  $reviewOpen.set(true)
+
+  if (matchesQuery(SIDEBAR_COLLAPSE_MEDIA_QUERY)) {
+    if (!wasOpen) {
+      window.dispatchEvent(new CustomEvent(PANE_TOGGLE_REVEAL_EVENT, { detail: { id: REVIEW_PANE_ID } }))
+    }
+  } else {
+    revealTreePane(REVIEW_PANE_ID)
+  }
+}
+
+/** 卡片卸载或换会话时只清理自己打开的快照，不影响其他卡片或 Git 审查。 */
+export function closeTurnReview(files: readonly ChangedFile[]): void {
+  if ($reviewTurnFiles.get() === files) {
+    closeReview()
+  }
 }
 
 /** The changed file matching a tool-reported path (absolute or repo-relative). */
@@ -399,16 +478,28 @@ async function afterMutation(): Promise<void> {
 }
 
 export async function stageReviewFile(path: null | string): Promise<void> {
+  if ($reviewTurnFiles.get()) {
+    return
+  }
+
   await desktopGit()?.review?.stage(repoCwd() ?? '', path)
   await afterMutation()
 }
 
 export async function unstageReviewFile(path: null | string): Promise<void> {
+  if ($reviewTurnFiles.get()) {
+    return
+  }
+
   await desktopGit()?.review?.unstage(repoCwd() ?? '', path)
   await afterMutation()
 }
 
 export async function revertReviewFile(path: null | string): Promise<void> {
+  if ($reviewTurnFiles.get()) {
+    return
+  }
+
   await desktopGit()?.review?.revert(repoCwd() ?? '', path)
   await afterMutation()
 }
@@ -421,6 +512,10 @@ export const $reviewRevertTarget = atom<{ path: null | string } | undefined>(und
 
 /** Open the revert confirm for a single file, or `null` for all changes. */
 export function requestRevert(path: null | string): void {
+  if ($reviewTurnFiles.get()) {
+    return
+  }
+
   $reviewRevertTarget.set({ path })
 }
 
@@ -598,7 +693,7 @@ $busy.subscribe(busy => {
 // straight to its loading skeleton instead of blipping the previous repo's
 // diff into the new one.
 function onReviewRepoMoved(): void {
-  if ($reviewOpen.get()) {
+  if ($reviewOpen.get() && !$reviewTurnFiles.get()) {
     clearReviewSelection()
     $reviewFiles.set([])
     $reviewLoading.set(true)

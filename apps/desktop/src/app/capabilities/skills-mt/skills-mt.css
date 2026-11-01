@@ -109,6 +109,7 @@
 }
 
 .mt-experts-body {
+  --mt-skills-gutter: 32px;
   display: flex;
   min-height: 0;
   flex: 1;
@@ -495,5 +496,11 @@
 
   .mt-skills-search {
     width: 180px;
+  }
+}
+
+@media (max-width: 640px) {
+  .mt-experts-body {
+    --mt-skills-gutter: 16px;
   }
 }
