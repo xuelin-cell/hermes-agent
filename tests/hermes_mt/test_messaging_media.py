@@ -237,7 +237,9 @@ async def test_5g_oss_public_links_use_owner_credentials_and_real_upload_before_
             async with entry.database.acquire() as db:
                 row=await db.fetchrow('SELECT state,error_code FROM messaging_outbox WHERE outbound_id=$1',outbound)
             assert dict(row)=={'state':'failed','error_code':'media_oss_upload_failed'}
-            assert len(downlinks)==2
+            assert len(downlinks)==3 and '附件未能发送' in downlinks[-1]['text']
+            await service.send_pending()
+            assert len(downlinks)==3  # No automatic replay of accepted content or failure notice.
             view=await entry.messaging_routes.view('alice','uniagentgate')
             assert view['error_code']=='media_oss_upload_failed' and 'OSS' in view['error_message']
     finally:

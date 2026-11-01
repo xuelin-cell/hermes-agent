@@ -2,14 +2,15 @@
 
 # 与 desktop-deliverables 的 DELIVERY_PLATFORMS 一致：这些平台的后台成品由宿主下载并作为附件发回。
 # 钉钉没有发视频的接口，视频不走后台下载，保持原样。
-DELIVERY_PLATFORMS = frozenset({"weixin", "feishu", "wecom", "dingtalk"})
+DELIVERY_PLATFORMS = frozenset({"weixin", "feishu", "wecom", "dingtalk", "uniagentgate"})
 VIDEO_PLATFORMS = frozenset({"desktop", "weixin", "feishu", "wecom"})
 
 
 def section(session_info):
     """按会话来源渲染；子代理直接执行任务，不再被父会话委派规则影响。"""
     platform = session_info.get("platform")
-    if platform != "desktop":
+    # Entry-hosted channels need not register an in-process gateway adapter.
+    if platform != "desktop" and platform not in DELIVERY_PLATFORMS:
         from gateway.config import Platform
 
         try:

@@ -207,6 +207,23 @@ class Channels:
             state, code, receipt = 'failed', 'gateway_rejected', {'ok':False}
         except Exception:
             state, code = 'unknown', 'outbound_unconfirmed'
+        # A failed attachment is not a reason to replay an accepted text reply.
+        # This notice shares the claimed send attempt; unknown ACKs are never retried.
+        if row['platform'] == 'uniagentgate' and code in {'media_preparation_failed', 'media_oss_upload_failed'}:
+            reason = '附件格式处理失败' if code == 'media_preparation_failed' else '附件上传失败'
+            try:
+                original = self.protocol.parse_agent_request(json.loads(row['inbound']))
+                _, notice_ack = await client[1].send_channel_message(
+                    phone_number=original.phone_number,
+                    text='⚠️ 附件未能发送：'+reason+'。已发送的内容不会自动重发，请回到网页查看附件。',
+                    media=[], session_id=original.session_id, turn_id=original.turn_id,
+                    message_id=message_id+'_media_failure')
+                receipt['failure_notice'] = 'sent'
+                receipt['notice_downlink_msg_ids'] = notice_ack.downlink_msg_ids
+            except (self.stream.DownlinkRejected, ReplyRejected):
+                receipt['failure_notice'] = 'rejected'
+            except Exception:
+                receipt['failure_notice'] = 'unknown'
         async with self.database.acquire() as db:
             await db.execute('UPDATE messaging_outbox SET state=$2,error_code=$3,platform_ack=$4::jsonb,updated_at=now() WHERE outbound_id=$1 AND state=\'sending\'',row['outbound_id'],state,code,json.dumps(receipt))
 

@@ -259,3 +259,13 @@ def test_picture_payload_is_not_stringified_for_kit_matching(kits, profile_env):
     ], platform='desktop')
     assert expected is not None
     assert actual == expected
+
+
+def test_rcs_background_rules_use_original_channel_attachment_delivery(kits, profile_env):
+    import importlib
+    rules = importlib.import_module('hermes_plugins.uniwork_kits.background_rules')
+    message = rules.section({'platform': 'uniagentgate'})
+    assert 'uniagentgate' in rules.DELIVERY_PLATFORMS
+    assert '宿主下载到本机' in message
+    assert '不广播到其他已绑定平台' in message
+    assert rules.section({'platform': 'unknown-channel'}) == ''
