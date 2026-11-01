@@ -244,3 +244,18 @@ def test_picture_rules_ask_for_a_visual_check_only_when_the_vision_tool_can_see(
     _write(config, config.read_text(encoding="utf-8") + "auxiliary:\n  vision:\n    provider: openrouter\n")
     seeing = kits.media_slot.picture_rules()
     assert "自己看图检查" in seeing and "vision_analyze" not in seeing
+
+
+def test_picture_payload_is_not_stringified_for_kit_matching(kits, profile_env):
+    class ImageBytes:
+        def __repr__(self):
+            raise AssertionError('Image payload must not enter text matching')
+
+    text = '帮我做一份 20 页的幻灯片'
+    expected = kits.router.on_pre_llm_call(user_message=text, platform='desktop')
+    actual = kits.router.on_pre_llm_call(user_message=[
+        {'type': 'text', 'text': text},
+        {'type': 'image_url', 'image_url': {'url': ImageBytes()}},
+    ], platform='desktop')
+    assert expected is not None
+    assert actual == expected
