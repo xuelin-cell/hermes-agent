@@ -19,6 +19,7 @@ import { runPython } from '../../../scripts/build/python.mjs'
 import { assertPackagedBackendReadyArtifact, resolvePackagedAsarPath } from './backend-ready-artifact.mjs'
 import { batchSignAppTree } from './batch-sign-binaries.mjs'
 import { rehashPayloadDigests } from './payload-digests.mjs'
+import { shouldRehashPayload } from './payload-rehash-policy.mjs'
 import { resolveSigningIdentity, signNestedChromium } from './sign-nested-chromium.mjs'
 import { signWheelZipMembers } from './sign-wheel-zips.mjs'
 import { sanitizeTree } from './sanitize-pe-signatures.mjs'
@@ -121,9 +122,18 @@ export default async function afterPack(context) {
   // per-file by the customSign hook (scripts/batch-sign-binaries.mjs) after
   // electron-builder's own rcedit + fuses pass. No-op with a loud warning when
   // the AZURE_SIGN_* environment is absent (unsigned/fork/canary lanes).
-  await batchSignAppTree(context.appOutDir, exe, {
+  const signing = await batchSignAppTree(context.appOutDir, exe, {
     config: context.packager.config,
     resourcesDir: context.packager.buildResourcesDir,
   })
-  rehashPayloadDigests(payload)
+  // Assembly's stamp describes the bytes electron-builder copied in, so it only
+  // goes stale when signing or an in-place PE repair rewrote them. Re-hashing
+  // ~1.5 GiB of tools on an unsigned build buys nothing.
+  const stampPath = path.join(payload, 'payload-stamp.txt')
+  if (shouldRehashPayload({ signSkipped: signing.skipped === true, repairedCount: repaired.length,
+                            stampExists: fs.existsSync(stampPath) })) {
+    rehashPayloadDigests(payload)
+  } else {
+    console.log(`[after-pack] payload rehash skipped: unsigned build, bytes unchanged (${stampPath})`)
+  }
 }
