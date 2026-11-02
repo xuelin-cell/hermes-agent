@@ -7,6 +7,12 @@
 ; NSIS 不允许在宏里定义宏，所以不能直接替换 uninstallOldVersion。
 ; 卸载程序编译时（BUILD_UNINSTALLER）没有 installUtil.nsh，这段跳过。
 !macro customCheckAppRunning
+  ; desktop-mt: 模板在段首把 SetDetailsPrint 设成 none（templates/nsis/installSection.nsh），
+  ; 会把后面所有 DetailPrint 丢掉，这里覆盖回来。用 textonly 不用 both：载荷九万多个文件，
+  ; both 会把每个文件一行的解压噪音灌满面板和日志。
+  ; 安装器本身没有静默模式（模板只给卸载器写 SilentInstall silent），所以不用判断 ${Silent}。
+  SetDetailsPrint textonly
+  !insertmacro UniPhaseBegin 1 "检查正在运行的程序"
   !include "${UNIWORK_NSIS_DIR}\direct-extract.nsh"
   !insertmacro IS_POWERSHELL_AVAILABLE
   !insertmacro _CHECK_APP_RUNNING

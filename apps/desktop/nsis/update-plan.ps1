@@ -10,6 +10,13 @@ build time. The installed copy is re-hashed with the payload's own interpreter
 (payload-digest.py) so a damaged or modified component is replaced rather than
 carried over.
 
+When the installer also passes -Archive and -SevenZip, the kept components are
+measured from the incoming package itself (7za reads the archive headers only)
+and written to -KeepFile, five ASCII lines per component: kind, name, version,
+files, megabytes. "-" where a number is not available. This is reporting only:
+a missing 7za, an unreadable archive or a failed listing leaves the plan
+untouched and the keep file carries no numbers.
+
 Exit codes: 0 plan written, 1 no plan (installer extracts everything over the
 existing files), 2 the directory is not an installed payload.
 #>
@@ -20,7 +27,10 @@ param(
     [string]$OldStamp = '',
     [Parameter(Mandatory = $true)][string]$DeleteFile,
     [Parameter(Mandatory = $true)][string]$ExcludeFile,
-    [string]$Log = ''
+    [string]$Log = '',
+    [string]$Archive = '',
+    [string]$SevenZip = '',
+    [string]$KeepFile = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -29,6 +39,62 @@ $utf8 = [System.Text.UTF8Encoding]::new($false)
 
 function Add-Note([string]$message) {
     $notes.Add($message)
+}
+
+# Count what the archive would have written for each kept component. 7za lists
+# headers only (measured: ~0.7s for 105k entries), so this costs less than the
+# digest verification the planner already runs. -ba -slt prints one
+# "Key = Value" block per entry, which needs no column guessing; one extra
+# listing call per component is what makes each line attributable on its own.
+function Get-KeptArchiveStats([string]$archivePath, [string]$sevenZipPath, $kept) {
+    if ([string]::IsNullOrWhiteSpace($sevenZipPath) -or -not [System.IO.File]::Exists($sevenZipPath)) {
+        throw "no 7-Zip tool at $sevenZipPath"
+    }
+    if ([string]::IsNullOrWhiteSpace($archivePath) -or -not [System.IO.File]::Exists($archivePath)) {
+        throw "no archive at $archivePath"
+    }
+    $stats = @{}
+    foreach ($item in $kept) {
+        $stats[$item.Key] = [pscustomobject]@{ Files = 0; Bytes = 0 }
+        $rows = @(& $sevenZipPath l '-ba' '-slt' $archivePath "$($item.Key)*" 2>$null)
+        if ($LASTEXITCODE -ne 0) {
+            throw "7za listing failed for $($item.Key) (exit $LASTEXITCODE)"
+        }
+        $files = 0
+        $bytes = [int64]0
+        # One entry is a block of "Key = Value" lines and Attributes comes after
+        # Size, so a block is only counted once the next Path (or the end) arrives.
+        $size = [int64]0
+        $isDirectory = $true
+        $hasEntry = $false
+        foreach ($row in $rows) {
+            $line = [string]$row
+            if ($line.StartsWith('Path = ')) {
+                if ($hasEntry -and -not $isDirectory) {
+                    $files += 1
+                    $bytes += $size
+                }
+                $size = [int64]0
+                $isDirectory = $true
+                $hasEntry = $false
+            } elseif ($line.StartsWith('Size = ')) {
+                $value = $line.Substring(7)
+                if ($value -match '^\d+$') {
+                    $size = [int64]$value
+                    $hasEntry = $true
+                }
+            } elseif ($line.StartsWith('Attributes = ')) {
+                $isDirectory = $line.Substring(13).Contains('D')
+            }
+        }
+        if ($hasEntry -and -not $isDirectory) {
+            $files += 1
+            $bytes += $size
+        }
+        $stats[$item.Key].Files = $files
+        $stats[$item.Key].Bytes = $bytes
+    }
+    return $stats
 }
 
 # NSIS reads the plan files as ANSI text, so only ASCII paths may enter them.
@@ -250,6 +316,61 @@ try {
             [System.IO.File]::Delete($ExcludeFile)
         }
         Add-Note "delete $($delete.Count) path(s), skip $($exclusions.Count) archive path(s)"
+
+        # Reporting only: how much each kept component accounts for in the
+        # package. Numbers come from the archive (that is what 7-Zip skips), and
+        # a failed listing leaves them out without touching the plan above.
+        $kept = [System.Collections.Generic.List[object]]::new()
+        foreach ($name in ($keep | Sort-Object)) {
+            $kept.Add([pscustomobject]@{
+                Kind = 'component'; Name = $name; Version = '-'
+                Key = "resources\agent-payload\$name"
+            })
+        }
+        foreach ($entry in ($keepTools | Sort-Object)) {
+            $toolName = $entry
+            $toolVersion = '-'
+            foreach ($name in ($new.Tools.Keys | Sort-Object)) {
+                if ($new.Tools[$name].Entry -ceq $entry) {
+                    $toolName = $name
+                    $toolVersion = $new.Tools[$name].Version
+                    break
+                }
+            }
+            $kept.Add([pscustomobject]@{
+                Kind = 'tool'; Name = $toolName; Version = $toolVersion
+                Key = "resources\agent-payload\tools\$entry"
+            })
+        }
+
+        $stats = $null
+        if ($KeepFile -ne '' -and $kept.Count -gt 0) {
+            try {
+                $stats = Get-KeptArchiveStats $Archive $SevenZip $kept
+            } catch {
+                Add-Note "kept sizes unavailable: $($_.Exception.Message)"
+            }
+        }
+        $records = [System.Collections.Generic.List[string]]::new()
+        foreach ($item in $kept) {
+            $files = '-'
+            $megabytes = '-'
+            if ($null -ne $stats -and $stats.ContainsKey($item.Key) -and $stats[$item.Key].Files -gt 0) {
+                # Plain digits, no group separators: the installer adds these up.
+                $files = [string]$stats[$item.Key].Files
+                $megabytes = [string][int64][System.Math]::Ceiling($stats[$item.Key].Bytes / 1MB)
+            }
+            # Five ASCII lines per component: NSIS reads them straight through and
+            # adds its own wording, so the Chinese text never has to cross an encoding.
+            $records.Add($item.Kind)
+            $records.Add($item.Name)
+            $records.Add($item.Version)
+            $records.Add($files)
+            $records.Add($megabytes)
+        }
+        if ($KeepFile -ne '') {
+            [System.IO.File]::WriteAllLines($KeepFile, $records, $utf8)
+        }
         $exitCode = 0
     }
 } catch {

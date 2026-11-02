@@ -89,8 +89,9 @@ def test_planner_deletes_everything_when_no_previous_stamp(tmp_path):
     assert result.returncode == 0
     deleted = delete.read_text(encoding="utf-8").splitlines()
     assert "other" in deleted
-    assert "resources/agent-payload/venv" in deleted
-    assert "resources/agent-payload/tools/python" in deleted
+    # 没有可比对的旧指纹时，计划只删顶层目录（resources 整个删掉，venv 等在里面跟着走）。
+    assert "resources" in deleted
+    assert r"resources\agent-payload\venv" not in deleted
 
 
 def test_planner_keeps_components_with_matching_digests(tmp_path):
@@ -108,10 +109,10 @@ def test_planner_keeps_components_with_matching_digests(tmp_path):
     result = _run_planner(install, new_stamp, old_stamp, delete, exclude)
     assert result.returncode == 0
     excluded = exclude.read_text(encoding="utf-8").splitlines()
-    assert "-x!resources/agent-payload/venv/*" in excluded
-    assert "-x!resources/agent-payload/pm-runtime/*" in excluded
-    assert "-x!resources/agent-payload/uv-cache.zip" in excluded
-    assert "-x!resources/agent-payload/tools/python/*" in excluded
+    assert r"-x!resources\agent-payload\venv\*" in excluded
+    assert r"-x!resources\agent-payload\pm-runtime\*" in excluded
+    assert r"-x!resources\agent-payload\uv-cache.zip" in excluded
+    assert r"-x!resources\agent-payload\tools\python\*" in excluded
     deleted = delete.read_text(encoding="utf-8").splitlines()
     assert len(deleted) == 0
 
@@ -132,8 +133,8 @@ def test_planner_replaces_component_when_digest_changes(tmp_path):
     result = _run_planner(install, new_stamp, old_stamp, delete, exclude)
     assert result.returncode == 0
     excluded = exclude.read_text(encoding="utf-8").splitlines()
-    assert "-x!resources/agent-payload/pm-runtime/*" in excluded
-    assert "-x!resources/agent-payload/uv-cache.zip" in excluded
+    assert r"-x!resources\agent-payload\pm-runtime\*" in excluded
+    assert r"-x!resources\agent-payload\uv-cache.zip" in excluded
     assert not any("venv" in line for line in excluded)
     deleted = delete.read_text(encoding="utf-8").splitlines()
-    assert "resources/agent-payload/venv" in deleted
+    assert r"resources\agent-payload\venv" in deleted
