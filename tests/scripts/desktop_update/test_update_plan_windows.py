@@ -23,10 +23,19 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 UPDATE_PLAN_PS1 = REPO_ROOT / "apps/desktop/nsis/update-plan.ps1"
 
 
-def _write_stamp(path: Path, target: str, components: dict[str, str], tools: dict[str, dict]) -> None:
+def _write_stamp(path: Path, target: str, components: dict[str, str], tools: dict[str, dict],
+                 archive_components: set[str] | None = None) -> None:
+    """Write a payload-stamp.txt file.
+
+    Args:
+        archive_components: Set of component names that should be marked as 'archive'.
+    """
+    archive_components = archive_components or set()
     lines = ["schema 1", f"target {target}"]
-    for name in ("venv", "pm-runtime", "uv-cache.zip"):
-        lines.append(f"{name} {components[name]}")
+    for name in ("venv", "pm-runtime", "uv-cache.zip", "hermes-agent"):
+        if name in components:
+            suffix = " archive" if name in archive_components else ""
+            lines.append(f"{name} {components[name]}{suffix}")
     for name, info in sorted(tools.items()):
         lines.append(f"tool {name} {info['entry']} {info['version']} {info['digest']}")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")

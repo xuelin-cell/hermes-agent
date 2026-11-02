@@ -59,6 +59,8 @@ Var UNIWORK_KEEP_COUNT
 Var UNIWORK_KEEP_FILES_SUM
 Var UNIWORK_KEEP_MB_SUM
 Var UNIWORK_KEEP_NUM
+; 当前要解压的 archive 组件名（如 "venv" 或 "hermes-agent"）
+Var UNIWORK_ARCHIVE_KIND
 !endif
 
 ; 由 customCheckAppRunning 展开：是不是在升级同一个安装目录？
@@ -402,6 +404,46 @@ Function UNIWORK_TryIncremental
   Pop $0
 FunctionEnd
 
+; 解压单个 archive 组件到安装目录。
+; $UNIWORK_ARCHIVE_KIND = "venv" 或 "hermes-agent"
+; 如果 archive 存在则解压，否则跳过（目录形式或旧版本）。
+Function UNIWORK_ExtractArchive
+  Push $0
+  Push $1
+  StrCpy $0 "$INSTDIR\resources\agent-payload\$UNIWORK_ARCHIVE_KIND.7z"
+  StrCpy $1 "$INSTDIR\resources\agent-payload\$UNIWORK_ARCHIVE_KIND.tar.xz"
+
+  ${If} ${FileExists} "$0"
+    !insertmacro UniSay "解压 $UNIWORK_ARCHIVE_KIND..."
+    !insertmacro UniLog "解压 archive: $0"
+    nsExec::Exec '"$PLUGINSDIR\uniwork\7za.exe" x "$0" -o"$INSTDIR\resources\agent-payload" -y -aoa'
+    Pop $UNIWORK_EXTRACT_RC
+    ${If} $UNIWORK_EXTRACT_RC != 0
+      !insertmacro UniLog "$UNIWORK_ARCHIVE_KIND.7z 解压失败（$UNIWORK_EXTRACT_RC）"
+      !insertmacro UniSay "$UNIWORK_ARCHIVE_KIND 解压失败，安装可能不完整"
+    ${Else}
+      ; 解压成功后删除 archive 文件，节省磁盘空间
+      Delete "$0"
+    ${EndIf}
+  ${ElseIf} ${FileExists} "$1"
+    ; Fallback: .tar.xz archive (slower, but no 7z dependency)
+    !insertmacro UniSay "解压 $UNIWORK_ARCHIVE_KIND..."
+    !insertmacro UniLog "解压 archive: $1"
+    nsExec::Exec '"$PLUGINSDIR\uniwork\7za.exe" x "$1" -o"$INSTDIR\resources\agent-payload" -y -aoa'
+    Pop $UNIWORK_EXTRACT_RC
+    ${If} $UNIWORK_EXTRACT_RC != 0
+      !insertmacro UniLog "$UNIWORK_ARCHIVE_KIND.tar.xz 解压失败（$UNIWORK_EXTRACT_RC）"
+    ${Else}
+      Delete "$1"
+    ${EndIf}
+  ${Else}
+    !insertmacro UniLog "$UNIWORK_ARCHIVE_KIND archive 不存在，跳过（可能是目录形式）"
+  ${EndIf}
+
+  Pop $1
+  Pop $0
+FunctionEnd
+
 ; 整包解压：直接解到安装目录（本分支原来的做法），不再先解到 $PLUGINSDIR\7z-out 再复制。
 Function UNIWORK_ExtractFull
   !insertmacro UniPhaseBegin 3 "解压程序文件"
@@ -414,6 +456,13 @@ Function UNIWORK_ExtractFull
     !insertmacro UniSay "整包覆盖：之前跳过的组件这次一并重新写入"
   ${EndIf}
   Nsis7z::Extract "$UNIWORK_ARCHIVE"
+
+  ; 解压 archive 组件（venv.7z, hermes-agent.7z）
+  StrCpy $UNIWORK_ARCHIVE_KIND "venv"
+  Call UNIWORK_ExtractArchive
+  StrCpy $UNIWORK_ARCHIVE_KIND "hermes-agent"
+  Call UNIWORK_ExtractArchive
+
   SetOutPath $UNIWORK_OUTDIR
   ${IfNot} ${FileExists} "$appExe"
     MessageBox MB_OK|MB_ICONSTOP "安装没有完成：程序文件没有解压到 $INSTDIR。"

@@ -91,7 +91,7 @@ try {
         foreach ($line in $lines) {
             if ($line -ceq 'schema 1') { $schemaOk = $true; continue }
             if ($line -cmatch '^target ([a-z0-9-]+)$') { $targetOk = $true; continue }
-            if ($line -cmatch '^(venv|pm-runtime|uv-cache\.zip) [0-9a-f]{64}$') { $stampComponents.Add($Matches[1]) | Out-Null; continue }
+            if ($line -cmatch '^(venv|pm-runtime|uv-cache\.zip|hermes-agent) [0-9a-f]{64}( archive)?$') { $stampComponents.Add($Matches[1]) | Out-Null; continue }
             if ($line -cmatch '^tool (\S+) (\S+) (\S+) [0-9a-f]{64}$') { $stampTools.Add($Matches[1]) | Out-Null; continue }
             $problems.Add("payload-stamp.txt has an unexpected line: $line")
         }

@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.bundles.payload import relativize_links, snapshot, write_payload_stamp
+from scripts.bundles.payload import relativize_links, snapshot, write_payload_stamp, archive_component, read_precomputed_archive_digests, STAMP_NAME
 from scripts.build.inputs import project_entries
 from scripts.build.agent import plant_surfaces
 from scripts.build.launchers import posix_launcher
@@ -103,19 +103,98 @@ def test_write_payload_stamp_records_schema_target_and_components(tmp_path):
     components = {}
     tools = {}
     for line in lines[2:]:
-        if line.startswith(("venv ", "pm-runtime ", "uv-cache.zip ")):
-            name, digest = line.split(" ", 1)
-            components[name] = digest
+        if line.startswith(("venv ", "pm-runtime ", "uv-cache.zip ", "hermes-agent ")):
+            parts = line.split()
+            name = parts[0]
+            digest = parts[1]
+            is_archive = len(parts) > 2 and parts[2] == "archive"
+            components[name] = {"digest": digest, "is_archive": is_archive}
         elif line.startswith("tool "):
             parts = line.split()
             tools[parts[1]] = {"entry": parts[2], "version": parts[3], "digest": parts[4]}
     assert set(components.keys()) == {"venv", "pm-runtime", "uv-cache.zip"}
-    for name, digest in components.items():
-        assert len(digest) == 64
-        assert all(c in "0123456789abcdef" for c in digest)
+    for name, info in components.items():
+        assert len(info["digest"]) == 64
+        assert all(c in "0123456789abcdef" for c in info["digest"])
+        # Directory components should not be marked as archive in this test
+        assert info["is_archive"] is False
     assert set(tools.keys()) == {"python", "uv"}
     for name, info in tools.items():
         assert len(info["digest"]) == 64
         assert info["version"] == "1.0"
         expected_digest = tree_digest(root / "tools" / info["entry"])
         assert info["digest"] == expected_digest
+
+
+@pytest.mark.platforms("win32")
+def test_archive_component_creates_7z_and_preserves_directory_digest(tmp_path):
+    """archive_component packs a directory into .7z and returns the directory digest."""
+    root = tmp_path / "payload"
+    venv = root / "venv"
+    venv.mkdir(parents=True)
+    (venv / "file1.txt").write_bytes(b"content1")
+    (venv / "subdir").mkdir()
+    (venv / "subdir" / "file2.txt").write_bytes(b"content2")
+
+    expected_digest = tree_digest(venv)
+    archive_path, actual_digest = archive_component(root, "venv")
+
+    assert actual_digest == expected_digest
+    assert archive_path == root / "venv.7z"
+    assert archive_path.exists()
+    assert not venv.exists()  # Original directory removed
+
+
+def test_write_payload_stamp_with_precomputed_archive_digests(tmp_path):
+    """write_payload_stamp uses precomputed digests for archive components."""
+    root = tmp_path / "payload"
+    (root / "tools").mkdir(parents=True)
+    # Create a minimal facts.json
+    facts = {
+        "python": {"entry": "python", "version": "3.14.0"},
+    }
+    (root / "tools" / "facts.json").write_text(json.dumps(facts), encoding="utf-8")
+    (root / "tools" / "python").mkdir()
+    (root / "tools" / "python" / "file").write_bytes(b"python bytes")
+
+    (root / "pm-runtime").mkdir()
+    (root / "pm-runtime" / "file").write_bytes(b"runtime bytes")
+    (root / "uv-cache.zip").write_bytes(b"cache bytes")
+
+    # Simulate an archived venv: create venv.7z instead of venv/
+    precomputed_digest = "a" * 64
+    (root / "venv.7z").write_bytes(b"fake 7z archive")
+
+    stamp_path = write_payload_stamp(root, precomputed_digests={"venv": precomputed_digest})
+    lines = stamp_path.read_text(encoding="utf-8").splitlines()
+
+    # Find the venv line
+    venv_line = next(line for line in lines if line.startswith("venv "))
+    parts = venv_line.split()
+    assert parts[0] == "venv"
+    assert parts[1] == precomputed_digest
+    assert parts[2] == "archive"
+
+
+def test_read_precomputed_archive_digests(tmp_path):
+    """read_precomputed_archive_digests extracts archive digests from an existing stamp."""
+    stamp_content = """schema 1
+target win32-x64
+venv aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa archive
+pm-runtime bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+hermes-agent cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc archive
+uv-cache.zip dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+tool python python 3.14.0 eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+"""
+    (tmp_path / STAMP_NAME).write_text(stamp_content, encoding="utf-8")
+
+    digests = read_precomputed_archive_digests(tmp_path)
+    assert digests == {
+        "venv": "a" * 64,
+        "hermes-agent": "c" * 64,
+    }
+
+
+def test_read_precomputed_archive_digests_returns_empty_for_missing_stamp(tmp_path):
+    """read_precomputed_archive_digests returns empty dict when stamp doesn't exist."""
+    assert read_precomputed_archive_digests(tmp_path) == {}

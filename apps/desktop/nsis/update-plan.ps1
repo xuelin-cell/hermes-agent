@@ -121,8 +121,15 @@ function Read-PayloadStamp([string]$path) {
             $stamp.Target = $Matches[1]
             continue
         }
-        if ($line -cmatch '^(venv|pm-runtime|uv-cache\.zip) ([0-9a-f]{64})$') {
-            $stamp.Components[$Matches[1]] = $Matches[2]
+        # Support both directory components and archive components:
+        #   venv <digest>              (directory)
+        #   venv <digest> archive      (archive: venv.7z or venv.tar.xz)
+        #   hermes-agent <digest> archive
+        if ($line -cmatch '^(venv|pm-runtime|uv-cache\.zip|hermes-agent) ([0-9a-f]{64})( archive)?$') {
+            $stamp.Components[$Matches[1]] = @{
+                Digest = $Matches[2]
+                IsArchive = ($Matches[3] -eq ' archive')
+            }
             continue
         }
         if ($line -cmatch '^tool (\S+) (\S+) (\S+) ([0-9a-f]{64})$') {
@@ -179,10 +186,22 @@ try {
             # the installed bytes then get the final say below.
             $candidates = [System.Collections.Generic.List[object]]::new()
             foreach ($name in $new.Components.Keys) {
-                if ($old.Components.ContainsKey($name) -and $old.Components[$name] -ceq $new.Components[$name]) {
+                $newComp = $new.Components[$name]
+                $oldComp = $old.Components[$name]
+                # Components are now stored as hashtables with Digest and IsArchive fields
+                $newDigest = if ($newComp -is [hashtable]) { $newComp.Digest } else { $newComp }
+                $oldDigest = if ($oldComp -is [hashtable]) { $oldComp.Digest } else { $oldComp }
+                $newIsArchive = ($newComp -is [hashtable]) -and $newComp.IsArchive
+
+                if ($null -ne $oldComp -and $oldDigest -ceq $newDigest) {
+                    # For verification, we always check the installed directory (not the archive).
+                    # The stamp records the directory digest (computed before archiving at build time),
+                    # so the installer verifies the extracted directory matches.
+                    # For archive components, the installed form is a directory after extraction.
+                    $installedPath = Join-Path $payload $name
                     $candidates.Add([pscustomobject]@{
                         Kind = 'component'; Name = $name; Entry = ''; Ok = $false
-                        Path = (Join-Path $payload $name); Digest = $new.Components[$name]
+                        Path = $installedPath; Digest = $newDigest; IsArchive = $newIsArchive
                     })
                 } else {
                     Add-Note "replace $name (new build)"
@@ -297,9 +316,15 @@ try {
 
         $exclusions = [System.Collections.Generic.List[string]]::new()
         foreach ($name in $keep) {
-            if ($name -ieq 'uv-cache.zip') {
+            $comp = $new.Components[$name]
+            $isArchive = ($comp -is [hashtable]) -and $comp.IsArchive
+            if ($isArchive) {
+                # Archive component: exclude the .7z file itself
+                $exclusions.Add("-x!resources\agent-payload\$name.7z")
+            } elseif ($name -ieq 'uv-cache.zip') {
                 $exclusions.Add("-x!resources\agent-payload\$name")
             } else {
+                # Directory component: exclude all files inside
                 $exclusions.Add("-x!resources\agent-payload\$name\*")
             }
         }

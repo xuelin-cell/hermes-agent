@@ -393,6 +393,24 @@ def finish_native(prepared: Path, frontends: dict[str, Path]) -> int:
         # Written after assembly (link relocation completes there) and rewritten
         # by `payload.py rehash` once signing has changed the shipped bytes.
         write_payload_stamp(out)
+        # desktop-mt: On Windows, archive large component directories to speed up installation.
+        # Fewer file-creation operations means less AV scanning overhead during install.
+        # The stamp must record the directory digest (computed before archiving), not the
+        # archive file digest, so the installer can verify the extracted directory.
+        if sys.platform == "win32":
+            from scripts.bundles.payload import ARCHIVED_COMPONENTS_WIN, archive_component
+            precomputed_digests = {}
+            archived = []
+            for name in ARCHIVED_COMPONENTS_WIN:
+                source = out / name
+                if source.is_dir():
+                    archive, directory_digest = archive_component(out, name)
+                    precomputed_digests[name] = directory_digest
+                    archived.append(f"{name} -> {archive.name}")
+            if archived:
+                print(f"✓ archived {len(archived)} component(s) for faster install: {', '.join(archived)}")
+                # Re-stamp with precomputed directory digests
+                write_payload_stamp(out, precomputed_digests=precomputed_digests)
     print(f"✓ manifest ({out / 'manifest.json'})")
     return 0
 
