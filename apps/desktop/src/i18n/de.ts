@@ -1,8 +1,8 @@
-import { messagingConnectionCopy } from './messaging-connection'
 import { defineFieldCopy } from '@/app/settings/field-copy'
 
 import { defineLocale, type TranslationOverrides } from './define-locale'
 import { introDe } from './intro-de'
+import { messagingConnectionCopy } from './messaging-connection'
 
 export const deOverrides = {
   workspaceEditor: {
@@ -90,7 +90,8 @@ export const deOverrides = {
     phoneError: 'Geben Sie eine elfstellige Nummer ein, die mit 1 beginnt.',
     captchaError: 'Geben Sie den Bildcode ein (maximal 6 Zeichen).',
     smsError: 'Geben Sie den sechsstelligen SMS-Code ein.',
-    storageError: 'Die Anmeldung konnte nicht sicher gespeichert werden. Prüfen Sie die lokalen Speicherberechtigungen.',
+    storageError:
+      'Die Anmeldung konnte nicht sicher gespeichert werden. Prüfen Sie die lokalen Speicherberechtigungen.',
     requestError: 'Anmeldung fehlgeschlagen. Bitte erneut versuchen.'
   },
   intro: introDe,
@@ -3330,7 +3331,7 @@ export const deOverrides = {
     }
   },
   messaging: {
-    connection: messagingConnectionCopy["de"],
+    connection: messagingConnectionCopy['de'],
     cards: {
       heading: 'Chat-Apps',
       description:
@@ -3340,12 +3341,14 @@ export const deOverrides = {
       save: 'Speichern und aktivieren',
       comingSoon: 'Noch nicht angebunden',
       personalBindingMissing: 'Persönliche Verknüpfung nicht bestätigt. Abmelden und erneut per SMS anmelden.',
-      reconnect: "Neu verbinden",
-      reconnecting: "Verbindung wird hergestellt…",
-      reconnected: "5G-Nachrichten wieder verbunden.",
-      reconnectBusy: "Eine Nachricht wird verarbeitet. Danach erneut verbinden.",
-      reconnectFailed: "5G-Verbindung fehlgeschlagen. Protokolle prüfen; bei gestopptem Gateway die App vollständig beenden und öffnen.",
-      reconnectRestartRequired: "Das 5G-Update ist noch nicht aktiv. Die App einschließlich Infobereich vollständig beenden und erneut öffnen.",
+      reconnect: 'Neu verbinden',
+      reconnecting: 'Verbindung wird hergestellt…',
+      reconnected: '5G-Nachrichten wieder verbunden.',
+      reconnectBusy: 'Eine Nachricht wird verarbeitet. Danach erneut verbinden.',
+      reconnectFailed:
+        '5G-Verbindung fehlgeschlagen. Protokolle prüfen; bei gestopptem Gateway die App vollständig beenden und öffnen.',
+      reconnectRestartRequired:
+        'Das 5G-Update ist noch nicht aktiv. Die App einschließlich Infobereich vollständig beenden und erneut öffnen.',
       unavailable: 'Nachrichtenkomponente nicht verfügbar',
       notConnected: 'Nicht verbunden',
       unbind: 'Trennen',
@@ -4020,27 +4023,30 @@ export const deOverrides = {
     open: 'Öffnen'
   },
   artifactShare: {
-    validity: "Gültigkeitsdauer",
+    validity: 'Gültigkeitsdauer',
     days: count => `${count} Tage`,
-    customValidity: "Eigene Dauer",
-    editValidity: "Gültigkeit ändern",
-    saveValidity: "Gültigkeit speichern",
+    customValidity: 'Eigene Dauer',
+    editValidity: 'Gültigkeit ändern',
+    saveValidity: 'Gültigkeit speichern',
     expiresAt: date => `Läuft ab: ${date}`,
-    noExpiry: "Für diesen älteren Link ist kein Ablaufdatum festgelegt.",
-    expired: "Freigabe abgelaufen",
-    cleanupPending: "Abgelaufen; Löschung ausstehend. Der Link ist möglicherweise noch erreichbar.",
-    expiryNotice: "Neue Links gelten standardmäßig 1 Tag; wählbar sind 1–7 Tage. Änderungen gelten ab dem Speichern. Die Bereinigung läuft bei geöffneter App oder beim nächsten Start.",
-    invalidValidity: "Geben Sie eine ganze Zahl von 1 bis 7 ein.",
-    inactive: "Die Freigabe wurde widerrufen oder der Link ist nicht mehr verfügbar.",
-    statusUnavailable: "Der Freigabestatus ist nicht verfügbar. Beenden Sie die App vollständig und versuchen Sie es erneut.",
-    disclosure: "Jeder mit dem Link kann dieses Artefakt ansehen. Andere Dateien und Gespräche werden nicht geteilt.",
-    checking: "Freigabestatus wird geprüft…",
-    createLink: "Öffentlichen Link erstellen",
-    linkReady: "Öffentlicher Link ist bereit",
-    changedNotice: "Der Inhalt wurde geändert. Der Link zeigt noch die zuvor veröffentlichte Version.",
-    confirmUpdate: "Den veröffentlichten Inhalt durch diese Version ersetzen? Der Link bleibt gleich.",
-    confirmRevoke: "Diesen öffentlichen Link widerrufen? Danach kann niemand mehr darüber zugreifen.",
-    originRequired: 'Nur bestätigte Modellergebnisse können geteilt werden. Uploads, abgeleitete Dateien und unbekannte Quellen sind gesperrt.',
+    noExpiry: 'Für diesen älteren Link ist kein Ablaufdatum festgelegt.',
+    expired: 'Freigabe abgelaufen',
+    cleanupPending: 'Abgelaufen; Löschung ausstehend. Der Link ist möglicherweise noch erreichbar.',
+    expiryNotice:
+      'Neue Links gelten standardmäßig 1 Tag; wählbar sind 1–7 Tage. Änderungen gelten ab dem Speichern. Die Bereinigung läuft bei geöffneter App oder beim nächsten Start.',
+    invalidValidity: 'Geben Sie eine ganze Zahl von 1 bis 7 ein.',
+    inactive: 'Die Freigabe wurde widerrufen oder der Link ist nicht mehr verfügbar.',
+    statusUnavailable:
+      'Der Freigabestatus ist nicht verfügbar. Beenden Sie die App vollständig und versuchen Sie es erneut.',
+    disclosure: 'Jeder mit dem Link kann dieses Artefakt ansehen. Andere Dateien und Gespräche werden nicht geteilt.',
+    checking: 'Freigabestatus wird geprüft…',
+    createLink: 'Öffentlichen Link erstellen',
+    linkReady: 'Öffentlicher Link ist bereit',
+    changedNotice: 'Der Inhalt wurde geändert. Der Link zeigt noch die zuvor veröffentlichte Version.',
+    confirmUpdate: 'Den veröffentlichten Inhalt durch diese Version ersetzen? Der Link bleibt gleich.',
+    confirmRevoke: 'Diesen öffentlichen Link widerrufen? Danach kann niemand mehr darüber zugreifen.',
+    originRequired:
+      'Nur bestätigte Modellergebnisse können geteilt werden. Uploads, abgeleitete Dateien und unbekannte Quellen sind gesperrt.',
     share: 'Teilen',
     shareArtifact: 'Artefakt teilen',
     updateShared: 'Geteilten Inhalt aktualisieren',
@@ -4050,7 +4056,7 @@ export const deOverrides = {
     shareFailed: 'Artefakt konnte nicht geteilt werden',
     revokeFailed: 'Freigabe konnte nicht widerrufen werden',
     previewNotReady: 'Markdown-Vorschau ist noch nicht bereit.',
-    imageNotEmbedded: 'Markdown enthält ein nicht eingebettetes Bild.',
+    imageNotEmbedded: 'Markdown enthält ein nicht eingebettetes Bild.'
   },
 
   artifactPreview: {
@@ -5412,7 +5418,8 @@ export const deOverrides = {
     office: {
       converting: 'Dokument wird konvertiert',
       firstOpen: 'Die erste Vorschau kann einige Sekunden dauern.',
-      installConverter: 'Wenn keine Konvertierungssoftware verfügbar ist, installieren Sie LibreOffice und versuchen Sie es erneut.'
+      installConverter:
+        'Wenn keine Konvertierungssoftware verfügbar ist, installieren Sie LibreOffice und versuchen Sie es erneut.'
     },
     slides: {
       page: page => `Folie ${page}`,
@@ -5603,6 +5610,25 @@ export const deOverrides = {
     }
   },
   assistant: {
+    searchCards: {
+      today: 'Heute',
+      humidity: 'Luftfeuchtigkeit',
+      feelsLike: 'Gefühlt',
+      restriction: 'Fahrbeschränkung',
+      open: 'Eröffnung',
+      high: 'Hoch',
+      low: 'Tief',
+      previousClose: 'Vortag',
+      price: 'Preis',
+      multipleMerchants: 'Mehrere Händler',
+      duration: 'Dauer',
+      stops: 'Halte',
+      arrive: 'Ankunft',
+      depart: 'Abfahrt',
+      stay: 'Aufenthalt',
+      moreStops: 'Weitere Halte',
+      moreTrains: 'Weitere Züge'
+    },
     thread: {
       loadingSession: 'Session wird geladen',
       showEarlier: 'Frühere Nachrichten anzeigen',

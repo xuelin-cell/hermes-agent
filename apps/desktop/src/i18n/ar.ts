@@ -1,5 +1,5 @@
-import { messagingConnectionCopy } from './messaging-connection'
 import { defineLocale } from './define-locale'
+import { messagingConnectionCopy } from './messaging-connection'
 
 export const ar = defineLocale({
   workspaceEditor: {
@@ -1644,7 +1644,7 @@ export const ar = defineLocale({
     actions: count => `${count} إجراء`
   },
   messaging: {
-    connection: messagingConnectionCopy["ar"],
+    connection: messagingConnectionCopy['ar'],
     cards: {
       heading: 'تطبيقات الدردشة',
       description: 'اربط WeChat وDingTalk وتطبيقات الدردشة الأخرى لاستقبال الرسائل والرد عليها من هاتفك.',
@@ -1653,12 +1653,13 @@ export const ar = defineLocale({
       save: 'حفظ وتفعيل',
       comingSoon: 'التكامل قيد الانتظار',
       personalBindingMissing: 'لم يتم تأكيد الربط الشخصي. سجّل الخروج ثم ادخل مجددًا عبر رسالة SMS.',
-      reconnect: "إعادة الاتصال",
-      reconnecting: "جارٍ إعادة الاتصال…",
-      reconnected: "تمت إعادة اتصال رسائل 5G.",
-      reconnectBusy: "تجري معالجة رسالة. أعد الاتصال بعد اكتمالها.",
-      reconnectFailed: "فشلت إعادة اتصال 5G. راجع السجلات؛ إذا توقفت البوابة، أغلق التطبيق تمامًا ثم افتحه.",
-      reconnectRestartRequired: "لم يصبح تحديث مكوّن 5G نشطًا بعد. أغلق التطبيق تمامًا، بما في ذلك علبة النظام، ثم افتحه.",
+      reconnect: 'إعادة الاتصال',
+      reconnecting: 'جارٍ إعادة الاتصال…',
+      reconnected: 'تمت إعادة اتصال رسائل 5G.',
+      reconnectBusy: 'تجري معالجة رسالة. أعد الاتصال بعد اكتمالها.',
+      reconnectFailed: 'فشلت إعادة اتصال 5G. راجع السجلات؛ إذا توقفت البوابة، أغلق التطبيق تمامًا ثم افتحه.',
+      reconnectRestartRequired:
+        'لم يصبح تحديث مكوّن 5G نشطًا بعد. أغلق التطبيق تمامًا، بما في ذلك علبة النظام، ثم افتحه.',
       unavailable: 'مكوّن المراسلة غير متاح',
       notConnected: 'غير متصل',
       unbind: 'إلغاء الربط',
@@ -2181,26 +2182,27 @@ export const ar = defineLocale({
   },
 
   artifactShare: {
-    validity: "مدة صلاحية الرابط",
+    validity: 'مدة صلاحية الرابط',
     days: count => `${count} أيام`,
-    customValidity: "مدة مخصصة",
-    editValidity: "تغيير الصلاحية",
-    saveValidity: "حفظ الصلاحية",
+    customValidity: 'مدة مخصصة',
+    editValidity: 'تغيير الصلاحية',
+    saveValidity: 'حفظ الصلاحية',
     expiresAt: date => `تنتهي الصلاحية: ${date}`,
-    noExpiry: "لم تُحدد صلاحية لهذا الرابط القديم.",
-    expired: "انتهت صلاحية المشاركة",
-    cleanupPending: "انتهت الصلاحية والحذف قيد الانتظار. قد يظل الرابط العام متاحًا مؤقتًا.",
-    expiryNotice: "المدة الافتراضية يوم واحد ويمكن اختيار 1–7 أيام. يبدأ التغيير عند الحفظ. تُحذف الروابط المنتهية أثناء تشغيل التطبيق أو عند تشغيله التالي.",
-    invalidValidity: "أدخل عددًا صحيحًا من 1 إلى 7.",
-    inactive: "تم إلغاء المشاركة أو لم يعد الرابط متاحًا.",
-    statusUnavailable: "حالة المشاركة غير متاحة. أغلق التطبيق بالكامل ثم أعد المحاولة.",
-    disclosure: "يمكن لأي شخص لديه الرابط عرض هذا الملف. لن تتم مشاركة ملفاتك أو محادثاتك الأخرى.",
-    checking: "جارٍ التحقق من حالة المشاركة…",
-    createLink: "إنشاء رابط عام",
-    linkReady: "الرابط العام جاهز",
-    changedNotice: "تغير المحتوى. لا يزال الرابط يعرض النسخة المنشورة سابقًا.",
-    confirmUpdate: "هل تريد استبدال المحتوى المنشور بهذه النسخة؟ سيبقى الرابط كما هو.",
-    confirmRevoke: "هل تريد إلغاء هذا الرابط العام؟ لن يتمكن من لديه الرابط من فتحه بعد ذلك.",
+    noExpiry: 'لم تُحدد صلاحية لهذا الرابط القديم.',
+    expired: 'انتهت صلاحية المشاركة',
+    cleanupPending: 'انتهت الصلاحية والحذف قيد الانتظار. قد يظل الرابط العام متاحًا مؤقتًا.',
+    expiryNotice:
+      'المدة الافتراضية يوم واحد ويمكن اختيار 1–7 أيام. يبدأ التغيير عند الحفظ. تُحذف الروابط المنتهية أثناء تشغيل التطبيق أو عند تشغيله التالي.',
+    invalidValidity: 'أدخل عددًا صحيحًا من 1 إلى 7.',
+    inactive: 'تم إلغاء المشاركة أو لم يعد الرابط متاحًا.',
+    statusUnavailable: 'حالة المشاركة غير متاحة. أغلق التطبيق بالكامل ثم أعد المحاولة.',
+    disclosure: 'يمكن لأي شخص لديه الرابط عرض هذا الملف. لن تتم مشاركة ملفاتك أو محادثاتك الأخرى.',
+    checking: 'جارٍ التحقق من حالة المشاركة…',
+    createLink: 'إنشاء رابط عام',
+    linkReady: 'الرابط العام جاهز',
+    changedNotice: 'تغير المحتوى. لا يزال الرابط يعرض النسخة المنشورة سابقًا.',
+    confirmUpdate: 'هل تريد استبدال المحتوى المنشور بهذه النسخة؟ سيبقى الرابط كما هو.',
+    confirmRevoke: 'هل تريد إلغاء هذا الرابط العام؟ لن يتمكن من لديه الرابط من فتحه بعد ذلك.',
     originRequired: 'يمكن مشاركة مخرجات النموذج الموثقة فقط. الملفات المرفوعة والمشتقة ومجهولة المصدر محظورة.',
     share: 'مشاركة',
     shareArtifact: 'مشاركة الناتج',
@@ -2211,7 +2213,7 @@ export const ar = defineLocale({
     shareFailed: 'تعذرت مشاركة الناتج',
     revokeFailed: 'تعذر إلغاء المشاركة',
     previewNotReady: 'معاينة Markdown غير جاهزة.',
-    imageNotEmbedded: 'يحتوي Markdown على صورة غير مضمنة.',
+    imageNotEmbedded: 'يحتوي Markdown على صورة غير مضمنة.'
   },
 
   artifactPreview: {
@@ -3013,7 +3015,8 @@ export const ar = defineLocale({
     copyAuthCode: 'انسخ رمز التفويض وألصقه أدناه.',
     pasteAuthCode: 'ألصق رمز التفويض',
     reopenAuthPage: 'إعادة فتح صفحة التفويض',
-    autoBrowser: provider => `فتحنا ${provider} في المتصفح. صرّح لـ UniWork هناك وسيتم الاتصال تلقائياً دون نسخ أو لصق.`,
+    autoBrowser: provider =>
+      `فتحنا ${provider} في المتصفح. صرّح لـ UniWork هناك وسيتم الاتصال تلقائياً دون نسخ أو لصق.`,
     reopenSignInPage: 'إعادة فتح صفحة تسجيل الدخول',
     waitingAuthorize: 'بانتظار التفويض...',
     externalPending: provider =>
@@ -3409,6 +3412,25 @@ export const ar = defineLocale({
     }
   },
   assistant: {
+    searchCards: {
+      today: 'اليوم',
+      humidity: 'الرطوبة',
+      feelsLike: 'المحسوسة',
+      restriction: 'قيود المرور',
+      open: 'الافتتاح',
+      high: 'الأعلى',
+      low: 'الأدنى',
+      previousClose: 'الإغلاق السابق',
+      price: 'السعر',
+      multipleMerchants: 'عدة متاجر',
+      duration: 'المدة',
+      stops: 'المحطات',
+      arrive: 'الوصول',
+      depart: 'المغادرة',
+      stay: 'التوقف',
+      moreStops: 'محطات إضافية',
+      moreTrains: 'قطارات إضافية'
+    },
     catalogInstall: {
       preparing: 'جارٍ تجهيز التثبيت…',
       install: 'تثبيت',

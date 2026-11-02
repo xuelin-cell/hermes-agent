@@ -1,8 +1,8 @@
-import { messagingConnectionCopy } from './messaging-connection'
 import { defineFieldCopy } from '@/app/settings/field-copy'
 
 import { defineLocale } from './define-locale'
 import { introJa } from './intro-ja'
+import { messagingConnectionCopy } from './messaging-connection'
 
 export const ja = defineLocale({
   workspaceEditor: {
@@ -2015,7 +2015,7 @@ export const ja = defineLocale({
   },
 
   messaging: {
-    connection: messagingConnectionCopy["ja"],
+    connection: messagingConnectionCopy['ja'],
     cards: {
       heading: 'チャットアプリ',
       description: 'WeChat、DingTalk、Feishu などに接続し、スマートフォンでメッセージを送受信します。',
@@ -2029,7 +2029,8 @@ export const ja = defineLocale({
       reconnected: '5G メッセージに再接続しました。',
       reconnectBusy: 'メッセージの処理中です。完了後に再接続してください。',
       reconnectFailed: '5G の再接続に失敗しました。ログを確認し、アプリを完全に終了して再起動してください。',
-      reconnectRestartRequired: "5G コンポーネントの更新が未適用です。トレイを含めアプリを完全に終了してから再起動してください。",
+      reconnectRestartRequired:
+        '5G コンポーネントの更新が未適用です。トレイを含めアプリを完全に終了してから再起動してください。',
       unavailable: 'メッセージ機能を利用できません',
       notConnected: '未接続',
       unbind: '連携解除',
@@ -2558,27 +2559,29 @@ export const ja = defineLocale({
   },
 
   artifactShare: {
-    validity: "有効期間",
+    validity: '有効期間',
     days: count => `${count} 日`,
-    customValidity: "日数を指定",
-    editValidity: "有効期間を変更",
-    saveValidity: "有効期間を保存",
+    customValidity: '日数を指定',
+    editValidity: '有効期間を変更',
+    saveValidity: '有効期間を保存',
     expiresAt: date => `有効期限：${date}`,
-    noExpiry: "この既存リンクには有効期限がありません。",
-    expired: "共有の期限切れ",
-    cleanupPending: "期限切れ、削除待ちです。公開リンクにまだアクセスできる場合があります。",
-    expiryNotice: "新規リンクは既定で1日、1～7日を選択できます。変更は保存時から適用されます。アプリ終了中の期限切れは次回起動時に削除します。",
-    invalidValidity: "1～7の整数を入力してください。",
-    inactive: "共有が取り消されたか、リンクは利用できません。",
-    statusUnavailable: "共有状態を確認できません。アプリを完全に終了して再試行してください。",
-    disclosure: "リンクを知っている人はこの成果物を閲覧できます。他のファイルや会話は共有されません。",
-    checking: "共有状態を確認中…",
-    createLink: "公開リンクを作成",
-    linkReady: "公開リンクを作成しました",
-    changedNotice: "内容が変更されています。リンクには以前に公開した版が表示されます。",
-    confirmUpdate: "公開済みの内容を現在の版で上書きしますか？リンクは変わりません。",
-    confirmRevoke: "公開リンクを取り消しますか？取り消すとリンクから閲覧できなくなります。",
-    originRequired: '生成元を確認できたモデルの成果物のみ共有できます。アップロード、派生ファイル、生成元不明のファイルは共有できません。',
+    noExpiry: 'この既存リンクには有効期限がありません。',
+    expired: '共有の期限切れ',
+    cleanupPending: '期限切れ、削除待ちです。公開リンクにまだアクセスできる場合があります。',
+    expiryNotice:
+      '新規リンクは既定で1日、1～7日を選択できます。変更は保存時から適用されます。アプリ終了中の期限切れは次回起動時に削除します。',
+    invalidValidity: '1～7の整数を入力してください。',
+    inactive: '共有が取り消されたか、リンクは利用できません。',
+    statusUnavailable: '共有状態を確認できません。アプリを完全に終了して再試行してください。',
+    disclosure: 'リンクを知っている人はこの成果物を閲覧できます。他のファイルや会話は共有されません。',
+    checking: '共有状態を確認中…',
+    createLink: '公開リンクを作成',
+    linkReady: '公開リンクを作成しました',
+    changedNotice: '内容が変更されています。リンクには以前に公開した版が表示されます。',
+    confirmUpdate: '公開済みの内容を現在の版で上書きしますか？リンクは変わりません。',
+    confirmRevoke: '公開リンクを取り消しますか？取り消すとリンクから閲覧できなくなります。',
+    originRequired:
+      '生成元を確認できたモデルの成果物のみ共有できます。アップロード、派生ファイル、生成元不明のファイルは共有できません。',
     share: '共有',
     shareArtifact: '成果物を共有',
     updateShared: '共有内容を更新',
@@ -2588,7 +2591,7 @@ export const ja = defineLocale({
     shareFailed: '共有できませんでした',
     revokeFailed: '共有を取り消せませんでした',
     previewNotReady: 'Markdown プレビューの準備ができていません。',
-    imageNotEmbedded: 'Markdown に埋め込まれていない画像があります。',
+    imageNotEmbedded: 'Markdown に埋め込まれていない画像があります。'
   },
 
   artifactPreview: {
@@ -3245,7 +3248,8 @@ export const ja = defineLocale({
     done: '完了',
     applyingBody:
       'UniWork アップデーターが独自のウィンドウで引き継ぎ、完了後に自動的に UniWork を再度開きます。更新中はご自分で UniWork を開き直さないでください。',
-    applyingBodyBackend: 'リモートバックエンドが更新を適用して再起動します。復帰すると UniWork が自動的に再接続します。',
+    applyingBodyBackend:
+      'リモートバックエンドが更新を適用して再起動します。復帰すると UniWork が自動的に再接続します。',
     applyingClose: 'このウィンドウは更新中に閉じ、その後 UniWork が自動的に再度開きます。',
     errorTitle: '更新が完了しませんでした',
     errorBody: 'ご安心ください。何も失われていません。今すぐ再試行できます。',
@@ -3725,7 +3729,8 @@ export const ja = defineLocale({
       convert_failed: 'ドキュメントを変換できませんでした。元のファイルは確認またはダウンロードできます。',
       timeout: 'ドキュメントの変換がタイムアウトしました。元のファイルは確認またはダウンロードできます。',
       not_found: 'ファイルが存在しないか、アクセスできません。',
-      too_large: 'ファイルまたは画像が大きすぎるためプレビューできません。元のファイルは確認またはダウンロードできます。',
+      too_large:
+        'ファイルまたは画像が大きすぎるためプレビューできません。元のファイルは確認またはダウンロードできます。',
       unavailable: 'プレビューできません。元のファイルを確認またはダウンロードできます。',
       unsupported: 'このファイル形式またはメディアのエンコードには対応していません。'
     },
@@ -3915,6 +3920,25 @@ export const ja = defineLocale({
   },
 
   assistant: {
+    searchCards: {
+      today: '今日',
+      humidity: '湿度',
+      feelsLike: '体感',
+      restriction: '交通規制',
+      open: '始値',
+      high: '高値',
+      low: '安値',
+      previousClose: '前日終値',
+      price: '価格',
+      multipleMerchants: '複数店舗',
+      duration: '所要時間',
+      stops: '停車駅',
+      arrive: '到着',
+      depart: '出発',
+      stay: '停車',
+      moreStops: 'その他の駅',
+      moreTrains: 'その他の列車'
+    },
     catalogInstall: {
       preparing: 'インストールを準備中…',
       install: 'インストール',
@@ -3986,7 +4010,8 @@ export const ja = defineLocale({
         },
         invalid_response: {
           title: 'AI サービスが読み取れない応答を返しました',
-          body: provider => `${provider} は UniWork が読み取れない内容を返しました。しばらくしてから再試行してください。`
+          body: provider =>
+            `${provider} は UniWork が読み取れない内容を返しました。しばらくしてから再試行してください。`
         },
         empty_response: {
           title: 'AI サービスが空の応答を返しました',

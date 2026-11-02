@@ -1,8 +1,8 @@
-import { messagingConnectionCopy } from './messaging-connection'
 import { defineFieldCopy } from '@/app/settings/field-copy'
 
 import { defineLocale, type TranslationOverrides } from './define-locale'
 import { introFr } from './intro-fr'
+import { messagingConnectionCopy } from './messaging-connection'
 
 export const frOverrides = {
   workspaceEditor: {
@@ -89,7 +89,8 @@ export const frOverrides = {
     phoneError: 'Saisissez un numéro à 11 chiffres commençant par 1.',
     captchaError: 'Saisissez le code de l’image (6 caractères maximum).',
     smsError: 'Saisissez le code SMS à 6 chiffres.',
-    storageError: 'Impossible de conserver la connexion en toute sécurité. Vérifiez les autorisations de stockage local.',
+    storageError:
+      'Impossible de conserver la connexion en toute sécurité. Vérifiez les autorisations de stockage local.',
     requestError: 'Échec de la connexion. Réessayez.'
   },
   intro: introFr,
@@ -3340,7 +3341,7 @@ export const frOverrides = {
     }
   },
   messaging: {
-    connection: messagingConnectionCopy["fr"],
+    connection: messagingConnectionCopy['fr'],
     cards: {
       heading: 'Applications de messagerie',
       description:
@@ -3350,12 +3351,14 @@ export const frOverrides = {
       save: 'Enregistrer et activer',
       comingSoon: 'Intégration à venir',
       personalBindingMissing: 'Liaison personnelle non confirmée. Déconnectez-vous, puis reconnectez-vous par SMS.',
-      reconnect: "Reconnecter",
-      reconnecting: "Reconnexion…",
-      reconnected: "Messagerie 5G reconnectée.",
-      reconnectBusy: "Un message est en cours de traitement. Reconnectez-vous après sa fin.",
-      reconnectFailed: "Échec de la reconnexion 5G. Consultez les journaux ; si la passerelle est arrêtée, quittez complètement puis rouvrez l’application.",
-      reconnectRestartRequired: "La mise à jour 5G n’est pas encore active. Quittez complètement l’application, y compris la zone de notification, puis rouvrez-la.",
+      reconnect: 'Reconnecter',
+      reconnecting: 'Reconnexion…',
+      reconnected: 'Messagerie 5G reconnectée.',
+      reconnectBusy: 'Un message est en cours de traitement. Reconnectez-vous après sa fin.',
+      reconnectFailed:
+        'Échec de la reconnexion 5G. Consultez les journaux ; si la passerelle est arrêtée, quittez complètement puis rouvrez l’application.',
+      reconnectRestartRequired:
+        'La mise à jour 5G n’est pas encore active. Quittez complètement l’application, y compris la zone de notification, puis rouvrez-la.',
       unavailable: 'Composant de messagerie indisponible',
       notConnected: 'Non connecté',
       unbind: 'Dissocier',
@@ -4029,27 +4032,30 @@ export const frOverrides = {
     open: 'Ouvrir'
   },
   artifactShare: {
-    validity: "Durée de validité",
+    validity: 'Durée de validité',
     days: count => `${count} jours`,
-    customValidity: "Durée personnalisée",
-    editValidity: "Modifier la durée",
-    saveValidity: "Enregistrer la durée",
+    customValidity: 'Durée personnalisée',
+    editValidity: 'Modifier la durée',
+    saveValidity: 'Enregistrer la durée',
     expiresAt: date => `Expiration : ${date}`,
-    noExpiry: "Ce lien ancien n’a pas de date d’expiration.",
-    expired: "Partage expiré",
-    cleanupPending: "Expiré, suppression en attente. Le lien peut rester accessible temporairement.",
-    expiryNotice: "Les nouveaux liens durent 1 jour par défaut ; choisissez 1 à 7 jours. La durée démarre à l’enregistrement. Le nettoyage se fait dans l’application ouverte ou au prochain lancement.",
-    invalidValidity: "Saisissez un entier entre 1 et 7.",
-    inactive: "Le partage a été révoqué ou ce lien est indisponible.",
-    statusUnavailable: "Le statut du partage est indisponible. Quittez complètement l’application et réessayez.",
-    disclosure: "Toute personne disposant du lien peut consulter ce fichier. Les autres fichiers et conversations ne sont pas partagés.",
-    checking: "Vérification du partage…",
-    createLink: "Créer un lien public",
-    linkReady: "Le lien public est prêt",
-    changedNotice: "Le contenu a changé. Le lien affiche encore la version précédemment publiée.",
-    confirmUpdate: "Remplacer le contenu publié par cette version ? Le lien restera identique.",
-    confirmRevoke: "Révoquer ce lien public ? Les personnes qui le possèdent ne pourront plus y accéder.",
-    originRequired: 'Seuls les résultats vérifiés du modèle peuvent être partagés. Les fichiers importés, dérivés ou de source inconnue sont bloqués.',
+    noExpiry: 'Ce lien ancien n’a pas de date d’expiration.',
+    expired: 'Partage expiré',
+    cleanupPending: 'Expiré, suppression en attente. Le lien peut rester accessible temporairement.',
+    expiryNotice:
+      'Les nouveaux liens durent 1 jour par défaut ; choisissez 1 à 7 jours. La durée démarre à l’enregistrement. Le nettoyage se fait dans l’application ouverte ou au prochain lancement.',
+    invalidValidity: 'Saisissez un entier entre 1 et 7.',
+    inactive: 'Le partage a été révoqué ou ce lien est indisponible.',
+    statusUnavailable: 'Le statut du partage est indisponible. Quittez complètement l’application et réessayez.',
+    disclosure:
+      'Toute personne disposant du lien peut consulter ce fichier. Les autres fichiers et conversations ne sont pas partagés.',
+    checking: 'Vérification du partage…',
+    createLink: 'Créer un lien public',
+    linkReady: 'Le lien public est prêt',
+    changedNotice: 'Le contenu a changé. Le lien affiche encore la version précédemment publiée.',
+    confirmUpdate: 'Remplacer le contenu publié par cette version ? Le lien restera identique.',
+    confirmRevoke: 'Révoquer ce lien public ? Les personnes qui le possèdent ne pourront plus y accéder.',
+    originRequired:
+      'Seuls les résultats vérifiés du modèle peuvent être partagés. Les fichiers importés, dérivés ou de source inconnue sont bloqués.',
     share: 'Partager',
     shareArtifact: 'Partager le contenu',
     updateShared: 'Mettre à jour le contenu partagé',
@@ -4059,7 +4065,7 @@ export const frOverrides = {
     shareFailed: 'Impossible de partager le contenu',
     revokeFailed: 'Impossible de révoquer le lien',
     previewNotReady: 'Aperçu Markdown indisponible.',
-    imageNotEmbedded: 'Le Markdown contient une image non intégrée.',
+    imageNotEmbedded: 'Le Markdown contient une image non intégrée.'
   },
 
   artifactPreview: {
@@ -5415,7 +5421,7 @@ export const frOverrides = {
     formatFailure: {
       convert_failed: 'La conversion du document a échoué. Le fichier original reste accessible.',
       timeout: 'La conversion du document a expiré. Le fichier original reste accessible.',
-      not_found: "Ce fichier n’existe plus ou n’est pas accessible.",
+      not_found: 'Ce fichier n’existe plus ou n’est pas accessible.',
       too_large: 'Le fichier ou l’image dépasse la limite de l’aperçu. Le fichier original reste accessible.',
       unavailable: 'Aperçu impossible. Vous pouvez toujours accéder au fichier original ou le télécharger.',
       unsupported: 'Ce format de fichier ou cet encodage multimédia n’est pas pris en charge.'
@@ -5483,7 +5489,8 @@ export const frOverrides = {
       askRestart: 'Demander à UniWork de redémarrer le serveur',
       lookingRestart: taskId => `UniWork recherche un serveur d'aperçu à redémarrer (${taskId})`,
       restartingTitle: "Redémarrage du serveur d'aperçu",
-      restartingMessage: "UniWork travaille en arrière-plan. Surveillez la console d'aperçu pour suivre la progression.",
+      restartingMessage:
+        "UniWork travaille en arrière-plan. Surveillez la console d'aperçu pour suivre la progression.",
       startRestartFailed: message => `Impossible de démarrer le redémarrage du serveur : ${message}`,
       restartFailed: 'Échec du redémarrage du serveur',
       hideConsole: "Masquer la console d'aperçu",
@@ -5618,6 +5625,25 @@ export const frOverrides = {
     }
   },
   assistant: {
+    searchCards: {
+      today: 'Aujourd’hui',
+      humidity: 'Humidité',
+      feelsLike: 'Ressenti',
+      restriction: 'Restrictions de circulation',
+      open: 'Ouverture',
+      high: 'Plus haut',
+      low: 'Plus bas',
+      previousClose: 'Clôture précédente',
+      price: 'prix',
+      multipleMerchants: 'Plusieurs vendeurs',
+      duration: 'Durée',
+      stops: 'Arrêts',
+      arrive: 'Arrivée',
+      depart: 'Départ',
+      stay: 'Arrêt',
+      moreStops: 'Autres arrêts',
+      moreTrains: 'Autres trains'
+    },
     thread: {
       loadingSession: 'Chargement de la session',
       showEarlier: 'Afficher les messages précédents',

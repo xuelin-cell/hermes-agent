@@ -85,8 +85,11 @@ function initializeLoginShell(): void {
       app.quit()
     })
   accountRuntime = new LocalRuntimeContext(
-    new LoginSession(net.fetch, new CredentialStore(userData),
-      createUniAgentGateBindingUpdate(currentDesktopLocalContext)),
+    new LoginSession(
+      net.fetch,
+      new CredentialStore(userData),
+      createUniAgentGateBindingUpdate(currentDesktopLocalContext)
+    ),
     roots,
     installationRoot,
     process.env.HERMES_DESKTOP_PYTHON
@@ -176,7 +179,7 @@ async function openLoginWindow(): Promise<BrowserWindow | null> {
       const context = accountRuntime!.prepare()
       enableDesktopPlugins(context.home, ['desktop-deliverables'])
       installArtifactSharePlugin(context.home, app.getAppPath())
-      desktopStarting ??= startAccountDesktop(context)
+      desktopStarting ??= startAccountDesktop(context, currentDesktopIdentity)
         .then(() => {
           if (stopping || window.isDestroyed()) {
             return

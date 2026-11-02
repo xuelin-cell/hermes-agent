@@ -1,8 +1,8 @@
-import { messagingConnectionCopy } from './messaging-connection'
 import { defineFieldCopy } from '@/app/settings/field-copy'
 
 import { defineLocale } from './define-locale'
 import { introZhHant } from './intro-zh-hant'
+import { messagingConnectionCopy } from './messaging-connection'
 
 export const zhHant = defineLocale({
   keybinds: {
@@ -128,7 +128,8 @@ export const zhHant = defineLocale({
       removeRow: '刪除此列',
       showValue: '顯示值',
       hideValue: '隱藏值',
-      uniAiToolkitSummary: '提供文生圖、圖文問答、語音轉寫、AI 播客生成、論文翻譯等能力，即插即用，擴充智慧體多模態工具生態。',
+      uniAiToolkitSummary:
+        '提供文生圖、圖文問答、語音轉寫、AI 播客生成、論文翻譯等能力，即插即用，擴充智慧體多模態工具生態。',
       arxivSummary: '檢索和取得 arXiv 論文，支援研究與文獻調研。',
       formErrors: {
         argsQuote: '參數中的引號沒有閉合',
@@ -286,7 +287,8 @@ export const zhHant = defineLocale({
     draftRemote: '目前會話連接到遠端 UniWork，暫不支援新增雲端硬碟檔案。',
     draftChanged: '會話已切換，未新增檔案，請重新選擇。',
     draftNotReady: '會話輸入框暫不可用，請先開啟目標會話後再新增。',
-    draftUnavailable: '雲端硬碟工具尚未就緒或未獲授權，請在「設定 → 安全 → 審批」檢查目前 Profile 的資料庫存取權限，再開啟新對話重試。',
+    draftUnavailable:
+      '雲端硬碟工具尚未就緒或未獲授權，請在「設定 → 安全 → 審批」檢查目前 Profile 的資料庫存取權限，再開啟新對話重試。',
     upload: '上傳檔案',
     transferring: '正在傳輸…',
     transferFailed: '傳輸未完成，請檢查網路、登入狀態和檔案權限後重試。',
@@ -1516,7 +1518,8 @@ export const zhHant = defineLocale({
       description:
         '在 Mac 上按下並放開 ⌘ + Option，在 Windows/Linux 上按下並放開 Ctrl + Alt，即可從任何應用程式將 HUD 帶到前景。預設關閉，僅適用於此裝置。',
       permission: '請在系統設定 → 隱私權與安全性 → 輸入監控中允許 UniWork，然後重試。此手勢不會記錄按鍵或擷取畫面。',
-      unavailable: 'HUD 手勢輔助程式無法啟動或意外停止。請重試或重新啟動 UniWork。UniWork 內原有的 HUD 快速鍵仍可使用。',
+      unavailable:
+        'HUD 手勢輔助程式無法啟動或意外停止。請重試或重新啟動 UniWork。UniWork 內原有的 HUD 快速鍵仍可使用。',
       missingHelper: '此 UniWork 安裝缺少 HUD 手勢輔助程式。請更新或重新安裝 UniWork，然後重試。',
       unsupportedSession: '此桌面工作階段不支援全域修飾鍵輕按事件。Linux 需要 X11；不支援 Wayland。'
     },
@@ -1717,7 +1720,8 @@ export const zhHant = defineLocale({
       authenticate: '驗證',
       noOutput: '尚無輸出。',
       deepLinkTitle: '新增 MCP 伺服器？',
-      deepLinkDescription: '一個連結要求將此 MCP 伺服器加入 UniWork。請檢查下方的完整設定——它來自該連結，而非 UniWork。',
+      deepLinkDescription:
+        '一個連結要求將此 MCP 伺服器加入 UniWork。請檢查下方的完整設定——它來自該連結，而非 UniWork。',
       deepLinkStdioWarning: '此伺服器會使用下方所示指令在你的電腦上執行本機程序。僅在信任其來源時繼續。',
       deepLinkConfirm: '新增伺服器',
       deepLinkNameInvalid: '名稱須為 1-64 個字母、數字、點、連字號或底線。',
@@ -2535,7 +2539,7 @@ export const zhHant = defineLocale({
   },
 
   messaging: {
-    connection: messagingConnectionCopy["zh-hant"],
+    connection: messagingConnectionCopy['zh-hant'],
     cards: {
       heading: '聊天應用',
       description: '接入微信、釘釘、飛書等聊天應用，從手機接收及回覆訊息。',
@@ -2544,12 +2548,12 @@ export const zhHant = defineLocale({
       save: '儲存並啟用',
       comingSoon: '待接入',
       personalBindingMissing: '尚未確認個人綁定，請登出帳號後重新以簡訊登入。',
-      reconnect: "重新連線",
-      reconnecting: "重新連線中…",
-      reconnected: "5G 訊息已重新連線。",
-      reconnectBusy: "正在處理訊息，請完成後再重新連線。",
-      reconnectFailed: "5G 重新連線失敗，請查看日誌；若閘道未啟動，請完整結束應用後重新開啟。",
-      reconnectRestartRequired: "5G 元件更新尚未生效，請完整結束應用（含系統匣）後重新啟動。",
+      reconnect: '重新連線',
+      reconnecting: '重新連線中…',
+      reconnected: '5G 訊息已重新連線。',
+      reconnectBusy: '正在處理訊息，請完成後再重新連線。',
+      reconnectFailed: '5G 重新連線失敗，請查看日誌；若閘道未啟動，請完整結束應用後重新開啟。',
+      reconnectRestartRequired: '5G 元件更新尚未生效，請完整結束應用（含系統匣）後重新啟動。',
       unavailable: '訊息平台元件尚未就緒',
       notConnected: '未連線',
       unbind: '解除綁定',
@@ -3120,26 +3124,26 @@ export const zhHant = defineLocale({
   },
 
   artifactShare: {
-    validity: "有效期限",
+    validity: '有效期限',
     days: count => `${count} 天`,
-    customValidity: "自訂天數",
-    editValidity: "修改有效期限",
-    saveValidity: "儲存有效期限",
+    customValidity: '自訂天數',
+    editValidity: '修改有效期限',
+    saveValidity: '儲存有效期限',
     expiresAt: date => `到期時間：${date}`,
-    noExpiry: "此歷史連結尚未設定有效期限。",
-    expired: "分享已到期",
-    cleanupPending: "已到期，等待清理；公開連結可能暫時仍可存取。",
-    expiryNotice: "預設有效期限 1 天，可設為 1～7 天。到期自動清理，應用程式關閉時延後處理。",
-    invalidValidity: "請輸入 1～7 天的整數。",
-    inactive: "已取消分享或連結已無法使用。",
-    statusUnavailable: "暫時無法查詢分享狀態，請完全退出應用程式後重試。",
-    disclosure: "取得連結的人都可以查看此產物，不會分享其他檔案或對話。",
-    checking: "正在檢查分享狀態…",
-    createLink: "產生公開連結",
-    linkReady: "公開連結已產生",
-    changedNotice: "內容已變更，連結目前仍顯示上次發布的版本。",
-    confirmUpdate: "是否以目前版本覆蓋已發布內容？連結位址保持不變。",
-    confirmRevoke: "確認取消分享？取消後，取得連結的人將無法再存取。",
+    noExpiry: '此歷史連結尚未設定有效期限。',
+    expired: '分享已到期',
+    cleanupPending: '已到期，等待清理；公開連結可能暫時仍可存取。',
+    expiryNotice: '預設有效期限 1 天，可設為 1～7 天。到期自動清理，應用程式關閉時延後處理。',
+    invalidValidity: '請輸入 1～7 天的整數。',
+    inactive: '已取消分享或連結已無法使用。',
+    statusUnavailable: '暫時無法查詢分享狀態，請完全退出應用程式後重試。',
+    disclosure: '取得連結的人都可以查看此產物，不會分享其他檔案或對話。',
+    checking: '正在檢查分享狀態…',
+    createLink: '產生公開連結',
+    linkReady: '公開連結已產生',
+    changedNotice: '內容已變更，連結目前仍顯示上次發布的版本。',
+    confirmUpdate: '是否以目前版本覆蓋已發布內容？連結位址保持不變。',
+    confirmRevoke: '確認取消分享？取消後，取得連結的人將無法再存取。',
     originRequired: '僅支援來源已確認的模型產物；上傳檔案、衍生產物及來源不明的檔案無法分享。',
     share: '分享',
     shareArtifact: '分享產物',
@@ -4434,6 +4438,25 @@ export const zhHant = defineLocale({
   },
 
   assistant: {
+    searchCards: {
+      today: '今天',
+      humidity: '濕度',
+      feelsLike: '體感',
+      restriction: '限行',
+      open: '今開',
+      high: '今高',
+      low: '今低',
+      previousClose: '昨收',
+      price: '價格',
+      multipleMerchants: '多商家',
+      duration: '全程',
+      stops: '經停',
+      arrive: '到',
+      depart: '發',
+      stay: '停',
+      moreStops: '更多車站',
+      moreTrains: '更多車次'
+    },
     catalogInstall: {
       preparing: '正在準備安裝…',
       install: '安裝',
