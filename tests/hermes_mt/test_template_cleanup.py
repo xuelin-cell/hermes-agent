@@ -56,7 +56,7 @@ delete_template() { printf '%s\n' "$1" >> "$CASE_DIR/deleted"; }
 def test_legacy_selection_requires_history_and_matching_project_image(tmp_path):
     result = run_cleanup(tmp_path / "default", "branch_templates")
     assert result.returncode == 0, result.stderr
-    assert result.stdout.splitlines() == ["tpl-current\tREADY"]
+    assert result.stdout.splitlines() == ["tpl-current\tREADY\tbranch"]
     result = run_cleanup(tmp_path / "explicit", "branch_templates tpl-old")
     assert result.returncode == 0, result.stderr
     assert {line.split()[0] for line in result.stdout.splitlines()} == {"tpl-current", "tpl-old"}
@@ -80,3 +80,22 @@ def test_cleanup_keeps_current_and_rechecks_references_before_deleting(tmp_path)
             assert result.returncode == 0, result.stderr
         deleted = (case / "deleted").read_text().splitlines() if (case / "deleted").exists() else []
         assert deleted == (["tpl-old"] if mode == "unused" else [])
+
+
+def test_readonly_scan_discovers_legacy_candidates_without_deleting(tmp_path):
+    for mode in ("unused", "db"):
+        case = tmp_path / mode
+        result = run_cleanup(case, "cmd_purge_templates --check", mode=mode)
+        assert result.returncode == 0, result.stderr
+        assert "tpl-current" in result.stdout
+        assert "tpl-old" in result.stdout
+        assert "tpl-foreign" not in result.stdout
+        assert not (case / "deleted").exists()
+        assert ("需确认分支归属" if mode == "unused" else "仍有实例使用") in result.stdout
+    for label, options in (("other-branch", {"branch": "feat/cloud-ch"}),
+                           ("wrong-image", {"image": "different"})):
+        case = tmp_path / label
+        result = run_cleanup(case, "cmd_purge_templates --check", **options)
+        assert result.returncode == 0, result.stderr
+        assert "tpl-old" not in result.stdout
+        assert not (case / "deleted").exists()

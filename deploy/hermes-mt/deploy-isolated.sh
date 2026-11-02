@@ -6,6 +6,7 @@
 # ./deploy-isolated.sh config|check|base|image|template|up|status|log|purge-templates [--branch BRANCH]
 # purge-old 永久拒绝；模板自动清理只认项目和分支专属镜像路径。
 # 旧命名模板需显式指定：purge-templates --branch BRANCH --legacy-template tpl-ID
+# 只读扫描（含本机历史中的旧命名模板）：purge-templates --branch BRANCH --check
 set -euo pipefail
 
 SCRIPT="$(readlink -f "${BASH_SOURCE[0]}")"
@@ -205,19 +206,32 @@ import json, re, sys
 from pathlib import Path
 repo, history, project, branch = sys.argv[1:5]
 requested = set(sys.argv[5:])
+scan_history = "--from-history" in requested
+requested.discard("--from-history")
 try:
     items = json.load(sys.stdin)
 except Exception:
     sys.exit(3)
 records = {}
-if requested:
+if requested or scan_history:
     path = Path(history)
-    if not path.is_file():
+    if not path.is_file() and requested:
         sys.exit("找不到本机部署历史，拒绝清理旧命名模板")
-    for line in path.read_text().splitlines():
+    for line in (path.read_text().splitlines() if path.is_file() else []):
         fields = dict(re.findall(r"(?:^|\s)(branch|template|image)=([^\s]+)", line))
         records.setdefault(fields.get("template", ""), []).append(fields)
 by_id = {str(t.get("templateID") or ""): t for t in items}
+def legacy_tag(template):
+    image = str(template.get("imageInfo") or "")
+    legacy = "/hermes-isolated/" + project + "-cube:"
+    return image.split(legacy, 1)[1].split("@", 1)[0] if legacy in image else ""
+if scan_history:
+    for template_id, template in by_id.items():
+        rows = records.get(template_id, [])
+        tag = legacy_tag(template)
+        if tag and any(r.get("image") == tag for r in rows) and not any(
+                r.get("branch") and r["branch"] != branch for r in rows):
+            requested.add(template_id)
 for template_id in sorted(requested):
     template = by_id.get(template_id)
     rows = records.get(template_id, [])
@@ -225,16 +239,15 @@ for template_id in sorted(requested):
         sys.exit("旧模板不在集群或本机部署历史中：" + template_id)
     if any(r.get("branch") and r["branch"] != branch for r in rows):
         sys.exit("部署历史将旧模板记录为其他分支，拒绝清理：" + template_id)
-    image = str(template.get("imageInfo") or "")
-    legacy = "/hermes-isolated/" + project + "-cube:"
-    tag = image.split(legacy, 1)[1].split("@", 1)[0] if legacy in image else ""
+    tag = legacy_tag(template)
     if not tag or not any(r.get("image") == tag for r in rows):
         sys.exit("旧模板的项目镜像路径或镜像指纹与部署历史不符：" + template_id)
 needle = "/" + repo + ":"
 for template in items:
     image = str(template.get("imageInfo") or "")
     if needle in image or template.get("templateID") in requested:
-        print(template.get("templateID", ""), template.get("status", ""), sep="\t")
+        print(template.get("templateID", ""), template.get("status", ""),
+              "branch" if needle in image else "legacy", sep="\t")
 ' "$REPO_PATH" "$HISTORY" "$PROJECT" "$BRANCH" "$@"
 }
 
@@ -271,17 +284,18 @@ PY
 }
 
 cmd_purge_templates() {
-    local legacy_ids=""
+    local legacy_ids="" check_only=0 scan_option=""
     while [ "$#" -gt 0 ]; do
         case "$1" in
+            --check) check_only=1; scan_option="--from-history"; shift ;;
             --legacy-template)
                 [ "$#" -ge 2 ] && [[ "$2" =~ ^tpl-[a-z0-9]+$ ]] || die '--legacy-template 需要合法模板 ID'
                 legacy_ids="${legacy_ids:+$legacy_ids }$2"
                 shift 2 ;;
-            *) die 'purge-templates 只接受 --branch BRANCH 和可重复的 --legacy-template tpl-ID' ;;
+            *) die 'purge-templates 只接受 --branch BRANCH、--check 和可重复的 --legacy-template tpl-ID' ;;
         esac
     done
-    local current="$TEMPLATE" previous list in_use sandboxes unknown t status keep todo="" done_n=0 fail_n=0
+    local current="$TEMPLATE" previous list in_use sandboxes unknown t status scope keep todo="" done_n=0 fail_n=0
     previous="$(branch_previous_template)"
     say "清理项目 $PROJECT 的分支 $BRANCH 模板"
     ok "分支模板镜像仓库为 $REPO_PATH"
@@ -290,25 +304,28 @@ cmd_purge_templates() {
     [ -z "$legacy_ids" ] || warn "旧记录没有可靠的分支标识，仅核对明确指定的旧模板：$legacy_ids"
     # IDs have been restricted to tpl-[a-z0-9]+ above.
     # shellcheck disable=SC2086
-    list="$(branch_templates $legacy_ids)" || die '模板查询或旧模板归属校验失败；没有删除任何模板'
+    list="$(branch_templates $scan_option $legacy_ids)" || die '模板查询或旧模板归属校验失败；没有删除任何模板'
     [ -n "$list" ] || { ok '本项目本分支没有可清理的模板'; return 0; }
     in_use="$(tenant_templates)" || die '读不到本部署数据库；没有删除任何模板'
     sandboxes="$(cluster_sandbox_templates)" || die '控制面无法列出集群实例；没有删除任何模板'
     unknown="$(printf '%s\n' "$sandboxes" | awk '$0 == "-" { n++ } END { print n+0 }')"
     [ "$unknown" = 0 ] || die "集群有 $unknown 台实例的模板 ID 不可识别；为避免误删，本次不删除任何模板"
     keep="$(printf '%s\n%s\n' "$current" "$previous")"
-    echo '  本项目本分支模板及明确指定的旧模板：'
-    while IFS="$(printf '\t')" read -r t status; do
+    echo '  本分支模板及本机部署历史核验通过的旧模板：'
+    while IFS="$(printf '\t')" read -r t status scope; do
         [ -n "$t" ] || continue
         if grep -qxF -- "$t" <<< "$keep"; then
             printf '    %-32s %-16s 保留（当前或回退）\n' "$t" "$status"
         elif grep -qxF -- "$t" <<< "$in_use" || grep -qxF -- "$t" <<< "$sandboxes"; then
             printf '    %-32s %-16s 保留（仍有实例使用）\n' "$t" "$status"
+        elif [ "$check_only" = 1 ] && [ "$scope" = legacy ]; then
+            printf '    %-32s %-16s 无实例引用（旧记录需确认分支归属，再用 --legacy-template 指定）\n' "$t" "$status"
         else
             printf '    %-32s %-16s 可删\n' "$t" "$status"
             todo="${todo:+$todo }$t"
         fi
     done <<< "$list"
+    [ "$check_only" = 0 ] || { ok '只读检查完成，没有删除任何模板'; return 0; }
     [ -n "$todo" ] || { ok '没有可删的模板'; return 0; }
     confirm '  确定删除以上标记为可删的模板？' || { echo '  没删'; return 0; }
     for t in $todo; do
