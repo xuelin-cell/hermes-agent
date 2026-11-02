@@ -1,6 +1,7 @@
 """Thin persistent execution boundary over Hermes' existing relay adapter/transport."""
 import asyncio
 import json
+import logging
 import mimetypes
 from contextvars import ContextVar
 from pathlib import Path
@@ -13,6 +14,9 @@ from .transport import AcceptedRelayTransport
 
 from .ledger import Ledger
 from .media import pack,localize,attachment_limit
+
+log = logging.getLogger(__name__)
+MEDIA_WARNING = '⚠️ 部分附件未能发送或发送结果未确认，请在网页会话中查看。'
 
 
 class CloudMessagingAdapter(RelayAdapter):
@@ -52,27 +56,40 @@ class CloudMessagingAdapter(RelayAdapter):
     async def send(self, chat_id, content, reply_to=None, metadata=None):
         if (metadata or {}).get('_interim_send'):
             return SendResult(success=True)
-        with self._media_delivery_scope(self.build_source(chat_id=chat_id)):
-            media_files,cleaned=self.extract_media(content)
-            images,cleaned=self.extract_images(cleaned)
-            local_files,cleaned=self.extract_local_files(cleaned)
-            paths=[(path,voice) for path,voice in self.filter_media_delivery_paths(media_files)]
-            paths.extend((path,False) for path in self.filter_local_delivery_paths(local_files))
-        for image,alt in images:
-            result=await self.send_image(chat_id,image,alt)
-            if not result.success: return result
-        for path,voice in paths:
-            mime=mimetypes.guess_type(path)[0] or ''
-            kind='audio' if voice or mime.startswith('audio/') else 'image' if mime.startswith('image/') else 'video' if mime.startswith('video/') else 'file'
-            result=await self._file(chat_id,path,kind)
-            if not result.success: return result
-        content=cleaned
         delivery=self._delivery.get() or self.current_delivery
         if not delivery:
             return SendResult(success=False,error='No active delivery')
         receipt = self.ledger.get(delivery)
-        if receipt['chat_id'] != chat_id:
+        if not receipt or receipt['chat_id'] != chat_id:
             return SendResult(success=False,error='Delivery route mismatch')
+        with self._media_delivery_scope(self.build_source(chat_id=chat_id)):
+            media_files,cleaned=self.extract_media(content)
+            images,cleaned=self.extract_images(cleaned)
+            local_files,cleaned=self.extract_local_files(cleaned)
+            dropped = []
+            paths=[(path,voice) for path,voice in self.filter_media_delivery_paths(media_files, dropped=dropped)]
+            local_paths = self.filter_local_delivery_paths(local_files)
+            paths.extend((path,False) for path in local_paths)
+        failed = bool(dropped) or len(local_paths) < len(local_files)
+        for image,alt in images:
+            try:
+                result=await self.send_image(chat_id,image,alt)
+                failed = failed or not result.success
+            except Exception as error:
+                log.warning('Reply image preparation failed: %s', type(error).__name__)
+                failed = True
+        for path,voice in paths:
+            mime=mimetypes.guess_type(path)[0] or ''
+            kind='audio' if voice or mime.startswith('audio/') else 'image' if mime.startswith('image/') else 'video' if mime.startswith('video/') else 'file'
+            try:
+                result=await self._file(chat_id,path,kind)
+                failed = failed or not result.success
+            except Exception as error:
+                log.warning('Reply attachment preparation failed: %s', type(error).__name__)
+                failed = True
+        content=cleaned
+        if failed:
+            content = (content.rstrip() + '\n\n' + MEDIA_WARNING).strip()
         try:
             self.ledger.complete(delivery,content)
         except ValueError:
@@ -83,7 +100,16 @@ class CloudMessagingAdapter(RelayAdapter):
         row = self.ledger.get(event.message_id)
         if row and row['result'] is None:
             media=self.ledger.delivered_media(event.message_id)
-            content='\n'.join(dict.fromkeys(item.get('caption','') for item in media if item.get('caption'))) if media and outcome==ProcessingOutcome.SUCCESS else '任务未能完成，请稍后重新发起。'
+            pending = any(item['delivery_id'] == event.message_id for item in self.ledger.media_pending(
+                self.settings['revision'], self.settings.get('binding_id','')))
+            if pending and outcome==ProcessingOutcome.SUCCESS:
+                content = MEDIA_WARNING
+            elif media and outcome==ProcessingOutcome.SUCCESS:
+                content='\n'.join(dict.fromkeys(item.get('caption','') for item in media if item.get('caption'))) or '附件已提交发送，请留意接收。'
+            else:
+                content='处理已结束，未收到可发送的结果，请在网页会话中查看。' if outcome==ProcessingOutcome.SUCCESS else '任务未能完成，请稍后重新发起。'
+                if pending:
+                    content += '\n' + MEDIA_WARNING
             self.ledger.complete(event.message_id,content)
             await self._publish(event.message_id,row['chat_id'],content)
         await super().on_processing_complete(event,outcome)

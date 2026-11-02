@@ -42,7 +42,7 @@ async def test_media_materialization_a_b_a_is_profile_owned(tmp_path,monkeypatch
             finally:
                 reset_secret_scope(secret); reset_hermes_home_override(token)
         assert paths['alice']!=paths['bob']
-        with pytest.raises(ValueError): pack(b'x'*(MAX_MEDIA_BYTES+1),'too-large.bin')
+        with pytest.raises(ValueError): pack(b'x'*(MAX_MEDIA_BYTES+1),'too-large.png',kind='image')
     finally: set_multiplex_active(multiplex)
 
 
@@ -75,3 +75,61 @@ async def test_media_only_caption_and_bytes_survive_worker_restart(tmp_path,monk
         assert restored.ledger.get('delivery')['result']=='audio caption'
         assert frames[-1]['content']=='audio caption'
     finally: reset_hermes_home_override(token)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('mode', ['partial', 'all', 'media-only'])
+async def test_final_reply_keeps_text_and_tries_every_attachment_after_failures(tmp_path, monkeypatch, mode):
+    monkeypatch.setenv('HERMES_HOME', str(tmp_path))
+    token = set_hermes_home_override(tmp_path)
+    try:
+        adapter = CloudMessagingAdapter(PlatformConfig(enabled=True), settings(), tmp_path)
+        adapter.ledger.accept('delivery', 'chat', 1, 'binding')
+        adapter.current_delivery = 'delivery'
+        bad, good = tmp_path / 'bad.txt', tmp_path / 'good.txt'
+        bad.write_text('bad attachment')
+        good.write_text('good attachment')
+        frames = []
+        async def transport(action, **kwargs):
+            frames.append(action)
+            return {'success': action['op'] == 'send' or (mode == 'partial' and action['media']['name'] == 'good.txt')}
+        adapter._transport = SimpleNamespace(send_outbound=transport)
+        text = '' if mode == 'media-only' else 'The report is complete.'
+        result = await adapter.send('chat', f'{text}\nMEDIA:{bad}\nMEDIA:{good}')
+        assert result.success
+        media_frames = [frame for frame in frames if frame['op'] == 'send_media']
+        assert [frame['media']['name'] for frame in media_frames] == ['bad.txt', 'good.txt']
+        final = frames[-1]['content']
+        assert text in final and '附件' in final and '网页会话' in final
+        assert '任务未能完成' not in final
+        restored = CloudMessagingAdapter(PlatformConfig(enabled=True), settings(), tmp_path)
+        assert restored.ledger.get('delivery')['result'] == final
+    finally:
+        reset_hermes_home_override(token)
+
+
+@pytest.mark.asyncio
+async def test_media_failure_fallback_is_explicit_for_pending_and_missing_files(tmp_path, monkeypatch):
+    monkeypatch.setenv('HERMES_HOME', str(tmp_path))
+    token = set_hermes_home_override(tmp_path)
+    try:
+        adapter = CloudMessagingAdapter(PlatformConfig(enabled=True), settings(), tmp_path)
+        frames = []
+        async def transport(action, **kwargs):
+            frames.append(action)
+            return {'success': action['op'] == 'send'}
+        adapter._transport = SimpleNamespace(send_outbound=transport)
+        for delivery in ('pending', 'missing', 'failed'):
+            adapter.ledger.accept(delivery, 'chat', 1, 'binding')
+            adapter.current_delivery = delivery
+            if delivery in ('pending', 'failed'):
+                path = tmp_path / 'output.txt'; path.write_text('finished output')
+                assert not (await adapter.send_document('chat', str(path))).success
+                event = MessageEvent(text='reply', message_id=delivery, source=SessionSource(platform=Platform.FEISHU, chat_id='chat'))
+                await adapter.on_processing_complete(event, ProcessingOutcome.FAILURE if delivery == 'failed' else ProcessingOutcome.SUCCESS)
+            else:
+                assert (await adapter.send('chat', f'MEDIA:{tmp_path / "missing.txt"}')).success
+            assert frames[-1]['content'] and '附件' in frames[-1]['content']
+            assert ('任务未能完成' in frames[-1]['content']) == (delivery == 'failed')
+    finally:
+        reset_hermes_home_override(token)
