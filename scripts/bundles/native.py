@@ -208,6 +208,7 @@ def prepare_native(*, out: Path, ref: str, source: Path, cache: Path,
     wrapper provisions machine prerequisites and isolates HOME.
     """
     from scripts.bundles.native_prepared import preparation_lock, prepared_path
+    from scripts.build.retry import retry_on_permission_error
 
     out = Path(out).absolute()
     if out != out.resolve():
@@ -217,7 +218,13 @@ def prepare_native(*, out: Path, ref: str, source: Path, cache: Path,
         # 先隔离旧产物，避免 Windows 延迟删除句柄阻断下一次构建。
         if any(out.iterdir()):
             previous = out.with_name(f".{out.name}-previous-{uuid.uuid4().hex[:8]}")
-            out.rename(previous)
+            # Retry rename in case directory is locked by AV or other processes
+            retry_on_permission_error(
+                lambda: out.rename(previous),
+                max_retries=5,  # More retries for directory operations
+                delay=2.0,
+                operation_name="rename old payload",
+            )
             out.mkdir()
             try:
                 remove_build_tree(previous)

@@ -137,8 +137,12 @@ def archive_component(payload_root: Path, name: str) -> tuple[Path, str]:
     Returns (archive_path, original_directory_digest).
     The digest is computed BEFORE archiving so the stamp matches what the installer
     will verify (the extracted directory, not the archive file).
+
+    The entire operation is wrapped in retry logic to handle transient AV file locks
+    on Windows (奇安信天擎 etc.), which may lock .pyc files immediately after creation.
     """
     import shutil
+    from scripts.build.retry import retry_on_permission_error
 
     source_dir = payload_root / name
     archive = payload_root / f"{name}.7z"
@@ -146,29 +150,39 @@ def archive_component(payload_root: Path, name: str) -> tuple[Path, str]:
     if not source_dir.is_dir():
         raise ValueError(f"archive_component: {source_dir} is not a directory")
 
-    # Compute digest of the directory BEFORE archiving
-    # This is what the installer will verify after extraction
-    directory_digest = _stamp_digest(source_dir)
+    def do_archive() -> tuple[Path, str]:
+        """Inner function: all file operations that may hit AV locks."""
+        # Compute digest of the directory BEFORE archiving
+        # This is what the installer will verify after extraction
+        directory_digest = _stamp_digest(source_dir)
 
-    if archive.exists():
-        archive.unlink()
+        target_archive = payload_root / f"{name}.7z"
+        if target_archive.exists():
+            target_archive.unlink()
 
-    # Use 7z if available, fall back to Python's lzma module
-    seven_zip = shutil.which("7z") or shutil.which("7za")
-    if seven_zip:
-        subprocess.run(
-            [seven_zip, "a", "-t7z", "-mx=1", "-mmt=on", str(archive), str(source_dir)],
-            check=True, capture_output=True,
-        )
-    else:
-        # Fallback: create .tar.xz (slower but no external dependency)
-        import tarfile
-        archive = payload_root / f"{name}.tar.xz"
-        with tarfile.open(archive, "w:xz", preset=1) as tar:
-            tar.add(source_dir, arcname=name)
+        # Use 7z if available, fall back to Python's lzma module
+        seven_zip = shutil.which("7z") or shutil.which("7za")
+        if seven_zip:
+            subprocess.run(
+                [seven_zip, "a", "-t7z", "-mx=1", "-mmt=on", str(target_archive), str(source_dir)],
+                check=True, capture_output=True,
+            )
+        else:
+            # Fallback: create .tar.xz (slower but no external dependency)
+            import tarfile
+            target_archive = payload_root / f"{name}.tar.xz"
+            with tarfile.open(target_archive, "w:xz", preset=1) as tar:
+                tar.add(source_dir, arcname=name)
 
-    shutil.rmtree(source_dir)
-    return archive, directory_digest
+        shutil.rmtree(source_dir)
+        return target_archive, directory_digest
+
+    return retry_on_permission_error(
+        do_archive,
+        max_retries=3,
+        delay=2.0,  # Longer delay for large directories (venv has 54K+ files)
+        operation_name=f"archive {name}",
+    )
 
 
 def _stamp_digest(path: Path) -> str:
