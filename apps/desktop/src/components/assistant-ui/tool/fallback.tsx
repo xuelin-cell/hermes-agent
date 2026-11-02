@@ -1,3 +1,4 @@
+import { SearchLinks } from './search-links'
 'use client'
 
 import { type ToolCallMessagePartProps, useAuiState } from '@assistant-ui/react'
@@ -42,7 +43,7 @@ import { GlyphSpinner } from '@/components/ui/glyph-spinner'
 import { ToolIcon } from '@/components/ui/tool-icon'
 import { useI18n } from '@/i18n'
 import { connectorCalls, mcpTargets } from '@/lib/connector-tools'
-import { PrettyLink, LinkifiedText as SharedLinkifiedText, urlSlugTitleLabel } from '@/lib/external-link'
+import { LinkifiedText as SharedLinkifiedText } from '@/lib/external-link'
 import { AlertCircle, CheckCircle2 } from '@/lib/icons'
 import { isOnboardingEnabled } from '@/lib/onboarding-enabled'
 import { toolResultRecord } from '@/lib/tool-result-metadata'
@@ -73,7 +74,6 @@ import {
   isFileEditTool,
   isPreviewableTarget,
   looksRedundant,
-  type SearchResultRow,
   selectMessageRunning,
   stripInlineDiffChrome,
   toolCopyPayload,
@@ -272,32 +272,6 @@ function leadingStatus(isPending: boolean, status: ToolStatus): ToolStatus | und
   return status === 'success' || status === 'notice' ? undefined : status
 }
 
-function SearchResultsList({ hits }: { hits: SearchResultRow[] }) {
-  return (
-    <ol className="m-0 grid list-none gap-2.5 p-0">
-      {hits.map((hit, index) => {
-        const key = `${hit.url || hit.title}-${index}`
-        const trimmedTitle = hit.title.trim()
-
-        return (
-          <li className="grid min-w-0 gap-0.5" key={key}>
-            {hit.url ? (
-              <PrettyLink
-                className={cn(SEARCH_HIT_TITLE_CLASS, 'block max-w-full')}
-                fallbackLabel={trimmedTitle || urlSlugTitleLabel(hit.url)}
-                href={hit.url}
-                label={trimmedTitle || undefined}
-              />
-            ) : (
-              <span className={SEARCH_HIT_TITLE_CLASS}>{trimmedTitle}</span>
-            )}
-            {hit.snippet && <p className={cn(TOOL_HEADER_SUBTITLE_CLASS, 'm-0 line-clamp-3')}>{hit.snippet}</p>}
-          </li>
-        )
-      })}
-    </ol>
-  )
-}
 
 function LinkifiedText({ className, text }: { className?: string; text: string }) {
   return <SharedLinkifiedText className={className} pretty text={cleanVisibleText(text)} />
@@ -689,7 +663,7 @@ function ToolEntry({ part }: ToolEntryProps) {
                 </p>
               )}
               {searchResultsLabel && <p className={TOOL_SECTION_LABEL_CLASS}>{searchResultsLabel}</p>}
-              <SearchResultsList hits={view.searchHits} />
+              <SearchLinks hits={view.searchHits} />
             </div>
           )}
           {showInlineDiff && (
