@@ -73,9 +73,15 @@ class MessagingRoutes:
             if platform=='weixin':
                 async with self.weixin_qr.locks.setdefault(session.user_id,asyncio.Lock()):
                     self.weixin_qr.sessions.pop(session.user_id,None)
-                    await self.store.set_enabled(session.user_id,operation!='disable',platform=platform)
+                    if operation in {'retry','reconnect'}:
+                        await self.store.reconnect(session.user_id,platform)
+                    else:
+                        await self.store.set_enabled(session.user_id,operation!='disable',platform=platform)
             else:
-                await self.store.set_enabled(session.user_id,operation not in {'disable','disconnect'},remove=operation=='disconnect',platform=platform)
+                if operation in {'retry','reconnect'}:
+                    await self.store.reconnect(session.user_id,platform)
+                else:
+                    await self.store.set_enabled(session.user_id,operation not in {'disable','disconnect'},remove=operation=='disconnect',platform=platform)
         elif operation not in {'platforms','status','watch'}:
             raise web.HTTPBadRequest(text='不支持的操作。')
         if operation=='platforms':

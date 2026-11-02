@@ -35,6 +35,7 @@ class Channels:
         self.database = Database(settings.database_url)
         self.store = MessagingStore(self.database, CredentialCipher(settings.credential_key))
         self.clients, self.sockets, self.tasks = {}, {}, set()
+        self.connection_ids = {}
         self.owner = secrets.token_hex(16)
         self.protocol = importlib.import_module('apps.desktop.assets.uniagentgate-plugin.protocol')
         self.stream = importlib.import_module('apps.desktop.assets.uniagentgate-plugin.stream')
@@ -99,14 +100,17 @@ class Channels:
             rows = await db.fetch("SELECT b.* FROM messaging_bindings b JOIN users u ON u.user_id=b.user_id WHERE u.status='active' AND b.enabled AND b.deleted_at IS NULL AND b.platform IN('uniagentgate','dingtalk','weixin','wecom','feishu')")
         wanted = {row['id']: row for row in rows}
         for key, (revision, client) in list(self.clients.items()):
-            if key not in wanted or wanted[key]['revision'] != revision:
+            invalid_binding = key not in wanted or wanted[key]['revision'] != revision
+            restart = not invalid_binding and self.connection_ids.get(key) != json.loads(wanted[key]['config']).get('reconnect_id')
+            if invalid_binding or restart:
                 await client.stop()
                 async with self.database.acquire() as db:
                     user = await db.fetchval('SELECT user_id FROM messaging_bindings WHERE id=$1',key)
                 socket = self.sockets.get(user)
-                if socket and socket[2] == revision and getattr(socket[1],'binding_id',key)==key:
+                if invalid_binding and socket and socket[2] == revision and getattr(socket[1],'binding_id',key)==key:
                     await socket[1].close(code=4401)
                 self.clients.pop(key, None)
+                self.connection_ids.pop(key, None)
         for key, row in wanted.items():
             if key in self.clients: continue
             async def persist(envelope, binding=dict(row)):
@@ -121,6 +125,7 @@ class Channels:
             async def accepted(raw, context): pass  # Admission already committed; execution is scheduled independently.
             client = TEXT_CLIENTS[row['platform']](row['bot_key'],self.store.cipher.decrypt(row['secret_enc']),self.store,dict(row),self.http) if row['platform'] in TEXT_CLIENTS else self.stream.UniAgentGateStreamClient(json.loads(row['config'])['gateway_url'], row['bot_key'], self.store.cipher.decrypt(row['secret_enc']), accepted, persist_inbound=persist,capabilities=['text','image'])
             self.clients[key] = (row['revision'], client)
+            self.connection_ids[key] = json.loads(row['config']).get('reconnect_id')
             await client.start()
         for key, (revision, client) in self.clients.items():
             async with self.database.acquire() as db:

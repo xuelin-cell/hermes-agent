@@ -68,8 +68,21 @@ class MessagingStore:
             if not row:
                 if missing_ok: return
                 raise web.HTTPConflict(text='短信登录尚未提供有效的 cloud Agent 凭据。')
+            if enabled and row['enabled'] and not remove:
+                return
             await self._cancel(db, row['id'])
             await db.execute("UPDATE messaging_bindings SET enabled=$2,revision=revision+1,connection_state='stopped',updated_at=now(),deleted_at=CASE WHEN $3 THEN now() ELSE deleted_at END WHERE id=$1", row['id'], enabled, remove)
+
+    async def reconnect(self, user, platform='uniagentgate'):
+        """Restart only the platform connection, retaining execution identity and receipts."""
+        async with self.database.acquire() as db, db.transaction():
+            await db.execute('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', 'messaging:'+user)
+            row = await db.fetchrow("SELECT id FROM messaging_bindings WHERE user_id=$1 AND platform=$2 AND deleted_at IS NULL FOR UPDATE", user, platform)
+            if not row:
+                raise web.HTTPConflict(text='消息平台尚未配置有效凭据。')
+            await db.execute("""UPDATE messaging_bindings SET enabled=true,
+                config=jsonb_set(config,'{reconnect_id}',$2::jsonb),connection_state='stopped',updated_at=now()
+                WHERE id=$1""", row['id'], json.dumps(secrets.token_hex(16)))
 
     async def seen(self,binding_id,revision,chat,message_id):
         async with self.database.acquire() as db, db.transaction():
