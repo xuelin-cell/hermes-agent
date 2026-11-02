@@ -175,16 +175,18 @@ function LocationProbe() {
 
 function Harness({
   assistant = assistantMessage(),
+  isRunning = false,
   onBranchInNewChat,
   onReload
 }: {
   assistant?: ThreadMessage
+  isRunning?: boolean
   onBranchInNewChat?: (messageId: string) => void
   onReload?: () => Promise<void>
 }) {
   const runtime = useExternalStoreRuntime<ThreadMessage>({
     messages: [userMessage(), assistant],
-    isRunning: false,
+    isRunning,
     onNew: async () => {},
     ...(onReload ? { onReload } : {})
   })
@@ -490,4 +492,16 @@ describe('message timeline timestamps', () => {
 
     expect(stamps.filter(stamp => stamp === formatTimelineRange(startedAt, completedAt))).toHaveLength(1)
   })
+})
+
+it('keeps the footer reserved but inaccessible until the whole reply finishes', async () => {
+  const { container, rerender } = render(<Harness isRunning onBranchInNewChat={() => undefined} />)
+  await screen.findByText('done')
+  const footer = container.querySelector('[data-slot="aui_assistant-footer"]')!
+  expect(footer.getAttribute('aria-hidden')).toBe('true')
+  expect(footer.hasAttribute('inert')).toBe(true)
+  expect(screen.queryByRole('button', { name: 'Branch in new chat' })).toBeNull()
+  rerender(<Harness onBranchInNewChat={() => undefined} />)
+  expect(await screen.findByRole('button', { name: 'Branch in new chat' })).toBeTruthy()
+  expect(footer.hasAttribute('inert')).toBe(false)
 })

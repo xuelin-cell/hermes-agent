@@ -1,6 +1,6 @@
 import { useStore } from '@nanostores/react'
-import { IconGripVertical } from '@tabler/icons-react'
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -8,660 +8,372 @@ import { Input } from '@/components/ui/input'
 import {
   deleteCustomEndpoint,
   getCustomEndpoints,
-  getEnvVars,
   getHermesConfigRecord,
-  revealEnvVar,
   saveCustomEndpoint,
-  saveHermesConfigRecord
+  saveHermesConfigRecord,
+  validateCustomEndpoint
 } from '@/hermes'
-import { ChevronDown, ChevronRight, Eye, EyeOff, Plus, Trash2, Zap } from '@/lib/icons'
-import { cn } from '@/lib/utils'
 import { setMainModelAssignment } from '@/store/model-assignment'
-import { notify, notifyError } from '@/store/notifications'
+import { notifyError } from '@/store/notifications'
 import { $settingsRequestProfile } from '@/store/settings-scope'
 
 import { PAGE_INSET_X } from '../../layout-constants'
-import { SettingsSkeleton } from '../primitives'
 
 import {
   configPatch,
-  currentRowKey,
-  draftChanged,
   draftProblem,
   endpointWrite,
-  type EndpointWrite,
-  isPlanEndpoint,
-  type ModelDraft,
   type ModelRow,
   newDraft,
   newEndpointId,
   ORDER_KEY,
   orderRows,
-  PLAN_KEY_ENV,
-  presetBaseUrl,
-  PROVIDER_KINDS,
-  PROVIDER_LABEL,
-  type ProviderKind,
   readOrder,
   rowsFromEndpoints
 } from './catalog'
 import { useModelsCopy } from './copy'
-import { prettifyModelId } from './model-name'
 
 interface ModelsSettingsProps {
   onConfigSaved?: () => void
   onMainModelChanged?: (provider: string, model: string) => void
 }
 
-interface Loaded {
-  defaultKey: null | string
-  order: string[]
-  planUrl?: string
-}
-
-function writeOrder(profile: string | undefined, keys: readonly string[]): void {
-  try {
-    window.localStorage.setItem(`${ORDER_KEY}:${profile ?? ''}`, JSON.stringify(keys))
-  } catch {
-    // 存不下只影响下次的排列，不影响模型配置。
-  }
-}
-
-function rowName(row: ModelRow, untitled: string): string {
-  return row.draft.displayName.trim() || prettifyModelId(row.draft.model) || untitled
-}
-
-/** 设置里的「模型」页：套餐模型只读，自定义模型可增删改，第一个为默认，改完统一保存。 */
 export function ModelsSettings({ onConfigSaved, onMainModelChanged }: ModelsSettingsProps) {
   const t = useModelsCopy()
-  const scopeProfile = useStore($settingsRequestProfile)
-  const [loading, setLoading] = useState(true)
-  const [loaded, setLoaded] = useState<Loaded>({ defaultKey: null, order: [] })
+  const profile = useStore($settingsRequestProfile)
+  const [params, setParams] = useSearchParams()
   const [rows, setRows] = useState<ModelRow[]>([])
-  const [deleted, setDeleted] = useState<ModelRow[]>([])
-  const [expanded, setExpanded] = useState<null | string>(null)
-  const [pickerOpen, setPickerOpen] = useState(false)
+  const [editor, setEditor] = useState<ModelRow | null>(null)
   const [pendingDelete, setPendingDelete] = useState<ModelRow | null>(null)
-  const [saving, setSaving] = useState(false)
-  const [planKey, setPlanKey] = useState<{ preview: string; set: boolean }>({ preview: '', set: false })
-  const [revealedKey, setRevealedKey] = useState<null | string>(null)
-  const [visibleKeys, setVisibleKeys] = useState<ReadonlySet<string>>(() => new Set())
-  const [dragKey, setDragKey] = useState<null | string>(null)
-  const [dropTarget, setDropTarget] = useState<{ half: 'bottom' | 'top'; key: string } | null>(null)
-  const dragFromHandle = useRef(false)
-  const loadToken = useRef(0)
+  const [busy, setBusy] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [visible, setVisible] = useState(false)
+  const [results, setResults] = useState<Record<string, { ok?: boolean; message: string }>>({})
+  const generation = useRef(0)
+  const testGeneration = useRef(0)
+
+  const add = () => {
+    const id = newEndpointId()
+    setEditor({
+      key: `new:${id}`,
+      endpointId: id,
+      plan: false,
+      draft: { ...newDraft('compatible', undefined), thinking: 'auto', modalities: ['text'] }
+    })
+  }
 
   const load = useCallback(async () => {
-    const token = ++loadToken.current
+    const token = ++generation.current
 
     try {
-      const [response, config, env] = await Promise.all([
-        getCustomEndpoints(scopeProfile),
-        getHermesConfigRecord(scopeProfile, { includeDefaults: false }).catch(() => ({}) as Record<string, unknown>),
-        getEnvVars(scopeProfile).catch(() => ({}) as Awaited<ReturnType<typeof getEnvVars>>)
+      const [response, config] = await Promise.all([
+        getCustomEndpoints(profile),
+        getHermesConfigRecord(profile, { includeDefaults: false })
       ])
 
-      if (token !== loadToken.current) {
-        return
+      if (token === generation.current) {
+        setRows(
+          orderRows(
+            rowsFromEndpoints(response.endpoints, config.providers).filter(row => !row.plan),
+            readOrder(profile),
+            null
+          )
+        )
       }
-
-      const all = rowsFromEndpoints(response.endpoints, (config as Record<string, unknown>).providers)
-      const defaultKey = currentRowKey(all, response.current)
-      const ordered = orderRows(all, readOrder(scopeProfile), defaultKey)
-      const keyInfo = env[PLAN_KEY_ENV]
-
-      setRows(ordered)
-      setDeleted([])
-      setLoaded({
-        defaultKey,
-        order: ordered.map(row => row.key),
-        planUrl: response.endpoints.find(isPlanEndpoint)?.base_url
-      })
-      setPlanKey({ preview: keyInfo?.redacted_value ?? '', set: Boolean(keyInfo?.is_set) })
-      setRevealedKey(null)
     } catch (error) {
-      if (token === loadToken.current) {
-        notifyError(error, t('loadFailed'))
-      }
+      notifyError(error, t('loadFailed'))
     } finally {
-      if (token === loadToken.current) {
+      if (token === generation.current) {
         setLoading(false)
       }
     }
-  }, [scopeProfile, t])
+  }, [profile, t])
 
   useEffect(() => {
     void load()
+
+    return () => {
+      generation.current++
+      testGeneration.current++
+    }
   }, [load])
+  useEffect(() => {
+    if (params.get('addModel') === '1') {
+      add()
+      const next = new URLSearchParams(params)
+      next.delete('addModel')
+      setParams(next, { replace: true })
+    }
+  }, [params, setParams])
 
-  const dirty = useMemo(
-    () =>
-      deleted.length > 0 ||
-      rows.some(row => !row.plan && draftChanged(row)) ||
-      rows.map(row => row.key).join('\n') !== loaded.order.join('\n'),
-    [deleted, loaded.order, rows]
-  )
-
-  const updateDraft = (key: string, updates: Partial<ModelDraft>) => {
-    setRows(current => current.map(row => (row.key === key ? { ...row, draft: { ...row.draft, ...updates } } : row)))
-  }
-
-  const changeKind = (row: ModelRow, kind: ProviderKind) => {
-    if (kind === row.draft.kind) {
+  const update = (updates: Partial<ModelRow['draft']>) => {
+    if (!editor) {
       return
     }
+    testGeneration.current++
+    setResults(current => {
+      const next = { ...current }
+      delete next[editor.key]
 
-    // 地址还是上一个服务商的预设时跟着换；用户自己填过的保留。
-    const presetBefore = presetBaseUrl(row.draft.kind, loaded.planUrl)
-
-    const baseUrl =
-      !row.draft.baseUrl.trim() || row.draft.baseUrl === presetBefore
-        ? presetBaseUrl(kind, loaded.planUrl)
-        : row.draft.baseUrl
-
-    updateDraft(row.key, { apiKey: '', baseUrl, kind })
-  }
-
-  const addModel = (kind: ProviderKind) => {
-    const id = newEndpointId()
-    const row: ModelRow = { draft: newDraft(kind, loaded.planUrl), endpointId: id, key: `new:${id}`, plan: false }
-    setRows(current => [...current, row])
-    setPickerOpen(false)
-    setExpanded(row.key)
-  }
-
-  const removeRow = (row: ModelRow) => {
-    setRows(current => current.filter(candidate => candidate.key !== row.key))
-
-    if (row.original) {
-      setDeleted(current => [...current, row])
-    }
-
-    if (expanded === row.key) {
-      setExpanded(null)
-    }
-  }
-
-  const moveRow = (fromKey: string, toKey: string, half: 'bottom' | 'top') => {
-    setRows(current => {
-      const moving = current.find(row => row.key === fromKey)
-
-      if (!moving || fromKey === toKey) {
-        return current
-      }
-
-      const rest = current.filter(row => row.key !== fromKey)
-      const targetIndex = rest.findIndex(row => row.key === toKey)
-      rest.splice(targetIndex < 0 ? rest.length : half === 'bottom' ? targetIndex + 1 : targetIndex, 0, moving)
-
-      return rest
+      return next
     })
+    setEditor({ ...editor, draft: { ...editor.draft, ...updates } })
   }
 
-  const makeDefault = (key: string) => {
-    setRows(current => {
-      const row = current.find(candidate => candidate.key === key)
+  const valid = (row: ModelRow) => !draftProblem(row.draft) && Boolean(row.draft.apiKey.trim() || row.draft.hasOwnKey)
 
-      return row ? [row, ...current.filter(candidate => candidate.key !== key)] : current
-    })
-  }
-
-  const toggleRevealPlanKey = async () => {
-    if (revealedKey !== null) {
-      setRevealedKey(null)
-
-      return
-    }
+  const test = async (row: ModelRow) => {
+    const token = ++testGeneration.current
+    setResults(current => ({ ...current, [row.key]: { message: t('testing') } }))
 
     try {
-      const { value } = await revealEnvVar(PLAN_KEY_ENV, scopeProfile)
-      setRevealedKey(value)
+      const result = await validateCustomEndpoint(endpointWrite(row).payload, profile)
+
+      if (token === testGeneration.current) {
+        setResults(current => ({
+          ...current,
+          [row.key]: { ok: result.ok, message: result.ok ? t('connected') : `${t('failed')}: ${result.message}` }
+        }))
+      }
     } catch (error) {
-      notifyError(error, t('revealFailed'))
+      if (token === testGeneration.current) {
+        setResults(current => ({ ...current, [row.key]: { ok: false, message: `${t('failed')}: ${String(error)}` } }))
+      }
     }
   }
 
   const save = async () => {
-    for (const row of rows) {
-      if (row.plan || !draftChanged(row)) {
-        continue
-      }
-
-      const problem = draftProblem(row.draft)
-
-      if (problem) {
-        const name = rowName(row, t('untitled'))
-        setExpanded(row.key)
-        notify({ kind: 'warning', message: problem === 'model' ? t('needModel', name) : t('needUrl', name) })
-
-        return
-      }
+    if (!editor || !valid(editor)) {
+      return
     }
-
-    setSaving(true)
+    setBusy(true)
 
     try {
-      for (const row of deleted) {
-        await deleteCustomEndpoint(row.endpointId, scopeProfile)
-      }
-
-      const writes: { endpointId: string; write: EndpointWrite }[] = []
-      const savedIds = new Map<string, string>()
-
-      for (const row of rows) {
-        if (row.plan || !draftChanged(row)) {
-          continue
-        }
-
-        const write = endpointWrite(row)
-        const response = await saveCustomEndpoint(write.payload, scopeProfile)
-        const endpointId = response.id ?? row.endpointId
-        savedIds.set(row.key, endpointId)
-        writes.push({ endpointId, write })
-      }
-
-      const patch = configPatch(writes)
+      const write = endpointWrite(editor)
+      const result = await saveCustomEndpoint(write.payload, profile)
+      const id = result.id ?? editor.endpointId
+      const patch = configPatch([{ endpointId: id, write }])
 
       if (patch) {
-        await saveHermesConfigRecord(patch, scopeProfile)
+        await saveHermesConfigRecord(patch, profile)
       }
-
-      const first = rows[0]
-      const defaultGone = loaded.defaultKey !== null && deleted.some(row => row.key === loaded.defaultKey)
-
-      if (first && (first.key !== loaded.defaultKey || defaultGone)) {
-        const provider = `custom:${savedIds.get(first.key) ?? first.endpointId}`
-        const model = first.draft.model.trim()
-        await setMainModelAssignment({ model, provider }, scopeProfile)
-        onMainModelChanged?.(provider, model)
-      }
-
-      writeOrder(
-        scopeProfile,
-        rows.map(row => (savedIds.has(row.key) && !row.original ? `custom:${savedIds.get(row.key)}` : row.key))
+      const provider = `custom:${id}`
+      await setMainModelAssignment({ provider, model: write.model }, profile)
+      onMainModelChanged?.(provider, write.model)
+      window.localStorage.setItem(
+        `${ORDER_KEY}:${profile ?? ''}`,
+        JSON.stringify([`custom:${id}`, ...rows.filter(row => row.endpointId !== id).map(row => row.key)])
       )
-      notify({ kind: 'success', message: t('saved') })
       onConfigSaved?.()
+      setEditor(null)
+      await load()
     } catch (error) {
       notifyError(error, t('saveFailed'))
     } finally {
-      setSaving(false)
-      setExpanded(null)
-      await load()
+      setBusy(false)
     }
   }
 
-  if (loading) {
-    return <SettingsSkeleton sections={[{ rows: 4 }]} />
+  const remove = async () => {
+    if (!pendingDelete) {
+      return
+    }
+    setBusy(true)
+
+    try {
+      await deleteCustomEndpoint(pendingDelete.endpointId, profile)
+      setPendingDelete(null)
+      onConfigSaved?.()
+      await load()
+    } catch (error) {
+      notifyError(error, t('saveFailed'))
+    } finally {
+      setBusy(false)
+    }
   }
 
-  const defaultKey = rows[0]?.key
+  const result = (key: string) =>
+    results[key] && (
+      <p
+        className={
+          results[key].ok === false
+            ? 'text-sm text-destructive'
+            : results[key].ok
+              ? 'text-sm text-green-600'
+              : 'text-sm text-muted-foreground'
+        }
+        role="status"
+      >
+        {results[key].message}
+      </p>
+    )
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className={cn('min-h-0 flex-1 overflow-y-auto pb-6', PAGE_INSET_X)}>
-        <p className="mb-3 text-sm text-muted-foreground">{t('hint')}</p>
-
-        {rows.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-border/60 px-4 py-6 text-center text-sm text-muted-foreground">
-            {t('empty')}
-          </p>
-        ) : (
-          <div className="divide-y divide-border/50">
-            {rows.map(row => {
-              const isOpen = !row.plan && expanded === row.key
-              const name = rowName(row, t('untitled'))
-
-              return (
-                <div
-                  className={cn(
-                    'group relative',
-                    dropTarget?.key === row.key &&
-                      dropTarget.half === 'top' &&
-                      'shadow-[inset_0_2px_0_var(--ui-accent)]',
-                    dropTarget?.key === row.key &&
-                      dropTarget.half === 'bottom' &&
-                      'shadow-[inset_0_-2px_0_var(--ui-accent)]',
-                    dragKey === row.key && 'opacity-50'
-                  )}
-                  draggable
-                  key={row.key}
-                  onDragEnd={() => {
-                    if (dragKey && dropTarget) {
-                      moveRow(dragKey, dropTarget.key, dropTarget.half)
-                    }
-
-                    setDragKey(null)
-                    setDropTarget(null)
-                  }}
-                  onDragOver={event => {
-                    if (!dragKey) {
-                      return
-                    }
-
-                    event.preventDefault()
-                    const rect = event.currentTarget.getBoundingClientRect()
-                    setDropTarget({ half: event.clientY < rect.top + rect.height / 2 ? 'top' : 'bottom', key: row.key })
-                  }}
-                  onDragStart={event => {
-                    if (!dragFromHandle.current) {
-                      event.preventDefault()
-
-                      return
-                    }
-
-                    dragFromHandle.current = false
-                    event.dataTransfer.effectAllowed = 'move'
-                    setDragKey(row.key)
-                  }}
-                >
-                  <div
-                    className={cn('flex items-center gap-2 py-3 pr-1', !row.plan && 'cursor-pointer')}
-                    onClick={() => !row.plan && setExpanded(isOpen ? null : row.key)}
-                  >
-                    <span
-                      aria-label={t('dragHandle')}
-                      className="flex w-4 shrink-0 cursor-grab items-center text-muted-foreground/60 opacity-0 transition-opacity group-hover:opacity-100"
-                      onMouseDown={() => {
-                        dragFromHandle.current = true
-                      }}
-                      onMouseUp={() => {
-                        dragFromHandle.current = false
-                      }}
-                      title={t('dragHandle')}
-                    >
-                      <IconGripVertical size={14} />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="truncate text-sm font-semibold text-foreground">{name}</span>
-                        {row.key === defaultKey && (
-                          <span className="shrink-0 text-xs font-medium text-(--ui-accent)">{t('defaultBadge')}</span>
-                        )}
-                        {!row.plan && (
-                          <span className="shrink-0 text-xs font-medium text-(--ui-accent)">{t('customBadge')}</span>
-                        )}
-                      </div>
-                      <div className="truncate text-xs text-muted-foreground">
-                        {PROVIDER_LABEL[row.draft.kind]}
-                        {row.draft.model.trim() ? ` · ${row.draft.model.trim()}` : ''}
-                      </div>
-                    </div>
-                    {row.key !== defaultKey && (
-                      <Button
-                        className="opacity-0 transition-opacity group-hover:opacity-100"
-                        onClick={event => {
-                          event.stopPropagation()
-                          makeDefault(row.key)
-                        }}
-                        size="xs"
-                        variant="ghost"
-                      >
-                        {t('setDefault')}
-                      </Button>
-                    )}
-                    {!row.plan && (
-                      <>
-                        <Button
-                          aria-label={t('delete')}
-                          onClick={event => {
-                            event.stopPropagation()
-                            setPendingDelete(row)
-                          }}
-                          size="icon-sm"
-                          title={t('delete')}
-                          variant="ghost"
-                        >
-                          <Trash2 className="size-3.5" />
-                        </Button>
-                        {isOpen ? (
-                          <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
-                        ) : (
-                          <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-                        )}
-                      </>
-                    )}
-                  </div>
-
-                  {isOpen && (
-                    <ModelEditor
-                      keyVisible={visibleKeys.has(row.key)}
-                      onChange={updates => updateDraft(row.key, updates)}
-                      onKindChange={kind => changeKind(row, kind)}
-                      onToggleKey={() =>
-                        setVisibleKeys(current => {
-                          const next = new Set(current)
-
-                          if (next.has(row.key)) {
-                            next.delete(row.key)
-                          } else {
-                            next.add(row.key)
-                          }
-
-                          return next
-                        })
-                      }
-                      row={row}
-                    />
-                  )}
-                </div>
-              )
-            })}
-          </div>
+    <div className={`min-h-0 flex-1 overflow-y-auto pb-6 ${PAGE_INSET_X}`}>
+      <div className="mb-6 flex items-center justify-between">
+        <h2 className="text-base font-semibold">
+          {editor ? t(editor.original ? 'editModel' : 'addModel') : t('customTitle')}
+        </h2>
+        {!editor && (
+          <Button onClick={add} size="sm">
+            {t('addModel')}
+          </Button>
         )}
-
-        {pickerOpen ? (
-          <div className="mt-4 rounded-lg border border-dashed border-border/70 p-4">
-            <div className="mb-3 text-xs font-medium text-muted-foreground">{t('chooseProvider')}</div>
-            <div className="flex flex-wrap gap-2">
-              {PROVIDER_KINDS.map(kind => (
-                <Button key={kind} onClick={() => addModel(kind)} size="sm" variant="outline">
-                  {PROVIDER_LABEL[kind]}
+      </div>
+      {editor ? (
+        <div className="grid max-w-xl gap-5">
+          <label className="grid gap-2 text-sm">
+            {t('baseUrl')} *
+            <Input
+              onChange={event => update({ baseUrl: event.target.value })}
+              placeholder="https://api.example.com/v1"
+              value={editor.draft.baseUrl}
+            />
+          </label>
+          <label className="grid gap-2 text-sm">
+            {t('apiKey')} *
+            <Input
+              autoComplete="off"
+              onChange={event => update({ apiKey: event.target.value })}
+              placeholder={editor.draft.hasOwnKey ? t('apiKeyKept') : 'sk-...'}
+              suffix={
+                <button onClick={() => setVisible(!visible)} type="button">
+                  {t(visible ? 'hide' : 'show')}
+                </button>
+              }
+              type={visible ? 'text' : 'password'}
+              value={editor.draft.apiKey}
+            />
+          </label>
+          <label className="grid gap-2 text-sm">
+            {t('modelId')} *
+            <Input
+              onChange={event => update({ model: event.target.value })}
+              placeholder="gpt-4o"
+              value={editor.draft.model}
+            />
+          </label>
+          <fieldset>
+            <legend className="mb-2 text-sm">{t('thinking')}</legend>
+            <div className="flex gap-2">
+              {(['auto', 'on', 'off'] as const).map(value => (
+                <Button
+                  key={value}
+                  onClick={() => update({ thinking: value })}
+                  variant={(editor.draft.thinking ?? 'auto') === value ? 'secondary' : 'ghost'}
+                >
+                  {t(value)}
                 </Button>
               ))}
             </div>
-            <button
-              className="mt-3 text-xs text-muted-foreground hover:text-foreground"
-              onClick={() => setPickerOpen(false)}
-              type="button"
+          </fieldset>
+          <label className="grid gap-2 text-sm">
+            {t('contextWindow')} (tokens)
+            <Input
+              min={1}
+              onChange={event => update({ contextWindow: event.target.value })}
+              placeholder="200000"
+              type="number"
+              value={editor.draft.contextWindow}
+            />
+          </label>
+          <fieldset>
+            <legend className="mb-2 text-sm">{t('inputModalities')}</legend>
+            <div className="flex flex-wrap gap-2">
+              {['text', 'image', 'audio', 'video', 'pdf'].map(value => {
+                const modalities = editor.draft.modalities ?? ['text', ...(editor.draft.vision ? ['image'] : [])]
+                const selected = modalities.includes(value)
+
+                return (
+                  <Button
+                    aria-pressed={selected}
+                    key={value}
+                    onClick={() => {
+                      const next = selected ? modalities.filter(item => item !== value) : [...modalities, value]
+
+                      if (next.length) {
+                        update({ modalities: next, vision: next.includes('image') })
+                      }
+                    }}
+                    variant={selected ? 'secondary' : 'ghost'}
+                  >
+                    {value === 'pdf' ? 'Pdf' : value[0].toUpperCase() + value.slice(1)}
+                  </Button>
+                )
+              })}
+            </div>
+          </fieldset>
+          {result(editor.key)}
+          <div className="flex justify-between gap-2">
+            <Button
+              disabled={
+                !valid(editor) ||
+                (results[editor.key]?.ok === undefined && results[editor.key]?.message === t('testing'))
+              }
+              onClick={() => void test(editor)}
+              variant="outline"
             >
-              {t('cancel')}
-            </button>
-          </div>
-        ) : (
-          <div className="mt-4">
-            <Button className="border-dashed" onClick={() => setPickerOpen(true)} size="sm" variant="outline">
-              <Plus className="size-4" />
-              {t('addModel')}
+              {results[editor.key]?.message === t('testing') ? t('testing') : t('test')}
             </Button>
+            <div className="flex gap-2">
+              <Button
+                disabled={busy}
+                onClick={() => {
+                  testGeneration.current++
+                  setEditor(null)
+                }}
+                variant="ghost"
+              >
+                {t('cancel')}
+              </Button>
+              <Button disabled={busy || !valid(editor)} onClick={() => void save()}>
+                {t(busy ? 'saving' : 'save')}
+              </Button>
+            </div>
           </div>
-        )}
-
-        <div className="mt-6 rounded-xl border border-border/60 p-4">
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <Zap className="size-3.5 text-muted-foreground" />
-            <span className="text-sm font-semibold text-foreground">{t('yuanjingKey')}</span>
-            <span className="text-xs text-muted-foreground">{t('yuanjingKeyDesc')}</span>
-          </div>
-          <label className="mb-1 block text-xs text-muted-foreground">{t('apiKey')}</label>
-          <Input
-            readOnly
-            suffix={
-              planKey.set ? (
-                <button
-                  aria-label={revealedKey !== null ? t('hide') : t('show')}
-                  className="text-muted-foreground hover:text-foreground"
-                  onClick={() => void toggleRevealPlanKey()}
-                  title={revealedKey !== null ? t('hide') : t('show')}
-                  type="button"
-                >
-                  {revealedKey !== null ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
-                </button>
-              ) : undefined
-            }
-            type={revealedKey !== null ? 'text' : 'password'}
-            value={revealedKey ?? (planKey.set ? '••••••••' : '')}
-          />
-          <p className="mt-1.5 text-xs text-muted-foreground">
-            {planKey.set ? t('yuanjingKeyManaged') : t('yuanjingKeyMissing')}
-          </p>
         </div>
-      </div>
-
-      <div className={cn('flex shrink-0 items-center justify-end gap-3 border-t border-border/50 pt-3', PAGE_INSET_X)}>
-        {dirty && !saving && <span className="text-xs italic text-muted-foreground">{t('unsaved')}</span>}
-        <Button disabled={!dirty || saving} onClick={() => void save()} size="sm">
-          {saving ? t('saving') : dirty ? t('save') : t('noChanges')}
-        </Button>
-      </div>
-
+      ) : loading ? (
+        <p>{t('loading')}</p>
+      ) : rows.length ? (
+        rows.map(row => (
+          <div className="border-b border-border/50 py-4" key={row.key}>
+            <div className="flex items-center gap-2">
+              <button
+                className="min-w-0 flex-1 truncate text-left text-sm"
+                onClick={() => setEditor({ ...row, draft: { ...row.draft } })}
+              >
+                {row.draft.model}
+              </button>
+              <Button onClick={() => setEditor({ ...row, draft: { ...row.draft } })} size="sm" variant="ghost">
+                {t('editModel')}
+              </Button>
+              <Button
+                disabled={results[row.key]?.message === t('testing')}
+                onClick={() => void test(row)}
+                size="sm"
+                variant="ghost"
+              >
+                {t('test')}
+              </Button>
+              <Button onClick={() => setPendingDelete(row)} size="sm" variant="ghost">
+                {t('delete')}
+              </Button>
+            </div>
+            {result(row.key)}
+          </div>
+        ))
+      ) : (
+        <p className="py-12 text-center text-sm text-muted-foreground">{t('empty')}</p>
+      )}
       <ConfirmDialog
         confirmLabel={t('delete')}
         description={t('deleteBody')}
         destructive
-        onClose={() => setPendingDelete(null)}
-        onConfirm={() => {
-          if (pendingDelete) {
-            removeRow(pendingDelete)
-          }
-
-          setPendingDelete(null)
-        }}
+        onClose={() => !busy && setPendingDelete(null)}
+        onConfirm={() => void remove()}
         open={pendingDelete !== null}
-        title={pendingDelete ? t('deleteTitle', rowName(pendingDelete, t('untitled'))) : ''}
+        title={t('deleteTitle', pendingDelete?.draft.model ?? '')}
       />
-    </div>
-  )
-}
-
-interface ModelEditorProps {
-  keyVisible: boolean
-  onChange: (updates: Partial<ModelDraft>) => void
-  onKindChange: (kind: ProviderKind) => void
-  onToggleKey: () => void
-  row: ModelRow
-}
-
-/** 展开后的自定义模型表单：服务商、模型 ID、显示名称、密钥、地址、上下文窗口、看图。 */
-function ModelEditor({ keyVisible, onChange, onKindChange, onToggleKey, row }: ModelEditorProps) {
-  const t = useModelsCopy()
-  const { draft } = row
-  const yuanjing = draft.kind === 'yuanjing'
-
-  return (
-    <div className="mb-3 ml-6 grid gap-3 rounded-xl border border-border/60 p-4">
-      <Field label={t('provider')}>
-        <div className="grid grid-cols-4 overflow-hidden rounded-lg border border-border/60">
-          {PROVIDER_KINDS.map(kind => (
-            <button
-              className={cn(
-                'border-r border-border/60 px-2 py-1.5 text-xs last:border-r-0',
-                draft.kind === kind
-                  ? 'bg-(--ui-accent)/10 font-semibold text-(--ui-accent)'
-                  : 'text-muted-foreground hover:bg-muted/50'
-              )}
-              key={kind}
-              onClick={() => onKindChange(kind)}
-              type="button"
-            >
-              {PROVIDER_LABEL[kind]}
-            </button>
-          ))}
-        </div>
-      </Field>
-
-      <div className="grid grid-cols-2 gap-3">
-        <Field label={t('modelId')}>
-          <Input
-            onChange={event => onChange({ model: event.target.value })}
-            placeholder={t('modelIdPlaceholder')}
-            value={draft.model}
-          />
-        </Field>
-        <Field label={t('displayName')}>
-          <Input
-            onChange={event => onChange({ displayName: event.target.value })}
-            placeholder={prettifyModelId(draft.model) || t('displayNamePlaceholder')}
-            value={draft.displayName}
-          />
-        </Field>
-      </div>
-
-      <Field hint={yuanjing ? t('apiKeyManaged') : undefined} label={t('apiKey')}>
-        <Input
-          autoComplete="off"
-          disabled={yuanjing}
-          onChange={event => onChange({ apiKey: event.target.value })}
-          placeholder={yuanjing ? '••••••••' : draft.hasOwnKey ? t('apiKeyKept') : 'sk-...'}
-          suffix={
-            yuanjing ? undefined : (
-              <button
-                aria-label={keyVisible ? t('hide') : t('show')}
-                className="text-muted-foreground hover:text-foreground"
-                onClick={onToggleKey}
-                type="button"
-              >
-                {keyVisible ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
-              </button>
-            )
-          }
-          type={keyVisible ? 'text' : 'password'}
-          value={yuanjing ? '' : draft.apiKey}
-        />
-      </Field>
-
-      <Field label={t('baseUrl')}>
-        <Input
-          onChange={event => onChange({ baseUrl: event.target.value })}
-          placeholder="https://api.example.com/v1"
-          value={draft.baseUrl}
-        />
-      </Field>
-
-      <div className="h-px bg-border/50" />
-
-      <div className="grid grid-cols-[minmax(0,12rem)_minmax(0,1fr)] gap-3">
-        <Field label={t('contextWindow')}>
-          <Input
-            inputMode="numeric"
-            onChange={event => onChange({ contextWindow: event.target.value.replace(/\D/g, '') })}
-            placeholder="200000"
-            value={draft.contextWindow}
-          />
-        </Field>
-        <Field hint={t('imageHint')} label={t('inputModalities')}>
-          <div className="flex w-fit overflow-hidden rounded-lg border border-border/60 text-xs">
-            <span className="border-r border-border/60 bg-(--ui-accent)/10 px-3 py-1.5 font-semibold text-(--ui-accent)">
-              Text
-            </span>
-            <button
-              aria-pressed={draft.vision}
-              className={cn(
-                'px-3 py-1.5',
-                draft.vision
-                  ? 'bg-(--ui-accent)/10 font-semibold text-(--ui-accent)'
-                  : 'text-muted-foreground hover:bg-muted/50'
-              )}
-              onClick={() => onChange({ vision: !draft.vision })}
-              type="button"
-            >
-              Image
-            </button>
-          </div>
-        </Field>
-      </div>
-    </div>
-  )
-}
-
-function Field({ children, hint, label }: { children: ReactNode; hint?: string; label: string }) {
-  return (
-    <div className="grid gap-1">
-      <span className="text-xs text-muted-foreground">
-        {label}
-        {hint && <span className="ml-2 text-[0.7rem] text-muted-foreground/70">{hint}</span>}
-      </span>
-      {children}
     </div>
   )
 }

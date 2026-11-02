@@ -63,6 +63,8 @@ export interface ModelDraft {
   kind: ProviderKind
   model: string
   vision: boolean
+  thinking?: 'auto' | 'on' | 'off'
+  modalities?: string[]
 }
 
 export interface ModelRow {
@@ -123,12 +125,19 @@ export function rowsFromEndpoints(endpoints: readonly CustomEndpoint[], provider
   for (const endpoint of endpoints) {
     const kind = endpointKind(endpoint)
 
+    const meta = (
+      providers as
+        Record<string, { desktop_thinking?: ModelDraft['thinking']; input_modalities?: string[] }> | undefined
+    )?.[endpoint.id]
+
     const base: Omit<ModelDraft, 'displayName' | 'model' | 'vision'> = {
       apiKey: '',
       baseUrl: endpoint.base_url,
       contextWindow: endpoint.context_length ? String(endpoint.context_length) : '',
       hasOwnKey: endpoint.has_api_key && endpoint.api_key_preview !== PLAN_KEY_REF,
-      kind
+      kind,
+      thinking: meta?.desktop_thinking ?? 'auto',
+      modalities: meta?.input_modalities ?? ['text', ...(visionOf(providers, endpoint.id, endpoint.model) ? ['image'] : [])]
     }
 
     if (isPlanEndpoint(endpoint)) {
@@ -245,6 +254,8 @@ export function draftChanged(row: ModelRow): boolean {
     draft.displayName.trim() !== original.displayName ||
     draft.kind !== original.kind ||
     draft.model.trim() !== original.model ||
+    draft.thinking !== original.thinking ||
+    JSON.stringify(draft.modalities) !== JSON.stringify(original.modalities) ||
     draft.vision !== original.vision
   )
 }
@@ -276,13 +287,15 @@ export interface EndpointWrite {
   model: string
   payload: CustomEndpointUpdate
   vision?: boolean
+  thinking?: ModelDraft['thinking']
+  modalities?: string[]
 }
 
 /** 一行自定义模型对应的保存请求；密钥规则见注释。 */
 export function endpointWrite(row: ModelRow): EndpointWrite {
   const { draft, original } = row
   const model = draft.model.trim()
-  const contextWindow = Number.parseInt(draft.contextWindow.trim(), 10)
+  const contextWindow = Number.parseInt(draft.contextWindow.trim() || '200000', 10)
 
   const payload: CustomEndpointUpdate = {
     api_mode: PRESET_API_MODE[draft.kind],
@@ -299,6 +312,10 @@ export function endpointWrite(row: ModelRow): EndpointWrite {
   }
 
   const write: EndpointWrite = { model, payload }
+
+  if (draft.thinking !== original?.thinking) {write.thinking = draft.thinking}
+
+  if (JSON.stringify(draft.modalities) !== JSON.stringify(original?.modalities)) {write.modalities = draft.modalities}
 
   if (draft.kind === 'yuanjing') {
     // 元景模型统一引用套餐 Key；原来有自己的密钥就清掉，免得 .env 里留一份没人用的。
@@ -330,7 +347,12 @@ export function configPatch(
   const providers: Record<string, Record<string, unknown>> = {}
 
   for (const { endpointId, write } of writes) {
-    if (write.keyEnv === undefined && write.vision === undefined) {
+    if (
+      write.keyEnv === undefined &&
+      write.vision === undefined &&
+      write.thinking === undefined &&
+      write.modalities === undefined
+    ) {
       continue
     }
 
@@ -344,6 +366,9 @@ export function configPatch(
       entry.models = { [write.model]: { supports_vision: write.vision } }
     }
 
+    if (write.modalities) {entry.input_modalities = write.modalities}
+
+    if (write.thinking) {entry.desktop_thinking = write.thinking}
     providers[endpointId] = entry
   }
 

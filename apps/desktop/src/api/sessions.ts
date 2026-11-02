@@ -1,6 +1,7 @@
 import { isMissingRestEndpoint } from '@/lib/gateway-rpc'
 import { maybeBackfillLegacySessionOwners } from '@/lib/legacy-session-owner-backfill'
 import { stampRowsWithOwningConnection } from '@/lib/session-owner-stamp'
+import { confirmUnreadWrites } from '@/store/session-unread-remote'
 import { pageHonorsLatestOrder, recordTranscriptTail } from '@/store/transcript-tail'
 import type {
   PaginatedSessions,
@@ -75,7 +76,10 @@ function stampActiveConnectionOwner(sessions: SessionInfo[]): SessionInfo[] {
   // idempotent server-side; never blocks or fails the list that triggered it.
   maybeBackfillLegacySessionOwners()
 
-  return stampRowsWithOwningConnection(sessions, getApiRequestConnection())
+  const rows = stampRowsWithOwningConnection(sessions, getApiRequestConnection())
+  confirmUnreadWrites(rows)
+
+  return rows
 }
 
 /**

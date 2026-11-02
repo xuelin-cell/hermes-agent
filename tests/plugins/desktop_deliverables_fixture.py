@@ -14,17 +14,20 @@ from tests.fakes.fake_llm_provider import (
 )
 
 
-def run_scenario(root, kind="workspace"):
+def run_scenario(root, kind="workspace", *, filename=None, answer=None):
     """只在新测试目录创建 Home 和产物，执行原生工具后关闭、重开数据库取得显示历史。"""
     work = root / "workspace"
     home = root / "home"
     assert not work.exists() and not home.exists(), "测试目录已有数据，拒绝覆盖"
     work.mkdir(parents=True)
     destination = (
-        work if kind in {"workspace", "terminal", "execute_code"} else root / kind
+        work if filename or kind in {"workspace", "terminal", "execute_code", "dedupe"} else root / kind
     )
     destination.mkdir(exist_ok=True)
-    output = destination / ("报告 (1).md" if kind == "wrapped" else kind + "报告.md")
+    output = destination / (
+        filename or ("报告 (1).md" if kind == "wrapped" else kind + "报告.md")
+    )
+    output.parent.mkdir(parents=True, exist_ok=True)
     command = f"printf '# 交付测试' > '{output.as_posix()}'"
     call = ToolCall("write_file", {"path": str(output), "content": "# 交付测试"})
     if kind == "terminal":
@@ -38,6 +41,20 @@ def run_scenario(root, kind="workspace"):
                 + ")"
             },
         )
+    response = (
+        answer.replace("{path}", str(output)) if answer is not None
+        else f"![报告](<MEDIA:{output}>)" if kind == "wrapped"
+        else "完成了。"
+    )
+    if kind == "dedupe":
+        scratch = work / ".tmp" / "draft.md"
+        scratch.parent.mkdir()
+        scratch.write_text("# 临时内容", encoding="utf-8")
+        response = (
+            f"MEDIA:{output}\n\n[重复说明](<{output.as_posix()}>)\n\n"
+            f"[再次说明]({output.as_uri()})\n\n"
+            f"MEDIA:{scratch}\n\n[临时说明]({scratch.as_uri()})"
+        )
     with (
         patch.dict(
             os.environ,
@@ -49,7 +66,7 @@ def run_scenario(root, kind="workspace"):
         ),
         FakeLLMServer([
             call,
-            Text(f"![报告](<MEDIA:{output}>)" if kind == "wrapped" else "完成了。"),
+            Text(response),
         ]) as server,
     ):
         write_hermes_home(
@@ -83,8 +100,15 @@ def run_scenario(root, kind="workspace"):
                 f"把文件写到 {output}。", task_id="native-delivery"
             )
             assert output.read_text(encoding="utf-8") == "# 交付测试"
-            assert f"MEDIA:{output}" in result["final_response"]
+            if kind == "dedupe":
+                assert result["final_response"].count(output.as_uri()) == 1
+                assert f"(<{output.as_posix()}>)" in result["final_response"]
+            else:
+                assert f"MEDIA:{output}" in result["final_response"]
             expected = result["final_response"]
+            if kind == "dedupe":
+                assert expected.count("MEDIA:") == 0
+                assert scratch.read_text(encoding="utf-8") == "# 临时内容"
         finally:
             agent.close()
             database.close()

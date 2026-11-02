@@ -24,7 +24,6 @@ import {
   Settings2,
   ShieldLock,
   Terminal,
-  Trash2,
   Users,
   Volume2,
   Wrench
@@ -86,8 +85,7 @@ const SUBPAGE_ICONS: Record<string, IconComponent> = {
   vaultCredentials: KeyRound,
   vaultSources: Lock,
   appUpdates: Download,
-  legal: FileText,
-  uninstall: Trash2
+  legal: FileText
 }
 
 export function settingsSubpageIcon(page: SettingsSubpage, fallback: IconComponent): IconComponent {

@@ -5,7 +5,8 @@ import {
   peekConfigReadOrigin,
   saveHermesConfig,
   setApiRequestConnection,
-  setApiRequestProfile
+  setApiRequestProfile,
+  validateCustomEndpoint
 } from '@/hermes'
 
 describe('config read/write route binding', () => {
@@ -28,6 +29,23 @@ describe('config read/write route binding', () => {
     setApiRequestProfile(null)
     vi.restoreAllMocks()
     Reflect.deleteProperty(window, 'hermesDesktop')
+  })
+
+  it('模型测试交给所属连接和 Profile 的插件读取已保存 Key，页面不补回秘密', async () => {
+    setApiRequestConnection('connection-a')
+    const endpoint = { id: 'personal', name: 'Personal', model: 'raw-id', base_url: 'https://models.invalid/v1' }
+
+    await validateCustomEndpoint(endpoint, 'worker')
+    expect(api).toHaveBeenCalledWith(
+      expect.objectContaining({
+        connectionId: 'connection-a',
+        profile: 'worker',
+        method: 'POST',
+        path: '/api/plugins/desktop-models/validate',
+        body: endpoint
+      })
+    )
+    expect(api.mock.calls[0][0].body).not.toHaveProperty('api_key')
   })
 
   it('config record read from A cannot be written to B after primary changes', async () => {

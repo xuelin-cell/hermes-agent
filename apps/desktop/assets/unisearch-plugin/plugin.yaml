@@ -1,0 +1,16 @@
+name: unisearch
+version: 0.3.1
+description: UniWork search, result cards and BuiltinCrawl / UniCrawl fetch providers.
+author: UniWork; search and fetch parsing ported from UniClaw contributors
+kind: backend
+provides_web_providers:
+  - unisearch
+  - builtin_parse
+  - unicrawl
+python_dependencies:
+  - trafilatura>=2.0,<3
+  - beautifulsoup4>=4.12,<5
+  - lxml>=5,<7
+  - markdownify>=1.1,<2
+  - chardet>=5,<6
+  - playwright>=1.49,<2

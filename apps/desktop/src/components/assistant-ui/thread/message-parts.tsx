@@ -35,6 +35,8 @@ import { cn } from '@/lib/utils'
 import { $reasoningCollapsedByDefault, $showReasoning } from '@/store/reasoning-disclosure'
 import { useForcedTextDirection } from '@/store/text-direction'
 
+import { SearchCardResults } from '../tool/search-cards/results'
+
 type TimelineToolCallProps = ToolCallMessagePartProps & { completedAt?: number; timestamp?: number }
 
 // A call sealed without a result (turn stopped, completion event lost) is
@@ -158,7 +160,7 @@ const ChainToolFallback: FC<TimelineToolCallProps> = props => {
   // transcript. Cards, approvals, and failed calls the user must act on remain.
   // reasoning_effort is not a display switch.
   if (!showReasoning && !failedCallNeedsUser(props) && !isCardTool(props.toolName)) {
-    return null
+    return props.toolName === 'web_search' ? <SearchCardResults results={[props.result]} /> : null
   }
 
   return <ToolFallback {...props} />

@@ -12,6 +12,7 @@
 
 const path = require('node:path')
 const feedContract = require('./update-feed.cjs')
+const { resolveStamp } = require('./scripts/write-build-stamp.mjs')
 const { createMacSigner } = require('./scripts/mac-sign.mjs')
 
 const {
@@ -240,6 +241,7 @@ module.exports = {
     ...windowsSigning()
   },
   nsis: {
+    ...(!light && !store ? { artifactName: `UniWorkBundled-\${version}-${resolveStamp().commit.slice(0, 7)}.exe` } : {}),
     oneClick: false,
     perMachine: true,
     // `perMachine` + `oneClick: false` is the one pair NsisTarget does not

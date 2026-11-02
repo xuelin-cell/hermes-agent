@@ -105,7 +105,7 @@ def test_upload_reminder_look_rule_follows_the_main_model(hints, monkeypatch, se
 
 
 @pytest.mark.parametrize("outcome", ["seen", "unseen", "error"])
-@pytest.mark.parametrize("platform", ["weixin", "feishu", "wecom", "dingtalk"])
+@pytest.mark.parametrize("platform", ["weixin", "feishu", "wecom", "dingtalk", "uniagentgate"])
 def test_gateway_vision_notes_are_rewritten_for_delivery_platforms(hints, monkeypatch, platform, outcome):
     """用网关自己的预先看图生成三种写法：都换成元景看图，路径不带看清时多出的“ ~”。"""
     import asyncio

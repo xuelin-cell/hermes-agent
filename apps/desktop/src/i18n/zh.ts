@@ -1,8 +1,8 @@
-import { messagingConnectionCopy } from './messaging-connection'
 import { defineFieldCopy } from '@/app/settings/field-copy'
 
 import { defineLocale } from './define-locale'
 import { introZh } from './intro-zh'
+import { messagingConnectionCopy } from './messaging-connection'
 
 export const zh = defineLocale({
   workspaceEditor: {
@@ -152,7 +152,8 @@ export const zh = defineLocale({
     draftRemote: '当前会话连接到远程 UniWork，暂不支持添加云盘文件。',
     draftChanged: '会话已切换，未添加文件，请重新选择。',
     draftNotReady: '会话输入框暂不可用，请先打开目标会话后再添加。',
-    draftUnavailable: '云盘工具尚未就绪或未获授权，请在「设置 → 安全 → 审批」检查当前 Profile 的资料库访问权限，再新建会话重试。',
+    draftUnavailable:
+      '云盘工具尚未就绪或未获授权，请在「设置 → 安全 → 审批」检查当前 Profile 的资料库访问权限，再新建会话重试。',
     upload: '上传文件',
     transferring: '正在传输…',
     transferFailed: '传输未完成，请检查网络、登录状态和文件权限后重试。',
@@ -225,6 +226,7 @@ export const zh = defineLocale({
       expiryText: date => `${date} 到期`,
       tokenExact: (remaining, used, total, unit) => {
         const suffix = unit ? ` ${unit}` : ''
+
         return `剩余 ${remaining}${suffix}，已用 ${used}${suffix}，总额 ${total}${suffix}`
       },
       notStarted: '尚未开始计时',
@@ -580,7 +582,8 @@ export const zh = defineLocale({
       removeRow: '删除此行',
       showValue: '显示值',
       hideValue: '隐藏值',
-      uniAiToolkitSummary: '提供文生图、图文问答、语音转写、AI播客生成、论文翻译等能力，即插即用，扩展智能体多模态工具生态。',
+      uniAiToolkitSummary:
+        '提供文生图、图文问答、语音转写、AI播客生成、论文翻译等能力，即插即用，扩展智能体多模态工具生态。',
       arxivSummary: '检索和获取 arXiv 论文，支持科研与文献调研。',
       formErrors: {
         argsQuote: '参数中的引号没有闭合',
@@ -890,6 +893,14 @@ export const zh = defineLocale({
     resetHudLayout: '重置 HUD 大小和位置',
     layoutEditor: '布局编辑器',
     layoutEditorTitle: mod => `布局编辑器 — ${mod} 点击重置布局`
+  },
+
+  messageCenter: {
+    title: '消息中心',
+    unreadCount: count => `${count} 条未读消息`,
+    markAllRead: '全部已读',
+    empty: '暂无通知',
+    untitled: '公告'
   },
 
   keybinds: {
@@ -3204,7 +3215,7 @@ export const zh = defineLocale({
   },
 
   messaging: {
-    connection: messagingConnectionCopy["zh"],
+    connection: messagingConnectionCopy['zh'],
     cards: {
       heading: '聊天应用',
       description: '接入微信、钉钉、飞书等聊天应用，从手机上接收和回复消息。',
@@ -3213,12 +3224,12 @@ export const zh = defineLocale({
       save: '保存并启用',
       comingSoon: '待接入',
       personalBindingMissing: '尚未确认个人绑定，请退出账号后重新短信登录。',
-      reconnect: "重连",
-      reconnecting: "重连中…",
-      reconnected: "5G 消息已重新连接。",
-      reconnectBusy: "正在处理消息，请完成后再重连。",
-      reconnectFailed: "5G 重连失败，请查看日志；如网关未启动，请完整退出应用后重新打开。",
-      reconnectRestartRequired: "5G 组件更新尚未生效，请完整退出应用（含托盘）后重新启动。",
+      reconnect: '重连',
+      reconnecting: '重连中…',
+      reconnected: '5G 消息已重新连接。',
+      reconnectBusy: '正在处理消息，请完成后再重连。',
+      reconnectFailed: '5G 重连失败，请查看日志；如网关未启动，请完整退出应用后重新打开。',
+      reconnectRestartRequired: '5G 组件更新尚未生效，请完整退出应用（含托盘）后重新启动。',
       unavailable: '消息平台组件未就绪',
       notConnected: '未连接',
       unbind: '解绑',
@@ -3888,26 +3899,26 @@ export const zh = defineLocale({
   },
 
   artifactShare: {
-    validity: "有效期",
+    validity: '有效期',
     days: count => `${count} 天`,
-    customValidity: "自定义天数",
-    editValidity: "修改有效期",
-    saveValidity: "保存有效期",
+    customValidity: '自定义天数',
+    editValidity: '修改有效期',
+    saveValidity: '保存有效期',
     expiresAt: date => `到期时间：${date}`,
-    noExpiry: "此历史链接尚未设置有效期。",
-    expired: "分享已到期",
-    cleanupPending: "已到期，等待清理；公网链接可能暂时仍可访问。",
-    expiryNotice: "默认有效期 1 天，可设为 1～7 天。到期自动清理，应用关闭时延后处理。",
-    invalidValidity: "请输入 1～7 天的整数。",
-    inactive: "已取消分享或链接已不可用。",
-    statusUnavailable: "暂时无法查询分享状态，请完全退出应用后重试。",
-    disclosure: "获得链接的人都可以查看此产物，不会分享其他文件或对话。",
-    checking: "正在检查分享状态…",
-    createLink: "生成公开链接",
-    linkReady: "公开链接已生成",
-    changedNotice: "内容已变化，链接目前仍展示上次发布的版本。",
-    confirmUpdate: "是否用当前版本覆盖已发布内容？链接地址保持不变。",
-    confirmRevoke: "确认取消分享？取消后，获得链接的人将无法再访问。",
+    noExpiry: '此历史链接尚未设置有效期。',
+    expired: '分享已到期',
+    cleanupPending: '已到期，等待清理；公网链接可能暂时仍可访问。',
+    expiryNotice: '默认有效期 1 天，可设为 1～7 天。到期自动清理，应用关闭时延后处理。',
+    invalidValidity: '请输入 1～7 天的整数。',
+    inactive: '已取消分享或链接已不可用。',
+    statusUnavailable: '暂时无法查询分享状态，请完全退出应用后重试。',
+    disclosure: '获得链接的人都可以查看此产物，不会分享其他文件或对话。',
+    checking: '正在检查分享状态…',
+    createLink: '生成公开链接',
+    linkReady: '公开链接已生成',
+    changedNotice: '内容已变化，链接目前仍展示上次发布的版本。',
+    confirmUpdate: '是否用当前版本覆盖已发布内容？链接地址保持不变。',
+    confirmRevoke: '确认取消分享？取消后，获得链接的人将无法再访问。',
     originRequired: '仅支持来源已确认的模型产物；上传文件、派生产物和来源未知的文件不能分享。',
     share: '分享',
     shareArtifact: '分享产物',
@@ -3980,7 +3991,7 @@ export const zh = defineLocale({
       actions: '分组操作'
     },
     nav: {
-      'new-session': '新建会话',
+      'new-session': '新对话',
       capabilities: '扩展',
       messaging: '消息平台',
       artifacts: '资料库',
@@ -5370,6 +5381,25 @@ export const zh = defineLocale({
   },
 
   assistant: {
+    searchCards: {
+      today: '今天',
+      humidity: '湿度',
+      feelsLike: '体感',
+      restriction: '限行',
+      open: '今开',
+      high: '今高',
+      low: '今低',
+      previousClose: '昨收',
+      price: '价格',
+      multipleMerchants: '多商家',
+      duration: '全程',
+      stops: '经停',
+      arrive: '到',
+      depart: '发',
+      stay: '停',
+      moreStops: '更多车站',
+      moreTrains: '更多车次'
+    },
     thread: {
       loadingSession: '正在加载会话',
       showEarlier: '显示更早的消息',

@@ -9,6 +9,8 @@ import type { ErrorCodeKey } from '@/lib/error-surface'
 import type { LegalLinkId } from '@/lib/legalLinks'
 import type { TipId } from '@/lib/tips/catalog'
 
+import type { MessagingConnectionCopy } from './messaging-connection'
+
 export type Locale = 'en' | 'zh' | 'zh-hant' | 'ja' | 'ar' | 'ru' | 'fr' | 'de' | 'es'
 
 /** One error-card entry: a short title and one plain sentence. Either may
@@ -1005,6 +1007,14 @@ export interface Translations {
     developerModeEnabled: string
     layoutEditor: string
     layoutEditorTitle: (modifier: string) => string
+  }
+
+  messageCenter: {
+    title: string
+    unreadCount: (count: number) => string
+    markAllRead: string
+    empty: string
+    untitled: string
   }
 
   keybinds: {
@@ -2782,7 +2792,7 @@ export interface Translations {
   }
 
   messaging: {
-    connection: import('./messaging-connection').MessagingConnectionCopy
+    connection: MessagingConnectionCopy
     cards: {
       heading: string
       description: string
@@ -4708,6 +4718,25 @@ export interface Translations {
   }
 
   assistant: {
+    searchCards: {
+      today: string
+      humidity: string
+      feelsLike: string
+      restriction: string
+      open: string
+      high: string
+      low: string
+      previousClose: string
+      price: string
+      multipleMerchants: string
+      duration: string
+      stops: string
+      arrive: string
+      depart: string
+      stay: string
+      moreStops: string
+      moreTrains: string
+    }
     thread: {
       loadingSession: string
       showEarlier: string

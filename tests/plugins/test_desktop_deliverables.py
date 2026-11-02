@@ -467,6 +467,45 @@ def test_images_embedded_in_report_are_not_carded_separately(delivery):
     assert not any(str(file) in result for file in embedded)
 
 
+@pytest.mark.parametrize("only_scratch", [False, True])
+def test_explicit_scratch_media_stays_text_even_without_final_files(delivery, only_scratch):
+    """临时 MEDIA 不能绕过自动过滤，只有临时文件时也保留说明而不补卡。"""
+    plugin, work = delivery
+    begin(plugin)
+    scratch = work / ".tmp" / "draft (1).pptx"
+    scratch.parent.mkdir()
+    scratch.write_bytes(b"draft")
+    final = work / "report.pptx"
+    if not only_scratch:
+        final.write_bytes(b"final")
+    source = f"草稿：MEDIA:`{scratch}`\n\nMEDIA:.tmp/draft.wav\n结束。"
+    result = reply(plugin, source) or source
+    assert f"MEDIA:`{scratch}`" not in result
+    assert "MEDIA:.tmp/" not in result
+    assert str(scratch) in result and "结束。" in result
+    assert result.count("MEDIA:") == (0 if only_scratch else 1)
+    assert scratch.read_bytes() == b"draft"
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+def test_report_html_dependencies_only_suppress_automatic_cards(delivery, explicit):
+    """报告直连图表不自动补卡，明确交付与普通 CSV 保留，依赖文件不删除。"""
+    plugin, work = delivery
+    begin(plugin)
+    chart = work / "charts" / "趋势 图.html"
+    chart.parent.mkdir()
+    chart.write_text("<p>chart</p>", encoding="utf-8")
+    page = work / "report.html"
+    page.write_text('<iframe src="charts/%E8%B6%8B%E5%8A%BF%20%E5%9B%BE.html?view=1#plot"></iframe>', encoding="utf-8")
+    data = work / "data.csv"
+    data.write_text("value\n1", encoding="utf-8")
+    source = f"独立图表：\nMEDIA:`{chart}`" if explicit else "报告完成。"
+    result = reply(plugin, source) or source
+    assert str(page) in result and str(data) in result
+    assert (str(chart) in result) == explicit
+    assert chart.read_text(encoding="utf-8") == "<p>chart</p>"
+
+
 @pytest.mark.parametrize("kind", ["document-and-image", "nine"])
 def test_unappended_standalone_media_is_preserved(delivery, kind):
     """有文档时被过滤的图片和超过八张的标记仍在原位，不丢模型已经写出的交付。"""

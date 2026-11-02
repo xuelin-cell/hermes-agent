@@ -1,8 +1,8 @@
-import { messagingConnectionCopy } from './messaging-connection'
 import { defineFieldCopy } from '@/app/settings/field-copy'
 
 import { defineLocale, type TranslationOverrides } from './define-locale'
 import { introEs } from './intro-es'
+import { messagingConnectionCopy } from './messaging-connection'
 
 export const esOverrides = {
   workspaceEditor: {
@@ -89,7 +89,8 @@ export const esOverrides = {
     phoneError: 'Introduce un número de 11 dígitos que empiece por 1.',
     captchaError: 'Introduce el código de imagen (máximo 6 caracteres).',
     smsError: 'Introduce el código SMS de 6 dígitos.',
-    storageError: 'No se pudo guardar el inicio de sesión de forma segura. Comprueba los permisos de almacenamiento local.',
+    storageError:
+      'No se pudo guardar el inicio de sesión de forma segura. Comprueba los permisos de almacenamiento local.',
     requestError: 'Error al iniciar sesión. Inténtalo de nuevo.'
   },
   intro: introEs,
@@ -606,7 +607,8 @@ export const esOverrides = {
       elevenLabsRejectedKey:
         'ElevenLabs no aceptó tu clave API. Actualízala en Configuración → Claves e inténtalo de nuevo.',
       diskFull: 'Disco lleno — libera espacio y vuelve a intentarlo.',
-      storageFailure: 'UniWork no pudo guardar en su carpeta de datos. Abre Mantenimiento para comprobarla y repararla.',
+      storageFailure:
+        'UniWork no pudo guardar en su carpeta de datos. Abre Mantenimiento para comprobarla y repararla.',
       gatewayAuthFailed:
         'Este UniWork ya no acepta tu inicio de sesión guardado. Abre Gateways y vuelve a iniciar sesión (o pega un nuevo token de acceso) e inténtalo otra vez.',
       methodNotAllowed:
@@ -3322,7 +3324,7 @@ export const esOverrides = {
     }
   },
   messaging: {
-    connection: messagingConnectionCopy["es"],
+    connection: messagingConnectionCopy['es'],
     cards: {
       heading: 'Aplicaciones de chat',
       description: 'Conecta WeChat, DingTalk y otras aplicaciones para recibir y responder mensajes desde el móvil.',
@@ -3331,12 +3333,14 @@ export const esOverrides = {
       save: 'Guardar y activar',
       comingSoon: 'Integración pendiente',
       personalBindingMissing: 'Vinculación personal sin confirmar. Cierra sesión y vuelve a entrar por SMS.',
-      reconnect: "Reconectar",
-      reconnecting: "Reconectando…",
-      reconnected: "Mensajería 5G reconectada.",
-      reconnectBusy: "Se está procesando un mensaje. Reconecta cuando termine.",
-      reconnectFailed: "No se pudo reconectar 5G. Revisa los registros; si la puerta de enlace está detenida, cierra y vuelve a abrir la aplicación.",
-      reconnectRestartRequired: "La actualización de 5G aún no está activa. Cierra la aplicación por completo, incluida la bandeja, y vuelve a abrirla.",
+      reconnect: 'Reconectar',
+      reconnecting: 'Reconectando…',
+      reconnected: 'Mensajería 5G reconectada.',
+      reconnectBusy: 'Se está procesando un mensaje. Reconecta cuando termine.',
+      reconnectFailed:
+        'No se pudo reconectar 5G. Revisa los registros; si la puerta de enlace está detenida, cierra y vuelve a abrir la aplicación.',
+      reconnectRestartRequired:
+        'La actualización de 5G aún no está activa. Cierra la aplicación por completo, incluida la bandeja, y vuelve a abrirla.',
       unavailable: 'Componente de mensajería no disponible',
       notConnected: 'Sin conexión',
       unbind: 'Desvincular',
@@ -4008,27 +4012,31 @@ export const esOverrides = {
     open: 'Abrir'
   },
   artifactShare: {
-    validity: "Vigencia",
+    validity: 'Vigencia',
     days: count => `${count} días`,
-    customValidity: "Días personalizados",
-    editValidity: "Cambiar vigencia",
-    saveValidity: "Guardar vigencia",
+    customValidity: 'Días personalizados',
+    editValidity: 'Cambiar vigencia',
+    saveValidity: 'Guardar vigencia',
     expiresAt: date => `Caduca: ${date}`,
-    noExpiry: "Este enlace anterior no tiene fecha de caducidad.",
-    expired: "Enlace caducado",
-    cleanupPending: "Caducado; eliminación pendiente. El enlace público aún podría ser accesible.",
-    expiryNotice: "Los enlaces nuevos duran 1 día; elige de 1 a 7 días. Los cambios cuentan desde que se guardan. La limpieza se realiza con la aplicación abierta o al volver a iniciarla.",
-    invalidValidity: "Introduce un número entero entre 1 y 7.",
-    inactive: "Se revocó el enlace o ya no está disponible.",
-    statusUnavailable: "El estado del enlace no está disponible. Cierra la aplicación por completo e inténtalo de nuevo.",
-    disclosure: "Cualquier persona con el enlace puede ver este archivo. No se comparten otros archivos ni conversaciones.",
-    checking: "Comprobando el estado del enlace…",
-    createLink: "Crear enlace público",
-    linkReady: "El enlace público está listo",
-    changedNotice: "El contenido ha cambiado. El enlace aún muestra la versión publicada anteriormente.",
-    confirmUpdate: "¿Reemplazar el contenido publicado por esta versión? El enlace seguirá siendo el mismo.",
-    confirmRevoke: "¿Revocar este enlace público? Las personas que lo tengan ya no podrán abrirlo.",
-    originRequired: 'Solo se comparten resultados verificados del modelo. Las cargas, los derivados y los archivos de origen desconocido están bloqueados.',
+    noExpiry: 'Este enlace anterior no tiene fecha de caducidad.',
+    expired: 'Enlace caducado',
+    cleanupPending: 'Caducado; eliminación pendiente. El enlace público aún podría ser accesible.',
+    expiryNotice:
+      'Los enlaces nuevos duran 1 día; elige de 1 a 7 días. Los cambios cuentan desde que se guardan. La limpieza se realiza con la aplicación abierta o al volver a iniciarla.',
+    invalidValidity: 'Introduce un número entero entre 1 y 7.',
+    inactive: 'Se revocó el enlace o ya no está disponible.',
+    statusUnavailable:
+      'El estado del enlace no está disponible. Cierra la aplicación por completo e inténtalo de nuevo.',
+    disclosure:
+      'Cualquier persona con el enlace puede ver este archivo. No se comparten otros archivos ni conversaciones.',
+    checking: 'Comprobando el estado del enlace…',
+    createLink: 'Crear enlace público',
+    linkReady: 'El enlace público está listo',
+    changedNotice: 'El contenido ha cambiado. El enlace aún muestra la versión publicada anteriormente.',
+    confirmUpdate: '¿Reemplazar el contenido publicado por esta versión? El enlace seguirá siendo el mismo.',
+    confirmRevoke: '¿Revocar este enlace público? Las personas que lo tengan ya no podrán abrirlo.',
+    originRequired:
+      'Solo se comparten resultados verificados del modelo. Las cargas, los derivados y los archivos de origen desconocido están bloqueados.',
     share: 'Compartir',
     shareArtifact: 'Compartir artefacto',
     updateShared: 'Actualizar contenido compartido',
@@ -4038,7 +4046,7 @@ export const esOverrides = {
     shareFailed: 'No se pudo compartir el artefacto',
     revokeFailed: 'No se pudo revocar el enlace',
     previewNotReady: 'La vista previa de Markdown no está lista.',
-    imageNotEmbedded: 'Markdown contiene una imagen no incrustada.',
+    imageNotEmbedded: 'Markdown contiene una imagen no incrustada.'
   },
 
   artifactPreview: {
@@ -5595,6 +5603,25 @@ export const esOverrides = {
     }
   },
   assistant: {
+    searchCards: {
+      today: 'Hoy',
+      humidity: 'Humedad',
+      feelsLike: 'Sensación térmica',
+      restriction: 'Restricciones de tráfico',
+      open: 'Apertura',
+      high: 'Máximo',
+      low: 'Mínimo',
+      previousClose: 'Cierre anterior',
+      price: 'precio',
+      multipleMerchants: 'Varios vendedores',
+      duration: 'Duración',
+      stops: 'Paradas',
+      arrive: 'Llegada',
+      depart: 'Salida',
+      stay: 'Parada',
+      moreStops: 'Más paradas',
+      moreTrains: 'Más trenes'
+    },
     thread: {
       loadingSession: 'Cargando sesión',
       showEarlier: 'Mostrar mensajes anteriores',

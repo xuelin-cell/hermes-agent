@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 
 import { test } from 'vitest'
@@ -67,6 +68,42 @@ test('a missing PID is classified as ESRCH so reapOrphans can drop the record', 
   // gate throws ESRCH — the errno those catch blocks already map to gone.
   await assert.rejects(processStartMarker(2 ** 30 + 12345), (error: NodeJS.ErrnoException) => error?.code === 'ESRCH')
 })
+
+// --- real probe: protected-process PID reuse (CIM fallback) --------------------
+
+/** Pick a live PID of a protected system process (csrss.exe is PPL on every
+ * supported Windows): Get-Process lists it but .StartTime is null, which is
+ * exactly the shape a backend PID takes after reuse by a protected process. */
+function protectedSystemPid(): number | null {
+  const output = execFileSync('tasklist', ['/FI', 'IMAGENAME eq csrss.exe', '/FO', 'CSV', '/NH'], {
+    encoding: 'utf8',
+    timeout: 15_000
+  })
+  const row = output
+    .split('\n')
+    .map(line => /^"csrss\.exe","(\d+)"/.exec(line.trim()))
+    .find(Boolean)
+
+  return row ? Number(row[1]) : null
+}
+
+test.runIf(process.platform === 'win32')(
+  'a live PID whose StartTime is unreadable still resolves a start marker instead of throwing',
+  async () => {
+    const pid = protectedSystemPid()
+
+    if (pid === null) {
+      return // No csrss on this host (e.g. a stripped-down Windows flavor); nothing to probe.
+    }
+
+    // Before the CIM fallback this rejected with PowerShell exit 1
+    // (InvokeMethodOnNull on $p.StartTime), which recover-account rethrew as
+    // a non-ESRCH failure and blocked login recovery on every launch.
+    const marker = await processStartMarker(pid, 30_000)
+
+    assert.match(marker, /^win:\d+$/)
+  }
+)
 
 // --- PID-only marker helpers --------------------------------------------------
 

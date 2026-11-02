@@ -436,10 +436,10 @@ export function completionHint(hint: string | undefined): string | undefined {
   return isBrowserShell() && hint ? (COMPLETION_HINTS_ZH[hint] ?? hint) : hint
 }
 
-/** The title of a session that has none yet (lib/chat-runtime.ts NEW_SESSION_TITLE),
- * English on the desktop in every language. */
+/** Empty session titles follow the active locale on desktop as well as web. */
 export function newSessionTitle(english: string): string {
-  return isBrowserShell() ? '新建会话' : english
+  const locale = getRuntimeI18nLocale()
+  return locale === 'zh-hant' ? '新對話' : locale === 'zh' || isBrowserShell() ? '新对话' : english
 }
 
 /** The reasoning-effort pill's short labels (lib/reasoning-effort.ts), English on the

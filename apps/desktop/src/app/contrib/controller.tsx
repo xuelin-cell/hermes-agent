@@ -97,7 +97,6 @@ import {
 } from '@/store/session'
 import { watchSessionPins } from '@/store/session-pin-sync'
 import { $botChatScopes } from '@/store/session-states'
-import { watchUnreadWriteGuard } from '@/store/session-unread-remote'
 import { $statusbarVisible } from '@/store/statusbar-prefs'
 import { isBrowserWindow, isHudWindow } from '@/store/windows'
 import { $selectedWorkspaceMode } from '@/store/workspace-category'
@@ -501,9 +500,6 @@ if (!isBrowserWindow() && !isHudWindow()) {
 // Mirror sidebar pins into the backend keep-flag so the auto-archive sweep
 // never hides a pinned chat (and pre-existing pins migrate transparently).
 watchSessionPins()
-
-// Release unread-write guards once a list page confirms the value we wrote.
-watchUnreadWriteGuard()
 
 // The main tab reads as its SESSION (the loaded title, "New session" on a
 // fresh draft) — a stack of main + tiles is then just a row of session names.

@@ -3,7 +3,7 @@ import { expect, it, vi } from 'vitest'
 const { quit, showMessageBox } = vi.hoisted(() => ({ quit: vi.fn(), showMessageBox: vi.fn() }))
 vi.mock('electron', () => ({ app: { quit }, dialog: { showMessageBox } }))
 
-import { LocalStartupError, showLocalStartupFailure } from './startup-failure'
+import { describeLocalStartupFailure, LocalStartupError, showLocalStartupFailure } from './startup-failure'
 
 it('各阶段只显示安全说明，嵌套磁盘和权限错误提供下一步，不回显敏感原文', () => {
   for (const stage of ['directory', 'config', 'credentials', 'runtime', 'backend'] as const) {
@@ -23,6 +23,26 @@ it('各阶段只显示安全说明，嵌套磁盘和权限错误提供下一步�
     '释放空间'
   )
   expect(new LocalStartupError('backend', new Error('private-path: permission denied')).message).toContain('访问权限')
+
+  const cause = new TypeError('private-token private-key')
+  cause.stack = 'TypeError: private-token\n    at run (file:///private-account/electron-main.mjs:123:45)'
+  const diagnostic = JSON.stringify(describeLocalStartupFailure(new LocalStartupError('runtime', cause)))
+  expect(diagnostic).toContain('TypeError')
+  expect(diagnostic).toContain('main.mjs:123:45')
+  expect(diagnostic).not.toMatch(/private|file:/)
+
+  const subprocess = JSON.stringify(
+    describeLocalStartupFailure(
+      new Error('private', {
+        cause:
+          'Traceback (most recent call last):\n  File "/private-account/configure.py", line 42, in apply\nValueError: private-key private-token'
+      })
+    )
+  )
+
+  expect(subprocess).toContain('ValueError')
+  expect(subprocess).toContain('configure.py:42')
+  expect(subprocess).not.toContain('private')
 })
 
 it('并发失败只弹一个退出提示，点击前不退出，点击后正常退出而不提供重试', async () => {

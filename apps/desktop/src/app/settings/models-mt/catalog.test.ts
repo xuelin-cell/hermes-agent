@@ -168,3 +168,13 @@ describe('models-mt catalog', () => {
     expect(prettifyModelId('qwen/qwen3-235b-a22b:free')).toBe('Qwen3 235B A22B (free)')
   })
 })
+
+it('round trips thinking and all input modalities without storing the API key in metadata', () => {
+  const [row] = rowsFromEndpoints([gpt])
+  const draft = { ...row.draft, thinking: 'off' as const, modalities: ['audio', 'pdf'], apiKey: 'secret' }
+  const patch = configPatch([{ endpointId: row.endpointId, write: endpointWrite({ ...row, draft }) }])!
+  const [restored] = rowsFromEndpoints([gpt], patch.providers)
+  expect(restored.draft.thinking).toBe(draft.thinking)
+  expect(restored.draft.modalities).toEqual(draft.modalities)
+  expect(JSON.stringify(patch)).not.toContain(draft.apiKey)
+})

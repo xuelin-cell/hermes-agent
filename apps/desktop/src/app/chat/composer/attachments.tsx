@@ -23,7 +23,7 @@ export function AttachmentList({
   onRemove?: (id: string) => void
 }) {
   return (
-    <div className="flex max-w-full flex-wrap gap-1.5 px-1 pt-1" data-slot="composer-attachments">
+    <div className="flex max-w-full flex-wrap gap-2 px-1 pt-1.5" data-slot="composer-attachments">
       {attachments.filter(Boolean).map(attachment => (
         <AttachmentPill
           attachment={attachment}
@@ -153,21 +153,21 @@ function AttachmentPill({ attachment, onRemove }: { attachment: ComposerAttachme
             : attachment.path || attachment.detail || attachment.label
         }
       >
-        <div className="group/attachment relative w-56 min-w-0 max-w-full shrink-0">
+        <div className="group/attachment relative w-60 min-w-0 max-w-full shrink-0">
           <button
             aria-busy={isUploading || undefined}
             aria-label={canPreview ? c.previewLabel(attachment.label) : attachment.label}
             className={cn(
-              'flex w-full items-center gap-2 rounded-2xl border bg-background/50 px-2 py-1.5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] transition-colors disabled:cursor-default',
+              'flex h-full w-full items-center gap-2.5 rounded-xl border bg-background px-2.5 py-2 text-left transition-colors disabled:cursor-default',
               hasUploadError
-                ? 'border-destructive/45 hover:border-destructive/60'
-                : 'border-border/60 hover:border-primary/35 hover:bg-accent/45'
+                ? 'border-destructive/45 bg-destructive/5 hover:border-destructive/60'
+                : 'border-(--ui-stroke-tertiary) enabled:hover:border-(--ui-stroke-secondary) enabled:hover:bg-(--chrome-action-hover)'
             )}
             disabled={!canPreview}
             onClick={() => void openAttachment()}
             type="button"
           >
-            <span className="relative grid size-8 shrink-0 place-items-center overflow-hidden rounded-lg border border-border/55 bg-muted/35 text-muted-foreground">
+            <span className="relative grid size-9 shrink-0 place-items-center overflow-hidden rounded-lg bg-muted/60 text-muted-foreground transition-colors group-hover/attachment:bg-background">
               {(attachment.thumbnailUrl || attachment.previewUrl) && attachment.kind === 'image' ? (
                 <img
                   alt={attachment.label}
@@ -176,28 +176,28 @@ function AttachmentPill({ attachment, onRemove }: { attachment: ComposerAttachme
                   src={attachment.thumbnailUrl ?? attachment.previewUrl}
                 />
               ) : (
-                <Icon className="size-3.5" />
+                <Icon className="size-4.5" />
               )}
               {isUploading && (
                 <span className="absolute inset-0 grid place-items-center bg-background/60 backdrop-blur-[1px]">
-                  <Loader2 className="size-3.5 animate-spin text-foreground/75" />
+                  <Loader2 className="size-4 animate-spin text-foreground/75" />
                 </span>
               )}
               {hasUploadError && (
                 <span className="absolute inset-0 grid place-items-center bg-destructive/15">
-                  <AlertCircle className="size-3.5 text-destructive" />
+                  <AlertCircle className="size-4 text-destructive" />
                 </span>
               )}
             </span>
-            <span className="min-w-0">
-              <span className="block truncate text-[0.72rem] font-medium leading-4 text-foreground/90">
+            <span className="min-w-0 flex-1">
+              <span className="line-clamp-2 text-[0.8125rem] font-medium leading-5 text-foreground wrap-anywhere">
                 {attachment.label}
               </span>
               {detail && (
                 <span
                   className={cn(
-                    'block truncate text-[0.62rem] leading-3.5',
-                    hasUploadError ? 'text-destructive/80' : 'text-muted-foreground/65'
+                    'mt-0.5 block truncate text-xs leading-4',
+                    hasUploadError ? 'text-destructive/80' : 'text-muted-foreground'
                   )}
                 >
                   {detail}
@@ -208,11 +208,11 @@ function AttachmentPill({ attachment, onRemove }: { attachment: ComposerAttachme
           {onRemove && (
             <button
               aria-label={c.removeAttachment(attachment.label)}
-              className="absolute -right-1 -top-1 grid size-3.5 place-items-center rounded-full border border-border/70 bg-background text-muted-foreground opacity-0 shadow-xs transition hover:bg-accent hover:text-foreground group-hover/attachment:opacity-100 focus-visible:opacity-100"
+              className="absolute -right-1.5 -top-1.5 grid size-5 place-items-center rounded-full border border-(--ui-stroke-secondary) bg-background text-muted-foreground opacity-0 shadow-xs transition hover:bg-(--chrome-action-hover) hover:text-foreground group-hover/attachment:opacity-100 focus-visible:opacity-100"
               onClick={() => onRemove(attachment.id)}
               type="button"
             >
-              <Codicon name="close" size="0.625rem" />
+              <Codicon name="close" size="0.75rem" />
             </button>
           )}
         </div>

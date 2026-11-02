@@ -2,6 +2,59 @@ import { app, type BrowserWindow, dialog } from 'electron'
 
 type StartupStage = 'directory' | 'config' | 'credentials' | 'runtime' | 'backend'
 
+/** Keep only exception kinds and bundled-code locations; never log messages or config text. */
+/** 只保留异常类型与代码位置，诊断不包含原始路径、配置或凭证。 */
+export function describeLocalStartupFailure(error: unknown): Record<string, unknown>[] {
+  const result: Record<string, unknown>[] = []
+
+  const kinds = new Set([
+    'Error',
+    'TypeError',
+    'ReferenceError',
+    'RangeError',
+    'SyntaxError',
+    'LocalStartupError',
+    'AbortError',
+    'TimeoutError'
+  ])
+
+  const codes = new Set(['ENOENT', 'EACCES', 'EPERM', 'EROFS', 'ENOSPC', 'EDQUOT', 'EPIPE', 'ETIMEDOUT', 'ENOEXEC'])
+  let current = error
+
+  for (let depth = 0; depth < 8 && current; depth++) {
+    if (typeof current === 'string') {
+      const python = current.match(/(?:^|\n)([A-Za-z]+(?:Error|Exception)):/)?.[1]
+
+      const locations = [...current.matchAll(/File "[^"\n]*[\\/]([a-z_]+\.py)", line (\d+)/g)]
+        .map(match => `${match[1]}:${match[2]}`)
+        .slice(-6)
+
+      result.push({ kind: 'subprocess', ...(python ? { python } : {}), locations })
+
+      break
+    }
+
+    if (typeof current !== 'object') {
+      break
+    }
+
+    const item = current as { name?: string; code?: string; stack?: string; cause?: unknown }
+
+    const locations = [...(item.stack ?? '').matchAll(/(?:electron-main|fixture|main)\.mjs:(\d+):(\d+)/g)]
+      .map(match => `main.mjs:${match[1]}:${match[2]}`)
+      .slice(0, 6)
+
+    result.push({
+      kind: kinds.has(item.name ?? '') ? item.name : 'unknown',
+      ...(codes.has(item.code ?? '') ? { code: item.code } : {}),
+      locations
+    })
+    current = item.cause
+  }
+
+  return result
+}
+
 const descriptions: Record<StartupStage, string> = {
   directory: '无法准备账号的本地存储空间。',
   config: '无法加载或保存账号配置。',
@@ -60,6 +113,7 @@ export function showLocalStartupFailure(error: LocalStartupError, parent?: Brows
   }
 
   reported = true
+  console.error('[desktop-startup] failure:', JSON.stringify(describeLocalStartupFailure(error)))
 
   const options: Electron.MessageBoxOptions = {
     type: 'error',

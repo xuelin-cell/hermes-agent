@@ -6,7 +6,7 @@ export interface ConfirmRequest {
   confirmLabel?: string
   busyLabel?: string
   doneLabel?: string
-  details?: { label: string; value: string }[]
+  details?: { label: string; value: string; expandLabel?: string }[]
   onConfirm?: () => Promise<void>
   cancelLabel?: string
   destructive?: boolean

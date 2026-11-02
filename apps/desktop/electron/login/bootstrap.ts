@@ -68,6 +68,14 @@ function initializeLoginShell(): void {
     .catch(error => {
       stopping = true
 
+      // 该弹窗文案是通用的；真实原因（权限/超时/探测失败）不落日志的话
+      // 现场无法事后定位，只能靠复现。
+      console.error(
+        '[account-recovery] failed:',
+        (error as NodeJS.ErrnoException)?.code ?? '',
+        error instanceof Error ? error.message : String(error)
+      )
+
       const advice =
         (error as NodeJS.ErrnoException)?.code === 'ETIMEDOUT'
           ? 'Windows 进程状态查询超时，请稍后重新启动应用。'
@@ -77,8 +85,11 @@ function initializeLoginShell(): void {
       app.quit()
     })
   accountRuntime = new LocalRuntimeContext(
-    new LoginSession(net.fetch, new CredentialStore(userData),
-      createUniAgentGateBindingUpdate(currentDesktopLocalContext)),
+    new LoginSession(
+      net.fetch,
+      new CredentialStore(userData),
+      createUniAgentGateBindingUpdate(currentDesktopLocalContext)
+    ),
     roots,
     installationRoot,
     process.env.HERMES_DESKTOP_PYTHON
@@ -168,7 +179,7 @@ async function openLoginWindow(): Promise<BrowserWindow | null> {
       const context = accountRuntime!.prepare()
       enableDesktopPlugins(context.home, ['desktop-deliverables'])
       installArtifactSharePlugin(context.home, app.getAppPath())
-      desktopStarting ??= startAccountDesktop(context)
+      desktopStarting ??= startAccountDesktop(context, currentDesktopIdentity)
         .then(() => {
           if (stopping || window.isDestroyed()) {
             return
@@ -223,6 +234,11 @@ export function currentDesktopAccount(): LoginAccount | null {
 /** 云盘只在主进程读取当前有效身份，不恢复旧 Web 凭据。 */
 export function currentDesktopIdentity() {
   return stopping ? null : (accountRuntime?.login.currentIdentity() ?? null)
+}
+
+/** 服务端指令要把重新拉到的套餐落盘，只用主进程里的登录会话。 */
+export function currentDesktopLogin() {
+  return stopping ? null : (accountRuntime?.login ?? null)
 }
 
 /** 实时识别只读取当前有效套餐的专用 Key，不交给页面。 */
