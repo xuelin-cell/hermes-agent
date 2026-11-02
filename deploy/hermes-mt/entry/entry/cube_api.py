@@ -443,6 +443,14 @@ class Cube:
         )
         return body if isinstance(body, dict) else {}
 
+    async def resume(self, sandbox_id: str, port: int, token: str) -> dict:
+        """Withdraw a completed/failed drain without replacing the volume owner."""
+        _, body = await self._tenant_req(
+            "POST", sandbox_id, port, "/__mt/resume",
+            json_body={}, timeout_s=240, extra_headers={"X-MT-Token": token},
+        )
+        return body if isinstance(body, dict) else {}
+
     async def wait_hermes(self, sandbox_id: str, port: int, timeout_s: float = 240) -> None:
         """等 hermes 真的能应答业务请求。
 

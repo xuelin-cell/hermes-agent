@@ -719,6 +719,8 @@ class TenantManager:
         """这次请求要不要动实例（没实例 / 实例没了 / 模板变了 / 引导没完成）。"""
         if not rt.sandbox_id or sb is None or str(sb.get("state")) in GONE_STATES:
             return True
+        if rt.lifecycle in {"draining", "drained", "deleting"}:
+            return True
         want = self._template_id()
         have = str(sb.get("templateID") or rt.template_id or "")
         if want and have and have != want:
@@ -734,7 +736,8 @@ class TenantManager:
         if sb is not None and str(sb.get("state")) in GONE_STATES:
             # 平台正在删它（异步删除的收尾）：等它真没了再按"没了"处理，免得新实例和它抢卷。
             log.info("tenant %s: 实例 %s 正在被平台删除（%s），等它消失", slug, sandbox_id[:12], sb.get("state"))
-            await self.cube.wait_gone(sandbox_id)
+            if not await self.cube.wait_gone(sandbox_id):
+                raise CubeError(503, "旧实例尚未删除完成，请稍后重试")
             sb = None
         if sb is None:
             # 平台侧已经没了（节点维护、被手工删掉…）。数据在卷上，重建即可。
@@ -743,6 +746,9 @@ class TenantManager:
             await self.store.set_sandbox_id(user_id, None)
             self.cube.forget_traffic_token(sandbox_id)
             return ""
+        if rt.lifecycle in {"draining", "drained", "deleting"}:
+            await self._resume_after_drain(user_id, sandbox_id, token)
+            return sandbox_id
         want = self._template_id()
         have = str(sb.get("templateID") or rt.template_id or "")
         if want and have and have != want:
@@ -884,6 +890,9 @@ class TenantManager:
         except CubeError:
             return sandbox_id, False
         if st.get("bootstrapped"):
+            if (st.get("state") or {}).get("phase") in {"drained", "drain_failed"}:
+                await self._resume_after_drain(user_id, sandbox_id, token)
+                return sandbox_id, True
             await self._adopt_bootstrapped(user_id, slug, sandbox_id, st)
             return sandbox_id, False
         rt = await self.store.get_runtime(user_id)
@@ -906,6 +915,22 @@ class TenantManager:
         await self.store.set_sandbox_id(user_id, None)
         return "", False
 
+    async def _resume_after_drain(self, user_id: str, sandbox_id: str, token: str) -> None:
+        """Recover the existing owner only; never create a second volume writer."""
+        sb = await self.cube.get_sandbox(sandbox_id)
+        if sb is None or str(sb.get("state")) in GONE_STATES:
+            raise SandboxGone(404, "实例已消失或正在删除，请重试以恢复")
+        status = await self.cube.status(sandbox_id, self.s.forward_port)
+        phase = (status.get("state") or {}).get("phase")
+        if phase in {"drained", "drain_failed"}:
+            await self.cube.resume(sandbox_id, self.s.forward_port, token)
+            await self.cube.wait_hermes(sandbox_id, self.s.forward_port, timeout_s=self.s.ready_timeout_s)
+        elif phase in {"draining", "fenced"} or status.get("draining") or status.get("hermes") is False:
+            raise CubeError(503, "实例仍在排空或已失去所有权，请稍后重试")
+        await self.store.set_tenant_state(user_id, "running")
+        await self.store.set_lifecycle(user_id, "")
+        await self.store.write_audit(user_id, "tenant.drain.resume", {"sandbox": sandbox_id})
+
     async def _drain_and_delete(self, user_id: str, sandbox_id: str, token: str, reason: str) -> bool:
         """停 hermes → 最终归档 → 记进 PG → 删实例 → 确认已消失。任何一步失败都不删。
 
@@ -919,7 +944,7 @@ class TenantManager:
             body = await self.cube.drain(sandbox_id, port, token)
         except CubeError as exc:
             log.warning("tenant %s: 排空实例 %s 失败: %s", slug, sandbox_id[:12], exc)
-            await self.store.set_lifecycle(user_id, "")
+            await self._resume_after_drain(user_id, sandbox_id, token)
             return False
         summary = body.get("archive") or {}
         await self.store.set_state_archive(user_id, str(summary.get("archive") or ""), summary)
@@ -934,7 +959,9 @@ class TenantManager:
             log.warning("tenant %s: 删实例 %s 失败: %s", slug, sandbox_id[:12], exc)
             gone = False
         if not gone:
-            # 删不干净不能建新的：两台实例会同写一个卷。留在 deleting，下次再试。
+            # Deletion failed: restore the existing owner, retaining its identity.
+            # If removal is still in progress, recovery refuses to start another writer.
+            await self._resume_after_drain(user_id, sandbox_id, token)
             return False
         await self.store.mark_sandbox_deleted(sandbox_id, reason)
         await self.store.set_sandbox_id(user_id, None)

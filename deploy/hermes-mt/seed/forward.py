@@ -601,6 +601,7 @@ async def _resume(writer: asyncio.StreamWriter) -> None:
         _supervisor_task = asyncio.create_task(_supervise())
     if _archiver_task is None or _archiver_task.done():
         _archiver_task = asyncio.create_task(_archiver(ARCHIVE_INTERVAL_S))
+    _connectors.draining(False)
     _state.phase = "ready"
     _reply(writer, 200, {"ok": True})
 
