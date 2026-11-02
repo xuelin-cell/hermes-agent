@@ -43,7 +43,7 @@ def retry_on_permission_error(
             wait = delay * (2 ** attempt)
             filename = getattr(e, "filename", "unknown")
             print(
-                f"⚠ {operation_name}: 文件被锁定（{filename}），"
+                f"[{operation_name}] 文件被锁定（{filename}），"
                 f"{wait:.1f}秒后重试（{attempt + 1}/{max_retries}）...",
                 flush=True,
             )
