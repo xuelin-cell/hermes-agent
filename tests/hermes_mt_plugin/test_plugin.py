@@ -270,6 +270,27 @@ def test_retries_keep_the_same_id_and_bridge_reads_are_skipped() -> None:
     assert _item(tool_name="tool_search") is None and _item(tool_name="tool_describe") is None
 
 
+def test_a_rejected_bridge_call_is_recorded_but_a_connector_batch_shell_is_not() -> None:
+    """tool_call 里一次塞了几个 MCP 工具：hermes 拒掉、一个都没执行，这一条是真失败，要记；connectors__ 连接器批量时
+    hermes 留着外壳，里面的调用各记一次，外壳那次不记。返回的样子都用 hermes 自己的函数造。"""
+    from tools.connectors.gateway.merge import assemble_results
+    from tools.registry import tool_error
+    from tools.tool_search import resolve_underlying_call
+
+    query = "mcp__uniwork_ent_demo_sales__query_sales"
+    batch = {"calls": [{"name": query, "arguments": {"region": region}} for region in ("华东", "华南", "西北")]}
+    _, _, err = resolve_underlying_call(batch)
+    entry = _item(tool_name="tool_call", args=batch, result=tool_error(err), status="error", error_message=err)
+    assert entry["tool"] == "tool_call" and entry["kind"] == "builtin" and entry["result"] == "error"
+    assert entry["error"].startswith("tool_call takes exactly one entry for local tools; you sent 3")
+
+    send = "connectors__mail__send"
+    ran = json.dumps(assemble_results(2, [{"index": 0, "name": send, "response": {"ok": True}},
+                                          {"index": 1, "name": send, "error": {"code": "TOOL_ERROR", "message": "x"}}]))
+    assert _item(tool_name="tool_call", args={"calls": [{"name": send, "arguments": {}}] * 2}, result=ran,
+                 status="error") is None
+
+
 class _Queue:
     def __init__(self):
         self.items = []

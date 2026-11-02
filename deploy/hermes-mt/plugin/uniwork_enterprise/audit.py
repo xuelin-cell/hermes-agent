@@ -22,8 +22,12 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 log = logging.getLogger("uniwork_enterprise")
 
-# 只是查工具目录（Tool Search 的桥），不是在用工具；tool_call 那个桥 hermes 会拆开，按真正的工具各记一次
+# 只是查工具目录（Tool Search 的桥），不是在用工具
 SKIP_TOOLS = frozenset({"tool_search", "tool_describe"})
+# Tool Search 用来调工具的桥。调一个工具时 hermes 拆开它、按真正的工具记；调 connectors__ 连接器时留着外壳
+# （agent/tool_executor.py _unwrap_tool_search_call），里面每个调用各记一次，外壳也会触发一次，返回的是批量结果
+# （{"results": [...]}），这一次不记。被 hermes 拒掉的（比如一次塞了几个 MCP 工具）一个都没执行，就记这一条。
+BRIDGE_CALL = "tool_call"
 SECRET_KEY_RE = re.compile(r"pass(word)?|token|secret|key|authorization|cookie|credential", re.I)
 # 平台的 CONTENT_FIELDS，加上 hermes 工具里放正文的参数（execute_code 的 code、write_file 的 content……）
 # 和交给协同 Agent 的任务（uniwork_call_agent 的 message）
@@ -142,11 +146,19 @@ def _exit_code(tool: str, result_text: str) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
+def _batch_ran(result: Any) -> bool:
+    try:
+        data = json.loads(result) if isinstance(result, (str, bytes)) else result
+    except ValueError:
+        return False
+    return isinstance(data, dict) and isinstance(data.get("results"), list)
+
+
 def item(*, tool_name: str, args: Any, result: Any, session: str, turn_id: str, tool_call_id: str = "",
          duration_ms: int = 0, status: str = "ok", error_message: str = "", now: datetime | None = None) -> dict | None:
-    """一次工具调用 → 平台的一条记录；不用记的（查工具目录的桥、没有工具名）回 None。"""
+    """一次工具调用 → 平台的一条记录；不用记的（查工具目录的桥、连接器批量的外壳、没有工具名）回 None。"""
     tool = str(tool_name or "")
-    if not tool or tool in SKIP_TOOLS:
+    if not tool or tool in SKIP_TOOLS or (tool == BRIDGE_CALL and _batch_ran(result)):
         return None
     text = _result_text(result)
     duration_ms = max(0, int(duration_ms or 0))
