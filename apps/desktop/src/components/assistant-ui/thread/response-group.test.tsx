@@ -155,7 +155,7 @@ it('collapses process parts while keeping the final text and whole-second durati
   expect(within(container).getByText('Preparing the report').closest('[hidden]')).toBeNull()
 })
 
-it('collapses earlier replies together only after a successful final reply', async () => {
+it('collapses earlier replies as answer text streams and keeps manual expansion available', async () => {
   const messages = toChatMessages([
     { role: 'user', content: 'Check the report', timestamp: 1 },
     { role: 'assistant', content: 'Checking sources', timestamp: 2 },
@@ -172,7 +172,11 @@ it('collapses earlier replies together only after a successful final reply', asy
 
   const { container, rerender } = render(renderThread({ type: 'running' }))
   const update = () => within(container).getByText('Checking sources')
+  await waitFor(() => expect(update().closest('[hidden]')).not.toBeNull())
+  expect(within(container).getByText('Full final answer').closest('[hidden]')).toBeNull()
+  fireEvent.click(container.querySelector('[data-slot="aui_process-summary"]')!)
   await waitFor(() => expect(update().closest('[hidden]')).toBeNull())
+  fireEvent.click(container.querySelector('[data-slot="aui_process-summary"]')!)
   rerender(renderThread({ type: 'complete', reason: 'stop' }))
   await waitFor(() => expect(update().closest('[hidden]')).not.toBeNull())
   expect(within(container).getByText('Full final answer').closest('[hidden]')).toBeNull()
@@ -181,4 +185,42 @@ it('collapses earlier replies together only after a successful final reply', asy
   fireEvent.click(container.querySelector('[data-slot="aui_process-summary"]')!)
   rerender(renderThread({ type: 'incomplete', reason: 'error' }))
   await waitFor(() => expect(update().closest('[hidden]')).toBeNull())
+})
+
+
+it('keeps active tools visible and collapses process parts when streamed answer text arrives', async () => {
+  const messages = toChatMessages([
+    { role: 'user', content: 'Analyze the report', timestamp: 1 },
+    { role: 'assistant', content: 'Checking sources', timestamp: 2 }
+  ] as SessionMessage[]).map(toRuntimeMessage)
+
+  const tool = { type: 'tool-call', toolCallId: 'check-report', toolName: 'terminal', args: { command: 'check' } }
+
+  const renderReply = (finished: boolean, resumesTools = false) => (
+    <ThreadRuntime messages={[messages[0]!, {
+      ...messages[1]!,
+      status: { type: 'running' },
+      content: [
+        { type: 'text', text: 'Checking sources' },
+        { ...tool, ...(finished ? { result: 'done' } : {}) },
+        ...(finished ? [{ type: 'text', text: 'The main conclusion is' }] : []),
+        ...(resumesTools ? [{ ...tool, toolCallId: 'verify-again' }] : [])
+      ]
+    } as ThreadMessage]}>
+      <Thread />
+    </ThreadRuntime>
+  )
+
+  const { container, rerender } = render(renderReply(false))
+  const process = () => within(container).getByText('Checking sources')
+  expect(process().closest('[hidden]')).toBeNull()
+  expect(container.querySelector('[data-slot="aui_process-summary"]')).toBeNull()
+  rerender(renderReply(true))
+  await waitFor(() => expect(process().closest('[hidden]')).not.toBeNull())
+  expect(within(container).getByText('The main conclusion is').closest('[hidden]')).toBeNull()
+  fireEvent.click(container.querySelector('[data-slot="aui_process-summary"]')!)
+  expect(process().closest('[hidden]')).toBeNull()
+  fireEvent.click(container.querySelector('[data-slot="aui_process-summary"]')!)
+  rerender(renderReply(true, true))
+  await waitFor(() => expect(process().closest('[hidden]')).toBeNull())
 })

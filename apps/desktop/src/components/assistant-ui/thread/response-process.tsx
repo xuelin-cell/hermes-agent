@@ -64,6 +64,15 @@ export function ResponseProcess({ indices, components }: ResponseProcessProps) {
 
     return JSON.stringify({
       live: live || last?.status?.type === 'running',
+      presentingAnswer:
+        last?.role === 'assistant' &&
+        last.metadata?.custom?.interim !== true &&
+        last.status?.type === 'running' &&
+        last.content.at(-1)?.type === 'text' &&
+        contentHasVisibleText(last.content) &&
+        indices.every(index => s.thread.messages[index]?.content.every(part =>
+          part.type !== 'tool-call' || part.result !== undefined || part.isError
+        )),
       completed:
         last?.role === 'assistant' &&
         last.metadata?.custom?.interim !== true &&
@@ -75,13 +84,14 @@ export function ResponseProcess({ indices, components }: ResponseProcessProps) {
     })
   })
 
-  const state = JSON.parse(signature) as { live: boolean; completed: boolean; hasParts: boolean; seconds?: number }
+  const state = JSON.parse(signature) as { live: boolean; presentingAnswer: boolean; completed: boolean; hasParts: boolean; seconds?: number }
 
   const duration = responseDurationParts(state.seconds ?? 0)
 
-  const collapsible = !state.live && state.completed && (indices.length > 1 || state.hasParts)
+  const collapsible = (state.presentingAnswer || (!state.live && state.completed)) && (indices.length > 1 || state.hasParts)
   const processVisible = !collapsible || expanded
-  const label = state.seconds !== undefined
+
+  const label = !state.live && state.seconds !== undefined
     ? copy('duration', copy('time', duration.hours, duration.minutes, duration.seconds))
     : copy('process')
 
