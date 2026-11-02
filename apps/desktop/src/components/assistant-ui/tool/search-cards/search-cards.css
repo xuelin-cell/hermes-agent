@@ -1,0 +1,368 @@
+.search-cards .vrcard-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 6px 6px 10px;
+}
+
+.search-cards .vrcard {
+  background: transparent;
+  border: 1px solid var(--ui-stroke-tertiary);
+  border-radius: var(--control-radius);
+  padding: 12px;
+  font-size: var(--conversation-tool-font-size);
+}
+
+.search-cards .vrcard-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.search-cards .vrcard-title {
+  font-weight: 600;
+  color: var(--ui-text-primary);
+  font-size: 14px;
+}
+
+.search-cards .vrcard-sub {
+  color: var(--ui-text-tertiary);
+  font-size: var(--conversation-caption-font-size);
+}
+
+.search-cards .vrcard-tag {
+  padding: 1px 6px;
+  background: var(--ui-accent);
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--ui-text-tertiary);
+  line-height: 1.4;
+}
+
+/* Weather V2: 今日大字 + emoji + 紧凑后续天 grid */
+
+.search-cards .vrcard-weather-today {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.search-cards .vrcard-weather-emoji {
+  font-size: 36px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.search-cards .vrcard-weather-today-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.search-cards .vrcard-weather-today-temp {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--ui-text-primary);
+  line-height: 1.2;
+}
+
+.search-cards .vrcard-weather-today-desc {
+  font-size: var(--conversation-tool-font-size);
+  color: var(--ui-text-tertiary);
+}
+
+.search-cards .vrcard-weather-today-extra {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: var(--conversation-caption-font-size);
+  color: var(--ui-text-tertiary);
+  margin-bottom: 10px;
+}
+
+.search-cards .vrcard-weather-rest {
+  border-top: 1px solid var(--ui-stroke-tertiary);
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.search-cards .vrcard-weather-rest-row {
+  display: grid;
+  grid-template-columns: minmax(80px, auto) 24px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--conversation-tool-font-size);
+  padding: 3px 0;
+}
+
+.search-cards .vrcard-weather-rest-date {
+  color: var(--ui-text-tertiary);
+  font-size: var(--conversation-caption-font-size);
+}
+
+.search-cards .vrcard-weather-rest-emoji {
+  font-size: 16px;
+  line-height: 1;
+  text-align: center;
+}
+
+.search-cards .vrcard-weather-rest-desc {
+  color: var(--ui-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-cards .vrcard-weather-rest-temp {
+  color: var(--ui-text-primary);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.search-cards .vrcard-weather-forbidden {
+  margin-top: 8px;
+  padding: 4px 8px;
+  background: var(--ui-accent);
+  border-radius: 4px;
+  font-size: var(--conversation-caption-font-size);
+  color: var(--ui-text-tertiary);
+  display: inline-block;
+}
+
+/* Train */
+
+.search-cards .vrcard-train .vrcard-train-row + .vrcard-train-row {
+  border-top: 1px solid var(--ui-stroke-tertiary);
+  padding-top: 10px;
+  margin-top: 10px;
+}
+
+.search-cards .vrcard-train-num {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.search-cards .vrcard-train-emoji {
+  font-size: 20px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.search-cards .vrcard-train-route {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.search-cards .vrcard-train-end {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 80px;
+}
+
+.search-cards .vrcard-train-time {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ui-text-primary);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.search-cards .vrcard-train-station {
+  font-size: var(--conversation-caption-font-size);
+  color: var(--ui-text-tertiary);
+}
+
+.search-cards .vrcard-train-arrow {
+  font-size: 16px;
+  color: var(--ui-text-tertiary);
+  flex-shrink: 0;
+}
+
+.search-cards .vrcard-train-meta {
+  display: flex;
+  gap: 14px;
+  font-size: var(--conversation-caption-font-size);
+  color: var(--ui-text-tertiary);
+}
+
+/* Quote (gold / exchangerate) 复用 .vrcard-stock-* 样式, 这里只加 quote 特有的 */
+.search-cards .vrcard-quote .vrcard-stock-price {
+  /* 跟 stock 卡完全一致, 不需要额外样式 */
+}
+
+/* Stock */
+
+.search-cards .vrcard-stock-item:not(:first-child) {
+  border-top: 1px solid var(--ui-stroke-tertiary);
+  padding-top: 12px;
+  margin-top: 12px;
+}
+
+.search-cards .vrcard-stock-price {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 6px 0;
+}
+
+.search-cards .vrcard-stock-num {
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.search-cards .vrcard-stock-diff {
+  font-size: var(--conversation-tool-font-size);
+  font-weight: 500;
+}
+
+.search-cards .vrcard-stock-up {
+  color: var(--ui-red); /* 红 = 涨 (中国习惯) */
+}
+
+.search-cards .vrcard-stock-down {
+  color: var(--ui-green); /* 绿 = 跌 */
+}
+
+.search-cards .vrcard-stock-draw {
+  color: var(--ui-text-tertiary);
+}
+
+.search-cards .vrcard-stock-range {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: var(--conversation-caption-font-size);
+  color: var(--ui-text-tertiary);
+}
+
+.search-cards .vrcard-stock-time {
+  margin-left: auto;
+}
+
+/* Quote — gold quote / exchangerate. 单 quote 复用 stock 视觉, 多 quote 分行. */
+
+.search-cards .vrcard-quote-row + .vrcard-quote-row {
+  border-top: 1px solid var(--ui-stroke-tertiary);
+  padding-top: 10px;
+  margin-top: 10px;
+}
+
+.search-cards .vrcard-quote-label {
+  font-size: var(--conversation-caption-font-size);
+  color: var(--ui-text-tertiary);
+  margin-bottom: 2px;
+}
+
+.search-cards .vrcard-quote-unit {
+  font-size: var(--conversation-caption-font-size);
+  color: var(--ui-text-tertiary);
+  margin-left: -6px; /* 紧贴大字数字, 不占额外间距 */
+}
+
+/* Gold merchant — 多商家 (金店 / 银行) 紧凑列表 */
+
+.search-cards .vrcard-merchant-group + .vrcard-merchant-group {
+  border-top: 1px solid var(--ui-stroke-tertiary);
+  padding-top: 10px;
+  margin-top: 10px;
+}
+
+.search-cards .vrcard-merchant-group-type {
+  font-size: var(--conversation-caption-font-size);
+  font-weight: 600;
+  color: var(--ui-text-secondary);
+  margin-bottom: 6px;
+}
+
+.search-cards .vrcard-merchant-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.search-cards .vrcard-merchant-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: var(--conversation-tool-font-size);
+}
+
+.search-cards .vrcard-merchant-brand {
+  color: var(--ui-text-primary);
+  flex-shrink: 0;
+  min-width: 80px;
+}
+
+.search-cards .vrcard-merchant-product {
+  color: var(--ui-text-tertiary);
+  font-size: var(--conversation-caption-font-size);
+  flex-grow: 1;
+}
+
+.search-cards .vrcard-merchant-price {
+  color: var(--ui-text-primary);
+  font-weight: 500;
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Train stops list (新加, train 单车次时刻表细节) */
+
+.search-cards .vrcard-train-stops {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--ui-stroke-tertiary);
+}
+
+.search-cards .vrcard-train-stop {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: var(--conversation-caption-font-size);
+}
+
+.search-cards .vrcard-train-stop-name {
+  color: var(--ui-text-primary);
+  min-width: 70px;
+  flex-shrink: 0;
+}
+
+.search-cards .vrcard-train-stop-times {
+  display: flex;
+  gap: 8px;
+  color: var(--ui-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.search-cards .vrcard-train-stop-more {
+  color: var(--ui-text-tertiary);
+  font-style: italic;
+  justify-content: center;
+}
+
+.search-cards.vrcard-list {
+  min-width: 0;
+  max-width: 100%;
+  margin: 0.5rem 0;
+}
+.search-cards .vrcard {
+  overflow-wrap: anywhere;
+}
+
+.search-cards.vrcard-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}

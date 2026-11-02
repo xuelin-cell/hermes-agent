@@ -1,3 +1,4 @@
+import { SearchLinks } from './search-links'
 'use client'
 
 import { type ToolCallMessagePartProps, useAuiState } from '@assistant-ui/react'
@@ -42,7 +43,7 @@ import { GlyphSpinner } from '@/components/ui/glyph-spinner'
 import { ToolIcon } from '@/components/ui/tool-icon'
 import { useI18n } from '@/i18n'
 import { connectorCalls, mcpTargets } from '@/lib/connector-tools'
-import { PrettyLink, LinkifiedText as SharedLinkifiedText, urlSlugTitleLabel } from '@/lib/external-link'
+import { LinkifiedText as SharedLinkifiedText } from '@/lib/external-link'
 import { AlertCircle, CheckCircle2 } from '@/lib/icons'
 import { isOnboardingEnabled } from '@/lib/onboarding-enabled'
 import { toolResultRecord } from '@/lib/tool-result-metadata'
@@ -73,7 +74,6 @@ import {
   isFileEditTool,
   isPreviewableTarget,
   looksRedundant,
-  type SearchResultRow,
   selectMessageRunning,
   stripInlineDiffChrome,
   toolCopyPayload,
@@ -84,6 +84,8 @@ import {
 } from './fallback-model'
 import { isToolCallPart, summarizeToolRun } from './run-summary'
 import { ToolRunTicker } from './run-ticker'
+import { webProviderLabel } from './search-cards/provider'
+import { InlineSearchCardsVisible, SearchCardResults } from './search-cards/results'
 import { useToolTurnStillRunning } from './turn-still-running'
 
 // `true` when a ToolEntry is rendered inside an embedding wrapper that owns
@@ -270,32 +272,6 @@ function leadingStatus(isPending: boolean, status: ToolStatus): ToolStatus | und
   return status === 'success' || status === 'notice' ? undefined : status
 }
 
-function SearchResultsList({ hits }: { hits: SearchResultRow[] }) {
-  return (
-    <ol className="m-0 grid list-none gap-2.5 p-0">
-      {hits.map((hit, index) => {
-        const key = `${hit.url || hit.title}-${index}`
-        const trimmedTitle = hit.title.trim()
-
-        return (
-          <li className="grid min-w-0 gap-0.5" key={key}>
-            {hit.url ? (
-              <PrettyLink
-                className={cn(SEARCH_HIT_TITLE_CLASS, 'block max-w-full')}
-                fallbackLabel={trimmedTitle || urlSlugTitleLabel(hit.url)}
-                href={hit.url}
-                label={trimmedTitle || undefined}
-              />
-            ) : (
-              <span className={SEARCH_HIT_TITLE_CLASS}>{trimmedTitle}</span>
-            )}
-            {hit.snippet && <p className={cn(TOOL_HEADER_SUBTITLE_CLASS, 'm-0 line-clamp-3')}>{hit.snippet}</p>}
-          </li>
-        )
-      })}
-    </ol>
-  )
-}
 
 function LinkifiedText({ className, text }: { className?: string; text: string }) {
   return <SharedLinkifiedText className={className} pretty text={cleanVisibleText(text)} />
@@ -398,6 +374,12 @@ function ToolEntry({ part }: ToolEntryProps) {
   // so they paint statically without a settle cascade. The wrapping group
   // handles its own enter animation, so embedded children skip it.
   const enterRef = useEnterAnimation(messageRunning && !embedded, `tool-entry:${disclosureId}`)
+
+  const providerLabel =
+    toolName === 'web_extract'
+      ? webProviderLabel(result) || webProviderLabel({ provider: (args as Record<string, unknown>)?._web_provider })
+      : null
+
   const executionFinishedAt = toolResultMetadata?.execution_finished_at
   const elapsed = useElapsedSeconds(isPending && executionFinishedAt === undefined, `tool:${disclosureId}`)
 
@@ -622,6 +604,14 @@ function ToolEntry({ part }: ToolEntryProps) {
               title={view.title}
               titleAction={view.titleAction}
             />
+            {providerLabel && (
+              <span
+                className="shrink-0 rounded bg-(--ui-bg-secondary) px-1.5 py-0.5 text-[0.625rem] text-(--ui-text-secondary)"
+                data-web-provider=""
+              >
+                {providerLabel}
+              </span>
+            )}
             {!isPending && view.countLabel && (
               <span className={cn(SCAFFOLD_META_CLASS, memoryMetaClass)}>{view.countLabel}</span>
             )}
@@ -641,6 +631,7 @@ function ToolEntry({ part }: ToolEntryProps) {
           </span>
         </DisclosureRow>
       </div>
+      {part.toolName === 'web_search' && <SearchCardResults results={[part.result]} />}
       {open && (
         <div className="relative grid w-full min-w-0 max-w-full gap-1.5 overflow-hidden p-1.5">
           {copyAction.text && (
@@ -672,7 +663,7 @@ function ToolEntry({ part }: ToolEntryProps) {
                 </p>
               )}
               {searchResultsLabel && <p className={TOOL_SECTION_LABEL_CLASS}>{searchResultsLabel}</p>}
-              <SearchResultsList hits={view.searchHits} />
+              <SearchLinks hits={view.searchHits} />
             </div>
           )}
           {showInlineDiff && (
@@ -847,7 +838,8 @@ function ToolRunHeader({
   onToggle,
   open,
   startedAt,
-  summary
+  summary,
+  providers = []
 }: {
   completedAt?: number
   live: boolean
@@ -855,6 +847,7 @@ function ToolRunHeader({
   open: boolean
   startedAt?: number
   summary: string
+  providers?: readonly string[]
 }) {
   return (
     <div data-conversation-scaffold="" data-tool-summary="">
@@ -866,12 +859,19 @@ function ToolRunHeader({
         <FadeText className={cn(SCAFFOLD_LABEL_CLASS, 'truncate')}>
           {live ? <span className="shimmer">{summary}</span> : summary}
         </FadeText>
+        {providers.map(provider => (
+          <span className="shrink-0 text-[0.625rem] text-(--ui-text-secondary)" data-web-provider="" key={provider}>
+            {provider}
+          </span>
+        ))}
       </ScaffoldRow>
     </div>
   )
 }
 
 interface ToolRunState {
+  providers: readonly string[]
+  searchResults: readonly unknown[]
   approvalActivity: boolean
   completedAt?: number
   count: number
@@ -954,6 +954,19 @@ function useToolRun(startIndex: number, endIndex: number): ToolRunState {
             undefined
           ),
           count: tools.length,
+          searchResults: tools.filter(t => t.toolName === 'web_search').map(t => t.result),
+          providers: [
+            ...new Set(
+              tools
+                .filter(t => t.toolName === 'web_extract')
+                .map(
+                  t =>
+                    webProviderLabel(t.result) ||
+                    webProviderLabel({ provider: (t.args as Record<string, unknown>)?._web_provider })
+                )
+                .filter((label): label is string => !!label)
+            )
+          ],
           approvalActivity: tools.length > 0 && tools.every(isApprovalActivity),
           entryIds: tools.map(tool => toolEntryDisclosureId(state.message.id, tool)),
           key: `${state.message.id}:${tools[0]?.toolCallId ?? ''}`,
@@ -997,10 +1010,8 @@ const ToolRun: FC<PropsWithChildren<{ endIndex: number; startIndex: number }>> =
 }) => {
   const messageRunning = useAuiState(selectMessageRunning)
 
-  const { completedAt, count, entryIds, key, live, startedAt, summary, approvalActivity } = useToolRun(
-    startIndex,
-    endIndex
-  )
+  const { completedAt, count, entryIds, key, live, startedAt, summary, approvalActivity, searchResults, providers } =
+    useToolRun(startIndex, endIndex)
 
   const sessionId = useStore(useSessionView().$runtimeId)
   const approval = useStore(useMemo(() => sessionApprovalRequest(sessionId), [sessionId]))
@@ -1036,11 +1047,17 @@ const ToolRun: FC<PropsWithChildren<{ endIndex: number; startIndex: number }>> =
             live={live}
             onToggle={() => setToolDisclosureOpen(disclosureId, !expanded)}
             open={expanded}
+            providers={providers}
             startedAt={startedAt}
             summary={summary}
           />
         )}
-        {count > 1 && live && !expanded && <ToolRunTicker>{children}</ToolRunTicker>}
+        {count > 1 && live && !expanded && (
+          <InlineSearchCardsVisible.Provider value={false}>
+            <ToolRunTicker>{children}</ToolRunTicker>
+          </InlineSearchCardsVisible.Provider>
+        )}
+        {!expanded && <SearchCardResults results={searchResults} />}
         {expanded && <div className="grid min-w-0 max-w-full gap-(--tool-row-gap)">{children}</div>}
       </motion.div>
     </ToolRunDisclosureContext.Provider>

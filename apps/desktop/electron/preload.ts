@@ -9,6 +9,7 @@ import type { HudModifierApi, HudModifierStatus } from './hud-modifier-types'
 import type { CloudDriveMutationProgress, CloudDriveRequest, CloudDriveTransferProgress, CloudDriveTransferRequest } from './login/contract'
 import { maskMcpSecrets, restoreMcpSecrets } from './mcp-secrets'
 import { CONNECTOR_CHANNEL, type LocalConnectorRequest } from './open-connector/contract'
+import type { SessionListSnapshot } from './session-list-snapshot-contract'
 import { ASR_CHANNEL } from './uniwork-asr/contract'
 import {
   NTFY_EVENT_CHANNEL,
@@ -419,6 +420,10 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     logout: () => ipcRenderer.invoke('hermes:cloud:logout'),
     discover: org => ipcRenderer.invoke('hermes:cloud:discover', org),
     agentSignIn: dashboardUrl => ipcRenderer.invoke('hermes:cloud:agent-sign-in', dashboardUrl)
+  },
+  sessionListSnapshot: {
+    read: (profile: string) => ipcRenderer.invoke('hermes:sessions:snapshot:read', profile),
+    write: (profile: string, snapshot: SessionListSnapshot) => ipcRenderer.invoke('hermes:sessions:snapshot:write', profile, snapshot)
   },
   profile: {
     getDefault: () => ipcRenderer.invoke('hermes:profile:default:get'),

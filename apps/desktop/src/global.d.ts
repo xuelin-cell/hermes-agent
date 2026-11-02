@@ -18,10 +18,11 @@ import type {
   LoginAccount
 } from '../electron/login/contract'
 import type { MachineProfile } from '../electron/machine-profile'
-import type { LocalConnectorRequest, LocalConnectorResult } from '../electron/open-connector/contract'
 import type { HermesNotification } from '../electron/notification-types'
+import type { LocalConnectorRequest, LocalConnectorResult } from '../electron/open-connector/contract'
 import type { PoolLimits } from '../electron/pool-limits'
 import type { PreviewExport, PreviewExportResult } from '../electron/preview-export'
+import type { SessionListSnapshot } from '../electron/session-list-snapshot-contract'
 import type { UniworkAsrBridge } from '../electron/uniwork-asr/contract'
 import type { NtfyEvent, NtfyRefreshResult, NtfyStatus } from '../electron/uniwork-notify/contract'
 import type { PlanSubscriptionResult, PlanUsageResult } from '../electron/uniwork-usage/contract'
@@ -36,6 +37,7 @@ import type {
   PetOverlayStatePayload
 } from './store/pet-overlay'
 import type { QuickEntryStatePush, QuickEntryStatus, QuickEntrySubmitPayload } from './store/quick-entry'
+import type { SessionInfo } from './types/hermes'
 
 export {}
 
@@ -314,6 +316,10 @@ declare global {
         logout: () => Promise<DesktopCloudStatus & { ok: boolean }>
         discover: (org?: string) => Promise<DesktopCloudDiscoverResult>
         agentSignIn: (dashboardUrl: string) => Promise<DesktopCloudAgentSignInResult>
+      }
+      sessionListSnapshot?: {
+        read: (profile: string) => Promise<SessionListSnapshot<SessionInfo>>
+        write: (profile: string, snapshot: SessionListSnapshot<SessionInfo>) => Promise<void>
       }
       profile: {
         getDefault: () => Promise<DesktopProfileRoute | null>
@@ -776,7 +782,8 @@ export interface DesktopSyncReceipt {
 }
 
 export interface DesktopVersionInfo {
-  /** Packaged client version, or the runtime version for source installs. */
+  /** The client's own release: the packaged version, or the package version for
+   *  source installs (the runtime version only when that is unknown). */
   appVersion: string
   /** Fixed release identity. Commit builds have no update channel. */
   channel?: string | null

@@ -20,6 +20,7 @@ import {
 } from '@/store/layout'
 import { messagingTotalsKey, normalizeProfileKey, sidebarProfileForScope } from '@/store/profile'
 import {
+  $connection,
   $messagingSessions,
   $selectedStoredSessionId,
   $sessions,
@@ -181,6 +182,26 @@ export function useSessionListActions({ profileScope, recentsProfileScope = prof
     profileScopeRef.current = profileScope
     recentsProfileScopeRef.current = recentsProfileScope
   }, [profileScope, recentsProfileScope])
+
+  // Paint the last successful list while Python is still starting. The main
+  // process resolves the account/window owner without waiting for the backend.
+  useEffect(() => {
+    const cache = window.hermesDesktop?.sessionListSnapshot
+
+    if (!cache || $connection.get() || $sessions.get().length) {
+      return
+    }
+
+    let cancelled = false
+    const epoch = gatewayActivationEpoch()
+    void cache.read(sidebarProfileForScope(recentsProfileScope)).then(snapshot => {
+      if (!cancelled && gatewayActivationEpoch() === epoch && !$connection.get() && !$sessions.get().length) {
+        setSessions(dropTombstoned(snapshot.rows))
+      }
+    }).catch(error => console.warn('Unable to restore session list snapshot', error))
+
+    return () => { cancelled = true }
+  }, [recentsProfileScope])
 
   /** Refresh the active profile's messaging-platform sidebar slice. */
   const refreshMessagingSessions = useCallback(async () => {
@@ -479,6 +500,17 @@ export function useSessionListActions({ profileScope, recentsProfileScope = prof
               ? prev
               : next
           })
+
+          const cache = window.hermesDesktop?.sessionListSnapshot
+
+          if (cache && !recentsErrors?.length) {
+            const rows = $sessions.get().slice(0, 100)
+            void cache.read(recentsProfile).then(snapshot => {
+              if (owns()) {
+                return cache.write(recentsProfile, { scope: snapshot.scope, rows })
+              }
+            }).catch(error => console.warn('Unable to persist session list snapshot', error))
+          }
 
           // Cron section: latest N cron sessions (kept so a pinned cron run still
           // resolves via sessionByAnyId), signature-gated like above. The

@@ -336,8 +336,11 @@ stt-whisper = [
   "faster-whisper==1.2.1; (platform_machine != 'ARM64' or sys_platform != 'win32') and (platform_machine != 'x86_64' or platform_system != 'Darwin')",
 ]
 audio-io = ["sounddevice==0.5.5", "numpy==2.4.3"]
-# WeChat voice decode (tools/transcription_tools.py self-heal path).
-silk = ["pilk==0.2.4"]
+# WeChat voice decode (tools/silk_audio.py self-heal path). silk-python ships
+# prebuilt wheels for every supported CPython; pilk only published up to 3.11,
+# so on 3.14 it forced a source build (and a local C compiler). Floor stays at
+# 0.2.8: 0.2.9 is still inside the exclude-newer quarantine.
+silk = ["silk-python>=0.2.8,<0.4"]
 # Wake-engine sub-extras — lazy per-engine installs so a user who only wants
 # sherpa-onnx doesn't pull the whole [wake] bundle. Pins match [wake].
 wake-openwakeword = [
@@ -579,7 +582,9 @@ hermes-acp = "acp_adapter.entry:main"
 # desktop-mt: elevenlabs (tts-premium) and mistralai (mistral) ship SDK-generated file
 # names so long that the Windows installer exceeds MAX_PATH and NSIS cannot install
 # them; both need the user's own third-party key, so install them when picked.
-opt-in-extras = ["kittentts", "tts-premium", "mistral"]
+# daytona: its obstore closure publishes no CPython 3.14 Windows wheel, so an
+# --all-extras build falls back to the Rust sdist and needs an MSVC toolchain.
+opt-in-extras = ["kittentts", "tts-premium", "mistral", "daytona"]
 
 # Per-extra platform gates (settled 2026-09-02): an extra listed here is
 # only installable on platforms matching the marker. pm consults this

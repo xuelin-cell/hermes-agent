@@ -1103,7 +1103,7 @@ class QQAdapter(OwnAccessPolicyMixin, BasePlatformAdapter):
         return src_path, src_path.rsplit(".", 1)[0] + ".wav"
 
     async def _convert_audio_to_wav_file(self, audio_data: bytes, filename: str) -> Optional[str]:
-        """Convert audio bytes to a temp .wav: pilk (SILK, which ffmpeg can't decode)
+        """Convert audio bytes to a temp .wav: SILK decoder (SILK, which ffmpeg can't decode)
         → ffmpeg → raw-PCM last resort. Returns the wav path or None."""
         ext = Path(filename).suffix.lower() or self._guess_ext_from_data(audio_data)
         logger.info(
@@ -1132,32 +1132,23 @@ class QQAdapter(OwnAccessPolicyMixin, BasePlatformAdapter):
         return cls._guess_ext_from_data(data) == ".silk"
 
     async def _convert_silk_to_wav(self, src_path: str, wav_path: str) -> Optional[str]:
-        """Convert to WAV with pilk: as-is first, then copied to .silk (pilk checks the extension)."""
-        try:
-            import pilk
-        except ImportError:
-            logger.warning("[%s] pilk not installed — cannot decode SILK audio. Run: "
+        """Convert to WAV with the SILK codec binding."""
+        from tools.silk_audio import available, silk_to_wav
+
+        if not available():
+            logger.warning("[%s] SILK decoder not installed — cannot decode SILK audio. Run: "
                            f"{install_hint('silk')}", self._log_tag)
             return None
-
-        silk_path = src_path.rsplit(".", 1)[0] + ".silk"
         try:
-            for path, label, how in ((src_path, "", "direct"), (silk_path, " (as .silk)", ".silk")):
-                try:
-                    if path == silk_path:
-                        import shutil
-
-                        shutil.copy2(src_path, silk_path)
-                    pilk.silk_to_wav(path, wav_path, rate=16000)
-                    if self._wav_ok(wav_path):
-                        logger.debug(
-                            "[%s] pilk converted %s%s to wav (%d bytes)",
-                            self._log_tag, Path(src_path).name, label, Path(wav_path).stat().st_size)
-                        return wav_path
-                except Exception as exc:
-                    logger.debug("[%s] pilk %s conversion failed: %s", self._log_tag, how, exc)
-        finally:
-            self._unlink_quiet(silk_path)
+            silk_to_wav(src_path, wav_path, rate=16000)
+        except Exception as exc:
+            logger.debug("[%s] SILK conversion failed: %s", self._log_tag, exc)
+            return None
+        if self._wav_ok(wav_path):
+            logger.debug(
+                "[%s] SILK converted %s to wav (%d bytes)",
+                self._log_tag, Path(src_path).name, Path(wav_path).stat().st_size)
+            return wav_path
         return None
 
     async def _convert_raw_to_wav(self, audio_data: bytes, wav_path: str) -> Optional[str]:
@@ -1258,7 +1249,7 @@ class QQAdapter(OwnAccessPolicyMixin, BasePlatformAdapter):
             return None
 
     async def _convert_audio_to_wav(self, audio_data: bytes, source_url: str) -> Optional[str]:
-        """Convert audio bytes to .wav (pilk for SILK, else ffmpeg) and cache the result;
+        """Convert audio bytes to .wav (SILK decoder for SILK, else ffmpeg) and cache the result;
         on conversion failure the original bytes are cached as ``qq_voice<ext>``."""
         ext = Path(urlparse(source_url).path).suffix.lower()
         if ext not in _AUDIO_URL_EXTENSIONS:

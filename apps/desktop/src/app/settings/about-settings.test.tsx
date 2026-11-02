@@ -88,11 +88,16 @@ describe('AboutSettings', (): void => {
     cleanup()
   })
 
-  it('shows shared version details and refreshes each remote gateway independently', (): void => {
-    const { rerender } = render(<AboutSettings />)
+  it('shows the update status and refreshes each remote gateway independently', (): void => {
+    const { container, rerender } = render(<AboutSettings />)
 
     expect(screen.getByRole('heading', { name: en.updates.appName })).toBeTruthy()
-    expect(screen.getByText(en.updates.versionDetailsInstallId)).toBeTruthy()
+    // About shows only the update flow: no brand mark above the title, and no
+    // build-provenance table (version / commit / build origin / distribution /
+    // runtime / install id).
+    expect(container.querySelector('img')).toBeNull()
+    expect(screen.queryByText(en.updates.versionDetailsInstallId)).toBeNull()
+    expect(screen.queryByText(en.updates.versionDetailsVersion)).toBeNull()
     expect(screen.getByText(en.updates.latestBody)).toBeTruthy()
     expect(screen.queryByText(en.updates.latestBodyBackend)).toBeNull()
     expect(refreshDesktopVersion).toHaveBeenCalledTimes(1)

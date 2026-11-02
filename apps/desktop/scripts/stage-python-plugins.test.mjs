@@ -27,7 +27,24 @@ test('完整包把 agent-payload 里的内置套件放进 python-plugins，其�
     assert.equal(payloadBundledKits(stamp, { payload: 'light' }), null)
     assert.equal(payloadBundledKits(stamp, { payload: 'bundled' }), null)
 
-    const staged = stagePythonPlugins({ source, out: path.join(root, 'dist'), bundledKits: payloadBundledKits(stamp, bundled) })
+    const staged = stagePythonPlugins({
+      source,
+      out: path.join(root, 'dist'),
+      bundledKits: payloadBundledKits(stamp, bundled)
+    })
+    assert.equal(fs.existsSync(path.join(staged, 'unisearch', 'plugin.yaml')), true)
+    for (const file of [
+      'configure.py',
+      'prepare.py',
+      'events.py',
+      'tool_adapter.py',
+      'fetch/providers.py',
+      'fetch/worker.py',
+      'fetch/builtin/browser.py',
+      'fetch/builtin/content.py'
+    ]) {
+      assert.equal(fs.existsSync(path.join(staged, 'unisearch', file)), true)
+    }
     const zip = path.join(staged, 'uniwork-kits', 'bundled', 'uniwork-bundled', 'plugins', 'good-kit.zip')
     assert.equal(fs.readFileSync(zip, 'utf8'), 'zip')
     assert.equal(fs.existsSync(path.join(staged, 'uniwork-kits', 'autoseed.py')), true)

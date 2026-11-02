@@ -1,6 +1,6 @@
-import { messagingConnectionCopy } from './messaging-connection'
 import { FIELD_DESCRIPTIONS, FIELD_LABELS } from '@/app/settings/constants'
 
+import { messagingConnectionCopy } from './messaging-connection'
 import type { Translations } from './types'
 
 export const en: Translations = {
@@ -81,9 +81,11 @@ export const en: Translations = {
       SIZE_MISMATCH: 'The file could not be saved completely. Please retry.',
       TRANSPORT_ERROR: 'Network connection failed. Check your connection.',
       OUTCOME_UNKNOWN: 'Unable to automatically confirm the operation. Refresh the file list to check.',
-      UPLOAD_CONFIRMATION_FAILED: 'The file was absent in three complete cloud checks. Upload failed. Please try again.',
+      UPLOAD_CONFIRMATION_FAILED:
+        'The file was absent in three complete cloud checks. Upload failed. Please try again.',
       UPLOAD_CONFIRMATION_UNAVAILABLE: 'Unable to automatically confirm the upload. Refresh the file list to check.',
-      OPERATION_CONFIRMATION_UNAVAILABLE: 'Unable to automatically confirm the operation. Refresh the file list to check.',
+      OPERATION_CONFIRMATION_UNAVAILABLE:
+        'Unable to automatically confirm the operation. Refresh the file list to check.',
       UPLOAD_FAILED: 'Upload failed. Please upload again.',
       UPLOAD_INCOMPLETE: 'Upload interrupted. Please upload again.',
       UPLOAD_UNCONFIRMED: 'Unable to automatically confirm the upload. Refresh the file list to check.',
@@ -233,6 +235,7 @@ export const en: Translations = {
       expiryText: date => date,
       tokenExact: (remaining, used, total, unit) => {
         const suffix = unit ? ` ${unit}` : ''
+
         return `Remaining ${remaining}${suffix}, used ${used}${suffix}, total ${total}${suffix}`
       },
       notStarted: 'Not started',
@@ -3428,7 +3431,7 @@ export const en: Translations = {
   },
 
   messaging: {
-    connection: messagingConnectionCopy["en"],
+    connection: messagingConnectionCopy['en'],
     cards: {
       heading: 'Chat apps',
       description: 'Connect WeChat, DingTalk and other chat apps to receive and reply to messages from your phone.',
@@ -3437,12 +3440,13 @@ export const en: Translations = {
       save: 'Save and enable',
       comingSoon: 'Not integrated yet',
       personalBindingMissing: 'Personal binding is not confirmed. Sign out and sign in again by SMS.',
-      reconnect: "Reconnect",
-      reconnecting: "Reconnecting…",
-      reconnected: "5G messaging reconnected.",
-      reconnectBusy: "A message is being processed. Reconnect after it finishes.",
-      reconnectFailed: "5G reconnect failed. Check the logs; if the gateway is stopped, fully quit and reopen the app.",
-      reconnectRestartRequired: "The 5G component update is not active yet. Fully quit the app, including the tray, then reopen it.",
+      reconnect: 'Reconnect',
+      reconnecting: 'Reconnecting…',
+      reconnected: '5G messaging reconnected.',
+      reconnectBusy: 'A message is being processed. Reconnect after it finishes.',
+      reconnectFailed: '5G reconnect failed. Check the logs; if the gateway is stopped, fully quit and reopen the app.',
+      reconnectRestartRequired:
+        'The 5G component update is not active yet. Fully quit the app, including the tray, then reopen it.',
       unavailable: 'Messaging component unavailable',
       notConnected: 'Not connected',
       unbind: 'Disconnect',
@@ -4137,27 +4141,29 @@ export const en: Translations = {
   },
 
   artifactShare: {
-    validity: "Link lifetime",
-    days: count => count === 1 ? '1 day' : `${count} days`,
-    customValidity: "Custom days",
-    editValidity: "Change lifetime",
-    saveValidity: "Save lifetime",
+    validity: 'Link lifetime',
+    days: count => (count === 1 ? '1 day' : `${count} days`),
+    customValidity: 'Custom days',
+    editValidity: 'Change lifetime',
+    saveValidity: 'Save lifetime',
     expiresAt: date => `Expires: ${date}`,
-    noExpiry: "This older link has no expiration set.",
-    expired: "Share expired",
-    cleanupPending: "Expired; cleanup is pending. The public link may still be accessible.",
-    expiryNotice: "New links default to 1 day; choose 1–7 days. Changes start from saving. Expired links are cleaned up while the app runs, or on its next launch.",
-    invalidValidity: "Enter a whole number from 1 to 7.",
-    inactive: "Sharing was revoked or this link is no longer available.",
-    statusUnavailable: "Sharing status is unavailable. Fully quit the app and retry.",
-    disclosure: "Anyone with the link can view this artifact. Your other files and conversations are not shared.",
-    checking: "Checking share status…",
-    createLink: "Create public link",
-    linkReady: "Public link is ready",
-    changedNotice: "The content has changed. The link still shows the previously published version.",
-    confirmUpdate: "Replace the published content with this version? The link will stay the same.",
-    confirmRevoke: "Revoke this public link? People with the link will no longer be able to open it.",
-    originRequired: 'Only verified model artifacts can be shared. Uploads, derived files and unknown sources are blocked.',
+    noExpiry: 'This older link has no expiration set.',
+    expired: 'Share expired',
+    cleanupPending: 'Expired; cleanup is pending. The public link may still be accessible.',
+    expiryNotice:
+      'New links default to 1 day; choose 1–7 days. Changes start from saving. Expired links are cleaned up while the app runs, or on its next launch.',
+    invalidValidity: 'Enter a whole number from 1 to 7.',
+    inactive: 'Sharing was revoked or this link is no longer available.',
+    statusUnavailable: 'Sharing status is unavailable. Fully quit the app and retry.',
+    disclosure: 'Anyone with the link can view this artifact. Your other files and conversations are not shared.',
+    checking: 'Checking share status…',
+    createLink: 'Create public link',
+    linkReady: 'Public link is ready',
+    changedNotice: 'The content has changed. The link still shows the previously published version.',
+    confirmUpdate: 'Replace the published content with this version? The link will stay the same.',
+    confirmRevoke: 'Revoke this public link? People with the link will no longer be able to open it.',
+    originRequired:
+      'Only verified model artifacts can be shared. Uploads, derived files and unknown sources are blocked.',
     share: 'Share',
     shareArtifact: 'Share artifact',
     updateShared: 'Update shared content',
@@ -5112,7 +5118,8 @@ export const en: Translations = {
       xai: { short: 'Grok models', description: 'Direct access to xAI Grok models.' },
       local: {
         short: 'self-hosted',
-        description: 'Point UniWork at a local or self-hosted OpenAI-compatible endpoint (vLLM, llama.cpp, Ollama, etc).'
+        description:
+          'Point UniWork at a local or self-hosted OpenAI-compatible endpoint (vLLM, llama.cpp, Ollama, etc).'
       }
     },
     backToSignIn: 'Back to sign in',
@@ -5707,6 +5714,25 @@ export const en: Translations = {
   },
 
   assistant: {
+    searchCards: {
+      today: 'Today',
+      humidity: 'Humidity',
+      feelsLike: 'Feels like',
+      restriction: 'Traffic restrictions',
+      open: 'Open',
+      high: 'High',
+      low: 'Low',
+      previousClose: 'Previous close',
+      price: 'price',
+      multipleMerchants: 'Multiple merchants',
+      duration: 'Duration',
+      stops: 'Stops',
+      arrive: 'Arrives',
+      depart: 'Departs',
+      stay: 'Stop',
+      moreStops: 'More stops',
+      moreTrains: 'More trains'
+    },
     thread: {
       loadingSession: 'Loading session',
       showEarlier: 'Show earlier messages',

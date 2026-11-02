@@ -78,8 +78,12 @@ describe('artifact version identity', (): void => {
     })
   })
 
-  it('keeps source installs on their runtime version without a fixed package channel', (): void => {
-    expect(appVersionInfo(null, '9.9.9-runtime', '1.2.3')).toMatchObject({ appVersion: '9.9.9-runtime' })
+  // A checkout between tags reports `git.<sha>[.dirty]`; About names the
+  // application version, so the package version wins and the runtime version
+  // is only the fallback when the package carries no real version.
+  it('names a source install by its package version, falling back to the runtime', (): void => {
+    expect(appVersionInfo(null, 'git.51cf620.dirty', '0.9.0')).toMatchObject({ appVersion: '0.9.0' })
+    expect(appVersionInfo(null, '9.9.9-runtime', '0.0.0').appVersion).toBe('9.9.9-runtime')
     expect((): void => assertSourceUpdateChannel(null)).not.toThrow()
   })
 

@@ -76,14 +76,18 @@ export function nativeAboutVersion(info: AppVersionInfo): string {
   return 'unknown'
 }
 
-/** The backend may live on another machine and run a different release. */
+/** The backend may live on another machine and run a different release, so the
+ *  app's own identity wins wherever it is known: the baked stamp for packaged
+ *  builds, the package version for a stampless source run. The runtime version
+ *  is only a fallback there — a checkout between tags reports `git.<sha>`, and
+ *  About must name the application version, not the tree's describe output. */
 export function appVersionInfo(
   stamp: Readonly<InstallStamp> | null,
   runtimeVersion: string,
   packageVersion: string
 ): AppVersionInfo {
   if (!stamp) {
-    return { appVersion: firstRealVersion([runtimeVersion, packageVersion]), baseVersion: packageVersion }
+    return { appVersion: firstRealVersion([packageVersion, runtimeVersion]), baseVersion: packageVersion }
   }
 
   const build = stamp.channelBuild

@@ -54,9 +54,27 @@ test('安装目录不叫 UniWork，检查脚本读得到同一个名字', () => 
   assert.ok(checker.includes(String.raw`'^\s*!define APP_FILENAME "([^"]+)"'`))
 })
 
-test('direct-extract.nsh 换成直接解压到输出目录', () => {
+test('direct-extract.nsh 换成增量解压 + 整包解压两条路径', () => {
   const direct = read(path.join(nsisDir, 'direct-extract.nsh'))
   assert.match(direct, /!macroundef extractUsing7za/)
-  assert.match(direct, /Nsis7z::Extract "\$\{FILE\}"/)
+  assert.match(direct, /Call UNIWORK_TryIncremental/)
+  assert.match(direct, /Call UNIWORK_ExtractFull/)
+  assert.match(direct, /UNIWORK_RESTORE_UNINSTALLER/)
+  assert.match(direct, /uninstallOldVersion SHELL_CONTEXT/)
   assert.doesNotMatch(direct, /7z-out|CopyFiles/)
+})
+
+test('增量更新用到的脚本和指纹工具都在 nsis 目录里', () => {
+  for (const name of ['incremental-update.nsh', 'direct-extract.nsh', 'app-running.nsh', 'installer.nsh',
+                      'update-plan.ps1', 'payload-digest.py']) {
+    assert.ok(fs.existsSync(path.join(nsisDir, name)), name)
+  }
+  const incremental = read(path.join(nsisDir, 'incremental-update.nsh'))
+  assert.match(incremental, /Var UNIWORK_INCREMENTAL/)
+  assert.match(incremental, /Var UNIWORK_PLANNED/)
+  assert.match(incremental, /Var UNIWORK_EXTRACT_RC/)
+  assert.match(incremental, /!macro UNIWORK_DECIDE\b/)
+  assert.match(incremental, /Function UNIWORK_TryIncremental/)
+  assert.match(incremental, /Function UNIWORK_ExtractFull/)
+  assert.match(incremental, /Function UNIWORK_ExtractExcluded/)
 })

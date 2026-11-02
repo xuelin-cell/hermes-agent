@@ -1,3 +1,6 @@
+import { useStore } from '@nanostores/react'
+import { useQueryClient } from '@tanstack/react-query'
+import { type CSSProperties, lazy, type ReactNode, Suspense, useCallback, useEffect, useMemo, useRef } from 'react'
 /**
  * Real-featureset wiring for the contrib (layout tree) root — the minimal
  * subset of DesktopController's hook chain that makes the REAL surfaces work:
@@ -7,12 +10,9 @@
  * The wired nodes (sidebar / chat routes / terminal) are exposed through
  * context; registered panes render `<WiredPane part="…"/>` to consume them.
  */
-
-import { useStore } from '@nanostores/react'
-import { useQueryClient } from '@tanstack/react-query'
-import { type CSSProperties, lazy, type ReactNode, Suspense, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
+import { getSessionMessages as getUniSearchMessages } from '@/api/sessions'
 import { formatRefValue } from '@/components/assistant-ui/directive-text'
 import { BootFailureOverlay } from '@/components/boot-failure-overlay'
 import { ConfirmHost } from '@/components/confirm-host'
@@ -89,6 +89,7 @@ import {
   setBusy,
   setMessages
 } from '@/store/session'
+import { knownOwnerForSession as uniSearchSessionOwner } from '@/store/session-states'
 import { $archivedSessions } from '@/store/sidebar-archive'
 import { $titlebarAppActionsSide, titlebarAppActionsClusterCounts } from '@/store/titlebar-app-actions'
 import { armWakeWord, stopClientCapture } from '@/store/wake-word'
@@ -175,6 +176,7 @@ import { type AmbientGatewayRequest, createSessionRpcDispatcher } from './sessio
 import { SettingsView, useSettingsPreload } from './settings-loader'
 import { ChatRoutesSurface, SidebarSurface, StatusbarSurface, TerminalSurface } from './surfaces'
 import type { WiringActions, WiringApi } from './types'
+import { createUniSearchEvents } from './unisearch/events'
 import { POOL_LIMITS_SETTINGS_ROUTE } from './wiring-routing'
 
 // Overlay views the controller mounts over the shell — lazy, load on demand.
@@ -869,11 +871,53 @@ export function ContribWiring({ children }: { children: ReactNode }) {
     startFreshSessionDraft
   })
 
+  const uniSearchDispatchRef = useRef(handleDesktopGatewayEvent)
+  uniSearchDispatchRef.current = handleDesktopGatewayEvent
+
+  const uniSearchEvents = useMemo(
+    () =>
+      createUniSearchEvents({
+        route: storedId => {
+          const runtimeId =
+            runtimeIdByStoredSessionIdRef.current.get(storedId) ??
+            (sessionStateByRuntimeIdRef.current.has(storedId) ? storedId : undefined)
+
+          const state = runtimeId ? sessionStateByRuntimeIdRef.current.get(runtimeId) : undefined
+          const owner = uniSearchSessionOwner(runtimeId)
+
+          if (!runtimeId || !state || !owner || typeof owner !== 'object') {
+            return undefined
+          }
+
+          return {
+            runtimeId,
+            storedId: state.storedSessionId ?? storedId,
+            owner,
+            interrupted: state.interrupted,
+            turnStartedAt: state.turnStartedAt
+          }
+        },
+        read: (storedId, owner) =>
+          getUniSearchMessages(
+            storedId,
+            { connectionId: owner.connectionId, profile: owner.targetProfile ?? owner.profile },
+            { limit: 200, order: 'latest' },
+            { passive: true }
+          ),
+        dispatch: event => uniSearchDispatchRef.current(event)
+      }),
+    [runtimeIdByStoredSessionIdRef, sessionStateByRuntimeIdRef]
+  )
+
   // Plugins hear the stream FIRST (isolated fan-out in contrib/events), then
   // the app dispatches as before — a plugin listener can't affect app flow.
   const handleGatewayEventWithPlugins = useCallback(
     (event: Parameters<typeof handleDesktopGatewayEvent>[0]) => {
       emitGatewayEvent(event)
+
+      if (uniSearchEvents(event)) {
+        return
+      }
 
       if (event.type === 'wake.detected') {
         const payload = event.payload as { profile?: null | string; start_new_session?: boolean } | undefined
@@ -914,7 +958,7 @@ export function ContribWiring({ children }: { children: ReactNode }) {
 
       handleDesktopGatewayEvent(event)
     },
-    [handleDesktopGatewayEvent, startFreshSessionDraft]
+    [handleDesktopGatewayEvent, startFreshSessionDraft, uniSearchEvents]
   )
 
   useGatewayBoot({

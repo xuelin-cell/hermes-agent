@@ -365,8 +365,7 @@ def _install(
         previous = facts.get(package.name) if facts is not None else None
         previous_entry = store.entry(f".previous-{'stage-' if facts is None else ''}{entry_name}")
         _settle_previous_entry(package, store, entry, previous_entry, previous, target)
-        if (_entry_current(package, lockfile, facts, store, entry, previous, version, pin, target)
-                and not _fresh_copy):
+        if not _fresh_copy and _entry_current(package, lockfile, facts, store, entry, previous, version, pin, target):
             _remove_downloads(store, artifacts)
             return entry
         if not artifacts:

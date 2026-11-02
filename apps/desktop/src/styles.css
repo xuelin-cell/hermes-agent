@@ -1841,6 +1841,11 @@ body.guest-pointer-lock :is(webview, iframe) {
   backdrop-filter: none;
 }
 
+/* Reserve a separate row for the details control below the message text. */
+[data-slot='aui_user-bubble-frame'][data-has-details='true'] > .composer-human-message {
+  padding-bottom: calc(1rem + 24px);
+}
+
 [data-slot='aui_thread-content'] .composer-human-ai-pair-container {
   margin-bottom: 24px;
 }
@@ -2201,6 +2206,11 @@ body.guest-pointer-lock :is(webview, iframe) {
   margin: 0 !important;
   margin-block-start: 0 !important;
   margin-block-end: 0 !important;
+}
+
+/* Cell dividers share the outer frame's color in light and dark themes. */
+[data-slot='aui_assistant-message-content'] .aui-md .aui-md-table :is(th, td):not(:last-child) {
+  border-inline-end: 1px solid var(--ui-stroke-tertiary);
 }
 
 [data-slot='aui_assistant-message-content'] .aui-md .aui-md-table thead {

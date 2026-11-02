@@ -19,6 +19,7 @@ export interface NtfyIpcOptions {
   identity: () => LoginIdentity | null
   log: (line: string) => void
   refresh: () => Promise<NtfyRefreshResult>
+  refreshTools?: () => Promise<boolean>
 }
 
 /**
@@ -51,7 +52,15 @@ export function installNtfyIpc(session: Session, rendererUrl: () => string, opti
       identity: options.identity,
       log: options.log,
       onAnnouncement: announcement => send({ announcement, kind: 'announcement' }),
-      onInstruction: instruction => send({ instruction, kind: 'instruction' }),
+      onInstruction: instruction => {
+        if (instruction.tags.includes('refresh_tool_config') && options.refreshTools) {
+          void Promise.resolve()
+            .then(options.refreshTools)
+            .catch(() => options.log('ntfy 搜索配置刷新失败，保留原配置'))
+        }
+
+        send({ instruction, kind: 'instruction' })
+      },
       onStatus: status => send({ kind: 'status', status }),
       tokens
     })

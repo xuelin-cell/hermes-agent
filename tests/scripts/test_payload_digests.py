@@ -153,3 +153,45 @@ def test_invalid_tool_evidence_never_partially_rewrites_facts(tmp_path):
     path.unlink()
     assert _rehash(root, tmp_path).returncode != 0
     assert not path.exists()
+
+
+def test_payload_digest_emits_tsv_for_each_path(tmp_path):
+    root = tmp_path / "payload"
+    (root / "tools/python").mkdir(parents=True)
+    (root / "tools/python/tool").write_bytes(b"python bytes")
+    (root / "venv").mkdir()
+    (root / "venv/file").write_bytes(b"venv bytes")
+    digest_script = Path(__file__).resolve().parent.parent.parent / "apps/desktop/nsis/payload-digest.py"
+    repo_dir = root / "tools/python"
+    result = subprocess.run(
+        [sys.executable, str(digest_script), str(repo_dir), str(root / "venv"), str(root / "tools/python")],
+        capture_output=True, text=True, encoding="utf-8", timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    lines = result.stdout.strip().split("\n")
+    assert len(lines) == 2
+    for line in lines:
+        path_str, digest = line.split("\t")
+        assert Path(path_str) in (root / "venv", root / "tools/python")
+        assert len(digest) == 64
+        assert all(c in "0123456789abcdef" for c in digest)
+        expected = tree_digest(Path(path_str))
+        assert digest == expected
+
+
+def test_payload_digest_returns_empty_for_missing_path(tmp_path):
+    root = tmp_path / "payload"
+    (root / "tools/python").mkdir(parents=True)
+    (root / "tools/python/tool").write_bytes(b"python bytes")
+    digest_script = Path(__file__).resolve().parent.parent.parent / "apps/desktop/nsis/payload-digest.py"
+    repo_dir = root / "tools/python"
+    missing = root / "does-not-exist"
+    result = subprocess.run(
+        [sys.executable, str(digest_script), str(repo_dir), str(missing)],
+        capture_output=True, text=True, encoding="utf-8", timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    line = result.stdout.strip()
+    path_str, digest = line.split("\t")
+    assert Path(path_str) == missing
+    assert digest == ""
