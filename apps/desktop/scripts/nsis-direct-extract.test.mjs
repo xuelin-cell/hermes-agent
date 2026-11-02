@@ -90,6 +90,12 @@ test('安装详情既显示在面板上，也按阶段落进日志文件', () =>
   assert.match(installer, /!macro customHeader[\s\S]*ShowInstDetails hide[\s\S]*!macroend/)
   assert.match(appRunning, /SetDetailsPrint textonly/)
 
+  // 打包分两遍编译，卸载器那一遍（BUILD_UNINSTALLER）也会展开 customCheckAppRunning
+  // （templates/nsis/uninstaller.nsh:2 的 un.checkAppRunning → CHECK_APP_RUNNING）。
+  // install-log.nsh 的阶段变量只在 !ifndef BUILD_UNINSTALLER 里声明，卸载器单元里一旦引用
+  // 就是 warning 6000，而 makensis 带 -WX，警告直接变错误、整个打包失败。
+  assert.match(appRunning, /!ifndef BUILD_UNINSTALLER\s*\n\s*SetDetailsPrint textonly\s*\n\s*!insertmacro UniPhaseBegin 1/)
+
   // 明细只能走 UniSay：裸 DetailPrint 进不了日志文件。
   assert.doesNotMatch(incremental, /(^|\s)DetailPrint /)
   assert.match(log, /macro UniSay[\s\S]*DetailPrint "\$\{TEXT\}"[\s\S]*!insertmacro UniLog/)

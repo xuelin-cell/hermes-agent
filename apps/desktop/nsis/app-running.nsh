@@ -11,8 +11,15 @@
   ; 会把后面所有 DetailPrint 丢掉，这里覆盖回来。用 textonly 不用 both：载荷九万多个文件，
   ; both 会把每个文件一行的解压噪音灌满面板和日志。
   ; 安装器本身没有静默模式（模板只给卸载器写 SilentInstall silent），所以不用判断 ${Silent}。
-  SetDetailsPrint textonly
-  !insertmacro UniPhaseBegin 1 "检查正在运行的程序"
+  ;
+  ; 注意这个宏在卸载器那一遍编译里也会展开（templates/nsis/uninstaller.nsh:2 的
+  ; un.checkAppRunning 调 CHECK_APP_RUNNING）。install-log.nsh 的阶段变量只在
+  ; !ifndef BUILD_UNINSTALLER 里声明，卸载器单元里引用会得到 warning 6000，
+  ; 而打包用的 makensis 带 -WX，警告直接变成错误、整个打包失败——所以整块只给安装器。
+  !ifndef BUILD_UNINSTALLER
+    SetDetailsPrint textonly
+    !insertmacro UniPhaseBegin 1 "检查正在运行的程序"
+  !endif
   !include "${UNIWORK_NSIS_DIR}\direct-extract.nsh"
   !insertmacro IS_POWERSHELL_AVAILABLE
   !insertmacro _CHECK_APP_RUNNING
