@@ -131,11 +131,9 @@ try {
     }
   }
 
-  // 对话开始后：按钮只显示目录名，点开是只读说明。
+  // 对话开始后目录已固定，隐藏选择器。
   await page.evaluate(() => window.fixtureStart())
-  await page.getByText('quarterly-report', { exact: true }).waitFor()
-  await trigger.click()
-  await page.getByText(/本次对话已绑定该目录/).waitFor()
+  await trigger.waitFor({state:'detached'})
   await writeFile(path.join(root, 'dark-460-locked.png'), await capturePng(instance, page))
   assert.equal(await page.getByRole('menuitem').count(), 0)
 

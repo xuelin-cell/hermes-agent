@@ -43,6 +43,7 @@ import { $threadScrolledUpBySession } from '@/store/thread-scroll'
 import { $autoSpeakReplies } from '@/store/voice-prefs'
 import { useTheme } from '@/themes'
 
+import { ApprovalModePicker } from './approval-mode-picker'
 import { AttachmentList } from './attachments'
 import {
   acceptsTriggerCompletion,
@@ -55,7 +56,6 @@ import {
 } from './composer-utils'
 import { ContextMenu } from './context-menu'
 import { COMPOSER_AREAS, runComposerMiddleware } from './contrib'
-import { ApprovalModePicker } from './approval-mode-picker'
 import { ComposerControls } from './controls'
 import { ComposerDirectiveActions } from './directive-actions'
 import { COMPOSER_DROP_ACTIVE_CLASS, COMPOSER_DROP_FADE_CLASS } from './drop-affordance'
@@ -1584,8 +1584,8 @@ export function ChatBar({
                     >
                       {contextMenu}
                       {!guidedChat && <ApprovalModePicker gateway={gateway} sessionId={sessionId} />}
-                      {!botChat && !guidedChat && <WorkdirPicker cwd={cwd} gateway={gateway} sessionId={sessionId} />}
                       <ContribSlot area={COMPOSER_AREAS.leading} />
+                      {!botChat && !guidedChat && <WorkdirPicker cwd={cwd} gateway={gateway} sessionId={sessionId} />}
                     </div>
                     <div className="min-w-0 [grid-area:input]">{input}</div>
                     {/* `justify-end` packs contributed actions and the send cluster

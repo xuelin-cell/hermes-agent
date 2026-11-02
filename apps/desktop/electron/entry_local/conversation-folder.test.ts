@@ -37,6 +37,19 @@ afterEach(async () => {
 })
 
 describe('主进程建对话文件夹', () => {
+  it('代码项目复用且不参与删除，拒绝链接和不匹配的工作根', async () => {
+    const folders = createConversationFolders(workspace)
+    const project = path.join(workspace, 'UniWorkSpace')
+    expect(await folders.ensureCode(root)).toBeNull()
+    expect(await folders.ensureCode(workspace)).toBe(project)
+    await folders.discard(project)
+    expect(await folders.ensureCode(workspace)).toBe(project)
+    expect(await fs.readdir(project)).toEqual(['.tmp'])
+    await fs.rename(project, path.join(root, 'outside'))
+    await fs.symlink(path.join(root, 'outside'), project, 'junction')
+    expect(await folders.ensureCode(workspace)).toBeNull()
+  })
+
   it('名字是本地时间 YYYYMMDD-HHmmss', () => {
     expect(conversationFolderName(NOW)).toBe(NAME)
     expect(conversationFolderName(new Date(2026, 0, 2, 3, 4, 5))).toBe('20260102-030405')
@@ -175,6 +188,7 @@ describe('对话文件夹 IPC', () => {
   it('非桌面来源、账号已不活动或参数异常时什么都不做', async () => {
     const create = handlers.get('hermes:conversation-folder:create')!
 
+    expect(await handlers.get('hermes:conversation-folder:code')!(foreignEvent, workspace)).toBeNull()
     expect(await create(foreignEvent, workspace)).toBeNull()
     expect(await create(trustedEvent, 42)).toBeNull()
     expect(await create(trustedEvent, 'x'.repeat(4097))).toBeNull()

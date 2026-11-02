@@ -13,7 +13,6 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { releaseTypingFocus } from '@/components/ui/keyboard-first'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import type { HermesGateway } from '@/hermes'
 import { selectDesktopPaths } from '@/lib/desktop-fs'
 import { Check, ChevronDown, FolderOpen } from '@/lib/icons'
@@ -32,7 +31,7 @@ import {
 } from '@/store/session'
 import { $codeWorkspace } from '@/store/workspace-category'
 
-import { isConversationFolder } from './conversation-folder'
+import { codeFolderPath, isConversationFolder } from './conversation-folder'
 import { useWorkdirCopy } from './copy'
 import { isBlockedWorkdir, recentWorkdirs, sameWorkdir, workdirName } from './folders'
 
@@ -96,7 +95,7 @@ function useDefaultWorkdir(gateway: HermesGateway | null | undefined): [string, 
   return [value, () => setAttempt(n => n + 1)]
 }
 
-/** 聊天输入框的工作目录：新对话可选择，对话开始后只读显示。 */
+/** 新对话可以选择工作目录，开始后隐藏入口。 */
 export function WorkdirPicker({ cwd, gateway, sessionId }: WorkdirPickerProps) {
   const t = useWorkdirCopy()
   const target = useStore($newChatWorkspaceTarget)
@@ -121,17 +120,23 @@ export function WorkdirPicker({ cwd, gateway, sessionId }: WorkdirPickerProps) {
   // 日常办公和学习会自动建文件夹，带过来的目录不显示，与发送时一致。
   const inherit = !autoFolders || codeWorkspace
   const shown = locked ? (cwd ?? '').trim() : draftWorkdir(target, projectScope, cwd ?? '', inherit)
-  const isDefault = !shown || (defaultCwd !== '' && sameWorkdir(shown, defaultCwd))
-  const label = isDefault ? t('defaultName') : workdirName(shown)
-  const fullPath = shown || defaultCwd
+  const codeDefault = defaultCwd ? codeFolderPath(defaultCwd) : ''
+  const picked = typeof target === 'string'
+
+  const isDefault =
+    !shown || (!picked && (sameWorkdir(shown, defaultCwd) || (codeWorkspace && sameWorkdir(shown, codeDefault))))
+
+  const defaultName = t(autoFolders ? (codeWorkspace ? 'codeName' : 'autoName') : 'defaultName')
+  const label = isDefault ? defaultName : workdirName(shown)
 
   const recent = useMemo(
-    () =>
-      locked
-        ? []
-        : recentWorkdirs(sessions, defaultCwd ? [defaultCwd] : [], dir => isConversationFolder(dir, defaultCwd)),
-    [defaultCwd, locked, sessions]
+    () => recentWorkdirs(sessions, [defaultCwd, codeDefault], isConversationFolder),
+    [defaultCwd, codeDefault, sessions]
   )
+
+  if (locked) {
+    return null
+  }
 
   /** 新对话改用指定目录；对话已开始（例如选择窗口打开期间已发送）时不改，保持锁定。 */
   function choose(dir: string) {
@@ -201,30 +206,27 @@ export function WorkdirPicker({ cwd, gateway, sessionId }: WorkdirPickerProps) {
     >
       <FolderOpen className="size-3.5 shrink-0" />
       <span className="min-w-0 truncate">{label}</span>
-      {!locked && <ChevronDown className="size-2.5 shrink-0 opacity-50" />}
+      <ChevronDown className="size-2.5 shrink-0 opacity-50" />
     </Button>
   )
-
-  if (locked) {
-    return (
-      <Popover onOpenChange={setMenuOpen} open={open}>
-        <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-        <PopoverContent align="start" className="w-72 p-1" side="top" sideOffset={6}>
-          <div className={MENU_LABEL}>{t('title')}</div>
-          <div className="break-all px-2 py-1 font-mono text-[0.6875rem] text-foreground">{fullPath || label}</div>
-          <div className={HINT}>{t('lockedHint')}</div>
-        </PopoverContent>
-      </Popover>
-    )
-  }
 
   return (
     <DropdownMenu onOpenChange={setMenuOpen} open={open}>
       <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-72" side="top" sideOffset={6}>
         <DropdownMenuLabel className={MENU_LABEL}>{t('title')}</DropdownMenuLabel>
-        <WorkdirItem checked={isDefault} hint={defaultCwd || t('defaultHint')} onSelect={chooseDefault}>
-          {t('defaultName')}
+        <WorkdirItem
+          checked={isDefault}
+          hint={
+            autoFolders && defaultCwd
+              ? codeWorkspace
+                ? codeDefault
+                : t('under', defaultCwd)
+              : defaultCwd || t('defaultHint')
+          }
+          onSelect={chooseDefault}
+        >
+          {defaultName}
         </WorkdirItem>
         {!isDefault && !recent.some(dir => sameWorkdir(dir, shown)) && (
           <WorkdirItem checked hint={shown} onSelect={() => undefined}>
@@ -253,7 +255,11 @@ export function WorkdirPicker({ cwd, gateway, sessionId }: WorkdirPickerProps) {
           <span>{t('choose')}</span>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <div className={HINT}>{t(isDefault && autoFolders ? 'folderHint' : 'draftHint')}</div>
+        <div className={HINT}>
+          {autoFolders
+            ? t(codeWorkspace ? (isDefault ? 'codeHint' : 'pickedHint') : isDefault ? 'autoHint' : 'pickedOfficeHint')
+            : t('draftHint')}
+        </div>
       </DropdownMenuContent>
     </DropdownMenu>
   )

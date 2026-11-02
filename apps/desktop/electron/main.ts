@@ -211,6 +211,7 @@ import {
 } from './desktop-profile'
 import { relaunchDesktop } from './desktop-relaunch'
 import { registryPrimaryBootRoute, resolveDesktopRemoteRoute, v1SshTerminalPoolKey } from './desktop-remote-route'
+import { isDesktopRendererSender } from './desktop-renderer-sender'
 import {
   buildPosixCleanupScript,
   buildWindowsCleanupScript,
@@ -226,7 +227,6 @@ import {
 import { preReadyDockLaunchSteps } from './dock-launch-order'
 import { installEmbedReferer } from './embed-referer'
 import { accountBrowserPartition } from './entry_local/browser-partition'
-// desktop-mt: 未选目录的新对话在账号工作区下建专属文件夹。
 import { createConversationFolders, installConversationFolderIpc } from './entry_local/conversation-folder'
 import { accountSourceBackend } from './entry_local/desktop-environment'
 import { enableDesktopPlugins } from './entry_local/desktop-plugins-config'
@@ -246,6 +246,7 @@ import { DesktopMessaging, MessagingBotIndex } from './entry_local/messaging'
 import { LocalStartupError, showLocalStartupFailure } from './entry_local/startup-failure'
 import { createUniAgentGateBindingUpdate } from './entry_local/uniagentgate-control'
 import { installUniAgentGateIpc } from './entry_local/uniagentgate-ipc'
+import { migrateTerminalCwd, prepareWorkRoot, workRootFor } from './entry_local/work-root'
 import { createAmbientClaimArbiter } from './event-dedupe'
 import { openExternalUrl as externalOpen, type ExternalOpenDeps, reportPreOpenStatFailure } from './external-open'
 import {
@@ -740,6 +741,7 @@ const ACCOUNT_CONNECTORS = new ConnectorManager({
     const response = await download()
     const data = Buffer.from(await response.arrayBuffer())
     await fs.promises.writeFile(result.filePath, data)
+
     return { canceled: false, saved: true }
   },
   stageAttachment: async (name, download) => {
@@ -753,6 +755,7 @@ const ACCOUNT_CONNECTORS = new ConnectorManager({
     }
 
     await fs.promises.writeFile(stagedPath, Buffer.from(await response.arrayBuffer()))
+
     return { name: safeName, path: stagedPath }
   }
 })
@@ -813,12 +816,22 @@ installPreviewExportIpc(
   () => DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString(),
   () => currentDesktopLocalContext() === ACCOUNT_RUNTIME
 )
-// desktop-mt: 每个对话一个工作文件夹，只在当前账号工作区内创建。
+// desktop-mt: 启动时固定工作根；此处早于桌面日志缓冲区初始化。
+migrateTerminalCwd(ACCOUNT_RUNTIME.home, ACCOUNT_DESKTOP_STATE.defaultProject, console.warn)
+
+const ACCOUNT_WORK_ROOT = prepareWorkRoot({
+  defaultDir: readDefaultProjectDir(),
+  workspace: ACCOUNT_RUNTIME.workspace,
+  home: ACCOUNT_RUNTIME.home,
+  blocked: isPackagedInstallPath,
+  log: console.warn
+})
+
 installConversationFolderIpc(
   ACCOUNT_SESSION,
   () => DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString(),
   () => currentDesktopLocalContext() === ACCOUNT_RUNTIME,
-  createConversationFolders(ACCOUNT_RUNTIME.workspace)
+  createConversationFolders(ACCOUNT_WORK_ROOT)
 )
 // desktop-mt: 后端启动前接手中断记录，页面据此显示 ▶ 继续。
 const INTERRUPTED_TURNS = createInterruptedTurns(message => rememberLog(message))
@@ -3657,6 +3670,7 @@ let isQuittingForHandoff = false
 // Cmd-Q must not stack dialogs), one after the user has said "quit anyway"
 // (the app.quit() that follows re-enters before-quit and must pass through).
 let quitPromptOpen = false
+let restartAfterQuit = false
 let quitConfirmedWithActiveWork = false
 
 // Resolve the staged updater binary the desktop may hand an update to. On
@@ -4769,7 +4783,7 @@ function isPackagedInstallPath(dir) {
 
 function resolveHermesCwd() {
   // 当前账号的项目偏好优先，否则使用账号工作区；不认领旧 Home 或仓库 cwd。
-  const candidates = [readDefaultProjectDir(), ACCOUNT_RUNTIME.workspace]
+  const candidates = [ACCOUNT_WORK_ROOT, ACCOUNT_RUNTIME.workspace]
 
   for (const candidate of candidates) {
     if (!candidate) {
@@ -4848,6 +4862,7 @@ function writeDefaultProjectDir(dir) {
     fs.writeFileSync(target, payload, 'utf8')
   } catch (error) {
     rememberLog(`[settings] write default project dir failed: ${error.message}`)
+    throw error
   }
 }
 
@@ -12272,6 +12287,8 @@ const accountLogout = createAccountLogout({
       // desktop-mt: 停止事务成功后、重启登录页前清除当前账号云盘密文。
       ACCOUNT_DRIVE_CLIENT.clearCredentials()
       await relaunchDesktop()
+    } else if (restartAfterQuit) {
+      await relaunchDesktop()
     } else {
       app.quit()
     }
@@ -18014,9 +18031,10 @@ ipcMain.handle('hermes:openPreviewInBrowser', async (_event, url) => {
 // User-configurable default project directory. The renderer reads this on
 // settings mount and seeds the value into the picker; writing back persists
 // it via writeDefaultProjectDir so resolveHermesCwd picks it up on the next
-// session spawn (no app restart needed).
+// application startup.
 ipcMain.handle('hermes:setting:defaultProjectDir:get', async () => ({
   dir: readDefaultProjectDir(),
+  activeRoot: ACCOUNT_WORK_ROOT,
   // desktop-mt: 未设置时实际使用账号工作区（见 resolveHermesCwd），不是系统用户目录。
   defaultLabel: ACCOUNT_RUNTIME.workspace,
   resolvedCwd: resolveHermesCwd()
@@ -18029,7 +18047,9 @@ ipcMain.handle('hermes:setting:defaultProjectDir:set', async (_event, dir) => {
 
   if (next) {
     try {
-      fs.mkdirSync(next, { recursive: true })
+      if (!directoryExists(next)) {
+        fs.mkdirSync(next, { recursive: true })
+      }
     } catch (error) {
       throw new Error(`Could not create directory: ${error.message}`)
     }
@@ -18037,7 +18057,21 @@ ipcMain.handle('hermes:setting:defaultProjectDir:set', async (_event, dir) => {
 
   writeDefaultProjectDir(next)
 
-  return { dir: next }
+  const restartRequired = path.relative(ACCOUNT_WORK_ROOT, workRootFor(next, ACCOUNT_RUNTIME.workspace)) !== ''
+
+  return { dir: next, activeRoot: ACCOUNT_WORK_ROOT, restartRequired }
+})
+
+ipcMain.handle('hermes:setting:defaultProjectDir:restart', event => {
+  const rendererUrl = DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString()
+
+  if (currentDesktopLocalContext() !== ACCOUNT_RUNTIME || !isDesktopRendererSender(event, ACCOUNT_SESSION, rendererUrl)) {
+    return
+  }
+
+  restartAfterQuit = true
+  quitConfirmedWithActiveWork = true
+  app.quit()
 })
 
 ipcMain.handle('hermes:setting:defaultProjectDir:pick', async () => {
@@ -19032,6 +19066,7 @@ app.on('before-quit', event => {
   if (!logoutComplete && !isQuittingForHandoff) {
     event.preventDefault()
     void logoutDesktopAccount('quit').catch(() => {
+      restartAfterQuit = false
       quitConfirmedWithActiveWork = false
       dialog.showErrorBox('Hermes Desktop MT', '无法开始安全退出，请重试。历史和登录记录未删除。')
     })

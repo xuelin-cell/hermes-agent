@@ -111,7 +111,11 @@ describe('WorkdirPicker on a new conversation', () => {
   it('最近使用不列出默认工作区下自动建的对话文件夹，说明随是否自动建而变', async () => {
     const { gateway } = fakeGateway()
     window.hermesDesktop = { createConversationFolder: vi.fn() } as never
-    $sessions.set([session(`${DEFAULT}\\20261019-103015`, 9), session(`${DEFAULT}\\报告`, 5)])
+    $sessions.set([
+      session(`${DEFAULT}\\20261019-103015`, 9),
+      session(`${DEFAULT}\\UniWorkSpace`, 8),
+      session(`${DEFAULT}\\报告`, 5)
+    ])
 
     try {
       render(<WorkdirPicker cwd="" gateway={gateway} sessionId={null} />)
@@ -120,7 +124,8 @@ describe('WorkdirPicker on a new conversation', () => {
 
       await waitFor(() => expect(screen.getByRole('menuitem', { name: /报告/ })).toBeTruthy())
       expect(screen.queryByRole('menuitem', { name: /20261019-103015/ })).toBeNull()
-      expect(screen.getByText(/Each new conversation gets its own folder/)).toBeTruthy()
+      expect(screen.queryByRole('menuitem', { name: /^UniWorkSpace/ })).toBeNull()
+      expect(screen.getByText(/Conversations without a selected project/)).toBeTruthy()
     } finally {
       window.hermesDesktop = undefined as never
     }
@@ -136,7 +141,7 @@ describe('WorkdirPicker on a new conversation', () => {
     try {
       $selectedWorkspaceMode.set('work')
       render(<WorkdirPicker cwd="D:\\old\\20261020-052645" gateway={gateway} sessionId={null} />)
-      expect(screen.getByTestId('workdir-picker').textContent).toContain('Default workspace')
+      expect(screen.getByTestId('workdir-picker').textContent).toContain('New folder each time')
 
       act(() => $selectedWorkspaceMode.set('codex'))
       expect(screen.getByTestId('workdir-picker').textContent).toContain('20261020-052645')
@@ -144,6 +149,19 @@ describe('WorkdirPicker on a new conversation', () => {
       window.hermesDesktop = undefined as never
       $projectScope.set(scope)
       $selectedWorkspaceMode.set(null)
+    }
+  })
+
+  it('手选工作根时按选中目录显示', async () => {
+    window.hermesDesktop = { createConversationFolder: vi.fn() } as never
+
+    try {
+      setNewChatWorkspaceTarget(DEFAULT)
+      render(<WorkdirPicker gateway={fakeGateway().gateway} />)
+      openMenu()
+      expect(await screen.findByText(/Work directly in this folder/)).toBeTruthy()
+    } finally {
+      window.hermesDesktop = undefined as never
     }
   })
 
@@ -186,37 +204,8 @@ describe('WorkdirPicker on a new conversation', () => {
 })
 
 describe('WorkdirPicker on a started conversation', () => {
-  it('shows the bound folder read-only with the new-conversation hint', async () => {
-    const { gateway, request } = fakeGateway()
-
-    render(<WorkdirPicker cwd="D:\work\alpha" gateway={gateway} sessionId="runtime-1" />)
-    const trigger = screen.getByTestId('workdir-picker')
-    expect(trigger.textContent).toBe('alpha')
-
-    fireEvent.click(trigger)
-
-    expect(await screen.findByText('D:\\work\\alpha')).toBeTruthy()
-    expect(screen.getByText(/start a new conversation/)).toBeTruthy()
-    expect(screen.queryAllByRole('menuitem')).toHaveLength(0)
-    expect(request).not.toHaveBeenCalledWith('session.cwd.set', expect.anything())
-  })
-
-  it('自动建的对话文件夹显示文件夹名，点开看完整路径', async () => {
-    const { gateway } = fakeGateway()
-    const folder = `${DEFAULT}\\20261019-103015`
-
-    render(<WorkdirPicker cwd={folder} gateway={gateway} sessionId="runtime-1" />)
-    await waitFor(() => expect(screen.getByTestId('workdir-picker').textContent).toBe('20261019-103015'))
-
-    fireEvent.click(screen.getByTestId('workdir-picker'))
-    expect(await screen.findByText(folder)).toBeTruthy()
-  })
-
-  it('names the account workspace as the default workspace', async () => {
-    const { gateway } = fakeGateway()
-
-    render(<WorkdirPicker cwd={DEFAULT} gateway={gateway} sessionId="runtime-1" />)
-
-    await waitFor(() => expect(screen.getByTestId('workdir-picker').textContent).toBe('Default workspace'))
+  it('会话开始后隐藏工作目录按钮', () => {
+    render(<WorkdirPicker cwd={DEFAULT} gateway={fakeGateway().gateway} sessionId="runtime-1" />)
+    expect(screen.queryByTestId('workdir-picker')).toBeNull()
   })
 })

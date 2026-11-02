@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useWorkdirCopy } from '@/app/chat/composer/workdir-mt/copy'
 import { restoreListedSession } from '@/app/session/hooks/use-session-actions/utils'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import { Tip } from '@/components/ui/tooltip'
 import {
@@ -329,6 +330,7 @@ function DefaultProjectDirSetting() {
   // desktop-mt: 本机账号环境未设置时用账号工作区，并为每个新对话建文件夹，原说明“使用 home 目录”不再成立。
   const accountWorkspace = typeof window.hermesDesktop?.createConversationFolder === 'function'
   const [dir, setDir] = useState<null | string>(null)
+  const [restartRoot, setRestartRoot] = useState('')
   const [fallback, setFallback] = useState<string>('')
   const [busy, setBusy] = useState(false)
 
@@ -353,13 +355,16 @@ function DefaultProjectDirSetting() {
 
       setDir(result.dir)
       setFallback(result.defaultLabel)
-      applyConfiguredDefaultProjectDir(result.dir)
+
+      if (!accountWorkspace) {
+        applyConfiguredDefaultProjectDir(result.dir)
+      }
     })
 
     return () => {
       alive = false
     }
-  }, [])
+  }, [accountWorkspace])
 
   const choose = useCallback(async () => {
     const settings = window.hermesDesktop?.settings
@@ -379,14 +384,21 @@ function DefaultProjectDirSetting() {
 
       const result = await settings.setDefaultProjectDir(picked.dir)
       setDir(result.dir)
-      applyConfiguredDefaultProjectDir(result.dir)
-      notify({ durationMs: 4_000, kind: 'success', message: s.defaultDirUpdated })
+
+      if (accountWorkspace) {
+        if (result.restartRequired) {
+          setRestartRoot(result.activeRoot!)
+        }
+      } else {
+        applyConfiguredDefaultProjectDir(result.dir)
+        notify({ durationMs: 4_000, kind: 'success', message: s.defaultDirUpdated })
+      }
     } catch (err) {
       notifyError(err, s.updateDirFailed)
     } finally {
       setBusy(false)
     }
-  }, [s])
+  }, [accountWorkspace, s])
 
   const clear = useCallback(async () => {
     const settings = window.hermesDesktop?.settings
@@ -398,19 +410,35 @@ function DefaultProjectDirSetting() {
     setBusy(true)
 
     try {
-      await settings.setDefaultProjectDir(null)
+      const result = await settings.setDefaultProjectDir(null)
       setDir(null)
-      applyConfiguredDefaultProjectDir(null)
-      await ensureDefaultWorkspaceCwd()
+
+      if (accountWorkspace) {
+        if (result.restartRequired) {
+          setRestartRoot(result.activeRoot!)
+        }
+      } else {
+        applyConfiguredDefaultProjectDir(null)
+        await ensureDefaultWorkspaceCwd()
+      }
     } catch (err) {
       notifyError(err, s.clearDirFailed)
     } finally {
       setBusy(false)
     }
-  }, [s])
+  }, [accountWorkspace, s])
 
   return (
     <div className="mb-6">
+      <ConfirmDialog
+        cancelLabel={workdirCopy('later')}
+        confirmLabel={workdirCopy('restartNow')}
+        description={workdirCopy('restartBody', dir || workdirCopy('accountDefault'), restartRoot)}
+        onClose={() => setRestartRoot('')}
+        onConfirm={() => window.hermesDesktop?.settings.restartForDefaultProjectDir?.()}
+        open={Boolean(restartRoot)}
+        title={workdirCopy('restartTitle')}
+      />
       <SectionHeading icon={FolderOpen} page title={s.defaultDirTitle} />
       <p className="mb-2 text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)">
         {accountWorkspace ? workdirCopy('settingsHint') : s.defaultDirDesc}

@@ -8,19 +8,19 @@ describe('isConversationFolder', () => {
   const workspace = 'C:\\uniworker\\acc\\workspace'
 
   it('认出默认工作区下一层、按时间命名的文件夹，包括同一秒的后缀', () => {
-    expect(isConversationFolder(`${workspace}\\20261019-103015`, workspace)).toBe(true)
-    expect(isConversationFolder('c:/uniworker/acc/workspace/20261019-103015-2/', workspace)).toBe(true)
+    expect(isConversationFolder(`${workspace}\\20261019-103015`)).toBe(true)
+    expect(isConversationFolder('c:/uniworker/acc/workspace/20261019-103015-2/')).toBe(true)
   })
 
   it('其它位置或其它名字的文件夹不算', () => {
-    expect(isConversationFolder(workspace, workspace)).toBe(false)
-    expect(isConversationFolder(`${workspace}\\报告`, workspace)).toBe(false)
-    expect(isConversationFolder(`${workspace}\\20261019-103015\\sub`, workspace)).toBe(false)
-    expect(isConversationFolder(`${workspace}\\20261019`, workspace)).toBe(false)
-    expect(isConversationFolder('D:\\other\\20261019-103015', workspace)).toBe(false)
-    expect(isConversationFolder('C:\\uniworker\\acc\\elsewhere\\20261019-103015', workspace)).toBe(false)
-    expect(isConversationFolder('C:\\uniworker\\acc\\workspace2\\20261019-103015', workspace)).toBe(false)
-    expect(isConversationFolder(`${workspace}\\20261019-103015`, '')).toBe(false)
+    expect(isConversationFolder(workspace)).toBe(false)
+    expect(isConversationFolder(`${workspace}\\报告`)).toBe(false)
+    expect(isConversationFolder(`${workspace}\\20261019-103015\\sub`)).toBe(false)
+    expect(isConversationFolder(`${workspace}\\20261019`)).toBe(false)
+    expect(isConversationFolder('D:\\other\\20261019-103015')).toBe(true)
+    expect(isConversationFolder('C:\\uniworker\\acc\\elsewhere\\20261019-103015')).toBe(true)
+    expect(isConversationFolder('C:\\uniworker\\acc\\workspace2\\20261019-103015')).toBe(true)
+    expect(isConversationFolder(`${workspace}\\UniWorkSpace`)).toBe(true)
   })
 })
 
@@ -32,7 +32,10 @@ describe('applyConversationFolder', () => {
   /** 主进程按账号工作区建文件夹，后端默认目录就是账号工作区。 */
   async function apply(params: Record<string, unknown>) {
     const create = vi.fn(async () => folder)
-    window.hermesDesktop = { createConversationFolder: create } as never
+    window.hermesDesktop = {
+      createConversationFolder: create,
+      ensureCodeFolder: async () => `${workspace}\\UniWorkSpace`
+    } as never
 
     return { create, result: await applyConversationFolder(params, async () => ({ cwd: workspace })) }
   }
@@ -64,6 +67,11 @@ describe('applyConversationFolder', () => {
     $selectedWorkspaceMode.set('codex')
 
     expect((await apply({ cwd: inherited, cwd_explicit: false })).result).toBeNull()
-    expect((await apply({})).result).toBe(folder)
+
+    for (const cwd of ['', workspace, workspace + '\\UniWorkSpace']) {
+      const params: Record<string, unknown> = { cwd }
+      expect((await apply(params)).result).toBe(workspace + '\\UniWorkSpace')
+      expect(params).toMatchObject({ cwd: workspace + '\\UniWorkSpace', cwd_explicit: true })
+    }
   })
 })
