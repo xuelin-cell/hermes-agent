@@ -4,7 +4,8 @@
 # ./deploy-isolated.sh init --project hermes-adaptation --subnet 未占用CIDR --http-port 内网IP:18082 --cube-api URL --cube-proxy URL
 # ./deploy-isolated.sh all [--no-pull] [--branch cloud-adaptation]
 # ./deploy-isolated.sh config|check|base|image|template|up|status|log|purge-templates [--branch BRANCH]
-# purge-old 永久拒绝；模板清理只认项目和分支专属镜像路径。
+# purge-old 永久拒绝；模板自动清理只认项目和分支专属镜像路径。
+# 旧命名模板需显式指定：purge-templates --branch BRANCH --legacy-template tpl-ID
 set -euo pipefail
 
 SCRIPT="$(readlink -f "${BASH_SOURCE[0]}")"
@@ -200,18 +201,41 @@ cmd_purge_old() { die '共享集群禁用 purge-old；请按本部署数据库�
 
 branch_templates() {
     api GET /templates | python3 -c '
-import json, sys
-repo = sys.argv[1]
+import json, re, sys
+from pathlib import Path
+repo, history, project, branch = sys.argv[1:5]
+requested = set(sys.argv[5:])
 try:
     items = json.load(sys.stdin)
 except Exception:
     sys.exit(3)
+records = {}
+if requested:
+    path = Path(history)
+    if not path.is_file():
+        sys.exit("找不到本机部署历史，拒绝清理旧命名模板")
+    for line in path.read_text().splitlines():
+        fields = dict(re.findall(r"(?:^|\s)(branch|template|image)=([^\s]+)", line))
+        records.setdefault(fields.get("template", ""), []).append(fields)
+by_id = {str(t.get("templateID") or ""): t for t in items}
+for template_id in sorted(requested):
+    template = by_id.get(template_id)
+    rows = records.get(template_id, [])
+    if template is None or not rows:
+        sys.exit("旧模板不在集群或本机部署历史中：" + template_id)
+    if any(r.get("branch") and r["branch"] != branch for r in rows):
+        sys.exit("部署历史将旧模板记录为其他分支，拒绝清理：" + template_id)
+    image = str(template.get("imageInfo") or "")
+    legacy = "/hermes-isolated/" + project + "-cube:"
+    tag = image.split(legacy, 1)[1].split("@", 1)[0] if legacy in image else ""
+    if not tag or not any(r.get("image") == tag for r in rows):
+        sys.exit("旧模板的项目镜像路径或镜像指纹与部署历史不符：" + template_id)
 needle = "/" + repo + ":"
 for template in items:
     image = str(template.get("imageInfo") or "")
-    if needle in image:
+    if needle in image or template.get("templateID") in requested:
         print(template.get("templateID", ""), template.get("status", ""), sep="\t")
-' "$REPO_PATH"
+' "$REPO_PATH" "$HISTORY" "$PROJECT" "$BRANCH" "$@"
 }
 
 branch_previous_template() {
@@ -247,21 +271,33 @@ PY
 }
 
 cmd_purge_templates() {
-    [ "$#" = 0 ] || die 'purge-templates 只接受可选的全局参数 --branch BRANCH'
+    local legacy_ids=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --legacy-template)
+                [ "$#" -ge 2 ] && [[ "$2" =~ ^tpl-[a-z0-9]+$ ]] || die '--legacy-template 需要合法模板 ID'
+                legacy_ids="${legacy_ids:+$legacy_ids }$2"
+                shift 2 ;;
+            *) die 'purge-templates 只接受 --branch BRANCH 和可重复的 --legacy-template tpl-ID' ;;
+        esac
+    done
     local current="$TEMPLATE" previous list in_use sandboxes unknown t status keep todo="" done_n=0 fail_n=0
     previous="$(branch_previous_template)"
     say "清理项目 $PROJECT 的分支 $BRANCH 模板"
-    ok "模板镜像仓库限定为 $REPO_PATH"
+    ok "分支模板镜像仓库为 $REPO_PATH"
     ok "保留当前 ${current:-（无）}、本分支上一版 ${previous:-（无）}"
 
-    list="$(branch_templates)" || die '控制面无法列出模板；没有删除任何模板'
+    [ -z "$legacy_ids" ] || warn "旧记录没有可靠的分支标识，仅核对明确指定的旧模板：$legacy_ids"
+    # IDs have been restricted to tpl-[a-z0-9]+ above.
+    # shellcheck disable=SC2086
+    list="$(branch_templates $legacy_ids)" || die '模板查询或旧模板归属校验失败；没有删除任何模板'
     [ -n "$list" ] || { ok '本项目本分支没有可清理的模板'; return 0; }
     in_use="$(tenant_templates)" || die '读不到本部署数据库；没有删除任何模板'
     sandboxes="$(cluster_sandbox_templates)" || die '控制面无法列出集群实例；没有删除任何模板'
     unknown="$(printf '%s\n' "$sandboxes" | awk '$0 == "-" { n++ } END { print n+0 }')"
     [ "$unknown" = 0 ] || die "集群有 $unknown 台实例的模板 ID 不可识别；为避免误删，本次不删除任何模板"
     keep="$(printf '%s\n%s\n' "$current" "$previous")"
-    echo '  本项目本分支的模板：'
+    echo '  本项目本分支模板及明确指定的旧模板：'
     while IFS="$(printf '\t')" read -r t status; do
         [ -n "$t" ] || continue
         if grep -qxF -- "$t" <<< "$keep"; then
@@ -274,7 +310,7 @@ cmd_purge_templates() {
         fi
     done <<< "$list"
     [ -n "$todo" ] || { ok '没有可删的模板'; return 0; }
-    confirm '  确定删除以上模板？（只删除当前项目和分支的镜像模板）' || { echo '  没删'; return 0; }
+    confirm '  确定删除以上标记为可删的模板？' || { echo '  没删'; return 0; }
     for t in $todo; do
         # Refresh cluster references immediately before each deletion. Other deployments
         # may create instances while this command is waiting for confirmation.
