@@ -115,7 +115,7 @@ it('ends the response at a real user prompt or unrelated system event', () => {
   expect(container.querySelectorAll('[data-slot="aui_msg-actions"]')).toHaveLength(3)
 })
 
-it('keeps all response text visible while displaying whole-second duration', async () => {
+it('collapses process parts while keeping the final text and whole-second duration visible', async () => {
   const messages = toChatMessages([
     { role: 'user', content: 'Create the report', timestamp: 1 },
     { role: 'assistant', content: 'Report completed', timestamp: 1383 }
@@ -146,22 +146,23 @@ it('keeps all response text visible while displaying whole-second duration', asy
   )
 
   await waitFor(() => expect(container.textContent).toContain('Report completed'))
-  expect(within(container).getByText('Preparing the report').closest('[hidden], [style*="display: none"]')).toBeNull()
+  expect(within(container).getByText('Preparing the report').closest('[hidden], [style*="display: none"]')).not.toBeNull()
   expect(within(container).getByText('Report completed').closest('[hidden], [style*="display: none"]')).toBeNull()
   const duration = container.querySelector('[data-slot="aui_turn-duration"]')!
   expect(duration.textContent).toContain('Worked for 23m 2s')
   expect(duration.textContent).not.toContain('3093128')
-  expect(container.querySelector('[data-slot="aui_process-summary"]')).toBeNull()
+  fireEvent.click(container.querySelector('[data-slot="aui_process-summary"]')!)
+  expect(within(container).getByText('Preparing the report').closest('[hidden]')).toBeNull()
 })
 
-it('collapses explicit interim updates only after a successful final reply', async () => {
+it('collapses earlier replies together only after a successful final reply', async () => {
   const messages = toChatMessages([
     { role: 'user', content: 'Check the report', timestamp: 1 },
     { role: 'assistant', content: 'Checking sources', timestamp: 2 },
     { role: 'assistant', content: 'Full final answer', timestamp: 3 }
   ] as SessionMessage[]).map(toRuntimeMessage)
 
-  const interim = { ...messages[1]!, metadata: { custom: { interim: true } } } as ThreadMessage
+  const interim = messages[1]!
 
   const renderThread = (status: ThreadMessage['status']) => (
     <ThreadRuntime messages={[messages[0]!, interim, { ...messages[2]!, status } as ThreadMessage]}>

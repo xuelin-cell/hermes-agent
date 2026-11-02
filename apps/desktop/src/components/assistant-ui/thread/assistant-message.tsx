@@ -26,6 +26,7 @@ import {
 } from '@/components/assistant-ui/thread/content'
 import { MESSAGE_PARTS_COMPONENTS } from '@/components/assistant-ui/thread/message-parts'
 import { ReactionPicker } from '@/components/assistant-ui/thread/message-reactions'
+import { ResponseProcessVisibility } from '@/components/assistant-ui/thread/response-process'
 import { ResponseMessageIds } from '@/components/assistant-ui/thread/response-group'
 import { ResponseLoadingIndicator, TurnActivityIndicator } from '@/components/assistant-ui/thread/status'
 import { MessageTimelineTimestamp } from '@/components/assistant-ui/thread/timeline-timestamp'
@@ -88,7 +89,23 @@ const EMPTY_PARTS: readonly unknown[] = []
 // (pending -> complete and back, N rows per stream flush) can no longer
 // descend into the parts subtree at all. Its props were already the module
 // constant MESSAGE_PARTS_COMPONENTS, so nothing per-message is captured here.
-const MESSAGE_PARTS = <MessagePrimitive.Parts components={MESSAGE_PARTS_COMPONENTS} />
+const MESSAGE_PARTS = <ResponseMessageParts />
+
+function ResponseMessageParts() {
+  const processVisible = useContext(ResponseProcessVisibility)
+  const boundary = useAuiState(s => s.message.content.findLastIndex(part => part.type === 'text'))
+  const count = useAuiState(s => s.message.content.length)
+
+  if (processVisible || boundary <= 0) {
+    return <MessagePrimitive.Parts components={MESSAGE_PARTS_COMPONENTS} />
+  }
+
+  return Array.from({ length: count }, (_, index) => (
+    <div hidden={index < boundary} key={index} style={index < boundary ? { display: 'none' } : undefined}>
+      <MessagePrimitive.PartByIndex components={MESSAGE_PARTS_COMPONENTS} index={index} />
+    </div>
+  ))
+}
 
 interface MessageActionProps {
   messageId: string

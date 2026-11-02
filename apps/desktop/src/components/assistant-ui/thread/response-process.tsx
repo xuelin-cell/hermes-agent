@@ -1,6 +1,6 @@
 import { ThreadPrimitive, useAuiState } from '@assistant-ui/react'
 import { useStore } from '@nanostores/react'
-import { type ComponentProps, useState } from 'react'
+import { type ComponentProps, createContext, useState } from 'react'
 
 import { useSessionView } from '@/app/chat/session-view'
 import { registerPluginLocales, usePluginI18n } from '@/i18n/plugin-i18n'
@@ -8,6 +8,8 @@ import { Clock } from '@/lib/icons'
 
 import { contentHasVisibleText } from './content'
 import { responseDurationParts } from './response-presentation'
+
+export const ResponseProcessVisibility = createContext(true)
 
 const SCOPE = 'desktop-mt.response-process'
 registerPluginLocales(SCOPE, {
@@ -37,6 +39,7 @@ export function ResponseProcess({ indices, components }: ResponseProcessProps) {
   const view = useSessionView()
   const busy = useStore(view.$busy)
   const awaiting = useStore(view.$awaitingResponse)
+  const [expanded, setExpanded] = useState(false)
 
   const signature = useAuiState(s => {
     const lastIndex = indices.at(-1) ?? -1
@@ -67,62 +70,54 @@ export function ResponseProcess({ indices, components }: ResponseProcessProps) {
         last.status?.type === 'complete' &&
         last.status.reason === 'stop' &&
         contentHasVisibleText(last.content),
+      hasParts: last?.content?.findLastIndex(part => part.type === 'text') > 0,
       seconds: typeof duration === 'number' ? duration : start > 0 && end >= start ? end - start : undefined
     })
   })
 
-  const state = JSON.parse(signature) as { live: boolean; completed: boolean; seconds?: number }
+  const state = JSON.parse(signature) as { live: boolean; completed: boolean; hasParts: boolean; seconds?: number }
 
   const duration = responseDurationParts(state.seconds ?? 0)
 
+  const collapsible = !state.live && state.completed && (indices.length > 1 || state.hasParts)
+  const processVisible = !collapsible || expanded
+  const label = state.seconds !== undefined
+    ? copy('duration', copy('time', duration.hours, duration.minutes, duration.seconds))
+    : copy('process')
+
   return (
     <>
-      {!state.live && state.seconds !== undefined && (
+      {collapsible ? (
+        <button
+          aria-expanded={expanded}
+          className="flex w-fit items-center gap-2 py-2 text-xs font-medium tabular-nums text-muted-foreground hover:text-foreground"
+          data-slot="aui_process-summary"
+          onClick={() => setExpanded(value => !value)}
+          type="button"
+        >
+          <span data-slot="aui_turn-duration">{label}</span>
+          <span aria-hidden="true">{expanded ? '⌄' : '›'}</span>
+        </button>
+      ) : !state.live && state.seconds !== undefined ? (
         <div
           className="flex w-fit items-center gap-2 py-2 text-xs font-medium tabular-nums text-muted-foreground"
           data-slot="aui_turn-duration"
         >
           <Clock aria-hidden="true" className="size-3.5" />
-          {copy('duration', copy('time', duration.hours, duration.minutes, duration.seconds))}
+          {label}
         </div>
-      )}
-      {indices.map(index => (
-        <ResponseEntry components={components} index={index} key={index} settled={!state.live && state.completed} />
-      ))}
+      ) : null}
+      {indices.map((index, position) => {
+        const hidden = position < indices.length - 1 && !processVisible
+
+        return (
+          <div data-slot="aui_response-entry" hidden={hidden} key={index} style={hidden ? { display: 'none' } : undefined}>
+            <ResponseProcessVisibility.Provider value={position === indices.length - 1 ? processVisible : true}>
+              <ThreadPrimitive.MessageByIndex components={components} index={index} />
+            </ResponseProcessVisibility.Provider>
+          </div>
+        )
+      })}
     </>
-  )
-}
-
-interface ResponseEntryProps {
-  components: ResponseProcessProps['components']
-  index: number
-  settled: boolean
-}
-
-/** Unclassified prose remains visible, including histories without interim metadata. */
-function ResponseEntry({ components, index, settled }: ResponseEntryProps) {
-  const copy = usePluginI18n(SCOPE)
-  const interim = useAuiState(s => s.thread.messages[index]?.metadata?.custom?.interim === true)
-  const [expanded, setExpanded] = useState(false)
-  const collapsible = interim && settled
-  const visible = !collapsible || expanded
-
-  return (
-    <div data-slot="aui_response-entry">
-      {collapsible && (
-        <button
-          aria-expanded={visible}
-          className="py-1 text-xs text-muted-foreground hover:text-foreground"
-          data-slot="aui_process-summary"
-          onClick={() => setExpanded(value => !value)}
-          type="button"
-        >
-          {copy('process')} {visible ? '⌃' : '⌄'}
-        </button>
-      )}
-      <div hidden={!visible} style={!visible ? { display: 'none' } : undefined}>
-        <ThreadPrimitive.MessageByIndex components={components} index={index} />
-      </div>
-    </div>
   )
 }
