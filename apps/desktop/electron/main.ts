@@ -525,6 +525,7 @@ import {
 } from './secret-storage-policy'
 import { selectPathsDialogProperties } from './select-paths-dialog'
 import { describeGitSpawnFailure, GIT_UNUSABLE, selectRunnableBinary } from './select-runnable-binary'
+import { readSessionListSnapshot, sessionListSnapshotScope, writeSessionListSnapshot } from './session-list-snapshot'
 import {
   buildInstanceWindowUrl,
   buildSessionWindowUrl,
@@ -16667,6 +16668,29 @@ ipcMain.handle('hermes:connection-config:apply', async (_event, payload) => {
 
   return sanitizeDesktopConnectionConfig(config, payload?.profile)
 })
+
+// Resolve cache identity without starting or contacting a backend.
+function windowSessionSnapshotScope(webContentsId: number, recentsProfile: string): string {
+  const registry = readDesktopConnectionsRegistry()
+  const route = windowConnectionRoutes.get(webContentsId) ?? desktopProfilePreferences.getDefault()
+  const launchId = registry.launchMode === 'last-used' ? registry.lastUsed || registry.primary : registry.primary
+  const connectionId = route?.connectionId || launchId
+
+  return sessionListSnapshotScope({
+    connectionId: connectionId === 'local' ? null : connectionId,
+    profile: route?.profile || readActiveDesktopProfile() || 'default',
+    config: readDesktopConnectionConfig(),
+    connections: registry.connections,
+    recentsProfile
+  })
+}
+
+ipcMain.handle('hermes:sessions:snapshot:read', (event, recentsProfile: string) =>
+  readSessionListSnapshot(HERMES_HOME, windowSessionSnapshotScope(event.sender.id, recentsProfile))
+)
+ipcMain.handle('hermes:sessions:snapshot:write', (event, recentsProfile: string, snapshot) =>
+  writeSessionListSnapshot(HERMES_HOME, windowSessionSnapshotScope(event.sender.id, recentsProfile), snapshot)
+)
 
 ipcMain.handle('hermes:profile:default:get', async () => desktopProfilePreferences.getDefault())
 ipcMain.handle('hermes:profile:default:set', async (_event, route) => desktopProfilePreferences.setDefault(route))
