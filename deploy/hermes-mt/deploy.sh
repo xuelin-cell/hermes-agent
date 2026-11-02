@@ -144,9 +144,10 @@ load_cfg() {
 
 # 多规格模板表：每行 "slug cpu mem"（cpu 毫核，mem MiB）。slug 用 p 代替小数点。
 # 可写层统一 TPL_DISK。改规格 = 改模板 ID = 走原来的「模板不一致就重建」流程。
-# 这 4 个规格是产品定下来的（就先这些规格），直接写死，不从 entry.env 读。
+# 这 5 个规格是产品定下来的（就先这些规格），直接写死，不从 entry.env 读。
 spec_list() {
     printf '0p25c0p5g 250 512\n'
+    printf '0p25c1g 250 1024\n'
     printf '0p5c1g 500 1024\n'
     printf '1c2g 1000 2048\n'
     printf '2c4g 2000 4096\n'
