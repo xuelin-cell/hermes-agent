@@ -138,11 +138,11 @@ def archive_component(payload_root: Path, name: str) -> tuple[Path, str]:
     The digest is computed BEFORE archiving so the stamp matches what the installer
     will verify (the extracted directory, not the archive file).
 
-    The entire operation is wrapped in retry logic to handle transient AV file locks
-    on Windows (奇安信天擎 etc.), which may lock .pyc files immediately after creation.
+    The deletion step uses separate retry logic to handle AV file locks, avoiding
+    the need to re-compress the entire archive on failure.
     """
     import shutil
-    from scripts.build.retry import retry_on_permission_error
+    import time
 
     source_dir = payload_root / name
     archive = payload_root / f"{name}.7z"
@@ -150,39 +150,45 @@ def archive_component(payload_root: Path, name: str) -> tuple[Path, str]:
     if not source_dir.is_dir():
         raise ValueError(f"archive_component: {source_dir} is not a directory")
 
-    def do_archive() -> tuple[Path, str]:
-        """Inner function: all file operations that may hit AV locks."""
-        # Compute digest of the directory BEFORE archiving
-        # This is what the installer will verify after extraction
-        directory_digest = _stamp_digest(source_dir)
+    # Compute digest of the directory BEFORE archiving
+    # This is what the installer will verify after extraction
+    directory_digest = _stamp_digest(source_dir)
 
-        target_archive = payload_root / f"{name}.7z"
-        if target_archive.exists():
-            target_archive.unlink()
+    if archive.exists():
+        archive.unlink()
 
-        # Use 7z if available, fall back to Python's lzma module
-        seven_zip = shutil.which("7z") or shutil.which("7za")
-        if seven_zip:
-            subprocess.run(
-                [seven_zip, "a", "-t7z", "-mx=1", "-mmt=on", str(target_archive), str(source_dir)],
-                check=True, capture_output=True,
-            )
-        else:
-            # Fallback: create .tar.xz (slower but no external dependency)
-            import tarfile
-            target_archive = payload_root / f"{name}.tar.xz"
-            with tarfile.open(target_archive, "w:xz", preset=1) as tar:
-                tar.add(source_dir, arcname=name)
+    # Use 7z if available, fall back to Python's lzma module
+    seven_zip = shutil.which("7z") or shutil.which("7za")
+    if seven_zip:
+        subprocess.run(
+            [seven_zip, "a", "-t7z", "-mx=1", "-mmt=on", str(archive), str(source_dir)],
+            check=True, capture_output=True,
+        )
+    else:
+        # Fallback: create .tar.xz (slower but no external dependency)
+        import tarfile
+        archive = payload_root / f"{name}.tar.xz"
+        with tarfile.open(archive, "w:xz", preset=1) as tar:
+            tar.add(source_dir, arcname=name)
 
-        shutil.rmtree(source_dir)
-        return target_archive, directory_digest
+    # Wait briefly for AV to release file locks after compression
+    time.sleep(5)
 
-    return retry_on_permission_error(
-        do_archive,
-        max_retries=3,
-        delay=2.0,  # Longer delay for large directories (venv has 54K+ files)
-        operation_name=f"archive {name}",
-    )
+    # Retry deletion separately - don't re-compress on failure
+    max_retries = 4
+    for attempt in range(max_retries):
+        try:
+            shutil.rmtree(source_dir)
+            break
+        except PermissionError as e:
+            if attempt == max_retries - 1:
+                raise
+            delay = 5 * (2 ** attempt)  # 5s, 10s, 20s, 40s
+            print(f"[archive {name}] deletion blocked by AV, retrying ({attempt + 2}/{max_retries}) "
+                  f"after {delay}s...", flush=True)
+            time.sleep(delay)
+
+    return archive, directory_digest
 
 
 def _stamp_digest(path: Path) -> str:
