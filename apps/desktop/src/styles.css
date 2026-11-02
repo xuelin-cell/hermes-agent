@@ -1841,6 +1841,11 @@ body.guest-pointer-lock :is(webview, iframe) {
   backdrop-filter: none;
 }
 
+/* Reserve a separate row for the details control below the message text. */
+[data-slot='aui_user-bubble-frame'][data-has-details='true'] > .composer-human-message {
+  padding-bottom: calc(1rem + 24px);
+}
+
 [data-slot='aui_thread-content'] .composer-human-ai-pair-container {
   margin-bottom: 24px;
 }
