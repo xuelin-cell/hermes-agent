@@ -2208,6 +2208,11 @@ body.guest-pointer-lock :is(webview, iframe) {
   margin-block-end: 0 !important;
 }
 
+/* Cell dividers share the outer frame's color in light and dark themes. */
+[data-slot='aui_assistant-message-content'] .aui-md .aui-md-table :is(th, td):not(:last-child) {
+  border-inline-end: 1px solid var(--ui-stroke-tertiary);
+}
+
 [data-slot='aui_assistant-message-content'] .aui-md .aui-md-table thead {
   border-bottom-color: var(--ui-stroke-tertiary) !important;
 }
