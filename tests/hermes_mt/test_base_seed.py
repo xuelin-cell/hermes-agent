@@ -50,6 +50,7 @@ def test_the_dockerfile_copy_adds_the_two_seed_copies_in_place() -> None:
         line = derived[index]
         if line not in extras:
             restored.append(line.replace('npm_config_registry="${NPM_REGISTRY}" npm ci ', 'npm ci ')
+                            .replace('--extra langfuse ', '')
                             .replace('--timeout ${PYTHON_BUILD_TIMEOUT} ', ''))
         index += 1
     assert restored == original.splitlines()

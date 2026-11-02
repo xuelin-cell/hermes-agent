@@ -109,7 +109,9 @@ def derive_dockerfile(dockerfile):
             line = line.replace('npm ci ', 'npm_config_registry="${NPM_REGISTRY}" npm ci ', 1)
             runtime_installs += 1
         if stage == 'python_deps' and PYTHON_BUILD in line:
-            line = line.replace(PYTHON_BUILD, PYTHON_BUILD + '--timeout ${PYTHON_BUILD_TIMEOUT} ', 1)
+            # Cloud SDKs belong in the sealed environment used by the image.
+            # A later pm install publishes a separate runtime generation.
+            line = line.replace(PYTHON_BUILD, PYTHON_BUILD + '--extra langfuse --timeout ${PYTHON_BUILD_TIMEOUT} ', 1)
             python_builds += 1
         out.append(line)
         if line.startswith('FROM ') and stage == 'python_deps':
