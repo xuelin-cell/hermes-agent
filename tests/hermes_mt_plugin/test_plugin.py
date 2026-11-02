@@ -411,9 +411,12 @@ def test_the_background_sender_goes_when_kicked(root: Path) -> None:
 
 @pytest.fixture
 def hermes_home(root: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    from uniwork_enterprise.artifacts import Uploader
+
     (root / "config.yaml").write_text(f"plugins:\n  enabled:\n    - {PLUGIN_KEY}\n", encoding="utf-8")
     monkeypatch.setenv("HERMES_HOME", str(root))
     monkeypatch.setattr(Outbox, "_ensure_thread", lambda self: None)  # 不往假平台真发
+    monkeypatch.setattr(Uploader, "_ensure_thread", lambda self: None)
     return root
 
 
@@ -431,7 +434,10 @@ def test_hermes_loads_it_from_its_entry_point(manager) -> None:
     loaded = manager._plugins[PLUGIN_KEY]
     assert loaded.enabled and loaded.error is None and loaded.manifest.source == "entrypoint"
     assert [c.__name__ for c in manager._middleware["llm_execution"]] == ["uniwork_session_headers"]
-    assert [c.__name__ for c in manager._hooks["post_tool_call"]] == ["uniwork_tool_audit"]
+    assert [c.__name__ for c in manager._hooks["post_tool_call"]] == ["uniwork_tool_audit", "uniwork_artifact_writes"]
+    assert [c.__name__ for c in manager._hooks["pre_llm_call"]] == ["hook_begin"]
+    assert [c.__name__ for c in manager._hooks["post_llm_call"]] == ["uniwork_artifacts"]
+    assert list(manager._system_prompt_sections) == ["uniwork-collaborators"]
 
 
 def test_hermes_skips_it_unless_enabled(root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -467,6 +473,60 @@ def test_a_finished_tool_call_reaches_the_queue(manager, hermes_home: Path) -> N
     queued = [entry for _, entry in instance_for(hermes_home).outbox._queue]  # noqa: SLF001
     assert [(e["tool"], e["sessionId"], e["turnId"], e["target"]) for e in queued] == [
         ("read_file", "s1", "s1:task:ab12", "/w/a.md")]
+
+
+def test_a_turn_through_hermes_hooks_queues_its_deliverables(manager, hermes_home: Path) -> None:
+    """平台发起的运行：pre_llm_call 记下一轮开始，write_file 写的记下来，post_llm_call 按回复和写过的选产物。"""
+    from model_tools import _emit_post_tool_call_hook
+
+    write_settings(hermes_home, artifacts=True)
+    workspace = hermes_home / "workspace"
+    workspace.mkdir()
+    turn = "s1:task:ab12"
+    manager.invoke_hook("pre_llm_call", session_id="s1", task_id="task", turn_id=turn, user_message="写报告",
+                        conversation_history=[], is_first_turn=True, model="m", platform="api_server")
+    report = workspace / "报告.docx"
+    report.write_bytes(b"doc")
+    data = workspace / "数据.csv"
+    data.write_bytes(b"1,2")
+    _emit_post_tool_call_hook(function_name="write_file", function_args={"path": str(data), "content": "1,2"},
+                              result='{"bytes_written": 3}', task_id="task", session_id="s1", tool_call_id="c1",
+                              turn_id=turn, api_request_id="r1", duration_ms=5)
+    manager.invoke_hook("post_llm_call", session_id="s1", task_id="task", turn_id=turn, user_message="写报告",
+                        assistant_response=f"写好了：{report}", conversation_history=[], model="m",
+                        platform="api_server")
+    items = instance_for(hermes_home).artifacts._items  # noqa: SLF001
+    assert [Path(i["path"]).name for i in items] == ["报告.docx", "数据.csv"]
+    assert {(i["sessionId"], i["profile"], i["agentId"]) for i in items} == {("s1", "default", "")}
+
+
+def test_the_a2a_tool_lives_in_the_profiles_registry(manager, hermes_home: Path,
+                                                     monkeypatch: pytest.MonkeyPatch) -> None:
+    """工具登记在这个 profile 的 registry 里；有能调的协同对象才可用；系统提示段经 hermes 渲染；经 registry 调用。"""
+    from tools.registry import registry
+    from uniwork_enterprise import a2a
+
+    entry = registry.get_entry(a2a.TOOL, scope=manager.scope_key)
+    assert entry is not None and entry.toolset == a2a.TOOLSET and entry.check_fn() is False
+    assert manager.render_system_prompt_sections({"session_id": "s1", "profile_name": "default"}) == []
+    write_settings(hermes_home, profiles={"default": {"agentId": "agent_a", "collaborators": [
+        {"id": "agent_b", "name": "数据助手", "url": SERVER + "/a2a/agents/pub_b"}]}})
+    assert entry.check_fn() is True
+    [section] = manager.render_system_prompt_sections({"session_id": "s1", "profile_name": "default"})
+    assert section.id == a2a.SECTION_ID and "- 数据助手（agent: agent_b）" in section.content
+    calls = []
+
+    def platform(method, url, payload, request_headers, timeout):
+        calls.append((method, url, request_headers.get("X-Uniwork-Agent")))
+        return 200, {"jsonrpc": "2.0", "id": payload["id"], "result": {
+            "kind": "message", "messageId": "run-1", "contextId": "ctx-1", "parts": [{"kind": "text", "text": "好了"}],
+            "metadata": {"status": "completed"}}}
+
+    monkeypatch.setattr(a2a, "http_json", platform)
+    out = json.loads(registry.dispatch(a2a.TOOL, {"agent": "数据助手", "message": "查一下"}, scope=manager.scope_key,
+                                       task_id="task", session_id="s1"))
+    assert out == {"status": "completed", "agent": "数据助手", "context_id": "ctx-1", "output": "好了"}
+    assert calls == [("POST", SERVER + "/a2a/agents/pub_b", "agent_a")]
 
 
 # ---------------------------------------------------------------- 线上真的带着头

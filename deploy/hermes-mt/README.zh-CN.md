@@ -26,7 +26,7 @@
 | `entry/` | 入口服务（Python 3.13 + aiohttp，单进程）。`entry/entry/*.py` 见文件头注释 |
 | `seed/forward.py` | 放进每个租户卷 `/opt/data/.mt/` 的 TCP 转发器（标准库，30 行） |
 | `seed/config.yaml.tmpl` | 每个租户首次建卷时写入的 `config.yaml` 模板 |
-| `plugin/` | 企业对接插件（hermes 插件，按 entry point 加载）：发给平台的模型请求带会话头、上报工具调用。沙箱镜像把它装进 hermes 的 venv，企业模式下各 profile 在 `plugins.enabled` 里启用；配置在实例的 `.cache/uniwork-enterprise/plugin.json`，`MT_UNIWORK_PLUGIN=0` 一键停用。测试在 `tests/hermes_mt_plugin`（用仓库的 `.venv` 跑） |
+| `plugin/` | 企业对接插件（hermes 插件，按 entry point 加载）：发给平台的模型请求带会话头、上报工具调用、把交给员工的文件传到平台的产物管理、有协同对象的 Agent 多一个调别的 Agent 的工具（A2A）。沙箱镜像把它装进 hermes 的 venv，企业模式下各 profile 在 `plugins.enabled` 里启用；配置在实例的 `.cache/uniwork-enterprise/plugin.json`，`MT_UNIWORK_PLUGIN=0` 一键停用。测试在 `tests/hermes_mt_plugin`（用仓库的 `.venv` 跑） |
 | `nginx/hermes-mt.conf` | 由 `.7` 单用户版的 Nginx 配置改来：两处 `proxy_pass` 指向入口，去掉写死的 token，静态加 `auth_request` |
 | `scripts/build-frontend.sh` | 构建浏览器版前端到 `nginx/dist-browser/`（与 `deploy-custom-web.sh` 同一条 vite 命令） |
 | `scripts/verify_isolation.sh` | 验收 27 项：登录门禁 / 两个用户各自的世界 / 网络围栏 / 文件链路与文件隔离 |

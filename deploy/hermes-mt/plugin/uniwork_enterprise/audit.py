@@ -26,10 +26,13 @@ log = logging.getLogger("uniwork_enterprise")
 SKIP_TOOLS = frozenset({"tool_search", "tool_describe"})
 SECRET_KEY_RE = re.compile(r"pass(word)?|token|secret|key|authorization|cookie|credential", re.I)
 # 平台的 CONTENT_FIELDS，加上 hermes 工具里放正文的参数（execute_code 的 code、write_file 的 content……）
+# 和交给协同 Agent 的任务（uniwork_call_agent 的 message）
 CONTENT_FIELDS = frozenset({"content", "new_string", "old_string", "new_source", "file_text", "text", "data", "body",
-                            "code", "script", "patch", "diff", "new_text", "old_text"})
+                            "code", "script", "patch", "diff", "new_text", "old_text", "message"})
 TARGET_FIELDS = ("path", "file_path", "notebook_path", "command", "url", "urls", "image_url", "query", "pattern",
-                 "skill", "name", "goal", "subagent_type", "description")
+                 "skill", "name", "goal", "subagent_type", "agent", "description")
+# 把活交给别的 agent 的工具：hermes 的子代理，和本插件的协同 Agent（a2a.py）
+SUBAGENT_TOOLS = frozenset({"delegate_task", "uniwork_call_agent"})
 NAMESPACE = uuid.UUID("5f3c6b1e-0e5b-4d8e-9d55-7b3f2a1c9e10")
 USER_DENIED = "BLOCKED: User denied"
 
@@ -100,7 +103,7 @@ def kind_of(tool: str) -> tuple[str, str]:
     if tool.startswith(("mcp__", "connectors__")):
         parts = tool.split("__")
         return "mcp", parts[1] if len(parts) > 2 else ""
-    if tool == "delegate_task":
+    if tool in SUBAGENT_TOOLS:
         return "subagent", ""
     if tool == "skill_view":
         return "skill", ""

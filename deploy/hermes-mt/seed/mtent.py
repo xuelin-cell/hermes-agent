@@ -17,8 +17,12 @@
 以及转发器定时检查时，都按默认 profile 的值同步（:func:`sync_tokens`），换令牌后托管 profile 不会掉队。
 
 企业对接插件（deploy/hermes-mt/plugin，随沙箱镜像装进 hermes 的 venv）：每次安装把清单的 ``plugin`` 段写成
-``.cache/uniwork-enterprise/plugin.json``（平台地址、令牌变量名、开关，不含令牌），插件按它决定做不做；
-转发器定时检查时，所有 profile 的 config.yaml 都确保启用了它（:func:`sync_plugins`）。
+``.cache/uniwork-enterprise/plugin.json``（平台地址、令牌变量名、开关，哪个 profile 是平台的哪个 Agent、能调哪些
+协同 Agent；不含令牌），插件按它决定做不做；转发器定时检查时，所有 profile 的 config.yaml 都确保启用了它
+（:func:`sync_plugins`）。
+
+平台的运行环境（清单 ``default.agent``）：默认 profile 就是这个 Agent，按它的内置工具开关关工具（和托管 profile
+一样），我们关掉的记在 state.json，平台再打开时只撤掉这些。
 """
 
 from __future__ import annotations
@@ -63,6 +67,10 @@ CACHE_DIR = ".cache/uniwork-enterprise/packages"
 # 企业对接插件的配置（插件里的 settings.py 读它）和它在 hermes 里的名字（entry/tenants.py 的 UNIWORK_PLUGIN_KEY）
 PLUGIN_FILE = ".cache/uniwork-enterprise/plugin.json"
 PLUGIN_KEY = "uniwork-enterprise"
+# 插件的协同工具（plugin/uniwork_enterprise/a2a.py）最多等 20 分钟，hermes 默认一次工具调用只等 420 秒：
+# 有协同对象的 profile 给它单独放宽（hermes 按 timeouts.tools.sequential_calls.<工具名> 读）
+A2A_TOOL = "uniwork_call_agent"
+A2A_TOOL_TIMEOUT_S = 1260
 
 MAX_PACKAGE_BYTES = 20 * 1024 * 1024
 MAX_EXTRACTED_BYTES = 80 * 1024 * 1024
@@ -451,29 +459,83 @@ def _merge_mcp(cfg, desired: dict, prefixes: tuple[str, ...]) -> None:
         servers[name] = fresh
 
 
-def _patch_default_config(home: Path, connectors: dict, token_env: str, report: dict) -> None:
-    """默认 profile 的 config.yaml：只动企业连接器、专家包 MCP、企业知识检索这几条，别的设置不碰。"""
+def _set_a2a_timeout(cfg) -> None:
+    calls = mtstate._section(mtstate._section(cfg, "timeouts"), "tools")  # noqa: SLF001
+    sequential = calls.get("sequential_calls")
+    if not isinstance(sequential, dict):
+        sequential = calls["sequential_calls"] = {}
+    sequential[A2A_TOOL] = A2A_TOOL_TIMEOUT_S
+
+
+def _switch_list(have, ours_before, wanted) -> tuple[list[str], list[str]]:
+    """一个由别人和我们共写的名单：撤掉我们上次加的，再加上这次要的。返回 (新名单, 这次由我们加的)：
+    别人本来就有的不算我们的，以后也不撤。"""
+    base = [str(x) for x in have or [] if str(x) not in set(ours_before)]
+    added = [x for x in wanted if x not in base]
+    return base + added, added
+
+
+def _apply_default_tools(cfg, agent: dict, previous: dict) -> dict:
+    """平台运行环境的默认 profile：按 Agent 版本的内置工具开关关工具（托管 profile 见 :func:`_agent_config`）。
+    返回由我们关掉的 ``{"toolsets": [...], "exclude": [...]}``，记进 state.json。"""
+    toolsets, excluded = _tool_switches(agent.get("tools")) if agent else ([], [])
+    ours = {"toolsets": [], "exclude": []}
+    section = cfg.get("agent") if isinstance(cfg.get("agent"), dict) else None
+    have = section.get("disabled_toolsets") if section is not None else None
+    if toolsets or (isinstance(have, list) and set(previous.get("toolsets") or []) & {str(x) for x in have}):
+        merged, ours["toolsets"] = _switch_list(have if isinstance(have, list) else [], previous.get("toolsets") or [],
+                                                toolsets)
+        mtstate._section(cfg, "agent")["disabled_toolsets"] = merged  # noqa: SLF001
+    servers = cfg.get("mcp_servers") if isinstance(cfg.get("mcp_servers"), dict) else {}
+    yuanjing = servers.get(YUANJING_MCP)
+    if isinstance(yuanjing, dict):
+        tools_filter = yuanjing.get("tools") if isinstance(yuanjing.get("tools"), dict) else None
+        current = tools_filter.get("exclude") if tools_filter is not None else None
+        if excluded or (isinstance(current, list) and set(previous.get("exclude") or []) & {str(x) for x in current}):
+            merged, ours["exclude"] = _switch_list(current if isinstance(current, list) else [],
+                                                   previous.get("exclude") or [], excluded)
+            if tools_filter is None:
+                tools_filter = yuanjing["tools"] = {}
+            tools_filter["exclude"] = merged
+    return ours
+
+
+def _patch_default_config(home: Path, connectors: dict, token_env: str, report: dict, agent: dict | None = None,
+                          previous: dict | None = None) -> dict:
+    """默认 profile 的 config.yaml：只动企业连接器、专家包 MCP、企业知识检索这几条；平台的运行环境再加上这个 Agent
+    的内置工具开关和协同工具的等待时限。别的设置不碰。返回由我们关掉的工具（见 :func:`_apply_default_tools`）。"""
+    previous = previous or {}
     path = home / "config.yaml"
     try:
         text = path.read_text(encoding="utf-8")
     except OSError:
-        return
+        return previous
     load, dump = mtstate._yaml_io()  # noqa: SLF001
     try:
         cfg = load(text) or {}
     except Exception as exc:  # noqa: BLE001
         report["errors"].append(f"默认 profile 的 config.yaml 解析不了，企业连接器没写进去：{type(exc).__name__}")
-        return
+        return previous
     if not isinstance(cfg, dict):
-        return
-    before = json.dumps(cfg.get("mcp_servers"), sort_keys=True, default=str)
+        return previous
+
+    def snapshot(*keys: str) -> str:
+        return json.dumps({k: cfg.get(k) for k in keys}, sort_keys=True, default=str)
+
+    mcp_before, rest_before = snapshot("mcp_servers"), snapshot("agent", "timeouts")
     _merge_mcp(cfg, connectors, (ENT_MCP_PREFIX, PLUGIN_MCP_PREFIX, KNOWLEDGE_MCP))
-    if json.dumps(cfg.get("mcp_servers"), sort_keys=True, default=str) == before:
-        return
+    ours = _apply_default_tools(cfg, agent or {}, previous)
+    if (agent or {}).get("collaborators"):
+        _set_a2a_timeout(cfg)
+    mcp_changed = snapshot("mcp_servers") != mcp_before
+    if not mcp_changed and snapshot("agent", "timeouts") == rest_before:
+        return ours
     new_text = dump(cfg)
     mtstate._check_parses(new_text)  # noqa: SLF001
     mtstate._write_atomic(path, new_text.encode("utf-8"))  # noqa: SLF001
-    report["mcp_changed"].append("default")
+    if mcp_changed:
+        report["mcp_changed"].append("default")  # hermes 只在启动时连 MCP，元景排除的工具也是
+    return ours
 
 
 def _tool_switches(tools) -> tuple[list[str], list[str]]:
@@ -529,6 +591,8 @@ def _agent_config(spec: dict, agent: dict, mcp: dict) -> str:
         yuanjing["tools"] = tools_filter
         servers[YUANJING_MCP] = yuanjing
     cfg["mcp_servers"] = servers
+    if agent.get("collaborators"):
+        _set_a2a_timeout(cfg)
     text = dump(cfg)
     mtstate._check_parses(text)  # noqa: SLF001
     return text
@@ -714,11 +778,34 @@ def token_env_of(home: Path) -> str:
         return ""
 
 
+def _collaborators(agent: dict) -> list[dict]:
+    """协同 Agent（入口已把地址改成实例连得到的）：插件只认 id 和 A2A 地址齐全的。"""
+    out = []
+    for item in agent.get("collaborators") or []:
+        if isinstance(item, dict) and item.get("id") and item.get("url"):
+            out.append({"id": str(item["id"]), "name": str(item.get("name") or ""), "url": str(item["url"]),
+                        "cardUrl": str(item.get("cardUrl") or "")})
+    return out
+
+
+def _plugin_profiles(spec: dict) -> dict:
+    """哪个 profile 是平台的哪个 Agent、能调哪些协同 Agent：托管 profile 各一条；平台的运行环境里默认 profile 一条。"""
+    out = {}
+    agent = (spec.get("default") or {}).get("agent")
+    if isinstance(agent, dict) and agent.get("id"):
+        out["default"] = {"agentId": str(agent["id"]), "collaborators": _collaborators(agent)}
+    for agent in spec.get("agents") or []:
+        if isinstance(agent, dict) and agent.get("id"):
+            out[profile_name(str(agent["id"]))] = {"agentId": str(agent["id"]), "collaborators": _collaborators(agent)}
+    return out
+
+
 def _plugin_json(spec: dict, server: str, token_env: str) -> bytes:
     plugin = spec.get("plugin") if isinstance(spec.get("plugin"), dict) else {}
     return json.dumps({"v": 1, "enabled": plugin.get("enabled") is True and bool(server) and bool(token_env),
-                       "server": server, "tokenEnv": token_env, "toolAudit": plugin.get("toolAudit") is not False},
-                      sort_keys=True).encode("utf-8")
+                       "server": server, "tokenEnv": token_env, "toolAudit": plugin.get("toolAudit") is not False,
+                       "artifacts": plugin.get("artifacts") is True, "profiles": _plugin_profiles(spec)},
+                      ensure_ascii=False, sort_keys=True).encode("utf-8")
 
 
 def plugin_enabled(home: Path) -> bool:
@@ -779,9 +866,16 @@ def apply(home: Path, spec: dict, fetch: Fetch | None = None) -> dict:
     token_env = str(spec.get("token_env") or "")
     token = env_value(home / ".env", token_env)
     fetch = fetch or make_fetch(token)
+    try:
+        state = json.loads((home / STATE_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        state = {}
+    previous_tools = state.get("defaultTools") if isinstance(state, dict) and isinstance(state.get("defaultTools"),
+                                                                                          dict) else {}
 
-    # 默认 profile
+    # 默认 profile（平台的运行环境里就是那个 Agent：default.agent）
     default = spec.get("default") or {}
+    service_agent = default.get("agent") if isinstance(default.get("agent"), dict) else None
     _set_active_org(home, home, tenant, owner)
     if tenant:
         keep = {"enterprise", "experience"}
@@ -802,9 +896,9 @@ def apply(home: Path, spec: dict, fetch: Fetch | None = None) -> dict:
                for c in default.get("connectors") or [] if isinstance(c, dict) and (c.get("relay") or c.get("url"))}
         mcp.update(plugin_mcp)
         mcp.update(_knowledge_mcp(layers, token_env))
-        _patch_default_config(home, mcp, token_env, report)
+        default_tools = _patch_default_config(home, mcp, token_env, report, service_agent, previous_tools)
     else:
-        _patch_default_config(home, {}, token_env, report)
+        default_tools = _patch_default_config(home, {}, token_env, report, service_agent, previous_tools)
 
     # 托管 profile
     wanted = {profile_name(str(a.get("id") or "")): a for a in spec.get("agents") or []
@@ -824,7 +918,8 @@ def apply(home: Path, spec: dict, fetch: Fetch | None = None) -> dict:
                 report["errors"].append(f"下架 {name} 失败：{exc}")
 
     _write(home / STATE_FILE, json.dumps({"token_env": token_env, "tenant": tenant,
-                                          "revision": str(spec.get("revision") or "")}).encode("utf-8"),
+                                          "revision": str(spec.get("revision") or ""),
+                                          "defaultTools": default_tools}).encode("utf-8"),
            home, owner, 0o600)
     _write(home / PLUGIN_FILE, _plugin_json(spec, server, token_env), home, owner)
     report["ok"] = not report["errors"]

@@ -54,7 +54,7 @@ def build_spec(policy: dict, *, server: str, token_env: str, config: dict, servi
                plugin: bool = True) -> dict:
     """平台策略 → 转发器的清单。``config`` 是入口给默认 profile 的配置（TenantManager._config_patch_spec），
     Agent 的托管 profile 以它为模板；``service`` 表示平台的运行环境；``plugin`` 是实例里企业对接插件的总开关
-    （MT_UNIWORK_PLUGIN），连同平台的工具调用记录开关一起由转发器写进实例的 plugin.json。"""
+    （MT_UNIWORK_PLUGIN），连同平台的工具调用记录开关、产物开关、各 Agent 的协同对象一起由转发器写进实例的 plugin.json。"""
     info = policy.get("enterprise") if isinstance(policy.get("enterprise"), dict) else {}
     server = server.rstrip("/")
     announced = str(info.get("serverUrl") or "").rstrip("/")
@@ -78,6 +78,23 @@ def build_spec(policy: dict, *, server: str, token_env: str, config: dict, servi
             out["auth"] = "device"
             out["url"] = _rewrite(item.get("url"), announced, server)
         return out
+
+    def collaborators(entry: dict) -> list[dict]:
+        # 多 Agent 协同（27 号第 5 节）：平台只列开着 A2A 的；id 去掉 "agent:" 前缀，地址改成实例连得到的
+        out = []
+        for card in entry.get("collaboratorCards") or []:
+            if not isinstance(card, dict):
+                continue
+            ident = str(card.get("id") or "").removeprefix("agent:")
+            url = _rewrite(card.get("url"), announced, server)
+            if ident and url:
+                out.append({"id": ident, "name": str(card.get("name") or ""), "url": url,
+                            "cardUrl": _rewrite(card.get("cardUrl"), announced, server)})
+        return out
+
+    def tools(entry: dict) -> list[str] | None:
+        # Agent 版本打开的内置工具（27 号第 1 节）；没有这个字段的旧平台 = 全开
+        return [str(t) for t in entry["tools"]] if isinstance(entry.get("tools"), list) else None
 
     def layer(entry: dict) -> dict:
         facts = entry.get("facts") if isinstance(entry.get("facts"), dict) else {}
@@ -106,6 +123,11 @@ def build_spec(policy: dict, *, server: str, token_env: str, config: dict, servi
     if service:
         default = {"skills": [package(i) for i in skills], "plugins": [package(i) for i in plugins],
                    "connectors": [connector(i) for i in connectors], "layers": layers}
+        # 运行的是哪个 Agent（29 号第 1 节）：默认 profile 按它的工具开关关工具，调协同 Agent 时用它的 id
+        profile = policy.get("agentProfile") if isinstance(policy.get("agentProfile"), dict) else {}
+        if profile.get("id"):
+            default["agent"] = {"id": str(profile["id"]), "tools": tools(profile),
+                                "collaborators": collaborators(profile)}
         agents: list[dict] = []
     else:
         default = {"skills": [package(i) for i in skills if not i.get("onlyFor")], "plugins": [],
@@ -132,15 +154,18 @@ def build_spec(policy: dict, *, server: str, token_env: str, config: dict, servi
                 "connectors": [connector(by_id["connectors"][str(i)]) for i in entry.get("connectors") or []
                                if str(i) in by_id["connectors"]],
                 "layers": [by_key[str(entry.get("key"))]] if str(entry.get("key")) in by_key else [],
-                # 这个版本打开的内置工具（27 号第 1 节）；没有这个字段的旧平台 = 全开
-                "tools": [str(t) for t in entry["tools"]] if isinstance(entry.get("tools"), list) else None,
+                "tools": tools(entry),
+                "collaborators": collaborators(entry),
             })
     tool_audit = policy.get("toolAudit") if isinstance(policy.get("toolAudit"), dict) else {}
+    artifacts = policy.get("artifacts") if isinstance(policy.get("artifacts"), dict) else {}
     return {"v": SPEC_VERSION, "tenant": str(info.get("tenantId") or ""), "server": server, "token_env": token_env,
             "revision": str(policy.get("revision") or ""), "config": base_config, "default": default,
             "agents": agents,
-            # 企业对接插件（deploy/hermes-mt/plugin）：会话头总是带；工具调用记录按平台的开关，缺省为开（14 号第 14 条）
-            "plugin": {"enabled": bool(plugin), "toolAudit": tool_audit.get("enabled", True) is not False}}
+            # 企业对接插件（deploy/hermes-mt/plugin）：会话头总是带；工具调用记录按平台的开关，缺省为开（14 号第 14 条）；
+            # 产物上传按 policy.artifacts.enabled（29 号第 3 节），没有这个字段的旧平台不传
+            "plugin": {"enabled": bool(plugin), "toolAudit": tool_audit.get("enabled", True) is not False,
+                       "artifacts": artifacts.get("enabled") is True}}
 
 
 def spec_digest(spec: dict) -> str:

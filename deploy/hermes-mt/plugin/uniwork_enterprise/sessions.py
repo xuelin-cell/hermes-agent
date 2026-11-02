@@ -59,3 +59,22 @@ class ConversationRoots:
                 while len(self._cache) > CACHE_LIMIT:
                     self._cache.popitem(last=False)
         return root
+
+    def title(self, session_id: str) -> str:
+        """对话的标题（产物的 sessionName）：最早那个会话的，没有就用它自己的；还没起好标题就是空的。不缓存：
+        标题是第一轮结束后另起一次模型调用生成的，会后到，员工也能改。"""
+        session_id = str(session_id or "")
+        if not session_id:
+            return ""
+        try:
+            with self._lock:
+                if self._db is None:
+                    self._db = self._db_factory()
+                db = self._db
+            for candidate in dict.fromkeys((self.root(session_id), session_id)):
+                title = db.get_session_title(candidate)
+                if title:
+                    return str(title)
+        except Exception as exc:  # noqa: BLE001
+            log.debug("uniwork-enterprise: session title lookup failed: %s", type(exc).__name__)
+        return ""
