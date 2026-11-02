@@ -127,7 +127,7 @@ export function WorkdirPicker({ cwd, gateway, sessionId }: WorkdirPickerProps) {
     !shown || (!picked && (sameWorkdir(shown, defaultCwd) || (codeWorkspace && sameWorkdir(shown, codeDefault))))
 
   const defaultName = t(autoFolders ? (codeWorkspace ? 'codeName' : 'autoName') : 'defaultName')
-  const label = isDefault ? defaultName : workdirName(shown)
+  const label = isDefault ? (autoFolders ? t('selectLabel') : defaultName) : workdirName(shown)
 
   const recent = useMemo(
     () => recentWorkdirs(sessions, [defaultCwd, codeDefault], isConversationFolder),

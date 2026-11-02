@@ -6,6 +6,7 @@ const SCOPE = 'desktop-mt.workdir'
 registerPluginLocales(SCOPE, {
   en: {
     title: 'Working folder',
+    selectLabel: 'Choose working folder',
     defaultName: 'Default workspace',
     defaultHint: 'The default workspace of this account',
     recent: 'Recent',
@@ -34,6 +35,7 @@ registerPluginLocales(SCOPE, {
   },
   zh: {
     title: '工作目录',
+    selectLabel: '选择工作目录',
     defaultName: '默认工作区',
     defaultHint: '当前账号的默认工作区',
     recent: '最近使用',
@@ -60,6 +62,7 @@ registerPluginLocales(SCOPE, {
   },
   'zh-hant': {
     title: '工作目錄',
+    selectLabel: '選擇工作目錄',
     defaultName: '預設工作區',
     defaultHint: '目前帳號的預設工作區',
     recent: '最近使用',

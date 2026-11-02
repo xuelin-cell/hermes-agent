@@ -141,7 +141,7 @@ describe('WorkdirPicker on a new conversation', () => {
     try {
       $selectedWorkspaceMode.set('work')
       render(<WorkdirPicker cwd="D:\\old\\20261020-052645" gateway={gateway} sessionId={null} />)
-      expect(screen.getByTestId('workdir-picker').textContent).toContain('New folder each time')
+      expect(screen.getByTestId('workdir-picker').textContent).toContain('Choose working folder')
 
       act(() => $selectedWorkspaceMode.set('codex'))
       expect(screen.getByTestId('workdir-picker').textContent).toContain('20261020-052645')
