@@ -651,7 +651,8 @@ build_template() {
 import json,sys
 try: d = json.load(sys.stdin)
 except Exception: d = {}
-print("%s\t%s" % (d.get("status") or "", " ".join(str(d.get("message") or "").split())[:300]))' 2>/dev/null || true)"
+cut = lambda s: s if len(s) <= 1000 else s[:300] + " … " + s[-690:]  # 太长留头尾：mke2fs 这类的原因在最后
+print("%s\t%s" % (d.get("status") or "", cut(" ".join(str(d.get("message") or "").split()))))' 2>/dev/null || true)"
             job="${out%%$'\t'*}"
             msg="${out#*$'\t'}"
         fi
@@ -673,7 +674,9 @@ elif d.get("status") == "READY" and not failed:
 else:
     why = (failed[0].get("error_message") if failed else "") or (msg if job == "error" else "") \
         or d.get("lastError") or d.get("status") or ""
-    print("FAILED_ON", ",".join(r.get("node_ip") or "?" for r in failed) or "-", " ".join(str(why).split())[:300])' "$job" "$msg")"
+    why = " ".join(str(why).split())
+    why = why if len(why) <= 1000 else why[:300] + " … " + why[-690:]
+    print("FAILED_ON", ",".join(r.get("node_ip") or "?" for r in failed) or "-", why)' "$job" "$msg")"
         [ "$s" != "$last" ] && { printf '  %s %s\n' "$(date +%T)" "$s"; last="$s"; }
         case "$s" in
             READY*) return 0 ;;
