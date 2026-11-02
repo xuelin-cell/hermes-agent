@@ -119,6 +119,12 @@ class Settings:
     login_application: str = _env("MT_LOGIN_APPLICATION", "uniwork")
     upstream_timeout_s: int = int(_env("MT_UPSTREAM_TIMEOUT_S", "15"))
 
+    # Fixed deployment endpoint, matching UniClaw cloud-vm-dev. No env override.
+    langfuse_gateway_url: str = "https://www.yjworker.10010.com/langfuse"
+    # Instance-reachable Entry origin (without base_path); setting this opts in
+    # to provisioning the existing observability plugin at instance bootstrap.
+    langfuse_entry_url: str = _env("MT_LANGFUSE_ENTRY_URL").rstrip("/")
+
     # 模型（写进每个租户卷的 config.yaml）
     model_base_url: str = _env("MT_MODEL_BASE_URL", "https://maas-api.ai-yuanjing.com/openapi/compatible-mode/v1")
     model_name: str = _env("MT_MODEL", "deepseek-v4-flash")

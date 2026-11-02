@@ -35,6 +35,7 @@ from .config import Settings
 from .cube_api import Cube, CubeError, SandboxGone
 from .docker_api import Docker, DockerError
 from .store import Store
+from .langfuse_config import credential_lines, upload_url
 
 log = logging.getLogger("entry.tenants")
 
@@ -449,6 +450,8 @@ class TenantManager:
 
             # 平台下发的端点若有变化，先改卷里的 config.yaml（hermes 只在启动时读一次）
             changed = await self._sync_endpoint(cname, endpoint, catalog, getattr(context, "limits", None))
+            tracing_changed = await self._sync_langfuse(cname, user_id)
+            changed = changed or tracing_changed
             if changed and (info or {}).get("State", {}).get("Running"):
                 log.info("tenant %s: 端点已更新，重启容器让 hermes 重新读配置", slug)
                 await self.docker.stop_container(cname)
@@ -565,6 +568,8 @@ class TenantManager:
             "template": self._render_user_files("", endpoint, catalog, limits)["config.yaml"].decode("utf-8"),
         }
         spec["mcp_servers"] = self._mcp_servers(api_key) if api_key is not None else self._drive_mcp()
+        if upload_url(self.s):
+            spec["enabled_plugins"] = ["observability/langfuse"]
         return spec
 
     def _cube_seed_files(
@@ -573,6 +578,7 @@ class TenantManager:
         endpoint: tuple[str, str] | None,
         catalog: list[tuple[str, str]] | None,
         limits: dict[str, int] | None = None,
+        tracing_lines: list[str] | None = None,
     ) -> list[dict]:
         """渲染引导接口要的种子文件。
 
@@ -586,6 +592,8 @@ class TenantManager:
            ``if-pristine`` 的判据是与镜像里的示例逐字节比对，见 seed/forward.py。
         """
         rendered = self._render_user_files(api_key, endpoint, catalog, limits)
+        if tracing_lines:
+            rendered[".env"] += ("\n".join(tracing_lines) + "\n").encode("utf-8")
         patch = self._config_patch_spec(endpoint, catalog, limits, api_key=api_key or "")
         return [
             {
@@ -818,7 +826,8 @@ class TenantManager:
             self.s.forward_port,
             token=token,
             files=self._cube_seed_files(
-                context.api_key, context.endpoint, context.catalog, getattr(context, "limits", None)),
+                context.api_key, context.endpoint, context.catalog, getattr(context, "limits", None),
+                tracing_lines=await credential_lines(self.s, self.store, user_id)),
             ready_timeout_s=self.s.ready_timeout_s,
             state=self._state_block(sandbox_id, epoch, restore_from),
         )
@@ -1131,6 +1140,19 @@ class TenantManager:
                 await self.store.set_tenant_state(user_id, "stopped")
                 fixed += 1
         log.info("reconcile(cube): %d 个有实例的用户，校正 %d 条，平台实例未动", len(rows), fixed)
+
+    async def _sync_langfuse(self, cname: str, user_id: str) -> bool:
+        lines = await credential_lines(self.s, self.store, user_id)
+        if not lines:
+            return False
+        archive = await self.docker.get_archive(cname, "/opt/data/.env")
+        raw = self._from_tar(archive, ".env") if archive else None
+        text = raw.decode("utf-8") if raw is not None else ""
+        updated = _mtstate().env_upsert_text(text, lines)
+        if updated == text:
+            return False
+        await self.docker.put_archive(cname, "/opt/data", _tar_bytes({".env": updated.encode("utf-8")}))
+        return True
 
     async def _sync_api_key(self, tenant: Tenant, api_key: str) -> None:
         """通过 Hermes 既有接口更新 Key；只有成功后才记录内存摘要。"""

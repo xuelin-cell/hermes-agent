@@ -13,6 +13,7 @@ from aiohttp import web
 
 from .config import SETTINGS, Settings
 from .browser_auth import BrowserAuth, BrowserIdentity
+from .langfuse_routes import LangfuseRoutes
 from .drive_routes import DriveRoutes
 from .messaging_notifications import MessagingNotifications
 from .account_routes import AccountRoutes
@@ -113,6 +114,7 @@ class Entry:
             CredentialCipher(settings.credential_key),
         )
         self.browser_auth = BrowserAuth(self.store.cipher)
+        self.langfuse_routes = LangfuseRoutes(self)
         self.share_routes = ShareRoutes(self)
         self.mail_routes = MailRoutes(self)
         self.connector_routes = ConnectorRoutes(self)
@@ -203,6 +205,7 @@ class Entry:
             proof, payload["maas_auth"] = self.browser_auth.issue(
                 login.session, maas_token, upstream_expires_ms, phone,
             )
+            self.langfuse_routes.remember(user_id, maas_token, upstream_expires_ms)
         response = web.json_response(payload, headers={"Cache-Control": "no-store"})
         self._set_cookie(response, login.session)
         if proof:
@@ -236,10 +239,12 @@ class Entry:
 
     async def _require_maas(self, request: web.Request) -> BrowserIdentity:
         session = await self._require(request)
-        return self.browser_auth.require(
+        identity = self.browser_auth.require(
             session, request.cookies.get(self.s.cookie_name + "_maas", ""),
             request.headers.get("Authorization", ""),
         )
+        self.langfuse_routes.remember(identity.user_id, identity.token, identity.expires_at)
+        return identity
 
     async def maas_auth_status(self, request: web.Request) -> web.Response:
         """Confirm the browser credential binding without returning the bearer."""
@@ -537,6 +542,7 @@ class Entry:
 
     async def on_cleanup(self, app: web.Application) -> None:
         await self.messaging_routes.relays.close()
+        self.langfuse_routes.close()
         await self.share_routes.agent.close()
         await self.skill_routes.close()
         await self.drive_routes.close()
@@ -558,6 +564,7 @@ class Entry:
             await asyncio.sleep(60)
             try:
                 await self.store.purge_expired_sessions()
+                self.langfuse_routes.purge()
                 if self.tenants is not None:
                     await self.tenants.reap_idle(keep=set(self._live_ws) | self.skill_routes.active_users)
             except Exception as exc:  # noqa: BLE001
@@ -585,6 +592,8 @@ def build_app(settings: Settings = SETTINGS) -> web.Application:
     app.router.add_get(path("/login"), entry.login_page)
     app.router.add_get(path("/__entry/browser-auth.js"), entry.browser_auth_script)
     app.router.add_post(path("/__entry/maas-auth"), entry.maas_auth_status)
+    app.router.add_post(path("/__entry/langfuse/grant"), entry.langfuse_routes.issue)
+    app.router.add_post(path("/__entry/langfuse/api/public/otel/v1/traces"), entry.langfuse_routes.upload)
     app.router.add_post(path("/__entry/{kind:conversation|artifact}-shares/{operation}"), entry.share_routes.handle)
     app.router.add_post(path("/__entry/skills/{operation}"), entry.skill_routes.handle)
     app.router.add_post(path("/__entry/welcome/{locale}"), entry.welcome_routes.handle)

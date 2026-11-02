@@ -171,6 +171,11 @@ COPY .overlay/ /tmp/hermes-overlay/
 RUN python3 /opt/mt/image_overlay.py apply /tmp/hermes-overlay /opt/hermes \
     && rm -rf /tmp/hermes-overlay
 
+# Cloud tracing remains opt-in in Entry; bake the locked SDK into the image so
+# the first task never needs a network dependency install.
+RUN cd /opt/hermes && /opt/hermes/.venv/bin/python -m pm.cli install --extra langfuse \
+    && /opt/hermes/.venv/bin/python -c "import langfuse"
+
 # ---- 所有用户相同的环境变量 -------------------------------------------------
 # 与 entry/entry/tenants.py::_create 里那份清单保持一致。缺的那个
 # HERMES_DASHBOARD_SESSION_TOKEN 每人不同，走引导接口。

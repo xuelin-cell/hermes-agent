@@ -44,6 +44,11 @@ HttpOnly session cookie 认证，并额外签发只含摘要的认证加密关�
 旧 session 使用新业务前需重新登录；部署时前端与入口同步更新。页面分享已接入，网盘及 agent 授权通道仍待接入。
 完整设计和当前验收结果见 [实施方案](docs/cloud-browser-token-sharing-drive-plan.md#14-本轮已实现的基础能力2026-10-26)。
 
+## Langfuse 后台上传凭证
+
+Langfuse 插件、后台上传凭证和 Entry 转发入口见 [接入说明](docs/langfuse-upload-capability.md)。上游地址固定为 `https://www.yjworker.10010.com/langfuse`，不支持环境变量覆盖。该能力默认关闭；明确配置实例可达的 `MT_LANGFUSE_ENTRY_URL` 后，在实例引导时自动下发凭证并启用现有插件，登录 JWT 不进入实例。云端镜像预装锁定的 SDK；已有 Cube 实例需通过新模板重新引导后生效。
+启用后 Entry 按用户缓存一份 JWT，并在 PG 保存与用户一一对应的长期上传凭证；凭证不设置或校验有效期，重复获取、实例替换和 Entry 重启均可复用。实例上传时 Entry 校验凭证并读取用户当前 JWT；网页退出不清除后台授权，JWT 到期或缓存丢失时暂停转发，账号停用时拒绝但不删除凭证。
+
 ## 云端分享
 
 会话/单条回复和产物分享复用桌面页面，通过 `/__entry/conversation-shares/*` 和

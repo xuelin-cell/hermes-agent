@@ -1,6 +1,7 @@
 """Browser-held MaaS tokens remain bound to their Entry login across HTTP requests."""
 from __future__ import annotations
 
+import asyncio
 import json
 import secrets
 import time
@@ -154,11 +155,37 @@ async def test_browser_login_uses_real_store_without_persisting_maas_token(postg
     database = Database(postgres_database_url, min_size=1, max_size=2)
     await database.connect()
     try:
-        store = Store(database, CredentialCipher(Fernet.generate_key().decode()))
+        cipher = CredentialCipher(Fernet.generate_key().decode())
+        store = Store(database, cipher)
         token = await exercise_login(store, postgres_database_url)
+        # Concurrent requests and a fresh Store/DB connection return the same user credential.
+        credentials = await asyncio.gather(*(
+            store.ensure_langfuse_credentials('13822222222') for _ in range(4)))
+        credential = credentials[0]
+        assert all(item == credential for item in credentials)
+        other = await store.ensure_langfuse_credentials('13811111111')
+        assert other.public_key != credential.public_key and other.secret_key != credential.secret_key
+        assert await store.langfuse_upload_user(credential.public_key, other.secret_key) is None
+        assert await store.langfuse_upload_user(credential.public_key, credential.secret_key) == credential.user_id
+        assert await store.is_user_active('13822222222')
         async with database.acquire() as connection:
-            for table in ('users', 'auth_sessions', 'tenant_credentials', 'audit_events'):
+            for table in ('users', 'auth_sessions', 'tenant_credentials', 'audit_events', 'langfuse_credentials'):
                 rows = await connection.fetch(f'SELECT row_to_json(t)::text AS row FROM {table} t')
                 assert all(token not in row['row'] for row in rows)
+                assert all(credential.secret_key not in row['row'] for row in rows)
+            await connection.execute("UPDATE langfuse_credentials SET created_at=now()-interval '20 years'")
+            await connection.execute('DELETE FROM auth_sessions WHERE user_id=$1', '13822222222')
+        assert await store.is_user_active('13822222222')
+        async with database.acquire() as connection:
+            await connection.execute("UPDATE users SET status='disabled' WHERE user_id=$1", '13822222222')
+        assert not await store.is_user_active('13822222222')
+        # Account status blocks service use but does not delete the stable credential.
+        assert await store.langfuse_upload_user(credential.public_key, credential.secret_key) == credential.user_id
+        assert not await store.is_user_active('missing-user')
+        await database.close()
+        await database.connect()
+        restarted = Store(database, cipher)
+        assert await restarted.ensure_langfuse_credentials(credential.user_id) == credential
+        assert await restarted.langfuse_upload_user(credential.public_key, credential.secret_key) == credential.user_id
     finally:
         await database.close()

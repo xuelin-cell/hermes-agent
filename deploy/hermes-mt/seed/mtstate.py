@@ -661,12 +661,22 @@ def ensure_links(home: Path, vol: Path) -> list[str]:
 
 def env_upsert(path: Path, lines: list[str]) -> None:
     """只改我们负责的几行（KEY=VALUE），其余保持用户自己的。"""
+    existing = path.read_text(encoding="utf-8") if path.exists() else ""
+    _write_atomic(path, env_upsert_text(existing, lines).encode("utf-8"))
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
+
+
+def env_upsert_text(text: str, lines: list[str]) -> str:
+    """Share the bootstrap merge with Entry's Docker archive writer."""
     wanted: dict[str, str] = {}
     for ln in lines:
         if "=" in ln and not ln.lstrip().startswith("#"):
             k, v = ln.split("=", 1)
             wanted[k.strip()] = v
-    existing = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    existing = text.splitlines()
     out: list[str] = []
     seen: set[str] = set()
     for ln in existing:
@@ -679,11 +689,7 @@ def env_upsert(path: Path, lines: list[str]) -> None:
     for k, v in wanted.items():
         if k not in seen:
             out.append(f"{k}={v}")
-    _write_atomic(path, ("\n".join(out) + "\n").encode("utf-8"))
-    try:
-        path.chmod(0o600)
-    except OSError:
-        pass
+    return "\n".join(out) + "\n"
 
 
 # ---------------------------------------------------------------- config.yaml 的平台块
@@ -787,7 +793,7 @@ def _platform_snapshot(cfg, key: str, policy: dict | None = None) -> str:
     model = cfg.get("model") if isinstance(cfg.get("model"), dict) else {}
     providers = cfg.get("providers") if isinstance(cfg.get("providers"), dict) else {}
     agent = cfg.get("agent") if isinstance(cfg.get("agent"), dict) else {}
-    sections = {"model_catalog", "security", "mcp_servers", *(str(k) for k in (policy or {}))}
+    sections = {"model_catalog", "security", "mcp_servers", "plugins", *(str(k) for k in (policy or {}))}
     return json.dumps({
         "model": {k: model.get(k) for k in ("default", "provider", "base_url", "key_env")},
         "provider": providers.get(key),
@@ -945,6 +951,14 @@ def apply_platform_block(cfg, spec: dict) -> bool:
             entry["models"] = {chosen: _model_entry(chosen, limits)} if chosen else {}
     if policy:
         _apply_policy(cfg, policy)
+    if spec.get("enabled_plugins"):
+        plugins = _section(cfg, "plugins")
+        enabled = plugins.setdefault("enabled", [])
+        if not isinstance(enabled, list):
+            raise ValueError("plugins.enabled must be a list")
+        for name in spec["enabled_plugins"]:
+            if name not in enabled:
+                enabled.append(name)
     if isinstance(spec.get("mcp_servers"), dict):
         _apply_mcp_servers(cfg, spec["mcp_servers"])
     if isinstance(spec.get("reasoning_defaults"), dict):
