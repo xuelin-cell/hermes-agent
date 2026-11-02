@@ -6,6 +6,9 @@ import { useSessionView } from '@/app/chat/session-view'
 import { registerPluginLocales, usePluginI18n } from '@/i18n/plugin-i18n'
 import { Clock } from '@/lib/icons'
 
+import type { ToolPart } from '../tool/fallback-model'
+import { SearchSources } from '../tool/search-links'
+
 import { contentHasVisibleText } from './content'
 import { responseDurationParts } from './response-presentation'
 
@@ -86,6 +89,10 @@ export function ResponseProcess({ indices, components }: ResponseProcessProps) {
 
   const state = JSON.parse(signature) as { live: boolean; presentingAnswer: boolean; completed: boolean; hasParts: boolean; seconds?: number }
 
+  const searches = useAuiState(s => JSON.stringify(indices.flatMap(index =>
+    s.thread.messages[index]?.content.filter(part => part.type === 'tool-call' && part.toolName === 'web_search' && part.result !== undefined) ?? []
+  )))
+
   const duration = responseDurationParts(state.seconds ?? 0)
 
   const collapsible = (state.presentingAnswer || (!state.live && state.completed)) && (indices.length > 1 || state.hasParts)
@@ -117,6 +124,7 @@ export function ResponseProcess({ indices, components }: ResponseProcessProps) {
           {label}
         </div>
       ) : null}
+      {!processVisible && <SearchSources parts={JSON.parse(searches) as ToolPart[]} />}
       {indices.map((index, position) => {
         const hidden = position < indices.length - 1 && !processVisible
 

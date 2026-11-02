@@ -224,3 +224,23 @@ it('keeps active tools visible and collapses process parts when streamed answer 
   rerender(renderReply(true, true))
   await waitFor(() => expect(process().closest('[hidden]')).toBeNull())
 })
+
+
+it('keeps searched pages expandable and linked outside the collapsed execution process', async () => {
+  const messages = toChatMessages([
+    { role: 'user', content: 'Find the report', timestamp: 1 },
+    { role: 'assistant', content: 'Report found', timestamp: 2 }
+  ] as SessionMessage[]).map(toRuntimeMessage)
+  const reply = { ...messages[1]!, content: [
+    { type: 'tool-call', toolName: 'web_search', toolCallId: 'search-report', args: { query: 'Annual report' }, result: { results: [{ title: 'Official annual report', url: 'https://example.com/report', snippet: 'Long search description' }] } },
+    { type: 'text', text: 'Report found' }
+  ] } as ThreadMessage
+  const { container } = render(<ThreadRuntime messages={[messages[0]!, reply]}><Thread /></ThreadRuntime>)
+  const sources = container.querySelector('[data-slot="web-search-sources"]') as HTMLDetailsElement
+  expect(sources).not.toBeNull()
+  expect(sources.closest('[hidden]')).toBeNull()
+  fireEvent.click(sources.querySelector('summary')!)
+  const link = within(sources).getByRole('link', { name: /Official annual report/ })
+  expect(link.getAttribute('href')).toBe('https://example.com/report')
+  expect(sources.textContent).not.toContain('Long search description')
+})
