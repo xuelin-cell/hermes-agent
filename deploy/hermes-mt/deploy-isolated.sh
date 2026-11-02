@@ -3,8 +3,8 @@
 # 每套部署必须使用独立 checkout 和 entry.env。
 # ./deploy-isolated.sh init --project hermes-adaptation --subnet 未占用CIDR --http-port 内网IP:18082 --cube-api URL --cube-proxy URL
 # ./deploy-isolated.sh all [--no-pull] [--branch cloud-adaptation]
-# ./deploy-isolated.sh config|check|base|image|template|up|status|log
-# purge-old / purge-templates 永久拒绝；共用集群的旧部署也必须停用这两条命令。
+# ./deploy-isolated.sh config|check|base|image|template|up|status|log|purge-templates [--branch BRANCH]
+# purge-old 永久拒绝；模板清理只认项目和分支专属镜像路径。
 set -euo pipefail
 
 SCRIPT="$(readlink -f "${BASH_SOURCE[0]}")"
@@ -74,8 +74,16 @@ load_cfg() {
         || die 'MT_HTTP_PORT 必须带内网 IP，例如 192.168.1.7:18082'
     FWD_PORT="$(cfg MT_DEPLOY_FWD_PORT 15001)"
     IMAGE_NAME="$PROJECT-cube"
-    # 避开旧 purge-templates 对镜像名中 hermes-mt 的宽泛匹配。
-    REPO_PATH="hermes-isolated/$PROJECT-cube"
+    BRANCH_SLUG="$(python3 - "$BRANCH" <<'PY'
+import hashlib, re, sys
+branch = sys.argv[1]
+slug = re.sub(r"[^a-z0-9]+", "-", branch.lower()).strip("-")[:48].strip("-") or "branch"
+print(slug + "-" + hashlib.sha256(branch.encode()).hexdigest()[:12])
+PY
+)"
+    # Each branch gets a separate registry repository. Template cleanup can then
+    # prove ownership from Cube's imageInfo without guessing from a display name.
+    REPO_PATH="hermes-isolated/$PROJECT/$BRANCH_SLUG-cube"
     export MT_DEPLOY_PROJECT="$PROJECT"
 }
 
@@ -174,12 +182,12 @@ for s in json.load(sys.stdin):
 }
 
 cmd_status() {
-    say "独立部署 $PROJECT"
+    say "独立部署 $PROJECT（分支 $BRANCH）"
     compose ps
     echo '  本部署数据库登记的实例（ID 状态 模板 节点 用户）：'
     our_sandboxes
     instance_archives
-    echo '  本部署仓库路径下的模板：'
+    echo "  本部署分支的模板（$REPO_PATH）："
     api GET /templates | python3 -c '
 import json, sys
 for t in json.load(sys.stdin):
@@ -189,10 +197,103 @@ for t in json.load(sys.stdin):
 }
 
 cmd_purge_old() { die '共享集群禁用 purge-old；请按本部署数据库记录逐台处理'; }
-cmd_purge_templates() { die '共享集群禁用 purge-templates'; }
+
+branch_templates() {
+    api GET /templates | python3 -c '
+import json, sys
+repo = sys.argv[1]
+try:
+    items = json.load(sys.stdin)
+except Exception:
+    sys.exit(3)
+needle = "/" + repo + ":"
+for template in items:
+    image = str(template.get("imageInfo") or "")
+    if needle in image:
+        print(template.get("templateID", ""), template.get("status", ""), sep="\t")
+' "$REPO_PATH"
+}
+
+branch_previous_template() {
+    python3 - "$HISTORY" "$BRANCH" "$TEMPLATE" <<'PY'
+import re, sys
+from pathlib import Path
+path, branch, current = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+if not path.is_file():
+    raise SystemExit
+previous = ""
+for line in path.read_text(errors="replace").splitlines():
+    fields = dict(re.findall(r"(?:^|\s)(branch|template)=([^\s]+)", line))
+    template = fields.get("template", "")
+    if fields.get("branch") == branch and template and template != current:
+        previous = template
+print(previous)
+PY
+}
+
+cmd_up() {
+    legacy_cmd_up
+    # Legacy cmd_up writes the normal deployment receipt. Tag its final row with
+    # the branch so a later cleanup on this checkout keeps only this branch's rollback.
+    python3 - "$HISTORY" "$BRANCH" <<'PY'
+import sys
+from pathlib import Path
+path, branch = Path(sys.argv[1]), sys.argv[2]
+lines = path.read_text().splitlines()
+if lines and " branch=" not in lines[-1]:
+    lines[-1] += " branch=" + branch
+    path.write_text("\n".join(lines) + "\n")
+PY
+}
+
+cmd_purge_templates() {
+    [ "$#" = 0 ] || die 'purge-templates 只接受可选的全局参数 --branch BRANCH'
+    local current="$TEMPLATE" previous list in_use sandboxes unknown t status keep todo="" done_n=0 fail_n=0
+    previous="$(branch_previous_template)"
+    say "清理项目 $PROJECT 的分支 $BRANCH 模板"
+    ok "模板镜像仓库限定为 $REPO_PATH"
+    ok "保留当前 ${current:-（无）}、本分支上一版 ${previous:-（无）}"
+
+    list="$(branch_templates)" || die '控制面无法列出模板；没有删除任何模板'
+    [ -n "$list" ] || { ok '本项目本分支没有可清理的模板'; return 0; }
+    in_use="$(tenant_templates)" || die '读不到本部署数据库；没有删除任何模板'
+    sandboxes="$(cluster_sandbox_templates)" || die '控制面无法列出集群实例；没有删除任何模板'
+    unknown="$(printf '%s\n' "$sandboxes" | awk '$0 == "-" { n++ } END { print n+0 }')"
+    [ "$unknown" = 0 ] || die "集群有 $unknown 台实例的模板 ID 不可识别；为避免误删，本次不删除任何模板"
+    keep="$(printf '%s\n%s\n' "$current" "$previous")"
+    echo '  本项目本分支的模板：'
+    while IFS="$(printf '\t')" read -r t status; do
+        [ -n "$t" ] || continue
+        if grep -qxF -- "$t" <<< "$keep"; then
+            printf '    %-32s %-16s 保留（当前或回退）\n' "$t" "$status"
+        elif grep -qxF -- "$t" <<< "$in_use" || grep -qxF -- "$t" <<< "$sandboxes"; then
+            printf '    %-32s %-16s 保留（仍有实例使用）\n' "$t" "$status"
+        else
+            printf '    %-32s %-16s 可删\n' "$t" "$status"
+            todo="${todo:+$todo }$t"
+        fi
+    done <<< "$list"
+    [ -n "$todo" ] || { ok '没有可删的模板'; return 0; }
+    confirm '  确定删除以上模板？（只删除当前项目和分支的镜像模板）' || { echo '  没删'; return 0; }
+    for t in $todo; do
+        # Refresh cluster references immediately before each deletion. Other deployments
+        # may create instances while this command is waiting for confirmation.
+        in_use="$(tenant_templates)" || die '重新读取本部署实例失败；已停止后续删除'
+        sandboxes="$(cluster_sandbox_templates)" || die '重新读取集群实例失败；已停止后续删除'
+        unknown="$(printf '%s\n' "$sandboxes" | awk '$0 == "-" { n++ } END { print n+0 }')"
+        [ "$unknown" = 0 ] || die "出现 $unknown 台模板 ID 不可识别的实例；已停止后续删除"
+        if grep -qxF -- "$t" <<< "$sandboxes" || grep -qxF -- "$t" <<< "$in_use"; then
+            printf '    %s 保留（确认时已有实例使用）\n' "$t"
+            continue
+        fi
+        if delete_template "$t"; then printf '    %s 已删\n' "$t"; done_n=$((done_n + 1)); else fail_n=$((fail_n + 1)); fi
+    done
+    if [ "$fail_n" = 0 ]; then ok "删掉 $done_n 个"; else warn "删掉 $done_n 个，$fail_n 个删不掉（原因见上）"; fi
+}
 
 case "${1:-}" in
-    purge-old|purge-templates) die '共享集群禁用批量清理，不会调用旧脚本的清理命令' ;;
+    purge-old) die '共享集群禁用 purge-old，不会调用旧脚本的清理命令' ;;
+    purge-templates) ;;
     init) ;;
     config) load_cfg; compose config --quiet; exit ;;
     set|log) load_cfg ;;
