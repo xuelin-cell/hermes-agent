@@ -629,8 +629,11 @@ delete_template() {
 # 节点（Cube 源码 templatecenter/store.go、distribution.go）。10-13 晚只看 status，把还在建的节点判成失败，
 # 删不掉（409）又马上重建，连建四次，其实第三、四次都建成了。所以：构建任务结束（GET /templates/<ID>/builds/
 # <jobID>/status 不再是 building）、而且没有副本还在建，才下结论；读不到任务状态时只看 phase。
+# 任务状态里的 message 平时是当前阶段（PULLING、BUILDING_EXT4……），失败时是平台给的原因（CubeMaster
+# template_commit.go 的 handleTemplateBuildStatusAction）。在控制节点上拉镜像、做根盘就失败的（还没分发，没有
+# 副本），原因只在这里；模板删掉以后任务记录也跟着没了，所以失败时当场打出来（11-02 连建四次都 5 秒失败，没留下原因）。
 build_template() {
-    local fp="$1" last="" s created job
+    local fp="$1" last="" s created job out msg
     created="$(api POST /templates -d "{
       \"name\": \"hermes-mt-$fp\",
       \"image\": \"http://$REGISTRY/$REPO_PATH:$fp\",
@@ -642,16 +645,21 @@ build_template() {
     NEW_JOB="${created#* }"
     [ -n "$NEW_TPL" ] || die "建模板失败"
     for _ in $(seq 1 120); do
-        job=""
-        [ -n "$NEW_JOB" ] && job="$(api GET "/templates/$NEW_TPL/builds/$NEW_JOB/status" 2>/dev/null | py '
+        job="" msg=""
+        if [ -n "$NEW_JOB" ]; then
+            out="$(api GET "/templates/$NEW_TPL/builds/$NEW_JOB/status" 2>/dev/null | py '
 import json,sys
-try: print(json.load(sys.stdin).get("status") or "")
-except Exception: print("")' 2>/dev/null || true)"
+try: d = json.load(sys.stdin)
+except Exception: d = {}
+print("%s\t%s" % (d.get("status") or "", " ".join(str(d.get("message") or "").split())[:300]))' 2>/dev/null || true)"
+            job="${out%%$'\t'*}"
+            msg="${out#*$'\t'}"
+        fi
         s="$(api GET "/templates/$NEW_TPL" 2>/dev/null | py '
 import json,sys
-job = sys.argv[1]
+job, msg = sys.argv[1], sys.argv[2]
 try: d = json.load(sys.stdin)
-except Exception: print("BUILDING 读不到模板状态"); raise SystemExit
+except Exception: print("BUILDING 读不到模板状态", msg); raise SystemExit
 replicas = d.get("replicas") or []
 phase = lambda r: str(r.get("phase") or r.get("status") or "?").upper()
 failed = [r for r in replicas if phase(r) == "FAILED"]
@@ -659,12 +667,13 @@ building = not replicas or any(phase(r) not in ("READY", "FAILED") for r in repl
 settled = job == "error" or (job != "building" and not building)
 nodes = " ".join("%s:%s" % (r.get("node_ip") or "?", phase(r)) for r in replicas)
 if not settled:
-    print("BUILDING", nodes or d.get("status") or "")
+    print("BUILDING", nodes or msg or d.get("status") or "")
 elif d.get("status") == "READY" and not failed:
     print("READY", nodes)
 else:
-    why = (failed[0].get("error_message") if failed else "") or d.get("lastError") or d.get("status") or ""
-    print("FAILED_ON", ",".join(r.get("node_ip") or "?" for r in failed) or "-", " ".join(str(why).split())[:160])' "$job")"
+    why = (failed[0].get("error_message") if failed else "") or (msg if job == "error" else "") \
+        or d.get("lastError") or d.get("status") or ""
+    print("FAILED_ON", ",".join(r.get("node_ip") or "?" for r in failed) or "-", " ".join(str(why).split())[:300])' "$job" "$msg")"
         [ "$s" != "$last" ] && { printf '  %s %s\n' "$(date +%T)" "$s"; last="$s"; }
         case "$s" in
             READY*) return 0 ;;
