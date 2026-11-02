@@ -11,6 +11,34 @@ param(
     [switch]$WebInstaller
 )
 
+function Select-PyPiIndex {
+    # uv.lock cannot cover the editable project's build-system.requires
+    # (setuptools/wheel), so that resolution always needs a reachable index.
+    # Probing here turns an unreachable mirror from a ten-minute build failure
+    # into a fast, explicit one.
+    param([string[]]$Candidates, [string]$Proxy = '')
+    foreach ($candidate in $Candidates) {
+        $probe = $candidate.TrimEnd('/') + '/pip/'
+        # Windows PowerShell 5.1 never reads HTTP_PROXY/HTTPS_PROXY here, so a
+        # proxy-routed build must pass its endpoint explicitly.
+        $request = @{ Uri = $probe; TimeoutSec = 8; UseBasicParsing = $true }
+        if (-not [string]::IsNullOrWhiteSpace($Proxy)) {
+            $request.Proxy = $Proxy
+            $request.ProxyUseDefaultCredentials = $true
+        }
+        try {
+            $response = Invoke-WebRequest @request
+            if ($response.StatusCode -lt 400) {
+                Write-Host "PyPI index: $candidate" -ForegroundColor DarkGray
+                return $candidate
+            }
+        } catch {
+            Write-Host "PyPI index unreachable: $candidate" -ForegroundColor DarkGray
+        }
+    }
+    return $null
+}
+
 $ErrorActionPreference = 'Stop'
 $previousEnvironment = @{}
 foreach ($name in @('TEMP', 'TMP', 'ELECTRON_BUILDER_CACHE', 'UV_CONCURRENT_INSTALLS',
@@ -41,10 +69,24 @@ if (-not [string]::IsNullOrWhiteSpace($ProxyUrl)) {
     $env:ELECTRON_GET_USE_PROXY = '1'
 }
 
-# 国内镜像加速：Python 依赖走清华镜像，Electron 走 npmmirror。
+# 国内镜像加速：Python 依赖走第一个可达的镜像，Electron 走 npmmirror。
 # 用户手动设置的环境变量优先（不会覆盖）。
 if (-not $env:UV_INDEX_URL) {
-    $env:UV_INDEX_URL = 'https://pypi.tuna.tsinghua.edu.cn/simple/'
+    $indexClock = [System.Diagnostics.Stopwatch]::StartNew()
+    try {
+        # -ProxyUrl already exported HTTPS_PROXY above; honour either source.
+        $indexProxy = if ([string]::IsNullOrWhiteSpace($ProxyUrl)) { $env:HTTPS_PROXY } else { $ProxyUrl }
+        $env:UV_INDEX_URL = Select-PyPiIndex -Proxy $indexProxy -Candidates @(
+            'https://pypi.tuna.tsinghua.edu.cn/simple/',
+            'https://mirrors.aliyun.com/pypi/simple/',
+            'https://pypi.org/simple/')
+        if (-not $env:UV_INDEX_URL) {
+            $via = if ([string]::IsNullOrWhiteSpace($indexProxy)) { '' } else { " (proxy $indexProxy)" }
+            throw "No reachable PyPI index$via. Check the network or set UV_INDEX_URL to your mirror."
+        }
+    } finally {
+        Write-Host ("[build-timing] index-probe: {0:F1}s" -f $indexClock.Elapsed.TotalSeconds)
+    }
 }
 if (-not $env:ELECTRON_MIRROR) {
     $env:ELECTRON_MIRROR = 'https://npmmirror.com/mirrors/electron/'
