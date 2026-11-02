@@ -14,7 +14,7 @@ from tests.hermes_mt.test_forward_seed import forward
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('failure', ['delete', 'archive'])
+@pytest.mark.parametrize('failure', ['delete', 'archive', 'paused', 'paused_platform'])
 async def test_failed_retirement_resumes_same_owner_and_retries_after_entry_restart(postgres_database_url, failure):
     settings, app, entry, binding, epoch, delivery = await context(postgres_database_url, 'uniagentgate')
     token = await entry.store.ensure_tenant_token('alice')
@@ -25,11 +25,22 @@ async def test_failed_retirement_resumes_same_owner_and_retries_after_entry_rest
 
     async def endpoint(request):
         calls.append((request.method, request.path))
+        if request.path == '/sandboxes/old/resume':
+            if state.get('platform_resume_fails'):
+                raise web.HTTPGatewayTimeout()
+            state['sandbox_state'] = 'running'
+            return web.json_response({'ok': True})
+        if request.path == '/__mt/health':
+            if state.get('sandbox_state') == 'paused':
+                raise web.HTTPServiceUnavailable()
+            return web.json_response({'ok': True})
         if request.path == '/sandboxes/old':
             if request.method == 'DELETE':
                 raise web.HTTPInternalServerError(text='deletion rejected')
             return web.json_response({'sandboxID': 'old', 'state': state.get('sandbox_state', 'running'), 'templateID': 'tpl-old'})
         if request.path == '/__mt/status':
+            if state.get('sandbox_state') == 'paused':
+                raise web.HTTPServiceUnavailable()
             return web.json_response({'bootstrapped': True, 'hermes': state['hermes'], 'state': {'phase': state['phase'], 'owner': 'old'}})
         if request.path == '/api/health':
             return web.json_response({'ok': state['hermes']})
@@ -61,6 +72,9 @@ async def test_failed_retirement_resumes_same_owner_and_retries_after_entry_rest
                 assert ('POST', '/__mt/resume') in calls
                 # A failed rollback keeps a durable recovery marker for the next Entry.
                 state.update(phase='drained', hermes=False, resume_fails=True)
+                if failure.startswith('paused'):
+                    state['sandbox_state'] = 'paused'
+                    state['platform_resume_fails'] = failure == 'paused_platform'
                 await entry.store.set_lifecycle('alice', 'deleting')
                 with pytest.raises(CubeError):
                     await manager._resume_after_drain('alice', 'old', token)
@@ -69,8 +83,11 @@ async def test_failed_retirement_resumes_same_owner_and_retries_after_entry_rest
                 restarted = TenantManager(settings, None, entry.store, None, cube)
                 assert restarted._needs_change(rt, await cube.get_sandbox('old'))
                 state['resume_fails'] = False
+                state['platform_resume_fails'] = False
                 assert await restarted._settle_cube('alice', 'alice', rt, await cube.get_sandbox('old'), token, None) == 'old'
                 assert state['hermes'] and (await entry.store.get_runtime('alice')).lifecycle == ''
+                if failure.startswith('paused'):
+                    assert calls.index(('POST', '/sandboxes/old/resume')) < calls.index(('GET', '/__mt/health'))
                 assert ('POST', '/sandboxes') not in calls
                 resumed = calls.count(('POST', '/__mt/resume'))
                 state.update(phase='fenced', hermes=False)

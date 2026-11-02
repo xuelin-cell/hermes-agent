@@ -920,6 +920,11 @@ class TenantManager:
         sb = await self.cube.get_sandbox(sandbox_id)
         if sb is None or str(sb.get("state")) in GONE_STATES:
             raise SandboxGone(404, "实例已消失或正在删除，请重试以恢复")
+        if str(sb.get("state")) == "paused":
+            # A recovery marker may outlive the process that drained the sandbox.
+            # Wake it explicitly before inspecting its in-instance lifecycle state.
+            await self.cube.resume_sandbox(sandbox_id)
+            await self.cube.wait_forwarder(sandbox_id, self.s.forward_port)
         status = await self.cube.status(sandbox_id, self.s.forward_port)
         phase = (status.get("state") or {}).get("phase")
         if phase in {"drained", "drain_failed"}:
