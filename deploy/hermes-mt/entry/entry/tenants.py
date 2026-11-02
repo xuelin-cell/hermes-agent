@@ -747,6 +747,15 @@ class TenantManager:
             self.cube.forget_traffic_token(sandbox_id)
             return ""
         if rt.lifecycle in {"draining", "drained", "deleting"}:
+            if rt.state_owner != sandbox_id and str(sb.get("state")) == "running":
+                st = await self.cube.status(sandbox_id, self.s.forward_port)
+                # A failed first bootstrap has no state manager to resume. A
+                # leftover drain marker must not prevent normal bootstrap repair.
+                if st.get("bootstrapped") is False and st.get("state") is None and not st.get("draining"):
+                    repaired_id, repaired = await self._repair_bootstrap(user_id, slug, sandbox_id, token, context)
+                    if not repaired_id or repaired:
+                        await self.store.set_lifecycle(user_id, "")
+                        return repaired_id
             await self._resume_after_drain(user_id, sandbox_id, token)
             return sandbox_id
         want = self._template_id()
@@ -911,6 +920,8 @@ class TenantManager:
             return sandbox_id, True
         log.warning("tenant %s: 实例 %s 未引导且窗口已关，删掉重建", slug, sandbox_id[:12])
         await self.cube.remove_sandbox(sandbox_id)
+        if not await self.cube.wait_gone(sandbox_id):
+            raise CubeError(503, "未引导的旧实例尚未删除完成，请稍后重试")
         await self.store.mark_sandbox_deleted(sandbox_id, "unbootstrapped")
         await self.store.set_sandbox_id(user_id, None)
         return "", False
