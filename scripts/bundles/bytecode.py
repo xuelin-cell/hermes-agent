@@ -29,9 +29,23 @@ invalid test data) are counted and skipped, not failed.
 """
 
 import subprocess
+import time
 from pathlib import Path
 
 MARKER = ".hermes-baked-pycache"
+
+
+def _retry_on_permission_error(func, max_retries=3, delay=1.0):
+    """Handle transient AV file locks by retrying with exponential backoff."""
+    for attempt in range(max_retries):
+        try:
+            return func()
+        except PermissionError as e:
+            if attempt == max_retries - 1:
+                raise
+            wait = delay * (2 ** attempt)
+            print(f"⚠ 文件被锁定（{e.filename}），{wait:.1f}秒后重试...", flush=True)
+            time.sleep(wait)
 
 
 def _import_roots(root: Path) -> list[Path]:
@@ -84,10 +98,13 @@ def bake_bytecode(root: Path, python: Path) -> dict:
         raise FileNotFoundError(f"staged interpreter is missing: {python}")
     total = 0
     for source_root in _import_roots(root):
-        subprocess.run(
-            [str(python), "-I", "-m", "compileall", "-q",
-             "--invalidation-mode", "unchecked-hash", str(source_root)],
-            check=True, timeout=30 * 60, stdin=subprocess.DEVNULL)
+        # Retry compileall in case AV locks newly created .pyc files
+        _retry_on_permission_error(
+            lambda: subprocess.run(
+                [str(python), "-I", "-m", "compileall", "-q",
+                 "--invalidation-mode", "unchecked-hash", str(source_root)],
+                check=True, timeout=30 * 60, stdin=subprocess.DEVNULL)
+        )
         missing, unparseable = _uncovered(source_root)
         if missing:
             sample = ", ".join(str(m.relative_to(root)) for m in missing[:5])
@@ -106,6 +123,7 @@ def bake_bytecode(root: Path, python: Path) -> dict:
         for cache in source_root.rglob("__pycache__"):
             for pyc in cache.iterdir():
                 if pyc.is_file():
-                    pyc.chmod(0o444)
+                    # Retry chmod in case AV is still scanning the file
+                    _retry_on_permission_error(lambda p=pyc: p.chmod(0o444))
     (root / MARKER).write_text("unchecked-hash\n", encoding="utf-8")
     return {"modules": total, "marker": str(root / MARKER)}
