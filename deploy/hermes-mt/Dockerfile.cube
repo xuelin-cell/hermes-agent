@@ -208,6 +208,13 @@ ENV HERMES_ENVIRONMENT_HINT="Environment notes: /opt/data/workspace is the user'
 # 长任务就断。10-09 本机实测每条遗留会话约 4MB、不多出进程；定 1 小时。
 ENV HERMES_TUI_WS_ORPHAN_REAP_GRACE_S=3600
 
+# Build-time PM/browser provisioning can leave a root-owned cache under the
+# mutable home. The upstream boot hook does not repair this directory, but
+# mtstate must create cache/{images,audio,videos} links as the hermes user.
+# Fix only the local parent; never traverse the persistent user volume.
+RUN install -d -o hermes -g hermes -m 0755 /opt/data/cache \
+    && /opt/hermes/.venv/bin/python -c 'import os, pwd, tempfile; user = pwd.getpwnam("hermes"); os.setgroups([]); os.setgid(user.pw_gid); os.setuid(user.pw_uid); check = tempfile.TemporaryDirectory(prefix=".link-check-", dir="/opt/data/cache"); os.symlink("/mnt/u", check.name + "/media"); check.cleanup()'
+
 # ---- 端口 -----------------------------------------------------------------
 # 对外只有转发器这一个。hermes 自己绑 127.0.0.1:9120，故意不暴露 ——
 # 它一旦发现自己绑在非回环地址就会强制开鉴权门，而浏览器版前端不说那套协议。
