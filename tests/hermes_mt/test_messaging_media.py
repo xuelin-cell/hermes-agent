@@ -1,5 +1,6 @@
 """Media crosses real PG and instance WebSocket boundaries without extra PG tables."""
 import asyncio
+import base64
 import importlib
 import json
 from dataclasses import replace
@@ -17,10 +18,72 @@ from entry.channels_auth import instance_secret
 from entry.channels_service import Channels
 from entry.config import Settings
 from entry.messaging_media_routes import media_link
+from entry.channel_rcs_inbound import prepare_inbound, download as download_rcs
 from gateway.config import PlatformConfig,Platform
 from gateway.platform_registry import PlatformEntry,platform_registry
 from plugins.cloud_messaging.adapter import CloudMessagingAdapter
 from plugins.cloud_messaging.media import pack,unpack,add_inbound
+
+
+@pytest.mark.asyncio
+async def test_rcs_inbound_failures_preserve_text_and_freeze_media_without_following_redirects(postgres_database_url):
+    settings, app, entry, binding, epoch, delivery = await context(postgres_database_url, 'uniagentgate')
+    service = Channels(settings, {})
+    service.database, service.store = entry.database, entry.messaging_routes.store
+    requests = []
+
+    async def media(request):
+        requests.append(request.path)
+        assert not request.headers.get('Authorization')
+        if request.path == '/input.txt':
+            return web.Response(text='received file')
+        if request.path == '/redirect':
+            raise web.HTTPFound('/must-not-fetch')
+        raise web.HTTPNotFound()
+
+    server = web.Application()
+    server.router.add_get('/{path:.*}', media)
+    try:
+        async with TestServer(server) as upstream:
+            gateway = str(upstream.make_url('')).rstrip('/')
+            async with entry.database.acquire() as db:
+                await db.execute('UPDATE messaging_bindings SET config=$2::jsonb WHERE id=$1',
+                                 binding['id'], json.dumps({'gateway_url': gateway}))
+            for text in ('please read this file', ''):
+                payload = {'type': 'agent.request', 'agent_id': 'bot', 'message_id': 'external',
+                           'channel': {'phone_number': '13800000000'}, 'payload': {'inputs': [
+                               {'type': 'text', 'text': text},
+                               {'type': 'file_url', 'url': gateway + '/expired'},
+                               {'type': 'file_url', 'url': 'http://169.254.169.254/latest/meta-data/'},
+                               {'type': 'file_url', 'url': gateway + '/redirect'},
+                               *([{'type': 'file_url', 'url': gateway + '/input.txt'}] if text else []),
+                           ]}}
+                async with entry.database.acquire() as db:
+                    row = await db.fetchrow("""UPDATE messaging_inbox SET state='dispatching',payload=$2::jsonb,
+                        lease_owner=$3,lease_until=now()+interval '90 seconds' WHERE delivery_id=$1 RETURNING *""",
+                                            delivery, json.dumps(payload), service.owner)
+                prepared = await prepare_inbound(service, row)
+                event = json.loads(prepared['payload'])['_media_event']
+                assert text in event['text'] and '附件未接收' in event['text']
+                if text:
+                    assert len(event['media_urls']) == 1
+                    assert base64.b64decode(event['media_urls'][0].split(';base64,', 1)[1]) == b'received file'
+                else:
+                    assert event['media_urls'] == [] and event['text']
+                # Already prepared messages survive a worker restart without another GET.
+                before = list(requests)
+                async with entry.database.acquire() as db:
+                    stored = await db.fetchrow('SELECT * FROM messaging_inbox WHERE delivery_id=$1', delivery)
+                assert (await prepare_inbound(service, stored))['payload'] == stored['payload']
+                assert requests == before
+            assert '/must-not-fetch' not in requests
+            with pytest.raises(ValueError, match='Internal'):
+                await download_rcs('http://127.0.0.1/file', 'https://gateway.test')
+            # Hostnames resolving to loopback cannot bypass the public-host policy.
+            with pytest.raises((ValueError, aiohttp.ClientError)):
+                await download_rcs('http://localhost/file', 'https://gateway.test')
+    finally:
+        await entry.database.close()
 
 
 async def context(dsn,channel,user='alice'):

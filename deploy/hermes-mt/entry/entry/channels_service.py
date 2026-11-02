@@ -15,7 +15,6 @@ from .channel_dingtalk import DingTalk, ReplyRejected
 from .channel_weixin import Weixin
 from .channel_wecom import WeCom
 from .channel_feishu import Feishu
-from .channel_media import download,pack,add_inbound,MEDIA_UNAVAILABLE
 from plugins.cloud_messaging.media import unpack
 from .messaging_media_routes import media_response
 from .messaging_oss import MessagingOss, OssUploadFailed
@@ -115,22 +114,9 @@ class Channels:
                 if not request or request.agent_id != binding['bot_key'] or not request.phone_number or (not request.text and not any(item.url for item in request.inputs)) or len(request.text)>20000 or any(item.type not in {'text','file_url','image_url','audio_url','video_url'} for item in request.inputs):
                     raise ValueError('Only authenticated text messages are supported')
                 if await self.store.seen(binding['id'],binding['revision'],request.phone_number,request.message_id): return
-                attachments=[]
-                media_text=request.text
-                for item in request.inputs:
-                    if item.url:
-                        try: data,mime=await download(self.http,item.url)
-                        except ValueError:
-                            media_text+='\n'+MEDIA_UNAVAILABLE
-                            continue
-                        from urllib.parse import urlsplit,unquote
-                        from pathlib import Path
-                        filename=unquote(Path(urlsplit(item.url).path).name) or 'attachment.bin'
-                        kind='image' if mime.startswith('image/') else 'audio' if mime.startswith('audio/') else 'video' if mime.startswith('video/') else 'file'
-                        try: attachments.append(pack(data,filename,kind,mime or None))
-                        except ValueError: media_text+='\n'+MEDIA_UNAVAILABLE
-                if attachments or media_text!=request.text:
-                    envelope['_media_event']=add_inbound({'text':media_text,'source':{'platform':'uniagentgate','chat_id':request.phone_number,'user_id':request.phone_number,'chat_type':'dm'}},attachments)
+                # Persist the gateway references before ACK; downloads run under
+                # the delivery lease, outside the stream's two-second admission budget.
+                envelope = {key: value for key, value in envelope.items() if key != '_media_event'}
                 await self.store.ingest(binding['id'], binding['revision'], request.phone_number, request.message_id, envelope)
             async def accepted(raw, context): pass  # Admission already committed; execution is scheduled independently.
             client = TEXT_CLIENTS[row['platform']](row['bot_key'],self.store.cipher.decrypt(row['secret_enc']),self.store,dict(row),self.http) if row['platform'] in TEXT_CLIENTS else self.stream.UniAgentGateStreamClient(json.loads(row['config'])['gateway_url'], row['bot_key'], self.store.cipher.decrypt(row['secret_enc']), accepted, persist_inbound=persist,capabilities=['text','image'])

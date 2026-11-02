@@ -5,6 +5,8 @@ import logging
 
 import aiohttp
 
+from .channel_rcs_inbound import prepare_inbound
+
 log = logging.getLogger(__name__)
 
 
@@ -77,6 +79,8 @@ async def deliver(service, delivery):
                         await asyncio.sleep(1)
                         continue  # The worker replays results; never inject a second turn.
                 else:
+                    if row['platform'] == 'uniagentgate':
+                        row = await prepare_inbound(service, row)
                     async with service.database.acquire() as db:
                         changed = await db.fetchval("""UPDATE messaging_inbox SET state='accepted',instance_epoch=$3,
                             execution_ref=$4 WHERE delivery_id=$1 AND lease_owner=$2 AND state='dispatching'

@@ -2,6 +2,7 @@
 import asyncio
 import importlib
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import aiohttp
@@ -92,7 +93,8 @@ async def test_binding_dedupe_leases_and_immutable_outbox(postgres_database_url)
 
 
 @pytest.mark.asyncio
-async def test_text_roundtrip_ack_loss_and_instance_receipts(tmp_path, postgres_database_url, monkeypatch):
+@pytest.mark.parametrize('with_attachment', [False, True])
+async def test_text_roundtrip_ack_loss_and_instance_receipts(tmp_path, postgres_database_url, monkeypatch, with_attachment):
     settings = Settings(database_url=postgres_database_url,credential_key=Fernet.generate_key().decode(),
         channels_key='test-channels-master',backend='cube')
     app = build_app(settings)
@@ -105,6 +107,13 @@ async def test_text_roundtrip_ack_loss_and_instance_receipts(tmp_path, postgres_
     service = Channels(settings,{'entry_url':''})
     await service.database.connect()
     executions, downlinks = [], []
+    downloads = []
+    image = b'\x89PNG\r\n\x1a\nfixture-image'
+    async def slow_image(request):
+        downloads.append(request.path)
+        # Longer than the old admission deadline; it must not delay the ACK.
+        await asyncio.sleep(2.2)
+        return web.Response(body=image, content_type='image/png')
     peer, inbound_ack = asyncio.Queue(), asyncio.Queue()
     drop_ack = False
     async def register(request):
@@ -128,6 +137,7 @@ async def test_text_roundtrip_ack_loss_and_instance_receipts(tmp_path, postgres_
                     await ws.send_json({'type':'ack','in_reply_to':frame['message_id'],'payload':{'ok':True}})
         return ws
     external = web.Application()
+    external.router.add_get('/input.png', slow_image)
     external.router.add_post('/v1/agent-runtimes/register',register)
     external.router.add_get('/v1/agent-runtimes/connect',upstream)
     relay = web.Application()
@@ -148,6 +158,8 @@ async def test_text_roundtrip_ack_loss_and_instance_receipts(tmp_path, postgres_
         assert 'cloud-sk' not in json.dumps(data)
         adapter = CloudMessagingAdapter(PlatformConfig(enabled=True),data,tmp_path)
         async def handle(event):
+            if with_attachment:
+                assert Path(event.media_urls[0]).read_bytes() == image
             executions.append((event.message_id,event.source.platform.value,event.source.chat_id))
             result = await adapter.send_for_platform(event.source.platform,event.source.chat_id,'answer: '+event.text)
             assert result.success
@@ -221,11 +233,15 @@ async def test_text_roundtrip_ack_loss_and_instance_receipts(tmp_path, postgres_
                 stream_client = service.clients[binding['id']][1]
                 await asyncio.wait_for(stream_client.ready.wait(),10)
                 def event(message):
+                    inputs = [{'type':'text','text':'hello'}]
+                    if with_attachment:
+                        inputs.append({'type':'file_url','url':gateway+'/input.png'})
                     return {'type':'agent.request','agent_id':'cloud-bot','message_id':message,
                         'channel':{'phone_number':'13800000000'},'ack':{'mode':'required'},
-                        'session_id':'upstream-session','turn_id':'turn','payload':{'inputs':[{'type':'text','text':'hello'}]}}
+                        'session_id':'upstream-session','turn_id':'turn','payload':{'inputs':inputs}}
                 await ws.send_json(event('external-1'))
                 await asyncio.wait_for(inbound_ack.get(),10)
+                assert downloads == []
                 delivery = await service.store.claim(service.owner)
                 task = asyncio.create_task(service.deliver(delivery))
                 async def finished():
@@ -238,6 +254,7 @@ async def test_text_roundtrip_ack_loss_and_instance_receipts(tmp_path, postgres_
                 await asyncio.wait_for(inbound_ack.get(),10)
                 assert not await service.store.claim(service.owner)
                 assert executions == [(delivery['delivery_id'],'uniagentgate','13800000000')]
+                assert len(downloads) == int(with_attachment)
                 task.cancel()
                 await asyncio.gather(task,return_exceptions=True)
                 # A fresh adapter sees the persisted result, never executes that delivery again.
