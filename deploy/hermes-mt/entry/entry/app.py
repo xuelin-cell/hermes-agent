@@ -22,7 +22,8 @@ from .welcome_routes import WelcomeRoutes
 from .skill_routes import SkillRoutes, MUTATIONS as SKILL_MUTATIONS
 from .crypto import CredentialCipher
 from .connector_oauth import ConnectorAccessLogger
-from .cube_api import Cube
+from .cube_api import Cube, CubeError
+from .backend_errors import cube_failure_reason
 from .db import Database, DatabaseUnavailable
 from .docker_api import Docker
 from .maas import Maas, MaasError
@@ -465,6 +466,12 @@ class Entry:
         except CredentialSyncError as exc:
             log.warning("credential sync for %s failed: %s", session.user_id, type(exc).__name__)
             return web.json_response({"error": "credential_sync_failed"}, status=502)
+        except CubeError as exc:
+            log.exception("tenant for %s not ready", session.user_id)
+            return web.json_response(
+                {"error": "tenant_not_ready", "reason": cube_failure_reason(exc.status, exc.message or ""),
+                 "upstream_status": exc.status}, status=502,
+            )
         except Exception as exc:  # noqa: BLE001
             log.exception("tenant for %s not ready", session.user_id)
             return web.json_response(

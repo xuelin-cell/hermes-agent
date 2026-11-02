@@ -1,4 +1,5 @@
 import type { HermesApiRequest, HermesConnection } from '@/global'
+import { browserBackendError, fetchBrowserBackend } from './browser-backend-error'
 
 const PREFIX = '/api/plugins/uniwork-kits'
 
@@ -6,10 +7,8 @@ const PREFIX = '/api/plugins/uniwork-kits'
 export function browserKits(base: string, primary: HermesConnection, mutate: <T>(request: HermesApiRequest) => Promise<T>) {
   async function resolve(profile: null | string = 'default'): Promise<HermesConnection> {
     const name = profile?.trim() || 'default'
-    const response = await fetch(`${base}__hermes_backend${PREFIX}/cloud/profile?name=${encodeURIComponent(name)}`, {
-      credentials: 'same-origin', redirect: 'error', cache: 'no-store'
-    })
-    if (!response.ok) { throw new Error('专家尚未安装或当前实例不支持，请刷新套件页面。') }
+    const response = await fetchBrowserBackend(`${base}__hermes_backend${PREFIX}/cloud/profile?name=${encodeURIComponent(name)}`)
+    if (!response.ok) { throw await browserBackendError(response) }
     return { ...primary, profile: name, sharedPrimary: true, sharedRemote: true,
       wsUrl: `${primary.wsUrl}${primary.wsUrl.includes('?') ? '&' : '?'}kits=1` } as HermesConnection
   }
@@ -42,8 +41,8 @@ export function browserKits(base: string, primary: HermesConnection, mutate: <T>
         throw new Error('当前云端尚不支持此套件操作。')
       }
       target += '?profile=default'
-      const response = await fetch(`${base}__hermes_backend${PREFIX}${target}`, { credentials: 'same-origin', redirect: 'error', cache: 'no-store' })
-      if (!response.ok) { throw new Error(await response.text() || '套件请求失败') }
+      const response = await fetchBrowserBackend(`${base}__hermes_backend${PREFIX}${target}`)
+      if (!response.ok) { throw await browserBackendError(response) }
       return response.json() as Promise<T>
     }
   }
