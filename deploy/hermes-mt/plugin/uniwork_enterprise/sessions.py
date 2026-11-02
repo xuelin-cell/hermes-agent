@@ -11,6 +11,7 @@ hermes 压缩上下文时会换一个新会话号（旧的结束、新的记上 
 from __future__ import annotations
 
 import logging
+import re
 import threading
 from collections import OrderedDict
 from pathlib import Path
@@ -18,6 +19,11 @@ from pathlib import Path
 log = logging.getLogger("uniwork_enterprise")
 
 CACHE_LIMIT = 4096
+# 数字员工主对话的固定标题（hermes_state ``SessionDB.CANONICAL_BOT_CHAT_TITLE``，压缩后跟到最新的会话上），
+# 从它分出去的会带「 #N」。这类标题看不出对话说的是什么，产物的 sessionName 改用员工说的第一句话。
+PLACEHOLDER_TITLE = re.compile(r"Bot Chat( #\d+)?")
+FIRST_WORDS_CHARS = 40
+FIRST_WORDS_SCAN = 20
 
 
 class ConversationRoots:
@@ -61,20 +67,53 @@ class ConversationRoots:
         return root
 
     def title(self, session_id: str) -> str:
-        """对话的标题（产物的 sessionName）：最早那个会话的，没有就用它自己的；还没起好标题就是空的。不缓存：
-        标题是第一轮结束后另起一次模型调用生成的，会后到，员工也能改。"""
+        """对话的名字（产物的 sessionName）：最早那个会话的标题，没有就用它自己的。还没起好标题，或者标题是
+        「Bot Chat」这类占位的，用员工在这个对话里说的第一句话。不缓存：标题是第一轮结束后另起一次模型调用生成的，
+        会后到，员工也能改。"""
         session_id = str(session_id or "")
         if not session_id:
             return ""
+        placeholder = ""
         try:
             with self._lock:
                 if self._db is None:
                     self._db = self._db_factory()
                 db = self._db
-            for candidate in dict.fromkeys((self.root(session_id), session_id)):
-                title = db.get_session_title(candidate)
-                if title:
-                    return str(title)
+            root = self.root(session_id)
+            for candidate in dict.fromkeys((root, session_id)):
+                title = str(db.get_session_title(candidate) or "")
+                if title and not PLACEHOLDER_TITLE.fullmatch(title):
+                    return title
+                placeholder = placeholder or title
+            return _first_words(db, root) or placeholder
         except Exception as exc:  # noqa: BLE001
             log.debug("uniwork-enterprise: session title lookup failed: %s", type(exc).__name__)
-        return ""
+        return placeholder
+
+
+def _first_words(db, session_id: str) -> str:
+    """员工在这个对话里说的第一句话：第一行，最多 ``FIRST_WORDS_CHARS`` 个字。压缩掉的也算（第一句在最早的会话里，
+    可能已经压缩过）；给模型看的脚手架（hidden）和压缩摘要不算；用 / 调技能的那句按 hermes 的写法还原成
+    「/技能 — 指令」。"""
+    for message in db.get_messages(session_id, include_compacted=True, limit=FIRST_WORDS_SCAN):
+        if message.get("role") != "user" or message.get("display_kind") == "hidden" \
+                or message.get("_compressed_summary"):
+            continue
+        line = next((part for part in _said(message.get("content")).splitlines() if part.strip()), "")
+        line = " ".join(line.split())
+        if line:
+            return line if len(line) <= FIRST_WORDS_CHARS else line[:FIRST_WORDS_CHARS] + "…"
+    return ""
+
+
+def _said(content) -> str:
+    if isinstance(content, list):  # 带图片的消息：只取文字
+        content = "\n".join(str(part.get("text") or "") for part in content
+                            if isinstance(part, dict) and part.get("type") == "text")
+    text = str(content or "")
+    try:
+        from agent.skill_commands import describe_skill_invocation
+
+        return describe_skill_invocation(text) or text
+    except Exception:  # noqa: BLE001 —— 拿不到 hermes 的就按原文
+        return text

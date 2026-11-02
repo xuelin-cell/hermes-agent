@@ -101,6 +101,66 @@ def test_a_failing_lookup_uses_the_session_itself(tmp_path: Path) -> None:
         raise OSError("no database")
 
     assert ConversationRoots(tmp_path, db_factory=broken).root("s1") == "s1"
+    assert ConversationRoots(tmp_path, db_factory=broken).title("s1") == ""
+
+
+def test_the_name_is_the_title_or_the_first_thing_the_member_said(tmp_path: Path) -> None:
+    from hermes_state import SessionDB
+
+    db = SessionDB(tmp_path / "state.db")
+    roots = ConversationRoots(tmp_path)
+    db.create_session("s1", source="api_server")
+    assert roots.title("s1") == ""
+    db.append_message("s1", "user", "\n  帮我把上个月的销售数据   整理成表\n按区域分")
+    db.append_message("s1", "assistant", "好的")
+    assert roots.title("s1") == "帮我把上个月的销售数据 整理成表"  # 还没起好标题
+    db.set_auto_title("s1", "销售数据整理", source=SessionDB.TITLE_SOURCE_LLM)
+    assert roots.title("s1") == "销售数据整理"
+    assert roots.title("") == ""
+
+    db.create_session("s2", source="api_server")
+    db.append_message("s2", "user", '[IMPORTANT: The user has invoked the "数据清洗" skill, indicating they want '
+                      "you to follow its instructions. The full skill content is loaded below.]\n\n# 数据清洗\n先去重。"
+                      "\n\nThe user has provided the following instruction alongside the skill invocation: 把这份表去重")
+    assert roots.title("s2") == "/数据清洗 — 把这份表去重"
+
+    db.create_session("s3", source="api_server")  # 接不上压缩链时从压缩后的会话读：摘要不算
+    db.append_message("s3", "user", "[CONTEXT SUMMARY]: 之前聊过的", _compressed_summary=True)
+    db.append_message("s3", "user", "接着说的第一句")
+    assert roots.title("s3") == "接着说的第一句"
+
+
+def test_a_bot_chat_is_named_by_its_first_words_through_compression(tmp_path: Path) -> None:
+    from hermes_state import SessionDB
+
+    db = SessionDB(tmp_path / "state.db")
+    roots = ConversationRoots(tmp_path)
+    db.create_session("bot", source="api_server")
+    db.set_session_title("bot", "Bot Chat")
+    assert roots.title("bot") == "Bot Chat"  # 还没说话：照旧
+    said = "请把附件里的客户名单去重，再按城市排序，最后导出成 Excel 表格发给我，文件名用今天的日期"
+    db.append_message("bot", "user", "（给模型看的说明）", display_kind="hidden")
+    db.append_message("bot", "user", [{"type": "text", "text": said},
+                                      {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}}])
+    db.append_message("bot", "assistant", "好的")
+    assert len(said) > 40
+    assert roots.title("bot") == said[:40] + "…"
+
+    # 原地压缩：第一句话成了压缩掉的；再换一个会话接着压缩，Bot Chat 跟到新会话上
+    db.archive_and_compact("bot", [{"role": "user", "content": "[CONTEXT SUMMARY]: 整理过客户名单",
+                                    "_compressed_summary": True},
+                                   {"role": "assistant", "content": "接着来"}])
+    db.create_session("bot-2", source="api_server", parent_session_id="bot")
+    db.end_session("bot", "compression")
+    db.set_session_title("bot-2", "Bot Chat")
+    assert db.get_session_title("bot") is None
+    assert roots.title("bot-2") == said[:40] + "…"
+    assert roots.title("bot") == said[:40] + "…"
+
+    db.create_session("branch", source="api_server")
+    db.set_session_title("branch", "Bot Chat #2")
+    db.append_message("branch", "user", "分出来以后说的第一句")
+    assert roots.title("branch") == "分出来以后说的第一句"
 
 
 # ---------------------------------------------------------------- 会话头
