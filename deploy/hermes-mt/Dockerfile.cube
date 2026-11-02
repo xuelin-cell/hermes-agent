@@ -211,9 +211,11 @@ ENV HERMES_TUI_WS_ORPHAN_REAP_GRACE_S=3600
 # Build-time provisioning can leave root-owned directories under the mutable
 # home. mtstate creates cache links and replaces archived top-level directories
 # as hermes; the bundled PM tools live separately under /opt/hermes/tools.
-# Fix only these local parents; never traverse the persistent user volume.
-RUN install -d -o hermes -g hermes -m 0755 /opt/data/cache /opt/data/tools \
-    && /opt/hermes/.venv/bin/python -c 'import os, pwd, tempfile; user = pwd.getpwnam("hermes"); os.setgroups([]); os.setgid(user.pw_gid); os.setuid(user.pw_uid); check = tempfile.TemporaryDirectory(prefix=".link-check-", dir="/opt/data/cache"); os.symlink("/mnt/u", check.name + "/media"); check.cleanup(); check = tempfile.TemporaryDirectory(prefix=".restore-check-", dir="/opt/data/tools"); check.cleanup()'
+# Restore removes the old tools tree recursively, so fixing only its parent
+# leaves root-owned agent-browser subdirectories blocking rmtree.
+COPY seed/prepare_home.py /tmp/hermes-prepare-home.py
+RUN /opt/hermes/.venv/bin/python /tmp/hermes-prepare-home.py \
+    && rm /tmp/hermes-prepare-home.py
 
 # ---- 端口 -----------------------------------------------------------------
 # 对外只有转发器这一个。hermes 自己绑 127.0.0.1:9120，故意不暴露 ——
