@@ -157,6 +157,7 @@ FunctionEnd
 
 ; 解压一批：$UNIWORK_EXCLUDES 是这批要跳过的归档路径。
 ; 只取结果码：这条命令的输出不值得塞进 nsExec 的栈里。
+; 失败时重试一次（7za 偶尔会因为文件被占用而失败）。
 Function UNIWORK_ExtractExcluded
   !insertmacro UniPhaseBegin 3 "解压程序文件"
   IntOp $UNIWORK_EXTRACT_BATCH $UNIWORK_EXTRACT_BATCH + 1
@@ -165,6 +166,12 @@ Function UNIWORK_ExtractExcluded
   !insertmacro UniLog "本批跳过：$UNIWORK_EXCLUDES"
   nsExec::Exec '"$PLUGINSDIR\uniwork\7za.exe" x "$UNIWORK_ARCHIVE" -o"$INSTDIR" -y -aoa $UNIWORK_EXCLUDES'
   Pop $UNIWORK_EXTRACT_RC
+  ${If} $UNIWORK_EXTRACT_RC != 0
+    !insertmacro UniLog "首次增量解压失败（$UNIWORK_EXTRACT_RC），重试..."
+    Sleep 1000
+    nsExec::Exec '"$PLUGINSDIR\uniwork\7za.exe" x "$UNIWORK_ARCHIVE" -o"$INSTDIR" -y -aoa $UNIWORK_EXCLUDES'
+    Pop $UNIWORK_EXTRACT_RC
+  ${EndIf}
   !insertmacro UniLog "本批 7za 结果码：$UNIWORK_EXTRACT_RC"
 FunctionEnd
 
@@ -266,24 +273,40 @@ Function UNIWORK_TryIncremental
   File "/oname=payload-digest.py" "${UNIWORK_DIGEST}"
   File "/oname=7za.exe" "${UNIWORK_7ZA}"
 
-  ; 只从包里取出指纹文件，不展开整个包。
+  ; 只从包里取出指纹文件，不展开整个包。失败时重试一次（AV 扫描或磁盘繁忙可能导致瞬时失败）。
   nsExec::ExecToStack '"$PLUGINSDIR\uniwork\7za.exe" e "$UNIWORK_ARCHIVE" "resources\agent-payload\payload-stamp.txt" -o"$PLUGINSDIR\uniwork\stamp" -y'
   Pop $0
   Pop $1
   ${If} $0 != 0
   ${OrIfNot} ${FileExists} "$PLUGINSDIR\uniwork\stamp\payload-stamp.txt"
-    !insertmacro UniSay "升级改为完整安装：包里没有组件指纹"
+    !insertmacro UniLog "首次提取指纹失败（$0），重试..."
+    Sleep 500
+    nsExec::ExecToStack '"$PLUGINSDIR\uniwork\7za.exe" e "$UNIWORK_ARCHIVE" "resources\agent-payload\payload-stamp.txt" -o"$PLUGINSDIR\uniwork\stamp" -y'
+    Pop $0
+    Pop $1
+  ${EndIf}
+  ${If} $0 != 0
+  ${OrIfNot} ${FileExists} "$PLUGINSDIR\uniwork\stamp\payload-stamp.txt"
+    !insertmacro UniSay "升级改为完整安装：包里没有组件指纹（重试后仍失败，$0）"
     Goto uniwork_try_done
   ${EndIf}
 
   ; update-plan.ps1 只读安装目录：算出要删的路径和要跳过的解压路径，失败时什么都不改。
   ; -Archive/-SevenZip 只用来数包里被保留组件的文件数和体积（只读归档头，实测一秒多），
   ; 结果写进 keep.txt 交给 UNIWORK_PrintKept；读不到数字也不影响计划。
+  ; 失败时重试一次（PowerShell 启动偶尔会超时）。
   nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\uniwork\update-plan.ps1" -Install "$INSTDIR" -NewStamp "$PLUGINSDIR\uniwork\stamp\payload-stamp.txt" -DeleteFile "$PLUGINSDIR\uniwork\delete.txt" -ExcludeFile "$PLUGINSDIR\uniwork\exclude.txt" -KeepFile "$PLUGINSDIR\uniwork\keep.txt" -Archive "$UNIWORK_ARCHIVE" -SevenZip "$PLUGINSDIR\uniwork\7za.exe" -Log "$PLUGINSDIR\uniwork\plan.log"'
   Pop $0
   Pop $1
   ${If} $0 != 0
-    !insertmacro UniSay "升级改为完整安装：无法生成更新计划（$0）"
+    !insertmacro UniLog "首次生成更新计划失败（$0），重试..."
+    Sleep 1000
+    nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\uniwork\update-plan.ps1" -Install "$INSTDIR" -NewStamp "$PLUGINSDIR\uniwork\stamp\payload-stamp.txt" -DeleteFile "$PLUGINSDIR\uniwork\delete.txt" -ExcludeFile "$PLUGINSDIR\uniwork\exclude.txt" -KeepFile "$PLUGINSDIR\uniwork\keep.txt" -Archive "$UNIWORK_ARCHIVE" -SevenZip "$PLUGINSDIR\uniwork\7za.exe" -Log "$PLUGINSDIR\uniwork\plan.log"'
+    Pop $0
+    Pop $1
+  ${EndIf}
+  ${If} $0 != 0
+    !insertmacro UniSay "升级改为完整安装：无法生成更新计划（重试后仍失败，$0）"
     Call UNIWORK_PrintLog
     Goto uniwork_try_done
   ${EndIf}
@@ -341,7 +364,7 @@ Function UNIWORK_TryIncremental
     ${If} $2 > 700
       Call UNIWORK_ExtractExcluded
       ${If} $UNIWORK_EXTRACT_RC != 0
-        !insertmacro UniSay "升级改为完整安装：增量解压失败（$UNIWORK_EXTRACT_RC）"
+        !insertmacro UniSay "升级改为完整安装：增量解压失败（重试后仍失败，$UNIWORK_EXTRACT_RC）"
         Goto uniwork_try_done
       ${EndIf}
       StrCpy $UNIWORK_EXCLUDES ""
@@ -359,7 +382,7 @@ Function UNIWORK_TryIncremental
   ${If} $UNIWORK_EXCLUDES != ""
     Call UNIWORK_ExtractExcluded
     ${If} $UNIWORK_EXTRACT_RC != 0
-      !insertmacro UniSay "升级改为完整安装：增量解压失败（$UNIWORK_EXTRACT_RC）"
+      !insertmacro UniSay "升级改为完整安装：增量解压失败（重试后仍失败，$UNIWORK_EXTRACT_RC）"
       Goto uniwork_try_done
     ${EndIf}
     StrCpy $UNIWORK_EXCLUDES ""
