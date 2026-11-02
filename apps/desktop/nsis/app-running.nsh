@@ -8,8 +8,12 @@
 ; 卸载程序编译时（BUILD_UNINSTALLER）没有 installUtil.nsh，这段跳过。
 !macro customCheckAppRunning
   ; desktop-mt: 模板在段首把 SetDetailsPrint 设成 none（templates/nsis/installSection.nsh），
-  ; 会把后面所有 DetailPrint 丢掉，这里覆盖回来。用 textonly 不用 both：载荷九万多个文件，
-  ; both 会把每个文件一行的解压噪音灌满面板和日志。
+  ; 会把后面所有 DetailPrint 丢掉，这里覆盖回来。必须是 both：实测 NSIS 3.12 的 MUI2 安装页里，
+  ; textonly 只更新进度条上方那行「当前操作」文字，详情列表（SysListView32）一条都不进，
+  ; 用户点开"显示详情"只能看到空白；both 才把 DetailPrint 写成列表行，而且面板隐藏期间打印的行
+  ; 会留着，点开就能看到从头到尾的过程。
+  ; 当年选 textonly 是怕 both 把九万个文件的解压噪音灌进面板——现在解压是 7za 自己做的
+  ; （direct-extract.nsh），NSIS 的 File 只剩几个辅助脚本，both 不再产生那种噪音。
   ; 安装器本身没有静默模式（模板只给卸载器写 SilentInstall silent），所以不用判断 ${Silent}。
   ;
   ; 注意这个宏在卸载器那一遍编译里也会展开（templates/nsis/uninstaller.nsh:2 的
@@ -17,7 +21,7 @@
   ; !ifndef BUILD_UNINSTALLER 里声明，卸载器单元里引用会得到 warning 6000，
   ; 而打包用的 makensis 带 -WX，警告直接变成错误、整个打包失败——所以整块只给安装器。
   !ifndef BUILD_UNINSTALLER
-    SetDetailsPrint textonly
+    SetDetailsPrint both
     !insertmacro UniPhaseBegin 1 "检查正在运行的程序"
   !endif
   !include "${UNIWORK_NSIS_DIR}\direct-extract.nsh"

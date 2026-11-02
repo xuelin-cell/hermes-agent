@@ -87,14 +87,16 @@ test('安装详情既显示在面板上，也按阶段落进日志文件', () =>
 
   // 面板默认是关的：ShowInstDetails 要在脚本层覆盖回来（customHeader），
   // SetDetailsPrint 要在段里覆盖回来（customCheckAppRunning），少一个就什么都看不到。
+  // 而且必须是 both：实测 NSIS 3.12 下 textonly 只写进度条上方那行「当前操作」文字，
+  // 详情列表一条都不进，用户点开"显示详情"只能看到空白面板。
   assert.match(installer, /!macro customHeader[\s\S]*ShowInstDetails hide[\s\S]*!macroend/)
-  assert.match(appRunning, /SetDetailsPrint textonly/)
+  assert.match(appRunning, /SetDetailsPrint both/)
 
   // 打包分两遍编译，卸载器那一遍（BUILD_UNINSTALLER）也会展开 customCheckAppRunning
   // （templates/nsis/uninstaller.nsh:2 的 un.checkAppRunning → CHECK_APP_RUNNING）。
   // install-log.nsh 的阶段变量只在 !ifndef BUILD_UNINSTALLER 里声明，卸载器单元里一旦引用
   // 就是 warning 6000，而 makensis 带 -WX，警告直接变错误、整个打包失败。
-  assert.match(appRunning, /!ifndef BUILD_UNINSTALLER\s*\n\s*SetDetailsPrint textonly\s*\n\s*!insertmacro UniPhaseBegin 1/)
+  assert.match(appRunning, /!ifndef BUILD_UNINSTALLER\s*\n\s*SetDetailsPrint both\s*\n\s*!insertmacro UniPhaseBegin 1/)
 
   // 明细只能走 UniSay：裸 DetailPrint 进不了日志文件。
   assert.doesNotMatch(incremental, /(^|\s)DetailPrint /)
