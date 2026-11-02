@@ -17,8 +17,8 @@ from .channel_wecom import WeCom
 from .channel_feishu import Feishu
 from plugins.cloud_messaging.media import unpack
 from .messaging_media_routes import media_response
-from .messaging_oss import MessagingOss, OssUploadFailed
-from .messaging_rcs import prepare, RcsPreparationFailed
+from .messaging_oss import MessagingOss
+from .channels_rcs_outbound import send_final
 
 TEXT_CLIENTS = {'dingtalk': DingTalk, 'weixin': Weixin, 'wecom': WeCom, 'feishu': Feishu}
 from .config import Settings
@@ -148,10 +148,16 @@ class Channels:
         async with self.database.acquire() as db:
             rows = await db.fetch('''SELECT o.*,i.user_id,i.platform,i.binding_id,i.payload AS inbound,b.enabled,b.revision,b.deleted_at FROM messaging_outbox o
                 JOIN messaging_inbox i ON i.delivery_id=o.delivery_id JOIN messaging_bindings b ON b.id=i.binding_id
-                JOIN users u ON u.user_id=b.user_id WHERE u.status='active' AND o.state='pending' AND NOT EXISTS(SELECT 1 FROM messaging_outbox previous WHERE previous.delivery_id=o.delivery_id AND previous.state IN('pending','sending') AND (previous.created_at,previous.outbound_id)<(o.created_at,o.outbound_id)) ORDER BY o.created_at LIMIT 10''')
+                JOIN users u ON u.user_id=b.user_id WHERE u.status='active' AND o.state='pending'
+                AND (i.platform<>'uniagentgate' OR (i.state='completed' AND NOT EXISTS(
+                    SELECT 1 FROM messaging_outbox ambiguous WHERE ambiguous.delivery_id=o.delivery_id AND ambiguous.state='unknown')))
+                AND NOT EXISTS(SELECT 1 FROM messaging_outbox previous WHERE previous.delivery_id=o.delivery_id AND previous.state IN('pending','sending') AND (previous.created_at,previous.outbound_id)<(o.created_at,o.outbound_id)) ORDER BY o.created_at LIMIT 10''')
         await asyncio.gather(*(self.send_one(row) for row in rows))
 
     async def send_one(self, row):
+        if row['platform'] == 'uniagentgate':
+            await send_final(self, row)
+            return
         client = self.clients.get(row['binding_id'])
         if not client or client[0] != row['binding_revision'] or client[1].health.state != 'running': return
         message_id = 'msg_cms_' + row['outbound_id']
@@ -165,7 +171,6 @@ class Channels:
             context=json.loads(self.store.cipher.decrypt(payload['reply_enc'].encode()))
             context.update(uuid=row['outbound_id'],client_id=row['outbound_id'])
             payload['reply_enc']=self.store.cipher.encrypt(json.dumps(context)).decode()
-        request=self.protocol.parse_agent_request(payload) if row['platform']=='uniagentgate' else None
         receipt = None
         try:
             content=json.loads(row['payload'])
@@ -175,46 +180,10 @@ class Channels:
             elif row['platform'] in TEXT_CLIENTS:
                 receipt=await client[1].send_media(payload,{**content['media'],'client_id':row['outbound_id']}) if 'media' in content else await client[1].send(payload,content['content'])
                 state,code='sent',''
-            else:
-                media=[]
-                text=content.get('content','')
-                if 'media' in content:
-                    try:
-                        item,native=await prepare(content['media'])
-                    except Exception:
-                        raise RcsPreparationFailed('Media preparation failed') from None
-                    url=await self.oss.public_url(row['user_id'],item)
-                    if native:
-                        media=[{'url':url,'kind':item['kind'],'mime_type':item['mime'],'file_name':item['name']}]
-                    else: text='📎 '+item['name']+' 下载链接：'+url
-                _, ack = await client[1].send_channel_message(phone_number=request.phone_number, text=text,media=media,session_id=request.session_id,turn_id=request.turn_id,message_id=message_id)
-                state, code = 'sent', ''
-                receipt = {'ok':True,'downlink_msg_ids':ack.downlink_msg_ids}
-        except RcsPreparationFailed:
-            state, code, receipt = 'failed', 'media_preparation_failed', {'ok':False}
-        except OssUploadFailed:
-            state, code, receipt = 'failed', 'media_oss_upload_failed', {'ok':False}
         except (self.stream.DownlinkRejected,ReplyRejected):
             state, code, receipt = 'failed', 'gateway_rejected', {'ok':False}
         except Exception:
             state, code = 'unknown', 'outbound_unconfirmed'
-        # A failed attachment is not a reason to replay an accepted text reply.
-        # This notice shares the claimed send attempt; unknown ACKs are never retried.
-        if row['platform'] == 'uniagentgate' and code in {'media_preparation_failed', 'media_oss_upload_failed'}:
-            reason = '附件格式处理失败' if code == 'media_preparation_failed' else '附件上传失败'
-            try:
-                original = self.protocol.parse_agent_request(json.loads(row['inbound']))
-                _, notice_ack = await client[1].send_channel_message(
-                    phone_number=original.phone_number,
-                    text='⚠️ 附件未能发送：'+reason+'。已发送的内容不会自动重发，请回到网页查看附件。',
-                    media=[], session_id=original.session_id, turn_id=original.turn_id,
-                    message_id=message_id+'_media_failure')
-                receipt['failure_notice'] = 'sent'
-                receipt['notice_downlink_msg_ids'] = notice_ack.downlink_msg_ids
-            except (self.stream.DownlinkRejected, ReplyRejected):
-                receipt['failure_notice'] = 'rejected'
-            except Exception:
-                receipt['failure_notice'] = 'unknown'
         async with self.database.acquire() as db:
             await db.execute('UPDATE messaging_outbox SET state=$2,error_code=$3,platform_ack=$4::jsonb,updated_at=now() WHERE outbound_id=$1 AND state=\'sending\'',row['outbound_id'],state,code,json.dumps(receipt))
 

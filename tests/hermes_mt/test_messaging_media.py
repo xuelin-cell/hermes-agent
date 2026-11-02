@@ -220,7 +220,7 @@ async def test_5g_file_link_is_single_attachment_expiring_and_revocable(postgres
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('extension',['png','webp','pdf'])
+@pytest.mark.parametrize('extension',['png','mp4','webm','webp','pdf'])
 async def test_5g_oss_public_links_use_owner_credentials_and_real_upload_before_downlink(postgres_database_url,extension):
     settings,app,entry,binding,epoch,delivery=await context(postgres_database_url,'uniagentgate')
     await entry.store.finish_login(user_id='bob',phone='',api_key='sk-bob',endpoint=None,catalog=None,ttl_s=3600,upstream_expires_at_ms=None,login_method='sms')
@@ -258,7 +258,8 @@ async def test_5g_oss_public_links_use_owner_credentials_and_real_upload_before_
     upstream.router.add_post('/gateway',gateway)
     filename='cat.'+extension
     raw=b'large-report-' + b'x'*(31*1024*1024) if extension=='pdf' else b'private-image'
-    item=pack(raw,filename,'file' if extension=='pdf' else 'image')
+    kind = 'file' if extension=='pdf' else 'video' if extension in {'mp4','webm'} else 'image'
+    item=pack(raw,filename,kind)
     await entry.messaging_routes.store.complete(delivery,'lease-owner',epoch,{'content':'Cat ready'})
     async with entry.database.acquire() as db:
         await db.execute('UPDATE messaging_inbox SET payload=$2::jsonb WHERE delivery_id=$1',delivery,json.dumps({'type':'agent.request','agent_id':'bot','message_id':'external','channel':{'phone_number':'13800000000'},'session_id':'session','turn_id':'turn','payload':{'inputs':[{'type':'text','text':'draw a cat'}]}}))
@@ -282,11 +283,12 @@ async def test_5g_oss_public_links_use_owner_credentials_and_real_upload_before_
             async with entry.database.acquire() as db:
                 rows=await db.fetch('SELECT state,error_code FROM messaging_outbox ORDER BY part_index')
             assert [row['state'] for row in rows]==['sent','sent']
-            assert len(downlinks)==2 and downlinks[0]['text']=='Cat ready'
-            if extension=='png':
-                assert downlinks[1]['media'][0]['url'].endswith('X-Amz-Expires=604800')
+            assert len(downlinks)==1 and downlinks[0]['text'].startswith('Cat ready')
+            if extension in {'png','mp4','webm'}:
+                assert downlinks[0]['media'][0]['url'].endswith('X-Amz-Expires=604800')
+                assert downlinks[0]['media'][0]['kind']==kind
             else:
-                assert downlinks[1]['media']==[] and '下载链接' in downlinks[1]['text']
+                assert downlinks[0]['media']==[] and '下载链接' in downlinks[0]['text']
             assert uploads==[raw] and confirms==['sk-fixture']
             for user in ('bob','alice'):
                 assert 'internal' not in await service.oss.public_url(user,item)
@@ -300,9 +302,10 @@ async def test_5g_oss_public_links_use_owner_credentials_and_real_upload_before_
             async with entry.database.acquire() as db:
                 row=await db.fetchrow('SELECT state,error_code FROM messaging_outbox WHERE outbound_id=$1',outbound)
             assert dict(row)=={'state':'failed','error_code':'media_oss_upload_failed'}
-            assert len(downlinks)==3 and '附件未能发送' in downlinks[-1]['text']
+            assert len(downlinks)==2 and '附件未能发送' in downlinks[-1]['text']
+            assert 'Cat ready' not in downlinks[-1]['text']
             await service.send_pending()
-            assert len(downlinks)==3  # No automatic replay of accepted content or failure notice.
+            assert len(downlinks)==2  # No automatic replay of accepted content or failure notice.
             view=await entry.messaging_routes.view('alice','uniagentgate')
             assert view['error_code']=='media_oss_upload_failed' and 'OSS' in view['error_message']
     finally:

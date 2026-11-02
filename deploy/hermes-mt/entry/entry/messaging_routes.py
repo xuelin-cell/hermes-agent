@@ -106,7 +106,7 @@ class MessagingRoutes:
         fields=[] if platform not in CREDENTIALS else [{'key':key,'is_set':bool(binding),'is_password':key.endswith('SECRET'),'redacted_value':'configured' if binding else None,'advanced':False,'description':'','prompt':key,'required':True,'url':None} for key in CREDENTIALS[platform]]
         async with self.entry.database.acquire() as db:
             attention=bool(binding and await db.fetchval("SELECT 1 FROM messaging_inbox WHERE binding_id=$1 AND binding_revision=$2 AND state='uncertain' LIMIT 1",binding['id'],binding['revision']))
-            outbound=await db.fetchrow("SELECT o.state,o.error_code FROM messaging_outbox o JOIN messaging_inbox i USING(delivery_id) WHERE i.binding_id=$1 AND o.binding_revision=$2 AND o.state IN('unknown','failed') ORDER BY o.updated_at DESC LIMIT 1",binding['id'],binding['revision']) if binding else None
+            outbound=await db.fetchrow("SELECT o.state,o.error_code FROM messaging_outbox o JOIN messaging_inbox i USING(delivery_id) WHERE i.binding_id=$1 AND o.binding_revision=$2 AND o.state IN('unknown','failed') ORDER BY (o.state='unknown') DESC,o.updated_at DESC LIMIT 1",binding['id'],binding['revision']) if binding else None
         outbound_state=outbound['state'] if outbound else ''
         outbound_code=outbound['error_code'] if outbound else ''
         outbound_messages={
