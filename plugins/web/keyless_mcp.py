@@ -15,6 +15,7 @@ import uuid
 from typing import Any, Callable, Dict, List, Optional
 
 from plugins.web._common import document as _page, page_error as _page_error, search_fail, search_ok, web_hit as _row
+from plugins.web import keyless_search as _search_policy
 
 logger = logging.getLogger(__name__)
 
@@ -59,9 +60,9 @@ def _search(vendor: str, rows: Callable[[], List[Dict[str, Any]]], catch: Any = 
     try:
         return search_ok(rows())
     except KeylessMCPError as exc:
-        return search_fail(_fail_msg(vendor, "search", exc))
+        return _search_policy.failed_result(search_fail(_fail_msg(vendor, "search", exc)), exc, rate_limited=_is_rate_limitish(str(exc)))
     except catch as exc:
-        return search_fail(fmt(exc))
+        return _search_policy.failed_result(search_fail(fmt(exc)), exc, rate_limited=_is_rate_limitish(str(exc)))
 
 
 def _per_url(urls: List[str], fetch: Callable[[str], Dict[str, Any]], vendor: str, catch: Any = Exception, hint: bool = False) -> List[Dict[str, Any]]:
@@ -175,11 +176,11 @@ def mcp_call(url: str, tool: str, arguments: Dict[str, Any], timeout: int = _TIM
     payload = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": tool, "arguments": arguments}}
     headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream", "User-Agent": "hermes-agent"}
     try:
-        response = requests.post(url, json=payload, headers=headers, timeout=timeout)
+        response = requests.post(url, json=payload, headers=headers, timeout=_search_policy.request_timeout(timeout))
     except requests.RequestException as exc:
         raise KeylessMCPError(f"request failed: {exc}") from exc
     if response.status_code >= 400:
-        raise KeylessMCPError(f"HTTP {response.status_code}: {_response_text(response)[:300]}")
+        raise KeylessMCPError(f"HTTP {response.status_code}: {_response_text(response)[:300]}") from _search_policy.response_error(response)
     return _parse_mcp_body(_response_text(response))
 
 
@@ -289,9 +290,9 @@ def _keenable_request(method: str, path: str, **kwargs: Any) -> Dict[str, Any]:
     headers = {"X-Keenable-Title": _KEENABLE_TITLE}
     if method == "post":
         headers["Content-Type"] = "application/json"
-    response = getattr(requests, method)(f"{KEENABLE_API_URL}{path}", headers=headers, timeout=_TIMEOUT_SECONDS, **kwargs)
+    response = getattr(requests, method)(f"{KEENABLE_API_URL}{path}", headers=headers, timeout=_search_policy.request_timeout(_TIMEOUT_SECONDS), **kwargs)
     if response.status_code >= 400:
-        raise KeylessMCPError(_response_text(response).strip() or f"HTTP {response.status_code}")
+        raise KeylessMCPError(_response_text(response).strip() or f"HTTP {response.status_code}") from _search_policy.response_error(response)
     return response.json()
 
 
@@ -374,21 +375,46 @@ def _walk_ring(name: str, kind: str, call, throttled) -> tuple:
 
 
 def search_with_failover(name: str, query: str, limit: int = 5) -> Dict[str, Any]:
-    """Rate-limit-shaped errors advance to the next vendor, other errors stop the walk
-    (a malformed query fails everywhere). ``data.served_by`` is set when the serving
-    vendor differs from *name*."""
+    """匿名服务不可用时有限换源，保留取消、参数与访问策略失败。"""
+    from tools.interrupt import is_interrupted
 
-    def _throttled(result: Dict[str, Any]) -> bool:
-        return not result.get("success") and _is_rate_limitish(result.get("error", ""))
-
-    order, vendor, result, exhausted = _walk_ring(name, "search", lambda v: _KEYLESS_SEARCHERS[v](query, limit), _throttled)
+    order = _ring_order(name)
     if not order:
         return search_fail(_ALL_PAID_MSG)
-    if exhausted:
-        result["error"] = f"{result.get('error', '')} (all keyless vendors throttled: {', '.join(order)})"
-    elif result.get("success") and vendor != name:
-        result.setdefault("data", {})["served_by"] = vendor
-    return result
+    failures = []
+    categories = []
+    with _search_policy.search_budget():
+        for vendor in order:
+            if is_interrupted():
+                return search_fail("Interrupted")
+            if _search_policy.budget_expired():
+                failures.append("search time budget exhausted")
+                break
+            ticket = _search_policy.claim_service(vendor)
+            if ticket is None:
+                failures.append(f"{vendor}: temporarily unavailable (cooldown)")
+                continue
+            delay = None
+            try:
+                result = _KEYLESS_SEARCHERS[vendor](query, limit)
+                category, retry_after = result.pop("_keyless_failure", ("rate_limit", 60.0) if _is_rate_limitish(result.get("error", "")) else ("", 0.0))
+                if category and not result.get("success") and not is_interrupted():
+                    delay = retry_after
+            finally:
+                _search_policy.finish_service(ticket, delay)
+            if is_interrupted():
+                return search_fail("Interrupted")
+            if result.get("success"):
+                if vendor != name:
+                    result.setdefault("data", {})["served_by"] = vendor
+                return result
+            if not category:
+                return result
+            failures.append(f"{vendor}: {result.get('error', 'unavailable')}")
+            categories.append(category)
+            logger.info("keyless search %s unavailable (%s); trying next service", vendor, category)
+    suffix = f" (all keyless vendors throttled: {', '.join(order)})" if len(categories) == len(order) and set(categories) == {"rate_limit"} else ""
+    return search_fail("Free web search unavailable: " + "; ".join(failures) + suffix)
 
 
 def extract_with_failover(name: str, urls: List[str]) -> List[Dict[str, Any]]:

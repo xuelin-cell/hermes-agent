@@ -54,6 +54,7 @@ import type {
   ImageAttachResponse,
   SessionRedirectResponse
 } from '../../../types'
+import { sessionContextDrift } from '../session-context-drift'
 
 import {
   appendMidTurnUserMessage,
@@ -348,7 +349,19 @@ export function usePromptActions({
       // session the text belongs to — not stage the files on, and then submit
       // into, whichever chat is selected now (#46194, the attachments edition).
       const storedSessionId = options.storedSessionId ?? selectedStoredSessionIdRef.current
-      const targetIsForeground = storedSessionId === selectedStoredSessionIdRef.current
+      const startRouteToken = getRouteToken()
+
+      /** 上传或恢复完成时重新核对前台，不能用等待前的选中状态覆盖新页面。 */
+      const targetIsForeground = () =>
+        storedSessionId === selectedStoredSessionIdRef.current &&
+        !sessionContextDrift({
+          startRouteToken,
+          nowRouteToken: getRouteToken(),
+          startSelectedStoredId: storedSessionId,
+          nowSelectedStoredId: selectedStoredSessionIdRef.current,
+          submitTargetStoredId: storedSessionId
+        })
+
       const remote = isSessionRemote(storedSessionId ?? sessionId)
       let liveSessionId = sessionId
       const synced: ComposerAttachment[] = []
@@ -363,7 +376,7 @@ export function usePromptActions({
 
         // Only a foreground send may retarget the foreground: a background
         // drain that recovers its own session must not steal the view.
-        if (targetIsForeground) {
+        if (targetIsForeground()) {
           activeSessionIdRef.current = recoveredId
           setActiveSessionId(recoveredId)
         }
@@ -412,7 +425,7 @@ export function usePromptActions({
           })
 
           // Update-only: never resurrect a chip the user removed mid-upload.
-          if (updateComposerAttachments) {
+          if (updateComposerAttachments && targetIsForeground()) {
             if (original.occurrenceId) {
               // Preserve a preview that may have completed after staging began,
               // while still refusing a remove + re-add of the same path.
@@ -438,7 +451,14 @@ export function usePromptActions({
 
       return { attachments: synced, sessionId: liveSessionId }
     },
-    [activeSessionIdRef, requestGateway, runtimeIdByStoredSessionIdRef, selectedStoredSessionIdRef, updateSessionState]
+    [
+      activeSessionIdRef,
+      getRouteToken,
+      requestGateway,
+      runtimeIdByStoredSessionIdRef,
+      selectedStoredSessionIdRef,
+      updateSessionState
+    ]
   )
 
   // Stage a freshly dropped file as soon as it lands (when a session already

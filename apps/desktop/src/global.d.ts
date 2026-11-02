@@ -18,11 +18,13 @@ import type {
   LoginAccount
 } from '../electron/login/contract'
 import type { MachineProfile } from '../electron/machine-profile'
-import type { LocalConnectorRequest, LocalConnectorResult } from '../electron/open-connector/contract'
 import type { HermesNotification } from '../electron/notification-types'
+import type { LocalConnectorRequest, LocalConnectorResult } from '../electron/open-connector/contract'
 import type { PoolLimits } from '../electron/pool-limits'
 import type { PreviewExport, PreviewExportResult } from '../electron/preview-export'
+import type { SessionListSnapshot } from '../electron/session-list-snapshot-contract'
 import type { UniworkAsrBridge } from '../electron/uniwork-asr/contract'
+import type { NtfyEvent, NtfyRefreshResult, NtfyStatus } from '../electron/uniwork-notify/contract'
 import type { PlanSubscriptionResult, PlanUsageResult } from '../electron/uniwork-usage/contract'
 import type { WelcomeLocale, WelcomePayload } from '../electron/uniwork-welcome/catalog'
 import type { GrowRequest } from '../electron/window-growth'
@@ -35,6 +37,7 @@ import type {
   PetOverlayStatePayload
 } from './store/pet-overlay'
 import type { QuickEntryStatePush, QuickEntryStatus, QuickEntrySubmitPayload } from './store/quick-entry'
+import type { SessionInfo } from './types/hermes'
 
 export {}
 
@@ -70,6 +73,13 @@ declare global {
       /** 取得完整办公目录；主进程负责认证和校验配置。 */
       getWelcomeCatalog?: (locale: WelcomeLocale) => Promise<WelcomePayload>
       uniworkAsr?: UniworkAsrBridge
+      /** 服务端主动通知：主进程持长连接，页面只收公告/指令事件。 */
+      ntfy?: {
+        start: () => Promise<NtfyStatus>
+        stop: () => Promise<NtfyStatus>
+        refresh: () => Promise<NtfyRefreshResult>
+        onEvent: (callback: (event: NtfyEvent) => void) => () => void
+      }
       cloudDriveAgentReady: (profile: string) => Promise<boolean>
       cloudDriveTransfer: (input: CloudDriveTransferRequest) => Promise<CloudDriveTransferResult>
       cancelCloudDriveTransfer: (id: string) => Promise<void>
@@ -306,6 +316,10 @@ declare global {
         logout: () => Promise<DesktopCloudStatus & { ok: boolean }>
         discover: (org?: string) => Promise<DesktopCloudDiscoverResult>
         agentSignIn: (dashboardUrl: string) => Promise<DesktopCloudAgentSignInResult>
+      }
+      sessionListSnapshot?: {
+        read: (profile: string) => Promise<SessionListSnapshot<SessionInfo>>
+        write: (profile: string, snapshot: SessionListSnapshot<SessionInfo>) => Promise<void>
       }
       profile: {
         getDefault: () => Promise<DesktopProfileRoute | null>

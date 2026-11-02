@@ -1,3 +1,6 @@
+import { useStore } from '@nanostores/react'
+import { useQueryClient } from '@tanstack/react-query'
+import { type CSSProperties, lazy, type ReactNode, Suspense, useCallback, useEffect, useMemo, useRef } from 'react'
 /**
  * Real-featureset wiring for the contrib (layout tree) root — the minimal
  * subset of DesktopController's hook chain that makes the REAL surfaces work:
@@ -7,12 +10,9 @@
  * The wired nodes (sidebar / chat routes / terminal) are exposed through
  * context; registered panes render `<WiredPane part="…"/>` to consume them.
  */
-
-import { useStore } from '@nanostores/react'
-import { useQueryClient } from '@tanstack/react-query'
-import { type CSSProperties, lazy, type ReactNode, Suspense, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
+import { getSessionMessages as getUniSearchMessages } from '@/api/sessions'
 import { formatRefValue } from '@/components/assistant-ui/directive-text'
 import { BootFailureOverlay } from '@/components/boot-failure-overlay'
 import { ConfirmHost } from '@/components/confirm-host'
@@ -39,6 +39,7 @@ import { TipHost } from '@/components/tips'
 import { emitGatewayEvent } from '@/contrib/events'
 import { translateNow } from '@/i18n'
 import { type ChatMessage, chatMessageText } from '@/lib/chat-messages'
+import { NTFY_CONFIG_REFRESHED_EVENT } from '@/lib/ntfy-instructions'
 import { isMessagingSource } from '@/lib/session-source'
 import { activateWakeIndicator } from '@/lib/wake-indicator'
 import { playWakeSound } from '@/lib/wake-sound'
@@ -88,6 +89,7 @@ import {
   setBusy,
   setMessages
 } from '@/store/session'
+import { knownOwnerForSession as uniSearchSessionOwner } from '@/store/session-states'
 import { $archivedSessions } from '@/store/sidebar-archive'
 import { $titlebarAppActionsSide, titlebarAppActionsClusterCounts } from '@/store/titlebar-app-actions'
 import { armWakeWord, stopClientCapture } from '@/store/wake-word'
@@ -142,6 +144,7 @@ import { startWorkspaceSession } from '../session/workspace-session-target'
 import { PluginInstallModal } from '../settings/plugin-install-modal'
 import { useOverlayRouting } from '../shell/hooks/use-overlay-routing'
 import { useWindowControlsOverlayWidth } from '../shell/hooks/use-window-controls-overlay-width'
+import { messageCenterAvailable, MessageCenterSync } from '../shell/message-center'
 import {
   TITLEBAR_CHROME_CHANGED_EVENT,
   titlebarControlsPosition,
@@ -173,6 +176,7 @@ import { type AmbientGatewayRequest, createSessionRpcDispatcher } from './sessio
 import { SettingsView, useSettingsPreload } from './settings-loader'
 import { ChatRoutesSurface, SidebarSurface, StatusbarSurface, TerminalSurface } from './surfaces'
 import type { WiringActions, WiringApi } from './types'
+import { createUniSearchEvents } from './unisearch/events'
 import { POOL_LIMITS_SETTINGS_ROUTE } from './wiring-routing'
 
 // Overlay views the controller mounts over the shell — lazy, load on demand.
@@ -867,11 +871,53 @@ export function ContribWiring({ children }: { children: ReactNode }) {
     startFreshSessionDraft
   })
 
+  const uniSearchDispatchRef = useRef(handleDesktopGatewayEvent)
+  uniSearchDispatchRef.current = handleDesktopGatewayEvent
+
+  const uniSearchEvents = useMemo(
+    () =>
+      createUniSearchEvents({
+        route: storedId => {
+          const runtimeId =
+            runtimeIdByStoredSessionIdRef.current.get(storedId) ??
+            (sessionStateByRuntimeIdRef.current.has(storedId) ? storedId : undefined)
+
+          const state = runtimeId ? sessionStateByRuntimeIdRef.current.get(runtimeId) : undefined
+          const owner = uniSearchSessionOwner(runtimeId)
+
+          if (!runtimeId || !state || !owner || typeof owner !== 'object') {
+            return undefined
+          }
+
+          return {
+            runtimeId,
+            storedId: state.storedSessionId ?? storedId,
+            owner,
+            interrupted: state.interrupted,
+            turnStartedAt: state.turnStartedAt
+          }
+        },
+        read: (storedId, owner) =>
+          getUniSearchMessages(
+            storedId,
+            { connectionId: owner.connectionId, profile: owner.targetProfile ?? owner.profile },
+            { limit: 200, order: 'latest' },
+            { passive: true }
+          ),
+        dispatch: event => uniSearchDispatchRef.current(event)
+      }),
+    [runtimeIdByStoredSessionIdRef, sessionStateByRuntimeIdRef]
+  )
+
   // Plugins hear the stream FIRST (isolated fan-out in contrib/events), then
   // the app dispatches as before — a plugin listener can't affect app flow.
   const handleGatewayEventWithPlugins = useCallback(
     (event: Parameters<typeof handleDesktopGatewayEvent>[0]) => {
       emitGatewayEvent(event)
+
+      if (uniSearchEvents(event)) {
+        return
+      }
 
       if (event.type === 'wake.detected') {
         const payload = event.payload as { profile?: null | string; start_new_session?: boolean } | undefined
@@ -912,7 +958,7 @@ export function ContribWiring({ children }: { children: ReactNode }) {
 
       handleDesktopGatewayEvent(event)
     },
-    [handleDesktopGatewayEvent, startFreshSessionDraft]
+    [handleDesktopGatewayEvent, startFreshSessionDraft, uniSearchEvents]
   )
 
   useGatewayBoot({
@@ -1284,7 +1330,14 @@ export function ContribWiring({ children }: { children: ReactNode }) {
   const shownTool = shownInMode(interfaceMode)
   const paneToolCount = rightTitlebarTools.filter(tool => !tool.hidden && shownTool(tool)).length
   const leftExtraCount = leftTitlebarTools.filter(tool => !tool.hidden && shownTool(tool)).length
-  const clusters = titlebarAppActionsClusterCounts(appActionsSide, leftExtraCount, 0, interfaceMode)
+
+  const clusters = titlebarAppActionsClusterCounts(
+    appActionsSide,
+    leftExtraCount,
+    messageCenterAvailable() ? 1 : 0,
+    interfaceMode
+  )
+
   const systemToolsWidth = titlebarToolsWidthCss(clusters.right)
 
   const titlebarToolsWidth =
@@ -1296,6 +1349,19 @@ export function ContribWiring({ children }: { children: ReactNode }) {
   useEffect(() => {
     window.dispatchEvent(new CustomEvent(TITLEBAR_CHROME_CHANGED_EVENT))
   }, [controlsPos.left, controlsPos.top, titlebarToolsRight])
+
+  // 服务端指令刷新完账号配置后，本窗口重读默认模型/推理档位与模型目录。
+  useEffect(() => {
+    const reload = () => {
+      void refreshHermesConfig()
+      void refreshCurrentModel()
+      void queryClient.invalidateQueries({ queryKey: ['model-options'] })
+    }
+
+    window.addEventListener(NTFY_CONFIG_REFRESHED_EVENT, reload)
+
+    return () => window.removeEventListener(NTFY_CONFIG_REFRESHED_EVENT, reload)
+  }, [queryClient, refreshHermesConfig, refreshCurrentModel])
 
   return (
     <ContribWiringContext.Provider value={api}>
@@ -1334,6 +1400,9 @@ export function ContribWiring({ children }: { children: ReactNode }) {
 
       {/* The full real overlay set (mirrors DesktopController's `overlays`). */}
       <RemoteDisplayBanner />
+      {/* 服务端主动通知：跟随账号建立订阅，公告进消息中心，指令触发刷新。
+          辅助窗（HUD / 弹窗浏览器）共用主进程的一条连接，不重复订阅。 */}
+      {!isAuxiliaryWindow() && <MessageCenterSync />}
       {!isAuxiliaryWindow() && <DesktopInstallOverlay />}
       {!isAuxiliaryWindow() && <IntroRevealGate enabled={gatewayState === 'open'} />}
       {!isAuxiliaryWindow() && (

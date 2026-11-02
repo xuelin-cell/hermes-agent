@@ -1,3 +1,5 @@
+import './session-states'
+
 // Regression: the right rail's tabs were persisted under ONE global key
 // (`hermes.desktop.previewTabs.v2` holding a bare array), so a preview opened in
 // one agent's chat appeared in every other agent's chat — Tess's model showed up
@@ -12,6 +14,7 @@
 // owner and pushes it in via `setPreviewScope`.
 import { beforeEach, describe, expect, it } from 'vitest'
 
+import { $rightRailActiveTabId } from '@/store/layout'
 import {
   $previewTabs,
   migratePreviewTabsForProfile,
@@ -20,6 +23,8 @@ import {
   setPreviewScope
 } from '@/store/preview'
 import { normalizeProfileKey } from '@/store/profile'
+
+import { $activeSessionId } from './session'
 
 const TABS_KEY = 'hermes.desktop.previewTabs.v2'
 
@@ -77,4 +82,43 @@ describe('right rail follows the chat on screen', () => {
     expect(buckets[normalizeProfileKey('tess')]).toBeUndefined()
     expect(buckets[normalizeProfileKey('tess-renamed')]?.map(tab => tab.target.path)).toEqual(['/work/tess-model.html'])
   })
+})
+
+it('isolates conversation tabs and restores the selected file on A → B → A', () => {
+  setPreviewScope('conversation-test', 'A', 'local')
+  openPreview(fileTarget('/work/a.md'))
+  const first = $rightRailActiveTabId.get()
+  openPreview(fileTarget('/work/a-second.md'))
+  $rightRailActiveTabId.set(first)
+  setPreviewScope('conversation-test', 'B', 'local')
+  expect(paths()).toEqual([])
+  expect($rightRailActiveTabId.get()).toBeNull()
+  openPreview(fileTarget('/work/b.md'))
+  setPreviewScope('conversation-test', 'A', 'local')
+  expect(paths()).toEqual(['/work/a.md', '/work/a-second.md'])
+  expect($rightRailActiveTabId.get()).toBe(first)
+  setPreviewScope('conversation-test', 'new-chat', 'local')
+  expect(paths()).toEqual([])
+  setPreviewScope('conversation-test', 'B', 'local')
+  expect(paths()).toEqual(['/work/b.md'])
+  $activeSessionId.set('integration-A')
+  openPreview(fileTarget('/integration/a.md'))
+  $activeSessionId.set('integration-B')
+  expect(paths()).toEqual([])
+  $activeSessionId.set('integration-A')
+  expect(paths()).toEqual(['/integration/a.md'])
+  $activeSessionId.set(null)
+  expect(paths()).toEqual([])
+})
+
+it('keeps conversation previews across profile rename and separates connections', () => {
+  setPreviewScope('before-rename', 'same-id', 'one')
+  openPreview(fileTarget('/one.md'))
+  setPreviewScope('before-rename', 'same-id', 'two')
+  expect(paths()).toEqual([])
+  openPreview(fileTarget('/two.md'))
+  migratePreviewTabsForProfile('before-rename', 'after-rename')
+  expect(paths()).toEqual(['/two.md'])
+  setPreviewScope('after-rename', 'same-id', 'one')
+  expect(paths()).toEqual(['/one.md'])
 })

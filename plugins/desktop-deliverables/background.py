@@ -8,7 +8,7 @@ MESSAGE_TOOLS = frozenset({"doc_translate", "ai_podcast_generate"})
 VIDEO_TOOLS = frozenset({"txt2vid_generate", "img2vid_generate"})
 # 与桌面一样下载成品、以附件交付的消息平台；企业微信只含机器人模式（回调模式是 wecom_callback）。
 # 其他平台保持原样：只缓存后台翻译、播客，链接保留。
-DELIVERY_PLATFORMS = frozenset({"weixin", "feishu", "wecom", "dingtalk"})
+DELIVERY_PLATFORMS = frozenset({"weixin", "feishu", "wecom", "dingtalk", "uniagentgate"})
 _children = OrderedDict()
 _message_parents = OrderedDict()
 # (账号 Home, 父会话) -> {成品路径: 完成通知是否已带回}；补进回复后才删，每轮结束不清。

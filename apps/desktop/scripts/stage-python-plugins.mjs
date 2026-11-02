@@ -12,8 +12,7 @@ export function stagePythonPlugins({ source, out, bundledKits = null }) {
   for (const input of [official, personal]) {
     const rel = relative(input, destination)
     const reverse = relative(destination, input)
-    if (!rel || (!rel.startsWith('..') && !isAbsolute(rel)) ||
-        (!reverse.startsWith('..') && !isAbsolute(reverse))) {
+    if (!rel || (!rel.startsWith('..') && !isAbsolute(rel)) || (!reverse.startsWith('..') && !isAbsolute(reverse))) {
       throw new Error('Plugin output must be outside plugin sources')
     }
   }
@@ -25,6 +24,11 @@ export function stagePythonPlugins({ source, out, bundledKits = null }) {
   mkdirSync(destination, { recursive: true })
   cpSync(official, destination, { recursive: true, dereference: true, filter })
   cpSync(personal, join(destination, 'uniagentgate'), { recursive: true, dereference: true, filter })
+  cpSync(join(source, 'apps/desktop/assets/unisearch-plugin'), join(destination, 'unisearch'), {
+    recursive: true,
+    dereference: true,
+    filter
+  })
   if (bundledKits) {
     // desktop-mt: 内置套件和专家打包时才从 GitCode 拉进 agent-payload 快照，源码 plugins/ 里没有；
     // 安装版后端从这里发现插件，autoseed 在 uniwork-kits/bundled 下找包，所以一起放进来。
@@ -42,14 +46,25 @@ export function payloadBundledKits(stamp, metadata) {
   if (metadata?.payload !== 'bundled' || !metadata.runtime?.repoDir) {
     return null
   }
-  const kits = join(dirname(resolve(stamp)), 'agent-payload', metadata.runtime.repoDir, 'plugins', 'uniwork-kits', 'bundled')
+  const kits = join(
+    dirname(resolve(stamp)),
+    'agent-payload',
+    metadata.runtime.repoDir,
+    'plugins',
+    'uniwork-kits',
+    'bundled'
+  )
   return existsSync(join(kits, 'uniwork-bundled', 'plugins')) ? kits : null
 }
 
 if (isMain(import.meta.url)) {
-  const { values } = parseArgs({ options: {
-    source: { type: 'string' }, out: { type: 'string' }, 'bundled-kits': { type: 'string' },
-  } })
+  const { values } = parseArgs({
+    options: {
+      source: { type: 'string' },
+      out: { type: 'string' },
+      'bundled-kits': { type: 'string' }
+    }
+  })
   if (!values.source || !values.out) throw new Error('--source and --out are required')
   stagePythonPlugins({ source: values.source, out: values.out, bundledKits: values['bundled-kits'] ?? null })
 }

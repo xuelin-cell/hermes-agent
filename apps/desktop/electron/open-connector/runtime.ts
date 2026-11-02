@@ -29,6 +29,18 @@ export interface ConnectorRuntimeOptions {
   decrypt: (value: Buffer) => string
 }
 
+/** 凭据验证因超时失败时连接器同样回 400；只读错误码和文字判断是否超时，原文不外传，免得把网络慢说成凭据错。 */
+export async function isValidationTimeout(response: Response): Promise<boolean> {
+  const body = (await response.json().catch(() => null)) as null | { error?: { code?: unknown; message?: unknown } }
+  const error = body?.error
+
+  return (
+    error?.code === 'credential_verification_failed' &&
+    typeof error.message === 'string' &&
+    /credential validation exceeded \d+ms|timed? ?out/i.test(error.message)
+  )
+}
+
 /** 独立 Node 服务持有第三方凭据；每个 Profile 单独启动、加密和退出。 */
 export class ConnectorRuntime {
   private child: ChildProcess | null = null
@@ -236,6 +248,10 @@ export class ConnectorRuntime {
 
     if (!response.ok) {
       // 上游响应可能包含凭据，不直接向页面透传。
+      if (response.status === 400 && (await isValidationTimeout(response))) {
+        throw new Error('连接服务器超时，请检查网络后重试。')
+      }
+
       throw new Error(
         response.status === 400 ? '连接器拒绝了连接，请核对凭据或授权设置。' : '连接器服务请求失败，请稍后重试。'
       )

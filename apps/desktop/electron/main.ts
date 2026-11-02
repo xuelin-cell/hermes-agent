@@ -236,16 +236,13 @@ import { installArtifactSharePlugin } from './entry_local/install-artifact-share
 // desktop-mt: 程序被关掉中断的回答不自动续跑，改由用户点 ▶ 继续。
 import { createInterruptedTurns, installInterruptedTurnIpc } from './entry_local/interrupted-turns'
 import { createAccountLogout } from './entry_local/logout'
-import {
-  type LogoutProcess,
-  logoutProcessTree,
-  stopLogoutProcesses
-} from './entry_local/logout-processes'
+import { type LogoutProcess, logoutProcessTree, stopLogoutProcesses } from './entry_local/logout-processes'
 import { createAccountExitWindows, retryLogout } from './entry_local/logout-window'
 import { DesktopMessaging, MessagingBotIndex } from './entry_local/messaging'
 import { LocalStartupError, showLocalStartupFailure } from './entry_local/startup-failure'
 import { createUniAgentGateBindingUpdate } from './entry_local/uniagentgate-control'
 import { installUniAgentGateIpc } from './entry_local/uniagentgate-ipc'
+import { refreshUniSearch } from './entry_local/unisearch'
 import { createAmbientClaimArbiter } from './event-dedupe'
 import { openExternalUrl as externalOpen, type ExternalOpenDeps, reportPreOpenStatFailure } from './external-open'
 import {
@@ -342,7 +339,14 @@ import { resolveIpcFileReadPath, resolveMediaStreamFile, resolvePreviewTargetPat
 import { localSkinProfileKey, readLocalSkinPayload } from './local-skin'
 import { ACTIVE_LOG_POLL_MS, planLogRotation, reclaimActiveLogIfOversized } from './log-rotation'
 import { installAccountIpc } from './login/account-ipc'
-import { currentDesktopAccount, currentDesktopAsrIdentity, currentDesktopIdentity, currentDesktopLocalContext, sealDesktopAccount } from './login/bootstrap'
+import {
+  currentDesktopAccount,
+  currentDesktopAsrIdentity,
+  currentDesktopIdentity,
+  currentDesktopLocalContext,
+  currentDesktopLogin,
+  sealDesktopAccount
+} from './login/bootstrap'
 import { CloudDriveClient } from './login/cloud-drive'
 import { createDriveArtifactResolver } from './login/cloud-drive-artifact-source'
 import { CloudDriveMcp } from './login/cloud-drive-mcp'
@@ -521,6 +525,7 @@ import {
 } from './secret-storage-policy'
 import { selectPathsDialogProperties } from './select-paths-dialog'
 import { describeGitSpawnFailure, GIT_UNUSABLE, selectRunnableBinary } from './select-runnable-binary'
+import { readSessionListSnapshot, sessionListSnapshotScope, writeSessionListSnapshot } from './session-list-snapshot'
 import {
   buildInstanceWindowUrl,
   buildSessionWindowUrl,
@@ -556,6 +561,8 @@ import {
   windowOpacityOptions
 } from './translucency'
 import { packagedResourceRoot } from './universal-resources'
+import { installNtfyIpc } from './uniwork-notify/ipc'
+import { createPlanRefresher } from './uniwork-notify/refresher'
 import { waitForUpdateClearance } from './update-gate'
 import { readLiveUpdateMarker, updateHandoffConflict, writeUpdateMarker } from './update-marker'
 import {
@@ -692,7 +699,9 @@ const ACCOUNT_DRIVE_MCP = new CloudDriveMcp(ACCOUNT_DRIVE_CLIENT, ACCOUNT_RUNTIM
 
 const ACCOUNT_CONNECTORS = new ConnectorManager({
   home: ACCOUNT_RUNTIME.home,
-  runtimeDirectory: IS_PACKAGED ? packagedResourceRoot(process.resourcesPath, 'open-connector') : path.join(APP_ROOT, 'services', 'open-connector'),
+  runtimeDirectory: IS_PACKAGED
+    ? packagedResourceRoot(process.resourcesPath, 'open-connector')
+    : path.join(APP_ROOT, 'services', 'open-connector'),
   executable: process.execPath,
   active: () => currentDesktopLocalContext() === ACCOUNT_RUNTIME,
   log: rememberLog,
@@ -700,7 +709,10 @@ const ACCOUNT_CONNECTORS = new ConnectorManager({
   mailState: new AgentMailLocalStateStore(
     path.join(ACCOUNT_RUNTIME.desktopState, 'agent-mail'),
     value => {
-      if (!safeStorage.isEncryptionAvailable() || (process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text')) {
+      if (
+        !safeStorage.isEncryptionAvailable() ||
+        (process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text')
+      ) {
         throw new Error('请先解锁系统密钥环，再使用智能体邮箱。')
       }
 
@@ -709,7 +721,10 @@ const ACCOUNT_CONNECTORS = new ConnectorManager({
     value => safeStorage.decryptString(value)
   ),
   encrypt: value => {
-    if (!safeStorage.isEncryptionAvailable() || (process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text')) {
+    if (
+      !safeStorage.isEncryptionAvailable() ||
+      (process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text')
+    ) {
       throw new Error('请检查本地凭据存储权限，再连接服务。')
     }
 
@@ -731,7 +746,22 @@ const ACCOUNT_CONNECTORS = new ConnectorManager({
     const response = await download()
     const data = Buffer.from(await response.arrayBuffer())
     await fs.promises.writeFile(result.filePath, data)
+
     return { canceled: false, saved: true }
+  },
+  stageAttachment: async (name, download) => {
+    const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'hermes-mail-'))
+    const safeName = path.basename(name) || 'attachment'
+    const stagedPath = path.join(directory, safeName)
+    const response = await download()
+
+    if (!response.ok) {
+      throw new Error(`Mail attachment download failed (${response.status})`)
+    }
+
+    await fs.promises.writeFile(stagedPath, Buffer.from(await response.arrayBuffer()))
+
+    return { name: safeName, path: stagedPath }
   }
 })
 
@@ -757,7 +787,7 @@ installAccountIpc(
   profile => ACCOUNT_DRIVE_MCP.available(profile),
   ACCOUNT_DRIVE_ARTIFACT,
   url => openExternalUrl(url),
-  createUniAgentGateBindingUpdate(() => currentDesktopLocalContext() === ACCOUNT_RUNTIME ? ACCOUNT_RUNTIME : null)
+  createUniAgentGateBindingUpdate(() => (currentDesktopLocalContext() === ACCOUNT_RUNTIME ? ACCOUNT_RUNTIME : null))
 )
 
 installOfficePreviewIpc(
@@ -766,10 +796,29 @@ installOfficePreviewIpc(
   () => currentDesktopLocalContext() === ACCOUNT_RUNTIME,
   ACCOUNT_OFFICE_PREVIEW
 )
+// desktop-mt: 服务端主动通知（ntfy）— 主进程持一条长连接，页面只收业务事件。
+installNtfyIpc(ACCOUNT_SESSION, () => DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString(), {
+  identity: currentDesktopIdentity,
+  refreshTools: () =>
+    refreshUniSearch(
+      ACCOUNT_RUNTIME,
+      currentDesktopIdentity,
+      electronNet.fetch,
+      app.getAppPath(),
+      app.isPackaged ? process.resourcesPath : undefined
+    ),
+  // 每行日志自带 ntfy 前缀（见 uniwork-notify/subscriber.ts）。
+  log: rememberLog,
+  refresh: createPlanRefresher(
+    currentDesktopLogin,
+    () => (currentDesktopLocalContext() === ACCOUNT_RUNTIME ? ACCOUNT_RUNTIME.home : null),
+    rememberLog
+  )
+})
 installUniAgentGateIpc(
   ACCOUNT_SESSION,
   () => DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString(),
-  () => currentDesktopLocalContext() === ACCOUNT_RUNTIME ? ACCOUNT_RUNTIME : null
+  () => (currentDesktopLocalContext() === ACCOUNT_RUNTIME ? ACCOUNT_RUNTIME : null)
 )
 installPreviewExportIpc(
   ACCOUNT_SESSION,
@@ -5285,7 +5334,9 @@ function getLinkTitleSession() {
     return linkTitleSession
   }
 
-  linkTitleSession = session.fromPartition(accountBrowserPartition(ACCOUNT_RUNTIME, 'hermes:link-titles'), { cache: false })
+  linkTitleSession = session.fromPartition(accountBrowserPartition(ACCOUNT_RUNTIME, 'hermes:link-titles'), {
+    cache: false
+  })
   linkTitleSession.webRequest.onBeforeRequest((details, callback) => {
     callback({ cancel: RENDER_TITLE_BLOCKED_RESOURCES.has(details.resourceType) })
   })
@@ -11858,13 +11909,20 @@ async function runPoolBackendStart(
   const backendNonce = crypto.randomBytes(16).toString('hex')
   const parentIdentityEnv = parentWatchdogEnv(process.pid, parentStartMarker, backendNonce)
   assertPoolEntryStillOwned(poolKey, entry, backendPool, localBackendLifecycle.signal)
-  enableDesktopPlugins(profile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', profile), ['desktop-deliverables'])
+  enableDesktopPlugins(profile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', profile), [
+    'desktop-deliverables'
+  ])
   INTERRUPTED_TURNS.claim(profile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', profile))
-  installArtifactSharePlugin(profile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', profile), app.getAppPath())
+  installArtifactSharePlugin(
+    profile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', profile),
+    app.getAppPath()
+  )
 
   // desktop-mt: 仅在本地后端启动前维护对应 Profile 的内置 MCP 记录。
   await ACCOUNT_CONNECTORS.prepare(profile).catch(error => {
-    rememberLog(`[agent-mail] connector preparation failed profile=${profile}: ${error instanceof Error ? error.message : String(error)}`)
+    rememberLog(
+      `[agent-mail] connector preparation failed profile=${profile}: ${error instanceof Error ? error.message : String(error)}`
+    )
   })
   await ACCOUNT_DRIVE_MCP.prepare(profile)
   assertPoolEntryStillOwned(poolKey, entry, backendPool, localBackendLifecycle.signal)
@@ -12143,7 +12201,7 @@ function reapInstallRootedStragglers(excludePids: number[]): void {
 const accountExitWindows = createAccountExitWindows({
   background: getWindowBackgroundColor,
   dark: () => nativeTheme.shouldUseDarkColors,
-  bounds: () => mainWindow && !mainWindow.isDestroyed() ? mainWindow.getBounds() : undefined
+  bounds: () => (mainWindow && !mainWindow.isDestroyed() ? mainWindow.getBounds() : undefined)
 })
 
 let logoutComplete = false
@@ -12185,7 +12243,9 @@ const accountLogout = createAccountLogout({
       const gatewayProcesses = logoutProcessTree(processes, gatewayLogoutRoots(gateways, processes))
       accountExitWindows.afterSnapshot()
 
-      return [...new Map([...logoutOrdinary, ...gatewayProcesses].map(row => [`${row.pid}:${row.started}`, row])).values()]
+      return [
+        ...new Map([...logoutOrdinary, ...gatewayProcesses].map(row => [`${row.pid}:${row.started}`, row])).values()
+      ]
     } catch (error) {
       await logoutGateway?.dispose()
       logoutGateway = null
@@ -12861,9 +12921,17 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
     }
 
     // Local WSL backend — paths are bridgeable.
-    enableDesktopPlugins(primaryProfile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', primaryProfile), ['desktop-deliverables'])
-    INTERRUPTED_TURNS.claim(primaryProfile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', primaryProfile))
-    installArtifactSharePlugin(primaryProfile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', primaryProfile), app.getAppPath())
+    enableDesktopPlugins(
+      primaryProfile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', primaryProfile),
+      ['desktop-deliverables']
+    )
+    INTERRUPTED_TURNS.claim(
+      primaryProfile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', primaryProfile)
+    )
+    installArtifactSharePlugin(
+      primaryProfile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', primaryProfile),
+      app.getAppPath()
+    )
     setWslBridgeProfileState(primaryProfile, true)
 
     stopAttachedBackendMonitor()
@@ -12886,7 +12954,9 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
 
     // desktop-mt: 账号云盘工具由 Electron 监听回环，Agent 沿用原生 MCP 发现和调用。
     await ACCOUNT_CONNECTORS.prepare(profile).catch(error => {
-      rememberLog(`[agent-mail] connector preparation failed profile=${profile}: ${error instanceof Error ? error.message : String(error)}`)
+      rememberLog(
+        `[agent-mail] connector preparation failed profile=${profile}: ${error instanceof Error ? error.message : String(error)}`
+      )
     })
     await ACCOUNT_DRIVE_MCP.prepare(profile)
     backendConnectionState.assertCurrentAttempt(connectionAttempt)
@@ -16599,6 +16669,29 @@ ipcMain.handle('hermes:connection-config:apply', async (_event, payload) => {
   return sanitizeDesktopConnectionConfig(config, payload?.profile)
 })
 
+// Resolve cache identity without starting or contacting a backend.
+function windowSessionSnapshotScope(webContentsId: number, recentsProfile: string): string {
+  const registry = readDesktopConnectionsRegistry()
+  const route = windowConnectionRoutes.get(webContentsId) ?? desktopProfilePreferences.getDefault()
+  const launchId = registry.launchMode === 'last-used' ? registry.lastUsed || registry.primary : registry.primary
+  const connectionId = route?.connectionId || launchId
+
+  return sessionListSnapshotScope({
+    connectionId: connectionId === 'local' ? null : connectionId,
+    profile: route?.profile || readActiveDesktopProfile() || 'default',
+    config: readDesktopConnectionConfig(),
+    connections: registry.connections,
+    recentsProfile
+  })
+}
+
+ipcMain.handle('hermes:sessions:snapshot:read', (event, recentsProfile: string) =>
+  readSessionListSnapshot(HERMES_HOME, windowSessionSnapshotScope(event.sender.id, recentsProfile))
+)
+ipcMain.handle('hermes:sessions:snapshot:write', (event, recentsProfile: string, snapshot) =>
+  writeSessionListSnapshot(HERMES_HOME, windowSessionSnapshotScope(event.sender.id, recentsProfile), snapshot)
+)
+
 ipcMain.handle('hermes:profile:default:get', async () => desktopProfilePreferences.getDefault())
 ipcMain.handle('hermes:profile:default:set', async (_event, route) => desktopProfilePreferences.setDefault(route))
 ipcMain.handle('hermes:profile:get', async () => ({ profile: readActiveDesktopProfile() }))
@@ -17301,14 +17394,18 @@ const artifactShareService = new ArtifactShareService({
   }
 })
 
-const stopArtifactShareCleanup = startArtifactShareCleanup(artifactShareService, error => rememberLog(`[artifact-share] cleanup: ${String(error)}`))
+const stopArtifactShareCleanup = startArtifactShareCleanup(artifactShareService, error =>
+  rememberLog(`[artifact-share] cleanup: ${String(error)}`)
+)
 
 let artifactShareBridge: Promise<ArtifactShareBridge> | null = null
 
 /** 每个桌面进程仅启动一条本机分享桥，凭证只交给本进程创建的后端子进程。 */
 async function artifactShareBridgeEnv(): Promise<ArtifactShareBridge['env']> {
   artifactShareBridge ??= startArtifactShareBridge(artifactShareService)
-  void artifactShareService.cleanupExpired().catch(error => rememberLog(`[artifact-share] startup cleanup: ${String(error)}`))
+  void artifactShareService
+    .cleanupExpired()
+    .catch(error => rememberLog(`[artifact-share] startup cleanup: ${String(error)}`))
 
   return (await artifactShareBridge).env
 }
@@ -17317,7 +17414,13 @@ async function artifactShareBridgeEnv(): Promise<ArtifactShareBridge['env']> {
 function assertArtifactShareWindow(event: Electron.IpcMainInvokeEvent): void {
   const win = BrowserWindow.fromWebContents(event.sender)
 
-  if (!win || !artifactShareWindows.has(win) || win.isDestroyed() || event.sender !== win.webContents || event.senderFrame !== win.webContents.mainFrame) {
+  if (
+    !win ||
+    !artifactShareWindows.has(win) ||
+    win.isDestroyed() ||
+    event.sender !== win.webContents ||
+    event.senderFrame !== win.webContents.mainFrame
+  ) {
     throw new Error('当前窗口没有产物分享权限。')
   }
 }
@@ -17325,9 +17428,15 @@ function assertArtifactShareWindow(event: Electron.IpcMainInvokeEvent): void {
 const desktopMessaging = new DesktopMessaging({
   account: ACCOUNT_RUNTIME.id,
   index: new MessagingBotIndex(app.getPath('userData')),
-  request: (profile, requestPath, method, body) => handleHermesApiRequest({
-    connectionId: 'local', profile, path: requestPath, method, body, timeoutMs: 30_000
-  }),
+  request: (profile, requestPath, method, body) =>
+    handleHermesApiRequest({
+      connectionId: 'local',
+      profile,
+      path: requestPath,
+      method,
+      body,
+      timeoutMs: 30_000
+    }),
   onState: state => {
     for (const win of BrowserWindow.getAllWindows()) {
       if (artifactShareWindows.has(win) && !win.isDestroyed()) {
@@ -17372,12 +17481,21 @@ installConversationShareIpc(ipcMain, assertArtifactShareWindow, {
 
     return identity && account ? { accountId: account.id, home: account.home, token: identity.token } : null
   },
-  readImage: (owner, sessionId, filePath) => handleHermesApiRequest({
-    ...owner, method: 'GET', path: `/api/fs/read-data-url?${new URLSearchParams({ path: filePath, session_id: sessionId })}`, timeoutMs: 30_000
-  }),
-  readSnapshot: (owner, request) => handleHermesApiRequest({
-    ...owner, method: 'POST', path: '/api/plugins/conversation-share/snapshot', body: request, timeoutMs: 60_000
-  })
+  readImage: (owner, sessionId, filePath) =>
+    handleHermesApiRequest({
+      ...owner,
+      method: 'GET',
+      path: `/api/fs/read-data-url?${new URLSearchParams({ path: filePath, session_id: sessionId })}`,
+      timeoutMs: 30_000
+    }),
+  readSnapshot: (owner, request) =>
+    handleHermesApiRequest({
+      ...owner,
+      method: 'POST',
+      path: '/api/plugins/conversation-share/snapshot',
+      body: request,
+      timeoutMs: 60_000
+    })
 })
 
 registerArtifactShareIpc(ipcMain, artifactShareService, assertArtifactShareWindow)
@@ -18856,11 +18974,16 @@ const desktopStartup = app.whenReady().then(() => {
   // captured by the original transaction before removing the journal entry.
   void resumeManagedSshRecoveries()
   // 与桌面后端并行准备消息连接；失败只在消息页面展示，不阻塞首窗或聊天。
-  void desktopMessaging.restore()
+  void desktopMessaging
+    .restore()
     .then(result => {
-      if (result.actionFailed) {rememberLog('[messaging] account gateway restore failed: platforms not ready')}
+      if (result.actionFailed) {
+        rememberLog('[messaging] account gateway restore failed: platforms not ready')
+      }
     })
-    .catch(error => rememberLog(`[messaging] account gateway restore failed: ${redactSecrets(String(error?.message || error))}`))
+    .catch(error =>
+      rememberLog(`[messaging] account gateway restore failed: ${redactSecrets(String(error?.message || error))}`)
+    )
   installApplicationMenuAfterFirstWindow({
     isMac: IS_MAC,
     buildMenu: buildApplicationMenu,

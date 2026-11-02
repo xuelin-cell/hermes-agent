@@ -387,6 +387,50 @@ The website is separate: `npm ci --prefix website`, then
 `node_modules` directories or built assets. Native desktop builds have additional
 requirements in the [desktop build guide](https://github.com/NousResearch/hermes-agent/blob/main/apps/desktop/BUILDING.md).
 
+#### Restricted networks
+
+Two downloads in the JavaScript install come from hosts other than the
+registry. Electron's ~140 MB runtime is fetched from github.com, which some
+networks cannot reach; the build script points that download at
+`https://npmmirror.com/mirrors/electron/` unless `ELECTRON_MIRROR` is already
+set. `xlsx` is published only on SheetJS's own CDN, and npm restarts such a
+tarball from byte zero whenever the connection drops, so on an unstable link it
+never finishes. Before `npm ci` the build script fetches those lock entries
+itself, resuming where the last attempt stopped, verifies them against the
+lockfile and stores them in npm's cache. `npm ci` then also runs with more
+retries and a longer timeout than npm's defaults.
+
+Rerun the tarball step alone after a dropped connection:
+
+```bash
+node scripts/build/node-deps.mjs --seed-tarballs --source .
+```
+
+A direct `npm ci` outside the build script gets none of this, so on such a
+network repair only the Electron step instead of retrying the whole install:
+
+```bash
+export ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
+node apps/desktop/node_modules/electron/install.js
+```
+
+Set a faster registry in your **user** `.npmrc`, never the repository one.
+Packaging also downloads electron-builder tools
+(`ELECTRON_BUILDER_BINARIES_MIRROR`), and browser E2E installs Playwright
+browsers (`PLAYWRIGHT_DOWNLOAD_HOST`, then `npx playwright install`).
+
+A slow link can stall on npm's default 15 sockets; `maxsockets=4` in the user
+`.npmrc` keeps large platform binaries moving. Electron archives are cached in
+`%LOCALAPPDATA%\electron\Cache` on Windows and `~/Library/Caches/electron` on
+macOS, so later installs reuse them.
+
+Windows also needs a prebuilt binding that `get-windows` downloads from GitHub
+releases. That package is optional, so `npm ci` finishes without it and the
+desktop build then disables native window enumeration instead of failing. To
+keep the feature on a network that blocks GitHub, point the download at a
+mirror you can reach as described in the
+[desktop guide](../user-guide/desktop.md).
+
 ### Refresh dependencies without changing branches
 
 After a branch or lockfile change, source the activation script again to sync

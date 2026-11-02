@@ -85,7 +85,7 @@ def resolve_path(value, cwd):
         return None
 
 
-def mask_examples(text):
+def mask_examples(text, *, inline=True):
     """按桌面显示规则屏蔽示例，位置不变：围栏代码整段只显示文字；行内代码只有整段
     就是 MEDIA 标记时桌面才出卡。不用原版屏蔽：它要先核对路径，/C:/ 写法核对不过就
     当示例屏蔽，桌面却照常出卡，插件会再补一张。"""
@@ -94,6 +94,8 @@ def mask_examples(text):
     text = _blank_spans(
         text, [match.span() for match in _FENCED_CODE_RE.finditer(text)]
     )
+    if not inline:
+        return text
     return _blank_spans(
         text,
         [
@@ -114,7 +116,7 @@ _EMBEDS = re.compile(
 
 
 def embedded(report):
-    """网页和 Markdown 报告引用的本机图片属于报告本身；只读前 2 MB，读不到当作没有引用。"""
+    """读取报告直接引用的本机资源；只读前 2 MB，不执行页面或递归读取依赖。"""
     try:
         with report.open(encoding="utf-8", errors="ignore") as file:
             text = file.read(2_000_000)
@@ -127,8 +129,35 @@ def embedded(report):
     return {
         path
         for value in values
-        if (path := resolve_path(unquote(value), report.parent)) is not None
+        if not re.match(r"^(?:[a-z][a-z0-9+.-]*:|//|#)", value, re.I)
+        and (path := resolve_path(unquote(re.split(r"[?#]", value, maxsplit=1)[0]), report.parent)) is not None
+        and path != report
     }
+
+
+def suppress_scratch_media(text, cwd):
+    """取消临时文件的 MEDIA 声明，保留路径说明；链接由桌面统一降为文字。"""
+    from gateway.platforms.base import MEDIA_TAG_CLEANUP_RE
+
+    masked = mask_examples(text)
+    matches = list(MEDIA_TAG_CLEANUP_RE.finditer(masked.replace(">", " ")))
+    # 原版扫描器只认绝对路径，补上以 .tmp 开头的相对交付标记。
+    matches += list(re.finditer(r"MEDIA:\s*(?P<path>\.tmp[/\\][^\s`\"<>]+)", masked))
+    edits = {}
+    for match in matches:
+        value = match.group("path")
+        path = resolve_path(value, cwd)
+        if path is None or ".tmp" not in (part.lower() for part in path.parts):
+            continue
+        # 链接保持语法完整，交给桌面统一处理；普通标记改为代码文字，避免 Windows 反斜杠被吃掉。
+        if re.search(r"\]\(\s*<?$", masked[:match.start()]):
+            continue
+        label = value.strip("`\"'")
+        fence = "`" * (max((len(run) for run in re.findall(r"`+", label)), default=0) + 1)
+        edits[match.start()] = (match.end(), f"{fence}{label}{fence}")
+    for start, (end, replacement) in sorted(edits.items(), reverse=True):
+        text = text[:start] + replacement + text[end:]
+    return text
 
 
 def shown_paths(masked, cwd):
@@ -136,11 +165,16 @@ def shown_paths(masked, cwd):
     from gateway.platforms.base import MEDIA_TAG_CLEANUP_RE
 
     text = MEDIA.sub("", masked)
-    # 链接目标去掉 MEDIA: 前缀再解析，相对路径也算已展示；括号截断的值解析不到，
-    # 由下面的原版扫描器补上完整路径。
-    values = [
-        re.sub(r"^\s*MEDIA:\s*", "", match.group(1)) for match in LINKS.finditer(text)
-    ]
+    values = []
+    for match in LINKS.finditer(text):
+        value = match.group(1).strip()
+        directive = re.match(r"^(?:MEDIA:\s*|#(?:preview[:/]|media:))", value)
+        if directive:
+            value = unquote(value[directive.end():])
+        elif not re.match(r"^(?:file:|/|~[\\/]|[A-Za-z]:[\\/]|\\\\)", value):
+            # 普通相对路径链接不会渲染文件卡片，不能阻止补齐交付入口。
+            continue
+        values.append(value)
     # Markdown 尖括号是包装，原版扫描器以空白识别同一个路径终点。
     values += [
         match.group("path")
@@ -224,12 +258,17 @@ def named_paths(text, cwd):
     return list(dict.fromkeys(path for path in paths if path is not None))
 
 
-def hidden(parts):
+def hidden(parts, *, explicit=False):
     """路径片段里有点开头的目录或素材目录名，就不算交付位置。"""
-    return any(part.startswith(".") or part.lower() in EXCLUDED for part in parts)
+    materials = {"themes", "templates", "references", "scripts", "assets", "examples"}
+    return any(
+        part.startswith(".")
+        or (part.lower() in EXCLUDED and not (explicit and part.lower() in materials))
+        for part in parts
+    )
 
 
-def eligible(path, roots=()):
+def eligible(path, roots=(), *, explicit=False):
     """只认交付白名单，排除隐藏文件、Office 锁文件及工具素材目录。
 
     素材目录名只在文件所属的工作目录里面判断：用户选的目录本身或它的上级叫
@@ -256,16 +295,23 @@ def eligible(path, roots=()):
     return (
         path.suffix.lower().lstrip(".") in EXTENSIONS
         and not path.name.startswith("~$")
-        and not hidden(parts)
+        and not hidden(
+            parts,
+            explicit=(
+                explicit
+                and owner is not None
+                and path.suffix.lower().lstrip(".") in DOCUMENTS | {"html", "htm", "md"}
+            ),
+        )
     )
 
 
-def fresh(path, since, roots=()):
+def fresh(path, since, roots=(), *, explicit=False):
     """交付必须存在、非空且在本轮创建或修改；时间只容忍两秒时钟偏差。"""
     try:
         stat = path.stat()
         return (
-            eligible(path, roots)
+            eligible(path, roots, explicit=explicit)
             and path.is_file()
             and stat.st_size > 0
             and max(stat.st_mtime, getattr(stat, "st_birthtime", 0)) >= since - 2

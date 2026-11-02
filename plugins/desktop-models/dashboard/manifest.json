@@ -1,0 +1,8 @@
+{
+  "name": "desktop-models",
+  "label": "Desktop model validation",
+  "description": "Validate custom models using credentials kept in their owning profile",
+  "version": "1.0.0",
+  "tab": { "hidden": true },
+  "api": "plugin_api.py"
+}

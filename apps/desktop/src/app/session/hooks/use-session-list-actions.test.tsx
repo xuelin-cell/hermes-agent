@@ -1,4 +1,8 @@
-import { act, render, renderHook } from '@testing-library/react'
+import { mkdtemp, rm } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+
+import { act, render, renderHook, waitFor } from '@testing-library/react'
 import { Suspense } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -11,6 +15,7 @@ import {
   registerGatewaySwitchLifecycle
 } from '@/store/gateway-switch'
 import {
+  $connection,
   $cronSessions,
   $messagingPlatformTotals,
   $messagingSessions,
@@ -31,6 +36,8 @@ import {
   setSessionsLoading
 } from '@/store/session'
 
+import { readSessionListSnapshot, writeSessionListSnapshot } from '../../../../electron/session-list-snapshot'
+import type { SessionListSnapshot } from '../../../../electron/session-list-snapshot-contract'
 import { deferred } from '../../../test/deferred'
 
 import { useSessionListActions } from './use-session-list-actions'
@@ -1147,4 +1154,35 @@ describe('messaging profile scope', () => {
     expect(listAllProfileSessions).toHaveBeenCalledTimes(2)
     expect($messagingSessions.get().map(session => session.id)).toEqual(['tg'])
   })
+})
+
+
+it('shows cached history before backend connection and replaces it with the fresh list', async () => {
+  const previousDesktop = window.hermesDesktop
+  const previousConnection = $connection.get()
+  const cached = row('cached')
+  const home = await mkdtemp(path.join(os.tmpdir(), 'history-first-paint-'))
+  await writeSessionListSnapshot(home, 'owner-a', { scope: 'owner-a', rows: [cached] })
+  const write = vi.fn((_profile, snapshot) => writeSessionListSnapshot(home, 'owner-a', snapshot))
+  const read = vi.fn(async () => await readSessionListSnapshot(home, 'owner-a') as SessionListSnapshot<SessionInfo>)
+  window.hermesDesktop = { ...previousDesktop, sessionListSnapshot: { read, write } } as typeof window.hermesDesktop
+  $connection.set(null)
+
+  try {
+    const started = performance.now()
+    const { result, unmount } = renderHook(() => useSessionListActions({ profileScope: 'default' }))
+    await waitFor(() => expect($sessions.get()).toEqual([cached]))
+    expect(performance.now() - started).toBeLessThan(3000)
+    expect(listSidebarSessions).not.toHaveBeenCalled()
+    listSidebarSessions.mockResolvedValue(sidebar({ sessions: [row('fresh')] }))
+    await act(async () => { await result.current.refreshSessions() })
+    expect($sessions.get().map(session => session.id)).toEqual(['fresh'])
+    await waitFor(() => expect(write).toHaveBeenCalledWith('default', expect.objectContaining({ scope: 'owner-a', rows: [row('fresh')] })))
+    await write.mock.results.at(-1)?.value
+    unmount()
+  } finally {
+    window.hermesDesktop = previousDesktop
+    $connection.set(previousConnection)
+    await rm(home, { recursive: true, force: true })
+  }
 })

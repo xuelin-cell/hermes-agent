@@ -27,7 +27,7 @@ Enable with ``hermes plugins enable uniwork-kits``. Expert profiles created by
 
 from __future__ import annotations
 
-from . import background_rules, cli, communication_rules, expert_sync, host_hooks, host_rules, llm, package_hooks, router, skill_paths, tool_call_rules
+from . import background_rules, cli, code_packages, communication_rules, expert_sync, host_hooks, host_rules, llm, package_hooks, router, skill_paths, terminal_env, terminal_hints, tool_call_rules
 
 
 def register(ctx) -> None:
@@ -50,6 +50,15 @@ def register(ctx) -> None:
         xiaohongshu.ensure_builtin(Path(get_hermes_home()))
     except Exception:
         pass
+    try:
+        from pathlib import Path
+
+        from hermes_constants import get_hermes_home
+
+        # 终端补上 python3 命令和 NODE_PATH（只在 Windows 上，本进程一次）。
+        terminal_env.setup(Path(get_hermes_home()))
+    except Exception:
+        pass
     ctx.register_cli_command(
         "kit",
         "安装和管理 WorkBuddy / UniClaw 的套件与专家",
@@ -63,9 +72,11 @@ def register(ctx) -> None:
     ctx.register_system_prompt_section("uniwork.communication", communication_rules.section, max_chars=1600)
     ctx.register_system_prompt_section("uniwork.tool-call", tool_call_rules.section, max_chars=2000)
     ctx.register_hook("pre_llm_call", router.on_pre_llm_call)
+    ctx.register_hook("pre_llm_call", terminal_hints.on_pre_llm_call)
     ctx.register_hook("pre_tool_call", skill_paths.on_pre_tool_call)
     ctx.register_hook("pre_tool_call", host_hooks.on_pre_tool_call)
     ctx.register_hook("pre_tool_call", package_hooks.on_pre_tool_call)
+    ctx.register_hook("pre_tool_call", code_packages.on_pre_tool_call)
     ctx.register_hook("post_tool_call", lambda tool_name="", **kw: package_hooks.on_observed("post_tool_call", tool_name, **kw))
     ctx.register_hook("on_session_start", lambda **kw: package_hooks.on_observed("on_session_start", **kw))
     ctx.register_hook("on_session_end", lambda **kw: package_hooks.on_observed("on_session_end", **kw))

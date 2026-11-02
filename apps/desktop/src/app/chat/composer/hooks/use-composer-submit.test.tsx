@@ -2,9 +2,10 @@ import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { type Dispatch, type PropsWithChildren, type SetStateAction, useLayoutEffect, useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { bumpFreshDraftEpoch } from '@/app/session/detached-create-mt'
 import { PaneVisibleContext } from '@/components/pane-shell/pane-visibility'
 import { $clarifyRequests } from '@/store/clarify'
-import type { ComposerAttachment } from '@/store/composer'
+import { type ComposerAttachment, stashSessionDraft } from '@/store/composer'
 import { clearQueuedPrompts, getQueuedPrompts } from '@/store/composer-queue'
 import {
   clearAllPrompts,
@@ -59,6 +60,7 @@ function renderSubmitHook({
   const onSubmit = vi.fn(async () => true)
   const loadIntoComposer = vi.fn()
   const stashAt = vi.fn()
+  const activeQueueSessionKeyRef = { current: sessionKey }
   const queueCurrentDraft = vi.fn(() => true)
   let updatePaneVisible: Dispatch<SetStateAction<boolean>> | undefined
 
@@ -98,7 +100,7 @@ function renderSubmitHook({
     () =>
       useComposerSubmit({
         activeQueueSessionKey: sessionKey,
-        activeQueueSessionKeyRef: { current: sessionKey },
+        activeQueueSessionKeyRef,
         attachments,
         busy,
         compacting,
@@ -126,6 +128,9 @@ function renderSubmitHook({
   )
 
   return {
+    activeQueueSessionKeyRef,
+    draftRef,
+    editorRef,
     clearDraft,
     hook,
     onCancel,
@@ -147,6 +152,84 @@ function renderSubmitHook({
 }
 
 describe('useComposerSubmit external request routing', () => {
+  it('发送失败仍能恢复原输入框的文字和附件', async () => {
+    const attachment: ComposerAttachment = { id: 'file', kind: 'file', label: 'test.txt', refText: '@file:test.txt' }
+    const mounted = renderSubmitHook({ sessionKey: 'restore-unchanged', text: '原消息', attachments: [attachment] })
+    mounted.onSubmit.mockResolvedValue(false)
+    await act(async () => mounted.hook.result.current.submitDraft())
+    expect(mounted.loadIntoComposer).toHaveBeenCalledWith('原消息', [attachment])
+    expect(mounted.stashAt).toHaveBeenCalledWith('restore-unchanged', '原消息', [attachment])
+  })
+
+  it('新建会话仍是空 scope 时，也不能把迟到的失败填进下一代新会话', async () => {
+    const mounted = renderSubmitHook({ sessionKey: null, text: '原消息' })
+    let rejectSubmit: (accepted: boolean) => void = () => undefined
+    mounted.onSubmit.mockImplementation(() => new Promise(resolve => (rejectSubmit = resolve)))
+    act(() => mounted.hook.result.current.submitDraft())
+    bumpFreshDraftEpoch()
+    await act(async () => rejectSubmit(false))
+    expect(mounted.loadIntoComposer).not.toHaveBeenCalled()
+    expect(mounted.stashAt).not.toHaveBeenCalled()
+  })
+
+  it('首次发送已经离开公共新建草稿时，失败不会再留下公共草稿', async () => {
+    const mounted = renderSubmitHook({ sessionKey: null, text: '原消息' })
+    let rejectSubmit: (accepted: boolean) => void = () => undefined
+    mounted.onSubmit.mockImplementation(() => new Promise(resolve => (rejectSubmit = resolve)))
+    act(() => mounted.hook.result.current.submitDraft())
+    mounted.activeQueueSessionKeyRef.current = 'created-session'
+    await act(async () => rejectSubmit(false))
+    expect(mounted.loadIntoComposer).not.toHaveBeenCalled()
+    expect(mounted.stashAt).not.toHaveBeenCalled()
+  })
+
+  it('切走时落盘的空草稿不会阻止原会话恢复失败文字', async () => {
+    const mounted = renderSubmitHook({ sessionKey: 'restore-empty', text: '原消息' })
+    let rejectSubmit: (accepted: boolean) => void = () => undefined
+    mounted.onSubmit.mockImplementation(() => new Promise(resolve => (rejectSubmit = resolve)))
+    act(() => mounted.hook.result.current.submitDraft())
+    mounted.activeQueueSessionKeyRef.current = 'restore-other'
+    stashSessionDraft('restore-empty', '', [])
+    await act(async () => rejectSubmit(false))
+    expect(mounted.loadIntoComposer).not.toHaveBeenCalled()
+    expect(mounted.stashAt).toHaveBeenCalledWith('restore-empty', '原消息', [])
+  })
+
+  it('发送失败只恢复原会话草稿，不写进已经切换的输入框', async () => {
+    const mounted = renderSubmitHook({ sessionKey: 'restore-source', text: '原消息' })
+    let rejectSubmit: (accepted: boolean) => void = () => undefined
+    mounted.onSubmit.mockImplementation(() => new Promise(resolve => (rejectSubmit = resolve)))
+    act(() => mounted.hook.result.current.submitDraft())
+    mounted.activeQueueSessionKeyRef.current = 'restore-other'
+    await act(async () => rejectSubmit(false))
+    expect(mounted.loadIntoComposer).not.toHaveBeenCalled()
+    expect(mounted.stashAt).toHaveBeenCalledWith('restore-source', '原消息', [])
+  })
+
+  it('发送失败不覆盖同一会话后来输入且尚未落盘的文字', async () => {
+    const mounted = renderSubmitHook({ sessionKey: 'restore-newer', text: '原消息' })
+    let rejectSubmit: (accepted: boolean) => void = () => undefined
+    mounted.onSubmit.mockImplementation(() => new Promise(resolve => (rejectSubmit = resolve)))
+    act(() => mounted.hook.result.current.submitDraft())
+    mounted.editorRef.current!.textContent = '新的草稿'
+    mounted.draftRef.current = '新的草稿'
+    await act(async () => rejectSubmit(false))
+    expect(mounted.loadIntoComposer).not.toHaveBeenCalled()
+    expect(mounted.stashAt).not.toHaveBeenCalled()
+  })
+
+  it('发送失败不覆盖原会话已保存的更新草稿', async () => {
+    const mounted = renderSubmitHook({ sessionKey: 'restore-persisted', text: '原消息' })
+    let rejectSubmit: (accepted: boolean) => void = () => undefined
+    mounted.onSubmit.mockImplementation(() => new Promise(resolve => (rejectSubmit = resolve)))
+    act(() => mounted.hook.result.current.submitDraft())
+    mounted.activeQueueSessionKeyRef.current = 'another'
+    stashSessionDraft('restore-persisted', '已保存的新草稿', [])
+    await act(async () => rejectSubmit(false))
+    expect(mounted.loadIntoComposer).not.toHaveBeenCalled()
+    expect(mounted.stashAt).not.toHaveBeenCalled()
+  })
+
   afterEach(() => {
     cleanup()
     clearQueuedPrompts('stored-session')

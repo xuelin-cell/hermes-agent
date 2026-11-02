@@ -361,7 +361,7 @@ export class DesktopMessaging {
     }
   }
 
-  /** 在原 Profile 有界确认可见平台已连接或网关已停止；只读状态，不再次启停。 */
+  /** 有界确认连接或解绑结果；解绑不等待其它渠道连接，但保留网关启停检查。 */
   private async checkPlatforms(
     input: MessagingTask,
     stopped = false,
@@ -383,13 +383,14 @@ export class DesktopMessaging {
           const target = rows.find(row => row?.id === input.platform)
 
           const targetReady = !input.platform || (target && (input.operation === 'disconnect'
-            ? !target.enabled : target.enabled && target.configured))
+            ? !target.enabled && !target.configured && !target.env_vars?.some(field => field.required && field.is_set)
+            : target.enabled && target.configured))
 
           return rows.length && targetReady && (stopped
             ? rows.every(row => row && row.gateway_running === false)
-            : rows.some(row => row?.gateway_running === true) && rows
+            : rows.some(row => row?.gateway_running === true) && (input.operation === 'disconnect' || rows
               .filter(row => row && ['weixin', 'uniagentgate', ...Object.keys(IDS)].includes(row.id) && row.enabled)
-              .every(row => row.configured && row.gateway_running === true && row.state === 'connected'))
+              .every(row => row.configured && row.gateway_running === true && row.state === 'connected')))
         })) {
           return true
         }

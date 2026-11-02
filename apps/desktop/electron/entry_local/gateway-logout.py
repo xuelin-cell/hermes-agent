@@ -1,5 +1,7 @@
 """桌面退出的一次性网关适配；不启动服务，不修改 Hermes 核心。"""
 
+import hermes_bootstrap  # noqa: F401 -- activate the account's PM environment before third-party imports
+
 import json
 import os
 from pathlib import Path
@@ -48,8 +50,15 @@ def account_homes(root):
     profiles = root / "profiles"
     if profiles.exists():
         for entry in profiles.iterdir():
-            if entry.is_dir() and PROFILE_ID_RE.fullmatch(entry.name) and named_profile_has_identity(entry):
-                if entry.resolve().parent != profiles.resolve() or profiles.resolve().parent != root:
+            if (
+                entry.is_dir()
+                and PROFILE_ID_RE.fullmatch(entry.name)
+                and named_profile_has_identity(entry)
+            ):
+                if (
+                    entry.resolve().parent != profiles.resolve()
+                    or profiles.resolve().parent != root
+                ):
                     raise RuntimeError("Profile 路径超出当前账号")
                 homes.append(entry.resolve())
     return homes
@@ -63,32 +72,53 @@ def process_snapshot():
         for process in psutil.process_iter(["pid", "ppid", "create_time", "cmdline"]):
             try:
                 info = process.info
-                rows.append({"pid": info["pid"], "parent": info["ppid"] or 0,
-                             "started": str(int(info["create_time"])),
-                             "command": subprocess.list2cmdline(info["cmdline"] or [])})
+                rows.append({
+                    "pid": info["pid"],
+                    "parent": info["ppid"] or 0,
+                    "started": str(int(info["create_time"])),
+                    "command": subprocess.list2cmdline(info["cmdline"] or []),
+                })
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
         return rows
 
     if _process_query is None:
-        command = r'''
+        command = r"""
 $ErrorActionPreference='Stop'
 [Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false)
 while ($null -ne [Console]::ReadLine()) {
 ConvertTo-Json -Compress -InputObject @(Get-CimInstance Win32_Process | Select-Object @{n='pid';e={[int]$_.ProcessId}},@{n='parent';e={[int]$_.ParentProcessId}},@{n='started';e={if ($_.CreationDate) {$_.CreationDate.ToUniversalTime().Ticks.ToString()} else {''}}},@{n='command';e={$_.CommandLine}})
 }
-'''
-        _process_query = subprocess.Popen(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
-                                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                                         text=True, encoding="utf-8", errors="replace",
-                                         creationflags=subprocess.CREATE_NO_WINDOW)
-        Thread(target=read_process_snapshots, args=(_process_query,), daemon=True).start()
+"""
+        _process_query = subprocess.Popen(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        Thread(
+            target=read_process_snapshots, args=(_process_query,), daemon=True
+        ).start()
     _process_query.stdin.write("\n")
     _process_query.stdin.flush()
     line = _process_results.get(timeout=15)
     if line is None:
         raise RuntimeError("账号进程查询已中断")
     return json.loads(line)
+
+
+def macos_process_finished(pid):
+    """只把新鲜核对为已退出或僵尸的macOS进程视为停止；未知状态仍拒绝。"""
+    if sys.platform != "darwin":
+        return False
+    try:
+        return psutil.Process(pid).status() == psutil.STATUS_ZOMBIE
+    except psutil.NoSuchProcess:
+        return True
 
 
 def discover(homes, processes=None):
@@ -106,16 +136,26 @@ def discover(homes, processes=None):
                 raise RuntimeError("无法读取账号网关归属") from None
     for candidate in process_snapshot() if processes is None else processes:
         if not candidate["command"]:
-            if candidate["pid"] in claimed:
+            if candidate["pid"] in claimed and not macos_process_finished(
+                candidate["pid"]
+            ):
                 raise RuntimeError("无法复核账号网关进程")
             continue
-        if status.gateway_spawn_intent_subcommand(candidate["command"]) not in {"run", "start", "restart"}:
+        if status.gateway_spawn_intent_subcommand(candidate["command"]) not in {
+            "run",
+            "start",
+            "restart",
+        }:
             continue
         try:
             process = psutil.Process(candidate["pid"])
             # 批量快照之后进程可能已结束或 PID 重用，身份以当前进程为准。
             command = subprocess.list2cmdline(process.cmdline())
-            if status.gateway_spawn_intent_subcommand(command) not in {"run", "start", "restart"}:
+            if status.gateway_spawn_intent_subcommand(command) not in {
+                "run",
+                "start",
+                "restart",
+            }:
                 continue
             env_home = process.environ().get("HERMES_HOME")
             if not env_home:
@@ -128,9 +168,13 @@ def discover(homes, processes=None):
                 home = (home / "profiles" / profile).resolve()
             if home not in homes:
                 continue
-            rows.append({"pid": process.pid, "created": process.create_time(), "home": str(home),
-                         "launcher": not status.looks_like_gateway_runtime_command_line(command),
-                         "external": "--external-supervisor" in process.cmdline()})
+            rows.append({
+                "pid": process.pid,
+                "created": process.create_time(),
+                "home": str(home),
+                "launcher": not status.looks_like_gateway_runtime_command_line(command),
+                "external": "--external-supervisor" in process.cmdline(),
+            })
         except psutil.NoSuchProcess:
             continue
         except psutil.AccessDenied:
@@ -147,7 +191,9 @@ def owned_launchers(homes):
             if script.resolve().parent != home / "gateway-service":
                 raise RuntimeError("网关启动脚本越界")
             text = script.read_text(encoding="utf-8-sig")
-            binding = re.search(r'^env\.Item\("HERMES_HOME"\) = "((?:[^"]|"")*)"\s*$', text, re.M)
+            binding = re.search(
+                r'^env\.Item\("HERMES_HOME"\) = "((?:[^"]|"")*)"\s*$', text, re.M
+            )
             if binding and Path(binding[1].replace('""', '"')).resolve() == home:
                 scripts[str(script.resolve()).casefold()] = str(home)
     return scripts
@@ -160,9 +206,12 @@ def pause_autostart(homes, finish=False):
     scripts = owned_launchers(homes)
     if not scripts:
         return
-    env = {**os.environ, "HERMES_MT_GATEWAY_SCRIPTS": json.dumps(scripts),
-           "HERMES_MT_GATEWAY_FINISH": "1" if finish else "0"}
-    command = r'''
+    env = {
+        **os.environ,
+        "HERMES_MT_GATEWAY_SCRIPTS": json.dumps(scripts),
+        "HERMES_MT_GATEWAY_FINISH": "1" if finish else "0",
+    }
+    command = r"""
 $ErrorActionPreference='Stop'
 [Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false)
 $map=ConvertFrom-Json $env:HERMES_MT_GATEWAY_SCRIPTS
@@ -183,16 +232,30 @@ foreach ($task in $service.GetFolder('\').GetTasks(1)) {
   $owned += [string]$property.Value
 }
 ConvertTo-Json -Compress -InputObject @($owned)
-'''
-    result = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
-                            env=env, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                            timeout=15, creationflags=subprocess.CREATE_NO_WINDOW, check=True)
+"""
+    result = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=15,
+        creationflags=subprocess.CREATE_NO_WINDOW,
+        check=True,
+    )
     json.loads(result.stdout)
-    startup = Path(os.environ["APPDATA"]) / "Microsoft/Windows/Start Menu/Programs/Startup"
+    startup = (
+        Path(os.environ["APPDATA"]) / "Microsoft/Windows/Start Menu/Programs/Startup"
+    )
     for entry in startup.glob("Hermes_Gateway*.vbs"):
         text = entry.read_text(encoding="utf-8-sig")
         target = re.search(r'^target = "((?:[^"]|"")*)"\s*$', text, re.M)
-        key = str(Path(target[1].replace('""', '"')).resolve()).casefold() if target else ""
+        key = (
+            str(Path(target[1].replace('""', '"')).resolve()).casefold()
+            if target
+            else ""
+        )
         if key not in scripts:
             continue
         destination = Path(scripts[key]) / "gateway-service" / "disabled-autostart"
@@ -206,8 +269,9 @@ def still_same(row):
     """核对原网关身份；macOS 僵尸已结束执行，未知状态仍拒绝放行。"""
     try:
         process = psutil.Process(row["pid"])
-        return (abs(process.create_time() - row["created"]) < 0.001
-                and (sys.platform != "darwin" or process.status() != psutil.STATUS_ZOMBIE))
+        return abs(process.create_time() - row["created"]) < 0.001 and (
+            sys.platform != "darwin" or process.status() != psutil.STATUS_ZOMBIE
+        )
     except psutil.NoSuchProcess:
         return False
 
@@ -216,7 +280,11 @@ def force_stop(row):
     """强停前重新核对进程创建时间，使用原版带身份防护的终止函数。"""
     if still_same(row):
         try:
-            status.terminate_pid(row["pid"], force=True, expected_start_time=int(round(row["created"] * 100)))
+            status.terminate_pid(
+                row["pid"],
+                force=True,
+                expected_start_time=int(round(row["created"] * 100)),
+            )
         except (ProcessLookupError, psutil.NoSuchProcess):
             pass
 
@@ -228,13 +296,16 @@ def stop_gateways(homes, saved):
         if row["external"]:
             raise RuntimeError("账号网关有未识别的外部监督器")
     pause_autostart(homes)
-    rows = { (row["pid"], row["created"]): row for row in [*saved, *current] }
+    rows = {(row["pid"], row["created"]): row for row in [*saved, *current]}
     for row in rows.values():
         if row["launcher"]:
             force_stop(row)
     for home in homes:
-        runtime = [row for row in rows.values() if row["home"] == str(home)
-                   and not row["launcher"] and still_same(row)]
+        runtime = [
+            row
+            for row in rows.values()
+            if row["home"] == str(home) and not row["launcher"] and still_same(row)
+        ]
         if not runtime:
             continue
         # Windows venv 启动器与真正 Python 可能同名同参数；只向原版确认的网关写标记。
@@ -262,9 +333,15 @@ def stop_gateways(homes, saved):
         if record["start_time"] != int(round(row["created"] * 100)):
             raise RuntimeError("网关尚未发布可信运行身份")
         marker = home / status._PLANNED_STOP_MARKER_FILENAME
-        if not status._write_marker(marker, {"target_pid": row["pid"],
-                "target_start_time": int(round(row["created"] * 100)), "stopper_pid": os.getpid(),
-                "written_at": status._utc_now_iso()}):
+        if not status._write_marker(
+            marker,
+            {
+                "target_pid": row["pid"],
+                "target_start_time": int(round(row["created"] * 100)),
+                "stopper_pid": os.getpid(),
+                "written_at": status._utc_now_iso(),
+            },
+        ):
             raise RuntimeError("无法写入网关计划停止标记")
     deadline = time.monotonic() + 30
     while any(still_same(row) for row in rows.values()) and time.monotonic() < deadline:
@@ -295,8 +372,10 @@ def main():
             if request["operation"] == "snapshot":
                 processes = process_snapshot()
                 response["gateways"] = discover(homes, processes)
-                response["processes"] = [{key: row[key] for key in ("pid", "parent", "started")}
-                                         for row in processes]
+                response["processes"] = [
+                    {key: row[key] for key in ("pid", "parent", "started")}
+                    for row in processes
+                ]
             elif request["operation"] == "stop":
                 saved = request["saved"]
                 if any(Path(row["home"]).resolve() not in homes for row in saved):

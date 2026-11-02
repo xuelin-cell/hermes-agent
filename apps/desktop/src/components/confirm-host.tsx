@@ -39,10 +39,21 @@ export function ConfirmHost() {
     >
       {shown.details && (
         <dl className="space-y-3 text-xs">
-          {shown.details.map(({ label, value }) => (
+          {shown.details.map(({ label, value, expandLabel }) => (
             <div className="grid grid-cols-[5rem_minmax(0,1fr)] gap-3" key={label}>
               <dt className="text-muted-foreground">{label}</dt>
-              <dd className="m-0 whitespace-pre-wrap break-words text-foreground">{value}</dd>
+              <dd className="m-0 min-w-0 whitespace-pre-wrap break-words text-foreground">
+                {expandLabel ? (
+                  <details>
+                    <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                      {expandLabel}
+                    </summary>
+                    <div className="mt-2 max-h-64 overflow-y-auto">{value}</div>
+                  </details>
+                ) : (
+                  value
+                )}
+              </dd>
             </div>
           ))}
         </dl>

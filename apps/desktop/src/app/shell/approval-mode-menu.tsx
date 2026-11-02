@@ -1,15 +1,11 @@
 import { useStore } from '@nanostores/react'
-import { useEffect, useMemo } from 'react'
+import { Hand, ShieldAlert, TerminalSquare } from 'lucide-react'
+import { useEffect, useState } from 'react'
 
 import type { StatusbarItem } from '@/app/shell/statusbar-controls'
-import {
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator
-} from '@/components/ui/dropdown-menu'
+import { DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '@/components/ui/dropdown-menu'
 import { useI18n } from '@/i18n'
-import { Zap, ZapFilled } from '@/lib/icons'
+import { cn } from '@/lib/utils'
 import {
   $approvalModes,
   type ApprovalMode,
@@ -17,60 +13,89 @@ import {
   setApprovalModeForProfile,
   syncApprovalModeForProfile
 } from '@/store/approval-mode'
+import { notifyError } from '@/store/notifications'
+
+import { useApprovalModeCopy } from './approval-mode-copy'
+
+const MODE_ICONS = { manual: Hand, smart: TerminalSquare, off: ShieldAlert }
+
+function ApprovalModeOptions({ mode, onSelect }: { mode: ApprovalMode; onSelect: (mode: ApprovalMode) => void }) {
+  const copy = useApprovalModeCopy()
+  const [helpOpen, setHelpOpen] = useState(false)
+
+  return (
+    <>
+      <div className="flex items-center justify-between gap-4 px-3 pb-2 pt-2">
+        <DropdownMenuLabel className="p-0 text-sm font-normal text-muted-foreground">{copy('title')}</DropdownMenuLabel>
+        <button
+          aria-expanded={helpOpen}
+          className="shrink-0 text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
+          onClick={() => setHelpOpen(!helpOpen)}
+          type="button"
+        >
+          {copy('learnMore')}
+        </button>
+      </div>
+      {helpOpen && <p className="px-3 pb-3 text-xs leading-relaxed text-muted-foreground">{copy('help')}</p>}
+      <DropdownMenuRadioGroup onValueChange={value => onSelect(value as ApprovalMode)} value={mode}>
+        {(['manual', 'smart', 'off'] as const).map(value => {
+          const Icon = MODE_ICONS[value]
+          const full = value === 'off'
+
+          return (
+            <DropdownMenuRadioItem
+              className={cn(
+                'items-center gap-3 rounded-xl px-3 py-2.5',
+                full && 'text-(--ui-accent) focus:text-(--ui-accent) data-[highlighted]:text-(--ui-accent) [&>span:last-child]:text-(--ui-accent)'
+              )}
+              key={value}
+              value={value}
+            >
+              <Icon aria-hidden="true" className="size-5 shrink-0" />
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="text-sm font-medium">{copy(value)}</span>
+                <span className={cn('text-xs leading-snug', full ? 'text-(--ui-accent)' : 'text-muted-foreground')}>
+                  {copy(`${value}Description`)}
+                </span>
+              </span>
+            </DropdownMenuRadioItem>
+          )
+        })}
+      </DropdownMenuRadioGroup>
+    </>
+  )
+}
 
 export function useApprovalModeStatusbarItem(profile: string, requestGateway: ApprovalModeRequester): StatusbarItem {
   const { t } = useI18n()
-  const copy = t.shell.approvalMode
+  const copy = useApprovalModeCopy()
   const modes = useStore($approvalModes)
   const mode = modes[profile.trim() || 'default'] ?? 'smart'
-
-  const labels = useMemo<Record<ApprovalMode, string>>(
-    () => ({ manual: copy.manual, smart: copy.smart, off: copy.off }),
-    [copy.manual, copy.off, copy.smart]
-  )
-
-  const descriptions = useMemo<Record<ApprovalMode, string>>(
-    () => ({
-      manual: copy.manualDescription,
-      smart: copy.smartDescription,
-      off: copy.offDescription
-    }),
-    [copy.manualDescription, copy.offDescription, copy.smartDescription]
-  )
-
+  const Icon = MODE_ICONS[mode]
   useEffect(() => {
     void syncApprovalModeForProfile(requestGateway, profile).catch(() => undefined)
   }, [profile, requestGateway])
 
   return {
-    className: mode === 'off' ? 'bg-(--chrome-action-hover) text-foreground' : undefined,
-    icon: mode === 'off' ? <ZapFilled className="size-3.5" /> : <Zap className="size-3.5 opacity-70" />,
+    className: mode === 'off' ? 'bg-(--ui-accent)/10 text-(--ui-accent) hover:text-(--ui-accent)' : undefined,
+    icon: <Icon className="size-4" />,
     id: 'approval-mode',
-    label: labels[mode],
-    menuAlign: 'end',
-    menuClassName: 'w-72 p-1',
+    label: copy(mode),
+    menuAlign: 'start',
+    menuClassName: 'w-[30rem] max-w-[calc(100vw-2rem)] rounded-2xl p-1.5',
     menuContent: (
-      <>
-        <DropdownMenuLabel>{copy.title}</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuRadioGroup
-          onValueChange={value => {
-            void setApprovalModeForProfile(requestGateway, profile, value as ApprovalMode).catch(() => undefined)
-          }}
-          value={mode}
-        >
-          {(['manual', 'smart', 'off'] as const).map(value => (
-            <DropdownMenuRadioItem className="items-start gap-2" key={value} value={value}>
-              <span className="flex min-w-0 flex-col gap-0.5">
-                <span className="text-xs text-foreground">{labels[value]}</span>
-                <span className="text-[0.6875rem] leading-snug text-(--ui-text-tertiary)">{descriptions[value]}</span>
-              </span>
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-      </>
+      <ApprovalModeOptions
+        mode={mode}
+        onSelect={value => {
+          if (value !== mode) {
+            void setApprovalModeForProfile(requestGateway, profile, value).catch(error =>
+              notifyError(error, copy('failed'))
+            )
+          }
+        }}
+      />
     ),
-    title: copy.ariaLabel(labels[mode]),
+    title: t.shell.approvalMode.ariaLabel(copy(mode)),
     variant: 'menu'
   }
 }

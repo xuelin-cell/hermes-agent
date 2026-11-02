@@ -2,7 +2,7 @@
 
 # 与 desktop-deliverables 的 DELIVERY_PLATFORMS 一致：这些平台的后台成品由宿主下载并作为附件发回。
 # 钉钉没有发视频的接口，视频不走后台下载，保持原样。
-DELIVERY_PLATFORMS = frozenset({"weixin", "feishu", "wecom", "dingtalk"})
+DELIVERY_PLATFORMS = frozenset({"weixin", "feishu", "wecom", "dingtalk", "uniagentgate"})
 VIDEO_PLATFORMS = frozenset({"desktop", "weixin", "feishu", "wecom"})
 
 

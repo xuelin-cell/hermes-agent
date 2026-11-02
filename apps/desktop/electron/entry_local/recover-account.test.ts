@@ -6,10 +6,11 @@ import { afterEach, expect, it, vi } from 'vitest'
 
 import type * as logoutProcesses from './logout-processes'
 
-const fake = vi.hoisted(() => ({ list: vi.fn(), stop: vi.fn(), probe: vi.fn(), gateway: vi.fn() }))
+const fake = vi.hoisted(() => ({ list: vi.fn(), stop: vi.fn(), probe: vi.fn(), gateway: vi.fn(), alive: vi.fn() }))
 vi.mock('electron', () => ({ safeStorage: {} }))
 vi.mock('../backend-claim', () => ({ processStartMarker: fake.probe, REAP_PROBE_TIMEOUT_MS: 5000 }))
 vi.mock('../source-python', () => ({ resolveSourcePython: () => process.execPath }))
+vi.mock('../update-marker', () => ({ isPidAlive: fake.alive }))
 vi.mock('./gateway-logout', () => ({
   createAccountGatewayLogout: () => ({ run: fake.gateway, dispose: vi.fn() }),
   gatewayLogoutRoots: () => []
@@ -52,6 +53,8 @@ function fixture() {
   ]
 
   fs.writeFileSync(ownershipFile, JSON.stringify({ backends }))
+  // 低号 PID 在真实系统上几乎必死；fixtures 需要它们按存活路径走。
+  fake.alive.mockImplementation(pid => pid === 10 || pid === 12)
   fake.list.mockReturnValue([
     { pid: 10, parent: 1, started: '1000' },
     { pid: 11, parent: 10, started: '1001' },
@@ -94,6 +97,30 @@ it('重开先保存可信子树；停止失败保留证据，完成后遵循退�
     await f.run()
     expect(fake.stop).toHaveBeenCalledTimes(calls)
   }
+})
+
+it('后端 PID 全部已死或被复用时，恢复不触发进程表查询也不探测（冷启动 PowerShell 会卡死启动期恢复）', async () => {
+  // 回归：旧代码无条件先跑 CIM 全表查询，Electron 冷启动 spawn 实测 ~16s，
+  // 系统繁忙时两次 30s 超时即弹窗阻断登录；已死 PID 只需零成本的原生探测。
+  const f = fixture()
+  fake.alive.mockImplementation(() => false)
+  await f.run()
+  expect(fake.list).not.toHaveBeenCalled()
+  expect(fake.probe).not.toHaveBeenCalled()
+  // 空清单调用是元操作：无存活进程时不应付出任何 taskkill。
+  expect(fake.stop).toHaveBeenCalledWith([])
+  expect(fs.existsSync(f.marker)).toBe(false)
+  expect(JSON.parse(fs.readFileSync(f.ownershipFile, 'utf8')).backends).toEqual([])
+})
+
+it('复用 PID 只核指纹不拉进程表，且探测不用可放弃的 5s REAP 预算', async () => {
+  const f = fixture()
+  fake.probe.mockImplementation(async () => 'win:9999')
+  await f.run()
+  expect(fake.probe).toHaveBeenCalledWith(10)
+  expect(fake.probe).toHaveBeenCalledWith(12)
+  expect(fake.list).not.toHaveBeenCalled()
+  expect(fs.existsSync(f.marker)).toBe(false)
 })
 
 it('坏记录、越界路径、未知指纹或活父实例均阻止清理且保留原件', async () => {

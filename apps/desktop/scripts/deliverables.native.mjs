@@ -15,7 +15,7 @@ import { build } from 'vite'
 
 if (!process.argv.includes('--run')) {
   console.log(
-    '独立本机模型夹具、原版对话和 Electron 卡片重开验收：node scripts/deliverables.native.mjs --run [--fallback | --wrapped]'
+    '独立本机模型夹具、原版对话和 Electron 卡片重开验收：node scripts/deliverables.native.mjs --run [--fallback | --wrapped | --dedupe]'
   )
   process.exit(0)
 }
@@ -40,7 +40,13 @@ test('交付卡片从真实持久记录重放，关闭重开与 Renderer 重载�
           : 'tests/plugins/desktop_deliverables_fixture.py'
       ),
       path.join(root, 'conversation'),
-      process.argv.includes('--wrapped') ? 'wrapped' : process.argv.includes('--fallback') ? 'fallback' : 'workspace'
+      process.argv.includes('--dedupe')
+        ? 'dedupe'
+        : process.argv.includes('--wrapped')
+          ? 'wrapped'
+          : process.argv.includes('--fallback')
+            ? 'fallback'
+            : 'workspace'
     ],
     { cwd: repo, windowsHide: true, timeout: 120000, maxBuffer: 5 * 1024 * 1024, env: { ...env, PYTHONPATH: repo } }
   )
@@ -139,11 +145,17 @@ test('交付卡片从真实持久记录重放，关闭重开与 Renderer 重载�
     page.on('pageerror', error => errors.push(String(error)))
     await page.route('https://fonts.googleapis.com/**', route => route.abort())
     await page.goto(pathToFileURL(path.join(output, 'index.html')).href)
-    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].showInactive())
+    if (!process.argv.includes('--dedupe')) {
+      await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].showInactive())
+    }
     for (let attempt = 0; attempt < 3; attempt++) {
       // Renderer 重载会恢复预览标签；保留它，不把原版恢复行为误报成卡片消失。
       const card = page.getByTestId('chat').getByRole('button', { name: /^(Open preview|Hide)$/ })
       await expect(card).toHaveCount(1)
+      if (process.argv.includes('--dedupe')) {
+        await expect(page.getByTestId('chat')).toContainText('再次说明')
+        await expect(page.getByTestId('chat')).toContainText('临时说明')
+      }
       await expect(page.getByTestId('chat')).toContainText(path.basename(receipt.path))
       if ((await card.textContent()) === 'Open preview') await card.click()
       await expect(page.getByTestId('rail').getByRole('heading', { name: '交付测试', exact: true })).toBeVisible()

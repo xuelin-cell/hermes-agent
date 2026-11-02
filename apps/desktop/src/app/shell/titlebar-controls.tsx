@@ -1,4 +1,3 @@
-import { compactNumber } from '@hermes/shared'
 import { useStore } from '@nanostores/react'
 import { type ComponentProps, type MouseEvent, type ReactNode, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
@@ -6,7 +5,6 @@ import { useLocation, useNavigate } from 'react-router'
 import { hudTargetSessionId } from '@/app/hud/handoff'
 import { toggleLayoutEditMode } from '@/components/pane-shell/edit-mode'
 import { resetLayoutTree } from '@/components/pane-shell/tree/store'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Tip, TipKeybindLabel } from '@/components/ui/tooltip'
 import { Slot } from '@/contrib/react/slot'
@@ -32,6 +30,7 @@ import { $titlebarAppActionsSide, TITLEBAR_FIXED_TOOLS } from '@/store/titlebar-
 
 import { appViewForPath, hidesFixedTitlebarClusters, isOverlayView } from '../routes'
 
+import { messageCenterAvailable, MessageCenterBell } from './message-center'
 import {
   TITLEBAR_CHROME_CHANGED_EVENT,
   TITLEBAR_ICON_BADGE_SCALE,
@@ -39,6 +38,7 @@ import {
   titlebarIconSizeCss,
   titlebarToolClusterClass
 } from './titlebar'
+import { withCountBadge } from './titlebar-count-badge'
 import { TitlebarIcon } from './titlebar-icon'
 
 export interface TitlebarTool extends Tiered {
@@ -91,24 +91,6 @@ function LayoutGlyph({ modHeld }: { modHeld: boolean }) {
         </span>
       </span>
     </>
-  )
-}
-
-/** Overlay count on a titlebar glyph. Hidden when count is 0/undefined. */
-function withCountBadge(icon: ReactNode, count: number | undefined): ReactNode {
-  if (!count) {
-    return icon
-  }
-
-  return (
-    <span className="relative inline-flex">
-      {icon}
-      <span className="pointer-events-none absolute -top-2.5 -right-1.5 z-1">
-        <Badge aria-hidden size="overlay" variant="solid">
-          {compactNumber(count)}
-        </Badge>
-      </span>
-    </span>
   )
 }
 
@@ -361,7 +343,7 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
         {sidebarOpen && (
           <button
             aria-label="元景数字员工"
-            className="mr-1 flex h-(--titlebar-control-height) cursor-default items-center rounded px-1.5 text-[0.8125rem] font-bold whitespace-nowrap text-foreground/85 select-none"
+            className="mr-1 flex h-(--titlebar-control-height) cursor-default items-center rounded px-1.5 text-base font-bold whitespace-nowrap text-foreground/85 select-none"
             onClick={handleBrandClick}
             type="button"
           >
@@ -394,6 +376,7 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
         className={cn(titlebarToolClusterClass, 'right-(--titlebar-tools-right) top-(--titlebar-controls-top)')}
         data-titlebar-cluster="right"
       >
+        {messageCenterAvailable() && <MessageCenterBell />}
         {visibleSystemTools.map(tool => (
           <TitlebarToolButton key={tool.id} navigate={navigate} tool={tool} />
         ))}

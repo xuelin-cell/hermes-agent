@@ -1,10 +1,15 @@
-import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 
+import { registry } from '@/contrib/registry'
+import { renderMediaTags } from '@/lib/chat-messages/parts'
+import * as desktopFs from '@/lib/desktop-fs'
+import { TRANSCRIPT_DIRECTIVE_AREA, type TranscriptDirectiveContribution } from '@/lib/transcript-directives'
 import { artifactsForSession, clearArtifactRegistry } from '@/store/artifacts'
 import { $previewTabs } from '@/store/preview'
 import { $activeSessionId, $selectedStoredSessionId } from '@/store/session'
 
+import { InlinePreviewDirective } from './inline-preview-directive'
 import { MarkdownTextContent } from './markdown-text'
 
 const HTML_DOC = `<!doctype html>
@@ -36,6 +41,7 @@ describe('MarkdownTextContent artifacts', () => {
   })
 
   afterEach(() => {
+    vi.restoreAllMocks()
     cleanup()
     $activeSessionId.set(null)
     $selectedStoredSessionId.set(null)
@@ -71,5 +77,43 @@ describe('MarkdownTextContent artifacts', () => {
     await screen.findByText('Pomodoro Timer')
 
     expect(artifactsForSession('session-artifacts')).toHaveLength(0)
+  })
+
+  it.each(['inline', 'unreadable', 'code'])('keeps one file card alongside %s HTML output', async mode => {
+    const file = '/tmp/delivered-report.html'
+    vi.spyOn(desktopFs, 'readDesktopFileText').mockResolvedValue(
+      { path: file, text: mode === 'unreadable' ? '' : HTML_DOC, binary: false }
+    )
+
+    const dispose = registry.register({
+      id: 'test:file-card-preview',
+      area: TRANSCRIPT_DIRECTIVE_AREA,
+      source: 'plugin:test',
+      data: {
+        name: 'preview',
+        render: ({ attrs, streaming }) => <InlinePreviewDirective attrs={attrs} streaming={streaming} />
+      } satisfies TranscriptDirectiveContribution
+    })
+
+    onTestFinished(dispose)
+
+    const text = mode === 'code'
+      ? `${fenced('html', HTML_DOC)}\nMEDIA:${file}`
+      : `::preview{file="${file}"}`
+
+    const { container } = render(<MarkdownTextContent isRunning={false} text={renderMediaTags(text)} />)
+
+    if (mode === 'inline') {
+      await waitFor(() => expect(container.querySelector('iframe')?.title).toBe(file))
+      expect(screen.getByRole('button', { name: 'Download' })).toBeTruthy()
+    }
+
+    expect(await screen.findByRole('button', { name: 'Download' })).toBeTruthy()
+    expect(screen.getAllByRole('button', { name: 'Download' })).toHaveLength(1)
+    expect(screen.getByRole('button', { name: 'Open preview' })).toBeTruthy()
+
+    if (mode === 'code') {
+      expect(container.querySelector('[data-slot="aui_artifact-card"]')).not.toBeNull()
+    }
   })
 })

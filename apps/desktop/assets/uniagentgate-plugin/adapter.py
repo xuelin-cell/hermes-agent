@@ -3,6 +3,7 @@
 import asyncio
 from collections import OrderedDict
 from contextlib import suppress
+from dataclasses import replace
 import hashlib
 import logging
 from urllib.parse import urlsplit, urlunsplit
@@ -13,6 +14,15 @@ from gateway.platforms.base import BasePlatformAdapter, SendResult
 from gateway.platforms.event import MessageEvent, MessageType
 
 logger = logging.getLogger(__name__)
+
+
+def attachment_result(result, failures, *, partial=False):
+    """下行已受理也不能掩盖附件失败；保留回执，禁止因局部失败重发已受理内容。"""
+    from .media import failure_notice
+
+    if result.success and failures:
+        return replace(result, success=False, error=failure_notice(failures, partial=partial), retryable=False)
+    return result
 
 
 def gateway_url(value: str) -> str:
@@ -222,24 +232,25 @@ class UniAgentGateAdapter(BasePlatformAdapter):
 
     async def _deliver_attachments(self, event, extracted, metadata, *, anything_sent, record_delivery):
         """复用 Hermes 本轮路径提取和投递账本，避免文字和每个文件分别计费。"""
-        from .media import build_media
+        from .media import build_media, failure_notice
 
         paths = [path for path, _ in extracted.images]
         paths.extend(path for path, _ in extracted.media_files)
         paths.extend(extracted.local_files)
         with self._media_delivery_scope(event.source):
-            media, links = await build_media(paths, self.config.extra.get("upload_server", "UniAI-Toolkit"))
-        content = "\n\n".join(part for part in (extracted.text_content, "\n".join(links)) if part)
+            media, links, failures = await build_media(paths, self.config.extra.get("upload_server", "UniAI-Toolkit"))
+        partial = bool(media or links)
+        content = "\n\n".join(part for part in (
+            extracted.text_content, "\n".join(links), failure_notice(failures, partial=partial)) if part)
         if not content and not media:
-            if paths:
-                record_delivery(SendResult(success=False, error="5G 文件处理或上传失败"))
             return
         result, _ = await self.send_final_ledgered(
             event, self._event_session_key(event), content,
             {**(metadata or {}), "uniagentgate_media": media},
             reply_to=event.reply_anchor_override or event.message_id,
             is_ephemeral_response=getattr(event, "_uniagentgate_ephemeral", False))
-        record_delivery(result)
+        # 账本先记录这一次实际下发的确认结果，不能因附件局部失败重放已发送的整条回复。
+        record_delivery(attachment_result(result, failures, partial=partial))
 
     def _wants_auto_tts(self, *args, **kwargs):
         """只发送模型明确输出的音频产物，不额外生成单独计费的语音气泡。"""
@@ -248,13 +259,12 @@ class UniAgentGateAdapter(BasePlatformAdapter):
     async def send_document(self, chat_id, file_path, caption=None, file_name=None,
                             reply_to=None, metadata=None, **kwargs):
         """发送工具等直接投递路径复用相同文件规则。"""
-        from .media import build_media
-        media, links = await build_media([file_path], self.config.extra.get("upload_server", "UniAI-Toolkit"))
-        content = "\n\n".join(part for part in (caption, "\n".join(links)) if part)
-        if not content and not media:
-            return SendResult(success=False, error="5G 文件处理或上传失败")
-        return await self.send(chat_id, content, reply_to=reply_to,
-                               metadata={**(metadata or {}), "uniagentgate_media": media})
+        from .media import build_media, failure_notice
+        media, links, failures = await build_media([file_path], self.config.extra.get("upload_server", "UniAI-Toolkit"))
+        content = "\n\n".join(part for part in (caption, "\n".join(links), failure_notice(failures)) if part)
+        result = await self.send(chat_id, content, reply_to=reply_to,
+                                 metadata={**(metadata or {}), "uniagentgate_media": media})
+        return attachment_result(result, failures)
 
     async def send_image(self, chat_id, image_url, caption=None, reply_to=None, metadata=None, **kwargs):
         """原生图片与其它产物共用上传路径。"""
