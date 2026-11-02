@@ -780,7 +780,8 @@ export interface DesktopSyncReceipt {
 }
 
 export interface DesktopVersionInfo {
-  /** Packaged client version, or the runtime version for source installs. */
+  /** The client's own release: the packaged version, or the package version for
+   *  source installs (the runtime version only when that is unknown). */
   appVersion: string
   /** Fixed release identity. Commit builds have no update channel. */
   channel?: string | null

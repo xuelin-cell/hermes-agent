@@ -158,13 +158,16 @@ function relativeTime(ms: number | undefined, u: Translations['updates']): strin
  * The "Hermes Desktop / version / brand mark" hero shared by the About page
  * and the updates overlay, including the bundle-out-of-sync warning. The
  * heading render is injectable so a dialog surface can emit a DialogTitle
- * for its accessible name while About keeps a plain h2.
+ * for its accessible name while About keeps a plain h2. The brand mark can be
+ * hidden (About hides it) without affecting surfaces that keep it.
  */
 export function VersionHero({
   renderHeading,
+  showBrandMark = true,
   version
 }: {
   renderHeading?: (heading: string) => ReactNode
+  showBrandMark?: boolean
   version: DesktopVersionInfo | null
 }): ReactElement {
   const { t } = useI18n()
@@ -172,7 +175,7 @@ export function VersionHero({
 
   return (
     <div className="flex flex-col items-center gap-3 pt-6 pb-2 text-center">
-      <BrandMark className="size-16" />
+      {showBrandMark && <BrandMark className="size-16" />}
       <div>
         {renderHeading ? (
           renderHeading(u.appName)

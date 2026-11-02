@@ -2,7 +2,6 @@ import { useStore } from '@nanostores/react'
 import { type ReactElement, useEffect } from 'react'
 
 import { UpdateStatusCard, VersionHero } from '@/components/update-status'
-import { VersionDetails } from '@/components/version-details'
 import { useI18n } from '@/i18n'
 import { RefreshCw } from '@/lib/icons'
 import { $connection } from '@/store/session'
@@ -44,7 +43,7 @@ function AppUpdatesSettings(): ReactElement {
 
   return (
     <SettingsContent>
-      <VersionHero version={version} />
+      <VersionHero showBrandMark={false} version={version} />
       <div className="mx-auto mt-4 w-full max-w-2xl">
         <SectionHeading icon={RefreshCw} title={t.settings.about.updates} />
         <div className="grid gap-3" id={settingElementId(SETTING_IDS.about.updates)}>
@@ -52,7 +51,6 @@ function AppUpdatesSettings(): ReactElement {
           {/* Client and remote backend updates are independent. Only the client has release notes. */}
           {remote && <UpdateStatusCard showReleaseNotes={false} target="backend" />}
         </div>
-        {version && <VersionDetails version={version} />}
       </div>
     </SettingsContent>
   )
