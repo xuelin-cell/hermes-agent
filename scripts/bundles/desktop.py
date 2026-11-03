@@ -132,20 +132,15 @@ def _build_prepared(prepared, builder_args: list[str], variant: str | None) -> N
     with build_step(3, "生成应用图标"):
         run([str(prepared.icon_python), "-I", str(repo / "scripts/generate_icons.py"),
              "--source", str(repo), "--out", str(icons)], cwd=repo, env=env)
-    with build_step(4, "编译 TUI、Web 并组装内置运行环境"):
+    from scripts.bundles.desktop_prepare import require_source
+    with build_step(4, "写入构建信息、编译桌面应用并编译 TUI/Web"):
+        require_source(repo, request.commit)
         if variant != "light":
+            # 先编译 TUI/Web，它们的产物是 finish_native 的输入
             run([node, "scripts/build/tui.mjs", "--reuse", "--source", str(repo), "--out", str(products / "tui")], cwd=repo, env=env)
             run([node, "scripts/build/web.mjs", "--reuse", "--source", str(repo), "--icons", str(products / "icons"),
                  "--out", str(products / "web")], cwd=repo, env=env)
-            if prepared.payload is None:
-                raise ValueError("payload dependencies were not prepared")
-            if finish_native(prepared.payload, {"tui": products / "tui", "web": products / "web"}):
-                raise RuntimeError("prepared payload assembly failed")
-        else:
-            print("轻量版本无需内置运行环境，跳过此阶段的编译。", flush=True)
-    from scripts.bundles.desktop_prepare import require_source
-    with build_step(5, "写入构建信息并编译桌面应用"):
-        require_source(repo, request.commit)
+        # 编译桌面应用（包含 stagePythonPlugins，此时 hermes-agent 目录还在，套件可被正确 stage）
         # Debug: show environment variables that might affect the script
         print(f"bundle: DEBUG - GITHUB_SHA={env.get('GITHUB_SHA', 'NOT SET')}", flush=True)
         print(f"bundle: DEBUG - HERMES_BUILD_COMMIT={env.get('HERMES_BUILD_COMMIT', 'NOT SET')}", flush=True)
@@ -162,6 +157,16 @@ def _build_prepared(prepared, builder_args: list[str], variant: str | None) -> N
         run([node, "scripts/build/desktop.mjs", "--reuse", "--source", str(repo), "--icons", str(icons),
              "--stamp", str(desktop / "build/install-stamp.json"), "--native-deps", str(prepared.native),
              "--out", str(desktop / "dist")], cwd=repo, env=env)
+    with build_step(5, "组装内置运行环境（归档大目录加速安装）"):
+        if variant != "light":
+            if prepared.payload is None:
+                raise ValueError("payload dependencies were not prepared")
+            # finish_native 在 build/desktop.mjs 之后执行，此时套件已经 stage 到 python-plugins，
+            # 归档 hermes-agent 目录不会影响已 stage 的套件
+            if finish_native(prepared.payload, {"tui": products / "tui", "web": products / "web"}):
+                raise RuntimeError("prepared payload assembly failed")
+        else:
+            print("轻量版本无需内置运行环境，跳过此阶段的编译。", flush=True)
     with build_step(6, "生成安装包与更新校验文件"):
         version_args = []
         if sys.platform == "win32" and request.channel_request is None and request.tag is not None:
