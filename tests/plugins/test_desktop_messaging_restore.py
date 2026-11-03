@@ -19,8 +19,8 @@ from hermes_cli.config import load_env, remove_env_value, save_env_value
 api = import_module("plugins.desktop-messaging.dashboard.plugin_api")
 
 
-def test_restore_scans_real_accounts_a_b_a_and_preserves_parked_profiles(tmp_path, monkeypatch):
-    """真实 A→B→A 配置隔离；无配置跳过、启动、复用与旧规则补写各走正确动作。"""
+def test_restore_checks_only_main_profile_across_real_accounts_a_b_a(tmp_path, monkeypatch):
+    """真实 A→B→A 配置隔离；只看主助手，专家凭据不计入也不补写；启动、复用与旧规则补写各走正确动作。"""
     from hermes_cli import web_server_gateway
     from hermes_cli.profiles import create_profile
     from hermes_cli.web_server_profiles import _config_profile_scope
@@ -37,7 +37,6 @@ def test_restore_scans_real_accounts_a_b_a_and_preserves_parked_profiles(tmp_pat
         return SimpleNamespace(pid=123)
 
     monkeypatch.setattr(web_server_gateway, "_spawn_hermes_action", spawn)
-    monkeypatch.setattr(web_server_gateway, "_has_own_gateway", lambda home: home.name == "independent")
     monkeypatch.setattr(api, "_owned_gateway", lambda: running)
     app = FastAPI()
     app.include_router(api.router)
@@ -48,33 +47,34 @@ def test_restore_scans_real_accounts_a_b_a_and_preserves_parked_profiles(tmp_pat
             monkeypatch.setenv("HERMES_HOME", str(home))
             if account == "a" and not (home / "profiles").exists():
                 assert client.post("/restore").json()["configured"] is False
-                assert not actions
-                for name in ["worker", "parked", "standalone", "independent"]:
+                for name in ["worker", "parked"]:
                     create_profile(name)
                     with _config_profile_scope(name):
                         save_env_value("FEISHU_APP_ID", account)
                         save_env_value("FEISHU_APP_SECRET", "fixture-key")
                 (home / "profiles/parked/gateway.parked").touch()
-                (home / "profiles/standalone/config.yaml").write_text("gateway:\n  standalone: true\n", encoding="utf-8")
+                # 只有专家带着建立时复制来的凭据，不算配置了消息平台，也不启动网关。
+                result = client.post("/restore").json()
+                assert (result["configured"], result["profiles"], result["name"]) == (False, [], None)
+                assert not actions
+                save_env_value("FEISHU_APP_ID", account)
+                save_env_value("FEISHU_APP_SECRET", "fixture-key")
             if account == "b":
                 assert client.post("/restore").json()["configured"] is False
                 assert not load_env()
                 continue
             result = client.post("/restore")
             assert result.status_code == 200, result.text
-            assert result.json()["profiles"] == ["worker"]
+            assert result.json()["profiles"] == ["default"]
             assert result.json()["name"] == ("gateway-start" if not running else None)
             running = True
-            with _config_profile_scope("worker"):
-                assert load_env()["FEISHU_GROUP_POLICY"] == "open"
-                assert "GATEWAY_ALLOW_ALL_USERS" not in load_env()
-            with _config_profile_scope("parked"):
-                assert "FEISHU_GROUP_POLICY" not in load_env()
-            with _config_profile_scope("independent"):
-                assert "FEISHU_GROUP_POLICY" not in load_env()
+            assert load_env()["FEISHU_GROUP_POLICY"] == "open"
+            assert "GATEWAY_ALLOW_ALL_USERS" not in load_env()
+            for name in ["worker", "parked"]:
+                with _config_profile_scope(name):
+                    assert "FEISHU_GROUP_POLICY" not in load_env()
         assert len(actions) == 1
-        with _config_profile_scope("worker"):
-            remove_env_value("FEISHU_GROUP_POLICY")
+        remove_env_value("FEISHU_GROUP_POLICY")
         assert client.post("/restore").json()["name"] == "gateway-stop"
         assert actions[-1][1][-2:] == ["gateway", "stop"]
         running = False
