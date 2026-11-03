@@ -22,7 +22,21 @@ def run(argv: list[str], *, cwd: Path, env: dict[str, str]) -> None:
     # 输出每一步实际耗时，帮助区分编译、缓存校验和压缩瓶颈。
     started = time.perf_counter()
     try:
-        subprocess.run(argv, cwd=cwd, env=env, check=True)
+        # Capture output to ensure we see error messages even if the script fails
+        result = subprocess.run(
+            argv, cwd=cwd, env=env,
+            capture_output=True, text=True, encoding="utf-8"
+        )
+        # Print captured output
+        if result.stdout:
+            print(result.stdout, end="", flush=True)
+        if result.stderr:
+            print(result.stderr, end="", file=sys.stderr, flush=True)
+        # Raise if the command failed
+        if result.returncode != 0:
+            raise subprocess.CalledProcessError(
+                result.returncode, argv, result.stdout, result.stderr
+            )
     finally:
         print(f"bundle: step finished in {time.perf_counter() - started:.1f}s", flush=True)
 
