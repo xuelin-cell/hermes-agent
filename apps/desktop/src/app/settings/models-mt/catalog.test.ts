@@ -117,7 +117,11 @@ describe('models-mt catalog', () => {
     })
     expect(write.payload.api_key).toBeUndefined()
     expect(write.keyEnv).toBe(PLAN_KEY_ENV)
-    expect(write.vision).toBeUndefined()
+    // 新建的文字模型写明不能看图，Hermes 才不会拿它去看历史图片。
+    expect(write.vision).toBe(false)
+    expect(configPatch([{ endpointId: 'uw-00000001', write }])).toMatchObject({
+      providers: { 'uw-00000001': { models: { 'glm-5.2': { supports_vision: false } } } }
+    })
   })
 
   it('自有密钥换成元景时清掉原密钥；元景换成别家又没填密钥时去掉套餐引用', () => {

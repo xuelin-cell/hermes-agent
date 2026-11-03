@@ -132,3 +132,69 @@ def test_gateway_vision_notes_are_rewritten_for_delivery_platforms(hints, monkey
     rewritten = hints.rewrite(request=request, platform=platform)["request"]["messages"][0]["content"]
     assert "vision_analyze" not in rewritten and rewritten.endswith("把它做成视频")
     assert f"image_url_or_oss_path 填 {image}，prompt" in rewritten
+
+
+# 1x1 像素 PNG，让 Hermes 真把它当图片读、编码。
+PNG = bytes.fromhex(
+    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+    "0000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082"
+)
+
+
+def switched_to_text_model(monkeypatch, images):
+    """用 Hermes 自己的函数走一遍：看图模型发图，之后换成写明不能看图的模型，当场看图失败。"""
+    import tools.vision_tools as vision
+    from agent.image_routing import build_native_content_parts
+    from agent.vision_message_prep import VisionMessagePrepMixin
+
+    async def no_vision_model(**_):
+        """配置里找不到任何看图模型时 Hermes 抛出的同一句话。"""
+        raise RuntimeError("No LLM provider configured for task=vision provider=auto. Run: hermes setup")
+
+    monkeypatch.setattr(vision, "async_call_llm", no_vision_model)
+
+    class TextModel(VisionMessagePrepMixin):
+        """看不到图的主模型。"""
+
+        _anthropic_image_fallback_cache: dict = {}
+
+        def _model_supports_vision(self):
+            """主模型写明不能看图。"""
+            return False
+
+    parts, _ = build_native_content_parts("分析图片", [str(image) for image in images])
+    return TextModel()._prepare_messages_for_non_vision_model([{"role": "user", "content": parts}])
+
+
+def test_switched_model_failed_notes_become_uniai_hints(hints, monkeypatch):
+    """换成文字模型后看图失败：“图片里有：出错”换成看不到的说明，每张附图路径换成元景看图写法。"""
+    images = [hints.home / "一.png", hints.home / "二 图.png"]
+    for image in images:
+        image.write_bytes(PNG)
+    messages = switched_to_text_model(monkeypatch, images)
+    text = messages[0]["content"]
+    assert "could not be analyzed" in text and f"[Image attached at: {images[1]}]" in text
+
+    request = {"messages": messages}
+    rewritten = hints.rewrite(request=request, platform="desktop")["request"]["messages"][0]["content"]
+    assert rewritten.count(hints.hints.FAILED_NOTE) == 2
+    for image in images:
+        assert f"[看这张图请用元景的 {TOOL}：image_url_or_oss_path 填 {image}，prompt 写要问的问题]" in rewritten
+    assert "Here's what it contains" not in rewritten and "Image attached" not in rewritten
+    assert "分析图片" in rewritten and request["messages"] == messages
+
+
+def test_attached_path_is_kept_while_the_image_is_still_in_the_message(hints):
+    """图片数据还在（看图模型正在看）时路径不改；只剩文字（重启后读回）时换成元景写法，真描述保留。"""
+    image = hints.home / "a.png"
+    image.write_bytes(PNG)
+    from agent.image_routing import build_native_content_parts
+
+    parts, _ = build_native_content_parts("看看", [str(image)])
+    assert hints.rewrite(request={"messages": [{"role": "user", "content": parts}]}, platform="desktop") is None
+
+    described = "[The user attached an image. Here's what it contains:\n一只猫]\n\n看看\n\n" + parts[0]["text"].split("\n\n", 1)[1]
+    request = {"messages": [{"role": "user", "content": described}]}
+    rewritten = hints.rewrite(request=request, platform="desktop")["request"]["messages"][0]["content"]
+    assert rewritten.startswith("[The user attached an image. Here's what it contains:\n一只猫]")
+    assert rewritten.endswith(f"[看这张图请用元景的 {TOOL}：image_url_or_oss_path 填 {image}，prompt 写要问的问题]")

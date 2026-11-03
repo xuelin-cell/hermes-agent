@@ -166,10 +166,9 @@ export function mergeMaasModelConfig(home: string, catalog: Pick<MaasPlan, 'mode
         options.set('context_length', model.contextWindow)
       }
 
-      if (model.vision === true) {
-        options.set('supports_vision', true)
-      } else if (model.vision === false) {
-        options.delete('supports_vision')
+      // 不能看图要写明 false：没写时 Hermes 选看图模型会把它当成能看，切模型后拿它“描述”历史图片。
+      if (model.vision !== undefined) {
+        options.set('supports_vision', model.vision)
       }
 
       modelOptions.set(model.name, options)
