@@ -14,6 +14,7 @@ import { Search } from '@/lib/icons'
 import { $codeWorkspace } from '@/store/workspace-category'
 
 import { useSkillsCopy } from './copy'
+import { SkillUploadButton } from './skill-upload-button'
 import { SkillsHub } from './skills-hub'
 
 interface CapabilitiesPageProps extends ComponentProps<'section'> {
@@ -112,6 +113,9 @@ export function CapabilitiesPage({
         ) : mode === 'connectors' ? (
           <div ref={setConnectorSearchContainer} />
         ) : null}
+        {mode === 'skills' && (
+          <SkillUploadButton key={String(skills.profile)} onUploaded={skills.onRefresh} profile={skills.profile} />
+        )}
       </header>
       {scopeSelector}
       {mode === 'experts' ? (
