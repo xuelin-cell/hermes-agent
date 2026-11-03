@@ -16,7 +16,7 @@ import {
   type OfficePreviewErrorCode,
   type PdfDocumentSource
 } from '@/lib/browser-shell'
-import { noteEntryAccount } from '@/lib/enterprise-mt'
+import { $enterpriseShell, noteEntryAccount } from '@/lib/enterprise-mt'
 
 import {
   browserAuthKey,
@@ -106,21 +106,39 @@ function credentials(): RequestCredentials {
   return productionBrowserBuild ? 'same-origin' : 'omit'
 }
 
+// desktop-mt: two entries serve this one page. The personal entry has the drive, mail, plan, shares, kits
+// and messaging; the enterprise entry (MT_UNIWORK_SERVER, the management platform) has none of them and
+// hosts agents as profiles instead. Which one this is comes with `/__entry/me`, before the rest of the
+// app loads (main-mt.ts); anything but an enterprise answer means the personal entry.
+function personalCloud(): boolean {
+  return productionBrowserBuild && !$enterpriseShell.get()
+}
+
 const cloudSkillOperations = browserSkills(browserBasePath())
 
 const cloudMessaging = browserMessaging(browserBasePath())
 const cloudKitOperations = browserSkills(browserBasePath(), 'kits')
 const cloudKits = browserKits(browserBasePath(), connection(), request => cloudKitOperations.mutate(request))
 
+// desktop-mt: with agents, one serve hosts every profile and REST names the one it means
+// (browser-profiles-mt.ts). The personal entry only hears of a profile when the caller names one.
+function restPath(path: string, profile?: null | string): string {
+  if (!personalCloud()) {
+    return withProfileQuery(path, profile)
+  }
+
+  return profile ? `${path}${path.includes('?') ? '&' : '?'}profile=${encodeURIComponent(profile)}` : path
+}
+
 async function api<T>(request: HermesApiRequest): Promise<T> {
-  if (productionBrowserBuild) {
+  if (personalCloud()) {
     if ((request.path.split('?')[0].startsWith('/api/plugins/uniwork-kits') && !request.path.startsWith('/api/plugins/uniwork-kits/cloud/interrupted')) || (request.path.split('?')[0] === '/api/profiles' && (!request.method || request.method === 'GET'))) { return cloudKits.request<T>(request) }
     const result = cloudMessaging.request<T>(request)
     if (result) { return result }
   }
   const { body, method = 'GET', path, profile, upload } = request
 
-  if (productionBrowserBuild && isCloudSkillMutation(method, path)) {
+  if (personalCloud() && isCloudSkillMutation(method, path)) {
     return cloudSkillOperations.mutate<T>(request)
   }
 
@@ -136,8 +154,7 @@ async function api<T>(request: HermesApiRequest): Promise<T> {
     requestBody = JSON.stringify(restoreMcpSecrets(method, path, body))
   }
 
-  // desktop-mt: one serve hosts every profile; REST names the one it means (browser-profiles-mt.ts)
-  const response = await fetch(`${apiPrefix()}${withProfileQuery(path, profile)}`, {
+  const response = await fetch(`${apiPrefix()}${restPath(path, profile)}`, {
     body: requestBody,
     credentials: credentials(),
     headers,
@@ -1329,6 +1346,35 @@ export function installBrowserDevelopmentBridge(): boolean {
   const conn = connection()
   const asyncOk = async () => ({ ok: true })
 
+  // desktop-mt: what only the personal entry serves, see personalCloud().
+  const personalCapabilities = () => ({
+    ...browserInterrupted(browserBasePath(), api),
+    ...browserAccount(browserBasePath()),
+    ...cloudKits,
+    cloudSkillOperations,
+    ...cloudMessaging,
+    ...browserMail(browserBasePath()),
+    ...browserConnectors(browserBasePath()),
+    createConversationFolder: async (defaultCwd: string) =>
+      (await instanceFiles<{ path: string | null }>('conversation-create', { defaultCwd })).path,
+    discardConversationFolder: async (path: string) => {
+      await instanceFiles('conversation-discard', { path })
+    },
+    ...browserShares(browserBasePath()),
+    ...browserDrive(browserBasePath()),
+    ...browserPlan(browserBasePath()),
+    exportPreview: browserExport(browserBasePath(), apiPrefix()),
+    getAgentRoster: async () => ({ agents: [] }),
+    getProfileRoutes: async () => [],
+    getWelcomeCatalog: (locale: WelcomeLocale) => {
+      if (!['zh-CN', 'en'].includes(locale)) {
+        return Promise.reject(new Error('Invalid locale'))
+      }
+
+      return requestEntryMaas<WelcomePayload>(browserBasePath(), `welcome/${locale}`)
+    }
+  })
+
   const bridge = {
     api,
     claimAmbientCue: async () => true,
@@ -1450,25 +1496,24 @@ export function installBrowserDevelopmentBridge(): boolean {
     glassSupported: false,
     writeClipboard,
     // The instance's shell lives behind the entry; a dev server has no forwarder to give one.
-    ...(productionBrowserBuild
-      ? { ...browserInterrupted(browserBasePath(), api), ...browserAccount(browserBasePath()), ...cloudKits, terminal: instanceTerminal, cloudSkillOperations, ...cloudMessaging, ...browserMail(browserBasePath()), ...browserConnectors(browserBasePath()),
-          createConversationFolder: async (defaultCwd: string) =>
-            (await instanceFiles<{ path: string | null }>('conversation-create', { defaultCwd })).path,
-          discardConversationFolder: async (path: string) => { await instanceFiles('conversation-discard', { path }) },
-          ...browserShares(browserBasePath()), ...browserDrive(browserBasePath()), ...browserPlan(browserBasePath()), exportPreview: browserExport(browserBasePath(), apiPrefix()),
-          getWelcomeCatalog: (locale: WelcomeLocale) => {
-            if (!['zh-CN', 'en'].includes(locale)) {return Promise.reject(new Error('Invalid locale'))}
-
-            return requestEntryMaas<WelcomePayload>(browserBasePath(), `welcome/${locale}`)
-          } }
-      : {})
+    ...(productionBrowserBuild ? { terminal: instanceTerminal } : {})
   }
 
   Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: bridge })
   document.documentElement.dataset.hermesBrowser = productionBrowserBuild ? 'production' : 'development'
   // The entry's enterprise mode comes with `/__entry/me` (lib/enterprise-mt.ts). The account item that asks for it
   // is only mounted in the chat sidebar, and a page opened on the Bots tab never shows it: ask once at start.
-  void getMaasAccount().catch(() => null)
+  const account = getMaasAccount().catch(() => null)
+
+  if (productionBrowserBuild) {
+    Object.assign(bridge, {
+      accountReady: account.then(() => {
+        if (personalCloud()) {
+          Object.assign(bridge, personalCapabilities())
+        }
+      })
+    })
+  }
 
   return true
 }

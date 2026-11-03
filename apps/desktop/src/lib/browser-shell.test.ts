@@ -4,6 +4,7 @@ import sessionMenuSource from '@/app/chat/sidebar/session-actions-menu.tsx?raw'
 import { setRuntimeI18nLocale } from '@/i18n/runtime'
 
 import {
+  $enterpriseShell,
   BROWSER_VIRTUAL_FILE_ROOT,
   browserInitialLocale,
   browserMediaPlaybackUrl,
@@ -68,6 +69,7 @@ const DEVELOPER_MODE_KEY = 'uniwork.desktop.developerMode.v1'
 
 afterEach(() => {
   delete document.documentElement.dataset.hermesBrowser
+  $enterpriseShell.set(false)
   localStorage.removeItem(DEVELOPER_MODE_KEY)
   setRuntimeI18nLocale('en')
 })
@@ -199,6 +201,10 @@ describe('browser shell', () => {
     document.documentElement.dataset.hermesBrowser = 'production'
 
     expect(withoutHiddenNavItems(nav).map(item => item.id)).toEqual(['new-session', 'skills', 'messaging', 'artifacts'])
+
+    $enterpriseShell.set(true)
+
+    expect(withoutHiddenNavItems(nav).map(item => item.id)).toEqual(['new-session', 'skills', 'artifacts'])
   })
 
   it('treats paths under the in-page file root as browser-only files, and only in the browser build', () => {
@@ -213,23 +219,32 @@ describe('browser shell', () => {
     expect(isBrowserVirtualPath('uploads/__browser__/x.txt')).toBe(false)
   })
 
-  it('shows the BOTS tab to every cloud user, not only in developer mode', () => {
+  it('shows the BOTS tab to every enterprise account, not only in developer mode', () => {
     expect(showsBotsForEveryone()).toBe(false)
 
     document.documentElement.dataset.hermesBrowser = 'production'
 
+    expect(showsBotsForEveryone()).toBe(false)
+
+    $enterpriseShell.set(true)
+
     expect(showsBotsForEveryone()).toBe(true)
   })
 
-  it('does not start kits and experts for regular users, but runs Bot Mode', () => {
+  it('starts Bot Mode for enterprise accounts only, and kits only with their bridge', () => {
     expect(isBundledPluginHidden('hermes-bots')).toBe(false)
     expect(isBundledPluginHidden('uniwork-kits')).toBe(false)
 
     document.documentElement.dataset.hermesBrowser = 'production'
 
-    expect(isBundledPluginHidden('hermes-bots')).toBe(false)
+    expect(isBundledPluginHidden('hermes-bots')).toBe(true)
     expect(isBundledPluginHidden('uniwork-kits')).toBe(true)
     expect(isBundledPluginHidden('kanban')).toBe(false)
+
+    $enterpriseShell.set(true)
+
+    expect(isBundledPluginHidden('hermes-bots')).toBe(false)
+    expect(isBundledPluginHidden('uniwork-kits')).toBe(true)
 
     localStorage.setItem(DEVELOPER_MODE_KEY, 'true')
 

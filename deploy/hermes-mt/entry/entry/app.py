@@ -874,14 +874,8 @@ class Entry:
                 log.warning("cron wake tick skipped: %s", type(exc).__name__)
 
 
-def build_app(settings: Settings = SETTINGS) -> web.Application:
-    entry = Entry(settings)
-    app = web.Application(
-        client_max_size=64 * 1024 * 1024,
-        middlewares=[origin_middleware(settings.origin_check), database_error_middleware],
-    )
-    path = settings.path
-    app.router.add_get(path("/login"), entry.login_page)
+def _add_personal_routes(app: web.Application, entry: Entry, path) -> None:
+    """只有普通版（不连管理后台）才有的路由：云盘、邮箱、分享、套餐、消息平台、连接器和它们要的浏览器令牌。"""
     app.router.add_get(path("/__entry/browser-auth.js"), entry.browser_auth_script)
     app.router.add_post(path("/__entry/maas-auth"), entry.maas_auth_status)
     app.router.add_post(path("/__entry/langfuse/grant"), entry.langfuse_routes.issue)
@@ -903,6 +897,18 @@ def build_app(settings: Settings = SETTINGS) -> web.Application:
     app.router.add_post(path("/__entry/drive/part/{id}"), entry.drive_routes.part)
     app.router.add_get(path("/__entry/drive/files/{id}"), entry.drive_routes.download)
     app.router.add_post(path("/__entry/drive/{operation}"), entry.drive_routes.handle)
+
+
+def build_app(settings: Settings = SETTINGS) -> web.Application:
+    entry = Entry(settings)
+    app = web.Application(
+        client_max_size=64 * 1024 * 1024,
+        middlewares=[origin_middleware(settings.origin_check), database_error_middleware],
+    )
+    path = settings.path
+    app.router.add_get(path("/login"), entry.login_page)
+    if not settings.enterprise:
+        _add_personal_routes(app, entry, path)
     app.router.add_get(path("/__entry/config"), entry.config)
     app.router.add_get(path("/__entry/health"), entry.health)
     app.router.add_get(path("/__entry/auth"), entry.auth)

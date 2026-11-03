@@ -384,6 +384,7 @@ class Cube:
         ready_timeout_s: int = 240,
         state: dict | None = None,
         api_server: bool = False,
+        enterprise: bool = False,
     ) -> dict:
         """把会话令牌和种子文件送进容器，并让它把 hermes 拉起来。
 
@@ -413,6 +414,8 @@ class Cube:
             payload["state"] = state
         if api_server:
             payload["api_server"] = True
+        if enterprise:
+            payload["enterprise"] = True
         deadline = time.monotonic() + BOOTSTRAP_RETRY_S
         while True:
             try:

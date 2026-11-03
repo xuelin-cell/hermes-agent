@@ -2,6 +2,7 @@ import { useStore } from '@nanostores/react'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { $enterpriseShell } from '@/lib/enterprise-mt'
 import { $developerMode } from '@/store/developer-mode'
 
 import { registry } from '@/contrib/registry'
@@ -152,8 +153,9 @@ it('机器人选项卡仅在开发者模式显示，退出后回退到对话且�
   expect(($layoutTree.get() as GroupNode).panes).toContain('hermes-bots:pane')
 })
 
-it('云版里机器人选项卡对所有人显示：平台下发的 Agent 和员工自建的 agent 都在那里', () => {
+it('云版的企业账号都能看到机器人选项卡：平台下发的 Agent 和员工自建的 agent 都在那里', () => {
   globalThis.document.documentElement.dataset.hermesBrowser = 'production'
+  $enterpriseShell.set(true)
 
   try {
     disposers.push(
@@ -179,6 +181,7 @@ it('云版里机器人选项卡对所有人显示：平台下发的 Agent 和员
     expect($developerMode.get()).toBe(false)
     expect(globalThis.document.querySelector('[data-tree-tab="hermes-bots:pane"]')).toBeTruthy()
   } finally {
+    $enterpriseShell.set(false)
     delete globalThis.document.documentElement.dataset.hermesBrowser
   }
 })

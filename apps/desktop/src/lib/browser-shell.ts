@@ -1,6 +1,8 @@
 import { getRuntimeI18nLocale } from '@/i18n/runtime'
 import { storedBoolean } from '@/lib/storage'
 
+import { $enterpriseShell } from './enterprise-mt'
+
 // The cloud entry's enterprise mode (deploy/hermes-mt with MT_UNIWORK_SERVER): see lib/enterprise-mt.ts.
 export {
   $enterpriseShell,
@@ -484,9 +486,14 @@ export function effortShortLabels(english: Record<string, string>): Record<strin
 
 const SIDEBAR_NAV_HIDDEN = new Set(['session-import'])
 
-/** Session import requires another agent's local files; messaging uses the cloud connector. */
+/** Session import requires another agent's local files; messaging uses the personal entry's
+ * cloud connector, which the enterprise entry does not have. */
 export function withoutHiddenNavItems<T extends { id: string }>(items: T[]): T[] {
-  return hideForUsers() ? items.filter(item => !SIDEBAR_NAV_HIDDEN.has(item.id)) : items
+  if (!hideForUsers()) {
+    return items
+  }
+
+  return items.filter(item => !SIDEBAR_NAV_HIDDEN.has(item.id) && !(item.id === 'messaging' && $enterpriseShell.get()))
 }
 
 const BUNDLED_PLUGINS_HIDDEN = new Set(['uniwork-kits'])
@@ -497,14 +504,22 @@ const BUNDLED_PLUGINS_HIDDEN = new Set(['uniwork-kits'])
  * enterprise accounts: every agent is a profile on the instance's one serve, including the
  * Agents the platform installs (dev/browser-profiles-mt.ts, deploy/hermes-mt/seed/mtent.py). */
 export function isBundledPluginHidden(id: string): boolean {
-  return hideForUsers() && BUNDLED_PLUGINS_HIDDEN.has(id) && !(id === 'uniwork-kits' && window.hermesDesktop?.cloudKits)
+  if (!hideForUsers()) {
+    return false
+  }
+
+  if (id === 'hermes-bots') {
+    return !$enterpriseShell.get()
+  }
+
+  return BUNDLED_PLUGINS_HIDDEN.has(id) && !(id === 'uniwork-kits' && window.hermesDesktop?.cloudKits)
 }
 
-/** The sidebar's BOTS tab for every user, not only in developer mode (the desktop
- * app keeps it there, a8ff60ab84): in the cloud the Agents the enterprise platform
- * installs are bots, and employees build their own agents there too. */
+/** The sidebar's BOTS tab for every enterprise account, not only in developer mode (the
+ * desktop app keeps it there, a8ff60ab84): the Agents the enterprise platform installs
+ * are bots, and employees build their own agents there too. */
 export function showsBotsForEveryone(): boolean {
-  return isBrowserShell()
+  return isBrowserShell() && $enterpriseShell.get()
 }
 
 /** Both shells render the same snapshot page; the personal Entry implements the browser

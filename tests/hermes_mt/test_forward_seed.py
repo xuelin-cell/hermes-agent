@@ -197,6 +197,35 @@ async def test_spawn_hermes_turns_on_the_cron_ticker(forward, monkeypatch: pytes
     assert seen["env"]["HERMES_DASHBOARD_SESSION_TOKEN"] == "tok"
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("enterprise", [False, True])
+async def test_spawn_hermes_starts_personal_services_only_outside_enterprise_mode(
+    forward, monkeypatch: pytest.MonkeyPatch, enterprise: bool
+) -> None:
+    started: list[tuple] = []
+    restored: list[bool] = []
+
+    class Process:
+        async def wait(self):
+            return 0
+
+    async def fake_exec(*args, env=None, **kwargs):
+        started.append(args)
+        return Process()
+
+    async def restore():
+        restored.append(True)
+
+    monkeypatch.setattr(forward.asyncio, "create_subprocess_exec", fake_exec)
+    monkeypatch.setattr(forward._connectors, "restore", restore)
+    monkeypatch.setattr(forward, "_enterprise_mode", enterprise)
+    await forward._spawn_hermes("tok")
+
+    assert started[-1][:2] == ("hermes", "serve")
+    assert any("cloud_recovery.py" in str(arg) for args in started for arg in args) is (not enterprise)
+    assert bool(restored) is (not enterprise)
+
+
 class _Writer:
     def __init__(self) -> None:
         self.data = b""
@@ -308,6 +337,36 @@ async def test_bootstrap_syncs_skills_before_hermes_starts(forward, monkeypatch:
     assert order == ["sync", "spawn"]
     body = writer.body()
     assert body["ok"] is True and body["skills"] == {"ok": True, "retired_pristine": ["excel"]}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("flag", [False, True])
+async def test_bootstrap_payload_decides_enterprise_mode_before_hermes_starts(
+    forward, monkeypatch: pytest.MonkeyPatch, flag: bool
+) -> None:
+    seen: list[bool] = []
+
+    async def sync():
+        return {"ok": True}
+
+    async def spawn(token):
+        seen.append(forward._enterprise_mode)
+
+    async def alive():
+        return True
+
+    async def idle():
+        return None
+
+    monkeypatch.setattr(forward, "_sync_bundled_skills", sync)
+    monkeypatch.setattr(forward, "_spawn_hermes", spawn)
+    monkeypatch.setattr(forward, "_hermes_alive", alive)
+    monkeypatch.setattr(forward, "_supervise", idle)
+    payload = {"token": "tok", "files": [], **({"enterprise": True} if flag else {})}
+
+    await forward._bootstrap(_Writer(), json.dumps(payload).encode("utf-8"))
+
+    assert seen == [flag]
 
 
 # ---------------------------------------------------------------- /__mt/reload：重写配置并重启 hermes

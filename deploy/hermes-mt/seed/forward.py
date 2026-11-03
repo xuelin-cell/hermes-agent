@@ -106,6 +106,9 @@ _hermes_proc: asyncio.subprocess.Process | None = None
 _hermes_token: str = ""
 _hermes_env: dict[str, str] = {}
 _bootstrapped = False
+# 企业模式（入口配了 MT_UNIWORK_SERVER）：普通版的连接器和崩溃恢复都用不上，不起。
+# 沙箱路径由引导载荷打开，Docker 路径靠环境变量。
+_enterprise_mode = os.environ.get("MT_ENTERPRISE") == "1"
 _boot_lock: asyncio.Lock | None = None
 _state: mtstate.StateManager | None = None
 _state_lock: asyncio.Lock | None = None
@@ -307,10 +310,11 @@ async def _sync_bundled_skills() -> dict:
 async def _spawn_hermes(token: str) -> None:
     global _hermes_proc
     _connectors.profile_token = token
-    try:
-        await _connectors.restore()
-    except (OSError, RuntimeError, ValueError):
-        _log('连接器尚未恢复，后台将重试；其他实例功能继续启动。')
+    if not _enterprise_mode:
+        try:
+            await _connectors.restore()
+        except (OSError, RuntimeError, ValueError):
+            _log('连接器尚未恢复，后台将重试；其他实例功能继续启动。')
     env = dict(os.environ)
     env.update(_hermes_env)
     env["HERMES_DASHBOARD_SESSION_TOKEN"] = token
@@ -319,14 +323,15 @@ async def _spawn_hermes(token: str) -> None:
     # 永远停在「已排期」。它的其余作用逐个核过：清理桌面遗留的随机端口 serve（我们是固定端口，
     # 碰不到）、父进程看门狗（要 HERMES_PARENT_PID，我们不设）、新会话的来源记为 desktop。
     env["HERMES_DESKTOP"] = "1"
-    recovery = await asyncio.create_subprocess_exec(
-        HERMES_PYTHON, '-c',
-        "import runpy,sys; from pathlib import Path; runpy.run_path(sys.argv[1])['claim_all'](Path(sys.argv[2]))",
-        str(HERMES_INSTALL / 'plugins/uniwork-kits/cloud_recovery.py'), str(HERMES_HOME),
-        cwd=str(HERMES_INSTALL), env=env,
-    )
-    if await recovery.wait() != 0:
-        raise RuntimeError('Cloud crash recovery preparation failed')
+    if not _enterprise_mode:
+        recovery = await asyncio.create_subprocess_exec(
+            HERMES_PYTHON, '-c',
+            "import runpy,sys; from pathlib import Path; runpy.run_path(sys.argv[1])['claim_all'](Path(sys.argv[2]))",
+            str(HERMES_INSTALL / 'plugins/uniwork-kits/cloud_recovery.py'), str(HERMES_HOME),
+            cwd=str(HERMES_INSTALL), env=env,
+        )
+        if await recovery.wait() != 0:
+            raise RuntimeError('Cloud crash recovery preparation failed')
     _note_boot_homes()
     _hermes_proc = await asyncio.create_subprocess_exec(
         "hermes", "serve",
@@ -554,7 +559,7 @@ async def _bootstrap(writer: asyncio.StreamWriter, body: bytes) -> None:
     恢复失败**不算引导成功**：hermes 不会被拉起，``_bootstrapped`` 保持 False，入口可以
     带 force 重试，或者判定这台实例不可用。
     """
-    global _bootstrapped, _boot_lock, _state, _state_lock, _archiver_task, _supervisor_task, _hermes_token
+    global _bootstrapped, _boot_lock, _state, _state_lock, _archiver_task, _supervisor_task, _hermes_token, _enterprise_mode
     if _boot_lock is None:
         _boot_lock = asyncio.Lock()
         _state_lock = asyncio.Lock()
@@ -620,6 +625,7 @@ async def _bootstrap(writer: asyncio.StreamWriter, body: bytes) -> None:
         skills = await _sync_bundled_skills()
 
         _hermes_token = token
+        _enterprise_mode = _enterprise_mode or bool(payload.get("enterprise"))
         try:
             await _spawn_hermes(token)
             if payload.get("api_server"):
@@ -1415,7 +1421,7 @@ async def _handle(client_r: asyncio.StreamReader, client_w: asyncio.StreamWriter
 async def _supervise_connectors() -> None:
     backoff = 1
     while True:
-        if _bootstrapped and not _draining:
+        if _bootstrapped and not _draining and not _enterprise_mode:
             try:
                 await _connectors.recover()
                 backoff = 1

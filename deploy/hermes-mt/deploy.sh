@@ -38,7 +38,7 @@
 #   MT_DEPLOY_BASE_IMAGE    沙箱镜像的基础镜像，默认 hermes-custom:src-<hermes 源码指纹>（./deploy.sh base 构建）；
 #                           一般不要设，设了就固定用它（必须已在本机）
 #   MT_DEPLOY_SEED_DIR      ./deploy.sh base 预置大文件的目录，默认 /var/cache/hermes-mt/base-seed（约 500M，可重复用）
-#   MT_DEPLOY_TPL_CPU/MEM   模板规格，默认 1000 / 2000（毫核 / MiB）
+#   MT_DEPLOY_TPL_CPU/MEM   模板规格，默认 1000 / 2000（毫核 / MiB）；企业版（配了 MT_UNIWORK_SERVER）CPU 默认 2000
 #   MT_DEPLOY_TPL_DISK      模板可写层，默认 8G
 #   MT_DEPLOY_TPL_RETRIES   建模板有节点失败（平台偶发）时重建几次，第一次之外，默认 3
 #   MT_DEPLOY_BRANCH        all 时拉哪个分支，默认当前分支
@@ -122,6 +122,11 @@ set_cfg() {
     chmod 600 "$ENV_FILE"
 }
 
+# 企业版（配了 MT_UNIWORK_SERVER）：专家和技能来自管理后台，不用准备套件资源，也不依赖配置仓库；模板 CPU 默认 2000。
+is_enterprise() {
+    [ -n "$(cfg MT_UNIWORK_SERVER '')" ]
+}
+
 load_cfg() {
     [ -f "$ENV_FILE" ] || die "没有 $ENV_FILE。首次部署先跑：./deploy.sh init --http-port IP:端口 --cube-api URL --cube-proxy URL"
     CUBE_API="$(cfg MT_CUBE_API)"
@@ -135,7 +140,7 @@ load_cfg() {
     api_host="$(printf '%s' "$CUBE_API" | sed -E 's|^[a-z]+://||; s|[:/].*$||')"
     REGISTRY="$(cfg MT_DEPLOY_REGISTRY "${api_host}:5000")"
     BASE_IMAGE="$(cfg MT_DEPLOY_BASE_IMAGE "$(base_tag)")"
-    TPL_CPU="$(cfg MT_DEPLOY_TPL_CPU 1000)"
+    if is_enterprise; then TPL_CPU="$(cfg MT_DEPLOY_TPL_CPU 2000)"; else TPL_CPU="$(cfg MT_DEPLOY_TPL_CPU 1000)"; fi
     TPL_MEM="$(cfg MT_DEPLOY_TPL_MEM 2000)"
     TPL_DISK="$(cfg MT_DEPLOY_TPL_DISK 8G)"
     TPL_RETRIES="$(cfg MT_DEPLOY_TPL_RETRIES 3)"
@@ -193,7 +198,7 @@ fingerprint() {
         cat "$HERE/scripts/image_overlay.py"
         # Connector code shares the frontend build step, but must also invalidate the instance template.
         (cd "$REPO" && git ls-tree -r HEAD apps/desktop/services/open-connector apps/desktop/scripts/build-cloud-connectors.mjs)
-        cat "$HERE/.kits-runtime/.fingerprint"
+        is_enterprise || cat "$HERE/.kits-runtime/.fingerprint"
         printf 'base=%s\ntpl=%s/%s/%s\n' "$base_id" "$TPL_CPU" "$TPL_MEM" "$TPL_DISK"
     } | sha256sum | cut -c1-12
 }
@@ -224,7 +229,11 @@ check_overlay() {
 
 # 每次从当前源码重新生成快照，目录整体替换，包含删除、重命名和可执行权限。
 stage_overlay() {
-    python3 "$HERE/scripts/image_overlay.py" stage "$REPO" "$HERE/.overlay" "$HERE/.kits-runtime"
+    if is_enterprise; then
+        python3 "$HERE/scripts/image_overlay.py" stage "$REPO" "$HERE/.overlay"
+    else
+        python3 "$HERE/scripts/image_overlay.py" stage "$REPO" "$HERE/.overlay" "$HERE/.kits-runtime"
+    fi
 }
 
 # ---------------------------------------------------------------- 集群查询
@@ -508,6 +517,8 @@ ensure_frontend() {
 KITS_PREPARED=0
 ensure_kits() {
     [ "$KITS_PREPARED" = 1 ] && return 0
+    # 入口的 Dockerfile 要 COPY 这个目录，企业版留空
+    if is_enterprise; then mkdir -p "$HERE/.kits-runtime"; return 0; fi
     say "准备套件资源（沿用桌面配置仓库）"
     python3 "$HERE/scripts/build-kits.py" || die "套件资源准备失败，请检查配置仓库的读取权限或指定 UNIWORK_BUNDLED_PLUGINS 本地目录"
     KITS_PREPARED=1
@@ -737,7 +748,11 @@ cmd_up() {
     [ -n "$TEMPLATE" ] || die "entry.env 里 MT_CUBE_TEMPLATE 为空，先跑 ./deploy.sh template"
     # nginx 镜像在下面 up --build 时把 nginx/dist-browser/ 拷进去：先保证它是当前代码构建的。
     ensure_frontend
-    [ -s "$HERE/.kits-runtime/.fingerprint" ] || die "套件资源缺失，请用 ./deploy.sh all 配套更新实例模板和入口"
+    if is_enterprise; then
+        mkdir -p "$HERE/.kits-runtime"
+    else
+        [ -s "$HERE/.kits-runtime/.fingerprint" ] || die "套件资源缺失，请用 ./deploy.sh all 配套更新实例模板和入口"
+    fi
     chmod 600 "$ENV_FILE"
 
     local foreign_before entry_before

@@ -15,6 +15,7 @@ async function installFresh() {
   const mod = await import('./browser-bridge')
 
   mod.installBrowserDevelopmentBridge()
+  await window.hermesDesktop.accountReady
 
   return mod
 }
@@ -966,5 +967,79 @@ describe('browser bridge: the instance’s terminal', () => {
     await terminal.dispose(session.id)
     expect(socket.readyState).toBe(3)
     expect(output).toEqual([]) // no "disconnected" notice for a tab the user closed
+  })
+})
+
+describe('the two cloud entries (desktop-mt)', () => {
+  async function installFor(account: unknown, status = 200) {
+    vi.stubEnv('VITE_HERMES_BROWSER_BUILD', '1')
+    const calls: string[] = []
+
+    globalThis.fetch = vi.fn(async (url: RequestInfo | URL) => {
+      const text = String(url)
+
+      calls.push(text)
+
+      if (text.endsWith('__entry/me')) {
+        return jsonResponse(account, status)
+      }
+
+      return text.includes('/api/profiles')
+        ? jsonResponse({ profiles: [{ name: 'default' }, { name: 'uw-agent' }] })
+        : jsonResponse({})
+    }) as typeof fetch
+
+    await installFresh()
+
+    return calls
+  }
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    delete document.documentElement.dataset.hermesBrowser
+  })
+
+  it('wires what the personal entry serves when the account has no enterprise binding', async () => {
+    const calls = await installFor({ user_id: 'u1' })
+
+    expect(window.hermesDesktop.cloudKits).toBe(true)
+    expect(window.hermesDesktop.getPlanUsage).toBeTypeOf('function')
+    expect(window.hermesDesktop.createConversationFolder).toBeTypeOf('function')
+    expect(window.hermesDesktop.terminal).toBeDefined()
+    expect(await window.hermesDesktop.getAgentRoster?.()).toEqual({ agents: [] })
+
+    await window.hermesDesktop.api({ path: '/api/config' })
+    await window.hermesDesktop.api({ path: '/api/config', profile: 'expert' })
+    expect(calls).toContain('/__hermes_backend/api/config')
+    expect(calls).toContain('/__hermes_backend/api/config?profile=expert')
+  })
+
+  it('leaves them out for an enterprise account, whose agents are profiles on the one serve', async () => {
+    const calls = await installFor({ enterprise: { status: 'active' }, user_id: 'ent:t:u' })
+
+    expect(window.hermesDesktop.cloudKits).toBeUndefined()
+    expect(window.hermesDesktop.getPlanUsage).toBeUndefined()
+    expect(window.hermesDesktop.createConversationFolder).toBeUndefined()
+    expect(window.hermesDesktop.terminal).toBeDefined()
+
+    await window.hermesDesktop.api({ path: '/api/config' })
+    expect(calls).toContain('/__hermes_backend/api/config?profile=default')
+
+    const roster = await window.hermesDesktop.getAgentRoster?.()
+
+    expect(roster?.agents.map(agent => agent.profile)).toEqual(['default', 'uw-agent'])
+  })
+
+  it('treats a failed account answer as the personal entry', async () => {
+    await installFor({ error: 'down' }, 502)
+
+    expect(window.hermesDesktop.cloudKits).toBe(true)
+  })
+
+  it('wires nothing of the kind outside the production build', async () => {
+    await installFresh()
+
+    expect(window.hermesDesktop.accountReady).toBeUndefined()
+    expect(window.hermesDesktop.cloudKits).toBeUndefined()
   })
 })

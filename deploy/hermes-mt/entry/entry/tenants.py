@@ -56,6 +56,11 @@ YUANJING_MCP_TIMEOUT_S = 600
 UNIWORK_PLUGIN_KEY = "uniwork-enterprise"
 
 # 平台策略：每次引导都按这里写进用户的 config.yaml（seed/mtstate.py 的 apply_platform_block）。
+# 只有普通版才有的平台策略（云盘、邮箱、分享、套件、消息平台）：企业模式不写。
+PERSONAL_POLICY_KEYS = frozenset({"cloud_sharing", "cloud_drive", "cloud_mail", "cloud_kits",
+                                  "cloud_messaging_delivery", "platforms"})
+# config.yaml.tmpl 里只有普通版才有的一段：企业模式由入口整段去掉（_render_user_files）。
+_PERSONAL_TEMPLATE_BLOCK = re.compile(r"^# personal-begin.*?^# personal-end[^\n]*\n", re.M | re.S)
 PLATFORM_POLICY = {
     # 在线模型目录（OpenRouter / Nous 的推荐清单）：集群里访问慢，超时会把模型下拉卡住；
     # 我们的模型清单来自套餐，用不上它。
@@ -332,6 +337,8 @@ class TenantManager:
         model_name = model_name or self.s.model_name
         files: dict[str, bytes] = {}
         config_tmpl = (SEED_DIR / "config.yaml.tmpl").read_text(encoding="utf-8")
+        if self.s.enterprise:
+            config_tmpl = _PERSONAL_TEMPLATE_BLOCK.sub("", config_tmpl)
         config = (
             config_tmpl.replace("{{MODEL_NAME}}", model_name)
             .replace("{{MODEL_BASE_URL}}", base_url)
@@ -362,7 +369,7 @@ class TenantManager:
         """
         files = self._render_user_files(api_key, endpoint, catalog, limits)
         # 转发器要从自己所在目录导入状态管家和用户接口，三个文件一起放。
-        for name in ("forward.py", "mtstate.py", "mtuser.py", "mtent.py", "mtexport.py", "mtfolders.py", "mtmessaging.py", "mtconnectors.py"):
+        for name in ("forward.py", "mtstate.py", "mtuser.py", "mtent.py", "mtexport.py", "mtfolders.py", "mtmessaging.py", "mtconnectors.py", "mtconnector_profile.py"):
             files[f".mt/{name}"] = (SEED_DIR / name).read_bytes()
         for file in sorted((SEED_DIR.parent / '.connector-runtime').rglob('*')):
             if file.is_file():
@@ -536,10 +543,13 @@ class TenantManager:
     def _platform_policy(self) -> dict:
         """平台策略，加上默认推理强度（MT_DEFAULT_REASONING_EFFORT，空就不写）。
         转发器按「段 → 键」逐项写，用户在同一段里的其他设置不动（seed/mtstate.py 的 _apply_policy）。"""
+        policy = PLATFORM_POLICY
+        if self.s.enterprise:
+            policy = {key: value for key, value in policy.items() if key not in PERSONAL_POLICY_KEYS}
         effort = self.s.default_reasoning_effort
         if not effort:
-            return PLATFORM_POLICY
-        return {**PLATFORM_POLICY, "agent": {"reasoning_effort": effort}}
+            return policy
+        return {**policy, "agent": {"reasoning_effort": effort}}
 
     @staticmethod
     def _drive_mcp() -> dict:
@@ -902,6 +912,8 @@ class TenantManager:
             state=self._state_block(sandbox_id, epoch, restore_from),
             # 平台的运行环境才另开 API 服务；成员实例的引导请求不变
             **({"api_server": True} if getattr(context, "service", False) else {}),
+            # 企业模式用不上普通版的连接器和崩溃恢复，转发器不起它们（见 seed/forward.py）
+            **({"enterprise": True} if self.s.enterprise else {}),
         )
         if body.get("already"):
             await self._adopt_bootstrapped(user_id, slug, sandbox_id)
@@ -1352,6 +1364,8 @@ class TenantManager:
                       api_server: bool = False) -> None:
         # 平台的运行环境：转发器另起 gateway 的 API 服务（沙箱路径靠引导载荷，这里靠环境变量）
         extra_env = ["MT_API_SERVER=1"] if api_server else []
+        if self.s.enterprise:
+            extra_env.append("MT_ENTERPRISE=1")
         spec = {
             "Image": self.s.image,
             "Env": [

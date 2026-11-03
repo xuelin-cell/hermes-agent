@@ -131,6 +131,8 @@ declare global {
         profile?: null | string
       }) => Promise<GatewayWsUrlResult>
       // Union agent roster across every registered connection.
+      // desktop-mt: the browser build wires what the signed-in account can use once this settles (main-mt.ts)
+      accountReady?: Promise<void>
       getAgentRoster?: () => Promise<DesktopAgentRoster>
       // Credential-free routes across the union connection registry. The
       // optional profile list is used only by the single-local v1 fallback;
