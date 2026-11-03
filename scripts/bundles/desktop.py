@@ -208,7 +208,16 @@ def main() -> None:
             else:
                 build_prepared(result, builder_args)
     except (ValueError, OSError, RuntimeError, subprocess.CalledProcessError) as exc:
-        parser.exit(1, f"desktop build: {exc}\n")
+        # For CalledProcessError, show captured output if available
+        if isinstance(exc, subprocess.CalledProcessError):
+            msg = f"desktop build: {exc}\n"
+            if exc.stdout:
+                msg += f"--- stdout ---\n{exc.stdout}\n"
+            if exc.stderr:
+                msg += f"--- stderr ---\n{exc.stderr}\n"
+            parser.exit(1, msg)
+        else:
+            parser.exit(1, f"desktop build: {exc}\n")
 
 
 if __name__ == "__main__":
