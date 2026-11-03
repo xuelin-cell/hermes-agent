@@ -129,7 +129,7 @@ ARCHIVED_COMPONENTS_WIN = ("venv", "hermes-agent")
 
 
 def archive_component(payload_root: Path, name: str) -> tuple[Path, str]:
-    """Pack a component directory into a .7z archive, removing the original.
+    """Pack a component directory into a .7z archive, moving the original to a temp location.
 
     The archive uses fast compression (-mx=1) because install-time decompression
     speed matters more than package size. Multi-threaded (-mmt=on) for speed.
@@ -138,11 +138,12 @@ def archive_component(payload_root: Path, name: str) -> tuple[Path, str]:
     The digest is computed BEFORE archiving so the stamp matches what the installer
     will verify (the extracted directory, not the archive file).
 
-    The deletion step uses separate retry logic to handle AV file locks, avoiding
-    the need to re-compress the entire archive on failure.
+    Instead of deleting the directory immediately (which can be blocked by AV),
+    we move it to a temp location within the payload root. The temp directory
+    will be cleaned up later by remove_build_tree, which has retry logic.
     """
     import shutil
-    import time
+    import uuid
 
     source_dir = payload_root / name
     archive = payload_root / f"{name}.7z"
@@ -171,22 +172,11 @@ def archive_component(payload_root: Path, name: str) -> tuple[Path, str]:
         with tarfile.open(archive, "w:xz", preset=1) as tar:
             tar.add(source_dir, arcname=name)
 
-    # Wait briefly for AV to release file locks after compression
-    time.sleep(5)
-
-    # Retry deletion separately - don't re-compress on failure
-    max_retries = 4
-    for attempt in range(max_retries):
-        try:
-            shutil.rmtree(source_dir)
-            break
-        except PermissionError as e:
-            if attempt == max_retries - 1:
-                raise
-            delay = 5 * (2 ** attempt)  # 5s, 10s, 20s, 40s
-            print(f"[archive {name}] deletion blocked by AV, retrying ({attempt + 2}/{max_retries}) "
-                  f"after {delay}s...", flush=True)
-            time.sleep(delay)
+    # Move the original directory to a temp location instead of deleting it.
+    # This avoids AV file locks that block immediate deletion.
+    # The temp directory will be cleaned up by remove_build_tree later.
+    temp_dir = payload_root / f".{name}-pending-delete-{uuid.uuid4().hex[:8]}"
+    source_dir.rename(temp_dir)
 
     return archive, directory_digest
 
