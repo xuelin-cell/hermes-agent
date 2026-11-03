@@ -22,5 +22,9 @@ export function settingsViewVisible(view: string, developerMode: boolean): boole
 
 /** 按设置分组与字段控制开发者专属字段，避免搜索结果泄露隐藏项。 */
 export function settingsFieldVisible(view: string, field: string, developerMode: boolean): boolean {
+  if (!developerMode && view === 'config:safety') {
+    return !field.startsWith('security.') && !field.startsWith('checkpoints.')
+  }
+
   return developerMode || !(view === 'config:chat' && field === 'timezone')
 }
