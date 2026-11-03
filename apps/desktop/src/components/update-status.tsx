@@ -24,7 +24,9 @@ import {
   type UpdateTarget
 } from '@/store/updates'
 
-const RELEASE_NOTES_URL = 'https://github.com/NousResearch/hermes-agent/releases'
+// UniWork publishes its release notes on the product documentation site, not on
+// the upstream GitHub releases page; About's release-notes row points there.
+const RELEASE_NOTES_URL = 'https://www.yjworker.10010.com/app/documents/uniwork/doc/98'
 const INSTALLER_URL = 'https://hermes-agent.nousresearch.com/'
 
 export type UpdateStatusTone = 'idle' | 'available' | 'error' | 'unsupported'
