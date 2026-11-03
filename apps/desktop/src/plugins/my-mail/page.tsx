@@ -341,17 +341,19 @@ export function MyMailPage() {
               <Mail size={28} />
             </span>
             <strong className="min-w-0 flex-[1_1_14rem] break-all text-xl">{status.email}</strong>
-            <span className="size-2 shrink-0 rounded-full bg-emerald-500" />
-            <span className="shrink-0 whitespace-nowrap text-muted-foreground">{text.running}</span>
-            <Button className="rounded-xl" variant="outline" onClick={() => setConfirmDisable(true)}>
-              {text.disable}
-            </Button>
-            <span className="ml-auto shrink-0 whitespace-nowrap text-muted-foreground">
-              {text.todaySent}{' '}
-              <b className="ml-2 text-2xl text-foreground">
-                {status.todaySent}/{status.dailyQuota}
-              </b>
-            </span>
+            <div className="ml-auto flex flex-wrap items-center justify-end gap-x-5 gap-y-3">
+              <span className="size-2 shrink-0 rounded-full bg-emerald-500" />
+              <span className="shrink-0 whitespace-nowrap text-muted-foreground">{text.running}</span>
+              <Button className="rounded-xl" variant="outline" onClick={() => setConfirmDisable(true)}>
+                {text.disable}
+              </Button>
+              <span className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap leading-none text-muted-foreground">
+                <span>{text.todaySent}</span>
+                <b className="text-2xl leading-none text-foreground">
+                  {status.todaySent}/{status.dailyQuota}
+                </b>
+              </span>
+            </div>
           </section>
         )}
 
@@ -512,7 +514,8 @@ export function MyMailPage() {
               className="h-12 rounded-xl bg-background px-6 text-base shadow-sm"
               variant="outline"
               onClick={() =>
-                detail && openComposer(`请用智能体邮箱回复这封邮件（folder: ${detail.folder}, uid: ${detail.uid}）：`, detail)
+                detail &&
+                openComposer(`请用智能体邮箱回复这封邮件（folder: ${detail.folder}, uid: ${detail.uid}）：`, detail)
               }
             >
               <Reply className="mr-2 size-5" />
@@ -522,7 +525,8 @@ export function MyMailPage() {
               className="h-12 rounded-xl bg-background px-6 text-base text-foreground shadow-sm hover:bg-background/80"
               variant="outline"
               onClick={() =>
-                detail && openComposer(`请用智能体邮箱转发这封邮件（folder: ${detail.folder}, uid: ${detail.uid}）：`, detail)
+                detail &&
+                openComposer(`请用智能体邮箱转发这封邮件（folder: ${detail.folder}, uid: ${detail.uid}）：`, detail)
               }
             >
               <Forward className="mr-2 size-5" />
