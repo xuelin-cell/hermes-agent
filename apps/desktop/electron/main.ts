@@ -17443,14 +17443,14 @@ function assertArtifactShareWindow(event: Electron.IpcMainInvokeEvent): void {
 const desktopMessaging = new DesktopMessaging({
   account: ACCOUNT_RUNTIME.id,
   index: new MessagingBotIndex(app.getPath('userData')),
-  request: (profile, requestPath, method, body) =>
+  request: (profile, requestPath, method, body, timeoutMs = 30_000) =>
     handleHermesApiRequest({
       connectionId: 'local',
       profile,
       path: requestPath,
       method,
       body,
-      timeoutMs: 30_000
+      timeoutMs
     }),
   onState: state => {
     for (const win of BrowserWindow.getAllWindows()) {

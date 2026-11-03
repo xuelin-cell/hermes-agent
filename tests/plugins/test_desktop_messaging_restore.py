@@ -87,6 +87,29 @@ def test_restore_checks_only_main_profile_across_real_accounts_a_b_a(tmp_path, m
         assert actions[-1][1][-2:] == ["gateway", "stop"]
 
 
+def test_slow_prepare_does_not_stall_other_requests(monkeypatch):
+    """准备期间加载插件很慢时，事件循环仍能处理其它请求，不让整个后端停止应答。"""
+    def slow_catalog():
+        """模拟冷启动时逐个加载插件的阻塞耗时。"""
+        time.sleep(0.6)
+        return ()
+
+    monkeypatch.setattr(api, "_messaging_platform_catalog", slow_catalog)
+
+    async def scenario():
+        """恢复准备与心跳并行，心跳在准备结束前必须持续推进。"""
+        ticks = 0
+        task = asyncio.create_task(api.prepare())
+        while not task.done():
+            await asyncio.sleep(0.02)
+            ticks += 1
+        return await task, ticks
+
+    state, ticks = asyncio.run(scenario())
+    assert state["configured"] is False
+    assert ticks >= 10
+
+
 def test_ambiguous_gateway_refuses_restore_without_leaking_details(monkeypatch):
     """归属不明不启动也不复用，固定错误不包含底层敏感细节。"""
     from hermes_cli import web_server_gateway

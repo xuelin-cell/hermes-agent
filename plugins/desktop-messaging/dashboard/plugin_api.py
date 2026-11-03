@@ -168,31 +168,44 @@ async def prepare() -> dict:
     """
     from hermes_constants import get_hermes_home
 
+    # 加载插件、读写配置都是阻塞操作，放到工作线程里做；留在事件循环上会让整个后端停止应答，
+    # 冷启动时桌面其它请求和本次恢复请求都会超时。作用域在线程内进入，锁仍按 Home 串行。
     # 记忆展示桌面聊天也读取，仍覆盖全部受管助手；只读写配置、不加载插件，不因此重启网关。
     for profile, profile_home in await asyncio.to_thread(_managed_profiles):
         async with _locks.setdefault(str(profile_home), asyncio.Lock()):
-            with _config_profile_scope(profile):
-                presentation.prepare_memory_notifications()
+            await asyncio.to_thread(_prepare_memory, profile)
     with _config_profile_scope("default"):
         home = str(get_hermes_home())
-    changed = False
-    targets = set()
     async with _locks.setdefault(home, asyncio.Lock()):
-        with _config_profile_scope("default"):
-            from hermes_cli.web_routers.messaging import _platform_enablement
-
-            env = load_env()
-            for entry in _messaging_platform_catalog():
-                enabled, complete, _ = _platform_enablement(entry["id"], entry, env, True)
-                if enabled and complete:
-                    targets.add(entry["id"])
-                    if entry["id"] in POLICIES:
-                        changed = _write_policies(entry["id"]) or changed
-            changed = presentation.prepare_presentation(targets) or changed
-            # 原版停机广播读取宿主配置，主助手就是宿主。
-            changed = presentation.prepare_presentation(targets, host_only=True) or changed
+        targets, changed = await asyncio.to_thread(_prepare_main_platforms)
     configured = bool(targets)
     return {"configured": configured, "changed": changed, "profiles": ["default"] if configured else []}
+
+
+def _prepare_memory(profile: str) -> None:
+    """在工作线程里为一个受管助手准备记忆展示。"""
+    with _config_profile_scope(profile):
+        presentation.prepare_memory_notifications()
+
+
+def _prepare_main_platforms() -> tuple[set[str], bool]:
+    """在工作线程里按主助手找出已启用平台，补写平台规则和展示设置，返回平台集合与是否有变化。"""
+    from hermes_cli.web_routers.messaging import _platform_enablement
+
+    changed = False
+    targets = set()
+    with _config_profile_scope("default"):
+        env = load_env()
+        for entry in _messaging_platform_catalog():
+            enabled, complete, _ = _platform_enablement(entry["id"], entry, env, True)
+            if enabled and complete:
+                targets.add(entry["id"])
+                if entry["id"] in POLICIES:
+                    changed = _write_policies(entry["id"]) or changed
+        changed = presentation.prepare_presentation(targets) or changed
+        # 原版停机广播读取宿主配置，主助手就是宿主。
+        changed = presentation.prepare_presentation(targets, host_only=True) or changed
+    return targets, changed
 
 
 def _gateway_environment(state: dict) -> dict[str, str]:
