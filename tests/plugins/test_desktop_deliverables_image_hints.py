@@ -89,8 +89,8 @@ def test_hint_is_kept_when_vision_works_or_uniai_is_missing(hints):
     ("sees", "config", "expected", "absent"),
     [
         (False, HIDDEN, "要看懂图片内容，用该工具箱的 analyze_image。", "直接看"),
-        (True, HIDDEN, "消息里附带的图片你能直接看到，直接看，不要再调用工具看图。只给了路径", "要看懂图片内容"),
-        (True, {}, "消息里附带的图片你能直接看到，直接看，不要再调用工具看图。", "analyze_image"),
+        (True, HIDDEN, "只给了路径、消息里看不到的图片，才用该工具箱的 analyze_image。", "要看懂图片内容"),
+        (True, {}, "消息里附带的图片你能直接看到，直接看，不要再调用工具看图。", "才用该工具箱的 analyze_image"),
     ],
 )
 def test_upload_reminder_look_rule_follows_the_main_model(hints, monkeypatch, sees, config, expected, absent):
@@ -102,6 +102,10 @@ def test_upload_reminder_look_rule_follows_the_main_model(hints, monkeypatch, se
     text = ElementTree.fromstring(result["context"]).text
     assert expected in text and absent not in text.split("不要写代码上传。")[1]
     assert seen == ["deepseek-v4.1-flash"]
+    if sees:
+        assert "禁止重复调用 analyze_image、vision_analyze" in text
+        assert "其他 MCP/工具仍按任务正常使用" in text
+        assert "不要假装看到了图片" in text
 
 
 @pytest.mark.parametrize("outcome", ["seen", "unseen", "error"])
