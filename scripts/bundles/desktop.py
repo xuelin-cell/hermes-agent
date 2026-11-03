@@ -146,7 +146,19 @@ def _build_prepared(prepared, builder_args: list[str], variant: str | None) -> N
     from scripts.bundles.desktop_prepare import require_source
     with build_step(5, "写入构建信息并编译桌面应用"):
         require_source(repo, request.commit)
-        run([node, "scripts/write-build-stamp.mjs"], cwd=desktop, env=env)
+        # Debug: show environment variables that might affect the script
+        print(f"bundle: DEBUG - GITHUB_SHA={env.get('GITHUB_SHA', 'NOT SET')}", flush=True)
+        print(f"bundle: DEBUG - HERMES_BUILD_COMMIT={env.get('HERMES_BUILD_COMMIT', 'NOT SET')}", flush=True)
+        print(f"bundle: DEBUG - HERMES_PAYLOAD_TAG={env.get('HERMES_PAYLOAD_TAG', 'NOT SET')}", flush=True)
+        print(f"bundle: DEBUG - HERMES_DESKTOP_VARIANT={env.get('HERMES_DESKTOP_VARIANT', 'NOT SET')}", flush=True)
+        print(f"bundle: DEBUG - cwd={desktop}", flush=True)
+        try:
+            run([node, "scripts/write-build-stamp.mjs"], cwd=desktop, env=env)
+        except subprocess.CalledProcessError as e:
+            print(f"bundle: ERROR - write-build-stamp.mjs failed with exit code {e.returncode}", flush=True)
+            print(f"bundle: ERROR - stdout: {e.stdout}", flush=True)
+            print(f"bundle: ERROR - stderr: {e.stderr}", flush=True)
+            raise
         run([node, "scripts/build/desktop.mjs", "--reuse", "--source", str(repo), "--icons", str(icons),
              "--stamp", str(desktop / "build/install-stamp.json"), "--native-deps", str(prepared.native),
              "--out", str(desktop / "dist")], cwd=repo, env=env)
