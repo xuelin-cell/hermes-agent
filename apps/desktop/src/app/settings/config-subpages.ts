@@ -33,7 +33,7 @@ const CONFIG_SUBPAGE_DEFINITIONS: Record<string, ConfigSubpageDefinition[]> = {
     {
       id: 'projects',
       labelKey: 'workspaceProjects',
-      fields: ['terminal.cwd'],
+      // desktop-mt: 默认位置由账号设置管理。
       prefixes: ['desktop.repo_scan_']
     },
     {

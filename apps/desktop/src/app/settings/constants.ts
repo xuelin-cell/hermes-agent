@@ -708,7 +708,7 @@ export const SECTIONS: DesktopConfigSection[] = [
     label: 'Workspace',
     icon: Monitor,
     keys: [
-      'terminal.cwd',
+      // desktop-mt: 工作根由账号启动时固定。
       'desktop.repo_scan_enabled',
       'desktop.repo_scan_roots',
       'desktop.repo_scan_exclude_paths',

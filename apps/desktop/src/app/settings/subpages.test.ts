@@ -24,6 +24,12 @@ const views: SettingsView[] = [
 ]
 
 describe('settings subpage routing', () => {
+  it('工作空间保留仓库扫描设置，仅显示一个默认位置入口', () => {
+    const keys = SECTIONS.find(section => section.id === 'workspace')!.keys
+    expect(keys).toContain('desktop.repo_scan_enabled')
+    expect(keys).not.toContain('terminal.cwd')
+  })
+
   it('仅在开发者模式下显示 Browser 设置入口', () => {
     expect(settingsViewVisible('config:browser', false)).toBe(false)
     expect(settingsViewVisible('config:browser', true)).toBe(true)

@@ -13,11 +13,8 @@ type ProjectInfo = null | { cwd?: unknown }
 const FOLDER_NAME = /^\d{8}-\d{6}(?:-\d{1,2})?$/
 
 /**
- * 未选目录的新对话发送前，在账号工作区下建一个专属文件夹，并改为以“用户选了这个目录”发给后端。
- * 只有这次用选择器或侧边栏文件夹“+”选的目录才算选了；日常办公和学习里，启动时记住的上次目录、
- * 进过的侧边栏文件夹都是带过来的，照样新建，与 UniWork 一致。代码开发保持原样，沿用带过来的目录。
- * 任何一个条件不满足都原样返回 null：没有主进程接口（云端或非账号环境）、远程连接、
- * 用户选了目录、代码开发带着别的目录、该档案默认目录不是账号工作区（专家自带目录）。
+ * 手选目录直接交给后端。未选时办公和学习使用日期文件夹，代码开发复用当前项目或 UniWorkSpace。
+ * 通过主进程核对账号工作根后，将实际路径作为显式 cwd 发给后端，以便保存会话归属。
  */
 export async function applyConversationFolder(
   params: Record<string, unknown>,
@@ -41,18 +38,23 @@ export async function applyConversationFolder(
     const info = (await request('config.get', { key: 'project', ...(profile ? { profile } : {}) })) as ProjectInfo
     const defaultCwd = typeof info?.cwd === 'string' ? info.cwd.trim() : ''
 
-    if (!defaultCwd || (cwd && !sameWorkdir(cwd, defaultCwd) && $codeWorkspace.get())) {
+    const code = $codeWorkspace.get()
+
+    if (
+      !defaultCwd ||
+      (code && cwd && !sameWorkdir(cwd, defaultCwd) && !sameWorkdir(cwd, codeFolderPath(defaultCwd)))
+    ) {
       return null
     }
 
-    const folder = await create(defaultCwd)
+    const folder = code ? await window.hermesDesktop?.ensureCodeFolder?.(defaultCwd) : await create(defaultCwd)
 
     if (folder) {
       params.cwd = folder
       params.cwd_explicit = true
     }
 
-    return folder
+    return folder ?? null
   } catch {
     // 查不到默认目录或创建失败时保持原行为，不影响发送。
     return null
@@ -66,11 +68,16 @@ export function discardConversationFolder(folder: null | string): void {
   }
 }
 
-/** 是否为默认工作区下自动建的对话文件夹，“最近使用”里不列出它们。 */
-export function isConversationFolder(path: string, defaultCwd: string): boolean {
-  const key = workdirKey(path)
-  const parent = workdirKey(defaultCwd)
-  const name = key.slice(parent.length + 1)
+export const CODE_FOLDER = 'UniWorkSpace'
 
-  return Boolean(parent) && key.startsWith(`${parent}/`) && FOLDER_NAME.test(name)
+/** 显示共享代码目录时保留工作根的分隔符。 */
+export function codeFolderPath(root: string): string {
+  return root.replace(/[\\/]+$/, '') + (root.includes('\\') ? '\\' : '/') + CODE_FOLDER
+}
+
+/** 按末级目录名排除自动日期目录和共享代码目录。 */
+export function isConversationFolder(path: string): boolean {
+  const name = workdirKey(path).split('/').at(-1) ?? ''
+
+  return FOLDER_NAME.test(name) || name === CODE_FOLDER.toLowerCase()
 }

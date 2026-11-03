@@ -352,10 +352,10 @@ export async function syncConfiguredDefaultProjectDir(shouldPublish: () => boole
     return configuredDefaultProjectDir
   }
 
-  const { dir } = await settings()
+  const { activeRoot, dir } = await settings()
 
   if (shouldPublish()) {
-    configuredDefaultProjectDir = dir?.trim() || ''
+    configuredDefaultProjectDir = activeRoot ? '' : dir?.trim() || ''
   }
 
   return configuredDefaultProjectDir

@@ -52,7 +52,8 @@
 - [消息会话复用本机成品交付](15-messaging-local-deliverables-plan.md)（已实现，定向测试通过；微信、飞书、企微、钉钉真实收发待人工验收）
 - [连接器 MCP 适配实施计划](06-mcp-connectors-plan.md)（M01～M05 实现完成；M06 模拟回归与文档收尾完成，真实元景连接和模型调用待人工验收）
 - [聊天区工作目录选择](07-chat-workdir.md)（已实现，定向检查通过；真实账号使用待人工验收）
-- [每个对话独立工作文件夹](13-conversation-folders-plan.md)（对齐 UniWork；第一步桌面新对话已实现，实机检查待验收；第二步待消息接入合并后再做）
+- [每个对话独立工作文件夹](13-conversation-folders-plan.md)（桌面新对话已实现；消息平台与定时任务目录见第 17 篇）
+- [默认工作空间、代码开发目录、消息平台与定时任务目录](17-workspace-locations-plan.md)（已实现，定向测试通过，真机待验收）
 - [个人微信扫码连接](08-weixin-qr.md)（已实现，模拟测试通过；真实扫码待人工验收）
 - [技能市场与个人云盘](cloud-and-market-repair.md)（已接通功能、数据边界及待验收项）
 - [桌面本地版整理与原生登录改造记录](04-desktop-consolidation-plan.md)（R01～R11 与构建夹具修复已推送；记录当时的受控验证、已知失败与人工待验收项）

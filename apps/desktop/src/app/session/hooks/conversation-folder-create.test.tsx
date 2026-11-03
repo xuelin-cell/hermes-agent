@@ -1,6 +1,7 @@
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { $selectedWorkspaceMode } from '@/store/workspace-category'
 import { createClientSessionState } from '@/lib/chat-runtime'
 import { $activeGatewayProfile, $newChatConnectionId, $newChatProfile, $newChatRoute } from '@/store/profile'
 import { $projectScope, ALL_PROJECTS } from '@/store/project-scope'
@@ -95,6 +96,7 @@ function createParams(requestGateway: ReturnType<typeof mountActions>['requestGa
 }
 
 beforeEach(() => {
+  $selectedWorkspaceMode.set('work')
   _resetSessionOwnerHintsForTests()
   $newChatRoute.set(null)
   $newChatProfile.set('default')
@@ -115,6 +117,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  $selectedWorkspaceMode.set(null)
   cleanup()
   setConnection(null)
   setNewChatWorkspaceTarget(undefined)
@@ -177,6 +180,7 @@ describe('未选目录的新对话使用专属文件夹', () => {
   })
 
   it('当前目录不是默认工作区（例如项目目录）时不建', async () => {
+    $selectedWorkspaceMode.set('codex')
     setCurrentCwdTransient('D:\\repo')
     const { result, requestGateway } = mountActions()
 

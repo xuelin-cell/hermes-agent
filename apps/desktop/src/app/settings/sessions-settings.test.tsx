@@ -4,12 +4,25 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { listAllProfileSessions, setSessionArchived } from '@/hermes'
 import { en } from '@/i18n/en'
-import { $messagingSessions, $sessions, setMessagingSessions, setSessions } from '@/store/session'
+import { notify } from '@/store/notifications'
+import {
+  $messagingSessions,
+  $sessions,
+  getConfiguredDefaultProjectDir,
+  setMessagingSessions,
+  setSessions,
+  syncConfiguredDefaultProjectDir
+} from '@/store/session'
 import type { SessionInfo } from '@/types/hermes'
 
 import { SessionsSettings } from './sessions-settings'
 
 vi.mock('@/i18n', () => ({ useI18n: () => ({ t: en }) }))
+
+vi.mock('@/store/notifications', async importOriginal => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  notify: vi.fn()
+}))
 
 vi.mock('@/hermes', async importOriginal => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -84,6 +97,73 @@ describe('SessionsSettings default directory (desktop-mt)', () => {
     expect(await screen.findByText(en.settings.sessions.defaultsTo(workspace))).toBeTruthy()
     expect(screen.getByText(/each new conversation gets its own folder/)).toBeTruthy()
     expect(screen.queryByText(en.settings.sessions.defaultDirDesc)).toBeNull()
+  })
+
+  it.each(['Restart now', 'Later', 'already active'])('保存后按需重启：%s', async choice => {
+    mountBridge(true)
+    const settings = window.hermesDesktop!.settings
+    const next = 'D:/work'
+    Object.assign(settings, {
+      getDefaultProjectDir: async () => ({ dir: next, activeRoot: workspace, defaultLabel: workspace }),
+      pickDefaultProjectDir: vi.fn(async () => ({ dir: next })),
+      setDefaultProjectDir: async () => ({
+        dir: next,
+        activeRoot: workspace,
+        restartRequired: choice !== 'already active'
+      }),
+      restartForDefaultProjectDir: vi.fn()
+    })
+    await syncConfiguredDefaultProjectDir()
+    render(<SessionsSettings subpage="default-directory" />)
+    fireEvent.click(await screen.findByRole('button', { name: en.settings.sessions.change }))
+    await waitFor(() => expect(settings.pickDefaultProjectDir).toHaveBeenCalled())
+    expect(getConfiguredDefaultProjectDir()).toBe('')
+
+    if (choice === 'already active') {
+      expect(screen.queryByRole('dialog')).toBeNull()
+    } else {
+      expect(screen.getByRole('dialog').textContent).toContain(next)
+      expect(screen.getByRole('dialog').textContent).toContain(workspace)
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: choice })))
+    }
+
+    expect(settings.restartForDefaultProjectDir).toHaveBeenCalledTimes(choice === 'Restart now' ? 1 : 0)
+  })
+
+  it('选的位置不可用时提示实际目录，不保存也不提示重启', async () => {
+    mountBridge(true)
+    const settings = window.hermesDesktop!.settings
+    const saved = 'D:/saved'
+    Object.assign(settings, {
+      getDefaultProjectDir: async () => ({ dir: saved, activeRoot: saved, defaultLabel: workspace }),
+      pickDefaultProjectDir: async () => ({ dir: 'E:/readonly' }),
+      setDefaultProjectDir: async () => ({ dir: saved, activeRoot: saved, restartRequired: false, unusable: true })
+    })
+    render(<SessionsSettings subpage="default-directory" />)
+    fireEvent.click(await screen.findByRole('button', { name: en.settings.sessions.change }))
+    await waitFor(() => expect(notify).toHaveBeenCalled())
+    const { message } = vi.mocked(notify).mock.lastCall![0]
+    expect(message).toContain('E:/readonly')
+    expect(message).toContain(saved)
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getAllByText(saved).length).toBeGreaterThan(0)
+  })
+
+  it('已保存的位置启动时不可用，页面一直显示实际目录，改选后消失', async () => {
+    mountBridge(true)
+    const settings = window.hermesDesktop!.settings
+    const saved = 'E:/readonly'
+    Object.assign(settings, {
+      getDefaultProjectDir: async () => ({ dir: saved, activeRoot: workspace, defaultLabel: workspace, unusable: true }),
+      pickDefaultProjectDir: async () => ({ dir: 'D:/work' }),
+      setDefaultProjectDir: async () => ({ dir: 'D:/work', activeRoot: workspace, restartRequired: true })
+    })
+    render(<SessionsSettings subpage="default-directory" />)
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toContain(saved)
+    expect(alert.textContent).toContain(workspace)
+    fireEvent.click(screen.getByRole('button', { name: en.settings.sessions.change }))
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
   })
 
   it('没有对话文件夹接口时保留原说明', async () => {
