@@ -423,3 +423,10 @@
     transform: translate(-50%, -50%);
   }
 }
+
+/* Match HexAgent's thinking-content independently of answer typography. */
+:root[data-hermes-theme='uniwork'] [data-slot='aui_assistant-message-content'] .aui-md[data-slot='aui_reasoning-text'],
+:root[data-hermes-theme='uniwork'] [data-slot='aui_assistant-message-content'] .aui-md[data-slot='aui_reasoning-text'] * {
+  font-size: 14px;
+  line-height: 1.7;
+}
