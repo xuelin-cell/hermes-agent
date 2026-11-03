@@ -493,9 +493,9 @@ declare global {
       sanitizeWorkspaceCwd: (cwd?: null | string) => Promise<{ cwd: string; sanitized: boolean }>
       settings: {
         restartForDefaultProjectDir?: () => Promise<void>
-        getDefaultProjectDir: () => Promise<{ activeRoot?: string; defaultLabel: string; dir: null | string; resolvedCwd: string }>
+        getDefaultProjectDir: () => Promise<{ activeRoot?: string; defaultLabel: string; dir: null | string; resolvedCwd: string; unusable?: boolean }>
         pickDefaultProjectDir: () => Promise<{ canceled: boolean; dir: null | string }>
-        setDefaultProjectDir: (dir: null | string) => Promise<{ dir: null | string; activeRoot?: string; restartRequired?: boolean }>
+        setDefaultProjectDir: (dir: null | string) => Promise<{ dir: null | string; activeRoot?: string; restartRequired?: boolean; unusable?: boolean }>
       }
       zoom?: {
         get: () => Promise<{ level: number; percent: number }>

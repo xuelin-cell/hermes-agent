@@ -16,6 +16,8 @@ registerPluginLocales(SCOPE, {
       'Each new conversation gets its own folder inside the default workspace. It cannot be changed after the conversation starts.',
     settingsHint:
       'New conversations work in this folder unless you pick another. Leave it unset to use the default workspace of this account, where each new conversation gets its own folder.',
+    unusable: (dir: string, root: string) =>
+      `This location can't be used: ${dir}. Files still go to ${root}. Choose a folder you can write to.`,
     restartTitle: 'Default workspace saved. Restart to apply',
     restartBody: (dir: string, root: string) =>
       `New location: ${dir}. Until restart, new conversations use ${root}. Restarting stops this account’s running tasks.`,
@@ -44,6 +46,8 @@ registerPluginLocales(SCOPE, {
     folderHint: '每个新对话会在默认工作区中新建一个文件夹，Agent 在其中读写文件。开始对话后不能更改。',
     settingsHint:
       '新对话默认在此文件夹中工作，除非你另选目录。留空则使用当前账号的默认工作区，每个新对话会在其中新建一个文件夹。',
+    unusable: (dir: string, root: string) =>
+      `这个位置不能用：${dir}。文件仍保存在：${root}。请换一个可以写入的文件夹。`,
     restartTitle: '默认工作空间已保存，重启后生效',
     restartBody: (dir: string, root: string) =>
       `新位置：${dir}。重启前，新会话仍保存在：${root}。立即重启会停止当前账号正在运行的任务。`,
@@ -71,6 +75,8 @@ registerPluginLocales(SCOPE, {
     folderHint: '每個新對話會在預設工作區中新建一個資料夾，Agent 在其中讀寫檔案。開始對話後不能變更。',
     settingsHint:
       '新對話預設在此資料夾中工作，除非您另選目錄。留空則使用目前帳號的預設工作區，每個新對話會在其中新建一個資料夾。',
+    unusable: (dir: string, root: string) =>
+      `這個位置不能用：${dir}。檔案仍儲存在：${root}。請換一個可以寫入的資料夾。`,
     restartTitle: '預設工作空間已儲存，重新啟動後生效',
     restartBody: (dir: string, root: string) =>
       `新位置：${dir}。重新啟動前，新對話仍儲存在：${root}。立即重新啟動會停止目前帳號正在執行的工作。`,

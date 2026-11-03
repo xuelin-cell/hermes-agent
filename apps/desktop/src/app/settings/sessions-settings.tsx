@@ -331,6 +331,7 @@ function DefaultProjectDirSetting() {
   const accountWorkspace = typeof window.hermesDesktop?.createConversationFolder === 'function'
   const [dir, setDir] = useState<null | string>(null)
   const [restartRoot, setRestartRoot] = useState('')
+  const [unusableRoot, setUnusableRoot] = useState('')
   const [fallback, setFallback] = useState<string>('')
   const [busy, setBusy] = useState(false)
 
@@ -355,6 +356,7 @@ function DefaultProjectDirSetting() {
 
       setDir(result.dir)
       setFallback(result.defaultLabel)
+      setUnusableRoot(result.unusable ? result.activeRoot || result.defaultLabel : '')
 
       if (!accountWorkspace) {
         applyConfiguredDefaultProjectDir(result.dir)
@@ -383,7 +385,15 @@ function DefaultProjectDirSetting() {
       }
 
       const result = await settings.setDefaultProjectDir(picked.dir)
+
+      if (result.unusable) {
+        notify({ kind: 'error', message: workdirCopy('unusable', picked.dir, result.activeRoot || fallback) })
+
+        return
+      }
+
       setDir(result.dir)
+      setUnusableRoot('')
 
       if (accountWorkspace) {
         if (result.restartRequired) {
@@ -398,7 +408,7 @@ function DefaultProjectDirSetting() {
     } finally {
       setBusy(false)
     }
-  }, [accountWorkspace, s])
+  }, [accountWorkspace, fallback, s, workdirCopy])
 
   const clear = useCallback(async () => {
     const settings = window.hermesDesktop?.settings
@@ -412,6 +422,7 @@ function DefaultProjectDirSetting() {
     try {
       const result = await settings.setDefaultProjectDir(null)
       setDir(null)
+      setUnusableRoot('')
 
       if (accountWorkspace) {
         if (result.restartRequired) {
@@ -460,6 +471,11 @@ function DefaultProjectDirSetting() {
         description={dir || s.defaultsTo(fallback || '~')}
         title={dir ? dir : s.notSet}
       />
+      {dir && unusableRoot && (
+        <p className="mt-2 text-[length:var(--conversation-caption-font-size)] text-destructive" role="alert">
+          {workdirCopy('unusable', dir, unusableRoot)}
+        </p>
+      )}
     </div>
   )
 }

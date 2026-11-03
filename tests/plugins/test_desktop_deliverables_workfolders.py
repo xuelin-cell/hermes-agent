@@ -1,6 +1,8 @@
 """验证桌面工作根对本机消息和定时任务生效。"""
 import copy
 import json
+import threading
+from pathlib import Path
 
 import pytest
 
@@ -69,6 +71,40 @@ def test_skip_and_fallback(routes):
             config.write_text(malformed)
         mod.route(platform="weixin", task_id="wx")
         assert get_session_cwd("wx") is None
+
+
+@pytest.mark.parametrize("known", [False, True])
+def test_slow_disk_does_not_block_requests(routes, monkeypatch, known):
+    """建目录卡住时，其它会话的模型请求不用等；新任务和已登记任务都一样。"""
+    _, mod, _, root, _ = routes
+    mod.route(platform="feishu", task_id="fs")
+    if known:
+        mod.route(platform="weixin", task_id="wx")
+    entered, release = threading.Event(), threading.Event()
+    real_mkdir = Path.mkdir
+
+    def slow_mkdir(self, *args, **kwargs):
+        """模拟很慢的盘：等测试放行后才真正建目录。"""
+        entered.set()
+        assert release.wait(5)
+        return real_mkdir(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", slow_mkdir)
+    results = []
+    router = threading.Thread(target=mod.route, kwargs={"platform": "weixin", "task_id": "wx"})
+    router.start()
+    assert entered.wait(5)
+    request = threading.Thread(target=lambda: results.append(
+        mod.rewrite_prompt({"system": "Current working directory: OLD"}, "fs")))
+    request.start()
+    request.join(2)
+    finished_while_stuck = not request.is_alive()
+    release.set()
+    router.join(5)
+    request.join(5)
+    assert finished_while_stuck
+    assert results[0]["system"] == f"Current working directory: {root / 'IM'}"
+    assert mod._assigned["wx"] == root / "IM"
 
 
 @pytest.mark.parametrize("blocks", [True, False])

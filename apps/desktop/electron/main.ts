@@ -243,7 +243,7 @@ import { LocalStartupError, showLocalStartupFailure } from './entry_local/startu
 import { createUniAgentGateBindingUpdate } from './entry_local/uniagentgate-control'
 import { installUniAgentGateIpc } from './entry_local/uniagentgate-ipc'
 import { refreshUniSearch } from './entry_local/unisearch'
-import { migrateTerminalCwd, prepareWorkRoot, workRootFor } from './entry_local/work-root'
+import { migrateTerminalCwd, prepareWorkRoot, usableWorkRoot } from './entry_local/work-root'
 import { createAmbientClaimArbiter } from './event-dedupe'
 import { openExternalUrl as externalOpen, type ExternalOpenDeps, reportPreOpenStatFailure } from './external-open'
 import {
@@ -829,7 +829,7 @@ installPreviewExportIpc(
 // desktop-mt: 启动时固定工作根；此处早于桌面日志缓冲区初始化。
 migrateTerminalCwd(ACCOUNT_RUNTIME.home, ACCOUNT_DESKTOP_STATE.defaultProject, console.warn)
 
-const ACCOUNT_WORK_ROOT = prepareWorkRoot({
+const { root: ACCOUNT_WORK_ROOT, unusableDir: ACCOUNT_UNUSABLE_DIR } = prepareWorkRoot({
   defaultDir: readDefaultProjectDir(),
   workspace: ACCOUNT_RUNTIME.workspace,
   home: ACCOUNT_RUNTIME.home,
@@ -18111,18 +18111,25 @@ ipcMain.handle('hermes:openPreviewInBrowser', async (_event, url) => {
 // settings mount and seeds the value into the picker; writing back persists
 // it via writeDefaultProjectDir so resolveHermesCwd picks it up on the next
 // application startup.
-ipcMain.handle('hermes:setting:defaultProjectDir:get', async () => ({
-  dir: readDefaultProjectDir(),
-  activeRoot: ACCOUNT_WORK_ROOT,
-  // desktop-mt: 未设置时实际使用账号工作区（见 resolveHermesCwd），不是系统用户目录。
-  defaultLabel: ACCOUNT_RUNTIME.workspace,
-  resolvedCwd: resolveHermesCwd()
-}))
+ipcMain.handle('hermes:setting:defaultProjectDir:get', async () => {
+  const dir = readDefaultProjectDir()
+
+  return {
+    dir,
+    activeRoot: ACCOUNT_WORK_ROOT,
+    // desktop-mt: 已保存的位置在本次启动时不可用，设置页据此提示实际仍在哪。
+    unusable: Boolean(dir) && dir === ACCOUNT_UNUSABLE_DIR,
+    // desktop-mt: 未设置时实际使用账号工作区（见 resolveHermesCwd），不是系统用户目录。
+    defaultLabel: ACCOUNT_RUNTIME.workspace,
+    resolvedCwd: resolveHermesCwd()
+  }
+})
 
 ipcMain.handle('hermes:workspace:sanitize', async (_event, cwd) => sanitizeWorkspaceCwd(cwd))
 
 ipcMain.handle('hermes:setting:defaultProjectDir:set', async (_event, dir) => {
   const next = typeof dir === 'string' && dir.trim() ? dir.trim() : null
+  let nextRoot = ACCOUNT_RUNTIME.workspace
 
   if (next) {
     try {
@@ -18132,13 +18139,22 @@ ipcMain.handle('hermes:setting:defaultProjectDir:set', async (_event, dir) => {
     } catch (error) {
       throw new Error(`Could not create directory: ${error.message}`)
     }
+
+    try {
+      nextRoot = usableWorkRoot(next, isPackagedInstallPath)
+    } catch (error) {
+      // desktop-mt: 不可用的位置不保存，也就不会提示重启；重启后只会退回原目录。
+      rememberLog(`[settings] default project dir unusable: ${error.message}`)
+
+      return { dir: readDefaultProjectDir(), activeRoot: ACCOUNT_WORK_ROOT, unusable: true, restartRequired: false }
+    }
   }
 
   writeDefaultProjectDir(next)
 
-  const restartRequired = path.relative(ACCOUNT_WORK_ROOT, workRootFor(next, ACCOUNT_RUNTIME.workspace)) !== ''
+  const restartRequired = path.relative(ACCOUNT_WORK_ROOT, nextRoot) !== ''
 
-  return { dir: next, activeRoot: ACCOUNT_WORK_ROOT, restartRequired }
+  return { dir: next, activeRoot: ACCOUNT_WORK_ROOT, unusable: false, restartRequired }
 })
 
 ipcMain.handle('hermes:setting:defaultProjectDir:restart', event => {

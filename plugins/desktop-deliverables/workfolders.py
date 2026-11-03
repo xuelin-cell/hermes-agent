@@ -16,6 +16,25 @@ _cwd_line = re.compile(r"(?m)^Current working directory: .*$")
 _log = logging.getLogger(__name__)
 
 
+def _open_folder(platform):
+    """读账号工作根并建好本次目录；会碰磁盘，不能在持锁时调用。"""
+    try:
+        config = json.loads((get_default_hermes_root() / "desktop-work-root.json").read_text("utf-8"))
+        roots = [config["root"], config["fallback"]]
+        if not all(isinstance(root, str) and Path(root).is_absolute() for root in roots):
+            return None
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    for root in dict.fromkeys(roots):
+        folder = Path(root) / ("cron" if platform == "cron" else "IM")
+        try:
+            (folder / ".tmp").mkdir(parents=True, exist_ok=True)
+            return folder
+        except (OSError, ValueError) as exc:
+            _log.warning("无法创建工作目录: %s", exc)
+    return None
+
+
 def route(*, platform="", task_id="", **_):
     """每个本机任务首次进入对应目录，以后保留工具切换过的目录。"""
     if not task_id or (platform not in IM and platform not in ("cron", "subagent")):
@@ -32,7 +51,9 @@ def route(*, platform="", task_id="", **_):
             if not inherited or Path(inherited) not in _assigned.values():
                 return
             folder = Path(inherited)
-        elif folder:
+    # 磁盘操作放在锁外：盘很慢或已断开时只有这个任务等，其它会话的模型请求不受影响。
+    if platform != "subagent":
+        if folder:
             try:
                 folder.mkdir(parents=True, exist_ok=True)
             except OSError as exc:
@@ -41,23 +62,11 @@ def route(*, platform="", task_id="", **_):
         else:
             if platform == "cron" and get_session_cwd(task_id):
                 return
-            try:
-                config = json.loads((get_default_hermes_root() / "desktop-work-root.json").read_text("utf-8"))
-                roots = [config["root"], config["fallback"]]
-                if not all(isinstance(root, str) and Path(root).is_absolute() for root in roots):
-                    return
-            except (OSError, ValueError, KeyError, TypeError):
-                return
-            for root in dict.fromkeys(roots):
-                folder = Path(root) / ("cron" if platform == "cron" else "IM")
-                try:
-                    (folder / ".tmp").mkdir(parents=True, exist_ok=True)
-                    break
-                except (OSError, ValueError) as exc:
-                    _log.warning("无法创建工作目录: %s", exc)
-            else:
+            folder = _open_folder(platform)
+            if not folder:
                 return
             register_task_env_overrides(task_id, {"cwd": str(folder), "cwd_source": "session"})
+    with _lock:
         _assigned[task_id] = folder
         _assigned.move_to_end(task_id)
         if len(_assigned) > 512:

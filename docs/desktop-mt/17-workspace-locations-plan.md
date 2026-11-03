@@ -12,6 +12,7 @@
 - 现有 `before_turn` 对消息平台登记后会提前返回。目录路由钩子因此直接复用 `scratch_reminder`，向本轮消息提供实际的中间文件目录。定时任务仍使用单独的共享目录提醒。
 - 按本篇范围分组验证。Electron 与页面测试共 87 项通过（同一用例的复测只计一次）；交付插件及请求中间件测试共 75 项通过、1 项跳过。Electron TypeScript 项目检查通过。完整桌面类型检查仍在聊天侧栏缺少 `emptyState`、邮件页面调用参数不足两处报错。
 - 当前验证使用临时目录、受控请求和界面组件。真实账号跨盘切换、完整退出重启、网关收发、定时执行及打包版行为留给文末的真机验收。
+- 真机验收后调整（覆盖下文相应内容）：设了默认位置不再加账号目录，所选文件夹本身就是工作根，已有的 `<默认位置>\<12 位>\` 留在原处不搬。保存和启动时各试建一次文件夹确认可写；保存时不可用就不保存并提示实际目录，启动时不可用就退回账号工作区并在设置页提示。目录联接解析成实际路径。插件建目录不再占用共用的锁。
 
 - 按 P1～P5 顺序做，全部完成后合成**一个**本地提交，包括本文档。**不推送**，推送要等 Stan 明确同意。
 - 产品代码预计 200～300 行（不含测试）。明显超出时先停下报告，不要自行扩大范围。
@@ -27,21 +28,20 @@
 
 | 用途 | 没设默认位置 | 设了默认位置 |
 |---|---|---|
-| 日常办公、学习 | `<账号>\workspace\YYYYMMDD-HHmmss\` | `<默认位置>\<账号>\YYYYMMDD-HHmmss\` |
-| 代码开发（没选项目） | `<账号>\workspace\UniWorkSpace\` | `<默认位置>\<账号>\UniWorkSpace\` |
-| 消息平台 | `<账号>\workspace\IM\` | `<默认位置>\<账号>\IM\` |
-| 定时任务 | `<账号>\workspace\cron\` | `<默认位置>\<账号>\cron\` |
+| 日常办公、学习 | `<账号>\workspace\YYYYMMDD-HHmmss\` | `<默认位置>\YYYYMMDD-HHmmss\` |
+| 代码开发（没选项目） | `<账号>\workspace\UniWorkSpace\` | `<默认位置>\UniWorkSpace\` |
+| 消息平台 | `<账号>\workspace\IM\` | `<默认位置>\IM\` |
+| 定时任务 | `<账号>\workspace\cron\` | `<默认位置>\cron\` |
 
-- `<账号>` 没设时是现有的 `%LOCALAPPDATA%\uniworker\<12 位>`。设了默认位置时，只加一层 12 位账号目录名，**不加 `workspace` 层**。
-- 下文把这一组四类目录的上一层叫“工作根”：没设时是 `<账号>\workspace`，设了是 `<默认位置>\<12 位>`。
-- 账号目录名取 `path.basename(path.dirname(context.workspace))`，不要用 `context.id`（那是完整摘要）。
+- `<账号>` 是现有的 `%LOCALAPPDATA%\uniworker\<12 位>`。设了默认位置时，**不加账号目录，也不加 `workspace` 层**。两个账号选同一个文件夹时，文件会混在一起。
+- 下文把这一组四类目录的上一层叫“工作根”：没设时是 `<账号>\workspace`，设了是 `<默认位置>`。
 
 ## 已确定的规则
 
 1. 默认位置改完**重启才生效**。启动时固定一次工作根，运行中不变。保存后弹提示。
 2. 日常办公、学习每个对话一个日期文件夹；手选目录直接用，不新建。
 3. 代码开发手选项目才进项目；没选一律进 `UniWorkSpace`，多个会话共用，不建日期文件夹。
-4. **不做任何 Git 仓库判断。** 默认位置是仓库时，账号目录也建在仓库里，不处理。
+4. **不做任何 Git 仓库判断。** 默认位置是仓库时，四类目录也建在仓库里，不处理。
 5. 消息平台、定时任务**不做会话隔离**：所有平台和会话共用 `IM\`，所有任务和每次运行共用 `cron\`。
 6. 手选过目录的定时任务继续用手选目录。
 7. 专家和主助手走同一套规则。专家自己配置里已有 `terminal.cwd` 的行为不变（目前 28 个专家都没设）。
@@ -51,7 +51,7 @@
 - 消息平台、定时任务的会话隔离，不改网关进程目录（`desktop-environment.ts` 的 `TERMINAL_CWD` 不动）
 - 沙箱、限制写到工作目录外
 - 迁移旧文件和旧会话，补写旧会话的目录
-- 保存时的目录校验、路径长度检查、盘不可用提示
+- 路径长度检查；盘断开时的提示（目录不存在时设置页显示未设置，并使用账号工作区）
 - 修改设置页的说明文字（`settingsHint` 虽已过时，也不改）
 - 云盘目录（`ACCOUNT_DRIVE_MCP`、`ACCOUNT_DRIVE_ARTIFACT`）继续用 `ACCOUNT_RUNTIME.workspace`
 - 新建工作空间入口、任务页打开文件夹按钮、临时任务分组
@@ -84,11 +84,11 @@ export function prepareWorkRoot(options: {
 }): string
 ```
 
-**`workRootFor`：** `defaultDir ? path.join(defaultDir, path.basename(path.dirname(workspace))) : workspace`。
+**`usableWorkRoot`（替代最初的 `workRootFor`）：** 解析目录联接；命中 `blocked` 或试建文件夹失败时报错；成功返回实际路径。
 
 **`prepareWorkRoot`：**
-- 目标被 `blocked` 判定（打包安装目录）时，退回 `workspace`。
-- `mkdirSync(root, { recursive: true })` 失败时记日志并退回 `workspace`。
+- 没设默认位置时用 `workspace`。
+- 默认位置不可用时记日志，退回 `workspace`，并通过 `unusableDir` 告诉设置页。
 - 向 `path.join(home, WORK_ROOT_FILE)` 写 `{"root": 生效工作根, "fallback": workspace}`。写失败只记日志，不阻止启动。
 
 **`migrateTerminalCwd`（处理主助手的 `<home>\config.yaml`，不碰 `profiles\`）：**
@@ -118,7 +118,8 @@ export function prepareWorkRoot(options: {
 4. `hermes:setting:defaultProjectDir:get`（约 18018 行）多返回 `activeRoot: ACCOUNT_WORK_ROOT`。`dir` 仍是已保存的值，给设置页显示。
 5. `hermes:setting:defaultProjectDir:set`（约 18027 行）：
    - 修复盘符根目录：现在 `mkdirSync('D:\\', { recursive: true })` 实测报 EPERM。改为目录已存在就不建。
-   - 返回 `{ dir, activeRoot, restartRequired }`。`restartRequired` 是“`workRootFor(next, workspace)` 与 `ACCOUNT_WORK_ROOT` 不同”，比较时 Windows 不区分大小写。
+   - 位置不可用时不保存，返回 `{ unusable: true, restartRequired: false }`。
+   - 否则返回 `{ dir, activeRoot, restartRequired }`。`restartRequired` 是“新工作根与 `ACCOUNT_WORK_ROOT` 不同”，比较时 Windows 不区分大小写。
 6. 更新 18014 行“no app restart needed”这条已不正确的注释。
 
 **新增重启接口 `hermes:setting:defaultProjectDir:restart`。不要用现有的 `hermes:app:relaunch`，它绕过账号安全退出。**
@@ -171,9 +172,9 @@ if (mode === 'logout') {
 ### 测试
 
 新增 `electron/entry_local/work-root.test.ts`：
-- 没设时工作根是 `workspace`；设了是 `<默认位置>\<12 位>`，没有 `workspace` 层。
-- 盘符根目录 `D:\` 算出 `D:\<12 位>`。
-- 建目录失败、命中 blocked 时退回 `workspace`，插件文件内容正确。
+- 没设时工作根是 `workspace`；设了就是默认位置本身，不加账号目录和 `workspace` 层，也不留下检查用的文件夹。
+- 目录联接解析成实际路径。
+- 试建失败、命中 blocked 时退回 `workspace`，返回不可用的位置，插件文件内容正确。
 - `migrateTerminalCwd` 覆盖上表每一行；验证其他配置和注释还在；验证 `profiles\` 不被改动。
 
 修改 `electron/entry_local/conversation-folder.test.ts`：
@@ -447,7 +448,8 @@ HERMES_PYTHON=<venv>/Scripts/python.exe bash scripts/run_tests.sh tests/plugins/
 | 项目 | 验证内容 |
 |---|---|
 | 默认位置 | 设到 D 盘：弹窗内容正确；点“稍后”后新对话仍在旧目录；重启后四类目录都到位 |
-| 盘符根目录 | 可以选 `D:\`，文件夹建在 `D:\<12 位>\` |
+| 盘符根目录 | 可以选 `D:\`，四类目录直接建在 `D:\` 下 |
+| 不可用的位置 | 选只读目录时提示实际目录、不弹重启；已保存的位置变成只读后重启，设置页显示同样的提示 |
 | 立即重启 | 不掉登录；消息平台重启后恢复；开发版和打包版都走通 |
 | 清理旧值 | 主账号的 `terminal.cwd = D:\桌面\test1` 被删除，`config.yaml` 其他内容不变，默认位置仍是 `D:\桌面\test1` |
 | 专家 | 专家对话和主助手一样按日期建文件夹 |
@@ -456,6 +458,6 @@ HERMES_PYTHON=<venv>/Scripts/python.exe bash scripts/run_tests.sh tests/plugins/
 | 消息平台 | 微信、飞书的文件进 `IM\`；发文件回聊天正常；保存平台配置触发重启后目录仍正确 |
 | 定时任务 | 网关开着和关着各跑一次，文件都进 `cron\`；手选目录的任务不受影响 |
 | 系统提示 | 实际发出的请求里，目录行已替换；让 AI 用绝对路径写一个文件，确认落在对应文件夹 |
-| 账号隔离 | 两个账号选同一默认位置，文件分开 |
+| 账号 | 没设默认位置时两个账号的文件分开；选同一默认位置时文件共用同一文件夹 |
 
 Mac、U 盘、网络盘本次都未验证。

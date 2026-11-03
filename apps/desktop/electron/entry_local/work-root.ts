@@ -9,12 +9,21 @@ import { writeSecretFileAtomic } from '../hardening'
 export const CODE_FOLDER = 'UniWorkSpace'
 export const WORK_ROOT_FILE = 'desktop-work-root.json'
 
-/** 自选位置下只追加账号短标识。 */
-export function workRootFor(defaultDir: null | string, workspace: string): string {
-  return defaultDir ? path.join(defaultDir, path.basename(path.dirname(workspace))) : workspace
+/** 默认位置本身就是工作根；试建一个文件夹确认可用，只读、无权限都会在这里报错。 */
+export function usableWorkRoot(dir: string, blocked: (dir: string) => boolean): string {
+  // 对话文件夹只在真实目录下创建，所以目录联接要先解析成实际路径。
+  const root = fs.realpathSync(dir)
+
+  if (blocked(root)) {
+    throw new Error('默认位置在安装目录内')
+  }
+
+  fs.rmdirSync(fs.mkdtempSync(path.join(root, '.uniwork-check-')))
+
+  return root
 }
 
-/** 启动时固定工作根并告知同账号插件。 */
+/** 启动时固定工作根并告知同账号插件；默认位置不可用时退回账号工作区，并记下它供设置页提示。 */
 export function prepareWorkRoot({
   defaultDir,
   workspace,
@@ -27,18 +36,17 @@ export function prepareWorkRoot({
   home: string
   blocked: (dir: string) => boolean
   log: (message: string) => void
-}): string {
-  let root = workRootFor(defaultDir, workspace)
+}): { root: string; unusableDir: null | string } {
+  let root = workspace
+  let unusableDir: null | string = null
 
-  try {
-    if (blocked(root)) {
-      throw new Error('默认位置在安装目录内')
+  if (defaultDir) {
+    try {
+      root = usableWorkRoot(defaultDir, blocked)
+    } catch (error) {
+      log(String(error))
+      unusableDir = defaultDir
     }
-
-    fs.mkdirSync(root, { recursive: true })
-  } catch (error) {
-    log(String(error))
-    root = workspace
   }
 
   try {
@@ -49,7 +57,7 @@ export function prepareWorkRoot({
     log(String(error))
   }
 
-  return root
+  return { root, unusableDir }
 }
 
 /** 仅迁移主账号独立映射中的旧工作目录，先保存有效偏好，再删除旧键。 */
