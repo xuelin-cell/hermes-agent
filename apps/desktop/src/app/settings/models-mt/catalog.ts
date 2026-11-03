@@ -346,7 +346,8 @@ export function endpointWrite(row: ModelRow): EndpointWrite {
     payload.api_key = ''
   }
 
-  if (original ? draft.vision !== original.vision || model !== original.model : draft.vision) {
+  // 新建时不能看图也写明 false：没写时 Hermes 选看图模型会把它当成能看，切模型后拿它“描述”历史图片。
+  if (!original || draft.vision !== original.vision || model !== original.model) {
     write.vision = draft.vision
   }
 

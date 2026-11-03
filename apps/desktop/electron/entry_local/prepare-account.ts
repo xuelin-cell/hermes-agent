@@ -6,6 +6,7 @@ import { prepareAccountSoul } from './account-soul'
 import { enableDesktopPlugins } from './desktop-plugins-config'
 import { mergeMaasModelConfig } from './model-config'
 import { writeAccountMaasKey } from './model-key'
+import { markModelVisionFlags } from './model-vision-flags'
 import { LocalStartupError } from './startup-failure'
 import { updateUniAgentGateConfig } from './uniagentgate-config'
 import { updateUniaiToolkitConfig } from './uniai-toolkit-config'
@@ -55,6 +56,7 @@ export function prepareLocalEnvironment(session: LoginSession, roots: AccountRoo
     // 和套餐同一条规则：查询失败时不改账号文件。
     if (result.status !== 'failed') {
       enableDesktopPlugins(account.home)
+      markModelVisionFlags(account.home)
     }
   } catch (error) {
     throw new LocalStartupError('config', error)
