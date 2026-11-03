@@ -63,7 +63,7 @@ import {
   registerGatewaySwitchLifecycle
 } from '@/store/gateway-switch'
 import { watchLocalRuntimeJobs } from '@/store/local-runtime-jobs'
-import { notify, notifyError, RECOVERY_ACTIONS } from '@/store/notifications'
+import { $notifications, dismissNotification, notify, notifyError, RECOVERY_ACTIONS } from '@/store/notifications'
 import { loadPoolLimits } from '@/store/pool-limits'
 import {
   $activeGatewayProfile,
@@ -118,6 +118,8 @@ import { useDefaultProfilePreference } from './use-default-profile-preference'
 // flaps, sleep/wake, Wi‑Fi blips that self-heal in 1–3 minutes — never even
 // toast. Chat stays readable/draftable the whole time either way.
 const RECONNECT_ESCALATE_AFTER_MS = 300_000
+// The escalation toast never times out, so the reconnect that disproves it must remove it.
+const GATEWAY_LOST_NOTICE_ID = 'gateway-connection-lost'
 
 // Bound for the sleep/wake liveness probe (see reconnectNow): long enough to
 // ride out a busy-but-healthy backend's scheduling jitter, short enough that a
@@ -564,6 +566,7 @@ export function useGatewayBoot({
             // Non-blocking: chat stays readable/draftable while we keep retrying.
             // Settings / Gateway menu remain reachable without a modal lockout.
             notify({
+              id: GATEWAY_LOST_NOTICE_ID,
               kind: 'warning',
               title: translateNow('boot.errors.gatewayConnectionLost'),
               message: translateNow('boot.errors.gatewayConnectionLostDetail'),
@@ -1054,6 +1057,15 @@ export function useGatewayBoot({
         livenessProbeFailures = 0
         clearReconnectTimer()
         clearLivenessReprobeTimer()
+
+        // The backoff resets only once this open proves stable, but the "lost its
+        // connection" toast is false from now on (also after "Reconnect now", which
+        // clears `escalated` first); a later drop may escalate again.
+        escalated = false
+
+        if ($notifications.get().some(item => item.id === GATEWAY_LOST_NOTICE_ID)) {
+          dismissNotification(GATEWAY_LOST_NOTICE_ID)
+        }
 
         // A revalidate-driven reconnect can rebuild the backend in place when the
         // cached remote was found dead, which re-drives the boot-progress overlay.

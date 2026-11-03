@@ -2,6 +2,7 @@ import { act, cleanup, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { DesktopBootstrapState, DesktopConnectionsRegistry } from '@/global'
+import { translateNow } from '@/i18n'
 import { createClientSessionState } from '@/lib/chat-runtime'
 import { BACKEND_BOOT_WAIT_TIMEOUT_MS } from '@/lib/with-timeout'
 import { $desktopBoot } from '@/store/boot'
@@ -1571,6 +1572,45 @@ describe('useGatewayBoot remote reconnect loop (real hook, fake socket)', () => 
     expect($gatewayState.get()).not.toBe('open')
     // Still retrying.
     expect(FakeWebSocket.instances.length).toBeGreaterThan(1)
+  })
+
+  it('the "lost its connection" toast goes away once the gateway is back, also after "Reconnect now"', async () => {
+    const lostToasts = () =>
+      $notifications.get().filter(item => item.title === translateNow('boot.errors.gatewayConnectionLost'))
+
+    const dropUntilEscalated = async () => {
+      FakeWebSocket.mode = 'fail'
+      act(() => FakeWebSocket.instances.at(-1)?.drop())
+      await flushAsync()
+
+      for (let i = 0; i < 24 && lostToasts().length === 0; i += 1) {
+        await advanceBackoff()
+      }
+
+      expect(lostToasts()).toHaveLength(1)
+    }
+
+    render(<Harness />)
+    await flushAsync()
+    expect($gatewayState.get()).toBe('open')
+
+    // The backoff loop reconnects on its own: the never-expiring toast must not outlive the outage.
+    await dropUntilEscalated()
+    FakeWebSocket.mode = 'open'
+    await advanceBackoff()
+    expect($gatewayState.get()).toBe('open')
+    expect(lostToasts()).toHaveLength(0)
+
+    // The toast's own action resets the escalation state before redialing.
+    await dropUntilEscalated()
+    FakeWebSocket.mode = 'open'
+    await act(async () => {
+      lostToasts()[0].action?.onClick()
+      await vi.advanceTimersByTimeAsync(1_000)
+    })
+    await flushAsync()
+    expect($gatewayState.get()).toBe('open')
+    expect(lostToasts()).toHaveLength(0)
   })
 
   it('#83134: a proxy that accepts then immediately closes every socket does not reset the backoff to attempt 0', async () => {
