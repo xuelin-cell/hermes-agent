@@ -10,11 +10,20 @@ const IDS = { dingtalk: 'DINGTALK_CLIENT_ID', feishu: 'FEISHU_APP_ID', wecom: 'W
 const SECRETS = { dingtalk: 'DINGTALK_CLIENT_SECRET', feishu: 'FEISHU_APP_SECRET', wecom: 'WECOM_SECRET' }
 const BASE = '/api/plugins/desktop-messaging'
 
-/** 保存、解绑等日常操作的确认上限：最多读 30 次，总计约 36 秒。 */
-const CHECK_PATIENCE = { attempts: 30, ms: 36_000 }
+/**
+ * 保存、解绑等日常操作的确认上限：最多读 100 次，总计约 2 分钟。
+ * 实测重启时旧网关约 20 秒才停、新网关冷启动约 70 秒，原先 36 秒会在解绑已成功时误报失败。
+ */
+const CHECK_PATIENCE = { attempts: 100, ms: 120_000 }
 
-/** 启动恢复要等网关进程和各平台依次握手，机器慢时 36 秒不够，放宽到约 90 秒。 */
-const RESTORE_PATIENCE = { attempts: 75, ms: 90_000 }
+/** 启动恢复要等网关冷启动和各平台依次握手，实测约 90 秒，放宽到约 2 分半。 */
+const RESTORE_PATIENCE = { attempts: 125, ms: 150_000 }
+
+/** 冷启动时后端可能一时答不上恢复请求：单次等 2 分钟，超时或连不上隔 10 秒再试 1 次。 */
+const RESTORE_REQUEST = { timeoutMs: 120_000, retries: 1, retryDelayMs: 10_000 }
+
+/** 只有“没等到应答”才值得再试；后端明确拒绝（如归属不明）不重试。 */
+const UNANSWERED = /Timed out connecting to Hermes backend|ECONNREFUSED|ECONNRESET|socket hang up/i
 
 interface MessagingTask extends Omit<MessagingSetupRequest, 'operation'> {
   operation: NonNullable<MessagingOperationStatus['operation']>
@@ -104,7 +113,7 @@ export class DesktopMessaging {
     private readonly deps: {
       account: string
       index: MessagingBotIndex
-      request: (profile: string, path: string, method: string, body?: unknown) => Promise<any>
+      request: (profile: string, path: string, method: string, body?: unknown, timeoutMs?: number) => Promise<any>
       sleep?: (milliseconds: number) => Promise<void>
       onState?: (state: MessagingOperationStatus) => void
     }
@@ -221,7 +230,10 @@ export class DesktopMessaging {
   /** 原版插件负责准备和可信复用；有动作才等待动作，随后核对全部受管配置。 */
   private async restoreGateway(input: MessagingTask, restart = false): Promise<MessagingSetupResult> {
     this.publish(input, 'applying', true)
-    let state = await this.deps.request('default', `${BASE}/restore${restart ? '?restart=true' : ''}`, 'POST', {})
+    let state = await this.requestRestore(restart)
+
+    // 账号退出会中断等待，这不是连接失败：不留下失败记录。
+    if (!state) {return {}}
 
     if (state.name === 'gateway-stop') {
       this.publish(input, 'stopping', true)
@@ -232,7 +244,9 @@ export class DesktopMessaging {
         return { actionFailed: true }
       }
 
-      state = await this.deps.request('default', `${BASE}/restore`, 'POST', {})
+      state = await this.requestRestore(false)
+
+      if (!state) {return {}}
     }
 
     if (state.configured === false) {
@@ -259,6 +273,30 @@ export class DesktopMessaging {
     this.publish(input, ok ? 'completed' : 'failed', true, ok ? undefined : 'connection_timeout')
 
     return { actionFailed: !ok }
+  }
+
+  /**
+   * 发出恢复请求，没等到应答时隔一会儿再试一次。重试不会重复启动网关：后端按锁排队，
+   * 前一次若已把网关拉起，再次请求时会先核对到它在运行并直接复用。等待中账号退出时返回 null。
+   */
+  private async requestRestore(restart: boolean): Promise<any> {
+    const url = `${BASE}/restore${restart ? '?restart=true' : ''}`
+
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.deps.request('default', url, 'POST', {}, RESTORE_REQUEST.timeoutMs)
+      } catch (cause) {
+        const message = cause instanceof Error ? cause.message : String(cause)
+
+        if (this.closed && UNANSWERED.test(message)) {return null}
+
+        if (attempt >= RESTORE_REQUEST.retries || !UNANSWERED.test(message)) {throw cause}
+      }
+
+      await (this.deps.sleep ?? (ms => new Promise(resolve => setTimeout(resolve, ms))))(RESTORE_REQUEST.retryDelayMs)
+
+      if (this.closed) {return null}
+    }
   }
 
   /** 停止接受新操作；退出快照前等待已有动作结束。 */

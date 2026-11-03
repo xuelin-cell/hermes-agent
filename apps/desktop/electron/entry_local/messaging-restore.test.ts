@@ -10,11 +10,11 @@ const roots: string[] = []
 afterEach(() => roots.splice(0).forEach(root => fs.rmSync(root, { recursive: true, force: true })))
 
 /** 隔离索引，状态与动作由本测试控制，不接触用户网关。 */
-function fixture() {
+function fixture(sleep: (ms: number) => Promise<void> = async () => undefined) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-restore-'))
   roots.push(root)
 
-  const request = vi.fn(async (_profile: string, url: string, _method: string, _body?: any): Promise<any> => {
+  const request = vi.fn(async (_profile: string, url: string, _method: string, _body?: any, _timeoutMs?: number): Promise<any> => {
     if (url.split('?')[0].endsWith('/restore')) {return { configured: true, name: 'gateway-start', profiles: ['default'] }}
 
     if (url.startsWith('/api/plugins/desktop-messaging/platforms?')) {return { platforms: [connection()] }}
@@ -22,7 +22,7 @@ function fixture() {
     return { running: false, exit_code: 0 }
   })
 
-  const service = new DesktopMessaging({ account: root, index: new MessagingBotIndex(root), request, sleep: async () => undefined })
+  const service = new DesktopMessaging({ account: root, index: new MessagingBotIndex(root), request, sleep })
 
   return { service, request }
 }
@@ -46,7 +46,7 @@ it('启用但缺少配置的渠道不能被过滤后冒充全部恢复', async (
   expect(service.status()).toMatchObject({ error: 'connection_timeout' })
 })
 
-it('启动恢复比日常操作多等一会儿：慢到 40 次读取后才连上也算恢复成功', async () => {
+it('启动恢复比日常操作多等一会儿：慢到 110 次读取后才连上也算恢复成功', async () => {
   const { service, request } = fixture()
   let reads = 0
   request.mockImplementation(async (_profile, url) => {
@@ -54,14 +54,14 @@ it('启动恢复比日常操作多等一会儿：慢到 40 次读取后才连上
 
     reads++
 
-    return { platforms: [{ ...connection(), state: reads < 40 ? 'connecting' : 'connected' }] }
+    return { platforms: [{ ...connection(), state: reads < 110 ? 'connecting' : 'connected' }] }
   })
   expect(await service.restore()).toEqual({ actionFailed: false })
-  expect(reads).toBe(40)
+  expect(reads).toBe(110)
   expect(service.status()).toMatchObject({ phase: 'completed', operation: 'restore' })
 })
 
-it('启动恢复始终连不上时，读满 75 次后记为连接超时', async () => {
+it('启动恢复始终连不上时，读满 125 次后记为连接超时', async () => {
   const { service, request } = fixture()
   let reads = 0
   request.mockImplementation(async (_profile, url) => {
@@ -72,7 +72,7 @@ it('启动恢复始终连不上时，读满 75 次后记为连接超时', async 
     return { platforms: [{ ...connection(), state: 'connecting' }] }
   })
   expect(await service.restore()).toEqual({ actionFailed: true })
-  expect(reads).toBe(75)
+  expect(reads).toBe(125)
   expect(service.status()).toMatchObject({ phase: 'failed', operation: 'restore', error: 'connection_timeout' })
 })
 
@@ -86,6 +86,44 @@ it('等待期间账号退出不算连接失败：不留失败记录，也不报�
     return { platforms: [{ ...connection(), state: 'connecting' }] }
   })
   expect(await service.restore()).toEqual({})
+  expect(service.status().phase).not.toBe('failed')
+})
+
+it('冷启动后端一时没应答：恢复请求等 2 分钟，超时后隔 10 秒再试一次即成功', async () => {
+  const waits: number[] = []
+  const { service, request } = fixture(async ms => { waits.push(ms) })
+  const timedOut = new Error('Timed out connecting to Hermes backend after 120000ms')
+  const restores = () => request.mock.calls.filter(([, url]) => url.endsWith('/restore'))
+  request.mockRejectedValueOnce(timedOut)
+  const pending = service.restore()
+  await vi.waitFor(() => expect(restores()).toHaveLength(2))
+  expect(service.status()).toMatchObject({ operation: 'restore' })
+  expect(service.status().phase).not.toBe('failed')
+  expect(await pending).toEqual({ actionFailed: false })
+  expect(restores().every(call => call[4] === 120_000)).toBe(true)
+  expect(waits[0]).toBe(10_000)
+  expect(service.status()).toMatchObject({ phase: 'completed', operation: 'restore' })
+})
+
+it('两次都没等到应答才记恢复失败；后端明确拒绝不重试', async () => {
+  const { service, request } = fixture()
+  const timedOut = new Error('Timed out connecting to Hermes backend after 120000ms')
+  request.mockRejectedValueOnce(timedOut).mockRejectedValueOnce(timedOut)
+  await expect(service.restore()).rejects.toThrow('Timed out')
+  expect(request.mock.calls.filter(([, url]) => url.endsWith('/restore'))).toHaveLength(2)
+  expect(service.status()).toMatchObject({ phase: 'failed', operation: 'restore' })
+
+  const refused = fixture()
+  refused.request.mockRejectedValueOnce(new Error('409: {"detail":"gateway_identity_unverified"}'))
+  await expect(refused.service.restore()).rejects.toThrow()
+  expect(refused.request).toHaveBeenCalledTimes(1)
+})
+
+it('重试等待期间账号退出不算失败，也不再发恢复请求', async () => {
+  const { service, request } = fixture(async () => { service.seal() })
+  request.mockRejectedValueOnce(new Error('connect ECONNREFUSED 127.0.0.1:1'))
+  expect(await service.restore()).toEqual({})
+  expect(request).toHaveBeenCalledTimes(1)
   expect(service.status().phase).not.toBe('failed')
 })
 
@@ -132,7 +170,7 @@ it('无配置不启动；启动失败只影响消息状态，显式重试仍经�
   expect(JSON.stringify(failing.service.status())).not.toContain('PRIVATE')
   await failing.service.run({ operation: 'retry' })
   expect(failing.request.mock.calls.filter(([, url]) => url.includes('/restore'))).toHaveLength(2)
-  expect(failing.request).toHaveBeenCalledWith('default', '/api/plugins/desktop-messaging/restore?restart=true', 'POST', {})
+  expect(failing.request).toHaveBeenCalledWith('default', '/api/plugins/desktop-messaging/restore?restart=true', 'POST', {}, 120_000)
   expect(failing.request.mock.calls.some(([, url]) => url.endsWith('/apply'))).toBe(false)
 })
 

@@ -170,16 +170,28 @@ async function renderMessaging() {
 }
 
 describe('MessagingView profile scope', () => {
-  it('names the active profile explicitly instead of sending an unscoped request', async () => {
+  it('names the main profile explicitly instead of sending an unscoped request', async () => {
     $settingsScopeOverride.set(null)
     getMessagingPlatforms.mockResolvedValue({ platforms: [platform()] })
 
     await renderMessaging()
 
     // #118432: the backend resolves an omitted profile against the home it was
-    // LAUNCHED under, so "follow the active profile" has to be said out loud
-    // rather than left to the ambient fallback.
+    // LAUNCHED under, so the profile has to be said out loud.
     await waitFor(() => expect(getMessagingPlatforms).toHaveBeenCalledWith('default'))
+  })
+
+  it('专家没有独立消息平台：设置页切到专家时仍只读主助手', async () => {
+    $settingsScopeOverride.set('worker')
+    getMessagingPlatforms.mockResolvedValue({ platforms: [platform()] })
+
+    try {
+      await renderMessaging()
+      await waitFor(() => expect(getMessagingPlatforms).toHaveBeenCalledWith('default'))
+      expect(getMessagingPlatforms).not.toHaveBeenCalledWith('worker')
+    } finally {
+      $settingsScopeOverride.set(null)
+    }
   })
 })
 
@@ -263,7 +275,7 @@ describe('MessagingView WeChat QR setup', () => {
     state
   })
 
-  it('shows the QR code, follows the scan, and settles the gateway restart on the page scope', async () => {
+  it('shows the QR code, follows the scan, and settles the gateway restart on the main profile while settings edit an expert', async () => {
     $settingsScopeOverride.set('worker')
     getMessagingPlatforms.mockResolvedValue({
       platforms: [platform({ id: 'weixin', name: 'Weixin', state: 'not_configured' })]
@@ -280,12 +292,12 @@ describe('MessagingView WeChat QR setup', () => {
         fireEvent.click(await screen.findByRole('button', { name: /Connect with QR code/ }))
       })
 
-      expect(startWeixinQrLogin).toHaveBeenCalledWith('worker')
+      expect(startWeixinQrLogin).toHaveBeenCalledWith('default')
       expect(await screen.findByAltText('Connect by QR code')).toBeTruthy()
       expect(await screen.findByText('Scanned. Confirm on your phone.', {}, { timeout: 4000 })).toBeTruthy()
 
-      await waitFor(() => expect(messagingSetup).toHaveBeenCalledWith({ operation: 'watch', platform: 'weixin', profile: 'worker' }), { timeout: 4000 })
-      expect(getWeixinQrLogin).toHaveBeenCalledWith('wx-1', 'worker')
+      await waitFor(() => expect(messagingSetup).toHaveBeenCalledWith({ operation: 'watch', platform: 'weixin', profile: 'default' }), { timeout: 4000 })
+      expect(getWeixinQrLogin).toHaveBeenCalledWith('wx-1', 'default')
       expect(notify).not.toHaveBeenCalled()
       expect(watchGatewayRestartOutcome).not.toHaveBeenCalled()
       await waitFor(() => expect(screen.queryByAltText('Connect by QR code')).toBeNull(), { timeout: 2500 })
@@ -532,7 +544,7 @@ describe('Messaging cards and native configuration', () => {
           expect(messagingSetup).toHaveBeenCalledWith({
             operation: 'disconnect',
             platform: 'feishu',
-            profile: 'worker'
+            profile: 'default'
           })
         )
       }
@@ -912,7 +924,7 @@ describe('Messaging cards and native configuration', () => {
     expect(startWeixinQrLogin).not.toHaveBeenCalled()
   })
 
-  it('saves necessary credentials in the selected profile and applies automatically', async () => {
+  it('saves necessary credentials in the main profile even while settings edit an expert', async () => {
     $settingsScopeOverride.set('worker')
     getMessagingPlatforms.mockResolvedValue({ platforms: [dingtalk()] })
 
@@ -933,7 +945,7 @@ describe('Messaging cards and native configuration', () => {
           operation: 'save',
           platform: 'dingtalk',
           env: { DINGTALK_CLIENT_ID: 'app-123', DINGTALK_CLIENT_SECRET: 'secret-123' },
-          profile: 'worker'
+          profile: 'default'
         })
       )
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
@@ -1002,7 +1014,7 @@ describe('Messaging cards and native configuration', () => {
         expect(messagingSetup).toHaveBeenCalledWith({
           operation: 'disconnect',
           platform: 'dingtalk',
-          profile: 'worker'
+          profile: 'default'
         })
       )
       expect(runGatewayRestart).not.toHaveBeenCalled()
@@ -1030,7 +1042,7 @@ describe('Messaging cards and native configuration', () => {
     expect(within(card).queryByText('Connected')).toBeNull()
   })
 
-  it('drops the old configuration dialog on a profile change instead of writing into the new profile', async () => {
+  it('设置页切换助手不影响正在填写的配置，保存仍写入主助手', async () => {
     getMessagingPlatforms.mockResolvedValue({ platforms: [dingtalk()] })
     await renderMessaging()
     fireEvent.click(
@@ -1038,14 +1050,18 @@ describe('Messaging cards and native configuration', () => {
         name: 'Configure'
       })
     )
-    expect(await screen.findByRole('dialog')).toBeTruthy()
+    const dialog = await screen.findByRole('dialog')
 
     try {
       await act(async () => {
         $settingsScopeOverride.set('other')
       })
-      await waitFor(() => expect(getMessagingPlatforms).toHaveBeenCalledWith('other'))
-      expect(screen.queryByRole('dialog')).toBeNull()
+      expect(screen.getByRole('dialog')).toBe(dialog)
+      expect(getMessagingPlatforms).not.toHaveBeenCalledWith('other')
+      fireEvent.change(dialog.querySelector('input[type="text"]')!, { target: { value: 'app-123' } })
+      fireEvent.change(dialog.querySelector('input[type="password"]')!, { target: { value: 'secret-123' } })
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Save and enable' }))
+      await waitFor(() => expect(messagingSetup).toHaveBeenCalledWith(expect.objectContaining({ profile: 'default' })))
       expect(updateMessagingPlatform).not.toHaveBeenCalled()
     } finally {
       $settingsScopeOverride.set(null)

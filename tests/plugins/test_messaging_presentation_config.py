@@ -261,12 +261,10 @@ async def test_qr_restart_uses_loaded_desktop_messaging_without_page(monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_secondary_only_platform_suppresses_host_shutdown_notice_without_enabling_host():
-    """子 Profile 独有飞书也静默停机；宿主不继承其凭据、语言和启用状态。"""
-    from types import SimpleNamespace
+async def test_secondary_only_credentials_are_ignored_and_left_untouched():
+    """专家复制来的飞书凭据不算配置：不启动网关，不补写平台规则，记忆展示照常准备。"""
     from gateway.config import Platform, load_gateway_config
-    from gateway.run_shutdown import GatewayShutdownMixin
-    from hermes_cli.config import save_env_value
+    from hermes_cli.config import load_env, save_env_value
     from hermes_cli.profiles import create_profile
     from hermes_cli.web_server_profiles import _config_profile_scope
 
@@ -274,12 +272,15 @@ async def test_secondary_only_platform_suppresses_host_shutdown_notice_without_e
     with _config_profile_scope("worker"):
         save_env_value("FEISHU_APP_ID", "fixture")
         save_env_value("FEISHU_APP_SECRET", "fixture")
-    await api.prepare()
+    state = await api.prepare()
+    assert state == {"configured": False, "changed": False, "profiles": []}
     config = require_readable_config_before_write()
     assert config["display"] == {"memory_notifications": "off"}
-    assert config["platforms"]["feishu"] == {"gateway_restart_notification": False}
-    gateway = load_gateway_config()
-    assert not gateway.platforms[Platform.FEISHU].enabled
-    assert not GatewayShutdownMixin._restart_notification_allowed(
-        SimpleNamespace(config=gateway), Platform.FEISHU
-    )
+    assert "platforms" not in config
+    feishu = load_gateway_config().platforms.get(Platform.FEISHU)
+    assert not (feishu and feishu.enabled)
+    with _config_profile_scope("worker"):
+        config = require_readable_config_before_write()
+        assert config["display"]["memory_notifications"] == "off"
+        assert "platforms" not in config
+        assert "FEISHU_GROUP_POLICY" not in load_env()
