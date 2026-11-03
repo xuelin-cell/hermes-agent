@@ -60,6 +60,9 @@ Var UNIWORK_TIME_WEEK
 Var UNIWORK_TIME_HOUR
 Var UNIWORK_TIME_MINUTE
 Var UNIWORK_TIME_SECOND
+; 子阶段（主包解压、archive 组件解压）的起止 tick，耗时算完落在 UNIWORK_PHASE_DURATION 里
+Var UNIWORK_SUBPHASE_START
+Var UNIWORK_SUBPHASE_END
 !endif
 
 !macro UniTick OUT
@@ -86,6 +89,13 @@ Var UNIWORK_TIME_SECOND
   ${Else}
     StrCpy $UNIWORK_PHASE_DURATION "$UNIWORK_PHASE_SEC.$UNIWORK_PHASE_TENTH 秒"
   ${EndIf}
+!macroend
+
+; 结算一个子阶段的间隔：结果同样落在 $UNIWORK_PHASE_DURATION（超过一分钟自动带分），
+; 分步耗时行和阶段完成行因此用同一种写法。
+!macro UniSubphaseElapsed
+  IntOp $UNIWORK_PHASE_MS $UNIWORK_SUBPHASE_END - $UNIWORK_SUBPHASE_START
+  !insertmacro UniFormatDuration
 !macroend
 
 ; 解析一次日志路径，之后复用。问不到 ProgramData 就留空，所有落盘都变成空操作。

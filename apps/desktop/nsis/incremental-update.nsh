@@ -226,9 +226,11 @@ Function UNIWORK_PrintKept
       Goto uniwork_keep_report
     ${EndIf}
     ${If} $UNIWORK_KEEP_KIND == "component"
-      ; 这三个是构建里的目录名，用户看不懂，换成中文说法。
+      ; 这些是构建里的目录名，用户看不懂，换成中文说法（和整包解压那几条措辞一致）。
       ${If} $UNIWORK_KEEP_NAME == "venv"
         StrCpy $UNIWORK_KEEP_LABEL "Python 依赖环境"
+      ${ElseIf} $UNIWORK_KEEP_NAME == "hermes-agent"
+        StrCpy $UNIWORK_KEEP_LABEL "应用代码"
       ${ElseIf} $UNIWORK_KEEP_NAME == "pm-runtime"
         StrCpy $UNIWORK_KEEP_LABEL "内置包管理运行时"
       ${ElseIf} $UNIWORK_KEEP_NAME == "uv-cache.zip"
@@ -263,7 +265,7 @@ Function UNIWORK_PrintKept
 FunctionEnd
 
 ; 返回时 $UNIWORK_INCREMENTAL == 2 表示计划中的文件已经就位；其余情况由调用方整包解压。
-; 阶段 2 从这里开始：整包安装的走不到这里，日志里就不会出现一条没有意义的零耗时阶段。
+; 阶段 2 两个分支都有，只是内容不同：这里比对组件、算更新计划，整包那边是准备解压。
 Function UNIWORK_TryIncremental
   !insertmacro UniPhaseBegin 2 "比对组件并生成更新计划"
   Push $0
@@ -418,58 +420,138 @@ FunctionEnd
 Function UNIWORK_ExtractArchive
   Push $0
   Push $1
+  Push $2
   StrCpy $0 "$INSTDIR\resources\agent-payload\$UNIWORK_ARCHIVE_KIND.7z"
   StrCpy $1 "$INSTDIR\resources\agent-payload\$UNIWORK_ARCHIVE_KIND.tar.xz"
 
+  ; 组件的目录名给用户看没意义，面板上说中文，实际路径留给日志。
+  ${If} $UNIWORK_ARCHIVE_KIND == "venv"
+    StrCpy $2 "Python 依赖环境"
+  ${ElseIf} $UNIWORK_ARCHIVE_KIND == "hermes-agent"
+    StrCpy $2 "应用代码"
+  ${Else}
+    StrCpy $2 "$UNIWORK_ARCHIVE_KIND"
+  ${EndIf}
+
   ${If} ${FileExists} "$0"
-    !insertmacro UniSay "解压 $UNIWORK_ARCHIVE_KIND..."
+    !insertmacro UniSay "正在安装 $2..."
     !insertmacro UniLog "解压 archive: $0"
+    !insertmacro UniTick $UNIWORK_SUBPHASE_START
     nsExec::Exec '"$PLUGINSDIR\uniwork\7za.exe" x "$0" -o"$INSTDIR\resources\agent-payload" -y -aoa'
     Pop $UNIWORK_EXTRACT_RC
+    !insertmacro UniTick $UNIWORK_SUBPHASE_END
     ${If} $UNIWORK_EXTRACT_RC != 0
       !insertmacro UniLog "$UNIWORK_ARCHIVE_KIND.7z 解压失败（$UNIWORK_EXTRACT_RC）"
-      !insertmacro UniSay "$UNIWORK_ARCHIVE_KIND 解压失败，安装可能不完整"
+      !insertmacro UniSay "$2 解压失败，安装可能不完整"
     ${Else}
+      !insertmacro UniSubphaseElapsed
+      !insertmacro UniSay "$2 安装完成，耗时 $UNIWORK_PHASE_DURATION"
       ; 解压成功后删除 archive 文件，节省磁盘空间
       Delete "$0"
     ${EndIf}
   ${ElseIf} ${FileExists} "$1"
     ; Fallback: .tar.xz archive (slower, but no 7z dependency)
-    !insertmacro UniSay "解压 $UNIWORK_ARCHIVE_KIND..."
+    !insertmacro UniSay "正在安装 $2..."
     !insertmacro UniLog "解压 archive: $1"
+    !insertmacro UniTick $UNIWORK_SUBPHASE_START
     nsExec::Exec '"$PLUGINSDIR\uniwork\7za.exe" x "$1" -o"$INSTDIR\resources\agent-payload" -y -aoa'
     Pop $UNIWORK_EXTRACT_RC
+    !insertmacro UniTick $UNIWORK_SUBPHASE_END
     ${If} $UNIWORK_EXTRACT_RC != 0
       !insertmacro UniLog "$UNIWORK_ARCHIVE_KIND.tar.xz 解压失败（$UNIWORK_EXTRACT_RC）"
+      !insertmacro UniSay "$2 解压失败，安装可能不完整"
     ${Else}
+      !insertmacro UniSubphaseElapsed
+      !insertmacro UniSay "$2 安装完成，耗时 $UNIWORK_PHASE_DURATION"
       Delete "$1"
     ${EndIf}
   ${Else}
     !insertmacro UniLog "$UNIWORK_ARCHIVE_KIND archive 不存在，跳过（可能是目录形式）"
   ${EndIf}
 
+  Pop $2
   Pop $1
+  Pop $0
+FunctionEnd
+
+; 整包解压完补一条总量：组件数和工具数都从包里的 payload-stamp.txt 数出来，
+; 不写死名单（构建加了组件也不用改这里）。工具（python、node、git…）在主包内一起解压，
+; 解压过程看不到逐条进度，只能事后报个数。
+Var UNIWORK_STAMP_FP
+Var UNIWORK_STAMP_LINE
+Var UNIWORK_COMPONENT_COUNT
+Var UNIWORK_TOOL_COUNT
+Function UNIWORK_PrintInstalledSummary
+  Push $0
+  StrCpy $UNIWORK_COMPONENT_COUNT 0
+  StrCpy $UNIWORK_TOOL_COUNT 0
+
+  ClearErrors
+  FileOpen $UNIWORK_STAMP_FP "$INSTDIR\resources\agent-payload\payload-stamp.txt" r
+  IfErrors uniwork_summary_report
+  uniwork_summary_loop:
+    ClearErrors
+    FileRead $UNIWORK_STAMP_FP $UNIWORK_STAMP_LINE
+    IfErrors uniwork_summary_close
+    ; 只认行首：tool 是工具，schema/target 是文件头，剩下的行都是组件。
+    StrCpy $0 $UNIWORK_STAMP_LINE 5
+    ${If} $0 == "tool "
+      IntOp $UNIWORK_TOOL_COUNT $UNIWORK_TOOL_COUNT + 1
+    ${Else}
+      StrCpy $0 $UNIWORK_STAMP_LINE 6
+      ${If} $0 != "schema"
+      ${AndIf} $0 != "target"
+        IntOp $UNIWORK_COMPONENT_COUNT $UNIWORK_COMPONENT_COUNT + 1
+      ${EndIf}
+    ${EndIf}
+    Goto uniwork_summary_loop
+  uniwork_summary_close:
+    FileClose $UNIWORK_STAMP_FP
+
+  uniwork_summary_report:
+  ${If} $UNIWORK_COMPONENT_COUNT > 0
+    ${If} $UNIWORK_TOOL_COUNT > 0
+      !insertmacro UniSay "共安装 $UNIWORK_COMPONENT_COUNT 个组件、$UNIWORK_TOOL_COUNT 个内置工具"
+    ${Else}
+      !insertmacro UniSay "共安装 $UNIWORK_COMPONENT_COUNT 个组件"
+    ${EndIf}
+  ${EndIf}
   Pop $0
 FunctionEnd
 
 ; 整包解压：直接解到安装目录（本分支原来的做法），不再先解到 $PLUGINSDIR\7z-out 再复制。
 Function UNIWORK_ExtractFull
-  !insertmacro UniPhaseBegin 3 "解压程序文件"
+  ; 阶段 2 在整包这边就是准备工作：建目录、把解压 archive 组件要用的 7za.exe 放好。
+  ; 增量退回时阶段 2 已经由 UNIWORK_TryIncremental 报过，阶段号相同会被去重，不会重复打头。
+  !insertmacro UniPhaseBegin 2 "准备全量安装"
   CreateDirectory "$UNIWORK_OUTDIR"
   SetOutPath "$UNIWORK_OUTDIR"
-  !insertmacro UniSay "解压程序文件..."
+  ; 增量分支已经往这里放过一份；File 覆盖同名文件不会失败，多解压 850 KB 也不算什么。
+  SetOutPath "$PLUGINSDIR\uniwork"
+  File "/oname=7za.exe" "${UNIWORK_7ZA}"
+  SetOutPath "$UNIWORK_OUTDIR"
+
+  !insertmacro UniPhaseBegin 3 "解压程序文件"
   ${If} $UNIWORK_EXTRACT_BATCH > 0
     ; 增量解压到一半退回：刚才被跳过的组件这次要跟着整包一起重新写出来。
     ; 用批次计数而不是"跑过计划"，因为计划完全可以一条都没跳过（没有组件可保留）。
     !insertmacro UniSay "整包覆盖：之前跳过的组件这次一并重新写入"
   ${EndIf}
+
+  !insertmacro UniSay "正在解压主安装包..."
+  !insertmacro UniTick $UNIWORK_SUBPHASE_START
   Nsis7z::Extract "$UNIWORK_ARCHIVE"
+  !insertmacro UniTick $UNIWORK_SUBPHASE_END
+  !insertmacro UniSubphaseElapsed
+  !insertmacro UniSay "程序文件解压完成，耗时 $UNIWORK_PHASE_DURATION"
 
   ; 解压 archive 组件（venv.7z, hermes-agent.7z）
   StrCpy $UNIWORK_ARCHIVE_KIND "venv"
   Call UNIWORK_ExtractArchive
   StrCpy $UNIWORK_ARCHIVE_KIND "hermes-agent"
   Call UNIWORK_ExtractArchive
+
+  Call UNIWORK_PrintInstalledSummary
 
   SetOutPath $UNIWORK_OUTDIR
   ${IfNot} ${FileExists} "$appExe"
