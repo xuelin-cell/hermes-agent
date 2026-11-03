@@ -144,7 +144,9 @@ export function writeDesktopStamp(outDir, built) {
   const json = JSON.stringify(built, null, 2) + "\n"
   mkdirSync(outDir, { recursive: true })
   if (built.payload === 'bundled') {
-    writeFileSync(join(outDir, 'agent-payload', built.runtime.repoDir, 'install-stamp.json'), json, 'utf8')
+    const agentPayloadDir = join(outDir, 'agent-payload', built.runtime.repoDir)
+    mkdirSync(agentPayloadDir, { recursive: true })
+    writeFileSync(join(agentPayloadDir, 'install-stamp.json'), json, 'utf8')
   }
   writeFileSync(join(outDir, 'install-stamp.json'), json, 'utf8')
 }
