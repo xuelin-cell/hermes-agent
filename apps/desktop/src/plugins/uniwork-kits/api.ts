@@ -72,3 +72,12 @@ export function toggleKit(name: string, enabled: boolean): Promise<unknown> {
 export function writeConfig(name: string, values: Record<string, string>): Promise<{ written: string[] }> {
   return api('/config', { body: { name, values }, method: 'POST' })
 }
+
+/** Cloud installs use a package already carried by the current instance template. */
+export function installBundled(name: string): Promise<unknown> {
+  return api('/cloud/install', { method: 'POST', body: { name } })
+}
+
+export function uninstallKit(name: string, deleteProfile: boolean): Promise<unknown> {
+  return api('/uninstall', { method: 'POST', body: { name, delete_profile: deleteProfile } })
+}

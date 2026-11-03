@@ -12,6 +12,8 @@ export interface OAuthServer {
 }
 
 export interface KitRow {
+  /** Cloud catalog distinguishes available packages from installed ones. */
+  installed?: boolean
   name: string
   kind: string
   display_name: string

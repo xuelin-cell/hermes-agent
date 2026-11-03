@@ -1,6 +1,11 @@
 import { type PluginLocaleBundles } from '@hermes/plugin-sdk'
 
 const en = {
+  install: 'Install',
+  uninstall: 'Uninstall',
+  confirmUninstall: 'Uninstall this kit?',
+  confirmDeleteExpert: 'This will delete all conversations and memory for this expert. Continue?',
+  cloudOAuthUnavailable: 'This kit requires OAuth, which is not yet available in the cloud.',
   title: 'Experts and kits',
   kits: 'Kits',
   experts: 'Experts',
@@ -36,6 +41,7 @@ const en = {
   talkingTo: 'Expert: ',
   tryAsking: 'Try asking',
   connectorLoginTitle: 'Connect East Money to query data',
+  cloudConnectorLoginBody: ' needs its own connector authorization. Open the connector page to authorize this expert; the default assistant and other experts keep their own settings.',
   connectorLoginBody:
     " needs the East Money connector before it can query quotes and financials. Next you'll open East Money in Connectors. Click Connect there to authorize; you'll be brought back to this chat afterwards.",
   connectorLoginLater: 'Later',
@@ -43,6 +49,11 @@ const en = {
 }
 
 const zh = {
+  install: '安装',
+  uninstall: '卸载',
+  confirmUninstall: '确定卸载这个套件？',
+  confirmDeleteExpert: '卸载将删除此专家的全部对话和记忆，确定继续？',
+  cloudOAuthUnavailable: '此套件需要 OAuth 授权，当前云端尚未开放。',
   title: '专家和套件',
   kits: '套件',
   experts: '专家',
@@ -78,6 +89,7 @@ const zh = {
   talkingTo: '当前专家：',
   tryAsking: '试试这样问',
   connectorLoginTitle: '连接东方财富后即可查询',
+  cloudConnectorLoginBody: '需要单独授权连接器。请前往连接器页面为这位专家授权，通用助手和其他专家的配置不受影响。',
   connectorLoginBody:
     '的行情与财务数据需要先连接东方财富。下一步打开连接器里的东方财富页面，请在那里点击「连接」完成授权。授权完成后会自动回到这里，再发送问题。',
   connectorLoginLater: '稍后',

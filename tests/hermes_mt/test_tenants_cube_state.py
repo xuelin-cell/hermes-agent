@@ -331,6 +331,55 @@ async def test_unbootstrapped_instance_gets_bootstrapped(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("window", [0, 500])
+async def test_unbootstrapped_replacement_recovers_despite_drain_marker(monkeypatch, window) -> None:
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    store = FakeStore(runtime=Runtime("stopped", "sbX", "tpl-new", 3, "sbPrev", "p.tar.gz", "draining"))
+    cube = FakeCube({"sbX": {"sandboxID": "sbX", "templateID": "tpl-new", "state": "running"}})
+    cube.hermes_ready.discard("sbX")
+    original_status = cube.status
+
+    async def status(sid, port):
+        if sid == "sbX" and sid not in cube.hermes_ready:
+            return {"bootstrapped": False, "hermes": False, "draining": False,
+                    "state": None, "boot_window_left_s": window}
+        return await original_status(sid, port)
+
+    cube.status = status
+    original_wait_gone = cube.wait_gone
+
+    async def wait_gone(sid):
+        cube.calls.append(("wait_gone", sid))
+        return await original_wait_gone(sid)
+
+    cube.wait_gone = wait_gone
+    tenant = await _manager(store, cube).ensure_running("u")
+    assert store.runtime.state_owner == tenant.sandbox_id
+    boot = next(c for c in cube.calls if c[0] == "bootstrap")
+    assert boot[2]["restore_from"] == "sbPrev"
+    if window == 0:
+        assert tenant.sandbox_id != "sbX"
+        assert ("wait_gone", "sbX") in cube.calls
+    else:
+        assert tenant.sandbox_id == "sbX"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("phase", ["fenced", "draining"])
+async def test_replacement_drain_marker_does_not_bypass_live_state_protection(monkeypatch, phase) -> None:
+    store = FakeStore(runtime=Runtime("stopped", "sbX", "tpl-new", 3, "sbPrev", "p.tar.gz", "draining"))
+    cube = FakeCube({"sbX": {"sandboxID": "sbX", "templateID": "tpl-new", "state": "running"}})
+
+    async def status(sid, port):
+        return {"bootstrapped": False, "hermes": False, "state": {"phase": phase}}
+
+    cube.status = status
+    with pytest.raises(CubeError, match="仍在排空或已失去所有权"):
+        await _manager(store, cube).ensure_running("u")
+    assert not any(c[0] in {"remove", "create", "bootstrap"} for c in cube.calls)
+
+
+@pytest.mark.asyncio
 async def test_bootstrap_whose_reply_never_came_back_is_adopted(monkeypatch) -> None:
     """引导其实做成了、回包没回来：下一次请求问状态管家，主人是这台就补记成数据主人，之后的请求走快路径。"""
     monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)

@@ -142,3 +142,28 @@ def test_the_plugin_registers_the_hook(kits, profile_env, monkeypatch):
     kits.root.register(Context())
     code_packages = importlib.import_module("hermes_plugins.uniwork_kits.code_packages")
     assert ("pre_tool_call", code_packages.on_pre_tool_call) in hooks
+
+
+def test_cloud_hook_reads_each_profile_and_uses_baked_packages(code_packages, profile_env, tmp_path, monkeypatch):
+    from hermes_constants import set_hermes_home_override, reset_hermes_home_override
+    from hermes_cli.config import load_config_readonly
+    import sysconfig
+
+    second = tmp_path / "expert"
+    second.mkdir()
+    for home in (profile_env, second):
+        (home / "config.yaml").write_text("cloud_kits:\n  enabled: true\n", encoding="utf-8")
+    monkeypatch.setattr(code_packages.script_python, "_local_cwd", lambda _: str(tmp_path))
+    def forbidden(*a, **k):
+        raise AssertionError("Cloud must not resolve a separate kit environment")
+    monkeypatch.setattr(code_packages.script_python, "interpreter", forbidden)
+    for home in (profile_env, second, profile_env):
+        token = set_hermes_home_override(str(home))
+        try:
+            assert load_config_readonly()["cloud_kits"]["enabled"] is True
+            result = code_packages.on_pre_tool_call("execute_code", {"code": "import json\nresult = json.dumps(1)"})
+            assert result["action"] == "modify"
+            assert sysconfig.get_path("purelib") in result["args"]["code"]
+            assert run(result["args"]["code"])["result"] == "1"
+        finally:
+            reset_hermes_home_override(token)

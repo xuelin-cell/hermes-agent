@@ -1,6 +1,6 @@
 import { useStore } from '@nanostores/react'
 import { useQuery } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useContributions } from '@/contrib/react/use-contributions'
@@ -49,28 +49,38 @@ export interface CapabilityScope {
  */
 export function useCapabilityScope({
   fixedConnection,
-  fixedProfile
+  fixedProfile,
+  includeManagedProfiles = false,
+  requestedProfile
 }: {
   fixedConnection?: string
   fixedProfile?: string
+  includeManagedProfiles?: boolean
+  requestedProfile?: string
 }): CapabilityScope {
   const activeProfile = useStore($activeGatewayProfile)
   const [scopeOverride, setScopeOverride] = useState<null | string | { connectionId: string; profile: string }>(null)
   const scopeContributions = useContributions(CAPABILITY_SCOPE_AREA)
-  const hiddenProfiles = useMemo(() => hiddenScopeProfiles(scopeContributions), [scopeContributions])
+  const hiddenProfiles = useMemo(() => includeManagedProfiles ? new Set<string>() : hiddenScopeProfiles(scopeContributions), [scopeContributions, includeManagedProfiles])
 
   // 插件托管的档案（例如专家）不在这里配置：从这种档案的对话打开时，默认改为配置通用助手。
   const ambientProfile =
     activeProfile && hiddenProfiles.has(normalizeProfileKey(activeProfile)) ? 'default' : activeProfile
 
+  useEffect(() => {
+    if (requestedProfile) setScopeOverride(requestedProfile)
+  }, [requestedProfile])
+  const selected = scopeOverride ?? requestedProfile ?? ambientProfile ?? null
+  const selectedName = typeof selected === 'object' && selected ? selected.profile : selected
+  const visibleSelection = selectedName && hiddenProfiles.has(normalizeProfileKey(selectedName)) ? 'default' : selected
   const scopeProfile: ProfileScope = useMemo(
     () =>
       fixedProfile
         ? fixedConnection
           ? { connectionId: fixedConnection, profile: fixedProfile }
           : fixedProfile
-        : (scopeOverride ?? ambientProfile ?? null),
-    [ambientProfile, fixedConnection, fixedProfile, scopeOverride]
+        : visibleSelection,
+    [fixedConnection, fixedProfile, visibleSelection]
   )
 
   const scopeKey = profileScopeKey(scopeProfile)

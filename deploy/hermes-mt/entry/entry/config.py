@@ -26,6 +26,12 @@ class Settings:
     # 对外路径与监听
     base_path: str = _env("MT_BASE_PATH", "/hermes").rstrip("/")
     listen_port: int = int(_env("MT_PORT", "9400"))
+    channels_key: str = _env('MT_CHANNELS_KEY')
+    channels_url: str = _env('MT_CHANNELS_URL', 'http://channels:9500').rstrip('/')
+    # Legacy value is read only to preserve existing attachment links, never for dialing.
+    channels_relay_url: str = _env('MT_CHANNELS_RELAY_URL')
+    channels_media_base_url: str = _env('MT_CHANNELS_MEDIA_BASE_URL').rstrip('/')
+    channels_gateway_origins: str = _env('MT_CHANNELS_GATEWAY_ORIGINS')
 
     # 执行后端：docker = 我们自己用 Docker 建容器；cube = 让沙箱平台建实例。
     # 两条路并存，切换只改这一个变量。默认 docker，保持既有部署不受影响。
@@ -112,6 +118,12 @@ class Settings:
     myplan_url: str = _env("MT_MYPLAN_URL", "https://maas.ai-yuanjing.com/app/gateway/uniwork/my-plan")
     login_application: str = _env("MT_LOGIN_APPLICATION", "uniwork")
     upstream_timeout_s: int = int(_env("MT_UPSTREAM_TIMEOUT_S", "15"))
+
+    # Fixed deployment endpoint, matching UniClaw cloud-vm-dev. No env override.
+    langfuse_gateway_url: str = "https://www.yjworker.10010.com/langfuse"
+    # Instance-reachable Entry origin (without base_path); setting this opts in
+    # to provisioning the existing observability plugin at instance bootstrap.
+    langfuse_entry_url: str = _env("MT_LANGFUSE_ENTRY_URL").rstrip("/")
 
     # 模型（写进每个租户卷的 config.yaml）
     model_base_url: str = _env("MT_MODEL_BASE_URL", "https://maas-api.ai-yuanjing.com/openapi/compatible-mode/v1")

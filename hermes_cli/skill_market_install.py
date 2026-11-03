@@ -179,4 +179,7 @@ def install_market_skill(
         except Exception:
             shutil.rmtree(quarantine_path, ignore_errors=True)
             raise
+        # New conversations see the installed skill; existing agents keep their pinned prefix.
+        from agent.prompt_builder import clear_skills_system_prompt_cache
+        clear_skills_system_prompt_cache(clear_snapshot=True)
         return {"ok": True, "name": bundle.name, "install_path": str(install_dir)}

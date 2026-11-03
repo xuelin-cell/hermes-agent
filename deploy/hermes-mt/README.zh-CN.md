@@ -34,6 +34,37 @@
 | `entry.env.example` | 入口的环境变量样例；复制成 `entry.env`（已 gitignore） |
 | `deploy.sh` | 沙箱后端的一键部署 / 升级脚本（见下「一键部署」）；`seed/mtstate.py` 是实例里的状态管家，负责把用户状态归档到卷、重建时恢复 |
 
+## 浏览器 MaaS 凭据基础
+
+登录成功后，独立登录页把 `maas_auth` 保存到按 base_path 隔离的 localStorage。入口继续用原有
+HttpOnly session cookie 认证，并额外签发只含摘要的认证加密关联 cookie；不在 PG 保存 MaaS token 或其哈希。
+`POST /__entry/maas-auth` 校验当前 cookie 与 Bearer token 的绑定及期限，不请求上游、不返回 token。
+
+登录页与 renderer 共用源码 `apps/shared/src/browser-maas-auth.js`，部署构建会生成入口 static 副本。后续分享/网盘的页面请求使用
+`requestEntryMaas`，入口业务路由使用 `_require_maas`。通用实例代理移除 Authorization，避免凭据透传。
+旧 session 使用新业务前需重新登录；部署时前端与入口同步更新。页面分享已接入，网盘及 agent 授权通道仍待接入。
+完整设计和当前验收结果见 [实施方案](docs/cloud-browser-token-sharing-drive-plan.md#14-本轮已实现的基础能力2026-10-26)。
+
+## Langfuse 后台上传凭证
+
+Langfuse 插件、后台上传凭证和 Entry 转发入口见 [接入说明](docs/langfuse-upload-capability.md)。上游地址固定为 `https://www.yjworker.10010.com/langfuse`，不支持环境变量覆盖。该能力默认关闭；明确配置实例可达的 `MT_LANGFUSE_ENTRY_URL` 后，在实例引导时自动下发凭证并启用现有插件，登录 JWT 不进入实例。云端镜像预装锁定的 SDK；已有 Cube 实例需通过新模板重新引导后生效。
+启用后 Entry 按用户缓存一份 JWT，并在 PG 保存与用户一一对应的长期上传凭证；凭证不设置或校验有效期，重复获取、实例替换和 Entry 重启均可复用。实例上传时 Entry 校验凭证并读取用户当前 JWT；网页退出不清除后台授权，JWT 到期或缓存丢失时暂停转发，账号停用时拒绝但不删除凭证。
+
+## 云端分享
+
+会话/单条回复和产物分享复用桌面页面，通过 `/__entry/conversation-shares/*` 和
+`/__entry/artifact-shares/*` 调用固定 MaaS 分享网关。入口从当前浏览器请求取得 token，
+PG 只保存分享归属、快照与待确认操作（迁移 `007_shares.sql`），不保存 MaaS token。
+
+实例使用 `cloud_sharing.enabled: true` 开启来源记录；由现有平台策略在引导时写入，
+复用桌面 provenance 钩子，记录保存在所属 home 的 `cloud-artifact-origins.db`。
+本轮之前的产物没有可信来源记录时仍不能发布，需要在新实例配置下生成新的产物。
+更新时必须同时发布入口、浏览器前端和含 overlay 的实例模板；旧实例需走模板换代引导。
+
+默认产物期限为一天，可选 1～7 天。到期删除在用户持有效凭据再次查看分享时尝试，
+并保留失败状态供重试；当前网关没有原生 TTL，不能保证到期瞬间公网链接失效。
+agent 自动发布和云盘不包含在本次页面分享接入中。
+
 ## 一键部署（沙箱后端，推荐）
 
 改一项配置（例如打开长期空闲删实例）：`./deploy.sh set MT_IDLE_DELETE_HOURS=24 && ./deploy.sh up`。
@@ -49,16 +80,26 @@ cd deploy/hermes-mt
 ./deploy.sh all
 # 部署其实在后台跑：Ctrl+C、终端断开都只是不看了，部署照样跑完。重新连上后接着看（跑完了就打出结果）：
 ./deploy.sh log
-./deploy.sh status      # 看现状；./deploy.sh check 只读检查；./deploy.sh purge-old 删旧模板上的实例
+./deploy.sh status      # 看现状；./deploy.sh check 只读检查
 ```
 
 同一时间只跑一次部署：已经有一次在跑时再敲 `all`，不会起第二次，直接接着看那一次。每次的日志在 `.deploy-logs/`（`latest.log` 是最近一次）。输出重定向到文件时（`nohup ./deploy.sh all > 文件 2>&1 &` 的老写法）照常在前台跑，也能用。
 
-耗时：只改了入口或配置几分钟；改了前端多 5~10 分钟；hermes 源码变了（合了上游、桌面版改了插件或内置技能）基础镜像要重建 15~45 分钟，沙箱镜像也跟着整个重建 20~40 分钟。
+构建时每 30 秒显示累计耗时和最新输出；基础镜像、沙箱镜像的完整日志分别为 `.base-build.log`、`.image-build.log`。
+云端派生 Dockerfile 的 Python 依赖安装总时限为 7200 秒（2 小时），保留 uv 下载缓存；这只放宽等待时间，不改变 Python 下载源。
+手工构建派生 Dockerfile 时可用 `--build-arg PYTHON_BUILD_TIMEOUT=秒数` 调整；其他项目构建仍默认 1800 秒。
+生成的基础镜像 Dockerfile 默认使用国内 apt 源和 npm 源，不修改根目录 Dockerfile。
+前端构建阶段设置 npm 源；运行阶段只给安装命令设置，不改变应用运行时的默认 npm 配置。
+手工构建派生 Dockerfile 时，可用 `--build-arg APT_MIRROR=` 恢复官方 apt 源、
+`--build-arg NPM_REGISTRY=https://registry.npmjs.org` 恢复官方 npm 源。基础镜像指纹包含 `base_seed.py`，生成规则变化会在下次部署时构建对应镜像。
+
+缓存范围：只改入口或配置不重建沙箱模板；只改前端按前端指纹构建。`overlay.list` 内的插件和工具源码更新，只替换沙箱末尾的源码层，复用基础镜像与前面的办公软件、Python 库等依赖层。清单之外的 Hermes 源码、依赖声明或基础构建规则变化仍会重建基础镜像，耗时取决于网络和缓存。首次使用新的指纹规则会生成一次新的基础镜像，不能保证首次更新就变快。
+
+**源码完整性**：清单中的目录必须以 `/` 结尾，部署时先清掉镜像中的对应目录，再完整复制当前受 Git 管理的文件；配置仓库的套件包也合入同一快照。构建后核对完整文件集合、SHA-256 和可执行权限，残留、缺失、内容不一致都会停止部署。整个路径删除后暂时保留清单项作为删除记录；移除清单项会改变基础镜像指纹。依赖声明即使位于覆盖目录内也会触发基础镜像换代。镜像验证通过后仍按现有流程创建/复用模板，用户旧实例通过排空、归档和重建切换到新模板。
 
 要点：沙箱镜像按内容指纹命名（`Dockerfile.cube` + `seed/*` + `plugin/` + 基础镜像 + 模板参数），只改入口代码不会重做镜像和模板；改了转发器就一定重做，并把新模板 ID 写进 `entry.env`。**入口和沙箱模板必须一起升级**——新入口配旧转发器会把用户的 `config.yaml` 写坏，脚本保证这一点。入口发现实例的模板和配置不一致，会在用户下次请求时自动排空、删除、重建、从卷上的归档恢复。部署机的规矩（不重启 Docker、不 prune、不切换构建器、页面只绑内网 IP、不打印密钥）也都在脚本里。
 
-**基础镜像**：沙箱镜像叠在基础镜像（hermes 本体）上。基础镜像用本仓库根目录的 `Dockerfile` 构建，和桌面版同一份（只补了一行它漏掉的 `COPY scripts/build/filesystem.py`），里面是 hermes 代码、内置技能（`skills/uniwork`）和 pm 锁定的 Python 3.14、Node、Chromium、ffmpeg、ripgrep（都在 `/opt/hermes/tools`；uv 不在 PATH 上）。镜像名 `hermes-custom:src-<指纹>`，指纹只算 hermes 源码（不含 `apps/`、`deploy/`、`docs/`、`tests/`、`website/`），所以只改前端或部署脚本不用重建；`./deploy.sh all` 找不到当前指纹的基础镜像会自己先建（也可以提前单独跑 `./deploy.sh base`）。部署机连 GitHub 极慢、连不上 Playwright 的 CDN，所以 `deploy.sh base` 先用 `scripts/base_seed.py` 把 pm 锁定的 7 个大文件（uv、Python、Chromium、node、npm、ffmpeg、ripgrep）和 s6-overlay 的三个包按 sha256 备好：pm 的文件来源依次是 hermes 的公开镜像、npmmirror、原地址；s6-overlay 的包公开镜像上没有，放在仓库的 `vendor/s6-overlay/` 里随代码拉下来（上游升了 s6 版本要把新包放进去，测试会提醒）；目录是 `MT_DEPLOY_SEED_DIR`（默认 `/var/cache/hermes-mt/base-seed`，备好的不重下）。然后用它生成的 Dockerfile 副本构建：副本只比原文件多两行 COPY，上游文件本身不改。构建本身只再连 PyPI、npm 和 Debian 源。以前按摘要拉的 `hermes-custom:a2007f2` 不能再用：它没有内置技能的标记文件，`deploy.sh` 会拦下。`entry.env` 里如果写了 `MT_DEPLOY_BASE_IMAGE`，就固定用它，一般不要写。
+**基础镜像**：沙箱镜像叠在基础镜像（hermes 本体）上。基础镜像用本仓库根目录的 `Dockerfile` 构建，和桌面版同一份（只补了一行它漏掉的 `COPY scripts/build/filesystem.py`），里面是 hermes 代码、内置技能（`skills/uniwork`）和 pm 锁定的 Python 3.14、Node、Chromium、ffmpeg、ripgrep（都在 `/opt/hermes/tools`；uv 不在 PATH 上）。镜像名 `hermes-custom:src-<指纹>`，指纹排除 `overlay.list` 中的业务源码以及前端、文档、测试，但保留覆盖边界、依赖声明、`apps/shared/` 和基础构建脚本（`base_seed.py`、`image_overlay.py`）；`./deploy.sh all` 找不到当前指纹的基础镜像会自己先建（也可以提前单独跑 `./deploy.sh base`）。部署机连 GitHub 极慢、连不上 Playwright 的 CDN，所以 `deploy.sh base` 先用 `scripts/base_seed.py` 把 pm 锁定的 7 个大文件（uv、Python、Chromium、node、npm、ffmpeg、ripgrep）和 s6-overlay 的三个包按 sha256 备好：pm 的文件来源依次是 hermes 的公开镜像、npmmirror、原地址；s6-overlay 的包公开镜像上没有，放在仓库的 `vendor/s6-overlay/` 里随代码拉下来（上游升了 s6 版本要把新包放进去，测试会提醒）；目录是 `MT_DEPLOY_SEED_DIR`（默认 `/var/cache/hermes-mt/base-seed`，备好的不重下）。然后用它生成的 Dockerfile 副本构建：副本只比原文件多两行 COPY，上游文件本身不改。构建本身只再连 PyPI、npm 和 Debian 源。以前按摘要拉的 `hermes-custom:a2007f2` 不能再用：它没有内置技能的标记文件，`deploy.sh` 会拦下。`entry.env` 里如果写了 `MT_DEPLOY_BASE_IMAGE`，就固定用它，一般不要写。
 
 **前端**：浏览器版前端（`nginx/dist-browser/`）不进 git，由 `scripts/build-frontend.sh` 从本仓库构建（`apps/desktop` 加 `VITE_HERMES_BROWSER_BUILD=1`，和桌面版同一份代码）。构建时把前端指纹写进产物（`dist-browser/.source-fingerprint`，`nginx/.dockerignore` 不让它进镜像）；指纹算 `apps/`、根目录的 `package.json` / `package-lock.json` / `.npmrc`、构建脚本和 `vendor/npm/`。`./deploy.sh all` 和 `up` 比对它和当前代码的指纹，对不上就先重新构建，不会把旧前端发出去；完整输出在 `.frontend-build.log`。`bash scripts/build-frontend.sh --fingerprint` 只打印当前代码的前端指纹。
 
@@ -210,3 +251,229 @@ Entry 平台表只采用以下约定：`users.masked_phone` 保存脱敏手机�
 - `entry.env` 不进 git；数据库密码和 `MT_CREDENTIAL_KEY` 只能放在环境变量中。
 - 模型 Key 和租户容器令牌在 PostgreSQL 中只保存认证密文，日志、健康接口和审计不得输出明文或密文。
 - PostgreSQL 本地端口只绑定 `127.0.0.1`；云端部署时应改为私有网络并配置独立备份与访问控制。
+
+
+## 云盘迁移（cloud-adaptation）
+
+生产浏览器构建复用桌面资料库，支持文件管理、电脑文件上传下载、实例产物上传、预览和主动对话中的网盘工具。
+MaaS token 仍在浏览器 localStorage；入口认证加密的 HttpOnly 证明补充可信手机号，网盘 token 仅在入口内存中缓存。
+旧登录需要重新短信登录才能使用云盘，开发登录没有真实网盘授权。
+
+入口通过私有 Node stdio worker 复用桌面网盘协议，不启动 Electron；实例在现有 HTTP 后端内挂载本地 MCP，
+由入口主动处理实例工具请求。不会给每个用户增加另一套网盘系统或公网端口。
+
+- 配套部署前端、入口和新实例模板；提交所有新增文件后执行 `deploy.sh all`。
+- 手工构建前，仓库根目录运行 `node apps/desktop/scripts/build-cloud-drive.mjs`；服务器前端构建脚本已包含该步骤。
+- `008_drive_operations.sql` 自动迁移，只保存用户隔离的非敏感回执，完整 MaaS token 不进入 PG。
+- 单文件最多 512 MiB，预览 20 MiB，浏览器分片 8 MiB，上游限制更小时取更小值；文件使用有界暂存，不承诺断点续传。
+- Agent 授权每轮最多 15 分钟，默认 Profile、单入口；任务结束、取消、退出、到期或入口重启后不继续获得账号权限。
+- “设置 → 安全 → 审批 → 允许智能体操控资料库”只限制 agent，页面手动管理保持可用。
+- 浏览器下载只报告交付下载请求，不能声称已保存到用户磁盘。Office 预览仍需 Cube 镜像的 LibreOffice。
+
+实现与验收说明见 [云盘迁移方案](docs/cloud-drive-migration-plan.md)。本地协议替身验证不替代真实账号和 Cube 环境联调。
+
+
+## 云端套餐与用量
+
+生产浏览器复用桌面套餐卡片，提供套餐名称、到期时间、Coding/Token 用量与并发信息（以上游实际提供为准）、
+手动刷新及订阅市场入口。查询通过浏览器 MaaS 关联授权进入固定 Entry 业务路由，敏感模型配置不返回页面。
+订阅点击需要允许浏览器弹窗；旧登录缺少可信手机号时需重新短信登录。
+打开市场不表示购买成功，返回后以套餐查询为准；涉及模型 Key/模型列表的变更仍需重新登录同步配置。
+实现、剩余边界和发布要求见 [云端套餐与用量适配](docs/cloud-plan-migration.md)。
+
+
+## 导出与首页模板
+
+Markdown 预览支持 Markdown、Word 和 PDF 导出：前两项由浏览器生成下载，PDF 使用当前用户实例的 Chromium。
+实例转换不带账号凭据，不读取外部网络资源，限时运行并清理临时文件。首页分类与模板复用桌面 V3 配置客户端，
+经入口鉴权获取，缓存按浏览器登录与语言隔离。
+
+本次包含新实例文件和转发器修改，需提交推送后完整执行 `deploy.sh all` 更新模板。
+实现、大小限制及验收说明见 [导出与首页适配](docs/cloud-export-welcome-migration.md)。
+
+
+## 云端技能市场
+
+推荐和市场页面复用既有列表与安装接口，生产浏览器开放安装。安装、卸载、更新与启停操作
+在返回成功前确认持久化，Cube 走现有状态归档，Docker 使用原有用户命名卷。
+保存失败可在通知里“重试保存”，不会重新安装；不确定结果需先刷新检查，不自动重放写请求。
+已确认保存的技能文件、安装记录和启停配置支持换代恢复，当前会话的提示词不变，新会话生效。
+实现与边界见 [云端技能市场迁移](docs/cloud-skill-market-migration.md)。
+
+## 新会话专属文件夹
+
+生产浏览器复用桌面会话创建流程：未主动选择目录的新会话，在实例工作区下创建
+`YYYYMMDD-HHmmss` 文件夹（按实例时钟命名），同一秒冲突追加数字后缀，并创建 `.tmp` 中间文件目录。
+日常办公、学习生活按原有规则使用新目录；代码开发继承项目目录，用户明确选择的目录保持不变。
+档案默认目录不是实例工作区时不自动创建；创建失败沿用原会话目录，不阻止发送。
+
+文件夹位于用户持久化工作区，经现有状态归档随实例升级恢复。会话创建失败时只清理当前转发器
+创建且仍为空（或仅含空 `.tmp`）的目录，不递归删除；有文件、路径被替换、转发器重启后均保留。
+接口复用实例会话鉴权和排空限制，无需 MaaS token 或新增 PG 表。
+
+上线需同时更新前端和实例模板，执行 `deploy.sh all --branch cloud-adaptation`。
+验证新会话首次发送后的 cwd、显式选择项目目录，以及并发新会话的目录是否独立。
+
+## 云端连接器
+
+推荐连接器页面开放高德、有道云笔记、WPS、企业微信、腾讯 ima 知识库、QQ 邮箱、网易邮箱、AMiner 学术、企查查、东方财富和同花顺 iFinD，支持配置或授权、工具调用、停用、重新启用和断开。
+有道和高德填写 API Key，WPS 填写 Agent API Key，ima 填写 Client ID 与 API Key；企业微信工具连接器
+手动填写 Bot ID 与 Secret，复用桌面智能机器人 API/MCP 协议，不建立消息平台的长连接。
+QQ/网易邮箱填写邮箱地址和开启 IMAP/SMTP 后的客户端授权码；AMiner 填写 Auth Token。企查查、东方财富复用原有动态客户端注册和 PKCE 授权，浏览器在新窗口完成授权，再经当前用户的 Entry 会话回调保存。iFinD 的桌面公共客户端仅注明允许本机回调，云端需在平台登记实际部署的回调地址，并在页面填写对应公共客户端的 Client ID；不沿用桌面客户端 ID。回调地址在 iFinD 表单中显示，格式为 `https://<部署域名>/hermes/__entry/connectors/ifind_mcp/oauth/callback`。能否使用内网 HTTP 地址取决于第三方平台的回调策略；正式域名、客户端授权范围和真实账号需部署后验收。
+
+OAuth 状态、PKCE 和刷新令牌沿用实例中的加密 SQLite，归档时一同保存；Entry 只用短期 HttpOnly Cookie 绑定发起授权的登录会话、Provider 和 state，不新增 PG 表。回调只转发到该用户实例，过期、会话不符和重复回调会拒绝；Nginx 不记录该回调的访问日志，Entry 访问日志不记录回调查询参数。回调成功前确认归档；失败时返回原页面查询状态、重试保存，不自动重放工具操作。
+
+企业微信扫码和任意自建 Profile 的独立连接器授权尚未开放；沃邮箱继续使用“我的邮箱”的原有授权和 MCP。本轮通过本地 HTTP/MCP/OAuth 与 TLS 邮箱协议验证，未使用真实第三方账号验收。
+
+专家连接器：在扩展的连接器页通过“正在配置”选择通用助手或已安装专家；只有连接器页开放托管专家选择，其他扩展页仍保持原有边界。专家需要的连接器授权提示会打开该专家的连接器详情，不再把云端专家引向通用助手授权，也不自动重载现有会话的 MCP。
+
+每个实例仍只有一个按需启动的 Node 进程，不为每位专家启动服务或安装依赖。默认档案沿用原有 `open-connector/`；专家的加密 SQLite、密钥和受管 MCP 配置保存在自己的 `profiles/<name>/` 内。云端专家不自动继承通用助手的连接器凭据；模型等已有同步规则不变，桌面版的连接器策略不变。OAuth Cookie 绑定发起时的用户、专家、Provider 和 state，授权期间切换页面不会改写目标档案，多位专家可并行授权；第三方回调 URL 保持不变，iFinD 无需逐个专家登记不同地址。
+
+每次管理、工具调用和签名文件下载都会检查专家仍由当前实例的套件管理器持有；拒绝未安装的档案、路径穿越和符号链接。停用/解绑按各专家独立生效；专家卸载沿用明确确认删除档案的语义，正在调用工具时拒绝卸载或排空。恢复时保留各档案密钥并更新受管地址，专家重装后旧令牌失效；实例中其他专家的连接不受影响。
+
+OpenConnector 按需运行在用户实例内，一个实例一个服务，仅监听回环地址。入口通过登录会话
+校验和固定 `/__entry/connectors` 接口管理，不需要 MaaS token，也不复用同事的共享连接器容器。
+数据库、加密密钥和受管 MCP 配置随现有用户状态归档，恢复时更新内部地址；停用在每次 MCP
+请求处检查，已建立的旧会话也无法绕过。新配置的工具在新会话使用，不强制重载现有会话。
+
+依赖由 `build-frontend.sh` 按连接器锁文件安装并缓存，打包产物进入实例镜像；用户实例不执行 npm 安装。
+部署执行 `bash deploy.sh all --branch cloud-adaptation`，需同时更新前端、入口和实例模板，无需新增部署配置或 PG 表。
+
+验收：在推荐页连接高德 → 新会话查询天气 → 停用后确认旧会话调用失败 → 重新启用 → 实例重建后再次查询 → 断开。
+设置变更只有检查点确认后才报告保存成功；持久化未确认时先查询状态，详情中的“保存”仅重试当前状态归档，不重复连接、解绑或工具调用。
+实例工具调用期间参与忙碌判断并阻止排空；服务异常退出只恢复服务，不自动重放上次调用。
+Provider 返回的原文件通过实例内限时签名链接交给 Agent 下载，不能把回环地址当作用户浏览器的下载地址；
+文件与签名按用户隔离，链接有效期一小时，单文件最多 20 MiB。
+本地已验证实例服务、11 个 Provider 的 MCP 调用、OAuth PKCE/刷新/重放拒绝、TLS 邮箱协议、A→B→A 用户隔离和状态恢复；真实第三方账号仍需部署后验收。
+
+## 云端邮箱
+
+“我的邮箱”复用桌面页面和沃邮箱协议，支持开通/停用、邮件列表、搜索、详情、已读、删除及附件下载。
+发送、回复和转发通过新会话中的 `Agent-Mail` MCP 完成；停用会拦截旧会话调用。
+授权和启停状态随实例归档恢复，发送限额直接保存在账号工作区卷；无需把 MaaS token 交给实例。
+本轮不包含暂停期间的后台实时收信推送，恢复后再查询邮件。
+部署需同时更新入口、前端和实例模板，具体边界及验收见 [云端邮箱迁移](docs/cloud-mail-migration.md)。
+
+
+## 云端消息平台
+
+5G、钉钉、飞书、微信、企业微信复用桌面页面；账号申请、机器人权限与渠道连接步骤，
+直接查看各渠道卡片中的“配置指南”。以下仅说明云端部署和排查。
+
+### 启用常驻接入服务
+
+消息由常驻 `channels` 服务接收并写入 PG，再经入口唤醒用户实例执行；关闭网页不影响收件。
+入口启动时自动执行 `009_messaging.sql`，使用 `messaging_bindings`、`messaging_inbox`、
+`messaging_outbox` 三张表，无需手工建表。凭据加密保存；实例执行回执随已有状态归档恢复。
+
+在 `deploy/hermes-mt/entry.env` 中配置：
+
+```dotenv
+MT_BACKEND=cube
+MT_PG_LOCK=1
+MT_CHANNELS_MEDIA_BASE_URL=http://192.168.212.116:18081/hermes/__entry/messaging
+MT_CHANNELS_KEY=<现场生成并保存的随机密钥>
+```
+
+入口主动连接实例受保护的 WebSocket；实例无需回连入口。`MT_CHANNELS_MEDIA_BASE_URL` 仅用于 5G 附件下载，填写网关可访问的 HTTP(S) 地址；纯文本无需配置。旧 `MT_CHANNELS_RELAY_URL` 只兼容生成附件链接，不再用于回连。
+`MT_CHANNELS_GATEWAY_ORIGINS` 是可选网关白名单，留空时使用可信登录响应或中心下发的地址。
+`MT_CHANNELS_KEY` 用于内部通信，只生成一次，入口和 channels 共用，不要在更新时重新生成。
+可在部署目录执行下列命令，补齐缺失的密钥且不打印其内容：
+
+```bash
+python3 - <<'PYKEY'
+import os, secrets
+from pathlib import Path
+p = Path('entry.env')
+lines = p.read_text().splitlines()
+if not any(line.startswith('MT_CHANNELS_KEY=') and line.split('=', 1)[1].strip() for line in lines):
+    lines = [line for line in lines if not line.startswith('MT_CHANNELS_KEY=')]
+    lines.append('MT_CHANNELS_KEY=' + secrets.token_hex(32))
+    p.write_text('\n'.join(lines) + '\n')
+    os.chmod(p, 0o600)
+PYKEY
+```
+
+执行 `bash deploy.sh all --branch cloud-adaptation`，同时更新前端、入口、channels 与实例模板。
+未配置密钥时不启动 channels。5G 可重新短信登录获取 cloud 凭据并自动绑定，也可由中心下发；
+“已保存”不代表连接成功，应确认页面实际显示已连接。同一个机器人应只由一个接入方连接。
+
+### 中心下发 5G 绑定
+
+目标 `user_id` 必须已在 Hermes 登录建立用户记录，且账号未停用；不存在的用户返回 404，不会由该接口创建登录会话。无需新增数据库表。
+
+- `PUT /api/channels/uniagentgate/cloud-binding/{user_id}`：原子保存 5G 凭据和模型配置，自动启用绑定，channels 下一轮调度建立连接。
+- `GET /api/channels/uniagentgate/cloud-binding/{user_id}`：返回 `bound`、`state`、`last_error`、`updated_at`，不返回地址或密钥。
+- `DELETE /api/channels/uniagentgate/cloud-binding/{user_id}`：解除该用户 5G 绑定，重复调用仍成功；其他平台和模型凭据保持原有配置。
+
+以上是 nginx 对外路径，同时支持 `/hermes/api/channels/uniagentgate/cloud-binding/{user_id}`。沿用 UniClaw cloud-vm-dev 的调用方式，不要求额外服务密钥或浏览器 cookie；接口的访问范围由部署网络或网关控制。中心服务直接提交请求体即可。
+
+部署保留 `MT_CHANNELS_KEY`，用于入口、channels 与实例之间的内部认证，不需要提供给调用 cloud-binding 的中心服务。发送 5G 附件时另填 `MT_CHANNELS_MEDIA_BASE_URL`（网关可访问的附件入口）。`MT_CHANNELS_GATEWAY_ORIGINS` 可留空，网关地址来自登录响应或下发请求。
+
+PUT 请求体沿用 UniClaw 结构：
+
+```json
+{
+  "uniagentgate": {
+    "gateway_url": "https://uag.example.com",
+    "agent_id": "cloud-agent-user-id",
+    "agent_sk": "由中心服务提供的云端 Agent SK"
+  },
+  "my_plan": {
+    "apiKey": "sk-用户模型凭据",
+    "models": "{\"models\":[{\"id\":\"main\",\"model\":\"model-name\",\"base_url\":\"https://model.example.com/plan/v1\",\"provider\":\"yuanjing\"}],\"main_model_id\":\"main\"}"
+  }
+}
+```
+
+`my_plan` 沿用 Hermes 当前用户级模型凭据：`apiKey` 必填并以 `sk-` 开头，`models` 是含非空模型数组的 JSON 字符串。网关与模型凭据在同一事务中保存并加密；校验失败或机器人已属于其他用户时，不会部分覆盖配置。模型配置在实例下一次唤醒或访问时沿用已有同步链路生效，不中断当前 Agent 对话。
+
+相同 5G 凭据重试 PUT 只同步模型配置，不改变连接 revision，也不取消正在执行的任务。变更 5G 凭据会轮换 revision，旧连接在 channels 调度时关闭，旧执行按原有 uncertain/cancelled 规则处理。`ok=true` 只表示保存和启用成功，必须继续 GET 确认 state 为 running。该功能只作用于云端入口和集中接入服务。
+
+### 排查与验收
+
+```bash
+docker ps -a --filter name=hermes-mt --format 'table {{.Names}}\t{{.Status}}'
+docker logs --tail 100 hermes-mt-channels
+docker logs --tail 100 hermes-mt-entry
+```
+
+实例执行日志在该实例的 `logs/cloud-messaging.log`。排查时核对绑定连接状态、入口能否唤醒实例、
+实例能否连到 relay；避免公开业务日志。5G 媒体链接还要求网关能访问 relay 地址对应的 HTTP(S) 主机。
+共用沙箱集群时，未确认资源归属隔离前不要执行 `purge-old` 或 `purge-templates`。
+
+部署后逐个平台验证文字、图片、音频、文件进入实例，以及生成附件返回原聊天。
+再验证关闭网页后收发、实例休眠唤醒、重启恢复、重复事件不重复执行、用户隔离、解绑停止接收。
+真实账号收发尚待验收，本地协议测试及镜像构建不能替代此项。
+
+媒体上限为单文件 20 MiB、单消息/执行合计 25 MiB，图片/视频最多 10 MiB；平台更小的限制仍适用。
+图片识别和语音转写还依赖对应模型配置。微信音频返回文件附件；企微 AMR 且不超过 2 MiB
+可原生发送语音，其他音频返回文件。企微回复受原连接与 330 秒窗口限制，冷启动或排队可能耗尽窗口。
+
+飞书和钉钉群消息需 @ 机器人。微信群事件默认关闭，仅处理允许列表中的群；iLink 通常不投递
+普通微信群消息，代码适配群事件不等于普通微信群可用。
+
+未收到发送确认的消息标为 `unknown`，工具执行中崩溃标为 `uncertain`，不会自动重发或重跑，
+需核对原会话后再决定操作。单用户按顺序执行，当前使用单个活动接入服务。
+
+
+## 云端套件与专家
+
+复用桌面套件页面、安装器与专家 Profile；每个租户实例的同一个 Hermes 后端服务默认助手和已安装专家。
+Bot Mode、任意 Profile 管理、专家定时任务与 OAuth 暂不开放。套件在页面显式安装，卸载后不会因实例重建自动装回。
+卸载专家会删除它的对话和记忆，页面需明确确认；正在执行对话时拒绝变更。
+
+`deploy.sh all` 在构建沙箱镜像前沿用桌面配置仓库准备资源，默认源为
+`git@gitcode.com:uni-ai/uniclawwork-local-config.git`。部署用户须有该仓库的读取权限。
+可通过现有构建参数 `UNIWORK_BUNDLED_PLUGINS` 指定本地配置目录或其他仓库，
+`UNIWORK_BUNDLED_PLUGINS_REF` 选择分支或提交。资源写入忽略目录 `.kits-runtime/`，不改写 Git 跟踪的文件。
+资源内容纳入沙箱镜像指纹，缺失或坏包会停止部署；不从用户实例联网拉取包。
+
+安装、配置与卸载通过现有技能变更检查点，归档失败只重试保存，不重放安装或删除。
+专家的配置、技能、会话和记忆保存在当前用户的 `profiles/`，随现有 SQLite 一致快照归档恢复，无新增 PG 表。
+套件脚本复用模板内预装 Python，不在各用户首次使用时安装依赖；需要额外按需依赖的脚本会提示尚未支持。
+上线需完整执行 `bash deploy.sh all --branch cloud-adaptation`，同时更新前端、入口和实例模板。
+
+### 消息执行通道升级
+
+Entry 与实例模板须一起升级：通道能力为 `entry-forward-relay-v1`，旧模板不支持时明确拒绝，不回退到实例主动回连。`deploy.sh up/all` 在替换入口前停止本机 channels 领取任务，再启动匹配版本。未结束任务保留原 delivery_id、PG 租约和实例执行账本；过期后先核对账本，无法确认的执行保持 uncertain。平台发送 unknown 不自动重发。回退也要先停 channels，再恢复匹配的入口与模板；不要清空消息表或批量重置 uncertain。内部通道不计浏览器活跃时间，不阻止正常空闲暂停；仅有效执行租约阻止任务中途回收。

@@ -113,7 +113,7 @@ describe('MyMailPage disabled state', () => {
       cc: [], date: '2026-10-23T08:30:00Z', flags: [], folder: 'INBOX', from: null, hasAttachments: true,
       html: null, seen: false, subject: 'Report', text: 'Attached.', to: [], uid: 8
     })
-    downloadAttachment.mockResolvedValue({ canceled: false, saved: true })
+    downloadAttachment.mockResolvedValue({ file: { downloadUrl: 'https://example.test/mail/report.txt' } })
     const openExternal = vi.fn().mockResolvedValue(undefined)
     Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: { openExternal } })
     const { MyMailPage } = await import('./page')
@@ -126,7 +126,7 @@ describe('MyMailPage disabled state', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '下载' }))
     await waitFor(() => expect(downloadAttachment).toHaveBeenCalledWith('default', 'INBOX', 8, '2'))
-    expect(openExternal).not.toHaveBeenCalled()
+    await waitFor(() => expect(openExternal).toHaveBeenCalledWith('https://example.test/mail/report.txt'))
   })
 
   it.each([

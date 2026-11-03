@@ -181,7 +181,7 @@ export function MyMailPage() {
         await host.composer.setDraft('new', prompt, { attachments })
 
         if (results.some(result => result.status === 'rejected')) {
-          host.notifyError(new Error('部分邮件附件未能添加到对话。'))
+          host.notifyError(new Error('部分邮件附件未能添加到对话。'), '部分邮件附件未能添加到对话。')
         }
       })()
     }, 180)
@@ -266,7 +266,10 @@ export function MyMailPage() {
     setBusy(true)
     setError('')
     try {
-      await downloadAttachment(profile, detail.folder, detail.uid, attachmentId)
+      const result = await downloadAttachment(profile, detail.folder, detail.uid, attachmentId)
+      const url = result.file?.downloadUrl
+      if (!url || !window.hermesDesktop?.openExternal) throw new Error(text.error)
+      await window.hermesDesktop.openExternal(url)
     } catch (cause) {
       setError(errorText(cause, text.error))
     } finally {

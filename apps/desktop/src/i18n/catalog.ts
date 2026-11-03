@@ -1,4 +1,5 @@
-import { withBrowserArtifactLabels } from '@/lib/browser-shell-artifacts'
+import { withBrowserShareLabels } from '@/lib/browser-shell-artifacts'
+import { withBrowserBootLabels } from '@/lib/browser-shell-boot'
 import { withCloudChinese } from '@/lib/browser-shell-zh'
 
 import { ar } from './ar'
@@ -12,14 +13,18 @@ import type { Locale, Translations } from './types'
 import { zh } from './zh'
 import { zhHant } from './zh-hant'
 
+function browserLabels(locale: Locale, translations: Translations): Translations {
+  return withBrowserBootLabels(locale, withBrowserShareLabels(locale, translations))
+}
+
 export const TRANSLATIONS: Record<Locale, Translations> = {
-  en: withBrowserArtifactLabels('en', en),
-  zh: withBrowserArtifactLabels('zh', withCloudChinese(zh)),
-  'zh-hant': withBrowserArtifactLabels('zh-hant', zhHant),
-  ja: withBrowserArtifactLabels('ja', ja),
-  ar,
-  ru,
-  fr,
-  de,
-  es
+  en: browserLabels('en', en),
+  zh: browserLabels('zh', withCloudChinese(zh)),
+  'zh-hant': browserLabels('zh-hant', zhHant),
+  ja: browserLabels('ja', ja),
+  ar: browserLabels('ar', ar),
+  ru: browserLabels('ru', ru),
+  fr: browserLabels('fr', fr),
+  de: browserLabels('de', de),
+  es: browserLabels('es', es)
 }

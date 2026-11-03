@@ -1,3 +1,4 @@
+import { supportsArtifactSharing } from '@/lib/browser-shell'
 import { useStore } from '@nanostores/react'
 import type * as React from 'react'
 import type {
@@ -1093,7 +1094,7 @@ export function LocalFilePreview({
       resolvedShareSource === undefined ? artifactShareFilePath(filePath, currentCwd) : resolvedShareSource?.path
 
     const shareableFile =
-      connection?.mode === 'local' &&
+      supportsArtifactSharing(connection) &&
       !state.truncated &&
       shareSessionId &&
       sharePath &&

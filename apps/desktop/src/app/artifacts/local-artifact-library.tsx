@@ -16,6 +16,7 @@ import { useResizeObserver } from '@/hooks/use-resize-observer'
 import { useI18n } from '@/i18n'
 import { desktopFsCacheKey, revealDesktopPath } from '@/lib/desktop-fs'
 import { ChevronDown, ChevronRight, RefreshCw, Star } from '@/lib/icons'
+import { downloadGatewayMediaFile } from '@/lib/media'
 import { fmtDayTime } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { notifyError } from '@/store/notifications'
@@ -35,14 +36,17 @@ import {
   withoutPublishedArtifactLinks,
   writeLocalFavorites
 } from './local-artifact-model'
+import { artifactFileResolver, artifactLibraryIdentity, usesInstanceArtifactLibrary } from './local-artifact-platform'
 import { LocalArtifactRow } from './local-artifact-row'
 import { useLocalArtifacts } from './use-local-artifacts'
 
-/** 桌面本地产物复用 Hermes 文件和会话能力，浏览器及远程连接继续使用原有视图。 */
+/** 桌面和云端实例共用资料库交互，文件访问由各自的边界核验。 */
 export function LocalArtifactLibrary() {
   const { t } = useI18n()
   const copy = t.localArtifacts
   const navigate = useNavigate()
+  const cloud = usesInstanceArtifactLibrary()
+  const identity = artifactLibraryIdentity()
   const connection = useStore($connection)
   const connectionKey = desktopFsCacheKey(connection)
   const scope = useStore($apiRequestScope)
@@ -85,6 +89,10 @@ export function LocalArtifactLibrary() {
     state.generation += 1
     setUpload(null)
     setShare(null)
+    setFavorites(readLocalFavorites())
+    setUploaded(new Set())
+    setClosed(new Set())
+    setLimits({})
     setBusy(false)
     state.busy = false
 
@@ -92,7 +100,7 @@ export function LocalArtifactLibrary() {
       state.active = false
       state.generation += 1
     }
-  }, [connectionKey, scope])
+  }, [connectionKey, scope, identity])
   useEffect(() => {
     setGroupLimit(50)
   }, [query, type, favoritesOnly])
@@ -119,6 +127,7 @@ export function LocalArtifactLibrary() {
 
     /** 窗口尺寸和日志更新不改变文件归属，真正切换来源才作废当前操作。 */
     const current = () =>
+      artifactLibraryIdentity() === identity &&
       state.active &&
       state.generation === generation &&
       desktopFsCacheKey($connection.get()) === connectionKey &&
@@ -137,6 +146,10 @@ export function LocalArtifactLibrary() {
         if (state.active) {
           navigate(NEW_CHAT_ROUTE)
         }
+      } else if (operation === 'folder' && cloud) {
+        await downloadGatewayMediaFile(file.resolvedPath!, {
+          sessionId: file.sessionId, profile: file.profile || 'default', suggestedName: file.label
+        })
       } else if (operation === 'folder') {
         if (!file.resolvedPath || !window.hermesDesktop.revealPath) {
           throw new Error(copy.fileUnavailable)
@@ -148,7 +161,7 @@ export function LocalArtifactLibrary() {
           await window.hermesDesktop.openExternal(file.href)
         }
       } else {
-        const target = file.resolvedPath ? await window.hermesDesktop.normalizePreviewTarget(file.resolvedPath) : null
+        const target = file.resolvedPath ? await artifactFileResolver()(file.resolvedPath) : null
 
         if (!target) {
           throw new Error(copy.fileUnavailable)
@@ -206,7 +219,7 @@ export function LocalArtifactLibrary() {
 
   /** 查看来源通过 Hermes 统一入口，补齐跨 Profile 会话的精确归属。 */
   function openSource(file: LocalArtifact): void {
-    setSessionOwnerHint(file.sessionId, { connectionId: 'local', profile: file.profile || 'default', mode: 'local' })
+    setSessionOwnerHint(file.sessionId, { connectionId: 'local', profile: file.profile || 'default', mode: cloud ? 'remote' : 'local' })
     openSessionFromPicker(file.sessionId, navigate)
   }
 
@@ -330,6 +343,7 @@ export function LocalArtifactLibrary() {
                         (file.profile || 'default') === (scope.profile || connection?.profile || 'default') &&
                         /\.(html?|mdx?|markdown)$/i.test(file.label)
                       }
+                      download={cloud}
                       favorite={favorites.has(localFavoriteKey(file) || '')}
                       file={file}
                       key={file.id}

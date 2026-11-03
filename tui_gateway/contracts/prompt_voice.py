@@ -7,6 +7,8 @@ and voice / wake-word control (``methods_voice.py``).
 
 from __future__ import annotations
 
+from typing import Annotated
+
 from pydantic import Field
 
 from .base import JsonValue, Params, Result, WireEnum
@@ -37,6 +39,7 @@ class PromptSubmitParams(SessionParams):
     voice_context: str | None = None  # recent spoken transcript, model input only (voice-live)
     # Desktop-generated large-paste preview (first ~1000 chars); TITLE input only, never the model turn.
     title_preview: str | None = None
+    execution_metadata: dict[Annotated[str, Field(max_length=64)], Annotated[str, Field(max_length=512)]] | None = Field(default=None, max_length=8)
     truncate_before_user_ordinal: int | None = None
     truncate_before_row_id: int | None = None
     truncate_before_message_id: str | None = None

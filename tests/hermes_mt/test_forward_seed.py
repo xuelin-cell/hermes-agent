@@ -7,10 +7,105 @@ import importlib.util
 import json
 import os
 import sys
+import secrets
 import time
 from pathlib import Path
+from dataclasses import replace
 
 import pytest
+
+from entry.config import Settings
+from entry.langfuse_config import credential_lines
+from entry.store import LangfuseCredentials
+from entry.tenants import TenantManager
+from entry import tenants as tenants_module
+
+
+class TracingStore:
+    def __init__(self):
+        self.credentials = {}
+
+    async def ensure_langfuse_credentials(self, user_id):
+        if user_id not in self.credentials:
+            self.credentials[user_id] = LangfuseCredentials(
+                user_id, 'pk-lf-' + secrets.token_hex(16), 'sk-lf-' + secrets.token_hex(32))
+        return self.credentials[user_id]
+
+
+@pytest.mark.asyncio
+async def test_cube_bootstrap_provisions_isolated_stable_plugin_credentials(forward, tmp_path, monkeypatch):
+    import yaml
+    from hermes_cli.plugins import PluginManager
+
+    monkeypatch.setattr(tenants_module, 'SEED_DIR', SEED_DIR)
+    settings = replace(Settings(), langfuse_gateway_url='https://gateway.example',
+                       langfuse_entry_url='https://entry.example')
+    store = TracingStore()
+    manager = TenantManager(settings, None, store, None)
+    before = {}
+    for user_id in ('alice', 'bob', 'alice'):
+        home = tmp_path / user_id
+        home.mkdir(exist_ok=True)
+        if not (home / 'config.yaml').exists():
+            (home / 'config.yaml').write_text('plugins:\n  enabled: [custom-plugin]\n', encoding='utf-8')
+            (home / '.env').write_text('USER_SECRET=keep-me\n', encoding='utf-8')
+        monkeypatch.setattr(forward, 'HERMES_HOME', home)
+        monkeypatch.setenv('HERMES_HOME', str(home))
+        lines = await credential_lines(settings, store, user_id)
+        files = manager._cube_seed_files('model-key', None, None, tracing_lines=lines)
+        forward._write_seed(files)
+        env = (home / '.env').read_text(encoding='utf-8')
+        cfg = yaml.safe_load((home / 'config.yaml').read_text(encoding='utf-8'))
+        assert cfg['plugins']['enabled'] == ['custom-plugin', 'observability/langfuse']
+        assert 'USER_SECRET=keep-me' in env and 'HERMES_LANGFUSE_CAPTURE=full' in env
+        assert 'HERMES_LANGFUSE_BASE_URL=https://entry.example/hermes/__entry/langfuse' in env
+        assert store.credentials[user_id].secret_key in env and 'maas-' not in env
+        if user_id in before:
+            assert before[user_id] == env
+        before[user_id] = env
+        loader = PluginManager()
+        loader.discover_and_load()
+        assert loader._plugins['observability/langfuse'].enabled
+    assert store.credentials['alice'].secret_key not in before['bob']
+    assert store.credentials['bob'].secret_key not in before['alice']
+    disabled = TenantManager(replace(settings, langfuse_entry_url=''), None, store, None)
+    assert await credential_lines(disabled.s, store, 'never-enabled') == []
+    assert 'enabled_plugins' not in disabled._config_patch_spec(None, None)
+    assert 'never-enabled' not in store.credentials
+
+
+@pytest.mark.asyncio
+async def test_docker_provisioning_merges_existing_config_and_is_idempotent(tmp_path, monkeypatch):
+    import yaml
+
+    monkeypatch.setattr(tenants_module, 'SEED_DIR', SEED_DIR)
+    class Archives:
+        files = {'config.yaml': b'plugins:\n  enabled: [custom-plugin]\n', '.env': b'OTHER_KEY=keep\n'}
+
+        async def get_archive(self, name, path):
+            key = path.removeprefix('/opt/data/')
+            return tenants_module._tar_bytes({key: self.files[key]}) if key in self.files else None
+
+        async def put_archive(self, name, path, archive):
+            import io
+            import tarfile
+            with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
+                for item in tar:
+                    self.files[item.name] = tar.extractfile(item).read()
+
+    settings = replace(Settings(), langfuse_gateway_url='https://gateway.example',
+                       langfuse_entry_url='http://entry:9400')
+    store = TracingStore()
+    docker = Archives()
+    manager = TenantManager(settings, docker, store, None)
+    assert await manager._sync_endpoint('container', None)
+    assert await manager._sync_langfuse('container', 'alice')
+    assert not await manager._sync_endpoint('container', None)
+    assert not await manager._sync_langfuse('container', 'alice')
+    cfg = yaml.safe_load(docker.files['config.yaml'])
+    assert cfg['plugins']['enabled'] == ['custom-plugin', 'observability/langfuse']
+    assert b'OTHER_KEY=keep' in docker.files['.env']
+    assert store.credentials['alice'].secret_key.encode() in docker.files['.env']
 
 SEED_DIR = Path(__file__).resolve().parents[2] / "deploy" / "hermes-mt" / "seed"
 
@@ -87,9 +182,13 @@ async def test_spawn_hermes_turns_on_the_cron_ticker(forward, monkeypatch: pytes
     """hermes serve 只在 HERMES_DESKTOP=1 时自己起定时任务的调度线程。"""
     seen: dict = {}
 
+    class Process:
+        async def wait(self):
+            return 0
+
     async def fake_exec(*args, env=None, **kwargs):
         seen["args"], seen["env"] = args, env
-        return object()
+        return Process()
 
     monkeypatch.setattr(forward.asyncio, "create_subprocess_exec", fake_exec)
     await forward._spawn_hermes("tok")

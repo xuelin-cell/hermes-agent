@@ -1,4 +1,4 @@
-import { ipcMain, type IpcMainInvokeEvent, type Session } from 'electron'
+import { ipcMain, type IpcMainInvokeEvent, net, type Session } from 'electron'
 
 import { isDesktopRendererSender } from '../desktop-renderer-sender'
 import { ASR_CHANNEL, type AsrIdentity } from '../uniwork-asr/contract'
@@ -51,7 +51,7 @@ export function installAccountIpc(
     })
   }
 
-  const catalog = new WelcomeCatalogClient(undefined, readIdentity)
+  const catalog = new WelcomeCatalogClient((input, options) => net.fetch(input, options), readIdentity)
   ipcMain.handle(WELCOME_CATALOG_CHANNEL, async (event, ...args) => {
     if (!trusted(event, []) || args.length !== 1 || !['zh-CN', 'en'].includes(args[0])) {
       throw new Error('办公模板请求无效。')
@@ -80,7 +80,7 @@ export function installAccountIpc(
   }
 
   if (readIdentity && drive) {
-    const usage = new PlanUsageClient(readIdentity, undefined, applyBinding)
+    const usage = new PlanUsageClient(readIdentity, (input, options) => net.fetch(input, options), applyBinding)
     ipcMain.handle(PLAN_USAGE_CHANNEL, (event, ...args) => {
       if (!trusted(event, args)) {
         return { status: 'failed' }
@@ -150,7 +150,7 @@ export function installAccountIpc(
   }
 
   if (readIdentity && openExternal) {
-    const subscription = new PlanSubscriptionClient(readIdentity, openExternal)
+    const subscription = new PlanSubscriptionClient(readIdentity, openExternal, (input, options) => net.fetch(input, options))
     ipcMain.handle(PLAN_SUBSCRIPTION_CHANNEL, (event, ...args) => {
       if (!trusted(event, args)) {return { status: 'failed' }}
 

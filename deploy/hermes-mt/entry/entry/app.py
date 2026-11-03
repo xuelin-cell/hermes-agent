@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import re
 import time
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
@@ -14,8 +13,18 @@ import aiohttp
 from aiohttp import web
 
 from .config import SETTINGS, Settings
+from .browser_auth import BrowserAuth, BrowserIdentity
+from .langfuse_routes import LangfuseRoutes
+from .drive_routes import DriveRoutes
+from .messaging_notifications import MessagingNotifications
+from .account_routes import AccountRoutes
+from .plan_routes import PlanRoutes
+from .welcome_routes import WelcomeRoutes
+from .skill_routes import SkillRoutes, MUTATIONS as SKILL_MUTATIONS
 from .crypto import CredentialCipher, CredentialError
-from .cube_api import Cube
+from .connector_oauth import ConnectorAccessLogger
+from .cube_api import Cube, CubeError
+from .backend_errors import cube_failure_reason
 from .db import Database, DatabaseUnavailable
 from .docker_api import Docker
 from .maas import Maas, MaasError
@@ -25,6 +34,14 @@ from .enterprise import EnterpriseSync
 from .s3lite import S3Lite
 from .service import ServiceApi
 from .store import EnterpriseBinding, Session, Store
+from .share_store import ShareStore
+from .share_gateway import ShareGateway
+from .share_routes import ShareRoutes
+from .mail_routes import MailRoutes
+from .connector_routes import ConnectorRoutes
+from .messaging_routes import MessagingRoutes
+from .cloud_binding_routes import CloudBindingRoutes
+from .shares import Shares
 from .tenants import CredentialSyncError, TenantManager
 from .uniwork import (
     ACCESS_MESSAGES,
@@ -114,6 +131,19 @@ class Entry:
             self.database,
             CredentialCipher(settings.credential_key),
         )
+        self.browser_auth = BrowserAuth(self.store.cipher)
+        self.langfuse_routes = LangfuseRoutes(self)
+        self.share_routes = ShareRoutes(self)
+        self.mail_routes = MailRoutes(self)
+        self.connector_routes = ConnectorRoutes(self)
+        self.messaging_routes = MessagingRoutes(self)
+        self.drive_routes = DriveRoutes(self)
+        self.notifications = MessagingNotifications(self)
+        self.account_routes = AccountRoutes(self)
+        self.plan_routes = PlanRoutes(self)
+        self.welcome_routes = WelcomeRoutes(self)
+        self.skill_routes = SkillRoutes(self)
+        self.shares: Shares | None = None
         # aiohttp 客户端必须在事件循环中创建，因此在 on_startup 里赋值。
         self.http: aiohttp.ClientSession | None = None
         self.docker: Docker | None = None
@@ -175,6 +205,7 @@ class Entry:
         catalog: list[tuple[str, str]] | None = None,
         limits: dict[str, int] | None = None,
         enterprise: EnterpriseBinding | None = None,
+        maas_token: str = "",
     ) -> web.Response:
         login = await self.store.finish_login(
             user_id=user_id,
@@ -199,8 +230,23 @@ class Entry:
         # 登录事务提交后后台预热；预热失败不撤销已经建立的平台登录。被企业拦住的人不预热：不给他拉起实例。
         if enterprise is None or enterprise.access_status == ACTIVE:
             self._spawn(self._warm(user_id))
-        response = web.json_response(body)
+        proof = ""
+        if maas_token and upstream_expires_ms:
+            proof, body["maas_auth"] = self.browser_auth.issue(
+                login.session, maas_token, upstream_expires_ms, phone,
+            )
+            self.langfuse_routes.remember(user_id, maas_token, upstream_expires_ms)
+        response = web.json_response(body, headers={"Cache-Control": "no-store"})
         self._set_cookie(response, login.session)
+        if proof:
+            response.set_cookie(
+                self.s.cookie_name + "_maas", proof,
+                max_age=max(0, login.session.expires_at - int(time.time())),
+                path=self.s.base_path + "/", httponly=True,
+                secure=self.s.cookie_secure, samesite="Lax",
+            )
+        else:
+            response.del_cookie(self.s.cookie_name + "_maas", path=self.s.base_path + "/")
         return response
 
     # ---- 企业模式：访问拦截 ------------------------------------------------------
@@ -279,8 +325,33 @@ class Entry:
             log.exception("warm-up of tenant %s failed: %s", user_id, type(exc).__name__)
 
     async def login_page(self, request: web.Request) -> web.Response:
-        html = (STATIC_DIR / "login.html").read_text(encoding="utf-8")
+        # 两种模式各一份，接统一登录时一起删（docs/企业版对接/1027/统一登录方案.html）
+        name = "login.html" if self.s.enterprise else "login-personal.html"
+        html = (STATIC_DIR / name).read_text(encoding="utf-8")
         return web.Response(text=html, content_type="text/html")
+
+    async def browser_auth_script(self, request: web.Request) -> web.Response:
+        return web.Response(
+            text=(STATIC_DIR / "browser-auth.js").read_text(encoding="utf-8"),
+            content_type="application/javascript", headers={"Cache-Control": "no-store"},
+        )
+
+    async def _require_maas(self, request: web.Request) -> BrowserIdentity:
+        session = await self._require(request)
+        identity = self.browser_auth.require(
+            session, request.cookies.get(self.s.cookie_name + "_maas", ""),
+            request.headers.get("Authorization", ""),
+        )
+        self.langfuse_routes.remember(identity.user_id, identity.token, identity.expires_at)
+        return identity
+
+    async def maas_auth_status(self, request: web.Request) -> web.Response:
+        """Confirm the browser credential binding without returning the bearer."""
+        identity = await self._require_maas(request)
+        return web.json_response({
+            "user_id": identity.user_id, "login_id": identity.login_id,
+            "expires_at": identity.expires_at,
+        }, headers={"Cache-Control": "no-store"})
 
     async def config(self, request: web.Request) -> web.Response:
         return web.json_response({"dev": self.s.dev_login, "base": self.s.base_path, "enterprise": self.s.enterprise})
@@ -368,7 +439,7 @@ class Entry:
             log.info("user %s plan: %s", result.uid, plan.summary())
             if not (endpoint and endpoint[0]):
                 log.warning("user %s: my-plan did not provide a plan base URL", result.uid)
-        return await self._finish_login(
+        response = await self._finish_login(
             result.uid,
             api_key,
             result.expires_at_ms,
@@ -376,7 +447,13 @@ class Entry:
             endpoint=endpoint,
             catalog=catalog,
             limits=limits,
+            maas_token=result.token,
         )
+        try:
+            await self.messaging_routes.apply_login(result.uid,result.raw.get('plan'))
+        except Exception as error:
+            log.warning('channel credential update deferred: %s',type(error).__name__)
+        return response
 
     async def dev_login(self, request: web.Request) -> web.Response:
         if not self.s.dev_login:
@@ -562,6 +639,9 @@ class Entry:
             return ""
         session = await self.store.get_session(sid)
         await self.store.delete_session(sid)
+        await self.share_routes.agent.logout(sid)
+        await self.drive_routes.logout(sid)
+        await self.account_routes.worker.logout(sid)
         if session:
             if self.s.enterprise:
                 await self._enterprise_logout(session.user_id)
@@ -573,17 +653,20 @@ class Entry:
         await self._end_session(request)
         response = web.json_response({"ok": True})
         response.del_cookie(self.s.cookie_name, path=self.s.base_path + "/")
+        response.del_cookie(self.s.cookie_name + "_maas", path=self.s.base_path + "/")
         return response
 
     async def logout_page(self, request: web.Request) -> web.Response:
         await self._end_session(request)
-        response = web.HTTPFound(self.s.path("/login"))
+        response = web.HTTPFound(self.s.path("/login") + "?signed_out=1")
         response.del_cookie(self.s.cookie_name, path=self.s.base_path + "/")
+        response.del_cookie(self.s.cookie_name + "_maas", path=self.s.base_path + "/")
         return response
 
     async def ws(self, request: web.Request) -> web.StreamResponse:
         """聊天：hermes 自己的 /api/ws。"""
-        return await self._proxy_tenant_ws(request, "/api/ws", heartbeat=None)
+        path = "/api/plugins/uniwork-kits/cloud/ws" if request.query.get("kits") == "1" else "/api/ws"
+        return await self._proxy_tenant_ws(request, path, heartbeat=None)
 
     async def terminal(self, request: web.Request) -> web.StreamResponse:
         """右侧终端面板：实例里转发器的命令行通道。终端可能长时间没有输出，两头每 25 秒发一次心跳。"""
@@ -633,17 +716,27 @@ class Entry:
     # 用户经代理打不到的路径：转发器的管理接口（能让自己的实例排空），
     # 以及 hermes 的「导入备份」（它会在库打开时替换 state.db，归档和真实库会分叉）。
     # 注意 ``__mt_user/``（回收站、重命名、命令行）不在其中：那是给用户用的，转发器自己核对会话令牌。
-    _BLOCKED_TAILS = ("__mt/", "api/ops/import")
+    _BLOCKED_TAILS = ("__mt/", "api/ops/import", "api/plugins/cloud-mail/internal/", "api/plugins/cloud-mail/mcp", "api/plugins/conversation-share/internal/", "api/plugins/cloud-drive/internal/", "api/plugins/cloud-drive/mcp")
     # hermes 的「显示环境变量原值」：浏览器能借它读出 .env 里的设备令牌和别的密钥（按路径结尾挡，带 profile 前缀的也算）。
     _BLOCKED_ENDINGS = ("api/env/reveal",)
 
     async def backend(self, request: web.Request) -> web.StreamResponse:
         session = await self._require(request)
         tail = request.match_info.get("tail", "").lstrip("/")
-        normalized = tail.replace("//", "/")
-        decoded = re.sub(r"/+", "/", unquote(tail)).rstrip("/")  # %2F 和连写的斜杠到了 hermes 那边一样会被认出来
+        import posixpath
+        normalized = tail
+        for _ in range(4):
+            decoded = unquote(normalized)
+            if decoded == normalized:
+                break
+            normalized = decoded
+        normalized = posixpath.normpath(normalized).lstrip('/')
+        if "\\" in normalized:
+            raise web.HTTPNotFound()
+        if not self.s.enterprise and (request.method, normalized) in SKILL_MUTATIONS:
+            raise web.HTTPConflict(text='请使用云端技能操作入口，以确认保存后再返回成功。')
         if (normalized.startswith(self._BLOCKED_TAILS) or normalized in self._BLOCKED_TAILS
-                or decoded.endswith(self._BLOCKED_ENDINGS)):
+                or normalized.endswith(self._BLOCKED_ENDINGS)):
             raise web.HTTPNotFound()
         reason = self._gate(session)
         if reason:
@@ -655,6 +748,12 @@ class Entry:
         except CredentialSyncError as exc:
             log.warning("credential sync for %s failed: %s", session.user_id, type(exc).__name__)
             return web.json_response({"error": "credential_sync_failed"}, status=502)
+        except CubeError as exc:
+            log.exception("tenant for %s not ready", session.user_id)
+            return web.json_response(
+                {"error": "tenant_not_ready", "reason": cube_failure_reason(exc.status, exc.message or ""),
+                 "upstream_status": exc.status}, status=502,
+            )
         except Exception as exc:  # noqa: BLE001
             log.exception("tenant for %s not ready", session.user_id)
             return web.json_response(
@@ -679,6 +778,7 @@ class Entry:
             if self.s.enterprise:
                 self.uniwork = Uniwork(self.s, self.http)
                 self.ent = EnterpriseSync(self)
+            self.shares = Shares(ShareStore(self.database), ShareGateway(self.http), self.share_routes.instance, self.share_routes.authorize)
             # 按后端只建需要的那个客户端：跑沙箱后端时不该去碰 docker.sock
             # （入口容器很可能根本没挂它），反之亦然。
             if self.s.backend == "cube":
@@ -699,6 +799,8 @@ class Entry:
             raise
         self._bg.append(asyncio.create_task(self._reconcile()))
         self._bg.append(asyncio.create_task(self._reaper()))
+        if self.s.channels_key:
+            self._bg.append(asyncio.create_task(self.notifications.loop()))
         if self.s.backend == "cube" and self.s.cron_wake_lead_s > 0:
             self._bg.append(asyncio.create_task(self._cron_waker()))
         # 卷外第二份副本：四项桶配置齐了才跑；只对沙箱后端有意义（归档在卷上）。
@@ -731,6 +833,12 @@ class Entry:
             log.exception("reconcile failed: %s", type(exc).__name__)
 
     async def on_cleanup(self, app: web.Application) -> None:
+        await self.messaging_routes.relays.close()
+        self.langfuse_routes.close()
+        await self.share_routes.agent.close()
+        await self.skill_routes.close()
+        await self.drive_routes.close()
+        await self.account_routes.close()
         for task in self._bg:
             task.cancel()
         if self._bg:
@@ -748,8 +856,9 @@ class Entry:
             await asyncio.sleep(60)
             try:
                 await self.store.purge_expired_sessions()
+                self.langfuse_routes.purge()
                 if self.tenants is not None:
-                    await self.tenants.reap_idle(keep=set(self._live_ws))
+                    await self.tenants.reap_idle(keep=set(self._live_ws) | self.skill_routes.active_users)
             except Exception as exc:  # noqa: BLE001
                 # idle_tenants 失败发生在任何 stop 前，因此数据库故障只会跳过本轮回收。
                 log.warning("reaper tick skipped: %s", type(exc).__name__)
@@ -773,6 +882,27 @@ def build_app(settings: Settings = SETTINGS) -> web.Application:
     )
     path = settings.path
     app.router.add_get(path("/login"), entry.login_page)
+    app.router.add_get(path("/__entry/browser-auth.js"), entry.browser_auth_script)
+    app.router.add_post(path("/__entry/maas-auth"), entry.maas_auth_status)
+    app.router.add_post(path("/__entry/langfuse/grant"), entry.langfuse_routes.issue)
+    app.router.add_post(path("/__entry/langfuse/api/public/otel/v1/traces"), entry.langfuse_routes.upload)
+    app.router.add_post(path("/__entry/{kind:conversation|artifact}-shares/{operation}"), entry.share_routes.handle)
+    app.router.add_post(path("/__entry/skills/{operation}"), entry.skill_routes.handle)
+    app.router.add_post(path("/__entry/welcome/{locale}"), entry.welcome_routes.handle)
+    app.router.add_post(path("/__entry/plan/{operation}"), entry.plan_routes.handle)
+    app.router.add_post(path("/__entry/account/{operation}"), entry.account_routes.handle)
+    app.router.add_post(path("/__entry/mail"), entry.mail_routes.handle)
+    app.router.add_post(path("/__entry/connectors"), entry.connector_routes.handle)
+    app.router.add_get(path("/__entry/connectors/{provider}/oauth/callback"), entry.connector_routes.oauth.callback)
+    cloud_bindings = CloudBindingRoutes(entry)
+    for method in ("PUT", "GET", "DELETE"):
+        app.router.add_route(method,path("/api/channels/uniagentgate/cloud-binding/{user_id}"),cloud_bindings.handle)
+    app.router.add_get(path("/__entry/messaging/media/{id}"), entry.messaging_routes.media)
+    app.router.add_post(path("/__entry/messaging/wake"), entry.messaging_routes.wake)
+    app.router.add_post(path("/__entry/messaging/{operation}"), entry.messaging_routes.handle)
+    app.router.add_post(path("/__entry/drive/part/{id}"), entry.drive_routes.part)
+    app.router.add_get(path("/__entry/drive/files/{id}"), entry.drive_routes.download)
+    app.router.add_post(path("/__entry/drive/{operation}"), entry.drive_routes.handle)
     app.router.add_get(path("/__entry/config"), entry.config)
     app.router.add_get(path("/__entry/health"), entry.health)
     app.router.add_get(path("/__entry/auth"), entry.auth)
@@ -821,6 +951,7 @@ def main() -> None:
         host="0.0.0.0",
         port=SETTINGS.listen_port,
         access_log_format='%a "%r" %s %b %Tfs',
+        access_log_class=ConnectorAccessLogger,
     )
 
 

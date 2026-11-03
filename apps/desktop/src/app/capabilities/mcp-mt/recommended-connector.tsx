@@ -12,6 +12,8 @@ import {
   type LocalConnectorResult
 } from '../../../../electron/open-connector/contract'
 
+import { CLOUD_CONNECTOR_SPECS } from '../../../../services/open-connector/cloud/contract'
+
 import examples from './connector-examples.json'
 import type { RECOMMENDED_CONNECTORS } from './recommended-catalog'
 import { WecomQrForm } from './wecom-qr-form'
@@ -100,6 +102,9 @@ interface RecommendedConnectorDetailProps {
   onQr: (operation: 'qr.start' | 'qr.poll' | 'qr.cancel', sessionId?: string) => Promise<LocalConnectorResult | null>
   onSubmit: (values: Record<string, string>) => Promise<void>
   waiting: boolean
+  onToggle?: () => void
+  onRetrySave?: () => void
+  configured?: boolean
 }
 
 const GUIDE_URLS: Partial<Record<ConnectorId, string>> = {
@@ -110,7 +115,8 @@ const GUIDE_URLS: Partial<Record<ConnectorId, string>> = {
   wps_mcp: 'https://account.wps.cn/usercenter/agent-identity?isclient=false',
   youdao_note: 'https://mopen.163.com/',
   ima: 'https://ima.qq.com/agent-interface',
-  aminer: 'https://www.aminer.cn/open/board?tab=control'
+  aminer: 'https://www.aminer.cn/open/board?tab=control',
+  wecom_bot: 'https://open.work.weixin.qq.com/help2/pc/cat?doc_id=21677'
 }
 
 const EXAMPLE_GROUP: Record<ConnectorId, keyof (typeof examples)['en']> = {
@@ -169,6 +175,8 @@ export function RecommendedConnectorDetail(props: RecommendedConnectorDetailProp
             />
           ) : (
             <OverviewView
+              onToggle={props.onToggle}
+              configured={props.configured}
               available={props.available}
               busy={props.busy}
               connected={props.connected}
@@ -182,6 +190,9 @@ export function RecommendedConnectorDetail(props: RecommendedConnectorDetailProp
               waiting={props.waiting}
             />
           )}
+          {props.onRetrySave && (props.error || (props.configured && props.mode === 'overview')) && (
+            <Button disabled={props.busy} onClick={props.onRetrySave} size="lg" variant="outline">{t.common.save}</Button>
+          )}
         </DialogContent>
       )}
     </Dialog>
@@ -194,6 +205,8 @@ interface ConnectorCopy {
   provider: string
 }
 interface OverviewViewProps {
+  onToggle?: () => void
+  configured?: boolean
   available: boolean
   busy: boolean
   connected: boolean
@@ -208,6 +221,8 @@ interface OverviewViewProps {
 }
 
 function OverviewView({
+  onToggle,
+  configured,
   available,
   busy,
   connected,
@@ -227,10 +242,10 @@ function OverviewView({
       <div className="mt-connector-hero-icon">
         <img alt="" src={entry.icon} />
       </div>
-      {(connected || waiting) && (
+      {(connected || waiting || (onToggle && configured)) && (
         <div className="mt-connector-dialog-status" role="status">
           <span className={`mt-connector-status ${connected ? 'mt-connector-status-connected' : ''}`} />
-          <span>{connected ? copy.connected : copy.waiting}</span>
+          <span>{connected ? copy.connected : waiting ? copy.waiting : t.messaging.states.disabled}</span>
         </div>
       )}
       <DialogTitle className="mt-connector-dialog-title">{copy.connect(item.name)}</DialogTitle>
@@ -244,9 +259,14 @@ function OverviewView({
         </p>
       )}
       <div className="mt-connector-dialog-actions">
-        {connected ? (
+        {onToggle && configured && (
+          <Button disabled={busy} onClick={onToggle} size="lg" variant="outline">
+            {connected ? t.settings.plugins.disable : t.settings.plugins.enable}
+          </Button>
+        )}
+        {connected || (onToggle && configured) ? (
           <>
-            <Button onClick={() => onExample(prompts[0] || item.name)} size="lg">
+            <Button disabled={!connected} onClick={() => onExample(prompts[0] || item.name)} size="lg">
               <MessageCircle />
               {copy.tryIt}
             </Button>
@@ -303,7 +323,8 @@ function CredentialView({ available, busy, entry, error, item, onConnected, onQr
   const guideId = useId()
   const [guideOpen, setGuideOpen] = useState(false)
   const [values, setValues] = useState<Record<string, string>>({})
-  const fields = useMemo(() => [...CONNECTOR_SPECS[entry.id].fields], [entry.id])
+  const cloudIfind = !!window.hermesDesktop.cloudConnectorIds && entry.id === 'ifind_mcp'
+  const fields = useMemo(() => cloudIfind ? [...CLOUD_CONNECTOR_SPECS.ifind_mcp.fields] : [...CONNECTOR_SPECS[entry.id].fields], [entry.id, cloudIfind])
   const guide = copy.guides[entry.id]
   const guideUrl = GUIDE_URLS[entry.id]
   const canSubmit = available && !busy && fields.every(field => values[field]?.trim())
@@ -327,7 +348,7 @@ function CredentialView({ available, busy, entry, error, item, onConnected, onQr
       <DialogTitle className="mt-connector-dialog-title">{copy.connect(item.name)}</DialogTitle>
       <p className="mt-connector-dialog-provider">{item.provider}</p>
       <DialogDescription className="mt-connector-dialog-description">{item.description}</DialogDescription>
-      {entry.id === 'wecom_bot' ? (
+      {entry.id === 'wecom_bot' && !window.hermesDesktop.cloudConnectorIds ? (
         <WecomQrForm onConnected={onConnected} request={onQr} />
       ) : (
         <>
@@ -380,7 +401,8 @@ function CredentialView({ available, busy, entry, error, item, onConnected, onQr
                 />
               </label>
             ))}
-            <p className="mt-connector-form-hint">{copy.hints[entry.id] ?? copy.credentialsHint}</p>
+            {cloudIfind && <p className="mt-connector-form-hint">{copy.cloudOAuthHint}<br /><code>{new URL(`${import.meta.env.BASE_URL}__entry/connectors/ifind_mcp/oauth/callback`, window.location.origin).href}</code></p>}
+            <p className="mt-connector-form-hint">{window.hermesDesktop.cloudConnectorIds ? copy.cloudCredentialsHint : copy.hints[entry.id] ?? copy.credentialsHint}</p>
             {!available && <p className="mt-connector-inline-notice">{copy.localOnly}</p>}
             {error && (
               <p className="mt-connector-error" role="alert">

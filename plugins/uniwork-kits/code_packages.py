@@ -73,8 +73,18 @@ def on_pre_tool_call(tool_name: str = "", args: Any = None, task_id: str = "", *
             return None
         from hermes_constants import get_hermes_home
 
-        python = script_python.interpreter(Path(get_hermes_home()))
-        found = site_packages(python) if python else None
+        from hermes_cli.config import load_config_readonly
+
+        if (load_config_readonly().get('cloud_kits') or {}).get('enabled'):
+            # Cloud images already carry these libraries; do not provision a per-user environment.
+            import sys
+            import sysconfig
+
+            folder = Path(sysconfig.get_path("purelib"))
+            found = (folder, sys.version_info[:2]) if folder.is_dir() else None
+        else:
+            python = script_python.interpreter(Path(get_hermes_home()))
+            found = site_packages(python) if python else None
         if not found:
             return None
         code = with_packages(args["code"], *found)

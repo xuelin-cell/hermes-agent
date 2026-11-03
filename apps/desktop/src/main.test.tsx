@@ -21,6 +21,7 @@ vi.mock('./themes/context', () => ({ ThemeProvider: ({ children }: PropsWithChil
 vi.mock('./lib/renderer-loop-pause', () => ({ installRendererAnimationPauseState: vi.fn() }))
 vi.mock('./lib/selection-copy-colors', () => ({ installSelectionCopyColorGuard: vi.fn() }))
 vi.mock('./api/client', () => ({ hermesApi: probe.api }))
+vi.mock('./lib/slash-completion-cache', () => ({ invalidateSlashCompletions: vi.fn() }))
 vi.mock('react-dom/client', async importOriginal => {
   const original = await importOriginal<typeof ReactDomClient>()
 

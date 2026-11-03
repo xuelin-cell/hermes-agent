@@ -11,6 +11,8 @@ import type { MessagingOperationStatus } from '../../../electron/entry_local/mes
 
 import { $dismissedMessagingFailureRevision, $messagingOperation } from './operation-store'
 
+import { browserMessaging } from '@/dev/browser-messaging'
+
 import { MessagingView } from './index'
 
 // Imports are static on purpose: `await import(...)` inside test bodies ran
@@ -1134,4 +1136,110 @@ describe('MessagingView RCS integration', () => {
   })
 
 
+})
+
+it('cloud health polling never becomes a pending setup operation or hides an uncertain execution warning', async () => {
+  $settingsScopeOverride.set(null)
+  const warning = '有执行结果未确认，已暂停后续任务；请先核对原任务。'
+  const rows = [platform({ id: 'dingtalk' }), platform({ id: 'weixin' }), platform({ id: 'feishu' }), platform({ id: 'wecom' }),
+    platform({ id: 'uniagentgate', enabled: true, configured: true, gateway_running: false, state: 'connecting', error_code: 'execution_uncertain', error_message: warning })]
+  const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => Response.json({ platforms: rows, phase: 'checking', saved: true }))
+  vi.stubGlobal('fetch', fetcher)
+  const previous = window.hermesDesktop
+  const bridge = browserMessaging('/hermes/')
+  window.hermesDesktop = { ...previous, messagingStatus: bridge.messagingStatus, onMessagingStatus: bridge.onMessagingStatus }
+  getMessagingPlatforms.mockImplementation(() => bridge.request({ path: '/api/plugins/desktop-messaging/platforms' }))
+  try {
+    await renderMessaging()
+    await screen.findByText(warning)
+    expect(screen.queryByText('Checking messaging platform status…')).toBeNull()
+    const card = screen.getByRole('article', { name: /DingTalk/ })
+    expect((within(card).getByRole('button', { name: 'Configure' }) as HTMLButtonElement).disabled).toBe(false)
+    expect(fetcher.mock.calls.every(call => !String(call[0]).endsWith('/status'))).toBe(true)
+    expect(messagingSetup).not.toHaveBeenCalled()
+  } finally {
+    cleanup()
+    window.hermesDesktop = previous
+    vi.unstubAllGlobals()
+    getMessagingPlatforms.mockReset()
+  }
+})
+
+it('shows the cloud reconnect error without suggesting a desktop restart', async () => {
+  document.documentElement.dataset.hermesBrowser = '1'
+  const rcs = platform({ id:'uniagentgate', configured:true, enabled:true, gateway_running:false, state:'fatal' })
+  getMessagingPlatforms.mockResolvedValue({ platforms:[rcs] })
+  window.hermesDesktop = { ...window.hermesDesktop, reconnectUniAgentGate }
+  reconnectUniAgentGate.mockRejectedValue(new Error('集中消息接入尚未部署。'))
+  try {
+    await renderMessaging()
+    const card=await screen.findByRole('article',{name:/5G/})
+    fireEvent.click(within(card).getByRole('button',{name:'Reconnect'}))
+    await waitFor(() => expect(notify).toHaveBeenCalledWith(expect.objectContaining({kind:'error',message:'集中消息接入尚未部署。'})))
+    expect(JSON.stringify(notify.mock.calls)).not.toContain('fully quit')
+  } finally {
+    delete document.documentElement.dataset.hermesBrowser
+  }
+})
+
+it.each(['dingtalk','wecom','weixin','uniagentgate'] as const)(
+  'cloud %s operations keep other channels connected', async target => {
+    document.documentElement.dataset.hermesBrowser='1'
+    $settingsScopeOverride.set(null)
+    const previousBridge=window.hermesDesktop
+    window.hermesDesktop={...previousBridge,api:vi.fn().mockResolvedValue({enabled:false,group_ids:[]})}
+    const ids=['dingtalk','wecom','weixin','feishu','uniagentgate']
+    getMessagingPlatforms.mockResolvedValue({platforms:ids.map(id=>platform({id,configured:true,enabled:true,gateway_running:true,state:'connected'}))})
+    try {
+      await renderMessaging()
+      await act(async()=>{ publishOperation({phase:'checking',platform:target,saved:true,operation:'save',profile:'default'}) })
+      await waitFor(()=>expect(screen.getAllByRole('article')).toHaveLength(5))
+      const titles: Record<string,string>={dingtalk:'DingTalk',wecom:'WeCom',weixin:'WeChat',feishu:'Feishu',uniagentgate:'5G'}
+      for(const id of ids) {
+        const card=screen.getByRole('article',{name:new RegExp(titles[id])})
+        expect(within(card).getByRole('status').textContent).toBe(id===target?'Connecting':'Connected')
+      }
+    } finally {
+      delete document.documentElement.dataset.hermesBrowser
+      window.hermesDesktop=previousBridge
+    }
+  }
+)
+
+it('cloud timeout recovery depends on its target, not an unrelated failed channel', async()=>{
+  document.documentElement.dataset.hermesBrowser='1'
+  $settingsScopeOverride.set(null)
+  getMessagingPlatforms.mockResolvedValue({platforms:[
+    dingtalk({configured:true,enabled:true,gateway_running:true,state:'connected'}),
+    platform({id:'feishu',configured:true,enabled:true,gateway_running:true,state:'fatal',error_message:'Unrelated Feishu failure'})
+  ]})
+  try {
+    await renderMessaging()
+    await act(async()=>{publishOperation({phase:'failed',platform:'dingtalk',profile:'default',operation:'save',saved:true,error:'connection_timeout'})})
+    await screen.findByText('Unrelated Feishu failure')
+    await waitFor(()=>expect(screen.queryByText('Settings saved, but the messaging connection could not be restored. Retry the connection.')).toBeNull())
+    const card=screen.getByRole('article',{name:/DingTalk/})
+    expect(within(card).getByRole('status').textContent).toBe('Connected')
+    expect((within(card).getByRole('button',{name:'Configure'}) as HTMLButtonElement).disabled).toBe(false)
+  } finally {delete document.documentElement.dataset.hermesBrowser}
+})
+
+it('cloud card retry only updates the selected binding without restarting the gateway', async () => {
+  document.documentElement.dataset.hermesBrowser = '1'
+  getMessagingPlatforms.mockResolvedValue({ platforms: [
+    dingtalk({ enabled: true, configured: true, gateway_running: false, state: 'fatal' }),
+    platform({ id: 'feishu', enabled: true, configured: true, state: 'connected' })
+  ] })
+  try {
+    await renderMessaging()
+    const card = within(await screen.findByRole('article', { name: /DingTalk/ }))
+    fireEvent.click(card.getByRole('button', { name: 'Retry' }))
+    await waitFor(() => expect(updateMessagingPlatform).toHaveBeenCalledWith('dingtalk', { enabled: true }, 'default'))
+    expect(updateMessagingPlatform).toHaveBeenCalledTimes(1)
+    expect(messagingSetup).not.toHaveBeenCalled()
+    expect(runGatewayRestart).not.toHaveBeenCalled()
+    expect(within(screen.getByRole('article', { name: /Feishu/ })).getByRole('status').textContent).toBe('Connected')
+  } finally {
+    delete document.documentElement.dataset.hermesBrowser
+  }
 })

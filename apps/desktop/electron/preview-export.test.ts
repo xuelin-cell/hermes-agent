@@ -46,7 +46,9 @@ vi.mock('electron', () => {
   }
 })
 
-import { installPreviewExportIpc, previewPdf, wordDocument } from './preview-export'
+import { wordDocument } from '../../shared/src/preview-export'
+
+import { installPreviewExportIpc, previewPdf } from './preview-export'
 
 let root: string
 const accountSession = {}

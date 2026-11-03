@@ -32,6 +32,9 @@
     "typecheck": "tsc -p . --noEmit",
     "check": "npm run typecheck && npm run lint"
   },
+  "dependencies": {
+    "fflate": "0.8.3"
+  },
   "devDependencies": {
     "typescript": "6.0.3"
   }

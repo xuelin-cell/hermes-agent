@@ -18,7 +18,7 @@ export interface MessagingOperationStatus {
   revision: number
   phase: 'idle' | 'saving' | 'applying' | 'restarting' | 'stopping' | 'checking' | 'completed' | 'failed'
   profile?: string
-  platform?: MessagingSetupRequest['platform']
+  platform?: MessagingSetupRequest['platform'] | 'uniagentgate'
   operation?: MessagingSetupRequest['operation'] | 'restore'
   saved?: boolean
   error?: string

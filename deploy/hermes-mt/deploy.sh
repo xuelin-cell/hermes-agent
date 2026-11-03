@@ -38,7 +38,7 @@
 #   MT_DEPLOY_BASE_IMAGE    沙箱镜像的基础镜像，默认 hermes-custom:src-<hermes 源码指纹>（./deploy.sh base 构建）；
 #                           一般不要设，设了就固定用它（必须已在本机）
 #   MT_DEPLOY_SEED_DIR      ./deploy.sh base 预置大文件的目录，默认 /var/cache/hermes-mt/base-seed（约 500M，可重复用）
-#   MT_DEPLOY_TPL_CPU/MEM   模板规格，默认 2000 / 2000（毫核 / MiB）
+#   MT_DEPLOY_TPL_CPU/MEM   模板规格，默认 1000 / 2000（毫核 / MiB）
 #   MT_DEPLOY_TPL_DISK      模板可写层，默认 8G
 #   MT_DEPLOY_TPL_RETRIES   建模板有节点失败（平台偶发）时重建几次，第一次之外，默认 3
 #   MT_DEPLOY_BRANCH        all 时拉哪个分支，默认当前分支
@@ -135,7 +135,7 @@ load_cfg() {
     api_host="$(printf '%s' "$CUBE_API" | sed -E 's|^[a-z]+://||; s|[:/].*$||')"
     REGISTRY="$(cfg MT_DEPLOY_REGISTRY "${api_host}:5000")"
     BASE_IMAGE="$(cfg MT_DEPLOY_BASE_IMAGE "$(base_tag)")"
-    TPL_CPU="$(cfg MT_DEPLOY_TPL_CPU 2000)"
+    TPL_CPU="$(cfg MT_DEPLOY_TPL_CPU 1000)"
     TPL_MEM="$(cfg MT_DEPLOY_TPL_MEM 2000)"
     TPL_DISK="$(cfg MT_DEPLOY_TPL_DISK 8G)"
     TPL_RETRIES="$(cfg MT_DEPLOY_TPL_RETRIES 3)"
@@ -157,10 +157,10 @@ py() { python3 -c "$@"; }
 g() { (cd "$REPO" && git "$@"); }
 head_short() { g rev-parse --short=7 HEAD; }
 
-# 基础镜像（hermes 本体）按 hermes 源码指纹命名：当前提交里除前端、部署、文档、测试之外的文件。
-# 这些没变就不用重建（构建要 15~45 分钟）。git 1.8 没有排除式路径，用 ls-tree 自己滤。
+# overlay 源码在沙箱镜像末尾完整替换，不再导致基础依赖镜像换代。
+# 清单边界、依赖声明、构建器变化仍会触发基础镜像重建。
 base_tag() {
-    printf 'hermes-custom:src-%s' "$(g ls-tree -r HEAD | grep -vE $'\t(apps|deploy|docs|tests|website)/' | sha256sum | cut -c1-12)"
+    python3 "$HERE/scripts/image_overlay.py" base-tag "$REPO"
 }
 
 # 前端产物是不是当前代码构建的：比对 scripts/build-frontend.sh 算的指纹和它构建时写进产物的那份。
@@ -189,9 +189,11 @@ fingerprint() {
         for f in $(plugin_files); do
             printf '%s\n' "$f"; cat "$HERE/$f"
         done
-        for f in $(overlay_files); do
-            printf 'overlay/%s\n' "$f"; cat "$REPO/$f"
-        done
+        python3 "$HERE/scripts/image_overlay.py" snapshot "$REPO"
+        cat "$HERE/scripts/image_overlay.py"
+        # Connector code shares the frontend build step, but must also invalidate the instance template.
+        (cd "$REPO" && git ls-tree -r HEAD apps/desktop/services/open-connector apps/desktop/scripts/build-cloud-connectors.mjs)
+        cat "$HERE/.kits-runtime/.fingerprint"
         printf 'base=%s\ntpl=%s/%s/%s\n' "$base_id" "$TPL_CPU" "$TPL_MEM" "$TPL_DISK"
     } | sha256sum | cut -c1-12
 }
@@ -214,22 +216,15 @@ overlay_files() {
     done | LC_ALL=C sort -u
 }
 
-# 清单里每一项都得是仓库里受版本管理的路径，否则镜像里少东西却没人发现。
+# 校验覆盖边界和文件类型；不存在的清单项作为删除记录，清理旧基础镜像中的文件。
 check_overlay() {
-    local p n
-    [ -f "$HERE/overlay.list" ] || die "缺少 $HERE/overlay.list（覆盖进镜像的仓库路径，Dockerfile.cube 要用）"
-    for p in $(overlay_entries); do
-        [ -n "$(cd "$REPO" && git ls-files -- "$p")" ] || die "overlay.list 里的 $p 不是仓库里受版本管理的路径"
-    done
-    n="$(overlay_files | wc -l | tr -d ' ')"
-    ok "覆盖进镜像的仓库文件 $n 个（overlay.list）"
+    python3 "$HERE/scripts/image_overlay.py" snapshot "$REPO" >/dev/null
+    ok "覆盖进镜像的仓库文件 $(overlay_files | wc -l | tr -d ' ') 个（overlay.list）"
 }
 
-# 构建前把清单里的文件原样拷进 .overlay/（构建目录，不进 git），Dockerfile.cube 从那里覆盖进 /opt/hermes。
+# 每次从当前源码重新生成快照，目录整体替换，包含删除、重命名和可执行权限。
 stage_overlay() {
-    rm -rf "$HERE/.overlay"
-    mkdir -p "$HERE/.overlay"
-    (cd "$REPO" && overlay_files | tar -cf - -T -) | tar -xf - -C "$HERE/.overlay"
+    python3 "$HERE/scripts/image_overlay.py" stage "$REPO" "$HERE/.overlay" "$HERE/.kits-runtime"
 }
 
 # ---------------------------------------------------------------- 集群查询
@@ -450,21 +445,22 @@ build_base() {
     need docker; need git; need python3; need curl
     local tag log free_g seed
     tag="$(base_tag)"
-    say "基础镜像：$tag（代码 $(head_short)；指纹只算 hermes 源码，不含前端 / 部署 / 文档 / 测试）"
+    say "基础镜像：${tag}（代码 $(head_short)；指纹排除 overlay 业务源码，保留依赖与构建输入）"
     if docker image inspect "$tag" >/dev/null 2>&1; then
         ok "本机已有 $tag，不用重建"
     else
         free_g="$(df -BG --output=avail / | tail -1 | tr -dc 0-9)"
         [ "${free_g:-0}" -ge 20 ] || warn "根分区只剩 ${free_g}G，构建过程要十几 G"
         seed="$(cfg MT_DEPLOY_SEED_DIR /var/cache/hermes-mt/base-seed)"
-        say "预置构建要下载的大文件到 $seed（已备好且 sha256 对得上的不重下）"
+        say "预置构建要下载的大文件到 ${seed}（已备好且 sha256 对得上的不重下）"
         python3 "$HERE/scripts/base_seed.py" "$REPO" "$seed" || die "预置文件没备齐，看上面的输出"
         log="$HERE/.base-build.log"
-        warn "构建还要从 PyPI、npm、Debian 源下载依赖，约 15~45 分钟；完整输出在 $log"
-        # 只把步骤行打到屏幕上，免得几十分钟没动静；成败看镜像在不在。
-        (cd "$REPO" && BUILDX_BUILDER=default docker build --progress=plain -f "$seed/Dockerfile" \
+        warn "构建依赖：apt / npm 使用国内源，PyPI 沿用现有配置；每 30 秒显示耗时和最新输出，完整日志在 $log"
+        if ! (cd "$REPO" && BUILDX_BUILDER=default docker build --progress=plain -f "$seed/Dockerfile" \
             --build-context "seed=$seed" --build-arg S6_OVERLAY_BASE_URL=file:///tmp/s6-seed -t "$tag" . 2>&1) \
-            | tee "$log" | grep --line-buffered -E '^#[0-9]+ \[[^]]+\] (RUN|COPY|FROM)|ERROR' | cut -c1-110 | sed 's/^/  /' || true
+            | tee "$log" | python3 -u "$HERE/scripts/build_progress.py" --label '基础镜像'; then
+            die "基础镜像构建失败，看 $log 末尾"
+        fi
         docker image inspect "$tag" >/dev/null 2>&1 || die "基础镜像没建成，看 $log 末尾"
         ok "已构建 $tag"
     fi
@@ -490,7 +486,7 @@ ensure_base() {
 ensure_frontend() {
     local want log
     want="$(frontend_want)"
-    if [ -s "$HERE/nginx/dist-browser/index.html" ] && [ "$(frontend_have)" = "$want" ]; then
+    if [ -s "$HERE/nginx/dist-browser/index.html" ] && [ "$(frontend_have)" = "$want" ] && [ -s "$HERE/.connector-runtime/src/server/storage/worker.mjs" ] && [ -s "$HERE/.connector-runtime/contract.json" ]; then
         ok "前端产物是当前代码构建的（指纹 $want），不用重建"
         return 0
     fi
@@ -503,24 +499,41 @@ ensure_frontend() {
     [ -s "$HERE/nginx/dist-browser/index.html" ] && [ "$(frontend_have)" = "$want" ] \
         || die "前端没建成，看 $log 末尾"
     ok "前端产物 $(frontend_files) 个文件（指纹 $want）"
+    [ -s "$HERE/.connector-runtime/src/server/storage/worker.mjs" ] || die "连接器运行产物缺失，看 $log"
+    [ -s "$HERE/.connector-runtime/contract.json" ] || die "连接器契约产物缺失，看 $log"
 }
 
 # ---------------------------------------------------------------- image
 
+KITS_PREPARED=0
+ensure_kits() {
+    [ "$KITS_PREPARED" = 1 ] && return 0
+    say "准备套件资源（沿用桌面配置仓库）"
+    python3 "$HERE/scripts/build-kits.py" || die "套件资源准备失败，请检查配置仓库的读取权限或指定 UNIWORK_BUNDLED_PLUGINS 本地目录"
+    KITS_PREPARED=1
+}
+
 cmd_image() {
-    local fp
+    local fp log
+    ensure_frontend
+    ensure_kits
     fp="$(fingerprint)"
     say "沙箱镜像：指纹 $fp（Dockerfile.cube + seed/* + plugin/ + overlay.list 列的仓库文件 + 基础镜像 + 模板参数）"
     cd "$HERE"
     check_overlay
     stage_overlay
-    BUILDX_BUILDER=default docker build -f Dockerfile.cube --build-arg "BASE_IMAGE=$BASE_IMAGE" -t "$IMAGE_NAME:$fp" . 2>&1 | tail -n 4 | sed 's/^/  /'
+    log="$HERE/.image-build.log"
+    say "构建进度每 30 秒更新，完整日志在 $log"
+    if ! BUILDX_BUILDER=default docker build --progress=plain -f Dockerfile.cube --build-arg "BASE_IMAGE=$BASE_IMAGE" -t "$IMAGE_NAME:$fp" . 2>&1 \
+        | tee "$log" | python3 -u "$HERE/scripts/build_progress.py" --label '沙箱镜像'; then
+        die "沙箱镜像构建失败，看 $log 末尾"
+    fi
     ok "已构建 $IMAGE_NAME:$fp"
     # 镜像里的转发器必须和仓库里的逐字节相同——这是「入口和模板一起升级」能成立的前提。
     local in_img in_repo
-    in_img="$(docker run --rm --network none --entrypoint sha256sum "$IMAGE_NAME:$fp" /opt/mt/forward.py /opt/mt/mtstate.py /opt/mt/mtuser.py /opt/mt/mtent.py | awk '{print $1}' | tr '\n' ' ')"
-    in_repo="$(sha256sum seed/forward.py seed/mtstate.py seed/mtuser.py seed/mtent.py | awk '{print $1}' | tr '\n' ' ')"
-    [ "$in_img" = "$in_repo" ] && ok "镜像里的转发器与仓库一致" || die "镜像里的 forward.py/mtstate.py/mtuser.py/mtent.py 与仓库不一致"
+    in_img="$(docker run --rm --network none --entrypoint sha256sum "$IMAGE_NAME:$fp" /opt/mt/forward.py /opt/mt/mtstate.py /opt/mt/mtuser.py /opt/mt/mtent.py /opt/mt/mtfolders.py /opt/mt/mtmessaging.py /opt/mt/mtconnectors.py /opt/mt/mtconnector_profile.py | awk '{print $1}' | tr '\n' ' ')"
+    in_repo="$(sha256sum seed/forward.py seed/mtstate.py seed/mtuser.py seed/mtent.py seed/mtfolders.py seed/mtmessaging.py seed/mtconnectors.py seed/mtconnector_profile.py | awk '{print $1}' | tr '\n' ' ')"
+    [ "$in_img" = "$in_repo" ] && ok "镜像里的转发器与仓库一致" || die "镜像里的 forward.py/mtstate.py/mtuser.py/mtent.py/mtfolders.py 与仓库不一致"
     # 企业对接插件同理：装进 hermes venv 的每个文件和仓库逐字节相同（hermes 认得出它，构建时已经断言过）。
     local plugin_rel
     plugin_rel="$(plugin_files | sed 's|^plugin/||' | tr '\n' ' ')"
@@ -534,19 +547,11 @@ cmd_image() {
     docker run --rm --network none --entrypoint test "$IMAGE_NAME:$fp" -f /opt/hermes/skills/UNIWORK_BUNDLED_ONLY \
         && ok "镜像里的 hermes 只发 UniWork 内置技能" \
         || die "镜像里没有 /opt/hermes/skills/UNIWORK_BUNDLED_ONLY：基础镜像太旧，要用本仓库构建的（见 README「技能」）"
-    # 覆盖进 /opt/hermes 的仓库文件同理，开一个容器一次比完。清单为空就不比（sha256sum 没参数会去读标准输入）。
-    local files
-    files="$(overlay_files | tr '\n' ' ')"
-    if [ -n "${files// /}" ]; then
-        # shellcheck disable=SC2086,SC2016
-        in_img="$(docker run --rm --network none --entrypoint sh "$IMAGE_NAME:$fp" -c 'cd /opt/hermes && sha256sum "$@"' sh $files | awk '{print $1}' | tr '\n' ' ')"
-        # shellcheck disable=SC2086
-        in_repo="$(cd "$REPO" && sha256sum $files | awk '{print $1}' | tr '\n' ' ')"
-        [ "$in_img" = "$in_repo" ] || die "镜像里 /opt/hermes 下的覆盖文件与仓库不一致（overlay.list）"
-        ok "镜像里覆盖的 $(overlay_files | wc -l | tr -d ' ') 个仓库文件与仓库一致"
-    else
-        ok "没有覆盖进 /opt/hermes 的仓库文件（overlay.list 为空）"
-    fi
+    # 从容器内核对完整文件集合、内容和权限，不能只核对还存在的文件。
+    docker run --rm -i --network none --entrypoint python3 "$IMAGE_NAME:$fp" \
+        /opt/mt/image_overlay.py verify /opt/hermes < "$HERE/.overlay/manifest.json" \
+        || die "镜像中的覆盖源码与当前快照不一致（含残留文件检查）"
+    ok "镜像中的覆盖源码与当前快照一致，没有旧文件残留"
 
     if registry_has_tag "$fp"; then
         ok "仓库 $REGISTRY 已有 $REPO_PATH:$fp，跳过推送"
@@ -732,6 +737,7 @@ cmd_up() {
     [ -n "$TEMPLATE" ] || die "entry.env 里 MT_CUBE_TEMPLATE 为空，先跑 ./deploy.sh template"
     # nginx 镜像在下面 up --build 时把 nginx/dist-browser/ 拷进去：先保证它是当前代码构建的。
     ensure_frontend
+    [ -s "$HERE/.kits-runtime/.fingerprint" ] || die "套件资源缺失，请用 ./deploy.sh all 配套更新实例模板和入口"
     chmod 600 "$ENV_FILE"
 
     local foreign_before entry_before
@@ -745,7 +751,15 @@ cmd_up() {
     else
         ok "postgres 在跑，不动它"
     fi
+    # Stop admission before replacing either side of the execution transport.
+    # Existing receipts/unknown results are retained; the new connector reconciles them.
+    if [ -n "$(cfg MT_CHANNELS_KEY '')" ]; then
+        compose --profile messaging stop channels >/dev/null
+    fi
     compose up -d --build --quiet-pull --no-deps entry nginx 2>&1 | sed 's/^/  /' | tail -n 12
+    if [ -n "$(cfg MT_CHANNELS_KEY '')" ]; then
+        compose --profile messaging up -d --build --no-deps --wait --wait-timeout 120 channels
+    fi
     local entry_after
     entry_after="$(docker inspect -f '{{.Id}}' "$PROJECT-entry" 2>/dev/null || true)"
     if [ "$entry_after" != "$entry_before" ]; then
@@ -951,6 +965,7 @@ cmd_all() {
         # shellcheck disable=SC2086
         exec bash "$SCRIPT" all $pass
     fi
+    ensure_kits
     plan
     ensure_base
     ensure_frontend
@@ -964,8 +979,8 @@ cmd_all() {
     local stale
     stale="$(our_sandboxes | awk -v t="$TEMPLATE" '$3 != t' | wc -l)"
     if [ "$stale" != 0 ]; then
-        echo "  有 $stale 台实例还在旧模板上：新入口会在用户下次请求时自动排空、重建、恢复；"
-        echo "  若它们的转发器太旧（没有排空接口），用 ./deploy.sh purge-old 手工删。"
+        echo "  集群中有 $stale 台实例使用其他模板。"
+        echo "  本部署数据库记录的旧实例，由入口在用户下次请求时按原流程换代恢复。"
     fi
     echo "  验收：浏览器登录 → 发一句话 → 拖一个文件；5 分钟后 ./deploy.sh status 看 state_archive 有值。"
 }

@@ -661,12 +661,22 @@ def ensure_links(home: Path, vol: Path) -> list[str]:
 
 def env_upsert(path: Path, lines: list[str]) -> None:
     """只改我们负责的几行（KEY=VALUE），其余保持用户自己的。"""
+    existing = path.read_text(encoding="utf-8") if path.exists() else ""
+    _write_atomic(path, env_upsert_text(existing, lines).encode("utf-8"))
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
+
+
+def env_upsert_text(text: str, lines: list[str]) -> str:
+    """Share the bootstrap merge with Entry's Docker archive writer."""
     wanted: dict[str, str] = {}
     for ln in lines:
         if "=" in ln and not ln.lstrip().startswith("#"):
             k, v = ln.split("=", 1)
             wanted[k.strip()] = v
-    existing = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    existing = text.splitlines()
     out: list[str] = []
     seen: set[str] = set()
     for ln in existing:
@@ -679,11 +689,7 @@ def env_upsert(path: Path, lines: list[str]) -> None:
     for k, v in wanted.items():
         if k not in seen:
             out.append(f"{k}={v}")
-    _write_atomic(path, ("\n".join(out) + "\n").encode("utf-8"))
-    try:
-        path.chmod(0o600)
-    except OSError:
-        pass
+    return "\n".join(out) + "\n"
 
 
 # ---------------------------------------------------------------- config.yaml 的平台块
@@ -851,10 +857,15 @@ def _apply_mcp_servers(cfg, servers: dict) -> None:
             continue
         section = _section(cfg, "mcp_servers")
         entry = section.get(name)
+        managed = conf.get("uniwork_managed")
+        if managed and isinstance(entry, dict) and entry.get("uniwork_managed") != managed:
+            continue  # A same-named user server is not owned by this deployment.
         if not isinstance(entry, dict):
             entry = {}
             section[name] = entry
         for key, value in conf.items():
+            if str(key) == 'enabled' and 'enabled' in entry:
+                continue  # Provisioning defaults must preserve the user's enable/disable choice.
             entry[str(key)] = value
 
 
@@ -953,6 +964,7 @@ def apply_platform_block(cfg, spec: dict) -> bool:
             entry["api"] = base_url
         if key_env:
             entry["key_env"] = key_env
+        entry["managed_by"] = "hermes-cloud-plan"
         entry.setdefault("transport", "chat_completions")
         if plan_model:
             entry["default_model"] = plan_model
@@ -962,6 +974,14 @@ def apply_platform_block(cfg, spec: dict) -> bool:
             entry["models"] = {chosen: _model_entry(chosen, limits)} if chosen else {}
     if policy:
         _apply_policy(cfg, policy)
+    if spec.get("enabled_plugins"):
+        plugins = _section(cfg, "plugins")
+        enabled = plugins.setdefault("enabled", [])
+        if not isinstance(enabled, list):
+            raise ValueError("plugins.enabled must be a list")
+        for name in spec["enabled_plugins"]:
+            if name not in enabled:
+                enabled.append(name)
     if isinstance(spec.get("mcp_servers"), dict):
         _apply_mcp_servers(cfg, spec["mcp_servers"])
     if isinstance(spec.get("reasoning_defaults"), dict):
@@ -1172,6 +1192,31 @@ def turn_activity(home: Path, now: float | None = None) -> dict:
     return {"running": running, "errors": errors}
 
 
+def kits_activity(home: Path) -> int:
+    """A published install operation prevents drain; a dead backend marker does not."""
+    path = home / '.mt/kits-active.json'
+    try:
+        data = json.loads(path.read_text())
+    except FileNotFoundError:
+        return 0
+    except (OSError, ValueError):
+        return 1
+    if not isinstance(data, dict):
+        return 1
+    if not data.get('running'):
+        return 0
+    try:
+        pid = int(data['pid'])
+        if pid <= 0:
+            return 1
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return 0
+    except (KeyError, TypeError, ValueError, OSError, OverflowError):
+        return 1
+    return 1
+
+
 def activity(home: Path, now: float | None = None) -> dict:
     """转发器随 /__mt/status、sync、drain 回报给入口的「忙不忙」。读不了的部分记进 errors，不抛。"""
     now = time.time() if now is None else now
@@ -1183,6 +1228,7 @@ def activity(home: Path, now: float | None = None) -> dict:
         "cron_running": cron["running"],
         "cron_jobs": cron["jobs"],
         "turns": turns["running"],
+        "kits_running": kits_activity(home),
         "errors": cron["errors"] + turns["errors"],
     }
 

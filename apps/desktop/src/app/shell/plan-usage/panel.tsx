@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useI18n } from '@/i18n'
-import { isPlanUsageHidden } from '@/lib/browser-shell'
+import { browserShellCopy, isPlanUsageHidden } from '@/lib/browser-shell'
 import { notify } from '@/store/notifications'
 
 import type { LoginAccount } from '../../../../electron/login/contract'
@@ -287,15 +287,16 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
         return
       }
 
+      const failures = {
+        auth: c.subscribeAuth,
+        'missing-phone': c.subscribeMissingPhone,
+        'popup-blocked': browserShellCopy().popupBlocked,
+        upstream: c.subscribeFailed
+      }
       notify({
         id: 'maas-plan-subscribe',
         kind: 'error',
-        message:
-          result?.reason === 'missing-phone'
-            ? c.subscribeMissingPhone
-            : result?.reason === 'auth'
-              ? c.subscribeAuth
-              : c.subscribeFailed
+        message: result?.reason ? failures[result.reason] : c.subscribeFailed
       })
     } catch {
       notify({ id: 'maas-plan-subscribe', kind: 'error', message: c.subscribeFailed })

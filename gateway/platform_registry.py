@@ -107,6 +107,8 @@ class PlatformEntry:
     # ``async (pconfig, chat_id, message, *, thread_id=None, media_files=None, force_document=False)
     # -> {"success": True, "message_id": ...} | {"error": str}``.
     standalone_sender_fn: Optional[Callable[..., Awaitable[dict]]] = None
+    # Explicit transport overrides also own built-in standalone dispatch (e.g. cloud relay).
+    standalone_sender_override: bool = False
 
 
 class PlatformRegistry:

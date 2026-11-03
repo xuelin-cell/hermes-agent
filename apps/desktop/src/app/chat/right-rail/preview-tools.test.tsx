@@ -1,8 +1,9 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 
+import { artifactShareFilePath } from '@/lib/artifact-share-source'
 import type { PreviewTarget } from '@/store/preview'
-import { $connection } from '@/store/session'
+import { $activeSessionId, $connection, $currentCwd, $selectedStoredSessionId } from '@/store/session'
 
 const fs = vi.hoisted(() => ({
   readDesktopFileText: vi.fn(),
@@ -19,8 +20,52 @@ afterEach(() => {
   document.querySelectorAll('style[data-export-test]').forEach(style => style.remove())
   window.hermesDesktop = bridge
   $connection.set(null)
+  $activeSessionId.set(null)
+  $selectedStoredSessionId.set(null)
+  $currentCwd.set('')
+  delete document.documentElement.dataset.hermesBrowser
   vi.restoreAllMocks()
   vi.clearAllMocks()
+})
+
+it('云端 Markdown 在工作区外或没有 cwd 时仍提供分享入口，由实例核验来源', async () => {
+  document.documentElement.dataset.hermesBrowser = 'production'
+  const eligibility = vi.fn(async () => ({ publishable: true }))
+  window.hermesDesktop = {
+    artifactShare: { eligibility, onChanged: () => () => {} }
+  } as never
+  $connection.set({ mode: 'remote', profile: 'default' } as never)
+  $activeSessionId.set('generated-chat')
+  $currentCwd.set('/workspace')
+  const view = openFile('/tmp/report.md', '# Generated report')
+
+  await waitFor(() =>
+    expect((screen.getByRole('button', { name: 'Share artifact' }) as HTMLButtonElement).disabled).toBe(false)
+  )
+  expect(eligibility).toHaveBeenCalledWith({ sessionId: 'generated-chat', path: '/tmp/report.md', content: undefined })
+  $currentCwd.set('')
+  await waitFor(() =>
+    expect((screen.getByRole('button', { name: 'Share artifact' }) as HTMLButtonElement).disabled).toBe(false)
+  )
+  view.unmount()
+
+  eligibility.mockResolvedValue({ publishable: false })
+  openFile('/tmp/report.md', '# Unknown origin')
+  await waitFor(() =>
+    expect((screen.getByRole('button', { name: 'Share artifact' }) as HTMLButtonElement).disabled).toBe(true)
+  )
+})
+
+it('本机分享路径仍限制在工作区，云端也不将 URL、相对路径或其他文件类型视为分享文件', () => {
+  expect(artifactShareFilePath('/workspace/report.md', '/workspace')).toBe('/workspace/report.md')
+  expect(artifactShareFilePath('/tmp/report.md', '/workspace')).toBeNull()
+  expect(artifactShareFilePath('/workspace/report.md', '')).toBeNull()
+  window.document.documentElement.dataset.hermesBrowser = 'production'
+  expect(artifactShareFilePath('file:///tmp/report.html', '')).toBe('/tmp/report.html')
+
+  for (const value of ['https://example.com/report.md', 'report.md', '/tmp/../report.md', '/tmp/report.py']) {
+    expect(artifactShareFilePath(value, '')).toBeNull()
+  }
 })
 
 /** 使用正式读取组件，只有文件和原生保存接口由夹具提供。 */
@@ -79,11 +124,14 @@ it('Markdown 统一菜单在源码视图导出原文、保留样式与画布的 
   expect(preview.querySelector('canvas')).toBe(canvas)
 
   canvas.remove()
+
   for (const [format, label] of [
     ['md', 'Markdown (.md)'],
     ['docx', 'Word (.docx)']
   ] as const) {
-    await waitFor(() => expect((screen.getByRole('button', { name: 'Save as' }) as HTMLButtonElement).disabled).toBe(false))
+    await waitFor(() =>
+      expect((screen.getByRole('button', { name: 'Save as' }) as HTMLButtonElement).disabled).toBe(false)
+    )
     fireEvent.pointerDown(screen.getByRole('button', { name: 'Save as' }), { button: 0, ctrlKey: false })
     fireEvent.click(await screen.findByRole('menuitem', { name: label }))
     await waitFor(() =>

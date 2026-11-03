@@ -1,0 +1,586 @@
+[
+  {
+    "name": "send_email",
+    "description": "Agent Mail: Send an email through Wo Mail SMTP. Requires the user to enable My Mail first.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "to": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "description": "An email address.",
+            "format": "email"
+          },
+          "description": "The primary recipient email addresses.",
+          "minItems": 1
+        },
+        "cc": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "description": "An email address.",
+            "format": "email"
+          },
+          "description": "The carbon-copy recipient email addresses.",
+          "minItems": 1
+        },
+        "bcc": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "description": "An email address.",
+            "format": "email"
+          },
+          "description": "The blind-carbon-copy recipient email addresses.",
+          "minItems": 1
+        },
+        "replyTo": {
+          "type": "string",
+          "minLength": 1,
+          "description": "An email address.",
+          "format": "email"
+        },
+        "subject": {
+          "type": "string",
+          "description": "The email subject."
+        },
+        "text": {
+          "type": "string",
+          "description": "The plain text email body."
+        },
+        "html": {
+          "type": "string",
+          "description": "The HTML email body."
+        },
+        "attachments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "filename": {
+                "type": "string",
+                "minLength": 1,
+                "description": "The filename to use for the outgoing attachment."
+              },
+              "contentType": {
+                "type": "string",
+                "minLength": 1,
+                "description": "The MIME content type of the attachment."
+              },
+              "contentUrl": {
+                "type": "string",
+                "description": "The public HTTP or HTTPS URL to fetch attachment content from.",
+                "format": "uri"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "filename",
+              "contentUrl"
+            ],
+            "description": "An attachment to fetch and include in an outgoing email."
+          },
+          "description": "Attachments to fetch and include in the outgoing email. The combined size of all attachments must not exceed 10 MB per message.",
+          "minItems": 1,
+          "maxItems": 10
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "to",
+        "subject"
+      ],
+      "description": "The input payload for sending an email through Wo Mail SMTP.",
+      "anyOf": [
+        {
+          "required": [
+            "text"
+          ]
+        },
+        {
+          "required": [
+            "html"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "list_folders",
+    "description": "Agent Mail: List folders visible to the connected Wo Mail account. Requires the user to enable My Mail first.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "description": "The input payload for listing Wo Mail folders."
+    }
+  },
+  {
+    "name": "search_emails",
+    "description": "Agent Mail: Search one Wo Mail folder and return lightweight email summaries. Requires the user to enable My Mail first.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "folder": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The IMAP folder path returned by list_folders.",
+          "default": "INBOX"
+        },
+        "unseen": {
+          "type": "boolean",
+          "description": "Whether to return only unread messages."
+        },
+        "from": {
+          "type": "string",
+          "minLength": 1,
+          "description": "A sender search term."
+        },
+        "to": {
+          "type": "string",
+          "minLength": 1,
+          "description": "A recipient search term."
+        },
+        "subject": {
+          "type": "string",
+          "minLength": 1,
+          "description": "A subject search term."
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "description": "A body text search term."
+        },
+        "since": {
+          "type": "string",
+          "description": "Only include messages on or after this YYYY-MM-DD date.",
+          "format": "date"
+        },
+        "before": {
+          "type": "string",
+          "description": "Only include messages before this YYYY-MM-DD date.",
+          "format": "date"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "description": "The maximum number of email summaries to return.",
+          "default": 20
+        },
+        "beforeUid": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Only include message UIDs lower than this cursor."
+        }
+      },
+      "additionalProperties": false,
+      "description": "The input payload for searching Wo Mail emails."
+    }
+  },
+  {
+    "name": "get_email",
+    "description": "Agent Mail: Fetch and parse one Wo Mail message without marking it as read. Requires the user to enable My Mail first.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "folder": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The IMAP folder path returned by list_folders.",
+          "default": "INBOX"
+        },
+        "uid": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The IMAP UID of the message."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "uid"
+      ],
+      "description": "The input payload for fetching one Wo Mail email."
+    }
+  },
+  {
+    "name": "download_attachment",
+    "description": "Agent Mail: Download one Wo Mail attachment by IMAP body part identifier. Requires the user to enable My Mail first.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "folder": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The IMAP folder path returned by list_folders.",
+          "default": "INBOX"
+        },
+        "uid": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The IMAP UID of the message."
+        },
+        "attachmentId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The IMAP body part identifier returned in an attachment metadata item."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "uid",
+        "attachmentId"
+      ],
+      "description": "The input payload for downloading one Wo Mail attachment."
+    }
+  },
+  {
+    "name": "mark_email_read",
+    "description": "Agent Mail: Mark one Wo Mail message as read. Requires the user to enable My Mail first.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "folder": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The IMAP folder path returned by list_folders.",
+          "default": "INBOX"
+        },
+        "uid": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The IMAP UID of the message."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "uid"
+      ],
+      "description": "The input payload for marking one Wo Mail email as read."
+    }
+  },
+  {
+    "name": "mark_email_unread",
+    "description": "Agent Mail: Mark one Wo Mail message as unread. Requires the user to enable My Mail first.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "folder": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The IMAP folder path returned by list_folders.",
+          "default": "INBOX"
+        },
+        "uid": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The IMAP UID of the message."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "uid"
+      ],
+      "description": "The input payload for marking one Wo Mail email as unread."
+    }
+  },
+  {
+    "name": "move_email",
+    "description": "Agent Mail: Move one Wo Mail message to another folder. Requires the user to enable My Mail first.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "folder": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The IMAP folder path returned by list_folders.",
+          "default": "INBOX"
+        },
+        "uid": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The IMAP UID of the message."
+        },
+        "targetFolder": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The destination IMAP folder path."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "uid",
+        "targetFolder"
+      ],
+      "description": "The input payload for moving one Wo Mail email."
+    }
+  },
+  {
+    "name": "delete_email",
+    "description": "Agent Mail: Delete one Wo Mail message from a folder. Requires the user to enable My Mail first.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "folder": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The IMAP folder path returned by list_folders.",
+          "default": "INBOX"
+        },
+        "uid": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The IMAP UID of the message."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "uid"
+      ],
+      "description": "The input payload for deleting one Wo Mail email."
+    }
+  },
+  {
+    "name": "get_folder_status",
+    "description": "Agent Mail: Get lightweight message counters for one Wo Mail folder. Requires the user to enable My Mail first.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "folder": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The IMAP folder path returned by list_folders.",
+          "default": "INBOX"
+        }
+      },
+      "additionalProperties": false,
+      "description": "The input payload for reading one Wo Mail folder status."
+    }
+  },
+  {
+    "name": "reply_email",
+    "description": "Agent Mail: Reply to one Wo Mail email using SMTP reply headers and quoted content. Requires the user to enable My Mail first.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "folder": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The IMAP folder path returned by list_folders.",
+          "default": "INBOX"
+        },
+        "uid": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The IMAP UID of the message."
+        },
+        "to": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "description": "An email address.",
+            "format": "email"
+          },
+          "description": "Override reply recipient email addresses.",
+          "minItems": 1
+        },
+        "cc": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "description": "An email address.",
+            "format": "email"
+          },
+          "description": "Override carbon-copy recipient email addresses.",
+          "minItems": 1
+        },
+        "bcc": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "description": "An email address.",
+            "format": "email"
+          },
+          "description": "Blind-carbon-copy recipient email addresses.",
+          "minItems": 1
+        },
+        "replyAll": {
+          "type": "boolean",
+          "description": "Whether to include original To and Cc recipients except the connected account.",
+          "default": false
+        },
+        "subject": {
+          "type": "string",
+          "description": "Override reply email subject."
+        },
+        "text": {
+          "type": "string",
+          "description": "The plain text reply body."
+        },
+        "html": {
+          "type": "string",
+          "description": "The HTML reply body."
+        },
+        "attachments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "filename": {
+                "type": "string",
+                "minLength": 1,
+                "description": "The filename to use for the outgoing attachment."
+              },
+              "contentType": {
+                "type": "string",
+                "minLength": 1,
+                "description": "The MIME content type of the attachment."
+              },
+              "contentUrl": {
+                "type": "string",
+                "description": "The public HTTP or HTTPS URL to fetch attachment content from.",
+                "format": "uri"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "filename",
+              "contentUrl"
+            ],
+            "description": "An attachment to fetch and include in an outgoing email."
+          },
+          "description": "Attachments to fetch and include in the outgoing email. The combined size of all attachments must not exceed 10 MB per message.",
+          "minItems": 1,
+          "maxItems": 10
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "uid"
+      ],
+      "description": "The input payload for replying to one Wo Mail email.",
+      "anyOf": [
+        {
+          "required": [
+            "text"
+          ]
+        },
+        {
+          "required": [
+            "html"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "forward_email",
+    "description": "Agent Mail: Forward one Wo Mail email using SMTP with quoted original content. Requires the user to enable My Mail first.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "folder": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The IMAP folder path returned by list_folders.",
+          "default": "INBOX"
+        },
+        "uid": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The IMAP UID of the message."
+        },
+        "to": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "description": "An email address.",
+            "format": "email"
+          },
+          "description": "The forwarding recipient email addresses.",
+          "minItems": 1
+        },
+        "cc": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "description": "An email address.",
+            "format": "email"
+          },
+          "description": "The carbon-copy recipient email addresses.",
+          "minItems": 1
+        },
+        "bcc": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "description": "An email address.",
+            "format": "email"
+          },
+          "description": "The blind-carbon-copy recipient email addresses.",
+          "minItems": 1
+        },
+        "subject": {
+          "type": "string",
+          "description": "Override forward email subject."
+        },
+        "text": {
+          "type": "string",
+          "description": "Additional plain text content to prepend before the forwarded message."
+        },
+        "html": {
+          "type": "string",
+          "description": "Additional HTML content to prepend before the forwarded message."
+        },
+        "attachments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "filename": {
+                "type": "string",
+                "minLength": 1,
+                "description": "The filename to use for the outgoing attachment."
+              },
+              "contentType": {
+                "type": "string",
+                "minLength": 1,
+                "description": "The MIME content type of the attachment."
+              },
+              "contentUrl": {
+                "type": "string",
+                "description": "The public HTTP or HTTPS URL to fetch attachment content from.",
+                "format": "uri"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "filename",
+              "contentUrl"
+            ],
+            "description": "An attachment to fetch and include in an outgoing email."
+          },
+          "description": "Attachments to fetch and include in the outgoing email. The combined size of all attachments must not exceed 10 MB per message.",
+          "minItems": 1,
+          "maxItems": 10
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "uid",
+        "to"
+      ],
+      "description": "The input payload for forwarding one Wo Mail email."
+    }
+  }
+]

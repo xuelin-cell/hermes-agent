@@ -54,9 +54,14 @@ router = APIRouter()
 
 # The backend mounts this module when it starts: put the bundled kits and
 # experts into a new account, or update the ones that changed, off the
-# request path. Only the default profile's backend does it (see autoseed).
+# request path. Cloud finishes before serving turns; desktop uses a worker.
 try:
-    autoseed.start(Path(get_hermes_home()))
+    from hermes_cli.config import load_config_readonly
+
+    if (load_config_readonly().get('cloud_kits') or {}).get('enabled'):
+        importlib.import_module('hermes_plugins.uniwork_kits.cloud_seed').initialize(Path(get_hermes_home()))
+    else:
+        autoseed.start(Path(get_hermes_home()))
 except Exception:  # a failed start must not keep the API from mounting
     import logging
 
@@ -224,3 +229,7 @@ def job(job_id: str) -> Dict[str, Any]:
     if found is None:
         raise HTTPException(status_code=404, detail="没有这个任务")
     return found
+
+
+# Cloud routes reuse this plugin; the desktop never enables cloud_kits.
+router.include_router(importlib.import_module("hermes_plugins.uniwork_kits.cloud_routes").router, prefix="/cloud")

@@ -18,9 +18,27 @@ import {
 } from '@/lib/browser-shell'
 import { noteEntryAccount } from '@/lib/enterprise-mt'
 
+import {
+  browserAuthKey,
+  clearBrowserAuth,
+  readBrowserAuth,
+  requestEntryMaas
+} from '../../../shared/src/browser-maas-auth.js'
 import type { LoginAccount } from '../../electron/login/contract'
+import type { WelcomeLocale, WelcomePayload } from '../../electron/uniwork-welcome/catalog'
 
 import { agentRoster, connectionForProfile, profileRoutes, withProfileQuery } from './browser-profiles-mt'
+import { browserInterrupted } from './browser-interrupted'
+import { browserAccount } from './browser-account'
+import { browserDrive } from './browser-drive'
+import { browserExport } from './browser-export'
+import { browserPlan } from './browser-plan'
+import { browserShares } from './browser-shares'
+import { browserMessaging } from './browser-messaging'
+import { browserMail, openMailAttachment } from './browser-mail'
+import { browserConnectors } from './browser-connectors'
+import { browserKits } from './browser-kits'
+import { browserSkills, isCloudSkillMutation } from './browser-skills'
 import { maskMcpSecrets, restoreMcpSecrets } from './mcp-secrets'
 
 const noopOff = () => () => undefined
@@ -88,7 +106,24 @@ function credentials(): RequestCredentials {
   return productionBrowserBuild ? 'same-origin' : 'omit'
 }
 
-async function api<T>({ body, method = 'GET', path, profile, upload }: HermesApiRequest): Promise<T> {
+const cloudSkillOperations = browserSkills(browserBasePath())
+
+const cloudMessaging = browserMessaging(browserBasePath())
+const cloudKitOperations = browserSkills(browserBasePath(), 'kits')
+const cloudKits = browserKits(browserBasePath(), connection(), request => cloudKitOperations.mutate(request))
+
+async function api<T>(request: HermesApiRequest): Promise<T> {
+  if (productionBrowserBuild) {
+    if ((request.path.split('?')[0].startsWith('/api/plugins/uniwork-kits') && !request.path.startsWith('/api/plugins/uniwork-kits/cloud/interrupted')) || (request.path.split('?')[0] === '/api/profiles' && (!request.method || request.method === 'GET'))) { return cloudKits.request<T>(request) }
+    const result = cloudMessaging.request<T>(request)
+    if (result) { return result }
+  }
+  const { body, method = 'GET', path, profile, upload } = request
+
+  if (productionBrowserBuild && isCloudSkillMutation(method, path)) {
+    return cloudSkillOperations.mutate<T>(request)
+  }
+
   const headers = authHeaders()
   let requestBody: BodyInit | undefined
 
@@ -674,7 +709,7 @@ function instanceFileError(error: unknown): InstanceFileError {
   return error instanceof Error ? error : new Error(message)
 }
 
-async function instanceFiles<T>(op: 'rename' | 'restore' | 'trash', body: Record<string, unknown>): Promise<T> {
+async function instanceFiles<T>(op: 'rename' | 'restore' | 'trash' | 'conversation-create' | 'conversation-discard', body: Record<string, unknown>): Promise<T> {
   try {
     return await api<T>({ body, method: 'POST', path: `/__mt_user/files/${op}` })
   } catch (error) {
@@ -789,13 +824,28 @@ interface EntryMe {
 /** Who is signed in, from the entry's `/__entry/me`. Null where nothing answers it with JSON (the
  *  dev server, the test bench): the statusbar then shows no account. */
 async function getMaasAccount(): Promise<LoginAccount | null> {
-  const response = await fetch(`${browserBasePath()}__entry/me`, { credentials: 'same-origin' })
+  const base = browserBasePath()
+  const login = productionBrowserBuild ? readBrowserAuth(base) : null
+  const response = await fetch(`${base}__entry/me`, { credentials: 'same-origin' })
+
+  if (response.status === 401 && login) {clearBrowserAuth(base, login.loginId)}
 
   if (!response.ok || !(response.headers.get('content-type') ?? '').includes('json')) {
     return null
   }
 
+  if (login) {
+    try {
+      await requestEntryMaas(base, 'maas-auth')
+    } catch {
+      // Credential errors do not hide an otherwise valid Entry session.
+    }
+  }
+
   const me = (await response.json()) as EntryMe
+
+  if (login && readBrowserAuth(base)?.loginId !== login.loginId) {return null}
+
   noteEntryAccount(me)
   const maskedPhone = me.display || me.user_id
 
@@ -809,6 +859,7 @@ async function getMaasAccount(): Promise<LoginAccount | null> {
 
 /** Signing out is the entry's: `/logout` ends the session and returns to the sign-in page. */
 async function logoutMaasAccount(): Promise<void> {
+  clearBrowserAuth(browserBasePath())
   window.location.assign(`${browserBasePath()}logout`)
 }
 
@@ -1264,6 +1315,17 @@ export function installBrowserDevelopmentBridge(): boolean {
 
   ensureRandomUUID()
 
+  if (productionBrowserBuild) {
+    window.addEventListener('storage', event => {
+      if (
+        event.key === null ||
+        (event.key === browserAuthKey(browserBasePath()) && event.oldValue !== event.newValue)
+      ) {
+        window.location.reload()
+      }
+    })
+  }
+
   const conn = connection()
   const asyncOk = async () => ({ ok: true })
 
@@ -1348,7 +1410,7 @@ export function installBrowserDevelopmentBridge(): boolean {
     onPreviewFileChanged: noopOff,
     onPreviewNav: noopOff,
     onWindowStateChanged: noopOff,
-    openExternal: async (url: string) => openWebPage(url),
+    openExternal: async (url: string) => productionBrowserBuild && openMailAttachment(browserBasePath(), url) || openWebPage(url),
     openPreviewInBrowser,
     profile: {
       get: async () => ({ profile: 'default' }),
@@ -1388,7 +1450,18 @@ export function installBrowserDevelopmentBridge(): boolean {
     glassSupported: false,
     writeClipboard,
     // The instance's shell lives behind the entry; a dev server has no forwarder to give one.
-    ...(productionBrowserBuild ? { terminal: instanceTerminal } : {})
+    ...(productionBrowserBuild
+      ? { ...browserInterrupted(browserBasePath(), api), ...browserAccount(browserBasePath()), ...cloudKits, terminal: instanceTerminal, cloudSkillOperations, ...cloudMessaging, ...browserMail(browserBasePath()), ...browserConnectors(browserBasePath()),
+          createConversationFolder: async (defaultCwd: string) =>
+            (await instanceFiles<{ path: string | null }>('conversation-create', { defaultCwd })).path,
+          discardConversationFolder: async (path: string) => { await instanceFiles('conversation-discard', { path }) },
+          ...browserShares(browserBasePath()), ...browserDrive(browserBasePath()), ...browserPlan(browserBasePath()), exportPreview: browserExport(browserBasePath(), apiPrefix()),
+          getWelcomeCatalog: (locale: WelcomeLocale) => {
+            if (!['zh-CN', 'en'].includes(locale)) {return Promise.reject(new Error('Invalid locale'))}
+
+            return requestEntryMaas<WelcomePayload>(browserBasePath(), `welcome/${locale}`)
+          } }
+      : {})
   }
 
   Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: bridge })

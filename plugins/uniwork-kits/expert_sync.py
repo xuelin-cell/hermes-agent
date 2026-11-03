@@ -71,7 +71,12 @@ def _managed_providers(raw: Mapping[str, Any]) -> Dict[str, Any]:
     providers = raw.get("providers")
     if not isinstance(providers, Mapping):
         return {}
-    return {str(k): v for k, v in providers.items() if str(k).startswith(MANAGED_PROVIDER_PREFIX)}
+    names = {str(k) for k in providers if str(k).startswith(MANAGED_PROVIDER_PREFIX)}
+    if (raw.get('cloud_kits') or {}).get('enabled'):
+        model = raw.get('model')
+        if isinstance(model, Mapping) and isinstance(model.get('provider'), str):
+            names.add(model['provider'])
+    return {str(k): v for k, v in providers.items() if k in names}
 
 
 def _referenced_keys(providers: Mapping[str, Any], mcp_entry: Optional[Mapping[str, Any]]) -> Set[str]:
@@ -202,11 +207,28 @@ def _plan_config(
     default_raw: Mapping[str, Any],
     record: Mapping[str, Any],
     plugin: str,
+    profile: Optional[str] = None,
 ) -> Tuple[Dict[str, Any], Dict[str, Any], List[str]]:
     """算出一位专家同步后的配置、新的同步记录，以及改了哪些（只计算，不写文件）。"""
     raw = copy.deepcopy(expert_raw)
     changes: List[str] = []
     new_record: Dict[str, Any] = {}
+
+    if (default_raw.get('cloud_kits') or {}).get('enabled'):
+        # Only plugin-owned experts receive cloud host policy, not general profile inheritance.
+        if raw.get('cloud_kits') != {'enabled': True}:
+            raw['cloud_kits'] = {'enabled': True}
+            changes.append('启用云端专家运行适配')
+        raw['cloud_messaging_delivery'] = {'enabled': True}
+        raw.setdefault('platforms', {}).update({name: {'enabled': True} for name in ('uniagentgate','dingtalk','feishu','weixin','wecom')})
+        raw.setdefault('desktop', {}).setdefault('auto_continue', {})['enabled'] = False
+        for section, field in (('security', 'allow_lazy_installs'), ('model_catalog', 'enabled')):
+            current = raw.get(section)
+            current = dict(current) if isinstance(current, Mapping) else {}
+            if current.get(field) is not False:
+                current[field] = False
+                raw[section] = current
+                changes.append('同步云端运行策略 ' + section + '.' + field)
 
     providers = raw.get("providers") if isinstance(raw.get("providers"), dict) else {}
     wanted = _managed_providers(default_raw)
@@ -234,6 +256,16 @@ def _plan_config(
 
     servers = raw.get("mcp_servers") if isinstance(raw.get("mcp_servers"), dict) else {}
     default_servers = default_raw.get("mcp_servers") if isinstance(default_raw.get("mcp_servers"), Mapping) else {}
+    if (default_raw.get('cloud_kits') or {}).get('enabled'):
+        # Cloud connections belong to one profile. Never mirror the default's token.
+        default_servers = {key: value for key, value in default_servers.items()
+                           if not isinstance(value, Mapping) or not value.get('cloud_connector')}
+        if profile:
+            inherited = [key for key, value in servers.items() if isinstance(value, Mapping)
+                         and value.get('cloud_connector') and value.get('cloud_connector_profile') != profile]
+            for key in inherited:
+                del servers[key]
+                changes.append(f'移除其他档案的云端连接器 {key}')
     previous = [str(n) for n in record.get("synced_mcp") or []]
     wanted = _mcp_to_follow(plugin, default_servers, servers, previous)
     wanted_names = [target for _source, target, _label in wanted]
@@ -261,7 +293,7 @@ def sync_expert(default_home: Path, expert_home: Path) -> List[str]:
         return []
     plugin, entry = found
     record = entry.get("sync") if isinstance(entry.get("sync"), dict) else {}
-    new_raw, new_record, changes = _plan_config(expert_raw, default_raw, record, plugin)
+    new_raw, new_record, changes = _plan_config(expert_raw, default_raw, record, plugin, expert_home.name)
 
     servers = new_raw.get("mcp_servers") if isinstance(new_raw.get("mcp_servers"), Mapping) else {}
     referenced = _referenced_keys(_managed_providers(new_raw), None)

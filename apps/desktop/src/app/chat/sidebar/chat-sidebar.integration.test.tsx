@@ -55,7 +55,8 @@ const renderSidebar = (
   pathname: string,
   currentView: AppView,
   onRetrySessions: () => Promise<void> = noopAsync,
-  workspaceTabs = false
+  workspaceTabs = false,
+  onResumeSession: (sessionId: string, session?: ReturnType<typeof makeSessionInfo>) => void = noop
 ) =>
   render(
     <MemoryRouter initialEntries={[pathname]}>
@@ -71,7 +72,7 @@ const renderSidebar = (
           onNavigate={noop}
           onNewSessionInWorkspace={noop}
           onNewSessionSplit={noop}
-          onResumeSession={noop}
+          onResumeSession={onResumeSession}
           onRetrySessions={onRetrySessions}
           onTriggerCronJob={noopAsync}
         />
@@ -243,6 +244,8 @@ describe('ChatSidebar navigation activity', () => {
     cleanup()
     $activeGatewayProfile.set('default')
     setShowAllProfiles(false)
+    $sessionProfilesTruncated.set({})
+    $workspaceSessionCategories.set({})
     $selectedWorkspaceMode.set(null)
     $workspaceSessionCategories.set({})
     $projectTree.set([])
@@ -288,7 +291,8 @@ describe('ChatSidebar navigation activity', () => {
         git_repo_root: '/repo'
       })
     ])
-    renderSidebar('/', 'chat')
+    const resume = vi.fn()
+    renderSidebar('/', 'chat', noopAsync, false, resume)
 
     for (const profile of ['expert-a', 'expert-b', 'default']) {
       act(() => $activeGatewayProfile.set(profile))
@@ -301,6 +305,8 @@ describe('ChatSidebar navigation activity', () => {
       expect($activeGatewayProfile.get()).toBe(profile)
       expect($selectedStoredSessionId.get()).toBe('tile-one')
       expect($showAllProfiles.get()).toBe(false)
+      fireEvent.click(screen.getByText('Expert A history'))
+      expect(resume).toHaveBeenLastCalledWith('expert-a-chat', expect.objectContaining({ profile: 'expert-a' }))
     }
   })
 

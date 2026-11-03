@@ -83,16 +83,19 @@ def avatar_data_url(home: Path, name: str) -> str:
 
     位图在档案的 assets/ 里；小的 SVG 存在 profile.yaml 的 ui_meta['hermes-bots'].image 里（见安装器）。
     """
-    import base64
-
     from hermes_cli.profiles import get_profile_dir
-
-    from . import yaml_compat
 
     entry = _installed(home).get(name)
     if entry is None:
         return ""
-    phome = Path(get_profile_dir(str(entry.get("profile") or "")))
+    return profile_avatar_data_url(Path(get_profile_dir(str(entry.get("profile") or ""))))
+
+
+def profile_avatar_data_url(phome: Path) -> str:
+    """Read the identity image from an already resolved expert profile."""
+    import base64
+    from . import yaml_compat
+
     for ext, mime in _AVATAR_MIME.items():
         path = phome / "assets" / f"avatar.{ext}"
         if path.is_file():

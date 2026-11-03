@@ -1,0 +1,3 @@
+# Connector-to-entry control plane; the reverse relay URL is configured in entry.env.
+entry_url: http://entry:9400
+port: 9500

@@ -21,9 +21,11 @@ export type ConnectorService = ConnectorId | HiddenConnectorService
 export interface LocalConnectorRow {
   id: ConnectorId
   connected: boolean
+  configured?: boolean
+  enabled?: boolean
 }
 export interface LocalConnectorRequest {
-  operation: 'list' | 'connect' | 'authorize' | 'disconnect' | 'enable' | 'qr.start' | 'qr.poll' | 'qr.cancel'
+  operation: 'list' | 'connect' | 'authorize' | 'disconnect' | 'enable' | 'disable' | 'save' | 'qr.start' | 'qr.poll' | 'qr.cancel'
   profile: string
   id?: ConnectorId
   values?: Record<string, string>

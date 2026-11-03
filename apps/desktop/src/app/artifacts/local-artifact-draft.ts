@@ -16,9 +16,12 @@ import {
 import { $activeSessionId, $connection, $selectedStoredSessionId } from '@/store/session'
 
 import type { LocalArtifact } from './local-artifact-model'
+import { artifactFileResolver, artifactLibraryIdentity, usesInstanceArtifactLibrary } from './local-artifact-platform'
 
 /** 本机文件加入新会话草稿，正文和旧附件保持原样，发送仍走 Hermes 原生附件处理。 */
 export async function addLocalArtifactDraft(file: LocalArtifact, isCurrent: () => boolean): Promise<boolean> {
+  const cloud = usesInstanceArtifactLibrary()
+  const identity = artifactLibraryIdentity()
   const connection = $connection.get()
   const scope = $apiRequestScope.get()
   const profile = scope.profile || connection?.profile || 'default'
@@ -32,6 +35,7 @@ export async function addLocalArtifactDraft(file: LocalArtifact, isCurrent: () =
   /** 原会话切换与 Profile 切换一样会使本次草稿操作失效。 */
   const current = () =>
     isCurrent() &&
+    artifactLibraryIdentity() === identity &&
     $connection.get() === connection &&
     $apiRequestScope.get() === scope &&
     $selectedStoredSessionId.get() === selected &&
@@ -43,14 +47,15 @@ export async function addLocalArtifactDraft(file: LocalArtifact, isCurrent: () =
   if (
     !file.resolvedPath ||
     file.connectionId !== 'local' ||
-    connection?.mode !== 'local' ||
+    (connection?.mode !== 'local' && !cloud) ||
+    (cloud && ((file.profile || 'default') !== 'default' || profile !== 'default')) ||
     (scope.connectionId && scope.connectionId !== 'local') ||
     (owner && (owner.connectionId !== 'local' || owner.profile !== profile))
   ) {
     return false
   }
 
-  const metadata = await window.hermesDesktop.normalizePreviewTarget(file.resolvedPath).catch(() => null)
+  const metadata = await artifactFileResolver()(file.resolvedPath).catch(() => null)
 
   if (!metadata?.path || !current()) {
     return false
@@ -89,7 +94,7 @@ export async function addLocalArtifactDraft(file: LocalArtifact, isCurrent: () =
     stashSessionDraft(NEW_SESSION_DRAFT_KEY, draft.text || '', attachments)
   }
 
-  newSessionInAgent({ connectionId: 'local', profile, mode: 'local' })
+  newSessionInAgent({ connectionId: 'local', profile, mode: cloud ? 'remote' : 'local' })
 
   return true
 }

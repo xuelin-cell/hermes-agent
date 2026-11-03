@@ -1,3 +1,4 @@
+import { supportsArtifactSharing } from '@/lib/browser-shell'
 import { useStore } from '@nanostores/react'
 import { useEffect, useState } from 'react'
 
@@ -27,7 +28,7 @@ export function useLocalArtifactShare(file: LocalArtifact, open: boolean, candid
   const [state, setState] = useState<{ key: string; scope: object; bridge: object; publishable: boolean } | null>(null)
 
   useEffect(() => {
-    if (!candidate || connection?.mode !== 'local' || !open || !api || !file.resolvedPath) {
+    if (!candidate || !supportsArtifactSharing(connection) || !open || !api || !file.resolvedPath) {
       return
     }
 
@@ -65,7 +66,7 @@ export function useLocalArtifactShare(file: LocalArtifact, open: boolean, candid
 
   return !!(
     candidate &&
-    connection?.mode === 'local' &&
+    supportsArtifactSharing(connection) &&
     api &&
     state?.bridge === bridge &&
     state.scope === scope &&

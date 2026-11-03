@@ -14,6 +14,8 @@ import { WorkspaceCategoryTabs } from './workspace-category-tabs'
 
 afterEach(() => {
   cleanup()
+  delete document.documentElement.dataset.hermesBrowser
+  localStorage.clear()
   vi.unstubAllGlobals()
 })
 
@@ -53,7 +55,8 @@ const modules = normalizeWelcomeCatalog({
   ]
 })
 
-it('uses fetched module names and routing and switches templates without carrying selection across modules', async () => {
+it.each(['desktop', 'cloud'])('%s uses the same module names, icons, routing and template selection', async surface => {
+  if (surface === 'cloud') document.documentElement.dataset.hermesBrowser = 'production'
   vi.stubGlobal('hermesDesktop', { getWelcomeCatalog: vi.fn().mockResolvedValue({ modules }) })
   await loadWelcomeCatalog('zh-CN', true)
   const replace = vi.fn()

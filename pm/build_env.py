@@ -15,6 +15,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--out", type=Path)
     parser.add_argument("--python", type=Path)
     parser.add_argument("--cache", type=Path)
+    parser.add_argument("--timeout", type=int, default=None,
+                        help="project dependency sync timeout in seconds (default: 1800)")
     parser.add_argument("--extra", dest="extras", action="append", default=[])
     parser.add_argument("--group", dest="groups", action="append", default=[])
     parser.add_argument("--all-extras", action="store_true")
@@ -59,6 +61,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                  or args.prune_cache or args.exact_lock)
     if build and args.out is None:
         parser.error("--out is required when building an environment")
+    if args.timeout is not None:
+        if args.timeout <= 0:
+            parser.error("--timeout must be a positive number of seconds")
+        if not build or args.manager_runtime or requirements:
+            parser.error("--timeout applies only to project environment builds")
     if args.manager_runtime and args.python is None:
         parser.error("--manager-runtime requires the target --python")
     try:
@@ -98,6 +105,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 extras=args.extras, groups=args.groups, all_extras=args.all_extras,
                 no_install_project=args.no_install_project, frozen=not args.resolve,
                 sealed=args.sealed, offline=args.offline, explicit=True,
+                timeout=args.timeout if args.timeout is not None else 1800,
             )
     except (pm.InstallError, OSError, ValueError) as exc:
         print(f"python environment: {exc}", file=sys.stderr)

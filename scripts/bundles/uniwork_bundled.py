@@ -28,8 +28,6 @@ same for the installer check. Only zips that open and carry a ``plugin.json``
 are copied: a broken or LFS-pointer zip is named in the log and left out.
 """
 
-from __future__ import annotations
-
 import json
 import os
 import re
@@ -38,6 +36,7 @@ import subprocess
 import tempfile
 import zipfile
 from pathlib import Path
+from typing import Dict, List, Optional
 
 DEFAULT_SOURCE = "git@gitcode.com:uni-ai/uniclawwork-local-config.git"
 TARGET = Path("plugins/uniwork-kits/bundled/uniwork-bundled")
@@ -51,7 +50,7 @@ SCRIPT_REQUIREMENTS = Path("plugins/uniwork-kits/script-requirements.txt")
 MANIFEST_MAX_DEPTH = 2
 
 
-def _bundle_root(source: Path) -> Path | None:
+def _bundle_root(source: Path) -> Optional[Path]:
     """在配置仓库、它的 plugins/ 或 plugins/uniwork-bundled/ 里找到放 zip 的那一层。"""
     for candidate in (source / "plugins" / "uniwork-bundled", source / "uniwork-bundled", source):
         if (candidate / "plugins").is_dir():
@@ -123,14 +122,15 @@ def _fetch_error(exc: Exception) -> str:
 def _revision(checkout: Path) -> str:
     """配置仓库当前的提交号；不是 git 目录时返回空串。"""
     try:
-        result = subprocess.run(["git", "rev-parse", "HEAD"], cwd=checkout, capture_output=True, text=True,
+        result = subprocess.run(["git", "rev-parse", "HEAD"], cwd=checkout,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True,
                                 timeout=30, stdin=subprocess.DEVNULL, check=True)
     except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
         return ""
     return result.stdout.strip()
 
 
-def stage_bundled_plugins(repo_dir: Path, env: dict[str, str] | None = None) -> int:
+def stage_bundled_plugins(repo_dir: Path, env: Optional[Dict[str, str]] = None) -> int:
     """把内置套件和专家拷进打包目录 *repo_dir*，返回拷了几个包。
 
     环境里 UNIWORK_BUNDLED_PLUGINS_REQUIRED=1（正式打包的默认）时，没配置来源、拉不到、
@@ -194,7 +194,7 @@ def stage_bundled_plugins(repo_dir: Path, env: dict[str, str] | None = None) -> 
     return len(good)
 
 
-def script_requirements(repo_dir: Path) -> list[str]:
+def script_requirements(repo_dir: Path) -> List[str]:
     """读打包目录里插件的脚本依赖清单，去掉空行和注释；没有清单时返回空列表。"""
     path = repo_dir / SCRIPT_REQUIREMENTS
     if not path.is_file():
@@ -203,7 +203,7 @@ def script_requirements(repo_dir: Path) -> list[str]:
     return [line.strip() for line in lines if line.strip() and not line.lstrip().startswith("#")]
 
 
-def warm_script_wheels(repo_dir: Path, cache: Path, python: Path, env: dict[str, str]) -> int:
+def warm_script_wheels(repo_dir: Path, cache: Path, python: Path, env: Dict[str, str]) -> int:
     """把套件脚本依赖的安装包放进将随安装包发出的 uv 缓存，返回依赖条数。
 
     安装版在每个账号里用 pm.ensure_environment 建脚本环境；缓存里有这些安装包，就只需查一下版本信息，

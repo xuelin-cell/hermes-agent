@@ -6351,3 +6351,27 @@ describe('usePromptActions stale multi-window guard (#65047)', () => {
     )
   })
 })
+
+it.each(['image','file'] as const)('uploads browser-only %s bytes even when its session owner is local',async kind=>{
+  const previous=window.hermesDesktop
+  const dataUrl='data:image/png;base64,aW1hZ2UtYnl0ZXM='
+  const read=vi.fn(async()=>dataUrl)
+  Object.defineProperty(window,'hermesDesktop',{configurable:true,value:{...previous,readFileDataUrl:read,readFileDataUrlForAttach:read}})
+  const requestGateway=vi.fn(async()=>({attached:true,path:'/opt/data/images/upload.png',ref_text:'@file:/opt/data/images/upload.png'} as never))
+  window.document.documentElement.dataset.hermesBrowser='production'
+  try {
+    const result=await uploadComposerAttachment({id:'browser-file',kind,label:'截屏.png',path:'/__browser__/2/截屏.png'},
+      {remote:false,backendCwd:'/opt/data/workspace',terminalBackend:'local',requestGateway,sessionId:RUNTIME_SESSION_ID})
+    if(kind==='image') {
+      expect(requestGateway).toHaveBeenCalledWith('image.attach_bytes',expect.objectContaining({session_id:RUNTIME_SESSION_ID,content_base64:'aW1hZ2UtYnl0ZXM='}))
+      expect(result.path).toBe('/opt/data/images/upload.png')
+    } else {
+      expect(requestGateway).toHaveBeenCalledWith('file.attach',expect.objectContaining({data_url:dataUrl}))
+      expect(result.refText).toBe('@file:/opt/data/images/upload.png')
+    }
+    expect(requestGateway.mock.calls).not.toContainEqual(['image.attach',expect.anything()])
+  } finally {
+    delete window.document.documentElement.dataset.hermesBrowser
+    Object.defineProperty(window,'hermesDesktop',{configurable:true,value:previous})
+  }
+})

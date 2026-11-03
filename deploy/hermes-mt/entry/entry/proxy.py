@@ -25,7 +25,7 @@ log = logging.getLogger("entry.proxy")
 
 _HOP_BY_HOP = {
     "connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailers",
-    "transfer-encoding", "upgrade", "host", "cookie", "origin", "content-length",
+    "transfer-encoding", "upgrade", "host", "cookie", "origin", "content-length", "authorization",
     "sec-websocket-key", "sec-websocket-version", "sec-websocket-extensions", "sec-websocket-protocol",
 }
 _RESP_STRIP = {"connection", "keep-alive", "transfer-encoding", "content-length", "content-encoding"}

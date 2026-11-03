@@ -30,7 +30,7 @@ export function ConnectorLoginDialog() {
           <DialogTitle>{t('connectorLoginTitle')}</DialogTitle>
           <DialogDescription>
             {prompt?.expert.display_name ?? ''}
-            {t('connectorLoginBody')}
+            {t(window.hermesDesktop?.cloudKits && window.hermesDesktop?.cloudConnectorIds ? 'cloudConnectorLoginBody' : 'connectorLoginBody')}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

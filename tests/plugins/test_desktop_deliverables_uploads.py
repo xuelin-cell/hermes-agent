@@ -16,13 +16,13 @@ HOST = "https://obs-nmhhht6.cucloud.cn"
 SIGNED = "?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=secret"
 
 
-def upload_answer(name):
+def upload_answer(name, content_type="image/png"):
     """与元景上传工具的真实返回同形：文字里带上传地址、请求头和下载链接。"""
     url = f"{HOST}/app-agent-prod/temp/{name}{SIGNED}"
     return json.dumps(
         {
             "result": "已生成文件上传地址，请使用 PUT 方法上传文件。\n"
-            f"上传地址：{url} 方法：PUT\n请求头：Content-Type=image/png\n下载链接：{url} PUT 成功"
+            f"上传地址：{url} 方法：PUT\n请求头：Content-Type={content_type}\n下载链接：{url} PUT 成功"
         },
         ensure_ascii=False,
     )
@@ -169,7 +169,7 @@ def test_agent_mail_execute_action_uploads_and_rewrites_attachment(uploads, monk
 
     def oss_tool(name, args):
         uploads.calls.append((name, args))
-        return upload_answer("mail-report.txt")
+        return upload_answer("mail-report.txt", "text/plain")
 
     monkeypatch.setattr(uploads.module, "call_tool", oss_tool)
 

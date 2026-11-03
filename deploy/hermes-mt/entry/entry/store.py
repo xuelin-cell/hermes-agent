@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import secrets
 from contextlib import asynccontextmanager
@@ -12,6 +13,13 @@ from typing import Any
 
 from .crypto import CredentialCipher
 from .db import Database
+
+
+@dataclass(frozen=True)
+class LangfuseCredentials:
+    user_id: str
+    public_key: str
+    secret_key: str = field(repr=False)
 
 
 @dataclass(frozen=True)
@@ -371,6 +379,35 @@ class Store:
             expires_at=int(row["expires_at"].timestamp()),
             enterprise_status=str(row["access_status"] or ""),
         )
+
+    async def ensure_langfuse_credentials(self, user_id: str) -> LangfuseCredentials:
+        """Return the same encrypted upload credential across logins and Entry restarts."""
+        public = 'pk-lf-' + secrets.token_hex(16)
+        secret = 'sk-lf-' + secrets.token_hex(32)
+        async with self.database.acquire() as connection:
+            row = await connection.fetchrow(
+                """INSERT INTO langfuse_credentials(user_id, public_key, secret_hash, secret_ciphertext)
+                   VALUES($1, $2, $3, $4)
+                   ON CONFLICT(user_id) DO UPDATE SET user_id=EXCLUDED.user_id
+                   RETURNING public_key, secret_ciphertext""",
+                user_id, public, hashlib.sha256(secret.encode()).digest(), self.cipher.encrypt(secret))
+        return LangfuseCredentials(user_id, row['public_key'], self.cipher.decrypt(row['secret_ciphertext']))
+
+    async def langfuse_upload_user(self, public_key: str, secret_key: str) -> str | None:
+        """Authenticate only the upload credential; JWT validity is a separate concern."""
+        async with self.database.acquire() as connection:
+            row = await connection.fetchrow(
+                'SELECT user_id, secret_hash FROM langfuse_credentials WHERE public_key=$1', public_key)
+        if row is None or not hmac.compare_digest(
+                bytes(row['secret_hash']), hashlib.sha256(secret_key.encode()).digest()):
+            return None
+        return row['user_id']
+
+    async def is_user_active(self, user_id: str) -> bool:
+        """Background account capabilities do not require a live browser session."""
+        async with self.database.acquire() as connection:
+            return bool(await connection.fetchval(
+                "SELECT EXISTS(SELECT 1 FROM users WHERE user_id=$1 AND status='active')", user_id))
 
     async def delete_session(self, sid: str) -> None:
         if not sid:

@@ -64,13 +64,13 @@ describe("IMAP/SMTP mail protocol", () => {
 
     expect(fetchOne).toHaveBeenLastCalledWith(
       42,
-      { source: true },
+      { source: { maxLength: 1025 } },
       { uid: true },
     );
     expect(message.text).toBe("Hello Sent!");
   });
 
-  it("falls back to MIME body parts when the IMAP server omits the complete source", async () => {
+  it.each([false, true])("falls back to bounded MIME parts when raw source is missing or oversized: %s", async (oversized) => {
     const fetchOne = vi.fn(async (_uid: number, query: Record<string, unknown>) => {
       if (query.bodyStructure) {
         return {
@@ -89,7 +89,8 @@ describe("IMAP/SMTP mail protocol", () => {
         };
       }
       if (query.source) {
-        return {};
+        expect(query.source).toEqual({ maxLength: 1025 });
+        return oversized ? { source: Buffer.alloc(1025) } : {};
       }
       return {
         bodyParts: new Map([["TEXT", Buffer.from("Hello fallback!", "utf8")]]),

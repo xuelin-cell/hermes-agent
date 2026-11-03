@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
-import { sanitizeShareContent } from './snapshot-renderer'
+import { resourceBlob, sanitizeShareContent } from './snapshot-renderer'
 
 describe('公开 HTML 静态边界', () => {
   it('保留 Markdown、过程和图表的语义，但移除执行能力和本机、带凭证链接', () => {
@@ -25,4 +25,33 @@ describe('公开 HTML 静态边界', () => {
     const data = 'data:image/png;base64,aGVsbG8='
     expect(sanitizeShareContent(`<img src="${data}" alt="图片">`)).toContain(data)
   })
+})
+
+it('uses the cloud login cookie only for same-origin bundled fonts and styles', async () => {
+  const original = document.documentElement.dataset.hermesBrowser
+  document.documentElement.dataset.hermesBrowser = '1'
+  const fetcher = vi.fn<typeof fetch>(async () => new Response('font', { headers: { 'content-type': 'font/woff2' } }))
+  vi.stubGlobal('fetch', fetcher)
+  try {
+    const assets = new URL(`${import.meta.env.BASE_URL || '/'}assets/`, location.href)
+    for (const name of ['font.woff2', 'main.css']) {
+      await resourceBlob(new URL(name, assets).href, new AbortController().signal, false)
+      expect(fetcher.mock.calls.at(-1)?.[1]).toMatchObject({ credentials: 'same-origin', redirect: 'error' })
+    }
+    for (const url of ['https://external.example/font.woff2', new URL('/__entry/font.woff2', location.href).href,
+      new URL('nested%2f..%2fsecret.woff2', assets).href]) {
+      await resourceBlob(url, new AbortController().signal, false)
+      expect(fetcher.mock.calls.at(-1)?.[1]).toMatchObject({ credentials: 'omit', redirect: 'error' })
+    }
+    fetcher.mockImplementationOnce(async () => new Response('image', { headers: { 'content-type': 'image/png' } }))
+    await resourceBlob('https://external.example/image.png', new AbortController().signal, true)
+    expect(fetcher.mock.calls.at(-1)?.[1]).toMatchObject({ credentials: 'omit' })
+    delete document.documentElement.dataset.hermesBrowser
+    await resourceBlob(new URL('font.woff2', assets).href, new AbortController().signal, false)
+    expect(fetcher.mock.calls.at(-1)?.[1]).toMatchObject({ credentials: 'omit' })
+  } finally {
+    if (original === undefined) delete document.documentElement.dataset.hermesBrowser
+    else document.documentElement.dataset.hermesBrowser = original
+    vi.unstubAllGlobals()
+  }
 })

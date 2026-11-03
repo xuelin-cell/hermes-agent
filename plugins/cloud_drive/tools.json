@@ -1,0 +1,413 @@
+[
+  {
+    "name": "list_files",
+    "description": "仅返回个人云盘指定目录的一页直属文件和文件夹，不含子目录内容，根目录 ID 为 0。非空页按 next_page_no 继续翻页，直到空页 end_reached=true；has_more 是保守翻页提示。保持相同 page_size 和 sort；重复页或查询失败时应说明列表不完整，不能据此判断文件不存在。查看全部文件还需进入子目录。",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "space_id": {
+          "type": "string",
+          "enum": [
+            "personal"
+          ],
+          "default": "personal"
+        },
+        "parent_asset_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "default": "0"
+        },
+        "page_no": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000,
+          "default": 1
+        },
+        "page_size": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200,
+          "default": 50
+        },
+        "sort": {
+          "type": "string",
+          "enum": [
+            "name_asc",
+            "modified_desc"
+          ],
+          "default": "name_asc"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "filesearch",
+    "description": "按名称搜索个人云盘文件，等待后台全盘搜索完成后返回分页结果，最多约 11 分钟。",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "page_no": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000,
+          "default": 1
+        },
+        "page_size": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200,
+          "default": 50
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "make_dir",
+    "description": "在个人云盘中创建文件夹。",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "parent_asset_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "default": "0"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "rename_file",
+    "description": "重命名云盘文件或文件夹。",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "asset_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "new_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "file",
+            "directory"
+          ]
+        }
+      },
+      "required": [
+        "asset_id",
+        "new_name",
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "move_files",
+    "description": "将云盘文件和文件夹移动到目标目录；至少提供一组非空 ID。",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "file_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "minItems": 0,
+          "maxItems": 100
+        },
+        "directory_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "minItems": 0,
+          "maxItems": 100
+        },
+        "target_parent_asset_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      },
+      "required": [
+        "target_parent_asset_id"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "delete_files",
+    "description": "删除个人云盘资料。trash（默认）按 file_ids/directory_ids 移入回收站；purge 按 list_recycle_bin 返回的 delete_nos 彻底删除，不可恢复。结果未知时先查询确认，不要直接重试。",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "trash",
+            "purge"
+          ],
+          "default": "trash"
+        },
+        "file_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "minItems": 0,
+          "maxItems": 100
+        },
+        "directory_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "minItems": 0,
+          "maxItems": 100
+        },
+        "delete_nos": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "minItems": 1,
+          "maxItems": 100
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "get_file_info",
+    "description": "获取云盘文件名称、大小、父目录和时间等详情。",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "asset_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      },
+      "required": [
+        "asset_id"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "list_recycle_bin",
+    "description": "返回个人回收站的一页记录，delete_no 用于恢复或彻底删除。非空页按 next_page_no 继续翻页直到空页 end_reached=true，不能因短页停止；重复页或查询失败时不能声称已列完。",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "page_no": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000,
+          "default": 1
+        },
+        "page_size": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200,
+          "default": 50
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "restore_files",
+    "description": "按回收站 delete_no 恢复文件或文件夹到原位置。",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "delete_nos": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "minItems": 1,
+          "maxItems": 100
+        }
+      },
+      "required": [
+        "delete_nos"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "get_capacity",
+    "description": "查询个人云盘总容量和已用容量。",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "download",
+    "description": "下载当前授权账号的云盘文件到账号工作区，完成后返回实例内 path。读取云盘引用前先调用此工具，再读取 path；",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "asset_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "可选；省略时从文件详情获取。"
+        }
+      },
+      "required": [
+        "asset_id"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "upload",
+    "description": "将当前用户实例上的任务文件或附件上传到个人云盘；相对路径基于账号工作区。禁止上传凭据等敏感文件。结果未知时先查询确认，不要直接重试。",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source_path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "parent_asset_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "default": "0"
+        }
+      },
+      "required": [
+        "source_path"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  }
+]

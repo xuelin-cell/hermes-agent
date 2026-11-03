@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, expect, it, vi } from 'vitest'
 
 import { I18nProvider } from '@/i18n'
+import { $notifications } from '@/store/notifications'
 import { $connection } from '@/store/session'
 
 import { ArtifactUploadAction, ArtifactUploadDialog } from './artifact-upload'
@@ -25,6 +26,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
   $connection.set(null)
+  $notifications.set([])
 })
 
 /** 云盘目录使用完整分页和读写权限，上传通过原生桥返回操作状态。 */
@@ -103,8 +105,17 @@ it('只读目标不允许上传，未知结果保留提示并阻止再次发送'
   fireEvent.click(await screen.findByRole('button', { name: '只读目录' }))
   expect((screen.getByRole('button', { name: '上传到此文件夹' }) as HTMLButtonElement).disabled).toBe(true)
   fireEvent.click(screen.getByRole('button', { name: '个人云盘' }))
+  await waitFor(() =>
+    expect((screen.getByRole('button', { name: '上传到此文件夹' }) as HTMLButtonElement).disabled).toBe(false)
+  )
   fireEvent.click(screen.getByRole('button', { name: '上传到此文件夹' }))
-  await screen.findByText('上传结果待确认，请勿立即重复上传。请刷新核对云盘结果。')
+  await waitFor(() =>
+    expect($notifications.get()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'warning', message: expect.stringMatching(/确认上传结果|上传结果待确认/) })
+      ])
+    )
+  )
   fireEvent.click(screen.getByRole('button', { name: '上传到此文件夹' }))
   expect(fixture.transfer).toHaveBeenCalledTimes(1)
 })

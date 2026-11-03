@@ -862,6 +862,7 @@ describe('PreviewPane local HTML Render|Source toggle', () => {
     fireEvent.click(rendered.getByRole('button', { name: 'Create public link' }))
     await waitFor(() => expect(publish).toHaveBeenCalledWith({
       key: 'file:session-1:/work/hello world.html', html: '<p>x</p>', title: 'hello world.html',
+      ttlDays: 1,
       source: expect.objectContaining({ sessionId: 'session-1', path: '/work/hello world.html', hash: expect.any(String) })
     }))
     expect(readFileText).toHaveBeenCalledWith(generated.path)
@@ -875,6 +876,27 @@ describe('PreviewPane local HTML Render|Source toggle', () => {
     })
     expect(rendered.queryByRole('button', { name: 'Share artifact' })).toBeNull()
     expect(rendered.queryByRole('button', { name: 'Update shared content' })).toBeNull()
+  })
+
+  it('groups cloud HTML sharing with Preview and Source on the same toolbar', async () => {
+    $activeSessionId.set('session-1')
+    desktopWindow.hermesDesktop = {
+      ...desktopWindow.hermesDesktop,
+      artifactShare: {
+        inspect: vi.fn(async () => null), eligibility: vi.fn(async () => ({ publishable: true })),
+        onChanged: vi.fn(() => () => undefined)
+      }
+    } as unknown as Window['hermesDesktop']
+    const remote = { ...target, dataUrl: `data:text/html;base64,${btoa('<p>x</p>')}` }
+    openPreview(remote)
+    let rendered!: ReturnType<typeof render>
+    await act(async () => { rendered = render(<PreviewTilePane tabId={previewTabId(remote)} />) })
+    const share = rendered.getByRole('button', { name: 'Share artifact' })
+    const source = rendered.getByRole('button', { name: /^source$/i })
+    expect(share.closest('.h-7')).toBe(source.parentElement)
+    expect(rendered.getAllByRole('button', { name: 'Share artifact' })).toHaveLength(1)
+    fireEvent.click(source)
+    await waitFor(() => expect(rendered.container.querySelector('iframe')).toBeNull())
   })
 
   it('defaults a browsed HTML file to Render and toggles Source on the same tab', async () => {

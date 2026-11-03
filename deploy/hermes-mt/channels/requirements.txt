@@ -1,0 +1,7 @@
+httpx>=0.28.1,<1
+websockets>=15,<17
+packaging>=25,<27
+dingtalk-stream==0.24.3
+lark-oapi==1.6.8
+mcp==2.0.0
+imageio-ffmpeg>=0.6.0,<0.8

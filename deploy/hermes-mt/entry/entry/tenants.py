@@ -36,6 +36,7 @@ from .config import Settings
 from .cube_api import Cube, CubeError, SandboxGone
 from .docker_api import Docker, DockerError
 from .store import Store
+from .langfuse_config import credential_lines, upload_url
 
 log = logging.getLogger("entry.tenants")
 
@@ -59,6 +60,12 @@ PLATFORM_POLICY = {
     # 在线模型目录（OpenRouter / Nous 的推荐清单）：集群里访问慢，超时会把模型下拉卡住；
     # 我们的模型清单来自套餐，用不上它。
     "model_catalog": {"enabled": False},
+    "cloud_sharing": {"enabled": True},
+    "cloud_drive": {"enabled": True},
+    "cloud_mail": {"enabled": True},
+    "cloud_kits": {"enabled": True},
+    "cloud_messaging_delivery": {"enabled": True},
+    "platforms": {name: {"enabled": True} for name in ("uniagentgate", "dingtalk", "feishu", "weixin", "wecom")},
     # 用到时才从 PyPI 装的依赖：页面一打开就会往每台实例的可写层下 392MB 语音依赖。
     "security": {"allow_lazy_installs": False},
     # 用户第一条消息时，hermes 默认让 agent 提出「建用户画像」（征得同意后联网查用户的公开信息、记进记忆）。
@@ -161,6 +168,10 @@ def busy_reason(activity: dict | None, now: float, keepalive_s: float) -> str:
         return "cron_running"
     if activity.get("turns"):
         return "turn_running"
+    if activity.get("kits_running"):
+        return "kits_running"
+    if activity.get("connectors_running"):
+        return "connector_running"
     due = activity.get("cron_next_at")
     if isinstance(due, (int, float)) and now - keepalive_s <= due <= now + keepalive_s:
         return "cron_due"
@@ -198,7 +209,7 @@ class TenantManager:
     ``cube`` 是让沙箱平台建实例。两条路的差异全部收敛在 ``_*_docker`` /
     ``_*_cube`` 这几对方法里，对 app.py 和 proxy.py 完全透明。
 
-    ★ Docker 那条路的代码一个字没动 —— 沙箱后端是加出来的，不是改出来的。
+    Docker 与沙箱均由实例转发器管理 Hermes 和连接器的进程生命周期。
     """
 
     def __init__(
@@ -351,8 +362,15 @@ class TenantManager:
         """
         files = self._render_user_files(api_key, endpoint, catalog, limits)
         # 转发器要从自己所在目录导入状态管家和用户接口，三个文件一起放。
-        for name in ("forward.py", "mtstate.py", "mtuser.py", "mtent.py"):
+        for name in ("forward.py", "mtstate.py", "mtuser.py", "mtent.py", "mtexport.py", "mtfolders.py", "mtmessaging.py", "mtconnectors.py"):
             files[f".mt/{name}"] = (SEED_DIR / name).read_bytes()
+        for file in sorted((SEED_DIR.parent / '.connector-runtime').rglob('*')):
+            if file.is_file():
+                files['.mt/connectors/' + file.relative_to(SEED_DIR.parent / '.connector-runtime').as_posix()] = file.read_bytes()
+        bundled = SEED_DIR.parent / '.kits-runtime/plugins/uniwork-kits/bundled'
+        for file in sorted(bundled.rglob('*')):
+            if file.is_file():
+                files['.mt/bundled/' + file.relative_to(bundled).as_posix()] = file.read_bytes()
         return files
 
     # ---- 平台下发的模型配置：变了要同步到已有的卷 ------------------------------------
@@ -379,22 +397,21 @@ class TenantManager:
         就永远卡在旧地址上，症状是网关回 1004 而不是任何看得懂的错误。
         """
         base_url, model_name = endpoint or ("", "")
-        if not base_url:
-            return False
         names = [n for n, _ in (catalog or [])]
-        want = _stamp_bytes((base_url, model_name), names)
         try:
-            stamp_tar = await self.docker.get_archive(cname, "/opt/data/.mt/endpoint.stamp")
-            if stamp_tar and self._from_tar(stamp_tar, "endpoint.stamp") == want:
-                return False
             cfg_tar = await self.docker.get_archive(cname, "/opt/data/config.yaml")
             if not cfg_tar:
+                return False
+            spec = self._config_patch_spec(endpoint, catalog, limits)
+            want = hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest().encode()
+            stamp_tar = await self.docker.get_archive(cname, "/opt/data/.mt/endpoint.stamp")
+            if stamp_tar and self._from_tar(stamp_tar, "endpoint.stamp") == want:
                 return False
             raw = self._from_tar(cfg_tar, "config.yaml")
             if raw is None:
                 return False
             patched, notes = _mtstate().patch_config_text(
-                raw.decode("utf-8"), self._config_patch_spec(endpoint, catalog, limits))
+                raw.decode("utf-8"), spec)
             files = {".mt/endpoint.stamp": want}
             if notes:
                 files["config.yaml"] = patched.encode("utf-8")
@@ -460,6 +477,8 @@ class TenantManager:
 
             # 平台下发的端点若有变化，先改卷里的 config.yaml（hermes 只在启动时读一次）
             changed = await self._sync_endpoint(cname, endpoint, catalog, getattr(context, "limits", None))
+            tracing_changed = await self._sync_langfuse(cname, user_id)
+            changed = changed or tracing_changed
             if changed and (info or {}).get("State", {}).get("Running"):
                 log.info("tenant %s: 端点已更新，重启容器让 hermes 重新读配置", slug)
                 await self.docker.stop_container(cname)
@@ -522,6 +541,15 @@ class TenantManager:
             return PLATFORM_POLICY
         return {**PLATFORM_POLICY, "agent": {"reasoning_effort": effort}}
 
+    @staticmethod
+    def _drive_mcp() -> dict:
+        return {"Agent-Mail": {"url": "http://127.0.0.1:9120/api/plugins/cloud-mail/mcp", "timeout": 120, "enabled": False,
+                 "uniwork_managed": "uniwork.cloud.mail.v1",
+                 "headers": {"X-Hermes-Session-Token": "${HERMES_DASHBOARD_SESSION_TOKEN}"}},
+                "UniWork-Drive": {"url": "http://127.0.0.1:9120/api/plugins/cloud-drive/mcp", "timeout": 720,
+                 "execution_metadata": True, "strict_redirect_headers": True, "uniwork_managed": "uniwork.desktop.drive.v1",
+                 "headers": {"X-Hermes-Session-Token": "${HERMES_DASHBOARD_SESSION_TOKEN}"}}}
+
     def _mcp_servers(self, api_key: str) -> dict:
         """平台内置的 MCP 服务，{名字: 配置}；配置为 None = 平台不提供，实例里有这一条就删掉。
 
@@ -533,8 +561,9 @@ class TenantManager:
         用量记在企业账上。其余参数照旧。
         """
         url = self.s.yuanjing_mcp_url.strip()
+        drive = {} if self.s.enterprise else self._drive_mcp()
         if not url or not api_key:
-            return {YUANJING_MCP_NAME: None}
+            return {**drive, YUANJING_MCP_NAME: None}
         if self.s.enterprise:
             url = f"{self.s.uniwork_server}/api/client/yj/app/mcp-server/mcp"
         params = [f"key=${{{self.s.key_env_name}}}"]
@@ -543,7 +572,7 @@ class TenantManager:
         if self.s.yuanjing_mcp_oss_mode:
             params.append("oss_mode=" + quote(self.s.yuanjing_mcp_oss_mode, safe=""))
         sep = "&" if "?" in url else "?"
-        return {YUANJING_MCP_NAME: {"url": url + sep + "&".join(params), "timeout": YUANJING_MCP_TIMEOUT_S}}
+        return {**drive, YUANJING_MCP_NAME: {"url": url + sep + "&".join(params), "timeout": YUANJING_MCP_TIMEOUT_S}}
 
     def _config_patch_spec(
         self,
@@ -555,7 +584,7 @@ class TenantManager:
         """patch-model 的内容：平台块四项 + 套餐清单 + 每个模型的上下文长度 + 平台策略 + 推理强度预设，
         外加一份渲染好的模板（文件坏到救不回来时按它重建）。见 seed/mtstate.py 的 apply_platform_block。
 
-        给了 ``api_key``（沙箱路径的引导）才带内置 MCP；Docker 路径不传，实例里的 MCP 配置不动。"""
+        给了 ``api_key``（沙箱路径的引导）才带内置 MCP；Docker 路径只维护实例本地云盘 MCP，不改元景 MCP。"""
         base_url, model_name = endpoint or ("", "")
         model = model_name or self.s.model_name
         names = [n for n, _ in (catalog or [])]
@@ -572,10 +601,14 @@ class TenantManager:
         }
         if api_key is not None:
             spec["mcp_servers"] = self._mcp_servers(api_key)
+        elif not self.s.enterprise:
+            spec["mcp_servers"] = self._drive_mcp()
         if self.s.enterprise:
             # 企业对接插件：hermes 只加载 plugins.enabled 里有的。引导时在拉起 hermes 之前写，默认 profile 一启动就有；
             # Agent 的托管 profile 用这份当模板，也带上。停用靠实例里的 plugin.json（MT_UNIWORK_PLUGIN），这里照写。
             spec["plugins"] = {"enable": [UNIWORK_PLUGIN_KEY]}
+        elif upload_url(self.s):
+            spec["enabled_plugins"] = ["observability/langfuse"]
         return spec
 
     def _cube_seed_files(
@@ -585,6 +618,7 @@ class TenantManager:
         catalog: list[tuple[str, str]] | None,
         limits: dict[str, int] | None = None,
         persona: str | None = None,
+        tracing_lines: list[str] | None = None,
     ) -> list[dict]:
         """渲染引导接口要的种子文件。
 
@@ -600,6 +634,8 @@ class TenantManager:
            ``if-pristine`` 的判据是与镜像里的示例逐字节比对，见 seed/forward.py。
         """
         rendered = self._render_user_files(api_key, endpoint, catalog, limits)
+        if tracing_lines:
+            rendered[".env"] += ("\n".join(tracing_lines) + "\n").encode("utf-8")
         patch = self._config_patch_spec(endpoint, catalog, limits, api_key=api_key or "")
         return [
             {
@@ -735,6 +771,8 @@ class TenantManager:
         """这次请求要不要动实例（没实例 / 实例没了 / 模板变了 / 引导没完成）。"""
         if not rt.sandbox_id or sb is None or str(sb.get("state")) in GONE_STATES:
             return True
+        if rt.lifecycle in {"draining", "drained", "deleting"}:
+            return True
         want = self._template_id()
         have = str(sb.get("templateID") or rt.template_id or "")
         if want and have and have != want:
@@ -750,7 +788,8 @@ class TenantManager:
         if sb is not None and str(sb.get("state")) in GONE_STATES:
             # 平台正在删它（异步删除的收尾）：等它真没了再按"没了"处理，免得新实例和它抢卷。
             log.info("tenant %s: 实例 %s 正在被平台删除（%s），等它消失", slug, sandbox_id[:12], sb.get("state"))
-            await self.cube.wait_gone(sandbox_id)
+            if not await self.cube.wait_gone(sandbox_id):
+                raise CubeError(503, "旧实例尚未删除完成，请稍后重试")
             sb = None
         if sb is None:
             # 平台侧已经没了（节点维护、被手工删掉…）。数据在卷上，重建即可。
@@ -759,6 +798,18 @@ class TenantManager:
             await self.store.set_sandbox_id(user_id, None)
             self.cube.forget_traffic_token(sandbox_id)
             return ""
+        if rt.lifecycle in {"draining", "drained", "deleting"}:
+            if rt.state_owner != sandbox_id and str(sb.get("state")) == "running":
+                st = await self.cube.status(sandbox_id, self.s.forward_port)
+                # A failed first bootstrap has no state manager to resume. A
+                # leftover drain marker must not prevent normal bootstrap repair.
+                if st.get("bootstrapped") is False and st.get("state") is None and not st.get("draining"):
+                    repaired_id, repaired = await self._repair_bootstrap(user_id, slug, sandbox_id, token, context)
+                    if not repaired_id or repaired:
+                        await self.store.set_lifecycle(user_id, "")
+                        return repaired_id
+            await self._resume_after_drain(user_id, sandbox_id, token)
+            return sandbox_id
         want = self._template_id()
         have = str(sb.get("templateID") or rt.template_id or "")
         if want and have and have != want:
@@ -845,7 +896,8 @@ class TenantManager:
             token=token,
             files=self._cube_seed_files(
                 context.api_key, context.endpoint, context.catalog, getattr(context, "limits", None),
-                persona=self._persona_of(context)),
+                persona=self._persona_of(context),
+                tracing_lines=await credential_lines(self.s, self.store, user_id)),
             ready_timeout_s=self.s.ready_timeout_s,
             state=self._state_block(sandbox_id, epoch, restore_from),
             # 平台的运行环境才另开 API 服务；成员实例的引导请求不变
@@ -905,6 +957,9 @@ class TenantManager:
         except CubeError:
             return sandbox_id, False
         if st.get("bootstrapped"):
+            if (st.get("state") or {}).get("phase") in {"drained", "drain_failed"}:
+                await self._resume_after_drain(user_id, sandbox_id, token)
+                return sandbox_id, True
             await self._adopt_bootstrapped(user_id, slug, sandbox_id, st)
             return sandbox_id, False
         rt = await self.store.get_runtime(user_id)
@@ -923,9 +978,32 @@ class TenantManager:
             return sandbox_id, True
         log.warning("tenant %s: 实例 %s 未引导且窗口已关，删掉重建", slug, sandbox_id[:12])
         await self.cube.remove_sandbox(sandbox_id)
+        if not await self.cube.wait_gone(sandbox_id):
+            raise CubeError(503, "未引导的旧实例尚未删除完成，请稍后重试")
         await self.store.mark_sandbox_deleted(sandbox_id, "unbootstrapped")
         await self.store.set_sandbox_id(user_id, None)
         return "", False
+
+    async def _resume_after_drain(self, user_id: str, sandbox_id: str, token: str) -> None:
+        """Recover the existing owner only; never create a second volume writer."""
+        sb = await self.cube.get_sandbox(sandbox_id)
+        if sb is None or str(sb.get("state")) in GONE_STATES:
+            raise SandboxGone(404, "实例已消失或正在删除，请重试以恢复")
+        if str(sb.get("state")) == "paused":
+            # A recovery marker may outlive the process that drained the sandbox.
+            # Wake it explicitly before inspecting its in-instance lifecycle state.
+            await self.cube.resume_sandbox(sandbox_id)
+            await self.cube.wait_forwarder(sandbox_id, self.s.forward_port)
+        status = await self.cube.status(sandbox_id, self.s.forward_port)
+        phase = (status.get("state") or {}).get("phase")
+        if phase in {"drained", "drain_failed"}:
+            await self.cube.resume(sandbox_id, self.s.forward_port, token)
+            await self.cube.wait_hermes(sandbox_id, self.s.forward_port, timeout_s=self.s.ready_timeout_s)
+        elif phase in {"draining", "fenced"} or status.get("draining") or status.get("hermes") is False:
+            raise CubeError(503, "实例仍在排空或已失去所有权，请稍后重试")
+        await self.store.set_tenant_state(user_id, "running")
+        await self.store.set_lifecycle(user_id, "")
+        await self.store.write_audit(user_id, "tenant.drain.resume", {"sandbox": sandbox_id})
 
     async def _drain_and_delete(self, user_id: str, sandbox_id: str, token: str, reason: str) -> bool:
         """停 hermes → 最终归档 → 记进 PG → 删实例 → 确认已消失。任何一步失败都不删。
@@ -940,7 +1018,7 @@ class TenantManager:
             body = await self.cube.drain(sandbox_id, port, token)
         except CubeError as exc:
             log.warning("tenant %s: 排空实例 %s 失败: %s", slug, sandbox_id[:12], exc)
-            await self.store.set_lifecycle(user_id, "")
+            await self._resume_after_drain(user_id, sandbox_id, token)
             return False
         summary = body.get("archive") or {}
         await self.store.set_state_archive(user_id, str(summary.get("archive") or ""), summary)
@@ -955,7 +1033,9 @@ class TenantManager:
             log.warning("tenant %s: 删实例 %s 失败: %s", slug, sandbox_id[:12], exc)
             gone = False
         if not gone:
-            # 删不干净不能建新的：两台实例会同写一个卷。留在 deleting，下次再试。
+            # Deletion failed: restore the existing owner, retaining its identity.
+            # If removal is still in progress, recovery refuses to start another writer.
+            await self._resume_after_drain(user_id, sandbox_id, token)
             return False
         await self.store.mark_sandbox_deleted(sandbox_id, reason)
         await self.store.set_sandbox_id(user_id, None)
@@ -965,6 +1045,12 @@ class TenantManager:
         if self.s.volume_detach_grace_s > 0:
             await asyncio.sleep(self.s.volume_detach_grace_s)
         return True
+
+    async def _messaging_busy(self, user_id):
+        if not self.s.channels_key:
+            return False
+        async with self.store.database.acquire() as db:
+            return bool(await db.fetchval("SELECT 1 FROM messaging_inbox i JOIN messaging_bindings b ON b.id=i.binding_id WHERE i.user_id=$1 AND b.enabled AND b.deleted_at IS NULL AND b.revision=i.binding_revision AND i.lease_until>now() LIMIT 1",user_id))
 
     async def _stop_cube(self, user_id: str, reason: str) -> None:
         """空闲回收 = 暂停，不是销毁；暂停前先让状态管家归档一次。
@@ -976,6 +1062,8 @@ class TenantManager:
         slug = tenant_slug(user_id)
         async with self._lock(slug):
             async with self._pg_lock(user_id):
+                if await self._messaging_busy(user_id):
+                    return
                 rt = await self.store.get_runtime(user_id)
                 self._register_token(rt)
                 sandbox_id = rt.sandbox_id
@@ -1026,7 +1114,25 @@ class TenantManager:
 
     async def _busy_reason(self, user_id: str) -> str:
         """回收前问一句：这台实例为什么现在不能暂停。空串 = 可以暂停（问不到也按可以，照旧回收）。"""
-        if not self.use_cube or self.cube is None:
+        if not self.use_cube:
+            if self.docker is None:
+                return ""
+            slug = tenant_slug(user_id)
+            name = self.container_name(slug)
+            info = await self.docker.inspect_container(name)
+            if not (info or {}).get('State', {}).get('Running'):
+                return ""
+            ip = await self.docker.container_ip(name, self.network_name(slug))
+            token = await self.store.ensure_tenant_token(user_id)
+            try:
+                async with self.http.get(f'http://{ip}:{self.s.forward_port}/__mt/status',
+                        headers={'X-Mt-Token': token}, timeout=aiohttp.ClientTimeout(total=3)) as response:
+                    if response.status == 200:
+                        return busy_reason((await response.json()).get('activity'), time.time(), self.s.cron_keepalive_s)
+            except (aiohttp.ClientError, asyncio.TimeoutError, ValueError):
+                log.warning('Docker activity probe failed for %s', slug)
+            return ""
+        if self.cube is None:
             return ""
         woke = self._cron_woken.get(user_id)
         if woke is not None and time.monotonic() - woke < self.s.cron_keepalive_s:
@@ -1087,6 +1193,8 @@ class TenantManager:
             slug = tenant_slug(user_id)
             async with self._lock(slug):
                 async with self._pg_lock(user_id):
+                    if await self._messaging_busy(user_id):
+                        continue
                     rt = await self.store.get_runtime(user_id)
                     if not rt.sandbox_id or rt.state != "stopped":
                         continue
@@ -1198,6 +1306,19 @@ class TenantManager:
                                      {"sandbox": sandbox_id, "reason": "model_key", "written": body.get("written", [])})
         log.info("tenant %s: 模型 key 换了，实例 %s 已重新加载（hermes 已重启）", slug, sandbox_id[:12])
 
+    async def _sync_langfuse(self, cname: str, user_id: str) -> bool:
+        lines = await credential_lines(self.s, self.store, user_id)
+        if not lines:
+            return False
+        archive = await self.docker.get_archive(cname, "/opt/data/.env")
+        raw = self._from_tar(archive, ".env") if archive else None
+        text = raw.decode("utf-8") if raw is not None else ""
+        updated = _mtstate().env_upsert_text(text, lines)
+        if updated == text:
+            return False
+        await self.docker.put_archive(cname, "/opt/data", _tar_bytes({".env": updated.encode("utf-8")}))
+        return True
+
     async def _sync_api_key(self, tenant: Tenant, api_key: str) -> None:
         """通过 Hermes 既有接口更新 Key；只有成功后才记录内存摘要。"""
         if not api_key:
@@ -1229,10 +1350,6 @@ class TenantManager:
 
     async def _create(self, cname: str, nname: str, vname: str, labels: dict, token: str,
                       api_server: bool = False) -> None:
-        cmd = (
-            "python3 /opt/data/.mt/forward.py & "
-            f"exec hermes serve --host 127.0.0.1 --port {self.s.hermes_port} --skip-build"
-        )
         # 平台的运行环境：转发器另起 gateway 的 API 服务（沙箱路径靠引导载荷，这里靠环境变量）
         extra_env = ["MT_API_SERVER=1"] if api_server else []
         spec = {
@@ -1249,7 +1366,7 @@ class TenantManager:
                 f"MT_HERMES_PORT={self.s.hermes_port}",
                 *extra_env,
             ],
-            "Cmd": ["sh", "-c", cmd],
+            "Cmd": ["python3", "/opt/data/.mt/forward.py"],
             "Labels": labels,
             "HostConfig": {
                 "Binds": [f"{vname}:/opt/data"],

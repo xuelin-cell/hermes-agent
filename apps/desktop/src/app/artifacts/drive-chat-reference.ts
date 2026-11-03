@@ -3,6 +3,7 @@ import { LOCAL_CONNECTION_ID } from '@hermes/shared'
 import { $apiRequestScope } from '@/api/client'
 import type { DriveAsset } from '@/api/drive'
 import { requestComposerGetDraft, requestComposerSetDraft } from '@/app/chat/composer/focus'
+import { isBrowserShell } from '@/lib/browser-shell'
 import { isToolEnabled } from '@/lib/mcp-tool-filter'
 import {
   type ComposerAttachment,
@@ -76,9 +77,9 @@ export async function addCloudReference(
 
   if (
     !connection ||
-    connection.mode !== 'local' ||
+    (connection.mode !== 'local' && !isBrowserShell()) ||
     connectionId !== LOCAL_CONNECTION_ID ||
-    (typeof owner === 'object' && owner?.mode === 'remote')
+    (!isBrowserShell() && typeof owner === 'object' && owner?.mode === 'remote')
   ) {
     return { status: 'remote' }
   }

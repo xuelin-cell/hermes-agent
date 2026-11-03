@@ -98,6 +98,10 @@ class UniAgentGateInboundContext:
 StreamCallback = Callable[[RawUniAgentGateMessage, UniAgentGateInboundContext], Awaitable[None]]
 
 
+class DownlinkRejected(RuntimeError):
+    """The gateway explicitly rejected a downlink, rather than losing its ACK."""
+
+
 class UniAgentGateStreamClient:
     """One Gateway registration + WS session for a given ``agent_id``.
 
@@ -115,11 +119,16 @@ class UniAgentGateStreamClient:
         agent_id: str,
         agent_sk: str,
         on_message: StreamCallback,
+        *,
+        persist_inbound: Callable[[dict], Awaitable[None]] | None = None,
+        capabilities: list[str] | None = None,
     ) -> None:
         self._gateway_url = gateway_url.rstrip("/")
         self._agent_id = agent_id
         self._agent_sk = agent_sk
         self._on_message = on_message
+        self._persist_inbound = persist_inbound
+        self._capabilities = capabilities
 
         self._task: asyncio.Task[None] | None = None
         self._stopping = False
@@ -288,7 +297,7 @@ class UniAgentGateStreamClient:
         server_error_attempts = 0
         while not self._stopping:
             try:
-                return await auth.register(self._gateway_url, self._agent_id, self._agent_sk)
+                return await auth.register(self._gateway_url, self._agent_id, self._agent_sk, capabilities=self._capabilities)
             except auth.UniAgentGateAuthError as exc:
                 logger.warning(
                     "uniAgentGate register failed: code=%s status=%s",
@@ -484,6 +493,14 @@ class UniAgentGateStreamClient:
             logger.warning("uniAgentGate inbound ignored: ref=%s reason=agent_mismatch", ref)
             return
 
+        if self._persist_inbound is not None:
+            # The cloud receiver commits its inbox before acknowledging upstream.
+            # Failed writes must not poison the process-local duplicate cache.
+            try:
+                await asyncio.wait_for(self._persist_inbound(envelope), timeout=2)
+            except Exception as error:
+                logger.warning('uniAgentGate durable receive rejected: error_type=%s', type(error).__name__)
+                return
         if request.ack_required:
             await self._safe_send(ws, protocol.build_ack(in_reply_to=request.message_id))
 
@@ -537,6 +554,7 @@ class UniAgentGateStreamClient:
         media: list[dict[str, str]] | None = None,
         session_id: str = "",
         turn_id: str = "",
+        message_id: str | None = None,
     ) -> tuple[str, protocol.AckResult]:
         """``channel.message.send`` — the recommended RCS downlink (§7.1.1 / §7.8).
 
@@ -560,6 +578,8 @@ class UniAgentGateStreamClient:
             session_id=session_id,
             turn_id=turn_id,
         )
+        if message_id is not None:
+            envelope['message_id'] = message_id
         message_id = str(envelope["message_id"])
         loop = asyncio.get_running_loop()
         fut: "asyncio.Future[protocol.AckResult]" = loop.create_future()
@@ -584,7 +604,7 @@ class UniAgentGateStreamClient:
 
         if not ack.ok:
             # Gateway-provided text is untrusted and may echo credentials.
-            raise RuntimeError(f"网关拒绝下发: {ack.error_code}")
+            raise DownlinkRejected(f"网关拒绝下发: {ack.error_code}")
         logger.info("uniAgentGate downlink accepted: message_id=%s", message_id)
         return message_id, ack
 

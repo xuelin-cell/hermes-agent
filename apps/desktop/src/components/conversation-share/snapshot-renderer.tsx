@@ -10,6 +10,7 @@ import { MARKDOWN_CONTAINER_CLASS_NAME } from '@/components/assistant-ui/markdow
 import { CodeCard, CodeCardBody } from '@/components/chat/code-card'
 import { SHIKI_COLOR_REPLACEMENTS, SHIKI_THEME } from '@/components/chat/shiki-config'
 import { renderMediaTags } from '@/lib/chat-messages/parts'
+import { isBrowserShell } from '@/lib/browser-shell'
 import { FileText } from '@/lib/icons'
 import { createMemoizedMathPlugin } from '@/lib/katex-memo'
 import { preprocessMarkdown } from '@/lib/markdown-preprocess'
@@ -194,8 +195,8 @@ export function sanitizeShareContent(html: string): string {
   return container.innerHTML
 }
 
-/** 读取受浏览器同源策略限制的静态资源，不携带凭据，不读取本地文件或后端附件。 */
-async function resourceBlob(url: string, signal: AbortSignal, image: boolean): Promise<Blob> {
+/** 云端内置字体经过登录保护；仅此静态目录使用同源 Cookie，外部资源及附件不带凭据。 */
+export async function resourceBlob(url: string, signal: AbortSignal, image: boolean): Promise<Blob> {
   signal = AbortSignal.any([signal, AbortSignal.timeout(10_000)])
   const parsed = new URL(url, location.href)
 
@@ -218,9 +219,13 @@ async function resourceBlob(url: string, signal: AbortSignal, image: boolean): P
   }
 
   let response: Response
+  const assets = new URL(`${import.meta.env.BASE_URL || '/'}assets/`, location.href)
+  const authenticatedAsset = isBrowserShell() && !image && parsed.origin === location.origin &&
+    parsed.pathname.startsWith(assets.pathname) && !/%2f|%5c/i.test(parsed.pathname) &&
+    /\.(?:css|woff2?|ttf|otf|eot)$/i.test(parsed.pathname)
 
   try {
-    response = await fetch(parsed, { signal, credentials: 'omit', redirect: 'error' })
+    response = await fetch(parsed, { signal, credentials: authenticatedAsset ? 'same-origin' : 'omit', redirect: 'error' })
   } catch (error) {
     throw new Error(
       `${image ? 'Image' : 'Font/style'} resource (${parsed.hostname || parsed.protocol}): ${error instanceof Error ? error.message : String(error)}`

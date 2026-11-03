@@ -16,7 +16,7 @@ export function ExpertFace({ expert, size = 28 }: ExpertFaceProps) {
 
   useEffect(() => {
     loadAvatar(expert.name)
-  }, [expert.name])
+  }, [expert.name, image])
 
   if (image) {
     return (

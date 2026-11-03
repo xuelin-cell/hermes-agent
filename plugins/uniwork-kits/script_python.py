@@ -153,7 +153,17 @@ def on_pre_tool_call(tool_name: str = "", args: Any = None, task_id: str = "", *
 
     home = Path(get_hermes_home())
     name, extra = environment_for(command)
-    python = interpreter(home, name) or prepare(home, wait=WAIT_S, name=name, extra=extra)
+    from hermes_cli.config import load_config_readonly
+
+    if (load_config_readonly().get('cloud_kits') or {}).get('enabled'):
+        # Cloud templates carry the script libraries; never install a new environment per user.
+        if extra:
+            return {"action": "block", "reason": "此脚本需要当前云端模板尚未预装的扩展依赖。"}
+        import sys
+
+        python = Path(sys.executable)
+    else:
+        python = interpreter(home, name) or prepare(home, wait=WAIT_S, name=name, extra=extra)
     if python is None:
         return None
     new = rewrite_command(command, python.as_posix())

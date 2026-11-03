@@ -25465,6 +25465,26 @@
             "default": null,
             "title": "Title Preview"
           },
+          "execution_metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                "maxProperties": 8,
+                "propertyNames": {
+                  "maxLength": 64
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Execution Metadata"
+          },
           "truncate_before_user_ordinal": {
             "anyOf": [
               {

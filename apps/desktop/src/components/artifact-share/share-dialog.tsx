@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import { $apiRequestScope } from '@/api/client'
 import { writeClipboardText } from '@/components/ui/copy-button'
 import { useI18n } from '@/i18n'
+import { contentSha256 } from '@/lib/content-sha256'
 import { notify } from '@/store/notifications'
 
 import { ArtifactShareDialogView } from './share-dialog-view'
@@ -25,13 +26,6 @@ interface PreparedArtifactShare {
   html: string
   hash: string
   sourceHash: string
-}
-
-/** 区分公开快照和源文件的指纹，更新确认与来源复核各用对应内容。 */
-async function digest(text: string): Promise<string> {
-  const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
-
-  return Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, '0')).join('')
 }
 
 /** 弹窗只准备和检查状态；发布、更新及撤销均等待用户在弹窗中确认。 */
@@ -104,7 +98,7 @@ export function ArtifactShareDialog({
         if (eligibility.publishable) {
           const target = latest.current
           const snapshot = typeof target.html === 'function' ? await target.html() : target.html
-          const [hash, sourceHash] = await Promise.all([digest(snapshot), digest(target.sourceText ?? snapshot)])
+          const [hash, sourceHash] = await Promise.all([contentSha256(snapshot), contentSha256(target.sourceText ?? snapshot)])
 
           if (active && lifecycle.generation === generation && $apiRequestScope.get() === scope) {
             setPrepared({ html: snapshot, hash, sourceHash })

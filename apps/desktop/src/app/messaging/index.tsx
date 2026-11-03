@@ -8,7 +8,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ErrorBanner } from '@/components/ui/error-state'
-import { getMessagingPlatforms, getStatus, type MessagingPlatformInfo } from '@/hermes'
+import { getMessagingPlatforms, getStatus, updateMessagingPlatform, type MessagingPlatformInfo } from '@/hermes'
+import { isBrowserShell } from '@/lib/browser-shell'
 import { useI18n } from '@/i18n'
 import { AlertTriangle, CheckCircle2, Loader2, MessageCircle, RefreshCw, X } from '@/lib/icons'
 import { confirm } from '@/store/confirm'
@@ -66,16 +67,16 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
 
   const sameProfile = (operation.profile ?? 'default') === (scopeProfile ?? 'default')
 
-  // 解绑只确认目标清理及网关动作；其它渠道的连接问题继续由各自状态展示。
+  // 云端核对本次目标；桌面共享网关的恢复还须确认其它渠道，不能掩盖保存或归属错误。
   const connectionRecovered = operation.phase === 'failed' && operation.saved && targetRecovered &&
     operation.error === 'connection_timeout' && sameProfile &&
     !loadError && snapshot?.operationRevision === operation.revision &&
-    (operation.operation === 'disconnect' && operation.platform
-      ? enabledPlatforms.length > 0
-        ? platforms?.some(platform => platform.gateway_running)
-        : !!platforms?.length && platforms.every(platform => !platform.gateway_running)
-      : enabledPlatforms.length > 0 && enabledPlatforms.every(platform =>
-        platform.configured && platform.gateway_running && platform.state === 'connected'))
+    (isBrowserShell() && operation.platform ? targetRecovered
+      : operation.operation === 'disconnect' && operation.platform
+        ? enabledPlatforms.length > 0 ? platforms?.some(platform => platform.gateway_running)
+          : !!platforms?.length && platforms.every(platform => !platform.gateway_running)
+        : enabledPlatforms.length > 0 && enabledPlatforms.every(platform =>
+          platform.configured && platform.gateway_running && platform.state === 'connected'))
 
   // 刚进入页面时还没读到最新平台状态；历史上的连接超时只是旧记录，此时不能当结论展示，
   // 否则平台其实早已连上，也会先闪一下“连接失败”。读取失败时无法核对，仍按记录显示。
@@ -306,15 +307,16 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
 
       const status = result?.status ?? 'restart_required'
 
+      const reconnectFailure = isBrowserShell() ? '5G 连接失败，请检查云端消息服务与账号配置。' : m.cards.reconnectFailed
       const messages = {
         connected: m.cards.reconnected,
         connecting: m.connectingLive,
         busy: m.cards.reconnectBusy,
         unbound: m.cards.personalBindingMissing,
-        failed: m.cards.reconnectFailed,
-        unavailable: m.cards.reconnectFailed,
-        stopped: m.cards.reconnectFailed,
-        restart_required: m.cards.reconnectRestartRequired
+        failed: reconnectFailure,
+        unavailable: reconnectFailure,
+        stopped: reconnectFailure,
+        restart_required: isBrowserShell() ? '云端消息服务需要恢复，请联系部署管理员检查服务状态。' : m.cards.reconnectRestartRequired
       }
 
       notify({
@@ -323,8 +325,10 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
         message: messages[status]
       })
       await refresh()
-    } catch {
-      notify({ kind: 'error', title: m.cards.titles.uniagentgate, message: m.cards.reconnectFailed })
+    } catch (error) {
+      notify({ kind: 'error', title: m.cards.titles.uniagentgate, message: isBrowserShell()
+        ? (error instanceof Error && error.message ? error.message : '5G 请求失败，请检查云端消息服务。')
+        : m.cards.reconnectFailed })
     } finally {
       setRcsReconnecting(false)
     }
@@ -381,18 +385,22 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
             <PageLoader label={m.loading} />
           ) : (
             DISPLAY_PLATFORM_IDS
+              .filter(id => !isBrowserShell() || ['uniagentgate', 'dingtalk', 'weixin', 'wecom', 'feishu'].includes(id))
               .filter(
                 id =>
                   !search || (m.cards.titles[id] + ' ' + m.cards.descriptions[id]).toLocaleLowerCase().includes(search)
               )
               .map(id => {
                 const platform = platforms?.find(row => row.id === id)
+                // Desktop operations may restart the shared gateway; cloud operations own one binding.
+                const channelPending = gatewayChanging && (!isBrowserShell() || (sameProfile &&
+                  (operation.platform === id || (operation.operation === 'restore' && !operation.platform))))
 
                 const retryAllowed = platform?.enabled && platform.configured &&
                   (!platform.gateway_running || ['fatal', 'startup_failed', 'error', 'stopped', 'disconnected',
                     'pending_restart', 'retrying', 'connecting'].includes(platform.state ?? ''))
 
-                const rcsRetryAllowed = platform?.configured && platform.enabled &&
+                const rcsRetryAllowed = platform?.configured && (isBrowserShell() || platform.enabled) &&
                   (!platform.gateway_running || ['fatal', 'startup_failed', 'error', 'stopped', 'disconnected', 'paused']
                     .includes(platform.state ?? ''))
 
@@ -403,7 +411,7 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
                       key={id}
                       onSaved={result => void settleWeixin(result)}
                       onUnbind={() => disconnectPlatform('weixin')}
-                      pending={gatewayChanging}
+                      pending={channelPending}
                       platform={platform}
                       scopeProfile={scopeProfile}
                     />
@@ -421,14 +429,17 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
                             {rcsReconnecting ? m.cards.reconnecting : m.cards.reconnect}
                           </Button>
                         ) : (
-                          <Button disabled size="sm" variant="outline">{m.cards.unbind}</Button>
+                          <Button disabled={!isBrowserShell() || !platform?.enabled} size="sm" variant="outline"
+                            onClick={() => void updateMessagingPlatform('uniagentgate', { enabled: false }, scopeProfile)
+                              .then(() => refresh()).catch(error => notify({ kind: 'error', message: String(error) }))}>{isBrowserShell() ? (platform?.configured ? '停用' : '未获取配置') : m.cards.unbind}</Button>
                         )
                       ) : (
                         <>
                           {retryAllowed && (
-                            <Button disabled={applying} onClick={() => void restart()} size="sm" variant="outline">
-                              {t.common.retry}
-                            </Button>
+                            <Button disabled={applying} onClick={() => void (isBrowserShell()
+                              ? updateMessagingPlatform(id, { enabled: true }, scopeProfile).then(() => refresh())
+                                .catch(error => notify({ kind: 'error', message: String(error) }))
+                              : restart())} size="sm" variant="outline">{t.common.retry}</Button>
                           )}
                           <Button
                             disabled={!platform || applying}
@@ -453,7 +464,7 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
                     }
                     id={id}
                     key={id}
-                    pending={gatewayChanging}
+                    pending={channelPending}
                     platform={platform}
                   >
                     {platform?.enabled && platform.error_message && <ErrorBanner className="mt-3">{platform.error_message}</ErrorBanner>}

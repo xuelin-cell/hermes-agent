@@ -22,7 +22,7 @@ import { withCountBadge } from '../titlebar-count-badge'
 
 import { useNtfySubscription } from './use-ntfy-subscription'
 
-/** 只有桌面端（preload 暴露了 ntfy 通道）才显示消息中心。 */
+/** 桥接提供通知能力时显示消息中心。 */
 export function messageCenterAvailable(): boolean {
   return typeof window !== 'undefined' && !!window.hermesDesktop?.ntfy
 }
@@ -33,7 +33,7 @@ export function messageCenterAvailable(): boolean {
  */
 export function MessageCenterSync() {
   const account = useMaasAccount()
-  useNtfySubscription(account?.maskedPhone ?? null)
+  useNtfySubscription(window.hermesDesktop?.ntfy?.scope?.() ?? account?.maskedPhone ?? null)
 
   return null
 }

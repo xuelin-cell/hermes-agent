@@ -343,8 +343,9 @@ export function createMailProtocol(config: MailProtocolConfig, deps: MailProtoco
         }
 
         const message = metadata as FetchMessageObject;
-        const source = toRecord(await client.fetchOne(uid, { source: true }, { uid: true }))?.source;
-        const parsedBody = Buffer.isBuffer(source)
+        // Keep the existing read budget even when a message contains large attachments.
+        const source = toRecord(await client.fetchOne(uid, { source: { maxLength: options.maxBytes + 1 } }, { uid: true }))?.source;
+        const parsedBody = Buffer.isBuffer(source) && source.length <= options.maxBytes
           ? await parseRawMessage(source)
           : await fetchSelectedBodyParts(client, uid, message.bodyStructure, options.maxBytes);
 

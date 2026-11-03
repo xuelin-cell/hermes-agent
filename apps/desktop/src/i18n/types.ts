@@ -404,6 +404,8 @@ export interface Translations {
       brand: string
       credentials: string
       credentialsHint: string
+      cloudOAuthHint: string
+      cloudCredentialsHint: string
       waiting: string
       cancel: string
       localOnly: string

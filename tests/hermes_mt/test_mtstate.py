@@ -410,6 +410,7 @@ def test_patch_config_repairs_the_production_broken_file(tmp_path: Path) -> None
     assert doc["model"]["base_url"] == _URL and doc["model"]["provider"] == "yuanjing"
     assert doc["model"]["key_env"] == "HERMES_CUSTOM_YUANJING_API_KEY"
     assert doc["timezone"] == "Asia/Tokyo" and doc["terminal"]["cwd"] == "/opt/data/workspace"
+    assert doc["providers"]["yuanjing"]["managed_by"] == "hermes-cloud-plan"
     assert list(doc["providers"]["yuanjing"]["models"]) == _SPEC["models"]
     assert mtstate.patch_config_file(cfg, _SPEC) == []
 
@@ -691,5 +692,13 @@ def test_activity_combines_both(tmp_path: Path) -> None:
     _write_jobs(tmp_path, [_job("soon", _NOW + 600, fire_claim={"at": _iso(_NOW - 5), "by": "m:1"})])
     _make_sessions_db(tmp_path / "state.db", [("s", _NOW - 10, "starting API call #1")])
     act = mtstate.activity(tmp_path, now=_NOW)
-    assert act == {"checked_at": _NOW, "cron_next_at": _NOW + 600, "cron_running": 1, "cron_jobs": 1,
-                   "turns": 1, "errors": []}
+    expected = {"checked_at": _NOW, "cron_next_at": _NOW + 600, "cron_running": 1, "cron_jobs": 1,
+                "turns": 1, "errors": []}
+    assert {key: act[key] for key in expected} == expected
+    assert act['kits_running'] == 0
+    marker = tmp_path / '.mt/kits-active.json'
+    marker.parent.mkdir()
+    marker.write_text(json.dumps({'pid': os.getpid(), 'running': True}))
+    assert mtstate.activity(tmp_path, now=_NOW)['kits_running'] == 1
+    marker.unlink()
+    assert mtstate.activity(tmp_path, now=_NOW)['kits_running'] == 0

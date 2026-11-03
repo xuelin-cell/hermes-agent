@@ -54,3 +54,18 @@ it('插件托管的专家档案不在「正在配置」里出现，从专家对�
     dispose()
   }
 })
+
+it('云端连接器可选择专家，离开连接器页后恢复托管档案的配置边界', async () => {
+  const dispose = registry.register({ area: CAPABILITY_SCOPE_AREA,
+    data: { hideProfiles: ['fund-diagnostician'] }, id: 'test:expert-connectors', source: 'plugin:test' })
+  try {
+    const { result, rerender } = renderHook(props => useCapabilityScope(props), {
+      wrapper: Wrapper, initialProps: { includeManagedProfiles: true, requestedProfile: 'fund-diagnostician' as string | undefined }
+    })
+    await waitFor(() => expect(result.current.options.some(option => option.value === 'fund-diagnostician')).toBe(true))
+    expect(result.current.value).toBe('fund-diagnostician')
+    rerender({ includeManagedProfiles: false, requestedProfile: undefined })
+    await waitFor(() => expect(result.current.value).toBe('default'))
+    expect(result.current.options.some(option => option.value === 'fund-diagnostician')).toBe(false)
+  } finally { dispose() }
+})

@@ -16,7 +16,7 @@ BUILD_CPUS="${BUILD_CPUS:-4}"
 BUILD_MEMORY="${BUILD_MEMORY:-8g}"
 NPM_REGISTRY="${NPM_REGISTRY:-https://registry.npmmirror.com}"
 
-# 前端指纹 = 决定产物的那些仓库内容：apps/ 全部、根目录的依赖声明、本脚本、预置的 npm 包。
+# 前端指纹也包含登录页与 renderer 共用的浏览器凭据模块。
 # 只看已提交的（部署机上 pull 是 reset --hard，工作区就是 HEAD）。部署机的 git 是 1.8，不用 -C。
 fingerprint() {
     (cd "$REPO" && git ls-tree HEAD apps package.json package-lock.json .npmrc \
@@ -26,6 +26,10 @@ if [ "${1:-}" = --fingerprint ]; then
     fingerprint
     exit 0
 fi
+
+# Distribute the canonical browser auth module to the standalone Entry login page.
+{ printf '%s\n' '// Generated from apps/shared/src/browser-maas-auth.js by build-frontend.sh.';
+  cat "$REPO/apps/shared/src/browser-maas-auth.js"; } > "$REPO/deploy/hermes-mt/entry/entry/static/browser-auth.js"
 FINGERPRINT="$(fingerprint)"
 
 docker run --rm \
@@ -38,6 +42,7 @@ docker run --rm \
     -v "$REPO:/workspace" \
     -v hermes-custom-root-node-modules:/workspace/node_modules \
     -v hermes-custom-desktop-node-modules:/workspace/apps/desktop/node_modules \
+    -v hermes-custom-connector-node-modules:/workspace/apps/desktop/services/open-connector/node_modules \
     -v hermes-custom-npm-cache:/root/.npm \
     -w /workspace \
     node:22-bookworm \
@@ -49,7 +54,17 @@ docker run --rm \
             npm ci --workspace apps/desktop --include-workspace-root --no-audit --no-fund
             printf "%s\n" "${deps_hash}" > "${deps_stamp}"
         fi
+        connector_dir=/workspace/apps/desktop/services/open-connector
+        connector_hash="$(sha256sum "$connector_dir/package.json" "$connector_dir/package-lock.json" | sha256sum | cut -d" " -f1)"
+        connector_stamp="$connector_dir/node_modules/.hermes-connector-deps-hash"
+        if [ "$connector_hash" != "$(cat "$connector_stamp" 2>/dev/null || true)" ] || [ ! -d "$connector_dir/node_modules/hono" ]; then
+            npm ci --prefix "$connector_dir" --omit=dev --workspaces=false --ignore-scripts --no-audit --no-fund
+            printf "%s\n" "$connector_hash" > "$connector_stamp"
+        fi
         cd /workspace/apps/desktop
+        node scripts/build-cloud-account.mjs
+        node scripts/build-cloud-drive.mjs
+        node scripts/build-cloud-connectors.mjs
         VITE_HERMES_BROWSER_BUILD=1 node /workspace/node_modules/vite/bin/vite.js build --base=/hermes/ --outDir=dist-browser
     '
 

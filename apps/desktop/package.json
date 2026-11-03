@@ -83,6 +83,7 @@
     "repro:short-session-hang": "node scripts/run-short-session-hang-repro.mjs"
   },
   "dependencies": {
+    "@noble/hashes": "2.2.0",
     "@assistant-ui/core": "0.2.23",
     "@assistant-ui/react": "0.14.24",
     "@assistant-ui/react-streamdown": "0.3.5",

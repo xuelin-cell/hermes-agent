@@ -1,12 +1,22 @@
+import type { NtfyEvent, NtfyRefreshResult, NtfyStatus } from '../electron/uniwork-notify/contract'
 import type { GatewayWsUrlResult, OfficePreviewResult } from '@hermes/shared'
-import type { ArtifactShareEligibility, ArtifactSharePublishInput, ArtifactShareRecord, ArtifactShareSource } from '@hermes/shared/artifact-share'
+import type {
+  ArtifactShareEligibility,
+  ArtifactSharePublishInput,
+  ArtifactShareRecord,
+  ArtifactShareSource
+} from '@hermes/shared/artifact-share'
 import type { ConversationShareApi } from '@hermes/shared/conversation-share'
 import type { HermesSkin } from '@hermes/shared/skin'
 import type { TranslucencyState } from '@hermes/shared/translucency'
 
 import type { AgentMailRequest, AgentMailResult } from '../electron/agent-mail/contract'
 import type { ScreenshotApi } from '../electron/command-screenshot-types'
-import type { MessagingOperationStatus, MessagingSetupRequest, MessagingSetupResult } from '../electron/entry_local/messaging-contract'
+import type {
+  MessagingOperationStatus,
+  MessagingSetupRequest,
+  MessagingSetupResult
+} from '../electron/entry_local/messaging-contract'
 import type { UniAgentGateReconnectResult } from '../electron/entry_local/uniagentgate-contract'
 import type { HudModifierApi } from '../electron/hud-modifier-types'
 import type {
@@ -21,8 +31,8 @@ import type { MachineProfile } from '../electron/machine-profile'
 import type { HermesNotification } from '../electron/notification-types'
 import type { LocalConnectorRequest, LocalConnectorResult } from '../electron/open-connector/contract'
 import type { PoolLimits } from '../electron/pool-limits'
-import type { PreviewExport, PreviewExportResult } from '../electron/preview-export'
 import type { SessionListSnapshot } from '../electron/session-list-snapshot-contract'
+import type { PreviewExport, PreviewExportResult } from '../../shared/src/preview-export'
 import type { UniworkAsrBridge } from '../electron/uniwork-asr/contract'
 import type { NtfyEvent, NtfyRefreshResult, NtfyStatus } from '../electron/uniwork-notify/contract'
 import type { PlanSubscriptionResult, PlanUsageResult } from '../electron/uniwork-usage/contract'
@@ -49,6 +59,7 @@ declare global {
       agentMail: (input: AgentMailRequest) => Promise<AgentMailResult>
       /** 只读本次已准备账号的脱敏信息，运行中到期仍返回原期限。 */
       /** 仅返回当前账号套餐展示信息，不接受页面身份参数。 */
+      cloudSkillOperations?: { mutate: <T>(request: HermesApiRequest) => Promise<T> }
       getPlanUsage?: () => Promise<PlanUsageResult>
       refreshPlanUsage?: () => Promise<PlanUsageResult>
       subscribeMaasPlan?: () => Promise<PlanSubscriptionResult>
@@ -68,10 +79,25 @@ declare global {
         onChanged: (callback: (key: string) => void) => () => void
       }
       onCloudDriveMutationProgress?: (listener: (progress: CloudDriveMutationProgress) => void) => () => void
+      prepareCloudDriveTurn?: (sessionId: string) => Promise<Record<string, string> | null>
+      prepareCloudShareTurn?: (sessionId: string) => Promise<Record<string, string> | null>
       cloudDriveRequest: (input: CloudDriveRequest) => Promise<unknown>
       localConnectors: (input: LocalConnectorRequest) => Promise<LocalConnectorResult>
+      cloudKits?: boolean
+      cloudConnectorIds?: readonly import('../electron/open-connector/contract').ConnectorId[]
       /** 取得完整办公目录；主进程负责认证和校验配置。 */
       getWelcomeCatalog?: (locale: WelcomeLocale) => Promise<WelcomePayload>
+      interruptedTurns?: {
+        list: () => Promise<{ detectedAt: number; prompt: string; sessionId: string }[]>
+        dismiss: (sessionId: string) => Promise<void>
+      }
+      ntfy?: {
+        scope?: () => string | null
+        start: () => Promise<NtfyStatus>
+        stop: () => Promise<NtfyStatus>
+        refresh: () => Promise<NtfyRefreshResult>
+        onEvent: (callback: (event: NtfyEvent) => void) => () => void
+      }
       uniworkAsr?: UniworkAsrBridge
       /** 服务端主动通知：主进程持长连接，页面只收公告/指令事件。 */
       ntfy?: {

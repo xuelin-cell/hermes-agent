@@ -41,7 +41,8 @@
 但入口直接连到容器的 Docker 路径、本机的复现台都会复用——不改的话，同一条连接上后面的 ``/__mt_user/…``
 会被当成普通请求整段转给 hermes（10-09 本机实测撞过）。
 
-只用标准库；由容器 CMD 以 hermes 用户启动。hermes 意外退出时由本文件带退避拉起。
+由容器 CMD 以 hermes 用户启动，连接器管理复用镜像内已有的 aiohttp 和 PyYAML。
+hermes 意外退出时由本文件带退避拉起。
 """
 
 from __future__ import annotations
@@ -60,7 +61,11 @@ from urllib.parse import parse_qs
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import mtent  # noqa: E402
 import mtstate  # noqa: E402
-import mtuser  # noqa: E402
+import mtuser
+import mtfolders
+import mtmessaging
+import mtconnectors
+import mtexport  # noqa: E402
 
 LISTEN_PORT = int(os.environ.get("MT_FWD_PORT", "9121"))
 TARGET_PORT = int(os.environ.get("MT_HERMES_PORT", "9120"))
@@ -84,6 +89,8 @@ MAX_BODY = 4 * 1024 * 1024  # 引导载荷上限
 
 # 自带技能的同步用 hermes 自己的 Python 跑 hermes 的同步函数（见 _sync_bundled_skills）。
 HERMES_PYTHON = os.environ.get("MT_HERMES_PYTHON", "/opt/hermes/.venv/bin/python")
+_messaging_gateway = mtmessaging.Gateway(HERMES_HOME,HERMES_PYTHON)
+_connectors = mtconnectors.Connectors(HERMES_HOME, HERMES_PYTHON, backend_port=TARGET_PORT, profile_token=os.environ.get('HERMES_DASHBOARD_SESSION_TOKEN', ''))
 HERMES_INSTALL = Path(os.environ.get("MT_HERMES_INSTALL", "/opt/hermes"))
 SKILLS_SYNC_TIMEOUT_S = 60.0
 # 回包只要名字和计数：删掉了哪些、归档了哪些（用户改过的）、新发了哪些。
@@ -299,6 +306,11 @@ async def _sync_bundled_skills() -> dict:
 
 async def _spawn_hermes(token: str) -> None:
     global _hermes_proc
+    _connectors.profile_token = token
+    try:
+        await _connectors.restore()
+    except (OSError, RuntimeError, ValueError):
+        _log('连接器尚未恢复，后台将重试；其他实例功能继续启动。')
     env = dict(os.environ)
     env.update(_hermes_env)
     env["HERMES_DASHBOARD_SESSION_TOKEN"] = token
@@ -307,6 +319,14 @@ async def _spawn_hermes(token: str) -> None:
     # 永远停在「已排期」。它的其余作用逐个核过：清理桌面遗留的随机端口 serve（我们是固定端口，
     # 碰不到）、父进程看门狗（要 HERMES_PARENT_PID，我们不设）、新会话的来源记为 desktop。
     env["HERMES_DESKTOP"] = "1"
+    recovery = await asyncio.create_subprocess_exec(
+        HERMES_PYTHON, '-c',
+        "import runpy,sys; from pathlib import Path; runpy.run_path(sys.argv[1])['claim_all'](Path(sys.argv[2]))",
+        str(HERMES_INSTALL / 'plugins/uniwork-kits/cloud_recovery.py'), str(HERMES_HOME),
+        cwd=str(HERMES_INSTALL), env=env,
+    )
+    if await recovery.wait() != 0:
+        raise RuntimeError('Cloud crash recovery preparation failed')
     _note_boot_homes()
     _hermes_proc = await asyncio.create_subprocess_exec(
         "hermes", "serve",
@@ -319,6 +339,8 @@ async def _spawn_hermes(token: str) -> None:
 
 async def _stop_hermes(grace_s: float = 30.0) -> None:
     """先 SIGTERM 等它自己退，超时再 SIGKILL。"""
+    await _messaging_gateway.stop()
+    await _connectors.close()
     proc = _hermes_proc
     if proc is None or proc.returncode is not None:
         return
@@ -481,6 +503,7 @@ async def _fence() -> None:
     """卷上的主人不是自己了：停 hermes、停归档，只留转发器应答状态。"""
     global _draining
     _draining = True
+    _connectors.draining(True)
     await mtuser.close_all_terminals()
     await _stop_hermes()
     await _stop_gateway()
@@ -508,9 +531,11 @@ async def _activity() -> dict:
     读失败时没有 ``cron_next_at`` 这个键，入口就不改它记着的下次执行时间。
     """
     try:
-        return await asyncio.to_thread(mtstate.activity, HERMES_HOME)
+        result = await asyncio.to_thread(mtstate.activity, HERMES_HOME)
     except Exception as exc:  # noqa: BLE001
-        return {"errors": [f"{type(exc).__name__}: {exc}"]}
+        result = {"errors": [f"{type(exc).__name__}: {exc}"]}
+    result['connectors_running'] = _connectors.busy()
+    return result
 
 
 async def _bootstrap(writer: asyncio.StreamWriter, body: bytes) -> None:
@@ -661,6 +686,11 @@ async def _drain(writer: asyncio.StreamWriter) -> None:
         return
     if _drained is not None:
         _reply(writer, 200, dict(_drained, already=True))
+        return
+    _connectors.draining(True)
+    if _connectors.busy() or mtstate.kits_activity(HERMES_HOME):
+        _connectors.draining(False)
+        _reply(writer, 409, {"ok": False, "error": "套件安装或连接器调用正在进行，请等待完成后重试排空。"})
         return
     _draining = True
     _state.phase = "draining"
@@ -881,6 +911,7 @@ async def _resume(writer: asyncio.StreamWriter) -> None:
         _supervisor_task = asyncio.create_task(_supervise())
     if _archiver_task is None or _archiver_task.done():
         _archiver_task = asyncio.create_task(_archiver(ARCHIVE_INTERVAL_S))
+    _connectors.draining(False)
     _state.phase = "ready"
     _reply(writer, 200, {"ok": True})
 
@@ -929,12 +960,13 @@ def _parse(head: bytes) -> tuple[str, str, dict[str, str], bytes]:
     return method, path, headers, rest
 
 
-async def _read_body(headers: dict[str, str], rest: bytes, reader: asyncio.StreamReader) -> bytes | None:
+async def _read_body(headers: dict[str, str], rest: bytes, reader: asyncio.StreamReader,
+                     max_bytes: int = MAX_BODY) -> bytes | None:
     try:
         length = int(headers.get("content-length", "0"))
     except ValueError:
         return None
-    if length > MAX_BODY:
+    if length < 0 or length > max_bytes or len(rest) > length:
         return None
     body = bytearray(rest)
     while len(body) < length:
@@ -950,6 +982,64 @@ async def _handle_mt(
     rest: bytes, reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
 ) -> None:
     route = path.split("?", 1)[0]
+
+    if route == '/__mt/refresh-plan':
+        if method != 'POST' or not _check_token(headers) or _draining:
+            _reply(writer,403,{'ok':False})
+            return
+        try:
+            data = json.loads(await _read_body(headers,rest,reader))
+            spec = data['spec']
+            if not isinstance(spec,dict): raise ValueError()
+            mtstate.patch_config_file(HERMES_HOME / 'config.yaml', spec)
+            _reply(writer,200,{'ok':True})
+        except (ValueError,KeyError,OSError):
+            _reply(writer,400,{'ok':False,'error':'Invalid plan update'})
+        return
+
+    if route == '/__mt/connectors':
+        if method != 'POST' or not _user_authorized(headers, {}) or _draining:
+            _reply(writer, 403, {'error': 'Connector management unavailable'})
+            return
+        try:
+            raw = await asyncio.wait_for(_read_body(headers, rest, reader, 32768), 15)
+            result = await _connectors.request(json.loads(raw))
+            _reply(writer, 200, result)
+        except (ValueError, TypeError, OSError, RuntimeError, asyncio.TimeoutError):
+            _reply(writer, 409, {'error': '连接器请求失败，请检查配置和状态后重试。'})
+        return
+
+    if route == '/__mt/messaging/relay':
+        if method != 'GET' or headers.get('upgrade','').lower() != 'websocket' or not _check_token(headers) or _draining or not _messaging_gateway.settings:
+            _reply(writer,403,{'ok':False})
+            return
+        target_r, target_w = await asyncio.open_connection('127.0.0.1',_messaging_gateway.port)
+        # Fixed target only. Cookie/session-token access cannot enter this management path.
+        head = f'GET /__mt/messaging/relay HTTP/1.1\r\n' + ''.join(
+            f'{key}: {value}\r\n' for key,value in headers.items()
+            if key not in {'x-mt-token','cookie','host'}) + f'Host: 127.0.0.1:{_messaging_gateway.port}\r\n\r\n'
+        target_w.write(head.encode()+rest)
+        await target_w.drain()
+        await asyncio.gather(_pipe(reader,target_w),_pipe(target_r,writer))
+        return
+
+    if route == '/__mt/messaging/start':
+        if method != 'POST' or not _check_token(headers) or _draining:
+            _reply(writer,403,{'ok':False})
+            return
+        try:
+            data = json.loads(await _read_body(headers,rest,reader))
+            required = ('user_id','instance_epoch','upgrade_secret','bot_id','revision','platform','binding_id','transport')
+            if not isinstance(data,dict) or not set(required).issubset(data) or set(data)-set(required) or data['transport']!='entry-forward-relay-v1': raise ValueError()
+            env = dict(os.environ)
+            env.update(_hermes_env)
+            env['HERMES_HOME'] = str(HERMES_HOME)
+            env['HERMES_DASHBOARD_SESSION_TOKEN'] = _hermes_token
+            result = await _messaging_gateway.start(data,env)
+            _reply(writer,200,result)
+        except (ValueError,TypeError,RuntimeError,OSError,asyncio.TimeoutError):
+            _reply(writer,409,{'ok':False,'error':'relay gateway start failed'})
+        return
 
     if route == "/__mt/health":
         # 平台的就绪探针打这里。转发器活着就算就绪 —— 不等 hermes，
@@ -1040,13 +1130,18 @@ async def _handle_mt(
 
 # ---------------------------------------------------------------- 给用户用的接口（/__mt_user/*）
 
+_conversation_folders = mtfolders.ConversationFolders(WORKSPACE)
+
 _FILE_OPS = {
+    "/__mt_user/files/conversation-create": lambda files, body: {"path": _conversation_folders.create(body.get("defaultCwd"))},
+    "/__mt_user/files/conversation-discard": lambda files, body: _conversation_folders.discard(body.get("path")) or {},
     "/__mt_user/files/rename": lambda files, body: files.rename(body.get("path"), body.get("new_name")),
     "/__mt_user/files/trash": lambda files, body: files.move_to_trash(body.get("path")),
     "/__mt_user/files/restore": lambda files, body: files.restore(body.get("id")),
 }
 
 _office: mtuser.OfficePreview | None = None
+_export_lock: asyncio.Lock | None = None
 _OFFICE_ROUTES = (
     "/__mt_user/office-pdf", "/__mt_user/office-preview", "/__mt_user/office-preview/page",
     "/__mt_user/office-sheet", "/__mt_user/office-sheet/image",
@@ -1101,6 +1196,28 @@ async def _handle_user(
 
     if route == "/__mt_user/terminal":
         await mtuser.serve_terminal(reader, writer, headers, query, WORKSPACE)
+        return
+
+    if route == "/__mt_user/preview-export":
+        global _export_lock
+        if method != 'POST' or not headers.get('content-type', '').lower().startswith('application/json'):
+            _reply(writer, 415, {'ok': False, 'code': 'invalid_export'})
+            return
+        if _export_lock is None:
+            _export_lock = asyncio.Lock()
+        if _export_lock.locked():
+            _reply(writer, 429, {'ok': False, 'code': 'export_busy'})
+            return
+        async with _export_lock:
+            try:
+                raw = await asyncio.wait_for(_read_body(headers, rest, reader, 10 * 1024 * 1024), 15)
+                data = json.loads(raw.decode('utf-8')) if raw is not None else None
+                if not isinstance(data, dict) or not isinstance(data.get('content'), str):
+                    raise ValueError()
+                async with mtexport.pdf(data['content'], HERMES_PYTHON) as output:
+                    await _send_file(writer, output, 'application/pdf')
+            except (ValueError, UnicodeError, mtexport.ExportError, OSError, asyncio.TimeoutError):
+                _reply(writer, 422, {'ok': False, 'code': 'export_failed'})
         return
 
     files = mtuser.Files(WORKSPACE)
@@ -1295,13 +1412,34 @@ async def _handle(client_r: asyncio.StreamReader, client_w: asyncio.StreamWriter
             pass
 
 
+async def _supervise_connectors() -> None:
+    backoff = 1
+    while True:
+        if _bootstrapped and not _draining:
+            try:
+                await _connectors.recover()
+                backoff = 1
+            except (OSError, RuntimeError, ValueError):
+                _log('连接器服务恢复失败，请检查实例运行时和授权状态。')
+                backoff = min(backoff * 2, 60)
+        await asyncio.sleep(backoff)
+
+
 async def main() -> None:
+    global _bootstrapped, _hermes_token, _supervisor_task
     server = await asyncio.start_server(_handle, "0.0.0.0", LISTEN_PORT)
+    # Docker receives its token and restored Home before startup; Cube receives them via bootstrap.
+    token = os.environ.get('HERMES_DASHBOARD_SESSION_TOKEN', '')
+    if token:
+        _hermes_token = token
+        await _spawn_hermes(token)
+        _bootstrapped = True
+        _supervisor_task = asyncio.create_task(_supervise())
     janitor = asyncio.create_task(_trash_janitor())
     follower = asyncio.create_task(_token_follower())
-    _note_boot_homes()  # Docker 路径：hermes 和本文件由容器 CMD 同时拉起，这时的个数就是它启动时的
+    connectors = asyncio.create_task(_supervise_connectors())
     if os.environ.get("MT_API_SERVER") == "1":
-        # Docker 路径的服务实例：没有引导这一步，hermes 由容器 CMD 拉起，gateway 由这里拉起
+        # Docker 路径的服务实例：没有引导这一步，hermes 已在上面拉起，gateway 由这里拉起
         try:
             await _start_api_server()
         except Exception as exc:  # noqa: BLE001
@@ -1312,6 +1450,12 @@ async def main() -> None:
         finally:
             janitor.cancel()
             follower.cancel()
+            connectors.cancel()
+            await asyncio.gather(connectors, return_exceptions=True)
+            if _supervisor_task:
+                _supervisor_task.cancel()
+                await asyncio.gather(_supervisor_task, return_exceptions=True)
+            await _stop_hermes()
 
 
 if __name__ == "__main__":

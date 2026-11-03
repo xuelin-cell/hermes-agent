@@ -28,13 +28,15 @@ export {
  * developer mode or not. Files of the UniWork rebrand (not upstream) that ask
  * this module are listed too.
  *
+ *   app/chat/composer/work-templates/catalog-store.ts  cloud welcome cache follows the current login and language
  *   api/models.ts                                      * model pickers: the platform's providers only
- *   app/artifacts/cloud-drive-tab.tsx                  the personal cloud drive tab says it is in development
- *   app/artifacts/artifact-upload.tsx                  no native desktop upload action in the browser
- *   app/artifacts/index.tsx                            the library opens on local artifacts, without a native upload dialog
+ *   app/artifacts/cloud-drive-tab.tsx                  the production instance bridge reuses the personal cloud drive
+ *   app/artifacts/artifact-upload.tsx                  instance artifacts upload through the entry drive adapter
+ *   app/artifacts/index.tsx                            the library opens on instance artifacts using the shared grouped view
+ *   app/artifacts/local-artifact-platform.ts           instance metadata and login-scoped favorites, without native folder actions
  *   app/capabilities/index.tsx                         * no Plugins tab (a community catalog), like Toolsets
  *   app/capabilities/plugins/plugins-tab.tsx           * no desktop (local) plugins, no "open plugins folder"
- *   app/capabilities/skill-market.tsx                  installing from the market says it is in development
+ *   app/capabilities/skill-market.tsx                  cloud installs require the persistence-aware instance bridge
  *   app/chat/composer/trigger-popover.tsx              the backend's English hints of `@` completions in Chinese
  *   app/chat/right-rail/office-sheet.tsx              (ours) the sheet viewer: spreadsheets the instance turns into tables
  *   app/chat/right-rail/office-slides.tsx              (ours) the page viewer: decks and documents the instance renders page by page
@@ -65,14 +67,14 @@ export {
  *   app/shell/gateway-menu-panel.tsx                   * no gateway restart
  *   app/shell/maas-account-status.tsx                  signing out keeps the instance: the confirmation says so
  *   app/shell/model-catalog-menu.tsx                   * no "add custom model" or "edit models" in the model menus
- *   app/shell/plan-usage/panel.tsx                     * the account card without the plan's name, usage and expiry
+ *   app/shell/plan-usage/panel.tsx                     * the account card uses the browser plan bridge when available
  *   components/assistant-ui/thread/assistant-message.tsx
  *                                                      enterprise mode: a platform refusal reads the platform's own
  *                                                      sentence, without "update API key" / "sign in again"
  *   components/conversation-share/reply-button.tsx     * no "share reply" under answers
- *   contrib/plugins.ts                                 * no kits and experts: the plugin is not started (Bot Mode is:
- *                                                      the instance's one serve hosts every agent, dev/browser-profiles-mt.ts)
- *   i18n/catalog.ts                                    Chinese supplement and original cloud artifact names, see `lib/browser-shell-{zh,artifacts}.ts`
+ *   contrib/plugins.ts                                 * kits require the managed-profile cloud bridge; Bot Mode depends on
+ *                                                      the account (the instance's one serve hosts every agent, dev/browser-profiles-mt.ts)
+ *   i18n/catalog.ts                                    Chinese supplement and cloud sharing copy, see `lib/browser-shell-{zh,artifacts}.ts`
  *   i18n/profile-provider.tsx                          the interface starts in Chinese, before the instance's config answers
  *   lib/chat-runtime.ts                                a session with no title yet is 新建会话, not "New session"
  *   lib/local-preview.ts                               Office files (pptx, docx, xlsx …) are previews, never read as text
@@ -480,26 +482,22 @@ export function effortShortLabels(english: Record<string, string>): Record<strin
     : english
 }
 
-const SIDEBAR_NAV_HIDDEN = new Set(['messaging', 'session-import'])
+const SIDEBAR_NAV_HIDDEN = new Set(['session-import'])
 
-/** Sidebar entries for desktop-only features: messaging platforms need an
- * always-on gateway with a public address, which a cloud instance (paused when
- * idle) does not have; session import reads other agents' session folders on
- * the backend's machine, and an instance has none. */
+/** Session import requires another agent's local files; messaging uses the cloud connector. */
 export function withoutHiddenNavItems<T extends { id: string }>(items: T[]): T[] {
   return hideForUsers() ? items.filter(item => !SIDEBAR_NAV_HIDDEN.has(item.id)) : items
 }
 
 const BUNDLED_PLUGINS_HIDDEN = new Set(['uniwork-kits'])
 
-/** Bundled plugins that are not started for regular users. Kits and experts (the
- * 套件 page, the composer's 专家 picker): the built-in kits are copied into the
- * desktop installer when it is packaged, not into the instance. Bot Mode (the
- * SESSIONS | BOTS tabs, Routines, @bot mentions) runs: every agent is a profile
- * on the instance's one serve, including the Agents the enterprise platform
- * installs (dev/browser-profiles-mt.ts, deploy/hermes-mt/seed/mtent.py). */
+/** Bundled plugins that are not started for regular users. Kits are visible only when the
+ * production bridge implements managed expert profiles and the matching template carries
+ * their resources. Bot Mode (the SESSIONS | BOTS tabs, Routines, @bot mentions) runs for
+ * enterprise accounts: every agent is a profile on the instance's one serve, including the
+ * Agents the platform installs (dev/browser-profiles-mt.ts, deploy/hermes-mt/seed/mtent.py). */
 export function isBundledPluginHidden(id: string): boolean {
-  return hideForUsers() && BUNDLED_PLUGINS_HIDDEN.has(id)
+  return hideForUsers() && BUNDLED_PLUGINS_HIDDEN.has(id) && !(id === 'uniwork-kits' && window.hermesDesktop?.cloudKits)
 }
 
 /** The sidebar's BOTS tab for every user, not only in developer mode (the desktop
@@ -509,11 +507,10 @@ export function showsBotsForEveryone(): boolean {
   return isBrowserShell()
 }
 
-/** Sharing a conversation or a reply (components/conversation-share): the desktop
- * app renders the page and publishes it through its own share service, which the
- * bridge does not offer, so the dialog could only say that sharing is unavailable. */
+/** Both shells render the same snapshot page; the personal Entry implements the browser
+ * share contract. Without that bridge the dialog could only say that sharing is unavailable. */
 export function isConversationShareHidden(): boolean {
-  return hideForUsers()
+  return hideForUsers() && !window.hermesDesktop?.conversationShare
 }
 
 // The key app/chat/sidebar/session-actions-menu.tsx gives its "share session" row.
@@ -524,11 +521,9 @@ export function withoutConversationShare<T extends { key?: string }>(items: T[])
   return isConversationShareHidden() ? items.filter(item => item.key !== CONVERSATION_SHARE_ITEM) : items
 }
 
-/** The account card (app/shell/plan-usage/panel.tsx) without the plan's name, usage
- * and expiry: the desktop app asks MaaS for them with the user's login, which the
- * entry uses once, at sign-in, and does not keep. Settings and signing out stay. */
+/** Only expose plan actions when the browser bridge actually supports account queries. */
 export function isPlanUsageHidden(): boolean {
-  return hideForUsers()
+  return isBrowserShell() && !window.hermesDesktop?.getPlanUsage
 }
 
 const NO_DESKTOP_PLUGINS = {}
@@ -776,10 +771,13 @@ export function signOutDescription(locale?: string): null | string {
   return isBrowserShell() ? browserShellCopy(locale).signOutBody : null
 }
 
-/** The skill market's install button (app/skills/skill-market.tsx). A market
- * skill comes as a zip package, which Hermes' install-from-URL does not take (it
- * wants a SKILL.md URL), so the browser build says the feature is in development
- * rather than report an install that never lands. Null where installing goes on. */
+/** Only the production bridge can acknowledge durable skill installation in a user instance. */
 export function skillMarketInstallPending(locale?: string): null | string {
-  return isBrowserShell() ? browserShellCopy(locale).skillInstallPending : null
+  return isBrowserShell() && !window.hermesDesktop?.cloudSkillOperations ? browserShellCopy(locale).skillInstallPending : null
+}
+
+
+/** Instance files can be shared through the production browser bridge too. */
+export function supportsArtifactSharing(connection: { mode?: string } | null | undefined): boolean {
+  return connection?.mode === 'local' || (isBrowserShell() && !!window.hermesDesktop?.artifactShare)
 }

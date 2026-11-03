@@ -624,3 +624,29 @@ def test_requests_passed_to_hermes_are_closed_after_the_response(forward) -> Non
     assert out.startswith(b"POST /api/files/upload HTTP/1.1\r\nHost: 127.0.0.1:9120\r\nContent-Length: 4\r\n")
     assert out.endswith(b"Connection: close\r\n\r\nbody")
     assert b"keep-alive" not in out.lower().replace(b"connection: close", b"")
+
+
+def test_office_padding_normalization_preserves_package_and_original(tmp_path):
+    import io
+    import zipfile
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as archive:
+        archive.comment = b'workbook comment\0'
+        archive.writestr('[Content_Types].xml', '<Types/>')
+        archive.writestr('xl/workbook.xml', '<workbook/>')
+    package = buffer.getvalue()
+    original = tmp_path / 'original.xlsx'
+    original.write_bytes(package + b'\0' * 2013)
+    preview_copy = tmp_path / 'source.xlsx'
+    preview_copy.write_bytes(original.read_bytes())
+    mtuser._trim_office_zip_padding(preview_copy)
+    assert preview_copy.read_bytes() == package
+    assert original.read_bytes() == package + b'\0' * 2013
+    with zipfile.ZipFile(preview_copy) as archive:
+        assert archive.read('xl/workbook.xml') == b'<workbook/>'
+        assert archive.comment == b'workbook comment\0'
+    for content in (package, package + b'nonzero trailer', b'not a ZIP' + b'\0' * 100):
+        preview_copy.write_bytes(content)
+        mtuser._trim_office_zip_padding(preview_copy)
+        assert preview_copy.read_bytes() == content

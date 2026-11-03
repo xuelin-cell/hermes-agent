@@ -692,6 +692,14 @@ async def _send_to_platform(platform, pconfig, chat_id, message, thread_id=None,
     from gateway.config import Platform
     platform_name = platform.value if hasattr(platform, "value") else str(platform)
     media_files = media_files or []
+    # A registered plugin owns its transport even when overriding a built-in platform.
+    from gateway.platform_registry import platform_registry
+    from hermes_cli.plugins import discover_plugins
+    discover_plugins()
+    entry = platform_registry.get(platform_name)
+    if entry and entry.standalone_sender_override and entry.standalone_sender_fn is not None:
+        return await entry.standalone_sender_fn(pconfig, chat_id, message, thread_id=thread_id,
+            media_files=media_files, force_document=force_document)
     if platform == Platform.WEIXIN:
         return await _send_weixin(pconfig, chat_id, message, media_files=media_files)
     # Telegram chunks internally on the *formatted* text (escaping inflates length).

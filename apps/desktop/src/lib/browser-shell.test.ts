@@ -185,7 +185,7 @@ describe('browser shell', () => {
     expect(completionHint(undefined)).toBeUndefined()
   })
 
-  it('drops the messaging platforms and session import entries from the sidebar', () => {
+  it('keeps cloud messaging and drops local session import from the sidebar', () => {
     const nav = [
       { id: 'new-session' },
       { id: 'skills' },
@@ -198,7 +198,7 @@ describe('browser shell', () => {
 
     document.documentElement.dataset.hermesBrowser = 'production'
 
-    expect(withoutHiddenNavItems(nav).map(item => item.id)).toEqual(['new-session', 'skills', 'artifacts'])
+    expect(withoutHiddenNavItems(nav).map(item => item.id)).toEqual(['new-session', 'skills', 'messaging', 'artifacts'])
   })
 
   it('treats paths under the in-page file root as browser-only files, and only in the browser build', () => {
@@ -237,7 +237,7 @@ describe('browser shell', () => {
     expect(isBundledPluginHidden('uniwork-kits')).toBe(false)
   })
 
-  it('hides sharing conversations and the plan on the account card from regular users', () => {
+  it('filters sharing by availability and only exposes plans with a working browser bridge', () => {
     const items = [{ key: 'conversation-share', label: 'Share' }, { label: 'Rename' }]
 
     expect(isConversationShareHidden()).toBe(false)
@@ -253,7 +253,14 @@ describe('browser shell', () => {
     localStorage.setItem(DEVELOPER_MODE_KEY, 'true')
 
     expect(withoutConversationShare(items)).toBe(items)
-    expect(isPlanUsageHidden()).toBe(false)
+    expect(isPlanUsageHidden()).toBe(true)
+    const previous = window.hermesDesktop
+    try {
+      window.hermesDesktop = { getPlanUsage: vi.fn() } as never
+      expect(isPlanUsageHidden()).toBe(false)
+    } finally {
+      window.hermesDesktop = previous
+    }
     // The session menu marks its "share session" row with the key the filter drops.
     expect(sessionMenuSource).toContain("key: 'conversation-share'")
   })
@@ -390,13 +397,18 @@ describe('browser shell', () => {
     expect(visibleModelOptions(options)).toBe(options)
   })
 
-  it('says installing from the skill market is in development, in the browser build only', () => {
+  it('only allows browser market installation with a persistence-aware bridge', () => {
     expect(skillMarketInstallPending('zh')).toBeNull()
 
     document.documentElement.dataset.hermesBrowser = 'production'
 
     expect(skillMarketInstallPending('zh')).toBe('功能开发中')
     expect(skillMarketInstallPending('en')).toMatch(/in development/)
+    const previous = window.hermesDesktop
+    try {
+      window.hermesDesktop = { cloudSkillOperations: { mutate: vi.fn() } } as never
+      expect(skillMarketInstallPending('zh')).toBeNull()
+    } finally {window.hermesDesktop = previous}
   })
 
   it('says signing out keeps the instance, in the browser build only', () => {

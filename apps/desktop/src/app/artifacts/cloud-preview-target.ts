@@ -1,4 +1,5 @@
 import type { DriveAsset } from '@/api/drive'
+import { isBrowserShell } from '@/lib/browser-shell'
 import { registerDesktopPreviewFile } from '@/lib/desktop-preview-files'
 import type { PreviewTarget } from '@/store/preview'
 
@@ -17,7 +18,10 @@ export async function cloudPreviewTarget(
   }
 
   const bridge = window.hermesDesktop
-  const target = await bridge.normalizePreviewTarget(preview.path)
+
+  const target: PreviewTarget | null = isBrowserShell()
+    ? { kind: 'file', label: asset.name, path: preview.path, url: preview.path, source: preview.path }
+    : await bridge.normalizePreviewTarget(preview.path)
 
   if (!target || target.kind !== 'file' || bridge !== window.hermesDesktop) {
     return null

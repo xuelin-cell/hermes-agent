@@ -1,4 +1,5 @@
 import { $connection } from '@/store/session'
+import { isBrowserShell } from '@/lib/browser-shell'
 import { $codeWorkspace } from '@/store/workspace-category'
 
 import { sameWorkdir, workdirKey } from './folders'
@@ -13,10 +14,10 @@ type ProjectInfo = null | { cwd?: unknown }
 const FOLDER_NAME = /^\d{8}-\d{6}(?:-\d{1,2})?$/
 
 /**
- * 未选目录的新对话发送前，在账号工作区下建一个专属文件夹，并改为以“用户选了这个目录”发给后端。
+ * 未选目录的新对话发送前，在桌面账号或云端实例的工作区下建专属文件夹，并以显式 cwd 发给后端。
  * 只有这次用选择器或侧边栏文件夹“+”选的目录才算选了；日常办公和学习里，启动时记住的上次目录、
  * 进过的侧边栏文件夹都是带过来的，照样新建，与 UniWork 一致。代码开发保持原样，沿用带过来的目录。
- * 任何一个条件不满足都原样返回 null：没有主进程接口（云端或非账号环境）、远程连接、
+ * 任何一个条件不满足都原样返回 null：没有创建接口、桌面远程连接、
  * 用户选了目录、代码开发带着别的目录、该档案默认目录不是账号工作区（专家自带目录）。
  */
 export async function applyConversationFolder(
@@ -25,7 +26,7 @@ export async function applyConversationFolder(
 ): Promise<null | string> {
   const create = window.hermesDesktop?.createConversationFolder
 
-  if (typeof create !== 'function' || $connection.get()?.mode === 'remote') {
+  if (typeof create !== 'function' || ($connection.get()?.mode === 'remote' && !isBrowserShell())) {
     return null
   }
 

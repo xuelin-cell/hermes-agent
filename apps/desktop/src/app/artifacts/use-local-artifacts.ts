@@ -5,6 +5,7 @@ import { $apiRequestScope } from '@/api/client'
 import { desktopFsCacheKey } from '@/lib/desktop-fs'
 import { $connection } from '@/store/session'
 
+import { artifactLibraryIdentity } from './local-artifact-platform'
 import {
   cachedLocalArtifactGroups,
   listLocalArtifactSessions,
@@ -32,7 +33,10 @@ export function useLocalArtifacts() {
   const bridge = window.hermesDesktop
   const connectionKey = desktopFsCacheKey(connection)
 
+  const identity = artifactLibraryIdentity()
+
   const key = JSON.stringify([
+    identity,
     scope.connectionId || connection?.connectionId || 'local',
     scope.profile || connection?.profile || 'default'
   ])
@@ -64,6 +68,7 @@ export function useLocalArtifacts() {
     /** 请求只可写回发起时的上下文，同名 Profile 往返也不能复活旧请求。 */
     const current = () =>
       active &&
+      artifactLibraryIdentity() === identity &&
       window.hermesDesktop === bridge &&
       desktopFsCacheKey($connection.get()) === connectionKey &&
       $apiRequestScope.get() === capturedScope
