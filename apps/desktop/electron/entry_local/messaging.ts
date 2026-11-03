@@ -10,11 +10,14 @@ const IDS = { dingtalk: 'DINGTALK_CLIENT_ID', feishu: 'FEISHU_APP_ID', wecom: 'W
 const SECRETS = { dingtalk: 'DINGTALK_CLIENT_SECRET', feishu: 'FEISHU_APP_SECRET', wecom: 'WECOM_SECRET' }
 const BASE = '/api/plugins/desktop-messaging'
 
-/** 保存、解绑等日常操作的确认上限：最多读 30 次，总计约 36 秒。 */
-const CHECK_PATIENCE = { attempts: 30, ms: 36_000 }
+/**
+ * 保存、解绑等日常操作的确认上限：最多读 100 次，总计约 2 分钟。
+ * 实测重启时旧网关约 20 秒才停、新网关冷启动约 70 秒，原先 36 秒会在解绑已成功时误报失败。
+ */
+const CHECK_PATIENCE = { attempts: 100, ms: 120_000 }
 
-/** 启动恢复要等网关进程和各平台依次握手，机器慢时 36 秒不够，放宽到约 90 秒。 */
-const RESTORE_PATIENCE = { attempts: 75, ms: 90_000 }
+/** 启动恢复要等网关冷启动和各平台依次握手，实测约 90 秒，放宽到约 2 分半。 */
+const RESTORE_PATIENCE = { attempts: 125, ms: 150_000 }
 
 /** 冷启动时后端可能一时答不上恢复请求：单次等 2 分钟，超时或连不上隔 10 秒再试 1 次。 */
 const RESTORE_REQUEST = { timeoutMs: 120_000, retries: 1, retryDelayMs: 10_000 }

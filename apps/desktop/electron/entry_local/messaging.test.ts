@@ -250,9 +250,31 @@ it('动作退出不等于平台就绪；重启、扫码和解绑等待真实状�
   })
   await service.submit({ operation: 'retry' })
   await service.settle()
-  expect(reads).toBeGreaterThan(1)
-  expect(reads).toBeLessThanOrEqual(30)
+  expect(reads).toBe(100)
   expect(service.status()).toMatchObject({ phase: 'failed', saved: true, error: 'connection_timeout' })
+})
+
+it('解绑微信后网关冷启动约 70 秒才运行，仍确认成功不误报', async () => {
+  const { request, service } = fixture()
+  let reads = 0
+  request.mockImplementation(async (_profile, url) => {
+    if (url.endsWith('/apply')) {return { name: 'gateway-restart' }}
+
+    if (url.startsWith('/api/plugins/desktop-messaging/platforms?')) {
+      // 每次读取间隔 1.2 秒，第 60 次约 72 秒：此前新网关还没运行。
+      const snapshot = platformStatus('connected', ++reads >= 60)
+      const weixin = snapshot.platforms.find(row => row.id === 'weixin')!
+      Object.assign(weixin, { enabled: false, configured: false, state: 'disabled' })
+
+      return snapshot
+    }
+
+    return { running: false, exit_code: 0 }
+  })
+  await service.submit({ operation: 'disconnect', platform: 'weixin' })
+  await service.settle()
+  expect(reads).toBe(60)
+  expect(service.status()).toMatchObject({ phase: 'completed', operation: 'disconnect', saved: true })
 })
 
 it('索引写入失败与连接超时分开，不允许正常连接掩盖保存错误', async () => {

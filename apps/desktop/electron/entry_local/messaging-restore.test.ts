@@ -46,7 +46,7 @@ it('启用但缺少配置的渠道不能被过滤后冒充全部恢复', async (
   expect(service.status()).toMatchObject({ error: 'connection_timeout' })
 })
 
-it('启动恢复比日常操作多等一会儿：慢到 40 次读取后才连上也算恢复成功', async () => {
+it('启动恢复比日常操作多等一会儿：慢到 110 次读取后才连上也算恢复成功', async () => {
   const { service, request } = fixture()
   let reads = 0
   request.mockImplementation(async (_profile, url) => {
@@ -54,14 +54,14 @@ it('启动恢复比日常操作多等一会儿：慢到 40 次读取后才连上
 
     reads++
 
-    return { platforms: [{ ...connection(), state: reads < 40 ? 'connecting' : 'connected' }] }
+    return { platforms: [{ ...connection(), state: reads < 110 ? 'connecting' : 'connected' }] }
   })
   expect(await service.restore()).toEqual({ actionFailed: false })
-  expect(reads).toBe(40)
+  expect(reads).toBe(110)
   expect(service.status()).toMatchObject({ phase: 'completed', operation: 'restore' })
 })
 
-it('启动恢复始终连不上时，读满 75 次后记为连接超时', async () => {
+it('启动恢复始终连不上时，读满 125 次后记为连接超时', async () => {
   const { service, request } = fixture()
   let reads = 0
   request.mockImplementation(async (_profile, url) => {
@@ -72,7 +72,7 @@ it('启动恢复始终连不上时，读满 75 次后记为连接超时', async 
     return { platforms: [{ ...connection(), state: 'connecting' }] }
   })
   expect(await service.restore()).toEqual({ actionFailed: true })
-  expect(reads).toBe(75)
+  expect(reads).toBe(125)
   expect(service.status()).toMatchObject({ phase: 'failed', operation: 'restore', error: 'connection_timeout' })
 })
 
