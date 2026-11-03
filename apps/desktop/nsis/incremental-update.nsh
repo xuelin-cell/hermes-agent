@@ -390,6 +390,14 @@ Function UNIWORK_TryIncremental
     StrCpy $UNIWORK_EXCLUDES ""
   ${EndIf}
 
+  ; 增量更新后，解压 archive 组件（venv.7z/tar.xz, hermes-agent.7z/tar.xz）
+  ; 这些组件在 exclude.txt 里被排除（保留旧版本），但如果组件指纹变了，
+  ; 它们不在 exclude 里，archive 文件会被解压出来，需要进一步解压缩。
+  StrCpy $UNIWORK_ARCHIVE_KIND "venv"
+  Call UNIWORK_ExtractArchive
+  StrCpy $UNIWORK_ARCHIVE_KIND "hermes-agent"
+  Call UNIWORK_ExtractArchive
+
   ${IfNot} ${FileExists} "$appExe"
     !insertmacro UniSay "升级改为完整安装：程序文件没有解压完整"
     Goto uniwork_try_done

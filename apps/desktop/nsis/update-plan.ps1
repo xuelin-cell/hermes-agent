@@ -319,8 +319,9 @@ try {
             $comp = $new.Components[$name]
             $isArchive = ($comp -is [hashtable]) -and $comp.IsArchive
             if ($isArchive) {
-                # Archive component: exclude the .7z file itself
+                # Archive component: exclude both .7z and .tar.xz files
                 $exclusions.Add("-x!resources\agent-payload\$name.7z")
+                $exclusions.Add("-x!resources\agent-payload\$name.tar.xz")
             } elseif ($name -ieq 'uv-cache.zip') {
                 $exclusions.Add("-x!resources\agent-payload\$name")
             } else {

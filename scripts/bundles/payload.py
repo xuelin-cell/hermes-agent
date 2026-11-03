@@ -159,7 +159,15 @@ def archive_component(payload_root: Path, name: str) -> tuple[Path, str]:
         archive.unlink()
 
     # Use 7z if available, fall back to Python's lzma module
+    # Search in PATH first, then in known packager locations
     seven_zip = shutil.which("7z") or shutil.which("7za")
+    if not seven_zip:
+        # Try to find 7za.exe in the packager tools (desktop build)
+        packager_7za = payload_root.parent.parent / "packager"
+        if packager_7za.exists():
+            for seven_zip_candidate in packager_7za.rglob("7za.exe"):
+                seven_zip = str(seven_zip_candidate)
+                break
     if seven_zip:
         subprocess.run(
             [seven_zip, "a", "-t7z", "-mx=1", "-mmt=on", str(archive), str(source_dir)],
