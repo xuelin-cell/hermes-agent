@@ -36,6 +36,7 @@ export interface PaneMirror<T> {
    *  re-sync on status/color change — only `title` drives re-registration. */
   tabLead?: (key: string) => ReactNode
   /** 活动面板的标签栏操作，固定在可滚动标签列表之外。 */
+  headerVeto?: (key: string) => boolean
   headerActions?: (key: string) => ReactNode
   /** Custom label NODE for the tile's tab, self-subscribing for the same reason
    *  as `tabLead` — a name that moves faster than re-registration (see
@@ -85,6 +86,7 @@ export function paneMirror<T>(cfg: PaneMirror<T>): () => void {
         title,
         data: {
           tabLead: cfg.tabLead ? () => cfg.tabLead!(key) : undefined,
+          headerVeto: cfg.headerVeto?.(key),
           headerActions: cfg.headerActions ? () => cfg.headerActions!(key) : undefined,
           tabTitle: cfg.tabTitle ? () => cfg.tabTitle!(key) : undefined,
           dock: {

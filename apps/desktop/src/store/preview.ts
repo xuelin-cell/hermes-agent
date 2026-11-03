@@ -706,7 +706,13 @@ export function openPreview(target: PreviewTarget) {
   const index = current.findIndex(tab => tab.id === id)
   const tab: PreviewTab = { id, target: withRenderMode(target, current[index]?.target) }
 
-  $previewTabs.set(index === -1 ? [...current, tab] : current.map((item, i) => (i === index ? tab : item)))
+  $previewTabs.set(
+    target.kind === 'url'
+      ? index === -1
+        ? [...current, tab]
+        : current.map((item, i) => (i === index ? tab : item))
+      : [...current.filter(item => item.target.kind === 'url'), tab]
+  )
   noteExplicitPreviewOpen(id)
   selectRightRailTab(id)
 }
