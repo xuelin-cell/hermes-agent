@@ -100,6 +100,10 @@ export function settingsSubpages(view: SettingsView, developerMode = true): read
   if (view.startsWith('config:')) {
     const pages = withoutHiddenSubpages(view, CONFIG_SUBPAGES[view.slice('config:'.length)] ?? [])
 
+    if (view === 'config:safety' && !developerMode) {
+      return pages.filter(page => page.id === 'approvals')
+    }
+
     return view === 'config:chat' && !developerMode ? pages.filter(page => page.id !== 'attachments') : pages
   }
 
