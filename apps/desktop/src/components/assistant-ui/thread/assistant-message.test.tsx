@@ -13,6 +13,7 @@ import { en } from '@/i18n/en'
 import type { ErrorCardCopy } from '@/i18n/types'
 import { $enterpriseShell } from '@/lib/enterprise-mt'
 import { $displayTimestamps } from '@/store/display-timestamps'
+import { $selectedWorkspaceMode } from '@/store/workspace-category'
 
 import { stubThreadEnvironment } from '../test-utils'
 
@@ -540,4 +541,37 @@ it('keeps the footer reserved but inaccessible until the whole reply finishes', 
   rerender(<Harness onBranchInNewChat={() => undefined} />)
   expect(await screen.findByRole('button', { name: 'Branch in new chat' })).toBeTruthy()
   expect(footer.hasAttribute('inert')).toBe(false)
+})
+
+it('日常办公和学习生活不显示文件已更改卡片，切回代码开发后照常显示', async () => {
+  const base = assistantMessage()
+  const diff = '--- a/report.txt\n+++ b/report.txt\n@@ -1 +1 @@\n-old\n+new'
+
+  const edited = {
+    ...base,
+    content: [
+      {
+        type: 'tool-call',
+        toolCallId: 'patch-1',
+        toolName: 'patch',
+        args: { path: 'report.txt' },
+        argsText: '{"path":"report.txt"}',
+        result: { success: true, diff }
+      },
+      ...base.content
+    ]
+  } as unknown as ThreadMessage
+
+  $selectedWorkspaceMode.set('work')
+
+  try {
+    const { container } = render(<Harness assistant={edited} />)
+    await screen.findByText('done')
+    expect(container.querySelector('[data-slot="aui_changed-files"]')).toBeNull()
+
+    act(() => $selectedWorkspaceMode.set('codex'))
+    await waitFor(() => expect(container.querySelector('[data-slot="aui_changed-files"]')).not.toBeNull())
+  } finally {
+    $selectedWorkspaceMode.set(null)
+  }
 })
