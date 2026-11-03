@@ -78,6 +78,7 @@ import { $connection, $currentModel, setModelPickerOpen } from '@/store/session'
 import { sessionTileDelegate } from '@/store/session-states'
 import { notifyThreadEditOpen } from '@/store/thread-scroll'
 import { $voicePlayback } from '@/store/voice-playback'
+import { $codeWorkspace } from '@/store/workspace-category'
 
 // Stable empty identity for the settled-parts selector — a fresh [] per render
 // would re-derive the changed-files card on every message re-render.
@@ -497,15 +498,20 @@ const AssistantPreviewEmbeds: FC = () => {
  * summary, not a per-turn artifact: leaving one behind on every reply would
  * stack a wall of stale cards down the transcript. Sending the next message
  * retires it — the working tree it describes is already history by then.
+ *
+ * 只在代码开发显示：日常办公和学习生活看交付卡片，中间脚本的改动卡片只会干扰。
  */
 const SettledChangedFiles: FC = () => {
+  const codeWorkspace = useStore($codeWorkspace)
+
   const settledParts = useAuiState(s => {
     const isLastMessage = s.thread.messages[s.thread.messages.length - 1]?.id === s.message.id
 
     return s.message.status?.type === 'running' || !isLastMessage ? EMPTY_PARTS : s.message.parts
   })
 
-  return <ChangedFilesCard parts={settledParts} />
+  // 切走代码开发时卡片随之卸载，它打开的本轮差异面板也一并关闭。
+  return codeWorkspace ? <ChangedFilesCard parts={settledParts} /> : null
 }
 
 /**
