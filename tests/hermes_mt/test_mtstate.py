@@ -85,6 +85,8 @@ def _mgr(home: Path, vol: Path, owner: str, epoch: int) -> mtstate.StateManager:
 def test_collect_separates_dbs_and_applies_exclusions(tmp_path: Path) -> None:
     home = tmp_path / "home"
     _make_home(home)
+    (home / "tools" / "chromium-1208").mkdir(parents=True)
+    (home / "tools" / "chromium-1208" / "chrome").write_bytes(b"\0" * 64)
     files, dbs = mtstate.collect(home)
     files_s = {str(p).replace(os.sep, "/") for p in files}
     dbs_s = {str(p).replace(os.sep, "/") for p in dbs}
@@ -97,7 +99,7 @@ def test_collect_separates_dbs_and_applies_exclusions(tmp_path: Path) -> None:
     assert "sessions/saved/a.json" in files_s
     for excluded in ("logs/agent.log", "cache/web/page.html", "home/.cache/pip.bin", "workspace/big.bin",
                      "sessions/request_dump_1.json", "config.yaml.bak-20260101T000000Z",
-                     "memories/MEMORY.md.lock", "spawn-ledger.json"):
+                     "memories/MEMORY.md.lock", "spawn-ledger.json", "tools/chromium-1208/chrome"):
         assert excluded not in files_s, excluded
 
 

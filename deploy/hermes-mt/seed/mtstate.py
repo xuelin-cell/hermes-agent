@@ -63,9 +63,11 @@ LINKS: tuple[tuple[str, str], ...] = (
 )
 
 # 归档排除（相对 HERMES_HOME 的顶层名）：卷本身、三条链接、日志缓存临时物、运行态文件。
+# tools 是 PM 的可写工具库（Chromium、agent-browser 等，按锁定版本可重装），镜像自带；
+# 归档它会让每次同步多压几百 MB，恢复时还会用旧版本盖掉新模板里的工具。
 EXCLUDE_TOP = frozenset({
     "workspace", "attachments", "images", "scratch",
-    "logs", "cache", "lazy-packages", "node", "bin", "lsp",
+    "logs", "cache", "lazy-packages", "node", "bin", "lsp", "tools",
     "state-snapshots", "backups", "checkpoints", "sandboxes",
     "browser-profile", "browser-profiles", "browser_recordings",
     "telemetry", "terminal-sessions", "pastes", "moa-traces",
