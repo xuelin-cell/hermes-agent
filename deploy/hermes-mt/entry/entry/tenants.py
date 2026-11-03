@@ -600,9 +600,12 @@ class TenantManager:
     def _template_id(self, rt: Runtime | None = None) -> str:
         """这次想要的模板 ID，用于「模板不一致就重建」的比对。
 
+        优先级：手动指定的 manual_tpl_id > 规格下拉 spec。
         多规格（MT_CUBE_TPL_SPECS 非空）：按运行态里存的规格 slug 查对应 tpl_id。
         单规格：退回配置里的 MT_CUBE_TEMPLATE。只在它是 ID（tpl-…）时参与比对；别名比不了。
         """
+        if rt and rt.manual_tpl_id:
+            return rt.manual_tpl_id
         specs = self._tpl_specs()
         if specs:
             slug = (rt.spec if rt else "") or ""

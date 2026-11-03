@@ -56,6 +56,7 @@ class Runtime:
     lifecycle: str
     traffic_token: str = ""   # 数据面流量令牌（已解密）；实例是公开访问的就是空串
     spec: str = ""            # 当前规格 slug（如 1c2g）；改了 = 改模板 = 走重建流程
+    manual_tpl_id: str = ""   # 用户手动指定的模板 ID（tpl-…）；非空时优先于 spec
 
 
 def advisory_key(user_id: str) -> int:
@@ -157,6 +158,7 @@ class Store:
         login_method: str,
         limits: dict[str, int] | None = None,
         spec: str = "",
+        manual_tpl_id: str = "",
     ) -> LoginState:
         """原子保存登录相关平台状态，空套餐值不会清除已有有效值。"""
         now = _utc_now()
@@ -248,15 +250,20 @@ class Store:
                     user_id,
                     json.dumps({"method": login_method}, separators=(",", ":")),
                 )
-                if spec:
+                if spec or manual_tpl_id:
+                    # 二者互斥：填了 manual_tpl_id 就把 spec 清空，反之亦然。
+                    # 都为空时不动（保留上次的）。这样 tenant_runtime 里始终只有一个是活跃的。
                     await connection.execute(
                         """
-                        INSERT INTO tenant_runtime(user_id, state, spec)
-                        VALUES($1, 'stopped', $2)
-                        ON CONFLICT(user_id) DO UPDATE SET spec = EXCLUDED.spec
+                        INSERT INTO tenant_runtime(user_id, state, spec, manual_tpl_id)
+                        VALUES($1, 'stopped', $2, $3)
+                        ON CONFLICT(user_id) DO UPDATE SET
+                            spec = $2,
+                            manual_tpl_id = $3
                         """,
                         user_id,
                         spec,
+                        manual_tpl_id,
                     )
                 has_api_key = bool(
                     await connection.fetchval(
@@ -465,7 +472,7 @@ class Store:
             row = await connection.fetchrow(
                 """
                 SELECT state, sandbox_id, template_id, state_epoch, state_owner, state_archive, lifecycle,
-                       traffic_token_ciphertext, spec
+                       traffic_token_ciphertext, spec, manual_tpl_id
                 FROM tenant_runtime WHERE user_id = $1
                 """,
                 user_id,
@@ -486,6 +493,7 @@ class Store:
                 else ""
             ),
             spec=str(row["spec"] or ""),
+            manual_tpl_id=str(row["manual_tpl_id"] or ""),
         )
 
     async def next_epoch(self, user_id: str) -> int:

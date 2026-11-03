@@ -125,6 +125,10 @@
           <span class="label">沙箱规格</span>
           <select id="spec"></select>
         </label>
+        <label class="field" id="manualTplField" hidden>
+          <span class="label">指定模板 ID（与规格二选一）</span>
+          <input id="manualTplId" autocomplete="off" placeholder="tpl-…" spellcheck="false">
+        </label>
         <p class="notice" id="notice" aria-live="polite" hidden></p>
         <button type="submit" class="submit" id="loginBtn">
           <svg class="icon" id="loginIcon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6"/><path d="M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0"/><path d="M8 11v-4a4 4 0 1 1 8 0v4"/></svg>
@@ -242,12 +246,14 @@ import { clearBrowserAuth, readBrowserAuth, storeBrowserLogin } from './__entry/
     ev.preventDefault();
     var phone = $('phone').value.trim();
     var smsCode = $('smsCode').value.trim();
-    var spec = $('spec').value;
+    var manualTplId = $('manualTplId').value.trim();
+    var spec = manualTplId ? '' : $('spec').value;
     if (!PHONE_RE.test(phone)) return notice('请输入有效的中国大陆手机号', 'err');
     if (!smsCode) return notice('请输入短信验证码', 'err');
+    if (manualTplId && !/^tpl-./.test(manualTplId)) return notice('模板 ID 需以 tpl- 开头', 'err');
     try {
       loginBusy(true); notice('');
-      var data = await postJSON(api('/login'), { phone: phone, smsCode: smsCode, spec: spec });
+      var data = await postJSON(api('/login'), { phone: phone, smsCode: smsCode, spec: spec, manualTplId: manualTplId });
       storeBrowserLogin(base, data);
       notice(data.has_key ? '登录成功，正在准备你的工作空间…' : '登录成功（该账号没有可用套餐 key，模型将不可用）', 'info');
       location.href = data.redirect || (base + '/');
@@ -257,7 +263,9 @@ import { clearBrowserAuth, readBrowserAuth, storeBrowserLogin } from './__entry/
   $('devBtn').addEventListener('click', async function () {
     try {
       notice('开发模式登录中…', 'info');
-      var data = await postJSON(api('/dev-login'), { user: $('devUser').value.trim(), spec: $('spec').value });
+      var manualTplId = $('manualTplId').value.trim();
+      var spec = manualTplId ? '' : $('spec').value;
+      var data = await postJSON(api('/dev-login'), { user: $('devUser').value.trim(), spec: spec, manualTplId: manualTplId });
       storeBrowserLogin(base, data);
       location.href = data.redirect || (base + '/');
     } catch (e) { notice('失败：' + e.message, 'err'); }
@@ -285,6 +293,8 @@ import { clearBrowserAuth, readBrowserAuth, storeBrowserLogin } from './__entry/
         sel.appendChild(opt);
       });
       $('specField').hidden = false;
+      // 有多规格下拉时，才露出「指定模板 ID」这一栏（二者二选一）。
+      $('manualTplField').hidden = false;
     }
   }).catch(function () {});
   refreshCaptcha();

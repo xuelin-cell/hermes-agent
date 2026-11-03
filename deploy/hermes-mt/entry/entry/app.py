@@ -187,6 +187,7 @@ class Entry:
         limits: dict[str, int] | None = None,
         maas_token: str = "",
         spec: str = "",
+        manual_tpl_id: str = "",
     ) -> web.Response:
         login = await self.store.finish_login(
             user_id=user_id,
@@ -199,6 +200,7 @@ class Entry:
             login_method="sms" if phone else "dev",
             limits=limits,
             spec=spec,
+            manual_tpl_id=manual_tpl_id,
         )
         # 登录事务提交后后台预热；预热失败不撤销已经建立的平台登录。
         self._bg.append(asyncio.create_task(self._warm(user_id)))
@@ -278,6 +280,17 @@ class Entry:
                 return spec
         return ""
 
+    def _normalize_manual_tpl_id(self, raw: str) -> str:
+        """登录页手填的模板 ID：必须是 ``tpl-`` 前缀且非空，否则按空处理。
+
+        不查平台（往返慢、登录不该被它拖住），不合法就按空处理（保留上次的 spec）。
+        填了不存在的 ID，``_create_cube`` 会失败——用户要对自己填的 ID 负责。
+        """
+        value = (raw or "").strip()
+        if not value.startswith("tpl-") or len(value) <= 4:
+            return ""
+        return value
+
     async def health(self, request: web.Request) -> web.Response:
         try:
             await self.database.ping()
@@ -339,7 +352,9 @@ class Entry:
         body = await request.json()
         phone = str(body.get("phone", "")).strip()
         code = str(body.get("smsCode", "")).strip()
-        spec = self._normalize_spec(str(body.get("spec", "")).strip())
+        # 下拉规格和手填模板 ID 二选一：前端互斥，后端也按优先级只取一个。
+        manual_tpl_id = self._normalize_manual_tpl_id(str(body.get("manualTplId", "")))
+        spec = "" if manual_tpl_id else self._normalize_spec(str(body.get("spec", "")).strip())
         if not phone or not code:
             return web.json_response({"error": "缺少手机号或验证码"}, status=400)
         try:
@@ -367,6 +382,7 @@ class Entry:
             limits=limits,
             maas_token=result.token,
             spec=spec,
+            manual_tpl_id=manual_tpl_id,
         )
 
     async def dev_login(self, request: web.Request) -> web.Response:
@@ -374,10 +390,13 @@ class Entry:
             raise web.HTTPNotFound()
         body = await request.json()
         user = str(body.get("user", "")).strip()
-        spec = self._normalize_spec(str(body.get("spec", "")).strip())
+        manual_tpl_id = self._normalize_manual_tpl_id(str(body.get("manualTplId", "")))
+        spec = "" if manual_tpl_id else self._normalize_spec(str(body.get("spec", "")).strip())
         if not user:
             return web.json_response({"error": "缺少用户名"}, status=400)
-        return await self._finish_login(user, self.s.dev_api_key, None, spec=spec)
+        return await self._finish_login(
+            user, self.s.dev_api_key, None, spec=spec, manual_tpl_id=manual_tpl_id,
+        )
 
     async def _end_session(self, request: web.Request) -> str:
         sid = request.cookies.get(self.s.cookie_name, "")
