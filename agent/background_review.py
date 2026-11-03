@@ -203,20 +203,19 @@ def _review_input_token_budget(
 
 
 def load_background_review_settings() -> tuple[bool, Dict[str, Any]]:
-    """Single config read -> ``(enabled, task_cfg)``. Fail-open (``enabled=True``) so a broken
-    config never silently disables reviews — but WARN so the cost is visible."""
+    """Single config read -> ``(enabled, task_cfg)``. Automatic reviews require opt-in."""
     try:
         from hermes_cli.config import load_config_readonly
         from utils import is_truthy_value
         task = _task_block(load_config_readonly())
-        return is_truthy_value(task.get("enabled"), default=True), task
+        return is_truthy_value(task.get("enabled"), default=False), task
     except Exception:
         logger.warning(
             "Failed to read background_review.enabled; leaving automatic "
-            "review enabled (fail-open)",
+            "review disabled",
             exc_info=True,
         )
-        return True, {}
+        return False, {}
 
 
 def _resolve_review_runtime(agent: Any, task_cfg: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -1350,7 +1349,7 @@ def is_background_review_enabled(
 ) -> bool:
     """Return whether automatic post-turn background review may spawn.
 
-    Controlled by ``auxiliary.background_review.enabled`` (default ``true``).
+    Controlled by ``auxiliary.background_review.enabled`` (default ``false``).
     Explicit ``/refine`` (``focus`` set) bypasses this gate — same contract as
     zeroing the nudge intervals, which stops automatic forks but leaves manual
     refine working (issue #87250).
@@ -1362,14 +1361,14 @@ def is_background_review_enabled(
         try:
             from utils import is_truthy_value
 
-            return is_truthy_value(task_cfg.get("enabled"), default=True)
+            return is_truthy_value(task_cfg.get("enabled"), default=False)
         except Exception:
             logger.warning(
                 "Failed to interpret background_review.enabled; leaving "
-                "automatic review enabled (fail-open)",
+                "automatic review disabled",
                 exc_info=True,
             )
-            return True
+            return False
     enabled, _ = load_background_review_settings()
     return enabled
 # ---- END PLUGIN-COMPAT ----
