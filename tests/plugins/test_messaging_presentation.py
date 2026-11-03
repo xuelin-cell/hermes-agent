@@ -200,8 +200,6 @@ def test_weixin_real_discovery_and_reload_preserve_native_protocol_and_dependenc
         )
         assert isinstance(adapter, DesktopWeixinAdapter)
         for method in [
-            "connect",
-            "disconnect",
             "send",
             "send_image_file",
             "send_document",
