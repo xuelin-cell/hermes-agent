@@ -380,8 +380,16 @@ def _prepare_native(*, out: Path, ref: str, source: Path, cache: Path,
     return publish_prepared(out, source, revision, inputs)
 
 
-def finish_native(prepared: Path, frontends: dict[str, Path]) -> int:
-    """Consume verified job-local paths. No dependency acquisition or repair."""
+def finish_native(prepared: Path, frontends: dict[str, Path], *, archive: bool = True) -> int:
+    """Consume verified job-local paths. No dependency acquisition or repair.
+    
+    Args:
+        prepared: Path to the prepared JSON file.
+        frontends: Dict of frontend names to their build output paths.
+        archive: If True (default), archive large component directories on Windows.
+                 Set to False to skip archiving (useful when other steps need the
+                 exploded directories before archiving).
+    """
     from scripts.build.agent import assemble
     from scripts.build.inputs import AgentInputs
     from scripts.bundles.native_prepared import load_prepared, preparation_lock
@@ -404,7 +412,7 @@ def finish_native(prepared: Path, frontends: dict[str, Path]) -> int:
         # Fewer file-creation operations means less AV scanning overhead during install.
         # The stamp must record the directory digest (computed before archiving), not the
         # archive file digest, so the installer can verify the extracted directory.
-        if sys.platform == "win32":
+        if archive and sys.platform == "win32":
             from scripts.bundles.payload import ARCHIVED_COMPONENTS_WIN, archive_component
             precomputed_digests = {}
             archived = []
