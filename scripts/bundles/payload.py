@@ -163,7 +163,9 @@ def archive_component(payload_root: Path, name: str) -> tuple[Path, str]:
     seven_zip = shutil.which("7z") or shutil.which("7za")
     if not seven_zip:
         # Try to find 7za.exe in the packager tools (desktop build)
-        packager_7za = payload_root.parent.parent / "packager"
+        # Repo root is two levels up from this script (scripts/bundles/payload.py)
+        repo_root = Path(__file__).resolve().parents[2]
+        packager_7za = repo_root / ".cache" / "desktop-inputs" / "packager"
         if packager_7za.exists():
             for seven_zip_candidate in packager_7za.rglob("7za.exe"):
                 seven_zip = str(seven_zip_candidate)

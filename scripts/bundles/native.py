@@ -418,6 +418,14 @@ def finish_native(prepared: Path, frontends: dict[str, Path]) -> int:
                 print(f"✓ archived {len(archived)} component(s) for faster install: {', '.join(archived)}")
                 # Re-stamp with precomputed directory digests
                 write_payload_stamp(out, precomputed_digests=precomputed_digests)
+                # Clean up .pending-delete directories created by archive_component.
+                # They must be removed before NSIS packaging, otherwise they get included
+                # in the installer and cause check-windows-installer.ps1 to fail (venv/
+                # directory missing, only .venv-pending-delete-*/ exists).
+                for pending_dir in out.glob(".*-pending-delete-*"):
+                    if pending_dir.is_dir():
+                        remove_build_tree(pending_dir)
+                        print(f"✓ cleaned up {pending_dir.name}")
     print(f"✓ manifest ({out / 'manifest.json'})")
     return 0
 
