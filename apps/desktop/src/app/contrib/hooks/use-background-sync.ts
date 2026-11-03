@@ -1,7 +1,6 @@
 import { useStore } from '@nanostores/react'
 import { type MutableRefObject, useCallback, useEffect, useRef } from 'react'
 
-import { useResetComposerModelOnNewChat } from '@/app/chat/composer/model-mt/new-chat-model'
 import {
   extendRefreshPageToOverlap,
   graftRefreshedTailOntoBackfill,
@@ -1321,11 +1320,8 @@ export function useBackgroundSync({
     return visiblePoll(MESSAGING_POLL_INTERVAL_MS, () => void refreshMessagingSessions())
   }, [changeEventsAvailable, gatewayState, refreshMessagingSessions])
 
-  // desktop-mt: 先解除手选标记，再由下方原版刷新读回默认模型。
-  useResetComposerModelOnNewChat(activeSessionId, freshDraftReady)
-
   // A fresh new-session draft (gateway open, no active session) re-pulls the
-  // model + config so the composer pill reflects the profile default.
+  // model + config; refreshCurrentModel preserves an existing manual selection.
   useEffect(() => {
     if (gatewayState === 'open' && !activeSessionId && freshDraftReady) {
       void refreshCurrentModel()
