@@ -1,6 +1,5 @@
 import type { ModelOptionsResult } from '@hermes/shared'
 
-import { visibleModelOptions } from '@/lib/browser-shell'
 import type {
   AnalyticsResponse,
   AuxiliaryModelsResponse,
@@ -55,13 +54,11 @@ export function getGlobalModelOptions(
     params.set('explicit_only', '1')
   }
 
-  return window.hermesDesktop
-    .api<ModelOptionsResult>({
-      ...capabilityScoped(profile),
-      path: params.size > 0 ? `/api/model/options?${params.toString()}` : '/api/model/options',
-      timeoutMs: STARTUP_REQUEST_TIMEOUT_MS
-    })
-    .then(visibleModelOptions)
+  return window.hermesDesktop.api<ModelOptionsResult>({
+    ...capabilityScoped(profile),
+    path: params.size > 0 ? `/api/model/options?${params.toString()}` : '/api/model/options',
+    timeoutMs: STARTUP_REQUEST_TIMEOUT_MS
+  })
 }
 
 export interface RecommendedDefaultModel {

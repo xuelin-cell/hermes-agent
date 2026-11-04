@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { en } from '@/i18n/en'
 import type { ErrorCardCopy } from '@/i18n/types'
 import { formatFooterTime } from '@/lib/message-time'
+import { $developerMode } from '@/store/developer-mode'
 import { $displayTimestamps } from '@/store/display-timestamps'
 import { $selectedWorkspaceMode } from '@/store/workspace-category'
 
@@ -53,6 +54,7 @@ stubThreadEnvironment()
 
 afterEach(() => {
   cleanup()
+  $developerMode.set(false)
   requestFreshSession.mockClear()
   startManualProviderOAuth.mockClear()
   requestModelMenuToggle.mockReset().mockReturnValue(true)
@@ -202,6 +204,7 @@ function Harness({
 
 describe('AssistantMessage branch button visibility (bug #2 fix)', () => {
   it('shows the Branch in new chat button when a handler is provided (open chat)', async () => {
+    $developerMode.set(true)
     render(<Harness onBranchInNewChat={() => undefined} />)
 
     expect(await screen.findByRole('button', { name: 'Branch in new chat' })).toBeTruthy()
@@ -499,6 +502,7 @@ describe('message timeline timestamps', () => {
 })
 
 it('keeps the footer reserved but inaccessible until the whole reply finishes', async () => {
+  $developerMode.set(true)
   const { container, rerender } = render(<Harness isRunning onBranchInNewChat={() => undefined} />)
   await screen.findByText('done')
   const footer = container.querySelector('[data-slot="aui_assistant-footer"]')!
@@ -541,4 +545,16 @@ it('日常办公和学习生活不显示文件已更改卡片，切回代码开�
   } finally {
     $selectedWorkspaceMode.set(null)
   }
+})
+
+it('keeps normal reply actions focused on copying, sharing and retrying', async () => {
+  $developerMode.set(false)
+  const { container } = render(<Harness onBranchInNewChat={() => undefined} />)
+  await screen.findByText('done')
+  const bar = container.querySelector('[data-slot="aui_msg-actions"]')!
+  expect(bar).toBeTruthy()
+  expect(screen.queryByRole('button', { name: 'Branch in new chat' })).toBeNull()
+  expect(bar.querySelector('[aria-label="Copy"]')).toBeTruthy()
+  expect(bar.querySelectorAll('button').length).toBeLessThanOrEqual(3)
+  expect(bar.querySelector('button:last-child')?.getAttribute('aria-label')).toBe('Regenerate response')
 })

@@ -331,6 +331,12 @@ def _create_overrides(params: dict) -> tuple:
     model_override = None
     if create_model:
         model_override = {"model": create_model, "provider": _str_param(params, "provider") or None}
+    if params.get("code_mode"):
+        if not model_override:
+            from tui_gateway.server import _resolve_startup_runtime
+            model, provider = _resolve_startup_runtime()
+            model_override = {"model": model, "provider": provider}
+        model_override["code_mode"] = True
     reasoning_override = None
     if effort := _str_param(params, "reasoning_effort"):
         with contextlib.suppress(Exception):

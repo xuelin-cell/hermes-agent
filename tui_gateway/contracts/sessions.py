@@ -116,6 +116,7 @@ class SeedMessage(Params):
 
 
 class SessionCreateParams(ProfileParams):
+    code_mode: bool = False
     cols: int | None = None
     source: str | None = None
     cwd: str | None = None

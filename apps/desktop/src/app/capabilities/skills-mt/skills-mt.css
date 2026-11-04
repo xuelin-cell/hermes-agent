@@ -84,6 +84,10 @@
   color: var(--ui-text-tertiary);
 }
 
+.mt-skills-search-right {
+  margin-left: auto;
+}
+
 .mt-skills-search:focus-within {
   border-color: color-mix(in srgb, var(--ui-text-primary) 30%, var(--ui-stroke-secondary));
 }

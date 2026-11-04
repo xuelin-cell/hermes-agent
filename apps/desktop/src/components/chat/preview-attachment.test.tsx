@@ -11,7 +11,9 @@ const { cwd, normalize, preload, open } = vi.hoisted(() => ({
   open: vi.fn()
 }))
 
-vi.mock('@/app/chat/session-view', () => ({ useSessionView: () => ({ $cwd: cwd.value }) }))
+vi.mock('@/app/chat/session-view', () => ({ useSessionView: () => ({ $cwd: cwd.value, $storedId: storedId }) }))
+
+const storedId = atom('file-indicator-session')
 vi.mock('@/lib/local-preview', async original => ({
   ...(await original<object>()),
   normalizeOrLocalPreviewTarget: normalize
@@ -100,4 +102,24 @@ it('预转换失败保持卡片可点击，不自动提示或放弃原有预览�
     fireEvent.click(screen.getByRole('button', { name: 'Open preview' }))
   })
   expect(open).toHaveBeenCalledWith({ kind: 'file', path: '/account/work/report.docx' })
+})
+
+it('opens preview from the full card and closes an already previewed file', async () => {
+  const { $previewTabs } = await import('@/store/preview')
+
+  const target = {
+    kind: 'file' as const,
+    source: 'report.csv',
+    path: '/account/work/report.csv',
+    url: 'file:///account/work/report.csv',
+    label: 'report.csv'
+  }
+
+  normalize.mockResolvedValueOnce(target)
+  render(<PreviewAttachment target="report.csv" />)
+  fireEvent.click(screen.getByRole('button', { name: 'Open preview: report.csv' }))
+  await waitFor(() => expect(open).toHaveBeenCalledWith(target))
+  act(() => $previewTabs.set([{ id: 'file:file:///account/work/report.csv', target }]))
+  fireEvent.click(screen.getByRole('button', { name: 'Hide: report.csv' }))
+  expect($previewTabs.get()).toHaveLength(0)
 })

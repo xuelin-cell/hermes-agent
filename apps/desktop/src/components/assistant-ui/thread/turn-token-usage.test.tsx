@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, expect, it } from 'vitest'
 
 import { en } from '@/i18n/en'
@@ -6,13 +6,17 @@ import { toChatMessages } from '@/lib/chat-messages'
 import { toRuntimeMessage } from '@/lib/chat-runtime'
 import { formatFooterTime } from '@/lib/message-time'
 import { formatTurnTokenCount } from '@/lib/turn-token-usage'
+import { $developerMode } from '@/store/developer-mode'
 
 import { stubThreadEnvironment, ThreadRuntime } from '../test-utils'
 
 import { Thread } from '.'
 
 stubThreadEnvironment()
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  $developerMode.set(false)
+})
 
 it('shows persisted turn tokens beside the existing actions and hides absent usage on older replies', async () => {
   const usage = {
@@ -60,7 +64,11 @@ it('shows persisted turn tokens beside the existing actions and hides absent usa
   expect(sent.getAttribute('datetime')).toBe(new Date(1000).toISOString())
   expect(sent.textContent).toBe(formatFooterTime(1, 'en', 'Yesterday'))
   expect(badge.compareDocumentPosition(modelName) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-  expect(await screen.findByRole('button', { name: 'Copy' })).toBeTruthy()
+  expect(within(actions as HTMLElement).getByRole('button', { name: 'Copy' })).toBeTruthy()
+  const user = container.querySelector('[data-slot="aui_user-message-root"]') as HTMLElement
+  expect(within(user).getByRole('button', { name: 'Copy' })).toBeTruthy()
+  expect(user.querySelectorAll('[data-slot="aui_user-sent-time"]')).toHaveLength(1)
+  expect(user.querySelector('[data-slot="timeline-timestamp"]')).toBeNull()
   unmount()
   const older = toChatMessages([{ role: 'assistant', content: 'older reply', timestamp: 100 }]).map(toRuntimeMessage)
 
@@ -109,7 +117,9 @@ it('uses the same K/M units and precision in Chinese and English', () => {
   }
 })
 
-it('keeps only the latest idle reply footer persistent and allows historical footers during a new turn', async () => {
+it.each([false, true])('keeps the latest idle footer persistent during developer mode=%s', async developerMode => {
+  $developerMode.set(developerMode)
+
   const messages = toChatMessages([
     { role: 'user', content: 'first question', timestamp: 1 },
     { role: 'assistant', content: 'first reply', timestamp: 2 },

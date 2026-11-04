@@ -1220,3 +1220,19 @@ class LlamaCppCpu(LlamaCpp):
         "darwin-x64": "macos-x64",
         "darwin-arm64": "macos-arm64",
     }
+
+
+@register
+class Codex(BinaryPackage):
+    """Codex app-server and its platform helpers, shipped with desktop payloads."""
+    name = "codex"
+    binary_rel = {
+        target: f"vendor/{triple.replace('-unknown-linux-gnu', '-unknown-linux-musl')}/bin/" +
+        ("codex.exe" if target.startswith("win32") else "codex")
+        for target, triple in _RUST_TRIPLE.items()
+    }
+    gaps = {"linux-arm64-bionic": "Codex does not provide an Android build"}
+
+    def fetch_url(self, version: str, target: str) -> str:
+        npm_target = target.removesuffix("-musl")
+        return f"https://registry.npmjs.org/@openai/codex/-/codex-{version}-{npm_target}.tgz"

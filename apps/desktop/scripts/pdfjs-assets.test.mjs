@@ -2,19 +2,13 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
-import { afterEach, test } from 'vitest'
+import { test } from 'vitest'
 
 import { pdfjsAssets } from './pdfjs-assets.mjs'
 
 const root = path.dirname(createRequire(import.meta.url).resolve('pdfjs-dist/package.json'))
 const { version } = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
 const base = `assets/pdfjs-${version}/`
-const browserBuild = process.env.VITE_HERMES_BROWSER_BUILD
-
-afterEach(() => {
-  if (browserBuild === undefined) delete process.env.VITE_HERMES_BROWSER_BUILD
-  else process.env.VITE_HERMES_BROWSER_BUILD = browserBuild
-})
 
 function emitted() {
   const files = new Map()
@@ -24,9 +18,7 @@ function emitted() {
   return files
 }
 
-test('the browser build publishes the worker and the files pdf.js loads by name', () => {
-  process.env.VITE_HERMES_BROWSER_BUILD = '1'
-
+test('the build publishes the worker and the files pdf.js loads by name', () => {
   const files = emitted()
 
   // The worker as .js (a module worker served as anything but JavaScript does not start).
@@ -44,14 +36,6 @@ test('the browser build publishes the worker and the files pdf.js loads by name'
     assert.ok(files.has(base + name), name)
   }
   assert.ok([...files.keys()].every(name => name.startsWith(base)))
-})
-
-test('桌面构建发布与浏览器相同的 Worker 及资源，不再维护两套路径', () => {
-  process.env.VITE_HERMES_BROWSER_BUILD = '1'
-  const browserFiles = emitted()
-  delete process.env.VITE_HERMES_BROWSER_BUILD
-
-  assert.deepEqual(emitted(), browserFiles)
 })
 
 test('the dev server serves them from the package', () => {

@@ -16,6 +16,7 @@ import { useMessageReactions } from '@/components/assistant-ui/thread/use-messag
 import { UserAttachments } from '@/components/assistant-ui/thread/user-attachments'
 import { UserMessageText } from '@/components/assistant-ui/thread/user-message-text'
 import { Codicon } from '@/components/ui/codicon'
+import { CopyButton } from '@/components/ui/copy-button'
 import { Tip } from '@/components/ui/tooltip'
 import { useResizeObserver } from '@/hooks/use-resize-observer'
 import { useI18n } from '@/i18n'
@@ -581,12 +582,12 @@ export const UserMessage: FC<{
                 )}
               </div>
             </ReactionPicker>
-            {hasFiles && !readOnly && (
-              <div className="flex justify-end py-1 pr-1.5">
+            {!readOnly && (
+              <div className="flex items-center justify-end gap-1 py-1 pr-1.5 opacity-0 group-hover/user-message:opacity-100 focus-within:opacity-100">
                 <Tip label={copy.editMessage}>
                   <ActionBarPrimitive.Edit asChild>
                     <button
-                      aria-label={copy.editMessage}
+                      aria-label={hasFiles ? copy.editMessage : t.preview.edit}
                       className={cn('size-6', USER_ACTION_ICON_BUTTON_CLASS)}
                       onClick={() => triggerHaptic('selection')}
                       onPointerDown={() => notifyThreadEditOpen()}
@@ -596,6 +597,7 @@ export const UserMessage: FC<{
                     </button>
                   </ActionBarPrimitive.Edit>
                 </Tip>
+                <CopyButton appearance="icon" buttonSize="icon-xs" label={copy.copy} side="top" text={messageText} />
               </div>
             )}
             {/* Below the bubble, same register as the assistant action row:

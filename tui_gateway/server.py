@@ -1604,6 +1604,8 @@ def _stored_session_runtime_overrides(row: dict | None) -> dict:
         # metadata across resume and rebuilds (/new). Raw api_key is never persisted/restored.
         overrides["model_override"] = {
             "model": model, "provider": provider or None, "base_url": base_url or None, "api_mode": api_mode or None}
+    if model_config.get("code_mode") and "model_override" in overrides:
+        overrides["model_override"]["code_mode"] = True
     if provider:
         overrides["provider_override"] = provider
     if isinstance(reasoning_config, dict):
@@ -1631,6 +1633,7 @@ def _runtime_model_config(agent, existing: dict | None = None) -> dict:
     reasoning_config = getattr(agent, "reasoning_config", None)
     live = {
         "model": model, "provider": provider, "base_url": base_url, "api_mode": attr("api_mode"),
+        "code_mode": bool(getattr(agent, "_desktop_code_mode", False)),
         # An empty dict is still a real (present) reasoning config.
         "reasoning_config": reasoning_config if isinstance(reasoning_config, dict) else None,
         "service_tier": getattr(agent, "service_tier", None),
@@ -2447,6 +2450,9 @@ def _resolve_agent_model_runtime(model_override, provider_override) -> tuple[str
                 resolve_kwargs["explicit_base_url"] = override_base_url
         resolve_kwargs.update(requested=requested_provider, target_model=model or None)
         overrides = {k: model_override.get(k) for k in ("base_url", "api_key", "api_mode")}
+        if model_override.get("code_mode"):
+            # Stored api_mode describes the executor, not the upstream model's wire.
+            overrides.pop("api_mode", None)
     else:
         model, requested_provider = _resolve_startup_runtime()
         if isinstance(model_override, str) and model_override:
@@ -2563,6 +2569,11 @@ def _make_agent(
     ignore_rules = is_truthy_value(os.environ.get("HERMES_IGNORE_RULES"))
     with _sessions_lock:
         session = _sessions.get(sid)
+    desktop_code_mode = isinstance(model_override, dict) and bool(model_override.get("code_mode"))
+    if desktop_code_mode:
+        if runtime.get("api_mode") not in (None, "", "chat_completions"):
+            raise ValueError("代码模式目前支持 Chat Completions 套餐模型，请选择 DeepSeek 或 GLM")
+        runtime["api_mode"] = "codex_app_server"
     agent = AIAgent(
         model=model, max_iterations=_cfg_max_turns(cfg, 500), provider=runtime.get("provider"),
         requested_provider=runtime.get("requested_provider"),
@@ -2594,6 +2605,7 @@ def _make_agent(
     if fallback_notice:
         # Emitted once on the first successful reply via _emit_pending_fallback_notice -> status_callback.
         agent._pending_fallback_notice = fallback_notice
+    agent._desktop_code_mode = desktop_code_mode
     return agent
 
 

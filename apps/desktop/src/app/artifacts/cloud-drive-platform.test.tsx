@@ -90,26 +90,11 @@ function setup() {
 
 afterEach(() => {
   cleanup()
-  delete window.document.documentElement.dataset.hermesBrowser
   clearSessionDraft(null)
   $connection.set(null)
   vi.unstubAllGlobals()
   vi.clearAllMocks()
   localStorage.clear()
-})
-
-it('浏览器默认展示实例产物，切换云盘保留占位，即使连接标为本地也不开放原生上传', async () => {
-  window.document.documentElement.dataset.hermesBrowser = 'production'
-  const fixture = setup()
-  expect(await screen.findByRole('button', { name: 'report.txt' })).toBeTruthy()
-  expect(screen.queryByRole('button', { name: '上传到云盘 · report.txt' })).toBeNull()
-  fireEvent.click(screen.getByRole('button', { name: '个人云盘' }))
-  expect(await screen.findByText('功能开发中')).toBeTruthy()
-  fireEvent.click(screen.getByRole('button', { name: '本地产物' }))
-  expect(await screen.findByRole('button', { name: 'report.txt' })).toBeTruthy()
-  expect(fixture.request).not.toHaveBeenCalled()
-  expect(fixture.transfer).not.toHaveBeenCalled()
-  expect(fixture.api).not.toHaveBeenCalled()
 })
 
 it('桌面默认展示云盘，添加到会话保留原草稿及附件卡片并返回聊天，不发送或下载', async () => {

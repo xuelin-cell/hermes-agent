@@ -3,7 +3,6 @@ import { useCallback, useState } from 'react'
 
 import { capabilityScoped } from '@/api/client'
 import { type ProfileScope, profileScopeKey } from '@/hermes'
-import { isBrowserShell } from '@/lib/browser-shell'
 import type { SkillHubSearchResponse } from '@/types/hermes'
 
 import { SKILLS_QUERY_KEY } from '../skills/skills-data'
@@ -43,8 +42,7 @@ export function useCatalogInstalled(profile: ProfileScope, installedNames: Reado
   const records = useQuery({
     queryKey: [...SKILLS_QUERY_KEY, 'mt-catalog-installed', scopeKey],
     queryFn: () => getInstalledRecords(profile),
-    // 浏览器构建（云端）里市场安装还在开发中，没有记录可读。
-    enabled: active && !isBrowserShell() && Boolean(window.hermesDesktop?.api),
+    enabled: active && Boolean(window.hermesDesktop?.api),
     staleTime: 30_000,
     retry: false,
     refetchOnWindowFocus: false

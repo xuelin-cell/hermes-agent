@@ -28837,6 +28837,11 @@
             "default": null,
             "title": "Profile"
           },
+          "code_mode": {
+            "default": false,
+            "title": "Code Mode",
+            "type": "boolean"
+          },
           "cols": {
             "anyOf": [
               {

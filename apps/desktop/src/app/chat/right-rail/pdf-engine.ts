@@ -26,10 +26,12 @@ import {
   PDFViewer
 } from 'pdfjs-dist/legacy/web/pdf_viewer.mjs'
 
-import type { PdfDocumentSource } from '@/lib/browser-shell'
-
 import { PDF_RESOURCE_OPTIONS } from './pdf-resources'
 import { clampZoom, fitScale, stepZoom } from './pdf-zoom'
+
+/** What pdf.js reads a PDF from: its bytes, or where to fetch it. */
+export type PdfDocumentSource =
+  { data: Uint8Array } | { httpHeaders: Record<string, string>; url: string; withCredentials: boolean }
 
 // .pdfViewer's side padding (pdf-preview.css): the room a page is fitted into.
 const SIDE_PADDING_PX = 16

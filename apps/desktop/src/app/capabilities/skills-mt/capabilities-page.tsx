@@ -78,7 +78,7 @@ export function CapabilitiesPage({
           ))}
         </nav>
         {mode === 'skills' || mode === 'experts' ? (
-          <label className="mt-skills-search">
+          <label className={mode === 'skills' ? 'mt-skills-search mt-skills-search-right' : 'mt-skills-search'}>
             <Search className="size-4 shrink-0" />
             <input
               aria-label={searchLabel}

@@ -3,7 +3,6 @@ import { useStore } from '@nanostores/react'
 import { useSessionView } from '@/app/chat/session-view'
 import { TooltipIconButton } from '@/components/assistant-ui/tooltip-icon-button'
 import { useI18n } from '@/i18n'
-import { isConversationShareHidden } from '@/lib/browser-shell'
 import { Share2 } from '@/lib/icons'
 import { openConversationShare } from '@/store/conversation-share'
 import { notifyError } from '@/store/notifications'
@@ -19,7 +18,7 @@ export function ConversationSessionShareButton({ sessionId }: { sessionId?: stri
 
   const targetId = sessionId === undefined ? storedId || runtimeId : sessionId
 
-  if (!targetId || isConversationShareHidden()) {
+  if (!targetId) {
     return null
   }
 
