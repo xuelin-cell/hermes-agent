@@ -152,11 +152,19 @@ Var UNIWORK_SUBPHASE_END
 !macroend
 
 ; 现场看和事后查用同一句话：详情面板给装着的人看，带时间戳的那行进文件给支持排查的人看。
+; 卸载器那一遍（BUILD_UNINSTALLER）也会展开 customCheckAppRunning 里的两句 UniSay，但那一遍没有
+; 上面这些变量；而且卸载时重开日志会把这台机器上这次安装的记录抹掉。那边只把话打到详情面板。
+!ifndef BUILD_UNINSTALLER
 !macro UniSay TEXT
   DetailPrint "${TEXT}"
   !insertmacro UniNow $UNIWORK_PHASE_STAMP
   !insertmacro UniLog "[$UNIWORK_PHASE_STAMP] ${TEXT}"
 !macroend
+!else
+!macro UniSay TEXT
+  DetailPrint "${TEXT}"
+!macroend
+!endif
 
 ; 每个阶段开始时调用：结算上一阶段的耗时，再登记本阶段。阶段号重复时整块跳过。
 !macro UniPhaseBegin NUM NAME

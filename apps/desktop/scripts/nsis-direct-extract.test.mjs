@@ -97,9 +97,13 @@ test('安装详情既显示在面板上，也按阶段落进日志文件', () =>
   // install-log.nsh 的阶段变量只在 !ifndef BUILD_UNINSTALLER 里声明，卸载器单元里一旦引用
   // 就是 warning 6000，而 makensis 带 -WX，警告直接变错误、整个打包失败。
   assert.match(appRunning, /!ifndef BUILD_UNINSTALLER\s*\n\s*SetDetailsPrint both\s*\n\s*!insertmacro UniPhaseBegin 1/)
+  // customCheckAppRunning 里还有两句 UniSay 不在上面的保护块里：卸载器单元也必须能展开它们。
+  // 那边没有日志变量（UniNow 的 GetTime 会报 "Usage: Pop $(user_var: output)"），只打详情面板。
+  assert.match(log, /!ifndef BUILD_UNINSTALLER\s*\n!macro UniSay TEXT\s*\n\s*DetailPrint "\$\{TEXT\}"\s*\n\s*!insertmacro UniNow[\s\S]*?!else\s*\n!macro UniSay TEXT\s*\n\s*DetailPrint "\$\{TEXT\}"\s*\n!macroend\s*\n!endif/)
 
-  // 明细只能走 UniSay：裸 DetailPrint 进不了日志文件。
-  assert.doesNotMatch(incremental, /(^|\s)DetailPrint /)
+  // 写死的明细只能走 UniSay，裸 DetailPrint 的文字进不了日志文件；
+  // 例外是把 UNIWORK_PrintLog 的 PowerShell 摘要逐行转印到面板（DetailPrint $1），内容已在日志里。
+  assert.doesNotMatch(incremental, /(^|\s)DetailPrint "/)
   assert.match(log, /macro UniSay[\s\S]*DetailPrint "\$\{TEXT\}"[\s\S]*!insertmacro UniLog/)
   assert.match(incremental, /!insertmacro UniPhaseBegin 2 /)
   assert.match(incremental, /!insertmacro UniPhaseBegin 3 /)
