@@ -112,10 +112,19 @@ describe('useMessageStream status-bar usage scoping', () => {
       cache_write_tokens: 0
     }
 
+    const model = { model: 'answered-model', provider: 'custom:answered-endpoint', name: 'Saved model name' }
+
     act(() => stream.handleEvent({ session_id: SID, type: 'message.start' }))
     act(() =>
       stream.handleEvent({
-        payload: { text: 'done', turn_token_usage: usage, usage: { total: 9999 } },
+        payload: {
+          text: 'done',
+          turn_token_usage: usage,
+          turn_model: model,
+          turn_completed_at: 1234.5,
+          status: 'complete',
+          usage: { total: 9999, model: 'current-default' }
+        },
         session_id: SID,
         type: 'message.complete'
       })
@@ -123,6 +132,10 @@ describe('useMessageStream status-bar usage scoping', () => {
     const live = stream.state().messages.at(-1)!
     expect(live.turnTokenUsage).toEqual(usage)
     expect(toRuntimeMessage(live).metadata.custom.turnTokenUsage).toEqual(usage)
+    expect(live.turnModel).toEqual(model)
+    expect(live.turnCompletedAt).toBe(1234.5)
+    expect(toRuntimeMessage(live).metadata.custom.turnCompletedAt).toBe(1234.5)
+    expect(toRuntimeMessage(live).metadata.custom.turnModel).toEqual(model)
     expect($currentUsage.get().total).toBe(9999)
 
     const restored = toChatMessages([
@@ -134,15 +147,28 @@ describe('useMessageStream status-bar usage scoping', () => {
         timestamp: 2
       },
       { role: 'tool', tool_call_id: 'call', content: 'ok', timestamp: 3 },
-      { role: 'assistant', content: 'done', timestamp: 4, display_metadata: { turn_token_usage: usage } }
+      {
+        role: 'assistant',
+        content: 'done',
+        timestamp: 4,
+        display_metadata: { turn_token_usage: usage, turn_model: model, turn_completed_at: 1234.5 }
+      }
     ])
 
     const reply = restored.at(-1)!
     expect(reply.turnTokenUsage).toEqual(live.turnTokenUsage)
     expect(toRuntimeMessage(reply).metadata.custom.turnTokenUsage).toEqual(usage)
+    expect(reply.turnModel).toEqual(live.turnModel)
+    expect(reply.turnCompletedAt).toBe(live.turnCompletedAt)
+    expect(toRuntimeMessage(reply).metadata.custom.turnModel).toEqual(model)
+    expect(chatMessagesEquivalent(reply, { ...reply, turnModel: { ...model } })).toBe(true)
+    expect(chatMessagesEquivalent(reply, { ...reply, turnModel: { ...model, name: 'Renamed' } })).toBe(false)
     expect(chatMessagesEquivalent(reply, { ...reply, turnTokenUsage: { ...usage } })).toBe(true)
     expect(chatMessagesEquivalent(reply, { ...reply, turnTokenUsage: undefined })).toBe(false)
     expect(toChatMessages([{ role: 'assistant', content: 'older reply' }])[0].turnTokenUsage).toBeUndefined()
+    expect(
+      toChatMessages([{ role: 'assistant', content: 'older reply', timestamp: 100 }])[0].turnCompletedAt
+    ).toBeUndefined()
 
     const stoppedUsage = { ...usage, input_tokens: 100, output_tokens: 10, total_tokens: 110, cache_read_tokens: 0 }
     const state = stream.state()
@@ -159,10 +185,12 @@ describe('useMessageStream status-bar usage scoping', () => {
       stream.handleEvent({
         session_id: SID,
         type: 'message.complete',
-        payload: { text: 'partial reply', status: 'interrupted', turn_token_usage: stoppedUsage }
+        payload: { text: 'partial reply', status: 'interrupted', turn_token_usage: stoppedUsage, turn_model: model }
       })
     )
     expect(stream.state().messages.at(-1)?.turnTokenUsage).toEqual(stoppedUsage)
+    expect(stream.state().messages.at(-1)?.turnModel).toEqual(model)
+    expect(stream.state().messages.at(-1)?.turnCompletedAt).toBeUndefined()
     expect(stream.state().messages.find(message => message.id === live.id)?.turnTokenUsage).toEqual(usage)
   })
 })

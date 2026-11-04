@@ -25,7 +25,7 @@ export function TurnTokenUsage() {
     <Tip label={<span className="whitespace-pre-line">{label}</span>}>
       <span
         aria-label={label}
-        className="inline-flex select-none items-center gap-1 whitespace-nowrap border-l border-muted-foreground/95 pl-2 text-xs font-normal leading-none tabular-nums text-muted-foreground"
+        className="inline-flex select-none items-center gap-1 whitespace-nowrap text-xs font-normal leading-none tabular-nums text-muted-foreground"
         data-slot="aui_turn-token-usage"
         tabIndex={0}
       >

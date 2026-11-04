@@ -4383,6 +4383,8 @@ export interface MessageCompletePayload {
   text?: string | unknown
   usage?: Usage | null
   turn_token_usage?: TurnTokenUsage | null
+  turn_model?: TurnReplyModel | null
+  turn_completed_at?: number | null
   status?: TurnStatus | null
   reasoning?: string | null
   warning?: string | null
@@ -4404,6 +4406,12 @@ export interface TurnTokenUsage {
   total_tokens: number
   cache_read_tokens: number
   cache_write_tokens: number
+}
+/** The answering model and its configured display name, snapshotted before runtime restoration. */
+export interface TurnReplyModel {
+  model: string
+  provider?: string
+  name?: string
 }
 /** ``prompt_turn._result_status``. */
 export type TurnStatus = 'complete' | 'error' | 'interrupted'

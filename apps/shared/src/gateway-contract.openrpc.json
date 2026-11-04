@@ -17644,6 +17644,29 @@
             ],
             "default": null
           },
+          "turn_model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TurnReplyModel"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "turn_completed_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Turn Completed At"
+          },
           "status": {
             "anyOf": [
               {
@@ -35301,6 +35324,32 @@
           "role"
         ],
         "title": "TranscriptMessage",
+        "type": "object"
+      },
+      "TurnReplyModel": {
+        "additionalProperties": false,
+        "description": "The answering model and its configured display name, snapshotted before runtime restoration.",
+        "properties": {
+          "model": {
+            "minLength": 1,
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "default": "",
+            "title": "Provider",
+            "type": "string"
+          },
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model"
+        ],
+        "title": "TurnReplyModel",
         "type": "object"
       },
       "TurnStatus": {

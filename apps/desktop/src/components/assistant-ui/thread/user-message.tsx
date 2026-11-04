@@ -9,8 +9,8 @@ import {
   PROCESS_NOTIFICATION_RE
 } from '@/components/assistant-ui/thread/content'
 import { ReactionBadge, ReactionPicker } from '@/components/assistant-ui/thread/message-reactions'
+import { MessageSentTime } from '@/components/assistant-ui/thread/message-sent-time'
 import { BackgroundResult } from '@/components/assistant-ui/thread/system-message'
-import { MessageTimelineTimestamp } from '@/components/assistant-ui/thread/timeline-timestamp'
 import { type RestoreMessageTarget } from '@/components/assistant-ui/thread/types'
 import { useMessageReactions } from '@/components/assistant-ui/thread/use-message-reactions'
 import { UserAttachments } from '@/components/assistant-ui/thread/user-attachments'
@@ -449,8 +449,8 @@ export const UserMessage: FC<{
                 // link/image/selection inside the bubble still gets the app
                 // menu, and this handler's selection guard keeps ⌘C flows.
                 data-context-menu-skip=""
-                data-slot="aui_user-bubble-frame"
                 data-has-details={hasBody && bodyClamped ? 'true' : undefined}
+                data-slot="aui_user-bubble-frame"
                 onContextMenu={
                   // Right-click is the desktop stand-in for iOS touch-and-hold —
                   // but only when there's nothing selected. A live highlight
@@ -606,7 +606,7 @@ export const UserMessage: FC<{
               onRetract={() => react(null)}
               reactions={shownReactions}
             />
-            <MessageTimelineTimestamp className="self-end pr-1.5" />
+            <MessageSentTime />
             <BranchPickerPrimitive.Root
               className={cn(
                 'checkpoint-container flex items-center gap-1 pb-0 pt-1 pl-1.5 text-[0.75rem] leading-none text-(--ui-text-tertiary)',

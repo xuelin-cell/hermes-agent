@@ -1,4 +1,4 @@
-import type { PersistedTurn, TurnTokenUsage } from '@hermes/shared'
+import type { PersistedTurn, TurnReplyModel, TurnTokenUsage } from '@hermes/shared'
 import type { QueryClient } from '@tanstack/react-query'
 import { type MutableRefObject, useCallback, useEffect, useRef } from 'react'
 
@@ -628,7 +628,9 @@ export function useMessageStream({
       persistedTurn?: PersistedTurn | null,
       responseTransformed?: boolean,
       status?: string,
-      turnTokenUsage?: TurnTokenUsage
+      turnTokenUsage?: TurnTokenUsage,
+      turnModel?: TurnReplyModel,
+      turnCompletedAt?: number
     ) => {
       let shouldHydrate = false
 
@@ -651,9 +653,15 @@ export function useMessageStream({
           return {
             ...state,
             messages:
-              status === 'interrupted' && turnTokenUsage && lastReplyIndex >= 0
+              status === 'interrupted' && (turnTokenUsage || turnModel) && lastReplyIndex >= 0
                 ? messages.map((message, index) =>
-                    index === lastReplyIndex ? { ...message, turnTokenUsage } : message
+                    index === lastReplyIndex
+                      ? {
+                          ...message,
+                          ...(turnTokenUsage ? { turnTokenUsage } : {}),
+                          ...(turnModel ? { turnModel } : {})
+                        }
+                      : message
                   )
                 : messages,
             awaitingResponse: false,
@@ -702,7 +710,9 @@ export function useMessageStream({
             ...message,
             durableComplete: persistedTurn?.complete === true,
             ...(turnTokenUsage ? { turnTokenUsage } : {}),
+            ...(turnModel ? { turnModel } : {}),
             persistedTurn: persistedTurn ?? undefined,
+            ...(turnCompletedAt !== undefined && status === 'complete' ? { turnCompletedAt } : {}),
             // A folded bubble can already address its first source row. Keep
             // that address and bind the final response's exact source as well.
             ...(hasFinalRow

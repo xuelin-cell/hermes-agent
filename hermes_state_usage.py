@@ -82,8 +82,8 @@ _MODEL_USAGE_FIELDS = frozenset((
 class SessionUsageMixin:
     """Coalesced token writer, per-model usage rows, billing route."""
 
-    def set_message_turn_token_usage(self, session_id: str, row_id: int, usage: Dict[str, int]) -> bool:
-        """Merge display-only usage onto an exact assistant row without replacing reactions."""
+    def merge_message_display_metadata(self, session_id: str, row_id: int, patch: Dict[str, Any]) -> bool:
+        """Merge reply metadata onto an exact assistant row without replacing reactions."""
         def _do(conn):
             row = conn.execute(
                 "SELECT display_metadata FROM messages WHERE id = ? AND session_id = ? "
@@ -91,7 +91,7 @@ class SessionUsageMixin:
             if row is None:
                 return False
             metadata = self._decode_display_metadata(row[0]) or {}
-            metadata["turn_token_usage"] = usage
+            metadata.update(patch)
             conn.execute("UPDATE messages SET display_metadata = ? WHERE id = ? AND session_id = ?",
                          (self._encode_display_metadata(metadata), row_id, session_id))
             return True

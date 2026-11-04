@@ -5749,6 +5749,7 @@ export const en: Translations = {
       thoughtFor: duration => `Thought for ${duration}`,
       turnDuration: duration => `This turn took ${duration}`,
       tokenUnit: 'tokens',
+      footerYesterday: 'Yesterday',
       turnTokenUsage: (input, output, total) =>
         `Cumulative token usage for this reply, including input and output from multiple model calls.\nInput ${input} · Output ${output} · Total ${total} tokens`,
       today: time => `Today, ${time}`,

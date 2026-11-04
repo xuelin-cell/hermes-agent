@@ -26,11 +26,11 @@ import {
 } from '@/components/assistant-ui/thread/content'
 import { MESSAGE_PARTS_COMPONENTS } from '@/components/assistant-ui/thread/message-parts'
 import { ReactionPicker } from '@/components/assistant-ui/thread/message-reactions'
+import { ReplyMetadata } from '@/components/assistant-ui/thread/reply-metadata'
 import { ResponseMessageIds } from '@/components/assistant-ui/thread/response-group'
 import { ResponseProcessVisibility } from '@/components/assistant-ui/thread/response-process'
 import { ResponseLoadingIndicator, TurnActivityIndicator } from '@/components/assistant-ui/thread/status'
 import { MessageTimelineTimestamp } from '@/components/assistant-ui/thread/timeline-timestamp'
-import { TurnTokenUsage } from '@/components/assistant-ui/thread/turn-token-usage'
 import { useMessageReactions, useTapbackDoubleClick } from '@/components/assistant-ui/thread/use-message-reactions'
 import { AGENT_MESSAGE_RE } from '@/components/assistant-ui/thread/user-message'
 import { isApprovalActivity, isCurrentTurnMessage } from '@/components/assistant-ui/tool/approval-activity'
@@ -1017,7 +1017,7 @@ const AssistantActionBar: FC<MessageActionProps & { durationS?: number }> = ({
     <div className="relative flex w-full shrink-0 flex-wrap items-center justify-start gap-1.5">
       <ActionBarPrimitive.Root
         // Keep the row mounted while streaming so settling never shifts the transcript.
-        className="relative flex flex-row items-center justify-start gap-1.5 py-1.5"
+        className="relative flex flex-row items-center justify-start gap-1.5 py-[5px]"
         data-slot="aui_msg-actions"
       >
         {onBranchInNewChat && (
@@ -1032,9 +1032,15 @@ const AssistantActionBar: FC<MessageActionProps & { durationS?: number }> = ({
           </TooltipIconButton>
         )}
         <ConversationReplyShareButton messageId={messageId} />
-        <CopyButton appearance="icon" buttonSize="icon" label={copy.copy} text={getMessageText} />
+        <CopyButton appearance="icon" buttonSize="icon" label={copy.copy} side="top" text={getMessageText} />
         {fullResponseAvailable && (
-          <CopyButton appearance="icon" buttonSize="icon" label={copy.copyFullResponse} text={getFullResponseText} />
+          <CopyButton
+            appearance="icon"
+            buttonSize="icon"
+            label={copy.copyFullResponse}
+            side="top"
+            text={getFullResponseText}
+          />
         )}
         <ReadAloudButton
           fullResponseAvailable={fullResponseAvailable}
@@ -1083,7 +1089,7 @@ const AssistantActionBar: FC<MessageActionProps & { durationS?: number }> = ({
           </TooltipIconButton>
         </ReactionPicker>
       )}
-      <TurnTokenUsage />
+      <ReplyMetadata />
       {durationS !== undefined && responseIds.length === 0 && (
         <span
           className="select-none px-0.5 text-[0.6875rem] leading-5 tabular-nums text-muted-foreground"
@@ -1182,7 +1188,7 @@ const AssistantFooter: FC<MessageActionProps & { durationS?: number }> = ({ dura
     <div
       aria-hidden={hidden || undefined}
       className={cn(
-        'flex min-h-6 flex-col items-start gap-1 pr-(--message-text-indent) pl-(--message-text-indent)',
+        'mt-[6px] flex min-h-6 flex-col items-start gap-1 pr-(--message-text-indent) pl-(--message-text-indent)',
         hidden && 'invisible pointer-events-none'
       )}
       data-always-visible={(latestReply && !live && !messageRunning) || undefined}

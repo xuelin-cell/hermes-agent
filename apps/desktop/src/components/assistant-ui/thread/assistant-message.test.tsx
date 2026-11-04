@@ -11,12 +11,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { en } from '@/i18n/en'
 import type { ErrorCardCopy } from '@/i18n/types'
+import { formatFooterTime } from '@/lib/message-time'
 import { $displayTimestamps } from '@/store/display-timestamps'
 import { $selectedWorkspaceMode } from '@/store/workspace-category'
 
 import { stubThreadEnvironment } from '../test-utils'
 
-import { formatTimelineRange, formatTimelineTimestamp } from './timestamp'
+import { formatTimelineRange } from './timestamp'
 
 import { Thread } from '.'
 
@@ -458,7 +459,7 @@ describe('expired OAuth grant recovery', () => {
 })
 
 describe('message timeline timestamps', () => {
-  it('always renders precise user and assistant lifecycle times', async () => {
+  it('renders the user send time separately from precise assistant lifecycle times', async () => {
     const { container } = render(<Harness />)
 
     await screen.findByText('done')
@@ -469,7 +470,9 @@ describe('message timeline timestamps', () => {
 
     const startedAt = createdAt.getTime() / 1000
 
-    expect(stamps).toContain(formatTimelineTimestamp(startedAt))
+    expect(container.querySelector('[data-slot="aui_user-sent-time"]')?.textContent).toBe(
+      formatFooterTime(startedAt, 'en', 'Yesterday')
+    )
     expect(stamps).toContain(formatTimelineRange(startedAt, completedAt))
     expect(stamps).toContain(formatTimelineRange(startedAt + 0.05, startedAt + 0.1))
     expect(stamps).toContain(formatTimelineRange(startedAt + 0.125, startedAt + 0.5))

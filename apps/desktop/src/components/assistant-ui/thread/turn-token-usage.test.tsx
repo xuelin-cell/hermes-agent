@@ -4,6 +4,7 @@ import { afterEach, expect, it } from 'vitest'
 import { en } from '@/i18n/en'
 import { toChatMessages } from '@/lib/chat-messages'
 import { toRuntimeMessage } from '@/lib/chat-runtime'
+import { formatFooterTime } from '@/lib/message-time'
 import { formatTurnTokenCount } from '@/lib/turn-token-usage'
 
 import { stubThreadEnvironment, ThreadRuntime } from '../test-utils'
@@ -24,7 +25,16 @@ it('shows persisted turn tokens beside the existing actions and hides absent usa
 
   const messages = toChatMessages([
     { role: 'user', content: 'question', timestamp: 1 },
-    { role: 'assistant', content: 'done', timestamp: 2, display_metadata: { turn_token_usage: usage } }
+    {
+      role: 'assistant',
+      content: 'done',
+      timestamp: 2,
+      display_metadata: {
+        turn_completed_at: 2.75,
+        turn_token_usage: usage,
+        turn_model: { model: 'raw-response-model', provider: 'custom:endpoint', name: 'Custom Reply Model' }
+      }
+    }
   ]).map(toRuntimeMessage)
 
   const { container, unmount } = render(
@@ -41,11 +51,20 @@ it('shows persisted turn tokens beside the existing actions and hides absent usa
   const actions = badge.closest('[data-slot="aui_assistant-footer"]')?.querySelector('[data-slot="aui_msg-actions"]')
   expect(actions).not.toBeNull()
   expect(actions!.compareDocumentPosition(badge) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  const modelName = await screen.findByText('Custom Reply Model')
+  expect(modelName.getAttribute('data-slot')).toBe('aui_reply-model')
+  const completed = container.querySelector('[data-slot="aui_reply-completed"] time')!
+  expect(completed.getAttribute('datetime')).toBe(new Date(2750).toISOString())
+  expect(completed.textContent).toBe(formatFooterTime(2.75, 'en', 'Yesterday'))
+  const sent = container.querySelector('[data-slot="aui_user-sent-time"]')!
+  expect(sent.getAttribute('datetime')).toBe(new Date(1000).toISOString())
+  expect(sent.textContent).toBe(formatFooterTime(1, 'en', 'Yesterday'))
+  expect(badge.compareDocumentPosition(modelName) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   expect(await screen.findByRole('button', { name: 'Copy' })).toBeTruthy()
   unmount()
-  const older = toChatMessages([{ role: 'assistant', content: 'older reply' }]).map(toRuntimeMessage)
+  const older = toChatMessages([{ role: 'assistant', content: 'older reply', timestamp: 100 }]).map(toRuntimeMessage)
 
-  const { container: olderContainer } = render(
+  const { container: olderContainer, unmount: unmountOlder } = render(
     <ThreadRuntime messages={older}>
       <Thread />
     </ThreadRuntime>
@@ -53,6 +72,26 @@ it('shows persisted turn tokens beside the existing actions and hides absent usa
 
   await screen.findByText('older reply')
   expect(olderContainer.querySelector('[data-slot="aui_turn-token-usage"]')).toBeNull()
+  expect(olderContainer.querySelector('[data-slot="aui_reply-model"]')).toBeNull()
+  expect(olderContainer.querySelector('[data-slot="aui_reply-completed"]')).toBeNull()
+  unmountOlder()
+
+  const modelOnly = toChatMessages([
+    {
+      role: 'assistant',
+      content: 'reply without usage',
+      display_metadata: { turn_model: { model: 'deepseek-v4-flash' } }
+    }
+  ]).map(toRuntimeMessage)
+
+  const { container: modelOnlyContainer } = render(
+    <ThreadRuntime messages={modelOnly}>
+      <Thread />
+    </ThreadRuntime>
+  )
+
+  expect(await screen.findByText('DeepSeek V4 Flash')).toBeTruthy()
+  expect(modelOnlyContainer.querySelector('[data-slot="aui_turn-token-usage"]')).toBeNull()
 })
 
 it('uses the same K/M units and precision in Chinese and English', () => {

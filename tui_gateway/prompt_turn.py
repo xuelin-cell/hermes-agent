@@ -495,6 +495,8 @@ class _TurnRun:
     marker_key: str = ""
     receipt_attempted: bool = False
     turn_token_usage: dict | None = None
+    turn_model: dict | None = None
+    turn_completed_at: float | None = None
 
 
 def _adopt_out_of_band_turns(session: dict) -> None:
@@ -740,7 +742,11 @@ def _invoke_agent(
         from agent.notification_presentation import notification_turn, event_presentation_muted
         with notification_turn(agent, muted=event_presentation_muted("message.delta", sid), session_id=sid):
             st.result = agent.run_conversation(run_message, **st.run_kwargs)
+            if not isinstance(st.result, dict) or _result_status(st.result) == "complete":
+                st.turn_completed_at = time.time()
         st.turn_token_usage = turn_token_delta(usage_before, agent)
+        from tui_gateway.turn_reply_metadata import snapshot_turn_model
+        st.turn_model = snapshot_turn_model(st.result, agent)
     finally:
         # Stop AND join before anything emits: a tick surviving past message.complete would
         # roll the client's usage back to a stale snapshot (unbounded join: same worst case).
@@ -879,10 +885,14 @@ def _complete_turn_payload(session: dict, st: _TurnRun, status_note: str | None,
     payload = {"text": raw, "usage": _get_usage(agent), "status": status}
     if receipt := _persisted_turn_receipt(st, raw, status):
         payload["persisted_turn"] = receipt
-    if turn_usage := getattr(st, "turn_token_usage", None):
-        from tui_gateway.turn_token_usage import persist_turn_token_usage
-        payload["turn_token_usage"] = turn_usage
-        persist_turn_token_usage(agent, result.get("messages"), payload.get("persisted_turn"), turn_usage)
+    from tui_gateway.turn_reply_metadata import persist_turn_reply_metadata
+    reply_metadata = {key: value for key, value in (
+        ("turn_token_usage", getattr(st, "turn_token_usage", None)),
+        ("turn_model", getattr(st, "turn_model", None)),
+        ("turn_completed_at", getattr(st, "turn_completed_at", None) if status == "complete" else None)
+    ) if value is not None}
+    payload.update(reply_metadata)
+    persist_turn_reply_metadata(agent, result.get("messages"), payload.get("persisted_turn"), reply_metadata)
     if last_reasoning:
         payload["reasoning"] = last_reasoning
     if status_note:

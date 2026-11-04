@@ -1,4 +1,4 @@
-import type { ConnectionRequestPayload, ToolLabel, TurnTokenUsage } from '@hermes/shared'
+import type { ConnectionRequestPayload, ToolLabel, TurnReplyModel, TurnTokenUsage } from '@hermes/shared'
 
 import type { ToolResultMetadata } from '@/lib/tool-result-metadata'
 
@@ -638,6 +638,8 @@ export type TimelineDisplayMetadata =
   | { reactions: MessageReaction[] }
   | { tool_result_metadata: ToolResultMetadata }
   | { turn_token_usage: TurnTokenUsage }
+  | { turn_model: TurnReplyModel }
+  | { turn_completed_at: number }
 
 /** One emoji reaction on a message. One per author, iOS-Tapback style. */
 export interface MessageReaction {

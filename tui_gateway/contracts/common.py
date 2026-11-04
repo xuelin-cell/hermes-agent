@@ -16,6 +16,14 @@ class OpenModel(Result):
     model_config = Result.model_config | {"extra": "allow"}
 
 
+class TurnReplyModel(Result):
+    """The answering model and its configured display name, snapshotted before runtime restoration."""
+
+    model: str = Field(min_length=1)
+    provider: str = ""
+    name: str = ""
+
+
 class TurnTokenUsage(Result):
     """Provider-reported main-agent usage accumulated across one prompt turn; input includes cache."""
 
