@@ -10,7 +10,14 @@ param(
     # embedded blockmap lets electron-updater download updates differentially.
     # The default full NSIS package stays offline-installable but always updates
     # in full.
-    [switch]$WebInstaller
+    [switch]$WebInstaller,
+    # Release mode: requires signing configuration (Azure, UKey, or PFX).
+    # Without -Release, the build produces an unsigned installer (development only).
+    # Signing configuration is read from environment variables:
+    #   - Azure: AZURE_SIGN_ENDPOINT, AZURE_SIGN_ACCOUNT, AZURE_SIGN_PROFILE, AZURE_CLIENT_ID
+    #   - UKey: HERMES_UKEY_THUMBPRINT
+    #   - PFX: WIN_CSC_LINK or CSC_LINK (with optional WIN_CSC_KEY_PASSWORD)
+    [switch]$Release
 )
 
 function Select-PyPiIndex {
@@ -47,11 +54,27 @@ $builderCompression = if ($Compression -eq 'fast') { 'normal' } else { $Compress
 $innerCompressionLevel = @{ store = '0'; fast = '1'; normal = '5'; maximum = '9' }[$Compression]
 $previousConsoleEncoding = [Console]::OutputEncoding
 $previousEnvironment = @{}
+
+# Set signing mode based on -Release switch
+$env:HERMES_SIGNING_MODE = if ($Release) { 'release' } else { 'unsigned' }
+if ($Release) {
+    Write-Host "Release mode: signing required" -ForegroundColor Cyan
+    # Validate that signing configuration is present
+    $hasAzure = $env:AZURE_SIGN_ENDPOINT -and $env:AZURE_CLIENT_ID
+    $hasUKey = $env:HERMES_UKEY_THUMBPRINT
+    $hasPfx = $env:WIN_CSC_LINK -or $env:CSC_LINK
+    if (-not ($hasAzure -or $hasUKey -or $hasPfx)) {
+        throw "Release mode requires signing configuration. Set one of: AZURE_SIGN_* (Azure), HERMES_UKEY_THUMBPRINT (UKey), or WIN_CSC_LINK (PFX)."
+    }
+    $signingType = if ($hasAzure) { 'Azure' } elseif ($hasUKey) { 'UKey' } else { 'PFX' }
+    Write-Host "Signing method: $signingType" -ForegroundColor DarkGray
+}
 foreach ($name in @('TEMP', 'TMP', 'ELECTRON_BUILDER_CACHE', 'UV_CONCURRENT_INSTALLS',
                     'ELECTRON_BUILDER_COMPRESSION_LEVEL', 'HTTP_PROXY', 'HTTPS_PROXY',
                     'NO_PROXY', 'NODE_USE_ENV_PROXY', 'ELECTRON_GET_USE_PROXY',
                     'HERMES_WINDOWS_UPDATE', 'HERMES_WINDOWS_FORMAT',
-                    'UV_INDEX_URL', 'ELECTRON_MIRROR', 'PYTHONIOENCODING', 'PYTHONUTF8')) {
+                    'UV_INDEX_URL', 'ELECTRON_MIRROR', 'PYTHONIOENCODING', 'PYTHONUTF8',
+                    'HERMES_SIGNING_MODE')) {
     $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
 }
 $sourceRoot = $PSScriptRoot

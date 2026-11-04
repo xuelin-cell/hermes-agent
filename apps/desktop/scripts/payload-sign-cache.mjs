@@ -5,6 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { readSecurityDirectory } from './sanitize-pe-signatures.mjs'
+import { resolveSigningMode } from './resolve-windows-signer.mjs'
 
 const exec = promisify(execFile)
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex')
@@ -33,17 +34,20 @@ export function peContentHash(file) {
   return hash.digest('hex')
 }
 
-export async function verifySignedPayloads(files, publisher, signtool = '') {
+export async function verifySignedPayloads(files, publisher, signtool = '', thumbprint = '') {
   if (!files.length) return new Set()
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'verify-signatures-'))
   try {
     const manifest = path.join(temp, 'files.json')
     fs.writeFileSync(manifest, JSON.stringify(files.map(file => ({ path: file, publisher }))))
-    const { stdout } = await exec('powershell.exe', [
+    const psArgs = [
       '-NoProfile', '-NonInteractive', '-File',
       path.join(import.meta.dirname, 'verify-signed-payloads.ps1'), manifest,
-      ...(signtool ? ['-SignTool', signtool] : [])
-    ], { windowsHide: true, timeout: 600000, maxBuffer: 4 * 1024 * 1024 })
+    ]
+    if (signtool) psArgs.push('-SignTool', signtool)
+    if (thumbprint) psArgs.push('-Thumbprint', thumbprint)
+    const { stdout } = await exec('powershell.exe', psArgs,
+      { windowsHide: true, timeout: 600000, maxBuffer: 4 * 1024 * 1024 })
     const results = JSON.parse(stdout.replace(/^\uFEFF/, ''))
     if (!Array.isArray(results) || results.length !== files.length ||
         results.some((r, i) => r.path !== files[i] || typeof r.valid !== 'boolean')) {
@@ -56,16 +60,54 @@ export async function verifySignedPayloads(files, publisher, signtool = '') {
 }
 
 export function createPayloadSignCache({ root, env, signtool, dlib, timestampUrl, verify = verifySignedPayloads }) {
-  const publisher = env.AZURE_SIGN_PUBLISHER
-  if (!root || !publisher) return null
-  const policy = sha256(JSON.stringify({
-    schema: 1, endpoint: env.AZURE_SIGN_ENDPOINT, account: env.AZURE_SIGN_ACCOUNT,
-    profile: env.AZURE_SIGN_PROFILE, publisher, timestampUrl,
-    digest: 'SHA256', timestampDigest: 'SHA256',
-    signtool: sha256(fs.readFileSync(signtool)), dlib: sha256(fs.readFileSync(dlib))
-  }))
+  const mode = resolveSigningMode(env)
+
+  // Determine publisher/identifier based on signing mode
+  let publisher = null
+  let policyFields = { schema: 1, mode, digest: 'SHA256', timestampDigest: 'SHA256' }
+
+  if (mode === 'azure') {
+    publisher = env.AZURE_SIGN_PUBLISHER
+    if (!publisher) return null
+    policyFields = {
+      ...policyFields,
+      endpoint: env.AZURE_SIGN_ENDPOINT,
+      account: env.AZURE_SIGN_ACCOUNT,
+      profile: env.AZURE_SIGN_PROFILE,
+      publisher,
+      timestampUrl,
+      signtool: sha256(fs.readFileSync(signtool)),
+      dlib: dlib ? sha256(fs.readFileSync(dlib)) : null,
+    }
+  } else if (mode === 'ukey') {
+    publisher = env.HERMES_UKEY_THUMBPRINT
+    if (!publisher) return null
+    policyFields = {
+      ...policyFields,
+      thumbprint: publisher,
+      timestampUrl,
+      signtool: sha256(fs.readFileSync(signtool)),
+    }
+  } else if (mode === 'pfx') {
+    const pfxPath = env.WIN_CSC_LINK || env.CSC_LINK
+    if (!pfxPath) return null
+    publisher = pfxPath
+    policyFields = {
+      ...policyFields,
+      pfx: sha256(fs.readFileSync(pfxPath)),
+      timestampUrl,
+      signtool: sha256(fs.readFileSync(signtool)),
+    }
+  } else {
+    // No signing configured
+    return null
+  }
+
+  const policy = sha256(JSON.stringify(policyFields))
   const directory = path.join(root, policy)
   const entryPath = key => path.join(directory, key)
+  // For UKey mode, pass thumbprint for verification
+  const verifyThumbprint = mode === 'ukey' ? publisher : ''
   return {
     async prepare(files) {
       const groups = new Map()
@@ -92,7 +134,7 @@ export function createPayloadSignCache({ root, env, signtool, dlib, timestampUrl
           fs.rmSync(entry, { recursive: true, force: true })
         }
       }
-      const valid = await verify(candidates.map(c => c.binary), publisher, signtool)
+      const valid = await verify(candidates.map(c => c.binary), publisher, signtool, verifyThumbprint)
       let restored = 0
       for (const { group, binary } of candidates) {
         if (!valid.has(binary)) {
@@ -112,7 +154,7 @@ export function createPayloadSignCache({ root, env, signtool, dlib, timestampUrl
     },
     async publish(plan) {
       const files = plan.pending.map(g => g.files[0])
-      const valid = await verify(files, publisher, signtool)
+      const valid = await verify(files, publisher, signtool, verifyThumbprint)
       for (const group of plan.pending) {
         const file = group.files[0]
         if (!valid.has(file) || peContentHash(file) !== group.content) {

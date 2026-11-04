@@ -46,6 +46,7 @@ import { computeArchToTargetNamesMap } from 'app-builder-lib/internal'
 import { isMain } from './utils.mjs'
 import { createPayloadSignCache } from './payload-sign-cache.mjs'
 import { ensureWindowsBundleTools } from './windows-bundle-tools.mjs'
+import { resolveSigningMode, resolveSigner, buildSignArgs } from './resolve-windows-signer.mjs'
 
 /** @typedef {(cmd: string, args: string[], options?: import('node:child_process').ExecFileOptions) => unknown} SignExecutor */
 
@@ -59,6 +60,17 @@ export const DEFAULT_CONCURRENCY = 4
 // fails with "Invalid Time Stamp Request Length:-1" (documented widely);
 // digicert's RFC3161 endpoint has been reliable in the release pipeline.
 const TIMESTAMP_URL = 'http://timestamp.digicert.com'
+// Multiple timestamp servers for failover. UKey/local signing benefits from
+// trying several servers when one is flaky.
+const TIMESTAMP_SERVERS = [
+  'http://timestamp.digicert.com',
+  'http://timestamp.sectigo.com',
+  'http://timestamp.globalsign.com/tsa/r6advanced1',
+  'http://tsa.starfieldtech.com',
+]
+// Maximum command line length for signtool batch (CreateProcess limit ~32K).
+// Leave headroom for the signtool path and other args.
+const MAX_CMDLINE_CHARS = 28000
 
 /**
  * execFile as a promise, so chunks can run concurrently.
@@ -175,23 +187,77 @@ export function azureSigningConfigured(env = process.env) {
 }
 
 /**
+ * Determine signing mode from environment.
+ * @param {NodeJS.ProcessEnv} [env=process.env]
+ * @returns {'azure' | 'ukey' | 'pfx' | 'none'}
+ */
+export function signingMode(env = process.env) {
+  return resolveSigningMode(env)
+}
+
+/**
+ * Chunk files by character budget instead of fixed count.
+ * UKey signing prompts per invocation, so minimizing chunks = minimizing PIN prompts.
+ * @param {string[]} files
+ * @param {number} [maxChars=MAX_CMDLINE_CHARS]
+ * @returns {string[][]}
+ */
+export function chunkByCharBudget(files, maxChars = MAX_CMDLINE_CHARS) {
+  const chunks = []
+  let current = []
+  let currentLen = 0
+  for (const file of files) {
+    const fileLen = file.length + 3 // quotes + space
+    if (currentLen + fileLen > maxChars && current.length > 0) {
+      chunks.push(current)
+      current = []
+      currentLen = 0
+    }
+    current.push(file)
+    currentLen += fileLen
+  }
+  if (current.length > 0) chunks.push(current)
+  return chunks
+}
+
+/**
  * Sign one chunk of binaries with a single signtool invocation (argv array,
  * never a shell string — the joined list can be long and must not interpolate
- * through a shell). Azure-only: NO timestamp here (see timestampChunk — the
- * sign pass would otherwise hold each file hostage to the flaky timestamp
- * server, and a timestamp failure would force a full re-sign).
+ * through a shell).
+ *
+ * For Azure: NO timestamp here (see timestampChunk — the sign pass would
+ * otherwise hold each file hostage to the flaky timestamp server).
+ * For local cert (UKey/PFX): timestamp is included in the same pass.
  *
  * @param {string[]} files
- * @param {{ signtool: string, dlib: string, metadataPath: string, exec?: SignExecutor, execOptions?: import('node:child_process').ExecFileOptions }} opts
+ * @param {{ signtool: string, mode: 'azure' | 'ukey' | 'pfx', dlib?: string, metadataPath?: string, certificate?: import('./resolve-windows-signer.mjs').CertificateConfig, timestampUrl?: string, description?: string, descriptionUrl?: string, exec?: SignExecutor, execOptions?: import('node:child_process').ExecFileOptions }} opts
  */
 export async function signChunk(files, opts) {
-  const args = [
-    'sign',
-    '/fd', 'SHA256',
-    '/dlib', opts.dlib,
-    '/dmdf', opts.metadataPath,
-    ...files
-  ]
+  let args
+
+  if (opts.mode === 'azure') {
+    // Azure Trusted Signing path
+    args = [
+      'sign',
+      '/fd', 'SHA256',
+      '/dlib', opts.dlib,
+      '/dmdf', opts.metadataPath,
+      ...files
+    ]
+  } else {
+    // Local certificate path (UKey or PFX)
+    const signer = {
+      mode: opts.mode,
+      signtool: opts.signtool,
+      certificate: opts.certificate,
+    }
+    args = buildSignArgs(signer, files, {
+      timestampUrl: opts.timestampUrl ?? TIMESTAMP_URL,
+      description: opts.description,
+      descriptionUrl: opts.descriptionUrl,
+    })
+  }
+
   if (opts.exec) {
     await opts.exec(opts.signtool, args, opts.execOptions)
     return
@@ -203,100 +269,180 @@ export async function signChunk(files, opts) {
  * RFC3161-timestamp one chunk of ALREADY-SIGNED files. No /dlib, no /dmdf —
  * this is pure timestamping, so it neither re-auths against Azure nor
  * re-initializes the .NET dlib. The timestamp server is the flaky external
- * dependency, so this pass retries per chunk (a retried timestamp beats a
- * whole re-sign) and runs concurrently like the sign pass.
+ * dependency, so this pass retries per chunk with failover across multiple
+ * servers (a retried timestamp beats a whole re-sign) and runs concurrently
+ * like the sign pass.
  *
  * @param {string[]} files
- * @param {{ signtool: string, timestampUrl?: string, exec?: SignExecutor, execOptions?: import('node:child_process').ExecFileOptions, timestampAttempts?: number, timestampRetryDelayMs?: number }} opts
+ * @param {{ signtool: string, timestampUrl?: string, timestampServers?: string[], exec?: SignExecutor, execOptions?: import('node:child_process').ExecFileOptions, timestampAttempts?: number, timestampRetryDelayMs?: number }} opts
  */
 export async function timestampChunk(files, opts) {
-  const args = [
-    'timestamp',
-    '/tr', opts.timestampUrl ?? TIMESTAMP_URL,
-    '/td', 'SHA256',
-    ...files
-  ]
-  const run = async () => {
-    if (opts.exec) {
-      await opts.exec(opts.signtool, args, opts.execOptions)
-      return
+  const servers = opts.timestampServers ?? (opts.timestampUrl ? [opts.timestampUrl] : TIMESTAMP_SERVERS)
+  let lastError
+
+  for (const server of servers) {
+    const args = [
+      'timestamp',
+      '/tr', server,
+      '/td', 'SHA256',
+      ...files
+    ]
+    const run = async () => {
+      if (opts.exec) {
+        await opts.exec(opts.signtool, args, opts.execOptions)
+        return
+      }
+      await execFileAsync(opts.signtool, args, opts.execOptions ?? { stdio: 'inherit' })
     }
-    await execFileAsync(opts.signtool, args, opts.execOptions ?? { stdio: 'inherit' })
+    try {
+      await withRetry(run, {
+        attempts: opts.timestampAttempts,
+        baseDelayMs: opts.timestampRetryDelayMs
+      })
+      return // Success, no need to try other servers
+    } catch (error) {
+      lastError = error
+      console.warn(`[batch-sign] timestamp server ${server} failed, trying next...`)
+    }
   }
-  await withRetry(run, {
-    attempts: opts.timestampAttempts,
-    baseDelayMs: opts.timestampRetryDelayMs
-  })
+
+  throw lastError ?? new Error('All timestamp servers failed')
 }
 
 /**
  * Batch-sign every binary under a tree.
  *
- * Two passes: (1) Azure Authenticode sign — concurrent signtool children,
- * no timestamp; (2) RFC3161 timestamp — concurrent, no Azure/dlib, retried
- * per chunk. A verified content cache removes unchanged inputs from both
- * passes. Identical cacheable inputs share one signing operation.
+ * For Azure: Two passes: (1) Azure Authenticode sign — concurrent signtool
+ * children, no timestamp; (2) RFC3161 timestamp — concurrent, no Azure/dlib,
+ * retried. A verified content cache removes unchanged inputs from both passes.
+ *
+ * For local cert (UKey/PFX): Single pass with timestamp included. UKey mode
+ * forces concurrency=1 (hardware token can't sign in parallel) and uses
+ * character-budget chunking to minimize PIN prompts.
  *
  * @param {string[]} binaries file list from getBinaries
- * @param {{ env?: NodeJS.ProcessEnv, exec?: SignExecutor, chunkSize?: number, concurrency?: number, mkdtemp?: typeof fs.mkdtempSync, signtool?: string, dlib?: string, dotnetRoot?: string, config?: import('app-builder-lib').Configuration, resourcesDir?: string, timestampUrl?: string, timestampAttempts?: number, timestampRetryDelayMs?: number, cache?: ReturnType<typeof createPayloadSignCache> }} [opts]
- * @returns {Promise<{ signed: number, chunks: number, skipped: boolean }>}
- *   skipped=true when Azure signing is not configured (caller warns).
+ * @param {{ env?: NodeJS.ProcessEnv, exec?: SignExecutor, chunkSize?: number, concurrency?: number, mkdtemp?: typeof fs.mkdtempSync, signtool?: string, dlib?: string, dotnetRoot?: string, config?: import('app-builder-lib').Configuration, resourcesDir?: string, timestampUrl?: string, timestampServers?: string[], timestampAttempts?: number, timestampRetryDelayMs?: number, cache?: ReturnType<typeof createPayloadSignCache>, description?: string, descriptionUrl?: string }} [opts]
+ * @returns {Promise<{ signed: number, chunks: number, skipped: boolean, mode: string }>}
+ *   skipped=true when signing is not configured (caller warns).
  */
 export async function batchSignBinaries(binaries, opts = {}) {
   const env = opts.env ?? process.env
-  if (!azureSigningConfigured(env)) {
-    return { signed: 0, chunks: 0, skipped: true }
+  const mode = signingMode(env)
+
+  if (mode === 'none') {
+    return { signed: 0, chunks: 0, skipped: true, mode }
   }
+
   if (binaries.length === 0) {
-    return { signed: 0, chunks: 0, skipped: false }
+    return { signed: 0, chunks: 0, skipped: false, mode }
   }
+
+  // Resolve signer configuration for local cert modes
+  let signer = null
+  if (mode === 'ukey' || mode === 'pfx') {
+    signer = await resolveSigner({ signing: true, env })
+  }
+
   // afterPack runs before the per-file Azure signer downloads its tools.
-  const { signtool, dlib, dotnetRoot } = opts.signtool && opts.dlib
-    ? opts
-    : await ensureWindowsBundleTools({ signing: true, config: opts.config, resourcesDir: opts.resourcesDir })
+  // For Azure, we need dlib; for local cert, we only need signtool.
+  const needsDlib = mode === 'azure'
+  let signtool, dlib = null, dotnetRoot = null
+
+  if (opts.signtool) {
+    signtool = opts.signtool
+    dlib = opts.dlib
+    dotnetRoot = opts.dotnetRoot
+  } else {
+    const tools = await ensureWindowsBundleTools({
+      signing: needsDlib,
+      config: opts.config,
+      resourcesDir: opts.resourcesDir
+    })
+    signtool = tools.signtool
+    dlib = tools.dlib
+    dotnetRoot = tools.dotnetRoot
+  }
+
   const started = performance.now()
-  const cache = opts.cache === undefined ? createPayloadSignCache({
+
+  // Cache is only used for Azure mode (local cert signing is fast enough)
+  const cache = mode === 'azure' && opts.cache === undefined ? createPayloadSignCache({
     root: env.ELECTRON_BUILDER_CACHE ? `${env.ELECTRON_BUILDER_CACHE}-payload-signatures` : null,
     env, signtool, dlib, timestampUrl: opts.timestampUrl ?? TIMESTAMP_URL
   }) : opts.cache
+
   const plan = cache ? await cache.prepare(binaries) : null
   const toSign = plan?.files ?? binaries
-  console.log(`[batch-sign] ${plan?.restored ?? 0} cache hits, ${toSign.length} to sign, ${plan?.duplicates ?? 0} duplicate copies`)
-  // Ijwhost.dll needs the runtime paired with the provisioned ATS dlib.
+  console.log(`[batch-sign] mode=${mode}, ${plan?.restored ?? 0} cache hits, ${toSign.length} to sign, ${plan?.duplicates ?? 0} duplicate copies`)
+
+  // Build environment for signtool
   const signEnv = { ...env }
   if (dotnetRoot) signEnv.DOTNET_ROOT = dotnetRoot
-  const mkdtemp = opts.mkdtemp ?? fs.mkdtempSync
-  const tmpDir = mkdtemp(path.join(env.TEMP || env.TMP || '.', 'batch-sign-'))
-  const metadataPath = path.join(tmpDir, 'batch-sign.json')
-  fs.writeFileSync(metadataPath, JSON.stringify({
-    Endpoint: env.AZURE_SIGN_ENDPOINT,
-    CodeSigningAccountName: env.AZURE_SIGN_ACCOUNT,
-    CertificateProfileName: env.AZURE_SIGN_PROFILE
-  }))
-  const concurrency = opts.concurrency ?? DEFAULT_CONCURRENCY
-  const batches = chunk(toSign, opts.chunkSize ?? CHUNK_SIZE)
+
+  // For Azure mode, create metadata file
+  let tmpDir = null
+  let metadataPath = null
+  if (mode === 'azure') {
+    const mkdtemp = opts.mkdtemp ?? fs.mkdtempSync
+    tmpDir = mkdtemp(path.join(env.TEMP || env.TMP || '.', 'batch-sign-'))
+    metadataPath = path.join(tmpDir, 'batch-sign.json')
+    fs.writeFileSync(metadataPath, JSON.stringify({
+      Endpoint: env.AZURE_SIGN_ENDPOINT,
+      CodeSigningAccountName: env.AZURE_SIGN_ACCOUNT,
+      CertificateProfileName: env.AZURE_SIGN_PROFILE
+    }))
+  }
+
+  // Determine concurrency and chunking strategy
+  // UKey: serial (hardware token can't parallelize), character-budget chunks
+  // Azure/PFX: concurrent, fixed-size chunks
+  const isUKey = mode === 'ukey'
+  const concurrency = isUKey ? 1 : (opts.concurrency ?? DEFAULT_CONCURRENCY)
+  const batches = isUKey
+    ? chunkByCharBudget(toSign)
+    : chunk(toSign, opts.chunkSize ?? CHUNK_SIZE)
+
   const execOptions = { stdio: 'inherit', env: signEnv }
+
   try {
-    // Pass 1: Azure Authenticode sign — concurrent, no timestamp.
-    await runPool(batches, concurrency, (batch) =>
-      signChunk(batch, { signtool, dlib, metadataPath, exec: opts.exec, execOptions })
-    )
-    // Pass 2: RFC3161 timestamp — concurrent, no Azure/dlib, retried.
-    await runPool(batches, concurrency, (batch) =>
-      timestampChunk(batch, {
-        signtool,
-        timestampUrl: opts.timestampUrl,
-        exec: opts.exec,
-        execOptions,
-        timestampAttempts: opts.timestampAttempts,
-        timestampRetryDelayMs: opts.timestampRetryDelayMs
-      })
-    )
+    if (mode === 'azure') {
+      // Pass 1: Azure Authenticode sign — concurrent, no timestamp.
+      await runPool(batches, concurrency, (batch) =>
+        signChunk(batch, { signtool, mode, dlib, metadataPath, exec: opts.exec, execOptions })
+      )
+      // Pass 2: RFC3161 timestamp — concurrent, no Azure/dlib, retried with failover.
+      await runPool(batches, concurrency, (batch) =>
+        timestampChunk(batch, {
+          signtool,
+          timestampUrl: opts.timestampUrl,
+          timestampServers: opts.timestampServers,
+          exec: opts.exec,
+          execOptions,
+          timestampAttempts: opts.timestampAttempts,
+          timestampRetryDelayMs: opts.timestampRetryDelayMs
+        })
+      )
+    } else {
+      // Local cert (UKey/PFX): single pass with timestamp included
+      await runPool(batches, concurrency, (batch) =>
+        signChunk(batch, {
+          signtool,
+          mode,
+          certificate: signer?.certificate,
+          timestampUrl: opts.timestampUrl,
+          description: opts.description,
+          descriptionUrl: opts.descriptionUrl,
+          exec: opts.exec,
+          execOptions
+        })
+      )
+    }
+
     if (cache) await cache.publish(plan)
     console.log(`[batch-sign] completed in ${((performance.now() - started) / 1000).toFixed(1)}s`)
-    return { signed: toSign.length, chunks: batches.length, skipped: false }
+    return { signed: toSign.length, chunks: batches.length, skipped: false, mode }
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true })
+    if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true })
   }
 }
 
@@ -311,13 +457,16 @@ export async function batchSignBinaries(binaries, opts = {}) {
  */
 export async function batchSignAppTree(appOutDir, productExePath, opts = {}) {
   const env = opts.env ?? process.env
-  if (!azureSigningConfigured(env)) {
+  const mode = signingMode(env)
+
+  if (mode === 'none') {
     console.warn(
-      '[batch-sign] AZURE_SIGN_* not set — payload binaries will be UNSIGNED ' +
-      '(package block-map still covers them; release lanes must set the signing env)'
+      '[batch-sign] No signing configured — payload binaries will be UNSIGNED ' +
+      '(package block-map still covers them; release lanes must set HERMES_SIGNING_MODE=release)'
     )
-    return { signed: 0, chunks: 0, skipped: true }
+    return { signed: 0, chunks: 0, skipped: true, mode }
   }
+
   const productExe = productExePath ? path.resolve(productExePath) : null
   // uv-cache/ is the pm bundle's deliberately-shipped build cache (inert
   // sdist/archive artifacts, never loaded at runtime — the arch audit
@@ -329,10 +478,10 @@ export async function batchSignAppTree(appOutDir, productExePath, opts = {}) {
     skip: (file) =>
       inCache(file) || (productExe ? path.resolve(file) === productExe : false)
   })
-  if (binaries.length === 0) return { signed: 0, chunks: 0, skipped: false }
+  if (binaries.length === 0) return { signed: 0, chunks: 0, skipped: false, mode }
   const result = await batchSignBinaries(binaries, opts)
   console.log(
-    `[batch-sign] signed ${result.signed} payload binaries in ${result.chunks} signtool batch(es)` +
+    `[batch-sign] signed ${result.signed} payload binaries in ${result.chunks} signtool batch(es) (mode=${result.mode})` +
     ` (product exe excluded — signed per-file after rcedit)`
   )
   return result
@@ -350,6 +499,7 @@ export async function batchSignAppTree(appOutDir, productExePath, opts = {}) {
 
 const SIGNABLE_PACKAGE_EXTENSIONS = ['.msix', '.msixbundle']
 const STORE_ARTIFACT_PREFIX = 'Store-'
+const NSIS_UNINSTALLER_PREFIX = '__uninstaller-nsis-'
 
 /**
  * Match the paths WinPackager.signApp signs after editing the root executable.
@@ -378,6 +528,54 @@ function isProductExe(file, packager) {
 }
 
 /**
+ * Check if a file is an NSIS uninstaller (must be signed immediately, not deferred).
+ * @param {string} file
+ * @returns {boolean}
+ */
+function isNsisUninstaller(file) {
+  return path.basename(file).toLowerCase().startsWith(NSIS_UNINSTALLER_PREFIX)
+}
+
+/**
+ * Check if a file is the NSIS installer (must be signed immediately).
+ * @param {string} file
+ * @param {import('app-builder-lib').WinPackager} packager
+ * @returns {boolean}
+ */
+function isNsisInstaller(file, packager) {
+  const base = path.basename(file).toLowerCase()
+  // Installer is typically <productName>-<version>.exe in the dist directory
+  // or matches the artifactName pattern
+  const artifactName = packager.expandMacro(packager.config.artifactName || '${productName} Setup ${version}.${ext}')
+  const expectedInstaller = artifactName.toLowerCase().replace(/\$\{[^}]+\}/g, (match) => {
+    if (match.includes('productName')) return packager.appInfo.productFilename.toLowerCase()
+    if (match.includes('version')) return packager.appInfo.version.toLowerCase()
+    if (match.includes('ext')) return 'exe'
+    return match
+  })
+  return base === expectedInstaller || base.endsWith('-win-x64.exe') || base.endsWith('-win.exe')
+}
+
+/**
+ * Sign a single file with local certificate (UKey/PFX).
+ * Used for installer, uninstaller, and product exe which can't go through batch.
+ * @param {string} file
+ * @param {import('./resolve-windows-signer.mjs').SignerConfig} signer
+ * @param {object} [opts]
+ * @param {string} [opts.timestampUrl]
+ * @param {string} [opts.description]
+ * @param {string} [opts.descriptionUrl]
+ */
+async function signSingleFile(file, signer, opts = {}) {
+  const args = buildSignArgs(signer, [file], {
+    timestampUrl: opts.timestampUrl ?? TIMESTAMP_URL,
+    description: opts.description,
+    descriptionUrl: opts.descriptionUrl,
+  })
+  await execFileAsync(signer.signtool, args, { stdio: 'inherit' })
+}
+
+/**
  * The electron-builder custom win.sign hook.
  *
  * @param {{ path: string }} configuration
@@ -389,22 +587,70 @@ function isProductExe(file, packager) {
 export async function customSign(configuration, packager, deps = {}) {
   const file = configuration.path
   const base = path.basename(file)
+  const env = process.env
+  const mode = signingMode(env)
+
   // Store-submission packages are Partner Center's to sign (see sign-msix.mjs).
   if (base.startsWith(STORE_ARTIFACT_PREFIX)) return true
+
   const lower = file.toLowerCase()
   if (SIGNABLE_PACKAGE_EXTENSIONS.some(ext => lower.endsWith(ext))) {
-    const { default: signMsix } = await import('./sign-msix.mjs')
-    await (deps.signMsix ?? signMsix)(configuration, packager)
+    // MSIX signing only works with Azure currently
+    if (mode === 'azure') {
+      const { default: signMsix } = await import('./sign-msix.mjs')
+      await (deps.signMsix ?? signMsix)(configuration, packager)
+    } else if (mode !== 'none') {
+      console.warn(`[customSign] MSIX signing not supported in ${mode} mode, skipping: ${file}`)
+    }
     return true
   }
+
   // The product exe was rcedit-ed after the batch ran, so it is signed here,
-  // after its resources are final, on the same Azure manager sign-msix uses.
+  // after its resources are final.
   const productName = packager.appInfo.productFilename
   if (base.toLowerCase() === `${productName.toLowerCase()}.exe` && isProductExe(file, packager)) {
-    const { azureSignFile } = await import('./sign-msix.mjs')
-    await (deps.azureSignFile ?? azureSignFile)(file, packager)
+    if (mode === 'azure') {
+      const { azureSignFile } = await import('./sign-msix.mjs')
+      await (deps.azureSignFile ?? azureSignFile)(file, packager)
+    } else if (mode === 'ukey' || mode === 'pfx') {
+      // Local cert: sign immediately with the resolved signer
+      const signer = await resolveSigner({ signing: true, env })
+      await signSingleFile(file, signer, {
+        description: productName,
+        descriptionUrl: env.HERMES_PRODUCT_URL,
+      })
+    }
     return true
   }
+
+  // NSIS uninstaller: must be signed immediately (it gets deleted after this hook)
+  if (isNsisUninstaller(file)) {
+    if (mode === 'ukey' || mode === 'pfx') {
+      const signer = await resolveSigner({ signing: true, env })
+      await signSingleFile(file, signer)
+    } else if (mode === 'azure') {
+      // Azure mode: use the same per-file signing as product exe
+      const { azureSignFile } = await import('./sign-msix.mjs')
+      await (deps.azureSignFile ?? azureSignFile)(file, packager)
+    }
+    return true
+  }
+
+  // NSIS installer: must be signed immediately (otherwise blockmap/feed yml become stale)
+  if (isNsisInstaller(file, packager)) {
+    if (mode === 'ukey' || mode === 'pfx') {
+      const signer = await resolveSigner({ signing: true, env })
+      await signSingleFile(file, signer, {
+        description: productName,
+        descriptionUrl: env.HERMES_PRODUCT_URL,
+      })
+    } else if (mode === 'azure') {
+      const { azureSignFile } = await import('./sign-msix.mjs')
+      await (deps.azureSignFile ?? azureSignFile)(file, packager)
+    }
+    return true
+  }
+
   // Payload copies arrive before afterPack; defer them to its sanitized batch.
   // Calls after afterPack are no-ops for binaries that batch already signed.
   return true

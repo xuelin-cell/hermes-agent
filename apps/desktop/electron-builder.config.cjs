@@ -327,7 +327,7 @@ if (channelRequest) {
 // NOT here at require time, so importing this config for typecheck/tests
 // never writes to the filesystem.
 
-// Azure Trusted Signing. The hook signs the .msix package itself and the
+// Windows code signing. The hook signs the .msix package itself and the
 // product exe (after electron-builder's rcedit — the batch in afterPack runs
 // too early for the exe); every other payload binary is batch-signed in
 // afterPack via scripts/batch-sign-binaries.mjs, which this hook acknowledges
@@ -335,17 +335,65 @@ if (channelRequest) {
 // signature is all Windows install validation checks; inner Authenticode
 // covers SmartScreen/WDAC tree scans. See batch-sign-binaries.mjs for the
 // ordering contract.
+//
+// Signing modes (in priority order):
+// 1. Azure Trusted Signing: AZURE_SIGN_ENDPOINT + AZURE_CLIENT_ID
+// 2. UKey hardware token: HERMES_UKEY_THUMBPRINT
+// 3. PFX file: WIN_CSC_LINK or CSC_LINK
+// 4. None: unsigned build (development only)
+//
+// HERMES_SIGNING_MODE=release requires one of the above to be configured;
+// without it, the build fails early rather than producing an unsigned installer.
 
 function windowsSigning() {
-  if (!process.env.AZURE_SIGN_ENDPOINT || !process.env.AZURE_CLIENT_ID) {
-    return {}
-  }
-  return {
-    sign: {
-      type: 'signtool',
-      sign: './scripts/batch-sign-binaries.mjs',
-      signingHashAlgorithms: ['sha256'],
-      publisherName: process.env.AZURE_SIGN_PUBLISHER
+  const mode = process.env.HERMES_SIGNING_MODE
+  const isRelease = mode === 'release'
+
+  // Azure Trusted Signing
+  if (process.env.AZURE_SIGN_ENDPOINT && process.env.AZURE_CLIENT_ID) {
+    return {
+      sign: {
+        type: 'signtool',
+        sign: './scripts/batch-sign-binaries.mjs',
+        signingHashAlgorithms: ['sha256'],
+        publisherName: process.env.AZURE_SIGN_PUBLISHER
+      }
     }
   }
+
+  // UKey hardware token signing
+  if (process.env.HERMES_UKEY_THUMBPRINT) {
+    return {
+      sign: {
+        type: 'signtool',
+        sign: './scripts/batch-sign-binaries.mjs',
+        signingHashAlgorithms: ['sha256'],
+        // certificateSha1 is read by app-builder-lib's getSigntoolFamilyConfig
+        certificateSha1: process.env.HERMES_UKEY_THUMBPRINT.replace(/\s+/g, '').toUpperCase()
+      }
+    }
+  }
+
+  // PFX file signing
+  const pfxPath = process.env.WIN_CSC_LINK || process.env.CSC_LINK
+  if (pfxPath) {
+    return {
+      sign: {
+        type: 'signtool',
+        sign: './scripts/batch-sign-binaries.mjs',
+        signingHashAlgorithms: ['sha256'],
+        // certificateFile/password are read from WIN_CSC_LINK/CSC_LINK env by app-builder-lib
+      }
+    }
+  }
+
+  // No signing configured
+  if (isRelease) {
+    throw new Error(
+      'HERMES_SIGNING_MODE=release requires signing configuration: ' +
+      'set AZURE_SIGN_* for Azure, HERMES_UKEY_THUMBPRINT for UKey, or WIN_CSC_LINK for PFX'
+    )
+  }
+
+  return {}
 }
