@@ -629,10 +629,13 @@ class TenantManager:
         limits: dict[str, int] | None = None,
         persona: str | None = None,
         tracing_lines: list[str] | None = None,
+        skills: dict | None = None,
     ) -> list[dict]:
         """渲染引导接口要的种子文件。
 
         ``persona`` 只有平台的运行环境才给（平台策略的 agentProfile）：人设归平台管，每次都覆盖。
+        ``skills`` 是入口库里记的技能开关，只有引导才给：恢复回来的归档可能比库旧，靠 patch-model
+        那条按库里的写回（老转发器不认识这个键，会原样忽略）。重新加载不用给，实例里已经是最新的。
 
         与 Docker 那边 ``_render_seed`` 的两点差异：
 
@@ -647,6 +650,8 @@ class TenantManager:
         if tracing_lines:
             rendered[".env"] += ("\n".join(tracing_lines) + "\n").encode("utf-8")
         patch = self._config_patch_spec(endpoint, catalog, limits, api_key=api_key or "")
+        if skills:
+            patch["skills"] = skills
         return [
             {
                 "path": "config.yaml",
@@ -907,7 +912,8 @@ class TenantManager:
             files=self._cube_seed_files(
                 context.api_key, context.endpoint, context.catalog, getattr(context, "limits", None),
                 persona=self._persona_of(context),
-                tracing_lines=await credential_lines(self.s, self.store, user_id)),
+                tracing_lines=await credential_lines(self.s, self.store, user_id),
+                skills=(await self.store.get_profile_settings(user_id)).get("skills")),
             ready_timeout_s=self.s.ready_timeout_s,
             state=self._state_block(sandbox_id, epoch, restore_from),
             # 平台的运行环境才另开 API 服务；成员实例的引导请求不变

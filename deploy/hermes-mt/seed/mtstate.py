@@ -916,6 +916,25 @@ def _model_entry(name: str, limits: dict) -> dict:
     return {"context_length": int(value)} if isinstance(value, int) and not isinstance(value, bool) and value > 0 else {}
 
 
+def _apply_skill_overrides(cfg, overrides: dict) -> bool:
+    """用户在云端点过的技能开关（入口库里记的 {技能名: 开没开}），盖到恢复回来的 skills.disabled 上。
+
+    开关存在入口库里、不再为它归档实例；归档里那份可能是旧的，所以每次引导以库里为准。
+    没点过的技能不碰。返回有没有改动。"""
+    want = {str(name): enabled for name, enabled in overrides.items() if isinstance(enabled, bool) and str(name).strip()}
+    if not want:
+        return False
+    node = cfg.get("skills")
+    current = node.get("disabled") if isinstance(node, dict) else None
+    disabled = [str(n) for n in current] if isinstance(current, list) else []
+    merged = [n for n in disabled if want.get(n) is not True]
+    merged += sorted(n for n, enabled in want.items() if not enabled and n not in merged)
+    if merged == disabled:
+        return False
+    _section(cfg, "skills")["disabled"] = merged
+    return True
+
+
 def apply_platform_block(cfg, spec: dict) -> bool:
     """把入口下发的平台块写进解析后的配置。返回有没有改动。
 
@@ -923,7 +942,8 @@ def apply_platform_block(cfg, spec: dict) -> bool:
     和每个模型的上下文长度），平台策略（policy，如关在线模型目录、关临时装包），平台内置的 MCP 服务
     （mcp_servers，入口没给这一项就不碰），以及企业模式要加载的插件（plugins，只往 plugins.enabled 里加）。
     用户归用户：model.default 保留他自己选的，只要在套餐清单里；推理强度预设只补他没设过的模型；
-    内置 MCP 那一条里用户停用了就保留停用；别的段一概不碰。
+    内置 MCP 那一条里用户停用了就保留停用；用户在云端点过的技能开关（skills，入口库里那份）按库里的写回；
+    别的段一概不碰。
     """
     key = str(spec.get("provider_key", "")).strip()
     base_url = str(spec.get("base_url", "")).strip()
@@ -991,7 +1011,8 @@ def apply_platform_block(cfg, spec: dict) -> bool:
     plugins = spec.get("plugins") if isinstance(spec.get("plugins"), dict) else {}
     if isinstance(plugins.get("enable"), list):
         enable_plugins(cfg, plugins["enable"])
-    return _platform_snapshot(cfg, key, policy) != before
+    skills = _apply_skill_overrides(cfg, spec["skills"]) if isinstance(spec.get("skills"), dict) else False
+    return _platform_snapshot(cfg, key, policy) != before or skills
 
 
 def patch_config_text(text: str, spec: dict) -> tuple[str, list[str]]:

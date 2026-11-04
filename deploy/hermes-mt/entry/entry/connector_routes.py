@@ -62,7 +62,9 @@ class ConnectorRoutes:
                 if not isinstance(values, dict) or set(values) != fields or any(not isinstance(value, str) or not value.strip() or len(value) > 16384 for value in values.values()):
                     raise ValueError()
                 data['origin'] = callback_base(self.entry, request, data['id'])
-            result = await self.execute(session, data)
+            # Starting OAuth only records a pending grant; the callback's oauth.complete is the
+            # change worth persisting, so the provider page opens without a full state archive.
+            result = await self.execute(session, data, persist=(lambda result: False) if operation == 'authorize' else None)
             payload = {'connectors': public_rows(result.get('connectors'), specs)}
             if operation == 'authorize':
                 payload['authorizationUrl'] = result['authorizationUrl']

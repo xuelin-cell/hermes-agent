@@ -704,3 +704,15 @@ def test_activity_combines_both(tmp_path: Path) -> None:
     assert mtstate.activity(tmp_path, now=_NOW)['kits_running'] == 1
     marker.unlink()
     assert mtstate.activity(tmp_path, now=_NOW)['kits_running'] == 0
+
+
+def test_bootstrap_replays_entry_skill_toggles_over_an_older_restored_config() -> None:
+    """技能开关只记在入口库、不再为它归档：恢复回来的 config.yaml 可能比库旧，引导时以库为准。"""
+    restored = "skills:\n  disabled:\n  - old-off\n  - user-off\n"
+    toggles = {"old-off": True, "new-off": False}
+    text, notes = mtstate.patch_config_text(restored, {"skills": toggles})
+    assert notes
+    load = mtstate._yaml_io()[0]
+    assert sorted(load(text)["skills"]["disabled"]) == ["new-off", "user-off"]
+    # 已经一致的再引导一次不算改动，不重写文件
+    assert mtstate.patch_config_text(text, {"skills": toggles}) == (text, [])

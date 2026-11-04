@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import json
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
@@ -29,6 +30,10 @@ class FakeStore:
     epoch: int = 0
     cron_due: list = field(default_factory=list)   # cron_due_tenants 返回的 (user_id, 到点时间)
     api_key: str = "k"                             # 现在的模型 key（企业模式每次登录都换）
+    settings: dict = field(default_factory=dict)   # 入口库里的用户设置（技能开关）
+
+    async def get_profile_settings(self, user_id, profile="default"):
+        return self.settings
 
     async def ensure_tenant_token(self, user_id):
         return "tok"
@@ -138,6 +143,7 @@ class FakeCube:
         self.status_error: CubeError | None = None
         self.already: set[str] = set()               # 引导回「已经引导过了」的实例（上一次其实做成了）
         self.restored: dict[str, str] = {}           # 状态管家报的「恢复自」
+        self.seeds: dict[str, list] = {}             # 引导时送的种子文件
         self.owner_reported: dict[str, str] = {}     # 状态管家报的主人；默认是实例自己
 
     def host_for(self, sandbox_id, port):
@@ -174,6 +180,7 @@ class FakeCube:
 
     async def bootstrap(self, sandbox_id, port, *, token, files, ready_timeout_s=240, state=None):
         self.calls.append(("bootstrap", sandbox_id, state))
+        self.seeds[sandbox_id] = files
         if self.boot_failures:
             raise self.boot_failures.pop(0)
         self.hermes_ready.add(sandbox_id)
@@ -277,6 +284,21 @@ async def test_gone_instance_is_recreated_restoring_from_previous_owner(monkeypa
     assert ("deleted", "sbOld", "gone") in store.calls
     boot = next(c for c in cube.calls if c[0] == "bootstrap")
     assert boot[2]["restore_from"] == "sbOld" and boot[2]["epoch"] == 5 and boot[2]["owner"] == "sb1"
+
+
+@pytest.mark.asyncio
+async def test_recreated_instance_gets_entry_held_skill_toggles_over_its_restored_config(monkeypatch) -> None:
+    # 技能开关不再归档，只在入口库里：归档恢复出来的是旧开关，引导的 patch-model 要把库里的盖回去。
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    store = FakeStore(runtime=Runtime("stopped", "sbOld", "tpl-new", 4, "sbOld", "old.tar.gz", ""),
+                      settings={"skills": {"writing": False, "research": True}})
+    cube = FakeCube()
+    await _manager(store, cube).ensure_running("u")
+    patch = next(f for f in cube.seeds["sb1"] if f["overwrite"] == "patch-model")
+    monkeypatch.syspath_prepend(str(tenants_module.SEED_DIR))
+    import mtstate
+    text, _ = mtstate.patch_config_text("skills:\n  disabled: [research]\n", json.loads(patch["content"]))
+    assert mtstate._yaml_io()[0](text)["skills"]["disabled"] == ["writing"]
 
 
 @pytest.mark.asyncio

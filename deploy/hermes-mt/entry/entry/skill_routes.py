@@ -22,6 +22,8 @@ MUTATIONS = {
     ('POST', 'api/skills/hub/update'): True,
     ('PUT', 'api/skills/toggle'): False,
 }
+TOGGLE = ('PUT', 'api/skills/toggle')
+UNINSTALL = ('POST', 'api/skills/hub/uninstall')
 
 
 class SkillRejected(RuntimeError):
@@ -64,6 +66,10 @@ class SkillRoutes:
             if action == 'start':
                 method, path, body = data['method'], data['path'], data.get('body', {})
                 if (method, path) not in MUTATIONS or not isinstance(body, dict) or len(str(body)) > 20_000:
+                    raise ValueError()
+                if (method, path) in {TOGGLE, UNINSTALL} and not (isinstance(body.get('name'), str) and 0 < len(body['name']) <= 200):
+                    raise ValueError()
+                if (method, path) == TOGGLE and not isinstance(body.get('enabled'), bool):
                     raise ValueError()
                 if data.get('profile', 'default') not in (None, '', 'default') or body.get('profile', 'default') not in (None, '', 'default'):
                     raise web.HTTPBadRequest(text='云端技能操作只支持当前用户的默认配置。')
@@ -164,8 +170,17 @@ class SkillRoutes:
 
     async def save(self, operation):
         try:
-            from .state_checkpoint import checkpoint
-            await checkpoint(self.entry, operation.user, operation.tenant)
+            if (operation.method, operation.path) == TOGGLE:
+                # A toggle is one config line: entry's table is its durable copy and bootstrap
+                # replays it, so the user is not kept waiting on a full instance archive.
+                await self.entry.store.set_skill_enabled(
+                    operation.user, operation.body['name'], operation.body['enabled'])
+            else:
+                from .state_checkpoint import checkpoint
+                await checkpoint(self.entry, operation.user, operation.tenant)
+                if (operation.method, operation.path) == UNINSTALL:
+                    # A removed skill's toggle has nothing left to apply to.
+                    await self.entry.store.forget_skill(operation.user, operation.body['name'])
             # Docker's entire HERMES_HOME already lives on its persistent named volume.
             operation.phase = 'saved'
             operation.error = ''

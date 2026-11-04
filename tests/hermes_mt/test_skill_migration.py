@@ -148,8 +148,10 @@ async def test_market_install_is_user_scoped_and_saved_before_success_with_fresh
         assert (await call(b, 'status', {'id': 'install-one'}))[0].status == 404
         assert (await call(a, 'start', request('install-one')))[0].status == 200
         assert counts['install'] == 1  # Same operation cannot dispatch the install twice.
+        archived = counts['checkpoint']
         await call(a, 'start', {'id': 'disable-skill', 'method': 'PUT', 'path': 'api/skills/toggle', 'body': {'name': 'safe-writing', 'enabled': False}})
         assert (await finish(a, 'disable-skill'))['phase'] == 'saved'
+        assert counts['checkpoint'] == archived  # entry's table holds the toggle, not a fresh archive
         assert (await call(b, 'start', request('install-one')))[0].status == 200
         assert (await finish(b, 'install-one'))['phase'] == 'saved'
         assert (await call(a, 'status', {'id': 'install-one'}))[1]['phase'] == 'saved'
@@ -160,7 +162,12 @@ async def test_market_install_is_user_scoped_and_saved_before_success_with_fresh
         replacement.prepare(managers['a'].gen_dir.name, migrate=False)
         assert (restored / 'skills/safe-writing/references/example.md').read_text() == 'A preserved reference file.'
         assert 'market-writing' in (restored / 'skills/.hub/lock.json').read_text()
-        assert 'safe-writing' in (restored / 'config.yaml').read_text()
+        # Bootstrap replays entry's toggles over the restored (older) config, as the seed's patch-model does.
+        # The archive predates the toggle; the real patch-model spec also carries the config template.
+        assert not (restored / 'config.yaml').exists()
+        mtstate.patch_config_file(restored / 'config.yaml', {'template': 'model: {}\n', 'skills': (await entry.store.get_profile_settings('a'))['skills']})
+        assert 'safe-writing' in mtstate._yaml_io()[0]((restored / 'config.yaml').read_text())['skills']['disabled']
+        assert await entry.store.get_profile_settings('b') == {}
         bad = {**request('bad-profile'), 'profile': 'other'}
         assert (await call(a, 'start', bad))[0].status == 400
         denied = request('unsafe-package')
@@ -185,8 +192,12 @@ async def test_failed_save_only_retries_the_checkpoint_and_uninstall_survives_re
         await call(a, 'retry-save', {'id': 'save-failure'})
         assert (await finish(a, 'save-failure'))['phase'] == 'saved'
         assert counts['install'] == 1
+        await call(a, 'start', {'id': 'disable-skill', 'method': 'PUT', 'path': 'api/skills/toggle', 'body': {'name': 'safe-writing', 'enabled': False}})
+        assert (await finish(a, 'disable-skill'))['phase'] == 'saved'
         await call(a, 'start', {'id': 'remove-skill', 'method': 'POST', 'path': 'api/skills/hub/uninstall', 'body': {'name': 'safe-writing'}})
         assert (await finish(a, 'remove-skill'))['phase'] == 'saved'
+        # The removed skill's toggle is dropped with it, so the table does not keep dead entries.
+        assert await entry.store.get_profile_settings('a') == {'skills': {}}
         import mtstate
         restored = tmp_path / 'after-uninstall'
         restored.mkdir()

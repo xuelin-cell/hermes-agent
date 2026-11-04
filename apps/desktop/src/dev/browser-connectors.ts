@@ -38,6 +38,9 @@ export function browserConnectors(base: string) {
         popup = window.open('about:blank', '_blank')
         if (!popup) throw new Error('请允许本站弹出授权窗口后重试。')
         popup.opener = null
+        // The provider URL arrives after a round trip to the instance; say so instead of a blank page.
+        popup.document.title = '正在打开授权页…'
+        popup.document.body.textContent = '正在打开授权页…'
       }
       try {
         const response = await fetch(`${base}__entry/connectors`, {
