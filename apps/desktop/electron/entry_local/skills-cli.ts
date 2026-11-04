@@ -70,10 +70,15 @@ export async function savedSkillsHome(userData: string): Promise<string> {
   return account.home
 }
 
-/** 仅向终端返回启动参数；Python 由 PowerShell 启动以保留真正的控制台输入输出。 */
+/** 仅向终端返回启动参数；Python 由终端启动以保留真正的控制台输入输出。 */
 export function runDesktopSkillsCli(request: string[]): void {
   const file = request[0]
   app.setName('Hermes Desktop MT')
+
+  if (process.platform === 'darwin') {
+    app.setActivationPolicy('prohibited')
+  }
+
   const userData = resolveDesktopUserData(path.join(app.getPath('appData'), 'uniworker'))
   app.setPath('userData', userData)
   void app

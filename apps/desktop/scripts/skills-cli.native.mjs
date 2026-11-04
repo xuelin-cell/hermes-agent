@@ -5,18 +5,26 @@ import os from 'node:os'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { build } from 'esbuild'
+import { installSkillsCli } from '../electron/entry_local/skills-cli-registration.mjs'
 
 const desktop = path.resolve(import.meta.dirname, '..')
 const repo = path.resolve(desktop, '../..')
 const require = createRequire(path.join(desktop, 'package.json'))
 const electron = require('electron')
+const windows = process.platform === 'win32'
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'uniworker-skills-cli-'))
 const userData = path.join(temporary, 'roaming')
 const env = { ...process.env, LOCALAPPDATA: temporary, HERMES_DESKTOP_USER_DATA_DIR: userData,
   HERMES_DESKTOP_HERMES_ROOT: repo, PYTHONIOENCODING: 'utf-8', COLUMNS: '180' }
 delete env.HERMES_HOME
 delete env.ELECTRON_RUN_AS_NODE
+if (!windows) { env.HOME = temporary }
 fs.mkdirSync(userData)
+const python = process.env.HERMES_DESKTOP_PYTHON || path.join(repo, windows ? '.venv/Scripts/python.exe' : '.venv/bin/python')
+const directory = await installSkillsCli({ executable: electron, appPath: desktop, python,
+  helperDirectory: import.meta.dirname, home: temporary, localAppData: temporary, registerPath: false })
+const pathKey = Object.keys(env).find(key => key.toLowerCase() === 'path') || 'PATH'
+env[pathKey] = directory + path.delimiter + env[pathKey]
 const fixture = path.join(temporary, 'fixture.mjs')
 await build({ stdin: { contents: `
 import fs from 'node:fs'; import path from 'node:path'; import { app } from 'electron';
@@ -27,7 +35,9 @@ app.setName('Hermes Desktop MT');
 app.setPath('userData', process.env.HERMES_DESKTOP_USER_DATA_DIR);
 void app.whenReady().then(async () => {
  const userData = app.getPath('userData'); const uid = process.argv[2];
- const account = prepareAccountPaths({data:accountDataRoot(app.getPath('home')),userData}, MAAS_IDENTITY_NAMESPACE, uid);
+ const data = accountDataRoot(app.getPath('home'));
+ if (!path.resolve(data).startsWith(path.resolve(process.env.LOCALAPPDATA) + path.sep)) throw new Error('测试账号目录超出临时根');
+ const account = prepareAccountPaths({data,userData}, MAAS_IDENTITY_NAMESPACE, uid);
  new CredentialStore(userData).save({uid,token:'controlled-token',expiresAt:Date.now()+(uid==='expired'?-1000:3600000),maskedPhone:'138****0000'});
  for (const [home,name] of [[account.home,uid+'-default'],[path.join(account.home,'profiles','expert'),uid+'-expert']]) {
   const directory=path.join(home,'skills',name); fs.mkdirSync(directory,{recursive:true});
@@ -50,10 +60,10 @@ void app.whenReady().then(async () => {
 function run(args, extraEnv = {}) {
   return new Promise((resolve, reject) => {
     const throughShell = args[0] === desktop
-    const entry = process.argv.includes('--registered') ? 'hermes' : `'${path.join(process.env.LOCALAPPDATA, 'uniworker/bin/hermes.cmd').replaceAll("'", "''")}'`
-    const command = throughShell ? 'powershell.exe' : electron
-    const commandArgs = throughShell ? ['-NoProfile', '-Command',
-      `& ${entry} ${args.slice(2).map(value => "'" + value.replaceAll("'", "''") + "'").join(' ')}; exit $LASTEXITCODE`] : args
+    const entry = process.argv.includes('--registered') ? 'hermes' : `'${path.join(directory, 'hermes.cmd').replaceAll("'", "''")}'`
+    const command = throughShell ? (windows ? 'powershell.exe' : path.join(directory, 'hermes')) : electron
+    const commandArgs = throughShell ? (windows ? ['-NoProfile', '-Command',
+      `& ${entry} ${args.slice(2).map(value => "'" + value.replaceAll("'", "''") + "'").join(' ')}; exit $LASTEXITCODE`] : args.slice(2)) : args
     const child = spawn(command, commandArgs, { env: { ...env, ...extraEnv }, windowsHide: true })
     let output = ''
     child.stdout.on('data', value => { output += value })
@@ -85,6 +95,10 @@ async function interactiveInstall(answer, shell = 'powershell') {
     pwsh: [pwsh, ['-NoProfile', '-NoLogo', '-Command', `${command}; exit $LASTEXITCODE`]],
     gitbash: [bash, ['--noprofile', '--norc', '-c', command]]
   }
+  if (!windows) {
+    shells.zsh = ['/bin/zsh', ['-f', '-c', command]]
+    shells.bash = ['/bin/bash', ['--noprofile', '--norc', '-c', command]]
+  }
   const [executable, args] = shells[shell]
   assert.ok(executable, `缺少 ${shell}，请安装对应终端后再运行定向检查。`)
   const terminal = pty.spawn(executable, args, {
@@ -115,7 +129,7 @@ async function interactiveInstall(answer, shell = 'powershell') {
 
 if (process.argv.includes('--shells-only')) {
   const selected = process.argv.find(value => value.startsWith('--shell='))?.slice('--shell='.length)
-  for (const shell of selected ? [selected] : ['powershell', 'cmd', 'pwsh', 'gitbash']) {
+  for (const shell of selected ? [selected] : (windows ? ['powershell', 'cmd', 'pwsh', 'gitbash'] : ['zsh', 'bash'])) {
     const prepared = await run([fixture, `interactive-${shell}`])
     assert.equal(prepared.code, 0, prepared.output)
     await interactiveInstall('n', shell)
@@ -128,9 +142,40 @@ if (process.argv.includes('--shells-only')) {
 if (process.argv.includes('--interactive-only')) {
   const prepared = await run([fixture, 'interactive-account'])
   assert.equal(prepared.code, 0, prepared.output)
-  await interactiveInstall('n')
-  await interactiveInstall('y')
+  await interactiveInstall('n', windows ? 'powershell' : 'zsh')
+  await interactiveInstall('y', windows ? 'powershell' : 'zsh')
   console.log(`交互记录 ${temporary}`)
+  process.exit(0)
+}
+
+if (process.argv.includes('--posix-runner-only')) {
+  const prepared = await run([fixture, 'posix-runner'])
+  assert.equal(prepared.code, 0, prepared.output)
+  for (const profile of ['default', 'expert']) {
+    const result = await new Promise((resolve, reject) => {
+      const helper = path.join(import.meta.dirname, 'skills-cli.py')
+      // Windows 不具备 POSIX exec 进程替换语义；仅在夹具中以真实子进程校验相同命令和环境。
+      const shim = `import os, runpy, subprocess, sys
+def terminal_exec(command, arguments, environment):
+    """Windows 夹具用真实 CLI 子进程替代 Unix exec。"""
+    raise SystemExit(subprocess.call(arguments, env=environment))
+os.execve = terminal_exec
+sys.argv = sys.argv[1:]
+runpy.run_path(sys.argv[0], run_name='__main__')`
+      const entry = windows ? ['-c', shim, helper] : [helper]
+      const child = spawn(python, [...entry, electron, desktop,
+        '--profile', profile, 'skills', 'list', '--source', 'local'], { env, windowsHide: true })
+      let output = ''
+      const timeout = setTimeout(() => { child.kill(); reject(new Error('Python 入口超时')) }, 60000)
+      child.stdout.on('data', chunk => { output += chunk })
+      child.stderr.on('data', chunk => { output += chunk })
+      child.on('error', reject)
+      child.on('close', code => { clearTimeout(timeout); resolve({ code, output }) })
+    })
+    assert.equal(result.code, 0, result.output)
+    assert.ok(result.output.includes(`posix-runner-${profile}`), result.output)
+  }
+  console.log(`Python 终端入口 default／expert 通过，记录 ${temporary}`)
   process.exit(0)
 }
 

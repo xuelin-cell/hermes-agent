@@ -33,7 +33,7 @@ function configuredElectronFlags(env: NodeJS.ProcessEnv): string[] {
 const electronFlags = process.platform === 'linux' ? configuredElectronFlags(process.env) : []
 const args = wslgLaunchArgs(process.argv.slice(1), process.env, process.platform, electronFlags)
 
-if (process.platform === 'win32' && process.argv.includes('--desktop-skills-cli')) {
+if (['win32', 'darwin'].includes(process.platform) && process.argv.includes('--desktop-skills-cli')) {
   const { runDesktopSkillsCli } = await import('./entry_local/skills-cli')
   runDesktopSkillsCli(process.argv.slice(process.argv.indexOf('--desktop-skills-cli') + 1))
 } else if (args) {

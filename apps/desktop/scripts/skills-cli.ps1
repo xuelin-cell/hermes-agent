@@ -6,7 +6,10 @@ $resultCode = 1
 try {
     [IO.File]::WriteAllText($requestFile, (ConvertTo-Json -InputObject @($args) -Compress), [Text.UTF8Encoding]::new($false))
     # 只给 GUI 进程传文件路径，技能参数通过 JSON 保留空格、引号和非 ASCII 字符。
-    $resolver = Start-Process -FilePath $cliElectron -ArgumentList @(('"' + $cliDesktop + '"'), '--desktop-skills-cli', ('"' + $requestFile + '"')) -WindowStyle Hidden -Wait -PassThru
+    $resolverArguments = @('--desktop-skills-cli', ('"' + $requestFile + '"'))
+    if ($cliDesktop) { $resolverArguments = @(('"' + $cliDesktop + '"')) + $resolverArguments }
+    $resolver = Start-Process -FilePath $cliElectron -ArgumentList $resolverArguments -WindowStyle Hidden -PassThru
+    if (!$resolver.WaitForExit(30000)) { $resolver.Kill(); throw '桌面账号解析超时，请重新打开 UniWork。' }
     if (!(Test-Path -LiteralPath $resultFile)) { throw '无法解析桌面账号，请检查 UniWork 开发构建。' }
     $resolved = Get-Content -LiteralPath $resultFile -Raw -Encoding UTF8 | ConvertFrom-Json
     if ($resolved.error) { throw $resolved.error }
