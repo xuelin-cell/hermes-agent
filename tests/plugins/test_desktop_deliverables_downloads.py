@@ -176,6 +176,18 @@ def test_trusted_generator_storage_matches_only_its_own_paths(delivery):
         ("txt2vid_generate", "https://[::1"),
     ]:
         assert not trusted(name, url), url
+    # 云端实例拿到的是同一对象存储的内网入口：http/https 默认端口、同样只认各工具的成品目录。
+    internal = "http://obs-nmhhht6-internal.cucloud.cn"
+    assert trusted("mcp__UniAI_Toolkit__txt2vid_generate", internal + "/app-agent-prod/videos/a.mp4" + signed)
+    assert trusted("ai_podcast_generate", internal.replace("http:", "https:") + "/app-agent-prod/temp/a.mp3")
+    for name, url in [
+        ("txt2vid_generate", internal + "/app-agent-prod/temp/a.mp4"),
+        ("image_search", internal + "/app-agent-prod/videos/a.mp4"),
+        ("txt2vid_generate", internal + ":8080/app-agent-prod/videos/a.mp4"),
+        ("txt2vid_generate", internal.replace("internal", "internal.evil") + "/app-agent-prod/videos/a.mp4"),
+        ("txt2vid_generate", "ftp://obs-nmhhht6-internal.cucloud.cn/app-agent-prod/videos/a.mp4"),
+    ]:
+        assert not trusted(name, url), url
 
 
 def test_trusted_storage_skips_private_check_but_not_redirect_limits(

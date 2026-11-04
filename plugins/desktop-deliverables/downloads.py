@@ -34,6 +34,9 @@ TIMEOUT = 20
 # 与 UniWork 相同：生成成品放在固定的对象存储，本机代理（fake-ip）会把它解析成保留地址。
 # 只对这个域名下各工具自己的成品目录免去内网检查；其它链接和跳转照常检查。
 TRUSTED_HOST = "obs-nmhhht6.cucloud.cn"
+# 云端实例里元景返回的是同一对象存储的内网入口（http 或 https），解析到云内网的保留地址。
+# 不免检就下载不到，链接退回给模型，模型抄写签名链接会抄错（SignatureDoesNotMatch）。
+INTERNAL_HOST = "obs-nmhhht6-internal.cucloud.cn"
 TRUSTED_PATHS = {
     "txt2img_generate": ("/yuanjing-t2i-oss/mllm/yuanjingt2i/",),
     "img2vid_generate": ("/app-agent-prod/videos/",),
@@ -83,8 +86,10 @@ def trusted(name, url):
         return False
     return bool(
         prefixes
-        and parsed.scheme in schemes
-        and parsed.hostname == TRUSTED_HOST
+        and (
+            (parsed.hostname == TRUSTED_HOST and parsed.scheme in schemes)
+            or (parsed.hostname == INTERNAL_HOST and parsed.scheme in DEFAULT_PORTS)
+        )
         and parsed.username is None
         and parsed.password is None
         and port in (None, DEFAULT_PORTS.get(parsed.scheme))
