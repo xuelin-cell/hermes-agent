@@ -5,6 +5,7 @@ import { writeSecretFileAtomic } from '../hardening'
 import { CredentialStore } from '../login/credential-store'
 
 import type { LogoutProcess } from './logout-processes'
+import { blockSkillsCliState } from './skills-cli-state'
 
 export type AccountExitMode = 'logout' | 'quit'
 
@@ -48,6 +49,7 @@ export function createAccountLogout(deps: {
     const marker = logoutIntentPath(deps.userData)
 
     if (!started) {
+      blockSkillsCliState()
       writeSecretFileAtomic(marker, JSON.stringify({ account: deps.account, mode: requested }))
       mode = requested
       started = true

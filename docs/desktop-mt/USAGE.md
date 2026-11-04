@@ -196,6 +196,30 @@ Windows 源码开发版可双击仓库根目录的 `Start-UniWork.cmd`。也可�
 
 账号目录是应用层隔离，不是 Windows 沙箱。同一 Windows 用户的工具可能访问其它目录；主动选择同一外部项目会共享文件。官方对照版固定目录为 `X:\HermesOfficial`，不在开发版认领或清理范围。
 
+## Windows 外部终端安装技能
+
+源码开发版完成 Electron 构建后，在 `apps/desktop` 执行 `npm run cli:install`。它将 `%LOCALAPPDATA%\uniworker\bin` 注册到用户 PATH 首位。重新打开 PowerShell，执行 `Get-Command hermes`，应指向该目录中的 `hermes.cmd`。终端宿主仍保留旧 PATH 时，完整退出终端程序后重新打开。
+
+Windows PowerShell、PowerShell 7、CMD 使用 `hermes.cmd`，Git Bash 使用同目录的无扩展名 `hermes` Shell 入口，两者调用同一份 PowerShell 脚本。Git Bash 可用 `type -a hermes` 核对入口。Windows Terminal 和 VS Code 是终端宿主，使用这些 Shell 时仍需获得更新后的 PATH。WSL 属于独立 Linux 环境，当前自动账号入口未覆盖。macOS 的入口注册、启动分支和状态通信尚未接入。
+
+```powershell
+hermes --profile default skills install official/creative/social-media-content-calendar
+hermes --profile default skills list --source hub
+hermes --profile <实际专家Profile名称> skills install <技能来源>
+```
+
+`skills` 命令读取桌面同一份加密登录记录，自动定位保存账号，再由官方 CLI 选择 Profile。完整退出应用后，未到期的保存登录仍可使用。退出账号、登录到期、记录损坏、退出失败或崩溃待恢复时会提示处理，不自动选择系统 Home。运行中桌面需重开一次以加载账号状态管道。
+
+显式设置 `HERMES_HOME` 时优先采用该目录。其他 CLI 子命令采用此开发版的原版运行组件和原有 Home 规则。命令开始后固定账号，后续换账号只影响下一次命令。终端自行启动的 CLI 工作由终端管理。
+
+固定入口绑定当前源码开发目录，移动仓库后重新构建并注册。此注册脚本只用于 Windows 源码版，安装包发布需另做入口注册验收。
+
+安装时出现 `Confirm [y/N]:` 后输入 `y` 并回车才会安装，输入 `n` 取消。PowerShell 直接启动 Python，Electron 只读取账号并返回启动路径，临时请求和结果在命令结束后清理。`node scripts/skills-cli.native.mjs --interactive-only` 用真实 Windows PTY 验证取消和确认安装。
+
+`node scripts/skills-cli.native.mjs --shells-only` 验证四种 Windows Shell 的交互确认与取消，需要已安装 PowerShell 7 与 Git for Windows。加 `--shell=powershell`、`--shell=pwsh`、`--shell=cmd` 或 `--shell=gitbash` 可定向检查；缺少对应程序会报告失败。
+
+隔离检查使用 `node scripts/skills-cli.native.mjs`，加 `--registered` 检查 PATH 上的命令，加 `--install` 实际从官方来源下载安装测试技能到临时账号。真实账号的验收可在目标 Profile 新对话中要求调用 `skills_list` 和 `skill_view` 检查刚安装的技能。
+
 ## 双账号人工验收
 
 准备两个 MaaS 账号 A、B 和可用模型。模型调用可能计费，由你手动执行；不向开发人员提供短信码、token 或 Key。测试文件只放在账号默认工作区。
