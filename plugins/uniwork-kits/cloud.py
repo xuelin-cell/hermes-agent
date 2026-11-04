@@ -165,7 +165,9 @@ def action(data: dict) -> dict:
         elif operation == 'toggle':
             if not isinstance(data.get('enabled'), bool):
                 raise installer.KitError('请指定启用状态。')
-            installer.set_enabled(root, name, data['enabled'])
+            entry = installer.set_enabled(root, name, data['enabled'])
+            # Entry keeps the toggle and drops the per-skill toggles this one supersedes.
+            result['skills'] = sorted({*(entry.get('skill_names') or []), *(entry.get('agent_skill_names') or [])})
         elif operation == 'uninstall':
             index = store.load_index(root)
             entry = index['plugins'].get(name, {})

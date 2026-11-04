@@ -935,6 +935,37 @@ def _apply_skill_overrides(cfg, overrides: dict) -> bool:
     return True
 
 
+def _apply_kit_toggles(cfg, index: dict, kits: dict) -> bool:
+    """用户在云端点过的套件开关（入口库里记的 {套件名: 开没开}），按套件自己的开关规则回放
+    （plugins/uniwork-kits/installer.py 的 set_enabled）：套件的 MCP 开关、它的技能进出
+    skills.disabled、索引里的 enabled 一起改。索引里已经一致的套件不碰；专家没有开关。
+
+    要在单个技能开关之前回放：入口记套件开关时已经删掉了被它盖过的技能开关，剩下的都比它新。"""
+    plugins = index.get("plugins") if isinstance(index.get("plugins"), dict) else {}
+    changed = False
+    for name, enabled in kits.items():
+        entry = plugins.get(name)
+        if (not isinstance(enabled, bool) or not isinstance(entry, dict) or entry.get("kind") == "expert"
+                or entry.get("enabled", True) is enabled):
+            continue
+        servers = cfg.get("mcp_servers") if isinstance(cfg.get("mcp_servers"), dict) else {}
+        for key in entry.get("mcp_keys") or []:
+            if isinstance(servers.get(key), dict):
+                servers[key]["enabled"] = enabled
+        names = {*(entry.get("skill_names") or []), *(entry.get("agent_skill_names") or [])}
+        node = cfg.get("skills")
+        current = node.get("disabled") if isinstance(node, dict) else None
+        disabled = [str(n) for n in current] if isinstance(current, list) else []
+        if enabled:
+            disabled = [n for n in disabled if n not in names]
+        else:
+            disabled += sorted(n for n in names if n not in disabled)
+        _section(cfg, "skills")["disabled"] = disabled
+        entry["enabled"] = enabled
+        changed = True
+    return changed
+
+
 def apply_platform_block(cfg, spec: dict) -> bool:
     """把入口下发的平台块写进解析后的配置。返回有没有改动。
 
@@ -1015,8 +1046,10 @@ def apply_platform_block(cfg, spec: dict) -> bool:
     return _platform_snapshot(cfg, key, policy) != before or skills
 
 
-def patch_config_text(text: str, spec: dict) -> tuple[str, list[str]]:
-    """返回 (新文本, 说明列表)。说明为空 = 没有改动，新文本就是原文。"""
+def patch_config_text(text: str, spec: dict, index: dict | None = None) -> tuple[str, list[str]]:
+    """返回 (新文本, 说明列表)。说明为空 = 没有改动，新文本就是原文。
+
+    ``index`` 是套件索引（imported-plugins/index.json），spec 带套件开关时要它；回放会原地改它。"""
     notes: list[str] = []
     load, dump = _yaml_io()
     cfg = None
@@ -1038,7 +1071,8 @@ def patch_config_text(text: str, spec: dict) -> tuple[str, list[str]]:
         cfg = load(template)
         text = template
         notes = [NOTE_REBUILT]
-    changed = apply_platform_block(cfg, spec)
+    kits = isinstance(spec.get("kits"), dict) and index is not None and _apply_kit_toggles(cfg, index, spec["kits"])
+    changed = apply_platform_block(cfg, spec) or kits
     if not changed and not notes:
         return text, []
     if changed and not notes:
@@ -1059,10 +1093,20 @@ def patch_config_file(path: Path, spec: dict) -> list[str]:
             return []
         text = template
         prefix = ["config.yaml 不存在，已按平台模板新建"]
-    new_text, notes = patch_config_text(text, spec)
+    index_file = path.parent / "imported-plugins" / "index.json"
+    index = None
+    if isinstance(spec.get("kits"), dict):
+        try:
+            index = json.loads(index_file.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            index = None  # 没装过套件，或者索引读不懂：和套件自己的 load_index 一样当作没有，不挡引导
+    before = json.dumps(index, sort_keys=True)
+    new_text, notes = patch_config_text(text, spec, index if isinstance(index, dict) else None)
     if not notes and not prefix:
         return []
     _write_atomic(path, new_text.encode("utf-8"))
+    if json.dumps(index, sort_keys=True) != before:
+        _write_atomic(index_file, json.dumps(index, ensure_ascii=False, indent=2).encode("utf-8"))
     return prefix + notes
 
 

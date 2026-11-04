@@ -424,6 +424,30 @@ class Store:
                    WHERE user_id=$1 AND profile=$2 AND settings->'skills' ? $3::text""",
                 user_id, profile, name)
 
+    async def set_kit_enabled(self, user_id: str, name: str, enabled: bool, skills: list[str],
+                              profile: str = 'default') -> None:
+        """Record one kit toggle. It sets all of the kit's skills, so their older per-skill
+        toggles go; bootstrap replays kit toggles before skill toggles."""
+        async with self.database.acquire() as connection:
+            await connection.execute(
+                """INSERT INTO profile_settings(user_id, profile, settings)
+                   VALUES($1, $2, jsonb_build_object('kits', jsonb_build_object($3::text, $4::boolean)))
+                   ON CONFLICT(user_id, profile) DO UPDATE SET
+                     settings = jsonb_set(
+                       jsonb_set(profile_settings.settings, '{kits}',
+                         COALESCE(profile_settings.settings->'kits', '{}'::jsonb) || jsonb_build_object($3::text, $4::boolean)),
+                       '{skills}', COALESCE(profile_settings.settings->'skills', '{}'::jsonb) - $5::text[]),
+                     revision = profile_settings.revision + 1, updated_at = now()""",
+                user_id, profile, name, enabled, skills)
+
+    async def forget_kit(self, user_id: str, name: str, profile: str = 'default') -> None:
+        async with self.database.acquire() as connection:
+            await connection.execute(
+                """UPDATE profile_settings SET settings = settings #- ARRAY['kits', $3::text],
+                     revision = revision + 1, updated_at = now()
+                   WHERE user_id=$1 AND profile=$2 AND settings->'kits' ? $3::text""",
+                user_id, profile, name)
+
     async def get_profile_settings(self, user_id: str, profile: str = 'default') -> dict:
         async with self.database.acquire() as connection:
             raw = await connection.fetchval(
