@@ -89,4 +89,25 @@ describe('Windows client wiring', () => {
     })
     expect(client.allowPrerelease).toBe(true)
   })
+
+  it('routes the updater transcript into the desktop log and leaves debug unwired', () => {
+    const d = deps()
+    createWindowsStrategy(d)
+
+    // The differential verdict ("Full: …, To download: … (%)") and the fallback
+    // reason only exist in electron-updater's own transcript; without this
+    // wiring a past update cannot be judged from desktop.log after the fact.
+    const logger = (client as typeof client & { logger?: Record<string, (message: string) => void> }).logger
+
+    expect(logger).toBeDefined()
+    logger!.info('Full: 1.5 GB, To download: 400 MB (27%)')
+    logger!.warn('checksum matches but size differs')
+    logger!.error('Cannot download differentially, fallback to full download')
+    expect(d.log).toHaveBeenCalledWith('Windows updater: Full: 1.5 GB, To download: 400 MB (27%)')
+    expect(d.log).toHaveBeenCalledWith('Windows updater: checksum matches but size differs')
+    expect(d.log).toHaveBeenCalledWith('Windows updater: Cannot download differentially, fallback to full download')
+    // DifferentialDownloader dumps its whole operation plan whenever debug is
+    // present; the bounded forensic log must not carry it.
+    expect(logger!.debug).toBeUndefined()
+  })
 })
