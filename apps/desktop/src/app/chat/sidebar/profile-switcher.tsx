@@ -49,7 +49,6 @@ import type { DesktopRegistryConnection } from '@/global'
 import { getProfileSoul, updateProfileSoul } from '@/hermes'
 import { useResizeObserver } from '@/hooks/use-resize-observer'
 import { type Translations, useI18n } from '@/i18n'
-import { hideForUsers } from '@/lib/browser-shell'
 import { sortConnectionsForDisplay } from '@/lib/connection-display'
 import { triggerHaptic } from '@/lib/haptics'
 import { Loader2 } from '@/lib/icons'
@@ -664,8 +663,8 @@ export function ProfileRail() {
                 : activeStrip}
             </div>
           </div>
-          {!hideForUsers() && <AddProfileButton label={p.newProfile} onClick={() => setCreateOpen(true)} />}
-          {!hideForUsers() && <ImportProfileButton label={p.importProfile} />}
+          <AddProfileButton label={p.newProfile} onClick={() => setCreateOpen(true)} />
+          <ImportProfileButton label={p.importProfile} />
         </>
       )}
 
@@ -680,7 +679,7 @@ export function ProfileRail() {
       {/* Multi-gateway discoverability: before a second source exists, a plug
           pinned beside Manage deep-links to the unified Gateways page. Once
           there are several sources, the same action lives in their selector. */}
-      {!multipleConnections && !hideForUsers() && (
+      {!multipleConnections && (
         <ProfilePill
           active={false}
           glyph="plug"

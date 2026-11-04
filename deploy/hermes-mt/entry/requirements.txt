@@ -1,4 +1,0 @@
-aiohttp>=3.12,<4
-asyncpg>=0.31,<1
-cryptography>=50,<51
-PyYAML>=6,<7

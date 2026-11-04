@@ -10,7 +10,6 @@ import { Slider } from '@/components/ui/slider'
 import type { DesktopMarketplaceSearchItem } from '@/global'
 import { saveHermesConfig } from '@/hermes'
 import { useI18n } from '@/i18n'
-import { hideForUsers } from '@/lib/browser-shell'
 import { triggerHaptic } from '@/lib/haptics'
 import { Check, Download, Loader2, Palette, Trash2 } from '@/lib/icons'
 import { selectableCardClass } from '@/lib/selectable-card'
@@ -248,8 +247,7 @@ function MarketplaceThemeResults({
     }
   }
 
-  // Browser build: no marketplace (it is fetched by the desktop main process).
-  if (!debounced || hideForUsers()) {
+  if (!debounced) {
     return null
   }
 
@@ -687,8 +685,6 @@ export function AppearanceSettings({ subpage }: AppearanceSettingsProps = {}) {
                     value={matchedScalePreset ?? ('' as UiScalePreset)}
                   />
                 }
-                // Browser build: no app zoom, the page keeps the browser's own.
-                className={hideForUsers() ? 'hidden' : undefined}
                 description={a.uiScaleDesc(zoomPercent)}
                 id={settingElementId(ids.uiScale)}
                 title={a.uiScaleTitle}
@@ -783,9 +779,8 @@ export function AppearanceSettings({ subpage }: AppearanceSettingsProps = {}) {
           )}
 
           {/* Linux has neither half of this setting (see TRANSLUCENCY_SUPPORTED),
-              so the row is absent there rather than offering a dead lever. Nor has the browser build,
-              whose answer TRANSLUCENCY_SUPPORTED misses: it is read while loading, before the bridge. */}
-          {show('window-layout') && TRANSLUCENCY_SUPPORTED && !hideForUsers() && (
+              so the row is absent there rather than offering a dead lever. */}
+          {show('window-layout') && TRANSLUCENCY_SUPPORTED && (
             <ListRow
               action={
                 <div

@@ -26,7 +26,6 @@ import { CopyButton } from '@/components/ui/copy-button'
 import { Tip } from '@/components/ui/tooltip'
 import { translateNow, useI18n } from '@/i18n'
 import { artifactShareFilePath } from '@/lib/artifact-share-source'
-import { officePreviewPdf, previewsOfficeAsPdf } from '@/lib/browser-shell'
 import {
   desktopFileDiff,
   desktopFsCacheKey,
@@ -742,7 +741,7 @@ export function LocalFilePreview({
   const filePath = filePathForTarget(target)
   const isSvg = /\.svg$/i.test(filePath)
   const isImage = target.previewKind === 'image' && !isSvg
-  const isPdf = target.previewKind === 'pdf' || previewsOfficeAsPdf(filePath)
+  const isPdf = target.previewKind === 'pdf'
 
   // eslint-disable-next-line no-restricted-syntax -- legitimate non-atom ref write (see eslint rule comment)
   useEffect(() => {
@@ -786,7 +785,7 @@ export function LocalFilePreview({
         if (isImage || isPdf) {
           // Prefer bytes the caller already handed us (a pasted/dropped
           // screenshot) over re-reading a path that may be transient/unreadable.
-          const dataUrl = target.dataUrl || (await (officePreviewPdf(filePath) ?? readDesktopFileDataUrl(filePath)))
+          const dataUrl = target.dataUrl || (await readDesktopFileDataUrl(filePath))
           const pdfBytes = isPdf ? await readPdfBytes(filePath, dataUrl) : undefined
 
           if (active) {

@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[2]
+REPO = Path(__file__).resolve().parents[1]
 
 
 def test_the_retired_skills_archive_is_skipped_when_listing_skills() -> None:

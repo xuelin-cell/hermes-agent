@@ -1,4 +1,3 @@
-import { withoutHiddenSubpages } from '@/lib/browser-shell'
 import {
   Archive,
   Bell,
@@ -98,7 +97,7 @@ export function settingsSubpages(view: SettingsView, developerMode = true): read
   }
 
   if (view.startsWith('config:')) {
-    const pages = withoutHiddenSubpages(view, CONFIG_SUBPAGES[view.slice('config:'.length)] ?? [])
+    const pages = CONFIG_SUBPAGES[view.slice('config:'.length)] ?? []
 
     if (view === 'config:safety' && !developerMode) {
       return pages.filter(page => page.id === 'approvals')
@@ -111,7 +110,7 @@ export function settingsSubpages(view: SettingsView, developerMode = true): read
     return OTHER_SUBPAGES[view].filter(page => page.id !== 'sounds')
   }
 
-  return withoutHiddenSubpages(view, OTHER_SUBPAGES[view] ?? [])
+  return OTHER_SUBPAGES[view] ?? []
 }
 
 /** Shared by search serialization and saved links that predate subpages. */
