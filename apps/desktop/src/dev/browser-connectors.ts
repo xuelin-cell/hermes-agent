@@ -1,13 +1,29 @@
 import type { LocalConnectorRequest, LocalConnectorResult } from '../../electron/open-connector/contract'
 import { CLOUD_CONNECTOR_IDS, CLOUD_OAUTH_HOSTS } from '../../services/open-connector/cloud/contract'
 
+/** Entry runs the WeCom scan and keeps the bot secret; the browser only draws the QR link. */
+async function wecomQrImage(link: string | undefined): Promise<string> {
+  const url = new URL(link ?? '')
+
+  if (url.protocol !== 'https:' || url.hostname !== 'work.weixin.qq.com' || url.username || url.password) {
+    throw new Error('企业微信返回的二维码地址无效。')
+  }
+
+  const { default: QRCode } = await import('qrcode')
+
+  return QRCode.toDataURL(url.href, { width: 240, margin: 2 })
+}
+
 /** Only verified providers are exposed. This API uses the entry session cookie. */
 export function browserConnectors(base: string) {
   return {
     cloudConnectorIds: CLOUD_CONNECTOR_IDS,
     localConnectors: async (input: LocalConnectorRequest): Promise<LocalConnectorResult> => {
+      const qr = input.operation.startsWith('qr.')
+
       if (!input.profile || input.profile.startsWith('.') || /[\\/]/.test(input.profile) || input.profile.length > 160 || (input.operation !== 'list' && !CLOUD_CONNECTOR_IDS.some(id => id === input.id)) ||
-          !['list', 'connect', 'enable', 'disable', 'disconnect', 'save', 'authorize'].includes(input.operation)) {
+          (qr && input.id !== 'wecom_bot') ||
+          !['list', 'connect', 'enable', 'disable', 'disconnect', 'save', 'authorize', 'qr.start', 'qr.poll', 'qr.cancel'].includes(input.operation)) {
         throw new Error('该连接器或授权方式尚未在云端开放。')
       }
       // Claim a window during the user's click; opening after fetch is blocked by browsers.
@@ -27,7 +43,12 @@ export function browserConnectors(base: string) {
           const result = await response.json().catch(() => null) as { error?: string } | null
           throw new Error(result?.error || '连接器请求失败，请检查状态后重试。')
         }
-        const result = await response.json() as LocalConnectorResult
+        const result = await response.json() as LocalConnectorResult & { authUrl?: string }
+
+        if (input.operation === 'qr.start') {
+          return { connectors: result.connectors, sessionId: result.sessionId, qrState: result.qrState, qrImage: await wecomQrImage(result.authUrl) }
+        }
+
         if (popup) {
           const url = new URL(result.authorizationUrl ?? '')
           if (url.protocol !== 'https:' || url.host !== CLOUD_OAUTH_HOSTS[input.id!] || url.username || url.password) {

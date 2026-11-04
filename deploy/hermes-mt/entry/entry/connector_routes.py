@@ -7,6 +7,16 @@ from aiohttp import web
 from .state_checkpoint import checkpoint
 from .connector_contract import connector_specs
 from .connector_oauth import ConnectorOAuth, callback_base
+from .connector_wecom_qr import WecomQrError, WecomQrSessions
+
+QR_OPERATIONS = {'qr.start', 'qr.poll', 'qr.cancel'}
+
+
+def public_rows(rows, specs):
+    """Only known state fields, never tokens, ports or provider responses."""
+    if not isinstance(rows, list) or len(rows) != len(specs) or {row.get('id') for row in rows if isinstance(row, dict)} != set(specs):
+        raise web.HTTPBadGateway(text='连接器状态无效。')
+    return [{'id': row['id'], **{key: row.get(key) is True for key in ('connected', 'configured', 'enabled')}} for row in rows]
 
 
 class ConnectorRoutes:
@@ -14,17 +24,22 @@ class ConnectorRoutes:
         self.entry = entry
         self.locks = WeakValueDictionary()
         self.oauth = ConnectorOAuth(self)
+        self.wecom_qr = WecomQrSessions(entry)
 
     async def handle(self, request):
         session = await self.entry._require(request)
         try:
             data = await request.json()
-            if not isinstance(data, dict) or set(data) - {'operation', 'profile', 'id', 'values'}:
+            if not isinstance(data, dict) or set(data) - {'operation', 'profile', 'id', 'values', 'sessionId'}:
                 raise ValueError()
             operation = data.get('operation')
             specs = connector_specs()
             profile = data.get('profile', 'default')
             if not isinstance(profile, str) or not profile or profile.startswith('.') or '/' in profile or '\\' in profile or len(profile) > 160:
+                raise ValueError()
+            if operation in QR_OPERATIONS and data.get('id') == 'wecom_bot' and 'wecom_bot' in specs:
+                return await self.wecom_qr_operation(session, operation, profile, data.get('sessionId'), specs)
+            if 'sessionId' in data:
                 raise ValueError()
             if operation not in {'list', 'connect', 'enable', 'disable', 'disconnect', 'save', 'authorize'}:
                 raise ValueError()
@@ -45,13 +60,7 @@ class ConnectorRoutes:
                     raise ValueError()
                 data['origin'] = callback_base(self.entry, request, data['id'])
             result = await self.execute(session, data)
-            # Return only known state fields, never tokens, ports or provider responses.
-            rows = result.get('connectors')
-            if not isinstance(rows, list) or len(rows) != len(specs) or {row.get('id') for row in rows if isinstance(row, dict)} != set(specs):
-                raise web.HTTPBadGateway(text='连接器状态无效。')
-            payload = {'connectors': [{
-                'id': row['id'], **{key: row.get(key) is True for key in ('connected', 'configured', 'enabled')}
-            } for row in rows]}
+            payload = {'connectors': public_rows(result.get('connectors'), specs)}
             if operation == 'authorize':
                 payload['authorizationUrl'] = result['authorizationUrl']
             response = web.json_response(payload, headers={'Cache-Control': 'no-store'})
@@ -64,6 +73,29 @@ class ConnectorRoutes:
             return web.json_response({'error': '请检查当前云端支持的连接器、专家档案和授权字段。'}, status=400, headers={'Cache-Control': 'no-store'})
         except FileNotFoundError:
             return web.json_response({'error': '连接器运行产物缺失，请更新入口镜像和实例模板。'}, status=503)
+
+    async def wecom_qr_operation(self, session, operation, profile, session_id, specs):
+        """Polls stay entry-local (no instance call, no state checkpoint); only the confirmed
+        scan saves the bot through the normal connect path, which persists like a manual save."""
+        no_store = {'Cache-Control': 'no-store'}
+        try:
+            if operation == 'qr.cancel':
+                self.wecom_qr.cancel(session.user_id)
+                return web.json_response({'connectors': []}, headers=no_store)
+            if operation == 'qr.start':
+                return web.json_response({'connectors': [], **await self.wecom_qr.start(session.user_id, profile)},
+                                         headers=no_store)
+            if not isinstance(session_id, str) or not 0 < len(session_id) <= 64:
+                raise ValueError()
+            result, values = await self.wecom_qr.poll(session.user_id, profile, session_id)
+        except WecomQrError as error:
+            return web.json_response({'error': str(error)}, status=502, headers=no_store)
+        payload = {'connectors': [], **result}
+        if values:
+            connected = await self.execute(session, {'operation': 'connect', 'profile': profile,
+                                                     'id': 'wecom_bot', 'values': values})
+            payload['connectors'] = public_rows(connected.get('connectors'), specs)
+        return web.json_response(payload, headers=no_store)
 
     async def execute(self, session, data):
         operation = data['operation']

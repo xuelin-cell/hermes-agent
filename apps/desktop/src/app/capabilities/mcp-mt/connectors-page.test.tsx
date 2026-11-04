@@ -57,7 +57,7 @@ function renderPage(route = '/capabilities?tab=connectors', searchContainer?: HT
   )
 }
 
-it('云端连接器复用凭据表单，iFinD 提交登记的客户端而不沿用桌面回调', async () => {
+it('云端连接器复用凭据表单，企业微信扫码绑定，iFinD 提交登记的客户端而不沿用桌面回调', async () => {
   document.documentElement.dataset.hermesBrowser = 'production'
   window.hermesDesktop.cloudConnectorIds = CLOUD_CONNECTOR_IDS
   const enabled = new Set<string>()
@@ -70,7 +70,6 @@ it('云端连接器复用凭据表单，iFinD 提交登记的客户端而不沿�
   const examples = [
     { id: 'youdao_note', name: '有道云笔记', values: { apiKey: 'note-key' }, labels: ['API Key'] },
     { id: 'wps_mcp', name: 'WPS', values: { apiKey: 'apik:test' }, labels: ['API Key'] },
-    { id: 'wecom_bot', name: '企业微信', values: { botId: 'bot', secret: 'secret' }, labels: ['Bot ID', 'Secret'] },
     { id: 'ima', name: '腾讯 ima 知识库', values: { clientId: 'client', apiKey: 'ima-key' }, labels: ['Client ID', 'API Key'] },
     { id: 'qq_mail', name: 'QQ 邮箱', values: { email: 'alice@qq.com', authorizationCode: 'alicexxxxxxxxxxx' }, labels: ['邮箱地址', '授权码'] },
     { id: 'netease_mail', name: '网易邮箱', values: { email: 'alice@163.com', authorizationCode: 'alicexxxxxxxxxxx' }, labels: ['邮箱地址', '授权码'] },
@@ -91,6 +90,12 @@ it('云端连接器复用凭据表单，iFinD 提交登记的客户端而不沿�
     fireEvent.click(within(dialog).getByRole('button', { name: '关闭' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
   }
+
+  // WeCom binds by scanning, as on desktop: no typed Bot ID or secret in the cloud either.
+  fireEvent.click(screen.getByRole('button', { name: '查看企业微信' }))
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '连接' }))
+  await waitFor(() => expect(localConnectors).toHaveBeenCalledWith(expect.objectContaining({ operation: 'qr.start', profile: 'default', id: 'wecom_bot' })))
+  expect(within(screen.getByRole('dialog')).queryByLabelText('Bot ID')).toBeNull()
 })
 
 it('云端只开放已接入渠道，停用保留授权并可重新启用', async () => {

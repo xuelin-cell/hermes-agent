@@ -21,13 +21,26 @@ it('uses cookie-only fixed routes and rejects providers/profiles that are not su
   for (const input of [
     { operation: 'connect', profile: '../other', id: 'amap' },
     { operation: 'authorize', profile: 'default', id: 'amap' },
-    { operation: 'qr.start', profile: 'default', id: 'wecom_bot' }
+    { operation: 'qr.start', profile: 'default', id: 'amap' }
   ] as const) {
     await expect(bridge.localConnectors(input)).rejects.toThrow()
   }
   await bridge.localConnectors({ operation: 'list', profile: 'demo-expert' })
   expect(JSON.parse((fetcher.mock.calls.at(-1) as unknown as [string, RequestInit])[1].body as string).profile).toBe('demo-expert')
   expect(fetcher).toHaveBeenCalledTimes(9)
+})
+
+it('draws the WeCom QR from the link entry returns and never trusts another host', async () => {
+  const fetcher = vi.fn(async () => Response.json({ connectors: [], sessionId: 'scan-1', qrState: 'pending', authUrl: 'https://work.weixin.qq.com/ai/qc/auth?scode=1' }))
+  vi.stubGlobal('fetch', fetcher)
+  const bridge = browserConnectors('/hermes/')
+  const started = await bridge.localConnectors({ operation: 'qr.start', profile: 'default', id: 'wecom_bot' })
+  expect(started).toMatchObject({ sessionId: 'scan-1', qrState: 'pending' })
+  expect(started.qrImage).toMatch(/^data:image\/png;base64,/)
+  await bridge.localConnectors({ operation: 'qr.poll', profile: 'default', id: 'wecom_bot', sessionId: 'scan-1' })
+  expect(JSON.parse((fetcher.mock.calls.at(-1) as unknown as [string, RequestInit])[1].body as string)).toMatchObject({ operation: 'qr.poll', sessionId: 'scan-1' })
+  fetcher.mockImplementation(async () => Response.json({ connectors: [], sessionId: 'scan-2', qrState: 'pending', authUrl: 'https://evil.example/qr' }))
+  await expect(bridge.localConnectors({ operation: 'qr.start', profile: 'default', id: 'wecom_bot' })).rejects.toThrow('二维码地址无效')
 })
 
 it('surfaces unconfirmed persistence without retrying the mutation', async () => {
