@@ -546,11 +546,16 @@ function isNsisInstaller(file, packager) {
   const base = path.basename(file).toLowerCase()
   // Installer is typically <productName>-<version>.exe in the dist directory
   // or matches the artifactName pattern
-  const artifactName = packager.expandMacro(packager.config.artifactName || '${productName} Setup ${version}.${ext}')
+  let artifactName
+  try {
+    artifactName = packager.expandMacro(packager.config.artifactName || '${productName} Setup ${version}.exe')
+  } catch {
+    // If macro expansion fails, fall back to simple pattern matching
+    return base.endsWith('-win-x64.exe') || base.endsWith('-win.exe')
+  }
   const expectedInstaller = artifactName.toLowerCase().replace(/\$\{[^}]+\}/g, (match) => {
     if (match.includes('productName')) return packager.appInfo.productFilename.toLowerCase()
     if (match.includes('version')) return packager.appInfo.version.toLowerCase()
-    if (match.includes('ext')) return 'exe'
     return match
   })
   return base === expectedInstaller || base.endsWith('-win-x64.exe') || base.endsWith('-win.exe')
