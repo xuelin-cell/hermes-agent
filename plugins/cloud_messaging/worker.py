@@ -45,6 +45,24 @@ class MessagingRunner(GatewayRunner):
         return 0
 
 
+def build_runner():
+    """One fixed binding on the default profile, never a host multiplexer.
+
+    Multiplex is the gateway default, but here it skipped the token-platform adapters (WeChat,
+    DingTalk, Feishu, WeCom) for lacking a local bot token, which a relay never has, so the gateway
+    never became ready and held the instance's messaging lock for every platform. It also started
+    each expert profile, which has no relay settings. An injected config keeps its mode.
+    """
+    from gateway.config import load_gateway_config
+    from hermes_cli.config import read_user_config_raw
+    config = load_gateway_config()
+    config.multiplex_profiles = False
+    config.streaming.enabled = False
+    active = read_user_config_raw()['cloud_messaging']['platform']
+    config.platforms = {key: value for key, value in config.platforms.items() if str(getattr(key, 'value', key)) == active}
+    return MessagingRunner(config)
+
+
 async def main():
     import fcntl
     from hermes_constants import get_hermes_home
@@ -56,11 +74,7 @@ async def main():
     except BlockingIOError:
         raise SystemExit(75)
     os.environ['HERMES_EXEC_ASK'] = '1'
-    runner = MessagingRunner()
-    runner.config.streaming.enabled = False
-    from hermes_cli.config import read_user_config_raw
-    active = read_user_config_raw()['cloud_messaging']['platform']
-    runner.config.platforms = {key: value for key, value in runner.config.platforms.items() if str(getattr(key, 'value', key)) == active}
+    runner = build_runner()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, lambda: asyncio.create_task(runner.stop()))
