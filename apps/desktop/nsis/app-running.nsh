@@ -17,8 +17,9 @@ Var /GLOBAL IsPowerShellAvailable
 ; tasklist 是 cmd 内置命令，不启动 PowerShell，AV 下毫秒级返回。
 ; 对 Electron 应用：所有子进程（main/renderer/GPU）文件名都是 ${APP_EXECUTABLE_FILENAME}，
 ; tasklist /FI "IMAGENAME eq" 能全部匹配到，效果等同模板的 PS 路径前缀匹配。
-!ifdef FIND_PROCESS
-  !undef FIND_PROCESS
+; NSIS 的 !undef 只能取消 !define，取消 !macro 必须用 !macroundef。
+!ifmacrodef FIND_PROCESS
+  !macroundef FIND_PROCESS
 !endif
 !macro FIND_PROCESS _FILE _RETURN
   nsExec::Exec `"$CmdPath" /C tasklist /FI "IMAGENAME eq ${_FILE}" /FO CSV /NH | "$SYSDIR\findstr.exe" /B /I /C:""${_FILE}""`
@@ -28,8 +29,9 @@ Var /GLOBAL IsPowerShellAvailable
 ; 重定义 KILL_PROCESS：用 taskkill 替代模板里 Stop-Process。
 ; 不带 /F 时 taskkill 先发 WM_CLOSE（比 PS 的 Stop-Process 更温和，给了应用保存状态的机会）；
 ; _FORCE=1 时加 /F 强制终止。/FI "PID ne $pid" 排除安装器自身进程。
-!ifdef KILL_PROCESS
-  !undef KILL_PROCESS
+; NSIS 的 !undef 只能取消 !define，取消 !macro 必须用 !macroundef。
+!ifmacrodef KILL_PROCESS
+  !macroundef KILL_PROCESS
 !endif
 !macro KILL_PROCESS _FILE _FORCE
   ${If} ${_FORCE} == 1
