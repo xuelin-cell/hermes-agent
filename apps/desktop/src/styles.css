@@ -2400,9 +2400,23 @@ body.guest-pointer-lock :is(webview, iframe) {
   margin-top: calc(var(--scaffold-block-gap) - var(--conversation-turn-gap));
 }
 
+/* The whole reply footer shares one visibility rule, including token usage.
+   Preserve its space so hover and a newly completed reply never shift the transcript. */
+[data-slot='aui_assistant-footer'] {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 150ms ease;
+}
+
+[data-slot='aui_assistant-footer'][data-always-visible]:not([inert]),
+.group:hover [data-slot='aui_assistant-footer']:not([inert]),
+[data-slot='aui_assistant-footer']:focus-within:not([inert]) {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 /* Message action bars — flat icon hits with default dim; only the hovered/focused control is full-strength.
-   The reaction slot lives OUTSIDE the bar (a landed emoji must not ride the
-   bar's hover fade) but is still one of these controls visually. */
+   The reaction slot lives outside the bar but shares its footer visibility. */
 [data-slot='aui_msg-actions'] button,
 button[data-slot='aui_msg-reactions'] {
   border: 0;
@@ -2439,6 +2453,8 @@ button[data-slot='aui_msg-reactions']:not([data-reacted]) {
 }
 
 .group:hover button[data-slot='aui_msg-reactions']:not([data-reacted]),
+[data-slot='aui_assistant-footer'][data-always-visible] button[data-slot='aui_msg-reactions']:not([data-reacted]),
+[data-slot='aui_assistant-footer']:focus-within button[data-slot='aui_msg-reactions']:not([data-reacted]),
 button[data-slot='aui_msg-reactions']:not([data-reacted]):focus-visible,
 button[data-slot='aui_msg-reactions']:not([data-reacted])[data-state='open'] {
   opacity: 0.5;

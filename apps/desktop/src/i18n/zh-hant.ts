@@ -4491,6 +4491,9 @@ export const zhHant = defineLocale({
       thoughtBriefly: '思考了片刻',
       thoughtFor: duration => `思考了 ${duration}`,
       turnDuration: duration => `本輪耗時 ${duration}`,
+      tokenUnit: 'tokens',
+      turnTokenUsage: (input, output, total) =>
+        `本次回答累計用量，包含完成回答過程中多次模型呼叫的輸入和輸出。\n輸入 ${input} · 輸出 ${output} · 總計 ${total} tokens`,
       today: time => `今天，${time}`,
       yesterday: time => `昨天，${time}`,
       copy: '複製',

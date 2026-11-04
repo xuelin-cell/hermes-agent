@@ -4382,6 +4382,7 @@ export interface MessageInterimPayload {
 export interface MessageCompletePayload {
   text?: string | unknown
   usage?: Usage | null
+  turn_token_usage?: TurnTokenUsage | null
   status?: TurnStatus | null
   reasoning?: string | null
   warning?: string | null
@@ -4395,6 +4396,14 @@ export interface MessageCompletePayload {
   error_surface?: ErrorSurface | null
   partial?: boolean | null
   persisted_turn?: PersistedTurn | null
+}
+/** Provider-reported main-agent usage accumulated across one prompt turn; input includes cache. */
+export interface TurnTokenUsage {
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+  cache_read_tokens: number
+  cache_write_tokens: number
 }
 /** ``prompt_turn._result_status``. */
 export type TurnStatus = 'complete' | 'error' | 'interrupted'

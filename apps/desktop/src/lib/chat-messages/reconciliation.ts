@@ -241,6 +241,7 @@ function reconcileLocalAssistantTimeline(nextMessages: ChatMessage[], currentMes
     return {
       ...message,
       completedAt: latestBoundary(message.completedAt, local.completedAt, ...parts.map(part => part.completedAt)),
+      turnTokenUsage: message.turnTokenUsage ?? local.turnTokenUsage,
       parts,
       timestamp: earliestBoundary(message.timestamp, local.timestamp, ...parts.map(part => part.timestamp))
     }

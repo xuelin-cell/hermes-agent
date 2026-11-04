@@ -16,6 +16,16 @@ class OpenModel(Result):
     model_config = Result.model_config | {"extra": "allow"}
 
 
+class TurnTokenUsage(Result):
+    """Provider-reported main-agent usage accumulated across one prompt turn; input includes cache."""
+
+    input_tokens: int = Field(ge=0)
+    output_tokens: int = Field(ge=0)
+    total_tokens: int = Field(ge=0)
+    cache_read_tokens: int = Field(ge=0)
+    cache_write_tokens: int = Field(ge=0)
+
+
 class Usage(OpenModel):
     """``tui_gateway/server.py::_get_usage`` + ``agent/context_breakdown.py::context_usage_fields``."""
 

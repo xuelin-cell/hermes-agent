@@ -5,6 +5,7 @@ import { splitLeadingAttachmentRefs } from '@/components/assistant-ui/reference-
 import { extractImageRefs } from '@/lib/embedded-images'
 import { dedupeGeneratedImageEchoesInParts } from '@/lib/generated-images'
 import { isTodoToolName } from '@/lib/todos'
+import { parseTurnTokenUsage } from '@/lib/turn-token-usage'
 import type { MessageReaction, SessionMessage } from '@/types/hermes'
 
 import {
@@ -566,6 +567,11 @@ export function toChatMessages(messages: SessionMessage[]): ChatMessage[] {
 
     let pendingAbsorbedRows = 0
 
+    const turnTokenUsage =
+      message.role === 'assistant'
+        ? parseTurnTokenUsage(parseDisplayMetadata(message.display_metadata)?.turn_token_usage)
+        : undefined
+
     if (message.role === 'assistant') {
       if (pendingToolParts.length) {
         if (!appendPartsToActiveAssistant(pendingToolParts, message.timestamp ?? pendingToolTimestamp)) {
@@ -587,6 +593,11 @@ export function toChatMessages(messages: SessionMessage[]): ChatMessage[] {
       if (activeAssistant && (currentHasToolCall || activeHasToolCall)) {
         activeAssistant.parts = [...activeAssistant.parts, ...parts]
         activeAssistant.durableComplete = durableComplete
+
+        if (turnTokenUsage) {
+          activeAssistant.turnTokenUsage = turnTokenUsage
+        }
+
         activeAssistant.timestamp = earliestTimestamp(
           activeAssistant.timestamp,
           message.timestamp,
@@ -609,6 +620,7 @@ export function toChatMessages(messages: SessionMessage[]): ChatMessage[] {
       role: displayRole,
       parts,
       ...(message.role === 'assistant' && durableComplete !== undefined ? { durableComplete } : {}),
+      ...(turnTokenUsage ? { turnTokenUsage } : {}),
       ...(message.display_kind === 'async_delegation_complete' || message.display_kind === 'process_complete'
         ? { asyncResult: asyncResultBody(displayContentForMessage(message.role, message.content || content)) }
         : {}),
