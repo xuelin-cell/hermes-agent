@@ -151,7 +151,7 @@ def _rewrite_message(message, tool):
     return message
 
 
-def rewrite_request(*, request=None, platform="", **_):
+def rewrite_request(*, request=None, platform="", model="", **_):
     """llm_request 中间件：桌面和四个消息平台的会话发请求前改写看图提示。
 
     只在主模型看不到图（Hermes 加了这行提示）、vision_analyze 看不了图、且接了元景看图工具时改；
@@ -160,6 +160,10 @@ def rewrite_request(*, request=None, platform="", **_):
     """
     try:
         if platform not in PLATFORMS or not isinstance(request, dict):
+            return None
+        from .native_images import active
+
+        if active(platform=platform, model=model):
             return None
         key = "messages" if isinstance(request.get("messages"), list) else "input"
         messages = request.get(key)

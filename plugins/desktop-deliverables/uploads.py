@@ -178,10 +178,12 @@ def referenced_files(text):
     return found
 
 
-def look_rule(model=""):
-    """看图规则：主模型看不到图时用元景；能看图时直接看附图，vision 工具组被关掉时只给路径的图才用元景。"""
-    from . import image_hints
+def look_rule(model="", platform=None):
+    """桌面image模型直接看图；纯文本和消息平台保留既有元景规则。"""
+    from . import image_hints, native_images
 
+    if native_images.active(platform=platform, model=model):
+        return LOOK_NATIVE
     if not image_hints.main_model_sees(model):
         return LOOK_TOOL
     if image_hints.vision_disabled(image_hints.settings()):
@@ -190,7 +192,7 @@ def look_rule(model=""):
 
 
 def remember_session(
-    *, session_id="", user_message=None, conversation_history=None, model="", **_
+    *, session_id="", user_message=None, conversation_history=None, model="", platform=None, **_
 ):
     """每轮开始时从本轮消息和会话历史收集贴过的文件，元景已连上时给模型加一句提醒。"""
     try:
@@ -210,7 +212,7 @@ def remember_session(
             while len(_sessions) > 64:
                 _sessions.popitem(last=False)
         if any(has_tool(f"mcp__{server}__{UPLOADER}") for server in SERVERS):
-            return {"context": REMINDER.format(look=look_rule(model))}
+            return {"context": REMINDER.format(look=look_rule(model, platform))}
     except Exception:
         logger.warning("Upload reminder skipped", exc_info=True)
     return None
@@ -235,7 +237,7 @@ def _under(path, folder):
         return False
 
 
-def sensitive_reason(path):
+def sensitive_reason(path, *, account_home=None):
     """文件在密钥、浏览器数据、系统目录或别的账号里时返回原因，否则返回 None。"""
     parts = [part.lower() for part in path.parts]
     hit = next((part for part in parts if part in SECRET_DIRS), None)
@@ -249,9 +251,9 @@ def sensitive_reason(path):
         return "系统或程序安装目录"
     from hermes_constants import get_default_hermes_root
 
-    account = get_default_hermes_root().resolve()
+    account = account_home or get_default_hermes_root().resolve()
     for folder in path.parents:
-        if folder == account or account in folder.parents:
+        if folder == account or (account_home is None and account in folder.parents):
             break
         if (folder / "config.yaml").is_file() and any((folder / name).is_file() for name in ("state.db", ".env")):
             return "别的账号或另一个 Hermes 的数据目录"
@@ -626,12 +628,21 @@ def uploaded_args(tool_name, args, session_id, task_id):
     return changed or None
 
 
-def around_call(*, tool_name="", args=None, next_call, session_id="", task_id="", **_):
+def around_call(*, tool_name="", args=None, next_call, session_id="", task_id="", turn_id="", **_):
     """工具执行中间件：先上传再调用；上传不了就不调用，直接返回原因。
 
     放在执行阶段而不是 pre_tool_call 钩子：元景工具箱同一时间只处理一个调用，别的会话占着时
     上传要排队，钩子 30 秒就会超时并让所有工具停用 60 秒；这里只受这次调用自己的等待上限约束。
     """
+    from .native_images import ANALYSIS_TOOLS, TOOL, blocked_message, runtime_scope
+
+    if tool_name in ANALYSIS_TOOLS or tool_name in {TOOL, "vision_analyze"}:
+        with runtime_scope(session_id, turn_id):
+            if message := blocked_message(tool_name):
+                return json.dumps({"error": message}, ensure_ascii=False)
+            # 非MCP入口不需要上传转换；执行期间也要保留最新模型上下文。
+            if tool_name in {TOOL, "vision_analyze"}:
+                return next_call(args)
     try:
         changed = uploaded_args(tool_name, args, session_id, task_id)
     except Refusal as refusal:
