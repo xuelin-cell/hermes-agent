@@ -62,6 +62,7 @@ export function PreviewExportControls({ name, text, snapshot, snapshotRoot, disa
         <DropdownMenuTrigger asChild>
           <Button
             aria-label={t.preview.saveAs}
+            data-preview-export
             disabled={busy || disabled}
             loading={busy}
             size="icon-xs"

@@ -10,6 +10,7 @@ import { downloadGatewayMediaFile } from '@/lib/media'
 import { previewName } from '@/lib/preview-targets'
 import { notifyError } from '@/store/notifications'
 import { $previewTabSources, closePreviewForSource, openPreview } from '@/store/preview'
+import { noteSessionFile } from '@/store/session-files'
 
 const ACTION_CLASS =
   'inline-flex h-8 items-center gap-1.5 rounded-lg border border-(--ui-stroke-tertiary) bg-background px-3 text-xs font-medium text-foreground/80 transition-colors hover:bg-(--chrome-action-hover) hover:text-foreground disabled:opacity-50'
@@ -18,7 +19,13 @@ export function PreviewAttachment({ target }: { target: string }) {
   const { t } = useI18n()
   // This link lives in one session's transcript; resolve it against THAT
   // session's cwd, not the primary chat's.
-  const cwd = useStore(useSessionView().$cwd)
+  const sessionView = useSessionView()
+  const cwd = useStore(sessionView.$cwd)
+  const storedSessionId = useStore(sessionView.$storedId)
+
+  useEffect(() => {
+    noteSessionFile(storedSessionId)
+  }, [storedSessionId])
   usePreparePreview(target, cwd)
   const openSources = useStore($previewTabSources)
   const [opening, setOpening] = useState(false)
@@ -132,8 +139,16 @@ export function PreviewAttachment({ target }: { target: string }) {
 
   return (
     // 窄窗时操作按钮整体换到第二行，文件名保留整行宽度。
-    <span className="flex w-full max-w-160 flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-(--ui-stroke-tertiary) bg-background px-3.5 py-2.5 text-sm transition-colors hover:bg-muted/50">
-      <span className="flex min-w-0 flex-1 basis-48 items-center gap-3">
+    <span className="relative flex w-full max-w-160 flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-(--ui-stroke-tertiary) bg-background px-3.5 py-2.5 text-sm transition-colors hover:bg-muted/50">
+      <button
+        aria-label={`${isActive ? t.preview.hide : t.preview.openPreview}: ${name}`}
+        aria-pressed={isActive}
+        className="absolute inset-0 cursor-pointer rounded-lg focus-visible:outline-2 focus-visible:outline-ring"
+        disabled={opening}
+        onClick={() => void togglePreview()}
+        type="button"
+      />
+      <span className="pointer-events-none relative flex min-w-0 flex-1 basis-48 items-center gap-3">
         <span className="grid size-6 shrink-0 place-items-center text-muted-foreground">
           <FileText className="size-5" />
         </span>
@@ -144,7 +159,7 @@ export function PreviewAttachment({ target }: { target: string }) {
           </span>
         </span>
       </span>
-      <span className="ml-auto flex shrink-0 items-center gap-1.5">
+      <span className="relative ml-auto flex shrink-0 items-center gap-1.5">
         <button
           aria-label={t.fileMenu.download}
           className={ACTION_CLASS}

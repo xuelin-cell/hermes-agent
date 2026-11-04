@@ -59,7 +59,7 @@ import { $transcriptTailBySessionId, transcriptTailState } from '@/store/transcr
 import { isAuxiliaryWindow, isWatchWindow } from '@/store/windows'
 
 import { primaryRouteSelectedSessionId, routeSessionId } from '../routes'
-import { titlebarHeaderBaseClass, titlebarHeaderShadowClass, titlebarHeaderTitleClass } from '../shell/titlebar'
+import { titlebarHeaderTitleClass } from '../shell/titlebar'
 
 import { ChatDropOverlay } from './chat-drop-overlay'
 import { ChatSwapOverlay, ChatSyncBadge } from './chat-swap-overlay'
@@ -174,7 +174,7 @@ function ChatHeader({
   }
 
   return (
-    <header className={cn(titlebarHeaderBaseClass, isRoutedSessionView && titlebarHeaderShadowClass)}>
+    <header className="relative z-10 flex min-w-0 shrink-0 items-center px-5 py-4" data-slot="chat-session-title">
       <div
         className={cn(titlebarHeaderTitleClass, showProfileTag && 'flex items-center')}
         style={{
@@ -815,17 +815,13 @@ const ChatViewContent = memo(function ChatViewContent({
       data-session-anchor={sessionAnchor}
     >
       <Backdrop />
-      {/* Tiles get their chrome from the layout zone (chip strip); the modal
-          prompt overlays stay active-session-scoped in the primary surface. */}
-      {isPrimary && (
-        <ChatHeader
-          activeSessionId={activeSessionId}
-          isRoutedSessionView={isRoutedSessionView}
-          onDeleteSelectedSession={onDeleteSelectedSession}
-          onToggleSelectedPin={onToggleSelectedPin}
-          selectedSessionId={selectedSessionId}
-        />
-      )}
+      <ChatHeader
+        activeSessionId={activeSessionId}
+        isRoutedSessionView={isRoutedSessionView}
+        onDeleteSelectedSession={onDeleteSelectedSession}
+        onToggleSelectedPin={onToggleSelectedPin}
+        selectedSessionId={selectedSessionId}
+      />
 
       {/* Mounted for the primary AND every tile, each scoped to its own session
           so a tiled/background session's blocking prompt surfaces instead of

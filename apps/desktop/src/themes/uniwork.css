@@ -426,7 +426,128 @@
 
 /* Match HexAgent's thinking-content independently of answer typography. */
 :root[data-hermes-theme='uniwork'] [data-slot='aui_assistant-message-content'] .aui-md[data-slot='aui_reasoning-text'],
-:root[data-hermes-theme='uniwork'] [data-slot='aui_assistant-message-content'] .aui-md[data-slot='aui_reasoning-text'] * {
+:root[data-hermes-theme='uniwork']
+  [data-slot='aui_assistant-message-content']
+  .aui-md[data-slot='aui_reasoning-text']
+  * {
   font-size: 14px;
   line-height: 1.7;
+}
+
+.file-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.file-preview-title {
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  color: var(--ui-text-primary);
+}
+.file-preview-actions,
+.file-preview-action-slot,
+.file-preview-mode-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.file-preview-action-btn,
+.file-preview-action-slot button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  color: var(--ui-text-secondary);
+  transition:
+    background 150ms ease,
+    color 150ms ease;
+}
+.file-preview-action-btn:hover,
+.file-preview-action-slot button:hover {
+  background: var(--ui-control-hover-background);
+  color: var(--ui-text-primary);
+}
+
+.file-preview-actions:has([data-preview-export]) .file-preview-download {
+  display: none;
+}
+.file-preview-toggle-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+}
+.file-preview-action-slot button svg {
+  width: 16px;
+  height: 16px;
+}
+
+.file-preview-view-toggle {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: var(--ui-control-hover-background);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+/* Sliding highlight */
+.file-preview-view-toggle::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: calc(50% - 4px);
+  height: calc(100% - 6px);
+  background: var(--ui-bg-elevated);
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  transition: transform 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 0;
+}
+
+/* Slide pill to code position */
+[data-view-mode='code'] .file-preview-view-toggle::after {
+  transform: translateX(calc(100% + 2px));
+}
+
+.file-preview-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ui-text-secondary);
+  cursor: pointer;
+  transition: color 150ms ease;
+  position: relative;
+  z-index: 1;
+}
+
+.file-preview-toggle-btn:hover {
+  color: var(--ui-text-primary);
+}
+
+/* Active button state driven by panel data attribute */
+[data-view-mode='preview'] .file-preview-toggle-btn:first-child,
+[data-view-mode='code'] .file-preview-toggle-btn:last-child {
+  color: var(--ui-text-primary);
+}
+.file-preview-view-toggle:empty {
+  display: none;
 }

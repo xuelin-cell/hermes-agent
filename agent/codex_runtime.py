@@ -11,6 +11,7 @@ import logging
 import os
 import threading
 import time
+from pathlib import Path
 from contextlib import suppress
 from types import SimpleNamespace
 from typing import Any, Callable, Dict, List
@@ -542,10 +543,13 @@ def _ensure_codex_session(agent, messages: List[Dict[str, Any]] | None = None) -
     today's fresh-thread behaviour and overwrites the binding once its turn is committed. ``messages`` is the
     turn's transcript (current user row last); a thread started from scratch is seeded with the prior turns."""
     developer_instructions = _codex_developer_instructions(agent)
+    code_runtime = (agent.model, agent.base_url, agent.api_key) if getattr(agent, "_desktop_code_mode", False) else None
     if getattr(agent, "_codex_session", None) is not None:
         # Only a session whose recorded composition differs is stale; one attached without a record is kept.
         recorded = getattr(agent, "_codex_session_prompt", None)
-        if recorded is None or recorded == developer_instructions:
+        if (recorded is None or recorded == developer_instructions) and (
+            code_runtime is None or getattr(agent, "_codex_session_runtime", None) == code_runtime
+        ):
             return
         _close_codex_session(agent)
     resume_thread_id = None if getattr(agent, "_codex_session_prompt", None) is not None else _stored_codex_thread_id(agent)
@@ -587,7 +591,22 @@ def _ensure_codex_session(agent, messages: List[Dict[str, Any]] | None = None) -
     if str(getattr(agent, "provider", "") or "").strip().lower() == "custom":
         from hermes_cli.runtime_provider_custom import codex_model_provider_id
         model_provider = codex_model_provider_id(str(getattr(agent, "requested_provider", "") or ""))
+    client_factory = None
+    on_close = None
+    codex_home = None
+    if getattr(agent, "_desktop_code_mode", False):
+        from agent.transports.codex_chat_proxy import CodexChatProxy
+        proxy = CodexChatProxy(model=agent.model, base_url=agent.base_url, api_key=agent.api_key,
+                               extra_body=(getattr(agent, "request_overrides", None) or {}).get("extra_body"))
+        client_factory = proxy.client_factory
+        on_close = proxy.close
+        model_provider = "hermes_code"
+        from hermes_constants import get_hermes_home
+        codex_home = str(get_hermes_home() / "codex")
+        Path(codex_home).mkdir(parents=True, exist_ok=True)
+    agent._codex_session_runtime = code_runtime
     agent._codex_session = CodexAppServerSession(
+        client_factory=client_factory, codex_home=codex_home, on_close=on_close,
         cwd=getattr(agent, "session_cwd", None) or str(resolve_agent_cwd()), approval_callback=approval_callback,
         codex_bin=get_configured_codex_binary(load_config()),
         request_routing=_ServerRequestRouting(auto_approve_exec=auto_approve_requests, auto_approve_apply_patch=auto_approve_requests),

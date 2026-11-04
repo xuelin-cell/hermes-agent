@@ -1827,3 +1827,20 @@ export const setIntroSeed = (next: Updater<number>) => updateAtom($introSeed, ne
 export const setContextSuggestions = (next: Updater<ContextSuggestion[]>) => updateAtom($contextSuggestions, next)
 export const setModelPickerOpen = (next: Updater<boolean>) => updateAtom($modelPickerOpen, next)
 export const setSessionPickerOpen = (next: Updater<boolean>) => updateAtom($sessionPickerOpen, next)
+
+/** Restore the user's scoped choice after a live session has painted runtime metadata. */
+export function restoreComposerModelSelection(): void {
+  $currentModel.set(storedComposerString(COMPOSER_MODEL_KEY) ?? '')
+  $currentProvider.set(storedComposerString(COMPOSER_PROVIDER_KEY) ?? '')
+}
+
+export function rememberComposerModelSelection(model: string, provider: string): void {
+  const modelKey = composerSelectionKey(COMPOSER_MODEL_KEY)
+  const providerKey = composerSelectionKey(COMPOSER_PROVIDER_KEY)
+
+  if (modelKey !== null && providerKey !== null) {
+    persistString(modelKey, model || null)
+    persistString(providerKey, provider || null)
+    markComposerSelectionManual()
+  }
+}

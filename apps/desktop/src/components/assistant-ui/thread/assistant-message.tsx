@@ -26,8 +26,8 @@ import {
 } from '@/components/assistant-ui/thread/content'
 import { MESSAGE_PARTS_COMPONENTS } from '@/components/assistant-ui/thread/message-parts'
 import { ReactionPicker } from '@/components/assistant-ui/thread/message-reactions'
-import { ResponseProcessVisibility } from '@/components/assistant-ui/thread/response-process'
 import { ResponseMessageIds } from '@/components/assistant-ui/thread/response-group'
+import { ResponseProcessVisibility } from '@/components/assistant-ui/thread/response-process'
 import { ResponseLoadingIndicator, TurnActivityIndicator } from '@/components/assistant-ui/thread/status'
 import { MessageTimelineTimestamp } from '@/components/assistant-ui/thread/timeline-timestamp'
 import { useMessageReactions, useTapbackDoubleClick } from '@/components/assistant-ui/thread/use-message-reactions'
@@ -40,6 +40,7 @@ import { ConversationReplyShareButton } from '@/components/conversation-share/re
 import { Codicon } from '@/components/ui/codicon'
 import { CopyButton } from '@/components/ui/copy-button'
 import { useI18n } from '@/i18n'
+import { registerPluginLocales, usePluginI18n } from '@/i18n/plugin-i18n'
 import {
   errorRecoveryPlan,
   type ErrorSurface,
@@ -68,6 +69,7 @@ import { markAssistantIdSpoken } from '@/lib/spoken-reply'
 import { useEnterAnimation } from '@/lib/use-enter-animation'
 import { cn } from '@/lib/utils'
 import { playSpeechText, stopVoicePlayback } from '@/lib/voice-playback'
+import { $developerMode } from '@/store/developer-mode'
 import { openFreeTierSignIn } from '@/store/free-tier-sign-in'
 import { notifyError } from '@/store/notifications'
 import { startManualProviderOAuth } from '@/store/onboarding'
@@ -989,7 +991,15 @@ const ErrorRecoveryActions: FC = () => {
   )
 }
 
-const AssistantActionBar: FC<MessageActionProps & { durationS?: number }> = ({
+const MESSAGE_ACTIONS_SCOPE = 'desktop.message-actions'
+registerPluginLocales(MESSAGE_ACTIONS_SCOPE, {
+  en: { regenerate: 'Regenerate response' },
+  zh: { regenerate: '重新生成回复' },
+  'zh-hant': { regenerate: '重新產生回覆' }
+})
+
+const AssistantActionBar: FC<MessageActionProps & { durationS?: number; branchPicker?: ReactNode }> = ({
+  branchPicker,
   durationS,
   fullResponseAvailable,
   getFullResponseText,
@@ -1000,6 +1010,9 @@ const AssistantActionBar: FC<MessageActionProps & { durationS?: number }> = ({
   const { t } = useI18n()
   const copy = t.assistant.thread
 
+  const actionCopy = usePluginI18n(MESSAGE_ACTIONS_SCOPE)
+  const developerMode = useStore($developerMode)
+  const isLast = useAuiState(s => s.message.isLast)
   const responseIds = useContext(ResponseMessageIds)
   const [pickerOpen, setPickerOpen] = useState(false)
   const { enabled: reactionsEnabled, react, reactions: shownReactions } = useMessageReactions(messageId, 'assistant')
@@ -1013,10 +1026,15 @@ const AssistantActionBar: FC<MessageActionProps & { durationS?: number }> = ({
   )
 
   return (
-    <div className="relative flex w-full shrink-0 items-center justify-end gap-1.5">
+    <div
+      className={cn(
+        'relative flex w-full shrink-0 items-center gap-1.5',
+        developerMode ? 'justify-end' : 'justify-start'
+      )}
+    >
       {durationS !== undefined && responseIds.length === 0 && (
         <span
-          className="mr-auto select-none px-0.5 text-[0.6875rem] leading-5 tabular-nums text-muted-foreground"
+          className="mr-2 select-none px-0.5 text-[0.6875rem] leading-5 tabular-nums text-muted-foreground"
           data-slot="aui_turn-duration"
           title={t.assistant.thread.turnDuration(formatElapsed(durationS))}
         >
@@ -1031,11 +1049,14 @@ const AssistantActionBar: FC<MessageActionProps & { durationS?: number }> = ({
           // whole conversation when the turn resolves. AssistantFooter hides
           // and disables it for the entire live turn while preserving its height;
           // hover may reveal actions only after that turn finishes.
-          'relative flex flex-row items-center justify-end gap-1.5 py-1.5 opacity-0 pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100'
+          cn(
+            'relative flex flex-row items-center gap-1.5 py-1.5 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100',
+            !developerMode && isLast ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          )
         }
         data-slot="aui_msg-actions"
       >
-        {onBranchInNewChat && (
+        {developerMode && onBranchInNewChat && (
           <TooltipIconButton
             onClick={() => {
               triggerHaptic('selection')
@@ -1046,22 +1067,25 @@ const AssistantActionBar: FC<MessageActionProps & { durationS?: number }> = ({
             <GitForkIcon className="size-3.5" />
           </TooltipIconButton>
         )}
-        <ConversationReplyShareButton messageId={messageId} />
         <CopyButton appearance="icon" buttonSize="icon" label={copy.copy} text={getMessageText} />
-        {fullResponseAvailable && (
+        <ConversationReplyShareButton messageId={messageId} />
+        {developerMode && fullResponseAvailable && (
           <CopyButton appearance="icon" buttonSize="icon" label={copy.copyFullResponse} text={getFullResponseText} />
         )}
-        <ReadAloudButton
-          fullResponseAvailable={fullResponseAvailable}
-          getFullText={getFullResponseText}
-          getText={getMessageText}
-          messageId={messageId}
-        />
+        {developerMode && (
+          <ReadAloudButton
+            fullResponseAvailable={fullResponseAvailable}
+            getFullText={getFullResponseText}
+            getText={getMessageText}
+            messageId={messageId}
+          />
+        )}
         <ActionBarPrimitive.Reload asChild>
-          <TooltipIconButton onClick={() => triggerHaptic('submit')} tooltip={copy.refresh}>
+          <TooltipIconButton onClick={() => triggerHaptic('submit')} tooltip={actionCopy('regenerate')}>
             <RefreshCwIcon className="size-3.5" />
           </TooltipIconButton>
         </ActionBarPrimitive.Reload>
+        {branchPicker}
       </ActionBarPrimitive.Root>
       {/* ONE slot, Slack-style: the picker trigger and the landed reaction are
           the same element, so reacting never shifts layout. Empty → ☺, hidden
@@ -1071,7 +1095,7 @@ const AssistantActionBar: FC<MessageActionProps & { durationS?: number }> = ({
           clicking it reopens the picker to switch or retract. Outside
           ActionBarPrimitive.Root so a landed reaction doesn't ride the bar's
           hover opacity. */}
-      {(reactionsEnabled || shownReactions.length > 0) && (
+      {developerMode && (reactionsEnabled || shownReactions.length > 0) && (
         <ReactionPicker
           onOpenChange={setPickerOpen}
           onSelect={pickEmoji}
@@ -1184,21 +1208,26 @@ const AssistantFooter: FC<MessageActionProps & { durationS?: number }> = ({ dura
       data-slot="aui_assistant-footer"
       inert={hidden || undefined}
     >
-      <BranchPickerPrimitive.Root
-        className="inline-flex h-6 items-center gap-1 text-xs text-muted-foreground"
-        hideWhenSingleBranch
-      >
-        <BranchPickerPrimitive.Previous className="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-default disabled:opacity-35">
-          <Codicon name="chevron-left" size="0.875rem" />
-        </BranchPickerPrimitive.Previous>
-        <span className="tabular-nums">
-          <BranchPickerPrimitive.Number /> / <BranchPickerPrimitive.Count />
-        </span>
-        <BranchPickerPrimitive.Next className="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-default disabled:opacity-35">
-          <Codicon name="chevron-right" size="0.875rem" />
-        </BranchPickerPrimitive.Next>
-      </BranchPickerPrimitive.Root>
-      <AssistantActionBar durationS={durationS} {...props} />
+      <AssistantActionBar
+        branchPicker={
+          <BranchPickerPrimitive.Root
+            className="inline-flex h-6 items-center gap-1 text-xs text-muted-foreground"
+            hideWhenSingleBranch
+          >
+            <BranchPickerPrimitive.Previous className="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-default disabled:opacity-35">
+              <Codicon name="chevron-left" size="0.875rem" />
+            </BranchPickerPrimitive.Previous>
+            <span className="tabular-nums">
+              <BranchPickerPrimitive.Number /> / <BranchPickerPrimitive.Count />
+            </span>
+            <BranchPickerPrimitive.Next className="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-default disabled:opacity-35">
+              <Codicon name="chevron-right" size="0.875rem" />
+            </BranchPickerPrimitive.Next>
+          </BranchPickerPrimitive.Root>
+        }
+        durationS={durationS}
+        {...props}
+      />
     </div>
   )
 }

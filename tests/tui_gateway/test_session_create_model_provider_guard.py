@@ -75,3 +75,38 @@ def test_session_create_logs_when_a_client_override_beats_the_profile_default(_c
     assert response["result"]["stored_session_id"] in pinned[0]
     assert "gpt-5.5" in pinned[0] and "openrouter" in pinned[0] and "deepseek-v4-flash" in pinned[0]
     assert unpinned == []
+
+
+def test_code_mode_pins_codex_runtime_without_changing_work_mode(_create, tmp_path):
+    response, sessions = _create({"model": "deepseek-v4-flash", "provider": "custom:package", "code_mode": True})
+    session = sessions[response["result"]["session_id"]]
+    assert session["model_override"] == {
+        "model": "deepseek-v4-flash", "provider": "custom:package", "code_mode": True,
+    }
+    response, sessions = _create({"model": "deepseek-v4-flash", "provider": "custom:package"})
+    assert "api_mode" not in sessions[response["result"]["session_id"]]["model_override"]
+
+    # Resume resolves the upstream wire and credentials in the owning profile, A→B→A.
+    from types import SimpleNamespace
+    from tui_gateway import server
+    homes = [tmp_path / "code-a", tmp_path / "code-b"]
+    for index, home in enumerate(homes):
+        home.mkdir()
+        (home / "config.yaml").write_text(
+            "model:\n  default: fixture-model\n  provider: custom:package\n"
+            f"providers:\n  package:\n    api: http://127.0.0.1:59999/v1\n    api_key: fixture-{index}\n",
+            encoding="utf-8",
+        )
+        (home / ".env").write_text("")
+    for index in (0, 1, 0):
+        with server._session_profile_runtime_scope({"profile_home": str(homes[index])}):
+            model, runtime = server._resolve_agent_model_runtime(
+                {"model": "fixture-model", "provider": "custom:package", "code_mode": True, "api_mode": "codex_app_server"}, None,
+            )
+            assert runtime["api_key"] == f"fixture-{index}"
+            assert runtime["api_mode"] != "codex_app_server"
+            agent = SimpleNamespace(model=model, provider="custom:package", base_url=runtime["base_url"],
+                                    api_mode="codex_app_server", _desktop_code_mode=True)
+            config = server._runtime_model_config(agent)
+            restored = server._stored_session_runtime_overrides({"model": model, "model_config": config})
+            assert restored["model_override"]["code_mode"] is True
