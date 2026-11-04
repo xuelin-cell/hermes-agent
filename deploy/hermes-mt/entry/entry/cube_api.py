@@ -385,6 +385,7 @@ class Cube:
         state: dict | None = None,
         api_server: bool = False,
         enterprise: bool = False,
+        connectors: list[dict] | None = None,
     ) -> dict:
         """把会话令牌和种子文件送进容器，并让它把 hermes 拉起来。
 
@@ -416,6 +417,9 @@ class Cube:
             payload["api_server"] = True
         if enterprise:
             payload["enterprise"] = True
+        if connectors:
+            # 入口库里的连接器状态；老转发器不认识这一项，原样忽略（见 seed/forward.py）
+            payload["connectors"] = connectors
         deadline = time.monotonic() + BOOTSTRAP_RETRY_S
         while True:
             try:

@@ -1,5 +1,6 @@
 """Cookie-bound fixed connector operations. No MaaS token or caller-selected upstream."""
 import asyncio
+import json
 from weakref import WeakValueDictionary
 
 from aiohttp import web
@@ -11,6 +12,9 @@ from .connector_wecom_qr import WecomQrError, WecomQrSessions
 
 QR_OPERATIONS = {'qr.start', 'qr.poll', 'qr.cancel'}
 BROWSER_OPERATIONS = {'authorize', 'authorize.poll', 'authorize.cancel'}
+# A profile's keys plus its credential store with run logs dropped is tens of KB; bootstrap
+# carries every profile's snapshot inside the instance's 4 MB request limit.
+MAX_SNAPSHOT = 1024 * 1024
 
 
 def public_rows(rows, specs):
@@ -18,6 +22,18 @@ def public_rows(rows, specs):
     if not isinstance(rows, list) or len(rows) != len(specs) or {row.get('id') for row in rows if isinstance(row, dict)} != set(specs):
         raise web.HTTPBadGateway(text='连接器状态无效。')
     return [{'id': row['id'], **{key: row.get(key) is True for key in ('connected', 'configured', 'enabled')}} for row in rows]
+
+
+def connector_snapshot(state, profile):
+    """The connector state an updated instance returns with a change, or None (older instance,
+    or one entry will not store) so the caller falls back to archiving the instance."""
+    if not isinstance(state, dict) or state.get('profile') != profile:
+        return None
+    snapshot = state.get('snapshot')
+    if (not isinstance(snapshot, dict) or set(snapshot) != {'taken_at', 'keys', 'database', 'enabled'}
+            or len(json.dumps(snapshot)) > MAX_SNAPSHOT):
+        return None
+    return snapshot
 
 
 class ConnectorRoutes:
@@ -127,10 +143,16 @@ class ConnectorRoutes:
                 raise web.HTTPUnauthorized(text='登录已失效。')
             tenant = await self.entry._tenant_for(session)
             result = await self.entry.share_routes.instance(session, '/__mt/connectors', data, capability='连接器')
+            state = result.pop('connector_state', None)
             changed = operation != 'list' if persist is None else persist(result)
             if changed:
+                profile = data.get('profile', 'default')
+                snapshot = connector_snapshot(state, profile)
                 try:
-                    await checkpoint(self.entry, session.user_id, tenant)
+                    if snapshot is None:
+                        await checkpoint(self.entry, session.user_id, tenant)
+                    else:
+                        await self.entry.store.save_connector_state(session.user_id, profile, snapshot)
                 except Exception:
                     raise web.HTTPConflict(text='连接器设置已变更，但持久化未确认。请查询状态后重试保存，勿自动重放工具调用。') from None
             current = await self.entry.store.get_session(session.sid)

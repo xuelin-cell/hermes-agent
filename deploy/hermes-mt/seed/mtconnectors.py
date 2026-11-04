@@ -4,10 +4,15 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import sqlite3
 from pathlib import Path
 
 import aiohttp
-from mtconnector_profile import ConnectorProfile, authorize_profile
+import mtconnector_state
+from mtconnector_profile import ConnectorProfile, authorize_profile, profile_home
+
+# Operations after which entry keeps the profile's connector state ('save' re-sends it).
+DURABLE = {'connect', 'oauth.complete', 'enable', 'disable', 'disconnect', 'save'}
 
 
 class Connectors(ConnectorProfile):
@@ -79,6 +84,21 @@ class Connectors(ConnectorProfile):
         scope.discard_inherited()
         scope.values = scope.credentials()
         return scope
+
+    def adopt(self, states):
+        """Bootstrap: install entry's stored connector state over what the archive restored,
+        before the runtime opens any store. A profile that is gone is skipped, as restore does."""
+        adopted = []
+        for item in states:
+            try:
+                name = item['profile']
+                home = profile_home(self.home, name)
+            except (KeyError, TypeError, ValueError):
+                continue
+            scope = self if name == 'default' else ConnectorProfile(home, self.port, name)
+            if mtconnector_state.adopt(scope, item['snapshot'], self.specs):
+                adopted.append(name)
+        return adopted
 
     async def restore(self):
         async with self.lock:
@@ -177,7 +197,13 @@ class Connectors(ConnectorProfile):
                     saved = scope.saved(row['id']) or {}
                     enabled = isinstance(saved, dict) and saved.get('cloud_connector') == row['id'] and saved.get('enabled') is True
                     rows.append({**row, 'enabled': enabled, 'connected': row['configured'] and enabled})
-                return {'connectors': rows, **authorization}
+                result = {'connectors': rows, **authorization}
+                if operation in DURABLE or (operation == 'authorize.poll' and authorization.get('status') == 'connected'):
+                    try:
+                        result['connector_state'] = {'profile': profile, 'snapshot': mtconnector_state.snapshot(scope)}
+                    except (OSError, ValueError, sqlite3.Error):
+                        pass  # The change is made; without a snapshot entry archives the instance instead.
+                return result
             finally:
                 self.managing = False
 

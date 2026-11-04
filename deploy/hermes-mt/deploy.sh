@@ -542,8 +542,8 @@ cmd_image() {
     ok "已构建 $IMAGE_NAME:$fp"
     # 镜像里的转发器必须和仓库里的逐字节相同——这是「入口和模板一起升级」能成立的前提。
     local in_img in_repo
-    in_img="$(docker run --rm --network none --entrypoint sha256sum "$IMAGE_NAME:$fp" /opt/mt/forward.py /opt/mt/mtstate.py /opt/mt/mtuser.py /opt/mt/mtent.py /opt/mt/mtfolders.py /opt/mt/mtmessaging.py /opt/mt/mtconnectors.py /opt/mt/mtconnector_profile.py | awk '{print $1}' | tr '\n' ' ')"
-    in_repo="$(sha256sum seed/forward.py seed/mtstate.py seed/mtuser.py seed/mtent.py seed/mtfolders.py seed/mtmessaging.py seed/mtconnectors.py seed/mtconnector_profile.py | awk '{print $1}' | tr '\n' ' ')"
+    in_img="$(docker run --rm --network none --entrypoint sha256sum "$IMAGE_NAME:$fp" /opt/mt/forward.py /opt/mt/mtstate.py /opt/mt/mtuser.py /opt/mt/mtent.py /opt/mt/mtfolders.py /opt/mt/mtmessaging.py /opt/mt/mtconnectors.py /opt/mt/mtconnector_profile.py /opt/mt/mtconnector_state.py | awk '{print $1}' | tr '\n' ' ')"
+    in_repo="$(sha256sum seed/forward.py seed/mtstate.py seed/mtuser.py seed/mtent.py seed/mtfolders.py seed/mtmessaging.py seed/mtconnectors.py seed/mtconnector_profile.py seed/mtconnector_state.py | awk '{print $1}' | tr '\n' ' ')"
     [ "$in_img" = "$in_repo" ] && ok "镜像里的转发器与仓库一致" || die "镜像里的 forward.py/mtstate.py/mtuser.py/mtent.py/mtfolders.py 与仓库不一致"
     # 企业对接插件同理：装进 hermes venv 的每个文件和仓库逐字节相同（hermes 认得出它，构建时已经断言过）。
     local plugin_rel

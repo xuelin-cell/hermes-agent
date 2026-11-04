@@ -35,6 +35,9 @@ class FakeStore:
     async def get_profile_settings(self, user_id, profile="default"):
         return self.settings
 
+    async def connector_states(self, user_id):
+        return []
+
     async def ensure_tenant_token(self, user_id):
         return "tok"
 

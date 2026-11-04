@@ -432,6 +432,22 @@ class Store:
             raw = json.loads(raw)
         return raw if isinstance(raw, dict) else {}
 
+    async def save_connector_state(self, user_id: str, profile: str, snapshot: dict) -> None:
+        ciphertext = self.cipher.encrypt(json.dumps(snapshot, separators=(',', ':')))
+        async with self.database.acquire() as connection:
+            await connection.execute(
+                """INSERT INTO connector_states(user_id, profile, snapshot_ciphertext) VALUES($1, $2, $3)
+                   ON CONFLICT(user_id, profile) DO UPDATE SET snapshot_ciphertext = EXCLUDED.snapshot_ciphertext,
+                     revision = connector_states.revision + 1, updated_at = now()""",
+                user_id, profile, ciphertext)
+
+    async def connector_states(self, user_id: str) -> list[dict]:
+        async with self.database.acquire() as connection:
+            rows = await connection.fetch(
+                'SELECT profile, snapshot_ciphertext FROM connector_states WHERE user_id=$1 ORDER BY profile', user_id)
+        return [{'profile': row['profile'], 'snapshot': json.loads(self.cipher.decrypt(row['snapshot_ciphertext']))}
+                for row in rows]
+
     async def is_user_active(self, user_id: str) -> bool:
         """Background account capabilities do not require a live browser session."""
         async with self.database.acquire() as connection:
