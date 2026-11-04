@@ -106,3 +106,31 @@ async def test_validation_allowlist_and_concurrent_binding_ownership(postgres_da
             assert first['enabled'] and again['revision']==first['revision']
     finally:
         await entry.database.close()
+
+
+@pytest.mark.asyncio
+async def test_login_takes_back_a_replaced_cloud_agent_but_keeps_a_live_connection(postgres_database_url):
+    """Another deployment holding the same agentIdCloud makes the gateway replace our client, which
+    then stands down for good. Logging in again must reconnect it (as UniClaw does), never while this
+    deployment is the live holder, and never by bumping the revision that keys in-flight receipts."""
+    app,entry=await setup(postgres_database_url)
+    plan={'ipUrl':'https://login.test','agentIdCloud':'login-bot','agentKeyCloud':'login-secret'}
+    routes=entry.messaging_routes
+    reconnect_id=lambda row: json.loads(row['config']).get('reconnect_id')
+    try:
+        await routes.apply_login('alice',plan)
+        first=await routes.store.binding('alice')
+        async with entry.database.acquire() as db:
+            await db.execute("UPDATE messaging_bindings SET connection_state='stopped',updated_at=now() WHERE id=$1",first['id'])
+        await routes.apply_login('alice',plan)
+        retaken=await routes.store.binding('alice')
+        assert reconnect_id(retaken) and reconnect_id(retaken)!=reconnect_id(first)
+        assert retaken['revision']==first['revision']
+
+        async with entry.database.acquire() as db:
+            await db.execute("UPDATE messaging_bindings SET connection_state='running',updated_at=now() WHERE id=$1",first['id'])
+        await routes.apply_login('alice',plan)
+        live=await routes.store.binding('alice')
+        assert reconnect_id(live)==reconnect_id(retaken) and live['connection_state']=='running'
+    finally:
+        await entry.database.close()
