@@ -1,5 +1,8 @@
 import type { LocalConnectorRequest, LocalConnectorResult } from '../../electron/open-connector/contract'
-import { CLOUD_CONNECTOR_IDS, CLOUD_OAUTH_HOSTS } from '../../services/open-connector/cloud/contract'
+import { CLOUD_BROWSER_AUTH_HOSTS, CLOUD_CONNECTOR_IDS, CLOUD_OAUTH_HOSTS } from '../../services/open-connector/cloud/contract'
+
+// Pages the authorize popup may land on: OAuth providers and provider-page polling (WPS).
+const AUTHORIZATION_HOSTS: Record<string, string> = { ...CLOUD_OAUTH_HOSTS, ...CLOUD_BROWSER_AUTH_HOSTS }
 
 /** Entry runs the WeCom scan and keeps the bot secret; the browser only draws the QR link. */
 async function wecomQrImage(link: string | undefined): Promise<string> {
@@ -23,13 +26,15 @@ export function browserConnectors(base: string) {
 
       if (!input.profile || input.profile.startsWith('.') || /[\\/]/.test(input.profile) || input.profile.length > 160 || (input.operation !== 'list' && !CLOUD_CONNECTOR_IDS.some(id => id === input.id)) ||
           (qr && input.id !== 'wecom_bot') ||
-          !['list', 'connect', 'enable', 'disable', 'disconnect', 'save', 'authorize', 'qr.start', 'qr.poll', 'qr.cancel'].includes(input.operation)) {
+          (input.operation.startsWith('authorize.') && !(input.id && Object.hasOwn(CLOUD_BROWSER_AUTH_HOSTS, input.id))) ||
+          !['list', 'connect', 'enable', 'disable', 'disconnect', 'save', 'authorize', 'authorize.poll', 'authorize.cancel',
+            'qr.start', 'qr.poll', 'qr.cancel'].includes(input.operation)) {
         throw new Error('该连接器或授权方式尚未在云端开放。')
       }
       // Claim a window during the user's click; opening after fetch is blocked by browsers.
       let popup: Window | null = null
       if (input.operation === 'authorize') {
-        if (!input.id || !Object.hasOwn(CLOUD_OAUTH_HOSTS, input.id)) throw new Error('该连接器不使用 OAuth 授权。')
+        if (!input.id || !Object.hasOwn(AUTHORIZATION_HOSTS, input.id)) throw new Error('该连接器不使用授权页授权。')
         popup = window.open('about:blank', '_blank')
         if (!popup) throw new Error('请允许本站弹出授权窗口后重试。')
         popup.opener = null
@@ -51,7 +56,7 @@ export function browserConnectors(base: string) {
 
         if (popup) {
           const url = new URL(result.authorizationUrl ?? '')
-          if (url.protocol !== 'https:' || url.host !== CLOUD_OAUTH_HOSTS[input.id!] || url.username || url.password) {
+          if (url.protocol !== 'https:' || url.host !== AUTHORIZATION_HOSTS[input.id!] || url.username || url.password) {
             throw new Error('连接器授权地址无效。')
           }
           popup.location.replace(url.href)

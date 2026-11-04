@@ -26,6 +26,7 @@ export interface LocalConnectorRow {
 }
 export interface LocalConnectorRequest {
   operation: 'list' | 'connect' | 'authorize' | 'disconnect' | 'enable' | 'disable' | 'save' | 'qr.start' | 'qr.poll' | 'qr.cancel'
+    | 'authorize.poll' | 'authorize.cancel'
   profile: string
   id?: ConnectorId
   values?: Record<string, string>
@@ -37,4 +38,7 @@ export interface LocalConnectorResult {
   sessionId?: string
   qrImage?: string
   qrState?: 'pending' | 'scanned' | 'confirmed' | 'expired'
+  /** Provider-page authorization (cloud WPS): the runtime polls the provider and saves the token. */
+  status?: 'pending' | 'verifying' | 'connected' | 'cancelled' | 'expired' | 'failed'
+  message?: string
 }

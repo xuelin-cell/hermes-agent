@@ -71,7 +71,7 @@ import dns from 'node:dns/promises';
 import {syncBuiltinESMExports} from 'node:module';
 dns.lookup=async()=>[{address:'1.1.1.1',family:4}]; syncBuiltinESMExports();
 const native=globalThis.fetch;
-const allowed=new Set(['agent.qcc.com','mkcs.dfcfs.com','upass.10jqka.com.cn','api-mcp.51ifind.com','mxapi-stg.eastmoney.com','mcp.aminer.cn','restapi.amap.com','open.mail.163.com','account.wps.cn','openapi.wps.cn','qyapi.weixin.qq.com','ima.qq.com']);
+const allowed=new Set(['agent.qcc.com','mkcs.dfcfs.com','upass.10jqka.com.cn','api-mcp.51ifind.com','mxapi-stg.eastmoney.com','mcp.aminer.cn','restapi.amap.com','open.mail.163.com','account.wps.cn','openapi.wps.cn','api.wps.cn','mcp-center.wps.cn','qyapi.weixin.qq.com','ima.qq.com']);
 globalThis.fetch=(input,options)=>{const request=input instanceof Request?input:null;const url=new URL(request?.url??String(input));
  if(url.hostname==='127.0.0.1')return native(input,options);
  if(!allowed.has(url.hostname))throw Error('Unexpected external destination: '+url.hostname);
@@ -151,15 +151,6 @@ class ConnectorPlatform:
                 return web.Response(status=202)
             await queue.put({'jsonrpc': '2.0', 'id': body['id'], 'result': result})
             return web.Response(status=202)
-        if path == '/api/authorization/agent/v1/token':
-            key = body.get('api_key', '')
-            if key not in {'apik:alice-wps', 'apik:bob-wps'}:
-                return web.json_response({'code': 401}, status=401)
-            return web.json_response({'code': 0, 'data': {'access_token': key.split(':')[1].split('-')[0], 'expires_in': 3600}})
-        if path == '/v7/files/search':
-            owner = request.headers.get('Authorization', '').removeprefix('Bearer ')
-            assert owner in {'alice', 'bob'}
-            return web.json_response({'code': 0, 'data': {'items': [{'id': 'file-' + owner, 'name': owner + '-report'}]}})
         if path == '/cgi-bin/aibot/cli/get_mcp_config':
             owner = body['bot_id'].split('-')[0]
             expected = hashlib.sha256(f"{owner}-secret{body['bot_id']}{body['time']}{body['nonce']}".encode()).hexdigest()
@@ -186,14 +177,14 @@ class ConnectorPlatform:
 
 PROVIDER_INPUTS = {
     'youdao_note': ('youdao_note.list_notes', {'parentId': '0'}),
-    'wps_mcp': ('wps_mcp.search_files', {'keyword': 'report'}),
     'wecom_bot': ('wecom_bot.get_userlist', {}),
     'ima': ('ima.search_knowledge_bases', {'query': 'knowledge'})
 }
 
 
 def provider_values(owner):
-    return {'youdao_note': {'apiKey': owner + '-note'}, 'wps_mcp': {'apiKey': 'apik:' + owner + '-wps'},
+    # WPS authorizes on Kingsoft's page, not a credential form: see test_connector_wps.py.
+    return {'youdao_note': {'apiKey': owner + '-note'},
         'wecom_bot': {'botId': owner + '-bot', 'secret': owner + '-secret'}, 'ima': {'clientId': owner + '-client', 'apiKey': owner + '-ima'}}
 
 
@@ -375,7 +366,7 @@ async def test_entry_connector_mcp_scopes_and_archive_restore(tmp_path, postgres
                     await call('alice', 'enable', id=id)
                     action, inputs = PROVIDER_INPUTS[id]
                     assert 'alice' in json.dumps(await mcp_action(http, managers['alice'], id, action, inputs))
-                forbidden = await mcp_action(http, managers['alice'], 'wps_mcp', 'ima.search_knowledge_bases', {'query': ''},
+                forbidden = await mcp_action(http, managers['alice'], 'youdao_note', 'ima.search_knowledge_bases', {'query': ''},
                     extra_headers={'X-OpenConnector-Allowed-Services': 'ima'})
                 assert forbidden['ok'] is False
                 original = await mcp_action(http, managers['alice'], 'ima', 'ima.get_knowledge_item_original', {'mediaId': 'report', 'fileName': '报告.pdf'})
@@ -391,7 +382,7 @@ async def test_entry_connector_mcp_scopes_and_archive_restore(tmp_path, postgres
                 assert response.status == 401
                 original_keys = (homes['alice'] / 'open-connector/secrets.json').read_bytes()
                 assert b'alice-key' not in (homes['alice'] / 'open-connector/connect.sqlite').read_bytes()
-                for secret in (b'alice-note', b'apik:alice-wps', b'alice-secret', b'alice-ima'):
+                for secret in (b'alice-note', b'alice-secret', b'alice-ima'):
                     assert secret not in (homes['alice'] / 'open-connector/connect.sqlite').read_bytes()
                 assert original_keys != (homes['bob'] / 'open-connector/secrets.json').read_bytes()
                 await call('alice', 'disable', id='amap')

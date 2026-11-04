@@ -22,6 +22,8 @@ export function useRecommendedConnections(scope: ProfileScope) {
   const [error, setError] = useState('')
   const [available, setAvailable] = useState(false)
   const [pending, setPending] = useState<ConnectorId | null>(null)
+  // Provider-page authorization (cloud WPS) in progress: polled until the runtime saves the token.
+  const [authorization, setAuthorization] = useState<{ id: ConnectorId; sessionId: string } | null>(null)
 
   async function qr(
     operation: 'qr.start' | 'qr.poll' | 'qr.cancel',
@@ -53,6 +55,7 @@ export function useRecommendedConnections(scope: ProfileScope) {
     setError('')
     setAvailable(false)
     setPending(null)
+    setAuthorization(null)
     setBusy(false)
 
     async function load() {
@@ -124,6 +127,10 @@ export function useRecommendedConnections(scope: ProfileScope) {
 
       if (operation === 'authorize') {
         setPending(id)
+
+        if (result.sessionId && result.status) {
+          setAuthorization({ id, sessionId: result.sessionId })
+        }
       }
 
       return true
@@ -199,6 +206,63 @@ export function useRecommendedConnections(scope: ProfileScope) {
     // The refresh loop is bound to its captured local scope.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [available, key])
+
+  // A provider-page session finishes only through its poll: that call registers the connector
+  // and persists the instance, which the plain list refresh never does.
+  useEffect(() => {
+    if (!authorization) {
+      return
+    }
+
+    const epoch = generation.current
+    let stopped = false
+    let timer: ReturnType<typeof setTimeout>
+
+    async function poll() {
+      try {
+        const result = await window.hermesDesktop.localConnectors({
+          operation: 'authorize.poll',
+          profile,
+          id: authorization!.id,
+          sessionId: authorization!.sessionId
+        })
+
+        if (stopped || generation.current !== epoch) {
+          return
+        }
+
+        setRows(result.connectors)
+
+        if (result.status === 'connected') {
+          setAuthorization(null)
+          setPending(null)
+
+          return
+        }
+
+        if (result.status === 'failed' || result.status === 'cancelled' || result.status === 'expired') {
+          setAuthorization(null)
+          setPending(null)
+          setError(result.message || '授权未完成，请重新发起授权。')
+
+          return
+        }
+      } catch {
+        // A poll is best-effort; the session keeps running server-side until it expires.
+      }
+
+      if (!stopped) {
+        timer = setTimeout(() => void poll(), 2000)
+      }
+    }
+
+    timer = setTimeout(() => void poll(), 2000)
+
+    return () => {
+      stopped = true
+      clearTimeout(timer)
+    }
+  }, [authorization, profile])
 
   useEffect(() => {
     if (!pending) {

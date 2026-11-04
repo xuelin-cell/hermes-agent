@@ -62,14 +62,26 @@ it('云端连接器复用凭据表单，企业微信扫码绑定，iFinD 提交�
   window.hermesDesktop.cloudConnectorIds = CLOUD_CONNECTOR_IDS
   const enabled = new Set<string>()
   localConnectors.mockImplementation(async input => {
-    if (input.operation === 'connect') enabled.add(input.id)
-    return { connectors: CLOUD_CONNECTOR_IDS.map(id => ({ id, connected: enabled.has(id), configured: enabled.has(id), enabled: enabled.has(id) })) }
+    if (input.operation === 'connect' || input.operation === 'authorize.poll') {
+      enabled.add(input.id)
+    }
+
+    const connectors = CLOUD_CONNECTOR_IDS.map(id => ({ id, connected: enabled.has(id), configured: enabled.has(id), enabled: enabled.has(id) }))
+
+    if (input.operation === 'authorize' && input.id === 'wps_mcp') {
+      return { connectors, sessionId: 'wps-session', status: 'pending' as const }
+    }
+
+    if (input.operation === 'authorize.poll') {
+      return { connectors, sessionId: input.sessionId, status: 'connected' as const }
+    }
+
+    return { connectors }
   })
   renderPage('/capabilities?tab=connectors', undefined, 'default')
   await waitFor(() => expect(localConnectors).toHaveBeenCalledWith({ operation: 'list', profile: 'default' }))
   const examples = [
     { id: 'youdao_note', name: '有道云笔记', values: { apiKey: 'note-key' }, labels: ['API Key'] },
-    { id: 'wps_mcp', name: 'WPS', values: { apiKey: 'apik:test' }, labels: ['API Key'] },
     { id: 'ima', name: '腾讯 ima 知识库', values: { clientId: 'client', apiKey: 'ima-key' }, labels: ['Client ID', 'API Key'] },
     { id: 'qq_mail', name: 'QQ 邮箱', values: { email: 'alice@qq.com', authorizationCode: 'alicexxxxxxxxxxx' }, labels: ['邮箱地址', '授权码'] },
     { id: 'netease_mail', name: '网易邮箱', values: { email: 'alice@163.com', authorizationCode: 'alicexxxxxxxxxxx' }, labels: ['邮箱地址', '授权码'] },
@@ -96,6 +108,16 @@ it('云端连接器复用凭据表单，企业微信扫码绑定，iFinD 提交�
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '连接' }))
   await waitFor(() => expect(localConnectors).toHaveBeenCalledWith(expect.objectContaining({ operation: 'qr.start', profile: 'default', id: 'wecom_bot' })))
   expect(within(screen.getByRole('dialog')).queryByLabelText('Bot ID')).toBeNull()
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '关闭' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+
+  // WPS authorizes on Kingsoft's page like UniClaw; the session is polled until the runtime saved it.
+  fireEvent.click(screen.getByRole('button', { name: '查看WPS' }))
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '连接' }))
+  await waitFor(() => expect(localConnectors).toHaveBeenCalledWith({ operation: 'authorize', profile: 'default', id: 'wps_mcp' }))
+  expect(within(screen.getByRole('dialog')).queryByLabelText('API Key')).toBeNull()
+  await waitFor(() => expect(localConnectors).toHaveBeenCalledWith({ operation: 'authorize.poll', profile: 'default', id: 'wps_mcp', sessionId: 'wps-session' }), { timeout: 4000 })
+  await waitFor(() => expect(within(screen.getByRole('dialog')).getByText('已连接')).toBeTruthy())
 })
 
 it('云端只开放已接入渠道，停用保留授权并可重新启用', async () => {

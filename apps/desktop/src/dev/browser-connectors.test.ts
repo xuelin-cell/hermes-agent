@@ -43,6 +43,22 @@ it('draws the WeCom QR from the link entry returns and never trusts another host
   await expect(bridge.localConnectors({ operation: 'qr.start', profile: 'default', id: 'wecom_bot' })).rejects.toThrow('二维码地址无效')
 })
 
+it('sends WPS to the Kingsoft page and polls only its own sessions', async () => {
+  const popup = { opener: {}, location: { replace: vi.fn() }, close: vi.fn() }
+  vi.spyOn(window, 'open').mockReturnValue(popup as unknown as Window)
+  const fetcher = vi.fn(async () => Response.json({ connectors: [], sessionId: 'wps-1', status: 'pending', authorizationUrl: 'https://mcp-center.wps.cn/kdocs-auth/auth-guide?auth_code=x' }))
+  vi.stubGlobal('fetch', fetcher)
+  const bridge = browserConnectors('/hermes/')
+  const started = await bridge.localConnectors({ operation: 'authorize', profile: 'default', id: 'wps_mcp' })
+  expect(started).toMatchObject({ sessionId: 'wps-1', status: 'pending' })
+  expect(popup.location.replace).toHaveBeenCalledWith('https://mcp-center.wps.cn/kdocs-auth/auth-guide?auth_code=x')
+  await bridge.localConnectors({ operation: 'authorize.poll', profile: 'default', id: 'wps_mcp', sessionId: 'wps-1' })
+  await expect(bridge.localConnectors({ operation: 'authorize.poll', profile: 'default', id: 'qcc_mcp', sessionId: 'x' })).rejects.toThrow()
+  fetcher.mockImplementation(async () => Response.json({ connectors: [], authorizationUrl: 'https://evil.example/auth' }))
+  await expect(bridge.localConnectors({ operation: 'authorize', profile: 'default', id: 'wps_mcp' })).rejects.toThrow('授权地址无效')
+  expect(popup.close).toHaveBeenCalled()
+})
+
 it('surfaces unconfirmed persistence without retrying the mutation', async () => {
   const fetcher = vi.fn(async () => Response.json({ error: '持久化未确认，请查询状态' }, { status: 409 }))
   vi.stubGlobal('fetch', fetcher)

@@ -6,6 +6,7 @@ import { mkdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { parse } from 'yaml'
 import { CLOUD_CONNECTOR_IDS, CLOUD_CONNECTOR_SPECS } from './contract.ts'
+import { browserAuthorization } from './browser-authorization.ts'
 import { connectorOAuth } from './oauth.ts'
 import { ConnectorScopes, type ScopeOptions } from './profile-scopes.ts'
 
@@ -39,11 +40,16 @@ export async function startConnectors(options: HostOptions) {
       activity()
       try {
         if (existsSync(path.join(options.home, '.mt', 'connectors-draining')) || existsSync(path.join(options.home, '.mt', 'kits-active.json'))) return response({ error: 'Instance draining' }, 503)
-        const input = await request.json() as { operation: string; id?: string; values?: Record<string, string>; origin?: string; parameters?: Record<string, string>; profile?: string }
+        const input = await request.json() as { operation: string; id?: string; values?: Record<string, string>; origin?: string; parameters?: Record<string, string>; profile?: string; sessionId?: string }
         const scope = await scopes.get(input.profile ?? 'default')
         const { app, appOptions } = scope
         const spec = input.id && Object.hasOwn(CLOUD_CONNECTOR_SPECS, input.id) ? CLOUD_CONNECTOR_SPECS[input.id] : null
         if (input.operation !== 'list' && !spec) return response({ error: 'Unsupported connector' }, 400)
+        if (spec?.auth === 'browser_poll' && ['authorize', 'authorize.poll', 'authorize.cancel'].includes(input.operation)) {
+          return response(...await browserAuthorization(app, scope.keys.admin, input, request.signal))
+        }
+        // Browser-poll tokens come only from the provider's page, never from a typed form.
+        if (spec?.auth === 'browser_poll' && input.operation === 'connect') return response({ error: 'Use browser authorization' }, 400)
         if (['authorize', 'oauth.complete'].includes(input.operation)) {
           return response(await connectorOAuth(appOptions, input, request.signal))
         }
