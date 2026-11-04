@@ -315,6 +315,60 @@ export function createOpenApiDocument(
     }),
     "/api/oauth/configs/{service}": createOAuthConfigPath(),
     "/api/oauth/authorizations": createOAuthAuthorizationPath(),
+    "/api/browser-authorizations/{service}": {
+      post: {
+        tags: ["Connections"],
+        summary: "Start browser polling authorization.",
+        parameters: [{ name: "service", in: "path", required: true, schema: jsonSchema.string() }],
+        requestBody: {
+          required: false,
+          content: {
+            "application/json": {
+              schema: jsonSchema.object(
+                { connectionName: jsonSchema.string() },
+                { description: "Optional named connection." },
+              ),
+            },
+          },
+        },
+        responses: {
+          200: jsonResponse(
+            jsonSchema.unknownObject(
+              "Public session ID, authorization URL, status and expiration. No credentials are returned.",
+            ),
+          ),
+          400: jsonResponse({ $ref: "#/components/schemas/ErrorResponse" }),
+        },
+      },
+    },
+    "/api/browser-authorizations/{service}/{sessionId}": {
+      parameters: ["service", "sessionId"].map((name) => ({
+        name,
+        in: "path",
+        required: true,
+        schema: jsonSchema.string(),
+      })),
+      get: {
+        tags: ["Connections"],
+        summary: "Read browser authorization status.",
+        responses: {
+          200: jsonResponse(jsonSchema.unknownObject("Public authorization status.")),
+          404: jsonResponse({ $ref: "#/components/schemas/ErrorResponse" }),
+        },
+      },
+      delete: {
+        tags: ["Connections"],
+        summary: "Cancel pending browser authorization.",
+        responses: {
+          200: jsonResponse(
+            jsonSchema.unknownObject(
+              "Final public authorization status; an already committing connection may finish successfully.",
+            ),
+          ),
+          404: jsonResponse({ $ref: "#/components/schemas/ErrorResponse" }),
+        },
+      },
+    },
     "/api/runtime-tokens": createRuntimeTokensPath(),
     "/api/runtime-tokens/{id}": createRuntimeTokenPath(),
     "/api/runtime-policy": createRuntimePolicyPath(),

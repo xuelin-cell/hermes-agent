@@ -216,6 +216,16 @@ export class SqliteConnectionStore implements IConnectionStore {
     this.secretCodec = secretCodec;
   }
 
+  async getOrCreateInstallationId(): Promise<string> {
+    this.database
+      .prepare("insert into runtime_installation (id, client_id) values (1, ?) on conflict(id) do nothing")
+      .run(crypto.randomUUID().replaceAll("-", "").slice(0, 16));
+    return readString(
+      this.database.prepare("select client_id from runtime_installation where id = 1").get()!,
+      "client_id",
+    );
+  }
+
   async get(service: string, connectionName: string): Promise<StoredConnection | undefined> {
     const row = this.database
       .prepare("select id, revision, value from connections where service = ? and connection_name = ?")

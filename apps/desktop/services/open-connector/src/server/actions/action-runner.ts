@@ -121,6 +121,9 @@ export class ActionRunner {
           if (input.signal?.aborted) {
             result = cancelledExecutionResult();
           }
+          if (result.error?.code === "reauthorization_required") {
+            await connection.invalidateCredential?.();
+          }
         }
       } catch (error) {
         const missingConnectionPolicy =

@@ -14259,15 +14259,7 @@ export interface ProviderActionNames {
     | "get_store"
     | "list_stores"
     | "delete_stores";
-  wps_mcp:
-    | "search_files"
-    | "list_my_files"
-    | "list_files"
-    | "get_file_info"
-    | "read_file"
-    | "create_folder"
-    | "list_tools"
-    | "call_tool";
+  wps_mcp: "list_tools" | "get_tool_schema" | "call_tool";
   wrike:
     | "list_contacts"
     | "list_folders"

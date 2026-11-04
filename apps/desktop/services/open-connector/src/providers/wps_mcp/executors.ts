@@ -1,335 +1,111 @@
-import type { CredentialValidators, ProviderExecutors, ProviderProxyExecutor } from "../../core/types.ts";
-import type { ApiKeyProviderContext, ProviderRuntimeHandler } from "../provider-runtime.ts";
-import type { ProviderActionHandlers } from "../provider-runtime.ts";
+import type { BrowserAuthorizationRuntime } from "../../browser-authorization-service.ts";
+import type { CredentialValidators, ProviderExecutors } from "../../core/types.ts";
+import type { WpsMcpContext } from "./skill-hub-client.ts";
 
-import { createHash } from "node:crypto";
 import { optionalRecord, optionalString } from "../../core/cast.ts";
 import {
-  createProviderFetch,
-  defineApiKeyProviderExecutors,
-  defineProviderProxy,
-  mapProviderActionHandlers,
+  defineProviderExecutors,
   ProviderRequestError,
+  requireCustomCredential,
+  runProviderRequest,
+  readProviderJsonBody,
 } from "../provider-runtime.ts";
-import { wpsMcpActions } from "./actions.ts";
-import {
-  isAgentApiKey,
-  normalizeWpsCredential,
-  requestWpsV7,
-  resolveWpsAccessToken,
-  wpsAgentTokenEndpoint,
-  wpsV7BaseUrl,
-} from "./wps-v7-client.ts";
+import { wpsMcpEndpoint, wpsExchangeEndpoint, withWpsMcpClient } from "./skill-hub-client.ts";
+import { getWpsSkillVersion } from "./skill-version.ts";
+import { listWpsToolSummaries, getWpsToolSchema, callWpsTool } from "./tool-catalog.ts";
 
-export { wpsAgentTokenEndpoint, wpsV7BaseUrl } from "./wps-v7-client.ts";
-
-const service = "wps_mcp";
-const wpsFileSearchPath = "/v7/files/search";
-
-const handlers: ProviderActionHandlers<
-  "wps_mcp",
-  ProviderRuntimeHandler<ApiKeyProviderContext>
-> = mapProviderActionHandlers(
-  "wps_mcp",
-  wpsMcpActions,
-  (_action, name) => (input, context) => executeWpsAction(name, input, context),
-);
-
-export const executors: ProviderExecutors = defineApiKeyProviderExecutors(service, handlers, {
-  // WPS is a code-controlled public host. Skipping the duplicate DNS check
-  // avoids false positives on corporate/VPN DNS while retaining URL guards.
-  skipDnsValidation: true,
-});
-
-/**
- * Keep the generic provider proxy useful for callers that need a raw WPS V7
- * endpoint, but never proxy the old Skill Hub MCP endpoint.
- */
-export const proxy: ProviderProxyExecutor = defineProviderProxy({
-  service,
-  baseUrl: wpsV7BaseUrl,
-  auth: { type: "none" },
-  allowedEndpoint: (endpoint) => endpoint.startsWith("/v7/"),
-  async customizeRequest({ context, headers, fetcher }) {
-    const credential = await context.getCredential(service);
-    if (credential?.authType !== "api_key") {
-      throw new ProviderRequestError(401, "Configure wps_mcp Agent API Key credentials first.");
-    }
-    const accessToken = await resolveWpsAccessToken(credential.apiKey, fetcher, context.signal);
-    headers.set("authorization", `Bearer ${accessToken}`);
-    headers.set("accept", "application/json");
+export const browserAuthorization: BrowserAuthorizationRuntime = {
+  authorizationUrl(code) {
+    return `https://mcp-center.wps.cn/kdocs-auth/auth-guide?auth_code=${encodeURIComponent(code)}`;
   },
-  skipDnsValidation: true,
+  async exchange(code, clientId, fetcher, signal) {
+    try {
+      return await runProviderRequest(
+        { signal, label: "WPS authorization exchange", timeoutMs: 10_000 },
+        async (requestSignal) => {
+          const response = await fetcher(wpsExchangeEndpoint, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ code }),
+            signal: requestSignal,
+          });
+          if (response.status >= 500) return { status: "pending" };
+          const payload = optionalRecord(
+            await readProviderJsonBody(response, {
+              emptyBody: {},
+              invalidJsonMessage: "Invalid WPS authorization response",
+              invalidJsonFallback: () => ({}),
+            }),
+          );
+          const businessCode = Number(payload?.code);
+          const status =
+            response.ok && ([200, 202, 403, 409].includes(businessCode) || (businessCode >= 500 && businessCode <= 599))
+              ? businessCode
+              : response.status;
+          if (status === 202 || (status >= 500 && status <= 599)) return { status: "pending" };
+          if (status === 403) return { status: "failed", message: "仅支持 WPS 个人账号，请切换账号后重新授权。" };
+          if (status === 409) return { status: "cancelled", message: "授权已取消，可以重新发起。" };
+          if (status !== 200 || (payload?.code !== undefined && ![0, 200].includes(businessCode))) {
+            return { status: "failed", message: "金山授权失败，请重新发起授权。" };
+          }
+          const data = optionalRecord(payload?.data);
+          const token = optionalString(data?.token);
+          const expiresIn = Number(data?.expires_in);
+          if (!token || !Number.isFinite(expiresIn) || expiresIn <= 0 || expiresIn > 31_536_000) {
+            return { status: "failed", message: "金山授权返回的凭据或有效期无效，请重试。" };
+          }
+          return {
+            status: "authorized",
+            values: {
+              token,
+              clientId,
+              expiresAt: new Date(Date.now() + expiresIn * 1000).toISOString(),
+              skillVersion: getWpsSkillVersion(),
+            },
+          };
+        },
+      );
+    } catch {
+      signal.throwIfAborted();
+      return { status: "pending", message: "暂时无法连接金山授权服务，正在重试，请检查网络连接。" };
+    }
+  },
+};
+
+export const executors: ProviderExecutors = defineProviderExecutors<WpsMcpContext>({
+  service: "wps_mcp",
+  async createContext(context, fetcher) {
+    const credential = await requireCustomCredential(context, "wps_mcp");
+    return { values: credential.values, fetcher, signal: context.signal };
+  },
+  handlers: {
+    async list_tools(input, context) {
+      return listWpsToolSummaries(context, input);
+    },
+    get_tool_schema: (input, context) => getWpsToolSchema(context, input),
+    call_tool: (input, context) => callWpsTool(context, input),
+  },
 });
 
 export const credentialValidators: CredentialValidators = {
-  async apiKey(input, { fetcher, signal }) {
-    const egressFetcher = createProviderFetch({ fetch: fetcher, skipDnsValidation: true });
-    await requestWpsV7(input.apiKey, egressFetcher, signal, wpsFileSearchPath, {
-      query: {
-        type: "file_name",
-        scope: ["personal_drive"],
-        page_size: 1,
-        order_by: "mtime",
-        order: "desc",
-      },
-    });
-
-    const normalizedCredential = normalizeWpsCredential(input.apiKey);
-    const tokenHash = createHash("sha256").update(normalizedCredential).digest("hex").slice(0, 16);
+  async customCredential(input, { fetcher, signal }) {
+    const result = await withWpsMcpClient({ values: input.values, fetcher, signal }, (client) =>
+      client.listTools({}, { signal }),
+    );
+    if (result.tools.length === 0) throw new ProviderRequestError(502, "Kingsoft MCP did not expose any tools");
+    const bytes = new TextEncoder().encode(input.values.token);
+    const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)))
+      .slice(0, 8)
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
     return {
-      profile: { accountId: `wps-v7:${tokenHash}`, displayName: `WPS ${tokenHash.slice(-6)}` },
+      profile: { accountId: `wps-skill:${hash}`, displayName: `WPS · ${hash.slice(-6)}` },
       metadata: {
-        apiBaseUrl: wpsV7BaseUrl,
-        apiVersion: "v7",
-        credentialType: isAgentApiKey(normalizedCredential) ? "agent_api_key" : "unsupported",
-        validationAction: "search_files",
+        expiresAt: input.values.expiresAt,
+        mcpEndpoint: wpsMcpEndpoint,
+        credentialType: "skill_hub",
+        discoveredToolCount: result.tools.length,
       },
     };
   },
 };
-
-async function executeWpsAction(
-  actionName: string,
-  input: Record<string, unknown>,
-  context: ApiKeyProviderContext,
-): Promise<unknown> {
-  if (actionName === "list_tools") return listLocalActions();
-
-  if (actionName === "call_tool") {
-    const toolName = requireString(input.toolName, "toolName");
-    if (!supportedActionNames.has(toolName)) {
-      throw new ProviderRequestError(400, `Unsupported WPS V7 action: ${toolName}`);
-    }
-    return {
-      result: await executeWpsAction(toolName, readArguments(input.arguments), context),
-    };
-  }
-
-  switch (actionName) {
-    case "search_files":
-      return requestWpsV7(context.apiKey, context.fetcher, context.signal, wpsFileSearchPath, {
-        query: searchQuery(input),
-      });
-    case "list_my_files":
-      return requestWpsV7(context.apiKey, context.fetcher, context.signal, wpsFileSearchPath, {
-        query: {
-          type: "file_name",
-          scope: ["personal_drive"],
-          page_size: input.page_size ?? 50,
-          ...fileListQuery(input),
-        },
-      });
-    case "list_files": {
-      const driveId = requireString(input.drive_id, "drive_id");
-      const parentId = requireString(input.parent_id, "parent_id");
-      return requestWpsV7(
-        context.apiKey,
-        context.fetcher,
-        context.signal,
-        `/v7/drives/${pathPart(driveId)}/files/${pathPart(parentId)}/children`,
-        {
-          query: fileListQuery(input),
-        },
-      );
-    }
-    case "get_file_info": {
-      const ref = await resolveFileReference(context, input);
-      const response = await requestWpsV7(
-        context.apiKey,
-        context.fetcher,
-        context.signal,
-        `/v7/drives/${pathPart(ref.driveId)}/files/${pathPart(ref.fileId)}/meta`,
-        { query: metadataQuery(input) },
-      );
-      return ref.link ? { ...response, data: { ...optionalRecord(response.data), link: ref.link } } : response;
-    }
-    case "read_file": {
-      const ref = await resolveFileReference(context, input);
-      return requestWpsV7(
-        context.apiKey,
-        context.fetcher,
-        context.signal,
-        `/v7/drives/${pathPart(ref.driveId)}/files/${pathPart(ref.fileId)}/content`,
-        {
-          query: {
-            format: input.format ?? "markdown",
-            mode: "auto",
-            task_id: input.task_id,
-          },
-        },
-      );
-    }
-    case "create_folder": {
-      const driveId = requireString(input.drive_id, "drive_id");
-      const parentId = requireString(input.parent_id, "parent_id");
-      return requestWpsV7(
-        context.apiKey,
-        context.fetcher,
-        context.signal,
-        `/v7/drives/${pathPart(driveId)}/files/${pathPart(parentId)}/create`,
-        {
-          method: "POST",
-          body: {
-            file_type: "folder",
-            name: requireString(input.name, "name"),
-            on_name_conflict: input.on_name_conflict,
-            parent_path: input.parent_path,
-          },
-        },
-      );
-    }
-    default:
-      throw new ProviderRequestError(400, `Unsupported WPS action: ${actionName}`);
-  }
-}
-
-const supportedActionNames = new Set([
-  "search_files",
-  "list_my_files",
-  "list_files",
-  "get_file_info",
-  "read_file",
-  "create_folder",
-]);
-
-function listLocalActions(): { tools: Array<{ name: string; description: string }> } {
-  return {
-    tools: wpsMcpActions
-      .filter((action) => supportedActionNames.has(action.name))
-      .map((action) => ({ name: action.name, description: action.description })),
-  };
-}
-
-function searchQuery(input: Record<string, unknown>): Record<string, unknown> {
-  const query: Record<string, unknown> = { type: input.type ?? "all", page_size: input.page_size ?? 50 };
-  for (const key of [
-    "keyword",
-    "file_type",
-    "file_exts",
-    "exclude_file_exts",
-    "file_ext_groups",
-    "channels",
-    "exclude_channels",
-    "device_ids",
-    "creator_ids",
-    "modifier_ids",
-    "receiver_ids",
-    "sharer_ids",
-    "scope",
-    "filter_user_id",
-    "search_operator_name",
-    "start_time",
-    "end_time",
-    "time_type",
-    "order_by",
-    "order",
-    "page_token",
-    "with_drive",
-    "with_link",
-    "with_permission",
-    "with_total",
-    "drive_ids",
-    "parent_ids",
-  ]) {
-    if (input[key] !== undefined) query[key] = input[key];
-  }
-  return query;
-}
-
-function fileListQuery(input: Record<string, unknown>): Record<string, unknown> {
-  const query: Record<string, unknown> = {};
-  for (const key of [
-    "filter_exts",
-    "filter_type",
-    "order",
-    "order_by",
-    "page_size",
-    "page_token",
-    "with_ext_attrs",
-    "with_permission",
-  ]) {
-    if (input[key] !== undefined) query[key] = input[key];
-  }
-  return query;
-}
-
-function metadataQuery(input: Record<string, unknown>): Record<string, unknown> {
-  const query: Record<string, unknown> = {};
-  for (const key of ["with_drive", "with_ext_attrs", "with_permission"]) {
-    if (input[key] !== undefined) query[key] = input[key];
-  }
-  return query;
-}
-
-type WpsFileReference = {
-  fileId: string;
-  driveId: string;
-  link?: Record<string, unknown>;
-};
-
-async function resolveFileReference(
-  context: ApiKeyProviderContext,
-  input: Record<string, unknown>,
-): Promise<WpsFileReference> {
-  const fileId = optionalString(input.file_id);
-  const rawLinkId = optionalString(input.link_id) ?? extractLinkId(optionalString(input.url));
-
-  if (fileId && !rawLinkId) {
-    const response = await requestWpsV7(
-      context.apiKey,
-      context.fetcher,
-      context.signal,
-      `/v7/files/${pathPart(fileId)}/meta`,
-      { query: { with_drive: true } },
-    );
-    const data = requireResponseRecord(response, "file metadata");
-    return { fileId, driveId: requireString(data.drive_id, "drive_id") };
-  }
-
-  const linkId = requireString(rawLinkId, "link_id or url");
-  const linkResponse = await requestWpsV7(
-    context.apiKey,
-    context.fetcher,
-    context.signal,
-    `/v7/links/${pathPart(linkId)}/meta`,
-  );
-  const link = requireResponseRecord(linkResponse, "link metadata");
-  return {
-    fileId: requireString(link.file_id, "file_id"),
-    driveId: requireString(link.drive_id, "drive_id"),
-    link,
-  };
-}
-
-function extractLinkId(url: string | undefined): string | undefined {
-  if (!url) return undefined;
-  try {
-    const parsed = new URL(url);
-    const match = parsed.pathname.match(/\/l\/([A-Za-z0-9]+)/);
-    if (match) return match[1];
-  } catch {
-    // The schema rejects invalid URLs before execution; keep this helper safe
-    // for direct executor calls and return the standard input error below.
-  }
-  return undefined;
-}
-
-function requireResponseRecord(response: Record<string, unknown>, label: string): Record<string, unknown> {
-  const data = optionalRecord(response.data);
-  if (!data) throw new ProviderRequestError(502, `WPS OpenAPI ${label} response is missing data`);
-  return data;
-}
-
-function pathPart(value: string): string {
-  return encodeURIComponent(value);
-}
-
-function requireString(value: unknown, name: string): string {
-  if (typeof value === "string" && value.trim()) return value.trim();
-  throw new ProviderRequestError(400, `${name} is required`);
-}
-
-function readArguments(value: unknown): Record<string, unknown> {
-  return optionalRecord(value) ?? {};
-}

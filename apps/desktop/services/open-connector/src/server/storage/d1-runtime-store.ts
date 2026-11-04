@@ -113,6 +113,16 @@ class D1MarketplaceStore implements IMarketplaceStore {
 }
 
 export class D1ConnectionStore implements IConnectionStore {
+  async getOrCreateInstallationId(): Promise<string> {
+    await this.database
+      .prepare("insert into runtime_installation (id, client_id) values (1, ?) on conflict(id) do nothing")
+      .bind(crypto.randomUUID().replaceAll("-", "").slice(0, 16))
+      .run();
+    const row = await this.database
+      .prepare("select client_id from runtime_installation where id = 1")
+      .first<RuntimeRow>();
+    return readString(row!, "client_id");
+  }
   private readonly database: D1DatabaseBinding;
   private readonly secretCodec: ISecretCodec;
 

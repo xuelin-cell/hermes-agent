@@ -20,6 +20,10 @@ import { createMcpHandler } from "@modelcontextprotocol/server";
 import { Scalar } from "@scalar/hono-api-reference";
 import { Hono } from "hono";
 import { compress } from "hono/compress";
+import {
+  BrowserAuthorizationConfigurationError,
+  BrowserAuthorizationService,
+} from "../browser-authorization-service.ts";
 import { ConnectionError, defaultConnectionName } from "../connection-service.ts";
 import { ActionPolicyService, emptyPolicyRules } from "../core/action-policy.ts";
 import { DEFAULT_ACTION_SEARCH_LIMIT, createActionSearchIndexProvider, searchActions } from "../core/action-search.ts";
@@ -95,10 +99,12 @@ export class ConnectServer {
   private readonly actionSearch: ActionSearchIndexProvider;
   private readonly actionPolicy: ActionPolicyService;
   private readonly proxyRunner: ProxyRunner;
+  private readonly browserAuthorizations: BrowserAuthorizationService;
   private readonly policySnapshots = new WeakMap<Request, Promise<ActionPolicySnapshot>>();
 
   constructor(options: IConnectServerOptions) {
     this.options = options;
+    this.browserAuthorizations = new BrowserAuthorizationService(options);
     this.actionSearch = options.actionSearch ?? createActionSearchIndexProvider(options.catalog.actions);
     this.actionPolicy = options.actionPolicy ?? new ActionPolicyService();
     this.proxyRunner = new ProxyRunner({
@@ -206,6 +212,39 @@ export class ConnectServer {
     app.get("/api/connections", (context) => this.listConnections(context));
     app.put("/api/connections/:service", (context) => this.upsertConnection(context, context.req.param("service")));
     app.delete("/api/connections/:service", (context) => this.disconnect(context, context.req.param("service")));
+    app.post("/api/browser-authorizations/:service", async (context) => {
+      const body = await readJsonBody(context);
+      try {
+        return context.json(
+          await this.browserAuthorizations.start(context.req.param("service"), optionalString(body.connectionName)),
+        );
+      } catch (error) {
+        return jsonError(
+          context,
+          400,
+          "authorization_unavailable",
+          error instanceof BrowserAuthorizationConfigurationError
+            ? error.message
+            : "无法发起浏览器授权，请检查连接器配置后重试。",
+        );
+      }
+    });
+    app.get("/api/browser-authorizations/:service/:sessionId", (context) => {
+      const status = this.browserAuthorizations.get(context.req.param("sessionId"), context.req.param("service"));
+      context.header("Cache-Control", "no-store");
+      return status
+        ? context.json(status)
+        : jsonError(context, 404, "session_not_found", "Authorization session not found.");
+    });
+    app.delete("/api/browser-authorizations/:service/:sessionId", async (context) => {
+      const status = await this.browserAuthorizations.cancel(
+        context.req.param("sessionId"),
+        context.req.param("service"),
+      );
+      return status
+        ? context.json(status)
+        : jsonError(context, 404, "session_not_found", "Authorization session not found.");
+    });
 
     app.get("/api/runs", (context) => this.listRuns(context));
     app.get("/api/runs/:id", (context) => this.getRun(context, context.req.param("id")));
@@ -844,6 +883,15 @@ export class ConnectServer {
   }
 
   private async upsertConnection(context: Context, service: string): Promise<Response> {
+    const provider = this.options.catalog.providers.find((item) => item.service === service);
+    if (provider?.auth.some((auth) => auth.type === "custom_credential" && auth.interaction === "browser_poll")) {
+      return jsonError(
+        context,
+        400,
+        "browser_authorization_required",
+        "Connect this provider through browser authorization.",
+      );
+    }
     const body = await readJsonBody(context);
     const authType = optionalString(body.authType);
     if (!authType) {
@@ -922,7 +970,7 @@ export class ConnectServer {
     this.options.logger?.info(logContext, "connection disconnect started");
     return this.writeConnectionResult(
       context,
-      this.options.connections.disconnect(service, connectionName),
+      this.browserAuthorizations.disconnect(service, connectionName),
       logContext,
     );
   }
