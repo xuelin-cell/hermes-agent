@@ -255,6 +255,59 @@ it('rebuilds a missing mailbox connection from local state without contacting Wo
   }
 })
 
+it('refreshes an expired cached exclusive code before rebuilding the mailbox connection', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-agent-mail-refresh-'))
+  fs.writeFileSync(path.join(home, 'config.yaml'), '{}\n')
+  const writes: unknown[] = []
+  const request = vi.spyOn(ConnectorRuntime.prototype, 'request')
+    .mockRejectedValueOnce(new Error('credential verification failed'))
+    .mockResolvedValueOnce({})
+  vi.spyOn(ConnectorRuntime.prototype, 'rows').mockResolvedValue([])
+  vi.spyOn(ConnectorRuntime.prototype, 'connection')
+    .mockResolvedValueOnce(null)
+    .mockResolvedValueOnce({ configured: true, displayName: '13800000000@wo.cn' })
+  vi.spyOn(ConnectorRuntime.prototype, 'config').mockResolvedValue({
+    url: 'http://127.0.0.1:1234/mcp',
+    headers: { Authorization: 'Bearer runtime' }
+  })
+  vi.spyOn(ConnectorRuntime.prototype, 'close').mockResolvedValue()
+
+  const mailState = {
+    get: vi.fn(() => ({ authorizationCode: 'expired-mail-code', email: '13800000000@wo.cn', enabled: true })),
+    save: vi.fn()
+  }
+  const exclusiveCode = vi.fn(async () => 'fresh-mail-code')
+  const manager = makeManager(home, { mcp_servers: {} }, writes, { mailState, exclusiveCode })
+
+  try {
+    await manager.prepare('default')
+
+    expect(exclusiveCode).toHaveBeenCalledOnce()
+    expect(request).toHaveBeenNthCalledWith(1, '/api/connections/wo_mail', 'PUT', {
+      authType: 'custom_credential',
+      connectionName: 'default',
+      values: { authorizationCode: 'expired-mail-code', email: '13800000000@wo.cn' }
+    })
+    expect(request).toHaveBeenNthCalledWith(2, '/api/connections/wo_mail', 'PUT', {
+      authType: 'custom_credential',
+      connectionName: 'default',
+      values: { authorizationCode: 'fresh-mail-code', email: '13800000000@wo.cn' }
+    })
+    expect(mailState.save).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ uid: 'account-a', phone: '13800000000' }),
+      { email: '13800000000@wo.cn', enabled: true }
+    )
+    expect(mailState.save).toHaveBeenCalledWith(
+      expect.objectContaining({ uid: 'account-a', phone: '13800000000' }),
+      expect.objectContaining({ authorizationCode: 'fresh-mail-code', enabled: true, email: '13800000000@wo.cn' })
+    )
+  } finally {
+    await manager.close()
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
 it('removes a mailbox connection that belongs to the previous phone account', async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-agent-mail-switch-'))
   fs.writeFileSync(
