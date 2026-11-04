@@ -12,5 +12,10 @@ if [[ "$(uname -s)" != Darwin ]]; then
     exit 1
 fi
 cd "$source_root"
-export HERMES_PYTHON="$source_root/.venv/bin/python"
+source "$source_root/scripts/_activation.sh"
+if ! hermes_activation_current "$source_root"; then
+    echo '请先在仓库根目录的 Bash 中执行 source ./activate，再运行打包脚本。' >&2
+    exit 1
+fi
+export HERMES_PYTHON="$(command -v python3)"
 node apps/desktop/scripts/macos-universal.mjs "$@"

@@ -5,7 +5,7 @@
 ## 前置条件
 
 - 在 macOS 本机运行，安装 Xcode Command Line Tools（`xcode-select --install`）。
-- 安装符合仓库 engines 的 Node.js/npm，并执行 `source ./activate` 准备 `.venv/bin/python`。
+- 在 Bash 中执行 `source ./activate`，准备并激活 PM 管理的 Python、Node.js/npm 环境。入口检查当前项目的激活记录并使用已激活的 `python3`，不要求项目下存在 `.venv/bin/python`。新终端或依赖输入改变后需要重新激活；`--dry-run` 本身不会安装依赖。
 - 源码目录必须干净，包括未跟踪文件（Git 已忽略的构建输出除外）。需要保留在版本中的修改和新文件先提交，无关本地文件移到仓库外；入口在安装依赖前检查并列出阻塞文件。脚本构建当前 HEAD，不自动切换、拉取或推送分支。
 - 首次准备会联网下载锁定依赖及发行内置资源，需能访问对应源。
 - Python 后端和原生模块按本机目标构建。Apple Silicon 与 Intel 包分别在对应原生环境构建，此原生入口不跨架构构建；单个 Universal DMG 使用下文的独立合并入口。
@@ -52,7 +52,7 @@
 
 1. 在 Intel Mac/原生 x64 构建环境和 Apple Silicon 构建环境分别检出同一提交，运行 `./build-macos-installer.sh`。
 2. 收集 `release/mac/UniWork.app`（实际以 x64 构建输出为准）和 `release/mac-arm64/UniWork.app`。跨机器传输使用原构建 ZIP 或保留符号链接的归档，不手工拆散 `.app`。
-3. 在已安装仓库锁定 Node 依赖和 `.venv` 的 Mac 执行：
+3. 在已安装仓库锁定 Node 依赖、并已在 Bash 中执行 `source ./activate` 的 Mac 执行：
 
 ```bash
 ./build-macos-universal.sh \
