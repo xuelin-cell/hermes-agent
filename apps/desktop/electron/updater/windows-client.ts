@@ -51,9 +51,11 @@ export function createWindowsStrategy(deps: WindowsClientDeps): WindowsStrategy 
 
   if (deps.feedBaseUrl) {
     // config.yaml wins over the origin baked into app-update.yml, so a mirror
-    // can be swapped without rebuilding the package.
+    // can be swapped without rebuilding the package. Carry the baked publish's
+    // single-range flag here too: replacing the descriptor would otherwise
+    // silently restore multi-range batching and the full-download fallback.
     const base = channelPublicBase(deps.feedBaseUrl)
-    updater.setFeedURL({ provider: 'generic', url: `${base}/${feed.directory}/`, channel: feed.channel })
+    updater.setFeedURL({ provider: 'generic', url: `${base}/${feed.directory}/`, channel: feed.channel, useMultipleRangeRequest: false })
   }
 
   return new WindowsStrategy({

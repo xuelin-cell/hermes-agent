@@ -66,7 +66,8 @@ describe('Windows client wiring', () => {
     expect(client.setFeedURL).toHaveBeenCalledWith({
       provider: 'generic',
       url: 'https://updates.example/releases/win32/stable/',
-      channel: 'stable'
+      channel: 'stable',
+      useMultipleRangeRequest: false
     })
     expect(() => createWindowsStrategy(deps('http://untrusted.example'))).toThrow('HTTPS')
   })
@@ -78,14 +79,16 @@ describe('Windows client wiring', () => {
     expect(client.setFeedURL).toHaveBeenLastCalledWith({
       provider: 'generic',
       url: 'https://updates.example/releases/win32/stable/',
-      channel: 'stable'
+      channel: 'stable',
+      useMultipleRangeRequest: false
     })
 
     createWindowsStrategy(deps('https://updates.example', true, 'light-canary'))
     expect(client.setFeedURL).toHaveBeenLastCalledWith({
       provider: 'generic',
       url: 'https://updates.example/releases/win32/light/canary/',
-      channel: 'canary'
+      channel: 'canary',
+      useMultipleRangeRequest: false
     })
     expect(client.allowPrerelease).toBe(true)
   })
