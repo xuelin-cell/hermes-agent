@@ -209,10 +209,10 @@ try {
         Write-Host ("[build-timing] desktop-build: {0:F1}s" -f $buildClock.Elapsed.TotalSeconds)
     }
 
-    $release = Join-Path $sourceRoot 'apps\desktop\release'
+    $releaseDir = Join-Path $sourceRoot 'apps\desktop\release'
     # nsis-web keeps its bootstrapper and .7z payload in release\nsis-web;
     # the full nsis target writes straight into release.
-    $artifactDir = if ($WebInstaller) { Join-Path $release 'nsis-web' } else { $release }
+    $artifactDir = if ($WebInstaller) { Join-Path $releaseDir 'nsis-web' } else { $releaseDir }
     $installer = Get-ChildItem -LiteralPath $artifactDir -Filter '*.exe' -File |
         Where-Object { $_.Name -notmatch 'uninstall' -and $_.LastWriteTime -ge $buildStarted } |
         Sort-Object LastWriteTime -Descending |
@@ -226,7 +226,7 @@ try {
     try {
         & (Join-Path $sourceRoot 'scripts\bundles\check-windows-installer.ps1') `
             -Installer $installer.FullName -Commit $commit -Scratch $buildTemp `
-            -Unpacked (Join-Path $release 'win-unpacked')
+            -Unpacked (Join-Path $releaseDir 'win-unpacked')
     } finally {
         Write-Host ("[build-timing] installer-check: {0:F1}s" -f $checkClock.Elapsed.TotalSeconds)
     }
