@@ -2770,6 +2770,7 @@ export interface WakeFeedResult {
 }
 export interface SessionCreateParams {
   profile?: string | null
+  code_mode?: boolean
   cols?: number | null
   source?: string | null
   cwd?: string | null
