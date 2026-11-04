@@ -1,4 +1,4 @@
-<#
+﻿<#
 Decides which installed runtime components the new payload keeps, and tells the
 NSIS installer (incremental-update.nsh) what to delete before extracting and
 which archive paths to skip. It never changes the installation itself: the
@@ -159,8 +159,10 @@ try {
     $payload = Join-Path $installRoot 'resources\agent-payload'
     $manifestPath = Join-Path $payload 'manifest.json'
     Add-Note "plan for $installRoot"
+    Write-Output "更新计划：$installRoot"
     if (-not [System.IO.Directory]::Exists($installRoot) -or -not [System.IO.File]::Exists($manifestPath)) {
         Add-Note 'not an installed payload'
+        Write-Output '非已安装载荷，改为完整安装'
         $exitCode = 2
     } else {
         $new = Read-PayloadStamp $NewStamp
@@ -181,6 +183,7 @@ try {
         $keepTools = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
         if ($null -eq $old -or $old.Target -cne $new.Target) {
             Add-Note 'no comparable previous stamp: every installed file is replaced'
+            Write-Output '无可比对的旧版本，全部文件将被替换'
         } else {
             # Only a component the new build ships byte-identically is a candidate;
             # the installed bytes then get the final say below.
@@ -205,6 +208,7 @@ try {
                     })
                 } else {
                     Add-Note "replace $name (new build)"
+                    Write-Output "替换 $name（新版构建）"
                 }
             }
             foreach ($name in $new.Tools.Keys) {
@@ -218,6 +222,7 @@ try {
                     })
                 } else {
                     Add-Note "replace tool $name (new build)"
+                    Write-Output "替换工具 $name（新版构建）"
                 }
             }
 
@@ -229,6 +234,7 @@ try {
                     throw 'the installed payload cannot verify itself'
                 }
                 Add-Note "verifying $($candidates.Count) component(s) with the installed interpreter"
+                Write-Output "校验 $($candidates.Count) 个组件（使用已安装的解释器）"
                 $paths = @($candidates | ForEach-Object { $_.Path })
                 $output = & $python -I -B (Join-Path $PSScriptRoot 'payload-digest.py') $code @paths
                 if ($LASTEXITCODE -ne 0) {
@@ -256,6 +262,11 @@ try {
                             $keep.Add($candidate.Name) | Out-Null
                         }
                         Add-Note "$why $($candidate.Name)"
+                        if ($candidate.Ok) {
+                            Write-Output "保留 $($candidate.Name)"
+                        } else {
+                            Write-Output "替换 $($candidate.Name)（已安装字节不一致）"
+                        }
                     } elseif (-not $entries.ContainsKey($candidate.Entry)) {
                         $entries[$candidate.Entry] = $candidate.Ok
                     } else {
@@ -266,8 +277,10 @@ try {
                     if ($entries[$entry]) {
                         $keepTools.Add($entry) | Out-Null
                         Add-Note "keep tool entry $entry"
+                        Write-Output "保留工具 $entry"
                     } else {
                         Add-Note "replace tool entry $entry (installed bytes differ)"
+                        Write-Output "替换工具 $entry（已安装字节不一致）"
                     }
                 }
             }
@@ -342,6 +355,7 @@ try {
             [System.IO.File]::Delete($ExcludeFile)
         }
         Add-Note "delete $($delete.Count) path(s), skip $($exclusions.Count) archive path(s)"
+        Write-Output "删除 $($delete.Count) 个路径，跳过 $($exclusions.Count) 个归档路径"
 
         # Reporting only: how much each kept component accounts for in the
         # package. Numbers come from the archive (that is what 7-Zip skips), and
@@ -375,6 +389,7 @@ try {
                 $stats = Get-KeptArchiveStats $Archive $SevenZip $kept
             } catch {
                 Add-Note "kept sizes unavailable: $($_.Exception.Message)"
+                Write-Output "保留组件体积统计不可用"
             }
         }
         $records = [System.Collections.Generic.List[string]]::new()
@@ -401,6 +416,7 @@ try {
     }
 } catch {
     Add-Note "failed: $($_.Exception.Message)"
+    Write-Output "生成更新计划失败：$($_.Exception.Message)"
     $exitCode = 1
 } finally {
     if (-not [string]::IsNullOrWhiteSpace($Log)) {

@@ -61,6 +61,8 @@ Var UNIWORK_KEEP_MB_SUM
 Var UNIWORK_KEEP_NUM
 ; 当前要解压的 archive 组件名（如 "venv" 或 "hermes-agent"）
 Var UNIWORK_ARCHIVE_KIND
+; 批量删除时 delete.txt 里的路径条数，给用户看进度用
+Var UNIWORK_DELETE_COUNT
 !endif
 
 ; 由 customCheckAppRunning 展开：是不是在升级同一个安装目录？
@@ -303,6 +305,13 @@ Function UNIWORK_TryIncremental
   Pop $0
   Pop $1
   ${If} $0 != 0
+    ; 清掉首次调用留在栈上的 stdout 行，再重试一次。
+    ${Do}
+      ${If} $1 == ""
+        ${ExitDo}
+      ${EndIf}
+      Pop $1
+    ${Loop}
     !insertmacro UniLog "首次生成更新计划失败（$0），重试..."
     Sleep 1000
     nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\uniwork\update-plan.ps1" -Install "$INSTDIR" -NewStamp "$PLUGINSDIR\uniwork\stamp\payload-stamp.txt" -DeleteFile "$PLUGINSDIR\uniwork\delete.txt" -ExcludeFile "$PLUGINSDIR\uniwork\exclude.txt" -KeepFile "$PLUGINSDIR\uniwork\keep.txt" -Archive "$UNIWORK_ARCHIVE" -SevenZip "$PLUGINSDIR\uniwork\7za.exe" -Log "$PLUGINSDIR\uniwork\plan.log"'
@@ -310,39 +319,52 @@ Function UNIWORK_TryIncremental
     Pop $1
   ${EndIf}
   ${If} $0 != 0
+    ; 重试也失败：清栈后退回完整安装。
+    ${Do}
+      ${If} $1 == ""
+        ${ExitDo}
+      ${EndIf}
+      Pop $1
+    ${Loop}
     !insertmacro UniSay "升级改为完整安装：无法生成更新计划（重试后仍失败，$0）"
     Call UNIWORK_PrintLog
     Goto uniwork_try_done
   ${EndIf}
+  ; 把 PowerShell 写到 stdout 的中文摘要逐行打到详情面板。
+  ${Do}
+    ${If} $1 == ""
+      ${ExitDo}
+    ${EndIf}
+    DetailPrint $1
+    Pop $1
+  ${Loop}
   Call UNIWORK_PrintLog
   Call UNIWORK_PrintKept
 
-  ; 计划里的条目可能是文件也可能是目录，两个命令各管一种；不存在时留下的错误标志由下一轮清掉。
+  ; 批量删除旧版文件：一次 cmd 调用处理 delete.txt 里所有路径，替代逐条 Delete/RMDir。
+  ; 39 个路径逐条删要触发 AV 实时扫描 39 次（实测 6-7 分钟）；批量删只触发 1 次（预估 30-90 秒）。
+  ; cmd 的 for /f 逐行读 delete.txt，先试 rd /s /q（目录），失败再试 del /f /q（文件）。
+  ; 旧卸载器文件 ${UNINSTALL_FILENAME} 由 update-plan.ps1 在生成 delete.txt 时已经排除。
   ClearErrors
   FileOpen $0 "$PLUGINSDIR\uniwork\delete.txt" r
   IfErrors uniwork_try_done
   StrCpy $UNIWORK_PLANNED 1
-  uniwork_try_delete_loop:
+  ; 统计路径条数给用户看进度。
+  StrCpy $UNIWORK_DELETE_COUNT 0
+  uniwork_delete_count_loop:
     ClearErrors
     FileRead $0 $1
-    IfErrors uniwork_try_delete_close
-  uniwork_try_delete_trim:
-    StrCpy $2 $1 1 -1
-    ${If} $2 == "$\r"
-    ${OrIf} $2 == "$\n"
-      StrCpy $1 $1 -1
-      Goto uniwork_try_delete_trim
-    ${EndIf}
-    ; 旧卸载器文件要留到计划之外：计划没跑成时还得靠它，装完由安装段重新写一份。
-    ${If} $1 != ""
-    ${AndIf} $1 != "${UNINSTALL_FILENAME}"
-      !insertmacro UniSay "移除 $1"
-      Delete "$INSTDIR\$1"
-      RMDir /r "$INSTDIR\$1"
-    ${EndIf}
-    Goto uniwork_try_delete_loop
-  uniwork_try_delete_close:
-    FileClose $0
+    IfErrors uniwork_delete_count_done
+    IntOp $UNIWORK_DELETE_COUNT $UNIWORK_DELETE_COUNT + 1
+    Goto uniwork_delete_count_loop
+  uniwork_delete_count_done:
+  FileClose $0
+  !insertmacro UniSay "正在清除 $UNIWORK_DELETE_COUNT 个旧版路径..."
+  !insertmacro UniTick $UNIWORK_SUBPHASE_START
+  nsExec::Exec '"$SYSDIR\cmd.exe" /C for /f "usebackq delims= eol=|" %f in ("$PLUGINSDIR\uniwork\delete.txt") do @(rd /s /q "$INSTDIR\%f" >NUL 2>&1 || del /f /q "$INSTDIR\%f" >NUL 2>&1)'
+  !insertmacro UniTick $UNIWORK_SUBPHASE_END
+  !insertmacro UniSubphaseElapsed
+  !insertmacro UniSay "旧版路径已清除，耗时 $UNIWORK_PHASE_DURATION"
 
   ; exclude.txt 一行一个 -x! 参数：组件多的时候全部拼进一条命令会超出 NSIS 的字符串上限，
   ; 所以攒够一批就先解压一次。一个组件都没保留时整包解压，让解压进度走模板的老路。
