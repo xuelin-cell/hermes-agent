@@ -340,10 +340,42 @@
   color: #d4d8e1;
 }
 
+/* 对话字号在消息范围内共享，避免影响菜单和其他页面的控件。 */
+:root[data-hermes-theme='uniwork']
+  :is(
+    [data-slot='aui_user-message-root'],
+    [data-slot='aui_edit-composer-root'],
+    [data-slot='aui_assistant-message-root']
+  ) {
+  --conversation-text-font-size: 16px;
+}
+
+:root[data-hermes-theme='uniwork'] [data-slot='aui_edit-composer-root'] [data-slot='composer-rich-input'] {
+  font-size: var(--conversation-text-font-size);
+}
+
+/* 消息时间和回复元数据统一使用内置 Inter，保证数字与单位有真实的字重差异。 */
+:root[data-hermes-theme='uniwork'] [data-slot='aui_reply-metadata'],
+:root[data-hermes-theme='uniwork'] [data-slot='aui_user-sent-time'] {
+  font-family: 'Inter', var(--dt-font-sans);
+}
+
+/* 旧版 Uniwork 的消息灰阶只作用于操作栏和发送时间。 */
+:root[data-hermes-theme='uniwork'] :is([data-slot='aui_assistant-footer'], [data-slot='aui_user-sent-time']) {
+  --dt-muted-foreground: #999999;
+  --ui-text-secondary: #666666;
+  --color-muted-foreground: var(--dt-muted-foreground);
+}
+
+:root[data-hermes-theme='uniwork'].dark :is([data-slot='aui_assistant-footer'], [data-slot='aui_user-sent-time']) {
+  --dt-muted-foreground: #636369;
+  --ui-text-secondary: #a8a8ad;
+}
+
 /* 与 HexAgent 的 message-content 保持相同的正文排版。 */
 :root[data-hermes-theme='uniwork'] [data-slot='aui_assistant-message-content'] .aui-md {
   font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, 'Segoe UI', sans-serif;
-  font-size: 16px;
+  font-size: var(--conversation-text-font-size);
   line-height: 1.7;
   overflow-wrap: break-word;
 }
@@ -426,7 +458,10 @@
 
 /* Match HexAgent's thinking-content independently of answer typography. */
 :root[data-hermes-theme='uniwork'] [data-slot='aui_assistant-message-content'] .aui-md[data-slot='aui_reasoning-text'],
-:root[data-hermes-theme='uniwork'] [data-slot='aui_assistant-message-content'] .aui-md[data-slot='aui_reasoning-text'] * {
+:root[data-hermes-theme='uniwork']
+  [data-slot='aui_assistant-message-content']
+  .aui-md[data-slot='aui_reasoning-text']
+  * {
   font-size: 14px;
   line-height: 1.7;
 }

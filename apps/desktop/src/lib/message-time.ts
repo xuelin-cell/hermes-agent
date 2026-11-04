@@ -8,6 +8,22 @@ export function parseMessageTime(value: unknown): number | undefined {
     : undefined
 }
 
+/** Full local clock for inspecting the timestamp behind a compact message footer. */
+export function formatPreciseMessageTime(seconds: unknown): string {
+  const timestamp = parseMessageTime(seconds)
+
+  if (timestamp === undefined) {
+    return ''
+  }
+
+  const date = new Date(timestamp * 1000)
+  const pad = (value: number, length = 2) => String(value).padStart(length, '0')
+  const day = `${pad(date.getFullYear(), 4)}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+  const time = `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+
+  return `${day} ${time}.${pad(date.getMilliseconds(), 3)}`
+}
+
 /** Uniwork's message footer dates use local calendar days, including across DST transitions. */
 export function formatFooterTime(seconds: unknown, locale: string, yesterday: string, now = new Date()): string {
   const timestamp = parseMessageTime(seconds)

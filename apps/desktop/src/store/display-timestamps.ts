@@ -1,5 +1,5 @@
 /**
- * `display.timestamps` — one config key for message timestamps everywhere.
+ * `display.timestamps` — native timeline timestamps across Hermes surfaces.
  *
  * The same config.yaml key that puts [HH:MM] stamps on classic-CLI labels
  * gates the desktop transcript's per-message / per-tool-run timeline
@@ -9,6 +9,8 @@
  * Display-only: reading or toggling it never mutates model context, so it is
  * prompt-cache safe. Hover tooltips with the exact time (#70450) are NOT
  * gated — they add no visual noise until the user asks for them.
+ * Uniwork's sent/completed footer labels and their hover details follow their
+ * own visibility rules and do not read this atom.
  */
 
 import { atom } from 'nanostores'

@@ -22,7 +22,8 @@ export function TurnTokenUsage() {
   )
 
   return (
-    <Tip label={<span className="whitespace-pre-line">{label}</span>}>
+    // Wrapped metadata touches the message clip while remaining a visible hover target.
+    <Tip hideWhenDetached={false} label={<span className="whitespace-pre-line">{label}</span>}>
       <span
         aria-label={label}
         className="inline-flex select-none items-center gap-1 whitespace-nowrap text-xs font-normal leading-none tabular-nums text-muted-foreground"
@@ -30,7 +31,7 @@ export function TurnTokenUsage() {
         tabIndex={0}
       >
         <span
-          className="font-medium text-[color-mix(in_srgb,var(--ui-text-secondary)_45%,var(--muted-foreground))]"
+          className="font-medium text-[color-mix(in_srgb,var(--ui-text-secondary)_45%,var(--dt-muted-foreground))]"
           data-slot="aui_turn-token-count"
         >
           {formatTurnTokenCount(tokens.total_tokens, locale)}
