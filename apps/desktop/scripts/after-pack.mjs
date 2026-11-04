@@ -133,7 +133,7 @@ export default async function afterPack(context) {
   if (signingMode !== 'none' && signing.skipped) {
     throw new Error(
       `HERMES_SIGNING_MODE=${signingMode} but batch signing was skipped. ` +
-      'Check signing configuration (AZURE_SIGN_*, HERMES_UKEY_THUMBPRINT, or WIN_CSC_LINK).'
+      'Check signing configuration (AZURE_SIGN_* for Azure, or ensure UKey is plugged in).'
     )
   }
 

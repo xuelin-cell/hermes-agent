@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { readSecurityDirectory } from './sanitize-pe-signatures.mjs'
-import { resolveSigningMode } from './resolve-windows-signer.mjs'
+import { resolveSigningMode, getUkeyThumbprint } from './resolve-windows-signer.mjs'
 
 const exec = promisify(execFile)
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex')
@@ -80,8 +80,7 @@ export function createPayloadSignCache({ root, env, signtool, dlib, timestampUrl
       dlib: dlib ? sha256(fs.readFileSync(dlib)) : null,
     }
   } else if (mode === 'ukey') {
-    publisher = env.HERMES_UKEY_THUMBPRINT
-    if (!publisher) return null
+    publisher = getUkeyThumbprint()
     policyFields = {
       ...policyFields,
       thumbprint: publisher,

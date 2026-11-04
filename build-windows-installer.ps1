@@ -59,14 +59,9 @@ $previousEnvironment = @{}
 $env:HERMES_SIGNING_MODE = if ($Release) { 'release' } else { 'unsigned' }
 if ($Release) {
     Write-Host "Release mode: signing required" -ForegroundColor Cyan
-    # Validate that signing configuration is present
+    # Determine signing method: Azure (if configured) or UKey (hardcoded)
     $hasAzure = $env:AZURE_SIGN_ENDPOINT -and $env:AZURE_CLIENT_ID
-    $hasUKey = $env:HERMES_UKEY_THUMBPRINT
-    $hasPfx = $env:WIN_CSC_LINK -or $env:CSC_LINK
-    if (-not ($hasAzure -or $hasUKey -or $hasPfx)) {
-        throw "Release mode requires signing configuration. Set one of: AZURE_SIGN_* (Azure), HERMES_UKEY_THUMBPRINT (UKey), or WIN_CSC_LINK (PFX)."
-    }
-    $signingType = if ($hasAzure) { 'Azure' } elseif ($hasUKey) { 'UKey' } else { 'PFX' }
+    $signingType = if ($hasAzure) { 'Azure' } else { 'UKey' }
     Write-Host "Signing method: $signingType" -ForegroundColor DarkGray
 }
 foreach ($name in @('TEMP', 'TMP', 'ELECTRON_BUILDER_CACHE', 'UV_CONCURRENT_INSTALLS',

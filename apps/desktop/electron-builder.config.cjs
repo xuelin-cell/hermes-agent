@@ -349,6 +349,11 @@ function windowsSigning() {
   const mode = process.env.HERMES_SIGNING_MODE
   const isRelease = mode === 'release'
 
+  // Non-release mode: no signing
+  if (!isRelease) return {}
+
+  // Release mode: determine signing backend by priority (Azure > UKey)
+
   // Azure Trusted Signing
   if (process.env.AZURE_SIGN_ENDPOINT && process.env.AZURE_CLIENT_ID) {
     return {
@@ -361,39 +366,14 @@ function windowsSigning() {
     }
   }
 
-  // UKey hardware token signing
-  if (process.env.HERMES_UKEY_THUMBPRINT) {
-    return {
-      sign: {
-        type: 'signtool',
-        sign: './scripts/batch-sign-binaries.mjs',
-        signingHashAlgorithms: ['sha256'],
-        // certificateSha1 is read by app-builder-lib's getSigntoolFamilyConfig
-        certificateSha1: process.env.HERMES_UKEY_THUMBPRINT.replace(/\s+/g, '').toUpperCase()
-      }
+  // UKey hardware token signing (hardcoded thumbprint)
+  const UKEY_THUMBPRINT = '2E148B83366A90B70BB0AEBDB81C8CB982C39311'
+  return {
+    sign: {
+      type: 'signtool',
+      sign: './scripts/batch-sign-binaries.mjs',
+      signingHashAlgorithms: ['sha256'],
+      certificateSha1: UKEY_THUMBPRINT
     }
   }
-
-  // PFX file signing
-  const pfxPath = process.env.WIN_CSC_LINK || process.env.CSC_LINK
-  if (pfxPath) {
-    return {
-      sign: {
-        type: 'signtool',
-        sign: './scripts/batch-sign-binaries.mjs',
-        signingHashAlgorithms: ['sha256'],
-        // certificateFile/password are read from WIN_CSC_LINK/CSC_LINK env by app-builder-lib
-      }
-    }
-  }
-
-  // No signing configured
-  if (isRelease) {
-    throw new Error(
-      'HERMES_SIGNING_MODE=release requires signing configuration: ' +
-      'set AZURE_SIGN_* for Azure, HERMES_UKEY_THUMBPRINT for UKey, or WIN_CSC_LINK for PFX'
-    )
-  }
-
-  return {}
 }

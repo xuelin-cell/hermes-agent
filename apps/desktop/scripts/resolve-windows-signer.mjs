@@ -8,6 +8,9 @@ import { createHash } from 'node:crypto'
 // 注意：不直接导入 windows-bundle-tools.mjs，避免循环依赖
 // ensureWindowsBundleTools 在 locateSignTool() 中动态导入
 
+// Hardcoded UKey certificate thumbprint (same as hexagent/UniWork)
+const UKEY_THUMBPRINT = '2E148B83366A90B70BB0AEBDB81C8CB982C39311'
+
 /**
  * @typedef {'azure' | 'ukey' | 'pfx' | 'none'} SigningMode
  * @typedef {{ kind: 'pfx' | 'thumbprint', value: string, password?: string, subject?: string, thumbprint?: string }} CertificateConfig
@@ -21,20 +24,20 @@ import { createHash } from 'node:crypto'
  */
 export function resolveSigningMode(env = process.env) {
   const mode = env.HERMES_SIGNING_MODE
-  if (mode === 'release') {
-    if (env.AZURE_SIGN_ENDPOINT && env.AZURE_CLIENT_ID) return 'azure'
-    if (env.HERMES_UKEY_THUMBPRINT) return 'ukey'
-    if (env.WIN_CSC_LINK || env.CSC_LINK) return 'pfx'
-    throw new Error(
-      'HERMES_SIGNING_MODE=release requires signing configuration: ' +
-      'set AZURE_SIGN_* for Azure, HERMES_UKEY_THUMBPRINT for UKey, or WIN_CSC_LINK for PFX'
-    )
-  }
-  // Non-release mode: sign if configured, otherwise skip
+  // Only sign when explicitly in release mode
+  if (mode !== 'release') return 'none'
+  // Release mode: determine signing backend by priority (Azure > UKey > PFX)
   if (env.AZURE_SIGN_ENDPOINT && env.AZURE_CLIENT_ID) return 'azure'
-  if (env.HERMES_UKEY_THUMBPRINT) return 'ukey'
-  if (env.WIN_CSC_LINK || env.CSC_LINK) return 'pfx'
-  return 'none'
+  // UKey: use hardcoded thumbprint (no env var needed)
+  return 'ukey'
+}
+
+/**
+ * Get the hardcoded UKey thumbprint.
+ * @returns {string}
+ */
+export function getUkeyThumbprint() {
+  return UKEY_THUMBPRINT
 }
 
 /**
@@ -87,8 +90,8 @@ export function resolveCertificate(mode, env = process.env) {
   if (mode === 'azure' || mode === 'none') return null
 
   if (mode === 'ukey') {
-    const thumbprint = env.HERMES_UKEY_THUMBPRINT
-    if (!thumbprint) throw new Error('HERMES_UKEY_THUMBPRINT is required for UKey signing')
+    // Use hardcoded thumbprint (same as hexagent/UniWork)
+    const thumbprint = UKEY_THUMBPRINT
     return {
       kind: 'thumbprint',
       value: thumbprint.toUpperCase().replace(/\s+/g, ''),
