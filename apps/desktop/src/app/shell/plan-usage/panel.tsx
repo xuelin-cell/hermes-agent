@@ -111,11 +111,7 @@ function UsageDetails({ data, showPlan = true, action }: UsageDetailsProps) {
               </strong>
               {index === 0 && detailsAction}
             </div>
-            <UsageMeter
-              label={labels[window.name]}
-              value={window.usedPercent}
-              valueText={`${c.used} ${used}%`}
-            />
+            <UsageMeter label={labels[window.name]} value={window.usedPercent} valueText={`${c.used} ${used}%`} />
             <p className="plan-usage-meta">
               {window.notStarted
                 ? c.notStarted
@@ -138,9 +134,7 @@ function UsageDetails({ data, showPlan = true, action }: UsageDetailsProps) {
           <UsageMeter label={exact} value={data.quota.usedPercent} valueText={exact} />
           <div className="plan-usage-quota" title={exact}>
             <span>
-              <strong className="plan-usage-quota-number">
-                {formatTokenQuotaCompact(data.quota.used, locale)}
-              </strong>
+              <strong className="plan-usage-quota-number">{formatTokenQuotaCompact(data.quota.used, locale)}</strong>
               <span className="plan-usage-quota-separator"> / </span>
               <span className="plan-usage-quota-total">
                 {formatTokenQuotaCompact(data.quota.total, locale)} {unit}
@@ -304,19 +298,17 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
   }
 
   const planLabels = { 'five-hour': c.fiveHour, week: c.week, month: c.month }
+  const detailsDisabled = error === 'auth' || (error === 'failed' && !data)
+  const detailsExpanded = details && !detailsDisabled
   const usageSummary = data?.quota
     ? `${c.tokenUsed} ${formatTokenQuotaPercent(data.quota.usedPercent, locale)}%`
     : data?.kind === 'coding_plan' && data.windows.length
       ? `${c.used} ${formatUsagePercentage(data.windows[0].usedPercent, locale)}% · ${planLabels[data.windows[0].name]}`
-      : loading
+      : loading || error || !data
         ? '—'
         : c.empty
   const expiryDate = formatPlanExpiryDate(data?.endTime, locale)
-  const expirySummary = expiryDate
-    ? data?.expired
-      ? `${expiryDate} · ${c.expired}`
-      : c.expiryText(expiryDate)
-    : '—'
+  const expirySummary = expiryDate ? (data?.expired ? `${expiryDate} · ${c.expired}` : c.expiryText(expiryDate)) : '—'
   const errorText = error
     ? error === 'restart'
       ? c.restart
@@ -326,6 +318,15 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
           ? c.stale
           : c.failed
     : null
+  const statusMessage = errorText ?? (!trigger && loading && !data ? c.loading : null)
+  const statusNotice = statusMessage && (
+    <p
+      className={`${errorText ? 'plan-usage-error' : 'plan-usage-meta'}${trigger ? ' account-card-status' : ''}`}
+      role="status"
+    >
+      {statusMessage}
+    </p>
+  )
   const detailsAction = (
     <Button
       aria-busy={openingSource === 'details'}
@@ -367,9 +368,7 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
             <>
               <div className="account-card-row account-card-plan">
                 <AccountIcon src={planIcon} />
-                <span className="account-card-plan-name">
-                  {data?.productName || (loading ? c.loading : c.unnamed)}
-                </span>
+                <span className="account-card-plan-name">{data?.productName || (loading ? c.loading : c.unnamed)}</span>
                 <button
                   aria-label={c.refreshPlan}
                   className="account-card-refresh"
@@ -391,21 +390,24 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
                 </button>
               </div>
               <button
-                aria-expanded={details}
+                aria-expanded={detailsExpanded}
                 className="account-card-row"
+                disabled={detailsDisabled}
                 onClick={() => setDetails(value => !value)}
                 type="button"
               >
                 <AccountIcon src={usageIcon} />
                 <span>{c.actualUsage}</span>
-                {!details && <span className="account-card-summary">{usageSummary}</span>}
-                <Codicon
-                  className="account-card-chevron"
-                  name={details ? 'chevron-down' : 'chevron-right'}
-                  size="0.875rem"
-                />
+                {!detailsExpanded && <span className="account-card-summary">{usageSummary}</span>}
+                {!detailsDisabled && (
+                  <Codicon
+                    className="account-card-chevron"
+                    name={detailsExpanded ? 'chevron-down' : 'chevron-right'}
+                    size="0.875rem"
+                  />
+                )}
               </button>
-              {details && (
+              {detailsExpanded && (
                 <div className="account-card-expanded account-card-details-inline">
                   {data ? (
                     <UsageDetails action={detailsAction} data={data} showPlan={false} />
@@ -414,16 +416,6 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
                       <span className="plan-usage-details-action">{detailsAction}</span>
                     </div>
                   )}
-                  {loading && !data && (
-                    <p className="plan-usage-meta" role="status">
-                      {c.loading}
-                    </p>
-                  )}
-                  {errorText && (
-                    <p className="plan-usage-error" role="status">
-                      {errorText}
-                    </p>
-                  )}
                 </div>
               )}
               <div className="account-card-row">
@@ -431,6 +423,7 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
                 <span>{c.expires}</span>
                 <span className="account-card-summary">{expirySummary}</span>
               </div>
+              {statusNotice}
               <Link className="account-card-row" to="/settings" onClick={() => setOpen(false)}>
                 <AccountIcon src={settingsIcon} />
                 <span>{t.commandCenter.nav.settings.title}</span>
@@ -453,40 +446,14 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
             <div className="account-card-expanded">
               <div className="plan-usage-heading">
                 <h3>{c.title}</h3>
-                <Button
-                  variant="text"
-                  size="micro"
-                  disabled={loading}
-                  onClick={requestRefresh}
-                  type="button"
-                >
+                <Button variant="text" size="micro" disabled={loading} onClick={requestRefresh} type="button">
                   {c.refresh}
                 </Button>
               </div>
               {data && <UsageDetails data={data} />}
             </div>
           )}
-          {loading && !data && (!trigger || !details) && (
-            <p role="status" className="plan-usage-meta">
-              {c.loading}
-            </p>
-          )}
-          {errorText && (!trigger || !details) && (
-            <p role="status" className="plan-usage-error">
-              {errorText}
-            </p>
-          )}
-          {trigger && errorText && !details && (
-            <Button
-              variant="text"
-              size="micro"
-              disabled={loading}
-              onClick={requestRefresh}
-              type="button"
-            >
-              {c.refresh}
-            </Button>
-          )}
+          {!trigger && statusNotice}
         </section>
       </PopoverContent>
     </Popover>
