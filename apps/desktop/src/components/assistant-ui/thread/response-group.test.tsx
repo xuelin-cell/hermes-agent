@@ -165,7 +165,7 @@ it('collapses earlier replies as answer text streams and keeps manual expansion 
   const interim = messages[1]!
 
   const renderThread = (status: ThreadMessage['status']) => (
-    <ThreadRuntime messages={[messages[0]!, interim, { ...messages[2]!, status } as ThreadMessage]}>
+    <ThreadRuntime isRunning messages={[messages[0]!, interim, { ...messages[2]!, status } as ThreadMessage]}>
       <Thread />
     </ThreadRuntime>
   )
@@ -202,7 +202,7 @@ it('keeps active tools visible and collapses process parts when streamed answer 
       status: { type: 'running' },
       content: [
         { type: 'text', text: 'Checking sources' },
-        { ...tool, ...(finished ? { result: 'done' } : {}) },
+        { ...tool, ...(finished ? { completedAt: 3 } : {}) },
         ...(finished ? [{ type: 'text', text: 'The main conclusion is' }] : []),
         ...(resumesTools ? [{ ...tool, toolCallId: 'verify-again' }] : [])
       ]
