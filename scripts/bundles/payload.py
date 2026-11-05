@@ -98,8 +98,97 @@ def rehash_tools(root: Path) -> int:
     return count
 
 
+def read_precomputed_archive_digests(root: Path) -> dict[str, str]:
+    """Read archive component digests from an existing stamp file.
+
+    When rehashing after signing, the archive files (.7z) still exist but the
+    original directories don't. The stamp must preserve the directory digests
+    (computed before archiving) so the installer can verify extracted directories.
+    This function reads those digests from the old stamp.
+
+    Returns a dict mapping component name to its pre-computed directory digest,
+    only for components marked as 'archive' in the stamp.
+    """
+    stamp_path = root / STAMP_NAME
+    if not stamp_path.exists():
+        return {}
+    digests = {}
+    for line in stamp_path.read_text(encoding="utf-8").splitlines():
+        # Format: "<name> <digest> archive" or "<name> <digest>"
+        parts = line.split()
+        if len(parts) >= 3 and parts[-1] == "archive" and len(parts[1]) == 64:
+            digests[parts[0]] = parts[1]
+    return digests
+
+
 STAMP_NAME = "payload-stamp.txt"
 RUNTIME_COMPONENTS = ("venv", "pm-runtime", "uv-cache.zip")
+# Components that get archived into .7z on Windows to speed up installation
+# (fewer file-creation operations → less AV scanning overhead).
+ARCHIVED_COMPONENTS_WIN = ("venv", "hermes-agent")
+
+
+def archive_component(payload_root: Path, name: str) -> tuple[Path, str]:
+    """Pack a component directory into a .7z archive, moving the original to a temp location.
+
+    The archive uses fast compression (-mx=1) because install-time decompression
+    speed matters more than package size. Multi-threaded (-mmt=on) for speed.
+
+    Returns (archive_path, original_directory_digest).
+    The digest is computed BEFORE archiving so the stamp matches what the installer
+    will verify (the extracted directory, not the archive file).
+
+    Instead of deleting the directory immediately (which can be blocked by AV),
+    we move it to a temp location within the payload root. The temp directory
+    will be cleaned up later by remove_build_tree, which has retry logic.
+    """
+    import shutil
+    import uuid
+
+    source_dir = payload_root / name
+    archive = payload_root / f"{name}.7z"
+
+    if not source_dir.is_dir():
+        raise ValueError(f"archive_component: {source_dir} is not a directory")
+
+    # Compute digest of the directory BEFORE archiving
+    # This is what the installer will verify after extraction
+    directory_digest = _stamp_digest(source_dir)
+
+    if archive.exists():
+        archive.unlink()
+
+    # Use 7z if available, fall back to Python's lzma module
+    # Search in PATH first, then in known packager locations
+    seven_zip = shutil.which("7z") or shutil.which("7za")
+    if not seven_zip:
+        # Try to find 7za.exe in the packager tools (desktop build)
+        # Repo root is two levels up from this script (scripts/bundles/payload.py)
+        repo_root = Path(__file__).resolve().parents[2]
+        packager_7za = repo_root / ".cache" / "desktop-inputs" / "packager"
+        if packager_7za.exists():
+            for seven_zip_candidate in packager_7za.rglob("7za.exe"):
+                seven_zip = str(seven_zip_candidate)
+                break
+    if seven_zip:
+        subprocess.run(
+            [seven_zip, "a", "-t7z", "-mx=1", "-mmt=on", str(archive), str(source_dir)],
+            check=True, capture_output=True,
+        )
+    else:
+        # Fallback: create .tar.xz (slower but no external dependency)
+        import tarfile
+        archive = payload_root / f"{name}.tar.xz"
+        with tarfile.open(archive, "w:xz", preset=1) as tar:
+            tar.add(source_dir, arcname=name)
+
+    # Move the original directory to a temp location instead of deleting it.
+    # This avoids AV file locks that block immediate deletion.
+    # The temp directory will be cleaned up by remove_build_tree later.
+    temp_dir = payload_root / f".{name}-pending-delete-{uuid.uuid4().hex[:8]}"
+    source_dir.rename(temp_dir)
+
+    return archive, directory_digest
 
 
 def _stamp_digest(path: Path) -> str:
@@ -116,7 +205,21 @@ def _stamp_digest(path: Path) -> str:
     return digest.hexdigest()
 
 
-def write_payload_stamp(root: Path) -> Path:
+def _find_component_path(root: Path, name: str) -> Path | None:
+    """Find a component path: directory, .7z archive, or .tar.xz archive."""
+    for suffix in ("", ".7z", ".tar.xz"):
+        path = _payload_file(root, f"{name}{suffix}")
+        if path.exists():
+            return path
+    return None
+
+
+def _is_archive(path: Path) -> bool:
+    """Check if a path is a compressed archive (.7z or .tar.xz)."""
+    return path.suffix in (".7z", ".xz") and path.is_file()
+
+
+def write_payload_stamp(root: Path, precomputed_digests: dict[str, str] | None = None) -> Path:
     """Record every runtime component's digest next to the payload.
 
     An installer compares these lines with the ones the previous build left in
@@ -124,6 +227,21 @@ def write_payload_stamp(root: Path) -> Path:
     is byte-for-byte the component this build ships, so extraction may skip it.
     Digests are recomputed here rather than read back from facts so a stamp can
     never describe bytes other than the ones being shipped.
+
+    Archive components (venv.7z, hermes-agent.7z) are stamped with the digest
+    of the original directory (computed before archiving), so the installer can
+    verify the extracted directory matches. The stamp format is:
+        venv <digest> archive
+        hermes-agent <digest> archive
+        pm-runtime <digest>
+        uv-cache.zip <digest>
+        tool <name> <entry> <version> <digest>
+
+    Args:
+        root: The payload root directory.
+        precomputed_digests: Optional dict mapping component names to their
+            pre-computed digests (used for archived components where the
+            directory no longer exists at stamp time).
     """
     from pm.lock import Facts
     from pm.store import current_target
@@ -131,11 +249,33 @@ def write_payload_stamp(root: Path) -> Path:
     root = root.resolve()
     facts = Facts(_payload_file(root, "tools/facts.json"), strict=True)
     lines = ["schema 1", f"target {current_target()}"]
+    precomputed_digests = precomputed_digests or {}
     for name in RUNTIME_COMPONENTS:
-        path = _payload_file(root, name)
-        if not path.exists():
+        path = _find_component_path(root, name)
+        if path is None:
             raise ValueError(f"payload stamp: {name} is missing")
-        lines.append(f"{name} {_stamp_digest(path)}")
+        is_archive = _is_archive(path)
+        # Use precomputed digest for archives, otherwise compute from path
+        if name in precomputed_digests:
+            digest = precomputed_digests[name]
+        else:
+            digest = _stamp_digest(path)
+        if is_archive:
+            lines.append(f"{name} {digest} archive")
+        else:
+            lines.append(f"{name} {digest}")
+    # Also stamp hermes-agent if it exists (may be archived)
+    hermes_path = _find_component_path(root, "hermes-agent")
+    if hermes_path is not None:
+        is_archive = _is_archive(hermes_path)
+        if "hermes-agent" in precomputed_digests:
+            digest = precomputed_digests["hermes-agent"]
+        else:
+            digest = _stamp_digest(hermes_path)
+        if is_archive:
+            lines.append(f"hermes-agent {digest} archive")
+        else:
+            lines.append(f"hermes-agent {digest}")
     tools = 0
     for name, fact in sorted(facts.entries().items()):
         entry = fact.get("entry")
@@ -234,17 +374,44 @@ def _relativize_bin_links(root: Path, directory: Path) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["relocate", "rehash", "stamp"])
+    parser.add_argument("action", choices=["relocate", "rehash", "stamp", "archive"])
     parser.add_argument("payload", type=Path)
+    parser.add_argument("--platform", choices=["win32", "darwin", "linux"],
+                        help="Target platform (required for archive action)")
     args = parser.parse_args()
     if args.action == "rehash":
         # Signing rewrites tool bytes, so the stamp must be republished with
         # the refreshed facts or an upgrade would never match what it installed.
         count = rehash_tools(args.payload)
         print(f"rehashed {count} payload tools")
-        print(write_payload_stamp(args.payload))
+        # Preserve archive component digests from the old stamp: the directories
+        # no longer exist (they were archived), so we must reuse the pre-computed
+        # directory digests rather than hashing the .7z files.
+        precomputed = read_precomputed_archive_digests(args.payload)
+        print(write_payload_stamp(args.payload, precomputed_digests=precomputed or None))
     elif args.action == "stamp":
         print(write_payload_stamp(args.payload))
+    elif args.action == "archive":
+        # Pack large component directories into archives to speed up installation.
+        # Only applies to Windows (other platforms don't have the same AV overhead).
+        platform = args.platform or sys.platform
+        if platform != "win32":
+            print(f"archive: skipping on {platform} (only Windows benefits)")
+            return
+        precomputed_digests = {}
+        archived = []
+        for name in ARCHIVED_COMPONENTS_WIN:
+            source = args.payload / name
+            if source.is_dir():
+                archive, directory_digest = archive_component(args.payload, name)
+                precomputed_digests[name] = directory_digest
+                archived.append(f"{name} -> {archive.name}")
+        if archived:
+            print(f"archived {len(archived)} component(s): {', '.join(archived)}")
+            # Re-stamp with precomputed directory digests
+            print(write_payload_stamp(args.payload, precomputed_digests=precomputed_digests))
+        else:
+            print("archive: no components to archive (already archived or missing)")
     else:
         relativize_links(args.payload)
 

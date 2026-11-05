@@ -91,7 +91,7 @@ try {
         foreach ($line in $lines) {
             if ($line -ceq 'schema 1') { $schemaOk = $true; continue }
             if ($line -cmatch '^target ([a-z0-9-]+)$') { $targetOk = $true; continue }
-            if ($line -cmatch '^(venv|pm-runtime|uv-cache\.zip) [0-9a-f]{64}$') { $stampComponents.Add($Matches[1]) | Out-Null; continue }
+            if ($line -cmatch '^(venv|pm-runtime|uv-cache\.zip|hermes-agent) [0-9a-f]{64}( archive)?$') { $stampComponents.Add($Matches[1]) | Out-Null; continue }
             if ($line -cmatch '^tool (\S+) (\S+) (\S+) [0-9a-f]{64}$') { $stampTools.Add($Matches[1]) | Out-Null; continue }
             $problems.Add("payload-stamp.txt has an unexpected line: $line")
         }
@@ -145,6 +145,44 @@ try {
         }
     }
 
+    # Archive components (venv.7z, hermes-agent.7z) may need extraction before checking Python.
+    # Only extract if site-packages doesn't exist (compatibility with both old directory format and new archive format).
+    $sitePackages = Join-Path $payload $stamp.runtime.sitePackages
+    if (-not (Test-Path -LiteralPath $sitePackages)) {
+        # Same 7za the installer uses: PATH first, then the copies the build leaves inside the repo.
+        $sevenZipPath = $null
+        foreach ($name in @('7z', '7za')) {
+            $cmd = Get-Command $name -ErrorAction SilentlyContinue
+            if ($cmd -and $cmd.Path) { $sevenZipPath = $cmd.Path; break }
+        }
+        if (-not $sevenZipPath) {
+            $repoRoot = Join-Path $PSScriptRoot '..\..'
+            $staged = Join-Path $repoRoot 'apps\desktop\build\nsis-tools\7za.exe'
+            if (Test-Path -LiteralPath $staged -PathType Leaf) {
+                $sevenZipPath = $staged
+            } else {
+                $cached = Get-ChildItem -LiteralPath (Join-Path $repoRoot '.cache\desktop-inputs\packager') `
+                    -Filter '7za.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($cached) { $sevenZipPath = $cached.FullName }
+            }
+        }
+        if ($sevenZipPath) {
+            foreach ($archiveName in @('venv', 'hermes-agent')) {
+                $archiveFile = Join-Path $payload "$archiveName.7z"
+                $archiveDir = Join-Path $payload $archiveName
+                if ((Test-Path -LiteralPath $archiveFile -PathType Leaf) -and -not (Test-Path -LiteralPath $archiveDir)) {
+                    Write-Host "  Extracting $archiveName.7z for validation..."
+                    & $sevenZipPath x $archiveFile "-o$payload" -y -aoa | Out-Null
+                    if ($LASTEXITCODE -ne 0) {
+                        $problems.Add("Failed to extract $archiveName.7z for validation.")
+                    }
+                }
+            }
+        } else {
+            Write-Warning "7z not found and $sitePackages missing. Python check will likely fail."
+        }
+    }
+
     # The bundled interpreter must load the agent the way the app starts its backend.
     $saved = @{}
     foreach ($name in @('PYTHONPATH', 'PYTHONHOME', 'PYTHONNOUSERSITE', 'PYTHONDONTWRITEBYTECODE', 'PYTHONUTF8', 'HERMES_HOME')) {
@@ -154,7 +192,6 @@ try {
     try {
         # Native stderr must not turn into a terminating error under Windows PowerShell.
         $ErrorActionPreference = 'Continue'
-        $sitePackages = Join-Path $payload $stamp.runtime.sitePackages
         [Environment]::SetEnvironmentVariable('PYTHONPATH', "$repoDir;$sitePackages", 'Process')
         [Environment]::SetEnvironmentVariable('PYTHONHOME', $null, 'Process')
         [Environment]::SetEnvironmentVariable('PYTHONNOUSERSITE', '1', 'Process')

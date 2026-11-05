@@ -66,7 +66,7 @@ test('direct-extract.nsh 换成增量解压 + 整包解压两条路径', () => {
 
 test('增量更新用到的脚本和指纹工具都在 nsis 目录里', () => {
   for (const name of ['incremental-update.nsh', 'direct-extract.nsh', 'app-running.nsh', 'installer.nsh',
-                      'update-plan.ps1', 'payload-digest.py']) {
+                      'install-log.nsh', 'update-plan.ps1', 'payload-digest.py']) {
     assert.ok(fs.existsSync(path.join(nsisDir, name)), name)
   }
   const incremental = read(path.join(nsisDir, 'incremental-update.nsh'))
@@ -77,4 +77,72 @@ test('增量更新用到的脚本和指纹工具都在 nsis 目录里', () => {
   assert.match(incremental, /Function UNIWORK_TryIncremental/)
   assert.match(incremental, /Function UNIWORK_ExtractFull/)
   assert.match(incremental, /Function UNIWORK_ExtractExcluded/)
+})
+
+test('安装详情既显示在面板上，也按阶段落进日志文件', () => {
+  const installer = read(path.join(nsisDir, 'installer.nsh'))
+  const log = read(path.join(nsisDir, 'install-log.nsh'))
+  const appRunning = read(path.join(nsisDir, 'app-running.nsh'))
+  const incremental = read(path.join(nsisDir, 'incremental-update.nsh'))
+
+  // 面板默认是关的：ShowInstDetails 要在脚本层覆盖回来（customHeader），
+  // SetDetailsPrint 要在段里覆盖回来（customCheckAppRunning），少一个就什么都看不到。
+  // 而且必须是 both：实测 NSIS 3.12 下 textonly 只写进度条上方那行「当前操作」文字，
+  // 详情列表一条都不进，用户点开"显示详情"只能看到空白面板。
+  assert.match(installer, /!macro customHeader[\s\S]*ShowInstDetails hide[\s\S]*!macroend/)
+  assert.match(appRunning, /SetDetailsPrint both/)
+
+  // 打包分两遍编译，卸载器那一遍（BUILD_UNINSTALLER）也会展开 customCheckAppRunning
+  // （templates/nsis/uninstaller.nsh:2 的 un.checkAppRunning → CHECK_APP_RUNNING）。
+  // install-log.nsh 的阶段变量只在 !ifndef BUILD_UNINSTALLER 里声明，卸载器单元里一旦引用
+  // 就是 warning 6000，而 makensis 带 -WX，警告直接变错误、整个打包失败。
+  assert.match(appRunning, /!ifndef BUILD_UNINSTALLER\s*\n\s*SetDetailsPrint both\s*\n\s*!insertmacro UniPhaseBegin 1/)
+  // customCheckAppRunning 里还有两句 UniSay 不在上面的保护块里：卸载器单元也必须能展开它们。
+  // 那边没有日志变量（UniNow 的 GetTime 会报 "Usage: Pop $(user_var: output)"），只打详情面板。
+  assert.match(log, /!ifndef BUILD_UNINSTALLER\s*\n!macro UniSay TEXT\s*\n\s*DetailPrint "\$\{TEXT\}"\s*\n\s*!insertmacro UniNow[\s\S]*?!else\s*\n!macro UniSay TEXT\s*\n\s*DetailPrint "\$\{TEXT\}"\s*\n!macroend\s*\n!endif/)
+
+  // 写死的明细只能走 UniSay，裸 DetailPrint 的文字进不了日志文件；
+  // 例外是把 UNIWORK_PrintLog 的 PowerShell 摘要逐行转印到面板（DetailPrint $1），内容已在日志里。
+  assert.doesNotMatch(incremental, /(^|\s)DetailPrint "/)
+  assert.match(log, /macro UniSay[\s\S]*DetailPrint "\$\{TEXT\}"[\s\S]*!insertmacro UniLog/)
+  assert.match(incremental, /!insertmacro UniPhaseBegin 2 /)
+  assert.match(incremental, /!insertmacro UniPhaseBegin 3 /)
+
+  // "显示详情"按钮交给用户自己点：ShowInstDetails hide 让按钮可见、面板收起，
+  // 安装器不替用户点（实测这个按钮是单向的，展开后没有收回面板的控件）。
+  assert.doesNotMatch(appRunning, /UniShowDetailsPane/)
+  assert.doesNotMatch(log, /GetDlgItem/)
+})
+
+test('7za 跳过了哪些组件逐条报出来：计划写 keep.txt，安装器读出来拼中文', () => {
+  const incremental = read(path.join(nsisDir, 'incremental-update.nsh'))
+  const plan = read(path.join(nsisDir, 'update-plan.ps1'))
+
+  // 数字只能来自包本身（安装目录里数一遍要 40 多秒），所以要把包和 7za 一起交给计划。
+  assert.match(incremental, /-Archive "\$UNIWORK_ARCHIVE"/)
+  assert.match(incremental, /-SevenZip "\$PLUGINSDIR\\uniwork\\7za\.exe"/)
+  // 两侧必须指向同一个文件，不然安装器读的是上一次安装留下的那份。
+  assert.match(plan, /\[string\]\$KeepFile/)
+  assert.match(incremental, /-KeepFile "\$PLUGINSDIR\\uniwork\\keep\.txt"/)
+  assert.match(incremental, /Function UNIWORK_PrintKept/)
+  assert.match(incremental, /Call UNIWORK_PrintKept/)
+
+  // 一条记录的字段顺序：类型、名字、版本、文件数、体积——写和读必须一致。
+  assert.match(plan, /\$records\.Add\(\$item\.Kind\)[\s\S]*\$records\.Add\(\$item\.Name\)[\s\S]*\$records\.Add\(\$item\.Version\)[\s\S]*\$records\.Add\(\$files\)[\s\S]*\$records\.Add\(\$megabytes\)/)
+  assert.match(incremental, /StrCpy \$UNIWORK_KEEP_KIND \$UNIWORK_KEEP_LINE[\s\S]*StrCpy \$UNIWORK_KEEP_NAME[\s\S]*StrCpy \$UNIWORK_KEEP_VER[\s\S]*StrCpy \$UNIWORK_KEEP_FILES[\s\S]*StrCpy \$UNIWORK_KEEP_MB/)
+  const written = (plan.match(/\$records\.Add\(/g) ?? []).length
+  const consumed = (incremental.match(/Call UNIWORK_ReadKeepLine/g) ?? []).length
+  assert.ok(written > 0 && written === consumed, `每条记录写 ${written} 行、读 ${consumed} 行`)
+
+  // 明细走 UniSay（面板 + 日志同一句），归档路径太长只进日志文件。
+  assert.match(incremental, /!insertmacro UniSay "保留工具/)
+  assert.match(incremental, /!insertmacro UniLog "本批跳过：\$UNIWORK_EXCLUDES"/)
+  assert.match(incremental, /!insertmacro UniSay "跳过上面保留的组件，解压其余文件（第 \$UNIWORK_EXTRACT_BATCH 批）"/)
+
+  // 计划自己的英文流水只进日志文件：面板上的话必须是人话，中文由 NSIS 现拼。
+  assert.match(incremental, /Function UNIWORK_PrintLog[\s\S]*!insertmacro UniLog "\$1"/)
+  // "整包覆盖"只在真跳过过东西时才说；批次计数在 DECIDE 里归零，不能靠空值比较的运气。
+  assert.match(incremental, /!macro UNIWORK_DECIDE[\s\S]*StrCpy \$UNIWORK_EXTRACT_BATCH 0/)
+  assert.match(incremental, /IntOp \$UNIWORK_EXTRACT_BATCH \$UNIWORK_EXTRACT_BATCH \+ 1/)
+  assert.match(incremental, /\$\{If\} \$UNIWORK_EXTRACT_BATCH > 0[\s\S]*整包覆盖/)
 })

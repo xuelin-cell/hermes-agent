@@ -10,7 +10,14 @@ param(
     # embedded blockmap lets electron-updater download updates differentially.
     # The default full NSIS package stays offline-installable but always updates
     # in full.
-    [switch]$WebInstaller
+    [switch]$WebInstaller,
+    # Release mode: requires signing configuration (Azure, UKey, or PFX).
+    # Without -Release, the build produces an unsigned installer (development only).
+    # Signing configuration is read from environment variables:
+    #   - Azure: AZURE_SIGN_ENDPOINT, AZURE_SIGN_ACCOUNT, AZURE_SIGN_PROFILE, AZURE_CLIENT_ID
+    #   - UKey: HERMES_UKEY_THUMBPRINT
+    #   - PFX: WIN_CSC_LINK or CSC_LINK (with optional WIN_CSC_KEY_PASSWORD)
+    [switch]$Release
 )
 
 function Select-PyPiIndex {
@@ -47,11 +54,22 @@ $builderCompression = if ($Compression -eq 'fast') { 'normal' } else { $Compress
 $innerCompressionLevel = @{ store = '0'; fast = '1'; normal = '5'; maximum = '9' }[$Compression]
 $previousConsoleEncoding = [Console]::OutputEncoding
 $previousEnvironment = @{}
+
+# Set signing mode based on -Release switch
+$env:HERMES_SIGNING_MODE = if ($Release) { 'release' } else { 'unsigned' }
+if ($Release) {
+    Write-Host "Release mode: signing required" -ForegroundColor Cyan
+    # Determine signing method: Azure (if configured) or UKey (hardcoded)
+    $hasAzure = $env:AZURE_SIGN_ENDPOINT -and $env:AZURE_CLIENT_ID
+    $signingType = if ($hasAzure) { 'Azure' } else { 'UKey' }
+    Write-Host "Signing method: $signingType" -ForegroundColor DarkGray
+}
 foreach ($name in @('TEMP', 'TMP', 'ELECTRON_BUILDER_CACHE', 'UV_CONCURRENT_INSTALLS',
                     'ELECTRON_BUILDER_COMPRESSION_LEVEL', 'HTTP_PROXY', 'HTTPS_PROXY',
                     'NO_PROXY', 'NODE_USE_ENV_PROXY', 'ELECTRON_GET_USE_PROXY',
                     'HERMES_WINDOWS_UPDATE', 'HERMES_WINDOWS_FORMAT',
-                    'UV_INDEX_URL', 'ELECTRON_MIRROR', 'PYTHONIOENCODING', 'PYTHONUTF8')) {
+                    'UV_INDEX_URL', 'ELECTRON_MIRROR', 'PYTHONIOENCODING', 'PYTHONUTF8',
+                    'HERMES_SIGNING_MODE')) {
     $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
 }
 $sourceRoot = $PSScriptRoot
@@ -181,15 +199,18 @@ try {
     # on the leftover file. Keying the directory on the commit means a new commit
     # never touches the old artifact at all. release-local-* is already gitignored,
     # so the dirty-tree admission above stays clean.
-    $release = Join-Path $sourceRoot "apps\desktop\release-local-$($commit.Substring(0, 12))"
-    if (Test-Path -LiteralPath $release) {
+    # NOT named $release: PowerShell variable names are case-insensitive, so
+    # $release would be the [switch]$Release parameter and assigning a string
+    # to it throws (see a370eab4).
+    $outputDir = Join-Path $sourceRoot "apps\desktop\release-local-$($commit.Substring(0, 12))"
+    if (Test-Path -LiteralPath $outputDir) {
         try {
-            Remove-Item -LiteralPath $release -Recurse -Force
+            Remove-Item -LiteralPath $outputDir -Recurse -Force
         } catch {
-            throw "Cannot clear the previous output dir $release (a file is still locked). Close any running app instance and let the scanner finish, then rerun."
+            throw "Cannot clear the previous output dir $outputDir (a file is still locked). Close any running app instance and let the scanner finish, then rerun."
         }
     }
-    New-Item -ItemType Directory -Force -Path $release | Out-Null
+    New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 
     $buildClock = [System.Diagnostics.Stopwatch]::StartNew()
     Push-Location $sourceRoot
@@ -200,7 +221,7 @@ try {
             --work $workRoot `
             --cache $cacheRoot `
             -- "-c.compression=$builderCompression" `
-            "-c.directories.output=$release"
+            "-c.directories.output=$outputDir"
         if ($LASTEXITCODE -ne 0) {
             throw "Windows installer build failed with exit code $LASTEXITCODE."
         }
@@ -209,11 +230,11 @@ try {
         Write-Host ("[build-timing] desktop-build: {0:F1}s" -f $buildClock.Elapsed.TotalSeconds)
     }
 
-    # $release is the fresh per-commit output dir computed before the build; electron-builder
-    # wrote win-unpacked and the installer inside it.
+    # $outputDir is the fresh per-commit output dir computed before the build;
+    # electron-builder wrote win-unpacked and the installer inside it.
     # nsis-web keeps its bootstrapper and .7z payload in <output>\nsis-web;
     # the full nsis target writes straight into <output>.
-    $artifactDir = if ($WebInstaller) { Join-Path $release 'nsis-web' } else { $release }
+    $artifactDir = if ($WebInstaller) { Join-Path $outputDir 'nsis-web' } else { $outputDir }
     $installer = Get-ChildItem -LiteralPath $artifactDir -Filter '*.exe' -File |
         Where-Object { $_.Name -notmatch 'uninstall' -and $_.LastWriteTime -ge $buildStarted } |
         Sort-Object LastWriteTime -Descending |
@@ -227,7 +248,7 @@ try {
     try {
         & (Join-Path $sourceRoot 'scripts\bundles\check-windows-installer.ps1') `
             -Installer $installer.FullName -Commit $commit -Scratch $buildTemp `
-            -Unpacked (Join-Path $release 'win-unpacked')
+            -Unpacked (Join-Path $outputDir 'win-unpacked')
     } finally {
         Write-Host ("[build-timing] installer-check: {0:F1}s" -f $checkClock.Elapsed.TotalSeconds)
     }

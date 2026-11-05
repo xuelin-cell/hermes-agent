@@ -15,7 +15,7 @@ import { LocalRuntimeContext, type PreparedLocalContext } from '../entry_local/r
 import { registerPackagedSkillsCli } from '../entry_local/skills-cli-install'
 import { LocalStartupError, showLocalStartupFailure } from '../entry_local/startup-failure'
 import { createUniAgentGateBindingUpdate } from '../entry_local/uniagentgate-control'
-import { migrateOldUniworkData } from '../migrate-old-uniwork'
+import { migrateOldUniworkData, migrateOldUniworkToWorkspace } from '../migrate-old-uniwork'
 import { createWindowOpenHandler } from '../window-open-policy'
 
 import type { LoginAccount } from './contract'
@@ -32,6 +32,8 @@ let desktopStarting: Promise<void> | null = null
 let handedOff = false
 let startupFailed = false
 let recovery: Promise<void> | null = null
+/** Plan A 迁移 Promise；登录成功后 Plan B 复制时 await 它。 */
+let migrationPromise: Promise<void> | null = null
 
 /** 先取得单实例锁，再安排上次账号清理；完成前不开放登录或桌面。 */
 function initializeLoginShell(): void {
@@ -47,8 +49,9 @@ function initializeLoginShell(): void {
   app.setPath('userData', userData)
   prepareDesktopLaunch()
 
-  // 首次启动时静默迁移老版 UniWork 用户数据（Windows-only，幂等，fire-and-forget）
-  void migrateOldUniworkData(userData)
+  // 首次启动时静默迁移老版 UniWork 用户数据（幂等，fire-and-forget）。
+  // 保留返回的 Promise，登录成功后 Plan B 复制前需 await 它。
+  migrationPromise = migrateOldUniworkData(userData)
 
   if (!app.requestSingleInstanceLock()) {
     stopping = true
@@ -183,6 +186,14 @@ async function openLoginWindow(): Promise<BrowserWindow | null> {
 
     try {
       const context = accountRuntime!.prepare()
+
+      // Plan B：登录成功后，把 Plan A 已迁移的 old_uniwork_data 复制到
+      // 当前账号 workspace 下（账号隔离）。await Plan A 的 Promise，
+      // fire-and-forget，不阻塞桌面启动。
+      void migrateOldUniworkToWorkspace(app.getPath('userData'), context.workspace, {
+        planAPromise: migrationPromise
+      })
+
       enableDesktopPlugins(context.home, ['desktop-deliverables'])
       installArtifactSharePlugin(context.home, app.getAppPath())
       desktopStarting ??= startAccountDesktop(context, currentDesktopIdentity)

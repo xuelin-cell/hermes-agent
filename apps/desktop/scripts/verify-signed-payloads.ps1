@@ -1,6 +1,8 @@
 param(
     [Parameter(Mandatory = $true)][string]$Manifest,
-    [string]$SignTool = ''
+    [string]$SignTool = '',
+    # Optional: match by thumbprint instead of Subject (more reliable for UKey certs)
+    [string]$Thumbprint = ''
 )
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
@@ -8,10 +10,16 @@ $items = Get-Content -Raw -LiteralPath $Manifest | ConvertFrom-Json
 $results = @(
     foreach ($item in $items) {
         $signature = Get-AuthenticodeSignature -LiteralPath $item.path
+        # Match by thumbprint if provided, otherwise by Subject
+        $certMatch = if ($Thumbprint) {
+            $signature.SignerCertificate.Thumbprint -eq $Thumbprint
+        } else {
+            $signature.SignerCertificate.Subject -eq $item.publisher
+        }
         $valid = $signature.Status -eq 'Valid' -and
             $signature.SignatureType -eq 'Authenticode' -and
             $null -ne $signature.TimeStamperCertificate -and
-            $signature.SignerCertificate.Subject -eq $item.publisher
+            $certMatch
         if ($signature.SignatureType -eq 'Catalog' -and $SignTool) {
             # Catalog lookup hides a replacement embedded signature. Verify index 0,
             # without /a, so catalog trust cannot approve corrupt or unsigned bytes.
@@ -25,7 +33,14 @@ $results = @(
             $valid = $false
             if ($exitCode -eq 0) {
                 $certificate = [Security.Cryptography.X509Certificates.X509Certificate]::CreateFromSignedFile($item.path)
-                try { $valid = $certificate.Subject -eq $item.publisher }
+                try {
+                    $certMatch = if ($Thumbprint) {
+                        $certificate.Thumbprint -eq $Thumbprint
+                    } else {
+                        $certificate.Subject -eq $item.publisher
+                    }
+                    $valid = $certMatch
+                }
                 finally { $certificate.Dispose() }
             }
         }

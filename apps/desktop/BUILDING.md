@@ -240,17 +240,40 @@ The signing jobs provide `AZURE_SIGN_ENDPOINT`, `AZURE_SIGN_ACCOUNT`,
 Azure authentication. Do not pass publisher names through shell-split `-c`
 arguments. Local unsigned builds are not release-acceptance artifacts.
 
+### Signing modes
+
+Windows signing supports three backends, selected automatically based on environment:
+
+1. **Azure Trusted Signing** (CI/CD): Set `AZURE_SIGN_ENDPOINT`, `AZURE_SIGN_ACCOUNT`, `AZURE_SIGN_PROFILE`, `AZURE_SIGN_PUBLISHER`, and `AZURE_CLIENT_ID`.
+2. **UKey hardware token** (local release builds): Set `HERMES_UKEY_THUMBPRINT` to the certificate thumbprint in `Cert:\CurrentUser\My`. The UKey must be inserted and unlocked.
+3. **PFX file** (local release builds): Set `WIN_CSC_LINK` (or `CSC_LINK`) to the PFX path, and optionally `WIN_CSC_KEY_PASSWORD` (or `CSC_KEY_PASSWORD`).
+
+The build script `build-windows-installer.ps1` accepts a `-Release` switch to enforce signing:
+
+```powershell
+# Unsigned development build
+.\build-windows-installer.ps1
+
+# Signed release build (requires one of the above signing configurations)
+.\build-windows-installer.ps1 -Release
+```
+
+Without `-Release`, the build produces an unsigned installer. With `-Release`, the build fails early if no signing configuration is detected.
+
+### Batch signing
+
+Payload binaries (EXEs/DLLs under `resources/agent-payload/`) are batch-signed in `afterPack` to minimize per-file overhead. For UKey signing, this reduces PIN prompts from hundreds to a handful by grouping files into character-budget-sized chunks (limited by `CreateProcess` command-line length).
+
+The product EXE, NSIS installer, and NSIS uninstaller are signed individually via the `customSign` hook because they undergo post-pack modifications or have timing constraints.
+
+### Signature caching
+
+Unchanged payload files reuse verified signatures from `${ELECTRON_BUILDER_CACHE}-payload-signatures`. The cache key binds input bytes, signing policy (mode + certificate identifier), signing tools, and timestamp policy. Filenames and release versions do not determine identity. A hit must match executable content and pass Authenticode publisher/timestamp checks. Invalid entries become misses. The product EXE and package envelopes still receive fresh signatures.
+
 The packaging hooks sanitize invalid PE certificate tables, then sign and
 timestamp payload EXEs/DLLs. The product EXE receives its signature after
 resource edits. `scripts/sign-msix.mjs` signs the sideload package envelope.
 Store package envelopes remain unsigned for Partner Center to sign.
-
-Unchanged payload files reuse verified signatures from
-`${ELECTRON_BUILDER_CACHE}-payload-signatures`. The key binds input bytes,
-Azure policy, signing tools, and timestamp policy. Filenames and release
-versions do not determine identity. A hit must match executable content and
-pass Authenticode publisher/timestamp checks. Invalid entries become misses.
-The product EXE and package envelopes still receive fresh signatures.
 
 The `before-build.mjs` hook generates MSIX extensions from payload launcher
 names. One execution-alias extension carries the CLI aliases. The manifest
