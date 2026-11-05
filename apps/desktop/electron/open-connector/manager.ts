@@ -536,14 +536,19 @@ export class ConnectorManager {
     }
 
     if (operation === 'authorize') {
-      if (CONNECTOR_SPECS[id!].auth !== 'oauth2') {
+      const authorization = CONNECTOR_SPECS[id!].auth
+      if (authorization !== 'oauth2' && authorization !== 'browser_poll') {
         throw new Error('This connector uses credentials')
       }
 
-      const result = await runtime.request('/api/oauth/authorizations', 'POST', {
+      const result = await runtime.request(
+        authorization === 'oauth2' ? '/api/oauth/authorizations' : `/api/browser-authorizations/${id}`,
+        'POST',
+        {
         service: id,
         connectionName: 'default'
-      })
+        }
+      )
 
       const url = new URL(result.authorizationUrl)
 
@@ -567,6 +572,7 @@ export class ConnectorManager {
 
       if (
         spec.auth === 'oauth2' ||
+        spec.auth === 'browser_poll' ||
         !values ||
         typeof values !== 'object' ||
         Array.isArray(values) ||

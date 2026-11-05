@@ -4,7 +4,7 @@ export const CONNECTOR_SPECS = {
   qq_mail: { auth: 'custom_credential', fields: ['email', 'authorizationCode'] },
   netease_mail: { auth: 'custom_credential', fields: ['email', 'authorizationCode'] },
   amap: { auth: 'api_key', fields: ['apiKey'] },
-  wps_mcp: { auth: 'api_key', fields: ['apiKey'] },
+  wps_mcp: { auth: 'browser_poll', fields: [] },
   youdao_note: { auth: 'api_key', fields: ['apiKey'] },
   ima: { auth: 'custom_credential', fields: ['clientId', 'apiKey'] },
   qcc_mcp: { auth: 'oauth2', fields: [] },
