@@ -17,14 +17,15 @@ export const en: Translations = {
     sessionShare: 'Share conversation',
     responseShare: 'Share response',
     disclosure:
-      'Anyone with the link can read this snapshot until you revoke it. Attachments are excluded. Selected process content is public even when collapsed. Review the page for sensitive information before publishing.',
-    includeProcess: 'Include available reasoning and tool names',
+      'Anyone with the link can read this snapshot until you revoke it. Attachments are excluded. The execution process is collapsed but still public. Review the page for sensitive information before publishing.',
     readonly: 'Read-only conversation snapshot',
     user: 'You',
     assistant: 'Assistant',
     process: 'Reasoning',
     resourceError: 'The complete page could not be prepared. Nothing was published.',
-    unavailable: 'Sharing is unavailable. Check that the backend has the conversation sharing plugin.',
+    unavailable: 'Unable to open sharing',
+    ownerUnknown:
+      'Could not determine which profile this conversation belongs to. Open the conversation, then try again.',
     preview: 'Public page preview',
     preparing: 'Preparing the complete snapshot…',
     retry: 'Prepare again',

@@ -79,7 +79,7 @@ vi.mock('@/i18n', () => ({
     }
   })
 }))
-vi.mock('@/store/conversation-share', () => ({ openConversationShare: vi.fn() }))
+vi.mock('@/store/conversation-share', () => ({ notifyConversationShareError: vi.fn(), openConversationShare: vi.fn(async () => undefined) }))
 vi.mock('@/lib/haptics', () => ({ triggerHaptic: vi.fn() }))
 vi.mock('@/lib/profile-color', () => ({ PROFILE_SWATCHES: [] }))
 vi.mock('@/lib/session-export', () => ({ exportSession: vi.fn() }))

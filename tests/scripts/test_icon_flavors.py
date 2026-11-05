@@ -25,6 +25,8 @@ def generate(tmp_path_factory):
     foreign.mkdir()
     (foreign / "sitecustomize.py").write_text("raise SystemExit('foreign interpreter path leaked')\n", encoding="utf-8")
     shutil.copytree(ROOT / "assets", source / "assets")
+    for directory in ("assets", "public"):
+        shutil.copytree(ROOT / "apps/desktop" / directory, source / "apps/desktop" / directory)
     from scripts.build.icon_environment import prepare_icon_environment
     python = prepare_icon_environment(ROOT, root / "runtime", root / "cache")
     node = shutil.which("node")
@@ -32,8 +34,8 @@ def generate(tmp_path_factory):
     outputs = {}
     sequence = itertools.count()
 
-    def build(tag="", commit="", *, rejected=False):
-        key = (tag, commit)
+    def build(tag="", commit="", *, fixed=False, rejected=False):
+        key = (tag, commit, fixed)
         if key not in outputs:
             out = root / str(next(sequence))
             # The runtime interpreter renders with its own packages: foreign
@@ -41,6 +43,7 @@ def generate(tmp_path_factory):
             env = {**os.environ, "HERMES_HOME": str(root / "home"),
                    "HERMES_RUNTIME_DIR": str(root / "tools"),
                    "HERMES_PAYLOAD_TAG": tag, "HERMES_BUILD_COMMIT": commit,
+                   "HERMES_DESKTOP_VARIANT": "bundled", "UNIWORK_FIXED_IDENTITY": "1" if fixed else "0",
                    "HERMES_PYTHON": str(python), "PYTHONPATH": str(root / "foreign-site"),
                    "PYTHONHOME": str(root / "foreign-python"), "HERMES_DISABLE_LAZY_INSTALLS": "1"}
             command = [node, str(ROOT / "scripts/generate-icons.mjs"),
@@ -211,6 +214,17 @@ def test_commit_icons_are_red_and_print_only_the_actual_seven_digit_prefix(gener
                     assert (min(pixel) > 240) == bool(row & (1 << (4 - x))), (name, digit, x, y)
             assert judged >= 18, (name, digit, judged)
     assert_unbranded_outputs(stable, first)
+
+
+def test_fixed_desktop_identity_preserves_committed_brand_across_build_commits(generate):
+    first = generate(commit="a" * 40, fixed=True)
+    second = generate(commit="b" * 40, fixed=True)
+    for output in (first / "apps/desktop").rglob("*"):
+        if output.is_file():
+            relative = output.relative_to(first)
+            assert output.read_bytes() == (ROOT / relative).read_bytes(), relative
+            assert output.read_bytes() == (second / relative).read_bytes(), relative
+    assert_unbranded_outputs(generate("v1.2.3"), first)
 
 
 @pytest.mark.parametrize("tag,commit", [
