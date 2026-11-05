@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { type ConnectingPhase, ConnectingScreen } from '@/components/ui/connecting-screen'
 import { prefersReducedMotion } from '@/hooks/use-media-query'
 import { $desktopBoot } from '@/store/boot'
+import { $desktopOnboarding } from '@/store/onboarding'
 import { $gatewaySwitching } from '@/store/gateway-switch'
 import { guidedOnboardingActive } from '@/store/onboarding-gate'
 import { $gatewayState } from '@/store/session'
@@ -33,6 +34,8 @@ function forcedPreview(): boolean {
 export function GatewayConnectingOverlay() {
   const gatewayState = useStore($gatewayState)
   const boot = useStore($desktopBoot)
+  const onboarding = useStore($desktopOnboarding)
+  const startupReady = !boot.running && boot.progress >= 100 && onboarding.configured !== null
   const gatewaySwitching = useStore($gatewaySwitching)
   const [previewing] = useState(forcedPreview)
   const reduce = prefersReducedMotion()
@@ -45,7 +48,7 @@ export function GatewayConnectingOverlay() {
   // — soft gateway switches keep the shell and reskeleton the sidebar instead.
   const coldBootDoneRef = useRef(false)
 
-  if (!boot.running && boot.progress >= 100 && !boot.error) {
+  if (startupReady && !boot.error) {
     coldBootDoneRef.current = true
   }
 
@@ -57,7 +60,7 @@ export function GatewayConnectingOverlay() {
   const initialBootActive = boot.visible || boot.running || boot.progress < 100
 
   const connecting =
-    !coldBootDoneRef.current && !gatewaySwitching && gatewayState !== 'open' && !boot.error && initialBootActive
+    !coldBootDoneRef.current && !gatewaySwitching && !boot.error && (initialBootActive || !startupReady)
 
   // Latches once we've actually shown the overlay, so the brief frame where
   // gatewayState flips to "open" (connecting -> false) before the exit phase
@@ -80,14 +83,14 @@ export function GatewayConnectingOverlay() {
       return () => window.clearTimeout(id)
     }
 
-    if (gatewayState === 'open' && shownRef.current) {
+    if (gatewayState === 'open' && startupReady && shownRef.current) {
       // Under reduced motion, skip the multi-phase exit choreography
       // (text-out → hold → overlay fade) and jump straight to gone so the
       // overlay unmounts the instant the gateway opens. E2E screenshots
       // rely on this to avoid catching the overlay mid-fade.
       setPhase(reduce ? 'gone' : 'text-out')
     }
-  }, [phase, previewing, gatewayState, reduce])
+  }, [phase, previewing, gatewayState, startupReady, reduce])
 
   // Advance the exit choreography: text-out -> overlay-out -> gone.
   useEffect(() => {
