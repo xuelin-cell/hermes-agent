@@ -74,7 +74,9 @@ export function ResponseProcess({ indices, components }: ResponseProcessProps) {
         last.content.at(-1)?.type === 'text' &&
         contentHasVisibleText(last.content) &&
         indices.every(index => s.thread.messages[index]?.content.every(part =>
-          part.type !== 'tool-call' || part.result !== undefined || part.isError
+          part.type !== 'tool-call' || part.result !== undefined || part.isError ||
+          (part as { completedAt?: number }).completedAt !== undefined ||
+          (part as { interrupted?: boolean }).interrupted === true
         )),
       completed:
         last?.role === 'assistant' &&
@@ -95,7 +97,7 @@ export function ResponseProcess({ indices, components }: ResponseProcessProps) {
 
   const duration = responseDurationParts(state.seconds ?? 0)
 
-  const collapsible = (state.presentingAnswer || (!state.live && state.completed)) && (indices.length > 1 || state.hasParts)
+  const collapsible = (state.presentingAnswer || state.completed) && (indices.length > 1 || state.hasParts)
   const processVisible = !collapsible || expanded
 
   const label = !state.live && state.seconds !== undefined
