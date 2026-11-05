@@ -6,6 +6,7 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import { readPackagingInputs, preparationRequired } from './prepared-packaging.mjs'
+import { resolveSigningMode } from './resolve-windows-signer.mjs'
 
 const require = createRequire(import.meta.url)
 
@@ -28,8 +29,22 @@ function defaultResourcesDir(config) {
 /** @param {string} manifest @param {string} source @param {boolean} signing @param {string | undefined} target @returns {WindowsBundleTools} */
 function consumeWindowsBundleTools(manifest, source, signing, target) {
   const result = readPackagingInputs(manifest, source, target).windows
-  if (!result || (signing && (!result.dlib || !result.dotnetRoot))) throw preparationRequired('Missing prepared Windows signing tools')
-  for (const file of [result.makeappx, result.signtool, ...(signing ? [result.dlib] : [])]) {
+  if (!result) throw preparationRequired('Missing prepared Windows tools')
+
+  // For signing, determine what tools are actually needed based on signing mode
+  if (signing) {
+    const mode = resolveSigningMode()
+    // Azure signing requires dlib and dotnet; local cert (UKey/PFX) only needs signtool
+    const needsDlib = mode === 'azure'
+    if (needsDlib && (!result.dlib || !result.dotnetRoot)) {
+      throw preparationRequired('Missing prepared Windows signing tools (Azure requires dlib and dotnet)')
+    }
+    if (!result.signtool) {
+      throw preparationRequired('Missing prepared Windows signtool.exe')
+    }
+  }
+
+  for (const file of [result.makeappx, result.signtool, ...(signing && resolveSigningMode() === 'azure' ? [result.dlib] : [])]) {
     if (!file || !fs.statSync(file).isFile()) throw preparationRequired(`Missing prepared Windows tool: ${file}`)
   }
   return result
@@ -59,7 +74,11 @@ export async function ensureWindowsBundleTools({
     dlib: null,
     dotnetRoot: null,
   }
-  if (signing) {
+  // Only Azure signing requires dlib and dotnet; local cert (UKey/PFX) only needs signtool
+  const signingMode = signing ? resolveSigningMode() : 'none'
+  const needsAzureTools = signingMode === 'azure'
+
+  if (needsAzureTools) {
     if (configured != null && typeof configured === 'object') {
       // This is electron-builder's custom-toolset contract: the owner
       // provides the dlib alongside the kit and manages its runtime.

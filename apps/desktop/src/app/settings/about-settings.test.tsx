@@ -5,6 +5,8 @@ import type { DesktopUpdateStatus, DesktopVersionInfo, HermesConnection } from '
 import { en } from '@/i18n/en'
 import type * as SessionStore from '@/store/session'
 import { $connection } from '@/store/session'
+import type * as UpdateCheckStore from '@/store/update-check'
+import { $updateCheckDialog, requestUpdateCheck } from '@/store/update-check'
 import {
   $backendUpdateStatus,
   $desktopVersion,
@@ -23,6 +25,20 @@ vi.mock('@/store/session', async (importOriginal): Promise<Record<string, unknow
   const { atom } = await import('nanostores')
 
   return { ...actual, $connection: atom<HermesConnection | null>(null) }
+})
+
+vi.mock('@/store/update-check', async (): Promise<Record<string, unknown>> => {
+  const { atom } = await import('nanostores')
+
+  return {
+    $updateCheckDialog: atom<UpdateCheckStore.UpdateCheckDialogState>({
+      open: false,
+      phase: 'checking',
+      message: null
+    }),
+    closeUpdateCheckDialog: vi.fn(),
+    requestUpdateCheck: vi.fn()
+  }
 })
 
 vi.mock('@/store/updates', async (): Promise<Record<string, unknown>> => {
@@ -71,6 +87,7 @@ function connection(mode: 'local' | 'remote'): HermesConnection {
 describe('AboutSettings', (): void => {
   beforeEach((): void => {
     vi.clearAllMocks()
+    $updateCheckDialog.set({ open: false, phase: 'checking', message: null })
     $connection.set(connection('local'))
     $desktopVersion.set({
       appVersion: '1.2.3',
@@ -154,5 +171,22 @@ describe('AboutSettings', (): void => {
       expect(checkBackendUpdates).toHaveBeenCalledWith({ force: true })
     })
     expect(checkUpdates).toHaveBeenCalledTimes(1)
+  })
+
+  it('offers a manual update check from the updates section', (): void => {
+    render(<AboutSettings />)
+
+    fireEvent.click(screen.getByRole('button', { name: en.updates.checkForUpdates }))
+
+    expect(requestUpdateCheck).toHaveBeenCalledTimes(1)
+  })
+
+  it('disables the manual check while one is already running', (): void => {
+    $updateCheckDialog.set({ open: true, phase: 'checking', message: null })
+    render(<AboutSettings />)
+
+    const button = screen.getByRole('button', { name: en.updates.checkingShort }) as HTMLButtonElement
+
+    expect(button.disabled).toBe(true)
   })
 })

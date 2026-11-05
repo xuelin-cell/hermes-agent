@@ -27,10 +27,10 @@ interface ShareWindowProps {
 function ShareWindow({ target }: ShareWindowProps) {
   const { t, locale } = useI18n()
   const copy = t.conversationShare
-  const [process, setProcess] = useState(false)
   const [retry, setRetry] = useState(0)
   const [prepared, setPrepared] = useState<PreparedConversationShare | null>(null)
   const [html, setHtml] = useState('')
+  const [missingImages, setMissingImages] = useState<number[]>([])
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [records, setRecords] = useState<ConversationShareRecord[]>([])
@@ -43,6 +43,7 @@ function ShareWindow({ target }: ShareWindowProps) {
     let ticket: string | undefined
     setPrepared(null)
     setHtml('')
+    setMissingImages([])
     setError('')
 
     if (!api) {
@@ -55,7 +56,6 @@ function ShareWindow({ target }: ShareWindowProps) {
         const pending = api
           .prepare(target.owner, {
             ...target.request,
-            includeProcess: process,
             locale,
             theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light'
           })
@@ -89,7 +89,8 @@ function ShareWindow({ target }: ShareWindowProps) {
 
         if (!disposed) {
           setPrepared(next)
-          setHtml(page)
+          setHtml(page.html)
+          setMissingImages(page.missingImages)
         }
       } catch (failure) {
         if (!disposed) {
@@ -107,7 +108,7 @@ function ShareWindow({ target }: ShareWindowProps) {
         void api.cancel(ticket).catch(() => undefined)
       }
     }
-  }, [api, target, process, locale, copy, retry])
+  }, [api, target, locale, copy, retry])
 
   useEffect(() => {
     let disposed = false
@@ -203,13 +204,12 @@ function ShareWindow({ target }: ShareWindowProps) {
       busy={busy}
       error={error}
       html={html}
+      missingImages={missingImages}
       onClose={closeConversationShare}
-      onProcessChange={setProcess}
       onPublish={publish}
       onRetry={() => setRetry(value => value + 1)}
       onRevoke={revoke}
       prepared={!!prepared}
-      process={process}
       record={record}
       records={records}
       scope={target.request.scope}

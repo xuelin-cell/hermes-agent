@@ -9,12 +9,16 @@ vi.mock('@/store/conversation-share', () => {
   return { $conversationShareTarget: target, closeConversationShare: () => target.set(null) }
 })
 vi.mock('./snapshot-renderer', () => ({
-  exportConversationHtml: vi.fn(async () => '<!doctype html><html><head></head><body>完整预览</body></html>')
+  exportConversationHtml: vi.fn(async () => ({
+    html: '<!doctype html><html><head></head><body>完整预览</body></html>',
+    missingImages: [] as number[]
+  }))
 }))
 
 import { $conversationShareTarget } from '@/store/conversation-share'
 
 import { ConversationShareDialog } from './dialog'
+import { exportConversationHtml } from './snapshot-renderer'
 
 const desktop = window as unknown as { hermesDesktop?: Window['hermesDesktop'] }
 const original = desktop.hermesDesktop
@@ -86,10 +90,7 @@ it('先准备预览再允许发布，窗口关闭后取消迟到票据且不会�
   $conversationShareTarget.set(target)
   render(<ConversationShareDialog />)
   expect((screen.getByRole('button', { name: 'Create public link' }) as HTMLButtonElement).disabled).toBe(true)
-  expect(prepare).toHaveBeenCalledWith(
-    target.owner,
-    expect.objectContaining({ ...target.request, includeProcess: false })
-  )
+  expect(prepare).toHaveBeenCalledWith(target.owner, expect.objectContaining(target.request))
   fireEvent.click(screen.getAllByRole('button', { name: 'Close' })[0])
   await act(async () => {
     finish?.(prepared)
@@ -199,4 +200,29 @@ it.each(['session', 'response'] as const)('%s 分享确认后进入链接结果�
   fireEvent.click(screen.getByRole('button', { name: 'Revoke share' }))
   fireEvent.click(screen.getByRole('button', { name: 'Revoke share' }))
   await waitFor(() => expect(screen.queryByRole('button', { name: 'Copy share link' })).toBeNull())
+})
+
+it('有图片无法嵌入时提示序号，但仍允许发布', async () => {
+  vi.mocked(exportConversationHtml).mockResolvedValueOnce({
+    html: '<!doctype html><html><head></head><body>缺图预览</body></html>',
+    missingImages: [2, 5]
+  })
+  const publish = vi.fn(async () => published)
+  desktop.hermesDesktop = {
+    conversationShare: {
+      prepare: vi.fn(async () => prepared),
+      image: vi.fn(),
+      cancel: vi.fn(async () => undefined),
+      publish,
+      list: async () => [],
+      revoke: vi.fn()
+    }
+  } as unknown as Window['hermesDesktop']
+  $conversationShareTarget.set(target)
+  render(<ConversationShareDialog />)
+  await waitFor(() => expect(screen.getByRole('status').textContent).toMatch(/2.*5/))
+  const button = screen.getByRole('button', { name: 'Create public link' }) as HTMLButtonElement
+  expect(button.disabled).toBe(false)
+  fireEvent.click(button)
+  await waitFor(() => expect(publish).toHaveBeenCalledWith('ticket-A', expect.stringContaining('缺图预览')))
 })

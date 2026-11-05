@@ -31,6 +31,8 @@ invalid test data) are counted and skipped, not failed.
 import subprocess
 from pathlib import Path
 
+from scripts.build.retry import retry_on_permission_error
+
 MARKER = ".hermes-baked-pycache"
 
 
@@ -84,10 +86,14 @@ def bake_bytecode(root: Path, python: Path) -> dict:
         raise FileNotFoundError(f"staged interpreter is missing: {python}")
     total = 0
     for source_root in _import_roots(root):
-        subprocess.run(
-            [str(python), "-I", "-m", "compileall", "-q",
-             "--invalidation-mode", "unchecked-hash", str(source_root)],
-            check=True, timeout=30 * 60, stdin=subprocess.DEVNULL)
+        # Retry compileall in case AV locks newly created .pyc files
+        retry_on_permission_error(
+            lambda: subprocess.run(
+                [str(python), "-I", "-m", "compileall", "-q",
+                 "--invalidation-mode", "unchecked-hash", str(source_root)],
+                check=True, timeout=30 * 60, stdin=subprocess.DEVNULL),
+            operation_name="compileall",
+        )
         missing, unparseable = _uncovered(source_root)
         if missing:
             sample = ", ".join(str(m.relative_to(root)) for m in missing[:5])
@@ -106,6 +112,10 @@ def bake_bytecode(root: Path, python: Path) -> dict:
         for cache in source_root.rglob("__pycache__"):
             for pyc in cache.iterdir():
                 if pyc.is_file():
-                    pyc.chmod(0o444)
+                    # Retry chmod in case AV is still scanning the file
+                    retry_on_permission_error(
+                        lambda p=pyc: p.chmod(0o444),
+                        operation_name="chmod pyc",
+                    )
     (root / MARKER).write_text("unchecked-hash\n", encoding="utf-8")
     return {"modules": total, "marker": str(root / MARKER)}

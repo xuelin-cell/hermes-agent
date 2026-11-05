@@ -75,13 +75,13 @@ export interface Translations {
     sessionShare: string
     responseShare: string
     disclosure: string
-    includeProcess: string
     readonly: string
     user: string
     assistant: string
     process: string
     resourceError: string
     unavailable: string
+    ownerUnknown: string
     preview: string
     preparing: string
     retry: string
@@ -3615,6 +3615,7 @@ export interface Translations {
 
   composer: {
     message: string
+    aiDisclaimer: string
     wakingProfile: (profile: string) => string
     placeholderStarting: string
     placeholderReconnecting: string
@@ -4009,6 +4010,11 @@ export interface Translations {
     version: (value: string) => string
     versionUnavailable: string
     checkNow: string
+    checkForUpdates: string
+    updateDialogTitle: string
+    upToDate: string
+    gotIt: string
+    updateCheckFailed: string
     seeWhatsNew: string
     releaseNotes: string
     onLatest: string
@@ -4618,8 +4624,6 @@ export interface Translations {
       goBack: string
       goForward: string
       reload: string
-      address: string
-      addressPlaceholder: string
       blankPageBody: string
       finishedRestarting: (message?: string) => string
       failedRestarting: (message: string) => string

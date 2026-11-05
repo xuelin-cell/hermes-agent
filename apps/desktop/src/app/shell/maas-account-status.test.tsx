@@ -8,6 +8,7 @@ import { notify } from '@/store/notifications'
 import { MaasAccountSidebar, useMaasAccount } from './maas-account-status'
 
 vi.mock('@/store/notifications', () => ({ notify: vi.fn() }))
+vi.mock('@/store/update-check', () => ({ requestUpdateCheck: vi.fn() }))
 
 const originalBridge = window.hermesDesktop
 

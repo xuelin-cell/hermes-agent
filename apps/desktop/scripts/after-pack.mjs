@@ -23,6 +23,7 @@ import { shouldRehashPayload } from './payload-rehash-policy.mjs'
 import { resolveSigningIdentity, signNestedChromium } from './sign-nested-chromium.mjs'
 import { signWheelZipMembers } from './sign-wheel-zips.mjs'
 import { sanitizeTree } from './sanitize-pe-signatures.mjs'
+import { resolveSigningMode } from './resolve-windows-signer.mjs'
 
 /**
  * Restore the empty app-level localizations dropped during Electron extraction.
@@ -126,6 +127,15 @@ export default async function afterPack(context) {
     config: context.packager.config,
     resourcesDir: context.packager.buildResourcesDir,
   })
+
+  // Enforce signing in Release mode
+  const signingMode = resolveSigningMode()
+  if (signingMode !== 'none' && signing.skipped) {
+    throw new Error(
+      `HERMES_SIGNING_MODE=${signingMode} but batch signing was skipped. ` +
+      'Check signing configuration (AZURE_SIGN_* for Azure, or ensure UKey is plugged in).'
+    )
+  }
   // Assembly's stamp describes the bytes electron-builder copied in, so it only
   // goes stale when signing or an in-place PE repair rewrote them. Re-hashing
   // ~1.5 GiB of tools on an unsigned build buys nothing.

@@ -2007,9 +2007,11 @@ export function ChatSidebar({
                             }
                           }}
                         />
-                        <div className="grid size-6 place-items-center">
-                          <SidebarFilterMenu className={HEADER_NAV_BTN} />
-                        </div>
+                        {developerMode && (
+                          <div className="grid size-6 place-items-center">
+                            <SidebarFilterMenu className={HEADER_NAV_BTN} />
+                          </div>
+                        )}
                       </>
                     )}
                   </div>

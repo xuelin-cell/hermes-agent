@@ -7,6 +7,7 @@ import planIcon from './icons/plan.svg?raw'
 import usageIcon from './icons/usage.svg?raw'
 import deadlineIcon from './icons/deadline.svg?raw'
 import settingsIcon from './icons/settings.svg?raw'
+import updateIcon from './icons/update.svg?raw'
 import logoutIcon from './icons/logout.svg?raw'
 
 import { Button } from '@/components/ui/button'
@@ -15,6 +16,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { OverflowTip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
 import { notify } from '@/store/notifications'
+import { requestUpdateCheck } from '@/store/update-check'
 
 import type { LoginAccount } from '../../../../electron/login/contract'
 import type { PlanUsage } from '../../../../electron/uniwork-usage/contract'
@@ -429,6 +431,17 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
                 <span className="account-card-summary">{expirySummary}</span>
               </div>
               {statusNotice}
+              <button
+                type="button"
+                className="account-card-row"
+                onClick={() => {
+                  setOpen(false)
+                  void requestUpdateCheck()
+                }}
+              >
+                <AccountIcon src={updateIcon} />
+                <span>{t.updates.checkForUpdates}</span>
+              </button>
               <Link className="account-card-row" to="/settings" onClick={() => setOpen(false)}>
                 <AccountIcon src={settingsIcon} />
                 <span>{t.commandCenter.nav.settings.title}</span>

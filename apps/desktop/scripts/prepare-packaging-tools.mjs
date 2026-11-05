@@ -7,6 +7,7 @@ import { parseArgs } from 'node:util'
 import { isMain } from './utils.mjs'
 import { publishPackagingInputs } from './prepared-packaging.mjs'
 import { ensureWindowsBundleTools } from './windows-bundle-tools.mjs'
+import { resolveSigningMode } from './resolve-windows-signer.mjs'
 import { prepareDmgbuild } from './prepare-dmgbuild.mjs'
 
 /** @param {string} source @param {string} name @returns {string} */
@@ -120,14 +121,23 @@ async function acquirePackagingTools({ source, out, cache, target, formats, buil
     const builder = await load('toolsets/winCodeSign.js')
     const tools = await ensureWindowsBundleTools({ config, resourcesDir, signing: true, load: async () => builder, prepared: null })
     const kitRoot = copyTool(path.dirname(path.dirname(tools.makeappx)), path.join(out, 'winCodeSign'))
-    if (!tools.dlib || !tools.dotnetRoot) throw new Error('Windows preparation requires the ATS dlib and paired .NET runtime')
-    fs.cpSync(path.dirname(tools.dlib), path.join(kitRoot, path.basename(path.dirname(tools.signtool))), { recursive: true })
+    // Azure mode requires dlib and dotnet; local cert (UKey/PFX) only needs signtool
+    const signingMode = resolveSigningMode()
+    const needsAzureTools = signingMode === 'azure'
+    if (needsAzureTools && (!tools.dlib || !tools.dotnetRoot)) {
+      throw new Error('Windows preparation requires the ATS dlib and paired .NET runtime for Azure signing')
+    }
+    // For Azure mode, copy the dlib directory alongside signtool
+    if (needsAzureTools && tools.dlib) {
+      fs.cpSync(path.dirname(tools.dlib), path.join(kitRoot, path.basename(path.dirname(tools.signtool))), { recursive: true })
+    }
     const rcedit = await builder.getRceditBundle(config.toolsets?.winCodeSign, resourcesDir)
     fs.copyFileSync(rcedit.x64, path.join(kitRoot, 'rcedit-x64.exe'))
     fs.copyFileSync(rcedit.x86, path.join(kitRoot, 'rcedit-x86.exe'))
     const kit = path.join(kitRoot, path.basename(path.dirname(tools.makeappx)))
     windows = { makeappx: path.join(kit, 'makeappx.exe'), signtool: path.join(kit, 'signtool.exe'),
-      dlib: path.join(kit, 'Azure.CodeSigning.Dlib.dll'), dotnetRoot: copyTool(tools.dotnetRoot, path.join(out, 'dotnet')) }
+      dlib: needsAzureTools ? path.join(kit, 'Azure.CodeSigning.Dlib.dll') : null,
+      dotnetRoot: needsAzureTools ? copyTool(tools.dotnetRoot, path.join(out, 'dotnet')) : null }
     toolsets.winCodeSign = kitRoot
   }
   if (formats.includes('AppImage')) {

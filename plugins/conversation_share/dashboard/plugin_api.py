@@ -18,7 +18,6 @@ class SnapshotRequest(BaseModel):
     sessionId: str = Field(min_length=1, max_length=256)
     scope: Literal["session", "response"] = "session"
     responseRowId: int | None = Field(default=None, ge=1)
-    includeProcess: bool = False
     locale: str = Field(default="zh", max_length=16)
     theme: Literal["light", "dark"] = "light"
 

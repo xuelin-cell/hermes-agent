@@ -4,15 +4,18 @@ import { afterEach, expect, it, vi } from 'vitest'
 
 import { I18nProvider } from '@/i18n'
 import { notify } from '@/store/notifications'
+import { requestUpdateCheck } from '@/store/update-check'
 import { normalizePlanUsage } from '../../../../electron/uniwork-usage/contract'
 import { PlanUsagePanel } from './panel'
 
 vi.mock('@/store/notifications', () => ({ notify: vi.fn() }))
+vi.mock('@/store/update-check', () => ({ requestUpdateCheck: vi.fn() }))
 
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
   vi.mocked(notify).mockClear()
+  vi.mocked(requestUpdateCheck).mockClear()
 })
 
 it('从展开到重试使用真实归一化数据，失败保留旧值而账号不匹配时清除', async () => {
@@ -91,7 +94,7 @@ it('头像卡片展示真实套餐，详情按需展开，设置沿用现有路�
   expect(query).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole('button', { name: '头像' }))
   expect(await screen.findByText('真实套餐')).toBeTruthy()
-  expect(document.querySelectorAll('.account-card-icon > svg')).toHaveLength(5)
+  expect(document.querySelectorAll('.account-card-icon > svg')).toHaveLength(6)
   expect(document.querySelector('.account-card-icon')?.getAttribute('style')).toBeNull()
   expect(screen.getByText('2026年12月12日 到期')).toBeTruthy()
   expect(screen.getByText('已使用 25.00%')).toBeTruthy()
@@ -122,6 +125,24 @@ it('头像卡片展示真实套餐，详情按需展开，设置沿用现有路�
   fireEvent.click(screen.getByRole('link', { name: '设置' }))
   expect(await screen.findByRole('heading', { name: '设置页面' })).toBeTruthy()
   expect(screen.queryByRole('button', { name: '退出登录' })).toBeNull()
+})
+
+it('账号卡片提供检查更新入口，点击后收起卡片并触发检查', async () => {
+  const account = { maskedPhone: '138****0001', expiresAt: Date.now() + 60_000 }
+  const query = vi.fn().mockResolvedValue({ status: 'unavailable', reason: 'restart' })
+  vi.stubGlobal('hermesDesktop', { getPlanUsage: query })
+  render(
+    <I18nProvider configClient={null} initialLocale="zh">
+      <MemoryRouter>
+        <PlanUsagePanel account={account} trigger={<button>头像</button>} onLogout={vi.fn()} />
+      </MemoryRouter>
+    </I18nProvider>
+  )
+  fireEvent.click(screen.getByRole('button', { name: '头像' }))
+  const checkRow = await screen.findByRole('button', { name: '检查更新' })
+  fireEvent.click(checkRow)
+  expect(requestUpdateCheck).toHaveBeenCalledTimes(1)
+  await waitFor(() => expect(screen.queryByRole('button', { name: '检查更新' })).toBeNull())
 })
 
 it('旧主进程给出重启提示，接口可用后展示 Coding 周期摘要而非空余额', async () => {

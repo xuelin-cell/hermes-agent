@@ -362,9 +362,11 @@ export function DesktopOnboardingOverlay({
     return null
   }
 
-  // Mount from frame 1 so we replace the boot overlay seamlessly. The
-  // configured field stays null until the runtime check resolves; only then
-  // do we know whether to dismiss (true) or surface the picker (false).
+  // The connecting screen owns startup until configuration has been checked.
+  if (!onboarding.manual && (boot.running || onboarding.configured === null)) {
+    return null
+  }
+
   // EXCEPTION: manual mode (user opened the selector from a working app to
   // add/switch a provider) shows the overlay regardless of configured state.
   if (onboarding.configured === true && !onboarding.manual && !onboarding.freeTierReady) {

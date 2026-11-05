@@ -1,6 +1,7 @@
 import type { ConversationShareDocument } from '@hermes/shared/conversation-share'
 import DOMPurify from 'dompurify'
 import type { Root } from 'mdast'
+import type { ReactNode } from 'react'
 import { flushSync } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import { type Components, defaultRemarkPlugins, Streamdown } from 'streamdown'
@@ -9,8 +10,10 @@ import { visitParents } from 'unist-util-visit-parents'
 import { MARKDOWN_CONTAINER_CLASS_NAME } from '@/components/assistant-ui/markdown-text-style'
 import { CodeCard, CodeCardBody } from '@/components/chat/code-card'
 import { SHIKI_COLOR_REPLACEMENTS, SHIKI_THEME } from '@/components/chat/shiki-config'
+import { registerPluginLocales, translatePlugin } from '@/i18n/plugin-i18n'
+import { getRuntimeI18nLocale } from '@/i18n/runtime'
 import { renderMediaTags } from '@/lib/chat-messages/parts'
-import { FileText } from '@/lib/icons'
+import { FileText, Lock } from '@/lib/icons'
 import { createMemoizedMathPlugin } from '@/lib/katex-memo'
 import { preprocessMarkdown } from '@/lib/markdown-preprocess'
 
@@ -19,7 +22,8 @@ import { waitForPreparation } from './preparation-wait'
 import { ConversationSharePage } from './snapshot-page'
 
 const math = createMemoizedMathPlugin({ singleDollarTextMath: true })
-const LIMIT = 2 * 1024 * 1024
+// 与 uniclaw-shares 网关所在服务的 SHARE_MAX_BYTES 默认值一致（5,000,000 字节，不是 5 MiB）。
+const LIMIT = 5_000_000
 
 const STYLE_PROPERTIES = [
   'color',
@@ -76,17 +80,94 @@ const STYLE_PROPERTIES = [
   'clip',
   'clip-path',
   'overflow',
+  'text-overflow',
   'box-sizing'
 ]
+
+/** 子元素与父元素相同时由浏览器继承即可，无需逐个元素重复写入。 */
+const INHERITED = new Set([
+  'color',
+  'font-family',
+  'font-size',
+  'font-weight',
+  'font-style',
+  'line-height',
+  'letter-spacing',
+  'text-align',
+  'white-space',
+  'word-break',
+  'overflow-wrap',
+  'list-style-type',
+  'list-style-position',
+  'direction',
+  'border-collapse',
+  'border-spacing',
+  'fill',
+  'stroke',
+  'stroke-width'
+])
+
+/** 文件引用只公开文件名和类型，版式与桌面版的产出文件卡片一致，不含本机路径和下载入口。 */
+const FILE_SCOPE = 'desktop-mt.conversation-share-file'
+registerPluginLocales(FILE_SCOPE, {
+  en: {
+    notPublic: 'File not shared',
+    reason: 'For data security, shared pages show file names only and offer no downloads. Ask the sender for the file.',
+    imageMissing: (alt: string) => (alt ? `Image not embedded: ${alt}` : 'Image not embedded')
+  },
+  zh: {
+    notPublic: '文件未公开',
+    reason: '为保护数据安全，分享页仅展示文件名，不提供下载。如需文件请联系分享者。',
+    imageMissing: (alt: string) => (alt ? `图片未能嵌入：${alt}` : '图片未能嵌入')
+  },
+  'zh-hant': {
+    notPublic: '檔案未公開',
+    reason: '為保護資料安全，分享頁僅顯示檔案名稱，不提供下載。如需檔案請聯絡分享者。',
+    imageMissing: (alt: string) => (alt ? `圖片未能嵌入：${alt}` : '圖片未能嵌入')
+  }
+})
+
+function ShareFileCard({ href, children }: { href: string; children: ReactNode }) {
+  const encoded = href.replace(/^#(?:media:|preview[:/])/, '')
+  let path = encoded
+
+  try {
+    path = decodeURIComponent(encoded)
+  } catch {
+    // 保留原文；无法解码的名称仍只取最后一段。
+  }
+
+  const fallback = typeof children === 'string' ? children.replace(/^\w+:\s*/, '') : ''
+  const name = path.split(/[\\/]/).filter(Boolean).pop() || fallback
+  const extension = /\.([a-z0-9]{1,8})$/i.exec(name)?.[1]?.toUpperCase()
+
+  const t = (key: string) => translatePlugin(FILE_SCOPE, getRuntimeI18nLocale(), key, [])
+
+  // 公开页没有脚本，悬停说明使用原生 title；卡片上只放短标签，不抢正文。
+  return (
+    <span
+      className="my-1 flex items-center gap-3 rounded-xl border border-border px-4 py-3"
+      style={{ maxWidth: 560 }}
+      title={t('reason')}
+    >
+      <FileText aria-hidden="true" className="text-muted-foreground" style={{ width: 20, height: 20, flexShrink: 0 }} />
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="truncate text-sm font-medium text-foreground">{name}</span>
+        {extension && <span className="text-xs text-muted-foreground">{extension}</span>}
+      </span>
+      <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+        <Lock aria-hidden="true" style={{ width: 12, height: 12, flexShrink: 0 }} />
+        {t('notPublic')}
+      </span>
+    </span>
+  )
+}
 
 const components: Components = {
   // 禁用应用中的文件预览、附件卡片、指令和网络嵌入，只保留静态语义。
   a: ({ href, children }) =>
     href?.startsWith('#media:') || href?.startsWith('#preview') ? (
-      <span className="inline-flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
-        <FileText aria-hidden="true" style={{ width: 16, height: 16, flexShrink: 0 }} />
-        {children}
-      </span>
+      <ShareFileCard href={href}>{children}</ShareFileCard>
     ) : (
       <a href={href}>{children}</a>
     ),
@@ -251,7 +332,7 @@ async function resourceBlob(url: string, signal: AbortSignal, image: boolean): P
       size += part.value.length
 
       if (size > LIMIT) {
-        throw new Error('Resource exceeds 2 MB')
+        throw new Error('Resource exceeds 5 MB')
       }
 
       chunks.push(new Uint8Array(part.value))
@@ -294,6 +375,18 @@ function shareImagePlugin() {
   }
 }
 
+const IMAGE_INDEX = 'data-share-image-index'
+
+/** 嵌不进去的正文图片在原位置留下看得见的占位，读者知道这里原本有一张图；data 属性在序列化时被清除。 */
+function replaceWithPlaceholder(image: HTMLImageElement): void {
+  const alt = (image.getAttribute('alt') ?? '').trim()
+  const placeholder = document.createElement('span')
+  placeholder.textContent = translatePlugin(FILE_SCOPE, getRuntimeI18nLocale(), 'imageMissing', [alt])
+  placeholder.style.cssText =
+    'display:inline-block;padding:8px 12px;border:1px dashed currentColor;border-radius:8px;font-size:12px;opacity:0.6'
+  image.replaceWith(placeholder)
+}
+
 /** 将代码、图表、图片和使用的字体固定下来，缺少任何资源都中止而非发布残缺页面。 */
 async function resolveResources(
   root: HTMLElement,
@@ -301,7 +394,8 @@ async function resolveResources(
   signal: AbortSignal,
   source: ConversationShareDocument,
   readImage: ((reference: string) => Promise<string>) | undefined
-): Promise<void> {
+): Promise<number[]> {
+  const missing: number[] = []
   const fences = [...root.querySelectorAll<HTMLElement>('pre > code')]
 
   if (fences.length) {
@@ -340,17 +434,45 @@ async function resolveResources(
   }
 
   // 所有图片在同一容器内完成内嵌和解码；附件及 MEDIA 本机路径从不读取。
+  // 图片不阻止发布：嵌不进去的正文图片换成占位，序号返回给分享窗口在发布前提示。
+  let ordinal = 0
+
   for (const image of root.querySelectorAll('img')) {
     signal.throwIfAborted()
     const placeholder = image.getAttribute('data-share-image-source') ?? ''
-
-    const reference = placeholder.startsWith(IMAGE_REFERENCE_PREFIX)
-      ? decodeURIComponent(placeholder.slice(IMAGE_REFERENCE_PREFIX.length))
-      : placeholder
-
+    const markdownImage = placeholder.startsWith(IMAGE_REFERENCE_PREFIX)
+    const reference = markdownImage ? decodeURIComponent(placeholder.slice(IMAGE_REFERENCE_PREFIX.length)) : placeholder
     const asset = source.assets?.find(item => decodeURIComponent(item.reference) === decodeURIComponent(reference))
-    image.src = asset && readImage ? await readImage(asset.reference) : await resourceData(reference, signal, true)
-    await image.decode()
+
+    if (!markdownImage) {
+      // 页面自带的品牌标识等内嵌资源，失败说明页面本身有问题，照常中止。
+      image.src = await resourceData(reference, signal, true)
+      await image.decode()
+
+      continue
+    }
+
+    const index = ++ordinal
+    image.setAttribute(IMAGE_INDEX, String(index))
+
+    try {
+      // 本机图片只读后端登记并校验过摘要的；后端跳过的本机图片和不支持的地址按未嵌入处理。
+      if (asset && readImage) {
+        image.src = await readImage(asset.reference)
+      } else if (/^https?:/i.test(reference) && readImage) {
+        image.src = await readImage(reference)
+      } else if (/^data:/i.test(reference)) {
+        image.src = await resourceData(reference, signal, true)
+      } else {
+        throw new Error('Image resource is not embedded')
+      }
+
+      await image.decode()
+    } catch {
+      signal.throwIfAborted()
+      missing.push(index)
+      replaceWithPlaceholder(image)
+    }
   }
 
   if (root.querySelector('iframe,video,audio,canvas')) {
@@ -366,35 +488,132 @@ async function resolveResources(
   }
 
   // 内嵌资源后由公开页加载字体，不等待应用其他页面或历史主题的全局字体任务。
+  return missing
 }
 
-/** 复制实际使用的排版样式与字体，公开页不依赖应用 CSS、临时地址或运行时脚本。 */
-async function freezeStyles(root: HTMLElement, signal: AbortSignal): Promise<string> {
-  const families = new Set<string>()
+/** 在隔离的 Shadow DOM 中读取浏览器默认样式；公开页只有默认样式表，未改变的属性不必内联。 */
+function browserDefaults(): { of: (element: Element) => CSSStyleDeclaration; dispose: () => void } {
+  const host = document.createElement('div')
+  host.style.cssText = 'all:initial;position:fixed;left:-20000px;top:0;width:860px;pointer-events:none'
+  const shadow = host.attachShadow({ mode: 'open' })
+  const container = document.createElement('div')
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  container.append(svg)
+  shadow.append(container)
+  document.body.append(host)
+  const cache = new Map<string, CSSStyleDeclaration>()
 
-  for (const element of [root, ...root.querySelectorAll<HTMLElement>('*')]) {
-    const style = getComputedStyle(element)
+  return {
+    of: element => {
+      const key = `${element.namespaceURI}:${element.localName}`
+      let style = cache.get(key)
 
-    for (const name of style.fontFamily.split(',')) {
-      families.add(name.trim().replace(/["']/g, ''))
+      if (!style) {
+        const probe = document.createElementNS(element.namespaceURI, element.localName)
+
+        ;(element.namespaceURI === svg.namespaceURI && element.localName !== 'svg' ? svg : container).append(probe)
+        style = getComputedStyle(probe)
+        cache.set(key, style)
+      }
+
+      return style
+    },
+    dispose: () => host.remove()
+  }
+}
+
+/** 只写入与浏览器默认值或父元素继承值不同的样式；先全部读取再写入，避免写入改变后续元素的计算值。 */
+function frozenDeclarations(
+  element: HTMLElement,
+  style: CSSStyleDeclaration,
+  parent: CSSStyleDeclaration | null,
+  defaults: (element: Element) => CSSStyleDeclaration,
+  neutral: CSSStyleDeclaration
+): Array<[string, string]> {
+  const base = defaults(element)
+  const result: Array<[string, string]> = []
+
+  for (const name of STYLE_PROPERTIES) {
+    const value = style.getPropertyValue(name)
+
+    if (!value || /url\s*\(/i.test(value)) {
+      continue
     }
 
-    for (const name of STYLE_PROPERTIES) {
-      const value = style.getPropertyValue(name)
+    if (INHERITED.has(name)) {
+      // 标签自带默认值（标题字号、代码字体、链接颜色）时，继承不会生效，需要显式写入。
+      const inherits = parent && base.getPropertyValue(name) === neutral.getPropertyValue(name)
 
-      if (value && !/url\s*\(/i.test(value)) {
-        element.style.setProperty(name, value)
+      if (inherits ? value === parent.getPropertyValue(name) : value === base.getPropertyValue(name)) {
+        continue
       }
+    } else if (value === base.getPropertyValue(name)) {
+      continue
+    }
+
+    if (name.startsWith('border') && name !== 'border-collapse' && name !== 'border-spacing' && /^0px\b/.test(value)) {
+      continue
+    }
+
+    if (name === 'transform-origin' && style.transform === 'none') {
+      continue
+    }
+
+    if (['top', 'left', 'bottom', 'right'].includes(name) && style.position === 'static') {
+      continue
+    }
+
+    result.push([name, value])
+  }
+
+  if (element.closest('.katex')) {
+    for (const name of ['width', 'height', 'min-width', 'min-height', 'max-width', 'max-height']) {
+      result.push([name, style.getPropertyValue(name)])
+    }
+  }
+
+  return result
+}
+
+/** 复制实际使用的排版样式与公式字体，公开页不依赖应用 CSS、临时地址或运行时脚本。 */
+async function freezeStyles(root: HTMLElement, signal: AbortSignal): Promise<string> {
+  const families = new Set<string>()
+  const defaults = browserDefaults()
+  const plan: Array<[HTMLElement, Array<[string, string]>, string[]]> = []
+
+  try {
+    const neutral = defaults.of(document.createElement('span'))
+
+    for (const element of [root, ...root.querySelectorAll<HTMLElement>('*')]) {
+      const style = getComputedStyle(element)
+
+      // 中文正文使用访问者本机字体；只有公式字体缺失会改变含义，才内嵌。
+      if (element.closest('.katex')) {
+        for (const name of style.fontFamily.split(',')) {
+          families.add(name.trim().replace(/["']/g, ''))
+        }
+      }
+
+      const parent = element === root || !element.parentElement ? null : getComputedStyle(element.parentElement)
+      // 依赖应用 CSS 变量的原始内联声明在公开页无法解析，改用计算值。
+      const unresolved = [...element.style].filter(name => /var\(|^$/.test(element.style.getPropertyValue(name)))
+      plan.push([element, frozenDeclarations(element, style, parent, defaults.of, neutral), unresolved])
+    }
+  } finally {
+    defaults.dispose()
+  }
+
+  for (const [element, declarations, unresolved] of plan) {
+    for (const name of unresolved) {
+      element.style.removeProperty(name)
+    }
+
+    for (const [name, value] of declarations) {
+      element.style.setProperty(name, value)
     }
 
     if (element.matches('table')) {
       element.style.width = '100%'
-    }
-
-    if (element.closest('.katex')) {
-      for (const name of ['width', 'height', 'min-width', 'min-height', 'max-width', 'max-height']) {
-        element.style.setProperty(name, style.getPropertyValue(name))
-      }
     }
 
     // 导出容器和代码区取消滚动裁剪；数学及 SVG 的内部尺寸保持原生样式。
@@ -412,12 +631,38 @@ async function freezeStyles(root: HTMLElement, signal: AbortSignal): Promise<str
 }
 
 /** 按可信完整快照渲染非虚拟容器；关闭、超时或资源失败都会停止发布。 */
+export interface ExportedConversationPage {
+  html: string
+  /** 未能嵌入、在页面中显示为占位的正文图片序号（从 1 开始）。 */
+  missingImages: number[]
+}
+
+/** 整页超限时从最大的正文图片开始换成占位，直到放得下；纯文字仍超限才放弃。 */
+function fitWithinLimit(root: HTMLElement, missing: number[], render: () => string): string {
+  for (let html = render(); ; html = render()) {
+    if (new TextEncoder().encode(html).length <= LIMIT) {
+      return html
+    }
+
+    const largest = [...root.querySelectorAll<HTMLImageElement>(`img[${IMAGE_INDEX}]`)].sort(
+      (a, b) => b.src.length - a.src.length
+    )[0]
+
+    if (!largest) {
+      throw new Error('Share page exceeds 5 MB')
+    }
+
+    missing.push(Number(largest.getAttribute(IMAGE_INDEX)))
+    replaceWithPlaceholder(largest)
+  }
+}
+
 export async function exportConversationHtml(
   source: ConversationShareDocument,
   labels: SharePageLabels,
   signal: AbortSignal,
   readImage?: (reference: string) => Promise<string>
-): Promise<string> {
+): Promise<ExportedConversationPage> {
   const host = document.createElement('div')
   host.className = source.theme === 'dark' ? 'dark' : ''
   host.style.cssText = 'position:fixed;left:-20000px;top:0;width:860px;pointer-events:none;'
@@ -452,21 +697,32 @@ export async function exportConversationHtml(
       )
     )
     const root = host.firstElementChild as HTMLElement
-    await waitForPreparation(resolveResources(root, source.theme === 'dark', signal, source, readImage), signal)
+
+    const missing = await waitForPreparation(
+      resolveResources(root, source.theme === 'dark', signal, source, readImage),
+      signal
+    )
+
     const fonts = await waitForPreparation(freezeStyles(root, signal), signal)
     signal.throwIfAborted()
     // 计算样式中的 margin 已按离屏容器宽度解析成像素，公开页需要按实际视口重新居中。
     root.style.margin = '0 auto'
-    const content = sanitizeShareContent(root.outerHTML)
     const title = document.createElement('span')
     title.textContent = source.title
-    const html = `<!doctype html><html lang="${/^[a-zA-Z-]{2,16}$/.test(source.locale) ? source.locale : 'en'}" style="color-scheme:${source.theme}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title.innerHTML}</title><style>${fonts}body{margin:0;background:${root.style.backgroundColor};color:${root.style.color}}main{max-width:860px;box-sizing:border-box;margin:auto}pre{white-space:pre-wrap;overflow-wrap:anywhere}img,svg{max-width:100%;height:auto}table{max-width:100%}summary{cursor:pointer}@media(max-width:600px){main{padding:16px!important}}</style></head><body>${content}</body></html>`
 
-    if (new TextEncoder().encode(html).length > LIMIT) {
-      throw new Error('Share page exceeds 2 MB')
-    }
+    // 聊天表面透明时由页面主题提供底色，深色快照不会落在浏览器默认白底上。
+    const background = /^(?:|transparent|rgba\(0, 0, 0, 0\))$/.test(root.style.backgroundColor)
+      ? source.theme === 'dark'
+        ? '#1b1c21'
+        : '#ffffff'
+      : root.style.backgroundColor
 
-    return html
+    const render = () =>
+      `<!doctype html><html lang="${/^[a-zA-Z-]{2,16}$/.test(source.locale) ? source.locale : 'en'}" style="color-scheme:${source.theme}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title.innerHTML}</title><style>${fonts}body{margin:0;background:${background};color:${root.style.color}}main{max-width:860px;box-sizing:border-box;margin:auto}pre{white-space:pre-wrap;overflow-wrap:anywhere}img,svg{max-width:100%;height:auto}table{max-width:100%}summary{cursor:pointer;list-style:none}summary::-webkit-details-marker{display:none}details[open]>summary .share-chevron{transform:rotate(90deg)!important}@media(max-width:600px){main{padding:16px!important}}</style></head><body>${sanitizeShareContent(root.outerHTML)}</body></html>`
+
+    const html = fitWithinLimit(root, missing, render)
+
+    return { html, missingImages: [...new Set(missing)].sort((a, b) => a - b) }
   } catch (error) {
     signal.throwIfAborted()
     throw new Error(`${labels.resourceError} ${error instanceof Error ? error.message : String(error)}`)

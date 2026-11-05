@@ -13,7 +13,7 @@ usage() {
   -h, --help            显示帮助
 
 生成当前提交、本机架构的 bundled DMG 和 ZIP，输出 apps/desktop/release/。
-先执行 source ./activate 准备 .venv，并安装 Node.js 和 Xcode Command Line Tools。
+先在 Bash 中执行 source ./activate 激活 PM 环境，并安装 Xcode Command Line Tools。
 HELP
 }
 
@@ -51,11 +51,13 @@ if [[ "$(uname -s)" != Darwin ]]; then
 fi
 source_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 cd "$source_root"
-python="$source_root/.venv/bin/python"
-if [[ ! -x "$python" ]]; then
-    echo '缺少 .venv/bin/python，请先在仓库根目录执行 source ./activate。' >&2
+# PM 环境位于安装状态记录指向的代际目录，不要求项目内存在 .venv。
+source "$source_root/scripts/_activation.sh"
+if ! hermes_activation_current "$source_root"; then
+    echo '请先在仓库根目录的 Bash 中执行 source ./activate，再运行打包脚本。' >&2
     exit 1
 fi
+python="$(command -v python3)"
 for tool in git npm xcrun; do
     if ! command -v "$tool" >/dev/null 2>&1; then
         echo "缺少构建工具：$tool" >&2

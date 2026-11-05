@@ -1613,6 +1613,14 @@ export function ChatBar({
           <div className={cn(composerFloatingStrip, 'px-[5px] pt-1.5 empty:hidden')}>
             <ContribSlot area={COMPOSER_AREAS.underside} />
           </div>
+          {!showWelcomeTemplates && (
+            <p
+              className="px-[5px] pt-1 text-center text-[0.6875rem] leading-4 text-(--ui-text-tertiary)"
+              data-slot="composer-disclaimer"
+            >
+              {t.composer.aiDisclaimer}
+            </p>
+          )}
         </div>
       </ComposerPrimitive.Unstable_TriggerPopoverRoot>
 
@@ -1628,18 +1636,28 @@ export function ChatBar({
   )
 }
 
-export function ChatBarFallback() {
+/** 加载占位复用正式停靠列和欢迎页规则，保持宽度及提示显示一致。 */
+export function ChatBarFallback({ showWelcomeTemplates = false }: Pick<ChatBarProps, 'showWelcomeTemplates'>) {
+  const { t } = useI18n()
+
   return (
-    <div
-      className={cn(
-        'group/composer absolute bottom-0 left-1/2 z-30 w-[min(var(--composer-width),calc(100%-2rem))] max-w-full -translate-x-1/2 rounded-2xl pt-2 pb-[var(--composer-shell-pad-block-end)]',
-        'bg-linear-to-b from-transparent to-background/55'
-      )}
-      data-slot="composer-root"
-    >
-      <div className="composer-fallback-surface relative isolate h-(--composer-fallback-height) w-full rounded-[inherit] border border-[color-mix(in_srgb,var(--dt-composer-ring)_calc(18%*var(--composer-ring-strength)),var(--dt-input))]">
-        <div aria-hidden className={composerInputBacking} />
+    <div className="absolute bottom-0 left-1/2 z-30 max-w-full -translate-x-1/2 pt-2" data-slot="composer-dock">
+      <div
+        className="group/composer relative w-full rounded-2xl bg-linear-to-b from-transparent to-background/55"
+        data-slot="composer-root"
+      >
+        <div className="composer-fallback-surface relative isolate h-(--composer-fallback-height) w-full rounded-[inherit] border border-[color-mix(in_srgb,var(--dt-composer-ring)_calc(18%*var(--composer-ring-strength)),var(--dt-input))]">
+          <div aria-hidden className={composerInputBacking} />
+        </div>
       </div>
+      {!showWelcomeTemplates && (
+        <p
+          className="px-[5px] pt-1 text-center text-[0.6875rem] leading-4 text-(--ui-text-tertiary)"
+          data-slot="composer-disclaimer"
+        >
+          {t.composer.aiDisclaimer}
+        </p>
+      )}
     </div>
   )
 }
