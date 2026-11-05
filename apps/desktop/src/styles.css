@@ -2443,24 +2443,10 @@ body.guest-pointer-lock :is(webview, iframe) {
   display: inline-flex;
 }
 
-/* Message action bars — flat icon hits in the same muted ink as reply metadata.
-   The reaction slot lives outside the bar but shares its footer visibility. */
+/* 回复操作复用 icon-xs 按钮的点击区域与悬停反馈，图标与元信息使用相同灰度。 */
 [data-slot='aui_msg-actions'] button,
 button[data-slot='aui_msg-reactions'] {
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  padding: 0;
-  gap: 0;
-  height: auto;
-  width: auto;
-  min-height: 0;
-  min-width: 0;
-  flex-shrink: 0;
-  cursor: pointer;
   color: var(--color-muted-foreground);
-  opacity: 1;
 }
 
 /* User actions share reply ink while retaining their existing hit areas. */
@@ -2534,18 +2520,13 @@ span[data-slot='aui_msg-reactions'] {
 
 [data-slot='aui_msg-actions'] button:disabled {
   cursor: default;
+  opacity: 0.35;
 }
 
-[data-slot='aui_msg-actions'] button:hover,
-button[data-slot='aui_msg-reactions']:hover {
-  background: transparent;
+[data-slot='aui_msg-actions'] button:not(:disabled):hover,
+button[data-slot='aui_msg-reactions']:not(:disabled):hover {
   color: var(--color-foreground);
   opacity: 1;
-}
-
-[data-slot='aui_msg-actions'] button:active,
-button[data-slot='aui_msg-reactions']:active {
-  background: transparent;
 }
 
 [data-slot='aui_msg-actions'] button:focus-visible,

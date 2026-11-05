@@ -64,7 +64,7 @@ test('聊天阅读列与输入框在宽窗、预览及窄窗下保持居中对�
           <main data-chat-surface="" data-welcome-layout={layout.welcome?'centered':undefined} style={{position:'relative',flex:1,minWidth:0,display:'flex',flexDirection:'column',background:'var(--ui-chat-surface-background)'}}>
             <header style={{height:52,flexShrink:0,padding:'16px 24px'}}>本周工作总结</header>
             <div style={{flex:1,minHeight:0,position:'relative'}}><Thread clampToComposer intro={layout.welcome?{}:undefined}/></div>
-            {layout.fallback?<ChatBarFallback/>:<ChatBar busy={false} disabled={false} gateway={null} onCancel={()=>{}} onSubmit={async()=>true} state={state}/>}
+            {layout.fallback?<ChatBarFallback showWelcomeTemplates={layout.welcome}/>:<ChatBar busy={false} disabled={false} gateway={null} onCancel={()=>{}} onSubmit={async()=>true} showWelcomeTemplates={layout.welcome} state={state}/>}
           </main>
           {layout.right>0&&<aside data-testid="preview" style={{width:layout.right,flexShrink:0,padding:24,borderLeft:'1px solid var(--dt-border)'}}><strong>项目周报.docx</strong><p>文件预览区域（布局占位）</p></aside>}
         </div>
@@ -111,6 +111,31 @@ test('聊天阅读列与输入框在宽窗、预览及窄窗下保持居中对�
     })
     await page.goto(`http://127.0.0.1:${server.httpServer.address().port}`, { waitUntil: 'load' })
     await page.locator('[data-slot="composer-surface"]').waitFor()
+    const toolbar = page.locator('[data-slot="aui_msg-actions"]').last()
+    await toolbar.waitFor()
+    const actions = await toolbar.evaluate(node => ({
+      gap: getComputedStyle(node).columnGap,
+      buttons: [...node.querySelectorAll('button')].map(button => {
+        const rect = button.getBoundingClientRect()
+        const icon = button.querySelector('svg').getBoundingClientRect()
+        return { width: rect.width, height: rect.height, iconWidth: icon.width, iconHeight: icon.height }
+      })
+    }))
+    assert.ok(actions.buttons.length >= 2, '正式回复工具条须提供复制与重新生成操作')
+    assert.equal(actions.gap, '4px', '回复按钮间距应与 UniWork 一致')
+    for (const button of actions.buttons) {
+      assert.deepEqual(button, { width: 24, height: 24, iconWidth: 14, iconHeight: 14 })
+    }
+    const firstAction = toolbar.locator('button').first()
+    const initialBackground = await firstAction.evaluate(button => getComputedStyle(button).backgroundColor)
+    await firstAction.hover()
+    await page.waitForFunction(
+      previous =>
+        getComputedStyle(document.querySelector('[data-slot="aui_msg-actions"] button')).backgroundColor !== previous,
+      initialBackground,
+      { timeout: 3000 }
+    )
+    await page.mouse.move(0, 0)
     const receipt = []
     for (const scenario of [
       { name: 'wide', width: 1920, height: 1080, left: 260, right: 0 },
@@ -119,6 +144,7 @@ test('聊天阅读列与输入框在宽窗、预览及窄窗下保持居中对�
       { name: 'narrow', width: 640, height: 900, left: 0, right: 0 },
       { name: 'dark', width: 1600, height: 1000, left: 260, right: 0, dark: true },
       { name: 'welcome', width: 1600, height: 1000, left: 260, right: 0, welcome: true },
+      { name: 'welcome-fallback', width: 1600, height: 1000, left: 260, right: 0, welcome: true, fallback: true },
       { name: 'fallback', width: 1600, height: 1000, left: 260, right: 0, fallback: true }
     ]) {
       await page.setViewportSize({ width: scenario.width, height: scenario.height })
@@ -127,6 +153,11 @@ test('聊天阅读列与输入框在宽窗、预览及窄窗下保持居中对�
         window.setFixtureLayout(layout)
       }, scenario)
       await page.locator(scenario.fallback ? '.composer-fallback-surface' : '[data-slot="composer-surface"]').waitFor()
+      assert.equal(
+        await page.locator('[data-slot="composer-disclaimer"]').isVisible(),
+        !scenario.welcome,
+        '提示只在对话开始后显示，欢迎页及其加载占位应隐藏'
+      )
       await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
       const geometry = await page.evaluate(() => {
         const chat = document.querySelector('[data-chat-surface]').getBoundingClientRect()

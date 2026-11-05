@@ -4,12 +4,14 @@ import {
   CAPTCHA_CHANNEL,
   type DesktopLoginBridge,
   LOGIN_CHANNEL,
+  OPEN_LEGAL_CHANNEL,
   PLAN_CHANNEL,
   RESTORE_CHANNEL,
   SEND_SMS_CHANNEL
 } from './contract'
 
 const bridge: DesktopLoginBridge = {
+  openLegalDocument: document => ipcRenderer.invoke(OPEN_LEGAL_CHANNEL, document),
   /** 恢复只读取主进程记录，不接受页面提供的 UID、token 或文件路径。 */
   restore: () => ipcRenderer.invoke(RESTORE_CHANNEL),
   /** 套餐只能查询当前主进程账号，页面不能提供 token 或上游地址。 */

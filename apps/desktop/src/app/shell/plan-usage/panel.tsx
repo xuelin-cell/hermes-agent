@@ -13,6 +13,7 @@ import logoutIcon from './icons/logout.svg?raw'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { OverflowTip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
 import { notify } from '@/store/notifications'
 import { requestUpdateCheck } from '@/store/update-check'
@@ -370,7 +371,11 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
             <>
               <div className="account-card-row account-card-plan">
                 <AccountIcon src={planIcon} />
-                <span className="account-card-plan-name">{data?.productName || (loading ? c.loading : c.unnamed)}</span>
+                <OverflowTip label={data?.productName} placement="row">
+                  <span className="account-card-plan-name">
+                    {data?.productName || (loading ? c.loading : c.unnamed)}
+                  </span>
+                </OverflowTip>
                 <button
                   aria-label={c.refreshPlan}
                   className="account-card-refresh"

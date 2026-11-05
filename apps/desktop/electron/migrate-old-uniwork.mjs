@@ -174,6 +174,14 @@ export async function copyTreeNoOverwrite(src, dst) {
   }
 }
 
+async function isDirectory(directory) {
+  try {
+    return (await fs.stat(directory)).isDirectory()
+  } catch {
+    return false
+  }
+}
+
 /**
  * Windows Plan A: migrate legacy UniWork userData subdirectories into the new
  * app userData under `old_uniwork_data/`.
@@ -520,7 +528,12 @@ export async function migrateMacOldUniworkData(
   const marker = path.join(target, MIGRATION_COMPLETED_MARKER)
   try {
     await fs.stat(marker)
-    return { migrated: false, target, failed }
+    // Older builds wrote this marker even when Lima extraction failed. Resume
+    // only the still-missing directory so an upgrade can repair the migration.
+    const shouldRepairVmSessions = limaHome !== null && !(await isDirectory(path.join(target, 'sessions')))
+    if (!shouldRepairVmSessions) {
+      return { migrated: false, target, failed }
+    }
   } catch {
     // marker doesn't exist — proceed
   }
@@ -673,7 +686,19 @@ export async function migrateOldUniworkToWorkspace(
   const marker = path.join(target, MIGRATION_COMPLETED_MARKER)
   try {
     await fs.stat(marker)
-    return { migrated: false, target, failed }
+    // Older macOS builds may have marked Plan B complete before Plan A could
+    // read Lima; resume only directories that Plan A has and this account lacks.
+    if (platform !== 'darwin') {
+      return { migrated: false, target, failed }
+    }
+    const hasMissingPlanAData = await Promise.all(MIGRATE_SUBDIRS.map(async subdir => {
+      const src = path.join(planASource, subdir)
+      const dst = path.join(target, subdir)
+      return (await isDirectory(src)) && !(await isDirectory(dst))
+    }))
+    if (!hasMissingPlanAData.some(Boolean)) {
+      return { migrated: false, target, failed }
+    }
   } catch {
     // marker doesn't exist — proceed
   }

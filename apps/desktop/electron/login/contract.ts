@@ -1,4 +1,7 @@
+import type { LoginLegalDocument } from './legal-documents'
+
 export const CAPTCHA_CHANNEL = 'hermes-login:captcha'
+export const OPEN_LEGAL_CHANNEL = 'hermes-login:open-legal'
 export const SEND_SMS_CHANNEL = 'hermes-login:send-sms'
 export const LOGIN_CHANNEL = 'hermes-login:login'
 export const RESTORE_CHANNEL = 'hermes-login:restore'
@@ -7,6 +10,7 @@ export const PLAN_CHANNEL = 'hermes-login:plan'
 export interface LoginRequest {
   phone: string
   smsCode: string
+  invitationCode?: string
 }
 
 export interface CloudDriveMutationProgress {
@@ -83,7 +87,11 @@ export interface LoginAccount {
   planAuthRejected?: true
 }
 
-export type LoginResult = { ok: true; account: LoginAccount } | { ok: false; reason?: 'storage' }
+export type InvitationLoginError = 'invitationInvalid' | 'invitationExpired' | 'invitationExhausted' | 'invitationUsed'
+export type SmsLoginError = 'smsIncorrect' | 'smsExpired'
+
+export type LoginResult =
+  { ok: true; account: LoginAccount } | { ok: false; reason?: 'storage' | InvitationLoginError | SmsLoginError }
 
 export interface PlanModel {
   name: string
@@ -101,7 +109,7 @@ export interface SmsRequest {
 
 export type SmsResult =
   | { ok: true; retryAt: number }
-  | { ok: false; error: 'invalid' | 'busy' | 'failed' }
+  | { ok: false; error: 'invalid' | 'busy' | 'failed' | 'captchaIncorrect' | 'captchaExpired' }
   | { ok: false; error: 'limited'; retryAt: number }
 
 export interface LoginCaptcha {
@@ -112,6 +120,8 @@ export interface LoginCaptcha {
 export type CaptchaResult = { ok: true; captcha: LoginCaptcha } | { ok: false }
 
 export interface DesktopLoginBridge {
+  /** 仅打开固定的登录协议，不接受页面提供的外部地址。 */
+  openLegalDocument(document: LoginLegalDocument): Promise<boolean>
   /** 读取主进程保管的完整记录，仅返回未到期账号的脱敏展示信息。 */
   restore(): Promise<LoginResult>
   /** 套餐独立查询，只返回名称与默认标记，不返回模型 Key 或地址。 */

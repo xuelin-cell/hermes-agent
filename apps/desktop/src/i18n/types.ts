@@ -214,6 +214,12 @@ export interface Translations {
     unavailableDescription: string
   }
   desktopLogin: {
+    legalLinksLabel: string
+    legalConsentPrefix: string
+    privacyPolicy: string
+    legalConsentConnector: string
+    userAgreement: string
+    legalOpenError: string
     planUsage: {
       restart: string
       actualUsage: string
@@ -264,7 +270,6 @@ export interface Translations {
     expiredRunning: string
     planAuthRejected: string
     resendAfter: string
-    smsSent: string
     smsSendError: string
     smsLimited: string
     title: string
@@ -278,11 +283,20 @@ export interface Translations {
     unavailable: string
     phoneError: string
     captchaError: string
+    captchaIncorrect: string
+    captchaExpired: string
     captchaLoadError: string
     phonePlaceholder: string
     captchaPlaceholder: string
     smsPlaceholder: string
+    invitationCodePlaceholder: string
+    invitationInvalid: string
+    invitationExpired: string
+    invitationExhausted: string
+    invitationUsed: string
     smsError: string
+    smsIncorrect: string
+    smsExpired: string
     storageError: string
     requestError: string
   }
@@ -3601,6 +3615,7 @@ export interface Translations {
 
   composer: {
     message: string
+    aiDisclaimer: string
     wakingProfile: (profile: string) => string
     placeholderStarting: string
     placeholderReconnecting: string

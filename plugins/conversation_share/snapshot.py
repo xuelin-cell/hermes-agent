@@ -102,10 +102,15 @@ def _turn_messages(group: list[dict]) -> list[dict]:
     message = {"role": "assistant", "blocks": answer}
     if process:
         message["process"] = process
-    stamps = [entry["timestamp"] for entry in replies if isinstance(entry["timestamp"], (int, float))]
+    # 与桌面版重新加载后的「用时」一致：起点是提问；有工具调用时终点是最后一次工具完成，否则是回复本身。
+    def stamps(kind: str) -> list[float]:
+        return [entry["timestamp"] for entry in replies
+                if entry["kind"] == kind and isinstance(entry["timestamp"], (int, float))]
+
+    ends = stamps("tool") or stamps("assistant")
     start = user["timestamp"] if user else None
-    if stamps and isinstance(start, (int, float)) and max(stamps) >= start:
-        message["durationS"] = int(max(stamps) - start)
+    if ends and isinstance(start, (int, float)) and max(ends) >= start:
+        message["durationS"] = int(max(ends) - start)
     if answer or process:
         result.append({"rows": [entry["row"] for entry in replies], "message": message})
     return result

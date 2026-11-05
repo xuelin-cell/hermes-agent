@@ -34,6 +34,8 @@ it('发送失败可重试，同帧重复动作被拦截，成功后按期限倒�
     await hook.result.current.send(input)
   })
   expect(hook.result.current.seconds).toBe(60)
+  act(() => hook.result.current.clearResult())
+  expect(hook.result.current.result).toBeNull()
   await act(async () => {
     await hook.result.current.send(input)
   })
