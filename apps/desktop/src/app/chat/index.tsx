@@ -844,7 +844,7 @@ const ChatViewContent = memo(function ChatViewContent({
             clipping through a stable portal host without remounting its editor. */}
         {showChatBar && (
           <FloatingComposerSurface>
-            <Suspense fallback={<ChatBarFallback />}>
+            <Suspense fallback={<ChatBarFallback showWelcomeTemplates={messagesEmpty && !routedHasHistory} />}>
               <ChatBar
                 busy={busy}
                 cwd={currentCwd}
