@@ -4,8 +4,7 @@ import { useSessionView } from '@/app/chat/session-view'
 import { TooltipIconButton } from '@/components/assistant-ui/tooltip-icon-button'
 import { useI18n } from '@/i18n'
 import { Share2 } from '@/lib/icons'
-import { openConversationShare } from '@/store/conversation-share'
-import { notifyError } from '@/store/notifications'
+import { notifyConversationShareError, openConversationShare } from '@/store/conversation-share'
 
 /** 顶部入口固定使用所在会话的身份与运行状态，复用菜单中的分享流程。 */
 export function ConversationSessionShareButton({ sessionId }: { sessionId?: string | null }) {
@@ -26,13 +25,9 @@ export function ConversationSessionShareButton({ sessionId }: { sessionId?: stri
     <TooltipIconButton
       className="pointer-events-auto shrink-0 [-webkit-app-region:no-drag]"
       disabled={busy || awaiting}
-      onClick={() => {
-        try {
-          openConversationShare(targetId)
-        } catch (error) {
-          notifyError(error, t.conversationShare.unavailable)
-        }
-      }}
+      onClick={() =>
+        void openConversationShare(targetId).catch(error => notifyConversationShareError(error, t.conversationShare))
+      }
       side="bottom"
       size="icon-sm"
       tooltip={t.conversationShare.sessionShare}

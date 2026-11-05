@@ -7,12 +7,20 @@ from urllib.parse import unquote, urlsplit
 from markdown_it import MarkdownIt
 
 
-class ResourceError(ValueError):
-    """图片无法完整固定时停止准备，不返回截断图片或本机文件错误细节。"""
+# 与 uniclaw-shares 网关所在服务的 SHARE_MAX_BYTES 默认值一致（5,000,000 字节）。
+_LIMIT = 5_000_000
+
+
+# 单次分享最多登记的本机图片数量；超出的部分按「未能嵌入」处理。
+_MAX_IMAGES = 100
+_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif"}
 
 
 def snapshot_images(messages: list[dict], cwd: str | None) -> list[dict]:
-    """解析真实 Markdown 图片而非代码示例，文件内容改变时也生成不同快照。"""
+    """解析真实 Markdown 图片而非代码示例，文件内容改变时也生成不同快照。
+
+    图片不阻止分享：读不到、格式不支持、超出数量或总大小的本机图片不登记，前端在原位置显示占位并在发布前提示。
+    """
     from fastapi import HTTPException
     from hermes_cli.web_server_files import _fs_path
     from hermes_cli.web_routers.files import _fs_regular_file, _fs_read_bytes
@@ -20,7 +28,7 @@ def snapshot_images(messages: list[dict], cwd: str | None) -> list[dict]:
     parser = MarkdownIt("commonmark")
     references = set()
     for message in messages:
-        for block in message["blocks"]:
+        for block in [*message["blocks"], *message.get("process", [])]:
             if block["type"] not in {"markdown", "reasoning"}:
                 continue
             for token in parser.parse(block.get("text", "")):
@@ -29,25 +37,26 @@ def snapshot_images(messages: list[dict], cwd: str | None) -> list[dict]:
                         references.add(child.attrGet("src") or "")
     assets = []
     total = 0
-    if len(references) > 100:
-        raise ResourceError("正文图片过多，无法生成完整分享页面。")
     for reference in sorted(references):
         scheme = urlsplit(reference).scheme.lower()
         if scheme in {"https", "http", "data"}:
             continue
+        if len(assets) >= _MAX_IMAGES:
+            break
         if scheme not in {"", "file"} and not re.match(r"^[a-zA-Z]:[\\/]", reference):
-            raise ResourceError("正文图片使用了无法独立分享的临时地址。")
+            continue
         try:
             target, info = _fs_regular_file(_fs_path(unquote(reference), cwd=cwd or ""))
-            if target.suffix.lower() not in {".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif"}:
-                raise ResourceError("正文图片格式不支持独立分享。")
-            if info.st_size + total > 2 * 1024 * 1024:
-                raise ResourceError("正文图片超过 2 MB，未生成截断分享页面。")
-            data = _fs_read_bytes(target, limit=2 * 1024 * 1024 + 1)
-            total += len(data)
-            if total > 2 * 1024 * 1024:
-                raise ResourceError("正文图片超过 2 MB，未生成截断分享页面。")
-            assets.append({"reference": reference, "path": str(target), "hash": hashlib.sha256(data).hexdigest()})
-        except HTTPException as error:
-            raise ResourceError("正文图片无法读取，请检查会话的图片来源。") from error
+        except HTTPException:
+            continue
+        if target.suffix.lower() not in _IMAGE_SUFFIXES or info.st_size + total > _LIMIT:
+            continue
+        try:
+            data = _fs_read_bytes(target, limit=_LIMIT + 1)
+        except HTTPException:
+            continue
+        if total + len(data) > _LIMIT:
+            continue
+        total += len(data)
+        assets.append({"reference": reference, "path": str(target), "hash": hashlib.sha256(data).hexdigest()})
     return assets

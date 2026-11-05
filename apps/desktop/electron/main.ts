@@ -17509,6 +17509,8 @@ installConversationShareIpc(ipcMain, assertArtifactShareWindow, {
 
     return identity && account ? { accountId: account.id, home: account.home, token: identity.token } : null
   },
+  // Chromium 网络栈沿用系统代理与证书，和对话里显示这张图片的路径一致。
+  imageRequest: (input, init) => electronNet.fetch(String(input), init),
   readImage: (owner, sessionId, filePath) =>
     handleHermesApiRequest({
       ...owner,

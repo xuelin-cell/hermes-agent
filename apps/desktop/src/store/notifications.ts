@@ -264,7 +264,7 @@ export function notify(input: NotificationInput): string {
 }
 
 // Toast copy can omit the stack or shorten the message. Keep both in desktop.log.
-function logErrorToDesktopLog(error: unknown, fallback: string): void {
+export function logErrorToDesktopLog(error: unknown, fallback: string): void {
   try {
     const label: string = new URLSearchParams(window.location.search).get('win') ?? 'main'
 

@@ -75,13 +75,13 @@ export interface Translations {
     sessionShare: string
     responseShare: string
     disclosure: string
-    includeProcess: string
     readonly: string
     user: string
     assistant: string
     process: string
     resourceError: string
     unavailable: string
+    ownerUnknown: string
     preview: string
     preparing: string
     retry: string

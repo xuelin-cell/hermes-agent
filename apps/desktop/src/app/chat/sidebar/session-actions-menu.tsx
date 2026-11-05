@@ -31,7 +31,7 @@ import { ArchiveOff } from '@/lib/icons'
 import { isSubmitEnter } from '@/lib/ime'
 import { PROFILE_SWATCHES } from '@/lib/profile-color'
 import { exportSession } from '@/lib/session-export'
-import { openConversationShare } from '@/store/conversation-share'
+import { notifyConversationShareError, openConversationShare } from '@/store/conversation-share'
 import { $developerMode } from '@/store/developer-mode'
 import { activeGateway } from '@/store/gateway'
 import { notify, notifyError } from '@/store/notifications'
@@ -313,10 +313,8 @@ function useSessionActions({
       key: 'conversation-share',
       label: t.conversationShare.sessionShare,
       onSelect: () => {
-        try {
-          suppressCloseFocusRef.current = true
-          openConversationShare(sessionId)
-        } catch (error) {notifyError(error, t.conversationShare.unavailable)}
+        suppressCloseFocusRef.current = true
+        void openConversationShare(sessionId).catch(error => notifyConversationShareError(error, t.conversationShare))
       }
     }),
     ...(renameable
