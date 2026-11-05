@@ -2,7 +2,8 @@ import { EventEmitter } from 'node:events'
 
 import { expect, it, vi } from 'vitest'
 
-const { handle, removeHandler, fetch, save, load } = vi.hoisted(() => ({
+const { handle, removeHandler, fetch, save, load, openExternal } = vi.hoisted(() => ({
+  openExternal: vi.fn().mockResolvedValue(undefined),
   handle: vi.fn(),
   removeHandler: vi.fn(),
   fetch: vi.fn(),
@@ -13,11 +14,20 @@ const { handle, removeHandler, fetch, save, load } = vi.hoisted(() => ({
 vi.mock('electron', () => ({
   ipcMain: { handle, removeHandler },
   net: { fetch },
+  shell: { openExternal },
   app: { getPath: () => 'fixture-only' }
 }))
-import { CAPTCHA_CHANNEL, LOGIN_CHANNEL, PLAN_CHANNEL, RESTORE_CHANNEL, SEND_SMS_CHANNEL } from './contract'
+import {
+  CAPTCHA_CHANNEL,
+  LOGIN_CHANNEL,
+  OPEN_LEGAL_CHANNEL,
+  PLAN_CHANNEL,
+  RESTORE_CHANNEL,
+  SEND_SMS_CHANNEL
+} from './contract'
 import { MAAS_IDENTITY_NAMESPACE } from './credential-store'
 import { installLoginIpc } from './ipc'
+import { LOGIN_LEGAL_DOCUMENTS } from './legal-documents'
 import { LoginSession } from './session'
 
 it('只接受绑定窗口主框架的固定登录页与约定参数，关闭后注销', async () => {
@@ -104,6 +114,7 @@ it('只接受绑定窗口主框架的固定登录页与约定参数，关闭后�
   expect(removeHandler).toHaveBeenCalledWith(LOGIN_CHANNEL)
   expect(removeHandler).toHaveBeenCalledWith(RESTORE_CHANNEL)
   expect(removeHandler).toHaveBeenCalledWith(PLAN_CHANNEL)
+  expect(removeHandler).toHaveBeenCalledWith(OPEN_LEGAL_CHANNEL)
   expect(session.currentIdentity()?.uid).toBe('id')
   session.dispose()
 })
@@ -145,4 +156,39 @@ it('绑定窗口关闭只解绑能力，迟到响应不准备目录；主进程�
   expect(session.currentIdentity()?.uid).toBe('id')
   session.dispose()
   expect(session.currentIdentity()).toBeNull()
+})
+
+it('协议仅允许可信登录主框架打开固定文档，外部地址及关闭后的请求均被拒绝', async () => {
+  handle.mockClear()
+  openExternal.mockClear()
+  const frame = { url: 'file:///test/login.html' }
+  const contents = { mainFrame: frame }
+  const window = Object.assign(new EventEmitter(), { isDestroyed: (): boolean => false, webContents: contents })
+  const session = new LoginSession(fetch, { save, load })
+  installLoginIpc(window as never, frame.url, session, vi.fn())
+  const open = handle.mock.calls.find(([channel]) => channel === OPEN_LEGAL_CHANNEL)![1]
+  const event = { sender: contents, senderFrame: frame }
+
+  for (const key of ['privacy', 'service'] as const) {
+    expect(await open(event, key)).toBe(true)
+    expect(openExternal).toHaveBeenLastCalledWith(LOGIN_LEGAL_DOCUMENTS[key])
+  }
+
+  for (const args of [[], ['https://attacker.invalid'], ['__proto__'], ['privacy', 'extra']]) {
+    expect(await open(event, ...args)).toBe(false)
+  }
+
+  expect(await open({ ...event, sender: {} }, 'privacy')).toBe(false)
+  expect(await open({ ...event, senderFrame: { url: frame.url } }, 'privacy')).toBe(false)
+  frame.url = 'file:///test/other.html'
+  expect(await open(event, 'privacy')).toBe(false)
+  expect(openExternal).toHaveBeenCalledTimes(2)
+  frame.url = 'file:///test/login.html'
+  openExternal.mockRejectedValueOnce(new Error('no browser'))
+  expect(await open(event, 'privacy')).toBe(false)
+  window.emit('closed')
+  expect(await open(event, 'privacy')).toBe(false)
+  expect(openExternal).toHaveBeenCalledTimes(3)
+  expect(removeHandler).toHaveBeenCalledWith(OPEN_LEGAL_CHANNEL)
+  session.dispose()
 })

@@ -161,3 +161,22 @@ def test_unusable_images_do_not_block_snapshot(tmp_path):
         assert "丢失" in json.dumps(snapshot["document"], ensure_ascii=False)
     finally:
         db.close()
+
+
+def test_duration_matches_desktop_reloaded_turn(tmp_path):
+    """用时与桌面版重新加载后一致：有工具时止于最后一次工具完成，没有工具时止于回复本身。"""
+    db = SessionDB(tmp_path / "state.db")
+    try:
+        db.create_session("chat", source="desktop")
+        db.append_message("chat", "user", "做个 PPT", timestamp=1000.0)
+        db.append_message("chat", "assistant", "开始", timestamp=1005.0, tool_calls=[{
+            "id": "call", "type": "function", "function": {"name": "terminal", "arguments": "{}"}}])
+        db.append_message("chat", "tool", "ok", tool_name="terminal", tool_call_id="call", timestamp=2060.6)
+        db.append_message("chat", "assistant", "完成", timestamp=2094.4)
+        db.append_message("chat", "user", "谢谢", timestamp=3000.0)
+        db.append_message("chat", "assistant", "不客气", timestamp=3012.9)
+        replies = [item for item in build_snapshot(db, {"sessionId": "chat"}, owner=None)["document"]["messages"]
+                   if item["role"] == "assistant"]
+        assert [reply["durationS"] for reply in replies] == [1060, 12]
+    finally:
+        db.close()

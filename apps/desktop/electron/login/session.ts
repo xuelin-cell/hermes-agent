@@ -1,7 +1,14 @@
-import type { LoginAccount, LoginResult, PlanResult } from './contract'
+import type { InvitationLoginError, LoginAccount, LoginResult, PlanResult, SmsLoginError } from './contract'
 import type { CredentialStore } from './credential-store'
 import { type FetchedPlan, fetchPlan, type MaasPlan } from './plan'
 import { parseUniAgentGate, type UniAgentGateUpdate } from './uniagentgate'
+
+const INVITATION_ERRORS = new Map<number, InvitationLoginError>([
+  [5001, 'invitationInvalid'],
+  [5002, 'invitationExpired'],
+  [5004, 'invitationExhausted'],
+  [5005, 'invitationUsed']
+])
 
 export interface LoginIdentity {
   phone?: string
@@ -72,6 +79,11 @@ function parseIdentity(body: unknown, phone: string): LoginIdentity | null {
 function accountFor(identity: LoginIdentity): LoginAccount {
   return { maskedPhone: identity.maskedPhone, expiresAt: identity.expiresAt }
 }
+
+const SMS_LOGIN_ERRORS = new Map<string, SmsLoginError>([
+  ['短信验证码错误', 'smsIncorrect'],
+  ['验证码失效，请重新发送短信', 'smsExpired']
+])
 
 /** 管理短信登录和本地记录恢复的身份，关闭和过期后清除进程内凭据。 */
 export class LoginSession {
@@ -243,6 +255,16 @@ export class LoginSession {
       return { ok: false }
     }
 
+    let invitationCode = ''
+
+    if (input.invitationCode !== undefined) {
+      if (typeof input.invitationCode !== 'string') {
+        return { ok: false }
+      }
+
+      invitationCode = input.invitationCode.trim()
+    }
+
     const current = this.currentIdentity()
 
     if (current) {
@@ -255,7 +277,13 @@ export class LoginSession {
       const response = await this.request('https://maas.ai-yuanjing.com/app/login/smsLogin', {
         method: 'POST',
         headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: input.phone, smsCode: input.smsCode, origin: 'app', application: 'uniwork' }),
+        body: JSON.stringify({
+          phone: input.phone,
+          smsCode: input.smsCode,
+          origin: 'app',
+          application: 'uniwork',
+          ...(invitationCode ? { invitationCode } : {})
+        }),
         signal: AbortSignal.any([AbortSignal.timeout(15_000), this.cancellation.signal]),
         redirect: 'error',
         credentials: 'omit',
@@ -267,9 +295,30 @@ export class LoginSession {
       }
 
       const body: unknown = await response.json()
+
+      if (this.closed) {
+        return { ok: false }
+      }
+
+      if (isRecord(body) && (body.code === 401 || body.code === '401') && typeof body.msg === 'string') {
+        const reason = SMS_LOGIN_ERRORS.get(body.msg)
+
+        if (reason) {
+          return { ok: false, reason }
+        }
+      }
+
+      if (invitationCode && isRecord(body) && typeof body.code === 'number') {
+        const reason = INVITATION_ERRORS.get(body.code)
+
+        if (reason) {
+          return { ok: false, reason }
+        }
+      }
+
       const identity = parseIdentity(body, input.phone)
 
-      if (this.closed || !identity) {
+      if (!identity) {
         return { ok: false }
       }
 

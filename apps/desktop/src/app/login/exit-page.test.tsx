@@ -7,7 +7,14 @@ import { AccountExitPage } from './exit-page'
 
 it('只显示本地化退出状态和官方加载动效，不挂载登录表单或调用登录桥接', () => {
   const restore = vi.fn()
-  window.hermesLogin = { restore, plan: vi.fn(), captcha: vi.fn(), sendSms: vi.fn(), login: vi.fn() }
+  window.hermesLogin = {
+    openLegalDocument: vi.fn().mockResolvedValue(true),
+    restore,
+    plan: vi.fn(),
+    captcha: vi.fn(),
+    sendSms: vi.fn(),
+    login: vi.fn()
+  }
   render(
     <I18nProvider configClient={null} initialLocale="zh">
       <AccountExitPage />
