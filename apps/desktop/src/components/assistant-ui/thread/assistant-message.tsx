@@ -1026,10 +1026,10 @@ const AssistantActionBar: FC<MessageActionProps & { durationS?: number; branchPi
   )
 
   return (
-    <div className="relative flex w-full shrink-0 flex-wrap items-center justify-start gap-1.5">
+    <div className="relative flex w-full shrink-0 flex-wrap items-center justify-start gap-1">
       <ActionBarPrimitive.Root
         // Keep the row mounted while streaming so settling never shifts the transcript.
-        className="relative flex flex-row items-center justify-start gap-1.5 py-[5px]"
+        className="relative flex min-h-6 flex-row items-center justify-start gap-1"
         data-slot="aui_msg-actions"
       >
         {developerMode && onBranchInNewChat && (
@@ -1043,12 +1043,12 @@ const AssistantActionBar: FC<MessageActionProps & { durationS?: number; branchPi
             <GitForkIcon className="size-3.5" />
           </TooltipIconButton>
         )}
-        <CopyButton appearance="icon" buttonSize="icon" label={copy.copy} side="top" text={getMessageText} />
+        <CopyButton appearance="icon" buttonSize="icon-xs" label={copy.copy} side="top" text={getMessageText} />
         <ConversationReplyShareButton messageId={messageId} />
         {developerMode && fullResponseAvailable && (
           <CopyButton
             appearance="icon"
-            buttonSize="icon"
+            buttonSize="icon-xs"
             label={copy.copyFullResponse}
             side="top"
             text={getFullResponseText}

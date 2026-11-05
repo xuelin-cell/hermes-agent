@@ -111,6 +111,31 @@ test('聊天阅读列与输入框在宽窗、预览及窄窗下保持居中对�
     })
     await page.goto(`http://127.0.0.1:${server.httpServer.address().port}`, { waitUntil: 'load' })
     await page.locator('[data-slot="composer-surface"]').waitFor()
+    const toolbar = page.locator('[data-slot="aui_msg-actions"]').last()
+    await toolbar.waitFor()
+    const actions = await toolbar.evaluate(node => ({
+      gap: getComputedStyle(node).columnGap,
+      buttons: [...node.querySelectorAll('button')].map(button => {
+        const rect = button.getBoundingClientRect()
+        const icon = button.querySelector('svg').getBoundingClientRect()
+        return { width: rect.width, height: rect.height, iconWidth: icon.width, iconHeight: icon.height }
+      })
+    }))
+    assert.ok(actions.buttons.length >= 2, '正式回复工具条须提供复制与重新生成操作')
+    assert.equal(actions.gap, '4px', '回复按钮间距应与 UniWork 一致')
+    for (const button of actions.buttons) {
+      assert.deepEqual(button, { width: 24, height: 24, iconWidth: 14, iconHeight: 14 })
+    }
+    const firstAction = toolbar.locator('button').first()
+    const initialBackground = await firstAction.evaluate(button => getComputedStyle(button).backgroundColor)
+    await firstAction.hover()
+    await page.waitForFunction(
+      previous =>
+        getComputedStyle(document.querySelector('[data-slot="aui_msg-actions"] button')).backgroundColor !== previous,
+      initialBackground,
+      { timeout: 3000 }
+    )
+    await page.mouse.move(0, 0)
     const receipt = []
     for (const scenario of [
       { name: 'wide', width: 1920, height: 1080, left: 260, right: 0 },
