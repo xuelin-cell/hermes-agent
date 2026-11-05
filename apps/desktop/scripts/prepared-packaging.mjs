@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
+import { resolveSigningMode } from './resolve-windows-signer.mjs'
 
 /** @typedef {{ path: string, digest: string }} PreparedFile */
 /** @typedef {{ sevenZip: string, icons: string, winCodeSign?: string, appimage?: string, fpm?: string }} PackagingToolsets */
@@ -113,8 +114,13 @@ export function readPackagingInputs(manifest, source, target = `${process.platfo
     }
     const required = [result.electron, result.toolsets.sevenZip, result.toolsets.icons, ...Object.values(result.toolsets)]
     if (target.startsWith('win32-')) {
-      if (!result.windows || !result.toolsets.winCodeSign || !result.windows.dotnetRoot) throw preparationRequired('Missing Windows tool selection')
-      required.push(result.windows.dotnetRoot)
+      if (!result.windows || !result.toolsets.winCodeSign) throw preparationRequired('Missing Windows tool selection')
+      // dotnetRoot is only required for Azure signing mode
+      const signingMode = resolveSigningMode()
+      if (signingMode === 'azure' && !result.windows.dotnetRoot) {
+        throw preparationRequired('Azure signing mode requires dotnetRoot')
+      }
+      if (result.windows.dotnetRoot) required.push(result.windows.dotnetRoot)
     }
     if (result.formats.includes('dmg')) {
       if (!result.dmgbuild) throw preparationRequired('Missing prepared dmgbuild')

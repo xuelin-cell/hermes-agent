@@ -208,6 +208,7 @@ def prepare_native(*, out: Path, ref: str, source: Path, cache: Path,
     wrapper provisions machine prerequisites and isolates HOME.
     """
     from scripts.bundles.native_prepared import preparation_lock, prepared_path
+    from scripts.build.retry import retry_on_permission_error
 
     out = Path(out).absolute()
     if out != out.resolve():
@@ -217,7 +218,13 @@ def prepare_native(*, out: Path, ref: str, source: Path, cache: Path,
         # 先隔离旧产物，避免 Windows 延迟删除句柄阻断下一次构建。
         if any(out.iterdir()):
             previous = out.with_name(f".{out.name}-previous-{uuid.uuid4().hex[:8]}")
-            out.rename(previous)
+            # Retry rename in case directory is locked by AV or other processes
+            retry_on_permission_error(
+                lambda: out.rename(previous),
+                max_retries=5,  # More retries for directory operations
+                delay=2.0,
+                operation_name="rename old payload",
+            )
             out.mkdir()
             try:
                 remove_build_tree(previous)
@@ -373,8 +380,16 @@ def _prepare_native(*, out: Path, ref: str, source: Path, cache: Path,
     return publish_prepared(out, source, revision, inputs)
 
 
-def finish_native(prepared: Path, frontends: dict[str, Path]) -> int:
-    """Consume verified job-local paths. No dependency acquisition or repair."""
+def finish_native(prepared: Path, frontends: dict[str, Path], *, archive: bool = True) -> int:
+    """Consume verified job-local paths. No dependency acquisition or repair.
+    
+    Args:
+        prepared: Path to the prepared JSON file.
+        frontends: Dict of frontend names to their build output paths.
+        archive: If True (default), archive large component directories on Windows.
+                 Set to False to skip archiving (useful when other steps need the
+                 exploded directories before archiving).
+    """
     from scripts.build.agent import assemble
     from scripts.build.inputs import AgentInputs
     from scripts.bundles.native_prepared import load_prepared, preparation_lock
@@ -393,6 +408,32 @@ def finish_native(prepared: Path, frontends: dict[str, Path]) -> int:
         # Written after assembly (link relocation completes there) and rewritten
         # by `payload.py rehash` once signing has changed the shipped bytes.
         write_payload_stamp(out)
+        # desktop-mt: On Windows, archive large component directories to speed up installation.
+        # Fewer file-creation operations means less AV scanning overhead during install.
+        # The stamp must record the directory digest (computed before archiving), not the
+        # archive file digest, so the installer can verify the extracted directory.
+        if archive and sys.platform == "win32":
+            from scripts.bundles.payload import ARCHIVED_COMPONENTS_WIN, archive_component
+            precomputed_digests = {}
+            archived = []
+            for name in ARCHIVED_COMPONENTS_WIN:
+                source = out / name
+                if source.is_dir():
+                    archive, directory_digest = archive_component(out, name)
+                    precomputed_digests[name] = directory_digest
+                    archived.append(f"{name} -> {archive.name}")
+            if archived:
+                print(f"✓ archived {len(archived)} component(s) for faster install: {', '.join(archived)}")
+                # Re-stamp with precomputed directory digests
+                write_payload_stamp(out, precomputed_digests=precomputed_digests)
+                # Clean up .pending-delete directories created by archive_component.
+                # They must be removed before NSIS packaging, otherwise they get included
+                # in the installer and cause check-windows-installer.ps1 to fail (venv/
+                # directory missing, only .venv-pending-delete-*/ exists).
+                for pending_dir in out.glob(".*-pending-delete-*"):
+                    if pending_dir.is_dir():
+                        remove_build_tree(pending_dir)
+                        print(f"✓ cleaned up {pending_dir.name}")
     print(f"✓ manifest ({out / 'manifest.json'})")
     return 0
 

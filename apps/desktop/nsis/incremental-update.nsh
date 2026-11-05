@@ -35,11 +35,34 @@ Var UNIWORK_OUTDIR
 ; 攒起来的一批 -x! 参数（一次 7za 调用的全部排除项）
 Var UNIWORK_EXCLUDES
 Var UNIWORK_EXTRACT_RC
+; 已经跳过式解压过几批：退回整包时用它判断"之前是否真跳过了东西"
+Var UNIWORK_EXTRACT_BATCH
 ; 藏起来的卸载登记，退回老流程时原样写回
 Var UNIWORK_UNINSTALLER
 !ifdef UNINSTALL_REGISTRY_KEY_2
 Var UNIWORK_UNINSTALLER_2
 !endif
+
+; keep.txt 的读取状态：句柄、当前行、是否读到结尾
+Var UNIWORK_KEEP_FP
+Var UNIWORK_KEEP_LINE
+Var UNIWORK_KEEP_EOF
+; 一条记录拆出来的五个字段，加上换成中文说法的组件名
+Var UNIWORK_KEEP_KIND
+Var UNIWORK_KEEP_NAME
+Var UNIWORK_KEEP_VER
+Var UNIWORK_KEEP_FILES
+Var UNIWORK_KEEP_MB
+Var UNIWORK_KEEP_LABEL
+; 保留组件个数，以及文件数/体积合计（$UNIWORK_KEEP_NUM 为 0 表示至少有一条没有数字）
+Var UNIWORK_KEEP_COUNT
+Var UNIWORK_KEEP_FILES_SUM
+Var UNIWORK_KEEP_MB_SUM
+Var UNIWORK_KEEP_NUM
+; 当前要解压的 archive 组件名（如 "venv" 或 "hermes-agent"）
+Var UNIWORK_ARCHIVE_KIND
+; 批量删除时 delete.txt 里的路径条数，给用户看进度用
+Var UNIWORK_DELETE_COUNT
 !endif
 
 ; 由 customCheckAppRunning 展开：是不是在升级同一个安装目录？
@@ -49,6 +72,7 @@ Var UNIWORK_UNINSTALLER_2
   Push $0
   StrCpy $UNIWORK_INCREMENTAL 0
   StrCpy $UNIWORK_PLANNED 0
+  StrCpy $UNIWORK_EXTRACT_BATCH 0
   ${If} $IsPowerShellAvailable == 0
   ${AndIf} ${FileExists} "$appExe"
   ${AndIf} ${FileExists} "$INSTDIR\resources\agent-payload\manifest.json"
@@ -73,7 +97,7 @@ Var UNIWORK_UNINSTALLER_2
     !ifdef UNINSTALL_REGISTRY_KEY_2
       !insertmacro UNIWORK_HIDE_UNINSTALLER "${UNINSTALL_REGISTRY_KEY_2}" $UNIWORK_UNINSTALLER_2
     !endif
-    DetailPrint "升级现有安装：比对后保留未变化的组件"
+    !insertmacro UniSay "升级现有安装：比对后保留未变化的组件"
   ${EndIf}
   Pop $0
 !macroend
@@ -104,7 +128,9 @@ Var UNIWORK_UNINSTALLER_2
 
 !ifndef BUILD_UNINSTALLER
 
-; 把 update-plan.ps1 的说明打进安装详情：用户展开详情就能看到保留了哪些组件、为什么退回整包解压。
+; 把 update-plan.ps1 的说明落进日志文件：保留了哪些组件、为什么退回整包解压，事后支持能读到。
+; 这些行是英文的技术流水（NSIS 只能安全读 ASCII，中文得由安装器自己拼），不往详情面板上堆；
+; 面板上给用户看的是 UNIWORK_PrintKept 的中文逐条明细和退回整包那几句结论。
 Function UNIWORK_PrintLog
   Push $0
   Push $1
@@ -123,7 +149,7 @@ Function UNIWORK_PrintLog
       StrCpy $1 $1 -1
       Goto uniwork_log_trim
     ${EndIf}
-    DetailPrint "$1"
+    !insertmacro UniLog "$1"
     Goto uniwork_log_loop
   uniwork_log_close:
     FileClose $0
@@ -135,13 +161,115 @@ FunctionEnd
 
 ; 解压一批：$UNIWORK_EXCLUDES 是这批要跳过的归档路径。
 ; 只取结果码：这条命令的输出不值得塞进 nsExec 的栈里。
+; 失败时重试一次（7za 偶尔会因为文件被占用而失败）。
 Function UNIWORK_ExtractExcluded
+  !insertmacro UniPhaseBegin 3 "解压程序文件"
+  IntOp $UNIWORK_EXTRACT_BATCH $UNIWORK_EXTRACT_BATCH + 1
+  !insertmacro UniSay "跳过上面保留的组件，解压其余文件（第 $UNIWORK_EXTRACT_BATCH 批）"
+  ; 归档路径是给支持看的，详情面板已经逐条报过保留了哪些组件，这里不再刷屏。
+  !insertmacro UniLog "本批跳过：$UNIWORK_EXCLUDES"
   nsExec::Exec '"$PLUGINSDIR\uniwork\7za.exe" x "$UNIWORK_ARCHIVE" -o"$INSTDIR" -y -aoa $UNIWORK_EXCLUDES'
   Pop $UNIWORK_EXTRACT_RC
+  ${If} $UNIWORK_EXTRACT_RC != 0
+    !insertmacro UniLog "首次增量解压失败（$UNIWORK_EXTRACT_RC），重试..."
+    Sleep 1000
+    nsExec::Exec '"$PLUGINSDIR\uniwork\7za.exe" x "$UNIWORK_ARCHIVE" -o"$INSTDIR" -y -aoa $UNIWORK_EXCLUDES'
+    Pop $UNIWORK_EXTRACT_RC
+  ${EndIf}
+  !insertmacro UniLog "本批 7za 结果码：$UNIWORK_EXTRACT_RC"
+FunctionEnd
+
+; keep.txt 一行一行读：去掉行尾换行，读到结尾（或出错）时把 $UNIWORK_KEEP_EOF 置 1。
+; 文件里全是 ASCII，中文由 UNIWORK_PrintKept 现拼——PowerShell 只交数字和英文名。
+Function UNIWORK_ReadKeepLine
+  Push $0
+  StrCpy $UNIWORK_KEEP_EOF 1
+  ClearErrors
+  FileRead $UNIWORK_KEEP_FP $UNIWORK_KEEP_LINE
+  ${IfNot} ${Errors}
+    StrCpy $UNIWORK_KEEP_EOF 0
+    uniwork_read_keep_trim:
+      StrCpy $0 $UNIWORK_KEEP_LINE 1 -1
+      ${If} $0 == "$\r"
+      ${OrIf} $0 == "$\n"
+        StrCpy $UNIWORK_KEEP_LINE $UNIWORK_KEEP_LINE -1
+        Goto uniwork_read_keep_trim
+      ${EndIf}
+  ${EndIf}
+  Pop $0
+FunctionEnd
+
+; 每个被跳过的组件报一条：名字 + 版本 + 包里占的文件数和体积，让用户知道这次少解压了什么。
+; 数字来自包本身，读不到就只报名字，不影响解压计划。
+Function UNIWORK_PrintKept
+  ClearErrors
+  FileOpen $UNIWORK_KEEP_FP "$PLUGINSDIR\uniwork\keep.txt" r
+  IfErrors uniwork_keep_done
+  StrCpy $UNIWORK_KEEP_COUNT 0
+  StrCpy $UNIWORK_KEEP_FILES_SUM 0
+  StrCpy $UNIWORK_KEEP_MB_SUM 0
+  StrCpy $UNIWORK_KEEP_NUM 1
+  uniwork_keep_loop:
+    Call UNIWORK_ReadKeepLine
+    ${If} $UNIWORK_KEEP_EOF == 1
+      Goto uniwork_keep_report
+    ${EndIf}
+    StrCpy $UNIWORK_KEEP_KIND $UNIWORK_KEEP_LINE
+    Call UNIWORK_ReadKeepLine
+    StrCpy $UNIWORK_KEEP_NAME $UNIWORK_KEEP_LINE
+    Call UNIWORK_ReadKeepLine
+    StrCpy $UNIWORK_KEEP_VER $UNIWORK_KEEP_LINE
+    Call UNIWORK_ReadKeepLine
+    StrCpy $UNIWORK_KEEP_FILES $UNIWORK_KEEP_LINE
+    Call UNIWORK_ReadKeepLine
+    StrCpy $UNIWORK_KEEP_MB $UNIWORK_KEEP_LINE
+    ; 第五条也没读到才算一条完整记录，被截断的尾巴直接丢掉。
+    ${If} $UNIWORK_KEEP_EOF == 1
+      Goto uniwork_keep_report
+    ${EndIf}
+    ${If} $UNIWORK_KEEP_KIND == "component"
+      ; 这些是构建里的目录名，用户看不懂，换成中文说法（和整包解压那几条措辞一致）。
+      ${If} $UNIWORK_KEEP_NAME == "venv"
+        StrCpy $UNIWORK_KEEP_LABEL "Python 依赖环境"
+      ${ElseIf} $UNIWORK_KEEP_NAME == "hermes-agent"
+        StrCpy $UNIWORK_KEEP_LABEL "应用代码"
+      ${ElseIf} $UNIWORK_KEEP_NAME == "pm-runtime"
+        StrCpy $UNIWORK_KEEP_LABEL "内置包管理运行时"
+      ${ElseIf} $UNIWORK_KEEP_NAME == "uv-cache.zip"
+        StrCpy $UNIWORK_KEEP_LABEL "uv 下载缓存"
+      ${Else}
+        StrCpy $UNIWORK_KEEP_LABEL "$UNIWORK_KEEP_NAME"
+      ${EndIf}
+      !insertmacro UniSay "保留 $UNIWORK_KEEP_LABEL：$UNIWORK_KEEP_FILES 个文件 / $UNIWORK_KEEP_MB MB 不再解压"
+    ${Else}
+      ; 工具直接用 python、npm、uv 这些名字，正是用户想看到的。
+      !insertmacro UniSay "保留工具 $UNIWORK_KEEP_NAME $UNIWORK_KEEP_VER：$UNIWORK_KEEP_FILES 个文件 / $UNIWORK_KEEP_MB MB 不再解压"
+    ${EndIf}
+    IntOp $UNIWORK_KEEP_COUNT $UNIWORK_KEEP_COUNT + 1
+    ${If} $UNIWORK_KEEP_FILES == "-"
+    ${OrIf} $UNIWORK_KEEP_MB == "-"
+      StrCpy $UNIWORK_KEEP_NUM 0
+    ${Else}
+      IntOp $UNIWORK_KEEP_FILES_SUM $UNIWORK_KEEP_FILES_SUM + $UNIWORK_KEEP_FILES
+      IntOp $UNIWORK_KEEP_MB_SUM $UNIWORK_KEEP_MB_SUM + $UNIWORK_KEEP_MB
+    ${EndIf}
+    Goto uniwork_keep_loop
+  uniwork_keep_report:
+    FileClose $UNIWORK_KEEP_FP
+    ${If} $UNIWORK_KEEP_COUNT > 0
+      ${If} $UNIWORK_KEEP_NUM == 1
+        !insertmacro UniSay "共保留 $UNIWORK_KEEP_COUNT 个组件，省下 $UNIWORK_KEEP_FILES_SUM 个文件不解压（约 $UNIWORK_KEEP_MB_SUM MB）"
+      ${Else}
+        !insertmacro UniSay "共保留 $UNIWORK_KEEP_COUNT 个组件"
+      ${EndIf}
+    ${EndIf}
+  uniwork_keep_done:
 FunctionEnd
 
 ; 返回时 $UNIWORK_INCREMENTAL == 2 表示计划中的文件已经就位；其余情况由调用方整包解压。
+; 阶段 2 两个分支都有，只是内容不同：这里比对组件、算更新计划，整包那边是准备解压。
 Function UNIWORK_TryIncremental
+  !insertmacro UniPhaseBegin 2 "比对组件并生成更新计划"
   Push $0
   Push $1
   Push $2
@@ -151,53 +279,92 @@ Function UNIWORK_TryIncremental
   File "/oname=payload-digest.py" "${UNIWORK_DIGEST}"
   File "/oname=7za.exe" "${UNIWORK_7ZA}"
 
-  ; 只从包里取出指纹文件，不展开整个包。
+  ; 只从包里取出指纹文件，不展开整个包。失败时重试一次（AV 扫描或磁盘繁忙可能导致瞬时失败）。
   nsExec::ExecToStack '"$PLUGINSDIR\uniwork\7za.exe" e "$UNIWORK_ARCHIVE" "resources\agent-payload\payload-stamp.txt" -o"$PLUGINSDIR\uniwork\stamp" -y'
   Pop $0
   Pop $1
   ${If} $0 != 0
   ${OrIfNot} ${FileExists} "$PLUGINSDIR\uniwork\stamp\payload-stamp.txt"
-    DetailPrint "升级改为完整安装：包里没有组件指纹"
+    !insertmacro UniLog "首次提取指纹失败（$0），重试..."
+    Sleep 500
+    nsExec::ExecToStack '"$PLUGINSDIR\uniwork\7za.exe" e "$UNIWORK_ARCHIVE" "resources\agent-payload\payload-stamp.txt" -o"$PLUGINSDIR\uniwork\stamp" -y'
+    Pop $0
+    Pop $1
+  ${EndIf}
+  ${If} $0 != 0
+  ${OrIfNot} ${FileExists} "$PLUGINSDIR\uniwork\stamp\payload-stamp.txt"
+    !insertmacro UniSay "升级改为完整安装：包里没有组件指纹（重试后仍失败，$0）"
     Goto uniwork_try_done
   ${EndIf}
 
   ; update-plan.ps1 只读安装目录：算出要删的路径和要跳过的解压路径，失败时什么都不改。
-  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\uniwork\update-plan.ps1" -Install "$INSTDIR" -NewStamp "$PLUGINSDIR\uniwork\stamp\payload-stamp.txt" -DeleteFile "$PLUGINSDIR\uniwork\delete.txt" -ExcludeFile "$PLUGINSDIR\uniwork\exclude.txt" -Log "$PLUGINSDIR\uniwork\plan.log"'
+  ; -Archive/-SevenZip 只用来数包里被保留组件的文件数和体积（只读归档头，实测一秒多），
+  ; 结果写进 keep.txt 交给 UNIWORK_PrintKept；读不到数字也不影响计划。
+  ; 失败时重试一次（PowerShell 启动偶尔会超时）。
+  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\uniwork\update-plan.ps1" -Install "$INSTDIR" -NewStamp "$PLUGINSDIR\uniwork\stamp\payload-stamp.txt" -DeleteFile "$PLUGINSDIR\uniwork\delete.txt" -ExcludeFile "$PLUGINSDIR\uniwork\exclude.txt" -KeepFile "$PLUGINSDIR\uniwork\keep.txt" -Archive "$UNIWORK_ARCHIVE" -SevenZip "$PLUGINSDIR\uniwork\7za.exe" -Log "$PLUGINSDIR\uniwork\plan.log"'
   Pop $0
   Pop $1
   ${If} $0 != 0
-    DetailPrint "升级改为完整安装：无法生成更新计划（$0）"
+    ; 清掉首次调用留在栈上的 stdout 行，再重试一次。
+    ${Do}
+      ${If} $1 == ""
+        ${ExitDo}
+      ${EndIf}
+      Pop $1
+    ${Loop}
+    !insertmacro UniLog "首次生成更新计划失败（$0），重试..."
+    Sleep 1000
+    nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\uniwork\update-plan.ps1" -Install "$INSTDIR" -NewStamp "$PLUGINSDIR\uniwork\stamp\payload-stamp.txt" -DeleteFile "$PLUGINSDIR\uniwork\delete.txt" -ExcludeFile "$PLUGINSDIR\uniwork\exclude.txt" -KeepFile "$PLUGINSDIR\uniwork\keep.txt" -Archive "$UNIWORK_ARCHIVE" -SevenZip "$PLUGINSDIR\uniwork\7za.exe" -Log "$PLUGINSDIR\uniwork\plan.log"'
+    Pop $0
+    Pop $1
+  ${EndIf}
+  ${If} $0 != 0
+    ; 重试也失败：清栈后退回完整安装。
+    ${Do}
+      ${If} $1 == ""
+        ${ExitDo}
+      ${EndIf}
+      Pop $1
+    ${Loop}
+    !insertmacro UniSay "升级改为完整安装：无法生成更新计划（重试后仍失败，$0）"
     Call UNIWORK_PrintLog
     Goto uniwork_try_done
   ${EndIf}
+  ; 把 PowerShell 写到 stdout 的中文摘要逐行打到详情面板。
+  ${Do}
+    ${If} $1 == ""
+      ${ExitDo}
+    ${EndIf}
+    DetailPrint $1
+    Pop $1
+  ${Loop}
   Call UNIWORK_PrintLog
+  Call UNIWORK_PrintKept
 
-  ; 计划里的条目可能是文件也可能是目录，两个命令各管一种；不存在时留下的错误标志由下一轮清掉。
+  ; 批量删除旧版文件：一次 cmd 调用处理 delete.txt 里所有路径，替代逐条 Delete/RMDir。
+  ; 39 个路径逐条删要触发 AV 实时扫描 39 次（实测 6-7 分钟）；批量删只触发 1 次（预估 30-90 秒）。
+  ; cmd 的 for /f 逐行读 delete.txt，先试 rd /s /q（目录），失败再试 del /f /q（文件）。
+  ; 旧卸载器文件 ${UNINSTALL_FILENAME} 由 update-plan.ps1 在生成 delete.txt 时已经排除。
   ClearErrors
   FileOpen $0 "$PLUGINSDIR\uniwork\delete.txt" r
   IfErrors uniwork_try_done
   StrCpy $UNIWORK_PLANNED 1
-  uniwork_try_delete_loop:
+  ; 统计路径条数给用户看进度。
+  StrCpy $UNIWORK_DELETE_COUNT 0
+  uniwork_delete_count_loop:
     ClearErrors
     FileRead $0 $1
-    IfErrors uniwork_try_delete_close
-  uniwork_try_delete_trim:
-    StrCpy $2 $1 1 -1
-    ${If} $2 == "$\r"
-    ${OrIf} $2 == "$\n"
-      StrCpy $1 $1 -1
-      Goto uniwork_try_delete_trim
-    ${EndIf}
-    ; 旧卸载器文件要留到计划之外：计划没跑成时还得靠它，装完由安装段重新写一份。
-    ${If} $1 != ""
-    ${AndIf} $1 != "${UNINSTALL_FILENAME}"
-      DetailPrint "移除 $1"
-      Delete "$INSTDIR\$1"
-      RMDir /r "$INSTDIR\$1"
-    ${EndIf}
-    Goto uniwork_try_delete_loop
-  uniwork_try_delete_close:
-    FileClose $0
+    IfErrors uniwork_delete_count_done
+    IntOp $UNIWORK_DELETE_COUNT $UNIWORK_DELETE_COUNT + 1
+    Goto uniwork_delete_count_loop
+  uniwork_delete_count_done:
+  FileClose $0
+  !insertmacro UniSay "正在清除 $UNIWORK_DELETE_COUNT 个旧版路径..."
+  !insertmacro UniTick $UNIWORK_SUBPHASE_START
+  nsExec::Exec '"$SYSDIR\cmd.exe" /C for /f "usebackq delims= eol=|" %f in ("$PLUGINSDIR\uniwork\delete.txt") do @(rd /s /q "$INSTDIR\%f" >NUL 2>&1 || del /f /q "$INSTDIR\%f" >NUL 2>&1)'
+  !insertmacro UniTick $UNIWORK_SUBPHASE_END
+  !insertmacro UniSubphaseElapsed
+  !insertmacro UniSay "旧版路径已清除，耗时 $UNIWORK_PHASE_DURATION"
 
   ; exclude.txt 一行一个 -x! 参数：组件多的时候全部拼进一条命令会超出 NSIS 的字符串上限，
   ; 所以攒够一批就先解压一次。一个组件都没保留时整包解压，让解压进度走模板的老路。
@@ -223,7 +390,7 @@ Function UNIWORK_TryIncremental
     ${If} $2 > 700
       Call UNIWORK_ExtractExcluded
       ${If} $UNIWORK_EXTRACT_RC != 0
-        DetailPrint "升级改为完整安装：增量解压失败（$UNIWORK_EXTRACT_RC）"
+        !insertmacro UniSay "升级改为完整安装：增量解压失败（重试后仍失败，$UNIWORK_EXTRACT_RC）"
         Goto uniwork_try_done
       ${EndIf}
       StrCpy $UNIWORK_EXCLUDES ""
@@ -241,18 +408,26 @@ Function UNIWORK_TryIncremental
   ${If} $UNIWORK_EXCLUDES != ""
     Call UNIWORK_ExtractExcluded
     ${If} $UNIWORK_EXTRACT_RC != 0
-      DetailPrint "升级改为完整安装：增量解压失败（$UNIWORK_EXTRACT_RC）"
+      !insertmacro UniSay "升级改为完整安装：增量解压失败（重试后仍失败，$UNIWORK_EXTRACT_RC）"
       Goto uniwork_try_done
     ${EndIf}
     StrCpy $UNIWORK_EXCLUDES ""
   ${EndIf}
 
+  ; 增量更新后，解压 archive 组件（venv.7z/tar.xz, hermes-agent.7z/tar.xz）
+  ; 这些组件在 exclude.txt 里被排除（保留旧版本），但如果组件指纹变了，
+  ; 它们不在 exclude 里，archive 文件会被解压出来，需要进一步解压缩。
+  StrCpy $UNIWORK_ARCHIVE_KIND "venv"
+  Call UNIWORK_ExtractArchive
+  StrCpy $UNIWORK_ARCHIVE_KIND "hermes-agent"
+  Call UNIWORK_ExtractArchive
+
   ${IfNot} ${FileExists} "$appExe"
-    DetailPrint "升级改为完整安装：程序文件没有解压完整"
+    !insertmacro UniSay "升级改为完整安装：程序文件没有解压完整"
     Goto uniwork_try_done
   ${EndIf}
   StrCpy $UNIWORK_INCREMENTAL 2
-  DetailPrint "未变化的组件已保留，其余文件已更新"
+  !insertmacro UniSay "未变化的组件已保留，其余文件已更新"
 
   uniwork_try_done:
   SetOutPath $UNIWORK_OUTDIR
@@ -261,12 +436,145 @@ Function UNIWORK_TryIncremental
   Pop $0
 FunctionEnd
 
+; 解压单个 archive 组件到安装目录。
+; $UNIWORK_ARCHIVE_KIND = "venv" 或 "hermes-agent"
+; 如果 archive 存在则解压，否则跳过（目录形式或旧版本）。
+Function UNIWORK_ExtractArchive
+  Push $0
+  Push $1
+  Push $2
+  StrCpy $0 "$INSTDIR\resources\agent-payload\$UNIWORK_ARCHIVE_KIND.7z"
+  StrCpy $1 "$INSTDIR\resources\agent-payload\$UNIWORK_ARCHIVE_KIND.tar.xz"
+
+  ; 组件的目录名给用户看没意义，面板上说中文，实际路径留给日志。
+  ${If} $UNIWORK_ARCHIVE_KIND == "venv"
+    StrCpy $2 "Python 依赖环境"
+  ${ElseIf} $UNIWORK_ARCHIVE_KIND == "hermes-agent"
+    StrCpy $2 "应用代码"
+  ${Else}
+    StrCpy $2 "$UNIWORK_ARCHIVE_KIND"
+  ${EndIf}
+
+  ${If} ${FileExists} "$0"
+    !insertmacro UniSay "正在安装 $2..."
+    !insertmacro UniLog "解压 archive: $0"
+    !insertmacro UniTick $UNIWORK_SUBPHASE_START
+    nsExec::Exec '"$PLUGINSDIR\uniwork\7za.exe" x "$0" -o"$INSTDIR\resources\agent-payload" -y -aoa'
+    Pop $UNIWORK_EXTRACT_RC
+    !insertmacro UniTick $UNIWORK_SUBPHASE_END
+    ${If} $UNIWORK_EXTRACT_RC != 0
+      !insertmacro UniLog "$UNIWORK_ARCHIVE_KIND.7z 解压失败（$UNIWORK_EXTRACT_RC）"
+      !insertmacro UniSay "$2 解压失败，安装可能不完整"
+    ${Else}
+      !insertmacro UniSubphaseElapsed
+      !insertmacro UniSay "$2 安装完成，耗时 $UNIWORK_PHASE_DURATION"
+      ; 解压成功后删除 archive 文件，节省磁盘空间
+      Delete "$0"
+    ${EndIf}
+  ${ElseIf} ${FileExists} "$1"
+    ; Fallback: .tar.xz archive (slower, but no 7z dependency)
+    !insertmacro UniSay "正在安装 $2..."
+    !insertmacro UniLog "解压 archive: $1"
+    !insertmacro UniTick $UNIWORK_SUBPHASE_START
+    nsExec::Exec '"$PLUGINSDIR\uniwork\7za.exe" x "$1" -o"$INSTDIR\resources\agent-payload" -y -aoa'
+    Pop $UNIWORK_EXTRACT_RC
+    !insertmacro UniTick $UNIWORK_SUBPHASE_END
+    ${If} $UNIWORK_EXTRACT_RC != 0
+      !insertmacro UniLog "$UNIWORK_ARCHIVE_KIND.tar.xz 解压失败（$UNIWORK_EXTRACT_RC）"
+      !insertmacro UniSay "$2 解压失败，安装可能不完整"
+    ${Else}
+      !insertmacro UniSubphaseElapsed
+      !insertmacro UniSay "$2 安装完成，耗时 $UNIWORK_PHASE_DURATION"
+      Delete "$1"
+    ${EndIf}
+  ${Else}
+    !insertmacro UniLog "$UNIWORK_ARCHIVE_KIND archive 不存在，跳过（可能是目录形式）"
+  ${EndIf}
+
+  Pop $2
+  Pop $1
+  Pop $0
+FunctionEnd
+
+; 整包解压完补一条总量：组件数和工具数都从包里的 payload-stamp.txt 数出来，
+; 不写死名单（构建加了组件也不用改这里）。工具（python、node、git…）在主包内一起解压，
+; 解压过程看不到逐条进度，只能事后报个数。
+Var UNIWORK_STAMP_FP
+Var UNIWORK_STAMP_LINE
+Var UNIWORK_COMPONENT_COUNT
+Var UNIWORK_TOOL_COUNT
+Function UNIWORK_PrintInstalledSummary
+  Push $0
+  StrCpy $UNIWORK_COMPONENT_COUNT 0
+  StrCpy $UNIWORK_TOOL_COUNT 0
+
+  ClearErrors
+  FileOpen $UNIWORK_STAMP_FP "$INSTDIR\resources\agent-payload\payload-stamp.txt" r
+  IfErrors uniwork_summary_report
+  uniwork_summary_loop:
+    ClearErrors
+    FileRead $UNIWORK_STAMP_FP $UNIWORK_STAMP_LINE
+    IfErrors uniwork_summary_close
+    ; 只认行首：tool 是工具，schema/target 是文件头，剩下的行都是组件。
+    StrCpy $0 $UNIWORK_STAMP_LINE 5
+    ${If} $0 == "tool "
+      IntOp $UNIWORK_TOOL_COUNT $UNIWORK_TOOL_COUNT + 1
+    ${Else}
+      StrCpy $0 $UNIWORK_STAMP_LINE 6
+      ${If} $0 != "schema"
+      ${AndIf} $0 != "target"
+        IntOp $UNIWORK_COMPONENT_COUNT $UNIWORK_COMPONENT_COUNT + 1
+      ${EndIf}
+    ${EndIf}
+    Goto uniwork_summary_loop
+  uniwork_summary_close:
+    FileClose $UNIWORK_STAMP_FP
+
+  uniwork_summary_report:
+  ${If} $UNIWORK_COMPONENT_COUNT > 0
+    ${If} $UNIWORK_TOOL_COUNT > 0
+      !insertmacro UniSay "共安装 $UNIWORK_COMPONENT_COUNT 个组件、$UNIWORK_TOOL_COUNT 个内置工具"
+    ${Else}
+      !insertmacro UniSay "共安装 $UNIWORK_COMPONENT_COUNT 个组件"
+    ${EndIf}
+  ${EndIf}
+  Pop $0
+FunctionEnd
+
 ; 整包解压：直接解到安装目录（本分支原来的做法），不再先解到 $PLUGINSDIR\7z-out 再复制。
 Function UNIWORK_ExtractFull
+  ; 阶段 2 在整包这边就是准备工作：建目录、把解压 archive 组件要用的 7za.exe 放好。
+  ; 增量退回时阶段 2 已经由 UNIWORK_TryIncremental 报过，阶段号相同会被去重，不会重复打头。
+  !insertmacro UniPhaseBegin 2 "准备全量安装"
   CreateDirectory "$UNIWORK_OUTDIR"
   SetOutPath "$UNIWORK_OUTDIR"
-  DetailPrint "解压程序文件..."
+  ; 增量分支已经往这里放过一份；File 覆盖同名文件不会失败，多解压 850 KB 也不算什么。
+  SetOutPath "$PLUGINSDIR\uniwork"
+  File "/oname=7za.exe" "${UNIWORK_7ZA}"
+  SetOutPath "$UNIWORK_OUTDIR"
+
+  !insertmacro UniPhaseBegin 3 "解压程序文件"
+  ${If} $UNIWORK_EXTRACT_BATCH > 0
+    ; 增量解压到一半退回：刚才被跳过的组件这次要跟着整包一起重新写出来。
+    ; 用批次计数而不是"跑过计划"，因为计划完全可以一条都没跳过（没有组件可保留）。
+    !insertmacro UniSay "整包覆盖：之前跳过的组件这次一并重新写入"
+  ${EndIf}
+
+  !insertmacro UniSay "正在解压主安装包..."
+  !insertmacro UniTick $UNIWORK_SUBPHASE_START
   Nsis7z::Extract "$UNIWORK_ARCHIVE"
+  !insertmacro UniTick $UNIWORK_SUBPHASE_END
+  !insertmacro UniSubphaseElapsed
+  !insertmacro UniSay "程序文件解压完成，耗时 $UNIWORK_PHASE_DURATION"
+
+  ; 解压 archive 组件（venv.7z, hermes-agent.7z）
+  StrCpy $UNIWORK_ARCHIVE_KIND "venv"
+  Call UNIWORK_ExtractArchive
+  StrCpy $UNIWORK_ARCHIVE_KIND "hermes-agent"
+  Call UNIWORK_ExtractArchive
+
+  Call UNIWORK_PrintInstalledSummary
+
   SetOutPath $UNIWORK_OUTDIR
   ${IfNot} ${FileExists} "$appExe"
     MessageBox MB_OK|MB_ICONSTOP "安装没有完成：程序文件没有解压到 $INSTDIR。"

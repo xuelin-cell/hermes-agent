@@ -96,7 +96,7 @@ module.exports = {
   // A store build is archived, never served to a feed — prefix its artifact
   // so it can't collide with the out-of-store MSIX of the same tag/arch, and
   // the release pipeline can keep the two apart.
-  artifactName: `${store ? 'Store-' : ''}${artifactNamePascal}-\${version}-\${os}-\${arch}.\${ext}`,
+  artifactName: `${store ? 'Store-' : ''}${artifactNamePascal}-\${version}-\${os}-\${arch}`,
   icon: 'assets/icon',
   // The electron-updater feed. CI builds set CLOUDFLARE_R2_PUBLIC_URL (the R2
   // public bucket / custom domain) and publish there — the feed yml, blockmaps
@@ -332,7 +332,7 @@ if (channelRequest) {
 // NOT here at require time, so importing this config for typecheck/tests
 // never writes to the filesystem.
 
-// Azure Trusted Signing. The hook signs the .msix package itself and the
+// Windows code signing. The hook signs the .msix package itself and the
 // product exe (after electron-builder's rcedit — the batch in afterPack runs
 // too early for the exe); every other payload binary is batch-signed in
 // afterPack via scripts/batch-sign-binaries.mjs, which this hook acknowledges
@@ -340,17 +340,45 @@ if (channelRequest) {
 // signature is all Windows install validation checks; inner Authenticode
 // covers SmartScreen/WDAC tree scans. See batch-sign-binaries.mjs for the
 // ordering contract.
+//
+// Signing modes (in priority order):
+// 1. Azure Trusted Signing: AZURE_SIGN_ENDPOINT + AZURE_CLIENT_ID
+// 2. UKey hardware token: HERMES_UKEY_THUMBPRINT
+// 3. PFX file: WIN_CSC_LINK or CSC_LINK
+// 4. None: unsigned build (development only)
+//
+// HERMES_SIGNING_MODE=release requires one of the above to be configured;
+// without it, the build fails early rather than producing an unsigned installer.
 
 function windowsSigning() {
-  if (!process.env.AZURE_SIGN_ENDPOINT || !process.env.AZURE_CLIENT_ID) {
-    return {}
+  const mode = process.env.HERMES_SIGNING_MODE
+  const isRelease = mode === 'release'
+
+  // Non-release mode: no signing
+  if (!isRelease) return {}
+
+  // Release mode: determine signing backend by priority (Azure > UKey)
+
+  // Azure Trusted Signing
+  if (process.env.AZURE_SIGN_ENDPOINT && process.env.AZURE_CLIENT_ID) {
+    return {
+      sign: {
+        type: 'signtool',
+        sign: './scripts/batch-sign-binaries.mjs',
+        signingHashAlgorithms: ['sha256'],
+        publisherName: process.env.AZURE_SIGN_PUBLISHER
+      }
+    }
   }
+
+  // UKey hardware token signing (hardcoded thumbprint)
+  const UKEY_THUMBPRINT = '2E148B83366A90B70BB0AEBDB81C8CB982C39311'
   return {
     sign: {
       type: 'signtool',
       sign: './scripts/batch-sign-binaries.mjs',
       signingHashAlgorithms: ['sha256'],
-      publisherName: process.env.AZURE_SIGN_PUBLISHER
+      certificateSha1: UKEY_THUMBPRINT
     }
   }
 }

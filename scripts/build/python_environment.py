@@ -8,6 +8,7 @@ import time
 import pm
 
 from scripts.build.filesystem import remove_build_tree
+from scripts.build.retry import retry_on_permission_error
 
 
 def build_python_environment(*, label: str, **arguments) -> Path:
@@ -18,15 +19,26 @@ def build_python_environment(*, label: str, **arguments) -> Path:
 
 def retry_python_environment(operation, *, destination: Path, label: str, arguments: dict):
     """为应用环境和 PM runtime 统一处理已知的 UV 启动器锁。"""
-    for attempt in range(5):
+    max_attempts = 5
+    delays = [1, 2, 3, 5, 8]  # 延迟序列：总计 ~19 秒
+    for attempt in range(max_attempts):
         try:
             return operation(**arguments)
         except pm.InstallError as exc:
             transient = (os.name == "nt" and "Failed to update Windows PE resources" in exc.cause
                          and "uv-trampoline-" in exc.cause)
-            if not transient or attempt == 4:
+            if not transient or attempt == max_attempts - 1:
                 raise
-            remove_build_tree(destination)
-            print(f"  {label}: Windows held a uv launcher; retrying ({attempt + 2}/5)...", flush=True)
-            time.sleep(0.5 * 2 ** attempt)
+            # Clean up partial install before retry
+            try:
+                remove_build_tree(destination)
+            except PermissionError:
+                # If cleanup fails due to locks, wait a bit before retry
+                print(f"  [{label}] cleanup blocked by AV, waiting 2s...", flush=True)
+                time.sleep(2.0)
+            
+            delay = delays[attempt]
+            print(f"  {label}: Windows held a uv launcher; retrying ({attempt + 2}/{max_attempts}) "
+                  f"after {delay}s...", flush=True)
+            time.sleep(delay)
     raise AssertionError("unreachable")

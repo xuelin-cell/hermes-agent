@@ -23,10 +23,19 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 UPDATE_PLAN_PS1 = REPO_ROOT / "apps/desktop/nsis/update-plan.ps1"
 
 
-def _write_stamp(path: Path, target: str, components: dict[str, str], tools: dict[str, dict]) -> None:
+def _write_stamp(path: Path, target: str, components: dict[str, str], tools: dict[str, dict],
+                 archive_components: set[str] | None = None) -> None:
+    """Write a payload-stamp.txt file.
+
+    Args:
+        archive_components: Set of component names that should be marked as 'archive'.
+    """
+    archive_components = archive_components or set()
     lines = ["schema 1", f"target {target}"]
-    for name in ("venv", "pm-runtime", "uv-cache.zip"):
-        lines.append(f"{name} {components[name]}")
+    for name in ("venv", "pm-runtime", "uv-cache.zip", "hermes-agent"):
+        if name in components:
+            suffix = " archive" if name in archive_components else ""
+            lines.append(f"{name} {components[name]}{suffix}")
     for name, info in sorted(tools.items()):
         lines.append(f"tool {name} {info['entry']} {info['version']} {info['digest']}")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -89,8 +98,9 @@ def test_planner_deletes_everything_when_no_previous_stamp(tmp_path):
     assert result.returncode == 0
     deleted = delete.read_text(encoding="utf-8").splitlines()
     assert "other" in deleted
-    assert "resources/agent-payload/venv" in deleted
-    assert "resources/agent-payload/tools/python" in deleted
+    # 没有可比对的旧指纹时，计划只删顶层目录（resources 整个删掉，venv 等在里面跟着走）。
+    assert "resources" in deleted
+    assert r"resources\agent-payload\venv" not in deleted
 
 
 def test_planner_keeps_components_with_matching_digests(tmp_path):
@@ -108,10 +118,10 @@ def test_planner_keeps_components_with_matching_digests(tmp_path):
     result = _run_planner(install, new_stamp, old_stamp, delete, exclude)
     assert result.returncode == 0
     excluded = exclude.read_text(encoding="utf-8").splitlines()
-    assert "-x!resources/agent-payload/venv/*" in excluded
-    assert "-x!resources/agent-payload/pm-runtime/*" in excluded
-    assert "-x!resources/agent-payload/uv-cache.zip" in excluded
-    assert "-x!resources/agent-payload/tools/python/*" in excluded
+    assert r"-x!resources\agent-payload\venv\*" in excluded
+    assert r"-x!resources\agent-payload\pm-runtime\*" in excluded
+    assert r"-x!resources\agent-payload\uv-cache.zip" in excluded
+    assert r"-x!resources\agent-payload\tools\python\*" in excluded
     deleted = delete.read_text(encoding="utf-8").splitlines()
     assert len(deleted) == 0
 
@@ -132,8 +142,8 @@ def test_planner_replaces_component_when_digest_changes(tmp_path):
     result = _run_planner(install, new_stamp, old_stamp, delete, exclude)
     assert result.returncode == 0
     excluded = exclude.read_text(encoding="utf-8").splitlines()
-    assert "-x!resources/agent-payload/pm-runtime/*" in excluded
-    assert "-x!resources/agent-payload/uv-cache.zip" in excluded
+    assert r"-x!resources\agent-payload\pm-runtime\*" in excluded
+    assert r"-x!resources\agent-payload\uv-cache.zip" in excluded
     assert not any("venv" in line for line in excluded)
     deleted = delete.read_text(encoding="utf-8").splitlines()
-    assert "resources/agent-payload/venv" in deleted
+    assert r"resources\agent-payload\venv" in deleted

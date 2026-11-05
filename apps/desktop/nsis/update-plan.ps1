@@ -1,4 +1,4 @@
-<#
+﻿<#
 Decides which installed runtime components the new payload keeps, and tells the
 NSIS installer (incremental-update.nsh) what to delete before extracting and
 which archive paths to skip. It never changes the installation itself: the
@@ -10,6 +10,13 @@ build time. The installed copy is re-hashed with the payload's own interpreter
 (payload-digest.py) so a damaged or modified component is replaced rather than
 carried over.
 
+When the installer also passes -Archive and -SevenZip, the kept components are
+measured from the incoming package itself (7za reads the archive headers only)
+and written to -KeepFile, five ASCII lines per component: kind, name, version,
+files, megabytes. "-" where a number is not available. This is reporting only:
+a missing 7za, an unreadable archive or a failed listing leaves the plan
+untouched and the keep file carries no numbers.
+
 Exit codes: 0 plan written, 1 no plan (installer extracts everything over the
 existing files), 2 the directory is not an installed payload.
 #>
@@ -20,7 +27,10 @@ param(
     [string]$OldStamp = '',
     [Parameter(Mandatory = $true)][string]$DeleteFile,
     [Parameter(Mandatory = $true)][string]$ExcludeFile,
-    [string]$Log = ''
+    [string]$Log = '',
+    [string]$Archive = '',
+    [string]$SevenZip = '',
+    [string]$KeepFile = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -29,6 +39,62 @@ $utf8 = [System.Text.UTF8Encoding]::new($false)
 
 function Add-Note([string]$message) {
     $notes.Add($message)
+}
+
+# Count what the archive would have written for each kept component. 7za lists
+# headers only (measured: ~0.7s for 105k entries), so this costs less than the
+# digest verification the planner already runs. -ba -slt prints one
+# "Key = Value" block per entry, which needs no column guessing; one extra
+# listing call per component is what makes each line attributable on its own.
+function Get-KeptArchiveStats([string]$archivePath, [string]$sevenZipPath, $kept) {
+    if ([string]::IsNullOrWhiteSpace($sevenZipPath) -or -not [System.IO.File]::Exists($sevenZipPath)) {
+        throw "no 7-Zip tool at $sevenZipPath"
+    }
+    if ([string]::IsNullOrWhiteSpace($archivePath) -or -not [System.IO.File]::Exists($archivePath)) {
+        throw "no archive at $archivePath"
+    }
+    $stats = @{}
+    foreach ($item in $kept) {
+        $stats[$item.Key] = [pscustomobject]@{ Files = 0; Bytes = 0 }
+        $rows = @(& $sevenZipPath l '-ba' '-slt' $archivePath "$($item.Key)*" 2>$null)
+        if ($LASTEXITCODE -ne 0) {
+            throw "7za listing failed for $($item.Key) (exit $LASTEXITCODE)"
+        }
+        $files = 0
+        $bytes = [int64]0
+        # One entry is a block of "Key = Value" lines and Attributes comes after
+        # Size, so a block is only counted once the next Path (or the end) arrives.
+        $size = [int64]0
+        $isDirectory = $true
+        $hasEntry = $false
+        foreach ($row in $rows) {
+            $line = [string]$row
+            if ($line.StartsWith('Path = ')) {
+                if ($hasEntry -and -not $isDirectory) {
+                    $files += 1
+                    $bytes += $size
+                }
+                $size = [int64]0
+                $isDirectory = $true
+                $hasEntry = $false
+            } elseif ($line.StartsWith('Size = ')) {
+                $value = $line.Substring(7)
+                if ($value -match '^\d+$') {
+                    $size = [int64]$value
+                    $hasEntry = $true
+                }
+            } elseif ($line.StartsWith('Attributes = ')) {
+                $isDirectory = $line.Substring(13).Contains('D')
+            }
+        }
+        if ($hasEntry -and -not $isDirectory) {
+            $files += 1
+            $bytes += $size
+        }
+        $stats[$item.Key].Files = $files
+        $stats[$item.Key].Bytes = $bytes
+    }
+    return $stats
 }
 
 # NSIS reads the plan files as ANSI text, so only ASCII paths may enter them.
@@ -55,8 +121,15 @@ function Read-PayloadStamp([string]$path) {
             $stamp.Target = $Matches[1]
             continue
         }
-        if ($line -cmatch '^(venv|pm-runtime|uv-cache\.zip) ([0-9a-f]{64})$') {
-            $stamp.Components[$Matches[1]] = $Matches[2]
+        # Support both directory components and archive components:
+        #   venv <digest>              (directory)
+        #   venv <digest> archive      (archive: venv.7z or venv.tar.xz)
+        #   hermes-agent <digest> archive
+        if ($line -cmatch '^(venv|pm-runtime|uv-cache\.zip|hermes-agent) ([0-9a-f]{64})( archive)?$') {
+            $stamp.Components[$Matches[1]] = @{
+                Digest = $Matches[2]
+                IsArchive = ($Matches[3] -eq ' archive')
+            }
             continue
         }
         if ($line -cmatch '^tool (\S+) (\S+) (\S+) ([0-9a-f]{64})$') {
@@ -86,8 +159,10 @@ try {
     $payload = Join-Path $installRoot 'resources\agent-payload'
     $manifestPath = Join-Path $payload 'manifest.json'
     Add-Note "plan for $installRoot"
+    Write-Output "更新计划：$installRoot"
     if (-not [System.IO.Directory]::Exists($installRoot) -or -not [System.IO.File]::Exists($manifestPath)) {
         Add-Note 'not an installed payload'
+        Write-Output '非已安装载荷，改为完整安装'
         $exitCode = 2
     } else {
         $new = Read-PayloadStamp $NewStamp
@@ -108,18 +183,32 @@ try {
         $keepTools = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
         if ($null -eq $old -or $old.Target -cne $new.Target) {
             Add-Note 'no comparable previous stamp: every installed file is replaced'
+            Write-Output '无可比对的旧版本，全部文件将被替换'
         } else {
             # Only a component the new build ships byte-identically is a candidate;
             # the installed bytes then get the final say below.
             $candidates = [System.Collections.Generic.List[object]]::new()
             foreach ($name in $new.Components.Keys) {
-                if ($old.Components.ContainsKey($name) -and $old.Components[$name] -ceq $new.Components[$name]) {
+                $newComp = $new.Components[$name]
+                $oldComp = $old.Components[$name]
+                # Components are now stored as hashtables with Digest and IsArchive fields
+                $newDigest = if ($newComp -is [hashtable]) { $newComp.Digest } else { $newComp }
+                $oldDigest = if ($oldComp -is [hashtable]) { $oldComp.Digest } else { $oldComp }
+                $newIsArchive = ($newComp -is [hashtable]) -and $newComp.IsArchive
+
+                if ($null -ne $oldComp -and $oldDigest -ceq $newDigest) {
+                    # For verification, we always check the installed directory (not the archive).
+                    # The stamp records the directory digest (computed before archiving at build time),
+                    # so the installer verifies the extracted directory matches.
+                    # For archive components, the installed form is a directory after extraction.
+                    $installedPath = Join-Path $payload $name
                     $candidates.Add([pscustomobject]@{
                         Kind = 'component'; Name = $name; Entry = ''; Ok = $false
-                        Path = (Join-Path $payload $name); Digest = $new.Components[$name]
+                        Path = $installedPath; Digest = $newDigest; IsArchive = $newIsArchive
                     })
                 } else {
                     Add-Note "replace $name (new build)"
+                    Write-Output "替换 $name（新版构建）"
                 }
             }
             foreach ($name in $new.Tools.Keys) {
@@ -133,6 +222,7 @@ try {
                     })
                 } else {
                     Add-Note "replace tool $name (new build)"
+                    Write-Output "替换工具 $name（新版构建）"
                 }
             }
 
@@ -144,6 +234,7 @@ try {
                     throw 'the installed payload cannot verify itself'
                 }
                 Add-Note "verifying $($candidates.Count) component(s) with the installed interpreter"
+                Write-Output "校验 $($candidates.Count) 个组件（使用已安装的解释器）"
                 $paths = @($candidates | ForEach-Object { $_.Path })
                 $output = & $python -I -B (Join-Path $PSScriptRoot 'payload-digest.py') $code @paths
                 if ($LASTEXITCODE -ne 0) {
@@ -171,6 +262,11 @@ try {
                             $keep.Add($candidate.Name) | Out-Null
                         }
                         Add-Note "$why $($candidate.Name)"
+                        if ($candidate.Ok) {
+                            Write-Output "保留 $($candidate.Name)"
+                        } else {
+                            Write-Output "替换 $($candidate.Name)（已安装字节不一致）"
+                        }
                     } elseif (-not $entries.ContainsKey($candidate.Entry)) {
                         $entries[$candidate.Entry] = $candidate.Ok
                     } else {
@@ -181,8 +277,10 @@ try {
                     if ($entries[$entry]) {
                         $keepTools.Add($entry) | Out-Null
                         Add-Note "keep tool entry $entry"
+                        Write-Output "保留工具 $entry"
                     } else {
                         Add-Note "replace tool entry $entry (installed bytes differ)"
+                        Write-Output "替换工具 $entry（已安装字节不一致）"
                     }
                 }
             }
@@ -231,9 +329,16 @@ try {
 
         $exclusions = [System.Collections.Generic.List[string]]::new()
         foreach ($name in $keep) {
-            if ($name -ieq 'uv-cache.zip') {
+            $comp = $new.Components[$name]
+            $isArchive = ($comp -is [hashtable]) -and $comp.IsArchive
+            if ($isArchive) {
+                # Archive component: exclude both .7z and .tar.xz files
+                $exclusions.Add("-x!resources\agent-payload\$name.7z")
+                $exclusions.Add("-x!resources\agent-payload\$name.tar.xz")
+            } elseif ($name -ieq 'uv-cache.zip') {
                 $exclusions.Add("-x!resources\agent-payload\$name")
             } else {
+                # Directory component: exclude all files inside
                 $exclusions.Add("-x!resources\agent-payload\$name\*")
             }
         }
@@ -250,10 +355,68 @@ try {
             [System.IO.File]::Delete($ExcludeFile)
         }
         Add-Note "delete $($delete.Count) path(s), skip $($exclusions.Count) archive path(s)"
+        Write-Output "删除 $($delete.Count) 个路径，跳过 $($exclusions.Count) 个归档路径"
+
+        # Reporting only: how much each kept component accounts for in the
+        # package. Numbers come from the archive (that is what 7-Zip skips), and
+        # a failed listing leaves them out without touching the plan above.
+        $kept = [System.Collections.Generic.List[object]]::new()
+        foreach ($name in ($keep | Sort-Object)) {
+            $kept.Add([pscustomobject]@{
+                Kind = 'component'; Name = $name; Version = '-'
+                Key = "resources\agent-payload\$name"
+            })
+        }
+        foreach ($entry in ($keepTools | Sort-Object)) {
+            $toolName = $entry
+            $toolVersion = '-'
+            foreach ($name in ($new.Tools.Keys | Sort-Object)) {
+                if ($new.Tools[$name].Entry -ceq $entry) {
+                    $toolName = $name
+                    $toolVersion = $new.Tools[$name].Version
+                    break
+                }
+            }
+            $kept.Add([pscustomobject]@{
+                Kind = 'tool'; Name = $toolName; Version = $toolVersion
+                Key = "resources\agent-payload\tools\$entry"
+            })
+        }
+
+        $stats = $null
+        if ($KeepFile -ne '' -and $kept.Count -gt 0) {
+            try {
+                $stats = Get-KeptArchiveStats $Archive $SevenZip $kept
+            } catch {
+                Add-Note "kept sizes unavailable: $($_.Exception.Message)"
+                Write-Output "保留组件体积统计不可用"
+            }
+        }
+        $records = [System.Collections.Generic.List[string]]::new()
+        foreach ($item in $kept) {
+            $files = '-'
+            $megabytes = '-'
+            if ($null -ne $stats -and $stats.ContainsKey($item.Key) -and $stats[$item.Key].Files -gt 0) {
+                # Plain digits, no group separators: the installer adds these up.
+                $files = [string]$stats[$item.Key].Files
+                $megabytes = [string][int64][System.Math]::Ceiling($stats[$item.Key].Bytes / 1MB)
+            }
+            # Five ASCII lines per component: NSIS reads them straight through and
+            # adds its own wording, so the Chinese text never has to cross an encoding.
+            $records.Add($item.Kind)
+            $records.Add($item.Name)
+            $records.Add($item.Version)
+            $records.Add($files)
+            $records.Add($megabytes)
+        }
+        if ($KeepFile -ne '') {
+            [System.IO.File]::WriteAllLines($KeepFile, $records, $utf8)
+        }
         $exitCode = 0
     }
 } catch {
     Add-Note "failed: $($_.Exception.Message)"
+    Write-Output "生成更新计划失败：$($_.Exception.Message)"
     $exitCode = 1
 } finally {
     if (-not [string]::IsNullOrWhiteSpace($Log)) {

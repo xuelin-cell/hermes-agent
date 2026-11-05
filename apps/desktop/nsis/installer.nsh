@@ -21,6 +21,15 @@
 !define APP_FILENAME "UniWorker"
 
 !macro customHeader
+  ; desktop-mt: 打开安装详情展示。模板在 common.nsh 里写死 ShowInstDetails nevershow（详情按钮和
+  ; 日志框根本不显示），customHeader 在它之后展开，这里覆盖成 hide："显示详情"按钮可见、面板默认
+  ; 收起，看不看由用户自己点。实测（NSIS 3.12 的 MUI2 安装页）这个按钮是单向的：点一下展开日志框，
+  ; 按钮自己消失，之后没有任何收回面板的控件，所以我们不去替用户点，也点不回去。
+  ; 实测过这个顺序有效（后写的 ShowInstDetails 生效）；卸载器编译单元用 ShowUninstDetails，这里跳过。
+  !ifndef BUILD_UNINSTALLER
+    ShowInstDetails hide
+  !endif
+  !include "${UNIWORK_NSIS_DIR}\install-log.nsh"
   !include "${UNIWORK_NSIS_DIR}\incremental-update.nsh"
   !include "${UNIWORK_NSIS_DIR}\app-running.nsh"
 !macroend
