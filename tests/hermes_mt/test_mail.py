@@ -130,7 +130,7 @@ async def test_mail_binds_phone_and_credentials_to_tenant_and_restores_state(tmp
                     login = await entry._finish_login(owner, '', int((time.time()+3600)*1000), maas_token='maas-'+owner, phone=phone)
                     auth[owner] = {'cookies':{name:value.value for name,value in login.cookies.items()}, 'headers':{'Authorization':'Bearer maas-'+owner}}
                 async def call(owner, operation, expected=200, **args):
-                    response = await client.post('/hermes/__entry/mail', json={'operation':operation,'profile':'default',**args}, **auth[owner])
+                    response = await client.post('/agents/api/__entry/mail', json={'operation':operation,'profile':'default',**args}, **auth[owner])
                     result = await response.json()
                     assert response.status == expected, result
                     return result
@@ -156,8 +156,8 @@ async def test_mail_binds_phone_and_credentials_to_tenant_and_restores_state(tmp
                             reset_hermes_home_override(scope)
                     assert 'INBOX' in str(await asyncio.to_thread(dispatch))
                 await call('alice','action',400,action='send_email',input={})
-                assert (await client.post('/hermes/__hermes_backend/api/plugins/cloud-mail/internal/request',json={},**auth['alice'])).status == 404
-                assert (await client.post('/hermes/__hermes_backend/api/plugins/cloud-mail/mcp',json={},**auth['alice'])).status == 404
+                assert (await client.post('/agents/api/__hermes_backend/api/plugins/cloud-mail/internal/request',json={},**auth['alice'])).status == 404
+                assert (await client.post('/agents/api/__hermes_backend/api/plugins/cloud-mail/mcp',json={},**auth['alice'])).status == 404
                 # Stage uses the same authenticated provider download, but returns an instance path.
                 for owner in ('alice', 'bob', 'alice'):
                     staged = await call(owner, 'action', action='stage_attachment', input={'folder':'INBOX','uid':1,'attachmentId':'2'})
@@ -168,7 +168,7 @@ async def test_mail_binds_phone_and_credentials_to_tenant_and_restores_state(tmp
                     assert 'provider-code' not in json.dumps(staged)
                 downloaded = await call('alice','action',action='download_attachment',input={'folder':'INBOX','uid':1,'attachmentId':'2'})
                 url = downloaded['data']['file']['downloadUrl']
-                assert url.startswith('/hermes/__hermes_backend/api/plugins/cloud-mail/attachments/')
+                assert url.startswith('/agents/api/__hermes_backend/api/plugins/cloud-mail/attachments/')
                 file = downloaded['data']['file']['fileId']
                 async with http.get(f'http://127.0.0.1:{port}/api/plugins/cloud-mail/attachments/{file}',headers={'X-Hermes-Session-Token':'instance-alice'}) as response:
                     assert await response.read() == b'attachment'

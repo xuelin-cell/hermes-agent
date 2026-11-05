@@ -72,19 +72,19 @@ async def exercise_login(store=None, database_url='postgresql://unused@127.0.0.1
             entry.maas = Maas(settings, http)
             async with TestClient(TestServer(app), cookie_jar=aiohttp.DummyCookieJar()) as client:
                 async def login(phone):
-                    response = await client.post('/hermes/__entry/login', json={'phone': phone, 'smsCode': '123456'})
+                    response = await client.post('/agents/api/__entry/login', json={'phone': phone, 'smsCode': '123456'})
                     assert response.status == 200
                     assert response.headers['Cache-Control'] == 'no-store'
                     data = await response.json()
                     assert data['maas_auth']['token'] == f'login-{phone}'
                     cookies = {name: value.value for name, value in response.cookies.items()}
                     proof_cookie = response.cookies[settings.cookie_name + '_maas']
-                    assert proof_cookie['httponly'] and proof_cookie['path'] == '/hermes/'
+                    assert proof_cookie['httponly'] and proof_cookie['path'] == '/agents/'
                     return data, cookies
 
                 alice, a = await login('13811111111')
                 bob, b = await login('13822222222')
-                route = '/hermes/__entry/maas-auth'
+                route = '/agents/api/__entry/maas-auth'
                 async def check(data, cookies, status):
                     response = await client.post(route, cookies=cookies,
                         headers={'Authorization': 'Bearer ' + data['maas_auth']['token']})
@@ -111,15 +111,15 @@ async def exercise_login(store=None, database_url='postgresql://unused@127.0.0.1
                 session = await entry.store.get_session(a[settings.cookie_name])
                 identity = second.require(session, a[settings.cookie_name + '_maas'], 'Bearer ' + alice['maas_auth']['token'])
                 assert alice['maas_auth']['token'] not in repr(identity)
-                response = await client.post('/hermes/__entry/logout', cookies=a)
+                response = await client.post('/agents/api/__entry/logout', cookies=a)
                 assert response.status == 200
                 assert response.cookies[settings.cookie_name + '_maas']['max-age'] == '0'
                 await check(alice, a, 401)
                 await check(bob, b, 200)
-                dev = await client.post('/hermes/__entry/dev-login', cookies=b, json={'user': 'dev'})
+                dev = await client.post('/agents/api/__entry/dev-login', cookies=b, json={'user': 'dev'})
                 assert 'maas_auth' not in await dev.json()
                 assert dev.cookies[settings.cookie_name + '_maas']['max-age'] == '0'
-                script = await client.get('/hermes/__entry/browser-auth.js')
+                script = await client.get('/agents/api/__entry/browser-auth.js')
                 assert script.status == 200 and script.content_type == 'application/javascript'
                 for task in entry._bg:
                     await task

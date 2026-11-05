@@ -38,10 +38,10 @@ def test_personal_routes_exist_only_without_the_platform() -> None:
     gone = personal - enterprise
     for route in ("drive/{operation}", "mail", "plan/{operation}", "account/{operation}", "connectors",
                   "messaging/{operation}", "skills/{operation}", "welcome/{locale}", "maas-auth", "browser-auth.js"):
-        assert f"/hermes/__entry/{route}" in gone
+        assert f"/agents/api/__entry/{route}" in gone
     assert not enterprise - personal
-    for shared in ("/hermes/login", "/hermes/__entry/me", "/hermes/__entry/login", "/hermes/__entry/select-tenant",
-                   "/hermes/__entry/enterprise", "/hermes/api/ws", "/hermes/__hermes_backend/{tail}",
+    for shared in ("/agents/login", "/agents/api/__entry/me", "/agents/api/__entry/login", "/agents/api/__entry/select-tenant",
+                   "/agents/api/__entry/enterprise", "/agents/api/ws", "/agents/api/__hermes_backend/{tail}",
                    "/hermes/__entry/service/v1/runtimes"):
         assert shared in enterprise
 

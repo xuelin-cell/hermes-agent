@@ -1146,7 +1146,7 @@ it('cloud health polling never becomes a pending setup operation or hides an unc
   const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => Response.json({ platforms: rows, phase: 'checking', saved: true }))
   vi.stubGlobal('fetch', fetcher)
   const previous = window.hermesDesktop
-  const bridge = browserMessaging('/hermes/')
+  const bridge = browserMessaging('/agents/api/')
   window.hermesDesktop = { ...previous, messagingStatus: bridge.messagingStatus, onMessagingStatus: bridge.onMessagingStatus }
   getMessagingPlatforms.mockImplementation(() => bridge.request({ path: '/api/plugins/desktop-messaging/platforms' }))
   try {

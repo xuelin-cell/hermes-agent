@@ -1,4 +1,4 @@
-"""平台调用云端运行智能体的服务接口：``{入口}/__entry/service/v1``（见 docs/企业版对接/15、17）。
+"""平台调用云端运行智能体的服务接口：``{入口}/hermes/__entry/service/v1``（见 docs/企业版对接/15、17）。
 
 运行环境（runtime）在云端就是一个由平台直接给设备令牌的「用户」：``svc:<企业ID>:<runtimeKey>``。
 卷、实例和成员一样隔离；拉策略、写模型配置、写人设、换令牌后重新加载都走成员那一套。
@@ -35,6 +35,8 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("entry.service")
 
+# 平台配置里存的就是这个地址（UNIWORK_CLOUD_RUNTIME_URL），它也不经过统一登录的网关，所以不随页面路径变。
+RUNTIMES_PATH = "/hermes/__entry/service/v1/runtimes"
 RUNTIME_KEY_RE = re.compile(r"^[a-z0-9:_-]{1,120}$")
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")  # hermes 的 run_xxx；拼进实例里的路径，不许带 . 和 /
 API = "/__mt/api"

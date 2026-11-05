@@ -68,7 +68,7 @@ async def environment(tmp_path, postgres_database_url, monkeypatch):
                     response = await entry._finish_login(owner, '', int((time.time() + 3600) * 1000))
                     cookies[owner] = {name: value.value for name, value in response.cookies.items()}
                 async def call(owner, operation, expected=200, **extra):
-                    response = await client.post('/hermes/__entry/connectors', json={'operation': operation, 'profile': 'default', **extra}, cookies=cookies[owner])
+                    response = await client.post('/agents/api/__entry/connectors', json={'operation': operation, 'profile': 'default', **extra}, cookies=cookies[owner])
                     result = await response.json()
                     assert response.status == expected, result
                     return response, result
@@ -142,7 +142,7 @@ async def test_oauth_cookie_binding_pkce_one_time_refresh_and_archive(environmen
             ticket_name = 'hermes_connector_oauth_' + id
             ticket = response.cookies[ticket_name].value
             assert response.cookies[ticket_name]['httponly']
-            callback = '/hermes/__entry/connectors/' + id + '/oauth/callback'
+            callback = '/agents/api/__entry/connectors/' + id + '/oauth/callback'
             expired = json.loads(env.entry.store.cipher.decrypt(ticket.encode()))
             expired['expires'] = time.time() - 1
             rejected = await env.client.get(callback, params=params, cookies={**env.cookies[owner],
@@ -185,7 +185,7 @@ async def test_oauth_cookie_binding_pkce_one_time_refresh_and_archive(environmen
     env.tenants['alice'].sandbox_id = 'sandbox-alice'
     async def failed_archive(*args): raise RuntimeError('archive unavailable')
     env.entry.cube = SimpleNamespace(sync_state=failed_archive)
-    failed = await env.client.get('/hermes/__entry/connectors/qcc_mcp/oauth/callback', params=params,
+    failed = await env.client.get('/agents/api/__entry/connectors/qcc_mcp/oauth/callback', params=params,
         cookies={**env.cookies['alice'], 'hermes_connector_oauth_qcc_mcp': ticket})
     assert failed.status == 400 and '保存未确认' in await failed.text()
     assert params['code'] not in env.platform.grants  # The provider already consumed this code.

@@ -15,12 +15,12 @@ from entry.messaging_credentials import cloud_binding
 BODY={'uniagentgate':{'gateway_url':'https://gateway.test','agent_id':'cloud-bot','agent_sk':'never-print-agent-secret'},
       'my_plan':{'apiKey':'sk-never-print-model-secret','models':json.dumps({'models':[{'id':'main','model':'model-name',
           'provider':'yuanjing','base_url':'https://model.test/plan/endpoint','context_window':64000}],'main_model_id':'main'})}}
-PATH='/hermes/api/channels/uniagentgate/cloud-binding/'
+PATH='/agents/api/channels/uniagentgate/cloud-binding/'
 
 
 async def setup(dsn):
     settings=Settings(database_url=dsn,credential_key=Fernet.generate_key().decode(),backend='cube',
-        channels_key='relay-secret',channels_relay_url='ws://entry.test/hermes/__entry/messaging/relay')
+        channels_key='relay-secret',channels_relay_url='ws://entry.test/agents/api/__entry/messaging/relay')
     app=build_app(settings)
     entry=next(route.handler.__self__ for route in app.router.routes() if route.handler.__name__=='login')
     app.on_startup.clear()

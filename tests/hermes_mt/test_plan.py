@@ -81,7 +81,7 @@ async def stack(tmp_path, database_url):
                 return {'cookies': cookies, 'headers': {'Authorization': 'Bearer ' + data['maas_auth']['token']}}
 
             async def call(identity, operation):
-                response = await client.post('/hermes/__entry/plan/' + operation, **identity)
+                response = await client.post('/agents/api/__entry/plan/' + operation, **identity)
                 return response, await response.json() if response.content_type == 'application/json' else None
 
             try:
@@ -99,7 +99,7 @@ async def test_plan_usage_is_redacted_cached_and_bound_to_the_original_login(tmp
         (response, first), (_, concurrent) = await asyncio.gather(call(a, 'usage'), call(a, 'usage'))
         assert response.status == 200 and first == concurrent and len(calls) == 1
         assert first['data']['quota']['remaining'] == 990
-        me = await (await client.get('/hermes/__entry/me', cookies=a['cookies'])).json()
+        me = await (await client.get('/agents/api/__entry/me', cookies=a['cookies'])).json()
         assert first['account'] == {'maskedPhone': me['display'], 'expiresAt': me['expires_at'] * 1000}
         for identity, name in [(b, '2222'), (a, '1111')]:
             response, result = await call(identity, 'usage')
@@ -116,7 +116,7 @@ async def test_plan_usage_is_redacted_cached_and_bound_to_the_original_login(tmp
         mode.update(fail=False, hold=True)
         pending = asyncio.create_task(call(a, 'refresh'))
         await started.wait()
-        await client.post('/hermes/__entry/logout', cookies=a['cookies'])
+        await client.post('/agents/api/__entry/logout', cookies=a['cookies'])
         release.set()
         assert (await pending)[0].status == 401
         assert (await call(a, 'usage'))[0].status == 401
@@ -148,16 +148,16 @@ async def test_welcome_v3_uses_fixed_locale_and_the_current_bound_account(tmp_pa
     async with stack(tmp_path, postgres_database_url) as (client, entry, auth, call, calls, mode, started, release):
         a, b = await auth('13811111111'), await auth('13822222222')
         for identity, suffix in [(a, '1111'), (b, '2222'), (a, '1111')]:
-            response = await client.post('/hermes/__entry/welcome/zh-CN', **identity)
+            response = await client.post('/agents/api/__entry/welcome/zh-CN', **identity)
             data = await response.json()
             assert response.status == 200 and response.headers['Cache-Control'] == 'no-store'
             assert data['version'] == 'v3' and data['modules'][0]['name'] == suffix + '-welcome_config_v3_zh-CN'
             assert not any(secret in json.dumps(data) for secret in ['maas-', 'private-', 'Authorization'])
-        assert (await client.post('/hermes/__entry/welcome/en', **a)).status == 200
+        assert (await client.post('/agents/api/__entry/welcome/en', **a)).status == 200
         count = len(calls)
-        assert (await client.post('/hermes/__entry/welcome/fr', **a)).status == 400
-        assert (await client.post('/hermes/__entry/welcome/en', cookies=a['cookies'], headers=b['headers'])).status == 401
+        assert (await client.post('/agents/api/__entry/welcome/fr', **a)).status == 400
+        assert (await client.post('/agents/api/__entry/welcome/en', cookies=a['cookies'], headers=b['headers'])).status == 401
         assert len(calls) == count
         mode['fail'] = True
-        response = await client.post('/hermes/__entry/welcome/en', **a)
+        response = await client.post('/agents/api/__entry/welcome/en', **a)
         assert response.status == 503 and 'do-not-expose' not in await response.text()

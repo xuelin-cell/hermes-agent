@@ -93,7 +93,7 @@ await build({entryPoints:[root+'/apps/desktop/electron/login/cloud-account-worke
                     login=await entry._finish_login(owner,'plan-'+owner,int((time.time()+3600)*1000),phone=phone,maas_token='login-'+owner)
                     identities[owner]={'cookies':{name:value.value for name,value in login.cookies.items()},'headers':{'Authorization':'Bearer login-'+owner}}
                 async def call(owner,action,data=None,status=200):
-                    response=await client.post('/hermes/__entry/account/'+action,json=data or {},**identities[owner])
+                    response=await client.post('/agents/api/__entry/account/'+action,json=data or {},**identities[owner])
                     body=await response.text()
                     assert response.status==status,body
                     return json.loads(body) if status==200 else body
@@ -123,7 +123,7 @@ await build({entryPoints:[root+'/apps/desktop/electron/login/cloud-account-worke
                 assert (await call('a','asr-stop',{'session':session}))['closed']
                 await call('a','asr-audio',{'session':session,'pcm':'AQ=='},400)
                 await call('a','asr-start',{'language':'zh','url':'http://forged','apiKey':'forged'},400)
-                await client.post('/hermes/__entry/logout',**identities['a'])
+                await client.post('/agents/api/__entry/logout',**identities['a'])
                 await call('a','notify-poll',status=401)
                 assert (await call('b','notify-poll',{'cursor':0}))['events']
     finally:

@@ -190,7 +190,7 @@
 <script>
 (function () {
   var base = location.pathname.replace(/\/login\/?$/, '');
-  var api = function (p) { return base + '/__entry' + p; };
+  var api = function (p) { return base + '/api/__entry' + p; };
   var $ = function (id) { return document.getElementById(id); };
   var PHONE_RE = /^1[3-9]\d{9}$/;
   var SPINNER = '<svg class="icon sm spin" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9"/></svg>';

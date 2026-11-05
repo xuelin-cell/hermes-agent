@@ -14,7 +14,7 @@ afterEach(() => {
 })
 
 it('uses the account business transport and preserves uncertain writes without automatically replaying them', async () => {
-  storeBrowserLogin('/hermes/', {
+  storeBrowserLogin('/agents/api/', {
     maas_auth: { token: 'private-login', loginId: 'login-a', expiresAt: Date.now() + 60000 }
   })
   const requests: Array<{ path: string; body: any }> = []
@@ -40,7 +40,7 @@ it('uses the account business transport and preserves uncertain writes without a
       )
     })
   )
-  const bridge = browserDrive('/hermes/')
+  const bridge = browserDrive('/agents/api/')
 
   const value = await bridge.cloudDriveTransfer({
     id: 'client-operation',
@@ -50,7 +50,7 @@ it('uses the account business transport and preserves uncertain writes without a
   })
 
   expect(value).toEqual(failed)
-  expect(requests.map(value => value.path)).toEqual(['/hermes/__entry/drive/transfer', '/hermes/__entry/drive/status'])
+  expect(requests.map(value => value.path)).toEqual(['/agents/api/__entry/drive/transfer', '/agents/api/__entry/drive/status'])
   expect(JSON.stringify(requests)).not.toContain('private-login')
   const handed: string[] = []
   const updates: unknown[] = []

@@ -336,11 +336,11 @@ async def test_entry_connector_mcp_scopes_and_archive_restore(tmp_path, postgres
                     login = await entry._finish_login(owner, '', int((time.time() + 3600) * 1000))
                     auth[owner] = {'cookies': {name: value.value for name, value in login.cookies.items()}}
                 async def call(owner, operation, expected=200, **extra):
-                    response = await client.post('/hermes/__entry/connectors', json={'operation': operation, 'profile': 'default', **extra}, **auth[owner])
+                    response = await client.post('/agents/api/__entry/connectors', json={'operation': operation, 'profile': 'default', **extra}, **auth[owner])
                     result = await response.json()
                     assert response.status == expected, result
                     return result
-                assert (await client.post('/hermes/__entry/connectors', json={'operation': 'list'})).status == 401
+                assert (await client.post('/agents/api/__entry/connectors', json={'operation': 'list'})).status == 401
                 await call('alice', 'list', expected=400, user_id='bob')
                 await call('alice', 'connect', expected=400, id='eastmoney_mcp', values={'apiKey': 'alice-key'})
                 for owner in ('alice', 'bob', 'alice'):

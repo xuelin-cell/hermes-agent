@@ -80,7 +80,7 @@ def main() -> int:
         sys.stdout.reconfigure(encoding="utf-8")
         sys.stderr.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description="验证本地 Entry PostgreSQL 迁移")
-    parser.add_argument("--base-url", default="http://127.0.0.1:18081/hermes")
+    parser.add_argument("--base-url", default="http://127.0.0.1:18081/agents")
     parser.add_argument("--user", default="postgres-smoke")
     parser.add_argument("--skip-login", action="store_true")
     parser.add_argument("--restart-entry", action="store_true")
@@ -114,14 +114,14 @@ def main() -> int:
 
     cookie_jar = http.cookiejar.CookieJar()
     opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookie_jar))
-    status, health = _request(opener, f"{args.base_url}/__entry/health")
+    status, health = _request(opener, f"{args.base_url}/api/__entry/health")
     if status != 200 or not health.get("ok") or health.get("database") != "ok":
         raise RuntimeError(f"Entry 健康检查失败: HTTP {status} {health}")
 
     if not args.skip_login:
         status, login = _request(
             opener,
-            f"{args.base_url}/__entry/dev-login",
+            f"{args.base_url}/api/__entry/dev-login",
             body={"user": args.user},
         )
         if status == 404:
@@ -129,7 +129,7 @@ def main() -> int:
         elif status != 200 or not login.get("ok"):
             raise RuntimeError(f"开发登录失败: HTTP {status} {login}")
         else:
-            status, me = _request(opener, f"{args.base_url}/__entry/me")
+            status, me = _request(opener, f"{args.base_url}/api/__entry/me")
             if status != 200 or me.get("user_id") != args.user:
                 raise RuntimeError(f"登录 Cookie 验证失败: HTTP {status} {me}")
             print(f"PASS 开发登录与 PostgreSQL 会话: {args.user}")
@@ -137,7 +137,7 @@ def main() -> int:
                 _docker("restart", "hermes-mt-entry")
                 if _wait_entry_healthy() != "healthy":
                     raise RuntimeError("Entry 重启后未在 60 秒内恢复健康")
-                status, me = _request(opener, f"{args.base_url}/__entry/me")
+                status, me = _request(opener, f"{args.base_url}/api/__entry/me")
                 if status != 200 or me.get("user_id") != args.user:
                     raise RuntimeError(f"Entry 重启后会话未恢复: HTTP {status} {me}")
                 print("PASS Entry 重启后 PostgreSQL 会话仍有效")
@@ -145,7 +145,7 @@ def main() -> int:
                 outage_error: RuntimeError | None = None
                 _docker("stop", "hermes-mt-postgres")
                 try:
-                    status, payload = _request(opener, f"{args.base_url}/__entry/me")
+                    status, payload = _request(opener, f"{args.base_url}/api/__entry/me")
                     if status != 503 or payload != {"error": "database_unavailable"}:
                         outage_error = RuntimeError(
                             f"数据库中断响应不符合预期: HTTP {status} {payload}"
@@ -154,7 +154,7 @@ def main() -> int:
                     _docker("start", "hermes-mt-postgres")
                     deadline = time.monotonic() + 60
                     while time.monotonic() < deadline:
-                        status, health = _request(opener, f"{args.base_url}/__entry/health")
+                        status, health = _request(opener, f"{args.base_url}/api/__entry/health")
                         if status == 200 and health.get("database") == "ok":
                             break
                         time.sleep(1)

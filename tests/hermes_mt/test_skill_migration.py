@@ -111,7 +111,7 @@ async def stack(tmp_path, database_url, monkeypatch):
             response = await client.post('/test-login', json={'user': user})
             return {'cookies': {key: value.value for key, value in response.cookies.items()}}
         async def call(identity, action, body):
-            response = await client.post('/hermes/__entry/skills/' + action, json=body, **identity)
+            response = await client.post('/agents/api/__entry/skills/' + action, json=body, **identity)
             return response, await response.json() if response.content_type == 'application/json' else None
         async def finish(identity, key):
             async with asyncio.timeout(10):
@@ -167,7 +167,7 @@ async def test_market_install_is_user_scoped_and_saved_before_success_with_fresh
         denied['body']['download_url'] = 'http://127.0.0.1/private'
         await call(a, 'start', denied)
         assert (await finish(a, 'unsafe-package'))['phase'] == 'failed'
-        response = await client.post('/hermes/__hermes_backend/api/skills/market/install', json=request('x')['body'], **a)
+        response = await client.post('/agents/api/__hermes_backend/api/skills/market/install', json=request('x')['body'], **a)
         assert response.status == 409
 
 

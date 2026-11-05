@@ -206,7 +206,7 @@ async def test_5g_file_link_is_single_attachment_expiring_and_revocable(postgres
     try:
         async with TestServer(channels) as server, aiohttp.ClientSession() as http, TestClient(TestServer(app)) as client:
             entry.http=http
-            entry.s=replace(settings,channels_url=str(server.make_url('')).rstrip('/'),channels_relay_url=str(client.make_url('/hermes/__entry/messaging/relay')).replace('http:','ws:'))
+            entry.s=replace(settings,channels_url=str(server.make_url('')).rstrip('/'),channels_relay_url=str(client.make_url('/agents/api/__entry/messaging/relay')).replace('http:','ws:'))
             url=media_link(entry.s,outbound)
             async with http.get(url) as response:
                 assert response.status==200 and await response.read()==b'private-file'

@@ -164,7 +164,7 @@ async def test_oauth_callbacks_and_signed_files_stay_with_the_initiating_expert(
         grants.append((profile, label, params, cookie))
     assert len({name for _, _, _, (name, _) in grants}) == 3
     for profile, label, params, (name, ticket) in reversed(grants):
-        callback = '/hermes/__entry/connectors/qcc_mcp/oauth/callback'
+        callback = '/agents/api/__entry/connectors/qcc_mcp/oauth/callback'
         response = await env.client.get(callback, params=params, cookies={**env.cookies['alice'], name: ticket})
         assert response.status == 200, await response.text()
         value = await action(env, 'alice', profile, 'qcc_mcp', 'qcc_mcp.call_tool', {'toolName': 'lookup', 'arguments': {}})

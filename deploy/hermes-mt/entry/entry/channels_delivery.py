@@ -15,7 +15,7 @@ class UnverifiableExecution(RuntimeError):
 
 
 async def wake(service, delivery):
-    url = service.config['entry_url'].rstrip('/') + service.s.base_path + '/__entry/messaging/wake'
+    url = service.config['entry_url'].rstrip('/') + service.s.api_path('/__entry/messaging/wake')
     async with service.http.post(url, json={'delivery_id': delivery['delivery_id'], 'owner': service.owner},
             headers={'Authorization': 'Bearer '+service.s.channels_key}, timeout=aiohttp.ClientTimeout(total=240)) as response:
         if response.status != 200: raise RuntimeError('Wake rejected; verify Entry and instance template capabilities')

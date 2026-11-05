@@ -293,12 +293,13 @@
   </section>
 </main>
 <script type="module">
-import { clearBrowserAuth, readBrowserAuth, storeBrowserLogin } from './__entry/browser-auth.js';
+import { clearBrowserAuth, readBrowserAuth, storeBrowserLogin } from './api/__entry/browser-auth.js';
 (function () {
   var base = location.pathname.replace(/\/login\/?$/, '');
-  if (new URLSearchParams(location.search).get('signed_out') === '1') clearBrowserAuth(base);
-  else readBrowserAuth(base);
-  var api = function (p) { return base + '/__entry' + p; };
+  var apiBase = base + '/api';
+  if (new URLSearchParams(location.search).get('signed_out') === '1') clearBrowserAuth(apiBase);
+  else readBrowserAuth(apiBase);
+  var api = function (p) { return apiBase + '/__entry' + p; };
   var $ = function (id) { return document.getElementById(id); };
   var PHONE_RE = /^1\d{10}$/;
   var captchaId = '';
@@ -418,7 +419,7 @@ import { clearBrowserAuth, readBrowserAuth, storeBrowserLogin } from './__entry/
     try {
       loginBusy(true); notice('');
       var data = await postJSON(api('/login'), { phone: phone, smsCode: smsCode });
-      storeBrowserLogin(base, data);
+      storeBrowserLogin(apiBase, data);
       notice(data.has_key ? '登录成功，正在准备你的工作空间…' : '登录成功（该账号没有可用套餐 key，模型将不可用）', 'info');
       location.href = data.redirect || (base + '/');
     } catch (e) { loginBusy(false); notice('登录失败：' + e.message, 'err'); }
@@ -428,7 +429,7 @@ import { clearBrowserAuth, readBrowserAuth, storeBrowserLogin } from './__entry/
     try {
       notice('开发模式登录中…', 'info');
       var data = await postJSON(api('/dev-login'), { user: $('devUser').value.trim() });
-      storeBrowserLogin(base, data);
+      storeBrowserLogin(apiBase, data);
       location.href = data.redirect || (base + '/');
     } catch (e) { notice('失败：' + e.message, 'err'); }
   });

@@ -100,7 +100,7 @@ async def entry_client(tmp_path, database_url, upstream_url, instances=None):
                 return {'cookies': {key: val.value for key, val in response.cookies.items()},
                         'headers': {'Authorization': 'Bearer ' + body['maas_auth']['token']}}
             async def call(auth, action, body):
-                response = await client.post('/hermes/__entry/drive/' + action, json=body, **auth)
+                response = await client.post('/agents/api/__entry/drive/' + action, json=body, **auth)
                 assert response.status == 200, await response.text()
                 return await response.json()
             async def result(auth, key):
@@ -127,19 +127,19 @@ async def test_browser_drive_keeps_accounts_and_bytes_isolated_with_real_worker_
                 assert (await result(auth, operation['id']))['items'][0]['asset_id'] == phone
             assert counts == {'13811111111': 1, '13822222222': 1}
             mixed = {**a, 'headers': b['headers']}
-            response = await client.post('/hermes/__entry/drive/ready', json={}, **mixed)
+            response = await client.post('/agents/api/__entry/drive/ready', json={}, **mixed)
             assert response.status == 401
             await call(a, 'upload-start', {'id': 'upload-one', 'name': '资料.txt', 'size': len(CONTENT)})
-            response = await client.post('/hermes/__entry/drive/part/upload-one?offset=0', data=CONTENT, **a)
+            response = await client.post('/agents/api/__entry/drive/part/upload-one?offset=0', data=CONTENT, **a)
             assert response.status == 200
             # Replayed or foreign chunks cannot change the original upload.
-            assert (await client.post('/hermes/__entry/drive/part/upload-one?offset=0', data=CONTENT, **a)).status == 409
-            assert (await client.post('/hermes/__entry/drive/part/upload-one?offset=18', data=b'x', **b)).status == 404
+            assert (await client.post('/agents/api/__entry/drive/part/upload-one?offset=0', data=CONTENT, **a)).status == 409
+            assert (await client.post('/agents/api/__entry/drive/part/upload-one?offset=18', data=b'x', **b)).status == 404
             await call(a, 'upload-finish', {'id': 'upload-one', 'parentAssetId': '0'})
             upload_result = await result(a, 'upload-one')
             assert upload_result['status'] == 'succeeded', upload_result
             assert len(uploads) == 1 and uploads[0][2] == CONTENT and uploads[0][1]['fileName'] == '资料.txt'
-            assert (await client.post('/hermes/__entry/drive/upload-start', json={'id': 'upload-one', 'name': '资料.txt', 'size': len(CONTENT)}, **a)).status == 409
+            assert (await client.post('/agents/api/__entry/drive/upload-start', json={'id': 'upload-one', 'name': '资料.txt', 'size': len(CONTENT)}, **a)).status == 409
             # The same caller-chosen ID in another account cannot overwrite A's durable receipt.
             await call(b, 'upload-start', {'id': 'upload-one', 'name': 'other.txt', 'size': 0})
             await call(b, 'upload-finish', {'id': 'upload-one', 'parentAssetId': '0'})
@@ -148,16 +148,16 @@ async def test_browser_drive_keeps_accounts_and_bytes_isolated_with_real_worker_
             operation = await call(a, 'transfer', {'id': 'download-one', 'request': {
                 'operation': 'download', 'assetId': 'asset', 'name': '资料.txt', 'size': len(CONTENT)}})
             assert (await result(a, operation['id']))['readyForBrowser']
-            assert (await client.get('/hermes/__entry/drive/files/download-one', **b)).status == 404
-            response = await client.get('/hermes/__entry/drive/files/download-one', **a)
+            assert (await client.get('/agents/api/__entry/drive/files/download-one', **b)).status == 404
+            response = await client.get('/agents/api/__entry/drive/files/download-one', **a)
             assert response.status == 200 and await response.read() == CONTENT
-            assert (await client.get('/hermes/__entry/drive/files/download-one', **a)).status == 404
+            assert (await client.get('/agents/api/__entry/drive/files/download-one', **a)).status == 404
             async with entry.database.acquire() as connection:
                 receipts = await connection.fetch('SELECT result::text FROM cloud_drive_operations')
             assert receipts and all('login-' not in row['result'] and 'drive-138' not in row['result'] for row in receipts)
-            response = await client.post('/hermes/__entry/logout', **a)
+            response = await client.post('/agents/api/__entry/logout', **a)
             assert response.status == 200
-            assert (await client.post('/hermes/__entry/drive/status', json={'id': 'download-one'}, **a)).status == 401
+            assert (await client.post('/agents/api/__entry/drive/status', json={'id': 'download-one'}, **a)).status == 401
 
 
 @asynccontextmanager

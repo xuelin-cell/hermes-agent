@@ -13,7 +13,7 @@ def upload_url(settings):
             or parsed.query or parsed.fragment or '\\' in origin
             or any(c.isspace() for c in origin)):
         raise ValueError('MT_LANGFUSE_ENTRY_URL must be an instance-reachable HTTP(S) origin')
-    return origin.rstrip('/') + settings.path('/__entry/langfuse')
+    return origin.rstrip('/') + settings.api_path('/__entry/langfuse')
 
 
 async def credential_lines(settings, store, user_id):

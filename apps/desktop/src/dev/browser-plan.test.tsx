@@ -11,7 +11,7 @@ import { browserPlan } from './browser-plan'
 
 vi.mock('@/store/notifications', () => ({ notify: vi.fn() }))
 
-const login = (id: string) => storeBrowserLogin('/hermes', {
+const login = (id: string) => storeBrowserLogin('/agents/api', {
   maas_auth: { token: `maas-${id}`, loginId: id, expiresAt: Date.now() + 60_000 }
 })
 
@@ -48,14 +48,14 @@ it('云端复用套餐面板与刷新契约，只有业务入口收到 Bearer，
   })
 
   vi.stubGlobal('fetch', request)
-  vi.stubGlobal('hermesDesktop', browserPlan('/hermes'))
+  vi.stubGlobal('hermesDesktop', browserPlan('/agents/api'))
   expect(isPlanUsageHidden()).toBe(false)
   render(<I18nProvider configClient={null} initialLocale="en"><PlanUsagePanel account={account} /></I18nProvider>)
   expect(request).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole('button', { name: 'Plan usage' }))
   await screen.findByText('Cloud plan')
   expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('25')
-  expect(request.mock.calls[0][0]).toContain('/hermes/__entry/plan/usage')
+  expect(request.mock.calls[0][0]).toContain('/agents/api/__entry/plan/usage')
   fail = true
   fireEvent.click(screen.getByRole('button', { name: 'Refresh usage' }))
   await waitFor(() => expect(request.mock.calls.at(-1)![0]).toContain('/plan/refresh'))
@@ -68,7 +68,7 @@ it('云端复用套餐面板与刷新契约，只有业务入口收到 Bearer，
 
 it('订阅在点击时开页，拒绝拦截、重复点击、错误市场地址及账号切换后的迟到票据', async () => {
   login('alice')
-  const bridge = browserPlan('/hermes')
+  const bridge = browserPlan('/agents/api')
   const popup = { opener: {}, closed: false, close: vi.fn(), location: { replace: vi.fn() } }
   vi.spyOn(window, 'open').mockReturnValue(null)
   const request = vi.fn(async (_input: string, _options?: RequestInit) => response({ status: 'ready', url: 'https://market.ai-yuanjing.com/#/active?ticket=signed' }))

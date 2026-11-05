@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 
 import { storeBrowserLogin } from '../../../../../../shared/src/browser-maas-auth.js'
 
-const login = (id: string) => storeBrowserLogin(import.meta.env.BASE_URL || '/', { maas_auth: {
+const login = (id: string) => storeBrowserLogin(`${import.meta.env.BASE_URL || '/'}api`, { maas_auth: {
   token: 'secret-' + id, loginId: id, expiresAt: Date.now() + 60_000
 } })
 

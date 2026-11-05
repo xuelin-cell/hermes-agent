@@ -2,4 +2,4 @@
 #   docker build -t hermes-mt-nginx:dev .
 FROM nginx:1.27-alpine
 COPY hermes-mt.conf /etc/nginx/conf.d/default.conf
-COPY dist-browser/ /usr/share/nginx/html/hermes/
+COPY dist-browser/ /usr/share/nginx/html/agents/

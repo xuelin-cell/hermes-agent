@@ -42,7 +42,7 @@ def container_state(name: str) -> str:
 async def main() -> int:
     cname = f"{PREFIX}-t-{USER}"
     async with aiohttp.ClientSession() as http:
-        async with http.post(f"{BASE}/hermes/__entry/dev-login", json={"user": USER}) as resp:
+        async with http.post(f"{BASE}/agents/api/__entry/dev-login", json={"user": USER}) as resp:
             if resp.status != 200:
                 print(f"FAIL  dev-login -> {resp.status}（入口是否开了 MT_DEV_LOGIN=1？）")
                 return 1
@@ -53,7 +53,7 @@ async def main() -> int:
         while time.monotonic() < deadline:
             try:
                 async with http.get(
-                    f"{BASE}/hermes/__hermes_backend/api/health",
+                    f"{BASE}/agents/api/__hermes_backend/api/health",
                     timeout=aiohttp.ClientTimeout(total=90),
                 ) as r:
                     if r.status == 200 and '"ok":true' in (await r.text()).replace(" ", ""):
@@ -66,7 +66,7 @@ async def main() -> int:
             return 1
         print(f"容器就绪: {cname} -> {container_state(cname)}")
 
-        async with http.ws_connect(f"{BASE}/hermes/api/ws", heartbeat=None, max_msg_size=64 * 1024 * 1024) as ws:
+        async with http.ws_connect(f"{BASE}/agents/api/ws", heartbeat=None, max_msg_size=64 * 1024 * 1024) as ws:
             first = await asyncio.wait_for(ws.receive(), timeout=30)
             if "gateway.ready" not in str(first.data):
                 print(f"FAIL  首帧不是 gateway.ready: {str(first.data)[:200]}")
@@ -92,7 +92,7 @@ async def main() -> int:
 
         # 断开后应重新开始计时：状态仍是 running，但已不在 live_ws 名单里
         await asyncio.sleep(2)
-        async with http.get(f"{BASE}/hermes/__entry/health") as r:
+        async with http.get(f"{BASE}/agents/api/__entry/health") as r:
             live = (await r.json()).get("live_ws", {})
         if USER in live:
             print(f"FAIL  ws 已断开但 live_ws 里还留着 {USER}: {live}")

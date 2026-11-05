@@ -11,7 +11,7 @@ from entry.config import Settings
 
 
 def _req(method: str = "POST", **headers: str) -> web.Request:
-    return make_mocked_request(method, "/hermes/__hermes_backend/api/files", headers=headers)
+    return make_mocked_request(method, "/agents/api/__hermes_backend/api/files", headers=headers)
 
 
 @pytest.mark.parametrize(
@@ -72,13 +72,13 @@ async def test_middleware_can_be_switched_off() -> None:
 def test_terminal_route_is_matched_before_the_catch_all_proxy() -> None:
     from cryptography.fernet import Fernet
 
-    app = build_app(Settings(base_path="/hermes", credential_key=Fernet.generate_key().decode(),
+    app = build_app(Settings(base_path="/agents", credential_key=Fernet.generate_key().decode(),
                              database_url="postgresql://unused@127.0.0.1:1/unused"))  # 只建路由，不连库
     resources = [r.canonical for r in app.router.resources()]
-    terminal = resources.index("/hermes/__hermes_backend/__mt_user/terminal")
-    catch_all = resources.index("/hermes/__hermes_backend/{tail}")
+    terminal = resources.index("/agents/api/__hermes_backend/__mt_user/terminal")
+    catch_all = resources.index("/agents/api/__hermes_backend/{tail}")
     assert terminal < catch_all
-    request = make_mocked_request("GET", "/hermes/__hermes_backend/__mt_user/terminal", app=app)
+    request = make_mocked_request("GET", "/agents/api/__hermes_backend/__mt_user/terminal", app=app)
     # 用 resolve 看实际会进哪个处理函数
     import asyncio
 

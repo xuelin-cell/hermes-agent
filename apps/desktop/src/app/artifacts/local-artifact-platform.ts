@@ -17,7 +17,7 @@ export function artifactLibraryIdentity(): string | undefined {
   }
 
   try {
-    return readBrowserAuth(import.meta.env.BASE_URL || '/')?.loginId
+    return readBrowserAuth(`${import.meta.env.BASE_URL || '/'}api`)?.loginId
   } catch {
     return undefined
   }

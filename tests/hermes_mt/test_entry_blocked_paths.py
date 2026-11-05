@@ -17,7 +17,7 @@ class _Passed(Exception):
 
 
 def _entry(monkeypatch: pytest.MonkeyPatch) -> Entry:
-    entry = Entry(Settings(base_path="/hermes", credential_key=Fernet.generate_key().decode(),
+    entry = Entry(Settings(base_path="/agents", credential_key=Fernet.generate_key().decode(),
                            database_url="postgresql://unused@127.0.0.1:1/unused"))  # 不连库
 
     async def require(_request: web.Request) -> object:
@@ -32,7 +32,7 @@ def _entry(monkeypatch: pytest.MonkeyPatch) -> Entry:
 
 
 def _request(method: str, tail: str) -> web.Request:
-    return make_mocked_request(method, f"/hermes/__hermes_backend/{tail}", match_info={"tail": tail})
+    return make_mocked_request(method, f"/agents/api/__hermes_backend/{tail}", match_info={"tail": tail})
 
 
 @pytest.mark.asyncio

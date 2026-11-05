@@ -401,7 +401,7 @@ function CredentialView({ available, busy, entry, error, item, onConnected, onQr
                 />
               </label>
             ))}
-            {cloudIfind && <p className="mt-connector-form-hint">{copy.cloudOAuthHint}<br /><code>{new URL(`${import.meta.env.BASE_URL}__entry/connectors/ifind_mcp/oauth/callback`, window.location.origin).href}</code></p>}
+            {cloudIfind && <p className="mt-connector-form-hint">{copy.cloudOAuthHint}<br /><code>{new URL(`${import.meta.env.BASE_URL}api/__entry/connectors/ifind_mcp/oauth/callback`, window.location.origin).href}</code></p>}
             <p className="mt-connector-form-hint">{window.hermesDesktop.cloudConnectorIds ? copy.cloudCredentialsHint : copy.hints[entry.id] ?? copy.credentialsHint}</p>
             {!available && <p className="mt-connector-inline-notice">{copy.localOnly}</p>}
             {error && (

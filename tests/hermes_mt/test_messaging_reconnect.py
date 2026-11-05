@@ -55,7 +55,7 @@ async def test_retry_and_reconnect_restart_upstream_without_cancelling_work(post
             await asyncio.wait_for(connected.get(), 10)
             for operation in ('retry', 'reconnect'):
                 before = service.clients[binding['id']][1]
-                response = await client.post('/hermes/__entry/messaging/' + operation,
+                response = await client.post('/agents/api/__entry/messaging/' + operation,
                     headers={'Cookie': settings.cookie_name + '=' + auth.session.sid}, json={'platform': 'uniagentgate'})
                 assert response.status == 200
                 await service.reconcile()

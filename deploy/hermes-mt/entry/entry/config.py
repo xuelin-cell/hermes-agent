@@ -24,7 +24,7 @@ def _parse_bytes(text: str) -> int:
 @dataclass(frozen=True)
 class Settings:
     # 对外路径与监听
-    base_path: str = _env("MT_BASE_PATH", "/hermes").rstrip("/")
+    base_path: str = _env("MT_BASE_PATH", "/agents").rstrip("/")
     listen_port: int = int(_env("MT_PORT", "9400"))
     channels_key: str = _env('MT_CHANNELS_KEY')
     channels_url: str = _env('MT_CHANNELS_URL', 'http://channels:9500').rstrip('/')
@@ -156,7 +156,7 @@ class Settings:
     # 沙箱默认不许实例连私网地址（10/8、172.16/12、192.168/16 等）。额外放行的地址段，逗号分隔（如 10.1.2.3/32）；
     # 平台地址本身是私网 IP 时会自动放行，不用写在这里。只对新建的实例生效。
     cube_allow_out: str = _env("MT_CUBE_ALLOW_OUT", "")
-    # 平台调用云端运行智能体的服务接口（/__entry/service/v1，见 docs/企业版对接/15）。密钥两边各存一份
+    # 平台调用云端运行智能体的服务接口（/hermes/__entry/service/v1，见 docs/企业版对接/15）。密钥两边各存一份
     # （平台那边是 UNIWORK_CLOUD_RUNTIME_SECRET）；没配就整组接口回 404。另外只放行这里列的来源地址
     # （逗号分隔，IP 或 网段，如 192.168.0.50）；留空不限来源，只验密钥。来源地址取 nginx 写的 X-Real-IP。
     service_secret: str = _env("MT_UNIWORK_SERVICE_SECRET", "")
@@ -171,6 +171,10 @@ class Settings:
 
     def path(self, suffix: str) -> str:
         return f"{self.base_path}{suffix}"
+
+    def api_path(self, suffix: str) -> str:
+        """入口和实例的接口都在 ``{base}/api/`` 下：统一登录的网关只对这个前缀验登录（docs/企业版对接/35）。"""
+        return f"{self.base_path}/api{suffix}"
 
     @property
     def enterprise(self) -> bool:

@@ -6,10 +6,10 @@
 
 ```
 浏览器 ──▶ Nginx(:18081)
-             ├─ /hermes/                 静态 SPA（auth_request 问入口：没登录 → 302 /hermes/login）
-             ├─ /hermes/login, /hermes/__entry/*   入口自己的登录页与接口
-             ├─ /hermes/api/ws           ─┐
-             └─ /hermes/__hermes_backend/ ─┴─▶ 入口服务(:9400)：验 cookie → 该用户容器 → 注入该容器 token → 原样透传
+             ├─ /agents/                 静态 SPA（auth_request 问入口：没登录 → 302 /agents/login）
+             ├─ /agents/login, /agents/api/__entry/*   入口自己的登录页与接口
+             ├─ /agents/api/ws           ─┐
+             └─ /agents/api/__hermes_backend/ ─┴─▶ 入口服务(:9400)：验 cookie → 该用户容器 → 注入该容器 token → 原样透传
                                                   │  每个用户一个 bridge 网络 hermes-net-<uid>，入口连进去
                                                   ▼
                                     容器 hermes-t-<uid>：卷里的 forward.py 0.0.0.0:9121 → 127.0.0.1:9120 hermes serve
@@ -17,6 +17,10 @@
 
 入口服务 ──▶ PostgreSQL：用户、浏览器登录、租户运行态、套餐配置、加密凭据和审计
 ```
+
+接口都在 `/agents/api/` 下：接统一登录后，网关只对这个前缀验登录。旧地址 `/hermes/` 跳到 `/agents/`；已经发出去或写进配置的
+`/hermes/__entry/*`（5G 附件链接、Langfuse 上传地址）由 nginx 转到新路径。平台调用的服务接口 `/hermes/__entry/service/v1` 存在
+平台的配置里，也不经过统一登录，所以路径不变。
 
 ## 目录
 
@@ -38,7 +42,7 @@
 
 登录成功后，独立登录页把 `maas_auth` 保存到按 base_path 隔离的 localStorage。入口继续用原有
 HttpOnly session cookie 认证，并额外签发只含摘要的认证加密关联 cookie；不在 PG 保存 MaaS token 或其哈希。
-`POST /__entry/maas-auth` 校验当前 cookie 与 Bearer token 的绑定及期限，不请求上游、不返回 token。
+`POST /api/__entry/maas-auth` 校验当前 cookie 与 Bearer token 的绑定及期限，不请求上游、不返回 token。
 
 登录页与 renderer 共用源码 `apps/shared/src/browser-maas-auth.js`，部署构建会生成入口 static 副本。后续分享/网盘的页面请求使用
 `requestEntryMaas`，入口业务路由使用 `_require_maas`。通用实例代理移除 Authorization，避免凭据透传。
@@ -52,8 +56,8 @@ Langfuse 插件、后台上传凭证和 Entry 转发入口见 [接入说明](doc
 
 ## 云端分享
 
-会话/单条回复和产物分享复用桌面页面，通过 `/__entry/conversation-shares/*` 和
-`/__entry/artifact-shares/*` 调用固定 MaaS 分享网关。入口从当前浏览器请求取得 token，
+会话/单条回复和产物分享复用桌面页面，通过 `/api/__entry/conversation-shares/*` 和
+`/api/__entry/artifact-shares/*` 调用固定 MaaS 分享网关。入口从当前浏览器请求取得 token，
 PG 只保存分享归属、快照与待确认操作（迁移 `007_shares.sql`），不保存 MaaS token。
 
 实例使用 `cloud_sharing.enabled: true` 开启来源记录；由现有平台策略在引导时写入，
@@ -122,7 +126,7 @@ cp entry.env.example entry.env          # 生产：MT_DEV_LOGIN=0；其余按需
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 bash scripts/build-frontend.sh          # 或复制现网 release，见上
 docker compose -p hermes-mt up -d --build
-curl -s http://127.0.0.1:18081/hermes/__entry/health   # database=ok 才算健康
+curl -s http://127.0.0.1:18081/agents/api/__entry/health   # database=ok 才算健康
 python scripts/verify_postgres.py
 ```
 
@@ -130,12 +134,12 @@ PostgreSQL 只发布到 `127.0.0.1:${MT_POSTGRES_PORT:-15432}`，数据保存在
 `hermes-mt-postgres`。Entry 启动时自动执行有序 SQL 迁移；数据库未就绪或迁移失败时
 Entry 不进入健康状态，Nginx 也不会提前接流量。
 
-浏览器打开 `http://<host>:18081/hermes/` → 被带到登录页 → 手机号 + 图形验证码 + 短信验证码 → 登录成功后入口
+浏览器打开 `http://<host>:18081/agents/` → 被带到登录页 → 手机号 + 图形验证码 + 短信验证码 → 登录成功后入口
 后台拉起该用户的容器（首次十几秒），页面进入聊天界面。
 
 **谁在登录 / 退出**：页面底部状态栏有账号那一项，显示当前账号（短信登录显示打码手机号）和「退出」，
 和桌面版是同一个组件。垫片（`apps/desktop/src/dev/browser-bridge.ts`）的 `getMaasAccount` 读入口的
-`/__entry/me`，会话到期后账号旁标「登录已到期」；点退出、确认后跳到 `<base>/logout`（结束会话，回登录页），
+`/api/__entry/me`，会话到期后账号旁标「登录已到期」；点退出、确认后跳到 `<base>/logout`（结束会话，回登录页），
 也可以直接访问这个地址。
 
 验收（需要临时 `MT_DEV_LOGIN=1`，不用短信，两个假用户 alice/bob）：
@@ -185,7 +189,7 @@ Entry 平台表只采用以下约定：`users.masked_phone` 保存脱敏手机�
 
 | 事 | 怎么做 |
 |---|---|
-| 看有哪些租户在跑 | `docker ps --filter label=hermes.mt=tenant`；或 `curl :18081/hermes/__entry/health` |
+| 看有哪些租户在跑 | `docker ps --filter label=hermes.mt=tenant`；或 `curl :18081/agents/api/__entry/health` |
 | 某用户的 hermes 日志 | `docker logs hermes-t-<uid>`；卷内 `logs/`：`docker run --rm -v hermes-data-<uid>:/d alpine ls /d/logs` |
 | 入口日志 | `docker logs hermes-mt-entry`（每条带 userid） |
 | PostgreSQL 状态 | `docker logs hermes-mt-postgres`；表：`docker exec hermes-mt-postgres psql -U hermes_entry -d hermes_entry -c '\dt'` |
@@ -221,7 +225,7 @@ Entry 平台表只采用以下约定：`users.masked_phone` 保存脱敏手机�
 
 - **空闲回收按「有没有 ws 连接」判活，不按「多久没动静」。** 用户把页面开着不说话时 ws 完全静默，
   按时间判会把他的容器停掉、页面当场掉线；一次长回复的流式输出（几十分钟只有零星帧）同样会被误伤。
-  入口维护 `live_ws` 计数（`/__entry/health` 可见），连接期间一律跳过回收，断开那一刻才开始计时。
+  入口维护 `live_ws` 计数（`/api/__entry/health` 可见），连接期间一律跳过回收，断开那一刻才开始计时。
   回归测试是 `scripts/verify_ws_keepalive.py`。
 - **启动时的 reconcile 必须在后台。** 它要逐个 `docker stop`，6 个容器实测 6.8s；放在开始监听之前，
   这段时间 nginx 全是 `502 connection refused`，租户越多窗口越长。现在先 listen 再后台 reconcile，
@@ -319,7 +323,7 @@ Markdown 预览支持 Markdown、Word 和 PDF 导出：前两项由浏览器生�
 推荐连接器页面开放高德、有道云笔记、WPS、企业微信、腾讯 ima 知识库、QQ 邮箱、网易邮箱、AMiner 学术、企查查、东方财富和同花顺 iFinD，支持配置或授权、工具调用、停用、重新启用和断开。
 有道和高德填写 API Key，WPS 填写 Agent API Key，ima 填写 Client ID 与 API Key；企业微信工具连接器
 手动填写 Bot ID 与 Secret，复用桌面智能机器人 API/MCP 协议，不建立消息平台的长连接。
-QQ/网易邮箱填写邮箱地址和开启 IMAP/SMTP 后的客户端授权码；AMiner 填写 Auth Token。企查查、东方财富复用原有动态客户端注册和 PKCE 授权，浏览器在新窗口完成授权，再经当前用户的 Entry 会话回调保存。iFinD 的桌面公共客户端仅注明允许本机回调，云端需在平台登记实际部署的回调地址，并在页面填写对应公共客户端的 Client ID；不沿用桌面客户端 ID。回调地址在 iFinD 表单中显示，格式为 `https://<部署域名>/hermes/__entry/connectors/ifind_mcp/oauth/callback`。能否使用内网 HTTP 地址取决于第三方平台的回调策略；正式域名、客户端授权范围和真实账号需部署后验收。
+QQ/网易邮箱填写邮箱地址和开启 IMAP/SMTP 后的客户端授权码；AMiner 填写 Auth Token。企查查、东方财富复用原有动态客户端注册和 PKCE 授权，浏览器在新窗口完成授权，再经当前用户的 Entry 会话回调保存。iFinD 的桌面公共客户端仅注明允许本机回调，云端需在平台登记实际部署的回调地址，并在页面填写对应公共客户端的 Client ID；不沿用桌面客户端 ID。回调地址在 iFinD 表单中显示，格式为 `https://<部署域名>/agents/api/__entry/connectors/ifind_mcp/oauth/callback`。能否使用内网 HTTP 地址取决于第三方平台的回调策略；正式域名、客户端授权范围和真实账号需部署后验收。
 
 OAuth 状态、PKCE 和刷新令牌沿用实例中的加密 SQLite，归档时一同保存；Entry 只用短期 HttpOnly Cookie 绑定发起授权的登录会话、Provider 和 state，不新增 PG 表。回调只转发到该用户实例，过期、会话不符和重复回调会拒绝；Nginx 不记录该回调的访问日志，Entry 访问日志不记录回调查询参数。回调成功前确认归档；失败时返回原页面查询状态、重试保存，不自动重放工具操作。
 
@@ -332,7 +336,7 @@ OAuth 状态、PKCE 和刷新令牌沿用实例中的加密 SQLite，归档时�
 每次管理、工具调用和签名文件下载都会检查专家仍由当前实例的套件管理器持有；拒绝未安装的档案、路径穿越和符号链接。停用/解绑按各专家独立生效；专家卸载沿用明确确认删除档案的语义，正在调用工具时拒绝卸载或排空。恢复时保留各档案密钥并更新受管地址，专家重装后旧令牌失效；实例中其他专家的连接不受影响。
 
 OpenConnector 按需运行在用户实例内，一个实例一个服务，仅监听回环地址。入口通过登录会话
-校验和固定 `/__entry/connectors` 接口管理，不需要 MaaS token，也不复用同事的共享连接器容器。
+校验和固定 `/api/__entry/connectors` 接口管理，不需要 MaaS token，也不复用同事的共享连接器容器。
 数据库、加密密钥和受管 MCP 配置随现有用户状态归档，恢复时更新内部地址；停用在每次 MCP
 请求处检查，已建立的旧会话也无法绕过。新配置的工具在新会话使用，不强制重载现有会话。
 
@@ -371,7 +375,7 @@ Provider 返回的原文件通过实例内限时签名链接交给 Agent 下载�
 ```dotenv
 MT_BACKEND=cube
 MT_PG_LOCK=1
-MT_CHANNELS_MEDIA_BASE_URL=http://192.168.212.116:18081/hermes/__entry/messaging
+MT_CHANNELS_MEDIA_BASE_URL=http://192.168.212.116:18081/agents/api/__entry/messaging
 MT_CHANNELS_KEY=<现场生成并保存的随机密钥>
 ```
 
@@ -406,7 +410,7 @@ PYKEY
 - `GET /api/channels/uniagentgate/cloud-binding/{user_id}`：返回 `bound`、`state`、`last_error`、`updated_at`，不返回地址或密钥。
 - `DELETE /api/channels/uniagentgate/cloud-binding/{user_id}`：解除该用户 5G 绑定，重复调用仍成功；其他平台和模型凭据保持原有配置。
 
-以上是 nginx 对外路径，同时支持 `/hermes/api/channels/uniagentgate/cloud-binding/{user_id}`。沿用 UniClaw cloud-vm-dev 的调用方式，不要求额外服务密钥或浏览器 cookie；接口的访问范围由部署网络或网关控制。中心服务直接提交请求体即可。
+以上是 nginx 对外路径，同时支持 `/agents/api/channels/uniagentgate/cloud-binding/{user_id}`。沿用 UniClaw cloud-vm-dev 的调用方式，不要求额外服务密钥或浏览器 cookie；接口的访问范围由部署网络或网关控制。中心服务直接提交请求体即可。
 
 部署保留 `MT_CHANNELS_KEY`，用于入口、channels 与实例之间的内部认证，不需要提供给调用 cloud-binding 的中心服务。发送 5G 附件时另填 `MT_CHANNELS_MEDIA_BASE_URL`（网关可访问的附件入口）。`MT_CHANNELS_GATEWAY_ORIGINS` 可留空，网关地址来自登录响应或下发请求。
 

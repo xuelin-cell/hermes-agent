@@ -2,14 +2,14 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { storeBrowserLogin } from '../../../shared/src/browser-maas-auth.js'
 import { browserInterrupted } from './browser-interrupted'
 
-const login = (id: string) => storeBrowserLogin('/hermes', { maas_auth: { loginId: id, token: id, expiresAt: Date.now()+60000 } })
+const login = (id: string) => storeBrowserLogin('/agents/api', { maas_auth: { loginId: id, token: id, expiresAt: Date.now()+60000 } })
 afterEach(() => { localStorage.clear() })
 
 it('dismisses under the owning expert and discards recovery results from a previous login', async () => {
   login('alice')
   const turn = { sessionId: 'session', prompt: 'task', detectedAt: Date.now(), profile: 'expert-a' }
   const api = vi.fn().mockResolvedValue({ turns: [turn] })
-  const bridge = browserInterrupted('/hermes', api)
+  const bridge = browserInterrupted('/agents/api', api)
   expect(await bridge.interruptedTurns.list()).toEqual([turn])
   await bridge.interruptedTurns.dismiss('session')
   expect(api).toHaveBeenLastCalledWith(expect.objectContaining({ body: { profile: 'expert-a', sessionId: 'session' } }))

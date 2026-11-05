@@ -40,7 +40,7 @@ vi.mock('./local-artifact-share-dialog', () => ({
 }))
 
 function login(id: string) {
-  localStorage.setItem(browserAuthKey(import.meta.env.BASE_URL || '/'), JSON.stringify({
+  localStorage.setItem(browserAuthKey(`${import.meta.env.BASE_URL || '/'}api`), JSON.stringify({
     token: `credential-${id}`, loginId: id, expiresAt: Date.now() + 60_000
   }))
 }

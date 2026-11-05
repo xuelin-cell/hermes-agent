@@ -259,7 +259,7 @@ async def test_changed_generation_cannot_reexecute_or_accept_stale_results(tmp_p
         if changed=='old-template':
             async def legacy(settings, environment): return {'ok':True,'pid':1}
             env.forward._messaging_gateway.start = legacy
-            response = await env.client.post('/hermes/__entry/messaging/wake',json={
+            response = await env.client.post('/agents/api/__entry/messaging/wake',json={
                 'delivery_id':env.delivery,'owner':env.service.owner},headers={'Authorization':'Bearer '+env.settings.channels_key})
             assert response.status==502 and '模板' in await response.text()
             assert (await env.row())['state']=='dispatching'

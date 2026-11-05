@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 把 apps/desktop 的 Electron renderer 构建成浏览器版静态 SPA，输出到 deploy/hermes-mt/nginx/dist-browser/。
-# 与 scripts/deploy-custom-web.sh 的前端步骤一致（同一条 vite 命令、同一个 --base=/hermes/），
+# 与 scripts/deploy-custom-web.sh 的前端步骤一致（同一条 vite 命令、同一个 --base=/agents/），
 # 只是不动 Nginx、不做 release 目录。Linux 宿主上直接跑；需要 docker。
 #   bash deploy/hermes-mt/scripts/build-frontend.sh                构建
 #   bash deploy/hermes-mt/scripts/build-frontend.sh --fingerprint  只打印前端指纹，不构建
@@ -65,7 +65,7 @@ docker run --rm \
         node scripts/build-cloud-account.mjs
         node scripts/build-cloud-drive.mjs
         node scripts/build-cloud-connectors.mjs
-        VITE_HERMES_BROWSER_BUILD=1 node /workspace/node_modules/vite/bin/vite.js build --base=/hermes/ --outDir=dist-browser
+        VITE_HERMES_BROWSER_BUILD=1 node /workspace/node_modules/vite/bin/vite.js build --base=/agents/ --outDir=dist-browser
     '
 
 [[ -f "$REPO/apps/desktop/dist-browser/index.html" ]] || { echo "前端构建没有产出 index.html" >&2; exit 1; }

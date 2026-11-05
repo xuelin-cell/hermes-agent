@@ -35,7 +35,7 @@ async def test_group_policy_is_user_scoped_and_does_not_cancel_running_dm(postgr
     store=entry.messaging_routes.store
     binding=dict(await store.binding('alice','weixin'))
     client=Weixin('bot-alice','secret',store,binding,None)
-    path='/hermes/__entry/messaging/group-policy'
+    path='/agents/api/__entry/messaging/group-policy'
     try:
         async with TestClient(TestServer(app)) as api:
             assert (await api.post(path,json={})).status==401

@@ -127,7 +127,7 @@ async def login(entry, owner, token=None):
 
 
 async def issue(client, auth):
-    response = await client.post('/hermes/__entry/langfuse/grant', **auth)
+    response = await client.post('/agents/api/__entry/langfuse/grant', **auth)
     assert response.status == 200, await response.text()
     assert response.headers['Cache-Control'] == 'no-store'
     return await response.json()
@@ -169,13 +169,13 @@ async def test_entry_shares_latest_jwt_across_user_logins_without_requiring_brow
         proof, _ = entry.browser_auth.issue(session, 'maas-alice-updated', session.expires_at * 1000)
         refreshed = {'cookies': {**a['cookies'], cookie_name + '_maas': proof},
                      'headers': {'Authorization': 'Bearer maas-alice-updated'}}
-        response = await client.post('/hermes/__entry/maas-auth', **refreshed)
+        response = await client.post('/agents/api/__entry/maas-auth', **refreshed)
         assert response.status == 200 and 'maas-alice-updated' not in await response.text()
         # No grant reissue or SDK credential rotation is needed for this cache update.
         await upload(grants[0], 'maas-alice-updated')
         await upload(grants[1], 'maas-bob')
         # An unbound JWT cannot poison the authorization cache.
-        response = await client.post('/hermes/__entry/maas-auth', cookies=refreshed['cookies'], headers=b['headers'])
+        response = await client.post('/agents/api/__entry/maas-auth', cookies=refreshed['cookies'], headers=b['headers'])
         assert response.status == 401
         await upload(grants[0], 'maas-alice-updated')
         key = 'alice'
@@ -187,10 +187,10 @@ async def test_entry_shares_latest_jwt_across_user_logins_without_requiring_brow
         entry.langfuse_routes.purge()
         assert key not in entry.langfuse_routes.authorizations
         # A valid browser credential check restores a missing in-memory authorization.
-        assert (await client.post('/hermes/__entry/maas-auth', **refreshed)).status == 200
+        assert (await client.post('/agents/api/__entry/maas-auth', **refreshed)).status == 200
         await upload(grants[0], 'maas-alice-updated')
-        assert (await client.post('/hermes/__entry/logout', cookies=a['cookies'])).status == 200
-        assert (await client.post('/hermes/__entry/logout', cookies=other_a['cookies'])).status == 200
+        assert (await client.post('/agents/api/__entry/logout', cookies=a['cookies'])).status == 200
+        assert (await client.post('/agents/api/__entry/logout', cookies=other_a['cookies'])).status == 200
         assert await entry.store.get_session(sid) is None
         # All browser sessions may be gone; 5G/cron uploads still use the valid user authorization.
         await upload(grants[0], 'maas-alice-updated')
@@ -223,8 +223,8 @@ async def test_entry_shares_latest_jwt_across_user_logins_without_requiring_brow
 async def test_stable_credentials_bind_uploads_to_user_without_expiry_or_reissue_rotation(tmp_path):
     async with relay(tmp_path) as (client, entry, received, mode):
         a, b = await login(entry, 'alice'), await login(entry, 'bob')
-        assert (await client.post('/hermes/__entry/langfuse/grant', headers=a['headers'])).status == 401
-        assert (await client.post('/hermes/__entry/langfuse/grant', cookies=a['cookies'], headers=b['headers'])).status == 401
+        assert (await client.post('/agents/api/__entry/langfuse/grant', headers=a['headers'])).status == 401
+        assert (await client.post('/agents/api/__entry/langfuse/grant', cookies=a['cookies'], headers=b['headers'])).status == 401
         grants = {'alice': await issue(client, a), 'bob': await issue(client, b)}
         for owner in ('alice', 'bob', 'alice'):
             grant = grants[owner]
@@ -250,7 +250,7 @@ async def test_stable_credentials_bind_uploads_to_user_without_expiry_or_reissue
         assert (await client.post(route + '?target=https://elsewhere.invalid', auth=credentials(grant),
                                   headers={'Content-Type': 'application/x-protobuf'})).status == 400
         assert (await client.get(grant['base_path'] + '/api/public/projects', auth=credentials(grant))).status == 404
-        assert (await client.get('/hermes/__entry/me', auth=credentials(grant))).status == 401
+        assert (await client.get('/agents/api/__entry/me', auth=credentials(grant))).status == 401
         assert (await client.post(grant['base_path'] + '/api/public/otel/v1/traces',
             auth=aiohttp.BasicAuth(grant['public_key'], grants['bob']['secret_key']))).status == 401
         renewed = await issue(client, a)
@@ -274,15 +274,15 @@ async def test_stable_credentials_bind_uploads_to_user_without_expiry_or_reissue
         entry.langfuse_routes.purge()
         assert await issue(client, a) == renewed
         renewed = await issue(client, a)
-        await client.post('/hermes/__entry/logout', cookies=a['cookies'])
+        await client.post('/agents/api/__entry/logout', cookies=a['cookies'])
         response = await client.post(renewed['base_path'] + '/api/public/otel/v1/traces', auth=credentials(renewed),
                                      data=b'background-after-logout', headers={'Content-Type': 'application/x-protobuf'})
         assert response.status == 200
         assert await entry.store.langfuse_upload_user(grants['bob']['public_key'], grants['bob']['secret_key']) == 'bob'
-        response = await client.delete('/hermes/__entry/langfuse/grant', **b)
+        response = await client.delete('/agents/api/__entry/langfuse/grant', **b)
         assert response.status == 405
         assert await entry.store.langfuse_upload_user(grants['bob']['public_key'], grants['bob']['secret_key']) == 'bob'
-        await client.post('/hermes/__entry/logout', cookies=b['cookies'])
+        await client.post('/agents/api/__entry/logout', cookies=b['cookies'])
         assert await entry.store.langfuse_upload_user(grants['bob']['public_key'], grants['bob']['secret_key']) == 'bob'
 
 

@@ -83,11 +83,11 @@ check_blocked() { # $1=标签 $2=探针输出 $3=对照输出
 }
 
 login() { # $1=user $2=jar
-  curl -s -c "$2" -H 'Content-Type: application/json' -d "{\"user\":\"$1\"}" "$BASE/hermes/__entry/dev-login" -o "$TMP/login.$1.json" -w '%{http_code}'
+  curl -s -c "$2" -H 'Content-Type: application/json' -d "{\"user\":\"$1\"}" "$BASE/agents/api/__entry/dev-login" -o "$TMP/login.$1.json" -w '%{http_code}'
 }
 wait_backend() { # $1=jar ; 触发容器拉起，最多等 200s
   for _ in $(seq 1 40); do
-    body="$(curl -s -b "$1" --max-time 30 "$BASE/hermes/__hermes_backend/api/health" 2>/dev/null)"
+    body="$(curl -s -b "$1" --max-time 30 "$BASE/agents/api/__hermes_backend/api/health" 2>/dev/null)"
     case "$body" in *'"ok":true'*) return 0;; esac
     sleep 5
   done
@@ -97,23 +97,23 @@ ws_probe() { # $1=jar ; 输出握手状态 + 首帧
   curl -s -i -N --max-time 8 -b "$1" \
     -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' \
     -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' -H "Origin: $BASE" \
-    "$BASE/hermes/api/ws" 2>/dev/null | tr -d '\0' | head -c 4000
+    "$BASE/agents/api/ws" 2>/dev/null | tr -d '\0' | head -c 4000
 }
 files_json() { # $1=jar
-  curl -s -b "$1" "$BASE/hermes/__hermes_backend/api/files"
+  curl -s -b "$1" "$BASE/agents/api/__hermes_backend/api/files"
 }
 read_code() { # $1=jar $2=path
   curl -s -o /dev/null -w '%{http_code}' -b "$1" \
-    "$BASE/hermes/__hermes_backend/api/files/read?path=$2"
+    "$BASE/agents/api/__hermes_backend/api/files/read?path=$2"
 }
 
 echo "== 0. 未登录访问静态 → 302 登录页"
-code="$(curl -s -o /dev/null -w '%{http_code}' "$BASE/hermes/")"
-check "GET /hermes/ 未登录 -> $code" '[ "$code" = "302" ]'
+code="$(curl -s -o /dev/null -w '%{http_code}' "$BASE/agents/")"
+check "GET /agents/ 未登录 -> $code" '[ "$code" = "302" ]'
 
 echo "== 1. 用户 $A 登录并拉起容器"
 code="$(login "$A" "$TMP/a.jar")"; check "dev-login $A -> $code" '[ "$code" = "200" ]'
-code="$(curl -s -o /dev/null -w '%{http_code}' -b "$TMP/a.jar" "$BASE/hermes/")"; check "GET /hermes/ 已登录 -> $code" '[ "$code" = "200" ]'
+code="$(curl -s -o /dev/null -w '%{http_code}' -b "$TMP/a.jar" "$BASE/agents/")"; check "GET /agents/ 已登录 -> $code" '[ "$code" = "200" ]'
 check "$A 后端 health 通过入口可达" 'wait_backend "$TMP/a.jar"'
 out="$(ws_probe "$TMP/a.jar")"
 # 锚到状态行：旧版 grep " 101 " 在响应体里蒙到同样的三个字符就算过
@@ -171,8 +171,8 @@ check_blocked "$A 容器连不到平台 PostgreSQL:5432" "$(tcp_probe "$ca" "$ip
 entry_ip_on_a="$(docker inspect "$ENTRY_C" --format "{{(index .NetworkSettings.Networks \"$PREFIX-net-$A\").IPAddress}}" 2>/dev/null || true)"
 if [ -n "$entry_ip_on_a" ]; then
   # 对照必须证明「这条路由确实存在且回 200」，否则租户拿到 404 也会被当成围栏生效。
-  cp_ctl="$(http_probe "$ENTRY_C" "http://127.0.0.1:9400/hermes/__entry/health")"
-  cp_probe="$(http_probe "$ca" "http://$entry_ip_on_a:9400/hermes/__entry/health")"
+  cp_ctl="$(http_probe "$ENTRY_C" "http://127.0.0.1:9400/agents/api/__entry/health")"
+  cp_probe="$(http_probe "$ca" "http://$entry_ip_on_a:9400/agents/api/__entry/health")"
   check_blocked "$A 容器够不到入口控制面 9400/__entry/health" "$cp_probe" "$cp_ctl"
 else
   broken "入口没有接进 $PREFIX-net-$A，控制面这条没法判"
@@ -201,8 +201,8 @@ check_blocked "$A 容器内看不到宿主 docker.sock" "$sock" "$sock_ctl"
 echo "== 5. 文件链路与文件隔离（A、B 各传一个文件互为对照）"
 printf 'secret-of-%s\n' "$A" > "$TMP/note-a.txt"
 printf 'secret-of-%s\n' "$B" > "$TMP/note-b.txt"
-upa="$(curl -s -b "$TMP/a.jar" -F "file=@$TMP/note-a.txt" -F "path=verify-a.txt" "$BASE/hermes/__hermes_backend/api/files/upload-stream" -o /dev/null -w '%{http_code}')"
-upb="$(curl -s -b "$TMP/b.jar" -F "file=@$TMP/note-b.txt" -F "path=verify-b.txt" "$BASE/hermes/__hermes_backend/api/files/upload-stream" -o /dev/null -w '%{http_code}')"
+upa="$(curl -s -b "$TMP/a.jar" -F "file=@$TMP/note-a.txt" -F "path=verify-a.txt" "$BASE/agents/api/__hermes_backend/api/files/upload-stream" -o /dev/null -w '%{http_code}')"
+upb="$(curl -s -b "$TMP/b.jar" -F "file=@$TMP/note-b.txt" -F "path=verify-b.txt" "$BASE/agents/api/__hermes_backend/api/files/upload-stream" -o /dev/null -w '%{http_code}')"
 check "$A 上传文件 -> $upa" '[ "$upa" = "200" ]'
 check "$B 上传文件 -> $upb" '[ "$upb" = "200" ]'
 
@@ -219,7 +219,7 @@ else
   broken "$B 列不到 $A 的文件 —— 对照不成立（$B 连自己的文件都没列到）"
 fi
 
-curl -s -b "$TMP/a.jar" "$BASE/hermes/__hermes_backend/api/files/download?path=verify-a.txt" -o "$TMP/back.txt"
+curl -s -b "$TMP/a.jar" "$BASE/agents/api/__hermes_backend/api/files/download?path=verify-a.txt" -o "$TMP/back.txt"
 check "$A 下载回来内容一致" 'cmp -s "$TMP/note-a.txt" "$TMP/back.txt"'
 
 own="$(read_code "$TMP/b.jar" "verify-b.txt")"
@@ -241,11 +241,11 @@ else
 fi
 
 echo "== 6. 会话隔离：$A 的 cookie 拿不到 $B 的容器"
-ua="$(curl -s -b "$TMP/a.jar" "$BASE/hermes/__entry/me" | tr -d ' ')"
-ub="$(curl -s -b "$TMP/b.jar" "$BASE/hermes/__entry/me" | tr -d ' ')"
+ua="$(curl -s -b "$TMP/a.jar" "$BASE/agents/api/__entry/me" | tr -d ' ')"
+ub="$(curl -s -b "$TMP/b.jar" "$BASE/agents/api/__entry/me" | tr -d ' ')"
 check "$A 的 /me 是 $A" 'printf "%s" "$ua" | grep -q "\"user_id\":\"$A\""'
 check "$B 的 /me 是 $B" 'printf "%s" "$ub" | grep -q "\"user_id\":\"$B\""'
-nocookie="$(curl -s -o /dev/null -w '%{http_code}' "$BASE/hermes/__entry/me")"
+nocookie="$(curl -s -o /dev/null -w '%{http_code}' "$BASE/agents/api/__entry/me")"
 check "无 cookie 的 /me -> $nocookie (期望 401)" '[ "$nocookie" = "401" ]'
 
 echo

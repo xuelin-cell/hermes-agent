@@ -5,7 +5,7 @@ import { storeBrowserLogin } from '../../../shared/src/browser-maas-auth.js'
 
 import { browserExport } from './browser-export'
 
-const login = (id: string) => storeBrowserLogin('/hermes', { maas_auth: {
+const login = (id: string) => storeBrowserLogin('/agents/api', { maas_auth: {
   token: 'private-' + id, loginId: id, expiresAt: Date.now() + 120_000
 } })
 
@@ -22,7 +22,7 @@ it('Markdown 和 Word 复用真实封装后交浏览器下载，不访问上游�
   vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) { names.push(this.download) })
   const request = vi.fn()
   vi.stubGlobal('fetch', request)
-  const save = browserExport('/hermes', '/hermes/__hermes_backend')
+  const save = browserExport('/agents/api', '/agents/api/__hermes_backend')
   expect(await save({ format: 'md', name: '../中文.md', content: '# 中文' })).toEqual({ status: 'handed-off' })
   expect(await blobs[0].text()).toBe('# 中文')
   expect(await save({ format: 'docx', name: '中文.md', content: '<h1>中文</h1>' })).toEqual({ status: 'handed-off' })
@@ -42,11 +42,11 @@ it('PDF 仅发往同源实例，账号切换、错误响应和超限不会交付
   vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
   const request = vi.fn(async (_url: string, _options: RequestInit) => new Response('%PDF-fixture', { headers: { 'Content-Type': 'application/pdf' } }))
   vi.stubGlobal('fetch', request)
-  const save = browserExport('/hermes', '/hermes/__hermes_backend')
+  const save = browserExport('/agents/api', '/agents/api/__hermes_backend')
   const input = { format: 'pdf' as const, name: 'report.md', content: '<p>rendered snapshot</p>' }
   expect(await save(input)).toEqual({ status: 'handed-off' })
   const [url, options] = request.mock.calls[0]
-  expect(url).toBe('/hermes/__hermes_backend/__mt_user/preview-export')
+  expect(url).toBe('/agents/api/__hermes_backend/__mt_user/preview-export')
   expect(options.credentials).toBe('same-origin')
   expect(new Headers(options.headers).has('Authorization')).toBe(false)
   expect(JSON.parse(options.body as string)).toEqual({ content: input.content })

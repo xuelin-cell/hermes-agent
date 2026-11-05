@@ -22,7 +22,7 @@ const KEY = 'uniwork.welcome.modules.v3.'
 function accountScope(): string {
   if (!isBrowserShell()) {return ''}
 
-  try {return `cloud:${readBrowserAuth(import.meta.env.BASE_URL || '/')?.loginId || 'signed-out'}:`}
+  try {return `cloud:${readBrowserAuth(`${import.meta.env.BASE_URL || '/'}api`)?.loginId || 'signed-out'}:`}
   catch {return 'cloud:signed-out:'}
 }
 

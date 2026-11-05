@@ -91,7 +91,7 @@ async def test_kit_install_is_acknowledged_after_archive_and_retry_never_reinsta
             for owner in ('a', 'b'):
                 login = await entry._finish_login(owner, '', int((time.time() + 3600) * 1000))
                 auth[owner] = {'cookies': {name: value.value for name, value in login.cookies.items()}}
-            url = '/hermes/__entry/skills/'
+            url = '/agents/api/__entry/skills/'
             body = {'id': 'install-expert-a', 'method': 'POST', 'path': 'api/plugins/uniwork-kits/cloud/action',
                     'body': {'operation': 'install', 'name': 'demo-expert'}, 'profile': 'default'}
             assert (await client.post(url + 'start', json=body)).status == 401

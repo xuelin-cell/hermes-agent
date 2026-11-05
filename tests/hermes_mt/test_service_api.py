@@ -168,7 +168,7 @@ class Harness:
 async def _harness(database_url: str, ent: bool = False, **overrides):
     platform = await FakePlatform().start()
     instance = await FakeInstance().start()
-    settings = Settings(base_path="/hermes", database_url=database_url, credential_key=Fernet.generate_key().decode(),
+    settings = Settings(base_path="/agents", database_url=database_url, credential_key=Fernet.generate_key().decode(),
                         uniwork_server=platform.url, **{"service_secret": SECRET, **overrides})
     app = build_app(settings)
     hook = next(h for h in app.on_startup if isinstance(getattr(h, "__self__", None), Entry))

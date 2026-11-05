@@ -58,7 +58,7 @@ class MailRoutes:
                     file_id = file.get('fileId', '')
                     if not isinstance(file_id, str) or not re.fullmatch(r'[a-f0-9]{32}-[^/\\\x00-\x1f]{1,100}', file_id):
                         raise web.HTTPBadGateway(text='附件响应无效。')
-                    file['downloadUrl'] = self.entry.s.base_path + '/__hermes_backend/api/plugins/cloud-mail/attachments/' + quote(file_id, safe='')
+                    file['downloadUrl'] = self.entry.s.api_path('/__hermes_backend/api/plugins/cloud-mail/attachments/') + quote(file_id, safe='')
                 return web.json_response(result, headers={'Cache-Control': 'no-store'})
         except web.HTTPException as error:
             return web.json_response({'error': error.text}, status=error.status, headers={'Cache-Control': 'no-store'})

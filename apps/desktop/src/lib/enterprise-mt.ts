@@ -15,10 +15,10 @@ import type { ErrorCardText } from './error-surface-copy'
  * `lib/browser-shell.ts`.
  */
 
-/** True once the entry's `/__entry/me` reported an enterprise binding (the browser bridge sets it). */
+/** True once the entry's `/api/__entry/me` reported an enterprise binding (the browser bridge sets it). */
 export const $enterpriseShell = atom(false)
 
-/** Called by the browser bridge with the entry's `/__entry/me` body. */
+/** Called by the browser bridge with the entry's `/api/__entry/me` body. */
 export function noteEntryAccount(me: unknown): void {
   $enterpriseShell.set(Boolean(me && typeof me === 'object' && (me as { enterprise?: unknown }).enterprise))
 }

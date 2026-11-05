@@ -58,7 +58,7 @@ async def test_cube_bootstrap_provisions_isolated_stable_plugin_credentials(forw
         cfg = yaml.safe_load((home / 'config.yaml').read_text(encoding='utf-8'))
         assert cfg['plugins']['enabled'] == ['custom-plugin', 'observability/langfuse']
         assert 'USER_SECRET=keep-me' in env and 'HERMES_LANGFUSE_CAPTURE=full' in env
-        assert 'HERMES_LANGFUSE_BASE_URL=https://entry.example/hermes/__entry/langfuse' in env
+        assert 'HERMES_LANGFUSE_BASE_URL=https://entry.example/agents/api/__entry/langfuse' in env
         assert store.credentials[user_id].secret_key in env and 'maas-' not in env
         if user_id in before:
             assert before[user_id] == env

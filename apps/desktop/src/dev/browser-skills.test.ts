@@ -13,13 +13,13 @@ vi.mock('@/lib/query-client', () => ({ queryClient: { invalidateQueries: vi.fn()
 vi.mock('@/lib/slash-completion-cache', () => ({ invalidateSlashCompletions: vi.fn() }))
 const input = { method: 'POST' as const, path: '/api/skills/market/install', body: { id: 'writing', download_url: 'https://maas.ai-yuanjing.com/package.zip' } }
 const json = (value: unknown) => new Response(JSON.stringify(value), { headers: { 'Content-Type': 'application/json' } })
-const login = (id: string) => storeBrowserLogin('/hermes', { maas_auth: { token: 'private-' + id, loginId: id, expiresAt: Date.now() + 60_000 } })
+const login = (id: string) => storeBrowserLogin('/agents/api', { maas_auth: { token: 'private-' + id, loginId: id, expiresAt: Date.now() + 60_000 } })
 afterEach(() => { localStorage.clear(); delete window.document.documentElement.dataset.hermesBrowser; vi.unstubAllGlobals(); vi.clearAllMocks() })
 
 it('云端安装只提交一次并等待保存确认，成功后保持现有 REST 返回值及桌面能力约束', async () => {
   login('alice')
   window.document.documentElement.dataset.hermesBrowser = 'production'
-  const bridge = browserSkills('/hermes')
+  const bridge = browserSkills('/agents/api')
   vi.stubGlobal('hermesDesktop', { cloudSkillOperations: bridge })
   expect(skillMarketInstallPending('zh')).toBeNull()
   expect(isCloudSkillMutation('GET', '/api/skills')).toBe(false)
@@ -51,7 +51,7 @@ it('云端安装只提交一次并等待保存确认，成功后保持现有 RES
 
 it('保存失败提供仅重试保存的操作，不重复安装；账号切换后拒绝迟到结果', async () => {
   login('alice')
-  const bridge = browserSkills('/hermes')
+  const bridge = browserSkills('/agents/api')
   let saved = false
 
   const request = vi.fn(async (url: string, options: RequestInit) => {
@@ -70,7 +70,7 @@ it('保存失败提供仅重试保存的操作，不重复安装；账号切换�
   await waitFor(() => expect(request.mock.calls.filter(([url]) => url.endsWith('/retry-save'))).toHaveLength(1))
   await waitFor(() => expect(vi.mocked(notify).mock.calls.some(([value]) => value.kind === 'success')).toBe(true))
   expect(request.mock.calls.filter(([url]) => url.endsWith('/start'))).toHaveLength(1)
-  const other = browserSkills('/hermes')
+  const other = browserSkills('/agents/api')
   request.mockImplementationOnce(async () => { login('bob');
 
  return json({ id: 'old', phase: 'saved', result: { ok: true } }) })
@@ -79,7 +79,7 @@ it('保存失败提供仅重试保存的操作，不重复安装；账号切换�
 
 it('returns an uninstalled scan review and uses a fresh operation for hash approval', async () => {
   login('alice')
-  const bridge = browserSkills('/hermes')
+  const bridge = browserSkills('/agents/api')
   const review = { ok: false, requires_confirmation: true, package_hash: 'reviewed', report: 'DANGEROUS' }
   const request = vi.fn(async (_url: string, options: RequestInit) => {
     const body = JSON.parse(options.body as string)

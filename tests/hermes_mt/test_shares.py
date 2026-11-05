@@ -177,7 +177,7 @@ async def stack(tmp_path, database_url):
                     response = await entry._finish_login(user, '', int(__import__('time').time() * 1000) + 3600000, maas_token='maas-' + user)
                     credentials[user] = {name: cookie.value for name, cookie in response.cookies.items()}
                 async def call(user, kind, operation, data, expected=200):
-                    response = await client.post(f'/hermes/__entry/{kind}-shares/{operation}', json=data,
+                    response = await client.post(f'/agents/api/__entry/{kind}-shares/{operation}', json=data,
                         cookies=credentials[user], headers={'Authorization': 'Bearer maas-' + user})
                     result = await response.json()
                     assert response.status == expected, result
@@ -216,10 +216,10 @@ async def test_agent_publishes_through_entry_with_turn_and_login_bound_authority
         assert 'error' in await tool('alice', grant=grant)  # A completed turn cannot lend its authority.
         assert len(env.received) == count
         revoked = (await env.call('alice', 'artifact', 'grant', {'sessionId': 'runtime'}))['cloud_share']
-        blocked = await env.client.post('/hermes/api/plugins/conversation-share/internal/grant',
+        blocked = await env.client.post('/agents/api/plugins/conversation-share/internal/grant',
             json={}, cookies=env.credentials['alice'])
         assert blocked.status == 404
-        await env.client.post('/hermes/__entry/logout', cookies=env.credentials['alice'])
+        await env.client.post('/agents/api/__entry/logout', cookies=env.credentials['alice'])
         assert 'error' in await tool('alice', grant=revoked)
         bob = (await env.call('bob', 'artifact', 'grant', {'sessionId': 'runtime'}))['cloud_share']
         assert 'error' in await tool('bob', grant=bob, uploaded=True)

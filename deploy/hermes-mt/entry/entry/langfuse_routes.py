@@ -79,7 +79,7 @@ class LangfuseRoutes:
         credential = await self.entry.store.ensure_langfuse_credentials(identity.user_id)
         return web.json_response({
             'public_key': credential.public_key, 'secret_key': credential.secret_key,
-            'base_path': self.entry.s.path('/__entry/langfuse'),
+            'base_path': self.entry.s.api_path('/__entry/langfuse'),
         }, headers={'Cache-Control': 'no-store'})
 
     async def upload(self, request):

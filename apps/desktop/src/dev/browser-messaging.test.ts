@@ -8,7 +8,7 @@ describe('cloud messaging bridge', () => {
     const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({ platforms: [], status: 'connecting' })))
     vi.stubGlobal('fetch', fetcher)
     localStorage.setItem('maas-token', 'must-not-forward')
-    const bridge = browserMessaging('/hermes/')
+    const bridge = browserMessaging('/agents/api/')
     const listener=vi.fn()
     const off=bridge.onMessagingStatus(listener)
     await bridge.request({ path: '/api/plugins/desktop-messaging/platforms' })
@@ -16,7 +16,7 @@ describe('cloud messaging bridge', () => {
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({phase:'checking',platform:'uniagentgate'}))
     off()
     expect(fetcher.mock.calls.map(call => call[0])).toEqual([
-      '/hermes/__entry/messaging/platforms', '/hermes/__entry/messaging/reconnect'
+      '/agents/api/__entry/messaging/platforms', '/agents/api/__entry/messaging/reconnect'
     ])
     for (const call of fetcher.mock.calls) {
       expect(call[1]).toMatchObject({ credentials: 'same-origin', method: 'POST' })
@@ -30,9 +30,9 @@ describe('cloud messaging bridge', () => {
   it('saves DingTalk through entry and scopes status to the current operation', async () => {
     const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({ accepted: true, phase: 'checking' })))
     vi.stubGlobal('fetch', fetcher)
-    const bridge = browserMessaging('/hermes/')
+    const bridge = browserMessaging('/agents/api/')
     await bridge.messagingSetup({ operation: 'save', platform: 'dingtalk', env: { DINGTALK_CLIENT_ID: 'app', DINGTALK_CLIENT_SECRET: 'secret' } })
-    expect(fetcher.mock.calls[0]?.[0]).toBe('/hermes/__entry/messaging/save')
+    expect(fetcher.mock.calls[0]?.[0]).toBe('/agents/api/__entry/messaging/save')
     expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body))).toMatchObject({ platform: 'dingtalk', operation: 'save' })
     const snapshot = await bridge.messagingStatus()
     expect(JSON.parse(String(fetcher.mock.calls[1]?.[1]?.body))).toEqual({ platform: 'dingtalk' })
@@ -56,7 +56,7 @@ describe('cloud messaging bridge', () => {
   it('does not report successful setup on an unauthorized or unconfigured entry', async () => {
     const fetcher = vi.fn(async () => new Response('集中消息接入尚未部署。', { status: 503 }))
     vi.stubGlobal('fetch', fetcher)
-    const bridge = browserMessaging('/hermes/')
+    const bridge = browserMessaging('/agents/api/')
     await expect(bridge.reconnectUniAgentGate()).rejects.toThrow('尚未部署')
     expect(await bridge.messagingStatus()).toMatchObject({ phase: 'idle' })
     await expect(bridge.messagingSetup({ operation: 'save', platform: 'feishu', profile: 'other' })).rejects.toThrow('尚未')
@@ -67,14 +67,14 @@ describe('cloud messaging bridge', () => {
 it('routes Weixin QR APIs to entry and saves WeCom credentials through the same bridge', async () => {
   const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({ state: 'wait' })))
   vi.stubGlobal('fetch', fetcher)
-  const bridge = browserMessaging('/hermes/')
+  const bridge = browserMessaging('/agents/api/')
   await bridge.request({ path: '/api/plugins/weixin-qr/login/start?profile=default', method: 'POST', body: {} })
   await bridge.request({ path: '/api/plugins/weixin-qr/login/session-1?profile=default' })
   await bridge.request({ path: '/api/plugins/weixin-qr/unbind', method: 'POST' })
   await bridge.messagingSetup({ operation: 'save', platform: 'wecom', env: { WECOM_BOT_ID: 'bot', WECOM_SECRET: 'secret' } })
   expect(fetcher.mock.calls.map(call => call[0])).toEqual([
-    '/hermes/__entry/messaging/weixin-start', '/hermes/__entry/messaging/weixin-status',
-    '/hermes/__entry/messaging/weixin-unbind', '/hermes/__entry/messaging/save'
+    '/agents/api/__entry/messaging/weixin-start', '/agents/api/__entry/messaging/weixin-status',
+    '/agents/api/__entry/messaging/weixin-unbind', '/agents/api/__entry/messaging/save'
   ])
   expect(JSON.parse(String(fetcher.mock.calls[1]?.[1]?.body))).toEqual({ platform: 'weixin', session_id: 'session-1' })
   expect(JSON.parse(String(fetcher.mock.calls[3]?.[1]?.body))).toMatchObject({ platform: 'wecom', env: { WECOM_BOT_ID: 'bot', WECOM_SECRET: 'secret' } })

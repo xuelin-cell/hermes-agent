@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { storeBrowserLogin } from '../../../shared/src/browser-maas-auth.js'
 import { browserAccount } from './browser-account'
 
-const login = (owner: string) => storeBrowserLogin('/hermes', { maas_auth: { token: 'login-'+owner, loginId: owner, expiresAt: Date.now()+60000 } })
+const login = (owner: string) => storeBrowserLogin('/agents/api', { maas_auth: { token: 'login-'+owner, loginId: owner, expiresAt: Date.now()+60000 } })
 const json = (value: unknown) => new Response(JSON.stringify(value), { headers: { 'Content-Type': 'application/json' } })
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); localStorage.clear() })
 
@@ -13,7 +13,7 @@ it('fixed notification routes keep per-tab cursors and discard account-switched 
   let stale: ((value: Response) => void) | undefined
   let polling = 0
   const fetcher = vi.fn(async (url: string, init: RequestInit) => {
-    expect(url).toContain('/hermes/__entry/account/notify-')
+    expect(url).toContain('/agents/api/__entry/account/notify-')
     expect(init.credentials).toBe('same-origin')
     if (url.endsWith('notify-poll')) {
       polling++
@@ -24,7 +24,7 @@ it('fixed notification routes keep per-tab cursors and discard account-switched 
     return json({ state: 'online' })
   })
   vi.stubGlobal('fetch', fetcher)
-  const bridge=browserAccount('/hermes')
+  const bridge=browserAccount('/agents/api')
   const listener=vi.fn()
   bridge.ntfy.onEvent(listener)
   await bridge.ntfy.start()
@@ -51,7 +51,7 @@ it('speech sends bounded PCM to fixed routes and cannot reuse a session after ac
     return json({ ok: true })
   })
   vi.stubGlobal('fetch',fetcher)
-  const bridge=browserAccount('/hermes')
+  const bridge=browserAccount('/agents/api')
   const id=await bridge.uniworkAsr.start('zh')
   await bridge.uniworkAsr.audio(id,new Uint8Array([1,0,2,0]))
   await expect(bridge.uniworkAsr.audio(id,new Uint8Array(32770))).rejects.toThrow()

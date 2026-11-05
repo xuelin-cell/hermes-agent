@@ -190,14 +190,14 @@ async def test_cloud_qr_errors_are_actionable_and_refresh_can_recover(postgres_d
             entry.http=Wire()
             login=await entry._finish_login('alice','key',None)
             cookies={name:value.value for name,value in login.cookies.items()}
-            response=await client.post('/hermes/__entry/messaging/weixin-start',json={},cookies=cookies)
+            response=await client.post('/agents/api/__entry/messaging/weixin-start',json={},cookies=cookies)
             text=await response.text()
             assert response.status==(504 if failure=='timeout' else 502)
             assert '微信二维码服务' in text and 'private-upstream-body' not in text
             assert ('503' if failure=='http' else '超时' if failure=='timeout' else '返回异常') in text
             assert 'alice' not in entry.messaging_routes.weixin_qr.sessions
             mode[0]='ok'
-            retried=await client.post('/hermes/__entry/messaging/weixin-start',json={},cookies=cookies)
+            retried=await client.post('/agents/api/__entry/messaging/weixin-start',json={},cookies=cookies)
             assert retried.status==200
             result=await retried.json()
             assert result['state']=='wait' and result['qr_content']=='https://weixin.qq.com/scan'

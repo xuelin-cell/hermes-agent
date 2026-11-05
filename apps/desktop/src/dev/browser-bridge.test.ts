@@ -89,7 +89,7 @@ describe('browser development bridge', () => {
       expiresAt: 1_800_000_000_000,
       maskedPhone: '186****5230'
     })
-    expect(calls).toEqual(['/__entry/me'])
+    expect(calls).toEqual(['/api/__entry/me'])
 
     // The dev server answers every path with the page; signed out, the entry says 401.
     globalThis.fetch = vi.fn(
@@ -112,7 +112,7 @@ describe('browser development bridge', () => {
     const { $enterpriseShell } = await import('@/lib/enterprise-mt')
 
     await vi.waitFor(() => expect($enterpriseShell.get()).toBe(true))
-    expect(calls).toEqual(['/__entry/me'])
+    expect(calls).toEqual(['/api/__entry/me'])
   })
 
   it('tells the page whether the entry runs in enterprise mode', async () => {
@@ -872,10 +872,10 @@ describe('browser bridge: the instance’s terminal', () => {
     const folder = '/opt/data/workspace/20261028-120000'
     globalThis.fetch = vi.fn(async () => jsonResponse({ ok: true, path: folder })) as typeof fetch
     expect(await window.hermesDesktop.createConversationFolder!('/opt/data/workspace')).toBe(folder)
-    expect(globalThis.fetch).toHaveBeenLastCalledWith('/__hermes_backend/__mt_user/files/conversation-create',
+    expect(globalThis.fetch).toHaveBeenLastCalledWith('/api/__hermes_backend/__mt_user/files/conversation-create',
       expect.objectContaining({ method: 'POST', credentials: 'same-origin', body: JSON.stringify({ defaultCwd: '/opt/data/workspace' }) }))
     await window.hermesDesktop.discardConversationFolder!(folder)
-    expect(globalThis.fetch).toHaveBeenLastCalledWith('/__hermes_backend/__mt_user/files/conversation-discard',
+    expect(globalThis.fetch).toHaveBeenLastCalledWith('/api/__hermes_backend/__mt_user/files/conversation-discard',
       expect.objectContaining({ method: 'POST', credentials: 'same-origin', body: JSON.stringify({ path: folder }) }))
     globalThis.fetch = vi.fn(async () => jsonResponse({ ok: false, code: 'draining' }, 503)) as typeof fetch
     await expect(window.hermesDesktop.createConversationFolder!('/opt/data/workspace')).rejects.toThrow()
@@ -887,7 +887,7 @@ describe('browser bridge: the instance’s terminal', () => {
     const socket = FakeSocket.sockets[0]!
 
     expect(socket.url).toBe(
-      `ws://${window.location.host}/__hermes_backend/__mt_user/terminal?cols=100&cwd=%2Fopt%2Fdata%2Fworkspace&rows=30`
+      `ws://${window.location.host}/api/__hermes_backend/__mt_user/terminal?cols=100&cwd=%2Fopt%2Fdata%2Fworkspace&rows=30`
     )
 
     // The first prompt can arrive before the panel subscribes; it must not be lost.
@@ -1010,8 +1010,20 @@ describe('the two cloud entries (desktop-mt)', () => {
 
     await window.hermesDesktop.api({ path: '/api/config' })
     await window.hermesDesktop.api({ path: '/api/config', profile: 'expert' })
-    expect(calls).toContain('/__hermes_backend/api/config')
-    expect(calls).toContain('/__hermes_backend/api/config?profile=expert')
+    expect(calls).toContain('/api/__hermes_backend/api/config')
+    expect(calls).toContain('/api/__hermes_backend/api/config?profile=expert')
+  })
+
+  it('reaches the personal entry under the api prefix, where the login is stored too', async () => {
+    const { storeBrowserLogin } = await import('../../../shared/src/browser-maas-auth.js')
+
+    storeBrowserLogin('/api', { maas_auth: { token: 'login-token', loginId: 'alice', expiresAt: Date.now() + 60_000 } })
+
+    const calls = await installFor({ user_id: 'u1' })
+
+    await window.hermesDesktop.getPlanUsage?.()
+    expect(calls.some(url => url.endsWith('/api/__entry/plan/usage'))).toBe(true)
+    localStorage.clear()
   })
 
   it('leaves them out for an enterprise account, whose agents are profiles on the one serve', async () => {
@@ -1023,7 +1035,7 @@ describe('the two cloud entries (desktop-mt)', () => {
     expect(window.hermesDesktop.terminal).toBeDefined()
 
     await window.hermesDesktop.api({ path: '/api/config' })
-    expect(calls).toContain('/__hermes_backend/api/config?profile=default')
+    expect(calls).toContain('/api/__hermes_backend/api/config?profile=default')
 
     const roster = await window.hermesDesktop.getAgentRoster?.()
 

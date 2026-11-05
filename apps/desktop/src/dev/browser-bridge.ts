@@ -52,10 +52,16 @@ function browserBasePath(): string {
   return base.endsWith('/') ? base : `${base}/`
 }
 
+// The entry's and the instance's APIs sit under `api/` below the pages: the unified-login gateway only
+// guards that prefix. It is also the base the browser login is stored under (browser-maas-auth.js).
+function browserApiBase(): string {
+  return `${browserBasePath()}api/`
+}
+
 // Same-origin Vite proxy avoids weakening the backend's production CORS
 // policy just for browser-based renderer development.
 function apiPrefix(): string {
-  return productionBrowserBuild ? `${browserBasePath()}__hermes_backend` : '/__hermes_backend'
+  return productionBrowserBuild ? `${browserApiBase()}__hermes_backend` : '/__hermes_backend'
 }
 
 function devBackendUrl(): string {
@@ -108,17 +114,17 @@ function credentials(): RequestCredentials {
 
 // desktop-mt: two entries serve this one page. The personal entry has the drive, mail, plan, shares, kits
 // and messaging; the enterprise entry (MT_UNIWORK_SERVER, the management platform) has none of them and
-// hosts agents as profiles instead. Which one this is comes with `/__entry/me`, before the rest of the
+// hosts agents as profiles instead. Which one this is comes with `/api/__entry/me`, before the rest of the
 // app loads (main-mt.ts); anything but an enterprise answer means the personal entry.
 function personalCloud(): boolean {
   return productionBrowserBuild && !$enterpriseShell.get()
 }
 
-const cloudSkillOperations = browserSkills(browserBasePath())
+const cloudSkillOperations = browserSkills(browserApiBase())
 
-const cloudMessaging = browserMessaging(browserBasePath())
-const cloudKitOperations = browserSkills(browserBasePath(), 'kits')
-const cloudKits = browserKits(browserBasePath(), connection(), request => cloudKitOperations.mutate(request))
+const cloudMessaging = browserMessaging(browserApiBase())
+const cloudKitOperations = browserSkills(browserApiBase(), 'kits')
+const cloudKits = browserKits(browserApiBase(), connection(), request => cloudKitOperations.mutate(request))
 
 // desktop-mt: with agents, one serve hosts every profile and REST names the one it means
 // (browser-profiles-mt.ts). The personal entry only hears of a profile when the caller names one.
@@ -838,10 +844,10 @@ interface EntryMe {
   user_id?: string
 }
 
-/** Who is signed in, from the entry's `/__entry/me`. Null where nothing answers it with JSON (the
+/** Who is signed in, from the entry's `/api/__entry/me`. Null where nothing answers it with JSON (the
  *  dev server, the test bench): the statusbar then shows no account. */
 async function getMaasAccount(): Promise<LoginAccount | null> {
-  const base = browserBasePath()
+  const base = browserApiBase()
   const login = productionBrowserBuild ? readBrowserAuth(base) : null
   const response = await fetch(`${base}__entry/me`, { credentials: 'same-origin' })
 
@@ -876,7 +882,7 @@ async function getMaasAccount(): Promise<LoginAccount | null> {
 
 /** Signing out is the entry's: `/logout` ends the session and returns to the sign-in page. */
 async function logoutMaasAccount(): Promise<void> {
-  clearBrowserAuth(browserBasePath())
+  clearBrowserAuth(browserApiBase())
   window.location.assign(`${browserBasePath()}logout`)
 }
 
@@ -1336,7 +1342,7 @@ export function installBrowserDevelopmentBridge(): boolean {
     window.addEventListener('storage', event => {
       if (
         event.key === null ||
-        (event.key === browserAuthKey(browserBasePath()) && event.oldValue !== event.newValue)
+        (event.key === browserAuthKey(browserApiBase()) && event.oldValue !== event.newValue)
       ) {
         window.location.reload()
       }
@@ -1348,22 +1354,22 @@ export function installBrowserDevelopmentBridge(): boolean {
 
   // desktop-mt: what only the personal entry serves, see personalCloud().
   const personalCapabilities = () => ({
-    ...browserInterrupted(browserBasePath(), api),
-    ...browserAccount(browserBasePath()),
+    ...browserInterrupted(browserApiBase(), api),
+    ...browserAccount(browserApiBase()),
     ...cloudKits,
     cloudSkillOperations,
     ...cloudMessaging,
-    ...browserMail(browserBasePath()),
-    ...browserConnectors(browserBasePath()),
+    ...browserMail(browserApiBase()),
+    ...browserConnectors(browserApiBase()),
     createConversationFolder: async (defaultCwd: string) =>
       (await instanceFiles<{ path: string | null }>('conversation-create', { defaultCwd })).path,
     discardConversationFolder: async (path: string) => {
       await instanceFiles('conversation-discard', { path })
     },
-    ...browserShares(browserBasePath()),
-    ...browserDrive(browserBasePath()),
-    ...browserPlan(browserBasePath()),
-    exportPreview: browserExport(browserBasePath(), apiPrefix()),
+    ...browserShares(browserApiBase()),
+    ...browserDrive(browserApiBase()),
+    ...browserPlan(browserApiBase()),
+    exportPreview: browserExport(browserApiBase(), apiPrefix()),
     getAgentRoster: async () => ({ agents: [] }),
     getProfileRoutes: async () => [],
     getWelcomeCatalog: (locale: WelcomeLocale) => {
@@ -1371,7 +1377,7 @@ export function installBrowserDevelopmentBridge(): boolean {
         return Promise.reject(new Error('Invalid locale'))
       }
 
-      return requestEntryMaas<WelcomePayload>(browserBasePath(), `welcome/${locale}`)
+      return requestEntryMaas<WelcomePayload>(browserApiBase(), `welcome/${locale}`)
     }
   })
 
@@ -1456,7 +1462,7 @@ export function installBrowserDevelopmentBridge(): boolean {
     onPreviewFileChanged: noopOff,
     onPreviewNav: noopOff,
     onWindowStateChanged: noopOff,
-    openExternal: async (url: string) => productionBrowserBuild && openMailAttachment(browserBasePath(), url) || openWebPage(url),
+    openExternal: async (url: string) => productionBrowserBuild && openMailAttachment(browserApiBase(), url) || openWebPage(url),
     openPreviewInBrowser,
     profile: {
       get: async () => ({ profile: 'default' }),
@@ -1501,7 +1507,7 @@ export function installBrowserDevelopmentBridge(): boolean {
 
   Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: bridge })
   document.documentElement.dataset.hermesBrowser = productionBrowserBuild ? 'production' : 'development'
-  // The entry's enterprise mode comes with `/__entry/me` (lib/enterprise-mt.ts). The account item that asks for it
+  // The entry's enterprise mode comes with `/api/__entry/me` (lib/enterprise-mt.ts). The account item that asks for it
   // is only mounted in the chat sidebar, and a page opened on the Bots tab never shows it: ask once at start.
   const account = getMaasAccount().catch(() => null)
 

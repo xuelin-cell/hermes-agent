@@ -31,7 +31,7 @@ def callback_base(entry, request, provider):
     origin = urlsplit(scheme + '://' + host)
     if scheme not in {'http', 'https'} or not origin.hostname or origin.username or origin.password or origin.path or origin.query or origin.fragment:
         raise ValueError('Invalid callback origin')
-    return scheme + '://' + host + entry.s.base_path + '/__entry/connectors/' + provider
+    return scheme + '://' + host + entry.s.api_path('/__entry/connectors/' + provider)
 
 
 def cookie_name(provider, state):
@@ -52,7 +52,7 @@ class ConnectorOAuth:
         ticket = {'sid': session.sid, 'provider': provider, 'state': state, 'origin': origin, 'expires': time.time() + 900, 'profile': profile}
         encrypted = self.entry.store.cipher.encrypt(json.dumps(ticket)).decode('ascii')
         response.set_cookie('hermes_connector_oauth_' + provider if profile == 'default' else cookie_name(provider, state), encrypted, max_age=900,
-            path=self.entry.s.base_path + '/__entry/connectors/' + provider + '/oauth/callback',
+            path=self.entry.s.api_path('/__entry/connectors/' + provider + '/oauth/callback'),
             httponly=True, secure=self.entry.s.cookie_secure, samesite='Lax')
 
     async def callback(self, request):
@@ -88,5 +88,5 @@ class ConnectorOAuth:
                 'Referrer-Policy': 'no-referrer', 'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'"})
         if provider in HOSTS:
             response.del_cookie(name,
-                path=self.entry.s.base_path + '/__entry/connectors/' + provider + '/oauth/callback')
+                path=self.entry.s.api_path('/__entry/connectors/' + provider + '/oauth/callback'))
         return response

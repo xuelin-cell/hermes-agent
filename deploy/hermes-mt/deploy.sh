@@ -792,7 +792,7 @@ cmd_up() {
         sleep 3
     done
     [ "$st" = healthy ] && ok "入口 healthy" || die "入口 120s 内没 healthy：docker logs $PROJECT-entry"
-    docker exec "$PROJECT-nginx" wget -q -O /dev/null -T 5 http://entry:9400/hermes/__entry/health && ok "nginx -> 入口 通" || die "nginx 连不到入口"
+    docker exec "$PROJECT-nginx" wget -q -O /dev/null -T 5 http://entry:9400/agents/api/__entry/health && ok "nginx -> 入口 通" || die "nginx 连不到入口"
     [ "$(docker logs --since 3m "$PROJECT-entry" 2>&1 | grep -cE 'Traceback|ERROR')" = 0 ] && ok "入口日志没有报错" || warn "入口日志有报错：docker logs $PROJECT-entry"
     [ "$(docker inspect -f '{{json .Mounts}}' "$PROJECT-entry")" = "[]" ] && ok "入口没有挂载 docker.sock" || warn "入口有挂载：$(docker inspect -f '{{json .Mounts}}' "$PROJECT-entry")"
     [ "$(foreign_containers)" = "$foreign_before" ] && ok "别人的容器仍是 $foreign_before 个" || die "别人的容器数变了（$foreign_before -> $(foreign_containers)），马上查"
@@ -989,7 +989,7 @@ cmd_all() {
     cmd_template
     cmd_up
     say "摘要"
-    printf '  代码 %s  镜像 %s:%s  模板 %s  页面 http://%s/hermes/\n' \
+    printf '  代码 %s  镜像 %s:%s  模板 %s  页面 http://%s/agents/\n' \
         "$(head_short)" "$IMAGE_NAME" "$(cat "$HERE/.image-fingerprint")" "$TEMPLATE" "$HTTP_PORT"
     local stale
     stale="$(our_sandboxes | awk -v t="$TEMPLATE" '$3 != t' | wc -l)"

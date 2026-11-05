@@ -32,7 +32,7 @@ from .proxy import proxy_http, proxy_ws
 from .backup import BackupJob
 from .enterprise import EnterpriseSync
 from .s3lite import S3Lite
-from .service import ServiceApi
+from .service import RUNTIMES_PATH, ServiceApi
 from .store import EnterpriseBinding, Session, Store
 from .share_store import ShareStore
 from .share_gateway import ShareGateway
@@ -874,29 +874,29 @@ class Entry:
                 log.warning("cron wake tick skipped: %s", type(exc).__name__)
 
 
-def _add_personal_routes(app: web.Application, entry: Entry, path) -> None:
+def _add_personal_routes(app: web.Application, entry: Entry, api) -> None:
     """只有普通版（不连管理后台）才有的路由：云盘、邮箱、分享、套餐、消息平台、连接器和它们要的浏览器令牌。"""
-    app.router.add_get(path("/__entry/browser-auth.js"), entry.browser_auth_script)
-    app.router.add_post(path("/__entry/maas-auth"), entry.maas_auth_status)
-    app.router.add_post(path("/__entry/langfuse/grant"), entry.langfuse_routes.issue)
-    app.router.add_post(path("/__entry/langfuse/api/public/otel/v1/traces"), entry.langfuse_routes.upload)
-    app.router.add_post(path("/__entry/{kind:conversation|artifact}-shares/{operation}"), entry.share_routes.handle)
-    app.router.add_post(path("/__entry/skills/{operation}"), entry.skill_routes.handle)
-    app.router.add_post(path("/__entry/welcome/{locale}"), entry.welcome_routes.handle)
-    app.router.add_post(path("/__entry/plan/{operation}"), entry.plan_routes.handle)
-    app.router.add_post(path("/__entry/account/{operation}"), entry.account_routes.handle)
-    app.router.add_post(path("/__entry/mail"), entry.mail_routes.handle)
-    app.router.add_post(path("/__entry/connectors"), entry.connector_routes.handle)
-    app.router.add_get(path("/__entry/connectors/{provider}/oauth/callback"), entry.connector_routes.oauth.callback)
+    app.router.add_get(api("/__entry/browser-auth.js"), entry.browser_auth_script)
+    app.router.add_post(api("/__entry/maas-auth"), entry.maas_auth_status)
+    app.router.add_post(api("/__entry/langfuse/grant"), entry.langfuse_routes.issue)
+    app.router.add_post(api("/__entry/langfuse/api/public/otel/v1/traces"), entry.langfuse_routes.upload)
+    app.router.add_post(api("/__entry/{kind:conversation|artifact}-shares/{operation}"), entry.share_routes.handle)
+    app.router.add_post(api("/__entry/skills/{operation}"), entry.skill_routes.handle)
+    app.router.add_post(api("/__entry/welcome/{locale}"), entry.welcome_routes.handle)
+    app.router.add_post(api("/__entry/plan/{operation}"), entry.plan_routes.handle)
+    app.router.add_post(api("/__entry/account/{operation}"), entry.account_routes.handle)
+    app.router.add_post(api("/__entry/mail"), entry.mail_routes.handle)
+    app.router.add_post(api("/__entry/connectors"), entry.connector_routes.handle)
+    app.router.add_get(api("/__entry/connectors/{provider}/oauth/callback"), entry.connector_routes.oauth.callback)
     cloud_bindings = CloudBindingRoutes(entry)
     for method in ("PUT", "GET", "DELETE"):
-        app.router.add_route(method,path("/api/channels/uniagentgate/cloud-binding/{user_id}"),cloud_bindings.handle)
-    app.router.add_get(path("/__entry/messaging/media/{id}"), entry.messaging_routes.media)
-    app.router.add_post(path("/__entry/messaging/wake"), entry.messaging_routes.wake)
-    app.router.add_post(path("/__entry/messaging/{operation}"), entry.messaging_routes.handle)
-    app.router.add_post(path("/__entry/drive/part/{id}"), entry.drive_routes.part)
-    app.router.add_get(path("/__entry/drive/files/{id}"), entry.drive_routes.download)
-    app.router.add_post(path("/__entry/drive/{operation}"), entry.drive_routes.handle)
+        app.router.add_route(method,api("/channels/uniagentgate/cloud-binding/{user_id}"),cloud_bindings.handle)
+    app.router.add_get(api("/__entry/messaging/media/{id}"), entry.messaging_routes.media)
+    app.router.add_post(api("/__entry/messaging/wake"), entry.messaging_routes.wake)
+    app.router.add_post(api("/__entry/messaging/{operation}"), entry.messaging_routes.handle)
+    app.router.add_post(api("/__entry/drive/part/{id}"), entry.drive_routes.part)
+    app.router.add_get(api("/__entry/drive/files/{id}"), entry.drive_routes.download)
+    app.router.add_post(api("/__entry/drive/{operation}"), entry.drive_routes.handle)
 
 
 def build_app(settings: Settings = SETTINGS) -> web.Application:
@@ -906,29 +906,30 @@ def build_app(settings: Settings = SETTINGS) -> web.Application:
         middlewares=[origin_middleware(settings.origin_check), database_error_middleware],
     )
     path = settings.path
+    api = settings.api_path
     app.router.add_get(path("/login"), entry.login_page)
     if not settings.enterprise:
-        _add_personal_routes(app, entry, path)
-    app.router.add_get(path("/__entry/config"), entry.config)
-    app.router.add_get(path("/__entry/health"), entry.health)
-    app.router.add_get(path("/__entry/auth"), entry.auth)
-    app.router.add_get(path("/__entry/me"), entry.me)
-    app.router.add_get(path("/__entry/captcha"), entry.captcha)
-    app.router.add_post(path("/__entry/send-code"), entry.send_code)
-    app.router.add_post(path("/__entry/login"), entry.login)
-    app.router.add_post(path("/__entry/dev-login"), entry.dev_login)
+        _add_personal_routes(app, entry, api)
+    app.router.add_get(api("/__entry/config"), entry.config)
+    app.router.add_get(api("/__entry/health"), entry.health)
+    app.router.add_get(api("/__entry/auth"), entry.auth)
+    app.router.add_get(api("/__entry/me"), entry.me)
+    app.router.add_get(api("/__entry/captcha"), entry.captcha)
+    app.router.add_post(api("/__entry/send-code"), entry.send_code)
+    app.router.add_post(api("/__entry/login"), entry.login)
+    app.router.add_post(api("/__entry/dev-login"), entry.dev_login)
     # 企业模式（MT_UNIWORK_SERVER）才有用，个人模式回 404
-    app.router.add_post(path("/__entry/select-tenant"), entry.select_tenant)
-    app.router.add_get(path("/__entry/enterprise"), entry.enterprise)
-    app.router.add_post(path("/__entry/logout"), entry.logout)
+    app.router.add_post(api("/__entry/select-tenant"), entry.select_tenant)
+    app.router.add_get(api("/__entry/enterprise"), entry.enterprise)
+    app.router.add_post(api("/__entry/logout"), entry.logout)
     app.router.add_get(path("/logout"), entry.logout_page)
-    app.router.add_get(path("/api/ws"), entry.ws)
+    app.router.add_get(api("/ws"), entry.ws)
     # 要在下面那条「其余全部转给实例」之前注册：路由按注册顺序匹配。
-    app.router.add_get(path("/__hermes_backend/__mt_user/terminal"), entry.terminal)
-    app.router.add_route("*", path("/__hermes_backend/{tail:.*}"), entry.backend)
+    app.router.add_get(api("/__hermes_backend/__mt_user/terminal"), entry.terminal)
+    app.router.add_route("*", api("/__hermes_backend/{tail:.*}"), entry.backend)
     # 平台调用云端运行智能体（docs/企业版对接/15）；没配 MT_UNIWORK_SERVICE_SECRET 时整组回 404
     svc = ServiceApi(entry)
-    runtimes = path("/__entry/service/v1/runtimes")
+    runtimes = RUNTIMES_PATH
     app.router.add_get(runtimes, svc.list_runtimes)
     app.router.add_put(runtimes + "/{key}", svc.put_runtime)
     app.router.add_delete(runtimes + "/{key}", svc.delete_runtime)

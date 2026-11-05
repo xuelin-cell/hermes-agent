@@ -13,7 +13,7 @@ afterEach(() => {
 })
 
 function transport() {
-  storeBrowserLogin('/hermes/', { maas_auth: { token: 'login-token', expiresAt: Date.now() + 60000, loginId: 'login' } })
+  storeBrowserLogin('/agents/api/', { maas_auth: { token: 'login-token', expiresAt: Date.now() + 60000, loginId: 'login' } })
   const requests: Array<{ path: string; body: Record<string, unknown> }> = []
   const channels: Array<{ onmessage?: (event: { data: string }) => void; postMessage: (key: string) => void }> = []
   vi.stubGlobal('BroadcastChannel', class {
@@ -33,7 +33,7 @@ function transport() {
 
 it('preserves conversation contracts over authenticated entry transport without contacting an instance directly', async () => {
   const requests = transport()
-  const { conversationShare } = browserShares('/hermes/')
+  const { conversationShare } = browserShares('/agents/api/')
   const owner = { connectionId: 'local', profile: 'default' }
   const request = { sessionId: 'chat', scope: 'response' as const, responseRowId: 12, includeProcess: false }
   await conversationShare.prepare(owner, request)
@@ -42,22 +42,22 @@ it('preserves conversation contracts over authenticated entry transport without 
   await conversationShare.cancel('ticket')
   await conversationShare.list(owner, 'chat')
   await conversationShare.revoke('record-key')
-  expect(requests.map(r => r.path)).toEqual(['prepare', 'image', 'publish', 'cancel', 'list', 'revoke'].map(op => `/hermes/__entry/conversation-shares/${op}`))
+  expect(requests.map(r => r.path)).toEqual(['prepare', 'image', 'publish', 'cancel', 'list', 'revoke'].map(op => `/agents/api/__entry/conversation-shares/${op}`))
   expect(requests[0].body).toEqual({ owner, request })
   expect(requests[2].body).toEqual({ ticket: 'ticket', html: '<html>snapshot</html>' })
   expect(requests[4].body).toEqual({ owner, sessionId: 'chat' })
-  await browserShares('/hermes/').prepareCloudShareTurn('runtime')
-  expect(requests.at(-1)).toEqual({ path: '/hermes/__entry/artifact-shares/grant', body: { sessionId: 'runtime' } })
+  await browserShares('/agents/api/').prepareCloudShareTurn('runtime')
+  expect(requests.at(-1)).toEqual({ path: '/agents/api/__entry/artifact-shares/grant', body: { sessionId: 'runtime' } })
   localStorage.clear()
   const count = requests.length
-  expect(await browserShares('/hermes/').prepareCloudShareTurn('runtime')).toBeNull()
+  expect(await browserShares('/agents/api/').prepareCloudShareTurn('runtime')).toBeNull()
   expect(requests).toHaveLength(count)
 })
 
 it('notifies artifact consumers across tabs while preserving source hashes and expected share IDs', async () => {
   const requests = transport()
-  const first = browserShares('/hermes/').artifactShare
-  const second = browserShares('/hermes/').artifactShare
+  const first = browserShares('/agents/api/').artifactShare
+  const second = browserShares('/agents/api/').artifactShare
   const listener = vi.fn()
   const unsubscribe = second.onChanged(listener)
   const source = { sessionId: 'chat', path: '/workspace/report.html', hash: 'source-hash' }
