@@ -153,7 +153,7 @@ function ChatHeader({
         className={titlebarHeaderTitleClass}
         style={{
           maxWidth:
-            'calc(100vw - var(--titlebar-content-inset,0px) - var(--titlebar-tools-right) - var(--titlebar-tools-width) - 1.5rem)'
+            'min(20rem, 100%, calc(100vw - var(--titlebar-content-inset,0px) - var(--titlebar-tools-right) - var(--titlebar-tools-width) - 1.5rem))'
         }}
       >
         <h1 className="min-w-0 truncate text-base font-bold text-foreground" title={title}>{title}</h1>

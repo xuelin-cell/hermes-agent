@@ -1701,6 +1701,10 @@ def activate_codex_app_server_fallback(agent: Any, result: Dict[str, Any]) -> bo
     raising, so the generic classify -> ``fallback_providers`` chain never saw it (#71633).
     Classify that text; on a billing / rate-limit verdict activate the configured fallback and
     return True so the caller re-runs the same user turn on the generic loop."""
+    # Code sessions promise Codex-owned execution; surface failures rather than
+    # re-running the same request through the generic Hermes tool loop.
+    if getattr(agent, "_desktop_code_mode", False):
+        return False
     error = result.get("error")
     if not error or result.get("interrupted") or not agent._has_pending_fallback():
         return False
