@@ -3229,6 +3229,7 @@ export const zh = defineLocale({
   },
 
   messaging: {
+    platformLabels: { uniagentgate: '5G 消息' },
     connection: messagingConnectionCopy['zh'],
     cards: {
       heading: '聊天应用',

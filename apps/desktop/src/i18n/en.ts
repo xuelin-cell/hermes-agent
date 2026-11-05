@@ -3446,6 +3446,7 @@ export const en: Translations = {
   },
 
   messaging: {
+    platformLabels: { uniagentgate: '5G Messaging' },
     connection: messagingConnectionCopy['en'],
     cards: {
       heading: 'Chat apps',

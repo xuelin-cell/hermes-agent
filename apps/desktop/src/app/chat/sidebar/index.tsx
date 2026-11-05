@@ -1441,14 +1441,21 @@ export function ChatSidebar({
           // the seed fetch was capped, so assume more until a per-platform load
           // resolves the count.
           hasMore: unpinnedKnown != null ? unpinnedKnown > ordered.length : messagingTruncated,
-          label: sessionSourceLabel(sourceId) ?? sourceId,
+          label: sessionSourceLabel(sourceId, t.messaging.platformLabels) ?? sourceId,
           sessions: ordered,
           sourceId,
           total
         }
       })
       .sort((a, b) => sessionTime(b.sessions[0]) - sessionTime(a.sessions[0]))
-  }, [visibleMessagingSessions, messagingPlatformTotals, messagingTruncated, isPinnedSession, messagingProfile])
+  }, [
+    visibleMessagingSessions,
+    messagingPlatformTotals,
+    messagingTruncated,
+    isPinnedSession,
+    messagingProfile,
+    t.messaging.platformLabels
+  ])
 
   // Recents and every messaging platform resolve owner groups the same way
   // ([connectionId, profile]), so a platform's groups line up with recents.

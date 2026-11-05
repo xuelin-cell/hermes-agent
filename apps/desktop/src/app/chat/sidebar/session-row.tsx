@@ -265,7 +265,11 @@ function SidebarSessionRowImpl({
   // messaging platform — surface that origin as a small badge so e.g. a
   // Telegram thread continued here still reads as Telegram.
   const handoffSource = handoffOriginSource(session.handoff_state, session.handoff_platform)
-  const handoffLabel = handoffSource ? (sessionSourceLabel(handoffSource) ?? handoffSource) : null
+
+  const handoffLabel = handoffSource
+    ? (sessionSourceLabel(handoffSource, t.messaging.platformLabels) ?? handoffSource)
+    : null
+
   // The same resolved state the row's dot paints, so the arc and the dot cannot
   // contradict each other. A selector, not a plain useStore: the map is rebuilt
   // whenever any session's status changes, but a row only repaints on its own.

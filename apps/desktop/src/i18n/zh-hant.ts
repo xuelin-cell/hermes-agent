@@ -2553,6 +2553,7 @@ export const zhHant = defineLocale({
   },
 
   messaging: {
+    platformLabels: { uniagentgate: '5G 訊息' },
     connection: messagingConnectionCopy['zh-hant'],
     cards: {
       heading: '聊天應用',

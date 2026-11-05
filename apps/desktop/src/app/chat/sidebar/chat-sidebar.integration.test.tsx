@@ -9,7 +9,7 @@ import { group, split } from '@/components/pane-shell/tree/model'
 import { $layoutTree, noteActiveTreeGroup } from '@/components/pane-shell/tree/store'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { registry } from '@/contrib/registry'
-import { TRANSLATIONS } from '@/i18n'
+import { I18nProvider, type Locale, TRANSLATIONS } from '@/i18n'
 import { $connectionsRegistry } from '@/store/connection-registry-state'
 import { $developerMode } from '@/store/developer-mode'
 import { setInterfaceMode } from '@/store/interface-mode'
@@ -55,7 +55,8 @@ const renderSidebar = (
   pathname: string,
   currentView: AppView,
   onRetrySessions: () => Promise<void> = noopAsync,
-  workspaceTabs = false
+  workspaceTabs = false,
+  locale?: Locale
 ) =>
   render(
     <MemoryRouter initialEntries={[pathname]}>
@@ -76,7 +77,16 @@ const renderSidebar = (
           onTriggerCronJob={noopAsync}
         />
       </SidebarProvider>
-    </MemoryRouter>
+    </MemoryRouter>,
+    locale
+      ? {
+          wrapper: ({ children }) => (
+            <I18nProvider configClient={null} initialLocale={locale}>
+              {children}
+            </I18nProvider>
+          )
+        }
+      : undefined
   )
 
 const currentButtons = () =>
@@ -600,7 +610,11 @@ describe('ChatSidebar empty-profile sections', () => {
     expect(screen.queryByPlaceholderText('Search sessions…')).toBeNull()
   })
 
-  it('shows RCS history in its own collapsible platform section beside local chats and WeChat', () => {
+  it.each([
+    ['en', '5G Messaging'],
+    ['zh', '5G 消息'],
+    ['zh-hant', '5G 訊息']
+  ] as const)('shows a localized, collapsible RCS section in %s', (locale, label) => {
     $sessions.set([makeSessionInfo({ id: 'local-chat', source: 'desktop', title: 'Local conversation' })])
     $messagingSessions.set([
       makeSessionInfo({
@@ -619,14 +633,14 @@ describe('ChatSidebar empty-profile sections', () => {
       })
     ])
     $sidebarMessagingOpenIds.set(['uniagentgate', 'weixin'])
-    renderSidebar('/', 'chat')
-    const section = screen.getByText('5G 消息').closest('[data-slot="sidebar-group"]')!
+    renderSidebar('/', 'chat', undefined, false, locale)
+    const section = screen.getByText(label).closest('[data-slot="sidebar-group"]')!
     expect(within(section as HTMLElement).getByText('RCS history')).toBeTruthy()
     expect(within(section as HTMLElement).queryByText('Local conversation')).toBeNull()
     expect(within(section as HTMLElement).queryByText('WeChat history')).toBeNull()
     expect(screen.getAllByText('WeChat').length).toBeGreaterThan(0)
     expect(screen.getByText('Local conversation')).toBeTruthy()
-    fireEvent.click(within(section as HTMLElement).getByRole('button', { name: '5G 消息' }))
+    fireEvent.click(within(section as HTMLElement).getByRole('button', { name: label }))
     expect(within(section as HTMLElement).queryByText('RCS history')).toBeNull()
     expect(screen.getByText('WeChat history')).toBeTruthy()
   })

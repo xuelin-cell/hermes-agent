@@ -2806,6 +2806,7 @@ export interface Translations {
   }
 
   messaging: {
+    platformLabels: Record<string, string>
     connection: MessagingConnectionCopy
     cards: {
       heading: string
