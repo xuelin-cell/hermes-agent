@@ -192,15 +192,18 @@ it('账号卡片只保留顶部刷新入口，展开收起不搬动套餐状态�
   const status = await screen.findByText(message)
   const settings = screen.getByRole('link', { name: '设置' })
   const usageRow = screen.getByRole('button', { name: /套餐实际用量/ })
+  const follows = (before: Element, after: Element) =>
+    Boolean(before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING)
   expect(usageRow.querySelector('.account-card-summary')?.textContent).toBe('已使用 25.00%')
   expect(usageRow.hasAttribute('disabled')).toBe(false)
-  expect(status.nextElementSibling).toBe(settings)
+  expect(follows(usageRow, status)).toBe(true)
+  expect(follows(status, settings)).toBe(true)
   expect(screen.queryByRole('button', { name: '刷新用量' })).toBeNull()
   for (const expanded of [true, false]) {
     fireEvent.click(usageRow)
     expect(usageRow.getAttribute('aria-expanded')).toBe(String(expanded))
     expect(screen.getByText(message)).toBe(status)
-    expect(status.nextElementSibling).toBe(settings)
+    expect(follows(status, settings)).toBe(true)
     expect(screen.queryByRole('button', { name: '刷新用量' })).toBeNull()
     expect(screen.queryByRole('progressbar') !== null).toBe(expanded)
   }

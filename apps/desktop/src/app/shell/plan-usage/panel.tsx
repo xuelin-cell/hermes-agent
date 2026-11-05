@@ -363,6 +363,7 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
       <PopoverContent
         side="top"
         align="start"
+        collisionPadding={6}
         variant="menu"
         className={trigger ? 'plan-usage-card account-card' : 'plan-usage-card'}
       >
@@ -431,9 +432,10 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
                 <span className="account-card-summary">{expirySummary}</span>
               </div>
               {statusNotice}
+              <div className="account-card-divider" />
               <button
                 type="button"
-                className="account-card-row"
+                className="account-card-row account-card-update"
                 onClick={() => {
                   setOpen(false)
                   void requestUpdateCheck()
