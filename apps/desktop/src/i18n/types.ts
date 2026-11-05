@@ -3995,6 +3995,11 @@ export interface Translations {
     version: (value: string) => string
     versionUnavailable: string
     checkNow: string
+    checkForUpdates: string
+    updateDialogTitle: string
+    upToDate: string
+    gotIt: string
+    updateCheckFailed: string
     seeWhatsNew: string
     releaseNotes: string
     onLatest: string
