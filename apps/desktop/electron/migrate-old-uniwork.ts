@@ -8,7 +8,19 @@ export {
   MIGRATION_TARGET_DIR,
   MIGRATION_COMPLETED_MARKER,
   MIGRATION_LOG_FILE,
+  MAC_LIMA_HOME_SUBDIR,
+  MAC_LIMA_INSTANCE,
+  MAC_HOST_USERDATA_SUBPATH,
+  VM_EXTRACT_DIR,
+  VM_TAR_PATH,
+  HOST_TAR_PATH,
+  defaultRunner,
   detectOldUniworkUserData,
   copyTreeNoOverwrite,
-  migrateOldUniworkData
+  migrateWinOldUniworkData,
+  detectMacOldUniwork,
+  extractMacSessionsFromVm,
+  migrateMacOldUniworkData,
+  migrateOldUniworkData,
+  migrateOldUniworkToWorkspace
 } from './migrate-old-uniwork.mjs'
