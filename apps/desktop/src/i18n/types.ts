@@ -214,6 +214,12 @@ export interface Translations {
     unavailableDescription: string
   }
   desktopLogin: {
+    legalLinksLabel: string
+    legalConsentPrefix: string
+    privacyPolicy: string
+    legalConsentConnector: string
+    userAgreement: string
+    legalOpenError: string
     planUsage: {
       restart: string
       actualUsage: string

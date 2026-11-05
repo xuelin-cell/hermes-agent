@@ -1,9 +1,12 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { TRANSLATIONS } from '@/i18n/catalog'
 import { I18nProvider } from '@/i18n/context'
+import type { Locale } from '@/i18n/types'
 
 import type { LoginResult, PlanResult } from '../../../electron/login/contract'
+import { LOGIN_LEGAL_DOCUMENTS } from '../../../electron/login/legal-documents'
 
 import { LoginPage } from './page'
 
@@ -29,6 +32,45 @@ function fill(fields = { phone: '13800000000', captcha: 'abcd', sms: '123456' })
 }
 
 describe('桌面登录表单', () => {
+  it.each<Locale>(['zh', 'en', 'zh-hant'])('以 %s 显示协议并通过登录桥打开，失败后表单仍然可用', async locale => {
+    const copy = TRANSLATIONS[locale].desktopLogin
+    const openLegalDocument = vi.fn().mockResolvedValue(true)
+    window.hermesLogin = {
+      openLegalDocument,
+      restore: vi.fn().mockResolvedValue({ ok: false }),
+      plan: vi.fn(),
+      captcha: vi.fn().mockResolvedValue({ ok: false }),
+      sendSms: vi.fn(),
+      login: vi.fn()
+    }
+    render(
+      <I18nProvider configClient={null} initialLocale={locale}>
+        <LoginPage />
+      </I18nProvider>
+    )
+    const nav = await screen.findByRole('navigation', { name: copy.legalLinksLabel })
+    expect(nav.textContent).toContain(copy.legalConsentPrefix)
+    const form = screen.getByRole('button', { name: copy.submit }).closest('form')!
+    expect(form.contains(nav)).toBe(true)
+
+    for (const [key, label] of [
+      ['privacy', copy.privacyPolicy],
+      ['service', copy.userAgreement]
+    ] as const) {
+      const link = screen.getByRole('link', { name: label })
+      expect(link.getAttribute('href')).toBe(LOGIN_LEGAL_DOCUMENTS[key])
+      expect(link.getAttribute('target')).toBe('_blank')
+      fireEvent.click(link)
+      await waitFor(() => expect(openLegalDocument).toHaveBeenLastCalledWith(key))
+    }
+
+    openLegalDocument.mockResolvedValueOnce(false)
+    fireEvent.click(screen.getByRole('link', { name: copy.privacyPolicy }))
+    await screen.findByText(copy.legalOpenError)
+    expect(window.hermesLogin.login).not.toHaveBeenCalled()
+    expect((screen.getByLabelText(copy.phone) as HTMLInputElement).disabled).toBe(false)
+  })
+
   it('发送短信先校验输入，失败可修正刷新，成功显示倒计时并禁止重复发送', async () => {
     const captcha = vi.fn().mockResolvedValue({
       ok: true,
@@ -37,6 +79,7 @@ describe('桌面登录表单', () => {
 
     const sendSms = vi.fn().mockResolvedValueOnce({ ok: false, error: 'failed' })
     window.hermesLogin = {
+      openLegalDocument: vi.fn().mockResolvedValue(true),
       restore: vi.fn().mockResolvedValue({ ok: false }),
       plan: vi.fn().mockResolvedValue({ status: 'empty' }),
       captcha,
@@ -45,10 +88,17 @@ describe('桌面登录表单', () => {
     }
     renderLogin()
     await screen.findByRole('img', { name: '图形验证码' })
-    fireEvent.click(screen.getByRole('button', { name: '发送验证码' }))
+    const sendButton = screen.getByRole<HTMLButtonElement>('button', { name: '发送验证码' })
+    expect(sendButton.disabled).toBe(true)
+    fill({ phone: '12800000000', captcha: 'abcd', sms: '' })
+    expect(sendButton.disabled).toBe(true)
+    fill({ phone: '13800000000', captcha: '  ', sms: '' })
+    expect(sendButton.disabled).toBe(true)
+    fireEvent.click(sendButton)
     expect(sendSms).not.toHaveBeenCalled()
     fill()
-    fireEvent.click(screen.getByRole('button', { name: '发送验证码' }))
+    expect(sendButton.disabled).toBe(false)
+    fireEvent.click(sendButton)
     await screen.findByText('发送失败，请检查输入或刷新图片后重试。')
     expect(sendSms).toHaveBeenCalledWith({ phone: '13800000000', captchaCode: 'abcd', captchaId: 'test-id' })
     expect((screen.getByRole('button', { name: '发送验证码' }) as HTMLButtonElement).disabled).toBe(false)
@@ -82,6 +132,7 @@ describe('桌面登录表单', () => {
   it('依次显示字段错误，不把不合格输入传给登录动作', async () => {
     const submit = vi.fn()
     window.hermesLogin = {
+      openLegalDocument: vi.fn().mockResolvedValue(true),
       restore: vi.fn().mockResolvedValue({ ok: false }),
       plan: vi.fn().mockResolvedValue({ status: 'empty' }),
       captcha: vi
@@ -92,16 +143,24 @@ describe('桌面登录表单', () => {
     }
     renderLogin()
     await screen.findByLabelText('手机号')
-    const form = screen.getByRole('button', { name: '登录' }).closest('form')!
+    const button = screen.getByRole<HTMLButtonElement>('button', { name: '登录' })
+    const form = button.closest('form')!
+    expect(button.disabled).toBe(true)
+    fill({ phone: '12800000000', captcha: '', sms: '123456' })
+    expect(button.disabled).toBe(true)
     fireEvent.submit(form)
     expect(screen.getByRole('alert').textContent).toContain('11 位手机号')
     fill({ phone: '13800000000', captcha: '', sms: '' })
+    expect(button.disabled).toBe(true)
     fireEvent.submit(form)
     expect(screen.getByRole('alert').textContent).toContain('6 位数字')
     fill({ phone: '13800000000', captcha: 'abcd', sms: '123' })
+    expect(button.disabled).toBe(false)
     fireEvent.submit(form)
     expect(screen.getByRole('alert').textContent).toContain('6 位数字')
     expect(submit).not.toHaveBeenCalled()
+    fill({ phone: '13800000000', captcha: '', sms: '123456' })
+    expect(button.disabled).toBe(false)
   })
 
   it('提交期间禁用输入并合并重复提交，失败后展示安全错误并可重试', async () => {
@@ -115,6 +174,7 @@ describe('桌面登录表单', () => {
     )
 
     window.hermesLogin = {
+      openLegalDocument: vi.fn().mockResolvedValue(true),
       restore: vi.fn().mockResolvedValue({ ok: false }),
       plan: vi.fn().mockResolvedValue({ status: 'empty' }),
       captcha: vi
@@ -146,6 +206,7 @@ describe('桌面登录表单', () => {
     const imageDataUrl = 'data:image/png;base64,aGVsbG8='
     const captcha = vi.fn().mockResolvedValue({ ok: true, captcha: { captchaId: 'first', imageDataUrl } })
     window.hermesLogin = {
+      openLegalDocument: vi.fn().mockResolvedValue(true),
       restore: vi.fn().mockResolvedValue({ ok: false }),
       plan: vi.fn().mockResolvedValue({ status: 'empty' }),
       captcha,
@@ -173,6 +234,7 @@ describe('桌面登录表单', () => {
       .mockResolvedValue({ ok: true, account: { maskedPhone: '138****0000', expiresAt: Date.now() + 60_000 } })
 
     window.hermesLogin = {
+      openLegalDocument: vi.fn().mockResolvedValue(true),
       restore: vi.fn().mockResolvedValue({ ok: false }),
       plan: vi.fn().mockResolvedValue({ status: 'empty' }),
       captcha: vi.fn().mockResolvedValue({ ok: false }),
@@ -207,6 +269,7 @@ describe('桌面登录表单', () => {
     const captcha = vi.fn().mockResolvedValue({ ok: false })
     const login = vi.fn()
     window.hermesLogin = {
+      openLegalDocument: vi.fn().mockResolvedValue(true),
       restore,
       plan: vi.fn().mockResolvedValue({ status: 'empty' }),
       captcha,
@@ -234,6 +297,7 @@ describe('桌面登录表单', () => {
   it('恢复通信失败回到可用登录表单，不回显错误细节', async () => {
     const captcha = vi.fn().mockResolvedValue({ ok: false })
     window.hermesLogin = {
+      openLegalDocument: vi.fn().mockResolvedValue(true),
       restore: vi.fn().mockRejectedValue(new Error('private-restore-detail')),
       plan: vi.fn().mockResolvedValue({ status: 'empty' }),
       captcha,
@@ -262,6 +326,7 @@ describe('桌面登录表单', () => {
     )
 
     window.hermesLogin = {
+      openLegalDocument: vi.fn().mockResolvedValue(true),
       restore: vi.fn().mockResolvedValue({
         ok: true,
         account: { maskedPhone: '138****0000', expiresAt: Date.now() + 60_000 }

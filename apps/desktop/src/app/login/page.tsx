@@ -1,6 +1,6 @@
 import './login.css'
 
-import { type FormEvent, useEffect, useRef, useState } from 'react'
+import { type FormEvent, type MouseEvent, useEffect, useRef, useState } from 'react'
 
 import loginBrandLogo from '@/assets/login-brand-logo.png'
 import { ConnectingScreen } from '@/components/ui/connecting-screen'
@@ -8,6 +8,7 @@ import { Loader } from '@/components/ui/loader'
 import { useI18n } from '@/i18n/context'
 
 import type { LoginAccount } from '../../../electron/login/contract'
+import { LOGIN_LEGAL_DOCUMENTS, type LoginLegalDocument } from '../../../electron/login/legal-documents'
 
 import { useCaptcha } from './use-captcha'
 import { useSms } from './use-sms'
@@ -29,12 +30,14 @@ export function LoginPage() {
   const sms = useSms(bridge)
   const [fields, setFields] = useState<LoginFields>({ phone: '', captchaCode: '', smsCode: '' })
 
-  const [error, setError] = useState<'phoneError' | 'captchaError' | 'smsError' | 'requestError' | 'storageError' | 'expired' | null>(
-    null
-  )
+  const [error, setError] = useState<
+    'phoneError' | 'captchaError' | 'smsError' | 'requestError' | 'storageError' | 'expired' | 'legalOpenError' | null
+  >(null)
 
   const [pending, setPending] = useState(false)
   const submitting = useRef(false)
+  const phoneValid = /^1[3-9]\d{9}$/.test(fields.phone)
+  const captchaCode = fields.captchaCode.trim()
 
   useEffect(() => {
     if (!bridge) {
@@ -123,10 +126,7 @@ export function LoginPage() {
 
   /** 先校验手机号和当前图片输入，通过后才调用主进程发送短信。 */
   async function sendSms(): Promise<void> {
-    const phone = fields.phone.trim()
-    const captchaCode = fields.captchaCode.trim()
-
-    if (!/^1\d{10}$/.test(phone)) {
+    if (!phoneValid) {
       return setError('phoneError')
     }
 
@@ -135,23 +135,19 @@ export function LoginPage() {
     }
 
     setError(null)
-    await sms.send({ phone, captchaCode, captchaId: image.captcha.captchaId })
+    await sms.send({ phone: fields.phone, captchaCode, captchaId: image.captcha.captchaId })
   }
 
   /** 只提交手机号与短信码，主进程确认登录后清空页面输入。 */
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
 
-    if (!window.hermesLogin || account || submitting.current || sms.pending) {
+    if (!bridge || account || submitting.current || sms.pending) {
       return
     }
 
-    const values = {
-      phone: fields.phone.trim(),
-      smsCode: fields.smsCode.trim()
-    }
-
-    const invalid = !/^1\d{10}$/.test(values.phone) ? 'phoneError' : !/^\d{6}$/.test(values.smsCode) ? 'smsError' : null
+    const { phone, smsCode } = fields
+    const invalid = !phoneValid ? 'phoneError' : !/^\d{6}$/.test(smsCode) ? 'smsError' : null
 
     setError(invalid)
 
@@ -163,7 +159,7 @@ export function LoginPage() {
     setPending(true)
 
     try {
-      const result = await window.hermesLogin.login({ phone: values.phone, smsCode: values.smsCode })
+      const result = await bridge.login({ phone, smsCode })
 
       if (!result.ok) {
         setError(result.reason === 'storage' ? 'storageError' : 'requestError')
@@ -178,6 +174,22 @@ export function LoginPage() {
     } finally {
       submitting.current = false
       setPending(false)
+    }
+  }
+
+  async function openLegalDocument(event: MouseEvent<HTMLAnchorElement>, document: LoginLegalDocument): Promise<void> {
+    if (!bridge) {
+      return
+    }
+
+    event.preventDefault()
+
+    try {
+      if (!(await bridge.openLegalDocument(document))) {
+        setError('legalOpenError')
+      }
+    } catch {
+      setError('legalOpenError')
     }
   }
 
@@ -288,7 +300,15 @@ export function LoginPage() {
                 />
                 <button
                   className="login-send-btn"
-                  disabled={!window.hermesLogin || !image.captcha || pending || sms.pending || sms.seconds > 0}
+                  disabled={
+                    !bridge ||
+                    !phoneValid ||
+                    !captchaCode ||
+                    !image.captcha ||
+                    pending ||
+                    sms.pending ||
+                    sms.seconds > 0
+                  }
                   onClick={() => void sendSms()}
                   type="button"
                 >
@@ -311,9 +331,35 @@ export function LoginPage() {
             <p className="login-error" id="login-error" role="alert">
               {error ? copy[error] : ''}
             </p>
-            <button className="login-btn" disabled={!window.hermesLogin || pending || sms.pending} type="submit">
+            <button
+              className="login-btn"
+              disabled={!bridge || !phoneValid || !fields.smsCode || pending || sms.pending}
+              type="submit"
+            >
               {pending ? <Loader className="size-5" label={copy.submit} /> : copy.submit}
             </button>
+            <nav aria-label={copy.legalLinksLabel} className="login-legal-consent">
+              <span>{copy.legalConsentPrefix}</span>
+              <a
+                className="login-legal-link"
+                href={LOGIN_LEGAL_DOCUMENTS.privacy}
+                onClick={event => void openLegalDocument(event, 'privacy')}
+                rel="noopener noreferrer"
+                target="_blank"
+              >
+                {copy.privacyPolicy}
+              </a>
+              <span>{copy.legalConsentConnector}</span>
+              <a
+                className="login-legal-link"
+                href={LOGIN_LEGAL_DOCUMENTS.service}
+                onClick={event => void openLegalDocument(event, 'service')}
+                rel="noopener noreferrer"
+                target="_blank"
+              >
+                {copy.userAgreement}
+              </a>
+            </nav>
           </form>
         )}
         {!window.hermesLogin && (

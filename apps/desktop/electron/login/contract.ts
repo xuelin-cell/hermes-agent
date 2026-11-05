@@ -1,4 +1,7 @@
+import type { LoginLegalDocument } from './legal-documents'
+
 export const CAPTCHA_CHANNEL = 'hermes-login:captcha'
+export const OPEN_LEGAL_CHANNEL = 'hermes-login:open-legal'
 export const SEND_SMS_CHANNEL = 'hermes-login:send-sms'
 export const LOGIN_CHANNEL = 'hermes-login:login'
 export const RESTORE_CHANNEL = 'hermes-login:restore'
@@ -112,6 +115,8 @@ export interface LoginCaptcha {
 export type CaptchaResult = { ok: true; captcha: LoginCaptcha } | { ok: false }
 
 export interface DesktopLoginBridge {
+  /** 仅打开固定的登录协议，不接受页面提供的外部地址。 */
+  openLegalDocument(document: LoginLegalDocument): Promise<boolean>
   /** 读取主进程保管的完整记录，仅返回未到期账号的脱敏展示信息。 */
   restore(): Promise<LoginResult>
   /** 套餐独立查询，只返回名称与默认标记，不返回模型 Key 或地址。 */
