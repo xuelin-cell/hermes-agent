@@ -1628,17 +1628,17 @@ export function ChatBar({
   )
 }
 
+/** 加载占位复用正式停靠列，避免输入框就绪时突然改变宽度。 */
 export function ChatBarFallback() {
   return (
-    <div
-      className={cn(
-        'group/composer absolute bottom-0 left-1/2 z-30 w-[min(var(--composer-width),calc(100%-2rem))] max-w-full -translate-x-1/2 rounded-2xl pt-2 pb-[var(--composer-shell-pad-block-end)]',
-        'bg-linear-to-b from-transparent to-background/55'
-      )}
-      data-slot="composer-root"
-    >
-      <div className="composer-fallback-surface relative isolate h-(--composer-fallback-height) w-full rounded-[inherit] border border-[color-mix(in_srgb,var(--dt-composer-ring)_calc(18%*var(--composer-ring-strength)),var(--dt-input))]">
-        <div aria-hidden className={composerInputBacking} />
+    <div className="absolute bottom-0 left-1/2 z-30 max-w-full -translate-x-1/2 pt-2" data-slot="composer-dock">
+      <div
+        className="group/composer relative w-full rounded-2xl bg-linear-to-b from-transparent to-background/55"
+        data-slot="composer-root"
+      >
+        <div className="composer-fallback-surface relative isolate h-(--composer-fallback-height) w-full rounded-[inherit] border border-[color-mix(in_srgb,var(--dt-composer-ring)_calc(18%*var(--composer-ring-strength)),var(--dt-input))]">
+          <div aria-hidden className={composerInputBacking} />
+        </div>
       </div>
     </div>
   )
