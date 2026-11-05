@@ -80,6 +80,7 @@ const windowsFormat = process.env.HERMES_WINDOWS_FORMAT || (appInstallerManaged 
 const winFeed = channel && windowsUpdater
   ? feedContract.win32Feed(channel === 'canary' || channel === 'light-canary' ? 'canary' : 'stable', light)
   : null
+const artifactStem = `${store ? 'Store-' : ''}${artifactNamePascal}-\${version}-\${os}-\${arch}`
 
 /** @satisfies {Configuration} */
 module.exports = {
@@ -96,7 +97,7 @@ module.exports = {
   // A store build is archived, never served to a feed — prefix its artifact
   // so it can't collide with the out-of-store MSIX of the same tag/arch, and
   // the release pipeline can keep the two apart.
-  artifactName: `${store ? 'Store-' : ''}${artifactNamePascal}-\${version}-\${os}-\${arch}`,
+  artifactName: artifactStem,
   icon: 'assets/icon',
   // The electron-updater feed. CI builds set CLOUDFLARE_R2_PUBLIC_URL (the R2
   // public bucket / custom domain) and publish there — the feed yml, blockmaps
@@ -166,6 +167,9 @@ module.exports = {
     unpack: ['**/*.node', '**/prebuilds/**', 'dist/**']
   },
   mac: {
+    // Signing consumers expand the global stem without a format; macOS targets
+    // know their format and must keep DMG, ZIP and their blockmaps distinct.
+    artifactName: `${artifactStem}.\${ext}`,
     // The afterSign hook owns notarization, including keychain-profile builds.
     notarize: false,
     // The packaged client reads this generated app-update.yml by default.
