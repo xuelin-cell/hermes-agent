@@ -13,7 +13,7 @@ import { $treeDragging, NEW_SESSION_DRAG, SESSION_TILE_DRAG } from '../store'
 
 import { TreeGroup } from './tree-group'
 
-vi.mock('@/store/conversation-share', () => ({ openConversationShare: vi.fn() }))
+vi.mock('@/store/conversation-share', () => ({ notifyConversationShareError: vi.fn(), openConversationShare: vi.fn(async () => undefined) }))
 
 let root: null | Root = null
 let container: HTMLDivElement | null = null

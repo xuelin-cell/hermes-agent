@@ -4,8 +4,7 @@ import { useSessionView } from '@/app/chat/session-view'
 import { TooltipIconButton } from '@/components/assistant-ui/tooltip-icon-button'
 import { useI18n } from '@/i18n'
 import { Share2 } from '@/lib/icons'
-import { openConversationShare } from '@/store/conversation-share'
-import { notifyError } from '@/store/notifications'
+import { notifyConversationShareError, openConversationShare } from '@/store/conversation-share'
 
 interface ConversationReplyShareButtonProps {
   messageId: string
@@ -30,13 +29,11 @@ export function ConversationReplyShareButton({ messageId }: ConversationReplySha
   return (
     <TooltipIconButton
       disabled={busy || awaiting}
-      onClick={() => {
-        try {
-          openConversationShare(sessionId, message.rowId)
-        } catch (error) {
-          notifyError(error, t.conversationShare.unavailable)
-        }
-      }}
+      onClick={() =>
+        void openConversationShare(sessionId, message.rowId).catch(error =>
+          notifyConversationShareError(error, t.conversationShare)
+        )
+      }
       tooltip={t.conversationShare.responseShare}
     >
       <Share2 className="size-3.5" />

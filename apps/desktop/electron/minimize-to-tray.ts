@@ -1,7 +1,9 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, Tray } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, Tray } from 'electron'
+
+import { createTrayIcon } from './app-icon'
 
 export interface MinimizeToTrayStatus {
   enabled: boolean
@@ -162,19 +164,7 @@ export function createMinimizeToTray(options: Options) {
           return status()
         }
 
-        const iconPath = options.getIconPath()
-        const icon = iconPath ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty()
-
-        if (icon.isEmpty()) {
-          throw new Error('No usable tray icon')
-        }
-
-        tray = new Tray(
-          icon.resize({
-            width: process.platform === 'darwin' ? 18 : 24,
-            height: process.platform === 'darwin' ? 18 : 24
-          })
-        )
+        tray = new Tray(createTrayIcon(options.getIconPath()))
         tray.setToolTip('UniWork')
         tray.setContextMenu(
           Menu.buildFromTemplate([

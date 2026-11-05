@@ -13,7 +13,10 @@ import type { ShareIdentity } from '../artifact-share/service'
 import { writeSecretFileAtomic } from '../hardening'
 import { deleteSharedPage, uploadShareHtml } from '../share-gateway'
 
-const MAX_HTML_BYTES = 2 * 1024 * 1024
+// 与 uniclaw-shares 网关所在服务的 SHARE_MAX_BYTES 默认值一致（5,000,000 字节）。
+const MAX_HTML_BYTES = 5_000_000
+const REMOTE_IMAGE_TIMEOUT_MS = 15_000
+const IMAGE_MIME = /^image\/(?:png|jpeg|gif|webp|avif)$/
 const DIGEST = /^[a-f0-9]{64}$/
 
 const CSP =
@@ -33,7 +36,24 @@ export interface ConversationShareDependencies {
   identity: () => ShareIdentity | null
   readSnapshot: (owner: ConversationShareOwner, request: ConversationShareRequest) => Promise<ConversationSnapshot>
   readImage?: (owner: ConversationShareOwner, sessionId: string, path: string) => Promise<{ dataUrl: string }>
+  /** 上传分享页的网关请求，携带登录凭据。 */
   request?: typeof fetch
+  /** 下载正文网络图片；主进程传入 Chromium 网络栈（沿用系统代理和证书），绝不携带登录凭据。 */
+  imageRequest?: typeof fetch
+}
+
+/** 正文是否原样引用了该地址；Markdown 解析可能对非 ASCII 字符做百分号编码，三种写法都认。 */
+function documentReferences(document: ConversationSnapshot['document'], reference: string): boolean {
+  const text = JSON.stringify(document.messages)
+  const variants = [reference]
+
+  try {
+    variants.push(decodeURI(reference), encodeURI(reference))
+  } catch {
+    // 非法转义只按原文比对。
+  }
+
+  return variants.some(item => text.includes(JSON.stringify(item).slice(1, -1)))
 }
 
 /** 规范化固定的后端归属字段，避免属性顺序和未声明字段改变幂等身份。 */
@@ -56,7 +76,7 @@ function staticHtml(html: string): Buffer {
   const bytes = Buffer.from(secured, 'utf8')
 
   if (!bytes.length || bytes.length > MAX_HTML_BYTES) {
-    throw new Error('分享页面超过 2 MB，未发布截断内容。')
+    throw new Error('分享页面超过 5 MB，未发布截断内容。')
   }
 
   return bytes
@@ -208,6 +228,10 @@ export class ConversationShareService {
     this.assertOwner(prepared)
     const asset = prepared.snapshot.document.assets?.find(item => item.reference === reference)
 
+    if (!asset && /^https?:\/\//i.test(reference)) {
+      return await this.remoteImage(prepared, reference)
+    }
+
     if (!asset || !this.deps.readImage) {
       throw new Error('图片未在可信快照中登记。')
     }
@@ -226,6 +250,49 @@ export class ConversationShareService {
     }
 
     return dataUrl
+  }
+
+  /** 正文中的网络图片由主进程下载并内嵌：不受渲染进程跨域限制，只下载快照正文引用过的地址，不携带凭据。 */
+  private async remoteImage(prepared: Prepared, reference: string): Promise<string> {
+    const url = new URL(reference)
+
+    if (url.username || url.password || !documentReferences(prepared.snapshot.document, reference)) {
+      throw new Error('图片未在可信快照中登记。')
+    }
+
+    const response = await (this.deps.imageRequest ?? fetch)(url.href, {
+      credentials: 'omit',
+      redirect: 'follow',
+      signal: AbortSignal.any([prepared.controller.signal, AbortSignal.timeout(REMOTE_IMAGE_TIMEOUT_MS)])
+    })
+
+    const mime = response.headers.get('content-type')?.split(';')[0].trim().toLowerCase() ?? ''
+
+    if (!response.ok || !IMAGE_MIME.test(mime) || !response.body) {
+      throw new Error(`图片下载失败（${response.status} ${mime || 'unknown'}）。`)
+    }
+
+    const reader = response.body.getReader()
+    const chunks: Uint8Array[] = []
+    let size = 0
+
+    try {
+      for (let part = await reader.read(); !part.done; part = await reader.read()) {
+        size += part.value.length
+
+        if (size > MAX_HTML_BYTES) {
+          throw new Error('图片超过 5 MB。')
+        }
+
+        chunks.push(part.value)
+      }
+    } finally {
+      await reader.cancel().catch(() => undefined)
+    }
+
+    this.assertOwner(prepared)
+
+    return `data:${mime};base64,${Buffer.concat(chunks).toString('base64')}`
   }
 
   /** 取消准备和网络请求；已经可能上传的对象保留待确认记录，不伪称撤销成功。 */

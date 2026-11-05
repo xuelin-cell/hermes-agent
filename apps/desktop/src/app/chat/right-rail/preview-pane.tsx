@@ -29,7 +29,6 @@ import {
   flushAnnotateStack
 } from '@/lib/preview-annotate'
 import { admitPreviewExternalUrl, PREVIEW_EXTERNAL_CHANNEL } from '@/lib/preview-external'
-import { reachablePreviewUrl } from '@/lib/preview-reach'
 import { previewShareSource } from '@/lib/preview-share-source'
 import { rafCoalesce } from '@/lib/raf-coalesce'
 import { cn } from '@/lib/utils'
@@ -94,7 +93,6 @@ type PreviewWebview = HTMLElement & {
   goForward?: () => void
   inspectElement?: (x: number, y: number) => void
   isDevToolsOpened?: () => boolean
-  loadURL?: (url: string) => Promise<void>
   openDevTools?: () => void
   paste?: () => void
   reload?: () => void
@@ -761,36 +759,6 @@ export function PreviewPane({
     webview.openDevTools()
   }, [])
 
-  const navigateTo = useCallback(
-    (url: string) => {
-      setLoadError(null)
-      // The reach probe below is a round-trip of its own, and `did-start-loading`
-      // can't fire until it resolves — so own the loading state from the moment
-      // we accept the address, or the bar sits idle over a request in flight.
-      setLoading(true)
-      // Typed addresses get the same loopback reach as agent-opened ones — on a
-      // remote gateway `localhost:5173` is usually the dev server the user is
-      // there to look at, not something on their own laptop.
-      void reachablePreviewUrl(url)
-        .then(reached =>
-          // loadURL, not a `src` swap: `src` only reloads when the value CHANGES,
-          // so re-entering the address you're already on would do nothing. A
-          // rejected load is a real navigation failure the user has to see —
-          // `did-fail-load` doesn't fire for every rejection (a bad scheme
-          // rejects outright).
-          webviewRef.current?.loadURL?.(reached)
-        )
-        .catch((error: unknown) => {
-          setLoadError({
-            description: error instanceof Error ? error.message : copy.unreachableDescription,
-            url
-          })
-          setLoading(false)
-        })
-    },
-    [copy.unreachableDescription]
-  )
-
   const goBack = useCallback(() => {
     const webview = webviewRef.current
 
@@ -807,7 +775,7 @@ export function PreviewPane({
     }
   }, [])
 
-  // Gestures that land on the app's chrome (⌘R from the address bar, a mouse
+  // Gestures that land on the app's chrome (⌘R from the toolbar, a mouse
   // button over the frame). A gesture made INSIDE the page is answered by main
   // against the focused guest — this renderer can't see into a webview.
   useEffect(() => {
@@ -1442,7 +1410,6 @@ export function PreviewPane({
             onBack={goBack}
             onFlushComments={() => void flushComments()}
             onForward={goForward}
-            onNavigate={navigateTo}
             onOpenExternal={
               !isBrowserWindow() && !canOpenBrowserWindow()
                 ? () => void window.hermesDesktop?.openExternal(currentUrl)
@@ -1458,7 +1425,6 @@ export function PreviewPane({
             onToggleAnnotate={toggleAnnotate}
             onToggleConsole={() => consoleState.setOpen(open => !open)}
             onToggleDevTools={toggleDevTools}
-            url={currentUrl}
           />
         )}
 

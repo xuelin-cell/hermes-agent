@@ -159,3 +159,46 @@ test('账号 A→B→A、后端及 profile 隔离，阻止取消和迟到上传'
   const unsafe = await service.prepare(owner, input)
   await assert.rejects(service.publish(unsafe.ticket, '<script>alert(1)</script>'), /静态文档/)
 })
+
+test('正文网络图片由主进程下载：只接受快照引用过的地址，不携带登录凭据', async () => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'conversation-share-'))
+  roots.push(home)
+  const current = snapshot()
+  current.document.messages[0].blocks[0].text = '![青铜神树](https://img.example/tree.png)'
+  const requested: string[] = []
+
+  const imageRequest: typeof fetch = async (url, options) => {
+    requested.push(String(url))
+    assert.equal(new Headers(options?.headers).get('authorization'), null)
+    assert.equal(options?.credentials, 'omit')
+
+    return String(url).endsWith('tree.png')
+      ? new Response(new Uint8Array([1, 2, 3]), { headers: { 'content-type': 'image/png' } })
+      : new Response('<html>', { headers: { 'content-type': 'text/html' } })
+  }
+
+  const service = new ConversationShareService({
+    identity: () => ({ accountId: 'A', home, token: 'secret' }),
+    imageRequest,
+    readSnapshot: async () => current
+  })
+
+  const prepared = await service.prepare(owner, input)
+  assert.equal(await service.image(prepared.ticket, 'https://img.example/tree.png'), 'data:image/png;base64,AQID')
+  await assert.rejects(service.image(prepared.ticket, 'https://intranet.example/secret.png'), /未在可信快照/)
+  assert.deepEqual(requested, ['https://img.example/tree.png'])
+})
+
+test('分享网关拒绝凭据时提示重新登录，而不是稍后重试', async () => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'conversation-share-'))
+  roots.push(home)
+
+  const service = new ConversationShareService({
+    identity: () => ({ accountId: 'A', home, token: 'expired' }),
+    request: async () => new Response(null, { status: 401 }),
+    readSnapshot: async () => snapshot()
+  })
+
+  const prepared = await service.prepare(owner, input)
+  await assert.rejects(service.publish(prepared.ticket, html), /重新登录/)
+})
