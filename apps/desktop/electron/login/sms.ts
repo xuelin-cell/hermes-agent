@@ -84,12 +84,21 @@ export function createSmsSender(request: typeof fetch) {
       }
 
       const result = await response.json()
+      const code = result?.code
 
-      if (!result || ![0, '0'].includes(result.code)) {
-        if (upstreamDeadline !== null) {
-          retryAt = upstreamDeadline
+      if (code !== 0 && code !== '0') {
+        // 网关也会在 HTTP 200 响应中返回业务限流码。
+        if (code === 429 || code === '429' || upstreamDeadline !== null) {
+          retryAt = upstreamDeadline ?? Date.now() + 60_000
 
           return { ok: false, error: 'limited', retryAt }
+        }
+
+        if (code === 1002 || code === '1002') {
+          return {
+            ok: false,
+            error: result.msg === '图形验证码已失效，请刷新后重试' ? 'captchaExpired' : 'captchaIncorrect'
+          }
         }
 
         return { ok: false, error: 'failed' }

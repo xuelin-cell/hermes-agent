@@ -10,6 +10,7 @@ export const PLAN_CHANNEL = 'hermes-login:plan'
 export interface LoginRequest {
   phone: string
   smsCode: string
+  invitationCode?: string
 }
 
 export interface CloudDriveMutationProgress {
@@ -86,7 +87,11 @@ export interface LoginAccount {
   planAuthRejected?: true
 }
 
-export type LoginResult = { ok: true; account: LoginAccount } | { ok: false; reason?: 'storage' }
+export type InvitationLoginError = 'invitationInvalid' | 'invitationExpired' | 'invitationExhausted' | 'invitationUsed'
+export type SmsLoginError = 'smsIncorrect' | 'smsExpired'
+
+export type LoginResult =
+  { ok: true; account: LoginAccount } | { ok: false; reason?: 'storage' | InvitationLoginError | SmsLoginError }
 
 export interface PlanModel {
   name: string
@@ -104,7 +109,7 @@ export interface SmsRequest {
 
 export type SmsResult =
   | { ok: true; retryAt: number }
-  | { ok: false; error: 'invalid' | 'busy' | 'failed' }
+  | { ok: false; error: 'invalid' | 'busy' | 'failed' | 'captchaIncorrect' | 'captchaExpired' }
   | { ok: false; error: 'limited'; retryAt: number }
 
 export interface LoginCaptcha {

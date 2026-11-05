@@ -270,7 +270,6 @@ export interface Translations {
     expiredRunning: string
     planAuthRejected: string
     resendAfter: string
-    smsSent: string
     smsSendError: string
     smsLimited: string
     title: string
@@ -284,11 +283,20 @@ export interface Translations {
     unavailable: string
     phoneError: string
     captchaError: string
+    captchaIncorrect: string
+    captchaExpired: string
     captchaLoadError: string
     phonePlaceholder: string
     captchaPlaceholder: string
     smsPlaceholder: string
+    invitationCodePlaceholder: string
+    invitationInvalid: string
+    invitationExpired: string
+    invitationExhausted: string
+    invitationUsed: string
     smsError: string
+    smsIncorrect: string
+    smsExpired: string
     storageError: string
     requestError: string
   }

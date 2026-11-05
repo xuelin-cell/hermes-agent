@@ -62,6 +62,62 @@ it('只接受完整可信字段与未来期限，UID 不丢精度，失败始终
   expect(options).toMatchObject({ credentials: 'omit', redirect: 'error', cache: 'no-store' })
 })
 
+it('短信登录使用统一接口，仅发送非空邀请码，兑换失败后可以清空重试', async () => {
+  const request = vi.fn<typeof fetch>()
+  const save = vi.fn()
+  const session = new LoginSession(request, { save, load: vi.fn() })
+
+  expect(await session.login({ ...input, invitationCode: 123 })).toEqual({ ok: false })
+  expect(request).not.toHaveBeenCalled()
+
+  for (const [code, reason] of [
+    [5001, 'invitationInvalid'],
+    [5002, 'invitationExpired'],
+    [5004, 'invitationExhausted'],
+    [5005, 'invitationUsed']
+  ] as const) {
+    request.mockResolvedValueOnce(Response.json({ code, msg: 'private detail' }))
+    expect(await session.login({ ...input, invitationCode: '  INVITE-1  ' })).toEqual({ ok: false, reason })
+    const [url, options] = request.mock.calls.at(-1)!
+    expect(url).toBe('https://maas.ai-yuanjing.com/app/login/smsLogin')
+    expect(JSON.parse(options!.body as string)).toEqual({
+      ...input,
+      invitationCode: 'INVITE-1',
+      origin: 'app',
+      application: 'uniwork'
+    })
+  }
+
+  expect(session.currentIdentity()).toBeNull()
+  expect(save).not.toHaveBeenCalled()
+  request.mockResolvedValueOnce(Response.json({ code: 0, data: { uid: 'uid', token: 'token', expireIn: 60 } }))
+  expect((await session.login({ ...input, invitationCode: '  ' })).ok).toBe(true)
+  const [url, options] = request.mock.calls.at(-1)!
+  expect(url).toBe('https://maas.ai-yuanjing.com/app/login/smsLogin')
+  expect(JSON.parse(options!.body as string)).toEqual({ ...input, origin: 'app', application: 'uniwork' })
+  expect(save).toHaveBeenCalledExactlyOnceWith(session.currentIdentity())
+  expect(session.currentIdentity()).not.toHaveProperty('invitationCode')
+})
+
+it('短信验证码输错和失效返回不同原因，未知错误不透传正文', async () => {
+  const request = vi.fn<typeof fetch>()
+  const save = vi.fn()
+  const session = new LoginSession(request, { save, load: vi.fn() })
+
+  for (const [code, msg, reason] of [
+    [401, '短信验证码错误', 'smsIncorrect'],
+    ['401', '验证码失效，请重新发送短信', 'smsExpired'],
+    [401, 'private-body', undefined],
+    [500, '短信验证码错误', undefined]
+  ] as const) {
+    request.mockResolvedValueOnce(Response.json({ code, msg, data: { token: 'private-token' } }))
+    expect(await session.login(input)).toEqual(reason ? { ok: false, reason } : { ok: false })
+  }
+
+  expect(save).not.toHaveBeenCalled()
+  expect(session.currentIdentity()).toBeNull()
+})
+
 it('并发只消费一次验证码；有效身份复用、过期清除，关闭时取消且迟到响应不能恢复', async () => {
   vi.useFakeTimers()
   let resolve!: (response: Response) => void

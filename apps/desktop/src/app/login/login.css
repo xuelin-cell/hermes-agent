@@ -5,8 +5,12 @@
   align-items: center;
   justify-content: center;
   overflow-y: auto;
-  background: var(--dt-background);
+  background: #f9fafb;
   animation: login-fade-in-up 0.6s ease-out;
+}
+
+.dark .login-container {
+  background: var(--dt-background);
 }
 
 @keyframes login-fade-in-up {
@@ -154,32 +158,15 @@
   cursor: not-allowed;
 }
 
-.login-error,
-.login-field-error,
-.login-field-status,
-.login-unavailable {
+.login-feedback {
+  margin-bottom: 12px;
   color: var(--dt-destructive);
   font-size: 14px;
   text-align: center;
 }
 
-.login-error {
-  min-height: 21px;
-  margin: -4px 0 12px;
-}
-
-.login-field-error,
-.login-field-status {
-  margin-top: 8px;
-}
-
-.login-field-status,
-.login-unavailable {
+.login-feedback[role='status'] {
   color: var(--ui-text-tertiary);
-}
-
-.login-unavailable {
-  margin-top: 12px;
 }
 
 .login-btn {

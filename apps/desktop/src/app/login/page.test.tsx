@@ -99,7 +99,9 @@ describe('桌面登录表单', () => {
     fill()
     expect(sendButton.disabled).toBe(false)
     fireEvent.click(sendButton)
-    await screen.findByText('发送失败，请检查输入或刷新图片后重试。')
+    const failure = await screen.findByText('发送失败，请检查输入或刷新图片后重试。')
+    const invitation = screen.getByLabelText('邀请码（选填）')
+    expect(invitation.compareDocumentPosition(failure)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
     expect(sendSms).toHaveBeenCalledWith({ phone: '13800000000', captchaCode: 'abcd', captchaId: 'test-id' })
     expect((screen.getByRole('button', { name: '发送验证码' }) as HTMLButtonElement).disabled).toBe(false)
     fireEvent.click(screen.getByRole('img', { name: '图形验证码' }))
@@ -108,12 +110,53 @@ describe('桌面登录表单', () => {
     fill()
     sendSms.mockResolvedValueOnce({ ok: true, retryAt: Date.now() + 60_000 })
     fireEvent.click(screen.getByRole('button', { name: '发送验证码' }))
-    await screen.findByText('验证码已发送，请查看手机短信。')
-    const resend = screen.getByRole('button', { name: /秒后重发/ })
+    const resend = await screen.findByRole('button', { name: /秒后重发/ })
+    expect(screen.queryByRole('alert')).toBeNull()
     expect((resend as HTMLButtonElement).disabled).toBe(true)
     fireEvent.click(resend)
     expect(sendSms).toHaveBeenCalledTimes(2)
     expect((screen.getByRole('button', { name: '登录' }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('按验证码失败原因提示，并清除已失效的输入', async () => {
+    const captcha = vi.fn().mockResolvedValue({
+      ok: true,
+      captcha: { captchaId: 'id', imageDataUrl: 'data:image/png;base64,aGVsbG8=' }
+    })
+
+    window.hermesLogin = {
+      openLegalDocument: vi.fn(),
+      restore: vi.fn().mockResolvedValue({ ok: false }),
+      plan: vi.fn(),
+      captcha,
+      sendSms: vi.fn().mockResolvedValue({ ok: false, error: 'captchaExpired' }),
+      login: vi
+        .fn()
+        .mockResolvedValueOnce({ ok: false, reason: 'smsIncorrect' })
+        .mockResolvedValueOnce({ ok: false, reason: 'smsExpired' })
+    }
+    renderLogin()
+    await screen.findByRole('img', { name: '图形验证码' })
+    fill()
+    const imageCode = screen.getByLabelText<HTMLInputElement>('图形验证码')
+    const smsCode = screen.getByLabelText<HTMLInputElement>('短信验证码')
+    fireEvent.click(screen.getByRole('button', { name: '发送验证码' }))
+    await screen.findByText('图形验证码已失效，请刷新后重试。')
+    expect(imageCode.value).toBe('')
+    expect(imageCode.getAttribute('aria-invalid')).toBe('true')
+
+    const login = screen.getByRole('button', { name: '登录' })
+    fireEvent.click(login)
+    await screen.findByText('短信验证码错误，请重新输入。')
+    expect(smsCode.value).toBe('123456')
+    expect(captcha).toHaveBeenCalledTimes(1)
+
+    fill({ phone: '13800000000', captcha: 'abcd', sms: '654321' })
+    fireEvent.click(login)
+    await screen.findByText('验证码失效，请重新发送短信。')
+    expect(imageCode.value).toBe('')
+    expect(smsCode.value).toBe('')
+    expect(captcha).toHaveBeenCalledTimes(2)
   })
 
   it('未接入服务时按钮不可用，填写或提交不能进入账号环境', () => {
@@ -163,6 +206,44 @@ describe('桌面登录表单', () => {
     expect(button.disabled).toBe(false)
   })
 
+  it('邀请码错误替换短信提示，清空并重试时省略该字段', async () => {
+    const login = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, reason: 'invitationUsed' })
+      .mockResolvedValue({ ok: false })
+
+    window.hermesLogin = {
+      openLegalDocument: vi.fn(),
+      restore: vi.fn().mockResolvedValue({ ok: false }),
+      plan: vi.fn(),
+      captcha: vi
+        .fn()
+        .mockResolvedValue({ ok: true, captcha: { captchaId: 'id', imageDataUrl: 'data:image/png;base64,aGVsbG8=' } }),
+      sendSms: vi.fn().mockResolvedValue({ ok: false, error: 'limited', retryAt: Date.now() + 60_000 }),
+      login
+    }
+    renderLogin()
+    const invitation = await screen.findByRole<HTMLInputElement>('textbox', { name: '邀请码（选填）' })
+    const button = screen.getByRole('button', { name: '登录' })
+    fill()
+    fireEvent.click(screen.getByRole('button', { name: '发送验证码' }))
+    await screen.findByText('发送过于频繁，请稍后重试。')
+    fireEvent.change(invitation, { target: { value: '  INVITE-1  ' } })
+    fireEvent.click(button)
+    const invitationError = await screen.findByText(/已使用过邀请码/)
+    expect(invitation.compareDocumentPosition(invitationError)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(screen.queryByText('发送过于频繁，请稍后重试。')).toBeNull()
+    expect(login).toHaveBeenNthCalledWith(1, { phone: '13800000000', smsCode: '123456', invitationCode: 'INVITE-1' })
+    expect(invitation.getAttribute('aria-invalid')).toBe('true')
+    expect(invitation.value).toBe('  INVITE-1  ')
+
+    fireEvent.change(invitation, { target: { value: ' ' } })
+    expect(screen.queryByRole('alert')).toBeNull()
+    fireEvent.click(button)
+    await screen.findByText('登录失败，请重试。')
+    expect(login).toHaveBeenNthCalledWith(2, { phone: '13800000000', smsCode: '123456' })
+  })
+
   it('提交期间禁用输入并合并重复提交，失败后展示安全错误并可重试', async () => {
     let reject!: (reason: Error) => void
 
@@ -199,7 +280,7 @@ describe('桌面登录表单', () => {
     expect(screen.queryByText('secret-response-must-not-render')).toBeNull()
     expect((button as HTMLButtonElement).disabled).toBe(false)
     fireEvent.change(screen.getByLabelText('短信验证码'), { target: { value: '654321' } })
-    expect(screen.getByRole('alert').textContent).toBe('')
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 
   it('点击验证码图片刷新并清空旧输入，失败后原位置可以重试', async () => {
@@ -220,7 +301,10 @@ describe('桌面登录表单', () => {
     fireEvent.click(image)
     await waitFor(() => expect(captcha).toHaveBeenCalledTimes(2))
     expect((screen.getByLabelText('图形验证码') as HTMLInputElement).value).toBe('')
-    await screen.findByText('图形验证码获取失败，请点击刷新图片重试。')
+    const feedback = await screen.findByText('图形验证码获取失败，请点击刷新图片重试。')
+    expect(screen.getByLabelText('邀请码（选填）').compareDocumentPosition(feedback)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    )
     fireEvent.click(screen.getByRole('button', { name: '刷新图片' }))
     await screen.findByRole('img', { name: '图形验证码' })
     expect(captcha).toHaveBeenCalledTimes(3)

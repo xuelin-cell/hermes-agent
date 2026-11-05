@@ -7,7 +7,7 @@ import { ConnectingScreen } from '@/components/ui/connecting-screen'
 import { Loader } from '@/components/ui/loader'
 import { useI18n } from '@/i18n/context'
 
-import type { LoginAccount } from '../../../electron/login/contract'
+import type { InvitationLoginError, LoginAccount, SmsLoginError } from '../../../electron/login/contract'
 import { LOGIN_LEGAL_DOCUMENTS, type LoginLegalDocument } from '../../../electron/login/legal-documents'
 
 import { useCaptcha } from './use-captcha'
@@ -17,7 +17,19 @@ interface LoginFields {
   phone: string
   captchaCode: string
   smsCode: string
+  invitationCode: string
 }
+
+const EMPTY_FIELDS: LoginFields = { phone: '', captchaCode: '', smsCode: '', invitationCode: '' }
+
+const SMS_FEEDBACK = {
+  invalid: 'smsSendError',
+  busy: 'smsSendError',
+  failed: 'smsSendError',
+  limited: 'smsLimited',
+  captchaIncorrect: 'captchaIncorrect',
+  captchaExpired: 'captchaExpired'
+} as const
 
 /** 展示短信登录表单；未接入主进程能力时禁用动作，不提供免登录入口。 */
 export function LoginPage() {
@@ -28,16 +40,31 @@ export function LoginPage() {
   const [restoring, setRestoring] = useState(!!bridge)
   const image = useCaptcha(!restoring && !account ? bridge : undefined)
   const sms = useSms(bridge)
-  const [fields, setFields] = useState<LoginFields>({ phone: '', captchaCode: '', smsCode: '' })
+  const [fields, setFields] = useState(EMPTY_FIELDS)
 
   const [error, setError] = useState<
-    'phoneError' | 'captchaError' | 'smsError' | 'requestError' | 'storageError' | 'expired' | 'legalOpenError' | null
+    | 'phoneError'
+    | 'captchaError'
+    | 'smsError'
+    | 'requestError'
+    | 'storageError'
+    | 'expired'
+    | 'legalOpenError'
+    | InvitationLoginError
+    | SmsLoginError
+    | null
   >(null)
 
   const [pending, setPending] = useState(false)
   const submitting = useRef(false)
   const phoneValid = /^1[3-9]\d{9}$/.test(fields.phone)
   const captchaCode = fields.captchaCode.trim()
+
+  const smsFeedback = sms.result?.ok === false ? SMS_FEEDBACK[sms.result.error] : null
+
+  const feedback = error ?? (image.failed ? 'captchaLoadError' : smsFeedback) ?? (!bridge ? 'unavailable' : null)
+  const feedbackId = feedback ? 'login-feedback' : undefined
+  const feedbackRole = feedback === 'unavailable' ? 'status' : 'alert'
 
   useEffect(() => {
     if (!bridge) {
@@ -109,7 +136,7 @@ export function LoginPage() {
       }
 
       setAccount(null)
-      setFields({ phone: '', captchaCode: '', smsCode: '' })
+      setFields(EMPTY_FIELDS)
       setError('expired')
     }
 
@@ -135,10 +162,14 @@ export function LoginPage() {
     }
 
     setError(null)
-    await sms.send({ phone: fields.phone, captchaCode, captchaId: image.captcha.captchaId })
+    const result = await sms.send({ phone: fields.phone, captchaCode, captchaId: image.captcha.captchaId })
+
+    if (result?.ok === false && (result.error === 'captchaIncorrect' || result.error === 'captchaExpired')) {
+      setFields(previous => ({ ...previous, captchaCode: '' }))
+    }
   }
 
-  /** 只提交手机号与短信码，主进程确认登录后清空页面输入。 */
+  /** 主进程确认登录后清空页面输入。 */
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
 
@@ -149,6 +180,7 @@ export function LoginPage() {
     const { phone, smsCode } = fields
     const invalid = !phoneValid ? 'phoneError' : !/^\d{6}$/.test(smsCode) ? 'smsError' : null
 
+    sms.clearResult()
     setError(invalid)
 
     if (invalid) {
@@ -159,16 +191,22 @@ export function LoginPage() {
     setPending(true)
 
     try {
-      const result = await bridge.login({ phone, smsCode })
+      const invitationCode = fields.invitationCode.trim()
+      const result = await bridge.login({ phone, smsCode, ...(invitationCode ? { invitationCode } : {}) })
 
       if (!result.ok) {
-        setError(result.reason === 'storage' ? 'storageError' : 'requestError')
+        setError(result.reason === 'storage' ? 'storageError' : (result.reason ?? 'requestError'))
+
+        if (result.reason === 'smsExpired') {
+          setFields(previous => ({ ...previous, captchaCode: '', smsCode: '' }))
+          void image.refresh()
+        }
 
         return
       }
 
       setAccount(result.account)
-      setFields({ phone: '', captchaCode: '', smsCode: '' })
+      setFields(EMPTY_FIELDS)
     } catch {
       setError('requestError')
     } finally {
@@ -222,7 +260,7 @@ export function LoginPage() {
               <div className="login-input-group">
                 <span className="login-addon">+86</span>
                 <input
-                  aria-describedby="login-error"
+                  aria-describedby={feedbackId}
                   aria-invalid={error === 'phoneError'}
                   autoComplete="off"
                   className="login-input"
@@ -243,8 +281,10 @@ export function LoginPage() {
               </label>
               <div className="login-input-group">
                 <input
-                  aria-describedby="login-error"
-                  aria-invalid={error === 'captchaError'}
+                  aria-describedby={feedbackId}
+                  aria-invalid={
+                    feedback === 'captchaError' || feedback === 'captchaIncorrect' || feedback === 'captchaExpired'
+                  }
                   className="login-input login-input-captcha"
                   disabled={pending || sms.pending}
                   id="login-captcha"
@@ -260,6 +300,7 @@ export function LoginPage() {
                   disabled={!window.hermesLogin || pending || sms.pending}
                   onClick={() => {
                     updateField('captchaCode', '')
+                    sms.clearResult()
                     void image.refresh()
                   }}
                   type="button"
@@ -273,11 +314,6 @@ export function LoginPage() {
                   )}
                 </button>
               </div>
-              {image.failed && (
-                <p className="login-field-error" role="alert">
-                  {copy.captchaLoadError}
-                </p>
-              )}
             </div>
             <div className="login-field">
               <label className="sr-only" htmlFor="login-sms">
@@ -285,8 +321,8 @@ export function LoginPage() {
               </label>
               <div className="login-input-group">
                 <input
-                  aria-describedby="login-error"
-                  aria-invalid={error === 'smsError'}
+                  aria-describedby={feedbackId}
+                  aria-invalid={error === 'smsError' || error === 'smsIncorrect' || error === 'smsExpired'}
                   autoComplete="one-time-code"
                   className="login-input login-input-sms"
                   disabled={pending}
@@ -319,18 +355,32 @@ export function LoginPage() {
                       : copy.send}
                 </button>
               </div>
-              {sms.result && (
-                <p
-                  className={sms.result.ok ? 'login-field-status' : 'login-field-error'}
-                  role={sms.result.ok ? 'status' : 'alert'}
-                >
-                  {sms.result.ok ? copy.smsSent : sms.result.error === 'limited' ? copy.smsLimited : copy.smsSendError}
-                </p>
-              )}
             </div>
-            <p className="login-error" id="login-error" role="alert">
-              {error ? copy[error] : ''}
-            </p>
+            <div className="login-field">
+              <label className="sr-only" htmlFor="login-invitation">
+                {copy.invitationCodePlaceholder}
+              </label>
+              <div className="login-input-group">
+                <input
+                  aria-describedby={feedbackId}
+                  aria-invalid={error?.startsWith('invitation') ?? false}
+                  autoComplete="off"
+                  className="login-input"
+                  disabled={pending}
+                  id="login-invitation"
+                  onChange={event => updateField('invitationCode', event.target.value)}
+                  placeholder={copy.invitationCodePlaceholder}
+                  spellCheck={false}
+                  type="text"
+                  value={fields.invitationCode}
+                />
+              </div>
+            </div>
+            {feedback && (
+              <p className="login-feedback" id={feedbackId} role={feedbackRole}>
+                {copy[feedback]}
+              </p>
+            )}
             <button
               className="login-btn"
               disabled={!bridge || !phoneValid || !fields.smsCode || pending || sms.pending}
@@ -361,11 +411,6 @@ export function LoginPage() {
               </a>
             </nav>
           </form>
-        )}
-        {!window.hermesLogin && (
-          <p className="login-unavailable" role="status">
-            {copy.unavailable}
-          </p>
         )}
       </section>
     </main>

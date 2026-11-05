@@ -83,7 +83,7 @@
 
 /* MasterGo 24:09213：24px 圆角、8px 内边距、正文 14/22、辅助文字 12/20。 */
 .plan-usage-card.account-card {
-  width: min(363px, calc(100vw - 32px));
+  width: min(310px, calc(100vw - 32px));
   padding: 8px;
   border-radius: 24px;
   box-shadow:
@@ -99,7 +99,7 @@
   min-height: 38px;
   gap: 8px;
   padding: 8px 16px;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   color: var(--ui-text-primary);
   text-align: left;
   border-radius: 20px;
@@ -204,11 +204,10 @@ a.account-card-row:hover {
 }
 .account-card-divider {
   height: 1px;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   background: var(--dt-border);
 }
 .account-card-logout {
-  background: var(--dt-secondary);
   margin-bottom: 0;
 }
 .account-card-expanded {
