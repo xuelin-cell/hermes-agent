@@ -48,14 +48,16 @@ it('translates the live filter menu while preserving selected values and the cur
   fireEvent.keyDown(screen.getByRole('menuitem', { name: zh.status }), { key: 'ArrowRight' })
   fireEvent.click(screen.getByRole('menuitemcheckbox', { name: zh.needsInput }))
   expect($sidebarStatusFilter.get()).toContain('needs-input')
-  await act(() => i18n.setLocale('ja'))
-  const ja = TRANSLATIONS.ja.sidebar.filter
-  expect(screen.getByText(TRANSLATIONS.ja.sidebar.profileRail)).toBeTruthy()
-  expect(screen.getByText(TRANSLATIONS.ja.sidebar.markAllRead)).toBeTruthy()
+  await act(() => i18n.setLocale('zh-hant'))
+  const traditional = TRANSLATIONS['zh-hant'].sidebar.filter
+  expect(screen.getByText(TRANSLATIONS['zh-hant'].sidebar.profileRail)).toBeTruthy()
+  expect(screen.getByText(TRANSLATIONS['zh-hant'].sidebar.markAllRead)).toBeTruthy()
   expect(screen.queryByText(TRANSLATIONS.en.sidebar.profileRail)).toBeNull()
   expect(screen.queryByText(TRANSLATIONS.en.sidebar.markAllRead)).toBeNull()
-  fireEvent.keyDown(screen.getByRole('menuitem', { name: ja.status }), { key: 'ArrowRight' })
-  expect(screen.getByRole('menuitemcheckbox', { name: ja.needsInput }).getAttribute('aria-checked')).toBe('true')
+  fireEvent.keyDown(screen.getByRole('menuitem', { name: traditional.status }), { key: 'ArrowRight' })
+  expect(screen.getByRole('menuitemcheckbox', { name: traditional.needsInput }).getAttribute('aria-checked')).toBe(
+    'true'
+  )
   expect(screen.queryByRole('menuitemcheckbox', { name: zh.needsInput })).toBeNull()
   expect($sidebarOrdering.get()).toBe('manual')
 })

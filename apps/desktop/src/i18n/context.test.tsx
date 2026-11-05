@@ -28,6 +28,7 @@ function LanguageProbe({ target = 'zh' }: { target?: Locale }) {
 describe('I18nProvider', () => {
   afterEach(() => {
     cleanup()
+    Reflect.deleteProperty(window, 'hermesDesktop')
     vi.restoreAllMocks()
   })
 
@@ -78,9 +79,8 @@ describe('I18nProvider', () => {
   })
 
   it.each([
-    ['fr', 'fr'],
-    ['de-DE', 'de'],
-    ['es', 'es']
+    ['zh-CN', 'zh'],
+    ['zh-TW', 'zh-hant']
   ] as const)('loads display.language=%s and renders the %s catalog', async (configured, locale) => {
     const configClient: I18nConfigClient = {
       getConfig: vi.fn().mockResolvedValue({ display: { language: configured } }),
@@ -121,24 +121,27 @@ describe('I18nProvider', () => {
     expect(configClient.saveConfig).not.toHaveBeenCalled()
   })
 
-  it('does not overwrite unsupported configured languages', async () => {
-    const configClient: I18nConfigClient = {
-      getConfig: vi.fn().mockResolvedValue({ display: { language: 'it' } }),
-      saveConfig: vi.fn()
+  it.each(['ja', 'ar', 'ru', 'fr', 'de', 'es', 'it'])(
+    'uses the supported OS language without overwriting display.language=%s',
+    async configured => {
+      const configClient: I18nConfigClient = {
+        getConfig: vi.fn().mockResolvedValue({ display: { language: configured } }),
+        saveConfig: vi.fn()
+      }
+
+      window.hermesDesktop = { getMachineProfile: vi.fn().mockResolvedValue({ locale: 'zh-TW' }) } as never
+      render(
+        <I18nProvider configClient={configClient} initialLocale="zh">
+          <LanguageProbe />
+        </I18nProvider>
+      )
+
+      await waitFor(() => expect(screen.getByTestId('locale').textContent).toBe('zh-hant'))
+      expect(screen.getByTestId('label').textContent).toBe(TRANSLATIONS['zh-hant'].language.label)
+      Reflect.deleteProperty(window, 'hermesDesktop')
+      expect(configClient.saveConfig).not.toHaveBeenCalled()
     }
-
-    render(
-      <I18nProvider configClient={configClient} initialLocale="zh">
-        <LanguageProbe />
-      </I18nProvider>
-    )
-
-    await waitFor(() => expect(screen.getByTestId('loading').textContent).toBe('false'))
-
-    expect(screen.getByTestId('locale').textContent).toBe('en')
-    expect(screen.getByTestId('label').textContent).toBe('Language')
-    expect(configClient.saveConfig).not.toHaveBeenCalled()
-  })
+  )
 
   it('reads latest config before saving language and preserves unrelated values', async () => {
     const saveConfig = vi.fn().mockResolvedValue({ ok: true })
@@ -172,22 +175,22 @@ describe('I18nProvider', () => {
     })
   })
 
-  it('applies RTL direction for Arabic and restores LTR on switch back', async () => {
+  it('rejects an unsupported RTL initial language and keeps supported languages LTR', async () => {
     render(
       <I18nProvider configClient={null} initialLocale="ar">
-        <LanguageProbe target="en" />
+        <LanguageProbe target="zh" />
       </I18nProvider>
     )
 
-    expect(screen.getByTestId('locale').textContent).toBe('ar')
-    expect(document.documentElement.dir).toBe('rtl')
-    expect(document.documentElement.lang).toBe('ar')
+    expect(screen.getByTestId('locale').textContent).toBe('en')
+    expect(window.document.documentElement.dir).toBe('ltr')
+    expect(window.document.documentElement.lang).toBe('en')
 
     fireEvent.click(screen.getByRole('button', { name: 'switch' }))
 
-    await waitFor(() => expect(screen.getByTestId('locale').textContent).toBe('en'))
-    expect(document.documentElement.dir).toBe('ltr')
-    expect(document.documentElement.lang).toBe('en')
+    await waitFor(() => expect(screen.getByTestId('locale').textContent).toBe('zh'))
+    expect(window.document.documentElement.dir).toBe('ltr')
+    expect(window.document.documentElement.lang).toBe('zh')
   })
 
   it('rolls back the visible locale when saving fails', async () => {
@@ -323,24 +326,24 @@ describe('I18nProvider', () => {
 
     render(
       <I18nProvider configClient={configClient}>
-        <LanguageProbe target="ja" />
+        <LanguageProbe target="zh-hant" />
       </I18nProvider>
     )
 
     await act(async () => {})
     expect(screen.getByTestId('locale').textContent).toBe('en')
 
-    // User picks Japanese while the startup retry is still pending.
+    // User picks Traditional Chinese while the startup retry is still pending.
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'switch' }))
     })
-    expect(screen.getByTestId('locale').textContent).toBe('ja')
+    expect(screen.getByTestId('locale').textContent).toBe('zh-hant')
 
     // The retry resolves with the stale on-disk value; the explicit pick wins.
     await act(async () => {
       vi.advanceTimersByTime(3_000)
     })
-    expect(screen.getByTestId('locale').textContent).toBe('ja')
+    expect(screen.getByTestId('locale').textContent).toBe('zh-hant')
 
     vi.useRealTimers()
   })
