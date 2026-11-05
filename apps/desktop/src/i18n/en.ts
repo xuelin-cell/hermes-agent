@@ -4420,6 +4420,7 @@ export const en: Translations = {
 
   composer: {
     message: 'Message',
+    aiDisclaimer: 'AI responses may be inaccurate. Please verify important information.',
     wakingProfile: profile => `Waking up ${profile}…`,
     placeholderStarting: 'Starting UniWork...',
     placeholderReconnecting: 'Reconnecting to UniWork…',
