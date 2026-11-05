@@ -32,10 +32,13 @@
 - 同一个网关会话第一次来时做原来登录时做的事：个人账号按 `X-Sid` 调网关 12.4 取 MaaS 令牌（只放入口内存，不落库、不写日志、
   不发浏览器），再查 my-plan；企业账号按成员 ID 找回以前登录过的员工（用户 ID、设备号不变），存着的设备令牌还能用就接着用，
   没有或平台回 401 才调平台的 `/api/internal/sso/device-token` 换发。统一登录后第一次来的员工，用户 ID 是 `ent:<企业>:member:<成员>`。
-- 静态页不鉴权，页面先问 `__entry/config`（没登录时网关回 401），登录了再问网关的 `/app/gateway/sso/me`；切换账号、退出都走网关的
-  `/login/`。同一个浏览器换了账号，localStorage 按账号收起和放回（`apps/desktop/src/lib/account-storage-mt.ts`）。
-- 退出（`/agents/logout`）：先让入口吊销企业设备令牌，再调网关的 `/sso/logout`。平台连不上、吊销不掉时页面如实提示，入口清掉
-  自己存的令牌、暂停实例，令牌转进 `device_token_revocations` 由后台每分钟重试，直到吊销成功。
+- 静态页不鉴权，页面先问 `__entry/config`（没登录时网关回 401），登录了再问网关的 `/app/gateway/sso/me`。要去登录页时
+  （没登录、会话结束、切换账号）页面一律先到入口的 `/agents/login`，网关不拦它，入口按 `MT_SSO_LOGIN_URL`（默认 `/login/`）
+  跳到网关登录页，退出页最后也跳这个地址，所以登录页地址只配这一处。网关下这两个页面走静态上游（企业版入口），以它的配置为准。
+  同一个浏览器换了账号，localStorage 按账号收起和放回（`apps/desktop/src/lib/account-storage-mt.ts`）。
+- 退出（`/agents/logout`）：先让入口吊销企业设备令牌，再调网关的 `/app/gateway/sso/logout`。平台连不上、吊销不掉时页面如实提示，
+  入口清掉自己存的令牌、暂停实例，令牌转进 `device_token_revocations` 由后台重试（间隔 1 分钟起逐次加倍，最长 1 小时），
+  直到吊销成功。
 - 被企业拦住的成员（待审核、停用、没席位）照样能登录，页面显示原因，可以重新检查、切换账号或退出。
 - 要配的变量见 `entry.env.example` 的「统一登录」一段；本机联调用 `sso-dev/` 下的假网关。
 

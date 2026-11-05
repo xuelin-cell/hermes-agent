@@ -6,11 +6,13 @@
 //   front with another sid (another tab switched accounts or signed out), it reloads.
 // - A business call answered with 401 means the session ended: ask `/sso/me` once, go to the login page if
 //   it agrees (never on a guess, or a stale answer would bounce between the page and the login page).
-// The gateway paths are fixed by the plan: they cannot come from the entry, which a signed-out page cannot ask.
+// - The way to the login page is the entry's own `login` page beside the API (`/agents/login`): the gateway does
+//   not guard pages, so a signed-out page reaches it, and the entry redirects to its MT_SSO_LOGIN_URL. The login
+//   page's address is configured there alone.
+// The gateway's `/sso/me` and `/sso/logout` are fixed by the plan: a signed-out page cannot ask the entry for them.
 
 export const SSO_PLATFORM = 'agents'
 export const SSO_API = '/app/gateway/sso'
-export const SSO_LOGIN = '/login/'
 
 /** The gateway's current account (`/sso/me` data). `accountId` is the member id for an enterprise account. */
 export interface SsoAccount {
@@ -26,9 +28,11 @@ export interface SsoAccount {
 /** `off`: the entry signs people in itself. `sso`: the gateway does; `account` is null when `/sso/me` could not be read. */
 export type SsoBoot = { mode: 'off' } | { account: null | SsoAccount; mode: 'sso' }
 
-export function ssoLoginUrl(prompt?: string): string {
+/** The entry's login page for the API base (`/agents/login` for `/agents/api/`), with this page as the way back. */
+export function ssoLoginUrl(apiBase: string, prompt?: string): string {
+  const page = new URL('../login', new URL(apiBase, window.location.origin)).pathname
+
   const query = new URLSearchParams({
-    platform: SSO_PLATFORM,
     redirect_uri: window.location.pathname + window.location.search + window.location.hash
   })
 
@@ -36,12 +40,12 @@ export function ssoLoginUrl(prompt?: string): string {
     query.set('prompt', prompt)
   }
 
-  return `${SSO_LOGIN}?${query}`
+  return `${page}?${query}`
 }
 
 /** Leaves for the gateway's login page. The returned promise never settles: nothing should render meanwhile. */
-export function toSsoLogin(prompt?: string): Promise<never> {
-  window.location.replace(ssoLoginUrl(prompt))
+export function toSsoLogin(apiBase: string, prompt?: string): Promise<never> {
+  window.location.replace(ssoLoginUrl(apiBase, prompt))
 
   return new Promise<never>(() => undefined)
 }
@@ -74,7 +78,7 @@ export async function bootSso(apiBase: string): Promise<SsoBoot> {
   }
 
   if (response.status === 401) {
-    return toSsoLogin()
+    return toSsoLogin(apiBase)
   }
 
   const config = (await response.json().catch(() => null)) as null | { sso?: unknown }
@@ -92,7 +96,7 @@ export async function bootSso(apiBase: string): Promise<SsoBoot> {
   }
 
   if (account === null) {
-    return toSsoLogin()
+    return toSsoLogin(apiBase)
   }
 
   if (account) {
@@ -160,7 +164,7 @@ export function installSsoAuthErrorHandler(apiBase: string): void {
       const body = (await response.clone().json().catch(() => null)) as null | { error?: unknown }
 
       if (body?.error === 'ACCOUNT_NOT_ALLOWED') {
-        void toSsoLogin('select_account')
+        void toSsoLogin(apiBase, 'select_account')
       }
 
       return response
@@ -169,7 +173,7 @@ export function installSsoAuthErrorHandler(apiBase: string): void {
     checking ??= ssoMe()
       .then(now => {
         if (now === null) {
-          void toSsoLogin()
+          void toSsoLogin(apiBase)
         }
       })
       .catch(() => undefined)

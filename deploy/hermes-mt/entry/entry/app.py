@@ -567,17 +567,23 @@ class Entry:
         except Exception as exc:  # noqa: BLE001
             log.exception("warm-up of tenant %s failed: %s", user_id, type(exc).__name__)
 
-    def _sso_login_url(self, target: str = "") -> str:
-        """网关登录页的地址；回跳地址只认本站 /agents/ 下的路径，别的一律回首页。"""
+    def _sso_login_url(self, target: str = "", prompt: str = "") -> str:
+        """网关登录页的地址（MT_SSO_LOGIN_URL）；回跳地址只认本站 /agents/ 下的路径，别的一律回首页；
+        prompt 只转方案里有的 select_account。"""
         home = self.s.base_path + "/"
         if not target.startswith(home) or "//" in target or "\\" in target:
             target = home
-        return f"{self.s.sso_login_url}?{urlencode({'platform': SSO_PLATFORM, 'redirect_uri': target})}"
+        query = {"platform": SSO_PLATFORM, "redirect_uri": target}
+        if prompt == "select_account":
+            query["prompt"] = prompt
+        return f"{self.s.sso_login_url}?{urlencode(query)}"
 
     async def login_page(self, request: web.Request) -> web.Response:
         if self.s.sso:
-            # 统一登录：登录页是网关的
-            raise web.HTTPFound(self._sso_login_url(request.query.get("redirect_uri", "")))
+            # 统一登录：登录页是网关的。页面要去登录页时都先到这里（网关不拦 /agents/ 下的页面，没登录也到得了），
+            # 所以登录页地址只在 MT_SSO_LOGIN_URL 一处配
+            raise web.HTTPFound(self._sso_login_url(request.query.get("redirect_uri", ""),
+                                                    request.query.get("prompt", "")))
         # 两种模式各一份，统一登录（MT_SSO）上线后一起删
         name = "login.html" if self.s.enterprise else "login-personal.html"
         html = (STATIC_DIR / name).read_text(encoding="utf-8")

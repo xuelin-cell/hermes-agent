@@ -1131,7 +1131,7 @@ describe('the unified login (desktop-mt)', () => {
     expect(window.hermesDesktop.getPlanUsage).toBeTypeOf('function')
 
     window.hermesDesktop.switchMaasAccount!()
-    expect(replaced.at(-1)).toMatch(/^\/login\/\?.*prompt=select_account/)
+    expect(replaced.at(-1)).toMatch(/^\/login\?.*prompt=select_account/) // the entry's login page beside `/api/`
   })
 
   it('shows an enterprise member with the enterprise, and keeps a blocked one on a page that says why', async () => {
@@ -1164,6 +1164,6 @@ describe('the unified login (desktop-mt)', () => {
     await installWithoutWaiting()
 
     await vi.waitFor(() => expect(replaced).toHaveLength(1))
-    expect(replaced[0]).toBe('/login/?platform=agents&redirect_uri=%2Fagents%2F')
+    expect(replaced[0]).toBe('/login?redirect_uri=%2Fagents%2F')
   })
 })

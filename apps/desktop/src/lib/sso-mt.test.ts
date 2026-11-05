@@ -58,12 +58,12 @@ function route(table: Record<string, () => Response>) {
 const ACCOUNT = { accountId: 'm-1', accountType: 'enterprise', name: '张三', sid: 'sid-1', tenantId: 't-1', tenantName: '一号企业' }
 
 describe('unified login (desktop-mt)', () => {
-  it('names the login page with this page as the way back', () => {
-    const url = new URL(ssoLoginUrl('select_account'), 'http://site.test')
+  it('goes through the login page of the entry beside the API, with this page as the way back', () => {
+    // the entry redirects to its MT_SSO_LOGIN_URL: the gateway login page is configured in one place
+    const url = new URL(ssoLoginUrl('/agents/api/', 'select_account'), 'http://site.test')
 
-    expect(url.pathname).toBe('/login/')
+    expect(url.pathname).toBe('/agents/login')
     expect(Object.fromEntries(url.searchParams)).toEqual({
-      platform: 'agents',
       prompt: 'select_account',
       redirect_uri: '/agents/chat?id=1#top'
     })
@@ -82,7 +82,7 @@ describe('unified login (desktop-mt)', () => {
     const boot = bootSso('/agents/api/')
 
     await vi.waitFor(() => expect(replaced).toHaveLength(1))
-    expect(replaced[0]).toMatch(/^\/login\/\?platform=agents&redirect_uri=/)
+    expect(replaced[0]).toMatch(/^\/agents\/login\?redirect_uri=/)
 
     let settled = false
     void boot.then(() => (settled = true))

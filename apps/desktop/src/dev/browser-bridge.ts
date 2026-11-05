@@ -1580,7 +1580,7 @@ function startSso(bridge: object, boot: SsoBoot): void {
   ssoMode = true
   ssoAccount = boot.account
   installSsoAuthErrorHandler(browserApiBase())
-  Object.assign(bridge, { switchMaasAccount: () => void toSsoLogin('select_account') })
+  Object.assign(bridge, { switchMaasAccount: () => void toSsoLogin(browserApiBase(), 'select_account') })
 }
 
 /**
@@ -1623,7 +1623,7 @@ function settleSsoAccount(): boolean {
 
       return response.ok && view?.allowed === true
     },
-    switchAccount: () => void toSsoLogin('select_account')
+    switchAccount: () => void toSsoLogin(browserApiBase(), 'select_account')
   })
 
   return false

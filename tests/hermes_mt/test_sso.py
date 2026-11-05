@@ -390,11 +390,31 @@ async def test_own_login_is_gone_and_pages_go_to_the_gateway(personal_entry: Har
     assert parse_qs(target.query) == {"platform": ["agents"], "redirect_uri": ["/agents/chat?id=1"]}
     evil = await h.request("GET", "/agents/login?redirect_uri=https://evil.test/agents/", allow_redirects=False)
     assert parse_qs(urlsplit(evil.headers["Location"]).query)["redirect_uri"] == ["/agents/"]
+    # 切换账号：prompt 只转方案里的 select_account
+    switch = await h.request("GET", "/agents/login?redirect_uri=/agents/%23/&prompt=select_account", allow_redirects=False)
+    assert parse_qs(urlsplit(switch.headers["Location"]).query) == {
+        "platform": ["agents"], "redirect_uri": ["/agents/#/"], "prompt": ["select_account"]}
+    odd = await h.request("GET", "/agents/login?prompt=consent", allow_redirects=False)
+    assert "prompt" not in parse_qs(urlsplit(odd.headers["Location"]).query)
 
     logout_page = await h.request("GET", "/agents/logout")
     html = await logout_page.text()
     assert logout_page.status == 200 and "/app/gateway/sso/logout" in html and '"/login/?platform=agents' in html
     assert "__LOGIN_URL__" not in html and logout_page.headers["Cache-Control"] == "no-store"
+
+
+@pytest.mark.asyncio
+async def test_the_login_page_address_is_configured_once(postgres_database_url: str, gateway: FakeGateway) -> None:
+    """页面去登录页都经过入口的 /agents/login，退出页最后也跳同一个地址：MT_SSO_LOGIN_URL 改了，两处一起变。"""
+    h = await _harness(postgres_database_url, gateway=gateway, sso_login_url="https://login.example.test/sso/")
+    try:
+        page = await h.request("GET", "/agents/login?redirect_uri=/agents/", allow_redirects=False)
+        target = urlsplit(page.headers["Location"])
+        assert page.status == 302 and (target.scheme, target.netloc, target.path) == ("https", "login.example.test", "/sso/")
+        html = await (await h.request("GET", "/agents/logout")).text()
+        assert '"https://login.example.test/sso/?platform=agents' in html
+    finally:
+        await h.client.close()
 
 
 @pytest.mark.asyncio
