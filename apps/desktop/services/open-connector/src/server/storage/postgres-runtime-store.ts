@@ -233,6 +233,14 @@ class PostgresMarketplaceStore implements IMarketplaceStore {
 }
 
 class PostgresConnectionStore implements IConnectionStore {
+  async getOrCreateInstallationId(): Promise<string> {
+    await this.pool.query(
+      "insert into runtime_installation (id, client_id) values (1, $1) on conflict(id) do nothing",
+      [crypto.randomUUID().replaceAll("-", "").slice(0, 16)],
+    );
+    const result = await this.pool.query<RuntimeRow>("select client_id from runtime_installation where id = 1");
+    return readString(result.rows[0], "client_id");
+  }
   private readonly pool: Pool;
   private readonly secretCodec: ISecretCodec;
 

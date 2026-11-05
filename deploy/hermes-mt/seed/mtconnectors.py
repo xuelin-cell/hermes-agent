@@ -4,10 +4,15 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import sqlite3
 from pathlib import Path
 
 import aiohttp
-from mtconnector_profile import ConnectorProfile, authorize_profile
+import mtconnector_state
+from mtconnector_profile import ConnectorProfile, authorize_profile, profile_home
+
+# Operations after which entry keeps the profile's connector state ('save' re-sends it).
+DURABLE = {'connect', 'oauth.complete', 'enable', 'disable', 'disconnect', 'save'}
 
 
 class Connectors(ConnectorProfile):
@@ -80,6 +85,21 @@ class Connectors(ConnectorProfile):
         scope.values = scope.credentials()
         return scope
 
+    def adopt(self, states):
+        """Bootstrap: install entry's stored connector state over what the archive restored,
+        before the runtime opens any store. A profile that is gone is skipped, as restore does."""
+        adopted = []
+        for item in states:
+            try:
+                name = item['profile']
+                home = profile_home(self.home, name)
+            except (KeyError, TypeError, ValueError):
+                continue
+            scope = self if name == 'default' else ConnectorProfile(home, self.port, name)
+            if mtconnector_state.adopt(scope, item['snapshot'], self.specs):
+                adopted.append(name)
+        return adopted
+
     async def restore(self):
         async with self.lock:
             self.restored = False
@@ -120,13 +140,19 @@ class Connectors(ConnectorProfile):
         profile = data.get('profile', 'default')
         operation = data.get('operation')
         specs, id = self.specs, data.get('id')
-        if operation not in {'list', 'connect', 'enable', 'disable', 'disconnect', 'save', 'authorize', 'oauth.complete'} or (operation != 'list' and id not in specs):
+        if operation not in {'list', 'connect', 'enable', 'disable', 'disconnect', 'save', 'authorize', 'oauth.complete',
+                             'authorize.poll', 'authorize.cancel'} or (operation != 'list' and id not in specs):
             raise ValueError('该连接器或授权方式尚未在云端开放。')
         values = data.get('values')
-        if operation == 'connect' and specs[id]['auth'] == 'oauth2':
-            raise ValueError('该连接器需要 OAuth 授权。')
-        if operation in {'authorize', 'oauth.complete'} and specs[id]['auth'] != 'oauth2':
+        auth = specs[id]['auth'] if id in specs else ''
+        if operation == 'connect' and auth in {'oauth2', 'browser_poll'}:
+            raise ValueError('该连接器需要在授权页授权。')
+        if (operation == 'authorize' and auth not in {'oauth2', 'browser_poll'}) or (operation == 'oauth.complete' and auth != 'oauth2'):
             raise ValueError('该连接器使用表单凭据。')
+        session_id = data.get('sessionId')
+        if operation in {'authorize.poll', 'authorize.cancel'} and (auth != 'browser_poll' or not isinstance(session_id, str)
+                                                                    or not 0 < len(session_id) <= 128):
+            raise ValueError('授权会话无效，请重新发起授权。')
         if operation == 'connect' and (not isinstance(values, dict) or set(values) != set(specs[id]['fields'])
                 or any(not isinstance(value, str) or not value.strip() or len(value) > 16384 for value in values.values())):
             raise ValueError('请完整填写连接器凭据。')
@@ -141,7 +167,14 @@ class Connectors(ConnectorProfile):
                     raise ValueError('MCP name already exists: connector_' + id)
                 await self.start()
                 authorization = {}
-                if operation in {'authorize', 'oauth.complete'}:
+                if auth == 'browser_poll' and operation in {'authorize', 'authorize.poll', 'authorize.cancel'}:
+                    # The runtime saves the token itself once the user approves; register the MCP
+                    # entry only when it reports the connection, like oauth.complete does.
+                    authorization = await self.call(operation, id=id, profile=profile,
+                                                    **({'sessionId': session_id} if operation != 'authorize' else {}))
+                    if operation == 'authorize.poll' and authorization.get('status') == 'connected':
+                        scope.update(id, True)
+                elif operation in {'authorize', 'oauth.complete'}:
                     authorization = await self.call(operation, values, id=id, profile=profile, origin=data.get('origin'), parameters=data.get('parameters'))
                     if operation == 'oauth.complete':
                         scope.update(id, True)
@@ -164,7 +197,13 @@ class Connectors(ConnectorProfile):
                     saved = scope.saved(row['id']) or {}
                     enabled = isinstance(saved, dict) and saved.get('cloud_connector') == row['id'] and saved.get('enabled') is True
                     rows.append({**row, 'enabled': enabled, 'connected': row['configured'] and enabled})
-                return {'connectors': rows, **authorization}
+                result = {'connectors': rows, **authorization}
+                if operation in DURABLE or (operation == 'authorize.poll' and authorization.get('status') == 'connected'):
+                    try:
+                        result['connector_state'] = {'profile': profile, 'snapshot': mtconnector_state.snapshot(scope)}
+                    except (OSError, ValueError, sqlite3.Error):
+                        pass  # The change is made; without a snapshot entry archives the instance instead.
+                return result
             finally:
                 self.managing = False
 

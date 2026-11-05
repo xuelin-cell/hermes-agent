@@ -21,13 +21,42 @@ it('uses cookie-only fixed routes and rejects providers/profiles that are not su
   for (const input of [
     { operation: 'connect', profile: '../other', id: 'amap' },
     { operation: 'authorize', profile: 'default', id: 'amap' },
-    { operation: 'qr.start', profile: 'default', id: 'wecom_bot' }
+    { operation: 'qr.start', profile: 'default', id: 'amap' }
   ] as const) {
     await expect(bridge.localConnectors(input)).rejects.toThrow()
   }
   await bridge.localConnectors({ operation: 'list', profile: 'demo-expert' })
   expect(JSON.parse((fetcher.mock.calls.at(-1) as unknown as [string, RequestInit])[1].body as string).profile).toBe('demo-expert')
   expect(fetcher).toHaveBeenCalledTimes(9)
+})
+
+it('draws the WeCom QR from the link entry returns and never trusts another host', async () => {
+  const fetcher = vi.fn(async () => Response.json({ connectors: [], sessionId: 'scan-1', qrState: 'pending', authUrl: 'https://work.weixin.qq.com/ai/qc/auth?scode=1' }))
+  vi.stubGlobal('fetch', fetcher)
+  const bridge = browserConnectors('/agents/api/')
+  const started = await bridge.localConnectors({ operation: 'qr.start', profile: 'default', id: 'wecom_bot' })
+  expect(started).toMatchObject({ sessionId: 'scan-1', qrState: 'pending' })
+  expect(started.qrImage).toMatch(/^data:image\/png;base64,/)
+  await bridge.localConnectors({ operation: 'qr.poll', profile: 'default', id: 'wecom_bot', sessionId: 'scan-1' })
+  expect(JSON.parse((fetcher.mock.calls.at(-1) as unknown as [string, RequestInit])[1].body as string)).toMatchObject({ operation: 'qr.poll', sessionId: 'scan-1' })
+  fetcher.mockImplementation(async () => Response.json({ connectors: [], sessionId: 'scan-2', qrState: 'pending', authUrl: 'https://evil.example/qr' }))
+  await expect(bridge.localConnectors({ operation: 'qr.start', profile: 'default', id: 'wecom_bot' })).rejects.toThrow('二维码地址无效')
+})
+
+it('sends WPS to the Kingsoft page and polls only its own sessions', async () => {
+  const popup = { opener: {}, location: { replace: vi.fn() }, close: vi.fn(), document: { title: '', body: { textContent: '' } } }
+  vi.spyOn(window, 'open').mockReturnValue(popup as unknown as Window)
+  const fetcher = vi.fn(async () => Response.json({ connectors: [], sessionId: 'wps-1', status: 'pending', authorizationUrl: 'https://mcp-center.wps.cn/kdocs-auth/auth-guide?auth_code=x' }))
+  vi.stubGlobal('fetch', fetcher)
+  const bridge = browserConnectors('/agents/api/')
+  const started = await bridge.localConnectors({ operation: 'authorize', profile: 'default', id: 'wps_mcp' })
+  expect(started).toMatchObject({ sessionId: 'wps-1', status: 'pending' })
+  expect(popup.location.replace).toHaveBeenCalledWith('https://mcp-center.wps.cn/kdocs-auth/auth-guide?auth_code=x')
+  await bridge.localConnectors({ operation: 'authorize.poll', profile: 'default', id: 'wps_mcp', sessionId: 'wps-1' })
+  await expect(bridge.localConnectors({ operation: 'authorize.poll', profile: 'default', id: 'qcc_mcp', sessionId: 'x' })).rejects.toThrow()
+  fetcher.mockImplementation(async () => Response.json({ connectors: [], authorizationUrl: 'https://evil.example/auth' }))
+  await expect(bridge.localConnectors({ operation: 'authorize', profile: 'default', id: 'wps_mcp' })).rejects.toThrow('授权地址无效')
+  expect(popup.close).toHaveBeenCalled()
 })
 
 it('surfaces unconfirmed persistence without retrying the mutation', async () => {
@@ -38,7 +67,7 @@ it('surfaces unconfirmed persistence without retrying the mutation', async () =>
 })
 
 it('claims a safe popup before authorization, validates its destination and closes on failure', async () => {
-  const popup = { opener: {}, location: { replace: vi.fn() }, close: vi.fn() }
+  const popup = { opener: {}, location: { replace: vi.fn() }, close: vi.fn(), document: { title: '', body: { textContent: '' } } }
   const open = vi.spyOn(window, 'open').mockReturnValue(popup as unknown as Window)
   const fetcher = vi.fn(async () => Response.json({ connectors: [], authorizationUrl: 'https://agent.qcc.com/oauth/authorize?state=one' }))
   vi.stubGlobal('fetch', fetcher)
@@ -47,6 +76,8 @@ it('claims a safe popup before authorization, validates its destination and clos
     await bridge.localConnectors({ operation: 'authorize', profile: 'default', id: 'qcc_mcp' })
     expect(open.mock.invocationCallOrder[0]).toBeLessThan(fetcher.mock.invocationCallOrder[0])
     expect(popup.opener).toBeNull()
+    // The window opened in the click says it is loading while the provider URL is prepared.
+    expect(popup.document.body.textContent).toContain('正在打开授权页')
     expect(popup.location.replace).toHaveBeenCalledWith('https://agent.qcc.com/oauth/authorize?state=one')
     fetcher.mockImplementationOnce(async () => Response.json({ connectors: [], authorizationUrl: 'https://untrusted.example/' }))
     await expect(bridge.localConnectors({ operation: 'authorize', profile: 'default', id: 'qcc_mcp' })).rejects.toThrow('地址无效')

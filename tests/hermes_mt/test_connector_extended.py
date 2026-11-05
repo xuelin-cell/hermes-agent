@@ -177,21 +177,23 @@ async def test_oauth_cookie_binding_pkce_one_time_refresh_and_archive(environmen
         stale = env.managers['alice'].saved(id)
         await env.call('alice', 'disconnect', id=id)
         assert (await env.http.post(stale['url'], headers=stale['headers'], json={})).status == 403
-    # Token exchange is one-time. If archiving fails, save the resulting state without
-    # re-exchanging the code or repeating a provider action.
+    # Token exchange is one-time. If saving the connector state fails, save the resulting state
+    # without re-exchanging the code or repeating a provider action.
     response, result = await env.call('alice', 'authorize', id='qcc_mcp', values={})
     params = env.platform.grant(result['authorizationUrl'], 'alice')
     ticket = response.cookies['hermes_connector_oauth_qcc_mcp'].value
-    env.tenants['alice'].sandbox_id = 'sandbox-alice'
-    async def failed_archive(*args): raise RuntimeError('archive unavailable')
-    env.entry.cube = SimpleNamespace(sync_state=failed_archive)
+    saving = env.entry.store.save_connector_state
+    async def failed_save(*args): raise RuntimeError('database unavailable')
+    env.entry.store.save_connector_state = failed_save
     failed = await env.client.get('/agents/api/__entry/connectors/qcc_mcp/oauth/callback', params=params,
         cookies={**env.cookies['alice'], 'hermes_connector_oauth_qcc_mcp': ticket})
     assert failed.status == 400 and '保存未确认' in await failed.text()
     assert params['code'] not in env.platform.grants  # The provider already consumed this code.
-    env.tenants['alice'].sandbox_id = None
+    env.entry.store.save_connector_state = saving
     _, state = await env.call('alice', 'save', id='qcc_mcp')
     assert next(row for row in state['connectors'] if row['id'] == 'qcc_mcp')['connected']
+    stored = (await env.entry.store.connector_states('alice'))[0]['snapshot']
+    assert stored['enabled'] == {'qcc_mcp': True}
     assert 'alice' in env.platform.refreshes
     home = env.managers['bob'].home
     for name in ('connect.sqlite', 'connect.sqlite-wal'):

@@ -173,6 +173,7 @@ COPY seed/mtfolders.py /opt/mt/mtfolders.py
 COPY seed/mtmessaging.py /opt/mt/mtmessaging.py
 COPY seed/mtconnectors.py /opt/mt/mtconnectors.py
 COPY seed/mtconnector_profile.py /opt/mt/mtconnector_profile.py
+COPY seed/mtconnector_state.py /opt/mt/mtconnector_state.py
 COPY .connector-runtime/ /opt/mt/connectors/
 RUN chmod 0644 /opt/mt/forward.py /opt/mt/mtstate.py /opt/mt/mtuser.py /opt/mt/mtent.py
 
@@ -239,8 +240,12 @@ ENV HERMES_TUI_WS_ORPHAN_REAP_GRACE_S=3600
 # as hermes; the bundled PM tools live separately under /opt/hermes/tools.
 # Restore removes the old tools tree recursively, so fixing only its parent
 # leaves root-owned agent-browser subdirectories blocking rmtree.
+# cache/partials is PM's download scratch from the root-run build steps; left
+# root-owned, a runtime `hermes pm install` as hermes cannot take its locks.
+# The downloader recreates it on demand.
 COPY seed/prepare_home.py /tmp/hermes-prepare-home.py
-RUN /opt/hermes/.venv/bin/python /tmp/hermes-prepare-home.py \
+RUN rm -rf /opt/data/cache/partials \
+    && /opt/hermes/.venv/bin/python /tmp/hermes-prepare-home.py \
     && rm /tmp/hermes-prepare-home.py
 
 # ---- 端口 -----------------------------------------------------------------

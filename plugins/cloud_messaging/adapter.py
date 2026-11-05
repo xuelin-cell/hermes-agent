@@ -1,5 +1,6 @@
 """Thin persistent execution boundary over Hermes' existing relay adapter/transport."""
 import asyncio
+import functools
 import json
 import logging
 import mimetypes
@@ -33,6 +34,7 @@ class CloudMessagingAdapter(RelayAdapter):
         self.home=home
         self.current_delivery = None
         self.receipts_task = None
+        self._final_text = {}
 
     async def _on_inbound(self, event):
         if event.media_urls: localize(event,self.home)
@@ -95,6 +97,26 @@ class CloudMessagingAdapter(RelayAdapter):
         except ValueError:
             return SendResult(success=False,error='The final response is already frozen')
         return await self._publish(delivery,chat_id,content)
+
+    # The base turn sends the final text first and its extracted attachments after it. Entry
+    # completes the delivery on that text and closes the relay, so every attachment of the reply
+    # then failed with "Relay disconnected" and the phone received the text alone. Entry bundles
+    # media recorded before the closing text into the same downlink, so send the text last.
+    async def _send_final_text(self, event, session_key, text_content, metadata,
+                               is_ephemeral_response, ephemeral_ttl, record_delivery):
+        self._final_text[event.message_id] = functools.partial(
+            super()._send_final_text, event, session_key, text_content, metadata,
+            is_ephemeral_response, ephemeral_ttl, record_delivery)
+
+    async def _deliver_attachments(self, event, extracted, metadata, *, anything_sent, record_delivery):
+        final_text = self._final_text.pop(event.message_id, None)
+        try:
+            await super()._deliver_attachments(event, extracted, metadata,
+                                               anything_sent=anything_sent or final_text is not None,
+                                               record_delivery=record_delivery)
+        finally:
+            if final_text is not None:
+                await final_text()
 
     async def on_processing_complete(self, event, outcome):
         row = self.ledger.get(event.message_id)

@@ -119,6 +119,8 @@ export type ApiKeyAuthDefinition = {
 export type CustomCredentialAuthDefinition = {
   /** Auth discriminator used by catalog clients and connection routes. */
   type: "custom_credential";
+  /** Browser polling obtains these fields internally instead of showing a credential form. */
+  interaction?: "browser_poll";
   /** Complete user-editable credential field list for this provider. */
   fields: CredentialDefinition[];
   /** Optional action used by future UI/CLI flows to verify credentials. */

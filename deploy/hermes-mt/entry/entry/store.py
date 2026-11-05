@@ -403,6 +403,75 @@ class Store:
             return None
         return row['user_id']
 
+    async def set_skill_enabled(self, user_id: str, name: str, enabled: bool, profile: str = 'default') -> None:
+        """Record one skill toggle; bootstrap replays it over whatever config the archive restored."""
+        async with self.database.acquire() as connection:
+            await connection.execute(
+                """INSERT INTO profile_settings(user_id, profile, settings)
+                   VALUES($1, $2, jsonb_build_object('skills', jsonb_build_object($3::text, $4::boolean)))
+                   ON CONFLICT(user_id, profile) DO UPDATE SET
+                     settings = jsonb_set(profile_settings.settings, '{skills}',
+                       COALESCE(profile_settings.settings->'skills', '{}'::jsonb)
+                         || jsonb_build_object($3::text, $4::boolean)),
+                     revision = profile_settings.revision + 1, updated_at = now()""",
+                user_id, profile, name, enabled)
+
+    async def forget_skill(self, user_id: str, name: str, profile: str = 'default') -> None:
+        async with self.database.acquire() as connection:
+            await connection.execute(
+                """UPDATE profile_settings SET settings = settings #- ARRAY['skills', $3::text],
+                     revision = revision + 1, updated_at = now()
+                   WHERE user_id=$1 AND profile=$2 AND settings->'skills' ? $3::text""",
+                user_id, profile, name)
+
+    async def set_kit_enabled(self, user_id: str, name: str, enabled: bool, skills: list[str],
+                              profile: str = 'default') -> None:
+        """Record one kit toggle. It sets all of the kit's skills, so their older per-skill
+        toggles go; bootstrap replays kit toggles before skill toggles."""
+        async with self.database.acquire() as connection:
+            await connection.execute(
+                """INSERT INTO profile_settings(user_id, profile, settings)
+                   VALUES($1, $2, jsonb_build_object('kits', jsonb_build_object($3::text, $4::boolean)))
+                   ON CONFLICT(user_id, profile) DO UPDATE SET
+                     settings = jsonb_set(
+                       jsonb_set(profile_settings.settings, '{kits}',
+                         COALESCE(profile_settings.settings->'kits', '{}'::jsonb) || jsonb_build_object($3::text, $4::boolean)),
+                       '{skills}', COALESCE(profile_settings.settings->'skills', '{}'::jsonb) - $5::text[]),
+                     revision = profile_settings.revision + 1, updated_at = now()""",
+                user_id, profile, name, enabled, skills)
+
+    async def forget_kit(self, user_id: str, name: str, profile: str = 'default') -> None:
+        async with self.database.acquire() as connection:
+            await connection.execute(
+                """UPDATE profile_settings SET settings = settings #- ARRAY['kits', $3::text],
+                     revision = revision + 1, updated_at = now()
+                   WHERE user_id=$1 AND profile=$2 AND settings->'kits' ? $3::text""",
+                user_id, profile, name)
+
+    async def get_profile_settings(self, user_id: str, profile: str = 'default') -> dict:
+        async with self.database.acquire() as connection:
+            raw = await connection.fetchval(
+                'SELECT settings FROM profile_settings WHERE user_id=$1 AND profile=$2', user_id, profile)
+        if isinstance(raw, str):
+            raw = json.loads(raw)
+        return raw if isinstance(raw, dict) else {}
+
+    async def save_connector_state(self, user_id: str, profile: str, snapshot: dict) -> None:
+        ciphertext = self.cipher.encrypt(json.dumps(snapshot, separators=(',', ':')))
+        async with self.database.acquire() as connection:
+            await connection.execute(
+                """INSERT INTO connector_states(user_id, profile, snapshot_ciphertext) VALUES($1, $2, $3)
+                   ON CONFLICT(user_id, profile) DO UPDATE SET snapshot_ciphertext = EXCLUDED.snapshot_ciphertext,
+                     revision = connector_states.revision + 1, updated_at = now()""",
+                user_id, profile, ciphertext)
+
+    async def connector_states(self, user_id: str) -> list[dict]:
+        async with self.database.acquire() as connection:
+            rows = await connection.fetch(
+                'SELECT profile, snapshot_ciphertext FROM connector_states WHERE user_id=$1 ORDER BY profile', user_id)
+        return [{'profile': row['profile'], 'snapshot': json.loads(self.cipher.decrypt(row['snapshot_ciphertext']))}
+                for row in rows]
+
     async def is_user_active(self, user_id: str) -> bool:
         """Background account capabilities do not require a live browser session."""
         async with self.database.acquire() as connection:

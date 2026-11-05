@@ -31,12 +31,31 @@ def resources(root: Path) -> dict:
         raise installer.KitError('实例缺少套件资源，请更新实例模板。')
     result = {}
     for archive in seed.iter_archives(directory):
+        plan = _bundled_plan(archive)
+        if plan.name in result:
+            raise installer.KitError('内置套件存在重名资源。')
+        result[plan.name] = (archive, plan)
+    return result
+
+
+# Every catalog refresh used to unzip, hash and copy every bundled package (~1s per
+# toggle) for a few manifest fields. The plan depends only on the archive file, so it
+# is keyed by that file's identity; a template update swaps the file and the key.
+_plans: dict[tuple[str, int, int], object] = {}
+_plans_lock = threading.Lock()
+
+
+def _bundled_plan(archive: Path):
+    info = archive.stat()
+    key = (str(archive.resolve()), info.st_size, info.st_mtime_ns)
+    with _plans_lock:
+        plan = _plans.get(key)
+    if plan is None:
         with package.open_package(archive) as (pristine, work, digest):
             plan = package.build_plan(pristine, work, digest)
-            if plan.name in result:
-                raise installer.KitError('内置套件存在重名资源。')
-            result[plan.name] = (archive, plan)
-    return result
+        with _plans_lock:
+            _plans[key] = plan
+    return plan
 
 
 def profile_home(root: Path, name: str) -> Path:
@@ -101,6 +120,7 @@ def changing(root: Path):
 
 def describe(root: Path) -> dict:
     installed = {row['name']: row for row in catalog.describe(root)['plugins']}
+    index = store.load_index(root)['plugins']
     rows = []
     for name, (_, plan) in resources(root).items():
         row = installed.pop(name, None)
@@ -112,8 +132,8 @@ def describe(root: Path) -> dict:
                    'mcp_count': 0, 'user_config': [], 'missing_secrets': [],
                    'oauth_servers': [], 'pending_triggers': 0, 'unverified_triggers': 0}
         else:
-            row['enabled'] = store.load_index(root)['plugins'][name].get('enabled', True)
-        row['installed'] = name in store.load_index(root)['plugins']
+            row['enabled'] = index[name].get('enabled', True)
+        row['installed'] = name in index
         rows.append(row)
     rows.extend({**row, 'installed': True} for row in installed.values())
     return {'plugins': rows}
@@ -145,7 +165,9 @@ def action(data: dict) -> dict:
         elif operation == 'toggle':
             if not isinstance(data.get('enabled'), bool):
                 raise installer.KitError('请指定启用状态。')
-            installer.set_enabled(root, name, data['enabled'])
+            entry = installer.set_enabled(root, name, data['enabled'])
+            # Entry keeps the toggle and drops the per-skill toggles this one supersedes.
+            result['skills'] = sorted({*(entry.get('skill_names') or []), *(entry.get('agent_skill_names') or [])})
         elif operation == 'uninstall':
             index = store.load_index(root)
             entry = index['plugins'].get(name, {})

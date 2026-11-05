@@ -53,6 +53,7 @@ import json
 import os
 import secrets
 import signal
+import sqlite3
 import sys
 import time
 from pathlib import Path
@@ -620,6 +621,16 @@ async def _bootstrap(writer: asyncio.StreamWriter, body: bytes) -> None:
         except Exception as exc:  # noqa: BLE001
             _reply(writer, 400, {"ok": False, "error": f"写种子文件失败: {exc}"})
             return
+
+        # 连接器状态以入口库里那份为准（见 mtconnector_state）：运行时还没起，先把它装回去。
+        # 装不上就沿用归档恢复出来的那份，不挡启动。
+        if payload.get("connectors") and not (_enterprise_mode or payload.get("enterprise")):
+            try:
+                adopted = _connectors.adopt(list(payload["connectors"]))
+                if adopted:
+                    _log(f"连接器状态按入口库恢复: {', '.join(adopted)}")
+            except (KeyError, TypeError, ValueError, OSError, sqlite3.Error) as exc:
+                _log(f"连接器状态没装上，沿用归档里的: {type(exc).__name__}")
 
         # 用户目录已经从上一代恢复：这时再按发行规则同步自带技能，见 _sync_bundled_skills。
         skills = await _sync_bundled_skills()

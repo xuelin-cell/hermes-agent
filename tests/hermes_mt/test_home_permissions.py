@@ -16,12 +16,15 @@ from prepare_home import check_home, prepare_home
 
 
 @pytest.mark.platforms("posix")
-def test_nested_image_tools_can_be_replaced_by_a_real_state_archive(tmp_path):
+def test_nested_image_tools_can_be_replaced_by_a_real_state_archive(tmp_path, monkeypatch):
     source = tmp_path / "source"
     (source / "tools").mkdir(parents=True)
     (source / "tools/user-tool.py").write_text("print('saved tool')")
     (source / "config.yaml").write_text("model: saved-model\n")
+    # New archives skip tools/, but archives written before that still carry it and must restore.
+    monkeypatch.setattr(mtstate, "EXCLUDE_TOP", mtstate.EXCLUDE_TOP - {"tools"})
     archive, manifest = mtstate.build_archive(source, tmp_path / "archive", "old", 1, "")
+    monkeypatch.undo()
     home = tmp_path / "new-home"
     nested = home / "tools/agent-browser-0.26.0-linux-x64/bin"
     nested.mkdir(parents=True)

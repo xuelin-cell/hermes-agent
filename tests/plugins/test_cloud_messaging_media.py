@@ -133,3 +133,41 @@ async def test_media_failure_fallback_is_explicit_for_pending_and_missing_files(
             assert ('任务未能完成' in frames[-1]['content']) == (delivery == 'failed')
     finally:
         reset_hermes_home_override(token)
+
+
+@pytest.mark.asyncio
+async def test_final_reply_attachments_reach_the_relay_before_the_closing_text(tmp_path, monkeypatch):
+    """Entry completes a delivery on its final text and closes the relay, so the base turn's
+    text-then-attachments order lost every attachment ("Relay disconnected"; phone got text only)."""
+    from unittest.mock import AsyncMock
+    monkeypatch.setenv('HERMES_HOME', str(tmp_path))
+    token = set_hermes_home_override(tmp_path)
+    try:
+        adapter = CloudMessagingAdapter(PlatformConfig(enabled=True), settings(), tmp_path)
+        adapter.ledger.accept('delivery', 'chat', 1, 'binding')
+        adapter.current_delivery = 'delivery'
+        image = tmp_path / 'kitten.png'
+        image.write_bytes(b'\x89PNG\r\n\x1a\n' + b'0' * 64)
+        frames, closed = [], []
+        async def entry(action, **kwargs):
+            if closed:
+                return {'success': False, 'error': 'Relay disconnected'}
+            frames.append(action)
+            if action['op'] == 'send':
+                closed.append(True)  # the delivery is complete; the relay goes away
+            return {'success': True, 'message_id': 'queued'}
+        adapter._transport = SimpleNamespace(send_outbound=entry)
+        for name in ('_stop_typing_refresh', '_run_processing_hook', '_fire_post_delivery_callback',
+                     '_flush_text_debounce_now'):
+            setattr(adapter, name, AsyncMock())
+        adapter._start_typing_refresh = lambda *a: None
+        adapter._finish_session_task = lambda *a: None
+        adapter._message_handler = AsyncMock(return_value=f'这张也画好啦！\nMEDIA:{image}')
+        event = MessageEvent(text='画一只猫', message_id='delivery',
+                             source=SessionSource(platform=Platform.FEISHU, chat_id='chat'))
+        await adapter._process_message_background(event, 'session')
+        assert [frame['op'] for frame in frames] == ['send_media', 'send']
+        assert frames[0]['media']['name'] == 'kitten.png'
+        assert frames[-1]['content'] == '这张也画好啦！'
+    finally:
+        reset_hermes_home_override(token)

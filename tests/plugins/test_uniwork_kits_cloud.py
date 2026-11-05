@@ -231,3 +231,27 @@ def test_cloud_expert_socket_runs_real_rpc_and_local_model(kits, profile_env, ex
         model.shutdown()
         model.server_close()
         thread.join(timeout=5)
+
+
+def test_cloud_catalog_reads_each_bundled_package_once_until_it_is_replaced(kits, profile_env, kit_pkg,
+                                                                          expert_pkg, tmp_path, monkeypatch):
+    cloud = importlib.import_module('hermes_plugins.uniwork_kits.cloud')
+    bundles = tmp_path / 'bundled'
+    _zip_dir(kit_pkg, bundles / 'plugins/demo-kit.zip')
+    _zip_dir(expert_pkg, bundles / 'plugins/demo-expert.zip')
+    (profile_env / 'config.yaml').write_text(yaml.safe_dump({
+        'cloud_kits': {'enabled': True}, 'uniwork_kits': {'bundled_dir': str(bundles)}}))
+    opened = []
+    real_open = cloud.package.open_package
+    monkeypatch.setattr(cloud.package, 'open_package', lambda path: opened.append(Path(path).name) or real_open(path))
+
+    names = lambda: sorted(row['name'] for row in cloud.describe(cloud.home())['plugins'])
+    assert names() == ['demo-expert', 'demo-kit']
+    assert names() == ['demo-expert', 'demo-kit']
+    # Toggling refreshes the catalog every time; the packages themselves are unchanged.
+    assert sorted(opened) == ['demo-expert.zip', 'demo-kit.zip']
+
+    # A template update replaces the file: its new contents must show up.
+    other = _expert_pkg(tmp_path, name='other-expert')
+    _zip_dir(other, bundles / 'plugins/demo-kit.zip')
+    assert names() == ['demo-expert', 'other-expert']

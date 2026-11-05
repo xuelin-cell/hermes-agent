@@ -18,7 +18,7 @@ import yaml
 
 from entry.app import build_app
 from entry.config import Settings
-from tests.plugins.test_uniwork_kits_plugin import kits, profile_env, expert_pkg, _zip_dir
+from tests.plugins.test_uniwork_kits_plugin import kits, profile_env, expert_pkg, kit_pkg, _zip_dir
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -117,6 +117,75 @@ async def test_kit_install_is_acknowledged_after_archive_and_retry_never_reinsta
             assert state['phase'] == 'saved', state
             assert state['result']['ok']
             assert counts['installs'] == 1 and counts['saves'] == 2
+    finally:
+        await entry.skill_routes.close()
+        await entry.database.close()
+
+
+@pytest.mark.asyncio
+async def test_kit_toggle_is_kept_by_entry_and_replayed_over_an_older_archive(
+        kits, profile_env, kit_pkg, expert_pkg, tmp_path, postgres_database_url, monkeypatch):
+    """A kit toggle (and recording a recent expert) no longer waits for an instance archive: entry
+    keeps the toggle and bootstrap replays it, kit first, then the skill toggles made after it."""
+    cloud = importlib.import_module('hermes_plugins.uniwork_kits.cloud')
+    with (profile_env / 'config.yaml').open('a') as config:
+        config.write('cloud_kits:\n  enabled: true\n')
+    assert kits.installer.install(kit_pkg, profile_env, triggers={}).ok
+    assert kits.installer.install(expert_pkg, profile_env, triggers={}).ok
+    kit = kits.store.load_index(profile_env)['plugins']['demo-kit']
+    assert kit['skill_names'] and kit['mcp_keys']
+    monkeypatch.syspath_prepend(str(REPO / 'deploy/hermes-mt/seed'))
+    import mtstate
+    older, _ = mtstate.build_archive(profile_env, tmp_path / 'archive', 'tenant-a', 1, '')
+    from entry import state_checkpoint
+    async def checkpoint(*args): raise AssertionError('a kit toggle must not archive the instance')
+    monkeypatch.setattr(state_checkpoint, 'checkpoint', checkpoint)
+    async def backend_action(request):
+        return web.json_response(await asyncio.to_thread(cloud.action, await request.json()))
+    backend = web.Application()
+    backend.router.add_post('/api/plugins/uniwork-kits/cloud/action', backend_action)
+    app = build_app(Settings(database_url=postgres_database_url, credential_key=Fernet.generate_key().decode(), backend='docker'))
+    entry = next(route.handler.__self__ for route in app.router.routes() if route.handler.__name__ == 'login')
+    app.on_startup.clear()
+    app.on_cleanup.clear()
+    await entry.database.connect()
+    try:
+        async with TestServer(backend) as upstream, aiohttp.ClientSession() as http, TestClient(TestServer(app), cookie_jar=aiohttp.DummyCookieJar()) as client:
+            entry.http = http
+            tenant = SimpleNamespace(origin=f'{upstream.host}:{upstream.port}', token='instance-a', ip='', host_header='', traffic_token='', sandbox_id=None)
+            async def ensure(_owner): return tenant
+            entry.tenants = SimpleNamespace(ensure_running=ensure)
+            login = await entry._finish_login('a', '', int((time.time() + 3600) * 1000))
+            auth = {'cookies': {name: value.value for name, value in login.cookies.items()}}
+            async def run(key, path, body):
+                start = {'id': key, 'method': 'PUT' if path == 'api/skills/toggle' else 'POST', 'path': path, 'body': body}
+                assert (await client.post('/agents/api/__entry/skills/start', json=start, **auth)).status == 200
+                for _ in range(100):
+                    state = await (await client.post('/agents/api/__entry/skills/status', json={'id': key}, **auth)).json()
+                    if state['phase'] != 'changing' and state['phase'] != 'saving':
+                        return state
+                    await asyncio.sleep(.05)
+            action = 'api/plugins/uniwork-kits/cloud/action'
+            skill = kit['skill_names'][0]
+            # A per-skill toggle made before the kit toggle is superseded by it.
+            await entry.store.set_skill_enabled('a', skill, True)
+            assert (await run('toggle-kit-off', action, {'operation': 'toggle', 'name': 'demo-kit', 'enabled': False}))['phase'] == 'saved'
+            assert (await run('record-recent', action, {'operation': 'recent', 'name': 'demo-expert'}))['phase'] == 'saved'
+            settings = await entry.store.get_profile_settings('a')
+            assert settings['kits'] == {'demo-kit': False} and skill not in settings.get('skills', {})
+
+            restored = tmp_path / 'restored'
+            restored.mkdir()
+            import tarfile
+            with tarfile.open(older) as saved:
+                saved.extractall(restored, filter='data')
+            assert kits.store.load_index(restored)['plugins']['demo-kit'].get('enabled', True) is True
+            mtstate.patch_config_file(restored / 'config.yaml', settings)
+            replayed = kits.store.load_index(restored)['plugins']['demo-kit']
+            config = yaml.safe_load((restored / 'config.yaml').read_text())
+            assert replayed['enabled'] is False
+            assert set(kit['skill_names']) <= set(config['skills']['disabled'])
+            assert all(config['mcp_servers'][key]['enabled'] is False for key in kit['mcp_keys'])
     finally:
         await entry.skill_routes.close()
         await entry.database.close()

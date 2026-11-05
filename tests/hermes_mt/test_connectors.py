@@ -71,7 +71,7 @@ import dns from 'node:dns/promises';
 import {syncBuiltinESMExports} from 'node:module';
 dns.lookup=async()=>[{address:'1.1.1.1',family:4}]; syncBuiltinESMExports();
 const native=globalThis.fetch;
-const allowed=new Set(['agent.qcc.com','mkcs.dfcfs.com','upass.10jqka.com.cn','api-mcp.51ifind.com','mxapi-stg.eastmoney.com','mcp.aminer.cn','restapi.amap.com','open.mail.163.com','account.wps.cn','openapi.wps.cn','qyapi.weixin.qq.com','ima.qq.com']);
+const allowed=new Set(['agent.qcc.com','mkcs.dfcfs.com','upass.10jqka.com.cn','api-mcp.51ifind.com','mxapi-stg.eastmoney.com','mcp.aminer.cn','restapi.amap.com','open.mail.163.com','account.wps.cn','openapi.wps.cn','api.wps.cn','mcp-center.wps.cn','qyapi.weixin.qq.com','ima.qq.com']);
 globalThis.fetch=(input,options)=>{const request=input instanceof Request?input:null;const url=new URL(request?.url??String(input));
  if(url.hostname==='127.0.0.1')return native(input,options);
  if(!allowed.has(url.hostname))throw Error('Unexpected external destination: '+url.hostname);
@@ -151,15 +151,6 @@ class ConnectorPlatform:
                 return web.Response(status=202)
             await queue.put({'jsonrpc': '2.0', 'id': body['id'], 'result': result})
             return web.Response(status=202)
-        if path == '/api/authorization/agent/v1/token':
-            key = body.get('api_key', '')
-            if key not in {'apik:alice-wps', 'apik:bob-wps'}:
-                return web.json_response({'code': 401}, status=401)
-            return web.json_response({'code': 0, 'data': {'access_token': key.split(':')[1].split('-')[0], 'expires_in': 3600}})
-        if path == '/v7/files/search':
-            owner = request.headers.get('Authorization', '').removeprefix('Bearer ')
-            assert owner in {'alice', 'bob'}
-            return web.json_response({'code': 0, 'data': {'items': [{'id': 'file-' + owner, 'name': owner + '-report'}]}})
         if path == '/cgi-bin/aibot/cli/get_mcp_config':
             owner = body['bot_id'].split('-')[0]
             expected = hashlib.sha256(f"{owner}-secret{body['bot_id']}{body['time']}{body['nonce']}".encode()).hexdigest()
@@ -186,14 +177,14 @@ class ConnectorPlatform:
 
 PROVIDER_INPUTS = {
     'youdao_note': ('youdao_note.list_notes', {'parentId': '0'}),
-    'wps_mcp': ('wps_mcp.search_files', {'keyword': 'report'}),
     'wecom_bot': ('wecom_bot.get_userlist', {}),
     'ima': ('ima.search_knowledge_bases', {'query': 'knowledge'})
 }
 
 
 def provider_values(owner):
-    return {'youdao_note': {'apiKey': owner + '-note'}, 'wps_mcp': {'apiKey': 'apik:' + owner + '-wps'},
+    # WPS authorizes on Kingsoft's page, not a credential form: see test_connector_wps.py.
+    return {'youdao_note': {'apiKey': owner + '-note'},
         'wecom_bot': {'botId': owner + '-bot', 'secret': owner + '-secret'}, 'ima': {'clientId': owner + '-client', 'apiKey': owner + '-ima'}}
 
 
@@ -375,7 +366,7 @@ async def test_entry_connector_mcp_scopes_and_archive_restore(tmp_path, postgres
                     await call('alice', 'enable', id=id)
                     action, inputs = PROVIDER_INPUTS[id]
                     assert 'alice' in json.dumps(await mcp_action(http, managers['alice'], id, action, inputs))
-                forbidden = await mcp_action(http, managers['alice'], 'wps_mcp', 'ima.search_knowledge_bases', {'query': ''},
+                forbidden = await mcp_action(http, managers['alice'], 'youdao_note', 'ima.search_knowledge_bases', {'query': ''},
                     extra_headers={'X-OpenConnector-Allowed-Services': 'ima'})
                 assert forbidden['ok'] is False
                 original = await mcp_action(http, managers['alice'], 'ima', 'ima.get_knowledge_item_original', {'mediaId': 'report', 'fileName': '报告.pdf'})
@@ -391,7 +382,7 @@ async def test_entry_connector_mcp_scopes_and_archive_restore(tmp_path, postgres
                 assert response.status == 401
                 original_keys = (homes['alice'] / 'open-connector/secrets.json').read_bytes()
                 assert b'alice-key' not in (homes['alice'] / 'open-connector/connect.sqlite').read_bytes()
-                for secret in (b'alice-note', b'apik:alice-wps', b'alice-secret', b'alice-ima'):
+                for secret in (b'alice-note', b'alice-secret', b'alice-ima'):
                     assert secret not in (homes['alice'] / 'open-connector/connect.sqlite').read_bytes()
                 assert original_keys != (homes['bob'] / 'open-connector/secrets.json').read_bytes()
                 await call('alice', 'disable', id='amap')
@@ -436,11 +427,11 @@ async def test_entry_connector_mcp_scopes_and_archive_restore(tmp_path, postgres
                         assert response.status == 403
                 finally:
                     await replacement.close()
-                # A mutation that cannot be checkpointed must not be reported as saved.
+                # Entry's table keeps a connector change; a failing instance archive is not on its path.
                 tenants['alice'].sandbox_id = 'sandbox-alice'
                 async def sync(*args): raise RuntimeError('archive failed')
                 entry.cube = SimpleNamespace(sync_state=sync)
-                await call('alice', 'enable', expected=409, id='amap')
+                await call('alice', 'enable', id='amap')
                 tenants['alice'].sandbox_id = None
                 config_before = (homes['alice'] / 'config.yaml').read_bytes()
                 assert (await call('alice', 'save', id='amap'))['connectors'][0]['connected'] is True
@@ -453,4 +444,93 @@ async def test_entry_connector_mcp_scopes_and_archive_restore(tmp_path, postgres
                 await manager.close()
             for task in entry._bg:
                 await task
+            await entry.database.close()
+
+
+@pytest.mark.asyncio
+async def test_connector_changes_are_kept_by_entry_and_replayed_over_an_older_archive(tmp_path, postgres_database_url, monkeypatch):
+    """Connector changes are stored in entry's table instead of archiving the instance (6-25 s per
+    click). Bootstrap sends them back: they beat an older archive, and a store the instance changed
+    after the snapshot (a token refresh) beats them."""
+    provider = web.Application()
+    provider.router.add_get('/v3/weather/weatherInfo', weather)
+    async with TestServer(provider) as upstream, aiohttp.ClientSession() as http:
+        script, node = await worker(tmp_path, str(upstream.make_url('')).rstrip('/'))
+        from entry import connector_contract
+        monkeypatch.setattr(connector_contract, 'CONTRACT_FILE', Path(script).parents[3] / 'contract.json')
+        app = build_app(Settings(database_url=postgres_database_url, credential_key=Fernet.generate_key().decode(), backend='cube'))
+        entry = next(route.handler.__self__ for route in app.router.routes() if route.handler.__name__ == 'login')
+        app.on_startup.clear()
+        app.on_cleanup.clear()
+        home = tmp_path / 'alice'
+        home.mkdir()
+        (home / 'config.yaml').write_text('mcp_servers: {}\n')
+        manager = mtconnectors.Connectors(home, sys.executable, worker=script, node=node, port=port())
+        listener = await asyncio.start_server(forwarder(home, manager, 'instance-alice', monkeypatch)._handle, '127.0.0.1', 0)
+        tenant = SimpleNamespace(user_id='alice', token='instance-alice', origin=f'127.0.0.1:{listener.sockets[0].getsockname()[1]}',
+                                 traffic_token='', host_header='', sandbox_id='sandbox-alice')
+        async def ensure(owner): return tenant
+        async def warm(owner): pass
+        async def archive(*args): raise AssertionError('a connector change must not archive the instance')
+        entry.tenants, entry._warm, entry.cube = SimpleNamespace(ensure_running=ensure), warm, SimpleNamespace(sync_state=archive)
+        await entry.database.connect()
+        replacements = []
+
+        async def boot(name, restored_from=None):
+            # A replacement instance: optionally restored from an archive, then given entry's state.
+            fresh = tmp_path / name
+            fresh.mkdir()
+            if restored_from:
+                with tarfile.open(restored_from) as saved:
+                    saved.extractall(fresh, filter='data')
+            else:
+                (fresh / 'config.yaml').write_text('mcp_servers: {}\n')
+            replacement = mtconnectors.Connectors(fresh, sys.executable, worker=script, node=node, port=port())
+            replacements.append(replacement)
+            adopted = replacement.adopt(await entry.store.connector_states('alice'))
+            await replacement.restore()
+            return replacement, adopted
+        try:
+            async with TestClient(TestServer(app), cookie_jar=aiohttp.DummyCookieJar()) as client:
+                entry.http = http
+                login = await entry._finish_login('alice', '', int((time.time() + 3600) * 1000))
+                cookies = {name: value.value for name, value in login.cookies.items()}
+                async def call(operation, **extra):
+                    response = await client.post('/agents/api/__entry/connectors', json={'operation': operation, 'profile': 'default', **extra}, cookies=cookies)
+                    result = await response.json()
+                    assert response.status == 200, result
+                    assert 'connector_state' not in result and 'alice-key' not in json.dumps(result)
+                    return result
+
+                await call('connect', id='amap', values={'apiKey': 'alice-key'})
+                connected_archive, _ = mtstate.build_archive(home, tmp_path / 'archive', 'sandbox', 1, '')
+                await call('disconnect', id='amap')
+
+                # The disconnect is newer than the archive: the restored connection must not come back.
+                replacement, adopted = await boot('from-older-archive', connected_archive)
+                assert adopted == ['default']
+                assert (await replacement.request({'operation': 'list'}))['connectors'][0]['configured'] is False
+                assert replacement.saved('amap') is None
+
+                # Entry's state alone (no archive at all) brings back a working connector.
+                await call('connect', id='amap', values={'apiKey': 'alice-key'})
+                stored = (await entry.store.connector_states('alice'))[0]['snapshot']
+                assert b'alice-key' not in json.dumps(stored).encode()
+                replacement, adopted = await boot('without-archive')
+                assert adopted == ['default']
+                assert 'alice' in json.dumps(await mcp_action(http, replacement, 'amap', 'amap.weather', {'city': '110000'}))
+
+                # The instance's store changed after entry's snapshot: bootstrap keeps the instance's.
+                await replacement.request({'operation': 'connect', 'id': 'amap', 'values': {'apiKey': 'bob-key'}})
+                await replacement.close()
+                refreshed = replacement.home / 'open-connector/connect.sqlite'
+                before = refreshed.read_bytes()
+                assert replacement.adopt(await entry.store.connector_states('alice')) == []
+                assert refreshed.read_bytes() == before
+        finally:
+            listener.close()
+            await listener.wait_closed()
+            await manager.close()
+            for replacement in replacements:
+                await replacement.close()
             await entry.database.close()

@@ -12,6 +12,7 @@ import { Search } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 
 import { CONNECTOR_SPECS, type ConnectorId } from '../../../../electron/open-connector/contract'
+import { CLOUD_CONNECTOR_SPECS } from '../../../../services/open-connector/cloud/contract'
 
 import { McpConnectorsTab, type McpConnectorsTabProps } from './connectors-tab'
 import { RECOMMENDED_CONNECTORS } from './recommended-catalog'
@@ -21,6 +22,13 @@ import { useRecommendedConnections } from './use-recommended-connections'
 /** 推荐目录只负责展示，MCP 页继续使用原生管理；深链始终优先打开 MCP。 */
 interface ConnectorsPageProps extends McpConnectorsTabProps {
   searchContainer?: HTMLDivElement | null
+}
+
+/** The cloud authorizes some providers differently from desktop (WPS on Kingsoft's page). */
+function authOf(id: ConnectorId): string {
+  const cloud = window.hermesDesktop.cloudConnectorIds ? (CLOUD_CONNECTOR_SPECS as Record<string, { auth: string }>)[id] : undefined
+
+  return cloud?.auth ?? CONNECTOR_SPECS[id].auth
 }
 
 export function ConnectorsPage({ searchContainer, ...props }: ConnectorsPageProps) {
@@ -95,8 +103,9 @@ export function ConnectorsPage({ searchContainer, ...props }: ConnectorsPageProp
 
   function connect(id: ConnectorId): void {
     setSelectedId(id)
+    const auth = authOf(id)
 
-    if (CONNECTOR_SPECS[id].auth === 'oauth2' && !(window.hermesDesktop.cloudConnectorIds && id === 'ifind_mcp')) {
+    if (auth === 'browser_poll' || (auth === 'oauth2' && !(window.hermesDesktop.cloudConnectorIds && id === 'ifind_mcp'))) {
       setDetailMode('overview')
       void connections.request('authorize', id)
     } else {
@@ -261,7 +270,7 @@ export function ConnectorsPage({ searchContainer, ...props }: ConnectorsPageProp
         onExample={text => void openExample(text)}
         onQr={connections.qr}
         onSubmit={async values => {
-          if (selected && (await connections.request(CONNECTOR_SPECS[selected.id].auth === 'oauth2' ? 'authorize' : 'connect', selected.id, values))) {
+          if (selected && (await connections.request(authOf(selected.id) === 'oauth2' ? 'authorize' : 'connect', selected.id, values))) {
             setDetailMode('overview')
           }
         }}

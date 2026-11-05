@@ -1,20 +1,48 @@
 {
   "service": "wps_mcp",
   "displayName": "WPS Cloud Documents",
-  "description": "Search, inspect, read, and organize WPS cloud files through the WPS OpenAPI V7 service.",
+  "description": "Search, read, create, and edit Kingsoft documents through the official Skill Hub MCP service after browser authorization.",
   "categories": [
     "Productivity",
     "Storage"
   ],
   "authTypes": [
-    "api_key"
+    "custom_credential"
   ],
   "auth": [
     {
-      "type": "api_key",
-      "label": "WPS Agent API Key",
-      "placeholder": "Paste your WPS Agent API Key (apik:...)",
-      "description": "Paste the Agent API Key from https://account.wps.cn/usercenter/agent-identity?isclient=false. OpenConnector exchanges it for a short-lived WPS OpenAPI access token automatically."
+      "type": "custom_credential",
+      "interaction": "browser_poll",
+      "fields": [
+        {
+          "key": "token",
+          "label": "Authorization token",
+          "inputType": "password",
+          "required": true,
+          "secret": true
+        },
+        {
+          "key": "expiresAt",
+          "label": "Token expiration",
+          "inputType": "text",
+          "required": true,
+          "secret": false
+        },
+        {
+          "key": "clientId",
+          "label": "Installation ID",
+          "inputType": "text",
+          "required": true,
+          "secret": false
+        },
+        {
+          "key": "skillVersion",
+          "label": "Skill version",
+          "inputType": "text",
+          "required": true,
+          "secret": false
+        }
+      ]
     }
   ],
   "homepageUrl": "https://www.wps.cn",
@@ -23,7 +51,7 @@
       "id": "wps_mcp.call_tool",
       "service": "wps_mcp",
       "name": "call_tool",
-      "description": "Call one of the WPS V7 actions exposed by the local adapter.",
+      "description": "Execute a discovered upstream Kingsoft tool. Input shape: {\"toolName\":\"create_folder\",\"arguments\":{\"name\":\"Project Materials\"}}. The outer selector is toolName, never name; business fields such as a folder name go inside arguments. Check the selected tool schema first and preserve its exact name. To inspect this connector action use get_action_guide({\"actionId\":\"wps_mcp.call_tool\"}), not get_tool_schema. Do not retry uncertain writes automatically.",
       "requiredScopes": [],
       "providerPermissions": [],
       "inputSchema": {
@@ -32,325 +60,104 @@
           "toolName": {
             "type": "string",
             "minLength": 1,
-            "description": "The exact local WPS V7 action name to pass to call_tool."
+            "description": "Required outer selector for the upstream tool, e.g. create_folder. Do not rename this field to name."
           },
           "arguments": {
             "type": "object",
             "properties": {},
             "additionalProperties": true,
-            "description": "JSON arguments matching the inputSchema returned for the selected tool."
+            "description": "Business arguments matching the selected tool's inputSchema. A folder's name belongs here as arguments.name, not in the outer input."
           }
         },
         "additionalProperties": false,
         "required": [
           "toolName"
         ],
-        "description": "Input for invoking one current WPS V7 action."
+        "description": "An official tool invocation."
       },
       "outputSchema": {
         "type": "object",
         "properties": {
           "result": {
-            "description": "The WPS V7 API response."
+            "description": "MCP tool result."
           }
         },
         "additionalProperties": false,
-        "description": "The result returned by the local WPS V7 adapter."
-      }
+        "description": "The official tool result."
+      },
+      "followUpActions": [
+        "wps_mcp.list_tools",
+        "wps_mcp.get_tool_schema"
+      ]
     },
     {
-      "id": "wps_mcp.create_folder",
+      "id": "wps_mcp.get_tool_schema",
       "service": "wps_mcp",
-      "name": "create_folder",
-      "description": "Create a folder in a known WPS drive and parent folder.",
+      "name": "get_tool_schema",
+      "description": "Get the business parameter schema for one upstream Kingsoft tool. Required input: {\"toolName\":\"create_folder\"}, replacing create_folder with the exact discovered name. Never pass {}. This does not inspect local connector actions such as wps_mcp.call_tool: use get_action_guide with that actionId instead. Tool names and prefixes must match discovery exactly.",
       "requiredScopes": [],
       "providerPermissions": [],
       "inputSchema": {
         "type": "object",
         "properties": {
-          "drive_id": {
+          "toolName": {
             "type": "string",
             "minLength": 1,
-            "description": "The destination WPS drive ID."
-          },
-          "parent_id": {
-            "type": "string",
-            "minLength": 1,
-            "description": "The parent folder ID. Use 0 for the drive root."
-          },
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "description": "The folder name without a file extension."
-          },
-          "on_name_conflict": {
-            "type": "string",
-            "enum": [
-              "fail",
-              "rename"
-            ],
-            "description": "How WPS should handle an existing name."
-          },
-          "parent_path": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1,
-              "description": "A folder name in the relative path."
-            },
-            "description": "Relative folder path segments that WPS should create when missing."
+            "description": "Required upstream tool name returned by list_tools, e.g. create_folder; not the local action call_tool."
           }
         },
         "additionalProperties": false,
-        "required": [
-          "drive_id",
-          "parent_id",
-          "name"
-        ],
-        "description": "The destination and name for a new WPS folder."
+        "description": "One discovered official tool."
       },
       "outputSchema": {
-        "description": "The WPS V7 folder creation response."
-      }
-    },
-    {
-      "id": "wps_mcp.get_file_info",
-      "service": "wps_mcp",
-      "name": "get_file_info",
-      "description": "Get metadata, drive details, extended attributes, or permissions for a WPS file.",
-      "requiredScopes": [],
-      "providerPermissions": [],
-      "inputSchema": {
         "type": "object",
         "properties": {
-          "file_id": {
-            "type": "string",
-            "minLength": 1,
-            "description": "A WPS file ID used to select the document."
-          },
-          "link_id": {
-            "type": "string",
-            "minLength": 1,
-            "description": "A WPS share link ID used to select the document."
-          },
-          "url": {
-            "type": "string",
-            "description": "A WPS document URL used to select the document.",
-            "format": "uri"
-          },
-          "with_drive": {
-            "type": "boolean",
-            "description": "Whether the response should include the containing drive."
-          },
-          "with_ext_attrs": {
-            "type": "boolean",
-            "description": "Whether the response should include extended attributes."
-          },
-          "with_permission": {
-            "type": "boolean",
-            "description": "Whether the response should include operation permissions."
-          }
-        },
-        "additionalProperties": false,
-        "description": "At least one WPS file selector and optional metadata expansions.",
-        "anyOf": [
-          {
-            "required": [
-              "file_id"
-            ]
-          },
-          {
-            "required": [
-              "link_id"
-            ]
-          },
-          {
-            "required": [
-              "url"
-            ]
-          }
-        ]
-      },
-      "outputSchema": {
-        "description": "The WPS V7 file metadata response."
-      }
-    },
-    {
-      "id": "wps_mcp.list_files",
-      "service": "wps_mcp",
-      "name": "list_files",
-      "description": "List entries in a known WPS drive folder with filtering, sorting, and pagination.",
-      "requiredScopes": [],
-      "providerPermissions": [],
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "drive_id": {
-            "type": "string",
-            "minLength": 1,
-            "description": "The WPS drive ID."
-          },
-          "parent_id": {
-            "type": "string",
-            "minLength": 1,
-            "description": "The folder ID. Use 0 for the drive root."
-          },
-          "filter_exts": {
-            "type": "string",
-            "description": "Comma-separated lowercase file extensions to include."
-          },
-          "filter_type": {
+          "tool": {
             "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "enum": [
-                  "file",
-                  "folder",
-                  "shortcut"
-                ],
-                "description": "The kind of file system entry to include."
-              }
-            },
-            "additionalProperties": false,
-            "description": "An optional file system entry type filter."
+            "properties": {},
+            "additionalProperties": true,
+            "description": "Official MCP tool definition."
           },
-          "order": {
+          "guidance": {
             "type": "string",
-            "enum": [
-              "asc",
-              "desc"
-            ],
-            "description": "The result sort direction."
-          },
-          "order_by": {
-            "type": "string",
-            "enum": [
-              "ctime",
-              "mtime",
-              "dtime",
-              "fname",
-              "fsize"
-            ],
-            "description": "The field used to sort entries."
-          },
-          "page_size": {
-            "type": "number",
-            "minimum": 1,
-            "maximum": 500,
-            "description": "The page size from 1 to 500."
-          },
-          "page_token": {
-            "type": "string",
-            "description": "The pagination token returned by the previous request."
-          },
-          "with_ext_attrs": {
-            "type": "boolean",
-            "description": "Whether each entry should include extended attributes."
-          },
-          "with_permission": {
-            "type": "boolean",
-            "description": "Whether each entry should include operation permissions."
+            "description": "How to wrap business arguments in a connector execution request."
           }
         },
         "additionalProperties": false,
-        "required": [
-          "drive_id",
-          "parent_id"
-        ],
-        "description": "The WPS drive folder and optional listing controls."
+        "description": "The selected official tool, including its full inputSchema."
       },
-      "outputSchema": {
-        "description": "The WPS V7 child-file listing response."
-      }
-    },
-    {
-      "id": "wps_mcp.list_my_files",
-      "service": "wps_mcp",
-      "name": "list_my_files",
-      "description": "List entries in the root of the connected user's WPS cloud documents with filtering, sorting, and pagination.",
-      "requiredScopes": [],
-      "providerPermissions": [],
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "filter_exts": {
-            "type": "string",
-            "description": "Comma-separated lowercase file extensions to include."
-          },
-          "filter_type": {
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "enum": [
-                  "file",
-                  "folder",
-                  "shortcut"
-                ],
-                "description": "The kind of file system entry to include."
-              }
-            },
-            "additionalProperties": false,
-            "description": "An optional file system entry type filter."
-          },
-          "order": {
-            "type": "string",
-            "enum": [
-              "asc",
-              "desc"
-            ],
-            "description": "The result sort direction."
-          },
-          "order_by": {
-            "type": "string",
-            "enum": [
-              "ctime",
-              "mtime",
-              "dtime",
-              "fname",
-              "fsize"
-            ],
-            "description": "The field used to sort entries."
-          },
-          "page_size": {
-            "type": "number",
-            "minimum": 1,
-            "maximum": 500,
-            "description": "The page size from 1 to 500."
-          },
-          "page_token": {
-            "type": "string",
-            "description": "The pagination token returned by the previous request."
-          },
-          "with_ext_attrs": {
-            "type": "boolean",
-            "description": "Whether each entry should include extended attributes."
-          },
-          "with_permission": {
-            "type": "boolean",
-            "description": "Whether each entry should include operation permissions."
-          }
-        },
-        "additionalProperties": false,
-        "description": "Filters and pagination for the WPS cloud document root."
-      },
-      "outputSchema": {
-        "description": "The WPS V7 personal-drive file listing response."
-      }
+      "followUpActions": [
+        "wps_mcp.call_tool"
+      ]
     },
     {
       "id": "wps_mcp.list_tools",
       "service": "wps_mcp",
       "name": "list_tools",
-      "description": "List the WPS V7 actions exposed by the local adapter.",
+      "description": "Search or browse a compact, paginated catalog of official Kingsoft MCP tools. Search list_my_files for root listing (我的云文档根目录) or list_files for folder children; preserve the exact name and prefix returned. Use get_tool_schema for exact parameters. Do not search local skills, configure mcporter, or guess tool names.",
       "requiredScopes": [],
       "providerPermissions": [],
       "inputSchema": {
         "type": "object",
-        "properties": {},
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Optional keyword or exact tool name, such as list_my_files, directory, 目录 or sheet."
+          },
+          "offset": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Zero-based position in the filtered tool catalog. Defaults to 0."
+          },
+          "limit": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 20,
+            "description": "Number of compact tool summaries, from 1 to 20. Defaults to 10."
+          }
+        },
         "additionalProperties": false,
-        "description": "No input is required."
+        "description": "Search and pagination for official tools, not cloud files."
       },
       "outputSchema": {
         "type": "object",
@@ -361,337 +168,33 @@
               "type": "object",
               "properties": {},
               "additionalProperties": true,
-              "description": "A WPS V7 action."
+              "description": "An official tool summary."
             },
-            "description": "Actions exposed by the local WPS V7 adapter."
-          }
-        },
-        "additionalProperties": false,
-        "description": "The WPS V7 action catalog."
-      }
-    },
-    {
-      "id": "wps_mcp.read_file",
-      "service": "wps_mcp",
-      "name": "read_file",
-      "description": "Read a WPS cloud document as Markdown, plain text, structured KDC data, or spreadsheet cells according to its format.",
-      "requiredScopes": [],
-      "providerPermissions": [],
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "file_id": {
-            "type": "string",
-            "minLength": 1,
-            "description": "A WPS file ID used to select the document."
+            "description": "Compact names and descriptions, without parameter schemas."
           },
-          "link_id": {
-            "type": "string",
-            "minLength": 1,
-            "description": "A WPS share link ID used to select the document."
-          },
-          "url": {
-            "type": "string",
-            "description": "A WPS document URL used to select the document.",
-            "format": "uri"
-          },
-          "format": {
-            "type": "string",
-            "enum": [
-              "markdown",
-              "plain",
-              "kdc"
-            ],
-            "description": "The output format for supported text documents."
-          },
-          "enable_upload_medias": {
-            "type": "boolean",
-            "description": "Whether extracted media should be uploaded and returned as temporary download URLs."
-          },
-          "sheet_id": {
+          "total": {
             "type": "number",
-            "description": "The numeric spreadsheet sheet ID. It takes priority over sheet_name."
+            "description": "Number of matching tools."
           },
-          "sheet_name": {
+          "offset": {
+            "type": "number",
+            "description": "Current offset."
+          },
+          "nextOffset": {
+            "description": "Next page offset, or null when complete."
+          },
+          "guidance": {
             "type": "string",
-            "description": "The spreadsheet sheet name."
-          },
-          "sheet_range": {
-            "type": "object",
-            "properties": {
-              "row_from": {
-                "type": "number",
-                "description": "The zero-based first row."
-              },
-              "row_to": {
-                "type": "number",
-                "description": "The zero-based last row, inclusive."
-              },
-              "col_from": {
-                "type": "number",
-                "description": "The zero-based first column."
-              },
-              "col_to": {
-                "type": "number",
-                "description": "The zero-based last column, inclusive."
-              }
-            },
-            "additionalProperties": false,
-            "description": "A zero-based inclusive spreadsheet cell range."
-          },
-          "task_id": {
-            "type": "string",
-            "description": "The task ID returned by a previous incomplete read request."
+            "description": "How to retrieve parameters and call the selected tool."
           }
         },
         "additionalProperties": false,
-        "description": "At least one WPS file selector and format-specific reading options. When several selectors are supplied, WPS prioritizes url, then link_id, then file_id.",
-        "anyOf": [
-          {
-            "required": [
-              "file_id"
-            ]
-          },
-          {
-            "required": [
-              "link_id"
-            ]
-          },
-          {
-            "required": [
-              "url"
-            ]
-          }
-        ]
+        "description": "The current Kingsoft MCP tool catalog."
       },
-      "outputSchema": {
-        "description": "The WPS V7 document content response."
-      }
-    },
-    {
-      "id": "wps_mcp.search_files",
-      "service": "wps_mcp",
-      "name": "search_files",
-      "description": "Search WPS cloud documents and folders across drives by file name, content, creator, location, type, or time.",
-      "requiredScopes": [],
-      "providerPermissions": [],
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "keyword": {
-            "type": "string",
-            "description": "The search keyword."
-          },
-          "type": {
-            "type": "string",
-            "enum": [
-              "file_name",
-              "content",
-              "all"
-            ],
-            "description": "The search dimension."
-          },
-          "file_type": {
-            "type": "string",
-            "enum": [
-              "file",
-              "folder",
-              "shortcut"
-            ],
-            "description": "The kind of file system entry to include."
-          },
-          "drive_ids": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1,
-              "description": "A WPS drive ID."
-            },
-            "description": "Drive IDs to search."
-          },
-          "parent_ids": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1,
-              "description": "A WPS folder ID."
-            },
-            "description": "Folder IDs that constrain the search."
-          },
-          "file_exts": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1,
-              "description": "A file extension."
-            },
-            "description": "File extensions to include without leading dots."
-          },
-          "exclude_file_exts": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1,
-              "description": "A file extension."
-            },
-            "description": "File extensions to exclude without leading dots."
-          },
-          "file_ext_groups": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1,
-              "description": "A WPS file extension group."
-            },
-            "description": "WPS file extension groups to include."
-          },
-          "channels": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1,
-              "description": "A WPS content channel."
-            },
-            "description": "WPS content channels to include."
-          },
-          "exclude_channels": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1,
-              "description": "A WPS content channel."
-            },
-            "description": "WPS content channels to exclude."
-          },
-          "device_ids": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1,
-              "description": "A WPS device ID."
-            },
-            "description": "Device IDs associated with included files."
-          },
-          "creator_ids": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1,
-              "description": "A WPS user ID."
-            },
-            "description": "WPS user IDs whose files should be included."
-          },
-          "modifier_ids": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1,
-              "description": "A WPS user ID."
-            },
-            "description": "WPS user IDs that last modified included files."
-          },
-          "receiver_ids": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1,
-              "description": "A WPS user ID."
-            },
-            "description": "WPS user IDs that received included files."
-          },
-          "sharer_ids": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1,
-              "description": "A WPS user ID."
-            },
-            "description": "WPS user IDs that shared included files."
-          },
-          "scope": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1,
-              "description": "A WPS search scope."
-            },
-            "description": "WPS search scopes such as all or share_by_me."
-          },
-          "filter_user_id": {
-            "type": "number",
-            "description": "The WPS creator or sharer filter expected by the MCP tool."
-          },
-          "search_operator_name": {
-            "type": "boolean",
-            "description": "Whether creator and sharer names should participate in the search."
-          },
-          "start_time": {
-            "type": "number",
-            "description": "The minimum creation or modification time expected by WPS."
-          },
-          "end_time": {
-            "type": "number",
-            "description": "The maximum creation or modification time expected by WPS."
-          },
-          "time_type": {
-            "type": "string",
-            "enum": [
-              "ctime",
-              "mtime",
-              "otime",
-              "stime"
-            ],
-            "description": "The timestamp field used by the time range."
-          },
-          "order_by": {
-            "type": "string",
-            "enum": [
-              "ctime",
-              "mtime"
-            ],
-            "description": "The field used to sort search results."
-          },
-          "order": {
-            "type": "string",
-            "enum": [
-              "asc",
-              "desc"
-            ],
-            "description": "The result sort direction."
-          },
-          "page_size": {
-            "type": "number",
-            "minimum": 0,
-            "maximum": 500,
-            "description": "The page size from 0 to 500. WPS treats zero as 50."
-          },
-          "page_token": {
-            "type": "string",
-            "description": "The pagination token returned by the previous search."
-          },
-          "with_drive": {
-            "type": "boolean",
-            "description": "Whether each result should include drive details."
-          },
-          "with_link": {
-            "type": "boolean",
-            "description": "Whether each result should include share link details."
-          },
-          "with_permission": {
-            "type": "boolean",
-            "description": "Whether each result should include operation permissions."
-          },
-          "with_total": {
-            "type": "boolean",
-            "description": "Whether the response should include the total result count."
-          }
-        },
-        "additionalProperties": false,
-        "description": "Filters and pagination for searching WPS cloud documents."
-      },
-      "outputSchema": {
-        "description": "The WPS V7 file search response."
-      }
+      "followUpActions": [
+        "wps_mcp.get_tool_schema",
+        "wps_mcp.call_tool"
+      ]
     }
   ]
 }

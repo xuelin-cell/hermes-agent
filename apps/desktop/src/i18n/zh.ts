@@ -708,11 +708,16 @@ export const zh = defineLocale({
       backgroundExited: 'UniWork 后台进程已退出。',
       backgroundExitedDuringStartup: 'UniWork 后台进程在启动期间退出。',
       backendStopped: '后端已停止',
+      restartHermes: '重启 UniWork',
+      openLogs: '打开日志',
       desktopBootFailed: '桌面启动失败',
       gatewayConnectionLost: '与网关的连接已断开',
-      gatewayConnectionLostDetail:
-        'Still retrying in the background. You can keep reading and drafting — open Gateway settings if this persists.',
+      gatewayConnectionLostDetail: '正在后台重新连接，你可以继续阅读和编辑草稿。如果一直连不上，请立即重新连接或检查连接设置。',
+      reconnectNow: '立即重新连接',
+      connectionSettings: '连接设置',
       gatewaySignInRequired: '需要登录网关',
+      gatewaySignInRequiredDetail: '请重新登录以恢复连接。你的对话和设置不会丢失。',
+      signInAgain: '重新登录',
       ipcBridgeUnavailable: '桌面 IPC 桥不可用。'
     },
     failure: {

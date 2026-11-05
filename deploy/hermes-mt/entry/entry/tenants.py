@@ -369,7 +369,7 @@ class TenantManager:
         """
         files = self._render_user_files(api_key, endpoint, catalog, limits)
         # 转发器要从自己所在目录导入状态管家和用户接口，三个文件一起放。
-        for name in ("forward.py", "mtstate.py", "mtuser.py", "mtent.py", "mtexport.py", "mtfolders.py", "mtmessaging.py", "mtconnectors.py", "mtconnector_profile.py"):
+        for name in ("forward.py", "mtstate.py", "mtuser.py", "mtent.py", "mtexport.py", "mtfolders.py", "mtmessaging.py", "mtconnectors.py", "mtconnector_profile.py", "mtconnector_state.py"):
             files[f".mt/{name}"] = (SEED_DIR / name).read_bytes()
         for file in sorted((SEED_DIR.parent / '.connector-runtime').rglob('*')):
             if file.is_file():
@@ -629,10 +629,14 @@ class TenantManager:
         limits: dict[str, int] | None = None,
         persona: str | None = None,
         tracing_lines: list[str] | None = None,
+        settings: dict | None = None,
     ) -> list[dict]:
         """渲染引导接口要的种子文件。
 
         ``persona`` 只有平台的运行环境才给（平台策略的 agentProfile）：人设归平台管，每次都覆盖。
+        ``settings`` 是入口库里记的用户设置（技能开关 skills、套件开关 kits），只有引导才给：恢复回来的
+        归档可能比库旧，靠 patch-model 那条按库里的写回（老转发器不认识这些键，会原样忽略）。
+        重新加载不用给，实例里已经是最新的。
 
         与 Docker 那边 ``_render_seed`` 的两点差异：
 
@@ -647,6 +651,9 @@ class TenantManager:
         if tracing_lines:
             rendered[".env"] += ("\n".join(tracing_lines) + "\n").encode("utf-8")
         patch = self._config_patch_spec(endpoint, catalog, limits, api_key=api_key or "")
+        for key in ("kits", "skills"):
+            if (settings or {}).get(key):
+                patch[key] = settings[key]
         return [
             {
                 "path": "config.yaml",
@@ -897,6 +904,23 @@ class TenantManager:
         if self.s.volume_detach_grace_s > 0:
             await asyncio.sleep(self.s.volume_detach_grace_s)
 
+    async def _connector_states(self, user_id: str) -> list[dict]:
+        """入口库里各配置档的连接器状态，引导时送回实例（见 seed/mtconnector_state.py）。
+
+        引导请求整个不能超过转发器的 4 MB：默认配置档排最前，装不下的配置档不送，
+        实例就沿用归档里那份。"""
+        if self.s.enterprise:
+            return []
+        states = sorted(await self.store.connector_states(user_id), key=lambda item: item["profile"] != "default")
+        kept, size = [], 0
+        for item in states:
+            size += len(json.dumps(item))
+            if size > 3 * 1024 * 1024:
+                log.warning("tenant %s: 连接器状态太大，%d 个配置档改用归档里的", tenant_slug(user_id), len(states) - len(kept))
+                break
+            kept.append(item)
+        return kept
+
     async def _bootstrap_cube(self, user_id: str, slug: str, sandbox_id: str, token: str, context,
                               epoch: int, restore_from: str) -> None:
         assert self.cube is not None
@@ -907,13 +931,15 @@ class TenantManager:
             files=self._cube_seed_files(
                 context.api_key, context.endpoint, context.catalog, getattr(context, "limits", None),
                 persona=self._persona_of(context),
-                tracing_lines=await credential_lines(self.s, self.store, user_id)),
+                tracing_lines=await credential_lines(self.s, self.store, user_id),
+                settings=await self.store.get_profile_settings(user_id)),
             ready_timeout_s=self.s.ready_timeout_s,
             state=self._state_block(sandbox_id, epoch, restore_from),
             # 平台的运行环境才另开 API 服务；成员实例的引导请求不变
             **({"api_server": True} if getattr(context, "service", False) else {}),
             # 企业模式用不上普通版的连接器和崩溃恢复，转发器不起它们（见 seed/forward.py）
             **({"enterprise": True} if self.s.enterprise else {}),
+            **({"connectors": connectors} if (connectors := await self._connector_states(user_id)) else {}),
         )
         if body.get("already"):
             await self._adopt_bootstrapped(user_id, slug, sandbox_id)

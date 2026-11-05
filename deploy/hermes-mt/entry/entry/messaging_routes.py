@@ -26,7 +26,14 @@ class MessagingRoutes:
         origins = {value.strip().rstrip('/') for value in self.entry.s.channels_gateway_origins.split(',') if value.strip()}
         status, binding = cloud_binding(plan,origins)
         if status == 'available':
-            await self.store.configure(user,**binding,enable=True)
+            row = await self.store.configure(user,**binding,enable=True)
+            # Another client holding the same cloud agent (an older deployment, a
+            # restored instance) makes the gateway replace us, and our client stands
+            # down for good. As in UniClaw, a fresh login takes the agent back unless
+            # this deployment is the one currently connected; the revision is kept.
+            live = row['connection_state']=='running' and (datetime.now(timezone.utc)-row['updated_at']).total_seconds()<15
+            if not live:
+                await self.store.reconnect(user)
         elif status == 'clear' and await self.store.binding(user):
             await self.store.set_enabled(user,False,remove=True)
         elif status == 'invalid':

@@ -33,6 +33,7 @@ export interface ConnectionSummary {
   virtual: boolean;
   default: boolean;
   profile: CredentialProfile;
+  reauthorizationRequired?: boolean;
   marketplace?: { id: string; pricing: MarketplacePricing };
 }
 
@@ -43,6 +44,8 @@ export interface ConnectWithCredentialInput {
   connectionName?: string;
   values?: Record<string, unknown>;
   signal?: AbortSignal;
+  /** Internal authorization hook called immediately before committing validated credentials. */
+  beforeCommit?: () => void;
 }
 
 export interface ConnectWithoutAuthInput {
@@ -76,12 +79,14 @@ export interface ExecutionConnection {
   summary?: ConnectionSummary;
   marketplace?: boolean;
   getCredential(service: string): Promise<ResolvedCredential | undefined>;
+  invalidateCredential?(): Promise<void>;
 }
 
 /**
  * Storage contract for local provider connections.
  */
 export interface IConnectionStore {
+  getOrCreateInstallationId?(): Promise<string>;
   get(service: string, connectionName: string): Promise<StoredConnection | undefined>;
   set(service: string, connectionName: string, credential: ResolvedCredential): Promise<StoredConnection>;
   updateCredential(input: StoredConnection): Promise<boolean>;
@@ -160,6 +165,13 @@ export class ConnectionService {
     );
   }
 
+  async getInstallationId(): Promise<string> {
+    if (!this.store.getOrCreateInstallationId) {
+      throw new ConnectionError("provider_unavailable", "Persistent installation identity is unavailable.");
+    }
+    return this.store.getOrCreateInstallationId();
+  }
+
   async listConnectionsByService(service: string): Promise<ConnectionSummary[]> {
     const provider = this.getProvider(service);
     const connections = (await this.store.list()).filter((connection) => connection.service === service);
@@ -209,7 +221,19 @@ export class ConnectionService {
     const configured = await this.store.list();
     const authenticated = new Set(
       configured
-        .filter((connection) => connection.credential.authType !== "no_auth")
+        .filter((connection) => {
+          if (connection.credential.authType === "no_auth") return false;
+          const provider = this.catalog.providers.find((item) => item.service === connection.service);
+          return (
+            !provider ||
+            this.createConfiguredConnectionSummary(
+              provider,
+              connection.id,
+              connection.connectionName,
+              connection.credential,
+            ).configured
+          );
+        })
         .map((connection) => connection.service),
     );
     const preferences = await this.loadProviderPreferences();
@@ -247,6 +271,9 @@ export class ConnectionService {
     }
 
     let credential: ResolvedCredential | undefined = stored?.credential;
+    if (stored && !this.createConfiguredConnectionSummary(provider, stored.id, name, stored.credential).configured) {
+      throw new ConnectionError("reauthorization_required", "This connection requires browser authorization again.");
+    }
     if (stored?.credential.authType === "oauth2") {
       credential = await this.resolveOAuthCredential(stored, stored.credential);
     }
@@ -260,6 +287,19 @@ export class ConnectionService {
     return {
       summary,
       getCredential: async (requestedService) => (requestedService === service ? credential : undefined),
+      invalidateCredential:
+        stored && provider.auth.some((auth) => auth.type === "custom_credential" && auth.interaction === "browser_poll")
+          ? async () => {
+              if (stored.credential.authType === "no_auth") return;
+              await this.store.updateCredential({
+                ...stored,
+                credential: {
+                  ...stored.credential,
+                  metadata: { ...stored.credential.metadata, reauthorizationRequired: true },
+                },
+              });
+            }
+          : undefined,
     };
   }
 
@@ -268,6 +308,9 @@ export class ConnectionService {
     const name = normalizeConnectionName(connectionName);
     const stored = await this.store.get(service, name);
     if (stored) {
+      if (!this.createConfiguredConnectionSummary(provider, stored.id, name, stored.credential).configured) {
+        throw new ConnectionError("reauthorization_required", "This connection requires browser authorization again.");
+      }
       return stored.credential.authType === "oauth2"
         ? await this.resolveOAuthCredential(stored, stored.credential)
         : stored.credential;
@@ -370,6 +413,7 @@ export class ConnectionService {
     };
     const connectionName = normalizeConnectionName(input.connectionName);
     this.assertNotCancelled(input.signal);
+    input.beforeCommit?.();
     const stored = await this.store.set(service, connectionName, credential);
 
     return this.createStoredConnectionSummary(provider, stored.id, connectionName, credential);
@@ -441,15 +485,27 @@ export class ConnectionService {
     connectionName: string,
     credential: Exclude<ResolvedCredential, { authType: "no_auth" }>,
   ): ConnectionSummary {
+    const browserPolling = provider.auth.some(
+      (auth) => auth.type === "custom_credential" && auth.interaction === "browser_poll",
+    );
+    const expiresAt = credential.metadata.expiresAt;
+    const reauthorizationRequired =
+      browserPolling &&
+      (!provider.authTypes.includes(credential.authType) ||
+        credential.metadata.reauthorizationRequired === true ||
+        typeof expiresAt !== "string" ||
+        !Number.isFinite(Date.parse(expiresAt)) ||
+        Date.parse(expiresAt) <= Date.now());
     return {
       id,
       service: provider.service,
       connectionName,
       authType: credential.authType,
-      configured: true,
+      configured: !reauthorizationRequired,
       virtual: false,
       default: connectionName === defaultConnectionName,
       profile: credential.profile,
+      reauthorizationRequired: browserPolling ? reauthorizationRequired : undefined,
     };
   }
 

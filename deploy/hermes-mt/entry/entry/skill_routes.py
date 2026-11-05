@@ -22,6 +22,9 @@ MUTATIONS = {
     ('POST', 'api/skills/hub/update'): True,
     ('PUT', 'api/skills/toggle'): False,
 }
+TOGGLE = ('PUT', 'api/skills/toggle')
+UNINSTALL = ('POST', 'api/skills/hub/uninstall')
+KIT_ACTION = ('POST', 'api/plugins/uniwork-kits/cloud/action')
 
 
 class SkillRejected(RuntimeError):
@@ -64,6 +67,12 @@ class SkillRoutes:
             if action == 'start':
                 method, path, body = data['method'], data['path'], data.get('body', {})
                 if (method, path) not in MUTATIONS or not isinstance(body, dict) or len(str(body)) > 20_000:
+                    raise ValueError()
+                if (method, path) in {TOGGLE, UNINSTALL} and not (isinstance(body.get('name'), str) and 0 < len(body['name']) <= 200):
+                    raise ValueError()
+                if ((method, path) == TOGGLE or ((method, path) == KIT_ACTION and body.get('operation') == 'toggle')) and not isinstance(body.get('enabled'), bool):
+                    raise ValueError()
+                if (method, path) == KIT_ACTION and not (isinstance(body.get('name'), str) and 0 < len(body['name']) <= 256):
                     raise ValueError()
                 if data.get('profile', 'default') not in (None, '', 'default') or body.get('profile', 'default') not in (None, '', 'default'):
                     raise web.HTTPBadRequest(text='云端技能操作只支持当前用户的默认配置。')
@@ -163,9 +172,25 @@ class SkillRoutes:
             operation.error = '技能操作结果未确认，请刷新检查，勿盲目重复操作。'
 
     async def save(self, operation):
+        key, body, store = (operation.method, operation.path), operation.body, self.entry.store
+        kit = body.get('operation') if key == KIT_ACTION else None
         try:
-            from .state_checkpoint import checkpoint
-            await checkpoint(self.entry, operation.user, operation.tenant)
+            # Toggles are a few config lines: entry's table is their durable copy and bootstrap
+            # replays them, so the user is not kept waiting on a full instance archive.
+            if key == TOGGLE:
+                await store.set_skill_enabled(operation.user, body['name'], body['enabled'])
+            elif kit == 'toggle':
+                skills = (operation.result or {}).get('skills')
+                skills = [name for name in skills if isinstance(name, str)] if isinstance(skills, list) else []
+                await store.set_kit_enabled(operation.user, body['name'], body['enabled'], skills)
+            elif kit != 'recent':  # The recent-experts order is left to the periodic archive.
+                from .state_checkpoint import checkpoint
+                await checkpoint(self.entry, operation.user, operation.tenant)
+                # A removed skill's or kit's toggle has nothing left to apply to.
+                if key == UNINSTALL:
+                    await store.forget_skill(operation.user, body['name'])
+                elif kit == 'uninstall':
+                    await store.forget_kit(operation.user, body['name'])
             # Docker's entire HERMES_HOME already lives on its persistent named volume.
             operation.phase = 'saved'
             operation.error = ''

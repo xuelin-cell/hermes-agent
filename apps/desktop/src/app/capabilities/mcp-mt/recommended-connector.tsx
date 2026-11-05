@@ -348,7 +348,7 @@ function CredentialView({ available, busy, entry, error, item, onConnected, onQr
       <DialogTitle className="mt-connector-dialog-title">{copy.connect(item.name)}</DialogTitle>
       <p className="mt-connector-dialog-provider">{item.provider}</p>
       <DialogDescription className="mt-connector-dialog-description">{item.description}</DialogDescription>
-      {entry.id === 'wecom_bot' && !window.hermesDesktop.cloudConnectorIds ? (
+      {entry.id === 'wecom_bot' ? (
         <WecomQrForm onConnected={onConnected} request={onQr} />
       ) : (
         <>
