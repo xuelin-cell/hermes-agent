@@ -154,10 +154,22 @@ export async function validateCertificate(cert, signtool) {
       Write-Output $cert.Subject
     `
 
-    const result = spawnSync('powershell', ['-NoProfile', '-Command', ps], {
+    // Use full path to avoid ENOENT in Git Bash / non-interactive shells
+    const powershellPath = process.env.SYSTEMROOT
+      ? path.join(process.env.SYSTEMROOT, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+      : 'powershell.exe'
+
+    const result = spawnSync(powershellPath, ['-NoProfile', '-Command', ps], {
       encoding: 'utf8',
       timeout: 15000,
     })
+
+    if (result.error) {
+      return { valid: false, error: `PowerShell spawn failed: ${result.error.message}` }
+    }
+    if (!result.stdout) {
+      return { valid: false, error: `PowerShell returned no output (timeout or spawn failure)` }
+    }
 
     const output = result.stdout.trim()
     if (output.includes('NOT_FOUND')) {
