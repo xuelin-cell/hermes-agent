@@ -10,7 +10,6 @@ export interface MessagingConnectionCopy {
   restarting: string
   stopping: string
   checking: string
-  applied: string
   saveFailed: string
   connecting: string
   savedFailed: string
@@ -27,19 +26,19 @@ export const messagingConnectionCopy: Record<Locale, MessagingConnectionCopy> = 
   en: {
     reconnecting: 'The gateway is reconnecting using its built-in policy. Desktop chat is available.',
     disconnected:
-      'Some messaging connections are unavailable. Check the platform settings or logs. Desktop chat is available.',
-    restoring: 'Restoring messaging connections…',
-    restoreFailed: 'Messaging could not be restored. Desktop chat is available. Retry the connection or open logs.',
+      'Some chat app connections are unavailable. Check the chat app settings or logs. Desktop chat is available.',
+    restoring: 'Restoring chat app connections…',
+    restoreFailed:
+      'Chat app connections could not be restored. Desktop chat is available. Retry the connection or open logs.',
     ownership:
       'The existing gateway’s ownership could not be verified. No new gateway was started. Open logs for details.',
-    saving: 'Validating and saving messaging settings…',
+    saving: 'Validating and saving chat app settings…',
     restarting: 'Messaging gateway is restarting… Other chat apps will disconnect briefly.',
     stopping: 'Messaging gateway is stopping…',
-    checking: 'Checking messaging platform status…',
-    applied: 'Messaging settings applied.',
-    saveFailed: 'Could not save messaging settings. Your previous configuration is unchanged.',
+    checking: 'Checking chat app status…',
+    saveFailed: 'Could not save chat app settings. Your previous configuration is unchanged.',
     connecting: 'Connecting… Other chat apps may disconnect briefly.',
-    savedFailed: 'Settings saved, but the messaging connection could not be restored. Retry the connection.',
+    savedFailed: 'Settings saved, but the chat app connection could not be restored. Retry the connection.',
     duplicateTitle: 'Bot already used on this device',
     duplicateDescription: 'Another account or Profile uses this bot. Continuing may disconnect it. Continue?',
     invalid: 'ID or Secret was rejected.',
@@ -50,17 +49,16 @@ export const messagingConnectionCopy: Record<Locale, MessagingConnectionCopy> = 
   },
   zh: {
     reconnecting: '网关正在按原版策略重连，桌面聊天不受影响。',
-    disconnected: '部分消息平台连接不可用，请检查平台配置或日志。桌面聊天不受影响。',
-    restoring: '正在恢复消息平台连接…',
-    restoreFailed: '消息平台自动连接失败，桌面聊天不受影响。可重试连接或查看日志。',
+    disconnected: '部分聊天应用连接不可用，请检查平台配置或日志。桌面聊天不受影响。',
+    restoring: '正在恢复聊天应用连接…',
+    restoreFailed: '聊天应用自动连接失败，桌面聊天不受影响。可重试连接或查看日志。',
     ownership: '无法确认现有网关归属，未启动新的网关，请查看日志。',
-    saving: '正在校验并保存消息平台配置…',
-    restarting: '网关正在重启，其它消息平台会短暂断开…',
+    saving: '正在校验并保存聊天应用配置…',
+    restarting: '网关正在重启，其它聊天应用会短暂断开…',
     stopping: '网关正在停止…',
-    checking: '正在确认消息平台状态…',
-    applied: '消息平台配置已应用。',
-    saveFailed: '消息平台配置保存失败，原配置保持不变。',
-    connecting: '正在连接，其它消息平台会短暂断开。',
+    checking: '正在确认聊天应用状态…',
+    saveFailed: '聊天应用配置保存失败，原配置保持不变。',
+    connecting: '正在连接，其它聊天应用会短暂断开。',
     savedFailed: '配置已保存，但消息连接恢复失败，请重试连接。',
     duplicateTitle: '此机器人已在本机使用',
     duplicateDescription: '其它账号或 Profile 已使用此机器人，继续可能使其断开。是否继续？',
@@ -72,17 +70,16 @@ export const messagingConnectionCopy: Record<Locale, MessagingConnectionCopy> = 
   },
   'zh-hant': {
     reconnecting: '閘道正在按原版策略重新連線，桌面聊天不受影響。',
-    disconnected: '部分訊息平台連線不可用，請檢查平台設定或日誌。桌面聊天不受影響。',
-    restoring: '正在恢復訊息平台連線…',
-    restoreFailed: '訊息平台自動連線失敗，桌面聊天不受影響。可重試連線或查看日誌。',
+    disconnected: '部分聊天應用連線不可用，請檢查平台設定或日誌。桌面聊天不受影響。',
+    restoring: '正在恢復聊天應用連線…',
+    restoreFailed: '聊天應用自動連線失敗，桌面聊天不受影響。可重試連線或查看日誌。',
     ownership: '無法確認現有閘道歸屬，未啟動新的閘道，請查看日誌。',
-    saving: '正在驗證並儲存訊息平台設定…',
-    restarting: '閘道正在重新啟動，其他訊息平台會短暫斷線…',
+    saving: '正在驗證並儲存聊天應用設定…',
+    restarting: '閘道正在重新啟動，其他聊天應用會短暫斷線…',
     stopping: '閘道正在停止…',
-    checking: '正在確認訊息平台狀態…',
-    applied: '訊息平台設定已套用。',
-    saveFailed: '訊息平台設定儲存失敗，原設定保持不變。',
-    connecting: '正在連線，其他訊息平台會短暫斷線。',
+    checking: '正在確認聊天應用狀態…',
+    saveFailed: '聊天應用設定儲存失敗，原設定保持不變。',
+    connecting: '正在連線，其他聊天應用會短暫斷線。',
     savedFailed: '設定已儲存，但訊息連線恢復失敗，請重試連線。',
     duplicateTitle: '此機器人已在本機使用',
     duplicateDescription: '其他帳號或 Profile 已使用此機器人，繼續可能使其斷線。是否繼續？',

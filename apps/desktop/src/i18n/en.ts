@@ -1249,7 +1249,7 @@ export const en: Translations = {
       'nav.settings': 'Open settings',
       'nav.profiles': 'Open profiles',
       'nav.capabilities': 'Open skills',
-      'nav.messaging': 'Open messaging',
+      'nav.messaging': 'Open Connect Phone',
       'nav.artifacts': 'Open library',
       'nav.cron': 'Open scheduled jobs',
       'nav.agents': 'Open agents',
@@ -3341,7 +3341,7 @@ export const en: Translations = {
       newChat: { title: 'New session', detail: 'Start a fresh session' },
       settings: { title: 'Settings', detail: 'Configure UniWork desktop' },
       capabilities: { title: 'Capabilities', detail: 'Skills, tools, MCP servers, and plugins' },
-      messaging: { title: 'Messaging', detail: 'Set up Telegram, Slack, Discord, and more' },
+      messaging: { title: 'Connect Phone', detail: 'Connect WeChat, DingTalk, Feishu and other chat apps' },
       artifacts: { title: 'Library', detail: 'Manage cloud files and local artifacts' }
     },
     sectionEntries: {
@@ -3462,12 +3462,12 @@ export const en: Translations = {
       reconnectFailed: '5G reconnect failed. Check the logs; if the gateway is stopped, fully quit and reopen the app.',
       reconnectRestartRequired:
         'The 5G component update is not active yet. Fully quit the app, including the tray, then reopen it.',
-      unavailable: 'Messaging component unavailable',
+      unavailable: 'Chat app component unavailable',
       notConnected: 'Not connected',
       unbind: 'Disconnect',
-      unbindTitle: 'Disconnect this platform?',
+      unbindTitle: 'Disconnect this chat app?',
       unbindDescription:
-        'Remove this platform’s credentials and disable it. Other platform settings, history and files are retained.',
+        'Remove this chat app’s credentials and disable it. Other chat app settings, history and files are retained.',
       titles: {
         weixin: 'WeChat ClawBot integration',
         dingtalk: 'DingTalk bot integration',
@@ -3483,9 +3483,9 @@ export const en: Translations = {
         uniagentgate: 'Connect to uniAgentGate to receive and reply to RCS messages.'
       }
     },
-    search: 'Search messaging...',
-    loading: 'Loading messaging platforms...',
-    loadFailed: 'Messaging platforms failed to load',
+    search: 'Search chat apps...',
+    loading: 'Loading chat apps...',
+    loadFailed: 'Chat apps failed to load',
     states: {
       connected: 'Connected',
       connecting: 'Connecting',
@@ -3553,7 +3553,7 @@ export const en: Translations = {
     restartNeeded: 'Saved. Restart the messaging gateway so the new settings take effect.',
     restartNow: 'Restart now',
     restarting: 'Restarting…',
-    restartFailedManual: "UniWork couldn't restart to apply your messaging settings",
+    restartFailedManual: "UniWork couldn't restart to apply your chat app settings",
     restartFailedManualDetail: 'Try Restart again; if it still fails, open the logs and send diagnostics.',
     restartAgain: 'Restart again',
     openLogs: 'Open logs',
@@ -4252,7 +4252,7 @@ export const en: Translations = {
     nav: {
       'new-session': 'New session',
       capabilities: 'Extensions',
-      messaging: 'Messaging',
+      messaging: 'Connect Phone',
       artifacts: 'Library',
       cron: 'Scheduled jobs'
     },
@@ -4521,7 +4521,7 @@ export const en: Translations = {
       '/prompt': 'Compose your next prompt in $EDITOR (markdown), then send it',
       '/undo': 'Back up N user turns and re-prompt (default 1)',
       '/title': 'Rename the current session',
-      '/handoff': 'Hand off this session to a messaging platform',
+      '/handoff': 'Hand off this session to a chat app',
       '/branch': 'Branch the latest message into a new chat',
       '/worktree': 'Show, list, create, or prune isolated git worktrees',
       '/compress': 'Compress this conversation context',
@@ -5339,7 +5339,7 @@ export const en: Translations = {
       connection: label => `Connection: ${label}`,
       recentActivity: 'Recent activity',
       viewAllLogs: 'View all logs →',
-      messagingPlatforms: 'Messaging platforms'
+      messagingPlatforms: 'Chat apps'
     },
     approvalMode: {
       title: 'Approval mode',
@@ -6312,13 +6312,13 @@ export const en: Translations = {
     clipboardPasteFailed: 'Clipboard paste failed',
     dropFiles: 'Drop files',
     handoff: {
-      pickPlatform: 'Choose a destination',
+      pickPlatform: 'Choose a chat app',
       success: platform => `Handed off to ${platform}. Resume here anytime.`,
       systemNote: platform => `↻ Handed off to ${platform} — resume here anytime.`,
       failed: error => `Handoff failed: ${error}`,
       timedOut:
-        "UniWork couldn't reach your messaging connection. Start it from Settings → Messaging, then try the handoff again.",
-      startMessaging: 'Start messaging'
+        "UniWork couldn't reach your chat app. Check the connection in Connect Phone or start the message gateway, then try the handoff again.",
+      startMessaging: 'Start message gateway'
     }
   },
 

@@ -59,7 +59,7 @@ test('聊天阅读列与输入框在宽窗、预览及窄窗下保持居中对�
       return <MemoryRouter><I18nProvider configClient={null} initialLocale="zh"><AssistantRuntimeProvider runtime={runtime}>
         <div className="font-sans text-foreground" style={{display:'flex',height:'100vh',overflow:'hidden'}}>
           {layout.left>0&&<aside data-testid="sidebar" style={{width:layout.left,flexShrink:0,padding:20,background:'var(--ui-bg-sidebar)'}}>
-            <strong>元景数字员工</strong><p>新对话</p><p>专家 · 技能 · 连接器</p><p>消息平台</p><p>资料库</p><p>定时任务</p><hr/><p>本周工作总结</p><p>项目资料整理</p>
+            <strong>元景数字员工</strong><p>新对话</p><p>专家 · 技能 · 连接器</p><p>连接手机</p><p>资料库</p><p>定时任务</p><hr/><p>本周工作总结</p><p>项目资料整理</p>
           </aside>}
           <main data-chat-surface="" data-welcome-layout={layout.welcome?'centered':undefined} style={{position:'relative',flex:1,minWidth:0,display:'flex',flexDirection:'column',background:'var(--ui-chat-surface-background)'}}>
             <header style={{height:52,flexShrink:0,padding:'16px 24px'}}>本周工作总结</header>
