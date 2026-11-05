@@ -181,7 +181,7 @@ describe('MessagingView profile scope', () => {
     await waitFor(() => expect(getMessagingPlatforms).toHaveBeenCalledWith('default'))
   })
 
-  it('专家没有独立消息平台：设置页切到专家时仍只读主助手', async () => {
+  it('专家没有独立聊天应用：设置页切到专家时仍只读主助手', async () => {
     $settingsScopeOverride.set('worker')
     getMessagingPlatforms.mockResolvedValue({ platforms: [platform()] })
 
@@ -231,7 +231,7 @@ describe('MessagingView gateway error ownership', () => {
       expect(within(weixin).queryByText(reason)).toBeNull()
       expect(!!within(rcs).queryByText(reason)).toBe(diagnosis)
       expect(screen.queryByText('Last messaging gateway startup failed')).toBeNull()
-      expect(screen.getByText(/Messaging could not be restored/)).toBeTruthy()
+      expect(screen.getByText(/Chat app connections could not be restored/)).toBeTruthy()
       expect(getStatus).toHaveBeenCalledWith('default')
       expect(messagingSetup).not.toHaveBeenCalled()
 
@@ -444,6 +444,23 @@ function dingtalk(patch: Partial<MessagingPlatformInfo> = {}) {
 }
 
 describe('Messaging cards and native configuration', () => {
+  it.each(['restore', 'save'] as const)('%s 完成后进入或重开页面不显示常驻成功提示', async operation => {
+    publishOperation({ phase: 'completed', operation, profile: 'default', saved: true })
+    getMessagingPlatforms.mockResolvedValue({
+      platforms: [dingtalk({ configured: true, enabled: true, state: 'connected' })]
+    })
+
+    const view = await renderMessaging()
+    await screen.findByText('Connected')
+    expect(view.container.querySelector('[data-slot="alert"]')).toBeNull()
+    view.unmount()
+
+    const reopened = await renderMessaging()
+    await screen.findByText('Connected')
+    expect(reopened.container.querySelector('[data-slot="alert"]')).toBeNull()
+    expect(notify).not.toHaveBeenCalled()
+  })
+
   it('校验失败可以关闭；轮询和重进页面不重复展示，新一次失败仍显示', async () => {
     publishOperation({ phase: 'failed', operation: 'save', platform: 'feishu', profile: 'default',
       saved: false, error: 'validation_network' })
@@ -481,7 +498,7 @@ describe('Messaging cards and native configuration', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
     expect(screen.queryByText(/Validation timed out/)).toBeNull()
     expect(screen.getByText(detail)).toBeTruthy()
-    expect(screen.getByText(/Some messaging connections are unavailable/)).toBeTruthy()
+    expect(screen.getByText(/Some chat app connections are unavailable/)).toBeTruthy()
     const card = within(screen.getByRole('article', { name: 'Feishu bot integration' }))
     expect(card.getByRole('button', { name: 'Retry' })).toBeTruthy()
     expect(card.getByRole('button', { name: 'Disconnect' })).toBeTruthy()
@@ -495,11 +512,12 @@ describe('Messaging cards and native configuration', () => {
     await renderMessaging()
     fireEvent.click(await screen.findByRole('button', { name: 'Close' }))
     await act(async () => { publishOperation({ phase: 'saving', error: undefined }) })
-    expect(await screen.findByText('Validating and saving messaging settings…')).toBeTruthy()
+    expect(await screen.findByText('Validating and saving chat app settings…')).toBeTruthy()
     await act(async () => { publishOperation({ phase: 'completed', saved: true }) })
-    expect(await screen.findByText('Messaging settings applied.')).toBeTruthy()
+    await waitFor(() => expect(screen.queryByText('Validating and saving chat app settings…')).toBeNull())
+    expect(screen.queryByText('Chat app settings applied.')).toBeNull()
     await act(async () => { publishOperation({ phase: 'failed', saved: true, error: 'apply_failed' }) })
-    expect(await screen.findByText(/Settings saved, but the messaging connection/)).toBeTruthy()
+    expect(await screen.findByText(/Settings saved, but the chat app connection/)).toBeTruthy()
   })
 
   it('即时请求错误也可以关闭，不重发请求或更改平台配置', async () => {
@@ -510,9 +528,9 @@ describe('Messaging cards and native configuration', () => {
     await renderMessaging()
     fireEvent.click(within(await screen.findByRole('article', { name: 'Feishu bot integration' }))
       .getByRole('button', { name: 'Retry' }))
-    expect(await screen.findByText(/Settings saved, but the messaging connection/)).toBeTruthy()
+    expect(await screen.findByText(/Settings saved, but the chat app connection/)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
-    expect(screen.queryByText(/Settings saved, but the messaging connection/)).toBeNull()
+    expect(screen.queryByText(/Settings saved, but the chat app connection/)).toBeNull()
     expect(screen.getByText(/reconnecting using its built-in policy/)).toBeTruthy()
     expect(messagingSetup).toHaveBeenCalledTimes(1)
   })
@@ -609,7 +627,7 @@ describe('Messaging cards and native configuration', () => {
     getMessagingPlatforms.mockResolvedValue({ platforms: [feishu, other] })
     await renderMessaging()
     expect(await screen.findByText(feishu.error_message!)).toBeTruthy()
-    expect(screen.getByText(/Settings saved, but the messaging connection/)).toBeTruthy()
+    expect(screen.getByText(/Settings saved, but the chat app connection/)).toBeTruthy()
 
     getMessagingPlatforms.mockResolvedValue({
       platforms: [{ ...feishu, enabled: false, configured: false, state: 'disabled' }, other]
@@ -618,7 +636,7 @@ describe('Messaging cards and native configuration', () => {
       window.document.dispatchEvent(new Event('visibilitychange'))
     })
     await waitFor(() => expect(screen.queryByText(feishu.error_message!)).toBeNull())
-    expect(screen.queryByText(/Settings saved, but the messaging connection/)).toBeNull()
+    expect(screen.queryByText(/Settings saved, but the chat app connection/)).toBeNull()
     expect(screen.getByText(other.error_message!)).toBeTruthy()
     const card = within(screen.getByRole('article', { name: 'Feishu bot integration' }))
     expect(card.queryByRole('button', { name: 'Disconnect' })).toBeNull()
@@ -639,7 +657,7 @@ describe('Messaging cards and native configuration', () => {
     await renderMessaging()
     expect(
       await screen.findByText(
-        saved ? /Settings saved, but the messaging connection/ : /Could not save messaging settings/
+        saved ? /Settings saved, but the chat app connection/ : /Could not save chat app settings/
       )
     ).toBeTruthy()
   })
@@ -649,10 +667,10 @@ describe('Messaging cards and native configuration', () => {
     const row = dingtalk({ configured: true, enabled: true, state: 'retrying' })
     getMessagingPlatforms.mockResolvedValue({ platforms: [row] })
     await renderMessaging()
-    expect(await screen.findByText(/Settings saved, but the messaging connection/)).toBeTruthy()
+    expect(await screen.findByText(/Settings saved, but the chat app connection/)).toBeTruthy()
     getMessagingPlatforms.mockResolvedValue({ platforms: [{ ...row, state: 'connected' }] })
     await act(async () => { window.document.dispatchEvent(new Event('visibilitychange')) })
-    await waitFor(() => expect(screen.queryByText(/Settings saved, but the messaging connection/)).toBeNull())
+    await waitFor(() => expect(screen.queryByText(/Settings saved, but the chat app connection/)).toBeNull())
     expect(messagingSetup).not.toHaveBeenCalled()
     expect(currentStatus.phase).toBe('failed')
   })
@@ -664,7 +682,7 @@ describe('Messaging cards and native configuration', () => {
       platform({ id: 'weixin', enabled: true, configured: true, state: 'connected' })
     ] })
     await renderMessaging()
-    expect(await screen.findByText(/Settings saved, but the messaging connection/)).toBeTruthy()
+    expect(await screen.findByText(/Settings saved, but the chat app connection/)).toBeTruthy()
   })
 
   it.each([{ ids: ['weixin', 'uniagentgate'] }, { ids: ['uniagentgate'] }])(
@@ -680,13 +698,13 @@ describe('Messaging cards and native configuration', () => {
       const unconfigured = platform({ id: 'dingtalk' })
       getMessagingPlatforms.mockResolvedValue({ platforms: [...rows, unconfigured] })
       const view = await renderMessaging()
-      expect(await screen.findByText(/Messaging could not be restored/)).toBeTruthy()
+      expect(await screen.findByText(/Chat app connections could not be restored/)).toBeTruthy()
 
       getMessagingPlatforms.mockResolvedValue({ platforms: [
         ...rows.map(row => ({ ...row, state: 'connected' })), unconfigured
       ] })
       await act(async () => { window.document.dispatchEvent(new Event('visibilitychange')) })
-      await waitFor(() => expect(screen.queryByText(/Messaging could not be restored/)).toBeNull())
+      await waitFor(() => expect(screen.queryByText(/Chat app connections could not be restored/)).toBeNull())
       expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
       expect(currentStatus).toMatchObject({ phase: 'failed', operation: 'restore' })
       expect(messagingSetup).not.toHaveBeenCalled()
@@ -695,7 +713,7 @@ describe('Messaging cards and native configuration', () => {
       view.rerender(<MemoryRouter><MessagingView /></MemoryRouter>)
       await waitFor(() => expect(within(screen.getByRole('article', { name: /5G/ }))
         .getByRole('status').textContent).toBe('Connected'))
-      expect(screen.queryByText(/Messaging could not be restored/)).toBeNull()
+      expect(screen.queryByText(/Chat app connections could not be restored/)).toBeNull()
     }
   )
 
@@ -707,12 +725,12 @@ describe('Messaging cards and native configuration', () => {
     getMessagingPlatforms.mockReturnValue(new Promise(resolve => { release = resolve }))
     await renderMessaging()
     await act(async () => undefined)
-    expect(screen.queryByText(/Messaging could not be restored/)).toBeNull()
+    expect(screen.queryByText(/Chat app connections could not be restored/)).toBeNull()
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
     await act(async () => { release({ platforms: [row] }) })
     await waitFor(() => expect(within(screen.getByRole('article', { name: 'DingTalk bot integration' }))
       .getByRole('status').textContent).toBe('Connected'))
-    expect(screen.queryByText(/Messaging could not be restored/)).toBeNull()
+    expect(screen.queryByText(/Chat app connections could not be restored/)).toBeNull()
   })
 
   it('启动恢复超时但平台仍在连接时，按正在重连展示，不当作失败', async () => {
@@ -721,21 +739,21 @@ describe('Messaging cards and native configuration', () => {
     getMessagingPlatforms.mockResolvedValue({ platforms: [dingtalk({ configured: true, enabled: true, state: 'retrying' })] })
     await renderMessaging()
     expect(await screen.findByText(/reconnecting using its built-in policy/)).toBeTruthy()
-    expect(screen.queryByText(/Messaging could not be restored/)).toBeNull()
+    expect(screen.queryByText(/Chat app connections could not be restored/)).toBeNull()
     expect(messagingSetup).not.toHaveBeenCalled()
   })
 
   it.each([
     { operation: 'save' as const, error: 'apply_failed', saved: true, profile: 'default',
-      message: 'Settings saved, but the messaging connection could not be restored. Retry the connection.' },
+      message: 'Settings saved, but the chat app connection could not be restored. Retry the connection.' },
     { operation: 'save' as const, error: 'index_failed', saved: true, profile: 'default',
-      message: 'Settings saved, but the messaging connection could not be restored. Retry the connection.' },
+      message: 'Settings saved, but the chat app connection could not be restored. Retry the connection.' },
     { operation: 'save' as const, error: 'credentials_rejected', saved: false, profile: 'default',
       message: 'ID or Secret was rejected.' },
     { operation: 'restore' as const, error: 'gateway_identity_unverified', saved: true, profile: 'default',
       message: 'The existing gateway’s ownership could not be verified. No new gateway was started. Open logs for details.' },
     { operation: 'restore' as const, error: 'connection_timeout', saved: true, profile: 'another-profile',
-      message: 'Messaging could not be restored. Desktop chat is available. Retry the connection or open logs.' }
+      message: 'Chat app connections could not be restored. Desktop chat is available. Retry the connection or open logs.' }
   ])('keeps $error for $profile visible when the saved channel is connected', async ({ operation, error, saved, profile, message }) => {
     $settingsScopeOverride.set(null)
     publishOperation({ phase: 'failed', operation, profile, saved, error })
@@ -767,13 +785,13 @@ describe('Messaging cards and native configuration', () => {
     window.hermesDesktop.revealLogs = revealLogs
     publishOperation({ phase: 'applying', saved: true, operation: 'restore' })
     const view = await renderMessaging()
-    expect(await screen.findByText('Restoring messaging connections…')).toBeTruthy()
+    expect(await screen.findByText('Restoring chat app connections…')).toBeTruthy()
     view.rerender(<MemoryRouter><div>Desktop chat</div></MemoryRouter>)
     await act(async () => { publishOperation({ phase: 'failed', error: 'apply_failed' }) })
     expect(screen.getByText('Desktop chat')).toBeTruthy()
     expect(notify).not.toHaveBeenCalled()
     view.rerender(<MemoryRouter><MessagingView /></MemoryRouter>)
-    expect(await screen.findByText('Messaging could not be restored. Desktop chat is available. Retry the connection or open logs.')).toBeTruthy()
+    expect(await screen.findByText('Chat app connections could not be restored. Desktop chat is available. Retry the connection or open logs.')).toBeTruthy()
     expect(screen.getByText('Original adapter is reconnecting')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Open logs' }))
     expect(revealLogs).toHaveBeenCalledOnce()
@@ -783,7 +801,7 @@ describe('Messaging cards and native configuration', () => {
     await waitFor(() => expect(messagingSetup).toHaveBeenCalledWith({ operation: 'retry', profile: 'default' }))
   })
 
-  it('平台确认中不展示过渡停机或需重启，完成后先同步卡片再显示成功', async () => {
+  it('平台确认中不展示过渡停机或需重启，完成后同步卡片并移除进度提示', async () => {
     const ready = dingtalk({ configured: true, enabled: true, gateway_running: true, state: 'connected' })
     getMessagingPlatforms.mockResolvedValue({ platforms: [ready] })
     await renderMessaging()
@@ -791,17 +809,18 @@ describe('Messaging cards and native configuration', () => {
     let freshSnapshot!: (value: { platforms: MessagingPlatformInfo[] }) => void
     getMessagingPlatforms.mockReturnValueOnce(new Promise(resolve => { oldSnapshot = resolve }))
     await act(async () => { publishOperation({ phase: 'checking', saved: true, operation: 'save' }) })
-    expect(await screen.findByText('Checking messaging platform status…')).toBeTruthy()
+    expect(await screen.findByText('Checking chat app status…')).toBeTruthy()
     getMessagingPlatforms.mockReturnValueOnce(new Promise(resolve => { freshSnapshot = resolve }))
     await act(async () => { publishOperation({ phase: 'completed' }) })
-    expect(screen.queryByText('Messaging settings applied.')).toBeNull()
+    expect(screen.queryByText('Chat app settings applied.')).toBeNull()
     await act(async () => { oldSnapshot({ platforms: [{ ...ready, state: 'pending_restart', gateway_running: false }] }) })
     const card = screen.getByRole('article', { name: 'DingTalk bot integration' })
     expect(within(card).queryByText('Messaging gateway stopped')).toBeNull()
     expect(within(card).queryByText('Restart required')).toBeNull()
-    expect(screen.queryByText('Messaging settings applied.')).toBeNull()
+    expect(screen.queryByText('Chat app settings applied.')).toBeNull()
     await act(async () => { freshSnapshot({ platforms: [ready] }) })
-    expect(await screen.findByText('Messaging settings applied.')).toBeTruthy()
+    await waitFor(() => expect(screen.queryByText('Checking chat app status…')).toBeNull())
+    expect(screen.queryByText('Chat app settings applied.')).toBeNull()
     expect(within(card).getByText('Connected')).toBeTruthy()
     expect(notify).not.toHaveBeenCalled()
   })
@@ -826,7 +845,7 @@ describe('Messaging cards and native configuration', () => {
     expect(screen.queryByText(/Settings saved, but/)).toBeNull()
     expect(notify).not.toHaveBeenCalled()
     view.rerender(<MemoryRouter><MessagingView /></MemoryRouter>)
-    expect(await screen.findByText('Settings saved, but the messaging connection could not be restored. Retry the connection.')).toBeTruthy()
+    expect(await screen.findByText('Settings saved, but the chat app connection could not be restored. Retry the connection.')).toBeTruthy()
     fireEvent.click(screen.getAllByRole('button', { name: 'Retry' })[0])
     await waitFor(() => expect(messagingSetup).toHaveBeenCalledWith({ operation: 'retry', profile: 'default' }))
   })
@@ -847,7 +866,8 @@ describe('Messaging cards and native configuration', () => {
     expect(await screen.findByText('Messaging gateway is stopping…')).toBeTruthy()
     expect(notify).not.toHaveBeenCalled()
     await act(async () => { publishOperation({ phase: 'completed' }) })
-    expect(await screen.findByText('Messaging settings applied.')).toBeTruthy()
+    await waitFor(() => expect(screen.queryByText('Messaging gateway is stopping…')).toBeNull())
+    expect(screen.queryByText('Chat app settings applied.')).toBeNull()
   })
 
   it.each([
@@ -886,7 +906,7 @@ describe('Messaging cards and native configuration', () => {
       })
     )
     const dialog = await screen.findByRole('dialog')
-    expect(within(dialog).getAllByText('Messaging component unavailable').length).toBeGreaterThan(0)
+    expect(within(dialog).getAllByText('Chat app component unavailable').length).toBeGreaterThan(0)
     expect(within(dialog).getByRole('button', { name: 'Save and enable' }).hasAttribute('disabled')).toBe(true)
     expect(updateMessagingPlatform).not.toHaveBeenCalled()
   })
@@ -913,7 +933,7 @@ describe('Messaging cards and native configuration', () => {
       '5G messaging gateway (RCS) integration'
     ])
     const pending = screen.getByRole('article', { name: /5G/ })
-    expect(within(pending).getByRole('status').textContent).toBe('Messaging component unavailable')
+    expect(within(pending).getByRole('status').textContent).toBe('Chat app component unavailable')
     expect(within(pending).queryByRole('button', { name: 'Configure' })).toBeNull()
     expect(screen.queryByText('QQ Bot')).toBeNull()
     expect(screen.queryByText('WeCom Callback')).toBeNull()
@@ -989,7 +1009,7 @@ describe('Messaging cards and native configuration', () => {
     fireEvent.change(dialog.querySelector('input[type="text"]')!, { target: { value: 'app-123' } })
     fireEvent.change(dialog.querySelector('input[type="password"]')!, { target: { value: 'secret-123' } })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save and enable' }))
-    expect(await within(dialog).findByText('Could not save messaging settings. Your previous configuration is unchanged.')).toBeTruthy()
+    expect(await within(dialog).findByText('Could not save chat app settings. Your previous configuration is unchanged.')).toBeTruthy()
     expect(dialog.querySelector<HTMLInputElement>('input[type="text"]')!.value).toBe('app-123')
     expect(runGatewayRestart).not.toHaveBeenCalled()
   })

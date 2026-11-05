@@ -8,6 +8,7 @@ export const CONNECTOR_SPECS = {
   youdao_note: { auth: 'api_key', fields: ['apiKey'] },
   ima: { auth: 'custom_credential', fields: ['clientId', 'apiKey'] },
   qcc_mcp: { auth: 'oauth2', fields: [] },
+  tianyancha_mcp: { auth: 'oauth2', fields: [] },
   eastmoney_mcp: { auth: 'oauth2', fields: [] },
   ifind_mcp: { auth: 'oauth2', fields: [] },
   aminer: { auth: 'api_key', fields: ['apiKey'] },

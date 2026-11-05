@@ -16,6 +16,7 @@ import { registerPackagedSkillsCli } from '../entry_local/skills-cli-install'
 import { LocalStartupError, showLocalStartupFailure } from '../entry_local/startup-failure'
 import { createUniAgentGateBindingUpdate } from '../entry_local/uniagentgate-control'
 import { migrateOldUniworkData, migrateOldUniworkToWorkspace } from '../migrate-old-uniwork'
+import { ensureLoginShellPath } from '../shell-path'
 import { createWindowOpenHandler } from '../window-open-policy'
 
 import type { LoginAccount } from './contract'
@@ -51,7 +52,11 @@ function initializeLoginShell(): void {
 
   // 首次启动时静默迁移老版 UniWork 用户数据（幂等，fire-and-forget）。
   // 保留返回的 Promise，登录成功后 Plan B 复制前需 await 它。
-  migrationPromise = migrateOldUniworkData(userData)
+  // Finder/Dock launches have launchd's minimal PATH. Resolve the login shell
+  // before Plan A so Homebrew/user-installed limactl is available to Lima migration.
+  migrationPromise = ensureLoginShellPath().then(async () => {
+    await migrateOldUniworkData(userData)
+  })
 
   if (!app.requestSingleInstanceLock()) {
     stopping = true

@@ -542,6 +542,11 @@ export const zh = defineLocale({
           description: '连接企查查企业信息、风险、知识产权、经营和董监高服务，让 Agent 查询企业数据。',
           provider: '企查查'
         },
+        tianyancha_mcp: {
+          name: '天眼查',
+          description: '连接天眼查 MCP，查询企业工商、股权、风险、司法、投资和知识产权数据。',
+          provider: '天眼查'
+        },
         eastmoney_mcp: {
           name: '东方财富',
           description: '连接东方财富 Choice 数据 MCP，查询行情、公告、宏观指标、证券筛选和研究资讯。',
@@ -941,7 +946,7 @@ export const zh = defineLocale({
       'nav.settings': '打开设置',
       'nav.profiles': '打开配置',
       'nav.capabilities': '打开技能',
-      'nav.messaging': '打开消息',
+      'nav.messaging': '打开连接手机',
       'nav.artifacts': '打开资料库',
       'nav.cron': '打开定时任务',
       'nav.agents': '打开智能体',
@@ -3124,7 +3129,7 @@ export const zh = defineLocale({
       newChat: { title: '新建会话', detail: '开始一个新会话' },
       settings: { title: '设置', detail: '配置 UniWork 桌面端' },
       capabilities: { title: '技能与工具', detail: '启用技能、工具集与提供方' },
-      messaging: { title: '消息平台', detail: '配置 Telegram、Slack、Discord 等' },
+      messaging: { title: '连接手机', detail: '通过微信、钉钉、飞书等聊天应用接收和回复消息' },
       artifacts: { title: '资料库', detail: '管理云盘文件和本地产物' }
     },
     sectionEntries: {
@@ -3245,11 +3250,11 @@ export const zh = defineLocale({
       reconnectBusy: '正在处理消息，请完成后再重连。',
       reconnectFailed: '5G 重连失败，请查看日志；如网关未启动，请完整退出应用后重新打开。',
       reconnectRestartRequired: '5G 组件更新尚未生效，请完整退出应用（含托盘）后重新启动。',
-      unavailable: '消息平台组件未就绪',
+      unavailable: '聊天应用组件未就绪',
       notConnected: '未连接',
       unbind: '解绑',
-      unbindTitle: '解绑此消息平台？',
-      unbindDescription: '清除这个平台的凭据并停用它，保留其它平台设置、历史和文件。',
+      unbindTitle: '解绑此聊天应用？',
+      unbindDescription: '清除这个聊天应用的凭据并停用它，保留其它聊天应用设置、历史和文件。',
       titles: {
         weixin: '微信 ClawBot 集成',
         dingtalk: '钉钉机器人集成',
@@ -3265,9 +3270,9 @@ export const zh = defineLocale({
         uniagentgate: '连接 uniAgentGate 5G 消息网关，接收和回复 RCS 短信。'
       }
     },
-    search: '搜索消息平台…',
-    loading: '正在加载消息平台…',
-    loadFailed: '消息平台加载失败',
+    search: '搜索聊天应用…',
+    loading: '正在加载聊天应用…',
+    loadFailed: '聊天应用加载失败',
     states: {
       connected: '已连接',
       connecting: '连接中',
@@ -4008,7 +4013,7 @@ export const zh = defineLocale({
     nav: {
       'new-session': '新对话',
       capabilities: '扩展',
-      messaging: '消息平台',
+      messaging: '连接手机',
       artifacts: '资料库',
       cron: '定时任务'
     },
@@ -4260,7 +4265,7 @@ export const zh = defineLocale({
       '/prompt': '在 $EDITOR 中用 Markdown 编写下一个提示词，然后发送',
       '/undo': '回退 N 个用户回合并重新提示（默认为 1）',
       '/title': '重命名当前会话',
-      '/handoff': '将此会话移交到消息平台',
+      '/handoff': '将此会话移交到聊天应用',
       '/branch': '将最新消息分支到新对话',
       '/worktree': '显示、列出、创建或清理隔离的 Git worktree',
       '/compress': '压缩此对话的上下文',
@@ -5009,7 +5014,7 @@ export const zh = defineLocale({
       connection: label => `连接：${label}`,
       recentActivity: '最近活动',
       viewAllLogs: '查看全部日志 →',
-      messagingPlatforms: '消息平台'
+      messagingPlatforms: '聊天应用'
     },
     approvalMode: {
       title: '审批模式',
@@ -5842,11 +5847,12 @@ export const zh = defineLocale({
     clipboardPasteFailed: '粘贴剪贴板失败',
     dropFiles: '拖放文件',
     handoff: {
-      pickPlatform: '选择目标平台',
+      pickPlatform: '选择聊天应用',
       success: platform => `已移交到 ${platform}。随时可在此处恢复。`,
       systemNote: platform => `↻ 已移交到 ${platform} — 随时可在此处恢复。`,
       failed: error => `移交失败：${error}`,
-      timedOut: '等待网关超时。`hermes gateway` 是否正在运行？'
+      timedOut: '等待聊天应用连接超时。请在「连接手机」检查连接，或启动消息网关后重试。',
+      startMessaging: '启动消息网关'
     }
   },
 

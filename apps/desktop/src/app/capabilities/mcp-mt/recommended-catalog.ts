@@ -5,6 +5,7 @@ import ifind from '@/assets/connectors-mt/ifind.svg'
 import ima from '@/assets/connectors-mt/ima.png'
 import netease from '@/assets/connectors-mt/netease-mail.svg'
 import qcc from '@/assets/connectors-mt/qcc.svg'
+import tianyancha from '@/assets/connectors-mt/tianyancha.png'
 import qq from '@/assets/connectors-mt/qq-mail.png'
 import wecom from '@/assets/connectors-mt/wecom.png'
 import wps from '@/assets/connectors-mt/wps.png'
@@ -19,6 +20,7 @@ export const RECOMMENDED_CONNECTORS = [
   { id: 'youdao_note', icon: youdao },
   { id: 'ima', icon: ima },
   { id: 'qcc_mcp', icon: qcc },
+  { id: 'tianyancha_mcp', icon: tianyancha },
   { id: 'eastmoney_mcp', icon: eastmoney },
   { id: 'ifind_mcp', icon: ifind },
   { id: 'aminer', icon: aminer },

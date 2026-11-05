@@ -59,7 +59,7 @@ test('聊天阅读列与输入框在宽窗、预览及窄窗下保持居中对�
       return <MemoryRouter><I18nProvider configClient={null} initialLocale="zh"><AssistantRuntimeProvider runtime={runtime}>
         <div className="font-sans text-foreground" style={{display:'flex',height:'100vh',overflow:'hidden'}}>
           {layout.left>0&&<aside data-testid="sidebar" style={{width:layout.left,flexShrink:0,padding:20,background:'var(--ui-bg-sidebar)'}}>
-            <strong>元景数字员工</strong><p>新对话</p><p>专家 · 技能 · 连接器</p><p>消息平台</p><p>资料库</p><p>定时任务</p><hr/><p>本周工作总结</p><p>项目资料整理</p>
+            <strong>元景数字员工</strong><p>新对话</p><p>专家 · 技能 · 连接器</p><p>连接手机</p><p>资料库</p><p>定时任务</p><hr/><p>本周工作总结</p><p>项目资料整理</p>
           </aside>}
           <main data-chat-surface="" data-welcome-layout={layout.welcome?'centered':undefined} style={{position:'relative',flex:1,minWidth:0,display:'flex',flexDirection:'column',background:'var(--ui-chat-surface-background)'}}>
             <header style={{height:52,flexShrink:0,padding:'16px 24px'}}>本周工作总结</header>
@@ -111,6 +111,31 @@ test('聊天阅读列与输入框在宽窗、预览及窄窗下保持居中对�
     })
     await page.goto(`http://127.0.0.1:${server.httpServer.address().port}`, { waitUntil: 'load' })
     await page.locator('[data-slot="composer-surface"]').waitFor()
+    const toolbar = page.locator('[data-slot="aui_msg-actions"]').last()
+    await toolbar.waitFor()
+    const actions = await toolbar.evaluate(node => ({
+      gap: getComputedStyle(node).columnGap,
+      buttons: [...node.querySelectorAll('button')].map(button => {
+        const rect = button.getBoundingClientRect()
+        const icon = button.querySelector('svg').getBoundingClientRect()
+        return { width: rect.width, height: rect.height, iconWidth: icon.width, iconHeight: icon.height }
+      })
+    }))
+    assert.ok(actions.buttons.length >= 2, '正式回复工具条须提供复制与重新生成操作')
+    assert.equal(actions.gap, '4px', '回复按钮间距应与 UniWork 一致')
+    for (const button of actions.buttons) {
+      assert.deepEqual(button, { width: 24, height: 24, iconWidth: 14, iconHeight: 14 })
+    }
+    const firstAction = toolbar.locator('button').first()
+    const initialBackground = await firstAction.evaluate(button => getComputedStyle(button).backgroundColor)
+    await firstAction.hover()
+    await page.waitForFunction(
+      previous =>
+        getComputedStyle(document.querySelector('[data-slot="aui_msg-actions"] button')).backgroundColor !== previous,
+      initialBackground,
+      { timeout: 3000 }
+    )
+    await page.mouse.move(0, 0)
     const receipt = []
     for (const scenario of [
       { name: 'wide', width: 1920, height: 1080, left: 260, right: 0 },

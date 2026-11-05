@@ -10,6 +10,7 @@ export const executorModules: Record<string, () => Promise<ExecutorModule>> = {
   youdao_note: () => import("./youdao_note/executors.ts"),
   ima: () => import("./ima/executors.ts"),
   qcc_mcp: () => import("./qcc_mcp/executors.ts"),
+  tianyancha_mcp: () => import("./tianyancha_mcp/executors.ts"),
   eastmoney_mcp: () => import("./eastmoney_mcp/executors.ts"),
   ifind_mcp: () => import("./ifind_mcp/executors.ts"),
   aminer: () => import("./aminer/executors.ts"),

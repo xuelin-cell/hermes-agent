@@ -44,6 +44,11 @@
       "ipr": "用企查查查询这家公司名下的商标、专利和软件著作权情况。",
       "executives": "用企查查整理这家公司的董监高和主要人员信息。"
     },
+    "tianyancha": {
+      "company": "用天眼查查询“月之暗面”的工商信息、法定代表人和经营范围。",
+      "shareholders": "用天眼查整理“月之暗面”的股东和股权结构。",
+      "risk": "用天眼查核查这家公司的经营风险、司法风险和行政处罚记录。"
+    },
     "eastmoney": {
       "market": "用东方财富查询贵州茅台最近 5 个交易日的行情表现，并整理成交量和关键波动。",
       "screener": "用东方财富筛选净利润同比增长且市盈率最低的 50 只股票。",
@@ -117,6 +122,11 @@
       "risk": "Use Qichacha to check whether this company has recent business, litigation, or administrative penalty risks.",
       "ipr": "Use Qichacha to look up this company's trademarks, patents, and software copyrights.",
       "executives": "Use Qichacha to summarize this company's directors, supervisors, executives, and key personnel."
+    },
+    "tianyancha": {
+      "company": "Use Tianyancha to look up the company registration, legal representative, and business scope for Moonshot AI.",
+      "shareholders": "Use Tianyancha to summarize Moonshot AI's shareholders and ownership structure.",
+      "risk": "Use Tianyancha to check this company's business, judicial, and administrative-penalty risks."
     },
     "eastmoney": {
       "market": "Use Eastmoney to summarize Kweichow Moutai's price action over the last 5 trading days, including volume and key moves.",

@@ -121,6 +121,7 @@ const EXAMPLE_GROUP: Record<ConnectorId, keyof (typeof examples)['en']> = {
   youdao_note: 'youdao',
   ima: 'ima',
   qcc_mcp: 'qcc',
+  tianyancha_mcp: 'tianyancha',
   eastmoney_mcp: 'eastmoney',
   ifind_mcp: 'ifind',
   aminer: 'aminer',

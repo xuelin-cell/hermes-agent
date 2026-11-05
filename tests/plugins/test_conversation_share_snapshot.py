@@ -161,3 +161,23 @@ def test_unusable_images_do_not_block_snapshot(tmp_path):
         assert "丢失" in json.dumps(snapshot["document"], ensure_ascii=False)
     finally:
         db.close()
+
+
+
+def test_system_notices_stay_inside_the_turn(tmp_path):
+    """后台任务完成等系统通知不是用户提问：不拆分回复，也不把内部提示文字公开。"""
+    db = SessionDB(tmp_path / "state.db")
+    try:
+        db.create_session("chat", source="desktop")
+        db.append_message("chat", "user", "帮我生成播客")
+        db.append_message("chat", "assistant", "任务已提交后台")
+        db.append_message("chat", "user", "[ASYNC DELEGATION BATCH COMPLETE — deleg_1] internal summary",
+                          display_kind="async_delegation_complete")
+        final = db.append_message("chat", "assistant", "播客已生成")
+        messages = build_snapshot(db, {"sessionId": "chat"}, owner=None)["document"]["messages"]
+        assert [item["role"] for item in messages] == ["user", "assistant"]
+        assert "ASYNC DELEGATION" not in json.dumps(messages, ensure_ascii=False)
+        reply = build_snapshot(db, {"sessionId": "chat", "scope": "response", "responseRowId": final}, owner=None)
+        assert "任务已提交后台" in json.dumps(reply["document"], ensure_ascii=False)
+    finally:
+        db.close()

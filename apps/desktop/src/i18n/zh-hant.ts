@@ -7,6 +7,7 @@ import { messagingConnectionCopy } from './messaging-connection'
 export const zhHant = defineLocale({
   keybinds: {
     actions: {
+      'nav.messaging': '開啟連接手機',
       'nav.artifacts': '開啟資料庫'
     }
   },
@@ -73,6 +74,11 @@ export const zhHant = defineLocale({
           name: '企查查',
           description: '連接企查查企業資訊、風險、智慧財產權、經營和董監高服務，讓 Agent 查詢企業資料。',
           provider: '企查查'
+        },
+        tianyancha_mcp: {
+          name: '天眼查',
+          description: '連接天眼查 MCP，查詢企業工商、股權、風險、司法、投資和知識產權資料。',
+          provider: '天眼查'
         },
         eastmoney_mcp: {
           name: '東方財富',
@@ -2495,7 +2501,7 @@ export const zhHant = defineLocale({
       newChat: { title: '新工作階段', detail: '開始新的工作階段' },
       settings: { title: '設定', detail: '設定 UniWork 桌面端' },
       capabilities: { title: '技能與工具', detail: '啟用技能、工具集和提供方' },
-      messaging: { title: '訊息平台', detail: '設定 Telegram、Slack、Discord 等' },
+      messaging: { title: '連接手機', detail: '透過微信、釘釘、飛書等聊天應用接收和回覆訊息' },
       artifacts: { title: '資料庫', detail: '管理雲端硬碟檔案和本機產物' }
     },
     sectionEntries: {
@@ -2569,11 +2575,11 @@ export const zhHant = defineLocale({
       reconnectBusy: '正在處理訊息，請完成後再重新連線。',
       reconnectFailed: '5G 重新連線失敗，請查看日誌；若閘道未啟動，請完整結束應用後重新開啟。',
       reconnectRestartRequired: '5G 元件更新尚未生效，請完整結束應用（含系統匣）後重新啟動。',
-      unavailable: '訊息平台元件尚未就緒',
+      unavailable: '聊天應用元件尚未就緒',
       notConnected: '未連線',
       unbind: '解除綁定',
-      unbindTitle: '解除此訊息平台的綁定？',
-      unbindDescription: '清除此平台的憑證並停用，保留其他平台設定、歷史與檔案。',
+      unbindTitle: '解除此聊天應用的綁定？',
+      unbindDescription: '清除此聊天應用的憑證並停用，保留其他聊天應用設定、歷史與檔案。',
       titles: {
         weixin: '微信 ClawBot 整合',
         dingtalk: '釘釘機器人整合',
@@ -2589,9 +2595,9 @@ export const zhHant = defineLocale({
         uniagentgate: '連接 uniAgentGate 5G 訊息閘道，接收及回覆 RCS 簡訊。'
       }
     },
-    search: '搜尋訊息平台…',
-    loading: '正在載入訊息平台…',
-    loadFailed: '訊息平台載入失敗',
+    search: '搜尋聊天應用…',
+    loading: '正在載入聊天應用…',
+    loadFailed: '聊天應用載入失敗',
     states: {
       connected: '已連線',
       connecting: '連線中',
@@ -3234,7 +3240,7 @@ export const zhHant = defineLocale({
     nav: {
       'new-session': '新對話',
       capabilities: '擴充功能',
-      messaging: '訊息平台',
+      messaging: '連接手機',
       artifacts: '資料庫',
       cron: '排程工作'
     },
@@ -3463,7 +3469,7 @@ export const zhHant = defineLocale({
       '/prompt': '在 $EDITOR 中用 Markdown 撰寫下一個提示詞，然後傳送',
       '/undo': '退回 N 個使用者回合並重新提示（預設為 1）',
       '/title': '重新命名目前工作階段',
-      '/handoff': '將此工作階段交接至訊息平台',
+      '/handoff': '將此工作階段交接至聊天應用',
       '/branch': '將最新訊息分支至新的聊天',
       '/worktree': '顯示、列出、建立或清理隔離的 Git worktree',
       '/compress': '壓縮此對話的上下文',
@@ -4099,7 +4105,7 @@ export const zhHant = defineLocale({
       connection: label => `連線：${label}`,
       recentActivity: '最近活動',
       viewAllLogs: '查看全部記錄 →',
-      messagingPlatforms: '訊息平台'
+      messagingPlatforms: '聊天應用'
     },
     approvalMode: {
       title: '核准模式',
@@ -4881,11 +4887,12 @@ export const zhHant = defineLocale({
     clipboardPasteFailed: '剪貼簿貼上失敗',
     dropFiles: '拖曳檔案',
     handoff: {
-      pickPlatform: '選擇目標平台',
+      pickPlatform: '選擇聊天應用',
       success: platform => `已移交到 ${platform}。隨時可在此處恢復。`,
       systemNote: platform => `↻ 已移交到 ${platform} — 隨時可在此處恢復。`,
       failed: error => `移交失敗：${error}`,
-      timedOut: '等待閘道逾時。`hermes gateway` 是否正在執行？'
+      timedOut: '等待聊天應用連線逾時。請在「連接手機」檢查連線，或啟動訊息閘道後重試。',
+      startMessaging: '啟動訊息閘道'
     }
   },
 
