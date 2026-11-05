@@ -25,49 +25,13 @@ export const LOCALE_OPTIONS = [
     name: LOCALE_ENDONYMS['zh-hant'],
     englishName: 'Traditional Chinese',
     configValue: 'zh-hant'
-  },
-  {
-    id: 'ja',
-    name: LOCALE_ENDONYMS.ja,
-    englishName: 'Japanese',
-    configValue: 'ja'
-  },
-  {
-    id: 'ar',
-    name: LOCALE_ENDONYMS.ar,
-    englishName: 'Arabic',
-    configValue: 'ar'
-  },
-  {
-    id: 'ru',
-    name: LOCALE_ENDONYMS.ru,
-    englishName: 'Russian',
-    configValue: 'ru'
-  },
-  {
-    id: 'fr',
-    name: LOCALE_ENDONYMS.fr,
-    englishName: 'French',
-    configValue: 'fr'
-  },
-  {
-    id: 'de',
-    name: LOCALE_ENDONYMS.de,
-    englishName: 'German',
-    configValue: 'de'
-  },
-  {
-    id: 'es',
-    name: LOCALE_ENDONYMS.es,
-    englishName: 'Spanish',
-    configValue: 'es'
   }
 ] as const satisfies readonly { configValue: string; englishName: string; id: Locale; name: string }[]
 
 // `name` is the endonym (native name) shown in the picker so users recognize
 // their language regardless of the current UI language. No country flags:
 // languages are not countries. `englishName` is search-only (not shown) so an
-// English speaker can type "japanese"/"traditional" to filter the list.
+// English speaker can type "simplified"/"traditional" to filter the list.
 export const LOCALE_META: Record<Locale, { name: string; englishName: string }> = Object.fromEntries(
   LOCALE_OPTIONS.map(locale => [locale.id, { name: locale.name, englishName: locale.englishName }])
 ) as Record<Locale, { name: string; englishName: string }>
@@ -94,61 +58,7 @@ const LOCALE_ALIASES: Record<string, Locale> = {
   'zh-hant-tw': 'zh-hant',
   zh_hant_tw: 'zh-hant',
   'zh-hant-hk': 'zh-hant',
-  zh_hant_hk: 'zh-hant',
-  ja: 'ja',
-  'ja-jp': 'ja',
-  ja_jp: 'ja',
-  ar: 'ar',
-  'ar-sa': 'ar',
-  ar_sa: 'ar',
-  'ar-ae': 'ar',
-  ar_ae: 'ar',
-  'ar-eg': 'ar',
-  ar_eg: 'ar',
-  arabic: 'ar',
-  العربية: 'ar',
-  ru: 'ru',
-  'ru-ru': 'ru',
-  ru_ru: 'ru',
-  'ru-by': 'ru',
-  'ru-kz': 'ru',
-  russian: 'ru',
-  'russian-russian': 'ru',
-  русский: 'ru',
-  руский: 'ru',
-  fr: 'fr',
-  'fr-fr': 'fr',
-  fr_fr: 'fr',
-  'fr-be': 'fr',
-  fr_be: 'fr',
-  'fr-ca': 'fr',
-  fr_ca: 'fr',
-  'fr-ch': 'fr',
-  fr_ch: 'fr',
-  french: 'fr',
-  français: 'fr',
-  francais: 'fr',
-  de: 'de',
-  'de-de': 'de',
-  de_de: 'de',
-  'de-at': 'de',
-  de_at: 'de',
-  'de-ch': 'de',
-  de_ch: 'de',
-  german: 'de',
-  deutsch: 'de',
-  es: 'es',
-  'es-es': 'es',
-  es_es: 'es',
-  'es-mx': 'es',
-  es_mx: 'es',
-  'es-ar': 'es',
-  es_ar: 'es',
-  'es-419': 'es',
-  es_419: 'es',
-  spanish: 'es',
-  español: 'es',
-  espanol: 'es'
+  zh_hant_hk: 'zh-hant'
 }
 
 export function isLocale(value: unknown): value is Locale {
@@ -167,7 +77,7 @@ export function isSupportedLocaleValue(value: unknown): boolean {
   return typeof value === 'string' && LOCALE_ALIASES[normalize(value)] != null
 }
 
-/** OS tags can include regions absent from the picker aliases, such as ru-UA. */
+/** 系统地区标签未列入别名时，仍可按支持的语言识别，例如 en-GB。 */
 export function osPreferredLocale(tag: string | null | undefined): Locale | null {
   if (!tag) {
     return null

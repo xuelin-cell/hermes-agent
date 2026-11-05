@@ -100,10 +100,13 @@ it.each(['gui', 'lite', 'full'] as const)(
     fireEvent.click(screen.getByRole('button', { name: new RegExp(zh.options[mode].title) }))
     expect(screen.getByText(zh.confirmBody(zh.options[mode].consequence))).toBeTruthy()
     expect(run).not.toHaveBeenCalled()
-    await act((): Promise<void> => i18n.setLocale('ja'))
-    const ja: (typeof TRANSLATIONS)['ja']['settings']['uninstallSection'] = TRANSLATIONS.ja.settings.uninstallSection
-    expect(screen.getByText(ja.confirmBody(ja.options[mode].consequence))).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: ja.yesUninstall }))
+    await act((): Promise<void> => i18n.setLocale('zh-hant'))
+
+    const traditional: (typeof TRANSLATIONS)['zh-hant']['settings']['uninstallSection'] =
+      TRANSLATIONS['zh-hant'].settings.uninstallSection
+
+    expect(screen.getByText(traditional.confirmBody(traditional.options[mode].consequence))).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: traditional.yesUninstall }))
     expect(run).toHaveBeenCalledWith(mode)
   }
 )

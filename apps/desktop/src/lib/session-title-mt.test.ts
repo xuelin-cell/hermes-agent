@@ -19,7 +19,7 @@ describe('newSessionTitle', () => {
     setRuntimeI18nLocale('zh-hant')
     expect(newSessionTitle('New session')).toBe('新對話')
 
-    setRuntimeI18nLocale('ja')
+    setRuntimeI18nLocale('en')
     expect(newSessionTitle('New session')).toBe('New session')
   })
 })

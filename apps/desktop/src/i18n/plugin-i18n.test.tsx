@@ -16,14 +16,14 @@ describe('plugin locale registry', () => {
   it('resolves the active locale, falling back to English then the raw key', () => {
     const dispose = registerPluginLocales('cost', {
       en: { panel: { title: 'Cost' }, spent: (n: number) => `$${n} spent` },
-      ja: { panel: { title: 'コスト' } }
+      'zh-hant': { panel: { title: '成本' } }
     })
 
-    expect(translatePlugin('cost', 'ja', 'panel.title', [])).toBe('コスト')
-    // Missing in ja → English.
-    expect(translatePlugin('cost', 'ja', 'spent', [7])).toBe('$7 spent')
+    expect(translatePlugin('cost', 'zh-hant', 'panel.title', [])).toBe('成本')
+    // Missing in Traditional Chinese → English.
+    expect(translatePlugin('cost', 'zh-hant', 'spent', [7])).toBe('$7 spent')
     // Missing everywhere → the key itself.
-    expect(translatePlugin('cost', 'ja', 'nope', [])).toBe('nope')
+    expect(translatePlugin('cost', 'zh-hant', 'nope', [])).toBe('nope')
 
     dispose()
   })
@@ -43,11 +43,11 @@ describe('plugin locale registry', () => {
 
   it('merges repeated registrations and drops everything on dispose', () => {
     const one = registerPluginLocales('merge', { en: { a: 'A' } })
-    const two = registerPluginLocales('merge', { en: { b: 'B' }, ja: { a: 'あ' } })
+    const two = registerPluginLocales('merge', { en: { b: 'B' }, 'zh-hant': { a: '甲' } })
 
     expect(translatePlugin('merge', 'en', 'a', [])).toBe('A')
     expect(translatePlugin('merge', 'en', 'b', [])).toBe('B')
-    expect(translatePlugin('merge', 'ja', 'a', [])).toBe('あ')
+    expect(translatePlugin('merge', 'zh-hant', 'a', [])).toBe('甲')
 
     one()
     two()
@@ -64,31 +64,31 @@ describe('plugin locale registry', () => {
       return dispose
     })
 
-    i18n.register({ en: { greet: 'hello' }, ja: { greet: 'こんにちは' } })
+    i18n.register({ en: { greet: 'hello' }, 'zh-hant': { greet: '你好' } })
     const calls: string[] = []
     const unsubscribe = i18n.onLocaleChange(() => calls.push(i18n.t('greet')))
     expect(calls).toEqual([])
     setRuntimeI18nLocale('en')
     expect(calls).toEqual([])
-    setRuntimeI18nLocale('ja')
-    expect(calls).toEqual(['こんにちは'])
+    setRuntimeI18nLocale('zh-hant')
+    expect(calls).toEqual(['你好'])
     unsubscribe()
     setRuntimeI18nLocale('en')
-    expect(calls).toEqual(['こんにちは'])
+    expect(calls).toEqual(['你好'])
     i18n.onLocaleChange(() => calls.push(i18n.t('greet')))
     disposers.forEach(dispose => dispose())
-    setRuntimeI18nLocale('ja')
-    expect(calls).toEqual(['こんにちは'])
+    setRuntimeI18nLocale('zh-hant')
+    expect(calls).toEqual(['你好'])
   })
 
   it('ctx.i18n.t reads the app runtime locale', () => {
     const i18n = createPluginI18n('runtime-plugin', noopTrack)
-    i18n.register({ en: { greet: 'hello' }, ja: { greet: 'こんにちは' } })
+    i18n.register({ en: { greet: 'hello' }, 'zh-hant': { greet: '你好' } })
 
     expect(i18n.t('greet')).toBe('hello')
 
-    setRuntimeI18nLocale('ja')
-    expect(i18n.t('greet')).toBe('こんにちは')
+    setRuntimeI18nLocale('zh-hant')
+    expect(i18n.t('greet')).toBe('你好')
   })
 })
 
@@ -98,12 +98,13 @@ function Probe({ pluginId }: { pluginId: string }) {
   return <p data-testid="copy">{t('greet')}</p>
 }
 
-function SwitchToJa() {
+// 切换受支持语言，验证插件随界面刷新。
+function SwitchToTraditional() {
   const { setLocale } = useI18n()
 
   return (
-    <button onClick={() => void setLocale('ja')} type="button">
-      to ja
+    <button onClick={() => void setLocale('zh-hant')} type="button">
+      to Traditional Chinese
     </button>
   )
 }
@@ -112,12 +113,12 @@ describe('usePluginI18n', () => {
   it('re-renders on a locale switch', () => {
     const dispose = registerPluginLocales('hooked', {
       en: { greet: 'hello' },
-      ja: { greet: 'こんにちは' }
+      'zh-hant': { greet: '你好' }
     })
 
     render(
       <I18nProvider configClient={null}>
-        <SwitchToJa />
+        <SwitchToTraditional />
         <Probe pluginId="hooked" />
       </I18nProvider>
     )
@@ -126,7 +127,7 @@ describe('usePluginI18n', () => {
 
     fireEvent.click(screen.getByRole('button'))
 
-    expect(screen.getByTestId('copy').textContent).toBe('こんにちは')
+    expect(screen.getByTestId('copy').textContent).toBe('你好')
 
     dispose()
   })
