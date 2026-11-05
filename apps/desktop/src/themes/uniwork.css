@@ -348,6 +348,7 @@
     [data-slot='aui_assistant-message-root']
   ) {
   --conversation-text-font-size: 16px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, 'Segoe UI', sans-serif;
 }
 
 :root[data-hermes-theme='uniwork'] [data-slot='aui_edit-composer-root'] [data-slot='composer-rich-input'] {
