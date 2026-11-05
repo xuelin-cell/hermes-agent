@@ -1688,8 +1688,10 @@ class TurnRunner:
         """Run the turn with the per-session gateway approval callback registered: dangerous-command
         approval blocks the agent thread (mirrors CLI input()); the callback bridges sync→async."""
         from gateway.run import _wrap_current_message_with_observed_context
+        from gateway.turn_reply_metadata import persist_gateway_reply_metadata
         from tools.approval import register_gateway_notify, unregister_gateway_notify
         from tools.approval_context import reset_current_session_key, set_current_session_key
+        from tui_gateway.turn_token_usage import token_usage_snapshot
         ctx = self._ctx
         session_key = ctx.session_key or ""
         token = set_current_session_key(session_key)
@@ -1720,8 +1722,12 @@ class TurnRunner:
             if ctx.inbound_message_id is not None:
                 kwargs["persist_user_platform_id"] = str(ctx.inbound_message_id)
             from agent.notification_presentation import notification_turn
+            usage_before = token_usage_snapshot(agent)
             with notification_turn(agent, muted=ctx.mute_notification_reply, session_id=ctx.session_id or ""):
-                return agent.run_conversation(api_message, **kwargs)
+                result = agent.run_conversation(api_message, **kwargs)
+                completed_at = time.time()
+            persist_gateway_reply_metadata(agent, agent_history, result, usage_before, completed_at)
+            return result
         finally:
             unregister_gateway_notify(session_key)
             # Cancel pending clarify entries so blocked agent threads don't hang past the end of the
