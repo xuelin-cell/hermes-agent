@@ -163,20 +163,21 @@ def test_unusable_images_do_not_block_snapshot(tmp_path):
         db.close()
 
 
-def test_duration_matches_desktop_reloaded_turn(tmp_path):
-    """用时与桌面版重新加载后一致：有工具时止于最后一次工具完成，没有工具时止于回复本身。"""
+
+def test_system_notices_stay_inside_the_turn(tmp_path):
+    """后台任务完成等系统通知不是用户提问：不拆分回复，也不把内部提示文字公开。"""
     db = SessionDB(tmp_path / "state.db")
     try:
         db.create_session("chat", source="desktop")
-        db.append_message("chat", "user", "做个 PPT", timestamp=1000.0)
-        db.append_message("chat", "assistant", "开始", timestamp=1005.0, tool_calls=[{
-            "id": "call", "type": "function", "function": {"name": "terminal", "arguments": "{}"}}])
-        db.append_message("chat", "tool", "ok", tool_name="terminal", tool_call_id="call", timestamp=2060.6)
-        db.append_message("chat", "assistant", "完成", timestamp=2094.4)
-        db.append_message("chat", "user", "谢谢", timestamp=3000.0)
-        db.append_message("chat", "assistant", "不客气", timestamp=3012.9)
-        replies = [item for item in build_snapshot(db, {"sessionId": "chat"}, owner=None)["document"]["messages"]
-                   if item["role"] == "assistant"]
-        assert [reply["durationS"] for reply in replies] == [1060, 12]
+        db.append_message("chat", "user", "帮我生成播客")
+        db.append_message("chat", "assistant", "任务已提交后台")
+        db.append_message("chat", "user", "[ASYNC DELEGATION BATCH COMPLETE — deleg_1] internal summary",
+                          display_kind="async_delegation_complete")
+        final = db.append_message("chat", "assistant", "播客已生成")
+        messages = build_snapshot(db, {"sessionId": "chat"}, owner=None)["document"]["messages"]
+        assert [item["role"] for item in messages] == ["user", "assistant"]
+        assert "ASYNC DELEGATION" not in json.dumps(messages, ensure_ascii=False)
+        reply = build_snapshot(db, {"sessionId": "chat", "scope": "response", "responseRowId": final}, owner=None)
+        assert "任务已提交后台" in json.dumps(reply["document"], ensure_ascii=False)
     finally:
         db.close()

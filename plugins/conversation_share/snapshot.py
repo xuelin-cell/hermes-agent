@@ -10,6 +10,17 @@ import time
 MAX_MESSAGES = 10000
 MAX_SOURCE_BYTES = 8 * 1024 * 1024
 _BACKGROUND = re.compile(r"^\[IMPORTANT: Background process [\s\S]*\]$", re.I)
+# 与桌面版 hydration 的 NOTICE_DISPLAY_KINDS 一致：系统写入的通知不是用户提问，不开启新的一轮。
+_NOTICE_KINDS = {"model_switch", "async_delegation_complete", "process_complete", "auto_continue",
+                 "personality_switch", "failed_turn"}
+
+
+def _is_background(message: dict) -> bool:
+    """后台进程消息与系统通知只作为过程中的一行活动，内部提示文字不进入公开页面。"""
+    role, kind = message.get("role"), message.get("display_kind")
+    return (kind in _NOTICE_KINDS
+            or (role == "system" and kind in {"process", "process_notification"})
+            or (role == "user" and bool(_BACKGROUND.match(message.get("text", "")))))
 
 
 class SnapshotError(ValueError):
@@ -102,15 +113,6 @@ def _turn_messages(group: list[dict]) -> list[dict]:
     message = {"role": "assistant", "blocks": answer}
     if process:
         message["process"] = process
-    # 与桌面版重新加载后的「用时」一致：起点是提问；有工具调用时终点是最后一次工具完成，否则是回复本身。
-    def stamps(kind: str) -> list[float]:
-        return [entry["timestamp"] for entry in replies
-                if entry["kind"] == kind and isinstance(entry["timestamp"], (int, float))]
-
-    ends = stamps("tool") or stamps("assistant")
-    start = user["timestamp"] if user else None
-    if ends and isinstance(start, (int, float)) and max(ends) >= start:
-        message["durationS"] = int(max(ends) - start)
     if answer or process:
         result.append({"rows": [entry["row"] for entry in replies], "message": message})
     return result
@@ -140,7 +142,7 @@ def build_snapshot(db, request: dict, *, owner: str | None, profile_home=None) -
     messages = _history_to_messages(history, profile_home=profile_home, image_urls=False)
     # 回复身份来自持久历史，不能随「包含过程」开关或正文投影的过滤而消失。
     visible_users = {item.get("row_id") for item in messages if item.get("role") == "user"
-                     and not _BACKGROUND.match(item.get("text", ""))}
+                     and not _is_background(item)}
     visible_assistants = {item.get("row_id") for item in messages if item.get("role") == "assistant"}
     anchors = {}
     turn = None
@@ -156,9 +158,7 @@ def build_snapshot(db, request: dict, *, owner: str | None, profile_home=None) -
     turns = {None: selected}
     for message in messages:
         role = message.get("role")
-        kind = message.get("display_kind")
-        background = role == "system" and kind in {"process", "process_notification"}
-        background |= role == "user" and bool(_BACKGROUND.match(message.get("text", "")))
+        background = _is_background(message)
         if role == "user" and not background:
             selected = []
             groups.append(selected)
@@ -166,8 +166,7 @@ def build_snapshot(db, request: dict, *, owner: str | None, profile_home=None) -
         if role not in {"user", "assistant", "tool"} and not background:
             continue
         blocks = [{"type": "tool", "name": "Background process"}] if background else _public_blocks(message)
-        selected.append({"row": message.get("row_id"), "kind": "background" if background else role,
-                         "timestamp": message.get("timestamp"), "blocks": blocks})
+        selected.append({"row": message.get("row_id"), "kind": "background" if background else role, "blocks": blocks})
     scope = request.get("scope", "session")
     if scope == "response":
         row_id = request.get("responseRowId")

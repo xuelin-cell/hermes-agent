@@ -2,13 +2,12 @@ import type { ConversationShareBlock, ConversationShareDocument } from '@hermes/
 import type { ReactNode } from 'react'
 
 import brandLogo from '@/assets/login-brand-logo.png?inline'
-import { responseDurationParts } from '@/components/assistant-ui/thread/response-presentation'
 import { summarizeToolRun } from '@/components/assistant-ui/tool/run-summary'
 import { SCAFFOLD_LABEL_CLASS } from '@/components/chat/scaffold-row'
 import type { Locale } from '@/i18n'
 import { registerPluginLocales, translatePlugin } from '@/i18n/plugin-i18n'
 import { translateNow } from '@/i18n/runtime'
-import { ChevronRight, Clock, Lock, Wrench } from '@/lib/icons'
+import { ChevronRight, Lock, Wrench } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 
 import type { SharePageLabels } from './snapshot-renderer'
@@ -16,19 +15,13 @@ import type { SharePageLabels } from './snapshot-renderer'
 const SCOPE = 'desktop-mt.conversation-share-page'
 registerPluginLocales(SCOPE, {
   en: {
-    process: 'Execution process',
-    duration: (time: string) => `Worked for ${time}`,
-    time: (h: number, m: number, s: number) => (h ? `${h}h ${m}m ${s}s` : m ? `${m}m ${s}s` : `${s}s`)
+    process: 'Execution process'
   },
   zh: {
-    process: '执行过程',
-    duration: (time: string) => `用时 ${time}`,
-    time: (h: number, m: number, s: number) => (h ? `${h}小时${m}分钟${s}秒` : m ? `${m}分${s}秒` : `${s}秒`)
+    process: '执行过程'
   },
   'zh-hant': {
-    process: '執行過程',
-    duration: (time: string) => `用時 ${time}`,
-    time: (h: number, m: number, s: number) => (h ? `${h}小時${m}分鐘${s}秒` : m ? `${m}分${s}秒` : `${s}秒`)
+    process: '執行過程'
   }
 })
 
@@ -43,19 +36,6 @@ interface ConversationSharePageProps {
   source: ConversationShareDocument
   labels: SharePageLabels
   renderMarkdown: (text: string) => ReactNode
-}
-
-/** 与桌面版的轮次标签一致：有时长显示「用时」，否则显示「执行过程」。 */
-function processLabel(locale: string, seconds: number | undefined): string {
-  const t = (key: string, ...args: unknown[]) => translatePlugin(SCOPE, locale as Locale, key, args)
-
-  if (seconds === undefined) {
-    return t('process')
-  }
-
-  const { hours, minutes, seconds: rest } = responseDurationParts(seconds)
-
-  return t('duration', t('time', hours, minutes, rest))
 }
 
 type ProcessItem =
@@ -150,7 +130,8 @@ function AssistantTurn({
   source: ConversationShareDocument
   renderMarkdown: (text: string) => ReactNode
 }) {
-  const label = processLabel(source.locale, message.durationS)
+  // 保存的时间戳推算不出与桌面版一致的耗时（后台任务、实时计时），分享页不显示用时。
+  const label = translatePlugin(SCOPE, source.locale as Locale, 'process', [])
   const process = groupProcess(message.process ?? [])
 
   return (
@@ -167,11 +148,6 @@ function AssistantTurn({
             ))}
           </div>
         </details>
-      ) : message.durationS !== undefined ? (
-        <div className="flex w-fit items-center gap-1.5 py-2 text-xs font-medium text-muted-foreground">
-          <Clock aria-hidden="true" style={{ width: 14, height: 14 }} />
-          {label}
-        </div>
       ) : null}
       {message.blocks.map((block, index) => (
         <div className="min-w-0" key={index}>

@@ -12,6 +12,13 @@ import {
 import { waitForPreparation } from './preparation-wait'
 import { ConversationShareView } from './share-view'
 
+/** 去掉 Electron IPC 自动加的「Error invoking remote method …」前缀，只给用户看主进程给出的原因。 */
+export function failureMessage(failure: unknown): string {
+  const message = failure instanceof Error ? failure.message : String(failure)
+
+  return message.replace(/^Error invoking remote method '[^']*': (?:\w*Error: )?/, '')
+}
+
 /** 所有会话和回复入口共用单个窗口，关闭时清除预览并取消发布票据。 */
 export function ConversationShareDialog() {
   const target = useStore($conversationShareTarget)
@@ -94,7 +101,7 @@ function ShareWindow({ target }: ShareWindowProps) {
         }
       } catch (failure) {
         if (!disposed) {
-          const reason = String(failure instanceof Error ? failure.message : failure)
+          const reason = failureMessage(failure)
           setError(signal.aborted ? `${copy.resourceError} ${reason}` : reason)
         }
       }
@@ -121,7 +128,7 @@ function ShareWindow({ target }: ShareWindowProps) {
       })
       .catch(failure => {
         if (!disposed) {
-          setError(String(failure))
+          setError(failureMessage(failure))
         }
       })
 
@@ -154,7 +161,7 @@ function ShareWindow({ target }: ShareWindowProps) {
       }
     } catch (failure) {
       if ($conversationShareTarget.get() === target) {
-        setError(String(failure instanceof Error ? failure.message : failure))
+        setError(failureMessage(failure))
       }
     } finally {
       if ($conversationShareTarget.get() === target) {
@@ -181,7 +188,7 @@ function ShareWindow({ target }: ShareWindowProps) {
       }
     } catch (failure) {
       if ($conversationShareTarget.get() === target) {
-        setError(String(failure instanceof Error ? failure.message : failure))
+        setError(failureMessage(failure))
       }
     } finally {
       if ($conversationShareTarget.get() === target) {
