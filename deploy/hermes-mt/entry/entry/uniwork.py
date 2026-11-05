@@ -120,6 +120,22 @@ class Binding:
 
 
 @dataclass
+class DeviceGrant:
+    """统一登录：凭成员 ID 换来的设备令牌和策略（/api/internal/sso/device-token，34 号第 1 节）。没有元景的登录结果。"""
+
+    device_token: str
+    status: str
+    tenant_id: str
+    tenant_code: str
+    tenant_name: str
+    policy: dict = field(default_factory=dict)
+
+    @property
+    def access(self) -> str:
+        return access_status(self.policy, self.status)
+
+
+@dataclass
 class Choice:
     """还要选企业：一次性票据和这个手机号所属的企业。"""
 
@@ -149,8 +165,10 @@ class Uniwork:
         self.timeout = aiohttp.ClientTimeout(total=settings.upstream_timeout_s)
 
     async def _call(self, method: str, path: str, *, body: Any = None, token: str = "",
-                    timeout_s: float | None = None) -> dict:
-        headers = {"Accept": "application/json"}
+                    timeout_s: float | None = None, headers: dict[str, str] | None = None,
+                    keep_status: tuple[int, ...] = ()) -> dict:
+        """``keep_status``：这些状态码原样放进 UniworkError.status（默认只留 401 / 403 / 404，其余算 502）。"""
+        headers = {"Accept": "application/json", **(headers or {})}
         if token:
             headers["Authorization"] = f"Bearer {token}"
         timeout = aiohttp.ClientTimeout(total=timeout_s) if timeout_s else self.timeout
@@ -165,7 +183,8 @@ class Uniwork:
                 if resp.status >= 400:
                     message = _detail(data) or f"企业管理平台返回 HTTP {resp.status}"
                     log.warning("uniwork %s %s -> %s %s", method, path, resp.status, message[:200])
-                    raise UniworkError(message, status=resp.status if resp.status in (401, 403, 404) else 502)
+                    kept = resp.status in (401, 403, 404) or resp.status in keep_status
+                    raise UniworkError(message, status=resp.status if kept else 502)
         except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
             log.warning("uniwork %s %s network error: %s", method, path, type(exc).__name__)
             raise UniworkError(f"企业管理平台暂时连不上（{type(exc).__name__}）") from exc
@@ -234,6 +253,31 @@ class Uniwork:
         if not isinstance(outcome, Binding):
             raise UniworkError("企业管理平台没有发设备令牌")
         return outcome
+
+    async def device_token(self, tenant_id: str, member_id: str, device: str, internal_token: str) -> DeviceGrant:
+        """统一登录后的企业账号：凭成员 ID 换设备令牌和策略。被拦的成员也发（原因在 status 和 policy.access 里）。
+
+        每调一次，同一个（成员, deviceId）的旧令牌就作废，所以只在没有令牌、或 /api/client/policy 回 401 时才调。
+        成员不存在、不属于这个企业或已离职回 409（ACCOUNT_UNAVAILABLE），密钥不对回 401。
+        """
+        body = {"tenantId": tenant_id, "memberId": member_id, "deviceId": device,
+                "platform": PLATFORM, "appVersion": APP_VERSION}
+        data = await self._call("POST", "/api/internal/sso/device-token", body=body,
+                                headers={"X-Internal-Token": internal_token}, keep_status=(409,))
+        if data.get("code") not in (0, "0", None):
+            raise UniworkError(str(data.get("msg") or "企业管理平台没有发设备令牌"))
+        grant = data.get("data") if isinstance(data.get("data"), dict) else {}
+        token = str(grant.get("deviceToken") or "")
+        if not token:
+            raise UniworkError("企业管理平台没有发设备令牌")
+        return DeviceGrant(
+            device_token=token,
+            status=str(grant.get("status") or ACTIVE),
+            tenant_id=str(grant.get("tenantId") or tenant_id),
+            tenant_code=str(grant.get("tenantCode") or ""),
+            tenant_name=str(grant.get("tenantName") or ""),
+            policy=grant.get("policy") if isinstance(grant.get("policy"), dict) else {},
+        )
 
     async def policy(self, token: str) -> dict:
         return await self._call("GET", "/api/client/policy", token=token)

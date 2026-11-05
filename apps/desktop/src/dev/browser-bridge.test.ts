@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const originalBridge = window.hermesDesktop
 const originalFetch = globalThis.fetch
@@ -1053,5 +1053,117 @@ describe('the two cloud entries (desktop-mt)', () => {
 
     expect(window.hermesDesktop.accountReady).toBeUndefined()
     expect(window.hermesDesktop.cloudKits).toBeUndefined()
+  })
+})
+
+describe('the unified login (desktop-mt)', () => {
+  const originalLocation = window.location
+  let replaced: string[]
+
+  function serve(table: Record<string, () => Response>) {
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      const handler = Object.entries(table).find(([prefix]) => url.startsWith(prefix))?.[1]
+
+      return handler ? handler() : jsonResponse({})
+    }) as typeof fetch
+  }
+
+  async function installWithoutWaiting() {
+    vi.stubEnv('VITE_HERMES_BROWSER_BUILD', '1')
+    Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: undefined })
+    const mod = await import('./browser-bridge')
+
+    mod.installBrowserDevelopmentBridge()
+  }
+
+  const signedIn = (account: object) => ({
+    '/api/__entry/config': () => jsonResponse({ sso: true }),
+    '/app/gateway/sso/me': () => jsonResponse({ data: { sid: 'sid-1', ...account } })
+  })
+
+  beforeEach(() => {
+    replaced = []
+    localStorage.clear()
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: {
+        hash: '',
+        host: 'site.test',
+        href: 'http://site.test/agents/',
+        origin: 'http://site.test',
+        pathname: '/agents/',
+        protocol: 'http:',
+        reload: () => undefined,
+        replace: (url: string) => replaced.push(url),
+        search: ''
+      }
+    })
+  })
+
+  afterEach(() => {
+    Object.defineProperty(window, 'location', { configurable: true, value: originalLocation })
+    vi.unstubAllEnvs()
+    localStorage.clear()
+    document.body.replaceChildren()
+    delete document.documentElement.dataset.hermesBrowser
+  })
+
+  it('signs a personal account in through the gateway, with a placeholder login for its account modules', async () => {
+    serve({
+      ...signedIn({ accountId: 'u-1', accountType: 'personal', name: '小王' }),
+      '/api/__entry/me': () => jsonResponse({ display: '138****0001', expires_at: 0, sso: true, user_id: 'u-1' })
+    })
+    localStorage.setItem('hermes.mt.account.v1', 'someone-else')
+    localStorage.setItem('hermes.desktop.lastSessionId', 'their-session')
+    vi.stubEnv('VITE_HERMES_BROWSER_BUILD', '1')
+    await installFresh()
+
+    await expect(window.hermesDesktop.getMaasAccount!()).resolves.toEqual({
+      expiresAt: Number.MAX_SAFE_INTEGER,
+      maskedPhone: '小王'
+    })
+    // the token stays in the entry; the modules that send one get a placeholder the entry ignores
+    expect(JSON.parse(localStorage.getItem('hermes.cloud.auth.v1:/api')!)).toMatchObject({ loginId: 'sso:u-1', token: 'sso' })
+    // another account's local state was put away before the app loaded
+    expect(localStorage.getItem('hermes.desktop.lastSessionId')).toBeNull()
+    expect(localStorage.getItem('hermes.mt.account.v1')).toBe('u-1')
+    expect(window.hermesDesktop.getPlanUsage).toBeTypeOf('function')
+
+    window.hermesDesktop.switchMaasAccount!()
+    expect(replaced.at(-1)).toMatch(/^\/login\/\?.*prompt=select_account/)
+  })
+
+  it('shows an enterprise member with the enterprise, and keeps a blocked one on a page that says why', async () => {
+    serve({
+      ...signedIn({ accountId: 'm-1', accountType: 'enterprise', name: '张三', tenantId: 't-1', tenantName: '一号企业' }),
+      '/api/__entry/me': () =>
+        jsonResponse({
+          enterprise: { allowed: false, message: '你还没有分配企业席位，请联系管理员', status: 'no_seat' },
+          sso: true,
+          user_id: 'ent:t-1:member:m-1'
+        })
+    })
+    // a personal account signed in on this browser before
+    localStorage.setItem('hermes.cloud.auth.v1:/api', JSON.stringify({ expiresAt: Date.now() + 60_000, loginId: 'sso:u-1', token: 'sso' }))
+    await installWithoutWaiting()
+
+    await vi.waitFor(() => expect(document.querySelector('[data-slot="sso-blocked"]')).not.toBeNull())
+    expect(document.body.textContent).toContain('你还没有分配企业席位')
+    await expect(window.hermesDesktop.getMaasAccount!()).resolves.toMatchObject({ maskedPhone: '张三 · 一号企业' })
+    expect(localStorage.getItem('hermes.cloud.auth.v1:/api')).toBeNull() // the enterprise entry has no account modules: dropped
+
+    let ready = false
+    void window.hermesDesktop.accountReady!.then(() => (ready = true))
+    await new Promise(resolve => setTimeout(resolve, 10))
+    expect(ready).toBe(false) // the app does not load behind the notice
+  })
+
+  it('leaves for the login page when the gateway says nobody is signed in', async () => {
+    serve({ '/api/__entry/config': () => jsonResponse({ error: 'LOGIN_REQUIRED' }, 401) })
+    await installWithoutWaiting()
+
+    await vi.waitFor(() => expect(replaced).toHaveLength(1))
+    expect(replaced[0]).toBe('/login/?platform=agents&redirect_uri=%2Fagents%2F')
   })
 })

@@ -111,6 +111,8 @@ declare global {
       cancelCloudDriveTransfer: (id: string) => Promise<void>
       onCloudDriveProgress: (listener: (progress: CloudDriveTransferProgress) => void) => () => void
       logoutMaasAccount: () => Promise<void>
+      // desktop-mt: only under the cloud's unified login (lib/sso-mt.ts): the gateway's login page, account choice first
+      switchMaasAccount?: () => void
       // Resolve a backend connection. Omit `profile` (or pass the primary) for
       // the window's backend; pass a named profile to lazily spawn/reuse that
       // profile's backend from the pool.

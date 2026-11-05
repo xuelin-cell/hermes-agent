@@ -439,6 +439,22 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
                 <span>{t.commandCenter.nav.settings.title}</span>
               </Link>
               <div className="account-card-divider" />
+              {/* desktop-mt: the cloud's unified login switches accounts on the gateway's login page (lib/sso-mt.ts) */}
+              {window.hermesDesktop?.switchMaasAccount && (
+                <button
+                  className="account-card-row"
+                  onClick={() => {
+                    setOpen(false)
+                    window.hermesDesktop?.switchMaasAccount?.()
+                  }}
+                  type="button"
+                >
+                  <span aria-hidden="true" className="account-card-icon">
+                    <Codicon name="arrow-swap" size="1rem" />
+                  </span>
+                  <span>{browserShellCopy(locale).switchAccount}</span>
+                </button>
+              )}
               <button
                 type="button"
                 className="account-card-row account-card-logout"

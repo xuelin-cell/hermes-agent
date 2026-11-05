@@ -165,6 +165,21 @@ class Settings:
     # 下次送企业清单时写进实例的 plugin.json，插件几秒内停手，不用换模板。只在企业模式有意义。
     uniwork_plugin: bool = _env("MT_UNIWORK_PLUGIN", "1") != "0"
 
+    # 统一登录（docs/企业版对接/1104/统一登录方案.html v2.3，见 sso.py）。开了以后入口不再自己登录：网关验完登录，
+    # 用身份请求头告诉入口是谁。默认关，关着时还是入口自己的短信登录。
+    sso: bool = _env("MT_SSO", "0") == "1"
+    # 只信这些来源发来的身份请求头（网关 nginx 的出口地址，逗号分隔，IP 或网段）；来源取我们自己的 nginx 写的
+    # X-Real-IP。为空时谁的身份头都不信：有人直连 18081/18082 就能冒充任何人。
+    sso_trusted: str = _env("MT_SSO_TRUSTED", "")
+    # 个人账号：网关的 12.4 接口（完整地址，如 http://网关内网地址/app/gateway/sso/internal/maas-credential）和密钥
+    # （网关那边是 MAAS_CREDENTIAL_TOKEN）。按 X-Sid 换 MaaS 令牌，只放内存。
+    sso_credential_url: str = _env("MT_SSO_CREDENTIAL_URL", "")
+    sso_credential_token: str = _env("MT_SSO_CREDENTIAL_TOKEN", "")
+    # 企业账号：调企业管理平台 /api/internal/sso/device-token 换设备令牌用的密钥（平台那边是 UNIWORK_CLOUD_INTERNAL_TOKEN）。
+    uniwork_internal_token: str = _env("MT_UNIWORK_INTERNAL_TOKEN", "")
+    # 网关的登录页（同站路径）。未登录、切换账号、退出后都跳这里。
+    sso_login_url: str = _env("MT_SSO_LOGIN_URL", "/login/")
+
     # 开发模式：不走短信登录，任意用户名直接进；模型 key 用 MT_DEV_API_KEY。生产必须关。
     dev_login: bool = _env("MT_DEV_LOGIN", "0") == "1"
     dev_api_key: str = _env("MT_DEV_API_KEY", "")

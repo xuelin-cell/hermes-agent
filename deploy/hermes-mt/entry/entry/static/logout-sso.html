@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>退出登录</title>
+<!-- 统一登录（MT_SSO=1）的退出页：先让入口吊销企业设备令牌，再调网关的 /sso/logout，最后去统一登录页。
+     令牌没吊销掉时不说「退出成功」，如实提示（docs/企业版对接/1104/38 第 5 节）。 -->
+<style>
+  :root { color-scheme: light dark; --bg: #f6f7f9; --card: #fff; --text: #1f2329; --muted: #646a73; --warn: #b54708; --line: #e5e6eb; --accent: #1664ff; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #111214; --card: #1c1d21; --text: #e8e9eb; --muted: #a0a4ab; --warn: #f5b25b; --line: #2e3036; --accent: #4c8dff; } }
+  body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--bg); color: var(--text);
+         font: 14px/1.6 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  main { width: min(420px, calc(100% - 32px)); padding: 28px 24px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
+  h1 { margin: 0 0 12px; font-size: 18px; font-weight: 600; }
+  p { margin: 0; color: var(--muted); }
+  p.warn { color: var(--warn); }
+  button { margin-top: 20px; padding: 8px 16px; border: 0; border-radius: 6px; background: var(--accent); color: #fff; font: inherit; cursor: pointer; }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="title">正在退出…</h1>
+  <p id="message">请稍候。</p>
+  <button id="next" type="button" hidden>知道了，继续</button>
+</main>
+<script>
+(function () {
+  var LOGIN = __LOGIN_URL__;
+  var GATEWAY_LOGOUT = '/app/gateway/sso/logout';
+  var base = location.pathname.replace(/logout\/?$/, '');
+  var post = { method: 'POST', credentials: 'same-origin', cache: 'no-store',
+               headers: { 'Content-Type': 'application/json' }, body: '{}' };
+
+  function finish() {
+    fetch(GATEWAY_LOGOUT, post).catch(function () {}).then(function () { location.replace(LOGIN); });
+  }
+
+  // 统一登录前浏览器里存过的 MaaS 令牌，一并清掉
+  try {
+    for (var i = localStorage.length - 1; i >= 0; i--) {
+      var key = localStorage.key(i);
+      if (key && key.indexOf('hermes.cloud.auth.v1:') === 0) localStorage.removeItem(key);
+    }
+  } catch (e) {}
+
+  fetch(base + 'api/__entry/logout', post)
+    .then(function (response) { return response.ok ? response.json() : { revoked: true }; })
+    .catch(function () { return { revoked: true }; })
+    .then(function (result) {
+      if (!result || result.revoked !== false) return finish();
+      document.getElementById('title').textContent = '设备令牌还没吊销';
+      var message = document.getElementById('message');
+      message.className = 'warn';
+      message.textContent = result.message || '企业设备令牌暂时没能吊销，系统会自动重试，直到吊销成功。';
+      var next = document.getElementById('next');
+      next.hidden = false;
+      next.addEventListener('click', finish);
+      next.focus();
+    });
+})();
+</script>
+</body>
+</html>

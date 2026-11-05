@@ -25,6 +25,9 @@ class FakePlatform:
         self.requests: list[tuple[str, dict]] = []
         self.runtime_tokens: dict[str, dict] = {}  # 运行环境的设备令牌 → agentProfile（平台调用云端，见 15）
         self.runtime_extra: dict[str, dict] = {}  # 运行环境的设备令牌 → 策略里另外的段（技能、连接器、企业经验）
+        # 统一登录（/api/internal/sso/device-token）：云端入口带的密钥；平台连不上时的吊销（测试里可以打开）
+        self.internal_token = "cloud-internal-test"
+        self.logout_down = False
         self.server: TestServer | None = None
 
     @property
@@ -38,6 +41,7 @@ class FakePlatform:
         app.router.add_post("/api/client/select-tenant", self.select_tenant)
         app.router.add_get("/api/client/policy", self.policy)
         app.router.add_post("/api/client/logout", self.logout)
+        app.router.add_post("/api/internal/sso/device-token", self.device_token)
         self.server = TestServer(app)
         await self.server.start_server()
         return self
@@ -58,7 +62,7 @@ class FakePlatform:
             "revision": f"rev-{code}-{status}",
             "enterprise": {"name": self.tenants[code]["name"], "tenantId": self.tenants[code]["id"],
                            "tenantCode": code, "serverUrl": self.url},
-            "member": {"id": f"m-{phone[-4:]}", "name": f"用户{phone[-4:]}", "status": "在职" if allowed else status},
+            "member": {"id": self.member_id(phone), "name": f"用户{phone[-4:]}", "status": "在职" if allowed else status},
             "access": {"allowed": allowed, "reason": "" if allowed else status},
         }
         if allowed:
@@ -168,7 +172,30 @@ class FakePlatform:
         phone, code, _ = self._token(request)
         return web.json_response(self.build_policy(phone, code))
 
+    @staticmethod
+    def member_id(phone: str) -> str:
+        """成员 ID（policy.member.id），统一登录后就是身份头里的 X-Uid。"""
+        return f"m-{phone[-4:]}"
+
+    async def device_token(self, request: web.Request) -> web.Response:
+        """统一登录：凭（企业 ID, 成员 ID）换设备令牌，返回形状照平台 api_client.py 的 sso_device_token。"""
+        body = await request.json()
+        self.requests.append(("device-token", body))
+        if request.headers.get("X-Internal-Token") != self.internal_token:
+            return web.json_response({"code": 401, "error": "INTERNAL_TOKEN_INVALID", "msg": "内部令牌无效",
+                                      "detail": "内部令牌无效", "data": None}, status=401)
+        code = self._code_of(str(body.get("tenantId") or ""))
+        phone = next((p for (p, c), status in self.members.items()
+                      if c == code and self.member_id(p) == body.get("memberId") and status != "left"), None)
+        if not code or phone is None:
+            msg = "成员不存在、不属于这个企业或已离职"
+            return web.json_response({"code": 409, "error": "ACCOUNT_UNAVAILABLE", "msg": msg, "detail": msg,
+                                      "data": None}, status=409)
+        return web.json_response({"code": 0, "msg": "ok", "data": self._enroll(phone, code, body["deviceId"])})
+
     async def logout(self, request: web.Request) -> web.Response:
+        if self.logout_down:
+            return web.json_response({"detail": "upstream down"}, status=503)
         auth = request.headers.get("Authorization", "")
         self._token(request)
         token = auth[7:]

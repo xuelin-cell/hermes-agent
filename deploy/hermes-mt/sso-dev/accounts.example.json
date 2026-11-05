@@ -1,0 +1,17 @@
+{
+  "credentialToken": "换成随机串，和个人版 entry.env 的 MT_SSO_CREDENTIAL_TOKEN 一样",
+  "plan": {
+    "apiKey": "local-mock-key",
+    "models": {
+      "models": [
+        {"id": "mock", "model": "mock-model", "base_url": "http://host.docker.internal:18555/v1", "context_window": 128000}
+      ],
+      "main_model_id": "mock"
+    }
+  },
+  "accounts": [
+    {"accountType": "personal", "accountId": "local-user-1", "name": "个人测试号", "phone": "13800000001"},
+    {"accountType": "enterprise", "accountId": "<本机平台 membership.id>", "tenantId": "<本机平台 tenant.id>",
+     "name": "企业测试号", "tenantName": "<企业名>"}
+  ]
+}

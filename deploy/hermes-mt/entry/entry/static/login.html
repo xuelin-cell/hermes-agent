@@ -439,6 +439,10 @@
     }
   }).catch(function () {});
   refreshCaptcha();
+  // 退出时企业设备令牌没吊销掉（平台连不上）：如实提示，入口会在后台重试（app.py _enterprise_logout）
+  if (/[?&]revoke_pending=1(&|$)/.test(location.search)) {
+    notice('已退出登录，但企业设备令牌暂时没能吊销（企业管理平台连不上）。系统会自动重试，直到吊销成功。', 'err');
+  }
 })();
 </script>
 </body>

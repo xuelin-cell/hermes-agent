@@ -5,6 +5,7 @@
 - ``Origin`` 不转发（浏览器的 Origin 会被 hermes 当作跨站拒掉，.7 的 Nginx 也是清空的）
 - REST 加 ``X-Hermes-Session-Token``；ws 加 ``?token=``
 - ``Cookie`` 不转发（那是入口自己的会话，hermes 不该看到）
+- 统一登录的身份请求头（``X-Uid`` 等四个，见 sso.py）不转发：实例只认入口注入的会话令牌
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ import aiohttp
 from aiohttp import web
 
 from .config import Settings
+from .sso import IDENTITY_HEADERS
 from .tenants import Tenant
 
 log = logging.getLogger("entry.proxy")
@@ -27,6 +29,7 @@ _HOP_BY_HOP = {
     "connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailers",
     "transfer-encoding", "upgrade", "host", "cookie", "origin", "content-length", "authorization",
     "sec-websocket-key", "sec-websocket-version", "sec-websocket-extensions", "sec-websocket-protocol",
+    *IDENTITY_HEADERS,
 }
 _RESP_STRIP = {"connection", "keep-alive", "transfer-encoding", "content-length", "content-encoding"}
 _MAX_WS_MSG = 64 * 1024 * 1024

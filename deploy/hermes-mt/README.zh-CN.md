@@ -22,6 +22,23 @@
 `/hermes/__entry/*`（5G 附件链接、Langfuse 上传地址）由 nginx 转到新路径。平台调用的服务接口 `/hermes/__entry/service/v1` 存在
 平台的配置里，也不经过统一登录，所以路径不变。
 
+## 统一登录（MT_SSO=1）
+
+开关默认关，关着时还是入口自己的短信登录。打开后登录交给网关（`docs/企业版对接/1104/统一登录方案.html` v2.3），代码在 `entry/entry/sso.py`：
+
+- 网关对 `/agents/api/` 验登录，转发时带 `X-Uid`、`X-Account-Type`、`X-Tenant-Id`、`X-Sid`。入口只信 `MT_SSO_TRUSTED` 里的来源
+  （我们的 nginx 把 TCP 来源写进 `X-Real-IP`，每个转给入口的 location 都要写，`tests/hermes_mt/test_sso.py` 会查），不写就谁都不信。
+  缺头一律 401，入口不再写自己的登录 Cookie。实例收不到这四个头。
+- 同一个网关会话第一次来时做原来登录时做的事：个人账号按 `X-Sid` 调网关 12.4 取 MaaS 令牌（只放入口内存，不落库、不写日志、
+  不发浏览器），再查 my-plan；企业账号按成员 ID 找回以前登录过的员工（用户 ID、设备号不变），存着的设备令牌还能用就接着用，
+  没有或平台回 401 才调平台的 `/api/internal/sso/device-token` 换发。统一登录后第一次来的员工，用户 ID 是 `ent:<企业>:member:<成员>`。
+- 静态页不鉴权，页面先问 `__entry/config`（没登录时网关回 401），登录了再问网关的 `/app/gateway/sso/me`；切换账号、退出都走网关的
+  `/login/`。同一个浏览器换了账号，localStorage 按账号收起和放回（`apps/desktop/src/lib/account-storage-mt.ts`）。
+- 退出（`/agents/logout`）：先让入口吊销企业设备令牌，再调网关的 `/sso/logout`。平台连不上、吊销不掉时页面如实提示，入口清掉
+  自己存的令牌、暂停实例，令牌转进 `device_token_revocations` 由后台每分钟重试，直到吊销成功。
+- 被企业拦住的成员（待审核、停用、没席位）照样能登录，页面显示原因，可以重新检查、切换账号或退出。
+- 要配的变量见 `entry.env.example` 的「统一登录」一段；本机联调用 `sso-dev/` 下的假网关。
+
 ## 目录
 
 | 路径 | 作用 |

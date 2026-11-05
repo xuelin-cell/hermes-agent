@@ -7,6 +7,7 @@ import type {
   HermesTerminalExit,
   HermesTerminalSession
 } from '@/global'
+import { scopeStorageToAccount } from '@/lib/account-storage-mt'
 import {
   BROWSER_VIRTUAL_FILE_ROOT,
   browserShellCopy,
@@ -17,12 +18,22 @@ import {
   type PdfDocumentSource
 } from '@/lib/browser-shell'
 import { $enterpriseShell, noteEntryAccount } from '@/lib/enterprise-mt'
+import {
+  bootSso,
+  installSsoAuthErrorHandler,
+  renderSsoBlocked,
+  type SsoAccount,
+  type SsoBoot,
+  ssoDisplayName,
+  toSsoLogin
+} from '@/lib/sso-mt'
 
 import {
   browserAuthKey,
   clearBrowserAuth,
   readBrowserAuth,
-  requestEntryMaas
+  requestEntryMaas,
+  storeBrowserLogin
 } from '../../../shared/src/browser-maas-auth.js'
 import type { LoginAccount } from '../../electron/login/contract'
 import type { WelcomeLocale, WelcomePayload } from '../../electron/uniwork-welcome/catalog'
@@ -841,12 +852,41 @@ interface EntryMe {
   /** Only in the entry's enterprise mode: the member's binding (lib/enterprise-mt.ts reads its presence). */
   enterprise?: unknown
   expires_at?: number
+  /** The entry runs under the unified login (MT_SSO): the gateway signs people in (lib/sso-mt.ts). */
+  sso?: boolean
   user_id?: string
+}
+
+// desktop-mt: set at start when the entry runs under the unified login (lib/sso-mt.ts). `ssoAccount` is the
+// gateway's account, null when its `/sso/me` could not be read; `entryMe` the entry's last answer.
+let ssoMode = false
+let ssoAccount: null | SsoAccount = null
+let entryMe: EntryMe | null = null
+
+/** Under the unified login the account comes from the gateway, and the session never reads as expired: the
+ *  gateway renews it, and a session that did end sends the page to the login page (lib/sso-mt.ts). */
+async function getSsoAccount(): Promise<LoginAccount | null> {
+  const response = await fetch(`${browserApiBase()}__entry/me`, { credentials: 'same-origin' })
+
+  if (!response.ok || !(response.headers.get('content-type') ?? '').includes('json')) {
+    return null
+  }
+
+  const me = (await response.json()) as EntryMe
+  entryMe = me
+  noteEntryAccount(me)
+  const label = ssoAccount ? ssoDisplayName(ssoAccount) : me.display || me.user_id
+
+  return label ? { expiresAt: Number.MAX_SAFE_INTEGER, maskedPhone: label } : null
 }
 
 /** Who is signed in, from the entry's `/api/__entry/me`. Null where nothing answers it with JSON (the
  *  dev server, the test bench): the statusbar then shows no account. */
 async function getMaasAccount(): Promise<LoginAccount | null> {
+  if (ssoMode) {
+    return getSsoAccount()
+  }
+
   const base = browserApiBase()
   const login = productionBrowserBuild ? readBrowserAuth(base) : null
   const response = await fetch(`${base}__entry/me`, { credentials: 'same-origin' })
@@ -869,6 +909,7 @@ async function getMaasAccount(): Promise<LoginAccount | null> {
 
   if (login && readBrowserAuth(base)?.loginId !== login.loginId) {return null}
 
+  entryMe = me
   noteEntryAccount(me)
   const maskedPhone = me.display || me.user_id
 
@@ -1509,11 +1550,17 @@ export function installBrowserDevelopmentBridge(): boolean {
   document.documentElement.dataset.hermesBrowser = productionBrowserBuild ? 'production' : 'development'
   // The entry's enterprise mode comes with `/api/__entry/me` (lib/enterprise-mt.ts). The account item that asks for it
   // is only mounted in the chat sidebar, and a page opened on the Bots tab never shows it: ask once at start.
-  const account = getMaasAccount().catch(() => null)
+  // desktop-mt: under the unified login the gateway is asked first (lib/sso-mt.ts); signed out, the page leaves.
+  const boot: Promise<SsoBoot> = productionBrowserBuild ? bootSso(browserApiBase()) : Promise.resolve({ mode: 'off' })
+  const account = boot.then(started => startSso(bridge, started)).then(getMaasAccount).catch(() => null)
 
   if (productionBrowserBuild) {
     Object.assign(bridge, {
       accountReady: account.then(() => {
+        if (ssoMode && !settleSsoAccount()) {
+          return new Promise<void>(() => undefined) // the blocked page is up: the app does not load
+        }
+
         if (personalCloud()) {
           Object.assign(bridge, personalCapabilities())
         }
@@ -1522,6 +1569,64 @@ export function installBrowserDevelopmentBridge(): boolean {
   }
 
   return true
+}
+
+/** desktop-mt: under the unified login the gateway switches accounts, and every 401 is checked against it. */
+function startSso(bridge: object, boot: SsoBoot): void {
+  if (boot.mode !== 'sso') {
+    return
+  }
+
+  ssoMode = true
+  ssoAccount = boot.account
+  installSsoAuthErrorHandler(browserApiBase())
+  Object.assign(bridge, { switchMaasAccount: () => void toSsoLogin('select_account') })
+}
+
+/**
+ * desktop-mt: once the entry said who this is, under the unified login: keep each account's local state apart,
+ * give the personal entry's account modules their login, and keep a member the platform blocks on a page that
+ * says why. False when that page is up.
+ */
+function settleSsoAccount(): boolean {
+  const me = entryMe
+
+  if (!me?.user_id) {
+    return true
+  }
+
+  scopeStorageToAccount(me.user_id)
+
+  if (personalCloud()) {
+    // The account modules (shared/src/browser-maas-auth.js) send the browser's MaaS login with each call. Under the
+    // unified login the token stays in the entry, which takes it from the gateway by session and ignores what the
+    // browser sends: a placeholder keeps those modules working unchanged.
+    storeBrowserLogin(browserApiBase(), {
+      maas_auth: { expiresAt: Date.now() + 30 * 86_400_000, loginId: `sso:${me.user_id}`, token: 'sso' }
+    })
+  } else {
+    clearBrowserAuth(browserApiBase()) // an enterprise account has no account modules: drop whoever signed in before
+  }
+
+  const enterprise = me.enterprise as undefined | { allowed?: unknown; message?: unknown }
+
+  if (enterprise?.allowed !== false) {
+    return true
+  }
+
+  const copy = browserShellCopy().ssoBlocked
+  renderSsoBlocked(typeof enterprise.message === 'string' && enterprise.message ? enterprise.message : copy.title, copy, {
+    logout: () => void logoutMaasAccount(),
+    recheck: async () => {
+      const response = await fetch(`${browserApiBase()}__entry/enterprise`, { credentials: 'same-origin' })
+      const view = (await response.json().catch(() => null)) as null | { allowed?: unknown }
+
+      return response.ok && view?.allowed === true
+    },
+    switchAccount: () => void toSsoLogin('select_account')
+  })
+
+  return false
 }
 
 installBrowserDevelopmentBridge()

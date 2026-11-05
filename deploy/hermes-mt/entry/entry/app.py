@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import time
 from pathlib import Path
-from urllib.parse import unquote, urlsplit
+from urllib.parse import unquote, urlencode, urlsplit
 
 import aiohttp
 from aiohttp import web
@@ -33,6 +34,20 @@ from .backup import BackupJob
 from .enterprise import EnterpriseSync
 from .s3lite import S3Lite
 from .service import RUNTIMES_PATH, ServiceApi
+from .sso import (
+    ENTERPRISE,
+    PERSONAL,
+    PLATFORM as SSO_PLATFORM,
+    CredentialFailure,
+    MaasCredentials,
+    SsoIdentity,
+    identity_from,
+    member_device_id,
+    member_user_id,
+    parse_networks,
+    peer_address,
+    trusted,
+)
 from .store import EnterpriseBinding, Session, Store
 from .share_store import ShareStore
 from .share_gateway import ShareGateway
@@ -60,6 +75,23 @@ from .uniwork import (
 
 log = logging.getLogger("entry.app")
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+# 退出时设备令牌没吊销掉（平台连不上）：页面照这句提示，不说「退出成功」（38 号第 5 节）
+REVOKE_PENDING_MESSAGE = "已退出登录，但企业设备令牌暂时没能吊销（企业管理平台连不上）。系统会自动重试，直到吊销成功。"
+
+
+class SsoRefused(Exception):
+    """统一登录下准备会话失败，要回给页面的错误（JSON：error / message）。每次回都新建响应。"""
+
+    def __init__(self, status: int, error: str, message: str, **extra):
+        super().__init__(message)
+        self.status, self.error, self.message, self.extra = status, error, message, extra
+
+    def response(self) -> web.HTTPException:
+        cls = {401: web.HTTPUnauthorized, 403: web.HTTPForbidden, 503: web.HTTPServiceUnavailable}.get(
+            self.status, web.HTTPBadGateway)
+        body = json.dumps({"error": self.error, "message": self.message, **self.extra}, ensure_ascii=False)
+        return cls(text=body, content_type="application/json")
 
 
 @web.middleware
@@ -157,16 +189,227 @@ class Entry:
         self._last_touch: dict[str, float] = {}
         self._live_ws: dict[str, int] = {}
         self._bg: list[asyncio.Task] = []
+        # 统一登录（MT_SSO=1，见 sso.py）：信哪些来源的身份头；个人账号的 12.4 令牌缓存（on_startup 里建）；
+        # 同一个会话只准备一次；刚失败的过一会儿再试；刚退出的会话不再准备（网关那边还没退完）。
+        self._sso_networks = parse_networks(settings.sso_trusted) if settings.sso else []
+        self.credentials: MaasCredentials | None = None
+        self._provisioning: dict[str, asyncio.Future] = {}
+        self._provision_failures: dict[str, tuple[float, SsoRefused]] = {}
+        self._signed_out: dict[str, float] = {}
+        self._untrusted_warned = -1e9
 
     async def _session(self, request: web.Request) -> Session | None:
+        if self.s.sso:
+            return await self._sso_session(request)
         sid = request.cookies.get(self.s.cookie_name, "")
         return await self.store.get_session(sid)
 
     async def _require(self, request: web.Request) -> Session:
         session = await self._session(request)
         if session is None:
+            if self.s.sso:
+                # 和网关未登录时回的一样：页面拿到 401 就去统一登录页
+                raise web.HTTPUnauthorized(text='{"error": "LOGIN_REQUIRED"}', content_type="application/json")
             raise web.HTTPUnauthorized(text="not logged in")
         return session
+
+    # ---- 统一登录（MT_SSO=1）：网关验登录，入口读身份头 ----------------------------------------
+    #
+    # 会话按（身份, 网关 sid）认：同一个 X-Sid 第一次来时做原来登录时做的事，存一行 auth_sessions（存摘要），之后照旧按会话
+    # 走 _gate / _tenant_for。企业员工的令牌失效了（别的浏览器退出时吊销了、平台重置了设备）就在下一个请求时重新换发。
+
+    _PROVISION_RETRY_S = 15.0  # 准备失败后多久再试
+    _SIGNED_OUT_S = 120.0  # 退出后这么久里同一个会话的请求一律当没登录（网关 /sso/logout 还没生效时别又把令牌换发回来）
+
+    def _sso_identity(self, request: web.Request) -> SsoIdentity | None:
+        identity = identity_from(request)
+        if identity is None:
+            return None
+        if not trusted(request, self._sso_networks):
+            now = time.monotonic()
+            if now - self._untrusted_warned > 60:
+                self._untrusted_warned = now
+                log.warning("sso: identity headers from %s ignored: not in MT_SSO_TRUSTED", peer_address(request)[:64])
+            return None
+        return identity
+
+    async def _sso_session(self, request: web.Request) -> Session | None:
+        identity = self._sso_identity(request)
+        if identity is None:
+            return None
+        key = identity.session_key
+        if time.monotonic() - self._signed_out.get(key, -1e9) < self._SIGNED_OUT_S:
+            return None
+        session = await self.store.get_session(key)
+        if session is not None and not (identity.account_type == ENTERPRISE and session.enterprise_status in ("", UNBOUND)):
+            return session
+        try:
+            return await self._provision_once(identity)
+        except SsoRefused as exc:
+            raise exc.response() from None
+
+    async def _provision_once(self, identity: SsoIdentity) -> Session | None:
+        """同一个会话同时来的请求只准备一次；刚失败过的过一会儿再试，别每个请求都去打平台。
+
+        准备放在单独的任务里跑：发起它的那个请求中途断了（浏览器跳走了），别的请求照样等到结果。
+        """
+        key = identity.session_key
+        failed = self._provision_failures.get(key)
+        if failed is not None and time.monotonic() - failed[0] < self._PROVISION_RETRY_S:
+            raise failed[1]
+        task = self._provisioning.get(key)
+        if task is None:
+            task = asyncio.create_task(self._provision(identity))
+            self._provisioning[key] = task
+            task.add_done_callback(lambda done: self._provision_done(key, done))
+        return await asyncio.shield(task)
+
+    async def _provision(self, identity: SsoIdentity) -> Session | None:
+        if identity.account_type == PERSONAL:
+            return await self._provision_personal(identity)
+        return await self._provision_enterprise(identity)
+
+    def _provision_done(self, key: str, task: asyncio.Task) -> None:
+        self._provisioning.pop(key, None)
+        if task.cancelled():
+            return
+        error = task.exception()  # 取一下：没有请求在等时也别报「exception was never retrieved」
+        if isinstance(error, SsoRefused):
+            self._provision_failures[key] = (time.monotonic(), error)
+        elif error is None:
+            self._provision_failures.pop(key, None)
+
+    async def _provision_personal(self, identity: SsoIdentity) -> Session | None:
+        """个人账号的会话第一次来：按 sid 调 12.4 拿 MaaS 令牌和手机号，再按令牌查套餐，和短信登录后做的一样。
+
+        12.4 说会话已失效（401）、或者给的 uid 和身份头对不上，都当没登录。
+        """
+        if self.credentials is None or self.maas is None:
+            raise SsoRefused(503, "entry_not_ready", "入口还没准备好，请稍后重试")
+        try:
+            credential = await self.credentials.get(identity.sid)
+        except CredentialFailure as exc:
+            if exc.status == 401:
+                return None
+            if exc.status == 403:
+                raise SsoRefused(403, "ACCOUNT_NOT_ALLOWED", "当前账号不能使用工作台") from None
+            raise SsoRefused(503, "login_service_unavailable", "统一登录服务暂时不可用，请稍后重试") from None
+        if credential.uid != identity.uid:
+            log.warning("sso: 12.4 answered another uid for this session; refused")
+            self.credentials.drop(identity.sid)
+            return None
+        plan = await self.maas.my_plan(credential.token)
+        api_key = plan.api_key if plan else ""
+        if not api_key:
+            log.warning("user %s has no new plan key; keeping any stored credential", identity.uid)
+        else:
+            log.info("user %s plan (sso): %s", identity.uid, plan.summary())
+        try:
+            await self.store.finish_login(
+                user_id=identity.uid,
+                phone=credential.phone,
+                api_key=api_key,
+                endpoint=plan.endpoint() if plan else None,
+                catalog=plan.catalog() if plan else None,
+                ttl_s=self.s.session_ttl_s,
+                upstream_expires_at_ms=credential.expires_at_ms,
+                login_method="sso",
+                limits=plan.limits() if plan else None,
+                sid=identity.session_key,
+            )
+        except ValueError:
+            # 令牌（也就是网关会话）只剩几分钟：当没登录，页面去登录页续上
+            self.credentials.drop(identity.sid)
+            return None
+        self.langfuse_routes.remember(identity.uid, credential.token, credential.expires_at_ms)
+        self._spawn(self._warm(identity.uid))
+        return await self.store.get_session(identity.session_key)
+
+    async def _provision_enterprise(self, identity: SsoIdentity) -> Session | None:
+        """企业员工的会话第一次来（或者令牌失效了）：找回以前登录过的用户 ID 和设备号；存着的令牌还能用就接着用
+        （换发会让实例里正在用的令牌作废），没有或平台回 401 才凭成员 ID 换发（34 号第 1 节）。被拦的成员照样建会话，
+        由 _gate 在页面里显示原因。"""
+        if not self.s.enterprise or self.uniwork is None:
+            raise SsoRefused(403, "ACCOUNT_NOT_ALLOWED", "这套工作台不接企业账号")
+        if not self.s.uniwork_internal_token:
+            log.error("sso: MT_UNIWORK_INTERNAL_TOKEN is not set; enterprise members cannot get a device token")
+            raise SsoRefused(503, "entry_not_ready", "入口还没配好换设备令牌的密钥，请联系管理员")
+        found = await self.store.find_member_user(identity.tenant_id, identity.uid)
+        if found:
+            user_id, device = found
+            before = await self.store.get_enterprise_binding(user_id)
+            token = (await self.store.get_tenant_context(user_id)).api_key
+        else:
+            user_id = member_user_id(identity.tenant_id, identity.uid)
+            device = member_device_id(identity.tenant_id, identity.uid)
+            before, token = None, ""
+        tenant_code = before.tenant_code if before else ""
+        tenant_name = before.tenant_name if before else ""
+        policy: dict = {}
+        status = ""
+        if token:
+            try:
+                policy = await self.uniwork.policy(token)
+            except UniworkError as exc:
+                if exc.status != 401:
+                    raise self._platform_unavailable(exc) from None
+                token = ""  # 令牌已失效：换发
+            else:
+                status = access_status(policy)
+                if member_of(policy)[0] not in ("", identity.uid):
+                    token = ""  # 存着的令牌不是这个成员的（不该发生）：换发
+        if not token:
+            try:
+                grant = await self.uniwork.device_token(identity.tenant_id, identity.uid, device,
+                                                        self.s.uniwork_internal_token)
+            except UniworkError as exc:
+                if exc.status == 409:
+                    raise SsoRefused(403, "enterprise_access_denied",
+                                     "企业账号不可用：成员不存在、不属于这个企业或已离职，请联系企业管理员",
+                                     reason="unavailable") from None
+                raise self._platform_unavailable(exc) from None
+            token, policy, status = grant.device_token, grant.policy, grant.access
+            tenant_code, tenant_name = grant.tenant_code or tenant_code, grant.tenant_name or tenant_name
+        info = policy.get("enterprise") if isinstance(policy.get("enterprise"), dict) else {}
+        tenant_name = tenant_name or str(info.get("name") or "")
+        tenant_code = tenant_code or str(info.get("tenantCode") or "")
+        _, member_name = member_of(policy)
+        plan = plan_of(policy, token) if status == ACTIVE else None
+        record = EnterpriseBinding(
+            tenant_id=identity.tenant_id,
+            tenant_code=tenant_code,
+            tenant_name=tenant_name,
+            uid=before.uid if before else identity.uid,
+            device_id=device,
+            member_id=identity.uid,
+            member_name=member_name or (before.member_name if before else ""),
+            access_status=status,
+            policy_revision=str(policy.get("revision") or ""),
+        )
+        await self.store.finish_login(
+            user_id=user_id,
+            phone="",
+            api_key=token,
+            endpoint=plan.endpoint() if plan else None,
+            catalog=plan.catalog() if plan else None,
+            ttl_s=self.s.session_ttl_s,
+            upstream_expires_at_ms=None,
+            login_method="sso",
+            limits=plan.limits() if plan else None,
+            enterprise=record,
+            sid=identity.session_key,
+        )
+        log.info("sso enterprise %s tenant=%s status=%s %s", user_id, tenant_code, status,
+                 plan.summary() if plan else "(no models)")
+        if status == ACTIVE:
+            self._spawn(self._warm(user_id))
+        return await self.store.get_session(identity.session_key)
+
+    @staticmethod
+    def _platform_unavailable(exc: UniworkError) -> SsoRefused:
+        # 平台回的 401 / 403 是入口和平台之间的事（比如换设备令牌的密钥不对），不能当成用户没登录回给页面
+        log.warning("sso: enterprise platform refused or unreachable: %s", exc)
+        return SsoRefused(503, "enterprise_unavailable", "企业管理平台暂时连不上，请稍后重试")
 
     def _set_cookie(self, response: web.Response, session: Session) -> None:
         response.set_cookie(
@@ -324,8 +567,18 @@ class Entry:
         except Exception as exc:  # noqa: BLE001
             log.exception("warm-up of tenant %s failed: %s", user_id, type(exc).__name__)
 
+    def _sso_login_url(self, target: str = "") -> str:
+        """网关登录页的地址；回跳地址只认本站 /agents/ 下的路径，别的一律回首页。"""
+        home = self.s.base_path + "/"
+        if not target.startswith(home) or "//" in target or "\\" in target:
+            target = home
+        return f"{self.s.sso_login_url}?{urlencode({'platform': SSO_PLATFORM, 'redirect_uri': target})}"
+
     async def login_page(self, request: web.Request) -> web.Response:
-        # 两种模式各一份，接统一登录时一起删（docs/企业版对接/1027/统一登录方案.html）
+        if self.s.sso:
+            # 统一登录：登录页是网关的
+            raise web.HTTPFound(self._sso_login_url(request.query.get("redirect_uri", "")))
+        # 两种模式各一份，统一登录（MT_SSO）上线后一起删
         name = "login.html" if self.s.enterprise else "login-personal.html"
         html = (STATIC_DIR / name).read_text(encoding="utf-8")
         return web.Response(text=html, content_type="text/html")
@@ -338,12 +591,33 @@ class Entry:
 
     async def _require_maas(self, request: web.Request) -> BrowserIdentity:
         session = await self._require(request)
-        identity = self.browser_auth.require(
-            session, request.cookies.get(self.s.cookie_name + "_maas", ""),
-            request.headers.get("Authorization", ""),
-        )
+        if self.s.sso:
+            identity = await self._sso_maas_identity(request, session)
+        else:
+            identity = self.browser_auth.require(
+                session, request.cookies.get(self.s.cookie_name + "_maas", ""),
+                request.headers.get("Authorization", ""),
+            )
         self.langfuse_routes.remember(identity.user_id, identity.token, identity.expires_at)
         return identity
+
+    async def _sso_maas_identity(self, request: web.Request, session: Session) -> BrowserIdentity:
+        """统一登录下的 MaaS 令牌：按 X-Sid 从 12.4 取（内存缓存），浏览器不再持有令牌，它带的 Authorization 不看。"""
+        sso = self._sso_identity(request)
+        if sso is None or sso.account_type != PERSONAL or self.credentials is None:
+            raise web.HTTPUnauthorized(text="maas_auth_required")
+        try:
+            credential = await self.credentials.get(sso.sid)
+        except CredentialFailure as exc:
+            if exc.status in (401, 403):
+                raise web.HTTPUnauthorized(text="maas_auth_required") from None
+            raise web.HTTPServiceUnavailable(text="login_service_unavailable") from None
+        if credential.uid != session.user_id:
+            raise web.HTTPUnauthorized(text="maas_auth_required")
+        # 账号业务模块拿 login_id 认「还是不是同一次登录」：同一个网关会话不变
+        login_id = hashlib.sha256(sso.session_key.encode("utf-8")).hexdigest()[:24]
+        return BrowserIdentity(session.user_id, login_id, credential.expires_at_ms, credential.token, session.sid,
+                               credential.phone)
 
     async def maas_auth_status(self, request: web.Request) -> web.Response:
         """Confirm the browser credential binding without returning the bearer."""
@@ -354,7 +628,9 @@ class Entry:
         }, headers={"Cache-Control": "no-store"})
 
     async def config(self, request: web.Request) -> web.Response:
-        return web.json_response({"dev": self.s.dev_login, "base": self.s.base_path, "enterprise": self.s.enterprise})
+        # sso：统一登录下这个接口在网关后面，没登录时网关直接回 401，页面看到 401 就知道要去统一登录页
+        return web.json_response({"dev": self.s.dev_login and not self.s.sso, "base": self.s.base_path,
+                                  "enterprise": self.s.enterprise, "sso": self.s.sso})
 
     async def health(self, request: web.Request) -> web.Response:
         try:
@@ -368,6 +644,9 @@ class Entry:
         )
 
     async def auth(self, request: web.Request) -> web.Response:
+        if self.s.sso:
+            # 统一登录：静态页不鉴权（网关转静态页时也不带身份头），页面自己问 /sso/me，没登录再去统一登录页
+            return web.Response(status=200)
         session = await self._session(request)
         # 企业拦住的人也回 401：nginx 把他送到登录页，登录页显示拦截说明。
         if session is None or self._gate(session):
@@ -390,9 +669,20 @@ class Entry:
         if self.s.enterprise:
             binding = await self.store.get_enterprise_binding(session.user_id)
             body["enterprise"] = self._enterprise_view(binding, self._gate(session))
+            if self.s.sso and binding is not None and binding.member_name:
+                body["display"] = binding.member_name  # 统一登录后新员工没有手机号
+        if self.s.sso:
+            body["sso"] = True
+            body["expires_at"] = 0  # 会话由网关续期，入口不知道什么时候到期：页面不提示「登录已到期」
         return web.json_response(body)
 
+    def _no_own_login(self) -> None:
+        """统一登录下入口自己的登录接口都不在了：短信、选企业都在网关的登录页上做。"""
+        if self.s.sso:
+            raise web.HTTPNotFound()
+
     async def captcha(self, request: web.Request) -> web.Response:
+        self._no_own_login()
         if self.maas is None:
             raise web.HTTPServiceUnavailable(text="entry not ready")
         try:
@@ -401,6 +691,7 @@ class Entry:
             return web.json_response({"error": str(exc)}, status=exc.status)
 
     async def send_code(self, request: web.Request) -> web.Response:
+        self._no_own_login()
         if self.maas is None:
             raise web.HTTPServiceUnavailable(text="entry not ready")
         body = await request.json()
@@ -415,6 +706,7 @@ class Entry:
             return web.json_response({"error": str(exc)}, status=exc.status)
 
     async def login(self, request: web.Request) -> web.Response:
+        self._no_own_login()
         if self.s.enterprise:
             return await self._enterprise_login(request)
         if self.maas is None:
@@ -456,6 +748,7 @@ class Entry:
         return response
 
     async def dev_login(self, request: web.Request) -> web.Response:
+        self._no_own_login()
         if not self.s.dev_login:
             raise web.HTTPNotFound()
         body = await request.json()
@@ -514,6 +807,7 @@ class Entry:
 
     async def select_tenant(self, request: web.Request) -> web.Response:
         """登录页选了企业（tenantId）或填了企业编号（tenantCode）。编号不对回 404，票据还能用，可以换个编号再试。"""
+        self._no_own_login()
         if not self.s.enterprise or self.uniwork is None:
             raise web.HTTPNotFound()
         body = await request.json()
@@ -618,47 +912,122 @@ class Entry:
             await self.ent.note_policy(user_id, policy)
         return status
 
-    async def _enterprise_logout(self, user_id: str) -> None:
-        """企业模式退出：吊销平台上的设备令牌（平台连不上也照常退出），绑定记成 unbound。
-        这个人别的浏览器上的会话随之被拦，提示重新登录。"""
+    async def _enterprise_logout(self, user_id: str) -> bool:
+        """企业员工退出：吊销平台上的设备令牌，绑定记成 unbound（这个人别的浏览器随之被拦；统一登录下会重新换发）。
+
+        返回令牌吊销了没有。平台连不上、吊销不掉时照常退出，但如实告诉页面（38 号第 5 节：不能显示退出成功而令牌
+        还能用），并且：入口存的令牌清掉、转去后台重试吊销（_revoker），实例暂停（里面的 hermes 拿着这把令牌）。
+        unbound 的用户不会被定时任务叫醒（store.cron_due_tenants）。"""
         if self.uniwork is None or await self.store.get_enterprise_binding(user_id) is None:
-            return
+            return True
         token = (await self.store.get_tenant_context(user_id)).api_key
+        revoked = True
         if token:
             try:
                 await self.uniwork.logout(token)
             except UniworkError as exc:
-                log.warning("enterprise logout of %s: revoking device token failed: %s", user_id, exc)
+                revoked = False
+                log.warning("enterprise logout of %s: revoking device token failed, retrying later: %s", user_id, exc)
+                await self.store.revoke_later(user_id, token, str(exc))
+                self._spawn(self._pause_after_logout(user_id))
         await self.store.update_enterprise_access(user_id, UNBOUND)
         if self.ent is not None:
             self.ent.forget(user_id)
+        return revoked
 
-    async def _end_session(self, request: web.Request) -> str:
+    async def _pause_after_logout(self, user_id: str) -> None:
+        try:
+            if self.tenants is not None:
+                await self.tenants.stop(user_id, reason="logout: device token revocation pending")
+        except Exception as exc:  # noqa: BLE001
+            log.warning("pausing %s after logout failed: %s", user_id, type(exc).__name__)
+
+    # 吊销没成功的令牌多久重试一次（按次数退避，最长一小时）
+    _REVOKE_EVERY_S = 60.0
+
+    async def _revoker(self) -> None:
+        while True:
+            await asyncio.sleep(self._REVOKE_EVERY_S)
+            try:
+                await self._retry_revocations()
+            except Exception as exc:  # noqa: BLE001
+                log.warning("revocation retry tick skipped: %s", type(exc).__name__)
+
+    async def _retry_revocations(self) -> None:
+        if self.uniwork is None:
+            return
+        for revocation_id, user_id, token, attempts in await self.store.due_revocations():
+            try:
+                await self.uniwork.logout(token)  # 令牌本来就失效了（401）也算吊销成功
+            except UniworkError as exc:
+                await self.store.revocation_failed(revocation_id, str(exc), min(3600.0, 60.0 * 2 ** min(attempts, 6)))
+                continue
+            await self.store.revocation_done(revocation_id)
+            await self.store.write_audit(user_id, "enterprise.token_revoked_later", {"attempts": attempts + 1})
+            log.info("enterprise logout of %s: device token revoked on retry %d", user_id, attempts + 1)
+
+    async def _end_session(self, request: web.Request) -> bool:
+        """入口自己的登录退出。返回企业设备令牌吊销了没有（个人模式、本来就没登录都算吊销了）。"""
         sid = request.cookies.get(self.s.cookie_name, "")
         if not sid:
-            return ""
+            return True
         session = await self.store.get_session(sid)
         await self.store.delete_session(sid)
         await self.share_routes.agent.logout(sid)
         await self.drive_routes.logout(sid)
         await self.account_routes.worker.logout(sid)
+        revoked = True
         if session:
             if self.s.enterprise:
-                await self._enterprise_logout(session.user_id)
-            await self.store.write_audit(session.user_id, "logout")
-            return session.user_id
-        return ""
+                revoked = await self._enterprise_logout(session.user_id)
+            await self.store.write_audit(session.user_id, "logout", {"revoked": revoked})
+        return revoked
+
+    async def _sso_logout(self, request: web.Request) -> web.Response:
+        """统一登录的退出：页面先调这里，再调网关的 /sso/logout（方案第 22 节：先吊销企业设备令牌）。"""
+        identity = self._sso_identity(request)
+        if identity is None:
+            return web.json_response({"ok": True, "revoked": True}, headers={"Cache-Control": "no-store"})
+        key = identity.session_key
+        self._signed_out[key] = time.monotonic()
+        session = await self.store.get_session(key)
+        await self.store.delete_session(key)
+        await self.share_routes.agent.logout(key)
+        await self.drive_routes.logout(key)
+        await self.account_routes.worker.logout(key)
+        if self.credentials is not None:
+            self.credentials.drop(identity.sid)
+        revoked = True
+        if session is not None:
+            if identity.account_type == ENTERPRISE and self.s.enterprise:
+                revoked = await self._enterprise_logout(session.user_id)
+            await self.store.write_audit(session.user_id, "logout", {"sso": True, "revoked": revoked})
+        body: dict = {"ok": True, "revoked": revoked}
+        if not revoked:
+            body["message"] = REVOKE_PENDING_MESSAGE
+        return web.json_response(body, headers={"Cache-Control": "no-store"})
 
     async def logout(self, request: web.Request) -> web.Response:
-        await self._end_session(request)
-        response = web.json_response({"ok": True})
+        if self.s.sso:
+            return await self._sso_logout(request)
+        revoked = await self._end_session(request)
+        body: dict = {"ok": True, "revoked": revoked}
+        if not revoked:
+            body["message"] = REVOKE_PENDING_MESSAGE
+        response = web.json_response(body)
         response.del_cookie(self.s.cookie_name, path=self.s.base_path + "/")
         response.del_cookie(self.s.cookie_name + "_maas", path=self.s.base_path + "/")
         return response
 
     async def logout_page(self, request: web.Request) -> web.Response:
-        await self._end_session(request)
-        response = web.HTTPFound(self.s.path("/login") + "?signed_out=1")
+        if self.s.sso:
+            # 统一登录：这一页在浏览器里依次调入口的退出和网关的 /sso/logout，再去统一登录页
+            html = (STATIC_DIR / "logout-sso.html").read_text(encoding="utf-8")
+            login = json.dumps(self._sso_login_url(), ensure_ascii=False).replace("<", "\\u003c")
+            html = html.replace("__LOGIN_URL__", login)
+            return web.Response(text=html, content_type="text/html", headers={"Cache-Control": "no-store"})
+        revoked = await self._end_session(request)
+        response = web.HTTPFound(self.s.path("/login") + ("?signed_out=1" if revoked else "?signed_out=1&revoke_pending=1"))
         response.del_cookie(self.s.cookie_name, path=self.s.base_path + "/")
         response.del_cookie(self.s.cookie_name + "_maas", path=self.s.base_path + "/")
         return response
@@ -778,6 +1147,10 @@ class Entry:
             if self.s.enterprise:
                 self.uniwork = Uniwork(self.s, self.http)
                 self.ent = EnterpriseSync(self)
+            if self.s.sso:
+                self.credentials = MaasCredentials(self.s.sso_credential_url, self.s.sso_credential_token, self.http,
+                                                   timeout_s=self.s.upstream_timeout_s)
+                self._check_sso_settings()
             self.shares = Shares(ShareStore(self.database), ShareGateway(self.http), self.share_routes.instance, self.share_routes.authorize)
             # 按后端只建需要的那个客户端：跑沙箱后端时不该去碰 docker.sock
             # （入口容器很可能根本没挂它），反之亦然。
@@ -799,6 +1172,8 @@ class Entry:
             raise
         self._bg.append(asyncio.create_task(self._reconcile()))
         self._bg.append(asyncio.create_task(self._reaper()))
+        if self.s.enterprise:
+            self._bg.append(asyncio.create_task(self._revoker()))
         if self.s.channels_key:
             self._bg.append(asyncio.create_task(self.notifications.loop()))
         if self.s.backend == "cube" and self.s.cron_wake_lead_s > 0:
@@ -824,6 +1199,25 @@ class Entry:
             log.info("backup: 卷外副本已启用，每 %d 小时一轮，首轮 %d 秒后", self.s.backup_interval_h, self.s.backup_initial_delay_s)
         else:
             self.backup = None
+
+    def _check_sso_settings(self) -> None:
+        """统一登录缺了哪项配置，启动时就说清楚（缺了也照常启动：页面会显示「还没准备好」）。"""
+        if not self._sso_networks:
+            log.error("sso: MT_SSO_TRUSTED is empty; identity headers are refused from everywhere")
+        if not self.s.enterprise and not (self.s.sso_credential_url and self.s.sso_credential_token):
+            log.error("sso: MT_SSO_CREDENTIAL_URL / MT_SSO_CREDENTIAL_TOKEN not set; personal accounts cannot sign in")
+        if self.s.enterprise and not self.s.uniwork_internal_token:
+            log.error("sso: MT_UNIWORK_INTERNAL_TOKEN not set; enterprise members cannot get a device token")
+
+    def _forget_sso_leftovers(self) -> None:
+        """回收线程顺手清：过期的 12.4 令牌、过了重试间隔的失败记录、退出够久的会话。"""
+        if self.credentials is not None:
+            self.credentials.purge()
+        now = time.monotonic()
+        for key in [k for k, (at, _) in self._provision_failures.items() if now - at > self._PROVISION_RETRY_S]:
+            del self._provision_failures[key]
+        for key in [k for k, at in self._signed_out.items() if now - at > self._SIGNED_OUT_S]:
+            del self._signed_out[key]
 
     async def _reconcile(self) -> None:
         try:
@@ -855,6 +1249,7 @@ class Entry:
         while True:
             await asyncio.sleep(60)
             try:
+                self._forget_sso_leftovers()
                 await self.store.purge_expired_sessions()
                 self.langfuse_routes.purge()
                 if self.tenants is not None:
@@ -947,11 +1342,12 @@ def build_app(settings: Settings = SETTINGS) -> web.Application:
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     log.info(
-        "entry starting: base=%s image=%s dev_login=%s enterprise=%s",
+        "entry starting: base=%s image=%s dev_login=%s enterprise=%s sso=%s",
         SETTINGS.base_path,
         SETTINGS.image,
         SETTINGS.dev_login,
         SETTINGS.uniwork_server or "off",
+        "on" if SETTINGS.sso else "off",
     )
     web.run_app(
         build_app(),

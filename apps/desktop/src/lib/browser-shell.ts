@@ -607,6 +607,16 @@ interface BrowserShellCopy {
     unnamed: (index: number) => string
   }
   signOutBody: string
+  // desktop-mt: unified login (lib/sso-mt.ts): an enterprise member the platform keeps out, and switching accounts
+  ssoBlocked: {
+    logout: string
+    recheck: string
+    rechecking: string
+    stillBlocked: string
+    switchAccount: string
+    title: string
+  }
+  switchAccount: string
   skillInstallPending: string
   slides: {
     counter: (page: number, pages: number) => string
@@ -684,6 +694,15 @@ const COPY: Record<'en' | 'zh', BrowserShellCopy> = {
       unnamed: (index: number) => `Sheet ${index}`
     },
     signOutBody: 'You will return to the sign-in page. Your chats, files and scheduled tasks are kept.',
+    ssoBlocked: {
+      logout: 'Sign out',
+      recheck: 'Check again',
+      rechecking: 'Checking…',
+      stillBlocked: 'still not allowed',
+      switchAccount: 'Switch account',
+      title: 'Your enterprise does not allow you in yet'
+    },
+    switchAccount: 'Switch account',
     skillInstallPending: 'Installing from here is in development.',
     slides: {
       counter: (page: number, pages: number) => `${page} / ${pages}`,
@@ -754,6 +773,15 @@ const COPY: Record<'en' | 'zh', BrowserShellCopy> = {
       unnamed: (index: number) => `工作表 ${index}`
     },
     signOutBody: '退出后回到登录页。对话、文件和定时任务都会保留。',
+    ssoBlocked: {
+      logout: '退出',
+      recheck: '重新检查',
+      rechecking: '检查中…',
+      stillBlocked: '仍未放行',
+      switchAccount: '切换账号',
+      title: '企业还没有放行你的账号'
+    },
+    switchAccount: '切换账号',
     skillInstallPending: '功能开发中',
     slides: {
       counter: (page: number, pages: number) => `${page} / ${pages}`,

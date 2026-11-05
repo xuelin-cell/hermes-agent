@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from .crypto import CredentialCipher
+from .crypto import CredentialCipher, CredentialError
 from .db import Database
 
 
@@ -278,8 +278,13 @@ class Store:
         login_method: str,
         limits: dict[str, int] | None = None,
         enterprise: EnterpriseBinding | None = None,
+        sid: str | None = None,
     ) -> LoginState:
-        """原子保存登录相关平台状态，空套餐值不会清除已有有效值。企业模式下同时写入平台绑定。"""
+        """原子保存登录相关平台状态，空套餐值不会清除已有有效值。企业模式下同时写入平台绑定。
+
+        ``sid``：统一登录时由调用方给（身份头和网关会话拼成的串，见 sso.py），同一个会话再来一次就刷新到期时间；
+        不给就新发一个，交给浏览器做 Cookie。
+        """
         now = _utc_now()
         expires_at = now + timedelta(seconds=ttl_s)
         upstream_expires_at: datetime | None = None
@@ -292,7 +297,7 @@ class Store:
         if expires_at <= now:
             raise ValueError("上游登录凭据剩余有效期不足")
 
-        sid = secrets.token_urlsafe(32)
+        sid = sid or secrets.token_urlsafe(32)
         masked_phone = self._mask_phone(phone) or None
         async with self.database.acquire() as connection:
             async with connection.transaction():
@@ -329,6 +334,10 @@ class Store:
                     INSERT INTO auth_sessions(
                         session_token_hash, user_id, created_at, expires_at, upstream_expires_at
                     ) VALUES($1, $2, $3, $4, $5)
+                    ON CONFLICT(session_token_hash) DO UPDATE SET
+                        user_id = EXCLUDED.user_id,
+                        expires_at = EXCLUDED.expires_at,
+                        upstream_expires_at = EXCLUDED.upstream_expires_at
                     """,
                     self._session_hash(sid),
                     user_id,
@@ -546,6 +555,113 @@ class Store:
                     tenant_name,
                 )
                 await self._upsert_model_config(connection, user_id, endpoint, catalog, limits)
+
+    async def find_member_user(self, tenant_id: str, member_id: str) -> tuple[str, str] | None:
+        """统一登录：按（企业, 成员 ID）找以前登录过的员工，返回（用户 ID, 设备号）。
+
+        同一个成员可能对着两个用户 ID（换过手机号：元景 uid 不同），取最近一次从平台拿到状态的那个。
+        """
+        if not tenant_id or not member_id:
+            return None
+        async with self.database.acquire() as connection:
+            row = await connection.fetchrow(
+                """
+                SELECT b.user_id, b.device_id
+                FROM enterprise_binding AS b
+                JOIN users AS u ON u.user_id = b.user_id
+                WHERE b.tenant_id = $1 AND b.member_id = $2 AND u.status = 'active'
+                ORDER BY b.checked_at DESC
+                LIMIT 1
+                """,
+                tenant_id,
+                member_id,
+            )
+        return (row["user_id"], row["device_id"]) if row else None
+
+    # ---- 企业模式：退出时没吊销掉的设备令牌 ----------------------------------------------
+    #
+    # 退出时平台连不上，令牌吊销不掉：令牌转存到这里由后台重试，入口自己不再用它（tenant_credentials 里清掉）。
+
+    async def revoke_later(self, user_id: str, token: str, error: str) -> None:
+        """记下要重试吊销的令牌；入口存的模型 key 还是这把就清掉（已经换成新令牌的不动）。"""
+        async with self.database.acquire() as connection:
+            async with connection.transaction():
+                await connection.execute(
+                    """
+                    INSERT INTO device_token_revocations(user_id, token_ciphertext, last_error)
+                    VALUES($1, $2, $3)
+                    """,
+                    user_id,
+                    self.cipher.encrypt(token),
+                    error[:300],
+                )
+                stored = await connection.fetchval(
+                    "SELECT api_key_ciphertext FROM tenant_credentials WHERE user_id = $1 FOR UPDATE",
+                    user_id,
+                )
+                if stored is None:
+                    return
+                try:
+                    same = self.cipher.decrypt(stored) == token
+                except CredentialError:
+                    same = True  # 解不开的密文本来也用不了
+                if not same:
+                    return
+                # 表上有约束：模型 key 和容器令牌至少留一个。没有容器令牌（没起过实例）就整行删掉
+                await connection.execute(
+                    """
+                    UPDATE tenant_credentials SET api_key_ciphertext = NULL, updated_at = now()
+                    WHERE user_id = $1 AND container_token_ciphertext IS NOT NULL
+                    """,
+                    user_id,
+                )
+                await connection.execute(
+                    "DELETE FROM tenant_credentials WHERE user_id = $1 AND container_token_ciphertext IS NULL",
+                    user_id,
+                )
+
+    async def due_revocations(self, limit: int = 20) -> list[tuple[int, str, str, int]]:
+        """到点该重试的：（编号, 用户 ID, 令牌, 已试次数）。"""
+        async with self.database.acquire() as connection:
+            rows = await connection.fetch(
+                """
+                SELECT id, user_id, token_ciphertext, attempts FROM device_token_revocations
+                WHERE next_attempt_at <= now() ORDER BY next_attempt_at LIMIT $1
+                """,
+                limit,
+            )
+        due = []
+        for row in rows:
+            try:
+                token = self.cipher.decrypt(row["token_ciphertext"])
+            except CredentialError:
+                await self.revocation_done(row["id"])  # 解不开的令牌谁也用不了，不用再吊销
+                continue
+            due.append((row["id"], row["user_id"], token, row["attempts"]))
+        return due
+
+    async def revocation_done(self, revocation_id: int) -> None:
+        async with self.database.acquire() as connection:
+            await connection.execute("DELETE FROM device_token_revocations WHERE id = $1", revocation_id)
+
+    async def revocation_failed(self, revocation_id: int, error: str, retry_in_s: float) -> None:
+        async with self.database.acquire() as connection:
+            await connection.execute(
+                """
+                UPDATE device_token_revocations SET
+                    attempts = attempts + 1, last_error = $2,
+                    next_attempt_at = now() + make_interval(secs => $3)
+                WHERE id = $1
+                """,
+                revocation_id,
+                error[:300],
+                float(retry_in_s),
+            )
+
+    async def revocation_pending(self, user_id: str) -> bool:
+        async with self.database.acquire() as connection:
+            return bool(await connection.fetchval(
+                "SELECT EXISTS(SELECT 1 FROM device_token_revocations WHERE user_id = $1)", user_id))
 
     async def purge_expired_sessions(self) -> int:
         async with self.database.acquire() as connection:
