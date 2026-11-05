@@ -258,15 +258,22 @@ describe('ChatSidebar navigation activity', () => {
     $profileRailVisible.set(false)
   })
 
-  it('only shows profile and gateway controls in developer mode', () => {
+  it('only shows session filters and profile controls in developer mode', () => {
     $profileRailVisible.set(true)
     const view = renderSidebar('/chat', 'chat')
+    const filterButton = { name: TRANSLATIONS.en.sidebar.filter.filters }
 
     expect(view.container.querySelector('[data-slot="profile-rail"]')).toBeNull()
+    expect(screen.queryByRole('button', filterButton)).toBeNull()
 
     act(() => $developerMode.set(true))
 
     expect(view.container.querySelector('[data-slot="profile-rail"]')).not.toBeNull()
+    expect(screen.getByRole('button', filterButton)).toBeTruthy()
+
+    act(() => $developerMode.set(false))
+
+    expect(screen.queryByRole('button', filterButton)).toBeNull()
   })
 
   it('切换专家后仍显示通用助手和其他专家历史，同时保留工作模式筛选', () => {
