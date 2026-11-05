@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { onComposerAttachImagesRequest } from '@/app/chat/composer/focus'
+import { TRANSLATIONS } from '@/i18n'
 import { $previewTabs, closeRightRail, openPreview, previewTabId } from '@/store/preview'
 import { $activeSessionId, $connection, $currentCwd, $selectedStoredSessionId } from '@/store/session'
 
@@ -118,9 +119,8 @@ describe('PreviewPane console state', () => {
     forgetPreviewConsole(tabId)
   })
 
-  // The bar is chrome for a LIVE page. A file peek, an artifact, and remote
-  // HTML in a sandboxed iframe have no webview to navigate.
-  it('shows the browser bar only for a live webview preview', async () => {
+  // 网页预览提供导航按钮，文件预览使用文件工具栏，两者均隐藏网址输入框。
+  it('keeps browser controls without an address field for a live webview preview', async () => {
     let rendered!: ReturnType<typeof render>
     await act(async () => {
       rendered = render(
@@ -130,7 +130,8 @@ describe('PreviewPane console state', () => {
       )
     })
 
-    expect(rendered.queryByRole('textbox', { name: 'Address' })).not.toBeNull()
+    expect(rendered.getByRole('button', { name: 'Back' })).toBeTruthy()
+    expect(rendered.queryByRole('textbox', { name: 'Address' })).toBeNull()
 
     await act(async () => {
       rendered.rerender(
@@ -148,6 +149,7 @@ describe('PreviewPane console state', () => {
     })
 
     expect(rendered.queryByRole('textbox', { name: 'Address' })).toBeNull()
+    expect(rendered.queryByRole('button', { name: 'Back' })).toBeNull()
   })
 
   it('does not offer the URL-only pop-out action for a local HTML file', async () => {
@@ -191,13 +193,12 @@ describe('PreviewPane console state', () => {
     })
 
     const webview = rendered.container.querySelector('webview') as HTMLElement & Record<string, unknown>
-    const loadURL = vi.fn(async () => undefined)
-
     Object.assign(webview, {
       canGoBack: () => true,
-      canGoForward: () => false,
+      canGoForward: () => true,
       goBack: vi.fn(),
-      loadURL
+      goForward: vi.fn(),
+      reloadIgnoringCache: vi.fn()
     })
 
     // Back is disabled until the webview reports history, and a navigation is
@@ -214,18 +215,11 @@ describe('PreviewPane console state', () => {
     fireEvent.click(back)
     expect(webview.goBack).toHaveBeenCalledOnce()
 
-    const address = rendered.getByRole('textbox', { name: 'Address' }) as HTMLInputElement
-
-    expect(address.value).toBe('http://localhost:5174/two')
-
-    fireEvent.focus(address)
-    fireEvent.change(address, { target: { value: 'localhost:4000/app' } })
-    fireEvent.keyDown(address, { key: 'Enter' })
-
-    // loadURL, not a `src` swap — re-entering the current address must reload.
-    // Awaited: navigation first asks main whether the address needs a loopback
-    // forward, so the load lands a microtask later.
-    await waitFor(() => expect(loadURL).toHaveBeenCalledWith('http://localhost:4000/app'))
+    fireEvent.click(rendered.getByRole('button', { name: 'Forward' }))
+    expect(webview.goForward).toHaveBeenCalledOnce()
+    fireEvent.click(rendered.getByRole('button', { name: 'Reload page' }))
+    expect(webview.reloadIgnoringCache).toHaveBeenCalledOnce()
+    expect(rendered.queryByRole('textbox', { name: 'Address' })).toBeNull()
     expect(webview.getAttribute('src')).toBe('http://localhost:5174')
   })
 
@@ -394,33 +388,6 @@ describe('PreviewPane console state', () => {
     expect(rendered.container.textContent).not.toContain('machine running your agent')
   })
 
-  it('surfaces a rejected navigation as a load error', async () => {
-    let rendered!: ReturnType<typeof render>
-    await act(async () => {
-      rendered = render(
-        <PreviewPane
-          target={{ kind: 'url', label: 'Preview', source: 'http://localhost:5174', url: 'http://localhost:5174' }}
-        />
-      )
-    })
-
-    const webview = rendered.container.querySelector('webview') as HTMLElement & Record<string, unknown>
-
-    Object.assign(webview, { loadURL: vi.fn(async () => Promise.reject(new Error('ERR_CONNECTION_REFUSED'))) })
-
-    const address = rendered.getByRole('textbox', { name: 'Address' }) as HTMLInputElement
-
-    await act(async () => {
-      fireEvent.focus(address)
-      fireEvent.change(address, { target: { value: 'http://localhost:4000' } })
-      fireEvent.keyDown(address, { key: 'Enter' })
-    })
-
-    await waitFor(() => expect(rendered.container.textContent).toContain('ERR_CONNECTION_REFUSED'), {
-      container: rendered.container
-    })
-  })
-
   // `about:blank` in a webview is a white void that reads as broken against
   // the app's chrome — the pane should say it's empty on purpose.
   it('shows the blank-page empty state instead of a white void', async () => {
@@ -431,7 +398,8 @@ describe('PreviewPane console state', () => {
       )
     })
 
-    expect(rendered.container.textContent).toContain('Type an address above')
+    const blankPageBody = TRANSLATIONS.en.preview.web.blankPageBody
+    expect(rendered.container.textContent).toContain(blankPageBody)
 
     const webview = rendered.container.querySelector('webview') as HTMLElement
 
@@ -440,8 +408,9 @@ describe('PreviewPane console state', () => {
       webview.dispatchEvent(Object.assign(new Event('did-navigate'), { url: 'https://example.com' }))
     })
 
-    expect(rendered.container.textContent).not.toContain('Type an address above')
-    expect(rendered.queryByRole('textbox', { name: 'Address' })).not.toBeNull()
+    expect(rendered.container.textContent).not.toContain(blankPageBody)
+    expect(rendered.queryByRole('textbox', { name: 'Address' })).toBeNull()
+    expect(rendered.container.querySelector('webview')).toBe(webview)
   })
 
   it('workspace edits reload a loopback dev page, never a site the tab browsed to', async () => {
