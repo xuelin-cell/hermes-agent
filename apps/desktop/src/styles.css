@@ -538,7 +538,7 @@
     --paragraph-gap: 0.7rem;
     --file-tree-row-height: 1.375rem;
 
-    --composer-width: 880px;
+    --composer-width: 82%;
     --composer-control-size: 1.5rem;
     --composer-control-primary-size: 1.625rem;
     --composer-control-gap: 0.25rem;
@@ -1641,6 +1641,25 @@ body.guest-pointer-lock :is(webview, iframe) {
   line-height: 1.5;
 }
 
+/* Give the execution summary, answer and footer one shared reading gutter. */
+[data-slot='aui_response-group'] {
+  padding-inline-start: var(--message-text-indent);
+}
+
+[data-slot='aui_response-group'] [data-slot='aui_assistant-message-content'],
+[data-slot='aui_response-group'] [data-slot='aui_assistant-footer'] {
+  padding-left: 0;
+}
+
+[data-slot='aui_response-group'] > :is([data-slot='aui_process-summary'], div[data-slot='aui_turn-duration']) {
+  width: 100%;
+  justify-content: flex-start;
+  border-bottom: 1px solid var(--ui-stroke-tertiary);
+  padding-block: 8px 12px;
+  margin-bottom: 8px;
+  text-align: start;
+}
+
 [data-slot='aui_assistant-message-root'] {
   width: 100%;
 }
@@ -1889,9 +1908,10 @@ body.guest-pointer-lock :is(webview, iframe) {
 }
 
 [data-slot='aui_thread-content'] {
-  /* 正文宽度不含两侧留白，与输入框可见外框对齐。 */
-  max-width: calc(var(--composer-width) + 3rem);
-  padding-inline: 1.5rem;
+  /* Keep the transcript just inside the composer's visible edges. */
+  width: min(var(--composer-width), calc(100% - 3rem));
+  max-width: none;
+  padding-inline: 1rem;
 }
 
 [data-slot='aui_intro'] {

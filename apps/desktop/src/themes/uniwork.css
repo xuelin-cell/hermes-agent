@@ -348,6 +348,7 @@
     [data-slot='aui_assistant-message-root']
   ) {
   --conversation-text-font-size: 16px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, 'Segoe UI', sans-serif;
 }
 
 :root[data-hermes-theme='uniwork'] [data-slot='aui_edit-composer-root'] [data-slot='composer-rich-input'] {
@@ -426,6 +427,21 @@
 }
 :root[data-hermes-theme='uniwork'] [data-slot='aui_assistant-message-content'] .aui-md :where(li) {
   margin-bottom: 4px;
+}
+
+/* Table cells and list items follow the answer's reading scale. */
+:root[data-hermes-theme='uniwork'] [data-slot='aui_assistant-message-content'] .aui-md :where(li, th, td) {
+  font-size: inherit;
+  line-height: inherit;
+}
+
+:root[data-hermes-theme='uniwork'] [data-slot='aui_assistant-message-content'] .aui-md .aui-md-table :where(th, td) {
+  padding: 10px 14px;
+}
+
+:root[data-hermes-theme='uniwork'] [data-slot='aui_assistant-message-content'] .aui-md .aui-md-table th {
+  font-weight: 600;
+  color: var(--dt-foreground);
 }
 
 /* New conversations form one centered welcome/composer cluster. The editor
