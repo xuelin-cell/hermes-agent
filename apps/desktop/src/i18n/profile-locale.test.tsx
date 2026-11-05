@@ -18,7 +18,7 @@ function Probe() {
       <span data-testid="locale">{locale}</span>
       <span data-testid="error">{saveError?.message}</span>
       <span data-testid="saving">{String(isSavingLocale)}</span>
-      <button onClick={() => void setLocale('ja').catch(() => undefined)}>Japanese</button>
+      <button onClick={() => void setLocale('zh-hant').catch(() => undefined)}>Traditional Chinese</button>
     </>
   )
 }
@@ -67,12 +67,12 @@ it('reads and persists the owning profile through A → B → A and restart', as
   await waitFor(() => expect(api).toHaveBeenCalled())
   act(() => route('coder'))
   await waitFor(() => expect(screen.getByTestId('locale').textContent).toBe('zh'))
-  fireEvent.click(screen.getByText('Japanese'))
-  await waitFor(() => expect(configs.coder.display).toEqual({ language: 'ja', skin: 'mono' }))
+  fireEvent.click(screen.getByText('Traditional Chinese'))
+  await waitFor(() => expect(configs.coder.display).toEqual({ language: 'zh-hant', skin: 'mono' }))
   act(() => route('default'))
   await waitFor(() => expect(screen.getByTestId('locale').textContent).toBe('en'))
   act(() => route('coder'))
-  await waitFor(() => expect(screen.getByTestId('locale').textContent).toBe('ja'))
+  await waitFor(() => expect(screen.getByTestId('locale').textContent).toBe('zh-hant'))
   expect(configs.default.display).toEqual({ language: 'en' })
   view.unmount()
   render(
@@ -80,7 +80,7 @@ it('reads and persists the owning profile through A → B → A and restart', as
       <Probe />
     </I18nProvider>
   )
-  await waitFor(() => expect(screen.getByTestId('locale').textContent).toBe('ja'))
+  await waitFor(() => expect(screen.getByTestId('locale').textContent).toBe('zh-hant'))
 })
 
 it('isolates stale reads and failed saves when the same profile moves between connections', async () => {
@@ -121,9 +121,9 @@ it('isolates stale reads and failed saves when the same profile moves between co
   )
   act(() => route('default', 'remote'))
   await waitFor(() => expect(screen.getByTestId('locale').textContent).toBe('zh'))
-  await act(async () => finishBoot({ display: { language: 'ar' } }))
+  await act(async () => finishBoot({ display: { language: 'zh-hant' } }))
   expect(screen.getByTestId('locale').textContent).toBe('zh')
-  fireEvent.click(screen.getByText('Japanese'))
+  fireEvent.click(screen.getByText('Traditional Chinese'))
   await waitFor(() => expect(reads).toBe(3))
   act(() => route('default', 'local'))
   await waitFor(() => expect(screen.getByTestId('locale').textContent).toBe('en'))
@@ -141,7 +141,7 @@ it('isolates stale reads and failed saves when the same profile moves between co
     $connection.set({ baseUrl: 'https://first.example' } as never)
   })
   await waitFor(() => expect(reads).toBe(5))
-  api.mockImplementation(() => Promise.resolve({ display: { language: 'ar' } }))
+  api.mockImplementation(() => Promise.resolve({ display: { language: 'zh-hant' } }))
   act(() => $connection.set({ baseUrl: 'https://second.example' } as never))
-  await waitFor(() => expect(screen.getByTestId('locale').textContent).toBe('ar'))
+  await waitFor(() => expect(screen.getByTestId('locale').textContent).toBe('zh-hant'))
 })

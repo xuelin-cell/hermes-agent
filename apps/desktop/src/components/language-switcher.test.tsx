@@ -35,9 +35,14 @@ describe('LanguageSwitcher', () => {
     })
 
     fireEvent.click(screen.getByRole('button', { name: 'Switch language' }))
-    fireEvent.click(screen.getByRole('option', { name: /日本語/i }))
+    expect(screen.getAllByRole('option').map(option => option.textContent)).toEqual([
+      'Englishen',
+      '简体中文zh',
+      '繁體中文zh-hant'
+    ])
+    fireEvent.click(screen.getByRole('option', { name: /繁體中文/i }))
 
     await waitFor(() => expect(saveConfig).toHaveBeenCalledTimes(1))
-    expect(saveConfig).toHaveBeenCalledWith({ display: { language: 'ja', skin: 'slate' } })
+    expect(saveConfig).toHaveBeenCalledWith({ display: { language: 'zh-hant', skin: 'slate' } })
   })
 })

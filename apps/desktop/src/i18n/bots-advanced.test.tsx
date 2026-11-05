@@ -96,9 +96,9 @@ it('localizes the advanced editor and hub without translating capability IDs or 
   expect(await screen.findByText(i18n.t.settings.model.provider)).toBeTruthy()
   fireEvent.click(screen.getByRole('checkbox', { name: 'my-skill' }))
   fireEvent.change(screen.getByPlaceholderText(zh('tools.searchHub')), { target: { value: 'my query' } })
-  await act(() => i18n.setLocale('ja'))
-  const ja = translateBotsIn('ja')
-  expect(screen.getByText(ja('editor.skillsEnabled', 0, 1))).toBeTruthy()
+  await act(() => i18n.setLocale('zh-hant'))
+  const traditional = translateBotsIn('zh-hant')
+  expect(screen.getByText(traditional('editor.skillsEnabled', 0, 1))).toBeTruthy()
 
   for (const value of ['My English persona', 'my-provider', 'my-model', 'my query']) {
     expect(screen.getByDisplayValue(value)).toBeTruthy()
@@ -106,7 +106,7 @@ it('localizes the advanced editor and hub without translating capability IDs or 
 
   fireEvent.click(screen.getByRole('button', { name: i18n.t.skills.hub.search }))
   expect(await screen.findByText('English description from the server')).toBeTruthy()
-  expect(screen.getByRole('button', { name: ja('tools.installHint', 'user-skill') })).toBeTruthy()
+  expect(screen.getByRole('button', { name: traditional('tools.installHint', 'user-skill') })).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: 'Persist fixture' }))
   await waitFor(() =>
     expect(mocks.request).toHaveBeenCalledWith('profiles.configure', { name: 'writer', disabled_skills: ['my-skill'] })

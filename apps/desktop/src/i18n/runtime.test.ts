@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { fieldCopyForSchemaKey } from '@/app/settings/field-copy'
 
 import { TRANSLATIONS } from './catalog'
+import { defineLocale } from './define-locale'
 import { setRuntimeI18nLocale, translateNow } from './runtime'
 import { zh } from './zh'
 
@@ -46,12 +47,12 @@ describe('desktop i18n runtime translator', () => {
   })
 
   it('falls back to English when the active locale cannot resolve a key', () => {
-    const boot = TRANSLATIONS.ja.boot as { ready?: string }
+    const boot = TRANSLATIONS['zh-hant'].boot as { ready?: string }
     const originalReady = boot.ready
 
     try {
       boot.ready = undefined
-      setRuntimeI18nLocale('ja')
+      setRuntimeI18nLocale('zh-hant')
 
       expect(translateNow('boot.ready')).toBe(TRANSLATIONS.en.boot.ready)
     } finally {
@@ -60,10 +61,10 @@ describe('desktop i18n runtime translator', () => {
   })
 
   it('fills new connector copy from English for partial locales', () => {
-    expect(TRANSLATIONS.fr.connectorsPage.recommended.needAuth).toBe(
-      TRANSLATIONS.en.connectorsPage.recommended.needAuth
-    )
-    expect(TRANSLATIONS.ja.connectorsPage.recommended.guides.netease_mail.title).toBe(
+    const partial = defineLocale({ common: { save: '儲存' } })
+    expect(partial.common.save).toBe('儲存')
+    expect(partial.connectorsPage.recommended.needAuth).toBe(TRANSLATIONS.en.connectorsPage.recommended.needAuth)
+    expect(partial.connectorsPage.recommended.guides.netease_mail.title).toBe(
       TRANSLATIONS.en.connectorsPage.recommended.guides.netease_mail.title
     )
   })

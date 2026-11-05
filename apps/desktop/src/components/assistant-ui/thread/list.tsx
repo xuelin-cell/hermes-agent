@@ -1531,7 +1531,7 @@ const ThreadMessageListInner: FC<ThreadMessageListProps> = ({
       >
         <div
           className={cn(
-            'mx-auto flex min-h-full w-full max-w-(--composer-width) min-w-0 flex-col px-6',
+            'mx-auto flex min-h-full w-full min-w-0 flex-col px-6',
             renderEmpty ? 'py-8' : threadContentTopPad
           )}
           data-slot="aui_thread-content"

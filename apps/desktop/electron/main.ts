@@ -601,6 +601,11 @@ import {
 import { startRelaunchWaiter } from './updater/relaunch-waiter'
 import { preflightStateDb } from './updater/state-db-preflight'
 import { createStoreStrategy } from './updater/store-client'
+import {
+  formatUpdateProgressLine,
+  shouldLogUpdateProgress,
+  type UpdateProgressLogPoint
+} from './updater/update-progress-log'
 import { createWindowsStrategy } from './updater/windows-client'
 import { isExternalVenvHolder, isHermesOwnedVenvDaemon } from './venv-holder-select'
 import { fetchMarketplaceThemes, searchMarketplaceThemes } from './vscode-marketplace'
@@ -3313,9 +3318,17 @@ function runGit(args, options: any = {}): Promise<{ code: number; stdout: string
   })
 }
 
+// Last payload whose line actually reached desktop.log; the log is rate
+// limited, the renderer stream is not (see update-progress-log.ts).
+let lastLoggedUpdateProgress: UpdateProgressLogPoint | null = null
+
 function emitUpdateProgress(payload) {
   const merged = { stage: 'idle', message: '', percent: null, error: null, ...payload, at: Date.now() }
-  rememberLog(`[updates] ${merged.stage}: ${merged.message || merged.error || ''}`)
+
+  if (shouldLogUpdateProgress(lastLoggedUpdateProgress, merged)) {
+    lastLoggedUpdateProgress = merged
+    rememberLog(formatUpdateProgressLine(merged, merged.error))
+  }
 
   for (const window of BrowserWindow.getAllWindows()) {
     window.webContents.send('hermes:updates:progress', merged)
