@@ -136,7 +136,6 @@ export default async function afterPack(context) {
       'Check signing configuration (AZURE_SIGN_* for Azure, or ensure UKey is plugged in).'
     )
   }
-
   // Assembly's stamp describes the bytes electron-builder copied in, so it only
   // goes stale when signing or an in-place PE repair rewrote them. Re-hashing
   // ~1.5 GiB of tools on an unsigned build buys nothing.

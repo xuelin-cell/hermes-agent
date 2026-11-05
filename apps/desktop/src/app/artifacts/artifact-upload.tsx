@@ -12,7 +12,6 @@ import {
 } from '@/components/ui/dialog'
 import { Tip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
-import { isBrowserShell } from '@/lib/browser-shell'
 import { RefreshCw } from '@/lib/icons'
 import { isArtifactFilePath } from '@/lib/media'
 import { cn } from '@/lib/utils'
@@ -28,7 +27,6 @@ import { useCloudTransfer } from './use-cloud-transfer'
 /** 本机产物才开放上传入口，网络图片、链接和其他连接的路径不冒充本机文件。 */
 export function canUploadArtifact(artifact: ArtifactRecord, mode?: string): boolean {
   return (
-    !isBrowserShell() &&
     mode === 'local' &&
     (!artifact.connectionId || artifact.connectionId === 'local') &&
     artifact.kind !== 'link' &&

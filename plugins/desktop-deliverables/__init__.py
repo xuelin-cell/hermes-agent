@@ -55,6 +55,7 @@ class Turn:
     platform: str = "desktop"
     guess: bool = True
     downloads: dict = field(default_factory=dict)
+    image_runtime: dict = field(default_factory=dict)
 
 
 def scope(session_id):
@@ -272,6 +273,10 @@ def after_tool(
     **kwargs,
 ):
     """合并写入参数、工具输出和执行差异，失败或后台任务不冒充已完成交付。"""
+    from .native_images import TOOL
+
+    if tool_name == TOOL:  # 读取图片不生成交付物。
+        return
     with _lock:
         turn = current(scope(session_id), turn_id)
         if turn is None or turn.background or turn.platform != "desktop":
@@ -529,15 +534,19 @@ def end_turn(*, session_id="", turn_id="", **kwargs):
 
 
 def rewrite_llm_request(*, request=None, **context):
-    """llm_request 中间件：先改看图提示，再去掉思考深度档位。
+    """依次更新看图提示、思考深度和本机任务的系统工作目录。
 
-    Hermes 给每个请求中间件的都是原始请求，后一个的结果会盖掉前一个，所以两步合在这里依次做。
+    Hermes 给每个中间件的都是原始请求，在这里组合三步结果。
     """
+    from . import workfolders
     from .image_hints import rewrite_request
+    from .native_images import remember_request, runtime_scope
     from .reasoning import strip_reasoning_levels
 
     reasons = []
-    hinted = rewrite_request(request=request, **context)
+    remember_request(**context)
+    with runtime_scope(context.get("session_id", ""), context.get("turn_id", "")):
+        hinted = rewrite_request(request=request, **context)
     if hinted:
         request = hinted["request"]
         reasons.append(hinted.get("reason") or "image-hint")
@@ -545,20 +554,29 @@ def rewrite_llm_request(*, request=None, **context):
     if stripped is not None:
         request = stripped
         reasons.append("reasoning-default")
+    routed = workfolders.rewrite_prompt(request, context.get("task_id", ""))
+    if routed is not None:
+        request = routed
+        reasons.append("workfolder")
     if not reasons:
         return None
     return {"request": request, "source": "desktop-deliverables", "reason": "+".join(reasons)}
 
 
 def register(ctx):
-    """只使用现有原生钩子和中间件，不增加模型工具或修改 Hermes 核心。"""
+    """用原生插件接口注册桌面读图工具与交付钩子，不修改 Hermes 核心。"""
+    from . import workfolders
     from .uploads import around_call, remember_session
+    from . import native_images
+
+    native_images.register(ctx)
 
     # 元景工具读不到本机文件：执行时替模型上传并换成 ossPath。
     ctx.register_middleware("tool_execution", around_call)
     # 看不到图的主模型：看图提示换成元景写法；所有模型的思考深度交给服务器默认。
     ctx.register_middleware("llm_request", rewrite_llm_request)
     for name, handler in [
+        ("pre_llm_call", workfolders.route),
         ("pre_llm_call", before_turn),
         ("pre_llm_call", background.remember_message_parent),
         ("pre_llm_call", remember_session),

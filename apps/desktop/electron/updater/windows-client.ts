@@ -34,13 +34,28 @@ export function createWindowsStrategy(deps: WindowsClientDeps): WindowsStrategy 
   updater.allowPrerelease = feed.allowPrerelease
   // Setting channel enables downgrades in electron-updater. This app never does.
   updater.allowDowngrade = false
-  updater.on('error', (error: Error) => deps.log(`Windows updater: ${error.message}`))
+  // electron-updater's own transcript is the only permanent record of the
+  // differential verdict ("Differential download: <url>", "File … has N changed
+  // blocks", "Full: X, To download: Y (Z%)") and of the fallback reason
+  // ("Cannot download differentially, fallback to full download"). Route it
+  // into the desktop log so a past update can be judged after the fact.
+  // AppUpdater re-logs every 'error' event through this logger (with stack),
+  // so a separate 'error' listener would only duplicate each failure.
+  // `debug` stays unwired on purpose: DifferentialDownloader guards its whole
+  // operation-plan JSON dump on `logger.debug != null`.
+  updater.logger = {
+    info: (message: string): void => deps.log(`Windows updater: ${message}`),
+    warn: (message: string): void => deps.log(`Windows updater: ${message}`),
+    error: (message: string): void => deps.log(`Windows updater: ${message}`)
+  }
 
   if (deps.feedBaseUrl) {
     // config.yaml wins over the origin baked into app-update.yml, so a mirror
-    // can be swapped without rebuilding the package.
+    // can be swapped without rebuilding the package. Carry the baked publish's
+    // single-range flag here too: replacing the descriptor would otherwise
+    // silently restore multi-range batching and the full-download fallback.
     const base = channelPublicBase(deps.feedBaseUrl)
-    updater.setFeedURL({ provider: 'generic', url: `${base}/${feed.directory}/`, channel: feed.channel })
+    updater.setFeedURL({ provider: 'generic', url: `${base}/${feed.directory}/`, channel: feed.channel, useMultipleRangeRequest: false })
   }
 
   return new WindowsStrategy({

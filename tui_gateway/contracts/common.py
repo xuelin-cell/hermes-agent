@@ -16,6 +16,24 @@ class OpenModel(Result):
     model_config = Result.model_config | {"extra": "allow"}
 
 
+class TurnReplyModel(Result):
+    """The answering model and its configured display name, snapshotted before runtime restoration."""
+
+    model: str = Field(min_length=1)
+    provider: str = ""
+    name: str = ""
+
+
+class TurnTokenUsage(Result):
+    """Provider-reported main-agent usage accumulated across one prompt turn; input includes cache."""
+
+    input_tokens: int = Field(ge=0)
+    output_tokens: int = Field(ge=0)
+    total_tokens: int = Field(ge=0)
+    cache_read_tokens: int = Field(ge=0)
+    cache_write_tokens: int = Field(ge=0)
+
+
 class Usage(OpenModel):
     """``tui_gateway/server.py::_get_usage`` + ``agent/context_breakdown.py::context_usage_fields``."""
 

@@ -4,9 +4,9 @@ import type { ModelOptionsResult } from '@hermes/shared'
 import type { QuickModelOption } from '@/app/chat/composer/types'
 import type { ClientSessionState } from '@/app/types'
 import { formatRefValue } from '@/components/assistant-ui/directive-text'
-import { newSessionTitle } from '@/lib/browser-shell'
 import { type ChatMessage, type ChatMessagePart, chatMessageText, textPart } from '@/lib/chat-messages'
 import { foldPersonalityName } from '@/lib/personalities'
+import { newSessionTitle } from '@/lib/session-title-mt'
 import type { ComposerAttachment } from '@/store/composer'
 import type { SessionInfo } from '@/types/hermes'
 
@@ -466,6 +466,9 @@ export function toRuntimeMessage(message: ChatMessage): ThreadMessage {
         ...timelineMeta,
         ...(message.completedAt !== undefined ? { timelineCompletedAt: message.completedAt } : {}),
         ...(message.durationS !== undefined ? { durationS: message.durationS } : {}),
+        ...(message.turnTokenUsage ? { turnTokenUsage: message.turnTokenUsage } : {}),
+        ...(message.turnModel ? { turnModel: message.turnModel } : {}),
+        ...(message.turnCompletedAt !== undefined ? { turnCompletedAt: message.turnCompletedAt } : {}),
         // Structured failure layer for the error card (see lib/error-surface).
         ...(message.errorSurface ? { errorSurface: message.errorSurface } : {}),
         ...reactionMeta

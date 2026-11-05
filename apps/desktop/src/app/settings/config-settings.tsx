@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { getElevenLabsVoices, getHermesConfigSchema, saveHermesConfig } from '@/hermes'
 import { useI18n } from '@/i18n'
-import { hideForUsers } from '@/lib/browser-shell'
 import { triggerHaptic } from '@/lib/haptics'
 import { isSubmitEnter } from '@/lib/ime'
 import { getServers, serverEnabled } from '@/lib/mcp-servers'
@@ -308,8 +307,7 @@ function ConfigSettingsInner({
   const showModelSettings =
     activeSectionId === 'model' && (subpage === undefined || ['main', 'auxiliary', 'moa'].includes(subpage))
 
-  const showDesktopSettings =
-    !hideForUsers() && activeSectionId === 'advanced' && (subpage === undefined || subpage === 'desktop')
+  const showDesktopSettings = activeSectionId === 'advanced' && (subpage === undefined || subpage === 'desktop')
 
   const showAttachments =
     developerMode && activeSectionId === 'chat' && (subpage === undefined || subpage === 'attachments')

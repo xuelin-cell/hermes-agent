@@ -1,11 +1,10 @@
 import { DEFAULT_REASONING_EFFORT, isReasoningEffort, type ReasoningEffort } from '@hermes/shared'
 
-import { effortShortLabels } from '@/lib/browser-shell'
 import { normalize } from '@/lib/text'
 
 /** Compact labels for chrome where space is tight (pill, picker rows). Menus
  *  and settings use the translated `shell.modelOptions` strings instead. */
-const SHORT_LABELS: Record<string, string> = effortShortLabels({
+const SHORT_LABELS: Record<string, string> = {
   none: 'Off',
   minimal: 'Min',
   low: 'Low',
@@ -14,7 +13,7 @@ const SHORT_LABELS: Record<string, string> = effortShortLabels({
   xhigh: 'XHigh',
   max: 'Max',
   ultra: 'Ultra'
-})
+}
 
 /**
  * A pick the route does not send verbatim: `ultra` is a Hermes-internal step

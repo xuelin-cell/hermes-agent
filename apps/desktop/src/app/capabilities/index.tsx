@@ -7,7 +7,6 @@ import { PageLoader } from '@/components/page-loader'
 import { Button } from '@/components/ui/button'
 import { useContributions } from '@/contrib/react/use-contributions'
 import { useI18n } from '@/i18n'
-import { hideForUsers } from '@/lib/browser-shell'
 import { queryClient } from '@/lib/query-client'
 import { invalidateSlashCompletions } from '@/lib/slash-completion-cache'
 import { useStoreSelector } from '@/lib/use-session-slice'
@@ -85,8 +84,7 @@ export function CapabilitiesView({
   const routeTab = useRouteEnumParam('tab', CAPABILITY_MODES, 'skills')
   const localTab = useState<CapabilityMode>('skills')
   const [requestedMode, setMode] = embedded ? localTab : routeTab
-  // Code workspaces expose Plugins; other browser workspaces keep the developer gate.
-  const developerTab = requestedMode === 'toolsets' || (requestedMode === 'plugins' && !codeWorkspace && hideForUsers())
+  const developerTab = requestedMode === 'toolsets'
 
   const mode =
     (!developerMode && developerTab) || (requestedMode === 'experts' && !expertsRoute) ? 'skills' : requestedMode
@@ -272,7 +270,7 @@ export function CapabilitiesView({
           ? [{ id: 'toolsets', label: t.skills.tabToolsets, meta: toolsets ? visibleToolsetCount(toolsets) : null }]
           : []),
         { id: 'connectors', label: t.connectorsPage.title },
-        ...(hideForUsers() ? [] : [{ id: 'plugins', label: t.skills.tabPlugins }])
+        { id: 'plugins', label: t.skills.tabPlugins }
       ]}
     >
       <div className="flex h-full flex-col">

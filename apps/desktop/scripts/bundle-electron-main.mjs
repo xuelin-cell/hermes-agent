@@ -51,6 +51,10 @@ export async function bundleElectronMain({ source, out, stamp, dev = false }) {
   stagePythonPlugins({ source, out, bundledKits })
   // 账号退出辅助脚本随 dist 解包，供安装包内的 Python 直接执行。
   copyFileSync(join(source, 'apps/desktop/electron/entry_local/gateway-logout.py'), join(out, 'gateway-logout.py'))
+  // 两种桌面安装都携带终端辅助入口，发布后无需源码目录或系统 Node/Python。
+  for (const name of ['skills-cli.ps1', 'skills-cli.py']) {
+    copyFileSync(join(source, 'apps/desktop/scripts', name), join(out, name))
+  }
   const common = {
     absWorkingDir: join(source, 'apps/desktop'),
     bundle: true,

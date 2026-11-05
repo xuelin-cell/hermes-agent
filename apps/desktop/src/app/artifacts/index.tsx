@@ -22,7 +22,6 @@ import { Tip } from '@/components/ui/tooltip'
 import { getAllSessionMessages, listAllProfileSessions } from '@/hermes'
 import { type Translations, useI18n } from '@/i18n'
 import { resolveBrandIcon } from '@/lib/brand-icon'
-import { isBrowserShell } from '@/lib/browser-shell'
 import {
   ExternalLink,
   ExternalLinkIcon,
@@ -53,7 +52,7 @@ import {
   type ArtifactRecord,
   loadArtifactsForSessions
 } from './artifact-utils'
-import { CloudDriveTab } from './cloud-drive-tab'
+import { CloudLibrary } from './cloud-library'
 import { LocalArtifactLibrary } from './local-artifact-library'
 
 const LIBRARY_TABS = ['cloud', 'local'] as const
@@ -360,9 +359,7 @@ function LocalArtifactsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...
         { id: 'link', label: a.tabLinks, meta: artifacts ? counts.link : null }
       ]}
     >
-      {!isBrowserShell() && uploadArtifact && (
-        <ArtifactUploadDialog artifact={uploadArtifact} onClose={() => setUploadArtifact(null)} />
-      )}
+      {uploadArtifact && <ArtifactUploadDialog artifact={uploadArtifact} onClose={() => setUploadArtifact(null)} />}
       {!artifacts ? (
         <PageLoader label={a.indexing} />
       ) : visibleArtifacts.length === 0 ? (
@@ -431,7 +428,7 @@ export function ArtifactsView(props: ArtifactsViewProps) {
   const navigate = useNavigate()
   const { t } = useI18n()
   // 预览分屏会重新挂载页面；标签属于路由状态，不能随组件生命周期恢复默认值。
-  const [libraryTab, setLibraryTab] = useRouteEnumParam('library', LIBRARY_TABS, isBrowserShell() ? 'local' : 'cloud')
+  const [libraryTab, setLibraryTab] = useRouteEnumParam('library', LIBRARY_TABS, 'cloud')
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-background">
@@ -463,8 +460,8 @@ export function ArtifactsView(props: ArtifactsViewProps) {
       </div>
       <div className="min-h-0 flex-1">
         {libraryTab === 'cloud' ? (
-          <CloudDriveTab onDraftReady={navigate} />
-        ) : !isBrowserShell() && connection?.mode === 'local' ? (
+          <CloudLibrary onDraftReady={navigate} />
+        ) : connection?.mode === 'local' ? (
           <LocalArtifactLibrary />
         ) : (
           <LocalArtifactsView {...props} />

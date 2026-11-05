@@ -5,6 +5,7 @@ import { afterEach, expect, it } from 'vitest'
 import { $backgroundStatusBySession } from '@/store/composer-status'
 import { $previewStatusBySession } from '@/store/preview-status'
 import { $todosBySession } from '@/store/todos'
+import { $selectedWorkspaceMode } from '@/store/workspace-category'
 
 import { QueuePanel } from '../queue-panel'
 
@@ -40,6 +41,19 @@ afterEach(() => {
   $backgroundStatusBySession.set({})
   $previewStatusBySession.set({})
   $todosBySession.set({})
+  $selectedWorkspaceMode.set(null)
+})
+
+it('日常办公和学习生活不显示文件条，切回代码开发后照常显示', () => {
+  $previewStatusBySession.set({ owner: [{ cwd: '/tmp', id: 'file', label: 'index.html', target: '/tmp/index.html' }] })
+  $selectedWorkspaceMode.set('work')
+
+  const view = render(stack(false))
+  expect(screen.queryByText('index.html')).toBeNull()
+  expect(view.container.querySelector('[data-slot="composer-status-stack"]')).toBeNull()
+
+  act(() => $selectedWorkspaceMode.set('codex'))
+  expect(screen.getByText('index.html')).toBeTruthy()
 })
 
 it.each([false, true])('keeps artifact links below the queue with background work: %s', background => {

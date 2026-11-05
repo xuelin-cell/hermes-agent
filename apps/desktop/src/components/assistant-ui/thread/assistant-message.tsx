@@ -26,7 +26,9 @@ import {
 } from '@/components/assistant-ui/thread/content'
 import { MESSAGE_PARTS_COMPONENTS } from '@/components/assistant-ui/thread/message-parts'
 import { ReactionPicker } from '@/components/assistant-ui/thread/message-reactions'
+import { ReplyMetadata } from '@/components/assistant-ui/thread/reply-metadata'
 import { ResponseMessageIds } from '@/components/assistant-ui/thread/response-group'
+import { ResponseProcessVisibility } from '@/components/assistant-ui/thread/response-process'
 import { ResponseLoadingIndicator, TurnActivityIndicator } from '@/components/assistant-ui/thread/status'
 import { MessageTimelineTimestamp } from '@/components/assistant-ui/thread/timeline-timestamp'
 import { useMessageReactions, useTapbackDoubleClick } from '@/components/assistant-ui/thread/use-message-reactions'
@@ -39,6 +41,7 @@ import { ConversationReplyShareButton } from '@/components/conversation-share/re
 import { Codicon } from '@/components/ui/codicon'
 import { CopyButton } from '@/components/ui/copy-button'
 import { useI18n } from '@/i18n'
+import { registerPluginLocales, usePluginI18n } from '@/i18n/plugin-i18n'
 import {
   errorRecoveryPlan,
   type ErrorSurface,
@@ -67,6 +70,7 @@ import { markAssistantIdSpoken } from '@/lib/spoken-reply'
 import { useEnterAnimation } from '@/lib/use-enter-animation'
 import { cn } from '@/lib/utils'
 import { playSpeechText, stopVoicePlayback } from '@/lib/voice-playback'
+import { $developerMode } from '@/store/developer-mode'
 import { openFreeTierSignIn } from '@/store/free-tier-sign-in'
 import { notifyError } from '@/store/notifications'
 import { startManualProviderOAuth } from '@/store/onboarding'
@@ -77,6 +81,7 @@ import { $connection, $currentModel, setModelPickerOpen } from '@/store/session'
 import { sessionTileDelegate } from '@/store/session-states'
 import { notifyThreadEditOpen } from '@/store/thread-scroll'
 import { $voicePlayback } from '@/store/voice-playback'
+import { $codeWorkspace } from '@/store/workspace-category'
 
 // Stable empty identity for the settled-parts selector — a fresh [] per render
 // would re-derive the changed-files card on every message re-render.
@@ -88,7 +93,23 @@ const EMPTY_PARTS: readonly unknown[] = []
 // (pending -> complete and back, N rows per stream flush) can no longer
 // descend into the parts subtree at all. Its props were already the module
 // constant MESSAGE_PARTS_COMPONENTS, so nothing per-message is captured here.
-const MESSAGE_PARTS = <MessagePrimitive.Parts components={MESSAGE_PARTS_COMPONENTS} />
+const MESSAGE_PARTS = <ResponseMessageParts />
+
+function ResponseMessageParts() {
+  const processVisible = useContext(ResponseProcessVisibility)
+  const boundary = useAuiState(s => s.message.content.findLastIndex(part => part.type === 'text'))
+  const count = useAuiState(s => s.message.content.length)
+
+  if (processVisible || boundary <= 0) {
+    return <MessagePrimitive.Parts components={MESSAGE_PARTS_COMPONENTS} />
+  }
+
+  return Array.from({ length: count }, (_, index) => (
+    <div hidden={index < boundary} key={index} style={index < boundary ? { display: 'none' } : undefined}>
+      <MessagePrimitive.PartByIndex components={MESSAGE_PARTS_COMPONENTS} index={index} />
+    </div>
+  ))
+}
 
 interface MessageActionProps {
   messageId: string
@@ -480,15 +501,20 @@ const AssistantPreviewEmbeds: FC = () => {
  * summary, not a per-turn artifact: leaving one behind on every reply would
  * stack a wall of stale cards down the transcript. Sending the next message
  * retires it — the working tree it describes is already history by then.
+ *
+ * 只在代码开发显示：日常办公和学习生活看交付卡片，中间脚本的改动卡片只会干扰。
  */
 const SettledChangedFiles: FC = () => {
+  const codeWorkspace = useStore($codeWorkspace)
+
   const settledParts = useAuiState(s => {
     const isLastMessage = s.thread.messages[s.thread.messages.length - 1]?.id === s.message.id
 
     return s.message.status?.type === 'running' || !isLastMessage ? EMPTY_PARTS : s.message.parts
   })
 
-  return <ChangedFilesCard parts={settledParts} />
+  // 切走代码开发时卡片随之卸载，它打开的本轮差异面板也一并关闭。
+  return codeWorkspace ? <ChangedFilesCard parts={settledParts} /> : null
 }
 
 /**
@@ -966,7 +992,15 @@ const ErrorRecoveryActions: FC = () => {
   )
 }
 
-const AssistantActionBar: FC<MessageActionProps & { durationS?: number }> = ({
+const MESSAGE_ACTIONS_SCOPE = 'desktop.message-actions'
+registerPluginLocales(MESSAGE_ACTIONS_SCOPE, {
+  en: { regenerate: 'Regenerate response' },
+  zh: { regenerate: '重新生成回复' },
+  'zh-hant': { regenerate: '重新產生回覆' }
+})
+
+const AssistantActionBar: FC<MessageActionProps & { durationS?: number; branchPicker?: ReactNode }> = ({
+  branchPicker,
   durationS,
   fullResponseAvailable,
   getFullResponseText,
@@ -977,6 +1011,8 @@ const AssistantActionBar: FC<MessageActionProps & { durationS?: number }> = ({
   const { t } = useI18n()
   const copy = t.assistant.thread
 
+  const actionCopy = usePluginI18n(MESSAGE_ACTIONS_SCOPE)
+  const developerMode = useStore($developerMode)
   const responseIds = useContext(ResponseMessageIds)
   const [pickerOpen, setPickerOpen] = useState(false)
   const { enabled: reactionsEnabled, react, reactions: shownReactions } = useMessageReactions(messageId, 'assistant')
@@ -990,29 +1026,13 @@ const AssistantActionBar: FC<MessageActionProps & { durationS?: number }> = ({
   )
 
   return (
-    <div className="relative flex w-full shrink-0 items-center justify-end gap-1.5">
-      {durationS !== undefined && responseIds.length === 0 && (
-        <span
-          className="mr-auto select-none px-0.5 text-[0.6875rem] leading-5 tabular-nums text-muted-foreground"
-          data-slot="aui_turn-duration"
-          title={t.assistant.thread.turnDuration(formatElapsed(durationS))}
-        >
-          ⏱ {formatElapsed(durationS)}
-        </span>
-      )}
+    <div className="relative flex w-full shrink-0 flex-wrap items-center justify-start gap-1.5">
       <ActionBarPrimitive.Root
-        className={
-          // NOTE: intentionally NOT `hideWhenRunning`. That prop unmounts the
-          // bar while the thread streams, which collapses every completed
-          // assistant message's footer by this bar's height and shifts the
-          // whole conversation when the turn resolves. AssistantFooter hides
-          // and disables it for the entire live turn while preserving its height;
-          // hover may reveal actions only after that turn finishes.
-          'relative flex flex-row items-center justify-end gap-1.5 py-1.5 opacity-0 pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100'
-        }
+        // Keep the row mounted while streaming so settling never shifts the transcript.
+        className="relative flex flex-row items-center justify-start gap-1.5 py-[5px]"
         data-slot="aui_msg-actions"
       >
-        {onBranchInNewChat && (
+        {developerMode && onBranchInNewChat && (
           <TooltipIconButton
             onClick={() => {
               triggerHaptic('selection')
@@ -1023,22 +1043,31 @@ const AssistantActionBar: FC<MessageActionProps & { durationS?: number }> = ({
             <GitForkIcon className="size-3.5" />
           </TooltipIconButton>
         )}
+        <CopyButton appearance="icon" buttonSize="icon" label={copy.copy} side="top" text={getMessageText} />
         <ConversationReplyShareButton messageId={messageId} />
-        <CopyButton appearance="icon" buttonSize="icon" label={copy.copy} text={getMessageText} />
-        {fullResponseAvailable && (
-          <CopyButton appearance="icon" buttonSize="icon" label={copy.copyFullResponse} text={getFullResponseText} />
+        {developerMode && fullResponseAvailable && (
+          <CopyButton
+            appearance="icon"
+            buttonSize="icon"
+            label={copy.copyFullResponse}
+            side="top"
+            text={getFullResponseText}
+          />
         )}
-        <ReadAloudButton
-          fullResponseAvailable={fullResponseAvailable}
-          getFullText={getFullResponseText}
-          getText={getMessageText}
-          messageId={messageId}
-        />
+        {developerMode && (
+          <ReadAloudButton
+            fullResponseAvailable={fullResponseAvailable}
+            getFullText={getFullResponseText}
+            getText={getMessageText}
+            messageId={messageId}
+          />
+        )}
         <ActionBarPrimitive.Reload asChild>
-          <TooltipIconButton onClick={() => triggerHaptic('submit')} tooltip={copy.refresh}>
+          <TooltipIconButton onClick={() => triggerHaptic('submit')} tooltip={actionCopy('regenerate')}>
             <RefreshCwIcon className="size-3.5" />
           </TooltipIconButton>
         </ActionBarPrimitive.Reload>
+        {branchPicker}
       </ActionBarPrimitive.Root>
       {/* ONE slot, Slack-style: the picker trigger and the landed reaction are
           the same element, so reacting never shifts layout. Empty → ☺, hidden
@@ -1046,9 +1075,8 @@ const AssistantActionBar: FC<MessageActionProps & { durationS?: number }> = ({
           — the aui_msg-reactions rules outweigh Tailwind utilities here).
           Reacted → the emoji itself, always visible at full strength, and
           clicking it reopens the picker to switch or retract. Outside
-          ActionBarPrimitive.Root so a landed reaction doesn't ride the bar's
-          hover opacity. */}
-      {(reactionsEnabled || shownReactions.length > 0) && (
+          ActionBarPrimitive.Root; the footer owns visibility for the entire row. */}
+      {developerMode && (reactionsEnabled || shownReactions.length > 0) && (
         <ReactionPicker
           onOpenChange={setPickerOpen}
           onSelect={pickEmoji}
@@ -1075,6 +1103,16 @@ const AssistantActionBar: FC<MessageActionProps & { durationS?: number }> = ({
             )}
           </TooltipIconButton>
         </ReactionPicker>
+      )}
+      <ReplyMetadata />
+      {durationS !== undefined && responseIds.length === 0 && (
+        <span
+          className="select-none px-0.5 text-[0.6875rem] leading-5 tabular-nums text-muted-foreground"
+          data-slot="aui_turn-duration"
+          title={t.assistant.thread.turnDuration(formatElapsed(durationS))}
+        >
+          ⏱ {formatElapsed(durationS)}
+        </span>
       )}
     </div>
   )
@@ -1148,34 +1186,50 @@ const AssistantFooter: FC<MessageActionProps & { durationS?: number }> = ({ dura
   const view = useSessionView()
   const busy = useStore(view.$busy)
   const awaitingResponse = useStore(view.$awaitingResponse)
-  const running = useAuiState(s => s.thread.isRunning || s.message.status?.type === 'running')
-  const hidden = running || busy || awaitingResponse
+  const threadRunning = useAuiState(s => s.thread.isRunning)
+  const messageRunning = useAuiState(s => s.message.status?.type === 'running')
+  const currentTurn = useAuiState(s => isCurrentTurnMessage(s.thread.messages, s.message.id))
+
+  const latestReply = useAuiState(
+    s =>
+      s.thread.messages.findLast(message => message.role === 'assistant' && contentHasVisibleText(message.content))
+        ?.id === s.message.id
+  )
+
+  const live = threadRunning || busy || awaitingResponse
+  const hidden = messageRunning || (currentTurn && live)
 
   return (
     <div
       aria-hidden={hidden || undefined}
       className={cn(
-        'flex min-h-6 flex-col items-end gap-1 pr-(--message-text-indent) pl-(--message-text-indent)',
+        'mt-[6px] flex min-h-6 flex-col items-start gap-1 pr-(--message-text-indent) pl-(--message-text-indent)',
         hidden && 'invisible pointer-events-none'
       )}
+      data-always-visible={(latestReply && !live && !messageRunning) || undefined}
       data-slot="aui_assistant-footer"
       inert={hidden || undefined}
     >
-      <BranchPickerPrimitive.Root
-        className="inline-flex h-6 items-center gap-1 text-xs text-muted-foreground"
-        hideWhenSingleBranch
-      >
-        <BranchPickerPrimitive.Previous className="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-default disabled:opacity-35">
-          <Codicon name="chevron-left" size="0.875rem" />
-        </BranchPickerPrimitive.Previous>
-        <span className="tabular-nums">
-          <BranchPickerPrimitive.Number /> / <BranchPickerPrimitive.Count />
-        </span>
-        <BranchPickerPrimitive.Next className="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-default disabled:opacity-35">
-          <Codicon name="chevron-right" size="0.875rem" />
-        </BranchPickerPrimitive.Next>
-      </BranchPickerPrimitive.Root>
-      <AssistantActionBar durationS={durationS} {...props} />
+      <AssistantActionBar
+        branchPicker={
+          <BranchPickerPrimitive.Root
+            className="inline-flex h-6 items-center gap-1 text-xs text-muted-foreground"
+            hideWhenSingleBranch
+          >
+            <BranchPickerPrimitive.Previous className="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-default disabled:opacity-35">
+              <Codicon name="chevron-left" size="0.875rem" />
+            </BranchPickerPrimitive.Previous>
+            <span className="tabular-nums">
+              <BranchPickerPrimitive.Number /> / <BranchPickerPrimitive.Count />
+            </span>
+            <BranchPickerPrimitive.Next className="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-default disabled:opacity-35">
+              <Codicon name="chevron-right" size="0.875rem" />
+            </BranchPickerPrimitive.Next>
+          </BranchPickerPrimitive.Root>
+        }
+        durationS={durationS}
+        {...props}
+      />
     </div>
   )
 }

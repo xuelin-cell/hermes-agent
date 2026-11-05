@@ -268,6 +268,7 @@ const watchPreviewTileMirror = paneMirror<{ id: string }>({
   // `openPreview` ran and the click looked like a no-op.
   key: tab => tab.id,
   prefix: PREVIEW_TILE_PREFIX,
+  headerVeto: tabId => targetFor(tabId)?.kind !== 'url',
   // The FIRST preview still opens its own zone docked beside main (identical
   // to route tiles — NOT anchored to the file tree, so ⌘J can't take it
   // along). Every SUBSEQUENT preview stacks into that zone as a center tab:

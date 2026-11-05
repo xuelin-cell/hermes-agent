@@ -24,6 +24,12 @@ const views: SettingsView[] = [
 ]
 
 describe('settings subpage routing', () => {
+  it('工作空间保留仓库扫描设置，仅显示一个默认位置入口', () => {
+    const keys = SECTIONS.find(section => section.id === 'workspace')!.keys
+    expect(keys).toContain('desktop.repo_scan_enabled')
+    expect(keys).not.toContain('terminal.cwd')
+  })
+
   it('仅在开发者模式下显示 Browser 设置入口', () => {
     expect(settingsViewVisible('config:browser', false)).toBe(false)
     expect(settingsViewVisible('config:browser', true)).toBe(true)
@@ -165,4 +171,14 @@ describe('settings subpage routing', () => {
       ])
     )
   })
+})
+
+
+it('keeps safety approvals available while restricting privacy and checkpoints to developers', () => {
+  expect(settingsViewVisible('config:safety', false)).toBe(true)
+  expect(settingsSubpages('config:safety', false).map(page => page.id)).toEqual(['approvals'])
+  expect(settingsSubpages('config:safety', true).map(page => page.id)).toEqual(['approvals', 'privacy', 'checkpoints'])
+  expect(settingsFieldVisible('config:safety', 'approvals.mode', false)).toBe(true)
+  expect(settingsFieldVisible('config:safety', 'security.redact_secrets', false)).toBe(false)
+  expect(settingsFieldVisible('config:safety', 'checkpoints.enabled', false)).toBe(false)
 })

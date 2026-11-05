@@ -64,14 +64,18 @@ def get_current_runtime(config: dict) -> str:
 
 
 def get_configured_codex_binary(config: dict) -> str:
-    """``model.codex_bin`` (one argv element, never shell-parsed) or bare ``codex`` from PATH.
+    """Explicit ``model.codex_bin``, then the verified PM package, then ``codex`` on PATH.
 
     Gateway/service/Kanban-worker processes often run with a minimal PATH that lacks the codex
     CLI (e.g. a desktop-bundled ``.../Codex.app/Contents/Resources/codex``), so users need a
     config-level override for every codex spawn site (#61360)."""
     model_cfg = config.get("model") if isinstance(config, dict) else None
     value = model_cfg.get("codex_bin") if isinstance(model_cfg, dict) else None
-    return str(value or "").strip() or "codex"
+    if str(value or "").strip():
+        return str(value).strip()
+    from pm import installed_package
+    installed = installed_package("codex")
+    return str(installed.binary) if installed and installed.binary else "codex"
 
 
 def set_runtime(config: dict, new_value: str) -> str:

@@ -26,6 +26,8 @@ def _restore_agent_model_runtime(agent, snapshot: dict | None) -> None:
     """Restore an agent model runtime captured before a one-turn override."""
     if not snapshot or agent is None:
         return
+    if getattr(agent, "_desktop_code_mode", False):
+        agent._close_codex_session()
     # `/model X --reasoning high --once`: the effort leaves with the model. Set before the
     # runtime restore paths below (primary_runtime may predate a session /reasoning change).
     if "reasoning_config" in snapshot:
@@ -252,10 +254,12 @@ def _expensive_model_confirm(result, current_base_url: str, current_api_key, age
 
 def _commit_agent_switch(sid: str, session: dict, agent, result, current_model: str, snapshot):
     """Swap the live agent in place, then restart/persist/mark/announce; a failed swap aborts."""
+    if getattr(agent, "_desktop_code_mode", False) and result.api_mode not in (None, "", "chat_completions"):
+        raise ValueError("代码模式目前支持 Chat Completions 套餐模型，请选择 DeepSeek 或 GLM")
     try:
         agent.switch_model(
             new_model=result.new_model, new_provider=result.target_provider, api_key=result.api_key,
-            base_url=result.base_url, api_mode=result.api_mode,
+            base_url=result.base_url, api_mode="codex_app_server" if getattr(agent, "_desktop_code_mode", False) else result.api_mode,
             capabilities=getattr(result, "runtime_capabilities", None))
     except Exception as exc:
         # The in-place swap rolled the agent back and re-raised. Abort the whole commit (worker
@@ -267,6 +271,8 @@ def _commit_agent_switch(sid: str, session: dict, agent, result, current_model: 
         logger.warning("In-place model switch failed for TUI agent: %s", exc)
         raise ValueError(f"Model switch to {result.new_model} failed ({exc}); "
                          f"staying on {getattr(agent, 'model', current_model)}.") from exc
+    if getattr(agent, "_desktop_code_mode", False):
+        agent._close_codex_session()
     _restart_slash_worker(sid, session)
     _persist_live_session_runtime(session)
     _persist_live_session_system_prompt(session)
@@ -338,7 +344,8 @@ def _apply_model_switch(
     if pin_session_override and isinstance(session, dict) and not one_turn:
         session["model_override"] = {
             "model": result.new_model, "provider": result.target_provider,
-            "base_url": result.base_url, "api_key": result.api_key, "api_mode": result.api_mode}
+            "base_url": result.base_url, "api_key": result.api_key, "api_mode": result.api_mode,
+            **({"code_mode": True} if getattr(agent, "_desktop_code_mode", False) else {})}
     if persist_global:
         from hermes_cli.model_switch import persist_model_selection
         persist_model_selection(result)

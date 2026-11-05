@@ -18,10 +18,11 @@ import type {
   LoginAccount
 } from '../electron/login/contract'
 import type { MachineProfile } from '../electron/machine-profile'
-import type { LocalConnectorRequest, LocalConnectorResult } from '../electron/open-connector/contract'
 import type { HermesNotification } from '../electron/notification-types'
+import type { LocalConnectorRequest, LocalConnectorResult } from '../electron/open-connector/contract'
 import type { PoolLimits } from '../electron/pool-limits'
 import type { PreviewExport, PreviewExportResult } from '../electron/preview-export'
+import type { SessionListSnapshot } from '../electron/session-list-snapshot-contract'
 import type { UniworkAsrBridge } from '../electron/uniwork-asr/contract'
 import type { NtfyEvent, NtfyRefreshResult, NtfyStatus } from '../electron/uniwork-notify/contract'
 import type { PlanSubscriptionResult, PlanUsageResult } from '../electron/uniwork-usage/contract'
@@ -36,6 +37,7 @@ import type {
   PetOverlayStatePayload
 } from './store/pet-overlay'
 import type { QuickEntryStatePush, QuickEntryStatus, QuickEntrySubmitPayload } from './store/quick-entry'
+import type { SessionInfo } from './types/hermes'
 
 export {}
 
@@ -315,6 +317,10 @@ declare global {
         discover: (org?: string) => Promise<DesktopCloudDiscoverResult>
         agentSignIn: (dashboardUrl: string) => Promise<DesktopCloudAgentSignInResult>
       }
+      sessionListSnapshot?: {
+        read: (profile: string) => Promise<SessionListSnapshot<SessionInfo>>
+        write: (profile: string, snapshot: SessionListSnapshot<SessionInfo>) => Promise<void>
+      }
       profile: {
         getDefault: () => Promise<DesktopProfileRoute | null>
         setDefault: (route: DesktopProfileRoute) => Promise<DesktopProfileRoute>
@@ -351,6 +357,7 @@ declare global {
       /** 只另存当前预览内容，不接受页面指定的写入路径。 */
       exportPreview: (input: PreviewExport) => Promise<PreviewExportResult>
       /** 默认目录是账号工作区时新建对话专属文件夹；其它情况返回 null。 */
+      ensureCodeFolder?: (defaultCwd: string) => Promise<null | string>
       createConversationFolder?: (defaultCwd: string) => Promise<null | string>
       /** 删除刚建且仍为空的对话文件夹，用于创建会话失败时收尾。 */
       discardConversationFolder?: (folder: string) => Promise<void>
@@ -485,9 +492,10 @@ declare global {
       resolveFavicon?: (url: string) => Promise<string>
       sanitizeWorkspaceCwd: (cwd?: null | string) => Promise<{ cwd: string; sanitized: boolean }>
       settings: {
-        getDefaultProjectDir: () => Promise<{ defaultLabel: string; dir: null | string; resolvedCwd: string }>
+        restartForDefaultProjectDir?: () => Promise<void>
+        getDefaultProjectDir: () => Promise<{ activeRoot?: string; defaultLabel: string; dir: null | string; resolvedCwd: string; unusable?: boolean }>
         pickDefaultProjectDir: () => Promise<{ canceled: boolean; dir: null | string }>
-        setDefaultProjectDir: (dir: null | string) => Promise<{ dir: null | string }>
+        setDefaultProjectDir: (dir: null | string) => Promise<{ dir: null | string; activeRoot?: string; restartRequired?: boolean; unusable?: boolean }>
       }
       zoom?: {
         get: () => Promise<{ level: number; percent: number }>
@@ -774,7 +782,8 @@ export interface DesktopSyncReceipt {
 }
 
 export interface DesktopVersionInfo {
-  /** Packaged client version, or the runtime version for source installs. */
+  /** The client's own release: the packaged version, or the package version for
+   *  source installs (the runtime version only when that is unknown). */
   appVersion: string
   /** Fixed release identity. Commit builds have no update channel. */
   channel?: string | null

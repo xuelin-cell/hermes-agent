@@ -231,7 +231,10 @@ const COMPARED_FIELDS = [
   'completedAt',
   // Turn wall-clock duration — stamps the visible "⏱ 38s" badge, so a change
   // must re-render (set once at completion; stable afterwards).
-  'durationS'
+  'durationS',
+  'turnTokenUsage',
+  'turnModel',
+  'turnCompletedAt'
 ] as const
 
 const IGNORED_FIELDS = ['attachmentRefs', 'parts', 'serverRowSpan', 'systemNotice'] as const
@@ -348,6 +351,15 @@ export function chatMessagesEquivalent(a: ChatMessage, b: ChatMessage): boolean 
     a.branchGroupId !== b.branchGroupId ||
     a.timestamp !== b.timestamp ||
     a.completedAt !== b.completedAt ||
+    a.turnTokenUsage?.input_tokens !== b.turnTokenUsage?.input_tokens ||
+    a.turnTokenUsage?.output_tokens !== b.turnTokenUsage?.output_tokens ||
+    a.turnTokenUsage?.total_tokens !== b.turnTokenUsage?.total_tokens ||
+    a.turnTokenUsage?.cache_read_tokens !== b.turnTokenUsage?.cache_read_tokens ||
+    a.turnTokenUsage?.cache_write_tokens !== b.turnTokenUsage?.cache_write_tokens ||
+    a.turnModel?.model !== b.turnModel?.model ||
+    a.turnModel?.name !== b.turnModel?.name ||
+    a.turnModel?.provider !== b.turnModel?.provider ||
+    a.turnCompletedAt !== b.turnCompletedAt ||
     // Interim gates the action footer, so flipping it must repaint (e.g. a
     // previewed final settling onto a sealed interim bubble restores the bar).
     (a.interim ?? false) !== (b.interim ?? false) ||

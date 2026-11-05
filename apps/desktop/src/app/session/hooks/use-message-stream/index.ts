@@ -1,4 +1,4 @@
-import type { PersistedTurn } from '@hermes/shared'
+import type { PersistedTurn, TurnReplyModel, TurnTokenUsage } from '@hermes/shared'
 import type { QueryClient } from '@tanstack/react-query'
 import { type MutableRefObject, useCallback, useEffect, useRef } from 'react'
 
@@ -627,7 +627,10 @@ export function useMessageStream({
       occurredAt = Date.now() / 1000,
       persistedTurn?: PersistedTurn | null,
       responseTransformed?: boolean,
-      status?: string
+      status?: string,
+      turnTokenUsage?: TurnTokenUsage,
+      turnModel?: TurnReplyModel,
+      turnCompletedAt?: number
     ) => {
       let shouldHydrate = false
 
@@ -638,10 +641,29 @@ export function useMessageStream({
         // the just-cancelled full text, so we settle and bail instead — only
         // extending the bubble to the partial the agent persisted (#121594).
         if (state.interrupted) {
+          const messages =
+            status === 'interrupted' ? extendInterruptedReply(state.messages, text, occurredAt) : state.messages
+
+          const lastUserIndex = messages.findLastIndex(message => message.role === 'user')
+
+          const lastReplyIndex = messages.findLastIndex(
+            (message, index) => index > lastUserIndex && message.role === 'assistant' && !message.hidden
+          )
+
           return {
             ...state,
             messages:
-              status === 'interrupted' ? extendInterruptedReply(state.messages, text, occurredAt) : state.messages,
+              status === 'interrupted' && (turnTokenUsage || turnModel) && lastReplyIndex >= 0
+                ? messages.map((message, index) =>
+                    index === lastReplyIndex
+                      ? {
+                          ...message,
+                          ...(turnTokenUsage ? { turnTokenUsage } : {}),
+                          ...(turnModel ? { turnModel } : {})
+                        }
+                      : message
+                  )
+                : messages,
             awaitingResponse: false,
             busy: false,
             needsInput: false,
@@ -687,7 +709,10 @@ export function useMessageStream({
           return {
             ...message,
             durableComplete: persistedTurn?.complete === true,
+            ...(turnTokenUsage ? { turnTokenUsage } : {}),
+            ...(turnModel ? { turnModel } : {}),
             persistedTurn: persistedTurn ?? undefined,
+            ...(turnCompletedAt !== undefined && status === 'complete' ? { turnCompletedAt } : {}),
             // A folded bubble can already address its first source row. Keep
             // that address and bind the final response's exact source as well.
             ...(hasFinalRow

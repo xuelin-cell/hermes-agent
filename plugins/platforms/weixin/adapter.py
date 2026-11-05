@@ -1,18 +1,75 @@
 """桌面微信展示适配，所有 iLink 协议仍由原版负责。"""
 
+import asyncio
+import logging
+
 from gateway.platforms._shared import extra_or_secret, get_scoped_secret
 from gateway.platforms.weixin import WeixinAdapter, check_weixin_requirements
 from plugins.platforms.desktop_presentation import DesktopPresentationMixin
 
+_log = logging.getLogger(__name__)
+DISCONNECT_NOTICE_TIMEOUT = 2.0
+DISCONNECT_NOTICE = (
+    "⚠️ 微信连接即将断开，正在处理的回复可能中断。"
+    "连接恢复前，无法接收或回复新消息。请在 UniWork 中检查微信连接。"
+)
+
 
 class DesktopWeixinAdapter(DesktopPresentationMixin, WeixinAdapter):
-    """连接、鉴权、媒体和 typing 完整沿用原版。"""
+    """复用原版协议，在可控断开前补充一次中文提醒。"""
+
+    def __init__(self, config):
+        """按适配器实例串行收尾，避免并发关闭提前拆掉通知通道。"""
+        super().__init__(config)
+        self._disconnect_lock = asyncio.Lock()
+        self._disconnect_notice_attempted = False
+
+    async def connect(self, *, is_reconnect: bool = False) -> bool:
+        """成功建立新连接后，重新允许下一次断开提醒。"""
+        connected = await super().connect(is_reconnect=is_reconnect)
+        if connected:
+            self._disconnect_notice_attempted = False
+        return connected
+
+    async def disconnect(self) -> None:
+        """通道仍可发送时仅提醒本账号绑定目标；失败或取消也继续原生清理。"""
+        async with self._disconnect_lock:
+            try:
+                home = self.config.home_channel
+                if (
+                    self._desktop_quiet()
+                    and self._running
+                    and not self._disconnect_notice_attempted
+                    and home
+                    and home.platform == self.platform
+                    and home.chat_id
+                    and self._send_session
+                    and not self._send_session.closed
+                ):
+                    self._disconnect_notice_attempted = True
+                    try:
+                        async with asyncio.timeout(DISCONNECT_NOTICE_TIMEOUT):
+                            result = await self.send(
+                                str(home.chat_id),
+                                DISCONNECT_NOTICE,
+                                metadata={"_interim_send": True},
+                            )
+                        if not result.success:
+                            _log.warning("微信断开提醒未能送达")
+                    except Exception:
+                        _log.warning("微信断开提醒发送失败或超时")
+            finally:
+                await super().disconnect()
 
 
 def _is_connected(config) -> bool:
     """与原版适配器读取方式一致：token 和账号都存在才算已配置，未扫码的 Profile 不会被自动启用。"""
     extra = getattr(config, "extra", None) or {}
-    token = getattr(config, "token", None) or extra.get("token") or get_scoped_secret("WEIXIN_TOKEN", "")
+    token = (
+        getattr(config, "token", None)
+        or extra.get("token")
+        or get_scoped_secret("WEIXIN_TOKEN", "")
+    )
     account = extra_or_secret(extra, "account_id", "WEIXIN_ACCOUNT_ID")
     return bool(str(token or "").strip() and str(account or "").strip())
 

@@ -147,8 +147,16 @@ def install_market_skill(
     url: str, identifier: str, profile: Optional[str] = None, *, approved_hash: Optional[str] = None,
 ) -> dict:
     """在目标配置档中下载、隔离扫描并安装一个 UniWork 技能。"""
+    return install_skill_bundle(
+        bundle_from_zip(download_skill_package(url), identifier, url), profile,
+        approved_hash=approved_hash,
+    )
+
+
+def install_skill_bundle(bundle: SkillBundle, profile: Optional[str] = None, *, approved_hash: Optional[str] = None) -> dict:
+    """Install uploaded and downloaded bundles through the same scan policy."""
     with _profile_scope(profile):
-        bundle = bundle_from_zip(download_skill_package(url), identifier, url)
+        url = bundle.metadata.get("source_url", "")
         from tools.skills_hub import HUB_DIR, HubLockFile, _skills_dir
 
         existing = HubLockFile().get_installed(bundle.name)

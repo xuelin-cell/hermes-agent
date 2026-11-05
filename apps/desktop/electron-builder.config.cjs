@@ -235,8 +235,13 @@ module.exports = {
     // electron-updater reads this baked copy for the feed origin. Only the
     // self-managed NSIS build publishes one; an MSIX install is updated by
     // the App Installer descriptor instead.
+    // useMultipleRangeRequest:false — S3-semantics mirrors (our OBS) answer a
+    // merged multi-range GET with one plain body, so electron-updater's default
+    // batching fails its multipart/byteranges check and every update silently
+    // falls back to a full download. Sequential single-range requests keep the
+    // differential path alive (the mechanism the GitHub provider ships).
     ...(winFeed && publicUrl
-      ? { publish: [{ provider: 'generic', url: `${publicUrl}/${winFeed.directory}/`, channel: winFeed.channel }] }
+      ? { publish: [{ provider: 'generic', url: `${publicUrl}/${winFeed.directory}/`, channel: winFeed.channel, useMultipleRangeRequest: false }] }
       : {}),
     ...windowsSigning()
   },

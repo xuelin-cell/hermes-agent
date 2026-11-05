@@ -28,9 +28,6 @@ import { pdfjsAssets } from './scripts/pdfjs-assets.mjs'
 // The runner loads this as ESM without the default bundler's CJS globals.
 const __dirname: string = path.dirname(fileURLToPath(import.meta.url))
 
-// The browser (cloud) build signs users in at the entry: no desktop login window.
-const loginEntry = process.env.VITE_HERMES_BROWSER_BUILD === '1' ? {} : { login: path.resolve(__dirname, 'login.html') }
-
 // `hgui` symlinks a worktree's node_modules to the main checkout. Vite realpaths
 // those before enforcing server.fs.allow, so codicon/font assets resolve outside
 // the worktree root and 404. Whitelist the real node_modules locations.
@@ -183,7 +180,7 @@ export default defineConfig(({ command }) => ({
     // imports stay lazy, and the file count stays in the tens.
     chunkSizeWarningLimit: 25000,
     rolldownOptions: {
-      input: { main: path.resolve(__dirname, 'index.html'), ...loginEntry },
+      input: { main: path.resolve(__dirname, 'index.html'), login: path.resolve(__dirname, 'login.html') },
       output: {
         advancedChunks: {
           groups: [

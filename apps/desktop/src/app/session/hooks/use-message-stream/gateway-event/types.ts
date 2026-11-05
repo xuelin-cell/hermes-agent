@@ -1,4 +1,4 @@
-import type { GatewayEvent, PersistedTurn } from '@hermes/shared'
+import type { GatewayEvent, PersistedTurn, TurnReplyModel, TurnTokenUsage } from '@hermes/shared'
 import type { QueryClient } from '@tanstack/react-query'
 import type { MutableRefObject } from 'react'
 
@@ -23,7 +23,10 @@ export interface GatewayEventDeps {
     occurredAt?: number,
     persistedTurn?: PersistedTurn | null,
     responseTransformed?: boolean,
-    status?: string
+    status?: string,
+    turnTokenUsage?: TurnTokenUsage,
+    turnModel?: TurnReplyModel,
+    turnCompletedAt?: number
   ) => void
   failAssistantMessage: (
     sessionId: string,

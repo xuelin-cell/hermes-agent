@@ -11,11 +11,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { en } from '@/i18n/en'
 import type { ErrorCardCopy } from '@/i18n/types'
+import { formatFooterTime } from '@/lib/message-time'
+import { $developerMode } from '@/store/developer-mode'
 import { $displayTimestamps } from '@/store/display-timestamps'
+import { $selectedWorkspaceMode } from '@/store/workspace-category'
 
 import { stubThreadEnvironment } from '../test-utils'
 
-import { formatTimelineRange, formatTimelineTimestamp } from './timestamp'
+import { formatTimelineRange } from './timestamp'
 
 import { Thread } from '.'
 
@@ -51,6 +54,7 @@ stubThreadEnvironment()
 
 afterEach(() => {
   cleanup()
+  $developerMode.set(false)
   requestFreshSession.mockClear()
   startManualProviderOAuth.mockClear()
   requestModelMenuToggle.mockReset().mockReturnValue(true)
@@ -200,6 +204,7 @@ function Harness({
 
 describe('AssistantMessage branch button visibility (bug #2 fix)', () => {
   it('shows the Branch in new chat button when a handler is provided (open chat)', async () => {
+    $developerMode.set(true)
     render(<Harness onBranchInNewChat={() => undefined} />)
 
     expect(await screen.findByRole('button', { name: 'Branch in new chat' })).toBeTruthy()
@@ -457,7 +462,7 @@ describe('expired OAuth grant recovery', () => {
 })
 
 describe('message timeline timestamps', () => {
-  it('always renders precise user and assistant lifecycle times', async () => {
+  it('renders the user send time separately from precise assistant lifecycle times', async () => {
     const { container } = render(<Harness />)
 
     await screen.findByText('done')
@@ -468,7 +473,9 @@ describe('message timeline timestamps', () => {
 
     const startedAt = createdAt.getTime() / 1000
 
-    expect(stamps).toContain(formatTimelineTimestamp(startedAt))
+    expect(container.querySelector('[data-slot="aui_user-sent-time"]')?.textContent).toBe(
+      formatFooterTime(startedAt, 'en', 'Yesterday')
+    )
     expect(stamps).toContain(formatTimelineRange(startedAt, completedAt))
     expect(stamps).toContain(formatTimelineRange(startedAt + 0.05, startedAt + 0.1))
     expect(stamps).toContain(formatTimelineRange(startedAt + 0.125, startedAt + 0.5))
@@ -495,6 +502,7 @@ describe('message timeline timestamps', () => {
 })
 
 it('keeps the footer reserved but inaccessible until the whole reply finishes', async () => {
+  $developerMode.set(true)
   const { container, rerender } = render(<Harness isRunning onBranchInNewChat={() => undefined} />)
   await screen.findByText('done')
   const footer = container.querySelector('[data-slot="aui_assistant-footer"]')!
@@ -504,4 +512,49 @@ it('keeps the footer reserved but inaccessible until the whole reply finishes', 
   rerender(<Harness onBranchInNewChat={() => undefined} />)
   expect(await screen.findByRole('button', { name: 'Branch in new chat' })).toBeTruthy()
   expect(footer.hasAttribute('inert')).toBe(false)
+})
+
+it('日常办公和学习生活不显示文件已更改卡片，切回代码开发后照常显示', async () => {
+  const base = assistantMessage()
+  const diff = '--- a/report.txt\n+++ b/report.txt\n@@ -1 +1 @@\n-old\n+new'
+
+  const edited = {
+    ...base,
+    content: [
+      {
+        type: 'tool-call',
+        toolCallId: 'patch-1',
+        toolName: 'patch',
+        args: { path: 'report.txt' },
+        argsText: '{"path":"report.txt"}',
+        result: { success: true, diff }
+      },
+      ...base.content
+    ]
+  } as unknown as ThreadMessage
+
+  $selectedWorkspaceMode.set('work')
+
+  try {
+    const { container } = render(<Harness assistant={edited} />)
+    await screen.findByText('done')
+    expect(container.querySelector('[data-slot="aui_changed-files"]')).toBeNull()
+
+    act(() => $selectedWorkspaceMode.set('codex'))
+    await waitFor(() => expect(container.querySelector('[data-slot="aui_changed-files"]')).not.toBeNull())
+  } finally {
+    $selectedWorkspaceMode.set(null)
+  }
+})
+
+it('keeps normal reply actions focused on copying, sharing and retrying', async () => {
+  $developerMode.set(false)
+  const { container } = render(<Harness onBranchInNewChat={() => undefined} />)
+  await screen.findByText('done')
+  const bar = container.querySelector('[data-slot="aui_msg-actions"]')!
+  expect(bar).toBeTruthy()
+  expect(screen.queryByRole('button', { name: 'Branch in new chat' })).toBeNull()
+  expect(bar.querySelector('[aria-label="Copy"]')).toBeTruthy()
+  expect(bar.querySelectorAll('button').length).toBeLessThanOrEqual(3)
+  expect(bar.querySelector('button:last-child')?.getAttribute('aria-label')).toBe('Regenerate response')
 })

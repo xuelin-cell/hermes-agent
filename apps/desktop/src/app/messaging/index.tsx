@@ -14,7 +14,6 @@ import { AlertTriangle, CheckCircle2, Loader2, MessageCircle, RefreshCw, X } fro
 import { confirm } from '@/store/confirm'
 import { $platformsChangeTick } from '@/store/live-sync'
 import { notify } from '@/store/notifications'
-import { $settingsRequestProfile } from '@/store/settings-scope'
 
 import { useRefreshHotkey } from '../hooks/use-refresh-hotkey'
 import { PAGE_INSET_X } from '../layout-constants'
@@ -36,11 +35,12 @@ interface PlatformSnapshot {
   operationRevision: number
 }
 
-/** 继续使用原有配置作用域；页面不展示 Profile 选择，作用域变化时清掉旧表单与轮询。 */
-export function MessagingView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...props }: MessagingViewProps) {
-  const scopeProfile = useStore($settingsRequestProfile)
+// 专家助手没有独立消息平台，网关只服务主助手；页面固定读写主助手，不跟随设置页当前编辑的助手。
+const MESSAGING_PROFILE = 'default'
 
-  return <MessagingPage key={scopeProfile ?? 'custom'} scopeProfile={scopeProfile} {...props} />
+/** 消息平台只属于主助手：切到专家时也不会读到或写进专家复制来的旧凭据。 */
+export function MessagingView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...props }: MessagingViewProps) {
+  return <MessagingPage scopeProfile={MESSAGING_PROFILE} {...props} />
 }
 
 /** 页面提交必要配置，主进程统一校验保存和网关动作，原版接口提供连接状态。 */
@@ -299,11 +299,6 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
 
     try {
       const result = await window.hermesDesktop?.reconnectUniAgentGate?.(scopeProfile)
-
-      if ($settingsRequestProfile.get() !== scopeProfile) {
-        return
-      }
-
       const status = result?.status ?? 'restart_required'
 
       const messages = {

@@ -9,6 +9,7 @@ import type { HudModifierApi, HudModifierStatus } from './hud-modifier-types'
 import type { CloudDriveMutationProgress, CloudDriveRequest, CloudDriveTransferProgress, CloudDriveTransferRequest } from './login/contract'
 import { maskMcpSecrets, restoreMcpSecrets } from './mcp-secrets'
 import { CONNECTOR_CHANNEL, type LocalConnectorRequest } from './open-connector/contract'
+import type { SessionListSnapshot } from './session-list-snapshot-contract'
 import { ASR_CHANNEL } from './uniwork-asr/contract'
 import {
   NTFY_EVENT_CHANNEL,
@@ -420,6 +421,10 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     discover: org => ipcRenderer.invoke('hermes:cloud:discover', org),
     agentSignIn: dashboardUrl => ipcRenderer.invoke('hermes:cloud:agent-sign-in', dashboardUrl)
   },
+  sessionListSnapshot: {
+    read: (profile: string) => ipcRenderer.invoke('hermes:sessions:snapshot:read', profile),
+    write: (profile: string, snapshot: SessionListSnapshot) => ipcRenderer.invoke('hermes:sessions:snapshot:write', profile, snapshot)
+  },
   profile: {
     getDefault: () => ipcRenderer.invoke('hermes:profile:default:get'),
     setDefault: (route: DesktopProfileRoute) => ipcRenderer.invoke('hermes:profile:default:set', route),
@@ -458,6 +463,7 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   // 显式另存为交给账号受限接口，位置由原生保存框选择。
   exportPreview: input => ipcRenderer.invoke('hermes:preview:export', input),
   // 新对话的专属文件夹由主进程命名和创建，页面只提交查到的默认目录。
+  ensureCodeFolder: defaultCwd => ipcRenderer.invoke('hermes:conversation-folder:code', defaultCwd),
   createConversationFolder: defaultCwd => ipcRenderer.invoke('hermes:conversation-folder:create', defaultCwd),
   discardConversationFolder: folder => ipcRenderer.invoke('hermes:conversation-folder:discard', folder),
   // 程序被关掉中断的回答：主进程在后端启动前接手记录，页面据此显示 ▶ 继续。
@@ -543,6 +549,7 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   resolveFavicon: url => ipcRenderer.invoke('hermes:resolveFavicon', url),
   sanitizeWorkspaceCwd: cwd => ipcRenderer.invoke('hermes:workspace:sanitize', cwd),
   settings: {
+    restartForDefaultProjectDir: () => ipcRenderer.invoke('hermes:setting:defaultProjectDir:restart'),
     getDefaultProjectDir: () => ipcRenderer.invoke('hermes:setting:defaultProjectDir:get'),
     setDefaultProjectDir: dir => ipcRenderer.invoke('hermes:setting:defaultProjectDir:set', dir),
     pickDefaultProjectDir: () => ipcRenderer.invoke('hermes:setting:defaultProjectDir:pick')

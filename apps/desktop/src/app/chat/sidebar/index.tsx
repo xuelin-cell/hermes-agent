@@ -27,7 +27,6 @@ import { Tip, TipKeybindLabel } from '@/components/ui/tooltip'
 import { useContributions } from '@/contrib/react/use-contributions'
 import { searchSessions, type SessionInfo, type SessionSearchResult } from '@/hermes'
 import { useI18n } from '@/i18n'
-import { withoutHiddenNavItems } from '@/lib/browser-shell'
 import { comboTokens } from '@/lib/keybinds/combo'
 import { sessionMatchesSearch } from '@/lib/session-search'
 import { normalizeSessionSource, sessionSourceLabel } from '@/lib/session-source'
@@ -482,7 +481,7 @@ export function ChatSidebar({
     }
 
     return applySidebarNavPrefs(
-      withoutHiddenNavItems([...SIDEBAR_NAV, ...contributedNav])
+      [...SIDEBAR_NAV, ...contributedNav]
         .map(item => (item.id === 'capabilities' ? { ...item, label: capabilitiesLabel } : item))
         .filter(workspaceMode === 'work' ? () => true : shownInMode(interfaceMode)),
       navPrefs

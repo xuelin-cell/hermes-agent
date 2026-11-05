@@ -37,6 +37,7 @@ import { $sessionControlBySession, refreshSessionControl } from '@/store/session
 import { $threadScrolledUpBySession } from '@/store/thread-scroll'
 import { $retainedTodosBySession } from '@/store/todos'
 import { openSessionInNewWindow } from '@/store/windows'
+import { $codeWorkspace } from '@/store/workspace-category'
 
 import { PreviewStatusRow } from './preview-row'
 import { SessionControlSections } from './session-control'
@@ -127,6 +128,7 @@ export function ComposerStatusStack({ onSubmit, queue, sessionId }: ComposerStat
   const busy = useStore(useSessionView().$busy)
   const previews = useSessionSlice($previewStatusBySession, sessionId)
   const controlEntry = useSessionValue($sessionControlBySession, sessionId)
+  const codeWorkspace = useStore($codeWorkspace)
 
   const surfaceId = useComposerSurfaceId()
   const scrollSessionId = sessionId ?? surfaceId
@@ -202,8 +204,10 @@ export function ComposerStatusStack({ onSubmit, queue, sessionId }: ComposerStat
   const openSubagent = (item: ComposerStatusItem) =>
     item.sessionId ? void openSessionInNewWindow(item.sessionId, { watch: true }) : openAgents()
 
+  // 文件条只在代码开发显示；日常办公和学习生活从回复末尾的交付卡片打开成品。
+  // 只是不显示，记录照常保留。
   const previewRows =
-    visiblePreviews.length > 0 && sessionId
+    codeWorkspace && visiblePreviews.length > 0 && sessionId
       ? visiblePreviews.map(item => (
           <PreviewStatusRow
             item={item}

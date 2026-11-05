@@ -3,7 +3,6 @@ import { LOCAL_CONNECTION_ID } from '@hermes/shared'
 import { capabilityScoped, hermesApi, type OwnerScope } from '@/api/client'
 import type { HermesConnection } from '@/global'
 import { translateNow } from '@/i18n'
-import { browserMediaPlaybackUrl } from '@/lib/browser-shell'
 import { desktopFsCacheKey, readDesktopFileDataUrl } from '@/lib/desktop-fs'
 import { LruCache } from '@/lib/lru-cache'
 import { isWindowsPlatform } from '@/lib/platform'
@@ -206,7 +205,7 @@ export async function resolveMediaPlaybackSrc(path: string): Promise<string> {
   }
 
   if (window.hermesDesktop && ['audio', 'video'].includes(mediaKind(path))) {
-    return browserMediaPlaybackUrl(path) ?? (isRemoteGateway() ? mediaGatewayStreamUrl(path) : mediaStreamUrl(path))
+    return isRemoteGateway() ? mediaGatewayStreamUrl(path) : mediaStreamUrl(path)
   }
 
   return resolveMediaDisplaySrc(path)

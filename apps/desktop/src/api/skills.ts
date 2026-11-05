@@ -274,3 +274,19 @@ export function installUniWorkSkill(
     timeoutMs: 120_000
   })
 }
+
+export function uploadSkillPackage(filename: string, content: string, profile?: ProfileScope, approvedHash?: string) {
+  return window.hermesDesktop.api<{
+    ok: boolean
+    name?: string
+    requires_confirmation?: boolean
+    package_hash?: string
+    report?: string
+  }>({
+    ...capabilityScoped(profile),
+    path: '/api/skills/upload',
+    method: 'POST',
+    body: { filename, content, approved_hash: approvedHash },
+    timeoutMs: 120_000
+  })
+}

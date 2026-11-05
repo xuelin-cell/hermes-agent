@@ -115,7 +115,7 @@ it('ends the response at a real user prompt or unrelated system event', () => {
   expect(container.querySelectorAll('[data-slot="aui_msg-actions"]')).toHaveLength(3)
 })
 
-it('keeps all response text visible while displaying whole-second duration', async () => {
+it('collapses process parts while keeping the final text and whole-second duration visible', async () => {
   const messages = toChatMessages([
     { role: 'user', content: 'Create the report', timestamp: 1 },
     { role: 'assistant', content: 'Report completed', timestamp: 1383 }
@@ -146,22 +146,23 @@ it('keeps all response text visible while displaying whole-second duration', asy
   )
 
   await waitFor(() => expect(container.textContent).toContain('Report completed'))
-  expect(within(container).getByText('Preparing the report').closest('[hidden], [style*="display: none"]')).toBeNull()
+  expect(within(container).getByText('Preparing the report').closest('[hidden], [style*="display: none"]')).not.toBeNull()
   expect(within(container).getByText('Report completed').closest('[hidden], [style*="display: none"]')).toBeNull()
   const duration = container.querySelector('[data-slot="aui_turn-duration"]')!
   expect(duration.textContent).toContain('Worked for 23m 2s')
   expect(duration.textContent).not.toContain('3093128')
-  expect(container.querySelector('[data-slot="aui_process-summary"]')).toBeNull()
+  fireEvent.click(container.querySelector('[data-slot="aui_process-summary"]')!)
+  expect(within(container).getByText('Preparing the report').closest('[hidden]')).toBeNull()
 })
 
-it('collapses explicit interim updates only after a successful final reply', async () => {
+it('collapses earlier replies as answer text streams and keeps manual expansion available', async () => {
   const messages = toChatMessages([
     { role: 'user', content: 'Check the report', timestamp: 1 },
     { role: 'assistant', content: 'Checking sources', timestamp: 2 },
     { role: 'assistant', content: 'Full final answer', timestamp: 3 }
   ] as SessionMessage[]).map(toRuntimeMessage)
 
-  const interim = { ...messages[1]!, metadata: { custom: { interim: true } } } as ThreadMessage
+  const interim = messages[1]!
 
   const renderThread = (status: ThreadMessage['status']) => (
     <ThreadRuntime messages={[messages[0]!, interim, { ...messages[2]!, status } as ThreadMessage]}>
@@ -171,7 +172,11 @@ it('collapses explicit interim updates only after a successful final reply', asy
 
   const { container, rerender } = render(renderThread({ type: 'running' }))
   const update = () => within(container).getByText('Checking sources')
+  await waitFor(() => expect(update().closest('[hidden]')).not.toBeNull())
+  expect(within(container).getByText('Full final answer').closest('[hidden]')).toBeNull()
+  fireEvent.click(container.querySelector('[data-slot="aui_process-summary"]')!)
   await waitFor(() => expect(update().closest('[hidden]')).toBeNull())
+  fireEvent.click(container.querySelector('[data-slot="aui_process-summary"]')!)
   rerender(renderThread({ type: 'complete', reason: 'stop' }))
   await waitFor(() => expect(update().closest('[hidden]')).not.toBeNull())
   expect(within(container).getByText('Full final answer').closest('[hidden]')).toBeNull()
@@ -180,4 +185,62 @@ it('collapses explicit interim updates only after a successful final reply', asy
   fireEvent.click(container.querySelector('[data-slot="aui_process-summary"]')!)
   rerender(renderThread({ type: 'incomplete', reason: 'error' }))
   await waitFor(() => expect(update().closest('[hidden]')).toBeNull())
+})
+
+
+it('keeps active tools visible and collapses process parts when streamed answer text arrives', async () => {
+  const messages = toChatMessages([
+    { role: 'user', content: 'Analyze the report', timestamp: 1 },
+    { role: 'assistant', content: 'Checking sources', timestamp: 2 }
+  ] as SessionMessage[]).map(toRuntimeMessage)
+
+  const tool = { type: 'tool-call', toolCallId: 'check-report', toolName: 'terminal', args: { command: 'check' } }
+
+  const renderReply = (finished: boolean, resumesTools = false) => (
+    <ThreadRuntime messages={[messages[0]!, {
+      ...messages[1]!,
+      status: { type: 'running' },
+      content: [
+        { type: 'text', text: 'Checking sources' },
+        { ...tool, ...(finished ? { result: 'done' } : {}) },
+        ...(finished ? [{ type: 'text', text: 'The main conclusion is' }] : []),
+        ...(resumesTools ? [{ ...tool, toolCallId: 'verify-again' }] : [])
+      ]
+    } as ThreadMessage]}>
+      <Thread />
+    </ThreadRuntime>
+  )
+
+  const { container, rerender } = render(renderReply(false))
+  const process = () => within(container).getByText('Checking sources')
+  expect(process().closest('[hidden]')).toBeNull()
+  expect(container.querySelector('[data-slot="aui_process-summary"]')).toBeNull()
+  rerender(renderReply(true))
+  await waitFor(() => expect(process().closest('[hidden]')).not.toBeNull())
+  expect(within(container).getByText('The main conclusion is').closest('[hidden]')).toBeNull()
+  fireEvent.click(container.querySelector('[data-slot="aui_process-summary"]')!)
+  expect(process().closest('[hidden]')).toBeNull()
+  fireEvent.click(container.querySelector('[data-slot="aui_process-summary"]')!)
+  rerender(renderReply(true, true))
+  await waitFor(() => expect(process().closest('[hidden]')).toBeNull())
+})
+
+
+it('keeps searched pages expandable and linked outside the collapsed execution process', async () => {
+  const messages = toChatMessages([
+    { role: 'user', content: 'Find the report', timestamp: 1 },
+    { role: 'assistant', content: 'Report found', timestamp: 2 }
+  ] as SessionMessage[]).map(toRuntimeMessage)
+  const reply = { ...messages[1]!, content: [
+    { type: 'tool-call', toolName: 'web_search', toolCallId: 'search-report', args: { query: 'Annual report' }, result: { results: [{ title: 'Official annual report', url: 'https://example.com/report', snippet: 'Long search description' }] } },
+    { type: 'text', text: 'Report found' }
+  ] } as ThreadMessage
+  const { container } = render(<ThreadRuntime messages={[messages[0]!, reply]}><Thread /></ThreadRuntime>)
+  const sources = container.querySelector('[data-slot="web-search-sources"]') as HTMLDetailsElement
+  expect(sources).not.toBeNull()
+  expect(sources.closest('[hidden]')).toBeNull()
+  fireEvent.click(sources.querySelector('summary')!)
+  const link = within(sources).getByRole('link', { name: /Official annual report/ })
+  expect(link.getAttribute('href')).toBe('https://example.com/report')
+  expect(sources.textContent).not.toContain('Long search description')
 })

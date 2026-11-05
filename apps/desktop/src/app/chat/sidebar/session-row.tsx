@@ -17,6 +17,7 @@ import { type Translations, useI18n } from '@/i18n'
 import { sessionTitle } from '@/lib/chat-runtime'
 import { pathLeaf } from '@/lib/display-path'
 import { triggerHaptic } from '@/lib/haptics'
+import { FileText } from '@/lib/icons'
 import { middleClickHandlers } from '@/lib/middle-click'
 import { displayModelName } from '@/lib/model-status-label'
 import { sessionProjectLabel } from '@/lib/session-project-label'
@@ -31,6 +32,7 @@ import { $projects } from '@/store/projects'
 import { $pullRequestsByBranch, sessionPrKey } from '@/store/pull-requests'
 import { sessionPinId } from '@/store/session'
 import { $sessionDotStateById, hasLiveTurn, showsRunningArc } from '@/store/session-dot-state'
+import { $sessionsWithFiles } from '@/store/session-files'
 import { $sessionListDensity } from '@/store/session-list-density'
 import { $openStoredSessionIds } from '@/store/session-states'
 import { sessionCostUsd } from '@/store/sidebar-archive'
@@ -205,7 +207,12 @@ function SidebarSessionRowImpl({
   // switched on, and a PR keeps its place (and its click) unless it IS the last
   // thing. Chips used to render in the body instead, which left them stranded
   // to the left of the kebab's own column: never flush right, never swapping.
+  const hasFiles = useStoreSelector($sessionsWithFiles, ids => ids.includes(session.id) || ids.includes(sessionPinId(session)))
   const trailing: { key: string; node: React.ReactNode }[] = []
+
+  if (hasFiles) {
+    trailing.push({ key: 'files', node: <FileText aria-label={t.preview.openPreview} className="size-3.5 shrink-0 text-muted-foreground" /> })
+  }
 
   if ((showProfile || pinnedProfile) && hasProfileTag) {
     trailing.push({ key: 'profile', node: <ProfileTag profile={session.profile} /> })

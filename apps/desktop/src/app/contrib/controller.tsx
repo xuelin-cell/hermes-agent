@@ -537,7 +537,7 @@ const syncWorkspaceTitle = () => {
       // re-registering the pane.
       tabTitle: stored ? undefined : () => <SessionDraftTitle scope={selected} />,
       // Pages aren't tab-able: the main zone's bar stands down while one shows.
-      headerVeto: $workspaceIsPage.get(),
+      headerVeto: true,
       // Page-owned controls take the vetoed tab row. Deliberately NOT the
       // `titleBar.center` slot: that one stays mounted in the titlebar on every
       // route so plugin components (and their effects) survive navigation.

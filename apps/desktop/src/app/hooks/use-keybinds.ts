@@ -17,8 +17,8 @@ import {
 import { setWorkspaceScope } from '@/components/pane-shell/workspace-scope'
 import { onReleaseTypingFocus } from '@/components/ui/keyboard-first'
 import { translateNow } from '@/i18n/runtime'
-import { findInPageTakenByViewer } from '@/lib/browser-shell'
 import { findBarClaimsCombo } from '@/lib/find-in-page'
+import { findInPageTakenByViewer } from '@/lib/find-in-page-mt'
 import {
   contributedKeybindHandler,
   keybindAction,

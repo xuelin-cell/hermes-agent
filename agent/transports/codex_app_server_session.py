@@ -218,6 +218,7 @@ class CodexAppServerSession:
         model: Optional[str] = None, model_provider: Optional[str] = None,
         developer_instructions: Optional[str] = None, resume_thread_id: Optional[str] = None,
         history_seed: Optional[str] = None,
+        on_close: Optional[Callable[[], None]] = None,
     ) -> None:
         self._cwd = cwd or os.getcwd()
         self._codex_bin = codex_bin
@@ -243,6 +244,7 @@ class CodexAppServerSession:
         self._approval_callback = approval_callback
         self._on_event = on_event  # Display hook (kawaii spinner ticks etc.)
         self._routing = request_routing or _ServerRequestRouting()
+        self._on_close = on_close
         self._client_factory = client_factory or CodexAppServerClient
 
         self._client: Optional[CodexAppServerClient] = None
@@ -317,6 +319,9 @@ class CodexAppServerSession:
                 self._client.close()
         self._client = None
         self._thread_id = None
+        if self._on_close is not None:
+            self._on_close()
+            self._on_close = None
 
     def request_interrupt(self) -> None:
         """Idempotent: signal the active turn loop to issue turn/interrupt and unwind."""

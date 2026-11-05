@@ -10,7 +10,7 @@ import { $connection } from '@/store/session'
 
 import { ArtifactsView } from './index'
 
-vi.mock('./cloud-drive-tab', () => ({ CloudDriveTab: () => <p>Cloud file list</p> }))
+vi.mock('./cloud-library', () => ({ CloudLibrary: () => <p>Cloud file list</p> }))
 vi.mock('./use-local-artifacts', () => ({
   useLocalArtifacts: () => ({
     groups: [

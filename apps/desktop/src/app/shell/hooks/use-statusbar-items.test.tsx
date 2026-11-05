@@ -281,3 +281,14 @@ describe('useStatusbarItems session timer — runtime cache anchor', () => {
     expect(since).not.toBe(parentRowStartedAt * 1000)
   })
 })
+
+
+it('keeps the gateway restart menu available in developer mode while Bots is visible', () => {
+  $layoutTree.set(group(['hermes-bots:pane'], { active: 'hermes-bots:pane', id: 'bots' }))
+  const { result } = renderHook(() => useStatusbarItems(statusbarOptions), { wrapper })
+  const gateway = () => result.current.leftStatusbarItems.find(item => item.id === 'gateway-health')
+  expect(gateway()?.hidden).toBe(true)
+  act(() => $developerMode.set(true))
+  expect(gateway()?.hidden).toBe(false)
+  expect(gateway()?.menuContent).toBeTruthy()
+})

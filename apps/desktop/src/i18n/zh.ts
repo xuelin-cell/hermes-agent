@@ -5413,6 +5413,10 @@ export const zh = defineLocale({
       thoughtBriefly: '思考了片刻',
       thoughtFor: duration => `思考了 ${duration}`,
       turnDuration: duration => `本轮耗时 ${duration}`,
+      tokenUnit: 'tokens',
+      footerYesterday: '昨天',
+      turnTokenUsage: (input, output, total) =>
+        `本次回答累计用量，包含完成回答过程中多次模型调用的输入和输出。\n输入 ${input} · 输出 ${output} · 总计 ${total} tokens`,
       today: time => `今天，${time}`,
       yesterday: time => `昨天，${time}`,
       copy: '复制',

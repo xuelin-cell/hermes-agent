@@ -158,6 +158,17 @@ describe('VersionHero bundle banners', () => {
     expect(screen.getByText(`${en.updates.version('0.19.0')} · pm-preview`)).toBeTruthy()
   })
 
+  // The overlay keeps the brand mark; About opts out with showBrandMark={false}.
+  it('shows the brand mark unless the surface opts out', (): void => {
+    const { container }: { container: HTMLElement } = render(<VersionHero version={version({})} />)
+
+    expect(container.querySelector('img')).toBeTruthy()
+
+    const optedOut: { container: HTMLElement } = render(<VersionHero showBrandMark={false} version={version({})} />)
+
+    expect(optedOut.container.querySelector('img')).toBeNull()
+  })
+
   it.each(Object.entries(TRANSLATIONS) as [Locale, Translations][])(
     'localizes version channels in %s',
     (locale: Locale, copy: Translations): void => {

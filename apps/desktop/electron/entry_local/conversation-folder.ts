@@ -5,6 +5,8 @@ import { ipcMain, type IpcMainInvokeEvent, type Session } from 'electron'
 
 import { isDesktopRendererSender } from '../desktop-renderer-sender'
 
+import { CODE_FOLDER } from './work-root'
+
 /** 同一秒内最多尝试的重名后缀，超过即放弃，不会无限循环。 */
 const MAX_SUFFIX = 99
 
@@ -12,8 +14,10 @@ const MAX_SUFFIX = 99
 export const SCRATCH_DIR = '.tmp'
 
 export interface ConversationFolders {
-  /** 默认目录就是账号工作区时建一个新文件夹（含空的 .tmp）并返回路径；否则返回 null，保持原行为。 */
+  /** 默认目录就是工作根时建一个新文件夹（含空的 .tmp）并返回路径；否则返回 null，保持原行为。 */
   create(defaultCwd: string): Promise<null | string>
+  /** 获取共享代码目录。 */
+  ensureCode(defaultCwd: string): Promise<null | string>
   /** 只删除本进程刚建、仍为空（或只剩空 .tmp）的文件夹；其它路径一律忽略。 */
   discard(folder: string): Promise<void>
 }
@@ -36,7 +40,7 @@ function samePath(a: string, b: string): boolean {
   return process.platform === 'win32' ? left.toLowerCase() === right.toLowerCase() : left === right
 }
 
-/** 账号工作区必须是真实目录；lstat 不跟随链接，符号链接和目录联接都不算目录，避免文件夹建到别处。 */
+/** 工作根必须是真实目录；lstat 不跟随链接，符号链接和目录联接都不算目录，避免文件夹建到别处。 */
 async function realDirectory(target: string): Promise<boolean> {
   try {
     return (await fs.lstat(target)).isDirectory()
@@ -45,20 +49,20 @@ async function realDirectory(target: string): Promise<boolean> {
   }
 }
 
-/** 每个未选目录的新对话在账号工作区下建一个专属文件夹；名字只由主进程生成。 */
-export function createConversationFolders(workspace: string, now: () => Date = () => new Date()): ConversationFolders {
+/** 每个未选目录的新对话在工作根下建一个专属文件夹；名字只由主进程生成。 */
+export function createConversationFolders(workRoot: string, now: () => Date = () => new Date()): ConversationFolders {
   const created = new Set<string>()
 
   return {
     async create(defaultCwd) {
-      if (!defaultCwd.trim() || !samePath(defaultCwd, workspace) || !(await realDirectory(workspace))) {
+      if (!defaultCwd.trim() || !samePath(defaultCwd, workRoot) || !(await realDirectory(workRoot))) {
         return null
       }
 
       const base = conversationFolderName(now())
 
       for (let index = 1; index <= MAX_SUFFIX; index++) {
-        const folder = path.join(workspace, index === 1 ? base : `${base}-${index}`)
+        const folder = path.join(workRoot, index === 1 ? base : `${base}-${index}`)
 
         try {
           // 不带 recursive 的 mkdir 是独占创建：已存在就失败，不会复用别人的文件夹。
@@ -76,6 +80,29 @@ export function createConversationFolders(workspace: string, now: () => Date = (
       }
 
       return null
+    },
+
+    /** 共享项目不能随创建失败的会话一起删除。 */
+    async ensureCode(defaultCwd) {
+      if (!defaultCwd.trim() || !samePath(defaultCwd, workRoot) || !(await realDirectory(workRoot))) {
+        return null
+      }
+
+      const folder = path.join(workRoot, CODE_FOLDER)
+
+      try {
+        for (const dir of [folder, path.join(folder, SCRATCH_DIR)]) {
+          await fs.mkdir(dir, { recursive: true })
+
+          if (!(await realDirectory(dir))) {
+            return null
+          }
+        }
+
+        return folder
+      } catch {
+        return null
+      }
     },
 
     async discard(folder) {
@@ -112,13 +139,21 @@ export function installConversationFolderIpc(
     return active() && isDesktopRendererSender(event, session, rendererUrl())
   }
 
-  ipcMain.handle('hermes:conversation-folder:create', async (event, defaultCwd: unknown): Promise<null | string> => {
-    if (!trusted(event) || typeof defaultCwd !== 'string' || defaultCwd.length > 4096) {
-      return null
-    }
+  for (const [channel, method] of [
+    ['create', 'create'],
+    ['code', 'ensureCode']
+  ] as const) {
+    ipcMain.handle(
+      'hermes:conversation-folder:' + channel,
+      async (event, defaultCwd: unknown): Promise<null | string> => {
+        if (!trusted(event) || typeof defaultCwd !== 'string' || defaultCwd.length > 4096) {
+          return null
+        }
 
-    return folders.create(defaultCwd)
-  })
+        return folders[method](defaultCwd)
+      }
+    )
+  }
 
   ipcMain.handle('hermes:conversation-folder:discard', async (event, folder: unknown): Promise<void> => {
     if (trusted(event) && typeof folder === 'string' && folder.length <= 4096) {

@@ -9,6 +9,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 import { toChatMessages } from '@/lib/chat-messages'
 import { toRuntimeMessage } from '@/lib/chat-runtime'
+import { $developerMode } from '@/store/developer-mode'
 import type { SessionMessage } from '@/types/hermes'
 
 import { stubThreadEnvironment, ThreadRuntime } from '../test-utils'
@@ -18,6 +19,7 @@ import { Thread } from '.'
 beforeEach(stubThreadEnvironment)
 afterEach(() => {
   cleanup()
+  $developerMode.set(false)
   vi.unstubAllGlobals()
 })
 
@@ -58,6 +60,7 @@ it('default Copy reads only the tail reply, not the whole response group', async
 })
 
 it('Copy full response reads every assistant text segment in the group', async () => {
+  $developerMode.set(true)
   const { clipboard, container } = renderThread()
 
   await waitFor(() => expect(container.textContent).toContain('The deployment is verified.'))

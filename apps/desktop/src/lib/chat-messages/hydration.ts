@@ -4,7 +4,10 @@ import { formatRefValue } from '@/components/assistant-ui/directive-text'
 import { splitLeadingAttachmentRefs } from '@/components/assistant-ui/reference-kinds'
 import { extractImageRefs } from '@/lib/embedded-images'
 import { dedupeGeneratedImageEchoesInParts } from '@/lib/generated-images'
+import { parseMessageTime } from '@/lib/message-time'
 import { isTodoToolName } from '@/lib/todos'
+import { parseTurnReplyModel } from '@/lib/turn-reply-model'
+import { parseTurnTokenUsage } from '@/lib/turn-token-usage'
 import type { MessageReaction, SessionMessage } from '@/types/hermes'
 
 import {
@@ -566,6 +569,21 @@ export function toChatMessages(messages: SessionMessage[]): ChatMessage[] {
 
     let pendingAbsorbedRows = 0
 
+    const turnTokenUsage =
+      message.role === 'assistant'
+        ? parseTurnTokenUsage(parseDisplayMetadata(message.display_metadata)?.turn_token_usage)
+        : undefined
+
+    const turnModel =
+      message.role === 'assistant'
+        ? parseTurnReplyModel(parseDisplayMetadata(message.display_metadata)?.turn_model)
+        : undefined
+
+    const turnCompletedAt =
+      message.role === 'assistant'
+        ? parseMessageTime(parseDisplayMetadata(message.display_metadata)?.turn_completed_at)
+        : undefined
+
     if (message.role === 'assistant') {
       if (pendingToolParts.length) {
         if (!appendPartsToActiveAssistant(pendingToolParts, message.timestamp ?? pendingToolTimestamp)) {
@@ -587,6 +605,19 @@ export function toChatMessages(messages: SessionMessage[]): ChatMessage[] {
       if (activeAssistant && (currentHasToolCall || activeHasToolCall)) {
         activeAssistant.parts = [...activeAssistant.parts, ...parts]
         activeAssistant.durableComplete = durableComplete
+
+        if (turnTokenUsage) {
+          activeAssistant.turnTokenUsage = turnTokenUsage
+        }
+
+        if (turnModel) {
+          activeAssistant.turnModel = turnModel
+        }
+
+        if (turnCompletedAt !== undefined) {
+          activeAssistant.turnCompletedAt = turnCompletedAt
+        }
+
         activeAssistant.timestamp = earliestTimestamp(
           activeAssistant.timestamp,
           message.timestamp,
@@ -609,6 +640,9 @@ export function toChatMessages(messages: SessionMessage[]): ChatMessage[] {
       role: displayRole,
       parts,
       ...(message.role === 'assistant' && durableComplete !== undefined ? { durableComplete } : {}),
+      ...(turnTokenUsage ? { turnTokenUsage } : {}),
+      ...(turnModel ? { turnModel } : {}),
+      ...(turnCompletedAt !== undefined ? { turnCompletedAt } : {}),
       ...(message.display_kind === 'async_delegation_complete' || message.display_kind === 'process_complete'
         ? { asyncResult: asyncResultBody(displayContentForMessage(message.role, message.content || content)) }
         : {}),

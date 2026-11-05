@@ -192,6 +192,26 @@ try {
     Write-Host "Installer compression: $Compression (electron-builder $builderCompression, 7z level $innerCompressionLevel)" -ForegroundColor DarkGray
     $buildStarted = Get-Date
 
+    # Package into a fresh, per-commit output directory instead of the shared
+    # apps/desktop/release. Reusing the previous run's win-unpacked\resources\app.asar
+    # is what trips "EBUSY: resource busy or locked" on Windows when a scanner
+    # (天擎 / Windows Defender / Search indexer / the editor) still holds a handle
+    # on the leftover file. Keying the directory on the commit means a new commit
+    # never touches the old artifact at all. release-local-* is already gitignored,
+    # so the dirty-tree admission above stays clean.
+    # NOT named $release: PowerShell variable names are case-insensitive, so
+    # $release would be the [switch]$Release parameter and assigning a string
+    # to it throws (see a370eab4).
+    $outputDir = Join-Path $sourceRoot "apps\desktop\release-local-$($commit.Substring(0, 12))"
+    if (Test-Path -LiteralPath $outputDir) {
+        try {
+            Remove-Item -LiteralPath $outputDir -Recurse -Force
+        } catch {
+            throw "Cannot clear the previous output dir $outputDir (a file is still locked). Close any running app instance and let the scanner finish, then rerun."
+        }
+    }
+    New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
+
     $buildClock = [System.Diagnostics.Stopwatch]::StartNew()
     Push-Location $sourceRoot
     try {
@@ -200,7 +220,8 @@ try {
             --variant bundled `
             --work $workRoot `
             --cache $cacheRoot `
-            -- "-c.compression=$builderCompression"
+            -- "-c.compression=$builderCompression" `
+            "-c.directories.output=$outputDir"
         if ($LASTEXITCODE -ne 0) {
             throw "Windows installer build failed with exit code $LASTEXITCODE."
         }
@@ -209,10 +230,11 @@ try {
         Write-Host ("[build-timing] desktop-build: {0:F1}s" -f $buildClock.Elapsed.TotalSeconds)
     }
 
-    $releaseDir = Join-Path $sourceRoot 'apps\desktop\release'
-    # nsis-web keeps its bootstrapper and .7z payload in release\nsis-web;
-    # the full nsis target writes straight into release.
-    $artifactDir = if ($WebInstaller) { Join-Path $releaseDir 'nsis-web' } else { $releaseDir }
+    # $outputDir is the fresh per-commit output dir computed before the build;
+    # electron-builder wrote win-unpacked and the installer inside it.
+    # nsis-web keeps its bootstrapper and .7z payload in <output>\nsis-web;
+    # the full nsis target writes straight into <output>.
+    $artifactDir = if ($WebInstaller) { Join-Path $outputDir 'nsis-web' } else { $outputDir }
     $installer = Get-ChildItem -LiteralPath $artifactDir -Filter '*.exe' -File |
         Where-Object { $_.Name -notmatch 'uninstall' -and $_.LastWriteTime -ge $buildStarted } |
         Sort-Object LastWriteTime -Descending |
@@ -226,7 +248,7 @@ try {
     try {
         & (Join-Path $sourceRoot 'scripts\bundles\check-windows-installer.ps1') `
             -Installer $installer.FullName -Commit $commit -Scratch $buildTemp `
-            -Unpacked (Join-Path $releaseDir 'win-unpacked')
+            -Unpacked (Join-Path $outputDir 'win-unpacked')
     } finally {
         Write-Host ("[build-timing] installer-check: {0:F1}s" -f $checkClock.Elapsed.TotalSeconds)
     }

@@ -1,4 +1,4 @@
-/* The PDF viewer (pdf-preview.tsx) in the page viewer's look (office-slides.tsx):
+/* The PDF viewer (pdf-preview.tsx):
    white pages with a soft shadow, 16px apart and from the edges, on the pane's
    tint; search hits in amber. pdf.js's own stylesheet is not in a cascade layer,
    so neither is this one, and it comes after it. */

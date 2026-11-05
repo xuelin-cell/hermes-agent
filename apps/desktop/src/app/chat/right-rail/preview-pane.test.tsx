@@ -176,7 +176,8 @@ describe('PreviewPane console state', () => {
       )
     })
 
-    expect(rendered.getByRole('textbox', { name: 'Address' })).toBeTruthy()
+    expect(rendered.queryByRole('textbox', { name: 'Address' })).toBeNull()
+    expect(rendered.container.querySelector('.file-preview-title')).toBeTruthy()
     expect(rendered.queryByRole('button', { name: 'Pop out' })).toBeNull()
   })
 
@@ -504,11 +505,8 @@ describe('PreviewPane console state', () => {
     })
 
     expect(rendered.container.querySelector('iframe')).toBeNull()
-    const sourceLink = rendered.container.querySelector('a')
-
-    expect(sourceLink?.getAttribute('href')).toBeNull()
-    expect(sourceLink?.getAttribute('target')).toBeNull()
-    expect(fireEvent.click(sourceLink!)).toBe(false)
+    expect(rendered.container.querySelector('.file-preview-title')).toBeTruthy()
+    expect(rendered.container.querySelector('.file-preview-title a')).toBeNull()
   })
 
   it('PDF 目标使用分页查看器，换文件和关闭时收尾引擎，不再嵌入 iframe', async () => {
@@ -855,15 +853,27 @@ describe('PreviewPane local HTML Render|Source toggle', () => {
 
     expect(rendered.container.querySelector('webview')).toBeInstanceOf(HTMLElement)
     expect(readFileText).not.toHaveBeenCalled()
-    await waitFor(() => expect((rendered.getByRole('button', { name: 'Share artifact' }) as HTMLButtonElement).disabled).toBe(false))
+    await waitFor(() =>
+      expect((rendered.getByRole('button', { name: 'Share artifact' }) as HTMLButtonElement).disabled).toBe(false)
+    )
     fireEvent.click(rendered.getByRole('button', { name: 'Share artifact' }))
-    await waitFor(() => expect((rendered.getByRole('button', { name: 'Create public link' }) as HTMLButtonElement).disabled).toBe(false))
+    await waitFor(() =>
+      expect((rendered.getByRole('button', { name: 'Create public link' }) as HTMLButtonElement).disabled).toBe(false)
+    )
     expect(publish).not.toHaveBeenCalled()
     fireEvent.click(rendered.getByRole('button', { name: 'Create public link' }))
-    await waitFor(() => expect(publish).toHaveBeenCalledWith({
-      key: 'file:session-1:/work/hello world.html', html: '<p>x</p>', title: 'hello world.html',
-      source: expect.objectContaining({ sessionId: 'session-1', path: '/work/hello world.html', hash: expect.any(String) })
-    }))
+    await waitFor(() =>
+      expect(publish).toHaveBeenCalledWith(expect.objectContaining({
+        key: 'file:session-1:/work/hello world.html',
+        html: '<p>x</p>',
+        title: 'hello world.html',
+        source: expect.objectContaining({
+          sessionId: 'session-1',
+          path: '/work/hello world.html',
+          hash: expect.any(String)
+        })
+      }))
+    )
     expect(readFileText).toHaveBeenCalledWith(generated.path)
     await waitFor(() => expect(rendered.getByRole('button', { name: 'Close' })).toBeTruthy())
     fireEvent.click(rendered.getByRole('button', { name: 'Close' }))
