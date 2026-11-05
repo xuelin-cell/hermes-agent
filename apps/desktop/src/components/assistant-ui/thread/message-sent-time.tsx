@@ -15,7 +15,7 @@ export function MessageSentTime() {
   return (
     <Tip label={formatPreciseMessageTime(timestamp)}>
       <time
-        className="self-end px-1.5 pt-1 text-xs font-medium leading-5 tabular-nums text-muted-foreground opacity-0 transition-opacity group-hover/user-message:opacity-100 group-focus-within/user-message:opacity-100"
+        className="shrink-0 select-none text-xs font-medium leading-5 tabular-nums text-muted-foreground"
         data-slot="aui_user-sent-time"
         dateTime={new Date(timestamp * 1000).toISOString()}
         tabIndex={0}

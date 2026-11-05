@@ -361,13 +361,15 @@
 }
 
 /* 旧版 Uniwork 的消息灰阶只作用于操作栏和发送时间。 */
-:root[data-hermes-theme='uniwork'] :is([data-slot='aui_assistant-footer'], [data-slot='aui_user-sent-time']) {
+:root[data-hermes-theme='uniwork']
+  :is([data-slot='aui_assistant-footer'], [data-slot='aui_user-footer'], [data-slot='aui_user-sent-time']) {
   --dt-muted-foreground: #999999;
   --ui-text-secondary: #666666;
   --color-muted-foreground: var(--dt-muted-foreground);
 }
 
-:root[data-hermes-theme='uniwork'].dark :is([data-slot='aui_assistant-footer'], [data-slot='aui_user-sent-time']) {
+:root[data-hermes-theme='uniwork'].dark
+  :is([data-slot='aui_assistant-footer'], [data-slot='aui_user-footer'], [data-slot='aui_user-sent-time']) {
   --dt-muted-foreground: #636369;
   --ui-text-secondary: #a8a8ad;
 }

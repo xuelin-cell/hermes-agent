@@ -1775,8 +1775,6 @@ body.guest-pointer-lock :is(webview, iframe) {
   text-align: left;
 }
 
-
-
 [data-slot='aui_user-message-root'],
 [data-slot='aui_edit-composer-root'] {
   --human-msg-line-height: 1.3;
@@ -2443,6 +2441,15 @@ button[data-slot='aui_msg-reactions'] {
   cursor: pointer;
   color: var(--color-muted-foreground);
   opacity: 1;
+}
+
+/* User actions share reply ink while retaining their existing hit areas. */
+[data-slot='aui_user-footer'] button:not(:disabled) {
+  color: var(--color-muted-foreground);
+}
+
+[data-slot='aui_user-footer'] button:not(:disabled):hover {
+  color: var(--color-foreground);
 }
 
 /* A landed reaction is content — emoji render at

@@ -582,24 +582,30 @@ export const UserMessage: FC<{
                 )}
               </div>
             </ReactionPicker>
-            {!readOnly && (
-              <div className="flex items-center justify-end gap-1 py-1 pr-1.5 opacity-0 group-hover/user-message:opacity-100 focus-within:opacity-100">
-                <Tip label={copy.editMessage}>
-                  <ActionBarPrimitive.Edit asChild>
-                    <button
-                      aria-label={hasFiles ? copy.editMessage : t.preview.edit}
-                      className={cn('size-6', USER_ACTION_ICON_BUTTON_CLASS)}
-                      onClick={() => triggerHaptic('selection')}
-                      onPointerDown={() => notifyThreadEditOpen()}
-                      type="button"
-                    >
-                      <Codicon name="edit" size="0.875rem" />
-                    </button>
-                  </ActionBarPrimitive.Edit>
-                </Tip>
-                <CopyButton appearance="icon" buttonSize="icon-xs" label={copy.copy} side="top" text={messageText} />
-              </div>
-            )}
+            <div
+              className="flex items-center justify-end gap-1 py-1 pr-1.5 opacity-0 transition-opacity group-hover/user-message:opacity-100 group-focus-within/user-message:opacity-100"
+              data-slot="aui_user-footer"
+            >
+              <MessageSentTime />
+              {!readOnly && (
+                <>
+                  <Tip label={copy.editMessage}>
+                    <ActionBarPrimitive.Edit asChild>
+                      <button
+                        aria-label={hasFiles ? copy.editMessage : t.preview.edit}
+                        className={cn('size-6', USER_ACTION_ICON_BUTTON_CLASS)}
+                        onClick={() => triggerHaptic('selection')}
+                        onPointerDown={() => notifyThreadEditOpen()}
+                        type="button"
+                      >
+                        <Codicon name="edit" size="0.875rem" />
+                      </button>
+                    </ActionBarPrimitive.Edit>
+                  </Tip>
+                  <CopyButton appearance="icon" buttonSize="icon-xs" label={copy.copy} side="top" text={messageText} />
+                </>
+              )}
+            </div>
             {/* Below the bubble, same register as the assistant action row:
                 same emoji size, same vertical padding, right-aligned to the
                 sent bubble. Overlaying the corner read badly in practice. */}
@@ -608,7 +614,6 @@ export const UserMessage: FC<{
               onRetract={() => react(null)}
               reactions={shownReactions}
             />
-            <MessageSentTime />
             <BranchPickerPrimitive.Root
               className={cn(
                 'checkpoint-container flex items-center gap-1 pb-0 pt-1 pl-1.5 text-[0.75rem] leading-none text-(--ui-text-tertiary)',
