@@ -6,8 +6,9 @@ import { once } from 'node:events'
 import path from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, nativeImage } from 'electron'
 
+import { createTrayIcon } from '../app-icon'
 import { createMinimizeToTray } from '../minimize-to-tray'
 
 app.setPath('userData', process.argv[2])
@@ -20,6 +21,15 @@ const watchdog = setTimeout(() => {
 
 async function run() {
   await app.whenReady()
+
+  if (process.platform === 'darwin') {
+    const icon = createTrayIcon(process.argv[3])
+    assert.equal(icon.isTemplateImage(), true)
+    assert.deepEqual(icon.getSize(), { width: 18, height: 18 })
+    assert.deepEqual(nativeImage.createFromBuffer(icon.toPNG({ scaleFactor: 2 })).getSize(), { width: 36, height: 36 })
+    assert.deepEqual(icon.getScaleFactors(), [1, 2])
+  }
+
   const primary = new BrowserWindow({ width: 440, height: 320, show: false })
   const peer = new BrowserWindow({ width: 440, height: 320, show: false })
 
@@ -113,6 +123,7 @@ async function run() {
         ok: true,
         platform: process.platform,
         checks: [
+          ...(process.platform === 'darwin' ? ['template tray icon with Retina representation'] : []),
           'close to tray with minimize preference off',
           'native tray creation',
           'primary minimize preserves renderer',
