@@ -270,6 +270,27 @@ test('migrateMacOldUniworkData is idempotent when marker already exists', async 
   assert.equal(result.migrated, false)
 })
 
+test('migrateMacOldUniworkData retries a marked migration when Lima sessions are missing', async () => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'home-'))
+  await fs.mkdir(path.join(home, MAC_LIMA_HOME_SUBDIR), { recursive: true })
+  const newApp = await fs.mkdtemp(path.join(os.tmpdir(), 'newapp-'))
+  const target = path.join(newApp, MIGRATION_TARGET_DIR)
+  await fs.mkdir(target, { recursive: true })
+  await fs.writeFile(path.join(target, MIGRATION_COMPLETED_MARKER), '', 'utf8')
+
+  const { runner, calls } = makeMockRunner()
+  const result = await migrateMacOldUniworkData(newApp, {
+    env: {},
+    platform: 'darwin',
+    home,
+    runner
+  })
+
+  assert.equal(result.migrated, true)
+  assert.deepEqual(calls[0].args, ['list', '--json'])
+  assert.equal(await fs.stat(path.join(target, 'sessions')).then(stat => stat.isDirectory()), true)
+})
+
 test('migrateMacOldUniworkData copies host conversations with mock runner (no lima home)', async () => {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'home-'))
   const hostUserData = path.join(home, ...MAC_HOST_USERDATA_SUBPATH)
@@ -516,6 +537,28 @@ test('migrateOldUniworkToWorkspace is idempotent per account', async () => {
     platform: 'win32'
   })
   assert.equal(result2.migrated, false)
+})
+
+test('migrateOldUniworkToWorkspace repairs marked macOS migration when Plan A gains sessions', async () => {
+  const newApp = await fs.mkdtemp(path.join(os.tmpdir(), 'newapp-'))
+  const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'workspace-'))
+  const planATarget = path.join(newApp, MIGRATION_TARGET_DIR)
+  const workspaceTarget = path.join(workspace, MIGRATION_TARGET_DIR)
+  await makeTree(planATarget, { [path.join('sessions', 'recovered', 'state.json')]: '{}' })
+  await fs.writeFile(path.join(planATarget, MIGRATION_COMPLETED_MARKER), '', 'utf8')
+  await fs.mkdir(workspaceTarget, { recursive: true })
+  await fs.writeFile(path.join(workspaceTarget, MIGRATION_COMPLETED_MARKER), '', 'utf8')
+
+  const result = await migrateOldUniworkToWorkspace(newApp, workspace, {
+    env: {},
+    platform: 'darwin'
+  })
+
+  assert.equal(result.migrated, true)
+  assert.equal(
+    await fs.stat(path.join(workspaceTarget, 'sessions', 'recovered', 'state.json')).then(stat => stat.isFile()),
+    true
+  )
 })
 
 test('migrateOldUniworkToWorkspace awaits planAPromise before proceeding', async () => {
