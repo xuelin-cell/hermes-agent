@@ -565,6 +565,11 @@ export const en: Translations = {
             'Connect Qichacha company, risk, intellectual property, operation, and executive services for enterprise data queries.',
           provider: 'Qichacha'
         },
+        tianyancha_mcp: {
+          name: 'Tianyancha',
+          description: 'Search company registration, shareholders, risk, judicial, investment, and intellectual-property data.',
+          provider: 'Tianyancha'
+        },
         eastmoney_mcp: {
           name: 'Eastmoney',
           description:

@@ -542,6 +542,11 @@ export const zh = defineLocale({
           description: '连接企查查企业信息、风险、知识产权、经营和董监高服务，让 Agent 查询企业数据。',
           provider: '企查查'
         },
+        tianyancha_mcp: {
+          name: '天眼查',
+          description: '连接天眼查 MCP，查询企业工商、股权、风险、司法、投资和知识产权数据。',
+          provider: '天眼查'
+        },
         eastmoney_mcp: {
           name: '东方财富',
           description: '连接东方财富 Choice 数据 MCP，查询行情、公告、宏观指标、证券筛选和研究资讯。',

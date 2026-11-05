@@ -75,6 +75,11 @@ export const zhHant = defineLocale({
           description: '連接企查查企業資訊、風險、智慧財產權、經營和董監高服務，讓 Agent 查詢企業資料。',
           provider: '企查查'
         },
+        tianyancha_mcp: {
+          name: '天眼查',
+          description: '連接天眼查 MCP，查詢企業工商、股權、風險、司法、投資和知識產權資料。',
+          provider: '天眼查'
+        },
         eastmoney_mcp: {
           name: '東方財富',
           description: '連接東方財富 Choice 資料 MCP，查詢行情、公告、總體經濟指標、證券篩選和研究資訊。',
