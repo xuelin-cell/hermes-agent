@@ -10,7 +10,6 @@ import {
   ContextMenuTrigger
 } from '@/components/ui/context-menu'
 import { translateNow, useI18n } from '@/i18n'
-import { browserShellCopy, isBrowserShell } from '@/lib/browser-shell'
 import { isDesktopFsRemoteMode } from '@/lib/desktop-fs'
 import { isSubmitEnter } from '@/lib/ime'
 import { IS_MAC } from '@/lib/keybinds/combo'
@@ -101,16 +100,6 @@ export function FileEntryContextMenu({ children, isDirectory, name, path, relati
             </ContextMenuItem>
           </>
         )}
-        {/* Browser build: rename and delete (into the recycle bin) go through the instance. */}
-        {isBrowserShell() && (
-          <>
-            <ContextMenuSeparator />
-            <ContextMenuItem onSelect={() => beginInlineRename(path)}>{m.rename}</ContextMenuItem>
-            <ContextMenuItem onSelect={() => requestFileDelete(target)} variant="destructive">
-              {m.delete}
-            </ContextMenuItem>
-          </>
-        )}
       </ContextMenuContent>
     </ContextMenu>
   )
@@ -119,16 +108,14 @@ export function FileEntryContextMenu({ children, isDirectory, name, path, relati
 /** Mounted once near the app root: the delete confirm dialog for shared file
  *  actions. Rename is inline (see {@link InlineRenameInput}). */
 export function FileActionDialogs() {
-  const { locale, t } = useI18n()
+  const { t } = useI18n()
   const dialog = useStore($fileActionDialog)
   const deleting = dialog?.kind === 'delete'
 
   return (
     <ConfirmDialog
-      confirmLabel={isBrowserShell() ? browserShellCopy(locale).deleteConfirm : t.fileMenu.delete}
-      description={
-        isBrowserShell() ? browserShellCopy(locale).deleteBody(Boolean(dialog?.isDirectory)) : t.fileMenu.deleteBody
-      }
+      confirmLabel={t.fileMenu.delete}
+      description={t.fileMenu.deleteBody}
       destructive
       onClose={closeFileActionDialog}
       onConfirm={() => {

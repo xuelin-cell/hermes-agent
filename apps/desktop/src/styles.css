@@ -1,5 +1,6 @@
 @import 'tailwindcss';
 @import './themes/uniwork.css';
+@import './fonts/inter/inter.css';
 @plugin '@tailwindcss/typography';
 @import 'tw-shimmer';
 @import 'katex/dist/katex.min.css';
@@ -1774,8 +1775,6 @@ body.guest-pointer-lock :is(webview, iframe) {
   text-align: left;
 }
 
-
-
 [data-slot='aui_user-message-root'],
 [data-slot='aui_edit-composer-root'] {
   --human-msg-line-height: 1.3;
@@ -2399,9 +2398,33 @@ body.guest-pointer-lock :is(webview, iframe) {
   margin-top: calc(var(--scaffold-block-gap) - var(--conversation-turn-gap));
 }
 
-/* Message action bars — flat icon hits with default dim; only the hovered/focused control is full-strength.
-   The reaction slot lives OUTSIDE the bar (a landed emoji must not ride the
-   bar's hover fade) but is still one of these controls visually. */
+/* The whole reply footer shares one visibility rule, including token usage.
+   Preserve its space so hover and a newly completed reply never shift the transcript. */
+[data-slot='aui_assistant-footer'] {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 150ms ease;
+}
+
+[data-slot='aui_assistant-footer'][data-always-visible]:not([inert]),
+.group:hover [data-slot='aui_assistant-footer']:not([inert]),
+[data-slot='aui_assistant-footer']:focus-within:not([inert]) {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* The latest reply's completion time follows the old Uniwork hover-only rule. */
+[data-slot='aui_assistant-footer'][data-always-visible] [data-slot='aui_reply-completed'] {
+  display: none;
+}
+
+.group:hover [data-slot='aui_assistant-footer'][data-always-visible] [data-slot='aui_reply-completed'],
+[data-slot='aui_assistant-footer'][data-always-visible]:focus-within [data-slot='aui_reply-completed'] {
+  display: inline-flex;
+}
+
+/* Message action bars — flat icon hits in the same muted ink as reply metadata.
+   The reaction slot lives outside the bar but shares its footer visibility. */
 [data-slot='aui_msg-actions'] button,
 button[data-slot='aui_msg-reactions'] {
   border: 0;
@@ -2417,10 +2440,19 @@ button[data-slot='aui_msg-reactions'] {
   flex-shrink: 0;
   cursor: pointer;
   color: var(--color-muted-foreground);
-  opacity: 0.5;
+  opacity: 1;
 }
 
-/* A landed reaction is content, not a dimmed affordance — emoji render at
+/* User actions share reply ink while retaining their existing hit areas. */
+[data-slot='aui_user-footer'] button:not(:disabled) {
+  color: var(--color-muted-foreground);
+}
+
+[data-slot='aui_user-footer'] button:not(:disabled):hover {
+  color: var(--color-foreground);
+}
+
+/* A landed reaction is content — emoji render at
    full strength everywhere, always (color dim would gray them anyway; they're
    glyphs, not icons). */
 button[data-slot='aui_msg-reactions'][data-reacted] {
@@ -2428,9 +2460,9 @@ button[data-slot='aui_msg-reactions'][data-reacted] {
   color: inherit;
 }
 
-/* The EMPTY slot is an affordance and follows its action-bar neighbors
-   exactly: hidden until the message is hovered, then the same 0.5 dim, full
-   strength under the pointer. Stylesheet-owned because the base rule above
+/* The EMPTY slot is an affordance and follows its action-bar neighbors:
+   hidden until the message is hovered, then the same muted ink.
+   Stylesheet-owned because the base rule above
    outweighs Tailwind's opacity utilities (0,1,1 vs 0,1,0). */
 button[data-slot='aui_msg-reactions']:not([data-reacted]) {
   opacity: 0;
@@ -2438,9 +2470,11 @@ button[data-slot='aui_msg-reactions']:not([data-reacted]) {
 }
 
 .group:hover button[data-slot='aui_msg-reactions']:not([data-reacted]),
+[data-slot='aui_assistant-footer'][data-always-visible] button[data-slot='aui_msg-reactions']:not([data-reacted]),
+[data-slot='aui_assistant-footer']:focus-within button[data-slot='aui_msg-reactions']:not([data-reacted]),
 button[data-slot='aui_msg-reactions']:not([data-reacted]):focus-visible,
 button[data-slot='aui_msg-reactions']:not([data-reacted])[data-state='open'] {
-  opacity: 0.5;
+  opacity: 1;
   pointer-events: auto;
 }
 

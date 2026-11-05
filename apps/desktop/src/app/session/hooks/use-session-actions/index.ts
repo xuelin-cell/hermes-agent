@@ -91,6 +91,7 @@ import {
   getSessionOwnerHint,
   type NewChatWorkspaceTarget,
   resolveComposerSessionKey,
+  restoreComposerModelSelection,
   sessionPinId,
   setActiveSessionId,
   setActiveSessionStoredIdRotation,
@@ -151,6 +152,7 @@ import { $archivedSessions } from '@/store/sidebar-archive'
 import { restoreSessionTodosFromSnapshot } from '@/store/todos'
 import { dropTranscriptTail, dropTranscriptTailEverywhere, saveTranscriptTail } from '@/store/transcript-tail-cache'
 import { isWatchWindow } from '@/store/windows'
+import { $codeWorkspace } from '@/store/workspace-category'
 import { currentWorkspaceCategory, rememberSessionWorkspace } from '@/store/workspace-sessions'
 import type {
   SessionCreateResponse,
@@ -348,6 +350,7 @@ async function desktopSessionCreateParams(
   const isManualSelection = getCurrentModelSource() === 'manual'
 
   const selection = {
+    codeMode: $codeWorkspace.get(),
     effort: $currentReasoningEffort.get().trim(),
     fast: $currentFastMode.get(),
     model: isManualSelection ? $currentModel.get().trim() : '',
@@ -369,6 +372,7 @@ async function desktopSessionCreateParams(
   }
 
   return {
+    ...(selection.codeMode ? { code_mode: true } : {}),
     cols: 96,
     source: 'desktop',
     ...(cwd && { cwd }),
@@ -613,6 +617,7 @@ export function useSessionActions({
       // profile default still owns first-run seeding and profile switches (see
       // refreshCurrentModel). Only $currentServiceTier (a live-session mirror)
       // is cleared.
+      restoreComposerModelSelection()
       setCurrentServiceTier('')
       setYoloActive(false)
       setNewChatWorkspaceTarget(hasWorkspaceTarget ? workspaceTarget : undefined)

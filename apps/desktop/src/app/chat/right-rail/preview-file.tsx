@@ -1,4 +1,5 @@
 import { useStore } from '@nanostores/react'
+import { CodeXml, Eye } from 'lucide-react'
 import type * as React from 'react'
 import type {
   ComponentProps,
@@ -26,7 +27,6 @@ import { CopyButton } from '@/components/ui/copy-button'
 import { Tip } from '@/components/ui/tooltip'
 import { translateNow, useI18n } from '@/i18n'
 import { artifactShareFilePath } from '@/lib/artifact-share-source'
-import { officePreviewPdf, previewsOfficeAsPdf } from '@/lib/browser-shell'
 import {
   desktopFileDiff,
   desktopFsCacheKey,
@@ -63,6 +63,7 @@ import { filePathForTarget } from './formats/path'
 import { readPdfBytes } from './formats/source'
 import { PdfPreview } from './pdf-preview'
 import { PreviewExportControls } from './preview-export'
+import { PreviewToolbarActions } from './preview-toolbar'
 
 const SHIKI_THEME = { dark: 'github-dark-default', light: 'github-light-default' } as const
 const TEXT_PREVIEW_MAX_BYTES = 512 * 1024
@@ -489,25 +490,31 @@ export function PreviewModeSwitcher({
   return (
     // Fixed height so the header is byte-identical between read and edit modes —
     // swapping the trailing controls must never move the body below it.
-    <div className="flex h-7 shrink-0 items-center justify-end gap-3 border-b border-border/40 px-3">
-      {showModes &&
-        modes.map(mode => (
-          <button
-            className={cn(
-              'text-[0.625rem] font-bold underline-offset-4 transition-colors',
-              mode === active
-                ? 'text-foreground underline decoration-current/30'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
-            key={mode}
-            onClick={() => onSelect(mode)}
-            type="button"
-          >
-            {label[mode]}
-          </button>
-        ))}
-      {trailing && <div className="flex items-center gap-1.5">{trailing}</div>}
-    </div>
+    <PreviewToolbarActions>
+      <div className="file-preview-mode-actions">
+        <div className="file-preview-view-toggle" data-view-mode={active === 'rendered' ? 'preview' : 'code'}>
+          {showModes &&
+            modes.map(mode => (
+              <button
+                aria-label={label[mode]}
+                className={cn(
+                  'file-preview-toggle-btn',
+                  mode === active
+                    ? 'text-foreground underline decoration-current/30'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+                key={mode}
+                onClick={() => onSelect(mode)}
+                title={label[mode]}
+                type="button"
+              >
+                {mode === 'rendered' ? <Eye size={14} /> : mode === 'source' ? <CodeXml size={14} /> : label[mode]}
+              </button>
+            ))}
+        </div>
+        {trailing && <div className="flex items-center gap-1.5">{trailing}</div>}
+      </div>
+    </PreviewToolbarActions>
   )
 }
 
@@ -735,14 +742,16 @@ export function LocalFilePreview({
   const activeSessionId = useStore($activeSessionId)
   const storedSessionId = useStore($selectedStoredSessionId)
   const resolvedShareSource = shareSource === undefined ? previewShareSource(target, connection) : shareSource
+
   const shareSessionId =
     resolvedShareSource === undefined ? storedSessionId || activeSessionId : resolvedShareSource?.sessionId
+
   const currentCwd = useStore($currentCwd)
   const fsCacheKey = desktopFsCacheKey(connection)
   const filePath = filePathForTarget(target)
   const isSvg = /\.svg$/i.test(filePath)
   const isImage = target.previewKind === 'image' && !isSvg
-  const isPdf = target.previewKind === 'pdf' || previewsOfficeAsPdf(filePath)
+  const isPdf = target.previewKind === 'pdf'
 
   // eslint-disable-next-line no-restricted-syntax -- legitimate non-atom ref write (see eslint rule comment)
   useEffect(() => {
@@ -786,7 +795,7 @@ export function LocalFilePreview({
         if (isImage || isPdf) {
           // Prefer bytes the caller already handed us (a pasted/dropped
           // screenshot) over re-reading a path that may be transient/unreadable.
-          const dataUrl = target.dataUrl || (await (officePreviewPdf(filePath) ?? readDesktopFileDataUrl(filePath)))
+          const dataUrl = target.dataUrl || (await readDesktopFileDataUrl(filePath))
           const pdfBytes = isPdf ? await readPdfBytes(filePath, dataUrl) : undefined
 
           if (active) {

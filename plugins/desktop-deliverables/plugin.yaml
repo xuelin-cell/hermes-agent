@@ -1,6 +1,8 @@
 name: desktop-deliverables
-version: "0.1.0"
-description: "Observe local desktop output files and persist preview cards with the reply; leave reasoning depth to the server default."
+version: "0.2.0"
+description: "Deliver local output previews and load images for vision-capable desktop models; preserve text-model and other tool routes."
+provides_tools:
+  - desktop_read_image
 hooks:
   - pre_llm_call
   - pre_tool_call

@@ -24,7 +24,7 @@ function readConfig(file: string) {
   return parseDocument(fs.readFileSync(file, 'utf8'), { version: '1.1', intAsBigInt: true }).toJS()
 }
 
-it('套餐托管上限和看图能力，保留其他选项及未声明的看图设置，重复写入字节不变', () => {
+it('套餐托管上限和看图能力（不能看图写明 false），保留其他选项及未声明的看图设置，重复写入字节不变', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-model-meta-'))
   const file = path.join(home, 'config.yaml')
 
@@ -46,7 +46,11 @@ it('套餐托管上限和看图能力，保留其他选项及未声明的看图�
     config = readConfig(file)
     expect(config.providers[id].models['shared-name']).toEqual({ supports_vision: true, extra: 'keep' })
     mergeMaasModelConfig(home, { ...next, models: next.models.map(model => ({ ...model, vision: false })) })
-    expect(readConfig(file).providers[id].models['shared-name']).toEqual({ context_length: 300000n, extra: 'keep' })
+    expect(readConfig(file).providers[id].models['shared-name']).toEqual({
+      context_length: 300000n,
+      supports_vision: false,
+      extra: 'keep'
+    })
     const before = fs.readFileSync(file, 'utf8')
     mergeMaasModelConfig(home, { ...next, models: next.models.map(model => ({ ...model, vision: false })) })
     expect(fs.readFileSync(file, 'utf8')).toBe(before)

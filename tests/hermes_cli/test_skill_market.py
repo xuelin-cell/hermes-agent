@@ -261,3 +261,14 @@ def test_dangerous_market_package_requires_content_bound_approval(tmp_path, monk
         installed = client.post("/api/skills/market/install", json={**body, "approved_hash": changed["package_hash"]}).json()
         assert installed["ok"] is True
         assert target.read_text(encoding="utf-8") == text + "Changed package.\n"
+
+
+def test_upload_rejects_invalid_archive():
+    """Uploaded bytes go through archive validation before any installation."""
+    import base64
+    from hermes_cli import web_server
+    with TestClient(web_server.app, headers={"Authorization": "Bearer " + web_server._SESSION_TOKEN}) as client:
+        response = client.post("/api/skills/upload", json={
+            "filename": "example.skill", "content": base64.b64encode(b"not a zip").decode(),
+        })
+        assert response.status_code == 400

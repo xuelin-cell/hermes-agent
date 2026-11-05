@@ -1,10 +1,10 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { browserShellCopy } from '@/lib/browser-shell'
 import type { PreviewTarget } from '@/store/preview'
 
 import type { PdfEngineEvents } from './pdf-engine'
+import { pdfPreviewCopy } from './pdf-preview-copy'
 
 interface Opened {
   container: HTMLDivElement
@@ -20,20 +20,10 @@ interface Opened {
   viewer: HTMLDivElement
 }
 
-// The viewer reaches the bridge through lib/browser-shell.ts, which imports it only when a PDF opens.
-const bridge = vi.hoisted(() => ({
-  pdfDocumentSource: vi.fn(async (path: string) => ({
-    httpHeaders: {},
-    url: `http://localhost/__hermes_backend/api/fs/download?path=${encodeURIComponent(path)}`,
-    withCredentials: false
-  }))
-}))
-
 // pdf.js does not run in jsdom: a stand-in records what the viewer asks of it,
 // and the tests play pdf.js's side (pages laid out, zoom, matches, password).
 const opened = vi.hoisted(() => [] as Opened[])
 
-vi.mock('@/dev/browser-bridge', () => bridge)
 vi.mock('./pdf-engine', () => ({
   createPdfEngine: vi.fn(
     (container: HTMLDivElement, viewer: HTMLDivElement, source: unknown, events: PdfEngineEvents) => {
@@ -57,11 +47,13 @@ const report: PreviewTarget = {
   url: 'file:///mnt/u/workspace/report.pdf'
 }
 
-const copy = browserShellCopy()
+const bytes = Uint8Array.of(37, 80, 68, 70)
+// The viewer reads `useI18n().locale`, which is English without a provider.
+const copy = pdfPreviewCopy('en')
 const counter = () => window.document.querySelector('[data-pdf-counter]')?.textContent
 const zoom = () => window.document.querySelector('[data-pdf-zoom]')?.textContent
 const matches = () => window.document.querySelector('[data-pdf-matches]')?.textContent
-const findBox = () => screen.queryByRole('textbox', { name: copy.pdf.find }) as HTMLInputElement | null
+const findBox = () => screen.queryByRole('textbox', { name: copy.find }) as HTMLInputElement | null
 
 async function engineFor(count = 1): Promise<Opened> {
   await waitFor(() => expect(opened).toHaveLength(count))
@@ -85,27 +77,25 @@ afterEach(() => {
 })
 
 describe('PDF viewer', () => {
-  it('桌面字节直接交给查看器，保留调用方字节，刷新不走浏览器下载桥接', async () => {
-    const bytes = Uint8Array.of(37, 80, 68, 70)
+  it('hands pdf.js a copy of the bytes, and a fresh one on reload', async () => {
     const view = render(<PdfPreview bytes={bytes} reloadKey={0} target={report} />)
     const first = await engineFor()
+
     expect(first.source).toEqual({ data: bytes })
     expect((first.source as { data: Uint8Array }).data).not.toBe(bytes)
-    expect(bridge.pdfDocumentSource).not.toHaveBeenCalled()
+
     view.rerender(<PdfPreview bytes={bytes} reloadKey={1} target={report} />)
     await engineFor(2)
     expect(first.engine.destroy).toHaveBeenCalledTimes(1)
   })
 
   it('opens the PDF with pdf.js, then counts the pages and shows the zoom', async () => {
-    render(<PdfPreview reloadKey={0} target={report} />)
+    render(<PdfPreview bytes={bytes} reloadKey={0} target={report} />)
 
-    expect(screen.getByRole('status', { name: copy.pdf.loading })).toBeTruthy()
+    expect(screen.getByRole('status', { name: copy.loading })).toBeTruthy()
 
     const pdf = await engineFor()
 
-    expect(bridge.pdfDocumentSource).toHaveBeenCalledWith('/mnt/u/workspace/年度报告.pdf')
-    expect(pdf.source).toMatchObject({ url: expect.stringContaining('/api/fs/download?path=') })
     // pdf.js draws into a .pdfViewer, the only child of the box that scrolls.
     expect(pdf.viewer.className).toBe('pdfViewer')
     expect(pdf.viewer.parentElement).toBe(pdf.container)
@@ -130,7 +120,7 @@ describe('PDF viewer', () => {
       return { bottom: n ? top + 300 : 500, top } as DOMRect
     })
 
-    render(<PdfPreview reloadKey={0} target={report} />)
+    render(<PdfPreview bytes={bytes} reloadKey={0} target={report} />)
 
     const pdf = await engineFor()
 
@@ -157,13 +147,13 @@ describe('PDF viewer', () => {
   })
 
   it('zooms with the buttons; the percentage fits the page to the pane again', async () => {
-    render(<PdfPreview reloadKey={0} target={report} />)
+    render(<PdfPreview bytes={bytes} reloadKey={0} target={report} />)
 
     const pdf = await engineFor()
 
     laidOut(pdf, 3)
-    fireEvent.click(screen.getByRole('button', { name: copy.pdf.zoomIn }))
-    fireEvent.click(screen.getByRole('button', { name: copy.pdf.zoomOut }))
+    fireEvent.click(screen.getByRole('button', { name: copy.zoomIn }))
+    fireEvent.click(screen.getByRole('button', { name: copy.zoomOut }))
     fireEvent.click(window.document.querySelector<HTMLButtonElement>('[data-pdf-zoom]')!)
 
     expect(pdf.engine.zoom.mock.calls).toEqual([[1], [-1]])
@@ -171,17 +161,17 @@ describe('PDF viewer', () => {
 
     act(() => pdf.events.onScale(5))
     expect(zoom()).toBe('500%')
-    expect(screen.getByRole('button', { name: copy.pdf.zoomIn })).toHaveProperty('disabled', true)
-    expect(screen.getByRole('button', { name: copy.pdf.zoomOut })).toHaveProperty('disabled', false)
+    expect(screen.getByRole('button', { name: copy.zoomIn })).toHaveProperty('disabled', true)
+    expect(screen.getByRole('button', { name: copy.zoomOut })).toHaveProperty('disabled', false)
   })
 
   it('searches the whole PDF from the search box', async () => {
-    render(<PdfPreview reloadKey={0} target={report} />)
+    render(<PdfPreview bytes={bytes} reloadKey={0} target={report} />)
 
     const pdf = await engineFor()
 
     laidOut(pdf, 3)
-    fireEvent.click(screen.getByRole('button', { name: copy.pdf.find }))
+    fireEvent.click(screen.getByRole('button', { name: copy.find }))
 
     const input = findBox()!
 
@@ -192,15 +182,15 @@ describe('PDF viewer', () => {
 
     act(() => pdf.events.onFind({ current: 0, status: 'pending', total: 0 }))
     expect(matches()).toBe('')
-    expect(screen.getByRole('button', { name: copy.pdf.findNext })).toHaveProperty('disabled', true)
+    expect(screen.getByRole('button', { name: copy.findNext })).toHaveProperty('disabled', true)
 
     act(() => pdf.events.onFind({ current: 2, status: 'found', total: 5 }))
     expect(matches()).toBe('2 / 5')
 
     fireEvent.keyDown(input, { key: 'Enter' })
     fireEvent.keyDown(input, { key: 'Enter', shiftKey: true })
-    fireEvent.click(screen.getByRole('button', { name: copy.pdf.findPrevious }))
-    fireEvent.click(screen.getByRole('button', { name: copy.pdf.findNext }))
+    fireEvent.click(screen.getByRole('button', { name: copy.findPrevious }))
+    fireEvent.click(screen.getByRole('button', { name: copy.findNext }))
     expect(pdf.engine.find.mock.calls.slice(1)).toEqual([
       ['客流', { again: true, previous: false }],
       ['客流', { again: true, previous: true }],
@@ -209,7 +199,7 @@ describe('PDF viewer', () => {
     ])
 
     act(() => pdf.events.onFind({ current: 0, status: 'none', total: 0 }))
-    expect(matches()).toBe(copy.pdf.findNone)
+    expect(matches()).toBe(copy.findNone)
 
     fireEvent.keyDown(input, { key: 'Escape' })
     expect(pdf.engine.endFind).toHaveBeenCalledTimes(1)
@@ -218,14 +208,14 @@ describe('PDF viewer', () => {
   })
 
   it('opens the search on Ctrl+F; text an input method is still composing is not searched', async () => {
-    render(<PdfPreview reloadKey={0} target={report} />)
+    render(<PdfPreview bytes={bytes} reloadKey={0} target={report} />)
 
     const pdf = await engineFor()
 
     laidOut(pdf, 3)
     fireEvent.keyDown(screen.getByRole('region', { name: '年度报告.pdf' }), { ctrlKey: true, key: 'f' })
 
-    const input = (await screen.findByRole('textbox', { name: copy.pdf.find })) as HTMLInputElement
+    const input = (await screen.findByRole('textbox', { name: copy.find })) as HTMLInputElement
 
     await waitFor(() => expect(window.document.activeElement).toBe(input))
 
@@ -245,33 +235,33 @@ describe('PDF viewer', () => {
   })
 
   it('asks for the password of a protected PDF', async () => {
-    render(<PdfPreview reloadKey={0} target={report} />)
+    render(<PdfPreview bytes={bytes} reloadKey={0} target={report} />)
 
     const pdf = await engineFor()
     const retry = vi.fn()
 
     act(() => pdf.events.onPassword(retry, false))
 
-    expect(screen.getByText(copy.pdf.password)).toBeTruthy()
-    expect(screen.queryByText(copy.pdf.passwordIncorrect)).toBeNull()
+    expect(screen.getByText(copy.password)).toBeTruthy()
+    expect(screen.queryByText(copy.passwordIncorrect)).toBeNull()
 
-    const input = screen.getByLabelText(copy.pdf.passwordLabel)
+    const input = screen.getByLabelText(copy.passwordLabel)
 
     await waitFor(() => expect(window.document.activeElement).toBe(input))
-    expect(screen.getByRole('button', { name: copy.pdf.passwordOpen })).toHaveProperty('disabled', true)
+    expect(screen.getByRole('button', { name: copy.passwordOpen })).toHaveProperty('disabled', true)
 
     fireEvent.change(input, { target: { value: 'secret' } })
     fireEvent.submit(input.closest('form')!)
     expect(retry).toHaveBeenCalledWith('secret')
-    expect(screen.getByRole('status', { name: copy.pdf.loading })).toBeTruthy()
+    expect(screen.getByRole('status', { name: copy.loading })).toBeTruthy()
 
     const again = vi.fn()
 
     act(() => pdf.events.onPassword(again, true))
-    expect(screen.getByText(copy.pdf.passwordIncorrect)).toBeTruthy()
+    expect(screen.getByText(copy.passwordIncorrect)).toBeTruthy()
 
-    fireEvent.change(screen.getByLabelText(copy.pdf.passwordLabel), { target: { value: 'right' } })
-    fireEvent.click(screen.getByRole('button', { name: copy.pdf.passwordOpen }))
+    fireEvent.change(screen.getByLabelText(copy.passwordLabel), { target: { value: 'right' } })
+    fireEvent.click(screen.getByRole('button', { name: copy.passwordOpen }))
     expect(again).toHaveBeenCalledWith('right')
 
     laidOut(pdf, 2)
@@ -279,51 +269,48 @@ describe('PDF viewer', () => {
   })
 
   it('says why a PDF does not open', async () => {
-    const { rerender } = render(<PdfPreview reloadKey={0} target={report} />)
+    const { rerender } = render(<PdfPreview bytes={bytes} reloadKey={0} target={report} />)
     const broken = await engineFor()
 
     act(() =>
       broken.events.onError(Object.assign(new Error('Invalid PDF structure.'), { name: 'InvalidPDFException' }))
     )
-    expect(screen.getByText(copy.pdf.invalid)).toBeTruthy()
+    expect(screen.getByText(copy.invalid)).toBeTruthy()
 
-    rerender(<PdfPreview reloadKey={1} target={report} />)
+    rerender(<PdfPreview bytes={bytes} reloadKey={1} target={report} />)
 
-    const missing = await engineFor(2)
+    const other = await engineFor(2)
 
-    act(() =>
-      missing.events.onError(Object.assign(new Error('Missing PDF'), { name: 'ResponseException', status: 404 }))
-    )
-    expect(screen.getByText(copy.fileErrors.not_found)).toBeTruthy()
-
-    bridge.pdfDocumentSource.mockRejectedValueOnce(new Error('offline'))
-    rerender(<PdfPreview reloadKey={2} target={report} />)
-    expect(await screen.findByText(copy.pdf.failed)).toBeTruthy()
+    act(() => other.events.onError(new Error('Unexpected server response')))
+    expect(screen.getByText(copy.failed)).toBeTruthy()
     expect(opened).toHaveLength(2)
   })
 
   it('lets go of pdf.js when another file opens or the pane closes', async () => {
-    const { rerender, unmount } = render(<PdfPreview reloadKey={0} target={report} />)
+    const { rerender, unmount } = render(<PdfPreview bytes={bytes} reloadKey={0} target={report} />)
     const first = await engineFor()
 
     // What pdf.js drew goes with the file.
     first.viewer.append(window.document.createElement('div'))
 
     rerender(
-      <PdfPreview reloadKey={0} target={{ ...report, label: '附件.pdf', path: '/w/附件.pdf', source: '/w/附件.pdf' }} />
+      <PdfPreview
+        bytes={bytes}
+        reloadKey={0}
+        target={{ ...report, label: '附件.pdf', path: '/w/附件.pdf', source: '/w/附件.pdf' }}
+      />
     )
 
     const second = await engineFor(2)
 
     expect(first.engine.destroy).toHaveBeenCalledTimes(1)
     expect(second.viewer.childElementCount).toBe(0)
-    expect(bridge.pdfDocumentSource).toHaveBeenLastCalledWith('/w/附件.pdf')
 
     unmount()
     expect(second.engine.destroy).toHaveBeenCalledTimes(1)
 
     // Closed before pdf.js was even loaded: nothing is started.
-    render(<PdfPreview reloadKey={0} target={report} />).unmount()
+    render(<PdfPreview bytes={bytes} reloadKey={0} target={report} />).unmount()
     await vi.dynamicImportSettled()
     expect(opened).toHaveLength(2)
   })

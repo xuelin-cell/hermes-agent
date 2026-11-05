@@ -456,34 +456,6 @@ export function useComposerActions({
     [attachToMain]
   )
 
-  const pickContextPaths = useCallback(
-    async (kind: 'file' | 'folder') => {
-      const paths = await selectDesktopPaths({
-        title: kind === 'file' ? 'Add files as context' : 'Add folders as context',
-        defaultPath: currentCwd || undefined,
-        directories: kind === 'folder'
-      })
-
-      if (!paths?.length) {
-        return
-      }
-
-      for (const path of paths) {
-        const rel = contextPath(path, currentCwd)
-
-        attachToMain({
-          id: attachmentId(kind, rel),
-          kind,
-          label: pathLabel(path),
-          detail: rel,
-          refText: `@${kind}:${formatRefValue(rel)}`,
-          path
-        })
-      }
-    },
-    [attachToMain, currentCwd]
-  )
-
   const insertContextPathInlineRef = useCallback(
     (path: string, isDirectory = false) => {
       if (!path) {
@@ -502,28 +474,6 @@ export function useComposerActions({
       return true
     },
     [currentCwd, scope.target]
-  )
-
-  const attachContextFilePath = useCallback(
-    (filePath: string) => {
-      if (!filePath) {
-        return false
-      }
-
-      const rel = contextPath(filePath, currentCwd)
-
-      attachToMain({
-        id: attachmentId('file', rel),
-        kind: 'file',
-        label: pathLabel(filePath),
-        detail: rel,
-        refText: `@file:${formatRefValue(rel)}`,
-        path: filePath
-      })
-
-      return true
-    },
-    [attachToMain, currentCwd]
   )
 
   const attachImagePath = useCallback(
@@ -577,6 +527,70 @@ export function useComposerActions({
       }
     },
     [attachToMain, copy.imagePreviewFailed, scope]
+  )
+
+  const attachContextFilePath = useCallback(
+    (filePath: string) => {
+      if (!filePath) {
+        return false
+      }
+
+      // File entry points share the image pipeline: the menu label must not
+      // decide whether the gateway receives pixels or only an @file reference.
+      if (isImagePath(filePath)) {
+        void attachImagePath(filePath)
+
+        return true
+      }
+
+      const rel = contextPath(filePath, currentCwd)
+
+      attachToMain({
+        id: attachmentId('file', rel),
+        kind: 'file',
+        label: pathLabel(filePath),
+        detail: rel,
+        refText: `@file:${formatRefValue(rel)}`,
+        path: filePath
+      })
+
+      return true
+    },
+    [attachImagePath, attachToMain, currentCwd]
+  )
+
+  const pickContextPaths = useCallback(
+    async (kind: 'file' | 'folder') => {
+      const paths = await selectDesktopPaths({
+        title: kind === 'file' ? 'Add files as context' : 'Add folders as context',
+        defaultPath: currentCwd || undefined,
+        directories: kind === 'folder'
+      })
+
+      if (!paths?.length) {
+        return
+      }
+
+      for (const path of paths) {
+        if (kind === 'file') {
+          attachContextFilePath(path)
+
+          continue
+        }
+
+        const rel = contextPath(path, currentCwd)
+
+        attachToMain({
+          id: attachmentId(kind, rel),
+          kind,
+          label: pathLabel(path),
+          detail: rel,
+          refText: `@${kind}:${formatRefValue(rel)}`,
+          path
+        })
+      }
+    },
+    [attachContextFilePath, attachToMain, currentCwd]
   )
 
   const attachImageBlob = useCallback(

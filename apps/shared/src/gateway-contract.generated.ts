@@ -2770,6 +2770,7 @@ export interface WakeFeedResult {
 }
 export interface SessionCreateParams {
   profile?: string | null
+  code_mode?: boolean
   cols?: number | null
   source?: string | null
   cwd?: string | null
@@ -4382,6 +4383,9 @@ export interface MessageInterimPayload {
 export interface MessageCompletePayload {
   text?: string | unknown
   usage?: Usage | null
+  turn_token_usage?: TurnTokenUsage | null
+  turn_model?: TurnReplyModel | null
+  turn_completed_at?: number | null
   status?: TurnStatus | null
   reasoning?: string | null
   warning?: string | null
@@ -4395,6 +4399,20 @@ export interface MessageCompletePayload {
   error_surface?: ErrorSurface | null
   partial?: boolean | null
   persisted_turn?: PersistedTurn | null
+}
+/** Provider-reported main-agent usage accumulated across one prompt turn; input includes cache. */
+export interface TurnTokenUsage {
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+  cache_read_tokens: number
+  cache_write_tokens: number
+}
+/** The answering model and its configured display name, snapshotted before runtime restoration. */
+export interface TurnReplyModel {
+  model: string
+  provider?: string
+  name?: string
 }
 /** ``prompt_turn._result_status``. */
 export type TurnStatus = 'complete' | 'error' | 'interrupted'

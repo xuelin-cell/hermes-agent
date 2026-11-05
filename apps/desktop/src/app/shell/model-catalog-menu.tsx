@@ -30,7 +30,6 @@ import { HighlightMatches } from '@/components/ui/highlight-matches'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { HermesGateway } from '@/hermes'
 import { useI18n } from '@/i18n'
-import { hideForUsers } from '@/lib/browser-shell'
 import { isSubmitEnter } from '@/lib/ime'
 import { catalogProviderMatches, modelOptionsQueryKey, requestModelOptions } from '@/lib/model-options'
 import { displayModelName, modelDisplayParts } from '@/lib/model-status-label'
@@ -834,32 +833,27 @@ export function ModelCatalogMenu({
           trailing block it has always rendered. */}
       <DropdownMenuSeparator className="mx-0" />
       {footer}
-      {/* Browser build: the platform's plan supplies the models, so custom slugs and the shortlist are developer mode's. */}
-      {!hideForUsers() && (
-        <>
-          <DropdownMenuItem
-            className={cn(dropdownMenuRow, 'text-(--ui-text-tertiary)', slugEntry && 'text-foreground')}
-            onSelect={event => {
-              event.preventDefault()
-              setSearch('')
-              setKbOverride(null)
-              setSlugEntry(true)
-              // Radix hands focus back to the row after onSelect; refocus after.
-              window.setTimeout(() => searchRef.current?.focus(), 0)
-            }}
-          >
-            <Codicon name="add" size="0.75rem" />
-            {copyPicker.addCustomModelAction}
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className={cn(dropdownMenuRow, 'text-(--ui-text-tertiary)')}
-            onSelect={() => setModelVisibilityOpen(true)}
-          >
-            <Codicon name="settings-gear" size="0.75rem" />
-            {copy.editModels}
-          </DropdownMenuItem>
-        </>
-      )}
+      <DropdownMenuItem
+        className={cn(dropdownMenuRow, 'text-(--ui-text-tertiary)', slugEntry && 'text-foreground')}
+        onSelect={event => {
+          event.preventDefault()
+          setSearch('')
+          setKbOverride(null)
+          setSlugEntry(true)
+          // Radix hands focus back to the row after onSelect; refocus after.
+          window.setTimeout(() => searchRef.current?.focus(), 0)
+        }}
+      >
+        <Codicon name="add" size="0.75rem" />
+        {copyPicker.addCustomModelAction}
+      </DropdownMenuItem>
+      <DropdownMenuItem
+        className={cn(dropdownMenuRow, 'text-(--ui-text-tertiary)')}
+        onSelect={() => setModelVisibilityOpen(true)}
+      >
+        <Codicon name="settings-gear" size="0.75rem" />
+        {copy.editModels}
+      </DropdownMenuItem>
     </>
   )
 }

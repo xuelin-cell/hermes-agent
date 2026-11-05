@@ -75,6 +75,43 @@
       },
       "version": "1208+145.0.7632.6"
     },
+    "codex": {
+      "artifacts": {
+        "darwin-arm64": {
+          "sha256": "493de2d788c6ff01de222307c767231c1e6c802d5dd808523550fad6d972f4d3",
+          "url": "https://registry.npmjs.org/@openai/codex/-/codex-0.147.0-darwin-arm64.tgz"
+        },
+        "darwin-x64": {
+          "sha256": "43cd79decdd0c110daa90a0fd34e73523c7a10fb0e4d5d9bf1437d9298be08b6",
+          "url": "https://registry.npmjs.org/@openai/codex/-/codex-0.147.0-darwin-x64.tgz"
+        },
+        "linux-arm64": {
+          "sha256": "4d09bf000597768dfa070b0e7c612f0fc258ac7fab364e570104ea625f918546",
+          "url": "https://registry.npmjs.org/@openai/codex/-/codex-0.147.0-linux-arm64.tgz"
+        },
+        "linux-arm64-musl": {
+          "sha256": "4d09bf000597768dfa070b0e7c612f0fc258ac7fab364e570104ea625f918546",
+          "url": "https://registry.npmjs.org/@openai/codex/-/codex-0.147.0-linux-arm64.tgz"
+        },
+        "linux-x64": {
+          "sha256": "c969740cf8297e4c31905cd551efeb2c99af5080c12c236bdf825598b250139a",
+          "url": "https://registry.npmjs.org/@openai/codex/-/codex-0.147.0-linux-x64.tgz"
+        },
+        "linux-x64-musl": {
+          "sha256": "c969740cf8297e4c31905cd551efeb2c99af5080c12c236bdf825598b250139a",
+          "url": "https://registry.npmjs.org/@openai/codex/-/codex-0.147.0-linux-x64.tgz"
+        },
+        "win32-arm64": {
+          "sha256": "0b20f97a8a6d55ea3c0dcd16b05ca623639aae9d520dc9f6ac636903677964c8",
+          "url": "https://registry.npmjs.org/@openai/codex/-/codex-0.147.0-win32-arm64.tgz"
+        },
+        "win32-x64": {
+          "sha256": "299d8603750caaffc24f218789d989f77cf157070bd42451d352f5578a800766",
+          "url": "https://registry.npmjs.org/@openai/codex/-/codex-0.147.0-win32-x64.tgz"
+        }
+      },
+      "version": "0.147.0"
+    },
     "cua-driver": {
       "artifacts": {
         "darwin-arm64": {

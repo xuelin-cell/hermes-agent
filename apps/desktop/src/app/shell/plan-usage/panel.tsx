@@ -13,7 +13,6 @@ import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useI18n } from '@/i18n'
-import { isPlanUsageHidden } from '@/lib/browser-shell'
 import { notify } from '@/store/notifications'
 
 import type { LoginAccount } from '../../../../electron/login/contract'
@@ -174,7 +173,7 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
   const [openingSource, setOpeningSource] = useState<'subscribe' | 'details' | null>(null)
 
   useEffect(() => {
-    if (!open || isPlanUsageHidden()) {
+    if (!open) {
       return
     }
     let live = true
@@ -366,7 +365,7 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
         <section aria-label={c.title}>
           {trigger && (
             <>
-              <div className="account-card-row account-card-plan" hidden={isPlanUsageHidden()}>
+              <div className="account-card-row account-card-plan">
                 <AccountIcon src={planIcon} />
                 <span className="account-card-plan-name">
                   {data?.productName || (loading ? c.loading : c.unnamed)}
@@ -394,7 +393,6 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
               <button
                 aria-expanded={details}
                 className="account-card-row"
-                hidden={isPlanUsageHidden()}
                 onClick={() => setDetails(value => !value)}
                 type="button"
               >
@@ -428,7 +426,7 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
                   )}
                 </div>
               )}
-              <div className="account-card-row" hidden={isPlanUsageHidden()}>
+              <div className="account-card-row">
                 <AccountIcon src={deadlineIcon} />
                 <span>{c.expires}</span>
                 <span className="account-card-summary">{expirySummary}</span>

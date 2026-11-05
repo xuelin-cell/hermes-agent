@@ -55,6 +55,7 @@ class Turn:
     platform: str = "desktop"
     guess: bool = True
     downloads: dict = field(default_factory=dict)
+    image_runtime: dict = field(default_factory=dict)
 
 
 def scope(session_id):
@@ -272,6 +273,10 @@ def after_tool(
     **kwargs,
 ):
     """合并写入参数、工具输出和执行差异，失败或后台任务不冒充已完成交付。"""
+    from .native_images import TOOL
+
+    if tool_name == TOOL:  # 读取图片不生成交付物。
+        return
     with _lock:
         turn = current(scope(session_id), turn_id)
         if turn is None or turn.background or turn.platform != "desktop":
@@ -535,10 +540,13 @@ def rewrite_llm_request(*, request=None, **context):
     """
     from . import workfolders
     from .image_hints import rewrite_request
+    from .native_images import remember_request, runtime_scope
     from .reasoning import strip_reasoning_levels
 
     reasons = []
-    hinted = rewrite_request(request=request, **context)
+    remember_request(**context)
+    with runtime_scope(context.get("session_id", ""), context.get("turn_id", "")):
+        hinted = rewrite_request(request=request, **context)
     if hinted:
         request = hinted["request"]
         reasons.append(hinted.get("reason") or "image-hint")
@@ -556,9 +564,12 @@ def rewrite_llm_request(*, request=None, **context):
 
 
 def register(ctx):
-    """只使用现有原生钩子和中间件，不增加模型工具或修改 Hermes 核心。"""
+    """用原生插件接口注册桌面读图工具与交付钩子，不修改 Hermes 核心。"""
     from . import workfolders
     from .uploads import around_call, remember_session
+    from . import native_images
+
+    native_images.register(ctx)
 
     # 元景工具读不到本机文件：执行时替模型上传并换成 ossPath。
     ctx.register_middleware("tool_execution", around_call)

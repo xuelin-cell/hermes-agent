@@ -172,3 +172,13 @@ describe('settings subpage routing', () => {
     )
   })
 })
+
+
+it('keeps safety approvals available while restricting privacy and checkpoints to developers', () => {
+  expect(settingsViewVisible('config:safety', false)).toBe(true)
+  expect(settingsSubpages('config:safety', false).map(page => page.id)).toEqual(['approvals'])
+  expect(settingsSubpages('config:safety', true).map(page => page.id)).toEqual(['approvals', 'privacy', 'checkpoints'])
+  expect(settingsFieldVisible('config:safety', 'approvals.mode', false)).toBe(true)
+  expect(settingsFieldVisible('config:safety', 'security.redact_secrets', false)).toBe(false)
+  expect(settingsFieldVisible('config:safety', 'checkpoints.enabled', false)).toBe(false)
+})

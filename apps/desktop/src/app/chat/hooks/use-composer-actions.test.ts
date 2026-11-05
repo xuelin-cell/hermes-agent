@@ -347,7 +347,58 @@ describe('useComposerActions native image drops', () => {
     Reflect.deleteProperty(window, 'hermesDesktop')
     vi.unstubAllGlobals()
     vi.clearAllMocks()
+    $connection.set(null)
   })
+
+  it.each(['picker', 'context'] as const)(
+    'recognizes images from the %s file entry without reclassifying documents or folders',
+    async entry => {
+      const paths = ['/test/截图.PNG', '/test/photo.jpeg', '/test/report.pdf', '/test/notes.txt']
+      const add = vi.fn()
+      const selectPaths = vi.fn(async () => paths)
+      const readFileDataUrl = vi.fn(async () => 'preview')
+
+      Object.defineProperty(window, 'hermesDesktop', {
+        configurable: true,
+        value: { selectPaths, readFileDataUrl }
+      })
+
+      const { result } = renderHook(() =>
+        useComposerActions({
+          activeSessionId: null,
+          currentCwd: '/test',
+          requestGateway: vi.fn(),
+          scope: {
+            add,
+            remove: vi.fn(() => null),
+            target: 'main',
+            update: vi.fn(() => true),
+            updateIfCurrent: vi.fn(() => true)
+          }
+        })
+      )
+
+      await act(async () => {
+        if (entry === 'picker') {
+          await result.current.pickContextPaths('file')
+        } else {
+          paths.forEach(path => expect(result.current.attachContextFilePath(path)).toBe(true))
+        }
+      })
+      await waitFor(() => expect(readFileDataUrl).toHaveBeenCalledTimes(2))
+      const attachments = add.mock.calls.map(([attachment]) => attachment as ComposerAttachment)
+      expect(attachments.map(({ kind }) => kind)).toEqual(['image', 'image', 'file', 'file'])
+      expect(attachments.slice(0, 2).every(attachment => !attachment.refText && attachment.occurrenceId)).toBe(true)
+      expect(attachments.map(({ path }) => path)).toEqual(paths)
+      expect(attachments.slice(2).map(({ refText }) => refText)).toEqual(['@file:report.pdf', '@file:notes.txt'])
+
+      selectPaths.mockResolvedValue(['/test/album.png'])
+      await act(async () => {
+        await result.current.pickContextPaths('folder')
+      })
+      expect(add).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'folder', refText: '@folder:album.png' }))
+    }
+  )
 
   it('does not attach a screenshot when its draft changes during native image saving', async () => {
     let finishSave!: (path: string) => void

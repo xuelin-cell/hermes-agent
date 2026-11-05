@@ -8,6 +8,9 @@ import { coerceGatewayText, coerceThinkingText } from '@/lib/chat-runtime'
 import { playCompletionSound } from '@/lib/completion-sound'
 import { parseErrorSurface } from '@/lib/error-surface'
 import { triggerHaptic } from '@/lib/haptics'
+import { parseMessageTime } from '@/lib/message-time'
+import { parseTurnReplyModel } from '@/lib/turn-reply-model'
+import { parseTurnTokenUsage } from '@/lib/turn-token-usage'
 import { billingCtaLabel, clearBillingBlock, runBillingRecovery, setBillingBlock } from '@/store/billing-block'
 import { clearClarifyRequest } from '@/store/clarify'
 import { setSessionCompacting } from '@/store/compaction'
@@ -375,7 +378,10 @@ export function handleMessageStreamEvent(ctx: GatewayEventContext): boolean {
       occurredAt,
       payload?.persisted_turn,
       Boolean(payload?.response_transformed),
-      typeof payload?.status === 'string' ? payload.status : undefined
+      typeof payload?.status === 'string' ? payload.status : undefined,
+      parseTurnTokenUsage(payload?.turn_token_usage),
+      parseTurnReplyModel(payload?.turn_model),
+      parseMessageTime(payload?.turn_completed_at)
     )
 
     // Onboarding's first build: between turns is the only moment Setup may

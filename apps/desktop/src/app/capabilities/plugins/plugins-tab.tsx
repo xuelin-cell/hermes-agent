@@ -12,7 +12,6 @@ import { $pluginRecords, type PluginRecord, setPluginEnabled } from '@/contrib/p
 import { discoverRuntimePlugins, uninstallDiskPlugin } from '@/contrib/runtime-loader'
 import type { ProfileScope } from '@/hermes'
 import { useI18n } from '@/i18n'
-import { hideForUsers, withoutDesktopPlugins } from '@/lib/browser-shell'
 import { DESKTOP_PLUGIN_TOOLSETS } from '@/lib/desktop-toolsets'
 import { triggerHaptic } from '@/lib/haptics'
 import { FolderOpen, Loader2, Monitor, Package, RefreshCw, Trash2 } from '@/lib/icons'
@@ -524,13 +523,7 @@ export function PluginActions({ profile }: { profile: ProfileScope }) {
         {d.installModal.installFromGit}
       </Button>
       <Tip label={d.openFolder}>
-        <Button
-          aria-label={d.openFolder}
-          hidden={hideForUsers()}
-          onClick={() => void revealPluginsDir()}
-          size="icon-xs"
-          variant="ghost"
-        >
+        <Button aria-label={d.openFolder} onClick={() => void revealPluginsDir()} size="icon-xs" variant="ghost">
           <FolderOpen />
         </Button>
       </Tip>
@@ -572,7 +565,7 @@ export const PluginsTab = memo(function PluginsTab({
   const p = t.skills.plugins
   const { requestGateway } = useGatewayRequest()
 
-  const desktopRecords = withoutDesktopPlugins(useStore($pluginRecords))
+  const desktopRecords = useStore($pluginRecords)
   const agentRows = useStore($agentPlugins)
   const status = useStore($agentPluginsStatus)
   const error = useStore($agentPluginsError)

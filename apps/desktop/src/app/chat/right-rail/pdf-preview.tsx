@@ -3,50 +3,41 @@ import { type KeyboardEvent, useEffect, useRef, useState } from 'react'
 import { PageLoader } from '@/components/page-loader'
 import { Tip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
-import { browserShellCopy, pdfDocumentSource } from '@/lib/browser-shell'
 import { ChevronDown, Search, X, ZoomIn, ZoomOut } from '@/lib/icons'
 import type { PreviewTarget } from '@/store/preview'
 
-import { currentSlide, RoundButton } from './office-slides'
 import type { PdfEngine, PdfFindResult } from './pdf-engine'
+import { currentSlide, RoundButton } from './pdf-preview-controls'
+import { type PdfPreviewCopy, pdfPreviewCopy } from './pdf-preview-copy'
 import { MAX_ZOOM, MIN_ZOOM } from './pdf-zoom'
 import { PreviewEmptyState } from './preview-file'
 
-// Shared PDF viewer. pdf.js draws the pages in the page itself (pdf-engine.ts, loaded the
-// first time a PDF is opened), laid out like the page viewer shows a Word
-// document (office-slides.tsx): pages top to bottom under a page counter. The
+// PDF viewer. pdf.js draws the pages in the page itself (pdf-engine.ts, loaded the
+// first time a PDF is opened): pages top to bottom under a page counter. The
 // text can be selected and copied, and searched from the search box (⌘F / Ctrl+F
 // opens it); the zoom fits the pane until it is changed.
 
 type Status = 'error' | 'loading' | 'password' | 'ready'
 
 /** What to say when pdf.js could not open the file. */
-function failureMessage(failure: unknown, copy: ReturnType<typeof browserShellCopy>): string {
-  const { name, status } = (failure ?? {}) as { name?: unknown; status?: unknown }
+function failureMessage(failure: unknown, copy: PdfPreviewCopy): string {
+  const { name } = (failure ?? {}) as { name?: unknown }
 
-  if (name === 'InvalidPDFException') {
-    return copy.pdf.invalid
-  }
-
-  if (name === 'ResponseException' && status === 404) {
-    return copy.fileErrors.not_found
-  }
-
-  return copy.pdf.failed
+  return name === 'InvalidPDFException' ? copy.invalid : copy.failed
 }
 
-/** 桌面直接传入字节；不提供字节时仍沿用浏览器原有的鉴权来源。 */
+/** The caller hands over the file's bytes (preview-file.tsx reads the file). */
 export function PdfPreview({
   bytes,
   reloadKey,
   target
 }: {
-  bytes?: Uint8Array
+  bytes: Uint8Array
   reloadKey: number
   target: PreviewTarget
 }) {
   const { locale, t } = useI18n()
-  const copy = browserShellCopy(locale)
+  const copy = pdfPreviewCopy(locale)
   const path = target.path || target.source
   const containerRef = useRef<HTMLDivElement>(null)
   const viewerRef = useRef<HTMLDivElement>(null)
@@ -95,35 +86,34 @@ export function PdfPreview({
     setQuery('')
     setFound(null)
 
-    Promise.all([import('./pdf-engine'), bytes ? { data: bytes.slice() } : pdfDocumentSource(path)]).then(
-      ([{ createPdfEngine }, source]) => {
-        if (!active) {
-          return
-        }
+    const source = { data: bytes.slice() }
 
-        engine = createPdfEngine(container, viewer, source, {
-          onError: fail,
-          onFind: result => active && setFound(result),
-          onPages: count => {
-            if (active) {
-              setPages(count)
-              setStatus('ready')
-            }
-          },
-          onPassword: (retry, incorrect) => {
-            if (active) {
-              retryRef.current = retry
-              setPassword('')
-              setPasswordWrong(incorrect)
-              setStatus('password')
-            }
-          },
-          onScale: next => active && setScale(next)
-        })
-        engineRef.current = engine
-      },
-      fail
-    )
+    import('./pdf-engine').then(({ createPdfEngine }) => {
+      if (!active) {
+        return
+      }
+
+      engine = createPdfEngine(container, viewer, source, {
+        onError: fail,
+        onFind: result => active && setFound(result),
+        onPages: count => {
+          if (active) {
+            setPages(count)
+            setStatus('ready')
+          }
+        },
+        onPassword: (retry, incorrect) => {
+          if (active) {
+            retryRef.current = retry
+            setPassword('')
+            setPasswordWrong(incorrect)
+            setStatus('password')
+          }
+        },
+        onScale: next => active && setScale(next)
+      })
+      engineRef.current = engine
+    }, fail)
 
     return () => {
       active = false
@@ -178,7 +168,7 @@ export function PdfPreview({
   }
 
   // The app's ⌘F opens its find bar over the chat unless the PDF viewer has
-  // focus (lib/browser-shell.ts::findInPageTakenByViewer); here it opens the
+  // focus (lib/find-in-page-mt.ts::findInPageTakenByViewer); here it opens the
   // viewer's search.
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'f') {
@@ -211,9 +201,9 @@ export function PdfPreview({
   const matches = !query
     ? ''
     : found?.total
-      ? copy.slides.counter(found.current, found.total)
+      ? copy.counter(found.current, found.total)
       : found?.status === 'none'
-        ? copy.pdf.findNone
+        ? copy.findNone
         : ''
 
   return (
@@ -225,20 +215,20 @@ export function PdfPreview({
       role="region"
     >
       <div className="flex h-7 shrink-0 items-center justify-between gap-3 border-b border-border/40 px-3 text-[0.625rem] font-bold text-muted-foreground">
-        <span data-pdf-counter="">{ready ? copy.slides.counter(page, pages) : ''}</span>
+        <span data-pdf-counter="">{ready ? copy.counter(page, pages) : ''}</span>
         <div className="flex items-center gap-1">
-          <RoundButton className="hover:text-foreground" disabled={!ready} label={copy.pdf.find} onClick={openFind}>
+          <RoundButton className="hover:text-foreground" disabled={!ready} label={copy.find} onClick={openFind}>
             <Search className="size-3.5" />
           </RoundButton>
           <RoundButton
             className="hover:text-foreground"
             disabled={!ready || scale <= MIN_ZOOM}
-            label={copy.pdf.zoomOut}
+            label={copy.zoomOut}
             onClick={() => engineRef.current?.zoom(-1)}
           >
             <ZoomOut className="size-3.5" />
           </RoundButton>
-          <Tip label={copy.pdf.fitWidth}>
+          <Tip label={copy.fitWidth}>
             <button
               className="min-w-9 rounded-sm text-center tabular-nums transition-colors hover:text-foreground disabled:opacity-30"
               data-pdf-zoom=""
@@ -252,7 +242,7 @@ export function PdfPreview({
           <RoundButton
             className="hover:text-foreground"
             disabled={!ready || scale >= MAX_ZOOM}
-            label={copy.pdf.zoomIn}
+            label={copy.zoomIn}
             onClick={() => engineRef.current?.zoom(1)}
           >
             <ZoomIn className="size-3.5" />
@@ -263,7 +253,7 @@ export function PdfPreview({
         <div className="flex h-8 shrink-0 items-center gap-1.5 border-b border-border/40 px-3 text-muted-foreground">
           <Search className="size-3.5 shrink-0" />
           <input
-            aria-label={copy.pdf.find}
+            aria-label={copy.find}
             className="min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground/60"
             onChange={event => {
               setQuery(event.target.value)
@@ -293,7 +283,7 @@ export function PdfPreview({
                 closeFind()
               }
             }}
-            placeholder={copy.pdf.find}
+            placeholder={copy.find}
             ref={findInputRef}
             value={query}
           />
@@ -303,7 +293,7 @@ export function PdfPreview({
           <RoundButton
             className="hover:text-foreground"
             disabled={!found?.total}
-            label={copy.pdf.findPrevious}
+            label={copy.findPrevious}
             onClick={() => step(true)}
           >
             <ChevronDown className="size-3.5 rotate-180" />
@@ -311,12 +301,12 @@ export function PdfPreview({
           <RoundButton
             className="hover:text-foreground"
             disabled={!found?.total}
-            label={copy.pdf.findNext}
+            label={copy.findNext}
             onClick={() => step(false)}
           >
             <ChevronDown className="size-3.5" />
           </RoundButton>
-          <RoundButton className="hover:text-foreground" label={copy.pdf.findClose} onClick={closeFind}>
+          <RoundButton className="hover:text-foreground" label={copy.findClose} onClick={closeFind}>
             <X className="size-3.5" />
           </RoundButton>
         </div>
@@ -330,7 +320,7 @@ export function PdfPreview({
         >
           <div className="pdfViewer" ref={viewerRef} />
         </div>
-        {status === 'loading' && <PageLoader className="absolute inset-0" label={copy.pdf.loading} />}
+        {status === 'loading' && <PageLoader className="absolute inset-0" label={copy.loading} />}
       </div>
       {status === 'error' && <PreviewEmptyState body={failureMessage(failure, copy)} title={t.preview.unavailable} />}
       {status === 'password' && (
@@ -344,20 +334,20 @@ export function PdfPreview({
               }}
             >
               <input
-                aria-label={copy.pdf.passwordLabel}
+                aria-label={copy.passwordLabel}
                 autoComplete="off"
                 className="w-56 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-foreground outline-none focus:border-primary"
                 onChange={event => setPassword(event.target.value)}
-                placeholder={copy.pdf.passwordLabel}
+                placeholder={copy.passwordLabel}
                 ref={passwordInputRef}
                 type="password"
                 value={password}
               />
-              {passwordWrong && <span className="text-destructive">{copy.pdf.passwordIncorrect}</span>}
+              {passwordWrong && <span className="text-destructive">{copy.passwordIncorrect}</span>}
             </form>
           }
-          primaryAction={{ disabled: !password, label: copy.pdf.passwordOpen, onClick: submitPassword }}
-          title={copy.pdf.password}
+          primaryAction={{ disabled: !password, label: copy.passwordOpen, onClick: submitPassword }}
+          title={copy.password}
         />
       )}
     </div>

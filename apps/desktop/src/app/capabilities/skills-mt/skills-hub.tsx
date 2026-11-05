@@ -12,8 +12,6 @@ import {
   getUniWorkRecommendedSkills,
   setSkillEnabled
 } from '@/hermes'
-import { useI18n } from '@/i18n'
-import { skillMarketInstallPending } from '@/lib/browser-shell'
 import { ExternalLink, Loader2 } from '@/lib/icons'
 import { installHubSkill, uninstallHubSkill } from '@/store/hub-actions'
 import { notify, notifyError } from '@/store/notifications'
@@ -68,7 +66,6 @@ export function SkillsHub({
   skills
 }: SkillsHubProps) {
   const t = useSkillsCopy()
-  const { locale } = useI18n()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [tab, setTab] = useState<HubTab>('recommended')
@@ -159,15 +156,6 @@ export function SkillsHub({
   async function install(skill: CatalogSkill) {
     // 已安装列表还没加载出来时先不装，免得把装过的再下载一遍。
     if (catalogInstalled.isInstalled(skill) || (installedPending && !installedError)) {
-      return
-    }
-
-    // 浏览器构建（云端）里市场安装还在开发中，见 lib/browser-shell。
-    const pending = skillMarketInstallPending(locale.startsWith('zh') ? 'zh' : 'en')
-
-    if (pending) {
-      notify({ kind: 'info', message: pending })
-
       return
     }
 

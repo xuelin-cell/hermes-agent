@@ -14,13 +14,6 @@ import { isElementInHiddenPane } from '@/components/pane-shell/pane-visibility'
 import { Tip } from '@/components/ui/tooltip'
 import { type Translations, useI18n } from '@/i18n'
 import { artifactShareFilePath } from '@/lib/artifact-share-source'
-import {
-  previewsOfficeAsPages,
-  previewsOfficeAsSheet,
-  previewsPdfInViewer,
-  remoteHtmlFrameDocument,
-  remoteHtmlFrameSandbox
-} from '@/lib/browser-shell'
 import { isDesktopFsRemoteMode, readDesktopFileText } from '@/lib/desktop-fs'
 import { guardGuestPointers } from '@/lib/guest-pointer-guard'
 import { isLoopbackPreviewUrl, openPreviewTargetInBrowser, remoteHtmlPreviewDocument } from '@/lib/local-preview'
@@ -56,9 +49,6 @@ import { $activeSessionId, $connection, $currentCwd, $selectedStoredSessionId } 
 import { canOpenBrowserWindow, isBrowserWindow } from '@/store/windows'
 
 import { FormatPreview } from './formats/format-preview'
-import { OfficeSheet } from './office-sheet'
-import { OfficeSlides } from './office-slides'
-import { PdfPreview } from './pdf-preview'
 import { placeAnnotateCard, PreviewAnnotateCard } from './preview-annotate-card'
 import {
   bindPreviewExecuteJavaScript,
@@ -87,6 +77,7 @@ import { type PreviewInputEvent, registerPreviewInput, toWebviewInputSpace } fro
 import { PREVIEW_BROWSER_ATTR, registerPreviewNav } from './preview-nav'
 import { registerPreviewPageReader } from './preview-reader'
 import { registerPreviewScriptRunner } from './preview-script-runner'
+import { FilePreviewToolbar } from './preview-toolbar'
 import { RealProfileConsentDialog } from './real-profile-consent-dialog'
 
 type PreviewWebview = HTMLElement & {
@@ -333,11 +324,18 @@ export function PreviewPane({
   const shareSessionId = shareSource === undefined ? selectedStoredSessionId || activeSessionId : shareSource?.sessionId
 
   const shareFilePath = /^file:/i.test(currentUrl)
-    ? shareSource === undefined ? artifactShareFilePath(currentUrl, currentCwd) : shareSource?.path
+    ? shareSource === undefined
+      ? artifactShareFilePath(currentUrl, currentCwd)
+      : shareSource?.path
     : null
 
-  const shareableRenderedHtml = isWebPreview && connection?.mode === 'local' && shareSessionId &&
-    shareFilePath && /\.html?$/i.test(shareFilePath) && window.hermesDesktop?.artifactShare
+  const shareableRenderedHtml =
+    isWebPreview &&
+    connection?.mode === 'local' &&
+    shareSessionId &&
+    shareFilePath &&
+    /\.html?$/i.test(shareFilePath) &&
+    window.hermesDesktop?.artifactShare
 
   /** 点击分享时重新读取文件，发布与当前预览目标对应的完整 HTML。 */
   const htmlShareSnapshot = async () => {
@@ -384,7 +382,7 @@ export function PreviewPane({
   const isRemoteHtml = isRemoteHtmlTarget && renderMode !== 'source' && Boolean(target.dataUrl)
 
   const remoteHtmlDocument = useMemo(
-    () => (isRemoteHtml ? remoteHtmlFrameDocument(target.dataUrl!, remoteHtmlPreviewDocument) : null),
+    () => (isRemoteHtml ? remoteHtmlPreviewDocument(target.dataUrl!) : null),
     [isRemoteHtml, target.dataUrl]
   )
 
@@ -1357,7 +1355,7 @@ export function PreviewPane({
     }
   }, [appendConsoleEntry, consoleState, copy, isRemoteHtml, isWebPreview, tabId, target.kind, target.url])
 
-  return (
+  const content = (
     <aside
       className="relative flex h-full w-full min-w-0 flex-col overflow-hidden bg-transparent text-muted-foreground"
       // Buttons 3/4 are a mouse's back/forward. Chromium delivers them to the
@@ -1380,7 +1378,7 @@ export function PreviewPane({
       {...(isWebPreview && !isRemoteHtml && tabId ? { [PREVIEW_BROWSER_ATTR]: tabId } : {})}
     >
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        {!embedded && (
+        {!embedded && target.kind === 'url' && (
           <div className="pointer-events-none flex min-h-(--titlebar-height) items-center gap-1.5 border-b border-border/60 bg-background px-2 py-1">
             <div className="min-w-0 flex-1">
               <Tip label={copy.openTarget(currentUrl)}>
@@ -1408,20 +1406,32 @@ export function PreviewPane({
             active="rendered"
             modes={['rendered', 'source']}
             onSelect={mode => selectRenderMode(mode === 'source' ? 'source' : 'preview')}
+            trailing={
+              target.kind !== 'url' && shareableRenderedHtml ? (
+                <ShareControls
+                  artifactKey={`file:${shareSessionId}:${shareFilePath}`}
+                  html={htmlShareSnapshot}
+                  source={{ sessionId: shareSessionId!, path: shareFilePath }}
+                  title={shareFilePath.split(/[\\/]/).pop() || target.label}
+                />
+              ) : undefined
+            }
           />
         )}
 
-        {isWebPreview && !isRemoteHtml && (
+        {target.kind === 'url' && isWebPreview && !isRemoteHtml && (
           <PreviewBrowserBar
-            actions={shareableRenderedHtml ? (
-              <ShareControls
-                artifactKey={`file:${shareSessionId}:${shareFilePath}`}
-                html={htmlShareSnapshot}
-                key={shareFilePath}
-                source={{ sessionId: shareSessionId!, path: shareFilePath }}
-                title={shareFilePath.split(/[\\/]/).pop() || target.label}
-              />
-            ) : undefined}
+            actions={
+              shareableRenderedHtml ? (
+                <ShareControls
+                  artifactKey={`file:${shareSessionId}:${shareFilePath}`}
+                  html={htmlShareSnapshot}
+                  key={shareFilePath}
+                  source={{ sessionId: shareSessionId!, path: shareFilePath }}
+                  title={shareFilePath.split(/[\\/]/).pop() || target.label}
+                />
+              ) : undefined
+            }
             annotateMode={annotate.mode}
             canGoBack={history.back}
             canGoForward={history.forward}
@@ -1471,7 +1481,7 @@ export function PreviewPane({
             <iframe
               className="absolute inset-0 size-full border-0 bg-white"
               referrerPolicy="no-referrer"
-              sandbox={remoteHtmlFrameSandbox()}
+              sandbox=""
               srcDoc={remoteHtmlDocument || ''}
               title={target.label || copy.fallbackTitle}
             />
@@ -1479,12 +1489,6 @@ export function PreviewPane({
           {!isWebPreview &&
             (target.kind === 'artifact' ? (
               <ArtifactPreview onClose={onClose} target={target} />
-            ) : previewsOfficeAsPages(target.path || target.source) ? (
-              <OfficeSlides reloadKey={localReloadKey} target={target} />
-            ) : previewsOfficeAsSheet(target.path || target.source) ? (
-              <OfficeSheet reloadKey={localReloadKey} target={target} />
-            ) : previewsPdfInViewer(target.path || target.source) ? (
-              <PdfPreview reloadKey={localReloadKey} target={target} />
             ) : (
               <FormatPreview
                 onClose={onClose}
@@ -1537,5 +1541,13 @@ export function PreviewPane({
         </div>
       </div>
     </aside>
+  )
+
+  return target.kind === 'url' ? (
+    content
+  ) : (
+    <FilePreviewToolbar onClose={onClose} target={target}>
+      {content}
+    </FilePreviewToolbar>
   )
 }

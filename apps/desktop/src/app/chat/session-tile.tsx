@@ -931,6 +931,7 @@ export const watchSessionTiles = paneMirror<SessionTile>({
   also: [$sessions, $cronSessions, $messagingSessions, $projectTree, $workspaceOwnerLabels],
   key: t => t.storedSessionId,
   prefix: 'session-tile',
+  headerVeto: () => true,
   dir: t => t.dir,
   anchor: t => t.anchor,
   before: t => t.before,

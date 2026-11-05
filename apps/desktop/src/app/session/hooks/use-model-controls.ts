@@ -22,6 +22,7 @@ import {
   getComposerSelectionGeneration,
   getCurrentModelSource,
   markComposerSelectionManual,
+  rememberComposerModelSelection,
   setCurrentModel,
   setCurrentModelSource,
   setCurrentProvider
@@ -333,6 +334,8 @@ export function useModelControls({
         })
 
       const finishSwitch = (result: ModelSwitchResponse | undefined) => {
+        rememberComposerModelSelection(selection.model, selection.provider)
+
         // A pick made DURING a turn is queued by the gateway and applied at the
         // next turn start (`deferred`). Re-fetching now would answer with the
         // model still running and repaint the old name over the user's choice —

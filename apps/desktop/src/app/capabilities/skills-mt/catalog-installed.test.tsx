@@ -102,7 +102,6 @@ afterEach(() => {
   cleanup()
   vi.clearAllMocks()
   Reflect.deleteProperty(window, 'hermesDesktop')
-  delete window.document.documentElement.dataset.hermesBrowser
 })
 
 describe('skill market installed state', () => {
@@ -146,14 +145,8 @@ describe('skill market installed state', () => {
     expect(installUniWorkSkill).not.toHaveBeenCalled()
   })
 
-  it('skips the record lookup without market installs and in the browser build', async () => {
+  it('skips the record lookup without market installs', async () => {
     renderHub([{ ...hubSkill('pdf'), provenance: 'bundled' }])
-    await marketCard('中国金融行情数据（tushare-finance）')
-    expect(api).not.toHaveBeenCalled()
-    cleanup()
-
-    window.document.documentElement.dataset.hermesBrowser = '1'
-    renderHub([hubSkill('tushare-finance')])
     await marketCard('中国金融行情数据（tushare-finance）')
     expect(api).not.toHaveBeenCalled()
   })

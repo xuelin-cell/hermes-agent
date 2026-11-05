@@ -17633,6 +17633,40 @@
             ],
             "default": null
           },
+          "turn_token_usage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TurnTokenUsage"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "turn_model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TurnReplyModel"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "turn_completed_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Turn Completed At"
+          },
           "status": {
             "anyOf": [
               {
@@ -28803,6 +28837,11 @@
             "default": null,
             "title": "Profile"
           },
+          "code_mode": {
+            "default": false,
+            "title": "Code Mode",
+            "type": "boolean"
+          },
           "cols": {
             "anyOf": [
               {
@@ -35292,6 +35331,32 @@
         "title": "TranscriptMessage",
         "type": "object"
       },
+      "TurnReplyModel": {
+        "additionalProperties": false,
+        "description": "The answering model and its configured display name, snapshotted before runtime restoration.",
+        "properties": {
+          "model": {
+            "minLength": 1,
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "default": "",
+            "title": "Provider",
+            "type": "string"
+          },
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model"
+        ],
+        "title": "TurnReplyModel",
+        "type": "object"
+      },
       "TurnStatus": {
         "description": "``prompt_turn._result_status``.",
         "enum": [
@@ -35301,6 +35366,46 @@
         ],
         "title": "TurnStatus",
         "type": "string"
+      },
+      "TurnTokenUsage": {
+        "additionalProperties": false,
+        "description": "Provider-reported main-agent usage accumulated across one prompt turn; input includes cache.",
+        "properties": {
+          "input_tokens": {
+            "minimum": 0,
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "output_tokens": {
+            "minimum": 0,
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "total_tokens": {
+            "minimum": 0,
+            "title": "Total Tokens",
+            "type": "integer"
+          },
+          "cache_read_tokens": {
+            "minimum": 0,
+            "title": "Cache Read Tokens",
+            "type": "integer"
+          },
+          "cache_write_tokens": {
+            "minimum": 0,
+            "title": "Cache Write Tokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "input_tokens",
+          "output_tokens",
+          "total_tokens",
+          "cache_read_tokens",
+          "cache_write_tokens"
+        ],
+        "title": "TurnTokenUsage",
+        "type": "object"
       },
       "UiMetaConflict": {
         "additionalProperties": false,

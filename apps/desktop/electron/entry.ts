@@ -33,7 +33,10 @@ function configuredElectronFlags(env: NodeJS.ProcessEnv): string[] {
 const electronFlags = process.platform === 'linux' ? configuredElectronFlags(process.env) : []
 const args = wslgLaunchArgs(process.argv.slice(1), process.env, process.platform, electronFlags)
 
-if (args) {
+if (['win32', 'darwin'].includes(process.platform) && process.argv.includes('--desktop-skills-cli')) {
+  const { runDesktopSkillsCli } = await import('./entry_local/skills-cli')
+  runDesktopSkillsCli(process.argv.slice(process.argv.indexOf('--desktop-skills-cli') + 1))
+} else if (args) {
   // Keep the launcher alive until the child exits: npm's concurrently must not
   // tear down Vite during this handoff. No backend, windows or single-instance
   // lock are created in this parent. The child has an explicit platform flag,

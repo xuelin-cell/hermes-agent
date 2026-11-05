@@ -6,7 +6,6 @@ import { Codicon } from '@/components/ui/codicon'
 import { GlyphSpinner } from '@/components/ui/glyph-spinner'
 import { Tip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
-import { completionHint } from '@/lib/browser-shell'
 import { cn } from '@/lib/utils'
 
 import { COMPLETION_DRAWER_BELOW_CLASS, COMPLETION_DRAWER_CLASS, CompletionDrawerEmpty } from './completion-drawer'
@@ -190,7 +189,7 @@ export function ComposerTriggerPopover({
         items.map((item, index) => {
           const meta = item.metadata as RowMeta | undefined
           const display = meta?.display ?? (isSlash ? `/${item.label}` : item.label)
-          const description = completionHint(meta?.meta || item.description)
+          const description = meta?.meta || item.description
           const group = meta?.group?.trim()
           const showHeader = isSlash && Boolean(group) && group !== lastGroup
           const isFirstHeader = lastGroup === undefined

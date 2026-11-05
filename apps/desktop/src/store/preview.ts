@@ -1,6 +1,5 @@
 import { atom, computed } from 'nanostores'
 
-import { isBrowserShell } from '@/lib/browser-shell'
 import { readJson, writeKey } from '@/lib/storage'
 import { normalize } from '@/lib/text'
 
@@ -133,16 +132,13 @@ export function decodePreviewTabs(raw: string): PreviewTab[] {
 }
 
 function parseTabList(parsed: unknown): PreviewTab[] {
-  // Browser build: no in-app browser, so a saved URL tab could not render.
   const tabs = Array.isArray(parsed) ? parsed.filter(isPreviewTab) : []
 
-  return tabs
-    .filter(tab => !(isBrowserShell() && tab.target.kind === 'url'))
-    .map(tab =>
-      isPdfFileTarget(tab.target) && tab.target.previewKind === 'binary'
-        ? { ...tab, target: { ...tab.target, previewKind: 'pdf' as const } }
-        : tab
-    )
+  return tabs.map(tab =>
+    isPdfFileTarget(tab.target) && tab.target.previewKind === 'binary'
+      ? { ...tab, target: { ...tab.target, previewKind: 'pdf' as const } }
+      : tab
+  )
 }
 
 /** The tabs a profile's rail is showing, keyed by profile. */
@@ -691,22 +687,18 @@ export function setPreviewRenderMode(tabId: string, renderMode: PreviewRenderMod
  *  its target so a stale label/path can't outlive the thing it points at. The
  *  only way anything reaches a preview. */
 export function openPreview(target: PreviewTarget) {
-  // Browser build: the in-app browser is an Electron <webview>, which a browser
-  // can't render — web pages open in a tab of the browser itself instead.
-  if (isBrowserShell() && target.kind === 'url') {
-    if (!/^about:/i.test(target.url)) {
-      void window.hermesDesktop?.openExternal?.(target.url)
-    }
-
-    return
-  }
-
   const current = $previewTabs.get()
   const id = target.kind === 'url' ? browserTabId(current) : previewTabId(target)
   const index = current.findIndex(tab => tab.id === id)
   const tab: PreviewTab = { id, target: withRenderMode(target, current[index]?.target) }
 
-  $previewTabs.set(index === -1 ? [...current, tab] : current.map((item, i) => (i === index ? tab : item)))
+  $previewTabs.set(
+    target.kind === 'url'
+      ? index === -1
+        ? [...current, tab]
+        : current.map((item, i) => (i === index ? tab : item))
+      : [...current.filter(item => item.target.kind === 'url'), tab]
+  )
   noteExplicitPreviewOpen(id)
   selectRightRailTab(id)
 }

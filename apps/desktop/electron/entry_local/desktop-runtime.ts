@@ -7,6 +7,7 @@ import { desktopPythonPluginsRoot, retireAccountUniAgentGatePlugin } from './des
 import { ensureDevExtras } from './dev-extras'
 import { recordAccountRun } from './logout'
 import type { PreparedLocalContext } from './runtime-context'
+import { openSkillsCliState } from './skills-cli-state'
 import { prepareUniSearchConfiguration, refreshUniSearch } from './unisearch'
 
 /** 绑定可信账号后才加载原版桌面；不接受页面传入的账号、路径或连接。 */
@@ -43,4 +44,5 @@ export async function startAccountDesktop(
   // main 的账号恢复队列统一启动所有消息平台，避免两套启动器并发拉起网关。
   const { openAccountDesktop } = await import('../main')
   await openAccountDesktop()
+  await openSkillsCliState(app.getPath('userData'), context.id)
 }

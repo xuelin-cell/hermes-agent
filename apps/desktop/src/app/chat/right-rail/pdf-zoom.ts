@@ -7,8 +7,8 @@ const ZOOM_STEPS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.
 export const MIN_ZOOM = 0.25
 export const MAX_ZOOM = 5
 
-// As wide as the page viewer shows a page (office-slides.tsx): a document no
-// wider than paper on a desk, a wide page (a slide) wider.
+// How wide a page is shown: a document no wider than paper on a desk, a wide
+// page (a slide) wider.
 const PAGE_MAX_PX = 768
 const WIDE_PAGE_MAX_PX = 1024
 

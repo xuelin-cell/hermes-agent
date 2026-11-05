@@ -44,3 +44,12 @@ it('restores the selected preview separately for office/study and code, includin
   expect(restored.$previewTabs.get().map(tab => tab.target.path)).toEqual(['/office/report.md'])
   expect(layout.$rightRailActiveTabId.get()).toBe(officeTab)
 })
+
+
+it('replaces the previous file preview in the current conversation', () => {
+  setPreviewScope('single-file')
+  openPreview({ kind: 'file', label: 'first.md', source: '/first.md', path: '/first.md', url: 'file:///first.md' })
+  openPreview({ kind: 'file', label: 'second.md', source: '/second.md', path: '/second.md', url: 'file:///second.md' })
+  expect($previewTabs.get().map(tab => tab.target.path)).toEqual(['/second.md'])
+  expect($rightRailActiveTabId.get()).toBe($previewTabs.get()[0].id)
+})

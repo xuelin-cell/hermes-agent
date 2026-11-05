@@ -196,6 +196,40 @@ Windows 源码开发版可双击仓库根目录的 `Start-UniWork.cmd`。也可�
 
 账号目录是应用层隔离，不是 Windows 沙箱。同一 Windows 用户的工具可能访问其它目录；主动选择同一外部项目会共享文件。官方对照版固定目录为 `X:\HermesOfficial`，不在开发版认领或清理范围。
 
+## 外部终端安装技能
+
+Windows 和 macOS 共用桌面账号解析与官方 Profile 选择。`skills` 命令读取桌面同一份加密登录记录，完整退出应用后未到期的保存登录仍可使用。退出账号、登录到期、记录损坏、退出失败或崩溃待恢复时会提示处理。运行中桌面需重开一次以加载新版状态服务。
+
+源码开发版完成 Electron 构建后，在 `apps/desktop` 执行 `npm run cli:install`。完整安装包（构建清单 `payload: bundled`）第一次启动时自动注册命令，升级或移动应用后再次启动会刷新入口。安装包使用自带 Python、Hermes 和依赖，不需要安装系统 Python 或 Node。缺少 Agent 的精简包不能提供本地技能安装，注册失败记录在 `[skills-cli]` 日志中。
+
+Windows 固定命令位于 `%LOCALAPPDATA%\uniworker\bin`。PowerShell、PowerShell 7、CMD 使用 `hermes.cmd`，Git Bash 使用同目录无扩展名 `hermes`。重新打开终端，PowerShell 用 `Get-Command hermes`、Git Bash 用 `type -a hermes` 核对位置。Windows Terminal 和 VS Code 使用对应 Shell 时仍需取得更新后的 PATH，必要时完整退出终端宿主后重开。WSL 属于独立 Linux 环境，当前自动账号入口未覆盖。
+
+macOS 固定命令位于 `~/.uniworker/bin/hermes`。注册会为 zsh 的 `.zshrc`（遵循 `ZDOTDIR`）、Bash 的 `.bash_profile` 和 `.bashrc` 写入带标识的 PATH 行，保留原配置，重复注册不累加。打开新的 Terminal 或 iTerm 窗口，用 `type -a hermes` 核对第一项。源码版与安装包使用同一固定命令，最后一次注册的版本生效。
+
+```sh
+hermes --profile default skills install official/creative/social-media-content-calendar
+hermes --profile default skills list --source hub
+hermes --profile <实际专家Profile名称> skills install <技能来源>
+```
+
+看到 `Confirm [y/N]:` 后输入 `y` 并回车才会安装，输入 `n` 取消。Windows 由 PowerShell 直接启动 Python，macOS 由自带 Python 在原终端执行 CLI，保留确认输入和退出码。Electron 只读取账号并返回启动参数，临时请求与结果用完清理。
+
+显式设置 `HERMES_HOME` 时优先采用该目录。其他 CLI 子命令采用此版本原版运行组件和 Home 规则。命令开始后固定账号，后续换账号影响下一次命令。终端自行启动的 CLI 工作由终端管理。移动源码后重新构建并注册入口。
+
+### macOS 同事验收
+
+1. 记录构建提交、Mac 芯片架构及使用源码版还是完整安装包。安装包先放入 Applications 后正常启动一次；源码版先构建再执行 `npm run cli:install`。
+2. 登录账号 A。新开 zsh 终端，运行 `type -a hermes`，第一项应为 `~/.uniworker/bin/hermes`。测试前检查当前 Shell 的 `HERMES_HOME`，若人为设置了其他 Home，应在测试 Shell 中解除。
+3. 运行上面的安装命令，先输入 `n`，确认没有安装，再运行并输入 `y`。确认生成 `~/.uniworker/<账号摘要>/home/skills/creative/social-media-content-calendar/SKILL.md`，同一 Profile 新对话的 `skills_list`、`skill_view` 能找到并读取。
+4. 用实际专家 Profile 名称安装另一个测试技能，确认 default 与专家列表隔离。在 Bash 再验证一次取消及确认安装。
+5. 完整退出应用并保留登录，在终端查询技能应继续使用 A。退出账号后命令应要求登录。登录 B 后不重开终端运行命令，检查改为 B；再次登录 A 后原技能保留。
+6. 更新或移动应用后正常打开一次，新终端执行命令应指向新应用。检查旧 Shell 配置保留，PATH 标识没有重复累加。并行运行官方版时确认其 Home 未被写入。
+7. 无登录、到期、凭据损坏及崩溃恢复检查使用下面独立夹具，不手工修改真实账号凭据。
+
+在源码 `apps/desktop` 中执行 `node scripts/skills-cli.native.mjs` 可检查跨进程登录、A→B→A、Profile 与退出状态。`--interactive-only` 覆盖一次取消和确认，`--shells-only` 在 Windows 检查四种 Shell，在 Mac 检查 zsh 和 Bash；可用 `--shell=zsh` 等参数定向。`--posix-runner-only` 检查 Python 辅助入口，Windows 夹具用真实子进程替代 Unix exec，不能作为 Mac 实机证据。`--install` 实际从官方来源下载到临时测试账号。夹具先核对路径位于临时根，拒绝写入真实账号目录。
+
+本轮 Windows 本机验证与 macOS 平台参数检查不等于 Mac 实机或签名安装包验收。交接时请分别记录源码版和安装包的上述结果。
+
 ## 双账号人工验收
 
 准备两个 MaaS 账号 A、B 和可用模型。模型调用可能计费，由你手动执行；不向开发人员提供短信码、token 或 Key。测试文件只放在账号默认工作区。

@@ -12,6 +12,7 @@ import { startAccountDesktop } from '../entry_local/desktop-runtime'
 import { installArtifactSharePlugin } from '../entry_local/install-artifact-share'
 import { recoverAccountRun } from '../entry_local/recover-account'
 import { LocalRuntimeContext, type PreparedLocalContext } from '../entry_local/runtime-context'
+import { registerPackagedSkillsCli } from '../entry_local/skills-cli-install'
 import { LocalStartupError, showLocalStartupFailure } from '../entry_local/startup-failure'
 import { createUniAgentGateBindingUpdate } from '../entry_local/uniagentgate-control'
 import { migrateOldUniworkData } from '../migrate-old-uniwork'
@@ -55,6 +56,11 @@ function initializeLoginShell(): void {
 
     return
   }
+
+  // 命令注册与登录并行；失败记录原因，保留桌面登录和原账号数据。
+  void app.whenReady().then(registerPackagedSkillsCli).catch(error => {
+    console.error('[skills-cli] 命令注册失败：', error instanceof Error ? error.message : '未知错误')
+  })
 
   const roots = {
     data: accountDataRoot(app.getPath('home')),

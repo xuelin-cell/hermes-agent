@@ -4749,6 +4749,9 @@ export interface Translations {
       thoughtBriefly: string
       thoughtFor: (duration: string) => string
       turnDuration: (duration: string) => string
+      tokenUnit: string
+      footerYesterday: string
+      turnTokenUsage: (input: string, output: string, total: string) => string
       today: (time: string) => string
       yesterday: (time: string) => string
       copy: string

@@ -1,5 +1,12 @@
 import type { ThreadMessageLike } from '@assistant-ui/react'
-import { type BillingBlock, type MessageCompletePayload, type PersistedTurn, type ToolLabel } from '@hermes/shared'
+import {
+  type BillingBlock,
+  type MessageCompletePayload,
+  type PersistedTurn,
+  type ToolLabel,
+  type TurnReplyModel,
+  type TurnTokenUsage
+} from '@hermes/shared'
 
 import type { ErrorSurface } from '@/lib/error-surface'
 import type { ToolResultMetadata } from '@/lib/tool-result-metadata'
@@ -59,6 +66,11 @@ export type ChatMessage = {
    *  stamped by the desktop when it watched the turn run. Absent for
    *  messages hydrated from history — the backend doesn't persist it. */
   durationS?: number
+  /** Provider-reported usage for this turn, also carried by stored display metadata. */
+  turnTokenUsage?: TurnTokenUsage
+  turnModel?: TurnReplyModel
+  /** Backend-observed successful completion, never inferred from a message's start time. */
+  turnCompletedAt?: number
   /** Composer attachment ref strings (`@file:...`, `@image:...`) sent with this user message. */
   attachmentRefs?: string[]
   /** Durable backend `messages.id`. Absent until the row is persisted. */
@@ -126,6 +138,9 @@ export type GatewayEventPayload = {
   install_warning?: string
   personality?: string
   usage?: Partial<UsageStats>
+  turn_token_usage?: TurnTokenUsage | null
+  turn_model?: TurnReplyModel | null
+  turn_completed_at?: number | null
   // agent.terminal.output — live chunk for a read-only agent terminal tab
   process_id?: string
   chunk?: string

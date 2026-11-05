@@ -20,6 +20,9 @@ def call(plugin, name, result, **kwargs):
     class Context:
         """只收集插件公开注册，避免绕过正式入口直接调用内部实现。"""
 
+        def register_tool(self, **kwargs):
+            """此夹具只测旧上传/下载；原生读图注册另由真实加载测试覆盖。"""
+
         def register_hook(self, name, handler):
             """与原生上下文一样保存具名钩子。"""
             hooks[name] = handler

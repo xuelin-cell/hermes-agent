@@ -9,13 +9,14 @@ import {
   PROCESS_NOTIFICATION_RE
 } from '@/components/assistant-ui/thread/content'
 import { ReactionBadge, ReactionPicker } from '@/components/assistant-ui/thread/message-reactions'
+import { MessageSentTime } from '@/components/assistant-ui/thread/message-sent-time'
 import { BackgroundResult } from '@/components/assistant-ui/thread/system-message'
-import { MessageTimelineTimestamp } from '@/components/assistant-ui/thread/timeline-timestamp'
 import { type RestoreMessageTarget } from '@/components/assistant-ui/thread/types'
 import { useMessageReactions } from '@/components/assistant-ui/thread/use-message-reactions'
 import { UserAttachments } from '@/components/assistant-ui/thread/user-attachments'
 import { UserMessageText } from '@/components/assistant-ui/thread/user-message-text'
 import { Codicon } from '@/components/ui/codicon'
+import { CopyButton } from '@/components/ui/copy-button'
 import { Tip } from '@/components/ui/tooltip'
 import { useResizeObserver } from '@/hooks/use-resize-observer'
 import { useI18n } from '@/i18n'
@@ -449,8 +450,8 @@ export const UserMessage: FC<{
                 // link/image/selection inside the bubble still gets the app
                 // menu, and this handler's selection guard keeps ⌘C flows.
                 data-context-menu-skip=""
-                data-slot="aui_user-bubble-frame"
                 data-has-details={hasBody && bodyClamped ? 'true' : undefined}
+                data-slot="aui_user-bubble-frame"
                 onContextMenu={
                   // Right-click is the desktop stand-in for iOS touch-and-hold —
                   // but only when there's nothing selected. A live highlight
@@ -581,23 +582,30 @@ export const UserMessage: FC<{
                 )}
               </div>
             </ReactionPicker>
-            {hasFiles && !readOnly && (
-              <div className="flex justify-end py-1 pr-1.5">
-                <Tip label={copy.editMessage}>
-                  <ActionBarPrimitive.Edit asChild>
-                    <button
-                      aria-label={copy.editMessage}
-                      className={cn('size-6', USER_ACTION_ICON_BUTTON_CLASS)}
-                      onClick={() => triggerHaptic('selection')}
-                      onPointerDown={() => notifyThreadEditOpen()}
-                      type="button"
-                    >
-                      <Codicon name="edit" size="0.875rem" />
-                    </button>
-                  </ActionBarPrimitive.Edit>
-                </Tip>
-              </div>
-            )}
+            <div
+              className="flex items-center justify-end gap-1 py-1 pr-1.5 opacity-0 transition-opacity group-hover/user-message:opacity-100 group-focus-within/user-message:opacity-100"
+              data-slot="aui_user-footer"
+            >
+              <MessageSentTime />
+              {!readOnly && (
+                <>
+                  <Tip label={copy.editMessage}>
+                    <ActionBarPrimitive.Edit asChild>
+                      <button
+                        aria-label={hasFiles ? copy.editMessage : t.preview.edit}
+                        className={cn('size-6', USER_ACTION_ICON_BUTTON_CLASS)}
+                        onClick={() => triggerHaptic('selection')}
+                        onPointerDown={() => notifyThreadEditOpen()}
+                        type="button"
+                      >
+                        <Codicon name="edit" size="0.875rem" />
+                      </button>
+                    </ActionBarPrimitive.Edit>
+                  </Tip>
+                  <CopyButton appearance="icon" buttonSize="icon-xs" label={copy.copy} side="top" text={messageText} />
+                </>
+              )}
+            </div>
             {/* Below the bubble, same register as the assistant action row:
                 same emoji size, same vertical padding, right-aligned to the
                 sent bubble. Overlaying the corner read badly in practice. */}
@@ -606,7 +614,6 @@ export const UserMessage: FC<{
               onRetract={() => react(null)}
               reactions={shownReactions}
             />
-            <MessageTimelineTimestamp className="self-end pr-1.5" />
             <BranchPickerPrimitive.Root
               className={cn(
                 'checkpoint-container flex items-center gap-1 pb-0 pt-1 pl-1.5 text-[0.75rem] leading-none text-(--ui-text-tertiary)',

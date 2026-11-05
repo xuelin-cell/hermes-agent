@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { registry } from '@/contrib/registry'
 import { I18nProvider } from '@/i18n'
+import { $developerMode } from '@/store/developer-mode'
 import { setTitlebarAppActionsSide } from '@/store/titlebar-app-actions'
 
 import { ROUTES_AREA } from '../routes'
@@ -196,12 +197,24 @@ describe('TitlebarControls fixed clusters', () => {
 })
 
 describe('titlebar app-action cluster', () => {
+  beforeEach(() => $developerMode.set(false))
   afterEach(() => {
+    $developerMode.set(false)
     setTitlebarAppActionsSide('right')
     cleanup()
   })
 
+  it('shows the layout editor only while developer mode is enabled', () => {
+    renderControls('/')
+    expect(screen.queryByLabelText('Layout editor')).toBeNull()
+    act(() => $developerMode.set(true))
+    expect(screen.getByLabelText('Layout editor')).toBeTruthy()
+    act(() => $developerMode.set(false))
+    expect(screen.queryByLabelText('Layout editor')).toBeNull()
+  })
+
   it('moves settings, layout, and HUD to the left when the appearance setting says left', () => {
+    $developerMode.set(true)
     setTitlebarAppActionsSide('left')
     renderControls('/')
 
