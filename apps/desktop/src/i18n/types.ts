@@ -4609,8 +4609,6 @@ export interface Translations {
       goBack: string
       goForward: string
       reload: string
-      address: string
-      addressPlaceholder: string
       blankPageBody: string
       finishedRestarting: (message?: string) => string
       failedRestarting: (message: string) => string
