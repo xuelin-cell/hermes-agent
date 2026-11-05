@@ -142,10 +142,121 @@ it('旧主进程给出重启提示，接口可用后展示 Coding 周期摘要�
   )
   const query = vi.fn().mockResolvedValue({ status: 'available', data, account })
   vi.stubGlobal('hermesDesktop', { getPlanUsage: query })
-  fireEvent.click(screen.getByRole('button', { name: '刷新用量' }))
+  fireEvent.click(screen.getByRole('button', { name: '刷新套餐信息' }))
   expect(await screen.findByText('已用 35% · 5 小时额度')).toBeTruthy()
   expect(screen.queryByText('用量查询组件尚未更新，请完全退出并重新启动桌面应用。')).toBeNull()
   expect(screen.queryByText('剩余0')).toBeNull()
+})
+
+it('账号卡片只保留顶部刷新入口，展开收起不搬动套餐状态提示', async () => {
+  const account = { maskedPhone: '138****0001', expiresAt: Date.now() + 60_000 }
+  const data = normalizePlanUsage(
+    { planType: 'token_plan', productName: '真实套餐', tokenPlanUsage: { totalQuota: 1000, usedQuota: 250 } },
+    Date.now()
+  )
+  const query = vi.fn().mockResolvedValue({ status: 'available', account, data })
+  const refresh = vi.fn().mockResolvedValue({ status: 'failed' })
+  vi.stubGlobal('hermesDesktop', { getPlanUsage: query, refreshPlanUsage: refresh })
+  render(
+    <I18nProvider configClient={null} initialLocale="zh">
+      <MemoryRouter>
+        <PlanUsagePanel account={account} onLogout={vi.fn()} trigger={<button>头像</button>} />
+      </MemoryRouter>
+    </I18nProvider>
+  )
+  fireEvent.click(screen.getByRole('button', { name: '头像' }))
+  await screen.findByText('真实套餐')
+  fireEvent.click(screen.getByRole('button', { name: '刷新套餐信息' }))
+  const message = '刷新失败，当前显示上次查询结果。'
+  const status = await screen.findByText(message)
+  const settings = screen.getByRole('link', { name: '设置' })
+  const usageRow = screen.getByRole('button', { name: /套餐实际用量/ })
+  expect(usageRow.querySelector('.account-card-summary')?.textContent).toBe('已使用 25.00%')
+  expect(usageRow.hasAttribute('disabled')).toBe(false)
+  expect(status.nextElementSibling).toBe(settings)
+  expect(screen.queryByRole('button', { name: '刷新用量' })).toBeNull()
+  for (const expanded of [true, false]) {
+    fireEvent.click(usageRow)
+    expect(usageRow.getAttribute('aria-expanded')).toBe(String(expanded))
+    expect(screen.getByText(message)).toBe(status)
+    expect(status.nextElementSibling).toBe(settings)
+    expect(screen.queryByRole('button', { name: '刷新用量' })).toBeNull()
+    expect(screen.queryByRole('progressbar') !== null).toBe(expanded)
+  }
+  fireEvent.click(usageRow)
+  refresh.mockResolvedValue({ status: 'failed', reason: 'auth' })
+  fireEvent.click(screen.getByRole('button', { name: '刷新套餐信息' }))
+  await screen.findByText('登录状态已失效，请重新登录后查询。')
+  expect(usageRow.querySelector('.account-card-summary')?.textContent).toBe('—')
+  expect(usageRow.hasAttribute('disabled')).toBe(true)
+  expect(usageRow.getAttribute('aria-expanded')).toBe('false')
+  expect(usageRow.querySelector('.account-card-chevron')).toBeNull()
+  expect(screen.queryByRole('progressbar')).toBeNull()
+  expect(screen.queryByRole('button', { name: '查看详情' })).toBeNull()
+  expect(refresh).toHaveBeenCalledTimes(2)
+  expect(query).toHaveBeenCalledTimes(1)
+})
+
+it('无用量时摘要显示破折号，失败原因仅由固定提示说明，正常空数据保持原样', async () => {
+  const account = { maskedPhone: '138****0001', expiresAt: Date.now() + 60_000 }
+  let finish!: (value: unknown) => void
+  const query = vi.fn(
+    () =>
+      new Promise(resolve => {
+        finish = resolve
+      })
+  )
+  const refresh = vi.fn().mockResolvedValue({ status: 'failed', reason: 'auth' })
+  vi.stubGlobal('hermesDesktop', { getPlanUsage: query, refreshPlanUsage: refresh })
+  render(
+    <I18nProvider configClient={null} initialLocale="zh">
+      <MemoryRouter>
+        <PlanUsagePanel account={account} onLogout={vi.fn()} trigger={<button>头像</button>} />
+      </MemoryRouter>
+    </I18nProvider>
+  )
+  fireEvent.click(screen.getByRole('button', { name: '头像' }))
+  const usageRow = screen.getByRole('button', { name: /套餐实际用量/ })
+  const refreshButton = screen.getByRole('button', { name: '刷新套餐信息' })
+  expect(usageRow.textContent).toContain('—')
+  expect(usageRow.hasAttribute('disabled')).toBe(false)
+  expect(screen.getAllByText('正在查询套餐用量…')).toHaveLength(1)
+  expect(screen.queryByRole('status')).toBeNull()
+  expect(refreshButton.querySelector('.animate-spin')).toBeTruthy()
+  expect(screen.queryByText('暂无可展示的用量数据')).toBeNull()
+  await act(async () => finish({ status: 'failed' }))
+  expect(screen.getByRole('status').textContent).toBe('刷新失败，请重试。')
+  expect(usageRow.querySelector('.account-card-summary')?.textContent).toBe('—')
+  expect(usageRow.hasAttribute('disabled')).toBe(true)
+  expect(usageRow.querySelector('.account-card-chevron')).toBeNull()
+  fireEvent.click(usageRow)
+  expect(usageRow.getAttribute('aria-expanded')).toBe('false')
+  expect(screen.queryByRole('button', { name: '查看详情' })).toBeNull()
+  expect(screen.queryByText('暂无可展示的用量数据')).toBeNull()
+  fireEvent.click(refreshButton)
+  await screen.findByText('登录状态已失效，请重新登录后查询。')
+  expect(usageRow.querySelector('.account-card-summary')?.textContent).toBe('—')
+  expect(usageRow.hasAttribute('disabled')).toBe(true)
+  expect(usageRow.querySelector('.account-card-chevron')).toBeNull()
+  expect(screen.queryByText('暂无可展示的用量数据')).toBeNull()
+  vi.stubGlobal('hermesDesktop', {})
+  fireEvent.click(refreshButton)
+  await screen.findByText('用量查询组件尚未更新，请完全退出并重新启动桌面应用。')
+  expect(usageRow.querySelector('.account-card-summary')?.textContent).toBe('—')
+  expect(usageRow.hasAttribute('disabled')).toBe(false)
+  expect(usageRow.querySelector('.account-card-chevron')).toBeTruthy()
+  expect(screen.queryByText('暂无可展示的用量数据')).toBeNull()
+  const data = normalizePlanUsage({ planType: 'token_plan', productName: '真实套餐' }, Date.now())
+  refresh.mockResolvedValue({ status: 'available', account, data })
+  vi.stubGlobal('hermesDesktop', { getPlanUsage: query, refreshPlanUsage: refresh })
+  fireEvent.click(refreshButton)
+  await waitFor(() => expect(usageRow.textContent).toContain('暂无可展示的用量数据'))
+  expect(usageRow.hasAttribute('disabled')).toBe(false)
+  expect(usageRow.querySelector('.account-card-chevron')).toBeTruthy()
+  expect(screen.queryByText('刷新失败，请重试。')).toBeNull()
+  expect(screen.queryByText('登录状态已失效，请重新登录后查询。')).toBeNull()
+  fireEvent.click(usageRow)
+  expect(screen.getByText('暂无可展示的用量数据')).toBeTruthy()
 })
 
 it('网站入口各自展示忙碌状态，防重复并提示失败原因，手动刷新绕过常规查询', async () => {
