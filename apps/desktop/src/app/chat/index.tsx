@@ -16,7 +16,6 @@ import { COMPOSER_HEART_CONFIG, HeartField } from '@/components/chat/vibe-hearts
 import { usePaneGroup, usePaneVisible } from '@/components/pane-shell/pane-visibility'
 import { $hoveredTreeGroup, $sessionTileDragging, $sessionTileEdgeHover } from '@/components/pane-shell/tree/store'
 import { PromptOverlays } from '@/components/prompt-overlays'
-import { TitleMenuTrigger } from '@/components/ui/title-menu-trigger'
 import { type HermesGateway } from '@/hermes'
 import { useI18n } from '@/i18n'
 import type { ChatMessage } from '@/lib/chat-messages'
@@ -28,7 +27,6 @@ import { cn } from '@/lib/utils'
 import { migrateSessionDraft } from '@/store/composer'
 import { migrateQueuedPrompts, parkQueuedPrompts } from '@/store/composer-queue'
 import { $introSplash } from '@/store/intro-splash'
-import { $pinnedSessionIds } from '@/store/layout'
 import { $guideOpening, $onboardingGate } from '@/store/onboarding-gate'
 import { $petActive } from '@/store/pet'
 import { $petOverlayActive } from '@/store/pet-overlay'
@@ -36,7 +34,6 @@ import {
   $activeGatewayProfile,
   $gatewaySwapTarget,
   $hydrationSyncProfile,
-  $profiles,
   $quietNewChatProfile
 } from '@/store/profile'
 import {
@@ -51,7 +48,6 @@ import {
   getSessionOwnerHint,
   resolveComposerSessionKey,
   sessionMatchesStoredId,
-  sessionPinId,
   shouldMigrateComposerScope
 } from '@/store/session'
 import { $focusedStoredSessionId, $sessionStates, sessionTileDelegate } from '@/store/session-states'
@@ -78,13 +74,11 @@ import { useHistoryWindow } from './history-window'
 import { type DroppedFile, partitionDroppedFiles } from './hooks/use-composer-actions'
 import { type DragKind, useFileDropZone } from './hooks/use-file-drop-zone'
 import { shouldShowIntro } from './intro-visibility'
-import { ProfileTag } from './profile-tag'
 import { ResumeExhaustedOverlay } from './resume-exhausted-overlay'
 import { isRouteSessionMismatch } from './route-session-state'
 import { useRuntimeMessageRepository } from './runtime-repository'
 import { ScrollToBottomButton } from './scroll-to-bottom-button'
 import { useSessionView } from './session-view'
-import { SessionActionsMenu } from './sidebar/session-actions-menu'
 import { composerStaysMounted, routedSessionIsLoading, threadLoadingState } from './thread-loading'
 import {
   backfillOlderTranscriptPage,
@@ -131,40 +125,20 @@ interface ChatViewProps extends Omit<React.ComponentProps<'div'>, 'onSubmit'> {
 interface ChatHeaderProps {
   activeSessionId: null | string
   isRoutedSessionView: boolean
-  onDeleteSelectedSession: () => void
-  onToggleSelectedPin: () => void
   selectedSessionId: null | string
 }
 
 function ChatHeader({
   activeSessionId,
   isRoutedSessionView,
-  onDeleteSelectedSession,
-  onToggleSelectedPin,
   selectedSessionId
 }: ChatHeaderProps) {
   const sessions = useStore($sessions)
-  const pinnedSessionIds = useStore($pinnedSessionIds)
-  const profiles = useStore($profiles)
 
   const activeStoredSession =
     (selectedSessionId && sessions.find(session => sessionMatchesStoredId(session, selectedSessionId))) || null
 
   const title = activeStoredSession ? sessionTitle(activeStoredSession) : NEW_SESSION_TITLE
-
-  // Which agent/persona owns this chat — glanceable in the header once a
-  // second profile exists, so the open session's ownership is never ambiguous
-  // (#66003). Single-profile users see the unchanged header.
-  const showProfileTag = profiles.length > 1 && Boolean(activeStoredSession)
-
-  // Pins live on the durable lineage-root id, but selectedSessionId is the live
-  // (tip) id — resolve through the loaded row so the menu reflects the pin
-  // state after auto-compression rotates the id.
-  const selectedIsPinned = activeStoredSession
-    ? pinnedSessionIds.includes(sessionPinId(activeStoredSession))
-    : selectedSessionId
-      ? pinnedSessionIds.includes(selectedSessionId)
-      : false
 
   // Secondary windows (new-session scratch, subagent watch, cmd-click pop-out)
   // are compact side panels — they drop the session-actions header + border
@@ -176,24 +150,13 @@ function ChatHeader({
   return (
     <header className="relative z-10 flex min-w-0 shrink-0 items-center px-5 py-4" data-slot="chat-session-title">
       <div
-        className={cn(titlebarHeaderTitleClass, showProfileTag && 'flex items-center')}
+        className={titlebarHeaderTitleClass}
         style={{
           maxWidth:
             'calc(100vw - var(--titlebar-content-inset,0px) - var(--titlebar-tools-right) - var(--titlebar-tools-width) - 1.5rem)'
         }}
       >
-        {showProfileTag && <ProfileTag className="pointer-events-auto mr-1.5" profile={activeStoredSession?.profile} />}
-        <SessionActionsMenu
-          align="start"
-          onDelete={selectedSessionId ? onDeleteSelectedSession : undefined}
-          onPin={selectedSessionId ? onToggleSelectedPin : undefined}
-          pinned={selectedIsPinned}
-          sessionId={selectedSessionId || activeSessionId || ''}
-          sideOffset={8}
-          title={title}
-        >
-          <TitleMenuTrigger>{title}</TitleMenuTrigger>
-        </SessionActionsMenu>
+        <h1 className="min-w-0 truncate text-base font-bold text-foreground" title={title}>{title}</h1>
       </div>
     </header>
   )
@@ -487,8 +450,6 @@ const ChatViewContent = memo(function ChatViewContent({
   modelMenuContent,
   reasoningMenuContent,
   requestModelOptionsForOwner,
-  onToggleSelectedPin,
-  onDeleteSelectedSession,
   onCancel,
   onAddContextRef,
   onAddUrl,
@@ -818,8 +779,6 @@ const ChatViewContent = memo(function ChatViewContent({
       <ChatHeader
         activeSessionId={activeSessionId}
         isRoutedSessionView={isRoutedSessionView}
-        onDeleteSelectedSession={onDeleteSelectedSession}
-        onToggleSelectedPin={onToggleSelectedPin}
         selectedSessionId={selectedSessionId}
       />
 
