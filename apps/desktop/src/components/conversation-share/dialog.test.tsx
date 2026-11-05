@@ -17,7 +17,7 @@ vi.mock('./snapshot-renderer', () => ({
 
 import { $conversationShareTarget } from '@/store/conversation-share'
 
-import { ConversationShareDialog } from './dialog'
+import { ConversationShareDialog, failureMessage } from './dialog'
 import { exportConversationHtml } from './snapshot-renderer'
 
 const desktop = window as unknown as { hermesDesktop?: Window['hermesDesktop'] }
@@ -225,4 +225,13 @@ it('有图片无法嵌入时提示序号，但仍允许发布', async () => {
   expect(button.disabled).toBe(false)
   fireEvent.click(button)
   await waitFor(() => expect(publish).toHaveBeenCalledWith('ticket-A', expect.stringContaining('缺图预览')))
+})
+
+it('主进程报错只显示原因，不显示 Electron IPC 前缀', () => {
+  const failure = new Error(
+    "Error invoking remote method 'hermes:conversation-share:publish': Error: 分享服务返回 502，请稍后重试。"
+  )
+
+  expect(failureMessage(failure)).toBe('分享服务返回 502，请稍后重试。')
+  expect(failureMessage(new Error('409: 无法定位该回复'))).toBe('409: 无法定位该回复')
 })

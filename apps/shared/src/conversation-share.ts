@@ -32,7 +32,6 @@ export interface ConversationShareDocument {
     role: 'user' | 'assistant'
     blocks: ConversationShareBlock[]
     process?: ConversationShareBlock[]
-    durationS?: number
   }>
 }
 

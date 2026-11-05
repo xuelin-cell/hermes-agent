@@ -146,29 +146,9 @@ export class ConnectorManager {
     }
 
     if (!connection) {
-      const authorizationCode = saved?.authorizationCode
-      const code = authorizationCode
-        ? authorizationCode
-        : await this.fetchAgentMailCode(phone)
-
-      this.logAgentMail(`creating local Wo Mail connection authorization-source=${authorizationCode ? 'local-state' : 'Wo-Mail'}`)
-
-      if (!this.isCurrentIdentity(identity)) {
-        return
-      }
-
-      await runtime.request('/api/connections/wo_mail', 'PUT', {
-        authType: 'custom_credential',
-        connectionName: 'default',
-        values: { authorizationCode: code, email: expectedEmail }
-      })
-      connection = await runtime.connection('wo_mail')
-
-      if (!connection) {
-        throw new Error('沃邮箱连接没有保存成功。')
-      }
-
-      this.options.mailState.save(identity, { authorizationCode: code, email: expectedEmail, enabled: true })
+      const created = await this.createAgentMailConnection(runtime, identity, phone, expectedEmail, saved?.authorizationCode)
+      connection = created.connection
+      this.options.mailState.save(identity, { authorizationCode: created.authorizationCode, email: expectedEmail, enabled: true })
       this.logAgentMail('local Wo Mail connection saved and authorization code persisted')
     }
 
@@ -183,6 +163,59 @@ export class ConnectorManager {
     }
 
     return fetchWoMailExclusiveCode(phone, fetch, message => this.options.log(message))
+  }
+
+  /**
+   * The Wo Mail exclusive code is short-lived. It is cached only to restore a
+   * local mailbox after restart, so a failed cached-code connection gets one
+   * fresh code and one retry. A newly fetched code is never retried here.
+   */
+  private async createAgentMailConnection(
+    runtime: ConnectorRuntime,
+    identity: LoginIdentity,
+    phone: string,
+    email: string,
+    cachedAuthorizationCode?: string
+  ): Promise<{ authorizationCode: string; connection: NonNullable<Awaited<ReturnType<ConnectorRuntime['connection']>>> }> {
+    const connect = async (authorizationCode: string) => {
+      await runtime.request('/api/connections/wo_mail', 'PUT', {
+        authType: 'custom_credential',
+        connectionName: 'default',
+        values: { authorizationCode, email }
+      })
+      const connection = await runtime.connection('wo_mail')
+
+      if (!connection) {
+        throw new Error('沃邮箱连接没有保存成功。')
+      }
+
+      return connection
+    }
+
+    const authorizationCode = cachedAuthorizationCode || await this.fetchAgentMailCode(phone)
+    this.logAgentMail(`creating local Wo Mail connection authorization-source=${cachedAuthorizationCode ? 'local-state' : 'Wo-Mail'}`)
+
+    if (!this.isCurrentIdentity(identity)) {
+      throw new Error('登录账号已经变更，请重试。')
+    }
+
+    try {
+      return { authorizationCode, connection: await connect(authorizationCode) }
+    } catch (error) {
+      if (!cachedAuthorizationCode) {
+        throw error
+      }
+
+      this.logAgentMail('cached exclusive code was rejected; requesting a fresh code and retrying once')
+      this.options.mailState.save(identity, { email, enabled: true })
+      const refreshedAuthorizationCode = await this.fetchAgentMailCode(phone)
+
+      if (!this.isCurrentIdentity(identity)) {
+        throw new Error('登录账号已经变更，请重试。')
+      }
+
+      return { authorizationCode: refreshedAuthorizationCode, connection: await connect(refreshedAuthorizationCode) }
+    }
   }
 
   private authorizationKey(profile: string, id: string): string {
@@ -415,26 +448,10 @@ export class ConnectorManager {
       }
 
       const saved = this.options.mailState.get(identity)
-      const authorizationCode = saved?.authorizationCode || await this.fetchAgentMailCode(phone)
       const email = `${phone}@wo.cn`
-      this.logAgentMail(`IPC enable is creating a connection authorization-source=${saved?.authorizationCode ? 'local-state' : 'Wo-Mail'}`)
-
-      if (!this.isCurrentIdentity(identity)) {
-        throw new Error('登录账号已经变更，请重试。')
-      }
-
-      await runtime.request('/api/connections/wo_mail', 'PUT', {
-        authType: 'custom_credential',
-        connectionName: 'default',
-        values: { authorizationCode, email }
-      })
-      activeConnection = await runtime.connection('wo_mail')
-
-      if (!activeConnection) {
-        throw new Error('沃邮箱连接没有保存成功。')
-      }
-
-      this.options.mailState.save(identity, { authorizationCode, email, enabled: true })
+      const created = await this.createAgentMailConnection(runtime, identity, phone, email, saved?.authorizationCode)
+      activeConnection = created.connection
+      this.options.mailState.save(identity, { authorizationCode: created.authorizationCode, email, enabled: true })
       this.logAgentMail('IPC enable persisted the local authorization code')
     }
 
