@@ -34,7 +34,7 @@ function fixture(account = 'account-a') {
     }
 
     if (url.endsWith('/apply')) {
-      return { name: 'gateway-restart' }
+      return { configured: true, profiles: ['default'], name: 'gateway-start' }
     }
 
     return { running: false, exit_code: 0 }
@@ -74,7 +74,7 @@ it('保存拒绝不重启，动作失败仍报告保存成功，重试不重复�
     }
 
     if (url.endsWith('/apply')) {
-      return { name: 'gateway-restart' }
+      return { configured: true, profiles: ['default'], name: 'gateway-stop' }
     }
 
     return { running: false, exit_code: 1 }
@@ -86,6 +86,7 @@ it('保存拒绝不重启，动作失败仍报告保存成功，重试不重复�
   request.mockClear()
   expect(await service.run({ operation: 'retry' })).toEqual({ actionFailed: true })
   expect(request.mock.calls.some(([, url]) => url.includes('/platforms/'))).toBe(false)
+  expect(request.mock.calls.some(([, url]) => url.endsWith('/restore'))).toBe(false)
 })
 
 it('串行保存和动作，无变化不重启；退出封闭后不再接受操作', async () => {
@@ -106,7 +107,9 @@ it('提交立即返回，状态独立跟踪后台重启，快照不包含凭据'
 
     if (url.includes('/platforms/')) {return { changed: true }}
 
-    if (url.endsWith('/apply')) {return { name: 'gateway-restart' }}
+    if (url.endsWith('/apply')) {return { configured: true, profiles: ['default'], name: 'gateway-stop' }}
+
+    if (url.endsWith('/restore')) {return { configured: true, profiles: ['default'], name: 'gateway-start' }}
 
     return await new Promise(resolve => { finish = resolve })
   })
@@ -119,10 +122,13 @@ it('提交立即返回，状态独立跟踪后台重启，快照不包含凭据'
   await vi.waitFor(() => expect(service.status().phase).toBe('restarting'))
   expect(JSON.stringify(service.status())).not.toContain('private-')
   expect(service.status()).toMatchObject({ saved: true, operation: 'save' })
+  expect(request.mock.calls.some(([, url]) => url.endsWith('/restore'))).toBe(false)
   finish({ running: false, exit_code: 0 })
   await service.settle()
   expect(service.status().phase).toBe('completed')
   expect(request.mock.calls.filter(([, url]) => url.endsWith('/apply'))).toHaveLength(1)
+  expect(request.mock.calls.filter(([, url]) => url.endsWith('/restore'))).toHaveLength(1)
+  expect(request.mock.calls.some(([, url]) => url.includes('/actions/gateway-start/') || url.includes('/actions/gateway-restart/'))).toBe(false)
 })
 
 it('后台错误只保留稳定错误类型，保存成功后的停止失败不丢配置结果', async () => {
@@ -185,7 +191,7 @@ it('动作退出不等于平台就绪；重启、扫码和解绑等待真实状�
         return await new Promise(resolve => { finish = resolve })
       }
 
-      if (url.endsWith('/apply')) {return { name: 'gateway-restart' }}
+      if (url.endsWith('/apply')) {return { configured: true, profiles: ['default'], name: 'gateway-start' }}
 
       if (url.includes('/platforms/')) {return { changed: true }}
 
@@ -238,7 +244,7 @@ it('动作退出不等于平台就绪；重启、扫码和解绑等待真实状�
 
   reads = 0
   request.mockImplementation(async (_profile, url) => {
-    if (url.endsWith('/apply')) {return { name: 'gateway-restart' }}
+    if (url.endsWith('/apply')) {return { configured: true, profiles: ['default'], name: 'gateway-start' }}
 
     if (url.startsWith('/api/plugins/desktop-messaging/platforms?')) {
       reads += 1
@@ -258,7 +264,7 @@ it('解绑微信后网关冷启动约 70 秒才运行，仍确认成功不误报
   const { request, service } = fixture()
   let reads = 0
   request.mockImplementation(async (_profile, url) => {
-    if (url.endsWith('/apply')) {return { name: 'gateway-restart' }}
+    if (url.endsWith('/apply')) {return { configured: true, profiles: ['default'], name: 'gateway-start' }}
 
     if (url.startsWith('/api/plugins/desktop-messaging/platforms?')) {
       // 每次读取间隔 1.2 秒，第 60 次约 72 秒：此前新网关还没运行。
@@ -295,7 +301,7 @@ it('飞书解绑确认清空凭据并完成网关动作，不等待其它渠道�
     }
 
     if (url.endsWith('/apply')) {
-      return { name: 'gateway-restart' }
+      return { configured: true, profiles: ['default'], name: 'gateway-start' }
     }
 
     if (url.startsWith('/api/plugins/desktop-messaging/platforms?')) {
@@ -336,7 +342,7 @@ it.each(['save', 'apply'] as const)('飞书解绑 %s 失败仍明确报告，不
     }
 
     if (url.endsWith('/apply')) {
-      return { name: 'gateway-restart' }
+      return { configured: true, profiles: ['default'], name: 'gateway-stop' }
     }
 
     return { running: false, exit_code: 1 }

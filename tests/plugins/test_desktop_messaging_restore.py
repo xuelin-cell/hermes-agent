@@ -32,11 +32,17 @@ def test_restore_checks_only_main_profile_across_real_accounts_a_b_a(tmp_path, m
         """只替换网关动作，配置和受管 Profile 枚举保持真实。"""
         actions.append((os.environ["HERMES_HOME"], command, name))
         assert env_overrides == {"HERMES_GATEWAY_INSTALL_START_ON_LOGIN": "0",
+                                 "HERMES_GATEWAY_ADAPTER_DISCONNECT_TIMEOUT": "1",
                                  "HERMES_GATEWAY_BUSY_ACK_ENABLED": "false",
             "HERMES_GATEWAY_BUSY_STEER_ACK_ENABLED": "false"}
         return SimpleNamespace(pid=123)
 
+    def start(env):
+        """记录新入口调用，原版动作仅用于停止。"""
+        return spawn(["desktop-gateway.py"], "gateway-start", env_overrides=env)
+
     monkeypatch.setattr(web_server_gateway, "_spawn_hermes_action", spawn)
+    monkeypatch.setattr(api, "_spawn_desktop_gateway", start)
     monkeypatch.setattr(api, "_owned_gateway", lambda: running)
     app = FastAPI()
     app.include_router(api.router)
@@ -79,7 +85,7 @@ def test_restore_checks_only_main_profile_across_real_accounts_a_b_a(tmp_path, m
         assert actions[-1][1][-2:] == ["gateway", "stop"]
         running = False
         assert client.post("/restore").json()["name"] == "gateway-start"
-        assert actions[-1][1][-2:] == ["gateway", "run"]
+        assert actions[-1][1] == ["desktop-gateway.py"]
         running = True
         assert client.post("/restore").json()["name"] is None
         # 配置未再变化但连接仍失败时，明确重试必须真的重连，不能只复用旧进程。
@@ -127,13 +133,15 @@ def test_ambiguous_gateway_refuses_restore_without_leaking_details(monkeypatch):
 
     monkeypatch.setattr(api, "_owned_gateway", reject)
     monkeypatch.setattr(web_server_gateway, "_spawn_hermes_action", unexpected)
+    monkeypatch.setattr(api, "_spawn_desktop_gateway", unexpected)
     app = FastAPI()
     app.include_router(api.router)
     with TestClient(app) as client:
-        response = client.post("/restore")
-        assert response.status_code == 409
-        assert response.json() == {"detail": "gateway_identity_unverified"}
-        assert "PRIVATE" not in response.text
+        for endpoint in ("/restore", "/apply"):
+            response = client.post(endpoint)
+            assert response.status_code == 409
+            assert response.json() == {"detail": "gateway_identity_unverified"}
+            assert "PRIVATE" not in response.text
 
 
 @pytest.mark.platforms("windows")
@@ -160,8 +168,11 @@ def test_profile_junction_cannot_write_another_account_policies(tmp_path):
 @pytest.mark.platforms("windows")
 @pytest.mark.live_system_guard_bypass
 def test_owned_gateway_reuses_real_runtime_and_rejects_live_foreign_home(tmp_path, monkeypatch):
-    """实际 run／restart 均将静默开关传入网关，核对归属、健康与复用。"""
+    """真实桌面入口启动和复用，原版 status 识别、stop 正常排空后再启动。"""
     from hermes_cli import web_server_gateway
+    from hermes_cli._launchers import runtime_command
+    from hermes_cli.web_server import PROJECT_ROOT
+    from gateway.status import gateway_spawn_intent_subcommand
     import psutil
 
     monkeypatch.setenv("PYTHONUNBUFFERED", "1")
@@ -187,8 +198,7 @@ def test_owned_gateway_reuses_real_runtime_and_rejects_live_foreign_home(tmp_pat
 
     def wait_gateway(previous_pid=None):
         """等待临时 Home 的新网关就绪，检查实际进程而非动作包装器的环境。"""
-        # Windows restart 还要完成排空、系统启动项检查及再次启动，给完整动作独立预算。
-        deadline = time.monotonic() + (120 if previous_pid is not None else 60)
+        deadline = time.monotonic() + 60
         while time.monotonic() < deadline:
             try:
                 identity = json.loads((home / "gateway.pid").read_text())
@@ -199,6 +209,10 @@ def test_owned_gateway_reuses_real_runtime_and_rejects_live_foreign_home(tmp_pat
                     assert Path(env["HERMES_HOME"]).resolve() == home.resolve()
                     assert env["HERMES_GATEWAY_BUSY_ACK_ENABLED"] == "false"
                     assert env["HERMES_GATEWAY_BUSY_STEER_ACK_ENABLED"] == "false"
+                    assert env["HERMES_GATEWAY_ADAPTER_DISCONNECT_TIMEOUT"] == "1"
+                    command = process.cmdline()
+                    assert Path(command[2]).name == "desktop-gateway.py"
+                    assert gateway_spawn_intent_subcommand(subprocess.list2cmdline(command)) == "run"
                     with urlopen(f"http://127.0.0.1:{port}/health", timeout=1) as response:
                         if response.status == 200:
                             return identity
@@ -212,11 +226,25 @@ def test_owned_gateway_reuses_real_runtime_and_rejects_live_foreign_home(tmp_pat
 
     try:
         identity = wait_gateway()
+        status = subprocess.run(runtime_command(PROJECT_ROOT, ["-p", "default", "gateway", "status"]),
+                                env=web_server_gateway._profile_action_environment(["-p", "default", "gateway", "status"]),
+                                capture_output=True, encoding="utf-8", errors="replace", timeout=60)
+        assert status.returncode == 0, status.stderr
+        assert f"Gateway is running (PID: {identity['pid']})" in status.stdout
         assert asyncio.run(api.restore_gateway())["name"] is None
         assert json.loads((home / "gateway.pid").read_text())["pid"] == identity["pid"]
-        assert asyncio.run(api.apply_gateway())["name"] == "gateway-restart"
-        actions.append(web_server_gateway._ACTION_PROCS["gateway-restart"])
-        log = action_logs / web_server_gateway._ACTION_LOG_FILES["gateway-restart"]
+        assert asyncio.run(api.apply_gateway())["name"] == "gateway-stop"
+        stop = web_server_gateway._ACTION_PROCS["gateway-stop"]
+        actions.append(stop)
+        assert stop.wait(timeout=90) == 0
+        stop_log = action_logs / web_server_gateway._ACTION_LOG_FILES["gateway-stop"]
+        assert "Stopped gateway for this profile" in stop_log.read_text(encoding="utf-8", errors="replace")
+        assert proc.wait(timeout=5) == 0
+        assert "planned gateway stop" in (home / "logs/gateway.log").read_text(encoding="utf-8", errors="replace")
+        assert json.loads((home / "gateway_state.json").read_text())["gateway_state"] == "stopped"
+        assert not api._owned_gateway()
+        assert asyncio.run(api.restore_gateway())["name"] == "gateway-start"
+        actions.append(web_server_gateway._ACTION_PROCS["gateway-start"])
         identity = wait_gateway(identity["pid"])
         # 真实进程仍活着，但请求的账号根已不同，不能借用它的状态。
         other = tmp_path / "other-account"
@@ -224,9 +252,18 @@ def test_owned_gateway_reuses_real_runtime_and_rejects_live_foreign_home(tmp_pat
         monkeypatch.setenv("HERMES_HOME", str(other))
         assert not api._owned_gateway()
         assert psutil.pid_exists(identity["pid"])
+        monkeypatch.setenv("HERMES_HOME", str(home))
+        assert asyncio.run(api.apply_gateway())["name"] == "gateway-stop"
+        stop = web_server_gateway._ACTION_PROCS["gateway-stop"]
+        actions.append(stop)
+        assert stop.wait(timeout=90) == 0
+        assert actions[-2].wait(timeout=5) == 0
+        assert not api._owned_gateway()
+        assert (home / "logs/gateway.log").read_text(encoding="utf-8", errors="replace").count("planned gateway stop") == 2
+        assert json.loads((home / "gateway_state.json").read_text())["gateway_state"] == "stopped"
     finally:
         monkeypatch.setenv("HERMES_HOME", str(home))
-        # restart 可能另起脱离动作包装器的进程，只清理已确认归属本测试 Home 的网关。
+        # 失败兜底只清理已确认归属本测试 Home 的进程，不接触用户网关。
         if api._owned_gateway():
             pid = json.loads((home / "gateway.pid").read_text())["pid"]
             isolated = psutil.Process(pid)
