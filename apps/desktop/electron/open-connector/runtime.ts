@@ -44,7 +44,7 @@ export async function isValidationTimeout(response: Response): Promise<boolean> 
   )
 }
 
-/** 独立 Node 服务持有第三方凭据；每个 Profile 单独启动、加密和退出。 */
+/** 独立 Node 服务持有第三方凭据；每个账号单独启动、加密和退出。 */
 export class ConnectorRuntime {
   private child: ChildProcess | null = null
   private starting: Promise<void> | null = null
@@ -55,7 +55,7 @@ export class ConnectorRuntime {
 
   constructor(private readonly options: ConnectorRuntimeOptions) {}
 
-  /** 只发布绑定本 Profile 的运行时令牌，管理令牌始终留在主进程。 */
+  /** 只发布绑定本账号的运行时令牌，管理令牌始终留在主进程。 */
   async config(id: ConnectorService): Promise<Record<string, unknown>> {
     await this.start()
 

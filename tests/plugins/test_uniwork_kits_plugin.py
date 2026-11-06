@@ -1835,8 +1835,8 @@ def test_eastmoney_expert_keeps_scripts_until_the_connector_appears(kits, profil
     assert "execute_action" not in ((plain or {}).get("context") or "")
 
 
-def test_eastmoney_connector_syncs_only_onto_those_experts(kits, profile_env, tmp_path):
-    """默认档案的东方财富连接器连同它引用的密钥只同步给东方财富专家；无关的 MCP 不带；默认档案去掉后专家也去掉。"""
+def test_connector_mirror_removal_preserves_uniai_sync(kits, profile_env, tmp_path):
+    """东方财富不再镜像或传播其专用密钥，元景工具箱和它引用的密钥仍正常同步。"""
     kits.installer.install(_expert_pkg(tmp_path, name="stock-diagnosis-expert"), profile_env, triggers={})
     kits.installer.install(_expert_pkg(tmp_path, name="demo-expert"), profile_env, triggers={})
     entry = {"url": "https://mxapi-stg.eastmoney.com/mxds/v2/mcp", "timeout": 180}
@@ -1863,10 +1863,11 @@ def test_eastmoney_connector_syncs_only_onto_those_experts(kits, profile_env, tm
     em = Path(get_profile_dir("stock-diagnosis-expert"))
     plain = Path(get_profile_dir("demo-expert"))
     em_servers = _config(em)["mcp_servers"]
-    assert em_servers["eastmoney_mcp"]["timeout"] == 180
+    assert "eastmoney_mcp" not in em_servers
     assert "UniAI-Toolkit" in em_servers and "notes" not in em_servers
     assert "eastmoney_mcp" not in (_config(plain).get("mcp_servers") or {})
-    assert kits.expert_sync._read(em)[1]["EASTMONEY_TOKEN"] == "tok-1"
+    assert "EASTMONEY_TOKEN" not in kits.expert_sync._read(em)[1]
+    assert kits.expert_sync._read(em)[1]["DESKTOP_MT_MAAS_API_KEY"] == "maas-1"
     assert "EASTMONEY_TOKEN" not in kits.expert_sync._read(plain)[1]
 
     _write(profile_env / "config.yaml", yaml.safe_dump({"model": {"provider": "zai", "default": "glm-test"}}))

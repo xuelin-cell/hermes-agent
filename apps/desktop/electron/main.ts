@@ -230,6 +230,7 @@ import {
 import { preReadyDockLaunchSteps } from './dock-launch-order'
 import { installEmbedReferer } from './embed-referer'
 import { accountBrowserPartition } from './entry_local/browser-partition'
+import { startAccountConnectors } from './entry_local/connector-startup'
 import { createConversationFolders, installConversationFolderIpc } from './entry_local/conversation-folder'
 import { accountSourceBackend } from './entry_local/desktop-environment'
 import { enableDesktopPlugins } from './entry_local/desktop-plugins-config'
@@ -12992,12 +12993,16 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
     const backendNonce = crypto.randomBytes(16).toString('hex')
     const parentIdentityEnv = parentWatchdogEnv(process.pid, parentStartMarker, backendNonce)
 
-    // desktop-mt: 账号云盘工具由 Electron 监听回环，Agent 沿用原生 MCP 发现和调用。
-    await ACCOUNT_CONNECTORS.prepare(profile).catch(error => {
-      rememberLog(
-        `[agent-mail] connector preparation failed profile=${profile}: ${error instanceof Error ? error.message : String(error)}`
-      )
+    // desktop-mt: 连接器与 Python 并行预热；就绪后通过 Hermes 接口更新配置。
+    const refreshConnectors = startAccountConnectors({
+      connectors: ACCOUNT_CONNECTORS,
+      active: () =>
+        currentDesktopLocalContext() === ACCOUNT_RUNTIME &&
+        backendConnectionState.isCurrentAttempt(connectionAttempt),
+      log: rememberLog
     })
+
+    // 账号云盘仍在后端启动前完成本机 MCP 配置。
     await ACCOUNT_DRIVE_MCP.prepare(profile)
     backendConnectionState.assertCurrentAttempt(connectionAttempt)
 
@@ -13239,6 +13244,8 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
     // failure starts fresh from attempt 1 instead of inheriting the
     // accumulated count of the resolved episode.
     bootstrapRepairAttempt = 0
+
+    void refreshConnectors(profile)
 
     // The backend's plugin discovery just ran and refreshed HERMES_HOME/.plugin-compat-report.json.
     // Surface it once (per distinct set of affected plugins) after the window is up; never block boot.

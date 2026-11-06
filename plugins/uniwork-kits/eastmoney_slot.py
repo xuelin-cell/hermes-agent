@@ -3,17 +3,15 @@
 数字员工里这 9 个专家的取数走连接器（服务名 ``eastmoney_mcp``，工具 ``execute_action``）；
 专家包里仍是跑 ``scripts/get_data.py`` 的旧写法。
 
-同事的实现（desktop ``electron/open-connector``，2026-10 ``hermes-sub`` 分支）：用户在「连接器」页面
-授权东方财富后，Electron 在**那个档案**的 ``config.yaml`` 写一条 ``mcp_servers.connector_eastmoney_mcp``：
+用户在「连接器」页面授权东方财富后，Electron 在当前档案写入 ``mcp_servers.connector_eastmoney_mcp``：
 本机 OpenConnector 的地址（``http://127.0.0.1:<端口>/mcp``）、运行令牌，以及
 ``X-OpenConnector-Allowed-Services: eastmoney_mcp`` 请求头，并带 ``desktop_connector: eastmoney_mcp``。
-每个档案各起一个自己的 OpenConnector，各自授权；档案后端启动前，带 ``desktop_connector`` 标记的条目
-会被改写成该档案自己那份的地址和令牌。工具是 ``execute_action``，``actionId`` 用
+同一账号的所有档案共用主助手目录下的一个 OpenConnector 和授权库；专家后端启动前，Electron
+将带 ``desktop_connector`` 标记的条目更新为共享地址和令牌。工具是 ``execute_action``，``actionId`` 用
 ``eastmoney_mcp.list_tools`` / ``eastmoney_mcp.call_tool``。
 
-用户通常在默认档案（通用助手）里授权。``expert_sync`` 把默认档案那条同步给这 9 个专家时用键名
-``MIRROR_NAME``，并去掉 ``desktop_connector``：带着它，专家后端启动时会被改写成专家自己那份还没授权的
-连接器；同名还会挡住用户以后在专家档案里自己授权。专家档案里有自己授权的那条时优先用它。
+``expert_sync`` 不再镜像东方财富连接，并在同步时移除废弃的 ``MIRROR_NAME`` 条目。
+已经运行的专家在下次后端启动时获取新授权配置，本模块继续优先识别桌面受管条目。
 
 本模块不实现登录，也不写配置。它看当前档案的 ``mcp_servers``，按下面任一条认出东方财富连接器：
 ``desktop_connector`` 是 ``eastmoney_mcp``；请求头限定的服务是 ``eastmoney_mcp``；键名是约定的几个之一；
@@ -47,7 +45,7 @@ EXPERTS = frozenset({
 })
 
 SERVICE = "eastmoney_mcp"
-# 同步到专家档案时用的键名：不能是 connector_eastmoney_mcp，见模块说明。
+# 已废弃的镜像键名，仅供同步时删除遗留条目。
 MIRROR_NAME = "eastmoney_mcp"
 
 # 约定的键名。连接器标记、请求头或地址对得上时，别的键名也能认出来。
@@ -70,7 +68,7 @@ def _named(key: str) -> bool:
 
 
 def owned_by_desktop(entry: Mapping[str, Any]) -> bool:
-    """这条是桌面连接器页面为本档案写的东方财富连接（带 desktop_connector 标记）。"""
+    """这条是桌面为本档案写入的账号共享东方财富连接。"""
     return str(entry.get("desktop_connector") or "").strip() == SERVICE
 
 
@@ -92,7 +90,7 @@ def _url_matches(url: str) -> bool:
 def server_name(servers: Any) -> str:
     """已启用的东方财富连接器在 ``mcp_servers`` 里的键；没有则空字符串。
 
-    同时有好几条时，本档案自己授权的（带 desktop_connector）优先，其次是约定键名或请求头，最后才看地址。
+    同时有好几条时，桌面受管条目优先，其次是约定键名或请求头，最后才看地址。
     """
     if not isinstance(servers, Mapping):
         return ""
