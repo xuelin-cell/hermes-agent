@@ -1409,7 +1409,7 @@ export function installBrowserDevelopmentBridge(): boolean {
     },
     ...browserShares(browserApiBase()),
     ...browserDrive(browserApiBase()),
-    ...browserPlan(browserApiBase()),
+    ...browserPlan(browserApiBase(), async () => (ssoMode ? getSsoAccount() : null)),
     exportPreview: browserExport(browserApiBase(), apiPrefix()),
     getAgentRoster: async () => ({ agents: [] }),
     getProfileRoutes: async () => [],

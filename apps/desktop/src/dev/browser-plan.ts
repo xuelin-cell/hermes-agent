@@ -1,15 +1,31 @@
 import { readBrowserAuth, requestEntryMaas } from '../../../shared/src/browser-maas-auth.js'
+import type { LoginAccount } from '../../electron/login/contract'
 import type { PlanSubscriptionResult, PlanUsageResult } from '../../electron/uniwork-usage/contract'
 
-/** Same bridge contract as desktop; browser credentials only travel to fixed Entry business routes. */
-export function browserPlan(base: string) {
+/**
+ * Same bridge contract as desktop; browser credentials only travel to fixed Entry business routes.
+ *
+ * `sessionAccount` answers under the unified login only. There the entry reads usage for the gateway's session, the
+ * very one the account item shows, but the two name and date it from different sources (the gateway's display
+ * name and a session it renews vs. the entry's masked phone and session end): the panel's same-account check would
+ * never match and always read "signed out". A switch of account reloads the page (lib/sso-mt.ts).
+ */
+export function browserPlan(base: string, sessionAccount: () => Promise<LoginAccount | null> = async () => null) {
   let subscribing = false
 
   const failed = () => readBrowserAuth(base) ? { status: 'failed' as const } : { status: 'failed' as const, reason: 'auth' as const }
 
   async function usage(force: boolean): Promise<PlanUsageResult> {
     try {
-      return await requestEntryMaas<PlanUsageResult>(base, force ? 'plan/refresh' : 'plan/usage')
+      const result = await requestEntryMaas<PlanUsageResult>(base, force ? 'plan/refresh' : 'plan/usage')
+
+      if (result.status !== 'available') {
+        return result
+      }
+
+      const account = await sessionAccount()
+
+      return account ? { ...result, account: { maskedPhone: account.maskedPhone, expiresAt: account.expiresAt } } : result
     } catch {
       return failed()
     }

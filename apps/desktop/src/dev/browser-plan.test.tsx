@@ -95,3 +95,28 @@ it('订阅在点击时开页，拒绝拦截、重复点击、错误市场地址�
   expect(popup.close).toHaveBeenCalled()
   vi.restoreAllMocks()
 })
+
+it('统一登录下用量按左下角显示的账号认，不因网关和入口的名字、到期时间口径不同而判成登录失效', async () => {
+  login('sso:u-1')
+  // The account item shows the gateway's name and never expires; the entry answers with its own masked phone
+  // and session end for the same gateway session.
+  const shown = { maskedPhone: '小张', expiresAt: Number.MAX_SAFE_INTEGER }
+
+  const plan = {
+    productName: 'Cloud plan', endTime: null, expired: false, fetchedAt: Date.now(),
+    kind: 'token_plan', windows: [], concurrency: null,
+    quota: { total: 1000, used: 250, remaining: 750, usedPercent: 25, unit: null }
+  }
+
+  vi.stubGlobal('fetch', vi.fn(async () => response({
+    status: 'available', account: { maskedPhone: '182****2186', expiresAt: Date.now() + 86_400_000 }, data: plan
+  })))
+
+  expect(await browserPlan('/agents/api').getPlanUsage()).toMatchObject({ account: { maskedPhone: '182****2186' } })
+
+  vi.stubGlobal('hermesDesktop', browserPlan('/agents/api', async () => shown))
+  render(<I18nProvider configClient={null} initialLocale="en"><PlanUsagePanel account={shown} /></I18nProvider>)
+  fireEvent.click(screen.getByRole('button', { name: 'Plan usage' }))
+  await screen.findByText('Cloud plan')
+  expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('25')
+})
