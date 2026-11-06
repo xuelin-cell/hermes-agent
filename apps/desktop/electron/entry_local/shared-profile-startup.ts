@@ -12,6 +12,8 @@ export class SharedProfileStartup {
   private prepared = new Set<string>()
   private pending = new Map<string, Promise<void>>()
   private syncedAt = new Map<string, number>()
+  // 删除或改名会递增该档案的计数，用来区分“准备失败”和“档案已失效”。
+  private forgotten = new Map<string, number>()
   private generation = 0
 
   /** 账号目录来自主进程固定身份，API 由当前后端连接提供，不接收页面地址。 */
@@ -41,15 +43,17 @@ export class SharedProfileStartup {
     this.prepared.delete(profile)
     this.pending.delete(profile)
     this.syncedAt.delete(profile)
+    this.forgotten.set(profile, (this.forgotten.get(profile) ?? 0) + 1)
   }
 
-  /** 新助手先完成必要准备；已准备助手立即可用，专家同步异步进行。 */
+  /** 新助手先尝试补齐准备；准备失败只记日志并放行请求，下次再补，专家同步异步进行。 */
   async ensure(profile: string, api: ProfileConfigApi): Promise<void> {
     if (!this.options.active()) {
       throw new Error('Account is no longer active')
     }
 
     const generation = this.generation
+    const forgotten = this.forgotten.get(profile) ?? 0
     let work = this.pending.get(profile)
 
     if (!this.prepared.has(profile) && !work) {
@@ -91,10 +95,23 @@ export class SharedProfileStartup {
       this.pending.set(profile, work)
     }
 
-    await work
+    try {
+      await work
+    } catch {
+      // 失败原因在下面区分：轮次、账号或档案失效仍拒绝，单纯准备失败则放行。
+    }
 
-    if (generation !== this.generation || !this.options.active() || !this.prepared.has(profile)) {
+    if (
+      generation !== this.generation ||
+      !this.options.active() ||
+      (this.forgotten.get(profile) ?? 0) !== forgotten
+    ) {
       throw new Error('Profile preparation was superseded')
+    }
+
+    if (!this.prepared.has(profile)) {
+      // 与启动前准备一致：缺插件或云盘配置不挡对话，下次请求会重新补。
+      this.options.log(`[profiles] preparation failed profile=${profile}; request continues and will retry`)
     }
 
     const now = (this.options.now ?? Date.now)()

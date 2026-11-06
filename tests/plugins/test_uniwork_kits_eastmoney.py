@@ -80,6 +80,24 @@ def test_retired_mirror_is_removed_without_deleting_shared_connector(kits, profi
     assert kits.store.self_expert(kits.store.load_index(em))[1]["sync"]["synced_mcp"] == []
 
 
+@pytest.mark.parametrize("own", [
+    {"url": "https://mcp.eastmoney.com/mxds/mcp", "headers": {"Authorization": "Bearer user"}},
+    {"command": "eastmoney-local-server"},
+    {**CONNECTOR, "url": "http://127.0.0.1:60003/mcp"},
+])
+def test_user_owned_entry_under_the_retired_mirror_name_is_kept(kits, profile_env, experts, own):
+    """同名但不是旧镜像（远程地址、本地命令或带桌面标记）的条目属于用户或桌面，不删除。"""
+    em, _plain = experts
+    _connect_in_default(profile_env, CONNECTOR)
+    _write(em / "config.yaml", yaml.safe_dump({**_config(em), "mcp_servers": {
+        kits.eastmoney_slot.MIRROR_NAME: own,
+    }}))
+
+    kits.expert_sync.sync_all(profile_env)
+
+    assert _config(em)["mcp_servers"][kits.eastmoney_slot.MIRROR_NAME] == own
+
+
 def test_shared_managed_connection_drives_the_expert_turn_note(kits, profile_env, experts, monkeypatch):
     """只剩桌面受管条目时，取数说明仍指向同一条工具，不依赖旧镜像。"""
     em, _plain = experts

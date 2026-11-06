@@ -42,6 +42,7 @@ import logging
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Set, Tuple
+from urllib.parse import urlparse
 
 from . import eastmoney_slot, media_slot, store
 
@@ -103,6 +104,14 @@ def _expert_homes(default_home: Path) -> List[Tuple[str, Path]]:
         if profile and profile_exists(profile):
             out.append((name, Path(get_profile_dir(profile))))
     return out
+
+
+def _retired_mirror(entry: Any) -> bool:
+    """旧镜像是抄自本机 OpenConnector、去掉桌面标记的条目；用户自己配的同名服务不算。"""
+    if not isinstance(entry, Mapping) or entry.get("desktop_connector"):
+        return False
+    host = urlparse(str(entry.get("url") or "")).hostname or ""
+    return host in {"127.0.0.1", "localhost", "::1"}
 
 
 def _mcp_to_follow(default_servers: Mapping[str, Any]) -> List[Tuple[str, str, str]]:
@@ -218,7 +227,7 @@ def _plan_config(
             continue
         servers.pop(stale, None)
         changes.append(f"移除 {stale}（默认配置档案已经没有，或已改用新的键名）")
-    if plugin in eastmoney_slot.EXPERTS and eastmoney_slot.MIRROR_NAME in servers:
+    if plugin in eastmoney_slot.EXPERTS and _retired_mirror(servers.get(eastmoney_slot.MIRROR_NAME)):
         servers.pop(eastmoney_slot.MIRROR_NAME)
         changes.append("移除东方财富镜像，使用账号共享连接器")
     for source, target, label in wanted:

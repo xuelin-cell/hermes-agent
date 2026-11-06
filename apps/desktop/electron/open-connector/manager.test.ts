@@ -207,6 +207,45 @@ it('运行中刷新连接器和邮箱只走配置接口，保留自定义邮箱�
   }
 })
 
+it('连接后只等当前助手刷新，其余助手挂起也不拖住页面操作', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-connector-bg-'))
+  fs.mkdirSync(path.join(home, 'profiles', 'expert-a'), { recursive: true })
+  let release!: () => void
+
+  const blocked = new Promise<void>(resolve => {
+    release = resolve
+  })
+
+  const seen: string[] = []
+
+  vi.spyOn(ConnectorRuntime.prototype, 'request').mockResolvedValue({})
+  vi.spyOn(ConnectorRuntime.prototype, 'rows').mockResolvedValue([{ id: 'amap', connected: true }] as never)
+  vi.spyOn(ConnectorRuntime.prototype, 'connection').mockResolvedValue(null)
+  vi.spyOn(ConnectorRuntime.prototype, 'config').mockResolvedValue({ url: 'http://127.0.0.1:1234/mcp', desktop_connector: 'amap' })
+  vi.spyOn(ConnectorRuntime.prototype, 'close').mockResolvedValue()
+
+  const manager = makeManager(home, {}, [], {
+    profiles: () => ['default', 'expert-a'], identity: () => null,
+    api: async input => {
+      seen.push(input.profile)
+
+      if (input.profile === 'expert-a') { await blocked }
+
+      return { mcp_servers: {} }
+    }
+  })
+
+  try {
+    await manager.request({ operation: 'connect', profile: 'default', id: 'amap', values: { apiKey: 'fixture-key' } })
+    expect(seen.every(profile => profile === 'default' || profile === 'expert-a')).toBe(true)
+    await vi.waitFor(() => expect(seen).toContain('expert-a'))
+  } finally {
+    release()
+    await manager.close()
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
 it('连接和断开后刷新全部本机助手，单个失败不挡后续助手且不改个人条目', async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-connector-all-'))
   const profiles = ['default', 'broken', 'expert-a', 'expert-b']
@@ -259,10 +298,13 @@ it('连接和断开后刷新全部本机助手，单个失败不挡后续助手�
   })
 
   try {
+    // 当前助手在返回前已刷新，其余助手随后在后台跟上。
     await manager.request({ operation: 'connect', profile: 'default', id: 'amap', values: { apiKey: 'fixture-key' } })
-    expect(writes).toEqual(['default', 'expert-a', 'expert-b'])
+    expect(writes[0]).toBe('default')
+    await vi.waitFor(() => expect(writes).toEqual(['default', 'expert-a', 'expert-b']))
     await manager.request({ operation: 'disconnect', profile: 'default', id: 'amap' })
-    expect(writes.slice(3)).toEqual(['default', 'expert-a', 'expert-b'])
+    expect(writes[3]).toBe('default')
+    await vi.waitFor(() => expect(writes.slice(3)).toEqual(['default', 'expert-a', 'expert-b']))
 
     for (const profile of ['default', 'expert-a', 'expert-b']) {
       expect(saved[profile].mcp_servers).toEqual({

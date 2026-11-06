@@ -222,3 +222,24 @@ def test_status_route_reports_the_bundled_install(kits, autoseed, profile_env, b
     app.include_router(module.router, prefix="/api/plugins/uniwork-kits")
     body = TestClient(app).get("/api/plugins/uniwork-kits/bundled").json()
     assert set(body) >= {"ran", "running", "done", "total", "installed", "unchanged", "failed", "error"}
+
+
+def test_lock_left_by_a_killed_backend_is_reclaimed_at_once(tmp_path):
+    """首启超时被杀后留下的锁：记录的进程已不在就立即接手；进程还在、记录不完整时照旧等待。"""
+    import json
+    import os
+    import subprocess
+
+    autoseed = _part("autoseed")
+    lock = tmp_path / "seed.lock"
+    dead = subprocess.Popen([sys.executable, "-c", "pass"])
+    dead.wait()
+    lock.write_text(json.dumps({"pid": dead.pid, "at": 0}), encoding="utf-8")
+    assert autoseed._acquire(lock) is True
+    assert json.loads(lock.read_text(encoding="utf-8"))["pid"] == os.getpid()
+
+    for owner in ({"pid": os.getppid(), "at": 0}, {}):
+        lock.write_text(json.dumps(owner), encoding="utf-8")
+        assert autoseed._acquire(lock) is False
+    lock.write_text("", encoding="utf-8")
+    assert autoseed._acquire(lock) is False

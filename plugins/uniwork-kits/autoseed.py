@@ -168,12 +168,28 @@ def _save_seeded(record: Path, names: set[str]) -> None:
     os.replace(temp, record)
 
 
+def _lock_owner_gone(lock: Path) -> bool:
+    """锁里记录的进程已确认不存在时返回 True；读不到、正在写入或进程仍在都返回 False。"""
+    try:
+        pid = json.loads(lock.read_text(encoding="utf-8")).get("pid")
+    except (OSError, ValueError, AttributeError):
+        return False
+    if not isinstance(pid, int) or pid <= 0 or pid == os.getpid():
+        return False
+    try:
+        import psutil
+
+        return not psutil.pid_exists(pid)
+    except Exception:
+        return False
+
+
 def _acquire(lock: Path) -> bool:
-    """用独占创建锁文件防止两个进程同时安装；超过 15 分钟的锁视为进程已死，先删掉。"""
+    """用独占创建锁文件防止两个进程同时安装；持锁进程已退出或锁超过 15 分钟，都视为失效先删掉。"""
     lock.parent.mkdir(parents=True, exist_ok=True)
     try:
-        if time.time() - lock.stat().st_mtime > STALE_LOCK_S:
-            lock.unlink()  # a backend that died mid-install
+        if time.time() - lock.stat().st_mtime > STALE_LOCK_S or _lock_owner_gone(lock):
+            lock.unlink()  # a backend that died mid-install (e.g. killed by the desktop startup timeout)
     except OSError:
         pass
     try:

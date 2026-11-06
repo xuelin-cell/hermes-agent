@@ -166,16 +166,20 @@ it('运行中新助手合并准备，配置只走 API；补标题扩展并关原
   expect(claim).toHaveBeenCalledTimes(2)
 })
 
-it('失败可重新准备，退出、删档与后端重启使迟到响应失效且不会重新复制插件', async () => {
+it('准备失败只记日志并放行请求，下次重试；退出、删档与后端重启使迟到响应失效且不会重新复制插件', async () => {
   let active = true
   const refreshConnectors = vi.fn(async () => undefined)
-  const profiles = startup({ active: () => active, refreshConnectors })
+  const log = vi.fn()
+  const profiles = startup({ active: () => active, refreshConnectors, log })
 
   const failed = vi.fn<ProfileConfigApi>(async () => {
     throw new Error('unavailable')
   })
 
-  await expect(profiles.ensure('expert-a', failed)).rejects.toThrow('unavailable')
+  await expect(profiles.ensure('expert-a', failed)).resolves.toBeUndefined()
+  expect(log).toHaveBeenCalledWith(expect.stringContaining('preparation failed profile=expert-a'))
+  await expect(profiles.ensure('expert-a', failed)).resolves.toBeUndefined()
+  expect(failed.mock.calls.filter(([method]) => method === 'GET')).toHaveLength(2)
 
   for (const reason of ['reset', 'forget', 'exit']) {
     let release!: (value: unknown) => void

@@ -39,6 +39,8 @@ def test_launcher_injects_single_profile_config_and_keeps_shutdown_contract(outc
     bootstrap = Mock()
     monkeypatch.setattr(boot_bootstrap, "maybe_run_boot_bootstrap", bootstrap)
     steps = []
+    import hermes_startup_watchdog
+    monkeypatch.setattr(hermes_startup_watchdog, "arm_startup_watchdog", lambda: steps.append("arm"))
     monkeypatch.setattr(gateway, "_windows_gateway_should_absorb_console_controls", lambda: True)
     monkeypatch.setattr(gateway, "_absorb_windows_console_controls", lambda: steps.append("console"))
     monkeypatch.setattr(gateway, "_apply_startup_watchdog_config", lambda: steps.append("watchdog"))
@@ -70,7 +72,8 @@ def test_launcher_injects_single_profile_config_and_keeps_shutdown_contract(outc
     assert early == ["ver", "home"]
     migration.assert_not_called()
     exit_gateway.assert_called_once_with(code)
-    assert steps == ["console", "watchdog", "backoff", "start"]
+    # 看门狗先于导入网关模块布防，再按配置调整，与原版命令行入口顺序一致。
+    assert steps == ["arm", "console", "watchdog", "backoff", "start"]
 
 
 def test_command_is_recognized_with_windows_spaces():

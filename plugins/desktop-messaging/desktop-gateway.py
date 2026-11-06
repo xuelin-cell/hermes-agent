@@ -21,6 +21,14 @@ def main() -> None:
 
     os.environ["HERMES_HOME"] = os.environ.get("HERMES_HOME") or str(get_default_hermes_root())
     import hermes_bootstrap  # noqa: F401 — 原版依赖与标准流引导。
+
+    # 与原版命令行入口一致：导入网关模块前先布防，导入卡死也能被看门狗收尾；进入事件循环后由 Runner 撤防。
+    try:
+        from hermes_startup_watchdog import arm_startup_watchdog
+
+        arm_startup_watchdog()
+    except Exception:
+        pass
     from gateway.config import load_gateway_config
     from gateway.run import _exit_after_graceful_shutdown, start_gateway
     from hermes_cli.boot_bootstrap import maybe_run_boot_bootstrap

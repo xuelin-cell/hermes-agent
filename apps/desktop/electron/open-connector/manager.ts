@@ -147,10 +147,14 @@ export class ConnectorManager {
   }
 
   /** 按助手串行刷新共享授权，不因一个档案失败中断其余助手，也不启动额外进程。 */
-  async refreshAll(): Promise<void> {
+  async refreshAll(skip?: string): Promise<void> {
     for (const profile of this.options.profiles()) {
       if (this.closed || !this.options.active()) {
         return
+      }
+
+      if (profile === skip) {
+        continue
       }
 
       try {
@@ -159,6 +163,17 @@ export class ConnectorManager {
         this.options.log(`[connectors] config refresh failed profile=${profile}`)
       }
     }
+  }
+
+  /** 页面操作后先刷新当前助手再返回，其余助手放到后台刷新，不让用户等全部助手。 */
+  private async refreshAfterChange(profile: string): Promise<void> {
+    try {
+      await this.refresh(profile)
+    } catch {
+      this.options.log(`[connectors] config refresh failed profile=${profile}`)
+    }
+
+    void this.refreshAll(profile).catch(() => this.options.log('[connectors] background config refresh failed'))
   }
 
   /** 同一运行期只自动恢复一次邮箱；失败也记住，避免每开一个专家就重复申请专属码。 */
@@ -372,7 +387,7 @@ export class ConnectorManager {
         (['connect', 'enable', 'qr.poll'].includes(input.operation) &&
           result.connectors.some(row => row.id === input.id && row.connected))
       ) {
-        await this.refreshAll()
+        await this.refreshAfterChange(input.profile)
       }
 
       return result
@@ -390,7 +405,7 @@ export class ConnectorManager {
 
     return this.enqueue(input.profile, () => this.executeAgentMail(input)).then(async result => {
       if (input.operation === 'enable' || input.operation === 'disable') {
-        await this.refreshAll()
+        await this.refreshAfterChange(input.profile)
       }
 
       return result

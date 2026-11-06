@@ -30,15 +30,21 @@ import {
   waitForDashboardReadyFile
 } from './backend-ready'
 
-test('首次安装延长端口等待，安装记录出现后恢复默认，保留用户更长设置', () => {
+test('首次安装延长端口等待，安装记录出现后恢复默认，保留用户更长设置；没带内置套件不延长', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-first-install-timeout-'))
+  const plugins = path.join(home, 'python-plugins')
+  const env = { HERMES_BUNDLED_PLUGINS: plugins }
 
   try {
-    assert.equal(accountPortAnnounceTimeoutMs(home, {}), 210_000)
-    assert.equal(accountPortAnnounceTimeoutMs(home, { HERMES_DESKTOP_PORT_ANNOUNCE_TIMEOUT_MS: '240000' }), 240_000)
+    // 发行包没带内置套件：安装记录永远不会出现，保持默认等待。
+    assert.equal(accountPortAnnounceTimeoutMs(home, {}), DEFAULT_PORT_ANNOUNCE_TIMEOUT_MS)
+    assert.equal(accountPortAnnounceTimeoutMs(home, env), DEFAULT_PORT_ANNOUNCE_TIMEOUT_MS)
+    fs.mkdirSync(path.join(plugins, 'uniwork-kits', 'bundled'), { recursive: true })
+    assert.equal(accountPortAnnounceTimeoutMs(home, env), 210_000)
+    assert.equal(accountPortAnnounceTimeoutMs(home, { ...env, HERMES_DESKTOP_PORT_ANNOUNCE_TIMEOUT_MS: '240000' }), 240_000)
     fs.mkdirSync(path.join(home, 'imported-plugins'))
     fs.writeFileSync(path.join(home, 'imported-plugins', '.bundled-seeded.json'), '[]')
-    assert.equal(accountPortAnnounceTimeoutMs(home, {}), DEFAULT_PORT_ANNOUNCE_TIMEOUT_MS)
+    assert.equal(accountPortAnnounceTimeoutMs(home, env), DEFAULT_PORT_ANNOUNCE_TIMEOUT_MS)
   } finally {
     fs.rmSync(home, { recursive: true, force: true })
   }
