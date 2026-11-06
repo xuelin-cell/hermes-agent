@@ -20,7 +20,7 @@ it('真实共享进程为多个助手提供同一端点，关闭账号后端点�
   const storage = createLocalSecretStorage(path.join(home, 'app-secret.key'))
 
   const manager = new ConnectorManager({
-    home, active: () => true, identity: () => null,
+    home, profiles: () => ['default', 'expert-a', 'expert-b'], active: () => true, identity: () => null,
     runtimeDirectory: path.resolve('services/open-connector'),
     executable: createRequire(import.meta.url)('electron'),
     encrypt: value => storage.encryptString(value), decrypt: value => storage.decryptString(value),

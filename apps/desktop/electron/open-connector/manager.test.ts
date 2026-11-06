@@ -36,16 +36,24 @@ function makeManager(
     exclusiveCode?: (phone: string) => Promise<string>
     identity?: () => LoginIdentity | null
     api?: ConstructorParameters<typeof ConnectorManager>[0]['api']
+    profiles?: () => string[]
     saveAttachment?: (name: string, download: () => Promise<Response>) => Promise<{ canceled: boolean; saved: boolean }>
     stageAttachment?: (name: string, download: () => Promise<Response>) => Promise<{ name: string; path: string }>
   } = {}
 ) {
   return new ConnectorManager({
     home,
+    profiles: overrides.profiles ?? (() => ['default']),
     active: () => true,
     api: overrides.api ?? (async request => {
       if (request.method === 'PUT') {
         writes.push(request.body)
+        // 模拟配置 API 的持久合并，后续刷新应读到上一次写入的结果。
+        saved.mcp_servers ??= {}
+
+        for (const [name, patch] of Object.entries((request.body as any).config.mcp_servers ?? {})) {
+          saved.mcp_servers[name] = { ...saved.mcp_servers[name], ...(patch as object) }
+        }
       }
 
       return saved
@@ -190,9 +198,85 @@ it('运行中刷新连接器和邮箱只走配置接口，保留自定义邮箱�
     writes.length = 0
     saved.mcp_servers.connector_wo_mail = { url: 'https://personal.example/mcp' }
     await manager.refresh('default')
-    expect(writes).toHaveLength(1)
-    expect(writes[0].config.mcp_servers.connector_wo_mail).toBeUndefined()
+    expect(writes).toHaveLength(0)
+    expect(saved.mcp_servers.connector_wo_mail).toEqual({ url: 'https://personal.example/mcp' })
     expect(fs.readFileSync(file, 'utf8')).toBe('# running backend owns this file\n')
+  } finally {
+    await manager.close()
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+it('连接和断开后刷新全部本机助手，单个失败不挡后续助手且不改个人条目', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-connector-all-'))
+  const profiles = ['default', 'broken', 'expert-a', 'expert-b']
+
+  for (const profile of profiles.slice(1)) {
+    fs.mkdirSync(path.join(home, 'profiles', profile), { recursive: true })
+  }
+
+  const saved: Record<string, any> = Object.fromEntries(profiles.map(profile => [profile, {
+    mcp_servers: { personal: { url: `https://personal.invalid/${profile}` } }
+  }]))
+
+  const writes: string[] = []
+  let connected = false
+  const instances = new Set<ConnectorRuntime>()
+
+  const request = vi.spyOn(ConnectorRuntime.prototype, 'request').mockImplementation(async (_route, method) => {
+    connected = method !== 'DELETE'
+
+    return {}
+  })
+
+  vi.spyOn(ConnectorRuntime.prototype, 'rows').mockImplementation(async function (this: ConnectorRuntime) {
+    instances.add(this)
+
+    return [{ id: 'amap', connected }]
+  })
+  vi.spyOn(ConnectorRuntime.prototype, 'connection').mockResolvedValue(null)
+  vi.spyOn(ConnectorRuntime.prototype, 'config').mockResolvedValue({ url: 'http://127.0.0.1:1234/mcp', desktop_connector: 'amap' })
+  vi.spyOn(ConnectorRuntime.prototype, 'close').mockResolvedValue()
+
+  const manager = makeManager(home, {}, [], {
+    profiles: () => profiles, identity: () => null,
+    api: async input => {
+      expect(input.connectionId).toBe('local')
+
+      if (input.profile === 'broken') { throw new Error('fixture unreadable profile') }
+      const config = saved[input.profile]
+
+      if (input.method === 'PUT') {
+        writes.push(input.profile)
+
+        for (const [name, patch] of Object.entries((input.body as any).config.mcp_servers)) {
+          config.mcp_servers[name] = { ...config.mcp_servers[name], ...(patch as object) }
+        }
+      }
+
+      return structuredClone(config)
+    }
+  })
+
+  try {
+    await manager.request({ operation: 'connect', profile: 'default', id: 'amap', values: { apiKey: 'fixture-key' } })
+    expect(writes).toEqual(['default', 'expert-a', 'expert-b'])
+    await manager.request({ operation: 'disconnect', profile: 'default', id: 'amap' })
+    expect(writes.slice(3)).toEqual(['default', 'expert-a', 'expert-b'])
+
+    for (const profile of ['default', 'expert-a', 'expert-b']) {
+      expect(saved[profile].mcp_servers).toEqual({
+        personal: { url: `https://personal.invalid/${profile}` },
+        connector_amap: { url: 'http://127.0.0.1:1234/mcp', desktop_connector: 'amap', enabled: false }
+      })
+    }
+
+    expect(instances.size).toBe(1)
+    writes.length = 0
+    request.mockRejectedValue(new Error('fixture connect failed'))
+    await expect(manager.request({ operation: 'connect', profile: 'default', id: 'amap', values: { apiKey: 'fixture-key' } }))
+      .rejects.toThrow('fixture connect failed')
+    expect(writes).toEqual([])
   } finally {
     await manager.close()
     fs.rmSync(home, { recursive: true, force: true })

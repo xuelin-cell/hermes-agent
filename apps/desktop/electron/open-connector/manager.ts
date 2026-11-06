@@ -13,6 +13,7 @@ import { WecomQrSessions } from './wecom-qr'
 
 interface ConnectorManagerOptions extends Omit<ConnectorRuntimeOptions, 'directory'> {
   home: string
+  profiles: () => string[]
   active: () => boolean
   api: (request: {
     connectionId: string
@@ -143,6 +144,21 @@ export class ConnectorManager {
         await api('PUT', '/api/config', { config: { mcp_servers: { connector_wo_mail: mail } } })
       }
     })
+  }
+
+  /** 按助手串行刷新共享授权，不因一个档案失败中断其余助手，也不启动额外进程。 */
+  async refreshAll(): Promise<void> {
+    for (const profile of this.options.profiles()) {
+      if (this.closed || !this.options.active()) {
+        return
+      }
+
+      try {
+        await this.refresh(profile)
+      } catch {
+        this.options.log(`[connectors] config refresh failed profile=${profile}`)
+      }
+    }
   }
 
   /** 同一运行期只自动恢复一次邮箱；失败也记住，避免每开一个专家就重复申请专属码。 */
@@ -350,7 +366,17 @@ export class ConnectorManager {
       return Promise.reject(new Error('Invalid connector request'))
     }
 
-    return this.enqueue(input.profile, () => this.execute(input))
+    return this.enqueue(input.profile, () => this.execute(input)).then(async result => {
+      if (
+        input.operation === 'disconnect' ||
+        (['connect', 'enable', 'qr.poll'].includes(input.operation) &&
+          result.connectors.some(row => row.id === input.id && row.connected))
+      ) {
+        await this.refreshAll()
+      }
+
+      return result
+    })
   }
 
   agentMail(input: AgentMailRequest): Promise<AgentMailResult> {
@@ -362,7 +388,13 @@ export class ConnectorManager {
       return Promise.reject(new Error('Invalid Agent Mail request'))
     }
 
-    return this.enqueue(input.profile, () => this.executeAgentMail(input))
+    return this.enqueue(input.profile, () => this.executeAgentMail(input)).then(async result => {
+      if (input.operation === 'enable' || input.operation === 'disable') {
+        await this.refreshAll()
+      }
+
+      return result
+    })
   }
 
   /** 同一助手的页面操作与后台刷新串行，避免用旧快照盖过刚保存的配置。 */

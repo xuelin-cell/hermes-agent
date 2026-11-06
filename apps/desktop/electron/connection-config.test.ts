@@ -391,11 +391,8 @@ const ROUTES = [
     expected: { backend: 'pool', descriptorProfile: null, scopePath: false }
   },
   {
-    // THE INVARIANT this collapse must not eat: a route the server cannot
-    // profile-scope has only the backend PROCESS's HERMES_HOME left as a
-    // scope, so it keeps a pooled backend. /api/files/upload acts on host
-    // paths and takes no `profile` even after #118275.
-    name: 'a mutating local request the server cannot scope keeps its pooled backend',
+    // 文件 API 按显式路径操作，共用进程不额外附加无效 Profile query。
+    name: 'a file write uses the account backend with its explicit path',
     profile: 'coder',
     opts: {
       primaryProfile: 'default',
@@ -404,12 +401,10 @@ const ROUTES = [
       requestMethod: 'POST',
       requestPath: '/api/files/upload'
     },
-    expected: { backend: 'pool', descriptorProfile: null, scopePath: false }
+    expected: { backend: 'primary', descriptorProfile: null, scopePath: false }
   },
   {
-    // Same unscopable route, safe method: a read cannot corrupt the wrong
-    // home, and holding reads back would spawn a backend per profile again.
-    name: 'a read on an unscopable route still shares the host backend',
+    name: 'a file read also uses the explicit path on the account backend',
     profile: 'coder',
     opts: {
       primaryProfile: 'default',
@@ -418,7 +413,7 @@ const ROUTES = [
       requestMethod: 'GET',
       requestPath: '/api/files/upload'
     },
-    expected: { backend: 'primary', descriptorProfile: 'coder', scopePath: true }
+    expected: { backend: 'primary', descriptorProfile: null, scopePath: false }
   },
   {
     // #118275 taught this handler `?profile=`, so the server CAN vouch for the
@@ -871,19 +866,12 @@ test('resolveProfileApiRequest scopes destructive profile-owned routes to the sh
   }
 })
 
-test('resolveProfileApiRequest keeps an unscopable mutating route on a process-scoped backend', () => {
-  // The load-bearing half of the collapse: a route the server cannot scope has
-  // nothing left but the backend process's own HERMES_HOME, so it must NOT fall
-  // through to the shared primary. Live proof of the failure mode this pins:
-  // `POST /api/memory/reset?profile=beta` on an unfixed server deleted ALPHA's
-  // MEMORY.md and returned ok:true.
+test('文件和账号管理请求留在共用后端，仍按接口原有路径或请求体处理', () => {
   for (const [method, path] of [
     ['POST', '/api/files/upload'],
     ['DELETE', '/api/files/managed'],
-    // A hypothetical future route: the gate is derived from
-    // localPrimaryRequestScope(), not from a hardcoded list, so an endpoint
-    // nobody has taught `profile` is held back the day it is added.
-    ['POST', '/api/not-a-real-route/destroy']
+    ['POST', '/api/dashboard/agent-plugins/install'],
+    ['POST', '/api/plugins/uniwork-kits/expert-sync']
   ]) {
     assert.deepEqual(
       resolveProfileApiRequest('iris', path, {
@@ -891,21 +879,35 @@ test('resolveProfileApiRequest keeps an unscopable mutating route on a process-s
         profileRemoteOverride: false,
         requestMethod: method
       }),
-      { backendProfile: 'iris', requestPath: path },
-      `${method} ${path} must keep its own backend`
+      { backendProfile: null, requestPath: path }
     )
   }
 
-  // ...and the gate is about SCOPE, not about the word "destructive": the same
-  // unscopable paths read fine on the shared backend.
   assert.deepEqual(
     resolveProfileApiRequest('iris', '/api/files/managed', {
       globalRemote: false,
       profileRemoteOverride: false,
       requestMethod: 'GET'
     }),
-    { backendProfile: null, requestPath: '/api/files/managed?profile=iris' }
+    { backendProfile: null, requestPath: '/api/files/managed' }
   )
+})
+
+test('本机会话删除及保留的定时任务和消息接口携带 Profile，不触发池进程', () => {
+  for (const profile of ['default', 'iris']) {
+    for (const [method, route] of [
+      ['DELETE', '/api/sessions/session-1'],
+      ['POST', '/api/cron/jobs'],
+      ['PUT', '/api/plugins/desktop-messaging/platforms/feishu'],
+      ['POST', '/api/plugins/weixin-qr/start'],
+      ['POST', '/api/plugins/conversation-share/share']
+    ]) {
+      assert.deepEqual(resolveProfileApiRequest(profile, route, { requestMethod: method }), {
+        backendProfile: null,
+        requestPath: `${route}?profile=${profile}`
+      })
+    }
+  }
 })
 
 test('resolveProfileApiRequest leaves a body-scoped session write unqueried on the shared backend', () => {
@@ -929,13 +931,12 @@ test('resolveProfileApiRequest uses exact method and path eligibility for mixed 
     }),
     { backendProfile: null, requestPath: '/api/skills?profile=iris' }
   )
-  // Only `GET /api/skills` is eligible: the exact method matters, and an
-  // unlisted mutating method keeps its own process-scoped backend.
+  // 尚未分类的本机请求也不启动第二个进程，由服务器决定接口是否支持。
   assert.deepEqual(
     resolveProfileApiRequest('iris', '/api/skills', {
       requestMethod: 'POST'
     }),
-    { backendProfile: 'iris', requestPath: '/api/skills' }
+    { backendProfile: null, requestPath: '/api/skills?profile=iris' }
   )
   assert.deepEqual(
     resolveProfileApiRequest('iris', '/api/config/defaults', {

@@ -147,6 +147,7 @@ import {
   normAuthMode,
   pathForRegistryBackendRequest,
   pathWithGlobalRemoteProfile,
+  pathWithProfileScope,
   profileHasRemoteConnection,
   profileRemoteOverride,
   type ProfileRouteOptions,
@@ -243,7 +244,8 @@ import { createAccountLogout } from './entry_local/logout'
 import { type LogoutProcess, logoutProcessTree, stopLogoutProcesses } from './entry_local/logout-processes'
 import { createAccountExitWindows, retryLogout } from './entry_local/logout-window'
 import { DesktopMessaging, MessagingBotIndex } from './entry_local/messaging'
-import { prepareAllProfiles } from './entry_local/prepare-all-profiles'
+import { localProfileNames, prepareAllProfiles } from './entry_local/prepare-all-profiles'
+import { SharedProfileStartup } from './entry_local/shared-profile-startup'
 import { LocalStartupError, showLocalStartupFailure } from './entry_local/startup-failure'
 import { createUniAgentGateBindingUpdate } from './entry_local/uniagentgate-control'
 import { installUniAgentGateIpc } from './entry_local/uniagentgate-ipc'
@@ -712,6 +714,10 @@ const ACCOUNT_DRIVE_MCP = new CloudDriveMcp(ACCOUNT_DRIVE_CLIENT, ACCOUNT_RUNTIM
 
 const ACCOUNT_CONNECTORS = new ConnectorManager({
   home: ACCOUNT_RUNTIME.home,
+  profiles: () =>
+    ['default', ...localProfileNames(ACCOUNT_RUNTIME.home, rememberLog)].filter(
+      profile => !profileHasRemoteOverride(profile)
+    ),
   runtimeDirectory: IS_PACKAGED
     ? packagedResourceRoot(process.resourcesPath, 'open-connector')
     : path.join(APP_ROOT, 'services', 'open-connector'),
@@ -865,6 +871,17 @@ installConversationFolderIpc(
 )
 // desktop-mt: 后端启动前接手中断记录，页面据此显示 ▶ 继续。
 const INTERRUPTED_TURNS = createInterruptedTurns(message => rememberLog(message))
+
+const SHARED_PROFILES = new SharedProfileStartup({
+  home: ACCOUNT_RUNTIME.home,
+  appRoot: app.getAppPath(),
+  drive: ACCOUNT_DRIVE_MCP,
+  interrupted: INTERRUPTED_TURNS,
+  refreshConnectors: profile => ACCOUNT_CONNECTORS.refresh(profile),
+  active: () => currentDesktopLocalContext() === ACCOUNT_RUNTIME && !localBackendLifecycle.signal.aborted,
+  log: rememberLog
+})
+
 installInterruptedTurnIpc(
   ACCOUNT_SESSION,
   () => DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString(),
@@ -1624,7 +1641,7 @@ const primaryExitRecovery = createBackendExitRecoveryLatch()
 // byte-for-byte the single-backend behavior.
 const backendPool = new Map() // profile -> { process, port, token, connectionPromise, lastActiveAt }
 // 全档案准备期间，迟到的池启动先等待，避免同一档案并发写配置。
-let allProfilesPreparation: Promise<void> = Promise.resolve()
+let allProfilesPreparation: Promise<Set<string>> = Promise.resolve(new Set())
 const profileDeletionGate = new ProfileDeletionGate()
 // Keep the pool light: cap concurrent profile backends (LRU eviction) and reap
 // idle ones. A user idles at exactly the primary backend; pool backends only
@@ -10670,7 +10687,7 @@ function profileRouteOptions(
     // A stored per-profile entry (local or remote) — pins this profile to
     // its own backend; absent entries inherit the primary's remote.
     ownEntry: Boolean((config.profiles || {})[key]),
-    isolatedBackend: ISOLATED_BACKEND,
+    isolatedBackend: !SHARE_ACCOUNT_BACKEND,
     requestMethod: request?.method,
     requestPath: request?.path
   }
@@ -10689,7 +10706,6 @@ async function ensureBackend(
 ): Promise<Awaited<ReturnType<typeof backendConnectionState.getPromise>>> {
   const key = profile && String(profile).trim() ? String(profile).trim() : primaryProfileKey()
   const spawnPriority = spawnPriorityFrom(opts.spawnPriority)
-  poolRetirer.assertCanOpen(key, spawnPriority)
   const passive = Boolean(opts.passive)
 
   profileDeletionGate.assertCanStart(key)
@@ -10704,6 +10720,16 @@ async function ensureBackend(
   if (route.backend === 'primary') {
     const connection = await startHermes()
     setWslBridgeProfileState(key, connection.mode !== 'remote')
+
+    if (connection.mode === 'local') {
+      await SHARED_PROFILES.ensure(key, (method, route, body) =>
+        fetchJsonForBackend(connection, pathWithProfileScope(route, key), {
+          method,
+          body,
+          timeoutMs: DEFAULT_FETCH_TIMEOUT_MS
+        })
+      )
+    }
 
     // A shared backend still owes the caller its profile scope, so renderer-side
     // WebSocket, filesystem, and cache routing target the selected profile.
@@ -10720,6 +10746,7 @@ async function ensureBackend(
   // A backend for this key may still be dying (idle reap, LRU eviction, a
   // just-finished delete). Wait for its bounded exit before reusing or
   // spawning, so two children never share one profile's HERMES_HOME.
+  poolRetirer.assertCanOpen(key, spawnPriority)
   const stopping = poolStopper.inFlight(key)
 
   if (stopping) {
@@ -12470,7 +12497,10 @@ async function prepareProfileRenameRequest(request) {
 
 // ── Attach-first: one backend per HOST (multiplex-only) ───────────────────
 // Escape hatch: a dedicated, private backend for this app instead of the host's.
-const ISOLATED_BACKEND = true
+// 6b16e8d51d 为固定账号 Home、避免误连官方实例而强制独立；这条归属边界继续保留。
+const PRIVATE_ACCOUNT_BACKEND = true
+// 账号内部的助手共用当前账号后端，通过原版 Profile 协议区分会话和配置。
+const SHARE_ACCOUNT_BACKEND = true
 const ATTACHED_LIVENESS_POLL_MS = 15_000
 let attachedBackendMonitor: NodeJS.Timeout | null = null
 let hostSpawnReservation: SpawnReservation | null = null
@@ -12506,7 +12536,7 @@ function startAttachedBackendMonitor(attached: AttachedBackend) {
 
 /** Discover and attach to the host's running backend; null means "spawn one". */
 function attachToRunningHostBackend(): Promise<AttachedBackend | null> {
-  const options = { isolated: ISOLATED_BACKEND, ledgerPath: spawnLedgerPath(HERMES_HOME, path.join) }
+  const options = { isolated: PRIVATE_ACCOUNT_BACKEND, ledgerPath: spawnLedgerPath(HERMES_HOME, path.join) }
 
   return attachOrReserveSpawn(options, hostBackendAttachDeps(), hostSpawnGateDeps())
     .then(outcome => {
@@ -12967,6 +12997,7 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
     // 上游会话标题：首次调用给账号内所有已有助手安装标题扩展，之后只补当前主助手。
     prepareManagedTitleProfiles(primaryProfile)
     // desktop-mt: 恢复也经过这里；运行中及正在启停的专家留到自己的下次启动准备。
+    SHARED_PROFILES.reset()
     allProfilesPreparation = prepareAllProfiles({
       home: HERMES_HOME,
       appRoot: app.getAppPath(),
@@ -12978,7 +13009,7 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
         ),
       log: rememberLog
     })
-    await allProfilesPreparation
+    SHARED_PROFILES.reset(await allProfilesPreparation)
     backendConnectionState.assertCurrentAttempt(connectionAttempt)
     setWslBridgeProfileState(primaryProfile, true)
 
@@ -13250,7 +13281,7 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
     // accumulated count of the resolved episode.
     bootstrapRepairAttempt = 0
 
-    void refreshConnectors(profile)
+    void refreshConnectors()
 
     // The backend's plugin discovery just ran and refreshed HERMES_HOME/.plugin-compat-report.json.
     // Surface it once (per distinct set of affected plugins) after the window is up; never block boot.
@@ -17239,11 +17270,8 @@ async function handleHermesApiRequest(request) {
   // backend calls ensure_hermes_home() which recreates the profile directory,
   // defeating the deletion and leaving a zombie process.
   //
-  // Local-profile REST calls stay on the primary dashboard and carry ?profile=
-  // (or name the profile in the path / PATCH body). A request that MUTATES
-  // state the server cannot scope at all retains its pooled backend, whose
-  // HERMES_HOME is then the scope, so a destructive call can never fall
-  // through to the primary home — `resolveProfileBackendRoute` case 6.
+  // 本机 REST 统一走账号后端，按接口原有 query、请求体、路径或账号根处理。
+  // 保留原请求的助手身份，使运行中新建的专家也能在第一次请求前完成准备。
   //
   // A profile rename tears down the old-name backend the same way; for a
   // primary rename the lifecycle has already made `default` the temporary
@@ -17252,7 +17280,7 @@ async function handleHermesApiRequest(request) {
 
   const routeProfile = profileRename
     ? profileRename.routeProfile
-    : resolveRouteProfile(tornDownProfile, apiRoute.backendProfile)
+    : resolveRouteProfile(tornDownProfile, apiRoute.backendProfile ?? profile)
 
   let response
   let connection
@@ -17317,6 +17345,13 @@ ipcMain.handle('hermes:api', async (_event, request) => {
   const registryConnectionId = apiRequestRegistryConnectionId(request)
 
   try {
+    if (
+      mutatingProfile &&
+      (registryConnectionId === 'local' || (!registryConnectionId && !primaryBackendIsRemote()))
+    ) {
+      SHARED_PROFILES.forget(mutatingProfile)
+    }
+
     if (deletingProfile && registryConnectionId) {
       return await dispatchConnectionScopedProfileDelete(request, {
         acquire: profile => profileDeletionGate.acquire(profile),

@@ -18,7 +18,7 @@ interface PreparationOptions {
 }
 
 /** 只枚举账号内的真实档案；链接、无身份目录和删除标记均不进入文件准备。 */
-function profileNames(home: string, log: PreparationOptions['log']): string[] {
+export function localProfileNames(home: string, log: PreparationOptions['log']): string[] {
   const root = path.join(home, 'profiles')
   const info = fs.lstatSync(root, { throwIfNoEntry: false })
 
@@ -63,11 +63,12 @@ function profileNames(home: string, log: PreparationOptions['log']): string[] {
 }
 
 /** 主后端启动前补齐未运行助手的配置；恢复时不改写仍在启动、运行或停止中的专家。 */
-export async function prepareAllProfiles(options: PreparationOptions): Promise<void> {
+export async function prepareAllProfiles(options: PreparationOptions): Promise<Set<string>> {
   let names: string[] = []
+  const prepared = new Set<string>()
 
   try {
-    names = profileNames(options.home, options.log)
+    names = localProfileNames(options.home, options.log)
   } catch {
     options.log('[profiles] could not enumerate profiles for preparation')
   }
@@ -86,9 +87,13 @@ export async function prepareAllProfiles(options: PreparationOptions): Promise<v
 
       if (!(await options.prepareDrive(profile))) {
         options.log(`[profiles] drive preparation unavailable profile=${profile}`)
+      } else {
+        prepared.add(profile)
       }
     } catch {
       options.log(`[profiles] preparation failed profile=${profile}`)
     }
   }
+
+  return prepared
 }

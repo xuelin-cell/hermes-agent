@@ -674,6 +674,25 @@ function localPrimaryRequestScope(opts: ProfileRouteOptions): boolean | null {
 
   const method = String(opts.requestMethod || 'GET').toUpperCase()
 
+  // 定时任务及本 fork 的消息、分享接口显式接收 Profile；套件管理仍按账号根处理。
+  if (
+    pathname.startsWith('/api/cron/') ||
+    pathname.startsWith('/api/plugins/desktop-messaging/') ||
+    pathname.startsWith('/api/plugins/weixin-qr/') ||
+    pathname.startsWith('/api/plugins/conversation-share/')
+  ) {
+    return true
+  }
+
+  // 这几类接口按显式文件路径、请求体或账号根操作，不把无效 query 当作目录隔离。
+  if (
+    pathname.startsWith('/api/files/') ||
+    pathname.startsWith('/api/dashboard/agent-plugins/') ||
+    pathname.startsWith('/api/plugins/uniwork-kits/')
+  ) {
+    return false
+  }
+
   if (LOCAL_PRIMARY_SCOPED_ROUTES.has(`${method} ${pathname}`)) {
     return true
   }
@@ -688,11 +707,11 @@ function localPrimaryRequestScope(opts: ProfileRouteOptions): boolean | null {
     return true
   }
 
-  // Session reads already accept `profile` and open that profile's state.db
-  // read-only. Keep ownership probes and transcript reads on the shared primary
-  // instead of spawning one local backend per profile. Writes remain pooled so
-  // their process-level profile scope and side effects are unchanged.
-  if (method === 'GET' && (pathname === '/api/sessions' || pathname.startsWith('/api/sessions/'))) {
+  // 会话读取和删除通过 query 选择数据库；改名等写请求在下方保留 body.profile。
+  if (
+    (method === 'GET' || method === 'DELETE') &&
+    (pathname === '/api/sessions' || pathname.startsWith('/api/sessions/'))
+  ) {
     return true
   }
 
@@ -740,12 +759,7 @@ const SAFE_REQUEST_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
  * vouch for its profile scope (`localPrimaryRequestScope` → null: no
  * `?profile=`, no `body.profile`, no target named in the path).
  *
- * Such a route has exactly one scope left — the backend process's own
- * `HERMES_HOME` — so it keeps a pooled, profile-scoped backend even though every
- * other local request now shares the host one. Mechanical on purpose: the day a
- * handler learns to read `profile` it joins `LOCAL_PRIMARY_SCOPED_ROUTES` (or a
- * family above), `localPrimaryRequestScope` stops returning null, and this
- * predicate stops seeing it — there is no second list to keep in sync.
+ * 该分类继续供已有池启动检查使用；桌面本地模式不再凭它创建额外后端。
  *
  * A call with no `requestPath` is a BACKEND/descriptor resolution (WebSocket
  * dial, pool bookkeeping), not a REST call, and is never held back.
@@ -784,11 +798,9 @@ export function unscopableMutatingRequest(opts: ProfileRouteOptions = {}): boole
  *     (`requestGatewayForProfile` and the session-owner
  *     `requestGatewayForAgent` family): the profile's calls ride the primary
  *     socket with a `profile` param, never a second socket to the same
- *     process (#120005). The two ways out are
- *     `HERMES_DESKTOP_ISOLATED_BACKEND=1`, which gives this app a private
- *     backend, and a MUTATING request the server cannot scope at all — that
- *     one keeps a pooled backend whose HERMES_HOME does the scoping, so a
- *     destructive call can never fall through to the primary's home.
+ *     process (#120005). 桌面账号内不再为未分类写请求启动独立进程；
+ *     已知接口按 query、body、文件路径或账号根的原有语义处理。
+ *     调用方仍可明确选择隔离路由；远程连接的分支保持不变。
  *
  * Routing used to be spread across three overlapping predicates that each
  * re-derived part of this table, which is how case 3 ended up registering
@@ -856,12 +868,8 @@ function resolveProfileBackendRoute(profile, opts: ProfileRouteOptions = {}): Pr
     }
   }
 
-  // 6. Multiplex-only: every other LOCAL profile shares the one host backend
-  //    too, carrying `?profile=` / the `profile` RPC param instead of getting
-  //    a `hermes serve` child of its own — UNLESS this request mutates state
-  //    the server cannot scope, in which case the pooled backend's own
-  //    HERMES_HOME is the only scope left and it keeps one.
-  if (sharesHostBackend({ isolated: opts.isolatedBackend, unscopableRequest: unscopableMutatingRequest(opts) })) {
+  // 6. 本机助手共用账号后端；写请求同样带归属，不再触发逐助手进程。
+  if (sharesHostBackend({ isolated: opts.isolatedBackend })) {
     return { backend: 'primary', descriptorProfile: scopedProfile, scopePath: true }
   }
 

@@ -1786,6 +1786,64 @@ def test_expert_sync_api_is_scoped_to_managed_profile_and_account(kits, profile_
         assert _config(profile_env / "profiles" / "ordinary") == {"model": "personal"}
 
 
+def test_expert_sync_preserves_concurrent_connector_config(kits, profile_env, tmp_path, monkeypatch):
+    """异步同步与真实配置 API 交错执行后，模型及刚写入的连接器都必须保留。"""
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError
+    from threading import Event
+
+    from fastapi import FastAPI
+    from starlette.testclient import TestClient
+
+    from hermes_cli.web_routers.config_env import router as config_router
+
+    package = _expert_pkg(tmp_path)
+    assert kits.installer.install(package, profile_env, triggers={}, generate_triggers=False).ok
+    _write(profile_env / "config.yaml", "model:\n  provider: zai\n  default: shared-model\n")
+    autoseed = importlib.import_module("hermes_plugins.uniwork_kits.autoseed")
+    monkeypatch.setattr(autoseed, "BUNDLED_DIR", tmp_path / "no-bundle")
+    name = "uniwork_kits_dashboard_api_shared_config_test"
+    spec = importlib.util.spec_from_file_location(name, PLUGIN_DIR / "dashboard" / "plugin_api.py")
+    module = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, name, module)
+    spec.loader.exec_module(module)
+    app = FastAPI()
+    app.include_router(module.router, prefix="/api/plugins/uniwork-kits")
+    app.include_router(config_router)
+    target = profile_env / "profiles" / "demo-expert"
+    captured, release = Event(), Event()
+    original_read = module.expert_sync._read
+
+    def paused_read(home):
+        """暂停已读出专家配置的同步，让并发连接器请求进入真实保存流程。"""
+        result = original_read(home)
+        if home == target and not captured.is_set():
+            captured.set()
+            assert release.wait(8)
+        return result
+
+    monkeypatch.setattr(module.expert_sync, "_read", paused_read)
+    with TestClient(app) as client, ThreadPoolExecutor(max_workers=2) as executor:
+        # 先完成原版接口的惰性导入，避免首次导入耗时掩盖真正的配置并发。
+        assert client.put("/api/config?profile=demo-expert", json={"config": {}}).status_code == 200
+        sync = executor.submit(client.post, "/api/plugins/uniwork-kits/expert-sync", json={"profile": "demo-expert"})
+        try:
+            assert captured.wait(8)
+            patch = executor.submit(client.put, "/api/config?profile=demo-expert", json={"config": {"mcp_servers": {
+                "connector_fixture": {"desktop_connector": "fixture", "url": "http://127.0.0.1:9/mcp"}
+            }}})
+            try:
+                patch.result(timeout=1)
+            except TimeoutError:
+                pass  # 共用原版配置锁时，写入等待同步完成。
+        finally:
+            release.set()
+        assert sync.result(timeout=8).status_code == 200
+        assert patch.result(timeout=8).status_code == 200
+    saved = _config(target)
+    assert saved["model"]["default"] == "shared-model"
+    assert saved["mcp_servers"]["connector_fixture"]["url"] == "http://127.0.0.1:9/mcp"
+
+
 def test_capabilities_installed_without_generation_get_phrases_later(kits, profile_env, kit_pkg):
     """seed 时没生成触发词的能力不能记成已完成，之后刷新还会生成。"""
     kits.installer.install(kit_pkg, profile_env, triggers={}, generate_triggers=False)

@@ -9,22 +9,7 @@ const NAME = 'uniwork-titles'
 
 /** 受管后端启动前安装产品扩展并关闭旧命名；不改Python核心，不运行用户配置中的备用模型。 */
 export function installTitlePlugin(home: string, appRoot: string): void {
-  const source = path.join(appRoot, 'assets', 'uniwork-titles')
-
-  if (!fs.statSync(path.join(source, 'plugin.yaml')).isFile()) {
-    throw new Error('缺少会话标题扩展')
-  }
-
-  const destination = path.join(home, 'plugins', NAME)
-
-  for (const candidate of [path.join(home, 'plugins'), destination]) {
-    const stat = fs.lstatSync(candidate, { throwIfNoEntry: false })
-
-    if (stat && (!stat.isDirectory() || stat.isSymbolicLink())) {
-      throw new Error('标题扩展目录无效')
-    }
-  }
-
+  checkTitlePluginTargets(home, appRoot)
   const file = path.join(home, 'config.yaml')
   const stat = fs.lstatSync(file, { throwIfNoEntry: false })
 
@@ -90,13 +75,35 @@ export function installTitlePlugin(home: string, appRoot: string): void {
   }
 
   doc.setIn(['auxiliary', 'title_generation', 'enabled'], false)
-  fs.mkdirSync(path.dirname(destination), { recursive: true, mode: 0o700 })
-  copyAppTree(source, destination)
   const next = doc.toString()
+  copyTitlePluginFiles(home, appRoot)
 
   if (next !== original) {
     writeSecretFileAtomic(file, next, { encoding: 'utf8' })
   }
+}
+
+/** 校验扩展来源与目标目录；不合格时在复制或改配置之前报错。 */
+function checkTitlePluginTargets(home: string, appRoot: string): void {
+  if (!fs.statSync(path.join(appRoot, 'assets', NAME, 'plugin.yaml')).isFile()) {
+    throw new Error('缺少会话标题扩展')
+  }
+
+  for (const candidate of [path.join(home, 'plugins'), path.join(home, 'plugins', NAME)]) {
+    const stat = fs.lstatSync(candidate, { throwIfNoEntry: false })
+
+    if (stat && (!stat.isDirectory() || stat.isSymbolicLink())) {
+      throw new Error('标题扩展目录无效')
+    }
+  }
+}
+
+/** desktop-mt: 共享后端运行中补新助手时只复制扩展和启用时间，配置交给原版 API 保存。 */
+export function copyTitlePluginFiles(home: string, appRoot: string): void {
+  checkTitlePluginTargets(home, appRoot)
+  const destination = path.join(home, 'plugins', NAME)
+  fs.mkdirSync(path.dirname(destination), { recursive: true, mode: 0o700 })
+  copyAppTree(path.join(appRoot, 'assets', NAME), destination)
 
   // 启用时间只创建一次，崩溃恢复不能把历史无标题会话当作本轮新会话批量命名。
   const state = path.join(home, 'plugin-data', NAME)

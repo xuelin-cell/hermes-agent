@@ -224,7 +224,11 @@ def sync_profile(body: ExpertSyncBody) -> Dict[str, Any]:
             continue
         own = store.self_expert(store.load_index(home))
         if own and own[0] == name:
-            return {"profile": body.profile, "changes": expert_sync.sync_named(root, name)}
+            from hermes_cli.web_routers._common import config_write_scope
+
+            # 与原版配置 API 共用写锁，避免异步同步覆盖刚刷新的连接器记录。
+            with config_write_scope(body.profile):
+                return {"profile": body.profile, "changes": expert_sync.sync_named(root, name)}
     raise HTTPException(status_code=404, detail="没有这个受管专家")
 
 
