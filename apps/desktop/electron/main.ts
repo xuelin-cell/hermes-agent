@@ -14899,12 +14899,16 @@ function createWindow() {
     }
   }
 
-  if (savedWindowState?.isMaximized) {
-    mainWindow.maximize()
-  }
-
   const revealController = wireWindowReveal(createdMainWindow, {
     onRevealed: () => {
+      // Maximize after reveal (show) so Windows doesn't flash the normal-size
+      // frame before the maximize DWM transition. Calling maximize() on a
+      // hidden window queues the SWP change; when the window later shows, the
+      // user sees a brief "small box → fullscreen" flicker.
+      if (savedWindowState?.isMaximized) {
+        createdMainWindow.maximize()
+      }
+
       // Persist geometry as soon as the window is visible so a crash before the
       // first clean resize/move/close still captures the restored bounds (#56726).
       schedulePersistWindowState()
