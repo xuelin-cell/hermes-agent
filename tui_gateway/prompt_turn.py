@@ -1011,6 +1011,15 @@ def _finish_turn(sid: str, session: dict, st: _TurnRun) -> None:
             _persist_live_session_system_prompt(session)
         except Exception:
             logger.debug("TUI one-turn model restore failed", exc_info=True)
+    if session.get("pending_model_switch"):
+        # A messaging conversation can receive its next turn from the gateway.
+        from tui_gateway.messaging_model_switch import live_messaging_model_route
+        try:
+            if live_messaging_model_route(session) is not None:
+                with _session_profile_runtime_scope(session):
+                    _apply_pending_model_switch(sid, session)
+        except Exception:
+            logger.warning("Could not apply the queued messaging model pick at turn completion", exc_info=True)
     scopes = st.scopes
     with contextlib.suppress(Exception):
         if scopes.approval is not None:

@@ -13,7 +13,7 @@ import {
   modelOptionsQueryKey,
   requestModelOptions
 } from '@/lib/model-options'
-import { notifyError } from '@/store/notifications'
+import { notify, notifyError } from '@/store/notifications'
 import { $activeGatewayProfile } from '@/store/profile'
 import {
   $activeSessionId,
@@ -40,6 +40,7 @@ interface ModelSwitchResponse {
   confirm_message?: string
   confirm_required?: boolean
   deferred?: boolean
+  warning?: string
 }
 
 export function useModelControls({
@@ -335,6 +336,9 @@ export function useModelControls({
 
       const finishSwitch = (result: ModelSwitchResponse | undefined) => {
         rememberComposerModelSelection(selection.model, selection.provider)
+        if (result?.warning) {
+          notify({ kind: 'warning', message: result.warning })
+        }
 
         // A pick made DURING a turn is queued by the gateway and applied at the
         // next turn start (`deferred`). Re-fetching now would answer with the

@@ -351,8 +351,13 @@ def _apply_model_switch(
         persist_model_selection(result)
     if reasoning_effort:
         _apply_switch_reasoning(sid, session, agent, reasoning_effort, persist_global=persist_global, one_turn=one_turn)
+    warning = result.warning_message or ""
+    if pin_session_override and not (one_turn or persist_global):
+        from tui_gateway.messaging_model_switch import sync_messaging_model_pick
+        if sync_warning := sync_messaging_model_pick(session, result.new_model, result.target_provider):
+            warning = "\n".join(filter(None, (warning, sync_warning)))
     return {
-        "value": result.new_model, "warning": result.warning_message or "",
+        "value": result.new_model, "warning": warning,
         "confirm_required": False,
         "scope": "once" if one_turn else ("global" if persist_global else "session")}
 
