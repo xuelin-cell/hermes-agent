@@ -12,14 +12,18 @@
  * — where OAuth expiry actually lives) are swept, sequentially, and through
  * the same probe cache the MCP page uses so neither surface re-probes what
  * the other just learned.
+ * UniAI-Toolkit follows the backend's runtime status instead of a separate probe.
  */
+
+import type { RpcMethods } from '@hermes/shared'
 
 import { getHermesConfigRecord, type McpTestResult, setMcpServerEnabled, testMcpServer } from '@/hermes'
 import { translateNow } from '@/i18n'
 import { isPlatformMcpServer } from '@/lib/browser-shell'
 import { classifyProbe, freshProbe, probeCache, probeKey } from '@/lib/mcp-probe-cache'
-import { getServers, serverEnabled } from '@/lib/mcp-servers'
+import { getServers, serverEnabled, UNI_AI_TOOLKIT_SERVER } from '@/lib/mcp-servers'
 import { persistString, storedString } from '@/lib/storage'
+import { activeGateway, activeGatewayConnectionId, gatewayActivationEpoch } from '@/store/gateway'
 import { notify, notifyError } from '@/store/notifications'
 import { $activeGatewayProfile, normalizeProfileKey } from '@/store/profile'
 import { $gatewayState } from '@/store/session'
@@ -28,6 +32,9 @@ import { $gatewayState } from '@/store/session'
 // HTTP probes at most) and the notification is transition-gated below, so
 // there is nothing for a user to meaningfully tune.
 const CHECK_INTERVAL_MS = 30 * 60_000
+const TOOLKIT_CHECK_INTERVAL_MS = 5_000
+const TOOLKIT_STATUS_TIMEOUT_MS = 4_000
+const TOOLKIT_NOTICE_DURATION_MS = 8_000
 
 export type McpHealthStatus = 'error' | 'needs-auth' | 'ok'
 
@@ -88,8 +95,11 @@ const lastStatus = new Map<string, McpHealthStatus>()
 
 let started = false
 let timer: ReturnType<typeof setInterval> | null = null
-// Bumped on profile switch; in-flight sweeps compare and bail so a slow
-// profile-A probe can't record (or notify) into profile B's state.
+let toolkitTimer: ReturnType<typeof setInterval> | null = null
+let toolkitCheckInFlight = false
+let pendingToolkitFailure: { route: number; scope: string } | null = null
+const notifiedToolkitFailures = new Set<string>()
+// Invalidate outstanding reads on disconnect or profile switch.
 let sweepEpoch = 0
 // At most one sweep runs and one follow-up is remembered. Reconnect storms
 // still request a fresh pass, but cannot append an unbounded backlog.
@@ -149,6 +159,66 @@ function recordResult(profileKey: string, name: string, status: McpHealthStatus)
   })
 }
 
+/** 从当前网关读取工具箱状态，连续两次确认失败后才提醒。 */
+async function checkToolkitStatus(): Promise<void> {
+  const gateway = activeGateway()
+
+  if (!gateway || toolkitCheckInFlight || $gatewayState.get() !== 'open') {
+    return
+  }
+
+  const epoch = sweepEpoch
+  const route = gatewayActivationEpoch()
+  const profile = normalizeProfileKey($activeGatewayProfile.get())
+  const scope = `${activeGatewayConnectionId() ?? ''}::${profile}`
+  toolkitCheckInFlight = true
+
+  try {
+    const result = await gateway
+      .request<RpcMethods['mcp.servers.status']['result']>('mcp.servers.status', { profile }, TOOLKIT_STATUS_TIMEOUT_MS)
+      .catch(() => null)
+
+    if (epoch !== sweepEpoch || route !== gatewayActivationEpoch() || gateway !== activeGateway()) {
+      return
+    }
+
+    const servers = Array.isArray(result?.servers) ? result.servers : null
+    const status = servers?.find(server => server.name === UNI_AI_TOOLKIT_SERVER)?.status
+
+    if (status !== 'failed') {
+      pendingToolkitFailure = null
+
+      if (status === 'connected' || status === 'disabled' || (servers && !status)) {
+        notifiedToolkitFailures.delete(scope)
+      }
+
+      return
+    }
+
+    const confirmed = pendingToolkitFailure?.scope === scope && pendingToolkitFailure.route === route
+    pendingToolkitFailure = { route, scope }
+
+    if (!confirmed || notifiedToolkitFailures.has(scope)) {
+      return
+    }
+
+    notifiedToolkitFailures.add(scope)
+    notify({
+      action: {
+        label: translateNow('notifications.mcp.view'),
+        onClick: () => openMcpServerPage(UNI_AI_TOOLKIT_SERVER)
+      },
+      durationMs: TOOLKIT_NOTICE_DURATION_MS,
+      id: `mcp-health-toolkit-${scope}`,
+      kind: 'warning',
+      message: translateNow('notifications.mcp.connectionFailedMessage', UNI_AI_TOOLKIT_SERVER),
+      title: translateNow('notifications.mcp.errorTitle')
+    })
+  } finally {
+    toolkitCheckInFlight = false
+  }
+}
+
 const isUrlServer = (server: Record<string, unknown>): boolean =>
   typeof server.url === 'string' && serverEnabled(server)
 
@@ -174,7 +244,7 @@ async function sweep(): Promise<void> {
   const servers = getServers(config)
 
   for (const [name, server] of Object.entries(servers)) {
-    if (!isUrlServer(server)) {
+    if (name === UNI_AI_TOOLKIT_SERVER || !isUrlServer(server)) {
       continue
     }
 
@@ -232,14 +302,22 @@ function arm(): void {
 
   queueSweep()
   timer = setInterval(queueSweep, CHECK_INTERVAL_MS)
+  toolkitTimer = setInterval(() => void checkToolkitStatus(), TOOLKIT_CHECK_INTERVAL_MS)
 }
 
 function disarm(): void {
+  sweepEpoch += 1
   sweepQueued = false
+  pendingToolkitFailure = null
 
   if (timer !== null) {
     clearInterval(timer)
     timer = null
+  }
+
+  if (toolkitTimer !== null) {
+    clearInterval(toolkitTimer)
+    toolkitTimer = null
   }
 }
 
@@ -267,7 +345,6 @@ export function startMcpHealthChecker(): void {
   // so no wipe is needed — profile A's transition memory stays intact for
   // when the user switches back.
   offProfile = $activeGatewayProfile.listen(() => {
-    sweepEpoch += 1
     disarm()
 
     if ($gatewayState.get() === 'open') {
@@ -278,7 +355,7 @@ export function startMcpHealthChecker(): void {
 
 export function stopMcpHealthChecker(): void {
   disarm()
-  sweepEpoch += 1
+  notifiedToolkitFailures.clear()
   offGatewayState?.()
   offGatewayState = null
   offProfile?.()
