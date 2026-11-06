@@ -723,6 +723,7 @@ export const zh = defineLocale({
     failure: {
       title: 'UniWork 无法启动',
       description: '后台网关没有启动。请尝试下面的恢复步骤；这里不会删除你的对话或设置。',
+      browserDescription: '云端工作空间暂时没有连上。请稍后重试，这不会删除你的对话或设置。',
       remoteTitle: '需要重新登录远程网关',
       remoteDescription: '你的远程网关会话已过期。请重新登录以恢复连接。这些操作不会删除你的对话或设置。',
       retry: '重试',

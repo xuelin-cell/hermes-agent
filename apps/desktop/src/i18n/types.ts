@@ -823,6 +823,7 @@ export interface Translations {
     failure: {
       title: string
       description: string
+      browserDescription: string
       details: string
       remoteTitle: string
       remoteDescription: string

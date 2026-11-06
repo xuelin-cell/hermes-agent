@@ -41,6 +41,7 @@ import type { WelcomeLocale, WelcomePayload } from '../../electron/uniwork-welco
 import { agentRoster, connectionForProfile, profileRoutes, withProfileQuery } from './browser-profiles-mt'
 import { browserInterrupted } from './browser-interrupted'
 import { browserAccount } from './browser-account'
+import { backendFailedTransiently, noteBackendStatus } from './browser-backend-error'
 import { browserDrive } from './browser-drive'
 import { browserExport } from './browser-export'
 import { browserPlan } from './browser-plan'
@@ -171,16 +172,24 @@ async function api<T>(request: HermesApiRequest): Promise<T> {
     requestBody = JSON.stringify(restoreMcpSecrets(method, path, body))
   }
 
-  const response = await fetch(`${apiPrefix()}${restPath(path, profile)}`, {
-    body: requestBody,
-    credentials: credentials(),
-    headers,
-    method
-  })
+  let response: Response
+
+  try {
+    response = await fetch(`${apiPrefix()}${restPath(path, profile)}`, {
+      body: requestBody,
+      credentials: credentials(),
+      headers,
+      method
+    })
+  } catch (error) {
+    noteBackendStatus(503) // unreachable: as passing as a 503
+    throw error
+  }
 
   const text = await response.text()
 
   if (!response.ok) {
+    noteBackendStatus(response.status)
     throw new Error(`${response.status}: ${text || response.statusText}`)
   }
 
@@ -1443,7 +1452,9 @@ export function installBrowserDevelopmentBridge(): boolean {
       message: 'Browser development mode',
       phase: 'ready',
       progress: 1,
-      retryable: false,
+      // There is no main process here to classify a failed boot: the backend calls record whether it failed for
+      // a passing reason (the instance starting or being rebuilt), so the boot retries instead of giving up.
+      retryable: backendFailedTransiently(),
       running: false,
       timestamp: Date.now()
     }),

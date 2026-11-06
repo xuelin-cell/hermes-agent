@@ -1167,3 +1167,16 @@ describe('the unified login (desktop-mt)', () => {
     expect(replaced[0]).toBe('/login?redirect_uri=%2Fagents%2F')
   })
 })
+
+describe('browser bridge: a boot that fails while the instance is not ready yet', () => {
+  it('is retried after a gateway timeout or a restarting instance, not after a refusal', async () => {
+    for (const [status, retry] of [[504, true], [502, true], [401, false], [404, false]] as const) {
+      await installFresh()
+      globalThis.fetch = vi.fn(async () => new Response('', { status })) as typeof fetch
+
+      await expect(window.hermesDesktop.api({ path: '/api/config' })).rejects.toThrow(String(status))
+      expect((await window.hermesDesktop.getBootProgress()).retryable).toBe(retry)
+      vi.resetModules()
+    }
+  })
+})

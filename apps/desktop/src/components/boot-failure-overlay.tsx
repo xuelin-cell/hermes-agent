@@ -9,6 +9,7 @@ import { Loader } from '@/components/ui/loader'
 import { LogView } from '@/components/ui/log-view'
 import type { DesktopConnectionConfig, DesktopOauthLoginResult } from '@/global'
 import { useI18n } from '@/i18n'
+import { isBrowserShell } from '@/lib/browser-shell'
 import { reestablishCloudAgentSession } from '@/lib/cloud-agent-session'
 import { DESKTOP_DOCS_URL } from '@/lib/docs'
 import { openExternalLink } from '@/lib/external-link'
@@ -426,8 +427,14 @@ export function BootFailureOverlay() {
   // progress. When set, the recovery screen leads with the cloud-specific
   // guidance instead of the generic remote-failure copy (#85335).
   const cloudDown = Boolean(boot.isCloudBackendDown)
+  // desktop-mt: the browser build has no installer, gateway URL or log folder to
+  // offer; the entry owns the instance, so reloading is the one recovery.
+  const browser = isBrowserShell()
 
-  if (remoteReauth) {
+  if (browser) {
+    actions = [retryAction]
+    hint = ''
+  } else if (remoteReauth) {
     actions = [
       {
         key: 'signin',
@@ -538,7 +545,13 @@ export function BootFailureOverlay() {
               </h2>
             </DialogPrimitive.Title>
             <p className="mt-1 text-[0.8125rem] leading-5 text-(--ui-text-tertiary)">
-              {remoteReauth ? copy.remoteDescription : cloudDown ? copy.cloudDownDescription : copy.description}
+              {browser
+                ? copy.browserDescription
+                : remoteReauth
+                  ? copy.remoteDescription
+                  : cloudDown
+                    ? copy.cloudDownDescription
+                    : copy.description}
             </p>
           </div>
         </div>
@@ -567,15 +580,17 @@ export function BootFailureOverlay() {
                   {action.label}
                 </Button>
               ))}
-              <Button onClick={openLogs} variant="ghost">
-                <FileText />
-                {copy.openLogs}
-              </Button>
+              {browser ? null : (
+                <Button onClick={openLogs} variant="ghost">
+                  <FileText />
+                  {copy.openLogs}
+                </Button>
+              )}
             </div>
             {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
           </div>
 
-          {logs.length > 0 ? (
+          {!browser && logs.length > 0 ? (
             <div className="grid gap-2">
               <Button
                 className="-ml-2 self-start font-medium"

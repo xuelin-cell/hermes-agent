@@ -1002,6 +1002,8 @@ export const en: Translations = {
       title: "UniWork couldn't start",
       description:
         "UniWork' background service didn't come up. Try one of the recovery steps below. Nothing here deletes your chats or settings.",
+      browserDescription:
+        "Your cloud workspace isn't reachable right now. Retry in a moment; this doesn't delete your chats or settings.",
       details: 'Details',
       remoteTitle: 'Remote gateway sign-in required',
       remoteDescription:

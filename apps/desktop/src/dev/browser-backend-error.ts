@@ -19,8 +19,28 @@ const reasons: Record<string, number> = {
   sandbox_node_unhealthy: 4, sandbox_permission_denied: 5, sandbox_operation_timeout: 6
 }
 
+// "Not ready yet" answers: the instance is starting or being rebuilt, the entry is restarting, or the unified-login
+// gateway gave up waiting first (504). A boot that just failed on one is retried (getBootProgress().retryable)
+// instead of showing "UniWork cannot start". 401/403/404 are not: retrying cannot fix them.
+const TRANSIENT_STATUSES = new Set([408, 502, 503, 504])
+const TRANSIENT_WINDOW_MS = 30_000
+let transientFailureAt = 0
+
+/** Record a backend answer the boot may have failed on. */
+export function noteBackendStatus(status: number): void {
+  if (TRANSIENT_STATUSES.has(status)) {
+    transientFailureAt = Date.now()
+  }
+}
+
+/** Whether a backend call failed for a passing reason just now (the boot asks right after it failed). */
+export function backendFailedTransiently(now = Date.now()): boolean {
+  return now - transientFailureAt < TRANSIENT_WINDOW_MS
+}
+
 /** Never render upstream HTML, exception text, or credentials as boot copy. */
 export async function browserBackendError(response: Response): Promise<Error> {
+  noteBackendStatus(response.status)
   const body: unknown = await response.json().catch(() => null)
   const data = body && typeof body === 'object' ? body as Record<string, unknown> : {}
   const statusIndex: Record<number, number> = { 401: 0, 403: 1, 404: 2, 408: 6, 504: 6 }
@@ -34,6 +54,7 @@ export async function fetchBrowserBackend(url: string): Promise<Response> {
   try {
     return await fetch(url, { credentials: 'same-origin', redirect: 'error', cache: 'no-store' })
   } catch {
+    noteBackendStatus(503) // unreachable: as passing as a 503
     throw new Error(messages[getRuntimeI18nLocale()][7])
   }
 }

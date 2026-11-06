@@ -185,6 +185,22 @@ describe('BootFailureOverlay', () => {
     expect(screen.queryByRole('button', { name: /use local gateway/i })).toBeNull()
   })
 
+  it('offers only Retry in the browser build, where installer, gateway and log folder do not exist', () => {
+    window.document.documentElement.dataset.hermesBrowser = 'production'
+
+    try {
+      render(<BootFailureOverlay />)
+
+      expect(screen.getByText(en.boot.failure.browserDescription)).toBeTruthy()
+      expect(screen.getByRole('button', { name: /retry/i })).toBeTruthy()
+      expect(screen.queryByRole('button', { name: /repair/i })).toBeNull()
+      expect(screen.queryByRole('button', { name: /gateway settings/i })).toBeNull()
+      expect(screen.queryByRole('button', { name: /open logs/i })).toBeNull()
+    } finally {
+      delete window.document.documentElement.dataset.hermesBrowser
+    }
+  })
+
   it('leads with Gateway settings and drops Repair for a remote (token) failure', async () => {
     const restore = stubDesktop(remoteToken)
 

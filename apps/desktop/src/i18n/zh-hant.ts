@@ -550,6 +550,7 @@ export const zhHant = defineLocale({
     failure: {
       title: 'UniWork 無法啟動',
       description: '背景閘道未啟動。請嘗試下面的復原步驟。這裡的操作不會刪除您的聊天或設定。',
+      browserDescription: '雲端工作空間暫時沒有連上。請稍後重試，這不會刪除您的聊天或設定。',
       remoteTitle: '需要重新登入遠端閘道',
       remoteDescription: '您的遠端閘道工作階段已過期。請重新登入以重新連線。這裡的操作不會刪除您的聊天或設定。',
       retry: '重試',
