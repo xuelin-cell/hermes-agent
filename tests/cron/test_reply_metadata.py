@@ -14,9 +14,10 @@ from hermes_state import SessionDB
 
 def test_cron_reply_metadata_survives_reopening_its_own_profile(tmp_path, monkeypatch):
     class OfflineAgent:
-        def __init__(self, *, session_id, session_db, **kwargs):
+        def __init__(self, *, session_id, session_db, model, **kwargs):
             self.session_id = session_id
             self.db = session_db
+            self.model = model
             self.session_prompt_tokens = 90
             self.session_completion_tokens = 10
             self.session_total_tokens = 100
@@ -43,7 +44,8 @@ def test_cron_reply_metadata_survives_reopening_its_own_profile(tmp_path, monkey
                 message[_DB_PERSISTED_MARKER] = True
             return {
                 "messages": messages, "final_response": "Report ready.", "completed": True,
-                "model": "answered-model", "provider": "custom:endpoint",
+                "model": "switched-model" if self.model == "switched-model" else "answered-model",
+                "provider": "custom:endpoint",
             }
 
         def close(self):
@@ -70,10 +72,12 @@ def test_cron_reply_metadata_survives_reopening_its_own_profile(tmp_path, monkey
     for index, home in enumerate([homes[0], homes[1], homes[0]]):
         job_id = f"reply-{index}"
         with_usage = index != 1
+        switched = index == 2
         before = time.time()
         with _profile_cron_scope(home), _profile_runtime_scope(home, prepared_secret_scope={}):
             success, _, response, error = run_job({
-                "id": job_id, "name": job_id, "deliver": "local", "model": "requested-model",
+                "id": job_id, "name": job_id, "deliver": "local",
+                "model": "switched-model" if switched else "requested-model",
                 "prompt": "Report with usage" if with_usage else "Report without usage",
             })
         assert success and error is None, error
@@ -90,7 +94,8 @@ def test_cron_reply_metadata_survives_reopening_its_own_profile(tmp_path, monkey
         metadata = reply["display_metadata"]
         assert metadata["existing"] is True
         assert metadata["turn_model"] == {
-            "model": "answered-model", "provider": "custom:endpoint", "name": f"Answer from {home.name}",
+            "model": "switched-model" if switched else "answered-model", "provider": "custom:endpoint",
+            "name": "" if switched else f"Answer from {home.name}",
         }
         assert before <= metadata["turn_completed_at"] <= session["ended_at"]
         if with_usage:
