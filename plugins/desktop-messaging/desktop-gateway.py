@@ -21,6 +21,10 @@ def main() -> None:
 
     os.environ["HERMES_HOME"] = os.environ.get("HERMES_HOME") or str(get_default_hermes_root())
     import hermes_bootstrap  # noqa: F401 — 原版依赖与标准流引导。
+    # 与原版命令行入口一致：建任何连接前统一换成系统证书；晚到首轮对话才换，已建会话经代理发信会被判类型不符。
+    from agent.ssl_verify import install_truststore
+
+    install_truststore()
 
     # 与原版命令行入口一致：导入网关模块前先布防，导入卡死也能被看门狗收尾；进入事件循环后由 Runner 撤防。
     try:

@@ -261,6 +261,47 @@ def test_prepare_and_apply_stop_empty_gateway_and_restart_configured_profiles(mo
     assert [name for _, name in actions] == ["gateway-stop", "gateway-start", "gateway-stop", "gateway-start"]
 
 
+def test_desktop_gateway_installs_os_trust_before_start(monkeypatch):
+    """桌面网关入口须像原版命令行一样先换系统证书，再启动网关建连接。"""
+    import importlib.util
+    import sys
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from agent import ssl_verify
+    from gateway import config as gateway_config, run as gateway_run
+    from hermes_cli import boot_bootstrap, gateway as cli_gateway
+    from hermes_constants import get_hermes_home
+
+    calls = []
+
+    async def start_gateway(config):
+        """记录启动时机与单助手配置，不真正连接消息平台。"""
+        calls.append(("start", config.multiplex_profiles))
+        return True
+
+    root = Path(__file__).resolve().parents[2]
+    monkeypatch.setattr(sys, "argv", ["desktop-gateway.py", str(root)])
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    for name in ("PYTHONHOME", "PYTHONPATH", "VIRTUAL_ENV"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("HERMES_HOME", str(get_hermes_home()))
+    monkeypatch.setattr(ssl_verify, "install_truststore", lambda: calls.append(("trust", None)))
+    monkeypatch.setattr(gateway_config, "load_gateway_config", lambda: SimpleNamespace(multiplex_profiles=True))
+    monkeypatch.setattr(gateway_run, "start_gateway", start_gateway)
+    monkeypatch.setattr(gateway_run, "_exit_after_graceful_shutdown", lambda code: calls.append(("exit", code)))
+    monkeypatch.setattr(boot_bootstrap, "maybe_run_boot_bootstrap", lambda *_: None)
+    monkeypatch.setattr(cli_gateway, "_windows_gateway_should_absorb_console_controls", lambda: False)
+    monkeypatch.setattr(cli_gateway, "_apply_startup_watchdog_config", lambda: None)
+    monkeypatch.setattr(cli_gateway, "_respawn_storm_backoff", lambda: None)
+    monkeypatch.setitem(sys.modules, "hermes_startup_watchdog", SimpleNamespace(arm_startup_watchdog=lambda: None))
+    spec = importlib.util.spec_from_file_location("desktop_gateway_entry", root / "plugins/desktop-messaging/desktop-gateway.py")
+    entry = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(entry)
+    entry.main()
+    assert calls == [("trust", None), ("start", False), ("exit", 0)]
+
+
 def test_plugin_is_discovered_and_mounted_through_native_dashboard(monkeypatch):
     """通过正式发现及挂载入口导入路由，避免仅手工挂载测试通过。"""
     from hermes_cli import web_server, web_server_dashboard
