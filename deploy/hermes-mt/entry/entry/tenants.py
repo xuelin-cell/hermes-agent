@@ -28,12 +28,13 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 from urllib.parse import quote, urlsplit
 
 import aiohttp
 
 from .config import Settings
-from .cube_api import Cube, CubeError, SandboxGone
+from .cube_api import Cube, CubeError, SandboxGone, forwarder_unreachable
 from .docker_api import Docker, DockerError
 from .store import Store
 from .langfuse_config import credential_lines, upload_url
@@ -46,6 +47,10 @@ DEFAULT_SOUL_FILE = Path(__file__).resolve().parent / "default_soul.md"
 
 # 平台正在删的实例：控制面还列得出来，但不能再当"在"用。
 GONE_STATES = frozenset({"deleting", "terminating", "deleted"})
+
+
+class RequestAbandoned(Exception):
+    """排队等这个用户的实例时，发请求的浏览器已经断开了。"""
 
 # 内置的元景 MCP 在 config.yaml 里叫这个名字，agent 看到的工具名是 mcp__yuanjing__<工具>。这一条归平台：
 # 每次引导按平台的写（用户在界面里停用的保留停用），平台不提供时删掉。
@@ -276,6 +281,35 @@ class TenantManager:
             lock = self._locks[slug] = asyncio.Lock()
         return lock
 
+    @contextlib.asynccontextmanager
+    async def _queued(self, slug: str, abandoned: Callable[[], bool] | None):
+        """排队拿这个用户的锁；发请求的浏览器在排队时断开了就不再等（``RequestAbandoned``）。
+
+        11-06 真机：实例起不来时每个请求在锁里等满 180 秒，页面一次发的几十个请求排了 3 个多小时，
+        浏览器早走了，新请求还排在它们后面。只在排队时放弃，拿到锁以后照常做完：建实例做到一半不能停。
+        等待的那一个不撤下来重排：asyncio.Lock 先来先得，撤了就排到队尾去了。
+        """
+        lock = self._lock(slug)
+        if abandoned is None:
+            async with lock:
+                yield
+            return
+        waiter = asyncio.ensure_future(lock.acquire())
+        try:
+            while not (await asyncio.wait({waiter}, timeout=1.0))[0]:
+                if abandoned():
+                    raise RequestAbandoned()
+        except BaseException:
+            waiter.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                if await waiter:  # 撤的同时正好轮到：锁已经拿到了，还回去
+                    lock.release()
+            raise
+        try:
+            yield
+        finally:
+            lock.release()
+
     def _pg_lock(self, user_id: str):
         """跨入口副本的互斥（PG 咨询锁）。只包住会变更实例的那一段；关掉时只剩进程内的锁。"""
         if self.s.pg_lock:
@@ -438,22 +472,44 @@ class TenantManager:
             return False
 
     # ---- lifecycle -----------------------------------------------------------------
-    async def ensure_running(self, user_id: str, *, touch: bool = True) -> Tenant:
+    async def ensure_running(self, user_id: str, *, touch: bool = True,
+                             abandoned: Callable[[], bool] | None = None) -> Tenant:
         """保证这个用户有一个能用的实例，返回可直接转发的 ``Tenant``。
 
         ``touch=False`` 只给定时任务叫醒用：实例起来了但不算用户活动，跑完照常按空闲规则回收。
+        ``abandoned`` 由带着浏览器请求的调用方给：排队等锁时它说「人走了」就抛 ``RequestAbandoned``。
         """
         self._backend_client()
         if self.use_cube:
-            return await self._ensure_running_cube(user_id, touch=touch)
-        return await self._ensure_running_docker(user_id)
+            tenant = await self._ensure_running_cube(user_id, touch=touch, abandoned=abandoned)
+        else:
+            tenant = await self._ensure_running_docker(user_id, abandoned=abandoned)
+        assert tenant is not None
+        return tenant
+
+    async def running_tenant(self, user_id: str) -> Tenant | None:
+        """实例正在跑就返回它；停着的不叫醒，返回 None。给只在实例跑着时才有事做的后台轮询用。
+
+        状态在拿到锁以后才看：轮询看到「在跑」到真去用之间，空闲回收可能刚把它暂停了。以前这里直接
+        ``ensure_running``，回收一放锁就把刚暂停的实例叫醒，又不算活动，80 多秒后再被回收——绑了消息
+        平台的用户一天被暂停、唤醒上千次，每次还全量归档（11-04～11-05 真机）。
+        """
+        self._backend_client()
+        if self.use_cube:
+            return await self._ensure_running_cube(user_id, touch=False, wake=False)
+        return await self._ensure_running_docker(user_id, wake=False)
 
     async def _ensure_running_docker(
         self,
         user_id: str,
-    ) -> Tenant:
+        *,
+        wake: bool = True,
+        abandoned: Callable[[], bool] | None = None,
+    ) -> Tenant | None:
         slug = tenant_slug(user_id)
-        async with self._lock(slug):
+        async with self._queued(slug, abandoned):
+            if not wake and (await self.store.get_runtime(user_id)).state != "running":
+                return None
             token = await self.store.ensure_tenant_token(user_id)
             context = await self.store.get_tenant_context(user_id)
             api_key = context.api_key
@@ -701,11 +757,14 @@ class TenantManager:
         value = self.s.cube_template.strip()
         return value if value.startswith("tpl-") else ""
 
-    async def _ensure_running_cube(self, user_id: str, touch: bool = True) -> Tenant:
+    async def _ensure_running_cube(self, user_id: str, touch: bool = True, *, wake: bool = True,
+                                   abandoned: Callable[[], bool] | None = None) -> Tenant | None:
         assert self.cube is not None
         slug = tenant_slug(user_id)
         port = self.s.forward_port
-        async with self._lock(slug):
+        async with self._queued(slug, abandoned):
+            if not wake and (await self.store.get_runtime(user_id)).state != "running":
+                return None
             token = await self.store.ensure_tenant_token(user_id)
             context = await self.store.get_tenant_context(user_id)
             volume = self.cube_volume_name(user_id)
@@ -752,10 +811,18 @@ class TenantManager:
                     was_paused = False
                     await self.cube.wait_hermes(sandbox_id, port, timeout_s=self.s.ready_timeout_s)
                 except CubeError:
-                    # 等不到 hermes：没引导过就补一次，窗口已关就删了重建；引导过的照常报错。
+                    # 等不到 hermes：没引导过就补一次，窗口已关就删了重建；引导过的照常报错，
+                    # 除非它是暂停后唤醒没起来的那种（见 _discard_unresponsive），那就从归档重建。
+                    replaced = False
                     async with self._pg_lock(user_id):
                         sandbox_id, repaired = await self._repair_bootstrap(user_id, slug, sandbox_id, token, context)
-                    if not repaired:
+                        if not repaired and await self._discard_unresponsive(user_id, slug, sandbox_id):
+                            sandbox_id = await self._create_cube(user_id, slug, volume, token, context)
+                            replaced = True
+                    if replaced:
+                        was_paused = False
+                        await self.cube.wait_hermes(sandbox_id, port, timeout_s=self.s.ready_timeout_s)
+                    elif not repaired:
                         raise
             except Exception:  # noqa: BLE001
                 try:
@@ -1026,6 +1093,39 @@ class TenantManager:
         await self.store.mark_sandbox_deleted(sandbox_id, "unbootstrapped")
         await self.store.set_sandbox_id(user_id, None)
         return "", False
+
+    async def _discard_unresponsive(self, user_id: str, slug: str, sandbox_id: str) -> bool:
+        """平台说实例在跑，转发器却一直不应答（平台代理替它回 502/503/504）：删掉，调用方从归档重建。
+
+        11-06 真机：一台被反复暂停、唤醒上千次的实例，最后一次唤醒后里面什么都没起来；入口每个请求等满
+        180 秒报错，自己好不了，只能人工删。删实例连可写层一起删，所以只在不丢东西时删：这台实例上次是
+        先归档、再暂停的，之后再没成功跑起来过（``Store.paused_after_archive``）。正在用的实例遇上平台代理
+        一时不通，不在此列，照常报错。调用方持有这个用户的锁。
+        """
+        assert self.cube is not None
+        if not sandbox_id or not await self.store.paused_after_archive(user_id):
+            return False
+        sb = await self.cube.get_sandbox(sandbox_id)
+        if sb is None or str(sb.get("state")) != "running":
+            return False
+        try:
+            await self.cube.status(sandbox_id, self.s.forward_port)
+            return False  # 转发器答得上来，不是这种坏法
+        except CubeError as exc:
+            if not forwarder_unreachable(exc):
+                return False
+            log.warning("tenant %s: 实例 %s 在跑但转发器不应答（%s），删掉从归档重建", slug, sandbox_id[:12],
+                        (exc.message or str(exc.status))[:80])
+        await self.cube.remove_sandbox(sandbox_id)
+        if not await self.cube.wait_gone(sandbox_id):
+            raise CubeError(503, "无响应的旧实例尚未删除完成，请稍后重试")
+        await self.store.mark_sandbox_deleted(sandbox_id, "unresponsive")
+        await self.store.set_sandbox_id(user_id, None)
+        await self.store.write_audit(user_id, "tenant.delete", {"sandbox": sandbox_id, "reason": "unresponsive"})
+        # 同 _drain_and_delete：节点上卷的卸载可能还在收尾，立刻建新实例会挂到空的挂载点。
+        if self.s.volume_detach_grace_s > 0:
+            await asyncio.sleep(self.s.volume_detach_grace_s)
+        return True
 
     async def _resume_after_drain(self, user_id: str, sandbox_id: str, token: str) -> None:
         """Recover the existing owner only; never create a second volume writer."""

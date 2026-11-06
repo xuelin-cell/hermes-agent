@@ -1090,6 +1090,21 @@ class Store:
                 json.dumps(manifest or {}, ensure_ascii=False, separators=(",", ":")),
             )
 
+    async def paused_after_archive(self, user_id: str) -> bool:
+        """实例停着，停下前几分钟刚确认过一份归档，之后再没成功跑起来过：从这份归档重建不丢东西。
+
+        空闲回收先归档再暂停（tenants._stop_cube）；跑起来过的话状态会变成 running，再停时 state_changed_at
+        就晚于这份归档了。启动失败回写 stopped 不改 state_changed_at（状态没变）。"""
+        async with self.database.acquire() as connection:
+            return bool(await connection.fetchval(
+                """
+                SELECT state = 'stopped' AND COALESCE(state_archive, '') <> '' AND state_synced_at IS NOT NULL
+                       AND state_changed_at BETWEEN state_synced_at AND state_synced_at + interval '5 minutes'
+                FROM tenant_runtime WHERE user_id = $1
+                """,
+                user_id,
+            ))
+
     async def set_lifecycle(self, user_id: str, phase: str) -> None:
         async with self.database.acquire() as connection:
             await connection.execute(

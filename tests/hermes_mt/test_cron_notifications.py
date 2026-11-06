@@ -82,11 +82,11 @@ async def test_standalone_cron_sender_uses_durable_central_delivery_and_never_cr
                 forward_app.router.add_post(path,forward)
                 forward_server=TestServer(forward_app)
                 await forward_server.start_server()
-                async def ensure(user, **kwargs):
-                    assert user=='a' and kwargs=={'touch':False}
+                async def running(user):
+                    assert user=='a'
                     return SimpleNamespace(origin=str(forward_server.make_url('')).removeprefix('http://').rstrip('/'),
                         token='entry-instance-token',host_header='',traffic_token='')
-                entry.tenants=SimpleNamespace(ensure_running=ensure)
+                entry.tenants=SimpleNamespace(running_tenant=running)
                 task=asyncio.create_task(_send_to_platform(Platform.FEISHU,PlatformConfig(enabled=True),'chat-a','Scheduled result'))
                 queue=Notifications(home)
                 async with asyncio.timeout(10):

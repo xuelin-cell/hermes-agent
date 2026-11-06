@@ -72,7 +72,10 @@ class MessagingNotifications:
             return 'queued'
 
     async def flush(self, user):
-        tenant = await self.entry.tenants.ensure_running(user, touch=False)
+        # Only a running instance has notifications to hand over; never wake one the idle reaper just paused.
+        tenant = await self.entry.tenants.running_tenant(user)
+        if tenant is None:
+            return
         items = (await self.instance(tenant, {'operation':'list'})).get('items', [])
         if not isinstance(items,list) or len(items)>4: raise ValueError('Invalid notification queue')
         for item in items:

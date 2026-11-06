@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field, replace
@@ -17,7 +18,7 @@ from entry import tenants as tenants_module
 from entry.config import Settings
 from entry.cube_api import CubeError, SandboxGone
 from entry.store import Runtime, TenantContext
-from entry.tenants import TenantManager
+from entry.tenants import RequestAbandoned, TenantManager
 
 # 入口镜像里 seed/ 被拷到 entry/ 旁边；仓库里它在 deploy/hermes-mt/seed。
 tenants_module.SEED_DIR = Path(__file__).resolve().parents[2] / "deploy" / "hermes-mt" / "seed"
@@ -31,6 +32,10 @@ class FakeStore:
     cron_due: list = field(default_factory=list)   # cron_due_tenants 返回的 (user_id, 到点时间)
     api_key: str = "k"                             # 现在的模型 key（企业模式每次登录都换）
     settings: dict = field(default_factory=dict)   # 入口库里的用户设置（技能开关）
+    archived_before_pause: bool = False            # paused_after_archive 的回答
+
+    async def paused_after_archive(self, user_id):
+        return self.archived_before_pause
 
     async def get_profile_settings(self, user_id, profile="default"):
         return self.settings
@@ -894,3 +899,74 @@ async def test_failed_reload_does_not_fail_the_request(monkeypatch) -> None:
     cube.reload_error = None
     await manager.ensure_running("u")
     assert store.runtime.hermes_key_sha256 == _sha("k2")
+
+
+@pytest.mark.asyncio
+async def test_background_poll_never_wakes_the_instance_the_reaper_just_paused(monkeypatch) -> None:
+    """通知轮询看到「在跑」后排队等锁，空闲回收正好在锁里把实例暂停了：轮询拿到锁也不能把它叫醒。
+
+    11-04～11-05 真机：轮询把刚暂停的实例叫醒（又不算活动），80 多秒后再被回收，一天上千次。"""
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    store = FakeStore(runtime=Runtime("running", "sbA", "tpl-new", 2, "sbA", "x.tar.gz", ""))
+    cube = FakeCube({"sbA": {"sandboxID": "sbA", "templateID": "tpl-new", "state": "running"}})
+    manager = _manager(store, cube)
+    assert (await manager.running_tenant("u")).sandbox_id == "sbA"   # 在跑的照常给
+    assert ("touch",) not in store.calls                              # 也不算用户活动
+
+    _, polled = await asyncio.gather(manager.stop("u", reason="idle>30m"), manager.running_tenant("u"))
+
+    assert polled is None
+    assert cube.sandboxes["sbA"]["state"] == "paused" and store.runtime.state == "stopped"
+    assert ("audit", "tenant.resume") not in store.calls
+
+
+def _stuck(archived_before_pause: bool, status_body) -> tuple[FakeStore, FakeCube]:
+    """平台说实例在跑、转发器却没应答：等就绪超时，问状态被回 503。"""
+    store = FakeStore(runtime=Runtime("stopped", "sbOld", "tpl-new", 4, "sbOld", "old.tar.gz", ""),
+                      archived_before_pause=archived_before_pause)
+    cube = FakeCube({"sbOld": {"sandboxID": "sbOld", "templateID": "tpl-new", "state": "running"}})
+    cube.hermes_ready.discard("sbOld")
+    cube.status_error = CubeError(503, str(status_body), status_body)
+    return store, cube
+
+
+@pytest.mark.asyncio
+async def test_instance_that_woke_without_its_forwarder_is_rebuilt_from_the_pre_pause_archive(monkeypatch) -> None:
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    store, cube = _stuck(True, {"error": "service unavailable"})   # 平台代理替转发器回的
+    tenant = await _manager(store, cube).ensure_running("u")
+    assert tenant.sandbox_id == "sb1"
+    assert ("remove", "sbOld") in cube.calls and ("deleted", "sbOld", "unresponsive") in store.calls
+    boot = next(c for c in cube.calls if c[0] == "bootstrap")
+    assert boot[2]["restore_from"] == "sbOld" and boot[2]["epoch"] == 5
+    assert store.runtime.state == "running"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("archived_before_pause, status_body", [
+    (False, {"error": "service unavailable"}),               # 归档之后可能还有没存下的东西：不删
+    (True, {"ok": False, "error": "hermes 未在超时内就绪"}),   # 转发器自己答得上来：不是这种坏法
+])
+async def test_unresponsive_instance_is_kept_unless_rebuilding_loses_nothing(
+        monkeypatch, archived_before_pause, status_body) -> None:
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    store, cube = _stuck(archived_before_pause, status_body)
+    with pytest.raises(CubeError):
+        await _manager(store, cube).ensure_running("u")
+    assert not any(c[0] in ("remove", "create") for c in cube.calls)
+
+
+@pytest.mark.asyncio
+async def test_request_queued_behind_a_slow_start_leaves_when_its_client_is_gone() -> None:
+    """排在别的请求后面等实例的那个，浏览器走了就不再等；锁不会因此留在被占着的状态。"""
+    store, cube = FakeStore(), FakeCube()
+    manager = _manager(store, cube)
+    gone = False
+    async with manager._lock("u"):              # 前面那个请求还在起实例
+        waiting = asyncio.create_task(manager.ensure_running("u", abandoned=lambda: gone))
+        await asyncio.sleep(0.05)
+        gone = True
+        with pytest.raises(RequestAbandoned):
+            await asyncio.wait_for(waiting, 5)
+    assert not manager._lock("u").locked()
+    assert not cube.calls                       # 没轮到它，也就没碰实例

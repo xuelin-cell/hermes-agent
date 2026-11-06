@@ -45,10 +45,11 @@ TRAFFIC_TOKEN_HEADER = "cube-traffic-access-token"
 
 
 class CubeError(Exception):
-    def __init__(self, status: int, message: str):
+    def __init__(self, status: int, message: str, body: Any = None):
         super().__init__(f"cube {status}: {message}")
         self.status = status
         self.message = message
+        self.body = body  # 回包原样（解析过的 JSON 或文本）；连不上时为 None
 
 
 class SandboxGone(CubeError):
@@ -68,6 +69,14 @@ def proxy_hiccup(exc: CubeError) -> bool:
     if exc.status == 0:
         return True
     return exc.status in (502, 503, 504) and not (exc.message or "").lstrip().startswith("{")
+
+
+def forwarder_unreachable(exc: CubeError) -> bool:
+    """平台代理替转发器回了 502 / 503 / 504：请求到了代理，没到转发器。
+
+    转发器自己回的错都带 ``ok``（seed/forward.py）；代理在实例里没人监听时回 ``{"error": "service unavailable"}``
+    （11-06 真机）。连不上代理本身（状态 0）不算：那是平台的事，不能拿来判定某台实例坏了。"""
+    return exc.status in (502, 503, 504) and not (isinstance(exc.body, dict) and "ok" in exc.body)
 
 
 class Cube:
@@ -149,7 +158,7 @@ class Cube:
                         message = str(body.get("message") or body.get("detail") or body)
                     else:
                         message = str(body)[:300]
-                    raise CubeError(resp.status, message)
+                    raise CubeError(resp.status, message, body)
                 return resp.status, body
         except aiohttp.ClientError as exc:
             raise CubeError(0, f"{type(exc).__name__}: {exc}") from exc

@@ -57,7 +57,7 @@ from .connector_routes import ConnectorRoutes
 from .messaging_routes import MessagingRoutes
 from .cloud_binding_routes import CloudBindingRoutes
 from .shares import Shares
-from .tenants import CredentialSyncError, TenantManager
+from .tenants import CredentialSyncError, RequestAbandoned, TenantManager
 from .uniwork import (
     ACCESS_MESSAGES,
     ACTIVE,
@@ -429,11 +429,26 @@ class Entry:
         await self.store.touch_tenant(user_id)
         self._last_touch[user_id] = now
 
-    async def _tenant_for(self, session: Session):
+    @staticmethod
+    def _abandoned(session: Session) -> web.Response:
+        """浏览器在排队等实例时走了：没人收这个回包，只是别再记成「实例没起来」。"""
+        log.info("tenant for %s: client left while queued", session.user_id)
+        return web.Response(status=503, text="client gone")
+
+    async def _tenant_for(self, session: Session, request: web.Request | None = None):
+        """``request`` 给了，排队等实例时浏览器断开就不再等（``RequestAbandoned``）。
+
+        入口用 run_app 的默认设置，浏览器断开不会取消处理函数，只是 ``request.transport`` 变成 None。"""
         await self._touch(session.user_id)
         if self.tenants is None:
             raise RuntimeError("租户管理器尚未启动")
-        tenant = await self.tenants.ensure_running(session.user_id)
+        if request is None:
+            tenant = await self.tenants.ensure_running(session.user_id)
+        else:
+            def abandoned() -> bool:
+                transport = request.transport
+                return transport is None or transport.is_closing()
+            tenant = await self.tenants.ensure_running(session.user_id, abandoned=abandoned)
         if self.ent is not None:
             self.ent.after_ready(session.user_id, tenant)
         return tenant
@@ -1054,9 +1069,11 @@ class Entry:
         if reason:
             return self._blocked(reason)
         try:
-            tenant = await self._tenant_for(session)
+            tenant = await self._tenant_for(session, request)
         except DatabaseUnavailable:
             raise
+        except RequestAbandoned:
+            return self._abandoned(session)
         except CredentialSyncError as exc:
             log.warning("credential sync for %s failed: %s", session.user_id, type(exc).__name__)
             raise web.HTTPBadGateway(text="tenant credential sync failed") from exc
@@ -1117,9 +1134,11 @@ class Entry:
         if reason:
             return self._blocked(reason)
         try:
-            tenant = await self._tenant_for(session)
+            tenant = await self._tenant_for(session, request)
         except DatabaseUnavailable:
             raise
+        except RequestAbandoned:
+            return self._abandoned(session)
         except CredentialSyncError as exc:
             log.warning("credential sync for %s failed: %s", session.user_id, type(exc).__name__)
             return web.json_response({"error": "credential_sync_failed"}, status=502)
