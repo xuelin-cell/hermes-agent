@@ -165,42 +165,55 @@ function relativeTime(ms: number | undefined, u: Translations['updates']): strin
  * The "Hermes Desktop / version / brand mark" hero shared by the About page
  * and the updates overlay, including the bundle-out-of-sync warning. The
  * heading render is injectable so a dialog surface can emit a DialogTitle
- * for its accessible name while About keeps a plain h2. `showBrandMark` and
- * `showVersion` can be turned off independently: About keeps the mark/title and
- * lets the update card own the running-version row.
+ * for its accessible name while About keeps a plain h2. `showBrandMark`,
+ * `showHeading` and `showVersion` are independent: About turns the whole brand
+ * header (mark + product name) off — the nav entry and the update card already
+ * name the app — and keeps only the warning, if any. Every part off renders
+ * nothing, so the host page does not start with an empty hero's padding.
  */
 export function VersionHero({
   renderHeading,
   showBrandMark = true,
+  showHeading = true,
   showVersion = true,
   version
 }: {
   renderHeading?: (heading: string) => ReactNode
   showBrandMark?: boolean
+  showHeading?: boolean
   showVersion?: boolean
   version: DesktopVersionInfo | null
-}): ReactElement {
+}): ReactElement | null {
   const { t } = useI18n()
   const u = t.updates
+  const hasBanner: boolean = Boolean(version?.bundleSwapPending || version?.bundleOutOfSync)
+  const hasHeadingBlock: boolean = showHeading || showVersion
+
+  if (!showBrandMark && !hasHeadingBlock && !hasBanner) {
+    return null
+  }
 
   return (
     <div className="flex flex-col items-center gap-3 pt-6 pb-2 text-center">
       {showBrandMark && <BrandMark className="size-16" />}
-      <div>
-        {renderHeading ? (
-          renderHeading(u.appName)
-        ) : (
-          <h2 className="text-lg font-semibold tracking-tight">{u.appName}</h2>
-        )}
-        {showVersion && (
-          <p className="mt-1 text-xs text-muted-foreground">
-            {version?.appVersion ? u.version(shortVersion(version.appVersion)) : u.versionUnavailable}
-            {version?.channel
-              ? ` · ${Object.entries(u.channels).find(([name]: [string, string]): boolean => name === version.channel)?.[1] ?? version.channel}`
-              : ''}
-          </p>
-        )}
-      </div>
+      {hasHeadingBlock && (
+        <div>
+          {showHeading &&
+            (renderHeading ? (
+              renderHeading(u.appName)
+            ) : (
+              <h2 className="text-lg font-semibold tracking-tight">{u.appName}</h2>
+            ))}
+          {showVersion && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {version?.appVersion ? u.version(shortVersion(version.appVersion)) : u.versionUnavailable}
+              {version?.channel
+                ? ` · ${Object.entries(u.channels).find(([name]: [string, string]): boolean => name === version.channel)?.[1] ?? version.channel}`
+                : ''}
+            </p>
+          )}
+        </div>
+      )}
       {(version?.bundleSwapPending || version?.bundleOutOfSync) && (
         <div className="mx-auto w-full max-w-2xl rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-left text-sm">
           <div className="flex items-start gap-2">

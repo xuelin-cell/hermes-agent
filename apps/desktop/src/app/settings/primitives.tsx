@@ -16,10 +16,27 @@ export const SettingsBreadcrumbContext = createContext(false)
 
 // `bare` drops the page gutters + tall bottom pad for embedding in a tighter
 // surface (e.g. the boot-failure recovery card owns its own padding).
-export function SettingsContent({ children, bare = false }: { children: ReactNode; bare?: boolean }) {
+// `flush` keeps the gutters but drops the bottom pad and makes the pane a
+// full-height flex column, so a page can pin its own footer to the pane's
+// bottom edge (Settings › About's terms strip). Other pages are untouched.
+export function SettingsContent({
+  bare = false,
+  children,
+  flush = false
+}: {
+  bare?: boolean
+  children: ReactNode
+  flush?: boolean
+}) {
   return (
-    <section className="min-h-0 overflow-hidden">
-      <div className={cn('h-full min-h-0 overflow-y-auto', bare ? 'px-5 pb-6' : cn('pb-20', PAGE_INSET_X))}>
+    <section className={cn('min-h-0 overflow-hidden', flush && 'flex flex-1 flex-col')}>
+      <div
+        className={cn(
+          'h-full min-h-0 overflow-y-auto',
+          bare ? 'px-5 pb-6' : cn(!flush && 'pb-20', PAGE_INSET_X),
+          flush && 'flex flex-col'
+        )}
+      >
         {children}
       </div>
     </section>

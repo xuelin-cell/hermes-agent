@@ -175,6 +175,41 @@ describe('VersionHero bundle banners', () => {
     expect(optedOut.container.querySelector('img')).toBeNull()
   })
 
+  // About opts out of the whole brand header: no mark, no product-name heading.
+  it('keeps the version line when the surface drops its heading', (): void => {
+    render(<VersionHero showBrandMark={false} showHeading={false} version={version({})} />)
+
+    expect(screen.queryByRole('heading')).toBeNull()
+    expect(screen.getByText(en.updates.version('0.19.0'))).toBeTruthy()
+  })
+
+  // Nothing to draw (About with no bundle banner) renders nothing at all, so the
+  // host page does not start with an empty hero's padding.
+  it('renders nothing when every part is opted out and there is no banner', (): void => {
+    const { container }: { container: HTMLElement } = render(
+      <VersionHero showBrandMark={false} showHeading={false} showVersion={false} version={version({})} />
+    )
+
+    expect(container.innerHTML).toBe('')
+  })
+
+  // The banner is the one part About keeps; opting the header out must not drop it.
+  it('keeps the bundle banner when the heading is off', (): void => {
+    stubRelaunch()
+
+    render(
+      <VersionHero
+        showBrandMark={false}
+        showHeading={false}
+        showVersion={false}
+        version={version({ bundleSwapPending: true })}
+      />
+    )
+
+    expect(screen.getByText(en.updates.bundleSwapPending)).toBeTruthy()
+    expect(screen.queryByRole('heading')).toBeNull()
+  })
+
   it.each(Object.entries(TRANSLATIONS) as [Locale, Translations][])(
     'localizes version channels in %s',
     (locale: Locale, copy: Translations): void => {

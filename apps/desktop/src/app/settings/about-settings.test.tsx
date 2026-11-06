@@ -97,11 +97,12 @@ describe('AboutSettings', (): void => {
   it('shows the update status and refreshes each remote gateway independently', (): void => {
     const { container, rerender } = render(<AboutSettings />)
 
-    expect(screen.getByRole('heading', { name: en.updates.appName })).toBeTruthy()
-    // About keeps the centered brand mark + title above the update card, but no
-    // build-provenance table (version / commit / build origin / distribution /
-    // runtime / install id).
-    expect(container.querySelector('img')).not.toBeNull()
+    expect(screen.queryByRole('heading', { name: en.updates.appName })).toBeNull()
+    // About dropped its brand header (mark + product name) — the nav entry owns
+    // the page identity and the update card names the app. No build-provenance
+    // table either (version / commit / build origin / distribution / runtime /
+    // install id).
+    expect(container.querySelector('img')).toBeNull()
     expect(screen.queryByText(en.updates.versionDetailsInstallId)).toBeNull()
     expect(screen.queryByText(en.updates.versionDetailsVersion)).toBeNull()
     expect(screen.getByText(en.updates.latestBody)).toBeTruthy()
@@ -133,11 +134,11 @@ describe('AboutSettings', (): void => {
   it('merges the agreements into the same page as the update cards', (): void => {
     render(<AboutSettings />)
 
-    // Version + updates on top, one heading per section, and every hosted
-    // document reachable from the page — no child-page hop.
-    expect(screen.getByText(en.settings.subpages.appUpdates)).toBeTruthy()
-    expect(screen.getByText(en.settings.legal.description)).toBeTruthy()
-    expect(screen.getAllByText(en.settings.legal.title)).toHaveLength(1)
+    // Bare content only: neither section wears a heading or intro copy, and
+    // every hosted document stays reachable from the page.
+    expect(screen.queryByText(en.settings.subpages.appUpdates)).toBeNull()
+    expect(screen.queryByText(en.settings.legal.title)).toBeNull()
+    expect(screen.queryByText(en.settings.legal.description)).toBeNull()
     expect(screen.getByRole('button', { name: en.updates.checkForUpdates })).toBeTruthy()
 
     for (const link of LEGAL_LINKS) {
@@ -145,6 +146,23 @@ describe('AboutSettings', (): void => {
     }
 
     expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled()
+  })
+
+  it('ends the page with the agreements strip', (): void => {
+    render(<AboutSettings />)
+
+    const updates = globalThis.document.getElementById('setting-field-about.updates')
+    const legal = globalThis.document.getElementById('setting-field-about.legal')
+
+    expect(updates).not.toBeNull()
+    expect(legal).not.toBeNull()
+    // Terms come after the version/update block, and nothing follows them.
+    expect(updates!.compareDocumentPosition(legal!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(legal!.tagName).toBe('SECTION')
+    expect(legal!.nextElementSibling).toBeNull()
+    // The strip is the last block of the pane's footer, so its wrapper is the
+    // last thing in the scroll surface.
+    expect(legal!.closest('.mt-auto')).not.toBeNull()
   })
 
   it('lands the legacy legal child route on the merged terms section', (): void => {
@@ -162,7 +180,7 @@ describe('AboutSettings', (): void => {
   it('opens the merged page from the updates child route too', (): void => {
     render(<AboutSettings subpage="updates" />)
 
-    expect(screen.getByText(en.settings.legal.title)).toBeTruthy()
+    expect(screen.getByRole('button', { name: en.settings.legal.items.userAgreement })).toBeTruthy()
     expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled()
   })
 
