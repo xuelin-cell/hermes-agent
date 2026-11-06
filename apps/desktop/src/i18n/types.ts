@@ -4016,6 +4016,9 @@ export interface Translations {
     upToDate: string
     gotIt: string
     updateCheckFailed: string
+    currentVersion: string
+    aboutApp: string
+    goToWebsite: string
     seeWhatsNew: string
     releaseNotes: string
     onLatest: string
