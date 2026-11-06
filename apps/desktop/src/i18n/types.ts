@@ -3605,6 +3605,7 @@ export interface Translations {
 
   composer: {
     message: string
+    addAttachment: string
     aiDisclaimer: string
     wakingProfile: (profile: string) => string
     placeholderStarting: string
