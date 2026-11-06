@@ -20,6 +20,7 @@ import path from 'node:path'
 import { test } from 'vitest'
 
 import {
+  accountPortAnnounceTimeoutMs,
   DEFAULT_PORT_ANNOUNCE_TIMEOUT_MS,
   MIN_PORT_ANNOUNCE_TIMEOUT_MS,
   readDashboardReadyFile,
@@ -28,6 +29,20 @@ import {
   waitForDashboardPortAnnouncement,
   waitForDashboardReadyFile
 } from './backend-ready'
+
+test('首次安装延长端口等待，安装记录出现后恢复默认，保留用户更长设置', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-first-install-timeout-'))
+
+  try {
+    assert.equal(accountPortAnnounceTimeoutMs(home, {}), 210_000)
+    assert.equal(accountPortAnnounceTimeoutMs(home, { HERMES_DESKTOP_PORT_ANNOUNCE_TIMEOUT_MS: '240000' }), 240_000)
+    fs.mkdirSync(path.join(home, 'imported-plugins'))
+    fs.writeFileSync(path.join(home, 'imported-plugins', '.bundled-seeded.json'), '[]')
+    assert.equal(accountPortAnnounceTimeoutMs(home, {}), DEFAULT_PORT_ANNOUNCE_TIMEOUT_MS)
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
 
 type FakeChildProcess = EventEmitter & {
   stdout: EventEmitter

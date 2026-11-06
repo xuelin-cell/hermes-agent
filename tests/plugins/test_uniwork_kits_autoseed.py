@@ -7,6 +7,7 @@ temp HERMES_HOME through the real installer.
 
 import importlib
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -64,6 +65,8 @@ def autoseed(kits, monkeypatch, tmp_path):
 def test_a_new_account_gets_the_bundled_kits_and_experts_once(kits, autoseed, profile_env, bundle):
     """新账号启动时自动装上内置套件和专家，同一进程里不会再装第二次，装完锁文件被删掉。"""
     assert autoseed.start(profile_env) is True
+    # start 返回时专家已存在，不用等脚本运行环境线程结束。
+    assert kits.store.load_index(profile_env)["plugins"]["demo-expert"]["kind"] == "expert"
     _wait(autoseed)
     status = autoseed.status()
     assert status["installed"] == 2 and status["failed"] == [] and status["error"] == ""
@@ -121,9 +124,56 @@ def test_a_backend_that_finds_another_one_installing_skips(kits, autoseed, profi
     lock.parent.mkdir(parents=True, exist_ok=True)
     lock.write_text("{}", encoding="utf-8")
     assert autoseed.start(profile_env) is True
-    _wait(autoseed)
+    assert autoseed._thread is None
+    assert not autoseed.status()["running"]
     assert "demo-kit" not in (kits.store.load_index(profile_env).get("plugins") or {})
     assert lock.exists(), "the other backend's lock is left alone"
+
+
+def test_first_install_is_inline_but_runtime_and_later_updates_are_background(
+    kits, autoseed, profile_env, bundle, monkeypatch,
+):
+    """真实安装先创建专家，再在后台构建环境；后续更新不阻塞调用方，并固定传入原账号目录。"""
+    entered, release = threading.Event(), threading.Event()
+    observed = []
+
+    def prepare(home):
+        """阻塞环境构建以确认 start 已返回，记录线程和账号归属。"""
+        observed.append((home, threading.get_ident()))
+        entered.set()
+        assert release.wait(30)
+
+    monkeypatch.setattr(autoseed.script_python, "prepare", prepare)
+    try:
+        assert autoseed.start(profile_env)
+        assert "demo-expert" in kits.store.load_index(profile_env)["plugins"]
+        assert entered.wait(5)
+        assert observed[0][0] == profile_env and observed[0][1] != threading.get_ident()
+    finally:
+        release.set()
+        _wait(autoseed)
+
+    entered.clear()
+    release.clear()
+    seed = _part("seed")
+    original = seed.seed
+
+    def update(*args, **kwargs):
+        """卡住非首次安装，确保它在后台且仍使用传入账号。"""
+        observed.append((args[0], threading.get_ident()))
+        entered.set()
+        assert release.wait(30)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(seed, "seed", update)
+    monkeypatch.setattr(autoseed, "_started", set())
+    try:
+        assert autoseed.start(profile_env)
+        assert entered.wait(5)
+        assert observed[-1][0] == profile_env and observed[-1][1] != threading.get_ident()
+    finally:
+        release.set()
+        _wait(autoseed)
 
 
 def test_later_starts_recognise_installed_zips_without_unpacking(kits, profile_env, bundle, monkeypatch):
@@ -149,8 +199,8 @@ def test_progress_is_reported_before_each_install(kits, profile_env, bundle):
     assert [done for _name, done, _total in seen] == [0, 1] and {total for *_, total in seen} == {2}
 
 
-def test_status_route_reports_the_bundled_install(kits, profile_env):
-    """后端接口 /bundled 返回套件页需要的全部状态字段。"""
+def test_status_route_reports_the_bundled_install(kits, autoseed, profile_env, bundle):
+    """实际挂载接口即创建专家，随后原版托管判定能看到；状态接口保持原有字段。"""
     import importlib.util
 
     from fastapi import FastAPI
@@ -163,6 +213,11 @@ def test_status_route_reports_the_bundled_install(kits, profile_env):
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module
     spec.loader.exec_module(module)
+    from tui_gateway.launch_profile_policy import _servable_profile_homes
+
+    assert profile_env / "profiles" / "demo-expert" in _servable_profile_homes()
+    assert len(_servable_profile_homes()) >= 2
+    _wait(autoseed)
     app = FastAPI()
     app.include_router(module.router, prefix="/api/plugins/uniwork-kits")
     body = TestClient(app).get("/api/plugins/uniwork-kits/bundled").json()

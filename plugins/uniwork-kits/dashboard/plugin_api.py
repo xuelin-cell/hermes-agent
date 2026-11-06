@@ -52,9 +52,7 @@ autoseed = importlib.import_module("hermes_plugins.uniwork_kits.autoseed")
 
 router = APIRouter()
 
-# The backend mounts this module when it starts: put the bundled kits and
-# experts into a new account, or update the ones that changed, off the
-# request path. Only the default profile's backend does it (see autoseed).
+# 首次在挂载完成前创建专家，让后续托管判定看到完整名单；脚本环境仍在后台准备。
 try:
     autoseed.start(Path(get_hermes_home()))
 except Exception:  # a failed start must not keep the API from mounting
@@ -97,6 +95,11 @@ class RecentBody(BaseModel):
     name: str
 
 
+class ExpertSyncBody(BaseModel):
+    """只接受档案标识，不能由客户端指定磁盘路径。"""
+    profile: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]{0,63}$")
+
+
 @router.get("")
 @router.get("/")
 def list_installed() -> Dict[str, Any]:
@@ -109,11 +112,12 @@ async def install_zip(file: UploadFile = File(...)) -> Dict[str, Any]:
     """接收上传的 zip，存好后在后台安装，立刻返回任务号供页面轮询。"""
     data = await file.read()
     filename = file.filename or "package.zip"
+    home = _home()
 
     def _run() -> Dict[str, object]:
         """在线程里保存上传文件并启动安装任务，避免阻塞接口。"""
-        path = jobs.save_upload(_home(), filename, data)
-        return jobs.start(_home(), ["install", str(path)])
+        path = jobs.save_upload(home, filename, data)
+        return jobs.start(home, ["install", str(path)])
 
     try:
         job = await asyncio.to_thread(_run)
@@ -204,8 +208,24 @@ def summoned(body: RecentBody) -> Dict[str, Any]:
 
 @router.post("/experts/sync")
 def sync_one(body: RecentBody) -> Dict[str, Any]:
-    """让一位专家马上跟上通用助手的配置（例如刚连上的东方财富连接器），返回改了哪些。"""
+    """沿用套件页按包名同步模型和元景工具箱的入口。"""
     return {"changes": expert_sync.sync_named(_home(), body.name.strip())}
+
+
+@router.post("/expert-sync")
+def sync_profile(body: ExpertSyncBody) -> Dict[str, Any]:
+    """核对账号索引和真实专家目录，再按包名同步；普通档案和跨账号链接均拒绝。"""
+    root = _home().resolve()
+    target = root / "profiles" / body.profile
+    if (body.profile == "default" or not target.is_dir() or target.resolve() != target):
+        raise HTTPException(status_code=404, detail="没有这个受管专家")
+    for name, home in expert_sync._expert_homes(root):
+        if home != target:
+            continue
+        own = store.self_expert(store.load_index(home))
+        if own and own[0] == name:
+            return {"profile": body.profile, "changes": expert_sync.sync_named(root, name)}
+    raise HTTPException(status_code=404, detail="没有这个受管专家")
 
 
 @router.get("/receipts/{name}")

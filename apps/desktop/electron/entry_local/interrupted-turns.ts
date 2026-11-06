@@ -73,11 +73,8 @@ function freshStore(data: Record<string, unknown>, now: number): Store {
   return store
 }
 
-/**
- * 写记录的后端进程是否还活着。还活着说明有别的后端（例如另一个安装实例）正在跑这一轮，
- * 不能当成中断，留给 Hermes 自己处理。
- */
-export function markerWriterAlive(entry: Record<string, unknown>): boolean {
+/** 只有系统确认 PID 已不存在才认领；身份缺失、仍存活和查询失败的记录保留。 */
+export function markerWriterGone(entry: Record<string, unknown>): boolean {
   const pid = entry.writer_pid
 
   if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 0 || pid === process.pid) {
@@ -87,9 +84,9 @@ export function markerWriterAlive(entry: Record<string, unknown>): boolean {
   try {
     process.kill(pid, 0)
 
-    return true
+    return false
   } catch (error) {
-    return (error as NodeJS.ErrnoException).code === 'EPERM'
+    return (error as NodeJS.ErrnoException).code === 'ESRCH'
   }
 }
 
@@ -101,7 +98,7 @@ export function markerWriterAlive(entry: Record<string, unknown>): boolean {
 export function claimInterruptedTurns(
   home: string,
   now = Date.now(),
-  alive: (entry: Record<string, unknown>) => boolean = markerWriterAlive
+  gone: (entry: Record<string, unknown>) => boolean = markerWriterGone
 ): InterruptedTurn[] {
   const dir = path.join(home, 'desktop')
   const markerFile = path.join(dir, MARKER_FILE)
@@ -119,7 +116,7 @@ export function claimInterruptedTurns(
       !prompt.trim() ||
       sessionId.length > MAX_SESSION_ID ||
       entry.auto_continue === false ||
-      alive(entry)
+      !gone(entry)
     ) {
       kept[sessionId] = entry
 

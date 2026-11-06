@@ -1735,6 +1735,57 @@ def test_summon_endpoints_over_http(kits, profile_env, expert_pkg, monkeypatch):
     assert client.get("/api/plugins/uniwork-kits/").json() == from_default
 
 
+def test_expert_sync_api_is_scoped_to_managed_profile_and_account(kits, profile_env, tmp_path, monkeypatch):
+    """真实 HTTP 同步只改当前账号指定专家；A→B→A、重复请求和无效档案都不串写。"""
+    from fastapi import FastAPI
+    from starlette.testclient import TestClient
+
+    accounts = [profile_env, tmp_path / "account-b"]
+    packages = [_expert_pkg(tmp_path, name=name) for name in ("demo-expert", "other-expert")]
+    for home in accounts:
+        monkeypatch.setenv("HERMES_HOME", str(home))
+        _write(home / "config.yaml", "model:\n  provider: zai\n  default: initial-model\n")
+        _write(home / ".env", "GLM_API_KEY=test-key\n")
+        for package in packages:
+            assert kits.installer.install(package, home, triggers={}, generate_triggers=False).ok
+
+    autoseed = importlib.import_module("hermes_plugins.uniwork_kits.autoseed")
+    monkeypatch.setattr(autoseed, "BUNDLED_DIR", tmp_path / "no-bundle")
+    name = "uniwork_kits_dashboard_api_profile_sync_test"
+    spec = importlib.util.spec_from_file_location(name, PLUGIN_DIR / "dashboard" / "plugin_api.py")
+    module = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, name, module)
+    spec.loader.exec_module(module)
+    app = FastAPI()
+    app.include_router(module.router, prefix="/api/plugins/uniwork-kits")
+    endpoint = "/api/plugins/uniwork-kits/expert-sync"
+    expected = ["initial-model", "initial-model"]
+
+    with TestClient(app) as client:
+        for index, model in [(0, "a-first"), (1, "b-first"), (0, "a-second")]:
+            home = accounts[index]
+            monkeypatch.setenv("HERMES_HOME", str(home))
+            _write(home / "config.yaml", f"model:\n  provider: zai\n  default: {model}\n")
+            result = client.post(endpoint + "?profile=other-expert", json={"profile": "demo-expert"})
+            assert result.status_code == 200 and result.json()["profile"] == "demo-expert"
+            assert result.json()["changes"]
+            assert client.post(endpoint, json={"profile": "demo-expert"}).json()["changes"] == []
+            expected[index] = model
+            for account, current in zip(accounts, expected):
+                assert _config(account / "profiles" / "demo-expert")["model"]["default"] == current
+                assert _config(account / "profiles" / "other-expert")["model"]["default"] == "initial-model"
+
+        _write(profile_env / "profiles" / "ordinary" / "config.yaml", "model: personal\n")
+        root_index = kits.store.load_index(profile_env)
+        root_index["plugins"]["forged"] = {"kind": "expert", "profile": "ordinary"}
+        kits.store.save_index(profile_env, root_index)
+        for profile in ["default", "ordinary", "missing"]:
+            assert client.post(endpoint, json={"profile": profile}).status_code == 404
+        for profile in ["../account-b", "profiles/demo-expert", "", "A" * 65]:
+            assert client.post(endpoint, json={"profile": profile}).status_code == 422
+        assert _config(profile_env / "profiles" / "ordinary") == {"model": "personal"}
+
+
 def test_capabilities_installed_without_generation_get_phrases_later(kits, profile_env, kit_pkg):
     """seed 时没生成触发词的能力不能记成已完成，之后刷新还会生成。"""
     kits.installer.install(kit_pkg, profile_env, triggers={}, generate_triggers=False)

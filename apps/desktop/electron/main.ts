@@ -87,7 +87,7 @@ import {
   createBackendShutdownCoordinator
 } from './backend-ownership'
 import { canImportHermesCli, PROBE_TIMEOUT_MS } from './backend-probes'
-import { waitForDashboardPortAnnouncement } from './backend-ready'
+import { accountPortAnnounceTimeoutMs, waitForDashboardPortAnnouncement } from './backend-ready'
 import { recycleOwnedBackend } from './backend-recycle'
 import { isPidAliveWindows, waitForBackendRelease } from './backend-release-gate'
 import { createBackendServeSupportResolver } from './backend-serve-support'
@@ -243,6 +243,7 @@ import { createAccountLogout } from './entry_local/logout'
 import { type LogoutProcess, logoutProcessTree, stopLogoutProcesses } from './entry_local/logout-processes'
 import { createAccountExitWindows, retryLogout } from './entry_local/logout-window'
 import { DesktopMessaging, MessagingBotIndex } from './entry_local/messaging'
+import { prepareAllProfiles } from './entry_local/prepare-all-profiles'
 import { LocalStartupError, showLocalStartupFailure } from './entry_local/startup-failure'
 import { createUniAgentGateBindingUpdate } from './entry_local/uniagentgate-control'
 import { installUniAgentGateIpc } from './entry_local/uniagentgate-ipc'
@@ -1622,6 +1623,8 @@ const primaryExitRecovery = createBackendExitRecoveryLatch()
 // with no named profiles never populates this map, so their experience is
 // byte-for-byte the single-backend behavior.
 const backendPool = new Map() // profile -> { process, port, token, connectionPromise, lastActiveAt }
+// 全档案准备期间，迟到的池启动先等待，避免同一档案并发写配置。
+let allProfilesPreparation: Promise<void> = Promise.resolve()
 const profileDeletionGate = new ProfileDeletionGate()
 // Keep the pool light: cap concurrent profile backends (LRU eviction) and reap
 // idle ones. A user idles at exactly the primary backend; pool backends only
@@ -11945,6 +11948,7 @@ async function runPoolBackendStart(
   const parentStartMarker = await desktopParentStartMarker()
   const backendNonce = crypto.randomBytes(16).toString('hex')
   const parentIdentityEnv = parentWatchdogEnv(process.pid, parentStartMarker, backendNonce)
+  await allProfilesPreparation
   assertPoolEntryStillOwned(poolKey, entry, backendPool, localBackendLifecycle.signal)
   enableDesktopPlugins(profile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', profile), [
     'desktop-deliverables'
@@ -12960,19 +12964,22 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
       }
     }
 
-    // Local WSL backend — paths are bridgeable.
-    enableDesktopPlugins(
-      primaryProfile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', primaryProfile),
-      ['desktop-deliverables']
-    )
+    // 上游会话标题：首次调用给账号内所有已有助手安装标题扩展，之后只补当前主助手。
     prepareManagedTitleProfiles(primaryProfile)
-    INTERRUPTED_TURNS.claim(
-      primaryProfile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', primaryProfile)
-    )
-    installArtifactSharePlugin(
-      primaryProfile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', primaryProfile),
-      app.getAppPath()
-    )
+    // desktop-mt: 恢复也经过这里；运行中及正在启停的专家留到自己的下次启动准备。
+    allProfilesPreparation = prepareAllProfiles({
+      home: HERMES_HOME,
+      appRoot: app.getAppPath(),
+      interrupted: INTERRUPTED_TURNS,
+      prepareDrive: profile => ACCOUNT_DRIVE_MCP.prepare(profile),
+      busy: profile =>
+        [profile, `${backendScopePrefix('local')}${profile}`].some(
+          key => backendPool.has(key) || Boolean(poolStopper.inFlight(key))
+        ),
+      log: rememberLog
+    })
+    await allProfilesPreparation
+    backendConnectionState.assertCurrentAttempt(connectionAttempt)
     setWslBridgeProfileState(primaryProfile, true)
 
     stopAttachedBackendMonitor()
@@ -12989,6 +12996,7 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
     rememberLog(`Starting Hermes backend via ${backend.label}`)
 
     const profile = primaryProfile
+    const portAnnounceTimeout = accountPortAnnounceTimeoutMs(HERMES_HOME)
     const parentStartMarker = await desktopParentStartMarker()
     const backendNonce = crypto.randomBytes(16).toString('hex')
     const parentIdentityEnv = parentWatchdogEnv(process.pid, parentStartMarker, backendNonce)
@@ -13001,10 +13009,6 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
         backendConnectionState.isCurrentAttempt(connectionAttempt),
       log: rememberLog
     })
-
-    // 账号云盘仍在后端启动前完成本机 MCP 配置。
-    await ACCOUNT_DRIVE_MCP.prepare(profile)
-    backendConnectionState.assertCurrentAttempt(connectionAttempt)
 
     const hermesProcess = spawnOwnedBackend(
       backend.command,
@@ -13064,6 +13068,7 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
     const portAnnouncement = waitForDashboardPortAnnouncement(hermesProcess, {
       bufferedOutput: () => primaryOutputTail.text(),
       describeOutputTail: () => primaryOutputTail.describe(),
+      timeoutMs: portAnnounceTimeout,
       readyFile
     })
 
