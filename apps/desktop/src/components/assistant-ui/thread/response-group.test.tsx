@@ -1,9 +1,12 @@
 import type { ThreadMessage } from '@assistant-ui/react'
+import { atom } from 'nanostores'
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
+import { PRIMARY_SESSION_VIEW, SessionViewProvider } from '@/app/chat/session-view'
 import { toChatMessages } from '@/lib/chat-messages'
 import { toRuntimeMessage } from '@/lib/chat-runtime'
+import { $messagingSessions } from '@/store/session'
 import type { SessionMessage } from '@/types/hermes'
 
 import { stubThreadEnvironment, ThreadRuntime } from '../test-utils'
@@ -153,6 +156,48 @@ it('collapses process parts while keeping the final text and whole-second durati
   expect(duration.textContent).not.toContain('3093128')
   fireEvent.click(container.querySelector('[data-slot="aui_process-summary"]')!)
   expect(within(container).getByText('Preparing the report').closest('[hidden]')).toBeNull()
+})
+
+it('shows the messaging turn duration only after the gateway confirms completion', async () => {
+  const previousSessions = $messagingSessions.get()
+  $messagingSessions.set([{ id: 'weixin-duration', source: 'weixin' } as (typeof previousSessions)[number]])
+  const view = { ...PRIMARY_SESSION_VIEW, $storedId: atom('weixin-duration') }
+  const progress: SessionMessage[] = [
+    { row_id: 1, role: 'user', content: 'Create the report', timestamp: 100 },
+    {
+      row_id: 2, role: 'assistant', content: 'Checking sources', timestamp: 117,
+      tool_calls: [{ id: 'report-tool', type: 'function', function: { name: 'terminal', arguments: '{}' } }]
+    }
+  ]
+  const reply: SessionMessage = { row_id: 4, role: 'assistant', content: 'Report completed', timestamp: 125 }
+  const withAnswer: SessionMessage[] = [
+    ...progress,
+    { row_id: 3, role: 'tool', tool_call_id: 'report-tool', content: 'done', timestamp: 120 },
+    reply
+  ]
+  const thread = (rows: SessionMessage[]) => (
+    <SessionViewProvider value={view}>
+      <ThreadRuntime messages={toChatMessages(rows).map(toRuntimeMessage)}>
+        <Thread />
+      </ThreadRuntime>
+    </SessionViewProvider>
+  )
+
+  try {
+    const { container, rerender } = render(thread(progress))
+    expect(within(container).getByText('Checking sources').closest('[hidden]')).toBeNull()
+    expect(container.textContent).not.toContain('Worked for')
+
+    rerender(thread(withAnswer))
+    await waitFor(() => expect(within(container).getByText('Report completed').closest('[hidden]')).toBeNull())
+    expect(container.textContent).not.toContain('Worked for')
+
+    rerender(thread([...withAnswer.slice(0, -1), { ...reply, display_metadata: { turn_completed_at: 130 } }]))
+    await waitFor(() => expect(within(container).getByText('Worked for 30s').closest('[hidden]')).toBeNull())
+  } finally {
+    cleanup()
+    $messagingSessions.set(previousSessions)
+  }
 })
 
 it('collapses earlier replies as answer text streams and keeps manual expansion available', async () => {

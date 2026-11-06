@@ -50,16 +50,21 @@ export class PlanUsageClient {
     return key && key === this.key ? this.cached : null
   }
 
+  clear(): void {
+    this.key = ''
+    this.pending = null
+    this.cached = null
+    this.cachedUntil = 0
+  }
+
   /** 三十秒内直接复用成功结果，超时或手动刷新则重新查询。 */
   async load(force = false): Promise<PlanUsageResult> {
     const identity = this.identity()
     const key = identityKey(identity)
 
     if (key !== this.key) {
+      this.clear()
       this.key = key
-      this.pending = null
-      this.cached = null
-      this.cachedUntil = 0
     }
 
     if (!identity || !key) {return { status: 'failed', reason: 'auth' }}
@@ -69,21 +74,20 @@ export class PlanUsageClient {
     if (this.pending) {return this.pending}
 
     const pending: Promise<PlanUsageResult> = this.fetch(identity, () => this.pending === pending)
-      .then(result => {
+      .then((result): PlanUsageResult => {
         if (this.key !== key || identityKey(this.identity()) !== key) {
-          return { status: 'failed', reason: 'auth' } as const
+          return { status: 'failed', reason: 'auth' }
         }
 
         if (this.pending !== pending) {
-          return this.cached ?? result
+          return this.cached ?? { status: 'failed', reason: 'auth' }
         }
 
         if (result.status === 'available') {
           this.cached = result
           this.cachedUntil = Date.now() + USAGE_CACHE_MS
         } else if (result.reason === 'auth') {
-          this.cached = null
-          this.cachedUntil = 0
+          this.clear()
         }
 
         return result

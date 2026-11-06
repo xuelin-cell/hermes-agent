@@ -217,7 +217,6 @@ export const zh = defineLocale({
       refreshFailed: '套餐信息刷新失败，请稍后重试。',
       failed: '套餐信息刷新失败，请稍后重试。',
       auth: '登录已失效，请退出账号后重新登录。',
-      empty: '暂无可展示的用量数据',
       unnamed: '当前套餐',
       expired: '已到期',
       expires: '截止日期',

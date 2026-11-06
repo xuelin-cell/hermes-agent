@@ -102,6 +102,16 @@ describe('MyMailPage disabled state', () => {
     await waitFor(() => expect(enableMail).toHaveBeenCalledWith('default'))
   })
 
+  it('shows the safe Wo Mail provisioning diagnostic', async () => {
+    enableMail.mockRejectedValueOnce(new Error('号码未开通沃邮箱'))
+    const { MyMailPage } = await import('./page')
+
+    render(<MyMailPage />)
+    fireEvent.click(await screen.findByRole('button', { name: '确认开通' }))
+
+    expect(await screen.findByText('号码未开通沃邮箱')).toBeTruthy()
+  })
+
   it('shows fetched attachment metadata and downloads only after an explicit click', async () => {
     mailStatus.mockResolvedValue({ status: { dailyQuota: 50, email: '13800138000@wo.cn', enabled: true, todaySent: 0 } })
     listFolders.mockResolvedValue({ folders: [{ flags: [], name: 'Inbox', path: 'INBOX', specialUse: '\\Inbox' }] })

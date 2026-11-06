@@ -63,4 +63,11 @@ describe('sessionMessagesSignature', () => {
     const one = [msg('user', 'hi')]
     expect(sessionMessagesSignature(one)).not.toBe(sessionMessagesSignature([...one, msg('assistant', 'hey')]))
   })
+
+  it('refreshes a reply when its completion metadata arrives after the text', () => {
+    const reply = msg('assistant', 'Report completed')
+    expect(sessionMessagesSignature([reply])).not.toBe(
+      sessionMessagesSignature([{ ...reply, display_metadata: { turn_completed_at: 130 } }])
+    )
+  })
 })

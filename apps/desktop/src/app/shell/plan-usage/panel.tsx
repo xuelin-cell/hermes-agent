@@ -15,7 +15,7 @@ import { Codicon } from '@/components/ui/codicon'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { OverflowTip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
-import { NTFY_PLAN_REFRESHED_EVENT } from '@/lib/ntfy-instructions'
+import { DESKTOP_CONFIG_REFRESHED_EVENT, NTFY_PLAN_REFRESHED_EVENT } from '@/lib/ntfy-instructions'
 import { notify } from '@/store/notifications'
 import { requestUpdateCheck } from '@/store/update-check'
 
@@ -99,7 +99,7 @@ function UsageDetails({ data, showPlan = true, action }: UsageDetailsProps) {
       {!hasUsage && (
         <div className="plan-usage-summary">
           <p role="status" className="plan-usage-meta">
-            {c.empty}
+            —
           </p>
           {detailsAction}
         </div>
@@ -190,9 +190,8 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
       setLoading(true)
       setError(null)
       try {
-        const bridge = force
-          ? (window.hermesDesktop?.refreshPlanUsage ?? window.hermesDesktop?.getPlanUsage)
-          : window.hermesDesktop?.getPlanUsage
+        const manualRefresh = force ? window.hermesDesktop?.refreshPlanUsage : undefined
+        const bridge = manualRefresh ?? window.hermesDesktop?.getPlanUsage
 
         if (!bridge) {
           setSnapshot(null)
@@ -218,6 +217,10 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
         }
 
         const result = await bridge()
+
+        if (manualRefresh && result?.status === 'available' && matchesAccount(result, maskedPhone, expiresAt)) {
+          window.dispatchEvent(new Event(DESKTOP_CONFIG_REFRESHED_EVENT))
+        }
 
         if (!live || request !== sequence) {
           return
@@ -323,15 +326,13 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
   }
 
   const planLabels = { 'five-hour': c.fiveHour, week: c.week, month: c.month }
-  const detailsDisabled = error === 'auth' || (error === 'failed' && !data)
-  const detailsExpanded = details && !detailsDisabled
   const usageSummary = data?.quota
     ? `${c.tokenUsed} ${formatTokenQuotaPercent(data.quota.usedPercent, locale)}%`
     : data?.kind === 'coding_plan' && data.windows.length
       ? `${c.used} ${formatUsagePercentage(data.windows[0].usedPercent, locale)}% · ${planLabels[data.windows[0].name]}`
-      : error || !data
-        ? '—'
-        : c.empty
+      : null
+  const detailsDisabled = usageSummary === null
+  const detailsExpanded = details && !detailsDisabled
   const expiryDate = formatPlanExpiryDate(data?.endTime, locale)
   const expirySummary = expiryDate ? (data?.expired ? `${expiryDate} · ${c.expired}` : c.expiryText(expiryDate)) : '—'
   const errorText = error
@@ -426,7 +427,7 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
               >
                 <AccountIcon src={usageIcon} />
                 <span>{c.actualUsage}</span>
-                {!detailsExpanded && <span className="account-card-summary">{usageSummary}</span>}
+                {!detailsExpanded && <span className="account-card-summary">{usageSummary ?? '—'}</span>}
                 {!detailsDisabled && (
                   <Codicon
                     className="account-card-chevron"
@@ -435,15 +436,9 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
                   />
                 )}
               </button>
-              {detailsExpanded && (
+              {detailsExpanded && data && (
                 <div className="account-card-expanded account-card-details-inline">
-                  {data ? (
-                    <UsageDetails action={detailsAction} data={data} showPlan={false} />
-                  ) : (
-                    <div className="plan-usage-summary">
-                      <span className="plan-usage-details-action">{detailsAction}</span>
-                    </div>
-                  )}
+                  <UsageDetails action={detailsAction} data={data} showPlan={false} />
                 </div>
               )}
               <div className="account-card-row">

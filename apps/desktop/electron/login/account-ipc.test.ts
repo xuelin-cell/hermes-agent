@@ -1,6 +1,12 @@
-import { EventEmitter } from 'node:events'
+import { EventEmitter, once } from 'node:events'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { createServer } from 'node:http'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { parseEnv } from 'node:util'
 
 import { expect, it, vi } from 'vitest'
+import { parse } from 'yaml'
 
 const { handle, fromWebContents, netFetch } = vi.hoisted(() => ({
   handle: vi.fn(),
@@ -14,6 +20,9 @@ vi.mock('electron', () => ({
   net: { fetch: netFetch }
 }))
 
+import { MAAS_MODEL_KEY_ENV } from '../entry_local/model-config'
+import { createPlanRefresher } from '../uniwork-notify/refresher'
+import type { PlanUsageClient } from '../uniwork-usage/client'
 import {
   normalizePlanUsage,
   PLAN_USAGE_CACHE_CHANNEL,
@@ -24,6 +33,95 @@ import {
 import { installAccountIpc } from './account-ipc'
 import { MAAS_IDENTITY_NAMESPACE } from './credential-store'
 import { LoginSession } from './session'
+
+it('恢复登录查询失败后，手动刷新补齐模型和 Key，并与同时到达的推送合并请求', async () => {
+  const partition = {}
+  const frame = { url: 'http://127.0.0.1:5174/#/chat' }
+  const sender = { mainFrame: frame, session: partition }
+  const identity = {
+    uid: 'account-a',
+    token: 'private-login-token',
+    maskedPhone: '138****0000',
+    expiresAt: Date.now() + 60_000
+  }
+  const home = await mkdtemp(join(tmpdir(), 'hermes-plan-recovery-'))
+  let calls = 0
+  const server = createServer((_request, response) => {
+    const status = [503, 200, 401][calls++]
+
+    response.writeHead(status, { 'Content-Type': 'application/json' })
+    response.end(JSON.stringify({
+      apiKey: 'private-model-key',
+      models: { models: [{ id: 'plan-model', base_url: 'https://models.invalid' }] },
+      productName: '专业套餐',
+      planType: 'token_plan',
+      tokenPlanUsage: { totalQuota: 1000, usedQuota: 250 }
+    }))
+  })
+
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  const { port } = server.address() as { port: number }
+  const request: typeof fetch = (_url, options) => fetch(`http://127.0.0.1:${port}`, options)
+  const login = new LoginSession(request, {
+    load: () => ({ ...identity, namespace: MAAS_IDENTITY_NAMESPACE }),
+    save: vi.fn()
+  })
+
+  try {
+    await writeFile(join(home, 'config.yaml'), 'language: zh\n')
+    expect(login.restore().ok).toBe(true)
+    expect(await login.queryPlan()).toEqual({ status: 'failed' })
+    expect(login.currentPlanUsage()).toBeNull()
+
+    let usage: PlanUsageClient | null = null
+    const refreshPlan = createPlanRefresher(
+      () => login,
+      () => home,
+      vi.fn(),
+      (account, data) => usage?.remember(account, data)
+    )
+
+    fromWebContents.mockReturnValue({ isDestroyed: () => false, webContents: sender })
+    usage = installAccountIpc(
+      partition as never,
+      () => 'http://127.0.0.1:5174',
+      () => identity,
+      undefined,
+      () => login.currentIdentity(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { refreshPlan, startupLogin: login }
+    )
+    const event = { sender, senderFrame: frame }
+    const force = handle.mock.calls.findLast(([channel]) => channel === PLAN_USAGE_REFRESH_CHANNEL)![1]
+    const [snapshot, pushed] = await Promise.all([force(event), refreshPlan()])
+
+    expect(pushed).toEqual({ status: 'ok' })
+    expect(snapshot).toMatchObject({ status: 'available', data: { productName: '专业套餐' } })
+    expect(JSON.stringify(snapshot)).not.toMatch(/private-login-token|private-model-key/)
+    expect(calls).toBe(2)
+    const config = parse(await readFile(join(home, 'config.yaml'), 'utf8'))
+    const provider = config.model.provider.replace(/^custom:/, '')
+
+    expect(config.model.default).toBe('plan-model')
+    expect(config.providers[provider].key_env).toBe(MAAS_MODEL_KEY_ENV)
+    expect(config.language).toBe('zh')
+    expect(parseEnv(await readFile(join(home, '.env'), 'utf8'))[MAAS_MODEL_KEY_ENV]).toBe('private-model-key')
+    expect(await force(event)).toEqual({ status: 'failed', reason: 'auth' })
+    expect(usage?.cachedSnapshot()).toBeNull()
+    expect(parseEnv(await readFile(join(home, '.env'), 'utf8'))[MAAS_MODEL_KEY_ENV]).toBe('private-model-key')
+  } finally {
+    login.dispose()
+    server.closeAllConnections()
+    await new Promise<void>(done => server.close(() => done()))
+    await rm(home, { recursive: true, force: true })
+  }
+})
 
 it('过期用量在重新查询时可读，成功后替换，鉴权失败后清空', async () => {
   const partition = {}

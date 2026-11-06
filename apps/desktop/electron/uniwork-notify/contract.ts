@@ -60,4 +60,5 @@ export type NtfyEvent =
 /** 主进程按指令重拉配置的结果；`skipped` 表示当前账号走不到远端（本地配置即真相）。 */
 export interface NtfyRefreshResult {
   status: 'ok' | 'skipped' | 'failed'
+  reason?: 'auth'
 }

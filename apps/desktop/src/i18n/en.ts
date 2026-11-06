@@ -227,7 +227,6 @@ export const en: Translations = {
       refreshFailed: 'Couldn’t refresh plan information. Try again in a moment.',
       failed: 'Couldn’t load plan information. Try again in a moment.',
       auth: 'Your sign-in is no longer valid. Sign out and sign in again.',
-      empty: 'No usage data available',
       unnamed: 'Current plan',
       expired: 'Expired',
       expires: 'Expires',
