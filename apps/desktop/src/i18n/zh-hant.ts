@@ -20,6 +20,7 @@ export const zhHant = defineLocale({
       connectAction: '連接',
       connected: '已連接',
       disconnect: '中斷連接',
+      reenable: '重新啟用',
       tryIt: '試試這樣用',
       brand: '元景數字員工',
       credentials: '填寫連接資訊',

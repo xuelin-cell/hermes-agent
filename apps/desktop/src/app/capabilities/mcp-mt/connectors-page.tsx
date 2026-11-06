@@ -250,6 +250,11 @@ export function ConnectorsPage({ searchContainer, ...props }: ConnectorsPageProp
             void connections.request('disconnect', selected.id)
           }
         }}
+        onEnable={() => {
+          if (selected) {
+            void connections.request('enable', selected.id)
+          }
+        }}
         onExample={text => void openExample(text)}
         onQr={connections.qr}
         onSubmit={async values => {

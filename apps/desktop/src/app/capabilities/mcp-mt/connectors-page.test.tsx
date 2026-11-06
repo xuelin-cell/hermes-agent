@@ -20,6 +20,7 @@ vi.mock('./connectors-tab', () => ({
 }))
 
 import { ConnectorsPage } from './connectors-page'
+import { RECOMMENDED_CONNECTORS } from './recommended-catalog'
 
 afterEach(cleanup)
 const localConnectors = vi.fn()
@@ -55,7 +56,7 @@ function renderPage(route = '/capabilities?tab=connectors', searchContainer?: HT
 it('卡片打开参考详情；加号独立进入凭据表单，服务确认后才展示已连接', async () => {
   renderPage()
   expect(screen.getByRole('tab', { name: '推荐' }).getAttribute('aria-selected')).toBe('true')
-  expect(screen.getAllByRole('button', { name: /^查看/ })).toHaveLength(11)
+  expect(screen.getAllByRole('button', { name: /^查看/ })).toHaveLength(RECOMMENDED_CONNECTORS.length)
   const search = screen.getByRole('textbox', { name: '搜索连接器' })
   fireEvent.change(search, { target: { value: 'Tencent' } })
   expect(screen.getAllByRole('button', { name: /^查看/ })).toHaveLength(1)
@@ -106,6 +107,22 @@ it('MCP 深链直接打开原生管理，键盘切换标签后保留未保存草
   expect((screen.getByRole('textbox', { name: 'MCP draft' }) as HTMLInputElement).value).toBe('unsaved config')
   expect(screen.getByTestId('location').textContent).toContain('scope=work')
   expect(screen.getByTestId('location').textContent).toContain('connectorView=mcp')
+})
+
+it('re-enables an already authorized WPS connector without starting browser authorization again', async () => {
+  localConnectors.mockImplementation(async input => ({
+    connectors: [{ id: 'wps_mcp', connected: true }],
+    ...(input.operation === 'enable' ? { enabled: true } : {})
+  }))
+  renderPage('/capabilities?tab=connectors&recommended=wps_mcp')
+  const dialog = await screen.findByRole('dialog')
+  fireEvent.click(within(dialog).getByRole('button', { name: '重新启用' }))
+  await waitFor(() =>
+    expect(localConnectors).toHaveBeenCalledWith({ operation: 'enable', profile: 'work', id: 'wps_mcp' })
+  )
+  expect(localConnectors).not.toHaveBeenCalledWith(
+    expect.objectContaining({ operation: 'authorize', id: 'wps_mcp' })
+  )
 })
 
 it('标题栏搜索在切换标签时保留占位与输入，MCP 页退出交互和无障碍树', () => {

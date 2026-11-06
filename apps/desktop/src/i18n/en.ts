@@ -404,6 +404,7 @@ export const en: Translations = {
       connectAction: 'Connect',
       connected: 'Connected',
       disconnect: 'Disconnect',
+      reenable: 'Re-enable',
       tryIt: 'Try it like this',
       brand: 'UniWork',
       credentials: 'Enter connection details',

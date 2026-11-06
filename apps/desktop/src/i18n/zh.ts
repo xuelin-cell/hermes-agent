@@ -385,6 +385,7 @@ export const zh = defineLocale({
       connectAction: '连接',
       connected: '已连接',
       disconnect: '解绑',
+      reenable: '重新启用',
       tryIt: '试试这样用',
       brand: 'UniWork',
       credentials: '填写连接信息',
