@@ -5,6 +5,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { $apiRequestScope } from '@/api/client'
 import { FilePreviewToolbar } from '@/app/chat/right-rail/preview-toolbar'
 import { I18nProvider } from '@/i18n'
+import { $notifications, clearNotifications } from '@/store/notifications'
 import type { PreviewTarget } from '@/store/preview'
 import { $connection, $selectedStoredSessionId } from '@/store/session'
 
@@ -44,6 +45,7 @@ const target: PreviewTarget = {
 
 afterEach(() => {
   cleanup()
+  clearNotifications()
   window.hermesDesktop = bridge
   $connection.set(null)
   $selectedStoredSessionId.set(null)
@@ -110,8 +112,7 @@ it('卡片上传直接沿用文件与会话，打开预览也保存相同来源�
       value: '/account/work/report.csv'
     }
   })
-  await screen.findByText('Saved to cloud drive')
-  fireEvent.click(screen.getAllByRole('button', { name: 'Close' })[0])
+  await waitFor(() => expect($notifications.get()[0]?.message).toContain('report.csv'))
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
   fireEvent.click(screen.getByRole('button', { name: 'Open preview: report.csv' }))
   await waitFor(() => expect(open).toHaveBeenCalledWith(target))
@@ -137,6 +138,9 @@ it('预览上传不借用当前会话，失配来源和云盘文件无入口，�
   fireEvent.click(screen.getByRole('button', { name: 'Upload to this folder' }))
   await waitFor(() => expect(transfer).toHaveBeenCalledTimes(1))
   expect(transfer.mock.calls[0][0]).toMatchObject({ artifact: { sessionId: 'source-session', profile: 'default' } })
+  expect(screen.queryByRole('dialog')).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'Upload to library' }))
+  await screen.findByRole('button', { name: 'Reports' })
   act(() => $apiRequestScope.set({ profile: 'default', connectionId: 'another-account' }))
   expect(screen.queryByRole('dialog')).toBeNull()
 

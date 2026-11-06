@@ -18,7 +18,6 @@ import { cn } from '@/lib/utils'
 import { $connection } from '@/store/session'
 
 import type { ArtifactRecord } from './artifact-utils'
-import { CloudTransferFeedback } from './cloud-transfer-feedback'
 import { driveFolderPath } from './drive-directory-index'
 import { DriveFolderPicker } from './drive-folder-picker'
 import { useCloudLibraryData } from './use-cloud-library-data'
@@ -64,10 +63,12 @@ interface ArtifactUploadDialogProps {
   artifact: ArtifactRecord
   onClose: () => void
   onUploaded?: () => void
+  /** 已提交给窗口传输控制器，不代表云端已保存成功。 */
+  onSubmitted?: () => void
 }
 
 /** 选好云盘目录后直接上传已核对的产物，不要求用户再次从本机文件框寻找它。 */
-export function ArtifactUploadDialog({ artifact, onClose, onUploaded }: ArtifactUploadDialogProps) {
+export function ArtifactUploadDialog({ artifact, onClose, onUploaded, onSubmitted }: ArtifactUploadDialogProps) {
   const { t } = useI18n()
   const copy = t.cloudLibrary
   const connection = useStore($connection)
@@ -100,7 +101,7 @@ export function ArtifactUploadDialog({ artifact, onClose, onUploaded }: Artifact
     !transfer.busy &&
     !terminal
 
-  /** 关闭弹窗会卸载传输控制器，原生端同步取消未结束的请求。 */
+  /** 关闭仅退出目录选择；已开始的产物上传由账号窗口继续执行。 */
   function close(): void {
     onClose()
   }
@@ -124,6 +125,7 @@ export function ArtifactUploadDialog({ artifact, onClose, onUploaded }: Artifact
       },
       artifact.label
     )
+    onSubmitted?.()
   }
 
   return (
@@ -183,9 +185,8 @@ export function ArtifactUploadDialog({ artifact, onClose, onUploaded }: Artifact
         )}
         {!canUploadArtifact(artifact, connection?.mode) && <p role="alert">{copy.artifactRemote}</p>}
         <DialogFooter>
-          <CloudTransferFeedback transfer={transfer} />
           <Button onClick={close} variant="ghost">
-            {terminal ? t.common.close : t.common.cancel}
+            {transfer.busy || terminal ? t.common.close : t.common.cancel}
           </Button>
           <Button disabled={!canUpload} onClick={submit}>
             {copy.uploadHere}

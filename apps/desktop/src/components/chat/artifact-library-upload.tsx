@@ -49,7 +49,7 @@ interface ArtifactLibraryUploadProps {
   appearance?: 'card' | 'toolbar'
 }
 
-/** 弹窗只在点击后挂载，来源或账号改变时丢弃旧传输控制器。 */
+/** 弹窗只在点击后挂载；来源变化关闭旧弹窗，已发起任务仍由窗口继续执行。 */
 export function ArtifactLibraryUpload(props: ArtifactLibraryUploadProps) {
   const scope = useStore($apiRequestScope)
   const connection = useStore($connection)
@@ -81,7 +81,9 @@ function ScopedUpload({ artifact, appearance = 'card' }: ArtifactLibraryUploadPr
           {appearance === 'card' && label}
         </Button>
       </Tip>
-      {open && <ArtifactUploadDialog artifact={artifact} onClose={() => setOpen(false)} />}
+      {open && (
+        <ArtifactUploadDialog artifact={artifact} onClose={() => setOpen(false)} onSubmitted={() => setOpen(false)} />
+      )}
     </>
   )
 }

@@ -297,11 +297,11 @@ it('关闭传输浮窗不取消，完成通知使用文件名；重新打开及�
 
   await screen.findByRole('button', { name: 'report.txt' })
   fireEvent.click(screen.getByRole('button', { name: '上传文件' }))
-  let popup = screen.getByRole('dialog', { name: '传输记录' })
   const id = fixture.transfer.mock.calls[0][0].id
   act(() =>
     fixture.listener.mock.calls[0][0]({ id, name: '报告.txt', completed: 2048, total: 4096, phase: 'verifying' })
   )
+  let popup = screen.getByRole('dialog', { name: '传输记录' })
   expect(within(popup).getByText('正在确认云盘保存结果')).toBeTruthy()
   fireEvent.click(within(popup).getByRole('button', { name: '关闭' }))
   expect(fixture.cancel).not.toHaveBeenCalled()
@@ -428,4 +428,72 @@ it('预览不打开传输浮窗，切换 Profile 后迟到字节不打开旧文�
   expect($previewTabs.get()).toHaveLength(0)
   expect(fixture.openExternal).not.toHaveBeenCalled()
   act(() => $apiRequestScope.set(previous))
+})
+
+it('原生选文件期间不创建上传记录，选定后的首个进度才展示真实文件传输', async () => {
+  let finish!: (value: unknown) => void
+
+  const transfer = vi.fn().mockImplementation(
+    () =>
+      new Promise(resolve => {
+        finish = resolve
+      })
+  )
+
+  const fixture = setup(transfer)
+  await screen.findByRole('button', { name: 'report.txt' })
+  fireEvent.click(screen.getByRole('button', { name: '上传文件' }))
+  const input = transfer.mock.calls[0][0]
+  expect(screen.queryByRole('dialog', { name: '传输记录' })).toBeNull()
+  expect(screen.queryByRole('button', { name: '传输记录' })).toBeNull()
+  expect((screen.getByRole('button', { name: '上传文件' }) as HTMLButtonElement).disabled).toBe(true)
+  const progress = fixture.listener.mock.calls[0][0]
+  act(() => progress({ id: 'another-selection', name: 'wrong.txt', completed: 0, total: 4096 }))
+  expect(screen.queryByRole('dialog', { name: '传输记录' })).toBeNull()
+  act(() => progress({ id: input.id, name: 'chosen.txt', completed: 0, total: 4096 }))
+  const popup = screen.getByRole('dialog', { name: '传输记录' })
+  expect(within(popup).getByRole('group', { name: 'chosen.txt' })).toBeTruthy()
+  expect(within(popup).queryByRole('group', { name: '上传文件' })).toBeNull()
+  act(() => progress({ id: input.id, name: 'chosen.txt', completed: 2048, total: 4096 }))
+  expect(within(popup).getByText('50%')).toBeTruthy()
+  await act(async () => finish({ status: 'succeeded', name: 'chosen.txt' }))
+  expect(within(popup).getByText('已保存到云盘')).toBeTruthy()
+  expect(transfer).toHaveBeenCalledTimes(1)
+})
+
+it('取消原生文件选择不新增记录或通知，也不自动打开或移除以前的传输记录', async () => {
+  let finish!: (value: unknown) => void
+
+  const transfer = vi
+    .fn()
+    .mockResolvedValueOnce({ status: 'succeeded', name: 'previous.txt' })
+    .mockImplementation(
+      () =>
+        new Promise(resolve => {
+          finish = resolve
+        })
+    )
+
+  const fixture = setup(transfer)
+  await screen.findByRole('button', { name: 'report.txt' })
+  fireEvent.click(screen.getByRole('button', { name: '上传文件' }))
+  const popup = await screen.findByRole('dialog', { name: '传输记录' })
+  await within(popup).findByText('已保存到云盘')
+  fireEvent.click(within(popup).getByRole('button', { name: '关闭' }))
+  clearNotifications()
+  await waitFor(() =>
+    expect((screen.getByRole('button', { name: '上传文件' }) as HTMLButtonElement).disabled).toBe(false)
+  )
+  fireEvent.click(screen.getByRole('button', { name: '上传文件' }))
+  expect(screen.queryByRole('dialog', { name: '传输记录' })).toBeNull()
+  const reads = fixture.request.mock.calls.length
+  await act(async () => finish({ status: 'cancelled' }))
+  expect(screen.queryByRole('dialog', { name: '传输记录' })).toBeNull()
+  expect($notifications.get()).toEqual([])
+  expect(fixture.request).toHaveBeenCalledTimes(reads)
+  fireEvent.click(screen.getByRole('button', { name: '传输记录' }))
+  const history = screen.getByRole('dialog', { name: '传输记录' })
+  expect(within(history).getAllByRole('group')).toHaveLength(1)
+  expect(within(history).getByRole('group', { name: 'previous.txt' })).toBeTruthy()
+  expect(transfer).toHaveBeenCalledTimes(2)
 })
