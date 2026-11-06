@@ -4535,7 +4535,12 @@ export const zhHant = defineLocale({
         endpoint: 'UniWork 無法連線至你的自訂模型伺服器。請確認它正在執行，然後重新傳送訊息。',
         streaming: '回覆完成前連線已中斷。請重試以重新傳送。'
       },
+      errorDetails: '錯誤詳情',
       errorCodes: {
+        billing: {
+          title: '額度不足',
+          body: provider => `您的 ${provider} 帳戶額度不足。請儲值或切換服務商後重新傳送。`
+        },
         provider_policy_blocked: {
           title: '帳戶設定封鎖了此模型',
           body: provider => `${provider} 無法依你帳戶的資料或隱私設定路由此請求。請選擇其他模型或切換服務商。`
@@ -4557,12 +4562,12 @@ export const zhHant = defineLocale({
           body: provider => `${provider} 沒有為此訊息傳回內容。請稍後重試。`
         },
         rate_limit: {
-          title: 'AI 服務忙碌中',
-          body: provider => `${provider} 正在限制請求數量。請稍等片刻後重試。`
+          title: '請求過於頻繁',
+          body: provider => `${provider}：請求過於頻繁，請稍後重試。`
         },
         upstream_rate_limit: {
-          title: 'AI 服務忙碌中',
-          body: provider => `${provider} 正在限制請求數量。請稍等片刻後重試。`
+          title: '請求過於頻繁',
+          body: provider => `${provider}：請求過於頻繁，請稍後重試。`
         },
         overloaded: {
           title: 'AI 服務負載過高',

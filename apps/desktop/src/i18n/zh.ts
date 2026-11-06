@@ -5456,7 +5456,12 @@ export const zh = defineLocale({
         endpoint: 'UniWork 无法连接到你的自定义模型服务器。请确认它正在运行，然后重新发送消息。',
         streaming: '回复完成前连接已断开。请重试以重新发送。'
       },
+      errorDetails: '错误详情',
       errorCodes: {
+        billing: {
+          title: '额度不足',
+          body: provider => `您的 ${provider} 账户额度不足。请充值或切换服务商后重新发送。`
+        },
         provider_policy_blocked: {
           title: '账户设置阻止了此模型',
           body: provider => `${provider} 无法按你账户的数据或隐私设置路由此请求。请选择其他模型或切换服务商。`
@@ -5478,12 +5483,12 @@ export const zh = defineLocale({
           body: provider => `${provider} 没有为此消息返回内容。请稍后重试。`
         },
         rate_limit: {
-          title: 'AI 服务繁忙',
-          body: provider => `${provider} 正在限制请求数量。请稍等片刻后重试。`
+          title: '请求过于频繁',
+          body: provider => `${provider}：请求过于频繁，请稍后重试。`
         },
         upstream_rate_limit: {
-          title: 'AI 服务繁忙',
-          body: provider => `${provider} 正在限制请求数量。请稍等片刻后重试。`
+          title: '请求过于频繁',
+          body: provider => `${provider}：请求过于频繁，请稍后重试。`
         },
         overloaded: {
           title: 'AI 服务负载过高',
