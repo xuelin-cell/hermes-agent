@@ -777,7 +777,7 @@ const ACCOUNT_DRIVE_ARTIFACT = createDriveArtifactResolver({
   read: (backend, route) => fetchJsonForBackend(backend, route, { timeoutMs: 60_000 })
 })
 
-installAccountIpc(
+const ACCOUNT_PLAN_USAGE = installAccountIpc(
   ACCOUNT_SESSION,
   () => DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString(),
   currentDesktopAccount,
@@ -793,7 +793,12 @@ installAccountIpc(
   profile => ACCOUNT_DRIVE_MCP.available(profile),
   ACCOUNT_DRIVE_ARTIFACT,
   url => openExternalUrl(url),
-  createUniAgentGateBindingUpdate(() => (currentDesktopLocalContext() === ACCOUNT_RUNTIME ? ACCOUNT_RUNTIME : null))
+  {
+    applyBinding: createUniAgentGateBindingUpdate(() =>
+      currentDesktopLocalContext() === ACCOUNT_RUNTIME ? ACCOUNT_RUNTIME : null
+    ),
+    startupLogin: currentDesktopLogin()
+  }
 )
 
 installOfficePreviewIpc(
@@ -818,7 +823,8 @@ installNtfyIpc(ACCOUNT_SESSION, () => DEV_SERVER || pathToFileURL(resolveRendere
   refresh: createPlanRefresher(
     currentDesktopLogin,
     () => (currentDesktopLocalContext() === ACCOUNT_RUNTIME ? ACCOUNT_RUNTIME.home : null),
-    rememberLog
+    rememberLog,
+    (identity, usage) => ACCOUNT_PLAN_USAGE?.remember(identity, usage)
   )
 })
 installUniAgentGateIpc(

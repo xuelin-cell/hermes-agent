@@ -19,9 +19,9 @@ function AccountLogout({ account }: { account: LoginAccount }) {
 
   useEffect(() => {
     if (account.planAuthRejected) {
-      notify({ id: 'maas-plan-rejected', kind: 'warning', message: copy.planAuthRejected, placement: 'bottom-right' })
+      notify({ id: 'maas-plan-rejected', kind: 'warning', message: copy.planUsage.auth, placement: 'bottom-right' })
     }
-  }, [account.planAuthRejected, copy.planAuthRejected])
+  }, [account.planAuthRejected, copy.planUsage.auth])
 
   useEffect(() => {
     if (expired) {

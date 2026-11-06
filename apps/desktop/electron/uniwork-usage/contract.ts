@@ -1,4 +1,5 @@
 export const PLAN_USAGE_CHANNEL = 'hermes:maas-account:usage'
+export const PLAN_USAGE_CACHE_CHANNEL = 'hermes:maas-account:usage-cache'
 export const PLAN_USAGE_REFRESH_CHANNEL = 'hermes:maas-account:usage-refresh'
 export const PLAN_SUBSCRIPTION_CHANNEL = 'hermes:maas-account:subscribe'
 
@@ -26,9 +27,13 @@ export interface PlanUsage {
   concurrency: { current: number | null; limit: number } | null
 }
 
-export type PlanUsageResult =
-  | { status: 'available'; data: PlanUsage; account: { maskedPhone: string; expiresAt: number } }
-  | { status: 'failed'; reason?: 'auth' }
+export interface PlanUsageSnapshot {
+  status: 'available'
+  data: PlanUsage
+  account: { maskedPhone: string; expiresAt: number }
+}
+
+export type PlanUsageResult = PlanUsageSnapshot | { status: 'failed'; reason?: 'auth' }
 
 export interface MarketTicket {
   ticket: string

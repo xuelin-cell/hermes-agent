@@ -27,7 +27,10 @@ it('登录页套餐拒绝提示随账号进入桌面，重复聚焦不再次打�
   } as never
   render(<AccountFixture />)
   await screen.findByRole('button', { name: '138****0000' })
-  expect(notify).toHaveBeenCalledWith(expect.objectContaining({ id: 'maas-plan-rejected' }))
+  expect(notify).toHaveBeenCalledWith(expect.objectContaining({
+    id: 'maas-plan-rejected',
+    message: '登录已失效，请退出账号后重新登录。'
+  }))
   await act(async () => window.dispatchEvent(new Event('focus')))
   expect(notify).toHaveBeenCalledTimes(1)
   expect(logoutMaasAccount).not.toHaveBeenCalled()

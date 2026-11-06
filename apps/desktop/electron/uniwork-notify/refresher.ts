@@ -1,7 +1,8 @@
 import { mergeMaasModelConfig } from '../entry_local/model-config'
 import { writeAccountMaasKey } from '../entry_local/model-key'
 import { updateUniaiToolkitConfig } from '../entry_local/uniai-toolkit-config'
-import type { LoginSession } from '../login/session'
+import type { LoginIdentity, LoginSession } from '../login/session'
+import type { PlanUsage } from '../uniwork-usage/contract'
 
 import type { NtfyRefreshResult } from './contract'
 
@@ -13,7 +14,8 @@ import type { NtfyRefreshResult } from './contract'
 export function createPlanRefresher(
   session: () => LoginSession | null,
   home: () => string | null,
-  log: (line: string) => void
+  log: (line: string) => void,
+  rememberUsage: (identity: LoginIdentity, data: PlanUsage) => void
 ): () => Promise<NtfyRefreshResult> {
   let running: Promise<NtfyRefreshResult> | null = null
 
@@ -29,7 +31,7 @@ export function createPlanRefresher(
 
     const queried = await login.queryPlan()
 
-    if (login.currentIdentity()?.token !== identity.token) {
+    if (session() !== login || home() !== directory || login.currentIdentity()?.token !== identity.token) {
       return { status: 'skipped' }
     }
 
@@ -46,14 +48,18 @@ export function createPlanRefresher(
         writeAccountMaasKey(directory, null)
         updateUniaiToolkitConfig(directory, 'empty')
         log('ntfy 刷新套餐：当前账号没有套餐，已清空专用 Key')
-
-        return { status: 'ok' }
+      } else {
+        mergeMaasModelConfig(directory, plan.plan)
+        writeAccountMaasKey(directory, plan.plan.apiKey)
+        updateUniaiToolkitConfig(directory, 'available')
+        log(`ntfy 刷新套餐：已更新 ${plan.plan.models.length} 个模型`)
       }
 
-      mergeMaasModelConfig(directory, plan.plan)
-      writeAccountMaasKey(directory, plan.plan.apiKey)
-      updateUniaiToolkitConfig(directory, 'available')
-      log(`ntfy 刷新套餐：已更新 ${plan.plan.models.length} 个模型`)
+      const usage = login.currentPlanUsage()
+
+      if (usage) {
+        rememberUsage(identity, usage)
+      }
 
       return { status: 'ok' }
     } catch (error) {
