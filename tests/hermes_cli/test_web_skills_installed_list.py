@@ -51,3 +51,17 @@ def test_switched_off_skill_stays_listed_and_switches_back_on(client):
 
     _toggle(client, True)
     assert _listed(client)["excel"] is True
+
+
+def test_uploaded_skill_has_uploaded_provenance(client, monkeypatch):
+    """The Installed tab must distinguish a local archive from marketplace installs."""
+    from tools.skills_hub import HubLockFile
+
+    lock = HubLockFile()
+    monkeypatch.setattr(lock, "list_installed", lambda: [{"name": "excel", "source": "upload", "identifier": "upload"}])
+    monkeypatch.setattr("tools.skills_hub.HubLockFile", lambda: lock)
+
+    resp = client.get("/api/skills")
+
+    assert resp.status_code == 200
+    assert {skill["name"]: skill["provenance"] for skill in resp.json()}["excel"] == "upload"

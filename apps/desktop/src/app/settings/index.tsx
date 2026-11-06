@@ -57,7 +57,7 @@ import { SettingsBreadcrumbContext } from './primitives'
 import { PROVIDER_VIEWS, ProvidersSettings, type ProviderView } from './providers-settings'
 import { SessionsSettings } from './sessions-settings'
 import { SettingsSubpageHeader } from './subpage-navigation'
-import { resolveSettingsSubpage, settingsSubpageIcon, settingsSubpages } from './subpages'
+import { resolveSettingsSubpage, settingsNavSubpages, settingsSubpageIcon } from './subpages'
 import type { SettingsPageProps, SettingsView as SettingsViewId } from './types'
 import { vaultOwnerKey, VaultSettings } from './vault-settings'
 import { settingsViewVisible } from './visibility'
@@ -133,7 +133,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
       }
 
       next.set('tab', view)
-      const destination = page ?? settingsSubpages(view, developerMode)[0]?.id
+      const destination = page ?? settingsNavSubpages(view, developerMode)[0]?.id
 
       if (destination) {
         next.set('page', destination)
@@ -371,7 +371,8 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
         ] as OverlayNavGroup[]
       ).filter(group => settingsViewVisible(group.id, developerMode)).map(group => {
         const view = group.id as SettingsViewId
-        const children = settingsSubpages(view, developerMode)
+        // In-page anchors (About's merged sections) route but never get a nav entry.
+        const children = settingsNavSubpages(view, developerMode)
 
         return children.length
           ? {

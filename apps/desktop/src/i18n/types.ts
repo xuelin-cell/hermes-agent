@@ -165,6 +165,7 @@ export interface Translations {
     officePreviewFailed: string
     artifactSensitive: string
     uploadArtifact: string
+    uploadToLibrary: string
     uploadHere: string
     chooseUploadFolder: string
     artifactRemote: string
@@ -894,6 +895,7 @@ export interface Translations {
       needsAuthMessage: (name: string) => string
       errorTitle: string
       errorMessage: (name: string) => string
+      connectionFailedMessage: (name: string) => string
       signIn: string
       view: string
       disable: string
@@ -4016,6 +4018,12 @@ export interface Translations {
     currentVersion: string
     aboutApp: string
     goToWebsite: string
+    newVersionReady: string
+    newVersionReadyBody: (version: string) => string
+    updateLog: string
+    restartToUpdate: string
+    downloadingUpdate: string
+    downloadFailedTitle: string
     seeWhatsNew: string
     releaseNotes: string
     onLatest: string

@@ -1,17 +1,15 @@
 import { tokenize } from '@/lib/mcp-import'
-import { type McpServerEntry, type McpServers, serverEnabled } from '@/lib/mcp-servers'
+import { type McpServerEntry, type McpServers, serverEnabled, UNI_AI_TOOLKIT_SERVER } from '@/lib/mcp-servers'
 
 // The connectors page edits `mcp_servers` through a UniWork-style form instead
 // of raw JSON. Everything here is pure: form ⇄ entry conversion, validation and
 // the "does this save touch a running server" rule. Fields the form does not
 // show (timeout, tools filter, trust, auth, …) always ride along untouched.
 
-/** Electron writes this entry for MaaS plans (`electron/entry_local/uniai-toolkit-config.ts`). */
-export const BUILT_IN_SERVER = 'UniAI-Toolkit'
 export const ARXIV_BUILT_IN_SERVER = 'arXiv-mcp'
 
 const BUILT_IN_SUMMARIES = {
-  [BUILT_IN_SERVER]: 'uniAiToolkitSummary',
+  [UNI_AI_TOOLKIT_SERVER]: 'uniAiToolkitSummary',
   [ARXIV_BUILT_IN_SERVER]: 'arxivSummary'
 } as const
 

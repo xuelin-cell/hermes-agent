@@ -69,6 +69,34 @@ describe('Windows NSIS strategy', () => {
     expect(emitter.listenerCount('download-progress')).toBe(0)
   })
 
+  it('prefetches the package without stopping the backend, and reuses it for apply', async () => {
+    const { deps, strategy, events } = fixture()
+
+    expect(await strategy.prepare()).toEqual({ ready: true, version: '1.1.0' })
+    expect(events).toEqual(['check', 'download'])
+    // A prefetch must never tear the backend down or show progress: the user is
+    // still working while the bytes land.
+    expect(deps.beforeInstall).not.toHaveBeenCalled()
+    expect(deps.emitProgress).not.toHaveBeenCalled()
+
+    events.length = 0
+    expect(await strategy.prepare()).toEqual({ ready: true, version: '1.1.0' })
+    expect(events).toEqual([])
+  })
+
+  it('reports not-ready without downloading when the feed has nothing newer', async () => {
+    const { deps, strategy } = fixture()
+    const info = { version: '1.0.0', files: [], releaseDate: '', path: '', sha512: '' }
+    vi.mocked(deps.updater.checkForUpdates).mockResolvedValueOnce({
+      isUpdateAvailable: false,
+      updateInfo: info,
+      versionInfo: info
+    } as never)
+
+    expect(await strategy.prepare()).toEqual({ ready: false, version: null })
+    expect(deps.updater.downloadUpdate).not.toHaveBeenCalled()
+  })
+
   // The notes are publisher copy, never a precondition: a feed object that is
   // missing, unreachable or empty must leave the update decision untouched.
   it('attaches authored notes and never fails the check over them', async () => {
@@ -121,6 +149,29 @@ describe('Windows NSIS strategy', () => {
 
     await expect(strategy.apply()).rejects.toThrow('handoff failed')
     expect(events.slice(-2)).toEqual(['stop', 'restore'])
+  })
+
+  it('aborts an in-flight download on cancel and leaves the backend running', async () => {
+    const { deps, strategy, events } = fixture()
+    vi.mocked(deps.updater.downloadUpdate).mockImplementation(received => {
+      const transfer = new Promise<string[]>((_resolve, reject) => {
+        // electron-updater aborts the request from this listener, so the token
+        // has to be live before cancel() is called.
+        received?.addListener(() => reject(new Error('cancelled')))
+      })
+
+      expect(strategy.cancel()).toBe(true)
+
+      return transfer
+    })
+
+    const result = await strategy.apply()
+
+    expect(result).toMatchObject({ ok: false, cancelled: true, mechanism: 'electron-updater' })
+    expect(events).not.toContain('stop')
+    expect(deps.updater.quitAndInstall).not.toHaveBeenCalled()
+    // Once the transfer settled there is nothing left to abort.
+    expect(strategy.cancel()).toBe(false)
   })
 
   it('rejects a second apply while one is in flight', async () => {

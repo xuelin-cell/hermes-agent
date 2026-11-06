@@ -8,6 +8,9 @@ export type McpServers = Record<string, Record<string, unknown>>
 
 export type McpServerEntry = McpServers[string]
 
+/** Electron 按 MaaS 套餐写入的内置工具箱名称。 */
+export const UNI_AI_TOOLKIT_SERVER = 'UniAI-Toolkit'
+
 export const isServerShape = (value: Record<string, unknown>) =>
   typeof value.command === 'string' || typeof value.url === 'string'
 

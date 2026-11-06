@@ -93,7 +93,8 @@ export function CloudLibraryToolbar(props: CloudLibraryToolbarProps) {
               disabled={props.busy}
               onChange={event => props.onQuery(event.target.value)}
               placeholder={copy.search}
-              prefix={<Search />}
+              prefix={<Search className="size-3.5" />}
+              size="toolbar"
               value={props.query}
             />
             <Button disabled={!props.canUpload || props.busy} onClick={props.onUpload} size="sm" variant="outline">

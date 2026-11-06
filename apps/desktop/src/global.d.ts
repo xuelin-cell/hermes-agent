@@ -687,6 +687,13 @@ declare global {
       updates: {
         check: (opts?: { force?: boolean }) => Promise<DesktopUpdateStatus>
         apply: (opts?: DesktopUpdateApplyOptions) => Promise<DesktopUpdateApplyResult>
+        /** Abort the in-flight apply() download; absent on older preloads.
+         *  `cancelled: false` means the installer already took over. */
+        cancel?: () => Promise<DesktopUpdateCancelResult>
+        /** Ambient background download; absent on older preloads. `supported:
+         *  false` means this install's update owner does the download itself
+         *  (App Installer / Store / handoff) — no ready prompt. */
+        prepare?: () => Promise<DesktopUpdatePrepareResult>
         getBranch: () => Promise<{ branch: string }>
         setBranch: (name: string) => Promise<{ branch: string }>
         onProgress: (callback: (payload: DesktopUpdateProgress) => void) => () => void
@@ -937,8 +944,27 @@ export interface DesktopUpdateApplyOptions {
   dirtyStrategy?: DesktopUpdateDirtyStrategy
 }
 
+/** Ambient background download result (`updates.prepare`). */
+export interface DesktopUpdatePrepareResult {
+  ok: boolean
+  /** True once the package is on disk — the only state that shows the prompt. */
+  ready: boolean
+  /** False when the update owner downloads it itself (no in-app prompt). */
+  supported: boolean
+  version?: string | null
+  error?: string
+  message?: string
+}
+
+export interface DesktopUpdateCancelResult {
+  /** False when the transfer already finished or the installer took over. */
+  cancelled: boolean
+}
+
 export interface DesktopUpdateApplyResult {
   ok: boolean
+  /** The user aborted the download; nothing was installed. */
+  cancelled?: boolean
   /** False when the apply-time check found nothing to install. */
   updateAvailable?: boolean
   branch?: string

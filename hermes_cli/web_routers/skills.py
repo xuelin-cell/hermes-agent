@@ -347,8 +347,7 @@ async def get_skills(profile: Optional[str] = None):
     from agent.skill_utils import ESSENTIAL_SKILLS
     from tools.skills_tool import _find_all_skills
     from hermes_cli.skills_config import get_disabled_skills
-    from tools.skill_usage import (
-        _read_bundled_names, _read_hub_installed_names, activity_count, load_usage)
+    from tools.skill_usage import _read_bundled_names, _read_hub_installed_names, activity_count, load_usage
 
     def _run():
         with _profile_scope(profile):
@@ -363,11 +362,20 @@ async def get_skills(profile: Optional[str] = None):
             # the user may edit/delete from the UI.
             bundled_names = _read_bundled_names()
             hub_names = _read_hub_installed_names()
+            # Hub installation is the lifecycle mechanism, not necessarily the
+            # user-facing origin. Local archive uploads carry an explicit source;
+            # identifier keeps uploads from older desktop versions recognizable.
+            from tools.skills_hub import HubLockFile
+            uploaded_names = {
+                entry["name"] for entry in HubLockFile().list_installed()
+                if entry.get("source") == "upload" or entry.get("identifier") == "upload"
+            }
         for s in skills:
             s["enabled"] = s["name"] not in disabled
             s["usage"] = activity_count(usage.get(s["name"], {}))
             s["provenance"] = (
-                "hub" if s["name"] in hub_names
+                "upload" if s["name"] in uploaded_names
+                else "hub" if s["name"] in hub_names
                 else "bundled" if s["name"] in bundled_names
                 else "agent")
         return [s for s in skills if s["name"] not in ESSENTIAL_SKILLS]

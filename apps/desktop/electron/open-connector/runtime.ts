@@ -29,6 +29,9 @@ export interface ConnectorRuntimeOptions {
   decrypt: (value: Buffer) => string
 }
 
+/** Covers two sequential 90-second mailbox credential checks, plus startup and response overhead. */
+export const connectorRequestTimeoutMs = 240_000
+
 /** 凭据验证因超时失败时连接器同样回 400；只读错误码和文字判断是否超时，原文不外传，免得把网络慢说成凭据错。 */
 export async function isValidationTimeout(response: Response): Promise<boolean> {
   const body = (await response.json().catch(() => null)) as null | { error?: { code?: unknown; message?: unknown } }
@@ -243,7 +246,7 @@ export class ConnectorRuntime {
       method,
       headers: { Authorization: `Bearer ${this.secrets!.admin}`, 'Content-Type': 'application/json' },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      signal: AbortSignal.timeout(60_000)
+      signal: AbortSignal.timeout(connectorRequestTimeoutMs)
     })
 
     if (!response.ok) {

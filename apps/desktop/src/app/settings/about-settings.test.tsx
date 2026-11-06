@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { DesktopUpdateStatus, DesktopVersionInfo, HermesConnection } from '@/global'
 import { en } from '@/i18n/en'
+import { LEGAL_LINKS } from '@/lib/legalLinks'
 import type * as SessionStore from '@/store/session'
 import { $connection } from '@/store/session'
 import { requestUpdateCheck } from '@/store/update-check'
@@ -74,6 +75,7 @@ function connection(mode: 'local' | 'remote'): HermesConnection {
 describe('AboutSettings', (): void => {
   beforeEach((): void => {
     vi.clearAllMocks()
+    Element.prototype.scrollIntoView = vi.fn()
     $updateChecking.set(false)
     $connection.set(connection('local'))
     $desktopVersion.set({
@@ -126,6 +128,42 @@ describe('AboutSettings', (): void => {
     render(<AboutSettings />)
     expect(screen.getByText(`${en.updates.latestBody} · ${en.updates.channels.canary}`)).toBeTruthy()
     expect(screen.queryByRole('combobox')).toBeNull()
+  })
+
+  it('merges the agreements into the same page as the update cards', (): void => {
+    render(<AboutSettings />)
+
+    // Version + updates on top, one heading per section, and every hosted
+    // document reachable from the page — no child-page hop.
+    expect(screen.getByText(en.settings.subpages.appUpdates)).toBeTruthy()
+    expect(screen.getByText(en.settings.legal.description)).toBeTruthy()
+    expect(screen.getAllByText(en.settings.legal.title)).toHaveLength(1)
+    expect(screen.getByRole('button', { name: en.updates.checkForUpdates })).toBeTruthy()
+
+    for (const link of LEGAL_LINKS) {
+      expect(screen.getByRole('button', { name: en.settings.legal.items[link.id] })).toBeTruthy()
+    }
+
+    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled()
+  })
+
+  it('lands the legacy legal child route on the merged terms section', (): void => {
+    render(<AboutSettings subpage="legal" />)
+
+    const section = globalThis.document.getElementById('setting-field-about.legal')
+
+    expect(section).not.toBeNull()
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalledTimes(1)
+    expect(section?.classList).toContain('setting-field-highlight')
+    // The old route opens the same page, not a terms-only one.
+    expect(screen.getByRole('button', { name: en.updates.checkForUpdates })).toBeTruthy()
+  })
+
+  it('opens the merged page from the updates child route too', (): void => {
+    render(<AboutSettings subpage="updates" />)
+
+    expect(screen.getByText(en.settings.legal.title)).toBeTruthy()
+    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled()
   })
 
   it('a commit client refuses updates without hiding an unrelated backend update', (): void => {

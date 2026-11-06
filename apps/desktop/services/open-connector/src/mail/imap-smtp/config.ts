@@ -9,8 +9,8 @@ export const mailConnectionTimeoutMs: number = 30_000;
  *
  * Validation is the synchronous part of the mailbox-enable flow (the backend
  * saves the credential, which runs IMAP + SMTP validation in sequence), so it
- * must fail before the caller's budget runs out: 15s + 15s < the backend's 45s
- * request timeout < the frontend's 60s. Data operations (fetch/send/
+ * must fail before the caller's budget runs out: 90s + 90s < the backend's 240s
+ * request timeout. Data operations (fetch/send/
  * attachments) keep using mailConnectionTimeoutMs.
  */
-export const mailValidationTimeoutMs: number = 15_000;
+export const mailValidationTimeoutMs: number = 90_000;

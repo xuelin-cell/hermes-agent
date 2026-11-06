@@ -10,10 +10,11 @@
 
 import type { AppUpdater } from 'electron-updater'
 
+import { DownloadCancellation } from './download-cancellation'
 import { applyPackagedHandoff } from './packaged-handoff'
 import type { ReleaseNotesByLocale } from './release-notes'
 
-import type { UpdaterApplyResultWire, UpdaterStatusWire, UpdaterStrategy } from './index'
+import type { UpdaterApplyResultWire, UpdaterPrepareResult, UpdaterStatusWire, UpdaterStrategy } from './index'
 
 export interface WindowsStrategyDeps {
   updater: Pick<AppUpdater, 'checkForUpdates' | 'downloadUpdate' | 'quitAndInstall' | 'on' | 'removeListener'>
@@ -29,6 +30,10 @@ export interface WindowsStrategyDeps {
 export class WindowsStrategy implements UpdaterStrategy {
   readonly mechanism = 'electron-updater' as const
   private applying = false
+  private preparedVersion: string | null = null
+  private preparing = false
+  /** Live only while apply() is transferring bytes. */
+  private cancellation: DownloadCancellation | null = null
 
   constructor(private readonly deps: WindowsStrategyDeps) {}
 
@@ -68,12 +73,52 @@ export class WindowsStrategy implements UpdaterStrategy {
     }
   }
 
+  /**
+   * Fetch the offered NSIS payload without touching the backend or installing.
+   * Silent by design: the ambient "new version ready" prompt must not interrupt
+   * whatever the user is doing, so no download-progress reaches the renderer.
+   */
+  async prepare(): Promise<UpdaterPrepareResult> {
+    if (this.applying) {
+      throw new Error('An update is already in progress.')
+    }
+
+    if (this.preparedVersion) {
+      return { ready: true, version: this.preparedVersion }
+    }
+
+    if (this.preparing) {
+      return { ready: false, version: null }
+    }
+
+    this.preparing = true
+
+    try {
+      const status = await this.checkRelease()
+
+      if (!status.updateAvailable) {
+        return { ready: false, version: null }
+      }
+
+      await this.deps.updater.downloadUpdate()
+      this.preparedVersion = status.latestTag?.replace(/^v/, '') ?? null
+
+      return { ready: true, version: this.preparedVersion }
+    } finally {
+      this.preparing = false
+    }
+  }
+
   async apply(): Promise<UpdaterApplyResultWire> {
     if (this.applying) {
       throw new Error('An update is already in progress.')
     }
 
     this.applying = true
+
+    const cancellation = new DownloadCancellation()
+
+    this.cancellation = cancellation
 
     const progress = ({ percent }: { percent: number }): void => {
       this.deps.emitProgress({ stage: 'fetch', message: 'Downloading the Hermes update.', percent })
@@ -95,7 +140,25 @@ export class WindowsStrategy implements UpdaterStrategy {
             return { ok: true, mechanism: this.mechanism }
           }
 
-          await this.deps.updater.downloadUpdate()
+          try {
+            await this.deps.updater.downloadUpdate(cancellation.token)
+          } catch (error) {
+            // A cancelled transfer is a user decision, not a failed update.
+            // Nothing has been torn down yet, so the app simply stays as-is.
+            if (cancellation.cancelled) {
+              return { ok: false, cancelled: true, mechanism: this.mechanism }
+            }
+
+            throw error
+          }
+
+          // The transfer is done; the token no longer governs this run, so a
+          // later cancel reports "nothing to abort" instead of pretending it
+          // stopped the NSIS install.
+          if (this.cancellation === cancellation) {
+            this.cancellation = null
+          }
+
           await stop()
           this.deps.emitProgress({
             stage: 'restart',
@@ -111,8 +174,13 @@ export class WindowsStrategy implements UpdaterStrategy {
         }
       )
     } finally {
+      this.cancellation = null
       this.deps.updater.removeListener('download-progress', progress)
       this.applying = false
     }
+  }
+
+  cancel(): boolean {
+    return this.cancellation?.cancel() ?? false
   }
 }

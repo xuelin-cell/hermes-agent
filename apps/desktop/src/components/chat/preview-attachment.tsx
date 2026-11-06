@@ -3,17 +3,19 @@ import { useEffect, useRef, useState } from 'react'
 
 import { usePreparePreview } from '@/app/chat/right-rail/formats/prepare'
 import { useSessionView } from '@/app/chat/session-view'
+import { ArtifactLibraryUpload, libraryArtifact } from '@/components/chat/artifact-library-upload'
+import { Button } from '@/components/ui/button'
 import { useI18n } from '@/i18n'
 import { Download, FileText } from '@/lib/icons'
-import { normalizeOrLocalPreviewTarget } from '@/lib/local-preview'
+import { localPreviewTarget, normalizeOrLocalPreviewTarget } from '@/lib/local-preview'
 import { downloadGatewayMediaFile } from '@/lib/media'
 import { previewName } from '@/lib/preview-targets'
 import { notifyError } from '@/store/notifications'
 import { $previewTabSources, closePreviewForSource, openPreview } from '@/store/preview'
+import { $connection } from '@/store/session'
 import { noteSessionFile } from '@/store/session-files'
-
-const ACTION_CLASS =
-  'inline-flex h-8 items-center gap-1.5 rounded-lg border border-(--ui-stroke-tertiary) bg-background px-3 text-xs font-medium text-foreground/80 transition-colors hover:bg-(--chrome-action-hover) hover:text-foreground disabled:opacity-50'
+import { isSessionOwnerRoute } from '@/store/session-request-router'
+import { knownOwnerForSession } from '@/store/session-states'
 
 export function PreviewAttachment({ target }: { target: string }) {
   const { t } = useI18n()
@@ -22,6 +24,15 @@ export function PreviewAttachment({ target }: { target: string }) {
   const sessionView = useSessionView()
   const cwd = useStore(sessionView.$cwd)
   const storedSessionId = useStore(sessionView.$storedId)
+  const connection = useStore($connection)
+  const owner = knownOwnerForSession(storedSessionId)
+
+  const localOwner = isSessionOwnerRoute(owner)
+    ? owner.connectionId === 'local' && owner.mode !== 'remote' && owner.profile === (connection?.profile || 'default')
+    : !owner || owner === (connection?.profile || 'default')
+
+  const fileTarget = localPreviewTarget(target, cwd)
+  const artifact = localOwner && fileTarget ? libraryArtifact(fileTarget, storedSessionId, connection) : null
 
   useEffect(() => {
     noteSessionFile(storedSessionId)
@@ -90,7 +101,19 @@ export function PreviewAttachment({ target }: { target: string }) {
         throw new Error(`Could not open preview target: ${requestTarget}`)
       }
 
-      openPreview(preview)
+      openPreview(
+        artifact
+          ? {
+              ...preview,
+              shareOrigin: {
+                connectionId: 'local',
+                profile: artifact.profile || 'default',
+                sessionId: artifact.sessionId,
+                path: preview.path || artifact.value
+              }
+            }
+          : preview
+      )
     } catch (error) {
       if (
         !mountedRef.current ||
@@ -159,20 +182,22 @@ export function PreviewAttachment({ target }: { target: string }) {
           </span>
         </span>
       </span>
-      <span className="relative ml-auto flex shrink-0 items-center gap-1.5">
-        <button
+      <span className="relative ml-auto flex max-w-full flex-wrap items-center justify-end gap-1.5">
+        <ArtifactLibraryUpload artifact={artifact} />
+        <Button
           aria-label={t.fileMenu.download}
-          className={ACTION_CLASS}
           disabled={downloading}
           onClick={() => void downloadFile()}
+          size="sm"
           type="button"
+          variant="outline"
         >
           <Download className="size-3.5" />
           {downloaded ? t.fileMenu.downloadSaved : t.fileMenu.download}
-        </button>
-        <button className={ACTION_CLASS} disabled={opening} onClick={() => void togglePreview()} type="button">
+        </Button>
+        <Button disabled={opening} onClick={() => void togglePreview()} size="sm" type="button" variant="outline">
           {opening ? t.preview.opening : isActive ? t.preview.hide : t.preview.openPreview}
-        </button>
+        </Button>
       </span>
     </span>
   )

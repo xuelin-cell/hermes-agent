@@ -102,6 +102,20 @@ def test_zip_bundle_strips_wrapper_and_uses_frontmatter_name():
     assert set(bundle.files) == {"SKILL.md", "references/guide.md", "examples/sub-skill/SKILL.md"}
 
 
+def test_uploaded_zip_bundle_keeps_upload_provenance():
+    """Local archive uploads retain a distinct origin through the shared install path."""
+    from hermes_cli.skill_market_install import bundle_from_zip
+
+    bundle = bundle_from_zip(
+        _skill_zip({"upload/SKILL.md": "---\nname: local-fixture\ndescription: fixture\n---\n"}),
+        "upload", "", source="upload",
+    )
+
+    assert bundle.source == "upload"
+    assert bundle.identifier == "upload"
+    assert bundle.metadata == {}
+
+
 def test_zip_bundle_rejects_multiple_peer_skill_roots():
     """没有唯一上层主入口的多技能合集不能被误装成其中任意一个技能。"""
     import pytest
@@ -113,6 +127,24 @@ def test_zip_bundle_rejects_multiple_peer_skill_roots():
     })
     with pytest.raises(MarketSkillInstallError, match="多个并列"):
         bundle_from_zip(package, "market-id", "https://maas.ai-yuanjing.com/package")
+
+
+def test_zip_bundle_accepts_reference_heavy_skill_and_rejects_excessive_file_count():
+    """参考文档较多的单技能可安装，归档条目上限仍阻断资源耗尽输入。"""
+    import pytest
+    from hermes_cli.skill_market_install import MAX_ARCHIVE_FILES, MarketSkillInstallError, bundle_from_zip
+
+    skill = {"kdocs/SKILL.md": "---\nname: kdocs\n---\n# KDocs\n"}
+    skill.update({f"kdocs/references/guide-{index}.md": "reference" for index in range(630)})
+
+    bundle = bundle_from_zip(_skill_zip(skill), "upload", "")
+
+    assert len(bundle.files) == 631
+
+    too_many = {"fixture/SKILL.md": "---\nname: fixture\n---\n"}
+    too_many.update({f"fixture/references/guide-{index}.md": "reference" for index in range(MAX_ARCHIVE_FILES)})
+    with pytest.raises(MarketSkillInstallError, match=f"最多包含 {MAX_ARCHIVE_FILES} 个文件"):
+        bundle_from_zip(_skill_zip(too_many), "upload", "")
 
 
 def test_zip_bundle_rejects_path_traversal():
