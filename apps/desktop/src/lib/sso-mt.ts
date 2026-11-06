@@ -1,4 +1,4 @@
-// desktop-mt: unified login (docs/企业版对接/1104/统一登录方案.html v2.3, §15). When the entry runs with MT_SSO,
+// desktop-mt: unified login (docs/企业版对接/统一登录方案.html v2.3, §15). When the entry runs with MT_SSO,
 // signing in, switching accounts and signing out belong to the gateway's login page at the site root:
 // - The page itself is served without a login (the gateway does not guard static files). At start the bridge
 //   asks the entry's `__entry/config`, which sits behind the gateway: a 401 there means nobody is signed in.

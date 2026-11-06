@@ -24,7 +24,7 @@
 
 ## 统一登录（MT_SSO=1）
 
-开关默认关，关着时还是入口自己的短信登录。打开后登录交给网关（`docs/企业版对接/1104/统一登录方案.html` v2.3），代码在 `entry/entry/sso.py`：
+开关默认关，关着时还是入口自己的短信登录。打开后登录交给网关（`docs/企业版对接/统一登录方案.html` v2.3），代码在 `entry/entry/sso.py`：
 
 - 网关对 `/agents/api/` 验登录，转发时带 `X-Uid`、`X-Account-Type`、`X-Tenant-Id`、`X-Sid`。入口只信 `MT_SSO_TRUSTED` 里的来源
   （我们的 nginx 把 TCP 来源写进 `X-Real-IP`，每个转给入口的 location 都要写，`tests/hermes_mt/test_sso.py` 会查），不写就谁都不信。
