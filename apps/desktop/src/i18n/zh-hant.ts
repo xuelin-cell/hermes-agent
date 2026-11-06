@@ -338,6 +338,12 @@ export const zhHant = defineLocale({
     legalConsentConnector: '和',
     userAgreement: '使用者協議',
     legalOpenError: '無法開啟協議，請稍後重試。',
+    planUsage: {
+      restart: '暫時無法查詢套餐資訊，請完全結束應用程式後重新開啟。',
+      refreshFailed: '套餐資訊更新失敗，請稍後再試。',
+      failed: '暫時無法取得套餐資訊，請稍後再試。',
+      auth: '登入已失效，請登出帳號後重新登入。'
+    },
     brand: 'UNIWORK',
     welcome: '歡迎使用 UniWork',
     headline: '讓工作流動起來，',
@@ -349,7 +355,6 @@ export const zhHant = defineLocale({
     expired: '登入已到期，請重新登入。',
     expiredLabel: '登入已到期',
     expiredRunning: '登入已到期，目前工作繼續執行。您可以登出帳號後重新登入。',
-    planAuthRejected: 'MaaS 拒絕了目前的登入憑證，請登出帳號後重新登入。',
     resendAfter: '{seconds} 秒後重發',
     smsSendError: '傳送失敗，請檢查輸入或重新整理圖片後重試。',
     smsLimited: '傳送過於頻繁，請稍後重試。',

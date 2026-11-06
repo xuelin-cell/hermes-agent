@@ -140,7 +140,7 @@ test('P22 真实套餐鉴权拒绝：进入桌面后仍提示重登，不清身�
     // 无套餐的新账号沿用原版模型引导；先明确跳过，再验收桌面提示与可点击的退出。
     await page.getByText('稍后再选择提供方',{exact:true}).click({timeout:60_000})
     try {
-      await page.getByText('MaaS 拒绝了当前登录凭据，请退出账号后重新登录。',{exact:true}).waitFor({timeout:60_000})
+      await page.getByText('登录已失效，请退出账号后重新登录。',{exact:true}).waitFor({timeout:60_000})
     } catch (error) {
       await page.screenshot({path:path.join(fixture.root,'plan-rejected-failed.png')})
       throw error

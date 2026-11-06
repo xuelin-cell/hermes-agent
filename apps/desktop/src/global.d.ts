@@ -25,7 +25,7 @@ import type { PreviewExport, PreviewExportResult } from '../electron/preview-exp
 import type { SessionListSnapshot } from '../electron/session-list-snapshot-contract'
 import type { UniworkAsrBridge } from '../electron/uniwork-asr/contract'
 import type { NtfyEvent, NtfyRefreshResult, NtfyStatus } from '../electron/uniwork-notify/contract'
-import type { PlanSubscriptionResult, PlanUsageResult } from '../electron/uniwork-usage/contract'
+import type { PlanSubscriptionResult, PlanUsageResult, PlanUsageSnapshot } from '../electron/uniwork-usage/contract'
 import type { WelcomeLocale, WelcomePayload } from '../electron/uniwork-welcome/catalog'
 import type { GrowRequest } from '../electron/window-growth'
 
@@ -49,6 +49,7 @@ declare global {
       agentMail: (input: AgentMailRequest) => Promise<AgentMailResult>
       /** 只读本次已准备账号的脱敏信息，运行中到期仍返回原期限。 */
       /** 仅返回当前账号套餐展示信息，不接受页面身份参数。 */
+      getCachedPlanUsage?: () => Promise<PlanUsageSnapshot | null>
       getPlanUsage?: () => Promise<PlanUsageResult>
       refreshPlanUsage?: () => Promise<PlanUsageResult>
       subscribeMaasPlan?: () => Promise<PlanSubscriptionResult>

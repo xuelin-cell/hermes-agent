@@ -238,7 +238,6 @@ export interface Translations {
       refreshed: string
       refreshFailed: string
       failed: string
-      stale: string
       auth: string
       empty: string
       unnamed: string
@@ -268,7 +267,6 @@ export interface Translations {
     expired: string
     expiredLabel: string
     expiredRunning: string
-    planAuthRejected: string
     resendAfter: string
     smsSendError: string
     smsLimited: string

@@ -1,3 +1,5 @@
+import type { PlanUsage } from '../uniwork-usage/contract'
+
 import type { InvitationLoginError, LoginAccount, LoginResult, PlanResult, SmsLoginError } from './contract'
 import type { CredentialStore } from './credential-store'
 import { type FetchedPlan, fetchPlan, type MaasPlan } from './plan'
@@ -89,6 +91,7 @@ const SMS_LOGIN_ERRORS = new Map<string, SmsLoginError>([
 export class LoginSession {
   private identity: LoginIdentity | null = null
   private plan: MaasPlan | null = null
+  private planUsage: PlanUsage | null = null
   private planStatus: FetchedPlan['status'] = 'failed'
   private planFailureReason: 'auth' | undefined
   private planQuery: Promise<PlanResult> | null = null
@@ -109,6 +112,7 @@ export class LoginSession {
     if (this.closed || !this.identity || this.identity.expiresAt <= Date.now()) {
       this.identity = null
       this.plan = null
+      this.planUsage = null
       this.planStatus = 'failed'
       this.planFailureReason = undefined
       this.binding = { status: 'missing' }
@@ -130,6 +134,10 @@ export class LoginSession {
     return this.planStatus === 'empty'
       ? { status: 'empty' }
       : { status: 'failed', ...(this.planFailureReason ? { reason: this.planFailureReason } : {}) }
+  }
+
+  currentPlanUsage(): PlanUsage | null {
+    return this.currentIdentity() ? this.planUsage : null
   }
 
   /** 仅供账号环境准备读取；可选绑定失败不改变合法登录/模型套餐状态。 */
@@ -184,18 +192,27 @@ export class LoginSession {
     }
 
     let bindingUpdate: UniAgentGateUpdate | undefined
-    this.planQuery = fetchPlan(this.request, identity.token, this.cancellation.signal, update => {
-      const current = this.currentIdentity()
+    let usage: PlanUsage | null = null
+    this.planQuery = fetchPlan(
+      this.request,
+      identity.token,
+      this.cancellation.signal,
+      update => {
+        const current = this.currentIdentity()
 
-      if (
-        current?.uid === identity.uid &&
-        current.token === identity.token &&
-        (update.status === 'available' || update.status === 'clear')
-      ) {
-        this.binding = update
-        bindingUpdate = update
+        if (
+          current?.uid === identity.uid &&
+          current.token === identity.token &&
+          (update.status === 'available' || update.status === 'clear')
+        ) {
+          this.binding = update
+          bindingUpdate = update
+        }
+      },
+      data => {
+        usage = data
       }
-    })
+    )
       .then(async (result): Promise<PlanResult> => {
         const current = this.currentIdentity()
 
@@ -213,6 +230,7 @@ export class LoginSession {
         }
 
         this.planStatus = result.status
+        this.planUsage = usage
         this.planFailureReason = result.status === 'failed' ? result.reason : undefined
 
         if (result.status !== 'available') {
@@ -345,6 +363,7 @@ export class LoginSession {
     this.closed = true
     this.identity = null
     this.plan = null
+    this.planUsage = null
     this.planStatus = 'failed'
     this.planFailureReason = undefined
     this.binding = { status: 'missing' }

@@ -20,7 +20,12 @@ import {
   type NtfyRefreshResult,
   type NtfyStatus
 } from './uniwork-notify/contract'
-import { PLAN_SUBSCRIPTION_CHANNEL, PLAN_USAGE_CHANNEL, PLAN_USAGE_REFRESH_CHANNEL } from './uniwork-usage/contract'
+import {
+  PLAN_SUBSCRIPTION_CHANNEL,
+  PLAN_USAGE_CACHE_CHANNEL,
+  PLAN_USAGE_CHANNEL,
+  PLAN_USAGE_REFRESH_CHANNEL
+} from './uniwork-usage/contract'
 import { WELCOME_CATALOG_CHANNEL } from './uniwork-welcome/catalog'
 import { customWindowControlsEnabled } from './window-controls'
 
@@ -47,6 +52,7 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   agentMail: (input: AgentMailRequest) => ipcRenderer.invoke(AGENT_MAIL_CHANNEL, input),
   localConnectors: (input: LocalConnectorRequest) => ipcRenderer.invoke(CONNECTOR_CHANNEL, input),
   // 只读脱敏账号信息，页面不能传入身份或账号路径。
+  getCachedPlanUsage: () => ipcRenderer.invoke(PLAN_USAGE_CACHE_CHANNEL),
   getPlanUsage: () => ipcRenderer.invoke(PLAN_USAGE_CHANNEL),
   refreshPlanUsage: () => ipcRenderer.invoke(PLAN_USAGE_REFRESH_CHANNEL),
   /** 主进程换取一次性市场凭证并打开系统浏览器，页面不接触手机号或 ticket。 */

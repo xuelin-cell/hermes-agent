@@ -14,7 +14,121 @@ vi.mock('electron', () => ({
   net: { fetch: netFetch }
 }))
 
+import {
+  normalizePlanUsage,
+  PLAN_USAGE_CACHE_CHANNEL,
+  PLAN_USAGE_CHANNEL,
+  PLAN_USAGE_REFRESH_CHANNEL
+} from '../uniwork-usage/contract'
+
 import { installAccountIpc } from './account-ipc'
+import { MAAS_IDENTITY_NAMESPACE } from './credential-store'
+import { LoginSession } from './session'
+
+it('过期用量在重新查询时可读，成功后替换，鉴权失败后清空', async () => {
+  const partition = {}
+  const frame = { url: 'http://127.0.0.1:5174/#/chat' }
+  const sender = { mainFrame: frame, session: partition }
+  const identity = {
+    uid: 'account-a',
+    token: 'private-login-token',
+    maskedPhone: '138****0000',
+    expiresAt: Date.now() + 60_000
+  }
+  const plan = (usedQuota: number) => ({
+    productName: '专业套餐',
+    planType: 'token_plan',
+    tokenPlanUsage: { totalQuota: 1000, usedQuota }
+  })
+
+  let resolve!: (value: Response) => void
+  const reply = new Promise<Response>(done => { resolve = done })
+
+  netFetch.mockReset().mockReturnValueOnce(reply).mockResolvedValueOnce(new Response(null, { status: 401 }))
+  fromWebContents.mockReturnValue({ isDestroyed: () => false, webContents: sender })
+  const usage = installAccountIpc(
+    partition as never,
+    () => 'http://127.0.0.1:5174',
+    () => identity,
+    undefined,
+    () => identity
+  )
+
+  usage!.remember(identity, normalizePlanUsage(plan(250), Date.now() - 31_000))
+  const event = { sender, senderFrame: frame }
+  const cached = handle.mock.calls.findLast(([channel]) => channel === PLAN_USAGE_CACHE_CHANNEL)![1]
+  const read = handle.mock.calls.findLast(([channel]) => channel === PLAN_USAGE_CHANNEL)![1]
+  const force = handle.mock.calls.findLast(([channel]) => channel === PLAN_USAGE_REFRESH_CHANNEL)![1]
+
+  expect(cached({ sender, senderFrame: {} })).toBeNull()
+  expect(cached(event)).toMatchObject({ data: { quota: { used: 250 } } })
+  expect(netFetch).not.toHaveBeenCalled()
+
+  const updating = read(event)
+
+  expect(netFetch).toHaveBeenCalledOnce()
+  expect(cached(event)).toMatchObject({ data: { quota: { used: 250 } } })
+  resolve(Response.json(plan(500)))
+  expect(await updating).toMatchObject({ data: { quota: { used: 500 } } })
+  expect(cached(event)).toMatchObject({ data: { quota: { used: 500 } } })
+  expect(await force(event)).toEqual({ status: 'failed', reason: 'auth' })
+  expect(cached(event)).toBeNull()
+})
+
+it('首次读取用量复用登录时的 my-plan，手动刷新仍查询新用量', async () => {
+  const partition = {}
+  const frame = { url: 'http://127.0.0.1:5174/#/chat' }
+  const sender = { mainFrame: frame, session: partition }
+  const identity = {
+    uid: 'account-a',
+    token: 'private-login-token',
+    maskedPhone: '138****0000',
+    expiresAt: Date.now() + 60_000
+  }
+  const response = (usedQuota: number) => Response.json({
+    apiKey: 'private-model-key',
+    models: { models: [{ model: 'desktop-model', base_url: 'https://models.invalid' }] },
+    productName: '专业套餐',
+    planType: 'token_plan',
+    tokenPlanUsage: { totalQuota: 1000, usedQuota }
+  })
+
+  netFetch.mockReset().mockResolvedValueOnce(response(250)).mockResolvedValueOnce(response(500))
+
+  const login = new LoginSession(netFetch, {
+    load: () => ({ ...identity, namespace: MAAS_IDENTITY_NAMESPACE }),
+    save: vi.fn()
+  })
+
+  expect(login.restore().ok).toBe(true)
+  expect(await login.queryPlan()).toMatchObject({ status: 'available' })
+  fromWebContents.mockReturnValue({ isDestroyed: () => false, webContents: sender })
+  installAccountIpc(
+    partition as never,
+    () => 'http://127.0.0.1:5174',
+    () => identity,
+    undefined,
+    () => login.currentIdentity(),
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    { startupLogin: login }
+  )
+
+  const event = { sender, senderFrame: frame }
+  const read = handle.mock.calls.findLast(([channel]) => channel === PLAN_USAGE_CHANNEL)![1]
+  const refresh = handle.mock.calls.findLast(([channel]) => channel === PLAN_USAGE_REFRESH_CHANNEL)![1]
+  const initial = await read(event)
+
+  expect(initial).toMatchObject({ data: { productName: '专业套餐', quota: { used: 250 } } })
+  expect(JSON.stringify(initial)).not.toMatch(/private-login-token|private-model-key/)
+  expect(netFetch).toHaveBeenCalledOnce()
+  expect(await refresh(event)).toMatchObject({ data: { quota: { used: 500 } } })
+  expect(netFetch).toHaveBeenCalledTimes(2)
+})
 
 // 下载工具可用性同样绑定账号主框架，页面只读取布尔值。
 it('云盘 MCP 可用性拒绝其他来源和额外身份参数', () => {

@@ -29,8 +29,8 @@ one-off at the call site.
 `themes/uniwork.css` 定义共享几何、字体层级和界面状态。默认主题为 `uniwork`；
 旧默认 Nous 的本机选择只迁移一次，其他主题、字体偏好和明暗设置保留。
 
-- 明亮模式：白色主界面，浅灰侧栏，橙黄 `#F5765A` 强调，正文 `#101219`，
-  次级文字 `#32374A` / `#686F82`，边框 `#E6E9ED`。实心按钮使用略深的朱红保证小字号白字对比度；暗色模式沿用同一朱红色系。
+- 明亮模式：白色主界面，浅灰侧栏，冷蓝 `#1769D6` 强调，正文 `#101219`，
+  次级文字 `#32374A` / `#686F82`，边框 `#E6E9ED`。实心按钮使用略深的冷蓝保证小字号白字对比度；暗色模式使用较亮的冷蓝 `#68A7FF`。黄橙只表达待处理、授权或风险等状态，不承担品牌主色。
 - 常规界面正文及控件 14px / 22px，辅助文字 12px / 20px，欢迎标题最高 36px。
   对话中的用户消息、消息编辑器和 Agent 回复正文共用消息范围内的 `--conversation-text-font-size`，统一为 16px。
   Token 用量、模型名、完成时间和用户消息的发送时间统一使用内置 Inter 字体，数字、模型名和时间使用 500 字重，`tokens` 使用 400 字重，与旧版 Uniwork 一致；Inter 未覆盖的中文字符回退到主题中文字体。
@@ -202,7 +202,7 @@ renderer and Electron's first window paint.
 | `--ui-widget-surface-background` | fill for inline chat widgets (`WIDGET_SHELL_CLASS`) |
 | `--chrome-action-hover` | hover fill for quiet controls |
 | `--theme-primary`, `--ui-accent` | brand/accent |
-| `--dt-primary-deep` | deepest accent fill (UniWork design maroon `#430D0D` / dark `#693127`); other themes fall back to `--dt-primary-solid` |
+| `--dt-primary-deep` | deepest accent fill (UniWork cool blue `#0E4B9C` / dark `#285F9E`); other themes fall back to `--dt-primary-solid` |
 
 Never hardcode `border-gray-*`, `bg-white`, `text-black`, etc. The two tiles in
 `BrandMark` (white in light mode, `#0d1117` in dark) are the sanctioned literals
@@ -685,12 +685,13 @@ The detailed state contract lives in the scoped
 market ticket，拼接含完整手机号的市场地址后交系统浏览器打开；失败只提示分类原因，
 手机号、ticket 与原始响应不跨 IPC，也不缓存。刷新按钮绕过 30 秒缓存并合并并发，
 定时与焦点恢复仍走缓存。图标取自原设计 SVG，
-缺失截止日期显示破折号，不用登录令牌有效期冒充套餐截止日期。面板使用主题前景色、朱红进度条、
-浅灰轨道与辅助文字，不引入设计系统外的品牌颜色；订阅为设计稿深绛红的实心胶囊，
-查看详情与展开区域首行的用量摘要同排居右，不单独占行，文字与外链图标在浅色模式使用深绛红（`--dt-primary-deep`），深色模式使用主题强调色（`--theme-primary`）保证可读性，点击复用订阅的网站跳转，
+缺失截止日期显示破折号，不用登录令牌有效期冒充套餐截止日期。面板使用主题前景色、冷蓝进度条、
+浅灰轨道与辅助文字，不引入设计系统外的品牌颜色；订阅为主题深蓝的实心胶囊，
+查看详情与展开区域首行的用量摘要同排居右，不单独占行，文字与外链图标在浅色模式使用深蓝（`--dt-primary-deep`），深色模式使用主题强调色（`--theme-primary`）保证可读性，点击复用订阅的网站跳转，
 使用 `Button variant="ghost" size="compact"`，保持 12px 文字，水平内边距 6px、垂直内边距 2px，悬浮底色留出空间，不给文字或图标加下划线。
 仅发起操作的入口显示忙碌状态，另一入口的文字及按钮状态不变；两处共用防重复打开保护和失败提示，不触发用量行的展开或收起。
-仅展开时查询，焦点恢复与每分钟更新，主进程对同一账号合并并发查询并缓存 30 秒。
+仅展开时查询，焦点恢复与每分钟更新，主进程对同一账号合并并发查询并缓存 30 秒。缓存过期后，
+面板先显示同账号的上次结果，查询成功后再替换。
 失败保留同账号的旧结果并标记刷新失败，登录失效或账号不匹配则清空。Coding 与 Token 载荷按服务端 planType 选择，缺失值
 显示暂无数据，不补造零用量。凭据、模型地址与原始响应不跨 IPC，不持久化用量。
 账号卡片仅保留套餐行的刷新图标；加载时由套餐名称和旋转图标表示状态，不额外占用提示行。错误提示统一放在截止日期下方、设置上方，左右留白与套餐详情一致，不随用量详情展开或收起迁移。
