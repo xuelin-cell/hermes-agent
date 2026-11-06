@@ -182,7 +182,7 @@
   }
 }
 
-/* 常规按钮为 14px 白字，将实心朱红略微加深以达到正文对比度，强调线仍用设计原色。 */
+/* 常规按钮为 14px 白字；冷蓝实心色提供足够对比度，状态警告仍使用其自身语义色。 */
 :root[data-hermes-theme='uniwork'] [data-slot='button'][data-variant='default'] {
   background: var(--dt-primary-solid);
   color: var(--dt-primary-solid-foreground);
@@ -294,11 +294,11 @@
 }
 
 :root[data-hermes-theme='uniwork'] {
-  --dt-primary-deep: #430d0d;
+  --dt-primary-deep: #0e4b9c;
   --account-avatar-background: var(--dt-primary-deep);
 }
 :root[data-hermes-theme='uniwork'].dark {
-  --dt-primary-deep: #693127;
+  --dt-primary-deep: #285f9e;
   --account-avatar-background: var(--dt-primary-deep);
 }
 
