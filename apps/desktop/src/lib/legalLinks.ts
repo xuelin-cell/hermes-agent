@@ -18,8 +18,9 @@ export interface LegalLink {
   url: string
 }
 
-/** Rendered in this order on the Privacy & terms page. Every document's file
- *  name carries the product prefix (`uniwork-`); the bare names 404. */
+/** Rendered in this order in the Privacy & terms section of Settings › About.
+ *  Every document's file name carries the product prefix (`uniwork-`); the bare
+ *  names 404. */
 export const LEGAL_LINKS: readonly LegalLink[] = [
   { id: 'userAgreement', url: `${LEGAL_BASE}/uniwork-service.html` },
   { id: 'privacyPolicy', url: `${LEGAL_BASE}/uniwork-privacy.html` },
