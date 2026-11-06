@@ -18,7 +18,10 @@ from tools.skills_hub_models import SkillBundle, _parse_frontmatter, _validate_s
 
 MAX_ARCHIVE_BYTES = 20 * 1024 * 1024
 MAX_EXTRACTED_BYTES = 80 * 1024 * 1024
-MAX_ARCHIVE_FILES = 500
+# Reference-heavy skills routinely ship several hundred Markdown guides. Keep a
+# finite entry limit for archive processing, while admitting a single skill's
+# documented reference tree (for example, KDocs currently has 631 files).
+MAX_ARCHIVE_FILES = 1000
 MAX_DOWNLOAD_REDIRECTS = 3
 # 技能市场目录里的包分别放在：maas 推荐包、ClawHub（convex 下载跳转到 clawhub.ai）、
 # SkillHub 的腾讯云 COS 存储桶、元景 SkillHub 站点。只放行这几个确切主机，不放开整个 myqcloud.com。

@@ -115,6 +115,24 @@ def test_zip_bundle_rejects_multiple_peer_skill_roots():
         bundle_from_zip(package, "market-id", "https://maas.ai-yuanjing.com/package")
 
 
+def test_zip_bundle_accepts_reference_heavy_skill_and_rejects_excessive_file_count():
+    """参考文档较多的单技能可安装，归档条目上限仍阻断资源耗尽输入。"""
+    import pytest
+    from hermes_cli.skill_market_install import MAX_ARCHIVE_FILES, MarketSkillInstallError, bundle_from_zip
+
+    skill = {"kdocs/SKILL.md": "---\nname: kdocs\n---\n# KDocs\n"}
+    skill.update({f"kdocs/references/guide-{index}.md": "reference" for index in range(630)})
+
+    bundle = bundle_from_zip(_skill_zip(skill), "upload", "")
+
+    assert len(bundle.files) == 631
+
+    too_many = {"fixture/SKILL.md": "---\nname: fixture\n---\n"}
+    too_many.update({f"fixture/references/guide-{index}.md": "reference" for index in range(MAX_ARCHIVE_FILES)})
+    with pytest.raises(MarketSkillInstallError, match="文件数量"):
+        bundle_from_zip(_skill_zip(too_many), "upload", "")
+
+
 def test_zip_bundle_rejects_path_traversal():
     """ZIP 路径穿越在写入隔离区之前即被拒绝。"""
     import pytest
