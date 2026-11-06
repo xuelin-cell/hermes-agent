@@ -12224,6 +12224,26 @@ function reapInstallRootedStragglers(excludePids: number[]): void {
   }
 }
 
+/** Run a promise with a timeout; rejects with the original error on timeout. */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${ms}ms`))
+    }, ms)
+
+    promise.then(
+      value => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      error => {
+        clearTimeout(timer)
+        reject(error)
+      }
+    )
+  })
+}
+
 const accountExitWindows = createAccountExitWindows({
   background: getWindowBackgroundColor,
   dark: () => nativeTheme.shouldUseDarkColors,
@@ -12282,17 +12302,21 @@ const accountLogout = createAccountLogout({
     logoutGateway ??= createAccountGatewayLogout(ACCOUNT_RUNTIME)
 
     try {
-      await logoutGateway.run('stop', logoutGateways)
+      await withTimeout(logoutGateway.run('stop', logoutGateways), 15_000, 'gateway stop')
       terminalIpc.disposeAllTerminalSessions()
-      await localBackendLifecycle.settleStarts()
-      await Promise.all([
-        localBackendLifecycle.shutdown(),
-        teardownPrimaryBackendAndWait(backendTeardownOptions('quit')),
-        stopAllPoolBackends()
-      ])
+      await withTimeout(localBackendLifecycle.settleStarts(), 10_000, 'settleStarts')
+      await withTimeout(
+        Promise.all([
+          localBackendLifecycle.shutdown(),
+          teardownPrimaryBackendAndWait(backendTeardownOptions('quit')),
+          stopAllPoolBackends()
+        ]),
+        30_000,
+        'backend shutdown'
+      )
       // 原版完成后端与句柄收尾后，只处理仍存活的已保存子树。
       stopLogoutProcesses(owned)
-      await logoutGateway.run('check')
+      await withTimeout(logoutGateway.run('check'), 10_000, 'gateway check')
     } finally {
       await logoutGateway.dispose()
       logoutGateway = null
