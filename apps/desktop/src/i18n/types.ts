@@ -165,6 +165,7 @@ export interface Translations {
     officePreviewFailed: string
     artifactSensitive: string
     uploadArtifact: string
+    uploadToLibrary: string
     uploadHere: string
     chooseUploadFolder: string
     artifactRemote: string

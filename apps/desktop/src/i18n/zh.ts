@@ -141,6 +141,7 @@ export const zh = defineLocale({
     officePreviewFailed: 'Office 文件转换失败，请下载原文件查看。',
     artifactSensitive: '该文件属于敏感配置或凭据，不能上传云盘。',
     uploadArtifact: '上传到云盘',
+    uploadToLibrary: '上传到资料库',
     uploadHere: '上传到此文件夹',
     chooseUploadFolder: '选择个人云盘中的保存位置',
     artifactRemote: '暂时只能上传当前桌面账号的本机产物，远程文件和网络链接不支持直接上传。',
