@@ -501,6 +501,7 @@ class TestRunConversationCodexPath:
         assert routing.auto_approve_apply_patch is True
 
 
+@pytest.mark.usefixtures("automatic_review_enabled")
 class TestReviewForkApiModeDowngrade:
     """When the parent agent runs on codex_app_server, the background
     review fork must downgrade to codex_responses — otherwise the fork

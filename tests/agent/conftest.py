@@ -45,3 +45,14 @@ def _fast_retry_backoff(request, monkeypatch):
     # server-error retries don't burn real wall-clock seconds.
     from agent import retry_utils as _retry_utils
     monkeypatch.setattr(_retry_utils, "jittered_backoff", lambda *a, **k: 0.0)
+
+
+@pytest.fixture
+def automatic_review_enabled():
+    """Automatic post-turn review is opt-in per profile (ac46b279f7). Tests of the review fork
+    itself opt in through the profile's real config.yaml, so a test that patches the config read
+    (e.g. ``enabled: false``) still controls the gate."""
+    from hermes_constants import get_hermes_home
+
+    (get_hermes_home() / "config.yaml").write_text(
+        "auxiliary:\n  background_review:\n    enabled: true\n", encoding="utf-8")

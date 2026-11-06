@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import threading
 
+import pytest
+
 import run_agent as run_agent_module
 from run_agent import AIAgent
+
+pytestmark = pytest.mark.usefixtures("automatic_review_enabled")
 
 
 _REAL_THREAD = threading.Thread
