@@ -93,6 +93,7 @@ const {
   REQUIRED_BACKEND_CONTRACT,
   reportBackendContract,
   applyUpdates,
+  cancelActiveUpdate,
   applyEverythingUpdate,
   hasMultipleUpdateTargets,
   openUpdatesWindow,
@@ -1053,6 +1054,18 @@ describe('applyUpdates terminal state', () => {
     expect(notifySpy.mock.calls[0]?.[0]).toMatchObject({ kind: 'success' })
   })
 
+  it('treats an aborted download as a user decision, not a failed update', async () => {
+    applyMock.mockResolvedValue({ ok: false, cancelled: true })
+
+    const result = await applyUpdates()
+
+    expect(result.cancelled).toBe(true)
+    expect($updateApply.get().applying).toBe(false)
+    expect($updateApply.get().stage).toBe('idle')
+    expect($updateApply.get().error).toBeNull()
+    expect(notifySpy).not.toHaveBeenCalled()
+  })
+
   it('lands on a closeable error state when the apply resolves not-ok', async () => {
     applyMock.mockResolvedValue({ ok: false, error: 'rebuild-failed', message: 'rebuild failed' })
 
@@ -1884,5 +1897,62 @@ describe('prepareClientUpdate', () => {
 
     await prepareClientUpdate()
     expect(prepareMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('cancelActiveUpdate', () => {
+  const cancelMock = vi.fn()
+
+  const downloading = {
+    applying: true,
+    stage: 'fetch' as const,
+    message: '',
+    percent: 40,
+    error: null,
+    command: null,
+    log: []
+  }
+
+  beforeEach(() => {
+    cancelMock.mockReset()
+    resetUpdateApplyState()
+    $updateOverlayOpen.set(true)
+    ;(globalThis as unknown as { window: unknown }).window = {
+      hermesDesktop: { updates: { cancel: cancelMock } }
+    }
+  })
+
+  afterEach(() => {
+    delete (globalThis as unknown as { window?: unknown }).window
+  })
+
+  it('clears the progress surface once the main process confirms the abort', async () => {
+    cancelMock.mockResolvedValue({ cancelled: true })
+    $updateApply.set(downloading)
+
+    await expect(cancelActiveUpdate()).resolves.toBe(true)
+
+    expect($updateOverlayOpen.get()).toBe(false)
+    expect($updateApply.get().applying).toBe(false)
+    expect($updateApply.get().stage).toBe('idle')
+  })
+
+  it('keeps the surface honest when the installer already took over', async () => {
+    cancelMock.mockResolvedValue({ cancelled: false })
+    $updateApply.set(downloading)
+
+    await expect(cancelActiveUpdate()).resolves.toBe(false)
+
+    expect($updateOverlayOpen.get()).toBe(true)
+    expect($updateApply.get().applying).toBe(true)
+  })
+
+  it('is a no-op on preloads without the cancel bridge', async () => {
+    ;(globalThis as unknown as { window: unknown }).window = { hermesDesktop: { updates: {} } }
+    $updateApply.set(downloading)
+
+    await expect(cancelActiveUpdate()).resolves.toBe(false)
+
+    expect($updateOverlayOpen.get()).toBe(true)
   })
 })

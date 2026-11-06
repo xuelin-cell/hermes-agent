@@ -4020,6 +4020,7 @@ export interface Translations {
     newVersionReady: string
     updateLog: string
     restartToUpdate: string
+    downloadingUpdate: string
     seeWhatsNew: string
     releaseNotes: string
     onLatest: string

@@ -185,4 +185,16 @@ export class ChannelStrategy implements UpdaterStrategy {
       this.busy = false
     }
   }
+
+  /** Forward to the selected native build; false before a selection exists
+   *  and once that build's transfer has already settled. */
+  cancel(): boolean {
+    const selected = this.selection
+
+    if (selected?.kind !== 'native') {
+      return false
+    }
+
+    return selected.strategy.cancel?.() ?? false
+  }
 }

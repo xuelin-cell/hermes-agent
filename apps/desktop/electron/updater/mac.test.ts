@@ -117,6 +117,30 @@ describe('macOS strategy', () => {
     expect(events.slice(-2)).toEqual(['stop', 'restore'])
   })
 
+  it('aborts an in-flight download on cancel and never verifies or installs', async () => {
+    const { deps, strategy, events } = fixture()
+    vi.mocked(deps.updater.downloadUpdate).mockImplementation(received => {
+      const transfer = new Promise<string[]>((_resolve, reject) => {
+        // Squirrel aborts the request from this listener, so the token has to
+        // be live before cancel() is called.
+        received?.addListener(() => reject(new Error('cancelled')))
+      })
+
+      expect(strategy.cancel()).toBe(true)
+
+      return transfer
+    })
+
+    const result = await strategy.apply()
+
+    expect(result).toMatchObject({ ok: false, cancelled: true, mechanism: 'electron-updater' })
+    expect(events).toEqual(['check'])
+    expect(deps.prepareInstall).not.toHaveBeenCalled()
+    expect(deps.updater.quitAndInstall).not.toHaveBeenCalled()
+    // Once the transfer settled there is nothing left to abort.
+    expect(strategy.cancel()).toBe(false)
+  })
+
   it('preserves the handoff error when backend recovery also fails', async (): Promise<void> => {
     const { deps, strategy, emitter } = fixture()
     const handoff = new Error('native handoff failed')

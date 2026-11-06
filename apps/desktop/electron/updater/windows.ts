@@ -10,6 +10,7 @@
 
 import type { AppUpdater } from 'electron-updater'
 
+import { DownloadCancellation } from './download-cancellation'
 import { applyPackagedHandoff } from './packaged-handoff'
 import type { ReleaseNotesByLocale } from './release-notes'
 
@@ -31,6 +32,8 @@ export class WindowsStrategy implements UpdaterStrategy {
   private applying = false
   private preparedVersion: string | null = null
   private preparing = false
+  /** Live only while apply() is transferring bytes. */
+  private cancellation: DownloadCancellation | null = null
 
   constructor(private readonly deps: WindowsStrategyDeps) {}
 
@@ -113,6 +116,10 @@ export class WindowsStrategy implements UpdaterStrategy {
 
     this.applying = true
 
+    const cancellation = new DownloadCancellation()
+
+    this.cancellation = cancellation
+
     const progress = ({ percent }: { percent: number }): void => {
       this.deps.emitProgress({ stage: 'fetch', message: 'Downloading the Hermes update.', percent })
     }
@@ -133,7 +140,25 @@ export class WindowsStrategy implements UpdaterStrategy {
             return { ok: true, mechanism: this.mechanism }
           }
 
-          await this.deps.updater.downloadUpdate()
+          try {
+            await this.deps.updater.downloadUpdate(cancellation.token)
+          } catch (error) {
+            // A cancelled transfer is a user decision, not a failed update.
+            // Nothing has been torn down yet, so the app simply stays as-is.
+            if (cancellation.cancelled) {
+              return { ok: false, cancelled: true, mechanism: this.mechanism }
+            }
+
+            throw error
+          }
+
+          // The transfer is done; the token no longer governs this run, so a
+          // later cancel reports "nothing to abort" instead of pretending it
+          // stopped the NSIS install.
+          if (this.cancellation === cancellation) {
+            this.cancellation = null
+          }
+
           await stop()
           this.deps.emitProgress({
             stage: 'restart',
@@ -149,8 +174,13 @@ export class WindowsStrategy implements UpdaterStrategy {
         }
       )
     } finally {
+      this.cancellation = null
       this.deps.updater.removeListener('download-progress', progress)
       this.applying = false
     }
+  }
+
+  cancel(): boolean {
+    return this.cancellation?.cancel() ?? false
   }
 }

@@ -151,6 +151,29 @@ describe('Windows NSIS strategy', () => {
     expect(events.slice(-2)).toEqual(['stop', 'restore'])
   })
 
+  it('aborts an in-flight download on cancel and leaves the backend running', async () => {
+    const { deps, strategy, events } = fixture()
+    vi.mocked(deps.updater.downloadUpdate).mockImplementation(received => {
+      const transfer = new Promise<string[]>((_resolve, reject) => {
+        // electron-updater aborts the request from this listener, so the token
+        // has to be live before cancel() is called.
+        received?.addListener(() => reject(new Error('cancelled')))
+      })
+
+      expect(strategy.cancel()).toBe(true)
+
+      return transfer
+    })
+
+    const result = await strategy.apply()
+
+    expect(result).toMatchObject({ ok: false, cancelled: true, mechanism: 'electron-updater' })
+    expect(events).not.toContain('stop')
+    expect(deps.updater.quitAndInstall).not.toHaveBeenCalled()
+    // Once the transfer settled there is nothing left to abort.
+    expect(strategy.cancel()).toBe(false)
+  })
+
   it('rejects a second apply while one is in flight', async () => {
     const { deps, strategy } = fixture()
     let release!: () => void

@@ -714,6 +714,14 @@ export async function applyUpdates(opts: DesktopUpdateApplyOptions = {}): Promis
   try {
     const result = await bridge.apply(opts)
 
+    // A cancelled transfer is a user decision, not a failed update: the cancel
+    // action already cleared the progress surface, and nothing was installed.
+    if (result?.cancelled) {
+      $updateApply.set(IDLE)
+
+      return result
+    }
+
     // CLI install with no staged updater: not an error — the user just runs
     // `hermes update` themselves. Land on a dedicated manual state so the
     // overlay shows the command + copy button instead of a dead retry loop.
@@ -807,6 +815,32 @@ export async function applyUpdates(opts: DesktopUpdateApplyOptions = {}): Promis
 
     return { ok: false, error: 'apply-failed', message }
   }
+}
+
+/**
+ * Abort the in-flight client download. Resolves false when there is nothing to
+ * abort — the installer already took over, or this install's update owner does
+ * the transfer itself (App Installer / Store / handoff). Only a confirmed
+ * abort dismisses the progress surface: closing it while NSIS keeps installing
+ * would claim the update stopped when it did not.
+ */
+export async function cancelActiveUpdate(): Promise<boolean> {
+  const bridge = window.hermesDesktop?.updates
+
+  if (!bridge?.cancel) {
+    return false
+  }
+
+  const result = await bridge.cancel().catch((): null => null)
+
+  if (!result?.cancelled) {
+    return false
+  }
+
+  $updateApply.set(IDLE)
+  setUpdateOverlayOpen(false)
+
+  return true
 }
 
 const BACKEND_ACTION_POLL_MS = 1500

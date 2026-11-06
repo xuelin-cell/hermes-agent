@@ -90,6 +90,8 @@ export interface UpdaterApplyResultWire {
   hermesRoot?: string
   handedOff?: boolean
   updater?: string
+  /** The user aborted the download before the installer took over. */
+  cancelled?: boolean
   [key: string]: unknown
 }
 
@@ -108,6 +110,14 @@ export interface UpdaterPrepareWire extends UpdaterPrepareResult {
   message?: string
 }
 
+/** The result shape main.ts sends over `hermes:updates:cancel`. */
+export interface UpdaterCancelWire {
+  /** False when the transfer already finished or the installer took over —
+   *  the renderer must then keep the progress surface instead of pretending
+   *  the update stopped. */
+  cancelled: boolean
+}
+
 export interface UpdaterStrategy {
   readonly mechanism: UpdaterMechanism
   check(opts?: { force?: boolean }): Promise<UpdaterStatusWire>
@@ -116,4 +126,8 @@ export interface UpdaterStrategy {
    *  prompt once the bytes are on disk. Omitted by mechanisms whose owner does
    *  the download itself; the probe then reports `supported: false`. */
   prepare?(): Promise<UpdaterPrepareResult>
+  /** Abort an in-flight apply() download. Returns false when there is nothing
+   *  to abort (not downloading, or the installer already took over). Omitted
+   *  by mechanisms whose owner performs the transfer itself. */
+  cancel?(): boolean
 }

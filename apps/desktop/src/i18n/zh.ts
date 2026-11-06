@@ -4702,6 +4702,7 @@ export const zh = defineLocale({
     newVersionReady: '新版本就绪',
     updateLog: '更新日志',
     restartToUpdate: '重启升级',
+    downloadingUpdate: '正在下载更新…',
     seeWhatsNew: '查看更新内容',
     releaseNotes: '发行说明',
     onLatest: '已是最新版本。',

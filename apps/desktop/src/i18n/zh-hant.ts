@@ -3873,6 +3873,7 @@ export const zhHant = defineLocale({
     newVersionReady: '新版本已就緒',
     updateLog: '更新日誌',
     restartToUpdate: '重新啟動並升級',
+    downloadingUpdate: '正在下載更新…',
     seeWhatsNew: '查看新增內容',
     releaseNotes: '發行說明',
     onLatest: '你已是最新版本。',

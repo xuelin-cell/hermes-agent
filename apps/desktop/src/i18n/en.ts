@@ -4981,6 +4981,7 @@ export const en: Translations = {
     newVersionReady: 'New version ready',
     updateLog: 'What’s new',
     restartToUpdate: 'Restart to update',
+    downloadingUpdate: 'Downloading update…',
     seeWhatsNew: "See what's new",
     releaseNotes: 'Release notes',
     onLatest: "You're on the latest version.",

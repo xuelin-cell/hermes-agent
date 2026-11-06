@@ -1,5 +1,6 @@
 import type { AppUpdater } from 'electron-updater'
 
+import { DownloadCancellation } from './download-cancellation'
 import { applyPackagedHandoff } from './packaged-handoff'
 import type { ReleaseNotesByLocale } from './release-notes'
 
@@ -25,6 +26,8 @@ export class MacStrategy implements UpdaterStrategy {
   private applying = false
   private preparedVersion: string | null = null
   private preparing = false
+  /** Live only while apply() is transferring bytes. */
+  private cancellation: DownloadCancellation | null = null
 
   constructor(private readonly deps: MacStrategyDeps) {}
 
@@ -113,6 +116,10 @@ export class MacStrategy implements UpdaterStrategy {
 
     this.applying = true
 
+    const cancellation = new DownloadCancellation()
+
+    this.cancellation = cancellation
+
     const progress = ({ percent }: { percent: number }): void => {
       this.deps.emitProgress({ stage: 'fetch', message: 'Downloading the Hermes update.', percent })
     }
@@ -133,8 +140,12 @@ export class MacStrategy implements UpdaterStrategy {
             return { ok: true, mechanism: this.mechanism }
           }
 
-          const files = await this.deps.updater.downloadUpdate()
-          await this.deps.verifyDownload?.(files)
+          const files = await this.downloadVerified(cancellation)
+
+          if (files === null) {
+            return { ok: false, cancelled: true, mechanism: this.mechanism }
+          }
+
           this.deps.emitProgress({ stage: 'prepare', message: 'Verifying the signed macOS update.', percent: null })
           await this.deps.prepareInstall()
           await stop()
@@ -149,9 +160,42 @@ export class MacStrategy implements UpdaterStrategy {
         }
       )
     } finally {
+      this.cancellation = null
       this.deps.updater.removeListener('download-progress', progress)
       this.applying = false
     }
+  }
+
+  /** `null` means the user aborted the transfer before it settled. */
+  private async downloadVerified(cancellation: DownloadCancellation): Promise<string[] | null> {
+    let files: string[]
+
+    try {
+      files = await this.deps.updater.downloadUpdate(cancellation.token)
+    } catch (error) {
+      // A cancelled transfer is a user decision, not a failed update. Nothing
+      // has been torn down yet, so the app simply stays as-is.
+      if (cancellation.cancelled) {
+        return null
+      }
+
+      throw error
+    }
+
+    // The transfer is done: the token no longer governs this run, so a later
+    // cancel reports "nothing to abort" instead of pretending it stopped the
+    // verification and Squirrel install that follow.
+    if (this.cancellation === cancellation) {
+      this.cancellation = null
+    }
+
+    await this.deps.verifyDownload?.(files)
+
+    return files
+  }
+
+  cancel(): boolean {
+    return this.cancellation?.cancel() ?? false
   }
 }
 

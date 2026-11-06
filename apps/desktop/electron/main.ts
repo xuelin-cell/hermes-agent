@@ -569,6 +569,7 @@ import { readLiveUpdateMarker, updateHandoffConflict, writeUpdateMarker } from '
 import {
   resolveUpdaterMechanism,
   type UpdaterApplyResultWire,
+  type UpdaterCancelWire,
   type UpdaterPrepareWire,
   type UpdaterStatusWire,
   type UpdaterStrategy
@@ -18310,6 +18311,21 @@ ipcMain.handle('hermes:updates:apply', async (_event, payload) =>
     message: error?.message || String(error)
   }))
 )
+
+// Abort an in-flight apply() download. The renderer only offers this while the
+// transfer is still running; once the installer takes over the strategy reports
+// `cancelled: false` and the progress surface stays put instead of claiming
+// the update stopped.
+ipcMain.handle('hermes:updates:cancel', async (): Promise<UpdaterCancelWire> => {
+  try {
+    const strategy = await resolvePackagedUpdateStrategy()
+    const cancel = strategy?.cancel
+
+    return { cancelled: cancel ? cancel.call(strategy) : false }
+  } catch {
+    return { cancelled: false }
+  }
+})
 
 // Ambient background download: fetch the offered package so the renderer can
 // prompt "new version ready" without interrupting the user. Mechanisms whose
