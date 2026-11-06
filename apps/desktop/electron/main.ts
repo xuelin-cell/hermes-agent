@@ -197,6 +197,9 @@ import {
 import type { RosterProfileMetadata } from './connection-registry'
 import { liveWindowState, overlayWindowState } from './connection-window-state'
 import { installConversationShareIpc } from './conversation-share/ipc'
+import { startTitleBridge } from './conversation-titles/bridge'
+import { installAccountTitlePlugins, installTitlePlugin } from './conversation-titles/install'
+import { TitleModelService } from './conversation-titles/service'
 import { describeCrashReason, installCrashForensics } from './crash-forensics'
 import { adoptServedDashboardToken, resolveServedDashboardToken } from './dashboard-token'
 import { loadOrCreateInstallationId, sshOwnershipId } from './desktop-installation'
@@ -11942,6 +11945,7 @@ async function runPoolBackendStart(
   enableDesktopPlugins(profile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', profile), [
     'desktop-deliverables'
   ])
+  prepareManagedTitleProfiles(profile)
   INTERRUPTED_TURNS.claim(profile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', profile))
   installArtifactSharePlugin(
     profile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', profile),
@@ -11977,6 +11981,7 @@ async function runPoolBackendStart(
           // scheduler tick loop (the gateway isn't running under the app).
           HERMES_DESKTOP: '1',
           ...(await artifactShareBridgeEnv()),
+          ...(await titleBridgeEnv()),
           // Exact parent identity lets the backend self-exit after an unclean
           // Desktop death without mistaking a reused PID for its owner. If the
           // optional marker probe fails, retain legacy PID-only tracking.
@@ -12956,6 +12961,7 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
       primaryProfile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', primaryProfile),
       ['desktop-deliverables']
     )
+    prepareManagedTitleProfiles(primaryProfile)
     INTERRUPTED_TURNS.claim(
       primaryProfile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', primaryProfile)
     )
@@ -13017,6 +13023,7 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
             // scheduler tick loop (the gateway isn't running under the app).
             HERMES_DESKTOP: '1',
             ...(await artifactShareBridgeEnv()),
+            ...(await titleBridgeEnv()),
             // Exact parent identity lets the backend self-exit after an unclean
             // Desktop death without mistaking a reused PID for its owner. If the
             // optional marker probe fails, retain legacy PID-only tracking.
@@ -17431,6 +17438,34 @@ const stopArtifactShareCleanup = startArtifactShareCleanup(artifactShareService,
 
 let artifactShareBridge: Promise<ArtifactShareBridge> | null = null
 
+let titleBridge: ReturnType<typeof startTitleBridge> | null = null
+let titleProfilesPrepared = false
+
+/** 同进程只扫描一次账号下已有Profile，后续启动按目标Profile准备。 */
+function prepareManagedTitleProfiles(profile: string): void {
+  if (!titleProfilesPrepared) {
+    installAccountTitlePlugins(HERMES_HOME, app.getAppPath())
+    titleProfilesPrepared = true
+  } else {
+    installTitlePlugin(profile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', profile), app.getAppPath())
+  }
+}
+
+/** 标题服务只访问本次受管账号的数字员工套餐；不使用Hermes默认辅助模型。 */
+async function titleBridgeEnv() {
+  titleBridge ??= startTitleBridge(
+    new TitleModelService(
+      () => currentDesktopLocalContext() === ACCOUNT_RUNTIME
+        ? (currentDesktopLogin()?.currentPlan() ?? { status: 'empty' })
+        : { status: 'empty' },
+      undefined,
+      rememberLog
+    )
+  )
+
+  return (await titleBridge).env
+}
+
 /** 每个桌面进程仅启动一条本机分享桥，凭证只交给本进程创建的后端子进程。 */
 async function artifactShareBridgeEnv(): Promise<ArtifactShareBridge['env']> {
   artifactShareBridge ??= startArtifactShareBridge(artifactShareService)
@@ -17852,6 +17887,7 @@ app.on('before-quit', () => {
 // hold the event loop open or leak FDs past app teardown.
 app.on('will-quit', () => {
   stopArtifactShareCleanup()
+  void titleBridge?.then(bridge => bridge.stop()).catch(() => undefined)
   stopDriveCredentialRenewal?.()
   void ACCOUNT_CONNECTORS.close()
   void ACCOUNT_DRIVE_MCP.close()

@@ -59,6 +59,8 @@
 
 ## 文档
 
+- [会话标题优化](16-conversation-titles.md)（仅标题增量；数字员工套餐概括、原生保存与统一显示，真实桌面验收待完成）
+
 - [5G 消息迁移进度](uniagentgate-migration-progress.md)（协议、登录绑定、网关启动、附件媒体和单平台重连，以及验证限制与剩余任务）
 - [5G 消息完整迁移方案](uniagentgate-migration-plan.md)（UniClaw 来源清单、Hermes 接入点与分阶段范围）
 - [消息平台界面：阶段一](09-messaging-ui.md)（卡片、必要凭据弹窗和微信内联扫码；自动恢复网关与重启优化不在本轮范围）

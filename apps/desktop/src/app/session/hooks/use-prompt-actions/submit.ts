@@ -1,6 +1,8 @@
 import type { PromptSubmitResult } from '@hermes/shared'
 import { type MutableRefObject, useCallback } from 'react'
 
+import { getApiRequestConnection, getApiRequestProfile } from '@/api/client'
+import { seedConversationTitle } from '@/api/conversation-titles'
 // desktop-mt: 新对话发出后又开了新对话时，建好的会话按后台会话继续发送（见 detached-create-mt.ts）。
 import {
   currentFreshDraftEpoch,
@@ -12,6 +14,7 @@ import type { Translations } from '@/i18n'
 import { type ChatMessage, textPart } from '@/lib/chat-messages'
 import { optimisticAttachmentRef } from '@/lib/chat-runtime'
 import { sanitizeComposerInput } from '@/lib/composer-input-sanitize'
+import { temporaryConversationTitle } from '@/lib/conversation-title'
 import { setMutableRef } from '@/lib/mutable-ref'
 import { refreshIfTranscriptStale } from '@/lib/stale-transcript-guard'
 import {
@@ -42,6 +45,7 @@ import {
   setAwaitingResponse,
   setBusy,
   setMessages,
+  setSessions,
   touchSessionActivity
 } from '@/store/session'
 import { $sessionStates } from '@/store/session-states'
@@ -53,7 +57,7 @@ import {
 } from '../../../contrib/hooks/use-background-sync'
 import type { ClientSessionState } from '../../../types'
 import { sessionContextDrift } from '../session-context-drift'
-import { resolveSessionProfile } from '../use-session-actions/utils'
+import { resolveSessionOwner, resolveSessionProfile } from '../use-session-actions/utils'
 
 import { finalizeInterruptedMessages } from './rewind'
 import { registerRecoveredRuntime, singleFlightSessionResume, takeRecoveredRuntime } from './single-flight-resume'
@@ -186,6 +190,12 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
       const attachments = (options?.attachments ?? scope.readAttachments()).filter((a): a is ComposerAttachment =>
         Boolean(a)
       )
+
+      const titleText = (options?.displayText ?? visibleText).trim()
+      const temporaryTitle = temporaryConversationTitle(titleText, attachments)
+      const titleIntent = [titleText, attachments.find(a => a.titlePreview?.trim())?.titlePreview].filter(Boolean).join('\n').slice(0, 1800)
+      // 在发送开始时固定归属，异步标题不得跟随用户后续切换的页面。
+      const titleAmbientOwner = { connectionId: getApiRequestConnection() || 'local', profile: getApiRequestProfile() || 'default' }
 
       const titlePreview = attachments.find(
         a => typeof a.titlePreview === 'string' && a.titlePreview.trim()
@@ -372,6 +382,8 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
       const startingProfile = $newChatProfile.get() || normalizeProfileKey($activeGatewayProfile.get())
       let createdForSubmit = false
       let detachedFromView = false
+      let titleCreatedHere = false
+      const previousPreviews = new Map<string, SessionInfo['preview']>()
 
       /** 新建会话只因页面切换转后台；连接或 Profile 改变仍中止，恢复旧会话沿用原保护。 */
       const sessionDriftReason = (): string | null => {
@@ -467,7 +479,13 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
       // after createBackendSessionForSend just overwrites with the same id.
       const seedOptimistic = (sid: string) => {
         // Recents jump on send — not stream start, not turn resolve.
-        const activity = bubbleText.trim() ? { preview: bubbleText.trim() } : undefined
+        for (const row of $sessions.get()) {
+          if ((row.id === sid || row.id === targetStoredSessionId) && !previousPreviews.has(row.id)) {
+            previousPreviews.set(row.id, titleCreatedHere ? null : row.preview)
+          }
+        }
+
+        const activity = { preview: temporaryTitle }
         touchSessionActivity(sid, activity)
 
         if (targetStoredSessionId && targetStoredSessionId !== sid) {
@@ -532,6 +550,9 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
       }
 
       const dropOptimistic = (sid: null | string) => {
+        // 只回滚本次发送仍未被服务端标题接管的预览，不覆盖迟到的正式或手动名称。
+        setSessions(rows => rows.map(row => previousPreviews.has(row.id) && !row.title && row.preview === temporaryTitle
+          ? { ...row, preview: previousPreviews.get(row.id) ?? null } : row))
         // The optimistic bubble is gone, so its blob: previews die with it —
         // unless a rejected-submit restore already re-loaded the attachments
         // into the composer, which re-owns those URLs (#63682 handoff).
@@ -757,7 +778,8 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
 
       if (!sessionId) {
         try {
-          sessionId = await createBackendSessionForSend(bubbleText)
+          titleCreatedHere = true
+          sessionId = await createBackendSessionForSend(temporaryTitle)
         } catch (err) {
           dropOptimistic(null)
           releaseBusy()
@@ -941,6 +963,8 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
         // other session-scoped RPC (attach, /compress, rewind, interrupt) goes
         // through the same helper so one policy covers the whole bug class.
         let submitErr: unknown = null
+        const titleStoredId = targetStoredSessionId
+        const titleOwner = titleStoredId ? resolveSessionOwner(titleStoredId).catch(() => undefined) : Promise.resolve(undefined)
 
         try {
           const recoverStoredSessionId = targetStoredSessionId ?? selectedStoredSessionIdRef.current
@@ -983,6 +1007,18 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
             // instead of erroring out and losing the session binding.
             { alsoTimeout: true }
           )
+
+          if (titleStoredId && options?.displayKind !== 'hidden') {
+            void titleOwner.then(owner => {
+              if (!owner) {return}
+
+              const target = typeof owner === 'string'
+                ? { connectionId: titleAmbientOwner.connectionId, profile: owner }
+                : { connectionId: owner.connectionId, profile: owner.targetProfile || owner.profile }
+
+              return seedConversationTitle(target, titleStoredId, temporaryTitle, titleIntent)
+            }).catch(() => undefined)
+          }
 
           const rowId = submitted.result?.user_row_id
 

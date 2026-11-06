@@ -11,6 +11,7 @@ import {
   connectionScopeSuffix,
   rescopeConnectionScopedStores
 } from '@/lib/connection-scoped'
+import { observeTitle, type TitleOwner, titleOwnerMatches } from '@/lib/conversation-title'
 import { isMessagingSource } from '@/lib/session-source'
 import type { TileSessionFocusStamp } from '@/lib/session-timer-since'
 import { persistBoolean, persistString, readJson, storedBoolean, storedString, writeJson } from '@/lib/storage'
@@ -906,7 +907,7 @@ export function touchSessionActivity(
  *  cron, messaging) must show it without waiting for a profile switch to
  *  force a refetch (#123337). Reference-stable per slice when nothing
  *  matched or the title is already current. */
-export function applySessionTitle(storedSessionId: string | null | undefined, title: string | null): void {
+export function applySessionTitle(storedSessionId: string | null | undefined, title: string | null, owner?: TitleOwner): void {
   const id = storedSessionId?.trim()
 
   if (!id) {
@@ -915,14 +916,19 @@ export function applySessionTitle(storedSessionId: string | null | undefined, ti
 
   const next = title?.trim() || null
 
+  if (owner) {observeTitle({ id, profile: owner.profile, connection_id: owner.connectionId || 'local' } as SessionInfo, next)}
+
   const patch = (rows: SessionInfo[]): SessionInfo[] => {
     let changed = false
 
     const mapped = rows.map(session => {
-      if (!sessionMatchesStoredId(session, id) || session.title === next) {
+      if (!sessionMatchesStoredId(session, id) || (owner && !titleOwnerMatches(session, owner))) {
         return session
       }
 
+      observeTitle(session, next)
+
+      if (session.title === next) {return session}
       changed = true
 
       return { ...session, title: next }
