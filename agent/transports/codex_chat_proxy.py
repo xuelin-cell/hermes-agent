@@ -146,7 +146,10 @@ class CodexChatProxy:
             "wire_api": "responses",
             "experimental_bearer_token": self.token,
         }
-        args = []
+        # Recent Codex versions validate a thread's ``modelProvider`` against
+        # the process-wide current provider. Registering this temporary
+        # provider is insufficient when a user's default remains ``openai``.
+        args = ["-c", 'model_provider="hermes_code"']
         for key, value in provider.items():
             args.extend([
                 "-c",

@@ -16,9 +16,12 @@ from tools.skills_guard import format_scan_report, full_content_hash, scan_skill
 from tools.skills_hub_install import install_from_quarantine, quarantine_bundle
 from tools.skills_hub_models import SkillBundle, _parse_frontmatter, _validate_skill_name
 
-MAX_ARCHIVE_BYTES = 20 * 1024 * 1024
-MAX_EXTRACTED_BYTES = 80 * 1024 * 1024
-MAX_ARCHIVE_FILES = 500
+# The legacy uploader had no equivalent ordinary-skill resource ceiling. Keep
+# finite guards for the desktop transport, at ten times its Code-mode limits.
+# Path validation and security scanning remain stricter in the new installer.
+MAX_ARCHIVE_BYTES = 200 * 1024 * 1024
+MAX_EXTRACTED_BYTES = 1000 * 1024 * 1024
+MAX_ARCHIVE_FILES = 20_000
 MAX_DOWNLOAD_REDIRECTS = 3
 # 技能市场目录里的包分别放在：maas 推荐包、ClawHub（convex 下载跳转到 clawhub.ai）、
 # SkillHub 的腾讯云 COS 存储桶、元景 SkillHub 站点。只放行这几个确切主机，不放开整个 myqcloud.com。
@@ -70,20 +73,22 @@ def download_skill_package(url: str) -> bytes:
                     response.raise_for_status()
                     declared = int(response.headers.get("content-length", "0") or 0)
                     if declared > MAX_ARCHIVE_BYTES:
-                        raise MarketSkillInstallError("技能包超过 20 MB，无法安装")
+                        raise MarketSkillInstallError("技能包超过 200 MB，无法安装")
                     chunks = []
                     size = 0
                     for chunk in response.iter_bytes():
                         size += len(chunk)
                         if size > MAX_ARCHIVE_BYTES:
-                            raise MarketSkillInstallError("技能包超过 20 MB，无法安装")
+                            raise MarketSkillInstallError("技能包超过 200 MB，无法安装")
                         chunks.append(chunk)
                     return b"".join(chunks)
     except httpx.HTTPError as exc:
         raise MarketSkillInstallError("技能包下载失败，请稍后重试") from exc
 
 
-def bundle_from_zip(package: bytes, identifier: str, source_url: str) -> SkillBundle:
+def bundle_from_zip(
+    package: bytes, identifier: str, source_url: str, *, source: str = "uniwork"
+) -> SkillBundle:
     """校验 ZIP 成员并转换为可进入隔离扫描链的技能包。"""
     try:
         archive = zipfile.ZipFile(io.BytesIO(package))
@@ -93,9 +98,9 @@ def bundle_from_zip(package: bytes, identifier: str, source_url: str) -> SkillBu
     with archive:
         members = [item for item in archive.infolist() if not item.is_dir()]
         if not members or len(members) > MAX_ARCHIVE_FILES:
-            raise MarketSkillInstallError("技能包文件数量不合法")
+            raise MarketSkillInstallError(f"技能包最多包含 {MAX_ARCHIVE_FILES} 个文件")
         if sum(item.file_size for item in members) > MAX_EXTRACTED_BYTES:
-            raise MarketSkillInstallError("技能包解压后超过 80 MB，无法安装")
+            raise MarketSkillInstallError("技能包解压后超过 1 GB，无法安装")
 
         normalized = []
         for item in members:
@@ -140,7 +145,8 @@ def bundle_from_zip(package: bytes, identifier: str, source_url: str) -> SkillBu
         raise MarketSkillInstallError("SKILL.md 缺少有效的技能名称") from exc
     if not name:
         raise MarketSkillInstallError("SKILL.md 缺少有效的技能名称")
-    return SkillBundle(name, files, "uniwork", identifier, "community", {"source_url": source_url})
+    metadata = {"source_url": source_url} if source_url else {}
+    return SkillBundle(name, files, source, identifier, "community", metadata)
 
 
 def install_market_skill(

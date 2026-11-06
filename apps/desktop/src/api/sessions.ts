@@ -1,3 +1,4 @@
+import { reconcileTitleRead, titleReadRevision } from '@/lib/conversation-title'
 import { isMissingRestEndpoint } from '@/lib/gateway-rpc'
 import { maybeBackfillLegacySessionOwners } from '@/lib/legacy-session-owner-backfill'
 import { stampRowsWithOwningConnection } from '@/lib/session-owner-stamp'
@@ -108,6 +109,8 @@ export async function listSessions(
   archived: 'exclude' | 'include' | 'only' = 'exclude',
   order: 'created' | 'recent' = 'recent'
 ): Promise<PaginatedSessions> {
+  const titleRead = titleReadRevision()
+
   const result = await hermesApi<PaginatedSessions>({
     ...profileScoped(),
     path:
@@ -118,7 +121,7 @@ export async function listSessions(
 
   return {
     ...result,
-    sessions: pageWindow(stampActiveConnectionOwner(result.sessions), limit),
+    sessions: pageWindow(stampActiveConnectionOwner(result.sessions).map(row => reconcileTitleRead(row, titleRead)), limit),
     offset: 0
   }
 }
@@ -150,6 +153,8 @@ export async function listAllProfileSessions(
     ? `&exclude_sources=${encodeURIComponent(filter.excludeSources.join(','))}`
     : ''
 
+  const titleRead = titleReadRevision()
+
   const result = await hermesApi<PaginatedSessions>({
     ...profileScoped(),
     path:
@@ -160,7 +165,7 @@ export async function listAllProfileSessions(
 
   return {
     ...result,
-    sessions: pageWindow(stampActiveConnectionOwner(result.sessions), limit),
+    sessions: pageWindow(stampActiveConnectionOwner(result.sessions).map(row => reconcileTitleRead(row, titleRead)), limit),
     offset: 0
   }
 }
@@ -329,6 +334,7 @@ export async function listSidebarSessions(req: SidebarSessionsRequest): Promise<
     params.set('messaging_exclude', req.messagingExclude.join(','))
   }
 
+  const titleRead = titleReadRevision()
   let result: SidebarSessionsResponse
 
   try {
@@ -353,17 +359,17 @@ export async function listSidebarSessions(req: SidebarSessionsRequest): Promise<
   return {
     recents: {
       ...result.recents,
-      sessions: stampActiveConnectionOwner(result.recents?.sessions ?? []),
+      sessions: stampActiveConnectionOwner(result.recents?.sessions ?? []).map(row => reconcileTitleRead(row, titleRead)),
       ...(result.errors?.length ? { errors: result.errors } : {})
     },
     cron: {
       ...result.cron,
-      sessions: stampActiveConnectionOwner(result.cron?.sessions ?? []),
+      sessions: stampActiveConnectionOwner(result.cron?.sessions ?? []).map(row => reconcileTitleRead(row, titleRead)),
       ...(result.errors?.length ? { errors: result.errors } : {})
     },
     messaging: {
       ...result.messaging,
-      sessions: stampActiveConnectionOwner(result.messaging?.sessions ?? []),
+      sessions: stampActiveConnectionOwner(result.messaging?.sessions ?? []).map(row => reconcileTitleRead(row, titleRead)),
       ...(result.errors?.length ? { errors: result.errors } : {})
     },
     errors: result.errors,
@@ -438,13 +444,19 @@ export function searchSessions(query: string): Promise<SessionSearchResponse> {
 // the given `profile`). The backend resolves exact ids and unique prefixes and
 // 404s when the id isn't on that profile — so a cheap by-id lookup replaces the
 // cross-profile list scan when locating an unknown id's owner.
-export function getSession(id: string, profile?: ProfileScope): Promise<SessionInfo> {
+export async function getSession(id: string, profile?: ProfileScope): Promise<SessionInfo> {
   const suffix = sessionScopeQuery(profile)
+  const titleRead = titleReadRevision()
+  const owner = sessionScoped(profile)
 
-  return hermesApi<SessionInfo>({
+  const row = await hermesApi<SessionInfo>({
     ...sessionScoped(profile),
     path: `/api/sessions/${encodeURIComponent(id)}${suffix}`
   })
+
+  const reconciled = reconcileTitleRead({ ...row, profile: row.profile || owner.profile, connection_id: row.connection_id || owner.connectionId }, titleRead)
+
+  return reconciled.title === row.title ? row : { ...row, title: reconciled.title }
 }
 
 // Reads another profile's transcript. For a remote profile Electron reroutes

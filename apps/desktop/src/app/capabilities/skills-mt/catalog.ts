@@ -52,16 +52,22 @@ export function usableIconUrl(url?: string | null): string | null {
   return url && /^(?:https:\/\/|data:image\/)/.test(url) ? url : null
 }
 
-export type InstalledBadge = 'bundled' | 'market' | 'agent'
+export type InstalledBadge = 'bundled' | 'market' | 'uploaded' | 'agent'
 
-/** 已安装技能的来源徽标：随应用带的 = 内置技能；从市场 / 技能库装的 = 技能市场；对话里学会的 = agent 创建。 */
+/** 已安装技能的来源徽标：内置、技能市场、用户上传，或由 agent 创建。 */
 export function installedBadge(skill: Pick<SkillInfo, 'provenance'>): InstalledBadge {
-  return skill.provenance === 'hub' ? 'market' : skill.provenance === 'agent' ? 'agent' : 'bundled'
+  return skill.provenance === 'upload'
+    ? 'uploaded'
+    : skill.provenance === 'hub'
+      ? 'market'
+      : skill.provenance === 'agent'
+        ? 'agent'
+        : 'bundled'
 }
 
-/** 只有从市场 / 技能库装的能卸载；内置的只能关，agent 创建的在开发者模式的原列表里管理。 */
+/** 市场安装和用户上传都由 Hub 管理，均可卸载；内置的只能关。 */
 export function canUninstall(skill: Pick<SkillInfo, 'provenance'>): boolean {
-  return skill.provenance === 'hub'
+  return skill.provenance === 'hub' || skill.provenance === 'upload'
 }
 
 export type InstalledFilter = 'all' | 'enabled' | 'disabled'

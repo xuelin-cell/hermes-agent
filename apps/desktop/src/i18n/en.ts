@@ -148,6 +148,7 @@ export const en: Translations = {
     officePreviewFailed: 'Office conversion failed. Download the original file to view it.',
     artifactSensitive: 'Sensitive configuration and credential files cannot be uploaded to the cloud drive.',
     uploadArtifact: 'Upload to cloud drive',
+    uploadToLibrary: 'Upload to library',
     uploadHere: 'Upload to this folder',
     chooseUploadFolder: 'Choose a destination in your personal cloud drive',
     artifactRemote:
@@ -404,6 +405,7 @@ export const en: Translations = {
       connectAction: 'Connect',
       connected: 'Connected',
       disconnect: 'Disconnect',
+      reenable: 'Re-enable',
       tryIt: 'Try it like this',
       brand: 'UniWork',
       credentials: 'Enter connection details',
@@ -1088,6 +1090,7 @@ export const en: Translations = {
       needsAuthMessage: name => `${name} MCP needs re-authentication.`,
       errorTitle: 'MCP server unreachable',
       errorMessage: name => `${name} MCP failed its health check.`,
+      connectionFailedMessage: name => `Could not connect to ${name}. Test it in Connectors.`,
       signIn: 'Sign in',
       view: 'View',
       disable: 'Disable',

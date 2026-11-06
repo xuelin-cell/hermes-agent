@@ -7,7 +7,11 @@ import { expect, it } from 'vitest'
 
 import { createLocalSecretStorage } from '../local-secret-storage'
 
-import { ConnectorRuntime } from './runtime'
+import { ConnectorRuntime, connectorRequestTimeoutMs } from './runtime'
+
+it('provides the four-minute mailbox credential-validation request budget', () => {
+  expect(connectorRequestTimeoutMs).toBe(240_000)
+})
 
 it('runs isolated services A → B → A with authenticated, service-filtered MCP discovery', async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-connectors-'))

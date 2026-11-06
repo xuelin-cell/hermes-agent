@@ -165,6 +165,7 @@ export interface Translations {
     officePreviewFailed: string
     artifactSensitive: string
     uploadArtifact: string
+    uploadToLibrary: string
     uploadHere: string
     chooseUploadFolder: string
     artifactRemote: string
@@ -895,6 +896,7 @@ export interface Translations {
       needsAuthMessage: (name: string) => string
       errorTitle: string
       errorMessage: (name: string) => string
+      connectionFailedMessage: (name: string) => string
       signIn: string
       view: string
       disable: string

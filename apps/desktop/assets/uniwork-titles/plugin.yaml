@@ -1,0 +1,8 @@
+name: uniwork-titles
+version: "1.0.0"
+description: "Digital employee conversation titles, isolated from main responses."
+hooks:
+  - pre_llm_call
+  - post_tool_call
+  - post_llm_call
+  - pre_api_request

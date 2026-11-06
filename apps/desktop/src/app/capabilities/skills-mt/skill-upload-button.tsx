@@ -36,8 +36,8 @@ function ScopedUpload({ profile, onUploaded }: Props) {
     if (pending.current) {return}
     setError('')
 
-    if (!/\.(zip|skill)$/i.test(file.name) || file.size > 20 * 1024 * 1024) {
-      setError(zh ? '请选择不超过 20 MB 的 .zip 或 .skill 技能包' : 'Choose a .zip or .skill package up to 20 MB')
+    if (!/\.(zip|skill)$/i.test(file.name) || file.size > 200 * 1024 * 1024) {
+      setError(zh ? '请选择不超过 200 MB 的 .zip 或 .skill 技能包' : 'Choose a .zip or .skill package up to 200 MB')
 
       return
     }
@@ -143,8 +143,8 @@ function ScopedUpload({ profile, onUploaded }: Props) {
           </Button>
           <p className="text-sm text-muted-foreground">
             {zh
-              ? '支持 .zip / .skill，最大 20 MB。包内须包含带有效名称的 SKILL.md，上传后自动安装。'
-              : 'Supports .zip / .skill up to 20 MB. Include SKILL.md with a valid name. Uploads install automatically.'}
+              ? '支持 .zip / .skill：压缩包最大 200 MB，最多 20,000 个文件，解压后最大 1 GB。包内须包含带有效名称的 SKILL.md；安装后在新会话中生效。'
+              : 'Supports .zip / .skill: up to 200 MB, 20,000 files, and 1 GB extracted. Include SKILL.md with a valid name; installed skills apply in new chats.'}
           </p>
           {error && (
             <p className="text-sm text-destructive" role="alert">
