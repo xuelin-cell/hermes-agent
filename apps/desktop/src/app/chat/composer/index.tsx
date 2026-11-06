@@ -1579,7 +1579,7 @@ export function ChatBar({
                     data-slot="composer-layout"
                   >
                     <div
-                      className="flex translate-y-[3px] items-start gap-(--composer-control-gap) self-start [grid-area:menu]"
+                      className="flex translate-y-[3px] items-center gap-(--composer-control-gap) self-start [grid-area:menu]"
                       data-slot="composer-leading"
                     >
                       {contextMenu}

@@ -69,7 +69,7 @@ export function SummonPicker() {
         <PopoverTrigger asChild>
           <button
             aria-label={t('summon')}
-            className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs text-(--ui-text-tertiary) hover:bg-(--ui-bg-tertiary) hover:text-(--ui-text-primary)"
+            className="inline-flex h-(--composer-control-size) items-center gap-1 rounded-md px-1.5 text-xs leading-4 font-normal text-(--ui-text-tertiary) hover:bg-(--ui-bg-tertiary) hover:text-(--ui-text-primary)"
             type="button"
           >
             <Codicon name="organization" />
