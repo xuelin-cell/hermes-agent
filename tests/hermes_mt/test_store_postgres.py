@@ -361,3 +361,24 @@ async def test_hermes_key_is_kept_per_instance_and_cleared_by_a_new_one(postgres
     await store.record_sandbox("user-k", "sb-2", "tpl-x", epoch + 1)
     assert (await store.get_runtime("user-k")).hermes_key_sha256 == ""
     await database.close()
+
+
+@pytest.mark.asyncio
+async def test_safe_to_rebuild_marker_survives_state_corrections_until_the_instance_serves(postgres_database_url: str) -> None:
+    """「能放心从归档重建」只看入口自己记的干净暂停：运行态怎么被校正都不改它，成功跑起来一次才清掉。"""
+    database, store = await _store(postgres_database_url)
+    await _user_with_runtime(store, "user-p")
+    await store.record_sandbox("user-p", "sb-1", "tpl-x", await store.next_epoch("user-p"))
+    assert not await store.paused_after_archive("user-p")                 # 老数据、新实例：不知道就不删
+
+    await store.mark_paused_clean("user-p")
+    assert not await store.paused_after_archive("user-p")                 # 还没有任何归档
+    await store.set_state_archive("user-p", "20261105T190046Z.tar.gz", {})
+    await store.mark_paused_clean("user-p")
+    await store.set_tenant_state("user-p", "running")                     # 入口启动时按平台状态校正
+    await store.set_tenant_state("user-p", "stopped")                     # 启动失败回写
+    assert await store.paused_after_archive("user-p")
+
+    await store.mark_served("user-p")
+    assert not await store.paused_after_archive("user-p")
+    await database.close()

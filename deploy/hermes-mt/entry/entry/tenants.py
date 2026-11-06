@@ -850,6 +850,7 @@ class TenantManager:
                 traffic_token=self.cube.traffic_token(sandbox_id),
             )
             await self.store.set_tenant_state(user_id, "running")
+            await self.store.mark_served(user_id)
             if touch:
                 await self.store.touch_tenant(user_id)
             await self._reload_if_key_changed(user_id, slug, sandbox_id, token, context)
@@ -897,7 +898,15 @@ class TenantManager:
                     if not repaired_id or repaired:
                         await self.store.set_lifecycle(user_id, "")
                         return repaired_id
-            await self._resume_after_drain(user_id, sandbox_id, token)
+            try:
+                await self._resume_after_drain(user_id, sandbox_id, token)
+            except CubeError:
+                # 上一次排空失败、恢复也失败留下的标记（转发器不应答，11-06 真机）：每个请求都走到这里、
+                # 都失败。能放心从归档重建就换掉，空串让调用方新建；不能就照常报错。
+                if not await self._discard_unresponsive(user_id, slug, sandbox_id):
+                    raise
+                await self.store.set_lifecycle(user_id, "")
+                return ""
             return sandbox_id
         want = self._template_id()
         have = str(sb.get("templateID") or rt.template_id or "")
@@ -1145,6 +1154,7 @@ class TenantManager:
         elif phase in {"draining", "fenced"} or status.get("draining") or status.get("hermes") is False:
             raise CubeError(503, "实例仍在排空或已失去所有权，请稍后重试")
         await self.store.set_tenant_state(user_id, "running")
+        await self.store.mark_served(user_id)
         await self.store.set_lifecycle(user_id, "")
         await self.store.write_audit(user_id, "tenant.drain.resume", {"sandbox": sandbox_id})
 
@@ -1216,10 +1226,12 @@ class TenantManager:
                 self._register_token(rt)
                 sandbox_id = rt.sandbox_id
                 if sandbox_id:
+                    archived = False
                     try:
                         token = await self.store.ensure_tenant_token(user_id)
                         body = await self.cube.sync_state(sandbox_id, self.s.forward_port, token)
                         summary = body.get("archive") or {}
+                        archived = bool(summary.get("archive"))
                         await self.store.set_state_archive(user_id, str(summary.get("archive") or ""), summary)
                         await self._note_cron(user_id, body.get("activity"))
                     except CubeError as exc:
@@ -1230,6 +1242,10 @@ class TenantManager:
                         await self.cube.pause_sandbox(sandbox_id)
                     except CubeError as exc:
                         log.warning("暂停 %s 的实例失败: %s", slug, exc)
+                    else:
+                        if archived:
+                            # 这份归档就是全部数据：之后它要是醒来却起不来，可以放心从归档重建。
+                            await self.store.mark_paused_clean(user_id)
                 await self.store.set_tenant_state(user_id, "stopped")
                 await self.store.write_audit(user_id, "tenant.stop", {"reason": reason})
 

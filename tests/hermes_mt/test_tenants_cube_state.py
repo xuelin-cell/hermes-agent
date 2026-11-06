@@ -37,6 +37,12 @@ class FakeStore:
     async def paused_after_archive(self, user_id):
         return self.archived_before_pause
 
+    async def mark_paused_clean(self, user_id):
+        self.archived_before_pause = True
+
+    async def mark_served(self, user_id):
+        self.archived_before_pause = False
+
     async def get_profile_settings(self, user_id, profile="default"):
         return self.settings
 
@@ -986,3 +992,42 @@ async def test_template_upgrade_of_an_instance_without_its_forwarder_rebuilds_in
     assert ("deleted", "sbOld", "unresponsive") in store.calls
     assert [c[1] for c in store.calls if c[0] == "lifecycle"][-1] == ""
     assert next(c for c in cube.calls if c[0] == "bootstrap")[2]["restore_from"] == "sbOld"
+
+
+@pytest.mark.asyncio
+async def test_instance_left_draining_by_a_failed_upgrade_is_rebuilt_on_the_next_request(monkeypatch) -> None:
+    """上一次换模板排空失败、恢复也失败，实例被留在「排空中」：之后的请求走恢复那条路也问不到转发器，
+    能放心重建就换掉，不能每个请求都卡在这里（11-06 真机）。"""
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    store, cube = _stuck(True, {"error": "service unavailable"})
+    store.runtime = replace(store.runtime, lifecycle="draining")
+    tenant = await _manager(store, cube).ensure_running("u")
+    assert tenant.sandbox_id == "sb1"
+    assert ("deleted", "sbOld", "unresponsive") in store.calls
+    assert [c[1] for c in store.calls if c[0] == "lifecycle"][-1] == ""
+
+
+@pytest.mark.asyncio
+async def test_only_a_clean_idle_pause_makes_an_instance_safe_to_rebuild(monkeypatch) -> None:
+    """「能放心从归档重建」由入口自己记：归档成功再暂停成功才算，之后成功跑起来一次就不算了。
+    入口启动时按平台状态校正运行态（11-06 真机）不能改变它。"""
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    store = FakeStore(runtime=Runtime("running", "sbA", "tpl-new", 2, "sbA", "x.tar.gz", ""))
+    cube = FakeCube({"sbA": {"sandboxID": "sbA", "templateID": "tpl-new", "state": "running"}})
+    manager = _manager(store, cube)
+
+    cube.sync_error = CubeError(500, "archive failed")
+    await manager.stop("u", reason="idle>30m")
+    assert not store.archived_before_pause            # 归档没成：暂停前的东西可能没存下
+
+    cube.sync_error = None
+    cube.sandboxes["sbA"]["state"] = "running"
+    await manager.stop("u", reason="idle>30m")
+    assert store.archived_before_pause
+
+    cube.sandboxes["sbA"]["state"] = "running"         # 平台说它在跑：入口启动时照此校正
+    await manager.reconcile()
+    assert store.runtime.state == "running" and store.archived_before_pause
+
+    await manager.ensure_running("u")                  # 跑起来过：之后可能有没归档的东西
+    assert not store.archived_before_pause
