@@ -131,7 +131,7 @@ export function CatalogCard({
   )
 }
 
-const BADGE_TEXT = { bundled: 'badgeBundled', market: 'badgeMarket', agent: 'badgeAgent' } as const
+const BADGE_TEXT = { bundled: 'badgeBundled', market: 'badgeMarket', uploaded: 'badgeUploaded', agent: 'badgeAgent' } as const
 
 interface InstalledCardProps {
   badge: InstalledBadge

@@ -107,12 +107,12 @@ async def upload_skill(body: SkillUpload, profile: Optional[str] = None):
     if not body.filename.lower().endswith((".zip", ".skill")):
         raise HTTPException(400, "请选择 .zip 或 .skill 技能包")
     if len(body.content) > ((MAX_ARCHIVE_BYTES + 2) // 3) * 4:
-        raise HTTPException(413, "技能包超过 20 MB")
+        raise HTTPException(413, "技能包超过 200 MB")
     try:
         package = base64.b64decode(body.content, validate=True)
         if len(package) > MAX_ARCHIVE_BYTES:
-            raise HTTPException(413, "技能包超过 20 MB")
-        bundle = await asyncio.to_thread(bundle_from_zip, package, "upload", "")
+            raise HTTPException(413, "技能包超过 200 MB")
+        bundle = await asyncio.to_thread(bundle_from_zip, package, "upload", "", source="upload")
         return await asyncio.to_thread(install_skill_bundle, bundle, profile, approved_hash=body.approved_hash)
     except MarketSkillApprovalRequired as exc:
         return {"ok": False, "requires_confirmation": True, "package_hash": exc.package_hash, "report": exc.report}

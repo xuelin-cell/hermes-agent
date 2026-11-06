@@ -102,6 +102,20 @@ def test_zip_bundle_strips_wrapper_and_uses_frontmatter_name():
     assert set(bundle.files) == {"SKILL.md", "references/guide.md", "examples/sub-skill/SKILL.md"}
 
 
+def test_uploaded_zip_bundle_keeps_upload_provenance():
+    """Local archive uploads retain a distinct origin through the shared install path."""
+    from hermes_cli.skill_market_install import bundle_from_zip
+
+    bundle = bundle_from_zip(
+        _skill_zip({"upload/SKILL.md": "---\nname: local-fixture\ndescription: fixture\n---\n"}),
+        "upload", "", source="upload",
+    )
+
+    assert bundle.source == "upload"
+    assert bundle.identifier == "upload"
+    assert bundle.metadata == {}
+
+
 def test_zip_bundle_rejects_multiple_peer_skill_roots():
     """没有唯一上层主入口的多技能合集不能被误装成其中任意一个技能。"""
     import pytest

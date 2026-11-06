@@ -1161,8 +1161,8 @@ export interface SkillInfo {
   name: string
   /** Total observed activity (use + view + patch). Absent on older backends. */
   usage?: number
-  /** 'agent' = learned/local (editable), 'bundled' = ships with Hermes, 'hub' = installed. */
-  provenance?: 'agent' | 'bundled' | 'hub'
+    /** 'agent' = learned/local, 'bundled' = ships with Hermes, 'hub' = catalog install, 'upload' = local archive. */
+    provenance?: 'agent' | 'bundled' | 'hub' | 'upload'
 }
 
 /** One entry of the built-in optional-skills catalog (optional-skills/ in the
