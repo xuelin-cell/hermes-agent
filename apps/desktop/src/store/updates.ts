@@ -65,6 +65,24 @@ export const $updateStatus = atom<DesktopUpdateStatus | null>(null)
 export const $updateReady = atom<{ version: string | null } | null>(null)
 export const $updateReadyDismissed = atom<boolean>(false)
 
+/** Where a failed transfer came from: the ambient prefetch or an explicit
+ *  "update now". Retry re-runs that same step — never the check. */
+export type UpdateDownloadFailureSource = 'prepare' | 'apply'
+
+export interface UpdateDownloadFailure {
+  /** The strategy's own reason, shown under the headline. */
+  message: string | null
+  source: UpdateDownloadFailureSource
+}
+
+/** Mutually exclusive with $updateReady: a failure never coexists with a
+ *  ready prompt. */
+export const $updateDownloadFailure = atom<UpdateDownloadFailure | null>(null)
+
+/** True while an explicit retry is transferring again, so the failure dialog
+ *  can stay open with a "downloading" state instead of vanishing silently. */
+export const $updateDownloadRetrying = atom<boolean>(false)
+
 // Client and backend are independently updatable; each keeps its own state.
 export const $backendUpdateStatus = atom<DesktopUpdateStatus | null>(null)
 export const $backendUpdateApply = atom<UpdateApplyState>(IDLE)
@@ -656,28 +674,74 @@ export function dismissUpdateReady(): void {
   $updateReady.set(null)
 }
 
+/** Close the failure dialog; the next check or manual update can offer it again. */
+export function dismissUpdateDownloadFailure(): void {
+  $updateDownloadFailure.set(null)
+}
+
+/**
+ * Retry the step that failed instead of re-running the check, and never install
+ * by itself: the retry only downloads again (reusing the verified package when
+ * one is already on disk), so the user still has to press "restart to update"
+ * before anything is installed.
+ */
+export async function retryUpdateDownload(): Promise<void> {
+  const failure = $updateDownloadFailure.get()
+
+  if ($updateDownloadRetrying.get() || !failure) {
+    return
+  }
+
+  $updateDownloadFailure.set(null)
+  $updateDownloadRetrying.set(true)
+
+  try {
+    // An explicit retry overrides the session's "closed the prompt" latch.
+    $updateReadyDismissed.set(false)
+
+    // Nothing to retry (the check no longer offers a version, the bridge is
+    // gone): put the failure back instead of closing the dialog silently.
+    if (!(await prepareClientUpdate())) {
+      $updateDownloadFailure.set(failure)
+    }
+  } finally {
+    $updateDownloadRetrying.set(false)
+  }
+}
+
 let preparingClientUpdate = false
 
 /**
  * Download the offered client update in the background — no install, no
- * progress UI — so the ambient prompt appears only once the bytes are on disk.
- * Reuses the same strategy apply() would; every failure stays silent because
- * the background check must never interrupt the user.
+ * progress UI — so the ready prompt appears only once the bytes are on disk.
+ * Reuses the same strategy apply() would. A genuine failure surfaces in the
+ * "Software Update" failure dialog with its own retry; installs whose owner
+ * does the transfer itself (`supported: false`) stay silent, as before.
+ *
+ * Returns whether a transfer was actually attempted, so an explicit retry can
+ * restore the failure instead of closing the dialog when there is nothing left
+ * to download.
  */
-export async function prepareClientUpdate(): Promise<void> {
+export async function prepareClientUpdate(): Promise<boolean> {
   const bridge = window.hermesDesktop?.updates
   const status = $updateStatus.get()
 
-  if (!bridge?.prepare || preparingClientUpdate || $updateReadyDismissed.get() || $updateReady.get()) {
-    return
+  if (
+    !bridge?.prepare ||
+    preparingClientUpdate ||
+    $updateReadyDismissed.get() ||
+    $updateReady.get() ||
+    $updateDownloadFailure.get()
+  ) {
+    return false
   }
 
   if (!status || status.error || status.supported === false || status.retirement) {
-    return
+    return false
   }
 
   if (!status.updateAvailable && (status.behind ?? 0) <= 0) {
-    return
+    return false
   }
 
   preparingClientUpdate = true
@@ -686,13 +750,30 @@ export async function prepareClientUpdate(): Promise<void> {
     const result: DesktopUpdatePrepareResult = await bridge.prepare()
 
     if (result?.ok && result.ready) {
+      $updateDownloadFailure.set(null)
       $updateReady.set({ version: result.version ?? null })
+
+      return true
     }
-  } catch {
-    // Silent by design: a background prefetch never surfaces an error.
+
+    // `supported: false` (App Installer / Store / handoff) means the owner
+    // does the download itself — there is no in-app transfer to retry, so the
+    // failure surface stays away and the existing behaviour is preserved.
+    if (result && result.supported !== false) {
+      $updateReady.set(null)
+      $updateDownloadFailure.set({ message: result.message ?? result.error ?? null, source: 'prepare' })
+    }
+  } catch (error) {
+    $updateReady.set(null)
+    $updateDownloadFailure.set({
+      message: error instanceof Error ? error.message : String(error),
+      source: 'prepare'
+    })
   } finally {
     preparingClientUpdate = false
   }
+
+  return true
 }
 
 export async function applyUpdates(opts: DesktopUpdateApplyOptions = {}): Promise<DesktopUpdateApplyResult> {
@@ -709,6 +790,7 @@ export async function applyUpdates(opts: DesktopUpdateApplyOptions = {}): Promis
   }
 
   dismissNotification(UPDATE_TOAST_ID)
+  $updateDownloadFailure.set(null)
   $updateApply.set({ ...IDLE, applying: true, stage: 'prepare', message: 'Starting update…' })
 
   try {
@@ -798,20 +880,24 @@ export async function applyUpdates(opts: DesktopUpdateApplyOptions = {}): Promis
           title: translateNow('updates.allSetTitle')
         })
       } else {
-        $updateApply.set({
-          ...$updateApply.get(),
-          applying: false,
-          stage: 'error',
-          error: result?.error ?? 'apply-failed',
-          message: result?.message ?? translateNow('updates.errorBody')
-        })
+        const message: string = result?.message ?? translateNow('updates.errorBody')
+
+        // A failed transfer/install belongs to the same "Software Update"
+        // dialog as the rest of the download results, with its own retry — the
+        // overlay's progress view has nothing left to show.
+        $updateApply.set(IDLE)
+        setUpdateOverlayOpen(false)
+        $updateDownloadFailure.set({ message, source: 'apply' })
       }
     }
 
     return result
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    $updateApply.set({ ...$updateApply.get(), applying: false, stage: 'error', error: 'apply-failed', message })
+
+    $updateApply.set(IDLE)
+    setUpdateOverlayOpen(false)
+    $updateDownloadFailure.set({ message, source: 'apply' })
 
     return { ok: false, error: 'apply-failed', message }
   }

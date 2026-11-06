@@ -155,7 +155,7 @@ import {
 import { TitlebarControls } from '../shell/titlebar-controls'
 import { WslgWindowControls } from '../shell/wslg-window-controls'
 import { UpdateCheckDialog } from '../update-check-dialog'
-import { UpdateReadyPrompt } from '../update-ready-prompt'
+import { UpdateDownloadDialog } from '../update-download-dialog'
 import { UpdatesOverlay } from '../updates-overlay'
 
 import { ContribWiringContext } from './context'
@@ -1446,7 +1446,7 @@ export function ContribWiring({ children }: { children: ReactNode }) {
       />
       <UpdatesOverlay />
       <UpdateCheckDialog />
-      {!isAuxiliaryWindow() && <UpdateReadyPrompt />}
+      {!isAuxiliaryWindow() && <UpdateDownloadDialog />}
       <GatewayConnectingOverlay />
       <BootFailureOverlay />
       <CommandPalette />
