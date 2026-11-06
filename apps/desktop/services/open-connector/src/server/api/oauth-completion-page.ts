@@ -148,6 +148,9 @@ const t=STR[pick()]||STR.en;
 document.documentElement.lang=pick();
 for(const el of document.querySelectorAll("[data-t]")){const key=el.getAttribute("data-t");if(t[key]!=null)el.textContent=t[key];}
 if(t.title)document.title=t.title;
+// A window the app opened by script (the cloud's authorization popup) may close itself;
+// browsers ignore this in an ordinary tab, where the instruction above stays.
+setTimeout(()=>window.close(),1500);
 })();</script>
 </body>
 </html>`;
