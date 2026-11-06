@@ -23,10 +23,6 @@ import { clearActiveSessionTodos } from '@/store/todos'
 
 import type { GatewayEventContext } from './types'
 
-function firstBillingLine(text: string): string {
-  return (text || '').split('\n')[0]?.trim() ?? ''
-}
-
 /**
  * A turn failed on a billing wall (out of credits / payment required). The
  * gateway forwards the structured descriptor built by `agent/billing_links.py`;
@@ -61,7 +57,7 @@ function surfaceBillingBlock(sessionId: string, raw: unknown): void {
     title: block.is_nous
       ? translateNow('billingBlock.titleNous')
       : translateNow('billingBlock.titleProvider', block.provider_label),
-    message: firstBillingLine(block.message) || translateNow('billingBlock.fallbackMessage'),
+    message: translateNow('billingBlock.fallbackMessage'),
     // Sticky: a credit wall blocks every turn until resolved.
     durationMs: 0,
     action: { label: billingCtaLabel(block, ctaCopy), onClick: () => runBillingRecovery(block) }
