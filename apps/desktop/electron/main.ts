@@ -1054,7 +1054,6 @@ const BOOT_FAKE_ERROR = process.env.HERMES_DESKTOP_BOOT_FAKE_ERROR || ''
 // Automated teardown (Playwright's app.close(), harness scripts) quits with
 // nobody to answer a modal, so the active-work confirmation would hang the
 // caller instead of letting the process exit. Force quits set this.
-const SKIP_QUIT_CONFIRM = process.env.HERMES_DESKTOP_SKIP_QUIT_CONFIRM === '1'
 // One launch decision must reach both the renderer and every backend spawn.
 const GUEST_ONBOARDING: boolean = guestOnboardingEnabled()
 const SKIP_INTRO: boolean = skipIntroEnabled()
@@ -3692,9 +3691,7 @@ let isQuittingForHandoff = false
 // Quit-guard latches: one while the confirmation is on screen (a second
 // Cmd-Q must not stack dialogs), one after the user has said "quit anyway"
 // (the app.quit() that follows re-enters before-quit and must pass through).
-let quitPromptOpen = false
 let restartAfterQuit = false
-let quitConfirmedWithActiveWork = false
 
 // Resolve the staged updater binary the desktop may hand an update to. On
 // Windows that binary owns ALL repo mutation — running `hermes update` +
@@ -12314,7 +12311,6 @@ const accountLogout = createAccountLogout({
   },
   finish: async mode => {
     logoutComplete = true
-    quitConfirmedWithActiveWork = true
     accountExitWindows.finish()
 
     if (mode === 'logout') {
@@ -18180,7 +18176,6 @@ ipcMain.handle('hermes:setting:defaultProjectDir:restart', event => {
   }
 
   restartAfterQuit = true
-  quitConfirmedWithActiveWork = true
   app.quit()
 })
 
@@ -19109,62 +19104,6 @@ function configureSpellChecker() {
   }
 }
 
-/** 退出应用统一确认，不因界面是否报告运行中任务而改变提示。 */
-function heldQuitForActiveWork(event: Electron.Event): boolean {
-  if (SKIP_QUIT_CONFIRM || quitConfirmedWithActiveWork || isQuittingForHandoff) {
-    return false
-  }
-
-  if (quitPromptOpen) {
-    event.preventDefault()
-
-    return true
-  }
-
-  const prompt = {
-    buttons: ['取消', '退出应用'],
-    message: '退出 Hermes Desktop MT？',
-    detail: '将停止当前账号的托管工作，保留登录、历史和文件。再次打开时恢复未到期的登录。'
-  }
-
-  // 托盘退出也显示同一确认；取消后仍能使用原账号。
-  if (minimizeToTray.status().available) {
-    minimizeToTray.restore()
-  }
-
-  // A hidden aux window must never parent the quit prompt: the dialog would
-  // be invisible and the held quit unanswerable (#116376 §E).
-  const parent = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows().find(window => window.isVisible())
-
-  event.preventDefault()
-  quitPromptOpen = true
-
-  const options: Electron.MessageBoxOptions = {
-    buttons: [...prompt.buttons],
-    cancelId: 0,
-    defaultId: 0,
-    detail: prompt.detail,
-    message: prompt.message,
-    type: 'question'
-  }
-
-  void (parent && !parent.isDestroyed() ? dialog.showMessageBox(parent, options) : dialog.showMessageBox(options))
-    .then(({ response }) => {
-      quitPromptOpen = false
-
-      if (response === 1) {
-        quitConfirmedWithActiveWork = true
-        app.quit()
-      }
-    })
-    .catch(() => {
-      // 未取得确认时保持运行，不把对话框错误当作用户同意。
-      quitPromptOpen = false
-    })
-
-  return true
-}
-
 app.on('before-quit', event => {
   if (accountLogout.started() && !logoutComplete) {
     event.preventDefault()
@@ -19172,17 +19111,10 @@ app.on('before-quit', event => {
     return
   }
 
-  // Runs ahead of every teardown below, so "Keep Running" leaves the app
-  // exactly as it was.
-  if (heldQuitForActiveWork(event)) {
-    return
-  }
-
   if (!logoutComplete && !isQuittingForHandoff) {
     event.preventDefault()
     void logoutDesktopAccount('quit').catch(() => {
       restartAfterQuit = false
-      quitConfirmedWithActiveWork = false
       dialog.showErrorBox('Hermes Desktop MT', '无法开始安全退出，请重试。历史和登录记录未删除。')
     })
 
