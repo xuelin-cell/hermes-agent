@@ -11,6 +11,8 @@
 //   page's address is configured there alone.
 // The gateway's `/sso/me` and `/sso/logout` are fixed by the plan: a signed-out page cannot ask the entry for them.
 
+import { readBrowserAuth, storeBrowserLogin } from '../../../shared/src/browser-maas-auth.js'
+
 export const SSO_PLATFORM = 'agents'
 export const SSO_API = '/app/gateway/sso'
 
@@ -259,4 +261,23 @@ export function renderSsoBlocked(
 
   panel.append(title, text, row)
   root.replaceChildren(panel)
+}
+
+/**
+ * The personal entry's account modules (shared/src/browser-maas-auth.js) send the browser's MaaS login with each
+ * call. Under the unified login the token stays in the entry, which takes it from the gateway by session and
+ * ignores what the browser sends: a placeholder keeps those modules working unchanged.
+ *
+ * It is written only when this account has none yet. Every other tab of the site reloads when this key changes
+ * (browser-bridge's storage listener, there for account switches), and a placeholder rewritten at each start —
+ * with a fresh expiry, so a different value — made two open tabs reload each other forever.
+ */
+export function keepSsoPlaceholderLogin(apiBase: string, account: string): void {
+  const loginId = `sso:${account}`
+
+  if (readBrowserAuth(apiBase)?.loginId === loginId) {
+    return
+  }
+
+  storeBrowserLogin(apiBase, { maas_auth: { expiresAt: Date.now() + 30 * 86_400_000, loginId, token: 'sso' } })
 }

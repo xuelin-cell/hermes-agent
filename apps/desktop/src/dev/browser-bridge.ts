@@ -21,6 +21,7 @@ import { $enterpriseShell, noteEntryAccount } from '@/lib/enterprise-mt'
 import {
   bootSso,
   installSsoAuthErrorHandler,
+  keepSsoPlaceholderLogin,
   renderSsoBlocked,
   type SsoAccount,
   type SsoBoot,
@@ -32,8 +33,7 @@ import {
   browserAuthKey,
   clearBrowserAuth,
   readBrowserAuth,
-  requestEntryMaas,
-  storeBrowserLogin
+  requestEntryMaas
 } from '../../../shared/src/browser-maas-auth.js'
 import type { LoginAccount } from '../../electron/login/contract'
 import type { WelcomeLocale, WelcomePayload } from '../../electron/uniwork-welcome/catalog'
@@ -1609,12 +1609,7 @@ function settleSsoAccount(): boolean {
   scopeStorageToAccount(me.user_id)
 
   if (personalCloud()) {
-    // The account modules (shared/src/browser-maas-auth.js) send the browser's MaaS login with each call. Under the
-    // unified login the token stays in the entry, which takes it from the gateway by session and ignores what the
-    // browser sends: a placeholder keeps those modules working unchanged.
-    storeBrowserLogin(browserApiBase(), {
-      maas_auth: { expiresAt: Date.now() + 30 * 86_400_000, loginId: `sso:${me.user_id}`, token: 'sso' }
-    })
+    keepSsoPlaceholderLogin(browserApiBase(), me.user_id)
   } else {
     clearBrowserAuth(browserApiBase()) // an enterprise account has no account modules: drop whoever signed in before
   }

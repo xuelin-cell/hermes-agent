@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { bootSso, installSsoAuthErrorHandler, renderSsoBlocked, ssoDisplayName, ssoLoginUrl } from './sso-mt'
+import { browserAuthKey } from '../../../shared/src/browser-maas-auth.js'
+
+import { bootSso, installSsoAuthErrorHandler, keepSsoPlaceholderLogin, renderSsoBlocked, ssoDisplayName, ssoLoginUrl } from './sso-mt'
 
 const originalLocation = window.location
 const originalFetch = window.fetch
@@ -194,5 +196,28 @@ describe('unified login (desktop-mt)', () => {
     logout.click()
     expect(actions.switchAccount).toHaveBeenCalledOnce()
     expect(actions.logout).toHaveBeenCalledOnce()
+  })
+})
+
+describe('placeholder login under the unified login', () => {
+  afterEach(() => {
+    localStorage.clear()
+    vi.useRealTimers()
+  })
+
+  it('is not rewritten by a later start of the same account, so other tabs are not reloaded', () => {
+    vi.useFakeTimers()
+    const key = () => browserAuthKey('/agents/api/')
+
+    keepSsoPlaceholderLogin('/agents/api/', 'u-1')
+    const first = localStorage.getItem(key())
+
+    vi.advanceTimersByTime(60_000) // another tab starts a minute later
+    keepSsoPlaceholderLogin('/agents/api/', 'u-1')
+    expect(localStorage.getItem(key())).toBe(first)
+
+    keepSsoPlaceholderLogin('/agents/api/', 'u-2') // a real account switch still changes it
+    expect(localStorage.getItem(key())).not.toBe(first)
+    expect(JSON.parse(localStorage.getItem(key())!).loginId).toBe('sso:u-2')
   })
 })
