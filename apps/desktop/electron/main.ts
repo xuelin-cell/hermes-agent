@@ -777,6 +777,12 @@ const ACCOUNT_DRIVE_ARTIFACT = createDriveArtifactResolver({
   read: (backend, route) => fetchJsonForBackend(backend, route, { timeoutMs: 60_000 })
 })
 
+const refreshAccountPlan = createPlanRefresher(
+  currentDesktopLogin,
+  () => (currentDesktopLocalContext() === ACCOUNT_RUNTIME ? ACCOUNT_RUNTIME.home : null),
+  rememberLog,
+  (identity, usage) => ACCOUNT_PLAN_USAGE?.remember(identity, usage)
+)
 const ACCOUNT_PLAN_USAGE = installAccountIpc(
   ACCOUNT_SESSION,
   () => DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString(),
@@ -797,6 +803,7 @@ const ACCOUNT_PLAN_USAGE = installAccountIpc(
     applyBinding: createUniAgentGateBindingUpdate(() =>
       currentDesktopLocalContext() === ACCOUNT_RUNTIME ? ACCOUNT_RUNTIME : null
     ),
+    refreshPlan: refreshAccountPlan,
     startupLogin: currentDesktopLogin()
   }
 )
@@ -820,12 +827,7 @@ installNtfyIpc(ACCOUNT_SESSION, () => DEV_SERVER || pathToFileURL(resolveRendere
     ),
   // 每行日志自带 ntfy 前缀（见 uniwork-notify/subscriber.ts）。
   log: rememberLog,
-  refresh: createPlanRefresher(
-    currentDesktopLogin,
-    () => (currentDesktopLocalContext() === ACCOUNT_RUNTIME ? ACCOUNT_RUNTIME.home : null),
-    rememberLog,
-    (identity, usage) => ACCOUNT_PLAN_USAGE?.remember(identity, usage)
-  )
+  refresh: refreshAccountPlan
 })
 installUniAgentGateIpc(
   ACCOUNT_SESSION,

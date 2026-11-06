@@ -239,7 +239,6 @@ export interface Translations {
       refreshFailed: string
       failed: string
       auth: string
-      empty: string
       unnamed: string
       expired: string
       expires: string

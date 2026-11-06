@@ -3,7 +3,7 @@ import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, expect, it, vi } from 'vitest'
 
 import { I18nProvider } from '@/i18n'
-import { runNtfyInstruction } from '@/lib/ntfy-instructions'
+import { DESKTOP_CONFIG_REFRESHED_EVENT, runNtfyInstruction } from '@/lib/ntfy-instructions'
 import { notify } from '@/store/notifications'
 import { requestUpdateCheck } from '@/store/update-check'
 import { deferred } from '@/test/deferred'
@@ -311,7 +311,7 @@ it('账号卡片只保留顶部刷新入口，展开收起不搬动套餐状态�
   expect(query).toHaveBeenCalledTimes(1)
 })
 
-it('无用量时摘要显示破折号，失败原因仅由固定提示说明，正常空数据保持原样', async () => {
+it('缺少用量时显示破折号且不可展开，只有查询失败时显示错误提示', async () => {
   const account = { maskedPhone: '138****0001', expiresAt: Date.now() + 60_000 }
   let finish!: (value: unknown) => void
   const query = vi.fn(
@@ -333,7 +333,8 @@ it('无用量时摘要显示破折号，失败原因仅由固定提示说明，�
   const usageRow = screen.getByRole('button', { name: /套餐实际用量/ })
   const refreshButton = screen.getByRole('button', { name: '刷新套餐信息' })
   expect(usageRow.textContent).toContain('—')
-  expect(usageRow.hasAttribute('disabled')).toBe(false)
+  expect(usageRow.hasAttribute('disabled')).toBe(true)
+  expect(usageRow.querySelector('.account-card-chevron')).toBeNull()
   expect(screen.getAllByText('正在查询套餐用量…')).toHaveLength(1)
   expect(screen.queryByRole('status')).toBeNull()
   expect(refreshButton.querySelector('.animate-spin')).toBeTruthy()
@@ -357,20 +358,22 @@ it('无用量时摘要显示破折号，失败原因仅由固定提示说明，�
   fireEvent.click(refreshButton)
   await screen.findByText('暂时无法查询套餐信息，请完全退出应用后重新打开。')
   expect(usageRow.querySelector('.account-card-summary')?.textContent).toBe('—')
-  expect(usageRow.hasAttribute('disabled')).toBe(false)
-  expect(usageRow.querySelector('.account-card-chevron')).toBeTruthy()
+  expect(usageRow.hasAttribute('disabled')).toBe(true)
+  expect(usageRow.querySelector('.account-card-chevron')).toBeNull()
   expect(screen.queryByText('暂无可展示的用量数据')).toBeNull()
   const data = normalizePlanUsage({ planType: 'token_plan', productName: '真实套餐' }, Date.now())
   refresh.mockResolvedValue({ status: 'available', account, data })
   vi.stubGlobal('hermesDesktop', { getPlanUsage: query, refreshPlanUsage: refresh })
   fireEvent.click(refreshButton)
-  await waitFor(() => expect(usageRow.textContent).toContain('暂无可展示的用量数据'))
-  expect(usageRow.hasAttribute('disabled')).toBe(false)
-  expect(usageRow.querySelector('.account-card-chevron')).toBeTruthy()
+  await screen.findByText('真实套餐')
+  expect(usageRow.querySelector('.account-card-summary')?.textContent).toBe('—')
+  expect(usageRow.hasAttribute('disabled')).toBe(true)
+  expect(usageRow.querySelector('.account-card-chevron')).toBeNull()
   expect(screen.queryByText('套餐信息刷新失败，请稍后重试。')).toBeNull()
   expect(screen.queryByText('登录已失效，请退出账号后重新登录。')).toBeNull()
   fireEvent.click(usageRow)
-  expect(screen.getByText('暂无可展示的用量数据')).toBeTruthy()
+  expect(usageRow.getAttribute('aria-expanded')).toBe('false')
+  expect(screen.queryByRole('button', { name: '查看详情' })).toBeNull()
 })
 
 it('网站入口各自展示忙碌状态，防重复并提示失败原因，手动刷新绕过常规查询', async () => {
@@ -432,8 +435,16 @@ it('网站入口各自展示忙碌状态，防重复并提示失败原因，手�
   expect(viewDetails.getAttribute('aria-busy')).toBe('false')
   expect(usageRow.getAttribute('aria-expanded')).toBe('true')
 
-  fireEvent.click(screen.getByRole('button', { name: '刷新套餐信息' }))
-  await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1))
-  expect(query).toHaveBeenCalledTimes(1)
-  expect(notify).toHaveBeenCalledWith(expect.objectContaining({ message: '套餐信息已刷新' }))
+  const reloadConfig = vi.fn()
+
+  window.addEventListener(DESKTOP_CONFIG_REFRESHED_EVENT, reloadConfig)
+  try {
+    fireEvent.click(screen.getByRole('button', { name: '刷新套餐信息' }))
+    await waitFor(() => expect(reloadConfig).toHaveBeenCalledOnce())
+    expect(refresh).toHaveBeenCalledTimes(1)
+    expect(query).toHaveBeenCalledTimes(1)
+    expect(notify).toHaveBeenCalledWith(expect.objectContaining({ message: '套餐信息已刷新' }))
+  } finally {
+    window.removeEventListener(DESKTOP_CONFIG_REFRESHED_EVENT, reloadConfig)
+  }
 })

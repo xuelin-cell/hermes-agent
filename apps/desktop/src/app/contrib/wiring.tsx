@@ -39,7 +39,7 @@ import { TipHost } from '@/components/tips'
 import { emitGatewayEvent } from '@/contrib/events'
 import { translateNow } from '@/i18n'
 import { type ChatMessage, chatMessageText } from '@/lib/chat-messages'
-import { NTFY_CONFIG_REFRESHED_EVENT } from '@/lib/ntfy-instructions'
+import { DESKTOP_CONFIG_REFRESHED_EVENT } from '@/lib/ntfy-instructions'
 import { isMessagingSource } from '@/lib/session-source'
 import { activateWakeIndicator } from '@/lib/wake-indicator'
 import { playWakeSound } from '@/lib/wake-sound'
@@ -1359,9 +1359,9 @@ export function ContribWiring({ children }: { children: ReactNode }) {
       void queryClient.invalidateQueries({ queryKey: ['model-options'] })
     }
 
-    window.addEventListener(NTFY_CONFIG_REFRESHED_EVENT, reload)
+    window.addEventListener(DESKTOP_CONFIG_REFRESHED_EVENT, reload)
 
-    return () => window.removeEventListener(NTFY_CONFIG_REFRESHED_EVENT, reload)
+    return () => window.removeEventListener(DESKTOP_CONFIG_REFRESHED_EVENT, reload)
   }, [queryClient, refreshHermesConfig, refreshCurrentModel])
 
   return (

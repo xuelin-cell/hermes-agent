@@ -7,7 +7,7 @@ import type { PlanUsage } from '../uniwork-usage/contract'
 import type { NtfyRefreshResult } from './contract'
 
 /**
- * `refresh_plan` / `refresh_model_config` 在主进程重拉套餐并落盘：
+ * 手动刷新与 ntfy 指令共用套餐查询和落盘流程：
  * 模型目录、套餐专用 Key 与 UniAI 工具包都随套餐变化，页面拿不到这些凭据。
  * 并发指令合并成一次，串行无害（重拉类刷新天然幂等）。
  */
@@ -39,20 +39,22 @@ export function createPlanRefresher(
 
     try {
       if (queried.status === 'failed' || plan.status === 'failed') {
-        log('ntfy 刷新套餐失败，保留原有账号配置')
+        log('刷新套餐失败，保留原有账号配置')
 
-        return { status: 'failed' }
+        return queried.status === 'failed' && queried.reason === 'auth'
+          ? { status: 'failed', reason: 'auth' }
+          : { status: 'failed' }
       }
 
       if (plan.status === 'empty') {
         writeAccountMaasKey(directory, null)
         updateUniaiToolkitConfig(directory, 'empty')
-        log('ntfy 刷新套餐：当前账号没有套餐，已清空专用 Key')
+        log('刷新套餐：当前账号没有套餐，已清空专用 Key')
       } else {
         mergeMaasModelConfig(directory, plan.plan)
         writeAccountMaasKey(directory, plan.plan.apiKey)
         updateUniaiToolkitConfig(directory, 'available')
-        log(`ntfy 刷新套餐：已更新 ${plan.plan.models.length} 个模型`)
+        log(`刷新套餐：已更新 ${plan.plan.models.length} 个模型`)
       }
 
       const usage = login.currentPlanUsage()
@@ -63,7 +65,7 @@ export function createPlanRefresher(
 
       return { status: 'ok' }
     } catch (error) {
-      log(`ntfy 刷新套餐写盘失败：${error instanceof Error ? error.message : '未知原因'}`)
+      log(`刷新套餐写盘失败：${error instanceof Error ? error.message : '未知原因'}`)
 
       return { status: 'failed' }
     }
