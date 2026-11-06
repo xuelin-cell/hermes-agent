@@ -895,6 +895,7 @@ export interface Translations {
       needsAuthMessage: (name: string) => string
       errorTitle: string
       errorMessage: (name: string) => string
+      connectionFailedMessage: (name: string) => string
       signIn: string
       view: string
       disable: string

@@ -634,6 +634,7 @@ export const zhHant = defineLocale({
       needsAuthMessage: name => `${name} MCP 需要重新驗證。`,
       errorTitle: 'MCP 伺服器無法連線',
       errorMessage: name => `${name} MCP 健康檢查失敗。`,
+      connectionFailedMessage: name => `暫時無法連線至 ${name}。可在連接器中測試連線。`,
       signIn: '登入',
       view: '檢視',
       disable: '停用',

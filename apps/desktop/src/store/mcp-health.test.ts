@@ -34,7 +34,8 @@ const mocks = vi.hoisted(() => {
     getHermesConfigRecord: vi.fn(),
     notify: vi.fn(),
     setMcpServerEnabled: vi.fn().mockResolvedValue({ ok: true }),
-    testMcpServer: vi.fn()
+    testMcpServer: vi.fn(),
+    toolkitGateway: { request: vi.fn() }
   }
 })
 
@@ -46,6 +47,12 @@ vi.mock('@/hermes', () => ({
 
 vi.mock('@/i18n', () => ({
   translateNow: (key: string) => key
+}))
+
+vi.mock('@/store/gateway', () => ({
+  activeGateway: () => mocks.toolkitGateway,
+  activeGatewayConnectionId: () => null,
+  gatewayActivationEpoch: () => 0
 }))
 
 vi.mock('@/store/notifications', () => ({
@@ -76,6 +83,8 @@ afterEach(() => {
   mocks.notify.mockReset()
   mocks.testMcpServer.mockReset()
   mocks.setMcpServerEnabled.mockClear()
+  mocks.toolkitGateway.request.mockReset()
+  vi.useRealTimers()
 })
 
 type McpHealthModule = Awaited<ReturnType<typeof importMcpHealth>>
@@ -245,4 +254,62 @@ it('runs one follow-up when the active sweep fails through the handled config-er
   await flush()
   await flush()
   expect(mocks.getHermesConfigRecord).toHaveBeenCalledTimes(2)
+})
+
+const toolkitName = 'UniAI-Toolkit'
+const toolkitConfig = { mcp_servers: { [toolkitName]: { url: 'https://example.invalid/mcp' } } }
+
+it('工具箱等待连接或出现单次失败时保持安静，后台只读取运行状态', async () => {
+  vi.useFakeTimers()
+  mocks.getHermesConfigRecord.mockResolvedValue(toolkitConfig)
+  mocks.testMcpServer.mockResolvedValue({ ok: true, tools: [] })
+  mocks.toolkitGateway.request
+    .mockResolvedValueOnce({ servers: [{ name: toolkitName, status: 'configured' }] })
+    .mockResolvedValueOnce({ servers: [{ name: toolkitName, status: 'failed' }] })
+    .mockRejectedValueOnce(new Error('gateway temporarily unavailable'))
+    .mockResolvedValueOnce({ servers: [{ name: toolkitName, status: 'failed' }] })
+    .mockResolvedValue({ servers: [{ name: toolkitName, status: 'connected' }] })
+
+  startMcpHealthChecker()
+  mocks.gatewayState.set('open')
+  await vi.advanceTimersByTimeAsync(25_000)
+
+  expect(mocks.toolkitGateway.request).toHaveBeenCalledWith(
+    'mcp.servers.status',
+    { profile: 'default' },
+    expect.any(Number)
+  )
+  expect(mocks.testMcpServer).not.toHaveBeenCalled()
+  expect(mocks.notify).not.toHaveBeenCalled()
+})
+
+it('工具箱持续失败时每次故障只提示一次，恢复后可提示新的故障', async () => {
+  vi.useFakeTimers()
+  mocks.getHermesConfigRecord.mockResolvedValue(toolkitConfig)
+  mocks.testMcpServer.mockResolvedValue({ ok: true, tools: [] })
+  const failed = { servers: [{ name: toolkitName, status: 'failed' }] }
+  const connected = { servers: [{ name: toolkitName, status: 'connected' }] }
+  mocks.toolkitGateway.request.mockResolvedValue(failed)
+
+  startMcpHealthChecker()
+  mocks.gatewayState.set('open')
+  await vi.advanceTimersByTimeAsync(5_000)
+  expect(mocks.notify).not.toHaveBeenCalled()
+
+  await vi.advanceTimersByTimeAsync(15_000)
+  expect(mocks.notify).toHaveBeenCalledTimes(1)
+  expect(mocks.notify).toHaveBeenCalledWith(
+    expect.objectContaining({
+      action: expect.objectContaining({ label: 'notifications.mcp.view' }),
+      durationMs: 8_000,
+      kind: 'warning'
+    })
+  )
+  const toast = mocks.notify.mock.calls[0][0]
+  expect(toast.secondaryAction).toBeUndefined()
+
+  mocks.toolkitGateway.request.mockResolvedValueOnce(connected)
+  await vi.advanceTimersByTimeAsync(15_000)
+  expect(mocks.notify).toHaveBeenCalledTimes(2)
+  expect(mocks.testMcpServer).not.toHaveBeenCalled()
 })

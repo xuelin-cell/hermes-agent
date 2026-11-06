@@ -797,6 +797,7 @@ export const zh = defineLocale({
       needsAuthMessage: name => `${name} MCP 需要重新认证。`,
       errorTitle: 'MCP 服务器无法连接',
       errorMessage: name => `${name} MCP 健康检查失败。`,
+      connectionFailedMessage: name => `暂时无法连接 ${name}。可在连接器中测试连接。`,
       signIn: '登录',
       view: '查看',
       disable: '禁用',

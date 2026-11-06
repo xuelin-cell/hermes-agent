@@ -1089,6 +1089,7 @@ export const en: Translations = {
       needsAuthMessage: name => `${name} MCP needs re-authentication.`,
       errorTitle: 'MCP server unreachable',
       errorMessage: name => `${name} MCP failed its health check.`,
+      connectionFailedMessage: name => `Could not connect to ${name}. Test it in Connectors.`,
       signIn: 'Sign in',
       view: 'View',
       disable: 'Disable',
