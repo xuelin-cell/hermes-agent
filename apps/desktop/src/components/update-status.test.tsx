@@ -18,15 +18,21 @@ vi.mock('@/store/updates', async () => {
     $backendUpdateApply: atom<UpdateApplyState | null>(null),
     $backendUpdateChecking: atom<boolean>(false),
     $backendUpdateStatus: atom<DesktopUpdateStatus | null>(null),
+    $desktopVersion: atom<DesktopVersionInfo | null>(null),
     $updateApply: atom<UpdateApplyState | null>(null),
     $updateChecking: atom<boolean>(false),
+    $updateOverlayTarget: atom('client'),
     $updateStatus: atom<DesktopUpdateStatus | null>(null),
     checkBackendUpdates: vi.fn(),
     checkUpdates: vi.fn(),
     openUpdateOverlayFor: vi.fn(),
+    refreshDesktopVersion: vi.fn(),
+    setUpdateOverlayOpen: vi.fn(),
     startActiveUpdate: vi.fn()
   }
 })
+
+vi.mock('@/store/update-check', () => ({ requestUpdateCheck: vi.fn() }))
 
 const IDLE_APPLY: UpdateApplyState = {
   applying: false,

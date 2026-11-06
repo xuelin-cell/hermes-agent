@@ -5,14 +5,13 @@ import type { DesktopUpdateStatus, DesktopVersionInfo, HermesConnection } from '
 import { en } from '@/i18n/en'
 import type * as SessionStore from '@/store/session'
 import { $connection } from '@/store/session'
-import type * as UpdateCheckStore from '@/store/update-check'
-import { $updateCheckDialog, requestUpdateCheck } from '@/store/update-check'
+import { requestUpdateCheck } from '@/store/update-check'
 import {
   $backendUpdateStatus,
   $desktopVersion,
+  $updateChecking,
   $updateStatus,
   checkBackendUpdates,
-  checkUpdates,
   refreshDesktopVersion,
   startActiveUpdate,
   type UpdateApplyState
@@ -27,19 +26,7 @@ vi.mock('@/store/session', async (importOriginal): Promise<Record<string, unknow
   return { ...actual, $connection: atom<HermesConnection | null>(null) }
 })
 
-vi.mock('@/store/update-check', async (): Promise<Record<string, unknown>> => {
-  const { atom } = await import('nanostores')
-
-  return {
-    $updateCheckDialog: atom<UpdateCheckStore.UpdateCheckDialogState>({
-      open: false,
-      phase: 'checking',
-      message: null
-    }),
-    closeUpdateCheckDialog: vi.fn(),
-    requestUpdateCheck: vi.fn()
-  }
-})
+vi.mock('@/store/update-check', () => ({ requestUpdateCheck: vi.fn() }))
 
 vi.mock('@/store/updates', async (): Promise<Record<string, unknown>> => {
   const { atom } = await import('nanostores')
@@ -87,7 +74,7 @@ function connection(mode: 'local' | 'remote'): HermesConnection {
 describe('AboutSettings', (): void => {
   beforeEach((): void => {
     vi.clearAllMocks()
-    $updateCheckDialog.set({ open: false, phase: 'checking', message: null })
+    $updateChecking.set(false)
     $connection.set(connection('local'))
     $desktopVersion.set({
       appVersion: '1.2.3',
@@ -109,10 +96,10 @@ describe('AboutSettings', (): void => {
     const { container, rerender } = render(<AboutSettings />)
 
     expect(screen.getByRole('heading', { name: en.updates.appName })).toBeTruthy()
-    // About shows only the update flow: no brand mark above the title, and no
+    // About keeps the centered brand mark + title above the update card, but no
     // build-provenance table (version / commit / build origin / distribution /
     // runtime / install id).
-    expect(container.querySelector('img')).toBeNull()
+    expect(container.querySelector('img')).not.toBeNull()
     expect(screen.queryByText(en.updates.versionDetailsInstallId)).toBeNull()
     expect(screen.queryByText(en.updates.versionDetailsVersion)).toBeNull()
     expect(screen.getByText(en.updates.latestBody)).toBeTruthy()
@@ -125,7 +112,7 @@ describe('AboutSettings', (): void => {
 
     expect(screen.getByText(en.updates.latestBodyBackend)).toBeTruthy()
     expect(checkBackendUpdates).toHaveBeenCalledTimes(1)
-    expect(screen.getAllByRole('link', { name: en.updates.releaseNotes })).toHaveLength(1)
+    expect(screen.getAllByRole('link', { name: en.updates.goToWebsite })).toHaveLength(1)
 
     $connection.set({ ...connection('remote'), baseUrl: 'http://other-gateway:9119' })
     rerender(<AboutSettings />)
@@ -137,7 +124,7 @@ describe('AboutSettings', (): void => {
   it('shows the fixed package channel with no selector', (): void => {
     $desktopVersion.set({ ...$desktopVersion.get()!, channel: 'canary' })
     render(<AboutSettings />)
-    expect(screen.getByText(`${en.updates.version('1.2.3')} · ${en.updates.channels.canary}`)).toBeTruthy()
+    expect(screen.getByText(`${en.updates.latestBody} · ${en.updates.channels.canary}`)).toBeTruthy()
     expect(screen.queryByRole('combobox')).toBeNull()
   })
 
@@ -149,28 +136,26 @@ describe('AboutSettings', (): void => {
     $backendUpdateStatus.set({ supported: true, behind: 3 })
     render(<AboutSettings />)
     expect(screen.getByText(message)).toBeTruthy()
-    expect(screen.getAllByRole('button', { name: en.updates.checkNow })).toHaveLength(1)
+    expect(screen.getAllByRole('button', { name: en.updates.checkForUpdates })).toHaveLength(1)
     fireEvent.click(screen.getByRole('button', { name: en.updates.updateNow }))
     expect(startActiveUpdate).toHaveBeenCalledWith('backend')
   })
 
-  it('forces a fresh check only for the card the user checks', async (): Promise<void> => {
+  it('routes each card check through its own flow', async (): Promise<void> => {
     $connection.set(connection('remote'))
     render(<AboutSettings />)
     vi.mocked(checkBackendUpdates).mockClear()
 
-    const buttons = screen.getAllByRole('button', { name: en.updates.checkNow })
+    const buttons = screen.getAllByRole('button', { name: en.updates.checkForUpdates })
     fireEvent.click(buttons[0])
-    await waitFor((): void => {
-      expect(checkUpdates).toHaveBeenCalledWith({ force: true })
-    })
+    expect(requestUpdateCheck).toHaveBeenCalledTimes(1)
     expect(checkBackendUpdates).not.toHaveBeenCalled()
 
     fireEvent.click(buttons[1])
     await waitFor((): void => {
       expect(checkBackendUpdates).toHaveBeenCalledWith({ force: true })
     })
-    expect(checkUpdates).toHaveBeenCalledTimes(1)
+    expect(requestUpdateCheck).toHaveBeenCalledTimes(1)
   })
 
   it('offers a manual update check from the updates section', (): void => {
@@ -182,7 +167,7 @@ describe('AboutSettings', (): void => {
   })
 
   it('disables the manual check while one is already running', (): void => {
-    $updateCheckDialog.set({ open: true, phase: 'checking', message: null })
+    $updateChecking.set(true)
     render(<AboutSettings />)
 
     const button = screen.getByRole('button', { name: en.updates.checkingShort }) as HTMLButtonElement
