@@ -3,7 +3,7 @@ import type { AppUpdater } from 'electron-updater'
 import { applyPackagedHandoff } from './packaged-handoff'
 import type { ReleaseNotesByLocale } from './release-notes'
 
-import type { UpdaterApplyResultWire, UpdaterStatusWire, UpdaterStrategy } from './index'
+import type { UpdaterApplyResultWire, UpdaterPrepareResult, UpdaterStatusWire, UpdaterStrategy } from './index'
 
 export interface MacStrategyDeps {
   updater: Pick<AppUpdater, 'checkForUpdates' | 'downloadUpdate' | 'quitAndInstall' | 'on' | 'removeListener'>
@@ -23,6 +23,8 @@ export interface MacStrategyDeps {
 export class MacStrategy implements UpdaterStrategy {
   readonly mechanism = 'electron-updater' as const
   private applying = false
+  private preparedVersion: string | null = null
+  private preparing = false
 
   constructor(private readonly deps: MacStrategyDeps) {}
 
@@ -63,6 +65,44 @@ export class MacStrategy implements UpdaterStrategy {
       latestTag: `v${result.updateInfo.version}`,
       updateAvailable: result.isUpdateAvailable,
       fetchedAt: Date.now()
+    }
+  }
+
+  /**
+   * Fetch and verify the Squirrel payload without installing. Squirrel's own
+   * signature acceptance (prepareInstall) stays in apply(), right before the
+   * swap; a download that keeps failing its channel digest never becomes a
+   * "ready" prompt. Silent by design — no progress reaches the renderer.
+   */
+  async prepare(): Promise<UpdaterPrepareResult> {
+    if (this.applying) {
+      throw new Error('An update is already in progress.')
+    }
+
+    if (this.preparedVersion) {
+      return { ready: true, version: this.preparedVersion }
+    }
+
+    if (this.preparing) {
+      return { ready: false, version: null }
+    }
+
+    this.preparing = true
+
+    try {
+      const status = await this.checkRelease()
+
+      if (!status.updateAvailable) {
+        return { ready: false, version: null }
+      }
+
+      const files = await this.deps.updater.downloadUpdate()
+      await this.deps.verifyDownload?.(files)
+      this.preparedVersion = status.latestTag?.replace(/^v/, '') ?? null
+
+      return { ready: true, version: this.preparedVersion }
+    } finally {
+      this.preparing = false
     }
   }
 

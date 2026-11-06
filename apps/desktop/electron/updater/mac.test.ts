@@ -56,6 +56,18 @@ describe('macOS strategy', () => {
     expect(emitter.listenerCount('download-progress')).toBe(0)
   })
 
+  it('prefetches and verifies the download without installing', async () => {
+    const verifyDownload = vi.fn(async () => {})
+    const base = fixture()
+    const strategy = new MacStrategy({ ...base.deps, verifyDownload })
+
+    expect(await strategy.prepare()).toEqual({ ready: true, version: '0.29.0' })
+    expect(base.events).toEqual(['check', 'download'])
+    expect(verifyDownload).toHaveBeenCalledTimes(1)
+    expect(base.deps.prepareInstall).not.toHaveBeenCalled()
+    expect(base.deps.quitAndInstall).not.toHaveBeenCalled()
+  })
+
   it.each(['downloadUpdate', 'prepareInstall'] as const)('keeps backends alive on %s failure', async failure => {
     const { deps, strategy, events, emitter } = fixture()
     vi.mocked(failure === 'downloadUpdate' ? deps.updater.downloadUpdate : deps.prepareInstall).mockRejectedValueOnce(

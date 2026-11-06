@@ -93,8 +93,27 @@ export interface UpdaterApplyResultWire {
   [key: string]: unknown
 }
 
+/** The result shape main.ts sends over `hermes:updates:prepare`. */
+export interface UpdaterPrepareResult {
+  ready: boolean
+  version?: string | null
+}
+
+export interface UpdaterPrepareWire extends UpdaterPrepareResult {
+  ok: boolean
+  /** False when this mechanism has no in-app download step (App Installer /
+   *  Store / handoff own the download themselves). */
+  supported: boolean
+  error?: string
+  message?: string
+}
+
 export interface UpdaterStrategy {
   readonly mechanism: UpdaterMechanism
   check(opts?: { force?: boolean }): Promise<UpdaterStatusWire>
   apply(): Promise<UpdaterApplyResultWire>
+  /** Download the offered update without installing it, so the renderer can
+   *  prompt once the bytes are on disk. Omitted by mechanisms whose owner does
+   *  the download itself; the probe then reports `supported: false`. */
+  prepare?(): Promise<UpdaterPrepareResult>
 }

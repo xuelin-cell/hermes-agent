@@ -279,6 +279,23 @@ export default defineConfig(({ command }) => ({
     host: '127.0.0.1',
     port: 5174,
     strictPort: true,
+    // Vite's watcher only defaults to node_modules/.git — it does not read
+    // .gitignore. This workspace writes packaging output INSIDE the app root
+    // (release/, release-local-*/, build/, dist/ — hundreds of thousands of
+    // files), so watching them opened ~400k handles, saturated the dev server
+    // and made even `GET /` take minutes. None of these are renderer inputs.
+    watch: {
+      ignored: [
+        '**/.git/**',
+        '**/node_modules/**',
+        '**/test-results/**',
+        '**/release/**',
+        '**/release-local-*/**',
+        '**/build/**',
+        '**/dist/**',
+        '**/.qoder-tmp/**'
+      ]
+    },
     warmup: {
       clientFiles: ['./src/components/intro-reveal/intro-root.tsx']
     },

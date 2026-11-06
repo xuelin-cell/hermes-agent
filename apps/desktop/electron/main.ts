@@ -569,6 +569,7 @@ import { readLiveUpdateMarker, updateHandoffConflict, writeUpdateMarker } from '
 import {
   resolveUpdaterMechanism,
   type UpdaterApplyResultWire,
+  type UpdaterPrepareWire,
   type UpdaterStatusWire,
   type UpdaterStrategy
 } from './updater'
@@ -18308,6 +18309,38 @@ ipcMain.handle('hermes:updates:apply', async (_event, payload) =>
     message: error?.message || String(error)
   }))
 )
+
+// Ambient background download: fetch the offered package so the renderer can
+// prompt "new version ready" without interrupting the user. Mechanisms whose
+// owner performs the download itself (App Installer / Store / handoff) report
+// `supported: false` — the prompt simply never appears there.
+ipcMain.handle('hermes:updates:prepare', async (): Promise<UpdaterPrepareWire> => {
+  try {
+    const strategy = await resolvePackagedUpdateStrategy()
+
+    if (!strategy) {
+      return { ok: false, ready: false, supported: false }
+    }
+
+    const prepare = strategy.prepare
+
+    if (!prepare) {
+      return { ok: false, ready: false, supported: false }
+    }
+
+    const result = await prepare.call(strategy)
+
+    return { ok: true, supported: true, ...result }
+  } catch (error) {
+    return {
+      ok: false,
+      ready: false,
+      supported: true,
+      error: 'prepare-failed',
+      message: error instanceof Error ? error.message : String(error)
+    }
+  }
+})
 
 ipcMain.handle('hermes:updates:branch:get', async () => readDesktopUpdateConfig())
 

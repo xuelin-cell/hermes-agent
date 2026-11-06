@@ -9,6 +9,7 @@ import { connectionScoped, profileScoped } from '@/api/client'
 import type {
   DesktopUpdateApplyOptions,
   DesktopUpdateApplyResult,
+  DesktopUpdatePrepareResult,
   DesktopUpdateProgress,
   DesktopUpdateStage,
   DesktopUpdateStatus,
@@ -57,6 +58,12 @@ export const $updateApply = atom<UpdateApplyState>(IDLE)
 export const $updateChecking = atom<boolean>(false)
 export const $updateOverlayOpen = atom<boolean>(false)
 export const $updateStatus = atom<DesktopUpdateStatus | null>(null)
+
+/** Set only once the ambient background download finished. The "new version
+ *  ready" prompt renders from this and from nothing else — in-flight, failed,
+ *  and up-to-date checks never populate it. */
+export const $updateReady = atom<{ version: string | null } | null>(null)
+export const $updateReadyDismissed = atom<boolean>(false)
 
 // Client and backend are independently updatable; each keeps its own state.
 export const $backendUpdateStatus = atom<DesktopUpdateStatus | null>(null)
@@ -275,6 +282,19 @@ export function maybeNotifyUpdateAvailable(status: DesktopUpdateStatus | null, t
   // Either signal means "update ready": behind > 0 (git checkout) or
   // updateAvailable (shallow clone, App Installer feed).
   if (!status || status.supported === false || status.error) {
+    return
+  }
+
+  // On installs whose owner supports a background download (electron-updater),
+  // the ambient "new version ready" prompt supersedes this toast. Otherwise the
+  // user would be interrupted mid-download by a second notice and again when
+  // the download finishes.
+  if (
+    target === 'client' &&
+    typeof window !== 'undefined' &&
+    window.hermesDesktop?.updates?.prepare &&
+    status.mechanism === 'electron-updater'
+  ) {
     return
   }
 
@@ -607,6 +627,7 @@ export async function checkUpdates({ force = false }: UpdateCheckOptions = {}): 
     }
 
     maybeNotifyUpdateAvailable(status, 'client')
+    void prepareClientUpdate()
     void refreshDesktopVersion()
 
     return status
@@ -626,6 +647,51 @@ export async function checkUpdates({ force = false }: UpdateCheckOptions = {}): 
     return fallback
   } finally {
     $updateChecking.set(false)
+  }
+}
+
+/** Close the ready prompt for this session; a later launch may show it again. */
+export function dismissUpdateReady(): void {
+  $updateReadyDismissed.set(true)
+  $updateReady.set(null)
+}
+
+let preparingClientUpdate = false
+
+/**
+ * Download the offered client update in the background — no install, no
+ * progress UI — so the ambient prompt appears only once the bytes are on disk.
+ * Reuses the same strategy apply() would; every failure stays silent because
+ * the background check must never interrupt the user.
+ */
+export async function prepareClientUpdate(): Promise<void> {
+  const bridge = window.hermesDesktop?.updates
+  const status = $updateStatus.get()
+
+  if (!bridge?.prepare || preparingClientUpdate || $updateReadyDismissed.get() || $updateReady.get()) {
+    return
+  }
+
+  if (!status || status.error || status.supported === false || status.retirement) {
+    return
+  }
+
+  if (!status.updateAvailable && (status.behind ?? 0) <= 0) {
+    return
+  }
+
+  preparingClientUpdate = true
+
+  try {
+    const result: DesktopUpdatePrepareResult = await bridge.prepare()
+
+    if (result?.ok && result.ready) {
+      $updateReady.set({ version: result.version ?? null })
+    }
+  } catch {
+    // Silent by design: a background prefetch never surfaces an error.
+  } finally {
+    preparingClientUpdate = false
   }
 }
 

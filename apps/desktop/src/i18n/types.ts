@@ -4019,6 +4019,9 @@ export interface Translations {
     currentVersion: string
     aboutApp: string
     goToWebsite: string
+    newVersionReady: string
+    updateLog: string
+    restartToUpdate: string
     seeWhatsNew: string
     releaseNotes: string
     onLatest: string

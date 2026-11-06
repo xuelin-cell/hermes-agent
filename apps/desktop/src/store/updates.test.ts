@@ -106,6 +106,10 @@ const {
   startUpdatePoller,
   stopUpdatePoller,
   $updateStatus,
+  $updateReady,
+  $updateReadyDismissed,
+  dismissUpdateReady,
+  prepareClientUpdate,
   BACKGROUND_UPDATE_CHECK_MS
 } = await import('./updates')
 
@@ -288,6 +292,30 @@ describe('maybeNotifyUpdateAvailable', () => {
     )
 
     expect(notifySpy).toHaveBeenCalledTimes(1)
+  })
+
+  // On installs that can download in the background, the toast would interrupt
+  // the user mid-download and duplicate the ambient "new version ready" prompt.
+  it('defers to the ambient ready prompt on background-download installs', () => {
+    const previous = window.hermesDesktop
+    window.hermesDesktop = { updates: { prepare: vi.fn() } } as never
+
+    try {
+      maybeNotifyUpdateAvailable(
+        status({
+          behind: null,
+          currentVersion: '0.19.0',
+          latestTag: 'v0.20.0',
+          mechanism: 'electron-updater',
+          targetSha: undefined,
+          updateAvailable: true
+        })
+      )
+
+      expect(notifySpy).not.toHaveBeenCalled()
+    } finally {
+      window.hermesDesktop = previous
+    }
   })
 
   // Eligibility stays mechanism-specific: a git-style check must still prove
@@ -1792,5 +1820,69 @@ describe('discontinued retirement notice', () => {
     await checkUpdates({ force: true })
 
     expect(notifySpy.mock.calls.filter(call => call[0]?.id === 'desktop-build-discontinued')).toHaveLength(0)
+  })
+})
+
+describe('prepareClientUpdate', () => {
+  const prepareMock = vi.fn()
+
+  beforeEach(() => {
+    prepareMock.mockReset()
+    $updateReady.set(null)
+    $updateReadyDismissed.set(false)
+    $updateStatus.set(null)
+    ;(globalThis as unknown as { window: unknown }).window = {
+      hermesDesktop: { updates: { check: vi.fn(), prepare: prepareMock } }
+    }
+  })
+
+  afterEach(() => {
+    delete (globalThis as unknown as { window?: unknown }).window
+    $updateReady.set(null)
+    $updateReadyDismissed.set(false)
+  })
+
+  it('downloads an offered update in the background and publishes the ready version', async () => {
+    $updateStatus.set({ supported: true, updateAvailable: true, latestTag: 'v1.2.4' })
+    prepareMock.mockResolvedValue({ ok: true, supported: true, ready: true, version: '1.2.4' })
+
+    await prepareClientUpdate()
+
+    expect(prepareMock).toHaveBeenCalledTimes(1)
+    expect($updateReady.get()).toEqual({ version: '1.2.4' })
+  })
+
+  it('never downloads when the check found nothing, failed, or is unsupported', async () => {
+    await prepareClientUpdate()
+    expect(prepareMock).not.toHaveBeenCalled()
+
+    $updateStatus.set({ supported: true, updateAvailable: false, behind: 0 })
+    await prepareClientUpdate()
+    expect(prepareMock).not.toHaveBeenCalled()
+
+    $updateStatus.set({ supported: false, updateAvailable: true })
+    await prepareClientUpdate()
+    expect(prepareMock).not.toHaveBeenCalled()
+  })
+
+  it('keeps the prompt hidden when the update owner downloads it itself', async () => {
+    $updateStatus.set({ supported: true, updateAvailable: true })
+    prepareMock.mockResolvedValue({ ok: false, supported: false, ready: false })
+
+    await prepareClientUpdate()
+
+    expect($updateReady.get()).toBeNull()
+  })
+
+  it('hides the prompt on dismiss and skips further prefetch this session', async () => {
+    $updateStatus.set({ supported: true, updateAvailable: true })
+    $updateReady.set({ version: '1.2.4' })
+
+    dismissUpdateReady()
+
+    expect($updateReady.get()).toBeNull()
+
+    await prepareClientUpdate()
+    expect(prepareMock).not.toHaveBeenCalled()
   })
 })

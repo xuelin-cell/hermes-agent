@@ -69,6 +69,34 @@ describe('Windows NSIS strategy', () => {
     expect(emitter.listenerCount('download-progress')).toBe(0)
   })
 
+  it('prefetches the package without stopping the backend, and reuses it for apply', async () => {
+    const { deps, strategy, events } = fixture()
+
+    expect(await strategy.prepare()).toEqual({ ready: true, version: '1.1.0' })
+    expect(events).toEqual(['check', 'download'])
+    // A prefetch must never tear the backend down or show progress: the user is
+    // still working while the bytes land.
+    expect(deps.beforeInstall).not.toHaveBeenCalled()
+    expect(deps.emitProgress).not.toHaveBeenCalled()
+
+    events.length = 0
+    expect(await strategy.prepare()).toEqual({ ready: true, version: '1.1.0' })
+    expect(events).toEqual([])
+  })
+
+  it('reports not-ready without downloading when the feed has nothing newer', async () => {
+    const { deps, strategy } = fixture()
+    const info = { version: '1.0.0', files: [], releaseDate: '', path: '', sha512: '' }
+    vi.mocked(deps.updater.checkForUpdates).mockResolvedValueOnce({
+      isUpdateAvailable: false,
+      updateInfo: info,
+      versionInfo: info
+    } as never)
+
+    expect(await strategy.prepare()).toEqual({ ready: false, version: null })
+    expect(deps.updater.downloadUpdate).not.toHaveBeenCalled()
+  })
+
   // The notes are publisher copy, never a precondition: a feed object that is
   // missing, unreachable or empty must leave the update decision untouched.
   it('attaches authored notes and never fails the check over them', async () => {
