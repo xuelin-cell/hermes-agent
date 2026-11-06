@@ -195,9 +195,14 @@ class MaasCredentials:
         if not isinstance(body, dict):
             body = {}
         if status >= 400:
-            error = str(body.get("error") or body.get("msg") or "")[:80]
+            code = str(body.get("error") or "")
+            error = (code or str(body.get("msg") or ""))[:80]
             log.warning("12.4 -> HTTP %s %s", status, error)
-            raise CredentialFailure(error or f"统一登录服务返回 HTTP {status}", status=status if status in (401, 403) else 502)
+            # 按错误码判，不只看状态码：401 LOGIN_REQUIRED 才是会话结束，403 ACCOUNT_NOT_ALLOWED 才是不是个人账号；
+            # 密钥不对（401 INTERNAL_TOKEN_INVALID）、nginx 自己回的 401/403 等都是服务这边的问题，按 502
+            if (status, code) in ((401, "LOGIN_REQUIRED"), (403, "ACCOUNT_NOT_ALLOWED")):
+                raise CredentialFailure(error, status=status)
+            raise CredentialFailure(error or f"统一登录服务返回 HTTP {status}", status=502)
         data = body.get("data") if isinstance(body.get("data"), dict) else None
         if body.get("code") not in (0, "0", None) or data is None:
             raise CredentialFailure("统一登录服务没有返回令牌")

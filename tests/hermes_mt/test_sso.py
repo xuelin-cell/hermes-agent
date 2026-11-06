@@ -54,6 +54,8 @@ class FakeGateway:
         self.issued: dict[str, str] = {}  # MaaS 令牌 → uid
         self.down = False
         self.delay = 0.0
+        self.token = CREDENTIAL_TOKEN  # 网关这边的 12.4 密钥；改掉它 = 两边对不上
+        self.answer: tuple[int, dict | str] | None = None  # 12.4 原样回这个（状态码, JSON 或 nginx 的页面）
         self.server: TestServer | None = None
 
     @property
@@ -79,11 +81,16 @@ class FakeGateway:
         return sid
 
     async def credential(self, request: web.Request) -> web.Response:
+        if self.answer is not None:
+            status, body = self.answer
+            if isinstance(body, str):
+                return web.Response(status=status, text=body, content_type="text/html")
+            return web.json_response(body, status=status)
         if self.down:
             return web.json_response({"error": "INTERNAL_ERROR"}, status=500)
         if self.delay:
             await asyncio.sleep(self.delay)
-        if request.headers.get("X-Internal-Token") != CREDENTIAL_TOKEN:
+        if request.headers.get("X-Internal-Token") != self.token:
             return web.json_response({"code": 401, "error": "INTERNAL_TOKEN_INVALID"}, status=401)
         sid = (await request.json()).get("sid", "")
         self.calls.append(sid)
@@ -314,6 +321,30 @@ async def test_maas_credentials_fetch_once_per_session_and_forget_on_drop(gatewa
         assert caught.value.status == 401
 
 
+@pytest.mark.asyncio
+async def test_maas_credentials_tell_an_ended_session_from_a_service_problem(gateway: FakeGateway) -> None:
+    """按错误码判：401 LOGIN_REQUIRED 才是会话结束，403 ACCOUNT_NOT_ALLOWED 才是不是个人账号；
+    密钥对不上、nginx 自己回的 401/403 都是服务这边的问题（502），页面不能因此让人重新登录。"""
+    async with aiohttp.ClientSession() as http:
+        credentials = MaasCredentials(f"{gateway.url}/app/gateway/sso/internal/maas-credential", CREDENTIAL_TOKEN, http)
+
+        async def status_of() -> int:
+            with pytest.raises(CredentialFailure) as caught:
+                await credentials.get("sid-gone")  # 失败不进缓存，每次都真的调一次网关
+            return caught.value.status
+
+        assert await status_of() == 401  # 网关上没有这个会话
+        gateway.token = "rotated"  # 网关换了密钥，我们还是旧的：401 INTERNAL_TOKEN_INVALID
+        assert await status_of() == 502
+        gateway.token = CREDENTIAL_TOKEN
+        gateway.answer = (403, {"code": 403, "error": "ACCOUNT_NOT_ALLOWED", "msg": "Account not allowed", "data": None})
+        assert await status_of() == 403
+        for answer in ((403, "<html>403 Forbidden</html>"), (401, "<html>401 Authorization Required</html>"),
+                       (401, {"code": 401, "msg": "unauthorized"})):
+            gateway.answer = answer
+            assert await status_of() == 502, answer
+
+
 # ---- 个人账号 -----------------------------------------------------------------------------
 
 
@@ -375,6 +406,26 @@ async def test_personal_session_ended_at_the_gateway_is_login_required(personal_
     gateway.down = True
     down = await h.request("GET", ME, personal("u-1", gateway.sign_in("u-1")))
     assert down.status == 503 and (await down.json())["error"] == "login_service_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_personal_credential_key_mismatch_is_not_a_login_problem(personal_entry: Harness,
+                                                                       gateway: FakeGateway) -> None:
+    """两边的 12.4 密钥对不上（比如换密钥时一边没换）：网关上的会话其实还在，页面不能按登录失效处理。"""
+    h = personal_entry
+    gateway.token = "rotated"
+    first = await h.request("GET", ME, personal("u-1", gateway.sign_in("u-1")))
+    assert first.status == 503 and (await first.json())["error"] == "login_service_unavailable"
+
+    # 已经进来的人：内存里的令牌没了、再取时撞上密钥不对，账号业务接口同样按服务不可用
+    gateway.token = CREDENTIAL_TOKEN
+    sid = gateway.sign_in("u-2")
+    who = personal("u-2", sid)
+    assert (await h.request("GET", ME, who)).status == 200
+    gateway.token = "rotated"
+    h.entry.credentials.drop(sid)
+    status = await h.request("POST", "/agents/api/__entry/maas-auth", who, headers={"Authorization": "Bearer sso"})
+    assert status.status == 503
 
 
 @pytest.mark.asyncio
