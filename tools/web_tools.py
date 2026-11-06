@@ -97,12 +97,14 @@ def _probe(provider, method: str, context: str = "") -> Optional[bool]:
         return None
 
 
-def _get_backend() -> str:
+def _get_backend(capability: Optional[str] = None) -> str:
     """Shared web backend name. A stored ``web.backend`` is returned as-is — no availability probe, no
     fallback — so a broken selection surfaces the vendor's honest error rather than silently rerouting.
     The managed ``use_gateway`` selection also resolves to firecrawl with no ladder. Autodetect runs
     whenever no SHARED web selection was ever stored: per-capability keys (``web.search_backend``,
-    ``web.extract_backend``) name only their own capability and never reroute the other (#113017)."""
+    ``web.extract_backend``) name only their own capability and never reroute the other (#113017).
+    ``capability`` ("search" | "extract") limits the plugin-provider rung to providers that serve it, as
+    the registry's resolver does: a fetch-only plugin must not become the autodetected search backend."""
     configured = _configured_backend()
     if configured:
         # "nous" (managed subscription) is serviced by firecrawl, routed through the managed Tool Gateway.
@@ -128,7 +130,9 @@ def _get_backend() -> str:
 
     # Plugin-contributed providers (built-ins are covered above); probe the held object directly.
     for provider in _list_registered_web_providers():
-        if provider.name not in _LEGACY_WEB_BACKENDS and _probe(provider, "is_available"):
+        if provider.name in _LEGACY_WEB_BACKENDS or not _probe(provider, "is_available"):
+            continue
+        if capability is None or _probe(provider, f"supports_{capability}"):
             return provider.name
 
     return _keyless_backend() or "firecrawl"  # default (backward compat)
@@ -159,19 +163,19 @@ def _managed_web_search() -> bool:
     selected = read_selection("web")
     if selected is not None:
         return selected == NOUS_MANAGED_PROVIDER
-    return _get_backend() == "firecrawl" and not (_has_env("FIRECRAWL_API_KEY") or _has_env("FIRECRAWL_API_URL")) and _is_tool_gateway_ready()
+    return _get_backend("search") == "firecrawl" and not (_has_env("FIRECRAWL_API_KEY") or _has_env("FIRECRAWL_API_URL")) and _is_tool_gateway_ready()
 
 
 def _get_search_backend() -> str:
     """Backend for web_search: ``web.search_backend`` (strict, no probe) > ``web.backend`` > autodetect.
     The managed Nous route serves search from Perplexity (extract stays on Firecrawl); managed Firecrawl
     is the per-call fallback, see ``_memoized_search``."""
-    return _configured_backend("search_backend") or ("perplexity" if _managed_web_search() else _get_backend())
+    return _configured_backend("search_backend") or ("perplexity" if _managed_web_search() else _get_backend("search"))
 
 
 def _get_extract_backend() -> str:
     """Backend for web_extract: ``web.extract_backend`` (strict, no probe) > ``web.backend`` > autodetect."""
-    return _configured_backend("extract_backend") or _get_backend()
+    return _configured_backend("extract_backend") or _get_backend("extract")
 
 
 def _ddgs_package_importable() -> bool:

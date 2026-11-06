@@ -59,6 +59,9 @@ UNIWORK_PLUGIN_KEY = "uniwork-enterprise"
 # 只有普通版才有的平台策略（云盘、邮箱、分享、套件、消息平台）：企业模式不写。
 PERSONAL_POLICY_KEYS = frozenset({"cloud_sharing", "cloud_drive", "cloud_mail", "cloud_kits",
                                   "cloud_messaging_delivery", "platforms"})
+# 桌面插件（如联网搜索 unisearch）认的 MaaS key 变量名；和桌面一样就是 my-plan 给的套餐 key。
+# 普通版在实例 .env 里按这个名字再写一份，插件不用改。企业模式的 key 是设备令牌，不写。
+DESKTOP_MAAS_KEY_ENV = "DESKTOP_MT_MAAS_API_KEY"
 # config.yaml.tmpl 里只有普通版才有的一段：企业模式由入口整段去掉（_render_user_files）。
 _PERSONAL_TEMPLATE_BLOCK = re.compile(r"^# personal-begin.*?^# personal-end[^\n]*\n", re.M | re.S)
 PLATFORM_POLICY = {
@@ -352,6 +355,8 @@ class TenantManager:
         env_lines = [f"TERMINAL_ENV=local"]
         if api_key:
             env_lines.append(f"{self.s.key_env_name}={api_key}")
+            if not self.s.enterprise:
+                env_lines.append(f"{DESKTOP_MAAS_KEY_ENV}={api_key}")
         files[".env"] = ("\n".join(env_lines) + "\n").encode("utf-8")
         files["SOUL.md"] = DEFAULT_SOUL_FILE.read_bytes()
         return files
@@ -1370,16 +1375,18 @@ class TenantManager:
             "Host": tenant.host_header or f"127.0.0.1:{self.s.hermes_port}",
             "X-Hermes-Session-Token": tenant.token,
         }
+        names = [self.s.key_env_name] + ([] if self.s.enterprise else [DESKTOP_MAAS_KEY_ENV])
         try:
-            async with self.http.put(
-                url,
-                headers=headers,
-                json={"key": self.s.key_env_name, "value": api_key},
-                timeout=aiohttp.ClientTimeout(total=15),
-            ) as response:
-                if response.status < 200 or response.status >= 300:
-                    await response.text()
-                    raise CredentialSyncError(f"Hermes 凭据接口返回 HTTP {response.status}")
+            for name in names:
+                async with self.http.put(
+                    url,
+                    headers=headers,
+                    json={"key": name, "value": api_key},
+                    timeout=aiohttp.ClientTimeout(total=15),
+                ) as response:
+                    if response.status < 200 or response.status >= 300:
+                        await response.text()
+                        raise CredentialSyncError(f"Hermes 凭据接口返回 HTTP {response.status}")
         except CredentialSyncError:
             raise
         except (aiohttp.ClientError, asyncio.TimeoutError) as exc:

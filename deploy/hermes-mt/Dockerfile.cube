@@ -94,6 +94,9 @@ RUN --mount=type=cache,id=hermes-apt-trixie,target=/var/cache/apt,sharing=locked
 #   canvas-design、webapp-testing：playwright（浏览器见下一段）
 #   Pillow、requests、aiohttp、defusedxml 已是 hermes 自己的依赖。没装的是可选功能，缺了技能会跳过：
 #   uniai-ppt 把 SVG 转 PNG 的 svglib（reportlab 新版出图还要从源码编 pycairo）、uniai-pdf 的 OCR。
+# 联网搜索插件（apps/desktop/assets/unisearch-plugin，见 plugin.yaml 的 python_dependencies）抓网页正文用
+#   trafilatura、beautifulsoup4、markdownify、chardet（lxml、playwright 同上）。桌面由 PM 按需装，
+#   云端实例关了临时装包，所以预装。微信语音（.silk）转写用 silk-python，版本同 uv.lock 的 silk 组。
 RUN --mount=type=cache,id=hermes-python-uv,target=/root/.cache/uv,sharing=locked \
     set -eu; \
     uv="$(ls /opt/hermes/tools/uv-*/uv)"; \
@@ -103,7 +106,9 @@ RUN --mount=type=cache,id=hermes-python-uv,target=/root/.cache/uv,sharing=locked
         pypdf==6.19.0 pdfplumber==0.11.10 reportlab==5.0.1 \
         openpyxl==3.1.5 pandas==3.0.6 duckdb==1.5.6 \
         python-pptx==1.0.2 "markitdown[pptx]==0.1.8" lxml==6.1.2 \
-        PyYAML==6.0.3 playwright==1.58.0; \
+        PyYAML==6.0.3 playwright==1.58.0 \
+        trafilatura==2.2.0 beautifulsoup4==4.15.0 markdownify==1.2.3 chardet==5.2.0 \
+        silk-python==0.2.8; \
     rm -f /tmp/hermes-pins.txt /opt/hermes/.venv/.lock
 
 # ---- Python 版 Playwright 的浏览器 ----------------------------------------------
@@ -197,6 +202,12 @@ COPY scripts/image_overlay.py /opt/mt/image_overlay.py
 COPY .overlay/ /tmp/hermes-overlay/
 RUN python3 /opt/mt/image_overlay.py apply /tmp/hermes-overlay /opt/hermes \
     && rm -rf /tmp/hermes-overlay
+
+# 联网搜索插件放进内置插件目录，和桌面打包时一样叫 unisearch（apps/desktop/scripts/stage-python-plugins.mjs），
+# 这样走内置插件的信任规则。是否启用由转发器每次引导时写进用户配置（seed/forward.py 的 _configure_unisearch）。
+RUN rm -rf /opt/hermes/plugins/unisearch \
+    && cp -r /opt/hermes/apps/desktop/assets/unisearch-plugin /opt/hermes/plugins/unisearch \
+    && /opt/hermes/.venv/bin/python -B -c 'import trafilatura, bs4, markdownify, chardet, pysilk'
 
 # base_seed.py installs the SDK into the base's sealed environment. Runtime PM
 # sync would publish a different environment under the mutable HERMES_HOME.

@@ -611,3 +611,28 @@ class TestKeylessFailover:
         out = keyless_mcp.extract_with_failover("exa", ["https://a", "https://b"])
         assert out == partial
         assert not called
+
+
+def test_autodetect_never_picks_a_fetch_only_plugin_for_search(monkeypatch):
+    """A plugin provider that only extracts (always available, no key) must not become the
+    autodetected search backend; it may still serve extract. Unconfigured profiles (a cloud
+    expert, an enterprise instance) otherwise lost web_search the moment such a plugin loaded."""
+    from agent.web_search_provider import WebSearchProvider
+
+    class FetchOnly(WebSearchProvider):
+        name = "fetch-only"
+
+        def is_available(self):
+            return True
+
+        def supports_search(self):
+            return False
+
+        def supports_extract(self):
+            return True
+
+    monkeypatch.setattr(web_tools, "_list_registered_web_providers", lambda: [FetchOnly()])
+    monkeypatch.setattr(web_tools, "_keyless_backend", lambda: None)
+
+    assert web_tools._get_extract_backend() == "fetch-only"
+    assert web_tools._get_search_backend() != "fetch-only"

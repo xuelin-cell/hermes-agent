@@ -65,6 +65,20 @@ def test_policy_and_seeded_config_leave_out_personal_capabilities(monkeypatch: p
     assert seen_enterprise["onboarding"] == seen_personal["onboarding"]
 
 
+def test_desktop_plugins_read_the_plan_key_only_in_the_personal_edition(monkeypatch: pytest.MonkeyPatch) -> None:
+    """联网搜索等桌面插件按桌面的变量名取 MaaS key：普通版与模型用的是同一把，企业版的设备令牌不给它们。"""
+    def env_of(manager: TenantManager) -> dict[str, str]:
+        text = manager._render_user_files("plan-key")[".env"].decode("utf-8")
+        return dict(line.split("=", 1) for line in text.splitlines() if "=" in line)
+
+    personal = _manager(monkeypatch)
+    enterprise = _manager(monkeypatch, uniwork_server=PLATFORM)
+
+    seen = env_of(personal)
+    assert seen[tenants_module.DESKTOP_MAAS_KEY_ENV] == seen[personal.s.key_env_name] == "plan-key"
+    assert tenants_module.DESKTOP_MAAS_KEY_ENV not in env_of(enterprise)
+
+
 def test_enterprise_mcp_has_no_drive_and_goes_through_the_platform(monkeypatch: pytest.MonkeyPatch) -> None:
     personal = _manager(monkeypatch)._mcp_servers("tok")
     enterprise = _manager(monkeypatch, uniwork_server=PLATFORM)._mcp_servers("tok")

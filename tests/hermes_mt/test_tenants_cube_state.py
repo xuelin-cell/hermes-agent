@@ -506,7 +506,8 @@ def test_seed_files_use_patch_and_upsert_modes() -> None:
         ("SOUL.md", "if-pristine"),
     ]
     assert '"models": ["m1", "m2"]' in files[1]["content"]
-    assert files[2]["content"].splitlines() == ["TERMINAL_ENV=local", "HERMES_CUSTOM_YUANJING_API_KEY=key"]
+    assert files[2]["content"].splitlines() == [
+        "TERMINAL_ENV=local", "HERMES_CUSTOM_YUANJING_API_KEY=key", f"{tenants_module.DESKTOP_MAAS_KEY_ENV}=key"]
     # 默认人设是平台的「元景数字员工」，不是 hermes 自带的那份
     assert files[3]["content"].startswith("你是「元景数字员工」")
     assert "Nous Research" not in files[3]["content"]

@@ -69,9 +69,12 @@ def apply(remote: dict | None) -> None:
         # 套件缓存独立配置；不写入或猜测恢复 Profile 的原生策略开关。
         settings.setdefault("cache_enabled", True)
         settings.setdefault("cache_ttl_minutes", 5)
-        # Preserve an explicit provider choice, including the shared backend selector.
+        # Preserve an explicit provider choice, including the shared backend selector. A profile
+        # without the MaaS key (no account yet, the cloud's enterprise edition) could not search
+        # through UniSearch, so it keeps Hermes' own selection instead of switching to a dead route.
         if (
             "unisearch" not in plugins.get("disabled", [])
+            and config.get_env_value("DESKTOP_MT_MAAS_API_KEY")
             and not web.get("search_backend")
             and not web.get("backend")
         ):

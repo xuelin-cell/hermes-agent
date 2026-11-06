@@ -93,6 +93,9 @@ HERMES_PYTHON = os.environ.get("MT_HERMES_PYTHON", "/opt/hermes/.venv/bin/python
 _messaging_gateway = mtmessaging.Gateway(HERMES_HOME,HERMES_PYTHON)
 _connectors = mtconnectors.Connectors(HERMES_HOME, HERMES_PYTHON, backend_port=TARGET_PORT, profile_token=os.environ.get('HERMES_DASHBOARD_SESSION_TOKEN', ''))
 HERMES_INSTALL = Path(os.environ.get("MT_HERMES_INSTALL", "/opt/hermes"))
+# 联网搜索插件自带的配置脚本（Dockerfile.cube 把插件放进内置插件目录）。
+UNISEARCH_CONFIGURE = HERMES_INSTALL / "plugins/unisearch/configure.py"
+UNISEARCH_CONFIGURE_TIMEOUT_S = 30.0
 SKILLS_SYNC_TIMEOUT_S = 60.0
 # 回包只要名字和计数：删掉了哪些、归档了哪些（用户改过的）、新发了哪些。
 SKILLS_SYNC_SCRIPT = (
@@ -308,6 +311,32 @@ async def _sync_bundled_skills() -> dict:
     return {"ok": proc.returncode == 0, **report}
 
 
+async def _configure_unisearch(env: dict[str, str]) -> None:
+    """联网搜索的默认配置，和桌面每次启动时一样（apps/desktop/electron/entry_local/unisearch.ts）：
+    只补用户没设过的项（搜索交给 unisearch、正文抓取用 builtin_parse），用户自己选的后端和停用都保留。
+    失败不挡启动，沿用原有的搜索设置。Docker 后端的镜像没有这个插件，跳过。"""
+    if not UNISEARCH_CONFIGURE.is_file():
+        return
+    # -c 让 /opt/hermes（cwd）进 sys.path，脚本才 import 得到 hermes；argv 和桌面调用时一样是「脚本 + HERMES_HOME」。
+    proc = await asyncio.create_subprocess_exec(
+        HERMES_PYTHON, "-c",
+        "import runpy, sys; sys.argv = sys.argv[1:]; runpy.run_path(sys.argv[0], run_name='__main__')",
+        str(UNISEARCH_CONFIGURE), str(HERMES_HOME),
+        stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
+        cwd=str(HERMES_INSTALL), env={**env, "HERMES_HOME": str(HERMES_HOME)},
+    )
+    try:
+        # null = 没有平台下发的搜索配置，只补默认值
+        _, err = await asyncio.wait_for(proc.communicate(b"null"), timeout=UNISEARCH_CONFIGURE_TIMEOUT_S)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+        _log(f"联网搜索配置超过 {int(UNISEARCH_CONFIGURE_TIMEOUT_S)} 秒，沿用现有设置")
+        return
+    if proc.returncode != 0:
+        _log(f"联网搜索配置没写上，沿用现有设置: {err.decode('utf-8', 'replace').strip()[-300:]}")
+
+
 async def _spawn_hermes(token: str) -> None:
     global _hermes_proc
     _connectors.profile_token = token
@@ -325,6 +354,7 @@ async def _spawn_hermes(token: str) -> None:
     # 碰不到）、父进程看门狗（要 HERMES_PARENT_PID，我们不设）、新会话的来源记为 desktop。
     env["HERMES_DESKTOP"] = "1"
     if not _enterprise_mode:
+        await _configure_unisearch(env)
         recovery = await asyncio.create_subprocess_exec(
             HERMES_PYTHON, '-c',
             "import runpy,sys; from pathlib import Path; runpy.run_path(sys.argv[1])['claim_all'](Path(sys.argv[2]))",

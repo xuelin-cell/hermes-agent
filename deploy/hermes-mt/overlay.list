@@ -8,6 +8,7 @@
 # Cloud sharing API and provenance hooks require a new instance template.
 plugins/conversation_share/
 apps/desktop/assets/artifact-share-plugin/
+apps/desktop/assets/unisearch-plugin/
 plugins/cloud_drive/
 plugins/cloud_mail/
 plugins/cloud_messaging/

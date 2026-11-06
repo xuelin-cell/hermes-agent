@@ -1874,6 +1874,27 @@ def test_eastmoney_connector_syncs_only_onto_those_experts(kits, profile_env, tm
     assert "eastmoney_mcp" not in (_config(em).get("mcp_servers") or {})
 
 
+def test_cloud_experts_follow_the_default_profiles_unisearch_choice(kits, profile_env, tmp_path):
+    """云端默认档案用联网搜索插件的后端时专家也用，并补上它要的 key；专家自己选了别家搜索的不动。"""
+    kits.installer.install(_expert_pkg(tmp_path, name="demo-expert"), profile_env, triggers={})
+    kits.installer.install(_expert_pkg(tmp_path, name="other-expert"), profile_env, triggers={})
+    from hermes_cli.profiles import get_profile_dir
+
+    follower, chooser = Path(get_profile_dir("demo-expert")), Path(get_profile_dir("other-expert"))
+    _write(chooser / "config.yaml", yaml.safe_dump({**_config(chooser), "web": {"search_backend": "tavily"}}))
+    _write(profile_env / "config.yaml", yaml.safe_dump({
+        "model": {"provider": "zai", "default": "glm-test"}, "cloud_kits": {"enabled": True},
+        "web": {"search_backend": "unisearch", "extract_backend": "builtin_parse"},
+    }))
+    (profile_env / ".env").write_text("DESKTOP_MT_MAAS_API_KEY=maas-1\n", encoding="utf-8")
+
+    kits.expert_sync.sync_all(profile_env)
+
+    assert _config(follower)["web"] == {"search_backend": "unisearch", "extract_backend": "builtin_parse"}
+    assert kits.expert_sync._read(follower)[1]["DESKTOP_MT_MAAS_API_KEY"] == "maas-1"
+    assert _config(chooser)["web"] == {"search_backend": "tavily", "extract_backend": "builtin_parse"}
+
+
 def test_chinese_skill_names_each_keep_a_slash_command(kits, profile_env, tmp_path, monkeypatch):
     """ppt-writer 的「PPT视觉设计」「PPT内容生成」以前都变成 /ppt-writer-ppt，丢了一个命令；现在按目录名各有各的命令，包内引用也指向新名字。"""
     root = tmp_path / "pkgs" / "zh-kit"

@@ -54,6 +54,10 @@ MANAGED_PROVIDER_PREFIX = "desktop-mt-maas-"
 _ENV_REF_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 _KEY_FIELDS = ("key_env", "api_key_env")
 _KEEP_FROM_EXPERT = ("enabled", "tools")
+# 联网搜索插件（unisearch）自己的后端：默认档案选的是它们，云端专家跟着用；专家里选了别家的不动。
+_UNISEARCH_BACKENDS = {"search_backend": ("unisearch",), "extract_backend": ("builtin_parse", "unicrawl")}
+# 要 MaaS key 的那几个后端，key 就是桌面那把（DESKTOP_MT_MAAS_API_KEY）。
+_UNISEARCH_KEYED = ("unisearch", "unicrawl")
 
 
 def _read(home: Path) -> Tuple[Dict[str, Any], Dict[str, str]]:
@@ -229,6 +233,7 @@ def _plan_config(
                 current[field] = False
                 raw[section] = current
                 changes.append('同步云端运行策略 ' + section + '.' + field)
+        _mirror_unisearch(raw, default_raw, changes)
 
     providers = raw.get("providers") if isinstance(raw.get("providers"), dict) else {}
     wanted = _managed_providers(default_raw)
@@ -283,6 +288,19 @@ def _plan_config(
     return raw, new_record, changes
 
 
+def _mirror_unisearch(raw: Dict[str, Any], default_raw: Mapping[str, Any], changes: List[str]) -> None:
+    """专家没有自己的搜索设置时会落到原生的自动选择，不一定是联网搜索：跟默认档案选的插件后端走。"""
+    default_web = default_raw.get("web") if isinstance(default_raw.get("web"), Mapping) else {}
+    web = dict(raw["web"]) if isinstance(raw.get("web"), Mapping) else {}
+    for field, owned in _UNISEARCH_BACKENDS.items():
+        wanted = default_web.get(field)
+        if wanted in owned and web.get(field) in (None, "", *owned) and web.get(field) != wanted:
+            web[field] = wanted
+            changes.append(f"联网搜索跟随默认配置档案 web.{field}")
+    if web:
+        raw["web"] = web
+
+
 def sync_expert(default_home: Path, expert_home: Path) -> List[str]:
     """让一位专家跟上默认档案（模型、密钥、要跟随的 MCP），返回改了哪些。"""
     default_raw, default_env = _read(default_home)
@@ -301,6 +319,9 @@ def sync_expert(default_home: Path, expert_home: Path) -> List[str]:
         mcp_entry = servers.get(mcp_name)
         if isinstance(mcp_entry, Mapping):
             referenced |= _referenced_keys({}, mcp_entry)
+    web = new_raw.get("web") if isinstance(new_raw.get("web"), Mapping) else {}
+    if any(web.get(field) in _UNISEARCH_KEYED for field in _UNISEARCH_BACKENDS):
+        referenced.add(media_slot.DEFAULT_KEY_ENV)
     own = _own_keys(entry)
     env_updates: Dict[str, str] = {}
     for key, value in default_env.items():

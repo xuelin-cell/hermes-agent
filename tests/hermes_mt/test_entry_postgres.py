@@ -13,7 +13,7 @@ from aiohttp.test_utils import TestClient, TestServer
 from entry.app import database_error_middleware
 from entry.config import Settings
 from entry.db import Database, DatabaseUnavailable
-from entry.tenants import CredentialSyncError, Tenant, TenantManager
+from entry.tenants import DESKTOP_MAAS_KEY_ENV, CredentialSyncError, Tenant, TenantManager
 
 
 @dataclass
@@ -57,7 +57,7 @@ class _FailingPool:
 @pytest.mark.asyncio
 async def test_api_key_sync_uses_existing_env_endpoint_and_deduplicates() -> None:
     settings = Settings(key_env_name="PLATFORM_MODEL_KEY")
-    http = _Http([200, 200])
+    http = _Http([200] * 4)
     manager = TenantManager(settings, None, None, http)  # type: ignore[arg-type]
     tenant = Tenant("user-a", "user-a", "172.20.0.8", "container-token")
 
@@ -65,9 +65,12 @@ async def test_api_key_sync_uses_existing_env_endpoint_and_deduplicates() -> Non
     await manager._sync_api_key(tenant, "key-one")
     await manager._sync_api_key(tenant, "key-two")
 
-    assert len(http.calls) == 2
+    # 普通版每把 key 写两个名字：模型用的那个，和桌面插件（联网搜索）认的那个；同一把不重复写。
+    assert [c["json"] for c in http.calls] == [
+        {"key": name, "value": value}
+        for value in ("key-one", "key-two") for name in ("PLATFORM_MODEL_KEY", DESKTOP_MAAS_KEY_ENV)
+    ]
     assert http.calls[0]["url"] == "http://172.20.0.8:9121/api/env"
-    assert http.calls[0]["json"] == {"key": "PLATFORM_MODEL_KEY", "value": "key-one"}
     assert http.calls[0]["headers"]["X-Hermes-Session-Token"] == "container-token"
     assert http.calls[0]["headers"]["Host"] == "127.0.0.1:9120"
 
@@ -75,7 +78,7 @@ async def test_api_key_sync_uses_existing_env_endpoint_and_deduplicates() -> Non
 @pytest.mark.asyncio
 async def test_api_key_sync_failure_is_not_marked_and_retries() -> None:
     settings = Settings(key_env_name="PLATFORM_MODEL_KEY")
-    http = _Http([500, 200])
+    http = _Http([500, 200, 200])
     manager = TenantManager(settings, None, None, http)  # type: ignore[arg-type]
     tenant = Tenant("user-a", "user-a", "172.20.0.8", "container-token")
 
@@ -83,7 +86,8 @@ async def test_api_key_sync_failure_is_not_marked_and_retries() -> None:
         await manager._sync_api_key(tenant, "key-one")
     await manager._sync_api_key(tenant, "key-one")
 
-    assert len(http.calls) == 2
+    # 失败那次没记成已同步：第二次两个名字都重新写
+    assert len(http.calls) == 3
 
 
 @pytest.mark.asyncio

@@ -226,6 +226,30 @@ async def test_spawn_hermes_starts_personal_services_only_outside_enterprise_mod
     assert bool(restored) is (not enterprise)
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("chosen", [None, "firecrawl"])
+async def test_unisearch_defaults_fill_only_what_the_user_has_not_chosen(
+    forward, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, chosen: str | None
+) -> None:
+    """引导时跑桌面插件自己的 configure.py：没选过搜索后端的用户用上联网搜索，选过的保持原样。"""
+    import yaml
+
+    root = SEED_DIR.parents[2]
+    (tmp_path / "config.yaml").write_text(yaml.safe_dump({"web": {"search_backend": chosen}} if chosen else {}),
+                                          encoding="utf-8")
+    # 普通版实例的 .env 里有入口写的套餐 key（插件按桌面的变量名读，见 entry/tenants.py）
+    (tmp_path / ".env").write_text("DESKTOP_MT_MAAS_API_KEY=plan-key\n", encoding="utf-8")
+    monkeypatch.setattr(forward, "HERMES_PYTHON", sys.executable)
+    monkeypatch.setattr(forward, "HERMES_INSTALL", root)
+    monkeypatch.setattr(forward, "UNISEARCH_CONFIGURE", root / "apps/desktop/assets/unisearch-plugin/configure.py")
+
+    await forward._configure_unisearch(dict(os.environ))
+
+    config = yaml.safe_load((tmp_path / "config.yaml").read_text(encoding="utf-8"))
+    assert config["web"]["search_backend"] == (chosen or "unisearch")
+    assert "unisearch" in config["plugins"]["enabled"]
+
+
 class _Writer:
     def __init__(self) -> None:
         self.data = b""

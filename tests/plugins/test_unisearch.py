@@ -353,3 +353,22 @@ def test_service_url_keeps_business_query_parameters():
         read_user_config_raw()["plugins"]["entries"]["unisearch"]["settings"]["url"]
         == url
     )
+
+
+def test_session_setup_leaves_search_alone_without_the_maas_key(tmp_path):
+    """会话开始时的默认配置：有 key 的档案切到 UniSearch；没有 key 的（企业版实例、还没登录）
+    保持 Hermes 自己的搜索选择，不切到一条用不了的路。"""
+    _, configure = load_package()
+    from hermes_cli.config import read_user_config_raw
+
+    for key, expected in (("", None), ("maas-key", "unisearch")):
+        home = tmp_path / (key or "no-key")
+        home.mkdir()
+        token = set_hermes_home_override(home)
+        scope = set_secret_scope({"DESKTOP_MT_MAAS_API_KEY": key} if key else {}, profile_home=home)
+        try:
+            configure.apply(None)
+            assert read_user_config_raw()["web"].get("search_backend") == expected
+        finally:
+            reset_secret_scope(scope)
+            reset_hermes_home_override(token)
