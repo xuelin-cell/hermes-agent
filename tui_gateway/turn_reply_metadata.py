@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 
+from agent.context_compressor import _DB_PERSISTED_MARKER
+
 logger = logging.getLogger(__name__)
 
 
@@ -44,14 +46,19 @@ def snapshot_turn_model(result, agent) -> dict | None:
     return snapshot
 
 
-def persist_turn_reply_metadata(agent, messages, receipt: dict | None, metadata: dict) -> None:
-    """Address only this turn's committed closing assistant row, including partial replies."""
-    if not metadata or not receipt or not isinstance(messages, list) or not messages:
+def persist_turn_reply_metadata(agent, messages, history: list[dict], metadata: dict) -> None:
+    """Write metadata to the new closing assistant row by its committed row ID."""
+    if not metadata or not isinstance(messages, list) or not messages:
         return
     last = messages[-1]
+    if not isinstance(last, dict):
+        return
     row_id = last.get("_row_id")
     if (last.get("role") != "assistant" or last.get("tool_calls")
-            or row_id not in receipt["row_ids"]):
+            or not last.get(_DB_PERSISTED_MARKER) or type(row_id) is not int or row_id <= 0):
+        return
+    # Sequence repair may merge the prompt into a history row. The reply itself must be new.
+    if any(before is last or before.get("_row_id") == row_id for before in history):
         return
     db = getattr(agent, "_session_db", None)
     if db is None:

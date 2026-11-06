@@ -892,7 +892,10 @@ def _complete_turn_payload(session: dict, st: _TurnRun, status_note: str | None,
         ("turn_completed_at", getattr(st, "turn_completed_at", None) if status == "complete" else None)
     ) if value is not None}
     payload.update(reply_metadata)
-    persist_turn_reply_metadata(agent, result.get("messages"), payload.get("persisted_turn"), reply_metadata)
+    messages = result.get("messages")
+    # A merged user boundary can prevent a reconciliation receipt while the reply is already durable.
+    if status == "complete" or (receipt and messages[-1].get("_row_id") in receipt["row_ids"]):
+        persist_turn_reply_metadata(agent, messages, st.history, reply_metadata)
     if last_reasoning:
         payload["reasoning"] = last_reasoning
     if status_note:
