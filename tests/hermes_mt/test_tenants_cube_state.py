@@ -970,3 +970,19 @@ async def test_request_queued_behind_a_slow_start_leaves_when_its_client_is_gone
             await asyncio.wait_for(waiting, 5)
     assert not manager._lock("u").locked()
     assert not cube.calls                       # 没轮到它，也就没碰实例
+
+
+@pytest.mark.asyncio
+async def test_template_upgrade_of_an_instance_without_its_forwarder_rebuilds_instead_of_sticking(monkeypatch) -> None:
+    """换模板要先排空；转发器不应答时排空和「恢复旧实例」都失败，实例还被留在「排空中」，以后每个请求都卡在
+    这里。暂停前的归档已经是全部数据：直接换成新模板的实例。"""
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    store, cube = _stuck(True, {"error": "service unavailable"})
+    store.runtime = replace(store.runtime, template_id="tpl-old")
+    cube.sandboxes["sbOld"]["templateID"] = "tpl-old"
+    cube.drain_ok = False
+    tenant = await _manager(store, cube).ensure_running("u")
+    assert tenant.sandbox_id == "sb1" and cube.sandboxes["sb1"]["templateID"] == "tpl-new"
+    assert ("deleted", "sbOld", "unresponsive") in store.calls
+    assert [c[1] for c in store.calls if c[0] == "lifecycle"][-1] == ""
+    assert next(c for c in cube.calls if c[0] == "bootstrap")[2]["restore_from"] == "sbOld"

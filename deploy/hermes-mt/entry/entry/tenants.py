@@ -1161,6 +1161,11 @@ class TenantManager:
             body = await self.cube.drain(sandbox_id, port, token)
         except CubeError as exc:
             log.warning("tenant %s: 排空实例 %s 失败: %s", slug, sandbox_id[:12], exc)
+            # 转发器根本不应答时，「恢复旧实例」也要问它，只会接着失败，还把实例留在「排空中」：之后每个请求
+            # 都走恢复、都失败（换模板时撞上暂停后唤醒没起来的实例）。暂停前的归档已经是全部数据，就直接换掉。
+            if await self._discard_unresponsive(user_id, slug, sandbox_id):
+                await self.store.set_lifecycle(user_id, "")
+                return True
             await self._resume_after_drain(user_id, sandbox_id, token)
             return False
         summary = body.get("archive") or {}
