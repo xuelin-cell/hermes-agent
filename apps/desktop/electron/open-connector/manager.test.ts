@@ -109,6 +109,39 @@ it('mounts an OAuth connector after browser authorization completes', async () =
   }
 })
 
+it('starts WPS browser-poll authorization and mounts it after the local runtime connects', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-wps-browser-auth-'))
+  const writes: unknown[] = []
+  let connected = false
+  const request = vi.spyOn(ConnectorRuntime.prototype, 'request').mockResolvedValue({
+    authorizationUrl: 'https://mcp-center.wps.cn/kdocs-auth/auth-guide?auth_code=test'
+  })
+  vi.spyOn(ConnectorRuntime.prototype, 'rows').mockImplementation(async () => [{ id: 'wps_mcp', connected }])
+  vi.spyOn(ConnectorRuntime.prototype, 'config').mockResolvedValue({
+    url: 'http://127.0.0.1:1234/mcp',
+    headers: { Authorization: 'Bearer runtime' },
+    desktop_connector: 'wps_mcp',
+    timeout: 600
+  })
+  vi.spyOn(ConnectorRuntime.prototype, 'close').mockResolvedValue()
+  const manager = makeManager(home, { mcp_servers: {} }, writes)
+
+  try {
+    vi.useFakeTimers()
+    await manager.request({ operation: 'authorize', profile: 'default', id: 'wps_mcp' })
+    expect(request).toHaveBeenCalledWith('/api/browser-authorizations/wps_mcp', 'POST', {
+      service: 'wps_mcp',
+      connectionName: 'default'
+    })
+    connected = true
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(writes).toHaveLength(1)
+  } finally {
+    await manager.close()
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
 it('automatically provisions Agent Mail for a newly logged-in phone account', async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-agent-mail-auto-'))
   fs.writeFileSync(path.join(home, 'config.yaml'), '{}\n')
