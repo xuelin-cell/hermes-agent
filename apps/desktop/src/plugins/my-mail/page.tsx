@@ -324,11 +324,11 @@ export function MyMailPage() {
             <p className="mt-2 text-muted-foreground">{text.subtitle}</p>
           </div>
           <Button
-            className="h-11 rounded-xl bg-slate-950 px-5 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-950"
+            className="h-11 min-w-28 justify-center gap-2 rounded-xl bg-slate-950 px-5 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-950"
             onClick={() => openComposer()}
           >
-            <Send className="mr-2 size-4" />
-            {text.compose}
+            <Send className="size-4" />
+            <span>{text.compose}</span>
           </Button>
         </header>
 
