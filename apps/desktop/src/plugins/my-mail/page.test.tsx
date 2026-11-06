@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { composerSetDraft, downloadAttachment, enableMail, getMessage, hostNewChat, hostNotifyError, listFolders, listMessages, mailStatus, stageAttachment } = vi.hoisted(() => ({
+const { composerSetDraft, downloadAttachment, enableMail, getMessage, hostNewChat, hostNotifyError, listFolders, listMessages, mailStatus, markRead, stageAttachment } = vi.hoisted(() => ({
   composerSetDraft: vi.fn(),
   downloadAttachment: vi.fn(),
   enableMail: vi.fn(),
@@ -11,6 +11,7 @@ const { composerSetDraft, downloadAttachment, enableMail, getMessage, hostNewCha
   listFolders: vi.fn(),
   listMessages: vi.fn(),
   mailStatus: vi.fn(),
+  markRead: vi.fn(),
   stageAttachment: vi.fn()
 }))
 
@@ -29,7 +30,7 @@ vi.mock('./api', () => ({
   listFolders,
   listMessages,
   mailStatus,
-  markRead: vi.fn(),
+  markRead,
   searchMessages: vi.fn(),
   stageAttachment
 }))
@@ -119,7 +120,10 @@ describe('MyMailPage disabled state', () => {
     const { MyMailPage } = await import('./page')
 
     render(<MyMailPage />)
+    expect(await screen.findByRole('img')).toBeTruthy()
     fireEvent.click(await screen.findByText('Report'))
+    await waitFor(() => expect(markRead).toHaveBeenCalledWith('default', 'INBOX', 8))
+    expect(screen.queryByRole('img')).toBeNull()
     expect(await screen.findByText('report.txt')).toBeTruthy()
     expect(screen.getByRole('button', { name: '添加邮件到对话' })).toBeTruthy()
     expect(downloadAttachment).not.toHaveBeenCalled()
