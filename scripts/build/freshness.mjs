@@ -50,7 +50,11 @@ export function sourceHash(source, product) {
   ], name => {
     // Build scripts are inputs; workspace build directories are outputs.
     const parts = name.split('/')
-    return (!name.startsWith('scripts/') && parts.some(part => generated.has(part)))
+    // electron-builder writes release-local-<commit>/ beside release/ inside the
+    // workspace. They hold tens of GB of installers, are never renderer inputs,
+    // and hashing them made every build read them all — and fail with EBUSY when
+    // one was being deleted or scanned mid-hash.
+    return (!name.startsWith('scripts/') && parts.some(part => generated.has(part) || part.startsWith('release-local-')))
       || (product === 'tui' && (parts.includes('__tests__') || /\.(test|spec)(-d)?\.[cm]?[jt]sx?$/.test(name)))
       || parts.some(part => part.startsWith('.dist-') || part.startsWith('.staging-') || part === '__pycache__')
       || name.endsWith('.tsbuildinfo') || name.endsWith('.pyc')
