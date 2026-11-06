@@ -17,11 +17,10 @@ from tools.skills_hub_install import install_from_quarantine, quarantine_bundle
 from tools.skills_hub_models import SkillBundle, _parse_frontmatter, _validate_skill_name
 
 MAX_ARCHIVE_BYTES = 20 * 1024 * 1024
-MAX_EXTRACTED_BYTES = 80 * 1024 * 1024
-# Reference-heavy skills routinely ship several hundred Markdown guides. Keep a
-# finite entry limit for archive processing, while admitting a single skill's
-# documented reference tree (for example, KDocs currently has 631 files).
-MAX_ARCHIVE_FILES = 1000
+# Keep the resource limits aligned with the legacy UniWork skill uploader.
+# Path validation and security scanning remain stricter in the new installer.
+MAX_EXTRACTED_BYTES = 100 * 1024 * 1024
+MAX_ARCHIVE_FILES = 2000
 MAX_DOWNLOAD_REDIRECTS = 3
 # 技能市场目录里的包分别放在：maas 推荐包、ClawHub（convex 下载跳转到 clawhub.ai）、
 # SkillHub 的腾讯云 COS 存储桶、元景 SkillHub 站点。只放行这几个确切主机，不放开整个 myqcloud.com。
@@ -96,9 +95,9 @@ def bundle_from_zip(package: bytes, identifier: str, source_url: str) -> SkillBu
     with archive:
         members = [item for item in archive.infolist() if not item.is_dir()]
         if not members or len(members) > MAX_ARCHIVE_FILES:
-            raise MarketSkillInstallError("技能包文件数量不合法")
+            raise MarketSkillInstallError(f"技能包最多包含 {MAX_ARCHIVE_FILES} 个文件")
         if sum(item.file_size for item in members) > MAX_EXTRACTED_BYTES:
-            raise MarketSkillInstallError("技能包解压后超过 80 MB，无法安装")
+            raise MarketSkillInstallError("技能包解压后超过 100 MB，无法安装")
 
         normalized = []
         for item in members:

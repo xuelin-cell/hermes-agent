@@ -143,8 +143,8 @@ function ScopedUpload({ profile, onUploaded }: Props) {
           </Button>
           <p className="text-sm text-muted-foreground">
             {zh
-              ? '支持 .zip / .skill，最大 20 MB。包内须包含带有效名称的 SKILL.md，上传后自动安装。'
-              : 'Supports .zip / .skill up to 20 MB. Include SKILL.md with a valid name. Uploads install automatically.'}
+              ? '支持 .zip / .skill：压缩包最大 20 MB，最多 2,000 个文件，解压后最大 100 MB。包内须包含带有效名称的 SKILL.md；安装后在新会话中生效。'
+              : 'Supports .zip / .skill: up to 20 MB, 2,000 files, and 100 MB extracted. Include SKILL.md with a valid name; installed skills apply in new chats.'}
           </p>
           {error && (
             <p className="text-sm text-destructive" role="alert">

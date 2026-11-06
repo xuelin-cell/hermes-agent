@@ -129,7 +129,7 @@ def test_zip_bundle_accepts_reference_heavy_skill_and_rejects_excessive_file_cou
 
     too_many = {"fixture/SKILL.md": "---\nname: fixture\n---\n"}
     too_many.update({f"fixture/references/guide-{index}.md": "reference" for index in range(MAX_ARCHIVE_FILES)})
-    with pytest.raises(MarketSkillInstallError, match="文件数量"):
+    with pytest.raises(MarketSkillInstallError, match=f"最多包含 {MAX_ARCHIVE_FILES} 个文件"):
         bundle_from_zip(_skill_zip(too_many), "upload", "")
 
 
