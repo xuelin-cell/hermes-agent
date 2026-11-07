@@ -51,7 +51,7 @@ function onCancelLatch(
 }
 
 describe('Windows NSIS strategy', () => {
-  it('checks, downloads, stops the backend, then installs silently and relaunches', async () => {
+  it('checks, downloads, stops the backend, then hands off to the visible installer', async () => {
     const { deps, strategy, events, emitter } = fixture()
     vi.mocked(deps.updater.downloadUpdate).mockImplementation(async () => {
       events.push('download')
@@ -71,10 +71,27 @@ describe('Windows NSIS strategy', () => {
 
     expect(await strategy.apply()).toMatchObject({ ok: true, handedOff: true, mechanism: 'electron-updater' })
     expect(events).toEqual(['check', 'download', 'stop', 'install'])
-    // Per-machine installs under Program Files cannot answer the NSIS wizard,
-    // and the swap must come back up on its own.
-    expect(deps.updater.quitAndInstall).toHaveBeenCalledWith(true, true)
+    // Non-silent install: the assisted NSIS installer shows its wizard and
+    // progress. isForceRunAfter stays true; with isSilent=false electron-updater
+    // forwards autoRunAppAfterInstall in its place.
+    expect(deps.updater.quitAndInstall).toHaveBeenCalledWith(false, true)
     expect(deps.emitProgress).toHaveBeenCalledWith({ stage: 'fetch', message: expect.any(String), percent: 42 })
+
+    // The order is load-bearing: tear the backend down first (its files are
+    // about to be replaced), announce the restart, then hand off to the
+    // installer — which is what closes the app.
+    const stopOrder: number = vi.mocked(deps.beforeInstall).mock.invocationCallOrder[0]
+
+    const restartIndex: number = vi
+      .mocked(deps.emitProgress)
+      .mock.calls.findIndex(([payload]) => payload.stage === 'restart')
+
+    expect(restartIndex).toBeGreaterThanOrEqual(0)
+    expect(stopOrder).toBeLessThan(vi.mocked(deps.emitProgress).mock.invocationCallOrder[restartIndex])
+    expect(vi.mocked(deps.emitProgress).mock.invocationCallOrder[restartIndex]).toBeLessThan(
+      vi.mocked(deps.updater.quitAndInstall).mock.invocationCallOrder[0]
+    )
+
     // The progress listener lives for the strategy's lifetime: electron-updater
     // only builds its cancellation-aware progress stream when one exists as the
     // download starts, and the prefetch download must be abortable too.

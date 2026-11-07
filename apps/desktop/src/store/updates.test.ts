@@ -1977,6 +1977,48 @@ describe('prepareClientUpdate', () => {
   })
 })
 
+describe('startActiveUpdate', () => {
+  const applyMock = vi.fn()
+  const prepareMock = vi.fn()
+
+  beforeEach(() => {
+    applyMock.mockReset()
+    prepareMock.mockReset()
+    resetUpdateApplyState()
+    $updateOverlayOpen.set(false)
+    $updateReady.set(null)
+    $updateReadyDismissed.set(false)
+    $updateDownloadFailure.set(null)
+    $updateStatus.set(null)
+    ;(globalThis as unknown as { window: unknown }).window = {
+      hermesDesktop: { updates: { apply: applyMock, check: vi.fn(), prepare: prepareMock } }
+    }
+  })
+
+  afterEach(() => {
+    delete (globalThis as unknown as { window?: unknown }).window
+    $updateOverlayOpen.set(false)
+    $updateReady.set(null)
+    $updateStatus.set(null)
+  })
+
+  // The ready prompt's only action is "restart": it must go straight to the
+  // install and reuse the package already on disk, never start a transfer.
+  it('installs a downloaded package without transferring it again', async () => {
+    applyMock.mockResolvedValue({ ok: true, handedOff: true })
+    $updateStatus.set({ supported: true, updateAvailable: true, latestTag: 'v1.0.0' })
+    $updateReady.set({ version: '1.0.0' })
+
+    startActiveUpdate('client')
+
+    await vi.waitFor(() => expect(applyMock).toHaveBeenCalledTimes(1))
+
+    expect(prepareMock).not.toHaveBeenCalled()
+    expect($updateOverlayOpen.get()).toBe(true)
+    expect($updateApply.get().applying).toBe(true)
+  })
+})
+
 describe('cancelActiveUpdate', () => {
   const cancelMock = vi.fn()
 

@@ -3,7 +3,7 @@
 // An NSIS package has no OS-level update owner: no App Installer descriptor,
 // no Store. When its stamp declares 'electron-updater' this strategy owns the
 // whole loop — read the generic feed, download the blockmap diff, stop the
-// backend, then let the NSIS installer swap the tree silently.
+// backend, then let the NSIS installer swap the tree, with its wizard visible.
 //
 // The App Installer arm lives in app-updater.ts + app-installer.ts; macOS
 // lives in mac.ts. This arm shares their handoff contract.
@@ -216,10 +216,13 @@ export class WindowsStrategy implements UpdaterStrategy {
             message: 'Restarting Hermes to install the update.',
             percent: 100
           })
-          // Silent: this is a per-machine install (Program Files), so an
-          // unattended upgrade can never answer the NSIS wizard. The second
-          // flag relaunches into the new build after the swap.
-          this.deps.updater.quitAndInstall(true, true)
+          // Visible install: the assisted NSIS installer (oneClick: false)
+          // shows its wizard and progress instead of a window that just
+          // vanishes. With isSilent=false BaseUpdater substitutes
+          // autoRunAppAfterInstall (true) for the force-run flag, and the
+          // assisted installer relaunches from its Finish page, so the update
+          // still comes back on its own.
+          this.deps.updater.quitAndInstall(false, true)
 
           return { ok: true, bundled: true, handedOff: true, mechanism: this.mechanism }
         }

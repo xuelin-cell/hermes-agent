@@ -20,7 +20,6 @@ vi.mock('@/store/updates', async (): Promise<Record<string, unknown>> => {
     $updateReady: atom<{ version: string | null } | null>(null),
     dismissUpdateDownloadFailure: vi.fn(),
     dismissUpdateReady: vi.fn(),
-    openUpdateOverlayFor: vi.fn(),
     retryUpdateDownload: vi.fn(),
     startActiveUpdate: vi.fn()
   }
@@ -48,7 +47,6 @@ import {
   $updateReady,
   dismissUpdateDownloadFailure,
   dismissUpdateReady,
-  openUpdateOverlayFor,
   retryUpdateDownload,
   startActiveUpdate
 } from '@/store/updates'
@@ -125,23 +123,22 @@ describe('download failure', (): void => {
 })
 
 describe('version ready', (): void => {
-  it('names the downloaded version and offers notes, restart, and close', (): void => {
+  it('names the downloaded version and restarts straight into the install', (): void => {
     $updateReady.set({ version: '5.9.3' })
 
     renderDialog()
 
     expect(screen.getByText(en.updates.newVersionReadyBody('v5.9.3'))).toBeTruthy()
-
-    fireEvent.click(screen.getByRole('button', { name: en.updates.updateLog }))
-    expect(dismissUpdateReady).toHaveBeenCalledTimes(1)
-    expect(openUpdateOverlayFor).toHaveBeenCalledWith('client')
+    // No release-notes detour: a downloaded package has exactly one action, and
+    // it hands the swap to the installer.
+    expect(screen.queryByRole('button', { name: en.updates.updateLog })).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: en.updates.restartToUpdate }))
-    expect(dismissUpdateReady).toHaveBeenCalledTimes(2)
+    expect(dismissUpdateReady).toHaveBeenCalledTimes(1)
     expect(startActiveUpdate).toHaveBeenCalledWith('client')
 
     fireEvent.click(screen.getByRole('button', { name: en.common.close }))
-    expect(dismissUpdateReady).toHaveBeenCalledTimes(3)
+    expect(dismissUpdateReady).toHaveBeenCalledTimes(2)
   })
 
   it('never shows a ready prompt while an install or the overlay is active', (): void => {
@@ -153,6 +150,7 @@ describe('version ready', (): void => {
         <UpdateDownloadDialog />
       </I18nProvider>
     )
+
     expect(screen.queryByText(en.updates.newVersionReadyBody('v5.9.3'))).toBeNull()
     unmount()
 

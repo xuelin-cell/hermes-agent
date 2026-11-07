@@ -3,7 +3,13 @@ import type { ReactElement } from 'react'
 
 import { BrandMark } from '@/components/brand-mark'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogTitle, preventCloseButtonAutoFocus } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+  preventCloseButtonAutoFocus
+} from '@/components/ui/dialog'
 import { Progress } from '@/components/ui/progress'
 import { useI18n } from '@/i18n'
 import { shortVersion } from '@/lib/version-label'
@@ -16,7 +22,6 @@ import {
   $updateReady,
   dismissUpdateDownloadFailure,
   dismissUpdateReady,
-  openUpdateOverlayFor,
   retryUpdateDownload,
   startActiveUpdate
 } from '@/store/updates'
@@ -27,7 +32,7 @@ import {
  *
  * - a failed transfer ($updateDownloadFailure) with its reason and a retry that
  *   re-runs that transfer — never the check;
- * - a finished download ($updateReady) with release notes, restart, and close.
+ * - a finished download ($updateReady) that restarts into the install.
  *
  * The two states are mutually exclusive, and both step aside while an install
  * is running or the updates overlay is open. Nothing here starts an install on
@@ -128,31 +133,17 @@ export function UpdateDownloadDialog(): ReactElement | null {
                 {u.tryAgain}
               </Button>
             ) : retrying ? null : (
-              <>
-                <Button
-                  className="min-w-20"
-                  onClick={() => {
-                    dismissUpdateReady()
-                    openUpdateOverlayFor('client')
-                  }}
-                  size="sm"
-                  type="button"
-                  variant="outline"
-                >
-                  {u.updateLog}
-                </Button>
-                <Button
-                  className="min-w-20"
-                  onClick={() => {
-                    dismissUpdateReady()
-                    startActiveUpdate('client')
-                  }}
-                  size="sm"
-                  type="button"
-                >
-                  {u.restartToUpdate}
-                </Button>
-              </>
+              <Button
+                className="min-w-20"
+                onClick={() => {
+                  dismissUpdateReady()
+                  startActiveUpdate('client')
+                }}
+                size="sm"
+                type="button"
+              >
+                {u.restartToUpdate}
+              </Button>
             )}
           </div>
         </div>

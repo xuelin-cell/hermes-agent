@@ -17,6 +17,7 @@ import {
   $desktopVersion,
   $updateApply,
   $updateChecking,
+  $updateReady,
   $updateStatus,
   checkBackendUpdates,
   checkUpdates,
@@ -264,6 +265,10 @@ interface UpdateActionsProps {
 }
 
 function UpdateActions({ target, u, view }: UpdateActionsProps): ReactElement | null {
+  // Once the package is on disk the primary action installs it directly; the
+  // release-notes detour lands on the same handoff, so it is not offered.
+  const ready = useStore($updateReady)
+
   if (view.applying) {
     return null
   }
@@ -277,9 +282,11 @@ function UpdateActions({ target, u, view }: UpdateActionsProps): ReactElement | 
       <Button onClick={() => startActiveUpdate(target)} size="sm">
         {u.updateNow}
       </Button>
-      <Button onClick={() => openUpdateOverlayFor(target)} size="sm" variant="textStrong">
-        {u.seeWhatsNew}
-      </Button>
+      {target === 'backend' || !ready ? (
+        <Button onClick={() => openUpdateOverlayFor(target)} size="sm" variant="textStrong">
+          {u.seeWhatsNew}
+        </Button>
+      ) : null}
     </>
   )
 }
@@ -430,6 +437,7 @@ function AboutUpdateCard({
   const canUpdate = view.updateAvailable && view.supported && !busy
   const channelLabel = channel ? ((u.channels as Record<string, string>)[channel] ?? channel) : null
   const statusLine = [view.error ?? view.line, channelLabel].filter(Boolean).join(' · ')
+
   const primaryLabel = checking
     ? u.checkingShort
     : canUpdate

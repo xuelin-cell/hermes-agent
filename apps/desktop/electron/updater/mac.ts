@@ -208,6 +208,9 @@ export class MacStrategy implements UpdaterStrategy {
             message: 'Restarting Hermes to install the update.',
             percent: 100
           })
+          // MacUpdater.quitAndInstall() takes no arguments: Squirrel swaps the
+          // signed .app in place with no wizard and no elevation prompt, so
+          // there is no "visible install" to opt into on this platform.
           this.deps.updater.quitAndInstall()
 
           return { ok: true, bundled: true, handedOff: true, mechanism: this.mechanism }

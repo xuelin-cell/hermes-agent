@@ -17,12 +17,7 @@ import { Loader } from '@/components/ui/loader'
 import { Progress } from '@/components/ui/progress'
 import { UpdateStatusCard, VersionHero } from '@/components/update-status'
 import { VersionDetails } from '@/components/version-details'
-import type {
-  DesktopUpdateCommit,
-  DesktopUpdateStage,
-  DesktopUpdateStatus,
-  DesktopVersionInfo
-} from '@/global'
+import type { DesktopUpdateCommit, DesktopUpdateStage, DesktopUpdateStatus, DesktopVersionInfo } from '@/global'
 import { useI18n } from '@/i18n'
 import { buildCommitChangelog } from '@/lib/commit-changelog'
 import { AlertCircle, Check, Copy, Terminal } from '@/lib/icons'
@@ -38,6 +33,7 @@ import {
   $updateChecking,
   $updateOverlayOpen,
   $updateOverlayTarget,
+  $updateReady,
   $updateStatus,
   applyBackendUpdate,
   applyUpdates,
@@ -75,6 +71,7 @@ export function UpdatesOverlay() {
   const backendChecking = useStore($backendUpdateChecking)
   const backendApply = useStore($backendUpdateApply)
   const desktopVersion = useStore($desktopVersion)
+  const ready = useStore($updateReady)
 
   const isBackend = target === 'backend'
   const status = isBackend ? backendStatus : clientStatus
@@ -104,6 +101,21 @@ export function UpdatesOverlay() {
             : 'idle'
 
   const downloadInProgress = !isBackend && phase === 'applying' && isDownloadStage(apply.stage)
+
+  // A package already on disk needs no second confirmation: the ready prompt's
+  // "restart" IS the start of the install. Any surface that opens this overlay
+  // in that state hands straight over instead of rendering the install pitch
+  // (title + notes + "update now" / "later") a second time. Packages still in
+  // flight keep the pitch — it is the only way to start their install.
+  const handoff = !isBackend && phase === 'idle' && Boolean(ready) && updateAvailable && !status?.retirement
+
+  useEffect(() => {
+    if (!open || !handoff) {
+      return
+    }
+
+    void install()
+  }, [handoff, install, open])
 
   const handleClose = (next: boolean) => {
     // Only the transfer is interruptible: abort it for real so the remaining
@@ -137,13 +149,15 @@ export function UpdatesOverlay() {
           the close button and trigger its tooltip immediately on open. */}
       <DialogContent
         bodyClassName="overflow-hidden p-0 gap-0"
-        className={cn('max-w-sm', phase === 'applying' && 'max-w-lg')}
+        className={cn('max-w-sm', (phase === 'applying' || handoff) && 'max-w-lg')}
         onOpenAutoFocus={preventCloseButtonAutoFocus}
         showCloseButton={phase !== 'applying' || downloadInProgress}
       >
         {phase === 'applying' && (
           <ApplyingView apply={apply} onCancel={isBackend ? undefined : () => handleClose(false)} />
         )}
+
+        {phase === 'idle' && handoff && <ApplyingView apply={apply} />}
 
         {phase === 'manual' && (
           <ManualView
@@ -169,7 +183,7 @@ export function UpdatesOverlay() {
             retirement={status.retirement}
           />
         )}
-        {phase === 'idle' && (isBackend || !status?.retirement) && (
+        {phase === 'idle' && (isBackend || !status?.retirement) && !handoff && (
           <IdleView
             behind={behind}
             checking={checking}
@@ -500,18 +514,14 @@ function ApplyingView({ apply, onCancel }: { apply: UpdateApplyState; onCancel?:
 
   return (
     <div className="grid gap-5 p-6">
-      <DialogTitle className="text-center text-sm font-medium text-muted-foreground">
-        {u.updateDialogTitle}
-      </DialogTitle>
+      <DialogTitle className="text-center text-sm font-medium text-muted-foreground">{u.updateDialogTitle}</DialogTitle>
 
       <div className="flex items-center gap-4">
         <BrandMark className="size-16 rounded-2xl" />
 
         <div className="grid min-w-0 flex-1 gap-2.5">
           {/* Doubles as the dialog's accessible description. */}
-          <DialogDescription className="text-sm font-semibold leading-5 text-foreground">
-            {headline}
-          </DialogDescription>
+          <DialogDescription className="text-sm font-semibold leading-5 text-foreground">{headline}</DialogDescription>
 
           <Progress
             aria-label={headline}
