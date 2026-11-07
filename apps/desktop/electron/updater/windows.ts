@@ -17,7 +17,7 @@ import type { ReleaseNotesByLocale } from './release-notes'
 import type { UpdaterApplyResultWire, UpdaterPrepareResult, UpdaterStatusWire, UpdaterStrategy } from './index'
 
 export interface WindowsStrategyDeps {
-  updater: Pick<AppUpdater, 'checkForUpdates' | 'downloadUpdate' | 'quitAndInstall' | 'on' | 'removeListener'>
+  updater: Pick<AppUpdater, 'checkForUpdates' | 'downloadUpdate' | 'quitAndInstall' | 'on'>
   channel: string
   appVersion: string
   beforeInstall: () => Promise<void>
@@ -32,10 +32,38 @@ export class WindowsStrategy implements UpdaterStrategy {
   private applying = false
   private preparedVersion: string | null = null
   private preparing = false
-  /** Live only while apply() is transferring bytes. */
-  private cancellation: DownloadCancellation | null = null
+  /** The transfer this strategy owns. `prepare()` starts it and an `apply()`
+   *  that lands mid-prefetch joins the same one, because electron-updater keeps
+   *  a single downloadPromise: a second `downloadUpdate` answers "Downloading
+   *  update (already in progress)" and ignores the token it was given. A token
+   *  minted per call therefore governed nothing, and "Cancel" only closed the
+   *  dialog while the bytes kept coming. */
+  private transfer: DownloadCancellation | null = null
 
-  constructor(private readonly deps: WindowsStrategyDeps) {}
+  constructor(private readonly deps: WindowsStrategyDeps) {
+    // electron-updater only builds its cancellation-aware progress stream when
+    // a `download-progress` listener exists as the download starts, so this one
+    // lives for the strategy's lifetime — the silent ambient prefetch must be
+    // abortable too. Forwarding is gated on apply(), so a prefetch still never
+    // reports progress to the renderer.
+    this.deps.updater.on('download-progress', ({ percent }: { percent: number }): void => {
+      if (this.applying) {
+        this.deps.emitProgress({ stage: 'fetch', message: 'Downloading the Hermes update.', percent })
+      }
+    })
+  }
+
+  private startTransfer(): DownloadCancellation {
+    this.transfer ??= new DownloadCancellation()
+
+    return this.transfer
+  }
+
+  private finishTransfer(cancellation: DownloadCancellation): void {
+    if (this.transfer === cancellation) {
+      this.transfer = null
+    }
+  }
 
   async check(): Promise<UpdaterStatusWire> {
     if (this.applying) {
@@ -93,6 +121,10 @@ export class WindowsStrategy implements UpdaterStrategy {
 
     this.preparing = true
 
+    // The prefetch owns the token: whoever downloads these bytes first also has
+    // to be the one that can stop them.
+    const cancellation: DownloadCancellation = this.startTransfer()
+
     try {
       const status = await this.checkRelease()
 
@@ -100,11 +132,27 @@ export class WindowsStrategy implements UpdaterStrategy {
         return { ready: false, version: null }
       }
 
-      await this.deps.updater.downloadUpdate()
+      await this.deps.updater.downloadUpdate(cancellation.token)
+
+      // A cancel that landed as the transfer settled is still not a "new
+      // version ready" prompt: the user asked for it to stop.
+      if (cancellation.cancelled) {
+        return { ready: false, version: null }
+      }
+
       this.preparedVersion = status.latestTag?.replace(/^v/, '') ?? null
 
       return { ready: true, version: this.preparedVersion }
+    } catch (error) {
+      // An aborted prefetch is the user's decision, not a download failure:
+      // report "nothing ready" so no failure dialog is raised for a cancel.
+      if (cancellation.cancelled) {
+        return { ready: false, version: null }
+      }
+
+      throw error
     } finally {
+      this.finishTransfer(cancellation)
       this.preparing = false
     }
   }
@@ -116,15 +164,10 @@ export class WindowsStrategy implements UpdaterStrategy {
 
     this.applying = true
 
-    const cancellation = new DownloadCancellation()
-
-    this.cancellation = cancellation
-
-    const progress = ({ percent }: { percent: number }): void => {
-      this.deps.emitProgress({ stage: 'fetch', message: 'Downloading the Hermes update.', percent })
-    }
-
-    this.deps.updater.on('download-progress', progress)
+    // Join the live transfer rather than minting a second token: when apply()
+    // arrives mid-prefetch electron-updater hands us that promise, and only the
+    // token that started it can abort it.
+    const cancellation: DownloadCancellation = this.startTransfer()
 
     try {
       return await applyPackagedHandoff(
@@ -152,12 +195,17 @@ export class WindowsStrategy implements UpdaterStrategy {
             throw error
           }
 
+          // A cancel that lands while the last chunks are written cannot abort
+          // the transfer, but it must still not install: the user asked for it
+          // to stop.
+          if (cancellation.cancelled) {
+            return { ok: false, cancelled: true, mechanism: this.mechanism }
+          }
+
           // The transfer is done; the token no longer governs this run, so a
           // later cancel reports "nothing to abort" instead of pretending it
           // stopped the NSIS install.
-          if (this.cancellation === cancellation) {
-            this.cancellation = null
-          }
+          this.finishTransfer(cancellation)
 
           await stop()
           this.deps.emitProgress({
@@ -174,13 +222,13 @@ export class WindowsStrategy implements UpdaterStrategy {
         }
       )
     } finally {
-      this.cancellation = null
-      this.deps.updater.removeListener('download-progress', progress)
+      this.finishTransfer(cancellation)
       this.applying = false
     }
   }
 
+  /** Only a transfer this strategy started is abortable. */
   cancel(): boolean {
-    return this.cancellation?.cancel() ?? false
+    return this.transfer?.cancel() ?? false
   }
 }

@@ -7,7 +7,7 @@ import type { ReleaseNotesByLocale } from './release-notes'
 import type { UpdaterApplyResultWire, UpdaterPrepareResult, UpdaterStatusWire, UpdaterStrategy } from './index'
 
 export interface MacStrategyDeps {
-  updater: Pick<AppUpdater, 'checkForUpdates' | 'downloadUpdate' | 'quitAndInstall' | 'on' | 'removeListener'>
+  updater: Pick<AppUpdater, 'checkForUpdates' | 'downloadUpdate' | 'quitAndInstall' | 'on'>
   channel: string
   expectedVersion?: string
   verifyDownload?: (files: string[]) => Promise<void>
@@ -26,10 +26,35 @@ export class MacStrategy implements UpdaterStrategy {
   private applying = false
   private preparedVersion: string | null = null
   private preparing = false
-  /** Live only while apply() is transferring bytes. */
-  private cancellation: DownloadCancellation | null = null
+  /** The transfer this strategy owns. `prepare()` starts it and an `apply()`
+   *  that lands mid-prefetch joins the same one, because electron-updater keeps
+   *  a single downloadPromise and answers a second `downloadUpdate` with it,
+   *  ignoring the token it was given. */
+  private transfer: DownloadCancellation | null = null
 
-  constructor(private readonly deps: MacStrategyDeps) {}
+  constructor(private readonly deps: MacStrategyDeps) {
+    // electron-updater only builds its cancellation-aware progress stream when
+    // a `download-progress` listener exists as the download starts, so this one
+    // lives for the strategy's lifetime — the silent ambient prefetch must be
+    // abortable too. Forwarding is gated on apply().
+    this.deps.updater.on('download-progress', ({ percent }: { percent: number }): void => {
+      if (this.applying) {
+        this.deps.emitProgress({ stage: 'fetch', message: 'Downloading the Hermes update.', percent })
+      }
+    })
+  }
+
+  private startTransfer(): DownloadCancellation {
+    this.transfer ??= new DownloadCancellation()
+
+    return this.transfer
+  }
+
+  private finishTransfer(cancellation: DownloadCancellation): void {
+    if (this.transfer === cancellation) {
+      this.transfer = null
+    }
+  }
 
   async check(): Promise<UpdaterStatusWire> {
     if (this.applying) {
@@ -92,6 +117,10 @@ export class MacStrategy implements UpdaterStrategy {
 
     this.preparing = true
 
+    // The prefetch owns the token: whoever downloads these bytes first also has
+    // to be the one that can stop them.
+    const cancellation: DownloadCancellation = this.startTransfer()
+
     try {
       const status = await this.checkRelease()
 
@@ -99,12 +128,31 @@ export class MacStrategy implements UpdaterStrategy {
         return { ready: false, version: null }
       }
 
-      const files = await this.deps.updater.downloadUpdate()
-      await this.deps.verifyDownload?.(files)
+      try {
+        const files = await this.deps.updater.downloadUpdate(cancellation.token)
+
+        await this.deps.verifyDownload?.(files)
+      } catch (error) {
+        // An aborted prefetch is the user's decision, not a download failure:
+        // report "nothing ready" so no failure dialog is raised for a cancel.
+        if (cancellation.cancelled) {
+          return { ready: false, version: null }
+        }
+
+        throw error
+      }
+
+      // A cancel that landed as the transfer settled is still not a "new
+      // version ready" prompt: the user asked for it to stop.
+      if (cancellation.cancelled) {
+        return { ready: false, version: null }
+      }
+
       this.preparedVersion = status.latestTag?.replace(/^v/, '') ?? null
 
       return { ready: true, version: this.preparedVersion }
     } finally {
+      this.finishTransfer(cancellation)
       this.preparing = false
     }
   }
@@ -116,15 +164,10 @@ export class MacStrategy implements UpdaterStrategy {
 
     this.applying = true
 
-    const cancellation = new DownloadCancellation()
-
-    this.cancellation = cancellation
-
-    const progress = ({ percent }: { percent: number }): void => {
-      this.deps.emitProgress({ stage: 'fetch', message: 'Downloading the Hermes update.', percent })
-    }
-
-    this.deps.updater.on('download-progress', progress)
+    // Join the live transfer rather than minting a second token: when apply()
+    // arrives mid-prefetch electron-updater hands us that promise, and only the
+    // token that started it can abort it.
+    const cancellation: DownloadCancellation = this.startTransfer()
 
     try {
       return await applyPackagedHandoff(
@@ -148,6 +191,14 @@ export class MacStrategy implements UpdaterStrategy {
 
           this.deps.emitProgress({ stage: 'prepare', message: 'Verifying the signed macOS update.', percent: null })
           await this.deps.prepareInstall()
+
+          // A cancel that lands as the transfer settles cannot abort it, but it
+          // must still not install: the user asked for it to stop.
+          if (cancellation.cancelled) {
+            return { ok: false, cancelled: true, mechanism: this.mechanism }
+          }
+
+          this.finishTransfer(cancellation)
           await stop()
           this.deps.emitProgress({
             stage: 'restart',
@@ -160,8 +211,7 @@ export class MacStrategy implements UpdaterStrategy {
         }
       )
     } finally {
-      this.cancellation = null
-      this.deps.updater.removeListener('download-progress', progress)
+      this.finishTransfer(cancellation)
       this.applying = false
     }
   }
@@ -185,17 +235,16 @@ export class MacStrategy implements UpdaterStrategy {
     // The transfer is done: the token no longer governs this run, so a later
     // cancel reports "nothing to abort" instead of pretending it stopped the
     // verification and Squirrel install that follow.
-    if (this.cancellation === cancellation) {
-      this.cancellation = null
-    }
+    this.finishTransfer(cancellation)
 
     await this.deps.verifyDownload?.(files)
 
     return files
   }
 
+  /** Only a transfer this strategy started is abortable. */
   cancel(): boolean {
-    return this.cancellation?.cancel() ?? false
+    return this.transfer?.cancel() ?? false
   }
 }
 

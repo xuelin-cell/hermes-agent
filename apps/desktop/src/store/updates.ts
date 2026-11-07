@@ -759,7 +759,10 @@ export async function prepareClientUpdate(): Promise<boolean> {
     // `supported: false` (App Installer / Store / handoff) means the owner
     // does the download itself — there is no in-app transfer to retry, so the
     // failure surface stays away and the existing behaviour is preserved.
-    if (result && result.supported !== false) {
+    // `ok` without `ready` is not a failure either: the strategy had nothing to
+    // fetch, or the user aborted the prefetch (a cancel is a decision, never a
+    // download error).
+    if (result && result.supported !== false && !result.ok) {
       $updateReady.set(null)
       $updateDownloadFailure.set({ message: result.message ?? result.error ?? null, source: 'prepare' })
     }
@@ -924,6 +927,10 @@ export async function cancelActiveUpdate(): Promise<boolean> {
   }
 
   $updateApply.set(IDLE)
+  // The user just said "not now": keep the ambient prefetch from restarting
+  // the download they stopped on the next check. An explicit update still runs
+  // — applyUpdates() never consults this latch.
+  $updateReadyDismissed.set(true)
   setUpdateOverlayOpen(false)
 
   return true
@@ -1339,6 +1346,14 @@ async function runEverythingUpdate(): Promise<void> {
 
 function ingestProgress(payload: DesktopUpdateProgress): void {
   const current = $updateApply.get()
+
+  // Nobody is watching this stream: the ambient prefetch is silent by design,
+  // and a cancelled apply must not resurrect the progress surface after
+  // cancelActiveUpdate() reset it.
+  if (!current.applying) {
+    return
+  }
+
   const log = [...current.log, { stage: payload.stage, message: payload.message, at: payload.at }].slice(-50)
 
   const terminal =

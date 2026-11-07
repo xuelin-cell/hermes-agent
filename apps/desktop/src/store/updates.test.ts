@@ -1571,6 +1571,7 @@ describe('startUpdatePoller', () => {
     }
     vi.useFakeTimers()
     stopUpdatePoller()
+    resetUpdateApplyState()
   })
 
   afterEach(() => {
@@ -1587,6 +1588,23 @@ describe('startUpdatePoller', () => {
 
     expect(checkMock).toHaveBeenCalled()
     expect($updateStatus.get()?.behind).toBe(5)
+  })
+
+  // The progress stream is the only way a background transfer could reach the
+  // apply surface: the ambient prefetch is silent by design, and a cancelled
+  // apply must not resurrect the progress view it just cleared.
+  it('ignores streamed progress nobody is watching', async () => {
+    startUpdatePoller()
+    await vi.advanceTimersByTimeAsync(0)
+
+    const progress = onProgressMock.mock.calls[0][0] as (payload: unknown) => void
+
+    progress({ at: 1, message: 'Downloading the update.', percent: 12, stage: 'fetch' })
+    expect($updateApply.get().applying).toBe(false)
+
+    $updateApply.set({ ...$updateApply.get(), applying: true, stage: 'prepare' })
+    progress({ at: 2, message: 'Downloading the update.', percent: 12, stage: 'fetch' })
+    expect($updateApply.get()).toMatchObject({ applying: true, percent: 12, stage: 'fetch' })
   })
 
   it('polls once per day and never forces past the caches', async () => {
@@ -1907,6 +1925,19 @@ describe('prepareClientUpdate', () => {
     expect($updateReady.get()).toBeNull()
   })
 
+  // A prefetch that produced no package is not a failed download: the strategy
+  // reports "nothing ready" when the feed moved on or the user aborted the
+  // transfer, and a cancel must never pop the failure dialog.
+  it('stays quiet when the prefetch reports nothing ready', async () => {
+    $updateStatus.set({ supported: true, updateAvailable: true, latestTag: 'v1.2.4' })
+    prepareMock.mockResolvedValue({ ok: true, supported: true, ready: false, version: null })
+
+    expect(await prepareClientUpdate()).toBe(true)
+
+    expect($updateDownloadFailure.get()).toBeNull()
+    expect($updateReady.get()).toBeNull()
+  })
+
   it('keeps prefetch failures silent when the update owner downloads it itself', async () => {
     $updateStatus.set({ supported: true, updateAvailable: true })
     prepareMock.mockResolvedValue({ ok: false, supported: false, ready: false })
@@ -1962,6 +1993,7 @@ describe('cancelActiveUpdate', () => {
   beforeEach(() => {
     cancelMock.mockReset()
     resetUpdateApplyState()
+    $updateReadyDismissed.set(false)
     $updateOverlayOpen.set(true)
     ;(globalThis as unknown as { window: unknown }).window = {
       hermesDesktop: { updates: { cancel: cancelMock } }
@@ -1981,6 +2013,9 @@ describe('cancelActiveUpdate', () => {
     expect($updateOverlayOpen.get()).toBe(false)
     expect($updateApply.get().applying).toBe(false)
     expect($updateApply.get().stage).toBe('idle')
+    // The user said "not now": the ambient prefetch must not immediately
+    // restart the download that was just stopped.
+    expect($updateReadyDismissed.get()).toBe(true)
   })
 
   it('keeps the surface honest when the installer already took over', async () => {

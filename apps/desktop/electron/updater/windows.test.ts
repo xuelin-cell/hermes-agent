@@ -24,8 +24,7 @@ function fixture() {
       quitAndInstall: vi.fn(() => {
         events.push('install')
       }),
-      on: emitter.on.bind(emitter) as WindowsStrategyDeps['updater']['on'],
-      removeListener: emitter.removeListener.bind(emitter) as WindowsStrategyDeps['updater']['removeListener']
+      on: emitter.on.bind(emitter) as WindowsStrategyDeps['updater']['on']
     },
     channel: 'stable',
     appVersion: '1.0.0',
@@ -39,6 +38,16 @@ function fixture() {
   }
 
   return { deps, events, emitter, strategy: new WindowsStrategy(deps) }
+}
+
+/** The strategy hands its own DownloadCancellation to downloadUpdate; the
+ *  EventEmitter typing on electron-updater's token is wider than the listener
+ *  contract the download path actually uses. */
+function onCancelLatch(
+  received: Parameters<WindowsStrategyDeps['updater']['downloadUpdate']>[0],
+  abort: () => void
+): void {
+  ;(received as unknown as { addListener(listener: () => void): void } | undefined)?.addListener(abort)
 }
 
 describe('Windows NSIS strategy', () => {
@@ -66,7 +75,10 @@ describe('Windows NSIS strategy', () => {
     // and the swap must come back up on its own.
     expect(deps.updater.quitAndInstall).toHaveBeenCalledWith(true, true)
     expect(deps.emitProgress).toHaveBeenCalledWith({ stage: 'fetch', message: expect.any(String), percent: 42 })
-    expect(emitter.listenerCount('download-progress')).toBe(0)
+    // The progress listener lives for the strategy's lifetime: electron-updater
+    // only builds its cancellation-aware progress stream when one exists as the
+    // download starts, and the prefetch download must be abortable too.
+    expect(emitter.listenerCount('download-progress')).toBe(1)
   })
 
   it('prefetches the package without stopping the backend, and reuses it for apply', async () => {
@@ -138,7 +150,7 @@ describe('Windows NSIS strategy', () => {
     await expect(strategy.apply()).rejects.toThrow('blockmap mismatch')
     expect(events).not.toContain('stop')
     expect(events).not.toContain('install')
-    expect(emitter.listenerCount('download-progress')).toBe(0)
+    expect(emitter.listenerCount('download-progress')).toBe(1)
   })
 
   it('restores the backend if the installer handoff throws', async () => {
@@ -157,7 +169,7 @@ describe('Windows NSIS strategy', () => {
       const transfer = new Promise<string[]>((_resolve, reject) => {
         // electron-updater aborts the request from this listener, so the token
         // has to be live before cancel() is called.
-        received?.addListener(() => reject(new Error('cancelled')))
+        onCancelLatch(received, () => reject(new Error('cancelled')))
       })
 
       expect(strategy.cancel()).toBe(true)
@@ -169,6 +181,43 @@ describe('Windows NSIS strategy', () => {
 
     expect(result).toMatchObject({ ok: false, cancelled: true, mechanism: 'electron-updater' })
     expect(events).not.toContain('stop')
+    expect(deps.updater.quitAndInstall).not.toHaveBeenCalled()
+    // Once the transfer settled there is nothing left to abort.
+    expect(strategy.cancel()).toBe(false)
+  })
+
+  // Regression: electron-updater keeps ONE downloadPromise, so an apply that
+  // lands mid-prefetch receives that transfer ("Downloading update (already in
+  // progress)") and ignores the token it was handed. Cancel used to flip that
+  // inert token: the dialog closed, the bytes kept arriving, and the next
+  // attempt failed with "An update is already in progress".
+  it('aborts the transfer the prefetch started when apply is cancelled', async () => {
+    const { deps, events, strategy } = fixture()
+
+    let abort: () => void = (): void => {}
+    let shared: Promise<string[]> | null = null
+
+    vi.mocked(deps.updater.downloadUpdate).mockImplementation(received => {
+      onCancelLatch(received, () => abort())
+      shared ??= new Promise<string[]>((_resolve, reject) => {
+        abort = (): void => reject(new Error('cancelled'))
+      })
+
+      return shared
+    })
+
+    const prefetch = strategy.prepare()
+    await vi.waitFor(() => expect(deps.updater.downloadUpdate).toHaveBeenCalledOnce())
+
+    const applying = strategy.apply()
+    await vi.waitFor(() => expect(deps.updater.downloadUpdate).toHaveBeenCalledTimes(2))
+    expect(strategy.cancel()).toBe(true)
+
+    expect(await applying).toMatchObject({ ok: false, cancelled: true })
+    // A cancelled prefetch reports "nothing ready" — never a download failure.
+    expect(await prefetch).toEqual({ ready: false, version: null })
+    expect(events).not.toContain('stop')
+    expect(events).not.toContain('install')
     expect(deps.updater.quitAndInstall).not.toHaveBeenCalled()
     // Once the transfer settled there is nothing left to abort.
     expect(strategy.cancel()).toBe(false)
