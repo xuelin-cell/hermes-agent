@@ -2036,6 +2036,34 @@ describe('cancelActiveUpdate', () => {
 
     expect($updateOverlayOpen.get()).toBe(true)
   })
+
+  // The latch a cancel sets may only silence the AMBIENT prefetch. An explicit
+  // "update now" never consults it, so cancelling once must not strand the user
+  // on a build they can no longer install without relaunching.
+  it('keeps the ambient prefetch off after a cancel without blocking an explicit update', async () => {
+    const prepareMock = vi.fn().mockResolvedValue({ ok: true, supported: true, ready: true, version: '1.2.4' })
+
+    const applyMock = vi.fn().mockResolvedValue({ ok: true, handedOff: false })
+
+    ;(globalThis as unknown as { window: unknown }).window = {
+      hermesDesktop: { updates: { apply: applyMock, cancel: cancelMock, check: vi.fn(), prepare: prepareMock } }
+    }
+    $updateStatus.set({ supported: true, updateAvailable: true, latestTag: 'v1.2.4' })
+    $updateReady.set(null)
+    $updateReadyDismissed.set(false)
+    $updateDownloadFailure.set(null)
+    cancelMock.mockResolvedValue({ cancelled: true })
+    $updateApply.set(downloading)
+
+    await expect(cancelActiveUpdate()).resolves.toBe(true)
+
+    // A later passive check would prefetch again; the latch keeps it off.
+    expect(await prepareClientUpdate()).toBe(false)
+    expect(prepareMock).not.toHaveBeenCalled()
+
+    await applyUpdates()
+    expect(applyMock).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('retryUpdateDownload', () => {

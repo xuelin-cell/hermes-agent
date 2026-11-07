@@ -223,6 +223,29 @@ describe('Windows NSIS strategy', () => {
     expect(strategy.cancel()).toBe(false)
   })
 
+  // A passive check can land mid-apply. That is not a download failure: the
+  // prefetch reports "nothing ready" instead of surfacing the internal gate.
+  it('reports nothing ready for a prefetch that lands mid-apply', async () => {
+    const { deps, strategy } = fixture()
+    let release!: () => void
+
+    vi.mocked(deps.updater.downloadUpdate).mockImplementation(
+      () =>
+        new Promise(resolve => {
+          release = () => resolve([])
+        })
+    )
+
+    const applying = strategy.apply()
+    await vi.waitFor(() => expect(deps.updater.downloadUpdate).toHaveBeenCalledOnce())
+
+    expect(await strategy.prepare()).toEqual({ ready: false, version: null })
+    expect(deps.updater.downloadUpdate).toHaveBeenCalledOnce()
+
+    release()
+    await applying
+  })
+
   it('rejects a second apply while one is in flight', async () => {
     const { deps, strategy } = fixture()
     let release!: () => void

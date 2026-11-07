@@ -103,8 +103,11 @@ export class MacStrategy implements UpdaterStrategy {
    * "ready" prompt. Silent by design — no progress reaches the renderer.
    */
   async prepare(): Promise<UpdaterPrepareResult> {
+    // A running apply already owns the transfer, so there is nothing to
+    // prefetch — and reporting that as a failure would surface the internal
+    // "already in progress" gate as a download error in the renderer.
     if (this.applying) {
-      throw new Error('An update is already in progress.')
+      return { ready: false, version: null }
     }
 
     if (this.preparedVersion) {
