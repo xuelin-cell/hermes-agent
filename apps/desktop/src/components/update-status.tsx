@@ -471,8 +471,11 @@ function AboutUpdateCard({
 
       {showWebsite && (
         <div className="mt-6 flex items-center justify-between gap-4">
+          {/* `aboutApp` + `aboutAppName`: the CJK pair needs no separator, so
+              the space lives in the English prefix only. */}
           <p className="text-[0.9375rem] leading-6 text-foreground">
-            {u.aboutApp} <span className="text-muted-foreground">{u.appName}</span>
+            {u.aboutApp}
+            <span className="text-muted-foreground">{u.aboutAppName}</span>
           </p>
           <Button asChild className="min-w-24 shrink-0 rounded-[0.625rem]" size="lg" variant="outline">
             <a

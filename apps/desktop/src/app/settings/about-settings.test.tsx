@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { DesktopUpdateStatus, DesktopVersionInfo, HermesConnection } from '@/global'
+import { TRANSLATIONS } from '@/i18n'
 import { en } from '@/i18n/en'
 import { LEGAL_LINKS } from '@/lib/legalLinks'
 import type * as SessionStore from '@/store/session'
@@ -163,6 +164,27 @@ describe('AboutSettings', (): void => {
     // The strip is the last block of the pane's footer, so its wrapper is the
     // last thing in the scroll surface.
     expect(legal!.closest('.mt-auto')).not.toBeNull()
+  })
+
+  it("names the product on the website row with About's own wordmark", (): void => {
+    render(<AboutSettings />)
+
+    // The row pairs About's prefix with its own wordmark; `appName` keeps
+    // branding the updates overlay, so the old brand never shows here.
+    const row = screen.getByText(en.updates.aboutAppName).closest('p')
+
+    expect(row?.textContent).toBe(`${en.updates.aboutApp}${en.updates.aboutAppName}`)
+    expect(row?.textContent).not.toContain(en.updates.appName)
+  })
+
+  it('localizes the About wordmark without falling back to the old brand', (): void => {
+    expect(TRANSLATIONS.zh.updates.aboutAppName).toBe('元景数字员工')
+    expect(TRANSLATIONS['zh-hant'].updates.aboutAppName).toBe('元景數字員工')
+
+    for (const copy of Object.values(TRANSLATIONS)) {
+      expect(copy.updates.aboutAppName.trim()).toBeTruthy()
+      expect(copy.updates.aboutAppName).not.toContain('UniWork')
+    }
   })
 
   it('lands the legacy legal child route on the merged terms section', (): void => {

@@ -4970,6 +4970,7 @@ export const en: Translations = {
     },
     // Update-status overlay + version-details (mechanism-aware update UI).
     appName: 'UniWork',
+    aboutAppName: 'Yuanjing Digital Employee',
     version: (value: string) => `Version ${value}`,
     versionUnavailable: 'Version unavailable',
     checkNow: 'Check now',
@@ -4979,7 +4980,9 @@ export const en: Translations = {
     gotIt: 'Got it',
     updateCheckFailed: "Couldn't check for updates. Please try again.",
     currentVersion: 'Current version',
-    aboutApp: 'About',
+    // Trailing space: About's card prints `aboutApp` + `aboutAppName` with no
+    // hard-coded separator, and only the Latin pair needs one.
+    aboutApp: 'About ',
     goToWebsite: 'Visit website',
     newVersionReady: 'New version ready',
     newVersionReadyBody: (version: string) => `New version ${version} is ready to install.`,

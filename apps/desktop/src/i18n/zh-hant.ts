@@ -3873,6 +3873,7 @@ export const zhHant = defineLocale({
     updateCheckFailed: '檢查更新失敗，請稍後再試。',
     currentVersion: '目前版本',
     aboutApp: '關於',
+    aboutAppName: '元景數字員工',
     goToWebsite: '前往官網',
     newVersionReady: '新版本已就緒',
     newVersionReadyBody: (version: string) => `新版本 ${version} 已就緒，可立即更新。`,

@@ -4691,6 +4691,7 @@ export const zh = defineLocale({
     },
     // Update-status overlay + version-details (mechanism-aware update UI).
     appName: 'UniWork',
+    aboutAppName: '元景数字员工',
     version: value => `版本 ${value}`,
     versionUnavailable: '版本不可用',
     checkNow: '立即检查',

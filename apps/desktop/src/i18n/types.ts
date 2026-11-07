@@ -4008,6 +4008,9 @@ export interface Translations {
     /** Update-status overlay + version-details (mechanism-aware update UI):
      * the overlay reads these off t.updates directly. */
     appName: string
+    /** The wordmark About's update card pairs with `aboutApp`. `appName` stays
+     *  the branding name for the updates overlay and version details. */
+    aboutAppName: string
     version: (value: string) => string
     versionUnavailable: string
     checkNow: string
