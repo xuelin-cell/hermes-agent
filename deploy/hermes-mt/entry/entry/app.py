@@ -315,6 +315,7 @@ class Entry:
                 upstream_expires_at_ms=credential.expires_at_ms,
                 login_method="sso",
                 limits=plan.limits() if plan else None,
+                vision=plan.vision() if plan else None,
                 sid=identity.session_key,
             )
         except ValueError:
@@ -462,6 +463,7 @@ class Entry:
         endpoint: tuple[str, str] | None = None,
         catalog: list[tuple[str, str]] | None = None,
         limits: dict[str, int] | None = None,
+        vision: dict[str, bool] | None = None,
         enterprise: EnterpriseBinding | None = None,
         maas_token: str = "",
     ) -> web.Response:
@@ -475,6 +477,7 @@ class Entry:
             upstream_expires_at_ms=upstream_expires_ms,
             login_method="uniwork" if enterprise else "sms" if phone else "dev",
             limits=limits,
+            vision=vision,
             enterprise=enterprise,
         )
         body = {
@@ -746,6 +749,7 @@ class Entry:
         endpoint = plan.endpoint() if plan else None
         catalog = plan.catalog() if plan else None
         limits = plan.limits() if plan else None
+        vision = plan.vision() if plan else None
         if not api_key:
             log.warning("user %s has no new plan key; keeping any stored credential", result.uid)
         else:
@@ -760,6 +764,7 @@ class Entry:
             endpoint=endpoint,
             catalog=catalog,
             limits=limits,
+            vision=vision,
             maas_token=result.token,
         )
         try:

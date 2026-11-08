@@ -910,10 +910,16 @@ def _apply_reasoning_defaults(cfg, defaults: dict) -> None:
             overrides[model] = effort
 
 
-def _model_entry(name: str, limits: dict) -> dict:
-    """providers.<key>.models 里每个模型的元数据：套餐给了上下文长度就写上，hermes 按它决定什么时候压缩。"""
+def _model_entry(name: str, limits: dict, vision: dict | None = None) -> dict:
+    """providers.<key>.models 里每个模型的元数据：套餐给了上下文长度就写上，hermes 按它决定什么时候压缩；
+    写明了能不能看图就写 supports_vision（不能看也写 false：不写时 hermes 会拿它去"描述"历史图片）。"""
+    entry = {}
     value = limits.get(name)
-    return {"context_length": int(value)} if isinstance(value, int) and not isinstance(value, bool) and value > 0 else {}
+    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        entry["context_length"] = int(value)
+    if isinstance((vision or {}).get(name), bool):
+        entry["supports_vision"] = vision[name]
+    return entry
 
 
 def _apply_skill_overrides(cfg, overrides: dict) -> bool:
@@ -982,6 +988,7 @@ def apply_platform_block(cfg, spec: dict) -> bool:
     key_env = str(spec.get("key_env", "")).strip()
     names = [str(n).strip() for n in (spec.get("models") or []) if str(n).strip()]
     limits = spec.get("limits") if isinstance(spec.get("limits"), dict) else {}
+    vision = spec.get("vision") if isinstance(spec.get("vision"), dict) else {}
     policy = spec.get("policy") if isinstance(spec.get("policy"), dict) else {}
     before = _platform_snapshot(cfg, key, policy)
 
@@ -1022,9 +1029,9 @@ def apply_platform_block(cfg, spec: dict) -> bool:
         if plan_model:
             entry["default_model"] = plan_model
         if names:
-            entry["models"] = {n: _model_entry(n, limits) for n in names}
+            entry["models"] = {n: _model_entry(n, limits, vision) for n in names}
         elif not isinstance(entry.get("models"), dict) or not entry["models"]:
-            entry["models"] = {chosen: _model_entry(chosen, limits)} if chosen else {}
+            entry["models"] = {chosen: _model_entry(chosen, limits, vision)} if chosen else {}
     if policy:
         _apply_policy(cfg, policy)
     if spec.get("enabled_plugins"):

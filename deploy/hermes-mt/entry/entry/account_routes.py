@@ -35,7 +35,8 @@ class AccountRoutes:
             async with self.entry.database.acquire() as db, db.transaction():
                 await self.entry.messaging_routes.store._save_plan(db, identity.user_id, plan)
             tenant = await self.entry.tenants.ensure_running(identity.user_id)
-            spec = self.entry.tenants._config_patch_spec(plan.endpoint(), plan.catalog(), plan.limits(), api_key=plan.api_key)
+            spec = self.entry.tenants._config_patch_spec(plan.endpoint(), plan.catalog(), plan.limits(), api_key=plan.api_key,
+                                                         vision=plan.vision())
             origin = tenant.origin or f'{tenant.ip}:{self.entry.s.forward_port}'
             headers = {'X-MT-Token':tenant.token,'Host':tenant.host_header or f'127.0.0.1:{self.entry.s.hermes_port}'}
             if tenant.traffic_token: headers['cube-traffic-access-token']=tenant.traffic_token

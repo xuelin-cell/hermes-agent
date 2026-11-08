@@ -67,6 +67,8 @@ class TenantContext:
     catalog: list[tuple[str, str]]
     # 套餐给的每个模型的上下文长度 {模型名: context_window}；10-09 之前登录的用户没有，重新登录后才有。
     limits: dict[str, int] = field(default_factory=dict)
+    # 套餐给的每个模型能不能看图 {模型名: True/False}；没写明的不在里面（老数据、企业策略的模型）。
+    vision: dict[str, bool] = field(default_factory=dict)
     # 平台的运行环境（svc: 用户，见 service_runtime 表）：实例要另开 API 服务，人设按平台的写
     service: bool = False
     persona: str = ""
@@ -144,12 +146,15 @@ class Store:
         return hashlib.sha256(sid.encode("utf-8")).digest()
 
     @staticmethod
-    def _catalog_json(catalog: list[tuple[str, str]], limits: dict[str, int] | None = None) -> str:
+    def _catalog_json(catalog: list[tuple[str, str]], limits: dict[str, int] | None = None,
+                      vision: dict[str, bool] | None = None) -> str:
         limits = limits or {}
+        vision = vision or {}
         return json.dumps(
             [
                 {"model_name": model_name, "base_url": base_url,
-                 **({"context_window": limits[model_name]} if model_name in limits else {})}
+                 **({"context_window": limits[model_name]} if model_name in limits else {}),
+                 **({"vision": vision[model_name]} if model_name in vision else {})}
                 for model_name, base_url in catalog
             ],
             ensure_ascii=False,
@@ -173,6 +178,18 @@ class Store:
             if name and isinstance(value, int) and not isinstance(value, bool) and value > 0:
                 limits[name] = value
         return limits
+
+    @staticmethod
+    def _decode_vision(raw: Any) -> dict[str, bool]:
+        """模型清单里各模型能不能看图；没写明的不收。"""
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except json.JSONDecodeError:
+                return {}
+        return {str(item["model_name"]).strip(): item["vision"]
+                for item in (raw if isinstance(raw, list) else [])
+                if isinstance(item, dict) and str(item.get("model_name") or "").strip() and isinstance(item.get("vision"), bool)}
 
     @staticmethod
     def _decode_catalog(raw: Any) -> list[tuple[str, str]]:
@@ -201,6 +218,7 @@ class Store:
         endpoint: tuple[str, str] | None,
         catalog: list[tuple[str, str]] | None,
         limits: dict[str, int] | None,
+        vision: dict[str, bool] | None = None,
     ) -> None:
         """写入套餐（或企业策略）给的端点和模型清单；空值不清除已有的有效值。"""
         if not ((endpoint and endpoint[0]) or catalog):
@@ -229,7 +247,7 @@ class Store:
             user_id,
             base_url or None,
             model_name or None,
-            cls._catalog_json(catalog, limits) if catalog else None,
+            cls._catalog_json(catalog, limits, vision) if catalog else None,
             bool(catalog),
         )
 
@@ -277,6 +295,7 @@ class Store:
         upstream_expires_at_ms: int | None,
         login_method: str,
         limits: dict[str, int] | None = None,
+        vision: dict[str, bool] | None = None,
         enterprise: EnterpriseBinding | None = None,
         sid: str | None = None,
     ) -> LoginState:
@@ -313,7 +332,7 @@ class Store:
                     masked_phone,
                     now,
                 )
-                await self._upsert_model_config(connection, user_id, endpoint, catalog, limits)
+                await self._upsert_model_config(connection, user_id, endpoint, catalog, limits, vision)
                 if enterprise is not None:
                     await self._upsert_binding(connection, user_id, enterprise)
                 if api_key:
@@ -534,6 +553,7 @@ class Store:
         endpoint: tuple[str, str] | None = None,
         catalog: list[tuple[str, str]] | None = None,
         limits: dict[str, int] | None = None,
+        vision: dict[str, bool] | None = None,
     ) -> None:
         """复查平台后更新绑定状态；放行了就顺带换上策略里的模型清单（空值不清除已有的）。"""
         async with self.database.acquire() as connection:
@@ -554,7 +574,7 @@ class Store:
                     member_name,
                     tenant_name,
                 )
-                await self._upsert_model_config(connection, user_id, endpoint, catalog, limits)
+                await self._upsert_model_config(connection, user_id, endpoint, catalog, limits, vision)
 
     async def find_member_user(self, tenant_id: str, member_id: str) -> tuple[str, str] | None:
         """统一登录：按（企业, 成员 ID）找以前登录过的员工，返回（用户 ID, 设备号）。
@@ -755,6 +775,7 @@ class Store:
             endpoint=endpoint,
             catalog=self._decode_catalog(row["model_catalog"]),
             limits=self._decode_limits(row["model_catalog"]),
+            vision=self._decode_vision(row["model_catalog"]),
             service=bool(row["service"]),
             persona=str(row["persona"] or ""),
         )

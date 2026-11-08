@@ -107,6 +107,17 @@ class Plan:
                 out[name] = value
         return out
 
+    def vision(self) -> dict[str, bool]:
+        """套餐里各模型能不能看图：{模型名: True/False}。只收写明了 supported_modalities 的，
+        判据和桌面一样（apps/desktop/electron/login/plan.ts：列表里有 image 就能看）。"""
+        out: dict[str, bool] = {}
+        for m in self.models:
+            name = str(m.get("model") or m.get("id") or "").strip()
+            modalities = m.get("supported_modalities")
+            if name and isinstance(modalities, list) and name not in out:
+                out[name] = "image" in modalities
+        return out
+
     def summary(self) -> str:
         """能安全写进日志的一行（绝不含 key）。"""
         base, model = self.endpoint()

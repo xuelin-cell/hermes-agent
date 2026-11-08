@@ -337,13 +337,23 @@ class TenantManager:
         catalog: list[tuple[str, str]],
         fallback: str,
         limits: dict[str, int] | None = None,
+        vision: dict[str, bool] | None = None,
     ) -> str:
-        """渲染 providers.<key>.models 映射。空清单时至少放主模型，别产出空 mapping。"""
+        """渲染 providers.<key>.models 映射。空清单时至少放主模型，别产出空 mapping。
+
+        ``vision`` 写成 supports_vision：不能看图也要写明 false，不写时 hermes 选看图模型会把它当成能看，
+        切到文字模型后拿它"描述"历史图片（桌面 release 94af1c0124 同一个问题）。"""
         names = [n for n, _ in catalog] or [fallback]
         known = self._model_limits(names, limits)
-        return "\n".join(
-            f"      {n}: {{context_length: {known[n]}}}" if n in known else f"      {n}: {{}}" for n in names
-        )
+        vision = vision or {}
+
+        def options(name: str) -> str:
+            parts = [f"context_length: {known[name]}"] if name in known else []
+            if name in vision:
+                parts.append(f"supports_vision: {'true' if vision[name] else 'false'}")
+            return "{" + ", ".join(parts) + "}"
+
+        return "\n".join(f"      {n}: {options(n)}" for n in names)
 
     def _reasoning_block(self) -> str:
         defaults = parse_reasoning_defaults(self.s.reasoning_defaults)
@@ -357,6 +367,7 @@ class TenantManager:
         endpoint: tuple[str, str] | None = None,
         catalog: list[tuple[str, str]] | None = None,
         limits: dict[str, int] | None = None,
+        vision: dict[str, bool] | None = None,
     ) -> dict[str, bytes]:
         """只渲染「属于这个用户」的三份文件：``config.yaml``、``.env`` 和默认人设 ``SOUL.md``。
 
@@ -382,7 +393,7 @@ class TenantManager:
             .replace("{{PROVIDER_KEY}}", self.s.provider_key)
             .replace("{{KEY_ENV_NAME}}", self.s.key_env_name)
             .replace("{{FILES_ROOT}}", self.s.files_root)
-            .replace("{{MODELS_BLOCK}}", self._models_block(catalog or [], model_name, limits))
+            .replace("{{MODELS_BLOCK}}", self._models_block(catalog or [], model_name, limits, vision))
             .replace("{{REASONING_BLOCK}}", self._reasoning_block())
         )
         files["config.yaml"] = config.encode("utf-8")
@@ -401,12 +412,13 @@ class TenantManager:
         endpoint: tuple[str, str] | None = None,
         catalog: list[tuple[str, str]] | None = None,
         limits: dict[str, int] | None = None,
+        vision: dict[str, bool] | None = None,
     ) -> dict[str, bytes]:
         """Docker 后端要塞进卷的全部文件：用户那两份，外加转发器。
 
         沙箱后端不走这里 —— 它的转发器在镜像里，见 ``_cube_seed_files``。
         """
-        files = self._render_user_files(api_key, endpoint, catalog, limits)
+        files = self._render_user_files(api_key, endpoint, catalog, limits, vision)
         # 转发器要从自己所在目录导入状态管家和用户接口，三个文件一起放。
         for name in ("forward.py", "mtstate.py", "mtuser.py", "mtent.py", "mtexport.py", "mtfolders.py", "mtmessaging.py", "mtconnectors.py", "mtconnector_profile.py", "mtconnector_state.py"):
             files[f".mt/{name}"] = (SEED_DIR / name).read_bytes()
@@ -435,6 +447,7 @@ class TenantManager:
         endpoint: tuple[str, str] | None,
         catalog: list[tuple[str, str]] | None = None,
         limits: dict[str, int] | None = None,
+        vision: dict[str, bool] | None = None,
     ) -> bool:
         """套餐给的端点变了就改写这个卷里的 config.yaml。返回 True 表示改过（需要重启容器）。
 
@@ -448,7 +461,7 @@ class TenantManager:
             cfg_tar = await self.docker.get_archive(cname, "/opt/data/config.yaml")
             if not cfg_tar:
                 return False
-            spec = self._config_patch_spec(endpoint, catalog, limits)
+            spec = self._config_patch_spec(endpoint, catalog, limits, vision=vision)
             want = hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest().encode()
             stamp_tar = await self.docker.get_archive(cname, "/opt/data/.mt/endpoint.stamp")
             if stamp_tar and self._from_tar(stamp_tar, "endpoint.stamp") == want:
@@ -532,7 +545,8 @@ class TenantManager:
             if info is None:
                 await self._create(cname, nname, vname, labels, token,
                                    api_server=bool(getattr(context, "service", False)))
-                seed = self._render_seed(api_key, endpoint, catalog, getattr(context, "limits", None))
+                seed = self._render_seed(api_key, endpoint, catalog, getattr(context, "limits", None),
+                                         getattr(context, "vision", None))
                 if persona := self._persona_of(context):
                     seed["SOUL.md"] = persona.encode("utf-8")
                 if not fresh_volume:
@@ -544,7 +558,8 @@ class TenantManager:
                 info = await self.docker.inspect_container(cname)
 
             # 平台下发的端点若有变化，先改卷里的 config.yaml（hermes 只在启动时读一次）
-            changed = await self._sync_endpoint(cname, endpoint, catalog, getattr(context, "limits", None))
+            changed = await self._sync_endpoint(cname, endpoint, catalog, getattr(context, "limits", None),
+                                                getattr(context, "vision", None))
             tracing_changed = await self._sync_langfuse(cname, user_id)
             changed = changed or tracing_changed
             if changed and (info or {}).get("State", {}).get("Running"):
@@ -651,6 +666,7 @@ class TenantManager:
         catalog: list[tuple[str, str]] | None,
         limits: dict[str, int] | None = None,
         api_key: str | None = None,
+        vision: dict[str, bool] | None = None,
     ) -> dict:
         """patch-model 的内容：平台块四项 + 套餐清单 + 每个模型的上下文长度 + 平台策略 + 推理强度预设，
         外加一份渲染好的模板（文件坏到救不回来时按它重建）。见 seed/mtstate.py 的 apply_platform_block。
@@ -668,8 +684,11 @@ class TenantManager:
             "limits": self._model_limits(names or [model], limits),
             "policy": self._platform_policy(),
             "reasoning_defaults": parse_reasoning_defaults(self.s.reasoning_defaults),
-            "template": self._render_user_files("", endpoint, catalog, limits)["config.yaml"].decode("utf-8"),
+            "template": self._render_user_files("", endpoint, catalog, limits, vision)["config.yaml"].decode("utf-8"),
         }
+        if vision:
+            # 套餐写明了能不能看图的模型：转发器写成 supports_vision（seed/mtstate.py 的 _model_entry）
+            spec["vision"] = {n: v for n, v in vision.items() if n in (names or [model])}
         if api_key is not None:
             spec["mcp_servers"] = self._mcp_servers(api_key)
         elif not self.s.enterprise:
@@ -691,6 +710,7 @@ class TenantManager:
         persona: str | None = None,
         tracing_lines: list[str] | None = None,
         settings: dict | None = None,
+        vision: dict[str, bool] | None = None,
     ) -> list[dict]:
         """渲染引导接口要的种子文件。
 
@@ -708,10 +728,10 @@ class TenantManager:
            永远写不进去，直接 ``True`` 又会毁掉老用户自己改过的内容。
            ``if-pristine`` 的判据是与镜像里的示例逐字节比对，见 seed/forward.py。
         """
-        rendered = self._render_user_files(api_key, endpoint, catalog, limits)
+        rendered = self._render_user_files(api_key, endpoint, catalog, limits, vision)
         if tracing_lines:
             rendered[".env"] += ("\n".join(tracing_lines) + "\n").encode("utf-8")
-        patch = self._config_patch_spec(endpoint, catalog, limits, api_key=api_key or "")
+        patch = self._config_patch_spec(endpoint, catalog, limits, api_key=api_key or "", vision=vision)
         for key in ("kits", "skills"):
             if (settings or {}).get(key):
                 patch[key] = settings[key]
@@ -1011,7 +1031,7 @@ class TenantManager:
             token=token,
             files=self._cube_seed_files(
                 context.api_key, context.endpoint, context.catalog, getattr(context, "limits", None),
-                persona=self._persona_of(context),
+                persona=self._persona_of(context), vision=getattr(context, "vision", None),
                 tracing_lines=await credential_lines(self.s, self.store, user_id),
                 settings=await self.store.get_profile_settings(user_id)),
             ready_timeout_s=self.s.ready_timeout_s,
@@ -1456,7 +1476,8 @@ class TenantManager:
             body = await self.cube.reload(
                 sandbox_id, self.s.forward_port, token,
                 files=self._cube_seed_files(api_key, context.endpoint, context.catalog,
-                                            getattr(context, "limits", None), persona=self._persona_of(context)),
+                                            getattr(context, "limits", None), persona=self._persona_of(context),
+                                            vision=getattr(context, "vision", None)),
                 ready_timeout_s=self.s.ready_timeout_s,
             )
         except CubeError as exc:
@@ -1573,7 +1594,8 @@ class TenantManager:
         """实例里该生效的人设 + 模型；Docker 路径连令牌一起算（沙箱路径换令牌由 _reload_if_key_changed 管）。"""
         h = hashlib.sha256()
         for part in (context.persona, json.dumps(context.endpoint), json.dumps(context.catalog),
-                     json.dumps(getattr(context, "limits", None) or {}, sort_keys=True)):
+                     json.dumps(getattr(context, "limits", None) or {}, sort_keys=True),
+                     json.dumps(getattr(context, "vision", None) or {}, sort_keys=True)):
             h.update(part.encode("utf-8"))
             h.update(b"\0")
         if not self.use_cube:
@@ -1597,7 +1619,8 @@ class TenantManager:
             await self.cube.reload(
                 rt.sandbox_id, self.s.forward_port, token,
                 files=self._cube_seed_files(context.api_key, context.endpoint, context.catalog,
-                                            getattr(context, "limits", None), persona=self._persona_of(context)),
+                                            getattr(context, "limits", None), persona=self._persona_of(context),
+                                            vision=getattr(context, "vision", None)),
                 ready_timeout_s=self.s.ready_timeout_s,
             )
             await self._remember_hermes_key(user_id, rt.sandbox_id, context.api_key)
@@ -1605,7 +1628,7 @@ class TenantManager:
         else:
             # Docker 路径：卷是这个运行环境专用的，三份文件整份重写，重启容器让 hermes 和 gateway 都重读
             files = self._render_user_files(context.api_key, context.endpoint, context.catalog,
-                                            getattr(context, "limits", None))
+                                            getattr(context, "limits", None), getattr(context, "vision", None))
             if persona := self._persona_of(context):
                 files["SOUL.md"] = persona.encode("utf-8")
             cname = self.container_name(slug)
@@ -1630,7 +1653,8 @@ class TenantManager:
             await self.cube.reload(
                 rt.sandbox_id, self.s.forward_port, token,
                 files=self._cube_seed_files(context.api_key, context.endpoint, context.catalog,
-                                            getattr(context, "limits", None), persona=self._persona_of(context)),
+                                            getattr(context, "limits", None), persona=self._persona_of(context),
+                                            vision=getattr(context, "vision", None)),
                 ready_timeout_s=self.s.ready_timeout_s,
             )
         else:

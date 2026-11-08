@@ -35,7 +35,7 @@ class MessagingStore:
         await db.execute("""INSERT INTO tenant_model_config(user_id,default_base_url,default_model,model_catalog,synced_at)
             VALUES($1,$2,$3,$4::jsonb,now()) ON CONFLICT(user_id) DO UPDATE SET
             default_base_url=EXCLUDED.default_base_url,default_model=EXCLUDED.default_model,
-            model_catalog=EXCLUDED.model_catalog,synced_at=now()""",user,base,model,Store._catalog_json(plan.catalog(),plan.limits()))
+            model_catalog=EXCLUDED.model_catalog,synced_at=now()""",user,base,model,Store._catalog_json(plan.catalog(),plan.limits(),plan.vision()))
         await db.execute("""INSERT INTO tenant_credentials(user_id,api_key_ciphertext) VALUES($1,$2)
             ON CONFLICT(user_id) DO UPDATE SET api_key_ciphertext=EXCLUDED.api_key_ciphertext,updated_at=now()""",user,self.cipher.encrypt(plan.api_key))
 

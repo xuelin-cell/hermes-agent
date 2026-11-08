@@ -53,6 +53,30 @@ def test_catalog_json_carries_context_window_and_old_rows_decode_to_nothing() ->
     assert Store._decode_limits("not json") == {}
 
 
+def test_plan_vision_reaches_both_the_new_template_and_an_existing_instance(monkeypatch: pytest.MonkeyPatch, mtstate) -> None:
+    """套餐写明能不能看图的模型，经入口库里的模型清单一路写成实例里的 supports_vision（不能看也写明 false：
+    不写时 hermes 选看图模型会拿文字模型去"描述"历史图片）；没写明的不写，老库数据读出来也是空的。"""
+    plan = Plan(api_key="k", main_model_id="1", models=[
+        {"id": "1", "model": "glm-5.2", "supported_modalities": ["text"]},
+        {"id": "2", "model": "glm-5v", "supported_modalities": ["text", "image"]},
+        {"id": "3", "model": "unknown"},
+    ])
+    stored = Store._catalog_json(plan.catalog(), plan.limits(), plan.vision())
+    vision = Store._decode_vision(stored)
+    assert vision == {"glm-5.2": False, "glm-5v": True}
+    assert Store._decode_vision(json.dumps([{"model_name": "glm-5.2", "base_url": ""}])) == {}
+
+    mgr = _manager(monkeypatch)
+    endpoint, catalog = ("http://plan/v1", "glm-5.2"), Store._decode_catalog(stored)
+    fresh = yaml.safe_load(mgr._render_user_files("", endpoint, catalog, None, vision)["config.yaml"])
+    existing = yaml.safe_load(mtstate.patch_config_text(
+        "model:\n  default: glm-5.2\n", mgr._config_patch_spec(endpoint, catalog, None, vision=vision))[0])
+    for cfg in (fresh, existing):
+        models = cfg["providers"]["yuanjing"]["models"]
+        assert models["glm-5.2"]["supports_vision"] is False and models["glm-5v"]["supports_vision"] is True
+        assert "supports_vision" not in models["unknown"]
+
+
 def test_tenant_context_limits_default_to_empty() -> None:
     ctx = TenantContext(api_key="", container_token="", endpoint=None, catalog=[])
     assert ctx.limits == {}
