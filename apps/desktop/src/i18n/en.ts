@@ -4988,6 +4988,7 @@ export const en: Translations = {
     newVersionReadyBody: (version: string) => `New version ${version} is ready to install.`,
     updateLog: 'What’s new',
     restartToUpdate: 'Restart to update',
+    launchNow: 'Launch now',
     downloadingUpdate: 'Downloading update…',
     downloadFailedTitle: 'Update download failed. Please try again.',
     seeWhatsNew: "See what's new",

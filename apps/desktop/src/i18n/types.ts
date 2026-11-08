@@ -4026,6 +4026,8 @@ export interface Translations {
     newVersionReadyBody: (version: string) => string
     updateLog: string
     restartToUpdate: string
+    /** Primary action of the "package ready" state: install + relaunch. */
+    launchNow: string
     downloadingUpdate: string
     downloadFailedTitle: string
     seeWhatsNew: string

@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 
 import { I18nProvider } from '@/i18n/context'
@@ -34,10 +34,10 @@ afterEach((): void => {
   vi.restoreAllMocks()
 })
 
-// A package already on disk must not be confirmed twice. The ready prompt's
-// "restart" IS the install, so a surface that opens on that state hands the
-// swap over instead of rendering "update available / update now / later" again.
-it('hands a downloaded package straight to the installer', async (): Promise<void> => {
+// A downloaded package opens on its ready state — and nothing else. The
+// installer must not run until the user clicks, so the dialog renders the
+// launch action instead of handing the swap over by itself.
+it('waits for the explicit launch click before installing a downloaded package', async (): Promise<void> => {
   const apply = vi.fn(() => new Promise<never>((): void => {}))
   window.hermesDesktop = { updates: { apply } } as unknown as Window['hermesDesktop']
   $updateStatus.set({ supported: true, updateAvailable: true, mechanism: 'electron-updater' } as never)
@@ -46,11 +46,19 @@ it('hands a downloaded package straight to the installer', async (): Promise<voi
 
   await renderOverlay()
 
-  expect(apply).toHaveBeenCalledTimes(1)
+  expect(apply).not.toHaveBeenCalled()
+  expect(screen.getByText(en.updates.newVersionReady)).toBeTruthy()
+  expect(screen.getByText(en.updates.newVersionReadyBody('v0.10.0'))).toBeTruthy()
+  // The install pitch is gone: the package needs no second confirmation, only
+  // the decision to start it.
   expect(screen.queryByRole('button', { name: en.updates.updateNow })).toBeNull()
-  expect(screen.queryByRole('button', { name: en.updates.maybeLater })).toBeNull()
-  // What remains is the install surface itself, not another confirmation.
-  expect(screen.getByText(en.updates.updateDialogTitle)).toBeTruthy()
+  expect(screen.getByRole('button', { name: en.updates.launchNow })).toBeTruthy()
+
+  await act(async (): Promise<void> => {
+    fireEvent.click(screen.getByRole('button', { name: en.updates.launchNow }))
+  })
+
+  expect(apply).toHaveBeenCalledTimes(1)
 })
 
 // The pitch is still the only way to start an install that has not finished

@@ -3879,6 +3879,7 @@ export const zhHant = defineLocale({
     newVersionReadyBody: (version: string) => `新版本 ${version} 已就緒，可立即更新。`,
     updateLog: '更新日誌',
     restartToUpdate: '重新啟動並更新',
+    launchNow: '立即啟動',
     downloadingUpdate: '正在下載更新…',
     downloadFailedTitle: '下載更新失敗，請稍後重試',
     seeWhatsNew: '查看新增內容',

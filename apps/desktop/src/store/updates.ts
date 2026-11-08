@@ -709,30 +709,34 @@ export async function retryUpdateDownload(): Promise<void> {
   }
 }
 
-let preparingClientUpdate = false
+// The single transfer on the wire. A manual check and the ambient prefetch ask
+// for the same bytes, and the main process rejects a second concurrent prepare
+// ("An update operation is already in progress"), so later callers join this
+// one instead of starting another.
+let prepareTask: Promise<boolean> | null = null
 
 /**
- * Download the offered client update in the background — no install, no
- * progress UI — so the ready prompt appears only once the bytes are on disk.
- * Reuses the same strategy apply() would. A genuine failure surfaces in the
- * "Software Update" failure dialog with its own retry; installs whose owner
- * does the transfer itself (`supported: false`) stay silent, as before.
+ * Download the offered client update without installing it, so the ready prompt
+ * appears only once the bytes are on disk. Reuses the same strategy apply()
+ * would. A genuine failure surfaces in the "Software Update" failure dialog
+ * with its own retry; installs whose owner does the transfer itself
+ * (`supported: false`) stay silent, as before.
  *
  * Returns whether a transfer was actually attempted, so an explicit retry can
  * restore the failure instead of closing the dialog when there is nothing left
  * to download.
  */
 export async function prepareClientUpdate(): Promise<boolean> {
+  if (prepareTask) {
+    return await prepareTask
+  }
+
   const bridge = window.hermesDesktop?.updates
   const status = $updateStatus.get()
 
-  if (
-    !bridge?.prepare ||
-    preparingClientUpdate ||
-    $updateReadyDismissed.get() ||
-    $updateReady.get() ||
-    $updateDownloadFailure.get()
-  ) {
+  const prepare = bridge?.prepare
+
+  if (!prepare || $updateReadyDismissed.get() || $updateReady.get() || $updateDownloadFailure.get()) {
     return false
   }
 
@@ -744,39 +748,87 @@ export async function prepareClientUpdate(): Promise<boolean> {
     return false
   }
 
-  preparingClientUpdate = true
+  prepareTask = (async (): Promise<boolean> => {
+    try {
+      const result: DesktopUpdatePrepareResult = await prepare()
+
+      if (result?.ok && result.ready) {
+        $updateDownloadFailure.set(null)
+        $updateReady.set({ version: result.version ?? null })
+
+        return true
+      }
+
+      // `supported: false` (App Installer / Store / handoff) means the owner
+      // does the download itself — there is no in-app transfer to retry, so the
+      // failure surface stays away and the existing behaviour is preserved.
+      // `ok` without `ready` is not a failure either: the strategy had nothing
+      // to fetch, or the user aborted the prefetch (a cancel is a decision,
+      // never a download error).
+      if (result && result.supported !== false && !result.ok) {
+        $updateReady.set(null)
+        $updateDownloadFailure.set({ message: result.message ?? result.error ?? null, source: 'prepare' })
+      }
+    } catch (error) {
+      $updateReady.set(null)
+      $updateDownloadFailure.set({
+        message: error instanceof Error ? error.message : String(error),
+        source: 'prepare'
+      })
+    }
+
+    return true
+  })()
 
   try {
-    const result: DesktopUpdatePrepareResult = await bridge.prepare()
-
-    if (result?.ok && result.ready) {
-      $updateDownloadFailure.set(null)
-      $updateReady.set({ version: result.version ?? null })
-
-      return true
-    }
-
-    // `supported: false` (App Installer / Store / handoff) means the owner
-    // does the download itself — there is no in-app transfer to retry, so the
-    // failure surface stays away and the existing behaviour is preserved.
-    // `ok` without `ready` is not a failure either: the strategy had nothing to
-    // fetch, or the user aborted the prefetch (a cancel is a decision, never a
-    // download error).
-    if (result && result.supported !== false && !result.ok) {
-      $updateReady.set(null)
-      $updateDownloadFailure.set({ message: result.message ?? result.error ?? null, source: 'prepare' })
-    }
-  } catch (error) {
-    $updateReady.set(null)
-    $updateDownloadFailure.set({
-      message: error instanceof Error ? error.message : String(error),
-      source: 'prepare'
-    })
+    return await prepareTask
   } finally {
-    preparingClientUpdate = false
+    prepareTask = null
+  }
+}
+
+/** True while a client transfer or install owns the update surfaces. */
+export const isClientUpdateRunning = (): boolean => $updateApply.get().applying
+
+/**
+ * The one path a manual "check for updates" takes once it knows a build is
+ * offered: open the download dialog and start the transfer. Both the sidebar
+ * account card and Settings › About call `requestUpdateCheck()`, which lands
+ * here, so the two entries cannot drift.
+ *
+ * The package stops at `$updateReady`; installing still needs the user's own
+ * "launch" click, which runs apply() against the bytes already on disk.
+ */
+export async function startClientUpdateDownload(): Promise<void> {
+  $updateOverlayTarget.set('client')
+  setUpdateOverlayOpen(true)
+
+  // Already on disk: the overlay's ready view is the whole answer.
+  if ($updateReady.get()) {
+    return
   }
 
-  return true
+  // An explicit check overrides the latches a passive flow may have set —
+  // "check now" is a fresh decision, not a repeat of a dismissed prompt.
+  $updateReadyDismissed.set(false)
+  $updateDownloadFailure.set(null)
+
+  // Enter on the download stage: the overlay's progress view headlines it as a
+  // transfer in flight and offers the only interruptible action (Cancel).
+  $updateApply.set({ ...IDLE, applying: true, stage: 'fetch', message: translateNow('updates.downloadingUpdate') })
+
+  await prepareClientUpdate()
+
+  $updateApply.set(IDLE)
+
+  // A genuine failure belongs to the download-failure dialog, which steps aside
+  // while this overlay is open — hand the surface back to it. No failure and no
+  // ready package means this install has no in-app download (App Installer /
+  // Store / handoff / checkout): keep the overlay so its install pitch can
+  // start that owner's flow.
+  if ($updateDownloadFailure.get()) {
+    setUpdateOverlayOpen(false)
+  }
 }
 
 export async function applyUpdates(opts: DesktopUpdateApplyOptions = {}): Promise<DesktopUpdateApplyResult> {

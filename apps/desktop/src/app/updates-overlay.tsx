@@ -102,20 +102,10 @@ export function UpdatesOverlay() {
 
   const downloadInProgress = !isBackend && phase === 'applying' && isDownloadStage(apply.stage)
 
-  // A package already on disk needs no second confirmation: the ready prompt's
-  // "restart" IS the start of the install. Any surface that opens this overlay
-  // in that state hands straight over instead of rendering the install pitch
-  // (title + notes + "update now" / "later") a second time. Packages still in
-  // flight keep the pitch — it is the only way to start their install.
-  const handoff = !isBackend && phase === 'idle' && Boolean(ready) && updateAvailable && !status?.retirement
-
-  useEffect(() => {
-    if (!open || !handoff) {
-      return
-    }
-
-    void install()
-  }, [handoff, install, open])
+  // A package already on disk is not installed by opening this overlay: the
+  // ready view's "launch" IS the start of the install, and it stays a user
+  // decision. Packages still in flight render their transfer instead.
+  const launchReady = !isBackend && phase === 'idle' && Boolean(ready) && updateAvailable && !status?.retirement
 
   const handleClose = (next: boolean) => {
     // Only the transfer is interruptible: abort it for real so the remaining
@@ -149,7 +139,7 @@ export function UpdatesOverlay() {
           the close button and trigger its tooltip immediately on open. */}
       <DialogContent
         bodyClassName="overflow-hidden p-0 gap-0"
-        className={cn('max-w-sm', (phase === 'applying' || handoff) && 'max-w-lg')}
+        className={cn('max-w-sm', phase === 'applying' && 'max-w-lg')}
         onOpenAutoFocus={preventCloseButtonAutoFocus}
         showCloseButton={phase !== 'applying' || downloadInProgress}
       >
@@ -157,7 +147,9 @@ export function UpdatesOverlay() {
           <ApplyingView apply={apply} onCancel={isBackend ? undefined : () => handleClose(false)} />
         )}
 
-        {phase === 'idle' && handoff && <ApplyingView apply={apply} />}
+        {phase === 'idle' && launchReady && (
+          <ReadyView onLater={() => handleClose(false)} onLaunch={handleInstall} version={ready?.version ?? null} />
+        )}
 
         {phase === 'manual' && (
           <ManualView
@@ -183,7 +175,7 @@ export function UpdatesOverlay() {
             retirement={status.retirement}
           />
         )}
-        {phase === 'idle' && (isBackend || !status?.retirement) && !handoff && (
+        {phase === 'idle' && (isBackend || !status?.retirement) && !launchReady && (
           <IdleView
             behind={behind}
             checking={checking}
@@ -199,6 +191,45 @@ export function UpdatesOverlay() {
         )}
       </DialogContent>
     </Dialog>
+  )
+}
+
+// The verified package is on disk and nothing else is moving: name that state
+// and put the only install action on it. Nothing here installs, quits or
+// restarts on its own — the click is the whole hand-off.
+function ReadyView({
+  onLater,
+  onLaunch,
+  version
+}: {
+  onLater: () => void
+  onLaunch: () => void
+  version: string | null
+}) {
+  const { t } = useI18n()
+  const u = t.updates
+  const label = version ? `v${version}` : null
+
+  return (
+    <div className="grid gap-5 px-6 pb-6 pt-7 pr-8">
+      <div className="flex flex-col items-center gap-3 text-center">
+        <BrandMark className="size-16" />
+
+        <DialogTitle className="text-center text-xl">{u.newVersionReady}</DialogTitle>
+        <DialogDescription className="text-center text-sm">
+          {label ? u.newVersionReadyBody(label) : u.newVersionReady}
+        </DialogDescription>
+      </div>
+
+      <div className="grid gap-2">
+        <Button className="font-semibold" onClick={onLaunch} size="lg">
+          {u.launchNow}
+        </Button>
+        <Button className="font-medium" onClick={onLater} type="button" variant="text">
+          {u.maybeLater}
+        </Button>
+      </div>
+    </div>
   )
 }
 

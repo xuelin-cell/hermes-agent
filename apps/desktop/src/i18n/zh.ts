@@ -4707,6 +4707,7 @@ export const zh = defineLocale({
     newVersionReadyBody: (version: string) => `新版本 ${version} 已就绪，可立即更新。`,
     updateLog: '更新日志',
     restartToUpdate: '重启更新',
+    launchNow: '立即启动',
     downloadingUpdate: '正在下载更新…',
     downloadFailedTitle: '下载更新失败，请稍后重试',
     seeWhatsNew: '查看更新内容',

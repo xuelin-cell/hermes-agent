@@ -115,6 +115,8 @@ const {
   retryUpdateDownload,
   dismissUpdateReady,
   prepareClientUpdate,
+  startClientUpdateDownload,
+  isClientUpdateRunning,
   BACKGROUND_UPDATE_CHECK_MS
 } = await import('./updates')
 
@@ -1974,6 +1976,111 @@ describe('prepareClientUpdate', () => {
 
     await prepareClientUpdate()
     expect(prepareMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('startClientUpdateDownload', () => {
+  const prepareMock = vi.fn()
+  let releasePrepare: (value: unknown) => void = () => {}
+
+  /** Holds the transfer open so the states between "started" and "ready" are observable. */
+  const holdPrepare = () =>
+    new Promise(resolve => {
+      releasePrepare = resolve
+    })
+
+  beforeEach(() => {
+    prepareMock.mockReset()
+    resetUpdateApplyState()
+    $updateOverlayOpen.set(false)
+    $updateOverlayTarget.set('client')
+    $updateReady.set(null)
+    $updateReadyDismissed.set(false)
+    $updateDownloadFailure.set(null)
+    $updateStatus.set({ supported: true, updateAvailable: true, latestTag: 'v1.0.0' })
+    ;(globalThis as unknown as { window: unknown }).window = {
+      hermesDesktop: { updates: { check: vi.fn(), prepare: prepareMock } }
+    }
+  })
+
+  afterEach(() => {
+    delete (globalThis as unknown as { window?: unknown }).window
+    $updateOverlayOpen.set(false)
+    $updateReady.set(null)
+    $updateStatus.set(null)
+    resetUpdateApplyState()
+  })
+
+  // The manual check's only job is to get the download on screen: the dialog
+  // opens on the transfer, and the install still waits for the launch click.
+  it('opens the overlay on the download and publishes the ready package', async () => {
+    prepareMock.mockImplementation(holdPrepare)
+
+    const started = startClientUpdateDownload()
+
+    expect($updateOverlayOpen.get()).toBe(true)
+    expect($updateOverlayTarget.get()).toBe('client')
+    expect($updateApply.get()).toMatchObject({ applying: true, stage: 'fetch' })
+    expect(isClientUpdateRunning()).toBe(true)
+
+    releasePrepare({ ok: true, supported: true, ready: true, version: '1.0.0' })
+    await started
+
+    expect($updateReady.get()).toEqual({ version: '1.0.0' })
+    expect($updateApply.get().applying).toBe(false)
+    expect(isClientUpdateRunning()).toBe(false)
+  })
+
+  // The ready dialog's launch action reuses the package: a second explicit
+  // check must not start another transfer.
+  it('does not transfer again once the package is ready', async () => {
+    $updateReady.set({ version: '1.0.0' })
+
+    await startClientUpdateDownload()
+
+    expect(prepareMock).not.toHaveBeenCalled()
+    expect($updateOverlayOpen.get()).toBe(true)
+  })
+
+  // Installs whose owner downloads it itself (App Installer / Store / handoff /
+  // checkout) have nothing to transfer: keep the overlay so its install pitch
+  // can start that flow.
+  it('falls back to the install pitch when the owner does its own download', async () => {
+    $updateStatus.set({ supported: false, updateAvailable: true })
+
+    await startClientUpdateDownload()
+
+    expect(prepareMock).not.toHaveBeenCalled()
+    expect($updateOverlayOpen.get()).toBe(true)
+    expect($updateApply.get().applying).toBe(false)
+  })
+
+  // A failed transfer belongs to the download-failure dialog, which only shows
+  // once the overlay steps aside.
+  it('hands a failed transfer back to the failure dialog', async () => {
+    prepareMock.mockRejectedValue(new Error('blockmap mismatch'))
+
+    await startClientUpdateDownload()
+
+    expect($updateOverlayOpen.get()).toBe(false)
+    expect($updateDownloadFailure.get()).toMatchObject({ message: 'blockmap mismatch', source: 'prepare' })
+    expect($updateApply.get().applying).toBe(false)
+  })
+
+  // A passive prefetch may already own the transfer. Joining it must not
+  // start a second one (the main process rejects concurrent prepares).
+  it('joins a transfer already on the wire', async () => {
+    prepareMock.mockImplementation(holdPrepare)
+
+    const background = prepareClientUpdate()
+    const manual = startClientUpdateDownload()
+
+    expect(prepareMock).toHaveBeenCalledTimes(1)
+
+    releasePrepare({ ok: true, supported: true, ready: true, version: '1.0.0' })
+    await Promise.all([background, manual])
+
+    expect($updateReady.get()).toEqual({ version: '1.0.0' })
   })
 })
 
