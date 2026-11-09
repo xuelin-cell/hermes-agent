@@ -6,10 +6,11 @@ import { useSessionView } from '@/app/chat/session-view'
 import { ArtifactLibraryUpload, libraryArtifact } from '@/components/chat/artifact-library-upload'
 import { Button } from '@/components/ui/button'
 import { useI18n } from '@/i18n'
-import { Download, FileText } from '@/lib/icons'
+import { Download, FileText, FolderOpen } from '@/lib/icons'
 import { localPreviewTarget, normalizeOrLocalPreviewTarget } from '@/lib/local-preview'
 import { downloadGatewayMediaFile } from '@/lib/media'
 import { previewName } from '@/lib/preview-targets'
+import { revealFile } from '@/store/file-actions'
 import { notifyError } from '@/store/notifications'
 import { $previewTabSources, closePreviewForSource, openPreview } from '@/store/preview'
 import { $connection } from '@/store/session'
@@ -33,6 +34,10 @@ export function PreviewAttachment({ target }: { target: string }) {
 
   const fileTarget = localPreviewTarget(target, cwd)
   const artifact = localOwner && fileTarget ? libraryArtifact(fileTarget, storedSessionId, connection) : null
+
+  // 只有文件就在本机时才能打开所在文件夹；远程后端或网址没有可定位的本地路径。
+  const folderPath =
+    localOwner && connection?.mode !== 'remote' && fileTarget?.kind === 'file' ? fileTarget.path || null : null
 
   useEffect(() => {
     noteSessionFile(storedSessionId)
@@ -184,19 +189,15 @@ export function PreviewAttachment({ target }: { target: string }) {
       </span>
       <span className="relative ml-auto flex max-w-full flex-wrap items-center justify-end gap-1.5">
         <ArtifactLibraryUpload artifact={artifact} />
-        <Button
-          aria-label={t.fileMenu.download}
-          disabled={downloading}
-          onClick={() => void downloadFile()}
-          size="sm"
-          type="button"
-          variant="outline"
-        >
+        {folderPath && (
+          <Button onClick={() => void revealFile(folderPath)} size="sm" type="button" variant="outline">
+            <FolderOpen className="size-3.5" />
+            {t.fileMenu.revealFileManager}
+          </Button>
+        )}
+        <Button disabled={downloading} onClick={() => void downloadFile()} size="sm" type="button" variant="outline">
           <Download className="size-3.5" />
-          {downloaded ? t.fileMenu.downloadSaved : t.fileMenu.download}
-        </Button>
-        <Button disabled={opening} onClick={() => void togglePreview()} size="sm" type="button" variant="outline">
-          {opening ? t.preview.opening : isActive ? t.preview.hide : t.preview.openPreview}
+          {downloaded ? t.fileMenu.downloadSaved : t.preview.saveAs}
         </Button>
       </span>
     </span>
