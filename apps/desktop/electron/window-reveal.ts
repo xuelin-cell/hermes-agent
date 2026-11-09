@@ -49,11 +49,14 @@ export function createWindowRevealController(
     revealed = true
     cancelFallback()
 
+    // Call onRevealed BEFORE show() so callers can adjust window state
+    // (e.g., maximize) before the window becomes visible. This prevents
+    // the "normal size → maximized" flicker on Windows.
+    onRevealed()
+
     if (!window.isVisible()) {
       window.show()
     }
-
-    onRevealed()
 
     return true
   }
