@@ -28,50 +28,55 @@ afterEach(() => {
   $announcements.set([])
 })
 
-it('列表与未读计数来自消息中心 store，页面不是浮层', () => {
+it('列表来自消息中心 store，页面不是浮层', () => {
   $announcements.set([announcement('a'), announcement('b', AT)])
   mount()
 
   // 整页标题（h1）证明它渲染为工作区页面而不是面板卡片。
   expect(screen.getByRole('heading', { level: 1, name: '消息中心' })).toBeTruthy()
-  expect(screen.getByText('1 条未读消息')).toBeTruthy()
   expect(screen.getByText('标题-a')).toBeTruthy()
   expect(screen.getByText('标题-b')).toBeTruthy()
 })
 
-it('点击单条通知即标记已读，未读数随之清零且不删除记录', () => {
+it('header 不再渲染未读提示与「全部已读」，也不留空按钮位', () => {
+  $announcements.set([announcement('a')])
+  mount()
+
+  const header = screen.getByRole('heading', { level: 1, name: '消息中心' }).parentElement!
+
+  // 只剩标题本身：无状态文案、无「全部已读」按钮。
+  expect(header.textContent).toBe('消息中心')
+  expect(screen.queryByText('1 条未读消息')).toBeNull()
+  expect(screen.queryByText('没有未读通知')).toBeNull()
+  expect(screen.queryByRole('button', { name: '全部已读' })).toBeNull()
+})
+
+it('按天分组：同一天的公告落在同一个日期标题下', () => {
+  const nextDay = AT + 24 * 60 * 60 * 1000
+
+  $announcements.set([announcement('a'), { ...announcement('c'), at: nextDay }])
+  mount()
+
+  // 分组标题是 YYYY-MM-DD，日期由分组承载，不再逐条重复时间。
+  const days = screen.getAllByRole('heading', { level: 2 })
+
+  expect(days).toHaveLength(2)
+
+  for (const day of days) {
+    expect(day.textContent).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+  }
+})
+
+it('点击单条通知即标记已读，不删除记录', () => {
   $announcements.set([announcement('a')])
   mount()
 
   fireEvent.click(screen.getByRole('button', { name: '标题-a' }))
 
-  expect(screen.getByText('没有未读通知')).toBeTruthy()
+  // 页面不再展示未读计数，用同一份 store 状态断言行为未变。
   expect($unreadAnnouncements.get()).toBe(0)
   // 已读只是状态，列表条目仍在页面上。
   expect(screen.getByText('标题-a')).toBeTruthy()
-})
-
-it('全部已读清空未读角标，无未读时按钮不可点', () => {
-  $announcements.set([announcement('a'), announcement('b')])
-  mount()
-
-  const markAll = screen.getByRole<HTMLButtonElement>('button', { name: '全部已读' })
-  fireEvent.click(markAll)
-
-  expect($unreadAnnouncements.get()).toBe(0)
-  expect(markAll.disabled).toBe(true)
-})
-
-it('搜索按标题与正文过滤，无命中时给出空状态', () => {
-  $announcements.set([announcement('a'), announcement('b')])
-  mount()
-
-  fireEvent.change(screen.getByLabelText('搜索通知…'), { target: { value: '标题-a' } })
-  expect(screen.getByText('标题-a')).toBeTruthy()
-  expect(screen.queryByText('标题-b')).toBeNull()
-
-  fireEvent.change(screen.getByLabelText('搜索通知…'), { target: { value: '不存在' } })
-  expect(screen.getByText('没有匹配的通知')).toBeTruthy()
 })
 
 it('没有任何通知时渲染空状态而不是空列表', () => {
