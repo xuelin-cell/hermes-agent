@@ -12315,7 +12315,11 @@ const accountLogout = createAccountLogout({
     accountExitWindows.seal(mode)
   },
   snapshot: async () => {
-    await desktopMessaging.settle()
+    try {
+      await withTimeout(desktopMessaging.settle(), 10_000, 'messaging settle')
+    } catch (error) {
+      log.warn('[quit] messaging settle timed out, continuing', error)
+    }
 
     const roots = [
       ...logoutTerminals,
@@ -19281,6 +19285,7 @@ app.on('before-quit', event => {
 
   if (!logoutComplete && !isQuittingForHandoff) {
     event.preventDefault()
+    quitFinalization.arm()
     void logoutDesktopAccount('quit').catch(() => {
       restartAfterQuit = false
       dialog.showErrorBox('Hermes Desktop MT', '无法开始安全退出，请重试。历史和登录记录未删除。')

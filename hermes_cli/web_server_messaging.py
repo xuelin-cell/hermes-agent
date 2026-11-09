@@ -252,7 +252,7 @@ def _messaging_platform_catalog() -> tuple[dict[str, Any], ...]:
 
     seen: set[str] = set()
     entries: list[dict[str, Any]] = []
-    builtin = [m.value for m in Platform.__members__.values() if m.value != "local"]
+    builtin = [m.value for m in list(Platform.__members__.values()) if m.value != "local"]
     for pid in builtin + list(plugin_map):
         if pid in seen:
             continue
