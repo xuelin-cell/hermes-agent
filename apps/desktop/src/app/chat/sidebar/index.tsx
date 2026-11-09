@@ -1,3 +1,4 @@
+import { IconMessagePlus, IconHeadset, IconPuzzle, IconClock, IconMail, IconCloudUpload } from '@tabler/icons-react'
 import { KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { useStore } from '@nanostores/react'
@@ -216,21 +217,21 @@ const SIDEBAR_NAV: SidebarNavItem[] = [
   {
     id: 'new-session',
     label: '',
-    icon: props => <Codicon name="robot" {...props} />,
+    icon: props => <IconMessagePlus {...props} />,
     action: 'new-session',
     keybindActionId: 'session.new'
   },
   {
     id: 'capabilities',
     label: '',
-    icon: props => <Codicon name="symbol-misc" {...props} />,
+    icon: props => <IconPuzzle {...props} />,
     route: CAPABILITIES_ROUTE,
     keybindActionId: 'nav.capabilities'
   },
   {
     id: 'messaging',
     label: '',
-    icon: props => <Codicon name="comment" {...props} />,
+    icon: props => <IconHeadset {...props} />,
     route: MESSAGING_ROUTE,
     keybindActionId: 'nav.messaging'
   },
@@ -247,7 +248,7 @@ const SIDEBAR_NAV: SidebarNavItem[] = [
   {
     id: 'cron',
     label: '',
-    icon: props => <Codicon name="watch" {...props} />,
+    icon: props => <IconClock {...props} />,
     route: CRON_ROUTE,
     keybindActionId: 'nav.cron',
     tier: 'advanced'
@@ -431,12 +432,13 @@ export function ChatSidebar({
         }
 
         const codicon = data.codicon || 'plug'
+        const NavigationIcon = ({ mail: IconMail, cloud: IconCloudUpload, 'cloud-upload': IconCloudUpload } as Record<string, typeof IconMail>)[codicon]
 
         return [
           {
             id: c.id,
             label: data.label,
-            icon: (props: { className?: string }) => <Codicon name={codicon} {...props} />,
+            icon: (props: { className?: string }) => NavigationIcon ? <NavigationIcon {...props} /> : <Codicon name={codicon} {...props} />,
             route: data.path,
             tier: data.tier
           }
@@ -581,6 +583,7 @@ export function ChatSidebar({
   const newSessionCombo = useStore($bindings)['session.new']?.[0]
   const newSessionKbd = newSessionCombo ? comboTokens(newSessionCombo) : []
   const [searchQuery, setSearchQuery] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
   const [serverMatches, setServerMatches] = useState<SessionSearchResult[]>([])
   const [searchPending, setSearchPending] = useState(false)
   const [newSessionKbdFlash, setNewSessionKbdFlash] = useState(false)
@@ -594,7 +597,10 @@ export function ChatSidebar({
 
   // Hotkey (session.focusSearch) → focus the field once it's mounted.
   useEffect(() => {
-    const onFocus = () => searchInputRef.current?.focus({ preventScroll: true })
+    const onFocus = () => {
+      setSearchOpen(true)
+      requestAnimationFrame(() => searchInputRef.current?.focus({ preventScroll: true }))
+    }
 
     window.addEventListener(SESSION_SEARCH_FOCUS_EVENT, onFocus)
 
@@ -1692,6 +1698,7 @@ export function ChatSidebar({
                     // A tip anchored to the label points at the end of the
                     // word; the row is what it's actually about.
                     data-tip-region=""
+                    data-sidebar-primary-nav={item.id}
                     onClick={() => {
                       // A plain new session lands in whatever profile the live
                       // gateway is on (= the active switcher context). null →
@@ -1735,7 +1742,7 @@ export function ChatSidebar({
                     }
                     type="button"
                   >
-                    <item.icon className="size-4 shrink-0 text-[color-mix(in_srgb,currentColor_72%,transparent)]" />
+                    <item.icon className="size-5 shrink-0 text-(--ui-text-secondary)" />
                     {/* Shrink-to-fit, not flex-1: the label carries the row's
                         `data-tour` handle, and anything anchored to it should
                         land at the end of the WORD, not out at the sidebar's
@@ -1791,7 +1798,7 @@ export function ChatSidebar({
 
         <SidebarStorageCorruptNotice />
 
-        {showSessionSections && (
+        {showSessionSections && searchOpen && (
           <div className="shrink-0 px-2 pb-1 pt-1">
             <SearchField
               aria-label={s.searchAria}
