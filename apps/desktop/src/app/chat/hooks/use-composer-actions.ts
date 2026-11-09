@@ -8,8 +8,8 @@ import { useI18n } from '@/i18n'
 import { attachmentPathNeedsUpload } from '@/lib/attachment-upload-policy'
 import { attachmentId, contextPath, pathLabel } from '@/lib/chat-runtime'
 import { readDesktopFileDataUrlLocalFirst, selectDesktopPaths } from '@/lib/desktop-fs'
+import { imageBlobExtension } from '@/lib/embedded-images'
 import { downscaleDataUrlForPreview } from '@/lib/image-resize'
-import { normalize } from '@/lib/text'
 import {
   addComposerAttachment,
   type ComposerAttachment,
@@ -25,23 +25,6 @@ import { notify, notifyError } from '@/store/notifications'
 import type { ImageDetachResponse } from '../../types'
 
 const IMAGE_EXTENSION_PATTERN = /\.(png|jpe?g|gif|webp|bmp|tiff?|svg|ico)$/i
-
-const BLOB_MIME_EXTENSION: Record<string, string> = {
-  'image/bmp': '.bmp',
-  'image/gif': '.gif',
-  'image/jpeg': '.jpg',
-  'image/png': '.png',
-  'image/svg+xml': '.svg',
-  'image/tiff': '.tiff',
-  'image/webp': '.webp',
-  'image/x-icon': '.ico'
-}
-
-function blobExtension(blob: Blob): string {
-  const mime = normalize(blob.type.split(';')[0])
-
-  return BLOB_MIME_EXTENSION[mime] || '.png'
-}
 
 export function isImagePath(filePath: string): boolean {
   return IMAGE_EXTENSION_PATTERN.test(filePath)
@@ -612,7 +595,7 @@ export function useComposerActions({
 
         const data = new Uint8Array(buffer)
         const name = blob instanceof File ? blob.name : undefined
-        const savedPath = await window.hermesDesktop?.saveImageBuffer(data, blobExtension(blob), name)
+        const savedPath = await window.hermesDesktop?.saveImageBuffer(data, imageBlobExtension(blob), name)
 
         if (!savedPath) {
           notify({ kind: 'error', title: copy.imageAttach, message: copy.imageWriteFailed })

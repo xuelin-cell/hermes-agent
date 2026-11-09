@@ -200,6 +200,24 @@ describe('messageCreatedAt', () => {
 })
 
 describe('toRuntimeMessage timeline metadata', () => {
+  it('混合消息的正文文件引用与已有图片一起成为附件卡片数据', () => {
+    const files = [
+      '@file:C:\\Docs\\IDEA-11.md',
+      '@file:`C:\\Docs\\研究生学年鉴定表 (1).docx`',
+      '@file:C:\\Docs\\示例表格.xlsx'
+    ]
+
+    const runtime = toRuntimeMessage({
+      id: 'mixed-user',
+      role: 'user',
+      parts: [{ type: 'text', text: files.join('\n') + '\n\n请整理' }],
+      attachmentRefs: ['@image:/home/screenshot.png']
+    })
+
+    expect(runtime.content).toEqual([{ type: 'text', text: '请整理' }])
+    expect(runtime.metadata.custom.attachmentRefs).toEqual(['@image:/home/screenshot.png', ...files])
+  })
+
   it('does not expose a fabricated visible timestamp for timestamp-less history', () => {
     const runtime = toRuntimeMessage({
       id: 'old-message',

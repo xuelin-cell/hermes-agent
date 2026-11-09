@@ -9,6 +9,22 @@ const JSON_IMAGE_CLOSE_MAX = 16
 
 export const DATA_IMAGE_URL_RE = /^data:image\/[\w.+-]+;base64,/i
 
+const IMAGE_MIME_EXTENSIONS: Record<string, string> = {
+  'image/bmp': '.bmp',
+  'image/gif': '.gif',
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/svg+xml': '.svg',
+  'image/tiff': '.tiff',
+  'image/webp': '.webp',
+  'image/x-icon': '.ico'
+}
+
+/** 让粘贴或拖入的图片按原 MIME 类型保存扩展名。 */
+export function imageBlobExtension(blob: Pick<Blob, 'type'>): string {
+  return IMAGE_MIME_EXTENSIONS[blob.type.split(';')[0].trim().toLowerCase()] || '.png'
+}
+
 export interface EmbeddedImageExtraction {
   cleanedText: string
   images: string[]

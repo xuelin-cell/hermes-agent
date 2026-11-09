@@ -53,6 +53,8 @@ export interface CopyButtonProps {
   stopPropagation?: boolean
   text: CopyPayload
   title?: string
+  /** 用于需要同时写入正文和其它剪贴板内容的入口。 */
+  write?: (text: string) => Promise<void>
 }
 
 export function CopyButton({
@@ -73,7 +75,8 @@ export function CopyButton({
   side,
   stopPropagation = false,
   text,
-  title
+  title,
+  write
 }: CopyButtonProps) {
   const { t } = useI18n()
   const resolvedErrorMessage = errorMessage ?? t.common.copyFailed
@@ -102,11 +105,11 @@ export function CopyButton({
       try {
         const value = typeof text === 'function' ? await text() : text
 
-        if (!value) {
+        if (!value && !write) {
           return
         }
 
-        await writeClipboardText(value)
+        await (write ?? writeClipboardText)(value)
 
         if (haptic) {
           triggerHaptic('selection')
@@ -136,7 +139,7 @@ export function CopyButton({
         }, COPIED_RESET_MS)
       }
     },
-    [haptic, onCopied, onCopyError, preventDefault, stopPropagation, text]
+    [haptic, onCopied, onCopyError, preventDefault, stopPropagation, text, write]
   )
 
   const Icon = status === 'copied' ? Check : status === 'error' ? X : Copy

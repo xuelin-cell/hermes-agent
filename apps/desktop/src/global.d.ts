@@ -388,7 +388,7 @@ declare global {
         filters?: Array<{ extensions: string[]; name: string }>
         title?: string
       }) => Promise<null | string>
-      writeClipboard: (text: string) => Promise<boolean>
+      writeClipboard: (text: string, html?: string) => Promise<boolean>
       readClipboard: () => Promise<string>
       saveGatewayFile?: (payload: {
         connectionId?: null | string
