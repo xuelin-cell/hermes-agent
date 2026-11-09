@@ -74,7 +74,6 @@ import { useComposerScreenshot } from './hooks/use-composer-screenshot'
 import { useComposerSubmit } from './hooks/use-composer-submit'
 import { triggerKeyUpHandler, useComposerTrigger } from './hooks/use-composer-trigger'
 import { useComposerUndo } from './hooks/use-composer-undo'
-import { useComposerUrlDialog } from './hooks/use-composer-url-dialog'
 import { useComposerVoice } from './hooks/use-composer-voice'
 import { useEmojiCompletions } from './hooks/use-emoji-completions'
 import { useComposerMicroActions } from './hooks/use-micro-actions'
@@ -110,7 +109,6 @@ import { extractClipboardImageBlobs, openDirectiveScope } from './text-utils'
 import { ComposerTriggerPopover } from './trigger-popover'
 import type { ChatBarProps } from './types'
 import { isRedoShortcut, isUndoShortcut } from './undo-history'
-import { UrlDialog } from './url-dialog'
 import {
   chipTypedUrlOnSpace,
   linkifyUrls,
@@ -134,14 +132,12 @@ export function ChatBar({
   sessionId,
   state,
   onCancel,
-  onAddUrl,
   onAttachDroppedItems,
   onAttachImageBlob,
   onAttachPastedText,
   onPasteClipboardImage,
   onPickFiles,
   onPickFolders,
-  onPickImages,
   onRemoveAttachment,
   onSteer,
   onSteerHidden,
@@ -367,13 +363,6 @@ export function ChatBar({
   useEffect(() => {
     resetUndoHistory()
   }, [activeQueueSessionKey, resetUndoHistory])
-
-  // "Add URL" dialog — open/value state, autofocus, and submit (host onAddUrl or
-  // an @url: directive into the draft).
-  const { openUrlDialog, setUrlOpen, setUrlValue, submitUrl, urlInputRef, urlOpen, urlValue } = useComposerUrlDialog({
-    insertText,
-    onAddUrl
-  })
 
   // The queue engine — queued turns, in-place editing, the shared drain lock,
   // and bounded auto-drain. Consumes the draft API and writes `queueEditRef`.
@@ -1161,15 +1150,7 @@ export function ChatBar({
   voiceStopRef.current = { active: voiceConversationActive, end: endConversation }
 
   const contextMenu = (
-    <ContextMenu
-      onInsertText={insertText}
-      onOpenUrlDialog={openUrlDialog}
-      onPasteClipboardImage={onPasteClipboardImage}
-      onPickFiles={onPickFiles}
-      onPickFolders={onPickFolders}
-      onPickImages={onPickImages}
-      state={state}
-    />
+    <ContextMenu onInsertText={insertText} onPickFiles={onPickFiles} onPickFolders={onPickFolders} state={state} />
   )
 
   const asr = useUniworkAsr({
@@ -1644,15 +1625,6 @@ export function ChatBar({
           )}
         </div>
       </ComposerPrimitive.Unstable_TriggerPopoverRoot>
-
-      <UrlDialog
-        inputRef={urlInputRef}
-        onChange={setUrlValue}
-        onOpenChange={setUrlOpen}
-        onSubmit={submitUrl}
-        open={urlOpen}
-        value={urlValue}
-      />
     </>
   )
 }

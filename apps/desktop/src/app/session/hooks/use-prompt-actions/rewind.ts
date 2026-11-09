@@ -23,7 +23,12 @@ import {
 } from '@/lib/chat-messages'
 import { DATA_IMAGE_URL_RE } from '@/lib/embedded-images'
 import { localPreviewTarget } from '@/lib/local-preview'
-import { isSentImageRef, parseSentAttachment, splitSentAttachments } from '@/lib/sent-attachments'
+import {
+  isMessageAttachmentRef,
+  isSentImageRef,
+  parseSentAttachment,
+  splitSentAttachments
+} from '@/lib/sent-attachments'
 
 import {
   appendText,
@@ -721,9 +726,9 @@ export interface EditPlan {
   truncateRowId?: number
 }
 
-/** 编辑重发保留原文档引用；只沿用已有附件路径，不重新上传或修改文件。 */
+/** 编辑重发保留文件和文件夹引用，图片单独走原有附图流程。 */
 function filePromptText(attachmentRefs: readonly string[], text: string): string {
-  const refs = attachmentRefs.filter(ref => ref.startsWith('@file:'))
+  const refs = attachmentRefs.filter(ref => isMessageAttachmentRef(ref) && !isSentImageRef(ref))
 
   return [refs.join('\n'), text].filter(Boolean).join('\n\n')
 }

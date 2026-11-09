@@ -25,7 +25,6 @@ import { blobToDataUrl } from '@/app/session/hooks/use-prompt-actions/utils'
 import { resolveStoredSession } from '@/app/session/hooks/use-session-actions/utils'
 import { ModelMenuPanel } from '@/app/shell/model-menu-panel'
 import { ReasoningMenuPanel } from '@/app/shell/reasoning-menu-panel'
-import { formatRefValue } from '@/components/assistant-ui/directive-text'
 import { CenteredThreadSpinner } from '@/components/assistant-ui/thread/status'
 import { ConversationSessionShareButton } from '@/components/conversation-share/session-button'
 import { findGroupOfPane } from '@/components/pane-shell/tree/model'
@@ -343,12 +342,7 @@ function TileChat({
   // store updates) re-renders the whole chat shell. The individual composer
   // functions are useCallback'd inside useComposerActions, so hoisting these
   // wrappers onto them keeps identity stable across renders.
-  const { addContextRefAttachment, pasteClipboardImage, pickContextPaths, pickImages, removeAttachment } = composer
-
-  const onAddUrl = useCallback(
-    (url: string) => addContextRefAttachment(`@url:${formatRefValue(url)}`, url),
-    [addContextRefAttachment]
-  )
+  const { addContextRefAttachment, pasteClipboardImage, pickContextPaths, removeAttachment } = composer
 
   const onPasteClipboardImage = useCallback(
     (opts?: { silent?: boolean }) => pasteClipboardImage(opts),
@@ -357,7 +351,6 @@ function TileChat({
 
   const onPickFiles = useCallback(() => void pickContextPaths('file'), [pickContextPaths])
   const onPickFolders = useCallback(() => void pickContextPaths('folder'), [pickContextPaths])
-  const onPickImages = useCallback(() => void pickImages(), [pickImages])
   const onRemoveAttachment = useCallback((id: string) => void removeAttachment(id), [removeAttachment])
   const onRetryResume = useCallback(() => patchSessionTile(storedSessionId, { error: undefined }), [storedSessionId])
 
@@ -418,7 +411,6 @@ function TileChat({
           modelOptionsOwnerConnectionId={ownerRoute?.connectionId || undefined}
           modelOptionsProfile={ownerRoute?.targetProfile || ownerRoute?.profile || activeGatewayProfile}
           onAddContextRef={addContextRefAttachment}
-          onAddUrl={onAddUrl}
           onAttachDroppedItems={composer.attachDroppedItems}
           onAttachImageBlob={composer.attachImageBlob}
           onAttachPastedText={composer.attachPastedText}
@@ -429,7 +421,6 @@ function TileChat({
           onPasteClipboardImage={onPasteClipboardImage}
           onPickFiles={onPickFiles}
           onPickFolders={onPickFolders}
-          onPickImages={onPickImages}
           onReload={actions.reloadFromMessage}
           onRemoveAttachment={onRemoveAttachment}
           onRestoreToMessage={actions.restoreToMessage}

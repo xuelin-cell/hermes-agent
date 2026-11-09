@@ -8,7 +8,6 @@ import type { ChatActions, SidebarActions } from './types'
 function makeChatActions(): ChatActions {
   return {
     onAddContextRef: vi.fn(),
-    onAddUrl: vi.fn(),
     onAttachDroppedItems: vi.fn(),
     onAttachImageBlob: vi.fn(),
     onAttachPastedText: vi.fn(),
@@ -20,7 +19,6 @@ function makeChatActions(): ChatActions {
     onPasteClipboardImage: vi.fn(),
     onPickFiles: vi.fn(),
     onPickFolders: vi.fn(),
-    onPickImages: vi.fn(),
     onReload: vi.fn(),
     onRemoveAttachment: vi.fn(),
     onRestoreToMessage: vi.fn(),
