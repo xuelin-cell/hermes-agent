@@ -4189,7 +4189,7 @@ export const zh = defineLocale({
   composer: {
     message: '消息',
     addAttachment: '添加附件',
-    aiDisclaimer: 'AI 回复可能不准确，请仔细核实重要信息。',
+    aiDisclaimer: 'AI 回复可能不准确，涉及医疗、金融等专业决策时，请仔细核实重要信息。',
     wakingProfile: profile => `正在唤醒 ${profile}…`,
     placeholderStarting: '正在启动 UniWork…',
     placeholderReconnecting: '正在重新连接 UniWork…',

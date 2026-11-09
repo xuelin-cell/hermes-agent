@@ -3409,7 +3409,7 @@ export const zhHant = defineLocale({
   composer: {
     message: '訊息',
     addAttachment: '新增附件',
-    aiDisclaimer: 'AI 回覆可能不準確，請仔細核實重要資訊。',
+    aiDisclaimer: 'AI 回覆可能不準確，涉及醫療、金融等專業決策時，請仔細核實重要資訊。',
     wakingProfile: profile => `正在喚醒 ${profile}…`,
     placeholderStarting: '正在啟動 UniWork...',
     placeholderReconnecting: '正在重新連線至 UniWork…',
