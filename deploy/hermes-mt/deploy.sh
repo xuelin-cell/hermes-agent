@@ -122,9 +122,20 @@ set_cfg() {
     chmod 600 "$ENV_FILE"
 }
 
-# 企业版（配了 MT_UNIWORK_SERVER）：专家和技能来自管理后台，不用准备套件资源，也不依赖配置仓库；模板 CPU 默认 2000。
+# 企业版（配了 MT_UNIWORK_SERVER）：管理后台下发专家和技能；模板 CPU 默认 2000。
 is_enterprise() {
     [ -n "$(cfg MT_UNIWORK_SERVER '')" ]
+}
+
+# 模板要不要带套件资源（读配置仓库）：个人版一直要；企业版看 MT_CLIENT_FEATURES，
+# 不写 = 和个人版一样（含套件），写 none 或清单里没有 kits = 不要。和 entry/entry/config.py 的 enterprise_features 同一规则。
+needs_kits() {
+    is_enterprise || return 0
+    local features
+    features="$(cfg MT_CLIENT_FEATURES '' | tr -d ' ')"
+    [ -z "$features" ] && return 0
+    case ",$features," in *,kits,*) return 0 ;; esac
+    return 1
 }
 
 load_cfg() {
@@ -198,7 +209,7 @@ fingerprint() {
         cat "$HERE/scripts/image_overlay.py"
         # Connector code shares the frontend build step, but must also invalidate the instance template.
         (cd "$REPO" && git ls-tree -r HEAD apps/desktop/services/open-connector apps/desktop/scripts/build-cloud-connectors.mjs)
-        is_enterprise || cat "$HERE/.kits-runtime/.fingerprint"
+        ! needs_kits || cat "$HERE/.kits-runtime/.fingerprint"
         printf 'base=%s\ntpl=%s/%s/%s\n' "$base_id" "$TPL_CPU" "$TPL_MEM" "$TPL_DISK"
     } | sha256sum | cut -c1-12
 }
@@ -229,10 +240,10 @@ check_overlay() {
 
 # 每次从当前源码重新生成快照，目录整体替换，包含删除、重命名和可执行权限。
 stage_overlay() {
-    if is_enterprise; then
-        python3 "$HERE/scripts/image_overlay.py" stage "$REPO" "$HERE/.overlay"
-    else
+    if needs_kits; then
         python3 "$HERE/scripts/image_overlay.py" stage "$REPO" "$HERE/.overlay" "$HERE/.kits-runtime"
+    else
+        python3 "$HERE/scripts/image_overlay.py" stage "$REPO" "$HERE/.overlay"
     fi
 }
 
@@ -517,8 +528,8 @@ ensure_frontend() {
 KITS_PREPARED=0
 ensure_kits() {
     [ "$KITS_PREPARED" = 1 ] && return 0
-    # 入口的 Dockerfile 要 COPY 这个目录，企业版留空
-    if is_enterprise; then mkdir -p "$HERE/.kits-runtime"; return 0; fi
+    # 入口的 Dockerfile 要 COPY 这个目录，不要套件（企业版关了 kits）就留空
+    if ! needs_kits; then mkdir -p "$HERE/.kits-runtime"; return 0; fi
     say "准备套件资源（沿用桌面配置仓库）"
     python3 "$HERE/scripts/build-kits.py" || die "套件资源准备失败，请检查配置仓库的读取权限或指定 UNIWORK_BUNDLED_PLUGINS 本地目录"
     KITS_PREPARED=1
@@ -748,10 +759,10 @@ cmd_up() {
     [ -n "$TEMPLATE" ] || die "entry.env 里 MT_CUBE_TEMPLATE 为空，先跑 ./deploy.sh template"
     # nginx 镜像在下面 up --build 时把 nginx/dist-browser/ 拷进去：先保证它是当前代码构建的。
     ensure_frontend
-    if is_enterprise; then
-        mkdir -p "$HERE/.kits-runtime"
-    else
+    if needs_kits; then
         [ -s "$HERE/.kits-runtime/.fingerprint" ] || die "套件资源缺失，请用 ./deploy.sh all 配套更新实例模板和入口"
+    else
+        mkdir -p "$HERE/.kits-runtime"
     fi
     chmod 600 "$ENV_FILE"
 

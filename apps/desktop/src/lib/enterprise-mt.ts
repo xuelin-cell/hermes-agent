@@ -18,9 +18,16 @@ import type { ErrorCardText } from './error-surface-copy'
 /** True once the entry's `/api/__entry/me` reported an enterprise binding (the browser bridge sets it). */
 export const $enterpriseShell = atom(false)
 
+/** The personal-entry features the enterprise entry opened (`features` in `/api/__entry/me`: kits, skills,
+ *  connectors; MT_CLIENT_FEATURES now, the platform's clientFeatures later). The bridge mounts each one. */
+export const $enterpriseFeatures = atom<ReadonlySet<string>>(new Set())
+
 /** Called by the browser bridge with the entry's `/api/__entry/me` body. */
 export function noteEntryAccount(me: unknown): void {
-  $enterpriseShell.set(Boolean(me && typeof me === 'object' && (me as { enterprise?: unknown }).enterprise))
+  const body = me && typeof me === 'object' ? (me as { enterprise?: unknown; features?: unknown }) : null
+  $enterpriseShell.set(Boolean(body?.enterprise))
+  const features = Array.isArray(body?.features) ? body.features.filter(item => typeof item === 'string') : []
+  $enterpriseFeatures.set(new Set(features))
 }
 
 const COPY = {

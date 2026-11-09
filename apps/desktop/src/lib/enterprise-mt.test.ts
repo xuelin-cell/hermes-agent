@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { getRuntimeI18nLocale, setRuntimeI18nLocale } from '@/i18n/runtime'
 
 import {
+  $enterpriseFeatures,
   $enterpriseShell,
   enterpriseErrorCard,
   enterpriseRecoveryPlan,
@@ -120,5 +121,16 @@ describe('enterprise mode flag', () => {
 
     noteEntryAccount(null)
     expect(skipsTopUpPrompt()).toBe(false)
+  })
+
+  it('keeps the personal features the enterprise entry opened, and none when it lists nothing', () => {
+    noteEntryAccount({ enterprise: { access: 'active' }, features: ['kits', 7, 'connectors'] })
+    expect([...$enterpriseFeatures.get()]).toEqual(['kits', 'connectors'])
+
+    noteEntryAccount({ enterprise: { access: 'active' } })
+    expect($enterpriseFeatures.get().size).toBe(0)
+
+    noteEntryAccount(null)
+    expect($enterpriseFeatures.get().size).toBe(0)
   })
 })

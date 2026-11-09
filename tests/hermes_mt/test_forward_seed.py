@@ -198,9 +198,13 @@ async def test_spawn_hermes_turns_on_the_cron_ticker(forward, monkeypatch: pytes
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("enterprise", [False, True])
+@pytest.mark.parametrize("enterprise, features, connectors", [
+    (False, set(), True),
+    (True, set(), False),
+    (True, {"connectors"}, True),  # 入口给企业版开了连接器（MT_CLIENT_FEATURES）
+])
 async def test_spawn_hermes_starts_personal_services_only_outside_enterprise_mode(
-    forward, monkeypatch: pytest.MonkeyPatch, enterprise: bool
+    forward, monkeypatch: pytest.MonkeyPatch, enterprise: bool, features: set[str], connectors: bool
 ) -> None:
     started: list[tuple] = []
     restored: list[bool] = []
@@ -219,11 +223,12 @@ async def test_spawn_hermes_starts_personal_services_only_outside_enterprise_mod
     monkeypatch.setattr(forward.asyncio, "create_subprocess_exec", fake_exec)
     monkeypatch.setattr(forward._connectors, "restore", restore)
     monkeypatch.setattr(forward, "_enterprise_mode", enterprise)
+    monkeypatch.setattr(forward, "_enterprise_features", features)
     await forward._spawn_hermes("tok")
 
     assert started[-1][:2] == ("hermes", "serve")
     assert any("cloud_recovery.py" in str(arg) for args in started for arg in args) is (not enterprise)
-    assert bool(restored) is (not enterprise)
+    assert bool(restored) is connectors
 
 
 @pytest.mark.asyncio
@@ -391,6 +396,44 @@ async def test_bootstrap_payload_decides_enterprise_mode_before_hermes_starts(
     await forward._bootstrap(_Writer(), json.dumps(payload).encode("utf-8"))
 
     assert seen == [flag]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("features, opened", [(None, False), ([], False), (["kits"], False), (["connectors", "kits"], True)])
+async def test_enterprise_bootstrap_starts_connectors_only_when_the_entry_opened_them(
+    forward, monkeypatch: pytest.MonkeyPatch, features: list[str] | None, opened: bool
+) -> None:
+    adopted: list[list] = []
+    seen: list[bool] = []
+
+    async def sync():
+        return {"ok": True}
+
+    async def spawn(token):
+        seen.append(forward._connectors_on())
+
+    async def alive():
+        return True
+
+    async def idle():
+        return None
+
+    def adopt(rows):
+        adopted.append(rows)
+        return []
+
+    monkeypatch.setattr(forward, "_sync_bundled_skills", sync)
+    monkeypatch.setattr(forward, "_spawn_hermes", spawn)
+    monkeypatch.setattr(forward, "_hermes_alive", alive)
+    monkeypatch.setattr(forward, "_supervise", idle)
+    monkeypatch.setattr(forward._connectors, "adopt", adopt)
+    payload = {"token": "tok", "files": [], "enterprise": True, "connectors": [{"profile": "default"}],
+               **({"features": features} if features is not None else {})}
+
+    await forward._bootstrap(_Writer(), json.dumps(payload).encode("utf-8"))
+
+    assert bool(adopted) is opened
+    assert seen == [opened]
 
 
 # ---------------------------------------------------------------- /__mt/reload：重写配置并重启 hermes

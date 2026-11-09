@@ -971,7 +971,7 @@ describe('browser bridge: the instance’s terminal', () => {
 })
 
 describe('the two cloud entries (desktop-mt)', () => {
-  async function installFor(account: unknown, status = 200) {
+  async function installFor(account: unknown, status = 200, route?: (url: string) => Response | undefined) {
     vi.stubEnv('VITE_HERMES_BROWSER_BUILD', '1')
     const calls: string[] = []
 
@@ -979,6 +979,11 @@ describe('the two cloud entries (desktop-mt)', () => {
       const text = String(url)
 
       calls.push(text)
+      const routed = route?.(text)
+
+      if (routed) {
+        return routed
+      }
 
       if (text.endsWith('__entry/me')) {
         return jsonResponse(account, status)
@@ -1040,6 +1045,80 @@ describe('the two cloud entries (desktop-mt)', () => {
     const roster = await window.hermesDesktop.getAgentRoster?.()
 
     expect(roster?.agents.map(agent => agent.profile)).toEqual(['default', 'uw-agent'])
+  })
+
+  it('opens the kits, skills and connectors the enterprise entry lists, and keeps its agents', async () => {
+    await installFor({ enterprise: { status: 'active' }, features: ['connectors', 'kits', 'skills'], user_id: 'ent:t:u' })
+
+    expect(window.hermesDesktop.cloudKits).toBe(true)
+    expect(window.hermesDesktop.cloudSkillOperations).toBeDefined()
+    expect(window.hermesDesktop.localConnectors).toBeTypeOf('function')
+    // the rest of the personal set needs a MaaS account the employee does not have
+    expect(window.hermesDesktop.getPlanUsage).toBeUndefined()
+    expect(window.hermesDesktop.createConversationFolder).toBeUndefined()
+
+    const roster = await window.hermesDesktop.getAgentRoster?.()
+
+    expect(roster?.agents.map(agent => agent.profile)).toEqual(['default', 'uw-agent'])
+  })
+
+  it('opens only what the enterprise entry lists', async () => {
+    await installFor({ enterprise: { status: 'active' }, features: ['connectors'], user_id: 'ent:t:u' })
+
+    expect(window.hermesDesktop.cloudKits).toBeUndefined()
+    expect(window.hermesDesktop.cloudSkillOperations).toBeUndefined()
+    expect(window.hermesDesktop.localConnectors).toBeTypeOf('function')
+  })
+
+  it('lets an enterprise expert resolve through the kits plugin, and keeps bots and agents on the enterprise resolver', async () => {
+    const calls = await installFor({ enterprise: { status: 'active' }, features: ['kits'], user_id: 'ent:t:u' }, 200, url =>
+      url.includes('/cloud/profile?name=')
+        ? url.includes('name=market-expert')
+          ? jsonResponse({ profile: 'market-expert' })
+          : jsonResponse({ detail: 'not an expert' }, 403)
+        : undefined
+    )
+
+    expect((await window.hermesDesktop.getConnectionFor!({ profile: 'market-expert' })).wsUrl).toContain('kits=1')
+
+    const agent = await window.hermesDesktop.getConnectionFor!({ profile: 'uw-agent' })
+
+    expect(agent.wsUrl).not.toContain('kits=1')
+    expect(agent.profile).toBe('uw-agent')
+
+    const asked = calls.length
+
+    await window.hermesDesktop.getConnectionFor!({ profile: 'uw-agent' })
+    expect(calls.length).toBe(asked) // a bot is not asked about again
+
+    expect((await window.hermesDesktop.getConnection()).wsUrl).not.toContain('kits=1')
+    expect(calls.some(url => url.includes('/cloud/profile?name=default'))).toBe(false)
+  })
+
+  it('serves the enterprise kits pages through the kits plugin and keeps the instance profile list', async () => {
+    const calls = await installFor({ enterprise: { status: 'active' }, features: ['kits'], user_id: 'ent:t:u' })
+
+    await window.hermesDesktop.api({ path: '/api/plugins/uniwork-kits/experts' })
+    expect(calls.at(-1)).toBe('/api/__hermes_backend/api/plugins/uniwork-kits/cloud/experts?profile=default')
+
+    await window.hermesDesktop.api({ path: '/api/profiles' })
+    expect(calls.at(-1)).toContain('/api/__hermes_backend/api/profiles')
+    expect(calls.at(-1)).not.toContain('/cloud/profiles')
+  })
+
+  it('changes the default profile’s skills through the entry, and a bot’s on the instance', async () => {
+    const calls = await installFor({ enterprise: { status: 'active' }, features: ['skills'], user_id: 'ent:t:u' }, 200, url =>
+      url.includes('/__entry/skills/') ? jsonResponse({ error: '', id: 'op', phase: 'saved', result: { ok: true } }) : undefined
+    )
+
+    await window.hermesDesktop.api({ body: { enabled: false, name: 'pdf' }, method: 'PUT', path: '/api/skills/toggle' })
+    expect(calls.some(url => url.endsWith('/__entry/skills/start'))).toBe(true)
+
+    const before = calls.length
+
+    await window.hermesDesktop.api({ body: { enabled: false, name: 'pdf' }, method: 'PUT', path: '/api/skills/toggle', profile: 'uw-agent' })
+    expect(calls.slice(before).some(url => url.includes('/__entry/skills/'))).toBe(false)
+    expect(calls.at(-1)).toContain('/api/__hermes_backend/api/skills/toggle')
   })
 
   it('treats a failed account answer as the personal entry', async () => {

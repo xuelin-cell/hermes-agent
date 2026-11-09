@@ -394,6 +394,7 @@ class Cube:
         state: dict | None = None,
         api_server: bool = False,
         enterprise: bool = False,
+        features: list[str] | None = None,
         connectors: list[dict] | None = None,
     ) -> dict:
         """把会话令牌和种子文件送进容器，并让它把 hermes 拉起来。
@@ -426,6 +427,9 @@ class Cube:
             payload["api_server"] = True
         if enterprise:
             payload["enterprise"] = True
+        if features is not None:
+            # 企业版开放的个人版功能（MT_CLIENT_FEATURES 算好的清单，空 = 都不开）；老转发器不认识，原样忽略
+            payload["features"] = list(features)
         if connectors:
             # 入口库里的连接器状态；老转发器不认识这一项，原样忽略（见 seed/forward.py）
             payload["connectors"] = connectors

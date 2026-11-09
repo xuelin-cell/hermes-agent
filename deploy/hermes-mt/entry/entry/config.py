@@ -13,6 +13,10 @@ def _env(name: str, default: str = "") -> str:
     return os.environ.get(name, default).strip()
 
 
+# 企业版能开放的个人版功能（MT_CLIENT_FEATURES）：kits 专家和套件、skills 技能市场装卸、connectors 连接器。
+CLIENT_FEATURES = frozenset({"kits", "skills", "connectors"})
+
+
 def _parse_bytes(text: str) -> int:
     text = text.strip().lower()
     units = {"k": 1024, "m": 1024**2, "g": 1024**3}
@@ -164,6 +168,10 @@ class Settings:
     # 实例里的企业对接插件（deploy/hermes-mt/plugin：模型请求带会话头、上报工具调用、产物上传、A2A）。设成 0 = 一键停用：
     # 下次送企业清单时写进实例的 plugin.json，插件几秒内停手，不用换模板。只在企业模式有意义。
     uniwork_plugin: bool = _env("MT_UNIWORK_PLUGIN", "1") != "0"
+    # 企业版开放哪些个人版功能，逗号分隔，取值见 CLIENT_FEATURES。不写 = 三项全开，和个人版一样；写 none = 都不开。
+    # 以后改由管理后台下发（平台 25、27 号的 clientFeatures）。只对企业模式有意义，个人版一直全有。
+    # 部署脚本也按它决定企业版模板里带不带套件资源（deploy.sh 的 needs_kits）。
+    client_features: str = _env("MT_CLIENT_FEATURES", "")
 
     # 统一登录（docs/企业版对接/统一登录方案.html v2.3，见 sso.py）。开了以后入口不再自己登录：网关验完登录，
     # 用身份请求头告诉入口是谁。默认关，关着时还是入口自己的短信登录。
@@ -195,6 +203,14 @@ class Settings:
     def enterprise(self) -> bool:
         """企业模式（配了 MT_UNIWORK_SERVER）。"""
         return bool(self.uniwork_server)
+
+    @property
+    def enterprise_features(self) -> frozenset[str]:
+        """企业版开放了哪些个人版功能（MT_CLIENT_FEATURES）。个人版不看它，一直全有。"""
+        raw = self.client_features.replace(" ", "")
+        if not raw:
+            return CLIENT_FEATURES
+        return frozenset(item for item in raw.split(",") if item in CLIENT_FEATURES)
 
     @property
     def backup_enabled(self) -> bool:

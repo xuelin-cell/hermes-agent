@@ -61,7 +61,7 @@ YUANJING_MCP_TIMEOUT_S = 600
 UNIWORK_PLUGIN_KEY = "uniwork-enterprise"
 
 # 平台策略：每次引导都按这里写进用户的 config.yaml（seed/mtstate.py 的 apply_platform_block）。
-# 只有普通版才有的平台策略（云盘、邮箱、分享、套件、消息平台）：企业模式不写。
+# 只有普通版才有的平台策略（云盘、邮箱、分享、套件、消息平台）：企业模式不写，套件按 MT_CLIENT_FEATURES 开（_platform_policy）。
 PERSONAL_POLICY_KEYS = frozenset({"cloud_sharing", "cloud_drive", "cloud_mail", "cloud_kits",
                                   "cloud_messaging_delivery", "platforms"})
 # 桌面插件（如联网搜索 unisearch）认的 MaaS key 变量名；和桌面一样就是 my-plan 给的套餐 key。
@@ -621,7 +621,9 @@ class TenantManager:
         转发器按「段 → 键」逐项写，用户在同一段里的其他设置不动（seed/mtstate.py 的 _apply_policy）。"""
         policy = PLATFORM_POLICY
         if self.s.enterprise:
-            policy = {key: value for key, value in policy.items() if key not in PERSONAL_POLICY_KEYS}
+            # 开了套件（MT_CLIENT_FEATURES 的 kits）才写 cloud_kits：实例里的套件插件只认它（plugins/uniwork-kits/cloud.py）
+            kept = {"cloud_kits"} if "kits" in self.s.enterprise_features else set()
+            policy = {key: value for key, value in policy.items() if key not in PERSONAL_POLICY_KEYS - kept}
         effort = self.s.default_reasoning_effort
         if not effort:
             return policy
@@ -1009,8 +1011,8 @@ class TenantManager:
         """入口库里各配置档的连接器状态，引导时送回实例（见 seed/mtconnector_state.py）。
 
         引导请求整个不能超过转发器的 4 MB：默认配置档排最前，装不下的配置档不送，
-        实例就沿用归档里那份。"""
-        if self.s.enterprise:
+        实例就沿用归档里那份。企业版开了连接器（MT_CLIENT_FEATURES 的 connectors）才送。"""
+        if self.s.enterprise and "connectors" not in self.s.enterprise_features:
             return []
         states = sorted(await self.store.connector_states(user_id), key=lambda item: item["profile"] != "default")
         kept, size = [], 0
@@ -1038,8 +1040,8 @@ class TenantManager:
             state=self._state_block(sandbox_id, epoch, restore_from),
             # 平台的运行环境才另开 API 服务；成员实例的引导请求不变
             **({"api_server": True} if getattr(context, "service", False) else {}),
-            # 企业模式用不上普通版的连接器和崩溃恢复，转发器不起它们（见 seed/forward.py）
-            **({"enterprise": True} if self.s.enterprise else {}),
+            # 企业模式：转发器不起普通版的崩溃恢复；连接器看 features 里有没有 connectors（见 seed/forward.py）
+            **({"enterprise": True, "features": sorted(self.s.enterprise_features)} if self.s.enterprise else {}),
             **({"connectors": connectors} if (connectors := await self._connector_states(user_id)) else {}),
         )
         if body.get("already"):
@@ -1541,6 +1543,8 @@ class TenantManager:
         extra_env = ["MT_API_SERVER=1"] if api_server else []
         if self.s.enterprise:
             extra_env.append("MT_ENTERPRISE=1")
+            # 算好的清单（空 = 都不开），和沙箱路径引导载荷里的 features 一样
+            extra_env.append("MT_ENTERPRISE_FEATURES=" + ",".join(sorted(self.s.enterprise_features)))
         spec = {
             "Image": self.s.image,
             "Env": [
