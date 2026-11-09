@@ -72,3 +72,50 @@ async def test_retry_and_reconnect_restart_upstream_without_cancelling_work(post
     finally:
         await asyncio.gather(*(client.stop() for _, client in service.clients.values()))
         await entry.database.close()
+
+
+@pytest.mark.asyncio
+async def test_a_broken_binding_never_stops_the_others_and_stable_states_are_not_rewritten(postgres_database_url):
+    """One connector holds thousands of bindings: an undecryptable binding is marked failed instead of
+    crash-looping every connection, and a stable connection is not rewritten on each one-second pass."""
+    settings, app, entry, binding, epoch, delivery = await context(postgres_database_url, 'uniagentgate')
+    store = entry.messaging_routes.store
+    await entry.store.finish_login(user_id='bob', phone='', api_key='', endpoint=None, catalog=None,
+                                   ttl_s=3600, upstream_expires_at_ms=None, login_method='sms')
+    broken = await store.configure('bob', 'https://gateway.test', 'bob-bot', 'secret', enable=True)
+    async with entry.database.acquire() as db:
+        await db.execute('UPDATE messaging_bindings SET secret_enc=$2 WHERE id=$1', broken['id'], b'not-a-fernet-token')
+    service = Channels(settings, {})
+    service.database, service.store = entry.database, store
+    async def register(request):
+        return web.json_response({'agent_id': 'bot', 'session_token': 'session', 'ttl_sec': 600})
+    async def upstream(request):
+        ws = web.WebSocketResponse()
+        await ws.prepare(request)
+        await ws.send_json({'type': 'connection.accepted', 'connection_id': 'test', 'agent_id': 'bot', 'payload': {'heartbeat_interval_sec': 60}})
+        async for message in ws: pass
+        return ws
+    gateway = web.Application()
+    gateway.router.add_post('/v1/agent-runtimes/register', register)
+    gateway.router.add_get('/v1/agent-runtimes/connect', upstream)
+    try:
+        async with TestServer(gateway) as server, aiohttp.ClientSession() as http:
+            service.http = http
+            async with entry.database.acquire() as db:
+                await db.execute("UPDATE messaging_bindings SET config=jsonb_set(config,'{gateway_url}',$2::jsonb) WHERE id=$1",
+                                 binding['id'], json.dumps(str(server.make_url('')).rstrip('/')))
+            async def running():
+                while True:
+                    await service.reconcile()
+                    if (await store.binding('alice'))['connection_state'] == 'running': return
+                    await asyncio.sleep(0.05)
+            await asyncio.wait_for(running(), 10)
+            failed = await store.binding('bob')
+            assert failed['connection_state'] == 'failed' and failed['error_code'] == 'invalid_binding'
+            assert broken['id'] not in service.clients
+            stamped = (await store.binding('alice'))['updated_at']
+            await service.reconcile()
+            assert (await store.binding('alice'))['updated_at'] == stamped
+    finally:
+        await asyncio.gather(*(client.stop() for _, client in service.clients.values()))
+        await entry.database.close()
