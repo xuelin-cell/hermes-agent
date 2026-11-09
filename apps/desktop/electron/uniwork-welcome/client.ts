@@ -20,7 +20,7 @@ export class WelcomeCatalogClient {
 
     const key = `welcome_config_v3_${locale}`
     const identity = this.identity?.()
-    const token = identity && identity.expiresAt > Date.now() ? identity.token : null
+    const token = identity?.token ?? null
 
     try {
       if (!token) {
@@ -49,7 +49,7 @@ export class WelcomeCatalogClient {
 
       const current = this.identity?.()
 
-      if (!normalizeWelcomeCatalog(payload).length || current?.token !== token || current.expiresAt <= Date.now()) {
+      if (!normalizeWelcomeCatalog(payload).length || current?.token !== token) {
         throw new Error()
       }
 

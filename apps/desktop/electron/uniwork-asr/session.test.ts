@@ -29,7 +29,7 @@ async function fixture() {
 
     server.close()
   })
-  let current = { owner: 'test-account', key: 'private-test-key', expiresAt: Date.now() + 60_000 }
+  let current = { owner: 'test-account', key: 'private-test-key' }
   const connected = once(server, 'connection')
 
   const client = new UniworkAsrSession(

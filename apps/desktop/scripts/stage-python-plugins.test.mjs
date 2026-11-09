@@ -33,6 +33,7 @@ test('完整包把 agent-payload 里的内置套件放进 python-plugins，其�
       bundledKits: payloadBundledKits(stamp, bundled)
     })
     assert.equal(fs.existsSync(path.join(staged, 'unisearch', 'plugin.yaml')), true)
+    assert.equal(fs.existsSync(path.join(staged, 'uniwork-telemetry', '__init__.py')), true)
     for (const file of [
       'configure.py',
       'prepare.py',

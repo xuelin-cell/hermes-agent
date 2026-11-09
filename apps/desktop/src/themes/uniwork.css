@@ -606,3 +606,14 @@
 .file-preview-view-toggle:empty {
   display: none;
 }
+
+:root[data-hermes-theme='uniwork'] [data-sidebar-primary-nav] {
+  min-height: 40px;
+  border-radius: 14px;
+  gap: 10px;
+  font-weight: 400;
+}
+:root[data-hermes-theme='uniwork'] [data-sidebar-primary-nav='new-session'] {
+  background: var(--ui-control-hover-background);
+  font-weight: 600;
+}

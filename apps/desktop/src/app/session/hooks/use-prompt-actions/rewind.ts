@@ -11,7 +11,7 @@
 
 import type { AppendMessage, ThreadMessage } from '@assistant-ui/react'
 
-import type { ClientSessionState } from '@/app/types'
+import type { ClientSessionState, ImageAttachResponse } from '@/app/types'
 import { PROMPT_SUBMIT_REQUEST_TIMEOUT_MS } from '@/hermes'
 import {
   branchGroupForUser,
@@ -21,9 +21,20 @@ import {
   completeOpenTimelineParts,
   textPart
 } from '@/lib/chat-messages'
+import { DATA_IMAGE_URL_RE } from '@/lib/embedded-images'
+import { localPreviewTarget } from '@/lib/local-preview'
+import {
+  isMessageAttachmentRef,
+  isSentImageRef,
+  parseSentAttachment,
+  splitSentAttachments
+} from '@/lib/sent-attachments'
+import { rememberRewindUsage } from '@/lib/usage-input'
 
 import {
   appendText,
+  base64FromDataUrl,
+  blobToDataUrl,
   isFailedUserTurn,
   isSessionBusyError,
   visibleUserIndexAtOrdinal,
@@ -46,6 +57,7 @@ export type SurvivorUserRowIds = readonly (null | number)[] | Map<number, null |
 
 interface PromptSubmitResult {
   status?: string
+  user_row_id?: unknown
   survivor_user_row_ids?: unknown
   survivor_row_id_map?: unknown
 }
@@ -82,15 +94,15 @@ export function survivorRowIdsFrom(result: PromptSubmitResult | undefined): Surv
 
 /**
  * Rebind the surviving visible user turns to their authoritative post-rewind
- * row ids (positional, same visible-user filter `visibleUserOrdinal` uses —
- * the exact parity truncate ordinals already rely on). Turns past the end of
- * the survivor list — the resubmitted turn itself, whose durable id doesn't
- * exist yet — and `null` entries get their cached rowId cleared instead: a
- * stale id now addresses an archived row and would be refused with 4018.
+ * row ids. The explicit map also binds the resubmitted prompt when its new
+ * row id is acknowledged. Null entries (or turns past the positional survivor
+ * list) have their archived row identity cleared instead.
  */
 export function rebindSurvivorRowIds(messages: ChatMessage[], survivorRowIds: SurvivorUserRowIds): ChatMessage[] {
   if (survivorRowIds instanceof Map) {
-    return messages.map(message => {
+    const persistedUsers = new Set(messages.filter(message => message.role === 'user').map(message => message.rowId))
+
+    return messages.flatMap(message => {
       if (message.rowId === undefined) {
         return message
       }
@@ -103,11 +115,22 @@ export function rebindSurvivorRowIds(messages: ChatMessage[], survivorRowIds: Su
 
       const next = survivorRowIds.get(message.rowId)
 
-      return next === null || next === undefined
-        ? { ...message, rowId: undefined }
-        : message.rowId === next
-          ? message
-          : { ...message, rowId: next }
+      // 回执晚于历史刷新时，新记录已在界面中；仅移除映射确认的旧提问。
+      if (message.role === 'user' && typeof next === 'number' && next !== message.rowId && persistedUsers.has(next)) {
+        return []
+      }
+
+      if (message.rowId === next) {
+        return message
+      }
+
+      return {
+        ...message,
+        rowId: next ?? undefined,
+        parts: message.parts.map(part =>
+          part.sourceRowId === message.rowId ? { ...part, sourceRowId: next ?? undefined } : part
+        )
+      }
     })
   }
 
@@ -196,6 +219,24 @@ interface DurableHistoryMessage {
   text?: string
 }
 
+/** 原生视觉历史可能在图片引用之后追加图像数据，定位消息时忽略这段重复内容。 */
+function matchesRewindSource(candidate: string, wanted: string): boolean {
+  if (candidate === wanted) {
+    return true
+  }
+
+  const prefix = `${wanted}\n`
+
+  return (
+    /(^|\n)@image:/.test(wanted) &&
+    candidate.startsWith(prefix) &&
+    candidate
+      .slice(prefix.length)
+      .split('\n')
+      .every(line => DATA_IMAGE_URL_RE.test(line) || line === '[image]' || line === '[screenshot]')
+  )
+}
+
 /**
  * Resolve the durable row id of a user turn by CONTENT against the gateway's
  * stamped transcript (`session.history` ships `row_id` per persisted row).
@@ -239,7 +280,7 @@ export async function resolveDurableRowId(
       Number.isInteger(message.row_id)
   )
 
-  const matches = durableUsers.filter(message => (message.text ?? '').trim() === wanted)
+  const matches = durableUsers.filter(message => matchesRewindSource((message.text ?? '').trim(), wanted))
 
   if (matches.length === 1) {
     return matches[0].row_id as number
@@ -252,6 +293,41 @@ export async function resolveDurableRowId(
   }
 
   return undefined
+}
+
+export interface RewindImages {
+  cwd?: string
+  refs: readonly string[]
+}
+
+/** 把原消息图片转换成网关已有的附图参数，历史路径直接复用。 */
+async function rewindImageParams(ref: string, cwd?: string) {
+  const image = parseSentAttachment(ref)
+
+  if (image?.kind === 'image') {
+    if (image.inline) {
+      const dataUrl = image.source.startsWith('blob:')
+        ? await blobToDataUrl(await (await fetch(image.source)).blob())
+        : image.source
+
+      const contentBase64 = DATA_IMAGE_URL_RE.test(dataUrl) ? base64FromDataUrl(dataUrl) : ''
+
+      if (contentBase64) {
+        return {
+          method: 'image.attach_bytes',
+          params: { content_base64: contentBase64, filename: image.label }
+        } as const
+      }
+    } else {
+      const target = localPreviewTarget(image.source, cwd)
+
+      if (target?.kind === 'file' && target.path) {
+        return { method: 'image.attach', params: { path: target.path } } as const
+      }
+    }
+  }
+
+  throw new Error('Could not read the original image attachment')
 }
 
 /**
@@ -274,7 +350,8 @@ export async function runRewindSubmit(
   recovery?: { storedSessionId?: null | string; onSessionRecovered?: (sessionId: string) => void },
   truncateRowId?: number,
   sourceText?: string,
-  rebindRowIds?: readonly number[]
+  rebindRowIds?: readonly number[],
+  images?: RewindImages
 ): Promise<SurvivorUserRowIds | undefined> {
   // Recovery may rebind the live id mid-flight; interrupt/submit must both
   // follow it rather than pinning the dead one.
@@ -333,7 +410,11 @@ export async function runRewindSubmit(
     }
   }
 
-  const submitFor = (targetId: string) =>
+  const imageRequests = images?.refs.length
+    ? await Promise.all(images.refs.map(ref => rewindImageParams(ref, images.cwd)))
+    : []
+
+  const submitPrompt = (targetId: string) =>
     requestGateway<PromptSubmitResult>(
       'prompt.submit',
       {
@@ -356,6 +437,30 @@ export async function runRewindSubmit(
       PROMPT_SUBMIT_REQUEST_TIMEOUT_MS
     )
 
+  /** 每次重发向当前运行会话登记原图，提交未受理时撤销本次登记。 */
+  const submitFor = async (targetId: string) => {
+    const stagedPaths: string[] = []
+
+    try {
+      for (const { method, params } of imageRequests) {
+        const result = await requestGateway<ImageAttachResponse>(method, { ...params, session_id: targetId })
+
+        if (!result.attached || !result.path) {
+          throw new Error(result.message || 'Could not attach the original image')
+        }
+
+        stagedPaths.push(result.path)
+      }
+
+      return await submitPrompt(targetId)
+    } catch (error) {
+      await Promise.allSettled(stagedPaths.map(path => requestGateway('image.detach', { path, session_id: targetId })))
+      throw error
+    }
+  }
+
+  await rememberRewindUsage(liveSessionId, recovery?.storedSessionId, text)
+
   const submit = async () => {
     const { result, sessionId: usedId } = await withSessionNotFoundResume(
       liveSessionId,
@@ -372,7 +477,22 @@ export async function runRewindSubmit(
 
     liveSessionId = usedId
 
-    return survivorRowIdsFrom(result)
+    const rebound = survivorRowIdsFrom(result)
+    const userRowId = result?.user_row_id
+
+    // 后端已确认旧提问被替换，将新提问编号并入现有回填流程。
+    if (
+      rebound instanceof Map &&
+      resolvedRowId !== undefined &&
+      rebound.get(resolvedRowId) === null &&
+      typeof userRowId === 'number' &&
+      Number.isSafeInteger(userRowId) &&
+      userRowId > 0
+    ) {
+      rebound.set(resolvedRowId, userRowId)
+    }
+
+    return rebound
   }
 
   if (interruptFirst) {
@@ -625,6 +745,7 @@ export function planRestore(messages: ChatMessage[], messageId: string, target?:
 
 export interface EditPlan {
   editedMessage: ChatMessage
+  imageRefs: string[]
   isFailedTurn: boolean
   sourceIndex: number
   /** Original persisted text of the edited turn — the durable-row-id content key. */
@@ -635,9 +756,9 @@ export interface EditPlan {
   truncateRowId?: number
 }
 
-/** 编辑重发保留原文档引用；只沿用已有附件路径，不重新上传或修改文件。 */
-function filePromptText(source: ChatMessage, text: string): string {
-  const refs = (source.attachmentRefs ?? []).filter(ref => ref.startsWith('@file:'))
+/** 编辑重发保留文件和文件夹引用，图片单独走原有附图流程。 */
+function filePromptText(attachmentRefs: readonly string[], text: string): string {
+  const refs = attachmentRefs.filter(ref => isMessageAttachmentRef(ref) && !isSentImageRef(ref))
 
   return [refs.join('\n'), text].filter(Boolean).join('\n\n')
 }
@@ -654,20 +775,35 @@ export function planEdit(messages: ChatMessage[], edited: AppendMessage): EditPl
   const sourceIndex = messages.findIndex(m => m.id === sourceId)
   const source = messages[sourceIndex]
 
-  if (!source || source.role !== 'user' || chatMessageText(source).trim() === text) {
+  if (!source || source.role !== 'user') {
+    return null
+  }
+
+  const attachments = splitSentAttachments(chatMessageText(source), source.attachmentRefs)
+
+  if (attachments.text.trim() === text) {
     return null
   }
 
   // Failed turn: the optimistic user msg never reached the gateway, so a
   // truncate-by-ordinal would 422 — resubmit plainly instead.
   const isFailedTurn = isFailedUserTurn(messages, sourceIndex)
+  const imageRefs = attachments.refs.filter(isSentImageRef)
+  const storedImageRefs = imageRefs.filter(ref => ref.startsWith('@image:') && !parseSentAttachment(ref)?.inline)
 
   return {
-    editedMessage: { ...source, parts: [textPart(text)] },
+    editedMessage: {
+      ...source,
+      parts: [textPart(text)],
+      ...(attachments.refs.length ? { attachmentRefs: attachments.refs } : {})
+    },
+    imageRefs,
     isFailedTurn,
     sourceIndex,
-    sourceText: filePromptText(source, chatMessageText(source).trim()),
-    text: filePromptText(source, text),
+    sourceText: [filePromptText(attachments.refs, attachments.text.trim()), ...storedImageRefs]
+      .filter(Boolean)
+      .join('\n'),
+    text: filePromptText(attachments.refs, text),
     truncateOrdinal: isFailedTurn ? undefined : visibleUserOrdinal(messages, sourceIndex),
     truncateMessageId: isFailedTurn ? undefined : source.id,
     truncateRowId: isFailedTurn ? undefined : source.rowId

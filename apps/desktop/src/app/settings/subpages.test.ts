@@ -33,13 +33,13 @@ describe('settings subpage routing', () => {
   it('仅在开发者模式下显示 Browser 设置入口', () => {
     expect(settingsViewVisible('config:browser', false)).toBe(false)
     expect(settingsViewVisible('config:browser', true)).toBe(true)
-    expect(settingsViewVisible('config:chat', false)).toBe(true)
+    expect(settingsViewVisible('config:chat', false)).toBe(false)
   })
 
   it('仅在开发者模式下显示语音设置入口', () => {
     expect(settingsViewVisible('config:voice', false)).toBe(false)
     expect(settingsViewVisible('config:voice', true)).toBe(true)
-    expect(settingsViewVisible('notifications', false)).toBe(true)
+    expect(settingsViewVisible('notifications', false)).toBe(false)
   })
 
   it('仅在开发者模式下显示通知声音子页', () => {

@@ -172,6 +172,26 @@ it('routes existing 5G history to the messaging slice and keeps desktop recents 
   expect($messagingSessions.get().find(session => session.id === 'rcs-history')?.source).toBe('uniagentgate')
 })
 
+it('keeps cron execution sessions in ordinary conversation history', async () => {
+  const execution = row('cron-daily-1', { source: 'cron', title: 'Daily briefing · Nov 09 09:00' })
+
+  listSidebarSessions.mockImplementation(async (params: { recentsExclude: string[]; messagingExclude: string[] }) =>
+    sidebar(
+      { sessions: [execution].filter(session => !params.recentsExclude.includes(session.source ?? '')) },
+      [execution],
+      []
+    ))
+
+  const { result } = renderHook(() => useSessionListActions({ profileScope: 'default' }))
+  await act(async () => { await result.current.refreshSessions() })
+
+  expect(listSidebarSessions).toHaveBeenCalledWith(expect.objectContaining({
+    recentsExclude: expect.not.arrayContaining(['cron'])
+  }))
+  expect($sessions.get().map(session => session.id)).toEqual([execution.id])
+  expect($cronSessions.get().map(session => session.id)).toEqual([execution.id])
+})
+
 // #67600: a cold-start read that fails must not render as "No sessions yet".
 describe('refreshSessions cold-start load error', () => {
   const failedScan = (storage?: Record<string, 'corrupt'>): SidebarSessionsResponse => ({
@@ -777,7 +797,7 @@ describe('refreshSessions batches slices into one request', () => {
     expect(listSidebarSessions).toHaveBeenCalledWith(
       expect.objectContaining({
         recentsProfile: 'work',
-        recentsExclude: expect.arrayContaining(['cron']),
+        recentsExclude: expect.not.arrayContaining(['cron']),
         messagingExclude: expect.arrayContaining(['cron'])
       })
     )

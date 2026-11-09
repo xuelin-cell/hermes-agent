@@ -15,7 +15,7 @@ export function createUniworkAsrHandler(readIdentity: () => AsrIdentity | null) 
 
       const identity = readIdentity()
 
-      if (!identity || identity.expiresAt <= Date.now() || !identity.key) {
+      if (!identity || !identity.key) {
         throw new Error('语音识别需要有效的元景套餐，请重新登录后重试。')
       }
 

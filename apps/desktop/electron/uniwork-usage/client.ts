@@ -8,7 +8,7 @@ import { normalizePlanUsage, type PlanUsage, type PlanUsageResult, type PlanUsag
 const USAGE_CACHE_MS = 30_000
 
 function identityKey(identity: LoginIdentity | null): string {
-  return identity && identity.expiresAt > Date.now() ? `${identity.uid}\0${identity.token}` : ''
+  return identity ? `${identity.uid}\0${identity.token}` : ''
 }
 
 /** 仅用当前账号查询，合并请求并限时缓存，不接受页面传入凭据或地址。 */
@@ -123,8 +123,7 @@ export class PlanUsageClient {
         !isPending() ||
         !current ||
         current.uid !== identity.uid ||
-        current.token !== identity.token ||
-        current.expiresAt <= Date.now()
+        current.token !== identity.token
       )
         {return { status: 'failed', reason: 'auth' }}
 
@@ -142,7 +141,7 @@ export class PlanUsageClient {
         }
       }
 
-      if (this.identity()?.token !== identity.token || identity.expiresAt <= Date.now()) {
+      if (this.identity()?.token !== identity.token) {
         return { status: 'failed', reason: 'auth' }
       }
 

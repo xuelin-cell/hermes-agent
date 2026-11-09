@@ -17,6 +17,7 @@ import { sanitizeComposerInput } from '@/lib/composer-input-sanitize'
 import { temporaryConversationTitle } from '@/lib/conversation-title'
 import { setMutableRef } from '@/lib/mutable-ref'
 import { refreshIfTranscriptStale } from '@/lib/stale-transcript-guard'
+import { rememberUsageInput, reportSkillTagUsage } from '@/lib/usage-input'
 import {
   isVoicePlaybackActive,
   markVoicePlaybackInterrupted,
@@ -957,6 +958,23 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
           ...(titlePreview && { title_preview: titlePreview })
         })
 
+        const inputSession = guardStoredId ?? $sessionStates.get()[sessionId]?.storedSessionId
+
+        const inputScope = inputSession
+          ? profileScopeForTranscriptSession(resolveActiveTranscriptSession(inputSession, sessionId))
+          : undefined
+
+        const localInput = !inputScope || typeof inputScope !== 'object' || !inputScope.connectionId || inputScope.connectionId === 'local'
+        const requestKind = options?.usageResume ? 'resume' : options?.displayKind === 'hidden' ? 'hidden' : 'user'
+
+        if (inputSession && localInput) {
+          const inputProfile = inputScope && typeof inputScope === 'object' ? inputScope.profile : inputScope
+          await rememberUsageInput(optimisticId, inputProfile || startingProfile, inputSession, text, bubbleText,
+            { requestKind, ...(options?.usageResume?.executionId ? { resumeFrom: options.usageResume.executionId } : {}) })
+
+          if (sessionDriftReason()) {return abortForSessionSwitch(liveSessionId)}
+        }
+
         // On sleep/wake the gateway's in-memory session may have been cleared
         // while the desktop app still holds the old session ID. The shared
         // resolver re-registers the stored session and retries once; every
@@ -1007,6 +1025,10 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
             // instead of erroring out and losing the session binding.
             { alsoTimeout: true }
           )
+
+          if (inputSession && localInput && options?.skillTag && requestKind === 'user') {
+            void reportSkillTagUsage(requestGateway, submitted.sessionId, optimisticId, options.skillTag)
+          }
 
           if (titleStoredId && options?.displayKind !== 'hidden') {
             void titleOwner.then(owner => {

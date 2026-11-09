@@ -72,7 +72,7 @@ async function runRefresh(
 ): Promise<boolean> {
   const owner = identity()
 
-  if (!owner || owner.expiresAt <= Date.now()) {
+  if (!owner) {
     return false
   }
 
@@ -158,7 +158,7 @@ async function runRefresh(
 
   const current = identity()
 
-  if (current?.uid !== owner.uid || current?.token !== owner.token || current.expiresAt <= Date.now()) {
+  if (current?.uid !== owner.uid || current?.token !== owner.token) {
     return false
   }
 

@@ -33,7 +33,7 @@ export const TITLEBAR_FIXED_TOOLS = {
   'flip-panes': { tier: 'advanced' },
   hud: { tier: 'advanced' },
   layout: {},
-  'right-sidebar': { tier: 'advanced' },
+  'right-sidebar': {},
   settings: {},
   sidebar: {}
 } satisfies Record<string, Tiered>

@@ -14,6 +14,6 @@ export function CronEntry(props: ComponentProps<typeof CronView>) {
   return developerMode ? (
     <CronView {...props} />
   ) : (
-    <ScheduledTasksView onClose={props.onClose} onOpenSession={props.onOpenSession} />
+    <ScheduledTasksView onOpenSession={props.onOpenSession} onRunTask={props.onRunTask} />
   )
 }

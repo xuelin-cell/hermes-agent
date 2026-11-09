@@ -67,6 +67,7 @@ import {
   planReload,
   planRestore,
   rebindSurvivorRowIds,
+  type RewindImages,
   runRewindSubmit,
   type SurvivorUserRowIds
 } from './rewind'
@@ -967,7 +968,8 @@ export function usePromptActions({
       interruptFirst: boolean,
       truncateRowId?: number,
       sourceText?: string,
-      rebindRowIds?: readonly number[]
+      rebindRowIds?: readonly number[],
+      images?: RewindImages
     ) =>
       runRewindSubmit(
         requestGateway,
@@ -985,7 +987,8 @@ export function usePromptActions({
         },
         truncateRowId,
         sourceText,
-        rebindRowIds
+        rebindRowIds,
+        images
       ),
     [activeSessionIdRef, requestGateway, selectedStoredSessionIdRef]
   )
@@ -1130,6 +1133,8 @@ export function usePromptActions({
         return
       }
 
+      const imageCwd = $sessionStates.get()[sessionId]?.cwd || $currentCwd.get()
+
       // Sending an edit is a revert: rewind to this prompt and re-run with the
       // new text (submitRewindPrompt interrupts a live turn first). Same as
       // restore, so drop the abandoned timeline's todos/background rows before
@@ -1178,7 +1183,8 @@ export function usePromptActions({
           interruptFirst,
           plan.truncateRowId,
           plan.sourceText,
-          durableRowIdsForRebind(messages)
+          durableRowIdsForRebind(messages),
+          { cwd: imageCwd, refs: plan.imageRefs }
         )
 
         applySurvivorRowIds(sessionId, survivorRowIds)
@@ -1212,7 +1218,8 @@ export function usePromptActions({
                 false,
                 retryPlan.truncateRowId,
                 retryPlan.sourceText,
-                durableRowIdsForRebind(refreshed)
+                durableRowIdsForRebind(refreshed),
+                { cwd: imageCwd, refs: retryPlan.imageRefs }
               )
 
               applySurvivorRowIds(sessionId, survivorRowIds)

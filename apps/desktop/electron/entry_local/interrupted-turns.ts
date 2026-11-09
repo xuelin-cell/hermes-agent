@@ -6,6 +6,8 @@ import { ipcMain, type IpcMainInvokeEvent, type Session } from 'electron'
 import { isDesktopRendererSender } from '../desktop-renderer-sender'
 import { writeSecretFileAtomic } from '../hardening'
 
+import { interruptedExecutionId } from './interrupted-turn-identity'
+
 /** 重新打开程序后，被中断的回答在这段时间内可以点 ▶ 继续。 */
 export const RESUME_WINDOW_MS = 15 * 60 * 1000
 
@@ -22,9 +24,11 @@ export interface InterruptedTurn {
   prompt: string
   /** 桌面版发现这条记录的时间（毫秒）。 */
   detectedAt: number
+  /** Exact source execution, independent of its display text or later session activity. */
+  executionId?: string
 }
 
-type Store = Record<string, { detectedAt: number; prompt: string }>
+type Store = Record<string, { detectedAt: number; prompt: string; executionId?: string }>
 
 /** 判断是不是普通对象，JSON 里的数组和空值都不算。 */
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -66,7 +70,9 @@ function freshStore(data: Record<string, unknown>, now: number): Store {
     const age = now - entry.detectedAt
 
     if (age >= 0 && age < RESUME_WINDOW_MS) {
-      store[sessionId] = { detectedAt: entry.detectedAt, prompt: entry.prompt }
+      store[sessionId] = { detectedAt: entry.detectedAt, prompt: entry.prompt,
+        ...(typeof entry.executionId === 'string' && /^[0-9a-f]{64}$/.test(entry.executionId)
+          ? { executionId: entry.executionId } : {}) }
     }
   }
 
@@ -123,7 +129,9 @@ export function claimInterruptedTurns(
       continue
     }
 
-    store[sessionId] = { detectedAt: now, prompt: prompt.slice(0, MAX_PROMPT_CHARS) }
+    const executionId = interruptedExecutionId(home, sessionId, entry)
+    store[sessionId] = { detectedAt: now, prompt: prompt.slice(0, MAX_PROMPT_CHARS),
+      ...(executionId ? { executionId } : {}) }
     moved = true
   }
 

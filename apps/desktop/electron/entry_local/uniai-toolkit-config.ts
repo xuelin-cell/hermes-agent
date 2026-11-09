@@ -9,6 +9,8 @@ import type { FetchedPlan } from '../login/plan'
 import { MAAS_MODEL_KEY_ENV } from './model-config'
 
 const SERVER = 'UniAI-Toolkit'
+// The existing UniWork analytics identity; keep continuity with UniClaw's built-in MCP config.
+export const UNIAI_TOOLKIT_USAGE_ID = 'ea53ce61-be39-4c44-aa4a-732df43842cc'
 const SERVER_URL = `https://maas.ai-yuanjing.com/app/mcp-server/mcp?key=\${${MAAS_MODEL_KEY_ENV}}&client_id=UniWork`
 const ARXIV_SERVER = 'arXiv-mcp'
 const ARXIV_SERVER_URL = 'https://arxiv.caseyjhand.com/mcp'
@@ -174,6 +176,8 @@ export function updateUniaiToolkitConfig(home: string, status: FetchedPlan['stat
     if (!isMap(entry) || entry.get('url') !== SERVER_URL) {
       doc.setIn(['mcp_servers', SERVER, 'url'], SERVER_URL)
     }
+
+    doc.setIn(['mcp_servers', SERVER, 'uniwork_builtin_id'], UNIAI_TOOLKIT_USAGE_ID)
 
     if (!isNumber(timeout, SERVER_TIMEOUT)) {
       doc.setIn(['mcp_servers', SERVER, 'timeout'], SERVER_TIMEOUT)

@@ -77,6 +77,7 @@ import { DATA_IMAGE_URL_RE } from '@/lib/embedded-images'
 import { triggerHaptic } from '@/lib/haptics'
 import { Loader2Icon } from '@/lib/icons'
 import { isMacPlatform } from '@/lib/platform'
+import { isMessageAttachmentRef } from '@/lib/sent-attachments'
 import { cn } from '@/lib/utils'
 import type { ComposerAttachment } from '@/store/composer'
 import { notifyError } from '@/store/notifications'
@@ -97,7 +98,7 @@ export const UserEditComposer: FC<UserEditComposerProps> = ({ cwd, gateway, sess
   const aui = useAui()
   const draft = useAuiState(s => s.composer.text)
   const attachmentRefs = useAuiState(s => messageAttachmentRefs(s.message.metadata?.custom?.attachmentRefs))
-  const fileRefs = attachmentRefs.filter(ref => ref.startsWith('@file:'))
+  const fileRefs = attachmentRefs.filter(isMessageAttachmentRef)
   const textDirection = useForcedTextDirection()
   const rootRef = useRef<HTMLDivElement | null>(null)
   const editorRef = useRef<HTMLDivElement | null>(null)
@@ -873,11 +874,7 @@ export const UserEditComposer: FC<UserEditComposerProps> = ({ cwd, gateway, sess
             )}
             data-expanded={expanded ? 'true' : undefined}
           >
-            {fileRefs.length > 0 && (
-              <div className="flex max-w-full flex-wrap gap-1">
-                <UserAttachments refs={fileRefs} />
-              </div>
-            )}
+            {fileRefs.length > 0 && <UserAttachments refs={fileRefs} />}
             <div
               aria-label={copy.editMessage}
               autoCapitalize="off"

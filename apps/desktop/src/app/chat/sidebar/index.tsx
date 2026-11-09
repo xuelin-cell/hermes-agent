@@ -1,3 +1,4 @@
+import { IconMessagePlus, IconHeadset, IconPuzzle, IconClock, IconMail, IconCloudUpload } from '@tabler/icons-react'
 import { KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { useStore } from '@nanostores/react'
@@ -33,7 +34,6 @@ import { normalizeSessionSource, sessionSourceLabel } from '@/lib/session-source
 import { cn } from '@/lib/utils'
 import { $connectionsRegistry } from '@/store/connection-registry-state'
 import { $activeConnectionId } from '@/store/connections'
-import { $cronJobs } from '@/store/cron'
 import { $developerMode } from '@/store/developer-mode'
 import { $interfaceMode, $showsAdvancedChrome, shownInMode } from '@/store/interface-mode'
 import { $bindings } from '@/store/keybinds'
@@ -42,7 +42,6 @@ import {
   $panesFlipped,
   $pinnedSessionIds,
   $sidebarCardRows,
-  $sidebarCronOpen,
   $sidebarFiltersActive,
   $sidebarMessagingOpenIds,
   $sidebarOrdering,
@@ -64,7 +63,6 @@ import {
   pinSession,
   SESSION_SEARCH_FOCUS_EVENT,
   setPinnedSessionOrder,
-  setSidebarCronOpen,
   setSidebarPinsOpen,
   setSidebarProjectOrderIds,
   setSidebarRecentsOpen,
@@ -159,7 +157,6 @@ import type { SidebarNavItem } from '../../types'
 import { type NewSessionSplitHandler, startNewSessionDrag } from '../new-session-drag'
 
 import { SidebarSectionAddButton } from './chrome'
-import { SidebarCronJobsSection } from './cron-jobs-section'
 import { SidebarFilterMenu } from './filter-menu'
 import { buildGatewaySessionGroups, scopeGatewaySessionGroups, useGatewaySessionGroups } from './gateway-group-model'
 import { SidebarLoadMoreRow } from './load-more-row'
@@ -216,21 +213,21 @@ const SIDEBAR_NAV: SidebarNavItem[] = [
   {
     id: 'new-session',
     label: '',
-    icon: props => <Codicon name="robot" {...props} />,
+    icon: props => <IconMessagePlus {...props} />,
     action: 'new-session',
     keybindActionId: 'session.new'
   },
   {
     id: 'capabilities',
     label: '',
-    icon: props => <Codicon name="symbol-misc" {...props} />,
+    icon: props => <IconPuzzle {...props} />,
     route: CAPABILITIES_ROUTE,
     keybindActionId: 'nav.capabilities'
   },
   {
     id: 'messaging',
     label: '',
-    icon: props => <Codicon name="comment" {...props} />,
+    icon: props => <IconHeadset {...props} />,
     route: MESSAGING_ROUTE,
     keybindActionId: 'nav.messaging'
   },
@@ -247,7 +244,7 @@ const SIDEBAR_NAV: SidebarNavItem[] = [
   {
     id: 'cron',
     label: '',
-    icon: props => <Codicon name="watch" {...props} />,
+    icon: props => <IconClock {...props} />,
     route: CRON_ROUTE,
     keybindActionId: 'nav.cron',
     tier: 'advanced'
@@ -410,9 +407,7 @@ export function ChatSidebar({
   onArchiveSession,
   onBranchSession,
   onNewSessionInWorkspace,
-  onNewSessionSplit,
-  onManageCronJob,
-  onTriggerCronJob
+  onNewSessionSplit
 }: ChatSidebarProps) {
   const { t } = useI18n()
   const s = t.sidebar
@@ -431,12 +426,13 @@ export function ChatSidebar({
         }
 
         const codicon = data.codicon || 'plug'
+        const NavigationIcon = ({ mail: IconMail, cloud: IconCloudUpload, 'cloud-upload': IconCloudUpload } as Record<string, typeof IconMail>)[codicon]
 
         return [
           {
             id: c.id,
             label: data.label,
-            icon: (props: { className?: string }) => <Codicon name={codicon} {...props} />,
+            icon: (props: { className?: string }) => NavigationIcon ? <NavigationIcon {...props} /> : <Codicon name={codicon} {...props} />,
             route: data.path,
             tier: data.tier
           }
@@ -512,7 +508,6 @@ export function ChatSidebar({
   const unconfirmedPinWrites = useStore($unconfirmedPinWrites)
   const pinsOpen = useStore($sidebarPinsOpen)
   const agentsOpen = useStore($sidebarRecentsOpen)
-  const cronOpen = useStore($sidebarCronOpen)
   // The sidebar highlight tracks the FOCUSED session — the interacted tile's
   // tab, else the main selection — so it stays 1:1 with whatever tab is active.
   const selectedSessionId = useStore($focusedStoredSessionId)
@@ -520,7 +515,6 @@ export function ChatSidebar({
   const currentView = focusedSessionIsTile ? 'chat' : routeView
   const sessions = useStore($sessions)
   const cronSessions = useStore($cronSessions)
-  const cronJobs = useStore($cronJobs)
   const messagingSessions = useStore($messagingSessions)
   const messagingPlatformTotals = useStore($messagingPlatformTotals)
   const messagingTruncated = useStore($messagingTruncated)
@@ -581,6 +575,7 @@ export function ChatSidebar({
   const newSessionCombo = useStore($bindings)['session.new']?.[0]
   const newSessionKbd = newSessionCombo ? comboTokens(newSessionCombo) : []
   const [searchQuery, setSearchQuery] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
   const [serverMatches, setServerMatches] = useState<SessionSearchResult[]>([])
   const [searchPending, setSearchPending] = useState(false)
   const [newSessionKbdFlash, setNewSessionKbdFlash] = useState(false)
@@ -594,7 +589,10 @@ export function ChatSidebar({
 
   // Hotkey (session.focusSearch) → focus the field once it's mounted.
   useEffect(() => {
-    const onFocus = () => searchInputRef.current?.focus({ preventScroll: true })
+    const onFocus = () => {
+      setSearchOpen(true)
+      requestAnimationFrame(() => searchInputRef.current?.focus({ preventScroll: true }))
+    }
 
     window.addEventListener(SESSION_SEARCH_FOCUS_EVENT, onFocus)
 
@@ -1593,8 +1591,8 @@ export function ChatSidebar({
 
   // Filtered down to nothing still renders the section: the empty state is what
   // tells you the filter — not an empty account — is why the list is bare.
-  // Messaging threads and cron jobs live inside this area too: a profile whose
-  // only sessions are messaging threads (or that only has scheduled jobs) must
+  // Messaging threads live inside this area too: a profile whose only sessions
+  // are messaging threads must
   // not collapse the whole sidebar to the blank state (#63593).
   const showSessionSections =
     showSessionSkeletons ||
@@ -1602,8 +1600,7 @@ export function ChatSidebar({
     filtersActive ||
     sortedSessions.length > 0 ||
     projectModel.length > 0 ||
-    messagingGroups.length > 0 ||
-    (showsAdvancedChrome && cronJobs.length > 0)
+    messagingGroups.length > 0
 
   // The sidebar's session-area mode — exposed as data-attributes so custom
   // skins can target project mode (overview vs. entered), archived, or search
@@ -1692,6 +1689,7 @@ export function ChatSidebar({
                     // A tip anchored to the label points at the end of the
                     // word; the row is what it's actually about.
                     data-tip-region=""
+                    data-sidebar-primary-nav={item.id}
                     onClick={() => {
                       // A plain new session lands in whatever profile the live
                       // gateway is on (= the active switcher context). null →
@@ -1735,7 +1733,7 @@ export function ChatSidebar({
                     }
                     type="button"
                   >
-                    <item.icon className="size-4 shrink-0 text-[color-mix(in_srgb,currentColor_72%,transparent)]" />
+                    <item.icon className="size-5 shrink-0 text-(--ui-text-secondary)" />
                     {/* Shrink-to-fit, not flex-1: the label carries the row's
                         `data-tour` handle, and anything anchored to it should
                         land at the end of the WORD, not out at the sidebar's
@@ -1791,7 +1789,7 @@ export function ChatSidebar({
 
         <SidebarStorageCorruptNotice />
 
-        {showSessionSections && (
+        {showSessionSections && searchOpen && (
           <div className="shrink-0 px-2 pb-1 pt-1">
             <SearchField
               aria-label={s.searchAria}
@@ -2124,17 +2122,6 @@ export function ChatSidebar({
                 )
               })}
 
-            {!trimmedQuery && !worktreeGroupingActive && showsAdvancedChrome && cronJobs.length > 0 && (
-              <SidebarCronJobsSection
-                jobs={cronJobs}
-                label={s.cronJobs}
-                onManageJob={onManageCronJob}
-                onOpenRun={onResumeSession}
-                onToggle={() => setSidebarCronOpen(!cronOpen)}
-                onTriggerJob={onTriggerCronJob}
-                open={cronOpen}
-              />
-            )}
           </div>
         )}
 

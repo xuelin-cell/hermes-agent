@@ -11,7 +11,7 @@ import { Slot } from '@/contrib/react/slot'
 import { useContributions } from '@/contrib/react/use-contributions'
 import { useI18n } from '@/i18n'
 import { triggerHaptic } from '@/lib/haptics'
-import { Bug } from '@/lib/icons'
+import { Bug, Search } from '@/lib/icons'
 import { formatModifierToken } from '@/lib/keybinds/combo'
 import { cn } from '@/lib/utils'
 import { $developerMode, toggleDeveloperMode } from '@/store/developer-mode'
@@ -23,7 +23,8 @@ import {
   $sidebarOpen,
   toggleFileBrowserOpen,
   togglePanesFlipped,
-  toggleSidebarOpen
+  toggleSidebarOpen,
+  requestSessionSearchFocus
 } from '@/store/layout'
 import { $unreadSessionCount } from '@/store/session-dot-state'
 import { $titlebarAppActionsSide, TITLEBAR_FIXED_TOOLS } from '@/store/titlebar-app-actions'
@@ -344,12 +345,20 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
         {sidebarOpen && (
           <button
             aria-label="元景数字员工"
-            className="mr-1 flex h-(--titlebar-control-height) cursor-default items-center rounded px-1.5 text-base font-bold whitespace-nowrap text-foreground/85 select-none"
+            style={{ fontFamily: "var(--uniwork-title-font, sans-serif)" }}
+            className="mr-auto flex h-(--titlebar-control-height) cursor-default items-center rounded px-1.5 text-base font-bold whitespace-nowrap text-foreground/85 select-none"
             onClick={handleBrandClick}
             type="button"
           >
             元景数字员工
           </button>
+        )}
+        {sidebarOpen && (
+          <Tip label={t.sidebar.searchAria}>
+            <Button aria-label={t.sidebar.searchAria} onClick={requestSessionSearchFocus} size="icon-titlebar" variant="ghost">
+              <Search className="size-5" />
+            </Button>
+          </Tip>
         )}
         {visibleLeftTools.map(tool => (
           <TitlebarToolButton key={tool.id} navigate={navigate} tool={tool} />

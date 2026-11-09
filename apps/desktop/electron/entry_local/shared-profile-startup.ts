@@ -141,7 +141,7 @@ export class SharedProfileStartup {
     copyTitlePluginFiles(home, this.options.appRoot)
     this.options.interrupted.claim(home)
 
-    const missing = ['desktop-deliverables', 'desktop-artifact-share', 'uniwork-titles'].filter(
+    const missing = ['desktop-deliverables', 'desktop-artifact-share', 'uniwork-titles', 'uniwork-telemetry'].filter(
       name => !enabled.includes(name) && !disabled.includes(name)
     )
 

@@ -112,8 +112,8 @@ it('真实 HTTP 查询白名单字段、合并请求、隔离账号缓存并拒�
     hold = false
     identity = { ...accountA, expiresAt: Date.now() - 1 }
     const before = calls
-    expect(await client.load()).toEqual({ status: 'failed', reason: 'auth' })
-    expect(calls).toBe(before)
+    expect((await client.load()).status).toBe('available')
+    expect(calls).toBe(before + 1)
 
     identity = { ...accountA }
     expect((await client.load()).status).toBe('available')
@@ -135,7 +135,7 @@ it('真实 HTTP 查询白名单字段、合并请求、隔离账号缓存并拒�
 })
 
 it('套餐推送用一次 my-plan 替换已有缓存，迟到的用量查询不能覆盖新套餐', async () => {
-  const identity = { uid: 'a', token: 'token-a', maskedPhone: '138****0001', expiresAt: Date.now() + 60_000 }
+  const identity = { uid: 'a', token: 'token-a', maskedPhone: '138****0001', expiresAt: Date.now() - 60_000 }
   const home = await mkdtemp(join(tmpdir(), 'hermes-plan-refresh-'))
   const oldQuery = new EventEmitter()
   const oldQueryStarted = once(oldQuery, 'started')

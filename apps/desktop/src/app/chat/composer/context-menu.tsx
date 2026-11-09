@@ -1,3 +1,4 @@
+import { useStore } from '@nanostores/react'
 import { useState } from 'react'
 
 import { composerPanelCard } from '@/components/chat/composer-dock'
@@ -15,8 +16,9 @@ import {
 import { Kbd } from '@/components/ui/kbd'
 import { Tip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
-import { Clipboard, FileText, FolderOpen, type IconComponent, ImageIcon, Link, MessageSquareText } from '@/lib/icons'
+import { FileText, FolderOpen, type IconComponent, MessageSquareText, Plus } from '@/lib/icons'
 import { cn } from '@/lib/utils'
+import { $developerMode } from '@/store/developer-mode'
 
 import { useComposerAttachmentProviders } from './contrib'
 import { GHOST_ICON_BTN } from './controls'
@@ -24,17 +26,10 @@ import type { ChatBarState } from './types'
 
 const SNIPPET_KEYS = ['codeReview', 'implementationPlan', 'explainThis']
 
-export function ContextMenu({
-  state,
-  onInsertText,
-  onOpenUrlDialog,
-  onPasteClipboardImage,
-  onPickFiles,
-  onPickFolders,
-  onPickImages
-}: ContextMenuProps) {
+export function ContextMenu({ state, onInsertText, onPickFiles, onPickFolders }: ContextMenuProps) {
   const { t } = useI18n()
   const c = t.composer
+  const developerMode = useStore($developerMode)
   // Prompt snippets used to be a Radix submenu. That submenu didn't open
   // reliably when the parent menu was positioned at the bottom of the
   // window (composer "+" anchor), so we promoted it to a real Dialog —
@@ -60,7 +55,7 @@ export function ContextMenu({
               type="button"
               variant="ghost"
             >
-              <Codicon name="add" size="0.875rem" />
+              <Plus className="size-5 text-(--ui-text-primary)" strokeWidth={2.5} />
             </Button>
           </DropdownMenuTrigger>
         </Tip>
@@ -74,25 +69,14 @@ export function ContextMenu({
           <ContextMenuItem disabled={!onPickFolders} icon={FolderOpen} onSelect={onPickFolders}>
             {c.folder}
           </ContextMenuItem>
-          <ContextMenuItem disabled={!onPickImages} icon={ImageIcon} onSelect={onPickImages}>
-            {c.images}
-          </ContextMenuItem>
-          <ContextMenuItem
-            disabled={!onPasteClipboardImage}
-            icon={Clipboard}
-            onSelect={onPasteClipboardImage ? () => void onPasteClipboardImage() : undefined}
-          >
-            {c.pasteImage}
-          </ContextMenuItem>
-          <ContextMenuItem icon={Link} onSelect={onOpenUrlDialog}>
-            {c.url}
-          </ContextMenuItem>
-
-          <DropdownMenuSeparator />
-
-          <ContextMenuItem icon={MessageSquareText} onSelect={() => setSnippetsOpen(true)}>
-            {c.promptSnippets}
-          </ContextMenuItem>
+          {developerMode && (
+            <>
+              <DropdownMenuSeparator />
+              <ContextMenuItem icon={MessageSquareText} onSelect={() => setSnippetsOpen(true)}>
+                {c.promptSnippets}
+              </ContextMenuItem>
+            </>
+          )}
 
           {attachmentProviders.length > 0 && <DropdownMenuSeparator />}
           {attachmentProviders.map(provider => (
@@ -116,7 +100,9 @@ export function ContextMenu({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <PromptSnippetsDialog onInsertText={onInsertText} onOpenChange={setSnippetsOpen} open={snippetsOpen} />
+      {developerMode && (
+        <PromptSnippetsDialog onInsertText={onInsertText} onOpenChange={setSnippetsOpen} open={snippetsOpen} />
+      )}
     </>
   )
 }
@@ -186,11 +172,8 @@ interface ContextMenuItemProps {
 
 interface ContextMenuProps {
   onInsertText: (text: string) => void
-  onOpenUrlDialog: () => void
-  onPasteClipboardImage?: (opts?: { silent?: boolean }) => Promise<boolean> | void
   onPickFiles?: () => void
   onPickFolders?: () => void
-  onPickImages?: () => void
   state: ChatBarState
 }
 

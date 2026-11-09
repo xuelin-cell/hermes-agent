@@ -6,6 +6,7 @@ import type { ClientSessionState } from '@/app/types'
 import { formatRefValue } from '@/components/assistant-ui/directive-text'
 import { type ChatMessage, type ChatMessagePart, chatMessageText, textPart } from '@/lib/chat-messages'
 import { foldPersonalityName } from '@/lib/personalities'
+import { splitSentAttachments } from '@/lib/sent-attachments'
 import { newSessionTitle } from '@/lib/session-title-mt'
 import type { ComposerAttachment } from '@/store/composer'
 import type { SessionInfo } from '@/types/hermes'
@@ -417,13 +418,20 @@ export function toRuntimeMessage(message: ChatMessage): ThreadMessage {
       : {}
 
   if (role === 'user') {
+    const originalText = chatMessageText(message)
+    const attachments = splitSentAttachments(originalText, message.attachmentRefs)
+
+    const content = message.parts.filter(
+      (part): part is Extract<ChatMessagePart, { type: 'text' }> => part.type === 'text'
+    )
+
     return {
       id: message.id,
       role,
-      content: message.parts.filter((part): part is Extract<ChatMessagePart, { type: 'text' }> => part.type === 'text'),
+      content: attachments.text === originalText ? content : [{ ...content[0], type: 'text', text: attachments.text }],
       attachments: [],
       createdAt,
-      metadata: { custom: { attachmentRefs: message.attachmentRefs ?? [], ...reactionMeta, ...timelineMeta } }
+      metadata: { custom: { attachmentRefs: attachments.refs, ...reactionMeta, ...timelineMeta } }
     } as ThreadMessage
   }
 

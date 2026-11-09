@@ -9,7 +9,7 @@
 
 import { useStore } from '@nanostores/react'
 import { type ComponentProps, lazy, memo, type ReactNode, Suspense, useMemo } from 'react'
-import { Navigate, Route, Routes, useParams } from 'react-router'
+import { Navigate, Route, Routes, useNavigate, useParams } from 'react-router'
 
 import { ContribBoundary, ContribRender } from '@/contrib/react/boundary'
 import { useContributions } from '@/contrib/react/use-contributions'
@@ -42,6 +42,7 @@ const WorkspaceEditor = lazy(async () => ({ default: (await import('../workspace
 const ArtifactsView = lazy(async () => ({ default: (await import('../artifacts')).ArtifactsView }))
 const MessagingView = lazy(async () => ({ default: (await import('../messaging')).MessagingView }))
 const CapabilitiesView = lazy(async () => ({ default: (await import('../capabilities')).CapabilitiesView }))
+const CronView = lazy(async () => ({ default: (await import('../cron/tasks-mt')).CronEntry }))
 
 export function LegacySessionRedirect() {
   const { sessionId } = useParams()
@@ -123,6 +124,7 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
   actions: WiringActions
   maxVoiceRecordingSeconds?: number
 }) {
+  const navigate = useNavigate()
   const activeConnectionId = useStore($activeConnectionId)
   const activeGatewayProfile = useStore($activeGatewayProfile)
   const gateway = useStore($gateway)
@@ -197,7 +199,16 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
       <Route element={page(<ArtifactsView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="artifacts" />
       <Route element={null} path="agents" />
       <Route element={null} path="command-center" />
-      <Route element={null} path="cron" />
+      <Route
+        element={page(
+          <CronView
+            onClose={() => navigate(NEW_CHAT_ROUTE)}
+            onOpenSession={actions.onResumeSession}
+            onRunTask={actions.runCronTask}
+          />
+        )}
+        path="cron"
+      />
       <Route element={null} path="profiles" />
       <Route element={null} path="settings" />
       <Route element={null} path="starmap" />

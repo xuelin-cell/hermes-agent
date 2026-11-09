@@ -387,7 +387,7 @@ function ConfigSettingsInner({
   // selecting siblings or returning to the first page through the parent.
   const renderPage = (children: ReactNode) => (
     <SettingsContent>
-      <SettingsProfileScope className="mb-5" />
+      {(developerMode || settingsView !== 'config:safety') && <SettingsProfileScope className="mb-5" />}
       {activeSectionId === 'model' && (
         <div className={showModelSettings ? 'mb-6' : undefined}>
           <ModelSettings onMainModelChanged={onMainModelChanged} scopeProfile={scopeProfile} subpage={subpage} />
@@ -433,7 +433,7 @@ function ConfigSettingsInner({
     if (showModelSettings) {
       return (
         <SettingsContent>
-          <SettingsProfileScope className="mb-5" />
+          {(developerMode || settingsView !== 'config:safety') && <SettingsProfileScope className="mb-5" />}
           <div className="mb-6">
             <ModelSettingsSkeleton subpage={subpage} />
           </div>

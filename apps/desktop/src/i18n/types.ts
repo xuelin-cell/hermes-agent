@@ -264,9 +264,6 @@ export interface Translations {
     logoutTitle: string
     logoutDescription: string
     logoutBusy: string
-    expired: string
-    expiredLabel: string
-    expiredRunning: string
     resendAfter: string
     smsSendError: string
     smsLimited: string

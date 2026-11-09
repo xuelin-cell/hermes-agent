@@ -29,6 +29,11 @@ export function stagePythonPlugins({ source, out, bundledKits = null }) {
     dereference: true,
     filter
   })
+  cpSync(join(source, 'apps/desktop/assets/usage-telemetry-plugin'), join(destination, 'uniwork-telemetry'), {
+    recursive: true,
+    dereference: true,
+    filter
+  })
   if (bundledKits) {
     // desktop-mt: 内置套件和专家打包时才从 GitCode 拉进 agent-payload 快照，源码 plugins/ 里没有；
     // 安装版后端从这里发现插件，autoseed 在 uniwork-kits/bundled 下找包，所以一起放进来。

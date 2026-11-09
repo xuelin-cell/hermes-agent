@@ -36,7 +36,7 @@ export function isSkillsCommand(args: string[]): boolean {
 export async function savedSkillsHome(userData: string): Promise<string> {
   const identity = new CredentialStore(userData).load()
 
-  if (!identity || identity.expiresAt <= Date.now()) {
+  if (!identity) {
     throw new Error('请先在 UniWork 中登录有效账号，再安装或查询技能。')
   }
 
@@ -52,10 +52,10 @@ export async function savedSkillsHome(userData: string): Promise<string> {
     throw new Error('账号正在退出或等待恢复，请先在 UniWork 中完成处理。')
   }
 
-  // 查询期间可能发生注销或重新登录，再次读取并核对同一身份与期限。
+  // 查询期间可能发生注销或重新登录，再次读取并核对同一身份。
   const current = new CredentialStore(userData).load()
 
-  if (!current || current.uid !== identity.uid || current.token !== identity.token || current.expiresAt <= Date.now()) {
+  if (!current || current.uid !== identity.uid || current.token !== identity.token) {
     throw new Error('登录状态已变化，请重新运行命令。')
   }
 
@@ -73,7 +73,7 @@ export async function savedSkillsHome(userData: string): Promise<string> {
 /** 仅向终端返回启动参数；Python 由终端启动以保留真正的控制台输入输出。 */
 export function runDesktopSkillsCli(request: string[]): void {
   const file = request[0]
-  app.setName('Hermes Desktop MT')
+  app.setName('元景数字员工')
 
   if (process.platform === 'darwin') {
     app.setActivationPolicy('prohibited')

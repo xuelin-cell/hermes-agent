@@ -7,21 +7,21 @@ import { parse } from 'yaml'
 
 import { enableDesktopPlugins } from './desktop-plugins-config'
 
-it('新账号和已有配置都启用两个内置插件，保留其他插件和注释，重复执行不写盘', () => {
+it('新账号和已有配置启用产品插件，保留其他插件和注释，重复执行不写盘', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-kits-config-'))
   const file = path.join(home, 'config.yaml')
   const rename = vi.spyOn(fs, 'renameSync')
 
   try {
     enableDesktopPlugins(home)
-    expect(parse(fs.readFileSync(file, 'utf8')).plugins).toEqual({ enabled: ['uniwork-kits', 'desktop-deliverables'] })
+    expect(parse(fs.readFileSync(file, 'utf8')).plugins).toEqual({ enabled: ['uniwork-kits', 'desktop-deliverables', 'uniwork-telemetry'] })
 
     fs.writeFileSync(file, '# 用户说明\nmodel: {provider: personal}\nplugins:\n  enabled:\n  - kanban # 看板\n')
     enableDesktopPlugins(home)
     const saved = fs.readFileSync(file, 'utf8')
     const config = parse(saved)
     expect(config.model).toEqual({ provider: 'personal' })
-    expect(config.plugins.enabled).toEqual(['kanban', 'uniwork-kits', 'desktop-deliverables'])
+    expect(config.plugins.enabled).toEqual(['kanban', 'uniwork-kits', 'desktop-deliverables', 'uniwork-telemetry'])
     expect(saved).toContain('# 用户说明')
     expect(saved).toContain('# 看板')
 
@@ -45,10 +45,10 @@ it('用户停用过就不再打开，配置坏了报错且不覆盖', () => {
     enableDesktopPlugins(home)
     expect(parse(fs.readFileSync(file, 'utf8')).plugins).toEqual({
       disabled: ['uniwork-kits'],
-      enabled: ['desktop-deliverables']
+      enabled: ['desktop-deliverables', 'uniwork-telemetry']
     })
 
-    const allDisabled = 'plugins:\n  disabled: [uniwork-kits, desktop-deliverables]\n'
+    const allDisabled = 'plugins:\n  disabled: [uniwork-kits, desktop-deliverables, uniwork-telemetry]\n'
     fs.writeFileSync(file, allDisabled)
     enableDesktopPlugins(home)
     expect(fs.readFileSync(file, 'utf8')).toBe(allDisabled)

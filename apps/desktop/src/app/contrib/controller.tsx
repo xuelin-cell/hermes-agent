@@ -1,3 +1,4 @@
+import { usePreviewPageVisibility } from '@/app/chat/use-preview-page-visibility'
 import { useStore } from '@nanostores/react'
 import { atom, computed } from 'nanostores'
 import type { CSSProperties, ReactElement, PointerEvent as ReactPointerEvent } from 'react'
@@ -607,7 +608,9 @@ const $hasWorkspace = computed($currentCwd, cwd => Boolean(cwd.trim()))
 // is about.
 bindPaneVisibility(
   'files',
-  computed([$hasWorkspace, $fileBrowserOpen], (workspace, open) => workspace && open),
+  computed([$hasWorkspace, $fileBrowserOpen, $selectedWorkspaceMode], (workspace, open, mode) =>
+    mode === 'codex' ? workspace && open : open
+  ),
   () => setFileBrowserOpen(false),
   () => setFileBrowserOpen(true)
 )
@@ -801,6 +804,7 @@ registerPaneCloser('files', () =>
 // ---------------------------------------------------------------------------
 
 export function ContribController() {
+  usePreviewPageVisibility()
   const sidebarOpen = useStore($sidebarOpen)
   const statusbarVisible = useStore($statusbarVisible)
   const workspaceMode = useStore($selectedWorkspaceMode)

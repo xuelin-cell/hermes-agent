@@ -74,7 +74,6 @@ import { useComposerScreenshot } from './hooks/use-composer-screenshot'
 import { useComposerSubmit } from './hooks/use-composer-submit'
 import { triggerKeyUpHandler, useComposerTrigger } from './hooks/use-composer-trigger'
 import { useComposerUndo } from './hooks/use-composer-undo'
-import { useComposerUrlDialog } from './hooks/use-composer-url-dialog'
 import { useComposerVoice } from './hooks/use-composer-voice'
 import { useEmojiCompletions } from './hooks/use-emoji-completions'
 import { useComposerMicroActions } from './hooks/use-micro-actions'
@@ -85,6 +84,7 @@ import { useUniworkAsr } from './hooks/use-uniwork-asr'
 // desktop-mt: 程序被关掉中断的回答，15 分钟内可点 ▶ 继续。
 import { useInterruptedComposer } from './interrupted-mt/use-interrupted-composer'
 import { shouldConvertPasteToAttachment } from './large-paste'
+import { readCopiedMessageAttachments } from './message-clipboard'
 import { ActionBadges } from './micro-actions'
 // desktop-mt: 当前窗格独立读取上下文用量。
 import { ComposerContextRing } from './model-mt/context-ring'
@@ -109,7 +109,6 @@ import { extractClipboardImageBlobs, openDirectiveScope } from './text-utils'
 import { ComposerTriggerPopover } from './trigger-popover'
 import type { ChatBarProps } from './types'
 import { isRedoShortcut, isUndoShortcut } from './undo-history'
-import { UrlDialog } from './url-dialog'
 import {
   chipTypedUrlOnSpace,
   linkifyUrls,
@@ -118,7 +117,7 @@ import {
   selectionLinkLabel
 } from './url-refs'
 import { VoiceActivity, VoicePlaybackActivity } from './voice-activity'
-import { WorkTemplatePicker } from './work-templates/picker'
+import { WorkTemplatePicker, type WorkTemplateSelection } from './work-templates/picker'
 import { WorkdirPicker } from './workdir-mt/workdir-picker'
 
 export function ChatBar({
@@ -133,14 +132,12 @@ export function ChatBar({
   sessionId,
   state,
   onCancel,
-  onAddUrl,
   onAttachDroppedItems,
   onAttachImageBlob,
   onAttachPastedText,
   onPasteClipboardImage,
   onPickFiles,
   onPickFolders,
-  onPickImages,
   onRemoveAttachment,
   onSteer,
   onSteerHidden,
@@ -162,6 +159,7 @@ export function ChatBar({
   // is created first); render-time assignment keeps the ref current.
   const asrBusyRef = useRef(false)
   const voiceStopRef = useRef<{ active: boolean; end: () => void }>({ active: false, end: () => {} })
+  const [welcomeSelection, setWelcomeSelection] = useState<WorkTemplateSelection | null>(null)
 
   // Every send (typed, queued, voice) passes through the contributed
   // middleware chain first — rewrite / pass-through / cancel. Empty chain =
@@ -187,15 +185,20 @@ export function ChatBar({
         return true
       }
 
+      // Snapshot before middleware awaits or the first send navigates away from the welcome composer.
+      const skillTag = showWelcomeTemplates && !options?.fromQueue && !options?.displayKind &&
+        welcomeSelection?.scope === (queueSessionKey || sessionId || null)
+        ? welcomeSelection.tag ?? undefined : undefined
+
       const draft = await runComposerMiddleware({ text: value, attachments: options?.attachments })
 
       if (!draft) {
         return false
       }
 
-      return onSubmitProp(draft.text, { ...options, attachments: draft.attachments })
+      return onSubmitProp(draft.text, { ...options, attachments: draft.attachments, ...(skillTag ? { skillTag } : {}) })
     },
-    [onSubmitProp]
+    [onSubmitProp, showWelcomeTemplates, welcomeSelection, queueSessionKey, sessionId]
   )
 
   // Which live composer this instance IS (main | tile) — its attachment set,
@@ -366,13 +369,6 @@ export function ChatBar({
   useEffect(() => {
     resetUndoHistory()
   }, [activeQueueSessionKey, resetUndoHistory])
-
-  // "Add URL" dialog — open/value state, autofocus, and submit (host onAddUrl or
-  // an @url: directive into the draft).
-  const { openUrlDialog, setUrlOpen, setUrlValue, submitUrl, urlInputRef, urlOpen, urlValue } = useComposerUrlDialog({
-    insertText,
-    onAddUrl
-  })
 
   // The queue engine — queued turns, in-place editing, the shared drain lock,
   // and bounded auto-drain. Consumes the draft API and writes `queueEditRef`.
@@ -594,6 +590,26 @@ export function ChatBar({
   }
 
   const handlePaste = (event: ClipboardEvent<HTMLDivElement>) => {
+    const copiedAttachments = readCopiedMessageAttachments(event.clipboardData)
+
+    if (copiedAttachments.length) {
+      event.preventDefault()
+
+      for (const attachment of copiedAttachments) {
+        scope.attachments.add(attachment)
+      }
+
+      const text = sanitizeComposerInput(event.clipboardData.getData('text').trim())
+
+      if (text) {
+        recordUndoPoint()
+        insertComposerContentsAtCaret(event.currentTarget, pathifyRefs(linkifyUrls(text)))
+        scheduleFlushEditorToDraft(event.currentTarget)
+      }
+
+      return
+    }
+
     const imageBlobs = extractClipboardImageBlobs(event.clipboardData)
 
     if (imageBlobs.length > 0 && onAttachImageBlob) {
@@ -686,10 +702,10 @@ export function ChatBar({
     // A paste into an open `@url:`/`@file:` scope CONSUMES that scope instead of
     // stacking on it — the scope is the browse mode the user is pasting into,
     // not text they typed and want to keep (`@url:@url:\`https://…\``).
-    const scope = openDirectiveScope(event.currentTarget)
+    const directiveScope = openDirectiveScope(event.currentTarget)
 
     recordUndoPoint()
-    insertComposerContentsAtCaret(event.currentTarget, pathifyRefs(linkifyUrls(pastedText)), scope)
+    insertComposerContentsAtCaret(event.currentTarget, pathifyRefs(linkifyUrls(pastedText)), directiveScope)
     scheduleFlushEditorToDraft(event.currentTarget)
   }
 
@@ -1140,15 +1156,7 @@ export function ChatBar({
   voiceStopRef.current = { active: voiceConversationActive, end: endConversation }
 
   const contextMenu = (
-    <ContextMenu
-      onInsertText={insertText}
-      onOpenUrlDialog={openUrlDialog}
-      onPasteClipboardImage={onPasteClipboardImage}
-      onPickFiles={onPickFiles}
-      onPickFolders={onPickFolders}
-      onPickImages={onPickImages}
-      state={state}
-    />
+    <ContextMenu onInsertText={insertText} onPickFiles={onPickFiles} onPickFolders={onPickFolders} state={state} />
   )
 
   const asr = useUniworkAsr({
@@ -1360,6 +1368,7 @@ export function ChatBar({
             <WorkTemplatePicker
               disabled={inputDisabled || busy || asrActive}
               onReplaceText={text => replaceText(text)}
+              onSelectionChange={setWelcomeSelection}
               scope={activeQueueSessionKey}
               selectionContainer={welcomeSelectionContainer}
             />
@@ -1623,15 +1632,6 @@ export function ChatBar({
           )}
         </div>
       </ComposerPrimitive.Unstable_TriggerPopoverRoot>
-
-      <UrlDialog
-        inputRef={urlInputRef}
-        onChange={setUrlValue}
-        onOpenChange={setUrlOpen}
-        onSubmit={submitUrl}
-        open={urlOpen}
-        value={urlValue}
-      />
     </>
   )
 }
