@@ -52,7 +52,7 @@ function isManaged(id: string, entry: unknown): entry is YAMLMap {
   )
 }
 
-/** 只维护套餐提供方；全新文件设置默认，既有文件保留用户选择和其他节点。 */
+/** 只维护套餐提供方；未设置模型时写入默认，保留用户选择和其他节点。 */
 export function mergeMaasModelConfig(home: string, catalog: Pick<MaasPlan, 'models' | 'mainModelIndex'>): void {
   const file = path.join(home, 'config.yaml')
   let existing: fs.Stats | undefined
@@ -201,7 +201,7 @@ export function mergeMaasModelConfig(home: string, catalog: Pick<MaasPlan, 'mode
     }
   }
 
-  if (!existing) {
+  if (!doc.has('model')) {
     doc.set('model', { provider: `custom:${providerId(main.baseUrl)}`, default: main.name })
   }
 

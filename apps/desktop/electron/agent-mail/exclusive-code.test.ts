@@ -18,3 +18,11 @@ it('reads the exclusive code from the Wo Mail response envelope', async () => {
     'https://zeus.mail.wo.cn/openapi/mail/exclusive/set?appId=smart-home-service'
   )
 })
+
+it('preserves the safe upstream message from an HTTP rejection', async () => {
+  const request = vi.fn<typeof fetch>().mockResolvedValue(
+    Response.json({ message: '号码未开通沃邮箱' }, { status: 403 })
+  )
+
+  await expect(fetchWoMailExclusiveCode('13800138000', request)).rejects.toThrow('号码未开通沃邮箱')
+})

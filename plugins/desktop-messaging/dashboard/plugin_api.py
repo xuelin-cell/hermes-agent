@@ -4,6 +4,9 @@ from __future__ import annotations
 import asyncio
 from importlib import import_module
 from pathlib import Path
+import subprocess
+import sys
+import time
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException
@@ -209,8 +212,9 @@ def _prepare_main_platforms() -> tuple[set[str], bool]:
 
 
 def _gateway_environment(state: dict) -> dict[str, str]:
-    """受管网关统一关闭忙碌回执，包含混用或只有 5G 的情况。"""
-    env = {"HERMES_GATEWAY_INSTALL_START_ON_LOGIN": "0"}
+    """受管网关关闭忙碌回执，将各适配器的断开等待限制为一秒。"""
+    env = {"HERMES_GATEWAY_INSTALL_START_ON_LOGIN": "0",
+           "HERMES_GATEWAY_ADAPTER_DISCONNECT_TIMEOUT": "1"}
     if state["configured"]:
         env["HERMES_GATEWAY_BUSY_ACK_ENABLED"] = "false"
         # 默认模板的顶层 display.busy_steer_ack_enabled 会被转成环境变量并盖过平台设置；进程环境优先。
@@ -218,39 +222,79 @@ def _gateway_environment(state: dict) -> dict[str, str]:
     return env
 
 
+def _spawn_desktop_gateway(env_overrides: dict[str, str]) -> subprocess.Popen:
+    """沿用原版账号环境、动作日志及登记，只替换常驻网关入口。"""
+    from hermes_cli import web_server_gateway as actions
+    from hermes_cli._launchers import resolve_store_python
+    from hermes_cli._subprocess_compat import windows_detach_flags
+    from hermes_cli.web_server import PROJECT_ROOT
+    from hermes_constants import get_default_hermes_root
+
+    subcommand = ["-p", "default", "gateway", "run"]
+    env = actions._profile_action_environment(subcommand, env_overrides)
+    if not env.get("HERMES_HOME") or Path(env["HERMES_HOME"]).resolve() != get_default_hermes_root().resolve():
+        raise RuntimeError("gateway_identity_unverified")
+    root = Path(PROJECT_ROOT).resolve()
+    python = resolve_store_python(root) or Path(sys.executable)
+    script = Path(__file__).resolve().parents[1] / "desktop-gateway.py"
+    name = "gateway-start"
+    actions._ACTION_LOG_DIR.mkdir(parents=True, exist_ok=True)
+    detach = {"creationflags": windows_detach_flags()} if sys.platform == "win32" else {"start_new_session": True}
+    with open(actions._ACTION_LOG_DIR / actions._ACTION_LOG_FILES[name], "ab", buffering=0) as log_file:
+        log_file.write(f"\n=== {name} started {time.strftime('%Y-%m-%d %H:%M:%S')} ===\n".encode())
+        proc = subprocess.Popen(
+            [str(python), "-I", str(script), str(root)], cwd=str(root), stdin=subprocess.DEVNULL,
+            stdout=log_file, stderr=subprocess.STDOUT, env=env, **detach,
+        )
+    actions._ACTION_RESULTS.pop(name, None)
+    actions._ACTION_COMMANDS[name] = tuple(subcommand)
+    actions._ACTION_PROCS[name] = proc
+    if env_overrides.get("HERMES_ACTION_ID"):
+        actions._ACTION_IDS[name] = env_overrides["HERMES_ACTION_ID"]
+    else:
+        actions._ACTION_IDS.pop(name, None)
+    return proc
+
+
+async def _restore_gateway(state: dict, restart: bool) -> dict:
+    """在调用方已持有网关锁时复用、停止或启动，避免两个入口嵌套加锁。"""
+    from hermes_cli.web_server_gateway import _gateway_subcommand, _spawn_hermes_action
+
+    if not state["configured"]:
+        return {**state, "name": None}
+    try:
+        running = await asyncio.to_thread(_owned_gateway)
+    except Exception as exc:
+        raise HTTPException(409, detail="gateway_identity_unverified") from exc
+    if running and not (state["changed"] or restart):
+        return {**state, "name": None}
+    env = _gateway_environment(state)
+    if running:
+        # 只发起原版停止；桌面确认动作成功后再次请求恢复，不能走会拉起原版入口的 restart。
+        await asyncio.to_thread(_spawn_hermes_action, _gateway_subcommand("default", "stop"),
+                                "gateway-stop", env_overrides=env)
+    else:
+        await asyncio.to_thread(_spawn_desktop_gateway, env)
+    return {**state, "name": "gateway-stop" if running else "gateway-start"}
+
+
 @router.post("/restore")
 async def restore_gateway(restart: bool = False) -> dict:
     """后台恢复复用可信进程；仅规则变化或用户明确重试时重新连接。"""
-    from hermes_cli.web_server_gateway import _gateway_subcommand, _spawn_hermes_action
-
     async with _gateway_lock:
-        state = await prepare()
-        if not state["configured"]:
-            return {**state, "name": None}
-        try:
-            running = await asyncio.to_thread(_owned_gateway)
-        except Exception as exc:
-            raise HTTPException(409, detail="gateway_identity_unverified") from exc
-        if running and not (state["changed"] or restart):
-            return {**state, "name": None}
-        # 运行期直接用原版 run 启动，不调用可能修复／启用系统自动启动项的 start。
-        # 旧准入规则变化时先停止，主进程确认动作结束后再调用本入口启动。
-        verb = "stop" if running else "run"
-        name = "gateway-stop" if running else "gateway-start"
-        await asyncio.to_thread(_spawn_hermes_action, _gateway_subcommand("default", verb), name,
-                                env_overrides=_gateway_environment(state))
-        return {**state, "name": name}
+        return await _restore_gateway(await prepare(), restart)
 
 
 @router.post("/apply")
 async def apply_gateway() -> dict:
-    """由桌面串行调用原版动作；无配置时停止，不复用旧凭据的重启冷却结果。"""
+    """保存后先停再由桌面恢复；没有配置时保持原版只停止的返回格式。"""
     from hermes_cli.web_server_gateway import _gateway_subcommand, _spawn_hermes_action
 
     async with _gateway_lock:
         state = await prepare()
-        verb = "restart" if state["configured"] else "stop"
-        name = f"gateway-{verb}"
-        proc = await asyncio.to_thread(_spawn_hermes_action, _gateway_subcommand("default", verb), name,
+        if state["configured"]:
+            return await _restore_gateway(state, restart=True)
+        name = "gateway-stop"
+        proc = await asyncio.to_thread(_spawn_hermes_action, _gateway_subcommand("default", "stop"), name,
                                        env_overrides=_gateway_environment(state))
         return {"ok": True, "name": name, "pid": proc.pid}

@@ -36,7 +36,7 @@ import { useWorkdirCopy } from './copy'
 import { isBlockedWorkdir, recentWorkdirs, sameWorkdir, workdirName } from './folders'
 
 const PILL = cn(
-  'h-(--composer-control-size) min-w-0 max-w-36 shrink gap-1 rounded-md px-1.5 text-xs font-normal',
+  'h-(--composer-control-size) min-w-0 max-w-36 shrink gap-1 rounded-md px-1.5 text-xs leading-4 font-normal',
   'text-(--ui-text-tertiary) hover:bg-(--chrome-action-hover) hover:text-foreground',
   'data-[state=open]:bg-(--chrome-action-hover) data-[state=open]:text-foreground'
 )

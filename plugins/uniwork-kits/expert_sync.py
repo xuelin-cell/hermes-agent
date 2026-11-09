@@ -24,13 +24,10 @@ So the default profile pushes these across, and nothing else:
 * the UniAI toolkit's per-tool wait limits (``timeouts.tools.sequential_calls``
   keys for that server, written by the desktop for translation, podcast and
   video): mirrored so a slow tool in an expert gets the same budget.
-* the 东方财富 connector (the desktop's OpenConnector ``connector_eastmoney_mcp``),
-  and only onto the nine Eastmoney experts: same mirror rules, but stored under
-  ``eastmoney_slot.MIRROR_NAME`` without ``desktop_connector`` — the desktop
-  rewrites entries carrying that marker to the expert's own, unauthorized
-  connector before the expert's backend starts. An expert the user authorized
-  on its own keeps its own entry. Until the default profile has the connector,
-  nothing here is copied and those experts keep the package's own scripts.
+
+OpenConnector now shares one runtime and authorization store per desktop account.
+Electron prepares each expert's managed connector entries before its backend starts;
+this module removes the retired Eastmoney mirror instead of copying it again.
 
 Hermes keeps profiles independent on purpose; this touches only profiles this
 plugin installed as experts, and only these fields. It runs when the default
@@ -45,6 +42,7 @@ import logging
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Set, Tuple
+from urllib.parse import urlparse
 
 from . import eastmoney_slot, media_slot, store
 
@@ -108,30 +106,20 @@ def _expert_homes(default_home: Path) -> List[Tuple[str, Path]]:
     return out
 
 
-def _mcp_to_follow(
-    plugin: str,
-    default_servers: Mapping[str, Any],
-    expert_servers: Mapping[str, Any],
-    previous: List[str],
-) -> List[Tuple[str, str, str]]:
-    """默认档案里这个专家要跟上的 MCP，每项是（默认档案里的键, 专家档案里的键, 说明）。
+def _retired_mirror(entry: Any) -> bool:
+    """旧镜像是抄自本机 OpenConnector、去掉桌面标记的条目；用户自己配的同名服务不算。"""
+    if not isinstance(entry, Mapping) or entry.get("desktop_connector"):
+        return False
+    host = urlparse(str(entry.get("url") or "")).hostname or ""
+    return host in {"127.0.0.1", "localhost", "::1"}
 
-    东方财富连接器在专家档案里用 eastmoney_slot.MIRROR_NAME 这个键（原因见 eastmoney_slot 模块说明）；
-    专家档案里有用户自己授权、仍在启用的那条（不是以前同步过去的）时，就用它，不再同步。
-    """
+
+def _mcp_to_follow(default_servers: Mapping[str, Any]) -> List[Tuple[str, str, str]]:
+    """只同步元景工具箱；账号共享连接器由 Electron 写入各助手。"""
     followed: List[Tuple[str, str, str]] = []
     uniai = media_slot.uniai_server(default_servers)
     if uniai:
         followed.append((uniai, uniai, "生图 / 搜图"))
-    if plugin in eastmoney_slot.EXPERTS:
-        own = [
-            str(name) for name, entry in expert_servers.items()
-            if isinstance(entry, Mapping) and eastmoney_slot.owned_by_desktop(entry)
-            and str(name) not in previous and eastmoney_slot.server_name({name: entry})
-        ]
-        found = eastmoney_slot.server_name(default_servers)
-        if found and found != uniai and not own:
-            followed.append((found, eastmoney_slot.MIRROR_NAME, "东方财富连接器"))
     return followed
 
 
@@ -143,12 +131,8 @@ def _mirror_mcp_entry(
     label: str,
     changes: List[str],
 ) -> None:
-    """把默认档案的一条 MCP 抄进专家档案，保留专家自己的 enabled 和 tools。
-
-    去掉 desktop_connector：专家后端启动前，桌面会把带这个标记的条目改写成专家自己那份连接器的地址。
-    """
+    """把默认档案的工具箱抄进专家档案，保留专家自己的 enabled 和 tools。"""
     mirrored = copy.deepcopy(dict(default_servers[source]))
-    mirrored.pop("desktop_connector", None)
     mine = servers.get(target) if isinstance(servers.get(target), Mapping) else {}
     for field in _KEEP_FROM_EXPERT:
         if field in mine:
@@ -235,11 +219,17 @@ def _plan_config(
     servers = raw.get("mcp_servers") if isinstance(raw.get("mcp_servers"), dict) else {}
     default_servers = default_raw.get("mcp_servers") if isinstance(default_raw.get("mcp_servers"), Mapping) else {}
     previous = [str(n) for n in record.get("synced_mcp") or []]
-    wanted = _mcp_to_follow(plugin, default_servers, servers, previous)
+    wanted = _mcp_to_follow(default_servers)
     wanted_names = [target for _source, target, _label in wanted]
     for stale in [n for n in previous if n not in wanted_names and n in servers]:
+        if isinstance(servers[stale], Mapping) and servers[stale].get("desktop_connector"):
+            # 桌面已经接管的条目不能被旧同步记录删除。
+            continue
         servers.pop(stale, None)
         changes.append(f"移除 {stale}（默认配置档案已经没有，或已改用新的键名）")
+    if plugin in eastmoney_slot.EXPERTS and _retired_mirror(servers.get(eastmoney_slot.MIRROR_NAME)):
+        servers.pop(eastmoney_slot.MIRROR_NAME)
+        changes.append("移除东方财富镜像，使用账号共享连接器")
     for source, target, label in wanted:
         _mirror_mcp_entry(servers, default_servers, source, target, label, changes)
     _mirror_tool_timeouts(raw, default_raw, media_slot.uniai_server(default_servers), changes)
@@ -311,8 +301,7 @@ def sync_all(default_home: Path) -> List[str]:
 def sync_named(default_home: Path, name: str) -> List[str]:
     """只同步一位专家（按包名），返回改了哪些；没装这位专家时返回空。
 
-    加载时的同步每个进程只做一次。用户召唤专家后才在通用助手里连上东方财富时，专家后端已经在跑，
-    由桌面点名补这一次。
+    加载时的同步每个进程只做一次，运行中可由桌面点名刷新模型、密钥和元景工具箱。
     """
     for plugin, home in _expert_homes(default_home):
         if plugin == name:
@@ -326,8 +315,8 @@ _synced_homes: Set[str] = set()
 def sync_on_load(home: Path) -> None:
     """插件加载时同步一次，每个进程只做一次。
 
-    默认档案的后端同步全部已装专家；专家自己的后端只从默认档案拉一次自己那份。东方财富连接器的端口每次开桌面
-    都会变，专家后端可能比默认档案的同步先启动；插件在 MCP 读配置之前加载，自己拉一次就不怕启动先后。
+    默认档案的后端同步全部已装专家；专家自己的后端只拉自己那份。
+    连接器由 Electron 准备，此处不覆盖桌面已经写入的共享地址与授权。
     """
     key = str(home)
     if key in _synced_homes:

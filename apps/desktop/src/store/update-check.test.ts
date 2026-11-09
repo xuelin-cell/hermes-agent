@@ -11,8 +11,10 @@ vi.mock('@/store/updates', async (): Promise<Record<string, unknown>> => {
     $updateOverlayTarget: atom<'client' | 'backend'>('client'),
     $updateStatus: atom<DesktopUpdateStatus | null>(null),
     checkUpdates: vi.fn<() => Promise<DesktopUpdateStatus | null>>(),
+    isClientUpdateRunning: vi.fn<() => boolean>().mockReturnValue(false),
     refreshDesktopVersion: vi.fn<() => Promise<unknown>>().mockResolvedValue(null),
-    setUpdateOverlayOpen: vi.fn()
+    setUpdateOverlayOpen: vi.fn(),
+    startClientUpdateDownload: vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
   }
 })
 
@@ -21,7 +23,9 @@ import {
   $updateOverlayTarget,
   $updateStatus,
   checkUpdates,
-  setUpdateOverlayOpen
+  isClientUpdateRunning,
+  setUpdateOverlayOpen,
+  startClientUpdateDownload
 } from '@/store/updates'
 
 import { $updateCheckDialog, closeUpdateCheckDialog, requestUpdateCheck } from './update-check'
@@ -31,6 +35,8 @@ const LATEST: DesktopUpdateStatus = { supported: true, behind: 0, updateAvailabl
 describe('requestUpdateCheck', (): void => {
   beforeEach((): void => {
     vi.clearAllMocks()
+    vi.mocked(isClientUpdateRunning).mockReturnValue(false)
+    vi.mocked(startClientUpdateDownload).mockResolvedValue(undefined)
     closeUpdateCheckDialog()
     $updateChecking.set(false)
     $updateOverlayTarget.set('client')
@@ -45,15 +51,28 @@ describe('requestUpdateCheck', (): void => {
     expect(checkUpdates).toHaveBeenCalledWith({ force: true })
     expect($updateCheckDialog.get()).toEqual({ open: true, phase: 'latest', message: null })
     expect(setUpdateOverlayOpen).not.toHaveBeenCalled()
+    expect(startClientUpdateDownload).not.toHaveBeenCalled()
   })
 
-  it('hands an available update to the updates overlay instead of the dialog', async (): Promise<void> => {
+  it('hands an available update to the download dialog, not the check dialog', async (): Promise<void> => {
     vi.mocked(checkUpdates).mockResolvedValue({ supported: true, behind: 3 })
 
     await requestUpdateCheck()
 
     expect($updateCheckDialog.get().open).toBe(false)
     expect($updateOverlayTarget.get()).toBe('client')
+    // One shared entry into the overlay's download step — the same call the
+    // About page reaches through the account card.
+    expect(startClientUpdateDownload).toHaveBeenCalledTimes(1)
+  })
+
+  it('reopens the download dialog instead of checking again while a transfer runs', async (): Promise<void> => {
+    vi.mocked(isClientUpdateRunning).mockReturnValue(true)
+
+    await requestUpdateCheck()
+
+    expect(checkUpdates).not.toHaveBeenCalled()
+    expect(startClientUpdateDownload).not.toHaveBeenCalled()
     expect(setUpdateOverlayOpen).toHaveBeenCalledWith(true)
   })
 
@@ -64,6 +83,7 @@ describe('requestUpdateCheck', (): void => {
 
     expect($updateCheckDialog.get()).toEqual({ open: true, phase: 'error', message: 'Rate limited' })
     expect(setUpdateOverlayOpen).not.toHaveBeenCalled()
+    expect(startClientUpdateDownload).not.toHaveBeenCalled()
   })
 
   it('waits for an in-flight passive check before asking again', async (): Promise<void> => {

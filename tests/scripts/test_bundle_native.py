@@ -56,7 +56,7 @@ def test_windows_release_prunes_symbols_and_ffplay_then_refreshes_digest(tmp_pat
 
 
 def test_uv_cache_archive_is_deterministic_and_keeps_source(tmp_path):
-    """缓存归档不修改持久构建缓存，相同输入生成相同字节。"""
+    """缓存归档不修改持久构建缓存，相同输入生成相同内容。"""
     source = tmp_path / "cache"
     (source / "wheels-v6" / "package").mkdir(parents=True)
     (source / "wheels-v6" / "package" / "metadata.msgpack").write_bytes(b"metadata")
@@ -66,7 +66,12 @@ def test_uv_cache_archive_is_deterministic_and_keeps_source(tmp_path):
     assert native.pack_uv_cache(source, first) == (1, 8)
     assert native.pack_uv_cache(source, second) == (1, 8)
 
-    assert first.read_bytes() == second.read_bytes()
+    def _zip_content(path):
+        import zipfile
+        with zipfile.ZipFile(path) as zf:
+            return {name: zf.read(name) for name in sorted(zf.namelist()) if not name.endswith("/")}
+
+    assert _zip_content(first) == _zip_content(second)
     assert (source / "wheels-v6" / "package" / "metadata.msgpack").read_bytes() == b"metadata"
 
 

@@ -24,8 +24,7 @@ function fixture() {
       quitAndInstall: vi.fn(() => {
         events.push('install')
       }),
-      on: emitter.on.bind(emitter) as MacStrategyDeps['updater']['on'],
-      removeListener: emitter.removeListener.bind(emitter) as MacStrategyDeps['updater']['removeListener']
+      on: emitter.on.bind(emitter) as MacStrategyDeps['updater']['on']
     },
     channel: 'canary',
     appVersion: '0.28.0',
@@ -44,6 +43,13 @@ function fixture() {
   return { deps, events, emitter, strategy: new MacStrategy(deps) }
 }
 
+/** The strategy hands its own DownloadCancellation to downloadUpdate; the
+ *  EventEmitter typing on electron-updater's token is wider than the listener
+ *  contract the download path actually uses. */
+function onCancelLatch(received: Parameters<MacStrategyDeps['updater']['downloadUpdate']>[0], abort: () => void): void {
+  ;(received as unknown as { addListener(listener: () => void): void } | undefined)?.addListener(abort)
+}
+
 afterEach(() => vi.useRealTimers())
 
 describe('macOS strategy', () => {
@@ -53,7 +59,22 @@ describe('macOS strategy', () => {
     events.length = 0
     expect(await strategy.apply()).toMatchObject({ ok: true, handedOff: true })
     expect(events).toEqual(['check', 'download', 'verify', 'stop', 'install'])
-    expect(emitter.listenerCount('download-progress')).toBe(0)
+    // The progress listener lives for the strategy's lifetime: electron-updater
+    // only builds its cancellation-aware progress stream when one exists as the
+    // download starts, and the prefetch download must be abortable too.
+    expect(emitter.listenerCount('download-progress')).toBe(1)
+  })
+
+  it('prefetches and verifies the download without installing', async () => {
+    const verifyDownload = vi.fn(async () => {})
+    const base = fixture()
+    const strategy = new MacStrategy({ ...base.deps, verifyDownload })
+
+    expect(await strategy.prepare()).toEqual({ ready: true, version: '0.29.0' })
+    expect(base.events).toEqual(['check', 'download'])
+    expect(verifyDownload).toHaveBeenCalledTimes(1)
+    expect(base.deps.prepareInstall).not.toHaveBeenCalled()
+    expect(base.deps.updater.quitAndInstall).not.toHaveBeenCalled()
   })
 
   it.each(['downloadUpdate', 'prepareInstall'] as const)('keeps backends alive on %s failure', async failure => {
@@ -64,7 +85,7 @@ describe('macOS strategy', () => {
     await expect(strategy.apply()).rejects.toThrow('invalid update')
     expect(events).not.toContain('stop')
     expect(events).not.toContain('install')
-    expect(emitter.listenerCount('download-progress')).toBe(0)
+    expect(emitter.listenerCount('download-progress')).toBe(1)
   })
 
   it('does not install when the provider reports no newer release', async () => {
@@ -105,8 +126,32 @@ describe('macOS strategy', () => {
     expect(events.slice(-2)).toEqual(['stop', 'restore'])
   })
 
+  it('aborts an in-flight download on cancel and never verifies or installs', async () => {
+    const { deps, strategy, events } = fixture()
+    vi.mocked(deps.updater.downloadUpdate).mockImplementation(received => {
+      const transfer = new Promise<string[]>((_resolve, reject) => {
+        // Squirrel aborts the request from this listener, so the token has to
+        // be live before cancel() is called.
+        onCancelLatch(received, () => reject(new Error('cancelled')))
+      })
+
+      expect(strategy.cancel()).toBe(true)
+
+      return transfer
+    })
+
+    const result = await strategy.apply()
+
+    expect(result).toMatchObject({ ok: false, cancelled: true, mechanism: 'electron-updater' })
+    expect(events).toEqual(['check'])
+    expect(deps.prepareInstall).not.toHaveBeenCalled()
+    expect(deps.updater.quitAndInstall).not.toHaveBeenCalled()
+    // Once the transfer settled there is nothing left to abort.
+    expect(strategy.cancel()).toBe(false)
+  })
+
   it('preserves the handoff error when backend recovery also fails', async (): Promise<void> => {
-    const { deps, strategy, emitter } = fixture()
+    const { deps, strategy } = fixture()
     const handoff = new Error('native handoff failed')
     const recovery = new Error('backend recovery failed')
     vi.mocked(deps.updater.quitAndInstall).mockImplementation((): never => {
@@ -119,7 +164,65 @@ describe('macOS strategy', () => {
       message: 'native handoff failed; backend recovery failed',
       percent: null
     })
-    expect(emitter.listenerCount('download-progress')).toBe(0)
+  })
+
+  // Regression: electron-updater keeps ONE downloadPromise, so an apply that
+  // lands mid-prefetch receives that transfer. A token minted by apply() used
+  // to govern nothing — the dialog closed, the bytes kept coming, and the next
+  // attempt failed with "An update is already in progress".
+  it('aborts the transfer the prefetch started when apply is cancelled', async (): Promise<void> => {
+    const { deps, events, strategy } = fixture()
+
+    let abort: () => void = (): void => {}
+    let shared: Promise<string[]> | null = null
+
+    vi.mocked(deps.updater.downloadUpdate).mockImplementation(received => {
+      onCancelLatch(received, () => abort())
+      shared ??= new Promise<string[]>((_resolve, reject) => {
+        abort = (): void => reject(new Error('cancelled'))
+      })
+
+      return shared
+    })
+
+    const prefetch = strategy.prepare()
+    await vi.waitFor(() => expect(deps.updater.downloadUpdate).toHaveBeenCalledOnce())
+
+    const applying = strategy.apply()
+    await vi.waitFor(() => expect(deps.updater.downloadUpdate).toHaveBeenCalledTimes(2))
+    expect(strategy.cancel()).toBe(true)
+
+    expect(await applying).toMatchObject({ ok: false, cancelled: true })
+    // A cancelled prefetch reports "nothing ready" — never a download failure.
+    expect(await prefetch).toEqual({ ready: false, version: null })
+    expect(events).not.toContain('verify')
+    expect(events).not.toContain('stop')
+    expect(deps.updater.quitAndInstall).not.toHaveBeenCalled()
+    // Once the transfer settled there is nothing left to abort.
+    expect(strategy.cancel()).toBe(false)
+  })
+
+  // A passive check can land mid-apply. That is not a download failure: the
+  // prefetch reports "nothing ready" instead of surfacing the internal gate.
+  it('reports nothing ready for a prefetch that lands mid-apply', async () => {
+    const { deps, strategy } = fixture()
+    let release!: () => void
+
+    vi.mocked(deps.updater.downloadUpdate).mockImplementation(
+      () =>
+        new Promise(resolve => {
+          release = () => resolve([])
+        })
+    )
+
+    const applying = strategy.apply()
+    await vi.waitFor(() => expect(deps.updater.downloadUpdate).toHaveBeenCalledOnce())
+
+    expect(await strategy.prepare()).toEqual({ ready: false, version: null })
+    expect(deps.updater.downloadUpdate).toHaveBeenCalledOnce()
+
+    release()
+    await applying
   })
 
   it('rejects simultaneous apply calls', async () => {

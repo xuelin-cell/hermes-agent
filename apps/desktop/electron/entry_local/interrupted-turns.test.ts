@@ -1,3 +1,5 @@
+import { spawn } from 'node:child_process'
+import { once } from 'node:events'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -23,7 +25,7 @@ import {
 } from './interrupted-turns'
 
 const NOW = 1_800_000_000_000
-const dead = () => false
+const dead = () => true
 
 let home: string
 
@@ -70,7 +72,7 @@ describe('后端启动前接手中断记录', () => {
     const blank = { prompt: '  ' }
     writeMarkers({ live, imported, blank })
 
-    expect(claimInterruptedTurns(home, NOW, entry => entry.writer_pid === 1)).toEqual([])
+    expect(claimInterruptedTurns(home, NOW, entry => entry.writer_pid !== 1)).toEqual([])
     expect(readMarkers()).toEqual({ live, imported, blank })
   })
 
@@ -104,6 +106,31 @@ describe('后端启动前接手中断记录', () => {
   })
 })
 
+it('真实写入进程退出后才认领，身份不明的记录保留', async () => {
+  const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { windowsHide: true, stdio: 'ignore' })
+  await once(child, 'spawn')
+  const exited = once(child, 'exit')
+
+  try {
+    const unknown = { prompt: '未知写入者' }
+    const invalid = { prompt: '无效写入者', writer_pid: -1 }
+    const live = { prompt: '正在执行', writer_pid: child.pid }
+    writeMarkers({ unknown, invalid, live })
+    expect(claimInterruptedTurns(home, NOW)).toEqual([])
+    expect(readMarkers()).toEqual({ unknown, invalid, live })
+    child.kill()
+    await exited
+    expect(claimInterruptedTurns(home, NOW)).toEqual([{ sessionId: 'live', prompt: live.prompt, detectedAt: NOW }])
+    expect(readMarkers()).toEqual({ unknown, invalid })
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill()
+    }
+
+    await exited
+  }
+})
+
 describe('页面接口', () => {
   it('只回答当前账号的桌面窗口，并能删掉记录', async () => {
     writeMarkers({ s1: { prompt: '任务', writer_pid: 2_147_483_000 } })
@@ -111,7 +138,12 @@ describe('页面接口', () => {
     turns.claim(home)
     let active = true
     fromDesktop.value = true
-    installInterruptedTurnIpc({} as never, () => 'app://renderer', () => active, turns)
+    installInterruptedTurnIpc(
+      {} as never,
+      () => 'app://renderer',
+      () => active,
+      turns
+    )
     const list = handlers.get('hermes:interrupted-turns:list')!
     const dismiss = handlers.get('hermes:interrupted-turns:dismiss')!
 

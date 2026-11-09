@@ -2,8 +2,9 @@
  * Manual "check for updates" entry points (sidebar account card + Settings).
  *
  * Separate from the passive poller in store/updates: this flow always gives the
- * user a visible answer — either the updates overlay (an update is waiting) or
- * the lightweight "software update" dialog (already current / failed).
+ * user a visible answer — an offered build opens the updates overlay on its
+ * download step, anything else lands in the lightweight "software update"
+ * dialog (already current / failed).
  */
 
 import { atom } from 'nanostores'
@@ -15,8 +16,10 @@ import {
   $updateOverlayTarget,
   $updateStatus,
   checkUpdates,
+  isClientUpdateRunning,
   refreshDesktopVersion,
-  setUpdateOverlayOpen
+  setUpdateOverlayOpen,
+  startClientUpdateDownload
 } from './updates'
 
 export type UpdateCheckPhase = 'checking' | 'latest' | 'error'
@@ -113,6 +116,16 @@ function failureMessage(status = $updateStatus.get()): string {
  * own card/overlay flow.
  */
 export async function requestUpdateCheck(): Promise<void> {
+  // A transfer is already on the wire: reopening the download dialog is the
+  // honest answer, and a fresh check would only collide with the updater's
+  // single-operation gate ("already in progress").
+  if (isClientUpdateRunning()) {
+    $updateOverlayTarget.set('client')
+    setUpdateOverlayOpen(true)
+
+    return
+  }
+
   if (inFlight) {
     return
   }
@@ -139,10 +152,10 @@ export async function requestUpdateCheck(): Promise<void> {
 
     if (status && !status.error && status.supported !== false && !status.retirement && updateWaiting(status)) {
       closeUpdateCheckDialog()
-      // The status was just force-checked, so drop straight into the overlay
-      // instead of openUpdateOverlayFor(), which would force another check.
-      $updateOverlayTarget.set('client')
-      setUpdateOverlayOpen(true)
+      // Straight into the download dialog: the offered build starts landing on
+      // disk while its progress is on screen, and the install still waits for
+      // the user's explicit "launch" click.
+      await startClientUpdateDownload()
 
       return
     }

@@ -892,7 +892,10 @@ def _complete_turn_payload(session: dict, st: _TurnRun, status_note: str | None,
         ("turn_completed_at", getattr(st, "turn_completed_at", None) if status == "complete" else None)
     ) if value is not None}
     payload.update(reply_metadata)
-    persist_turn_reply_metadata(agent, result.get("messages"), payload.get("persisted_turn"), reply_metadata)
+    messages = result.get("messages")
+    # A merged user boundary can prevent a reconciliation receipt while the reply is already durable.
+    if status == "complete" or (receipt and messages[-1].get("_row_id") in receipt["row_ids"]):
+        persist_turn_reply_metadata(agent, messages, st.history, reply_metadata)
     if last_reasoning:
         payload["reasoning"] = last_reasoning
     if status_note:
@@ -1008,6 +1011,15 @@ def _finish_turn(sid: str, session: dict, st: _TurnRun) -> None:
             _persist_live_session_system_prompt(session)
         except Exception:
             logger.debug("TUI one-turn model restore failed", exc_info=True)
+    if session.get("pending_model_switch"):
+        # A messaging conversation can receive its next turn from the gateway.
+        from tui_gateway.messaging_model_switch import live_messaging_model_route
+        try:
+            if live_messaging_model_route(session) is not None:
+                with _session_profile_runtime_scope(session):
+                    _apply_pending_model_switch(sid, session)
+        except Exception:
+            logger.warning("Could not apply the queued messaging model pick at turn completion", exc_info=True)
     scopes = st.scopes
     with contextlib.suppress(Exception):
         if scopes.approval is not None:

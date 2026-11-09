@@ -96,6 +96,7 @@ interface RecommendedConnectorDetailProps {
   onConnect: () => void
   onConnected: () => void
   onDisconnect: () => void
+  onEnable: () => void
   onExample: (text: string) => void
   onQr: (operation: 'qr.start' | 'qr.poll' | 'qr.cancel', sessionId?: string) => Promise<LocalConnectorResult | null>
   onSubmit: (values: Record<string, string>) => Promise<void>
@@ -121,6 +122,7 @@ const EXAMPLE_GROUP: Record<ConnectorId, keyof (typeof examples)['en']> = {
   youdao_note: 'youdao',
   ima: 'ima',
   qcc_mcp: 'qcc',
+  tianyancha_mcp: 'tianyancha',
   eastmoney_mcp: 'eastmoney',
   ifind_mcp: 'ifind',
   aminer: 'aminer',
@@ -178,6 +180,7 @@ export function RecommendedConnectorDetail(props: RecommendedConnectorDetailProp
               item={item}
               onConnect={props.onConnect}
               onDisconnect={props.onDisconnect}
+              onEnable={props.onEnable}
               onExample={props.onExample}
               waiting={props.waiting}
             />
@@ -203,6 +206,7 @@ interface OverviewViewProps {
   item: ConnectorCopy
   onConnect: () => void
   onDisconnect: () => void
+  onEnable: () => void
   onExample: (text: string) => void
   waiting: boolean
 }
@@ -217,6 +221,7 @@ function OverviewView({
   item,
   onConnect,
   onDisconnect,
+  onEnable,
   onExample,
   waiting
 }: OverviewViewProps) {
@@ -254,6 +259,11 @@ function OverviewView({
               <Unlink />
               {copy.disconnect}
             </Button>
+            {entry.id === 'wps_mcp' && (
+              <Button disabled={busy} onClick={onEnable} size="lg" variant="outline">
+                {copy.reenable}
+              </Button>
+            )}
           </>
         ) : waiting ? (
           <Button onClick={onDisconnect} size="lg" variant="outline">

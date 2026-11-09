@@ -9,6 +9,9 @@ from typing import TYPE_CHECKING
 
 from .http import DEFAULT_USER_AGENT, RawPage
 from .security import NetworkPolicy, URLSecurityError
+from .urls import navigation_url
+from .interaction import collect_loaded, _READING_STATE, Capture
+from .evidence import PageEvidence
 
 if TYPE_CHECKING:
     from playwright.async_api import Browser, Page, Playwright, Request, Route
@@ -48,13 +51,18 @@ class BrowserEngine:
         """Render a page, checking every browser network request against policy."""
         from playwright.async_api import Error as PlaywrightError
 
-        url = await self._policy.validate(url)
+        url = navigation_url(await self._policy.validate(url), url)
+        navigation_error = None
+        reading = False
+        interaction_blocked = False
+        deadline = asyncio.get_running_loop().time() + deadline_seconds
         try:
             async with self._semaphore:
                 browser = await self._get_browser()
                 context = await browser.new_context(
                     user_agent=DEFAULT_USER_AGENT,
                     service_workers="block",
+                    accept_downloads=False,
                     java_script_enabled=True,
                 )
                 page = await context.new_page()
@@ -64,6 +72,12 @@ class BrowserEngine:
 
                 # 页面子请求仍需校验目标，阻断内网及无关大资源。
                 async def guard_request(route: Route, request: Request) -> None:
+                    nonlocal navigation_error, interaction_blocked
+                    # 自动阅读阶段不提交数据、不跳页或打开新页；复杂动作交还原生浏览器工具。
+                    if reading and request.method not in {"GET", "HEAD"}:
+                        interaction_blocked = True
+                        await route.abort("blockedbyclient")
+                        return
                     if request.resource_type in _BLOCKED_RESOURCE_TYPES:
                         await route.abort("blockedbyclient")
                         return
@@ -72,12 +86,23 @@ class BrowserEngine:
                         return
                     try:
                         await self._policy.validate(request.url)
-                    except URLSecurityError:
+                    except URLSecurityError as exc:
+                        if (
+                            request.is_navigation_request()
+                            and request.frame == page.main_frame
+                        ):
+                            navigation_error = exc
+                        await route.abort("blockedbyclient")
+                        return
+                    if reading and request.is_navigation_request():
+                        interaction_blocked = True
                         await route.abort("blockedbyclient")
                         return
                     await route.continue_()
 
-                await page.route("**/*", guard_request)
+                await context.route("**/*", guard_request)
+                # 自动阅读不接受网页要求的确认或弹窗。
+                page.on("dialog", lambda dialog: dialog.dismiss())
                 try:
                     response = await page.goto(
                         url, wait_until="domcontentloaded", timeout=timeout_ms
@@ -89,23 +114,82 @@ class BrowserEngine:
                         message = f"Browser navigation returned HTTP {response.status}"
                         raise PlaywrightError(message)
 
-                    await self._wait_until_stable(
-                        page, deadline_seconds=min(deadline_seconds, 8.0)
+                    final_url = navigation_url(
+                        await self._policy.validate(page.url), page.url
                     )
-                    final_url = await self._policy.validate(page.url)
+                    if navigation_error is not None:
+                        raise navigation_error
                     headers = await response.all_headers()
                     self._validate_response_headers(headers)
-                    html = await page.content()
-                    if len(html.encode("utf-8")) > self._max_response_bytes:
+                    initial = await page.evaluate(_READING_STATE)
+                    html = initial["html"]
+                    if (
+                        max(len(html.encode("utf-8")), initial["rawBytes"])
+                        > self._max_response_bytes
+                    ):
                         message = (
                             "Rendered page exceeds the configured response size limit"
                         )
                         raise BrowserRenderError(message)
+                    # 内容已就绪时不等networkidle；仅空壳/薄正文使用原有有界等待。
+                    from .content import extract_content
+                    from .quality import assess
+
+                    evidence = PageEvidence(
+                        html,
+                        "browser_computed",
+                        initial["busy"],
+                        folded=initial["folded"],
+                    )
+                    content = extract_content(html, final_url, evidence=evidence)
+                    assessment = assess(
+                        RawPage(html, final_url, response.status, headers),
+                        content,
+                        requested_url=url,
+                        engine="chromium",
+                    )
+                    if not initial["busy"] and any(
+                        reason in {"empty_content", "thin_content"}
+                        for reason in assessment.reasons
+                    ):
+                        await self._wait_until_stable(
+                            page,
+                            deadline_seconds=min(
+                                max(
+                                    0.01,
+                                    deadline - asyncio.get_running_loop().time() - 0.5,
+                                ),
+                                8.0,
+                            ),
+                        )
+                    reading = True
+                    remaining = deadline - asyncio.get_running_loop().time() - 0.5
+                    if not initial["busy"] and (
+                        assessment.status == "usable"
+                        or assessment.reasons
+                        in {("pagination_remaining",), ("repository_overview_unverified",), ("access_page",)}
+                    ):
+                        capture = Capture((html,), (), (evidence,))
+                    else:
+                        capture = await collect_loaded(
+                            page,
+                            html,
+                            budget_seconds=min(12.0, max(0.01, remaining)),
+                            max_bytes=self._max_response_bytes,
+                        )
+                    if navigation_error is not None:
+                        raise navigation_error
+                    reasons = capture.reasons
+                    if interaction_blocked:
+                        reasons = (*reasons, "interaction_blocked")
                     return RawPage(
-                        html=html,
+                        html=capture.snapshots[0] if capture.snapshots else html,
                         url=final_url,
                         status_code=response.status,
                         headers=headers,
+                        snapshots=capture.snapshots,
+                        evidence=capture.evidence or (evidence,),
+                        interaction_reasons=tuple(dict.fromkeys(reasons)),
                     )
                 finally:
                     await context.close()
@@ -114,6 +198,9 @@ class BrowserEngine:
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # Playwright exposes backend-specific failure classes.
+            # 主页面跳转被拒绝必须保持安全失败，不能伪装成普通渲染故障。
+            if navigation_error is not None:
+                raise navigation_error from exc
             message = f"Chromium render failed: {exc}"
             raise BrowserRenderError(message) from exc
 

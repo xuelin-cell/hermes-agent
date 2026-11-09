@@ -5,6 +5,8 @@
  * descendants belong to other lifecycle owners and are protected.
  */
 
+import { resolvePowerShell } from './powershell-resolver'
+
 /** One running process, reduced to what the reap decision needs. */
 export interface RunningProcess {
   pid: number
@@ -105,7 +107,7 @@ export function listWindowsProcesses(
     'Get-CimInstance Win32_Process | ForEach-Object { ' +
     '"{0}|{1}|{2}|{3}" -f $_.ProcessId, $_.ParentProcessId, $_.ExecutablePath, $_.CommandLine }'
 
-  const stdout = execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+  const stdout = execFile(resolvePowerShell(), ['-NoProfile', '-NonInteractive', '-Command', script], {
     timeout: 10_000,
     windowsHide: true
   })

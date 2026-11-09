@@ -2,10 +2,12 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, expect, it, vi } from 'vitest'
 
 import { I18nProvider } from '@/i18n'
+import { $notifications, clearNotifications } from '@/store/notifications'
 import { $connection } from '@/store/session'
 
 import { ArtifactUploadAction, ArtifactUploadDialog } from './artifact-upload'
 import type { ArtifactRecord } from './artifact-utils'
+import { CloudLibrary } from './cloud-library'
 
 const artifact: ArtifactRecord = {
   id: 'artifact',
@@ -25,6 +27,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
   $connection.set(null)
+  clearNotifications()
 })
 
 /** 云盘目录使用完整分页和读写权限，上传通过原生桥返回操作状态。 */
@@ -80,7 +83,7 @@ it('选择云盘目录后直接上传捕获的产物源，成功后禁用重复�
   fireEvent.click(screen.getByRole('button', { name: '返回上一级' }))
   fireEvent.click(screen.getByRole('button', { name: '团队' }))
   fireEvent.click(screen.getByRole('button', { name: '上传到此文件夹' }))
-  await screen.findByText('已保存到云盘')
+  await waitFor(() => expect($notifications.get()[0]?.message).toContain('report.txt'))
   expect(fixture.transfer.mock.calls[0][0]).toMatchObject({
     operation: 'upload',
     parentAssetId: 'team-folder',
@@ -104,12 +107,12 @@ it('只读目标不允许上传，未知结果保留提示并阻止再次发送'
   expect((screen.getByRole('button', { name: '上传到此文件夹' }) as HTMLButtonElement).disabled).toBe(true)
   fireEvent.click(screen.getByRole('button', { name: '个人云盘' }))
   fireEvent.click(screen.getByRole('button', { name: '上传到此文件夹' }))
-  await screen.findByText('上传结果待确认，请勿立即重复上传。请刷新核对云盘结果。')
+  await waitFor(() => expect($notifications.get()[0]?.message).toContain('暂时无法自动确认上传结果'))
   fireEvent.click(screen.getByRole('button', { name: '上传到此文件夹' }))
   expect(fixture.transfer).toHaveBeenCalledTimes(1)
 })
 
-it('核对来源或上传期间保持单次请求，取消和离页只终止自己的传输', async () => {
+it('上传期间不展示进度，切页后仅云盘停止操作取消任务，完成后释放订阅', async () => {
   let finish!: (value: unknown) => void
 
   const fixture = setup(
@@ -127,17 +130,27 @@ it('核对来源或上传期间保持单次请求，取消和离页只终止自�
   act(() => {
     fixture.listen.mock.calls[0][0]({ id, completed: 2048, total: 4096 })
   })
-  expect(screen.getByText(/2 KiB \/ 4 KiB/)).toBeTruthy()
-  fireEvent.click(screen.getByRole('button', { name: '停止传输' }))
-  expect(fixture.cancel).toHaveBeenCalledWith(id)
+  expect(screen.queryByRole('progressbar')).toBeNull()
+  expect(screen.queryByRole('button', { name: '停止传输' })).toBeNull()
+  expect(fixture.cancel).not.toHaveBeenCalled()
   expect((screen.getByRole('button', { name: '上传到此文件夹' }) as HTMLButtonElement).disabled).toBe(true)
+  fixture.view.rerender(
+    <I18nProvider configClient={null} initialLocale="zh">
+      <CloudLibrary />
+    </I18nProvider>
+  )
+  expect(fixture.cancel).not.toHaveBeenCalled()
+  fireEvent.click(await screen.findByRole('button', { name: '停止传输' }))
+  expect(fixture.cancel).toHaveBeenCalledExactlyOnceWith(id)
   const requests = fixture.request.mock.calls.length
   fixture.view.unmount()
-  expect(fixture.unsubscribe).toHaveBeenCalledTimes(1)
+  expect(fixture.unsubscribe).not.toHaveBeenCalled()
+  expect(fixture.cancel).toHaveBeenCalledTimes(1)
   await act(async () => {
-    finish({ status: 'succeeded', name: 'late.txt' })
+    finish({ protocol: 'uniwork.drive-result.v1', ok: false, status: 'cancelled', code: 'TRANSFER_CANCELLED' })
   })
   expect(fixture.request).toHaveBeenCalledTimes(requests)
+  expect(fixture.unsubscribe).toHaveBeenCalledTimes(1)
 })
 
 it('来源核对失败展示可恢复提示，敏感文件说明原因', async () => {
@@ -152,7 +165,7 @@ it('来源核对失败展示可恢复提示，敏感文件说明原因', async (
 
   await screen.findByRole('button', { name: '团队' })
   fireEvent.click(screen.getByRole('button', { name: '上传到此文件夹' }))
-  await screen.findByText('该文件属于敏感配置或凭据，不能上传云盘。')
+  await waitFor(() => expect($notifications.get()[0]?.message).toBe('该文件属于敏感配置或凭据，不能上传云盘。'))
   await waitFor(() =>
     expect((screen.getByRole('button', { name: '上传到此文件夹' }) as HTMLButtonElement).disabled).toBe(false)
   )

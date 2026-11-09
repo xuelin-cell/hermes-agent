@@ -17,13 +17,7 @@ import { Loader } from '@/components/ui/loader'
 import { Progress } from '@/components/ui/progress'
 import { UpdateStatusCard, VersionHero } from '@/components/update-status'
 import { VersionDetails } from '@/components/version-details'
-import type {
-  DesktopUpdateCommit,
-  DesktopUpdateStage,
-  DesktopUpdateStatus,
-  DesktopVersionInfo,
-  UpdaterMechanismClient
-} from '@/global'
+import type { DesktopUpdateCommit, DesktopUpdateStage, DesktopUpdateStatus, DesktopVersionInfo } from '@/global'
 import { useI18n } from '@/i18n'
 import { buildCommitChangelog } from '@/lib/commit-changelog'
 import { AlertCircle, Check, Copy, Terminal } from '@/lib/icons'
@@ -39,9 +33,11 @@ import {
   $updateChecking,
   $updateOverlayOpen,
   $updateOverlayTarget,
+  $updateReady,
   $updateStatus,
   applyBackendUpdate,
   applyUpdates,
+  cancelActiveUpdate,
   checkBackendUpdates,
   checkUpdates,
   dismissDiscontinuedNotice,
@@ -56,6 +52,14 @@ function totalItems(groups: readonly ReleaseNoteGroup[]) {
   return groups.reduce((sum, g) => sum + g.items.length, 0)
 }
 
+// Stages that are still moving bytes. apply() keeps running after "Cancel" —
+// only the surface that reports it is gone.
+const DOWNLOAD_STAGES: ReadonlySet<DesktopUpdateStage> = new Set<DesktopUpdateStage>(['prepare', 'fetch'])
+
+function isDownloadStage(stage: DesktopUpdateStage): boolean {
+  return DOWNLOAD_STAGES.has(stage)
+}
+
 export function UpdatesOverlay() {
   const open = useStore($updateOverlayOpen)
   const target = useStore($updateOverlayTarget)
@@ -67,6 +71,7 @@ export function UpdatesOverlay() {
   const backendChecking = useStore($backendUpdateChecking)
   const backendApply = useStore($backendUpdateApply)
   const desktopVersion = useStore($desktopVersion)
+  const ready = useStore($updateReady)
 
   const isBackend = target === 'backend'
   const status = isBackend ? backendStatus : clientStatus
@@ -95,8 +100,22 @@ export function UpdatesOverlay() {
             ? 'error'
             : 'idle'
 
+  const downloadInProgress = !isBackend && phase === 'applying' && isDownloadStage(apply.stage)
+
+  // A package already on disk is not installed by opening this overlay: the
+  // ready view's "launch" IS the start of the install, and it stays a user
+  // decision. Packages still in flight render their transfer instead.
+  const launchReady = !isBackend && phase === 'idle' && Boolean(ready) && updateAvailable && !status?.retirement
+
   const handleClose = (next: boolean) => {
+    // Only the transfer is interruptible: abort it for real so the remaining
+    // bytes stop arriving. Once the installer owns the window there is nothing
+    // left to cancel, and closing it would hide the restart.
     if (phase === 'applying') {
+      if (downloadInProgress) {
+        void cancelActiveUpdate()
+      }
+
       return
     }
 
@@ -120,12 +139,16 @@ export function UpdatesOverlay() {
           the close button and trigger its tooltip immediately on open. */}
       <DialogContent
         bodyClassName="overflow-hidden p-0 gap-0"
-        className="max-w-sm"
+        className={cn('max-w-sm', phase === 'applying' && 'max-w-lg')}
         onOpenAutoFocus={preventCloseButtonAutoFocus}
-        showCloseButton={phase !== 'applying'}
+        showCloseButton={phase !== 'applying' || downloadInProgress}
       >
         {phase === 'applying' && (
-          <ApplyingView apply={apply} isBackend={isBackend} statusMechanism={status?.mechanism} />
+          <ApplyingView apply={apply} onCancel={isBackend ? undefined : () => handleClose(false)} />
+        )}
+
+        {phase === 'idle' && launchReady && (
+          <ReadyView onLater={() => handleClose(false)} onLaunch={handleInstall} version={ready?.version ?? null} />
         )}
 
         {phase === 'manual' && (
@@ -152,7 +175,7 @@ export function UpdatesOverlay() {
             retirement={status.retirement}
           />
         )}
-        {phase === 'idle' && (isBackend || !status?.retirement) && (
+        {phase === 'idle' && (isBackend || !status?.retirement) && !launchReady && (
           <IdleView
             behind={behind}
             checking={checking}
@@ -168,6 +191,45 @@ export function UpdatesOverlay() {
         )}
       </DialogContent>
     </Dialog>
+  )
+}
+
+// The verified package is on disk and nothing else is moving: name that state
+// and put the only install action on it. Nothing here installs, quits or
+// restarts on its own — the click is the whole hand-off.
+function ReadyView({
+  onLater,
+  onLaunch,
+  version
+}: {
+  onLater: () => void
+  onLaunch: () => void
+  version: string | null
+}) {
+  const { t } = useI18n()
+  const u = t.updates
+  const label = version ? `v${version}` : null
+
+  return (
+    <div className="grid gap-5 px-6 pb-6 pt-7 pr-8">
+      <div className="flex flex-col items-center gap-3 text-center">
+        <BrandMark className="size-16" />
+
+        <DialogTitle className="text-center text-xl">{u.newVersionReady}</DialogTitle>
+        <DialogDescription className="text-center text-sm">
+          {label ? u.newVersionReadyBody(label) : u.newVersionReady}
+        </DialogDescription>
+      </div>
+
+      <div className="grid gap-2">
+        <Button className="font-semibold" onClick={onLaunch} size="lg">
+          {u.launchNow}
+        </Button>
+        <Button className="font-medium" onClick={onLater} type="button" variant="text">
+          {u.maybeLater}
+        </Button>
+      </div>
+    </div>
   )
 }
 
@@ -463,24 +525,18 @@ function GuiSkewView({ message, onDone }: { message?: string; onDone: () => void
   )
 }
 
-function ApplyingView({
-  apply,
-  isBackend,
-  statusMechanism
-}: {
-  apply: UpdateApplyState
-  isBackend: boolean
-  statusMechanism?: UpdaterMechanismClient
-}) {
+// The reference "Software Update" dialog: a centered title, the brand tile on
+// the left of a single progress line, and one trailing action. The download is
+// the only stage that can be aborted ("Cancel" asks the main process to stop
+// the transfer); once the installer owns the window the footer switches to the
+// close-warning copy instead of a button.
+function ApplyingView({ apply, onCancel }: { apply: UpdateApplyState; onCancel?: () => void }) {
   const { t } = useI18n()
   const u = t.updates
-  const label = u.stages[apply.stage as DesktopUpdateStage] ?? u.stages.idle
-  const isWindowsPackage = statusMechanism === 'app-installer' || statusMechanism === 'microsoft-store'
-
-  const body = isWindowsPackage ? u.applyingBodyAppInstaller : isBackend ? u.applyingBodyBackend : u.applyingBody
-
-  const currentMessage = apply.message.trim()
-  const recentLog = apply.log.slice(-4)
+  const label = u.stages[apply.stage] ?? u.stages.idle
+  const downloading = isDownloadStage(apply.stage)
+  const headline = downloading ? u.downloadingUpdate : label
+  const message = apply.message.trim()
 
   const percent =
     typeof apply.percent === 'number' && Number.isFinite(apply.percent)
@@ -488,36 +544,36 @@ function ApplyingView({
       : null
 
   return (
-    <div className="grid gap-5 px-6 pb-6 pt-7">
-      <div className="flex flex-col items-center gap-3 text-center">
-        <Loader className="size-16" label={label} type="lemniscate-bloom" />
+    <div className="grid gap-5 p-6">
+      <DialogTitle className="text-center text-sm font-medium text-muted-foreground">{u.updateDialogTitle}</DialogTitle>
 
-        <DialogTitle className="text-center text-xl">{label}</DialogTitle>
-        <DialogDescription className="text-center text-sm">{body}</DialogDescription>
+      <div className="flex items-center gap-4">
+        <BrandMark className="size-16 rounded-2xl" />
 
-        {currentMessage ? (
-          <p className="max-w-lg break-words text-center text-xs leading-5 text-muted-foreground">{currentMessage}</p>
-        ) : null}
+        <div className="grid min-w-0 flex-1 gap-2.5">
+          {/* Doubles as the dialog's accessible description. */}
+          <DialogDescription className="text-sm font-semibold leading-5 text-foreground">{headline}</DialogDescription>
+
+          <Progress
+            aria-label={headline}
+            indeterminate={percent === null}
+            size="sm"
+            value={percent === null ? 0 : percent / 100}
+          />
+
+          {!downloading && message ? <p className="text-xs leading-5 text-muted-foreground">{message}</p> : null}
+        </div>
       </div>
 
-      <Progress
-        aria-label={label}
-        indeterminate={percent === null}
-        size="lg"
-        value={percent === null ? 0 : percent / 100}
-      />
-
-      {recentLog.length > 1 ? (
-        <div className="max-h-24 overflow-hidden rounded-md border border-border/70 bg-muted/35 px-3 py-2 text-left font-mono text-[11px] leading-4 text-muted-foreground">
-          {recentLog.map((entry, index) => (
-            <div className="truncate" key={`${entry.at}-${index}`}>
-              {entry.message}
-            </div>
-          ))}
-        </div>
-      ) : null}
-
-      <p className="text-center text-xs text-muted-foreground">{u.applyingClose}</p>
+      <div className="flex min-h-8 items-center justify-end">
+        {downloading && onCancel ? (
+          <Button className="min-w-20" onClick={onCancel} size="sm" type="button" variant="outline">
+            {t.common.cancel}
+          </Button>
+        ) : (
+          <p className="text-xs text-muted-foreground">{u.applyingClose}</p>
+        )}
+      </div>
     </div>
   )
 }

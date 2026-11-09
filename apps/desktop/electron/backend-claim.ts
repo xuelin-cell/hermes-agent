@@ -21,6 +21,7 @@ import { execFile } from 'node:child_process'
 import fs from 'node:fs'
 
 import { electronProcessStartMarker } from './parent-process-identity'
+import { resolvePowerShell } from './powershell-resolver'
 import { isPidAlive } from './update-marker'
 import { hiddenWindowsChildOptions } from './windows-child-options'
 
@@ -112,7 +113,7 @@ export async function processStartMarker(pid: number, timeoutMs: number = 30_000
     // for protected processes); when neither source yields a time the PID is
     // gone — classify as ESRCH like the native dead-PID gate above.
     const output = await execText(
-      'powershell.exe',
+      resolvePowerShell(),
       [
         '-NoProfile',
         '-NonInteractive',

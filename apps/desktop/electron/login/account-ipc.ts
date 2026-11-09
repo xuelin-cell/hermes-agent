@@ -3,11 +3,14 @@ import { ipcMain, type IpcMainInvokeEvent, type Session } from 'electron'
 import { isDesktopRendererSender } from '../desktop-renderer-sender'
 import { ASR_CHANNEL, type AsrIdentity } from '../uniwork-asr/contract'
 import { createUniworkAsrHandler } from '../uniwork-asr/ipc'
+import type { NtfyRefreshResult } from '../uniwork-notify/contract'
 import { PlanUsageClient } from '../uniwork-usage/client'
 import {
   PLAN_SUBSCRIPTION_CHANNEL,
+  PLAN_USAGE_CACHE_CHANNEL,
   PLAN_USAGE_CHANNEL,
-  PLAN_USAGE_REFRESH_CHANNEL
+  PLAN_USAGE_REFRESH_CHANNEL,
+  type PlanUsageResult
 } from '../uniwork-usage/contract'
 import { PlanSubscriptionClient } from '../uniwork-usage/subscription'
 import { WELCOME_CATALOG_CHANNEL } from '../uniwork-welcome/catalog'
@@ -17,8 +20,14 @@ import { CloudDriveClient, CloudDriveOperationError } from './cloud-drive'
 import type { ResolveDriveArtifact } from './cloud-drive-artifact-source'
 import { installCloudDriveTransferIpc } from './cloud-drive-transfer-ipc'
 import type { CloudDriveMutationProgress, LoginAccount } from './contract'
-import type { LoginIdentity } from './session'
+import type { LoginIdentity, LoginSession } from './session'
 import type { UniAgentGateUpdate } from './uniagentgate'
+
+interface AccountPlanUsageOptions {
+  applyBinding?: (update: UniAgentGateUpdate) => Promise<void>
+  refreshPlan?: () => Promise<NtfyRefreshResult>
+  startupLogin?: Pick<LoginSession, 'currentIdentity' | 'currentPlanUsage'> | null
+}
 
 /** 仅向当前账号桌面的主框架提供只读展示信息，不接受页面身份参数。 */
 export function installAccountIpc(
@@ -33,8 +42,8 @@ export function installAccountIpc(
   driveAgentReady?: (profile: string) => boolean,
   resolveArtifact?: ResolveDriveArtifact,
   openExternal?: (url: string) => Promise<unknown>,
-  applyBinding?: (update: UniAgentGateUpdate) => Promise<void>
-): void {
+  planUsage?: AccountPlanUsageOptions
+): PlanUsageClient | null {
   /** 展示与退出共用来源校验，不接收 UID、路径或进程号。 */
   function trusted(event: IpcMainInvokeEvent, args: unknown[]): boolean {
     return !args.length && isDesktopRendererSender(event, session, rendererUrl())
@@ -79,8 +88,20 @@ export function installAccountIpc(
     })
   }
 
-  if (readIdentity && drive) {
-    const usage = new PlanUsageClient(readIdentity, undefined, applyBinding)
+  const usage = readIdentity && drive ? new PlanUsageClient(readIdentity, undefined, planUsage?.applyBinding) : null
+
+  if (readIdentity && drive && usage) {
+    const startupLogin = planUsage?.startupLogin
+    const startupIdentity = startupLogin?.currentIdentity()
+    const startupUsage = startupLogin?.currentPlanUsage()
+
+    if (startupIdentity && startupUsage) {
+      usage.remember(startupIdentity, startupUsage)
+    }
+
+    ipcMain.handle(PLAN_USAGE_CACHE_CHANNEL, (event, ...args) =>
+      trusted(event, args) ? usage.cachedSnapshot() : null
+    )
     ipcMain.handle(PLAN_USAGE_CHANNEL, (event, ...args) => {
       if (!trusted(event, args)) {
         return { status: 'failed' }
@@ -88,10 +109,35 @@ export function installAccountIpc(
 
       return usage.load()
     })
-    ipcMain.handle(PLAN_USAGE_REFRESH_CHANNEL, (event, ...args) => {
-      if (!trusted(event, args)) {return { status: 'failed' }}
+    ipcMain.handle(PLAN_USAGE_REFRESH_CHANNEL, async (event, ...args): Promise<PlanUsageResult> => {
+      if (!trusted(event, args)) {
+        return { status: 'failed' }
+      }
 
-      return usage.load(true)
+      if (!planUsage?.refreshPlan) {
+        return usage.load(true)
+      }
+
+      const identity = readIdentity()
+
+      if (!identity) {
+        return { status: 'failed', reason: 'auth' }
+      }
+
+      const result = await planUsage.refreshPlan()
+      const current = readIdentity()
+
+      if (current?.uid !== identity.uid || current.token !== identity.token) {
+        return { status: 'failed', reason: 'auth' }
+      }
+
+      if (result.reason === 'auth') {
+        usage.clear()
+
+        return { status: 'failed', reason: 'auth' }
+      }
+
+      return (result.status === 'ok' && usage.cachedSnapshot()) || { status: 'failed' }
     })
     ipcMain.handle('hermes:maas-drive:agent-ready', (event, ...args): boolean => {
       return (
@@ -177,4 +223,6 @@ export function installAccountIpc(
       return null
     }
   })
+
+  return usage
 }

@@ -182,7 +182,7 @@
   }
 }
 
-/* 常规按钮为 14px 白字，将实心朱红略微加深以达到正文对比度，强调线仍用设计原色。 */
+/* 常规按钮为 14px 白字；冷蓝实心色提供足够对比度，状态警告仍使用其自身语义色。 */
 :root[data-hermes-theme='uniwork'] [data-slot='button'][data-variant='default'] {
   background: var(--dt-primary-solid);
   color: var(--dt-primary-solid-foreground);
@@ -262,17 +262,23 @@
   translate: none;
 }
 
-/* 设计稿底部账号行：浅灰背景、深色圆形头像、账号名及向上展开指示。 */
+/* 设计稿底部账号行：深色圆形头像、账号名及向上展开指示。 */
 [data-slot='sidebar-account-trigger'] {
   width: 100%;
   min-height: 48px;
   gap: 10px;
-  padding: 8px 12px;
+  padding: 8px 6px;
   border-radius: 12px;
-  background: var(--dt-secondary);
   color: var(--ui-text-secondary);
   font-size: 0.875rem;
   font-weight: 600;
+  transition: background-color 120ms ease;
+}
+
+/* 默认透明，仅在悬停或面板展开时抬起底色，避免静止态看起来像 hover。 */
+[data-slot='sidebar-account-trigger']:hover,
+[data-slot='sidebar-account-trigger'][data-state='open'] {
+  background: var(--dt-secondary);
 }
 
 [data-slot='sidebar-account-avatar'] {
@@ -288,11 +294,11 @@
 }
 
 :root[data-hermes-theme='uniwork'] {
-  --dt-primary-deep: #430d0d;
+  --dt-primary-deep: #0e4b9c;
   --account-avatar-background: var(--dt-primary-deep);
 }
 :root[data-hermes-theme='uniwork'].dark {
-  --dt-primary-deep: #693127;
+  --dt-primary-deep: #285f9e;
   --account-avatar-background: var(--dt-primary-deep);
 }
 

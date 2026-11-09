@@ -124,3 +124,18 @@ def test_proxy_translates_responses_and_keeps_credentials_upstream():
         upstream.shutdown()
         upstream.server_close()
         thread.join()
+
+
+def test_proxy_selects_its_temporary_provider_for_the_codex_process():
+    proxy = CodexChatProxy(
+        model="glm-fixture",
+        base_url="http://127.0.0.1:9999/v1",
+        api_key="fixture-secret",
+    )
+    try:
+        options = proxy.client_options()
+
+        assert options["extra_args"][:2] == ["-c", 'model_provider="hermes_code"']
+        assert "fixture-secret" not in str(options)
+    finally:
+        proxy.close()

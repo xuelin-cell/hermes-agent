@@ -15,11 +15,12 @@ import { Codicon } from '@/components/ui/codicon'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { OverflowTip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
+import { DESKTOP_CONFIG_REFRESHED_EVENT, NTFY_PLAN_REFRESHED_EVENT } from '@/lib/ntfy-instructions'
 import { notify } from '@/store/notifications'
 import { requestUpdateCheck } from '@/store/update-check'
 
 import type { LoginAccount } from '../../../../electron/login/contract'
-import type { PlanUsage } from '../../../../electron/uniwork-usage/contract'
+import type { PlanUsage, PlanUsageSnapshot } from '../../../../electron/uniwork-usage/contract'
 
 import {
   formatPlanExpiryDate,
@@ -98,7 +99,7 @@ function UsageDetails({ data, showPlan = true, action }: UsageDetailsProps) {
       {!hasUsage && (
         <div className="plan-usage-summary">
           <p role="status" className="plan-usage-meta">
-            {c.empty}
+            —
           </p>
           {detailsAction}
         </div>
@@ -157,17 +158,23 @@ function UsageDetails({ data, showPlan = true, action }: UsageDetailsProps) {
   )
 }
 
+function matchesAccount(snapshot: PlanUsageSnapshot, maskedPhone: string, expiresAt: number): boolean {
+  return snapshot.account.maskedPhone === maskedPhone && snapshot.account.expiresAt === expiresAt
+}
+
 /** 侧栏套餐面板只在展开时刷新，关闭或账号切换后丢弃迟到响应，不落盘保存用量。 */
 export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelProps) {
   const { t, locale } = useI18n()
   const c = t.desktopLogin.planUsage
+  const { maskedPhone, expiresAt } = account
   const [open, setOpen] = useState(false)
   const [details, setDetails] = useState(false)
   const [refreshRequest, setRefreshRequest] = useState({ nonce: 0, force: false })
-  const [data, setData] = useState<PlanUsage | null>(null)
+  const [snapshot, setSnapshot] = useState<PlanUsageSnapshot | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<'auth' | 'failed' | 'restart' | null>(null)
   const [openingSource, setOpeningSource] = useState<'subscribe' | 'details' | null>(null)
+  const data = snapshot && matchesAccount(snapshot, maskedPhone, expiresAt) ? snapshot.data : null
 
   useEffect(() => {
     if (!open) {
@@ -181,13 +188,13 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
       const request = ++sequence
       clearTimeout(timer)
       setLoading(true)
+      setError(null)
       try {
-        const bridge = force
-          ? (window.hermesDesktop?.refreshPlanUsage ?? window.hermesDesktop?.getPlanUsage)
-          : window.hermesDesktop?.getPlanUsage
+        const manualRefresh = force ? window.hermesDesktop?.refreshPlanUsage : undefined
+        const bridge = manualRefresh ?? window.hermesDesktop?.getPlanUsage
 
         if (!bridge) {
-          setData(null)
+          setSnapshot(null)
           setError('restart')
           if (force) {
             notify({ id: 'maas-plan-refresh-failed', kind: 'error', message: c.restart })
@@ -195,24 +202,38 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
           return
         }
 
+        const readCache = window.hermesDesktop?.getCachedPlanUsage
+
+        if (readCache) {
+          const cached = await readCache().catch(() => undefined)
+
+          if (!live || request !== sequence) {
+            return
+          }
+
+          if (cached !== undefined) {
+            setSnapshot(cached && matchesAccount(cached, maskedPhone, expiresAt) ? cached : null)
+          }
+        }
+
         const result = await bridge()
+
+        if (manualRefresh && result?.status === 'available' && matchesAccount(result, maskedPhone, expiresAt)) {
+          window.dispatchEvent(new Event(DESKTOP_CONFIG_REFRESHED_EVENT))
+        }
 
         if (!live || request !== sequence) {
           return
         }
 
-        if (
-          result?.status === 'available' &&
-          result.account.maskedPhone === account.maskedPhone &&
-          result.account.expiresAt === account.expiresAt
-        ) {
-          setData(result.data)
+        if (result?.status === 'available' && matchesAccount(result, maskedPhone, expiresAt)) {
+          setSnapshot(result)
           setError(null)
           if (force) {
             notify({ id: 'maas-plan-refreshed', kind: 'success', message: c.refreshed, placement: 'bottom-right' })
           }
         } else if (result?.status === 'available' || result?.reason === 'auth') {
-          setData(null)
+          setSnapshot(null)
           setError('auth')
           if (force) {
             notify({ id: 'maas-plan-refresh-failed', kind: 'error', message: c.auth })
@@ -237,18 +258,22 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
         }
       }
     }
-    /** 恢复焦点时重新查询，睡眠期间不制造后台轮询。 */
-    function onFocus(): void {
+    /** ntfy 已更新主进程缓存，和恢复焦点一样走普通读取。 */
+    function reloadUsage(): void {
       void refresh()
     }
+
     void refresh(refreshRequest.force)
-    window.addEventListener('focus', onFocus)
+    window.addEventListener('focus', reloadUsage)
+    window.addEventListener(NTFY_PLAN_REFRESHED_EVENT, reloadUsage)
+
     return () => {
       live = false
       clearTimeout(timer)
-      window.removeEventListener('focus', onFocus)
+      window.removeEventListener('focus', reloadUsage)
+      window.removeEventListener(NTFY_PLAN_REFRESHED_EVENT, reloadUsage)
     }
-  }, [open, refreshRequest.nonce, refreshRequest.force, account.maskedPhone, account.expiresAt, c])
+  }, [open, refreshRequest.nonce, refreshRequest.force, maskedPhone, expiresAt, c])
 
   /** 手动刷新绕过主进程 30 秒缓存；定时与聚焦仍走常规查询。 */
   function requestRefresh(): void {
@@ -301,15 +326,13 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
   }
 
   const planLabels = { 'five-hour': c.fiveHour, week: c.week, month: c.month }
-  const detailsDisabled = error === 'auth' || (error === 'failed' && !data)
-  const detailsExpanded = details && !detailsDisabled
   const usageSummary = data?.quota
     ? `${c.tokenUsed} ${formatTokenQuotaPercent(data.quota.usedPercent, locale)}%`
     : data?.kind === 'coding_plan' && data.windows.length
       ? `${c.used} ${formatUsagePercentage(data.windows[0].usedPercent, locale)}% · ${planLabels[data.windows[0].name]}`
-      : loading || error || !data
-        ? '—'
-        : c.empty
+      : null
+  const detailsDisabled = usageSummary === null
+  const detailsExpanded = details && !detailsDisabled
   const expiryDate = formatPlanExpiryDate(data?.endTime, locale)
   const expirySummary = expiryDate ? (data?.expired ? `${expiryDate} · ${c.expired}` : c.expiryText(expiryDate)) : '—'
   const errorText = error
@@ -317,9 +340,7 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
       ? c.restart
       : error === 'auth'
         ? c.auth
-        : data
-          ? c.stale
-          : c.failed
+        : c.failed
     : null
   const statusMessage = errorText ?? (!trigger && loading && !data ? c.loading : null)
   const statusNotice = statusMessage && (
@@ -363,6 +384,7 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
       <PopoverContent
         side="top"
         align="start"
+        collisionPadding={6}
         variant="menu"
         className={trigger ? 'plan-usage-card account-card' : 'plan-usage-card'}
       >
@@ -373,7 +395,7 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
                 <AccountIcon src={planIcon} />
                 <OverflowTip label={data?.productName} placement="row">
                   <span className="account-card-plan-name">
-                    {data?.productName || (loading ? c.loading : c.unnamed)}
+                    {data?.productName || (!data && loading ? c.loading : c.unnamed)}
                   </span>
                 </OverflowTip>
                 <button
@@ -405,7 +427,7 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
               >
                 <AccountIcon src={usageIcon} />
                 <span>{c.actualUsage}</span>
-                {!detailsExpanded && <span className="account-card-summary">{usageSummary}</span>}
+                {!detailsExpanded && <span className="account-card-summary">{usageSummary ?? '—'}</span>}
                 {!detailsDisabled && (
                   <Codicon
                     className="account-card-chevron"
@@ -414,15 +436,9 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
                   />
                 )}
               </button>
-              {detailsExpanded && (
+              {detailsExpanded && data && (
                 <div className="account-card-expanded account-card-details-inline">
-                  {data ? (
-                    <UsageDetails action={detailsAction} data={data} showPlan={false} />
-                  ) : (
-                    <div className="plan-usage-summary">
-                      <span className="plan-usage-details-action">{detailsAction}</span>
-                    </div>
-                  )}
+                  <UsageDetails action={detailsAction} data={data} showPlan={false} />
                 </div>
               )}
               <div className="account-card-row">
@@ -431,9 +447,10 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
                 <span className="account-card-summary">{expirySummary}</span>
               </div>
               {statusNotice}
+              <div className="account-card-divider" />
               <button
                 type="button"
-                className="account-card-row"
+                className="account-card-row account-card-update"
                 onClick={() => {
                   setOpen(false)
                   void requestUpdateCheck()

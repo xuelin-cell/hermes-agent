@@ -9,6 +9,7 @@ import { connectionScoped, profileScoped } from '@/api/client'
 import type {
   DesktopUpdateApplyOptions,
   DesktopUpdateApplyResult,
+  DesktopUpdatePrepareResult,
   DesktopUpdateProgress,
   DesktopUpdateStage,
   DesktopUpdateStatus,
@@ -57,6 +58,30 @@ export const $updateApply = atom<UpdateApplyState>(IDLE)
 export const $updateChecking = atom<boolean>(false)
 export const $updateOverlayOpen = atom<boolean>(false)
 export const $updateStatus = atom<DesktopUpdateStatus | null>(null)
+
+/** Set only once the ambient background download finished. The "new version
+ *  ready" prompt renders from this and from nothing else — in-flight, failed,
+ *  and up-to-date checks never populate it. */
+export const $updateReady = atom<{ version: string | null } | null>(null)
+export const $updateReadyDismissed = atom<boolean>(false)
+
+/** Where a failed transfer came from: the ambient prefetch or an explicit
+ *  "update now". Retry re-runs that same step — never the check. */
+export type UpdateDownloadFailureSource = 'prepare' | 'apply'
+
+export interface UpdateDownloadFailure {
+  /** The strategy's own reason, shown under the headline. */
+  message: string | null
+  source: UpdateDownloadFailureSource
+}
+
+/** Mutually exclusive with $updateReady: a failure never coexists with a
+ *  ready prompt. */
+export const $updateDownloadFailure = atom<UpdateDownloadFailure | null>(null)
+
+/** True while an explicit retry is transferring again, so the failure dialog
+ *  can stay open with a "downloading" state instead of vanishing silently. */
+export const $updateDownloadRetrying = atom<boolean>(false)
 
 // Client and backend are independently updatable; each keeps its own state.
 export const $backendUpdateStatus = atom<DesktopUpdateStatus | null>(null)
@@ -275,6 +300,19 @@ export function maybeNotifyUpdateAvailable(status: DesktopUpdateStatus | null, t
   // Either signal means "update ready": behind > 0 (git checkout) or
   // updateAvailable (shallow clone, App Installer feed).
   if (!status || status.supported === false || status.error) {
+    return
+  }
+
+  // On installs whose owner supports a background download (electron-updater),
+  // the ambient "new version ready" prompt supersedes this toast. Otherwise the
+  // user would be interrupted mid-download by a second notice and again when
+  // the download finishes.
+  if (
+    target === 'client' &&
+    typeof window !== 'undefined' &&
+    window.hermesDesktop?.updates?.prepare &&
+    status.mechanism === 'electron-updater'
+  ) {
     return
   }
 
@@ -607,6 +645,7 @@ export async function checkUpdates({ force = false }: UpdateCheckOptions = {}): 
     }
 
     maybeNotifyUpdateAvailable(status, 'client')
+    void prepareClientUpdate()
     void refreshDesktopVersion()
 
     return status
@@ -629,6 +668,169 @@ export async function checkUpdates({ force = false }: UpdateCheckOptions = {}): 
   }
 }
 
+/** Close the ready prompt for this session; a later launch may show it again. */
+export function dismissUpdateReady(): void {
+  $updateReadyDismissed.set(true)
+  $updateReady.set(null)
+}
+
+/** Close the failure dialog; the next check or manual update can offer it again. */
+export function dismissUpdateDownloadFailure(): void {
+  $updateDownloadFailure.set(null)
+}
+
+/**
+ * Retry the step that failed instead of re-running the check, and never install
+ * by itself: the retry only downloads again (reusing the verified package when
+ * one is already on disk), so the user still has to press "restart to update"
+ * before anything is installed.
+ */
+export async function retryUpdateDownload(): Promise<void> {
+  const failure = $updateDownloadFailure.get()
+
+  if ($updateDownloadRetrying.get() || !failure) {
+    return
+  }
+
+  $updateDownloadFailure.set(null)
+  $updateDownloadRetrying.set(true)
+
+  try {
+    // An explicit retry overrides the session's "closed the prompt" latch.
+    $updateReadyDismissed.set(false)
+
+    // Nothing to retry (the check no longer offers a version, the bridge is
+    // gone): put the failure back instead of closing the dialog silently.
+    if (!(await prepareClientUpdate())) {
+      $updateDownloadFailure.set(failure)
+    }
+  } finally {
+    $updateDownloadRetrying.set(false)
+  }
+}
+
+// The single transfer on the wire. A manual check and the ambient prefetch ask
+// for the same bytes, and the main process rejects a second concurrent prepare
+// ("An update operation is already in progress"), so later callers join this
+// one instead of starting another.
+let prepareTask: Promise<boolean> | null = null
+
+/**
+ * Download the offered client update without installing it, so the ready prompt
+ * appears only once the bytes are on disk. Reuses the same strategy apply()
+ * would. A genuine failure surfaces in the "Software Update" failure dialog
+ * with its own retry; installs whose owner does the transfer itself
+ * (`supported: false`) stay silent, as before.
+ *
+ * Returns whether a transfer was actually attempted, so an explicit retry can
+ * restore the failure instead of closing the dialog when there is nothing left
+ * to download.
+ */
+export async function prepareClientUpdate(): Promise<boolean> {
+  if (prepareTask) {
+    return await prepareTask
+  }
+
+  const bridge = window.hermesDesktop?.updates
+  const status = $updateStatus.get()
+
+  const prepare = bridge?.prepare
+
+  if (!prepare || $updateReadyDismissed.get() || $updateReady.get() || $updateDownloadFailure.get()) {
+    return false
+  }
+
+  if (!status || status.error || status.supported === false || status.retirement) {
+    return false
+  }
+
+  if (!status.updateAvailable && (status.behind ?? 0) <= 0) {
+    return false
+  }
+
+  prepareTask = (async (): Promise<boolean> => {
+    try {
+      const result: DesktopUpdatePrepareResult = await prepare()
+
+      if (result?.ok && result.ready) {
+        $updateDownloadFailure.set(null)
+        $updateReady.set({ version: result.version ?? null })
+
+        return true
+      }
+
+      // `supported: false` (App Installer / Store / handoff) means the owner
+      // does the download itself — there is no in-app transfer to retry, so the
+      // failure surface stays away and the existing behaviour is preserved.
+      // `ok` without `ready` is not a failure either: the strategy had nothing
+      // to fetch, or the user aborted the prefetch (a cancel is a decision,
+      // never a download error).
+      if (result && result.supported !== false && !result.ok) {
+        $updateReady.set(null)
+        $updateDownloadFailure.set({ message: result.message ?? result.error ?? null, source: 'prepare' })
+      }
+    } catch (error) {
+      $updateReady.set(null)
+      $updateDownloadFailure.set({
+        message: error instanceof Error ? error.message : String(error),
+        source: 'prepare'
+      })
+    }
+
+    return true
+  })()
+
+  try {
+    return await prepareTask
+  } finally {
+    prepareTask = null
+  }
+}
+
+/** True while a client transfer or install owns the update surfaces. */
+export const isClientUpdateRunning = (): boolean => $updateApply.get().applying
+
+/**
+ * The one path a manual "check for updates" takes once it knows a build is
+ * offered: open the download dialog and start the transfer. Both the sidebar
+ * account card and Settings › About call `requestUpdateCheck()`, which lands
+ * here, so the two entries cannot drift.
+ *
+ * The package stops at `$updateReady`; installing still needs the user's own
+ * "launch" click, which runs apply() against the bytes already on disk.
+ */
+export async function startClientUpdateDownload(): Promise<void> {
+  $updateOverlayTarget.set('client')
+  setUpdateOverlayOpen(true)
+
+  // Already on disk: the overlay's ready view is the whole answer.
+  if ($updateReady.get()) {
+    return
+  }
+
+  // An explicit check overrides the latches a passive flow may have set —
+  // "check now" is a fresh decision, not a repeat of a dismissed prompt.
+  $updateReadyDismissed.set(false)
+  $updateDownloadFailure.set(null)
+
+  // Enter on the download stage: the overlay's progress view headlines it as a
+  // transfer in flight and offers the only interruptible action (Cancel).
+  $updateApply.set({ ...IDLE, applying: true, stage: 'fetch', message: translateNow('updates.downloadingUpdate') })
+
+  await prepareClientUpdate()
+
+  $updateApply.set(IDLE)
+
+  // A genuine failure belongs to the download-failure dialog, which steps aside
+  // while this overlay is open — hand the surface back to it. No failure and no
+  // ready package means this install has no in-app download (App Installer /
+  // Store / handoff / checkout): keep the overlay so its install pitch can
+  // start that owner's flow.
+  if ($updateDownloadFailure.get()) {
+    setUpdateOverlayOpen(false)
+  }
+}
+
 export async function applyUpdates(opts: DesktopUpdateApplyOptions = {}): Promise<DesktopUpdateApplyResult> {
   if ($updateStatus.get()?.retirement) {
     openUpdateOverlayFor('client')
@@ -643,10 +845,19 @@ export async function applyUpdates(opts: DesktopUpdateApplyOptions = {}): Promis
   }
 
   dismissNotification(UPDATE_TOAST_ID)
+  $updateDownloadFailure.set(null)
   $updateApply.set({ ...IDLE, applying: true, stage: 'prepare', message: 'Starting update…' })
 
   try {
     const result = await bridge.apply(opts)
+
+    // A cancelled transfer is a user decision, not a failed update: the cancel
+    // action already cleared the progress surface, and nothing was installed.
+    if (result?.cancelled) {
+      $updateApply.set(IDLE)
+
+      return result
+    }
 
     // CLI install with no staged updater: not an error — the user just runs
     // `hermes update` themselves. Land on a dedicated manual state so the
@@ -724,23 +935,57 @@ export async function applyUpdates(opts: DesktopUpdateApplyOptions = {}): Promis
           title: translateNow('updates.allSetTitle')
         })
       } else {
-        $updateApply.set({
-          ...$updateApply.get(),
-          applying: false,
-          stage: 'error',
-          error: result?.error ?? 'apply-failed',
-          message: result?.message ?? translateNow('updates.errorBody')
-        })
+        const message: string = result?.message ?? translateNow('updates.errorBody')
+
+        // A failed transfer/install belongs to the same "Software Update"
+        // dialog as the rest of the download results, with its own retry — the
+        // overlay's progress view has nothing left to show.
+        $updateApply.set(IDLE)
+        setUpdateOverlayOpen(false)
+        $updateDownloadFailure.set({ message, source: 'apply' })
       }
     }
 
     return result
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    $updateApply.set({ ...$updateApply.get(), applying: false, stage: 'error', error: 'apply-failed', message })
+
+    $updateApply.set(IDLE)
+    setUpdateOverlayOpen(false)
+    $updateDownloadFailure.set({ message, source: 'apply' })
 
     return { ok: false, error: 'apply-failed', message }
   }
+}
+
+/**
+ * Abort the in-flight client download. Resolves false when there is nothing to
+ * abort — the installer already took over, or this install's update owner does
+ * the transfer itself (App Installer / Store / handoff). Only a confirmed
+ * abort dismisses the progress surface: closing it while NSIS keeps installing
+ * would claim the update stopped when it did not.
+ */
+export async function cancelActiveUpdate(): Promise<boolean> {
+  const bridge = window.hermesDesktop?.updates
+
+  if (!bridge?.cancel) {
+    return false
+  }
+
+  const result = await bridge.cancel().catch((): null => null)
+
+  if (!result?.cancelled) {
+    return false
+  }
+
+  $updateApply.set(IDLE)
+  // The user just said "not now": keep the ambient prefetch from restarting
+  // the download they stopped on the next check. An explicit update still runs
+  // — applyUpdates() never consults this latch.
+  $updateReadyDismissed.set(true)
+  setUpdateOverlayOpen(false)
+
+  return true
 }
 
 const BACKEND_ACTION_POLL_MS = 1500
@@ -1153,6 +1398,14 @@ async function runEverythingUpdate(): Promise<void> {
 
 function ingestProgress(payload: DesktopUpdateProgress): void {
   const current = $updateApply.get()
+
+  // Nobody is watching this stream: the ambient prefetch is silent by design,
+  // and a cancelled apply must not resurrect the progress surface after
+  // cancelActiveUpdate() reset it.
+  if (!current.applying) {
+    return
+  }
+
   const log = [...current.log, { stage: payload.stage, message: payload.message, at: payload.at }].slice(-50)
 
   const terminal =

@@ -243,6 +243,27 @@ try {
         throw "Build completed but no EXE installer was found under $artifactDir."
     }
 
+    # Sign the NSIS installer immediately after build (UKey PIN cache is fresh).
+    # electron-builder's own sign attempt may have failed silently when the PIN
+    # cache expired during the long payload signing phase.
+    $signingMode = $env:HERMES_SIGNING_MODE
+    if ($signingMode -eq 'release') {
+        $signClock = [System.Diagnostics.Stopwatch]::StartNew()
+        try {
+            $node = Get-Command node -ErrorAction SilentlyContinue
+            if ($null -eq $node) {
+                throw 'node not found; cannot sign installer'
+            }
+            & $node.Source (Join-Path $sourceRoot 'apps\desktop\scripts\sign-installer.mjs') `
+                -Installer $installer.FullName
+            if ($LASTEXITCODE -ne 0) {
+                throw "Installer signing failed with exit code $LASTEXITCODE."
+            }
+        } finally {
+            Write-Host ("[build-timing] installer-sign: {0:F1}s" -f $signClock.Elapsed.TotalSeconds)
+        }
+    }
+
     # Check identity, bundled kits, the bundled Python and path lengths before anyone hands the installer out.
     $checkClock = [System.Diagnostics.Stopwatch]::StartNew()
     try {

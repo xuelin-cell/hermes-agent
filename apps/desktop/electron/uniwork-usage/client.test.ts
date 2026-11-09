@@ -1,9 +1,16 @@
-import { once } from 'node:events'
+import { EventEmitter, once } from 'node:events'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { createServer } from 'node:http'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import { expect, it, vi } from 'vitest'
 
 vi.mock('electron', () => ({ net: {} }))
+import { MAAS_IDENTITY_NAMESPACE } from '../login/credential-store'
+import { LoginSession } from '../login/session'
+import { createPlanRefresher } from '../uniwork-notify/refresher'
+
 import { PlanUsageClient } from './client'
 import { normalizePlanUsage } from './contract'
 
@@ -124,5 +131,76 @@ it('真实 HTTP 查询白名单字段、合并请求、隔离账号缓存并拒�
     release?.()
     server.closeAllConnections()
     await new Promise<void>(done => server.close(() => done()))
+  }
+})
+
+it('套餐推送用一次 my-plan 替换已有缓存，迟到的用量查询不能覆盖新套餐', async () => {
+  const identity = { uid: 'a', token: 'token-a', maskedPhone: '138****0001', expiresAt: Date.now() + 60_000 }
+  const home = await mkdtemp(join(tmpdir(), 'hermes-plan-refresh-'))
+  const oldQuery = new EventEmitter()
+  const oldQueryStarted = once(oldQuery, 'started')
+  const releaseOldQuery = once(oldQuery, 'release')
+  let calls = 0
+
+  const server = createServer(async (_request, response) => {
+    const requestNumber = ++calls
+
+    if (requestNumber === 2) {
+      oldQuery.emit('started')
+      await releaseOldQuery
+    }
+
+    const updated = requestNumber >= 3
+    response.setHeader('Content-Type', 'application/json')
+    response.end(JSON.stringify({
+      apiKey: 'private-model-key',
+      models: { models: [{ id: 'model', model: 'model', base_url: 'https://models.invalid' }] },
+      productName: updated ? '新套餐' : '旧套餐',
+      planType: 'token_plan',
+      tokenPlanUsage: { totalQuota: 1000, usedQuota: updated ? 600 : 250 }
+    }))
+  })
+
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  const { port } = server.address() as { port: number }
+  const request: typeof fetch = (_url, options) => fetch(`http://127.0.0.1:${port}`, options)
+
+  const login = new LoginSession(request, {
+    load: () => ({ ...identity, namespace: MAAS_IDENTITY_NAMESPACE }),
+    save: vi.fn()
+  })
+
+  login.restore()
+  const client = new PlanUsageClient(() => login.currentIdentity(), request)
+
+  const refresh = createPlanRefresher(
+    () => login,
+    () => home,
+    vi.fn(),
+    (account, usage) => client.remember(account, usage)
+  )
+
+  try {
+    expect(await client.load()).toMatchObject({ data: { productName: '旧套餐' } })
+    const older = client.load(true)
+    await oldQueryStarted
+
+    expect(await refresh()).toEqual({ status: 'ok' })
+    const latest = await client.load()
+    expect(latest).toMatchObject({ data: { productName: '新套餐', quota: { used: 600 } } })
+    expect(JSON.stringify(latest)).not.toContain('private-model-key')
+    expect(calls).toBe(3)
+
+    oldQuery.emit('release')
+    expect(await older).toEqual(latest)
+    expect(await client.load()).toEqual(latest)
+    expect(calls).toBe(3)
+  } finally {
+    login.dispose()
+    oldQuery.emit('release')
+    server.closeAllConnections()
+    await new Promise<void>(done => server.close(() => done()))
+    await rm(home, { recursive: true, force: true })
   }
 })

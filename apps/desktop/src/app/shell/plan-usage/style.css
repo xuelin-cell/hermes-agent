@@ -83,7 +83,7 @@
 
 /* MasterGo 24:09213：24px 圆角、8px 内边距、正文 14/22、辅助文字 12/20。 */
 .plan-usage-card.account-card {
-  width: min(310px, calc(100vw - 32px));
+  width: min(320px, calc(100vw - 32px));
   padding: 8px;
   border-radius: 24px;
   box-shadow:
@@ -98,7 +98,7 @@
   width: 100%;
   min-height: 38px;
   gap: 8px;
-  padding: 8px 16px;
+  padding: 8px 10px;
   margin-bottom: 8px;
   color: var(--ui-text-primary);
   text-align: left;
@@ -206,6 +206,10 @@ a.account-card-row:hover {
   height: 1px;
   margin-bottom: 8px;
   background: var(--dt-border);
+}
+/* 检查更新与设置同为操作入口，两者间距比信息行更紧凑。 */
+.account-card-update {
+  margin-bottom: 2px;
 }
 .account-card-logout {
   margin-bottom: 0;

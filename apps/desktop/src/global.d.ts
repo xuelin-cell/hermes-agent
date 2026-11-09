@@ -25,7 +25,7 @@ import type { PreviewExport, PreviewExportResult } from '../electron/preview-exp
 import type { SessionListSnapshot } from '../electron/session-list-snapshot-contract'
 import type { UniworkAsrBridge } from '../electron/uniwork-asr/contract'
 import type { NtfyEvent, NtfyRefreshResult, NtfyStatus } from '../electron/uniwork-notify/contract'
-import type { PlanSubscriptionResult, PlanUsageResult } from '../electron/uniwork-usage/contract'
+import type { PlanSubscriptionResult, PlanUsageResult, PlanUsageSnapshot } from '../electron/uniwork-usage/contract'
 import type { WelcomeLocale, WelcomePayload } from '../electron/uniwork-welcome/catalog'
 import type { GrowRequest } from '../electron/window-growth'
 
@@ -49,6 +49,7 @@ declare global {
       agentMail: (input: AgentMailRequest) => Promise<AgentMailResult>
       /** 只读本次已准备账号的脱敏信息，运行中到期仍返回原期限。 */
       /** 仅返回当前账号套餐展示信息，不接受页面身份参数。 */
+      getCachedPlanUsage?: () => Promise<PlanUsageSnapshot | null>
       getPlanUsage?: () => Promise<PlanUsageResult>
       refreshPlanUsage?: () => Promise<PlanUsageResult>
       subscribeMaasPlan?: () => Promise<PlanSubscriptionResult>
@@ -686,6 +687,13 @@ declare global {
       updates: {
         check: (opts?: { force?: boolean }) => Promise<DesktopUpdateStatus>
         apply: (opts?: DesktopUpdateApplyOptions) => Promise<DesktopUpdateApplyResult>
+        /** Abort the in-flight apply() download; absent on older preloads.
+         *  `cancelled: false` means the installer already took over. */
+        cancel?: () => Promise<DesktopUpdateCancelResult>
+        /** Ambient background download; absent on older preloads. `supported:
+         *  false` means this install's update owner does the download itself
+         *  (App Installer / Store / handoff) — no ready prompt. */
+        prepare?: () => Promise<DesktopUpdatePrepareResult>
         getBranch: () => Promise<{ branch: string }>
         setBranch: (name: string) => Promise<{ branch: string }>
         onProgress: (callback: (payload: DesktopUpdateProgress) => void) => () => void
@@ -936,8 +944,27 @@ export interface DesktopUpdateApplyOptions {
   dirtyStrategy?: DesktopUpdateDirtyStrategy
 }
 
+/** Ambient background download result (`updates.prepare`). */
+export interface DesktopUpdatePrepareResult {
+  ok: boolean
+  /** True once the package is on disk — the only state that shows the prompt. */
+  ready: boolean
+  /** False when the update owner downloads it itself (no in-app prompt). */
+  supported: boolean
+  version?: string | null
+  error?: string
+  message?: string
+}
+
+export interface DesktopUpdateCancelResult {
+  /** False when the transfer already finished or the installer took over. */
+  cancelled: boolean
+}
+
 export interface DesktopUpdateApplyResult {
   ok: boolean
+  /** The user aborted the download; nothing was installed. */
+  cancelled?: boolean
   /** False when the apply-time check found nothing to install. */
   updateAvailable?: boolean
   branch?: string

@@ -22,7 +22,7 @@ const SOURCE_LABELS: Record<string, string> = {
   sms: 'SMS',
   telegram: 'Telegram',
   tui: 'TUI',
-  uniagentgate: '5G 消息',
+  uniagentgate: '5G Messaging',
   webhook: 'Webhook',
   weixin: 'WeChat',
   whatsapp: 'WhatsApp',
@@ -38,7 +38,7 @@ const SOURCE_ALIASES: Record<string, string[]> = {
   qqbot: ['qq'],
   telegram: ['tg'],
   tui: ['terminal'],
-  uniagentgate: ['5g', 'rcs', '5G 消息'],
+  uniagentgate: ['5g', 'rcs', '5G 消息', '5G 訊息'],
   weixin: ['wechat'],
   whatsapp: ['wa']
 }
@@ -124,14 +124,19 @@ export function handoffOriginSource(
   return id
 }
 
-export function sessionSourceLabel(source: null | string | undefined): string | null {
+export function sessionSourceLabel(
+  source: null | string | undefined,
+  localizedLabels?: Readonly<Record<string, string>>
+): string | null {
   const id = normalizeSessionSource(source)
 
   if (!id) {
     return null
   }
 
-  return SOURCE_LABELS[id] || id.replace(/[_-]+/g, ' ').replace(/\b\w/g, char => char.toUpperCase())
+  return (
+    localizedLabels?.[id] ?? SOURCE_LABELS[id] ?? id.replace(/[_-]+/g, ' ').replace(/\b\w/g, char => char.toUpperCase())
+  )
 }
 
 export function sessionSourceSearchTerms(source: null | string | undefined): string[] {

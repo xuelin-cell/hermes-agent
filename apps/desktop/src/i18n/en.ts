@@ -148,6 +148,7 @@ export const en: Translations = {
     officePreviewFailed: 'Office conversion failed. Download the original file to view it.',
     artifactSensitive: 'Sensitive configuration and credential files cannot be uploaded to the cloud drive.',
     uploadArtifact: 'Upload to cloud drive',
+    uploadToLibrary: 'Upload to library',
     uploadHere: 'Upload to this folder',
     chooseUploadFolder: 'Choose a destination in your personal cloud drive',
     artifactRemote:
@@ -208,7 +209,7 @@ export const en: Translations = {
     userAgreement: 'Terms of Service',
     legalOpenError: 'Could not open the agreement. Please try again.',
     planUsage: {
-      restart: 'Restart the desktop app completely to update the usage query component.',
+      restart: 'Plan information is unavailable. Quit and reopen the app.',
       actualUsage: 'Plan usage',
       details: 'View details',
       subscribe: 'Subscribe',
@@ -223,11 +224,9 @@ export const en: Translations = {
       refresh: 'Refresh usage',
       refreshPlan: 'Refresh plan',
       refreshed: 'Plan information refreshed',
-      refreshFailed: 'Refresh failed. Try again.',
-      failed: 'Could not refresh. Try again.',
-      stale: 'Refresh failed. Showing the previous result.',
-      auth: 'Your sign-in has expired. Sign in again to check usage.',
-      empty: 'No usage data available',
+      refreshFailed: 'Couldn’t refresh plan information. Try again in a moment.',
+      failed: 'Couldn’t load plan information. Try again in a moment.',
+      auth: 'Your sign-in is no longer valid. Sign out and sign in again.',
       unnamed: 'Current plan',
       expired: 'Expired',
       expires: 'Expires',
@@ -260,7 +259,6 @@ export const en: Translations = {
     expired: 'Your sign-in has expired. Please sign in again.',
     expiredLabel: 'Sign-in expired',
     expiredRunning: 'Your sign-in has expired. Current tasks will continue. You can sign out and sign in again.',
-    planAuthRejected: 'MaaS rejected this sign-in credential. Sign out and sign in again.',
     resendAfter: 'Resend in {seconds}s',
     smsSendError: 'Could not send the code. Check your input or refresh the image and try again.',
     smsLimited: 'Too many requests. Please wait before trying again.',
@@ -406,6 +404,7 @@ export const en: Translations = {
       connectAction: 'Connect',
       connected: 'Connected',
       disconnect: 'Disconnect',
+      reenable: 'Re-enable',
       tryIt: 'Try it like this',
       brand: 'UniWork',
       credentials: 'Enter connection details',
@@ -564,6 +563,11 @@ export const en: Translations = {
           description:
             'Connect Qichacha company, risk, intellectual property, operation, and executive services for enterprise data queries.',
           provider: 'Qichacha'
+        },
+        tianyancha_mcp: {
+          name: 'Tianyancha',
+          description: 'Search company registration, shareholders, risk, judicial, investment, and intellectual-property data.',
+          provider: 'Tianyancha'
         },
         eastmoney_mcp: {
           name: 'Eastmoney',
@@ -1085,6 +1089,7 @@ export const en: Translations = {
       needsAuthMessage: name => `${name} MCP needs re-authentication.`,
       errorTitle: 'MCP server unreachable',
       errorMessage: name => `${name} MCP failed its health check.`,
+      connectionFailedMessage: name => `Could not connect to ${name}. Test it in Connectors.`,
       signIn: 'Sign in',
       view: 'View',
       disable: 'Disable',
@@ -3446,6 +3451,7 @@ export const en: Translations = {
   },
 
   messaging: {
+    platformLabels: { uniagentgate: '5G Messaging' },
     connection: messagingConnectionCopy['en'],
     cards: {
       heading: 'Chat apps',
@@ -4434,6 +4440,7 @@ export const en: Translations = {
 
   composer: {
     message: 'Message',
+    addAttachment: 'Add attachments',
     aiDisclaimer: 'AI responses may be inaccurate. Please verify important information.',
     wakingProfile: profile => `Waking up ${profile}…`,
     placeholderStarting: 'Starting UniWork...',
@@ -4963,6 +4970,7 @@ export const en: Translations = {
     },
     // Update-status overlay + version-details (mechanism-aware update UI).
     appName: 'UniWork',
+    aboutAppName: 'Yuanjing Digital Employee',
     version: (value: string) => `Version ${value}`,
     versionUnavailable: 'Version unavailable',
     checkNow: 'Check now',
@@ -4971,6 +4979,18 @@ export const en: Translations = {
     upToDate: 'is up to date',
     gotIt: 'Got it',
     updateCheckFailed: "Couldn't check for updates. Please try again.",
+    currentVersion: 'Current version',
+    // Trailing space: About's card prints `aboutApp` + `aboutAppName` with no
+    // hard-coded separator, and only the Latin pair needs one.
+    aboutApp: 'About ',
+    goToWebsite: 'Visit website',
+    newVersionReady: 'New version ready',
+    newVersionReadyBody: (version: string) => `New version ${version} is ready to install.`,
+    updateLog: 'What’s new',
+    restartToUpdate: 'Restart to update',
+    launchNow: 'Launch now',
+    downloadingUpdate: 'Downloading update…',
+    downloadFailedTitle: 'Update download failed. Please try again.',
     seeWhatsNew: "See what's new",
     releaseNotes: 'Release notes',
     onLatest: "You're on the latest version.",

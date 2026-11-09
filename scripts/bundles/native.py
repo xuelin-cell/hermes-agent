@@ -92,26 +92,55 @@ def stage_uv_cache(source: Path, destination: Path) -> None:
     shutil.copytree(source, destination, ignore=ignore)
 
 
+def _find_seven_zip() -> str | None:
+    """Locate 7z: PATH first, then the packager tools cache."""
+    found = shutil.which("7z") or shutil.which("7za")
+    if found:
+        return found
+    repo_root = Path(__file__).resolve().parents[2]
+    packager_dir = repo_root / ".cache" / "desktop-inputs" / "packager"
+    if packager_dir.exists():
+        for candidate in packager_dir.rglob("7za.exe"):
+            return str(candidate)
+    return None
+
+
 def pack_uv_cache(source: Path, destination: Path) -> tuple[int, int]:
-    """将离线 UV 种子缓存确定性压成单文件，减少安装器处理的小文件数量。"""
-    temporary = destination.with_suffix(destination.suffix + ".tmp")
-    temporary.unlink(missing_ok=True)
+    """将离线 UV 种子缓存压成单文件，减少安装器处理的小文件数量。
+
+    Uses 7z with multi-threaded DEFLATE when available (~2-3x faster than
+    Python's single-threaded zipfile).  Falls back to the stdlib zipfile
+    when 7z is not on PATH.
+    """
     files = 0
     original_bytes = 0
+    for path in source.rglob("*"):
+        if path.is_file():
+            files += 1
+            original_bytes += path.stat().st_size
+
+    temporary = destination.with_suffix(destination.suffix + ".tmp")
+    temporary.unlink(missing_ok=True)
+
+    seven_zip = _find_seven_zip()
     try:
-        with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED,
-                             compresslevel=6, allowZip64=True) as archive:
-            for path in sorted(source.rglob("*")):
-                if not path.is_file():
-                    continue
-                relative = path.relative_to(source).as_posix()
-                info = zipfile.ZipInfo(relative, date_time=(1980, 1, 1, 0, 0, 0))
-                info.compress_type = zipfile.ZIP_DEFLATED
-                info.external_attr = 0o600 << 16
-                with path.open("rb") as reader, archive.open(info, "w", force_zip64=True) as writer:
-                    shutil.copyfileobj(reader, writer, length=1024 * 1024)
-                files += 1
-                original_bytes += path.stat().st_size
+        if seven_zip:
+            subprocess.run(
+                [seven_zip, "a", "-tzip", "-mx=1", "-mmt=on", str(temporary), "*"],
+                cwd=str(source), check=True, capture_output=True,
+            )
+        else:
+            with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED,
+                                 compresslevel=6, allowZip64=True) as archive:
+                for path in sorted(source.rglob("*")):
+                    if not path.is_file():
+                        continue
+                    relative = path.relative_to(source).as_posix()
+                    info = zipfile.ZipInfo(relative, date_time=(1980, 1, 1, 0, 0, 0))
+                    info.compress_type = zipfile.ZIP_DEFLATED
+                    info.external_attr = 0o600 << 16
+                    with path.open("rb") as reader, archive.open(info, "w", force_zip64=True) as writer:
+                        shutil.copyfileobj(reader, writer, length=1024 * 1024)
         os.replace(temporary, destination)
     except Exception:
         temporary.unlink(missing_ok=True)

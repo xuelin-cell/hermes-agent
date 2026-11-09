@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 from queue import Queue
+import shutil
 import subprocess
 import sys
 from threading import Thread
@@ -20,6 +21,18 @@ from hermes_constants import PROFILE_ID_RE, named_profile_has_identity
 
 _process_query = None
 _process_results = Queue()
+
+
+def _resolve_powershell():
+    """Resolve PowerShell path; fall back to PATH lookup when SystemRoot is missing."""
+    for var in ("SystemRoot", "windir"):
+        root = os.environ.get(var)
+        if root:
+            candidate = os.path.join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+            if os.path.isfile(candidate):
+                return candidate
+    found = shutil.which("powershell.exe") or shutil.which("pwsh.exe")
+    return found or "powershell.exe"
 
 
 def read_process_snapshots(query):
@@ -91,7 +104,7 @@ ConvertTo-Json -Compress -InputObject @(Get-CimInstance Win32_Process | Select-O
 }
 """
         _process_query = subprocess.Popen(
-            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
+            [_resolve_powershell(), "-NoProfile", "-NonInteractive", "-Command", command],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
@@ -234,7 +247,7 @@ foreach ($task in $service.GetFolder('\').GetTasks(1)) {
 ConvertTo-Json -Compress -InputObject @($owned)
 """
     result = subprocess.run(
-        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
+        [_resolve_powershell(), "-NoProfile", "-NonInteractive", "-Command", command],
         env=env,
         capture_output=True,
         text=True,
@@ -320,7 +333,7 @@ def stop_gateways(homes, saved):
             continue
         if Path(record["hermes_home"]).resolve() != home:
             raise RuntimeError("网关 PID 记录归属不符")
-        target = status._live_pid_from_record(record)
+        target = record.get("pid")
         row = next((item for item in runtime if item["pid"] == target), None)
         if row is None:
             raise RuntimeError("网关尚未发布可信运行身份")
@@ -330,7 +343,20 @@ def stop_gateways(homes, saved):
                 raise RuntimeError("无法重新确认账号网关归属")
             force_stop(row)
             continue
-        if record["start_time"] != int(round(row["created"] * 100)):
+        current_start = status.get_process_start_time(row["pid"])
+        recorded_start = record["start_time"]
+        valid_start = (
+            isinstance(recorded_start, int)
+            and not isinstance(recorded_start, bool)
+            and recorded_start > 0
+        )
+        same_start = valid_start and recorded_start == current_start
+        # macOS 启动时钟可能漂移；复用原生比较器，仍须通过前面的命令、Home 与 PID 核对。
+        if sys.platform == "darwin" and valid_start and current_start is not None:
+            same_start = status.start_time_fingerprints_match(
+                recorded_start, current_start
+            )
+        if not same_start:
             raise RuntimeError("网关尚未发布可信运行身份")
         marker = home / status._PLANNED_STOP_MARKER_FILENAME
         if not status._write_marker(

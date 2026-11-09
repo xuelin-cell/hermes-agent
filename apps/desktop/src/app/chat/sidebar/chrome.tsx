@@ -118,7 +118,7 @@ export function SidebarRowNest({ className, ...props }: React.ComponentProps<'di
  * the session list. Caption-shaped — a small label plus a hairline — so it
  * groups sessions by recency without adding a level of indentation. When
  * `toggle` is set the whole caption collapses the sessions beneath it, same
- * gesture as a repo header (the hover caret is the tell).
+ * gesture as a repo header (the always-visible caret is the tell).
  */
 export function SidebarDateDivider({
   action,
@@ -153,7 +153,7 @@ export function SidebarDateDivider({
         >
           {caption}
           <DisclosureCaret
-            className="text-(--ui-text-tertiary) opacity-0 transition group-hover/workspace:opacity-100"
+            className="text-(--ui-text-tertiary) transition-colors group-hover/workspace:text-foreground"
             open={toggle.open}
           />
           {rule}

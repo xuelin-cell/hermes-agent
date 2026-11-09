@@ -324,11 +324,11 @@ export function MyMailPage() {
             <p className="mt-2 text-muted-foreground">{text.subtitle}</p>
           </div>
           <Button
-            className="h-11 rounded-xl bg-slate-950 px-5 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-950"
+            className="h-11 min-w-28 justify-center gap-2 rounded-xl bg-slate-950 px-5 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-950"
             onClick={() => openComposer()}
           >
-            <Send className="mr-2 size-4" />
-            {text.compose}
+            <Send className="size-4" />
+            <span>{text.compose}</span>
           </Button>
         </header>
 
@@ -402,7 +402,7 @@ export function MyMailPage() {
                     const key = `${message.folder}:${message.uid}`
                     return (
                       <article
-                        className={`flex cursor-pointer items-center gap-4 rounded-2xl border bg-background px-5 py-4 shadow-sm transition hover:border-foreground/20 ${message.seen ? 'border-border/60' : 'border-emerald-500/40'}`}
+                        className="flex cursor-pointer items-center gap-4 rounded-2xl border border-border/60 bg-background px-5 py-4 shadow-sm transition hover:border-foreground/20"
                         key={key}
                         onClick={() => void openDetail(message)}
                       >
@@ -418,14 +418,21 @@ export function MyMailPage() {
                           onClick={event => event.stopPropagation()}
                         />
                         <div className="min-w-0 flex-1">
-                          <div className={`truncate ${message.seen ? '' : 'font-semibold'}`}>
-                            {message.subject || '(无主题)'}
-                          </div>
-                          <div className="mt-1 truncate text-sm text-muted-foreground">
-                            {tab === 'inbox'
-                              ? addressLabel(message.from)
-                              : message.to.map(addressLabel).filter(Boolean).join(', ')}{' '}
-                            · {dateLabel(message.date)}
+                          <div className="truncate">{message.subject || '(无主题)'}</div>
+                          <div className="mt-1 flex items-center gap-2 truncate text-sm text-muted-foreground">
+                            <span className="truncate">
+                              {tab === 'inbox'
+                                ? addressLabel(message.from)
+                                : message.to.map(addressLabel).filter(Boolean).join(', ')}{' '}
+                              · {dateLabel(message.date)}
+                            </span>
+                            {!message.seen && (
+                              <span
+                                aria-label={text.unread}
+                                className="size-2 shrink-0 rounded-full bg-blue-500"
+                                role="img"
+                              />
+                            )}
                           </div>
                         </div>
                         {message.hasAttachments && <span className="text-xs text-muted-foreground">附件</span>}

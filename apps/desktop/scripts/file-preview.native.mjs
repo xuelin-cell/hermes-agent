@@ -210,7 +210,7 @@ test('真实 Electron 音视频能播放、跳转进度，失败保留原文件�
     for (const [name, tag] of [['sample.png', 'img'], ['sample.mp4', 'video'], ['sample.mp3', 'audio']]) {
       await page.getByRole('button', { name, exact: true }).click()
       await page.getByRole('button', { name: '对话交付物', exact: true }).click()
-      await page.getByTestId('chat').getByRole('button', { name: '打开预览', exact: true }).click()
+      await page.getByTestId('chat').getByRole('button', { name: /^打开预览: / }).click()
       const media = page.getByTestId('rail').locator(tag)
       await expect(media).toBeVisible()
       if (tag === 'img') {

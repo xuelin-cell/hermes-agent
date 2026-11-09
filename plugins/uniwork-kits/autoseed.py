@@ -11,9 +11,10 @@ bytes changed. Uninstalling stays a user action: nothing here removes a
 package, and one the user uninstalled is not put back — ``.bundled-seeded.json``
 remembers which built-ins this account has already had.
 
-It runs on a background thread so the backend answers at once, once per
-process, and only in the default profile's own backend (an expert's backend
-loads the plugin API too, and skips). A lock file still keeps two processes —
+The first install finishes before the backend starts serving, so its profile
+hosting policy sees the new experts. Later installs and script-environment
+preparation run in the background, once per process and only in the default
+profile's own backend (an expert's backend skips). A lock file keeps two processes —
 say two app windows, or a CLI seed — from installing at the same time.
 
 A developer checkout without ``bundled/`` can point at a directory with
@@ -71,7 +72,7 @@ def status() -> Dict[str, Any]:
 
 
 def start(home: Path) -> bool:
-    """在后台线程把内置包装进 home 所在账号的默认档案，返回是否真的开始了。
+    """首次同步安装内置包，其余更新和脚本环境留在后台，返回是否真的开始了。
 
     专家自己的后端（home 是某个专家档案）、没有内置目录、或这个进程已经为该 home 跑过时都不做。
     """
@@ -88,7 +89,14 @@ def start(home: Path) -> bool:
         # Running from the moment it is started, so the first status poll
         # cannot read "idle" before the thread gets going.
         _state.update(ran=True, running=True, name="", done=0, total=0, installed=0, unchanged=0, failed=[], error="")
-        _thread = threading.Thread(target=_run, args=(root, directory), name="uniwork-kits-seed", daemon=True)
+        _thread = None
+    first = not (store.imported_root(root) / SEEDED_NAME).exists()
+    if first and not _install(root, directory):
+        return True
+    _thread = threading.Thread(
+        target=script_python.prepare if first else _run,
+        args=(root,) if first else (root, directory), name="uniwork-kits-seed", daemon=True,
+    )
     _thread.start()
     return True
 
@@ -99,18 +107,13 @@ def _set(**changes: Any) -> None:
         _state.update(changes)
 
 
-def _run(root: Path, directory: Path) -> None:
-    """后台安装的主体：拿到锁后调用 seed，记下装了哪些、哪些没变、哪些失败，并更新「装过哪些内置包」的记录。
-
-    已装的包里有要换成宿主版的脚本（script_swaps），也在锁里一并换掉。
-
-    装完再建好脚本运行环境（script_python），第一次跑专家脚本时就不用等；它有自己的锁，不占着安装锁。
-    """
+def _install(root: Path, directory: Path) -> bool:
+    """持锁安装套件、创建专家并更新记录；运行环境构建由调用方另放后台。"""
     lock = store.imported_root(root) / LOCK_NAME
     if not _acquire(lock):
         logger.info("[uniwork-kits] another backend is installing the bundled kits; skipped")
         _set(running=False)
-        return
+        return False
     try:
         from . import seed
 
@@ -140,7 +143,13 @@ def _run(root: Path, directory: Path) -> None:
     finally:
         _set(running=False, name="")
         _release(lock)
-    script_python.prepare(root)
+    return True
+
+
+def _run(root: Path, directory: Path) -> None:
+    """后续启动在同一后台线程完成包更新，再构建脚本环境。"""
+    if _install(root, directory):
+        script_python.prepare(root)
 
 
 def _load_seeded(record: Path) -> set[str]:
@@ -159,12 +168,28 @@ def _save_seeded(record: Path, names: set[str]) -> None:
     os.replace(temp, record)
 
 
+def _lock_owner_gone(lock: Path) -> bool:
+    """锁里记录的进程已确认不存在时返回 True；读不到、正在写入或进程仍在都返回 False。"""
+    try:
+        pid = json.loads(lock.read_text(encoding="utf-8")).get("pid")
+    except (OSError, ValueError, AttributeError):
+        return False
+    if not isinstance(pid, int) or pid <= 0 or pid == os.getpid():
+        return False
+    try:
+        import psutil
+
+        return not psutil.pid_exists(pid)
+    except Exception:
+        return False
+
+
 def _acquire(lock: Path) -> bool:
-    """用独占创建锁文件防止两个进程同时安装；超过 15 分钟的锁视为进程已死，先删掉。"""
+    """用独占创建锁文件防止两个进程同时安装；持锁进程已退出或锁超过 15 分钟，都视为失效先删掉。"""
     lock.parent.mkdir(parents=True, exist_ok=True)
     try:
-        if time.time() - lock.stat().st_mtime > STALE_LOCK_S:
-            lock.unlink()  # a backend that died mid-install
+        if time.time() - lock.stat().st_mtime > STALE_LOCK_S or _lock_owner_gone(lock):
+            lock.unlink()  # a backend that died mid-install (e.g. killed by the desktop startup timeout)
     except OSError:
         pass
     try:

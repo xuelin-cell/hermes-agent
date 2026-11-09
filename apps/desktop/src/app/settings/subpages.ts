@@ -37,6 +37,12 @@ import type { SettingsView } from './types'
 export interface SettingsSubpage {
   id: string
   labelKey: string
+  /**
+   * An in-page anchor of a page that merged its children (About's version and
+   * terms sections): still a routable `?page=<id>` destination — the page
+   * scrolls to that section — but never a nav entry, so the parent opens whole.
+   */
+  anchor?: boolean
 }
 
 const SUBPAGE_ICONS: Record<string, IconComponent> = {
@@ -82,9 +88,7 @@ const SUBPAGE_ICONS: Record<string, IconComponent> = {
   archivedSessions: Archive,
   defaultDirectory: FolderOpen,
   vaultCredentials: KeyRound,
-  vaultSources: Lock,
-  appUpdates: Download,
-  legal: FileText
+  vaultSources: Lock
 }
 
 export function settingsSubpageIcon(page: SettingsSubpage, fallback: IconComponent): IconComponent {
@@ -111,6 +115,11 @@ export function settingsSubpages(view: SettingsView, developerMode = true): read
   }
 
   return OTHER_SUBPAGES[view] ?? []
+}
+
+/** The child pages that get their own nav entry — in-page anchors do not. */
+export function settingsNavSubpages(view: SettingsView, developerMode = true): readonly SettingsSubpage[] {
+  return settingsSubpages(view, developerMode).filter(page => !page.anchor)
 }
 
 /** Shared by search serialization and saved links that predate subpages. */
@@ -147,6 +156,10 @@ export function resolveSettingsSubpage(
 ): string | undefined {
   const pages = settingsSubpages(view, developerMode)
   const requested = settingsSubpageForLegacyLink(view, params) ?? params.get('page')
+  const match = pages.find(page => page.id === requested)
 
-  return pages.find(page => page.id === requested)?.id ?? pages[0]?.id
+  // An in-page anchor stays resolved so a merged page can scroll to that
+  // section; everything else falls back to the first navigable child — none for
+  // a page made only of anchors (About), which opens as one page.
+  return match?.id ?? settingsNavSubpages(view, developerMode)[0]?.id
 }

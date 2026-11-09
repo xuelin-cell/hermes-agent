@@ -49,19 +49,20 @@ describe('installed skills', () => {
   const list = [
     skill('b-tool', true, 'bundled', 'makes slides'),
     skill('a-tool', false, 'hub'),
+    skill('uploaded-tool', true, 'upload'),
     skill('c', true, 'agent')
   ]
 
-  it('badges by source and only lets market installs be uninstalled', () => {
-    expect(list.map(installedBadge)).toEqual(['bundled', 'market', 'agent'])
-    expect(list.map(canUninstall)).toEqual([false, true, false])
+  it('badges local archive uploads separately while retaining their managed uninstall action', () => {
+    expect(list.map(installedBadge)).toEqual(['bundled', 'market', 'uploaded', 'agent'])
+    expect(list.map(canUninstall)).toEqual([false, true, true, false])
     expect(installedBadge(skill('x', true))).toBe('bundled')
   })
 
   it('counts and filters by state and search, sorted by name', () => {
-    expect(installedCounts(list)).toEqual({ all: 3, enabled: 2, disabled: 1 })
-    expect(filterInstalled(list, 'all', '').map(s => s.name)).toEqual(['a-tool', 'b-tool', 'c'])
-    expect(filterInstalled(list, 'enabled', '').map(s => s.name)).toEqual(['b-tool', 'c'])
+    expect(installedCounts(list)).toEqual({ all: 4, enabled: 3, disabled: 1 })
+    expect(filterInstalled(list, 'all', '').map(s => s.name)).toEqual(['a-tool', 'b-tool', 'c', 'uploaded-tool'])
+    expect(filterInstalled(list, 'enabled', '').map(s => s.name)).toEqual(['b-tool', 'c', 'uploaded-tool'])
     expect(filterInstalled(list, 'disabled', '').map(s => s.name)).toEqual(['a-tool'])
     expect(filterInstalled(list, 'all', 'SLIDES').map(s => s.name)).toEqual(['b-tool'])
   })

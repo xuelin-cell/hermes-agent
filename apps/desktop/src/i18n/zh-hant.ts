@@ -20,6 +20,7 @@ export const zhHant = defineLocale({
       connectAction: '連接',
       connected: '已連接',
       disconnect: '中斷連接',
+      reenable: '重新啟用',
       tryIt: '試試這樣用',
       brand: '元景數字員工',
       credentials: '填寫連接資訊',
@@ -74,6 +75,11 @@ export const zhHant = defineLocale({
           name: '企查查',
           description: '連接企查查企業資訊、風險、智慧財產權、經營和董監高服務，讓 Agent 查詢企業資料。',
           provider: '企查查'
+        },
+        tianyancha_mcp: {
+          name: '天眼查',
+          description: '連接天眼查 MCP，查詢企業工商、股權、風險、司法、投資和知識產權資料。',
+          provider: '天眼查'
         },
         eastmoney_mcp: {
           name: '東方財富',
@@ -277,6 +283,7 @@ export const zhHant = defineLocale({
     officePreviewFailed: 'Office 檔案轉換失敗，請下載原始檔案查看。',
     artifactSensitive: '此檔案屬於敏感設定或憑證，不能上傳雲端硬碟。',
     uploadArtifact: '上傳至雲端硬碟',
+    uploadToLibrary: '上傳至資料庫',
     uploadHere: '上傳至此資料夾',
     chooseUploadFolder: '選擇個人雲端硬碟中的儲存位置',
     artifactRemote: '暫時只能上傳目前桌面帳號的本機產物，遠端檔案和網路連結不支援直接上傳。',
@@ -333,6 +340,12 @@ export const zhHant = defineLocale({
     legalConsentConnector: '和',
     userAgreement: '使用者協議',
     legalOpenError: '無法開啟協議，請稍後重試。',
+    planUsage: {
+      restart: '暫時無法查詢套餐資訊，請完全結束應用程式後重新開啟。',
+      refreshFailed: '套餐資訊更新失敗，請稍後再試。',
+      failed: '暫時無法取得套餐資訊，請稍後再試。',
+      auth: '登入已失效，請登出帳號後重新登入。'
+    },
     brand: 'UNIWORK',
     welcome: '歡迎使用 UniWork',
     headline: '讓工作流動起來，',
@@ -344,7 +357,6 @@ export const zhHant = defineLocale({
     expired: '登入已到期，請重新登入。',
     expiredLabel: '登入已到期',
     expiredRunning: '登入已到期，目前工作繼續執行。您可以登出帳號後重新登入。',
-    planAuthRejected: 'MaaS 拒絕了目前的登入憑證，請登出帳號後重新登入。',
     resendAfter: '{seconds} 秒後重發',
     smsSendError: '傳送失敗，請檢查輸入或重新整理圖片後重試。',
     smsLimited: '傳送過於頻繁，請稍後重試。',
@@ -623,6 +635,7 @@ export const zhHant = defineLocale({
       needsAuthMessage: name => `${name} MCP 需要重新驗證。`,
       errorTitle: 'MCP 伺服器無法連線',
       errorMessage: name => `${name} MCP 健康檢查失敗。`,
+      connectionFailedMessage: name => `暫時無法連線至 ${name}。可在連接器中測試連線。`,
       signIn: '登入',
       view: '檢視',
       disable: '停用',
@@ -2554,6 +2567,7 @@ export const zhHant = defineLocale({
   },
 
   messaging: {
+    platformLabels: { uniagentgate: '5G 訊息' },
     connection: messagingConnectionCopy['zh-hant'],
     cards: {
       heading: '聊天應用',
@@ -3392,6 +3406,7 @@ export const zhHant = defineLocale({
 
   composer: {
     message: '訊息',
+    addAttachment: '新增附件',
     aiDisclaimer: 'AI 回覆可能不準確，請仔細核實重要資訊。',
     wakingProfile: profile => `正在喚醒 ${profile}…`,
     placeholderStarting: '正在啟動 UniWork...',
@@ -3856,6 +3871,17 @@ export const zhHant = defineLocale({
     upToDate: '已是最新版本',
     gotIt: '我知道了',
     updateCheckFailed: '檢查更新失敗，請稍後再試。',
+    currentVersion: '目前版本',
+    aboutApp: '關於',
+    aboutAppName: '元景數字員工',
+    goToWebsite: '前往官網',
+    newVersionReady: '新版本已就緒',
+    newVersionReadyBody: (version: string) => `新版本 ${version} 已就緒，可立即更新。`,
+    updateLog: '更新日誌',
+    restartToUpdate: '重新啟動並更新',
+    launchNow: '立即啟動',
+    downloadingUpdate: '正在下載更新…',
+    downloadFailedTitle: '下載更新失敗，請稍後重試',
     seeWhatsNew: '查看新增內容',
     releaseNotes: '發行說明',
     onLatest: '你已是最新版本。',
@@ -4529,7 +4555,12 @@ export const zhHant = defineLocale({
         endpoint: 'UniWork 無法連線至你的自訂模型伺服器。請確認它正在執行，然後重新傳送訊息。',
         streaming: '回覆完成前連線已中斷。請重試以重新傳送。'
       },
+      errorDetails: '錯誤詳情',
       errorCodes: {
+        billing: {
+          title: '額度不足',
+          body: provider => `您的 ${provider} 帳戶額度不足。請儲值或切換服務商後重新傳送。`
+        },
         provider_policy_blocked: {
           title: '帳戶設定封鎖了此模型',
           body: provider => `${provider} 無法依你帳戶的資料或隱私設定路由此請求。請選擇其他模型或切換服務商。`
@@ -4551,12 +4582,12 @@ export const zhHant = defineLocale({
           body: provider => `${provider} 沒有為此訊息傳回內容。請稍後重試。`
         },
         rate_limit: {
-          title: 'AI 服務忙碌中',
-          body: provider => `${provider} 正在限制請求數量。請稍等片刻後重試。`
+          title: '請求過於頻繁',
+          body: provider => `${provider}：請求過於頻繁，請稍後重試。`
         },
         upstream_rate_limit: {
-          title: 'AI 服務忙碌中',
-          body: provider => `${provider} 正在限制請求數量。請稍等片刻後重試。`
+          title: '請求過於頻繁',
+          body: provider => `${provider}：請求過於頻繁，請稍後重試。`
         },
         overloaded: {
           title: 'AI 服務負載過高',

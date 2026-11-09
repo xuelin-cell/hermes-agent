@@ -40,7 +40,7 @@ export function ApprovalModePicker({ gateway, sessionId }: ApprovalModePickerPro
         <Button
           aria-label={item.title}
           className={cn(
-            'h-(--composer-control-size) shrink-0 gap-1.5 rounded-full text-xs font-normal',
+            'h-(--composer-control-size) shrink-0 gap-1.5 rounded-full text-xs leading-4 font-normal text-(--ui-text-tertiary)',
             item.className
           )}
           disabled={!gateway}

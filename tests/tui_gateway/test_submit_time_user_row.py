@@ -1,9 +1,12 @@
 """prompt.submit writes the user's message at send time, and the turn that follows adopts that row instead of
 writing a second one (#111868: a Desktop freeze during a slow first agent build left a session row with no message)."""
 
+import time
 from types import SimpleNamespace
 
+from agent.agent_runtime_helpers import repair_message_sequence_with_cursor
 from agent.turn_context import _stage_turn_user_message
+from agent.turn_context_compaction import _reanchor
 from hermes_state import SessionDB
 from run_agent import AIAgent
 from tui_gateway import server
@@ -156,6 +159,63 @@ def test_completion_receipt_covers_only_committed_current_turn_rows(monkeypatch,
     finally:
         server._sessions.pop(sid, None)
         db.close()
+
+
+def test_reply_metadata_survives_model_switch_and_resume(monkeypatch, tmp_path):
+    from tui_gateway.prompt_turn import _TurnRun
+
+    path = tmp_path / "state.db"
+    with SessionDB(db_path=path) as db:
+        sid, key = _desktop_session(monkeypatch, db)
+        session = server._sessions[sid]
+        try:
+            server._ensure_session_db_row(session)
+            agent = session["agent"] = _flush_agent(db, key)
+            agent.model, agent.provider = "switched-model", "test-provider"
+            agent.session_prompt_tokens = agent.session_completion_tokens = agent.session_total_tokens = 0
+            agent.session_cache_read_tokens = agent.session_cache_write_tokens = 0
+            history = session["history"] = [
+                {"role": "user", "content": "previous prompt"},
+                {"role": "assistant", "content": "same answer", "display_metadata": {"existing": True}},
+            ]
+            agent._flush_messages_to_session_db(history, [])
+            server._append_model_switch_marker(session, model=agent.model, provider=agent.provider)
+            prompt = "prompt after switching models"
+            assert server._persist_session_row_for_submit("p", session, prompt, None) is None
+
+            def run_conversation(message, *, conversation_history, persist_user_message, **kwargs):
+                user, _ = _stage_turn_user_message(agent, message, persist_user_message, None, None, None, None)
+                messages = conversation_history + [user]
+                agent._flush_messages_to_session_db(messages, conversation_history)
+                assert repair_message_sequence_with_cursor(agent, messages) == 1
+                _reanchor(agent, messages, message)
+                messages.append({"role": "assistant", "content": "same answer"})
+                agent._flush_messages_to_session_db(messages, conversation_history)
+                agent.session_prompt_tokens = 40
+                agent.session_completion_tokens = 8
+                agent.session_total_tokens = 48
+                return {"messages": messages, "final_response": "same answer"}
+
+            agent.run_conversation = run_conversation
+            st = _TurnRun(agent, None, None, True, history=list(history))
+            before = time.time()
+            server._invoke_agent(sid, session, st, prompt, prompt, None, [], None, None, text=prompt)
+            payload, _, _ = server._complete_turn_payload(session, st, None, 80)
+            assert payload["turn_token_usage"]["total_tokens"] == 48
+            assert payload["turn_model"]["model"] == "switched-model"
+            assert before <= payload["turn_completed_at"] <= time.time()
+            # A preflight result can return copies of old rows with the same final text.
+            st.result = {"messages": [row.copy() for row in history[:-1]], "final_response": "same answer"}
+            server._complete_turn_payload(session, st, None, 80)
+        finally:
+            server._sessions.pop(sid, None)
+
+    with SessionDB(db_path=path) as reopened:
+        replies = [row for row in reopened.get_messages(key) if row["role"] == "assistant"]
+    assert replies[0]["display_metadata"] == {"existing": True}
+    assert replies[1]["display_metadata"] == {
+        field: payload[field] for field in ("turn_token_usage", "turn_model", "turn_completed_at")
+    }
 
 
 def test_failed_build_drops_the_staged_row_and_a_later_turn_never_adopts_it(monkeypatch, tmp_path):

@@ -35,7 +35,7 @@ export function sameCronSignature(a: SessionInfo[], b: SessionInfo[]): boolean {
   })
 }
 
-// FNV-1a over role/timestamp/content.
+// FNV-1a over transcript fields.
 function hashString(hash: number, value: string): number {
   let next = hash
 
@@ -55,6 +55,11 @@ export function sessionMessagesSignature(messages: SessionMessage[]): string {
     hash = hashString(hash, m.role)
     hash = hashString(hash, String(m.timestamp ?? ''))
     hash = hashString(hash, typeof m.content === 'string' ? m.content : (JSON.stringify(m.content) ?? ''))
+    if (m.role === 'assistant' && m.display_metadata !== undefined) {
+      const metadata = m.display_metadata
+      // The gateway may attach completion metadata after persisting the reply.
+      hash = hashString(hash, typeof metadata === 'string' ? metadata : JSON.stringify(metadata))
+    }
   }
 
   return `${messages.length}:${hash}`

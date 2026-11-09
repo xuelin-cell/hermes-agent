@@ -119,6 +119,25 @@ it('rejects a non-map MCP section without changing the config', async () => {
   }
 })
 
+it('共享授权库未连接时禁用旧专家条目，不读取专家遗留的授权目录', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-connector-disconnected-'))
+  const home = path.join(root, 'profiles', 'expert')
+  fs.mkdirSync(home, { recursive: true })
+  // 旧目录即使不是合法授权库也不会被使用；它应原样保留。
+  fs.writeFileSync(path.join(home, 'open-connector'), 'old-unused-data')
+  fs.writeFileSync(path.join(home, 'config.yaml'),
+    'mcp_servers:\n  connector_amap:\n    desktop_connector: amap\n    enabled: true\n')
+
+  try {
+    expect(connectorHome(root, 'expert')).toBe(home)
+    await prepareConnectorConfig(home, [], async () => ({ url: 'http://127.0.0.1:1234/mcp', headers: {} }))
+    expect(parse(fs.readFileSync(path.join(home, 'config.yaml'), 'utf8')).mcp_servers.connector_amap.enabled).toBe(false)
+    expect(fs.readFileSync(path.join(home, 'open-connector'), 'utf8')).toBe('old-unused-data')
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
 it('creates and later disables the owned hidden Agent Mail entry', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-agent-mail-config-'))
   const file = path.join(root, 'config.yaml')

@@ -141,6 +141,7 @@ export const zh = defineLocale({
     officePreviewFailed: 'Office 文件转换失败，请下载原文件查看。',
     artifactSensitive: '该文件属于敏感配置或凭据，不能上传云盘。',
     uploadArtifact: '上传到云盘',
+    uploadToLibrary: '上传到资料库',
     uploadHere: '上传到此文件夹',
     chooseUploadFolder: '选择个人云盘中的保存位置',
     artifactRemote: '暂时只能上传当前桌面账号的本机产物，远程文件和网络链接不支持直接上传。',
@@ -198,7 +199,7 @@ export const zh = defineLocale({
     userAgreement: '用户协议',
     legalOpenError: '无法打开协议，请稍后重试。',
     planUsage: {
-      restart: '用量查询组件尚未更新，请完全退出并重新启动桌面应用。',
+      restart: '暂时无法查询套餐信息，请完全退出应用后重新打开。',
       actualUsage: '套餐实际用量',
       details: '查看详情',
       subscribe: '订阅',
@@ -213,11 +214,9 @@ export const zh = defineLocale({
       refresh: '刷新用量',
       refreshPlan: '刷新套餐信息',
       refreshed: '套餐信息已刷新',
-      refreshFailed: '刷新失败，请稍后重试',
-      failed: '刷新失败，请重试。',
-      stale: '刷新失败，当前显示上次查询结果。',
-      auth: '登录状态已失效，请重新登录后查询。',
-      empty: '暂无可展示的用量数据',
+      refreshFailed: '套餐信息刷新失败，请稍后重试。',
+      failed: '套餐信息刷新失败，请稍后重试。',
+      auth: '登录已失效，请退出账号后重新登录。',
       unnamed: '当前套餐',
       expired: '已到期',
       expires: '截止日期',
@@ -249,7 +248,6 @@ export const zh = defineLocale({
     expired: '登录已到期，请重新登录。',
     expiredLabel: '登录已到期',
     expiredRunning: '登录已到期，当前任务继续运行。您可以退出账号后重新登录。',
-    planAuthRejected: 'MaaS 拒绝了当前登录凭据，请退出账号后重新登录。',
     resendAfter: '{seconds} 秒后重发',
     smsSendError: '发送失败，请检查输入或刷新图片后重试。',
     smsLimited: '发送过于频繁，请稍后重试。',
@@ -387,6 +385,7 @@ export const zh = defineLocale({
       connectAction: '连接',
       connected: '已连接',
       disconnect: '解绑',
+      reenable: '重新启用',
       tryIt: '试试这样用',
       brand: 'UniWork',
       credentials: '填写连接信息',
@@ -541,6 +540,11 @@ export const zh = defineLocale({
           name: '企查查',
           description: '连接企查查企业信息、风险、知识产权、经营和董监高服务，让 Agent 查询企业数据。',
           provider: '企查查'
+        },
+        tianyancha_mcp: {
+          name: '天眼查',
+          description: '连接天眼查 MCP，查询企业工商、股权、风险、司法、投资和知识产权数据。',
+          provider: '天眼查'
         },
         eastmoney_mcp: {
           name: '东方财富',
@@ -793,6 +797,7 @@ export const zh = defineLocale({
       needsAuthMessage: name => `${name} MCP 需要重新认证。`,
       errorTitle: 'MCP 服务器无法连接',
       errorMessage: name => `${name} MCP 健康检查失败。`,
+      connectionFailedMessage: name => `暂时无法连接 ${name}。可在连接器中测试连接。`,
       signIn: '登录',
       view: '查看',
       disable: '禁用',
@@ -3229,6 +3234,7 @@ export const zh = defineLocale({
   },
 
   messaging: {
+    platformLabels: { uniagentgate: '5G 消息' },
     connection: messagingConnectionCopy['zh'],
     cards: {
       heading: '聊天应用',
@@ -4180,6 +4186,7 @@ export const zh = defineLocale({
 
   composer: {
     message: '消息',
+    addAttachment: '添加附件',
     aiDisclaimer: 'AI 回复可能不准确，请仔细核实重要信息。',
     wakingProfile: profile => `正在唤醒 ${profile}…`,
     placeholderStarting: '正在启动 UniWork…',
@@ -4684,6 +4691,7 @@ export const zh = defineLocale({
     },
     // Update-status overlay + version-details (mechanism-aware update UI).
     appName: 'UniWork',
+    aboutAppName: '元景数字员工',
     version: value => `版本 ${value}`,
     versionUnavailable: '版本不可用',
     checkNow: '立即检查',
@@ -4692,6 +4700,16 @@ export const zh = defineLocale({
     upToDate: '已是最高版本',
     gotIt: '我知道啦',
     updateCheckFailed: '检查更新失败，请稍后重试。',
+    currentVersion: '当前版本',
+    aboutApp: '关于',
+    goToWebsite: '前往官网',
+    newVersionReady: '新版本就绪',
+    newVersionReadyBody: (version: string) => `新版本 ${version} 已就绪，可立即更新。`,
+    updateLog: '更新日志',
+    restartToUpdate: '重启更新',
+    launchNow: '立即启动',
+    downloadingUpdate: '正在下载更新…',
+    downloadFailedTitle: '下载更新失败，请稍后重试',
     seeWhatsNew: '查看更新内容',
     releaseNotes: '发行说明',
     onLatest: '已是最新版本。',
@@ -5450,7 +5468,12 @@ export const zh = defineLocale({
         endpoint: 'UniWork 无法连接到你的自定义模型服务器。请确认它正在运行，然后重新发送消息。',
         streaming: '回复完成前连接已断开。请重试以重新发送。'
       },
+      errorDetails: '错误详情',
       errorCodes: {
+        billing: {
+          title: '额度不足',
+          body: provider => `您的 ${provider} 账户额度不足。请充值或切换服务商后重新发送。`
+        },
         provider_policy_blocked: {
           title: '账户设置阻止了此模型',
           body: provider => `${provider} 无法按你账户的数据或隐私设置路由此请求。请选择其他模型或切换服务商。`
@@ -5472,12 +5495,12 @@ export const zh = defineLocale({
           body: provider => `${provider} 没有为此消息返回内容。请稍后重试。`
         },
         rate_limit: {
-          title: 'AI 服务繁忙',
-          body: provider => `${provider} 正在限制请求数量。请稍等片刻后重试。`
+          title: '请求过于频繁',
+          body: provider => `${provider}：请求过于频繁，请稍后重试。`
         },
         upstream_rate_limit: {
-          title: 'AI 服务繁忙',
-          body: provider => `${provider} 正在限制请求数量。请稍等片刻后重试。`
+          title: '请求过于频繁',
+          body: provider => `${provider}：请求过于频繁，请稍后重试。`
         },
         overloaded: {
           title: 'AI 服务负载过高',

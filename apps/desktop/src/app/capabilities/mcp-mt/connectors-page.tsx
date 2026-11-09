@@ -95,7 +95,7 @@ export function ConnectorsPage({ searchContainer, ...props }: ConnectorsPageProp
   function connect(id: ConnectorId): void {
     setSelectedId(id)
 
-    if (CONNECTOR_SPECS[id].auth === 'oauth2') {
+    if (CONNECTOR_SPECS[id].auth === 'oauth2' || CONNECTOR_SPECS[id].auth === 'browser_poll') {
       setDetailMode('overview')
       void connections.request('authorize', id)
     } else {
@@ -248,6 +248,11 @@ export function ConnectorsPage({ searchContainer, ...props }: ConnectorsPageProp
         onDisconnect={() => {
           if (selected) {
             void connections.request('disconnect', selected.id)
+          }
+        }}
+        onEnable={() => {
+          if (selected) {
+            void connections.request('enable', selected.id)
           }
         }}
         onExample={text => void openExample(text)}

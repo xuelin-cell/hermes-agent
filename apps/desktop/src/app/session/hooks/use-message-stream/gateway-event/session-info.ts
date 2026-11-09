@@ -1,10 +1,13 @@
+import { getApiRequestProfile } from '@/api/client'
+import { refreshConversationTitle } from '@/api/conversation-titles'
 import { normalizePersonalityValue } from '@/lib/chat-runtime'
+import { observeTitle } from '@/lib/conversation-title'
 import { modelOptionsQueryKey } from '@/lib/model-options'
 import { reconcileApprovalModeForProfile } from '@/store/approval-mode'
 import { clearClarifyRequest } from '@/store/clarify'
 import { reconcileSessionCompacting } from '@/store/compaction'
 import { requestDesktopOnboardingForCredentialWarning } from '@/store/onboarding'
-import { followActiveSessionCwd } from '@/store/projects'
+import { applyRenamedSessionTitle, followActiveSessionCwd } from '@/store/projects'
 import { clearAllPrompts } from '@/store/prompts'
 import {
   $activeSessionId,
@@ -491,6 +494,24 @@ export function handleSessionInfoEvent(ctx: GatewayEventContext): boolean {
     return true
   }
 
+  if (String(event.type) === 'plugin.uniwork-titles.changed') {
+    const info = event.payload as { session_id?: string; profile?: string }
+    const id = info.session_id
+    const owner = { connectionId: event.connectionId || 'local', profile: info.profile || event.profile || 'default' }
+
+    if (id && owner.connectionId === 'local') {
+      // 事件只触发权威重读，迟到的自动结果不能覆盖已保存的手动名称。
+      void refreshConversationTitle(owner, id, row => {
+        observeTitle({ ...row, profile: owner.profile, connection_id: owner.connectionId }, row.title || null)
+        applySessionTitle(id, row.title || null, owner)
+
+        if (fromActiveSource() && (getApiRequestProfile() || 'default') === owner.profile) {applyRenamedSessionTitle(id, row.title || null)}
+      }).catch(() => undefined)
+    }
+
+    return true
+  }
+
   if (event.type === 'session.title') {
     // Live auto-title push (titler runs async, after the turn's refresh).
     const storedId = typeof payload?.session_id === 'string' ? payload.session_id : ''
@@ -500,7 +521,9 @@ export function handleSessionInfoEvent(ctx: GatewayEventContext): boolean {
       // Lineage-aware across every slice — the same conversation can render
       // from any of its ids (#123337); bare recents patching left project
       // rows stale.
-      applySessionTitle(storedId, nextTitle)
+      applySessionTitle(storedId, nextTitle, { connectionId: event.connectionId || 'local', profile: event.profile || 'default' })
+
+      if (fromActiveSource()) {applyRenamedSessionTitle(storedId, nextTitle)}
     }
 
     return true

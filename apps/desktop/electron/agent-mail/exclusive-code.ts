@@ -16,6 +16,17 @@ function encryptedMobile(phone: string): string {
   return Buffer.concat([cipher.update(phone, 'utf8'), cipher.final()]).toString('base64')
 }
 
+/** Preserve the provider's actionable diagnostic without exposing a raw response body. */
+function upstreamMessage(payload: unknown, fallback: string): string {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return fallback
+  }
+
+  const message = (payload as Record<string, unknown>).message
+
+  return typeof message === 'string' && message.trim() ? message.trim() : fallback
+}
+
 export async function fetchWoMailExclusiveCode(
   phone: string,
   request: typeof fetch = fetch,
@@ -53,14 +64,16 @@ export async function fetchWoMailExclusiveCode(
 
     if (!response.ok) {
       log(`[agent-mail] exclusive-code HTTP rejection phone=${maskedPhone(phone)} status=${response.status}`)
-      throw new Error('沃邮箱授权服务暂时不可用。')
+      const payload = await response.json().catch(() => null)
+
+      throw new Error(upstreamMessage(payload, '沃邮箱授权服务暂时不可用。'))
     }
 
     const data = (await response.json().catch(() => null)) as null | Record<string, unknown>
 
     if (data && data.code !== undefined && data.code !== '200' && data.code !== 200) {
       log(`[agent-mail] exclusive-code business rejection phone=${maskedPhone(phone)} code=${String(data.code)}`)
-      throw new Error(typeof data.message === 'string' && data.message.trim() ? data.message : '沃邮箱授权失败。')
+      throw new Error(upstreamMessage(data, '沃邮箱授权失败。'))
     }
 
     const payload = data?.data

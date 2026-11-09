@@ -87,7 +87,7 @@ import {
   createBackendShutdownCoordinator
 } from './backend-ownership'
 import { canImportHermesCli, PROBE_TIMEOUT_MS } from './backend-probes'
-import { waitForDashboardPortAnnouncement } from './backend-ready'
+import { accountPortAnnounceTimeoutMs, waitForDashboardPortAnnouncement } from './backend-ready'
 import { recycleOwnedBackend } from './backend-recycle'
 import { isPidAliveWindows, waitForBackendRelease } from './backend-release-gate'
 import { createBackendServeSupportResolver } from './backend-serve-support'
@@ -147,6 +147,7 @@ import {
   normAuthMode,
   pathForRegistryBackendRequest,
   pathWithGlobalRemoteProfile,
+  pathWithProfileScope,
   profileHasRemoteConnection,
   profileRemoteOverride,
   type ProfileRouteOptions,
@@ -197,6 +198,9 @@ import {
 import type { RosterProfileMetadata } from './connection-registry'
 import { liveWindowState, overlayWindowState } from './connection-window-state'
 import { installConversationShareIpc } from './conversation-share/ipc'
+import { startTitleBridge } from './conversation-titles/bridge'
+import { installAccountTitlePlugins, installTitlePlugin } from './conversation-titles/install'
+import { TitleModelService } from './conversation-titles/service'
 import { describeCrashReason, installCrashForensics } from './crash-forensics'
 import { adoptServedDashboardToken, resolveServedDashboardToken } from './dashboard-token'
 import { loadOrCreateInstallationId, sshOwnershipId } from './desktop-installation'
@@ -227,6 +231,7 @@ import {
 import { preReadyDockLaunchSteps } from './dock-launch-order'
 import { installEmbedReferer } from './embed-referer'
 import { accountBrowserPartition } from './entry_local/browser-partition'
+import { startAccountConnectors } from './entry_local/connector-startup'
 import { createConversationFolders, installConversationFolderIpc } from './entry_local/conversation-folder'
 import { accountSourceBackend } from './entry_local/desktop-environment'
 import { enableDesktopPlugins } from './entry_local/desktop-plugins-config'
@@ -239,6 +244,8 @@ import { createAccountLogout } from './entry_local/logout'
 import { type LogoutProcess, logoutProcessTree, stopLogoutProcesses } from './entry_local/logout-processes'
 import { createAccountExitWindows, retryLogout } from './entry_local/logout-window'
 import { DesktopMessaging, MessagingBotIndex } from './entry_local/messaging'
+import { localProfileNames, prepareAllProfiles } from './entry_local/prepare-all-profiles'
+import { SharedProfileStartup } from './entry_local/shared-profile-startup'
 import { LocalStartupError, showLocalStartupFailure } from './entry_local/startup-failure'
 import { createUniAgentGateBindingUpdate } from './entry_local/uniagentgate-control'
 import { installUniAgentGateIpc } from './entry_local/uniagentgate-ipc'
@@ -569,6 +576,8 @@ import { readLiveUpdateMarker, updateHandoffConflict, writeUpdateMarker } from '
 import {
   resolveUpdaterMechanism,
   type UpdaterApplyResultWire,
+  type UpdaterCancelWire,
+  type UpdaterPrepareWire,
   type UpdaterStatusWire,
   type UpdaterStrategy
 } from './updater'
@@ -705,6 +714,10 @@ const ACCOUNT_DRIVE_MCP = new CloudDriveMcp(ACCOUNT_DRIVE_CLIENT, ACCOUNT_RUNTIM
 
 const ACCOUNT_CONNECTORS = new ConnectorManager({
   home: ACCOUNT_RUNTIME.home,
+  profiles: () =>
+    ['default', ...localProfileNames(ACCOUNT_RUNTIME.home, rememberLog)].filter(
+      profile => !profileHasRemoteOverride(profile)
+    ),
   runtimeDirectory: IS_PACKAGED
     ? packagedResourceRoot(process.resourcesPath, 'open-connector')
     : path.join(APP_ROOT, 'services', 'open-connector'),
@@ -777,7 +790,13 @@ const ACCOUNT_DRIVE_ARTIFACT = createDriveArtifactResolver({
   read: (backend, route) => fetchJsonForBackend(backend, route, { timeoutMs: 60_000 })
 })
 
-installAccountIpc(
+const refreshAccountPlan = createPlanRefresher(
+  currentDesktopLogin,
+  () => (currentDesktopLocalContext() === ACCOUNT_RUNTIME ? ACCOUNT_RUNTIME.home : null),
+  rememberLog,
+  (identity, usage) => ACCOUNT_PLAN_USAGE?.remember(identity, usage)
+)
+const ACCOUNT_PLAN_USAGE = installAccountIpc(
   ACCOUNT_SESSION,
   () => DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString(),
   currentDesktopAccount,
@@ -793,7 +812,13 @@ installAccountIpc(
   profile => ACCOUNT_DRIVE_MCP.available(profile),
   ACCOUNT_DRIVE_ARTIFACT,
   url => openExternalUrl(url),
-  createUniAgentGateBindingUpdate(() => (currentDesktopLocalContext() === ACCOUNT_RUNTIME ? ACCOUNT_RUNTIME : null))
+  {
+    applyBinding: createUniAgentGateBindingUpdate(() =>
+      currentDesktopLocalContext() === ACCOUNT_RUNTIME ? ACCOUNT_RUNTIME : null
+    ),
+    refreshPlan: refreshAccountPlan,
+    startupLogin: currentDesktopLogin()
+  }
 )
 
 installOfficePreviewIpc(
@@ -815,11 +840,7 @@ installNtfyIpc(ACCOUNT_SESSION, () => DEV_SERVER || pathToFileURL(resolveRendere
     ),
   // 每行日志自带 ntfy 前缀（见 uniwork-notify/subscriber.ts）。
   log: rememberLog,
-  refresh: createPlanRefresher(
-    currentDesktopLogin,
-    () => (currentDesktopLocalContext() === ACCOUNT_RUNTIME ? ACCOUNT_RUNTIME.home : null),
-    rememberLog
-  )
+  refresh: refreshAccountPlan
 })
 installUniAgentGateIpc(
   ACCOUNT_SESSION,
@@ -850,6 +871,17 @@ installConversationFolderIpc(
 )
 // desktop-mt: 后端启动前接手中断记录，页面据此显示 ▶ 继续。
 const INTERRUPTED_TURNS = createInterruptedTurns(message => rememberLog(message))
+
+const SHARED_PROFILES = new SharedProfileStartup({
+  home: ACCOUNT_RUNTIME.home,
+  appRoot: app.getAppPath(),
+  drive: ACCOUNT_DRIVE_MCP,
+  interrupted: INTERRUPTED_TURNS,
+  refreshConnectors: profile => ACCOUNT_CONNECTORS.refresh(profile),
+  active: () => currentDesktopLocalContext() === ACCOUNT_RUNTIME && !localBackendLifecycle.signal.aborted,
+  log: rememberLog
+})
+
 installInterruptedTurnIpc(
   ACCOUNT_SESSION,
   () => DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString(),
@@ -1054,7 +1086,6 @@ const BOOT_FAKE_ERROR = process.env.HERMES_DESKTOP_BOOT_FAKE_ERROR || ''
 // Automated teardown (Playwright's app.close(), harness scripts) quits with
 // nobody to answer a modal, so the active-work confirmation would hang the
 // caller instead of letting the process exit. Force quits set this.
-const SKIP_QUIT_CONFIRM = process.env.HERMES_DESKTOP_SKIP_QUIT_CONFIRM === '1'
 // One launch decision must reach both the renderer and every backend spawn.
 const GUEST_ONBOARDING: boolean = guestOnboardingEnabled()
 const SKIP_INTRO: boolean = skipIntroEnabled()
@@ -1609,6 +1640,8 @@ const primaryExitRecovery = createBackendExitRecoveryLatch()
 // with no named profiles never populates this map, so their experience is
 // byte-for-byte the single-backend behavior.
 const backendPool = new Map() // profile -> { process, port, token, connectionPromise, lastActiveAt }
+// 全档案准备期间，迟到的池启动先等待，避免同一档案并发写配置。
+let allProfilesPreparation: Promise<Set<string>> = Promise.resolve(new Set())
 const profileDeletionGate = new ProfileDeletionGate()
 // Keep the pool light: cap concurrent profile backends (LRU eviction) and reap
 // idle ones. A user idles at exactly the primary backend; pool backends only
@@ -3692,9 +3725,7 @@ let isQuittingForHandoff = false
 // Quit-guard latches: one while the confirmation is on screen (a second
 // Cmd-Q must not stack dialogs), one after the user has said "quit anyway"
 // (the app.quit() that follows re-enters before-quit and must pass through).
-let quitPromptOpen = false
 let restartAfterQuit = false
-let quitConfirmedWithActiveWork = false
 
 // Resolve the staged updater binary the desktop may hand an update to. On
 // Windows that binary owns ALL repo mutation — running `hermes update` +
@@ -10656,7 +10687,7 @@ function profileRouteOptions(
     // A stored per-profile entry (local or remote) — pins this profile to
     // its own backend; absent entries inherit the primary's remote.
     ownEntry: Boolean((config.profiles || {})[key]),
-    isolatedBackend: ISOLATED_BACKEND,
+    isolatedBackend: !SHARE_ACCOUNT_BACKEND,
     requestMethod: request?.method,
     requestPath: request?.path
   }
@@ -10675,7 +10706,6 @@ async function ensureBackend(
 ): Promise<Awaited<ReturnType<typeof backendConnectionState.getPromise>>> {
   const key = profile && String(profile).trim() ? String(profile).trim() : primaryProfileKey()
   const spawnPriority = spawnPriorityFrom(opts.spawnPriority)
-  poolRetirer.assertCanOpen(key, spawnPriority)
   const passive = Boolean(opts.passive)
 
   profileDeletionGate.assertCanStart(key)
@@ -10690,6 +10720,16 @@ async function ensureBackend(
   if (route.backend === 'primary') {
     const connection = await startHermes()
     setWslBridgeProfileState(key, connection.mode !== 'remote')
+
+    if (connection.mode === 'local') {
+      await SHARED_PROFILES.ensure(key, (method, route, body) =>
+        fetchJsonForBackend(connection, pathWithProfileScope(route, key), {
+          method,
+          body,
+          timeoutMs: DEFAULT_FETCH_TIMEOUT_MS
+        })
+      )
+    }
 
     // A shared backend still owes the caller its profile scope, so renderer-side
     // WebSocket, filesystem, and cache routing target the selected profile.
@@ -10706,6 +10746,7 @@ async function ensureBackend(
   // A backend for this key may still be dying (idle reap, LRU eviction, a
   // just-finished delete). Wait for its bounded exit before reusing or
   // spawning, so two children never share one profile's HERMES_HOME.
+  poolRetirer.assertCanOpen(key, spawnPriority)
   const stopping = poolStopper.inFlight(key)
 
   if (stopping) {
@@ -11934,10 +11975,12 @@ async function runPoolBackendStart(
   const parentStartMarker = await desktopParentStartMarker()
   const backendNonce = crypto.randomBytes(16).toString('hex')
   const parentIdentityEnv = parentWatchdogEnv(process.pid, parentStartMarker, backendNonce)
+  await allProfilesPreparation
   assertPoolEntryStillOwned(poolKey, entry, backendPool, localBackendLifecycle.signal)
   enableDesktopPlugins(profile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', profile), [
     'desktop-deliverables'
   ])
+  prepareManagedTitleProfiles(profile)
   INTERRUPTED_TURNS.claim(profile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', profile))
   installArtifactSharePlugin(
     profile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', profile),
@@ -11973,6 +12016,7 @@ async function runPoolBackendStart(
           // scheduler tick loop (the gateway isn't running under the app).
           HERMES_DESKTOP: '1',
           ...(await artifactShareBridgeEnv()),
+          ...(await titleBridgeEnv()),
           // Exact parent identity lets the backend self-exit after an unclean
           // Desktop death without mistaking a reused PID for its owner. If the
           // optional marker probe fails, retain legacy PID-only tracking.
@@ -12224,6 +12268,26 @@ function reapInstallRootedStragglers(excludePids: number[]): void {
   }
 }
 
+/** Run a promise with a timeout; rejects with the original error on timeout. */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${ms}ms`))
+    }, ms)
+
+    promise.then(
+      value => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      error => {
+        clearTimeout(timer)
+        reject(error)
+      }
+    )
+  })
+}
+
 const accountExitWindows = createAccountExitWindows({
   background: getWindowBackgroundColor,
   dark: () => nativeTheme.shouldUseDarkColors,
@@ -12282,17 +12346,21 @@ const accountLogout = createAccountLogout({
     logoutGateway ??= createAccountGatewayLogout(ACCOUNT_RUNTIME)
 
     try {
-      await logoutGateway.run('stop', logoutGateways)
+      await withTimeout(logoutGateway.run('stop', logoutGateways), 15_000, 'gateway stop')
       terminalIpc.disposeAllTerminalSessions()
-      await localBackendLifecycle.settleStarts()
-      await Promise.all([
-        localBackendLifecycle.shutdown(),
-        teardownPrimaryBackendAndWait(backendTeardownOptions('quit')),
-        stopAllPoolBackends()
-      ])
+      await withTimeout(localBackendLifecycle.settleStarts(), 10_000, 'settleStarts')
+      await withTimeout(
+        Promise.all([
+          localBackendLifecycle.shutdown(),
+          teardownPrimaryBackendAndWait(backendTeardownOptions('quit')),
+          stopAllPoolBackends()
+        ]),
+        30_000,
+        'backend shutdown'
+      )
       // 原版完成后端与句柄收尾后，只处理仍存活的已保存子树。
       stopLogoutProcesses(owned)
-      await logoutGateway.run('check')
+      await withTimeout(logoutGateway.run('check'), 10_000, 'gateway check')
     } finally {
       await logoutGateway.dispose()
       logoutGateway = null
@@ -12314,7 +12382,6 @@ const accountLogout = createAccountLogout({
   },
   finish: async mode => {
     logoutComplete = true
-    quitConfirmedWithActiveWork = true
     accountExitWindows.finish()
 
     if (mode === 'logout') {
@@ -12454,7 +12521,10 @@ async function prepareProfileRenameRequest(request) {
 
 // ── Attach-first: one backend per HOST (multiplex-only) ───────────────────
 // Escape hatch: a dedicated, private backend for this app instead of the host's.
-const ISOLATED_BACKEND = true
+// 6b16e8d51d 为固定账号 Home、避免误连官方实例而强制独立；这条归属边界继续保留。
+const PRIVATE_ACCOUNT_BACKEND = true
+// 账号内部的助手共用当前账号后端，通过原版 Profile 协议区分会话和配置。
+const SHARE_ACCOUNT_BACKEND = true
 const ATTACHED_LIVENESS_POLL_MS = 15_000
 let attachedBackendMonitor: NodeJS.Timeout | null = null
 let hostSpawnReservation: SpawnReservation | null = null
@@ -12490,7 +12560,7 @@ function startAttachedBackendMonitor(attached: AttachedBackend) {
 
 /** Discover and attach to the host's running backend; null means "spawn one". */
 function attachToRunningHostBackend(): Promise<AttachedBackend | null> {
-  const options = { isolated: ISOLATED_BACKEND, ledgerPath: spawnLedgerPath(HERMES_HOME, path.join) }
+  const options = { isolated: PRIVATE_ACCOUNT_BACKEND, ledgerPath: spawnLedgerPath(HERMES_HOME, path.join) }
 
   return attachOrReserveSpawn(options, hostBackendAttachDeps(), hostSpawnGateDeps())
     .then(outcome => {
@@ -12948,18 +13018,23 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
       }
     }
 
-    // Local WSL backend — paths are bridgeable.
-    enableDesktopPlugins(
-      primaryProfile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', primaryProfile),
-      ['desktop-deliverables']
-    )
-    INTERRUPTED_TURNS.claim(
-      primaryProfile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', primaryProfile)
-    )
-    installArtifactSharePlugin(
-      primaryProfile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', primaryProfile),
-      app.getAppPath()
-    )
+    // 上游会话标题：首次调用给账号内所有已有助手安装标题扩展，之后只补当前主助手。
+    prepareManagedTitleProfiles(primaryProfile)
+    // desktop-mt: 恢复也经过这里；运行中及正在启停的专家留到自己的下次启动准备。
+    SHARED_PROFILES.reset()
+    allProfilesPreparation = prepareAllProfiles({
+      home: HERMES_HOME,
+      appRoot: app.getAppPath(),
+      interrupted: INTERRUPTED_TURNS,
+      prepareDrive: profile => ACCOUNT_DRIVE_MCP.prepare(profile),
+      busy: profile =>
+        [profile, `${backendScopePrefix('local')}${profile}`].some(
+          key => backendPool.has(key) || Boolean(poolStopper.inFlight(key))
+        ),
+      log: rememberLog
+    })
+    SHARED_PROFILES.reset(await allProfilesPreparation)
+    backendConnectionState.assertCurrentAttempt(connectionAttempt)
     setWslBridgeProfileState(primaryProfile, true)
 
     stopAttachedBackendMonitor()
@@ -12976,18 +13051,19 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
     rememberLog(`Starting Hermes backend via ${backend.label}`)
 
     const profile = primaryProfile
+    const portAnnounceTimeout = accountPortAnnounceTimeoutMs(HERMES_HOME)
     const parentStartMarker = await desktopParentStartMarker()
     const backendNonce = crypto.randomBytes(16).toString('hex')
     const parentIdentityEnv = parentWatchdogEnv(process.pid, parentStartMarker, backendNonce)
 
-    // desktop-mt: 账号云盘工具由 Electron 监听回环，Agent 沿用原生 MCP 发现和调用。
-    await ACCOUNT_CONNECTORS.prepare(profile).catch(error => {
-      rememberLog(
-        `[agent-mail] connector preparation failed profile=${profile}: ${error instanceof Error ? error.message : String(error)}`
-      )
+    // desktop-mt: 连接器与 Python 并行预热；就绪后通过 Hermes 接口更新配置。
+    const refreshConnectors = startAccountConnectors({
+      connectors: ACCOUNT_CONNECTORS,
+      active: () =>
+        currentDesktopLocalContext() === ACCOUNT_RUNTIME &&
+        backendConnectionState.isCurrentAttempt(connectionAttempt),
+      log: rememberLog
     })
-    await ACCOUNT_DRIVE_MCP.prepare(profile)
-    backendConnectionState.assertCurrentAttempt(connectionAttempt)
 
     const hermesProcess = spawnOwnedBackend(
       backend.command,
@@ -13014,6 +13090,7 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
             // scheduler tick loop (the gateway isn't running under the app).
             HERMES_DESKTOP: '1',
             ...(await artifactShareBridgeEnv()),
+            ...(await titleBridgeEnv()),
             // Exact parent identity lets the backend self-exit after an unclean
             // Desktop death without mistaking a reused PID for its owner. If the
             // optional marker probe fails, retain legacy PID-only tracking.
@@ -13046,6 +13123,7 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
     const portAnnouncement = waitForDashboardPortAnnouncement(hermesProcess, {
       bufferedOutput: () => primaryOutputTail.text(),
       describeOutputTail: () => primaryOutputTail.describe(),
+      timeoutMs: portAnnounceTimeout,
       readyFile
     })
 
@@ -13226,6 +13304,8 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
     // failure starts fresh from attempt 1 instead of inheriting the
     // accumulated count of the resolved episode.
     bootstrapRepairAttempt = 0
+
+    void refreshConnectors()
 
     // The backend's plugin discovery just ran and refreshed HERMES_HOME/.plugin-compat-report.json.
     // Surface it once (per distinct set of affected plugins) after the window is up; never block boot.
@@ -14875,12 +14955,16 @@ function createWindow() {
     }
   }
 
-  if (savedWindowState?.isMaximized) {
-    mainWindow.maximize()
-  }
-
   const revealController = wireWindowReveal(createdMainWindow, {
     onRevealed: () => {
+      // Maximize after reveal (show) so Windows doesn't flash the normal-size
+      // frame before the maximize DWM transition. Calling maximize() on a
+      // hidden window queues the SWP change; when the window later shows, the
+      // user sees a brief "small box → fullscreen" flicker.
+      if (savedWindowState?.isMaximized) {
+        createdMainWindow.maximize()
+      }
+
       // Persist geometry as soon as the window is visible so a crash before the
       // first clean resize/move/close still captures the restored bounds (#56726).
       schedulePersistWindowState()
@@ -17214,11 +17298,8 @@ async function handleHermesApiRequest(request) {
   // backend calls ensure_hermes_home() which recreates the profile directory,
   // defeating the deletion and leaving a zombie process.
   //
-  // Local-profile REST calls stay on the primary dashboard and carry ?profile=
-  // (or name the profile in the path / PATCH body). A request that MUTATES
-  // state the server cannot scope at all retains its pooled backend, whose
-  // HERMES_HOME is then the scope, so a destructive call can never fall
-  // through to the primary home — `resolveProfileBackendRoute` case 6.
+  // 本机 REST 统一走账号后端，按接口原有 query、请求体、路径或账号根处理。
+  // 保留原请求的助手身份，使运行中新建的专家也能在第一次请求前完成准备。
   //
   // A profile rename tears down the old-name backend the same way; for a
   // primary rename the lifecycle has already made `default` the temporary
@@ -17227,7 +17308,7 @@ async function handleHermesApiRequest(request) {
 
   const routeProfile = profileRename
     ? profileRename.routeProfile
-    : resolveRouteProfile(tornDownProfile, apiRoute.backendProfile)
+    : resolveRouteProfile(tornDownProfile, apiRoute.backendProfile ?? profile)
 
   let response
   let connection
@@ -17292,6 +17373,13 @@ ipcMain.handle('hermes:api', async (_event, request) => {
   const registryConnectionId = apiRequestRegistryConnectionId(request)
 
   try {
+    if (
+      mutatingProfile &&
+      (registryConnectionId === 'local' || (!registryConnectionId && !primaryBackendIsRemote()))
+    ) {
+      SHARED_PROFILES.forget(mutatingProfile)
+    }
+
     if (deletingProfile && registryConnectionId) {
       return await dispatchConnectionScopedProfileDelete(request, {
         acquire: profile => profileDeletionGate.acquire(profile),
@@ -17427,6 +17515,34 @@ const stopArtifactShareCleanup = startArtifactShareCleanup(artifactShareService,
 )
 
 let artifactShareBridge: Promise<ArtifactShareBridge> | null = null
+
+let titleBridge: ReturnType<typeof startTitleBridge> | null = null
+let titleProfilesPrepared = false
+
+/** 同进程只扫描一次账号下已有Profile，后续启动按目标Profile准备。 */
+function prepareManagedTitleProfiles(profile: string): void {
+  if (!titleProfilesPrepared) {
+    installAccountTitlePlugins(HERMES_HOME, app.getAppPath())
+    titleProfilesPrepared = true
+  } else {
+    installTitlePlugin(profile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', profile), app.getAppPath())
+  }
+}
+
+/** 标题服务只访问本次受管账号的数字员工套餐；不使用Hermes默认辅助模型。 */
+async function titleBridgeEnv() {
+  titleBridge ??= startTitleBridge(
+    new TitleModelService(
+      () => currentDesktopLocalContext() === ACCOUNT_RUNTIME
+        ? (currentDesktopLogin()?.currentPlan() ?? { status: 'empty' })
+        : { status: 'empty' },
+      undefined,
+      rememberLog
+    )
+  )
+
+  return (await titleBridge).env
+}
 
 /** 每个桌面进程仅启动一条本机分享桥，凭证只交给本进程创建的后端子进程。 */
 async function artifactShareBridgeEnv(): Promise<ArtifactShareBridge['env']> {
@@ -17849,6 +17965,7 @@ app.on('before-quit', () => {
 // hold the event loop open or leak FDs past app teardown.
 app.on('will-quit', () => {
   stopArtifactShareCleanup()
+  void titleBridge?.then(bridge => bridge.stop()).catch(() => undefined)
   stopDriveCredentialRenewal?.()
   void ACCOUNT_CONNECTORS.close()
   void ACCOUNT_DRIVE_MCP.close()
@@ -18180,7 +18297,6 @@ ipcMain.handle('hermes:setting:defaultProjectDir:restart', event => {
   }
 
   restartAfterQuit = true
-  quitConfirmedWithActiveWork = true
   app.quit()
 })
 
@@ -18308,6 +18424,53 @@ ipcMain.handle('hermes:updates:apply', async (_event, payload) =>
     message: error?.message || String(error)
   }))
 )
+
+// Abort an in-flight apply() download. The renderer only offers this while the
+// transfer is still running; once the installer takes over the strategy reports
+// `cancelled: false` and the progress surface stays put instead of claiming
+// the update stopped.
+ipcMain.handle('hermes:updates:cancel', async (): Promise<UpdaterCancelWire> => {
+  try {
+    const strategy = await resolvePackagedUpdateStrategy()
+    const cancel = strategy?.cancel
+
+    return { cancelled: cancel ? cancel.call(strategy) : false }
+  } catch {
+    return { cancelled: false }
+  }
+})
+
+// Ambient background download: fetch the offered package so the renderer can
+// prompt "new version ready" without interrupting the user. Mechanisms whose
+// owner performs the download itself (App Installer / Store / handoff) report
+// `supported: false` — the prompt simply never appears there.
+ipcMain.handle('hermes:updates:prepare', async (): Promise<UpdaterPrepareWire> => {
+  try {
+    const strategy = await resolvePackagedUpdateStrategy()
+
+    if (!strategy) {
+      return { ok: false, ready: false, supported: false }
+    }
+
+    const prepare = strategy.prepare
+
+    if (!prepare) {
+      return { ok: false, ready: false, supported: false }
+    }
+
+    const result = await prepare.call(strategy)
+
+    return { ok: true, supported: true, ...result }
+  } catch (error) {
+    return {
+      ok: false,
+      ready: false,
+      supported: true,
+      error: 'prepare-failed',
+      message: error instanceof Error ? error.message : String(error)
+    }
+  }
+})
 
 ipcMain.handle('hermes:updates:branch:get', async () => readDesktopUpdateConfig())
 
@@ -19109,62 +19272,6 @@ function configureSpellChecker() {
   }
 }
 
-/** 退出应用统一确认，不因界面是否报告运行中任务而改变提示。 */
-function heldQuitForActiveWork(event: Electron.Event): boolean {
-  if (SKIP_QUIT_CONFIRM || quitConfirmedWithActiveWork || isQuittingForHandoff) {
-    return false
-  }
-
-  if (quitPromptOpen) {
-    event.preventDefault()
-
-    return true
-  }
-
-  const prompt = {
-    buttons: ['取消', '退出应用'],
-    message: '退出 Hermes Desktop MT？',
-    detail: '将停止当前账号的托管工作，保留登录、历史和文件。再次打开时恢复未到期的登录。'
-  }
-
-  // 托盘退出也显示同一确认；取消后仍能使用原账号。
-  if (minimizeToTray.status().available) {
-    minimizeToTray.restore()
-  }
-
-  // A hidden aux window must never parent the quit prompt: the dialog would
-  // be invisible and the held quit unanswerable (#116376 §E).
-  const parent = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows().find(window => window.isVisible())
-
-  event.preventDefault()
-  quitPromptOpen = true
-
-  const options: Electron.MessageBoxOptions = {
-    buttons: [...prompt.buttons],
-    cancelId: 0,
-    defaultId: 0,
-    detail: prompt.detail,
-    message: prompt.message,
-    type: 'question'
-  }
-
-  void (parent && !parent.isDestroyed() ? dialog.showMessageBox(parent, options) : dialog.showMessageBox(options))
-    .then(({ response }) => {
-      quitPromptOpen = false
-
-      if (response === 1) {
-        quitConfirmedWithActiveWork = true
-        app.quit()
-      }
-    })
-    .catch(() => {
-      // 未取得确认时保持运行，不把对话框错误当作用户同意。
-      quitPromptOpen = false
-    })
-
-  return true
-}
-
 app.on('before-quit', event => {
   if (accountLogout.started() && !logoutComplete) {
     event.preventDefault()
@@ -19172,17 +19279,10 @@ app.on('before-quit', event => {
     return
   }
 
-  // Runs ahead of every teardown below, so "Keep Running" leaves the app
-  // exactly as it was.
-  if (heldQuitForActiveWork(event)) {
-    return
-  }
-
   if (!logoutComplete && !isQuittingForHandoff) {
     event.preventDefault()
     void logoutDesktopAccount('quit').catch(() => {
       restartAfterQuit = false
-      quitConfirmedWithActiveWork = false
       dialog.showErrorBox('Hermes Desktop MT', '无法开始安全退出，请重试。历史和登录记录未删除。')
     })
 

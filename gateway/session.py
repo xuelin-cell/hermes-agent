@@ -1086,7 +1086,9 @@ class SessionStore(
         """
         return self._update_entry(session_key, lambda e: e.metadata.__setitem__(key, value))
 
-    def set_model_override(self, session_key: str, override: Optional[Dict[str, Any]]) -> None:
+    def set_model_override(
+        self, session_key: str, override: Optional[Dict[str, Any]], *, expected_session_id: Optional[str] = None,
+    ) -> bool:
         """Persist (or clear, with ``None``) the /model override; non-secret keys only."""
         from dataclasses import replace
 
@@ -1094,15 +1096,20 @@ class SessionStore(
 
         with self._lock:
             entry = self._entry_locked(session_key)
-            if entry is None or entry.model_override == cleaned:
-                return
+            if entry is None or (expected_session_id is not None and entry.session_id != expected_session_id):
+                return False
+            if entry.model_override == cleaned:
+                return True
             # Publish only after persistence so a failed clear remains retryable.
             data, generation = self._snapshot_routing_locked()
             # Snapshot reconciliation may replace the entry after database recovery.
-            entry = self._entries[session_key]
+            entry = self._entries.get(session_key)
+            if entry is None or (expected_session_id is not None and entry.session_id != expected_session_id):
+                return False
             data[session_key] = replace(entry, model_override=cleaned).to_dict()
             self._persist_routing_data(data, generation)
             entry.model_override = cleaned
+            return True
 
     def get_model_override(self, session_key: str) -> Optional[Dict[str, str]]:
         """Return the persisted /model override for *session_key*, if any."""

@@ -1,11 +1,14 @@
+import { useStore } from '@nanostores/react'
 import { createContext, type ReactNode, useContext, useState } from 'react'
 import { createPortal } from 'react-dom'
 
+import { ArtifactLibraryUpload, libraryArtifact } from '@/components/chat/artifact-library-upload'
 import { useI18n } from '@/i18n'
 import { Download, X } from '@/lib/icons'
 import { downloadGatewayMediaFile } from '@/lib/media'
 import { notifyError } from '@/store/notifications'
 import type { PreviewTarget } from '@/store/preview'
+import { $activeSessionId, $connection, $selectedStoredSessionId } from '@/store/session'
 const Slot = createContext<HTMLElement | null | undefined>(undefined)
 
 export function PreviewToolbarActions({ children }: { children: ReactNode }) {
@@ -26,6 +29,10 @@ export function FilePreviewToolbar({
   const { t } = useI18n()
   const [slot, setSlot] = useState<HTMLDivElement | null>(null)
   const [busy, setBusy] = useState(false)
+  const connection = useStore($connection)
+  const storedSessionId = useStore($selectedStoredSessionId)
+  const runtimeSessionId = useStore($activeSessionId)
+  const artifact = libraryArtifact(target, storedSessionId || runtimeSessionId, connection)
   const name = (target.label || target.path || target.source).split(/[\\/]/).pop()
 
   async function download() {
@@ -53,6 +60,7 @@ export function FilePreviewToolbar({
           </span>
           <div className="file-preview-actions">
             <div className="file-preview-action-slot" ref={setSlot} />
+            <ArtifactLibraryUpload appearance="toolbar" artifact={artifact} />
             <button
               aria-label={t.fileMenu.download}
               className="file-preview-action-btn file-preview-download"
