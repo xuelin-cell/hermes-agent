@@ -55,7 +55,7 @@ export function ContextMenu({ state, onInsertText, onPickFiles, onPickFolders }:
               type="button"
               variant="ghost"
             >
-              <Plus className="size-5 text-(--ui-text-primary)" strokeWidth={2.5} />
+              <Plus className="size-5 text-(--ui-text-secondary)" strokeWidth={2.5} />
             </Button>
           </DropdownMenuTrigger>
         </Tip>
