@@ -25,7 +25,7 @@ import types
 from contextlib import suppress
 from dataclasses import dataclass, field
 from functools import cached_property, wraps
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Dict, List, Mapping, Optional, Set, Tuple, Union
 
 from hermes_constants import get_hermes_home, get_process_hermes_home, hermes_home_key
@@ -700,6 +700,23 @@ class PluginContext:
         }
         return self._register_entry("command", clean, self._manager._plugin_commands, entry,
                                     "Plugin %s registered command: /%s", clean)
+
+    def resolve_file_path(self, path: str, *, task_id: str = "default") -> Path | PurePosixPath:
+        """Resolve a file-tool path using the task's backend, cwd and profile home.
+
+        Host paths are returned as Path; remote/container paths are PurePosixPath
+        and must not be dereferenced on the control host. Resolution describes a
+        target, without creating a file or guaranteeing against concurrent changes.
+        """
+        from agent.file_safety import get_nt_namespace_error
+        from tools.file_tools_paths import _resolve_path_for_task
+
+        if not isinstance(path, str) or not path.strip():
+            raise ValueError("File path must be a non-empty string")
+        error = get_nt_namespace_error(path)
+        if error:
+            raise ValueError(error)
+        return _resolve_path_for_task(path, task_id or "default")
 
     def dispatch_tool(self, tool_name: str, args: dict, **kwargs) -> str:
         """Dispatch a tool call through the registry with the parent agent (when available)

@@ -1,0 +1,11 @@
+name: security-guardrail
+version: "0.1.0"
+description: "Block write_file calls targeting a configured local directory before execution."
+provides_hooks:
+  - pre_tool_call
+config_schema:
+  protected_directory:
+    type: str
+    default: ""
+    description: "Absolute local directory protected from write_file (including descendants)."
+    required: true

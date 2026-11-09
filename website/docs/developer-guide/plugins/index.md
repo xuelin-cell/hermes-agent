@@ -1343,6 +1343,17 @@ def register(ctx):
     ctx.register_command("check", handler=_handle_check, description="Run async check")
 ```
 
+### Resolve a file-tool target
+
+`ctx.resolve_file_path(path, task_id="default")` resolves a path using the same
+task backend, working directory and profile home as Hermes file tools. Pass the
+hook's `task_id` when checking a tool call. A host target is returned as a
+`pathlib.Path`; SSH and container targets are `PurePosixPath` values and must
+not be resolved against the host filesystem. For a local link-aware comparison,
+call `resolve()` on the returned host path. Resolution does not create a file
+or make a later write atomic with respect to a concurrent filesystem change.
+Invalid empty paths and Windows device-namespace paths raise `ValueError`.
+
 ### Dispatch tools from slash commands
 
 Slash command handlers that need to orchestrate tools (spawn a subagent via `delegate_task`, call `file_edit`, etc.) should use `ctx.dispatch_tool()` instead of reaching into framework internals. The parent-agent context (workspace hints, spinner, model inheritance) is wired up automatically.
